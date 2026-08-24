@@ -1527,15 +1527,25 @@ def test_capture_messages_off_records_no_payload_anywhere(
     regulated data, and `collector.redact` explicitly does not apply to SDK
     events, so there was no second line of defence behind it.
     """
-    llm = StubLLM(script=[("add", {"a": 111, "b": 222})], final="SECRET-COMPLETION")
-    run_agent(calculator(llm), "SECRET-PROMPT: what is 111+222?")
+    llm = StubLLM(script=[("add", {"a": 987654321, "b": 123456789})], final="SECRET-COMPLETION")
+    run_agent(calculator(llm), "SECRET-PROMPT: add them")
 
     events = read_events(tmp_path)
     assert events, "nothing was recorded at all; the test proves nothing"
 
     blob = json.dumps(events)
-    for secret in ("SECRET-COMPLETION", "SECRET-PROMPT", "111", "222"):
+    # Distinctive on purpose: short values collide with the hex in a random
+    # span/session id and make this flaky rather than wrong.
+    for secret in ("SECRET-COMPLETION", "SECRET-PROMPT", "987654321", "123456789"):
         assert secret not in blob, f"{secret!r} reached the spool with capture_messages=False"
+
+    # And on the fields themselves, so this still fails if a payload is recorded
+    # in some form the substrings above happen not to match.
+    for row in events:
+        for field in ("input", "output", "content", "messages", "system", "goal", "prompt", "response"):
+            assert row.get(field) is None, (
+                f"{row['type']}.{field} = {row[field]!r} with capture_messages=False"
+            )
 
     # Structure, timings and outcomes are still recorded — that is the whole
     # bargain the option offers, and an adapter that recorded nothing would

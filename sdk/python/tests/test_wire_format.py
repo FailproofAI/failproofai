@@ -18,7 +18,7 @@ is "what did I just change about the wire format, and who else has to change
 with me".
 """
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, fields as dataclass_fields
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from enum import Enum
@@ -36,8 +36,8 @@ BASE = dict(timestamp=TS, session_id="sess-1", agent_id="agent-1")
 GOLDEN = {
     "tool_use": '{"timestamp": "2026-01-02T03:04:05.678901Z", "session_id": "sess-1", "agent_id": "agent-1", "type": "tool_use", "tool_name": "bash", "tool_call_id": "tc-1", "environment": "prod", "input": {"cmd": "ls"}}',
     "tool_result": '{"timestamp": "2026-01-02T03:04:05.678901Z", "session_id": "sess-1", "agent_id": "agent-1", "type": "tool_result", "tool_name": "bash", "tool_call_id": "tc-1", "environment": "prod", "output": "ok", "duration_ms": 12}',
-    "model_request": '{"timestamp": "2026-01-02T03:04:05.678901Z", "session_id": "sess-1", "agent_id": "agent-1", "type": "model_request", "environment": "prod", "model": "claude-opus-5", "messages": [{"role": "user"}], "system": "sys", "tools": [{"name": "t"}]}',
-    "model_response": '{"timestamp": "2026-01-02T03:04:05.678901Z", "session_id": "sess-1", "agent_id": "agent-1", "type": "model_response", "environment": "prod", "model": "claude-opus-5", "stop_reason": "end_turn", "input_tokens": 10, "output_tokens": 20, "content": "hi", "role": "assistant"}',
+    "model_request": '{"timestamp": "2026-01-02T03:04:05.678901Z", "session_id": "sess-1", "agent_id": "agent-1", "type": "model_request", "environment": "prod", "model": "claude-opus-5", "messages": [{"role": "user"}], "system": "sys", "tools": [{"name": "t"}], "request_id": "req-1"}',
+    "model_response": '{"timestamp": "2026-01-02T03:04:05.678901Z", "session_id": "sess-1", "agent_id": "agent-1", "type": "model_response", "environment": "prod", "model": "claude-opus-5", "stop_reason": "end_turn", "input_tokens": 10, "output_tokens": 20, "content": "hi", "role": "assistant", "request_id": "req-1"}',
     "agent_start": '{"timestamp": "2026-01-02T03:04:05.678901Z", "session_id": "sess-1", "agent_id": "agent-1", "type": "agent_start", "environment": "prod", "goal": "do it", "parent_id": "p-1"}',
     "agent_end": '{"timestamp": "2026-01-02T03:04:05.678901Z", "session_id": "sess-1", "agent_id": "agent-1", "type": "agent_end", "environment": "prod", "outcome": "success", "summary": "done"}',
     "agent_pause": '{"timestamp": "2026-01-02T03:04:05.678901Z", "session_id": "sess-1", "agent_id": "agent-1", "type": "agent_pause", "pause_id": "p-1", "environment": "prod", "reason": "quota", "user_id": "u-1"}',
@@ -58,8 +58,8 @@ def _events():
     return {
         "tool_use": s.ToolUseEvent(**BASE, tool_name="bash", tool_call_id="tc-1", input={"cmd": "ls"}),
         "tool_result": s.ToolResultEvent(**BASE, tool_name="bash", tool_call_id="tc-1", output="ok", error=None, duration_ms=12),
-        "model_request": s.ModelRequestEvent(**BASE, model="claude-opus-5", messages=[{"role": "user"}], system="sys", tools=[{"name": "t"}]),
-        "model_response": s.ModelResponseEvent(**BASE, model="claude-opus-5", stop_reason="end_turn", input_tokens=10, output_tokens=20, content="hi", role="assistant"),
+        "model_request": s.ModelRequestEvent(**BASE, model="claude-opus-5", messages=[{"role": "user"}], system="sys", tools=[{"name": "t"}], request_id="req-1"),
+        "model_response": s.ModelResponseEvent(**BASE, model="claude-opus-5", stop_reason="end_turn", input_tokens=10, output_tokens=20, content="hi", role="assistant", request_id="req-1"),
         "agent_start": s.AgentStartEvent(**BASE, goal="do it", parent_id="p-1"),
         "agent_end": s.AgentEndEvent(**BASE, outcome="success", summary="done"),
         "agent_pause": s.AgentPauseEvent(**BASE, pause_id="p-1", reason="quota", user_id="u-1"),
@@ -145,14 +145,66 @@ def test_the_five_always_present_keys_are_always_present():
             assert required in payload, f"{type(event).__name__} is missing {required}"
 
 
-def test_custom_fields_are_merged_last_and_cannot_shadow_a_schema_key():
-    """Extra fields land in the payload; the schema's own keys win their slot."""
+def test_every_declared_field_appears_in_its_golden():
+    """A golden that omits a field does not freeze that field.
+
+    `_events()` claims "one fully-populated instance of every event dataclass"
+    and left `request_id` unset on both model events — a real field, emitted by
+    all four framework adapters, and the one `_schema.py` singles out as
+    "appended LAST in `_build`'s ordered list … `test_wire_format.py` freezes
+    those bytes, and the dedup key hashes them". Its key name and its POSITION
+    were unpinned, so reordering it would have changed the content hash of every
+    `model_request` carrying one — retried batches stop collapsing against rows
+    already stored, and duplicates appear — with this whole file green.
+
+    `test_every_schema_dataclass_has_a_golden` compares dataclass NAMES only, so
+    it cannot see this.
+    """
+    missing = []
+    for name, event in _events().items():
+        payload = json.loads(GOLDEN[name])
+        for f in dataclass_fields(event):
+            if f.name in {"extra_fields", "timestamp", "session_id", "agent_id"}:
+                continue
+            if getattr(event, f.name) is None:
+                continue
+            if f.name not in payload:
+                missing.append(f"{name}.{f.name}")
+    assert not missing, (
+        "these fields are set on the fixture but absent from the frozen golden, "
+        f"so their name and position on the wire are unpinned: {sorted(missing)}"
+    )
+
+
+def test_custom_fields_are_merged_last_and_overwrite_a_schema_key_in_place():
+    """Extras land last — and an extra that COLLIDES overwrites the declared value.
+
+    Named for what `_build` actually does. It used to be called
+    `..._cannot_shadow_a_schema_key` and only ever passed two novel names, so the
+    invariant its name promised was never exercised and is false: `_build` ends
+    with `result.update(extra)`, so an extra wins its slot outright.
+
+    `integrations/_core.guard_extras` (via `FORBIDDEN_EXTRAS`) is the sole
+    mitigation and covers only the ADAPTER path; a direct `event.*` call with a
+    colliding custom field reaches this. Frozen here so the behaviour is at least
+    known, and so tightening it later is a deliberate change with a test to
+    update rather than a surprise.
+    """
     event = _schema.AgentStartEvent(**BASE, goal="g", extra_fields={"trace_id": "abc", "cost": 0.5})
     payload = event.to_dict()
     assert payload["trace_id"] == "abc"
     assert payload["cost"] == 0.5
     # Insertion order: schema keys first, extras appended.
     assert list(payload)[-2:] == ["trace_id", "cost"]
+
+    # The collision case, which the old name denied could happen.
+    shadowed = _schema.ToolUseEvent(
+        **BASE, tool_name="bash", tool_call_id="tc-1", extra_fields={"tool_name": 12345}
+    ).to_dict()
+    assert shadowed["tool_name"] == 12345, (
+        "if this now keeps the declared value, `_build` was tightened — update "
+        "this test and say so; the change is a good one"
+    )
 
 
 class _Colour(Enum):

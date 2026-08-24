@@ -84,7 +84,14 @@ class session:
     scope stay inside one run instead of splitting it into two sessions.
     """
 
-    __slots__ = ("_requested", "_agent_id", "id", "_sid_token", "_agent_token")
+    __slots__ = (
+        "_requested",
+        "_agent_id",
+        "id",
+        "_sid_token",
+        "_agent_token",
+        "_entry_session_id",
+    )
 
     def __init__(self, session_id: str | None = None, *, agent_id: str | None = None) -> None:
         self._requested = session_id
@@ -92,10 +99,12 @@ class session:
         self.id: str | None = None
         self._sid_token: "contextvars.Token | None" = None
         self._agent_token: "contextvars.Token | None" = None
+        self._entry_session_id: str | None = None
 
     def _enter(self) -> str:
         sid = self._requested or _context.session_id() or uuid.uuid4().hex
         self.id = sid
+        self._entry_session_id = _context.session_id()
         self._sid_token = _context.bind_session(sid)
         if self._agent_id is not None:
             self._agent_token = _context.push_agent(self._agent_id)
@@ -103,9 +112,13 @@ class session:
 
     def _exit(self) -> None:
         # Unwind in reverse, and unconditionally: a scope that leaks an agent
-        # frame misattributes every later event in the process.
-        _context.reset(self._agent_token)
-        _context.reset(self._sid_token)
+        # frame misattributes every later event in the process. Repair by value
+        # when the token is foreign — see `agent._unwind` for why that happens
+        # to ordinary code.
+        if not _context.reset(self._agent_token) and self._agent_id is not None:
+            _context.discard_agent(self._agent_id)
+        if not _context.reset(self._sid_token):
+            _context.restore_session(self._entry_session_id)
         self._agent_token = None
         self._sid_token = None
 
@@ -156,6 +169,17 @@ class agent:
     span at `agent_end` and anything after it is attributed to nothing. The
     literal is `"failed"`, never `"failure"` — only `error|failed|timeout|rejected`
     count as a failure server-side. The exception is always re-raised.
+
+    **Do not span a `yield` in an async generator with this.** Async generators
+    have no context of their own, so the identity binds in the CONSUMER's
+    context — and when the consumer stops early (`break` out of `async for`)
+    asyncio finalizes the generator from a separate task, so `__aexit__` runs
+    somewhere the binding is unreachable. `agent_end` is still emitted correctly,
+    but the consumer keeps a frame for a span that has already closed, and the
+    library cannot remove it from there: `ContextVar.set` in the finalizer's task
+    does not reach the context the value lives in. `_context.reset` warns once
+    when it happens. Pass `session_id=`/`agent_id=` explicitly on the events
+    inside a streaming generator instead of wrapping the `yield` in a scope.
     """
 
     __slots__ = (
@@ -169,6 +193,7 @@ class agent:
         "session_id",
         "_sid_token",
         "_agent_token",
+        "_entry_session_id",
     )
 
     def __init__(
@@ -192,16 +217,32 @@ class agent:
         self.session_id: str | None = None
         self._sid_token: "contextvars.Token | None" = None
         self._agent_token: "contextvars.Token | None" = None
+        self._entry_session_id: str | None = None
 
     def _enter(self) -> _context.Identity:
         sid = self._requested_sid or _context.session_id() or uuid.uuid4().hex
         self.session_id = sid
 
         if isinstance(self._parent_id, _Auto):
-            parent = _context.current().agent_id  # None when nothing is open
+            # Only inherit within the SAME session. An explicit `session_id=`
+            # that differs from the ambient one is the documented way to start a
+            # NEW run, and the enclosing agent does not exist in it — the span
+            # tree is keyed by session, so the child rendered as a root with a
+            # dangling parent, or got grafted onto whatever agent in its own
+            # session happened to share the id. The ordinary long-lived-server
+            # shape reached it directly:
+            #
+            #     with agent("server", session_id="boot"):
+            #         for rid in requests:
+            #             with agent("handler", session_id=rid):  # parent="server"
+            #
+            # A caller who genuinely wants a cross-session link can still pass
+            # `parent_id=` explicitly.
+            parent = _context.current().agent_id if sid == _context.session_id() else None
         else:
             parent = self._parent_id
 
+        self._entry_session_id = _context.session_id()
         self._sid_token = _context.bind_session(sid)
         self._agent_token = _context.push_agent(self.agent_id)
         try:
@@ -221,8 +262,25 @@ class agent:
         return _context.current()
 
     def _unwind(self) -> None:
-        _context.reset(self._agent_token)
-        _context.reset(self._sid_token)
+        # `reset` tolerates a cross-context token, but tolerating it is not the
+        # same as undoing it: the frame this scope pushed stays on the caller's
+        # stack forever. An `agent()` scope inside an ASYNC GENERATOR reaches
+        # that without anyone doing anything unusual — async generators have no
+        # context of their own, so the binding lands in the CONSUMER's context,
+        # and when the consumer stops early (`break` out of `async for`) asyncio
+        # finalizes the generator from a SEPARATE task. `__aexit__` therefore
+        # runs somewhere the token is foreign, the reset is swallowed with a
+        # debug line, and the consumer is left holding a span that has already
+        # closed: the next unrelated request is emitted as its child, in a
+        # different session, and the stack grows by one on every repetition.
+        #
+        # So fall back to repairing the values directly. `reset` reports whether
+        # it managed the token-based restore; when it did not, remove exactly
+        # this scope's own frame and put the session back to what it was.
+        if not _context.reset(self._agent_token):
+            _context.discard_agent(self.agent_id)
+        if not _context.reset(self._sid_token):
+            _context.restore_session(self._entry_session_id)
         self._agent_token = None
         self._sid_token = None
 

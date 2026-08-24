@@ -42,6 +42,25 @@ _RESERVED = frozenset({"timestamp", "session_id", "agent_id", "type", "environme
 # are the ones a caller is most likely to fill straight from a provider response.
 _PROMOTED_NUMERIC = frozenset({"duration_ms", "input_tokens", "output_tokens"})
 
+#: Payload keys ingest lifts into an INDEXED STRING column via `ps()`, which
+#: reads JSON strings and stores NULL for anything else — the same silent-at-200
+#: failure `_PROMOTED_NUMERIC` guards, on the eight keys that had no guard at
+#: all. `None` is the realistic way in: `tool_name=getattr(tool, "name", None)`
+#: is ordinary code, and it produced a row that is invisible to every tool-name
+#: filter and whose `tool_result` never pairs.
+_PROMOTED_STRING = frozenset(
+    {
+        "tool_name",
+        "tool_call_id",
+        "hook_name",
+        "hook_id",
+        "input_id",
+        "pause_id",
+        "error_type",
+        "model",
+    }
+)
+
 _U32_MAX = 2**32 - 1
 
 
@@ -69,6 +88,28 @@ def _validate_promoted_numeric(name: str, value) -> None:
         raise ValueError(
             f"{name} must be between 0 and {_U32_MAX} (an unsigned 32-bit "
             f"integer), got {value!r}"
+        )
+
+
+def _validate_promoted_string(name: str, value) -> None:
+    """Reject anything `ps()` would silently turn into NULL.
+
+    Same reasoning as `_validate_promoted_numeric`, and the same boundary: this
+    is the last point where the caller still has a stack trace pointing at their
+    own call. `_build` copies the base dict verbatim, so a `None` here reached
+    the wire as an explicit JSON `null`, the row was accepted at 200 OK, and the
+    column was empty for some events and not others with nothing logged anywhere.
+    """
+    if value is None:
+        raise ValueError(
+            f"{name} must be a string (the server lifts it into an indexed column "
+            f"and stores NULL for anything else, so the event would be accepted at "
+            f"200 OK and be invisible to every filter on {name}), got None"
+        )
+    if not isinstance(value, str):
+        raise TypeError(
+            f"{name} must be a string (the server lifts it into an indexed column "
+            f"and stores NULL for anything else), got {type(value).__name__}: {value!r}"
         )
 
 
@@ -281,6 +322,8 @@ class EventNamespace:
             raise ValueError(f"Reserved field names cannot be used as custom fields: {sorted(bad)}")
         for name in _PROMOTED_NUMERIC & fields.keys():
             _validate_promoted_numeric(name, fields[name])
+        for name in _PROMOTED_STRING & fields.keys():
+            _validate_promoted_string(name, fields[name])
 
     @staticmethod
     def _now() -> datetime:

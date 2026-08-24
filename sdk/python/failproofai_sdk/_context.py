@@ -92,24 +92,76 @@ def push_agent(aid: str) -> contextvars.Token:
     return _AGENT_STACK.set(_AGENT_STACK.get() + (aid,))
 
 
-def reset(token: contextvars.Token | None) -> None:
+def reset(token: contextvars.Token | None) -> bool:
     """Restore a contextvar to its pre-`set` value, tolerating a cross-context token.
 
     `ContextVar.reset()` raises `ValueError: Token was created in a different
     Context` when the token was minted in another thread *or another asyncio task*.
-    That happens when a scope is entered in one task and exited in another, which is
-    the caller's bug — but an observability library's correct response is a debug
-    line, not an exception raised on top of whatever they were already doing.
+    That happens when a scope is entered in one task and exited in another — not
+    always the caller's bug, as this used to say: asyncio finalizes an abandoned
+    async generator from a task of its own, so an `agent()` scope around a
+    `yield` gets its `__aexit__` run somewhere the token is foreign through no
+    fault of the code that wrote it.
+
+    Returns True when the token-based restore succeeded. It is a `bool` rather
+    than `None` so the caller can repair the values directly instead of leaving
+    a closed span on someone's stack; swallowing the error was never enough on
+    its own.
     """
     if token is None:
-        return
+        return True
     try:
         token.var.reset(token)
+        return True
     except ValueError:
-        logger.debug(
-            "failproofai_sdk: context token reset across contexts; identity left as-is",
-            exc_info=True,
-        )
+        # WARNING, once, not a debug line. The consequence is not cosmetic: the
+        # frame this scope pushed stays bound in whatever context it was set in,
+        # so identity is wrong for everything that follows there. The caller
+        # cannot discover that any other way — there is no exception, and the
+        # events look plausible.
+        #
+        # It cannot always be repaired, either. When the set and the reset happen
+        # in different asyncio TASKS — the async-generator case in `agent()`'s
+        # docstring — `ContextVar.set` from this task cannot reach the context
+        # the value is bound in, so the caller has to change the code. Saying so
+        # once is the most this layer can do.
+        global _warned_cross_context
+        if not _warned_cross_context:
+            _warned_cross_context = True
+            logger.warning(
+                "failproofai_sdk: a scope was entered in one context and exited in "
+                "another, so its identity could not be unwound and later events in "
+                "the entering context may be attributed to it. The usual cause is an "
+                "`agent()`/`session()` scope spanning a `yield` in an async generator; "
+                "pass session_id=/agent_id= explicitly there instead.",
+                exc_info=True,
+            )
+        return False
+
+
+def discard_agent(agent_id: str) -> None:
+    """Remove ONE frame for `agent_id` from the current stack, innermost first.
+
+    The fallback for a token that cannot be reset. Removes a single occurrence
+    rather than every match, because the same `agent_id` may legitimately be on
+    the stack twice (a recursive agent), and dropping both would corrupt the
+    outer one to fix the inner.
+    """
+    stack = _AGENT_STACK.get()
+    for i in range(len(stack) - 1, -1, -1):
+        if stack[i] == agent_id:
+            _AGENT_STACK.set(stack[:i] + stack[i + 1 :])
+            return
+
+
+def restore_session(session_id: str | None) -> None:
+    """Put the session id back to a value captured before the scope was entered."""
+    _SESSION_ID.set(session_id)
+
+
+#: Deduplicates the cross-context warning above — it fires from a scope exit,
+#: which in a streaming server is per request.
+_warned_cross_context = False
 
 
 Snapshot = tuple[str | None, tuple[str, ...]]

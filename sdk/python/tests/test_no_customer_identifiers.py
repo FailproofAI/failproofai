@@ -190,3 +190,25 @@ def test_no_internal_hostnames_leaked():
                 if any(label in FORBIDDEN_OWN for label in labels) or _hashed_hits(host):
                     hits.append(f"{p.relative_to(ROOT)}:{i}")
     assert not hits, f"internal/customer hostnames in a public package: {hits}"
+
+
+def test_this_file_does_not_name_the_customers_it_denies():
+    """The deny-list must not restate, in the clear, what it holds as a digest.
+
+    ``_scannable()`` skips this file so the ``FORBIDDEN_OWN`` literals above do not
+    trip the scan on themselves. That exemption is about OUR names, which are public
+    in this repo already. It must never extend to a customer's: this file ships in
+    the sdist, so a name written here is published exactly like the fixture that
+    started all this. It needs its own test precisely because the exemption is what
+    blinds the main scan to it.
+    """
+    src = pathlib.Path(__file__)
+    hits = [
+        f"{src.name}:{i}: {FORBIDDEN_DIGESTS[digest]}"
+        for i, line in enumerate(src.read_text(encoding="utf-8", errors="replace").split("\n"), 1)
+        for digest in _hashed_hits(line)
+    ]
+    assert not hits, (
+        "this file names, in the clear, an identifier it exists to keep out of a "
+        "public package:\n  " + "\n  ".join(hits)
+    )

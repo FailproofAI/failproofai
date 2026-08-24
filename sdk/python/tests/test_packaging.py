@@ -64,12 +64,28 @@ def test_every_requirement_is_gated_behind_an_extra():
     )
 
 
+#: Names a requirement here must never be. `failproofai-sdk` is self-reference —
+#: `pip install failproofai-sdk[langchain]` resolving through an extra back onto
+#: this distribution. `agenteye` is the RETIRED distribution: on public PyPI that
+#: name is the CLI, so pinning it would install the CLI over the SDK.
+_FORBIDDEN_REQUIREMENT_NAMES = frozenset({"failproofai-sdk", "agenteye"})
+
+
 def test_no_requirement_names_the_retired_distribution():
+    """Both sides normalized, which is the whole point.
+
+    This compared a dash-normalized name against `DIST`, which keeps its
+    UNDERSCORE — so `"failproofai-sdk" != "failproofai_sdk"` was true for every
+    possible input and the assertion could not fail. Negative-controlled: a
+    planted `failproofai-sdk[langchain]; extra == "all"` used to pass.
+    """
     for req in requirements():
         name = re.split(r"[\s\[<>=!~;(]", req.strip(), maxsplit=1)[0]
-        assert name.lower().replace("_", "-") != DIST, (
-            f"self-referential requirement {req!r}: on public PyPI `failproofai_sdk` is the "
-            "CLI, so this would install the CLI over the SDK"
+        assert name.lower().replace("_", "-") not in _FORBIDDEN_REQUIREMENT_NAMES, (
+            f"requirement {req!r} names a distribution that must never appear here: "
+            "self-reference resolves an extra back onto this package, and `agenteye` "
+            "is the CLI on public PyPI, so either would install something else over "
+            "the SDK"
         )
 
 

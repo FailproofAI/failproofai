@@ -207,21 +207,62 @@ def test_importing_the_package_does_not_touch_the_network_or_the_filesystem_eage
     time would be a further one, paid by every process that imports the package
     whether or not it emits anything.
     """
-    source = (PKG / "__init__.py").read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    module_level_calls = [
-        node
-        for node in tree.body
-        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call)
-    ]
-    called = {
-        node.value.func.id
-        for node in module_level_calls
-        if isinstance(node.value.func, ast.Name)
+    # EVERY module, not just `__init__.py`. This read one file and asserted on
+    # `ast.Assign` nodes only — and `__init__.py` has none: the writer and the
+    # namespace moved to `_runtime.py`, whose own docstring says so. So the set
+    # was always empty and `set() <= {...}` could not fail, while the two things
+    # it claimed to guard — import-time work added in `_runtime.py` or any other
+    # imported module, and a bare expression statement like `os.makedirs(...)`,
+    # which is an `ast.Expr` and not an `ast.Assign` — were both invisible to it.
+    # Negative-controlled: a planted `mkdir` + `open()` in `_runtime.py` used to
+    # leave the whole file green.
+    # Each of these is module-level work that IS intended, and each is here
+    # deliberately rather than by a pattern that would also admit a `mkdir`:
+    #
+    #   EventWriter / EventNamespace  the documented cost — starts the flush thread
+    #   count                         `itertools.count()` for the batch sequence
+    #   register                      `atexit.register(_flush_all_at_exit)`
+    #   _Auto                         a sentinel object
+    #   getLogger / frozenset / tuple pure, no I/O
+    #
+    # Adding to this list is the deliberate act. Anything NOT here — a `mkdir`,
+    # an `open`, a config read, a request — is paid by every process that
+    # imports this package, in someone else's agent, whether or not they ever
+    # emit an event.
+    allowed = {
+        "EventWriter",
+        "EventNamespace",
+        "count",
+        "register",
+        "_Auto",
+        "getLogger",
+        "frozenset",
+        "tuple",
     }
-    assert called <= {"EventWriter", "EventNamespace"}, (
-        f"__init__ gained module-level construction of {sorted(called - {'EventWriter', 'EventNamespace'})}. "
-        "Import-time work is paid by every process that imports this package."
+    offenders: list[str] = []
+    for module in sorted(PKG.glob("*.py")):
+        tree = ast.parse(module.read_text(encoding="utf-8"))
+        for node in tree.body:
+            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call):
+                call = node.value
+            elif isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
+                call = node.value
+            else:
+                continue
+            func = call.func
+            name = (
+                func.id
+                if isinstance(func, ast.Name)
+                else (func.attr if isinstance(func, ast.Attribute) else None)
+            )
+            if name is None or name in allowed:
+                continue
+            offenders.append(f"{module.name}:{node.lineno}: {name}()")
+
+    assert not offenders, (
+        "module-level work runs at `import failproofai_sdk`, in someone else's "
+        "agent process, whether or not they ever emit an event:\n  "
+        + "\n  ".join(offenders)
     )
 
 

@@ -68,8 +68,8 @@ env:
   WORKDIR: /tmp/skills
 
 jobs:
-  sync:
-    name: Mirror skill and open PR
+  prepare:
+    name: Build the mirrored tree
     runs-on: ubuntu-latest
     steps:
       - name: Enforce run-from-main
@@ -82,19 +82,15 @@ jobs:
       - name: Checkout (source of truth)
         uses: actions/checkout@v7.0.1
         with:
-          # The step below runs a script fetched from the MIRROR repo, inside this
-          # workspace. Without this, actions/checkout leaves the job's GITHUB_TOKEN
-          # in $GITHUB_WORKSPACE/.git/config where that script can read it —
-          # osv-scanner.yml sets this flag with exactly the same reasoning.
+          # Nothing from the mirror runs in this job any more, but the token still
+          # has no business sitting in $GITHUB_WORKSPACE/.git/config for the rest
+          # of it — osv-scanner.yml sets this flag with the same reasoning.
           persist-credentials: false
 
-      # The PAT holds Contents write + Pull requests write on the mirror repo, and the
-      # NEXT step runs a script fetched FROM that repo, inside this workspace. So the
-      # token must not land where that script can read it: a credentialed clone URL is
-      # written into $WORKDIR/.git/config verbatim and stays there for the rest of the
-      # job. `-c http.extraheader` (before the subcommand, so it is not persisted into
-      # the new repo's config) keeps it in this process only, and it comes from `env:`
-      # rather than being interpolated into the script body.
+      # `-c http.extraheader` before the subcommand, so the credential is NOT
+      # persisted into the new repo's config the way a credentialed clone URL is —
+      # it stays in this process only, and it comes from `env:` rather than being
+      # interpolated into the script body where it would reach the run log.
       - name: Clone FailproofAI/skills
         env:
           SKILLS_SYNC_PAT: ${{ secrets.SKILLS_SYNC_PAT }}
@@ -108,29 +104,67 @@ jobs:
           mkdir -p "$WORKDIR/$DEST_SUBDIR"
           rsync -a --delete --exclude '.git' "$SRC"/ "$WORKDIR/$DEST_SUBDIR"/
 
-      # Run the mirror repo's own validator in a COPY, not in $WORKDIR.
-      #
-      # The clone step goes to real trouble to keep the PAT out of
-      # $WORKDIR/.git/config because "the NEXT step runs a script fetched FROM
-      # that repo, inside this workspace". The ordering defeated that: this
-      # script had write access to $WORKDIR, and the step after it runs
-      # `git commit` there with GH_TOKEN and SKILLS_SYNC_PAT in the environment —
-      # and `git commit` executes $WORKDIR/.git/hooks/pre-commit, which a fresh
-      # --depth=1 clone does not have and this script could freely create. `git
-      # -C $WORKDIR config core.fsmonitor` or a `diff.external` would do just as
-      # well. Anyone able to land a commit in the mirror's validate-skills.py —
-      # a separate repo with a separate reviewer set — could exfiltrate a
-      # maintainer-owned PAT plus this repo's Actions token.
-      #
-      # A copy has no .git, so there is nothing to hook and nothing to configure.
-      - name: Validate (skills repo's own gate)
+      # `.git` excluded: the publish job re-clones fresh, so shipping the mirror's
+      # git directory would only reintroduce the hook/config surface this split
+      # exists to remove.
+      - name: Hand the proposed tree to the validate job
+        run: rsync -a --exclude '.git' "$WORKDIR"/ "$RUNNER_TEMP/tree"/
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: mirrored-tree-sdk
+          path: ${{ runner.temp }}/tree
+          if-no-files-found: error
+          retention-days: 1
+
+
+  # NO secrets, and that is the entire mitigation. `permissions: {}` empties the
+  # GITHUB_TOKEN's scopes and nothing else is passed in, so whatever the mirror's
+  # validator does — write `$GITHUB_ENV`, prepend to `$GITHUB_PATH`, drop a
+  # wrapper on `PATH`, modify runner files — it does it on a runner that has
+  # nothing to steal and that is discarded when the job ends.
+  validate:
+    name: Validate (skills repo's own gate)
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: mirrored-tree-sdk
+          path: tree
+
+      - name: Run the mirror's validator
+        working-directory: tree
+        run: python3 scripts/validate-skills.py
+
+  # Re-clones on a FRESH runner and runs no mirror code: rsync writes, git commits.
+  # `needs: validate` means the gate has passed before this job exists.
+  publish:
+    name: Push branch and open/refresh PR
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (source of truth)
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      # Re-cloned rather than carried over from `prepare`: this runner has never
+      # executed anything from the mirror, and a fresh `--depth=1` clone has no
+      # hooks, so there is nothing here for the validator to have tampered with.
+      - name: Clone FailproofAI/skills
+        env:
+          SKILLS_SYNC_PAT: ${{ secrets.SKILLS_SYNC_PAT }}
         run: |
-          VALIDATE_DIR="$RUNNER_TEMP/validate"
-          rm -rf "$VALIDATE_DIR"
-          mkdir -p "$VALIDATE_DIR"
-          rsync -a --exclude '.git' "$WORKDIR"/ "$VALIDATE_DIR"/
-          cd "$VALIDATE_DIR"
-          python3 "$VALIDATE_DIR/scripts/validate-skills.py"
+          AUTH="$(printf 'x:%s' "$SKILLS_SYNC_PAT" | base64 -w0)"
+          git -c "http.extraheader=AUTHORIZATION: basic ${AUTH}" \
+            clone --depth=1 "https://github.com/${DEST_REPO}.git" "$WORKDIR"
+
+      - name: Mirror sdk skill into the clone
+        run: |
+          mkdir -p "$WORKDIR/$DEST_SUBDIR"
+          rsync -a --delete --exclude '.git' "$SRC"/ "$WORKDIR/$DEST_SUBDIR"/
 
       - name: Commit, push branch, open/refresh PR
         env:

@@ -48,15 +48,23 @@ function runScripts(job: Record<string, any>): string {
 const PYPI_ENVIRONMENT = "pypi-failproofai-sdk";
 
 describe("publish-failproofai-sdk.yml", () => {
-  const job = workflow("publish-failproofai-sdk.yml").jobs.publish;
+  const FILE = "publish-failproofai-sdk.yml";
+  // The gates all live in the unprivileged build job now; `publish` only uploads.
+  const job = workflow(FILE).jobs.build;
+  const publishJob = workflow(FILE).jobs.publish;
 
   it("grants contents: read alongside id-token: write", () => {
-    // Without it the token cannot read this repository and checkout fails.
-    expect(job.permissions).toMatchObject({ "contents": "read", "id-token": "write" });
+    // On the PUBLISH job, which is the only one that holds the identity now.
+    expect(publishJob.permissions).toMatchObject({ "contents": "read", "id-token": "write" });
+    // ...and the build job must NOT hold it, which is the whole split.
+    expect(job.permissions?.["id-token"]).toBeUndefined();
   });
 
   it("binds publishing to the environment its PyPI publisher is configured for", () => {
-    const env = typeof job.environment === "string" ? job.environment : job.environment?.name;
+    const env =
+      typeof publishJob.environment === "string"
+        ? publishJob.environment
+        : publishJob.environment?.name;
     expect(env).toBe(PYPI_ENVIRONMENT);
     // The same string has to be in PyPI's publisher config; the header is where a
     // maintainer reads it off, so a rename that misses one side is caught here.
@@ -80,7 +88,7 @@ describe("publish-failproofai-sdk.yml", () => {
   it("runs every gate before uploading", () => {
     const steps: Record<string, any>[] = job.steps ?? [];
     const names = steps.map((s) => s.name ?? "");
-    const upload = steps.findIndex((s) => (s.uses ?? "").startsWith("pypa/gh-action-pypi-publish"));
+    const upload = steps.findIndex((s) => String(s.uses ?? "").startsWith("actions/upload-artifact"));
     expect(upload).toBeGreaterThan(-1);
     // "Verify the artifacts before uploading" is on this list because deleting
     // that step outright — the LICENSE / py.typed / non-empty-wheel gate — used
@@ -110,12 +118,48 @@ describe("publish-failproofai-sdk.yml", () => {
     expect(Object.keys(triggers)).toEqual(["workflow_dispatch"]);
   });
 
-  it("gates the upload on dry_run, so a dry run cannot publish", () => {
-    const upload = (job.steps ?? []).find((s: Record<string, any>) =>
-      (s.uses ?? "").startsWith("pypa/gh-action-pypi-publish"),
-    );
+// The whole point of the two-job split: the job that CAN publish must run no
+  // code this repo does not review. Trusted Publishing mints its OIDC token from
+  // `ACTIONS_ID_TOKEN_REQUEST_URL`/`_TOKEN` in the job environment, so anything
+  // executing alongside `id-token: write` — a dependency, a pytest plugin, the
+  // built package itself — can request it and publish an attacker-controlled
+  // release.
+  it("keeps the publishing identity out of every job that runs third-party code", () => {
+    const wf = workflow(FILE);
+    for (const [name, j] of Object.entries<any>(wf.jobs)) {
+      const idToken = j.permissions?.["id-token"];
+      if (idToken !== "write") continue;
+      const steps: Record<string, any>[] = j.steps ?? [];
+      const uses = steps.map((s) => String(s.uses ?? ""));
+      const scripts = steps.map((s) => String(s.run ?? "")).join("\n");
+
+      expect(uses.some((u) => u.startsWith("actions/checkout"))).toBe(false);
+      for (const forbidden of ["uv sync", "uv run", "uv build", "pip install", "pytest"]) {
+        expect(scripts).not.toContain(forbidden);
+      }
+      // Only the artifact download and the upload action itself.
+      expect(uses.filter(Boolean).sort()).toEqual([
+        "actions/download-artifact@v8",
+        "pypa/gh-action-pypi-publish@release/v1",
+      ]);
+      expect(name).toBe("publish");
+    }
+  });
+
+  it("still gates the publishing job on dry_run", () => {
+    const wf = workflow(FILE);
+    expect(String(wf.jobs.publish.if ?? "")).toContain("dry_run");
+  });
+
+  it("hands the publish job an artifact the build job already verified", () => {
+    const wf = workflow(FILE);
+    const build: Record<string, any>[] = wf.jobs.build.steps ?? [];
+    const upload = build.find((s) => String(s.uses ?? "").startsWith("actions/upload-artifact"));
     expect(upload).toBeDefined();
-    expect(String(upload.if ?? "")).toContain("dry_run");
+    // `error`, not the default warn-and-continue: an empty upload would make the
+    // publish job download nothing and succeed at publishing it.
+    expect(upload!.with?.["if-no-files-found"]).toBe("error");
+    expect(wf.jobs.publish.needs).toBe("build");
   });
 
   it("requires the framework adapters to fail rather than skip", () => {
@@ -138,13 +182,15 @@ describe("publish-failproofai-sdk.yml", () => {
   });
 
   it("publishes from the SDK's own dist directory", () => {
-    // `packages-dir` is resolved from the repo root, NOT from the job's
-    // `working-directory` — so a bare `dist/` here would upload nothing, or
-    // whatever another component happened to leave at the root.
-    const upload = (job.steps ?? []).find((s: Record<string, any>) =>
-      (s.uses ?? "").startsWith("pypa/gh-action-pypi-publish"),
-    );
-    expect(upload?.with?.["packages-dir"]).toBe("sdk/python/dist/");
+    // `packages-dir` is resolved from the repo root. The publish job does not
+    // check the repo out at all, so the only thing at that path is what
+    // `download-artifact` just placed there — and the two must agree, or the
+    // upload silently publishes nothing (or whatever else is lying around).
+    const steps: Record<string, any>[] = publishJob.steps ?? [];
+    const download = steps.find((s) => String(s.uses ?? "").startsWith("actions/download-artifact"));
+    const upload = steps.find((s) => String(s.uses ?? "").startsWith("pypa/gh-action-pypi-publish"));
+    expect(download?.with?.path).toBe("dist/");
+    expect(upload?.with?.["packages-dir"]).toBe("dist/");
   });
 });
 
@@ -186,7 +232,12 @@ describe("the failproofai-sdk CI job", () => {
 describe("sync-failproofai-sdk-skill.yml", () => {
   const name = "sync-failproofai-sdk-skill.yml";
   const text = source(name);
-  const job = workflow(name).jobs.sync;
+  const job = (() => {
+    // The old single `sync` job is now `prepare` + `validate` + `publish`;
+    // these assertions are about the git plumbing, wherever it now lives.
+    const wf = workflow(name);
+    return { steps: Object.values<any>(wf.jobs).flatMap((j) => j.steps ?? []) };
+  })();
 
   it("never puts the PAT in a remote URL", () => {
     // A credentialed clone URL is persisted verbatim into $WORKDIR/.git/config, which the

@@ -45,11 +45,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish:
+  # EVERYTHING that runs third-party code lives here, and this job has NO
+  # publishing identity: no `environment:`, no `id-token: write`.
+  #
+  # That split is the point. Trusted Publishing mints its OIDC token on demand
+  # from `ACTIONS_ID_TOKEN_REQUEST_URL`/`_TOKEN` in the job environment, so any
+  # code that runs in a job holding `id-token: write` can ask for it and publish
+  # an attacker-controlled release. This job installs dependencies, runs pytest
+  # (plugins included), builds, and imports the built wheel to smoke-test its
+  # console script — every one of which executes code this repo does not review.
+  # Holding the identity here made all of it publish-capable.
+  build:
     runs-on: ubuntu-latest
-    # Gates this job on the repo-level environment rules described in the header, and puts
-    # the environment name in the OIDC token PyPI checks. Both halves are outside this file.
-    environment: pypi-fp-cli
     defaults:
       run:
         working-directory: fp-cli
@@ -58,7 +65,6 @@ jobs:
       # defaults. `contents: read` is therefore not redundant: without it `actions/checkout`
       # gets a token that cannot read this repository.
       contents: read
-      id-token: write    # required for Trusted Publishing
     steps:
       # Authentication is OIDC, so there is no token to withhold: repo write access IS
       # publish access, and `workflow_dispatch` can target ANY ref. Without these two
@@ -138,8 +144,57 @@ jobs:
           echo "fp-cli version: ${VERSION}"
           echo "### Publishing \`fp-cli\` ${VERSION}" >> "${GITHUB_STEP_SUMMARY}"
 
+      - name: Hand the verified artifact to the publish job
+        uses: actions/upload-artifact@v7
+        with:
+          name: fp-cli-dist
+          path: fp-cli/dist/
+          if-no-files-found: error
+          retention-days: 1
+
+  # The ONLY job with a publishing identity, and it runs no repository code, no
+  # dependency code and no package code — it does not even check the repo out.
+  # It downloads the artifact the job above already verified and uploads it.
+  #
+  # `needs: build` means every gate (tests, wheel verification, the installed
+  # smoke test) has passed before this job exists at all, so nothing is lost by
+  # moving them out; what changes is that none of them run while the OIDC
+  # identity is reachable.
+  publish:
+    needs: build
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    # Gates this job on the repo-level environment rules described in the header, and puts
+    # the environment name in the OIDC token PyPI checks. Both halves are outside this file.
+    environment: pypi-fp-cli
+    permissions:
+      contents: read
+      id-token: write    # required for Trusted Publishing
+    steps:
+      # Repeated from the build job on purpose: this is the job that can publish,
+      # so the readable guard belongs here too. The `environment:` above is the
+      # real enforcement — see the header.
+      - name: Authorize actor and branch
+        env:
+          ACTOR: ${{ github.actor }}
+          REF: ${{ github.ref_name }}
+        run: |
+          if [ "$ACTOR" != "NiveditJain" ]; then
+            echo "::error::Unauthorized. Only NiveditJain can publish fp-cli."
+            exit 1
+          fi
+          if [ "$REF" != "main" ]; then
+            echo "::error::Refusing to publish from '$REF'. fp-cli publishes from main only."
+            exit 1
+          fi
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: fp-cli-dist
+          path: dist/
+
       - name: Publish to PyPI
         if: ${{ !inputs.dry_run }}
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: fp-cli/dist/
+          packages-dir: dist/

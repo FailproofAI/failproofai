@@ -45,11 +45,20 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish:
+  # EVERYTHING that runs third-party code lives here, and this job has NO
+  # publishing identity: no `environment:`, no `id-token: write`.
+  #
+  # That split is the point, and it matters more here than for fp-cli. Trusted
+  # Publishing mints its OIDC token on demand from
+  # `ACTIONS_ID_TOKEN_REQUEST_URL`/`_TOKEN` in the job environment, so any code
+  # running in a job that holds `id-token: write` can request it and publish an
+  # attacker-controlled release. This job installs dependencies, runs pytest
+  # (plugins included), installs FIVE framework extras — LangChain, LangGraph,
+  # CrewAI, LlamaIndex, Pydantic AI — and their entire transitive trees, executes
+  # their adapters, then imports the built wheel and runs it. Holding the identity
+  # alongside all of that made every one of those packages publish-capable.
+  build:
     runs-on: ubuntu-latest
-    # Gates this job on the repo-level environment rules described in the header, and puts
-    # the environment name in the OIDC token PyPI checks. Both halves are outside this file.
-    environment: pypi-failproofai-sdk
     defaults:
       run:
         working-directory: sdk/python
@@ -58,7 +67,6 @@ jobs:
       # defaults. `contents: read` is therefore not redundant: without it `actions/checkout`
       # gets a token that cannot read this repository.
       contents: read
-      id-token: write    # required for Trusted Publishing
     steps:
       # Authentication is OIDC, so there is no token to withhold: repo write access IS
       # publish access, and `workflow_dispatch` can target ANY ref. Without these two
@@ -184,8 +192,58 @@ jobs:
           echo "failproofai-sdk version: ${VERSION}"
           echo "### Publishing \`failproofai-sdk\` ${VERSION}" >> "${GITHUB_STEP_SUMMARY}"
 
+      - name: Hand the verified artifact to the publish job
+        uses: actions/upload-artifact@v7
+        with:
+          name: failproofai-sdk-dist
+          path: sdk/python/dist/
+          if-no-files-found: error
+          retention-days: 1
+
+  # The ONLY job with a publishing identity, and it runs no repository code, no
+  # dependency code and no package code — it does not even check the repo out.
+  # It downloads the artifact the job above already verified and uploads it.
+  #
+  # `needs: build` means every gate (unit tests, the framework-adapter tests, the
+  # wheel verification, the installed smoke test that proves the artifact writes
+  # real events) has passed before this job exists at all. Nothing is lost by
+  # moving them out; what changes is that none of them run while the OIDC
+  # identity is reachable.
+  publish:
+    needs: build
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    # Gates this job on the repo-level environment rules described in the header, and puts
+    # the environment name in the OIDC token PyPI checks. Both halves are outside this file.
+    environment: pypi-failproofai-sdk
+    permissions:
+      contents: read
+      id-token: write    # required for Trusted Publishing
+    steps:
+      # Repeated from the build job on purpose: this is the job that can publish,
+      # so the readable guard belongs here too. The `environment:` above is the
+      # real enforcement — see the header.
+      - name: Authorize actor and branch
+        env:
+          ACTOR: ${{ github.actor }}
+          REF: ${{ github.ref_name }}
+        run: |
+          if [ "$ACTOR" != "NiveditJain" ]; then
+            echo "::error::Unauthorized. Only NiveditJain can publish failproofai-sdk."
+            exit 1
+          fi
+          if [ "$REF" != "main" ]; then
+            echo "::error::Refusing to publish from '$REF'. failproofai-sdk publishes from main only."
+            exit 1
+          fi
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: failproofai-sdk-dist
+          path: dist/
+
       - name: Publish to PyPI
         if: ${{ !inputs.dry_run }}
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: sdk/python/dist/
+          packages-dir: dist/

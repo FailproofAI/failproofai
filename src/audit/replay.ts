@@ -13,13 +13,19 @@
  * execSync against live git, so they never fire on PreToolUse/PostToolUse
  * replay — no explicit skip needed.
  */
+import { resolve } from "node:path";
+import { existsSync } from "node:fs";
 import type { EvaluationResult } from "../hooks/policy-evaluator";
 import { evaluatePolicies } from "../hooks/policy-evaluator";
 import { BUILTIN_POLICIES, registerBuiltinPolicies } from "../hooks/builtin-policies";
+import { PACK_ENTRY_ASSET, bundledPackDir } from "../hooks/pack-store";
+import { loadCustomHooks } from "../hooks/custom-hooks-loader";
+import { clearCustomHooks } from "../hooks/custom-hooks-registry";
 import {
   clearPolicies,
   getAllPolicies,
   normalizePolicyName,
+  registerPolicy,
   setAllPolicies,
 } from "../hooks/policy-registry";
 import type { RegisteredPolicy } from "../hooks/policy-types";
@@ -44,15 +50,70 @@ let savedSnapshot: RegisteredPolicy[] | null = null;
  *  shows what *could* be caught, not just what's currently enabled. Called
  *  once per `runAudit` invocation. Snapshots the existing registry so it can
  *  be restored by `restoreReplay()` once the audit is done. */
-export function initReplay(): void {
+export async function initReplay(): Promise<void> {
   if (initialized) return;
   savedSnapshot = getAllPolicies();
   clearPolicies();
   const enabled = BUILTIN_POLICIES
     .map((p) => p.name)
     .filter((n) => !SKIP_POLICIES.has(normalizePolicyName(n)));
-  registerBuiltinPolicies(enabled);
+  if (!(await registerFromVendoredPack(enabled))) registerBuiltinPolicies(enabled);
   initialized = true;
+}
+
+/**
+ * Register the audit's policies from the pack that ships inside the package,
+ * rather than from implementations compiled into this build.
+ *
+ * The audit scores by RUNNING the policies — three of its four penalty buckets
+ * are replay hits — so the day the builtins stop being compiled in, this is
+ * what keeps `failproofai audit` reporting the same findings and the same score
+ * for the same transcripts. The pack carries the identical functions:
+ * `builtin-pack-conformance.test.ts` replays a corpus through both and asserts
+ * the verdicts do not diverge.
+ *
+ * Two things it must get right, or the audit quietly changes:
+ *
+ * - The pack cannot carry `block-failproofai-commands`, because `alwaysOn` is
+ *   refused by the pack loader by design — a downloaded file that no local
+ *   command can switch off. It is registered from the compiled side, so the
+ *   replayed set is the same 39 either way.
+ * - The skip list still applies. `warn-repeated-tool-calls` writes a per-session
+ *   sidecar into the user's real transcript directory on every evaluation.
+ *
+ * Returns false when there is no vendored pack to read — a source checkout that
+ * has not run `build:pack`, or a tarball packed without it — and the caller
+ * falls back to the compiled implementations. An audit that silently scored on
+ * fewer policies would be worse than either.
+ */
+async function registerFromVendoredPack(enabled: string[]): Promise<boolean> {
+  const dir = bundledPackDir();
+  if (!dir) return false;
+  const entry = resolve(dir, PACK_ENTRY_ASSET);
+  if (!existsSync(entry)) return false;
+
+  const wanted = new Set(enabled);
+  let hooks;
+  try {
+    clearCustomHooks();
+    hooks = await loadCustomHooks(entry, { strict: true });
+  } catch {
+    return false;
+  } finally {
+    clearCustomHooks();
+  }
+  if (hooks.length === 0) return false;
+
+  for (const hook of hooks) {
+    if (!wanted.has(hook.name)) continue;
+    registerPolicy(hook.name, hook.description ?? "", hook.fn, hook.match ?? {}, 0);
+  }
+  // The alwaysOn guard, which a pack may not carry. Registered from the
+  // compiled side so the replayed set is unchanged.
+  registerBuiltinPolicies(
+    BUILTIN_POLICIES.filter((p) => p.alwaysOn && wanted.has(p.name)).map((p) => p.name),
+  );
+  return true;
 }
 
 /** Restore the registry to whatever was there before `initReplay()`. Safe to
@@ -87,7 +148,7 @@ export interface ReplayHit {
  *  is reported too, so sanitize policies that emit informational notes still
  *  surface in the audit. */
 export async function replayEvent(event: NormalizedToolEvent): Promise<ReplayHit[]> {
-  if (!initialized) initReplay();
+  if (!initialized) await initReplay();
 
   const session: SessionMetadata = {
     sessionId: event.sessionId,

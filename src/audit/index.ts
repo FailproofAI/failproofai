@@ -261,7 +261,7 @@ function aggregateResults(
 
 export async function runAudit(opts: RunAuditOptions = {}): Promise<AuditResult> {
   const startedAt = Date.now();
-  initReplay();
+  await initReplay();
   try {
     return await runAuditInner(opts, startedAt);
   } finally {

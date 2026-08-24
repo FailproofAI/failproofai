@@ -134,3 +134,45 @@ describe("the migration shim", () => {
     expect(JSON.stringify(result)).not.toMatch(/sudo commands are blocked/);
   });
 });
+
+describe("the guard cannot be talked around", () => {
+  // Every one of these was a LIVE bypass: each ran the CLI and actually paused
+  // enforcement while the guard returned allow.
+  const bypasses = [
+    'eval "failproofai config --pause"',
+    'sh -c "failproofai config --pause"',
+    "x=failproofai; $x config --pause",
+    "X=failproofai;${X} policies --uninstall block-sudo",
+    "node /usr/lib/node_modules/failproofai/dist/cli.mjs config --pause",
+  ];
+
+  it.each(bypasses)("denies %s", async (command) => {
+    writeFileSync(join(home, "policies-config.json"), JSON.stringify({ enabledPolicies: [] }));
+    const result = await evaluate(command);
+    expect(JSON.stringify(result)).toMatch(/deny/);
+  });
+
+  it.each([
+    "rm ~/.failproofai/policies/packs/installed.json",
+    "rm -rf $HOME/.failproofai",
+    "mv ~/.failproofai/policies /tmp/x",
+  ])("denies %s — deleting the state is disabling enforcement", async (command) => {
+    // A missing pack store reads as a FRESH machine, not a broken one, so
+    // fail-closed does not fire and nothing anywhere reports it.
+    writeFileSync(join(home, "policies-config.json"), JSON.stringify({ enabledPolicies: [] }));
+    const result = await evaluate(command);
+    expect(JSON.stringify(result)).toMatch(/deny/);
+  });
+
+  it.each([
+    "ls -la",
+    "npm test",
+    "rm -rf node_modules",
+    "echo ${HOME}",
+    "mv src/a.ts src/b.ts",
+  ])("still allows %s", async (command) => {
+    writeFileSync(join(home, "policies-config.json"), JSON.stringify({ enabledPolicies: [] }));
+    const result = await evaluate(command);
+    expect(JSON.stringify(result)).not.toMatch(/deny/);
+  });
+});

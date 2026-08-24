@@ -99,6 +99,7 @@ import {
   probeDaemonEndToEnd,
 } from "./daemon-service";
 import { installBundledPack } from "./pack-store";
+import { readHooksConfig } from "./hooks-config";
 
 export interface ResetOutcome {
   /** Paths that existed and were removed. */
@@ -968,7 +969,21 @@ export function resetHome(from: number, to: number = LAYOUT_VERSION): ResetOutco
   // `packs/` is resettable, but the package's default pack is also the offline
   // enforcement floor. Restore it from the installed package before declaring
   // the migration complete; third-party packs remain explicitly re-fetchable.
-  installBundledPack();
+  //
+  // Carrying `enabledPolicies` INTO the selection, not installing defaults over
+  // it. This is the upgrade path every existing user takes, and installing
+  // defaults meant a machine that had switched `block-force-push` and
+  // `block-kubectl` on came back with them off — guards that were denying
+  // before the upgrade and allowing after, with nothing said.
+  const carried = (() => {
+    try {
+      const names = readHooksConfig().enabledPolicies ?? [];
+      return names.length > 0 ? { only: names } : undefined;
+    } catch {
+      return undefined;
+    }
+  })();
+  installBundledPack(carried);
   // The step's OWN target, not LAYOUT_VERSION.
   //
   // Every step used to end stamping the current layout, which was harmless

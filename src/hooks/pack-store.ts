@@ -29,6 +29,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { packsRoot, parsePackIdentity, parsePackPolicy, readInstalledPacks } from "./pack-manifest";
+import type { ResolvedPack } from "./pack-manifest";
 import type { InstalledPackRecord } from "./pack-manifest";
 import type { PolicyCatalogEntry } from "./policy-types";
 import type { PolicyEffect } from "./cloud-managed-policies";
@@ -59,6 +60,9 @@ export interface AddPackResult {
   id: string;
   version: string;
   source: string;
+  /** Ids this install absorbed — the same artifact, previously under another
+   *  name. Reported so a rename is never a silent deletion of someone's pack. */
+  replaced?: string[];
   /** The concrete tag installed, whether typed or resolved. */
   tag: string;
   /**
@@ -396,6 +400,21 @@ export async function fetchPackPreview(source: string): Promise<PackPreview> {
   };
 }
 
+/**
+ * The record this install is really an update OF — matched by id, or failing
+ * that by artifact digest.
+ *
+ * The digest half matters because an id can be renamed under a user: the
+ * published release calls this set `failproofai/builtins` and the vendored copy
+ * calls it `failproofai/core`. Looking up by id alone found nothing, so the
+ * install fell back to the pack's DEFAULTS and quietly discarded whatever the
+ * user had chosen — while reporting that their selection was kept.
+ */
+function priorRecordFor(id: string, sha256: string): ResolvedPack | undefined {
+  const installed = readInstalledPacks().packs;
+  return installed.find((p) => p.id === id) ?? installed.find((p) => p.sha256 === sha256);
+}
+
 async function fetchPack(spec: PinnedPackSpec): Promise<FetchedPack> {
   const checksums = (await fetchBytes(packAssetUrl(spec, PACK_CHECKSUMS_ASSET))).toString("utf8");
 
@@ -590,7 +609,7 @@ export async function addPack(
   const fetched = await fetchPack(spec);
   const available = fetched.policies.map((p) => p.name);
 
-  const prior = readInstalledPacks().packs.find((p) => p.id === fetched.id);
+  const prior = priorRecordFor(fetched.id, fetched.artifactDigest);
   const { enabled, reason } = resolveSelection(
     fetched.policies,
     opts,
@@ -650,8 +669,9 @@ export async function addPack(
     ...(enabled ? { enabled } : {}),
   };
 
-  upsertInstalled(record);
+  const absorbed = upsertInstalled(record);
   return {
+    replaced: absorbed,
     id: fetched.id,
     version: fetched.version,
     source: record.source,
@@ -699,12 +719,10 @@ export interface BundledPackResult {
   version?: string;
   enabled?: string[];
   available?: string[];
+  /** Ids this install absorbed — the same pack, previously under another name. */
+  replaced?: string[];
   reason?: string;
 }
-
-/** What the vendored pack was called before it shipped, so an upgraded machine
- *  does not keep a dead record beside the live one. */
-const LEGACY_BUNDLED_PACK_ID = "failproofai/builtins";
 
 export function installBundledPack(opts?: { only?: string[]; categories?: string[]; all?: boolean }): BundledPackResult {
   const dir = bundledPackDir();
@@ -745,7 +763,7 @@ export function installBundledPack(opts?: { only?: string[]; categories?: string
     const artifactAbs = resolve(root, artifactRel);
     if (!existsSync(artifactAbs)) writeAtomic(artifactAbs, artifact);
 
-    const prior = readInstalledPacks().packs.find((pk) => pk.id === identity.id);
+    const prior = priorRecordFor(identity.id, artifactDigest);
     const available = policies.map((pol) => pol.name);
     const { enabled } = resolveSelection(
       policies,
@@ -754,12 +772,7 @@ export function installBundledPack(opts?: { only?: string[]; categories?: string
       Boolean(prior),
     );
 
-    // The id changed when the builtins became a pack. Left in place, the old
-    // record would keep registering the same policies under a second id — two
-    // copies of every guard, and a listing that shows both.
-    if (identity.id !== LEGACY_BUNDLED_PACK_ID) removePack(LEGACY_BUNDLED_PACK_ID);
-
-    upsertInstalled({
+    const absorbed = upsertInstalled({
       id: identity.id,
       version: identity.version,
       // Recorded as `bundled:` rather than a github: source, because it did not
@@ -779,6 +792,7 @@ export function installBundledPack(opts?: { only?: string[]; categories?: string
       version: identity.version,
       enabled: enabled ?? available,
       available,
+      ...(absorbed.length > 0 ? { replaced: absorbed } : {}),
     };
   } catch (err) {
     return { installed: false, reason: errText(err) };
@@ -860,7 +874,22 @@ export function removePack(id: string): boolean {
  * activation is a single flip: until this rename lands, the artifact on disk is
  * a file nothing points at.
  */
-function upsertInstalled(record: InstalledPackRecord): void {
+/**
+ * Install or update one pack record, collapsing anything that is the SAME PACK
+ * under a different id.
+ *
+ * Two ids for one artifact is not hypothetical: the published release calls this
+ * set `failproofai/builtins` and the copy vendored in the package calls it
+ * `failproofai/core`, so following the help's own two examples installed both.
+ * The result claimed "2 packs · 76 policies" over ONE artifact, warned on stderr
+ * on every hook event, and left policies showing ON that did not block.
+ *
+ * Matched on the artifact DIGEST, which is what actually decides whether two
+ * records describe the same code. Returns the ids it absorbed so the caller can
+ * say so — an earlier version deleted the old row silently, taking the user's
+ * selection and the enforcement it gave them with it.
+ */
+function upsertInstalled(record: InstalledPackRecord): string[] {
   const manifestPath = resolve(packsRoot(), "installed.json");
   let packs: InstalledPackRecord[] = [];
   if (existsSync(manifestPath)) {
@@ -875,10 +904,25 @@ function upsertInstalled(record: InstalledPackRecord): void {
       );
     }
   }
-  const idx = packs.findIndex((p) => p?.id === record.id);
-  if (idx >= 0) packs[idx] = record;
-  else packs.push(record);
-  writeAtomic(manifestPath, JSON.stringify({ schemaVersion: 1, packs }, null, 2) + "\n");
+  // Anything with these bytes under another name is this pack, renamed.
+  const absorbed = packs
+    .filter((p) => p?.sha256 === record.sha256 && p?.id !== record.id)
+    .map((p) => p.id);
+  // The selection the user had under the old id is theirs — carry it, rather
+  // than resetting them to defaults because a publisher renamed something.
+  if (!record.enabled) {
+    const prior = packs.find((p) => absorbed.includes(p?.id));
+    const carried = prior?.enabled?.filter((n) =>
+      (record.policies as Array<{ name?: unknown }> | undefined)?.some((rp) => rp?.name === n),
+    );
+    if (carried && carried.length > 0) record.enabled = carried;
+  }
+  const remaining = packs.filter((p) => !absorbed.includes(p?.id));
+  const idx = remaining.findIndex((p) => p?.id === record.id);
+  if (idx >= 0) remaining[idx] = record;
+  else remaining.push(record);
+  writeAtomic(manifestPath, JSON.stringify({ schemaVersion: 1, packs: remaining }, null, 2) + "\n");
+  return absorbed;
 }
 
 function errText(err: unknown): string {

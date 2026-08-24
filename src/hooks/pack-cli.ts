@@ -227,6 +227,9 @@ async function add(rest: string[]): Promise<PackCliResult> {
     const skipped = available.filter((n) => !enabled.includes(n));
     const lines = [
       `Installed ${result.id}@${result.version} from this package — no network needed.`,
+      ...(result.replaced?.length
+        ? [`  replaced ${result.replaced.join(", ")} — same policies, renamed; your selection was kept`]
+        : []),
       `  enabled (${enabled.length}/${available.length}): ${summarise(enabled)}`,
     ];
     if (skipped.length > 0) {
@@ -253,6 +256,9 @@ async function add(rest: string[]): Promise<PackCliResult> {
   try {
     const result = await addPack(source, selection);
     const lines = [
+      ...(result.replaced?.length
+        ? [`Replaced ${result.replaced.join(", ")} — same policies under a new name; your selection was kept.`]
+        : []),
       result.resolvedFromLatest
         ? `Installed ${result.id}@${result.version} from ${result.source} (newest release; pinned to ${result.tag})`
         : `Installed ${result.id}@${result.version} from ${result.source}`,

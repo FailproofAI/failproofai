@@ -260,7 +260,7 @@ const SEGMENT_SEPARATORS = /[;&|\n\r(){}`]+/;
  * `/usr/bin/env` and `env` behave identically.
  */
 const COMMAND_PREFIX_TOKENS = new Set([
-  "npx", "bunx", "pnpx", "npm", "pnpm", "yarn", "dlx", "exec", "run",
+  "npx", "bunx", "pnpx", "npm", "pnpm", "yarn", "dlx", "exec", "run", "eval",
   "node", "bun", "deno", "env", "command", "builtin", "nohup", "setsid",
   "time", "timeout", "nice", "stdbuf", "xargs", "sudo", "doas",
   "sh", "bash", "zsh", "dash", "ksh", "fish", "ash",
@@ -270,6 +270,15 @@ const COMMAND_PREFIX_TOKENS = new Set([
  * `failproofai@latest`, `/usr/local/bin/failproofai`,
  * `./node_modules/.bin/failproofai`, `.../failproofai/bin/failproofai.mjs`. */
 const SELF_BINARY_TOKEN_RE = /(?:^|\/)failproofai[^/]*$/;
+
+/**
+ * The same CLI, reached by path rather than by name.
+ *
+ * `node <pkg>/dist/cli.mjs config --pause` put `node` in command position, so
+ * the walk above settled on a path the binary regex did not match — and it
+ * paused enforcement. Verified as a live bypass.
+ */
+const SELF_ENTRY_PATH_RE = /failproofai\/(?:dist\/(?:cli|index)\.mjs|bin\/failproofai\.mjs)$/;
 
 /** `config`, and the two aliases the entrypoint normalizes to it. */
 const CONFIG_SUBCOMMAND_RE = /^(?:config|configure|setup)$/;
@@ -305,8 +314,27 @@ type SelfInvocation = "pause" | "cli";
  * `pause` outranks `cli` wherever both appear, because the pause verdict is the
  * one whose message has to explain that suspending enforcement is a human call.
  */
-function classifySelfInvocation(command: string): SelfInvocation | null {
+function classifySelfInvocation(raw: string): SelfInvocation | null {
+  // `${X}` before anything else looks at it: braces are SEGMENT SEPARATORS, so
+  // the reference was being split into `$` and `X` and matched nothing, while
+  // the shell ran it perfectly well.
+  const command = raw.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, "$$$1");
   let found: SelfInvocation | null = null;
+  // Variables assigned the binary earlier in the SAME command.
+  //
+  // `x=failproofai; $x config --pause` put `$x` in command position, matched
+  // nothing, and paused enforcement — verified as a live bypass. A shell would
+  // have to be re-implemented to resolve this in general; what is cheap and
+  // covers the actual trick is remembering what was assigned right here.
+  const selfVars = new Set<string>();
+  for (const [, name, value] of command.matchAll(/(?:^|[\s;&|])([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;&|]+)/g)) {
+    const bare = value.replace(/^["']|["']$/g, "");
+    if (SELF_BINARY_TOKEN_RE.test(bare) || SELF_ENTRY_PATH_RE.test(bare)) selfVars.add(name);
+  }
+  const isSelfVarRef = (token: string): boolean => {
+    const m = /^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$/.exec(token);
+    return m ? selfVars.has(m[1]) : false;
+  };
   for (const segment of command.split(SEGMENT_SEPARATORS)) {
     const tokens = segment.split(/\s+/).filter(Boolean);
     let i = 0;
@@ -325,7 +353,13 @@ function classifySelfInvocation(command: string): SelfInvocation | null {
       i++;
     }
     if (i >= tokens.length) continue;
-    if (!SELF_BINARY_TOKEN_RE.test(tokens[i])) continue;
+    if (
+      !SELF_BINARY_TOKEN_RE.test(tokens[i]) &&
+      !SELF_ENTRY_PATH_RE.test(tokens[i]) &&
+      !isSelfVarRef(tokens[i])
+    ) {
+      continue;
+    }
 
     // The binary IS the command here. `config … --pause` is singled out only for
     // its message; every other subcommand is denied just the same.
@@ -418,6 +452,15 @@ const SECRET_FILE_CREDENTIALS_RE = /credentials/;
 const GIT_COMMIT_MERGE_RE = /git\s+(commit|merge|rebase|cherry-pick)\b/;
 
 // blockFailproofaiCommands
+/**
+ * A command that removes or moves failproofai's own state.
+ *
+ * Named separately from the binary walk because it never mentions the binary:
+ * the target is a path, and the verb is an ordinary file command.
+ */
+const FAILPROOFAI_STATE_WRITE_RE =
+  /\b(?:rm|unlink|shred|mv|truncate)\b[^;&|]*\.failproofai(?:\/|\b)/;
+
 const FAILPROOFAI_UNINSTALL_RE = /(?:npm\s+(?:uninstall|remove|un|r)\s.*failproofai|bun\s+remove\s.*failproofai|yarn\s+global\s+remove\s+failproofai|pnpm\s+(?:remove|uninstall|un)\s.*failproofai)/;
 
 // warnGitAmend
@@ -1431,6 +1474,17 @@ function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
   // binary, so the walk above never reaches it.
   if (FAILPROOFAI_UNINSTALL_RE.test(cmd) || FAILPROOFAI_UNINSTALL_RE.test(unescaped)) {
     return deny("Uninstalling failproofai is blocked");
+  }
+  // Deleting the state IS disabling enforcement, without ever naming the binary.
+  // `rm ~/.failproofai/policies/packs/installed.json` switched off every pack
+  // policy on the machine and fail-closed did NOT fire, because a missing store
+  // reads as a fresh machine rather than a broken one — so nothing anywhere
+  // reported it.
+  if (FAILPROOFAI_STATE_WRITE_RE.test(cmd) || FAILPROOFAI_STATE_WRITE_RE.test(unescaped)) {
+    return deny(
+      "Deleting or moving failproofai's own state would switch enforcement off. " +
+        "If a policy is blocking legitimate work, say so and let the operator decide.",
+    );
   }
   return allow();
 }

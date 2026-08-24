@@ -189,7 +189,7 @@ with failproofai_sdk.session():
     graph.invoke(Command(resume="yes"), config)    # agent_resume, human_input
 ```
 
-`human_wait` to `human_input` carries the prompt and the answer. `agent_pause` to `agent_resume` is the only pair that feeds paused time, so without it a ten-minute human wait is billed as active agent time. The root span stays open across the gap, keeping both calls in one session.
+`human_wait` to `human_input` carries the prompt and the answer (both are dropped under `capture_content=False`, along with retrieval document sources — the document count survives). `agent_pause` to `agent_resume` is the only pair that feeds paused time, so without it a ten-minute human wait is billed as active agent time. The root span stays open across the gap, keeping both calls in one session.
 
 ## Common problems
 

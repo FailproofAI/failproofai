@@ -36,7 +36,7 @@ icon: "wrench"
         failproofai flush --wait
         ```
 
-        Confirm the agent process sets `AGENTEYE_SPOOL_TO_FAILPROOFAI=1` and that `$FAILPROOFAI_HOME/custom-agents`, otherwise `~/.failproofai/custom-agents`, exists before the SDK starts.
+        Confirm a daemon is running and connected — the SDK spools whether or not one is. The spool directory does **not** need to pre-exist (the writer creates it), and no environment variable selects it: `$FAILPROOFAI_HOME/custom-agents`, otherwise `~/.failproofai/custom-agents`, is the only root, and `configure(base_dir=...)` is the only override. If the process was `SIGKILL`ed or OOM-killed, whatever was still queued was lost — handle `SIGTERM` to bound that.
       </Tab>
     </Tabs>
   </Accordion>

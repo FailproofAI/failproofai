@@ -129,7 +129,7 @@ failproofai_sdk.event.model_request(
 )
 failproofai_sdk.event.model_response(
     model="gpt-4o-mini",
-    response="...",
+    content="...",
     input_tokens=139,
     output_tokens=21,
     request_id="req-1",
@@ -240,7 +240,7 @@ def turn(messages: list):
     usage = reply.usage
     failproofai_sdk.event.model_response(
         model=MODEL,
-        response=reply.choices[0].message.content or "",
+        content=reply.choices[0].message.content or "",
         input_tokens=usage.prompt_tokens,
         output_tokens=usage.completion_tokens,
     )
@@ -350,7 +350,7 @@ with failproofai_sdk.tool_call(name, input=args) as call:
 failproofai_sdk.event.model_request(model=model, messages=messages)
 reply = provider.complete(...)
 failproofai_sdk.event.model_response(
-    model=model, response=text,
+    model=model, content=text,
     input_tokens=usage.prompt_tokens,
     output_tokens=usage.completion_tokens,
 )
@@ -424,7 +424,7 @@ it is rejected on `tool_result`, `hook_completed`, `agent_resume` and
 
 **Fix:** do not pass it. The exception is `model_response`, where it **is**
 accepted, because only you know the real provider latency — and it must be an
-`int`, since a float silently nulls the column server-side.
+`int` — a float raises `ValueError` at the call site, because the server would store NULL for it.
 
 ---
 

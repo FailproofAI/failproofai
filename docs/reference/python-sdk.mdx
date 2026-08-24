@@ -136,7 +136,7 @@ Use `outcome="failed"`, `"error"`, `"timeout"`, or `"rejected"` when a completio
 
 - Reuse the same `tool_call_id`, `hook_id`, `pause_id`, or `input_id` for the matching completion event.
 - The SDK computes `duration_ms` for `tool_result`, `hook_completed`, `agent_resume`, and `human_input`. Passing it to those methods raises `ValueError`.
-- `duration_ms` **is** accepted on `model_response`, because only the caller knows the real provider latency. It must be an integer; a float is stored as null.
+- `duration_ms` **is** accepted on `model_response`, because only the caller knows the real provider latency. It must be an integer — a float raises `ValueError` at the call site, because the server reads the column as an unsigned 32-bit integer and would store NULL for anything else.
 - Correlation keys are scoped by kind and session, so a tool call and a hook may safely share an id, and two concurrent sessions may reuse the same ids without colliding. They are not scoped by agent: a pair opened under one agent and closed under another still correlates, which is the ordinary case in multi-agent frameworks.
 - `request_id` pairs `model_request` with `model_response`. Without it, model events pair in order per agent, so concurrent calls mispair.
 - A pair split across processes still correlates downstream, but the SDK cannot compute its in-process duration.

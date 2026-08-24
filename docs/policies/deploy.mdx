@@ -18,7 +18,7 @@ A deployment connects one or more policy versions to a target set of enrolled ma
     ![The machine deployment editor with policy versions, enforce and observe effects, and the apply deployment action.](/images/dashboard/enforcement-editor.png)
   </Tab>
   <Tab title="CLI">
-    Deploy from the CLI with `fp fleet`. Review the resulting set before applying it — `deploy` prints the full plan and asks, unless you pass `--yes`:
+    Deploy from the CLI with `fp fleet`. Review the resulting set before applying it — `deploy` prints the full plan and asks **only on an interactive terminal without `--json`**. Under `--json`, with `--yes`, or with stdin redirected (a CI step, a script, an agent shelling out) it applies immediately with no plan and no prompt — so run `fp fleet show <machine>` first if you want review:
 
     ```bash
     fp fleet list

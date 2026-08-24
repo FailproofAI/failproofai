@@ -179,8 +179,11 @@ failproofai_sdk.instrument(
     "llama_index",
     embeddings=False,         # True records embedding calls as tool pairs
     steps=True,               # False drops workflow-step hook pairs
-    capture_messages=True,    # False drops prompts and system text from payloads
-    stale_after=600.0,        # seconds before an abandoned span is force-closed
+    capture_messages=True,    # False drops EVERY payload: prompts, completions,
+                              # tool arguments and output, step I/O, retrieval
+                              # queries, the goal and the final answer
+    capture_limit=8192,       # characters kept per captured value
+    stale_after=600.0,        # seconds before an abandoned LEAF is force-closed
     reaper_interval=30.0,     # how often the reaper sweeps; 0 disables it
 )
 ```
@@ -189,8 +192,9 @@ failproofai_sdk.instrument(
 | --- | --- |
 | `embeddings` | Turn on only when debugging embedding latency or cost. A bulk index build is thousands of calls and will bury the timeline. |
 | `steps` | Turn off if you only want model and tool events and find the agent loop noisy. |
-| `capture_messages` | Turn off for regulated data. Structure, timings, tokens, and outcomes are still recorded. |
-| `stale_after` | A workflow that never finishes leaves an open span. The reaper force-closes it after this many seconds so the session settles instead of reading `ongoing` forever. |
+| `capture_messages` | Turn off for regulated data. Every payload stops being recorded — prompts, the model's completion, tool arguments and return values, workflow-step input and output, retrieval queries, the agent's goal and its final answer. Structure, timings, tokens, and outcomes are still recorded. |
+| `capture_limit` | Characters kept per captured value before truncation. Raise it when a RAG prompt or a retrieved context is arriving clipped. |
+| `stale_after` | Seconds before an abandoned **leaf** — a streaming response nobody consumed, a model or tool span whose close never arrived — is force-closed, so the session settles instead of reading `ongoing` forever. It does **not** close an abandoned run itself: a workflow whose task is cancelled without the dispatcher seeing an exit keeps its `agent_start` open until `uninstrument()`. |
 | `reaper_interval` | Sweep frequency. Set to `0` to disable the reaper entirely. |
 
 ## Human in the loop

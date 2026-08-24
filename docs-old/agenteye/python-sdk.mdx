@@ -40,7 +40,13 @@ Once it is installed, confirm you have it:
 python -c "import failproofai_sdk; print(failproofai_sdk.__version__)"
 ```
 
-Upgrading an existing integration? Uninstall `agenteye`, install `failproofai-sdk`, and change `import agenteye` to `import failproofai_sdk`. Nothing else moves: every method, argument, and emitted field is identical, and so is everything on disk — the spool is still `~/.agenteye/` and `AGENTEYE_HOME` still overrides it.
+Upgrading an existing integration? Uninstall `agenteye`, install `failproofai-sdk`, and change `import agenteye` to `import failproofai_sdk`. Every emitted field is identical, and `session_id`/`agent_id` became **optional** on every event method (they resolve from the enclosing scope when omitted).
+
+**Two things on disk did move.** The default spool is now `$FAILPROOFAI_HOME/custom-agents/events`, otherwise `~/.failproofai/custom-agents/events` — and `AGENTEYE_HOME` no longer affects the SDK at all. `failproofaid` reads the new root. The older `agenteye-collector` does not: it resolves `$AGENTEYE_HOME` or `~/.agenteye` and nothing else, so on a host running only that collector the batches pile up unread, with no error on either side. Three supported bridges, if that is you:
+
+- point the collector at the new root (its own `--spool`/config), which is the one that needs no application change;
+- run `failproofaid` instead, which reads both roots;
+- or `failproofai_sdk.configure(base_dir="~/.agenteye")` in the application, which is explicit and visible at the call site.
 
 Prefer to let a coding agent do the whole integration? The [Python SDK Agent Skill](/agenteye/python-sdk-skill) knows the install path, plans the instrumentation points, writes them, and verifies the events land.
 
@@ -123,7 +129,8 @@ Here is what those events look like once they reach the dashboard, colour-coded 
 
 ```python
 failproofai_sdk.configure(
-    base_dir=None,           # Path | str | None. Default: $AGENTEYE_HOME or ~/.agenteye
+    base_dir=None,           # Path | str | None. Default: $FAILPROOFAI_HOME/custom-agents
+                             #   otherwise ~/.failproofai/custom-agents
     flush_interval=0.5,      # float, seconds between flush cycles
     environment=None,        # str | None. Deployment environment label
 )
@@ -131,10 +138,11 @@ failproofai_sdk.configure(
 
 Call once before any `event.*` call. Safe to omit; defaults work out of the box. All arguments are keyword-only; pass them by name as shown above.
 
-When `base_dir` is `None` (the default), the SDK reads `$AGENTEYE_HOME` if set,
-otherwise falls back to `~/.agenteye`. This matches the collector's own resolution,
-so a single `AGENTEYE_HOME` env var configures the shared event spool for both
-the SDK and the collector.
+When `base_dir` is `None` (the default), the SDK resolves `$FAILPROOFAI_HOME`,
+otherwise `~/.failproofai`, and appends `custom-agents`. **`AGENTEYE_HOME` is not
+read** — `base_dir` is the only way to spool anywhere else. A `~` in the path is
+expanded. See the upgrade note above if this host runs the older
+`agenteye-collector`, which does not watch the new root.
 
 ---
 
@@ -426,7 +434,7 @@ failproofai_sdk.event.tool_use(
 )
 ```
 
-`timestamp`, `type`, and `environment` are reserved and raise `ValueError` (`Reserved field names cannot be used as custom fields: [...]`) if passed as custom fields. `session_id` and `agent_id` are required parameters on every event method and cannot be supplied a second time; Python raises `TypeError` if you do. Set the environment with `configure(environment=...)` (or the `AGENTEYE_ENVIRONMENT` variable) instead.
+`timestamp`, `type`, and `environment` are reserved and raise `ValueError` (`Reserved field names cannot be used as custom fields: [...]`) if passed as custom fields. `session_id` and `agent_id` are **optional** on every event method — omitted, they resolve from the enclosing `session()`/`agent()` scope — and cannot be supplied a second time as custom fields; Python raises `TypeError` if you do. Set the environment with `configure(environment=...)` (or the `AGENTEYE_ENVIRONMENT` variable) instead.
 
 Keep payloads as structured JSON when you want to query their fields. Values JSON does not natively support—such as datetimes, UUIDs, decimals, sets, bytes, or model objects—are converted to strings so recording continues safely.
 

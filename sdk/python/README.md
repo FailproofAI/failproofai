@@ -33,10 +33,12 @@ and a background thread writes them to local JSONL batches:
 your agent  →  failproofai_sdk  →  ~/.failproofai/custom-agents/events/*.jsonl  →  daemon  →  platform
 ```
 
-A daemon on the same host watches that directory and uploads each batch. Either
-`failproofaid` or the older `agenteye-collector` will do; both read the default
-spool root. If no daemon is running, batches simply accumulate on disk — the SDK
-does not fail, and your agent does not block.
+A daemon on the same host watches that directory and uploads each batch.
+**`failproofaid` reads this root; the older `agenteye-collector` does not** — it
+resolves `$AGENTEYE_HOME` or `~/.agenteye` and nothing else, so a host running
+only that collector needs one of the three bridges in the upgrade note below, or
+its batches pile up unread. If no daemon is running, batches simply accumulate on
+disk — the SDK does not fail, and your agent does not block.
 
 ## Agent frameworks
 

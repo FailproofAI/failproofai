@@ -136,7 +136,12 @@ That is deliberate. These are your own instrumentation calls, and rewriting them
 <Tip>
   **You control payloads at the source, in two places:**
 
-  - `capture_content=False` on the adapter — stops prompts and completions being recorded at all.
+  - Turn off content capture on the adapter. **The option name differs, and one adapter has none** — this is not a single universal switch:
+    - LangChain / LangGraph, Pydantic AI — `capture_content=False`
+    - LlamaIndex — `capture_messages=False`
+    - CrewAI — **no content switch at all**; `session_id` is the only option it reads, so prompts and completions are always recorded.
+
+    `instrument()` drops options an adapter does not read, so passing the wrong name raises nothing and changes nothing.
   - Don't hand the secret to `input=` in the first place.
 
   `collector.redact` is not a substitute for either.

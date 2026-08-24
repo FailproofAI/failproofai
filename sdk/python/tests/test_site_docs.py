@@ -268,3 +268,104 @@ def test_the_keyword_scan_actually_finds_calls():
     """Otherwise a change to the block format makes every page above pass vacuously."""
     found = sum(len(list(_event_calls(_page(p)))) for p in ALL_PAGES)
     assert found >= 10, f"only {found} event calls found across {len(ALL_PAGES)} pages"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Claims that are true of ONE adapter and were written as if universal
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: The content-capture option each adapter actually reads. `None` means the
+#: adapter has no content switch at all, which is a fact worth stating rather
+#: than an omission — CrewAI's only option is `session_id`, so
+#: `instrument("crewai", capture_content=False)` raises nothing and records
+#: everything.
+CONTENT_OPTION = {
+    "langchain": "capture_content",
+    "pydantic_ai": "capture_content",
+    "llama_index": "capture_messages",
+    "crewai": None,
+}
+
+
+def _adapter_source(name: str) -> str:
+    return (
+        Path(failproofai_sdk.__file__).resolve().parent / "integrations" / f"{name}.py"
+    ).read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("adapter,option", sorted(CONTENT_OPTION.items(), key=lambda kv: kv[0]))
+def test_the_content_option_map_matches_what_each_adapter_reads(adapter, option):
+    """The map above is what the cross-adapter pages are checked against.
+
+    Pinned to the source so the map cannot quietly become the stale thing.
+    """
+    source = _adapter_source(adapter)
+    for candidate in ("capture_content", "capture_messages"):
+        reads_it = f'options.get("{candidate}"' in source
+        assert reads_it == (candidate == option), (
+            f"{adapter}.py {'reads' if reads_it else 'does not read'} {candidate!r}, "
+            f"but CONTENT_OPTION says its switch is {option!r}"
+        )
+
+
+def test_no_cross_adapter_page_presents_one_adapters_option_as_universal():
+    """`how-it-works.mdx` told every reader `capture_content=False` was THE switch.
+
+    It is read by two adapters of four. LlamaIndex spells it `capture_messages`
+    and CrewAI has none — and `instrument()` drops options an adapter does not
+    read, so `instrument("crewai", capture_content=False)` raised nothing and
+    changed nothing. A reader on regulated data shipped believing prompts and
+    completions had stopped being recorded, and `collector.redact` explicitly
+    does not apply to SDK events, so nothing was behind it.
+
+    The four per-framework pages are checked elsewhere; these are the pages that
+    speak about all of them at once and so must name the difference.
+    """
+    root = SITE.parent.parent  # docs/
+    pages = [SITE / "how-it-works.mdx", SITE / "custom-agents.mdx"]
+    checked = 0
+    for page in pages:
+        if not page.is_file():
+            continue
+        checked += 1
+        text = page.read_text(encoding="utf-8")
+        if "capture_content" not in text:
+            continue
+        # If it names one adapter's option it must name the others, or a reader
+        # applies it to a framework that ignores it.
+        assert "capture_messages" in text, (
+            f"{page.name} names `capture_content` without `capture_messages`, so a "
+            "LlamaIndex reader is told to set an option that adapter does not read"
+        )
+        assert "crewai" in text.lower(), (
+            f"{page.name} presents a content switch without saying CrewAI has none"
+        )
+    if REQUIRE:
+        assert checked, "neither cross-adapter page was found; the guard checked nothing"
+
+
+def test_no_guide_still_says_a_float_duration_is_silently_dropped():
+    """It raises `ValueError`, and has since `_validate_promoted_numeric` landed.
+
+    The skill files were corrected when that changed and the site reference and
+    the manual guide were not, so a reader was told the worst case was an empty
+    column and got an exception out of `event.model_response()` on their first
+    instrumented model call — outside the SDK's own try/except, so it takes down
+    the agent turn.
+    """
+    bad = re.compile(r"(stored as null|silently nulls|silently drop\w*)", re.I)
+    roots = [
+        SITE.parent.parent / "reference" / "python-sdk.mdx",
+        Path(failproofai_sdk.__file__).resolve().parent.parent / "docs",
+    ]
+    hits = []
+    for root in roots:
+        files = [root] if root.is_file() else sorted(root.rglob("*.md*")) if root.is_dir() else []
+        for path in files:
+            for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                if "duration_ms" in line and bad.search(line):
+                    hits.append(f"{path.name}:{i}: {line.strip()[:110]}")
+    assert not hits, (
+        "these say a float `duration_ms` is dropped or nulled; it raises ValueError "
+        "at the call site:\n  " + "\n  ".join(hits)
+    )

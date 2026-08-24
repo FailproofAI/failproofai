@@ -4,7 +4,7 @@ description: "Complete reference for querying and administering Failproof AI Clo
 icon: "cloud-cog"
 ---
 
-Use `fp` to inspect Cloud telemetry and manage audits, findings, issues, alerts, keys, users, queries, and settings. Use [`failproofai`](/reference/failproof-cli) for local hooks, policies, capture, and machine enrollment.
+Use `fp` to inspect Cloud telemetry, manage cloud-managed enforcement (policies, fleet deployments, guardrail decisions), and manage audits, findings, issues, alerts, keys, users, queries, and settings. Use [`failproofai`](/reference/failproof-cli) for local hooks, policies, capture, and machine enrollment.
 
 Install the released Cloud CLI as an isolated tool:
 
@@ -77,9 +77,16 @@ Lists individual agent events. The default light feed excludes raw payloads; use
 | `--fields <csv>` | Return only selected fields; requesting `payload` enables full mode. |
 
 ```bash
-fp events --session-id <session-id> --order asc --all
-fp --json events --full --session-id <session-id> --all
+fp events --session-id <session-id> --order asc --all --limit 10000
+fp --json events --full --session-id <session-id> --all --limit 10000
 ```
+
+<Note>
+  `--all` paginates **up to `--limit`**, which defaults to **50** — so `--all` on
+  its own stops at 50 rows. When it stops early the response carries a
+  `next_cursor` to resume from; `"next_cursor": null` means the feed really was
+  exhausted.
+</Note>
 
 ### Sessions
 
@@ -311,6 +318,44 @@ Valid issue states are `firing`, `acknowledged`, and `resolved`. Standalone issu
 | `fp agent show CHAT_ID` | Show a saved conversation. | — |
 | `fp agent rename CHAT_ID` | Rename a conversation. | required `--title` |
 | `fp agent delete CHAT_ID` | Delete a conversation. | `--yes`, `-y` |
+
+### Policies
+
+Cloud-managed policy versions. **Session-only** — every command here exits `2` under an API key, before any request, because these are root-only write routes deliberately absent from `/v1`.
+
+| Command | Purpose | Options |
+| --- | --- | --- |
+| `fp policies list` | List policy versions. | `--json` |
+| `fp policies show POLICY_ID` | Show one policy, with its source. | — |
+| `fp policies publish NAME PATH` | Mint a version from a local `.mjs`. | `--description`; `--no-verify` |
+| `fp policies enable POLICY_ID` | Add it back to every deployment it was removed from, minting a new generation on each. | `--yes`, `-y` |
+| `fp policies disable POLICY_ID` | Remove it from every deployment carrying it, minting a new generation on each. | `--yes`, `-y` |
+| `fp policies delete POLICY_ID` | Delete a policy version. | `--yes`, `-y` |
+| `fp policies test PATH` | Run a policy locally against a synthetic context. Applies each policy's `match` filter, so one that does not cover the given event/tool is reported `skipped` rather than run. | `--event`; `--tool`; `--command`; `--file-path`; `--expect` |
+| `fp policies compose PROMPT` | Draft a policy with the assistant. Needs `policies:write`. | — |
+
+### Fleet
+
+Which machines run which policies.  **Session-only**, same reason as above.
+
+| Command | Purpose | Options |
+| --- | --- | --- |
+| `fp fleet list` | List enrolled machines and their deployment generation. | — |
+| `fp fleet show MACHINE_ID` | The policy set a machine currently runs. | — |
+| `fp fleet deploy MACHINE_ID` | **Replaces the machine's whole policy set.** Prints the plan and asks only on an interactive terminal without `--json`. | `--add`; `--remove`; `--set`; `--create`; `--yes`, `-y` |
+| `fp fleet diff MACHINE_ID` | Compare a machine against another deployment. | — |
+| `fp fleet history MACHINE_ID` | Past deployments for a machine. | — |
+| `fp fleet rollback MACHINE_ID` | Restore a previous deployment. | `--yes`, `-y` |
+| `fp fleet rename MACHINE_ID` | Give a machine a readable name. | required `--name` |
+
+### Guardrails
+
+What enforcement actually did. **Session-only**, same reason as above.
+
+| Command | Purpose | Options |
+| --- | --- | --- |
+| `fp guardrails summary` | Coverage, blocked/evaluated totals, a deny sparkline, and the per-policy table. | `--since` (`1h`, `6h`, `24h`, `7d`); `--machine` |
+| `fp guardrails timeline` | Decisions bucketed over the window, summed across every policy source. | `--since` (`1h`, `6h`, `24h`, `7d`); `--machine` |
 
 ## Global flags
 

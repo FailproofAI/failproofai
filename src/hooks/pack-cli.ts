@@ -246,6 +246,15 @@ export async function runPolicyPicker(
   const opts = optsFor(stdout as NodeJS.WriteStream);
   const { packs } = readInstalledPacks();
 
+  if (!stdin.isTTY || !stdout.isTTY) {
+    return fail([
+      `\`policies ${action}\` with no name needs a terminal to show you the list.`,
+      "From a script, name what you mean:",
+      `  failproofai policies ${action} <policy-name>`,
+      `  failproofai policies ${action} <owner>/<repo> [--policy a,b] [--category x,y] [--all]`,
+    ]);
+  }
+
   if (packs.length === 0) {
     return ok(
       stack(
@@ -261,15 +270,6 @@ export async function runPolicyPicker(
         note("Look first:      failproofai policies show <owner>/<repo>", opts),
       ),
     );
-  }
-
-  if (!stdin.isTTY || !stdout.isTTY) {
-    return fail([
-      `\`policies ${action}\` with no name needs a terminal to show you the list.`,
-      "From a script, name what you mean:",
-      `  failproofai policies ${action} <policy-name>`,
-      `  failproofai policies ${action} <owner>/<repo> [--policy a,b] [--category x,y] [--all]`,
-    ]);
   }
 
   // One row per policy across every pack. The pack id leads the section heading

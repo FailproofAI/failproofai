@@ -13,7 +13,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -43,6 +43,12 @@ const CORPUS: Array<{ command: string; result?: string }> = [
   { command: "terraform apply -auto-approve" },
   { command: "ls -la" },
   { command: "echo hello" },
+  // Compound commands that match the always-on guard AND a later deny. These
+  // are the only kind that can detect a change in registration ORDER, because
+  // evaluation stops at the first deny and that policy is the one credited.
+  { command: "failproofai policies --list && gh workflow run ci.yml" },
+  { command: "npx -y failproofai audit; git push --force origin feature" },
+  { command: "failproofai policies --uninstall block-sudo && rm -rf /var/log" },
   {
     command: "cat config.json",
     result: '{"key":"sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}',
@@ -58,6 +64,10 @@ const CORPUS: Array<{ command: string; result?: string }> = [
 ];
 
 function event(command: string, result?: string): NormalizedToolEvent {
+  // Typed, not cast. The first version of this asserted `as NormalizedToolEvent`
+  // and set `toolResult`, which the type would have rejected — replay reads
+  // `toolResultText` — so every sanitize fixture below silently produced no
+  // PostToolUse event and the family this corpus exists to cover was untested.
   return {
     cli: "claude",
     sessionId: "sess-equiv",
@@ -67,8 +77,8 @@ function event(command: string, result?: string): NormalizedToolEvent {
     toolName: "Bash",
     rawToolName: "Bash",
     toolInput: { command },
-    ...(result === undefined ? {} : { toolResult: result }),
-  } as NormalizedToolEvent;
+    ...(result === undefined ? {} : { toolResultText: result }),
+  };
 }
 
 /** Every hit for the whole corpus, in a stable, comparable shape. */
@@ -80,7 +90,10 @@ async function replayCorpus(): Promise<string[]> {
       out.push(`${command} :: ${hit.eventType} :: ${hit.policyName} :: ${hit.decision}`);
     }
   }
-  return out.sort();
+  // NOT sorted. Sorting compares a SET of hits and throws away the one thing
+  // registration order can change — which policy short-circuited and therefore
+  // got credited for the event.
+  return out;
 }
 
 let packRoot: string;
@@ -128,7 +141,64 @@ describe("the audit replays the same policies from either source", () => {
     // existing user's audit reports.
     expect(fromPack).toEqual(fromBuiltins);
     expect(fromPack.length).toBeGreaterThan(10);
+    // The corpus must actually reach PostToolUse, or the sanitize family this
+    // exists to cover is asserted by nothing.
+    expect(fromPack.some((h) => h.includes("PostToolUse"))).toBe(true);
+    expect(fromPack.some((h) => h.includes("sanitize-"))).toBe(true);
   }, 120_000);
+
+  it("hashes identically, so nobody's audit cache is invalidated by the switch", async () => {
+    // `engineVersion` keys every cached transcript result on
+    // `name|fn.toString()` over the policies. If the pack's text differed from
+    // the compiled text, merely shipping this change would cold-rescan every
+    // user's history — the note on CACHE_TTL_MS puts that at ~104 seconds.
+    //
+    // Measured in a SUBPROCESS, deliberately. Two things would otherwise make
+    // the comparison lie: importing `builtin-policies.ts` as TypeScript gives
+    // bun-transpiled bodies that are not what ships, and importing a bundle
+    // through vitest re-transforms it — that alone reported 7 of 38 "differing"
+    // when the shipped text is identical. What users run is a raw bundle, so
+    // the check has to read raw bundles.
+    packRoot = mkdtempSync(join(tmpdir(), "fpai-equiv-hash-"));
+    const packDir = join(packRoot, "policy-pack");
+    execFileSync("bun", ["scripts/build-policy-pack.mjs", "--out", packDir], {
+      cwd: REPO,
+      stdio: ["pipe", "pipe", "inherit"],
+    });
+    const entryTs = join(packRoot, "builtins-entry.ts");
+    writeFileSync(
+      entryTs,
+      `export { BUILTIN_POLICIES } from ${JSON.stringify(join(REPO, "src/hooks/builtin-policies"))};\n`,
+    );
+    const bundled = join(packRoot, "builtins-bundled.mjs");
+    execFileSync("bun", ["build", "--target=node", "--format=esm", "--outfile", bundled, entryTs], {
+      cwd: REPO,
+      stdio: ["pipe", "pipe", "inherit"],
+    });
+
+    const probe = join(packRoot, "probe.mts");
+    writeFileSync(
+      probe,
+      [
+        `import { createHash } from "node:crypto";`,
+        `import { loadCustomHooks } from ${JSON.stringify(join(REPO, "src/hooks/custom-hooks-loader"))};`,
+        `const { BUILTIN_POLICIES } = await import(${JSON.stringify(bundled)});`,
+        `const hooks = await loadCustomHooks(${JSON.stringify(join(packDir, "failproofai-pack.mjs"))}, { strict: true });`,
+        `const byName = new Map(hooks.map((h) => [h.name, String(h.fn)]));`,
+        `const hash = (pairs) => createHash("sha1").update(pairs.map(([n, f]) => n + "|" + f).sort().join("\\n")).digest("hex").slice(0, 16);`,
+        `const compiled = BUILTIN_POLICIES.map((p) => [p.name, String(p.fn)]);`,
+        `const mixed = BUILTIN_POLICIES.map((p) => [p.name, p.alwaysOn ? String(p.fn) : (byName.get(p.name) ?? String(p.fn))]);`,
+        `console.log(JSON.stringify({ compiled: hash(compiled), mixed: hash(mixed), policies: hooks.length }));`,
+      ].join("\n"),
+    );
+    const raw = execFileSync("bun", [probe], { cwd: REPO, encoding: "utf8" }).trim().split("\n").pop() ?? "";
+    const measured = JSON.parse(raw) as { compiled: string; mixed: string; policies: number };
+
+    expect(measured.policies).toBe(38);
+    // The pack's function text IS the compiled function text, so the cache key
+    // does not move and no existing audit result is invalidated.
+    expect(measured.mixed).toBe(measured.compiled);
+  }, 180_000);
 
   it("still replays the always-on guard, which a pack may not carry", async () => {
     // `alwaysOn` is refused by the pack loader by design, so the guard is

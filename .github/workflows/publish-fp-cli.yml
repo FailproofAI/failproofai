@@ -32,6 +32,26 @@ name: Publish fp-cli to PyPI
 #      `environment` claim is missing or different, which is what stops someone from
 #      simply deleting the `environment:` line below.
 
+# VERSION MANAGEMENT mirrors `publish.yml`'s npm rule, spelled in PEP 440. PyPI has
+# no dist-tags — there is no movable `beta` pointer to publish behind — so the
+# pre-release marker in the version string IS the channel, and the scheme lives in
+# `scripts/python-version.py`, which both this workflow and its sibling call:
+#
+#     beta    X.Y.ZbN  ->  X.Y.Zb(N+1)
+#     stable  X.Y.Z    ->  X.Y.(Z+1)b0
+#
+# The `preflight` job resolves it, refuses a version PyPI has already taken, and
+# computes what `main` moves to; the `bump` job pushes that to `main` after a
+# successful upload. Cutting a release is therefore: edit ONE line only when you
+# want to LEAVE the current beta line (a stable cut, or a minor/major bump), then
+# dispatch. A plain beta needs no edit at all — the previous run already left main
+# on the next one.
+#
+# The bump pushes to `main`, which the org ruleset protects, so it authenticates as
+# the version-bot GitHub App — the SAME app and the SAME two secrets
+# (`VERSION_BOT_APP_ID` / `VERSION_BOT_PRIVATE_KEY`) `publish.yml` and
+# `bump-platform-submodule.yml` already use. No new out-of-band setup.
+
 on:
   workflow_dispatch:
     inputs:
@@ -45,6 +65,105 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Cheap and fail-fast, and holding NO identity of any kind: it resolves the
+  # version, refuses one PyPI has already taken, and computes what `main` moves to
+  # afterwards. Everything here is stdlib Python, `git` and one `curl` — no
+  # dependency is installed, so there is no third-party code in the job that
+  # decides whether a release may proceed.
+  #
+  # Separate from `build` because failing here is nearly free. `build` installs the
+  # dependency tree and runs the suite before it would ever reach the upload that
+  # rejects a burned version, and PyPI — like npm — never releases a version for
+  # reuse, so discovering it late costs the whole run and fixes nothing.
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      scheme: ${{ steps.resolve.outputs.scheme }}
+      is_prerelease: ${{ steps.resolve.outputs.is_prerelease }}
+      next_version: ${{ steps.resolve.outputs.next_version }}
+    steps:
+      # The same readable guard as the other jobs, first so it costs nothing.
+      - name: Authorize actor and branch
+        env:
+          ACTOR: ${{ github.actor }}
+          REF: ${{ github.ref_name }}
+        run: |
+          if [ "$ACTOR" != "NiveditJain" ]; then
+            echo "::error::Unauthorized. Only NiveditJain can publish fp-cli."
+            exit 1
+          fi
+          if [ "$REF" != "main" ]; then
+            echo "::error::Refusing to publish from '$REF'. fp-cli publishes from main only."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      # NOT `... | tee -a "$GITHUB_OUTPUT"`. The default shell for a `run:` block is
+      # `bash -e {0}` WITHOUT `pipefail`, so a failing script on the left of that
+      # pipe would exit 0 through `tee` and leave every output below empty — a
+      # publish of "" rather than a stopped run. A command substitution under `-e`
+      # fails the step, which is the behaviour this needs.
+      - name: Resolve the version and what follows it
+        id: resolve
+        run: |
+          RESOLVED=$(python3 scripts/python-version.py resolve fp-cli/fp_cli/_version.py)
+          printf '%s\n' "$RESOLVED"
+          printf '%s\n' "$RESOLVED" >> "$GITHUB_OUTPUT"
+
+      # PyPI refuses to overwrite a published version and never releases one for
+      # reuse, so without this the run installs everything, tests, builds, verifies,
+      # smoke-tests, and only then dies at the upload — having proved nothing that
+      # bumping one line would not have. A `workflow_dispatch` has no version input:
+      # the version is whatever fp-cli/fp_cli/_version.py carries on main, which is
+      # exactly the value a forgotten bump leaves stale.
+      #
+      # A non-404/200 answer FAILS rather than assuming "not published". PyPI sits
+      # behind a CDN; treating an unreadable answer as absence is how a run proceeds
+      # on a guess about the one fact this step exists to establish.
+      - name: Refuse a version PyPI has already taken
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          CODE=$(curl -sS -o /dev/null -w '%{http_code}' \
+            --retry 3 --retry-connrefused --max-time 30 \
+            "https://pypi.org/pypi/fp-cli/${VERSION}/json")
+          case "$CODE" in
+            404) printf '%s\n' "fp-cli ${VERSION} is not on PyPI yet." ;;
+            200) printf '%s\n' "::error::fp-cli ${VERSION} is already published — PyPI will reject it. Bump fp-cli/fp_cli/_version.py on main and dispatch again."
+                 exit 1 ;;
+            *)   printf '%s\n' "::error::PyPI answered HTTP ${CODE} for fp-cli ${VERSION}; refusing to guess whether it is published."
+                 exit 1 ;;
+          esac
+
+      # An `rc`, a `.post` or a `.dev` publishes fine but has no successor this
+      # scheme can compute, so `bump` is skipped and main keeps the version it has.
+      # Said out loud, because a silently skipped bump reads exactly like a
+      # successful one right up until the next release collides.
+      - name: Report what this run will do
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+          SCHEME: ${{ steps.resolve.outputs.scheme }}
+          NEXT: ${{ steps.resolve.outputs.next_version }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+        run: |
+          {
+            printf '### `fp-cli` %s\n\n' "${VERSION}"
+            printf '| | |\n|---|---|\n'
+            printf '| scheme | %s |\n' "${SCHEME}"
+            printf '| dry run | %s |\n' "${DRY_RUN}"
+            printf '| main moves to | %s |\n' "${NEXT:-(unchanged)}"
+          } >> "${GITHUB_STEP_SUMMARY}"
+          if [ -z "$NEXT" ]; then
+            printf '%s\n' "::warning::'${VERSION}' is outside the beta/stable scheme — main's version will be left untouched. Set the next one by hand."
+          fi
+
   # EVERYTHING that runs third-party code lives here, and this job has NO
   # publishing identity: no `environment:`, no `id-token: write`.
   #
@@ -57,6 +176,7 @@ jobs:
   # Holding the identity here made all of it publish-capable.
   build:
     runs-on: ubuntu-latest
+    needs: preflight
     defaults:
       run:
         working-directory: fp-cli
@@ -110,10 +230,21 @@ jobs:
         run: uv build
 
       - name: Verify the artifacts before uploading
+        env:
+          EXPECTED_VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           python3 - <<'PY'
-          import glob, sys, zipfile
+          import glob, os, sys, zipfile
           wheel = glob.glob("dist/*.whl")[0]
+          # The version preflight validated and checked against PyPI is only the
+          # version that ships if the BUILD agreed with it. A stale `dist/`, a
+          # setuptools fallback, or an edit landing on main between the two jobs all
+          # produce a wheel whose name says something else, and every check below
+          # passes on it happily.
+          built = os.path.basename(wheel).split("-")[1]
+          expected = os.environ["EXPECTED_VERSION"]
+          if built != expected:
+              sys.exit(f"built {built} but preflight cleared {expected}")
           names = zipfile.ZipFile(wheel).namelist()
           modules = [n for n in names if n.startswith("fp_cli/") and n.endswith(".py")]
           if len(modules) < 20:
@@ -198,3 +329,83 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
+
+  # Opens the next development version on `main` once the upload has actually
+  # happened — the half that makes the scheme a pipeline rather than a convention.
+  # Without it every release needs a human to remember the rule, and the failure
+  # mode of forgetting is a burned run dying at the upload step weeks later.
+  #
+  # Its own job rather than a step on `publish`, so the two credentials never
+  # coexist: `publish` holds the OIDC identity, this one holds a token that bypasses
+  # the branch ruleset, and nothing needs both. It runs no repository code beyond
+  # `scripts/python-version.py` and installs nothing.
+  #
+  # A skipped `publish` (dry run) skips this too — GitHub skips a job whose `needs`
+  # were skipped — and the `if` restates it so the intent survives someone changing
+  # the dependency graph.
+  bump:
+    needs: [preflight, publish]
+    if: >-
+      ${{ !inputs.dry_run && needs.preflight.outputs.next_version != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # READ, not write. The push below authenticates as the version-bot App, which
+      # is what the ruleset on `main` accepts; GITHUB_TOKEN is not a bypass actor, so
+      # granting it write here would widen the job without enabling anything.
+      contents: read
+    steps:
+      - name: Mint version-bot app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.VERSION_BOT_APP_ID }}
+          private-key: ${{ secrets.VERSION_BOT_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          # NOT persisted. This token bypasses the ruleset on `main`; writing it into
+          # `.git/config` would leave it readable to every later step in the job. The
+          # push below supplies it to the one command that needs it instead.
+          persist-credentials: false
+
+      - name: Open the next development version on main
+        env:
+          NEXT_VERSION: ${{ needs.preflight.outputs.next_version }}
+          PUBLISHED: ${{ needs.preflight.outputs.version }}
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Onto the CURRENT tip, not the SHA this run was dispatched at — a commit
+          # that landed while the release ran would otherwise make this push a
+          # non-fast-forward and lose the bump to a retry nobody performs.
+          git fetch origin main
+          git checkout -B main origin/main
+
+          python3 scripts/python-version.py write fp-cli/fp_cli/_version.py "$NEXT_VERSION"
+
+          # Nothing moves with it. `pyproject.toml` declares `dynamic = ["version"]`,
+          # so `uv.lock` records this project as `source = { editable = "." }` with NO
+          # `version =` line, and `uv sync --locked` keeps working across a bump.
+          # Giving the package a static version would silently make that false and
+          # turn every post-release CI run red.
+          if git diff --quiet -- fp-cli/fp_cli/_version.py; then
+            printf '%s\n' "::notice::main already carries ${NEXT_VERSION} — nothing to push."
+            exit 0
+          fi
+
+          git add fp-cli/fp_cli/_version.py
+          git commit -m "chore(fp-cli): open ${NEXT_VERSION} after publishing ${PUBLISHED} [skip ci]"
+
+          # Supplied to the single command that needs it rather than persisted, and
+          # through a header rather than the remote URL: git echoes the URL in its own
+          # error output on a failed push, where `::add-mask::` does not reach.
+          printf '%s\n' "::add-mask::$APP_TOKEN"
+          AUTH_HEADER="Authorization: Basic $(printf 'x-access-token:%s' "$APP_TOKEN" | base64 -w0)"
+          git -c "http.https://github.com/.extraheader=$AUTH_HEADER" \
+              push "https://github.com/${GITHUB_REPOSITORY}.git" HEAD:main
+
+          printf '%s\n' "::notice::main now opens ${NEXT_VERSION}."

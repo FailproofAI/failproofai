@@ -121,6 +121,18 @@ async fn a_200_that_stored_nothing_is_counted_as_fully_skipped() {
     assert_eq!(m.batches_fully_skipped.load(Ordering::Relaxed), 1);
     assert_eq!(m.skipped_total.load(Ordering::Relaxed), 5);
     assert_eq!(m.accepted_total.load(Ordering::Relaxed), 0);
+    // `last_ok_ts` is documented as "the last upload the server ACCEPTED …  the
+    // loudest thing in this file", and it was stored unconditionally on every
+    // parsed 200 — including this one, which stored nothing. On a machine whose
+    // events are systematically malformed (the case this whole feature exists
+    // for) it advanced on every upload and every retry, so the one field an
+    // operator or an alert keys on to answer "is anything landing" reported a
+    // successful delivery seconds ago while nothing had ever been stored.
+    assert_eq!(
+        m.last_ok_ts.load(Ordering::Relaxed),
+        0,
+        "a batch the server stored nothing of must not count as a successful upload"
+    );
 
     // The data survives, in failed/, rather than being deleted.
     assert!(
@@ -517,6 +529,66 @@ async fn a_200_whose_json_lacks_accepted_is_parked() {
     assert!(up.upload_file(&batch).await.is_err());
     assert_eq!(parked(&failed).len(), 1, "must be parked");
     assert!(!batch.exists());
+
+    fs::remove_dir_all(&spool).ok();
+    fs::remove_dir_all(&failed).ok();
+}
+
+#[tokio::test]
+async fn a_retried_fully_skipped_batch_is_not_counted_twice() {
+    // A fully-skipped batch is PARKED now rather than deleted, and `retry_parked`
+    // feeds it back through `upload_file` — which runs `record_ack` again. Both
+    // counters are published to operators as counts of EVENTS and BATCHES
+    // (`DeliveryHealth.skipped`, `.batches_fully_skipped`), so re-counting on
+    // every retry inflated them by however many retry passes had happened: one
+    // 5-event batch reported 15 skipped across 3 batches. An operator sizing the
+    // incident from `health.json` tripled it.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "accepted": 0,
+            "skipped": 5
+        })))
+        .mount(&server)
+        .await;
+
+    let spool = tmpdir("skip-retry-spool");
+    let failed = tmpdir("skip-retry-failed");
+    let up = uploader(&server, &failed);
+
+    // First attempt: the batch is counted once and parked.
+    let batch = write_batch(&spool, "claude-s-1-0.jsonl", 5);
+    up.upload_file(&batch).await.unwrap_err();
+
+    let m = up.metrics();
+    assert_eq!(m.skipped_total.load(Ordering::Relaxed), 5);
+    assert_eq!(m.batches_fully_skipped.load(Ordering::Relaxed), 1);
+
+    // Two retry passes over the parked file, exactly as `retry_parked` drives it.
+    for _ in 0..2 {
+        let parked: Vec<_> = fs::read_dir(&failed).unwrap().flatten().collect();
+        let path = parked
+            .into_iter()
+            .map(|e| e.path())
+            .find(|p| {
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| !n.ends_with(".poison"))
+            })
+            .expect("a retryable parked batch");
+        up.upload_file(&path).await.unwrap_err();
+    }
+
+    assert_eq!(
+        m.skipped_total.load(Ordering::Relaxed),
+        5,
+        "5 events were skipped once; retrying the same batch must not re-count them"
+    );
+    assert_eq!(
+        m.batches_fully_skipped.load(Ordering::Relaxed),
+        1,
+        "one batch was fully skipped; retrying it must not report three"
+    );
 
     fs::remove_dir_all(&spool).ok();
     fs::remove_dir_all(&failed).ok();

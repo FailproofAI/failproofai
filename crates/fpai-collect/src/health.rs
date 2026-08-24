@@ -66,10 +66,16 @@ pub struct SourceHealth {
 /// healthy, entirely empty `sources` map.
 ///
 /// `skipped` is the one worth staring at. Ingest answers `200` with
-/// `{"accepted":N,"skipped":M}` and the daemon deletes the batch either way, so
-/// a systematically malformed field — an `environment` containing a comma, say
-/// — discards every event on the machine while every layer reports success.
-/// Before this, the only trace was a line in the daemon's log.
+/// `{"accepted":N,"skipped":M}`, and what happens next depends on which shape it
+/// is. A PARTIALLY skipped batch is deleted, so its skipped events are gone for
+/// good and this counter is the only record of them. A batch the server stored
+/// NOTHING of is now PARKED in `failed/` and retried instead of deleted, so a
+/// non-zero `batches_fully_skipped` means those batches are still on disk and
+/// recoverable — until they reach `failed_retries_max` and become `.poison`,
+/// after which they are kept forever and never retried again. Either way a
+/// systematically malformed field — an `environment` containing a comma, say —
+/// discards events while every layer reports success, and before this the only
+/// trace was a line in the daemon's log.
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct DeliveryHealth {
     /// Events the server said it stored, since this daemon started.

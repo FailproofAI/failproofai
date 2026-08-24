@@ -43,7 +43,7 @@ import { getInstanceId } from "../../lib/telemetry-id";
 import { hookLogInfo, hookLogWarn } from "./hook-logger";
 import { readStdinPayload } from "./read-stdin";
 import { readActiveCloudManagedPolicies, type CloudManagedPolicyArtifact } from "./cloud-managed-policies";
-import { readInstalledPacks, type PackError, type ResolvedPack } from "./pack-manifest";
+import { hasInstalledPacks, readInstalledPacks, type PackError, type ResolvedPack } from "./pack-manifest";
 import { missingGuards, packFailureReason } from "./pack-failclosed";
 import { readActivePause, type ActivePause } from "./session-pause";
 import { layoutWarningForHook } from "./fp-reset";
@@ -302,11 +302,34 @@ export async function evaluateHookEvent(
       // already exempts them: a locally-issued command that could switch off a
       // centrally assigned policy would make cloud enforcement decorative.
       activePause = readActivePause(session.sessionId);
-      registerBuiltinPolicies(activePause ? [] : config.enabledPolicies);
+      // Enforcement comes from PACKS now. What still registers from this build is
+      // the always-on self-protection guard, and nothing else: a pack may not
+      // declare `alwaysOn` — a downloaded file that no local command can switch
+      // off is the thing that guard exists to prevent — so it cannot travel the
+      // pack lane and has to ship compiled in.
+      //
+      // The second argument is the migration shim, not a feature. A machine that
+      // upgraded into this build has `enabledPolicies` and no pack installed
+      // yet, and it must not lose enforcement in the gap before `failproofai
+      // update` runs. It disappears for that machine the moment a pack is
+      // installed, and never fires for a machine set up by this version.
+      const packsInstalledHere = hasInstalledPacks();
+      const legacyNames =
+        activePause || packsInstalledHere ? [] : config.enabledPolicies;
+      // `alwaysOn` policies bypass the enabled set inside `registerBuiltinPolicies`,
+      // so an empty list still registers the guard — which is exactly what this
+      // build should contribute once packs carry everything else.
+      registerBuiltinPolicies(activePause ? [] : legacyNames);
+      if (legacyNames.length > 0) {
+        hookLogWarn(
+          `enforcing ${legacyNames.length} policies from this build because no pack is installed — ` +
+            `run \`failproofai update\` to move them into the pack that ships with it`,
+        );
+      }
       // What actually registered, for the pack-duplicate check below. A paused
       // session registers none, and then a pack twin is not a duplicate of
       // anything — but a pause already skips every local policy, pack included.
-      const enabledBuiltinNames = new Set(activePause ? [] : config.enabledPolicies);
+      const enabledBuiltinNames = new Set(legacyNames);
 
       // Cloud-managed policies are daemon-reconciled artifacts, but they use
       // the same public JS policy API as local custom policies. Verify and add

@@ -1,5 +1,5 @@
 /**
- * Install/remove/list failproofai hooks for one or more agent CLIs.
+ * Install/remove/list failproofai hooks for one or more agent harnesses.
  *
  * Per-CLI path resolution and settings I/O live in `./integrations` (one
  * `Integration` impl per CLI). This module orchestrates: validation, policy

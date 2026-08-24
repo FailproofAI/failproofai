@@ -6,7 +6,7 @@
  *   0. Daemon    — REQUIRED. Asks for sudo first, on a clean terminal.
  *   1. Where     — inferred from cwd, then confirmed (global / project / both)
  *   2. Policies  — multi-select of themed presets (combine any) or Everything
- *   3. Assistants— multi-select of agent CLIs (detected + install-ahead)
+ *   3. Assistants— multi-select of agent harnesses (detected + install-ahead)
  *   4. Connect   — paste an API key, or stay fully local
  *   5. Review    — shows exactly which files change, then Apply.
  *

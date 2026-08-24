@@ -1,27 +1,29 @@
 ---
 title: "Sessions"
-description: "Beginne mit der vollständigen Aufzeichnung eines Agenten-Durchlaufs."
+description: "Beginnen Sie mit der vollständigen Aufzeichnung eines Agent-Runs."
 icon: "workflow"
 ---
 
-Eine Session ist der beste Ausgangspunkt, wenn sich ein Agent unerwartet verhält. Sie vereint Modellanfragen, Antworten, Tool-Aufrufe, Interaktionen mit Menschen, Fehler, Auswertungen und Richtlinienentscheidungen, die zu einem Durchlauf gehören.
+Eine Session ist der beste Ausgangspunkt, wenn ein Agent sich unerwartet verhält. Sie vereint die Modellanfragen, Antworten, Tool-Aufrufe, menschliche Interaktionen, Fehler, Auswertungen und Policy-Entscheidungen, die zu einem einzigen Run gehören.
+
+Sessions sehen gleich aus, egal welches Harness sie erzeugt hat. Ein Claude Code-Run, der ein Repository umschreibt, ein Hermes-Agent, der einem Kunden in Slack antwortet, und ein Python-Dienst, der mit dem SDK instrumentiert wurde – alle landen im gleichen Trace-Format, sodass eine einzige Ansicht die gesamte Flotte abdeckt.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with Failproof AI" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-Verfolge einen Agenten-Durchlauf von seinem Ziel über Modellaufrufe und Tools bis hin zur abschließenden Antwort.
+Verfolgen Sie einen Agent-Run von seinem Ziel über Modellaufrufe und Tools bis hin zur abschließenden Antwort.
 
 ## Eine Session finden
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehe in der Cloud-Seitenleiste zu **Observe → Sessions**.
-    2. Lege das Zeitfenster fest und filtere nach Umgebung, Status, Agent oder Session-ID.
-    3. Füge Score- oder Metrikbereiche hinzu, wenn du nach Qualität, Kosten, Token oder Latenz filtern möchtest.
-    4. Wähle eine Zeile aus, um den zugehörigen Trace zu öffnen. Nutze das Kopiersymbol neben der Session-ID, wenn du sie teilen möchtest.
+    1. Navigieren Sie in der Cloud-Seitenleiste zu **Observe → Sessions**.
+    2. Legen Sie das Zeitfenster fest und filtern Sie nach Umgebung, Status, Agent oder Session-ID.
+    3. Fügen Sie Score- oder Metrikbereiche hinzu, wenn Sie einen Qualitäts-, Kosten-, Token- oder Latenz-Slice benötigen.
+    4. Wählen Sie eine Zeile aus, um den zugehörigen Trace zu öffnen. Verwenden Sie das Kopier-Steuerelement neben der Session-ID, wenn Sie sie teilen möchten.
 
-    ![Die Sessions-Liste mit je einer Zeile pro Durchlauf sowie Filtern für Umgebung, Agent, Status und Auswertungsscore.](/images/dashboard/sessions-list.png)
+    ![Die Sessions-Liste mit einer Zeile pro Run sowie Filtern für Umgebung, Agent, Status und Bewertungsscore.](/images/dashboard/sessions-list.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -30,26 +32,26 @@ Verfolge einen Agenten-Durchlauf von seinem Ziel über Modellaufrufe und Tools b
     fp --json sessions --session-id <session-id>
     ```
 
-    Füge `--agents` hinzu, um Multi-Agenten-Durchläufe aufzuklappen, `--all` für die Paginierung oder `--fields`, um Ausgabespalten auszuwählen.
+    Fügen Sie `--agents` hinzu, um Multi-Agent-Runs aufzuklappen, `--all` für die Paginierung oder `--fields`, um Ausgabespalten auszuwählen.
   </Tab>
 </Tabs>
 
-## Was du tun kannst
+## Was Sie tun können
 
-- Einen Durchlauf nach Agent, Umgebung, Zeitraum, Modell, Ereignistyp oder Fehlerzustand finden.
-- Die genaue Abfolge nachvollziehen, die zu einem Ergebnis geführt hat.
-- Erfolgreiche und fehlgeschlagene Durchläufe vergleichen.
-- Die Belege einsehen, die einem Audit-Befund oder einem Alert-Vorfall zugrunde liegen.
-- Eine Session exportieren, wenn du eine Offline-Aufzeichnung benötigst.
+- Einen Run nach Agent, Umgebung, Zeit, Modell, Ereignistyp oder Fehlerstatus finden.
+- Die genaue Abfolge nachverfolgen, die zu einem Ergebnis geführt hat.
+- Erfolgreiche und fehlgeschlagene Runs vergleichen.
+- Die Belege öffnen, die einem Audit-Befund oder Alert-Vorfall zugrunde liegen.
+- Eine Session exportieren, wenn Sie eine Offline-Aufzeichnung benötigen.
 
-## Eine bewährte Reihenfolge für die Fehleranalyse
+## Eine zuverlässige Untersuchungsreihenfolge
 
 1. Ziel und Umgebung der Session bestätigen.
 2. Den ersten Fehler oder die erste unerwartete Entscheidung finden – nicht nur den abschließenden Fehler.
-3. Den Modellkontext und die Tool-Eingabe unmittelbar davor prüfen.
+3. Den Modellkontext und den Tool-Input unmittelbar davor prüfen.
 4. Wiederholungsversuche, Latenz und menschliche Unterbrechungen überprüfen.
-5. Auswertungsscores und Richtlinienentscheidungen durchsehen.
+5. Bewertungsscores und Policy-Entscheidungen durchsehen.
 
 <Card title="Einen Trace lesen" icon="route" href="/de/sessions/read-a-trace">
-  Erfahre, wie du vom Session-Überblick zu dem Ereignis navigierst, das das Ergebnis verursacht hat.
+  Erfahren Sie, wie Sie von der Session-Zusammenfassung zum Ereignis gelangen, das das Ergebnis verursacht hat.
 </Card>

@@ -1,40 +1,41 @@
 ---
----
-title: "Làm cho agent của bạn không thể sai"
-description: "Failproof AI theo dõi hành vi agent, kiểm toán các phiên để tìm lỗi, và triển khai các chính sách ngăn chặn những sự cố lặp lại."
+title: "Làm cho agent của bạn chống lỗi"
+description: "Quan sát và thực thi cho mọi harness mà agent của bạn chạy — coding CLI, chat gateway, trợ lý tự lưu trữ, và agent được cấu hình của bạn."
 icon: "shield-check"
 ---
 
-Failproof AI giúp các nhóm hiểu agent đã làm gì, tìm ra nơi chúng thất bại, và triển khai các biện pháp bảo vệ trước khi cùng một hành vi xảy ra lại.
+Failproof AI giúp các team hiểu agent đã làm gì, tìm ra nơi chúng thất bại, và triển khai các biện pháp bảo vệ trước khi hành động tương tự xảy ra lại.
+
+**Harness** là bất cứ thứ gì mà agent thực sự chạy bên trong. Failproof AI kết nối 12 harness — coding CLI như Claude Code và Codex, chat gateway như Hermes, trợ lý tự lưu trữ như OpenClaw — và các sự kiện, chính sách và lịch sử session giống nhau áp dụng cho từng cái. Agent không có harness báo cáo thông qua [Python SDK](/vi/reference/python-sdk), được truy vết và kiểm toán; thực thi chính sách ở đó cần một hook trong runtime của bạn.
 
 <Columns cols={2}>
   <Card title="Thiết lập Failproof" icon="wand-sparkles" href="/vi/start/quickstart">
-    Sử dụng skill để cấu trúc dự án của bạn, kết nối nó, và xác minh rằng các log agent đã được nhận.
+    Sử dụng công cụ để cấu hình dự án của bạn, kết nối nó, và xác minh rằng nhật ký agent tới.
   </Card>
   <Card title="Hỏi Failproof Assistant" icon="message-square-text" href="/vi/sessions/assistant">
-    Phân tích, truy vấn, xây dựng bảng điều khiển, và chạy kiểm toán bằng ngôn ngữ tự nhiên trên các log agent của bạn.
+    Phân tích, truy vấn, xây dựng dashboard, và chạy kiểm toán bằng ngôn ngữ tự nhiên trên nhật ký agent của bạn.
   </Card>
 </Columns>
 
 <Columns cols={3}>
   <Card title="Xem agent đã làm gì" icon="route" href="/vi/sessions/overview">
-    Theo dõi các lệnh gọi mô hình, công cụ, lỗi, đầu vào của con người, độ trễ, và quyết định chính sách trong một phiên.
+    Theo dõi model call, tool, lỗi, input từ con người, độ trễ, và quyết định chính sách trong một session.
   </Card>
-  <Card title="Tìm lỗi một cách hệ thống" icon="scan-search" href="/vi/audits/overview">
-    Kiểm toán một tập hợp các phiên được xác định, xem xét các phát hiện được hỗ trợ bằng bằng chứng, và theo dõi khắc phục sự cố như các vấn đề.
+  <Card title="Tìm thất bại một cách có hệ thống" icon="scan-search" href="/vi/audits/overview">
+    Kiểm toán một tập hợp session được xác định, xem lại các phát hiện có bằng chứng, và theo dõi khắc phục như các vấn đề.
   </Card>
-  <Card title="Ngăn chặn sự lặp lại" icon="shield-check" href="/vi/policies/overview">
-    Chuyển đổi một chế độ lỗi đã biết thành chính sách, quan sát tác động của nó, và triển khai nó trên toàn bộ đội của bạn.
+  <Card title="Ngăn chặn tái diễn" icon="shield-check" href="/vi/policies/overview">
+    Chuyển một chế độ thất bại đã biết thành chính sách, quan sát tác động của nó, và triển khai nó trên toàn bộ fleet của bạn.
   </Card>
 </Columns>
 
-> **Phiên → Kiểm toán → Phát hiện → Vấn đề → Chính sách**<br />
-> Theo dõi những gì đã xảy ra, tìm lỗi, quản lý phản ứng, sau đó ngăn chặn cùng một hành vi trong các lần chạy tiếp theo.
+> **Session → Audit → Finding → Issue → Policy**<br />
+> Truy vết điều gì đã xảy ra, tìm ra thất bại, quản lý phản ứng, rồi ngăn chặn hành động tương tự trong các lần chạy trong tương lai.
 
-## Bắt đầu từ đây
+## Bắt đầu ở đây
 
-Nếu bạn đang triển khai agent được cấu trúc đầu tiên, hãy bắt đầu với [quickstart](/vi/start/quickstart). Nếu dữ liệu đã đến, hãy mở [Sessions](/vi/sessions/overview) và kiểm tra một lần chạy thực tế trước khi cấu hình kiểm toán hoặc chính sách.
+Nếu bạn đang triển khai agent được cấu hình lần đầu tiên, hãy bắt đầu với [hướng dẫn nhanh](/vi/start/quickstart). Nếu dữ liệu đã tới, mở [Sessions](/vi/sessions/overview) và kiểm tra một lần chạy thực tế trước khi cấu hình kiểm toán hoặc chính sách.
 
-<Card title="Tìm và ngăn chặn một lỗi" icon="arrow-right" href="/vi/start/quickstart">
-  Hoàn thành quy trình làm việc từ đầu đến cuối từ bắt đầu đến triển khai chính sách một cách an toàn.
+<Card title="Tìm và ngăn chặn một thất bại" icon="arrow-right" href="/vi/start/quickstart">
+  Hoàn thành quy trình từ đầu đến cuối từ capture đến một chính sách được triển khai an toàn.
 </Card>

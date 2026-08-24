@@ -1,27 +1,29 @@
 ---
 title: "Sesiones"
-description: "Comienza con el registro completo de una ejecución del agente."
+description: "Comienza con el registro completo de una ejecución de agente."
 icon: "workflow"
 ---
 
-Una sesión es el mejor punto de partida cuando un agente se comporta de forma inesperada. Reúne las solicitudes al modelo, las respuestas, las llamadas a herramientas, las interacciones humanas, los errores, las evaluaciones y las decisiones de política que pertenecen a una sola ejecución.
+Una sesión es el mejor punto de partida cuando un agente se comporta de forma inesperada. Reúne las solicitudes al modelo, las respuestas, las llamadas a herramientas, las interacciones humanas, los errores, las evaluaciones y las decisiones de políticas que pertenecen a una ejecución.
+
+Las sesiones tienen el mismo aspecto independientemente del entorno que las generó. Una ejecución de Claude Code que reescribe un repositorio, un agente Hermes que responde a un cliente en Slack y un servicio Python instrumentado con el SDK llegan al mismo formato de traza, de modo que una sola vista cubre toda la flota.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with Failproof AI" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-Sigue una ejecución del agente desde su objetivo, pasando por las llamadas al modelo y las herramientas, hasta la respuesta final.
+Sigue una ejecución de agente desde su objetivo, pasando por las llamadas al modelo y las herramientas, hasta la respuesta final.
 
 ## Encontrar una sesión
 
 <Tabs>
   <Tab title="Panel de control">
-    1. En la barra lateral de Cloud, ve a **Observe → Sessions**.
-    2. Establece la ventana de tiempo y filtra por entorno, estado, agente o ID de sesión.
-    3. Añade rangos de puntuación o métricas cuando necesites un subconjunto por calidad, costo, tokens o latencia.
-    4. Selecciona una fila para abrir su traza. Usa el control de copia junto al ID de sesión cuando lo compartas.
+    1. En la barra lateral de Cloud, ve a **Observar → Sesiones**.
+    2. Establece el intervalo de tiempo y filtra por entorno, estado, agente o ID de sesión.
+    3. Añade rangos de puntuación o métrica cuando necesites un corte por calidad, coste, tokens o latencia.
+    4. Selecciona una fila para abrir su traza. Usa el control de copia junto al ID de sesión cuando la compartas.
 
-    ![La lista de sesiones con una fila por ejecución y filtros de entorno, agente, estado y puntuación de evaluación.](/images/dashboard/sessions-list.png)
+    ![La lista de sesiones mostrando una fila por ejecución con filtros de entorno, agente, estado y puntuación de evaluación.](/images/dashboard/sessions-list.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -30,7 +32,7 @@ Sigue una ejecución del agente desde su objetivo, pasando por las llamadas al m
     fp --json sessions --session-id <session-id>
     ```
 
-    Añade `--agents` para expandir ejecuciones multi-agente, `--all` para paginar, o `--fields` para elegir las columnas de salida.
+    Añade `--agents` para expandir ejecuciones multiagente, `--all` para paginar, o `--fields` para elegir las columnas de salida.
   </Tab>
 </Tabs>
 
@@ -40,16 +42,16 @@ Sigue una ejecución del agente desde su objetivo, pasando por las llamadas al m
 - Seguir la secuencia exacta que produjo un resultado.
 - Comparar ejecuciones exitosas y fallidas.
 - Abrir la evidencia utilizada por un hallazgo de auditoría o un incidente de alerta.
-- Exportar una sesión cuando necesitas un registro sin conexión.
+- Exportar una sesión cuando necesites un registro sin conexión.
 
-## Un orden de investigación confiable
+## Un orden de investigación fiable
 
-1. Confirma el objetivo de la sesión y el entorno.
+1. Confirma el objetivo y el entorno de la sesión.
 2. Encuentra el primer error o decisión inesperada, no solo el fallo final.
 3. Inspecciona el contexto del modelo y la entrada de la herramienta inmediatamente antes.
-4. Revisa los reintentos, la latencia y las interrupciones humanas.
-5. Revisa las puntuaciones de evaluación y las decisiones de política.
+4. Comprueba los reintentos, la latencia y las interrupciones humanas.
+5. Revisa las puntuaciones de evaluación y las decisiones de políticas.
 
 <Card title="Leer una traza" icon="route" href="/es/sessions/read-a-trace">
-  Aprende a navegar desde el resumen de la sesión hasta el evento que causó el resultado.
+  Aprende a pasar del resumen de la sesión al evento que causó el resultado.
 </Card>

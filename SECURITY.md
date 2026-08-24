@@ -1,9 +1,10 @@
 # Security Policy
 
-failproofai is an npm package that installs hooks into AI coding agents (Claude
-Code, Codex, and others) and runs locally in developers' environments, observing
-and gating agent actions. A compromised dependency would therefore run on our
-users' machines, inside their agent sessions — so we treat our supply chain as
+failproofai is an npm package that installs hooks into AI agent harnesses
+(Claude Code, Codex, Cursor, the Hermes and OpenClaw gateways, and others) and
+runs locally in the environment the agent runs in, observing and gating agent
+actions. A compromised dependency would therefore run on our
+users' machines and servers, inside their agent sessions — so we treat our supply chain as
 part of our users' trust boundary. This document covers how to report a
 vulnerability and how our dependency supply-chain scanning works.
 

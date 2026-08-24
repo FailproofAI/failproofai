@@ -1,21 +1,21 @@
 ---
 title: "Live-Events"
-description: "Agent-Aktivitäten in Echtzeit verfolgen, während eine Session läuft."
+description: "Beobachte Agenten-Aktivität in Echtzeit, während eine Sitzung läuft."
 icon: "radio"
 ---
 
-Live-Events helfen dabei, die Instrumentierung zu bestätigen und einen risikobehafteten Lauf zu beobachten, ohne auf das Ende der Session warten zu müssen.
+Live-Events helfen dir, die Instrumentierung zu bestätigen und einen riskanten Lauf zu beobachten, ohne auf das Ende der Sitzung warten zu müssen.
 
-## Aktivitäten beobachten
+## Aktivität beobachten
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Navigiere zu **Observe → Events**.
+    1. Gehe zu **Observe → Events**.
     2. Beginne mit dem aktuellen Zeitfenster und ohne Filter, um zu bestätigen, dass Daten ankommen.
-    3. Filtere nach Umgebung, Event-Typ, Agent oder Session. Nutze die Suche für Payload-Text.
-    4. Wähle ein Event aus, um dessen Zusammenfassung und Details einzusehen. Folge dem Session-Link für den vollständigen Trace.
+    3. Filtere nach Umgebung, Event-Typ, Agent oder Sitzung. Nutze die Suche für Payload-Text.
+    4. Wähle ein Event aus, um dessen Zusammenfassung und Details einzusehen. Folge dem Sitzungslink für den vollständigen Trace.
 
-    ![Der Live-Events-Stream mit Filtern für Zeit, Umgebung, Event-Typ, Agent, Modell, Kontext, Session und Text.](/images/dashboard/events-stream-current.png)
+    ![Der Live-Events-Stream zeigt Traffic von einem Hermes-Chat-Gateway neben Coding-CLI-Läufen, gefiltert nach Zeit, Umgebung, Event-Typ, Agent, Modell, Kontext und Sitzung.](/images/dashboard/events-stream-current.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -24,20 +24,22 @@ Live-Events helfen dabei, die Instrumentierung zu bestätigen und einen risikobe
     fp --json events --full --session-id <session-id> --all
     ```
 
-    Der Standard-Feed lässt rohe Payloads aus. Verwende `--full` nur für eine eingegrenzte Session-Analyse.
+    Der Standard-Feed lässt rohe Payloads aus. Verwende `--full` nur für eine zeitlich begrenzte Sitzungsuntersuchung.
   </Tab>
 </Tabs>
 
 Nutze den Event-Stream, um drei unmittelbare Fragen zu beantworten:
 
-- Meldet sich der erwartete Agent an die richtige Umgebung?
+- Meldet sich der erwartete Agent in der richtigen Umgebung?
 - Kommen Modellaufrufe, Tool-Aufrufe und Policy-Entscheidungen in der richtigen Reihenfolge an?
-- Hat die Session aufgehört, Fortschritte zu machen, oder wiederholt sie eine Aktion?
+- Hat die Sitzung aufgehört, Fortschritte zu machen, oder beginnt sie, eine Aktion zu wiederholen?
 
-Event-Typen umfassen Agent-Lifecycle-Events, Modellanfragen und -antworten, Tool-Nutzung und Ergebnisse, Hook-Ausführung, menschliche Wartezeiten und Unterbrechungen sowie explizite Fehler. Correlation-IDs verknüpfen zusammengehörige Events, beispielsweise einen Tool-Aufruf und sein Ergebnis.
+Event-Typen umfassen Agent-Lifecycle-Events, Modellanfragen und -antworten, Tool-Nutzung und -Ergebnisse, Hook-Ausführung, Human-Waits und Interrupts sowie explizite Fehler. Korrelations-IDs verbinden zusammengehörige Events, wie etwa einen Tool-Aufruf und sein Ergebnis.
 
 <Tip>
-  Halte die Live-Ansicht zunächst breit gefächert, während du eine neue Integration überprüfst. Füge Filter erst hinzu, nachdem du das erste Event gesehen hast – ein falscher Filter kann wie eine fehlgeschlagene Ingestion aussehen.
+  Halte die Live-Ansicht zunächst breit gefächert, wenn du eine neue Integration überprüfst. Füge Filter erst hinzu, nachdem du das erste Event gesehen hast – ein falscher Filter kann wie eine fehlgeschlagene Datenaufnahme aussehen.
 </Tip>
 
-Wenn keine Events erscheinen, führe `failproofai config --status` aus und [behebe Ingestion-Probleme](/de/reference/troubleshooting).
+Falls keine Events erscheinen, führe `failproofai config --status` aus und [behebe Ingestion-Probleme](/de/reference/troubleshooting).
+
+Agenten, die nicht in einem der 12 unterstützten [Harnesses](/de/reference/harnesses) laufen, melden dieselben Event-Typen über das [Python SDK](/de/reference/python-sdk), einschließlich der Human-in-the-Loop-Events (`human_wait`, `human_input`, `human_interrupt`), auf die Gateway- und Produktionsagenten angewiesen sind.

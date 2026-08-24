@@ -99,11 +99,12 @@ afterEach(() => {
 });
 
 describe("failproofai policies", () => {
-  it("marks the always-on guard as locked, not merely on", async () => {
-    // It cannot be disabled or paused, and rendering it identically to a policy
-    // that can invites the one question the listing should answer unasked.
+  it("lists no policy from this build — enforcement comes from packs", async () => {
+    // The builtin table is gone. Nothing is compiled in except the always-on
+    // guard, and that has no row precisely because no listing can switch it off.
     const text = await run();
-    expect(text).toMatch(/✓ LOCK\s+block-failproofai-commands/);
+    expect(text).not.toMatch(/✓ LOCK/);
+    expect(text).not.toMatch(/block-failproofai-commands/);
   });
 
   it("lists an installed pack's policies, which no listing did before", async () => {
@@ -140,6 +141,10 @@ describe("failproofai policies", () => {
   it("keeps the config footer and any warning at the very end", async () => {
     // A footer printed between two sections reads as the end of the output, and
     // a warning above three more sections is one nobody scrolls back to.
+    // A pack has to be installed for an unknown key to BE unknown: the names a
+    // `policyParams` key may use are the policies a pack carries, and with none
+    // installed there is nothing to check a typo against.
+    installPack();
     writeFileSync(
       join(home, "policies-config.json"),
       JSON.stringify({ enabledPolicies: [], policyParams: { "not-a-policy": { x: 1 } } }),

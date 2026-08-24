@@ -702,6 +702,10 @@ export interface BundledPackResult {
   reason?: string;
 }
 
+/** What the vendored pack was called before it shipped, so an upgraded machine
+ *  does not keep a dead record beside the live one. */
+const LEGACY_BUNDLED_PACK_ID = "failproofai/builtins";
+
 export function installBundledPack(opts?: { only?: string[]; categories?: string[]; all?: boolean }): BundledPackResult {
   const dir = bundledPackDir();
   if (!dir) return { installed: false, reason: "this build ships no bundled pack" };
@@ -749,6 +753,11 @@ export function installBundledPack(opts?: { only?: string[]; categories?: string
       prior?.enabled ? prior.enabled.filter((n) => available.includes(n)) : prior?.enabled,
       Boolean(prior),
     );
+
+    // The id changed when the builtins became a pack. Left in place, the old
+    // record would keep registering the same policies under a second id — two
+    // copies of every guard, and a listing that shows both.
+    if (identity.id !== LEGACY_BUNDLED_PACK_ID) removePack(LEGACY_BUNDLED_PACK_ID);
 
     upsertInstalled({
       id: identity.id,

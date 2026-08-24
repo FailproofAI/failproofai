@@ -128,7 +128,7 @@ describe("parity with the CLI", () => {
     try {
       const result = await addPackWebAction("core");
       expect(result.ok).toBe(true);
-      expect(result.id).toBe("failproofai/builtins");
+      expect(result.id).toBe("failproofai/core");
     } finally {
       if (prevRoot === undefined) delete process.env.FAILPROOFAI_PACKAGE_ROOT;
       else process.env.FAILPROOFAI_PACKAGE_ROOT = prevRoot;
@@ -165,24 +165,6 @@ describe("the dashboard payload", () => {
     const byName = Object.fromEntries(pack!.policies.map((p) => [p.name, p.enabled]));
     expect(byName["block-prod-deploy"]).toBe(true);
     expect(byName["warn-restart"]).toBe(false);
-  });
-});
-
-describe("a pack policy an enabled builtin already holds", () => {
-  it("is marked as shadowed, so the UI cannot claim enforcement it is not doing", async () => {
-    // Both register under different keys and only the builtin runs. A row
-    // showing a toggle set to ON for the pack's copy reports enforcement that
-    // is not happening — the one thing this product must never do.
-    writeFileSync(
-      join(home, "policies-config.json"),
-      JSON.stringify({ enabledPolicies: ["block-prod-deploy"] }),
-    );
-    await addPackWebAction("github:acme/ops@1.0.0");
-    const config = await getHooksConfigAction();
-    const pack = config.packs.find((p) => p.id === "acme/ops");
-    const byName = Object.fromEntries(pack!.policies.map((p) => [p.name, p.shadowedByBuiltin]));
-    expect(byName["block-prod-deploy"]).toBe(true);
-    expect(byName["warn-restart"]).toBeUndefined();
   });
 });
 

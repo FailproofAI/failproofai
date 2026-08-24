@@ -792,7 +792,6 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
  */
 export async function listHooks(cwd?: string): Promise<void> {
   const config = readMergedHooksConfig(cwd);
-  const enabledSet = new Set(config.enabledPolicies);
   const disabledCustomSet = new Set(config.disabledCustomPolicies ?? []);
   const opts = optsFor(process.stdout);
 
@@ -800,73 +799,38 @@ export async function listHooks(cwd?: string): Promise<void> {
   const uniqueScopes = deduplicateScopes(HOOK_SCOPES, cwd);
   const installedScopes = uniqueScopes.filter((s) => hooksInstalledInSettings(s, cwd));
 
-  // Separate beta from regular policies
-  const regularPolicies = BUILTIN_POLICIES.filter((p) => !p.beta);
-  const betaPolicies = BUILTIN_POLICIES.filter((p) => p.beta);
-
-  // All known builtin policy names (for unknown policyParams key detection)
-  const builtinPolicyNames = new Set(BUILTIN_POLICIES.map((p) => p.name));
-
-  /** Configured params, as dim lines under their own policy's row. */
-  const notesFor = (policyName: string): string[] => {
-    const params = config.policyParams?.[policyName];
-    if (!params) return [];
-    return Object.entries(params).map(([key, val]) => `${key}: ${JSON.stringify(val)}`);
-  };
-
-  const scopeLabelMap: Record<HookScope, string> = {
-    user: "User",
-    project: "Project",
-    local: "Local",
-  };
-  // One status column per installed scope, or a single one when there is
-  // nothing to compare — the three hand-built table variants this replaces
-  // differed only in that, and in nothing a reader would want to be different.
-  const statusHeads =
-    installedScopes.length > 1 ? installedScopes.map((s) => scopeLabelMap[s]) : ["Status"];
-  const policyRow = (policy: { name: string; description: string; alwaysOn?: boolean }) => {
-    // `alwaysOn` reads ON everywhere else, which invites the one question the
-    // listing should answer without being asked: why will `--uninstall` not
-    // turn this off?
-    const state: ChipState = policy.alwaysOn ? "locked" : enabledSet.has(policy.name) ? "on" : "off";
-    return {
-      cells: [...statusHeads.map(() => chip(state, opts)), policy.name, policy.description],
-      notes: notesFor(policy.name),
-    };
-  };
-  const policyTable = (policies: typeof BUILTIN_POLICIES) =>
-    table(
-      {
-        // Named when there is more than one, blank when there is one: with two
-        // scopes the reader cannot tell which column is which without the
-        // label, and with one the chip already says ON or OFF.
-        head: [
-          ...(installedScopes.length > 1 ? statusHeads : statusHeads.map(() => "")),
-          "Name",
-          "Description",
-        ],
-        rows: policies.map(policyRow),
-        flex: statusHeads.length + 1,
-      },
-      opts,
-    );
+  // Names a `policyParams` key may legitimately use: every policy an installed
+  // pack carries. Previously the compiled catalog, which no longer describes
+  // what runs.
+  const knownPolicyNames = new Set<string>();
+  try {
+    for (const pack of readInstalledPacks().packs) {
+      for (const policy of pack.policies) knownPolicyNames.add(policy.name);
+    }
+  } catch {
+    // Unreadable manifest: skip the typo warning rather than invent one.
+  }
 
   const groups: Array<string[] | null> = [];
-  const onCount = BUILTIN_POLICIES.filter((p) => enabledSet.has(p.name) || p.alwaysOn).length;
+  const packCount = (() => {
+    try {
+      return readInstalledPacks().packs.reduce(
+        (n, pack) => n + (pack.enabled ?? pack.policies.map((p) => p.name)).length,
+        0,
+      );
+    } catch {
+      return 0;
+    }
+  })();
   groups.push(
     title(
       "failproofai policies",
       installedScopes.length === 0
         ? "not installed"
-        : `${installedScopes.join(" + ")} · ${onCount}/${BUILTIN_POLICIES.length} on`,
+        : `${installedScopes.join(" + ")} · ${packCount} on`,
       opts,
     ),
   );
-  groups.push(policyTable(regularPolicies));
-  if (betaPolicies.length > 0) {
-    groups.push(rule("Beta", opts));
-    groups.push(policyTable(betaPolicies));
-  }
 
   if (installedScopes.length === 0) {
     groups.push(
@@ -901,7 +865,7 @@ export async function listHooks(cwd?: string): Promise<void> {
   if (config.policyParams) {
     const unknownKeys: string[] = [];
     for (const key of Object.keys(config.policyParams)) {
-      if (!builtinPolicyNames.has(key)) unknownKeys.push(key);
+      if (knownPolicyNames.size > 0 && !knownPolicyNames.has(key)) unknownKeys.push(key);
     }
     if (unknownKeys.length > 0) {
       footer.push(

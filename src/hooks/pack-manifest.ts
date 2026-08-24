@@ -146,6 +146,22 @@ export function parsePackIdentity(value: {
   };
 }
 
+/**
+ * Whether this machine has any pack installed at all.
+ *
+ * Cheap on purpose — the hook path asks this on every event to decide whether it
+ * still needs the migration shim, and reading + verifying every artifact digest
+ * to answer "is there one" would be the wrong price.
+ */
+export function hasInstalledPacks(): boolean {
+  try {
+    const raw = JSON.parse(readFileSync(installedFilePath(), "utf8")) as { packs?: unknown };
+    return Array.isArray(raw.packs) && raw.packs.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 function installedFilePath(): string {
   return process.env.FAILPROOFAI_PACK_DIR
     ? resolve(process.env.FAILPROOFAI_PACK_DIR, "installed.json")

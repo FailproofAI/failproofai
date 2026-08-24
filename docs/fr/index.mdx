@@ -1,39 +1,41 @@
 ---
 title: "Rendez votre agent infaillible"
-description: "Failproof AI trace le comportement des agents, audite les sessions en cas d'échec et déploie des politiques pour éviter la répétition des incidents."
+description: "Observabilité et mise en application pour chaque environnement d'exécution de vos agents — CLI de codage, passerelles de chat, assistants auto-hébergés et vos propres agents instrumentés."
 icon: "shield-check"
 ---
 
-Failproof AI aide les équipes à comprendre ce que les agents ont fait, à identifier leurs défaillances et à déployer des protections avant que le même comportement ne se reproduise.
+Failproof AI aide les équipes à comprendre ce que les agents ont fait, à identifier là où ils ont échoué, et à déployer des garde-fous avant que le même comportement ne se reproduise.
+
+Un **harness** est l'environnement dans lequel votre agent s'exécute réellement. Failproof AI s'intègre à 12 d'entre eux — des CLI de codage comme Claude Code et Codex, des passerelles de chat comme Hermes, des assistants auto-hébergés comme OpenClaw — et les mêmes événements, les mêmes politiques et le même historique de session s'appliquent à chacun. Les agents sans harness remontent leurs données via le [SDK Python](/fr/reference/python-sdk), qui les trace et les audite ; l'application d'une politique dans ce cas nécessite un hook dans votre propre environnement d'exécution.
 
 <Columns cols={2}>
   <Card title="Configurer Failproof" icon="wand-sparkles" href="/fr/start/quickstart">
-    Utilisez le skill pour instrumenter votre projet, le connecter et vérifier que les logs des agents arrivent correctement.
+    Utilisez la compétence pour instrumenter votre projet, le connecter et vérifier que les logs d'agents arrivent bien.
   </Card>
   <Card title="Interroger l'assistant Failproof" icon="message-square-text" href="/fr/sessions/assistant">
-    Analysez, interrogez, construisez des tableaux de bord et lancez des audits en langage naturel sur vos logs d'agents.
+    Analysez, interrogez, créez des tableaux de bord et lancez des audits en langage naturel sur vos logs d'agents.
   </Card>
 </Columns>
 
 <Columns cols={3}>
   <Card title="Voir ce que l'agent a fait" icon="route" href="/fr/sessions/overview">
-    Suivez les appels de modèles, les outils, les erreurs, les entrées humaines, la latence et les décisions de politique dans une seule session.
+    Suivez les appels de modèle, les outils, les erreurs, les saisies humaines, la latence et les décisions de politique au sein d'une même session.
   </Card>
-  <Card title="Identifier les défaillances de manière systématique" icon="scan-search" href="/fr/audits/overview">
-    Auditez un ensemble défini de sessions, examinez les résultats étayés par des preuves et suivez la remédiation sous forme de tickets.
+  <Card title="Identifier les échecs de manière systématique" icon="scan-search" href="/fr/audits/overview">
+    Auditez un ensemble défini de sessions, examinez les conclusions étayées par des preuves et suivez la remédiation sous forme de tickets.
   </Card>
   <Card title="Prévenir les récidives" icon="shield-check" href="/fr/policies/overview">
-    Transformez un mode de défaillance connu en politique, observez son impact et déployez-la sur l'ensemble de votre parc.
+    Transformez un mode d'échec connu en politique, observez son impact et déployez-la sur l'ensemble de votre flotte.
   </Card>
 </Columns>
 
-> **Session → Audit → Résultat → Ticket → Politique**<br />
-> Tracez ce qui s'est passé, identifiez la défaillance, gérez la réponse, puis empêchez le même comportement lors des exécutions futures.
+> **Session → Audit → Constat → Ticket → Politique**<br />
+> Tracez ce qui s'est passé, identifiez l'échec, gérez la réponse, puis évitez que le même comportement ne se reproduise lors des prochaines exécutions.
 
 ## Par où commencer
 
-Si vous déployez votre premier agent instrumenté, commencez par le [guide de démarrage rapide](/fr/start/quickstart). Si des données arrivent déjà, ouvrez [Sessions](/fr/sessions/overview) et inspectez une exécution réelle avant de configurer les audits ou les politiques.
+Si vous déployez votre premier agent instrumenté, commencez par le [démarrage rapide](/fr/start/quickstart). Si des données arrivent déjà, ouvrez [Sessions](/fr/sessions/overview) et inspectez une exécution réelle avant de configurer des audits ou des politiques.
 
-<Card title="Identifier et corriger une défaillance" icon="arrow-right" href="/fr/start/quickstart">
-  Suivez le flux de travail complet, de la capture à un déploiement sécurisé d'une politique.
+<Card title="Identifier et corriger un premier échec" icon="arrow-right" href="/fr/start/quickstart">
+  Parcourez le flux de travail de bout en bout, de la capture à une politique déployée en toute sécurité.
 </Card>

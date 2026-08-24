@@ -1,10 +1,12 @@
 ---
 title: "クイックスタート"
-description: "エージェントセッションをキャプチャし、障害を発見して、防止策を導入する。"
+description: "エージェントセッションをキャプチャし、障害を発見して、その防止を開始する。"
 icon: "zap"
 ---
 
-このクイックスタートでは、1台のマシンでセッションのレポートを開始し、監査を実行して、ポリシーを展開します。スキルを使って Failproof を設定するか、手動手順に従ってください。Node.js 20.9 以降が必要です。
+このクイックスタートでは、1台のマシンでセッションのレポートを開始し、監査を実行して、ポリシーをデプロイします。スキルを使って Failproof を設定するか、手動手順に従って進めてください。
+
+**どちらの方法を選びますか？** エージェントが12のサポート対象[ハーネス](/ja/reference/harnesses)のいずれか（コーディング CLI、または Hermes や OpenClaw などのゲートウェイ）で動作している場合は、以下の手順に従ってください。Node.js 20.9 以降が必要です。エージェントにハーネスがない場合は、[Python SDK](/ja/reference/python-sdk) でトレースと監査のインストルメンテーションを行い、[最初の障害チェックを実行する](/ja/start/first-audit) から再合流してください。この場合の強制実行にはランタイムへのフックが必要です。
 
 <Tabs>
   <Tab title="スキルを使う">
@@ -14,20 +16,20 @@ icon: "zap"
         npx skills add FailproofAI/skills
         ```
       </Step>
-      <Step title="エージェントにすべてのセットアップを依頼する">
+      <Step title="エージェントにすべてをセットアップさせる">
         ```text
         Set up Failproof AI for this project, connect this machine, install the right hooks and policies, and verify that a session arrives.
         ```
 
-        エージェントがプロジェクトを検査し、適切なインテグレーションを選択して、セットアップを実行し、動作を確認します。個別のスキルや高度なインストールオプションについては、[FailproofAI スキルリポジトリ](https://github.com/FailproofAI/skills)を参照してください。
+        エージェントがプロジェクトを検査し、適切なインテグレーションを選択してセットアップを実行し、セッションの到達を確認します。個別のスキルと高度なインストールオプションについては [FailproofAI スキルリポジトリ](https://github.com/FailproofAI/skills) を参照してください。
       </Step>
     </Steps>
   </Tab>
   <Tab title="手動セットアップ">
-    ## 始める前に
+    ## 開始前の準備
 
-1. [Failproof AI ダッシュボード](https://app.befailproof.ai)を開き、アカウントを作成するか、仕事用メールアドレスでサインインします。
-2. **Administration → Keys** に移動し、`events:add` と `policies:pull` の権限を持つキーを作成します。
+1. [Failproof AI ダッシュボード](https://app.befailproof.ai) を開き、アカウントを作成するか業務用メールでサインインします。
+2. **Administration → Keys** に移動し、`events:add` と `policies:pull` 権限を持つキーを作成します。
 3. ワンタイムシークレットをコピーして、対象マシンに保存します。
 
 ```bash
@@ -43,7 +45,7 @@ export FAILPROOFAI_KEY="<one-time-secret>"
     failproofai config --connect https://app.befailproof.ai --token "$FAILPROOFAI_KEY"
     ```
 
-    セッションのトランスクリプトはデフォルトで送信されます。トランスクリプトの内容を除いてフックのアクティビティとポリシーの決定のみをレポートするには、`--no-transcripts` を追加してください。
+    セッションのトランスクリプトはデフォルトで送信されます。トランスクリプトの内容を除き、フックアクティビティとポリシー決定のみをレポートするには `--no-transcripts` を追加してください。
 
     このマシンにすでにエージェントの履歴がある場合は、過去7日間のデータをプレビューしてインポートし、配信が完了するまで待ちます。新しいマシンではこの手順をスキップしてください。
 
@@ -53,27 +55,30 @@ export FAILPROOFAI_KEY="<one-time-secret>"
     failproofai flush --wait
     ```
 
-    Failproof AI で **Sessions** を開き、インポートされたセッションを選択します。
+    Failproof AI の **Sessions** を開き、インポートしたセッションを選択します。
   </Step>
-  <Step title="エージェントフックとポリシーをインストールする">
-    これにより、Failproof AI がエージェント CLI に接続され、組み込みポリシーがインストールされます。Failproof AI がセッションを監査してエージェント向けのポリシーを作成する前に、ローカルでのポリシー決定を確認したり、適用をテストしたりするために活用してください。
+  <Step title="エージェントのフックとポリシーをインストールする">
+    これにより Failproof AI がハーネスにアタッチされ、40の組み込みポリシーがインストールされます。Failproof AI がセッションを監査してエージェント用のポリシーを作成する前に、ローカルでのポリシー決定を確認したり強制実行を試したりするのに活用してください。
 
-    インストーラーにエージェント CLI を自動検出させるか、明示的に指定することもできます。
+    インストーラーにハーネスを自動検出させるか、明示的に指定することもできます。12種類すべてが有効な `--cli` 値です。`claude`、`codex`、`copilot`、`cursor`、`opencode`、`pi`、`hermes`、`openclaw`、`factory`、`devin`、`antigravity`、`goose`。
 
     ```bash
-    failproofai policies --install --cli claude --scope user
+    failproofai policies --install --cli claude --scope user     # コーディング CLI
+    failproofai policies --install --cli hermes --scope user     # Slack/Telegram ゲートウェイ
     ```
+
+    ツール呼び出しの実行前ブロックは全12種類で検証済みです。ターン終了ゲートは8種類で検証済みです。ハーネスごとのマトリックスは [強制実行機能](/ja/reference/harnesses#enforcement-capability) を参照してください。
   </Step>
   <Step title="動作を監査する">
-    [初めての障害チェックを実行する](/ja/start/first-audit)に従ってください。「エージェントがアプローチを変えずに失敗したツールを再試行したセッションを見つける」など、具体的な目標を設定して行ってください。
+    [最初の障害チェックを実行する](/ja/start/first-audit) に従ってください。「エージェントがアプローチを変えずに失敗したツールを再試行したセッションを見つける」などの具体的な目標を設定してください。
   </Step>
   <Step title="障害を防止する">
-    [ポリシーで初めての障害を防止する](/ja/start/first-policy)に従ってください。オブザーブモードから始め、マッチしたものを確認してから、レビュー済みのバージョンを適用してください。
+    [ポリシーを使って最初の障害を防止する](/ja/start/first-policy) に従ってください。オブザーブモードで開始し、マッチを確認してから、レビュー済みのバージョンを強制実行します。
   </Step>
 </Steps>
 
 <Check>
-  `failproofai config --status` を実行してください。正常なセットアップでは、クラウド接続、デーモンの状態、適用が一時停止中かどうかが報告されます。
+  `failproofai config --status` を実行してください。正常なセットアップでは、クラウド接続、デーモンの状態、および強制実行が一時停止されているかどうかが表示されます。
 </Check>
   </Tab>
 </Tabs>

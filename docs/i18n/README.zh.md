@@ -18,10 +18,11 @@
 [![Docs](https://img.shields.io/badge/docs-befailproof.ai-002CA7?style=flat-square)](https://docs.befailproof.ai/)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-blue?style=flat-square)](../../LICENSE)
 
-**翻译版本：** [简体中文](../../docs-old/i18n/README.zh.md) · [日本語](../../docs-old/i18n/README.ja.md) · [한국어](../../docs-old/i18n/README.ko.md) · [Español](../../docs-old/i18n/README.es.md) · [Português](../../docs-old/i18n/README.pt-br.md) · [Deutsch](../../docs-old/i18n/README.de.md) · [Français](../../docs-old/i18n/README.fr.md) · [Руссий](../../docs-old/i18n/README.ru.md) · [हिन्दी](../../docs-old/i18n/README.hi.md) · [Türkçe](../../docs-old/i18n/README.tr.md) · [Tiếng Việt](../../docs-old/i18n/README.vi.md) · [Italiano](../../docs-old/i18n/README.it.md) · [العربية](../../docs-old/i18n/README.ar.md) · [עברית](../../docs-old/i18n/README.he.md)
+**翻译：** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
-**为编码 Agent 提供运行时故障解决方案。**
-接入 Claude Code 和 Codex。在循环、危险操作和密钥泄露演变成事故之前将其拦截。零延迟，本地运行。
+**为 Agent 运行的每一个运行框架提供可观测性与执行控制。**
+无论你的 Agent 在哪里运行，我们都能看到——并且可以说不。Failproof 接入了 12 个 Agent
+运行框架——包括 Claude Code、Codex 等编码 CLI，Hermes 等聊天网关，以及 OpenClaw 等自托管助手——捕获每一次运行，并在危险工具调用执行前将其拦截。40 条内置策略，零延迟，本地运行。
 
 </div>
 
@@ -31,7 +32,11 @@
 
 ---
 
-## 支持的 Agent CLI
+## 支持的运行框架
+
+共 12 个运行框架，分为两类——10 个编码 CLI，以及 2 个聊天与助手网关（Hermes、OpenClaw）。无论你的 Agent 运行在哪个框架中，事件、策略、会话历史完全一致。
+
+如果 Agent 不运行在上述任何框架中，可通过 [Python SDK](https://docs.befailproof.ai/reference/python-sdk) 上报数据，提供追踪、会话和审计能力。在自定义运行时中实现执行控制需要接入 Hook——[联系我们](mailto:support@befailproof.ai)，我们会协助完成映射。
 
 {/* A 6-column table instead of inline <img> runs: table columns never re-wrap,
      so the grid stays 2×6 at any window width (scrolling on very narrow screens
@@ -131,31 +136,36 @@
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # 或直接运行 `failproofai` 并接受首次运行提示
+failproofai policies --install   # 或直接运行 `failproofai` 并在首次运行提示中确认
 failproofai
 ```
 
-30 条内置策略即时生效。控制台地址：`localhost:8020`。可通过设置 `FAILPROOFAI_NO_FIRST_RUN=1` 禁用首次运行提示。
+40 条内置策略立即生效。控制台地址：`localhost:8020`。如需禁用首次运行提示，设置 `FAILPROOFAI_NO_FIRST_RUN=1`。
 
 ---
 
-## 拦截范围
+## 能拦截什么
 
 | 策略 | 拦截内容 |
 |---|---|
-| `block-push-master` | 直接推送到 `main` / `master` 分支 |
-| `block-force-push` | `git push --force` |
-| `block-work-on-main` | 在 `main` / `master` 上进行提交、合并、变基 |
+| `sanitize-api-keys` | API 密钥泄漏到 Agent 上下文中 |
+| `block-env-files` | 读取 `.env` 及其他密钥文件 |
+| `warn-repeated-tool-calls` | Agent 在同一调用上陷入循环 |
+| `block-sudo` | 权限提升 |
+| `warn-destructive-sql` | `DROP`、`TRUNCATE`、无条件 `DELETE` |
+| `block-terraform` / `block-kubectl` | 未经审查的线上基础设施变更 |
 | `block-rm-rf` | 递归删除文件 |
-| `sanitize-api-keys` | API 密钥泄露到 Agent 上下文中 |
+| `block-force-push` / `block-push-master` | `git push --force`、直接推送到 `main` |
 
-→ [全部 30 条内置策略](https://docs.befailproof.ai/policies/builtin)
+前五条适用于任何能调用工具的 Agent，后三条是开发者最爱——编码 CLI 是我们覆盖最深入的框架类别。
+
+→ [全部 40 条内置策略](https://docs.befailproof.ai/policies/builtin)
 
 ---
 
 ## 自定义策略
 
-将文件放入 `.failproofai/policies/` 目录即可自动加载，无需任何额外参数。提交后，团队所有成员在下次拉取时即可同步生效。
+将文件放入 `.failproofai/policies/` 目录即可自动加载，无需任何参数。提交到代码库后，团队所有成员在下次拉取时即可生效。
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -176,44 +186,72 @@ customPolicies.add({
 | 决策 | 效果 |
 |---|---|
 | `allow()` | 允许该操作 |
-| `deny(message)` | 阻止操作——消息将返回给 Agent |
-| `instruct(message)` | 放行操作，但向 Agent 的下一个提示词中追加上下文信息 |
+| `deny(message)` | 拦截操作——消息回传给 Agent |
+| `instruct(message)` | 放行，但在 Agent 的下一个提示词中追加上下文 |
 
 → [自定义策略指南](https://docs.befailproof.ai/policies/custom)
 
 ---
 
-## 会话可视化
+## 可观测性
 
-Agent 的每次工具调用都会在本地记录日志。控制台展示了哪些操作已执行、哪些被拦截，以及策略告知 Agent 的内容——让你在出现问题时不再一头雾水。→ [控制台指南](https://docs.befailproof.ai/sessions/overview)
+执行控制是一半，另一半是看清 Agent 实际做了什么。
+
+不带参数运行 `failproofai`，它会在 `localhost:8020` 提供一个控制台，读取已保存在本机的运行历史——无需账号，无需注册，数据不离开本机。你可以查看会话列表、每次运行中的模型调用序列、工具调用与 Hook 决策，以及哪些操作被拦截、策略向 Agent 传达了什么内容；还有离线审计功能（`failproofai audit`），可扫描历史记录中的风险模式并推荐相应策略。
+
+→ [本地控制台](https://docs.befailproof.ai/reference/local-dashboard) ·
+[解读追踪记录](https://docs.befailproof.ai/sessions/read-a-trace) ·
+[本地审计](https://docs.befailproof.ai/audits/local-audit)
+
+**Failproof AI 可观测性**是同一数据模型的托管版本，面向在多台机器上运行 Agent 的团队：所有框架的每一次运行汇聚一处，带并行子 Agent 独立泳道的执行图，模型、工具与 Hook 的 p50/p95/p99 延迟，按模型统计的费用与上下文窗口追踪，错误追踪，基于自有追踪数据的 SQL 查询与可分享的控制台，由你自己的服务评分的评测，将重复失败转化为有据可查结论的定期审计，以及路由至 Slack、邮件或签名 Webhook 的告警。企业版支持在自有集群中自托管。
+
+→ [会话](https://docs.befailproof.ai/sessions/overview) ·
+[审计](https://docs.befailproof.ai/audits/overview) ·
+[预约演示](https://befailproof.ai/get-a-demo)
 
 ---
 
 ## 文档
 
-| | |
+| 入门 | |
 |---|---|
-| [快速开始](https://docs.befailproof.ai/start/quickstart) | 安装与初步使用 |
-| [内置策略](https://docs.befailproof.ai/policies/builtin) | 全部 30 条策略及参数说明 |
+| [快速开始](https://docs.befailproof.ai/start/quickstart) | 安装、接入运行框架、查看第一次运行 |
+| [核心概念](https://docs.befailproof.ai/start/concepts) | Hook 系统的工作原理 |
+| [支持的运行框架](https://docs.befailproof.ai/reference/harnesses) | 全部 12 个及各自的执行能力 |
+
+| 观测 | |
+|---|---|
+| [会话](https://docs.befailproof.ai/sessions/overview) | 追踪一次运行：模型、工具、错误、延迟 |
+| [解读追踪记录](https://docs.befailproof.ai/sessions/read-a-trace) | 执行图在告诉你什么 |
+| [审计](https://docs.befailproof.ai/audits/overview) | 跨多个会话发现失败模式 |
+| [本地控制台](https://docs.befailproof.ai/reference/local-dashboard) | `localhost:8020`，无需账号 |
+
+| 执行控制 | |
+|---|---|
+| [内置策略](https://docs.befailproof.ai/policies/builtin) | 全部 40 条策略及参数说明 |
 | [自定义策略](https://docs.befailproof.ai/policies/custom) | 编写你自己的策略 |
 | [配置](https://docs.befailproof.ai/policies/local-configuration) | 配置作用域与合并规则 |
-| [控制台](https://docs.befailproof.ai/sessions/overview) | 会话监控与策略活动 |
-| [架构](https://docs.befailproof.ai/start/concepts) | Hook 系统工作原理 |
+
+| 接入你自己的 Agent | |
+|---|---|
+| [Python SDK](https://docs.befailproof.ai/reference/python-sdk) | 从无框架的 Agent 上报运行数据 |
+| [策略 SDK](https://docs.befailproof.ai/reference/policy-sdk) | `allow` / `deny` / `instruct` 参考文档 |
 
 ---
 
 ## 许可证
 
-MIT 附加 [Commons Clause](https://commonsclause.com/) ——内部及个人使用免费；将 failproofai 本身进行商业转售需要单独签署协议。完整条款请参阅 [LICENSE](../../LICENSE)。
+MIT + [Commons Clause](https://commonsclause.com/) ——内部使用和个人使用免费；将 failproofai 本身用于商业转售需另行签订协议。完整条款见 [LICENSE](../../LICENSE)。
 
 ---
 
 ## 贡献
 
-请参阅 [CONTRIBUTING.md](../../CONTRIBUTING.md)。欢迎贡献新策略、边界用例及翻译内容。
+请参阅 [CONTRIBUTING.md](../../CONTRIBUTING.md)。欢迎贡献新策略、边界情况处理以及翻译。
 
-> **开始前请先构建项目。** 首先运行 `bun install && bun run build`。本仓库会在自身上运行 failproofai 的 Hook，这些 Hook 会从编译后的 `dist/` 包中解析 `failproofai` 导入——若未构建，则会触发 `Cannot find package 'failproofai'` 的 Hook 错误。修改 `src/` 后请重新构建。详见 [构建后才能使用仓库内开发 Hook](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work)。
+> **开始前请先构建项目。** 首先运行 `bun install && bun run build`。本仓库会将 failproofai 自身的 Hook 应用于自身，这些 Hook 会从编译后的 `dist/` 包中解析 `failproofai` 导入——如果未构建，你会遇到 `Cannot find package 'failproofai'` 的 Hook 错误。修改 `src/` 后请重新构建。详见
+> [构建后才能使用仓库内开发 Hook](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work)。
 
 ---
 
-由 [befailproof.ai](https://befailproof.ai) 团队在旧金山与班加罗尔倾心打造 ❤️。
+由 [befailproof.ai](https://befailproof.ai) 在旧金山和班加罗尔用 ❤️ 构建。

@@ -1,61 +1,68 @@
 ---
-title: "Harness degli agenti"
-description: "Cattura sessioni e applica politiche nei CLI degli agenti supportati."
+title: "Harness per agenti"
+description: "Cattura sessioni e applica policy su tutti e 12 gli harness di agenti supportati."
 icon: "plug-zap"
 ---
 
-Failproof AI supporta Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory Droid, Devin CLI, Antigravity CLI e Goose.
+Un harness è l'ambiente in cui il tuo agente effettivamente viene eseguito. Failproof AI supporta dodici di essi, divisi in due categorie:
 
-| Harness | Ambiti di hook supportati |
+- **IDE e CLI per la codifica** (10) — Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Factory Droid, Devin CLI, Antigravity CLI, Goose
+- **Gateway di chat e assistenti** (2) — Hermes (Slack, Telegram, cron), OpenClaw (assistente self-hosted)
+
+Le stesse policy e la stessa cronologia delle sessioni si applicano indipendentemente da quale harness esegue l'agente. Un livello di adapter mappa i nomi degli eventi nativi di ogni harness, i nomi degli strumenti e i campi degli input degli strumenti su 29 eventi canonici prima che qualsiasi policy venga eseguita.
+
+Un agente che viene eseguito in **nessuno** dei dodici harness viene instrumentato direttamente con l'[SDK Python](/it/reference/python-sdk). Si tratta di un contratto diverso, e vale la pena affermarlo chiaramente: l'SDK fornisce tracciamento, sessioni, valutazioni e audit — **non applica policy autonomamente.** Bloccare un'azione non sicura prima della sua esecuzione richiede un hook di enforcement al confine degli strumenti del tuo runtime; [contattaci](mailto:support@befailproof.ai) e lo mapperemo.
+
+| Harness | Scope hook supportati |
 | --- | --- |
 | Claude Code | User, project, local |
 | Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi | User, project |
 | Factory Droid, Devin CLI, Antigravity CLI, Goose | User, project |
 | Hermes, OpenClaw | User |
 
-Ogni integrazione normalizza i nomi degli eventi hook nativi, i nomi degli strumenti e i campi degli input dello strumento prima dell'esecuzione delle politiche. Una politica può agire solo su eventi esposti dall'harness; verifica il comportamento end-of-turn e le istruzioni sull'harness e la versione esatti che distribuisci.
+Ogni integrazione normalizza i nomi nativi degli eventi hook, i nomi degli strumenti e i campi degli input degli strumenti prima che le policy vengano eseguite. Una policy può agire solo su eventi esposti dall'harness; testa il comportamento di fine turno e istruzioni esattamente sull'harness e sulla versione che distribuisci.
 
-## Capacità di applicazione
+## Capacità di enforcement
 
-"Block" significa che il verdetto restituito dall'adattatore corrente viene utilizzato dall'harness nominato. Il blocco post-tool può sostituire il risultato mostrato al modello, ma non può annullare un effetto collaterale dello strumento che è già avvenuto.
+"Blocca" significa che il verdetto restituito dall'adapter corrente è consumato dall'harness denominato. Il blocco post-strumento può sostituire il risultato mostrato al modello ma non può annullare un effetto collaterale dello strumento già avvenuto.
 
-| Harness | Eventi di blocco verificati | Caveat osservativi o non bloccanti |
+| Harness | Eventi di blocco verificati | Caveat solo osservativi o non bloccanti |
 | --- | --- | --- |
 | Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact` e diversi eventi di task/config | `PostToolUse`, ciclo di vita della sessione, notifiche ed eventi post-errore sono osservativi. |
-| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | Il blocco post-tool sostituisce il risultato dopo l'esecuzione; gli eventi di inizio sessione e compattamento sono osservativi nell'adattatore corrente. |
-| GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | Il blocco post-tool sostituisce il risultato dopo l'esecuzione; gli eventi di sessione e notifica sono osservativi. |
+| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | Il blocco post-strumento sostituisce il risultato dopo l'esecuzione; gli eventi di avvio della sessione e compattamento sono osservativi nell'adapter corrente. |
+| GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | Il blocco post-strumento sostituisce il risultato dopo l'esecuzione; gli eventi di sessione e notifica sono osservativi. |
 | Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` e gli eventi di sessione sono osservativi. |
-| OpenCode | `PreToolUse` | Gli eventi post-tool e di ciclo di vita sono osservativi; la gestione dello stop corrente è una guida per un turno successivo piuttosto che un gate verificato. |
-| Pi | `PreToolUse`, `UserPromptSubmit` | Gli eventi post-tool e di ciclo di vita sono osservativi; la guida di stop si applica a un turno successivo. |
-| Hermes | `PreToolUse` | I verdetti post-tool, sessione e subagent-stop non sono gate. |
-| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | Gli eventi post-tool, sessione, subagent-stop e compattamento sono osservativi. |
-| Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | I verdetti post-tool e subagent-stop sono osservativi. |
-| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PermissionRequest` condizionale | Gli hook di permesso non vengono eseguiti in ogni modalità di permesso; gli eventi post-tool e di sessione sono osservativi. |
-| Antigravity CLI | `PreToolUse`, `Stop` | I verdetti di user-prompt e post-tool sono osservativi; le istruzioni di prompt possono comunque essere iniettate. |
-| Goose | `PreToolUse` | Gli eventi di user-prompt, post-tool e di sessione sono osservativi. Esiste un hook di stop bloccante nativo a monte, ma non viene installato dall'adattatore corrente. |
+| OpenCode | `PreToolUse` | Gli eventi post-strumento e ciclo di vita sono osservativi; la gestione dello stop corrente è una guida per un turno successivo piuttosto che un gate verificato. |
+| Pi | `PreToolUse`, `UserPromptSubmit` | Gli eventi post-strumento e ciclo di vita sono osservativi; la guida di stop si applica a un turno successivo. |
+| Hermes | `PreToolUse` | I verdetti post-strumento, sessione e subagent-stop non sono gate. |
+| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | Gli eventi post-strumento, sessione, subagent-stop e compattamento sono osservativi. |
+| Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | I verdetti post-strumento e subagent-stop sono osservativi. |
+| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PermissionRequest` condizionale | Gli hook di permission non vengono eseguiti in ogni modalità di permesso; gli eventi post-strumento e sessione sono osservativi. |
+| Antigravity CLI | `PreToolUse`, `Stop` | I verdetti di user-prompt e post-strumento sono osservativi; le istruzioni di prompt possono comunque essere iniettate. |
+| Goose | `PreToolUse` | Gli eventi di user-prompt, post-strumento e sessione sono osservativi. Esiste uno hook di stop bloccante nativo upstream ma non è installato dall'adapter corrente. |
 
-Le capacità sono sensibili alla versione. Ripeti i test dopo l'aggiornamento di un CLI dell'agente, soprattutto quando una politica si basa sul comportamento di prompt, stop, permesso o post-tool piuttosto che sul gate pre-tool comune.
+Le capacità sono sensibili alla versione. Ritesta dopo l'aggiornamento di un agent CLI, specialmente quando una policy si basa su comportamento di prompt, stop, permission o post-strumento piuttosto che il comune gate pre-strumento.
 
-## Installa hook di cattura e politica
+## Installa hook di capture e policy
 
 <Tabs>
   <Tab title="Dashboard">
     1. Apri **Administration → Keys** e crea una chiave con `events:add` e `policies:pull`, denominata per la macchina o l'ambiente.
-    2. Sulla macchina di destinazione, connetti il CLI locale con la chiave visualizzata e installa gli hook dell'harness.
-    3. Avvia una nuova sessione dell'agente, quindi conferma i suoi eventi di hook e sessione in **Observe → Events**.
-    4. Apri **Observe → policy** per la stessa finestra temporale e conferma che una decisione di politica è attribuita alla macchina.
+    2. Sulla macchina target, connetti la CLI locale con la chiave visualizzata e installa gli hook dell'harness.
+    3. Avvia una nuova sessione di agente, quindi conferma i suoi eventi di hook e sessione in **Observe → Events**.
+    4. Apri **Observe → policy** per la stessa finestra temporale e conferma che una decisione di policy è attribuita alla macchina.
 
-    La connessione inizia con una chiave di macchina. Conferma che include sia i permessi di acquisizione che di consegna delle politiche prima di copiare il suo segreto.
+    La connessione inizia con una chiave di macchina. Conferma che includa sia i permessi di ingestion che di policy-delivery prima di copiare il suo secret.
 
-    ![Il nuovo drawer della chiave API utilizzato per concedere i permessi di acquisizione degli eventi e consegna delle politiche.](/images/dashboard/key-create.png)
+    ![Il drawer della nuova chiave API utilizzato per concedere i permessi di ingestion degli eventi e policy delivery.](/images/dashboard/key-create.png)
 
-    Dopo aver installato gli hook, il flusso Events dovrebbe mostrare nuovi eventi dalla macchina e dall'ambiente che hai connesso.
+    Dopo aver installato gli hook, lo stream degli Events dovrebbe mostrare nuovi eventi dalla macchina e dall'ambiente che hai connesso.
 
-    ![Il flusso Events in diretta utilizzato per confermare che un harness appena installato sta segnalando.](/images/dashboard/events-stream.png)
+    ![Lo stream live degli Events utilizzato per confermare che un harness appena installato sta generando report.](/images/dashboard/events-stream.png)
 
-    Infine, verifica che le decisioni di politica siano attribuite alla stessa macchina. Questo conferma che l'harness sta segnalando l'attività di politica così come gli eventi di traccia.
+    Infine, verifica che le decisioni di policy siano attribuite alla stessa macchina. Questo conferma che l'harness sta generando report sia dell'attività di policy che degli eventi di traccia.
 
-    ![La pagina Policy utilizzata per verificare le decisioni di politica da un harness appena connesso.](/images/dashboard/policy-observe.png)
+    ![La pagina Policy utilizzata per verificare le decisioni di policy da un harness appena connesso.](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
     Installa gli hook per ogni harness rilevato:
@@ -67,7 +74,7 @@ Le capacità sono sensibili alla versione. Ripeti i test dopo l'aggiornamento di
     failproofai policies --install
     ```
 
-    Oppure prendi come target harness nominati e un ambito di configurazione:
+    Oppure scegli harness specifici e uno scope di configurazione:
 
     ```bash
     failproofai policies --install \
@@ -75,7 +82,7 @@ Le capacità sono sensibili alla versione. Ripeti i test dopo l'aggiornamento di
       --scope user
     ```
 
-    L'ambito del progetto mantiene la configurazione dell'hook con un repository. L'ambito utente copre il lavoro su più repository. Claude Code supporta anche l'ambito locale; il supporto varia in base all'harness e il CLI rifiuta le combinazioni non supportate.
+    Lo scope project mantiene la configurazione dell'hook con un repository. Lo scope user copre il lavoro tra repository. Claude Code supporta anche lo scope local; il supporto varia in base all'harness e la CLI rifiuta combinazioni non supportate.
 
     Verifica la macchina e i suoi eventi:
 
@@ -91,9 +98,9 @@ Le capacità sono sensibili alla versione. Ripeti i test dopo l'aggiornamento di
 
 <Tabs>
   <Tab title="Dashboard">
-    I percorsi aggiuntivi sono registrati sulla macchina, non nel Cloud. Dopo aver aggiunto uno, apri **Observe → Sessions**, filtra per l'ambiente della macchina e conferma che le sessioni dal nuovo percorso vengono visualizzate. Apri una sessione e controlla l'agente, l'harness e i timestamp degli eventi prima di affidarti a essa in un audit.
+    I percorsi extra vengono registrati sulla macchina, non nel Cloud. Dopo aver aggiunto uno, apri **Observe → Sessions**, filtra all'ambiente della macchina e conferma che le sessioni dal nuovo percorso appaiono. Apri una sessione e verifica l'agente, l'harness e i timestamp degli eventi prima di affidarti a essa in un audit.
 
-    ![L'elenco Sessions filtrato per l'ambiente che riceve dati dal percorso di cattura aggiuntivo.](/images/dashboard/sessions-list.png)
+    ![L'elenco delle Sessions filtrato all'ambiente che riceve dati dal percorso di capture aggiuntivo.](/images/dashboard/sessions-list.png)
   </Tab>
   <Tab title="CLI">
     Aggiungi un percorso con un'etichetta opzionale, quindi ispeziona i percorsi configurati:
@@ -110,5 +117,5 @@ Le capacità sono sensibili alla versione. Ripeti i test dopo l'aggiornamento di
 </Tabs>
 
 <Tip>
-  Esegui una nuova sessione dopo l'installazione. Verifica sia il flusso di eventi in diretta che una decisione di politica effettiva prima di espandere il rollout.
+  Esegui una nuova sessione dopo l'installazione. Verifica sia lo stream degli eventi live che una decisione di policy effettiva prima di espandere il rollout.
 </Tip>

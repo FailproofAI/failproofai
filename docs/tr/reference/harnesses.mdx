@@ -1,65 +1,71 @@
 ---
----
-title: "Agent harnesses"
-description: "Desteklenen agent CLI'lerinde oturumları yakala ve politikaları uygula."
+title: "Ajan donanımları"
+description: "Oturumları yakala ve desteklenen 12 ajan donanımının tümü arasında politikaları uygula."
 icon: "plug-zap"
 ---
 
-Failproof AI, Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory Droid, Devin CLI, Antigravity CLI ve Goose'u destekler.
+Donanım, ajanınızın gerçekte çalıştığı her şeydir. Failproof AI, bunlardan on ikisini destekler ve iki sınıfa ayrılırlar:
 
-| Harness | Desteklenen hook kapsamları |
+- **Kodlama CLI'leri** (10) — Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Factory Droid, Devin CLI, Antigravity CLI, Goose
+- **Sohbet ve asistan ağ geçitleri** (2) — Hermes (Slack, Telegram, cron), OpenClaw (kendi kendine barındırılan asistan)
+
+Bir ajan hangi donanımda çalışırsa çalışsın, aynı politikalar ve aynı oturum geçmişi geçerlidir. Bir adaptör katmanı, her donanımın yerel olay adlarını, araç adlarını ve araç giriş alanlarını herhangi bir politika çalıştırılmadan önce 29 kanonik olaya eşler.
+
+On ikisinden **hiçbirinde** çalışmayan bir ajan, [Python SDK](/tr/reference/python-sdk) ile doğrudan enstrümante edilir. Bu farklı bir sözleşmedir ve açıkça belirtilmeye değer: SDK izleme, oturumlar, değerlendirmeler ve denetimler sağlar — **kendi başına politikaları uygulamaz.** Güvensiz bir eylemi yürütülmeden önce engellemek, çalışma zamanınızın araç sınırında bir uygulama kancası gerekir; [bizimle iletişime geçin](mailto:support@befailproof.ai) ve bunu eşleştireceğiz.
+
+| Donanım | Desteklenen kanca kapsamları |
 | --- | --- |
-| Claude Code | User, project, local |
-| Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi | User, project |
-| Factory Droid, Devin CLI, Antigravity CLI, Goose | User, project |
-| Hermes, OpenClaw | User |
+| Claude Code | Kullanıcı, proje, yerel |
+| Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi | Kullanıcı, proje |
+| Factory Droid, Devin CLI, Antigravity CLI, Goose | Kullanıcı, proje |
+| Hermes, OpenClaw | Kullanıcı |
 
-Her entegrasyon, politikalar çalışmadan önce yerel hook olay adlarını, araç adlarını ve araç giriş alanlarını normalleştirir. Bir politika yalnızca harness'in ortaya çıkardığı olaylara etki edebilir; dağıttığınız tam harness ve sürümde tur sonu ve talimat davranışını test edin.
+Her entegrasyon, politikalar çalıştırılmadan önce yerel kanca olay adlarını, araç adlarını ve araç giriş alanlarını normalleştirir. Bir politika yalnızca donanımın açığa çıkardığı olaylara etki edebilir; tam olarak dağıtacağınız donanımda ve sürümde turun sonu ve talimat davranışını test edin.
 
 ## Uygulama yeteneği
 
-"Block" (engelle), adlandırılmış harness tarafından tüketilen geçerli adaptörün döndürülen kararı anlamına gelir. Araçtan sonra engelleme, modele gösterilen sonucu değiştirebilir ancak zaten gerçekleşen bir araç yan etkisini geri alamaz.
+"Engelle" anlamı, adlandırılan donanım tarafından tüketilen geçerli adaptörün dönüş kararıdır. Araç sonrası engelleme, modele gösterilen sonucu değiştirebilir ancak zaten gerçekleşen bir araç yan etkisini geri alamaz.
 
-| Harness | Doğrulanan engelleme olayları | Gözlem amaçlı veya engellenemeyen uyarılar |
+| Donanım | Doğrulanmış engelleme olayları | Yalnızca gözlem veya engellemeyen uyarılar |
 | --- | --- | --- |
-| Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact` ve birkaç görev/yapılandırma olayı | `PostToolUse`, oturum yaşam döngüsü, bildirimler ve başarısızlık sonrası olaylar gözlemcidir. |
-| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | Araçtan sonra engelleme, yürütmeden sonra sonucu değiştirir; oturum başlangıcı ve kompakt olaylar mevcut adaptörde gözlemcidir. |
-| GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | Araçtan sonra engelleme, yürütmeden sonra sonucu değiştirir; oturum ve bildirim olayları gözlemcidir. |
-| Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` ve oturum olayları gözlemcidir. |
-| OpenCode | `PreToolUse` | Araçtan sonra ve yaşam döngüsü olayları gözlemcidir; mevcut durma işleme, doğrulanmış bir kapı yerine daha sonraki bir tur için rehberlikdir. |
-| Pi | `PreToolUse`, `UserPromptSubmit` | Araçtan sonra ve yaşam döngüsü olayları gözlemcidir; durma rehberliği daha sonraki bir tura uygulanır. |
-| Hermes | `PreToolUse` | Araçtan sonra, oturum ve subagent-stop kararları kapı değildir. |
-| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | Araçtan sonra, oturum, subagent-stop ve kompaksiyon olayları gözlemcidir. |
-| Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | Araçtan sonra ve subagent-stop kararları gözlemcidir. |
-| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, koşullu `PermissionRequest` | İzin kancaları her izin modunda çalışmaz; araçtan sonra ve oturum olayları gözlemcidir. |
-| Antigravity CLI | `PreToolUse`, `Stop` | Kullanıcı istemi ve araçtan sonra kararlar gözlemcidir; isteme talimatlar yine de enjekte edilebilir. |
-| Goose | `PreToolUse` | Kullanıcı istemi, araçtan sonra ve oturum olayları gözlemcidir. Yerli bir engelleme durma kancası yukarı akışta mevcut ancak mevcut adaptör tarafından yüklenmez. |
+| Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact` ve birkaç görev/yapılandırma olayı | `PostToolUse`, oturum yaşam döngüsü, bildirimler ve görev sonrası olaylar gözlemseldir. |
+| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | Araç sonrası engelleme yürütülmeden sonra sonucu değiştirir; oturum başlatma ve kompakt olaylar geçerli adaptörde gözlemseldir. |
+| GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | Araç sonrası engelleme yürütülmeden sonra sonucu değiştirir; oturum ve bildirim olayları gözlemseldir. |
+| Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` ve oturum olayları gözlemseldir. |
+| OpenCode | `PreToolUse` | Araç sonrası ve yaşam döngüsü olayları gözlemseldir; geçerli durdurma işlemi doğrulanmış bir kapı yerine daha sonraki bir turun rehberidir. |
+| Pi | `PreToolUse`, `UserPromptSubmit` | Araç sonrası ve yaşam döngüsü olayları gözlemseldir; durdurma rehberi daha sonraki bir turla ilgilidir. |
+| Hermes | `PreToolUse` | Araç sonrası, oturum ve alt ajan durdurma kararları kapı değildir. |
+| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | Araç sonrası, oturum, alt ajan durdurma ve sıkıştırma olayları gözlemseldir. |
+| Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | Araç sonrası ve alt ajan durdurma kararları gözlemseldir. |
+| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, koşullu `PermissionRequest` | İzin kancaları her izin modunda çalışmaz; araç sonrası ve oturum olayları gözlemseldir. |
+| Antigravity CLI | `PreToolUse`, `Stop` | Kullanıcı istemi ve araç sonrası kararları gözlemseldir; hızlı talimatlar yine de enjekte edilebilir. |
+| Goose | `PreToolUse` | Kullanıcı istemi, araç sonrası ve oturum olayları gözlemseldir. Yukarıda yerleşik bir engelleme durdurma kancası vardır ancak geçerli adaptör tarafından yüklenmez. |
 
-Yetenekler sürüme duyarlıdır. Bir agent CLI'yi yükselttikten sonra, özellikle bir politika genel ön araç kapısı yerine isteme, durma, izin veya araçtan sonra davranışına bağlı olduğunda yeniden test edin.
+Yetenekler sürüme duyarlıdır. Bir ajan CLI'sini yükselttikten sonra yeniden test edin, özellikle bir politika yaygın ön araç kapısından ziyade hızlı, durdurma, izin veya araç sonrası davranışına dayanıyorsa.
 
-## Yakalama ve politika kancalarını yükle
+## Yakalama ve politika kancalarını yükleyin
 
 <Tabs>
-  <Tab title="Dashboard">
-    1. **Administration → Keys** öğesini açın ve `events:add` ve `policies:pull` izinleriyle makine veya ortam için adlandırılmış bir anahtar oluşturun.
-    2. Hedef makinede, yerel CLI'yi görüntülenen anahtarla bağlayın ve harness kancalarını yükleyin.
-    3. Yeni bir agent oturumu başlatın, ardından **Observe → Events** altında hook ve oturum olaylarını onaylayın.
-    4. Aynı zaman penceresi için **Observe → policy** öğesini açın ve bir politika kararının makineye atandığını onaylayın.
+  <Tab title="Pano">
+    1. **Yönetim → Anahtarlar**'ı açın ve `events:add` ve `policies:pull` ile makine veya ortam için adlandırılmış bir anahtar oluşturun.
+    2. Hedef makinede, yerel CLI'yi gösterilen anahtarla bağlayın ve donanım kancalarını yükleyin.
+    3. Yeni bir ajan oturumu başlatın, ardından **Gözlemle → Olaylar**'ın altında kanca ve oturum olaylarını onaylayın.
+    4. Aynı zaman penceresi için **Gözlemle → politika**'yı açın ve politika kararının makineye atandığını onaylayın.
 
     Bağlantı bir makine anahtarıyla başlar. Sırrını kopyalamadan önce hem alım hem de politika teslimi izinlerini içerdiğini onaylayın.
 
-    ![Etkinlik alımı ve politika teslimi izinleri vermek için kullanılan yeni API anahtarı çekmeceси.](/images/dashboard/key-create.png)
+    ![Olay alımı ve politika teslimi izinleri vermek için kullanılan yeni API anahtar çekmeceği.](/images/dashboard/key-create.png)
 
-    Kancaları yükledikten sonra, Events akışı bağladığınız makineden ve ortamdan yeni olayları göstermelidir.
+    Kancaları yükledikten sonra, Olaylar akışı bağladığınız makine ve ortamdan yeni olayları göstermelidir.
 
-    ![Yeni yüklenen bir harness'in rapor ettiğini onaylamak için kullanılan canlı Events akışı.](/images/dashboard/events-stream.png)
+    ![Yeni yüklenen donanımın raporladığını onaylamak için kullanılan canlı Olaylar akışı.](/images/dashboard/events-stream.png)
 
-    Son olarak, politika kararlarının aynı makineye atandığını doğrulayın. Bu, harness'in izleme olaylarının yanı sıra politika etkinliğini de rapor ettiğini doğrular.
+    Son olarak, politika kararlarının aynı makineye atandığını doğrulayın. Bu, donanımın izleme olaylarının yanı sıra politika aktivitesini de rapor ettiğini doğrular.
 
-    ![Yeni bağlanmış bir harness'ten gelen politika kararlarını doğrulamak için kullanılan Policy sayfası.](/images/dashboard/policy-observe.png)
+    ![Yeni bağlanan donanımdan politika kararlarını doğrulamak için kullanılan Politika sayfası.](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
-    Tespit edilen her harness için kancaları yükleyin:
+    Algılanan her donanım için kancaları yükleyin:
 
     ```bash
     failproofai config \
@@ -68,7 +74,7 @@ Yetenekler sürüme duyarlıdır. Bir agent CLI'yi yükselttikten sonra, özelli
     failproofai policies --install
     ```
 
-    Veya adlandırılmış harnesses ve yapılandırma kapsamını hedefleyin:
+    Veya adlandırılmış donanımlar ve yapılandırma kapsamı hedefleyin:
 
     ```bash
     failproofai policies --install \
@@ -76,7 +82,7 @@ Yetenekler sürüme duyarlıdır. Bir agent CLI'yi yükselttikten sonra, özelli
       --scope user
     ```
 
-    Proje kapsamı hook yapılandırmasını bir depo ile tutar. Kullanıcı kapsamı depolar arasında çalışmayı kapsar. Claude Code ayrıca yerel kapsamı destekler; destek harness'e göre değişir ve CLI desteklenmeyen kombinasyonları reddeder.
+    Proje kapsamı kanca yapılandırmasını depo ile birlikte tutar. Kullanıcı kapsamı depolar arasında çalışmayı kapsar. Claude Code aynı zamanda yerel kapsamı destekler; destek donanıma göre değişir ve CLI desteklenmeyen kombinasyonları reddeder.
 
     Makineyi ve olaylarını doğrulayın:
 
@@ -88,16 +94,16 @@ Yetenekler sürüme duyarlıdır. Bir agent CLI'yi yükselttikten sonra, özelli
   </Tab>
 </Tabs>
 
-## Varsayılan olmayan oturum yolu ekle
+## Varsayılan olmayan oturum yolu ekleyin
 
 <Tabs>
-  <Tab title="Dashboard">
-    Ek yollar makinede kaydedilir, Cloud'da değil. Bir tane ekledikten sonra, **Observe → Sessions** öğesini açın, ortamı makineye filtreleyin ve yeni yoldan oturumların göründüğünü onaylayın. Bir oturumu açın ve buna güvenmeden önce aracı, harness'i ve etkinlik zaman damgalarını kontrol edin.
+  <Tab title="Pano">
+    Ek yollar makinede kaydedilir, Bulutla değil. Birini ekledikten sonra, **Gözlemle → Oturumlar**'ı açın, ortamı makineye filtreleyin ve yeni yoldan oturumlar göründüğünü onaylayın. Bir oturumu açın ve bir denetimde buna güvenmeden önce ajan, donanım ve olay zaman damgalarını kontrol edin.
 
-    ![Ek yakalama yolundan veri alan ortama filtrelenen Sessions listesi.](/images/dashboard/sessions-list.png)
+    ![Ek yakalama yolundan veri alan ortama filtrelen Oturumlar listesi.](/images/dashboard/sessions-list.png)
   </Tab>
   <Tab title="CLI">
-    İsteğe bağlı bir etiketle bir yol ekleyin, ardından yapılandırılan yolları inceleyin:
+    İsteğe bağlı bir etiketle yol ekleyin, ardından yapılandırılmış yolları inceleyin:
 
     ```bash
     failproofai harness add-path claude checkout=/srv/checkout/.claude
@@ -111,5 +117,5 @@ Yetenekler sürüme duyarlıdır. Bir agent CLI'yi yükselttikten sonra, özelli
 </Tabs>
 
 <Tip>
-  Yüklemeden sonra bir yeni oturum çalıştırın. Dağıtımı genişletmeden önce hem canlı etkinlik akışını hem de gerçek bir politika kararını doğrulayın.
+  Yüklemeden sonra bir yeni oturum çalıştırın. Dağıtımı genişletmeden önce hem canlı olay akışını hem de gerçek bir politika kararını doğrulayın.
 </Tip>

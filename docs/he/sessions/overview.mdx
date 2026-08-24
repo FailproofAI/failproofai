@@ -1,27 +1,29 @@
 ---
 title: "סשנים"
-description: "התחל עם הרשומה המלאה של הרצה אחת של סוכן."
+description: "התחל עם רשומה מלאה של הרצה אחת של Agent."
 icon: "workflow"
 ---
 
-סשן הוא נקודת התחלה מעולה כאשר סוכן מתנהג בצורה בלתי צפויה. הוא משלב את בקשות המודל, התגובות, קריאות הכלים, האינטראקציות האנושיות, השגיאות, ההערכות והחלטות המדיניות השייכות להרצה אחת.
+סשן הוא נקודת ההתחלה הטובה ביותר כאשר agent מתנהג בצורה בלתי צפויה. הוא מחבר את בקשות המודל, התגובות, קריאות הכלים, האינטראקציות האנושיות, השגיאות, ההערכות וההחלטות המדיניות השייכות להרצה אחת.
+
+סשנים נראים זהים ללא קשר לאיזה harness ייצר אותם. הרצת Claude Code שכותבת מחדש ריפוזיטוריום, agent Hermes שעונה ללקוח ב-Slack, ושירות Python שמצויד ב-SDK - כולם מגיעים לאותה תבנית trace, כך שתצפית אחת מכסה את כל הFleet.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with Failproof AI" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-עקוב אחר הרצה אחת של סוכן מהמטרה שלו דרך קריאות מודל, כלים, והתגובה הסופית.
+עקוב אחר הרצה אחת של agent מהמטרה שלו דרך קריאות המודל, הכלים והתגובה הסופית.
 
 ## מצא סשן
 
 <Tabs>
   <Tab title="Dashboard">
-    1. בסרגל הצד של Cloud, עבור אל **Observe → Sessions**.
-    2. הגדר את חלון הזמן, ואז סנן לפי סביבה, סטטוס, סוכן, או מזהה סשן.
-    3. הוסף טווחי ניקוד או מטריקה כאשר אתה זקוק לפרוסה של איכות, עלות, אסימון או זמן השהייה.
-    4. בחר שורה כדי לפתוח את ה־trace שלה. השתמש בפקד ההעתקה ליד מזהה הסשן כאשר אתה משתף אותו.
+    1. בסרגל הצד של Cloud, עבור ל-**Observe → Sessions**.
+    2. קבע את חלון הזמן, ואז סנן לפי environment, status, agent, או session ID.
+    3. הוסף score או metric ranges כאשר אתה זקוק לפרוסת quality, cost, token, או latency.
+    4. בחר בשורה לפתיחת ה-trace שלה. השתמש בפקד ההעתקה ליד session ID בעת שיתוף.
 
-    ![רשימת הסשנים המציגה שורה אחת לכל הרצה עם סינוני סביבה, סוכן, סטטוס וניקוד הערכה.](/images/dashboard/sessions-list.png)
+    ![רשימת Sessions המציגה שורה אחת לכל הרצה עם מסננים של environment, agent, status, ו-evaluation score.](/images/dashboard/sessions-list.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -30,25 +32,25 @@ icon: "workflow"
     fp --json sessions --session-id <session-id>
     ```
 
-    הוסף `--agents` להרחיב הרצות של מספר סוכנים, `--all` לעימוד, או `--fields` לבחירת עמודות פלט.
+    הוסף `--agents` להרחבת הרצות multi-agent, `--all` לעימוד, או `--fields` לבחירת עמודות output.
   </Tab>
 </Tabs>
 
 ## מה אתה יכול לעשות
 
-- מצא הרצה לפי סוכן, סביבה, זמן, מודל, סוג אירוע, או מצב שגיאה.
-- עקוב אחר הרצף המדויק שייצר תוצאה.
-- השווה הרצות שהצליחו והחזיקו בכישלון.
-- פתח את הראיות המשמשות במציאת ביקורת או אירוע התראה.
-- ייצא סשן כאשר אתה זקוק לרשומה לא מקוונת.
+- מצא הרצה לפי agent, environment, זמן, model, event type, או error state.
+- עקוב אחר הרצף המדויק שהוביל לתוצאה.
+- השווה הרצות מוצלחות ושנכשלו.
+- פתח את הראיות המשמשות ממצא ביקורת או incident של alert.
+- ייצא סשן כאשר אתה זקוק לרשומה offline.
 
 ## סדר חקירה אמין
 
-1. אשר את המטרה של הסשן וההסביבה.
-2. מצא את השגיאה או ההחלטה הלא צפויה הראשונה—לא רק הכישלון הסופי.
-3. בדוק את הקשר של המודל וקלט הכלי מיד לפניו.
-4. בדוק ניסיונות חוזרים, זמן השהייה והפסקות אנושיות.
-5. בחן ניקודי הערכה והחלטות מדיניות.
+1. אשר את goal ו-environment של הסשן.
+2. מצא את השגיאה הראשונה או ההחלטה בלתי צפויה - לא רק את הכישלון הסופי.
+3. בדוק את context המודל ו-tool input מיד לפניו.
+4. בדוק retries, latency, ו-human interruptions.
+5. סקור את evaluation scores וההחלטות המדיניות.
 
 <Card title="קרא trace" icon="route" href="/he/sessions/read-a-trace">
   למד כיצד לעבור מסיכום הסשן לאירוע שגרם לתוצאה.

@@ -18,21 +18,25 @@
 [![Docs](https://img.shields.io/badge/docs-befailproof.ai-002CA7?style=flat-square)](https://docs.befailproof.ai/)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-blue?style=flat-square)](../../LICENSE)
 
-**Переводы:** [简体中文](../../docs-old/i18n/README.zh.md) · [日本語](../../docs-old/i18n/README.ja.md) · [한국어](../../docs-old/i18n/README.ko.md) · [Español](../../docs-old/i18n/README.es.md) · [Português](../../docs-old/i18n/README.pt-br.md) · [Deutsch](../../docs-old/i18n/README.de.md) · [Français](../../docs-old/i18n/README.fr.md) · [Руссий](../../docs-old/i18n/README.ru.md) · [हिन्दी](../../docs-old/i18n/README.hi.md) · [Türkçe](../../docs-old/i18n/README.tr.md) · [Tiếng Việt](../../docs-old/i18n/README.vi.md) · [Italiano](../../docs-old/i18n/README.it.md) · [العربية](../../docs-old/i18n/README.ar.md) · [עברית](../../docs-old/i18n/README.he.md)
+**Переводы:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
-**Разрешение ошибок во время выполнения для кодирующих агентов.**
-Интегрируется с Claude Code и Codex. Перехватывает зацикливания, опасные действия и утечки секретов
-до того, как они станут инцидентами. Нулевая задержка. Работает локально.
+**Наблюдаемость и управление для каждой системы, в которой работают ваши агенты.**
+Где бы ни работал ваш агент — мы это видим и можем это запретить. Failproof AI интегрируется с 12 платформами для работы с агентами — средствами разработки кода, такими как Claude Code и Codex, шлюзами чата, такими как Hermes, и самостоятельно развёрнутыми помощниками, такими как OpenClaw — перехватывая каждый запуск и блокируя опасные вызовы инструментов перед их выполнением. 40 встроенных политик. Нулевая задержка. Работает локально.
 
 </div>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/readme-arch-hq.gif" alt="Failproof AI in action" width="800" />
+  <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/readme-arch-hq.gif" alt="Failproof AI в действии" width="800" />
 </p>
 
 ---
 
-## Поддерживаемые CLI агентов
+## Поддерживаемые платформы
+
+Двенадцать платформ в двух классах — десять средств разработки кода и два шлюза чата и помощников (Hermes, OpenClaw). Одинаковые события, одинаковые политики, одинаковая история сессий, в какой бы платформе ни работал ваш агент.
+
+Агенты, которые работают ни в одной из них, отправляют данные через [Python SDK](https://docs.befailproof.ai/reference/python-sdk),
+что даёт вам трассировку, сессии и аудит. Управление там требует хука в вашей собственной среде выполнения — [напишите нам](mailto:support@befailproof.ai) и мы это реализуем.
 
 {/* A 6-column table instead of inline <img> runs: table columns never re-wrap,
      so the grid stays 2×6 at any window width (scrolling on very narrow screens
@@ -132,32 +136,37 @@
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # или просто запустите `failproofai` и подтвердите приглашение при первом запуске
+failproofai policies --install   # или просто запустите `failproofai` и подтвердите первичный запрос
 failproofai
 ```
 
-30 встроенных политик активируются немедленно. Панель управления доступна по адресу `localhost:8020`. Отключите приглашение при первом запуске с помощью `FAILPROOFAI_NO_FIRST_RUN=1`.
+40 встроенных политик активируются немедленно. Панель управления доступна на `localhost:8020`. Отключите первичный запрос с помощью `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
-## Что блокируется
+## Что это блокирует
 
-| Политика | Что блокируется |
+| Политика | Что она блокирует |
 |---|---|
-| `block-push-master` | Прямые отправки в `main` / `master` |
-| `block-force-push` | `git push --force` |
-| `block-work-on-main` | Коммиты, слияния, перебазирования на `main` / `master` |
+| `sanitize-api-keys` | Утечка API-ключей в контекст агента |
+| `block-env-files` | Чтение файлов `.env` и других секретных файлов |
+| `warn-repeated-tool-calls` | Агент, застревающий на одном и том же вызове |
+| `block-sudo` | Повышение привилегий |
+| `warn-destructive-sql` | `DROP`, `TRUNCATE`, неограниченные операции `DELETE` |
+| `block-terraform` / `block-kubectl` | Непроверенные изменения инфраструктуры |
 | `block-rm-rf` | Рекурсивное удаление файлов |
-| `sanitize-api-keys` | Утечки ключей API в контекст агента |
+| `block-force-push` / `block-push-master` | `git push --force`, прямые пушы в `main` |
 
-→ [Все 30 встроенных политик](https://docs.befailproof.ai/policies/builtin)
+Первые пять применяются к любому агенту, который может вызывать инструменты. Последние три — фавориты разработчиков — средства разработки кода являются классом платформ, который мы покрываем наиболее глубоко.
+
+→ [Все 40 встроенных политик](https://docs.befailproof.ai/policies/builtin)
 
 ---
 
-## Собственные политики
+## Ваши собственные политики
 
-Поместите файл в `.failproofai/policies/` — он загружается автоматически без необходимости флагов.
-Зафиксируйте его, и вся команда получит его при следующем pull.
+Разместите файл в `.failproofai/policies/` — он загружается автоматически без каких-либо флагов.
+Добавьте его в репозиторий и вся команда получит его при следующем пуле.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -178,31 +187,58 @@ customPolicies.add({
 | Решение | Эффект |
 |---|---|
 | `allow()` | Разрешить операцию |
-| `deny(message)` | Заблокировать — сообщение отправляется обратно агенту |
-| `instruct(message)` | Пропустить, но добавить контекст в следующий запрос агента |
+| `deny(message)` | Заблокировать её — сообщение вернётся агенту |
+| `instruct(message)` | Разрешить, но добавить контекст в следующий запрос агента |
 
 → [Руководство по пользовательским политикам](https://docs.befailproof.ai/policies/custom)
 
 ---
 
-## Видимость сеанса
+## Наблюдаемость
 
-Каждый вызов инструмента, который делает ваш агент, регистрируется локально. Панель управления показывает, что запускалось,
-что было заблокировано и что политика сообщила агенту — так что вы не гадаете,
-когда что-то идёт не так. → [Руководство по панели управления](https://docs.befailproof.ai/sessions/overview)
+Управление — это одна половина. Другая половина — видеть то, что на самом деле сделал агент.
+
+Запустите `failproofai` без аргументов, и он будет обслуживать панель управления на `localhost:8020`,
+читая историю запусков, уже находящуюся на вашей машине — без учётной записи, без регистрации, ничего не покидает вашу систему. Вы получите список сессий, последовательность вызовов модели, вызовы инструментов и решения хуков внутри каждого запуска, что было заблокировано и что политика сказала агенту, а также автономный аудит (`failproofai audit`), который сканирует вашу историю на предмет рискованных паттернов и предлагает политики для их остановки.
+
+→ [Локальная панель управления](https://docs.befailproof.ai/reference/local-dashboard) ·
+[Чтение трассировки](https://docs.befailproof.ai/sessions/read-a-trace) ·
+[Локальный аудит](https://docs.befailproof.ai/audits/local-audit)
+
+**Failproof AI Observability** — это хостированная часть одной и той же модели данных для команд,
+запускающих агентов на множестве систем: каждый запуск от каждой платформы в одном месте, граф выполнения с параллельными подагентами на отдельных дорожках, задержка p50/p95/p99 для моделей, инструментов и хуков, стоимость и отслеживание окна контекста для каждой модели, отслеживание ошибок, SQL над вашими собственными трассировками с общедоступными панелями управления, оценки, отмеченные вашим собственным сервисом, запланированные аудиты, которые превращают повторяющиеся сбои в доказательства, и оповещения, направленные в Slack, по электронной почте или на подписанный вебхук. Самостоятельное хостирование в вашем собственном кластере доступно в плане Enterprise.
+
+→ [Сессии](https://docs.befailproof.ai/sessions/overview) ·
+[Аудиты](https://docs.befailproof.ai/audits/overview) ·
+[Запросить демонстрацию](https://befailproof.ai/get-a-demo)
 
 ---
 
 ## Документация
 
-| | |
+| Начало | |
 |---|---|
-| [Начало работы](https://docs.befailproof.ai/start/quickstart) | Установка и первые шаги |
-| [Встроенные политики](https://docs.befailproof.ai/policies/builtin) | Все 30 политик с параметрами |
+| [Быстрый старт](https://docs.befailproof.ai/start/quickstart) | Установка, подключение платформы, первый запуск |
+| [Концепции](https://docs.befailproof.ai/start/concepts) | Как работает система хуков |
+| [Поддерживаемые платформы](https://docs.befailproof.ai/reference/harnesses) | Все 12 и то, что каждая может управлять |
+
+| Наблюдение | |
+|---|---|
+| [Сессии](https://docs.befailproof.ai/sessions/overview) | Следите за запуском: модели, инструменты, ошибки, задержка |
+| [Чтение трассировки](https://docs.befailproof.ai/sessions/read-a-trace) | Что вам говорит граф выполнения |
+| [Аудиты](https://docs.befailproof.ai/audits/overview) | Найдите паттерны сбоев в множестве сессий |
+| [Локальная панель управления](https://docs.befailproof.ai/reference/local-dashboard) | `localhost:8020`, без необходимости учётной записи |
+
+| Управление | |
+|---|---|
+| [Встроенные политики](https://docs.befailproof.ai/policies/builtin) | Все 40 политик с параметрами |
 | [Пользовательские политики](https://docs.befailproof.ai/policies/custom) | Напишите свои собственные |
-| [Конфигурация](https://docs.befailproof.ai/policies/local-configuration) | Области конфигурации и правила слияния |
-| [Панель управления](https://docs.befailproof.ai/sessions/overview) | Монитор сеанса и активность политик |
-| [Архитектура](https://docs.befailproof.ai/start/concepts) | Как работает система хуков |
+| [Конфигурация](https://docs.befailproof.ai/policies/local-configuration) | Области конфигурации и правила объединения |
+
+| Инструментируйте свой собственный агент | |
+|---|---|
+| [Python SDK](https://docs.befailproof.ai/reference/python-sdk) | Отправляйте запуски от агента без платформы |
+| [Policy SDK](https://docs.befailproof.ai/reference/policy-sdk) | Справочник `allow` / `deny` / `instruct` |
 
 ---
 
@@ -212,11 +248,11 @@ MIT с [Commons Clause](https://commonsclause.com/) — бесплатно дл�
 
 ---
 
-## Внесение вклада
+## Участие
 
 См. [CONTRIBUTING.md](../../CONTRIBUTING.md). Новые политики, граничные случаи и переводы приветствуются.
 
-> **Соберите перед началом работы.** Сначала запустите `bun install && bun run build`. Этот репозиторий запускает собственные хуки failproofai на себя, и они разрешают импорт `failproofai` относительно скомпилированного пакета `dist/` — без сборки вы столкнётесь с ошибками хуков `Cannot find package 'failproofai'`. Пересоберите после изменений `src/`. См.
+> **Соберите проект перед началом.** Сначала запустите `bun install && bun run build`. Этот репозиторий запускает собственные хуки failproofai на себе, и они разрешают импорт `failproofai` в скомпилированный пакет `dist/` — без сборки вы получите ошибки хука `Cannot find package 'failproofai'`. Пересоберите после изменения `src/`. Смотрите
 > [Build before the in-repo dev hooks will work](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---

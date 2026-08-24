@@ -20,11 +20,10 @@
 [![Docs](https://img.shields.io/badge/docs-befailproof.ai-002CA7?style=flat-square)](https://docs.befailproof.ai/)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-blue?style=flat-square)](../../LICENSE)
 
-**תרגומים:** [简体中文](../../docs-old/i18n/README.zh.md) · [日本語](../../docs-old/i18n/README.ja.md) · [한국어](../../docs-old/i18n/README.ko.md) · [Español](../../docs-old/i18n/README.es.md) · [Português](../../docs-old/i18n/README.pt-br.md) · [Deutsch](../../docs-old/i18n/README.de.md) · [Français](../../docs-old/i18n/README.fr.md) · [Руссий](../../docs-old/i18n/README.ru.md) · [हिन्दी](../../docs-old/i18n/README.hi.md) · [Türkçe](../../docs-old/i18n/README.tr.md) · [Tiếng Việt](../../docs-old/i18n/README.vi.md) · [Italiano](../../docs-old/i18n/README.it.md) · [العربية](../../docs-old/i18n/README.ar.md) · [עברית](../../docs-old/i18n/README.he.md)
+**תרגומים:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
-**פתרון כשלים בזמן ריצה עבור סוכני קוד.**
-מתקשרת ל-Claude Code וקודקס. תופסת לולאות, פעולות מסוכנות, וזליגת סודות
-לפני שהם הופכים לתקריות. אפס עיכוב. רץ ברמה המקומית.
+**ניהול ותגבור לכל הכלים שהסוכנים שלך פועלים בהם.**
+בכל מקום שהסוכנים שלך פועלים, אנחנו רואים זאת — וביכולתנו להגיד לא. Failproof מתחבר ל־12 כלים לסוכנים — ממשקי שורת פקודה לקידוד כמו Claude Code ו־Codex, שערי צ'אט כמו Hermes, עוזרים בעצמם מתארחים כמו OpenClaw — לוכדים כל הרצה וחוסמים קריאות כלים מסוכנות לפני שהן מתבצעות. 40 מדיניויות מובנות. אפס עיכוב. פועל ברמה מקומית.
 
 </div>
 
@@ -34,7 +33,11 @@
 
 ---
 
-## CLIs של סוכנים נתמכים
+## כלים נתמכים
+
+שנים עשר כלים בשתי מחלקות — עשרה ממשקי שורת פקודה לקידוד, ושתי שערי צ'אט ועוזרים (Hermes, OpenClaw). אותם אירועים, אותן מדיניויות, אותו היסטוריון הפעלה, בכל אחד מהם שהסוכן פועל בו.
+
+סוכנים שפועלים ללא קשר לאחד מהם מדווחים דרך ה־[Python SDK](https://docs.befailproof.ai/reference/python-sdk), המספק לך עקיבה, הפעלות וביקורות. הגבור שם דורש וו בסביבת הריצה שלך — [דברו אתנו](mailto:support@befailproof.ai) והנו נמפה זאת.
 
 {/* A 6-column table instead of inline <img> runs: table columns never re-wrap,
      so the grid stays 2×6 at any window width (scrolling on very narrow screens
@@ -134,11 +137,11 @@
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # או פשוט הרץ `failproofai` וקבל את ההנחיה בהרצה הראשונה
+failproofai policies --install   # או פשוט הריצו `failproofai` וקבלו את ההנחיה בהתחלה הראשונה
 failproofai
 ```
 
-30 מדיניויות מובנות מופעלות מיד. לוח בקרה ב-`localhost:8020`. השבת את הנחיית ההרצה הראשונה עם `FAILPROOFAI_NO_FIRST_RUN=1`.
+40 מדיניויות מובנות פעילות מיד. לוח תצוגה ב־`localhost:8020`. השבית את הנחיית ההתחלה הראשונה עם `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
@@ -146,20 +149,25 @@ failproofai
 
 | מדיניות | מה היא חוסמת |
 |---|---|
-| `block-push-master` | דחיפות ישירות ל-`main` / `master` |
-| `block-force-push` | `git push --force` |
-| `block-work-on-main` | התחייבויות, מיזוגים, ריבסים על `main` / `master` |
+| `sanitize-api-keys` | דליפת מפתחות API להקשר של הסוכן |
+| `block-env-files` | קריאות של קבצי `.env` וקבצי סודות אחרים |
+| `warn-repeated-tool-calls` | הסוכן לולאה על אותה קריאה |
+| `block-sudo` | הסלקלציה של הרשאות |
+| `warn-destructive-sql` | `DROP`, `TRUNCATE`, `DELETE` ללא גבול |
+| `block-terraform` / `block-kubectl` | שינויים לא מעולים לתשתית חי |
 | `block-rm-rf` | מחיקת קבצים רקורסיבית |
-| `sanitize-api-keys` | מפתחות API דוליפים להקשר של סוכן |
+| `block-force-push` / `block-push-master` | `git push --force`, דחפות ישירות ל־`main` |
 
-→ [כל 30 המדיניויות המובנות](https://docs.befailproof.ai/policies/builtin)
+חמשת הראשונות חלות על כל סוכן שיכול לקרוא כלי. שלוש האחרונות הן המועדפות של המפתחים — ממשקי שורת פקודה לקידוד הם מחלקת הכלים שאנחנו מכסים הכי עמוק.
+
+→ [כל 40 המדיניויות המובנות](https://docs.befailproof.ai/policies/builtin)
 
 ---
 
 ## המדיניויות שלך
 
-שים קובץ ב-`.failproofai/policies/` — הוא נטען באופן אוטומטי, לא צריך דגלים.
-הקדש אותו וכל הצוות שלך יקבל אותו בבקשת ההמשך הבאה.
+זרוק קובץ ל־`.failproofai/policies/` — הוא נטען באופן אוטומטי, ללא צורך בדגלים.
+בצע commit וכל הצוות שלך מקבל זאת בעדכון הבא.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -177,56 +185,78 @@ customPolicies.add({
 
 שלוש החלטות זמינות לכל מדיניות:
 
-| החלטה | אפקט |
+| החלטה | השפעה |
 |---|---|
-| `allow()` | אישור התהליך |
-| `deny(message)` | חסום אותו — ההודעה חוזרת לסוכן |
-| `instruct(message)` | תן לו לעבור, אבל הוסף הקשר להנחיה הבאה של הסוכן |
+| `allow()` | אפשר את הפעולה |
+| `deny(message)` | חסום אותה — ההודעה חוזרת לסוכן |
+| `instruct(message)` | תן לזה להעבור, אבל הוסף הקשר להנחיה הבאה של הסוכן |
 
-→ [מדריך מדיניויות מותאמות אישית](https://docs.befailproof.ai/policies/custom)
+→ [מדריך מדיניויות מותאם אישית](https://docs.befailproof.ai/policies/custom)
 
 ---
 
-## נראות הסשן
+## ניהול
 
-כל קריאת כלי שהסוכן שלך עושה מתועדת ברמה המקומית. לוח הבקרה מציג מה רץ,
-מה חוסם, ומה המדיניות אמרה לסוכן — כך שאתה לא מנחש
-כאשר משהו הולך לא בסדר. → [מדריך לוח בקרה](https://docs.befailproof.ai/sessions/overview)
+הגבור הוא חצי אחד. החצי השני הוא לראות מה הסוכן בעצם עשה.
+
+הריצו `failproofai` ללא ארגומנטים והוא משרת לוח תצוגה ב־`localhost:8020` קורא את היסטוריית ההרצה שכבר על המכונה שלך — ללא חשבון, ללא הרשמה, שום דבר לא עוזב את התיבה. אתה מקבל את רשימת ההפעלות, את רצף קריאות המודל, קריאות כלים והחלטות וו בתוך כל הרצה, מה היה חסום ומה אמרה המדיניות לסוכן, וביקורת offline (`failproofai audit`) שסורקת את ההיסטוריה שלך לתבניות מסוכנות ומציעה מדיניויות להפסיק אותן.
+
+→ [לוח תצוגה מקומי](https://docs.befailproof.ai/reference/local-dashboard) ·
+[קרא עקיבה](https://docs.befailproof.ai/sessions/read-a-trace) ·
+[ביקורת מקומית](https://docs.befailproof.ai/audits/local-audit)
+
+**Failproof AI Observability** היא הצד המתארח של אותו דגם נתונים, לצוותים המריצים סוכנים על פני צי: כל הרצה מכל כלי במקום אחד, גרף ביצוע עם תת־סוכנים מקבילים בנתיביהם שלהם, עיכוב p50/p95/p99 לדגמים, כלים ווים, עלות לכל דגם ועקיבה של חלון הקשר, עקיבת שגיאות, SQL על העקיבות שלך עם לוחות תצוגה שניתן לשתף, הערכות שנותרו על ידי השירות שלך, ביקורות מתוזמנות שהופכות כשלים חוזרים להוכחות, והתראות המוטות ל־Slack, דוא״ל או webhook חתום. Self-hosting בקלסטר שלך זמין בתוכנית Enterprise.
+
+→ [הפעלות](https://docs.befailproof.ai/sessions/overview) ·
+[ביקורות](https://docs.befailproof.ai/audits/overview) ·
+[הזמן הדגמה](https://befailproof.ai/get-a-demo)
 
 ---
 
 ## תיעוד
 
-| | |
+| התחלה | |
 |---|---|
-| [תחילת העבודה](https://docs.befailproof.ai/start/quickstart) | התקנה וצעדים ראשונים |
-| [מדיניויות מובנות](https://docs.befailproof.ai/policies/builtin) | כל 30 המדיניויות עם פרמטרים |
-| [מדיניויות מותאמות אישית](https://docs.befailproof.ai/policies/custom) | כתוב שלך |
-| [תצורה](https://docs.befailproof.ai/policies/local-configuration) | היקפי תצורה וכללי מיזוג |
-| [לוח בקרה](https://docs.befailproof.ai/sessions/overview) | מונה סשן ופעילות מדיניות |
-| [ארכיטקטורה](https://docs.befailproof.ai/start/concepts) | איך מערכת ההוקים עובדת |
+| [התחלה מהירה](https://docs.befailproof.ai/start/quickstart) | התקנה, חיבור כלי, ראה את ההרצה הראשונה |
+| [קונספטים](https://docs.befailproof.ai/start/concepts) | איך מערכת הווים פועלת |
+| [כלים נתמכים](https://docs.befailproof.ai/reference/harnesses) | כל 12, ומה כל אחד יכול להטיל |
+
+| ניהול | |
+|---|---|
+| [הפעלות](https://docs.befailproof.ai/sessions/overview) | עקוב הרצה: דגמים, כלים, שגיאות, עיכוב |
+| [קרא עקיבה](https://docs.befailproof.ai/sessions/read-a-trace) | מה גרף ההביצוע אומר לך |
+| [ביקורות](https://docs.befailproof.ai/audits/overview) | חפש תבניות כשל על פני הרבה הפעלות |
+| [לוח תצוגה מקומי](https://docs.befailproof.ai/reference/local-dashboard) | `localhost:8020`, ללא צורך בחשבון |
+
+| הטיל | |
+|---|---|
+| [מדיניויות מובנות](https://docs.befailproof.ai/policies/builtin) | כל 40 המדיניויות עם פרמטרים |
+| [מדיניויות מותאם אישית](https://docs.befailproof.ai/policies/custom) | כתוב שלך |
+| [קביעת תצורה](https://docs.befailproof.ai/policies/local-configuration) | ההיקפים ותכניות ההתמזגות |
+
+| תאם את הסוכן שלך | |
+|---|---|
+| [Python SDK](https://docs.befailproof.ai/reference/python-sdk) | דוח הרצות מסוכן ללא כלי |
+| [Policy SDK](https://docs.befailproof.ai/reference/policy-sdk) | `allow` / `deny` / `instruct` התייחסות |
 
 ---
 
 ## רישיון
 
-MIT עם [Commons Clause](https://commonsclause.com/) — חינם לשימוש פנימי ואישי; מכירה מחדש מסחרית של failproofai עצמו דורשת הסכם נפרד. ראה [LICENSE](../../LICENSE) לטקסט המלא.
+MIT עם [Commons Clause](https://commonsclause.com/) — חינם לשימוש פנימי והשכלתי; מכירה מסחרית של failproofai עצמו דורשת הסכם נפרד. ראה [LICENSE](../../LICENSE) לטקסט המלא.
 
 ---
 
 ## תרומה
 
-ראה [CONTRIBUTING.md](../../CONTRIBUTING.md). מדיניויות חדשות, מקרי קצה, ותרגומים כולם מוזמנים.
+ראה [CONTRIBUTING.md](../../CONTRIBUTING.md). מדיניויות חדשות, מקרי קצה, ותרגומים כולם מדורגים.
 
-> **בנה לפני שתתחיל.** הרץ `bun install && bun run build` קודם. מאגר זה מריץ
-> את ההוקים של failproofai על עצמו, והם מעבדים את ייבוא `failproofai` כנגד
-> חבילת `dist/` המהודרת — ללא בנייה תקבל שגיאות hoock `Cannot find package 'failproofai'`.
-> בנה מחדש אחרי שינוי `src/`. ראה
-> [בנה לפני שההוקים בין-ריפו יעבדו](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+> **בנה לפני שתתחיל.** הרץ `bun install && bun run build` ראשית. מאגר זה מריץ את הווים שלו בעצמו עליו, והם פותרים את ה־import של failproofai כנגד ה־bundle של `dist/` המורכב — ללא בנייה תפגע ב־`Cannot find package 'failproofai'` שגיאות וו. בנה מחדש לאחר שינוי `src/`. ראה
+> [בנה לפני שהווים הפיתוח בתוך-מאגר יעבדו](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 
-בנוי עם ❤️ על ידי [befailproof.ai](https://befailproof.ai) בסן פרנסיסקו ובנגלור.
+בנוי עם ❤️ על ידי [befailproof.ai](https://befailproof.ai) ב־SF וBengaluru.
 
 
 </div>

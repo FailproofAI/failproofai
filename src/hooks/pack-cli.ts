@@ -51,13 +51,43 @@ function parseList(rest: string[], flag: string): string[] | undefined {
   return raw.split(",").map((s) => s.trim()).filter(Boolean);
 }
 
+/** Flags that take a separate value, so it is never mistaken for the source. */
+const VALUE_FLAGS = new Set(["--only", "--policy", "--category"]);
+
 /** Find the positional source without mistaking a flag's separate value for it. */
 export function packAddSource(rest: string[]): string | undefined {
   const consumed = new Set<number>();
   for (let i = 0; i < rest.length; i += 1) {
-    if (rest[i] === "--only" || rest[i] === "--category") consumed.add(i + 1);
+    if (VALUE_FLAGS.has(rest[i])) consumed.add(i + 1);
   }
   return rest.find((arg, index) => !arg.startsWith("--") && !consumed.has(index));
+}
+
+/**
+ * The short name for the pack Failproof AI publishes.
+ *
+ * `failproofai pack add FailproofAI/policies` is the honest form and nobody is
+ * going to type it. This resolves to the copy that ships inside the package, so
+ * it also needs no network and cannot fail on a corporate proxy — the fastest
+ * path to a guarded machine is a word.
+ *
+ * Deliberately not "builtin": these stop being builtins, that is the whole point
+ * of publishing them as a pack, and a command that teaches the old word on the
+ * way out is a command we would have to un-teach.
+ */
+const CORE_ALIASES = new Set(["core", "failproofai", "official"]);
+
+/** Names taken by our own policies, so a selection can be checked before install. */
+function selectionFrom(rest: string[]): { only?: string[]; categories?: string[]; all?: boolean } {
+  // `--policy` reads right for one ("give me this policy"), `--only` for a set.
+  // They are the same switch; taking both means neither is the wrong guess.
+  const only = parseList(rest, "--policy") ?? parseList(rest, "--only");
+  const categories = parseList(rest, "--category");
+  return {
+    ...(only ? { only } : {}),
+    ...(categories ? { categories } : {}),
+    ...(rest.includes("--all") ? { all: true } : {}),
+  };
 }
 
 /** Name a handful, then say how many more and where to see them. A 37-name wall
@@ -195,47 +225,45 @@ async function build(rest: string[]): Promise<PackCliResult> {
 
 async function add(rest: string[]): Promise<PackCliResult> {
   const source = packAddSource(rest);
-  // The builtins ship inside the npm package AS a pack. Until now the only
-  // caller was the layout migration, so the one install that needs no network
-  // had no command — the offline story existed in code and nowhere a person
-  // could reach.
-  if (rest.includes("--bundled")) {
-    const only = parseList(rest, "--only");
-    const categories = parseList(rest, "--category");
-    const result = installBundledPack({
-      ...(only ? { only } : {}),
-      ...(categories ? { categories } : {}),
-      ...(rest.includes("--all") ? { all: true } : {}),
-    });
+  const selection = selectionFrom(rest);
+
+  // Our own pack, by the short name — and from the copy inside this package, so
+  // it is instant and works with no network at all.
+  if ((source && CORE_ALIASES.has(source.toLowerCase())) || rest.includes("--bundled")) {
+    const result = installBundledPack(selection);
     if (!result.installed) {
-      return fail([`Could not install the bundled pack: ${result.reason}`]);
+      return fail([`Could not install the Failproof AI policies: ${result.reason}`]);
     }
     const enabled = result.enabled ?? [];
     const available = result.available ?? [];
-    return ok([
+    const skipped = available.filter((n) => !enabled.includes(n));
+    const lines = [
       `Installed ${result.id}@${result.version} from this package — no network needed.`,
       `  enabled (${enabled.length}/${available.length}): ${summarise(enabled)}`,
-      "",
-      // Saying it here rather than letting them find out from a log line.
-      "Policies here that are also enabled builtins run as the builtin, once.",
-      "Turn a builtin off to use this pack's copy: failproofai policies --uninstall <name>",
-    ]);
+    ];
+    if (skipped.length > 0) {
+      lines.push(`  not enabled (${skipped.length}): ${summarise(skipped)}`);
+      lines.push("");
+      lines.push("  one policy:    failproofai pack add core --policy block-rm-rf");
+      lines.push("  a category:    failproofai pack add core --category dangerous-commands");
+      lines.push("  everything:    failproofai pack add core --all");
+      lines.push("  see them all:  failproofai pack list");
+    }
+    return ok(lines);
   }
+
   if (!source) {
     return fail(["Usage: failproofai pack add <source> [--only a,b] [--category x,y] [--all]"]);
   }
-  const only = parseList(rest, "--only");
-  const categories = parseList(rest, "--category");
-  const all = rest.includes("--all");
-  if (only && only.length === 0) return fail(["--only needs at least one policy name, comma-separated"]);
-  if (categories && categories.length === 0) return fail(["--category needs at least one category, comma-separated"]);
+  if (selection.only && selection.only.length === 0) {
+    return fail(["--policy needs at least one policy name, comma-separated"]);
+  }
+  if (selection.categories && selection.categories.length === 0) {
+    return fail(["--category needs at least one category, comma-separated"]);
+  }
 
   try {
-    const result = await addPack(source, {
-      ...(only ? { only } : {}),
-      ...(categories ? { categories } : {}),
-      ...(all ? { all } : {}),
-    });
+    const result = await addPack(source, selection);
     const lines = [
       result.resolvedFromLatest
         ? `Installed ${result.id}@${result.version} from ${result.source} (newest release; pinned to ${result.tag})`

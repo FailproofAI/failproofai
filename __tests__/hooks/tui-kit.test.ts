@@ -1,5 +1,8 @@
+import { PassThrough } from "node:stream";
 import { describe, it, expect, vi } from "vitest";
 import {
+  type TTYIn,
+  multiSelect,
   INDENT,
   CHIP_WIDTH,
   brandAnsi,
@@ -561,5 +564,86 @@ describe("optsFor / printBlock", () => {
     const write = vi.fn(() => true);
     printBlock({ isTTY: true, columns: 80, write } as unknown as TTYOut, []);
     expect(write).not.toHaveBeenCalled();
+  });
+});
+
+describe("a name wider than its column", () => {
+  /**
+   * `nameWidth` caps the name column at 24 and the description budget is sized
+   * against that cap — but `padEnd` pads and does not truncate, so a longer name
+   * rendered at its true width and pushed the row past the terminal edge. The
+   * description was then cut by the TERMINAL rather than by `ellipsize`, so it
+   * lost its `…` and the row silently wrapped. Seen live on
+   * `sanitize-connection-strings` (27 chars) in `failproofai policies add`.
+   *
+   * Driven through a real `PassThrough` rather than an object literal: the
+   * prompt hands stdin to `readline.emitKeypressEvents`, which needs a genuine
+   * stream. ESC cancels it once the first frame is painted, so nothing is left
+   * listening.
+   */
+  const drawPicker = async (labels: string[], columns: number): Promise<string[]> => {
+    const written: string[] = [];
+    const stdout = {
+      isTTY: true,
+      columns,
+      write: (chunk: string) => {
+        written.push(chunk);
+        return true;
+      },
+    } as unknown as TTYOut;
+    const stdin = new PassThrough() as unknown as TTYIn & PassThrough;
+    (stdin as unknown as { isTTY: boolean }).isTTY = true;
+    (stdin as unknown as { setRawMode: (on: boolean) => void }).setRawMode = () => {};
+
+    const pending = multiSelect<string>({
+      message: "Which policies should be on?",
+      choices: labels.map((label) => ({
+        label,
+        value: label,
+        hint: "Stop Claude from reading database connection strings in tool responses",
+      })),
+      stdin: stdin as unknown as TTYIn,
+      stdout,
+    });
+    stdin.write("\u001b");
+    await pending;
+
+    return written
+      .join("")
+      .split("\n")
+      .map((line) => line.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, ""))
+      .filter((line) => line.includes("Stop Claude"));
+  };
+
+  it("keeps every row inside the terminal, however long the name", async () => {
+    const rows = await drawPicker(
+      [
+        "sanitize-jwt",
+        "sanitize-connection-strings",
+        // Long enough to WRAP rather than merely fill the last column. Measured:
+        // before the fix the 27- and 28-character names landed on exactly 80,
+        // which an 80-column terminal shows without wrapping — so a `<= 80`
+        // assertion passed while the description was being silently cut. The
+        // property is that the layout stays strictly inside its own budget.
+        "sanitize-a-really-long-third-party-policy-name",
+      ],
+      80,
+    );
+    expect(rows.length).toBe(3);
+    for (const row of rows) expect(row.length).toBeLessThan(80);
+  });
+
+  it("shortens the description rather than the name, which is what you type next", async () => {
+    const rows = await drawPicker(["sanitize-connection-strings"], 80);
+    expect(rows[0]).toContain("sanitize-connection-strings");
+    // Cut by ellipsize, so it SAYS it was cut — not cut by the terminal edge.
+    expect(rows[0]).toContain("\u2026");
+  });
+
+  it("gives a short name the wider description, so the cap is not a floor", async () => {
+    const [shortName] = await drawPicker(["a-short-one"], 80);
+    const [longName] = await drawPicker(["sanitize-private-key-content"], 80);
+    const described = (row: string) => row.slice(row.indexOf("Stop Claude")).length;
+    expect(described(shortName)).toBeGreaterThan(described(longName));
   });
 });

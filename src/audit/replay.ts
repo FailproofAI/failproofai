@@ -103,17 +103,42 @@ async function registerFromVendoredPack(enabled: string[]): Promise<boolean> {
     clearCustomHooks();
   }
   if (hooks.length === 0) return false;
+  const fromPack = new Map(hooks.map((hook) => [hook.name, hook]));
 
-  for (const hook of hooks) {
-    if (!wanted.has(hook.name)) continue;
-    registerPolicy(hook.name, hook.description ?? "", hook.fn, hook.match ?? {}, 0);
+  // Registered in CATALOG ORDER, taking the pack's function where it has one and
+  // the compiled one for the guard the pack may not carry.
+  //
+  // Order is not cosmetic here. `getPoliciesForEvent` sorts by priority only and
+  // V8's sort is stable, so registration order decides EVALUATION order, and
+  // `evaluatePolicies` stops at the first deny — which means the order decides
+  // which policy is CREDITED for a hit. Appending the always-on guard after the
+  // pack instead of at its catalog position moved it from index 11 to last, and
+  // re-attributed 3 events in a 23,477-event corpus: 456 -> 453 for the guard,
+  // with the denies it used to shadow surfacing as block-force-push and
+  // block-gh-pipeline. The audit's per-policy counts are what a user reads, so
+  // that is a changed audit, not a changed internal.
+  let registered = 0;
+  for (const policy of BUILTIN_POLICIES) {
+    if (!wanted.has(policy.name)) continue;
+    const packHook = fromPack.get(policy.name);
+    if (policy.alwaysOn || !packHook) {
+      registerPolicy(policy.name, policy.description, policy.fn, policy.match, 0, policy.params);
+      continue;
+    }
+    registerPolicy(
+      packHook.name,
+      packHook.description ?? policy.description,
+      packHook.fn,
+      packHook.match ?? policy.match,
+      0,
+      policy.params,
+    );
+    registered += 1;
   }
-  // The alwaysOn guard, which a pack may not carry. Registered from the
-  // compiled side so the replayed set is unchanged.
-  registerBuiltinPolicies(
-    BUILTIN_POLICIES.filter((p) => p.alwaysOn && wanted.has(p.name)).map((p) => p.name),
-  );
-  return true;
+  // Nothing came from the pack: it loaded but carried none of the names the
+  // audit replays. Falling back is more honest than scoring on the compiled set
+  // while claiming the pack lane ran.
+  return registered > 0;
 }
 
 /** Restore the registry to whatever was there before `initReplay()`. Safe to

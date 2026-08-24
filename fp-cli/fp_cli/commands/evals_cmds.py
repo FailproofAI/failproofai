@@ -127,8 +127,15 @@ def evals(
         )
 
     if fetch_all:
-        items = list(api.paginate(fetch, limit=limit, page_size=page_size, start_cursor=cursor))
-        next_cursor = None
+        walk = api.Walk()
+        items = list(
+            api.paginate(fetch, limit=limit, page_size=page_size, start_cursor=cursor, walk=walk)
+        )
+        # NOT `None`. `--limit` defaults to 50, so `--all` without an explicit
+        # limit stops at 50 rows — and hard-coding the cursor to null told the
+        # caller the feed was exhausted, on the one output a script or an agent
+        # reads. `walk` carries the cursor the walk actually stopped on.
+        next_cursor = walk.next_cursor
     else:
         page = fetch(cursor, limit)
         items = page.items

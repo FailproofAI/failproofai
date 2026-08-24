@@ -89,3 +89,39 @@ def test_no_module_advertises_the_retired_env_var_namespace():
     assert found <= allowed, (
         f"these retired env vars are still referenced in the package: {sorted(found - allowed)}"
     )
+
+
+def test_every_subcommand_the_hint_column_advertises_actually_exists():
+    """The THIRD element of each row was never checked against anything.
+
+    `_help_table_commands()` reads `entry[0]` only, so the ten standalone leaves
+    and the thirteen group names were guarded in both directions and every
+    advertised SUBCOMMAND was not. `issues` listed a bare `comment`, which is not
+    a command — the group exposes `comment-add`, `comment-list` and
+    `comment-delete` — so `fp help` told users to run something that exits 2 with
+    "No such command 'comment'".
+
+    A `*` suffix is a deliberate wildcard (`comment-*`, `context-*`); a leading
+    `-` is a flag, not a subcommand. Everything else must be real.
+    """
+    cmd = get_command(app)
+    bad = []
+    for _group, entries in output._TOP_LEVEL_GROUPS:
+        for entry in entries:
+            name, hint = entry[0], (entry[2] if len(entry) > 2 else "")
+            group = cmd.commands.get(name)  # type: ignore[attr-defined]
+            subcommands = set(getattr(group, "commands", {}) or {})
+            if not subcommands:
+                continue  # a standalone leaf; its hint is prose, not a command list
+            for token in hint.split():
+                if token.startswith("-"):
+                    continue
+                if token.endswith("*"):
+                    prefix = token[:-1]
+                    if not any(sub.startswith(prefix) for sub in subcommands):
+                        bad.append(f"{name}: '{token}' matches no subcommand")
+                    continue
+                if token not in subcommands:
+                    bad.append(f"{name}: '{token}' is not a subcommand of `fp {name}`")
+
+    assert not bad, "the help screen advertises commands that do not exist:\n  " + "\n  ".join(bad)

@@ -225,7 +225,17 @@ def capture(event: str, properties: Optional[Dict[str, Any]] = None) -> None:
     if _client is None:
         return
     try:
-        _client.capture(_distinct_id, event, properties=properties or {})
+        # Keyword form. `posthog>=7` is `capture(self, event, **kwargs)` —
+        # everything after `event` is keyword-only — so the posthog-3 positional
+        # order `(distinct_id, event, …)` raised `TypeError: Client.capture()
+        # takes 2 positional arguments but 3 were given`, and the failure was
+        # invisible from three directions at once: posthog's own `@no_throw`
+        # swallowed it, `_ensure_client` sets the posthog logger to CRITICAL so
+        # the log it wrote was suppressed, and the `except Exception: pass` below
+        # would have swallowed it too. Nothing sent, nothing logged, nothing
+        # raised. (Dead today — `TELEMETRY_DISABLED` is True — which is precisely
+        # why it could sit here unnoticed until someone flipped that flag.)
+        _client.capture(event, distinct_id=_distinct_id, properties=properties or {})
     except Exception:
         pass
 

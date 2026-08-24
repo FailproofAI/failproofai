@@ -57,7 +57,8 @@ on failure a `{"error": …, "exit_code": …}` object on **stdout** too; human 
 
 **In CI, authenticate with an API key** — `--api-key <key>` or `FP_API_KEY` — instead of
 a session. The key is never written to disk, and the commands that need a *human* session
-(`login`, `logout`, `orgs`, `agent`, `keys update`) exit `2` rather than half-run. Pass `--org
+(`login`, `logout`, `orgs`, `agent`, `keys update`, and the whole `policies`/`fleet`/`guardrails`
+group) exit `2` rather than half-run. Pass `--org
 <slug>` if the key can act for more than one org; nothing is inherited from a saved login.
 
 **Multi-tenant:** if you belong to more than one org, pick the active tenant at login
@@ -98,6 +99,19 @@ app = typer.Typer(
     context_settings=_CTX,
     help=_HELP,
     epilog=_EPILOG,
+    # Typer renders local variables into its pretty traceback, and the frames on
+    # any escaped exception hold `ClientContext(token=…, api_key=…)` and
+    # `CliConfig(session_token=…)`. The default is True for every typer from
+    # 0.13.0 to 0.23.x — the whole declared range below 0.24 — so an ordinary
+    # unhandled server-shape error dumped the session token onto stderr, into
+    # terminal scrollback, CI job logs and pasted bug reports. Verified on
+    # 0.13.0: `fp whoami` against a malformed `/api/keys` body printed the token
+    # three times. This package goes to real lengths to protect that credential
+    # (0600 file, atomic rename, symlink refusal, an allowlisted telemetry
+    # payload) and this bypassed all of it. Set explicitly rather than relying on
+    # a library default for a security property, since `uv.lock` happening to
+    # pin 0.27.1 is the only reason CI never saw it.
+    pretty_exceptions_show_locals=False,
 )
 
 
@@ -205,6 +219,22 @@ def _version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
+def _same_origin(a: str, b: str) -> bool:
+    """Same scheme+host+port, ignoring path and trailing slashes.
+
+    Used to decide whether a saved `--insecure` applies to the URL in front of us.
+    A string compare would treat `https://dash.internal` and
+    `https://dash.internal/` as different hosts and re-prompt for no reason.
+    """
+    from urllib.parse import urlsplit
+
+    try:
+        pa, pb = urlsplit((a or "").strip()), urlsplit((b or "").strip())
+    except ValueError:
+        return False
+    return bool(pa.scheme) and (pa.scheme, pa.netloc) == (pb.scheme, pb.netloc)
+
+
 def _from_command_line(ctx: typer.Context, param: str) -> bool:
     """True when ``param`` was typed on the command line (not read from its env var).
 
@@ -272,7 +302,8 @@ def main(
         "--insecure/--secure",
         envvar="FP_INSECURE",
         help="Skip TLS certificate verification (for self-signed/internal dashboards). "
-        "Saved at login; pass --secure to re-enable verification.",
+        "Saved at login and honoured only for the base URL it was saved for; "
+        "--secure disables it for this invocation (pass it to `login` to save that).",
     ),
     version: bool = typer.Option(
         False, "--version", callback=_version_callback, is_eager=True, hidden=True,
@@ -302,10 +333,6 @@ def main(
     # the key has nothing to do with.
     analytics.init_analytics(cfg, force_anonymous=auth_mode is _context.AuthMode.API_KEY)
     analytics.note_command(ctx.invoked_subcommand, json_output, auth_mode=auth_mode)
-    # Precedence: an explicit --insecure/--secure (or FP_INSECURE) wins; else the saved config.
-    resolved_insecure = cfg.insecure if insecure is None else insecure
-    if resolved_insecure and ctx.invoked_subcommand not in ("version", "help", None):
-        output.warn("⚠ TLS verification disabled (--insecure).")
     # Active tenant: flag > FP_ORG env > saved config. Validate the shape early
     # so a typo is a clean usage error rather than a confusing server rejection.
     resolved_org = org or cfg.org
@@ -332,6 +359,35 @@ def main(
             f"'{resolved_base}' must start with http:// or https://.",
             param_hint="--base-url",
         )
+    # TLS verification, resolved AFTER the base URL because the saved preference
+    # is only honoured for the URL it was granted for.
+    #
+    # `insecure` is stored per MACHINE and was applied to every base URL, so one
+    # `fp --base-url https://dash.internal --insecure login` against a self-signed
+    # dev box — the use its own help text names — left verification off for the
+    # next `fp --base-url https://app.befailproof.ai login`, which is the request
+    # that carries the OTP and receives the session token, and for `fp keys
+    # create`, which carries a freshly minted API key in the body. `clear_token`
+    # deliberately preserves `insecure` across a logout, so it outlived the
+    # session it was set for. An explicit flag still wins, for both values.
+    if insecure is not None:
+        resolved_insecure = insecure
+    elif cfg.insecure and _same_origin(resolved_base, cfg.base_url):
+        resolved_insecure = True
+    else:
+        resolved_insecure = False
+        if cfg.insecure:
+            output.cli_warn(
+                f"⚠ ignoring the saved --insecure preference: it was granted for "
+                f"{cfg.base_url}, not {resolved_base}. Pass --insecure explicitly "
+                f"if you mean it here too."
+            )
+    if resolved_insecure and ctx.invoked_subcommand not in ("version", "help", None):
+        # NOT `output.warn`, which `--quiet` suppresses along with cosmetic status
+        # chrome. This one is a security property: `fp --quiet …` on a machine
+        # where someone once ran `login --insecure` performed every request with
+        # verification off and said nothing at all.
+        output.cli_warn("⚠ TLS verification disabled (--insecure).")
     # `resolve_auth` above already applied the whole precedence ladder, including the
     # rule that an EXPLICIT empty `--token ""` / `--api-key ""` (e.g. an unset CI var)
     # means "no override" and must NOT silently fall back to the saved session — so a

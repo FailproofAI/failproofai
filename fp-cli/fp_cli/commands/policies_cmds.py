@@ -15,7 +15,7 @@ from typing import Optional
 import typer
 
 from .. import client as api
-from .. import output
+from .. import output, theme
 from .._context import GLOBALS_EPILOG, AppState, deny_in_key_mode, require_auth
 from .. import _click_compat as click  # the Click Typer is running; see _click_compat
 from ..enforcement import RefError, RefUsageError, read_source
@@ -177,7 +177,15 @@ def policies_publish(
         if ref.id == policy_id
     }
     if output.is_json():
-        output.emit_json({**created.to_dict(), "carriers": carriers})
+        # `syntax` included, exactly as `policies test` does. `SyntaxResult.checked`
+        # exists so that "we did not look" can never render as "we looked and it
+        # passed" — and the only report of it was gated on `not output.is_json()`,
+        # so on the automated path an UNCHECKED publish was byte-identical to a
+        # verified one. A CI container without node published unparsed source,
+        # the harness read success, and the syntax error surfaced at enforcement
+        # time on the machines — the one place `policy_check`'s docstring exists
+        # to move it away from.
+        output.emit_json({**created.to_dict(), "carriers": carriers, "syntax": syn.to_dict()})
         return
     output.render_policy_published(created, carriers=carriers,
                                    source_bytes=len(text.encode("utf-8")))
@@ -186,6 +194,7 @@ def policies_publish(
 def policies_enable(
     ctx: typer.Context,
     policy_id: str = typer.Argument(..., help="Policy id."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
 ) -> None:
     """Re-enable a disabled policy, restoring it to the machines that lost it.
 
@@ -199,11 +208,31 @@ def policies_enable(
 
     Example:
 
-    * `fp policies enable no-force-push`
+    * `fp policies enable no-force-push --yes`
     """
     state: AppState = ctx.obj
     deny_in_key_mode(state, "policies enable", _KEY_MODE_REASON)
     cctx = require_auth(state)
+    # Confirmed, like its exact inverse. `disable` took `--yes` and prompted;
+    # this fired the moment it was typed, with no prompt and no way to withhold
+    # one — on a fleet-wide mutation with the same blast radius in the opposite
+    # direction: re-arming a policy can start denying tool calls on every machine
+    # at its next poll. It was the only deployment-mutating command in the CLI
+    # with neither (`fleet deploy`, `fleet rollback`, `policies disable` and
+    # `policies delete` all confirm), and a mistyped id reached the server
+    # unchecked. Calm glyph rather than the destructive ⚠, matching `users
+    # enable`: this is restorative, not dangerous — but it is not a read.
+    if not _write.confirm_action(
+        state, "enable policy", policy_id,
+        consequence=("it is added back to every deployment it was removed from, "
+                     "minting a new generation on each"),
+        assume_yes=yes, glyph="↑", color=theme.ACCENT,
+    ):
+        if output.is_json():
+            output.emit_json({"cancelled": True})
+        else:
+            output.print_cancelled()
+        return
     res = api.set_policy_enabled(cctx, policy_id, True)
     if output.is_json():
         output.emit_json(res)

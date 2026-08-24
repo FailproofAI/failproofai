@@ -49,7 +49,7 @@ Exactly one credential is in play per invocation, chosen in this order:
 - **The key is never persisted.** A session token is saved by `login` and expires on its own; an API key is valid until someone revokes it, so the CLI keeps it out of the config file entirely. Supply it per invocation, normally via `FP_API_KEY`.
 - **`--api-key ""` means "no override", not "fall back".** Mode stays *key*, the credential is empty, and the command exits 4 — it will not quietly use a saved session. (Same rule as `--token ""`.) An empty *environment variable* is a different story: `FP_API_KEY=""` reads as unset and falls through to the next credential, so an unset CI variable can silently run as whichever human is logged in on that machine. Pass the flag if you need the strict behaviour.
 - **A rejected key is exit 4**, same as an expired session. Report it; don't retry and don't switch credentials.
-- **Session-only commands:** `login`, `logout`, `orgs *`, `agent *`. In key mode each exits **2** *before making any request* — there's no user to sign in or switch orgs for, and no private assistant thread to own. `keys update` also requires a signed-in user, but it fails later and differently: the request goes out and comes back **exit 5**, because re-scoping keys needs a permission that cannot be granted to a key.
+- **Session-only commands:** `login`, `logout`, `orgs *`, `agent *`, `keys update`, and all of `policies *`, `fleet *`, `guardrails *`. In key mode each exits **2** *before making any request* — there's no user to sign in or switch orgs for, no private assistant thread to own, and the enforcement write routes are root-only and deliberately absent from `/v1`. `keys update` is in this list and not a special case: it calls `deny_in_key_mode` as the FIRST statement of the command body, so it exits 2 with zero HTTP calls like the rest, because `keys:update` cannot be granted to any API key.
 - **Name the org when using a key.** Key mode sends the org only when you supply it (`--org <slug>` / `FP_ORG`) — it never reuses the saved active org from `login`. A key bound to one organization only ever acts on that one; a key that is not bound to a single organization falls back to the deployment's default, and you get plausible-looking data from the wrong tenant with no error and no warning. Naming the key's own org is a no-op; naming a different one is rejected. Both beat guessing.
 
 ## Shared input conventions
@@ -127,7 +127,7 @@ API keys; the secret is shown **once** on create/regenerate (capture it then). R
 - `keys list [--show-id] [--fields ...]` — active keys first, then revoked.
 - `keys show <name>`
 - `keys create <name> [--permission-set <set>] [--add <tok>] [--remove <tok>]` — permissions work **exactly like `users create`**: optionally seed from a role with `--permission-set` (`read-only`/`standard`/`admin` or a custom org set), then fine-tune with `--add`/`--remove`. Effective grants = `(set ∪ added) − removed`. For a narrowly-scoped key (the common case) just use `--add` with no set: `keys create ci-pipeline --add events:add`. Secret → stdout when piped. (There is **no** positional `PERMISSIONS` arg and **no** `-p` flag — those forms error.)
-- `keys update <name> [--permission-set <set>] [--add <tok>] [--remove <tok>]` — incremental on the key's CURRENT grants (merges --add/--remove), unless `--permission-set` is given (which reseeds, then applies --add/--remove). `--yes`/`-y` to skip confirm. **Needs a signed-in user** — under a key it reaches the server and returns **exit 5**, because `keys:update` is never assignable to a key. Every other `keys` subcommand works under a key that holds the matching grant.
+- `keys update <name> [--permission-set <set>] [--add <tok>] [--remove <tok>]` — incremental on the key's CURRENT grants (merges --add/--remove), unless `--permission-set` is given (which reseeds, then applies --add/--remove). `--yes`/`-y` to skip confirm. **Needs a signed-in user** — under a key it exits **2** with no request made, because `keys:update` is never assignable to a key. Every other `keys` subcommand works under a key that holds the matching grant.
 - `keys disable <name>` — revoke.
 - `keys regenerate <name>` — rotate secret (old one dies).
 
@@ -195,10 +195,10 @@ Malformed (non-UUID) id → calm `✗ no incident …` exit 6. Assign to a non-o
 Saved ClickHouse SQL + ad-hoc runner. Saved queries referenced by **name**.
 - `query list [--fields ...] [--show-id]` — `name · description · created by · created`.
 - `query show <name>` — metadata + syntax-highlighted SQL.
-- `query create <name> --sql "…"|@file.sql [--description ...] [--param k=v]` — name-collision pre-checked (exit 2).
-- `query update <name> [--name ...] [--sql ...] [--description ...] [--param ...]` — partial update (≥1 field).
+- `query create <name> --sql "…"|@file.sql [--description ...]` — name-collision pre-checked (exit 2).
+- `query update <name> [--name ...] [--sql ...] [--description ...] [--yes]` — partial update (≥1 field).
 - `query delete <name>` — amber preview + confirm.
-- `query run <name> | --sql "…" [--limit N] [--all] [--param k=v]` — adaptive render: scalar / record / table. JSON = full QueryResult (never capped). Exec/permission errors → clean `✗ query failed` + exit code.
+- `query run <name> | --sql "…" [--limit N] [--all] [--arg VALUE]…` — arguments are **positional**, bound to `$1..$N` in the order given (`--param` is an alias of `--arg`; there is no `k=v` form — `--param agent_id=x` binds the literal string `"agent_id=x"` to `$1`). Adaptive render: scalar / record / table. JSON = full QueryResult (never capped). Exec/permission errors → clean `✗ query failed` + exit code.
 - `query schema [TABLE]` — column layout; JSON `{schema, columns:[{table,column,type,nullable}]}`.
 
 ## agent
@@ -248,7 +248,7 @@ Cloud-managed enforcement, split the way the dashboard splits it: `policies` wri
 - `fleet rename <machine> "<label>"` — a human label; the id never changes. The server stores it as an override beside the machine's self-asserted label. An empty label **clears** the override (the machine falls back to its own label, else its id) and the CLI says so rather than reporting a rename to nothing. A machine that has never checked in cannot be renamed → exit 6.
 
 ### guardrails
-- `guardrails summary [--since 15m|1h|6h|24h|7d] [--machine ID]` — coverage, blocked/evaluated totals, a deny sparkline, and the per-policy table. Bare `fp guardrails` prints help, like every other group; the flags live on the subcommands.
+- `guardrails summary [--since 1h|6h|24h|7d] [--machine ID]` — coverage, blocked/evaluated totals, a deny sparkline, and the per-policy table. Bare `fp guardrails` prints help, like every other group; the flags live on the subcommands.
 - `guardrails timeline [--since …] [--machine ID]` — one row per time bucket: a bar scaled to the busiest bucket with the blocked share in red, plus total / denied / instructed counts. Answers *when* enforcement bit, which the summary's sparkline only sketches.
 - A `(no policy)` row is **normal**: most evaluations are allows nothing objected to, and the row keeps the denominator visible.
 - Coverage comes from the control plane, decision counts from reported telemetry — a machine can be deployed-to and silent, or reporting and undeployed.

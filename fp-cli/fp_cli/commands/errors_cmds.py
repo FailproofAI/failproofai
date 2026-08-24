@@ -119,6 +119,22 @@ def errors(
         return
 
     # ── list mode: errored events (errored=true, like the dashboard /errors view) ──
+    # `errors` ALWAYS reads the light, payload-free `/api/events/summary` feed —
+    # there is no `--full` here and no feed switch. So validating `--fields`
+    # against the whole `AgentEvent` dataclass accepted `payload`, whose
+    # dataclass default is `{}`, and the projection emitted that empty dict as if
+    # it were data: `fp --json errors --fields payload` exited 0 printing
+    # `{"payload": {}}` per row, and a caller piping it into `jq` reasonably
+    # concluded the errored events carried no payload. `events` gets this right
+    # by switching feeds; here the honest answer is a usage error naming the
+    # command that can serve it. The docstring above already lists the valid
+    # names and `payload` is deliberately not among them.
+    if fields and "payload" in {f.strip() for f in fields.split(",")}:
+        raise typer.BadParameter(
+            "`payload` is not available on `fp errors` — it reads the light, "
+            "payload-free feed. Use `fp events --full --session-id <id>` (or "
+            "`fp events --fields payload`) to get event payloads."
+        )
     cols = resolve_fields(fields, AgentEvent)
     common = dict(
         session_id=session_id,
@@ -134,15 +150,21 @@ def errors(
     )
 
     if fetch_all:
+        walk = api.Walk()
         items = list(
             api.paginate(
                 lambda cursor, limit: api.list_event_summaries(cctx, cursor=cursor, limit=limit, **common),
                 limit=limit,
                 page_size=page_size,
                 start_cursor=cursor,
+                walk=walk,
             )
         )
-        next_cursor = None
+        # NOT `None`. `--limit` defaults to 50, so `--all` without an explicit
+        # limit stops at 50 rows — and hard-coding the cursor to null told the
+        # caller the feed was exhausted, on the one output a script or an agent
+        # reads. `walk` carries the cursor the walk actually stopped on.
+        next_cursor = walk.next_cursor
     else:
         page = api.list_event_summaries(cctx, cursor=cursor, limit=limit, **common)
         items = page.items

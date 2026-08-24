@@ -120,7 +120,8 @@ def unknown_permissions(perms: List[str]) -> List[str]:
     current names), so rejecting them here would make the CLI stricter than the
     API it fronts — a script that has passed `--add incidents:read` for a year
     would start failing with exit 2 against a server that would have accepted it.
-    Callers should run the values through `normalize_permissions` before sending.
+    The returned values are already normalized — `parse_permission_tokens` and
+    `parse_key_permission_tokens` apply `normalize_permissions` themselves.
     """
     return [
         p
@@ -193,4 +194,15 @@ def parse_permission_tokens(tokens, *, require_nonempty: bool = True) -> List[st
     unknown = unknown_permissions(flat)
     if unknown:
         raise PermissionTokenError(f'unknown permission(s): {", ".join(unknown)}')
-    return flat
+    # Expand the retired spellings HERE, at the one boundary every caller goes
+    # through. `unknown_permissions` deliberately accepts `incidents:*` and
+    # `alerts:ack` so a script that has passed them for a year keeps working —
+    # but `normalize_permissions`, the function that turns them into current
+    # names, had ZERO call sites in the package. So the raw token was carried
+    # all the way into `users update`'s diff, where `predicted_after =
+    # (before | add) - remove` subtracted a string that is not in the server's
+    # set: `--remove incidents:ack` computed no change at all, took the no-op
+    # branch, and exited 0 reporting `{"removed": []}` without ever calling the
+    # server — while the member kept every issues permission. The command's own
+    # help gives `--remove alerts:read,incidents:ack` as a worked example.
+    return normalize_permissions(flat)

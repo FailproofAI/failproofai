@@ -9,7 +9,7 @@ description: |-
 
   Served by the `fp` CLI against FailproofAI Cloud.
 
-  NOT for writing or designing an evaluator service / scoring logic (that's `agenteye-evaluator`), adding SDK/instrumentation to your app (that's the `agenteye` Python SDK), debugging the collector/daemon, or unrelated dev work (why a build/CI run failed, rotating non-FailproofAI Cloud secrets).
+  NOT for writing or designing an evaluator service / scoring logic (that's `agenteye-evaluator`), adding SDK/instrumentation to your app (that's `failproofai-sdk`, imported as `failproofai_sdk`), debugging the collector/daemon, or unrelated dev work (why a build/CI run failed, rotating non-FailproofAI Cloud secrets).
 ---
 
 # FailproofAI Cloud CLI
@@ -76,14 +76,15 @@ Throughout this skill, `fp` means "whichever form you resolved."
   the environment. `--api-key ""` means "no override" and does **not** fall back to
   a saved session (Click treats an empty env var as unset, so it falls to rung 4).
 
-- **Some commands need a signed-in user.** `login`, `logout`, `orgs *` and the
-  whole `agent` group refuse a key with a usage error (**exit 2**) and make **no
+- **Some commands need a signed-in user.** `login`, `logout`, `orgs *`, the whole
+  `agent` group, `keys update`, and all of `policies *` / `fleet *` /
+  `guardrails *` refuse a key with a usage error (**exit 2**) and make **no
   network call at all** — there is no user to sign in, no saved active org to
-  switch, and no private assistant thread to own. `keys update` is the near miss
-  with a different signature: it *does* reach the server and comes back **exit
-  5**, because re-scoping a key needs a permission that can never be granted to a
-  key. Either way the key is not the problem to fix — plan around them rather than
-  retrying or hunting for a flag.
+  switch, no private assistant thread to own, and the enforcement write routes
+  are root-only and deliberately absent from `/v1`. `keys update` is in that list
+  rather than a special case: `keys:update` can never be granted to a key, so it
+  is refused up front like the rest. The key is not the problem to fix — plan
+  around them rather than retrying or hunting for a flag.
 - **Default to `--json` and parse it.** It prints clean JSON to stdout and
   nothing else. The plain output is a boxed Rich UI meant for human eyes — it
   burns context with box-drawing characters and is awkward to parse. Use the
@@ -166,7 +167,11 @@ State-changing commands: `keys create/update/disable/regenerate`,
 (`ack/assign/resolve/comment-add/comment-delete/subscribe/unsubscribe/open`),
 `audits create/edit/delete/run` and the finding-triage verbs
 (`ack/mute/dismiss/resolve/reopen/assign`),
-`query create/update/delete`, `agent rename/delete`, and `orgs switch`.
+`query create/update/delete`, `agent rename/delete`, `orgs switch`, and — the
+highest-consequence of the lot — `policies publish/enable/disable/delete` and
+`fleet deploy/rollback/rename`, which change what is ENFORCED on production
+machines. A `fleet deploy` replaces a machine's entire policy set, so name the
+policies being dropped, not just the ones being added.
 Read-only commands (§5 "Observe") never need this.
 
 ## 5. Command map
@@ -190,14 +195,19 @@ you need a flag you don't already know.
 - `issues list|count|show|ack|assign|resolve|comment-add|comment-list|comment-delete|subscribe|subscribers|unsubscribe|open` — by id (short ids accepted). **One board for everything needing attention**: alert breaches, hand-raised issues, and audit findings, told apart by a `source` of `alert` / `manual` / `audit`. (This group was called `incidents` before; the old name is gone.)
 - `audits list|show|create|edit|delete|run|runs` — scheduled sweeps, referenced by **name**; `audits findings|finding` + the triage verbs `ack|mute|dismiss|resolve|reopen|assign` act on a finding **id**. `audits run <name>` only *queues* a run (poll `audits runs <name>` for completion). See §8.
 
+**Enforce (cloud-managed policy, session-only — see §2):**
+- `policies list|show|publish|enable|disable|delete|test|compose` — policy versions. `publish` mints a version from a local `.mjs`; `test` runs one against a synthetic context locally (it applies each policy's `match` filter, so a policy that does not cover the `--event`/`--tool` you pass is reported `skipped`, not run). `enable`/`disable`/`delete` take `--yes`.
+- `fleet list|show|deploy|diff|history|rollback|rename` — which machines run which policies. **`deploy` REPLACES a machine's whole set** (`--add`/`--remove` amend it, `--set` replaces, `--create` mints a deployment); it prints the plan and asks **only on an interactive terminal without `--json`** — under `--json` or with stdin redirected it applies immediately, so read `fleet show` first if you want review.
+- `guardrails summary|timeline` — what enforcement actually did; `--since 1h|6h|24h|7d`, `--machine`.
+
 **Analytics & assistant:**
 - `query list|show|create|update|delete|run|schema` — saved ClickHouse SQL + ad-hoc runner (`query run <name>` or `query run --sql "…"`); `query schema [table]` for table layout.
 - `agent health|models|chats|ask|show|rename|delete` — built-in assistant; `agent ask "…"` starts a chat, `--chat <short-id>` continues one.
 
 **Identity:** `login`, `logout`, `whoami`, `orgs {list,switch,current,perms}`, `version`, `help`.
-All of `login` / `logout` / `orgs` — like the whole `agent` group — are **session-only**:
-with a key they exit 2 without calling anything (§2). `keys update` needs a user too, but
-fails as exit 5. `whoami`, `version` and `help` work either way.
+All of `login` / `logout` / `orgs` — like the whole `agent` group, `keys update`, and
+every `policies` / `fleet` / `guardrails` subcommand — are **session-only**: with a key
+they exit 2 without calling anything (§2). `whoami`, `version` and `help` work either way.
 
 ## 6. Translating plain-English requests
 

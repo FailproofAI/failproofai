@@ -42,8 +42,18 @@ def _require_machine(cctx, machine_id: Optional[str]) -> None:
 
 
 def _hours(since: str) -> int:
-    """`24h`/`7d`/`60m` → hours. The CLI's `--since` vocabulary, one window only."""
-    table = {"15m": 1, "1h": 1, "6h": 6, "24h": 24, "7d": 168}
+    """`1h`/`6h`/`24h`/`7d` → hours. The CLI's `--since` vocabulary, one window only.
+
+    `15m` is deliberately NOT here. These two endpoints take a whole-hour window
+    and nothing finer, so `15m` mapped to 1 and produced a request byte-identical
+    to `--since 1h`: the window was silently widened 4x with no tell anywhere —
+    `timeline` renders no window label at all, and `summary`'s title comes from
+    the server's echoed hours, so it read `guardrails · 1h` while contradicting
+    the flag the operator typed. An operator watching a rollout would read
+    denials from before their change as caused by it. Refusing it is honest;
+    accepting it and rounding is not.
+    """
+    table = {"1h": 1, "6h": 6, "24h": 24, "7d": 168}
     if since in table:
         return table[since]
     # A usage error, not a runtime one: exit 2 like every other bad flag value,
@@ -55,7 +65,7 @@ def _hours(since: str) -> int:
 
 def guardrails_summary(
     ctx: typer.Context,
-    since: str = typer.Option("24h", "--since", help="Window: 15m, 1h, 6h, 24h, 7d."),
+    since: str = typer.Option("24h", "--since", help="Window: 1h, 6h, 24h, 7d."),
     machine: Optional[str] = typer.Option(None, "--machine", help="Scope to one machine id."),
 ) -> None:
     """Coverage, blocks, and the per-policy table for a window.
@@ -90,7 +100,7 @@ def guardrails_summary(
 
 def guardrails_timeline(
     ctx: typer.Context,
-    since: str = typer.Option("24h", "--since", help="Window: 15m, 1h, 6h, 24h, 7d."),
+    since: str = typer.Option("24h", "--since", help="Window: 1h, 6h, 24h, 7d."),
     machine: Optional[str] = typer.Option(None, "--machine", help="Scope to one machine id."),
 ) -> None:
     """When enforcement bit, and how hard — one row per time bucket.

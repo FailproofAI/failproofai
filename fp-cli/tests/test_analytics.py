@@ -30,7 +30,12 @@ class FakeClient:
         self.flushed = 0
         self.shutdowns = 0
 
-    def capture(self, distinct_id=None, event=None, properties=None, **_):
+    # Keyword-only after `event`, mirroring the installed posthog>=7 signature
+    # (`capture(self, event, **kwargs)`). It was the posthog-3 positional shape,
+    # so every assertion in this file and in test_telemetry_completeness.py was
+    # validated against a stand-in the real client no longer matched — a 380-line
+    # privacy suite proving nothing about what would actually go over the wire.
+    def capture(self, event=None, *, distinct_id=None, properties=None, **_):
         self.events.append((distinct_id, event, properties))
 
     def alias(self, previous_id=None, distinct_id=None, **_):

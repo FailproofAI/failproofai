@@ -124,6 +124,28 @@ import "./policy.mjs";
 const ctx = JSON.parse(process.argv[2]);
 const out = [];
 for (const p of registered) {
+  // The SAME filter the engine applies before it ever calls `fn`
+  // (`src/hooks/policy-registry.ts`): a policy whose `match` does not cover this
+  // event or this tool is never RUN on a real machine, so running it here and
+  // folding its verdict into the overall decision reported a DENY the daemon
+  // would never have produced. `--event`/`--tool` only shaped the synthetic ctx;
+  // they did not gate registration. A `match: { events: ["PostToolUse"],
+  // toolNames: ["Write"] }` policy printed a red DENY under the default
+  // `--event PreToolUse`, and `--expect deny` passed in CI, while the machine
+  // allowed the command.
+  const m = p.match ?? {};
+  const evs = m.events ?? [];
+  const tools = m.toolNames ?? [];
+  if (evs.length > 0 && !evs.includes(ctx.eventType)) {
+    out.push({ name: p.name ?? "(unnamed)", description: p.description ?? null,
+               decision: "skipped", reason: `match.events does not include ${ctx.eventType}` });
+    continue;
+  }
+  if (tools.length > 0 && (!ctx.toolName || !tools.includes(ctx.toolName))) {
+    out.push({ name: p.name ?? "(unnamed)", description: p.description ?? null,
+               decision: "skipped", reason: `match.toolNames does not include ${ctx.toolName ?? "(none)"}` });
+    continue;
+  }
   try {
     const r = await p.fn(ctx);
     out.push({ name: p.name ?? "(unnamed)", description: p.description ?? null,

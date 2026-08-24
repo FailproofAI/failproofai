@@ -105,15 +105,21 @@ def events(
     )
 
     if fetch_all:
+        walk = api.Walk()
         items = list(
             api.paginate(
                 lambda cursor, limit: fetch(cctx, cursor=cursor, limit=limit, **common),
                 limit=limit,
                 page_size=page_size,
                 start_cursor=cursor,
+                walk=walk,
             )
         )
-        next_cursor = None
+        # NOT `None`. `--limit` defaults to 50, so `--all` without an explicit
+        # limit stops at 50 rows — and hard-coding the cursor to null told the
+        # caller the feed was exhausted, on the one output a script or an agent
+        # reads. `walk` carries the cursor the walk actually stopped on.
+        next_cursor = walk.next_cursor
     else:
         page = fetch(cctx, cursor=cursor, limit=limit, **common)
         items = page.items

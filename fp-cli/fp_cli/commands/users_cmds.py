@@ -159,7 +159,17 @@ def users_create(
     parsed_remove = _parse_user_tokens_or_exit(state, remove)
     cctx = require_auth(state)
     _validate_permission_set_or_exit(state, cctx, permission_set)
-    if any(u.email == email for u in api.list_users(cctx)):  # emails are unique
+    # Casefolded, matching `_write.resolve_one`. The server lowercases an email
+    # on create, so the address the caller typed is not the address stored —
+    # 6372ecf2 fixed the RESOLVER for that and left this guard an exact
+    # comparison, which made the group internally inconsistent about case: `fp
+    # users show Alice.Chen@Example.com` resolved the member, while `fp users
+    # create Alice.Chen@Example.com` failed to see them, sent the POST, and
+    # surfaced the server's 409 as exit 1. The skill's own guidance branches on
+    # the code — exit 2 means "report it and ask", exit 1 means "unexpected
+    # server error" — so an agent took the wrong branch for the same logical
+    # outcome, decided purely by the capitalisation a human typed.
+    if any((u.email or "").casefold() == email.casefold() for u in api.list_users(cctx)):
         raise click.UsageError(f'a user with email "{email}" already exists')
     user = api.create_user(
         cctx, email=email, permission_set=permission_set,

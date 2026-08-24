@@ -112,9 +112,9 @@ fp version | help
 **Mutations are non-interactive-safe.** Create/update/delete prompt for confirmation in a
 terminal, but auto-skip the prompt under `--json` or when stdin isn't a TTY (so scripts/agents
 never hang). Pass `--yes`/`-y` to skip it explicitly. Request bodies can be supplied with
-`--file payload.json` (or `--file -` for stdin) on `alerts`, `settings`, and `users
-create`/`update` — mutually exclusive with the discrete flags. (Saved-query SQL uses
-`--sql @file.sql`.)
+`--file payload.json` (or `--file -` for stdin) on `alerts` and `settings` — mutually
+exclusive with the discrete flags. `users create`/`update` take only the discrete
+flags (`--permission-set`, `--add`, `--remove`). (Saved-query SQL uses `--sql @file.sql`.)
 
 Every command and subcommand has `--help` / `-h`; `fp -h` documents auth, exit codes, and
 the global options. **Global options go before the command** (`fp --json events`, not
@@ -181,7 +181,7 @@ reason rather than failing at the request.
 | API key (CI) | `--api-key` | `FP_API_KEY` | none; never written to disk |
 | JSON output | `--json` | `FP_JSON` | off |
 | Skip TLS verification | `--insecure` / `--secure` | `FP_INSECURE` | off (saved at login) |
-| Disable usage telemetry | _(none)_ | `FP_ANALYTICS_DISABLED` (or `DO_NOT_TRACK`) | telemetry on |
+| Disable usage telemetry | _(none)_ | `FP_ANALYTICS_DISABLED` (or `DO_NOT_TRACK`) | off — [this build sends nothing](#telemetry) |
 
 Precedence is **flag > environment variable > config file > built-in default**. A fresh
 install points at the hosted product with no configuration; set `--base-url` or
@@ -198,8 +198,10 @@ it — nothing here removes or rewrites a path it does not own. The file is regi
 that home's layout (`src/hooks/fp-home.ts`) and classified `user-typed`, which is what
 keeps a layout migration from dropping it.
 
-The Python SDK and the collector keep their own spool under `~/.agenteye`. That one is a
-wire contract with the collector rather than a preference, so it did not move.
+The Python SDK writes its spool under `~/.failproofai/custom-agents/events` — it moved
+onto the shared umbrella in the same release that renamed this CLI, and no environment
+variable redirects it (`configure(base_dir=...)` is the only override). `failproofaid`
+still drains `~/.agenteye/events` as well, for SDKs old enough to write there.
 
 > **Upgrading from a version that used `~/.fp/cli.json`?** Nothing to do — the old
 > session is adopted on your next command, so you are not signed out. It is copied, not
@@ -231,7 +233,7 @@ can review it in advance rather than discover it in a release note:
 
 `FP_ANALYTICS_DISABLED=1` (or the cross-tool `DO_NOT_TRACK=1`) opts out, and keeps
 working as an opt-out if it is ever switched back on. See
-<https://docs.befailproof.ai/agenteye/cli> for the full privacy details.
+<https://docs.befailproof.ai/reference/cloud-cli> for the full privacy details.
 
 ## Exit codes
 

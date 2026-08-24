@@ -752,3 +752,63 @@ def test_subcommand_dash_h(home, runner):
     result = runner.invoke(app, ["events", "-h"])
     assert result.exit_code == 0
     assert "--fields" in result.stdout
+
+
+@respx.mock
+def test_all_reports_a_resumable_cursor_when_it_stops_on_the_limit(logged_in, runner):
+    """`--all` truncated silently and then asserted it had not.
+
+    `--limit` defaults to 50, so `fp --json events --session-id X --all` — the
+    exact line the docs give for reading a whole session — made ONE request,
+    returned 50 rows out of however many exist, and emitted
+    `"next_cursor": null`, which positively states the feed is exhausted. A
+    script or an agent reading that JSON concludes the session had 50 events and
+    has nothing to resume from. The CLI had the live cursor in hand at that
+    moment and threw it away.
+    """
+    def handler(request):
+        limit = int(dict(request.url.params).get("limit", 50))
+        return httpx.Response(
+            200,
+            json={
+                "events": [
+                    {"id": i, "session_id": "s", "agent_id": "a", "event_type": "e",
+                     "ts": "t", "environment": "p"}
+                    for i in range(limit)
+                ],
+                "next_cursor": "more-to-come",
+            },
+        )
+
+    route = respx.get(f"{BASE}/api/events/summary").mock(side_effect=handler)
+    result = runner.invoke(app, ["--json", "events", "--session-id", "run-001", "--all"])
+
+    assert result.exit_code == 0, result.output
+    body = json.loads(result.stdout)
+    assert len(body["events"]) == 50
+    assert route.call_count == 1
+    assert body["next_cursor"] == "more-to-come", (
+        "a walk that stopped on --limit must hand back somewhere to resume, not null"
+    )
+
+
+@respx.mock
+def test_all_reports_no_cursor_when_the_feed_really_is_exhausted(logged_in, runner):
+    """The other half: a complete walk must still say so."""
+    respx.get(f"{BASE}/api/events/summary").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "events": [
+                    {"id": 1, "session_id": "s", "agent_id": "a", "event_type": "e",
+                     "ts": "t", "environment": "p"}
+                ],
+                "next_cursor": None,
+            },
+        )
+    )
+    result = runner.invoke(app, ["--json", "events", "--all", "--limit", "100"])
+    assert result.exit_code == 0, result.output
+    body = json.loads(result.stdout)
+    assert len(body["events"]) == 1
+    assert body["next_cursor"] is None

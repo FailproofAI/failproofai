@@ -133,3 +133,54 @@ def test_empty_token_does_not_fall_back_to_saved_session(home, runner):
 def test_negative_timeout_is_usage_error(home, runner):
     result = runner.invoke(app, ["--base-url", BASE, "--timeout", "-1", "events"])
     assert result.exit_code == 2, result.output
+
+
+def test_a_saved_insecure_does_not_follow_you_to_another_dashboard(logged_in, runner, monkeypatch):
+    """`insecure` was stored per MACHINE and applied to every base URL.
+
+    One `fp --base-url https://dash.internal --insecure login` against a
+    self-signed dev box — the use its own help text names — left certificate
+    verification off for the next `fp --base-url https://app.befailproof.ai
+    login`, which is the request that carries the OTP and receives the session
+    token, and for `fp keys create`, which carries a freshly minted API key in
+    the body. `clear_token` deliberately preserves `insecure` across a logout, so
+    it outlived the session it was set for.
+    """
+    cfg = config.load_config()
+    cfg.insecure = True
+    cfg.base_url = "https://dash.internal"
+    config.save_config(cfg)
+
+    seen = {}
+
+    class _Recorder(httpx.Client):
+        def __init__(self, *a, **kw):
+            seen["verify"] = kw.get("verify")
+            super().__init__(*a, **kw)
+
+    monkeypatch.setattr(httpx, "Client", _Recorder)
+
+    with respx.mock(assert_all_called=False) as m:
+        m.get(url__regex=r".*").mock(return_value=httpx.Response(200, json={"keys": []}))
+        runner.invoke(app, ["--base-url", "https://app.befailproof.ai", "keys", "list"])
+
+    assert seen.get("verify") is not False, (
+        "a preference granted for dash.internal was applied to a different dashboard"
+    )
+
+
+def test_the_tls_warning_survives_quiet(logged_in, runner, monkeypatch):
+    """`--quiet` shares one gate with cosmetic status chrome; this is not that.
+
+    `fp --quiet …` on a machine where someone once ran `login --insecure` ran
+    every request with verification off and printed nothing anywhere.
+    """
+    cfg = config.load_config()
+    cfg.insecure = True
+    config.save_config(cfg)
+
+    with respx.mock(assert_all_called=False) as m:
+        m.get(url__regex=r".*").mock(return_value=httpx.Response(200, json={"keys": []}))
+        result = runner.invoke(app, ["--quiet", "keys", "list"])
+
+    assert "TLS verification disabled" in result.stderr, result.stderr

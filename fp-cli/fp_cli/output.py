@@ -169,6 +169,19 @@ def warn(message: str) -> None:
         _stderr.print(message, style="yellow")
 
 
+def cli_warn(message: str) -> None:
+    """A warning `--quiet` does NOT suppress.
+
+    `warn()` shares its gate with cosmetic status chrome ("✓ acknowledged issue
+    …"), which is right for almost everything and wrong for a warning that IS a
+    security property. `fp --quiet …` on a machine where someone once ran
+    `login --insecure` ran every request with certificate verification off and
+    printed nothing anywhere. Errors already ignore `--quiet` for the same
+    reason; this is the same rule one step down.
+    """
+    _stderr.print(message, style="yellow")
+
+
 # ── Auth experience (login / logout) — presentation only ────────────────────
 # A light, cohesive treatment for the first commands a user runs. Everything
 # here is stderr status chrome (never the --json data on stdout); the accent is
@@ -492,7 +505,7 @@ _TOP_LEVEL_GROUPS = [
         # is one level down, in `fp audits --help`, which walks the real
         # Click tree.
         ("audits", "Schedule audits and triage their findings.", "list show create edit delete run runs findings context-*"),
-        ("issues", "Triage and resolve issues.", "list count show ack assign resolve comment subscribe open"),
+        ("issues", "Triage and resolve issues.", "list count show ack assign resolve comment-* subscribe open"),
         ("settings", "View and change org settings.", "list schema set"),
     ]),
     ("TOOLS", [
@@ -577,11 +590,21 @@ def render_top_level_help() -> None:
     ci.append(" / ", style=theme.FAINT)
     ci.append("FP_API_KEY", style=theme.TEXT_DIM)
     ci.append(" instead of a session (", style=theme.FAINT)
+    # Every group that calls `deny_in_key_mode`, not just the three this used to
+    # name: `policies`, `fleet` and `guardrails` — the entire ENFORCE surface —
+    # exit 2 under a key too, so a CI job that read this help and authenticated
+    # with FP_API_KEY failed on a command the help said was fine.
     ci.append("login", style=theme.TEXT_DIM)
     ci.append(", ", style=theme.FAINT)
     ci.append("orgs", style=theme.TEXT_DIM)
-    ci.append(" and ", style=theme.FAINT)
+    ci.append(", ", style=theme.FAINT)
     ci.append("agent", style=theme.TEXT_DIM)
+    ci.append(", ", style=theme.FAINT)
+    ci.append("policies", style=theme.TEXT_DIM)
+    ci.append(", ", style=theme.FAINT)
+    ci.append("fleet", style=theme.TEXT_DIM)
+    ci.append(" and ", style=theme.FAINT)
+    ci.append("guardrails", style=theme.TEXT_DIM)
     ci.append(" then exit 2).", style=theme.FAINT)
     _stdout.print(ci)
 
@@ -1167,17 +1190,36 @@ _STATUS_COLORS = {
 
 
 def _parse_iso(ts: str) -> Optional[datetime]:
-    """Tolerant ISO-8601 parse → datetime, or None if it doesn't parse (e.g. an
-    opaque/empty ts). Never raises — the caller falls back to the raw string."""
+    """Tolerant ISO-8601 parse → an **aware, UTC** datetime, or None.
+
+    Never raises — the caller falls back to the raw string.
+
+    Always aware, and that is the fix rather than a nicety. A timestamp with no
+    `Z` and no offset parses to a NAIVE datetime, and two of the four consumers
+    subtracted it from `datetime.now(timezone.utc)` — `TypeError: can't subtract
+    offset-naive and offset-aware datetimes`, uncaught, exit 1, and the whole
+    render dies rather than degrading. That is ~20 call sites across errors,
+    alerts, issues, audits, findings and fleet, so ONE tz-less field from the
+    server takes down a command whose other columns arrived fine. The other two
+    consumers already normalized with `.astimezone()`, so the codebase treated a
+    naive value as reachable and these two just missed it. Doing it once, here,
+    is what stops the next consumer missing it too.
+    """
     s = (ts or "").strip()
     if not s:
         return None
     if s.endswith("Z"):
         s = s[:-1] + "+00:00"
     try:
-        return datetime.fromisoformat(s)
+        parsed = datetime.fromisoformat(s)
     except ValueError:
         return None
+    if parsed.tzinfo is None:
+        # No offset means the server did not say; UTC is what every other
+        # timestamp on the wire is, and guessing local would silently shift ages
+        # by the reader's offset.
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def _row_times(timestamps: Sequence[Optional[datetime]]):
@@ -6336,8 +6378,19 @@ def render_decision_timeline(data: dict) -> None:
     hint("red is the blocked share of each bar · times are UTC")
 
 
-_DECISION_STYLE = {"deny": theme.ERROR, "instruct": theme.AMBER, "allow": theme.SUCCESS}
-_DECISION_GLYPH = {"deny": "✗", "instruct": "!", "allow": "✓"}
+# `skipped` is a real verdict here, not an absence: the engine filters on each
+# policy's `match` before it ever calls `fn`, so a policy that does not cover
+# this event/tool would NOT run on a real machine. Showing it dimmed, by name,
+# with the reason, is how `fp policies test` stays honest about what it did and
+# did not exercise — omitting it silently would read as "all your policies
+# allowed this".
+_DECISION_STYLE = {
+    "deny": theme.ERROR,
+    "instruct": theme.AMBER,
+    "allow": theme.SUCCESS,
+    "skipped": theme.TEXT_DIM,
+}
+_DECISION_GLYPH = {"deny": "✗", "instruct": "!", "allow": "✓", "skipped": "–"}
 
 
 def render_policy_test(run: Any, *, tool: str, command: Optional[str] = None,

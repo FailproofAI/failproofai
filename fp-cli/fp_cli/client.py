@@ -204,8 +204,60 @@ def _v1_path(path: str) -> str:
     )
 
 
+#: Segments that change which endpoint a path addresses rather than naming a
+#: record. `..` walks up, `.` is a no-op the server may or may not collapse, and
+#: an EMPTY segment turns `/api/users/{id}` with an unset id into `/api/users/`,
+#: i.e. the collection — so `disable_user(ctx, "")` from an unset CI variable
+#: addressed every user instead of failing.
+_BAD_SEGMENTS = frozenset({"", ".", ".."})
+
+
+def _validate_path(path: str) -> None:
+    """Refuse a path whose interpolated ids have changed what it addresses.
+
+    Every `f"/api/…/{id}"` in this module interpolates a caller-supplied value
+    raw — there is no `quote` anywhere — and httpx then RESOLVES the result as a
+    URL. So an id containing `..`, `?` or `#` silently re-points the request, and
+    that defeats `_v1_path`'s family guard specifically: the family is computed
+    from the literal prefix BEFORE httpx normalises the dot segments away, so
+    `disable_key(key_ctx, "../enforcement/policies/x/enable")` classified as the
+    mechanical `keys` family and then issued
+    `POST /v1/enforcement/policies/x/enable/disable` — an operator-write family
+    that `_V1_NO_EQUIVALENT` exists to make unreachable under an API key.
+
+    In session mode the same shapes read the wrong record without saying so:
+    `get_incident(ctx, "abc#frag")` requests `/api/issues/abc` (fragment dropped)
+    and returns a different issue as if it were the right one, and
+    `put_setting(ctx, "foo?admin=1", v)` injects a query parameter.
+
+    Raising rather than quoting, because none of these are a legitimate id that
+    merely needs escaping — they are a caller passing something that is not an
+    id at all, and the useful answer is to say so.
+    """
+    head = path.split("?", 1)[0].split("#", 1)[0]
+    if head != path:
+        raise ApiError(
+            f"the CLI refuses to request {path!r}: an id contained '?' or '#', which "
+            "changes which endpoint is called rather than naming a record.",
+            hint="check the id you passed — it is not a valid identifier",
+        )
+    for segment in path.split("/")[1:]:
+        if segment in _BAD_SEGMENTS:
+            raise ApiError(
+                f"the CLI refuses to request {path!r}: it contains an empty or "
+                "relative path segment, which addresses a different endpoint than "
+                "the command intends.",
+                hint="check the id you passed — an unset variable is the usual cause",
+            )
+
+
 def _path(ctx: ClientContext, path: str) -> str:
-    """The path to actually request: `/v1/...` under an API key, `/api/...` otherwise."""
+    """The path to actually request: `/v1/...` under an API key, `/api/...` otherwise.
+
+    The single choke point every request goes through, in both modes, which is
+    why the id validation lives here rather than at 45 interpolation sites.
+    """
+    _validate_path(path)
     if ctx.auth_mode is AuthMode.API_KEY:
         return _v1_path(path)
     return path
@@ -305,9 +357,29 @@ def _raise_for_status(response: httpx.Response, ctx: ClientContext) -> None:
                     request_id=response.headers.get("x-request-id"),
                     hint="point --base-url at the server itself, e.g. http://localhost:8080",
                 )
-        # Session mode is deliberately left alone here: its 3xx-to-/login is the
-        # ordinary "your cookie is gone" case and changing its exit code is a
+        # Session mode is deliberately left alone for the /login case: that 3xx is
+        # the ordinary "your cookie is gone" case and changing its exit code is a
         # separate contract change.
+        #
+        # Every OTHER 3xx is an error for every method, in both modes. httpx does
+        # not follow redirects, so a 3xx means the request did not reach the API
+        # at all — and `_request_json` turns the empty body into `{}`, which the
+        # mutating half of the CLI reads as success. `fp --base-url http://…
+        # issues ack i1` against a front door that 301s http→https exited 0
+        # printing "✓ acknowledged issue i1" while the POST never arrived;
+        # `deploy_policies` returned an empty Deployment, which an operator reads
+        # as "the machine now runs nothing" rather than "nothing happened".
+        if 300 <= response.status_code < 400:
+            raise ApiError(
+                "The request was redirected and did not reach the API, so it had no "
+                "effect. Nothing was changed.",
+                status=response.status_code,
+                request_id=response.headers.get("x-request-id"),
+                hint=(
+                    "check --base-url: a redirect here usually means http:// where the "
+                    "server wants https://, or a front door in front of the API"
+                ),
+            )
         return
     request_id = response.headers.get("x-request-id")
     message = _extract_error(response)
@@ -425,12 +497,24 @@ def _request_json(
             f"Cannot reach FailproofAI Cloud at {ctx.base_url}: {exc}"
         )
     _raise_for_status(response, ctx)
+    # A genuinely empty body (204, or a 200 with no content) is a legitimate
+    # "done, nothing to report" for a mutation.
     if not response.content:
         return {}
     try:
         return response.json()
     except ValueError:
-        return {}
+        # A body that is PRESENT but not JSON is not that. It is a proxy error
+        # page, a captive portal, or a front door answering instead of the API —
+        # and returning `{}` made every one of those read as success on the
+        # mutating half of the CLI, which is the half where a false success
+        # matters. Reads already raise here; writes now do too.
+        raise ApiError(
+            "The dashboard returned a malformed (non-JSON) response, so the request "
+            "may not have been applied.",
+            status=response.status_code,
+            request_id=response.headers.get("x-request-id"),
+        )
 
 
 def _post_json(ctx: ClientContext, path: str, json_body: Any = None, *, params: Optional[Dict[str, Any]] = None) -> Any:
@@ -580,7 +664,7 @@ def list_events(
         cursor=cursor, limit=limit,
     )
     data = _get_json(ctx, "/api/events", params)
-    items = [AgentEvent.from_dict(e) for e in data.get("events", [])]
+    items = [AgentEvent.from_dict(e) for e in (data if isinstance(data, dict) else {}).get("events", [])]
     return Page(items=items, next_cursor=data.get("next_cursor"))
 
 
@@ -617,7 +701,7 @@ def list_event_summaries(
         cursor=cursor, limit=limit,
     )
     data = _get_json(ctx, "/api/events/summary", params)
-    items = [AgentEvent.from_dict(e) for e in data.get("events", [])]
+    items = [AgentEvent.from_dict(e) for e in (data if isinstance(data, dict) else {}).get("events", [])]
     return Page(items=items, next_cursor=data.get("next_cursor"))
 
 
@@ -717,7 +801,7 @@ def list_evaluations(
             "limit": limit,
         },
     )
-    items = [Evaluation.from_dict(e) for e in data.get("evaluations", [])]
+    items = [Evaluation.from_dict(e) for e in (data if isinstance(data, dict) else {}).get("evaluations", [])]
     return Page(items=items, next_cursor=data.get("next_cursor"))
 
 
@@ -753,7 +837,7 @@ def list_sessions(
             "limit": limit,
         },
     )
-    items = [Session.from_dict(s) for s in data.get("sessions", [])]
+    items = [Session.from_dict(s) for s in (data if isinstance(data, dict) else {}).get("sessions", [])]
     return Page(items=items, next_cursor=data.get("next_cursor"))
 
 
@@ -834,7 +918,19 @@ def disable_key(ctx: ClientContext, key_id: str) -> None:
 def regenerate_key(ctx: ClientContext, key_id: str) -> str:
     """POST /api/keys/{id}/regenerate — rotate the secret; returns the NEW secret once."""
     data = _post_json(ctx, f"/api/keys/{key_id}/regenerate")
-    return str(data.get("key", "")) if isinstance(data, dict) else ""
+    key = str(data.get("key", "")) if isinstance(data, dict) else ""
+    if not key:
+        # The rotation is irreversible and the secret is shown exactly once, so
+        # an empty string here is an unrecoverable credential loss, not a
+        # cosmetic glitch: `fp keys regenerate ci-bot -y | pbcopy` captured a
+        # blank line and exited 0 while the old secret was already dead
+        # server-side. Say so instead.
+        raise ApiError(
+            "the server did not return a new secret, so the key may or may not have "
+            "been rotated",
+            hint="check `fp keys show <name>` before assuming either way",
+        )
+    return key
 
 
 # --- Saved queries / SQL runner ---------------------------------------------
@@ -1361,18 +1457,45 @@ def agent_chat_oneshot(
 # --- Pagination helper ------------------------------------------------------
 
 
+class Walk:
+    """Where a `paginate()` walk stopped, for a caller that needs to say so.
+
+    A generator cannot return a value to a `list()` around it, and the four
+    `--all` commands need one: they were hard-coding ``next_cursor = None`` and
+    then emitting ``{"…": [...], "next_cursor": null}``, which positively asserts
+    that the feed is exhausted. With `--limit` defaulting to 50, `fp --json
+    events --session-id X --all` made ONE request, returned 50 rows out of
+    10,000 and told the caller there was nothing more to fetch — and the CLI had
+    the live cursor in hand at that moment and threw it away.
+
+    Pass one in and read it after the walk: `truncated` says the walk stopped on
+    `--limit` rather than on an exhausted feed, and `next_cursor` is where to
+    resume.
+    """
+
+    __slots__ = ("truncated", "next_cursor")
+
+    def __init__(self) -> None:
+        self.truncated = False
+        self.next_cursor: Optional[Union[int, str]] = None
+
+
 def paginate(
     fetch_page: Callable[..., Page],
     *,
     limit: Optional[int] = None,
     page_size: Optional[int] = None,
     start_cursor: Optional[Union[int, str]] = None,
+    walk: Optional["Walk"] = None,
 ) -> Iterator[Any]:
     """Walk cursor pages, yielding items until exhausted or ``limit`` reached.
 
     ``fetch_page`` must accept ``cursor`` and ``limit`` keyword arguments and
     return a :class:`Page`. Stops if the cursor fails to decrease (defensive
     against a server that returns a non-decreasing cursor).
+
+    ``walk`` is an optional :class:`Walk` the caller can read afterwards to tell
+    a walk that ran out of data from one that ran out of budget.
     """
     if limit is not None and limit <= 0:
         return
@@ -1386,11 +1509,18 @@ def paginate(
         size = max(1, min(size, MAX_PAGE_SIZE))
 
         page = fetch_page(cursor=cursor, limit=size)
-        for item in page.items:
+        for index, item in enumerate(page.items):
             yield item
             if remaining is not None:
                 remaining -= 1
                 if remaining <= 0:
+                    if walk is not None:
+                        # More on this page, or a cursor for the next one: either
+                        # way the feed is not exhausted.
+                        more_here = index + 1 < len(page.items)
+                        if more_here or page.next_cursor is not None:
+                            walk.truncated = True
+                            walk.next_cursor = page.next_cursor if not more_here else cursor
                     return
 
         next_cursor = page.next_cursor

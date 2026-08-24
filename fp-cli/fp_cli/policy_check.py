@@ -30,10 +30,26 @@ import tempfile
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-#: Long enough for a cold node start on a loaded laptop, short enough that a
-#: policy with an accidental infinite loop fails the command instead of hanging
-#: it. A policy that cannot decide in five seconds cannot sit on a hook either.
+#: Budget for EXECUTING a policy. Short on purpose: a policy with an accidental
+#: infinite loop must fail the command instead of hanging it, and a policy that
+#: cannot decide in five seconds cannot sit on a hook either. This is a product
+#: statement about hook latency, so it stays tight.
 _TIMEOUT_SECS = 5
+
+#: Budget for PARSING one — `node --check`, which runs no user code at all.
+#:
+#: Separate from the number above because the reasoning above does not apply to
+#: it: parsing is bounded work whose only real variable is how long a cold node
+#: process takes to start, and that is a property of the machine, not of the
+#: policy. Sharing the execution budget made the syntax check fail on a busy
+#: runner and report `the syntax check timed out` — which reads as "your policy
+#: is bad" for what is actually "this box was loaded". Seen on CI once the
+#: fp-cli matrix widened to four concurrent interpreters: three legs passed and
+#: the fourth timed out on the same source.
+#:
+#: Generous rather than tight, because nothing here can loop: if `node --check`
+#: has not answered in thirty seconds, node is wedged and saying so is right.
+_SYNTAX_TIMEOUT_SECS = 30
 
 #: SGR escapes node emits around its stack frames.
 _ANSI = re.compile(r"\x1b\[[0-9;]*m")
@@ -74,11 +90,22 @@ def check_syntax(source: str) -> SyntaxResult:
         try:
             proc = subprocess.run(
                 ["node", "--check", path],
-                capture_output=True, text=True, timeout=_TIMEOUT_SECS,
+                capture_output=True, text=True, timeout=_SYNTAX_TIMEOUT_SECS,
             )
         except subprocess.TimeoutExpired:
-            return SyntaxResult(ok=False, checked=True,
-                                message="the syntax check timed out")
+            # `checked=False`, not `ok=False`. A timeout here says nothing about
+            # the SOURCE — `node --check` runs none of it — so reporting a syntax
+            # failure blamed the user's policy for the machine being busy, and
+            # `fp policies publish` refused a perfectly good file. "We could not
+            # look" is the honest verdict, and it is the one `SyntaxResult`
+            # already models: the same shape as node being absent entirely.
+            return SyntaxResult(
+                ok=True, checked=False,
+                message=(
+                    f"the syntax check did not finish within {_SYNTAX_TIMEOUT_SECS}s, "
+                    "so the source was not checked"
+                ),
+            )
         except OSError as exc:
             return SyntaxResult(ok=True, checked=False,
                                 message=f"could not run node ({exc}); source not checked")

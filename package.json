@@ -105,7 +105,7 @@
   },
   "dependencies": {
     "html-to-image": "^1.11.13",
-    "posthog-node": "^5.47.7",
+    "posthog-node": "^5.50.0",
     "sql.js": "^1.14.1",
     "yaml": "^2.9.0"
   },

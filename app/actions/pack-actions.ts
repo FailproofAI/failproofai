@@ -10,7 +10,13 @@
  * deliberately does the opposite — it lists packs from `installed.json` and
  * imports nothing, because that runs on every page load.
  */
-import { addPack, installBundledPack, removePack, setPackPolicyEnabled } from "@/src/hooks/pack-store";
+import {
+  addPackFromSource,
+  fetchPackPreview,
+  installBundledPack,
+  removePack,
+  setPackPolicyEnabled,
+} from "@/src/hooks/pack-store";
 import { readHooksConfig, writeHooksConfig } from "@/src/hooks/hooks-config";
 import { readInstalledPacks } from "@/src/hooks/pack-manifest";
 
@@ -25,7 +31,14 @@ export interface PackActionResult {
   error?: string;
 }
 
-/** Install a pack by the source a person typed: `acme/ops`, `acme/ops@v1.2.0`, or a release URL. */
+/**
+ * Install a pack by the source a person typed: `core`, `acme/ops`,
+ * `acme/ops@v1.2.0`, or a release URL.
+ *
+ * Routed through the SAME resolver the CLI uses. While the alias list lived in
+ * `pack-cli.ts`, `core` worked in the terminal and failed in the browser — the
+ * one thing a shared entry point exists to prevent.
+ */
 export async function addPackWebAction(
   source: string,
   opts?: { all?: boolean; only?: string[]; categories?: string[] },
@@ -33,7 +46,7 @@ export async function addPackWebAction(
   const trimmed = source.trim();
   if (!trimmed) return { ok: false, error: "Enter a pack source, for example acme/ops" };
   try {
-    const result = await addPack(trimmed, opts ?? {});
+    const result = await addPackFromSource(trimmed, opts ?? {});
     return {
       ok: true,
       id: result.id,
@@ -96,4 +109,45 @@ export async function togglePackPolicyAction(
     }
   }
   return { ok: true, id: packId };
+}
+
+export interface PackPreviewResult {
+  ok: boolean;
+  id?: string;
+  version?: string;
+  source?: string;
+  effect?: "enforce" | "observe";
+  policies?: Array<{ name: string; description: string; category: string; defaultEnabled: boolean }>;
+  error?: string;
+}
+
+/**
+ * Read what a pack contains WITHOUT installing it — the browser half of
+ * `failproofai pack list <source>`.
+ *
+ * Fetches the manifest only. The entry artifact is never downloaded and never
+ * imported, so previewing a stranger's pack from the dashboard cannot run a
+ * stranger's code inside this long-lived server.
+ */
+export async function previewPackWebAction(source: string): Promise<PackPreviewResult> {
+  const trimmed = source.trim();
+  if (!trimmed) return { ok: false, error: "Enter a pack source, for example acme/ops" };
+  try {
+    const preview = await fetchPackPreview(trimmed);
+    return {
+      ok: true,
+      id: preview.id,
+      version: preview.version,
+      source: preview.source,
+      effect: preview.effect,
+      policies: preview.policies.map((p) => ({
+        name: p.name,
+        description: p.description,
+        category: p.category,
+        defaultEnabled: p.defaultEnabled,
+      })),
+    };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
 }

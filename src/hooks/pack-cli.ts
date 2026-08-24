@@ -15,6 +15,7 @@ import {
   PACK_MANIFEST_ASSET,
   addPack,
   checkPackArtifact,
+  CORE_ALIASES,
   fetchPackPreview,
   installBundledPack,
   removePack,
@@ -63,20 +64,6 @@ export function packAddSource(rest: string[]): string | undefined {
   }
   return rest.find((arg, index) => !arg.startsWith("--") && !consumed.has(index));
 }
-
-/**
- * The short name for the pack Failproof AI publishes.
- *
- * `failproofai pack add FailproofAI/policies` is the honest form and nobody is
- * going to type it. This resolves to the copy that ships inside the package, so
- * it also needs no network and cannot fail on a corporate proxy — the fastest
- * path to a guarded machine is a word.
- *
- * Deliberately not "builtin": these stop being builtins, that is the whole point
- * of publishing them as a pack, and a command that teaches the old word on the
- * way out is a command we would have to un-teach.
- */
-const CORE_ALIASES = new Set(["core", "failproofai", "official"]);
 
 /** Names taken by our own policies, so a selection can be checked before install. */
 function selectionFrom(rest: string[]): { only?: string[]; categories?: string[]; all?: boolean } {

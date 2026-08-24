@@ -8,7 +8,8 @@
  * NON-ZERO — the machine is enforcing less than its manifest claims, which is
  * the state a person most needs told about.
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -36,6 +37,8 @@ const POLICIES = [
 let root: string;
 let prev: string | undefined;
 let prevPackageRoot: string | undefined;
+/** A package root carrying a freshly built `policy-pack/`, shared by the file. */
+let packageRoot: string;
 
 function install(over: Record<string, unknown> = {}): void {
   writeFileSync(
@@ -50,16 +53,30 @@ function install(over: Record<string, unknown> = {}): void {
   );
 }
 
+beforeAll(() => {
+  packageRoot = mkdtempSync(join(tmpdir(), "fpai-pack-cli-pkg-"));
+  execFileSync(
+    "bun",
+    ["scripts/build-policy-pack.mjs", "--out", join(packageRoot, "policy-pack")],
+    { cwd: resolve(__dirname, "../.."), stdio: ["pipe", "pipe", "inherit"] },
+  );
+}, 120_000);
+
+afterAll(() => {
+  rmSync(packageRoot, { recursive: true, force: true });
+});
+
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "fpai-pack-cli-"));
   mkdirSync(join(root, "artifacts"), { recursive: true });
   writeFileSync(join(root, "artifacts", `${DIGEST}.mjs`), ARTIFACT);
   prev = process.env.FAILPROOFAI_PACK_DIR;
   process.env.FAILPROOFAI_PACK_DIR = root;
-  // `core` reads the pack vendored in the package, so point the package root at
-  // this repo — where `build:pack` puts it.
+  // `core` reads the pack VENDORED in the package. Pointing at the repo root
+  // works locally and fails in CI: `test` and `build` are separate jobs, so
+  // `policy-pack/` does not exist there. Generate it, like the conformance test.
   prevPackageRoot = process.env.FAILPROOFAI_PACKAGE_ROOT;
-  process.env.FAILPROOFAI_PACKAGE_ROOT = resolve(__dirname, "../..");
+  process.env.FAILPROOFAI_PACKAGE_ROOT = packageRoot;
 });
 
 afterEach(() => {

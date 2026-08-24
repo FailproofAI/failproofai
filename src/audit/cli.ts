@@ -58,7 +58,7 @@ export const EXIT_AUDIT_ALREADY_RUNNING = 75;
 export const AUDIT_STAGES: ReadonlyArray<{ label: string; detail: string }> = [
   { label: "discovering transcripts", detail: "walking ~/.claude, ~/.codex, ~/.cursor, …" },
   { label: "parsing session logs", detail: "reading JSONL + sqlite session stores" },
-  { label: "running policy checks", detail: "replaying through 30 builtin policies" },
+  { label: "running policy checks", detail: "replaying every policy against each tool call" },
   { label: "aggregating results", detail: "counting hits, ranking by frequency" },
 ];
 

@@ -10,6 +10,9 @@
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
+import { createServer, type Server } from "node:http";
+import { readFileSync } from "node:fs";
+import type { AddressInfo } from "node:net";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -37,6 +40,8 @@ const POLICIES = [
 let root: string;
 let prev: string | undefined;
 let prevPackageRoot: string | undefined;
+let coreServer: Server;
+let prevBase: string | undefined;
 /** A package root carrying a freshly built `policy-pack/`, shared by the file. */
 let packageRoot: string;
 
@@ -53,16 +58,50 @@ function install(over: Record<string, unknown> = {}): void {
   );
 }
 
-beforeAll(() => {
+/**
+ * A local stand-in for the core pack's GitHub release.
+ *
+ * `core` is a spelling of `FailproofAI/policies` now — the package carries no
+ * copy, so these tests have to serve one. Built with the real
+ * `build-policy-pack` script rather than a fixture, so what they install is the
+ * artifact this repo actually publishes.
+ */
+beforeAll(async () => {
   packageRoot = mkdtempSync(join(tmpdir(), "fpai-pack-cli-pkg-"));
+  const packDir = join(packageRoot, "policy-pack");
   execFileSync(
     "bun",
-    ["scripts/build-policy-pack.mjs", "--out", join(packageRoot, "policy-pack")],
+    ["scripts/build-policy-pack.mjs", "--out", packDir],
     { cwd: resolve(__dirname, "../.."), stdio: ["pipe", "pipe", "inherit"] },
   );
+  const assets: Record<string, Buffer> = {
+    "failproofai-pack.json": readFileSync(join(packDir, "failproofai-pack.json")),
+    "failproofai-pack.mjs": readFileSync(join(packDir, "failproofai-pack.mjs")),
+    SHA256SUMS: readFileSync(join(packDir, "SHA256SUMS")),
+  };
+  const version = (JSON.parse(assets["failproofai-pack.json"].toString()) as { version: string }).version;
+
+  coreServer = createServer((req, res) => {
+    const url = req.url ?? "";
+    // A redirect, exactly as github.com answers it — which is how a tagless
+    // source resolves with no second origin and no rate limit.
+    if (url === "/FailproofAI/policies/releases/latest") {
+      res.writeHead(302, { location: `/FailproofAI/policies/releases/tag/v${version}` }).end();
+      return;
+    }
+    const m = url.match(/^\/FailproofAI\/policies\/releases\/download\/([^/]+)\/([^/]+)$/);
+    const body = m ? assets[m[2]] : undefined;
+    if (!body) {
+      res.writeHead(404).end("no such asset");
+      return;
+    }
+    res.writeHead(200).end(body);
+  });
+  await new Promise<void>((r) => coreServer.listen(0, "127.0.0.1", r));
 }, 120_000);
 
-afterAll(() => {
+afterAll(async () => {
+  await new Promise<void>((r) => coreServer.close(() => r()));
   rmSync(packageRoot, { recursive: true, force: true });
 });
 
@@ -77,6 +116,9 @@ beforeEach(() => {
   // `policy-pack/` does not exist there. Generate it, like the conformance test.
   prevPackageRoot = process.env.FAILPROOFAI_PACKAGE_ROOT;
   process.env.FAILPROOFAI_PACKAGE_ROOT = packageRoot;
+  prevBase = process.env.FAILPROOFAI_PACK_BASE_URL;
+  process.env.FAILPROOFAI_PACK_BASE_URL =
+    `http://127.0.0.1:${(coreServer.address() as AddressInfo).port}`;
 });
 
 afterEach(() => {
@@ -84,19 +126,22 @@ afterEach(() => {
   else process.env.FAILPROOFAI_PACK_DIR = prev;
   if (prevPackageRoot === undefined) delete process.env.FAILPROOFAI_PACKAGE_ROOT;
   else process.env.FAILPROOFAI_PACKAGE_ROOT = prevPackageRoot;
+  if (prevBase === undefined) delete process.env.FAILPROOFAI_PACK_BASE_URL;
+  else process.env.FAILPROOFAI_PACK_BASE_URL = prevBase;
   rmSync(root, { recursive: true, force: true });
 });
 
 const text = (r: { lines: string[] }) => r.lines.join("\n");
 
 describe("the short name for our own policies", () => {
-  // `failproofai pack add FailproofAI/policies` is the honest form and nobody
-  // types it. `core` resolves to the copy inside the package, so it is also the
-  // one install that cannot fail on a proxy.
+  // `failproofai policies add FailproofAI/policies` is the honest form and
+  // nobody types it, so `core` is the short spelling of exactly that source. It
+  // is FETCHED — the package carries no copy any more — which is why these
+  // tests stand up a release server rather than pointing at a directory.
   it.each(["core", "failproofai", "official"])("takes `%s` as the source", async (alias) => {
     const r = await runPackCommand(["add", alias]);
     expect(r.exitCode).toBe(0);
-    expect(text(r)).toMatch(/no network needed/);
+    expect(text(r)).toMatch(/Installed failproofai\/core@/);
   });
 
   it("takes one policy by name, and does not read the flag's value as the source", async () => {

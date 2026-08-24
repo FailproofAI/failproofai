@@ -16,6 +16,9 @@
 // drifts is exactly what having three commands cost in the first place.
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
 import { spawnSync, execFileSync } from "node:child_process";
+import { createServer, type Server } from "node:http";
+import { readFileSync } from "node:fs";
+import type { AddressInfo } from "node:net";
 import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -36,14 +39,38 @@ let fpHome: string;
  * other pack tests generate it; so does this one.
  */
 let packageRoot: string;
+let coreServer: Server;
 
-beforeAll(() => {
+beforeAll(async () => {
   packageRoot = mkdtempSync(join(tmpdir(), "fpai-surface-pkg-"));
+  const packDir = join(packageRoot, "policy-pack");
   execFileSync(
     "bun",
-    ["scripts/build-policy-pack.mjs", "--out", join(packageRoot, "policy-pack")],
+    ["scripts/build-policy-pack.mjs", "--out", packDir],
     { cwd: resolve(__dirname, "../.."), stdio: ["pipe", "pipe", "inherit"] },
   );
+
+  // `core` is FETCHED now — the package carries no copy. Served locally so
+  // these tests do not depend on github.com being reachable, and so a CI run
+  // cannot go green or red on somebody else's release.
+  const assets: Record<string, Buffer> = {
+    "failproofai-pack.json": readFileSync(join(packDir, "failproofai-pack.json")),
+    "failproofai-pack.mjs": readFileSync(join(packDir, "failproofai-pack.mjs")),
+    SHA256SUMS: readFileSync(join(packDir, "SHA256SUMS")),
+  };
+  const version = (JSON.parse(assets["failproofai-pack.json"].toString()) as { version: string }).version;
+  coreServer = createServer((req, res) => {
+    const url = req.url ?? "";
+    if (url === "/FailproofAI/policies/releases/latest") {
+      res.writeHead(302, { location: `/FailproofAI/policies/releases/tag/v${version}` }).end();
+      return;
+    }
+    const m = url.match(/^\/FailproofAI\/policies\/releases\/download\/([^/]+)\/([^/]+)$/);
+    const body = m ? assets[m[2]] : undefined;
+    if (!body) { res.writeHead(404).end("no such asset"); return; }
+    res.writeHead(200).end(body);
+  });
+  await new Promise<void>((r) => coreServer.listen(0, "127.0.0.1", r));
 }, 120_000);
 
 beforeEach(() => {
@@ -51,7 +78,8 @@ beforeEach(() => {
   mkdirSync(fpHome, { recursive: true });
 });
 
-afterAll(() => {
+afterAll(async () => {
+  await new Promise<void>((r) => coreServer.close(() => r()));
   rmSync(HOME, { recursive: true, force: true });
   rmSync(packageRoot, { recursive: true, force: true });
 });
@@ -73,6 +101,7 @@ function cli(args: string[], opts: { offline?: boolean } = {}): Run {
       FAILPROOFAI_HOME: fpHome,
       FAILPROOFAI_TELEMETRY_DISABLED: "1",
       FAILPROOFAI_PACKAGE_ROOT: packageRoot,
+      FAILPROOFAI_PACK_BASE_URL: `http://127.0.0.1:${(coreServer.address() as AddressInfo).port}`,
       ...(opts.offline ? { FAILPROOFAI_NO_DOWNLOAD: "1" } : {}),
     },
     encoding: "utf8",
@@ -227,11 +256,20 @@ describe("what the unified command actually does", () => {
     expect(cli(["policies"]).stdout).not.toMatch(/✓ PACK/);
   });
 
-  it("keeps the artifact after a remove, so re-adding it needs no network", () => {
+  it("needs the network to re-add what it removed, and says so plainly", () => {
+    // The artifact is still kept on disk, but `addPack` always fetches and
+    // re-verifies — so a remove is not a local undo any more. The message used
+    // to promise "re-adding it works offline", which stopped being true the day
+    // the package stopped carrying policies. A message that promises offline
+    // and then fails offline is worse than no message.
     cli(["policies", "add", "core", "--policy", "block-rm-rf"]);
-    cli(["policies", "remove", "failproofai/core"]);
-    const again = cli(["policies", "add", "core", "--policy", "block-rm-rf"], { offline: true });
-    expect(again.exitCode).toBe(0);
+    const removed = cli(["policies", "remove", "failproofai/core"]);
+    expect(removed.exitCode).toBe(0);
+    expect(removed.all).not.toMatch(/offline/i);
+
+    const offline = cli(["policies", "add", "core"], { offline: true });
+    expect(offline.exitCode).not.toBe(0);
+    expect(offline.all).toMatch(/FAILPROOFAI_NO_DOWNLOAD/);
   });
 
   it("suggests the new spelling, never the retired one, when it has more to offer", () => {

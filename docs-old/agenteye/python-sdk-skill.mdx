@@ -48,7 +48,7 @@ They hand off in that order: this skill gets events flowing, the evaluator score
 ## Prerequisites
 
 1. **Python 3.10+** and the agent codebase you want to instrument.
-2. **The SDK.** It is distributed to customers as a private wheel rather than from a public index — your onboarding covers how to get it and install it. The skill knows the install path and will ask you rather than guess if it cannot find it.
+2. **The SDK.** `pip install failproofai-sdk` (or `uv add failproofai-sdk`). The skill knows the install path, including the one command to avoid — `pip install agenteye` resolves to a stranded release of an older CLI, not to this SDK.
 3. **Nothing else.** No dashboard login, no API key, no network. The skill verifies against the event files the SDK writes, so it can finish and prove its work offline.
 
 ## Where to get it

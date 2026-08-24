@@ -11,7 +11,7 @@ Un harnais est l'environnement dans lequel votre agent s'exécute concrètement.
 
 Les mêmes politiques et le même historique de session s'appliquent quel que soit le harnais utilisé. Une couche d'adaptation mappe les noms d'événements natifs, les noms d'outils et les champs d'entrée propres à chaque harnais vers 29 événements canoniques, avant toute exécution de politique.
 
-Un agent qui ne tourne dans **aucun** des douze harnais est instrumenté directement via le [SDK Python](/fr/reference/python-sdk). Ce contrat est différent, et mérite d'être énoncé clairement : le SDK fournit le traçage, les sessions, les évaluations et les audits — **il n'applique pas les politiques de lui-même.** Bloquer une action non sécurisée avant qu'elle ne s'exécute nécessite un hook d'application à la frontière des outils de votre runtime ; [contactez-nous](mailto:support@befailproof.ai) et nous l'adapterons.
+Un agent qui ne tourne dans **aucun** des douze harnais est instrumenté directement via le [SDK Python](/fr/reference/custom-agents). Ce contrat est différent, et mérite d'être énoncé clairement : le SDK fournit le traçage, les sessions, les évaluations et les audits — **il n'applique pas les politiques de lui-même.** Bloquer une action non sécurisée avant qu'elle ne s'exécute nécessite un hook d'application à la frontière des outils de votre runtime ; [contactez-nous](mailto:support@befailproof.ai) et nous l'adapterons.
 
 | Harnais | Scopes de hook pris en charge |
 | --- | --- |

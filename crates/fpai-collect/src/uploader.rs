@@ -70,6 +70,23 @@ pub enum UploadError {
         attempts: u32,
         detail: String,
     },
+    /// A 2xx whose ack says the server stored NONE of the batch. Not a
+    /// success: the events are not on the server and this file is their last
+    /// copy, so it is parked rather than deleted.
+    StoredNothing {
+        skipped: u64,
+    },
+    /// A 2xx whose ack says the server stored SOME of the batch and refused the
+    /// rest. Also not a success, for the same reason: this file is the last
+    /// copy of the refused events, and deleting it destroyed them silently.
+    ///
+    /// Parked rather than deleted, and safe to retry — `upload_file` above
+    /// already relies on the server deduping a byte-identical resend, so the
+    /// events it DID accept are not double-counted when the batch goes again.
+    PartiallySkipped {
+        accepted: u64,
+        skipped: u64,
+    },
     Io(std::io::Error),
 }
 
@@ -79,6 +96,19 @@ impl std::fmt::Display for UploadError {
             UploadError::Client { status } => write!(f, "client error {status}: not retried"),
             UploadError::Server { status, attempts } => {
                 write!(f, "server error {status} after {attempts} attempt(s)")
+            }
+            UploadError::StoredNothing { skipped } => {
+                write!(
+                    f,
+                    "the server stored none of this batch ({skipped} skipped)"
+                )
+            }
+            UploadError::PartiallySkipped { accepted, skipped } => {
+                write!(
+                    f,
+                    "the server refused {skipped} of this batch ({accepted} accepted); \
+                     parked so the refused events are not lost"
+                )
             }
             UploadError::Network { attempts, detail } => {
                 write!(f, "network error after {attempts} attempt(s): {detail}")
@@ -246,7 +276,34 @@ impl Uploader {
                         // identically until the URL is fixed.
                         match resp.json::<IngestAck>().await {
                             Ok(ack) => {
-                                self.record_ack(path, &ack);
+                                // `record_ack`'s own contract: "A 200 that stored
+                                // nothing is an error, not a success." It said so
+                                // and then returned Ok anyway, so `upload_file`
+                                // deleted the file — the module's stated invariant
+                                // is that `failed/` is a retry queue and a batch
+                                // the server does not have is "never deleted", and
+                                // this was the one path that broke it.
+                                //
+                                // Parked retryable (client_status None), not
+                                // poison-on-sight: the observed cause was an
+                                // intermediary mangling an oversized body, which a
+                                // retry can survive. `park_inner` bounds that —
+                                // attempt is encoded in the filename and becomes
+                                // `.poison` at `failed_retries_max`, after which it
+                                // is kept forever and never retried again.
+                                if self.record_ack(path, &ack, attempt) {
+                                    self.park(path, None, attempt).await;
+                                    return Err(if ack.accepted == 0 {
+                                        UploadError::StoredNothing {
+                                            skipped: ack.skipped,
+                                        }
+                                    } else {
+                                        UploadError::PartiallySkipped {
+                                            accepted: ack.accepted,
+                                            skipped: ack.skipped,
+                                        }
+                                    });
+                                }
                                 return Ok(());
                             }
                             Err(_) => {
@@ -290,27 +347,70 @@ impl Uploader {
         }
     }
 
-    /// Interpret the ack body. A 200 that stored nothing is an error, not a
-    /// success — it is the shape a systematically malformed transform takes,
-    /// and without this it looks identical to a healthy upload.
-    fn record_ack(&self, path: &Path, ack: &IngestAck) {
+    /// Interpret the ack body. Returns true when the batch must be PARKED.
+    ///
+    /// Any `skipped > 0` qualifies, not just `accepted == 0`. A partially
+    /// accepted ack — `{"accepted":3,"skipped":1}` — was treated as a plain
+    /// success, so `upload_file` deleted the spool file and the one refused
+    /// event was destroyed: this file was its last local copy, the server never
+    /// had it, and nothing anywhere recorded which event it was. That is the
+    /// same permanent, silent loss the fully-skipped branch was added to close,
+    /// reached through an ack that merely looks healthier.
+    fn record_ack(&self, path: &Path, ack: &IngestAck, attempt: u32) -> bool {
+        let stored_nothing = ack.accepted == 0 && ack.skipped > 0;
+
         self.metrics
             .accepted_total
             .fetch_add(ack.accepted, Ordering::Relaxed);
-        self.metrics
-            .skipped_total
-            .fetch_add(ack.skipped, Ordering::Relaxed);
-        self.metrics
-            .last_ok_ts
-            .store(unix_now_secs(), Ordering::Relaxed);
 
-        if ack.accepted == 0 && ack.skipped > 0 {
+        // Count the loss ONCE per batch. A fully-skipped batch is parked and
+        // retried now (it used to be deleted), and every retry runs this
+        // function again — so one 5-event batch reported `skipped: 15` and
+        // `batches_fully_skipped: 3` after two retry passes. Both are published
+        // to operators as counts of EVENTS and BATCHES, so an operator sizing
+        // the incident from `health.json` tripled it, by a multiplier that
+        // depends on how many retry passes happened rather than on anything
+        // about the data.
+        //
+        // Keyed on the FILE NAME, not the retry counter: `upload_file`'s own
+        // `attempt` restarts at 1 for every call, including each call made from
+        // `retry_parked`. The parked name is where the batch's history actually
+        // lives (`.aN`), so a file already carrying one has been counted.
+        let first_attempt = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| ParkedName::parse(n).attempt == 0)
+            .unwrap_or(true);
+        if first_attempt {
             self.metrics
-                .batches_fully_skipped
-                .fetch_add(1, Ordering::Relaxed);
+                .skipped_total
+                .fetch_add(ack.skipped, Ordering::Relaxed);
+        }
+
+        // Only a batch that actually stored something advances `last_ok_ts`.
+        // This ran unconditionally, before the check below, so on a machine
+        // where ingest rejects 100% of lines — the systematic-malformation case
+        // `DeliveryHealth` exists to expose — the timestamp was refreshed on
+        // every upload and every retry of every parked batch. `health.rs`
+        // documents this field as "the last upload the server ACCEPTED … the
+        // loudest thing in this file", and it was permanently green while
+        // nothing had ever been stored.
+        if !stored_nothing {
+            self.metrics
+                .last_ok_ts
+                .store(unix_now_secs(), Ordering::Relaxed);
+        }
+
+        if stored_nothing {
+            if first_attempt {
+                self.metrics
+                    .batches_fully_skipped
+                    .fetch_add(1, Ordering::Relaxed);
+            }
             tracing::error!(
                 file = %path.display(),
                 skipped = ack.skipped,
+                attempt,
                 "the server accepted the request but stored NONE of its events; \
                  every line was rejected as malformed"
             );
@@ -322,6 +422,8 @@ impl Uploader {
                 "the server skipped some events in this batch"
             );
         }
+
+        ack.skipped > 0
     }
 
     /// `base * 2^(attempt-1)` plus jitter.

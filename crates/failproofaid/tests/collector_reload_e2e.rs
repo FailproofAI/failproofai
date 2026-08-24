@@ -256,22 +256,57 @@ fn disabling_collection_stops_it_and_re_enabling_starts_it_again() {
     // `--disconnect` used to require a restart to take effect, so a machine that
     // had left its organisation went on shipping. The reverse matters just as
     // much: re-enabling must not need one either, or the fix is half a fix.
+    //
+    // The lever is the CREDENTIAL, because that is what `--disconnect` actually
+    // removes (`clearIngestCredential` in cloud-enrollment-cli.ts). This used to
+    // toggle `collector.hooks` as a stand-in, which no longer disables anything:
+    // that flag gates the daemon's own hook-activity source and deliberately
+    // does NOT gate delivery, since the spool also carries batches the
+    // `failproofai-sdk` wrote from the user's own process. Toggling the real
+    // thing is a stronger test of the scenario this exists for, and the
+    // companion test below pins the behaviour that replaced the old lever.
     let home = unique_home("toggle");
     make_home(&home, "a-stable-key");
     let daemon = spawn_daemon(&home);
     daemon.wait_for("collector enabled", 1, Duration::from_secs(20));
 
-    let cfg = home.join("config.json");
-    let on = std::fs::read_to_string(&cfg).unwrap();
-    // JSON now, so the edit is on the key/value pair, not a TOML line. A
-    // string replace that silently matches nothing writes the file back
-    // unchanged and the test then waits 20s for a reload that never had a
-    // reason to happen — which is exactly how this broke.
-    std::fs::write(&cfg, on.replace(r#""hooks":true"#, r#""hooks":false"#)).unwrap();
+    let creds = home.join("credentials.json");
+    let on = std::fs::read_to_string(&creds).unwrap();
+    std::fs::remove_file(&creds).unwrap();
     daemon.wait_for("no longer enabled", 1, Duration::from_secs(20));
 
-    std::fs::write(&cfg, &on).unwrap();
+    std::fs::write(&creds, &on).unwrap();
     daemon.wait_for("collector enabled", 2, Duration::from_secs(20));
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn turning_both_capture_sources_off_leaves_delivery_running() {
+    // The counterweight to the change above, and the bug it came from: with
+    // `sessions` and `hooks` both false the daemon used to start NOTHING — no
+    // spool watcher, no sweeper, no log line — so every batch the SDK wrote
+    // sat on disk forever, with no error on either side and an unread spool
+    // indistinguishable from an idle one.
+    //
+    // Those two settings gate the daemon's own capture sources, and each is
+    // checked again where its source is registered, so leaving them off still
+    // starts neither. What they must not gate is delivery.
+    let home = unique_home("sources-off");
+    make_home(&home, "a-stable-key");
+    let cfg = home.join("config.json");
+    let on = std::fs::read_to_string(&cfg).unwrap();
+    std::fs::write(&cfg, on.replace(r#""hooks":true"#, r#""hooks":false"#)).unwrap();
+
+    let daemon = spawn_daemon(&home);
+    daemon.wait_for("collector enabled", 1, Duration::from_secs(20));
+    // The watcher is the thing that ships an SDK batch; without it this daemon
+    // is a process that reports healthy and delivers nothing.
+    daemon.wait_for("spool watcher started", 1, Duration::from_secs(20));
+    assert!(
+        !daemon.stderr().contains("hook-activity source started"),
+        "hooks=false must still switch the daemon's own hook source off:\n{}",
+        daemon.stderr()
+    );
     let _ = std::fs::remove_dir_all(&home);
 }
 

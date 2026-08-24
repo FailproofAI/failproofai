@@ -218,7 +218,14 @@ export const cloudPoliciesDir = (home?: string) => resolve(policiesDir(home), "c
 export const cursorsDir = (source?: string, home?: string) =>
   source ? resolve(atHome(home, "cursors"), source) : atHome(home, "cursors");
 
-/** The SDK spool root. Mirrors `~/.agenteye/`, which stays supported. */
+/** The SDK spool root, and the ONLY root `failproofai-sdk` writes to.
+ *
+ *  The daemon additionally watches `~/.agenteye/events` (see `spool_dirs` in
+ *  `crates/fpai-collect/src/config.rs`) so that SDKs old enough to write there,
+ *  and batches already sitting there, keep being collected. But no current SDK
+ *  puts anything in it: `$AGENTEYE_HOME` used to redirect the spool and no
+ *  longer does, precisely so that exporting it for the older
+ *  `agenteye-collector` cannot relocate the SDK as a side effect. */
 export const customAgentsDir = (home?: string) => atHome(home, "custom-agents");
 export const customAgentsEventsDir = (home?: string) => resolve(customAgentsDir(home), "events");
 export const customAgentsFailedDir = (home?: string) => resolve(customAgentsDir(home), "failed");
@@ -272,6 +279,48 @@ export const auditSessionFile = (home?: string) => resolve(auditDir(home), "sess
  */
 export const auditMachineFile = (home?: string) => resolve(auditDir(home), "machine.json");
 
+
+// ── fp-cloud-cli ───────────────────────────────────────────────────────────────────
+
+/**
+ * The Cloud CLI's own directory (`fp-cloud-cli` on PyPI, command `fp`).
+ *
+ * Written by PYTHON, not by anything in this repo's TypeScript or Rust — the
+ * CLI resolves it independently in `fp-cloud-cli/fp_cli/config.py`. It is declared
+ * here anyway because this file is the register of what may exist in the home,
+ * and a path absent from it is only safe by accident: `resettablePaths()` is a
+ * filter over `HOME_CLASSES`, so an unregistered directory survives today and
+ * survives the next migration only until someone lists its parent.
+ *
+ * Not classified itself — `auditDir`'s rule applies, classify the children. The
+ * directory may grow a cache later; the credential in it must never be dropped.
+ */
+export const fpcliDir = (home?: string) => atHome(home, "fpcli");
+
+/**
+ * The CLI's signed-in session. `0600`, written only by `fp login` / `fp logout`.
+ *
+ * Was `~/.fp/cli.json` — a third top-level dotfile for one product. The old
+ * file is deliberately left where it is: `load_config` in
+ * `fp-cloud-cli/fp_cli/config.py` reads it when nothing is here yet, writes the
+ * session to this path, and does NOT delete the original, so downgrading to a
+ * previous `fp` finds its session intact. Adoption is best-effort — an
+ * unwritable home hands back the session it found rather than logging the
+ * machine out — and it costs the user no login.
+ *
+ * This paragraph said the opposite until it was checked against the code: that
+ * there was no migration and the upgrade cost a login. There is one, it is
+ * covered by `fp-cloud-cli/tests/test_failproofai_home.py`, and the only true half
+ * was that the old file survives.
+ *
+ * `user-typed` for the same reason as `auditSessionFile` beside it: nothing
+ * regenerates a session, and dropping it silently signs the machine out.
+ *
+ * TS-side only, like `auditSessionFile`, and absent from `paths.rs` by design —
+ * the daemon has no reason to open a human credential, and mirroring a path
+ * only Python writes would give `paths.rs` an entry nothing there reads.
+ */
+export const fpcliAuthFile = (home?: string) => resolve(fpcliDir(home), "cli-auth.json");
 
 // ── Hook activity ────────────────────────────────────────────────────────────
 
@@ -469,9 +518,15 @@ export type DataClass =
  *    else under it is scratch. Listing the parent is exactly how a reset came
  *    to delete undelivered events and the machine's own telemetry identity.
  *
- * `home-classification.test.ts` asserts every exported path function in this
- * module is either classified here or covered by a classified parent, so the
- * next path added to the home cannot skip the one question that matters.
+ * `__tests__/hooks/fp-home.test.ts` asserts every exported path function in
+ * this module is either classified here or covered by a classified parent, so
+ * the next path added to the home cannot skip the one question that matters.
+ *
+ * It cited `home-classification.test.ts` until that was checked — a file that
+ * has never existed. The guard was real and in the wrong place, which is the
+ * failure this header already describes happening once before: a citation is
+ * only load-bearing if somebody follows it, and the person who does is looking
+ * for the rule they are about to break.
  */
 export const HOME_CLASSES: readonly { path: (home?: string) => string; class: DataClass }[] = [
   // ── Never deleted: a person typed it ──
@@ -498,6 +553,11 @@ export const HOME_CLASSES: readonly { path: (home?: string) => string; class: Da
   // with no notice, and the machine only finds out the next time it tries to
   // report.
   { path: auditSessionFile, class: "user-typed" },
+  // The Cloud CLI's session, written by Python (`fp-cloud-cli/fp_cli/config.py`). The
+  // one entry here whose writer is outside this repo's TS and Rust, which is
+  // exactly why it needs listing: nothing in a migration would otherwise know a
+  // credential lives under `fpcli/`.
+  { path: fpcliAuthFile, class: "user-typed" },
 
   // ── Never deleted: recorded and not yet shipped ──
   // Batches read out of transcripts and queued for upload. The reason losing

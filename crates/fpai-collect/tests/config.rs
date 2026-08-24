@@ -80,6 +80,39 @@ fn a_key_alone_does_not_enable_session_collection() {
 }
 
 #[test]
+fn a_key_with_both_sources_off_still_delivers_the_sdk_spool() {
+    // `collector.hooks = false` is a documented privacy choice. It must switch
+    // off the daemon's own hook-activity source and NOTHING else: the spool it
+    // watches also holds batches written by `failproofai-sdk` from the user's
+    // own instrumented agents, and the watcher is the only thing that ships
+    // them. While this returned false for that config the daemon started no
+    // task and logged no line, and those batches piled up forever.
+    let home = tmp_home("bothoff");
+    config::write_ingest(
+        &home,
+        &Ingest {
+            url: DEFAULT_INGEST_URL.into(),
+            key: "k".into(),
+        },
+    )
+    .unwrap();
+    fs::write(
+        home.join("config.json"),
+        r#"{"collector":{"sessions":false,"hooks":false}}"#,
+    )
+    .unwrap();
+
+    let cfg = without_env_overrides(|| config::load(&home).unwrap());
+    assert!(!cfg.settings.sessions);
+    assert!(!cfg.settings.hooks);
+    assert!(
+        cfg.is_enabled(),
+        "delivery must run for the SDK spool even with both capture sources off"
+    );
+    fs::remove_dir_all(&home).ok();
+}
+
+#[test]
 fn the_credential_file_is_written_owner_only() {
     #[cfg(unix)]
     {

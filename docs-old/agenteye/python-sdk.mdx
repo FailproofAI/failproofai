@@ -18,13 +18,35 @@ Under the hood, the SDK writes structured events to local JSONL files, and the c
 
 ## Installation
 
-The SDK is distributed to customers as a private wheel rather than from a public package index. Your onboarding covers how to obtain it, install it, and pin it — talk to your Failproof AI contact if you need access.
+```bash
+pip install failproofai-sdk
+```
+
+Or with `uv`:
+
+```bash
+uv add failproofai-sdk
+```
+
+The distribution is `failproofai-sdk`; the import is `failproofai_sdk`. It has no dependencies, so it cannot conflict with anything already in your agent's environment.
+
+<Warning>
+  **Do not `pip install agenteye`.** That name on PyPI belongs to a stranded release of an older CLI, not to this SDK. Installing it gives you `ModuleNotFoundError` on `import failproofai_sdk` — and if you are upgrading from the SDK's own pre-rename releases, which also published under `agenteye`, pip treats it as an upgrade and removes the SDK.
+</Warning>
 
 Once it is installed, confirm you have it:
 
 ```bash
-python -c "import agenteye; print(agenteye.__version__)"
+python -c "import failproofai_sdk; print(failproofai_sdk.__version__)"
 ```
+
+Upgrading an existing integration? Uninstall `agenteye`, install `failproofai-sdk`, and change `import agenteye` to `import failproofai_sdk`. Every emitted field is identical, and `session_id`/`agent_id` became **optional** on every event method (they resolve from the enclosing scope when omitted).
+
+**Two things on disk did move.** The default spool is now `$FAILPROOFAI_HOME/custom-agents/events`, otherwise `~/.failproofai/custom-agents/events` — and `AGENTEYE_HOME` no longer affects the SDK at all. `failproofaid` reads the new root. The older `agenteye-collector` does not: it resolves `$AGENTEYE_HOME` or `~/.agenteye` and nothing else, so on a host running only that collector the batches pile up unread, with no error on either side. Three supported bridges, if that is you:
+
+- point the collector at the new root (its own `--spool`/config), which is the one that needs no application change;
+- run `failproofaid` instead, which reads both roots;
+- or `failproofai_sdk.configure(base_dir="~/.agenteye")` in the application, which is explicit and visible at the call site.
 
 Prefer to let a coding agent do the whole integration? The [Python SDK Agent Skill](/agenteye/python-sdk-skill) knows the install path, plans the instrumentation points, writes them, and verifies the events land.
 
@@ -33,13 +55,13 @@ Prefer to let a coding agent do the whole integration? The [Python SDK Agent Ski
 ## Quick Start
 
 ```python
-import agenteye
+import failproofai_sdk
 
-agenteye.configure(environment="production")
+failproofai_sdk.configure(environment="production")
 
-agenteye.event.agent_start(session_id="run-001", agent_id="planner", goal="answer user query")
+failproofai_sdk.event.agent_start(session_id="run-001", agent_id="planner", goal="answer user query")
 
-agenteye.event.tool_use(
+failproofai_sdk.event.tool_use(
     session_id="run-001",
     agent_id="planner",
     tool_name="web_search",
@@ -47,7 +69,7 @@ agenteye.event.tool_use(
     input={"query": "latest AI research"},
 )
 
-agenteye.event.tool_result(
+failproofai_sdk.event.tool_result(
     session_id="run-001",
     agent_id="planner",
     tool_name="web_search",
@@ -55,7 +77,7 @@ agenteye.event.tool_result(
     output={"results": ["..."]},
 )
 
-agenteye.event.agent_end(session_id="run-001", agent_id="planner", outcome="success")
+failproofai_sdk.event.agent_end(session_id="run-001", agent_id="planner", outcome="success")
 ```
 
 ### Instrumenting a real call
@@ -64,14 +86,14 @@ In practice you wrap your existing agent code. Bracket a model call with `model_
 
 ```python
 import anthropic
-import agenteye
+import failproofai_sdk
 
-agenteye.configure(environment="production")
+failproofai_sdk.configure(environment="production")
 client = anthropic.Anthropic()
 
 messages = [{"role": "user", "content": "Summarise today's incidents."}]
 
-agenteye.event.model_request(
+failproofai_sdk.event.model_request(
     session_id="run-001",
     agent_id="planner",
     model="claude-sonnet-4-6",
@@ -84,7 +106,7 @@ reply = client.messages.create(
     messages=messages,
 )
 
-agenteye.event.model_response(
+failproofai_sdk.event.model_response(
     session_id="run-001",
     agent_id="planner",
     model=reply.model,
@@ -106,8 +128,9 @@ Here is what those events look like once they reach the dashboard, colour-coded 
 ## configure()
 
 ```python
-agenteye.configure(
-    base_dir=None,           # Path | str | None. Default: $AGENTEYE_HOME or ~/.agenteye
+failproofai_sdk.configure(
+    base_dir=None,           # Path | str | None. Default: $FAILPROOFAI_HOME/custom-agents
+                             #   otherwise ~/.failproofai/custom-agents
     flush_interval=0.5,      # float, seconds between flush cycles
     environment=None,        # str | None. Deployment environment label
 )
@@ -115,10 +138,11 @@ agenteye.configure(
 
 Call once before any `event.*` call. Safe to omit; defaults work out of the box. All arguments are keyword-only; pass them by name as shown above.
 
-When `base_dir` is `None` (the default), the SDK reads `$AGENTEYE_HOME` if set,
-otherwise falls back to `~/.agenteye`. This matches the collector's own resolution,
-so a single `AGENTEYE_HOME` env var configures the shared event spool for both
-the SDK and the collector.
+When `base_dir` is `None` (the default), the SDK resolves `$FAILPROOFAI_HOME`,
+otherwise `~/.failproofai`, and appends `custom-agents`. **`AGENTEYE_HOME` is not
+read** — `base_dir` is the only way to spool anywhere else. A `~` in the path is
+expanded. See the upgrade note above if this host runs the older
+`agenteye-collector`, which does not watch the new root.
 
 ---
 
@@ -129,7 +153,7 @@ Label every event with a deployment environment (`production`, `staging`, `qa`, 
 **Option 1: via `configure()`:**
 
 ```python
-agenteye.configure(environment="production")
+failproofai_sdk.configure(environment="production")
 ```
 
 **Option 2: via environment variable:**
@@ -176,7 +200,7 @@ All methods also accept arbitrary `**kwargs` for custom metadata (see [Custom Fi
 Emitted when an agent begins work.
 
 ```python
-agenteye.event.agent_start(
+failproofai_sdk.event.agent_start(
     session_id="run-001",
     agent_id="planner",
     goal="answer user query",   # str | None
@@ -191,7 +215,7 @@ agenteye.event.agent_start(
 Emitted when an agent finishes work.
 
 ```python
-agenteye.event.agent_end(
+failproofai_sdk.event.agent_end(
     session_id="run-001",
     agent_id="planner",
     outcome="success",          # str | None
@@ -206,7 +230,7 @@ agenteye.event.agent_end(
 Emitted when an agent invokes a tool. Pair with `tool_result`; the SDK auto-computes `duration_ms`.
 
 ```python
-agenteye.event.tool_use(
+failproofai_sdk.event.tool_use(
     session_id="run-001",
     agent_id="planner",
     tool_name="web_search",     # str, required
@@ -222,7 +246,7 @@ agenteye.event.tool_use(
 Emitted when a tool returns. Correlates with `tool_use` via `tool_call_id`.
 
 ```python
-agenteye.event.tool_result(
+failproofai_sdk.event.tool_result(
     session_id="run-001",
     agent_id="planner",
     tool_name="web_search",
@@ -240,7 +264,7 @@ agenteye.event.tool_result(
 Emitted just before sending a prompt to an LLM.
 
 ```python
-agenteye.event.model_request(
+failproofai_sdk.event.model_request(
     session_id="run-001",
     agent_id="planner",
     model="claude-sonnet-4-6", # str | None - any provider/model string; not validated
@@ -263,7 +287,7 @@ agenteye.event.model_request(
 Emitted when the LLM returns a response.
 
 ```python
-agenteye.event.model_response(
+failproofai_sdk.event.model_response(
     session_id="run-001",
     agent_id="planner",
     model="claude-sonnet-4-6", # str | None - any provider/model string; not validated
@@ -286,7 +310,7 @@ agenteye.event.model_response(
 Emitted when a hook fires. Pair with `hook_completed`; the SDK auto-computes `duration_ms`.
 
 ```python
-agenteye.event.hook_triggered(
+failproofai_sdk.event.hook_triggered(
     session_id="run-001",
     agent_id="planner",
     hook_name="pre_tool_use",   # str, required
@@ -303,7 +327,7 @@ agenteye.event.hook_triggered(
 Emitted when a hook finishes. Correlates with `hook_triggered` via `hook_id`.
 
 ```python
-agenteye.event.hook_completed(
+failproofai_sdk.event.hook_completed(
     session_id="run-001",
     agent_id="planner",
     hook_name="pre_tool_use",
@@ -322,7 +346,7 @@ agenteye.event.hook_completed(
 Emitted when an unhandled error occurs.
 
 ```python
-agenteye.event.error(
+failproofai_sdk.event.error(
     session_id="run-001",
     agent_id="planner",
     error_type="TimeoutError",  # str, required
@@ -342,7 +366,7 @@ Human-in-the-loop events give you oversight over the moments where a person step
 Emitted when the agent pauses execution to wait for a human to provide input. Pair with `human_input`; the SDK auto-computes `duration_ms` (how long the human took to respond).
 
 ```python
-agenteye.event.human_wait(
+failproofai_sdk.event.human_wait(
     session_id="run-001",
     agent_id="planner",
     input_id="inp-abc",                          # str, required - correlation key for the matching human_input
@@ -357,7 +381,7 @@ agenteye.event.human_wait(
 Emitted when a human provides input and the agent resumes. Correlates with `human_wait` via `input_id`. `duration_ms` is auto-computed and must not be passed by the caller.
 
 ```python
-agenteye.event.human_input(
+failproofai_sdk.event.human_input(
     session_id="run-001",
     agent_id="planner",
     input_id="inp-abc",    # str, required - must match the prior human_wait
@@ -371,7 +395,7 @@ agenteye.event.human_input(
 Emitted when a human actively pauses the agent (e.g. via a dashboard control). The agent is suspended but not terminated.
 
 ```python
-agenteye.event.human_pause(
+failproofai_sdk.event.human_pause(
     session_id="run-001",
     agent_id="planner",
     reason="user_requested",  # str | None
@@ -384,7 +408,7 @@ agenteye.event.human_pause(
 Emitted when a human actively stops the agent mid-execution. Unlike `human_pause`, the agent's work is terminated rather than suspended.
 
 ```python
-agenteye.event.human_interrupt(
+failproofai_sdk.event.human_interrupt(
     session_id="run-001",
     agent_id="planner",
     reason="output_incorrect",       # str | None
@@ -400,7 +424,7 @@ agenteye.event.human_interrupt(
 Any extra keyword arguments are appended to the event after the standard fields:
 
 ```python
-agenteye.event.tool_use(
+failproofai_sdk.event.tool_use(
     session_id="run-001",
     agent_id="planner",
     tool_name="db_query",
@@ -410,7 +434,7 @@ agenteye.event.tool_use(
 )
 ```
 
-`timestamp`, `type`, and `environment` are reserved and raise `ValueError` (`Reserved field names cannot be used as custom fields: [...]`) if passed as custom fields. `session_id` and `agent_id` are required parameters on every event method and cannot be supplied a second time; Python raises `TypeError` if you do. Set the environment with `configure(environment=...)` (or the `AGENTEYE_ENVIRONMENT` variable) instead.
+`timestamp`, `type`, and `environment` are reserved and raise `ValueError` (`Reserved field names cannot be used as custom fields: [...]`) if passed as custom fields. `session_id` and `agent_id` are **optional** on every event method — omitted, they resolve from the enclosing `session()`/`agent()` scope — and cannot be supplied a second time as custom fields; Python raises `TypeError` if you do. Set the environment with `configure(environment=...)` (or the `AGENTEYE_ENVIRONMENT` variable) instead.
 
 Keep payloads as structured JSON when you want to query their fields. Values JSON does not natively support—such as datetimes, UUIDs, decimals, sets, bytes, or model objects—are converted to strings so recording continues safely.
 
@@ -421,7 +445,7 @@ Keep payloads as structured JSON when you want to query their fields. Values JSO
 Events are buffered in-process and flushed to disk every `flush_interval` seconds (default 500 ms). Each flush writes one JSONL file:
 
 ```text
-~/.agenteye/events/event-2026-04-01T12-00-00-000Z.jsonl
+~/.agenteye/events/event-2026-04-01T12-00-00-000Z-48213-7.jsonl
 ```
 
 The collector watches this directory and uploads files automatically. You do not need to manage these files directly.

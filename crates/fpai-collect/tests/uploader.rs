@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use fpai_collect::Uploader;
+use fpai_collect::{UploadError, Uploader};
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -106,12 +106,41 @@ async fn a_200_that_stored_nothing_is_counted_as_fully_skipped() {
     let batch = write_batch(&spool, "claude-s-1-0.jsonl", 5);
 
     let up = uploader(&server, &failed);
-    up.upload_file(&batch).await.unwrap();
+    // It used to return Ok here, so `upload_file` deleted the batch: the events
+    // were not on the server, this file was their last copy, and it went in the
+    // bin behind one ERROR line in the daemon's own log. That contradicted this
+    // module's stated invariant — `failed/` is a retry queue and such a batch is
+    // "never deleted" — and it is the whole reason the ack body is read at all.
+    let err = up.upload_file(&batch).await.unwrap_err();
+    assert!(
+        matches!(err, UploadError::StoredNothing { skipped: 5 }),
+        "expected StoredNothing, got {err:?}"
+    );
 
     let m = up.metrics();
     assert_eq!(m.batches_fully_skipped.load(Ordering::Relaxed), 1);
     assert_eq!(m.skipped_total.load(Ordering::Relaxed), 5);
     assert_eq!(m.accepted_total.load(Ordering::Relaxed), 0);
+    // `last_ok_ts` is documented as "the last upload the server ACCEPTED …  the
+    // loudest thing in this file", and it was stored unconditionally on every
+    // parsed 200 — including this one, which stored nothing. On a machine whose
+    // events are systematically malformed (the case this whole feature exists
+    // for) it advanced on every upload and every retry, so the one field an
+    // operator or an alert keys on to answer "is anything landing" reported a
+    // successful delivery seconds ago while nothing had ever been stored.
+    assert_eq!(
+        m.last_ok_ts.load(Ordering::Relaxed),
+        0,
+        "a batch the server stored nothing of must not count as a successful upload"
+    );
+
+    // The data survives, in failed/, rather than being deleted.
+    assert!(
+        !batch.exists(),
+        "the batch should have moved out of the spool"
+    );
+    let parked: Vec<_> = fs::read_dir(&failed).unwrap().flatten().collect();
+    assert_eq!(parked.len(), 1, "the batch should be parked, not deleted");
 
     fs::remove_dir_all(&spool).ok();
     fs::remove_dir_all(&failed).ok();
@@ -500,6 +529,123 @@ async fn a_200_whose_json_lacks_accepted_is_parked() {
     assert!(up.upload_file(&batch).await.is_err());
     assert_eq!(parked(&failed).len(), 1, "must be parked");
     assert!(!batch.exists());
+
+    fs::remove_dir_all(&spool).ok();
+    fs::remove_dir_all(&failed).ok();
+}
+
+#[tokio::test]
+async fn a_retried_fully_skipped_batch_is_not_counted_twice() {
+    // A fully-skipped batch is PARKED now rather than deleted, and `retry_parked`
+    // feeds it back through `upload_file` — which runs `record_ack` again. Both
+    // counters are published to operators as counts of EVENTS and BATCHES
+    // (`DeliveryHealth.skipped`, `.batches_fully_skipped`), so re-counting on
+    // every retry inflated them by however many retry passes had happened: one
+    // 5-event batch reported 15 skipped across 3 batches. An operator sizing the
+    // incident from `health.json` tripled it.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "accepted": 0,
+            "skipped": 5
+        })))
+        .mount(&server)
+        .await;
+
+    let spool = tmpdir("skip-retry-spool");
+    let failed = tmpdir("skip-retry-failed");
+    let up = uploader(&server, &failed);
+
+    // First attempt: the batch is counted once and parked.
+    let batch = write_batch(&spool, "claude-s-1-0.jsonl", 5);
+    up.upload_file(&batch).await.unwrap_err();
+
+    let m = up.metrics();
+    assert_eq!(m.skipped_total.load(Ordering::Relaxed), 5);
+    assert_eq!(m.batches_fully_skipped.load(Ordering::Relaxed), 1);
+
+    // Two retry passes over the parked file, exactly as `retry_parked` drives it.
+    for _ in 0..2 {
+        let parked: Vec<_> = fs::read_dir(&failed).unwrap().flatten().collect();
+        let path = parked
+            .into_iter()
+            .map(|e| e.path())
+            .find(|p| {
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| !n.ends_with(".poison"))
+            })
+            .expect("a retryable parked batch");
+        up.upload_file(&path).await.unwrap_err();
+    }
+
+    assert_eq!(
+        m.skipped_total.load(Ordering::Relaxed),
+        5,
+        "5 events were skipped once; retrying the same batch must not re-count them"
+    );
+    assert_eq!(
+        m.batches_fully_skipped.load(Ordering::Relaxed),
+        1,
+        "one batch was fully skipped; retrying it must not report three"
+    );
+
+    fs::remove_dir_all(&spool).ok();
+    fs::remove_dir_all(&failed).ok();
+}
+
+#[tokio::test]
+async fn a_partially_skipped_batch_is_parked_not_deleted() {
+    // `{"accepted":3,"skipped":1}` was treated as a plain success, so the spool
+    // file was DELETED and the one refused event was destroyed: this file was
+    // its last local copy, the server never had it, and nothing recorded which
+    // event it was. Same permanent silent loss the fully-skipped branch closed,
+    // reached through an ack that merely looks healthier.
+    //
+    // Safe to park and retry: `upload_file` already relies on the server
+    // deduping a byte-identical resend, so the 3 it accepted are not
+    // double-counted when the batch goes again.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "accepted": 3,
+            "skipped": 1
+        })))
+        .mount(&server)
+        .await;
+
+    let spool = tmpdir("partial-spool");
+    let failed = tmpdir("partial-failed");
+    let batch = write_batch(&spool, "claude-s-1-0.jsonl", 4);
+
+    let up = uploader(&server, &failed);
+    let err = up.upload_file(&batch).await.unwrap_err();
+    assert!(
+        matches!(
+            err,
+            UploadError::PartiallySkipped {
+                accepted: 3,
+                skipped: 1
+            }
+        ),
+        "expected PartiallySkipped, got {err:?}"
+    );
+
+    assert!(
+        !batch.exists(),
+        "the batch should have moved out of the spool"
+    );
+    let parked: Vec<_> = fs::read_dir(&failed).unwrap().flatten().collect();
+    assert_eq!(parked.len(), 1, "the refused event's last copy was deleted");
+
+    let m = up.metrics();
+    assert_eq!(m.accepted_total.load(Ordering::Relaxed), 3);
+    assert_eq!(m.skipped_total.load(Ordering::Relaxed), 1);
+    // Not a FULLY skipped batch, so that counter must stay clear — an operator
+    // reads it as "a systematic problem", which this is not.
+    assert_eq!(m.batches_fully_skipped.load(Ordering::Relaxed), 0);
+    // Something WAS stored, so this genuinely was a successful delivery in part.
+    assert!(m.last_ok_ts.load(Ordering::Relaxed) > 0);
 
     fs::remove_dir_all(&spool).ok();
     fs::remove_dir_all(&failed).ok();

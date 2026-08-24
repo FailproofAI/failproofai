@@ -136,5 +136,19 @@ COMMIT_MSG.tmp
 **/.failproofai/run/
 **/.failproofai/state/
 
+# Python build and test artefacts from fp-cloud-cli/. `/dist` above is the Next.js one at
+# the repo root; fp-cloud-cli builds into its own nested dist/, which that rule does not
+# match, so it needs naming separately.
+fp-cloud-cli/dist/
+fp-cloud-cli/.venv/
+fp-cloud-cli/.pytest_cache/
+.ruff_cache/
+sdk/python/dist/
+sdk/python/.venv/
+sdk/python/.pytest_cache/
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+
 # blog drafts (local, not for commit yet)
 /blog/

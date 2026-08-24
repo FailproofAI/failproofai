@@ -42,6 +42,6 @@ Use a policy only after you can describe the unsafe action and the legitimate ac
     fp sessions --env production --since 24h
     ```
 
-    The Cloud CLI does not expose root-only enforcement deployment routes. Publish versions from **Admin → policy editor** and deploy them from **Admin → enforcement**.
+    Both steps are available from the CLI too: `fp policies publish <id> <file>` mints a version and `fp fleet deploy <machine-id> --add <id>` puts it on a machine. The dashboard equivalents are **Admin → policy editor** and **Admin → enforcement**.
   </Tab>
 </Tabs>

@@ -11,7 +11,7 @@ Un entorno es el contexto en el que tu agente se ejecuta realmente. Failproof AI
 
 Las mismas políticas y el mismo historial de sesiones se aplican independientemente del entorno en que se ejecute un agente. Una capa de adaptador mapea los nombres de eventos nativos, nombres de herramientas y campos de entrada de herramientas de cada entorno a 29 eventos canónicos antes de que se ejecute cualquier política.
 
-Un agente que no se ejecuta en **ninguno** de los doce se instrumenta directamente con el [SDK de Python](/es/reference/python-sdk). Ese es un contrato diferente, y vale la pena dejarlo claro: el SDK proporciona trazado, sesiones, evaluaciones y auditorías — **pero no aplica políticas por sí solo.** Bloquear una acción no segura antes de que se ejecute requiere un hook de aplicación en el límite de herramientas de tu entorno de ejecución; [contáctanos](mailto:support@befailproof.ai) y lo mapearemos.
+Un agente que no se ejecuta en **ninguno** de los doce se instrumenta directamente con el [SDK de Python](/es/reference/custom-agents). Ese es un contrato diferente, y vale la pena dejarlo claro: el SDK proporciona trazado, sesiones, evaluaciones y auditorías — **pero no aplica políticas por sí solo.** Bloquear una acción no segura antes de que se ejecute requiere un hook de aplicación en el límite de herramientas de tu entorno de ejecución; [contáctanos](mailto:support@befailproof.ai) y lo mapearemos.
 
 | Entorno | Ámbitos de hook compatibles |
 | --- | --- |

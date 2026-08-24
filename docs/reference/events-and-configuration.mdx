@@ -58,7 +58,7 @@ Do not use `timestamp`, `session_id`, `agent_id`, `type`, or `environment` as cu
 ## Local boundaries
 
 - Failproof AI state lives under `~/.failproofai` unless explicitly configured otherwise.
-- `failproofai-sdk` uses `AGENTEYE_HOME` for its legacy base-directory override.
+- `failproofai-sdk` always spools under `~/.failproofai/custom-agents`. `FAILPROOFAI_HOME` relocates that home; the `custom-agents` segment is always appended, so the spool cannot be placed outside it. Only the SDK's own `configure(base_dir=...)` writes elsewhere. `AGENTEYE_HOME` is read by the older `agenteye-collector` to choose what to watch, and no longer affects where the SDK writes.
 - Environment labels can be set through SDK configuration or `AGENTEYE_ENVIRONMENT`.
 - Daemon credentials are stored separately from non-secret settings.
 

@@ -1,0 +1,120 @@
+---
+title: "Instrument your agent"
+sidebarTitle: "Frameworks"
+description: "Connect any supported agent framework to Failproof AI with one call."
+icon: "plug"
+---
+
+Your agent already produces everything worth recording — model calls, tool calls, node boundaries, human waits, failures. The framework throws it away. The SDK keeps it.
+
+<Columns cols={3}>
+  <Card title="Custom agents" icon="wrench" href="/start/quickstarts/custom-agents">
+    An agent you wrote yourself, or one not listed here.
+  </Card>
+  <Card title="LangChain and LangGraph" icon="share-2" href="/start/quickstarts/langchain">
+    Graphs, nodes, tools, retrievers, models.
+  </Card>
+  <Card title="CrewAI" icon="users" href="/start/quickstarts/crewai">
+    Crews, flows, agents by role, tools.
+  </Card>
+  <Card title="LlamaIndex" icon="database" href="/start/quickstarts/llamaindex">
+    Workflows, steps, function agents, retrievers.
+  </Card>
+  <Card title="Pydantic AI" icon="badge-check" href="/start/quickstarts/pydantic-ai">
+    Typed agents, capabilities, tools, retries.
+  </Card>
+</Columns>
+
+## Three lines, whichever framework
+
+<CodeGroup>
+```bash LangGraph
+pip install 'failproofai-sdk[langgraph]'
+```
+
+```bash CrewAI
+pip install 'failproofai-sdk[crewai]'
+```
+
+```bash LlamaIndex
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+```bash Pydantic AI
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+```bash Custom agents
+pip install failproofai-sdk
+```
+</CodeGroup>
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # detects the frameworks you imported
+
+with failproofai_sdk.session():
+    ...                               # your existing agent call, unchanged
+```
+
+No decorators on your functions, no callback passed to your calls, no ids threaded through your code. Only the call inside the session differs:
+
+<Tabs>
+  <Tab title="LangGraph">
+    ```python
+    graph.invoke({"messages": [HumanMessage("...")]})
+    ```
+  </Tab>
+  <Tab title="CrewAI">
+    ```python
+    Crew(agents=[analyst, writer], tasks=[gather, summarise]).kickoff()
+    ```
+  </Tab>
+  <Tab title="LlamaIndex">
+    ```python
+    await agent.run("...")        # under `async with failproofai_sdk.session():`
+    ```
+  </Tab>
+  <Tab title="Pydantic AI">
+    ```python
+    agent.run_sync("...")
+    ```
+  </Tab>
+  <Tab title="Custom agents">
+    ```python
+    with failproofai_sdk.agent("planner"):
+        with failproofai_sdk.tool_call("search", input={"q": q}) as t:
+            t.output = search(q)
+    ```
+  </Tab>
+</Tabs>
+
+The extra installs the **framework**. Every adapter ships in the base wheel, so a project that already has its framework needs no extra at all.
+
+## Check it arrived
+
+Run one instrumented session, then open **Observe → Sessions** and select your environment. The run appears as a reconstructed trace.
+
+If nothing arrives, confirm the machine is connected with `failproofai config --status`. See [Set up capture](/start/setup).
+
+<Warning>
+  Do not check the spool directory to confirm delivery. The Failproof daemon collects and deletes each batch within milliseconds, so reading it races the collector and shows far fewer events than were emitted.
+</Warning>
+
+## Next
+
+Each quickstart above links to its full guide — what gets recorded, options, streaming, span naming, and the problems people actually hit. They live under **Trace Agents → Plug in your agent**.
+
+<Columns cols={3}>
+  <Card title="How it works" icon="workflow" href="/start/integrations/custom-agents#going-deeper">
+    The data model, the ids, the event types, and how events reach Cloud.
+  </Card>
+  <Card title="Read a trace" icon="route" href="/sessions/read-a-trace">
+    Follow causality through a session instead of disconnected logs.
+  </Card>
+  <Card title="Find your first failure" icon="scan-search" href="/start/first-audit">
+    Audit the sessions you just captured.
+  </Card>
+</Columns>

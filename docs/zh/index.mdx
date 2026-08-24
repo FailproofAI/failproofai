@@ -6,7 +6,7 @@ icon: "shield-check"
 
 Failproof AI 帮助团队了解 agent 的行为、找出失败原因，并在同样的问题再次发生前部署防护措施。
 
-**harness** 是 agent 实际运行的环境。Failproof AI 支持接入其中 12 种——包括 Claude Code 和 Codex 等编码 CLI、Hermes 等聊天网关、OpenClaw 等自托管助手——所有事件、策略和会话历史对每种环境一视同仁。没有 harness 的 agent 可通过 [Python SDK](/zh/reference/python-sdk) 上报，该 SDK 提供追踪与审计能力；在自有运行时中执行策略则需要在你的代码中添加 hook。
+**harness** 是 agent 实际运行的环境。Failproof AI 支持接入其中 12 种——包括 Claude Code 和 Codex 等编码 CLI、Hermes 等聊天网关、OpenClaw 等自托管助手——所有事件、策略和会话历史对每种环境一视同仁。没有 harness 的 agent 可通过 [Python SDK](/zh/reference/custom-agents) 上报，该 SDK 提供追踪与审计能力；在自有运行时中执行策略则需要在你的代码中添加 hook。
 
 <Columns cols={2}>
   <Card title="配置 Failproof" icon="wand-sparkles" href="/zh/start/quickstart">

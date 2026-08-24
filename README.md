@@ -34,7 +34,7 @@ Twelve harnesses in two classes — ten coding CLIs, and two chat and assistant
 gateways (Hermes, OpenClaw). Same events, same policies, same session history,
 whichever one your agent runs in.
 
-Agents that run in none of them report through the [Python SDK](https://docs.befailproof.ai/reference/python-sdk),
+Agents that run in none of them report through the [Python SDK](https://docs.befailproof.ai/reference/custom-agents),
 which gives you tracing, sessions and audits. Enforcement there needs a hook in
 your own runtime — [talk to us](mailto:support@befailproof.ai) and we'll map it.
 
@@ -248,7 +248,7 @@ own cluster is available on the Enterprise plan.
 
 | Instrument your own agent | |
 |---|---|
-| [Python SDK](https://docs.befailproof.ai/reference/python-sdk) | Report runs from an agent with no harness |
+| [Python SDK](https://docs.befailproof.ai/reference/custom-agents) | Report runs from an agent with no harness |
 | [Policy SDK](https://docs.befailproof.ai/reference/policy-sdk) | `allow` / `deny` / `instruct` reference |
 
 ---

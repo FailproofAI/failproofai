@@ -203,6 +203,12 @@ describe("HOME_CLASSES", () => {
     migrationLedgerFile: "migrationsDir",
     migrationBackupDir: "migrationsDir",
     stateDir: "stateDir",
+    // `fpcliDir` maps to ITSELF, for the reason `auditDir` does: the classified
+    // thing under it is the credential, not the directory. It holds exactly
+    // `cli-auth.json` today and the CLI may add a cache beside it, at which
+    // point a `user-typed` parent would protect a cache and a `derived` parent
+    // would delete a session. Classify the children.
+    fpcliDir: "fpcliDir",
   };
 
   /** Every exported function that returns a path inside the home. */

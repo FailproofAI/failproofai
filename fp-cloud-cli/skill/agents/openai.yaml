@@ -1,0 +1,8 @@
+# Codex skill configuration (optional). See https://developers.openai.com/codex/skills
+#
+# Codex reads SKILL.md's `name`/`description` the same way Claude Code does.
+# This file only tunes Codex-specific behavior.
+
+# Let Codex auto-select this skill when a task matches the description
+# (set to false to require explicit `$fp-cloud-cli` invocation).
+allow_implicit_invocation: true

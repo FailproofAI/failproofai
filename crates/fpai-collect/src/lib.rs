@@ -31,7 +31,7 @@ pub use config::{
 };
 pub use delivery::Delivery;
 pub use extra_paths::{ExtraPath, Resolved as ResolvedExtraPaths};
-pub use health::{Health, HealthFile, SourceHealth, health_path};
+pub use health::{DeliveryHealth, Health, HealthFile, SourceHealth, health_path};
 pub use spool::SpoolWriter;
 pub use supervisor::{
     CollectorHandle, DEFAULT_FLUSH_BUDGET, Shutdown, SupervisorMetrics, TaskError, TaskSpec,

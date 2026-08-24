@@ -1,0 +1,10 @@
+# Same reason as the SDK's: setuptools' default sdist heuristic picks up only
+# top-level `test*.py`, so the suite shipped without `tests/conftest.py` (the
+# `home`/`runner`/`logged_in` fixtures) and was simply unrunnable — every test
+# erroring on a missing fixture. Loud rather than destructive here, unlike the
+# SDK, but a suite that cannot run is not worth shipping either.
+graft tests
+include LICENSE
+include README.md
+include CHANGELOG.md
+recursive-include fp_cli py.typed

@@ -11,7 +11,7 @@ Un harness è l'ambiente in cui il tuo agente effettivamente viene eseguito. Fai
 
 Le stesse policy e la stessa cronologia delle sessioni si applicano indipendentemente da quale harness esegue l'agente. Un livello di adapter mappa i nomi degli eventi nativi di ogni harness, i nomi degli strumenti e i campi degli input degli strumenti su 29 eventi canonici prima che qualsiasi policy venga eseguita.
 
-Un agente che viene eseguito in **nessuno** dei dodici harness viene instrumentato direttamente con l'[SDK Python](/it/reference/python-sdk). Si tratta di un contratto diverso, e vale la pena affermarlo chiaramente: l'SDK fornisce tracciamento, sessioni, valutazioni e audit — **non applica policy autonomamente.** Bloccare un'azione non sicura prima della sua esecuzione richiede un hook di enforcement al confine degli strumenti del tuo runtime; [contattaci](mailto:support@befailproof.ai) e lo mapperemo.
+Un agente che viene eseguito in **nessuno** dei dodici harness viene instrumentato direttamente con l'[SDK Python](/it/reference/custom-agents). Si tratta di un contratto diverso, e vale la pena affermarlo chiaramente: l'SDK fornisce tracciamento, sessioni, valutazioni e audit — **non applica policy autonomamente.** Bloccare un'azione non sicura prima della sua esecuzione richiede un hook di enforcement al confine degli strumenti del tuo runtime; [contattaci](mailto:support@befailproof.ai) e lo mapperemo.
 
 | Harness | Scope hook supportati |
 | --- | --- |

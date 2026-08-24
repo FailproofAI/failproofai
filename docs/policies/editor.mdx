@@ -20,14 +20,16 @@ When an issue has a repeatable action pattern, open it under **Analyze → issue
     ![The Policy editor compose view with policy identity, AI-assisted drafting, source validation, and publishing controls.](/images/dashboard/policy-editor.png)
   </Tab>
   <Tab title="CLI">
-    The Cloud CLI does not publish policy versions. Validate the source locally before copying it into the editor:
+    Publish from the CLI with `fp policies publish`. It mints a **new version** and never edits one in place, and it parse-checks the source with node before sending — nothing downstream does, so a syntax error would otherwise surface on the machine at enforcement time:
 
     ```bash
-    failproofai policies --install --custom ./checkout.policies.ts \
-      --cli claude --scope project
+    fp policies test ./checkout.policy.mjs --command "git push --force" --expect deny
+    fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
     ```
 
-    Publish the reviewed version from **Admin → policy editor**.
+    Publishing deploys nothing — a new version sits unused until `fp fleet deploy` puts it on a machine. `fp policies compose "<plain English>"` drafts source with the Cloud assistant and prints it for review rather than publishing it.
+
+    To install a policy into a local agent CLI instead (not Cloud), use `failproofai policies --install --custom ./checkout.policies.ts --cli claude --scope project`.
   </Tab>
 </Tabs>
 

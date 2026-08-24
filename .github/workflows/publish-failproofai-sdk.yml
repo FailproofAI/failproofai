@@ -8,11 +8,19 @@ name: Publish failproofai-sdk to PyPI
 # AUTHENTICATION IS PyPI TRUSTED PUBLISHING (OIDC) — there is no PYPI_API_TOKEN secret.
 # This requires a one-time, out-of-band setup on PyPI that CANNOT be done from a PR:
 #
-#   PyPI project `failproofai-sdk` -> Manage -> Publishing -> Add a new pending publisher
+#   https://pypi.org/manage/account/publishing/  ->  Add a new pending publisher
+#     PyPI Project Name: failproofai-sdk
 #     Owner:            FailproofAI
 #     Repository:       failproofai
 #     Workflow name:    publish-failproofai-sdk.yml
 #     Environment:      pypi-failproofai-sdk      <- REQUIRED, do not leave blank
+#
+#   The ACCOUNT-level page, not `Project -> Manage -> Publishing`. That per-project
+#   tab only exists once the project does, and `failproofai-sdk` is unregistered —
+#   the first successful upload is what creates it. A "pending" publisher is exactly
+#   the form for that case: it authorises this workflow to create the project on
+#   first publish, and PyPI converts it into a normal project-level publisher
+#   afterwards. Once the project exists, later edits go through the per-project tab.
 #
 # Until that publisher exists the `publish` job fails at the upload step with an OIDC
 # error. Configure it BEFORE the first release, not after.

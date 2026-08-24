@@ -3,6 +3,16 @@ import logging
 _DEFAULT_ENVIRONMENT = "dev"
 _environment: str | None = None
 
+#: Set once the comma warning below has been emitted. `get_environment()` runs
+#: from `to_dict()`, i.e. once per event on the caller's own thread, and the
+#: warning had no once-flag at all — so an `AGENTEYE_ENVIRONMENT` with a comma
+#: put one WARNING line into the host application's log for every event emitted,
+#: for the life of the process. At the SDK's documented ceiling that is a
+#: logging-driven throughput collapse in a library whose first constraint is not
+#: to disrupt the host agent. The comment two lines below already promised
+#: "Warn once"; this is what makes that true.
+_warned_comma = False
+
 logger = logging.getLogger("failproofai_sdk")
 
 
@@ -45,19 +55,24 @@ def get_environment() -> str:
         # it — a telemetry library must not do that. Warn once and fall back to
         # a label ingest will actually accept, so the events land under a
         # visibly-wrong environment instead of vanishing.
-        logger.warning(
-            "failproofai_sdk: AGENTEYE_ENVIRONMENT=%r contains a comma, which makes "
-            "the ingest endpoint skip every event carrying it. Falling back to %r. "
-            "Use a single label, e.g. 'prod-eu'.",
-            raw,
-            _DEFAULT_ENVIRONMENT,
-        )
+        global _warned_comma
+        if not _warned_comma:
+            _warned_comma = True
+            logger.warning(
+                "failproofai_sdk: AGENTEYE_ENVIRONMENT=%r contains a comma, which makes "
+                "the ingest endpoint skip every event carrying it. Falling back to %r. "
+                "Use a single label, e.g. 'prod-eu'.",
+                raw,
+                _DEFAULT_ENVIRONMENT,
+            )
         return _DEFAULT_ENVIRONMENT
     return raw
 
 
 def set_environment(env: str | None) -> None:
-    global _environment
+    global _environment, _warned_comma
     if env:
         _reject_comma(env, "configure(environment=...)")
     _environment = env if env else None
+    # A new label means the env var may be worth complaining about again.
+    _warned_comma = False

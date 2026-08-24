@@ -48,10 +48,26 @@ _batch_seq = itertools.count()
 #: events is the better failure: it is bounded, it is logged, and the events
 #: most worth having are the recent ones.
 #:
-#: 10_000 events is roughly 10 MB of dicts, and at the default 500 ms interval a
-#: process would have to emit 20_000 events/second to reach it. Anything that
-#: does hit this cap is not a busy agent, it is a spool that has stopped.
+#: At the default 500 ms interval a process would have to emit 20_000
+#: events/second to reach it. Anything that does hit this cap is not a busy
+#: agent, it is a spool that has stopped.
+#:
+#: A COUNT alone is not the bound this docstring claims, because it says nothing
+#: about how big an event is. `integrations/_core.py` budgets 128 KiB of `fw_*`
+#: extras per event on top of the declared fields, so 10_000 of them is ~1.3 GB,
+#: not the "roughly 10 MB" this used to promise — an OOM kill of the host agent,
+#: which is the exact outcome the cap exists to make impossible. So the queue is
+#: bounded by BYTES as well, below.
 _QUEUE_CAP = 10_000
+
+#: The real ceiling. Chosen to sit well under the memory a small container is
+#: given (512 MB is the common floor), because the whole point is that a spool
+#: which has stopped draining must not take the customer's agent down with it.
+_QUEUE_BYTE_CAP = 64 * 1024 * 1024
+
+#: Seed for the running average below — the 1 KB/event this cap was originally
+#: sized against, so behaviour before the first flush is what it always was.
+_ASSUMED_ENTRY_BYTES = 1024
 
 #: How deep `_sanitize` will walk before giving up on a branch. Guards the
 #: fallback path against a RecursionError, which would defeat the point of
@@ -60,7 +76,16 @@ _MAX_SANITIZE_DEPTH = 50
 
 #: How `json.dumps(ensure_ascii=True)` writes a lone surrogate. Cheap to scan
 #: for, and the only in-band signal that one is present — encoding never fails.
-_SURROGATE_ESCAPE = "\\ud"
+#:
+#: The lead nibble matters. `\\ud` alone also matches U+D000–U+D7FF, which is most
+#: of the Hangul syllable block — `json.dumps("한")` is `"\\ud55c"` — so every event
+#: carrying ordinary Korean text took the rebuild path. That was documented as
+#: costing nothing ("merely re-encoded to the same bytes"), and it is not:
+#: `_sanitize` replaces anything past `_MAX_SANITIZE_DEPTH` with a marker, so a
+#: payload the strict encoder had handled perfectly was silently truncated the
+#: moment it also contained a Korean character. Real surrogates are U+D800–U+DFFF,
+#: whose escapes all begin `\\ud8`, `\\ud9`, `\\uda`…`\\udf`.
+_SURROGATE_ESCAPES = tuple(f"\\ud{c}" for c in "89abcdefABCDEF")
 
 _CYCLE_MARKER = "<circular reference>"
 _DEPTH_MARKER = "<max depth exceeded>"
@@ -108,6 +133,17 @@ def _validated_interval(flush_interval: float) -> float:
     return interval
 
 
+def _scrub_key(key) -> str:
+    """A dict key as a string with any lone surrogate made inert.
+
+    Mirrors the string branch of `_sanitize`; kept separate because a key must
+    always come back a `str`, whatever it started as.
+    """
+    if not isinstance(key, str):
+        key = str(key)
+    return key.encode("utf-8", "backslashreplace").decode("utf-8")
+
+
 def _sanitize(value, seen: frozenset, depth: int = 0):
     """Rewrite one payload into something `json.dumps` can definitely encode.
 
@@ -143,9 +179,17 @@ def _sanitize(value, seen: frozenset, depth: int = 0):
         # Non-str keys are the common half of this bug: `json.dumps(default=...)`
         # is never consulted for keys, so a tuple-keyed cache raises TypeError
         # no matter what default is passed.
+        #
+        # Keys go through the SAME surrogate scrub as values. They used to pass
+        # through untouched, which left the scrub applied to every value and to
+        # no key — and a filesystem path, the source this module names as the
+        # realistic one, is most naturally a KEY (`{path: contents}`). An
+        # unscrubbed key reaches the wire as a JSON lone-surrogate escape, ingest
+        # answers 200 `{"accepted":0,"skipped":1}`, and the uploader now parks
+        # that batch and poisons it after three retries — so one bad key loses
+        # every event batched with it.
         return {
-            (k if isinstance(k, str) else str(k)): _sanitize(v, seen, depth + 1)
-            for k, v in value.items()
+            _scrub_key(k): _sanitize(v, seen, depth + 1) for k, v in value.items()
         }
     if isinstance(value, (list, tuple)):
         if id(value) in seen:
@@ -203,9 +247,9 @@ def _encode_entry(entry: dict) -> "str | None":
         # text \udXXX rather than raising — which is exactly why it needed
         # finding by inspection. One substring scan per line, and only a line
         # that actually contains one pays for the rewrite below. A payload whose
-        # own text happens to contain "\ud" trips this too and is merely
-        # re-encoded to the same bytes, so a false positive costs nothing.
-        if _SURROGATE_ESCAPE not in encoded:
+        # own text happens to contain a real surrogate escape trips this too and
+        # is merely re-encoded, which is rare enough to be worth the certainty.
+        if not any(esc in encoded for esc in _SURROGATE_ESCAPES):
             return encoded
 
     try:
@@ -296,7 +340,26 @@ class EventWriter:
         # at once and — the case that actually bites — so the atexit flush waits
         # for an in-flight write instead of racing interpreter shutdown against
         # it. Never taken by `submit`, which must stay lock-free.
-        self._flush_lock = threading.Lock()
+        #
+        # RLock, not Lock, and that is load-bearing: signal handlers run on the
+        # MAIN thread, interrupting whatever bytecode it was executing. The
+        # SIGTERM recipe this SDK publishes (SKILL.md, docs/reference/python-sdk
+        # .mdx) calls `flush_now()` from a handler, so a plain Lock deadlocks the
+        # host process outright whenever the main thread is already inside
+        # `_flush` — a second SIGTERM during the first handler's flush, an app
+        # that calls `flush_now()` itself, or a SIGTERM landing during the atexit
+        # flush, which runs on this same thread. Once wedged the process cannot
+        # be signalled out of it: every further SIGTERM re-enters the deadlocked
+        # handler. Re-entering the write is safe — the outer call has already
+        # drained its batch into a local list, `_batch_seq` is atomic, and the
+        # nested batch simply lands under its own filename.
+        self._flush_lock = threading.RLock()
+        # Mean encoded size of an event, smoothed. Measured on the flush path,
+        # which already encodes every entry, so `submit` pays nothing to walk a
+        # payload it would otherwise have to size itself — it just compares
+        # against `_effective_cap`, a plain int.
+        self._avg_entry_bytes = float(_ASSUMED_ENTRY_BYTES)
+        self._effective_cap = _QUEUE_CAP
         self._start_thread()
         _live_writers.append(weakref.ref(self))
 
@@ -325,7 +388,11 @@ class EventWriter:
         inherited = len(self._queue)
         self._queue.clear()
         self._wake = threading.Event()
-        self._flush_lock = threading.Lock()
+        # RLock for the same reason as the constructor: the child may install the
+        # documented SIGTERM handler too.
+        self._flush_lock = threading.RLock()
+        self._avg_entry_bytes = float(_ASSUMED_ENTRY_BYTES)
+        self._effective_cap = _QUEUE_CAP
         self._start_thread()
         if inherited:
             logger.debug(
@@ -340,7 +407,7 @@ class EventWriter:
         # loop where a lock is a latency risk and, on the fork path, a deadlock.
         # A momentary overshoot under concurrent submits is fine; the cap is a
         # backstop against unbounded growth, not an exact quota.
-        if len(self._queue) >= _QUEUE_CAP:
+        if len(self._queue) >= self._effective_cap:
             try:
                 self._queue.popleft()
             except IndexError:  # pragma: no cover - drained concurrently
@@ -350,12 +417,25 @@ class EventWriter:
             # that fills the disk it is complaining about.
             if self._dropped == 1 or self._dropped % 1000 == 0:
                 logger.warning(
-                    "Failproof AI event queue is full (%d events); discarding oldest. "
-                    "%d dropped so far — the spool is not draining.",
-                    _QUEUE_CAP,
+                    "Failproof AI event queue is full (%d events, ~%d bytes each); "
+                    "discarding oldest. %d dropped so far — the spool is not draining.",
+                    self._effective_cap,
+                    int(self._avg_entry_bytes),
                     self._dropped,
                 )
         self._queue.append(entry)
+
+    def _observe_entry_size(self, mean_bytes: float) -> None:
+        """Fold one batch's mean encoded size into the queue's byte bound.
+
+        Exponentially smoothed rather than taken raw so one unusual batch cannot
+        collapse the cap; `_effective_cap` is still floored at 1 so a pathological
+        run of huge events degrades to "keep the newest one" rather than to zero.
+        """
+        self._avg_entry_bytes = (self._avg_entry_bytes * 0.7) + (max(1.0, mean_bytes) * 0.3)
+        self._effective_cap = max(
+            1, min(_QUEUE_CAP, int(_QUEUE_BYTE_CAP / self._avg_entry_bytes))
+        )
 
     def set_flush_interval(self, interval: float) -> None:
         # Validate first, assign second: a rejected value must leave the writer
@@ -434,8 +514,20 @@ class EventWriter:
         if not lines:
             return
 
+        self._observe_entry_size(sum(len(line) for line in lines) / len(lines))
+
         events_dir = get_base_dir() / "events"
-        events_dir.mkdir(parents=True, exist_ok=True)
+        # 0700, and the batch below 0600. These files are not metadata: they
+        # carry goals, prompt text, tool arguments and tool output straight from
+        # the host agent. Under the ordinary umask 022 they landed 0644 inside
+        # 0755 directories, so on any shared host — a build box, a bastion, a
+        # container with several service accounts — every other local user could
+        # read every agent transcript this SDK spools, for the whole flush+upload
+        # window and forever if no daemon is running. The sibling `fp-cli`
+        # already does exactly this for its credential (`config.py`), and the
+        # daemon reads these as the SAME user (the unit is `User=<user>` with
+        # `HOME` set to that user's home), so tightening them costs no delivery.
+        events_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
 
         now = datetime.now(timezone.utc)
         ts_str = now.strftime("%Y-%m-%dT%H-%M-%S") + f"-{now.microsecond // 1000:03d}Z"
@@ -474,7 +566,11 @@ class EventWriter:
         # The batch itself is NOT lost by this: `_flush` returns the entries to
         # the queue and the next cycle rewrites them under a new name.
         try:
-            with open(tmp_path, "wb") as handle:
+            # O_EXCL + an explicit 0600 rather than `open(..., "wb")`, whose mode
+            # is 0666 & ~umask. The mode is applied at CREATE, so the payload is
+            # never briefly world-readable the way a follow-up chmod would leave it.
+            fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with open(fd, "wb") as handle:
                 handle.write(content.encode("utf-8"))
                 handle.flush()
                 os.fsync(handle.fileno())

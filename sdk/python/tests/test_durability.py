@@ -1226,3 +1226,73 @@ def test_the_documented_sigterm_handler_saves_the_queue_and_closes_the_run(tmp_p
     # run did not finish, and that is the thing an operator needs to see.
     end = next(e for e in events if e["type"] == "agent_end")
     assert end["outcome"] == "failed"
+
+
+def test_a_second_sigterm_during_the_handlers_flush_does_not_deadlock(tmp_path):
+    """The shipped SIGTERM recipe, re-entered — which is how it is actually met.
+
+    Signal handlers run on the MAIN thread, interrupting whatever bytecode it was
+    executing, so `flush_now()` called from a handler re-enters `_flush` whenever
+    the main thread was already inside it. With a plain `threading.Lock` that is a
+    permanent self-deadlock: the thread blocks acquiring a lock it already holds,
+    and the process cannot be signalled out of it because every further SIGTERM
+    re-enters the wedged handler. `docker stop` followed by a second `kill` — a
+    supervisor, an impatient operator — reaches it in one step.
+
+    The child sends itself 200 SIGTERMs 1 ms apart while a large queue is
+    draining. Before the fix this hung until the outer `timeout` killed it.
+    """
+    proc = _run_child(
+        tmp_path,
+        "import threading, time\n"
+        "with fp.session('sigterm-reentrant'):\n"
+        "    for i in range(4000):\n"
+        "        event.tool_use(agent_id='a', tool_name='t', tool_call_id=str(i),\n"
+        "                       input={'x': 'y' * 200})\n"
+        "entries = []\n"
+        "def _handler(signum, frame):\n"
+        "    entries.append(1)\n"
+        "    fp._writer.flush_now()\n"
+        "signal.signal(signal.SIGTERM, _handler)\n"
+        "def _bomb():\n"
+        "    for _ in range(200):\n"
+        "        os.kill(os.getpid(), signal.SIGTERM)\n"
+        "        time.sleep(0.001)\n"
+        "threading.Thread(target=_bomb, daemon=True).start()\n"
+        "time.sleep(3)\n"
+        "sys.stdout.write(str(len(entries)))\n",
+    )
+    assert proc.returncode == 0, proc.stderr
+    # The handler ran many times over, and every one of them returned.
+    assert int(proc.stdout) > 1, "the handler never re-entered; the test proves nothing"
+    assert len(read_all(tmp_path)) == 4000
+
+
+def test_the_queue_is_bounded_by_bytes_and_not_only_by_a_count(tmp_path):
+    """`_QUEUE_CAP` alone is not a memory bound, because it says nothing about size.
+
+    The adapters budget 128 KiB of `fw_*` extras per event, so 10_000 of those is
+    ~1.3 GB — an OOM kill of the host agent, which is the one outcome the cap
+    exists to prevent. The effective cap has to fall as events get bigger.
+    """
+    # NOT `from failproofai_sdk import _writer` — `__init__` binds that name to
+    # the writer INSTANCE, not the module.
+    writer_mod = sys.modules["failproofai_sdk._writer"]
+
+    w = writer_mod.EventWriter()
+    try:
+        assert w._effective_cap == writer_mod._QUEUE_CAP
+
+        # One batch of large events teaches it what an event costs here.
+        w._observe_entry_size(128 * 1024)
+        assert w._effective_cap < writer_mod._QUEUE_CAP
+        assert w._effective_cap * w._avg_entry_bytes <= writer_mod._QUEUE_BYTE_CAP
+
+        # Small events must not shrink it below the count cap.
+        for _ in range(50):
+            w._observe_entry_size(200)
+        assert w._effective_cap == writer_mod._QUEUE_CAP
+    finally:
+        writer_mod._live_writers[:] = [
+            ref for ref in writer_mod._live_writers if ref() is not w
+        ]

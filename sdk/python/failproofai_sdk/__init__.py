@@ -22,6 +22,7 @@ from failproofai_sdk._resolver import set_base_dir
 from failproofai_sdk._context import Identity, current, propagate
 from failproofai_sdk._runtime import event
 from failproofai_sdk._scopes import agent, session, tool_call
+from failproofai_sdk._environment import _reject_comma
 from failproofai_sdk._writer import _validated_interval
 from failproofai_sdk import _runtime
 
@@ -79,7 +80,16 @@ def configure(
             the SDK exactly as it was rather than with a new base_dir and the old
             interval.
     """
+    # BOTH validations before ANY application. `set_environment` raises on a
+    # comma, and it used to run last — so `configure(base_dir=..., environment=
+    # "prod,eu")` raised having already moved the spool and the flush interval,
+    # which is precisely the half-applied state the docstring above promises is
+    # impossible. A caller who wraps startup in `except ValueError` (a reasonable
+    # thing to do for a telemetry library that must not crash the agent) was left
+    # shipping from a directory they did not choose.
     flush_interval = _validated_interval(flush_interval)
+    if environment:
+        _reject_comma(environment, "configure(environment=...)")
     set_base_dir(base_dir)
     _runtime.writer.set_flush_interval(flush_interval)
     set_environment(environment)

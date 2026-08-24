@@ -106,4 +106,13 @@ def legacy_agenteye_dir() -> Path:
 
 def set_base_dir(path: "str | Path | None") -> None:
     global _base_dir
-    _base_dir = Path(path) if path is not None else None
+    # `expanduser`, because the migration bridge this module itself prescribes —
+    # `configure(base_dir="~/.agenteye")`, listed in `get_base_dir`'s docstring
+    # and in README.md as the explicit, visible-at-the-call-site option — is a
+    # RELATIVE path whose first segment is the literal character `~`. Without
+    # this, `_write_batch`'s `mkdir(parents=True)` cheerfully created a `~`
+    # directory under the process's cwd and spooled into it: nothing on the
+    # machine watches that path, so 100% of the telemetry was lost, which is the
+    # precise "an unread spool is indistinguishable from an idle one" failure
+    # the prose above it is written to prevent.
+    _base_dir = Path(path).expanduser() if path is not None else None

@@ -262,3 +262,62 @@ def test_the_batch_written_is_readable_and_carries_the_event(home):
     rows = [json.loads(line) for line in batch.read_text(encoding="utf-8").splitlines()]
     assert [r["goal"] for r in rows] == ["round-trip"]
     assert rows[0]["type"] == "agent_start"
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores file permissions")
+def test_batches_and_the_events_dir_are_not_readable_by_other_local_users(home):
+    """These files are transcripts, not metadata.
+
+    A batch carries `goal`, prompt text, tool arguments and tool output straight
+    from the host agent. Under the ordinary `umask 022` they landed `0644` inside
+    `0755` directories, so on any shared host — a build box, a bastion, a
+    container with several service accounts — every other local user could read
+    every agent transcript this SDK spools, for the whole flush+upload window and
+    indefinitely if no daemon is running.
+
+    The sibling `fp-cli` already writes its credential `0600` inside a `0700`
+    directory, so the asymmetry was an oversight rather than a house style. The
+    daemon reads these as the SAME user (its unit is `User=<user>` with `HOME`
+    set to that user's home), so tightening them costs no delivery.
+    """
+    prev = os.umask(0o022)
+    try:
+        emit_one(goal="SECRET-GOAL-TEXT")
+    finally:
+        os.umask(prev)
+
+    events = home / ".failproofai" / "custom-agents" / "events"
+    assert stat.S_IMODE(events.stat().st_mode) == 0o700, "events dir is enterable by others"
+
+    batches = list(events.glob("*.jsonl"))
+    assert batches, "nothing was published"
+    for batch in batches:
+        mode = stat.S_IMODE(batch.stat().st_mode)
+        assert mode == 0o600, f"{batch.name} is {oct(mode)}, not 0600"
+
+
+def test_a_tilde_base_dir_is_expanded_rather_than_taken_literally(home, monkeypatch, tmp_path):
+    """`configure(base_dir="~/.agenteye")` is a recipe this package prescribes.
+
+    `_resolver.get_base_dir`'s own docstring lists it as one of three supported
+    bridges for a host still running the older `agenteye-collector`, and calls it
+    the explicit, visible-at-the-call-site one. `Path("~/.agenteye")` is a
+    RELATIVE path whose first segment is the literal character `~`, so without
+    `expanduser` the writer's `mkdir(parents=True)` created a `~` directory under
+    whatever the process's cwd happened to be and spooled into it. Nothing on the
+    machine watches that path: 100% of the telemetry is lost, silently, which is
+    the exact "an unread spool is indistinguishable from an idle one" failure the
+    prose around that docstring exists to prevent.
+    """
+    monkeypatch.chdir(tmp_path)
+    _resolver.set_base_dir("~/.agenteye")
+    try:
+        resolved = _resolver.get_base_dir()
+        assert resolved.is_absolute(), f"{resolved} is relative"
+        assert resolved == home / ".agenteye"
+
+        emit_one()
+        assert not (tmp_path / "~").exists(), "spooled into a literal '~' directory"
+        assert list((home / ".agenteye" / "events").glob("*.jsonl"))
+    finally:
+        _resolver.set_base_dir(None)

@@ -516,3 +516,56 @@ def test_surrogates_nested_anywhere_are_reached(spool):
     )
     writer.flush_now()
     assert "\udcff" not in json.dumps(read_all(spool)[0])
+
+
+def test_a_surrogate_in_a_dict_KEY_is_scrubbed_like_one_in_a_value(spool):
+    """The scrub was applied to every value and to no key.
+
+    `_sanitize`'s dict branch passed `str` keys straight through, so the rebuild
+    that exists to make a lone surrogate inert did nothing for the half of the
+    payload most likely to carry one: this module's own docstring names
+    `os.fsdecode` and a filesystem path as the realistic source, and a path is
+    most naturally a KEY (`{path: contents}`), not a value.
+
+    An unscrubbed key reaches the wire as a JSON lone-surrogate escape, ingest
+    answers 200 `{"accepted":0,"skipped":1}`, and the uploader now PARKS that
+    batch and poisons it after three retries — so one bad key loses every event
+    batched alongside it, not just its own.
+    """
+    writer = EventWriter(flush_interval=3600)
+    EventNamespace(writer).tool_use(
+        session_id="s", agent_id="a", tool_name="t", tool_call_id="c1",
+        input={"file-\udcff-name": "contents"},
+    )
+    writer.flush_now()
+    raw = (spool / "events").glob("*.jsonl")
+    text = "\n".join(p.read_text(encoding="utf-8") for p in raw)
+    # No lone-surrogate ESCAPE on the wire: the byte survives as visible text,
+    # exactly as it already did on the value side.
+    assert "\\udcff" not in text.replace("\\\\udcff", "")
+    assert "\\\\udcff" in text
+    assert "\udcff" not in json.dumps(read_all(spool)[0])
+
+
+def test_ordinary_korean_text_does_not_trip_the_surrogate_rebuild(spool):
+    """`\\ud` also matches U+D000–U+D7FF, i.e. most of the Hangul block.
+
+    `json.dumps("한")` is `"\\ud55c"`, so every event carrying ordinary Korean
+    text took the rebuild path. That was documented as costing nothing — "merely
+    re-encoded to the same bytes" — and it is not, because `_sanitize` replaces
+    anything past `_MAX_SANITIZE_DEPTH` with a marker. A payload the strict
+    encoder had handled perfectly was silently truncated the moment it also
+    contained a Korean character, and the identical payload in ASCII was not.
+    """
+    deep = {"leaf": "keep-me"}
+    for _ in range(60):
+        deep = {"n": deep}
+
+    korean = _encode_entry({"type": "tool_result", "output": "한국어", "input": deep})
+    ascii_ = _encode_entry({"type": "tool_result", "output": "hangul", "input": deep})
+
+    assert "<max depth exceeded>" not in korean
+    assert korean.replace("\\ud55c\\uad6d\\uc5b4", "REDACTED") == ascii_.replace(
+        "hangul", "REDACTED"
+    ), "the Korean payload must be encoded exactly like its ASCII twin"
+    assert json.loads(korean)["output"] == "한국어"

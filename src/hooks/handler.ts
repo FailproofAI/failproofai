@@ -420,14 +420,15 @@ export async function evaluateHookEvent(
         // The builtin wins, because a bare name means the builtin everywhere else
         // — `policies --uninstall block-sudo` disables the compiled one, and a
         // machine that wants the pack's copy instead turns the builtin off.
-        if (pack && enabledBuiltinNames.has(hook.name)) {
-          hookLogWarn(
-            `pack ${pack.id}@${pack.version} ships ${hook.name}, which is also an enabled builtin — ` +
-              `running the builtin only. Disable it with \`failproofai policies --uninstall ${hook.name}\` ` +
-              `to use the pack's copy.`,
-          );
-          continue;
-        }
+        //
+        // Silently, on purpose. This fires for EVERY duplicated policy on EVERY
+        // event — ten lines in `hooks.log` for a plain `ls` on a machine that
+        // installed the bundled pack over its builtins — and the hook path is
+        // the hottest path in the product. The state is already stated in the
+        // three places a person actually looks: `failproofai policies` marks the
+        // row, the dashboard renders it off and says why, and `pack add`
+        // prints it at install time.
+        if (pack && enabledBuiltinNames.has(hook.name)) continue;
         if (pack) {
           const seen = registeredByPack.get(pack.id) ?? new Set<string>();
           seen.add(hook.name);

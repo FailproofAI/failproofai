@@ -509,6 +509,24 @@ function nameWidth(labels: string[]): number {
   return Math.min(24, Math.max(6, ...labels.map((l) => l.length)));
 }
 
+/**
+ * The hint budget for one row, after a label that outgrew its column.
+ *
+ * `nameWidth` caps the name column at 24 so that one long name cannot squeeze
+ * every description on screen — but `padEnd` pads, it does not TRUNCATE, so a
+ * longer name renders at its true width while the description was sized against
+ * the cap. The row then overruns the terminal by the difference and the
+ * description is cut by the terminal instead of by `ellipsize`, with no `…` to
+ * show it happened.
+ *
+ * Names are deliberately not truncated: a policy name is the thing you type
+ * next, and half of one is useless. The description gives up the space, because
+ * it is prose and shortening prose costs nothing.
+ */
+function hintBudget(label: string, nameCol: number, budget: number): number {
+  return Math.max(6, budget - Math.max(0, label.length - nameCol));
+}
+
 type DisplayRow = { kind: "header"; text: string } | { kind: "item"; index: number };
 
 /** Flatten choices into section-header + item display rows. */
@@ -715,7 +733,9 @@ export function selectOne<T>(opts: SelectOneOptions<T>): Promise<T | Back | null
       const dot = active ? c.pink(RADIO_ON) : c.dim(RADIO_OFF);
       const rawLabel = choice.label.padEnd(nameCol);
       const label = active ? c.pinkBold(rawLabel) : rawLabel;
-      const hint = choice.hint ? `  ${c.dim(ellipsize(choice.hint, budget))}` : "";
+      const hint = choice.hint
+        ? `  ${c.dim(ellipsize(choice.hint, hintBudget(choice.label, nameCol, budget)))}`
+        : "";
       return `${dot} ${label}${hint}`;
     },
     allowBack: opts.allowBack,
@@ -773,7 +793,9 @@ export function multiSelect<T>(opts: MultiSelectOptions<T>): Promise<T[] | null 
           : c.dim(CHECK_OFF);
       const rawLabel = choice.label.padEnd(nameCol);
       const label = active ? c.pinkBold(rawLabel) : checked[index] ? rawLabel : c.dim(rawLabel);
-      const hint = choice.hint ? `  ${c.dim(ellipsize(choice.hint, budget))}` : "";
+      const hint = choice.hint
+        ? `  ${c.dim(ellipsize(choice.hint, hintBudget(choice.label, nameCol, budget)))}`
+        : "";
       return `${caret} ${box} ${label}${hint}`;
     },
     warnLine: () => (warn ? c.warn(`Select at least ${minSelected}.`) : null),

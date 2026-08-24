@@ -68,7 +68,7 @@ Confirm what you actually have before writing a line of instrumentation:
 python -c "import failproofai_sdk; print(failproofai_sdk.__version__)"
 ```
 
-A version like `0.0.1b14` is the SDK. `ModuleNotFoundError` means it is not
+A version like `0.0.1b1` is the SDK. `ModuleNotFoundError` means it is not
 installed — check `pip show agenteye`, which returning anything means the wrong
 name was installed. `references/install.md` covers migrating an existing
 `import agenteye` integration.

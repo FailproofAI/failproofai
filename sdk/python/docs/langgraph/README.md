@@ -317,7 +317,7 @@ A real `model_response`, captured from `examples/quickstart.py`:
   "duration_ms": 5202,
   "framework": "langchain",
   "framework_version": "1.5.6",
-  "integration_version": "0.0.1b14",
+  "integration_version": "0.0.1b1",
   "fw_langgraph_version": "1.2.11",
   "fw_run_id": "01a01b93-91a0-7c92-bf45-3857ee43d3ff",
   "fw_node": "agent",

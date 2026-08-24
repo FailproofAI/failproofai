@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### Versioning restarts at `0.0.1b1`
+
+- **The number was inherited from a distribution this is not.** `0.1.22` was where the
+  CLI had got to under the shared `agenteye` name in the private monorepo. It came over
+  verbatim when the CLI was open-sourced as `fp-cli` and nothing has moved it since — but
+  `fp-cli` is a 404 on PyPI, so that number would have opened the project's first release
+  claiming a history that lives entirely on another name.
+- **`0.1.22` also said "stable" where everything else says beta.** It is a plain release
+  version, so `pip install fp-cli` would resolve it by default while the classifier
+  (`Development Status :: 4 - Beta`) and every doc page call the CLI beta. `0.0.1b1` is a
+  PEP 440 pre-release, which is the only mechanism PyPI has for that distinction — there
+  are no dist-tags here the way there are on npm.
+- **Nothing is stranded and nobody is downgraded.** There is no published `fp-cli` version
+  to reuse or to fall behind, and pip, pipx and uv all install a pre-release when it is the
+  only release available, so `pipx install fp-cli` keeps working with no `--pre`.
+- **The `## 0.1.7` and older sections below predate the rename.** They are the `agenteye`
+  CLI's history, kept because the behaviour they describe is this CLI's behaviour. They are
+  not versions of `fp-cli`, and no `fp-cli` release will ever carry those numbers.
+
 ### The session moved to `~/.failproofai/fpcli/cli-auth.json`
 
 - **Nothing to do. Nobody is signed out.** The session was at `~/.fp/cli.json`; it is now

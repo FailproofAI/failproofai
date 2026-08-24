@@ -87,7 +87,7 @@ pre-exist, which nothing created, so it never took effect.)
 python -c "import failproofai_sdk; print(failproofai_sdk.__version__)"
 ```
 
-- A version string such as `0.0.1b14` → the SDK. Good.
+- A version string such as `0.0.1b1` → the SDK. Good.
 - `ModuleNotFoundError: No module named 'failproofai_sdk'` → not installed. If
   `pip show agenteye` returns something, you installed the wrong name; see above.
 

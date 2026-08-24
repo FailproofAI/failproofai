@@ -74,6 +74,9 @@ vi.mock("../../src/hooks/pack-manifest", () => ({
   // ~/.failproofai/policies/packs of whoever runs the suite, so these tests would
   // pass on a clean machine and behave differently on one with a pack installed.
   readInstalledPacks: vi.fn(() => ({ packs: [], errors: [] })),
+  // The handler asks this on every event to decide whether the migration shim
+  // still applies. Mocked for the same reason as the line above.
+  hasInstalledPacks: vi.fn(() => false),
 }));
 
 describe("hooks/handler", () => {

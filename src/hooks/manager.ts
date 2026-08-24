@@ -26,7 +26,7 @@ import { CliError } from "../cli-error";
 import { hookLogWarn } from "./hook-logger";
 import { customPoliciesDir, globalPolicyConfigFile } from "./fp-home";
 import { readActiveCloudManagedPolicies } from "./cloud-managed-policies";
-import { setPackPolicyEnabled } from "./pack-store";
+import { installBundledPack, setPackPolicyEnabled } from "./pack-store";
 import type { ResolvedPack } from "./pack-manifest";
 import { readInstalledPacks } from "./pack-manifest";
 import {
@@ -455,6 +455,29 @@ async function installHooksImpl(
     }
   }
   writeScopedHooksConfig(configToWrite, scope, cwd);
+
+  // Choosing policies IS selecting from the pack now. Nothing registers these
+  // names from this build any more, so writing `enabledPolicies` and stopping
+  // would leave a freshly set-up machine enforcing nothing at all — which is
+  // the failure mode this whole product exists to prevent.
+  //
+  // Installed from the copy vendored in the package: no network, so setup
+  // cannot fail behind a proxy, and the machine is guarded the moment it is
+  // configured rather than the moment it next reaches github.com.
+  // The always-on guard is excluded: a pack may not declare `alwaysOn`, so the
+  // pack does not carry it and asking for it by name is a selection the pack
+  // cannot satisfy. It ships compiled in and registers regardless.
+  const alwaysOnNames = new Set(BUILTIN_POLICIES.filter((p) => p.alwaysOn).map((p) => p.name));
+  const fromPack = selectedPolicies.filter((name) => !alwaysOnNames.has(name));
+  if (fromPack.length > 0) {
+    const bundled = installBundledPack({ only: fromPack });
+    if (!bundled.installed) {
+      console.log(
+        `\nWarning: could not install the policy pack (${bundled.reason}).\n` +
+          `Nothing is enforcing yet — run \`failproofai pack add core\` once that is fixed.`,
+      );
+    }
+  }
   console.log(`\nEnabled ${selectedPolicies.length} policy(ies): ${selectedPolicies.join(", ")}\n`);
   if (removeCustomHooks) {
     console.log("Custom hooks path cleared.");

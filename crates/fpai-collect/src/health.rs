@@ -66,16 +66,19 @@ pub struct SourceHealth {
 /// healthy, entirely empty `sources` map.
 ///
 /// `skipped` is the one worth staring at. Ingest answers `200` with
-/// `{"accepted":N,"skipped":M}`, and what happens next depends on which shape it
-/// is. A PARTIALLY skipped batch is deleted, so its skipped events are gone for
-/// good and this counter is the only record of them. A batch the server stored
-/// NOTHING of is now PARKED in `failed/` and retried instead of deleted, so a
-/// non-zero `batches_fully_skipped` means those batches are still on disk and
-/// recoverable — until they reach `failed_retries_max` and become `.poison`,
-/// after which they are kept forever and never retried again. Either way a
-/// systematically malformed field — an `environment` containing a comma, say —
-/// discards events while every layer reports success, and before this the only
-/// trace was a line in the daemon's log.
+/// `{"accepted":N,"skipped":M}`, and ANY non-zero `M` now parks the batch in
+/// `failed/` rather than deleting it — partially and fully skipped alike. Both
+/// used to be deleted, which destroyed the refused events' last local copy: the
+/// server never had them, this file was it, and nothing recorded which they
+/// were. So a non-zero `skipped` means those events are still on disk and
+/// recoverable, until the batch reaches `failed_retries_max` and becomes
+/// `.poison`, after which it is kept forever and never retried again. Retrying
+/// is safe because the server dedups a byte-identical resend, so the events it
+/// DID accept are not stored twice.
+///
+/// `batches_fully_skipped` narrows that to the shape a SYSTEMATIC problem takes
+/// — a malformed `environment`, say — as opposed to one bad line among good
+/// ones. Before any of this the only trace was a line in the daemon's log.
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct DeliveryHealth {
     /// Events the server said it stored, since this daemon started.

@@ -593,3 +593,60 @@ async fn a_retried_fully_skipped_batch_is_not_counted_twice() {
     fs::remove_dir_all(&spool).ok();
     fs::remove_dir_all(&failed).ok();
 }
+
+#[tokio::test]
+async fn a_partially_skipped_batch_is_parked_not_deleted() {
+    // `{"accepted":3,"skipped":1}` was treated as a plain success, so the spool
+    // file was DELETED and the one refused event was destroyed: this file was
+    // its last local copy, the server never had it, and nothing recorded which
+    // event it was. Same permanent silent loss the fully-skipped branch closed,
+    // reached through an ack that merely looks healthier.
+    //
+    // Safe to park and retry: `upload_file` already relies on the server
+    // deduping a byte-identical resend, so the 3 it accepted are not
+    // double-counted when the batch goes again.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "accepted": 3,
+            "skipped": 1
+        })))
+        .mount(&server)
+        .await;
+
+    let spool = tmpdir("partial-spool");
+    let failed = tmpdir("partial-failed");
+    let batch = write_batch(&spool, "claude-s-1-0.jsonl", 4);
+
+    let up = uploader(&server, &failed);
+    let err = up.upload_file(&batch).await.unwrap_err();
+    assert!(
+        matches!(
+            err,
+            UploadError::PartiallySkipped {
+                accepted: 3,
+                skipped: 1
+            }
+        ),
+        "expected PartiallySkipped, got {err:?}"
+    );
+
+    assert!(
+        !batch.exists(),
+        "the batch should have moved out of the spool"
+    );
+    let parked: Vec<_> = fs::read_dir(&failed).unwrap().flatten().collect();
+    assert_eq!(parked.len(), 1, "the refused event's last copy was deleted");
+
+    let m = up.metrics();
+    assert_eq!(m.accepted_total.load(Ordering::Relaxed), 3);
+    assert_eq!(m.skipped_total.load(Ordering::Relaxed), 1);
+    // Not a FULLY skipped batch, so that counter must stay clear — an operator
+    // reads it as "a systematic problem", which this is not.
+    assert_eq!(m.batches_fully_skipped.load(Ordering::Relaxed), 0);
+    // Something WAS stored, so this genuinely was a successful delivery in part.
+    assert!(m.last_ok_ts.load(Ordering::Relaxed) > 0);
+
+    fs::remove_dir_all(&spool).ok();
+    fs::remove_dir_all(&failed).ok();
+}

@@ -31,10 +31,15 @@ read from ~/.failproofai (override with FAILPROOFAI_HOME).
 /// What the command line asked for.
 ///
 /// Extracted from `main` so the fall-through below is testable. It is the whole
-/// point of this enum: an unrecognised option used to reach `run()`, which takes
-/// the singleton lock and binds two sockets, so `failproofaid --help` started a
-/// daemon and printed nothing. In a terminal that reads as a hang; in a script it
-/// blocks forever.
+/// point of this enum: an unrecognised argument used to reach `run()`, which
+/// takes the singleton lock and binds two sockets, so `failproofaid --help`
+/// started a daemon and printed nothing. In a terminal that reads as a hang; in
+/// a script it blocks forever.
+///
+/// The same hole stayed open for POSITIONAL arguments after that fix, because
+/// the fall-through only inspected args beginning with `-`. `failproofaid typo`
+/// therefore ran the daemon — verified live, it bound the socket and logged
+/// "listening" — while USAGE says "Takes no positional arguments".
 #[derive(Debug, PartialEq, Eq)]
 enum Invocation {
     Run,
@@ -55,7 +60,14 @@ fn parse_args(args: &[String]) -> Invocation {
             return Invocation::Version;
         }
     }
-    match args.iter().skip(1).find(|a| a.starts_with('-')) {
+    // EVERY unrecognised argument, not just the ones starting with `-`. This
+    // only looked at flags, so `failproofaid typo` fell through to `Run`: it
+    // took the singleton lock, bound the socket and blocked forever, while
+    // USAGE two screens up promises "Takes no positional arguments". A typo in
+    // a unit file or a shell wrapper therefore started a daemon instead of
+    // failing, and the operator's next real invocation lost the lock race
+    // against it.
+    match args.get(1) {
         Some(bad) => Invocation::Unknown(bad.clone()),
         None => Invocation::Run,
     }
@@ -73,7 +85,7 @@ fn main() {
             return;
         }
         Invocation::Unknown(bad) => {
-            eprintln!("[failproofaid] unrecognised option: {bad}");
+            eprintln!("[failproofaid] unrecognised argument: {bad}");
             eprint!("{USAGE}");
             std::process::exit(2);
         }
@@ -1697,6 +1709,35 @@ mod tests {
         // run(), so it started the daemon, took the lock and printed nothing.
         assert_eq!(parse_args(&argv(&["--help"])), Invocation::Help);
         assert_eq!(parse_args(&argv(&["-h"])), Invocation::Help);
+    }
+
+    #[test]
+    fn a_positional_argument_is_rejected_rather_than_starting_the_daemon() {
+        // USAGE says "Takes no positional arguments". The fall-through only
+        // inspected args beginning with `-`, so this reached `Invocation::Run`,
+        // took the singleton lock and bound the socket — verified live before
+        // the fix. A typo in a unit file or a wrapper script started a daemon
+        // instead of failing, and the operator's next real invocation then lost
+        // the lock race against it.
+        assert_eq!(
+            parse_args(&argv(&["typo"])),
+            Invocation::Unknown("typo".to_string())
+        );
+        assert_eq!(
+            parse_args(&argv(&["run"])),
+            Invocation::Unknown("run".to_string())
+        );
+        // A flag that is not recognised is still rejected, as before.
+        assert_eq!(
+            parse_args(&argv(&["--nonsense"])),
+            Invocation::Unknown("--nonsense".to_string())
+        );
+        // ...and --help/--version still win over anything that follows them.
+        assert_eq!(parse_args(&argv(&["--help", "typo"])), Invocation::Help);
+        assert_eq!(
+            parse_args(&argv(&["--version", "typo"])),
+            Invocation::Version
+        );
     }
 
     #[test]

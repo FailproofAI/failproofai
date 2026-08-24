@@ -76,6 +76,17 @@ pub enum UploadError {
     StoredNothing {
         skipped: u64,
     },
+    /// A 2xx whose ack says the server stored SOME of the batch and refused the
+    /// rest. Also not a success, for the same reason: this file is the last
+    /// copy of the refused events, and deleting it destroyed them silently.
+    ///
+    /// Parked rather than deleted, and safe to retry — `upload_file` above
+    /// already relies on the server deduping a byte-identical resend, so the
+    /// events it DID accept are not double-counted when the batch goes again.
+    PartiallySkipped {
+        accepted: u64,
+        skipped: u64,
+    },
     Io(std::io::Error),
 }
 
@@ -90,6 +101,13 @@ impl std::fmt::Display for UploadError {
                 write!(
                     f,
                     "the server stored none of this batch ({skipped} skipped)"
+                )
+            }
+            UploadError::PartiallySkipped { accepted, skipped } => {
+                write!(
+                    f,
+                    "the server refused {skipped} of this batch ({accepted} accepted); \
+                     parked so the refused events are not lost"
                 )
             }
             UploadError::Network { attempts, detail } => {
@@ -275,8 +293,15 @@ impl Uploader {
                                 // is kept forever and never retried again.
                                 if self.record_ack(path, &ack, attempt) {
                                     self.park(path, None, attempt).await;
-                                    return Err(UploadError::StoredNothing {
-                                        skipped: ack.skipped,
+                                    return Err(if ack.accepted == 0 {
+                                        UploadError::StoredNothing {
+                                            skipped: ack.skipped,
+                                        }
+                                    } else {
+                                        UploadError::PartiallySkipped {
+                                            accepted: ack.accepted,
+                                            skipped: ack.skipped,
+                                        }
                                     });
                                 }
                                 return Ok(());
@@ -322,9 +347,15 @@ impl Uploader {
         }
     }
 
-    /// Interpret the ack body. A 200 that stored nothing is an error, not a
-    /// success — it is the shape a systematically malformed transform takes,
-    /// and without this it looks identical to a healthy upload.
+    /// Interpret the ack body. Returns true when the batch must be PARKED.
+    ///
+    /// Any `skipped > 0` qualifies, not just `accepted == 0`. A partially
+    /// accepted ack — `{"accepted":3,"skipped":1}` — was treated as a plain
+    /// success, so `upload_file` deleted the spool file and the one refused
+    /// event was destroyed: this file was its last local copy, the server never
+    /// had it, and nothing anywhere recorded which event it was. That is the
+    /// same permanent, silent loss the fully-skipped branch was added to close,
+    /// reached through an ack that merely looks healthier.
     fn record_ack(&self, path: &Path, ack: &IngestAck, attempt: u32) -> bool {
         let stored_nothing = ack.accepted == 0 && ack.skipped > 0;
 
@@ -392,7 +423,7 @@ impl Uploader {
             );
         }
 
-        stored_nothing
+        ack.skipped > 0
     }
 
     /// `base * 2^(attempt-1)` plus jitter.

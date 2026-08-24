@@ -30,6 +30,20 @@ four ways, and every one of them has bitten this package.
    test *fails*. It is repaired afterwards only so the failure stays readable as
    one test rather than cascading through the rest of the run.
 
+5. **The process-wide writer's own background thread.** `_runtime.writer` starts
+   at import on a 0.5-second interval, and the spool path is resolved when a
+   batch is WRITTEN, not when the event is submitted. So an event queued by one
+   test is written wherever `FAILPROOFAI_HOME` points up to half a second later
+   — which is a different test's directory, and the events land there with no
+   error on either side. It reached CI as a one-leg-in-five failure of
+   `test_repeated_flushes_do_not_recreate_or_churn_the_directories`, which
+   counts the batch files in its own spool and found seven where it wrote six.
+
+   Fixed by quiescing that thread for the whole session: nothing in this suite
+   depends on it firing (every test that asserts on disk builds its own
+   `EventWriter` and calls `flush_now()`), and whatever accumulates is written
+   by the exit-time flush into the sandbox from (1), which is then removed.
+
 `test_sdk.py` has its own in-file autouse `_reset_environment`; these are
 additive and idempotent with it.
 """
@@ -70,6 +84,12 @@ from failproofai_sdk import _context, _runtime  # noqa: E402
 from failproofai_sdk._events import EventNamespace  # noqa: E402
 
 
+#: Long enough that the background loop cannot wake during any plausible run,
+#: finite because `_validated_interval` rejects `inf` (it would raise
+#: OverflowError inside `Event.wait` and kill the thread outright).
+_QUIET_INTERVAL = 86_400.0
+
+
 class RecordingWriter:
     """A writer that keeps entries in memory. No disk, no flush timing."""
 
@@ -84,6 +104,22 @@ class RecordingWriter:
 
     def types(self) -> list[str]:
         return [e["type"] for e in self.entries]
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _quiesce_the_process_wide_writer():
+    """(5): stop `_runtime.writer`'s thread flushing into whichever test is running.
+
+    `set_flush_interval`, not a bare attribute write: the loop is already blocked
+    in `_wake.wait(0.5)` and would flush once more on the old interval before
+    seeing a new value. `set_flush_interval` sets `_wake`, so the loop re-waits on
+    the new interval immediately. Done ONCE at session start, when nothing has
+    been submitted yet, so the wake it induces drains an empty queue.
+
+    Not restored afterwards. The only thing left to run is the exit-time flush,
+    and it is better served by an interval that cannot fire underneath it.
+    """
+    _runtime.writer.set_flush_interval(_QUIET_INTERVAL)
 
 
 @pytest.fixture(autouse=True)

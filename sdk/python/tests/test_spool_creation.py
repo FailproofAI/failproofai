@@ -20,12 +20,17 @@ pass just as happily if a `VERSION` file appeared beside it.
 import json
 import os
 import stat
+import time
 
 import pytest
 
-from failproofai_sdk import _resolver
+from failproofai_sdk import _resolver, _runtime
 from failproofai_sdk._events import EventNamespace
 from failproofai_sdk._writer import EventWriter
+
+#: The interval `_runtime.writer` runs on outside this suite — what a regression
+#: would have to wait out. Read off the constructor default rather than restated.
+_DEFAULT_FLUSH_INTERVAL = EventWriter.__init__.__defaults__[0]
 
 
 @pytest.fixture
@@ -200,6 +205,38 @@ def test_repeated_flushes_do_not_recreate_or_churn_the_directories(home):
     assert events.stat().st_ino == inode, "the events directory was replaced"
     assert len(list(events.glob("*.jsonl"))) == 6
     assert list(events.glob("*.tmp")) == [], "a temp file was left behind"
+
+
+def test_the_process_wide_writer_cannot_flush_into_the_running_test(home):
+    """The count above is only meaningful if nothing else writes here.
+
+    `_runtime.writer` starts at import on a 0.5s interval, and the spool path is
+    resolved when a batch is WRITTEN, not when the event is submitted. So an
+    event queued while one test's `FAILPROOFAI_HOME` was current gets written
+    into whichever test is running half a second later, with no error on either
+    side — the test above then counts seven batch files where it wrote six. It
+    reached CI exactly once, on one interpreter out of five.
+
+    `conftest._quiesce_the_process_wide_writer` closes it. This asserts the
+    EFFECT rather than the interval, so it still fails if the loop acquires
+    another way to wake — and it waits well past the 0.5s default, so a
+    regression cannot pass by being fast.
+    """
+    events = home / ".failproofai" / "custom-agents" / "events"
+
+    _runtime.writer.submit(
+        {"type": "agent_start", "session_id": "leak", "agent_id": "a", "goal": "must not land here"}
+    )
+    try:
+        time.sleep(_DEFAULT_FLUSH_INTERVAL * 3)
+        assert not events.exists() or list(events.glob("*.jsonl")) == [], (
+            "the process-wide writer flushed into a test's spool"
+        )
+    finally:
+        # Drop it rather than flush it: flushing would write the event into this
+        # test's directory, which is the thing being ruled out.
+        _runtime.writer._queue.clear()
+        _runtime.writer._queued_bytes = 0
 
 
 def test_created_directories_are_owner_writable_and_not_world_writable(home):

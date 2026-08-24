@@ -1222,6 +1222,14 @@ fp-cli/                      The `fp` CLI for FailproofAI Cloud (Python, uv, pyt
                               HAND-MAINTAINED top-level help table. A command missing
                               from it is invisible in `fp help` forever; guarded by
                               tests/test_help_table_coverage.py
+scripts/python-version.py    The release scheme for BOTH Python packages, and the
+                              only place it is written down — the two PyPI publish
+                              workflows call it rather than each restating the
+                              arithmetic. `resolve` reads a `_version.py` and emits
+                              what follows it; `write` moves it. Stdlib only, because
+                              it runs in the `preflight` job, which has no publishing
+                              identity precisely BECAUSE it installs nothing. See
+                              "Version bumps" below for the scheme itself
 sdk/python/                  The telemetry SDK (Python, uv, pytest). PyPI dist
                               `failproofai-sdk`, imported as `failproofai_sdk`. The
                               OTHER end of the pipe from fp-cli: this one is called
@@ -1285,3 +1293,43 @@ Each entry should be a single line: a short description followed by the PR numbe
 When bumping the version, update **only** `package.json` (root). The CI version-consistency
 check compares `packages/*/package.json` against root — that directory does not currently
 exist, so no other files need updating.
+
+That is the **npm** version, and it governs the CLI, the daemon and the Cargo workspace.
+The two Python packages version **independently of it and of each other** — `fp-cli` and
+`failproofai-sdk` share no version line with the npm package and never have. Do not move
+them to match it.
+
+### The Python packages' scheme
+
+`scripts/python-version.py` is the single place it is written down, and both PyPI publish
+workflows call it. PyPI has no dist-tags, so unlike npm there is no movable `beta` pointer
+to publish behind: the PEP 440 pre-release marker in the version string **is** the channel,
+and it is permanent the moment it uploads.
+
+| from | next |
+|------|------|
+| beta `X.Y.ZbN` | `X.Y.Zb(N+1)` |
+| stable `X.Y.Z` | `X.Y.(Z+1)b0` |
+
+The same rule `publish.yml` applies to npm (`-beta.N`), spelled in PEP 440.
+
+**You normally edit nothing.** `preflight` resolves the version and refuses one PyPI has
+already taken; `bump` pushes the next one to `main` after a successful upload, so main is
+already sitting on the next beta when the previous release finishes. Hand-edit
+`<pkg>/_version.py` only to **leave** the current beta line — a stable cut (`0.0.1b4` →
+`0.0.1`), or a minor/major bump.
+
+Two things that will bite:
+
+- **Only canonical spellings are accepted.** `0.0.01b1`, `1.2.3-beta.1` and `v1.0.0` are
+  all legal PEP 440 and all store on PyPI as something else. Every consumer in the pipeline
+  compares version *strings* — the file, the wheel name, and the "is this published" query
+  — so the resolver refuses them and names what PyPI would have stored instead.
+- **An `rc`, a `.post` or a `.dev` publishes but does not auto-bump.** Nothing knows what
+  should follow it. The run warns and leaves main's version for you to set by hand.
+
+Both `pyproject.toml`s declare `dynamic = ["version"]`. That is load-bearing, not
+stylistic: it is why `uv.lock` records each project with **no** `version =` line, and so
+why `uv sync --locked` survives a bump commit. Giving either a static version would make
+every post-release CI run red, and nothing but
+`__tests__/ci/python-version-pipeline.test.ts` is looking for it.

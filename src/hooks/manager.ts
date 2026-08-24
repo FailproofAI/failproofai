@@ -28,7 +28,7 @@ import { customPoliciesDir, globalPolicyConfigFile } from "./fp-home";
 import { readActiveCloudManagedPolicies } from "./cloud-managed-policies";
 import { installBundledPack, setPackPolicyEnabled } from "./pack-store";
 import type { ResolvedPack } from "./pack-manifest";
-import { readInstalledPacks } from "./pack-manifest";
+import { hasInstalledPacks, readInstalledPacks } from "./pack-manifest";
 import {
   chip,
   note,
@@ -129,6 +129,25 @@ function resolvePolicyNames(names: string[]): { builtins: string[]; packs: PackP
       }));
 
   for (const raw of names) {
+    // A PACK first, then the compiled set. This order is the whole fix for
+    // `policy remove block-sudo` printing "Disabled 0" while `block-sudo` kept
+    // denying: the name resolved to a builtin, the command edited
+    // `enabledPolicies`, and `enabledPolicies` stopped deciding anything when
+    // this build stopped registering builtins. The pack is where the switch is.
+    const direct = refsFor(null, raw);
+    if (direct.length === 1) {
+      packs.push(direct[0]);
+      continue;
+    }
+    if (direct.length > 1) {
+      throw new CliError(
+        `"${raw}" is declared by ${direct.length} installed packs.\n` +
+          `Name the one you mean:\n` +
+          direct.map((m) => `  ${m.packId}:${m.name}`).join("\n"),
+      );
+    }
+    // No pack carries it. Falls back to the compiled name set, which is what a
+    // machine still running on the migration shim has.
     if (VALID_POLICY_NAMES.has(raw)) {
       builtins.push(raw);
       continue;
@@ -470,12 +489,32 @@ async function installHooksImpl(
   const alwaysOnNames = new Set(BUILTIN_POLICIES.filter((p) => p.alwaysOn).map((p) => p.name));
   const fromPack = selectedPolicies.filter((name) => !alwaysOnNames.has(name));
   if (fromPack.length > 0) {
-    const bundled = installBundledPack({ only: fromPack });
-    if (!bundled.installed) {
-      console.log(
-        `\nWarning: could not install the policy pack (${bundled.reason}).\n` +
-          `Nothing is enforcing yet — run \`failproofai pack add core\` once that is fixed.`,
-      );
+    // ONLY when there is no pack yet. Installing the bundled pack with
+    // `only: <selection>` REPLACES whatever the machine had chosen, and
+    // `selectedPolicies` is derived from `enabledPolicies` — which is empty on a
+    // machine whose pack came from `pack add core`. `policy add block-rm-rf`
+    // therefore took a machine from ten guards to one, silently, and nine
+    // policies went from denying to allowing.
+    //
+    // With a pack already installed the names are switched on individually
+    // instead, which is additive and touches nothing else.
+    if (!hasInstalledPacks()) {
+      const bundled = installBundledPack({ only: fromPack });
+      if (!bundled.installed) {
+        console.log(
+          `\nWarning: could not install the policy pack (${bundled.reason}).\n` +
+            `Nothing is enforcing yet — run \`failproofai pack add core\` once that is fixed.`,
+        );
+      }
+    } else {
+      for (const name of fromPack) {
+        for (const pack of readInstalledPacks().packs) {
+          if (pack.policies.some((p) => p.name === name)) {
+            setPackPolicyEnabled(pack.id, name, true);
+            break;
+          }
+        }
+      }
     }
   }
   console.log(`\nEnabled ${selectedPolicies.length} policy(ies): ${selectedPolicies.join(", ")}\n`);

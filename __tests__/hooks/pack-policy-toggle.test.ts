@@ -139,14 +139,16 @@ describe("resolving the name", () => {
     expect(byId["acme/finance"]).toBeUndefined();
   });
 
-  it("lets a builtin win a bare name a pack also declares", async () => {
-    // A third-party pack must not be able to capture a name people have typed
-    // for a year.
+  it("resolves a bare name to the PACK, because that is where the switch is", async () => {
+    // The order used to favour the compiled set. That made `policy remove
+    // block-sudo` edit `enabledPolicies` — a list that stopped deciding
+    // anything when this build stopped registering builtins — so the command
+    // reported success while the policy kept denying.
     install(pack("acme/finance", ["block-sudo"]));
     const { removeHooks } = await import("@/src/hooks/manager");
     await removeHooks(["block-sudo"], "user", project);
     const [entry] = installed().packs;
-    expect(entry.enabled).toBeUndefined();
+    expect(entry.enabled).toEqual([]);
   });
 
   it("still rejects an unknown name, and now names the pack's policies too", async () => {

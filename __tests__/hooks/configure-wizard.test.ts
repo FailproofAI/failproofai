@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, rmSync, existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
-import { summarize,
-  BACK,
-} from "../../src/hooks/tui";
+import { summarize } from "../../src/hooks/tui";
 import { tmpdir } from "node:os";
 import { resolve, dirname } from "node:path";
 
@@ -138,10 +136,7 @@ import {
 import {
   buildAgentChoices,
   buildCompletionSummary,
-  buildPresetChoices,
-  splitEnabled,
   clisSupportingScope,
-  resolvePresetSelection,
   reviewLines,
   policyNamesLine,
   runConfigureWizard,
@@ -149,7 +144,6 @@ import {
   hasSeenLauncher,
   markLauncherSeen,
 } from "../../src/hooks/configure-wizard";
-import { resolvePreset, resolveEverything, RECOMMENDED_POLICIES } from "../../src/hooks/policy-presets";
 import { INTEGRATION_TYPES, type IntegrationType } from "../../src/hooks/types";
 import { getIntegration } from "../../src/hooks/integrations";
 import { runPostSetupAudit } from "../../src/audit/cli";
@@ -172,9 +166,12 @@ const ttyIO = () => ({ stdin: mkTtyStdin(), stdout: mkTtyStdout() });
  * — which is exactly the kind of churn that tempts someone to "fix" a test by
  * loosening it. Naming the steps keeps a reorder to a one-line change here.
  *
- * Current order — selectOne: target, connect, review.
- *                 multiSelect: policies, assistants.
+ * Current order — selectOne: mode, target, connect, review.
+ *                 multiSelect: assistants.
  * `undefined` means "this step is not reached in this test".
+ *
+ * There is no policy step any more: setup asks nothing about what to enforce,
+ * so `multiSelect` is asked exactly once, for the harnesses.
  */
 function drive(answers: {
   /**
@@ -187,7 +184,6 @@ function drive(answers: {
   mode?: "recommended" | "customize" | null;
   /** Scope step. Omitted when the run is expected to abort before it. */
   target?: "user" | "project" | "both" | null;
-  policies?: string[] | null;
   clis?: string[] | null;
   connect?: "key" | "local" | null;
   review?: "apply" | "cancel" | null;
@@ -198,18 +194,42 @@ function drive(answers: {
   if ("target" in answers) one.mockResolvedValueOnce(answers.target as never);
   if ("connect" in answers) one.mockResolvedValueOnce(answers.connect as never);
   if ("review" in answers) one.mockResolvedValueOnce(answers.review as never);
-  if ("policies" in answers) many.mockResolvedValueOnce(answers.policies as never);
   if ("clis" in answers) many.mockResolvedValueOnce(answers.clis as never);
 }
 
-/** The happy path: global scope, two bundles, Claude, stay local, apply. */
+/** The happy path: global scope, Claude, stay local, apply. */
 const HAPPY = {
   target: "user" as const,
-  policies: ["secrets", "git"],
   clis: ["claude"],
   connect: "local" as const,
   review: "apply" as const,
 };
+
+/**
+ * A realistic enabled set for the review-screen tests below.
+ *
+ * These were written against `RECOMMENDED_POLICIES`, which left with the preset
+ * module — the wizard has no policy list of its own any more. The names are kept
+ * verbatim rather than replaced with `policy-1 … policy-14` because what these
+ * tests measure is COLUMN WIDTH, and a slug of the wrong length measures the
+ * wrong thing. Membership is not the subject: `reviewLines`' truncation is.
+ */
+const FOURTEEN_ENABLED = [
+  "sanitize-jwt",
+  "sanitize-api-keys",
+  "sanitize-connection-strings",
+  "sanitize-private-key-content",
+  "sanitize-bearer-tokens",
+  "protect-env-vars",
+  "block-env-files",
+  "block-secrets-write",
+  "block-failproofai-commands",
+  "block-sudo",
+  "block-curl-pipe-sh",
+  "block-rm-rf",
+  "block-push-master",
+  "block-force-push",
+];
 
 // The wizard's apply path calls markLauncherSeen(), which writes under
 // homedir()/.failproofai — isolate HOME for the whole file so no test ever
@@ -265,133 +285,6 @@ beforeEach(() => {
 });
 
 describe("configure-wizard pure builders", () => {
-  // Pass an explicit cwd with no `.failproofai/policies/`. Relying on the
-  // default (process.cwd()) made this depend on whether the directory the
-  // suite happens to run from has custom policies — this repo's does, so it
-  // asserted on ambient filesystem state rather than on the builder. Same
-  // class of defect as #569.
-  it("buildPresetChoices lists the presets, Everything, then Custom", () => {
-    const values = buildPresetChoices(mkdtempSync(resolve(tmpdir(), "fpai-nocustom-"))).map(
-      (c) => c.value,
-    );
-    // Custom is always last and always present — even with nothing on disk, it
-    // is the only place a user can discover that custom policies are a thing.
-    expect(values).toEqual(["secrets", "git", "ship", "infra", "__everything__", "__custom__"]);
-  });
-
-  // With files on disk the Custom row is a real checkbox (unticking writes
-  // customPoliciesEnabled:false); with none it is a locked status row. Full
-  // behaviour is covered in custom-policy-discovery.test.ts.
-  it("buildPresetChoices makes Custom togglable once custom policies exist", () => {
-    const dir = mkdtempSync(resolve(tmpdir(), "fpai-custom-"));
-    mkdirSync(resolve(dir, ".failproofai", "policies"), { recursive: true });
-    writeFileSync(resolve(dir, ".failproofai", "policies", "team-policies.mjs"), "// x\n");
-    const custom = buildPresetChoices(dir).find((c) => c.label === "Custom");
-    expect(custom).toBeDefined();
-    expect(custom!.locked).toBeUndefined();
-    expect(custom!.checked).toBe(true);
-  });
-
-  it("resolvePresetSelection returns a single preset's policies", () => {
-    expect(resolvePresetSelection(["git"])).toEqual(resolvePreset("git"));
-  });
-
-  it("resolvePresetSelection unions multiple selected presets (deduped)", () => {
-    const combined = resolvePresetSelection(["secrets", "git"]);
-    // Concrete behavior, not a re-derivation of the implementation: one known
-    // policy from each bundle is present, and nothing is duplicated.
-    expect(combined).toContain("sanitize-api-keys"); // from "secrets"
-    expect(combined).toContain("block-force-push"); // from "git"
-    expect(new Set(combined).size).toBe(combined.length);
-  });
-
-  it("resolvePresetSelection returns the full set when Everything is ticked (wins over presets)", () => {
-    expect(resolvePresetSelection(["__everything__"])).toEqual(resolveEverything());
-    expect(resolvePresetSelection(["git", "__everything__"])).toEqual(resolveEverything());
-  });
-
-  // ── The wizard must not silently discard an existing selection ────────────
-  //
-  // `installHooks` is called with `replace: true`, so the ticked set becomes the
-  // WHOLE enabled set at that scope. That is the right rule — unticking a policy
-  // has to remove it — but every bundle box rendered unticked on every run, so
-  // re-running setup showed a blank slate and then made it authoritative. The
-  // user's policies were gone with nothing on screen to say so.
-
-  it("ticks a bundle whose policies are already all enabled", () => {
-    const git = resolvePreset("git");
-    const choices = buildPresetChoices(mkdtempSync(resolve(tmpdir(), "fpai-seed-")), true, git);
-
-    expect(choices.find((c) => c.value === "git")?.checked).toBe(true);
-    // And not the others, or confirming would enable bundles nobody picked.
-    expect(choices.find((c) => c.value === "secrets")?.checked).toBeFalsy();
-  });
-
-  it("does NOT tick a bundle that is only partly enabled", () => {
-    // "any" would tick every bundle sharing one policy, and `replace: true` would
-    // then enable all of them — turning a display bug into an enforcement change.
-    const git = resolvePreset("git");
-    expect(git.length).toBeGreaterThan(1);
-    const choices = buildPresetChoices(
-      mkdtempSync(resolve(tmpdir(), "fpai-partial-")),
-      true,
-      [git[0]!],
-    );
-
-    expect(choices.find((c) => c.value === "git")?.checked).toBeFalsy();
-    // It is enabled though, so it must be visible as an individual.
-    const row = choices.find((c) => c.value === "__individual__");
-    expect(row?.locked).toBe(true);
-    expect(row?.hint).toContain(git[0]!);
-  });
-
-  it("ticks Everything when the whole set is enabled", () => {
-    const choices = buildPresetChoices(
-      mkdtempSync(resolve(tmpdir(), "fpai-all-")),
-      true,
-      resolveEverything(),
-    );
-    expect(choices.find((c) => c.value === "__everything__")?.checked).toBe(true);
-    // Nothing is left over, so no locked row.
-    expect(choices.find((c) => c.value === "__individual__")).toBeUndefined();
-  });
-
-  it("shows no individual row when there is nothing enabled", () => {
-    const choices = buildPresetChoices(mkdtempSync(resolve(tmpdir(), "fpai-none-")), true, []);
-    expect(choices.find((c) => c.value === "__individual__")).toBeUndefined();
-    expect(choices.filter((c) => c.checked && c.value !== "__custom__")).toEqual([]);
-  });
-
-  it("carries individually-enabled policies through a confirm, so replace cannot drop them", () => {
-    // The end-to-end property: seed from a config, take the boxes as the wizard
-    // would render them, resolve, and get back everything that was enabled.
-    const enabled = [...resolvePreset("git"), "block-sudo"];
-    const { individual } = splitEnabled(enabled);
-    expect(individual).toContain("block-sudo");
-
-    const choices = buildPresetChoices(mkdtempSync(resolve(tmpdir(), "fpai-carry-")), true, enabled);
-    // What multiSelect returns on a straight ↵: every checked row, locked included.
-    const ticked = choices.filter((c) => (c.locked ? (c.checked ?? true) : !!c.checked)).map((c) => c.value);
-
-    const written = resolvePresetSelection(ticked, individual);
-
-    for (const name of enabled) expect(written).toContain(name);
-  });
-
-  it("carries a beta policy through Everything, which does not include beta", () => {
-    // `resolveEverything()` is non-beta only, so the branch meant to enable
-    // everything would drop a beta policy someone had enabled by hand.
-    const individual = ["some-beta-policy"];
-    const written = resolvePresetSelection(["__everything__", "__individual__"], individual);
-    expect(written).toContain("some-beta-policy");
-    for (const name of resolveEverything()) expect(written).toContain(name);
-  });
-
-  it("ignores the individual row when it is absent from the ticked set", () => {
-    const written = resolvePresetSelection(["git"], ["block-sudo"]);
-    expect(written).not.toContain("block-sudo");
-  });
-
   it("buildAgentChoices pre-checks detected CLIs and sections the rest", () => {
     const choices = buildAgentChoices("user", "/tmp/proj");
     const claude = choices.find((c) => c.value === "claude");
@@ -424,7 +317,7 @@ describe("configure-wizard pure builders", () => {
     const lines = reviewLines({
       target: "user",
       clis: ["claude"],
-      policies: [...RECOMMENDED_POLICIES],
+      policies: [...FOURTEEN_ENABLED],
       cwd: "/tmp/proj",
     });
     const joined = lines.join("\n");
@@ -443,23 +336,26 @@ describe("configure-wizard pure builders", () => {
     for (const line of reviewLines({
       target: "both",
       clis: ["claude"],
-      policies: [...RECOMMENDED_POLICIES],
+      policies: [...FOURTEEN_ENABLED],
       cwd: "/tmp/proj",
     })) {
       expect(line.length, `too wide: ${line}`).toBeLessThanOrEqual(80);
     }
   });
 
-  it("the taste scales to Everything without growing", () => {
-    const everything = resolveEverything();
+  it("the taste stays two names however large the enabled set gets", () => {
+    // A pack can enable an unbounded number of policies, so the taste has to be
+    // bounded by the LINE, not by the set. Generated rather than taken from a
+    // fixed list: the point is that the count grows and the line does not.
+    const many = Array.from({ length: 60 }, (_, i) => `block-thing-${i}`);
     const lines = reviewLines({
       target: "user",
       clis: ["claude"],
-      policies: everything,
+      policies: many,
       cwd: "/tmp/proj",
     }).join("\n");
-    expect(lines).toContain(`${everything.length} enabled`);
-    expect(lines).toContain(`+${everything.length - 2}`);
+    expect(lines).toContain(`${many.length} enabled`);
+    expect(lines).toContain(`+${many.length - 2}`);
   });
 
   it("policyNamesLine drops names rather than overflowing the budget", () => {
@@ -522,56 +418,14 @@ describe("configure-wizard pure builders", () => {
     expect(message).toContain("custom off");
   });
 
-  it("NAMES the bundles instead of counting the policies inside them", () => {
-    // "9 policies" is a number the user cannot check and did not choose — they
-    // ticked two named bundles two screens earlier, and the line confirming their
-    // setup should say which. This is the exact shape reported from live use.
-    const message = buildCompletionSummary(9, 12, true, true, false, ["secrets", "git"]);
-
-    expect(message).toBe("Setup complete — Secrets & data, Git safety · 12 harnesses · custom, daemon");
-    expect(message.length + GUTTER).toBeLessThanOrEqual(80);
-    expect(message).not.toContain("9 policies");
-  });
-
-  it("counts the bundles it cannot name, rather than truncating", () => {
-    // All four labels joined is 57 characters; with the prefix and both clauses
-    // the line runs past 80, and `writeLines` cuts hard with no ellipsis — so an
-    // over-long line does not lose a tail, it reads as broken output.
-    const message = buildCompletionSummary(30, 12, true, true, true, [
-      "secrets",
-      "git",
-      "ship",
-      "cloud",
-    ]);
-    expect(message.length + GUTTER).toBeLessThanOrEqual(80);
-    // Degraded to the count, which is the honest fallback when naming will not fit.
-    expect(message).toContain("30 policies");
-  });
-
-  it("keeps a bundle name alongside a policy enabled by hand", () => {
-    // The mixed case: bundles plus something added with `policies add`, which the
-    // locked "enabled individually" row stands for. `+N` rather than `+N more`
-    // because those five characters decide whether this gets named at all.
-    const message = buildCompletionSummary(10, 12, true, true, false, [
-      "secrets",
-      "__individual__",
-    ]);
-    expect(message).toContain("Secrets & data +1");
-    expect(message.length + GUTTER).toBeLessThanOrEqual(80);
-  });
-
-  it("names Everything with its size, since the word alone does not say how much", () => {
-    const message = buildCompletionSummary(9, 1, undefined, false, false, ["__everything__"]);
-    expect(message).toBe("Setup complete — Everything (9 policies) · 1 harness");
-  });
-
-  it("falls back to the count when nothing maps to a bundle", () => {
-    // A machine whose policies were all enabled one at a time has no bundle to
-    // name, and inventing one would be worse than the count.
-    expect(buildCompletionSummary(3, 1, undefined, false, false, ["__individual__"])).toBe(
-      "Setup complete — 3 policies · 1 harness",
+  it("counts the enabled policies rather than naming a bundle it did not pick", () => {
+    // The summary used to name the bundles the user had just ticked. There are no
+    // bundles and no policy step any more, so a count is the only thing this line
+    // can honestly say — and it must say it in the right number, since "1 policies"
+    // on the last screen of setup reads as a bug in everything above it.
+    expect(buildCompletionSummary(1, 1, undefined, false, false)).toBe(
+      "Setup complete — 1 policy · 1 harness",
     );
-    // And an old caller that passes no presets keeps the previous wording.
     expect(buildCompletionSummary(3, 1, undefined, false, false)).toBe(
       "Setup complete — 3 policies · 1 harness",
     );
@@ -584,112 +438,110 @@ describe("configure-wizard pure builders", () => {
 });
 
 describe("configure-wizard orchestration", () => {
-  it("applies the union of selected presets, REPLACING the enabled set", async () => {
-    drive({ target: "user", policies: ["secrets", "git"], clis: ["claude"], connect: "local", review: "apply" }); // policy sources (multi-select)
+  it("installs at the chosen scope, tagged as the wizard, REPLACING the enabled set", async () => {
+    drive({ target: "user", clis: ["claude"], connect: "local", review: "apply" });
 
     const result = await runConfigureWizard(ttyIO());
 
     expect(result.applied).toBe(true);
     expect(installHooks).toHaveBeenCalledTimes(1);
     const call = vi.mocked(installHooks).mock.calls[0];
-    const policies = call[0] as string[];
-    expect(policies).toContain("sanitize-api-keys"); // from "secrets"
-    expect(policies).toContain("block-force-push"); // from "git"
-    expect(new Set(policies).size).toBe(policies.length); // deduped union
     expect(call[1]).toBe("user"); // scope
     expect(call[4]).toBe("configure-wizard"); // source tag
     expect(call[7]).toEqual(["claude"]); // clis
     expect(call[8]).toEqual({ replace: true, quiet: true }); // options
   });
 
-  it("Recommended asks two questions and writes the 15-policy set globally", async () => {
-    // The whole point of the path: scope, bundles and harnesses are never
-    // asked. Only mode and connect are answered here, and the run still
-    // applies — if the wizard had reached the policy or harness prompt it
-    // would hang on an unmocked multiSelect rather than pass.
-    drive({ mode: "recommended", connect: "local", review: "apply" });
-
-    const result = await runConfigureWizard(ttyIO());
-
-    expect(result.applied).toBe(true);
-    const call = vi.mocked(installHooks).mock.calls[0];
-    const policies = call[0] as string[];
-    expect(new Set(policies)).toEqual(new Set(RECOMMENDED_POLICIES));
-    expect(call[1]).toBe("user"); // global, never the cwd's project
-    expect(call[7]).toEqual(["claude"]); // detected only — the mock detects claude
-    expect(call[8]).toEqual({ replace: true, quiet: true });
-  });
-
-  it("Recommended never asks the policy or harness prompts", async () => {
-    drive({ mode: "recommended", connect: "local", review: "apply" });
-    await runConfigureWizard(ttyIO());
-    // `multiSelect` is the primitive both skipped steps use.
-    expect(multiSelect).not.toHaveBeenCalled();
-  });
-
-  it("Recommended adds to what was already enabled, never replaces it", async () => {
-    // `installHooks` runs with `replace: true`, so writing the bare recommended
-    // list would switch OFF anything the user had enabled by hand — turning
-    // "give me the sensible defaults" into a REDUCTION in protection, which is
-    // the one direction setup must never move someone.
-    //
+  // ── Setup enables nothing of its own ─────────────────────────────────────
+  //
+  // failproofai ships no policies now: they arrive as packs. A wizard that
+  // pre-ticks a list makes a product decision for somebody who has not seen the
+  // list, so the only honest value to write is whatever the scope already had.
+  //
+  // `replace: true` makes this load-bearing in BOTH directions. Write more than
+  // was there and setup silently enables policies nobody chose; write less and
+  // re-running setup silently switches off policies they did.
+  it("writes back exactly the policies the scope already had, adding none of its own", async () => {
     // Seeded as a real file rather than a mock: `readScopedHooksConfig` is the
     // genuine implementation in this suite, and it reads user scope out of the
     // HOME this file isolates.
     const cfgPath = resolve(fileHome, ".failproofai", "policies-config.json");
     mkdirSync(dirname(cfgPath), { recursive: true });
-    writeFileSync(cfgPath, JSON.stringify({ enabledPolicies: ["block-kubectl"] }));
+    const theirs = ["block-kubectl", "some-pack-policy"];
+    writeFileSync(cfgPath, JSON.stringify({ enabledPolicies: theirs }));
     try {
-      drive({ mode: "recommended", connect: "local", review: "apply" });
+      drive(HAPPY);
 
       await runConfigureWizard(ttyIO());
 
-      const policies = vi.mocked(installHooks).mock.calls[0][0] as string[];
-      expect(policies).toContain("block-kubectl"); // theirs, kept
-      expect(policies).toContain("block-rm-rf"); // ours, added
-      expect(new Set(policies).size).toBe(policies.length);
+      // Equality, not `toContain`: a single name of ours slipping in is exactly
+      // the regression this exists for, and `toContain` cannot see it.
+      expect(vi.mocked(installHooks).mock.calls[0][0]).toEqual(theirs);
     } finally {
       rmSync(cfgPath, { force: true });
     }
   });
 
+  it("writes an empty policy list when the scope has nothing enabled", async () => {
+    // No config file at all — the state every brand-new machine is in. Setup
+    // still completes and still wires the hooks, so a pack added later enforces
+    // without re-running the wizard.
+    rmSync(resolve(fileHome, ".failproofai", "policies-config.json"), { force: true });
+    drive(HAPPY);
+
+    const result = await runConfigureWizard(ttyIO());
+
+    expect(result.applied).toBe(true);
+    expect(installHooks).toHaveBeenCalledTimes(1);
+    const call = vi.mocked(installHooks).mock.calls[0];
+    expect(call[0]).toEqual([]); // nothing enabled, and nothing invented
+    expect(call[7]).toEqual(["claude"]); // harnesses unaffected
+    expect(call[8]).toEqual({ replace: true, quiet: true }); // empty set REPLACES
+  });
+
+  it("Recommended applies globally to the detected harnesses", async () => {
+    // The whole point of the path: scope and harnesses are never asked. Only
+    // mode and connect are answered here, and the run still applies — if the
+    // wizard had reached the harness prompt it would hang on an unmocked
+    // multiSelect rather than pass.
+    drive({ mode: "recommended", connect: "local", review: "apply" });
+
+    const result = await runConfigureWizard(ttyIO());
+
+    expect(result.applied).toBe(true);
+    const call = vi.mocked(installHooks).mock.calls[0];
+    expect(call[1]).toBe("user"); // global, never the cwd's project
+    expect(call[7]).toEqual(["claude"]); // detected only — the mock detects claude
+    expect(call[8]).toEqual({ replace: true, quiet: true });
+  });
+
+  it("Recommended never asks the harness prompt", async () => {
+    drive({ mode: "recommended", connect: "local", review: "apply" });
+    await runConfigureWizard(ttyIO());
+    // `multiSelect` is the primitive the skipped step uses.
+    expect(multiSelect).not.toHaveBeenCalled();
+  });
+
   it("'Everything available' protects every supported CLI", async () => {
-    drive({ target: "user", policies: ["git"], clis: ["__all_clis__"], connect: "local", review: "apply" }); // policy sources
+    drive({ target: "user", clis: ["__all_clis__"], connect: "local", review: "apply" });
     await runConfigureWizard(ttyIO());
     const call = vi.mocked(installHooks).mock.calls[0];
     expect(call[7]).toEqual([...INTEGRATION_TYPES]); // all CLIs, regardless of detection
   });
 
-  it("accepts an empty policy selection and still installs the hooks", async () => {
-    drive({ target: "user", policies: [], clis: ["claude"], connect: "local", review: "apply" }); // policy sources → nothing ticked
-
-    const result = await runConfigureWizard(ttyIO());
-
-    expect(result.applied).toBe(true);
-    // The whole point: setup completes. Hooks are installed for the chosen
-    // assistant with an empty enabled set, so enforcement can be switched on
-    // later without re-running the wizard.
-    expect(installHooks).toHaveBeenCalledTimes(1);
-    const call = vi.mocked(installHooks).mock.calls[0];
-    expect(call[0]).toEqual([]); // no builtins enabled
-    expect(call[7]).toEqual(["claude"]); // assistants unaffected
-    expect(call[8]).toEqual({ replace: true, quiet: true }); // empty set REPLACES
-  });
-
-  it("does not impose a minimum on the policy step, but keeps one on assistants", async () => {
-    drive({ target: "user", policies: [], clis: ["claude"], connect: "local", review: "apply" });
+  it("keeps a minimum of one on the harness step, which is the only one asked", async () => {
+    drive({ target: "user", clis: ["claude"], connect: "local", review: "apply" });
 
     await runConfigureWizard(ttyIO());
 
-    // Policies are asked FIRST now — "what do you want guarded" is the
-    // question the user came for; which CLIs to wire it into follows from it.
-    const [policyOpts] = vi.mocked(multiSelect).mock.calls[0];
-    const [assistantsOpts] = vi.mocked(multiSelect).mock.calls[1];
-    // Asymmetric on purpose: an empty CLI list does NOT mean "no assistants" —
-    // installHooksImpl falls back to ["claude"] — so that step must keep its
-    // minimum or it would silently install for a CLI nobody picked.
+    // Exactly one multiSelect: the policy step is gone, so a second call here
+    // would mean setup had started asking what to enforce again.
+    expect(vi.mocked(multiSelect).mock.calls).toHaveLength(1);
+    const [assistantsOpts] = vi.mocked(multiSelect).mock.calls[0];
+    // An empty CLI list does NOT mean "no assistants" — installHooksImpl falls
+    // back to ["claude"] — so this step must keep its minimum or it would
+    // silently install for a CLI nobody picked.
     expect(assistantsOpts.minSelected).toBe(1);
-    expect(policyOpts.minSelected).toBeUndefined();
   });
 
   it("never writes into the repository's own config when applying at project scope", async () => {
@@ -701,7 +553,7 @@ describe("configure-wizard orchestration", () => {
     const repoConfig = resolve(process.cwd(), ".failproofai", "policies-config.json");
     const before = existsSync(repoConfig) ? readFileSync(repoConfig, "utf8") : null;
 
-    drive({ target: "project", policies: ["git"], clis: ["claude"], connect: "local", review: "apply" }); // Custom deliberately unticked — the write that leaked
+    drive({ target: "project", clis: ["claude"], connect: "local", review: "apply" });
     await runConfigureWizard(ttyIO());
 
     const after = existsSync(repoConfig) ? readFileSync(repoConfig, "utf8") : null;
@@ -709,7 +561,7 @@ describe("configure-wizard orchestration", () => {
   });
 
   it("cancelling at the review step makes no changes", async () => {
-    drive({ target: "user", policies: ["git"], clis: ["claude"], connect: "local", review: "cancel" }); // policy sources
+    drive({ target: "user", clis: ["claude"], connect: "local", review: "cancel" });
     const result = await runConfigureWizard(ttyIO());
     expect(result.applied).toBe(false);
     expect(installHooks).not.toHaveBeenCalled();
@@ -785,7 +637,7 @@ describe("first-run redirect", () => {
   });
 
   it("marks the launcher seen only after a completed apply", async () => {
-    drive({ target: "user", policies: ["git"], clis: ["claude"], connect: "local", review: "apply" }); // policy sources
+    drive({ target: "user", clis: ["claude"], connect: "local", review: "apply" });
     const handled = await maybeFirstRunConfigure(ttyIO());
     expect(handled).toBe(true);
     expect(installHooks).toHaveBeenCalledTimes(1);
@@ -865,19 +717,38 @@ describe("scope-aware assistant selection", () => {
   // cutting off the custom-policy note entirely and then stopping mid-word.
   it("keeps the closing line inside an 80-column terminal", async () => {
     const stdout = mkTtyStdout();
-    drive({ target: "project", policies: ["__everything__"], clis: ["__all_clis__"], connect: "local", review: "apply" }); // widest: every policy
+    // The widest line this can produce: user scope, which every CLI supports,
+    // and a policy count wide enough to be worth measuring. The count is no
+    // longer bounded by a builtin list — a pack can enable any number — so it is
+    // seeded rather than assumed. User scope, not project, because project reads
+    // its config from `process.cwd()`, which under test is this repo: the count
+    // would then be whatever the dogfood config happens to hold that week.
+    const userConfig = resolve(fileHome, ".failproofai", "policies-config.json");
+    mkdirSync(dirname(userConfig), { recursive: true });
+    writeFileSync(
+      userConfig,
+      JSON.stringify({
+        enabledPolicies: Array.from({ length: 999 }, (_, i) => `block-thing-${i}`),
+      }),
+    );
+    try {
+      drive({ target: "user", clis: ["__all_clis__"], connect: "local", review: "apply" });
 
-    await runConfigureWizard({ stdin: mkTtyStdin(), stdout });
+      await runConfigureWizard({ stdin: mkTtyStdin(), stdout });
 
-    const message = vi.mocked(outro).mock.calls[0]![0];
-    expect(message).toContain("Setup complete");
-    // 3 columns of gutter ("└  ") sit in front of it when rendered.
-    expect(message.length + 3).toBeLessThanOrEqual(80);
-    expect(message).toContain("harnesses"); // the tail survived
+      const message = vi.mocked(outro).mock.calls[0]![0];
+      expect(message).toContain("Setup complete");
+      expect(message).toContain("999 policies");
+      // 3 columns of gutter ("└  ") sit in front of it when rendered.
+      expect(message.length + 3).toBeLessThanOrEqual(80);
+      expect(message).toContain("harnesses"); // the tail survived
+    } finally {
+      rmSync(userConfig, { force: true });
+    }
   });
 
   it("applies to only the scope-supported CLIs when Everything available is ticked", async () => {
-    drive({ target: "project", policies: ["git"], clis: ["__all_clis__"], connect: "local", review: "apply" }); // one bundle
+    drive({ target: "project", clis: ["__all_clis__"], connect: "local", review: "apply" });
 
     await runConfigureWizard(ttyIO());
 
@@ -1477,7 +1348,7 @@ describe("connect step", () => {
       .mockResolvedValueOnce("key")
       .mockResolvedValueOnce("skip")
       .mockResolvedValueOnce("apply");
-    vi.mocked(multiSelect).mockResolvedValueOnce(["git"]).mockResolvedValueOnce(["claude"]);
+    vi.mocked(multiSelect).mockResolvedValueOnce(["claude"]);
 
     const result = await runConfigureWizard(ttyIO());
 
@@ -1516,7 +1387,7 @@ describe("connect step", () => {
   });
 
   it("writes nothing when cancelled at the connect step", async () => {
-    drive({ target: "user", policies: ["git"], clis: ["claude"], connect: null });
+    drive({ target: "user", clis: ["claude"], connect: null });
     const result = await runConfigureWizard(ttyIO());
     expect(result.applied).toBe(false);
     expect(installHooks).not.toHaveBeenCalled();
@@ -1525,76 +1396,18 @@ describe("connect step", () => {
 });
 
 describe("wizard back-navigation", () => {
-  it("← on the harness step re-asks the policy step, and carries the answer back in", async () => {
-    const one = vi.mocked(selectOne);
-    const many = vi.mocked(multiSelect);
-    one.mockResolvedValueOnce("user" as never); // scope
-    many.mockResolvedValueOnce(["secrets", "git"] as never); // policies, 1st pass
-    many.mockResolvedValueOnce(BACK as never); // harnesses -> ←
-    many.mockResolvedValueOnce(["secrets"] as never); // policies, re-asked
-    many.mockResolvedValueOnce(["claude"] as never); // harnesses, 2nd pass
-    one.mockResolvedValueOnce("local" as never); // connect
-    one.mockResolvedValueOnce("apply" as never); // review
+  // The three tests that stood here drove a ← from the harness step back to the
+  // policy step, and pinned that both answers survived the round trip. Both the
+  // step and the ← are gone: with nothing before the harness step inside setup
+  // — the scope question is frequently stated rather than asked — a ← would
+  // sometimes go nowhere, which is worse than not offering one.
+  it("offers no ← on the harness step, because there is nothing to go back to", async () => {
+    drive({ target: "user", clis: ["claude"], connect: "local", review: "apply" });
 
     await runConfigureWizard(ttyIO());
 
-    // Four multiSelect calls: policies, harnesses, policies again, harnesses.
-    expect(many.mock.calls.length).toBe(4);
-
-    // The re-asked policy step must arrive pre-checked with the first answer,
-    // or a ← silently discards what the user already chose.
-    const reasked = many.mock.calls[2]![0];
-    const checked = reasked.choices.filter((c) => c.checked);
-    expect(checked.map((c) => String(c.value)).sort()).toEqual(["git", "secrets"]);
-  });
-
-  it("← on the harness step carries the HARNESS selection back in too", async () => {
-    // The sibling of the test above, and the one that was missing. That one pins
-    // the POLICY answer surviving a ←; the harness answer did not, and the restore
-    // that was supposed to do it was unreachable: `priorClis` read `clisSel`, which
-    // is the loop's own condition (`while (clisSel === null)`) and so is null on
-    // every entry into the body by definition.
-    //
-    // The cost was not cosmetic. Deselect a CLI, press ← to fix an earlier answer,
-    // come back, and the step redrew the DETECTED DEFAULTS — so confirming
-    // re-enabled hook installation for a CLI the user had explicitly turned off.
-    const one = vi.mocked(selectOne);
     const many = vi.mocked(multiSelect);
-    one.mockResolvedValueOnce("user" as never); // scope
-    many.mockResolvedValueOnce(["secrets"] as never); // policies, 1st pass
-    // The harness step: the user has ticked ONLY codex — deliberately not the
-    // detected default — and then presses ←. `BACK` cannot carry that, so the
-    // prompt reports it through `onBack`, which is what this exercises.
-    many.mockImplementationOnce((async (opts: { onBack?: (v: string[]) => void }) => {
-      opts.onBack?.(["codex"]);
-      return BACK;
-    }) as never);
-    many.mockResolvedValueOnce(["secrets"] as never); // policies, re-asked
-    many.mockResolvedValueOnce(["codex"] as never); // harnesses, 2nd pass
-    one.mockResolvedValueOnce("local" as never); // connect
-    one.mockResolvedValueOnce("apply" as never); // review
-
-    await runConfigureWizard(ttyIO());
-
-    // The re-asked harness step must arrive with codex ticked and nothing else —
-    // the user's edit, not the detected defaults.
-    const reasked = many.mock.calls[3]![0];
-    const checked = reasked.choices.filter((c) => c.checked).map((c) => String(c.value));
-    expect(checked).toEqual(["codex"]);
-  });
-
-  it("the policy step itself offers no ←, because the step before it is often not asked", async () => {
-    const one = vi.mocked(selectOne);
-    const many = vi.mocked(multiSelect);
-    one.mockResolvedValueOnce("user" as never);
-    many.mockResolvedValueOnce(["git"] as never);
-    many.mockResolvedValueOnce(["claude"] as never);
-    one.mockResolvedValueOnce("local" as never);
-    one.mockResolvedValueOnce("apply" as never);
-
-    await runConfigureWizard(ttyIO());
-
+    expect(many.mock.calls).toHaveLength(1);
     expect(many.mock.calls[0]![0].allowBack).toBeFalsy();
-    expect(many.mock.calls[1]![0].allowBack).toBe(true);
   });
 });

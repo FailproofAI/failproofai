@@ -163,7 +163,7 @@ describe("the message", () => {
     }));
     expect(reason).toContain("acme/finance");
     expect(reason).toContain("block-refunds");
-    expect(reason).toContain("failproofai pack list");
+    expect(reason).toContain("failproofai policies");
     expect(reason).toContain("agent cannot run");
   });
 });

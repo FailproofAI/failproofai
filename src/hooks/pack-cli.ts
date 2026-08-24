@@ -1,10 +1,11 @@
 /**
- * `failproofai pack add | remove | list`.
+ * `failproofai policies add | remove | list`.
  *
  * Presentation only — every rule about what a pack may be lives in
  * `pack-manifest.ts` (what may load) and `pack-store.ts` (what may install).
  * This layer decides nothing; it formats.
  */
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -18,14 +19,18 @@ import {
   CORE_ALIASES,
   fetchPackPreview,
   installBundledPack,
+  packTagMatchesVersion,
   removePack,
+  setPackPolicyEnabled,
   slugifyCategory,
 } from "./pack-store";
 import type { PolicyEffect } from "./cloud-managed-policies";
 import { loadCustomHooks } from "./custom-hooks-loader";
+import type { MultiChoice, TTYIn, TTYOut } from "./tui";
 import {
   chip,
   emptyState,
+  multiSelect,
   note,
   nextStep,
   optsFor,
@@ -120,7 +125,7 @@ async function build(rest: string[]): Promise<PackCliResult> {
 
   if (!entry || !id || !version) {
     return fail([
-      "Usage: failproofai pack build <entry.mjs> --id <publisher/name> --version <version>",
+      "Usage: failproofai publish <entry.mjs> --repo <owner>/<repo> --version <version>",
       "       [--out <dir>] [--effect enforce|observe]",
     ]);
   }
@@ -207,8 +212,393 @@ async function build(rest: string[]): Promise<PackCliResult> {
     `  ${outDir}/${PACK_CHECKSUMS_ASSET}`,
     "",
     `Publish: attach all three to a GitHub release tagged ${identity.version}, then anyone runs:`,
-    `  failproofai pack add <owner>/<repo>`,
+    `  failproofai policies add <owner>/<repo>`,
   ]);
+}
+
+/**
+ * The list, with what is already on ticked, for `failproofai policies add` with
+ * nothing after it.
+ *
+ * Naming nothing used to be an error — "Missing policy name", followed by an
+ * instruction to go and read a list somewhere else and come back. That is the
+ * command telling the user to do the work it is for. The same objection applies
+ * to `pack add` taking a publisher's defaults and only afterwards printing what
+ * it decided: a default is a suggestion, and a suggestion the user never saw is
+ * just a decision taken on their behalf.
+ *
+ * So this is one screen showing every policy on the machine, grouped by pack and
+ * category, with the current state pre-ticked. It edits the enabled SET — there
+ * is no separate "remove" screen, because choosing what is on and choosing what
+ * is off are the same act.
+ *
+ * Refuses rather than guesses when there is no terminal to draw on. `multiSelect`
+ * degrades by returning its pre-checked set, which here would mean "confirm
+ * exactly what is already true" — a silent no-op reported as a success. A script
+ * that lands in this branch asked the wrong question and should be told so.
+ */
+export async function runPolicyPicker(
+  action: "add" | "remove",
+  io: { stdin?: TTYIn; stdout?: TTYOut } = {},
+): Promise<PackCliResult> {
+  const stdin = io.stdin ?? process.stdin;
+  const stdout = io.stdout ?? process.stdout;
+  const opts = optsFor(stdout as NodeJS.WriteStream);
+  const { packs } = readInstalledPacks();
+
+  if (packs.length === 0) {
+    return ok(
+      stack(
+        emptyState(
+          {
+            what: "No policies are installed yet.",
+            hint: "Take ours, or anyone's:",
+            cmd: "failproofai policies add core",
+          },
+          opts,
+        ),
+        note("Someone else's:  failproofai policies add <owner>/<repo>", opts),
+        note("Look first:      failproofai policies show <owner>/<repo>", opts),
+      ),
+    );
+  }
+
+  if (!stdin.isTTY || !stdout.isTTY) {
+    return fail([
+      `\`policies ${action}\` with no name needs a terminal to show you the list.`,
+      "From a script, name what you mean:",
+      `  failproofai policies ${action} <policy-name>`,
+      `  failproofai policies ${action} <owner>/<repo> [--policy a,b] [--category x,y] [--all]`,
+    ]);
+  }
+
+  // One row per policy across every pack. The pack id leads the section heading
+  // because two packs may legitimately ship a category of the same name, and a
+  // row that says only "Data" would not tell you whose Data it is.
+  const rows: MultiChoice<string>[] = [];
+  const owner = new Map<string, string>();
+  for (const pack of packs) {
+    const taken = new Set(pack.enabled ?? pack.policies.map((pol) => pol.name));
+    const categories = [...new Set(pack.policies.map((pol) => pol.category))];
+    for (const category of categories) {
+      for (const pol of pack.policies.filter((x) => x.category === category)) {
+        // Keyed by name, not by pack+name: a name collision across two packs is
+        // already impossible to enforce unambiguously, and silently editing the
+        // wrong pack's copy would be worse than the collision.
+        owner.set(pol.name, pack.id);
+        rows.push({
+          label: pol.name,
+          value: pol.name,
+          hint: pol.description,
+          checked: taken.has(pol.name),
+          section: `${pack.id} · ${category}`,
+        });
+      }
+    }
+  }
+
+  const before = new Set(rows.filter((r) => r.checked).map((r) => r.value));
+  const picked = await multiSelect<string>({
+    message: "Which policies should be on?",
+    choices: rows,
+    summaryNoun: "policies",
+    hint: "space toggles · ctrl+a all · ↵ confirm · what is on now is ticked",
+    stdin,
+    stdout,
+  });
+  if (picked === null) return ok(["Nothing changed."]);
+
+  const after = new Set(picked);
+  const turnedOn = [...after].filter((n) => !before.has(n));
+  const turnedOff = [...before].filter((n) => !after.has(n));
+  if (turnedOn.length === 0 && turnedOff.length === 0) {
+    return ok([`Nothing changed — ${after.size} of ${rows.length} still on.`]);
+  }
+
+  const failures: string[] = [];
+  for (const name of [...turnedOn, ...turnedOff]) {
+    const packId = owner.get(name);
+    if (!packId) continue;
+    const result = setPackPolicyEnabled(packId, name, after.has(name));
+    if (!result.ok) failures.push(`${name}: ${result.reason ?? "could not be written"}`);
+  }
+  if (failures.length > 0) {
+    return fail(["Some policies could not be changed:", ...failures.map((f) => `  ${f}`)]);
+  }
+
+  const lines = [`${after.size} of ${rows.length} policies on.`];
+  if (turnedOn.length > 0) lines.push(`  turned on (${turnedOn.length}): ${summarise(turnedOn)}`);
+  if (turnedOff.length > 0) lines.push(`  turned off (${turnedOff.length}): ${summarise(turnedOff)}`);
+  return ok(lines);
+}
+
+
+// ── publish ───────────────────────────────────────────────────────────────
+
+const GITHUB_API = process.env.FAILPROOFAI_GITHUB_API ?? "https://api.github.com";
+const GITHUB_UPLOADS = process.env.FAILPROOFAI_GITHUB_UPLOADS ?? "https://uploads.github.com";
+
+/**
+ * The credential, from the places a developer already keeps one.
+ *
+ * `gh auth token` is READ-ONLY and is deliberately not one of the subcommands
+ * `block-gh-pipeline` matches — which is exactly why the release itself goes
+ * over REST rather than through `gh release create`: that one IS matched, so a
+ * user with our own policy switched on could not publish with a gh-shaped
+ * implementation. Shipping a publish path our own guardrail blocks is not a
+ * thing to do.
+ *
+ * Never returned in any message. A token that reaches stdout reaches CI logs.
+ */
+function githubToken(): string | null {
+  const fromEnv = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  if (fromEnv) return fromEnv.trim();
+  try {
+    const out = execFileSync("gh", ["auth", "token"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 5_000,
+    });
+    return out.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+async function gh(
+  url: string,
+  token: string,
+  init: { method?: string; body?: BodyInit; contentType?: string } = {},
+): Promise<{ status: number; json: Record<string, unknown> | null; text: string }> {
+  const response = await fetch(url, {
+    method: init.method ?? "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "User-Agent": "failproofai",
+      ...(init.contentType ? { "Content-Type": init.contentType } : {}),
+    },
+    ...(init.body ? { body: init.body } : {}),
+    signal: AbortSignal.timeout(60_000),
+  });
+  const text = await response.text();
+  let json: Record<string, unknown> | null = null;
+  try {
+    json = text ? (JSON.parse(text) as Record<string, unknown>) : null;
+  } catch {
+    json = null;
+  }
+  return { status: response.status, json, text };
+}
+
+/** GitHub's error bodies are shaped `{message, errors:[{code,field}]}`; the bare
+ *  `message` alone is frequently just "Validation Failed". */
+function ghError(res: { status: number; json: Record<string, unknown> | null; text: string }): string {
+  const message = typeof res.json?.message === "string" ? res.json.message : res.text.slice(0, 200);
+  const errors = Array.isArray(res.json?.errors)
+    ? (res.json.errors as Array<Record<string, unknown>>)
+        .map((e) => [e.field, e.code].filter(Boolean).join(" "))
+        .filter(Boolean)
+    : [];
+  return errors.length > 0 ? `${message} (${errors.join("; ")})` : message;
+}
+
+/**
+ * Build the assets AND put them on a GitHub release, in one command.
+ *
+ * Publishing used to be four commands, and two of them did nothing: `git init`,
+ * `git add`, `git commit`, `gh repo create`, `gh release create`. Only the last
+ * one publishes — installs read `releases/download/<tag>/<asset>` and never
+ * touch the git tree, so pushing source is for humans reading it, not for the
+ * install to work. A publisher had to discover that by reading `pack-store.ts`.
+ *
+ * With no `--repo` this is exactly the old `pack build`: write the three assets
+ * and stop. That is what `pack build` now resolves to, so the old command keeps
+ * working and means the same thing.
+ *
+ * Two failures the manual flow let through silently, both refused here:
+ *   - a tag that does not describe the manifest version, which installs and then
+ *     reports a version matching no URL;
+ *   - a private repository, which publishes to nobody, because installs are
+ *     anonymous HTTPS with no credential to offer.
+ */
+async function publish(rest: string[]): Promise<PackCliResult> {
+  const flag = (name: string): string | undefined => {
+    const i = rest.findIndex((a) => a === `--${name}` || a.startsWith(`--${name}=`));
+    if (i === -1) return undefined;
+    return rest[i].includes("=") ? rest[i].split("=").slice(1).join("=") : rest[i + 1];
+  };
+
+  const repo = flag("repo");
+  const version = flag("version");
+  const entry = packAddSource(rest.filter((a) => a !== "--dry-run")) ?? flag("entry");
+  // The id and the repo are usually the same words, and requiring both is asking
+  // the same question twice. Either one alone answers for the other.
+  const id = flag("id") ?? repo;
+  const tag = flag("tag") ?? version;
+  const dryRun = rest.includes("--dry-run") || !repo;
+
+  if (!entry || !version || !id) {
+    return fail([
+      "Usage: failproofai publish <entry.mjs> --repo <owner>/<repo> --version <version>",
+      "       [--id <publisher/name>] [--tag <tag>] [--notes <text>]",
+      "       [--out <dir>] [--effect enforce|observe] [--dry-run]",
+      "",
+      "With no --repo it writes the three release assets and stops.",
+    ]);
+  }
+
+  // Build first, always. There is no point authenticating against GitHub to
+  // discover the pack does not load.
+  const built = await build([entry, "--id", id, "--version", version, ...outFlagFrom(rest), ...effectFlagFrom(rest)]);
+  if (built.exitCode !== 0) return built;
+
+  const outDir = resolve(flag("out") ?? "dist-pack");
+  if (dryRun) {
+    return ok([
+      ...built.lines.slice(0, 4),
+      "",
+      ...(repo
+        ? ["Dry run — nothing was published.", `Drop --dry-run to release it on ${repo}.`]
+        : [
+            "Nothing was published: name a repository to release it on.",
+            `  failproofai publish ${entry} --repo <owner>/<repo> --version ${version}`,
+          ]),
+    ]);
+  }
+
+  if (!packTagMatchesVersion(tag!, version)) {
+    return fail([
+      `Tag ${tag} does not describe version ${version}, so nobody could install it.`,
+      `A pack is fetched from releases/download/${tag}/… and then reports ${version} —`,
+      `which names no release. Use --tag ${version} (a leading v is fine), or build`,
+      "the pack at the version the tag says.",
+    ]);
+  }
+
+  const [owner, name] = repo!.split("/");
+  if (!owner || !name || repo!.split("/").length !== 2) {
+    return fail([`--repo must be <owner>/<repo>, got ${JSON.stringify(repo)}`]);
+  }
+
+  const token = githubToken();
+  if (!token) {
+    return fail([
+      "No GitHub credential found.",
+      "Set GITHUB_TOKEN (or GH_TOKEN), or sign in once with `gh auth login`.",
+      "It needs write access to releases on that repository, and nothing else.",
+    ]);
+  }
+
+  const repoInfo = await gh(`${GITHUB_API}/repos/${owner}/${name}`, token);
+  if (repoInfo.status === 404) {
+    return fail([
+      `${repo} does not exist, or that credential cannot see it.`,
+      `Create it first:  gh repo create ${repo} --public`,
+    ]);
+  }
+  if (repoInfo.status >= 400) return fail([`Could not read ${repo}: ${ghError(repoInfo)}`]);
+  // A private repo is not a smaller audience, it is no audience: `pack add`
+  // sends no Authorization header at all, by design, so every install 404s.
+  const isPrivate = repoInfo.json?.private === true;
+
+  // Reuse a release on this tag rather than failing on it. Re-publishing a
+  // corrected artifact under an existing tag is a normal thing to need, and the
+  // digest change is visible to anyone who reinstalls.
+  let releaseId: number | null = null;
+  const existing = await gh(`${GITHUB_API}/repos/${owner}/${name}/releases/tags/${encodeURIComponent(tag!)}`, token);
+  if (existing.status === 200 && typeof existing.json?.id === "number") {
+    releaseId = existing.json.id;
+  } else {
+    const created = await gh(`${GITHUB_API}/repos/${owner}/${name}/releases`, token, {
+      method: "POST",
+      contentType: "application/json",
+      body: JSON.stringify({
+        tag_name: tag,
+        name: `${id} ${version}`,
+        body: flag("notes") ?? `${id}@${version}`,
+        // A prerelease is invisible to `releases/latest`, which is how a tagless
+        // `policies add owner/repo` resolves a version — so publishing one would
+        // make the pack installable only by people who already knew its tag.
+        prerelease: false,
+        draft: false,
+      }),
+    });
+    if (created.status >= 400 || typeof created.json?.id !== "number") {
+      return fail([`Could not create the release on ${repo}: ${ghError(created)}`]);
+    }
+    releaseId = created.json.id;
+  }
+
+  const assets = [PACK_MANIFEST_ASSET, PACK_ENTRY_ASSET, PACK_CHECKSUMS_ASSET];
+  const uploaded: string[] = [];
+  const listed = await gh(`${GITHUB_API}/repos/${owner}/${name}/releases/${releaseId}/assets?per_page=100`, token);
+  const already = Array.isArray(listed.json)
+    ? (listed.json as unknown as Array<{ id: number; name: string }>)
+    : [];
+  for (const asset of assets) {
+    // Asset names are fixed and the URL is constructed from them, so a stale
+    // copy under the same name is what an installer would fetch. Replace, never
+    // append.
+    const prior = already.find((a) => a.name === asset);
+    if (prior) {
+      await gh(`${GITHUB_API}/repos/${owner}/${name}/releases/assets/${prior.id}`, token, { method: "DELETE" });
+    }
+    const bytes = readFileSync(resolve(outDir, asset));
+    const upload = await gh(
+      `${GITHUB_UPLOADS}/repos/${owner}/${name}/releases/${releaseId}/assets?name=${encodeURIComponent(asset)}`,
+      token,
+      {
+        method: "POST",
+        contentType: asset.endsWith(".json") ? "application/json" : "application/octet-stream",
+        body: new Uint8Array(bytes),
+      },
+    );
+    if (upload.status >= 400) {
+      return fail([
+        `Uploaded ${uploaded.length} of ${assets.length} assets, then ${asset} failed: ${ghError(upload)}`,
+        `The release exists but is INCOMPLETE — an install would fail on the missing asset.`,
+        `Re-run the same command; existing assets are replaced, not duplicated.`,
+      ]);
+    }
+    uploaded.push(asset);
+  }
+
+  const lines = [
+    `Published ${id}@${version} to ${repo} at tag ${tag}.`,
+    `  ${assets.length} assets attached`,
+    "",
+    "Anyone can now install it:",
+    `  failproofai policies add ${repo}`,
+    `  failproofai policies show ${repo}      (look first, without running it)`,
+  ];
+  if (isPrivate) {
+    lines.push(
+      "",
+      `WARNING: ${repo} is PRIVATE, so nobody can install this.`,
+      "Installs are anonymous HTTPS with no credential to offer — every one will 404.",
+      `Make it public:  gh repo edit ${repo} --visibility public`,
+    );
+  }
+  return ok(lines);
+}
+
+/** Pass --out through to build without re-parsing it. */
+function outFlagFrom(rest: string[]): string[] {
+  const i = rest.findIndex((a) => a === "--out" || a.startsWith("--out="));
+  if (i === -1) return [];
+  return rest[i].includes("=") ? [rest[i]] : [rest[i], rest[i + 1]];
+}
+function effectFlagFrom(rest: string[]): string[] {
+  const i = rest.findIndex((a) => a === "--effect" || a.startsWith("--effect="));
+  if (i === -1) return [];
+  return rest[i].includes("=") ? [rest[i]] : [rest[i], rest[i + 1]];
+}
+
+/** `failproofai publish` — exported for bin/failproofai.mjs and the tests. */
+export async function runPublishCommand(rest: string[]): Promise<PackCliResult> {
+  return publish(rest);
 }
 
 async function add(rest: string[]): Promise<PackCliResult> {
@@ -235,16 +625,16 @@ async function add(rest: string[]): Promise<PackCliResult> {
     if (skipped.length > 0) {
       lines.push(`  not enabled (${skipped.length}): ${summarise(skipped)}`);
       lines.push("");
-      lines.push("  one policy:    failproofai pack add core --policy block-rm-rf");
-      lines.push("  a category:    failproofai pack add core --category dangerous-commands");
-      lines.push("  everything:    failproofai pack add core --all");
-      lines.push("  see them all:  failproofai pack list");
+      lines.push("  one policy:    failproofai policies add core --policy block-rm-rf");
+      lines.push("  a category:    failproofai policies add core --category dangerous-commands");
+      lines.push("  everything:    failproofai policies add core --all");
+      lines.push("  see them all:  failproofai policies");
     }
     return ok(lines);
   }
 
   if (!source) {
-    return fail(["Usage: failproofai pack add <source> [--only a,b] [--category x,y] [--all]"]);
+    return fail(["Usage: failproofai policies add <source> [--policy a,b] [--category x,y] [--all]"]);
   }
   if (selection.only && selection.only.length === 0) {
     return fail(["--policy needs at least one policy name, comma-separated"]);
@@ -278,11 +668,11 @@ async function add(rest: string[]): Promise<PackCliResult> {
     if (skipped.length > 0) {
       lines.push(`  not enabled (${skipped.length}): ${summarise(skipped)}`);
       lines.push("");
-      lines.push(`  see all:      failproofai pack list`);
+      lines.push(`  see all:      failproofai policies`);
       if (result.categories.length > 0) {
-        lines.push(`  by category:  failproofai pack add ${source} --category ${result.categories.slice(0, 3).join(",")}`);
+        lines.push(`  by category:  failproofai policies add ${source} --category ${result.categories.slice(0, 3).join(",")}`);
       }
-      lines.push(`  everything:   failproofai pack add ${source} --all`);
+      lines.push(`  everything:   failproofai policies add ${source} --all`);
     }
     return ok(lines);
   } catch (err) {
@@ -292,7 +682,7 @@ async function add(rest: string[]): Promise<PackCliResult> {
 
 function remove(rest: string[]): PackCliResult {
   const id = rest[0];
-  if (!id) return fail(["Usage: failproofai pack remove <publisher/name>"]);
+  if (!id) return fail(["Usage: failproofai policies remove <publisher/name>"]);
   if (!removePack(id)) return fail([`No installed pack with id ${id}`]);
   return ok([
     `Removed ${id}. Its artifact is kept on disk, so re-adding it works offline.`,
@@ -351,7 +741,7 @@ async function listRemote(source: string): Promise<PackCliResult> {
       ),
       preview.resolvedFromLatest ? note(`Newest release: ${preview.source}`, opts) : null,
       table({ head: ["", "", ""], rows }, opts),
-      nextStep(`failproofai pack add ${source}`, "Install the defaults with:", opts),
+      nextStep(`failproofai policies add ${source}`, "Install the defaults with:", opts),
       note("Or take part of it: --policy <a,b>, --category <x,y>, --all", opts),
     ),
   );
@@ -362,7 +752,7 @@ async function list(): Promise<PackCliResult> {
   const opts = optsFor(process.stdout);
   const policyCount = packs.reduce((n, pack) => n + pack.policies.length, 0);
   const head = title(
-    "failproofai pack list",
+    "failproofai policies",
     packs.length === 0
       ? undefined
       : `${packs.length} pack${packs.length === 1 ? "" : "s"} · ${policyCount} policies`,
@@ -377,7 +767,7 @@ async function list(): Promise<PackCliResult> {
           {
             what: "No packs installed.",
             hint: "Install one with:",
-            cmd: "failproofai pack add github:owner/repo@tag",
+            cmd: "failproofai policies add github:owner/repo@tag",
           },
           opts,
         ),
@@ -448,7 +838,7 @@ async function list(): Promise<PackCliResult> {
     if (source && taken.length < pack.policies.length && slugs.length > 0) {
       groups.push(
         nextStep(
-          `failproofai pack add ${source} --category ${slugs.slice(0, 3).join(",")}`,
+          `failproofai policies add ${source} --category ${slugs.slice(0, 3).join(",")}`,
           "Take a whole category with:",
           opts,
         ),

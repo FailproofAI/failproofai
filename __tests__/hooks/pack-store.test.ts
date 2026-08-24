@@ -16,6 +16,7 @@ import type { AddressInfo } from "node:net";
 
 import {
   addPack, removePack, parsePackSpec, packAssetUrl, formatPackSpec, digestFor, fetchPackPreview,
+  packTagMatchesVersion,
 } from "@/src/hooks/pack-store";
 import { readInstalledPacks } from "@/src/hooks/pack-manifest";
 
@@ -187,6 +188,33 @@ describe("digestFor", () => {
   });
 });
 
+describe("packTagMatchesVersion", () => {
+  it("accepts both spellings of the same release", () => {
+    // `pack build` tells publishers to tag `<version>`; this repo's own releases
+    // are tagged `v<version>`. Both are the same release said two ways, so
+    // refusing either would fail installs that are perfectly coherent.
+    expect(packTagMatchesVersion("1.2.0", "1.2.0")).toBe(true);
+    expect(packTagMatchesVersion("v1.2.0", "1.2.0")).toBe(true);
+  });
+
+  it("accepts a prefixed tag on its last segment", () => {
+    // `parsePackSpec` deliberately supports slashed tags, and PACK_VERSION_RE
+    // forbids `/` — so a whole-string comparison would make the monorepo shape
+    // uninstallable rather than merely unusual.
+    expect(packTagMatchesVersion("release/2.1", "2.1")).toBe(true);
+    expect(packTagMatchesVersion("packs/finance/v1.2.0", "1.2.0")).toBe(true);
+    expect(packTagMatchesVersion("release/2.1", "1.0.0")).toBe(false);
+  });
+
+  it("refuses everything else, including a near miss", () => {
+    expect(packTagMatchesVersion("v2.0.0", "1.2.0")).toBe(false);
+    expect(packTagMatchesVersion("v1.2", "1.2.0")).toBe(false);
+    // Not a leading `v` but a name that merely starts with one — the allowance
+    // is for the convention, not for any prefix at all.
+    expect(packTagMatchesVersion("version-1.2.0", "1.2.0")).toBe(false);
+  });
+});
+
 describe("addPack", () => {
   it("fetches, verifies and activates a pack", async () => {
     const result = await addPack("github:acme/finance@v1.2.0");
@@ -232,6 +260,53 @@ describe("addPack", () => {
     it("fails clearly when the repository has no releases", async () => {
       latestTag = null;
       await expect(addPack("acme/finance")).rejects.toThrow(/could not resolve the newest release/);
+      expect(existsSync(join(root, "installed.json"))).toBe(false);
+    });
+
+    it("names the prerelease case when no redirect comes back", async () => {
+      // GitHub issues the `releases/latest` redirect only for a published,
+      // non-prerelease release, so "no releases at all" is the LESS likely cause
+      // for a publisher hitting this: their newest release is a prerelease or a
+      // draft. Saying only "could not resolve" sent them looking for a release
+      // that is sitting right there.
+      latestTag = null;
+      await expect(addPack("acme/finance")).rejects.toThrow(/prerelease or a draft/);
+      await expect(addPack("acme/finance")).rejects.toThrow(/Name a tag explicitly/);
+    });
+  });
+
+  describe("a release tag that disagrees with its manifest version", () => {
+    it("accepts the tag spelled without the leading v", async () => {
+      // The tag builds the URL and the version is read from the manifest; both
+      // spellings of the same release have to keep installing.
+      const result = await addPack("github:acme/finance@1.2.0");
+      expect(result.version).toBe("1.2.0");
+      expect(installed().packs[0].source).toBe("github:acme/finance@1.2.0");
+    });
+
+    it("refuses a tag whose manifest declares a different version", async () => {
+      // The bug this catches: nothing compared the two, so a release tagged
+      // v1.2.0 carrying a manifest that still said 2.0.0 installed cleanly and
+      // recorded a version that names no release of that repository.
+      release({ version: "2.0.0" });
+      const err = await addPack("github:acme/finance@v1.2.0").catch((e: Error) => e);
+      // Both values named, and what to do about it.
+      expect(String(err)).toMatch(/v1\.2\.0/);
+      expect(String(err)).toMatch(/2\.0\.0/);
+      expect(String(err)).toMatch(/re-tag the release|--version/);
+      expect(existsSync(join(root, "installed.json"))).toBe(false);
+      // Refused before a byte is written, so the machine is exactly as it was.
+      expect(existsSync(join(root, "artifacts"))).toBe(false);
+    });
+
+    it("refuses on the resolved-from-latest path too, and says the release itself is wrong", async () => {
+      // Nobody typed this tag, so the disagreement is the publisher's alone —
+      // and it would land in installed.json just as silently.
+      latestTag = "v3.0.0";
+      const err = await addPack("acme/finance").catch((e: Error) => e);
+      expect(String(err)).toMatch(/newest release of acme\/finance/);
+      expect(String(err)).toMatch(/v3\.0\.0/);
+      expect(String(err)).toMatch(/1\.2\.0/);
       expect(existsSync(join(root, "installed.json"))).toBe(false);
     });
   });

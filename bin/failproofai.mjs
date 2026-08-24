@@ -34,8 +34,35 @@ if (!process.env.FAILPROOFAI_DIST_PATH) {
 
 const args = process.argv.slice(2);
 
-// Normalize 'p' → 'policies' (shorthand alias)
-if (args[0] === "p") args[0] = "policies";
+// ── one noun for policies ──────────────────────────────────────────────────
+// `policies`, `policy` and `pack` were three commands for one idea, two of them
+// a single letter apart and doing unrelated things. They are now three
+// spellings of the same command. Rewritten HERE, above SUBCOMMANDS and every
+// dispatch below, so the rest of this file mentions only the canonical name and
+// no branch has to remember the aliases.
+//
+// Nothing anybody has typed before stops working — the old spellings are
+// translated, not rejected — which matters because they are printed in shipped
+// help output, in this repo's docs, and in the release notes of every pack
+// published so far.
+if (args[0] === "p" || args[0] === "policy") args[0] = "policies";
+if (args[0] === "pack") {
+  args[0] = "policies";
+  if (args[1] === "list") {
+    // `pack list` was two commands wearing one name: bare it listed what is
+    // installed here, with an argument it previewed a pack that is not. Those
+    // are different questions, so they are different words now — the bare form
+    // and `show`.
+    const hasSource = args[2] && !args[2].startsWith("-");
+    if (hasSource) args.splice(1, 1, "show");
+    else args.splice(1, 1);
+  } else if (args[1] === "build") {
+    // `pack build` produced the release assets and stopped. That is exactly
+    // `publish` with nowhere to publish to, so it IS publish — the local half
+    // of it. `publish` with no --repo does the same thing and says so.
+    args.splice(0, 2, "publish");
+  }
+}
 // Normalize 'configure' / 'setup' → 'config' (aliases), so every later check
 // (SUBCOMMANDS, dispatch) mentions only the canonical name.
 if (args[0] === "configure" || args[0] === "setup") args[0] = "config";
@@ -271,167 +298,108 @@ if (hookIdx >= 0) {
  */
 async function runCli() {
   // --help / -h  (only when not inside a subcommand that handles its own --help)
-  const SUBCOMMANDS = ["policies", "policy", "audit", "config", "uninstall", "backfill", "flush", "harness", "pack"];
-  if ((args.includes("--help") || args.includes("-h")) && !SUBCOMMANDS.includes(args[0])) {
-    const extraArgs = args.filter((a) => a !== "--help" && a !== "-h");
+  // `update` and `migrate` were missing here, so `failproofai update --help`
+  // exited 1 with "Unexpected argument" — both commands had no reachable help
+  // at all, only the paragraph in the top-level dump that this rewrite moved.
+  // `help` and `publish` are new. `policy` and `pack` are canonicalized to
+  // `policies` above and never reach this list.
+  const SUBCOMMANDS = ["policies", "audit", "config", "uninstall", "backfill", "flush", "harness", "publish", "update", "migrate", "help"];
+  // ── help ─────────────────────────────────────────────────────────────────
+  //
+  // The index and the reference manual used to be the same document: 152 lines,
+  // six screens at 80x24, with every flag of every command inlined. That is a
+  // help tier collapse — the thing you read to find a command was the thing you
+  // read to use one — and the cost fell on the person who knew least.
+  //
+  // Now: ONE screen of what exists, and `help <command>` for everything else.
+  // `help <command>` is literally `<command> --help`, dispatched below, so there
+  // is exactly one copy of each command's documentation and the two spellings
+  // cannot drift.
+  const helpTopic = args[0] === "help" ? args[1] : undefined;
+  if (args[0] === "help" && helpTopic) {
+    // `--hook` is the entry point an agent CLI spawns per tool call. It is
+    // documented in NO help output — only a module docblock and one error
+    // string — so it gets a topic here rather than a line on the index, where a
+    // machine-facing flag would only take space from the human-facing commands.
+    if (helpTopic === "hook") {
+      console.log(`
+failproofai --hook <event> [--cli <name>]
+
+The entry point your agent CLI spawns, once per tool call. You do not run this;
+\`failproofai config\` writes it into each CLI's hook configuration for you.
+
+  --hook <event>   PreToolUse, PostToolUse, UserPromptSubmit, Stop,
+                   SubagentStop, SessionStart, SessionEnd, PreCompact,
+                   Notification, PermissionRequest
+  --cli <name>     claude, codex, copilot, cursor, opencode, pi, hermes,
+                   openclaw, factory, devin, antigravity, goose.
+                   Defaults to claude. It selects which payload shape to
+                   expect: each CLI names its events and tool arguments
+                   differently, and failproofai canonicalizes them.
+
+It reads the event as JSON on stdin and answers on stdout, in whatever shape
+that CLI honours. Exit codes and response shapes differ per CLI by necessity —
+see docs.befailproof.ai. Denials are reported to the agent, never to you.
+`.trimStart());
+      process.exit(0);
+    }
+    // Canonicalize the topic the same way a typed command is canonicalized, so
+    // `help pack` and `help policy` answer instead of erroring.
+    const canonical =
+      helpTopic === "p" || helpTopic === "policy" || helpTopic === "pack"
+        ? "policies"
+        : helpTopic === "configure" || helpTopic === "setup"
+          ? "config"
+          : helpTopic;
+    if (!SUBCOMMANDS.includes(canonical)) {
+      throw new CliError(
+        `No help for: ${helpTopic}\n` +
+        `Run \`failproofai help\` to see every command.`,
+      );
+    }
+    // `policies add|remove|show` has its own help, distinct from the listing's.
+    args.splice(0, 2, canonical, ...(canonical === "policies" && !args[2] ? [] : []), "--help");
+  }
+
+  if (
+    args[0] === "help" ||
+    ((args.includes("--help") || args.includes("-h")) && !SUBCOMMANDS.includes(args[0]))
+  ) {
+    const extraArgs = args.filter((a) => a !== "--help" && a !== "-h" && a !== "help");
     if (extraArgs.length > 0) {
-      throw new CliError(`Unexpected argument: ${extraArgs[0]}\nRun \`failproofai --help\` for usage.`);
+      throw new CliError(`Unexpected argument: ${extraArgs[0]}\nRun \`failproofai help\` for usage.`);
     }
     console.log(`
-failproofai v${version}
+failproofai v${version}                       -v version   -h this screen
+  Usage  failproofai <command> [options]    Detail  failproofai help <command>
+  ── 1  GET IT RUNNING ───────────────────────────────────────────────────────
+  config, setup       Interactive setup: agents, daemon, cloud
+  update              Finish an npm upgrade: migrate home, match daemon
+  ── 2  CHOOSE WHAT IT ENFORCES ──────────────────────────────────────────────
+  policies            Every policy on this machine, and whether it is on
+  policies add        Pick from a list, or name one: <policy> or <owner>/<repo>
+  policies remove     Turn one policy off, or uninstall a whole pack
+  policies show       What a pack contains, before you install it
+  policies -i / -u    Wire failproofai into your agent CLIs
+  publish             Ship your own policies as a pack anyone can install
+  ── 3  SEE WHAT IT CAUGHT ───────────────────────────────────────────────────
+  (no args)           Open the policy dashboard on localhost:8020
+  audit               Scan your agents' history, then open the audit view
+  config --status     Cloud connection, daemon version, pause state
+  harness             Extra paths to capture agent sessions from
+  ── 4  PUT IT RIGHT ─────────────────────────────────────────────────────────
+  config --pause      Pause enforcement for one session (30m; max 8h)
+  flush               Deliver everything already spooled, right now
+  backfill            Re-send history the collector already read past
+  migrate             Run pending ~/.failproofai layout migrations
+  uninstall           Remove hooks and daemon, BEFORE npm rm -g failproofai
 
-USAGE
-  failproofai [command] [options]
-
-COMMANDS
-  (no args)                      Launch the policy dashboard
-  config                         Interactive setup — pick scope, agents & policies
-    --connect <url> --token <key>  Connect to FailproofAI Cloud non-interactively
-    --machine-id <id>              Stable id for this machine
-    --machine-label <name>         Human-readable name in the dashboard
-    --no-transcripts               Report decisions only, never transcripts
-    --disconnect                   Stop pulling policy and sending activity
-    --status                       Show connection, daemon and pause state
-    --pause / --resume             Pause or resume enforcement
-
-  policy add <name>              Enable a single policy (see \`policy --help\`)
-  policy remove <name>           Disable a single policy
-
-  policies, p                    List all available policies and their status
-  policies --install, -i         Enable policies in agent CLI settings
-    [names...]                     Specific policy names to enable
-    --cli claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose
-                                   Agent CLI(s) to install for; space-separated
-                                   (e.g. --cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose) or repeated.
-                                   Default: detect installed CLIs and prompt.
-    --scope user|project|local     Config scope to write to (default: user)
-                                   (Codex / Copilot / Cursor / OpenCode / Pi support user|project only)
-    --beta                         Include beta policies
-    --custom, -c <path>            Custom policy file (repeat for multiple files)
-
-  policies --uninstall, -u       Disable policies or remove hooks
-    [names...]                     Specific policy names to disable
-    --cli claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose
-                                   Agent CLI(s) to uninstall from
-    --scope user|project|local|all Config scope to remove from (default: user)
-    --beta                         Remove only beta policies
-    --custom, -c                   Clear all explicit custom policy paths
-
-  policies --help, -h            Show this help for the policies command
-
-  pack add core                  Install the Failproof AI policies — from this
-                                 package, so it needs no network.
-                                 --policy <a,b> takes only those, --category
-                                 <x,y> takes whole categories, --all takes it all
-  pack list                      Show installed policy packs
-  pack list <source>             Show what a pack CONTAINS before installing it.
-                                 Reads only its manifest — the code is never
-                                 downloaded, so looking is never running
-  pack add <source>              Install someone else's pack from a GitHub release.
-                                 <source> is acme/pack, acme/pack@v1.2.0, or a
-                                 release URL; no tag takes the newest and pins it
-  pack remove <publisher/name>   Deactivate an installed pack
-  pack build <entry.mjs>         Turn your own policy file into the three assets
-                                 a GitHub release needs, so others can install it
-  pack --help, -h                Show this help for the pack command
-  harness list                   Show extra capture paths per agent CLI
-  harness add-path <h> <path>    Also capture sessions from <path> for harness
-                                 <h>. Accepts \`<label>=<path>\`; the label
-                                 namespaces agent ids so two copies of one
-                                 project stay distinct.
-  harness remove-path <h> <p>    Stop capturing that path
-  harness --help, -h             Show this help for the harness command
-
-  audit                          Audit your agent's behavior, then open the
-                                 dashboard at http://localhost:8020/audit
-  audit --schedule [days]        Audit on a timer (default 7 days) and email you
-                                 what it finds. Signs you in the first time;
-                                 --email <address> skips that question
-  audit --no-schedule            Stop auditing on a timer
-  audit --status                 Whether scheduling is on, where reports go, and
-                                 when the next scan is due
-  audit --help, -h               Show this help for the audit command
-
-  backfill                       Re-send history the collector already read past
-                                 — after clearing the dashboard, re-enrolling a
-                                 machine, or connecting later than the work
-    --since <when>                 How far back: 30d, 6m, or YYYY-MM-DD
-                                   (default: 30 days)
-    --dry-run                      Report what would be re-read, change nothing
-
-  flush                          Deliver everything already spooled, now,
-                                 instead of waiting for the next sweep
-    --wait                         Block until the spool drains (or --timeout)
-    --timeout <secs>               How long to wait with --wait (default: 60)
-
-  update                         Finish an upgrade npm cannot: migrate
-                                 ~/.failproofai to this version's layout, put the
-                                 matching daemon binary in place, restart it.
-                                 Run after \`npm install -g failproofai@latest\`.
-    --no-daemon                    Migrate the home only
-
-  migrate                        Run pending layout migrations on their own,
-                                 keyed on the layout in ~/.failproofai/VERSION
-                                 (not the npm version, so skipping releases with
-                                 no layout change runs nothing)
-    --dry-run                      Print the steps and change nothing
-
-  uninstall                      Remove failproofai from this machine: hook
-                                 entries from every agent CLI, and the daemon
-                                 service. Run this BEFORE \`npm rm -g failproofai\`
-                                 — npm runs no uninstall script, so removing the
-                                 package alone leaves both behind.
-    --purge                        Also delete ~/.failproofai (settings,
-                                   credentials, audit history, daemon binary)
-    --dry-run                      Show what would be removed, change nothing
-    --yes, -y                      Skip the confirmation prompt
-
-  --version, -v                  Print version and exit
-  --help, -h                     Show this help message
-
-CONVENTION POLICIES
-  Drop *policies.{js,mjs,ts} files into .failproofai/policies/ for auto-loading.
-  Works at project level (.failproofai/policies/) and user level (~/.failproofai/policies/).
-  No --custom flag or config changes needed — just drop files and they're picked up.
-
-EXAMPLES
-  failproofai policies
-  failproofai policies --install
-  failproofai policies --install block-sudo sanitize-api-keys --scope project
-  failproofai policies --install --cli codex --scope project
-  failproofai policies --install --cli copilot --scope project
-  failproofai policies --install --cli cursor --scope project
-  failproofai policies --install --cli opencode --scope project
-  failproofai policies --install --cli pi --scope project
-  failproofai policies --install --cli factory --scope project
-  failproofai policies --install --cli devin --scope project
-  failproofai policies --install --cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose
-  failproofai policies --install --custom ./my-policies.js
-  failproofai policies -i -c ./my-policies.js
-  failproofai policies --uninstall block-sudo
-  failproofai policies --uninstall --cli codex
-  failproofai policies --uninstall --cli copilot
-  failproofai policies --uninstall --cli cursor
-  failproofai policies --uninstall --cli opencode
-  failproofai policies --uninstall --cli pi
-  failproofai policies --uninstall --custom
-  failproofai pack add core
-  failproofai pack add core --category git,database
-  failproofai pack list acme/support-agent
-  failproofai pack build ./my-policies.mjs --id acme/support --version 1.0.0
-  failproofai backfill --since 6m
-  failproofai backfill --dry-run
-  failproofai flush --wait
-  failproofai config --status
-
-LINKS
-  ⭐ Star us:      https://github.com/failproofai/failproofai
-  📖 Docs:         https://docs.befailproof.ai/introduction
-  💬 Discord:      https://discord.befailproof.ai/
-  👽 Reddit:       https://www.reddit.com/r/failproofai/
+  Docs  docs.befailproof.ai           Code  github.com/failproofai/failproofai
+  Chat  discord.befailproof.ai        Forum reddit.com/r/failproofai
 `.trimStart());
     process.exit(0);
   }
+
 
   // --version / -v
   if ((args.includes("--version") || args.includes("-v")) && !SUBCOMMANDS.includes(args[0])) {
@@ -1217,6 +1185,328 @@ WHY THIS EXISTS
     return;
   }
 
+  // publish — build the release assets AND put them on a GitHub release.
+  //
+  // Top level rather than under `policies`, because it is a PRODUCER verb: the
+  // four consumer words are what every user reads, and almost none of them will
+  // ever ship a pack. `pack build` is canonicalized into this above.
+  if (args[0] === "publish") {
+    const subArgs = args.slice(1);
+    if (subArgs.includes("--help") || subArgs.includes("-h") || subArgs.length === 0) {
+      console.log(`
+failproofai publish — ship your policies as a pack anyone can install
+
+USAGE
+  failproofai publish <entry.mjs> --repo <owner>/<repo> --version <version>
+
+WHAT IT DOES
+  Validates the file with the loader's own rules, writes the three release
+  assets, creates (or reuses) the release, and attaches them. One command.
+
+  Only the release matters. Installs read
+  releases/download/<tag>/<asset> and never touch your git tree — pushing the
+  source is for humans reading it, not for the install to work.
+
+OPTIONS
+  --repo <owner>/<repo>   Where to release it. Omit to build the assets only.
+  --version <version>     The pack version. Also the tag, unless --tag says otherwise.
+  --id <publisher/name>   The pack's id. Defaults to --repo.
+  --tag <tag>             Release tag. Defaults to --version; a leading v is fine.
+  --notes <text>          Release notes.
+  --out <dir>             Where to write the assets (default: dist-pack)
+  --effect enforce|observe   observe records and blocks nothing (default: enforce)
+  --dry-run               Build the assets, publish nothing.
+
+CREDENTIAL
+  GITHUB_TOKEN or GH_TOKEN, else whatever \`gh auth login\` stored. It needs
+  write access to releases on that repository and nothing else. The token is
+  never printed.
+
+THE REPO MUST BE PUBLIC
+  Installs are anonymous HTTPS with no credential to offer, so a private
+  repository publishes to nobody. This warns you if it is.
+
+YOUR ENTRY FILE
+  One file, no relative imports — only the entry is digest-pinned, so a pack
+  importing siblings could not honestly claim to be verified. Bundle first
+  (esbuild, bun build, rollup) if yours is split. Each policy may carry
+  \`category\` and \`defaultEnabled\` alongside the usual fields.
+
+EXAMPLES
+  failproofai publish ./deploy-guard.mjs --repo me/deploy-guard --version 1.0.0
+  failproofai publish ./deploy-guard.mjs --version 1.0.1 --dry-run
+  failproofai publish ./x.mjs --repo me/x --version 2.0.0 --effect observe
+`.trimStart());
+      process.exit(0);
+    }
+
+    lastSubcommand = "publish";
+    const { runPublishCommand } = await import("../src/hooks/pack-cli");
+    const result = await runPublishCommand(subArgs);
+    for (const line of result.lines) {
+      if (result.exitCode === 0) console.log(line);
+      else console.error(line);
+    }
+    // Shape, never value: whether it published and whether it worked. Never the
+    // repo, the pack id or the entry path — all three are things the user typed.
+    await track("cli_publish", { ok: result.exitCode === 0, dry_run: subArgs.includes("--dry-run") });
+    lastSubcommand = null;
+    await exitAfterFlush(result.exitCode);
+    return;
+  }
+
+  // policies add | remove | show — one noun for policies.
+  //
+  // `policies`, `policy` and `pack` were three commands for one idea. They are
+  // one now, and `add`/`remove` take EITHER a policy name or a pack source,
+  // told apart by a SLASH: a policy name matches /^[A-Za-z0-9._-]+$/, so a
+  // slash is already illegal in one and unambiguous in the other. That is the
+  // rule npm and docker use, and it means nobody has to discover a flag before
+  // they can install somebody else's policies.
+  //
+  // Honors the same --cli / --scope / --beta flags as `policies --install`.
+  if (
+    args[0] === "policies" &&
+    (args[1] === "add" || args[1] === "remove" || args[1] === "show")
+  ) {
+    lastSubcommand = "policy";
+    const subArgs = args.slice(1);
+
+    if (subArgs.length === 0 || subArgs.includes("--help") || subArgs.includes("-h")) {
+      console.log(`
+failproofai policies add|remove|show — choose what your agents may do
+
+USAGE
+  failproofai policies add                 Pick from what is installed here
+  failproofai policies add <name>          Turn one policy on
+  failproofai policies add <owner>/<repo>  Install someone's pack
+  failproofai policies add core            Our pack, from this package, offline
+  failproofai policies remove <name>       Turn one policy off
+  failproofai policies remove <pack-id>    Uninstall a pack
+  failproofai policies show <owner>/<repo> What a pack contains, before you take it
+
+A NAME OR A SOURCE
+  Anything with a slash is a pack source; anything without is a policy name.
+  Policy names cannot contain a slash, so there is nothing to guess at.
+
+    block-sudo                              a policy
+    acme/deploy-guard                       a pack, newest release, pinned
+    acme/deploy-guard@v2.1.0                that release
+    github:acme/deploy-guard@v2.1.0         same, explicit
+    https://github.com/acme/x/releases/tag/v2  the URL you copied
+
+CHOOSING PART OF A PACK
+  With no flags you get the pack's own defaults and are shown the rest.
+  --policy a,b     exactly these
+  --category x,y   whole categories (see: failproofai policies show <source>)
+  --all            everything it contains
+  Re-adding at a newer version keeps what you chose.
+
+OPTIONS (policy names only)
+  --cli claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose
+                                     Agent CLI(s) to apply to; space-separated or repeated.
+                                     Omit to detect installed CLIs and prompt.
+  --scope user|project|local         Config scope (default: user)
+  --beta                             Allow beta policies
+
+EXAMPLES
+  failproofai policies add
+  failproofai policies add block-sudo
+  failproofai policies add sanitize-api-keys --scope project
+  failproofai policies add core --category sanitize,git
+  failproofai policies add acme/deploy-guard --policy block-prod-deploy
+  failproofai policies show acme/deploy-guard
+  failproofai policies remove block-sudo
+
+Publishing your own: failproofai publish --help
+Offline: FAILPROOFAI_NO_DOWNLOAD=1 refuses to fetch; packs already installed
+keep enforcing. FAILPROOFAI_PACK_BASE_URL points it all at a mirror.
+`.trimStart());
+      process.exit(0);
+    }
+
+    const action = subArgs[0];
+    const rest = subArgs.slice(1);
+
+    // A policy name matches /^[A-Za-z0-9._-]+$/ (pack-manifest.ts owns that
+    // rule), so a slash can only ever mean a pack. `core` is the one name
+    // without a slash that is still a source — it is the short spelling of our
+    // own pack, and is checked by the pack lane itself rather than duplicated
+    // here.
+    const firstPositional = rest.find((a) => !a.startsWith("-"));
+    let looksLikeSource =
+      !!firstPositional &&
+      (firstPositional.includes("/") || firstPositional.startsWith("github:"));
+    if (!looksLikeSource && firstPositional) {
+      // `core` is the one sourcey word with no slash in it. Read the alias set
+      // from the layer that OWNS it rather than restating it here, where the
+      // copy would drift the first time an alias is added — that exact drift
+      // already shipped once, when the dashboard could not resolve a name the
+      // CLI could.
+      const { CORE_ALIASES } = await import("../src/hooks/pack-store");
+      looksLikeSource = CORE_ALIASES.has(firstPositional.toLowerCase());
+    }
+
+    if (action === "show" || looksLikeSource) {
+      if (action === "show" && !firstPositional) {
+        throw new CliError(
+          "Usage: failproofai policies show <owner>/<repo>\n" +
+          "Run `failproofai policies` to see what is already installed here.",
+        );
+      }
+      // One lane, one implementation. `show` is the pack lane's remote preview,
+      // and add/remove of a source are its add/remove — routed by translating
+      // the words rather than by growing a second copy of either.
+      const packArgs =
+        action === "show" ? ["list", ...rest] : [action, ...rest];
+      const { runPackCommand } = await import("../src/hooks/pack-cli");
+      const result = await runPackCommand(packArgs);
+      for (const line of result.lines) {
+        if (result.exitCode === 0) console.log(line);
+        else console.error(line);
+      }
+      await track("cli_pack", {
+        ok: result.exitCode === 0,
+        // The subcommand only — never the pack id, source or policy names. A
+        // pack source is a value the user typed and a third-party pack name is
+        // a publisher-controlled string; we send shape, never value.
+        sub: action,
+      });
+      lastSubcommand = null;
+      await exitAfterFlush(result.exitCode);
+      return;
+    }
+
+    if (action !== "add" && action !== "remove") {
+      throw new CliError(
+        `Unknown policies subcommand: ${action}\n` +
+        `Run \`failproofai policies --help\` for usage.`,
+      );
+    }
+
+    const scopeIdx = rest.indexOf("--scope");
+    const scope = scopeIdx >= 0 ? rest[scopeIdx + 1] : "user";
+    if (scopeIdx >= 0 && (!scope || scope.startsWith("-"))) {
+      throw new CliError("Missing value for --scope. Valid values: user, project, local");
+    }
+    const validScopes = action === "remove"
+      ? ["user", "project", "local", "all"]
+      : ["user", "project", "local"];
+    if (scopeIdx >= 0 && !validScopes.includes(scope)) {
+      throw new CliError(`Invalid scope: ${scope}. Valid values: ${validScopes.join(", ")}`);
+    }
+
+    // --cli accepts one or more space-separated values, optionally repeated.
+    const VALID_CLIS = new Set(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose"]);
+    const cliFlagValues = [];
+    const cliConsumedIdxs = new Set();
+    const cliFlagIdxs = rest.map((a, i) => (a === "--cli" ? i : -1)).filter((i) => i >= 0);
+    for (const idx of cliFlagIdxs) {
+      let consumed = 0;
+      for (let j = idx + 1; j < rest.length; j++) {
+        const v = rest[j];
+        if (v.startsWith("-")) break;
+        if (!VALID_CLIS.has(v)) break;
+        cliFlagValues.push(v);
+        cliConsumedIdxs.add(j);
+        consumed++;
+      }
+      if (consumed === 0) {
+        throw new CliError("Missing value(s) for --cli. Usage: --cli claude codex copilot cursor opencode pi hermes openclaw (or any subset)");
+      }
+    }
+
+    const includeBeta = rest.includes("--beta");
+
+    // Reject unknown flags.
+    const knownFlags = new Set(["--scope", "--cli", "--beta"]);
+    const unknownFlag = rest.find((a) => a.startsWith("-") && !knownFlags.has(a));
+    if (unknownFlag) {
+      throw new CliError(`Unknown flag: ${unknownFlag}\nRun \`failproofai policy --help\` for usage.`);
+    }
+
+    // Positional policy names = anything not consumed by --scope / --cli.
+    const consumedIdxs = new Set();
+    if (scopeIdx >= 0) consumedIdxs.add(scopeIdx + 1);
+    for (const i of cliConsumedIdxs) consumedIdxs.add(i);
+    const positional = rest.filter(
+      (a, idx) => !a.startsWith("-") && !consumedIdxs.has(idx),
+    );
+
+    if (positional.length === 0) {
+      // Naming nothing is a question, not a mistake. It used to be an error
+      // telling you to go and read a list somewhere else and come back — so
+      // the answer is to SHOW the list, here, with what is already on ticked.
+      const { runPolicyPicker } = await import("../src/hooks/pack-cli");
+      const result = await runPolicyPicker(action, { stdin: process.stdin, stdout: process.stdout });
+      for (const line of result.lines) {
+        if (result.exitCode === 0) console.log(line);
+        else console.error(line);
+      }
+      await track("cli_policy_picker", { ok: result.exitCode === 0, action });
+      lastSubcommand = null;
+      await exitAfterFlush(result.exitCode);
+      return;
+    }
+    if (positional.length > 1) {
+      throw new CliError(
+        `\`policy ${action}\` takes exactly one policy name (got ${positional.length}).\n` +
+        `For multiple policies use \`failproofai policies --${action === "add" ? "install" : "uninstall"} ${positional.join(" ")}\`.`,
+      );
+    }
+    const policyName = positional[0];
+
+    const { resolveTargetClis } = await import("../src/hooks/install-prompt");
+    const cli = await resolveTargetClis(
+      cliFlagValues.length > 0 ? cliFlagValues : undefined,
+      action === "add" ? "install" : "uninstall",
+    );
+
+    lastPolicyAction = action;
+    if (action === "add") {
+      const { installHooks } = await import("../src/hooks/manager");
+      await installHooks(
+        [policyName],
+        scope,
+        undefined,
+        includeBeta,
+        undefined,
+        undefined,
+        false,
+        cli,
+      );
+      await track("cli_policy_add_success", {
+        scope,
+        cli,
+        cli_count: cli.length,
+        policy_name: policyName,
+        include_beta: includeBeta,
+      });
+    } else {
+      // `policy remove <name>` always removes the named policy regardless
+      // of whether it's beta or not — passing `betaOnly: includeBeta`
+      // here was a mislabel that only affected the telemetry field, not
+      // the actual remove. Drop the `--beta` semantic for remove and
+      // emit beta_only: false unconditionally so dashboards don't see
+      // ghost "beta removal" events.
+      const { removeHooks } = await import("../src/hooks/manager");
+      await removeHooks(
+        [policyName],
+        scope,
+        undefined,
+        { betaOnly: false, removeCustomHooks: false, cli },
+      );
+      await track("cli_policy_remove_success", {
+        scope,
+        cli,
+        cli_count: cli.length,
+        policy_name: policyName,
+        beta_only: false,
+      });
+    }
+    lastPolicyAction = null;
+    process.exit(0);
+  }
   // policies [--install|-i|--uninstall|-u|--help|-h] [names...] [--scope] [--beta] [--custom|-c <path>]
   if (args[0] === "policies") {
     const subArgs = args.slice(1);
@@ -1231,8 +1521,14 @@ failproofai policies — manage Failproof AI policies
 
 USAGE
   failproofai policies                       List all policies and their status
-  failproofai policies --install, -i         Enable policies
-  failproofai policies --uninstall, -u       Disable policies or remove hooks
+  failproofai policies add [what]            Turn one on, take a pack, or pick
+  failproofai policies remove <what>         Turn one off, or uninstall a pack
+  failproofai policies show <owner>/<repo>   What a pack holds, before you take it
+  failproofai policies --install, -i         Wire policies into your agent CLIs
+  failproofai policies --uninstall, -u       Unwire them, or strip the hooks
+
+  policy, pack and p are all spellings of policies.
+  Detail on the first three:  failproofai policies add --help
 
 OPTIONS (install)
   [names...]                     Specific policy names to enable (omit for interactive)
@@ -1497,163 +1793,6 @@ EXAMPLES
     return;
   }
 
-  // policy — single-policy shortcut over `policies --install <name>`.
-  //   failproofai policy add <name>     enable one policy (defaults: claude/user)
-  //   failproofai policy remove <name>  disable one policy
-  // Honors the same --cli / --scope / --beta flags as `policies --install`.
-  if (args[0] === "policy") {
-    lastSubcommand = "policy";
-    const subArgs = args.slice(1);
-
-    if (subArgs.length === 0 || subArgs.includes("--help") || subArgs.includes("-h")) {
-      console.log(`
-failproofai policy — manage a single FailproofAI policy
-
-USAGE
-  failproofai policy add <name>      Enable one policy
-  failproofai policy remove <name>   Disable one policy
-
-OPTIONS
-  --cli claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose
-                                     Agent CLI(s) to apply to; space-separated or repeated.
-                                     Omit to detect installed CLIs and prompt.
-  --scope user|project|local         Config scope (default: user)
-  --beta                             Allow beta policies
-
-EXAMPLES
-  failproofai policy add block-sudo
-  failproofai policy add sanitize-api-keys --scope project
-  failproofai policy add block-force-push --cli claude codex
-  failproofai policy remove block-sudo
-`.trimStart());
-      process.exit(0);
-    }
-
-    const action = subArgs[0];
-    if (action !== "add" && action !== "remove") {
-      throw new CliError(
-        `Unknown policy subcommand: ${action}\n` +
-        `Run \`failproofai policy --help\` for usage.`,
-      );
-    }
-
-    const rest = subArgs.slice(1);
-
-    const scopeIdx = rest.indexOf("--scope");
-    const scope = scopeIdx >= 0 ? rest[scopeIdx + 1] : "user";
-    if (scopeIdx >= 0 && (!scope || scope.startsWith("-"))) {
-      throw new CliError("Missing value for --scope. Valid values: user, project, local");
-    }
-    const validScopes = action === "remove"
-      ? ["user", "project", "local", "all"]
-      : ["user", "project", "local"];
-    if (scopeIdx >= 0 && !validScopes.includes(scope)) {
-      throw new CliError(`Invalid scope: ${scope}. Valid values: ${validScopes.join(", ")}`);
-    }
-
-    // --cli accepts one or more space-separated values, optionally repeated.
-    const VALID_CLIS = new Set(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose"]);
-    const cliFlagValues = [];
-    const cliConsumedIdxs = new Set();
-    const cliFlagIdxs = rest.map((a, i) => (a === "--cli" ? i : -1)).filter((i) => i >= 0);
-    for (const idx of cliFlagIdxs) {
-      let consumed = 0;
-      for (let j = idx + 1; j < rest.length; j++) {
-        const v = rest[j];
-        if (v.startsWith("-")) break;
-        if (!VALID_CLIS.has(v)) break;
-        cliFlagValues.push(v);
-        cliConsumedIdxs.add(j);
-        consumed++;
-      }
-      if (consumed === 0) {
-        throw new CliError("Missing value(s) for --cli. Usage: --cli claude codex copilot cursor opencode pi hermes openclaw (or any subset)");
-      }
-    }
-
-    const includeBeta = rest.includes("--beta");
-
-    // Reject unknown flags.
-    const knownFlags = new Set(["--scope", "--cli", "--beta"]);
-    const unknownFlag = rest.find((a) => a.startsWith("-") && !knownFlags.has(a));
-    if (unknownFlag) {
-      throw new CliError(`Unknown flag: ${unknownFlag}\nRun \`failproofai policy --help\` for usage.`);
-    }
-
-    // Positional policy names = anything not consumed by --scope / --cli.
-    const consumedIdxs = new Set();
-    if (scopeIdx >= 0) consumedIdxs.add(scopeIdx + 1);
-    for (const i of cliConsumedIdxs) consumedIdxs.add(i);
-    const positional = rest.filter(
-      (a, idx) => !a.startsWith("-") && !consumedIdxs.has(idx),
-    );
-
-    if (positional.length === 0) {
-      throw new CliError(
-        `Missing policy name.\n` +
-        `Usage: failproofai policy ${action} <name>\n` +
-        `Run \`failproofai policies\` to see available names.`,
-      );
-    }
-    if (positional.length > 1) {
-      throw new CliError(
-        `\`policy ${action}\` takes exactly one policy name (got ${positional.length}).\n` +
-        `For multiple policies use \`failproofai policies --${action === "add" ? "install" : "uninstall"} ${positional.join(" ")}\`.`,
-      );
-    }
-    const policyName = positional[0];
-
-    const { resolveTargetClis } = await import("../src/hooks/install-prompt");
-    const cli = await resolveTargetClis(
-      cliFlagValues.length > 0 ? cliFlagValues : undefined,
-      action === "add" ? "install" : "uninstall",
-    );
-
-    lastPolicyAction = action;
-    if (action === "add") {
-      const { installHooks } = await import("../src/hooks/manager");
-      await installHooks(
-        [policyName],
-        scope,
-        undefined,
-        includeBeta,
-        undefined,
-        undefined,
-        false,
-        cli,
-      );
-      await track("cli_policy_add_success", {
-        scope,
-        cli,
-        cli_count: cli.length,
-        policy_name: policyName,
-        include_beta: includeBeta,
-      });
-    } else {
-      // `policy remove <name>` always removes the named policy regardless
-      // of whether it's beta or not — passing `betaOnly: includeBeta`
-      // here was a mislabel that only affected the telemetry field, not
-      // the actual remove. Drop the `--beta` semantic for remove and
-      // emit beta_only: false unconditionally so dashboards don't see
-      // ghost "beta removal" events.
-      const { removeHooks } = await import("../src/hooks/manager");
-      await removeHooks(
-        [policyName],
-        scope,
-        undefined,
-        { betaOnly: false, removeCustomHooks: false, cli },
-      );
-      await track("cli_policy_remove_success", {
-        scope,
-        cli,
-        cli_count: cli.length,
-        policy_name: policyName,
-        beta_only: false,
-      });
-    }
-    lastPolicyAction = null;
-    process.exit(0);
-  }
 
   // config — the interactive setup launcher (scope, agents, policies).
   // `configure` and `setup` are canonicalized to "config" up top. Running it

@@ -2,15 +2,19 @@ import { describe, it, expect, vi } from "vitest";
 import {
   INDENT,
   CHIP_WIDTH,
+  brandAnsi,
   bullets,
   chip,
+  colorsEnabled,
   danger,
   emptyState,
   helpBlock,
   note,
   nextStep,
   optsFor,
+  paint,
   printBlock,
+  renderBrandLogo,
   rows,
   rule,
   stack,
@@ -35,6 +39,153 @@ function valueColumn(line: string): number {
   const gap = plain.search(/\s{2,}\S/);
   return gap === -1 ? -1 : INDENT.length + gap + plain.slice(gap).search(/\S/);
 }
+
+/**
+ * Drive the two env vars the tier detection reads, then put the ambient ones
+ * back. These tests run in whatever terminal CI happens to hand them, so a test
+ * that merely set COLORTERM would pass locally and assert nothing on a runner
+ * that already exports it.
+ */
+function withEnv<T>(env: Record<string, string | undefined>, fn: () => T): T {
+  const saved: Record<string, string | undefined> = {};
+  for (const key of Object.keys(env)) {
+    saved[key] = process.env[key];
+    if (env[key] === undefined) delete process.env[key];
+    else process.env[key] = env[key];
+  }
+  try {
+    return fn();
+  } finally {
+    for (const key of Object.keys(saved)) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
+  }
+}
+
+const TRUECOLOR = { COLORTERM: "truecolor", TERM: "xterm-256color", NO_COLOR: undefined };
+const ANSI256 = { COLORTERM: undefined, TERM: "xterm-256color", NO_COLOR: undefined };
+const BASIC = { COLORTERM: undefined, TERM: "xterm", NO_COLOR: undefined };
+
+// The brand system names exactly two accents. Anything else on a surface is a
+// state (amber, dim), never identity.
+const PINK_24 = "38;2;228;88;125"; // #e4587d
+const PINK_256 = "38;5;168"; // #d75f87, the nearest cube entry
+const PINK_BASIC = "\x1B[95m";
+const MINT_24 = "38;2;102;209;181"; // #66d1b5
+const MINT_256 = "38;5;79"; // #5fd7af
+
+describe("the brand palette", () => {
+  it("is ONE pink — #e4587d — at 24-bit", () => {
+    const painted = withEnv(TRUECOLOR, () => paint(true).pink("x"));
+    expect(painted).toBe(`\x1B[${PINK_24}mx\x1B[0m`);
+    // The hot #ff2e88 that used to sit in this slot is in no brand token.
+    expect(painted).not.toContain("255;46;136");
+  });
+
+  it("has no second pink left to drift from the first", () => {
+    // `softPink` was the logomark's own tint. Once both are the brand pink the
+    // mark and the prompts cannot be recoloured apart again.
+    const c = withEnv(TRUECOLOR, () => paint(true));
+    expect(c.softPink("beta")).toBe(c.pink("beta"));
+  });
+
+  it("keeps the mint exactly where it was — the brand's other accent", () => {
+    expect(withEnv(TRUECOLOR, () => paint(true).guide("x"))).toBe(`\x1B[${MINT_24}mx\x1B[0m`);
+  });
+});
+
+describe("colour tiers", () => {
+  it("emits 24-bit when COLORTERM advertises it", () => {
+    const painted = withEnv(TRUECOLOR, () => paint(true).pink("x"));
+    expect(painted).toContain(PINK_24);
+    expect(painted).not.toContain(PINK_256);
+    expect(painted).not.toContain(PINK_BASIC);
+  });
+
+  it("emits the 256 cube when TERM says 256 and COLORTERM says nothing", () => {
+    // The tier this adds. Without it tmux, screen, ssh into a stock xterm and
+    // most CI runners fell from 24-bit straight to generic bright magenta.
+    const painted = withEnv(ANSI256, () => paint(true).pink("x"));
+    expect(painted).toContain(PINK_256);
+    expect(painted).not.toContain("38;2;");
+    expect(painted).not.toContain(PINK_BASIC);
+  });
+
+  it("still falls back to basic ANSI when the terminal claims neither", () => {
+    expect(withEnv(BASIC, () => paint(true).pink("x"))).toBe(`${PINK_BASIC}x\x1B[0m`);
+    expect(withEnv(BASIC, () => paint(true).guide("x"))).toBe(`\x1B[36mx\x1B[0m`);
+    expect(withEnv(BASIC, () => paint(true).warn("x"))).toBe(`\x1B[33mx\x1B[0m`);
+  });
+
+  it("resolves every hue through the same tier, not just pink", () => {
+    expect(withEnv(ANSI256, () => paint(true).guide("x"))).toContain(MINT_256);
+    expect(withEnv(ANSI256, () => paint(true).warn("x"))).toContain("38;5;179");
+  });
+
+  it("keeps dim as the SGR attribute in the 256 tier", () => {
+    // The cube's nearest grey is a FIXED colour; SGR 2 steps down whatever
+    // foreground the user's theme is already using. A fixed grey looks correct
+    // on our terminal and fights every other one.
+    expect(withEnv({ ...ANSI256, TERM: "screen-256color" }, () => paint(true).dim("x"))).toBe(
+      "\x1B[2mx\x1B[0m",
+    );
+  });
+
+  it("carries the tiers into brandAnsi, so `audit` and `config` stay one product", () => {
+    expect(withEnv(TRUECOLOR, () => brandAnsi("pink"))).toBe(`\x1B[${PINK_24}m`);
+    expect(withEnv(ANSI256, () => brandAnsi("pink"))).toBe(`\x1B[${PINK_256}m`);
+    expect(withEnv(BASIC, () => brandAnsi("pink"))).toBe(PINK_BASIC);
+    expect(withEnv(ANSI256, () => brandAnsi("guide"))).toBe(`\x1B[${MINT_256}m`);
+  });
+
+  it("emits ZERO escapes under NO_COLOR, however deep the terminal is", () => {
+    const out = { isTTY: true, columns: 80, write: vi.fn(() => true) } as unknown as TTYOut;
+    const painted = withEnv({ ...TRUECOLOR, NO_COLOR: "1" }, () => {
+      expect(colorsEnabled(out)).toBe(false);
+      const c = paint(colorsEnabled(out));
+      return [c.pink("a"), c.guide("b"), c.dim("c"), c.bold("d")].join("");
+    });
+    expect(painted).toBe("abcd");
+    expect(painted).not.toContain("\x1B");
+  });
+
+  it("emits ZERO escapes off a TTY, however deep the terminal is", () => {
+    const out = { isTTY: false, columns: 80, write: vi.fn(() => true) } as unknown as TTYOut;
+    const lines = withEnv(TRUECOLOR, () => renderBrandLogo(out));
+    expect(lines.join("")).not.toContain("\x1B");
+  });
+});
+
+describe("the logomark follows the tier", () => {
+  const tty = { isTTY: true, columns: 80, write: vi.fn(() => true) } as unknown as TTYOut;
+
+  it("paints from the cube when the terminal is 256-colour, not monochrome", () => {
+    // It used to test truecolor-or-nothing, so a 256-colour terminal got the
+    // mark in the foreground colour while the wordmark under it was coloured.
+    const art = withEnv(ANSI256, () => renderBrandLogo(tty)).join("\n");
+    expect(art).toContain(PINK_256);
+    expect(art).toContain(MINT_256);
+    expect(art).not.toContain("38;2;");
+  });
+
+  it("paints 24-bit from the same two accents as the prompts", () => {
+    const art = withEnv(TRUECOLOR, () => renderBrandLogo(tty)).join("\n");
+    expect(art).toContain(PINK_24);
+    expect(art).toContain(MINT_24);
+    // The mark's own softer pink is gone; it is the brand pink now.
+    expect(art).not.toContain("228;88;124");
+  });
+
+  it("draws monochrome on a 16-colour terminal rather than approximate the hues", () => {
+    const art = withEnv(BASIC, () => renderBrandLogo(tty)).join("\n");
+    // The block glyphs still print — shape carries the mark, colour never has
+    // to. No 38;/48; anywhere: basic pink is `[95m` and dim is `[2m`.
+    expect(art).toContain("█");
+    expect(art).not.toContain("38;");
+    expect(art).not.toContain("48;");
+  });
+});
 
 describe("visibleWidth", () => {
   it("ignores ANSI so a coloured cell still lines up", () => {

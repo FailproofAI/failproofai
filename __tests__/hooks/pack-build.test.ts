@@ -138,7 +138,8 @@ describe("pack build", () => {
   it("names the entry and the flags when called with nothing", async () => {
     const r = await runPackCommand(["build"]);
     expect(r.exitCode).toBe(1);
-    expect(r.lines.join("\n")).toMatch(/--id <publisher\/name>/);
+    // `pack build` is now a spelling of `publish`, so its usage names that.
+    expect(r.lines.join("\n")).toMatch(/--repo <owner>\/<repo>/);
   });
 });
 

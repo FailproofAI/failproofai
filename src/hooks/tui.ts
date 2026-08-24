@@ -14,8 +14,8 @@
  * repaint) and, on resolve, collapses that region to a one-line summary that
  * stays on screen — so the next prompt simply appends below, building the log.
  * No external dependencies. Honors NO_COLOR and non-TTY (returns the default
- * without drawing), and uses 24-bit color where COLORTERM advertises it,
- * falling back to the nearest basic ANSI hue otherwise.
+ * without drawing), and paints at the deepest tier the terminal admits to —
+ * 24-bit, the xterm-256 cube, or the 16 basic ANSI hues.
  */
 import * as readline from "node:readline";
 
@@ -116,13 +116,32 @@ const FLOWER = "❋";
 // re-deriving their own copies.
 interface Hue {
   rgb: [number, number, number];
+  /**
+   * xterm-256 index for the middle tier, verified as the nearest cube entry by
+   * Euclidean distance rather than eyeballed.
+   *
+   * Optional because `dim` has no honest answer: its `basic` is SGR 2, an
+   * ATTRIBUTE that steps down whatever foreground the user's theme is already
+   * using, and the cube's nearest grey (243, #767676) is a fixed colour that
+   * fights every theme that is not ours. So dim keeps the attribute at all
+   * three tiers and this stays undefined.
+   */
+  c256?: number;
   basic: string;
 }
+/**
+ * TWO accent hues and no third — the brand system states that as a rule, and
+ * this table used to break it: `pink` was #ff2e88, a hot pink that appears in
+ * no brand token, sitting beside `logoPink` #e4587d which was the real one. The
+ * mark and the prompts were therefore two different pinks, and neither surface
+ * could be recoloured without the other drifting. There is now one pink.
+ * Everything past the two accents is a state — amber for warn, an attribute for
+ * dim — never identity.
+ */
 const HUES = {
-  guide: { rgb: [102, 209, 181], basic: "36" }, // teal — the policy flower / step spine
-  pink: { rgb: [255, 46, 136], basic: "95" }, // hot pink — selection, enabled, the brand
-  logoPink: { rgb: [228, 88, 124], basic: "95" }, // the softer artwork pink of the logomark
-  warn: { rgb: [227, 179, 65], basic: "33" },
+  guide: { rgb: [102, 209, 181], c256: 79, basic: "36" }, // #66d1b5 mint — the policy flower / step spine
+  pink: { rgb: [228, 88, 125], c256: 168, basic: "95" }, // #e4587d — selection, enabled, the mark, the brand
+  warn: { rgb: [227, 179, 65], c256: 179, basic: "33" },
   dim: { rgb: [107, 118, 132], basic: "2" },
 } satisfies Record<string, Hue>;
 
@@ -137,32 +156,68 @@ export function colorsEnabled(out: TTYOut): boolean {
  * blue that appear nowhere in the brand — so `audit` looked like a different
  * product from `config`. Routing it here
  * keeps HUES the single source of truth: change a hue once and every surface
- * follows. Emits truecolor where the terminal advertises it, basic ANSI
- * otherwise; the caller still decides *whether* to colour at all.
+ * follows. Paints at the deepest tier the terminal admits to; the caller still
+ * decides *whether* to colour at all.
  */
 export function brandAnsi(role: keyof typeof HUES): string {
-  const h = HUES[role];
-  const code = truecolorEnabled() ? `38;2;${h.rgb.join(";")}` : h.basic;
-  return `${ESC}[${code}m`;
+  return `${ESC}[${fg(HUES[role], colorTier())}m`;
 }
 
 export const ANSI_RESET = `${ESC}[0m`;
 export const ANSI_BOLD = `${ESC}[1m`;
 export const ANSI_DIM = `${ESC}[2m`;
-function truecolorEnabled(): boolean {
-  return /truecolor|24bit/i.test(process.env.COLORTERM || "");
+
+/** How much colour this terminal will actually render. */
+type ColorTier = "truecolor" | "ansi256" | "basic";
+
+/**
+ * Three tiers, because the two-way gate skipped the one most terminals are in.
+ *
+ * COLORTERM-or-nothing sent every terminal that renders 256 colours but does
+ * not advertise 24-bit — tmux and screen, ssh into a stock xterm, most CI
+ * runners — all the way down to the 16 basic hues, where the brand pink lands
+ * on generic bright magenta and the mint on generic cyan. TERM naming its own
+ * depth is the signal those terminals do set, and it costs one regex.
+ *
+ * Deliberately no `FORCE_COLOR` / `-256color`-less allowlist: over-claiming a
+ * depth prints raw escape bytes into the user's scrollback, which is worse than
+ * an approximate hue. Under-claiming only costs fidelity.
+ */
+function colorTier(): ColorTier {
+  if (/truecolor|24bit/i.test(process.env.COLORTERM || "")) return "truecolor";
+  if (/256color/i.test(process.env.TERM || "")) return "ansi256";
+  return "basic";
 }
 
-/** Brand painter: role-named color functions, truecolor where advertised,
- * basic-ANSI fallback otherwise, identity when `on` is false. */
+/** SGR foreground parameters for a hue at a tier. The ONE place a hue turns
+ *  into bytes, so a new tier is added here and nowhere else. */
+function fg(h: Hue, tier: ColorTier): string {
+  if (tier === "truecolor") return `38;2;${h.rgb[0]};${h.rgb[1]};${h.rgb[2]}`;
+  if (tier === "ansi256" && h.c256 !== undefined) return `38;5;${h.c256}`;
+  return h.basic;
+}
+
+/** The same as a background — only the logomark needs one, for a half-block
+ *  cell whose two pixels are different hues. The current grid has no such cell
+ *  (the flower and the cross never share a column), so this is here for the
+ *  next grid edit, which the rules above LOGO_GRID actively invite. Never
+ *  called at the basic tier: the mark draws monochrome there rather than
+ *  approximate two brand hues with ANSI 5 and 6. */
+function bg(h: Hue, tier: ColorTier): string {
+  return tier === "ansi256" && h.c256 !== undefined
+    ? `48;5;${h.c256}`
+    : `48;2;${h.rgb[0]};${h.rgb[1]};${h.rgb[2]}`;
+}
+
+/** Brand painter: role-named color functions at the terminal's best tier,
+ * identity when `on` is false. */
 export function paint(on: boolean) {
-  const tc = on && truecolorEnabled();
+  const tier: ColorTier = on ? colorTier() : "basic";
   const mk =
     (h: Hue, bold = false) =>
     (s: string): string => {
       if (!on) return s;
-      const code = tc ? `38;2;${h.rgb[0]};${h.rgb[1]};${h.rgb[2]}` : h.basic;
-      return `${ESC}[${bold ? "1;" : ""}${code}m${s}${ESC}[0m`;
+      return `${ESC}[${bold ? "1;" : ""}${fg(h, tier)}m${s}${ESC}[0m`;
     };
   return {
     bold: (s: string) => (on ? `${ESC}[1m${s}${ESC}[0m` : s),
@@ -170,7 +225,11 @@ export function paint(on: boolean) {
     guide: mk(HUES.guide),
     pink: mk(HUES.pink),
     pinkBold: mk(HUES.pink, true),
-    softPink: mk(HUES.logoPink),
+    // An ALIAS of `pink`, not a hue. The logomark's softer artwork tint
+    // collapsed into the one brand pink, so this name survives only for its
+    // single caller — install-prompt.ts's "beta" pill — and should be renamed
+    // to `pink` there, at which point it is deleted.
+    softPink: mk(HUES.pink),
     warn: mk(HUES.warn),
   };
 }
@@ -224,37 +283,40 @@ const LOGO_GRID = [
   "..ppppppppppp",
   "..ppppppppppp",
 ];
-// Derived from the shared HUES table so a palette tweak needs one edit.
-const LOGO_TEAL: [number, number, number] = HUES.guide.rgb;
-const LOGO_PINK: [number, number, number] = HUES.logoPink.rgb;
+// Derived from the shared HUES table so a palette tweak needs one edit. The
+// mark is painted from the SAME two accents as the prompts — it used to carry
+// its own pink, which is how the two drifted apart.
+const LOGO_TEAL: Hue = HUES.guide;
+const LOGO_PINK: Hue = HUES.pink;
 
-/** Render the logomark as half-block art. When `colorize` is false (no truecolor
- * / NO_COLOR) the shape still prints, just monochrome. */
-function renderLogo(colorize: boolean): string[] {
+/** Render the logomark as half-block art. At the `basic` tier (16 colours, or
+ * NO_COLOR) the shape still prints, just monochrome — approximating two brand
+ * hues with generic magenta and cyan reads as a different mark, and the shape
+ * alone already carries it. */
+function renderLogo(tier: ColorTier): string[] {
   const pad = ".".repeat(LOGO_GRID[0]?.length ?? 0);
-  const rgb = (ch: string): [number, number, number] | null =>
-    ch === "t" ? LOGO_TEAL : ch === "p" ? LOGO_PINK : null;
+  const hue = (ch: string): Hue | null => (ch === "t" ? LOGO_TEAL : ch === "p" ? LOGO_PINK : null);
   const lines: string[] = [];
   for (let r = 0; r < LOGO_GRID.length; r += 2) {
     const top = LOGO_GRID[r];
     const bot = LOGO_GRID[r + 1] ?? pad;
     let line = "";
     for (let x = 0; x < top.length; x++) {
-      const t = rgb(top[x]);
-      const b = rgb(bot[x]);
+      const t = hue(top[x]);
+      const b = hue(bot[x]);
       if (!t && !b) {
         line += " ";
-      } else if (!colorize) {
+      } else if (tier === "basic") {
         line += t && b ? "█" : t ? "▀" : "▄";
       } else if (t && b) {
         line +=
           t === b
-            ? `${ESC}[38;2;${t.join(";")}m█${ESC}[0m`
-            : `${ESC}[38;2;${t.join(";")};48;2;${b.join(";")}m▀${ESC}[0m`;
+            ? `${ESC}[${fg(t, tier)}m█${ESC}[0m`
+            : `${ESC}[${fg(t, tier)};${bg(b, tier)}m▀${ESC}[0m`;
       } else if (t) {
-        line += `${ESC}[38;2;${t.join(";")}m▀${ESC}[0m`;
+        line += `${ESC}[${fg(t, tier)}m▀${ESC}[0m`;
       } else {
-        line += `${ESC}[38;2;${b!.join(";")}m▄${ESC}[0m`;
+        line += `${ESC}[${fg(b!, tier)}m▄${ESC}[0m`;
       }
     }
     lines.push(line);
@@ -320,8 +382,10 @@ export function renderBrandLogo(stdout: TTYOut = process.stdout): string[] {
   if (cols < LOGO_MIN_COLS) {
     return [`${c.guide(FLOWER)} fa${c.pink("il")}proof ai  ${c.dim("· " + TAGLINE)}`];
   }
-  const tc = colorsEnabled(stdout) && truecolorEnabled();
-  const lines = renderLogo(tc).map((l) => `  ${l}`);
+  // NO_COLOR / non-TTY forces `basic`, which renderLogo draws monochrome — so
+  // the mark never emits an escape byte on a stream that asked for none.
+  const tier: ColorTier = colorsEnabled(stdout) ? colorTier() : "basic";
+  const lines = renderLogo(tier).map((l) => `  ${l}`);
   lines.push("");
   lines.push(`  fa${c.pink("il")}proof ai`);
   lines.push(`  ${c.dim(TAGLINE)}`);

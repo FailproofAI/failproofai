@@ -16,8 +16,6 @@ import { resolve } from "node:path";
 import { discoverPolicyFiles, findSkippedPolicyFiles } from "../../src/hooks/custom-hooks-loader";
 import {
   describeCustomPolicies,
-  buildPresetChoices,
-  resolvePresetSelection,
   setCustomPoliciesEnabled,
   reviewLines,
 } from "../../src/hooks/configure-wizard";
@@ -128,65 +126,6 @@ describe("wizard review screen — custom policies", () => {
   });
 });
 
-describe("wizard policy menu — the Custom row", () => {
-  // Always present, in every state — it is the only place the feature is
-  // discoverable. A user who has never written a policy cannot learn the
-  // capability exists from a row that only appears once they have used it.
-  it("is always present, unchecked, when there are no custom policies", () => {
-    const row = buildPresetChoices(dir).find((c) => c.label === "Custom");
-    expect(row).toBeDefined();
-    expect(row!.locked).toBe(true);
-    expect(row!.checked).toBe(false); // nothing on disk — an empty box, not a lie
-    expect(row!.hint).toContain(".failproofai/policies/");
-  });
-
-  it("keeps the Custom row out of the \"N bundles\" summary count", () => {
-    const row = buildPresetChoices(dir).find((c) => c.label === "Custom");
-    expect(row!.summaryExclude).toBe(true);
-  });
-
-  // Togglable rather than locked once files exist: there is now something real
-  // to switch off (`customPoliciesEnabled: false`), so a checkbox is honest.
-  it("lists the loadable files and offers a real checkbox", () => {
-    write("a-policies.mjs");
-    write("b-policies.mjs");
-    const row = buildPresetChoices(dir).find((c) => c.label === "Custom");
-    expect(row).toBeDefined();
-    expect(row!.locked).toBeUndefined();
-    expect(row!.checked).toBe(true);
-    expect(row!.hint).toContain("2 files in project");
-  });
-
-  // Staying silent here is the worst outcome: the user wrote a policy, put it
-  // in the right directory, and the menu listing policies never mentions it.
-  it("still appears when every file was skipped, so the problem is visible", () => {
-    write("block-foo.mjs");
-    const row = buildPresetChoices(dir).find((c) => c.label === "Custom");
-    expect(row).toBeDefined();
-    expect(row!.hint).toContain("NOT loaded");
-  });
-
-  it("flags skipped files alongside loaded ones", () => {
-    write("good-policies.mjs");
-    write("oops.mjs");
-    const row = buildPresetChoices(dir).find((c) => c.label === "Custom");
-    expect(row!.hint).toContain("1 file in project");
-    expect(row!.hint).toContain("1 skipped");
-  });
-
-  // The row is informational — custom policies load from disk by convention and
-  // are never named in the enabled-policies config, so the sentinel must not
-  // reach resolvePreset(), which only understands builtin bundle ids.
-  it("never contributes a policy name to the resolved set", () => {
-    write("a-policies.mjs");
-    const custom = buildPresetChoices(dir).find((c) => c.label === "Custom")!;
-    const withCustom = resolvePresetSelection(["secrets", custom.value]);
-    const withoutCustom = resolvePresetSelection(["secrets"]);
-    expect(withCustom).toEqual(withoutCustom);
-    expect(withCustom.some((n) => n.includes("custom"))).toBe(false);
-  });
-});
-
 describe("disabling custom policies", () => {
   // Custom policies auto-load, which is right by default but must not be a
   // one-way door — you need a way to switch them off without deleting or
@@ -231,31 +170,15 @@ describe("disabling custom policies", () => {
     setCustomPoliciesEnabled("project", dir, undefined);
     expect(JSON.parse(readFileSync(cfg, "utf8")).customPoliciesEnabled).toBe(false);
   });
-
-  it("offers a real checkbox once there are files, seeded from config", () => {
-    write("team-policies.mjs");
-    const on = buildPresetChoices(dir, true).find((c) => c.label === "Custom");
-    expect(on!.locked).toBeUndefined(); // togglable — there is something to turn off
-    expect(on!.checked).toBe(true);
-
-    const off = buildPresetChoices(dir, false).find((c) => c.label === "Custom");
-    expect(off!.checked).toBe(false);
-  });
-
-  it("stays a locked status row when there is nothing to switch off", () => {
-    const row = buildPresetChoices(dir, true).find((c) => c.label === "Custom");
-    expect(row!.locked).toBe(true);
-    expect(row!.checked).toBe(false);
-  });
 });
 
 describe("the Custom choice is visible to the user", () => {
   // The toggle worked but nothing on screen changed: the review screen said
-  // "(auto-loaded)" whether or not you had just unticked the row, and the step
-  // summary omitted Custom entirely, so unticking every bundle showed "none".
-  // With no feedback anywhere, a working toggle is indistinguishable from a
-  // broken one.
-  it("review screen says DISABLED when the row is unticked", () => {
+  // "(auto-loaded)" whether or not custom policies had been switched off. With
+  // no feedback anywhere, a working toggle is indistinguishable from a broken
+  // one — which is why the review screen has to reflect the DECISION and not
+  // merely what is on disk.
+  it("review screen says DISABLED when custom policies are switched off", () => {
     write("team-policies.mjs");
     const off = reviewLines({
       target: "project",
@@ -268,7 +191,7 @@ describe("the Custom choice is visible to the user", () => {
     expect(off).not.toContain("(auto-loaded)");
   });
 
-  it("review screen says auto-loaded when the row is ticked", () => {
+  it("review screen says auto-loaded when custom policies are left on", () => {
     write("team-policies.mjs");
     const on = reviewLines({
       target: "project",
@@ -279,11 +202,5 @@ describe("the Custom choice is visible to the user", () => {
     }).join("\n");
     expect(on).toContain("(auto-loaded)");
     expect(on).not.toContain("DISABLED");
-  });
-
-  it("keeps Custom in the step summary so the choice is confirmable", () => {
-    write("team-policies.mjs");
-    const row = buildPresetChoices(dir, true).find((c) => c.label === "Custom");
-    expect(row!.summaryExclude).toBeUndefined();
   });
 });

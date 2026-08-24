@@ -18,7 +18,7 @@ import {
   checkPackArtifact,
   CORE_ALIASES,
   fetchPackPreview,
-  installBundledPack,
+  CORE_SOURCE,
   packTagMatchesVersion,
   removePack,
   setPackPolicyEnabled,
@@ -605,35 +605,19 @@ async function add(rest: string[]): Promise<PackCliResult> {
   const source = packAddSource(rest);
   const selection = selectionFrom(rest);
 
-  // Our own pack, by the short name — and from the copy inside this package, so
-  // it is instant and works with no network at all.
-  if ((source && CORE_ALIASES.has(source.toLowerCase())) || rest.includes("--bundled")) {
-    const result = installBundledPack(selection);
-    if (!result.installed) {
-      return fail([`Could not install the Failproof AI policies: ${result.reason}`]);
-    }
-    const enabled = result.enabled ?? [];
-    const available = result.available ?? [];
-    const skipped = available.filter((n) => !enabled.includes(n));
-    const lines = [
-      `Installed ${result.id}@${result.version} from this package — no network needed.`,
-      ...(result.replaced?.length
-        ? [`  replaced ${result.replaced.join(", ")} — same policies, renamed; your selection was kept`]
-        : []),
-      `  enabled (${enabled.length}/${available.length}): ${summarise(enabled)}`,
-    ];
-    if (skipped.length > 0) {
-      lines.push(`  not enabled (${skipped.length}): ${summarise(skipped)}`);
-      lines.push("");
-      lines.push("  one policy:    failproofai policies add core --policy block-rm-rf");
-      lines.push("  a category:    failproofai policies add core --category dangerous-commands");
-      lines.push("  everything:    failproofai policies add core --all");
-      lines.push("  see them all:  failproofai policies");
-    }
-    return ok(lines);
-  }
+  // Our own pack, by the short name. `core` is a SPELLING of a GitHub source,
+  // not a second delivery path: it resolves to CORE_SOURCE and is fetched,
+  // verified and pinned exactly like anybody else's.
+  //
+  // The package used to carry a copy so this worked with no network. It no
+  // longer does, on purpose. A pack that ships inside the binary is a policy set
+  // we picked for you and wrote to your disk before you asked for it, and it
+  // gave our own policies a route no third-party pack could use — which is the
+  // opposite of the thing this whole lane exists to make possible.
+  const resolvedSource =
+    source && CORE_ALIASES.has(source.toLowerCase()) ? CORE_SOURCE : source;
 
-  if (!source) {
+  if (!resolvedSource) {
     return fail(["Usage: failproofai policies add <source> [--policy a,b] [--category x,y] [--all]"]);
   }
   if (selection.only && selection.only.length === 0) {
@@ -644,7 +628,7 @@ async function add(rest: string[]): Promise<PackCliResult> {
   }
 
   try {
-    const result = await addPack(source, selection);
+    const result = await addPack(resolvedSource!, selection);
     const lines = [
       ...(result.replaced?.length
         ? [`Replaced ${result.replaced.join(", ")} — same policies under a new name; your selection was kept.`]
@@ -669,6 +653,12 @@ async function add(rest: string[]): Promise<PackCliResult> {
       lines.push(`  not enabled (${skipped.length}): ${summarise(skipped)}`);
       lines.push("");
       lines.push(`  see all:      failproofai policies`);
+      // Naming --policy here as well as the coarser two: it is the flag people
+      // reach for first ("just give me that one"), and it was only ever
+      // suggested on the branch that installed our own pack from disk — so
+      // every third-party pack told you about categories and everything, and
+      // never about taking a single policy.
+      lines.push(`  one policy:   failproofai policies add ${source} --policy ${skipped[0]}`);
       if (result.categories.length > 0) {
         lines.push(`  by category:  failproofai policies add ${source} --category ${result.categories.slice(0, 3).join(",")}`);
       }
@@ -685,7 +675,7 @@ function remove(rest: string[]): PackCliResult {
   if (!id) return fail(["Usage: failproofai policies remove <publisher/name>"]);
   if (!removePack(id)) return fail([`No installed pack with id ${id}`]);
   return ok([
-    `Removed ${id}. Its artifact is kept on disk, so re-adding it works offline.`,
+    `Removed ${id}. Its policies stop enforcing now; re-add it any time with the same command.`,
   ]);
 }
 

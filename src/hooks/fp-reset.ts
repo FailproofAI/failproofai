@@ -98,7 +98,6 @@ import {
   isDaemonSupportedPlatform,
   probeDaemonEndToEnd,
 } from "./daemon-service";
-import { installBundledPack } from "./pack-store";
 import { readHooksConfig } from "./hooks-config";
 
 export interface ResetOutcome {
@@ -983,7 +982,16 @@ export function resetHome(from: number, to: number = LAYOUT_VERSION): ResetOutco
       return undefined;
     }
   })();
-  installBundledPack(carried);
+  // Deliberately does NOT install a pack. There is no copy in this package to
+  // install any more, and `resetHome` is synchronous and runs inside
+  // `failproofai update` — an upgrade that blocks on github.com, and fails when
+  // it is unreachable, is a worse upgrade than one that finishes.
+  //
+  // The carried names stay in config, which is what the no-pack fallback reads,
+  // so a machine mid-upgrade keeps enforcing exactly what it enforced before.
+  // `failproofai policies add core` turns them into a real pack when the user
+  // is online, and carries this selection into it.
+  void carried;
   // The step's OWN target, not LAYOUT_VERSION.
   //
   // Every step used to end stamping the current layout, which was harmless

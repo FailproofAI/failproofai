@@ -41,6 +41,7 @@ let home: string;
 let project: string;
 let packRoot: string;
 let server: Server;
+let requested: string[] = [];
 let assets: Record<string, string>;
 let saved: Record<string, string | undefined>;
 
@@ -68,9 +69,32 @@ beforeEach(async () => {
     "failproofai-pack.mjs": ENTRY,
     SHA256SUMS: `${sha(manifest)}  failproofai-pack.json\n${sha(ENTRY)}  failproofai-pack.mjs\n`,
   };
+  // A second release, under the repository `core` resolves to. The short name is
+  // a spelling of a GitHub source now — the package carries no copy — so the
+  // parity test below has to have something real to fetch.
+  const coreManifest = JSON.stringify({
+    id: "failproofai/core",
+    version: "9.9.9",
+    policies: [policy("block-prod-deploy", true), policy("warn-restart", false)],
+  }, null, 2) + "\n";
+  const coreAssets: Record<string, string> = {
+    "failproofai-pack.json": coreManifest,
+    "failproofai-pack.mjs": ENTRY,
+    SHA256SUMS: `${sha(coreManifest)}  failproofai-pack.json\n${sha(ENTRY)}  failproofai-pack.mjs\n`,
+  };
+
+  requested = [];
   server = createServer((req, res) => {
-    const m = (req.url ?? "").match(/^\/([^/]+)\/([^/]+)\/releases\/download\/([^/]+)\/([^/]+)$/);
-    const body = m ? assets[m[4]] : undefined;
+    const url = req.url ?? "";
+    requested.push(url);
+    // github.com answers a tagless source with a redirect, not an API call.
+    if (url === "/FailproofAI/policies/releases/latest") {
+      res.writeHead(302, { location: "/FailproofAI/policies/releases/tag/v9.9.9" }).end();
+      return;
+    }
+    const m = url.match(/^\/([^/]+)\/([^/]+)\/releases\/download\/([^/]+)\/([^/]+)$/);
+    const table = m && m[1] === "FailproofAI" ? coreAssets : assets;
+    const body = m ? table[m[4]] : undefined;
     if (body === undefined) { res.writeHead(404).end("no"); return; }
     res.writeHead(200).end(body);
   });
@@ -123,27 +147,17 @@ describe("installing a pack from the dashboard", () => {
 describe("parity with the CLI", () => {
   it("takes `core` in the dashboard, exactly as the terminal does", async () => {
     // The alias list lived in pack-cli.ts, so `core` worked in the terminal and
-    // failed in the browser. Both go through one resolver now.
-    // Generated, not assumed: `test` and `build` are separate CI jobs, so
-    // `policy-pack/` does not exist in the repo when this runs there.
-    const prevRoot = process.env.FAILPROOFAI_PACKAGE_ROOT;
-    const pkgRoot = mkdtempSync(join(tmpdir(), "fpai-dash-pkg-"));
-    execFileSync(
-      "bun",
-      ["scripts/build-policy-pack.mjs", "--out", join(pkgRoot, "policy-pack")],
-      { cwd: resolve(__dirname, "../.."), stdio: ["pipe", "pipe", "inherit"] },
-    );
-    process.env.FAILPROOFAI_PACKAGE_ROOT = pkgRoot;
-    try {
-      const result = await addPackWebAction("core");
-      expect(result.ok).toBe(true);
-      expect(result.id).toBe("failproofai/core");
-    } finally {
-      if (prevRoot === undefined) delete process.env.FAILPROOFAI_PACKAGE_ROOT;
-      else process.env.FAILPROOFAI_PACKAGE_ROOT = prevRoot;
-      rmSync(pkgRoot, { recursive: true, force: true });
-    }
-  }, 120_000);
+    // failed in the browser. Both go through one resolver in pack-store now.
+    //
+    // And what it resolves TO is the thing worth pinning: `core` is a spelling
+    // of a GitHub source, not a directory inside the package. Asserting on the
+    // URL that was requested is what catches a reintroduced local path — an id
+    // assertion alone would pass either way.
+    const result = await addPackWebAction("core");
+    expect(result.ok).toBe(true);
+    expect(result.id).toBe("failproofai/core");
+    expect(requested.some((u) => u.startsWith("/FailproofAI/policies/"))).toBe(true);
+  });
 
   it("previews a pack without installing it, and without fetching its code", async () => {
     const result = await previewPackWebAction("github:acme/ops@1.0.0");

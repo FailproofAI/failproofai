@@ -26,7 +26,7 @@ import { CliError } from "../cli-error";
 import { hookLogWarn } from "./hook-logger";
 import { customPoliciesDir, globalPolicyConfigFile } from "./fp-home";
 import { readActiveCloudManagedPolicies } from "./cloud-managed-policies";
-import { installBundledPack, setPackPolicyEnabled } from "./pack-store";
+import { CORE_SOURCE, addPack, setPackPolicyEnabled } from "./pack-store";
 import type { ResolvedPack } from "./pack-manifest";
 import { hasInstalledPacks, readInstalledPacks } from "./pack-manifest";
 import {
@@ -480,7 +480,7 @@ async function installHooksImpl(
   // would leave a freshly set-up machine enforcing nothing at all — which is
   // the failure mode this whole product exists to prevent.
   //
-  // Installed from the copy vendored in the package: no network, so setup
+  // Fetched from the pack's GitHub release: there is no copy in this package,
   // cannot fail behind a proxy, and the machine is guarded the moment it is
   // configured rather than the moment it next reaches github.com.
   // The always-on guard is excluded: a pack may not declare `alwaysOn`, so the
@@ -499,11 +499,17 @@ async function installHooksImpl(
     // With a pack already installed the names are switched on individually
     // instead, which is additive and touches nothing else.
     if (!hasInstalledPacks()) {
-      const bundled = installBundledPack({ only: fromPack });
-      if (!bundled.installed) {
+      // Fetched, not unpacked from this package: there is no copy in here any
+      // more. That makes this the one path in `policies --install` that needs
+      // the network, so its failure is reported rather than thrown — the names
+      // are already written to config, and the no-pack fallback enforces them
+      // until a pack arrives.
+      try {
+        await addPack(CORE_SOURCE, { only: fromPack });
+      } catch (err) {
         console.log(
-          `\nWarning: could not install the policy pack (${bundled.reason}).\n` +
-            `Nothing is enforcing yet — run \`failproofai policies add core\` once that is fixed.`,
+          `\nWarning: could not fetch the policy pack (${err instanceof Error ? err.message : String(err)}).\n` +
+            `Run \`failproofai policies add core\` once you are online.`,
         );
       }
     } else {

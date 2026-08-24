@@ -13,7 +13,6 @@
     "lib/",
     "pi-extension/",
     "openclaw-plugin/",
-    "policy-pack/",
     ".next/standalone/",
     "dist/",
     "README.md"
@@ -27,7 +26,7 @@
     "dev": "FAILPROOFAI_TELEMETRY_DISABLED=1 bun scripts/dev.ts --port 8020",
     "build:cli": "bun build --target=node --format=esm --outfile=dist/cli.mjs bin/failproofai.mjs --external posthog-node --external sql.js && node -e \"const fs=require('fs');const c=fs.readFileSync('dist/cli.mjs','utf8');fs.writeFileSync('dist/cli.mjs',c.replace('#!/usr/bin/env bun','#!/usr/bin/env node').replace('// @bun\\n',''))\"",
     "build:worker": "bun build --target=node --format=esm --outfile=dist/worker.mjs bin/failproofai-worker.mjs --external posthog-node --external sql.js",
-    "build": "bun build --target=node --format=cjs --outfile=dist/index.js src/index.ts && bun run build:cli && bun run build:worker && bun run build:pack && bun --bun next build && node -e \"const {cpSync}=require('fs');cpSync('.next/static','.next/standalone/.next/static',{recursive:true});\" && node scripts/prune-standalone.mjs",
+    "build": "bun build --target=node --format=cjs --outfile=dist/index.js src/index.ts && bun run build:cli && bun run build:worker && bun --bun next build && node -e \"const {cpSync}=require('fs');cpSync('.next/static','.next/standalone/.next/static',{recursive:true});\" && node scripts/prune-standalone.mjs",
     "prestart": "bun run build:cli && bun link",
     "start": "FAILPROOFAI_TELEMETRY_DISABLED=1 bun scripts/start.ts",
     "test": "vitest",

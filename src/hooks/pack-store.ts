@@ -316,6 +316,16 @@ interface FetchedPack {
  * and has to resolve it the same way — `core` worked in the terminal and failed
  * in the browser for exactly as long as this list sat in `pack-cli.ts`.
  */
+/**
+ * Where our own policies actually live.
+ *
+ * They are a GitHub release like anybody else's, and the package carries no
+ * copy of them. That is the point: a pack that ships inside the binary is a
+ * policy set we chose for you and put on your disk before you asked, and it
+ * gives our own policies a delivery path nobody else's pack can use. One lane,
+ * the same for everyone — ours are just the pack whose short name we spell.
+ */
+export const CORE_SOURCE = "FailproofAI/policies";
 export const CORE_ALIASES = new Set(["core", "failproofai", "official"]);
 
 export interface PackAddOptions {
@@ -346,18 +356,12 @@ export async function addPackFromSource(
   source: string,
   opts: PackAddOptions = {},
 ): Promise<AddedPack> {
-  if (CORE_ALIASES.has(source.trim().toLowerCase())) {
-    const result = installBundledPack(opts);
-    if (!result.installed) throw new Error(result.reason ?? "could not install");
-    return {
-      id: result.id!,
-      version: result.version!,
-      enabled: result.enabled ?? result.available ?? [],
-      available: result.available ?? [],
-      bundled: true,
-    };
-  }
-  const result = await addPack(source, opts);
+  // `core` is a spelling of CORE_SOURCE, not a second delivery path. Resolved
+  // HERE rather than in the CLI so the dashboard and the CLI cannot disagree
+  // about what the short name means — they did once, and a name the CLI could
+  // resolve failed in the browser.
+  const resolved = CORE_ALIASES.has(source.trim().toLowerCase()) ? CORE_SOURCE : source;
+  const result = await addPack(resolved, opts);
   return {
     id: result.id,
     version: result.version,
@@ -746,25 +750,21 @@ export async function addPack(
 }
 
 /**
- * Install the pack that ships inside the npm package, from disk.
+ * The vendored pack directory, when a working tree happens to have one.
  *
- * This is what makes removing the builtins from the bundle survivable. The
- * tarball carries `policy-pack/` — the builtins as a real, digest-verified pack —
- * so a machine that has just installed failproofai already HAS them and setup
- * can enable them with no network at all. Without this, a fresh install with no
- * connectivity would be a machine enforcing nothing.
+ * The published package does NOT carry `policy-pack/` and there is no install
+ * path through here. Our policies are fetched from their GitHub release like
+ * anybody else's — a pack that ships inside the binary is a policy set chosen
+ * for the user and written to their disk before they asked, and it gave our own
+ * policies a delivery route no third-party pack could use.
+ *
+ * The one remaining caller is `audit/replay.ts`, which prefers the pack's own
+ * functions when a dev tree has run `build:pack` and falls back to the compiled
+ * implementations when it returns null. Both produce identical text, so the two
+ * paths score the same; the fallback is the normal case now.
  *
  * Anchored at `FAILPROOFAI_PACKAGE_ROOT` for the reason `npmPlatformBinaryPath`
  * documents: `import.meta.url` does not survive the CJS bundle.
- *
- * The bytes are COPIED into `packsDir()` rather than loaded where they lie. A
- * `sudo npm i -g` package directory is root-owned, and the loader writes its
- * rewritten module tree BESIDE the source it loads — so loading in place gives a
- * non-root hook EACCES, the pack never loads, and the hook exits 0. Copying is
- * what avoids that, and it is the same trap CHANGELOG #694 fixed for the shim.
- *
- * Idempotent, and never throws: a package without the directory returns null,
- * which is a normal state for a dev checkout that has not run `build:pack`.
  */
 export function bundledPackDir(): string | null {
   const root = process.env.FAILPROOFAI_PACKAGE_ROOT;
@@ -773,105 +773,6 @@ export function bundledPackDir(): string | null {
   return existsSync(resolve(dir, PACK_MANIFEST_ASSET)) ? dir : null;
 }
 
-export interface BundledPackResult {
-  installed: boolean;
-  id?: string;
-  version?: string;
-  enabled?: string[];
-  available?: string[];
-  /** Ids this install absorbed — the same pack, previously under another name. */
-  replaced?: string[];
-  reason?: string;
-}
-
-export function installBundledPack(opts?: { only?: string[]; categories?: string[]; all?: boolean }): BundledPackResult {
-  const dir = bundledPackDir();
-  if (!dir) return { installed: false, reason: "this build ships no bundled pack" };
-
-  try {
-    const checksums = readFileSync(resolve(dir, PACK_CHECKSUMS_ASSET), "utf8");
-    const manifestBytes = readFileSync(resolve(dir, PACK_MANIFEST_ASSET));
-    const artifact = readFileSync(resolve(dir, PACK_ENTRY_ASSET));
-
-    // Verified even though it never crossed a network. The digest is what the
-    // hook path re-checks before every import, so it has to describe the bytes
-    // actually installed — and a tarball can be corrupted on disk like anything
-    // else.
-    const manifestDigest = digestFor(checksums, PACK_MANIFEST_ASSET);
-    const entryDigest = digestFor(checksums, PACK_ENTRY_ASSET);
-    const artifactDigest = sha256(artifact);
-    if (!manifestDigest || sha256(manifestBytes) !== manifestDigest) {
-      return { installed: false, reason: `${PACK_MANIFEST_ASSET} failed integrity verification` };
-    }
-    if (!entryDigest || artifactDigest !== entryDigest) {
-      return { installed: false, reason: `${PACK_ENTRY_ASSET} failed integrity verification` };
-    }
-
-    const parsed = JSON.parse(manifestBytes.toString("utf8")) as {
-      id?: unknown; version?: unknown; policies?: unknown; effect?: unknown;
-    };
-    if (!Array.isArray(parsed.policies)) {
-      return { installed: false, reason: "bundled pack manifest is malformed" };
-    }
-    const identity = parsePackIdentity(parsed);
-    // Same rules the loader applies, so a bundled pack that could never load
-    // fails the install rather than looking fine until the next tool call.
-    const policies = parsed.policies.map((pol, i) => parsePackPolicy(identity.id, pol, i));
-
-    const root = packsRoot();
-    const artifactRel = `artifacts/${artifactDigest}.mjs`;
-    const artifactAbs = resolve(root, artifactRel);
-    if (!existsSync(artifactAbs)) writeAtomic(artifactAbs, artifact);
-
-    const prior = priorRecordFor(identity.id, artifactDigest);
-    const available = policies.map((pol) => pol.name);
-    const { enabled } = resolveSelection(
-      policies,
-      opts,
-      prior?.enabled ? prior.enabled.filter((n) => available.includes(n)) : prior?.enabled,
-      Boolean(prior),
-    );
-
-    const absorbed = upsertInstalled({
-      id: identity.id,
-      version: identity.version,
-      // Recorded as `bundled:` rather than a github: source, because it did not
-      // come from one — and `pack add` on this id would otherwise look like a
-      // re-fetch of something that was never fetched.
-      source: `bundled:${identity.id}@${identity.version}`,
-      entry: artifactRel,
-      sha256: artifactDigest,
-      policies,
-      ...(parsed.effect !== undefined ? { effect: identity.effect } : {}),
-      ...(enabled ? { enabled } : {}),
-    });
-
-    return {
-      installed: true,
-      id: identity.id,
-      version: identity.version,
-      enabled: enabled ?? available,
-      available,
-      ...(absorbed.length > 0 ? { replaced: absorbed } : {}),
-    };
-  } catch (err) {
-    return { installed: false, reason: errText(err) };
-  }
-}
-
-/** Remove a pack from the activation pointer. Returns false if it was not installed. */
-/**
- * Turn ONE policy of an installed pack on or off.
- *
- * The selection in `installed.json` is the lever, not a `disabledCustomPolicies`
- * entry: those are keyed by `pack:<id>@<version>:<name>`, so an upgrade stops
- * matching them and silently switches back on everything the user had turned
- * off. The selection is version-stable and is carried forward by `pack add`.
- *
- * Enabling also clears any matching disabled key, or a policy switched off from
- * the dashboard could not be switched back on from the CLI — the two mechanisms
- * would disagree and the more obscure one would win.
- */
 export function setPackPolicyEnabled(
   packId: string,
   name: string,

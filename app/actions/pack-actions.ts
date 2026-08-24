@@ -13,7 +13,8 @@
 import {
   addPackFromSource,
   fetchPackPreview,
-  installBundledPack,
+  CORE_SOURCE,
+  addPack,
   removePack,
   setPackPolicyEnabled,
 } from "@/src/hooks/pack-store";
@@ -62,17 +63,26 @@ export async function addPackWebAction(
   }
 }
 
-/** Install the pack that ships inside this package. No network. */
+/**
+ * Install the Failproof AI policies.
+ *
+ * Fetched from their GitHub release like anybody else's pack — this package
+ * carries no copy of them. The name is kept so the dashboard's button does not
+ * have to know that, but there is nothing "bundled" about it any more.
+ */
 export async function addBundledPackWebAction(): Promise<PackActionResult> {
-  const result = installBundledPack();
-  if (!result.installed) return { ok: false, error: result.reason ?? "could not install" };
-  return {
-    ok: true,
-    id: result.id,
-    version: result.version,
-    enabled: result.enabled,
-    available: result.available,
-  };
+  try {
+    const result = await addPack(CORE_SOURCE);
+    return {
+      ok: true,
+      id: result.id,
+      version: result.version,
+      enabled: result.enabled,
+      available: result.available,
+    };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 export async function removePackWebAction(id: string): Promise<PackActionResult> {

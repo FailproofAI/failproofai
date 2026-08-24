@@ -1270,5 +1270,23 @@ describe("hooks/policy-evaluator", () => {
       expect(result.decision).toBe("deny");
       expect(result.reason).toBe("hard block. deny hint");
     });
+
+    it("passes user-configured policyParams to custom policies without schema", async () => {
+      let capturedParams: unknown = null;
+      registerPolicy("custom/my-policy", "desc", (ctx) => {
+        capturedParams = ctx.params;
+        return { decision: "allow" };
+      }, { events: ["PreToolUse"] });
+
+      const config = {
+        enabledPolicies: ["custom/my-policy"],
+        policyParams: {
+          "custom/my-policy": { maxCount: 10, threshold: 5 },
+        },
+      };
+
+      await evaluatePolicies("PreToolUse", { tool_name: "Bash" }, undefined, config);
+      expect(capturedParams).toEqual({ maxCount: 10, threshold: 5 });
+    });
   });
 });

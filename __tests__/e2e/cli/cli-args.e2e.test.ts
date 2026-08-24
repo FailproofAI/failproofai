@@ -47,14 +47,18 @@ describe("top-level: --help", () => {
   it("prints help and exits 0", () => {
     const result = runCli("--help");
     assertSuccess(result);
-    expect(result.stdout).toContain("USAGE");
+    // The index no longer shouts a USAGE heading — it spends its 26 lines on
+    // commands and names the shape once, inline, on the second row.
+    expect(result.stdout).toContain("Usage  failproofai <command>");
     expect(result.stdout).toContain("policies");
+    // The half that replaced every inlined flag.
+    expect(result.stdout).toContain("failproofai help <command>");
   });
 
   it("-h shorthand prints help and exits 0", () => {
     const result = runCli("-h");
     assertSuccess(result);
-    expect(result.stdout).toContain("USAGE");
+    expect(result.stdout).toContain("Usage  failproofai <command>");
   });
 
   it("rejects extra argument after --help", () => {
@@ -181,9 +185,12 @@ describe("policies: --help", () => {
 
 describe("pack: --help", () => {
   it("prints help when the flag follows a nested subcommand", () => {
+    // `pack` is a spelling of `policies` now, so this reaches the unified
+    // add/remove/show help rather than a pack-only one.
     const result = runCli("pack", "add", "--help");
     assertSuccess(result);
-    expect(result.stdout).toContain("install policy packs");
+    expect(result.stdout).toContain("failproofai policies add|remove|show");
+    expect(result.stdout).toContain("A NAME OR A SOURCE");
   });
 });
 

@@ -39,7 +39,7 @@ function writeBundle(over: {
   const dir = join(pkgRoot, "policy-pack");
   mkdirSync(dir, { recursive: true });
   const manifest = JSON.stringify({
-    id: over.id ?? "failproofai/builtins", version: over.version ?? "1.0.0",
+    id: over.id ?? "failproofai/core", version: over.version ?? "1.0.0",
     policies: over.policies ?? POLICIES,
     ...(over.effect !== undefined ? { effect: over.effect } : {}),
   });
@@ -77,13 +77,13 @@ describe("installBundledPack", () => {
     writeBundle();
     const result = installBundledPack();
     expect(result.installed).toBe(true);
-    expect(result.id).toBe("failproofai/builtins");
+    expect(result.id).toBe("failproofai/core");
     expect(result.available).toEqual(["block-alpha", "block-beta"]);
     expect(result.enabled).toEqual(["block-alpha"]);
 
     const { packs, errors } = readInstalledPacks();
     expect(errors).toEqual([]);
-    expect(packs[0].id).toBe("failproofai/builtins");
+    expect(packs[0].id).toBe("failproofai/core");
   });
 
   it("records a bundled: source, not a github one", () => {
@@ -91,7 +91,7 @@ describe("installBundledPack", () => {
     // that was never fetched.
     writeBundle();
     installBundledPack();
-    expect(readInstalledPacks().packs[0].source).toBe("bundled:failproofai/builtins@1.0.0");
+    expect(readInstalledPacks().packs[0].source).toBe("bundled:failproofai/core@1.0.0");
   });
 
   it("copies the artifact into the pack dir rather than loading it in place", () => {
@@ -125,7 +125,7 @@ describe("installBundledPack", () => {
   });
 
   it.each([
-    [{ id: "failproofai/builtins/extra" }, /unsafe pack id/],
+    [{ id: "failproofai/core/extra" }, /unsafe pack id/],
     [{ version: "release/1" }, /invalid version/],
     [{ effect: "audit" }, /unknown effect/],
   ])("refuses loader-invalid identity before activation: %j", (over, message) => {
@@ -169,7 +169,7 @@ describe("installBundledPack", () => {
       expect(installBundledPack().installed).toBe(true);
       expect(existsSync(packsDir())).toBe(true);
       resetHome(LAYOUT_VERSION);
-      expect(readInstalledPacks().packs.map((pack) => pack.id)).toEqual(["failproofai/builtins"]);
+      expect(readInstalledPacks().packs.map((pack) => pack.id)).toEqual(["failproofai/core"]);
     } finally {
       process.env.FAILPROOFAI_PACK_DIR = packDir;
       if (previousHome === undefined) delete process.env.FAILPROOFAI_HOME;

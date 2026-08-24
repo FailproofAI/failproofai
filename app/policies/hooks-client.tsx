@@ -14,7 +14,7 @@ import { PausedBanner, PausedNote, PausedPill } from "@/app/components/pause-not
 import { getHooksConfigAction } from "@/app/actions/get-hooks-config";
 import type { HooksConfigPayload, InstalledPackInfo, PolicyInfo } from "@/app/actions/get-hooks-config";
 import type { IntegrationType } from "@/src/hooks/types";
-import { toggleCustomPolicyAction, togglePolicyAction } from "@/app/actions/update-hooks-config";
+import { toggleCustomPolicyAction } from "@/app/actions/update-hooks-config";
 import {
   addBundledPackWebAction,
   addPackWebAction,
@@ -1268,7 +1268,16 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
     });
   };
 
-  const handleToggle = (name: string, currentlyEnabled: boolean) => {
+  /**
+   * Turn one policy on or off.
+   *
+   * Writes the PACK's selection, because that is what enforcement reads now.
+   * `togglePolicyAction` edits `enabledPolicies`, which stopped deciding
+   * anything the moment this build stopped registering builtins — leaving the
+   * toggle pointed there would have moved a switch that changes nothing.
+   */
+  const handleToggle = (policy: PolicyInfo, currentlyEnabled: boolean) => {
+    const name = policy.name;
     if (!config) return;
     const installed = config.clis.some((c) => c.installed);
     if (!installed) {
@@ -1284,14 +1293,21 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
         policies: prev.policies.map((p) =>
           p.name === name ? { ...p, enabled: !currentlyEnabled } : p,
         ),
-        enabledPolicies: currentlyEnabled
-          ? prev.enabledPolicies.filter((n) => n !== name)
-          : [...prev.enabledPolicies, name],
+        packs: prev.packs.map((pack) =>
+          pack.id === policy.packId
+            ? {
+                ...pack,
+                policies: pack.policies.map((p) =>
+                  p.name === name ? { ...p, enabled: !currentlyEnabled } : p,
+                ),
+              }
+            : pack,
+        ),
       };
     });
     startTransition(async () => {
       try {
-        await togglePolicyAction(name, !currentlyEnabled);
+        await togglePackPolicyAction(policy.packId, name, !currentlyEnabled);
       } catch {
         fireActionError("policy_toggle", "Failed to save policy change.");
         reload();
@@ -1573,7 +1589,18 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
       {/* Policy summary */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-border/40 bg-muted/5">
         <span className="text-xs text-muted-foreground">
-          <span className="font-semibold text-foreground">{config.enabledPolicies.length}</span>
+          {/* What is actually ON, counted from the policies rendered below.
+              `enabledPolicies` is the old builtin switch list — it stopped
+              deciding anything when this build stopped registering builtins, so
+              counting it reported a number matching nothing on screen. */}
+          <span className="font-semibold text-foreground">
+            {config.policies.filter((p) => p.enabled).length +
+              (config.customPolicies?.filter((p) => p.enabled).length ?? 0) +
+              (config.conventionPolicies?.reduce(
+                (n, e) => n + e.policies.filter((p) => p.enabled).length,
+                0,
+              ) ?? 0)}
+          </span>
           {" / "}
           {config.policies.length + (config.customPolicies?.length ?? 0) + (config.conventionPolicies?.reduce((n, e) => n + e.policies.length, 0) ?? 0)}{" "}
           policies enabled
@@ -1623,7 +1650,7 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
                 <div className="mt-0.5 shrink-0">
                   <PolicyToggle
                     enabled={policy.enabled}
-                    onChange={() => handleToggle(policy.name, policy.enabled)}
+                    onChange={() => handleToggle(policy, policy.enabled)}
                     disabled={isPending}
                   />
                 </div>
@@ -2058,45 +2085,16 @@ function PackSection({
               </p>
             </div>
           ) : (
-            pack.policies.map((policy) => (
-              <div
-                key={policy.name}
-                className="flex items-start gap-3 px-4 py-3 border-b border-border/20 hover:bg-muted/20 transition-colors"
-              >
-                <div className="mt-0.5 shrink-0">
-                  <PolicyToggle
-                    enabled={policy.enabled && !policy.shadowedByBuiltin}
-                    disabled={disabled || busy !== null || policy.shadowedByBuiltin}
-                    onChange={() => {
-                      capture("pack_policy_toggled", { enabled: !policy.enabled });
-                      void run(`${pack.id}:${policy.name}`, () =>
-                        togglePackPolicyAction(pack.id, policy.name, !policy.enabled),
-                      );
-                    }}
-                  />
-                </div>
-                <div className="flex items-center gap-1.5 min-w-0 w-56 shrink-0 mt-0.5">
-                  <span className="text-xs font-mono text-foreground truncate">{policy.name}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <span className="text-xs text-muted-foreground leading-relaxed">
-                    {policy.description}
-                  </span>
-                  {policy.shadowedByBuiltin ? (
-                    // The same guard exists as an enabled builtin, and that is
-                    // the one that runs. Showing this row as ON would claim
-                    // enforcement this copy is not doing.
-                    <span className="block text-[0.65rem] text-amber-500/80 mt-0.5">
-                      running as the builtin — turn the builtin off to use this copy
-                    </span>
-                  ) : (
-                    <span className="block text-[0.65rem] text-muted-foreground/40 font-mono mt-0.5 hidden lg:block">
-                      {policy.category}
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))
+            // NOT a second list of the pack's policies. Every policy that
+            // enforces here is in the categorised list above, whichever pack it
+            // came from — rendering them again under the pack made the same
+            // toggles appear twice, the second time with no category.
+            <div className="flex items-center gap-3 px-4 py-2.5 border-b border-border/20">
+              <span className="text-[0.7rem] text-muted-foreground">
+                {pack.policies.filter((p) => p.enabled).length} of {pack.policies.length} on —
+                listed by category above
+              </span>
+            </div>
           )}
         </div>
       ))}

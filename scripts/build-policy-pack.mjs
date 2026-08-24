@@ -47,6 +47,10 @@ const outArg = process.argv.indexOf("--out");
 const OUT_DIR = outArg !== -1 && process.argv[outArg + 1]
   ? resolve(process.argv[outArg + 1])
   : join(ROOT, "policy-pack");
+// Not `failproofai/builtins`. These stop being builtins the moment they ship as
+// a pack, and an id is the most durable place a retired word can hide — it ends
+// up in every machine's installed.json and in the listing every user reads.
+const PACK_ID = "failproofai/core";
 const ENTRY_ASSET = "failproofai-pack.mjs";
 const MANIFEST_ASSET = "failproofai-pack.json";
 const CHECKSUMS_ASSET = "SHA256SUMS";
@@ -95,7 +99,7 @@ const { POLICY_CATALOG } = await import(join(ROOT, "src/hooks/policy-catalog.ts"
 const policies = POLICY_CATALOG.filter((p) => !p.alwaysOn).map((p) => ({ ...p }));
 
 const manifest = JSON.stringify(
-  { id: "failproofai/builtins", version, effect: "enforce", policies },
+  { id: PACK_ID, version, effect: "enforce", policies },
   null,
   2,
 ) + "\n";
@@ -111,7 +115,7 @@ writeFileSync(
 
 const omitted = POLICY_CATALOG.filter((p) => p.alwaysOn).map((p) => p.name);
 console.log(
-  `[policy-pack] failproofai/builtins@${version} — ${policies.length} policies, ` +
+  `[policy-pack] ${PACK_ID}@${version} — ${policies.length} policies, ` +
   `${(entryBytes.length / 1024).toFixed(1)} KB entry` +
   (omitted.length ? `; omitted alwaysOn: ${omitted.join(", ")}` : ""),
 );

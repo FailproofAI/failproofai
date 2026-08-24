@@ -443,14 +443,9 @@ export async function evaluateHookEvent(
         // The builtin wins, because a bare name means the builtin everywhere else
         // — `policies --uninstall block-sudo` disables the compiled one, and a
         // machine that wants the pack's copy instead turns the builtin off.
-        //
-        // Silently, on purpose. This fires for EVERY duplicated policy on EVERY
-        // event — ten lines in `hooks.log` for a plain `ls` on a machine that
-        // installed the bundled pack over its builtins — and the hook path is
-        // the hottest path in the product. The state is already stated in the
-        // three places a person actually looks: `failproofai policies` marks the
-        // row, the dashboard renders it off and says why, and `pack add`
-        // prints it at install time.
+        // A pack policy whose name matches one the MIGRATION SHIM registered.
+        // Only reachable on a machine that has not migrated yet and somehow has
+        // a pack too; once the shim stops, nothing else registers by name.
         if (pack && enabledBuiltinNames.has(hook.name)) continue;
         if (pack) {
           const seen = registeredByPack.get(pack.id) ?? new Set<string>();

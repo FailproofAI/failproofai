@@ -118,6 +118,7 @@ re-runs later; there is no signal to key a pause on. The FunctionAgent pattern
 
 from __future__ import annotations
 
+import logging
 import re
 import threading
 import time
@@ -126,6 +127,8 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from failproofai_sdk.integrations import _compat, _core
+
+logger = logging.getLogger("failproofai_sdk.integrations")
 
 FRAMEWORK = "llama_index"
 DIST = "llama-index-core"
@@ -161,7 +164,14 @@ _LLM_METHODS = frozenset(
     }
 )
 
-_SUMMARY_LIMIT = 512
+#: Default cap for a captured value. `_core.FIELD_LIMIT`, not the 512 this
+#: carried: `_summarize` renders every user-visible payload in this adapter —
+#: message content, the model's completion, tool output, the retrieval query,
+#: workflow-step input/output and the agent goal — and 512 is a quarter of the
+#: 2048 the LangChain adapter had just rejected as too small on the grounds that
+#: "a real RAG prompt is well over 2 KiB". This is the RAG-first framework. It
+#: is `capture_limit` on `instrument("llama_index", ...)` now, like the others.
+_SUMMARY_LIMIT = _core.FIELD_LIMIT
 _MAX_SPANS = 20_000
 _MAX_NODES_IN_SUMMARY = 5
 
@@ -283,7 +293,7 @@ def extract_usage(response: Any) -> tuple[dict | None, int | None, int | None]:
     return usage, _first_int(usage, _INPUT_TOKEN_KEYS), _first_int(usage, _OUTPUT_TOKEN_KEYS)
 
 
-def _messages(items: Any) -> list[dict] | None:
+def _messages(items: Any, limit: int = _SUMMARY_LIMIT) -> list[dict] | None:
     """ChatMessages -> the list-of-dicts `model_request(messages=...)` wants."""
     if not isinstance(items, (list, tuple)):
         return None
@@ -293,7 +303,7 @@ def _messages(items: Any) -> list[dict] | None:
         out.append(
             {
                 "role": getattr(role, "value", None) or str(role or "user"),
-                "content": _summarize(getattr(item, "content", None) or ""),
+                "content": _summarize(getattr(item, "content", None) or "", limit),
             }
         )
     return out or None
@@ -399,6 +409,36 @@ class _Run:
     sub_seq: int = 0
 
 
+def _capture_limit(value: Any) -> int:
+    """Validate `capture_limit`, falling back rather than raising.
+
+    Mirrors the LangChain adapter: `instrument()` with no name installs every
+    detected adapter with the same options, so a value meant for one framework
+    must never take another one down. `OverflowError` is in the tuple because
+    `int(float("inf"))` raises it and `inf` is the obvious spelling of "capture
+    everything".
+    """
+    if value is None:
+        return _core.FIELD_LIMIT
+    try:
+        limit = int(value)
+    except (TypeError, ValueError, OverflowError):
+        logger.warning(
+            "failproofai_sdk: llama_index capture_limit=%r is not an integer; using %d",
+            value,
+            _core.FIELD_LIMIT,
+        )
+        return _core.FIELD_LIMIT
+    if limit < 1:
+        logger.warning(
+            "failproofai_sdk: llama_index capture_limit=%d must be >= 1; using %d",
+            limit,
+            _core.FIELD_LIMIT,
+        )
+        return _core.FIELD_LIMIT
+    return limit
+
+
 class _State:
     """Everything the two handlers share. One lock, no contextvars.
 
@@ -414,10 +454,12 @@ class _State:
         self.capture_messages = bool(options.get("capture_messages", True))
         self.stale_after = float(options.get("stale_after", 600.0))
         self.reaper_interval = float(options.get("reaper_interval", 30.0))
+        self.capture_limit = _capture_limit(options.get("capture_limit"))
 
         self.tracker = _core.RunTracker(
             FRAMEWORK,
             base_fields=_core.framework_fields(FRAMEWORK, DIST),
+            field_limit=self.capture_limit,
         )
         self._lock = threading.RLock()
         self._spans: dict[str, _Span] = {}
@@ -445,6 +487,26 @@ class _State:
 
     # -- bookkeeping ------------------------------------------------------
 
+    def capture(self, value, limit: int | None = None):
+        """One gate for every payload this adapter records.
+
+        `capture_messages` used to be consulted in exactly ONE place — the
+        messages and system prompt on `model_start` — while the model's
+        completion, every tool call's arguments, every tool's return value,
+        every workflow-step input and output, every retrieval query and the
+        agent's goal went to the spool regardless. Prompts stopped being
+        recorded, so the setting looked like it had worked.
+
+        That is the switch `docs/start/integrations/llamaindex.mdx` presents as
+        the control for regulated data, and `collector.redact` explicitly does
+        not apply to SDK events — so there is no second line of defence behind
+        it. The sibling adapters route every payload through one helper
+        (LangChain's `_shrink`, Pydantic AI's `capture_content` checks); this is
+        that helper.
+        """
+        if not self.capture_messages:
+            return None
+        return _summarize(value, limit if limit is not None else self.capture_limit)
     def _remember(self, span: _Span) -> None:
         while len(self._spans) >= _MAX_SPANS:
             self._spans.pop(next(iter(self._spans)), None)
@@ -629,7 +691,7 @@ class _State:
         raw_name = getattr(instance, "name", None)
         label = raw_name if isinstance(raw_name, str) and raw_name else cls_name
         start_event = arguments.get("start_event")
-        goal = getattr(start_event, "user_msg", None) or _summarize(start_event)
+        goal = self.capture(getattr(start_event, "user_msg", None) or start_event)
 
         identity = self.tracker.start_agent(
             span_id,
@@ -687,7 +749,9 @@ class _State:
                 error_type=type(error).__name__,
                 message=str(error) or type(error).__name__,
             )
-        summary = _summarize(getattr(result, "result", None) if result is not None else None)
+        # The run's final answer — payload like any other, and the last one that
+        # was still going out under `capture_messages=False`.
+        summary = self.capture(getattr(result, "result", None) if result is not None else None)
         if summary is None and error is not None:
             # `summary` is a promoted column and `agent_end` is where the
             # dashboard reads a run's outcome. Without this a failed run says
@@ -777,7 +841,7 @@ class _State:
             hook_name=method,
             hook_id=span_id,
             trigger_event="workflow_step",
-            input=_summarize(incoming),
+            input=self.capture(incoming),
             **_core.fw_fields(
                 step=method,
                 input_event=type(incoming).__name__ if incoming is not None else None,
@@ -813,7 +877,7 @@ class _State:
             hook_name=span.name,
             hook_id=span.span_id,
             outcome=outcome,
-            output=_summarize(result),
+            output=self.capture(result),
             error=_error_text(error) if error is not None else None,
             **_core.fw_fields(
                 step=span.name,
@@ -863,7 +927,7 @@ class _State:
             parent_key=parent_span_id,
             tool_name=tool_name,
             tool_call_id=call_id,
-            input=kwargs if isinstance(kwargs, dict) else None,
+            input=(kwargs if isinstance(kwargs, dict) else None) if self.capture_messages else None,
             **_core.fw_fields(span_id=span_id, tool_id=raw_id),
         )
 
@@ -929,7 +993,7 @@ class _State:
                 model=leaf.model,
                 request_id=leaf.call_id,
                 role=getattr(getattr(message, "role", None), "value", None),
-                content=_summarize(content),
+                content=self.capture(content),
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 usage=usage,
@@ -947,9 +1011,9 @@ class _State:
         # pass it, so it is deliberately absent here.
         payload: Any
         if leaf.kind == "retrieval":
-            payload = summarize_nodes(output) if error is None else None
+            payload = (summarize_nodes(output) if error is None else None) if self.capture_messages else None
         else:
-            payload = _summarize(getattr(output, "content", None) or output)
+            payload = self.capture(getattr(output, "content", None) or output)
         self.tracker.emit(
             "tool_result",
             leaf.span_id,
@@ -980,7 +1044,7 @@ class _State:
         run = self._runs.get(span.run_id) if span.run_id else None
         waiter = getattr(err, "add", None)
         waiter_id = getattr(waiter, "waiter_id", None) or uuid.uuid4().hex
-        prompt = _summarize(getattr(waiter, "waiter_event", None))
+        prompt = self.capture(getattr(waiter, "waiter_event", None))
         pause_id = f"{waiter_id}:{uuid.uuid4().hex[:8]}"
 
         # The tool that paused will be re-run from scratch when the human
@@ -1063,8 +1127,8 @@ class _State:
                 # model events in the dashboard's detail panel; no SDK set it
                 # before this work, so nothing was pairing.
                 request_id=span_id,
-                messages=_messages(messages) if self.capture_messages else None,
-                system=_summarize(prompt) if self.capture_messages else None,
+                messages=_messages(messages, self.capture_limit) if self.capture_messages else None,
+                system=self.capture(prompt),
                 **_core.fw_fields(span_id=span_id),
             )
 
@@ -1100,7 +1164,7 @@ class _State:
                 parent_key=parent_id,
                 tool_name=name,
                 tool_call_id=span_id,
-                input={"query": _summarize(query)},
+                input=({"query": self.capture(query)} if self.capture_messages else None),
                 **_core.fw_fields(span_id=span_id, kind="retrieval"),
             )
 

@@ -1490,3 +1490,77 @@ def test_the_adapter_joins_a_hand_written_agent_scope(instrumented, tmp_path):
     starts = only(events, "agent_start")
     assert [start["agent_id"] for start in starts] == ["planner", "calc"]
     assert starts[1]["parent_id"] == "planner"
+
+
+@pytest.fixture
+def instrumented_without_content(tmp_path):
+    """`instrumented`, with the documented regulated-data switch turned off."""
+    _core.set_strict(False)
+    _compat.set_strict_integrations(False)
+    _core.reset_failures()
+    _runtime.writer.set_flush_interval(3600)
+    assert failproofai_sdk.instrument("llama_index", capture_messages=False) == (
+        "llama_index",
+    )
+    try:
+        yield adapter_module.adapter
+    finally:
+        failproofai_sdk.uninstrument("llama_index")
+        _core.set_strict(None)
+        _compat.set_strict_integrations(None)
+        _core.reset_failures()
+
+
+def test_capture_messages_off_records_no_payload_anywhere(
+    instrumented_without_content, tmp_path
+):
+    """The switch was consulted in ONE place and documented as covering all of them.
+
+    `capture_messages` gated only the messages and system prompt on
+    `model_start`. The model's completion, every tool call's arguments, every
+    tool's return value, every workflow-step input and output, the retrieval
+    query and the agent's goal were all still written to the spool and shipped —
+    so the setting looked like it had worked (prompts did stop) while the
+    answers, the arguments and the outputs did not.
+
+    `docs/start/integrations/llamaindex.mdx` presents this as the control for
+    regulated data, and `collector.redact` explicitly does not apply to SDK
+    events, so there was no second line of defence behind it.
+    """
+    llm = StubLLM(script=[("add", {"a": 111, "b": 222})], final="SECRET-COMPLETION")
+    run_agent(calculator(llm), "SECRET-PROMPT: what is 111+222?")
+
+    events = read_events(tmp_path)
+    assert events, "nothing was recorded at all; the test proves nothing"
+
+    blob = json.dumps(events)
+    for secret in ("SECRET-COMPLETION", "SECRET-PROMPT", "111", "222"):
+        assert secret not in blob, f"{secret!r} reached the spool with capture_messages=False"
+
+    # Structure, timings and outcomes are still recorded — that is the whole
+    # bargain the option offers, and an adapter that recorded nothing would
+    # pass the assertions above for the wrong reason.
+    kinds = types_of(events)
+    assert "agent_start" in kinds and "tool_use" in kinds and "model_request" in kinds
+
+
+def test_captured_values_are_not_capped_at_a_quarter_of_the_core_limit():
+    """512 was a quarter of the limit the LangChain adapter had just rejected.
+
+    `_summarize` renders every user-visible payload here, and this is the
+    RAG-first framework: a real retrieved context clears 512 characters many
+    times over, so the adapter documented as the way to see what your agent said
+    showed the first two sentences of it — with no option to raise it.
+    """
+    assert adapter_module._SUMMARY_LIMIT == _core.FIELD_LIMIT
+
+    state = adapter_module._State(capture_limit=32768)
+    assert len(state.capture("z" * 30000)) == 30000
+    assert state.tracker._field_limit == 32768
+
+    # A bad value must not take the adapter down: `instrument()` with no name
+    # installs every detected adapter with the same options, and `inf` is the
+    # obvious spelling of "capture everything".
+    assert adapter_module._capture_limit(float("inf")) == _core.FIELD_LIMIT
+    assert adapter_module._capture_limit("nope") == _core.FIELD_LIMIT
+    assert adapter_module._capture_limit(0) == _core.FIELD_LIMIT

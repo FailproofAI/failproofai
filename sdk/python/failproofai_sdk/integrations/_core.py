@@ -362,6 +362,28 @@ class _Cut:
         self.hit = False
 
 
+class _Budget:
+    """Remaining bytes for a whole event, spent as `_truncate` emits.
+
+    Mirrors `_size`'s accounting exactly — 8 for a scalar, `len` for a string,
+    plus `len(str(k))` per mapping key — because `payload()` compares what it
+    emits against `_size`, and a budget that counted differently would let the
+    two disagree about whether a field fits.
+    """
+
+    __slots__ = ("remaining",)
+
+    def __init__(self, total: int) -> None:
+        self.remaining = total
+
+    def spend(self, n: int) -> None:
+        self.remaining -= n
+
+    @property
+    def spent_out(self) -> bool:
+        return self.remaining <= 0
+
+
 def truncate(value: Any, limit: int = FIELD_LIMIT) -> Any:
     """Shrink a payload value to something a column store will tolerate.
 
@@ -373,19 +395,32 @@ def truncate(value: Any, limit: int = FIELD_LIMIT) -> Any:
     return _truncate(value, limit, _Cut(), 0)
 
 
-def _truncate(value: Any, limit: int, cut: _Cut, depth: int) -> Any:
+def _truncate(value: Any, limit: int, cut: _Cut, depth: int, budget: "_Budget | None" = None) -> Any:
     if value is None or isinstance(value, (bool, int, float)):
+        if budget is not None:
+            budget.spend(8)
         return value
     if isinstance(value, str):
-        if len(value) <= limit:
-            return value
-        cut.hit = True
-        return value[: max(limit - len(TRUNCATION_MARKER), 0)] + TRUNCATION_MARKER
+        if len(value) > limit:
+            cut.hit = True
+            value = value[: max(limit - len(TRUNCATION_MARKER), 0)] + TRUNCATION_MARKER
+        # The per-field limit bounds ONE string; the budget bounds the whole
+        # event. A structure whose leaves each fit under the limit used to sail
+        # past the budget entirely, because `payload()` re-truncated with
+        # `remaining` as the per-STRING limit — which changes nothing when every
+        # leaf is already shorter than it.
+        if budget is not None:
+            if len(value) > budget.remaining:
+                cut.hit = True
+                keep = max(budget.remaining - len(TRUNCATION_MARKER), 0)
+                value = value[:keep] + TRUNCATION_MARKER
+            budget.spend(len(value))
+        return value
     if isinstance(value, bytes):
-        return _truncate(value.decode("utf-8", "replace"), limit, cut, depth)
+        return _truncate(value.decode("utf-8", "replace"), limit, cut, depth, budget)
     if depth >= _MAX_DEPTH:
         cut.hit = True
-        return _truncate(repr(value), limit, cut, _MAX_DEPTH)
+        return _truncate(repr(value), limit, cut, _MAX_DEPTH, budget)
     # `Mapping`/`Sequence`, not `dict`/`list`. The concrete types missed every
     # mapping a framework actually hands us that is not literally a dict —
     # `MappingProxyType` (what `model_json_schema()` and any frozen config
@@ -403,16 +438,29 @@ def _truncate(value: Any, limit: int, cut: _Cut, depth: int) -> Any:
                 cut.hit = True
                 out["…"] = f"[{len(value) - _MAX_ITEMS} more keys truncated]"
                 break
-            out[str(k)] = _truncate(v, limit, cut, depth + 1)
+            if budget is not None:
+                if budget.spent_out:
+                    cut.hit = True
+                    out["…"] = f"[{len(value) - i} more keys truncated]"
+                    break
+                budget.spend(len(str(k)))
+            out[str(k)] = _truncate(v, limit, cut, depth + 1, budget)
         return out
     # `str`/`bytes` are Sequences too and are handled above, so they cannot
     # reach here; `Set` is a separate ABC and is not a `Sequence`.
     if isinstance(value, (Sequence, AbcSet)):
         items = list(value)
-        out_list = [_truncate(v, limit, cut, depth + 1) for v in items[:_MAX_ITEMS]]
-        if len(items) > _MAX_ITEMS:
-            cut.hit = True
-            out_list.append(f"[{len(items) - _MAX_ITEMS} more items truncated]")
+        out_list = []
+        for i, v in enumerate(items[:_MAX_ITEMS]):
+            if budget is not None and budget.spent_out:
+                cut.hit = True
+                out_list.append(f"[{len(items) - i} more items truncated]")
+                break
+            out_list.append(_truncate(v, limit, cut, depth + 1, budget))
+        else:
+            if len(items) > _MAX_ITEMS:
+                cut.hit = True
+                out_list.append(f"[{len(items) - _MAX_ITEMS} more items truncated]")
         return out_list
     # A dataclass or a pydantic model is DATA, and every framework hands us
     # them: a tool's argument model, its structured return, a settings object on
@@ -485,27 +533,46 @@ def _size(value: Any, _depth: int = 0) -> int:
     return len(repr(value))
 
 
-def payload(fields: dict, *, limit: int = FIELD_LIMIT, budget: int = EVENT_BUDGET) -> dict:
+def payload(
+    fields: dict,
+    *,
+    limit: int = FIELD_LIMIT,
+    budget: int = EVENT_BUDGET,
+    cut: "_Cut | None" = None,
+) -> dict:
     """Apply the per-field limit and the per-event budget to a dict of extras.
 
     Anything cut sets `fw_truncated=True`, so a surprising-looking payload in
     the dashboard is self-explaining rather than a mystery.
     """
-    out: dict[str, Any] = {}
-    remaining = budget
-    cut = _Cut()
-    for key, value in fields.items():
-        shrunk = _truncate(value, limit, cut, 0)
-        if remaining <= 0:
+    # Shared with the caller when it also truncated something — `_emit_now`
+    # cuts the DECLARED parameters itself, and `fw_truncated` has to mean "this
+    # event lost data", not "one of its metadata extras did".
+    cut = cut if cut is not None else _Cut()
+    spend = _Budget(budget)
+
+    # SMALLEST FIRST, spent in that order and emitted in the caller's. The
+    # budget binds either way, but insertion order decides WHICH keys survive
+    # it, and the adapters put the big payload before the metadata: an oversized
+    # `fw_inputs` consumed the whole event and took `fw_run_id` and `fw_node`
+    # with it — the two fields that say which run the payload belongs to. Sizing
+    # first costs a walk over the node count (`_size` is O(1) per string), not
+    # over the character count, so it is cheap even for the payloads this exists
+    # to contain. Ties keep insertion order, so a set of equal-sized fields still
+    # fills up in the order it arrived and the last of them are omitted whole.
+    sized = sorted(fields.items(), key=lambda kv: (_size(kv[1]) + len(kv[0]), ))
+    kept: dict[str, Any] = {}
+    for key, value in sized:
+        if spend.spent_out:
+            # Past the budget a field does not arrive short, it does not arrive
+            # at all — which is why the limit and the budget cannot move
+            # independently, and why `fw_truncated` has to be set here.
             cut.hit = True
             continue
-        size = _size(shrunk)
-        if size > remaining:
-            cut.hit = True
-            shrunk = _truncate(shrunk, remaining, cut, 0)
-            size = _size(shrunk)
-        remaining -= size
-        out[key] = shrunk
+        spend.spend(len(key))
+        kept[key] = _truncate(value, limit, cut, 0, spend)
+
+    out: dict[str, Any] = {k: kept[k] for k in fields if k in kept}
     if cut.hit:
         out["fw_truncated"] = True
     return out
@@ -559,8 +626,17 @@ def fw_fields(**kw: Any) -> dict:
     Keys are prefixed unless they already are, or are one of the deliberate
     top-level names. `None` values are dropped (the schema omits None optionals
     anyway, and an extra explicitly set to None would still occupy a key).
-    Values go through `truncate`. Flat only — `payload_key_expr` on the server
-    is single-level, so a nested dict is not queryable.
+    Flat only — `payload_key_expr` on the server is single-level, so a nested
+    dict is not queryable.
+
+    Values are NOT truncated here. They used to be, at the module-level
+    `FIELD_LIMIT` bound at import — so `instrument(..., capture_limit=32768)`
+    raised the ceiling for `input`/`output`/`messages`/`content` and left every
+    `fw_*` extra pinned at 8192, because the value was already cut before
+    `_emit_now` saw it and `payload()` can only cut further, never restore. Half
+    the event honoured the option and half did not, with nothing saying which.
+    Every call site splats the result into a tracker emit, so `payload()` — which
+    receives the tracker's real limit — is the one place that bounds them now.
     """
     out: dict[str, Any] = {}
     for key, value in kw.items():
@@ -570,7 +646,7 @@ def fw_fields(**kw: Any) -> dict:
             name = key
         else:
             name = _FW_PREFIX + key
-        out[name] = truncate(value)
+        out[name] = value
     return guard_extras(out)
 
 
@@ -963,17 +1039,25 @@ class RunTracker:
         # framework fills with a 200KB prompt.
         declared: dict[str, Any] = {}
         extras: dict[str, Any] = {}
+        # ONE `_Cut` across both halves. `truncate()` used to build a throwaway
+        # one per declared field and discard it, so `fw_truncated` — the only
+        # machine-readable "this event lost data" signal, and the field an
+        # operator filters on to find where — was set when a small `fw_*` extra
+        # was cut and NOT when the prompt or the completion was. Exactly the
+        # wrong way round: `output` is cut on essentially every real tool loop.
+        cut = _Cut()
         for key, value in fields.items():
             if value is None:
                 continue
             if key.startswith(_FW_PREFIX):
                 extras[key] = value
             else:
-                declared[key] = truncate(value, self._field_limit)
+                declared[key] = _truncate(value, self._field_limit, cut, 0)
         merged = payload(
             guard_extras({**self._base_fields, **extras}),
             limit=self._field_limit,
             budget=self._budget,
+            cut=cut,
         )
         # A base field named like a real parameter would be a duplicate keyword
         # (TypeError inside the customer's callback); the explicit value wins.

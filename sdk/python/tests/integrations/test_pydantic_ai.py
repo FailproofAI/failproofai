@@ -373,6 +373,16 @@ def test_framework_detail_rides_in_the_fw_namespace(instrumented, emitted):
 # ---------------------------------------------------------------------------
 
 def test_a_failing_tool_is_reported_on_its_own_span_and_the_run_once(instrumented, emitted):
+    """ONE report per failure, and the leaf owns it.
+
+    This asserted the opposite until the row list below was corrected: the run
+    emitted a standalone `error` for an exception `tool_result.error` had already
+    carried, so `sessionSummary.errorCount` read 2 for a single failing tool. The
+    identical failure under LangChain, LlamaIndex or CrewAI reported 1 — all
+    three suppress the second report explicitly, and say why — so error rates
+    were not comparable across frameworks and Pydantic AI runs looked twice as
+    failure-prone as they were.
+    """
     agent = Agent(one_shot_tool_model("explode", {"x": "1"}), name="boom_agent", retries=0)
 
     @agent.tool_plain
@@ -389,29 +399,19 @@ def test_a_failing_tool_is_reported_on_its_own_span_and_the_run_once(instrumente
         "model_response",
         "tool_use",
         "tool_result",
-        "error",
         "agent_end",
     ]
     (result,) = of_type(rows, "tool_result")
     assert result["error"] == "RuntimeError: kaboom"
 
-    # Exactly one standalone `error` event: the failure escaped the run, so no
-    # leaf span owns it. Two would double-count in sessionSummary.errorCount.
-    errors = of_type(rows, "error")
-    assert len(errors) == 1
-    assert errors[0]["error_type"] == "RuntimeError"
-    assert errors[0]["message"] == "kaboom"
-    # The traceback is trimmed from the FRONT, so the exception line — the only
-    # one anybody reads — survives a stack deeper than the 8KB field limit.
-    assert errors[0]["traceback"].rstrip().endswith("RuntimeError: kaboom")
+    # The span that owns the failure has reported it, so the run does not report
+    # it again. Zero standalone `error` events, not one.
+    assert of_type(rows, "error") == []
 
     # "failed", never "failure" — the server counts only
     # error|failed|timeout|rejected as a failure.
     (end,) = of_type(rows, "agent_end")
     assert end["outcome"] == "failed"
-    # ...and strictly after the error event: the dashboard closes the agent span
-    # at agent_end and anything after it is attributed to nothing.
-    assert types_of(rows).index("error") < types_of(rows).index("agent_end")
 
 
 def test_a_failing_model_request_closes_its_own_span_with_the_error(instrumented, emitted):
@@ -427,7 +427,6 @@ def test_a_failing_model_request_closes_its_own_span_with_the_error(instrumented
         "agent_start",
         "model_request",
         "model_response",
-        "error",
         "agent_end",
     ]
     (response,) = of_type(rows, "model_response")
@@ -437,7 +436,8 @@ def test_a_failing_model_request_closes_its_own_span_with_the_error(instrumented
     assert response["error"] == "RuntimeError: provider is down"
     assert response["request_id"] == of_type(rows, "model_request")[0]["request_id"]
     assert type(response["duration_ms"]) is int
-    assert len(of_type(rows, "error")) == 1
+    # The model span carries it; the run must not report it a second time.
+    assert of_type(rows, "error") == []
 
 
 def test_a_tool_retry_does_not_fail_the_run(instrumented, emitted):
@@ -1066,3 +1066,37 @@ class TestAntiDrift:
     def test_the_capability_is_constructible_and_orders_itself_outermost(self):
         ordering = FailproofAI().get_ordering()
         assert ordering.position == "outermost"
+
+
+def test_a_run_failure_no_leaf_owns_still_gets_its_one_error_event(instrumented, emitted):
+    """The other half of the suppression, and the one that must not over-correct.
+
+    Suppressing the run's `error` whenever a leaf reported one is right; doing it
+    unconditionally would leave a failure that no span owns with no error row at
+    all, so it reaches the Errors surface through nothing. Here the model and the
+    tool both succeed and the failure comes from output validation, so no leaf
+    carries it and `_end_run` is the only reporter left.
+    """
+    from pydantic_ai import ModelRetry
+
+    agent = Agent(
+        FunctionModel(lambda messages, info: ModelResponse(parts=[TextPart("nope")])),
+        name="validator_agent",
+        output_type=str,
+        retries=0,
+    )
+
+    @agent.output_validator
+    def reject(value: str) -> str:
+        raise ModelRetry("never acceptable")
+
+    with pytest.raises(Exception):
+        agent.run_sync("go")
+    rows = emitted()
+
+    errors = of_type(rows, "error")
+    assert len(errors) == 1, f"expected exactly one standalone error, got {types_of(rows)}"
+    assert of_type(rows, "agent_end")[0]["outcome"] == "failed"
+    # Strictly before agent_end: the dashboard closes the agent span there and
+    # anything after it is attributed to nothing.
+    assert types_of(rows).index("error") < types_of(rows).index("agent_end")

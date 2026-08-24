@@ -380,7 +380,7 @@ def _is_base_model(value: Any) -> bool:
 # ---------------------------------------------------------------------------
 
 class _RunState:
-    __slots__ = ("key", "scope", "spans", "closed")
+    __slots__ = ("key", "scope", "spans", "closed", "reported_error")
 
     def __init__(self, key: Any) -> None:
         self.key = key
@@ -389,6 +389,13 @@ class _RunState:
         # exists because a leaf can outlive its own run — see `_close_spans`.
         self.spans: dict[int, "_SpanState"] = {}
         self.closed = False
+        # Set when a leaf span closed carrying a non-None `error`. The run must
+        # not then emit a standalone `error` event for the same exception: all
+        # three sibling adapters suppress it (langchain's
+        # `session.reported_error`, llama_index's `run.errors == 0`, crewai
+        # emitting none at all) and for the same stated reason — one failure
+        # counted twice on `sessionSummary.errorCount`.
+        self.reported_error = False
 
 
 class _SpanState:
@@ -455,6 +462,20 @@ def _register_span(span: _SpanState) -> None:
         if run is not None:
             run.spans[id(span)] = span
             span.managed = True
+
+
+def _mark_reported_error(span: _SpanState) -> None:
+    """Record that a LEAF span carried this run's failure.
+
+    `span.key` is the owning run's key, and the run stays in `_open_runs` until
+    `_claim_run`, so it is still reachable here. `_end_run` reads the flag to
+    decide whether a standalone `error` event would be a second report of a
+    failure the leaf has already made.
+    """
+    with _runs_lock:
+        run = _open_runs.get(span.key)
+        if run is not None:
+            run.reported_error = True
 
 
 def _claim_span(span: _SpanState) -> bool:
@@ -680,17 +701,24 @@ class FailproofAI(AbstractCapability):
                 outcome, summary = "failed", None
                 # Strictly BEFORE agent_end — the dashboard closes the agent span
                 # at agent_end and anything after it is attributed to nothing.
-                # This is the one place a standalone `error` event is right: the
-                # failure escaped the run, so no leaf span owns it. A tool or
-                # model failure that the loop recovered from is reported only on
-                # its own span and never reaches here.
-                _tracker.emit(
-                    "error",
-                    state.key,
-                    error_type=type(exc).__name__,
-                    message=str(exc),
-                    traceback=_format_traceback(exc),
-                )
+                #
+                # Only when no leaf owns it. The comment here used to assert
+                # "no leaf span owns it", which is false for the escaping case:
+                # `_end_tool` and `_end_model` have ALREADY set `error` on the
+                # `tool_result`/`model_response` for this very exception, so a
+                # failing `@agent.tool_plain` produced BOTH `tool_result(error=…)`
+                # and a standalone `error`. `sessionSummary.errorCount` then read
+                # 2 for Pydantic AI and 1 for the identical failure under any
+                # other adapter, so error rates were not comparable across
+                # frameworks and Pydantic AI runs looked twice as failure-prone.
+                if not state.reported_error:
+                    _tracker.emit(
+                        "error",
+                        state.key,
+                        error_type=type(exc).__name__,
+                        message=str(exc),
+                        traceback=_format_traceback(exc),
+                    )
             # "failed", never "failure": the server counts only
             # error|failed|timeout|rejected as a failure.
             _tracker.end_agent(state.key, outcome=outcome, summary=summary, usage=usage)
@@ -756,6 +784,7 @@ class FailproofAI(AbstractCapability):
         error = None
         if exc is not None and not _is_control_flow(exc):
             error = _describe(exc)
+            _mark_reported_error(state)
         _tracker.emit(
             "model_response",
             None,
@@ -847,9 +876,10 @@ class FailproofAI(AbstractCapability):
         error = None
         if exc is not None and not _is_control_flow(exc):
             error = _describe(exc)
+            _mark_reported_error(state)
         # No `error` event here, ever. A tool failure the agent loop catches is
-        # not a run-level error, and one that escapes is reported exactly once,
-        # by `_end_run`.
+        # not a run-level error, and one that escapes is reported exactly once —
+        # HERE, on this span, which is why `_end_run` is now told about it.
         _tracker.emit(
             "tool_result",
             None,

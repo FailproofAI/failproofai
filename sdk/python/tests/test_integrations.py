@@ -1046,3 +1046,82 @@ def test_the_budget_omits_keys_rather_than_shortening_them():
     assert out["fw_truncated"] is True
     # The flag is the only signal — it does not enumerate what it removed.
     assert not any("fw_00" in str(v) for k, v in out.items() if k == "fw_truncated")
+
+
+class _HalfInstallingAdapter:
+    """An adapter whose `install()` does its global side effects, then raises.
+
+    That ordering is not contrived — it is what `langchain.install()` does: it
+    sets `_STATE.enabled`, registers the append-only configure hook, builds the
+    tracer and exports the env var, and only THEN probes a capability that can
+    raise.
+    """
+
+    NAME = "half"
+
+    def __init__(self, boom):
+        self.state = {"patched": False}
+        self._boom = boom
+
+    def install(self, **options):
+        self.state["patched"] = True
+        raise self._boom
+
+    def uninstall(self):
+        self.state["patched"] = False
+        return ()
+
+
+def _with_fake_adapter(monkeypatch, adapter):
+    monkeypatch.setitem(integrations._REGISTRY, "half", lambda: adapter)
+    monkeypatch.setattr(integrations, "_load", lambda name: adapter)
+    integrations._ACTIVE.pop("half", None)
+
+
+def test_an_install_that_raises_part_way_is_rolled_back(monkeypatch):
+    """`instrument()` treated `install()` as atomic. It is not.
+
+    A failure part-way through left the adapter FULLY patched and never recorded
+    in `_ACTIVE` — so `active()` denied it existed and `uninstrument()`, which
+    iterates `_ACTIVE`, could never undo it. It recorded for the life of the
+    process and could not be removed, while the log said the process was
+    unaffected.
+    """
+    adapter = _HalfInstallingAdapter(RuntimeError("framework internals moved"))
+    _with_fake_adapter(monkeypatch, adapter)
+    _core.set_strict(False)
+    _compat.set_strict_integrations(False)
+    try:
+        assert integrations.instrument("half") == ()
+        assert "half" not in integrations.active()
+        assert adapter.state["patched"] is False, (
+            "install failed but its global side effects were left in place"
+        )
+    finally:
+        _core.set_strict(None)
+        _compat.set_strict_integrations(None)
+        integrations._ACTIVE.pop("half", None)
+
+
+def test_strict_integrations_raises_instead_of_silently_disabling_the_adapter(monkeypatch):
+    """The flag promised loud, and delivered silent.
+
+    `FAILPROOFAI_SDK_STRICT_INTEGRATIONS=1` makes `_compat.warn` raise, and
+    `instrument()` caught it — because its own strict gate is a DIFFERENT
+    variable. So the operator got neither the raise the flag promises nor the
+    best-effort instrumentation the warning text promises ("Instrumenting
+    anyway"): the adapter was skipped entirely and recorded nothing.
+    """
+    adapter = _HalfInstallingAdapter(_compat.FailproofAICompatWarning("too new"))
+    _with_fake_adapter(monkeypatch, adapter)
+    _core.set_strict(False)
+    _compat.set_strict_integrations(True)
+    try:
+        with pytest.raises(_compat.FailproofAICompatWarning):
+            integrations.instrument("half")
+        # And it is still rolled back on the way out.
+        assert adapter.state["patched"] is False
+    finally:
+        _core.set_strict(None)
+        _compat.set_strict_integrations(None)
+        integrations._ACTIVE.pop("half", None)

@@ -179,11 +179,45 @@ def instrument(framework: str | None = None, **options: Any) -> tuple[str, ...]:
         for name in names:
             if name in _ACTIVE:
                 continue
+            adapter = None
             try:
                 adapter = _load(name)
                 adapter.install(**options)
-            except Exception:
+            except Exception as exc:
+                # An install is NOT atomic, so a failure part-way through leaves
+                # global state behind. `langchain.install()` sets `_STATE.enabled`,
+                # registers an append-only configure hook whose own uninstall
+                # comment says "There is no deregister API", builds the tracer and
+                # exports an env var — and only THEN probes a capability that can
+                # raise (a `_compat.probe` under FAILPROOFAI_SDK_STRICT_INTEGRATIONS=1
+                # always does). Catching here left the adapter fully patched and
+                # never recorded in `_ACTIVE`, so `active()` denied it existed and
+                # `uninstrument()` — which iterates `_ACTIVE` — could never undo it.
+                # It recorded for the life of the process and could not be removed.
+                if adapter is not None:
+                    try:
+                        adapter.uninstall()
+                    except Exception:
+                        logger.debug(
+                            "failproofai_sdk: rollback of a failed %r install did not "
+                            "complete cleanly",
+                            name,
+                            exc_info=True,
+                        )
                 if _core.strict():
+                    raise
+                # `FAILPROOFAI_SDK_STRICT_INTEGRATIONS=1` is documented as the
+                # supported way to make a compat problem loud — `_compat.py`'s
+                # own docstring calls warn-by-default "only defensible because
+                # there is a supported way to make it fail loudly". It was not
+                # one: the flag makes `_compat.warn` RAISE, this handler caught
+                # it, and the operator got neither behaviour — not the raise the
+                # flag promises, and not the best-effort instrumentation the
+                # warning text promises ("Instrumenting anyway"). An adapter
+                # silently recorded nothing while the log said it was fine.
+                if isinstance(exc, _compat.FailproofAICompatWarning) and (
+                    _compat.strict_integrations()
+                ):
                     raise
                 logger.warning(
                     "failproofai_sdk: could not instrument %r; the rest of your process is "

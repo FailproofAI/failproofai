@@ -102,6 +102,7 @@ plus ``agent_end(outcome="failed")`` on every human approval. Any
 `ParentCommand`, `GraphDrained` — is therefore treated as control flow.
 """
 
+import asyncio
 import contextvars
 import dataclasses
 import logging
@@ -208,6 +209,23 @@ except ImportError:  # pragma: no cover
 _CONTROL_FLOW_NAMES = frozenset(
     {"GraphBubbleUp", "GraphInterrupt", "NodeInterrupt", "ParentCommand", "GraphDrained"}
 )
+
+#: Python's OWN control flow, which this module's "Control flow is not failure"
+#: section was written about and then did not cover. `GeneratorExit` is thrown
+#: into a generator when a consumer stops iterating — `break` out of
+#: `for chunk in graph.stream(...)`, or a `StreamingResponse` whose client
+#: disconnects — and `CancelledError` is what `task.cancel()` delivers to
+#: `astream`. Both are BaseExceptions, so neither was `_is_control_flow`, and a
+#: stopped stream emitted a standalone `error` event with `error_type:
+#: "GeneratorExit"` plus `agent_end(outcome="failed")`. Every abandoned stream
+#: inflated `sessionSummary.errorCount` and flipped a healthy session to failed.
+#: The adapter already has a "cancelled" outcome for exactly this; it just never
+#: reached it here.
+_CANCELLATION_TYPES: tuple[type[BaseException], ...] = (GeneratorExit, asyncio.CancelledError)
+
+
+def _is_cancellation(exc: BaseException | None) -> bool:
+    return exc is not None and isinstance(exc, _CANCELLATION_TYPES)
 
 
 def _is_control_flow(exc: BaseException | None) -> bool:
@@ -997,14 +1015,21 @@ def _on_end(run: Any) -> None:
             )
         elif info.hidden:
             pass
-        elif info.kind == "node" or info.kind == "chain":
+        # `owned` tracks whether a SPAN was actually emitted for this run, which
+        # is what decides `reported_error` at the bottom.
+        owned = False
+        if info.kind == "node" or info.kind == "chain":
             _end_hook(run, info, meta, exc)
+            owned = True
         elif info.kind == "tool":
             _end_tool(run, info, meta, exc)
+            owned = True
         elif info.kind == "retriever":
             _end_retriever(run, info, meta, exc)
+            owned = True
         elif info.kind == "model":
             _end_model(run, info, meta, exc, response)
+            owned = True
 
         if info.kind == "node":
             # Strictly BEFORE the `_suspend` below: a node that answers one
@@ -1020,16 +1045,33 @@ def _on_end(run: Any) -> None:
         interrupts = _interrupts_of(exc)
         if interrupts and info.session is not None:
             _suspend(info.session, interrupts)
-        if exc is not None and not _is_control_flow(exc) and info.session is not None:
-            # The span that owns this failure has reported it. The root must not
-            # report it again, or `sessionSummary.errorCount` counts one failure
-            # twice — once on the leaf and once as a standalone `error` event.
+        if owned and exc is not None and not _is_control_flow(exc) and info.session is not None:
+            # `owned`, because this used to fire for EVERY non-root run carrying
+            # an exception — including the ones the branch above deliberately
+            # emitted nothing for: `info.kind == ""` (a RunnableSequence step, a
+            # prompt template, an output parser, a conditional-edge function) and
+            # `info.hidden`. No span owned those failures, but the root was told
+            # one had, so `_end_root` skipped the standalone `error` and the
+            # failure reached no surface at all: an ordinary
+            # `prompt | model | parser` chain whose parser raised produced only
+            # `agent_start` + `agent_end(failed)`, with no error row, no
+            # `error_type` and no traceback. The same exception in a BARE root
+            # lambda — the one shape with no intermediate run — did emit one,
+            # which is why the sibling test passed.
+            #
+            # When a span DID report it, suppressing here is still right:
+            # otherwise `sessionSummary.errorCount` counts one failure twice.
             info.session.reported_error = True
 
 
 def _outcome(run: Any, exc: BaseException | None) -> str:
     if _is_control_flow(exc):
         return "paused"
+    # Before `failed`, or an abandoned stream reads as a crash. `_close_open_leaves`
+    # already uses this outcome for a span nobody closed; a consumer that stopped
+    # iterating is the same event seen from the other end.
+    if _is_cancellation(exc):
+        return "cancelled"
     if exc is not None or getattr(run, "error", None):
         return "failed"
     return "success"
@@ -1155,6 +1197,13 @@ def _summarize_documents(outputs: Any) -> dict | None:
     docs = outputs.get("documents")
     if not isinstance(docs, (list, tuple)):
         return None
+    # The count is structure and survives `capture_content=False`; the SOURCES
+    # do not. A retrieval source is a document path — `s3://records/patient-1234
+    # -JOHN-DOE.txt` is the shape this actually takes on regulated data — so it
+    # is content by any reading of the option that promises "message bodies are
+    # not" recorded.
+    if not _STATE.options.capture_content:
+        return {"n": len(docs)}
     sources = []
     for index, doc in enumerate(docs[:10]):
         meta = getattr(doc, "metadata", None) or {}
@@ -1300,8 +1349,11 @@ def _end_root(run: Any, info: _RunInfo, meta: dict, exc: BaseException | None) -
         # human took. The agent is closed by the resuming `.invoke()`.
         return
 
-    failed = exc is not None and not _is_control_flow(exc)
-    if not failed and getattr(run, "error", None) and not _is_control_flow(exc):
+    # A cancelled run is not a failed one: no standalone `error`, and the
+    # `agent_end` below carries `outcome="cancelled"` rather than `"failed"`.
+    cancelled = _is_cancellation(exc)
+    failed = exc is not None and not _is_control_flow(exc) and not cancelled
+    if not failed and not cancelled and getattr(run, "error", None) and not _is_control_flow(exc):
         failed = True
 
     if failed and not session.reported_error:
@@ -1320,7 +1372,7 @@ def _end_root(run: Any, info: _RunInfo, meta: dict, exc: BaseException | None) -
 
     state.tracker.end_agent(
         session.agent_key,
-        outcome="failed" if failed else "success",
+        outcome="cancelled" if cancelled else ("failed" if failed else "success"),
         summary=_error_text(run, exc) if failed else None,
         **_fw_common(run, info, meta),
     )
@@ -1425,12 +1477,17 @@ def _suspend(session: _Session, interrupts: Iterable) -> None:
             continue
         prompt, options = _prompt_of(getattr(interrupt, "value", None))
         session.open_pauses[pause_id] = prompt
+        # `capture_content=False` has to cover these. In a real HITL graph the
+        # interrupt payload IS the record being approved, and the answer is the
+        # human's free text — the two most sensitive strings in the run. Both
+        # went to the spool regardless, while the page documenting the option
+        # promised "message bodies are not" recorded.
         _emit_on_agent(
             session,
             "human_wait",
             input_id=pause_id,
-            prompt=prompt,
-            options=options,
+            prompt=prompt if _STATE.options.capture_content else None,
+            options=options if _STATE.options.capture_content else None,
             reason="langgraph_interrupt",
             **fw_fields(interrupt_id=pause_id, kind="interrupt"),
         )
@@ -1475,9 +1532,37 @@ def _resume(session: _Session, run: Any) -> None:
             session,
             "human_input",
             input_id=pause_id,
-            response=_answer_for(answers, pause_id),
-            **fw_fields(interrupt_id=pause_id, prompt=prompt),
+            response=_answer_for(answers, pause_id) if _STATE.options.capture_content else None,
+            **fw_fields(
+                interrupt_id=pause_id,
+                prompt=prompt if _STATE.options.capture_content else None,
+            ),
         )
+
+
+def _is_graph_run(run: Any) -> bool:
+    """Is this run a Pregel/LangGraph invocation at all?
+
+    A resume is always a graph run, so this is a necessary condition and a cheap
+    one: langgraph stamps its checkpoint namespace and thread id into the run's
+    metadata, and neither appears on a plain runnable invoked with `None`.
+    """
+    meta = getattr(run, "metadata", None)
+    if isinstance(meta, dict) and (
+        "langgraph_checkpoint_ns" in meta
+        or "checkpoint_ns" in meta
+        or "thread_id" in meta
+        or "langgraph_step" in meta
+    ):
+        return True
+    # `configurable.thread_id` is where it lands when the run carries the config
+    # rather than the flattened metadata.
+    config = getattr(run, "config", None)
+    if isinstance(config, dict):
+        configurable = config.get("configurable")
+        if isinstance(configurable, dict) and configurable.get("thread_id"):
+            return True
+    return False
 
 
 _MISSING = object()
@@ -1512,7 +1597,19 @@ def _is_continuation(run: Any) -> bool:
     if value is _MISSING:
         return False
     if value is None:
-        return True
+        # `None` alone is NOT enough. langchain-core wraps any non-mapping input
+        # to any root runnable under `input`, so `some_runnable.invoke(None)`
+        # produces exactly the shape a LangGraph resume does — and a graph whose
+        # state schema happens to have a key named `input` reaches it too.
+        # Combined with the resume branch in `_start_root`, an unrelated
+        # heartbeat or summariser invoked with no argument during a pause was
+        # read as the human's answer: it got no `agent_start` of its own, its
+        # events were folded into the paused root, and the adapter emitted
+        # `agent_resume` + `human_input(response=None)` for a human who answered
+        # nothing, then closed the run `success` on an approval never given.
+        # That comment two frames up calls fabricating the approval "the worst
+        # wrong answer available", so require positive evidence instead.
+        return _is_graph_run(run)
     if _Command is not None and isinstance(value, _Command):
         return True
     # Duck-typed fallback for a moved/renamed `Command`.
@@ -2022,7 +2119,14 @@ def _capture_limit(value: Any) -> int:
         return _FIELD_LIMIT
     try:
         limit = int(value)
-    except (TypeError, ValueError):
+    # OverflowError, because `int(float("inf"))` raises it and neither of the
+    # other two catches it — so `capture_limit=inf`, the obvious spelling of
+    # "capture everything", propagated out of `_read_options` and out of
+    # `install()`, and `instrument()` skipped the adapter entirely while logging
+    # that "the rest of your process is unaffected". Under
+    # FAILPROOFAI_SDK_STRICT=1 it took application startup down. That is the one
+    # outcome this function's docstring says must not happen.
+    except (TypeError, ValueError, OverflowError):
         logger.warning(
             "failproofai_sdk: langchain capture_limit=%r is not an integer; using %d", value, _FIELD_LIMIT
         )

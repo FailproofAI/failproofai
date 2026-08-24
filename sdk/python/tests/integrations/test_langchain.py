@@ -2267,3 +2267,72 @@ def test_the_limit_is_read_per_call_not_bound_at_import(monkeypatch):
     assert adapter._field_limit() == 1234
     monkeypatch.setattr(adapter._STATE, "options", adapter._read_options({"capture_limit": 5678}))
     assert adapter._field_limit() == 5678
+
+
+# ---------------------------------------------------------------------------
+# `None` is not, by itself, evidence of a resume
+# ---------------------------------------------------------------------------
+
+def test_resuming_a_graph_with_a_bare_none_is_still_read_as_a_continuation(
+    tmp_path, instrumented
+):
+    """`graph.invoke(None, config)` is LangGraph's documented no-value resume.
+
+    Guards the fix below from over-correcting: requiring positive evidence that a
+    run is a graph run must not stop recognising the real thing. This graph
+    interrupts unconditionally, so `None` (which supplies no answer) interrupts
+    it a second time — the assertion is therefore that it stayed ONE run, not
+    that it completed.
+    """
+    app = build_graph(checkpointer=InMemorySaver())
+    config = {"configurable": {"thread_id": "hitl-none"}}
+    first = app.invoke(empty_state(), config=config)
+    assert "__interrupt__" in first
+    app.invoke(None, config=config)
+
+    rows = read_events(tmp_path)
+    # One run, one ROOT span: a continuation folds into the open root rather
+    # than opening a second one. (A subgraph child span is expected and is not
+    # a second root.)
+    roots = [e for e in only(rows, "agent_start") if e["agent_id"] == "root_graph"]
+    assert len(roots) == 1, "the resume opened a second root instead of continuing"
+    assert roots[0]["session_id"] == "hitl-none"
+    assert adapter._is_graph_run(
+        type("R", (), {"metadata": {"thread_id": "t"}, "inputs": {"input": None}})()
+    )
+
+
+def test_an_unrelated_runnable_invoked_with_none_is_not_the_humans_approval(
+    tmp_path, instrumented
+):
+    """`{"input": None}` is not specific to LangGraph.
+
+    langchain-core wraps ANY non-mapping input to ANY root runnable under the
+    `input` key, so `some_runnable.invoke(None)` produces byte-for-byte the shape
+    a no-value resume does. Combined with the resume branch in `_start_root`,
+    that made an unrelated run during a pause — a heartbeat, a summariser — get
+    read as the human's answer: no `agent_start` of its own, its events folded
+    into the paused root, and an `agent_resume` + `human_input(response=None)`
+    emitted for a human who answered nothing.
+
+    The sibling guard test only ever invoked the unrelated runnable with a fresh
+    STATE DICT, never with `None`, which is why this shape got through.
+    """
+    app = build_graph(checkpointer=InMemorySaver())
+    config = {"configurable": {"thread_id": "hitl-unrelated"}}
+    first = app.invoke(empty_state(), config=config)
+    assert "__interrupt__" in first
+
+    from langchain_core.runnables import RunnableLambda
+
+    RunnableLambda(lambda _: "beat").invoke(None)
+
+    rows = read_events(tmp_path)
+    # The pause is still open: nothing answered it.
+    assert only(rows, "human_input") == []
+    assert only(rows, "agent_resume") == []
+    # And the heartbeat got a root span of its own, in its own session, rather
+    # than being swallowed into the paused graph run.
+    beats = [e for e in only(rows, "agent_start") if e["agent_id"] == "RunnableLambda"]
+    assert len(beats) == 1
+    assert beats[0]["session_id"] != "hitl-unrelated"

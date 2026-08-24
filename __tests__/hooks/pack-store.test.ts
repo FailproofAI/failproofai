@@ -15,7 +15,7 @@ import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 
 import {
-  addPack, removePack, parsePackSpec, packAssetUrl, formatPackSpec, digestFor,
+  addPack, removePack, parsePackSpec, packAssetUrl, formatPackSpec, digestFor, fetchPackPreview,
 } from "@/src/hooks/pack-store";
 import { readInstalledPacks } from "@/src/hooks/pack-manifest";
 
@@ -56,6 +56,8 @@ let prevNoDownload: string | undefined;
 
 /** Mutable per-test release contents. */
 let assets: Record<string, string>;
+/** Every path the client asked for, so a test can assert what it did NOT ask for. */
+let requested: string[];
 let responseHeaders: Record<string, Record<string, string>>;
 /** What `releases/latest` redirects to, or null for a repo with no releases. */
 let latestTag: string | null;
@@ -95,8 +97,10 @@ beforeEach(async () => {
   // Serves ONLY the real release path, so a wrong owner/repo/tag 404s the way
   // GitHub would — which also makes these tests prove the URL is constructed
   // correctly rather than merely that some asset was fetched.
+  requested = [];
   server = createServer((req, res) => {
     const url = req.url ?? "";
+    requested.push(url);
     // `releases/latest` is a REDIRECT on github.com, not an API call — which is
     // how a tagless source resolves without a second origin or a rate limit.
     if (url === "/acme/finance/releases/latest") {
@@ -381,5 +385,52 @@ describe("removePack", () => {
     await addPack("github:acme/finance@v1.2.0");
     expect(removePack("other/pack")).toBe(false);
     expect(installed().packs).toHaveLength(1);
+  });
+});
+
+
+describe("fetchPackPreview — reading a pack without installing it", () => {
+  it("lists what the pack contains, tag resolved and pinned", async () => {
+    const preview = await fetchPackPreview("acme/finance");
+    expect(preview.id).toBe("acme/finance");
+    expect(preview.version).toBe("1.2.0");
+    expect(preview.resolvedFromLatest).toBe(true);
+    expect(preview.source).toBe("github:acme/finance@v1.2.0");
+    expect(preview.policies.map((p) => p.name)).toEqual([
+      "block-big-refund",
+      "require-approval-note",
+      "audit-log-writes",
+    ]);
+    // The publisher's own opinion travels with it, which is what a reader is
+    // deciding about.
+    expect(preview.policies.filter((p) => p.defaultEnabled)).toHaveLength(1);
+  });
+
+  it("NEVER downloads the entry artifact — looking at a pack must not run it", async () => {
+    await fetchPackPreview("acme/finance@v1.2.0");
+    expect(requested.some((u) => u.endsWith("failproofai-pack.json"))).toBe(true);
+    expect(requested.some((u) => u.endsWith("SHA256SUMS"))).toBe(true);
+    // The one that matters: the executable half is never even fetched, so a
+    // preview cannot execute a line of somebody else's code.
+    expect(requested.some((u) => u.endsWith("failproofai-pack.mjs"))).toBe(false);
+  });
+
+  it("installs nothing", async () => {
+    await fetchPackPreview("acme/finance@v1.2.0");
+    expect(readInstalledPacks().packs).toEqual([]);
+  });
+
+  it("still verifies the manifest against the release's checksums", async () => {
+    assets["failproofai-pack.json"] = assets["failproofai-pack.json"].replace("1.2.0", "9.9.9");
+    await expect(fetchPackPreview("acme/finance@v1.2.0")).rejects.toThrow(/integrity/i);
+  });
+
+  it("refuses to fetch when downloads are turned off", async () => {
+    process.env.FAILPROOFAI_NO_DOWNLOAD = "1";
+    await expect(fetchPackPreview("acme/finance@v1.2.0")).rejects.toThrow(/NO_DOWNLOAD/);
+  });
+
+  it("reports a source that resolves to nothing", async () => {
+    await expect(fetchPackPreview("nobody/nothing@v1.0.0")).rejects.toThrow();
   });
 });

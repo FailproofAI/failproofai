@@ -76,6 +76,11 @@ beforeEach(() => {
   };
   process.env.FAILPROOFAI_HOME = home;
   process.env.FAILPROOFAI_PACK_DIR = packRoot;
+  // User-scope hook settings resolve from the OS home, not FAILPROOFAI_HOME, so
+  // without this the listing reads whoever-runs-it's real ~/.claude/settings.json
+  // — and any other test file that writes there decides whether this one passes.
+  vi.stubEnv("HOME", home);
+  vi.stubEnv("USERPROFILE", home);
   out = [];
   vi.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
     out.push(String(chunk));
@@ -85,6 +90,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   for (const [key, value] of Object.entries(saved)) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;

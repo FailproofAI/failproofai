@@ -26,8 +26,27 @@ import { CliError } from "../cli-error";
 import { hookLogWarn } from "./hook-logger";
 import { customPoliciesDir, globalPolicyConfigFile } from "./fp-home";
 import { readActiveCloudManagedPolicies } from "./cloud-managed-policies";
+import { colorsEnabled } from "./tui";
 
 const VALID_POLICY_NAMES = new Set(BUILTIN_POLICIES.map((p) => p.name));
+
+/**
+ * NO_COLOR-aware ANSI wrappers, gated on tui.ts's single `colorsEnabled`
+ * predicate (`!!out.isTTY && !process.env.NO_COLOR`) — the same source of
+ * truth `audit/cli.ts` uses. When color is off (piped output, or NO_COLOR /
+ * `--no-color`) each helper returns the string unchanged, so the plain-text
+ * width and glyphs stay byte-identical minus the escape sequences.
+ */
+function ansiHelpers(out: NodeJS.WriteStream = process.stdout) {
+  const on = colorsEnabled(out);
+  const wrap = (code: string) => (s: string) => (on ? `\x1B[${code}m${s}\x1B[0m` : s);
+  return {
+    green: wrap("32"), // success ✓ / ON
+    yellow: wrap("33"), // warnings ⚠ / unknown key / MIXED / OBS
+    red: wrap("31"), // ✗ errors / file not found
+    dim: wrap("2"), // OFF / beta separator
+  };
+}
 
 /** Settings path for the Claude Code integration. Kept as a public export for `app/actions/get-hooks-config.ts`. */
 export function getSettingsPath(scope: HookScope, cwd?: string): string {
@@ -391,8 +410,9 @@ async function installHooksImpl(
   const duplicates = otherScopes.filter((s) => hooksInstalledInSettings(s, cwd));
   if (duplicates.length > 0) {
     const scopeList = duplicates.map((s) => `${s} (${scopeLabel(s)})`).join(", ");
+    const { yellow } = ansiHelpers();
     console.log();
-    console.log(`\x1B[33mWarning: Failproof AI hooks are also installed at ${scopeList}.\x1B[0m`);
+    console.log(yellow(`Warning: Failproof AI hooks are also installed at ${scopeList}.`));
     console.log(`Having hooks in multiple scopes may cause duplicate policy evaluation.`);
     console.log(`Use \`failproofai policies --uninstall --scope ${duplicates[0]}\` to remove the other installation,`);
     console.log(`or \`failproofai policies\` to see all scopes.`);
@@ -592,6 +612,7 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
  *   - Custom Hooks section if customPoliciesPath is set
  */
 export async function listHooks(cwd?: string): Promise<void> {
+  const { green, yellow, red, dim } = ansiHelpers();
   const config = readMergedHooksConfig(cwd);
   const enabledSet = new Set(config.enabledPolicies);
   const disabledCustomSet = new Set(config.disabledCustomPolicies ?? []);
@@ -621,13 +642,13 @@ export async function listHooks(cwd?: string): Promise<void> {
 
   const statusCol = 8;
   const printSimpleRow = (policy: { name: string; description: string }) => {
-    const mark = enabledSet.has(policy.name) ? `\x1B[32m\u2713\x1B[0m` : " ";
+    const mark = enabledSet.has(policy.name) ? green(`\u2713`) : " ";
     console.log(`  ${mark}${" ".repeat(statusCol - 1)}${policy.name.padEnd(nameColWidth)}${policy.description}`);
     printParamsSummary(policy.name, `  ${" ".repeat(statusCol)}`);
   };
   const printBetaSection = (printRow: (p: { name: string; description: string }) => void) => {
     if (betaPolicies.length > 0) {
-      console.log(`\n  \x1B[2m\u2500\u2500 Beta \u2500\u2500\x1B[0m`);
+      console.log(`\n  ${dim(`\u2500\u2500 Beta \u2500\u2500`)}`);
       for (const policy of betaPolicies) printRow(policy);
     }
   };
@@ -686,7 +707,7 @@ export async function listHooks(cwd?: string): Promise<void> {
       let row = "  ";
       for (const _scope of installedScopes) {
         if (enabled) {
-          row += `\x1B[32m\u2713 ON\x1B[0m` + " ".repeat(COL - 4);
+          row += green(`\u2713 ON`) + " ".repeat(COL - 4);
         } else {
           row += "  OFF" + " ".repeat(COL - 5);
         }
@@ -699,7 +720,7 @@ export async function listHooks(cwd?: string): Promise<void> {
     for (const policy of regularPolicies) printMultiScopeRow(policy);
 
     if (betaPolicies.length > 0) {
-      console.log(`\n  \x1B[2m\u2500\u2500 Beta \u2500\u2500\x1B[0m`);
+      console.log(`\n  ${dim(`\u2500\u2500 Beta \u2500\u2500`)}`);
       for (const policy of betaPolicies) printMultiScopeRow(policy);
     }
 
@@ -708,7 +729,7 @@ export async function listHooks(cwd?: string): Promise<void> {
     // Multi-scope warning
     const scopeNames = installedScopes.join(", ");
     console.log();
-    console.log(`\x1B[33m\u26A0 Hooks in multiple scopes (${scopeNames}).\x1B[0m`);
+    console.log(yellow(`\u26A0 Hooks in multiple scopes (${scopeNames}).`));
     console.log("  Consider keeping one. Remove with: failproofai policies --uninstall --scope <scope>\n");
   }
 
@@ -717,7 +738,7 @@ export async function listHooks(cwd?: string): Promise<void> {
     const unknownKeys: string[] = [];
     for (const key of Object.keys(config.policyParams)) {
       if (!builtinPolicyNames.has(key)) {
-        console.log(`  \x1B[33mWarning: unknown policyParams key "${key}" — possible typo\x1B[0m`);
+        console.log(`  ${yellow(`Warning: unknown policyParams key "${key}" — possible typo`)}`);
         unknownKeys.push(key);
       }
     }
@@ -742,17 +763,17 @@ export async function listHooks(cwd?: string): Promise<void> {
       const absPath = resolve(findProjectConfigDir(cwd ?? process.cwd()), path);
       console.log(`  ${absPath}`);
       if (!existsSync(absPath)) {
-        console.log(`  \x1B[31m\u2717 File not found: ${absPath}\x1B[0m`);
+        console.log(`  ${red(`\u2717 File not found: ${absPath}`)}`);
         continue;
       }
       const hooks = await loadCustomHooks(absPath);
       if (hooks.length === 0) {
-        console.log(`  \x1B[31m\u2717 ERR  failed to load (check ~/.failproofai/logs/hooks.log)\x1B[0m`);
+        console.log(`  ${red(`\u2717 ERR  failed to load (check ~/.failproofai/logs/hooks.log)`)}`);
       } else {
         const descColWidth = nameColWidth;
         for (const hook of hooks) {
           const disabled = disabledCustomSet.has(`custom:${absPath}:${hook.name}`);
-          const status = disabled ? "\x1B[2m  OFF\x1B[0m" : "\x1B[32m\u2713 ON\x1B[0m";
+          const status = disabled ? dim(`  OFF`) : green(`\u2713 ON`);
           console.log(`  ${status}    ${hook.name.padEnd(descColWidth)}${hook.description ?? ""}`);
         }
       }
@@ -814,7 +835,7 @@ export async function listHooks(cwd?: string): Promise<void> {
         const filename = basename(file);
         record(filename, hooks.map((h) => h.name));
         if (hooks.length === 0) {
-          console.log(`  \x1B[31m\u2717\x1B[0m       ${filename.padEnd(colWidth)}\x1B[31mfailed to load\x1B[0m`);
+          console.log(`  ${red(`\u2717`)}       ${filename.padEnd(colWidth)}${red(`failed to load`)}`);
         } else {
           const hookStates = hooks.map((hook) => ({
             hook,
@@ -822,10 +843,10 @@ export async function listHooks(cwd?: string): Promise<void> {
           }));
           const disabledCount = hookStates.filter((entry) => entry.disabled).length;
           const status = disabledCount === 0
-            ? "\x1B[32m\u2713 ON\x1B[0m"
+            ? green(`\u2713 ON`)
             : disabledCount === hooks.length
-              ? "\x1B[2m  OFF\x1B[0m"
-              : "\x1B[33m\u25D0 MIXED\x1B[0m";
+              ? dim(`  OFF`)
+              : yellow(`\u25D0 MIXED`);
           const hookSummary = hookStates
             .map(({ hook, disabled }) => `${hook.name}${disabled ? " (OFF)" : ""}`)
             .join(", ");
@@ -834,7 +855,7 @@ export async function listHooks(cwd?: string): Promise<void> {
       } catch {
         const filename = basename(file);
         record(filename, []);
-        console.log(`  \x1B[31m\u2717\x1B[0m       ${filename.padEnd(colWidth)}\x1B[31merror\x1B[0m`);
+        console.log(`  ${red(`\u2717`)}       ${filename.padEnd(colWidth)}${red(`error`)}`);
       }
     }
     console.log();
@@ -862,7 +883,7 @@ export async function listHooks(cwd?: string): Promise<void> {
         // that read "ON" would claim enforcement this policy deliberately is
         // not doing.
         const status =
-          artifact.effect === "observe" ? "\x1B[33m\u25D0 OBS\x1B[0m" : "\x1B[32m\u2713 ON\x1B[0m";
+          artifact.effect === "observe" ? yellow(`\u25D0 OBS`) : green(`\u2713 ON`);
         console.log(`  ${status}    ${artifact.id.padEnd(colWidth)}v${artifact.version}`);
       }
       console.log("\n  Managed from the dashboard \u2014 not switchable with `failproofai policies`.");

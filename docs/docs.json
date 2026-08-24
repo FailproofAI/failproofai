@@ -51,7 +51,7 @@
         "icon": "x-twitter"
       },
       {
-        "label": "⭐ 1.1k",
+        "label": "⭐ 1.5k",
         "href": "https://github.com/FailproofAI/failproofai",
         "icon": "github"
       }
@@ -82,17 +82,15 @@
                   "start/first-policy",
                   "start/setup",
                   "start/concepts",
-                  "start/integrations",
                   {
-                    "group": "Plug in your agents",
+                    "group": "Starter templates",
                     "expanded": false,
                     "pages": [
-                      "start/integrations/how-it-works",
-                      "start/integrations/custom-agents",
-                      "start/integrations/langchain",
-                      "start/integrations/crewai",
-                      "start/integrations/llamaindex",
-                      "start/integrations/pydantic-ai"
+                      "start/quickstarts/custom-agents",
+                      "start/quickstarts/langchain",
+                      "start/quickstarts/crewai",
+                      "start/quickstarts/llamaindex",
+                      "start/quickstarts/pydantic-ai"
                     ]
                   }
                 ]
@@ -118,6 +116,16 @@
                   "sessions/metrics",
                   "sessions/dashboards",
                   "sessions/queries"
+                ]
+              },
+              {
+                "group": "Plug in your agent",
+                "pages": [
+                  "start/integrations/custom-agents",
+                  "start/integrations/langchain",
+                  "start/integrations/crewai",
+                  "start/integrations/llamaindex",
+                  "start/integrations/pydantic-ai"
                 ]
               }
             ]
@@ -188,7 +196,7 @@
                 "pages": [
                   "reference/overview",
                   "reference/harnesses",
-                  "reference/python-sdk",
+                  "reference/custom-agents",
                   "reference/evaluator-sdk",
                   "reference/policy-sdk",
                   "reference/self-hosting"
@@ -209,7 +217,8 @@
               {
                 "group": "HTTP API",
                 "expanded": false,
-                "openapi": "reference/openapi.json"
+                "openapi": "reference/openapi.json",
+                "pages": []
               }
             ]
           }
@@ -2179,5 +2188,15 @@
   },
   "seo": {
     "indexing": "navigable"
-  }
+  },
+  "redirects": [
+    {
+      "source": "/reference/python-sdk",
+      "destination": "/reference/custom-agents"
+    },
+    {
+      "source": "/start/integrations/how-it-works",
+      "destination": "/start/integrations/custom-agents"
+    }
+  ]
 }

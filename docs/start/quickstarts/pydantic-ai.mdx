@@ -1,0 +1,42 @@
+---
+title: "Pydantic AI"
+description: "Install, instrument, and see your first trace."
+icon: "/images/frameworks/pydantic-ai.svg"
+---
+
+Three steps to your first Pydantic AI trace. For tools, retries, streaming, and options, see [the full guide](/start/integrations/pydantic-ai).
+
+## Install
+
+```bash
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+## Instrument
+
+```python
+import failproofai_sdk
+from pydantic_ai import Agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # before constructing any Agent
+
+agent = Agent("openai:gpt-4o-mini", system_prompt="Be terse.")
+
+with failproofai_sdk.session():
+    result = agent.run_sync("...")
+```
+
+<Warning>
+  `instrument()` must run **before** you construct an `Agent`. The capability is appended at construction, so an agent built earlier records nothing — with no error, because nothing went wrong. This is the most common cause of an empty trace with this adapter, and module-scope agents are where it bites: import `failproofai_sdk` and call `instrument()` before importing the module that builds them.
+</Warning>
+
+## Check it arrived
+
+Run it once, then open **Observe → Sessions** and select your environment. Your run appears as a reconstructed trace.
+
+If nothing arrives, confirm the machine is connected with `failproofai config --status`.
+
+<Card title="Full Pydantic AI guide" icon="arrow-right" href="/start/integrations/pydantic-ai">
+  What gets recorded, tools and retries, streaming, span naming, options, and common problems.
+</Card>

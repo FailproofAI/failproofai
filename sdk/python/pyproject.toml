@@ -37,7 +37,7 @@ classifiers = [
 Homepage = "https://befailproof.ai"
 # The live route. `/agenteye/python-sdk` is a 404 — see fp-cli's pyproject for
 # the full reasoning; PyPI bakes this into published metadata.
-Documentation = "https://docs.befailproof.ai/reference/python-sdk"
+Documentation = "https://docs.befailproof.ai/reference/custom-agents"
 Source = "https://github.com/FailproofAI/failproofai"
 
 [project.optional-dependencies]

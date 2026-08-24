@@ -483,7 +483,7 @@ class EventWriter:
         #
         # RLock, not Lock, and that is load-bearing: signal handlers run on the
         # MAIN thread, interrupting whatever bytecode it was executing. The
-        # SIGTERM recipe this SDK publishes (SKILL.md, docs/reference/python-sdk
+        # SIGTERM recipe this SDK publishes (SKILL.md, docs/reference/custom-agents
         # .mdx) calls `flush_now()` from a handler, so a plain Lock deadlocks the
         # host process outright whenever the main thread is already inside
         # `_flush` — a second SIGTERM during the first handler's flush, an app

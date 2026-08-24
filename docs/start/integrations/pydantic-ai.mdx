@@ -2,7 +2,7 @@
 title: "Pydantic AI"
 sidebarTitle: "Pydantic AI"
 description: "Instrument typed agents, tools, model calls, and retries."
-icon: "badge-check"
+icon: "/images/frameworks/pydantic-ai.svg"
 ---
 
 ## Install
@@ -66,7 +66,7 @@ Agents built while instrumented keep the capability, so you can `uninstrument()`
 | `ModelRetry` from a tool | `tool_result` carrying an error |
 | Unhandled exception | `error`, then `agent_end` with outcome `failed` |
 
-There is no hook pair and no human-in-the-loop pair here. Pydantic AI has no node or step boundary to bracket and no built-in human pause, so there is nothing to map. If you build either, emit the events yourself — see [Custom agents](/start/integrations/custom-agents).
+There is no hook pair and no human-in-the-loop pair here. Pydantic AI has no node or step boundary to bracket and no built-in human pause, so there is nothing to map. If you build either, emit the events yourself — see [Custom agents](/reference/custom-agents).
 
 `output_type` makes no difference to the trace. A typed run and a string run produce the same events.
 
@@ -197,7 +197,7 @@ failproofai_sdk.instrument(
 ## Next
 
 <Columns cols={3}>
-  <Card title="How it works" icon="workflow" href="/start/integrations/how-it-works">
+  <Card title="How it works" icon="workflow" href="/start/integrations/custom-agents#going-deeper">
     Pairs, ids, session lifecycle, and delivery.
   </Card>
   <Card title="Read a trace" icon="route" href="/sessions/read-a-trace">

@@ -111,3 +111,31 @@ h1, h2, h3 {
   opacity: 1;
   transform: translate(-50%, 0);
 }
+
+/* ── Framework logos in the sidebar ──────────────────────────────────────────
+ *
+ * Mintlify renders a Lucide icon as an <svg> whose SHAPE comes from a CSS mask
+ * and whose COLOUR comes from `bg-current`, so it tracks the sidebar text in
+ * both themes. An icon given as a file path renders as a plain <img> instead —
+ * and `fill="currentColor"` inside an <img>-loaded SVG has no text context to
+ * inherit from, so it resolves to its initial value, black. On the dark sidebar
+ * that is black on near-black: the logos were there and invisible.
+ *
+ * Reproducing the mask does not work — an <img> keeps painting its own pixels,
+ * and the masked background never shows (verified headlessly; it rendered
+ * nothing at all). Recolouring the source SVGs is no better, since a fixed
+ * colour cannot satisfy both themes.
+ *
+ * A filter does. The art is monochrome, so inverting it in dark mode is exact
+ * rather than approximate, and the opacities below were measured against the
+ * real sidebar colours — `text-gray-700` on light, `dark:text-gray-400` on dark
+ * — so these sit at the same visual weight as the Lucide icons beside them.
+ */
+img[src^="/images/frameworks/"] {
+  opacity: 0.78;
+}
+
+.dark img[src^="/images/frameworks/"] {
+  filter: invert(1);
+  opacity: 0.7;
+}

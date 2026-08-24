@@ -11,7 +11,7 @@ A harness is whatever your agent actually runs inside. Failproof AI supports twe
 
 The same policies and the same session history apply whichever one an agent runs in. One adapter layer maps each harness's native event names, tool names, and tool-input fields onto 29 canonical events before any policy runs.
 
-An agent that runs in **none** of the twelve is instrumented directly with the [Python SDK](/reference/python-sdk). That is a different contract, and worth stating plainly: the SDK delivers tracing, sessions, evaluations and audits — **it does not enforce policies on its own.** Blocking an unsafe action before it executes needs an enforcement hook at your runtime's tool boundary; [contact us](mailto:support@befailproof.ai) and we will map it.
+An agent that runs in **none** of the twelve is instrumented directly with the [Python SDK](/reference/custom-agents). That is a different contract, and worth stating plainly: the SDK delivers tracing, sessions, evaluations and audits — **it does not enforce policies on its own.** Blocking an unsafe action before it executes needs an enforcement hook at your runtime's tool boundary; [contact us](mailto:support@befailproof.ai) and we will map it.
 
 | Harness | Supported hook scopes |
 | --- | --- |

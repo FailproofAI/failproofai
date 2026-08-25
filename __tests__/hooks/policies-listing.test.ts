@@ -110,7 +110,7 @@ describe("failproofai policies", () => {
   it("lists an installed pack's policies, which no listing did before", async () => {
     installPack();
     const text = await run();
-    expect(text).toContain("── Pack — acme/finance@1.2.0");
+    expect(text).toContain("━━ Pack — acme/finance@1.2.0");
     expect(text).toMatch(/block-big-refund/);
     expect(text).toMatch(/require-note/);
   });
@@ -158,8 +158,11 @@ describe("failproofai policies", () => {
 
   it("says nothing is installed, and what to run", async () => {
     const text = await run();
-    expect(text).toContain("not installed");
-    expect(text).toContain("failproofai policies --install");
+    expect(text).toContain("nothing installed");
+    // `config` rather than `policies --install`: setup is the guided path that
+    // wires the hooks, and with the Recommended/Customize fork gone it is one
+    // linear flow — daemon, harnesses, cloud.
+    expect(text).toContain("failproofai config");
   });
 
   it("never runs past the terminal edge", async () => {

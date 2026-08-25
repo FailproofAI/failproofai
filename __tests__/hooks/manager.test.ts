@@ -1098,7 +1098,7 @@ describe("hooks/manager", () => {
       await listHooks();
       const output = vi.mocked(console.log).mock.calls.map((c) => c[0]).join("\n");
 
-      expect(output).toContain("not installed");
+      expect(output).toContain("nothing installed");
       // Naming a builtin here would advertise enforcement that is not happening.
       expect(output).not.toContain("sanitize-jwt");
       expect(output).not.toContain("block-sudo");

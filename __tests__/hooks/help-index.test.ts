@@ -11,7 +11,7 @@
 // notices. So these drive the real binary and measure the rendered bytes.
 //
 // A note on the measurement, because getting it wrong makes the test lie: the
-// section rules are U+2500, three bytes each, so a line's UTF-8 byte length is
+// section rules are U+2501, three bytes each, so a line's UTF-8 byte length is
 // far larger than the width it occupies on screen. Terminal columns are what
 // matters, so every width here is `String.length` on the DECODED string, and
 // the premise that those two agree — no emoji, no wide characters — is itself
@@ -80,13 +80,13 @@ function indexLines(): string[] {
  * token of each alternative, and `(no args)` names no command at all.
  */
 function indexCommands(lines: string[]): string[] {
-  const firstRule = lines.findIndex((l) => l.includes("─"));
+  const firstRule = lines.findIndex((l) => l.includes("━"));
   expect(firstRule).toBeGreaterThan(-1);
 
   const rows: string[] = [];
   for (const line of lines.slice(firstRule)) {
     if (line.trim() === "") break;
-    if (line.includes("─")) continue;
+    if (line.includes("━")) continue;
     rows.push(line);
   }
 
@@ -127,20 +127,20 @@ describe("failproofai --help — the screen that replaced the manual", () => {
     // column wide, so `String.length` IS the display width. An emoji or a
     // full-width character here would make the check above silently wrong.
     const exotic = [...INDEX.join("\n")].filter(
-      (ch) => ch.codePointAt(0)! > 126 && ch !== "─",
+      (ch) => ch.codePointAt(0)! > 126 && ch !== "━",
     );
     expect(exotic).toEqual([]);
 
     // And the distinction is live, not theoretical: a rule line really does
     // carry more bytes than columns, so measuring a Buffer would have failed
     // the 80-column check on a screen that fits perfectly.
-    const rule = INDEX.find((line) => line.includes("─"));
+    const rule = INDEX.find((line) => line.includes("━"));
     expect(rule).toBeDefined();
     expect(Buffer.byteLength(rule!, "utf8")).toBeGreaterThan(rule!.length);
   });
 
   it("keeps the four sections it groups the commands into", () => {
-    const rules = INDEX.filter((line) => line.includes("─"));
+    const rules = INDEX.filter((line) => line.includes("━"));
     expect(rules).toHaveLength(4);
   });
 

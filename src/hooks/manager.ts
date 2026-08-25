@@ -867,25 +867,47 @@ export async function listHooks(cwd?: string): Promise<void> {
       return 0;
     }
   })();
-  groups.push(
-    title(
-      "failproofai policies",
-      installedScopes.length === 0
-        ? "not installed"
-        : `${installedScopes.join(" + ")} · ${packCount} on`,
-      opts,
-    ),
-  );
+  // `installedScopes` is about HOOKS — whether any agent CLI is wired to call
+  // us — and it says nothing about whether policies exist. Reporting it as
+  // "not installed" above a listing of an installed pack was a flat
+  // contradiction, and it hid the state that actually matters: a machine can
+  // hold thirty-eight policies and enforce none of them, because nothing is
+  // calling failproofai at all. That is the worst of the three states and it
+  // used to read like the emptiest.
+  const packsPresent = (() => {
+    try {
+      return readInstalledPacks().packs.length > 0;
+    } catch {
+      return false;
+    }
+  })();
+  const subtitle =
+    installedScopes.length > 0
+      ? `${installedScopes.join(" + ")} · ${packCount} on`
+      : packsPresent
+        ? `${packCount} on · NOT ENFORCING`
+        : "nothing installed";
+  groups.push(title("failproofai policies", subtitle, opts));
 
   if (installedScopes.length === 0) {
     groups.push(
-      nextStep(
-        "failproofai policies --install",
-        config.enabledPolicies.length > 0
-          ? "These are configured but NOT installed — no hook is running them:"
-          : "Nothing is installed yet. Get started with:",
-        opts,
-      ),
+      packsPresent
+        ? warning(
+            [
+              "These policies are installed but NOTHING is running them.",
+              "No agent CLI on this machine is wired to call failproofai, so every",
+              "policy below is inert. Wire it up with:",
+              "  failproofai config",
+            ],
+            opts,
+          )
+        : nextStep(
+            "failproofai config",
+            config.enabledPolicies.length > 0
+              ? "These are configured but NOT installed — no hook is running them:"
+              : "Nothing is set up yet. Get started with:",
+            opts,
+          ),
     );
   }
   // Held back to the end rather than printed here. Everything below this point

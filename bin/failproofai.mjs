@@ -372,22 +372,22 @@ see docs.befailproof.ai. Denials are reported to the agent, never to you.
     console.log(`
 failproofai v${version}                       -v version   -h this screen
   Usage  failproofai <command> [options]    Detail  failproofai help <command>
-  ── 1  GET IT RUNNING ───────────────────────────────────────────────────────
+  ━━ 1  GET IT RUNNING ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   config, setup       Interactive setup: agents, daemon, cloud
   update              Finish an npm upgrade: migrate home, match daemon
-  ── 2  CHOOSE WHAT IT ENFORCES ──────────────────────────────────────────────
+  ━━ 2  CHOOSE WHAT IT ENFORCES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   policies            Every policy on this machine, and whether it is on
   policies add        Pick from a list, or name one: <policy> or <owner>/<repo>
   policies remove     Turn one policy off, or uninstall a whole pack
   policies show       What a pack contains, before you install it
   policies -i / -u    Wire failproofai into your agent CLIs
   publish             Ship your own policies as a pack anyone can install
-  ── 3  SEE WHAT IT CAUGHT ───────────────────────────────────────────────────
+  ━━ 3  SEE WHAT IT CAUGHT ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   (no args)           Open the policy dashboard on localhost:8020
   audit               Scan your agents' history, then open the audit view
   config --status     Cloud connection, daemon version, pause state
   harness             Extra paths to capture agent sessions from
-  ── 4  PUT IT RIGHT ─────────────────────────────────────────────────────────
+  ━━ 4  PUT IT RIGHT ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   config --pause      Pause enforcement for one session (30m; max 8h)
   flush               Deliver everything already spooled, right now
   backfill            Re-send history the collector already read past

@@ -159,39 +159,30 @@ const ttyIO = () => ({ stdin: mkTtyStdin(), stdout: mkTtyStdout() });
 /**
  * Queue answers for a wizard run BY NAME rather than by position.
  *
- * The wizard's step order is a product decision that has already changed once
- * (policies moved ahead of assistants, a connect step replaced the old
- * AgentEye question). Positional `mockResolvedValueOnce` chains meant every
- * such change broke every test at once and each had to be re-counted by hand
- * — which is exactly the kind of churn that tempts someone to "fix" a test by
- * loosening it. Naming the steps keeps a reorder to a one-line change here.
+ * The wizard's step order is a product decision that has already changed twice
+ * (policies moved ahead of assistants and then left entirely; the
+ * Recommended/Customize fork and the scope question both went). Positional
+ * `mockResolvedValueOnce` chains meant every such change broke every test at
+ * once and each had to be re-counted by hand — which is exactly the kind of
+ * churn that tempts someone to "fix" a test by loosening it. Naming the steps
+ * keeps a reorder to a one-line change here.
  *
- * Current order — selectOne: mode, target, connect, review.
+ * Current order — selectOne: connect, review.
  *                 multiSelect: assistants.
  * `undefined` means "this step is not reached in this test".
  *
- * There is no policy step any more: setup asks nothing about what to enforce,
- * so `multiSelect` is asked exactly once, for the harnesses.
+ * There is no policy step and no scope step. Setup asks nothing about what to
+ * enforce, and scope is GLOBAL always — a project-scoped install guards the one
+ * directory it was run from and silently leaves every other repo unguarded. So
+ * `multiSelect` is asked exactly once, for the harnesses, and `selectOne` twice.
  */
 function drive(answers: {
-  /**
-   * Recommended-vs-customize step, asked first on every run.
-   *
-   * Defaults to "customize" when omitted, so every test written against the
-   * four-question wizard keeps describing the flow it was written for. A test
-   * that wants the one-keystroke path says so explicitly.
-   */
-  mode?: "recommended" | "customize" | null;
-  /** Scope step. Omitted when the run is expected to abort before it. */
-  target?: "user" | "project" | "both" | null;
   clis?: string[] | null;
   connect?: "key" | "local" | null;
   review?: "apply" | "cancel" | null;
 }) {
   const one = vi.mocked(selectOne);
   const many = vi.mocked(multiSelect);
-  one.mockResolvedValueOnce(("mode" in answers ? answers.mode : "customize") as never);
-  if ("target" in answers) one.mockResolvedValueOnce(answers.target as never);
   if ("connect" in answers) one.mockResolvedValueOnce(answers.connect as never);
   if ("review" in answers) one.mockResolvedValueOnce(answers.review as never);
   if ("clis" in answers) many.mockResolvedValueOnce(answers.clis as never);
@@ -199,7 +190,6 @@ function drive(answers: {
 
 /** The happy path: global scope, Claude, stay local, apply. */
 const HAPPY = {
-  target: "user" as const,
   clis: ["claude"],
   connect: "local" as const,
   review: "apply" as const,
@@ -334,7 +324,7 @@ describe("configure-wizard pure builders", () => {
     // line does not visibly lose its tail — it ends mid-slug and reads as a
     // policy name that does not exist.
     for (const line of reviewLines({
-      target: "both",
+      target: "user",
       clis: ["claude"],
       policies: [...FOURTEEN_ENABLED],
       cwd: "/tmp/proj",
@@ -439,7 +429,7 @@ describe("configure-wizard pure builders", () => {
 
 describe("configure-wizard orchestration", () => {
   it("installs at the chosen scope, tagged as the wizard, REPLACING the enabled set", async () => {
-    drive({ target: "user", clis: ["claude"], connect: "local", review: "apply" });
+    drive({ clis: ["claude"], connect: "local", review: "apply" });
 
     const result = await runConfigureWizard(ttyIO());
 
@@ -499,38 +489,40 @@ describe("configure-wizard orchestration", () => {
     expect(call[8]).toEqual({ replace: true, quiet: true }); // empty set REPLACES
   });
 
-  it("Recommended applies globally to the detected harnesses", async () => {
-    // The whole point of the path: scope and harnesses are never asked. Only
-    // mode and connect are answered here, and the run still applies — if the
-    // wizard had reached the harness prompt it would hang on an unmocked
-    // multiSelect rather than pass.
-    drive({ mode: "recommended", connect: "local", review: "apply" });
+  it("applies globally, always — scope is not a question any more", async () => {
+    // Scope was a fork, and it is gone: a project-scoped install guards the one
+    // directory the command was run from and silently leaves every other repo
+    // on the machine unguarded. `policies --install --scope project` is still
+    // there for somebody who genuinely wants that and knows they do.
+    drive({ clis: ["claude"], connect: "local", review: "apply" });
 
     const result = await runConfigureWizard(ttyIO());
 
     expect(result.applied).toBe(true);
     const call = vi.mocked(installHooks).mock.calls[0];
     expect(call[1]).toBe("user"); // global, never the cwd's project
-    expect(call[7]).toEqual(["claude"]); // detected only — the mock detects claude
     expect(call[8]).toEqual({ replace: true, quiet: true });
   });
 
-  it("Recommended never asks the harness prompt", async () => {
-    drive({ mode: "recommended", connect: "local", review: "apply" });
+  it("always asks which harnesses, because that is the one thing it cannot infer", async () => {
+    // The old Recommended path SKIPPED this and took whatever was detected —
+    // which quietly wired failproofai into agents the user never named. It is
+    // asked on every run now, with the detected ones pre-ticked so the common
+    // answer is still one keystroke.
+    drive({ clis: ["claude"], connect: "local", review: "apply" });
     await runConfigureWizard(ttyIO());
-    // `multiSelect` is the primitive the skipped step uses.
-    expect(multiSelect).not.toHaveBeenCalled();
+    expect(vi.mocked(multiSelect).mock.calls).toHaveLength(1);
   });
 
   it("'Everything available' protects every supported CLI", async () => {
-    drive({ target: "user", clis: ["__all_clis__"], connect: "local", review: "apply" });
+    drive({ clis: ["__all_clis__"], connect: "local", review: "apply" });
     await runConfigureWizard(ttyIO());
     const call = vi.mocked(installHooks).mock.calls[0];
     expect(call[7]).toEqual([...INTEGRATION_TYPES]); // all CLIs, regardless of detection
   });
 
   it("keeps a minimum of one on the harness step, which is the only one asked", async () => {
-    drive({ target: "user", clis: ["claude"], connect: "local", review: "apply" });
+    drive({ clis: ["claude"], connect: "local", review: "apply" });
 
     await runConfigureWizard(ttyIO());
 
@@ -553,7 +545,7 @@ describe("configure-wizard orchestration", () => {
     const repoConfig = resolve(process.cwd(), ".failproofai", "policies-config.json");
     const before = existsSync(repoConfig) ? readFileSync(repoConfig, "utf8") : null;
 
-    drive({ target: "project", clis: ["claude"], connect: "local", review: "apply" });
+    drive({ clis: ["claude"], connect: "local", review: "apply" });
     await runConfigureWizard(ttyIO());
 
     const after = existsSync(repoConfig) ? readFileSync(repoConfig, "utf8") : null;
@@ -561,14 +553,16 @@ describe("configure-wizard orchestration", () => {
   });
 
   it("cancelling at the review step makes no changes", async () => {
-    drive({ target: "user", clis: ["claude"], connect: "local", review: "cancel" });
+    drive({ clis: ["claude"], connect: "local", review: "cancel" });
     const result = await runConfigureWizard(ttyIO());
     expect(result.applied).toBe(false);
     expect(installHooks).not.toHaveBeenCalled();
   });
 
-  it("cancelling at the scope step makes no changes", async () => {
-    vi.mocked(selectOne).mockResolvedValueOnce(null); // scope → quit
+  it("cancelling at the first question makes no changes", async () => {
+    // That question is the HARNESS step now — the scope and mode forks that used
+    // to precede it are gone, so a ctrl-c lands on `multiSelect`, not `selectOne`.
+    vi.mocked(multiSelect).mockResolvedValueOnce(null as never); // harnesses → quit
     const result = await runConfigureWizard(ttyIO());
     expect(result.applied).toBe(false);
     expect(installHooks).not.toHaveBeenCalled();
@@ -627,7 +621,7 @@ describe("first-run redirect", () => {
   });
 
   it("runs the wizard on a fresh first run but does NOT mark seen if cancelled", async () => {
-    vi.mocked(selectOne).mockResolvedValueOnce(null); // wizard cancels immediately
+    vi.mocked(multiSelect).mockResolvedValueOnce(null as never); // wizard cancels immediately
     const handled = await maybeFirstRunConfigure(ttyIO());
     expect(handled).toBe(true); // it took over the turn (no dashboard)
     expect(hasSeenLauncher()).toBe(false); // cancelled → not marked → redirects again next time
@@ -637,7 +631,7 @@ describe("first-run redirect", () => {
   });
 
   it("marks the launcher seen only after a completed apply", async () => {
-    drive({ target: "user", clis: ["claude"], connect: "local", review: "apply" });
+    drive({ clis: ["claude"], connect: "local", review: "apply" });
     const handled = await maybeFirstRunConfigure(ttyIO());
     expect(handled).toBe(true);
     expect(installHooks).toHaveBeenCalledTimes(1);
@@ -732,7 +726,7 @@ describe("scope-aware assistant selection", () => {
       }),
     );
     try {
-      drive({ target: "user", clis: ["__all_clis__"], connect: "local", review: "apply" });
+      drive({ clis: ["__all_clis__"], connect: "local", review: "apply" });
 
       await runConfigureWizard({ stdin: mkTtyStdin(), stdout });
 
@@ -748,13 +742,17 @@ describe("scope-aware assistant selection", () => {
   });
 
   it("applies to only the scope-supported CLIs when Everything available is ticked", async () => {
-    drive({ target: "project", clis: ["__all_clis__"], connect: "local", review: "apply" });
+    // Measured against USER scope now, because that is the only scope setup
+    // writes. Under the old project/both options this had to exclude the
+    // gateways with no project config; at user scope every integration
+    // qualifies, and the assertion is that none is silently dropped.
+    drive({ clis: ["__all_clis__"], connect: "local", review: "apply" });
 
     await runConfigureWizard(ttyIO());
 
     const clis = vi.mocked(installHooks).mock.calls[0]![7] as IntegrationType[];
-    expect(clis.length).toBe(clisSupportingScope("project").length);
-    for (const id of clis) expect(getIntegration(id).scopes).toContain("project");
+    expect(clis.length).toBe(clisSupportingScope("user").length);
+    for (const id of clis) expect(getIntegration(id).scopes).toContain("user");
   });
 });
 
@@ -1100,10 +1098,10 @@ describe("configure-wizard daemon integration", () => {
     expect(installDaemonService).toHaveBeenCalledTimes(1);
   });
 
-  it("installs the daemon at project scope too — it is machine-level, not per-project", async () => {
+  it("installs the daemon before anything else, because it is the only step needing a password", async () => {
     vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
     vi.mocked(installDaemonService).mockResolvedValue({ installed: true });
-    drive({ ...HAPPY, target: "project" });
+    drive(HAPPY);
 
     await runConfigureWizard(ttyIO());
 
@@ -1194,56 +1192,27 @@ describe("configure-wizard daemon integration", () => {
     expect(connected).toContain("transcripts");
   });
 });
-describe("scope targets", () => {
-  it("installs once per scope when Both is chosen", async () => {
-    drive({ ...HAPPY, target: "both" });
-
-    const result = await runConfigureWizard(ttyIO());
-
-    expect(result.applied).toBe(true);
-    expect(result.scopes).toEqual(["user", "project"]);
-    expect(installHooks).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(installHooks).mock.calls.map((c) => c[1])).toEqual(["user", "project"]);
-  });
-
-  it("installs once for a single scope", async () => {
+describe("scope", () => {
+  // The wizard can no longer produce "project" or "both": scope was a fork, and
+  // the fork is gone. What used to be tested here — the union across scopes, the
+  // per-scope filtering of a user-scope-only gateway like Hermes — is still real
+  // in `installHooks`, but it is no longer REACHABLE from setup, so asserting
+  // the wizard does it would be asserting a path nobody can take. Those live on
+  // in `manager`'s own tests, against the function that still has them.
+  it("installs exactly once, at user scope", async () => {
     drive(HAPPY);
     const result = await runConfigureWizard(ttyIO());
     expect(result.scopes).toEqual(["user"]);
     expect(installHooks).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(installHooks).mock.calls[0][1]).toBe("user");
   });
 
-  it("keeps a user-scope-only gateway when Both is chosen", async () => {
-    // Hermes and OpenClaw have no project config. Taking the INTERSECTION of
-    // what both scopes support would silently drop them and protect less than
-    // the user ticked, so the selection is the UNION across scopes.
-    drive({ ...HAPPY, target: "both", clis: ["claude", "hermes"] });
-    await runConfigureWizard(ttyIO());
-    expect(vi.mocked(installHooks).mock.calls[0][7]).toContain("hermes");
-  });
-
-  it("does not hand a user-scope-only gateway to the project pass", async () => {
-    // The union above is right, and passing it unfiltered to EVERY scope was
-    // not. `installHooksImpl` validates each CLI against the scope up front and
-    // throws `Scope "project" is not supported by Hermes` — it does not skip,
-    // despite the comment here that said it did. With no try/catch around the
-    // loop the wizard died mid-apply, after the daemon was installed,
-    // `daemonConfigured` was set and user-scope hooks were written, and before
-    // any project config or the pasted cloud key. Reachable from the plainest
-    // possible answers: "Both" + "Everything available".
-    drive({ ...HAPPY, target: "both", clis: ["claude", "hermes"] });
-    await runConfigureWizard(ttyIO());
-
-    const [userCall, projectCall] = vi.mocked(installHooks).mock.calls;
-    expect(userCall[1]).toBe("user");
-    expect(userCall[7]).toContain("hermes");
-    expect(projectCall[1]).toBe("project");
-    expect(projectCall[7]).not.toContain("hermes");
-    expect(projectCall[7]).toContain("claude");
-  });
-
-  it("writes nothing when cancelled at the scope step", async () => {
-    drive({ target: null });
+  it("writes nothing when cancelled at the harness step, the first question asked", async () => {
+    // The scope step was the old first cancellation point. With it gone, the
+    // harness step is where a ctrl-c lands, and it must still leave the machine
+    // untouched — the daemon is installed BEFORE this, so "nothing was changed"
+    // has to mean nothing about hooks or config.
+    drive({ clis: null });
     const result = await runConfigureWizard(ttyIO());
     expect(result.applied).toBe(false);
     expect(result.abort).toBe("cancelled");
@@ -1339,12 +1308,11 @@ describe("connect step", () => {
 
   it("lets a bad key be skipped, and still applies everything else", async () => {
     vi.mocked(validateIngestKey).mockResolvedValue({ ok: false, reason: "401" });
-    // mode -> customize, scope, connect -> key, then the retry question ->
-    // skip, then review. Queued positionally rather than through `drive()`
-    // because the retry prompt is conditional and has no name there.
+    // connect -> key, then the retry question -> skip, then review. Queued
+    // positionally rather than through `drive()` because the retry prompt is
+    // conditional and has no name there. Two answers shorter than it was: the
+    // mode fork and the scope question are both gone.
     vi.mocked(selectOne)
-      .mockResolvedValueOnce("customize")
-      .mockResolvedValueOnce("user")
       .mockResolvedValueOnce("key")
       .mockResolvedValueOnce("skip")
       .mockResolvedValueOnce("apply");
@@ -1387,7 +1355,7 @@ describe("connect step", () => {
   });
 
   it("writes nothing when cancelled at the connect step", async () => {
-    drive({ target: "user", clis: ["claude"], connect: null });
+    drive({ clis: ["claude"], connect: null });
     const result = await runConfigureWizard(ttyIO());
     expect(result.applied).toBe(false);
     expect(installHooks).not.toHaveBeenCalled();
@@ -1402,7 +1370,7 @@ describe("wizard back-navigation", () => {
   // — the scope question is frequently stated rather than asked — a ← would
   // sometimes go nowhere, which is worse than not offering one.
   it("offers no ← on the harness step, because there is nothing to go back to", async () => {
-    drive({ target: "user", clis: ["claude"], connect: "local", review: "apply" });
+    drive({ clis: ["claude"], connect: "local", review: "apply" });
 
     await runConfigureWizard(ttyIO());
 

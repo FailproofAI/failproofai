@@ -601,6 +601,46 @@ export async function runPublishCommand(rest: string[]): Promise<PackCliResult> 
   return publish(rest);
 }
 
+/**
+ * The pack's own list, defaults pre-ticked, before anything is installed.
+ *
+ * Reads the MANIFEST only — `fetchPackPreview` never downloads the entry
+ * artifact — so the code of a pack you are still deciding about is never
+ * fetched, let alone imported.
+ *
+ * Returns null when the user cancelled, which must not be confused with an
+ * empty selection: one means "install nothing", the other means "do nothing".
+ */
+async function pickFromSource(
+  source: string,
+  io: { stdin: TTYIn; stdout: TTYOut },
+): Promise<string[] | null> {
+  const preview = await fetchPackPreview(source);
+  const categories = [...new Set(preview.policies.map((p) => p.category))];
+  const rows: MultiChoice<string>[] = [];
+  for (const category of categories) {
+    for (const policy of preview.policies.filter((p) => p.category === category)) {
+      rows.push({
+        label: policy.name,
+        value: policy.name,
+        hint: policy.description,
+        checked: policy.defaultEnabled,
+        section: `${category} · ${slugifyCategory(category)}`,
+      });
+    }
+  }
+  const on = preview.policies.filter((p) => p.defaultEnabled).length;
+  const picked = await multiSelect<string>({
+    message: `${preview.id}@${preview.version} — which of these should be on?`,
+    choices: rows,
+    summaryNoun: "policies",
+    hint: `space toggles · ctrl+a all · ↵ confirm · ${on} of ${rows.length} are the publisher's defaults`,
+    stdin: io.stdin,
+    stdout: io.stdout,
+  });
+  return picked;
+}
+
 async function add(rest: string[]): Promise<PackCliResult> {
   const source = packAddSource(rest);
   const selection = selectionFrom(rest);
@@ -625,6 +665,31 @@ async function add(rest: string[]): Promise<PackCliResult> {
   }
   if (selection.categories && selection.categories.length === 0) {
     return fail(["--category needs at least one category, comma-separated"]);
+  }
+
+  // CHOOSE, then install. A pack's `defaultEnabled` flags are the publisher's
+  // recommendation, and taking them silently turns a recommendation into a
+  // decision made on the user's behalf — announced only afterwards, by which
+  // point the policies are already on their machine.
+  //
+  // So a human at a terminal who named no flags gets the list first, with the
+  // publisher's defaults pre-ticked. The manifest is read WITHOUT downloading
+  // the entry artifact, so deciding about a stranger's pack still never runs a
+  // stranger's code.
+  //
+  // Skipped entirely when a selection was passed (`--policy`, `--category`,
+  // `--all`) or when there is no terminal: a script asked a precise question and
+  // must get a precise answer, not a prompt it cannot see.
+  const io = { stdin: process.stdin as TTYIn, stdout: process.stdout as TTYOut };
+  const chose = !selection.only && !selection.categories && !selection.all;
+  if (chose && io.stdin.isTTY && io.stdout.isTTY) {
+    const picked = await pickFromSource(resolvedSource!, io);
+    if (picked === null) return ok(["Nothing installed."]);
+    selection.only = picked;
+    // An empty pick is a real answer — install the pack, enable none of it —
+    // but `{only: []}` is indistinguishable from "no selection" downstream, so
+    // it is carried as an explicit empty list the resolver can see.
+    if (picked.length === 0) selection.only = [];
   }
 
   try {

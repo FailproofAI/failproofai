@@ -108,7 +108,7 @@ const RADIO_OFF = "○";
 export const CHECK_ON = "◼";
 export const CHECK_OFF = "◻";
 export const CARET = "❯";
-const FLOWER = "❋";
+const MARK = "\u25AE\u25AE"; // ▮▮ — the brand mark, per the design system
 
 // ── color ─────────────────────────────────────────────────────────────────
 // The single source of truth for the brand palette — exported (via `paint`)
@@ -380,7 +380,7 @@ export function renderBrandLogo(stdout: TTYOut = process.stdout): string[] {
   const c = paint(colorsEnabled(stdout));
   const cols = stdout.columns || 80;
   if (cols < LOGO_MIN_COLS) {
-    return [`${c.guide(FLOWER)} fa${c.pink("il")}proof ai  ${c.dim("· " + TAGLINE)}`];
+    return [`${c.pink(MARK)} fa${c.pink("il")}proof ai  ${c.dim("· " + TAGLINE)}`];
   }
   // NO_COLOR / non-TTY forces `basic`, which renderLogo draws monochrome — so
   // the mark never emits an escape byte on a stream that asked for none.
@@ -1238,9 +1238,9 @@ export function rule(label?: string, opts?: RenderOpts): string[] {
   const { cols, c } = ctx(opts);
   const width = Math.max(4, cols - INDENT.length * 2);
   if (!label) return [`${INDENT}${c.dim("─".repeat(width))}`];
-  const head = `── ${label} `;
+  const head = `━━ ${label} `;
   const tail = Math.max(3, width - head.length);
-  return [`${INDENT}${c.dim(head + "─".repeat(tail))}`];
+  return [`${INDENT}${c.dim(head + "━".repeat(tail))}`];
 }
 
 export interface Row {
@@ -1415,7 +1415,7 @@ const CHIP_LABELS: Record<ChipState, string> = {
   locked: "✓ LOCK",
   cloud: "✓ CLOUD",
   pack: "✓ PACK",
-  failed: "⚠ FAIL",
+  failed: "\u25B2 FAIL",
   observe: "◉ OBS",
 };
 
@@ -1486,7 +1486,7 @@ function gutterBlock(symbol: string, lines: string[], opts?: RenderOpts): string
  *  scopes or six about the daemon. */
 export function warning(lines: string[], opts?: RenderOpts): string[] {
   const { c } = ctx(opts);
-  return gutterBlock(c.warn("⚠"), lines, opts);
+  return gutterBlock(c.warn("\u25B2"), lines, opts);
 }
 
 /** The same, for the ones that destroy something. */

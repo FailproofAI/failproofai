@@ -89,7 +89,6 @@ import {
 import {
   detectSetupState,
   isConfigured,
-  buildTargetChoices,
   scopesFor,
   type SetupTarget,
 } from "./setup-state";
@@ -893,86 +892,24 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
 
   // 0 — Recommended, or choose everything yourself?
   //
-  // Setup used to open by asking four questions — scope, policy bundles,
-  // harnesses, cloud — of somebody who has just installed the tool and does not
-  // yet know what any of them mean. Every one of those answers has a defensible
-  // default, so asking for all four up front is making the person least able to
-  // answer do the most work.
+  // ONE linear flow, and no opening fork.
   //
-  // Recommended is not a shortcut past the decisions; it IS a decision, taken
-  // once, here, on their behalf: global scope, the CLIs actually on this
-  // machine, and `RECOMMENDED_POLICIES` — which is written out in
-  // policy-presets.ts with the reasoning for every inclusion and every
-  // omission, because "what does Recommended do" has to be answerable without
-  // reading code.
+  // Setup used to ask "Recommended or Customize?" before anything else, which
+  // is a question about the wizard rather than about the machine — you cannot
+  // answer it until you know what the alternatives are, and you only learn that
+  // by picking one. Recommended then silently took global scope, the detected
+  // CLIs, and fifteen policies nobody had seen.
   //
-  // Customize is the wizard exactly as it was. Nothing is removed and nothing
-  // is hidden; it stops being the only way through.
-  const detectedNow = detectInstalledClis();
-  const recommendedClis = detectedNow.filter((id) => clisSupportingScope("user").includes(id));
-  const mode = await selectOne<"recommended" | "customize">({
-    message: "Set up failproofai",
-    choices: [
-      {
-        label: "Recommended",
-        value: "recommended",
-        hint: recommendedClis.length
-          ? `${recommendedClis.length} detected ${recommendedClis.length === 1 ? "CLI" : "CLIs"} · global`
-          : "global",
-      },
-      {
-        label: "Customize",
-        value: "customize",
-        hint: "choose scope and harnesses",
-      },
-    ],
-    stdin,
-    stdout,
-  });
-  if (mode === null) return cancel();
-
-  // 1 — Where? Inferred from cwd, then confirmed.
-  //
-  // Running from inside a project and running from a home directory are two
-  // different intents, and asking a context-free "global or project?" made the
-  // user restate something they had already expressed by choosing where to run
-  // the command. So the choices are built from what actually exists here — and
-  // labelled Update vs Set up accordingly — with the likelier target first.
-  const setupState = detectSetupState(cwd);
-  const targetChoices = buildTargetChoices(setupState);
-
-  let target: SetupTarget;
-  if (mode === "recommended") {
-    // Global, always. A project-scoped install guards the one directory the
-    // command happened to be run from and silently leaves every other repo on
-    // the machine unguarded — which is the opposite of what somebody choosing
-    // "Recommended" is asking for.
-    target = "user";
-  } else if (targetChoices.length === 1) {
-    // From a home directory there is no project to configure, so there is no
-    // question to ask. Say what is about to happen rather than silently
-    // deciding it.
-    target = targetChoices[0].value;
-    stdout.write(`Configuring ${targetChoices[0].label.toLowerCase()} — ${targetChoices[0].hint}.\n\n`);
-  } else {
-    const chosen = await selectOne<SetupTarget>({
-      message: "What are we configuring?",
-      choices: targetChoices.map((c) => ({
-        label: c.label,
-        value: c.value,
-        hint: c.hint,
-      })),
-      stdin,
-      stdout,
-    });
-    if (chosen === null) return cancel();
-    target = chosen;
-  }
+  // What is left is three questions, in the order the machine needs them:
+  // the daemon (already installed above, because it is the only step that needs
+  // a password), then which harnesses, then whether to connect. Scope is not
+  // among them: it is GLOBAL, always. A project-scoped install guards the one
+  // directory the command happened to be run from and silently leaves every
+  // other repo on the machine unguarded — `failproofai policies --install
+  // --scope project` is still there for someone who genuinely wants that, and
+  // knows they do.
+  const target: SetupTarget = "user";
   const scopes = scopesFor(target);
-  // The scope whose CURRENT state seeds the pickers below. With "Both" the
-  // project is the more specific of the two and the one the user is standing
-  // in, so it wins; anything it does not define still falls back to global at
-  // merge time, which is exactly the layering the policy loader already does.
   const primaryScope: HookScope = scopes.includes("project") ? "project" : "user";
 
   // 2 — Which harnesses?
@@ -1001,15 +938,14 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   // An "Everything available" row protects every supported CLI (detected +
   // set-up-ahead); when ticked it wins over the individual boxes.
   //
-  // No `allowBack`: with the policy step gone there is nothing before this
-  // inside setup to return to — the scope question is frequently not asked at
-  // all (a single choice is stated, not prompted), so a ← here would sometimes
-  // go nowhere. That also retires the loop this step used to sit in, and the
-  // carried-selection machinery the loop needed.
+  // Always asked, never inferred. This is the one decision setup genuinely
+  // cannot make for you: which agents on this machine should be guarded. The
+  // detected ones are pre-ticked, so the common answer is a single keypress.
+  //
+  // No `allowBack`: with the policy step and the scope fork both gone, there is
+  // nothing inside setup to return to.
   let clisSel: string[];
-  if (mode === "recommended") {
-    clisSel = recommendedClis;
-  } else {
+  {
     const picked = await multiSelect<string>({
       message: "Which harnesses should it protect?",
       choices: [

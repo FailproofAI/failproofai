@@ -6,10 +6,10 @@
  * This layer decides nothing; it formats.
  */
 import { execFileSync } from "node:child_process";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 import { INTEGRATION_TYPES } from "./types";
 import { PACK_VERSION_RE } from "./pack-manifest";
 import { detectInstalledClis } from "./integrations";
@@ -582,6 +582,7 @@ async function ensureRepo(
   name: string,
   id: string,
   token: string,
+  sourceDir?: string,
 ): Promise<{ info: Awaited<ReturnType<typeof gh>>; created: boolean } | { error: string[] }> {
   let info = await gh(`${GITHUB_API}/repos/${owner}/${name}`, token);
   let created = false;
@@ -601,7 +602,15 @@ async function ensureRepo(
         name,
         private: false,
         description: `failproofai policy pack — ${id}`,
-        auto_init: true,
+        // NOT auto_init. The author already has the commit that holds these
+        // policies; a repository seeded with its own "Initial commit" shares
+        // no history with it, so the `git push` that every publish is followed
+        // by is rejected as unrelated — and the way out (`pull --allow-
+        // unrelated-histories`, or a force-push over the seed) is a worse
+        // first five minutes than an empty repository, which accepts the push
+        // as-is. Releases do not need a commit to hang from: the tag is
+        // created against whatever the release API is given.
+        auto_init: false,
       }),
     });
     if (made.status >= 400) {
@@ -617,12 +626,116 @@ async function ensureRepo(
       };
     }
     created = true;
+    // A repository created with no commits has no default branch, and the
+    // release API tags the default branch — so something has to land on it
+    // before the release is cut. Pushing the author's own history is the
+    // version that leaves a usable repository behind; seeding is the fallback
+    // for a pack that is not in a git checkout at all.
+    if (!(sourceDir && pushExistingHistory(sourceDir, owner, name, token))) {
+      await seedDefaultBranch(owner, name, id, token);
+    }
     info = await gh(`${GITHUB_API}/repos/${owner}/${name}`, token);
   }
   if (info.status >= 400) {
     return { error: [`Could not read ${owner}/${name}: ${ghError(info)}`] };
   }
   return { info, created };
+}
+
+/**
+ * Push the checkout the policies live in to the repository just created for
+ * them, and report whether it landed.
+ *
+ * Why publish pushes at all: it created the repository, so it owns the one
+ * moment when pushing cannot conflict with anything. The repository used to be
+ * created with `auto_init`, which meant GitHub wrote an "Initial commit" the
+ * author did not have — so the `git push` that every publish is followed by was
+ * rejected as unrelated history, every time, for everybody. Seeding it and
+ * pushing it are the same job; doing only the first left the author to
+ * reconcile two histories by hand.
+ *
+ * It also makes the tag mean something. The release tags the default branch, so
+ * against a seeded repository `1.0.0` named a README commit that did not
+ * contain a single one of the policies it shipped.
+ *
+ * The token goes in through GIT_ASKPASS, never in the URL or the argv: a remote
+ * with a credential in it is written into `.git/config` in plaintext, and one on
+ * a command line is readable from `ps` by every user on the box.
+ */
+export const __pushExistingHistoryForTest = (
+  dir: string,
+  owner: string,
+  name: string,
+  token: string,
+): boolean => pushExistingHistory(dir, owner, name, token);
+
+function pushExistingHistory(dir: string, owner: string, name: string, token: string): boolean {
+  const git = (args: string[], env?: Record<string, string>): string | null => {
+    try {
+      return execFileSync("git", args, {
+        cwd: dir,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 60_000,
+        env: env ? { ...process.env, ...env } : process.env,
+      }).trim();
+    } catch {
+      return null;
+    }
+  };
+  const branch = git(["rev-parse", "--abbrev-ref", "HEAD"]);
+  // No commits yet (`HEAD` unborn) means there is nothing to push and nothing
+  // to conflict with later either.
+  if (!branch || branch === "HEAD" || !git(["rev-parse", "--verify", "HEAD"])) return false;
+
+  const askpass = join(mkdtempSync(join(tmpdir(), "fpai-askpass-")), "askpass.sh");
+  try {
+    writeFileSync(askpass, `#!/bin/sh\ncase "$1" in\n*Username*) echo x-access-token ;;\n*) echo "$FPAI_GH_TOKEN" ;;\nesac\n`, { mode: 0o700 });
+    const env = { GIT_ASKPASS: askpass, FPAI_GH_TOKEN: token, GIT_TERMINAL_PROMPT: "0" };
+    const url = `${GITHUB_GIT}/${owner}/${name}.git`;
+    // Name the remote FIRST when there is not one, so the push can be `-u` and
+    // leave the branch tracking it. Pushing to a bare URL and setting the
+    // upstream afterwards cannot work: `--set-upstream-to` needs a
+    // remote-tracking ref, and a URL push writes none.
+    const adopt = !git(["remote", "get-url", "origin"]);
+    if (adopt) git(["remote", "add", "origin", url]);
+    // An author who already has an `origin` keeps it, and the push goes to the
+    // URL directly rather than quietly redirecting their remote.
+    const pushed = adopt
+      ? git(["push", "-u", "origin", `${branch}:${branch}`], env)
+      : git(["push", url, `${branch}:${branch}`], env);
+    if (pushed === null) {
+      // Leave nothing behind that was not there before.
+      if (adopt) git(["remote", "remove", "origin"]);
+      return false;
+    }
+    return true;
+  } finally {
+    try {
+      rmSync(dirname(askpass), { recursive: true, force: true });
+    } catch {
+      /* a leftover temp dir is not worth failing a publish over */
+    }
+  }
+}
+
+/**
+ * The minimum that gives a repository a default branch: one commit, made
+ * through the API. Only for a pack published from somewhere that is not a git
+ * checkout — otherwise the author's own history does this job better.
+ */
+async function seedDefaultBranch(owner: string, name: string, id: string, token: string): Promise<void> {
+  await gh(`${GITHUB_API}/repos/${owner}/${name}/contents/README.md`, token, {
+    method: "PUT",
+    contentType: "application/json",
+    body: JSON.stringify({
+      message: `${id}: create pack repository`,
+      content: Buffer.from(
+        `# ${name}\n\nA [failproofai](https://github.com/failproofai/failproofai) policy pack.\n\n\`\`\`bash\nfailproofai policies add ${owner}/${name}\n\`\`\`\n`,
+        "utf8",
+      ).toString("base64"),
+    }),
+  });
 }
 
 /**
@@ -736,6 +849,9 @@ function publishEntryArg(rest: string[]): string | undefined {
 
 const GITHUB_API = process.env.FAILPROOFAI_GITHUB_API ?? "https://api.github.com";
 const GITHUB_UPLOADS = process.env.FAILPROOFAI_GITHUB_UPLOADS ?? "https://uploads.github.com";
+/** Where the git remote lives, so the push path can be tested against a real
+ *  local bare repository rather than only reasoned about. */
+const GITHUB_GIT = process.env.FAILPROOFAI_GITHUB_GIT ?? "https://github.com";
 
 /**
  * The credential, from the places a developer already keeps one.
@@ -846,8 +962,19 @@ async function publish(rest: string[]): Promise<PackCliResult> {
   let versionCounted = false;
   // The id and the repo are usually the same words, and requiring both is asking
   // the same question twice. Either one alone answers for the other.
-  const id = flag("id") ?? repo;
   const dryRun = rest.includes("--dry-run") || !repo;
+  // A dry run publishes nothing, so the id only has to name the artifact it
+  // writes — and refusing to build one because the folder has no git remote
+  // yet blocked the exact thing a dry run is for: looking at the pack BEFORE
+  // committing to a repository for it. The folder name is what the repository
+  // would be called anyway, and `--id` or `--repo` overrides it the moment
+  // either is known.
+  //
+  // `local/` rather than a guessed account: the owner is genuinely not known
+  // yet, and a plausible-looking one would be baked into a manifest somebody
+  // could upload by hand.
+  const id =
+    flag("id") ?? repo ?? (dryRun && entry ? `local/${basename(resolve(entry, ".."))}` : undefined);
   const [owner, name] = (repo ?? "/").split("/");
   if (repo && (!owner || !name || repo.split("/").length !== 2)) {
     return fail([`--repo must be <owner>/<repo>, got ${JSON.stringify(repo)}`]);
@@ -899,7 +1026,7 @@ async function publish(rest: string[]): Promise<PackCliResult> {
         "It needs write access to releases on that repository, and nothing else.",
       ]);
     }
-      const ensured = await ensureRepo(owner, name, id, token);
+      const ensured = await ensureRepo(owner, name, id, token, resolve(entry, ".."));
     if ("error" in ensured) return fail(ensured.error);
     created = ensured.created;
     repoInfo = ensured.info;
@@ -953,7 +1080,13 @@ async function publish(rest: string[]): Promise<PackCliResult> {
         ? ["Dry run — nothing was published.", `Drop --dry-run to release it on ${repo}.`]
         : [
             "Nothing was published: name a repository to release it on.",
-            `  failproofai publish ${entry} --repo <owner>/<repo> --version ${version}`,
+            // Just the repository. It used to spell out the entry file and the
+            // version too — naming ONE of the files it had that moment finished
+            // bundling, and pinning a version it works out by counting the
+            // repository's own releases. Both were wrong the moment they were
+            // printed, and both taught the reader that publishing needs flags
+            // it does not need.
+            "  failproofai publish --repo <owner>/<repo>",
           ]),
     ]);
   }

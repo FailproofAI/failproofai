@@ -205,11 +205,27 @@ describe("reading the repository from git", () => {
     expect(manifest().id).toBe("acme/guards");
   });
 
-  it("says what it needs when there is no git repository at all", async () => {
+  it("dry-runs without a git repository, because that is what a dry run is for", async () => {
+    // It used to refuse: the pack id comes from the git remote, and a folder
+    // that has not been given one yet has no remote to read. That refused the
+    // exact case a dry run exists for — looking at the pack BEFORE committing
+    // to a repository for it. The folder name stands in, marked `local/` so a
+    // manifest built here cannot be mistaken for one built for an account.
     writeFileSync(join(work, "p.mjs"), policy("alpha"));
     const r = await runPublishCommand(["--dry-run"]);
-    expect(r.exitCode).toBe(1);
+    expect(r.exitCode).toBe(0);
+    expect(r.lines.join("\n")).toMatch(/local\//);
+    // And it still says the thing that is actually missing.
     expect(r.lines.join("\n")).toMatch(/--repo/);
+  });
+
+  it("still refuses to PUBLISH without somewhere to publish to", async () => {
+    // The fallback id is for building assets locally, never for reaching
+    // GitHub — a guessed owner must not become a real release.
+    writeFileSync(join(work, "p.mjs"), policy("alpha"));
+    const r = await runPublishCommand([]);
+    expect(r.lines.join("\n")).toMatch(/--repo/);
+    expect(r.lines.join("\n")).not.toMatch(/Published/);
   });
 });
 

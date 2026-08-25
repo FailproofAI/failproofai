@@ -550,6 +550,27 @@ describe("a repository that is not there yet", () => {
     expect(requests.some((r) => r.method === "POST" && r.path === "/orgs/acme/repos")).toBe(true);
   });
 
+  it("does NOT seed it, so the author's own push is a fast-forward", async () => {
+    // It was created with `auto_init: true`, which meant GitHub wrote an
+    // "Initial commit" the author did not have — so the `git push` that every
+    // publish is followed by was rejected as unrelated history, for everybody.
+    github.repo = { status: 404, body: { message: "Not Found" } };
+    await publish([writeEntry(), "--repo", "acme/guards", "--version", "1.0.0"]);
+    const create = requests.find((r) => r.method === "POST" && /repos$/.test(r.path));
+    expect(JSON.parse(create!.body.toString()).auto_init).toBe(false);
+  });
+
+  it("gives the empty repository a default branch for the release to tag", async () => {
+    // The release API tags the DEFAULT BRANCH and is sent no target_commitish,
+    // so a repository with no commits has nothing to tag. Publishing from a
+    // directory that is not a git checkout has no history to push, so the
+    // commit has to come from somewhere — here, the contents API.
+    github.repo = { status: 404, body: { message: "Not Found" } };
+    await publish([writeEntry(), "--repo", "acme/guards", "--version", "1.0.0"]);
+    const seed = requests.find((r) => r.method === "PUT" && /\/contents\//.test(r.path));
+    expect(seed, "an un-pushable new repo must still get a first commit").toBeDefined();
+  });
+
   it("names who it authenticated as when creation is refused", async () => {
     // Without that, "could not create" gives no way to tell it picked the wrong
     // account from the credential being wrong.

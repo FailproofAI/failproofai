@@ -249,3 +249,36 @@ describe("the index advertises nothing it cannot explain", () => {
     expect(run.stderr).not.toContain("No help for");
   });
 });
+
+describe("a bare command runs, it does not describe itself", () => {
+  // `failproofai publish` printed its own help and exited — while the first
+  // line of that help read "TWO COMMANDS, FROM NOTHING: --init to start,
+  // publish to ship it". The one command the documentation headlines was the
+  // one command that did nothing, because the dispatch treated "no arguments"
+  // as a request for help rather than as the whole point: everything publish
+  // needs is worked out from the directory and the git remote.
+  it("publish with no arguments does not print the publish help", () => {
+    const empty = mkdtempSync(join(tmpdir(), "fpai-bare-publish-"));
+    try {
+      const run = spawnSync("bun", [BINARY, "publish"], {
+        cwd: empty,
+        env: { ...process.env, HOME, USERPROFILE: HOME, FAILPROOFAI_TELEMETRY_DISABLED: "1" },
+        encoding: "utf8",
+        timeout: 20_000,
+      });
+      const out = `${run.stdout ?? ""}${run.stderr ?? ""}`;
+      // It has nothing to publish in an empty directory, so it must FAIL —
+      // but as the command failing, not as a manual.
+      expect(out).not.toMatch(/TWO COMMANDS, FROM NOTHING/);
+      expect(out).not.toMatch(/WHAT --init DOES/);
+    } finally {
+      rmSync(empty, { recursive: true, force: true });
+    }
+  });
+
+  it("publish --help still prints it", () => {
+    const run = cli("publish", "--help");
+    expect(run.exitCode).toBe(0);
+    expect(run.stdout).toMatch(/TWO COMMANDS, FROM NOTHING/);
+  });
+});

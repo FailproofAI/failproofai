@@ -1220,7 +1220,12 @@ WHY THIS EXISTS
   // ever ship a pack. `pack build` is canonicalized into this above.
   if (args[0] === "publish") {
     const subArgs = args.slice(1);
-    if (subArgs.includes("--help") || subArgs.includes("-h") || subArgs.length === 0) {
+    // NOT `subArgs.length === 0`. A bare `failproofai publish` is the headline
+    // of the help this used to print instead — "TWO COMMANDS, FROM NOTHING:
+    // --init to start, publish to ship it" — and every argument it needs is
+    // worked out from the directory and the git remote. Printing help there
+    // made the one documented command the only one that did nothing.
+    if (subArgs.includes("--help") || subArgs.includes("-h")) {
       console.log(`
 failproofai publish — ship your policies as a pack anyone can install
 
@@ -1289,11 +1294,16 @@ THE REPO MUST BE PUBLIC
   Only the release matters. Installs read releases/download/<tag>/<asset> and
   never touch your git tree — pushing the source is for humans reading it.
 
-YOUR ENTRY FILE
-  One file, no relative imports: only the entry is digest-pinned, so a pack
-  importing siblings could not honestly claim to be verified. Bundle first
-  (esbuild, bun build, rollup) if yours is split. Each policy may carry
-  category and defaultEnabled alongside the usual fields.
+YOUR POLICY FILES
+  Write as many as you like — one per category reads well. Every file here
+  that registers policies is found and bundled into the single artifact a
+  pack has to be, because only the entry is digest-pinned and a pack
+  importing siblings could not honestly claim to be verified. Bundling needs
+  bun; without it, name one self-contained file.
+
+  Each policy may carry category and defaultEnabled alongside the usual
+  fields. category is what --category selects on; defaultEnabled is what a
+  bare 'policies add' switches on, and it defaults to false.
 
 OPTIONS
   --init [file]           Write a starter policy and stop.
@@ -1356,7 +1366,7 @@ USAGE
   failproofai policies add                 Pick from what is installed here
   failproofai policies add <name>          Turn one policy on
   failproofai policies add <owner>/<repo>  Install someone's pack
-  failproofai policies add core            Our pack, from this package, offline
+  failproofai policies add core            Our pack, fetched like any other
   failproofai policies remove <name>       Turn one policy off
   failproofai policies remove <pack-id>    Uninstall a pack
   failproofai policies show <owner>/<repo> What a pack contains, before you take it

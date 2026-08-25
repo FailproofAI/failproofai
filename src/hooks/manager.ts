@@ -14,7 +14,7 @@ import { INTEGRATION_TYPES,
   type HookScope,
   type IntegrationType,
 } from "./types";
-import { claudeCode, getIntegration, settingsPathsFor } from "./integrations";
+import { claudeCode, getIntegration, settingsPathsFor, type Integration } from "./integrations";
 import { promptPolicySelection } from "./install-prompt";
 import { configuredCustomPolicyPaths, readMergedHooksConfig, readScopedHooksConfig, writeScopedHooksConfig, syncConventionPolicies, findProjectConfigDir } from "./hooks-config";
 import type { HooksConfig, ConventionPolicyRecord } from "./policy-types";
@@ -271,15 +271,62 @@ function deduplicateScopes(scopes: readonly HookScope[], cwd?: string): HookScop
  * rows of the listing already answer it.
  */
 export function hooksInstalledInSettings(scope: HookScope, cwd?: string): boolean {
-  return INTEGRATION_TYPES.some((id) => {
+  return integrationsInstalledAt(scope, cwd).length > 0;
+}
+
+/**
+ * Which integrations are wired at EXACTLY this scope — the honest form of the
+ * question above, and the one the multi-scope warning needs.
+ *
+ * Two ways an integration answers yes for a scope it is not actually installed
+ * at, both of which made `failproofai policies` warn about "hooks in multiple
+ * scopes" on a machine whose hooks are in exactly one file:
+ *
+ *  - It does not SUPPORT the scope. Hermes and OpenClaw are user-scope only
+ *    (`HERMES_HOOK_SCOPES = ["user"]`) and their `getSettingsPath` ignores the
+ *    scope argument entirely, so they hand back the user file — and report it
+ *    installed — for `project` and `local` alike. `scopes` already declares
+ *    this; nothing was reading it.
+ *  - Its project path RESOLVES to its user path. Run this from `$HOME` and
+ *    `<cwd>/.claude/settings.json` is `~/.claude/settings.json`: one file,
+ *    counted as two scopes. Cheap to detect and impossible to get right by
+ *    asking each integration separately.
+ */
+export function integrationsInstalledAt(scope: HookScope, cwd?: string): IntegrationType[] {
+  return INTEGRATION_TYPES.filter((id) => {
     try {
-      return getIntegration(id).hooksInstalledInSettings(scope, cwd);
+      const integration = getIntegration(id);
+      if (!integration.scopes.includes(scope)) return false;
+      if (!integration.hooksInstalledInSettings(scope, cwd)) return false;
+      // A narrower scope that lands on the same file as a wider one is that
+      // wider one, seen twice. Attribute it to the widest scope that resolves
+      // there so exactly one of them counts.
+      const here = integration.getSettingsPath(scope, cwd);
+      return !HOOK_SCOPES.some(
+        (other) =>
+          other !== scope &&
+          HOOK_SCOPES.indexOf(other) < HOOK_SCOPES.indexOf(scope) &&
+          integration.scopes.includes(other) &&
+          safeSettingsPath(integration, other, cwd) === here,
+      );
     } catch {
       // An integration whose settings file is unreadable is not evidence that
       // nothing is installed — keep asking the rest.
       return false;
     }
   });
+}
+
+function safeSettingsPath(
+  integration: Integration,
+  scope: HookScope,
+  cwd?: string,
+): string | null {
+  try {
+    return integration.getSettingsPath(scope, cwd);
+  } catch {
+    return null;
+  }
 }
 
 export interface InstallHooksOptions {

@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.2-beta.5 — 2026-08-25
+
+### Fixes
+
+- Stop `failproofai policies` warning about hooks in multiple scopes on a machine whose hooks are in one file — a user-scope-only CLI answered for every scope, and from `$HOME` a project path resolves to the user file (#738)
+- `failproofai publish` with no arguments now publishes instead of printing its own help, which is what the help itself documents it as doing (#738)
+- `failproofai publish --dry-run` works in a folder that has no git remote yet — the case a dry run exists for (#738)
+- Create the pack repository empty rather than seeded, so the author's `git push` is a fast-forward instead of unrelated history — and the release tag names the commit the pack was built from (#738)
+- Stop the dry run suggesting an entry file and a `--version` it had just worked out for itself (#738)
+- `policies add core` no longer describes the core pack as shipped in the package, and `publish --help` no longer tells you to bundle by hand (#738)
+- Publish now pushes the author's history to the repository it creates, so the branch tracks `origin` and a later bare `git push` works (#738)
+
 ## 1.0.2-beta.4 — 2026-08-25
 
 ### Features

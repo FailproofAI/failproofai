@@ -1,5 +1,12 @@
 # Changelog — `fp` CLI
 
+## 0.0.1b2 — 2026-08-25
+
+Open for the next release. `0.0.1b1` published on 2026-08-24 and the `bump` job
+moved the version here automatically; nothing has landed against `0.0.1b2` yet.
+Add entries as changes merge — this section becomes the GitHub Release body when
+it ships.
+
 ## 0.0.1b1 — 2026-08-24
 
 ### The package is `fp-cloud-cli`; the command is still `fp`

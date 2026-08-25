@@ -1,47 +1,49 @@
 ---
-title: "Trình biên tập chính sách"
-description: "Tạo và sửa đổi các chính sách theo phiên bản từ một chế độ lỗi đã được xác nhận."
+title: "Trình soạn thảo chính sách"
+description: "Tạo và sửa đổi các chính sách có phiên bản từ một chế độ lỗi đã được xác nhận."
 icon: "file-pen-line"
 ---
 
-Sử dụng trình biên tập chính sách để biến một phát hiện hoặc vấn đề thành một quy tắc có thể triển khai. Giữ quá trình soạn thảo tách biệt với triển khai để bản nháp không thể thay đổi trơn tru hành vi trực tiếp.
+Sử dụng trình soạn thảo chính sách để biến một phát hiện hoặc vấn đề thành một quy tắc có thể triển khai. Giữ tác vụ soạn thảo riêng biệt với triển khai để một bản nháp không thể âm thầm thay đổi hành vi hiện tại.
 
-Khi một vấn đề có mô hình hành động có thể lặp lại, hãy mở nó trong **Analyze → issues** và chọn **generate policy**. Failproof AI trước tiên giải thích liệu chính sách có thể biểu hiện vấn đề hay không, sau đó đưa ý định đã được xem xét và ngữ cảnh phát hiện vào trình biên tập. Nguồn đã tạo sẽ vẫn là bản nháp cho đến khi bạn xuất bản nó.
+Khi một vấn đề có mẫu hành động có thể lặp lại, hãy mở nó trong **Analyze → issues** và chọn **generate policy**. Failproof AI trước tiên giải thích liệu một chính sách có thể biểu thị vấn đề hay không, sau đó đưa ý định đã xem xét và bối cảnh phát hiện vào trình soạn thảo. Nguồn được tạo ra vẫn là bản nháp cho đến khi bạn xuất bản nó.
 
-## Xuất bản phiên bản chính sách
+## Xuất bản một phiên bản chính sách
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Đi tới **Admin → policy editor** và, trong **compose**, mô tả chế độ lỗi hoặc dán nguồn chính sách JavaScript.
-    2. Xác thực nguồn và sửa chữa mọi lỗi được báo cáo.
-    3. Nhập danh tính chính sách và xuất bản nó, sau đó sử dụng **library** để so sánh hoặc tắt các phiên bản.
+    1. Đi tới **Admin → policy editor** và trong **compose**, mô tả chế độ lỗi hoặc dán nguồn chính sách JavaScript.
+    2. Xác nhận nguồn và sửa lỗi từng cái được báo cáo.
+    3. Nhập danh tính chính sách và xuất bản nó, sau đó sử dụng **library** để so sánh hoặc vô hiệu hóa các phiên bản.
     4. Chọn **enforcement** khi phiên bản sẵn sàng để triển khai máy.
 
-    ![Chế độ xem soạn thảo của Trình biên tập chính sách với danh tính chính sách, soạn thảo hỗ trợ AI, xác thực nguồn và các điều khiển xuất bản.](/images/dashboard/policy-editor.png)
+    ![Chế độ soạn thảo của trình soạn thảo chính sách với danh tính chính sách, soạn thảo hỗ trợ AI, xác nhận nguồn và kiểm soát xuất bản.](/images/dashboard/policy-editor.png)
   </Tab>
   <Tab title="CLI">
-    Cloud CLI không xuất bản các phiên bản chính sách. Xác thực nguồn cục bộ trước khi sao chép nó vào trình biên tập:
+    Xuất bản từ CLI bằng `fp policies publish`. Nó tạo ra một **phiên bản mới** và không bao giờ chỉnh sửa một phiên bản tại chỗ, và nó kiểm tra cú pháp nguồn bằng node trước khi gửi — không có gì phía sau làm, vì vậy một lỗi cú pháp sẽ xuất hiện trên máy tại thời điểm thực thi:
 
     ```bash
-    failproofai policies --install --custom ./checkout.policies.ts \
-      --cli claude --scope project
+    fp policies test ./checkout.policy.mjs --command "git push --force" --expect deny
+    fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
     ```
 
-    Xuất bản phiên bản đã được xem xét từ **Admin → policy editor**.
+    Xuất bản không triển khai bất cứ điều gì — một phiên bản mới không được sử dụng cho đến khi `fp fleet deploy` đặt nó trên một máy. `fp policies compose "<plain English>"` soạn thảo nguồn với trợ lý Cloud và in nó để xem xét thay vì xuất bản nó.
+
+    Để cài đặt một chính sách vào CLI tác nhân cục bộ thay vào đó (không phải Cloud), hãy sử dụng `failproofai policies --install --custom ./checkout.policies.ts --cli claude --scope project`.
   </Tab>
 </Tabs>
 
-## Danh sách kiểm tra soạn thảo
+## Danh sách kiểm tra tác vụ soạn thảo
 
 1. Đặt tên cho chế độ lỗi bằng ngôn ngữ hoạt động.
-2. Chọn các sự kiện hook và công cụ có đủ bằng chứng để quyết định.
+2. Chọn các sự kiện hook và công cụ chứa đủ bằng chứng để quyết định.
 3. Viết điều kiện hẹp nhất phù hợp với hành vi không an toàn.
-4. Trả về lý do cho agent hoặc người vận hành biết phải làm gì tiếp theo.
-5. Thêm các ví dụ phải khớp và các ví dụ phải vẫn được phép.
-6. Lưu phiên bản mới và yêu cầu xem xét.
+4. Trả về lý do cho tác nhân hoặc nhà điều hành biết phải làm gì tiếp theo.
+5. Thêm ví dụ phải khớp và ví dụ phải vẫn được phép.
+6. Lưu một phiên bản mới và yêu cầu xem xét.
 
-Sử dụng `instruct` khi agent có thể an toàn hiệu chỉnh hướng đi. Sử dụng `deny` khi cho phép hành động sẽ tạo ra rủi ro không thể chấp nhận hoặc không thể hoàn tác.
+Sử dụng `instruct` khi tác nhân có thể an toàn sửa lỗi đường hướng. Sử dụng `deny` khi cho phép hành động sẽ tạo ra rủi ro không thể chấp nhận hoặc không thể đảo ngược.
 
 <Info>
-  Các phiên bản chính sách là đầu vào triển khai bất biến. Chỉnh sửa bản nháp sẽ tạo phiên bản mới; nó không nên viết lại phiên bản đã được gán cho máy.
+  Các phiên bản chính sách là đầu vào triển khai không thay đổi. Chỉnh sửa bản nháp tạo ra một phiên bản mới; nó không nên viết lại phiên bản đã được gán cho máy.
 </Info>

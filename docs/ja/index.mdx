@@ -1,41 +1,41 @@
 ---
-title: "エージェントをフェイルプルーフにする"
-description: "コーディングCLI、チャットゲートウェイ、セルフホスト型アシスタント、独自のインストルメント済みエージェントなど、あらゆるハーネスに対応したオブザーバビリティと制御の仕組みです。"
+title: "エージェントを failproof にする"
+description: "あらゆるハーネスで動作するエージェントの可観測性と制御 — コーディング CLI、チャットゲートウェイ、セルフホスト型アシスタント、独自にインストルメント化されたエージェントに対応。"
 icon: "shield-check"
 ---
 
-Failproof AI は、エージェントが何をしたかを把握し、どこで失敗したかを特定し、同じ問題が再発する前に安全策を展開するためのツールです。
+Failproof AI は、エージェントが何をしたかを把握し、失敗箇所を特定し、同じ挙動が再発する前にセーフガードを展開するためのツールです。
 
-**ハーネス**とは、エージェントが実際に動作する実行環境のことです。Failproof AI は Claude Code や Codex などのコーディングCLI、Hermes などのチャットゲートウェイ、OpenClaw などのセルフホスト型アシスタントを含む12種類のハーネスに対応しており、すべてに同じイベント・ポリシー・セッション履歴が適用されます。ハーネスを使用しないエージェントは [Python SDK](/ja/reference/custom-agents) 経由でトレースと監査を行いますが、そこでポリシーを強制するには独自のランタイムにフックを実装する必要があります。
+**ハーネス**とは、エージェントが実際に動作する環境のことです。Failproof AI は 12 種類のハーネスに対応しています。Claude Code や Codex などのコーディング CLI、Hermes などのチャットゲートウェイ、OpenClaw などのセルフホスト型アシスタントが含まれており、すべてに同じイベント・ポリシー・セッション履歴が適用されます。ハーネスを持たないエージェントは [Python SDK](/ja/reference/custom-agents) 経由でレポートを送信し、トレースと監査が行われます。その場合のポリシー適用には、独自ランタイム内でのフックが必要です。
 
 <Columns cols={2}>
-  <Card title="Failproof のセットアップ" icon="wand-sparkles" href="/ja/start/quickstart">
-    スキルを使ってプロジェクトをインストルメントし、接続して、エージェントログが届いていることを確認します。
+  <Card title="Failproof を設定する" icon="wand-sparkles" href="/ja/start/quickstart">
+    スキルを使ってプロジェクトをインストルメント化し、接続して、エージェントのログが届いていることを確認します。
   </Card>
-  <Card title="Failproof アシスタントに聞く" icon="message-square-text" href="/ja/sessions/assistant">
-    エージェントログに対して自然言語で分析・クエリ・ダッシュボード作成・監査を実行します。
+  <Card title="Failproof アシスタントに質問する" icon="message-square-text" href="/ja/sessions/assistant">
+    エージェントログに対して自然言語で分析・クエリ・ダッシュボード構築・監査を実行します。
   </Card>
 </Columns>
 
 <Columns cols={3}>
-  <Card title="エージェントの動作を確認する" icon="route" href="/ja/sessions/overview">
-    モデル呼び出し、ツール、エラー、人間の入力、レイテンシ、ポリシーの判断を1つのセッションで追跡します。
+  <Card title="エージェントの行動を確認する" icon="route" href="/ja/sessions/overview">
+    モデルの呼び出し、ツール、エラー、人間の入力、レイテンシ、ポリシーの判定を 1 つのセッションで追跡します。
   </Card>
-  <Card title="障害を体系的に発見する" icon="scan-search" href="/ja/audits/overview">
-    定義されたセッションセットを監査し、根拠に基づく知見をレビューし、課題として修正状況を追跡します。
+  <Card title="失敗を体系的に発見する" icon="scan-search" href="/ja/audits/overview">
+    定義されたセッション群を監査し、証拠に基づく知見をレビューし、問題として修正状況を追跡します。
   </Card>
-  <Card title="再発を防止する" icon="shield-check" href="/ja/policies/overview">
-    既知の障害パターンをポリシーに変換し、その影響を観察して、フリート全体に展開します。
+  <Card title="再発を防ぐ" icon="shield-check" href="/ja/policies/overview">
+    既知の障害パターンをポリシーに変換し、影響を観察してフリート全体に展開します。
   </Card>
 </Columns>
 
-> **セッション → 監査 → 知見 → 課題 → ポリシー**<br />
-> 何が起きたかをトレースし、障害を特定し、対応を管理して、将来の実行で同じ問題が起きないようにします。
+> **セッション → 監査 → 知見 → 問題 → ポリシー**<br />
+> 何が起きたかをトレースし、失敗を発見し、対応を管理して、同じ挙動を将来の実行で防止します。
 
-## はじめに
+## まずここから
 
-初めてインストルメント済みエージェントをデプロイする場合は、[クイックスタート](/ja/start/quickstart)から始めてください。データがすでに届いている場合は、[セッション](/ja/sessions/overview)を開いて、監査やポリシーを設定する前に実際の実行結果を確認してください。
+初めてインストルメント化されたエージェントをデプロイする場合は、[クイックスタート](/ja/start/quickstart) から始めてください。すでにデータが届いている場合は、[セッション](/ja/sessions/overview) を開き、監査やポリシーを設定する前に実際の実行内容を確認してください。
 
-<Card title="1つの障害を発見して防止する" icon="arrow-right" href="/ja/start/quickstart">
+<Card title="1 つの失敗を発見して防ぐ" icon="arrow-right" href="/ja/start/quickstart">
   キャプチャから安全にデプロイされたポリシーまで、エンドツーエンドのワークフローを完了します。
 </Card>

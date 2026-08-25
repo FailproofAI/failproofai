@@ -1,45 +1,40 @@
 ---
-title: "自定义 Agent"
-description: "为自定义 Agent 植入追踪能力，使 Failproof AI 能够重建运行记录并发现故障。"
+title: "自定义 Agents"
+description: "failproofai-sdk 的配置、事件目录、关联规则及数据投递说明。"
 icon: "python"
 ---
 
-使用 `failproofai-sdk` 为自定义 Agent 植入追踪能力，让 Failproof AI 能够重建每次运行过程、审计其行为，并找到有据可查的故障。SDK 会写入结构化事件，由 Failproof 守护进程传递至云端。该 SDK 需要 Python 3.10 或更高版本。
+本页面涵盖每项配置、方法和字段的详细说明。如果你是第一次接入，建议先阅读指南——本页面主要用于查阅参考。
 
-追踪使自定义 Agent 具备可观测性和可审计性。若要在执行前阻止不安全的操作，还需要在运行时中添加执行钩子。
+<Columns cols={2}>
+  <Card title="自定义 Agents 指南" icon="code" href="/zh/start/integrations/custom-agents">
+    安装、接入、事件方法、完整示例及常见问题。
+  </Card>
+  <Card title="使用框架？" icon="plug" href="/zh/start/integrations">
+    LangChain、CrewAI、LlamaIndex 和 Pydantic AI 只需一次调用即可完成接入。
+  </Card>
+</Columns>
 
-<Info>
-  如需在自定义 Agent 环境中执行策略，请[联系 Failproof AI](mailto:support@befailproof.ai)。我们将帮助您将运行时的模型、工具和生命周期边界映射到策略钩子。
-</Info>
+需要 Python 3.10 或更高版本。无运行时依赖。
 
-<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with the Failproof AI Python SDK" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
-</div>
-
-## 安装 `failproofai-sdk`
-
-该 SDK 目前以私有 wheel 包形式分发。请向您的 Failproof AI 联系人索取当前版本及下载权限。
+## 安装
 
 ```bash
-VERSION=<sdk-version>
-pip install "./failproofai_sdk-${VERSION}-py3-none-any.whl"
-python -c "import failproofai; print(failproofai.__version__)"
+pip install failproofai-sdk
 ```
 
-如使用 `uv`，请先下载 wheel 包，然后运行 `uv add ./failproofai_sdk-${VERSION}-py3-none-any.whl`。建议将 wheel 包固定在私有制品仓库或依赖锁文件中。
-
-该包以 `failproofai-sdk` 安装，在 Python 中以 `failproofai` 导入。
+该包以 `failproofai-sdk` 形式安装，在 Python 中以 `failproofai_sdk` 导入。框架扩展（如 `failproofai-sdk[langgraph]`）会同时安装对应框架本身；适配器始终包含在基础安装包中。
 
 ## 连接 Failproof 守护进程
 
 <Tabs>
   <Tab title="控制台">
     1. 前往 **Admin → Keys**，创建一个具有 `events:add` 权限的密钥。
-    2. 在 Agent 所在机器上[将 Failproof 守护进程连接到云端](/zh/start/setup#connect-a-machine-to-cloud)。
-    3. 运行一次已植入追踪的会话，然后在 **Observe → Events** 下找到其确切 ID。
-    4. 前往 **Observe → Sessions**，选择相同环境，打开重建后的追踪记录。
+    2. 在 Agent 所在机器上[将 Failproof 守护进程连接到 Cloud](/zh/start/setup#connect-a-machine-to-cloud)。
+    3. 运行一次已接入的会话，然后在 **Observe → Events** 下找到其精确 ID。
+    4. 前往 **Observe → Sessions**，选择相同环境，打开重建后的追踪视图。
 
-    ![重建为执行图和有序事件追踪的自定义 Python Agent 会话。](/images/dashboard/session-detail.png)
+    ![以执行图和有序事件追踪形式重建的自定义 Python Agent 会话。](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -51,102 +46,84 @@ python -c "import failproofai; print(failproofai.__version__)"
   </Tab>
 </Tabs>
 
-## 对完整运行进行埋点
-
-在进程启动时调用一次 `configure()`。每个事件调用均为仅关键字参数形式，需要提供稳定的 `session_id` 和 `agent_id`。
+## 配置
 
 ```python
-import traceback
-import uuid
+import failproofai_sdk
 
-import failproofai
-
-failproofai.configure(environment="production")
-
-session_id = uuid.uuid4().hex
-agent_id = "checkout-agent"
-
-failproofai.event.agent_start(
-    session_id=session_id,
-    agent_id=agent_id,
-    goal="Resolve a failed checkout",
-)
-
-try:
-    tool_call_id = uuid.uuid4().hex
-    failproofai.event.tool_use(
-        session_id=session_id,
-        agent_id=agent_id,
-        tool_name="lookup_order",
-        tool_call_id=tool_call_id,
-        input={"order_id": "ord_8421"},
-    )
-    result = {"status": "payment_failed"}
-    failproofai.event.tool_result(
-        session_id=session_id,
-        agent_id=agent_id,
-        tool_name="lookup_order",
-        tool_call_id=tool_call_id,
-        output=result,
-    )
-except Exception as exc:
-    failproofai.event.error(
-        session_id=session_id,
-        agent_id=agent_id,
-        error_type=type(exc).__name__,
-        message=str(exc),
-        traceback=traceback.format_exc(),
-    )
-    failproofai.event.agent_end(
-        session_id=session_id,
-        agent_id=agent_id,
-        outcome="failed",
-    )
-    raise
-else:
-    failproofai.event.agent_end(
-        session_id=session_id,
-        agent_id=agent_id,
-        outcome="success",
-        summary="Escalated the failed payment",
-    )
-```
-
-每个执行主体发送一次 `agent_start`。对于子 Agent，复用父级的 `session_id`，为每个执行主体指定唯一的 `agent_id`，并将 `parent_id` 设置为父级的 **agent ID**，而非 session ID。
-
-## 配置参考
-
-```python
-failproofai.configure(
+failproofai_sdk.configure(
     base_dir=None,
     flush_interval=0.5,
     environment="production",
 )
 ```
 
-| 配置项 | 行为说明 |
+| 参数 | 说明 |
 | --- | --- |
-| `base_dir` | 显式指定 spool 根目录，优先于所有环境变量。 |
-| `flush_interval` | 后台从内存写入 JSONL 的时间间隔（秒）。默认值：`0.5`。 |
-| `environment` | 每个事件上的部署标签，默认为 `dev`。 |
-| `FAILPROOFAI_HOME` | 更改包含 `custom-agents` spool 的 Failproof AI 根目录。 |
+| `environment` | 每条事件上的标签，例如 `production`、`staging`、`prod-eu`，默认为 `dev`。 |
+| `flush_interval` | 后台线程写入磁盘的间隔时间（秒），默认为 `0.5`。 |
+| `base_dir` | 写入位置，默认为守护进程的 spool 目录，除非有特殊需求，否则无需修改。 |
 
-设置了显式 `base_dir` 时，SDK 会写入该目录。否则，SDK 将使用 Failproof 守护进程在 `FAILPROOFAI_HOME` 或 `~/.failproofai` 下的 `custom-agents` spool。
+也可通过环境变量进行设置：
 
-SDK 将调用排队至内存，并通过后台线程批量写入。它还会通过 Python 的 `atexit` 机制尝试最终刷新。对于短生命周期的 worker，应允许解释器正常关闭；强制终止进程可能导致内存中的事件丢失。
+| 变量 | 说明 |
+| --- | --- |
+| `AGENTEYE_ENVIRONMENT` | 无需修改代码即可设置 `environment`，适用于标签由部署环境而非应用代码决定的场景。`configure()` 参数的优先级高于该变量。 |
+| `FAILPROOFAI_HOME` | 修改 Failproof AI 根目录（存放 spool 的位置）。 |
+| `FAILPROOFAI_SDK_STRICT` | 设为 `1` 时，接入错误会直接抛出异常，而不是仅记录日志。 |
+| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | 设为 `1` 时，框架兼容性问题会直接抛出异常，而不是仅发出警告后继续运行。 |
+
+<Warning>
+  **`environment` 中不能包含逗号。** 数据摄取会按逗号分割该字段以构建过滤器，任何标签中包含逗号的事件都会被跳过——导致整个运行任务静默消失。请写 `prod-eu`，而不是 `prod,eu`。
+
+  `configure(environment="prod,eu")` 会立即抛出异常，方便你及时发现问题。而 `AGENTEYE_ENVIRONMENT` 无法抛出异常（因为没有调用方可接收），因此它只会警告一次并回退到 `dev`。
+</Warning>
+
+事件会先缓存在内存中，后台线程每隔 `flush_interval` 秒写入一次，解释器退出时会执行最后一次 flush。如果进程被强制终止，尚未写入的数据将会丢失。
+
+## 标识
+
+每条事件都归属于某个 session 和某个 agent。**使用上下文管理器会自动填充两者**，因此通常无需手动传入：
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("planner"):
+        failproofai_sdk.event.tool_use(tool_name="search", tool_call_id="c1")
+```
+
+显式传入 `session_id` 或 `agent_id` 同样有效，且优先级更高。如果两者均未绑定也未传入，调用会抛出 `TypeError`，而不是静默发送一条 Cloud 会悄悄丢弃的事件。
+
+<Note>
+  标识信息存储在上下文变量中，会自动跟随 `asyncio` 任务传播，但**不会**跟随新线程传播——请用 `failproofai_sdk.propagate()` 包装 worker 线程，否则其事件将无法关联到对应 session。
+</Note>
 
 ## 事件目录
 
-所有方法均返回 `None`。值为 `None` 的字段会被省略，而不是写为 JSON `null`。
+共 15 个方法，大多数以**成对**形式出现——先调用开始方法，再调用结束方法，SDK 会自动计算两者之间的耗时。
 
-| 方法 | 除标识字段外的必填字段 | 可选字段 |
+| | 开始 | 结束 |
+| --- | --- | --- |
+| **Agents** | `agent_start` | `agent_end` |
+| | `agent_pause` | `agent_resume` |
+| **模型** | `model_request` | `model_response` |
+| **工具** | `tool_use` | `tool_result` |
+| **Hooks** | `hook_triggered` | `hook_completed` |
+| **人工** | `human_wait` | `human_input` |
+
+另有三个独立方法：`error`、`human_pause`、`human_interrupt`。
+
+<Accordion title="每个方法的所有字段" icon="table">
+
+每个方法同样接受 `session_id` 和 `agent_id`，上下文管理器会自动填充。值为 `None` 的字段会被丢弃，不会以 JSON `null` 形式发送，且每个方法均返回 `None`。
+
+| 方法 | 必填 | 可选 |
 | --- | --- | --- |
 | `agent_start` | — | `goal`, `parent_id` |
 | `agent_end` | — | `outcome`, `summary` |
 | `agent_pause` | `pause_id` | `reason`, `user_id` |
 | `agent_resume` | `pause_id` | `reason`, `user_id` |
-| `model_request` | — | `model`, `messages`, `system`, `tools` |
-| `model_response` | — | `model`, `stop_reason`, `input_tokens`, `output_tokens`, `content`, `role` |
+| `model_request` | — | `model`, `messages`, `system`, `tools`, `request_id` |
+| `model_response` | — | `model`, `stop_reason`, `input_tokens`, `output_tokens`, `content`, `role`, `request_id`, `duration_ms` |
 | `tool_use` | `tool_name`, `tool_call_id` | `input` |
 | `tool_result` | `tool_name`, `tool_call_id` | `output`, `error` |
 | `hook_triggered` | `hook_name`, `hook_id` | `trigger_event`, `input` |
@@ -157,27 +134,64 @@ SDK 将调用排队至内存，并通过后台线程批量写入。它还会通�
 | `human_pause` | — | `reason`, `user_id` |
 | `human_interrupt` | — | `reason`, `user_id`, `at_step` |
 
-当某次完成应计为失败时，使用 `outcome="failed"`、`"error"`、`"timeout"` 或 `"rejected"`。其他值（包括 `"failure"`）不会被当前后端识别为失败。
+</Accordion>
 
-## 关联与时长规则
+<Warning>
+  要将某次运行标记为失败，`outcome` 必须为以下值之一：`failed`、`error`、`timeout` 或 `rejected`。其他任何值——包括容易混淆的 `"failure"`——都会被视为成功。
+</Warning>
 
-- 对匹配的完成事件复用相同的 `tool_call_id`、`hook_id`、`pause_id` 或 `input_id`。
-- SDK 会自动计算 `tool_result`、`hook_completed`、`agent_resume` 和 `human_input` 的 `duration_ms`。如果手动传入这些方法的该字段，将抛出 `ValueError`。
-- 工具 ID 和钩子 ID 共用同一个进程级的待处理映射表。请确保它们在并发会话之间以及两个命名空间内全局唯一；建议使用提供商 ID 或 UUID。
-- 跨进程分割的事件对仍可在下游关联，但 SDK 无法计算其进程内时长。
-- 待处理映射表最多保存 10,000 条起始记录，满时会淘汰最旧的条目。
+## 配对与耗时
 
-## 自定义字段与载荷
+**一条规则：结束事件的 id 必须与其对应开始事件相同。** 这是配对的依据，也是 SDK 计算耗时的基础。
 
-每个事件均接受额外的关键字字段。当下游查询需要结构化数据时，请使用与 JSON 兼容的值。SDK 写入时会将不支持的叶子类型（如 UUID、datetime、Decimal、set、bytes 及模型对象）自动转换为字符串。
+| 配对 | 匹配字段 |
+| --- | --- |
+| `tool_use` → `tool_result` | `tool_call_id` |
+| `hook_triggered` → `hook_completed` | `hook_id` |
+| `agent_pause` → `agent_resume` | `pause_id` |
+| `human_wait` → `human_input` | `input_id` |
+| `model_request` → `model_response` | `request_id` |
 
-保留的自定义字段名称为 `timestamp`、`session_id`、`agent_id`、`type` 和 `environment`。可选字段的拼写错误会被当作新的自定义字段接受，因此当某个标准字段未出现在云端时，请检查实际写出的 JSON。
+**不要自行传入 `duration_ms`。** SDK 会自动计算，手动传入会抛出 `ValueError`。
 
-## 传递与验证
+唯一例外是 `model_response`——只有你才知道真实的 provider 延迟。请传入整数毫秒值，传入浮点数会抛出异常，因为该列为 32 位整数，否则将会存储为空值。
+
+<Accordion title="边界情况" icon="circle-help">
+
+- **id 只需在同类事件和同一 session 内唯一。** 工具调用和 hook 可以共用同一个 id；同时运行的两个 session 可以复用相同的 id 而不会冲突。
+- **id 不限定于某个 agent 的作用域。** 在一个 agent 下开始、在另一个 agent 下结束的配对仍然可以匹配——这在多 agent 代码中是正常情况。
+- **建议使用 `request_id`，但非必填。** 不传时，模型事件按到达顺序配对，因此同一 agent 中的两个并发调用可能会配对错误。
+- **跨进程的配对**在 Cloud 中仍然可以匹配，但 SDK 无法计算耗时——因为两个进程都只看到了一半。
+- **最多同时等待 10,000 个开始事件。** 超出后最旧的会被丢弃，确保内存泄漏不会无限增长。
+
+</Accordion>
+
+## 自定义字段
+
+传入的任何额外关键字参数都会随事件一起存储：
+
+```python
+failproofai_sdk.event.tool_use(
+    tool_name="search", tool_call_id="c1",
+    fw_tenant="acme", fw_region="eu-west-1",     # 自定义字段
+)
+```
+
+如果后续需要查询，建议使用 JSON 兼容类型。其他类型——UUID、datetime、`Decimal`、set、bytes、模型对象——都会被转换为字符串存储。
+
+<Warning>
+  **为自定义字段名添加前缀。** 额外字段会在最后应用，因此名为 `model`、`tool_name` 或 `outcome` 的字段会静默覆盖真正的标准字段。框架适配器使用 `fw_` 前缀；沿用这一约定可以避免任何冲突。
+
+  这也解释了为什么拼写错误的可选字段不会报错——它只会变成一个新的自定义字段。如果 Cloud 中某个标准字段缺失，请首先检查拼写。
+</Warning>
+
+以下五个字段名为保留字，传入后会直接被拒绝：`timestamp`、`session_id`、`agent_id`、`type`、`environment`。
+
+## 数据投递与验证
 
 <Tabs>
   <Tab title="控制台">
-    在 **Observe → Events** 中，验证 `agent_start` 是否位于首位，`agent_end` 是否位于末位。然后打开 **Observe → Sessions**，确认模型、工具、人工、钩子和错误事件按预期顺序出现。将 session ID 作为排查问题的主要依据。
+    在 **Observe → Events** 中，确认第一条事件为 `agent_start`，最后一条为 `agent_end`。然后打开 **Observe → Sessions**，确认模型、工具、人工、hook 和错误事件按预期顺序出现。使用 session ID 作为排查问题的首要线索。
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -189,10 +203,14 @@ SDK 将调用排队至内存，并通过后台线程批量写入。它还会通�
   </Tab>
 </Tabs>
 
-如果云端为空，请检查 `$FAILPROOFAI_HOME/custom-agents/events`，否则检查 `~/.failproofai/custom-agents/events`。JSONL 文件证明 SDK 已成功写入事件；spool 持续增长说明问题在于守护进程配置或事件传递，spool 为空则说明问题在于埋点或进程生命周期。
+如果 Cloud 中没有数据，请检查 `$FAILPROOFAI_HOME/custom-agents/events`，否则检查 `~/.failproofai/custom-agents/events`。JSONL 文件的存在证明 SDK 已成功发出事件；spool 持续增长说明问题在于守护进程配置或数据投递，而 spool 为空则说明问题在于接入代码或进程生命周期。
 
-## 在自定义运行时中阻止故障
+<Note>
+  只在守护进程停止时检查 spool。守护进程运行期间，它会在毫秒内收集并删除每批数据，因此目录列表会与收集器产生竞争，显示的事件数量会远少于实际发出的数量。
+</Note>
 
-利用审计发现和关联追踪来定义不安全操作、所需依据及预期响应。自定义执行集成必须在操作执行前将其暴露出来，将其结构化输入传递给策略引擎，并应用 allow、instruct 或 deny 的决策结果。
+## 在自定义运行时中防止故障
 
-请发送邮件至 [support@befailproof.ai](mailto:support@befailproof.ai)，以便针对您的运行时设计并验证该集成方案。
+利用审计发现和关联追踪来定义不安全操作、所需证据及预期响应。自定义执行集成必须在操作执行前将其暴露出来，将其结构化输入传递给策略引擎，并执行相应的 allow、instruct 或 deny 决策。
+
+[联系 Failproof AI](mailto:support@befailproof.ai)，我们将帮助你将运行时的模型、工具和生命周期边界映射到策略 hook，并与你共同验证集成结果。

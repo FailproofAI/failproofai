@@ -1,0 +1,121 @@
+---
+---
+title: "Công cụ hóa agent của bạn"
+sidebarTitle: "Frameworks"
+description: "Kết nối bất kỳ framework agent được hỗ trợ nào với Failproof AI chỉ bằng một lệnh gọi."
+icon: "plug"
+---
+
+Agent của bạn đã tạo ra mọi thứ đáng ghi lại — các lệnh gọi mô hình, lệnh gọi công cụ, ranh giới nút, chờ đợi con người, lỗi. Framework bỏ nó đi. SDK giữ lại nó.
+
+<Columns cols={3}>
+  <Card title="Custom agents" icon="wrench" href="/vi/start/quickstarts/custom-agents">
+    Một agent bạn viết riêng hoặc agent không được liệt kê ở đây.
+  </Card>
+  <Card title="LangChain and LangGraph" icon="share-2" href="/vi/start/quickstarts/langchain">
+    Graphs, nodes, tools, retrievers, models.
+  </Card>
+  <Card title="CrewAI" icon="users" href="/vi/start/quickstarts/crewai">
+    Crews, flows, agents by role, tools.
+  </Card>
+  <Card title="LlamaIndex" icon="database" href="/vi/start/quickstarts/llamaindex">
+    Workflows, steps, function agents, retrievers.
+  </Card>
+  <Card title="Pydantic AI" icon="badge-check" href="/vi/start/quickstarts/pydantic-ai">
+    Typed agents, capabilities, tools, retries.
+  </Card>
+</Columns>
+
+## Ba dòng, bất kỳ framework nào
+
+<CodeGroup>
+```bash LangGraph
+pip install 'failproofai-sdk[langgraph]'
+```
+
+```bash CrewAI
+pip install 'failproofai-sdk[crewai]'
+```
+
+```bash LlamaIndex
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+```bash Pydantic AI
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+```bash Custom agents
+pip install failproofai-sdk
+```
+</CodeGroup>
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # detects the frameworks you imported
+
+with failproofai_sdk.session():
+    ...                               # your existing agent call, unchanged
+```
+
+Không có decorator trên các hàm của bạn, không có callback được truyền đến các lệnh gọi của bạn, không có id được luồng qua mã của bạn. Chỉ lệnh gọi bên trong phiên là khác:
+
+<Tabs>
+  <Tab title="LangGraph">
+    ```python
+    graph.invoke({"messages": [HumanMessage("...")]})
+    ```
+  </Tab>
+  <Tab title="CrewAI">
+    ```python
+    Crew(agents=[analyst, writer], tasks=[gather, summarise]).kickoff()
+    ```
+  </Tab>
+  <Tab title="LlamaIndex">
+    ```python
+    await agent.run("...")        # under `async with failproofai_sdk.session():`
+    ```
+  </Tab>
+  <Tab title="Pydantic AI">
+    ```python
+    agent.run_sync("...")
+    ```
+  </Tab>
+  <Tab title="Custom agents">
+    ```python
+    with failproofai_sdk.agent("planner"):
+        with failproofai_sdk.tool_call("search", input={"q": q}) as t:
+            t.output = search(q)
+    ```
+  </Tab>
+</Tabs>
+
+Bộ cài đặt thêm **framework**. Mỗi adapter được gửi trong wheel cơ sở, vì vậy dự án đã có framework của nó không cần thêm gì cả.
+
+## Xác nhận nó đã tới
+
+Chạy một phiên công cụ hóa, sau đó mở **Observe → Sessions** và chọn môi trường của bạn. Lần chạy xuất hiện dưới dạng một trace được tái tạo.
+
+Nếu không có gì tới, hãy xác nhận máy được kết nối bằng `failproofai config --status`. Xem [Set up capture](/vi/start/setup).
+
+<Warning>
+  Không kiểm tra thư mục spool để xác nhận giao hàng. Daemon Failproof thu thập và xóa từng lô trong vòng milliseconds, vì vậy đọc nó sẽ cạnh tranh với collector và hiển thị ít sự kiện hơn nhiều so với những gì đã phát ra.
+</Warning>
+
+## Tiếp theo
+
+Mỗi quickstart ở trên liên kết đến hướng dẫn đầy đủ của nó — những gì được ghi lại, tùy chọn, streaming, đặt tên span và những vấn đề mà mọi người thực sự gặp phải. Chúng nằm dưới **Trace Agents → Plug in your agent**.
+
+<Columns cols={3}>
+  <Card title="Cách hoạt động" icon="workflow" href="/vi/start/integrations/custom-agents#going-deeper">
+    Mô hình dữ liệu, các id, các loại sự kiện và cách các sự kiện đến Cloud.
+  </Card>
+  <Card title="Đọc một trace" icon="route" href="/vi/sessions/read-a-trace">
+    Theo dõi nhân quả qua một phiên thay vì các bản ghi bị ngắt kết nối.
+  </Card>
+  <Card title="Tìm lỗi đầu tiên của bạn" icon="scan-search" href="/vi/start/first-audit">
+    Kiểm tra các phiên bạn vừa thu thập.
+  </Card>
+</Columns>

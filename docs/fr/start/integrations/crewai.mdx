@@ -1,0 +1,224 @@
+---
+title: "CrewAI"
+sidebarTitle: "CrewAI"
+description: "Instrumentez les crews, flows, agents par rôle, outils, mémoire et retours humains."
+icon: "/images/frameworks/crewai.svg"
+---
+
+## Installation
+
+```bash
+pip install 'failproofai-sdk[crewai]'
+```
+
+Versions supportées : `crewai` 1.13 à 2.0. La version 1.13 est celle qui a introduit `started_event_id` et normalisé l'utilisation des tokens, deux éléments dont l'adaptateur dépend pour associer les événements et rapporter les tokens.
+
+## Instrumentation
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    Crew(agents=[analyst, writer], tasks=[gather, summarise]).kickoff()
+```
+
+`instrument()` enregistre un écouteur sur le bus d'événements de niveau module de CrewAI et abonne un gestionnaire par classe d'événement. Votre crew, vos agents, vos tâches et vos outils restent inchangés.
+
+## Ce qui est enregistré
+
+| CrewAI | Événement Failproof |
+| --- | --- |
+| Démarrage du crew | `agent_start`, `agent_end` |
+| `Agent.kickoff()` (agent léger, sans crew) | `agent_start`, `agent_end`, avec `agent_id` issu du rôle |
+| Démarrage et fin d'un flow | `agent_start`, `agent_end` ; un crew démarré dans une méthode de flow s'imbrique sous celui-ci |
+| Exécution d'un agent | `agent_start`, `agent_end` imbriqués, avec `agent_id` issu du rôle. Dans un processus hiérarchique, un collaborateur délégué s'imbrique sous le manager et non à côté |
+| Tâche | Rien ; enregistrée comme lien pour que les enfants se rattachent au crew |
+| Méthode de flow, guardrail | `hook_triggered`, `hook_completed` |
+| Utilisation d'un outil | `tool_use`, `tool_result` |
+| Opérations de mémoire et de connaissance | `tool_use`, `tool_result`, nommés selon la surface touchée |
+| Appel LLM | `model_request`, `model_response`, avec utilisation des tokens |
+| Fragment de stream | Fusionné dans la réponse sous forme de nombre de fragments et de temps jusqu'au premier token |
+| Retour humain demandé | `human_wait`, `agent_pause` |
+| Retour humain reçu | `agent_resume`, `human_input` |
+| Erreur d'exécution d'un agent | `error`, puis `agent_end` avec le résultat `failed` |
+
+Une tâche n'émet délibérément aucun événement. Une tâche CrewAI est un sous-ensemble de l'exécution de l'agent qui la traite ; émettre les deux doublerait chaque ligne et les rendrait comme des éléments frères. L'identifiant et le nom de la tâche sont transmis avec les propres événements de l'agent.
+
+Les opérations de mémoire et de connaissance sont enregistrées comme des outils, nommés selon la surface qu'elles touchent, afin d'apparaître à côté de vos vrais outils et de permettre la comparaison de leur latence.
+
+Dans un crew hiérarchique, l'imbrication est ce qui rend la trace lisible :
+
+```text
+crew
+└─ manager
+   ├─ researcher      délégué
+   └─ writer          délégué
+```
+
+CrewAI rattache une exécution déléguée à l'événement d'**outil** `delegate_work_to_coworker`, et non directement au manager ; l'adaptateur suit donc ce lien. Sans cela, chaque agent apparaîtrait comme frère de tous les autres et la structure de délégation serait perdue.
+
+## Exemple
+
+```python
+import failproofai_sdk
+from crewai import Agent, Crew, Process, Task
+from crewai.tools import tool
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+MODEL = "openai/gpt-4o-mini"
+METRICS = {"revenue": "$4.2M ARR, up 12% QoQ", "churn": "3.1% monthly, up from 2.4%"}
+
+
+@tool("lookup_metric")
+def lookup_metric(name: str) -> str:
+    """Look up a business metric by name. Valid: revenue, churn."""
+    return METRICS.get(name.lower().strip(), "unknown metric")
+
+
+analyst = Agent(
+    role="analyst",                     # devient agent_id
+    goal="pull the numbers that matter and state them plainly",
+    backstory="You read dashboards for a living.",
+    tools=[lookup_metric],
+    llm=MODEL,
+)
+writer = Agent(
+    role="writer",
+    goal="turn numbers into three lines an exec will read",
+    backstory="You write board updates. You never pad.",
+    llm=MODEL,
+)
+
+gather = Task(
+    description="Look up 'revenue' and 'churn' with the tool.",
+    expected_output="Two lines, one metric each.",
+    agent=analyst,
+)
+summarise = Task(
+    description="Using the metrics above, write a three-line exec summary.",
+    expected_output="Exactly three lines.",
+    agent=writer,
+    context=[gather],
+)
+
+with failproofai_sdk.session():
+    result = Crew(
+        agents=[analyst, writer],
+        tasks=[gather, summarise],
+        process=Process.sequential,
+    ).kickoff()
+```
+
+La passation est visible dans la trace : le span `analyst` se ferme, le span `writer` s'ouvre, et les deux se trouvent à l'intérieur d'un même span `crew`.
+
+## Nommez vos spans
+
+`agent_id` provient de `Agent(role=...)`, ce qui en fait une facette lisible dans le tableau de bord.
+
+```python
+Agent(role="analyst", ...)          # agent_id = "analyst"
+Agent(role="analyst-7f3a2b", ...)   # une entrée de facette par exécution
+```
+
+`agent_id` est une colonne à faible cardinalité. Un rôle contenant un identifiant d'exécution ou un horodatage la dégrade pour toutes les requêtes. Si un rôle ressemble à un identifiant, l'adaptateur le refuse et place la valeur réelle dans un champ de payload.
+
+## Contrôler la session
+
+Résolution dans cet ordre, avec le premier résultat retenu :
+
+1. `instrument("crewai", session_id=...)`
+2. Le scope `failproofai_sdk.session()` englobant
+3. Un `uuid4().hex` généré, une fois par crew ou flow
+
+Enveloppez le kickoff pour le contrôler par exécution :
+
+```python
+with failproofai_sdk.session(f"support-{ticket_id}"):
+    Crew(agents=[...], tasks=[...]).kickoff()
+```
+
+## Options
+
+```python
+failproofai_sdk.instrument(
+    "crewai",
+    session_id=None,          # fixe chaque exécution à un identifiant de session
+)
+```
+
+`session_id` est la seule option que cet adaptateur prend en compte. Les prompts et les complétions sont toujours enregistrés, tronqués selon le budget du payload.
+
+## Humain dans la boucle
+
+CrewAI dispose de **deux** surfaces d'interaction humaine dans la boucle, toutes deux enregistrées sous les quatre mêmes événements.
+
+`@human_feedback` sur une méthode de flow passe par le bus d'événements de CrewAI : le runtime émet un événement avant de bloquer en attendant une réponse humaine, puis un autre après.
+
+`Task(human_input=True)` ne le fait pas. Cette option appelle `input()` dans le propre fournisseur d'entrée de CrewAI sans émettre aucun événement, c'est pourquoi l'adaptateur enveloppe directement ce fournisseur — sans quoi l'attente humaine était invisible et comptée comme du temps actif de l'agent.
+
+Dans les deux cas, vous obtenez :
+
+```text
+human_wait      le prompt et ses options
+agent_pause     démarre le chronomètre de temps en pause
+agent_resume    l'arrête
+human_input     la réponse, avec le temps d'attente mesuré
+```
+
+La paire `agent_pause` / `agent_resume` est la seule qui alimente le temps en pause. Sans elle, une attente humaine de dix minutes est comptabilisée comme dix minutes de temps actif de l'agent.
+
+<Note>
+  CrewAI n'associe aucun identifiant de corrélation aux événements de retour humain ; l'adaptateur les apparie donc sur le nom du flow et de la méthode, en se rabattant sur la pause ouverte la plus récente. Cela est fiable car une invite console bloque l'exécution. Si vous construisez un fournisseur de retour concurrent, définissez `request_id` sur les deux événements.
+</Note>
+
+<Note>
+  Comme le chemin `Task(human_input=True)` est un wrapper autour du fournisseur d'entrée de CrewAI plutôt qu'un abonnement à un événement, il est restauré lors de `uninstrument()` et propage telles quelles toutes les exceptions levées par `input()`, y compris `KeyboardInterrupt`.
+</Note>
+
+## Problèmes courants
+
+<AccordionGroup>
+  <Accordion title="Le filtre d'agents contient des milliers d'entrées">
+    Un `role` contient un UUID, un horodatage ou un suffixe propre à une exécution. Utilisez un rôle humain stable et placez l'identifiant spécifique à l'exécution dans la description de la tâche.
+  </Accordion>
+
+  <Accordion title="Un test ne lit aucun événement, mais le tableau de bord les affiche">
+    Le bus d'événements est asynchrone et `kickoff()` retourne avant que les derniers gestionnaires aient été exécutés. Videz-le d'abord :
+
+    ```python
+    from crewai.events.event_bus import crewai_event_bus
+
+    crew.kickoff()
+    crewai_event_bus.flush(timeout=30)
+    ```
+
+    Il s'agit d'un comportement propre à CrewAI, non au SDK.
+  </Accordion>
+
+  <Accordion title="Une session apparaît comme en cours indéfiniment">
+    `agent_end` force la fermeture des pauses ouvertes, mais pas des outils ni des modèles ; une exécution qui se termine au milieu d'un appel d'outil laisse donc ce span ouvert. Un arrêt normal ferme tout ce qui est encore ouvert et le marque comme incomplet. Seul un `SIGKILL` laisse un span en suspens, car rien ne peut s'exécuter.
+  </Accordion>
+
+  <Accordion title="Rien n'est enregistré">
+    Vérifiez dans cet ordre : `instrument()` a été appelé avant `kickoff()` ; un `with failproofai_sdk.session():` l'englobe ; `crewai` est en version 1.13 ou supérieure ; `FAILPROOFAI_SDK_STRICT=1` est défini pour qu'un hook dégradé lève une exception plutôt que d'être ignoré silencieusement.
+  </Accordion>
+</AccordionGroup>
+
+## Étapes suivantes
+
+<Columns cols={3}>
+  <Card title="Fonctionnement" icon="workflow" href="/fr/start/integrations/custom-agents#going-deeper">
+    Paires, identifiants, cycle de vie des sessions et livraison.
+  </Card>
+  <Card title="Lire une trace" icon="route" href="/fr/sessions/read-a-trace">
+    Suivez la causalité dans la session que vous venez de capturer.
+  </Card>
+  <Card title="Autres frameworks" icon="plug" href="/fr/start/integrations">
+    LangGraph, LlamaIndex, Pydantic AI et agents personnalisés.
+  </Card>
+</Columns>

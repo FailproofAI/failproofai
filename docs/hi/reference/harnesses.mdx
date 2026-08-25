@@ -1,71 +1,71 @@
 ---
-title: "एजेंट हार्नेसेस"
-description: "सभी 12 समर्थित एजेंट हार्नेसेस में सत्र कैप्चर करें और नीतियों को लागू करें।"
+title: "एजेंट हार्नेस"
+description: "सभी 12 समर्थित एजेंट हार्नेस में सेशन कैप्चर करें और नीतियों को लागू करें।"
 icon: "plug-zap"
 ---
 
-एक हार्नेस वह है जिसके अंदर आपका एजेंट वास्तव में चलता है। Failproof AI इनमें से बारह का समर्थन करता है, दो श्रेणियों में:
+हार्नेस वह है जिसके अंदर आपका एजेंट वास्तव में चलता है। Failproof AI बारह को समर्थन देता है, दो वर्गों में:
 
 - **कोडिंग CLIs** (10) — Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Factory Droid, Devin CLI, Antigravity CLI, Goose
 - **चैट और असिस्टेंट गेटवे** (2) — Hermes (Slack, Telegram, cron), OpenClaw (स्व-होस्टेड असिस्टेंट)
 
-एक ही नीतियाँ और एक ही सत्र इतिहास वही लागू होता है चाहे कोई एजेंट किसी में भी चले। एक एडेप्टर लेयर प्रत्येक हार्नेस की मूल घटना नामों, उपकरण नामों, और उपकरण-इनपुट फ़ील्ड को 29 विहित घटनाओं में मैप करती है, इससे पहले कि कोई नीति चले।
+एक ही नीतियां और एक ही सेशन हिस्ट्री लागू होती हैं, चाहे एजेंट किसी भी हार्नेस में चलता हो। एक एडाप्टर लेयर प्रत्येक हार्नेस के मूल इवेंट नामों, टूल नामों और टूल-इनपुट फ़ील्ड को किसी भी नीति के चलने से पहले 29 canonical इवेंट्स में मैप करता है।
 
-एक एजेंट जो बारह में से **किसी में** नहीं चलता है, उसे [Python SDK](/hi/reference/custom-agents) के साथ सीधे संचालित किया जाता है। यह एक अलग अनुबंध है, और स्पष्ट रूप से कहना योग्य है: SDK ट्रेसिंग, सत्र, मूल्यांकन और ऑडिट प्रदान करता है — **यह अपने आप पर नीतियों को लागू नहीं करता है।** किसी असुरक्षित कार्यवाही को निष्पादित करने से पहले ब्लॉक करने के लिए आपके रनटाइम के टूल सीमा पर एक प्रवर्तन हुक की आवश्यकता होती है; [हमसे संपर्क करें](mailto:support@befailproof.ai) और हम इसे मैप करेंगे।
+एक एजेंट जो बारह में से **किसी** में भी नहीं चलता है, वह [Python SDK](/hi/reference/custom-agents) के साथ सीधे instrumented होता है। यह एक अलग अनुबंध है, और स्पष्ट रूप से कहने के लिए महत्वपूर्ण है: SDK ट्रेसिंग, सेशन, मूल्यांकन और ऑडिट प्रदान करता है — **यह अपने आप नीतियों को लागू नहीं करता।** किसी असुरक्षित कार्य को निष्पादन से पहले ब्लॉक करने के लिए आपके runtime के टूल बाउंड्री पर enforcement hook की आवश्यकता है; [हमसे संपर्क करें](mailto:support@befailproof.ai) और हम इसे मैप करेंगे।
 
-| हार्नेस | समर्थित हुक स्कोप |
+| हार्नेस | समर्थित hook स्कोप |
 | --- | --- |
-| Claude Code | उपयोगकर्ता, प्रोजेक्ट, स्थानीय |
-| Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi | उपयोगकर्ता, प्रोजेक्ट |
-| Factory Droid, Devin CLI, Antigravity CLI, Goose | उपयोगकर्ता, प्रोजेक्ट |
-| Hermes, OpenClaw | उपयोगकर्ता |
+| Claude Code | User, project, local |
+| Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi | User, project |
+| Factory Droid, Devin CLI, Antigravity CLI, Goose | User, project |
+| Hermes, OpenClaw | User |
 
-प्रत्येक एकीकरण नीतियों के चलने से पहले अपनी मूल हुक घटना नामों, उपकरण नामों, और उपकरण-इनपुट फ़ील्ड को सामान्य करता है। एक नीति केवल वही घटनाओं पर कार्य कर सकती है जो हार्नेस प्रदर्शित करता है; जिस सटीक हार्नेस और संस्करण को आप तैनात करते हैं, उस पर अंत-में-बदल और निर्देश व्यवहार का परीक्षण करें।
+प्रत्येक एकीकरण नीतियों के चलने से पहले अपने मूल hook इवेंट नामों, टूल नामों और टूल-इनपुट फ़ील्ड को सामान्य करता है। एक नीति केवल उन इवेंट्स पर कार्य कर सकती है जो हार्नेस expose करता है; turn के अंत और instruction behavior को सटीक हार्नेस और version पर परीक्षण करें जिसे आप deploy करते हैं।
 
-## प्रवर्तन क्षमता
+## Enforcement क्षमता
 
-"ब्लॉक" का मतलब है कि वर्तमान एडेप्टर का रिटर्न किया गया निर्णय नामित हार्नेस द्वारा खपत किया जाता है। पोस्ट-टूल ब्लॉकिंग मॉडल को दिखाया गया परिणाम बदल सकता है लेकिन एक टूल साइड इफेक्ट को पूर्ववत नहीं कर सकता जो पहले से ही घटित हुई हो।
+"Block" का मतलब है कि वर्तमान एडाप्टर का returned verdict named हार्नेस द्वारा उपभोग किया जाता है। Post-tool blocking परिणाम को प्रतिस्थापित कर सकता है जो मॉडल को दिखाया जाता है लेकिन ऐसे tool side effect को पूर्ववत नहीं कर सकता जो पहले से ही हो चुका हो।
 
-| हार्नेस | सत्यापित ब्लॉकिंग घटनाएँ | केवल अवलोकन या गैर-ब्लॉकिंग चेतावनियाँ |
+| हार्नेस | Verified blocking events | अवलोकन-केवल या non-blocking चेतावनियां |
 | --- | --- | --- |
-| Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact`, और कई कार्य/कॉन्फ़िग घटनाएँ | `PostToolUse`, सत्र जीवनचक्र, सूचनाएँ, और पोस्ट-विफलता घटनाएँ अवलोकनात्मक हैं। |
-| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | पोस्ट-टूल ब्लॉकिंग निष्पादन के बाद परिणाम को प्रतिस्थापित करता है; सत्र-प्रारंभ और कॉम्पैक्ट घटनाएँ वर्तमान एडेप्टर में अवलोकनात्मक हैं। |
-| GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | पोस्ट-टूल ब्लॉकिंग निष्पादन के बाद परिणाम को प्रतिस्थापित करता है; सत्र और सूचना घटनाएँ अवलोकनात्मक हैं। |
-| Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` और सत्र घटनाएँ अवलोकनात्मक हैं। |
-| OpenCode | `PreToolUse` | पोस्ट-टूल और जीवनचक्र घटनाएँ अवलोकनात्मक हैं; वर्तमान स्टॉप हैंडलिंग एक सत्यापित गेट के बजाय बाद के मोड़ के लिए मार्गदर्शन है। |
-| Pi | `PreToolUse`, `UserPromptSubmit` | पोस्ट-टूल और जीवनचक्र घटनाएँ अवलोकनात्मक हैं; स्टॉप मार्गदर्शन बाद के मोड़ पर लागू होता है। |
-| Hermes | `PreToolUse` | पोस्ट-टूल, सत्र, और सबएजेंट-स्टॉप निर्णय गेट नहीं हैं। |
-| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | पोस्ट-टूल, सत्र, सबएजेंट-स्टॉप, और कॉम्पैक्शन घटनाएँ अवलोकनात्मक हैं। |
-| Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | पोस्ट-टूल और सबएजेंट-स्टॉप निर्णय अवलोकनात्मक हैं। |
-| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, सशर्त `PermissionRequest` | अनुमति हुक हर अनुमति मोड में नहीं चलते; पोस्ट-टूल और सत्र घटनाएँ अवलोकनात्मक हैं। |
-| Antigravity CLI | `PreToolUse`, `Stop` | उपयोगकर्ता-प्रॉम्प्ट और पोस्ट-टूल निर्णय अवलोकनात्मक हैं; प्रॉम्प्ट निर्देश अभी भी इंजेक्ट किए जा सकते हैं। |
-| Goose | `PreToolUse` | उपयोगकर्ता-प्रॉम्प्ट, पोस्ट-टूल, और सत्र घटनाएँ अवलोकनात्मक हैं। एक मूल ब्लॉकिंग स्टॉप हुक अपस्ट्रीम में मौजूद है लेकिन वर्तमान एडेप्टर द्वारा स्थापित नहीं है। |
+| Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact`, और कई task/config events | `PostToolUse`, session lifecycle, notifications, और post-failure events अवलोकन योग्य हैं। |
+| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | Post-tool blocking निष्पादन के बाद परिणाम को प्रतिस्थापित करता है; session-start और compact events वर्तमान एडाप्टर में अवलोकन योग्य हैं। |
+| GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | Post-tool blocking निष्पादन के बाद परिणाम को प्रतिस्थापित करता है; session और notification events अवलोकन योग्य हैं। |
+| Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` और session events अवलोकन योग्य हैं। |
+| OpenCode | `PreToolUse` | Post-tool और lifecycle events अवलोकन योग्य हैं; वर्तमान stop handling बाद के turn के लिए निर्देशन के बजाय verified gate है। |
+| Pi | `PreToolUse`, `UserPromptSubmit` | Post-tool और lifecycle events अवलोकन योग्य हैं; stop guidance बाद के turn पर लागू होती है। |
+| Hermes | `PreToolUse` | Post-tool, session, और subagent-stop verdicts gates नहीं हैं। |
+| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | Post-tool, session, subagent-stop, और compaction events अवलोकन योग्य हैं। |
+| Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | Post-tool और subagent-stop verdicts अवलोकन योग्य हैं। |
+| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, conditional `PermissionRequest` | Permission hooks हर permission mode में नहीं चलते; post-tool और session events अवलोकन योग्य हैं। |
+| Antigravity CLI | `PreToolUse`, `Stop` | User-prompt और post-tool verdicts अवलोकन योग्य हैं; prompt instructions अभी भी inject किए जा सकते हैं। |
+| Goose | `PreToolUse` | User-prompt, post-tool, और session events अवलोकन योग्य हैं। एक मूल blocking stop hook upstream में मौजूद है लेकिन वर्तमान एडाप्टर द्वारा स्थापित नहीं है। |
 
-क्षमताएँ संस्करण-संवेदनशील हैं। एजेंट CLI को अपग्रेड करने के बाद पुनः परीक्षण करें, विशेषकर जब एक नीति प्रॉम्प्ट, स्टॉप, अनुमति, या पोस्ट-टूल व्यवहार पर निर्भर करती है, न कि सामान्य प्री-टूल गेट पर।
+क्षमताएं version-sensitive हैं। एजेंट CLI को अपग्रेड करने के बाद फिर से परीक्षण करें, विशेषकर जब कोई नीति prompt, stop, permission, या post-tool behavior के बजाय common pre-tool gate पर निर्भर करती है।
 
-## कैप्चर और नीति हुक स्थापित करें
+## कैप्चर और नीति hooks स्थापित करें
 
 <Tabs>
-  <Tab title="डैशबोर्ड">
-    1. **प्रशासन → कुंजियाँ** खोलें और `events:add` और `policies:pull` के साथ एक कुंजी बनाएँ, मशीन या वातावरण के लिए नामित।
-    2. लक्ष्य मशीन पर, प्रदर्शित कुंजी के साथ स्थानीय CLI को कनेक्ट करें और हार्नेस हुक स्थापित करें।
-    3. एक नया एजेंट सत्र शुरू करें, फिर **अवलोकन → घटनाएँ** के तहत इसकी हुक और सत्र घटनाओं की पुष्टि करें।
-    4. **अवलोकन → नीति** खोलें एक ही समय विंडो के लिए और पुष्टि करें कि एक नीति निर्णय मशीन को जिम्मेदार है।
+  <Tab title="Dashboard">
+    1. **Administration → Keys** खोलें और `events:add` और `policies:pull` के साथ एक key बनाएं, मशीन या वातावरण के लिए नाम दें।
+    2. लक्ष्य मशीन पर, प्रदर्शित key के साथ स्थानीय CLI को जोड़ें और harness hooks स्थापित करें।
+    3. एक नया एजेंट सेशन शुरू करें, फिर **Observe → Events** के तहत इसके hook और session events की पुष्टि करें।
+    4. **Observe → policy** खोलें एक ही समय विंडो के लिए और पुष्टि करें कि कोई नीति निर्णय मशीन को जिम्मेदार है।
 
-    कनेक्शन एक मशीन कुंजी के साथ शुरू होता है। पुष्टि करें कि इसमें अपनी गुप्त को कॉपी करने से पहले इनजेस्ट और नीति-वितरण दोनों अनुमतियाँ शामिल हैं।
+    कनेक्शन एक मशीन key से शुरू होता है। पुष्टि करें कि इसमें अपने secret को कॉपी करने से पहले ingestion और policy-delivery दोनों अनुमतियां शामिल हैं।
 
-    ![नई API कुंजी ड्रॉअर घटना इनजेस्ट और नीति वितरण अनुमतियाँ देने के लिए।](/images/dashboard/key-create.png)
+    ![नई API key ड्रॉवर event ingestion और policy delivery अनुमतियां प्रदान करने के लिए उपयोग की जाती है।](/images/dashboard/key-create.png)
 
-    हुक स्थापित करने के बाद, घटनाएँ स्ट्रीम आपके द्वारा कनेक्ट की गई मशीन और वातावरण से नई घटनाएँ दिखाना चाहिए।
+    Hooks स्थापित करने के बाद, Events stream को उस मशीन और वातावरण से नई events दिखानी चाहिए जिसे आपने जोड़ा है।
 
-    ![लाइव घटनाएँ स्ट्रीम एक नए स्थापित हार्नेस की रिपोर्टिंग की पुष्टि करने के लिए।](/images/dashboard/events-stream.png)
+    ![लाइव Events stream एक नए स्थापित harness की reporting की पुष्टि करने के लिए उपयोग किया जाता है।](/images/dashboard/events-stream.png)
 
-    अंत में, सत्यापित करें कि नीति निर्णय एक ही मशीन को जिम्मेदार हैं। यह पुष्टि करता है कि हार्नेस ट्रेस घटनाओं के साथ-साथ नीति गतिविधि की रिपोर्ट कर रहा है।
+    अंत में, सत्यापित करें कि नीति निर्णय एक ही मशीन को जिम्मेदार हैं। यह पुष्टि करता है कि harness trace events के साथ-साथ policy activity की रिपोर्ट कर रहा है।
 
-    ![नीति पृष्ठ नए कनेक्ट किए गए हार्नेस से नीति निर्णय सत्यापित करने के लिए।](/images/dashboard/policy-observe.png)
+    ![Policy page नए जुड़े हुए harness से नीति निर्णयों को सत्यापित करने के लिए उपयोग किया जाता है।](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
-    प्रत्येक पता लगाए गए हार्नेस के लिए हुक स्थापित करें:
+    हर पाए गए harness के लिए hooks स्थापित करें:
 
     ```bash
     failproofai config \
@@ -74,7 +74,7 @@ icon: "plug-zap"
     failproofai policies --install
     ```
 
-    या नामित हार्नेसेस और कॉन्फ़िगरेशन स्कोप को लक्ष्य करें:
+    या named harnesses और एक configuration scope को लक्ष्य करें:
 
     ```bash
     failproofai policies --install \
@@ -82,9 +82,9 @@ icon: "plug-zap"
       --scope user
     ```
 
-    प्रोजेक्ट स्कोप हुक कॉन्फ़िगरेशन को एक रिपॉजिटरी के साथ रखता है। उपयोगकर्ता स्कोप रिपॉजिटरीज में काम को कवर करता है। Claude Code स्थानीय स्कोप को भी समर्थन करता है; समर्थन हार्नेस द्वारा भिन्न होता है और CLI असमर्थित संयोजनों को अस्वीकार करता है।
+    Project scope hook configuration को एक repository के साथ रखता है। User scope repositories में काम को कवर करता है। Claude Code भी local scope को समर्थन देता है; समर्थन harness द्वारा भिन्न होता है और CLI असमर्थित संयोजनों को अस्वीकार करता है।
 
-    मशीन और इसकी घटनाओं को सत्यापित करें:
+    मशीन और इसके events को सत्यापित करें:
 
     ```bash
     failproofai config --status
@@ -94,16 +94,16 @@ icon: "plug-zap"
   </Tab>
 </Tabs>
 
-## एक गैर-डिफ़ॉल्ट सत्र पथ जोड़ें
+## एक non-default session path जोड़ें
 
 <Tabs>
-  <Tab title="डैशबोर्ड">
-    अतिरिक्त पथ मशीन पर पंजीकृत होते हैं, क्लाउड में नहीं। एक जोड़ने के बाद, **अवलोकन → सत्र** खोलें, मशीन के वातावरण के लिए फ़िल्टर करें, और पुष्टि करें कि नए पथ से सत्र प्रदर्शित होते हैं। एक सत्र खोलें और ऑडिट में इस पर भरोसा करने से पहले एजेंट, हार्नेस, और घटना टाइमस्टैम्प की जांच करें।
+  <Tab title="Dashboard">
+    अतिरिक्त paths मशीन पर registered होते हैं, Cloud में नहीं। एक को जोड़ने के बाद, **Observe → Sessions** खोलें, मशीन के वातावरण के लिए filter करें, और नए path से sessions दिखाई दें। एक session खोलें और agent, harness, और event timestamps को जांचें इसे audit में उपयोग करने पर निर्भर होने से पहले।
 
-    ![सत्र सूची अतिरिक्त कैप्चर पथ से डेटा प्राप्त करने वाले वातावरण के लिए फ़िल्टर की गई।](/images/dashboard/sessions-list.png)
+    ![Sessions list को अतिरिक्त capture path से डेटा प्राप्त करने वाले वातावरण के लिए filtered।](/images/dashboard/sessions-list.png)
   </Tab>
   <Tab title="CLI">
-    एक वैकल्पिक लेबल के साथ एक पथ जोड़ें, फिर कॉन्फ़िगर किए गए पथों का निरीक्षण करें:
+    एक optional label के साथ path जोड़ें, फिर configured paths inspect करें:
 
     ```bash
     failproofai harness add-path claude checkout=/srv/checkout/.claude
@@ -112,10 +112,10 @@ icon: "plug-zap"
     failproofai backfill --since 7d
     ```
 
-    `failproofai harness remove-path claude checkout` के साथ एक पथ हटाएँ।
+    `failproofai harness remove-path claude checkout` के साथ एक path को हटाएं।
   </Tab>
 </Tabs>
 
 <Tip>
-  स्थापना के बाद एक नया सत्र चलाएँ। रोलआउट को विस्तारित करने से पहले लाइव घटना स्ट्रीम और एक वास्तविक नीति निर्णय दोनों को सत्यापित करें।
+  स्थापन के बाद एक नया सेशन चलाएं। लाइव event stream और एक वास्तविक नीति निर्णय दोनों को सत्यापित करें rollout को expand करने से पहले।
 </Tip>

@@ -1,0 +1,50 @@
+---
+title: "Agenti personalizzati"
+description: "Racchiudi il tuo agente in tre blocchi `with` e inizia a registrare."
+icon: "code"
+---
+
+Per un agente che hai scritto tu stesso, o per un framework per cui Failproof AI non ha un adapter.
+
+Racchiudi il lavoro che fai già in blocchi `with`. Ognuno registra quando è iniziato, quando è finito e quanto tempo ha impiegato — non devi chiamare nient'altro.
+
+## Installazione
+
+```bash
+pip install failproofai-sdk
+```
+
+Niente extra, niente dipendenze.
+
+## Strumentazione
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+
+with failproofai_sdk.session():                 # one run
+    with failproofai_sdk.agent("planner"):      # one unit of work
+        with failproofai_sdk.tool_call("search", input={"q": q}) as t:
+            t.output = search(q)                # one tool call
+```
+
+Leggilo da cima a fondo e dice quello che significa:
+
+| Racchiudilo in | Per dire |
+| --- | --- |
+| `session()` | Questi eventi appartengono alla stessa esecuzione |
+| `agent()` | Qualcosa sta svolgendo un lavoro — assegnagli un nome che riconosceresti in un elenco |
+| `tool_call()` | Questo è uno strumento, e ecco cosa ha restituito |
+
+Annidali comunque il tuo codice si annida. Non passi mai id in giro: ogni blocco ricorda di cosa è dentro, quindi tutto ciò che registri raccoglie automaticamente l'esecuzione giusta e l'agente giusto. `async with` funziona esattamente allo stesso modo.
+
+## Verifica che sia arrivato
+
+Eseguilo una volta, poi apri **Observe → Sessions** e seleziona il tuo ambiente. La tua esecuzione appare come una traccia ricostruita.
+
+Se non arriva nulla, conferma che la macchina è connessa con `failproofai config --status`.
+
+<Card title="Guida completa per agenti personalizzati" icon="arrow-right" href="/it/start/integrations/custom-agents">
+  Ogni metodo di evento, cosa accade quando il tuo codice genera un errore, un esempio pratico, thread e async, e strumentazione di un framework senza adapter.
+</Card>

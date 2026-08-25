@@ -1,47 +1,49 @@
 ---
 title: "Policy-Editor"
-description: "Erstellen und überarbeiten Sie versionierte Policies aus einem bestätigten Fehlerfall."
+description: "Erstelle und überarbeite versionierte Richtlinien auf Basis eines bestätigten Fehlermusters."
 icon: "file-pen-line"
 ---
 
-Verwenden Sie den Policy-Editor, um einen Fund oder ein Problem in eine einsatzfähige Regel umzuwandeln. Halten Sie das Erstellen und das Ausrollen voneinander getrennt, damit ein Entwurf das Live-Verhalten nicht unbemerkt verändern kann.
+Verwende den Policy-Editor, um einen Fund oder ein Problem in eine einsetzbare Regel umzuwandeln. Halte Erstellung und Deployment getrennt, damit ein Entwurf das Live-Verhalten nicht stillschweigend verändern kann.
 
-Wenn ein Problem ein wiederholbares Aktionsmuster aufweist, öffnen Sie es unter **Analyze → issues** und wählen Sie **generate policy**. Failproof AI erläutert zunächst, ob sich das Problem als Policy ausdrücken lässt, und überträgt dann den geprüften Anlass sowie den Kontext des Funds in den Editor. Der generierte Quellcode bleibt ein Entwurf, bis Sie ihn veröffentlichen.
+Wenn ein Problem ein wiederholbares Aktionsmuster aufweist, öffne es unter **Analyze → issues** und wähle **generate policy**. Failproof AI erklärt zunächst, ob eine Richtlinie das Problem abbilden kann, und überführt dann den geprüften Intent sowie den Fundkontext in den Editor. Die generierte Quelle bleibt so lange ein Entwurf, bis du sie veröffentlichst.
 
-## Eine Policy-Version veröffentlichen
+## Eine Richtlinienversion veröffentlichen
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehen Sie zu **Admin → policy editor** und beschreiben Sie unter **compose** den Fehlerfall, oder fügen Sie den JavaScript-Policy-Quellcode ein.
-    2. Validieren Sie den Quellcode und beheben Sie alle gemeldeten Fehler.
-    3. Geben Sie die Policy-Identität ein und veröffentlichen Sie sie. Verwenden Sie anschließend **library**, um Versionen zu vergleichen oder zu deaktivieren.
-    4. Wählen Sie **enforcement**, wenn die Version für ein maschinelles Rollout bereit ist.
+    1. Gehe zu **Admin → policy editor** und beschreibe im Bereich **compose** das Fehlermuster, oder füge den JavaScript-Richtlinienquellcode ein.
+    2. Validiere den Quellcode und behebe alle gemeldeten Fehler.
+    3. Trage die Richtlinienidentität ein und veröffentliche sie. Nutze anschließend **library**, um Versionen zu vergleichen oder zu deaktivieren.
+    4. Wähle **enforcement**, sobald die Version für ein maschinelles Rollout bereit ist.
 
-    ![Die Compose-Ansicht des Policy-Editors mit Policy-Identität, KI-gestütztem Entwurf, Quellcode-Validierung und Veröffentlichungssteuerung.](/images/dashboard/policy-editor.png)
+    ![Die Compose-Ansicht des Policy-Editors mit Richtlinienidentität, KI-gestützter Erstellung, Quellvalidierung und Veröffentlichungssteuerung.](/images/dashboard/policy-editor.png)
   </Tab>
   <Tab title="CLI">
-    Die Cloud CLI veröffentlicht keine Policy-Versionen. Validieren Sie den Quellcode lokal, bevor Sie ihn in den Editor kopieren:
+    Veröffentliche über die CLI mit `fp policies publish`. Dieser Befehl erstellt eine **neue Version** und bearbeitet keine bestehende in-place. Außerdem prüft er den Quellcode syntaktisch mit node, bevor er ihn überträgt – da nachgelagerte Schritte dies nicht tun, würde ein Syntaxfehler sonst erst zur Enforcement-Zeit auf dem Zielsystem auftreten:
 
     ```bash
-    failproofai policies --install --custom ./checkout.policies.ts \
-      --cli claude --scope project
+    fp policies test ./checkout.policy.mjs --command "git push --force" --expect deny
+    fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
     ```
 
-    Veröffentlichen Sie die geprüfte Version über **Admin → policy editor**.
+    Das Veröffentlichen deployt nichts – eine neue Version liegt ungenutzt vor, bis `fp fleet deploy` sie auf einem Gerät aktiviert. `fp policies compose "<plain English>"` entwirft Quellcode mithilfe des Cloud-Assistenten und gibt ihn zur Überprüfung aus, anstatt ihn direkt zu veröffentlichen.
+
+    Um eine Richtlinie stattdessen in eine lokale Agenten-CLI (nicht Cloud) zu installieren, verwende `failproofai policies --install --custom ./checkout.policies.ts --cli claude --scope project`.
   </Tab>
 </Tabs>
 
 ## Checkliste für die Erstellung
 
-1. Benennen Sie den Fehlerfall in operativer Sprache.
-2. Wählen Sie die Hook-Events und Tools aus, die ausreichend Kontext für eine Entscheidung liefern.
-3. Formulieren Sie die engstmögliche Bedingung, die unsicheres Verhalten erkennt.
-4. Geben Sie eine Begründung zurück, die dem Agent oder Operator mitteilt, wie er als Nächstes vorgehen soll.
-5. Fügen Sie Beispiele hinzu, die übereinstimmen sollen, sowie Beispiele, die weiterhin erlaubt bleiben müssen.
-6. Speichern Sie eine neue Version und fordern Sie eine Überprüfung an.
+1. Benenne das Fehlermuster in operativer Sprache.
+2. Wähle die Hook-Events und Tools aus, die ausreichend Kontext für eine Entscheidung liefern.
+3. Formuliere die engstmögliche Bedingung, die unsicheres Verhalten trifft.
+4. Gib eine Begründung zurück, die dem Agenten oder Operator mitteilt, wie weiter vorzugehen ist.
+5. Füge Beispiele hinzu, die übereinstimmen sollen, sowie Beispiele, die weiterhin erlaubt bleiben müssen.
+6. Speichere eine neue Version und fordere eine Überprüfung an.
 
-Verwenden Sie `instruct`, wenn der Agent sicher korrigieren kann. Verwenden Sie `deny`, wenn das Zulassen der Aktion ein inakzeptables oder unumkehrbares Risiko darstellen würde.
+Verwende `instruct`, wenn der Agent den Kurs sicher korrigieren kann. Verwende `deny`, wenn das Zulassen der Aktion ein inakzeptables oder irreversibles Risiko darstellen würde.
 
 <Info>
-  Policy-Versionen sind unveränderliche Deployment-Eingaben. Das Bearbeiten eines Entwurfs erstellt eine neue Version; dabei sollte die bereits Maschinen zugewiesene Version nicht überschrieben werden.
+  Richtlinienversionen sind unveränderliche Deployment-Eingaben. Das Bearbeiten eines Entwurfs erstellt eine neue Version; bestehende Versionen, die bereits Maschinen zugewiesen sind, sollten nicht überschrieben werden.
 </Info>

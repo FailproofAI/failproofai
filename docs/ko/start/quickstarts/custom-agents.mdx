@@ -1,0 +1,50 @@
+---
+title: "커스텀 에이전트"
+description: "에이전트를 세 개의 `with` 블록으로 감싸면 바로 기록이 시작됩니다."
+icon: "code"
+---
+
+직접 작성한 에이전트나 Failproof AI 어댑터가 없는 프레임워크에 사용합니다.
+
+이미 작성한 코드를 `with` 블록으로 감싸기만 하면 됩니다. 각 블록은 시작 시간, 종료 시간, 소요 시간을 자동으로 기록합니다 — 별도로 호출할 필요가 없습니다.
+
+## 설치
+
+```bash
+pip install failproofai-sdk
+```
+
+추가 패키지나 의존성이 없습니다.
+
+## 계측
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+
+with failproofai_sdk.session():                 # 하나의 실행
+    with failproofai_sdk.agent("planner"):      # 하나의 작업 단위
+        with failproofai_sdk.tool_call("search", input={"q": q}) as t:
+            t.output = search(q)                # 하나의 툴 호출
+```
+
+위에서 아래로 읽으면 의미가 그대로 드러납니다:
+
+| 감싸는 블록 | 의미 |
+| --- | --- |
+| `session()` | 이 이벤트들은 같은 실행에 속합니다 |
+| `agent()` | 무언가 작업을 수행 중입니다 — 목록에서 식별할 수 있는 이름을 지정하세요 |
+| `tool_call()` | 하나의 툴이며, 반환값이 무엇인지 기록합니다 |
+
+코드 구조에 맞게 자유롭게 중첩할 수 있습니다. ID를 직접 전달할 필요가 없습니다. 각 블록이 자신이 속한 컨텍스트를 기억하므로, 기록하는 모든 내용은 자동으로 올바른 실행과 에이전트에 연결됩니다. `async with`도 동일하게 작동합니다.
+
+## 데이터 수신 확인
+
+한 번 실행한 뒤 **Observe → Sessions**를 열고 환경을 선택하세요. 실행 결과가 재구성된 트레이스로 표시됩니다.
+
+데이터가 수신되지 않으면 `failproofai config --status`로 머신 연결 상태를 확인하세요.
+
+<Card title="커스텀 에이전트 전체 가이드" icon="arrow-right" href="/ko/start/integrations/custom-agents">
+  모든 이벤트 메서드, 코드에서 예외가 발생했을 때의 동작, 실제 예제, 스레드와 비동기 처리, 그리고 어댑터가 없는 프레임워크 계측 방법을 다룹니다.
+</Card>

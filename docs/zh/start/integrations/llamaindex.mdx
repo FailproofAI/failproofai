@@ -1,0 +1,249 @@
+---
+title: "LlamaIndex"
+sidebarTitle: "LlamaIndex"
+description: "对工作流、步骤、函数代理和检索器进行埋点。"
+icon: "/images/frameworks/llamaindex.svg"
+---
+
+## 安装
+
+```bash
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+支持版本：`llama-index-core` 0.14.23 至 0.15。0.14.23 是工作流流式传输开始携带本适配器所读取的类型化代理事件的版本。低于此版本时，模型名称和代理结构均会丢失。
+
+## 埋点
+
+```python
+import asyncio
+
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+async def main():
+    async with failproofai_sdk.session():
+        await agent.run("...")
+
+
+asyncio.run(main())
+```
+
+LlamaIndex 的代理 API 是异步的。每个作用域在 `async with` 和 `with` 下均可正常工作，并产生相同的事件。
+
+`instrument()` 会向 LlamaIndex 的全局调度器附加一个事件处理器和一个 span 处理器。两者共同使代理循环可见，而不仅仅是其模型调用。
+
+<Warning>
+  如果不在 LLM 上额外添加一个参数，追踪中的所有 token 计数都将为 null。请参阅下方的 [Token 计数](#token-counts)。
+</Warning>
+
+## Token 计数
+
+`FunctionAgent` 调用 `astream_chat`，而 `llama-index-llms-openai` 在流式传输时不会发送 `stream_options={"include_usage": True}`。因此，提供方永远不会发送用量数据块，任何埋点工具也无从读取。
+
+这是上游 LlamaIndex 的行为。请在你的 LLM 上手动开启：
+
+```python
+from llama_index.llms.openai import OpenAI
+
+llm = OpenAI(
+    model="gpt-4o-mini",
+    additional_kwargs={"stream_options": {"include_usage": True}},
+)
+```
+
+在相同运行和模型下的对比：
+
+| | 输入 token | 输出 token |
+| --- | --- | --- |
+| 未开启 | `null` | `null` |
+| 已开启 | 148 | 17 |
+
+非流式调用（`llm.chat`、`llm.achat`）无需任何配置即可上报用量。只有流式路径（即默认的代理路径）才需要此配置。
+
+## 记录的内容
+
+| LlamaIndex | Failproof 事件 |
+| --- | --- |
+| `Workflow.run` 根 span | Session、`agent_start`、`agent_end` |
+| 嵌套的 `Workflow.run` span | 嵌套的 `agent_start`、`agent_end` |
+| 工作流步骤 span | `hook_triggered`、`hook_completed` |
+| LLM 聊天开始和结束 | `model_request`、`model_response` |
+| `FunctionTool.call` span | `tool_use`、`tool_result` |
+| 检索开始和结束 | `tool_use`、`tool_result`，输出经过摘要处理 |
+| 嵌入 | 不记录，除非设置 `embeddings=True` |
+| 工具等待人工响应 | `human_wait`、`agent_pause`，随后 `agent_resume`、`human_input` |
+| `AgentWorkflow` 移交 | 每个代理各有一个嵌套的 `agent_start`、`agent_end`，并挂载在工作流下 |
+| 异常 | `error`，随后 `agent_end`（outcome 为 `failed`），并在 `agent_end.summary` 中标注异常名称 |
+| `handler.cancel_run()` | `agent_end`（outcome 为 `cancelled`，无 `error`）——停止按钮不等于失败 |
+
+当你设置了 `FunctionAgent.name` 时，`agent_id` 取该值，否则取工作流类名。在 `AgentWorkflow` 下，每个轮到的代理都会在工作流下获得自己的嵌套 span，因此一次移交会呈现为两个独立代理，而非同一个。
+
+检索输出会经过摘要处理而非直接转储。检索器返回的文档如果完整存储到 payload 中，每次查询都会将你的语料库写入事件存储。因此只保留文档数量、评分范围和截断后的摘要片段。
+
+## 示例
+
+```python
+import asyncio
+
+import failproofai_sdk
+from llama_index.core.agent.workflow import FunctionAgent
+from llama_index.core.tools import FunctionTool
+from llama_index.llms.openai import OpenAI
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+POP = {"tokyo": "37M", "delhi": "33M"}
+AREA = {"tokyo": "2,194 km2", "delhi": "1,484 km2"}
+
+
+def population(city: str) -> str:
+    """Population of a city. Valid: tokyo, delhi."""
+    return POP.get(city.lower().strip(), "unknown")
+
+
+def area(city: str) -> str:
+    """Land area of a city. Valid: tokyo, delhi."""
+    return AREA.get(city.lower().strip(), "unknown")
+
+
+async def main():
+    agent = FunctionAgent(
+        name="city_analyst",
+        tools=[
+            FunctionTool.from_defaults(fn=population),
+            FunctionTool.from_defaults(fn=area),
+        ],
+        llm=OpenAI(
+            model="gpt-4o-mini",
+            additional_kwargs={"stream_options": {"include_usage": True}},
+        ),
+        system_prompt="Use the tools. Be terse.",
+    )
+
+    async with failproofai_sdk.session():
+        async with failproofai_sdk.agent("city_analyst", goal="compare two cities"):
+            print(await agent.run("Compare Tokyo and Delhi on population and area."))
+
+
+asyncio.run(main())
+```
+
+代理循环在追踪中以 hook 对的形式呈现：`init_run`、`setup_agent`、`run_agent_step`、`parse_agent_output`、`call_tool` 和 `aggregate_tool_results`。它们属于框架自身的循环，因此记录为 hook 而非 agent，以保持 `agent_id` 的语义清晰。
+
+## 为 span 命名
+
+当你设置了 `FunctionAgent.name` 时，`agent_id` 取该值，否则取工作流类名。
+
+```python
+FunctionAgent(name="city_analyst", tools=[...], llm=llm)   # agent_id = "city_analyst"
+```
+
+在 `AgentWorkflow` 中，该名称同样用于记录每次移交：
+
+```text
+AgentWorkflow            父 span
+├─ city_analyst          第 1 轮
+├─ cost_analyst          第 2 轮
+└─ city_analyst          第 3 轮  — 新的一轮，而非重新打开的旧轮
+```
+
+因此，`agent_id` 告诉你**哪个代理**完成了工作，`parent_id` 告诉你它属于**哪个工作流**。代理在之后重新获得控制权时，会开启第二轮，而不是重新打开第一轮。
+
+可通过包装运行来覆盖名称，或将多个代理归入同一父级：
+
+```python
+async with failproofai_sdk.agent("research", goal="compare two cities"):
+    await agent.run(...)
+```
+
+请保持 `agent_id` 的低基数。它是所有仪表盘视图的主要分组维度，应使用角色名或工作流名，切勿使用 UUID 或每次运行都不同的字符串。
+
+## 控制 Session
+
+本适配器**不接受 `session_id` 选项**。Session 来自外层作用域，否则每次工作流运行会自动生成一个 `uuid4().hex`：
+
+```python
+async with failproofai_sdk.session(f"chat-{user_id}"):
+    await agent.run(...)
+```
+
+## 选项
+
+```python
+failproofai_sdk.instrument(
+    "llama_index",
+    embeddings=False,         # True 将嵌入调用记录为 tool 对
+    steps=True,               # False 丢弃工作流步骤 hook 对
+    capture_messages=True,    # False 丢弃所有 payload：提示词、补全内容、
+                              # 工具参数和输出、步骤 I/O、检索查询、
+                              # 目标和最终答案
+    capture_limit=8192,       # 每个捕获值保留的字符数
+    stale_after=600.0,        # 废弃叶子节点被强制关闭前的秒数
+    reaper_interval=30.0,     # 清理器扫描频率；0 表示禁用
+)
+```
+
+| 选项 | 修改原因 |
+| --- | --- |
+| `embeddings` | 仅在调试嵌入延迟或成本时开启。批量索引构建会产生数千次调用，会将时间线淹没。 |
+| `steps` | 如果你只关心模型和工具事件，觉得代理循环信息冗余，可关闭此选项。 |
+| `capture_messages` | 对受监管的数据关闭此选项。所有 payload 将停止记录——提示词、模型补全、工具参数和返回值、工作流步骤输入输出、检索查询、代理目标及最终答案。结构、时序、token 和结果仍会被记录。 |
+| `capture_limit` | 截断前每个捕获值保留的字符数。当 RAG 提示词或检索上下文被截断时，可适当调大。 |
+| `stale_after` | **叶子节点**被强制关闭前的秒数——即无人消费的流式响应、未收到关闭信号的模型或工具 span——确保 session 最终结算，而不是一直显示 `ongoing`。该选项**不会**关闭废弃的运行本身：若工作流任务被取消且调度器未收到退出信号，其 `agent_start` 将保持打开状态直到 `uninstrument()`。 |
+| `reaper_interval` | 扫描频率。设为 `0` 可完全禁用清理器。 |
+
+## 人机协作
+
+当等待发生在工具内部时会被捕获：
+
+```python
+async def ask_human(question: str) -> str:
+    """Ask a person and wait for their answer."""
+    response = await ctx.wait_for_event(HumanResponseEvent)
+    return response.answer
+```
+
+普通工作流步骤中的 `ctx.wait_for_event` 不会被捕获。运行时会在信号到达调度器之前拦截该挂起，导致步骤退出并在之后重新运行，没有任何信号可用于标记暂停点。LlamaIndex 文档中的 FunctionAgent 模式在工具内部等待，可以被完整捕获。
+
+## 常见问题
+
+<AccordionGroup>
+  <Accordion title="所有 token 计数都为 null">
+    在你的 LLM 上添加 `additional_kwargs={"stream_options": {"include_usage": True}}`。参阅 [Token 计数](#token-counts)。
+  </Accordion>
+
+  <Accordion title="usage 有值，但 token 列为空">
+    LlamaIndex 没有标准的 usage 字段。适配器会尝试几种已知的数据结构，若某个集成使用了新的计数器命名，则无法匹配。
+
+    原始 dict 始终会随 payload 一起发送，可查看 `usage` 字段了解你的提供方使用的字段名。
+
+    `usage` 有值但 token 列为空是有意为之——这比给出一个自信的错误数字更好。
+  </Accordion>
+
+  <Accordion title="时间线中充满了 setup_agent 和 parse_agent_output">
+    这是 FunctionAgent 循环的正常表现，每次迭代产生一组。可在仪表盘上按 hook 名称过滤。这些步骤的耗时统计通常正是使用本适配器而非纯模型适配器的意义所在。
+  </Accordion>
+
+  <Accordion title="没有任何内容被记录">
+    按此顺序排查：`instrument()` 在运行前已执行；`await` 外层有 `async with failproofai_sdk.session():`；`llama-index-core` 版本为 0.14.23 或更高；已设置 `FAILPROOFAI_SDK_STRICT=1`，以便降级的 hook 抛出异常而非被静默吞掉。
+  </Accordion>
+</AccordionGroup>
+
+## 下一步
+
+<Columns cols={3}>
+  <Card title="工作原理" icon="workflow" href="/zh/start/integrations/custom-agents#going-deeper">
+    Pair、ID、session 生命周期与数据投递。
+  </Card>
+  <Card title="读懂追踪" icon="route" href="/zh/sessions/read-a-trace">
+    在刚捕获的 session 中跟踪因果链路。
+  </Card>
+  <Card title="其他框架" icon="plug" href="/zh/start/integrations">
+    LangGraph、CrewAI、Pydantic AI 及自定义代理。
+  </Card>
+</Columns>

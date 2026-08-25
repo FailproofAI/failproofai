@@ -1,0 +1,50 @@
+---
+title: "Eigene Agenten"
+description: "Füge deinem Agenten drei `with`-Blöcke hinzu und er beginnt mit der Aufzeichnung."
+icon: "code"
+---
+
+Für Agenten, die du selbst entwickelt hast, oder Frameworks, für die Failproof AI keinen Adapter anbietet.
+
+Du wrappst die bestehende Arbeit in `with`-Blöcke. Jeder Block zeichnet auf, wann er gestartet und beendet wurde und wie lange er gedauert hat — du musst sonst nichts aufrufen.
+
+## Installation
+
+```bash
+pip install failproofai-sdk
+```
+
+Keine Extras, keine Abhängigkeiten.
+
+## Instrumentierung
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+
+with failproofai_sdk.session():                 # ein Durchlauf
+    with failproofai_sdk.agent("planner"):      # eine Arbeitseinheit
+        with failproofai_sdk.tool_call("search", input={"q": q}) as t:
+            t.output = search(q)                # ein Tool-Aufruf
+```
+
+Von oben nach unten gelesen erklärt sich der Code von selbst:
+
+| Wrapping-Block | Bedeutung |
+| --- | --- |
+| `session()` | Diese Events gehören zum selben Durchlauf |
+| `agent()` | Eine Komponente erledigt Arbeit — gib ihr einen Namen, den du in einer Liste wiedererkennen würdest |
+| `tool_call()` | Das ist ein Tool-Aufruf, und das ist sein Rückgabewert |
+
+Verschachtele die Blöcke so, wie dein Code es erfordert. IDs musst du nicht weitergeben: Jeder Block merkt sich, in welchem Kontext er sich befindet, sodass alles, was du aufzeichnest, automatisch dem richtigen Durchlauf und dem richtigen Agenten zugeordnet wird. `async with` funktioniert auf dieselbe Weise.
+
+## Überprüfung des Eingangs
+
+Führe den Code einmal aus, öffne dann **Observe → Sessions** und wähle deine Umgebung aus. Dein Durchlauf erscheint als rekonstruierter Trace.
+
+Wenn nichts ankommt, prüfe mit `failproofai config --status`, ob die Maschine verbunden ist.
+
+<Card title="Vollständige Anleitung für eigene Agenten" icon="arrow-right" href="/de/start/integrations/custom-agents">
+  Alle Event-Methoden, Verhalten bei Ausnahmen im Code, ein ausgearbeitetes Beispiel, Threads und Async sowie die Instrumentierung von Frameworks ohne Adapter.
+</Card>

@@ -1,28 +1,28 @@
 ---
 title: "Previna sua primeira falha com uma política"
-description: "Crie uma versão de política, implante-a no modo de observação e depois aplique a execução."
+description: "Crie uma versão de política, implante-a em modo de observação e depois a aplique."
 icon: "shield-check"
 ---
 
-Use uma política somente depois que você conseguir descrever a ação insegura e as ações legítimas que precisam continuar permitidas.
+Use uma política somente depois de conseguir descrever a ação insegura e as ações legítimas que devem continuar sendo permitidas.
 
 <Tabs>
   <Tab title="Dashboard">
     <Steps>
-      <Step title="Crie a política">
-        Acesse **Admin → editor de políticas**. Comece com a política de demonstração, revise ou edite o código-fonte e selecione **publicar versão**. A publicação cria a versão imutável que você pode implantar nas máquinas.
+      <Step title="Criar a política">
+        Vá para **Admin → policy editor**. Comece com a política de demonstração, revise ou edite seu código-fonte e, em seguida, selecione **publish version**. A publicação cria a versão imutável que você pode implantar nas máquinas.
 
-        ![A visão de composição do editor de políticas com uma política de demonstração pronta para ser publicada como uma versão imutável.](/images/dashboard/policy-editor.png)
+        ![The Policy editor compose view with a demo policy ready to publish as an immutable version.](/images/dashboard/policy-editor.png)
       </Step>
-      <Step title="Implante em uma máquina">
-        Acesse **Admin → enforcement**, expanda a máquina de destino e selecione **editar esta máquina**. Adicione a política de demonstração publicada, fixe sua versão, escolha **observe** e aplique a implantação.
+      <Step title="Implantar em uma máquina">
+        Vá para **Admin → enforcement**, expanda a máquina de destino e selecione **edit this machine**. Adicione a política de demonstração publicada, fixe sua versão, escolha **observe** e aplique a implantação.
 
-        ![O editor de implantação de máquina com uma versão de política publicada selecionada no modo de observação antes de aplicar a implantação.](/images/dashboard/enforcement-editor.png)
+        ![The machine deployment editor with a published policy version selected in observe mode before applying the deployment.](/images/dashboard/enforcement-editor.png)
       </Step>
-      <Step title="Verifique a política">
-        Execute uma nova sessão de agente nessa máquina e abra **Observe → política**. Selecione a máquina e confirme que a política de demonstração aparece no mapeamento de políticas e na linha do tempo de decisões. O modo de observação registra o que a política faria sem bloquear a ação.
+      <Step title="Verificar a política">
+        Execute uma nova sessão de agente nessa máquina e, em seguida, abra **Observe → policy**. Selecione a máquina e confirme que a política de demonstração aparece no mapeamento de políticas e na linha do tempo de decisões. O modo de observação registra o que a política faria sem bloquear a ação.
 
-        ![A página de Política mostrando totais de decisões, atividade de execução ao longo do tempo e mapeamentos de políticas locais e gerenciadas pela nuvem.](/images/dashboard/policy-observe.png)
+        ![The Policy page showing decision totals, enforcement activity over time, and local and Cloud-managed policy mappings.](/images/dashboard/policy-observe.png)
       </Step>
     </Steps>
   </Tab>
@@ -35,13 +35,13 @@ Use uma política somente depois que você conseguir descrever a ação insegura
     failproofai config --status
     ```
 
-    Use `fp` para inspecionar as decisões de política visíveis na nuvem:
+    Use `fp` para inspecionar decisões de política visíveis na nuvem:
 
     ```bash
     fp events --event-type hook_completed --env production --since 24h
     fp sessions --env production --since 24h
     ```
 
-    O CLI da nuvem não expõe rotas de implantação de execução exclusivas para administradores. Publique versões em **Admin → editor de políticas** e implante-as em **Admin → enforcement**.
+    Ambas as etapas também estão disponíveis pelo CLI: `fp policies publish <id> <file>` cria uma versão e `fp fleet deploy <machine-id> --add <id>` a coloca em uma máquina. Os equivalentes no dashboard são **Admin → policy editor** e **Admin → enforcement**.
   </Tab>
 </Tabs>

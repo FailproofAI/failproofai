@@ -1,0 +1,208 @@
+---
+title: "Pydantic AI"
+sidebarTitle: "Pydantic AI"
+description: "टाइप किए गए एजेंट, टूल्स, मॉडल कॉल और रिट्राई को इंस्ट्रूमेंट करें।"
+icon: "/images/frameworks/pydantic-ai.svg"
+---
+
+## इंस्टॉल करें
+
+```bash
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+समर्थित: `pydantic-ai-slim` 2.0 से 3.0 तक। 2.0 ने `Agent(instrument=...)` को हटाया और capability protocol को पेश किया जिस पर यह एडेप्टर बनाया गया है, इसलिए 1.x को इस तरीके से इंस्ट्रूमेंट नहीं किया जा सकता।
+
+## इंस्ट्रूमेंट करें
+
+```python
+import failproofai_sdk
+from pydantic_ai import Agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # किसी भी Agent को बनाने से पहले
+
+agent = Agent("openai:gpt-4o-mini", system_prompt="Be terse.")
+
+with failproofai_sdk.session():
+    result = agent.run_sync("...")
+```
+
+<Warning>
+  `instrument()` को किसी भी `Agent` को बनाने से पहले चलना चाहिए। क्षमता निर्माण के समय जोड़ी जाती है, इसलिए पहले बनाया गया एजेंट कोई भी रिकॉर्ड नहीं करता है, कोई त्रुटि के बिना क्योंकि कुछ गलत नहीं हुआ। यह इस एडेप्टर के साथ खाली ट्रेस का सबसे आम कारण है।
+</Warning>
+
+मॉड्यूल-स्कोप एजेंट्स वह जगह हैं जहां यह समस्या होती है:
+
+```python
+# agents.py
+agent = Agent("openai:gpt-4o-mini")   # आयात समय पर बनाया गया
+
+# main.py
+import failproofai_sdk
+failproofai_sdk.instrument()          # इसे पहले चलाएं
+import agents                         # अब एजेंट को क्षमता मिलती है
+```
+
+पुष्टि करें कि यह काम करता है:
+
+```python
+print([type(c).__name__ for c in agent.root_capability.capabilities])
+# ['FailproofAI', 'ToolSearch', 'PendingMessageDrainCapability']
+```
+
+Pydantic AI आप द्वारा पारित सूची को एक एकल `root_capability` में विलय करता है, इसलिए पढ़ने के लिए कोई `agent.capabilities` विशेषता नहीं है।
+
+इंस्ट्रूमेंट करते समय बने एजेंट्स क्षमता को बनाए रखते हैं, इसलिए आप `uninstrument()` कर सकते हैं और उन्हें फिर से बनाए बिना फिर से इंस्ट्रूमेंट कर सकते हैं।
+
+## क्या रिकॉर्ड किया जाता है
+
+| Pydantic AI | Failproof इवेंट |
+| --- | --- |
+| Agent रन | `agent_start`, `agent_end` |
+| मॉडल अनुरोध | `model_request`, `model_response`, टोकन उपयोग के साथ |
+| टूल कॉल | `tool_use`, `tool_result`, तर्कों के साथ जो मॉडल ने भेजे |
+| एक टूल से `ModelRetry` | `tool_result` एक त्रुटि ले जाता है |
+| अनहैंडल्ड अपवाद | `error`, फिर `agent_end` परिणाम `failed` के साथ |
+
+यहाँ कोई हुक जोड़ी नहीं है और कोई मानव-इन-द-लूप जोड़ी नहीं है। Pydantic AI के पास ब्रैकेट करने के लिए कोई नोड या स्टेप सीमा नहीं है और कोई अंतर्निहित मानव विराम नहीं है, इसलिए मैप करने के लिए कुछ भी नहीं है। यदि आप कोई भी बनाते हैं, तो इवेंट्स स्वयं उत्सर्जित करें — [कस्टम एजेंट्स](/hi/reference/custom-agents) देखें।
+
+`output_type` ट्रेस में कोई अंतर नहीं बनाता है। एक टाइप किया गया रन और एक स्ट्रिंग रन समान इवेंट्स उत्पन्न करते हैं।
+
+## उदाहरण
+
+```python
+import failproofai_sdk
+from pydantic import BaseModel
+from pydantic_ai import Agent, ModelRetry
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+PRICE = {"widget": 42.0, "gadget": 17.5}
+STOCK = {"widget": 120, "gadget": 0}
+
+
+class Report(BaseModel):
+    headline: str
+    out_of_stock: list[str]
+
+
+agent = Agent(
+    "openai:gpt-4o-mini",
+    output_type=Report,
+    system_prompt="Use the tools for every number. If a tool fails, note it and continue.",
+)
+
+
+@agent.tool_plain
+def price_of(item: str) -> float:
+    """एक आइटम की यूनिट कीमत। वैध: widget, gadget।"""
+    return PRICE[item.lower().strip()]
+
+
+@agent.tool_plain
+def stock_of(item: str) -> int:
+    """स्टॉक में यूनिट्स। वैध: widget, gadget।"""
+    return STOCK[item.lower().strip()]
+
+
+@agent.tool_plain
+def restock_eta(item: str) -> str:
+    """रीस्टॉक ETA। उपलब्ध नहीं है।"""
+    raise ModelRetry(f"no restock schedule for {item!r} — answer without it")
+
+
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("inventory", goal="stock report"):
+        result = agent.run_sync(
+            "For widget and gadget, get price and stock. "
+            "For anything out of stock, try the restock ETA. Then produce the report."
+        )
+```
+
+ट्रेस में, `restock_eta` एक `tool_result` के रूप में दिखाई देता है जो एक त्रुटि ले जाता है, इसके बाद एक और मॉडल कॉल जहां एजेंट इसके चारों ओर काम करता है, और रन अभी भी `success` के साथ समाप्त होता है। दोनों तथ्य संरक्षित हैं।
+
+## त्रुटियां, रिट्राई और नियंत्रण प्रवाह
+
+Pydantic AI तीन अलग-अलग चीजों के लिए अपवाद उठाता है, और एडेप्टर उन्हें अलग करता है:
+
+| अपवाद | मानक | परिणाम |
+| --- | --- | --- |
+| `ModelRetry`, `ToolRetryError`, `ToolFailedError` | एक वास्तविक टूल विफलता | `tool_result` एक त्रुटि के साथ; रन अभी भी `success` के साथ समाप्त हो सकता है |
+| `SkipToolExecution`, `SkipToolValidation`, `SkipModelRequest`, `CallDeferred`, `ApprovalRequired` | नियंत्रण प्रवाह | एक त्रुटि नहीं; रन को निर्देशित किया जा रहा है |
+| कुछ और | एक विफलता | `error`, फिर `agent_end` परिणाम `failed` के साथ |
+
+`ModelRetry` पहले समूह में जानबूझकर है। इसका अर्थ है कि एक प्रयास वास्तविक रूप से विफल हुआ और मॉडल को फिर से प्रयास करने के लिए कहा गया, जो एक टूल स्पैन के त्रुटि क्षेत्र के लिए है। इसे नियंत्रण प्रवाह के रूप में वर्गीकृत करने से वास्तविक टूल विफलताएं हरे रन के पीछे छिप जाएंगी।
+
+## अपने स्पैन्स को नाम दें
+
+Pydantic AI का अपना रन स्पैन `agent` नाम दिया गया है। इसे अपनी पसंद का लेबल देने के लिए कॉल को लपेटें:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("inventory", goal="stock report"):
+        agent.run_sync("...")
+```
+
+फ्रेमवर्क का स्पैन फिर `inventory` के अंतर्गत नेस्ट होता है, और यह वह जगह है जहां मॉडल और टूल इवेंट्स लटकते हैं।
+
+`agent_id` को कम कार्डिनैलिटी रखें। यह हर डैशबोर्ड सतह पर प्राथमिक पहलू है, इसलिए एक भूमिका नाम का उपयोग करें, कभी UUID या प्रति-रन स्ट्रिंग नहीं।
+
+## सेशन को नियंत्रित करें
+
+इस क्रम में हल किया गया, पहला मिलान जीतता है:
+
+1. `instrument("pydantic_ai", session_id=...)`
+2. संलग्न `failproofai_sdk.session()` स्कोप
+3. रन का `conversation_id`, फिर इसका `run_id`
+4. एक उत्पन्न `uuid4().hex`
+
+```python
+with failproofai_sdk.session(f"chat-{user_id}"):
+    agent.run_sync("...")
+```
+
+## विकल्प
+
+```python
+failproofai_sdk.instrument(
+    "pydantic_ai",
+    session_id=None,          # हर रन को एक सेशन आईडी पर पिन करें
+    capture_content=True,     # False पेलोड्स से प्रॉम्प्ट्स और कंपलीशन्स को छोड़ता है
+)
+```
+
+## सामान्य समस्याएं
+
+<AccordionGroup>
+  <Accordion title="रन काम करता है लेकिन कोई इवेंट्स दिखाई नहीं देते">
+    `Agent` को `instrument()` चलने से पहले बनाया गया था। ऊपर की चेतावनी देखें, और `agent.root_capability.capabilities` जांचें।
+  </Accordion>
+
+  <Accordion title="एक टूल में सादा अपवाद रन को मार देता है">
+    एक बेयर `raise` प्रसारित होता है; यह Pydantic AI का डिज़ाइन है। मॉडल को इसके चारों ओर काम करने देने के लिए, `ModelRetry` को एक संदेश के साथ उठाएं जिस पर वह कार्य कर सकता है। विफलता किसी भी तरीके से रिकॉर्ड की जाती है।
+  </Accordion>
+
+  <Accordion title="एक नेस्टेड एजेंट स्पैन है जो मैंने नहीं बनाया">
+    वह चाइल्ड Pydantic AI का अपना रन स्पैन है, और यह वह जगह है जहां मॉडल और टूल इवेंट्स लटकते हैं। अपना स्कोप छोड़ें यदि आप एक एकल स्पैन चाहते हैं, कस्टम नाम की कीमत पर।
+  </Accordion>
+
+  <Accordion title="ट्रेसबैक्स एक ट्रंकेशन मार्कर से शुरू होते हैं">
+    Pydantic AI का एसिंक ग्राफ स्टैक पेलोड फील्ड लिमिट से लंबा है, और ट्रेसबैक की अंतिम पंक्ति अपवाद ही है। यह फील्ड पीछे की ओर से बजाय आगे की ओर से ट्रिम की जाती है, इसलिए आपको जो पंक्ति चाहिए वह बची रहती है।
+  </Accordion>
+</AccordionGroup>
+
+## आगे
+
+<Columns cols={3}>
+  <Card title="यह कैसे काम करता है" icon="workflow" href="/hi/start/integrations/custom-agents#going-deeper">
+    जोड़ी, आईडी, सेशन लाइफसाइकल और डिलीवरी।
+  </Card>
+  <Card title="एक ट्रेस पढ़ें" icon="route" href="/hi/sessions/read-a-trace">
+    आपने जो सेशन कैप्चर किया उस के माध्यम से कार्य-कारण का अनुसरण करें।
+  </Card>
+  <Card title="अन्य फ्रेमवर्क" icon="plug" href="/hi/start/integrations">
+    LangGraph, CrewAI, LlamaIndex, और कस्टम एजेंट्स।
+  </Card>
+</Columns>

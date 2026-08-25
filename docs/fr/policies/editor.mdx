@@ -4,44 +4,46 @@ description: "Créez et révisez des politiques versionnées à partir d'un mode
 icon: "file-pen-line"
 ---
 
-Utilisez l'éditeur de politiques pour transformer un constat ou un problème en règle déployable. Séparez la création du déploiement afin qu'un brouillon ne puisse pas modifier silencieusement le comportement en production.
+Utilisez l'éditeur de politiques pour transformer un constat ou un problème en règle déployable. Maintenez la rédaction séparée du déploiement afin qu'un brouillon ne puisse pas modifier silencieusement le comportement en production.
 
-Lorsqu'un problème présente un schéma d'action répétable, ouvrez-le dans **Analyze → issues** et sélectionnez **generate policy**. Failproof AI explique d'abord si une politique peut exprimer le problème, puis intègre l'intention examinée et le contexte du constat dans l'éditeur. Le source généré reste un brouillon jusqu'à sa publication.
+Lorsqu'un problème présente un schéma d'action reproductible, ouvrez-le sous **Analyze → issues** et sélectionnez **generate policy**. Failproof AI explique d'abord si une politique peut exprimer le problème, puis intègre l'intention validée et le contexte du constat dans l'éditeur. La source générée reste un brouillon jusqu'à sa publication.
 
 ## Publier une version de politique
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Accédez à **Admin → policy editor** et, dans **compose**, décrivez le mode de défaillance ou collez le source de politique JavaScript.
-    2. Validez le source et corrigez chaque erreur signalée.
+    1. Accédez à **Admin → policy editor** et, dans **compose**, décrivez le mode de défaillance ou collez la source JavaScript de la politique.
+    2. Validez la source et corrigez chaque erreur signalée.
     3. Saisissez l'identité de la politique et publiez-la, puis utilisez **library** pour comparer ou désactiver des versions.
-    4. Sélectionnez **enforcement** lorsque la version est prête pour un déploiement automatisé.
+    4. Sélectionnez **enforcement** lorsque la version est prête pour un déploiement sur les machines.
 
-    ![La vue de composition de l'éditeur de politiques avec l'identité de la politique, la rédaction assistée par IA, la validation du source et les contrôles de publication.](/images/dashboard/policy-editor.png)
+    ![La vue compose de l'éditeur de politiques avec l'identité de la politique, la rédaction assistée par IA, la validation de la source et les contrôles de publication.](/images/dashboard/policy-editor.png)
   </Tab>
   <Tab title="CLI">
-    Le CLI Cloud ne publie pas les versions de politiques. Validez le source localement avant de le copier dans l'éditeur :
+    Publiez depuis le CLI avec `fp policies publish`. Cette commande crée une **nouvelle version** et ne modifie jamais une version existante en place ; elle vérifie également la syntaxe de la source avec node avant l'envoi — aucune étape ultérieure ne le fait, donc une erreur de syntaxe se manifesterait autrement sur la machine au moment de l'application :
 
     ```bash
-    failproofai policies --install --custom ./checkout.policies.ts \
-      --cli claude --scope project
+    fp policies test ./checkout.policy.mjs --command "git push --force" --expect deny
+    fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
     ```
 
-    Publiez la version examinée depuis **Admin → policy editor**.
+    La publication ne déploie rien — une nouvelle version reste inutilisée jusqu'à ce que `fp fleet deploy` la place sur une machine. `fp policies compose "<plain English>"` rédige une source avec l'assistant Cloud et l'affiche pour révision sans la publier.
+
+    Pour installer une politique dans un CLI d'agent local (et non dans Cloud), utilisez `failproofai policies --install --custom ./checkout.policies.ts --cli claude --scope project`.
   </Tab>
 </Tabs>
 
-## Liste de vérification pour la création
+## Liste de contrôle pour la rédaction
 
-1. Nommez le mode de défaillance en termes opérationnels.
+1. Nommez le mode de défaillance dans un langage opérationnel.
 2. Sélectionnez les événements de hook et les outils qui contiennent suffisamment d'informations pour décider.
-3. Rédigez la condition la plus restrictive possible qui correspond au comportement non sécurisé.
-4. Retournez une raison indiquant à l'agent ou à l'opérateur la marche à suivre.
+3. Rédigez la condition la plus restrictive qui correspond au comportement non sécurisé.
+4. Retournez une raison indiquant à l'agent ou à l'opérateur quoi faire ensuite.
 5. Ajoutez des exemples qui doivent correspondre et des exemples qui doivent rester autorisés.
-6. Enregistrez une nouvelle version et demandez une revue.
+6. Enregistrez une nouvelle version et demandez une révision.
 
-Utilisez `instruct` lorsque l'agent peut corriger son comportement en toute sécurité. Utilisez `deny` lorsque l'autorisation de l'action créerait un risque inacceptable ou irréversible.
+Utilisez `instruct` lorsque l'agent peut corriger sa trajectoire en toute sécurité. Utilisez `deny` lorsqu'autoriser l'action créerait un risque inacceptable ou irréversible.
 
 <Info>
-  Les versions de politiques sont des entrées de déploiement immuables. La modification d'un brouillon crée une nouvelle version ; elle ne doit pas réécrire la version déjà assignée aux machines.
+  Les versions de politique sont des entrées de déploiement immuables. La modification d'un brouillon crée une nouvelle version ; elle ne doit pas réécrire la version déjà assignée aux machines.
 </Info>

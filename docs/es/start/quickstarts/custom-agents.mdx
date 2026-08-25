@@ -1,0 +1,50 @@
+---
+title: "Agentes personalizados"
+description: "Envuelve tu agente en tres bloques `with` y comenzará a registrar."
+icon: "code"
+---
+
+Para un agente que escribiste tú mismo, o un framework para el que Failproof AI no tiene adaptador.
+
+Envuelves el trabajo que ya realizas en bloques `with`. Cada uno registra cuándo comenzó, cuándo terminó y cuánto tardó — no necesitas llamar a nada más.
+
+## Instalación
+
+```bash
+pip install failproofai-sdk
+```
+
+Sin extras ni dependencias.
+
+## Instrumentación
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+
+with failproofai_sdk.session():                 # una ejecución
+    with failproofai_sdk.agent("planner"):      # una unidad de trabajo
+        with failproofai_sdk.tool_call("search", input={"q": q}) as t:
+            t.output = search(q)                # una llamada a herramienta
+```
+
+Léelo de arriba a abajo y dice exactamente lo que significa:
+
+| Envuélvelo en | Para indicar |
+| --- | --- |
+| `session()` | Estos eventos pertenecen a la misma ejecución |
+| `agent()` | Algo está realizando trabajo — dale un nombre que reconocerías en una lista |
+| `tool_call()` | Esta es una herramienta, y esto es lo que devolvió |
+
+Anída los bloques como anidas tu código. Nunca tienes que pasar ids entre ellos: cada bloque recuerda en qué contexto está, de modo que todo lo que registres recoge automáticamente la ejecución correcta y el agente correcto. `async with` funciona exactamente igual.
+
+## Comprueba que llegó
+
+Ejecútalo una vez, luego abre **Observe → Sessions** y selecciona tu entorno. Tu ejecución aparecerá como una traza reconstruida.
+
+Si no llega nada, confirma que la máquina está conectada con `failproofai config --status`.
+
+<Card title="Guía completa para agentes personalizados" icon="arrow-right" href="/es/start/integrations/custom-agents">
+  Todos los métodos de eventos, qué ocurre cuando tu código lanza una excepción, un ejemplo práctico, hilos y async, e instrumentación de un framework sin adaptador.
+</Card>

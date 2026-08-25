@@ -1,0 +1,249 @@
+---
+title: "LlamaIndex"
+sidebarTitle: "LlamaIndex"
+description: "ضبط سير العمل والخطوات والوكلاء الوظيفيين والمسترجعات."
+icon: "/images/frameworks/llamaindex.svg"
+---
+
+## التثبيت
+
+```bash
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+مدعوم: `llama-index-core` 0.14.23 إلى 0.15. 0.14.23 هو الإصدار حيث بدأ تدفق سير العمل بنقل أحداث الوكيل المكتوبة بشكل صريح التي يقرأها هذا المحول. تحته، تختفي أسماء النموذج وهيكل الوكيل معاً.
+
+## الضبط
+
+```python
+import asyncio
+
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+async def main():
+    async with failproofai_sdk.session():
+        await agent.run("...")
+
+
+asyncio.run(main())
+```
+
+واجهة برمجة التطبيقات للوكيل في LlamaIndex غير متزامنة. كل نطاق يعمل تحت `async with` وكذلك `with` وينتج أحداثاً متطابقة.
+
+`instrument()` تربط معالج حدث ومعالج امتداد لموزع LlamaIndex العام. معاً يجعلان حلقة الوكيل مرئية، وليس فقط استدعاءات نموذجه.
+
+<Warning>
+  بدون وسيطة إضافية على نموذجك، كل عدد رموز في تتبعك قيمته null. انظر [عدد الرموز](#token-counts) أدناه.
+</Warning>
+
+## عدد الرموز
+
+`FunctionAgent` يستدعي `astream_chat`، و`llama-index-llms-openai` لا يرسل `stream_options={"include_usage": True}` عند البث. المزود بالتالي لا يرسل أبداً مقطع الاستخدام، ولا شيء لأي أداة ضبط لقراءته.
+
+هذا سلوك LlamaIndex الأساسي. قم بالاشتراك في نموذجك:
+
+```python
+from llama_index.llms.openai import OpenAI
+
+llm = OpenAI(
+    model="gpt-4o-mini",
+    additional_kwargs={"stream_options": {"include_usage": True}},
+)
+```
+
+تم القياس في نفس التشغيل والنموذج:
+
+| | رموز الإدخال | رموز الإخراج |
+| --- | --- | --- |
+| بدون | `null` | `null` |
+| مع | 148 | 17 |
+
+استدعاءات البث غير المتزامن (`llm.chat`, `llm.achat`) تقرر الاستخدام بدون تكوين. فقط مسار البث، وهو المسار الافتراضي للوكيل، يحتاج إلى هذا.
+
+## ما يتم تسجيله
+
+| LlamaIndex | حدث Failproof |
+| --- | --- |
+| `Workflow.run` امتداد الجذر | جلسة، `agent_start`، `agent_end` |
+| امتداد `Workflow.run` المتداخل | `agent_start` متداخل، `agent_end` |
+| امتداد خطوة سير العمل | `hook_triggered`، `hook_completed` |
+| بداية ونهاية دردشة LLM | `model_request`، `model_response` |
+| امتداد `FunctionTool.call` | `tool_use`، `tool_result` |
+| بداية ونهاية الاسترجاع | `tool_use`، `tool_result`، الناتج المختصر |
+| التضمينات | لا شيء، إلا إذا كان `embeddings=True` |
+| أداة تنتظر شخصاً | `human_wait`، `agent_pause`، ثم `agent_resume`، `human_input` |
+| مسلمة `AgentWorkflow` | `agent_start` متداخل، `agent_end` لكل وكيل، مرتبط بسير العمل |
+| الاستثناء | `error`، ثم `agent_end` مع النتيجة `failed`، و`agent_end.summary` يسميها |
+| `handler.cancel_run()` | `agent_end` مع النتيجة `cancelled` وبدون `error` — زر الإيقاف ليس فشلاً |
+
+`agent_id` هو `FunctionAgent.name` عندما تحدده، واسم فئة سير العمل وإلا. تحت `AgentWorkflow`، كل وكيل يأخذ دوره يحصل على امتداده الخاص المتداخل تحت سير العمل، لذا تُقرأ المسلمة كوكيلين بدلاً من واحد.
+
+الناتج من الاسترجاع مختصر بدلاً من أن يُرمى. يعيد المسترجع المستندات، وتخزينها في الحمل سيضع مجموعة النصوص الخاصة بك في مخزن الأحداث مرة واحدة لكل استعلام. يتم الاحتفاظ بالعدد، نطاق النقاط، والمقاطع المختصرة بدلاً من ذلك.
+
+## مثال
+
+```python
+import asyncio
+
+import failproofai_sdk
+from llama_index.core.agent.workflow import FunctionAgent
+from llama_index.core.tools import FunctionTool
+from llama_index.llms.openai import OpenAI
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+POP = {"tokyo": "37M", "delhi": "33M"}
+AREA = {"tokyo": "2,194 km2", "delhi": "1,484 km2"}
+
+
+def population(city: str) -> str:
+    """Population of a city. Valid: tokyo, delhi."""
+    return POP.get(city.lower().strip(), "unknown")
+
+
+def area(city: str) -> str:
+    """Land area of a city. Valid: tokyo, delhi."""
+    return AREA.get(city.lower().strip(), "unknown")
+
+
+async def main():
+    agent = FunctionAgent(
+        name="city_analyst",
+        tools=[
+            FunctionTool.from_defaults(fn=population),
+            FunctionTool.from_defaults(fn=area),
+        ],
+        llm=OpenAI(
+            model="gpt-4o-mini",
+            additional_kwargs={"stream_options": {"include_usage": True}},
+        ),
+        system_prompt="Use the tools. Be terse.",
+    )
+
+    async with failproofai_sdk.session():
+        async with failproofai_sdk.agent("city_analyst", goal="compare two cities"):
+            print(await agent.run("Compare Tokyo and Delhi on population and area."))
+
+
+asyncio.run(main())
+```
+
+تظهر حلقة الوكيل في التتبع كأزواج hook: `init_run`، `setup_agent`، `run_agent_step`، `parse_agent_output`، `call_tool`، و`aggregate_tool_results`. إنها حلقة الإطار نفسه، لذا فهي hooks بدلاً من وكلاء، مما يحافظ على معنى `agent_id`.
+
+## سمِّ امتدادك
+
+`agent_id` هو `FunctionAgent.name` عندما تحدده، واسم فئة سير العمل وإلا.
+
+```python
+FunctionAgent(name="city_analyst", tools=[...], llm=llm)   # agent_id = "city_analyst"
+```
+
+في `AgentWorkflow`، هذا الاسم هو أيضاً ما يتم تسجيل كل مسلمة تحته:
+
+```text
+AgentWorkflow            امتداد الأب
+├─ city_analyst          الدور 1
+├─ cost_analyst          الدور 2
+└─ city_analyst          الدور 3  — دور جديد، وليس دور معاد فتحه
+```
+
+إذاً `agent_id` يخبرك **أي وكيل** قام بالعمل و`parent_id` يخبرك **أي سير عمل** انتمى إليه. يفتح الوكيل الذي يسلم التحكم لاحقاً دوره الثاني بدلاً من إعادة فتح الأول.
+
+لف التشغيل لتجاوزه، أو لتجميع عدة وكلاء تحت أب واحد:
+
+```python
+async with failproofai_sdk.agent("research", goal="compare two cities"):
+    await agent.run(...)
+```
+
+أبق `agent_id` ذو كاردينالية منخفضة. إنها الجانب الأساسي على كل سطح لوحة معلومات، لذا استخدم دوراً أو اسم سير عمل، لا تستخدم UUID أو سلسلة لكل تشغيل.
+
+## تحكم في الجلسة
+
+هذا المحول **لا يأخذ خيار `session_id`**. تأتي الجلسة من النطاق المحيط، وإلا `uuid4().hex` مُولدة لكل تشغيل سير عمل:
+
+```python
+async with failproofai_sdk.session(f"chat-{user_id}"):
+    await agent.run(...)
+```
+
+## الخيارات
+
+```python
+failproofai_sdk.instrument(
+    "llama_index",
+    embeddings=False,         # True يسجل استدعاءات التضمين كأزواج أدوات
+    steps=True,               # False يسقط أزواج hook خطوة سير العمل
+    capture_messages=True,    # False يسقط EVERY الحمل: المحفزات، الإكمالات،
+                              # وسائط الأداة والناتج، إدخال وإخراج الخطوة، استعلامات
+                              # الاسترجاع، الهدف والإجابة النهائية
+    capture_limit=8192,       # الأحرف المحتفظ بها لكل قيمة مقبوضة
+    stale_after=600.0,        # ثواني قبل إغلاق أوراق الشجر المهجورة بقوة
+    reaper_interval=30.0,     # عدد مرات كنس الحاصد؛ 0 يعطله
+)
+```
+
+| الخيار | لماذا قد تغيره |
+| --- | --- |
+| `embeddings` | قم بالتشغيل فقط عند تصحيح كمون أو تكلفة التضمين. بناء فهرس مجموعي هو آلاف الاستدعاءات وسيدفن المخطط الزمني. |
+| `steps` | أطفئه إذا كنت تريد فقط أحداث النموذج والأداة وتجد حلقة الوكيل مزعجة. |
+| `capture_messages` | أطفئه للبيانات المنظمة. كل حمل يتوقف عن التسجيل — المحفزات، إكمال النموذج، وسائط الأداة وقيم الإرجاع، إدخال وإخراج خطوة سير العمل، استعلامات الاسترجاع، هدف الوكيل وإجابته النهائية. الهيكل والتوقيتات والرموز والنتائج لا تزال مسجلة. |
+| `capture_limit` | الأحرف المحتفظ بها لكل قيمة مقبوضة قبل الاقتطاع. ارفعه عندما يصل محفز RAG أو السياق المسترجع مقطوعاً. |
+| `stale_after` | الثواني قبل إغلاق ورقة شجر مهجورة بقوة — استجابة بث لم يستهلكها أحد، امتداد نموذج أو أداة لم يصل إغلاقه — بحيث تستقر الجلسة بدلاً من قراءة `ongoing` للأبد. هذا **لا** يغلق التشغيل المهجور نفسه: سير عمل تم إلغاء مهمته دون أن يرى الموزع مخرجاً يحتفظ بـ `agent_start` مفتوح حتى `uninstrument()`. |
+| `reaper_interval` | تكرار المسح. اضبطه على `0` لتعطيل الحاصد كلياً. |
+
+## الإنسان في الحلقة
+
+يتم الالتقاط عند حدوث الانتظار داخل أداة:
+
+```python
+async def ask_human(question: str) -> str:
+    """Ask a person and wait for their answer."""
+    response = await ctx.wait_for_event(HumanResponseEvent)
+    return response.answer
+```
+
+`ctx.wait_for_event` في خطوة سير عمل عادية لا يتم التقاطها. يمسك وقت التشغيل بالقطرة قبل وصولها للموزع، لذا تخرج الخطوة وتعاد لاحقاً بدون إشارة لمفتاح الإيقاف عليها. نمط FunctionAgent، الذي توثقه LlamaIndex، ينتظر داخل أداة ويتم التقاطه بالكامل.
+
+## مشاكل شائعة
+
+<AccordionGroup>
+  <Accordion title="كل عدد رموز قيمته null">
+    أضف `additional_kwargs={"stream_options": {"include_usage": True}}` إلى نموذجك. انظر [عدد الرموز](#token-counts).
+  </Accordion>
+
+  <Accordion title="الاستخدام مملوء لكن أعمدة الرموز فارغة">
+    LlamaIndex لا يملك حقل استخدام قياسي. يحاول المحول عدة أشكال معروفة، والتكامل الذي يسمي العدادات الخاصة به بشيء جديد لن يطابق أي منها.
+
+    يشحن القاموس الخام دائماً، لذا تحقق من `usage` في الحمل لترى ما سماه مزودك.
+
+    `usage` مملوء بجانب أعمدة رموز فارغة مقصود — يفوق عدداً خاطئاً واثقاً.
+  </Accordion>
+
+  <Accordion title="المخطط الزمني ممتلئ بـ setup_agent و parse_agent_output">
+    هذه حلقة FunctionAgent، مجموعة واحدة لكل تكرار. صفِّ حسب اسم hook على لوحة المعلومات. توقيتات الخطوة هذه عادة ما تكون السبب لاستخدام هذا المحول بدلاً من محول نموذج فقط.
+  </Accordion>
+
+  <Accordion title="لا شيء مسجل">
+    تحقق بهذا الترتيب: `instrument()` تم تشغيله قبل التشغيل؛ هناك `async with failproofai_sdk.session():` حول `await`؛ `llama-index-core` هو 0.14.23 أو أحدث؛ `FAILPROOFAI_SDK_STRICT=1` مضبوط، لذا يرفع hook متدهور بدلاً من أن يبتلع.
+  </Accordion>
+</AccordionGroup>
+
+## التالي
+
+<Columns cols={3}>
+  <Card title="كيف يعمل" icon="workflow" href="/ar/start/integrations/custom-agents#going-deeper">
+    الأزواج والمعرفات ودورة حياة الجلسة والتسليم.
+  </Card>
+  <Card title="اقرأ تتبعاً" icon="route" href="/ar/sessions/read-a-trace">
+    اتبع السببية عبر الجلسة التي استقطتها للتو.
+  </Card>
+  <Card title="أطر عمل أخرى" icon="plug" href="/ar/start/integrations">
+    LangGraph، CrewAI، Pydantic AI، والوكلاء المخصصين.
+  </Card>
+</Columns>

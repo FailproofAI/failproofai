@@ -1,0 +1,208 @@
+---
+title: "Pydantic AI"
+sidebarTitle: "Pydantic AI"
+description: "Instrumente agentes tipados, ferramentas, chamadas de modelo e retentativas."
+icon: "/images/frameworks/pydantic-ai.svg"
+---
+
+## Instalação
+
+```bash
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+Compatível com: `pydantic-ai-slim` 2.0 a 3.0. A versão 2.0 removeu `Agent(instrument=...)` e introduziu o protocolo de capacidade no qual este adaptador é construído, portanto a versão 1.x não pode ser instrumentada dessa forma.
+
+## Instrumentar
+
+```python
+import failproofai_sdk
+from pydantic_ai import Agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # antes de construir qualquer Agent
+
+agent = Agent("openai:gpt-4o-mini", system_prompt="Be terse.")
+
+with failproofai_sdk.session():
+    result = agent.run_sync("...")
+```
+
+<Warning>
+  `instrument()` deve ser executado antes de você construir um `Agent`. A capacidade é adicionada no momento da construção, portanto um agente criado anteriormente não terá nenhuma e não registrará nada, sem emitir erros porque nada deu errado. Esta é a causa mais comum de um trace vazio com este adaptador.
+</Warning>
+
+Agentes com escopo de módulo são onde isso ocorre com mais frequência:
+
+```python
+# agents.py
+agent = Agent("openai:gpt-4o-mini")   # constructed at import time
+
+# main.py
+import failproofai_sdk
+failproofai_sdk.instrument()          # run this FIRST
+import agents                         # now the agent gets the capability
+```
+
+Confirme se funcionou:
+
+```python
+print([type(c).__name__ for c in agent.root_capability.capabilities])
+# ['FailproofAI', 'ToolSearch', 'PendingMessageDrainCapability']
+```
+
+O Pydantic AI mescla a lista passada em um único `root_capability`, portanto não existe um atributo `agent.capabilities` para ser lido.
+
+Agentes construídos enquanto a instrumentação estava ativa mantêm a capacidade, então você pode chamar `uninstrument()` e reinstrumentar sem precisar recriá-los.
+
+## O que é registrado
+
+| Pydantic AI | Evento Failproof |
+| --- | --- |
+| Execução do agente | `agent_start`, `agent_end` |
+| Requisição ao modelo | `model_request`, `model_response`, com uso de tokens |
+| Chamada de ferramenta | `tool_use`, `tool_result`, com os argumentos enviados pelo modelo |
+| `ModelRetry` originado de uma ferramenta | `tool_result` contendo um erro |
+| Exceção não tratada | `error`, seguido de `agent_end` com resultado `failed` |
+
+Não há par de hooks nem par de interação humana aqui. O Pydantic AI não possui limite de nó ou etapa para delimitar e nem pausa humana integrada, portanto não há nada a mapear. Se você implementar qualquer um desses recursos, emita os eventos manualmente — veja [Custom agents](/pt-br/reference/custom-agents).
+
+`output_type` não faz diferença no trace. Uma execução tipada e uma execução com string produzem os mesmos eventos.
+
+## Exemplo
+
+```python
+import failproofai_sdk
+from pydantic import BaseModel
+from pydantic_ai import Agent, ModelRetry
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+PRICE = {"widget": 42.0, "gadget": 17.5}
+STOCK = {"widget": 120, "gadget": 0}
+
+
+class Report(BaseModel):
+    headline: str
+    out_of_stock: list[str]
+
+
+agent = Agent(
+    "openai:gpt-4o-mini",
+    output_type=Report,
+    system_prompt="Use the tools for every number. If a tool fails, note it and continue.",
+)
+
+
+@agent.tool_plain
+def price_of(item: str) -> float:
+    """Unit price of an item. Valid: widget, gadget."""
+    return PRICE[item.lower().strip()]
+
+
+@agent.tool_plain
+def stock_of(item: str) -> int:
+    """Units in stock. Valid: widget, gadget."""
+    return STOCK[item.lower().strip()]
+
+
+@agent.tool_plain
+def restock_eta(item: str) -> str:
+    """Restock ETA. Not available."""
+    raise ModelRetry(f"no restock schedule for {item!r} — answer without it")
+
+
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("inventory", goal="stock report"):
+        result = agent.run_sync(
+            "For widget and gadget, get price and stock. "
+            "For anything out of stock, try the restock ETA. Then produce the report."
+        )
+```
+
+No trace, `restock_eta` aparece como um `tool_result` contendo um erro, seguido de outra chamada ao modelo onde o agente contorna o problema, e a execução ainda termina com `success`. Ambas as informações são preservadas.
+
+## Erros, retentativas e fluxo de controle
+
+O Pydantic AI lança exceções para três situações distintas, e o adaptador as separa:
+
+| Exceção | Tratada como | Resultado |
+| --- | --- | --- |
+| `ModelRetry`, `ToolRetryError`, `ToolFailedError` | Falha real da ferramenta | `tool_result` com um erro; a execução ainda pode terminar com `success` |
+| `SkipToolExecution`, `SkipToolValidation`, `SkipModelRequest`, `CallDeferred`, `ApprovalRequired` | Fluxo de controle | Não é um erro; a execução está sendo direcionada |
+| Qualquer outra coisa | Uma falha | `error`, seguido de `agent_end` com resultado `failed` |
+
+`ModelRetry` está no primeiro grupo intencionalmente. Significa que uma tentativa genuinamente falhou e o modelo foi solicitado a tentar novamente, que é exatamente para isso que serve o campo de erro de um span de ferramenta. Classificá-lo como fluxo de controle ocultaria falhas reais de ferramentas por trás de uma execução bem-sucedida.
+
+## Nomeie seus spans
+
+O próprio span de execução do Pydantic AI é chamado de `agent`. Envolva a chamada para atribuir um rótulo de sua escolha:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("inventory", goal="stock report"):
+        agent.run_sync("...")
+```
+
+O span do framework então fica aninhado sob `inventory`, e é lá que os eventos de modelo e ferramenta ficam pendurados.
+
+Mantenha `agent_id` com baixa cardinalidade. Ele é a faceta principal em todas as superfícies do dashboard, portanto use um nome de função, nunca um UUID ou uma string específica por execução.
+
+## Controle a sessão
+
+Resolvido nesta ordem, com o primeiro match vencendo:
+
+1. `instrument("pydantic_ai", session_id=...)`
+2. O escopo `failproofai_sdk.session()` envolvente
+3. O `conversation_id` da execução, depois seu `run_id`
+4. Um `uuid4().hex` gerado automaticamente
+
+```python
+with failproofai_sdk.session(f"chat-{user_id}"):
+    agent.run_sync("...")
+```
+
+## Opções
+
+```python
+failproofai_sdk.instrument(
+    "pydantic_ai",
+    session_id=None,          # pin every run to one session id
+    capture_content=True,     # False drops prompts and completions from payloads
+)
+```
+
+## Problemas comuns
+
+<AccordionGroup>
+  <Accordion title="A execução funciona, mas nenhum evento aparece">
+    O `Agent` foi construído antes de `instrument()` ser executado. Veja o aviso acima e verifique `agent.root_capability.capabilities`.
+  </Accordion>
+
+  <Accordion title="Uma exceção simples em uma ferramenta encerra a execução">
+    Um `raise` sem tratamento se propaga; esse é o design do Pydantic AI. Para permitir que o modelo contorne o problema, levante `ModelRetry` com uma mensagem que ele possa usar. A falha é registrada de qualquer forma.
+  </Accordion>
+
+  <Accordion title="Há um span de agente aninhado que eu não criei">
+    Esse filho é o próprio span de execução do Pydantic AI, e é onde os eventos de modelo e ferramenta ficam. Remova seu próprio escopo se quiser um único span, ao custo do nome personalizado.
+  </Accordion>
+
+  <Accordion title="Os tracebacks começam com um marcador de truncamento">
+    O stack do grafo assíncrono do Pydantic AI é mais longo do que o limite do campo de payload, e a última linha de um traceback é a própria exceção. Este campo é cortado a partir do início, e não do final, para que a linha que você precisa seja preservada.
+  </Accordion>
+</AccordionGroup>
+
+## Próximos passos
+
+<Columns cols={3}>
+  <Card title="Como funciona" icon="workflow" href="/pt-br/start/integrations/custom-agents#going-deeper">
+    Pares, ids, ciclo de vida da sessão e entrega.
+  </Card>
+  <Card title="Leia um trace" icon="route" href="/pt-br/sessions/read-a-trace">
+    Siga a causalidade através da sessão que você acabou de capturar.
+  </Card>
+  <Card title="Outros frameworks" icon="plug" href="/pt-br/start/integrations">
+    LangGraph, CrewAI, LlamaIndex e agentes personalizados.
+  </Card>
+</Columns>

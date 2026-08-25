@@ -1,0 +1,224 @@
+---
+title: "CrewAI"
+sidebarTitle: "CrewAI"
+description: "Ekipleri, akışları, aracıları role göre, araçları, belleği ve insan geri bildirimini instrumentalize edin."
+icon: "/images/frameworks/crewai.svg"
+---
+
+## Kurulum
+
+```bash
+pip install 'failproofai-sdk[crewai]'
+```
+
+Desteklenen: `crewai` 1.13 ile 2.0. 1.13, `started_event_id` ekleyen ve token kullanımını normalleştiren sürümdür; bu ikisi de adaptörün olayları eşleştirmesi ve tokenları raporlaması için gereklidir.
+
+## Instrumentalizasyon
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    Crew(agents=[analyst, writer], tasks=[gather, summarise]).kickoff()
+```
+
+`instrument()`, CrewAI'ın modül düzeyindeki olay otobüsüne bir dinleyici kaydeder ve her olay sınıfı için bir işleyici abone olur. Ekibiniz, aracılarınız, görevleriniz veya araçlarınız hakkında hiçbir şey değişmez.
+
+## Kayıt edilen öğeler
+
+| CrewAI | Failproof olayı |
+| --- | --- |
+| Crew kickoff | `agent_start`, `agent_end` |
+| `Agent.kickoff()` (hafif bir aracı, ekip yok) | `agent_start`, `agent_end`, rolden gelen `agent_id` ile |
+| Akış başlangıcı ve bitişi | `agent_start`, `agent_end`; bir akış yöntemi içinde devreye alınan ekip bunun altında iç içe geçer |
+| Aracı yürütülmesi | İç içe geçmiş `agent_start`, `agent_end`, rolden gelen `agent_id` ile. Hiyerarşik bir süreç altında devredilen bir çalışma arkadaşı yöneticinin yanında değil, altında iç içe geçer |
+| Görev | Hiçbir şey; çocuklar ekibe çözülenecek şekilde bir bağlantı olarak kaydedilir |
+| Akış yöntemi, güvenlik önlemi | `hook_triggered`, `hook_completed` |
+| Araç kullanımı | `tool_use`, `tool_result` |
+| Bellek ve bilgi işlemleri | `tool_use`, `tool_result`, ulaşılan yüzey için adlandırılmış |
+| LLM çağrısı | `model_request`, `model_response`, token kullanımı ile |
+| Akış parçası | Yanıta katlanır, parça sayısı ve ilk tokena kadar olan süre |
+| İnsan geri bildirimi istendi | `human_wait`, `agent_pause` |
+| İnsan geri bildirimi alındı | `agent_resume`, `human_input` |
+| Aracı yürütme hatası | `error`, ardından `agent_end` ve sonuç `failed` ile |
+
+Bir görev kasıtlı olarak hiçbir şey yayınlamaz. CrewAI görevi, onu çalıştıran aracı yürütülmesinin bir alt kümesidir, bu nedenle her ikisini de yayınlamak her satırı ikiye katlar ve bunları kardeş olarak render eder. Görev kimliği ve adı aracının kendi olaylarında yer alır.
+
+Bellek ve bilgi işlemleri, ulaştıkları yüzey için adlandırılan araçlar olarak kaydedilir, böylece gerçek araçlarınızın yanında görünür ve gecikme sürelerini karşılaştırabilirsiniz.
+
+Hiyerarşik bir ekipte, iç içe geçme izlemeyi okunabilir kılan şeydir:
+
+```text
+crew
+└─ manager
+   ├─ researcher      devredilen
+   └─ writer          devredilen
+```
+
+CrewAI, devredilen bir yürütmeyi yöneticinin doğrudan üzerine değil, `delegate_work_to_coworker` **araç olayının** üzerine yerleştirir, bu nedenle adaptör bu bağlantıyı izler. Bunu olmadan her aracı diğerinin kardeşi olarak çıkar ve delegasyon yapısı kaybedilir.
+
+## Örnek
+
+```python
+import failproofai_sdk
+from crewai import Agent, Crew, Process, Task
+from crewai.tools import tool
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+MODEL = "openai/gpt-4o-mini"
+METRICS = {"revenue": "$4.2M ARR, up 12% QoQ", "churn": "3.1% monthly, up from 2.4%"}
+
+
+@tool("lookup_metric")
+def lookup_metric(name: str) -> str:
+    """İşletme metriğini ada göre ara. Geçerli: revenue, churn."""
+    return METRICS.get(name.lower().strip(), "unknown metric")
+
+
+analyst = Agent(
+    role="analyst",                     # agent_id olur
+    goal="önemli olan sayıları çekip açık şekilde belirt",
+    backstory="Yaşamını gösterge tablolarını okuyarak geçirirsin.",
+    tools=[lookup_metric],
+    llm=MODEL,
+)
+writer = Agent(
+    role="writer",
+    goal="sayıları bir yönetici tarafından okunacak üç satıra dönüştür",
+    backstory="Yönetim kurulu güncelleme yazarsın. Hiçbir zaman dolgu eklemezsin.",
+    llm=MODEL,
+)
+
+gather = Task(
+    description="Araç ile 'revenue' ve 'churn' ara.",
+    expected_output="İki satır, her biri bir metrik.",
+    agent=analyst,
+)
+summarise = Task(
+    description="Yukarıdaki metrikler kullanarak üç satırlık bir yönetim özeti yaz.",
+    expected_output="Tam olarak üç satır.",
+    agent=writer,
+    context=[gather],
+)
+
+with failproofai_sdk.session():
+    result = Crew(
+        agents=[analyst, writer],
+        tasks=[gather, summarise],
+        process=Process.sequential,
+    ).kickoff()
+```
+
+İzlemede devir görünür: `analyst` aralığı kapanır, `writer` aralığı açılır ve her ikisi de bir `crew` aralığı içinde oturur.
+
+## Aralıklarınızı adlandırın
+
+`agent_id` `Agent(role=...)` adresinden gelir; bu, onu okunabilir bir pano yönü yapar.
+
+```python
+Agent(role="analyst", ...)          # agent_id = "analyst"
+Agent(role="analyst-7f3a2b", ...)   # çalıştırma başına bir yönü girişi
+```
+
+`agent_id` düşük kardinaliteli bir sütundur. Bir UUID veya zaman damgası içeren rol, her çalıştırılan sorgu için bunu kötüleştirir. Bir rol kimliğe benzerse, adaptör bunu reddeder ve gerçek değeri bunun yerine bir yük alanına koyar.
+
+## Oturumu kontrol edin
+
+Bu sırada çözümlenir, ilk eşleşme kazanır:
+
+1. `instrument("crewai", session_id=...)`
+2. Çevreleyen `failproofai_sdk.session()` kapsamı
+3. Üretilen `uuid4().hex`, ekip veya akış başına bir kez
+
+Kickoff'u çalıştırma başına kontrol etmek için sarmalayın:
+
+```python
+with failproofai_sdk.session(f"support-{ticket_id}"):
+    Crew(agents=[...], tasks=[...]).kickoff()
+```
+
+## Seçenekler
+
+```python
+failproofai_sdk.instrument(
+    "crewai",
+    session_id=None,          # her çalıştırmayı bir oturum kimliğine sabitle
+)
+```
+
+`session_id` bu adaptörün okuduğu tek seçenektir. İstemler ve tamamlamalar her zaman kaydedilir, yük bütçesine kesilir.
+
+## İnsan katılımı
+
+CrewAI'ın **iki** insan katılımı yüzeyi vardır ve her ikisi de aynı dört olay olarak kaydedilir.
+
+Bir akış yöntemi üzerindeki `@human_feedback` CrewAI'ın olay otobüsünden geçer: çalışma zamanı bir olayı bir kişiye bloke olmadan önce ve cevaptan sonra başka bir olay yayınlar.
+
+`Task(human_input=True)` değil. CrewAI'ın kendi giriş sağlayıcısı içinde `input()` çağırır ve hiçbir türde olay yayınlamaz, bu nedenle adaptör bu sağlayıcıyı doğrudan sarmalayarak — bunu olmadan tüm insan bekleme süresi görünmez ve etkin aracı zamanı olarak faturalandırılır.
+
+Her iki durumda da şunları alırsınız:
+
+```text
+human_wait      istem ve seçenekleri
+agent_pause     duraklatılan zaman saatini başlatır
+agent_resume    bunu durduruyor
+human_input     cevap, bekleme ölçülür
+```
+
+`agent_pause` ile `agent_resume` arasında, pauzlanmış zamanı besleyen tek çifttir. Bunu olmadan on dakikalık bir insan bekleme süresi on dakika etkin aracı zamanı olarak faturalandırılır.
+
+<Note>
+  CrewAI her iki insan geri bildirimi olayında da korelasyon kimliği ayarlamaz, bu nedenle adaptör bunları akış ve yöntem adında eşleştirir, en yakın açılan duraklamaya geri döner. Bu sesli çünkü konsol istemi bloke olur. Eş zamanlı bir geri bildirim sağlayıcısı inşa ederseniz, her iki olaya da `request_id` ayarlayın.
+</Note>
+
+<Note>
+  `Task(human_input=True)` yolu bir olay aboneliği yerine CrewAI'ın giriş sağlayıcısı etrafındaki bir sarmalayıcı olduğundan, `uninstrument()` üzerinde geri yüklenir ve `input()` ne yükselirse `KeyboardInterrupt` de dahil olmak üzere değiştirilmeden yeniden yükseltir.
+</Note>
+
+## Yaygın sorunlar
+
+<AccordionGroup>
+  <Accordion title="Aracı filtresinin binlerce girişi var">
+    Bir `role` UUID, zaman damgası veya çalıştırma başına son ek içerir. Sabit bir insan rolü kullanın ve çalıştırmaya özgü kimliği bunun yerine görev açıklamasına koyun.
+  </Accordion>
+
+  <Accordion title="Bir test sıfır olay okur ama pano bunları gösterir">
+    Olay otobüsü zaman uyumsuztur ve `kickoff()` son işleyiciler çalışmadan önce geri döner. Önce bunu boşaltın:
+
+    ```python
+    from crewai.events.event_bus import crewai_event_bus
+
+    crew.kickoff()
+    crewai_event_bus.flush(timeout=30)
+    ```
+
+    Bu CrewAI'ın bir özelliğidir, SDK'nın değil.
+  </Accordion>
+
+  <Accordion title="Bir oturum sonsuza kadar devam ediyor olarak gösterilir">
+    `agent_end` açık duraklamaları kapatan güçle kapatır ama araçları veya modelleri değil, bu nedenle bir araç çağrısı içinde ölen bir çalıştırma o aralığı açık bırakır. Normal temizleme hala açık olanları kapatır ve eksik olarak işaretler. Sadece `SIGKILL` bunu asılı bırakır, çünkü hiçbir şey çalıştırılamaz.
+  </Accordion>
+
+  <Accordion title="Hiçbir şey kaydedilmez">
+    Bu sırada kontrol edin: `instrument()` `kickoff()` öncesinde çalıştırıldı; `with failproofai_sdk.session():` etrafında bir tane var; `crewai` 1.13 veya daha yeni; `FAILPROOFAI_SDK_STRICT=1` ayarlanmış, bu nedenle kötü bir kancası yutulmak yerine yükseltir.
+  </Accordion>
+</AccordionGroup>
+
+## İleri
+
+<Columns cols={3}>
+  <Card title="Nasıl çalışır" icon="workflow" href="/tr/start/integrations/custom-agents#going-deeper">
+    Çiftler, kimlikler, oturum yaşam döngüsü ve teslimat.
+  </Card>
+  <Card title="İz oku" icon="route" href="/tr/sessions/read-a-trace">
+    Az önce yakaladığınız oturumda nedenselliği takip edin.
+  </Card>
+  <Card title="Diğer çerçeveler" icon="plug" href="/tr/start/integrations">
+    LangGraph, LlamaIndex, Pydantic AI ve özel aracılar.
+  </Card>
+</Columns>

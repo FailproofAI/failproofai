@@ -1,0 +1,208 @@
+---
+title: "Pydantic AI"
+sidebarTitle: "Pydantic AI"
+description: "Инструментируйте типизированные агенты, инструменты, вызовы моделей и повторные попытки."
+icon: "/images/frameworks/pydantic-ai.svg"
+---
+
+## Установка
+
+```bash
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+Поддерживаются версии `pydantic-ai-slim` с 2.0 по 3.0. В версии 2.0 был удалён параметр `Agent(instrument=...)` и введён протокол возможностей, на котором строится этот адаптер, поэтому версия 1.x не может быть инструментирована таким образом.
+
+## Инструментирование
+
+```python
+import failproofai_sdk
+from pydantic_ai import Agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # перед созданием любого Agent
+
+agent = Agent("openai:gpt-4o-mini", system_prompt="Be terse.")
+
+with failproofai_sdk.session():
+    result = agent.run_sync("...")
+```
+
+<Warning>
+  Функция `instrument()` должна быть вызвана до создания `Agent`. Возможность добавляется при конструировании, поэтому агент, созданный ранее, не будет иметь её и ничего не будет записывать, без ошибок, так как ничего не пошло не так. Это наиболее частая причина пустой трассировки при использовании этого адаптера.
+</Warning>
+
+Чаще всего проблема возникает с агентами на уровне модуля:
+
+```python
+# agents.py
+agent = Agent("openai:gpt-4o-mini")   # создан при импорте
+
+# main.py
+import failproofai_sdk
+failproofai_sdk.instrument()          # запустите это ПЕРВЫМ
+import agents                         # теперь агент получит возможность
+```
+
+Убедитесь, что это сработало:
+
+```python
+print([type(c).__name__ for c in agent.root_capability.capabilities])
+# ['FailproofAI', 'ToolSearch', 'PendingMessageDrainCapability']
+```
+
+Pydantic AI объединяет переданный вами список в единственный `root_capability`, поэтому нет атрибута `agent.capabilities` для чтения.
+
+Агенты, созданные во время инструментирования, сохраняют возможность, поэтому вы можете вызвать `uninstrument()` и повторно инструментировать без пересоздания.
+
+## Что записывается
+
+| Pydantic AI | Событие failproofai |
+| --- | --- |
+| Запуск агента | `agent_start`, `agent_end` |
+| Запрос модели | `model_request`, `model_response`, с использованием токенов |
+| Вызов инструмента | `tool_use`, `tool_result`, с аргументами, отправленными моделью |
+| `ModelRetry` из инструмента | `tool_result` с ошибкой |
+| Необработанное исключение | `error`, затем `agent_end` с результатом `failed` |
+
+Здесь нет пары hook и нет пары human-in-the-loop. Pydantic AI не имеет границы узла или шага для заключения и не имеет встроенной паузы для человека, поэтому нечего преобразовывать. Если вы создадите что-либо из этого, генерируйте события самостоятельно — см. [Пользовательские агенты](/ru/reference/custom-agents).
+
+Значение `output_type` никак не влияет на трассировку. Типизированный запуск и запуск со строкой создают одинаковые события.
+
+## Пример
+
+```python
+import failproofai_sdk
+from pydantic import BaseModel
+from pydantic_ai import Agent, ModelRetry
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+PRICE = {"widget": 42.0, "gadget": 17.5}
+STOCK = {"widget": 120, "gadget": 0}
+
+
+class Report(BaseModel):
+    headline: str
+    out_of_stock: list[str]
+
+
+agent = Agent(
+    "openai:gpt-4o-mini",
+    output_type=Report,
+    system_prompt="Use the tools for every number. If a tool fails, note it and continue.",
+)
+
+
+@agent.tool_plain
+def price_of(item: str) -> float:
+    """Unit price of an item. Valid: widget, gadget."""
+    return PRICE[item.lower().strip()]
+
+
+@agent.tool_plain
+def stock_of(item: str) -> int:
+    """Units in stock. Valid: widget, gadget."""
+    return STOCK[item.lower().strip()]
+
+
+@agent.tool_plain
+def restock_eta(item: str) -> str:
+    """Restock ETA. Not available."""
+    raise ModelRetry(f"no restock schedule for {item!r} — answer without it")
+
+
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("inventory", goal="stock report"):
+        result = agent.run_sync(
+            "For widget and gadget, get price and stock. "
+            "For anything out of stock, try the restock ETA. Then produce the report."
+        )
+```
+
+В трассировке `restock_eta` отображается как `tool_result` с ошибкой, за которым следует другой вызов модели, где агент её обходит, и запуск всё ещё заканчивается `success`. Оба факта фиксируются.
+
+## Ошибки, повторные попытки и управление потоком
+
+Pydantic AI вызывает исключения для трёх разных вещей, и адаптер их разделяет:
+
+| Исключение | Трактуется как | Результат |
+| --- | --- | --- |
+| `ModelRetry`, `ToolRetryError`, `ToolFailedError` | Реальный отказ инструмента | `tool_result` с ошибкой; запуск всё ещё может закончиться `success` |
+| `SkipToolExecution`, `SkipToolValidation`, `SkipModelRequest`, `CallDeferred`, `ApprovalRequired` | Управление потоком | Не ошибка; запуск управляется |
+| Что-либо другое | Отказ | `error`, затем `agent_end` с результатом `failed` |
+
+`ModelRetry` намеренно находится в первой группе. Это означает, что попытка действительно не удалась и модель была попрошена попробовать снова, что именно то, для чего предназначено поле ошибки инструмента. Классификация её как управления потоком скрыла бы реальные отказы инструментов за зелёным запуском.
+
+## Назовите ваши span-ы
+
+Собственный span запуска Pydantic AI называется `agent`. Заключите вызов в контекст, чтобы дать ему выбранный вами ярлык:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("inventory", goal="stock report"):
+        agent.run_sync("...")
+```
+
+Span фреймворка затем вложен в `inventory`, и именно там висят события модели и инструмента.
+
+Держите `agent_id` с низкой кардинальностью. Это первичный аспект на каждой поверхности панели, поэтому используйте имя роли, никогда UUID или строку для каждого запуска.
+
+## Управление сеансом
+
+Разрешается в этом порядке, первое совпадение побеждает:
+
+1. `instrument("pydantic_ai", session_id=...)`
+2. Содержащий `failproofai_sdk.session()` scope
+3. `conversation_id` запуска, затем его `run_id`
+4. Сгенерированный `uuid4().hex`
+
+```python
+with failproofai_sdk.session(f"chat-{user_id}"):
+    agent.run_sync("...")
+```
+
+## Опции
+
+```python
+failproofai_sdk.instrument(
+    "pydantic_ai",
+    session_id=None,          # закрепите каждый запуск на одном session id
+    capture_content=True,     # False удаляет подсказки и завершения из полезной нагрузки
+)
+```
+
+## Распространённые проблемы
+
+<AccordionGroup>
+  <Accordion title="Запуск работает, но события не появляются">
+    `Agent` был создан до запуска `instrument()`. См. предупреждение выше и проверьте `agent.root_capability.capabilities`.
+  </Accordion>
+
+  <Accordion title="Простое исключение в инструменте завершает запуск">
+    Простой `raise` распространяется; это дизайн Pydantic AI. Чтобы позволить модели его обойти, вызовите `ModelRetry` с сообщением, на которое она может действовать. Отказ записывается в любом случае.
+  </Accordion>
+
+  <Accordion title="Есть вложенный span агента, который я не создавал">
+    Этот дочерний элемент — собственный span запуска Pydantic AI, и именно там висят события модели и инструмента. Отбросьте собственный scope, если хотите один span, ценой пользовательского имени.
+  </Accordion>
+
+  <Accordion title="Трассировки стека начинаются с маркера усечения">
+    Граф асинхронного стека Pydantic AI длиннее предела поля полезной нагрузки, и последняя строка трассировки — это само исключение. Это поле обрезается спереди, а не сзади, поэтому нужная вам строка выживает.
+  </Accordion>
+</AccordionGroup>
+
+## Далее
+
+<Columns cols={3}>
+  <Card title="Как это работает" icon="workflow" href="/ru/start/integrations/custom-agents#going-deeper">
+    Пары, идентификаторы, жизненный цикл сеанса и доставка.
+  </Card>
+  <Card title="Прочитайте трассировку" icon="route" href="/ru/sessions/read-a-trace">
+    Следите за причинностью через только что захватанный сеанс.
+  </Card>
+  <Card title="Другие фреймворки" icon="plug" href="/ru/start/integrations">
+    LangGraph, CrewAI, LlamaIndex и пользовательские агенты.
+  </Card>
+</Columns>

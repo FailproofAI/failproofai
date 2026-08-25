@@ -1,0 +1,37 @@
+---
+title: "CrewAI"
+description: "Установите, инструментируйте и получите первый трейс."
+icon: "/images/frameworks/crewai.svg"
+---
+
+Три шага к вашему первому трейсу CrewAI. Для информации о том, что несет каждое событие, потоках данных и устранении неполадок, см. [полное руководство](/ru/start/integrations/crewai).
+
+## Установка
+
+```bash
+pip install 'failproofai-sdk[crewai]'
+```
+
+## Инструментирование
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    Crew(agents=[analyst, writer], tasks=[gather, summarise]).kickoff()
+```
+
+Ничего не изменится в вашей команде, агентах, задачах или инструментах. `instrument()` подписывает вас на шину событий CrewAI на уровне модуля.
+
+## Проверьте доставку
+
+Запустите один раз, затем откройте **Observe → Sessions** и выберите вашу среду. Ваш запуск появляется как восстановленный трейс.
+
+Если ничего не приходит, подтвердите, что машина подключена, с помощью `failproofai config --status`.
+
+<Card title="Полное руководство CrewAI" icon="arrow-right" href="/ru/start/integrations/crewai">
+  Что записывается, потоки данных, использование токенов, именование спанов, параметры и распространенные проблемы.
+</Card>

@@ -1,21 +1,21 @@
 ---
 title: "Eventos en vivo"
-description: "Observa la actividad del agente en tiempo real mientras se ejecuta una sesión."
+description: "Observa la actividad del agente en tiempo real mientras una sesión está en ejecución."
 icon: "radio"
 ---
 
-Los eventos en vivo te permiten confirmar la instrumentación y supervisar una ejecución de riesgo sin tener que esperar a que la sesión termine.
+Los eventos en vivo te ayudan a confirmar la instrumentación y supervisar una ejecución de riesgo sin esperar a que la sesión finalice.
 
 ## Ver actividad
 
 <Tabs>
-  <Tab title="Dashboard">
+  <Tab title="Panel de control">
     1. Ve a **Observe → Events**.
     2. Comienza con la ventana de tiempo actual y sin filtros para confirmar que los datos están llegando.
     3. Filtra por entorno, tipo de evento, agente o sesión. Usa la búsqueda para texto en el payload.
-    4. Selecciona un evento para inspeccionar su resumen y detalles. Sigue el enlace de sesión para ver el trazado completo.
+    4. Selecciona un evento para inspeccionar su resumen y detalles. Sigue el enlace de su sesión para ver el seguimiento completo.
 
-    ![El flujo en vivo de Events mostrando tráfico de una gateway de chat Hermes junto con ejecuciones de la CLI de codificación, filtrado por tiempo, entorno, tipo de evento, agente, modelo, contexto y sesión.](/images/dashboard/events-stream-current.png)
+    ![El flujo de eventos en vivo mostrando tráfico desde una pasarela de chat Hermes junto con ejecuciones de la CLI de codificación, filtrado por tiempo, entorno, tipo de evento, agente, modelo, contexto y sesión.](/images/dashboard/events-stream-current.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -24,22 +24,22 @@ Los eventos en vivo te permiten confirmar la instrumentación y supervisar una e
     fp --json events --full --session-id <session-id> --all
     ```
 
-    El feed predeterminado omite los payloads sin procesar. Usa `--full` solo para investigar una sesión acotada.
+    El feed por defecto omite los payloads sin procesar. Usa `--full` únicamente para una investigación de sesión acotada.
   </Tab>
 </Tabs>
 
-Utiliza el flujo de eventos para responder tres preguntas inmediatas:
+Usa el flujo de eventos para responder tres preguntas inmediatas:
 
 - ¿El agente esperado está reportando al entorno correcto?
-- ¿Están llegando en orden las llamadas al modelo, las llamadas a herramientas y las decisiones de políticas?
-- ¿La sesión ha dejado de avanzar o ha empezado a repetir una acción?
+- ¿Las llamadas al modelo, las llamadas a herramientas y las decisiones de política están llegando en orden?
+- ¿La sesión ha dejado de avanzar o ha comenzado a repetir una acción?
 
-Los tipos de eventos incluyen eventos del ciclo de vida del agente, solicitudes y respuestas del modelo, uso de herramientas y resultados, ejecución de hooks, esperas e interrupciones humanas, y errores explícitos. Los IDs de correlación enlazan eventos pareados, como una llamada a herramienta y su resultado.
+Los tipos de eventos incluyen eventos del ciclo de vida del agente, solicitudes y respuestas del modelo, uso de herramientas y sus resultados, ejecución de hooks, esperas e interrupciones humanas, y errores explícitos. Los IDs de correlación vinculan eventos emparejados, como una llamada a herramienta y su resultado.
 
 <Tip>
-  Mantén la vista en vivo sin filtros mientras verificas una nueva integración. Agrega filtros solo después de ver el primer evento; un filtro incorrecto puede parecer un fallo de ingesta.
+  Mantén la vista en vivo amplia mientras verificas una nueva integración. Añade filtros solo después de ver el primer evento; un filtro incorrecto puede parecer un fallo de ingesta.
 </Tip>
 
-Si no aparecen eventos, ejecuta `failproofai config --status` y luego [soluciona problemas de ingesta](/es/reference/troubleshooting).
+Si no aparece ningún evento, ejecuta `failproofai config --status` y luego [soluciona problemas de ingesta](/es/reference/troubleshooting).
 
-Los agentes que no se ejecutan en uno de los 12 [harnesses](/es/reference/harnesses) compatibles reportan los mismos tipos de eventos a través del [Python SDK](/es/reference/custom-agents), incluidos los eventos de human-in-the-loop (`human_wait`, `human_input`, `human_interrupt`) de los que dependen los agentes de gateway y producción.
+Los agentes que no se ejecutan en uno de los 12 [harnesses](/es/reference/harnesses) compatibles reportan los mismos tipos de eventos a través del [SDK de Python](/es/reference/custom-agents), incluidos los eventos de human-in-the-loop (`human_wait`, `human_input`, `human_interrupt`) de los que dependen los agentes de pasarela y producción.

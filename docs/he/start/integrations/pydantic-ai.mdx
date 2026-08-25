@@ -1,0 +1,209 @@
+---
+---
+title: "Pydantic AI"
+sidebarTitle: "Pydantic AI"
+description: "הגן על אג'נטים מוקלדים, כלים, קריאות מודל וניסיונות חוזרים."
+icon: "/images/frameworks/pydantic-ai.svg"
+---
+
+## התקנה
+
+```bash
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+נתמך: `pydantic-ai-slim` 2.0 עד 3.0. גרסה 2.0 הסירה את `Agent(instrument=...)` והציגה את פרוטוקול ההיכולת שעליו בנוי המתאם הזה, ולכן לא ניתן לבצע אינסטרומנטציה של 1.x בדרך זו.
+
+## אינסטרומנטציה
+
+```python
+import failproofai_sdk
+from pydantic_ai import Agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # לפני בנייה של Agent כלשהו
+
+agent = Agent("openai:gpt-4o-mini", system_prompt="Be terse.")
+
+with failproofai_sdk.session():
+    result = agent.run_sync("...")
+```
+
+<Warning>
+  `instrument()` חייב להריץ לפני שאתה בונה `Agent`. ההיכולת מתווספת בזמן הבנייה, ולכן אג'נט שנבנה קודם לכן לא נושא אחת וכלל לא מתעד דבר, ללא שגיאה כיוון שלא קרה שום דבר רע. זו הסיבה השכיחה ביותר לעקבה ריקה עם המתאם הזה.
+</Warning>
+
+אג'נטים בהיקף מודול הם המקום שבו זה משתולל:
+
+```python
+# agents.py
+agent = Agent("openai:gpt-4o-mini")   # בנוי בזמן ייבוא
+
+# main.py
+import failproofai_sdk
+failproofai_sdk.instrument()          # הרץ את זה ראשון
+import agents                         # עכשיו האג'נט מקבל את ההיכולת
+```
+
+אשר שזה עבד:
+
+```python
+print([type(c).__name__ for c in agent.root_capability.capabilities])
+# ['FailproofAI', 'ToolSearch', 'PendingMessageDrainCapability']
+```
+
+Pydantic AI מציבה את הרשימה שאתה מעביר להיכולת `root_capability` יחידה, ולכן אין תכונת `agent.capabilities` שניתן לקרוא.
+
+אג'נטים שנבנו תוך כדי אינסטרומנטציה שומרים על ההיכולת, ולכן תוכל להפעיל `uninstrument()` ולהמשיך לאינסטרומנטציה ללא בנייה מחדש.
+
+## מה מתעד
+
+| Pydantic AI | אירוע Failproof |
+| --- | --- |
+| הרצת אג'נט | `agent_start`, `agent_end` |
+| בקשת מודל | `model_request`, `model_response`, עם שימוש בטוקנים |
+| קריאת כלי | `tool_use`, `tool_result`, עם הטיעונים שהמודל שלח |
+| `ModelRetry` מכלי | `tool_result` המנשא שגיאה |
+| חריג שלא טופל | `error`, ואז `agent_end` עם תוצאה `failed` |
+
+אין כאן זוג hook ואין זוג human-in-the-loop. Pydantic AI אין לו גבול node או step שיש לתחום ואין הפסקה בנויה של בן אדם, ולכן אין מה למפות. אם תבנה כל אחד מהם, פלוט את האירועים בעצמך — ראה [אג'נטים מותאמים אישית](/he/reference/custom-agents).
+
+`output_type` לא משנה את העקבה. ריצה מוקלדת וריצה של מחרוזת מייצרות את אותם אירועים.
+
+## דוגמה
+
+```python
+import failproofai_sdk
+from pydantic import BaseModel
+from pydantic_ai import Agent, ModelRetry
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+PRICE = {"widget": 42.0, "gadget": 17.5}
+STOCK = {"widget": 120, "gadget": 0}
+
+
+class Report(BaseModel):
+    headline: str
+    out_of_stock: list[str]
+
+
+agent = Agent(
+    "openai:gpt-4o-mini",
+    output_type=Report,
+    system_prompt="Use the tools for every number. If a tool fails, note it and continue.",
+)
+
+
+@agent.tool_plain
+def price_of(item: str) -> float:
+    """Unit price of an item. Valid: widget, gadget."""
+    return PRICE[item.lower().strip()]
+
+
+@agent.tool_plain
+def stock_of(item: str) -> int:
+    """Units in stock. Valid: widget, gadget."""
+    return STOCK[item.lower().strip()]
+
+
+@agent.tool_plain
+def restock_eta(item: str) -> str:
+    """Restock ETA. Not available."""
+    raise ModelRetry(f"no restock schedule for {item!r} — answer without it")
+
+
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("inventory", goal="stock report"):
+        result = agent.run_sync(
+            "For widget and gadget, get price and stock. "
+            "For anything out of stock, try the restock ETA. Then produce the report."
+        )
+```
+
+בעקבה, `restock_eta` מופיע כ-`tool_result` המנשא שגיאה, ואחריו קריאת מודל נוספת שבה האג'נט עובד סביב זה, והריצה עדיין מסתיימת ב-`success`. שני העובדות נשמרות.
+
+## שגיאות, ניסיונות חוזרים וזרימת בקרה
+
+Pydantic AI משמיע חריגים בשלוש דברים שונים, והמתאם מפריד ביניהם:
+
+| חריג | מטופל כ | תוצאה |
+| --- | --- | --- |
+| `ModelRetry`, `ToolRetryError`, `ToolFailedError` | כשל כלי אמיתי | `tool_result` עם שגיאה; הריצה עדיין יכולה להסתיים ב-`success` |
+| `SkipToolExecution`, `SkipToolValidation`, `SkipModelRequest`, `CallDeferred`, `ApprovalRequired` | זרימת בקרה | לא שגיאה; הריצה מונחית |
+| כל דבר אחר | כשל | `error`, ואז `agent_end` עם תוצאה `failed` |
+
+`ModelRetry` נמצא בקבוצה הראשונה בכוונה. זה אומר שניסיון באמת נכשל ובמודל בקשו לנסות שוב, וזה בדיוק מה ששדה השגיאה של span של כלי מיועד לעשות. סיווג זה כזרימת בקרה היה מסתיר כשלי כלי אמיתיים מאחורי ריצה ירוקה.
+
+## שמות את ה-spans שלך
+
+ה-span של ריצה של Pydantic AI עצמו נקרא `agent`. עטוף את הקריאה כדי לתן לה תווית שבחרת:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("inventory", goal="stock report"):
+        agent.run_sync("...")
+```
+
+ה-span של הframe-work אז קינן תחת `inventory`, וזה המקום שבו אירועי המודל והכלים תלויים.
+
+שמור `agent_id` בקרדינליות נמוכה. זו הפן הראשוני על כל משטח לוח מחוונים, ולכן השתמש בשם תפקיד, אפילו לעולם לא UUID או מחרוזת לכל ריצה.
+
+## שלוט בחסות
+
+הורה בסדר זה, ההתאמה הראשונה ניצחת:
+
+1. `instrument("pydantic_ai", session_id=...)`
+2. היקף `failproofai_sdk.session()` המקיף
+3. ה-`conversation_id` של הריצה, ואז ה-`run_id` שלה
+4. `uuid4().hex` שנוצר
+
+```python
+with failproofai_sdk.session(f"chat-{user_id}"):
+    agent.run_sync("...")
+```
+
+## אפשרויות
+
+```python
+failproofai_sdk.instrument(
+    "pydantic_ai",
+    session_id=None,          # הצמד כל ריצה לזיהוי חסות אחד
+    capture_content=True,     # False מוריד הנמכות ותשלומים מעומסים
+)
+```
+
+## בעיות נפוצות
+
+<AccordionGroup>
+  <Accordion title="הריצה עובדת אבל אף אירוע לא מופיע">
+    ה-`Agent` בנוי לפני שה-`instrument()` הופעל. ראה את ההתראה לעיל, ובדוק את `agent.root_capability.capabilities`.
+  </Accordion>
+
+  <Accordion title="חריג רגיל בכלי הורג את הריצה">
+    `raise` חשוף הוא מתפשט; זה עיצוב של Pydantic AI. כדי לתת למודל לעבוד סביב זה, הרם `ModelRetry` עם הודעה שהיא יכולה לפעול עליה. הכשל מתועד בכל מקרה.
+  </Accordion>
+
+  <Accordion title="יש span אג'נט קינן שלא יצרתי">
+    הילד הוא span ריצה של Pydantic AI עצמו, וזה המקום שבו אירועי המודל והכלים תלויים. שחרר את ההיקף שלך אם אתה רוצה span יחיד, במחיר השם המותאם.
+  </Accordion>
+
+  <Accordion title="Tracebacks מתחיל עם סימן קיצור">
+    ערימת הגרף האסינכרונית של Pydantic AI ארוכה יותר מגבול שדה העומס, וקו האחרון של traceback הוא החריג עצמו. שדה זה קוצץ מהחזית ולא מהגב, ולכן הקו שאתה צריך שורד.
+  </Accordion>
+</AccordionGroup>
+
+## הבא
+
+<Columns cols={3}>
+  <Card title="איך זה עובד" icon="workflow" href="/he/start/integrations/custom-agents#going-deeper">
+    זוגות, מזהים, מחזור חיים של חסות וסילוק.
+  </Card>
+  <Card title="קרא עקבה" icon="route" href="/he/sessions/read-a-trace">
+    עקוב אחר סיבתיות דרך החסות שרק תפסת.
+  </Card>
+  <Card title="מסגרות אחרות" icon="plug" href="/he/start/integrations">
+    LangGraph, CrewAI, LlamaIndex, ואג'נטים מותאמים אישית.
+  </Card>
+</Columns>

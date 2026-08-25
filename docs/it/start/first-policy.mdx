@@ -1,7 +1,6 @@
 ---
----
-title: "Previeni il tuo primo errore con una policy"
-description: "Crea una versione di policy, distribuiscila in modalità observe e poi applicala."
+title: "Evita il tuo primo fallimento con una policy"
+description: "Scrivi una versione della policy, distribuiscila in modalità observe, quindi applicala."
 icon: "shield-check"
 ---
 
@@ -10,25 +9,25 @@ Utilizza una policy solo dopo aver descritto l'azione non sicura e le azioni leg
 <Tabs>
   <Tab title="Dashboard">
     <Steps>
-      <Step title="Crea la policy">
-        Vai su **Admin → policy editor**. Inizia con la demo policy, rivedi o modifica il suo codice sorgente, quindi seleziona **publish version**. La pubblicazione crea la versione immutabile che puoi distribuire alle macchine.
+      <Step title="Scrivi la policy">
+        Vai su **Admin → policy editor**. Inizia con la policy demo, rivedi o modifica il suo codice sorgente, quindi seleziona **publish version**. La pubblicazione crea la versione immutabile che puoi distribuire sulle macchine.
 
-        ![L'editor di policy con una demo policy pronta per la pubblicazione come versione immutabile.](/images/dashboard/policy-editor.png)
+        ![La vista di composizione dell'editor delle policy con una policy demo pronta per essere pubblicata come versione immutabile.](/images/dashboard/policy-editor.png)
       </Step>
-      <Step title="Distribuiscila a una macchina">
-        Vai su **Admin → enforcement**, espandi la macchina target, e seleziona **edit this machine**. Aggiungi la demo policy pubblicata, fissa la sua versione, scegli **observe**, e applica la distribuzione.
+      <Step title="Distribuiscila su una macchina">
+        Vai su **Admin → enforcement**, espandi la macchina di destinazione e seleziona **edit this machine**. Aggiungi la policy demo pubblicata, fissa la sua versione, scegli **observe**, e applica la distribuzione.
 
-        ![L'editor di distribuzione della macchina con una versione di policy pubblicata selezionata in modalità observe prima di applicare la distribuzione.](/images/dashboard/enforcement-editor.png)
+        ![L'editor di distribuzione della macchina con una versione della policy pubblicata selezionata in modalità observe prima di applicare la distribuzione.](/images/dashboard/enforcement-editor.png)
       </Step>
       <Step title="Verifica la policy">
-        Esegui una nuova sessione agent su quella macchina, quindi apri **Observe → policy**. Seleziona la macchina e conferma che la demo policy appare nella mappatura della policy e nella timeline delle decisioni. La modalità observe registra cosa farebbe la policy senza bloccare l'azione.
+        Esegui una nuova sessione agente su quella macchina, quindi apri **Observe → policy**. Seleziona la macchina e conferma che la policy demo appare nella mappatura delle policy e nella timeline delle decisioni. La modalità observe registra ciò che la policy farebbe senza bloccare l'azione.
 
-        ![La pagina Policy che mostra i totali delle decisioni, l'attività di enforcement nel tempo, e le mappature delle policy locali e gestite dal Cloud.](/images/dashboard/policy-observe.png)
+        ![La pagina Policy che mostra i totali delle decisioni, l'attività di applicazione nel tempo, e le mappature delle policy locali e gestite dal Cloud.](/images/dashboard/policy-observe.png)
       </Step>
     </Steps>
   </Tab>
   <Tab title="CLI">
-    L'authoring delle policy del Cloud e la distribuzione della flotta sono flussi di lavoro amministrativi. Utilizza la CLI locale per validare la stessa policy prima di pubblicarla:
+    La creazione delle policy Cloud e la distribuzione della flotta sono flussi di lavoro amministrativi. Usa la CLI locale per convalidare la stessa policy prima di pubblicarla:
 
     ```bash
     failproofai policies --install --custom ./payment-retry.policies.ts \
@@ -36,13 +35,13 @@ Utilizza una policy solo dopo aver descritto l'azione non sicura e le azioni leg
     failproofai config --status
     ```
 
-    Usa `fp` per ispezionare le decisioni di policy visibili dal Cloud:
+    Usa `fp` per ispezionare le decisioni delle policy visibili nel Cloud:
 
     ```bash
     fp events --event-type hook_completed --env production --since 24h
     fp sessions --env production --since 24h
     ```
 
-    La CLI del Cloud non espone i percorsi di distribuzione dell'enforcement solo per root. Pubblica le versioni da **Admin → policy editor** e distribuiscile da **Admin → enforcement**.
+    Entrambi i passaggi sono disponibili anche dalla CLI: `fp policies publish <id> <file>` crea una versione e `fp fleet deploy <machine-id> --add <id>` la inserisce su una macchina. Gli equivalenti del dashboard sono **Admin → policy editor** e **Admin → enforcement**.
   </Tab>
 </Tabs>

@@ -1,0 +1,38 @@
+---
+---
+title: "CrewAI"
+description: "قم بالتثبيت والمراقبة وشاهد أول تتبع لك."
+icon: "/images/frameworks/crewai.svg"
+---
+
+ثلاث خطوات للوصول إلى أول تتبع CrewAI الخاص بك. لمعرفة ما يحمله كل حدث والتدفقات واستكشاف الأخطاء، اطلع على [الدليل الكامل](/ar/start/integrations/crewai).
+
+## التثبيت
+
+```bash
+pip install 'failproofai-sdk[crewai]'
+```
+
+## المراقبة
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    Crew(agents=[analyst, writer], tasks=[gather, summarise]).kickoff()
+```
+
+لا يتغير شيء في فريقك أو الوكلاء أو المهام أو الأدوات. تقوم `instrument()` بالاشتراك في حافلة الأحداث على مستوى الوحدة في CrewAI.
+
+## تحقق من وصوله
+
+قم بتشغيله مرة واحدة، ثم افتح **Observe → Sessions** وحدد بيئتك. ستظهر عملية التشغيل الخاصة بك كتتبع معاد بناؤه.
+
+إذا لم يصل شيء، تأكد من اتصال الجهاز باستخدام `failproofai config --status`.
+
+<Card title="دليل CrewAI الكامل" icon="arrow-right" href="/ar/start/integrations/crewai">
+  ما يتم تسجيله والتدفقات واستخدام الرموز وتسمية الامتدادات والخيارات والمشاكل الشائعة.
+</Card>

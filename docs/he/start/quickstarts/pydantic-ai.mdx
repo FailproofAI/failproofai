@@ -1,0 +1,42 @@
+---
+title: "Pydantic AI"
+description: "התקן, הגדר instrumentation, וראה את ה-trace הראשון שלך."
+icon: "/images/frameworks/pydantic-ai.svg"
+---
+
+שלוש צעדים ל-trace של Pydantic AI הראשון שלך. עבור tools, retries, streaming, ואפשרויות נוספות, ראה [את המדריך המלא](/he/start/integrations/pydantic-ai).
+
+## התקנה
+
+```bash
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+## Instrumentation
+
+```python
+import failproofai_sdk
+from pydantic_ai import Agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # לפני בניית Agent כלשהו
+
+agent = Agent("openai:gpt-4o-mini", system_prompt="Be terse.")
+
+with failproofai_sdk.session():
+    result = agent.run_sync("...")
+```
+
+<Warning>
+  `instrument()` חייב לרוץ **לפני** שאתה בונה `Agent`. היכולת מתווספת בעת הבנייה, כך שעבור agent שנבנה קודם לכן לא יתועד שום דבר — בלא שגיאה, כי לא קרה שום דבר לא תקין. זו הסיבה הנפוצה ביותר ל-trace ריק עם ה-adapter הזה, וזה קורה במיוחד עם agents בהיקף המודול: import את `failproofai_sdk` וקרא ל-`instrument()` לפני import של המודול שבונה אותם.
+</Warning>
+
+## בדוק שהגיע
+
+הרץ אותו פעם אחת, ואז פתח **Observe → Sessions** ובחר את ה-environment שלך. ה-run שלך מופיע כ-trace שנבנה מחדש.
+
+אם כלום לא הגיע, אשר שהמכונה מחוברת עם `failproofai config --status`.
+
+<Card title="מדריך Pydantic AI מלא" icon="arrow-right" href="/he/start/integrations/pydantic-ai">
+  מה מתעד, tools ו-retries, streaming, naming של spans, אפשרויות, ובעיות נפוצות.
+</Card>

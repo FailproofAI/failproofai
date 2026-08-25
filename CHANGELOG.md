@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.0.2-beta.2 — 2026-08-25
+
+### Features
+
+- **Installing a pack chooses, instead of announcing what it chose.** `policies add <source>` took the publisher's `defaultEnabled` flags and printed the result afterwards, which turns a recommendation into a decision made on the user's behalf — by which point the policies are on their machine. A human at a terminal who names no flags now gets the pack's list first, defaults pre-ticked, grouped by category. It reads the MANIFEST only, so deciding about a stranger's pack still never downloads a stranger's code. Skipped entirely when `--policy`/`--category`/`--all` is passed or there is no TTY: a script asked a precise question and must get a precise answer, not a prompt it cannot see. (#738)
+
+- **Setup is one linear flow, with no fork at the front.** It opened by asking "Recommended or Customize?" — a question about the wizard rather than about the machine, unanswerable until you know the alternatives, which you learn by picking one. Recommended then took global scope, the detected CLIs and fifteen unseen policies. What is left is three questions in the order the machine needs them: the daemon (first, because it is the only step that needs a password), which harnesses, and whether to connect. Scope is not among them — it is global, always, because a project-scoped install guards the one directory the command was run from and silently leaves every other repo unguarded; `policies --install --scope project` is still there for someone who means it. The harness step is now always asked rather than inferred: Recommended used to skip it and wire failproofai into agents nobody named. (#738)
+
+### Fixes
+
+- **Every prompt keystroke redrew the screen as two writes, which is a blank frame.** The cursor-up-and-clear was its own `write()`, so a terminal could paint the CLEARED state before the new lines arrived — invisible on a local terminal, and a visible flash on every keypress over SSH or inside tmux, where the two writes cross a network or a multiplexer between frames. A repaint is now one write, wrapped in synchronized output (`DECSET 2026`) so the terminal holds the frame until the reset; terminals that do not implement it ignore an unknown private mode, so it costs nothing where it does not help. Found by running the house TUI guide's anti-pattern list rather than by looking at the output, which is exactly the kind of defect looking cannot find. (#738)
+
+- **A hand-wrapped warning fought the wrapper it was passed to.** The NOT-ENFORCING message was written as four pre-broken lines, and `warning` wraps each element it is given — so the author's line breaks became paragraph breaks and wrapped again inside themselves, leaving the word "them." alone on a line at 60 columns. It is prose now, and fills whatever width it is given. Verified at 40, 60 and 80. (#738)
+
+- **The policies listing said "not installed" directly above an installed pack.** It was reporting whether HOOKS are wired, which is a different question from whether policies exist — and it hid the state that actually matters, because a machine can hold thirty-eight policies and enforce none of them when no agent CLI is calling failproofai at all. That is the worst of the three states and it read as the emptiest. The header now says `N on · NOT ENFORCING` with a warning naming the cause. (#738)
+
+- **The TUI carried a character the design system forbids.** `⚠` takes EMOJI presentation on most terminals, and the brand rules are explicit that there is no emoji anywhere. It is `▲` now — one column, geometric like the `◆◇●○◼◻` already in use. The width matters as much as the look: the warning block hangs its continuation lines under a ONE-column marker, so an emoji-width glyph silently broke the very alignment it sat in. Section rules move to the brand's heavy `━━` eyebrow, with the light `─` kept for table sub-rules so the two levels read as different weights, and the `❋` dingbat becomes the actual `▮▮` brand mark. (#738)
+
 ## 1.0.2-beta.1 — 2026-08-25
 
 ### Features
@@ -26,21 +44,9 @@
 
 ### Fixes
 
-- **Installing a pack chooses, instead of announcing what it chose.** `policies add <source>` took the publisher's `defaultEnabled` flags and printed the result afterwards, which turns a recommendation into a decision made on the user's behalf — by which point the policies are on their machine. A human at a terminal who names no flags now gets the pack's list first, defaults pre-ticked, grouped by category. It reads the MANIFEST only, so deciding about a stranger's pack still never downloads a stranger's code. Skipped entirely when `--policy`/`--category`/`--all` is passed or there is no TTY: a script asked a precise question and must get a precise answer, not a prompt it cannot see. (#738)
-
-- **Setup is one linear flow, with no fork at the front.** It opened by asking "Recommended or Customize?" — a question about the wizard rather than about the machine, unanswerable until you know the alternatives, which you learn by picking one. Recommended then took global scope, the detected CLIs and fifteen unseen policies. What is left is three questions in the order the machine needs them: the daemon (first, because it is the only step that needs a password), which harnesses, and whether to connect. Scope is not among them — it is global, always, because a project-scoped install guards the one directory the command was run from and silently leaves every other repo unguarded; `policies --install --scope project` is still there for someone who means it. The harness step is now always asked rather than inferred: Recommended used to skip it and wire failproofai into agents nobody named. (#738)
-
 - **A test of the new picker depended on a directory CI does not have.** `policies add core` reads the pack vendored in the package, which `bun run build` writes — and `test` and `build` are separate CI jobs, so `policy-pack/` does not exist when the tests run. Every other pack test generates it; the new one now does too, and pins `FAILPROOFAI_PACKAGE_ROOT` at what it generated rather than relying on a repo root that happens to be populated on a contributor's machine. (#738)
 
 - **The no-pack fallback told users to run a command that no longer does anything.** A machine carrying policy names with no pack installed still enforces them from the compiled implementations, and warns that it is doing so — but the warning said to run `failproofai update` "to move them into the pack that ships with it". Both halves stopped being true the day the package stopped carrying policies: nothing ships with it, and the migration deliberately does not fetch. It names `failproofai policies add core` now, which is the command that actually leaves the shim. Nothing had been asserting on that string; a test does now. (#738)
-
-- **Every prompt keystroke redrew the screen as two writes, which is a blank frame.** The cursor-up-and-clear was its own `write()`, so a terminal could paint the CLEARED state before the new lines arrived — invisible on a local terminal, and a visible flash on every keypress over SSH or inside tmux, where the two writes cross a network or a multiplexer between frames. A repaint is now one write, wrapped in synchronized output (`DECSET 2026`) so the terminal holds the frame until the reset; terminals that do not implement it ignore an unknown private mode, so it costs nothing where it does not help. Found by running the house TUI guide's anti-pattern list rather than by looking at the output, which is exactly the kind of defect looking cannot find. (#738)
-
-- **A hand-wrapped warning fought the wrapper it was passed to.** The NOT-ENFORCING message was written as four pre-broken lines, and `warning` wraps each element it is given — so the author's line breaks became paragraph breaks and wrapped again inside themselves, leaving the word "them." alone on a line at 60 columns. It is prose now, and fills whatever width it is given. Verified at 40, 60 and 80. (#738)
-
-- **The policies listing said "not installed" directly above an installed pack.** It was reporting whether HOOKS are wired, which is a different question from whether policies exist — and it hid the state that actually matters, because a machine can hold thirty-eight policies and enforce none of them when no agent CLI is calling failproofai at all. That is the worst of the three states and it read as the emptiest. The header now says `N on · NOT ENFORCING` with a warning naming the cause. (#738)
-
-- **The TUI carried a character the design system forbids.** `⚠` takes EMOJI presentation on most terminals, and the brand rules are explicit that there is no emoji anywhere. It is `▲` now — one column, geometric like the `◆◇●○◼◻` already in use. The width matters as much as the look: the warning block hangs its continuation lines under a ONE-column marker, so an emoji-width glyph silently broke the very alignment it sat in. Section rules move to the brand's heavy `━━` eyebrow, with the light `─` kept for table sub-rules so the two levels read as different weights, and the `❋` dingbat becomes the actual `▮▮` brand mark. (#738)
 
 - **A release tag was never checked against the version inside the pack, and this repo's own convention broke it.** `spec.tag` only ever built URLs and `version` only ever came from the manifest; the two were never compared, so a pack built `--version 1.0.0` and released under tag `v1.0.0` installed cleanly while recording a version that matched no URL. It bit immediately: `pack build` told publishers to tag `<version>` while failproofai's own releases are tagged `v<version>`, so a publisher following house style broke their own pack. A leading `v` is now accepted, because refusing a near-universal convention would be hostile; any other disagreement fails the install naming both values and which one to change. (#738)
 
@@ -49,7 +55,6 @@
 - **The dashboard offered a policy-source filter that could never match anything.** `builtin` survived in the source dropdown after the builtins stopped being a source; nothing produces that value any longer, so selecting it emptied the list with no explanation. (#738)
 
 - **A doc comment in `pack-manifest.ts` described a safety condition that had stopped being true.** It said the reader's fail-open was defensible only while the builtins shipped compiled in and kept enforcing underneath, and that the day they became a fetched pack this must be revisited rather than inherited. That day arrived. The denying moved rather than disappeared — `pack-failclosed.ts` reads the same errors and refuses the events the missing policies declared — and the comment now says so, including why a throw must not be added here. (#738)
-
 
 ## 1.0.2-beta.0 — 2026-08-21
 

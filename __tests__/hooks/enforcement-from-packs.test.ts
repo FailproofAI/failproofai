@@ -124,6 +124,37 @@ describe("the migration shim", () => {
     expect(JSON.stringify(result)).toMatch(/sudo commands are blocked/);
   });
 
+  it("names a command that exists when it tells the user how to leave the shim", async () => {
+    // The warning used to say "run `failproofai update` to move them into the
+    // pack that ships with it". Both halves stopped being true the day the
+    // package stopped carrying policies: nothing ships with it, and the
+    // migration deliberately does not fetch. A recovery instruction that does
+    // not recover is worse than none, and nothing was asserting on this string.
+    writeFileSync(
+      join(home, "policies-config.json"),
+      JSON.stringify({ enabledPolicies: ["block-sudo"] }),
+    );
+    // stderr, not the log file: file logging is opt-in (one of CI's three env
+    // configs turns it on), and this warning has to reach a user who enabled
+    // nothing.
+    const written: string[] = [];
+    const spy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation((chunk: unknown) => {
+        written.push(String(chunk));
+        return true;
+      });
+    try {
+      await evaluate("sudo rm -rf /tmp/x");
+    } finally {
+      spy.mockRestore();
+    }
+    const log = written.join("");
+    expect(log).toMatch(/no pack is installed/);
+    expect(log).toMatch(/failproofai policies add core/);
+    expect(log).not.toMatch(/failproofai update/);
+  });
+
   it("stops the moment a pack arrives, so it cannot double up", async () => {
     writeFileSync(
       join(home, "policies-config.json"),

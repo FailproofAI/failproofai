@@ -15,7 +15,7 @@
 // produce byte-identical output to the canonical spelling. A near-copy that
 // drifts is exactly what having three commands cost in the first place.
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
-import { spawnSync, execFileSync } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import { readFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
@@ -91,56 +91,72 @@ interface Run {
   all: string;
 }
 
-/** `offline: true` proves a path reaches no network, rather than assuming it. */
-function cli(args: string[], opts: { offline?: boolean } = {}): Run {
-  const result = spawnSync("bun", [BINARY, ...args], {
-    env: {
-      ...process.env,
-      HOME,
-      USERPROFILE: HOME,
-      FAILPROOFAI_HOME: fpHome,
-      FAILPROOFAI_TELEMETRY_DISABLED: "1",
-      FAILPROOFAI_PACKAGE_ROOT: packageRoot,
-      FAILPROOFAI_PACK_BASE_URL: `http://127.0.0.1:${(coreServer.address() as AddressInfo).port}`,
-      ...(opts.offline ? { FAILPROOFAI_NO_DOWNLOAD: "1" } : {}),
-    },
-    encoding: "utf8",
-    timeout: 30_000,
+/**
+ * Runs the real binary and resolves with what it printed.
+ *
+ * ASYNC, and that is load-bearing rather than stylistic. `spawnSync` blocks the
+ * worker's event loop — and the release server these tests stand up lives on
+ * that same loop, so a synchronous spawn could never be served the assets the
+ * child was fetching. Every `core` install sat there until the spawn timeout
+ * and failed, while every test that touched no server passed, which is a very
+ * convincing way to look like a product bug.
+ *
+ * `offline: true` proves a path reaches no network, rather than assuming it.
+ */
+function cli(args: string[], opts: { offline?: boolean } = {}): Promise<Run> {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn("bun", [BINARY, ...args], {
+      env: {
+        ...process.env,
+        HOME,
+        USERPROFILE: HOME,
+        FAILPROOFAI_HOME: fpHome,
+        FAILPROOFAI_TELEMETRY_DISABLED: "1",
+        FAILPROOFAI_PACKAGE_ROOT: packageRoot,
+        FAILPROOFAI_PACK_BASE_URL: `http://127.0.0.1:${(coreServer.address() as AddressInfo).port}`,
+        ...(opts.offline ? { FAILPROOFAI_NO_DOWNLOAD: "1" } : {}),
+      },
+      timeout: 30_000,
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (c: Buffer) => (stdout += c.toString()));
+    child.stderr.on("data", (c: Buffer) => (stderr += c.toString()));
+    child.on("error", reject);
+    child.on("close", (code) =>
+      resolvePromise({ exitCode: code ?? 1, stdout, stderr, all: stdout + stderr }),
+    );
   });
-  if (result.error) throw result.error;
-  const stdout = result.stdout ?? "";
-  const stderr = result.stderr ?? "";
-  return { exitCode: result.status ?? 1, stdout, stderr, all: stdout + stderr };
 }
 
 describe("the old spellings still answer, and answer identically", () => {
-  it("takes `pack list` as the bare listing, which is the question it was asking", () => {
-    const canonical = cli(["policies"]);
-    const alias = cli(["pack", "list"]);
+  it("takes `pack list` as the bare listing, which is the question it was asking", async () => {
+    const canonical = await cli(["policies"]);
+    const alias = await cli(["pack", "list"]);
     expect(canonical.exitCode).toBe(0);
     expect(alias.stdout).toBe(canonical.stdout);
   });
 
-  it("takes `p` for the same listing", () => {
-    expect(cli(["p"]).stdout).toBe(cli(["policies"]).stdout);
+  it("takes `p` for the same listing", async () => {
+    expect((await cli(["p"])).stdout).toBe((await cli(["policies"])).stdout);
   });
 
-  it("routes `pack list <source>` to `show`, the OTHER question it was asking", () => {
+  it("routes `pack list <source>` to `show`, the OTHER question it was asking", async () => {
     // One word was doing two jobs: with no argument it described this machine,
     // with one it described a pack somewhere else. Those are different
     // questions and they are different words now.
-    const viaAlias = cli(["pack", "list", "acme/nothing-here"], { offline: true });
-    const viaShow = cli(["policies", "show", "acme/nothing-here"], { offline: true });
+    const viaAlias = await cli(["pack", "list", "acme/nothing-here"], { offline: true });
+    const viaShow = await cli(["policies", "show", "acme/nothing-here"], { offline: true });
     expect(viaAlias.all).toBe(viaShow.all);
     expect(viaAlias.exitCode).toBe(viaShow.exitCode);
   });
 
-  it("takes `policy add` and `policies add` as one command", () => {
-    expect(cli(["policy", "add", "--help"]).stdout).toBe(cli(["policies", "add", "--help"]).stdout);
+  it("takes `policy add` and `policies add` as one command", async () => {
+    expect((await cli(["policy", "add", "--help"])).stdout).toBe((await cli(["policies", "add", "--help"])).stdout);
   });
 
-  it("resolves `pack build` to `publish`, which is what it always was minus the release", () => {
-    const built = cli(["pack", "build"]);
+  it("resolves `pack build` to `publish`, which is what it always was minus the release", async () => {
+    const built = await cli(["pack", "build"]);
     // Usage, not "unknown command" — the word still means something.
     expect(built.all).toMatch(/failproofai publish/);
     expect(built.all).toMatch(/--repo <owner>\/<repo>/);
@@ -152,40 +168,40 @@ describe("a name or a source, told apart by the slash", () => {
   // one and unambiguous in the other. No flag to discover before you can install
   // somebody else's policies.
 
-  it("sends a slashed argument to the pack lane", () => {
-    const r = cli(["policies", "add", "acme/nothing-here"], { offline: true });
+  it("sends a slashed argument to the pack lane", async () => {
+    const r = await cli(["policies", "add", "acme/nothing-here"], { offline: true });
     expect(r.exitCode).not.toBe(0);
     // The pack lane's own refusal, which names fetching.
     expect(r.all).toMatch(/fetch|download|FAILPROOFAI_NO_DOWNLOAD/i);
   });
 
-  it("sends a bare name to the policy lane, and fails DIFFERENTLY", () => {
-    const bare = cli(["policies", "add", "no-such-policy-here"], { offline: true });
-    const slashed = cli(["policies", "add", "acme/nothing-here"], { offline: true });
+  it("sends a bare name to the policy lane, and fails DIFFERENTLY", async () => {
+    const bare = await cli(["policies", "add", "no-such-policy-here"], { offline: true });
+    const slashed = await cli(["policies", "add", "acme/nothing-here"], { offline: true });
     expect(bare.all).not.toBe(slashed.all);
     // A bare name is never a fetch — nothing about the network can appear.
     expect(bare.all).not.toMatch(/FAILPROOFAI_NO_DOWNLOAD/);
   });
 
-  it("sends a github: source to the pack lane even with no slash-leading owner", () => {
-    const r = cli(["policies", "add", "github:acme/nothing-here"], { offline: true });
+  it("sends a github: source to the pack lane even with no slash-leading owner", async () => {
+    const r = await cli(["policies", "add", "github:acme/nothing-here"], { offline: true });
     expect(r.all).toMatch(/fetch|download|FAILPROOFAI_NO_DOWNLOAD/i);
   });
 
-  it("sends every core alias to the pack lane, though none of them has a slash", () => {
+  it("sends every core alias to the pack lane, though none of them has a slash", async () => {
     // Read from the layer that OWNS the aliases. Restating them here is the
     // drift that already shipped once, when the dashboard could not resolve a
     // name the CLI could.
     expect(CORE_ALIASES.size).toBeGreaterThan(0);
     for (const alias of CORE_ALIASES) {
-      const r = cli(["policies", "add", alias, "--policy", "block-rm-rf"]);
+      const r = await cli(["policies", "add", alias, "--policy", "block-rm-rf"]);
       expect(r.exitCode, `${alias} should install our pack`).toBe(0);
       expect(r.all).toMatch(/failproofai\/core/);
     }
   });
 
-  it("is case-insensitive about those aliases, because nobody types Core on purpose", () => {
-    const r = cli(["policies", "add", "CORE", "--policy", "block-rm-rf"]);
+  it("is case-insensitive about those aliases, because nobody types Core on purpose", async () => {
+    const r = await cli(["policies", "add", "CORE", "--policy", "block-rm-rf"]);
     expect(r.exitCode).toBe(0);
     expect(r.all).toMatch(/failproofai\/core/);
   });
@@ -232,8 +248,8 @@ describe("`policies add` with nothing after it", () => {
     }
   });
 
-  it("refuses through the real binary too, where stdin is a pipe", () => {
-    const r = cli(["policies", "add"]);
+  it("refuses through the real binary too, where stdin is a pipe", async () => {
+    const r = await cli(["policies", "add"]);
     expect(r.exitCode).not.toBe(0);
     expect(r.all).toMatch(/needs a terminal/);
     expect(r.all).toMatch(/<owner>\/<repo>/);
@@ -241,39 +257,39 @@ describe("`policies add` with nothing after it", () => {
 });
 
 describe("what the unified command actually does", () => {
-  it("installs part of a pack and reports the part it did not take", () => {
-    const r = cli(["policies", "add", "core", "--policy", "block-rm-rf"]);
+  it("installs part of a pack and reports the part it did not take", async () => {
+    const r = await cli(["policies", "add", "core", "--policy", "block-rm-rf"]);
     expect(r.exitCode).toBe(0);
     expect(r.stdout).toMatch(/enabled \(1\//);
     expect(r.stdout).toMatch(/not enabled/);
   });
 
-  it("uninstalls a whole pack by its id, which has a slash and so is a source", () => {
-    cli(["policies", "add", "core", "--policy", "block-rm-rf"]);
-    const removed = cli(["policies", "remove", "failproofai/core"]);
+  it("uninstalls a whole pack by its id, which has a slash and so is a source", async () => {
+    await cli(["policies", "add", "core", "--policy", "block-rm-rf"]);
+    const removed = await cli(["policies", "remove", "failproofai/core"]);
     expect(removed.exitCode).toBe(0);
     expect(removed.stdout).toMatch(/Removed failproofai\/core/);
-    expect(cli(["policies"]).stdout).not.toMatch(/✓ PACK/);
+    expect((await cli(["policies"])).stdout).not.toMatch(/✓ PACK/);
   });
 
-  it("needs the network to re-add what it removed, and says so plainly", () => {
+  it("needs the network to re-add what it removed, and says so plainly", async () => {
     // The artifact is still kept on disk, but `addPack` always fetches and
     // re-verifies — so a remove is not a local undo any more. The message used
     // to promise "re-adding it works offline", which stopped being true the day
     // the package stopped carrying policies. A message that promises offline
     // and then fails offline is worse than no message.
-    cli(["policies", "add", "core", "--policy", "block-rm-rf"]);
-    const removed = cli(["policies", "remove", "failproofai/core"]);
+    await cli(["policies", "add", "core", "--policy", "block-rm-rf"]);
+    const removed = await cli(["policies", "remove", "failproofai/core"]);
     expect(removed.exitCode).toBe(0);
     expect(removed.all).not.toMatch(/offline/i);
 
-    const offline = cli(["policies", "add", "core"], { offline: true });
+    const offline = await cli(["policies", "add", "core"], { offline: true });
     expect(offline.exitCode).not.toBe(0);
     expect(offline.all).toMatch(/FAILPROOFAI_NO_DOWNLOAD/);
   });
 
-  it("suggests the new spelling, never the retired one, when it has more to offer", () => {
-    const r = cli(["policies", "add", "core", "--policy", "block-rm-rf"]);
+  it("suggests the new spelling, never the retired one, when it has more to offer", async () => {
+    const r = await cli(["policies", "add", "core", "--policy", "block-rm-rf"]);
     expect(r.stdout).not.toMatch(/failproofai pack (add|list)/);
   });
 });

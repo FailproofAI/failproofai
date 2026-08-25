@@ -61,8 +61,12 @@ When the OSV-Scanner gate fails on a PR:
 2. **Only if there is no fix**, add a justified, time-boxed `[[IgnoredVulns]]`
    entry to [`osv-scanner.toml`](osv-scanner.toml) (`id`, `reason`,
    `ignoreUntil`). One advisory per entry, which is the point: any *other*
-   advisory against the same package still blocks. Re-review entries when their
-   `ignoreUntil` date passes.
+   advisory against the same package still blocks. The scanner resolves
+   **aliases**, so one id covers every spelling of the *same* advisory — naming
+   both a `PYSEC-` id and its `GHSA-` alias adds nothing and gets reported as an
+   unused ignore. It does **not** cover a distinct advisory against that package,
+   which still fails the gate until it gets its own entry. Re-review entries when
+   their `ignoreUntil` date passes.
 3. **Only for a package that keeps accruing unfixable advisories**, where an id
    list has become whack-a-mole — each new disclosure reddening the gate on an
    unrelated PR until someone appends another id — use `[[PackageOverrides]]`

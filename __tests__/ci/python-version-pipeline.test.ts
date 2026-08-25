@@ -355,7 +355,12 @@ describe("release tags cannot be confused with the npm package's", () => {
       encoding: "utf8",
     });
     const tag = /^tag=(.*)$/m.exec(out)?.[1];
-    expect(tag).toBe(`${dist}-v0.0.1b1`);
+    // Derived from the committed version, never a literal. `bump` moves that
+    // version on `main` after every successful publish, so a pinned `0.0.1bN`
+    // here goes stale the moment one ships — and those bump commits carry
+    // `[skip ci]`, so nothing notices until the next unrelated PR runs CI and
+    // comes back red for a reason that has nothing to do with it.
+    expect(tag).toBe(`${dist}-v${resolveFile(versionFile).version}`);
     // The property, not just this value: it must not match the npm tag grammar.
     expect(tag).not.toMatch(/^v\d/);
     expect(tag!.startsWith(`${dist}-`)).toBe(true);

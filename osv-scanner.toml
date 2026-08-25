@@ -1,30 +1,51 @@
 # OSV-Scanner allow-list — auto-loaded by the Supply Chain CI gate
-# (.github/workflows/osv-scanner.yml) when it scans bun.lock.
+# (.github/workflows/osv-scanner.yml) when it scans bun.lock, Cargo.lock and
+# the two uv.lock files.
 #
 # The gate blocks on ANY known-vulnerable or malicious dependency. When a finding
 # has no available fix (e.g. an unpatched transitive advisory), add a justified,
 # time-boxed entry here so unrelated PRs aren't blocked. Always prefer FIXING
 # (bump the dependency, or pin it via `overrides` in package.json) over ignoring.
-# Keep this list short and re-review entries when their ignoreUntil date passes.
+# Keep this list short and re-review entries when their date passes.
 #
-# Every entry MUST include a reason and an ignoreUntil date. Example:
+# Two mechanisms, and the reason to reach for each:
+#
+#   [[IgnoredVulns]] silences ONE advisory by id, and is the default choice —
+#   it is the narrowest thing that works, and any OTHER advisory against the
+#   same package still blocks.
+#
+#   [[PackageOverrides]] silences every advisory against one package. Reserve
+#   it for a package that keeps accruing unfixable advisories, where an id list
+#   turns into whack-a-mole: each new disclosure reds the gate on an unrelated
+#   PR until someone appends another id. Note the different date key —
+#   `effectiveUntil`, not `ignoreUntil`.
 #
 # [[IgnoredVulns]]
 # id = "GHSA-xxxx-xxxx-xxxx"
 # ignoreUntil = 2026-07-01
 # reason = "No upstream fix yet; transitive via <pkg>; not reachable in our usage. Re-review by 2026-07-01."
-#
-# Both identifiers for the same advisory. The scanner matches `id` against the
-# record's PRIMARY id, which for a PyPI advisory is the PYSEC one — ignoring only
-# the GHSA alias loaded cleanly, changed nothing, and left the gate red.
-[[IgnoredVulns]]
-id = "PYSEC-2026-311"
-ignoreUntil = 2026-11-20
-reason = "Alias of GHSA-f4j7-r4q5-qw2c; see the entry below for the full justification. Re-review by 2026-11-20."
 
-[[IgnoredVulns]]
-id = "GHSA-f4j7-r4q5-qw2c"
-ignoreUntil = 2026-11-20
+# chromadb is the whack-a-mole case above. Four unfixable advisories as of
+# 2026-08-25 (GHSA-f4j7-r4q5-qw2c, GHSA-2wm9-hf6c-p5cr, GHSA-36p7-vc44-83pf,
+# GHSA-xph7-9rjv-w5fr), three of which landed AFTER the id-based entries this
+# replaces were written — and reded the gate on PRs that touched none of it.
+#
+# Scoped to the exact locked version on purpose. A lockfile bump moves chromadb
+# out from under this override and re-opens the gate, which is the point: a new
+# version is a new risk profile and deserves a fresh look, and it is the one
+# event likely to make these advisories fixable. The `effectiveUntil` date is
+# the backstop if the version never moves.
+#
+# What this gives up, stated plainly: a FIXABLE advisory against 1.1.1 would now
+# be suppressed too, where the id-based entries would have surfaced it. That is
+# an acceptable trade only because of how little this package is exposed here —
+# see the reason below. It would NOT be acceptable for a shipped dependency.
+[[PackageOverrides]]
+name = "chromadb"
+version = "1.1.1"
+ecosystem = "PyPI"
+vulnerability.ignore = true
+effectiveUntil = 2026-11-20
 reason = """
-chromadb 1.1.1, transitive via crewai, in sdk/python/uv.lock. No fixed version exists — OSV reports "0 vulnerabilities can be fixed" and an empty FIXED VERSION — so there is nothing to bump to. It is not reachable from anything we ship: failproofai-sdk declares NO unconditional dependencies (every Requires-Dist in the built wheel is gated behind an extra, and CI installs it with --no-deps), so `pip install failproofai-sdk` never brings chromadb. It arrives only via `failproofai-sdk[crewai]`, which installs CrewAI — and anyone installing CrewAI has chromadb from CrewAI regardless of us. sdk/python/uv.lock is the dev/test lockfile that pins every extra so CI can exercise the adapters; it is not a published artifact. The lockfile stays in the scan on purpose, so a FIXABLE finding here still blocks. Re-review by 2026-11-20, by which point either chromadb has a patched release or crewai has moved off it.
+chromadb 1.1.1, transitive via crewai, in sdk/python/uv.lock. No fixed version exists for any of its open advisories — OSV reports "0 vulnerabilities can be fixed" and an empty FIXED VERSION — so there is nothing to bump to. It is not reachable from anything we ship: failproofai-sdk declares NO unconditional dependencies (every Requires-Dist in the built wheel is gated behind an extra, and CI installs it with --no-deps), so `pip install failproofai-sdk` never brings chromadb. It arrives only via `failproofai-sdk[crewai]`, which installs CrewAI — and anyone installing CrewAI has chromadb from CrewAI regardless of us. sdk/python/uv.lock is the dev/test lockfile that pins every extra so CI can exercise the adapters; it is not a published artifact. Every OTHER package in that lockfile stays in the scan, so a fixable finding elsewhere still blocks. Re-review by 2026-11-20, by which point either chromadb has a patched release or crewai has moved off it.
 """

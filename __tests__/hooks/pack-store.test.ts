@@ -215,6 +215,45 @@ describe("packTagMatchesVersion", () => {
   });
 });
 
+describe("an empty selection is an answer, not a missing one", () => {
+  /**
+   * Reported from a real install: the picker highlights the publisher's
+   * defaults, you untick every one of them, press enter — and it installs the
+   * defaults anyway.
+   *
+   * `resolveSelection` tested `opts.only.length` to decide whether a selection
+   * had been made, so `{only: []}` — "install it, enable none of it" — was
+   * indistinguishable from passing no flags at all, and fell through to the
+   * branch that takes the publisher's defaults. The user got the exact opposite
+   * of what they chose, announced as "the pack's defaults". Presence of the key
+   * is the signal now, never its length.
+   */
+  it("enables nothing when nothing was picked, and does NOT fall back to defaults", async () => {
+    const result = await addPack("github:acme/finance@v1.2.0", { only: [] });
+    expect(result.enabled).toEqual([]);
+    expect(result.selection).toBe("selected");
+    // The pack is still installed — the artifact is on disk and every policy is
+    // listed, just switched off. "Enable none" is not "install nothing".
+    expect(result.available.length).toBeGreaterThan(0);
+  });
+
+  it("writes the empty set to disk, so a reinstall does not resurrect the defaults", async () => {
+    await addPack("github:acme/finance@v1.2.0", { only: [] });
+    const record = installed().packs[0];
+    // `enabled: []` and `enabled: undefined` mean opposite things — none, and
+    // all. An empty array must survive the round trip as an array.
+    expect(record.enabled).toEqual([]);
+    expect(record.enabled).not.toBeUndefined();
+  });
+
+  it("still takes the defaults when no selection was expressed at all", async () => {
+    // The other half of the distinction: no flags is not an empty selection.
+    const result = await addPack("github:acme/finance@v1.2.0");
+    expect(result.selection).toBe("defaults");
+    expect(result.enabled.length).toBeGreaterThan(0);
+  });
+});
+
 describe("addPack", () => {
   it("fetches, verifies and activates a pack", async () => {
     const result = await addPack("github:acme/finance@v1.2.0");

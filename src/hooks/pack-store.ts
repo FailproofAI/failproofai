@@ -554,14 +554,23 @@ function resolveSelection(
     }
     for (const n of opts.only) picked.add(n);
   }
-  if (picked.size > 0) {
+  // An EXPRESSED selection wins, even when it is empty.
+  //
+  // `opts.only = []` means "install the pack, enable none of it" — which is what
+  // the picker sends when somebody unticks everything and confirms. Testing
+  // `picked.size > 0` made that indistinguishable from passing no flags at all,
+  // so it fell through and installed the publisher's defaults: the exact
+  // opposite of what was chosen, reported as "the pack's defaults". Presence of
+  // the key is the signal, not its length.
+  if (opts?.only !== undefined || opts?.categories?.length) {
     // Kept in the pack's declared order, which is the order everything else
     // presents them in.
     return { enabled: available.filter((n) => picked.has(n)), reason: "selected" };
   }
 
-  // No flags. An upgrade keeps whatever the machine already had — switching a
-  // policy back on because the user did not repeat themselves is not an upgrade.
+  // No selection expressed. An upgrade keeps whatever the machine already had —
+  // switching a policy back on because the user did not repeat themselves is not
+  // an upgrade.
   if (previouslyInstalled) {
     return { enabled: previous === null ? null : (previous ?? null), reason: "carried" };
   }

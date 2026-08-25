@@ -91,7 +91,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.5",
     "clsx": "^2.1.1",
-    "eslint": "^10.5.0",
+    "eslint": "^10.9.0",
     "eslint-config-next": "^16.2.9",
     "jsdom": "^30.0.1",
     "lucide-react": "^1.28.0",

@@ -92,7 +92,7 @@
     "@vitejs/plugin-react": "^6.0.5",
     "clsx": "^2.1.1",
     "eslint": "^10.9.0",
-    "eslint-config-next": "^16.2.9",
+    "eslint-config-next": "^16.3.2",
     "jsdom": "^30.0.1",
     "lucide-react": "^1.28.0",
     "next": "^16.3.2",

@@ -323,7 +323,7 @@ export async function evaluateHookEvent(
       if (legacyNames.length > 0) {
         hookLogWarn(
           `enforcing ${legacyNames.length} policies from this build because no pack is installed — ` +
-            `run \`failproofai update\` to move them into the pack that ships with it`,
+            `run \`failproofai policies add core\` to move them into a real pack`,
         );
       }
       // What actually registered, for the pack-duplicate check below. A paused
@@ -432,7 +432,7 @@ export async function evaluateHookEvent(
         // A pack policy whose name is an ENABLED BUILTIN is the same guard
         // twice. The two register under different keys — `failproofai/block-sudo`
         // and `pack/<id>@<version>/block-sudo` — so nothing deduped them, and
-        // the bundled pack carries the builtins under exactly these names.
+        // the core pack carries the builtins under exactly these names.
         //
         // A deny hides it (the first verdict short-circuits) but an INSTRUCT does
         // not: instructions accumulate and are joined, so the agent received the

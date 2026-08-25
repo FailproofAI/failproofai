@@ -489,7 +489,7 @@ async function installHooksImpl(
   const alwaysOnNames = new Set(BUILTIN_POLICIES.filter((p) => p.alwaysOn).map((p) => p.name));
   const fromPack = selectedPolicies.filter((name) => !alwaysOnNames.has(name));
   if (fromPack.length > 0) {
-    // ONLY when there is no pack yet. Installing the bundled pack with
+    // ONLY when there is no pack yet. Fetching the core pack with
     // `only: <selection>` REPLACES whatever the machine had chosen, and
     // `selectedPolicies` is derived from `enabledPolicies` — which is empty on a
     // machine whose pack came from `pack add core`. `policy add block-rm-rf`

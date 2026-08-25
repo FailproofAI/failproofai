@@ -758,30 +758,6 @@ export async function addPack(
   };
 }
 
-/**
- * The vendored pack directory, when a working tree happens to have one.
- *
- * The published package does NOT carry `policy-pack/` and there is no install
- * path through here. Our policies are fetched from their GitHub release like
- * anybody else's — a pack that ships inside the binary is a policy set chosen
- * for the user and written to their disk before they asked, and it gave our own
- * policies a delivery route no third-party pack could use.
- *
- * The one remaining caller is `audit/replay.ts`, which prefers the pack's own
- * functions when a dev tree has run `build:pack` and falls back to the compiled
- * implementations when it returns null. Both produce identical text, so the two
- * paths score the same; the fallback is the normal case now.
- *
- * Anchored at `FAILPROOFAI_PACKAGE_ROOT` for the reason `npmPlatformBinaryPath`
- * documents: `import.meta.url` does not survive the CJS bundle.
- */
-export function bundledPackDir(): string | null {
-  const root = process.env.FAILPROOFAI_PACKAGE_ROOT;
-  if (!root) return null;
-  const dir = resolve(root, "policy-pack");
-  return existsSync(resolve(dir, PACK_MANIFEST_ASSET)) ? dir : null;
-}
-
 export function setPackPolicyEnabled(
   packId: string,
   name: string,

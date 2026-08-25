@@ -17,7 +17,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { CORE_ALIASES, CORE_SOURCE, bundledPackDir } from "../../src/hooks/pack-store";
+import { CORE_ALIASES, CORE_SOURCE } from "../../src/hooks/pack-store";
 
 const pkgRoot = resolve(__dirname, "..", "..");
 
@@ -64,28 +64,5 @@ describe("the published package carries no policies", () => {
     // The script itself SURVIVES — publishing the core pack to its release
     // still needs it. It is just no longer part of shipping the CLI.
     expect(pkg.scripts["build:pack"]).toBeTruthy();
-  });
-});
-
-describe("bundledPackDir, the one reader that is left", () => {
-  it("returns null when the package root is unknown", () => {
-    const before = process.env.FAILPROOFAI_PACKAGE_ROOT;
-    delete process.env.FAILPROOFAI_PACKAGE_ROOT;
-    try {
-      expect(bundledPackDir()).toBeNull();
-    } finally {
-      if (before !== undefined) process.env.FAILPROOFAI_PACKAGE_ROOT = before;
-    }
-  });
-
-  it("returns null for a package root with no vendored pack, which is every published one", () => {
-    const before = process.env.FAILPROOFAI_PACKAGE_ROOT;
-    process.env.FAILPROOFAI_PACKAGE_ROOT = resolve(pkgRoot, "__tests__");
-    try {
-      expect(bundledPackDir()).toBeNull();
-    } finally {
-      if (before === undefined) delete process.env.FAILPROOFAI_PACKAGE_ROOT;
-      else process.env.FAILPROOFAI_PACKAGE_ROOT = before;
-    }
   });
 });

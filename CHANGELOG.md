@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.2-beta.4 — 2026-08-25
+
+### Fixes
+
+- **Installing or removing a pack cold-rescanned the entire audit history to reproduce the answers it already had.** `engineVersion` keys every on-disk audit cache entry, and it folded in the identity of every installed pack — on the stated reasoning that packs "change what a machine would have caught". That is true of enforcement and was never true of this replay: `initReplay` registers `BUILTIN_POLICIES` and never reads the installed packs, so a pack cannot move an audit result. The key now hashes the builtin policy bodies and nothing else. Reported from a real machine where going from one pack to none re-derived 3056 transcripts to arrive back where it started — survivable when packs were rare, and not now that policies ARE packs. (#738)
+
+- **The audit no longer reaches for a vendored pack that cannot exist.** `initReplay` preferred the functions from a bundled `policy-pack/` copy where one was present, falling back to the compiled implementations otherwise. That branch was meaningful while the package shipped that directory; it stopped shipping it, so the branch could not fire in any published build and survived only to be misread as "the audit scores against whatever packs you have installed". It does not, and must not — an audit is a fixed yardstick, and one that changed shape with a machine's pack set could not be compared against its own history. `bundledPackDir` had no callers left and is gone. (#738)
+
+- **Both were checked to cost nothing rather than assumed to.** A machine with no packs already hashed as builtins-only, so its cache key does not move and its history stays warm; a machine with a pack installed rescans once and is then stable across every future pack change. The bundled policy bodies were fingerprinted before and after each edit (75,787 bytes, sha1 `15c77414caa39779`, unchanged throughout) because removing modules can shift bun's emission order and rename identifiers INSIDE the hashed function bodies — which would have rescanned every user for a change that touched no policy. (#738)
+
 ## 1.0.2-beta.3 — 2026-08-25
 
 ### Fixes

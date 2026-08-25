@@ -1,12 +1,21 @@
 // @vitest-environment node
 /**
- * The audit cache key, and the one property that decides whether shipping pack
- * support costs every existing user a cold rescan.
+ * The audit cache key, and the property that decides whether anybody eats a cold
+ * rescan.
  *
- * `engineVersion` keys on-disk audit cache entries. A machine that has never
- * installed a pack must hash EXACTLY as it did before packs existed — otherwise
- * merely upgrading invalidates the cache and forces a full re-scan of every
- * transcript (~104s, per the note on CACHE_TTL_MS) for a feature nobody is using.
+ * `engineVersion` keys on-disk audit cache entries, and it hashes the builtin
+ * policy bodies and NOTHING else. It used to fold in installed pack identities
+ * too, on the reasoning that packs change what a machine would have caught —
+ * true of enforcement, and never true of this replay: `initReplay` registers
+ * `BUILTIN_POLICIES` and never reads the installed packs, so a pack cannot move
+ * an audit result. Keying on one meant every install or removal cold-rescanned
+ * the whole history (~104s, per the note on CACHE_TTL_MS) to reproduce answers
+ * it already had — survivable while packs were rare, and not once policies ARE
+ * packs.
+ *
+ * The pre-pack formula is still the reference, and still has to match exactly:
+ * that is what makes this change free for a machine with no packs, and one
+ * rescan for a machine with one.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createHash } from "node:crypto";
@@ -76,28 +85,36 @@ describe("engineVersion with packs", () => {
     expect(await engineVersion()).toBe(prePackEngineVersion());
   });
 
-  it("changes once a pack is installed", async () => {
+  it("does NOT change when a pack is installed", async () => {
+    // The reported symptom: install core, audit, remove it, and every transcript
+    // is re-scanned to produce identical results.
+    const before = await engineVersion();
     installPack("acme/finance", "1.2.0");
-    vi.resetModules();
-    expect(await engineVersion()).not.toBe(prePackEngineVersion());
+    expect(await engineVersion()).toBe(before);
   });
 
-  it("changes again when the same pack moves to a new version", async () => {
+  it("does NOT change when the same pack moves to a new version", async () => {
     installPack("acme/finance", "1.2.0");
-    vi.resetModules();
-    const at120 = await engineVersion();
-    installPack("acme/finance", "1.3.0");
-    vi.resetModules();
-    expect(await engineVersion()).not.toBe(at120);
+    const before = await engineVersion();
+    installPack("acme/finance", "2.0.0");
+    expect(await engineVersion()).toBe(before);
   });
 
-  it("changes when only the installed artifact digest changes", async () => {
+  it("does NOT change when the installed artifact digest changes", async () => {
     installPack("acme/finance", "1.2.0");
-    vi.resetModules();
-    const original = await engineVersion();
-    installPack("acme/finance", "1.2.0", `${ARTIFACT}// patched\n`);
-    vi.resetModules();
-    expect(await engineVersion()).not.toBe(original);
+    const before = await engineVersion();
+    // A different artifact means a different digest, which is what the old key
+    // folded in most eagerly.
+    installPack("acme/finance", "1.2.0", "export const hooks = [1];\n");
+    expect(await engineVersion()).toBe(before);
+  });
+
+  it("is the pre-pack hash whether or not a pack is installed", async () => {
+    // The two halves of the guarantee in one assertion: a machine with no packs
+    // keeps the key it already had, and a machine WITH one converges on the same
+    // key rather than carrying its own.
+    installPack("acme/finance", "1.2.0");
+    expect(await engineVersion()).toBe(prePackEngineVersion());
   });
 
   it("falls back to the builtin-only hash when the manifest is unreadable", async () => {

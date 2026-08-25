@@ -13,7 +13,6 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from "node:fs";
 import { join } from "node:path";
 import { BUILTIN_POLICIES } from "../hooks/builtin-policies";
-import { readInstalledPacks } from "../hooks/pack-manifest";
 import { AUDIT_DETECTORS } from "./detectors";
 import type { TranscriptAuditResult } from "./types";
 import { auditCacheDir } from "../hooks/fp-home";
@@ -22,23 +21,27 @@ let cachedEngineVersion: string | null = null;
 let cachedDetectorVersion: string | null = null;
 
 /**
- * Hash of every builtin policy's name + function body, PLUS the identity of every
- * installed pack. Changes when policy code changes, invalidating downstream
- * caches.
+ * Hash of every builtin policy's name and function body. Changes when policy
+ * code changes, invalidating downstream caches.
  *
- * Packs belong in this key because they change what a machine would have caught,
- * which is exactly what a cached audit result claims to know. They are folded in
- * by `id|version|sha256` rather than by source text: the pack's bytes are already
- * digest-pinned, and hashing the loaded source instead would drag in the
- * per-load temporary filename the loader rewrites into every import specifier —
- * which changes on every single run and would cold-rescan the whole history each
- * time.
+ * Nothing else is in it, and specifically not installed packs. The audit
+ * evaluates the implementations compiled into this build and only those —
+ * `replay.ts` iterates `BUILTIN_POLICIES` and never reads the installed packs —
+ * so a pack cannot move an audit result, and keying on one meant every install
+ * or removal cold-rescanned the entire history to reproduce the answers it
+ * already had. The key it replaced folded packs in by `id|version|sha256`; the
+ * rationale was that packs "change what a machine would have caught", which is
+ * true of enforcement and was never true of this replay.
  *
- * **A machine with no packs must hash byte-identically to a build with no pack
- * support at all.** Otherwise merely shipping this feature invalidates every
- * user's audit cache and forces a ~104-second cold rescan on upgrade, for a
- * capability they are not using. Hence the empty pack set contributes nothing —
- * not an empty line, not a separator.
+ * **A machine with no packs hashes byte-identically to the old key**, because
+ * that one contributed nothing for an empty pack set — not an empty line, not a
+ * separator. So this change costs a rescan only to machines that had a pack
+ * installed, and costs it exactly once.
+ *
+ * It is deliberately NOT the source text of anything loaded at runtime: the
+ * loader rewrites a per-load temporary filename into every import specifier, so
+ * hashing loaded source would change on every single run and cold-rescan the
+ * whole history each time.
  */
 function getEngineVersion(): string {
   if (cachedEngineVersion) return cachedEngineVersion;
@@ -46,19 +49,21 @@ function getEngineVersion(): string {
     .map((p) => `${p.name}|${p.fn.toString()}`)
     .sort()
     .join("\n");
-  // Never throws by contract, but this runs inside the audit's own try/catch-free
-  // path and a cache key is not worth taking the run down for.
-  let packBlob = "";
-  try {
-    packBlob = readInstalledPacks()
-      .packs.map((pack) => `${pack.id}|${pack.version}|${pack.sha256}`)
-      .sort()
-      .join("\n");
-  } catch {
-    packBlob = "";
-  }
-  const blob = packBlob ? `${builtinBlob}\n${packBlob}` : builtinBlob;
-  cachedEngineVersion = createHash("sha1").update(blob).digest("hex").slice(0, 16);
+  // Packs are NOT in this key, and that is the whole point of the audit's design
+  // rather than an omission.
+  //
+  // `replay.ts` evaluates `BUILTIN_POLICIES` and nothing else — it never reads
+  // `readInstalledPacks()`, and third-party pack policies are never replayed. So
+  // an installed pack cannot change an audit result, and folding its identity in
+  // here invalidated every cached transcript on a change that provably produces
+  // the same answers: a full rescan of thousands of transcripts to arrive back
+  // where it started. That was survivable while packs were rare; policies ARE
+  // packs now, so installing or removing one is routine.
+  //
+  // If audit is ever extended to evaluate what a pack would actually have
+  // caught, this key has to carry pack identity again — and that change belongs
+  // in the same commit as the one that makes it true.
+  cachedEngineVersion = createHash("sha1").update(builtinBlob).digest("hex").slice(0, 16);
   return cachedEngineVersion;
 }
 

@@ -13,19 +13,13 @@
  * execSync against live git, so they never fire on PreToolUse/PostToolUse
  * replay — no explicit skip needed.
  */
-import { resolve } from "node:path";
-import { existsSync } from "node:fs";
 import type { EvaluationResult } from "../hooks/policy-evaluator";
 import { evaluatePolicies } from "../hooks/policy-evaluator";
 import { BUILTIN_POLICIES, registerBuiltinPolicies } from "../hooks/builtin-policies";
-import { PACK_ENTRY_ASSET, bundledPackDir } from "../hooks/pack-store";
-import { loadCustomHooks } from "../hooks/custom-hooks-loader";
-import { clearCustomHooks } from "../hooks/custom-hooks-registry";
 import {
   clearPolicies,
   getAllPolicies,
   normalizePolicyName,
-  registerPolicy,
   setAllPolicies,
 } from "../hooks/policy-registry";
 import type { RegisteredPolicy } from "../hooks/policy-types";
@@ -46,10 +40,20 @@ let initialized = false;
  *  (e.g. the Next.js dashboard) doesn't wipe any prior policy registrations. */
 let savedSnapshot: RegisteredPolicy[] | null = null;
 
-/** Register every builtin policy (regardless of user config) so the replay
- *  shows what *could* be caught, not just what's currently enabled. Called
- *  once per `runAudit` invocation. Snapshots the existing registry so it can
- *  be restored by `restoreReplay()` once the audit is done. */
+/**
+ * Register every builtin policy (regardless of user config) so the replay shows
+ * what *could* be caught, not just what is currently enabled. Called once per
+ * `runAudit` invocation. Snapshots the existing registry so `restoreReplay()`
+ * can put it back.
+ *
+ * The implementations compiled into this build, and ONLY those. The audit used
+ * to prefer a vendored `policy-pack/` copy where one existed, which was
+ * meaningful while the package shipped that directory; it no longer ships it, so
+ * that branch could not fire in any published build and existed only to be
+ * misread as "the audit scores against installed packs". It does not, and must
+ * not: an audit is a fixed yardstick, and one that changed shape with whatever
+ * pack a machine happened to have could not be compared against its own history.
+ */
 export async function initReplay(): Promise<void> {
   if (initialized) return;
   savedSnapshot = getAllPolicies();
@@ -57,88 +61,8 @@ export async function initReplay(): Promise<void> {
   const enabled = BUILTIN_POLICIES
     .map((p) => p.name)
     .filter((n) => !SKIP_POLICIES.has(normalizePolicyName(n)));
-  if (!(await registerFromVendoredPack(enabled))) registerBuiltinPolicies(enabled);
+  registerBuiltinPolicies(enabled);
   initialized = true;
-}
-
-/**
- * Register the audit's policies from the pack that ships inside the package,
- * rather than from implementations compiled into this build.
- *
- * The audit scores by RUNNING the policies — three of its four penalty buckets
- * are replay hits — so the day the builtins stop being compiled in, this is
- * what keeps `failproofai audit` reporting the same findings and the same score
- * for the same transcripts. The pack carries the identical functions:
- * `builtin-pack-conformance.test.ts` replays a corpus through both and asserts
- * the verdicts do not diverge.
- *
- * Two things it must get right, or the audit quietly changes:
- *
- * - The pack cannot carry `block-failproofai-commands`, because `alwaysOn` is
- *   refused by the pack loader by design — a downloaded file that no local
- *   command can switch off. It is registered from the compiled side, so the
- *   replayed set is the same 39 either way.
- * - The skip list still applies. `warn-repeated-tool-calls` writes a per-session
- *   sidecar into the user's real transcript directory on every evaluation.
- *
- * Returns false when there is no vendored pack to read — a source checkout that
- * has not run `build:pack`, or a tarball packed without it — and the caller
- * falls back to the compiled implementations. An audit that silently scored on
- * fewer policies would be worse than either.
- */
-async function registerFromVendoredPack(enabled: string[]): Promise<boolean> {
-  const dir = bundledPackDir();
-  if (!dir) return false;
-  const entry = resolve(dir, PACK_ENTRY_ASSET);
-  if (!existsSync(entry)) return false;
-
-  const wanted = new Set(enabled);
-  let hooks;
-  try {
-    clearCustomHooks();
-    hooks = await loadCustomHooks(entry, { strict: true });
-  } catch {
-    return false;
-  } finally {
-    clearCustomHooks();
-  }
-  if (hooks.length === 0) return false;
-  const fromPack = new Map(hooks.map((hook) => [hook.name, hook]));
-
-  // Registered in CATALOG ORDER, taking the pack's function where it has one and
-  // the compiled one for the guard the pack may not carry.
-  //
-  // Order is not cosmetic here. `getPoliciesForEvent` sorts by priority only and
-  // V8's sort is stable, so registration order decides EVALUATION order, and
-  // `evaluatePolicies` stops at the first deny — which means the order decides
-  // which policy is CREDITED for a hit. Appending the always-on guard after the
-  // pack instead of at its catalog position moved it from index 11 to last, and
-  // re-attributed 3 events in a 23,477-event corpus: 456 -> 453 for the guard,
-  // with the denies it used to shadow surfacing as block-force-push and
-  // block-gh-pipeline. The audit's per-policy counts are what a user reads, so
-  // that is a changed audit, not a changed internal.
-  let registered = 0;
-  for (const policy of BUILTIN_POLICIES) {
-    if (!wanted.has(policy.name)) continue;
-    const packHook = fromPack.get(policy.name);
-    if (policy.alwaysOn || !packHook) {
-      registerPolicy(policy.name, policy.description, policy.fn, policy.match, 0, policy.params);
-      continue;
-    }
-    registerPolicy(
-      packHook.name,
-      packHook.description ?? policy.description,
-      packHook.fn,
-      packHook.match ?? policy.match,
-      0,
-      policy.params,
-    );
-    registered += 1;
-  }
-  // Nothing came from the pack: it loaded but carried none of the names the
-  // audit replays. Falling back is more honest than scoring on the compiled set
-  // while claiming the pack lane ran.
-  return registered > 0;
 }
 
 /** Restore the registry to whatever was there before `initReplay()`. Safe to

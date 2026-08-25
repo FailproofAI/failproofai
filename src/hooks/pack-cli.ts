@@ -712,7 +712,14 @@ async function add(rest: string[]): Promise<PackCliResult> {
       carried: "your existing selection",
       all: "everything in the pack",
     }[result.selection];
-    lines.push(`  enabled (${result.enabled.length}/${result.available.length}, ${why}): ${summarise(result.enabled)}`);
+    // `summarise([])` is the empty string, which would print a line ending in a
+    // colon and nothing else — the one outcome that most needs saying out loud,
+    // rendered as if something had gone missing.
+    lines.push(
+      result.enabled.length === 0
+        ? `  enabled (0/${result.available.length}, ${why}): none — the pack is installed and enforcing nothing`
+        : `  enabled (${result.enabled.length}/${result.available.length}, ${why}): ${summarise(result.enabled)}`,
+    );
 
     if (skipped.length > 0) {
       lines.push(`  not enabled (${skipped.length}): ${summarise(skipped)}`);

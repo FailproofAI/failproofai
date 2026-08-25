@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.2-beta.3 — 2026-08-25
+
+### Fixes
+
+- **Unticking every policy in the pack picker installed the publisher's defaults anyway.** Reported from a real install: the picker highlights the defaults, you untick all of them, press enter, and the defaults arrive — announced as "the pack's defaults", which is the opposite of what was chosen and reads as if it had been asked for. `resolveSelection` decided whether a selection existed by testing `opts.only.length`, so an empty list — "install the pack, enable none of it" — was indistinguishable from passing no flags at all and fell through to the defaults branch. Presence of the field is the signal now, never its length. Two consequences travelled with it: `enabled: []` had to survive to disk as an array, because `[]` and `undefined` mean opposite things there (none, and all) and a reinstall would otherwise resurrect the defaults; and the zero case now says "none — the pack is installed and enforcing nothing" rather than printing a line that ends in a colon, which rendered the one outcome most needing an explanation as though something had gone missing. (#738)
+
 ## 1.0.2-beta.2 — 2026-08-25
 
 ### Features

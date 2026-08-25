@@ -2,6 +2,10 @@
 
 ## 1.0.2-beta.5 — 2026-08-25
 
+### Features
+
+- `failproofai publish` asks where to publish instead of requiring `--repo`, defaulting to your account and the folder name — write policies in a git repo, run one command, answer one question (#738). Nothing prompts on a pipe or in CI, where flags remain the whole interface
+
 ### Fixes
 
 - Stop `failproofai policies` warning about hooks in multiple scopes on a machine whose hooks are in one file — a user-scope-only CLI answered for every scope, and from `$HOME` a project path resolves to the user file (#738)
@@ -11,6 +15,8 @@
 - Stop the dry run suggesting an entry file and a `--version` it had just worked out for itself (#738)
 - `policies add core` no longer describes the core pack as shipped in the package, and `publish --help` no longer tells you to bundle by hand (#738)
 - Publish now pushes the author's history to the repository it creates, so the branch tracks `origin` and a later bare `git push` works (#738)
+- `publish --init <name>` writes `<name>.mjs` rather than a file with no extension, which discovery skipped and no loader could import — so the starter file was invisible to the publish meant to pick it up (#738)
+- `publish --init` no longer signs off with an entry path and a `--version` that publish works out for itself (#738)
 
 ## 1.0.2-beta.4 — 2026-08-25
 

@@ -354,6 +354,15 @@ export async function runPolicyPicker(
  * policy that already RUNS and already blocks something real, so the first
  * action is editing a working thing rather than authoring an empty one.
  */
+/**
+ * A policy filename, whatever spelling it arrived in. Discovery takes
+ * `.mjs`/`.js`/`.ts` and nothing else, so a name with no extension has to gain
+ * one or the file it names can never be found.
+ */
+function withPolicyExtension(name: string): string {
+  return /\.(mjs|js|ts)$/.test(name) ? name : `${name}.mjs`;
+}
+
 async function scaffold(target: string | null): Promise<PackCliResult> {
   // Ask what the pack is called when nothing was named and there is somebody to
   // ask. The answer becomes the FILENAME and the header, so what lands on disk
@@ -374,9 +383,14 @@ async function scaffold(target: string | null): Promise<PackCliResult> {
       stdout: process.stdout,
     });
     if (answer === null) return ok(["Nothing written."]);
-    chosen = `./${answer.trim().replace(/\.(mjs|js|ts)$/, "")}.mjs`;
+    chosen = answer.trim();
   }
-  const path = resolve(chosen ?? "./my-policies.mjs");
+  // Both paths land here, because only one of them used to. A name typed at
+  // the prompt got `.mjs`; the same name passed as `--init myguards` was taken
+  // literally and wrote a file called `myguards` — which discovery skips (it
+  // takes .mjs/.js/.ts) and which no ESM loader will import. The starter file
+  // was unreachable by every command meant to pick it up.
+  const path = resolve(withPolicyExtension(chosen ?? "my-policies"));
   if (existsSync(path)) {
     return fail([`${path} already exists — name a different file, or edit that one.`]);
   }
@@ -416,7 +430,7 @@ customPolicies.add({
     "  then ask your agent to force-push — it gets refused",
     "",
     "Then publish it:",
-    `  failproofai publish ${path} --repo <you>/<repo> --version 1.0.0`,
+    "  failproofai publish --repo <you>/<repo>",
   ]);
 }
 
@@ -938,6 +952,60 @@ function ghError(res: { status: number; json: Record<string, unknown> | null; te
  *   - a private repository, which publishes to nobody, because installs are
  *     anonymous HTTPS with no credential to offer.
  */
+/**
+ * The two things `publish` cannot work out on its own, asked instead of
+ * demanded as flags.
+ *
+ * Everything else it already derives: the policy files by content, the version
+ * by counting the repository's own releases, the id from the repository, the
+ * credential from the environment. What is left is genuinely a question —
+ * WHERE this should live, when the folder has no git remote naming somewhere —
+ * and a confirmation, because publishing is public and a version number can
+ * never be reused.
+ *
+ * Only ever on a TTY. A pipe, a CI job or a test gets the old behaviour: flags
+ * decide, and a missing `--repo` still means "build the assets and stop"
+ * rather than a prompt nobody can answer.
+ */
+async function askWhereToPublish(
+  suggestion: string,
+  io: { stdin: TTYIn; stdout: TTYOut },
+): Promise<string | null> {
+  const answer = await promptText({
+    // The suggestion goes in the HINT, not just in `defaultValue`: the hint is
+    // what renders as the placeholder, while `defaultValue` is only applied on
+    // an empty submit and is never shown. Passing it as the default alone left
+    // the one keystroke that finishes this prompt — return — invisible.
+    message: "Where should this publish?",
+    hint: `${suggestion}  ·  created if it does not exist`,
+    defaultValue: suggestion,
+    validate: (v) => {
+      const t = v.trim();
+      if (!/^[A-Za-z0-9][\w.-]*\/[A-Za-z0-9][\w.-]*$/.test(t)) return "owner/repo";
+      return null;
+    },
+    stdin: io.stdin,
+    stdout: io.stdout,
+  });
+  return answer === null ? null : answer.trim();
+}
+
+/**
+ * The account the credential belongs to, for the default answer above.
+ *
+ * Best-effort: a failure here costs a nicer default and nothing else, so it
+ * never blocks or reports. The prompt still has the folder name to fall back
+ * on, which is what the repository would most likely be called anyway.
+ */
+async function credentialLogin(token: string): Promise<string | null> {
+  try {
+    const me = await gh(`${GITHUB_API}/user`, token);
+    return typeof me.json?.login === "string" ? me.json.login : null;
+  } catch {
+    return null;
+  }
+}
+
 async function publish(rest: string[]): Promise<PackCliResult> {
   const flag = (name: string): string | undefined => {
     const i = rest.findIndex((a) => a === `--${name}` || a.startsWith(`--${name}=`));
@@ -954,7 +1022,32 @@ async function publish(rest: string[]): Promise<PackCliResult> {
   // it is that file and only that file.
   const discovered = entry ? [] : findEntry(process.cwd());
   if (!entry && discovered.length > 0) entry = discovered[0];
-  const repo = flag("repo") ?? (entry ? inferRepo(entry) : null) ?? undefined;
+  let repo = flag("repo") ?? (entry ? inferRepo(entry) : null) ?? undefined;
+  // Nothing names a destination and there is somebody to ask. This is the
+  // whole of "just run `failproofai publish`": the folder is a git repo full
+  // of policies, and the one thing it cannot know is where they should go.
+  const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  const askingWhere = interactive && !repo && entry && !rest.includes("--dry-run");
+  if (askingWhere) {
+    // What is about to be published, before being asked where to put it. The
+    // question is answerable without it — but "publish" with no arguments
+    // otherwise gives no sign of WHICH files it found, and finding the wrong
+    // ones is the mistake that matters here.
+    const found = discovered.length > 0 ? discovered : [entry!];
+    process.stdout.write(
+      `\n  ${found.length} policy ${found.length === 1 ? "file" : "files"}: ` +
+        `${found.map((f) => basename(f)).join(", ")}\n\n`,
+    );
+    const token = githubToken();
+    const login = token ? await credentialLogin(token) : null;
+    const folder = basename(resolve(entry!, ".."));
+    const answered = await askWhereToPublish(
+      `${login ?? "your-account"}/${folder}`,
+      { stdin: process.stdin as unknown as TTYIn, stdout: process.stdout as unknown as TTYOut },
+    );
+    if (answered === null) return ok(["Nothing was published."]);
+    repo = answered;
+  }
   // A tag on HEAD is somebody SAYING what this release is, so it wins over a
   // counted one. Everything else is decided after the repository is known,
   // because the count comes from what that repository has already published.

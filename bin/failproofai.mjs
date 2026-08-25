@@ -1234,8 +1234,13 @@ TWO COMMANDS, FROM NOTHING
   failproofai publish --init      write a policy to start from
   failproofai publish             ship it
 
-  Everything else is optional. Every flag below overrides something that is
-  otherwise worked out for you.
+  Write your policies in a git repo, run publish, answer one question, done.
+  It asks WHERE only when nothing tells it — no remote to read — and works
+  the rest out: which files hold policies, what version is next, who you are.
+
+  Every flag below overrides something it would otherwise decide for you.
+  None of them is required, and on a pipe or in CI the flags are all there
+  is: nothing prompts where nobody can answer.
 
 WHAT --init DOES
   Asks what the pack is called, writes <name>.mjs, and stops. No network, no

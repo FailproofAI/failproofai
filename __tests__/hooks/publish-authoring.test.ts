@@ -104,6 +104,34 @@ describe("publish --init", () => {
     expect(existsSync(join(work, "deploy-guard.mjs"))).toBe(true);
   });
 
+  it("gives a bare name the extension discovery needs", async () => {
+    // `--init myguards` wrote a file called `myguards`, with no extension.
+    // Discovery takes .mjs/.js/.ts, so the starter file it had just written
+    // could not be found by the publish that was supposed to pick it up — and
+    // no ESM loader would import it either. The PROMPT path always appended
+    // `.mjs`; the argument path did not, and the argument path is the one any
+    // example or script uses.
+    const r = await runPublishCommand(["--init", "myguards"]);
+    expect(r.exitCode).toBe(0);
+    expect(existsSync(join(work, "myguards.mjs"))).toBe(true);
+    expect(existsSync(join(work, "myguards"))).toBe(false);
+  });
+
+  it("leaves an extension that is already there alone", async () => {
+    await runPublishCommand(["--init", "guards.mjs"]);
+    expect(existsSync(join(work, "guards.mjs"))).toBe(true);
+    expect(existsSync(join(work, "guards.mjs.mjs"))).toBe(false);
+  });
+
+  it("writes a starter file that publish then finds on its own", async () => {
+    // The two halves of the flow have to meet: whatever --init writes is what
+    // a bare `publish` in that directory picks up.
+    await runPublishCommand(["--init", "myguards"]);
+    const r = await runPublishCommand(["--dry-run"]);
+    expect(r.exitCode).toBe(0);
+    expect(r.lines.join("\n")).toMatch(/1 policies/);
+  });
+
   it("refuses rather than overwriting work that is already there", async () => {
     writeFileSync(join(work, "my-policies.mjs"), "// mine\n");
     const r = await runPublishCommand(["--init"]);

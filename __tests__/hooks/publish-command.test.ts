@@ -550,6 +550,17 @@ describe("a repository that is not there yet", () => {
     expect(requests.some((r) => r.method === "POST" && r.path === "/orgs/acme/repos")).toBe(true);
   });
 
+  it("never prompts where nobody can answer", async () => {
+    // The destination prompt is TTY-only. On a pipe, in CI, or under a test
+    // runner there is nobody to answer it, and a publish that blocks forever
+    // waiting for a line that never comes is worse than one that says what
+    // flag it needed. Reaching the assertion at all is the test: a prompt here
+    // would hang until the suite timed out.
+    github.repo = { status: 404, body: { message: "Not Found" } };
+    const r = await publish([writeEntry(), "--repo", "acme/guards", "--version", "1.0.0"]);
+    expect(r.exitCode).toBe(0);
+  });
+
   it("does NOT seed it, so the author's own push is a fast-forward", async () => {
     // It was created with `auto_init: true`, which meant GitHub wrote an
     // "Initial commit" the author did not have — so the `git push` that every

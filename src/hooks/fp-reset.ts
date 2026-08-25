@@ -98,7 +98,6 @@ import {
   isDaemonSupportedPlatform,
   probeDaemonEndToEnd,
 } from "./daemon-service";
-import { readHooksConfig } from "./hooks-config";
 
 export interface ResetOutcome {
   /** Paths that existed and were removed. */
@@ -965,33 +964,17 @@ export function resetHome(from: number, to: number = LAYOUT_VERSION): ResetOutco
   // straight out of the same file. Both paths end at the same key, and only one
   // of them represents something a person typed.
   if (telemetryOptOut) updateConfig({ telemetry: { enabled: false } });
-  // `packs/` is resettable, but the package's default pack is also the offline
-  // enforcement floor. Restore it from the installed package before declaring
-  // the migration complete; third-party packs remain explicitly re-fetchable.
+  // No pack is installed here, deliberately.
   //
-  // Carrying `enabledPolicies` INTO the selection, not installing defaults over
-  // it. This is the upgrade path every existing user takes, and installing
-  // defaults meant a machine that had switched `block-force-push` and
-  // `block-kubectl` on came back with them off — guards that were denying
-  // before the upgrade and allowing after, with nothing said.
-  const carried = (() => {
-    try {
-      const names = readHooksConfig().enabledPolicies ?? [];
-      return names.length > 0 ? { only: names } : undefined;
-    } catch {
-      return undefined;
-    }
-  })();
-  // Deliberately does NOT install a pack. There is no copy in this package to
-  // install any more, and `resetHome` is synchronous and runs inside
-  // `failproofai update` — an upgrade that blocks on github.com, and fails when
-  // it is unreachable, is a worse upgrade than one that finishes.
+  // There is no copy in this package to install — our policies are fetched from
+  // their GitHub release like anybody else's — and `resetHome` is SYNCHRONOUS
+  // and runs inside `failproofai update`. An upgrade that blocks on github.com,
+  // and fails when it is unreachable, is a worse upgrade than one that finishes.
   //
-  // The carried names stay in config, which is what the no-pack fallback reads,
-  // so a machine mid-upgrade keeps enforcing exactly what it enforced before.
-  // `failproofai policies add core` turns them into a real pack when the user
-  // is online, and carries this selection into it.
-  void carried;
+  // Nothing needs carrying either: `enabledPolicies` is left exactly where it
+  // is, and the no-pack fallback reads it, so a machine mid-upgrade keeps
+  // enforcing precisely what it enforced before. `failproofai policies add core`
+  // turns those names into a real pack, carrying the same selection into it.
   // The step's OWN target, not LAYOUT_VERSION.
   //
   // Every step used to end stamping the current layout, which was harmless

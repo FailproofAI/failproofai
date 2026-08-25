@@ -437,7 +437,11 @@ describe("warning / danger", () => {
       ["This machine is configured to REQUIRE the daemon and the versions do not match, so the next restart denies every tool call."],
       { cols: 60, color: false },
     );
-    expect(out[0]).toContain("⚠");
+    // `▲`, not `⚠`. The design system forbids emoji outright, and `⚠` takes
+    // EMOJI presentation on most terminals — which also makes it two columns
+    // wide on some, breaking the very hang-indent this test pins.
+    expect(out[0]).toContain("\u25B2");
+    expect(out[0]).not.toContain("\u26A0");
     expect(out.length).toBeGreaterThan(1);
     for (const line of out.slice(1)) expect(line.startsWith(`${INDENT}   `)).toBe(true);
   });

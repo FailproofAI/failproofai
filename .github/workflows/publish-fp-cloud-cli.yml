@@ -264,6 +264,12 @@ jobs:
       # dispatched, so a writer could delete them on a branch. The `environment:` above
       # plus its two out-of-file settings (see the header) are what actually hold.
       - name: Authorize actor and branch
+        # The `build` job runs every step inside the package directory, and this one
+        # runs BEFORE `actions/checkout` — so that directory does not exist yet and the
+        # runner cannot even start bash in it ("No such file or directory"), failing the
+        # guard open-endedly rather than on its own verdict. The workspace root exists
+        # before checkout; the package directory is created by it.
+        working-directory: ${{ github.workspace }}
         env:
           # Space-separated GitHub logins, compared case-insensitively — the same
           # shape and the same semantics as publish.yml's STABLE_RELEASE_ACTORS.

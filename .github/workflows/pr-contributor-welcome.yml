@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Post welcome message
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const author = context.payload.pull_request.user.login;
@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Approve pull request
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             await github.rest.pulls.createReview({

@@ -651,3 +651,60 @@ describe("a name wider than its column", () => {
     expect(described(shortName)).toBeGreaterThan(described(longName));
   });
 });
+
+describe("a repaint is one atomic frame", () => {
+  /**
+   * Anti-pattern #2 in the house TUI guide: flickering from full redraws. The
+   * clear and the redraw used to be two separate `write()` calls, so a terminal
+   * could paint the CLEARED state before the new lines arrived — invisible on a
+   * local terminal, and a blank flash on every keystroke over SSH or inside
+   * tmux, where the two writes cross a network or a multiplexer between frames.
+   */
+  const drawTwice = async (): Promise<string[]> => {
+    const written: string[] = [];
+    const stdout = {
+      isTTY: true,
+      columns: 80,
+      write: (chunk: string) => {
+        written.push(chunk);
+        return true;
+      },
+    } as unknown as TTYOut;
+    const stdin = new PassThrough() as unknown as TTYIn & PassThrough;
+    (stdin as unknown as { isTTY: boolean }).isTTY = true;
+    (stdin as unknown as { setRawMode: (on: boolean) => void }).setRawMode = () => {};
+
+    const pending = multiSelect<string>({
+      message: "pick",
+      choices: [
+        { label: "one", value: "one" },
+        { label: "two", value: "two" },
+      ],
+      stdin: stdin as unknown as TTYIn,
+      stdout,
+    });
+    stdin.write("\u001b[B"); // down — forces a second frame
+    stdin.write("\u001b"); // esc — cancel
+    await pending;
+    return written;
+  };
+
+  it("wraps every frame in synchronized output, so the terminal holds it", async () => {
+    const written = await drawTwice();
+    const frames = written.filter((c) => c.includes("\u001b[?2026h"));
+    expect(frames.length).toBeGreaterThan(0);
+    // Opened and closed in the SAME write. A frame left open would suppress
+    // painting until the next one happened to close it.
+    for (const frame of frames) expect(frame).toContain("\u001b[?2026l");
+  });
+
+  it("clears and redraws in ONE write, never two", async () => {
+    const written = await drawTwice();
+    // The cursor-up-and-clear must never arrive on its own — that lone write is
+    // precisely the blank frame.
+    const clearOnly = written.filter(
+      (c) => /\u001b\[\d+A\u001b\[J/.test(c) && !c.includes("pick"),
+    );
+    expect(clearOnly).toEqual([]);
+  });
+});

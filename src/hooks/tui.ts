@@ -491,9 +491,25 @@ type Region = { lastCount: number };
 
 const WINDOW = 8; // visible rows before the checklist scrolls
 
+/**
+ * Redraw the region as ONE atomic frame.
+ *
+ * Two things make it atomic, and both are needed. The cursor-up-and-clear used
+ * to be its own `write()`, so a terminal could render the CLEARED state before
+ * the new lines arrived — a blank flash on every keystroke, invisible locally
+ * and obvious over SSH or inside tmux, where the two writes cross a network or
+ * a multiplexer between frames. They are one string now.
+ *
+ * And that string is wrapped in synchronized output (DECSET 2026), which tells
+ * the terminal to hold what it has until the reset rather than painting each
+ * chunk as it lands. Terminals that do not implement it ignore an unknown
+ * private mode, so it costs nothing where it does not help.
+ */
 function repaint(out: TTYOut, region: Region, lines: string[]): void {
-  if (region.lastCount > 0) out.write(`${ESC}[${region.lastCount}A${ESC}[J`);
-  writeLines(out, lines);
+  const cols = out.columns || 80;
+  const body = lines.map((l) => (l === "" ? l : truncate(l, cols))).join("\n") + "\n";
+  const clear = region.lastCount > 0 ? `${ESC}[${region.lastCount}A${ESC}[J` : "";
+  out.write(`${ESC}[?2026h${clear}${body}${ESC}[?2026l`);
   region.lastCount = lines.length;
 }
 

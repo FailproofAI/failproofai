@@ -894,9 +894,15 @@ export async function listHooks(cwd?: string): Promise<void> {
       packsPresent
         ? warning(
             [
-              "These policies are installed but NOTHING is running them.",
-              "No agent CLI on this machine is wired to call failproofai, so every",
-              "policy below is inert. Wire it up with:",
+              // ONE string, not four hand-broken ones. `warning` wraps each
+              // element to the terminal, so pre-wrapped prose keeps its author's
+              // line breaks as paragraph breaks and then wraps again inside
+              // them — which at 60 columns left the word "them." alone on a
+              // line. The command stays separate because it is not prose and
+              // must never be split across a wrap.
+              "These policies are installed but NOTHING is running them. No agent " +
+                "CLI on this machine is wired to call failproofai, so every policy " +
+                "below is inert. Wire it up with:",
               "  failproofai config",
             ],
             opts,

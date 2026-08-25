@@ -8,6 +8,7 @@
  * must not spend that gap unguarded. So the compiled implementations still fire
  * for exactly that machine — and stop the moment a pack arrives.
  */
+import type { IntegrationType } from "@/src/hooks/types";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -27,7 +28,7 @@ let home: string;
 let packRoot: string;
 let saved: Record<string, string | undefined>;
 
-function installPack(): void {
+function installPack(over: Record<string, unknown> = {}): void {
   mkdirSync(join(packRoot, "artifacts"), { recursive: true });
   writeFileSync(join(packRoot, "artifacts", `${DIGEST}.mjs`), ARTIFACT);
   writeFileSync(
@@ -41,16 +42,17 @@ function installPack(): void {
           name: "block-refunds", description: "d", category: "Ops",
           defaultEnabled: true, match: { events: ["PreToolUse"] },
         }],
+        ...over,
       }],
     }),
   );
 }
 
-async function evaluate(command: string) {
+async function evaluate(command: string, cli: IntegrationType = "claude") {
   const { evaluateHookEvent } = await import("@/src/hooks/handler");
   return evaluateHookEvent(
     "PreToolUse",
-    "claude",
+    cli,
     JSON.stringify({
       hook_event_name: "PreToolUse",
       tool_name: "Bash",
@@ -108,6 +110,39 @@ describe("what this build enforces on its own", () => {
     installPack();
     const result = await evaluate("sudo rm -rf /tmp/x");
     expect(JSON.stringify(result)).not.toMatch(/sudo commands are blocked/);
+  });
+});
+
+describe("a pack narrowed to particular agents", () => {
+  /**
+   * Setup wires hooks into every supported agent, because hooks alone enforce
+   * nothing — so "which agents" stopped being a setup question and became a
+   * per-pack one, asked at `policies add` where the user is looking at a real
+   * pack rather than answering in the abstract.
+   */
+  it("fires on an agent it was installed for", async () => {
+    installPack({ clis: ["codex"] });
+    const result = await evaluate("issue a refund", "codex");
+    expect(JSON.stringify(result)).toMatch(/refunds need a human/);
+  });
+
+  it("stays silent on an agent it was NOT installed for", async () => {
+    installPack({ clis: ["codex"] });
+    const result = await evaluate("issue a refund", "claude");
+    expect(JSON.stringify(result)).not.toMatch(/refunds need a human/);
+  });
+
+  it("guards every agent when the field is absent", async () => {
+    // What every pack installed before this field existed reads as, and what an
+    // install with no narrowing writes. A machine upgrading must not silently
+    // enforce less than it did yesterday.
+    installPack();
+    for (const cli of ["claude", "codex", "goose"] as const) {
+      const result = await evaluate("issue a refund", cli);
+      expect(JSON.stringify(result), `${cli} should still be guarded`).toMatch(
+        /refunds need a human/,
+      );
+    }
   });
 });
 

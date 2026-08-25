@@ -19,6 +19,7 @@ const pack = (over: Partial<ResolvedPack> = {}): ResolvedPack => ({
   id: "acme/finance", version: "1.2.0", source: "github:acme/finance@v1.2.0",
   path: "/x.mjs", sha256: "a".repeat(64), effect: "enforce",
   policies: [policy("block-refunds"), policy("require-note")],
+  clis: null,
   enabled: null,
   ...over,
 });
@@ -89,7 +90,8 @@ describe("the carve-outs", () => {
     // Denying for a guard that was never going to run is denying on nobody's
     // behalf.
     expect(call({
-      packs: [pack({ enabled: ["block-refunds"] })],
+      packs: [pack({ clis: null,
+  enabled: ["block-refunds"] })],
       registered: new Map([["acme/finance", new Set(["block-refunds"])]]),
     })).toEqual([]);
   });

@@ -9,7 +9,7 @@ import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve, basename } from "node:path";
 import { platform, arch, release, hostname } from "node:os";
-import {
+import { INTEGRATION_TYPES,
   HOOK_SCOPES,
   type HookScope,
   type IntegrationType,
@@ -256,8 +256,30 @@ function deduplicateScopes(scopes: readonly HookScope[], cwd?: string): HookScop
   });
 }
 
+/**
+ * Is ANY agent CLI wired to call failproofai at this scope?
+ *
+ * Asked Claude Code and only Claude Code, which made it wrong for every machine
+ * guarded through one of the other eleven. A user with hooks in `~/.codex/` was
+ * told nothing was installed — quietly, while this only tinted a subtitle, and
+ * loudly once the listing started warning that every policy shown was inert.
+ * Reported from a real machine set up for codex.
+ *
+ * Any one integration answering yes is enough: the question is whether
+ * enforcement can reach this machine at all, not whether a particular agent is
+ * covered. Which agents specifically is a different question, and the per-CLI
+ * rows of the listing already answer it.
+ */
 export function hooksInstalledInSettings(scope: HookScope, cwd?: string): boolean {
-  return claudeCode.hooksInstalledInSettings(scope, cwd);
+  return INTEGRATION_TYPES.some((id) => {
+    try {
+      return getIntegration(id).hooksInstalledInSettings(scope, cwd);
+    } catch {
+      // An integration whose settings file is unreadable is not evidence that
+      // nothing is installed — keep asking the rest.
+      return false;
+    }
+  });
 }
 
 export interface InstallHooksOptions {

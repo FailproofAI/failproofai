@@ -65,6 +65,11 @@ interface FakeGitHub {
   created: { status: number; body: Record<string, unknown> };
   /** Per-asset upload outcome; anything unnamed uploads fine. */
   uploadFails: Record<string, { status: number; body: Record<string, unknown> }>;
+  /** Tags already released here, which is what the next version is counted from. */
+  releases: Array<{ tag_name: string }>;
+  /** Who the credential belongs to — decides personal vs organisation creation. */
+  login: string;
+  createRepo: { status: number; body: Record<string, unknown> };
 }
 
 let server: Server;
@@ -125,6 +130,14 @@ beforeAll(async () => {
 
       m = /^\/repos\/[^/]+\/[^/]+\/releases$/.exec(p);
       if (m && method === "POST") return send(github.created.status, github.created.body);
+      // Listing releases is how the next version is counted.
+      if (m && method === "GET") return send(200, github.releases);
+
+      if (p === "/user" && method === "GET") return send(200, { login: github.login });
+      if ((p === "/user/repos" || /^\/orgs\/[^/]+\/repos$/.test(p)) && method === "POST") {
+        github.repo = { status: 200, body: { private: false } };
+        return send(github.createRepo.status, github.createRepo.body);
+      }
 
       m = /^\/repos\/[^/]+\/[^/]+\/releases\/assets\/(\d+)$/.exec(p);
       if (m && method === "DELETE") {
@@ -169,6 +182,9 @@ beforeEach(() => {
     assetsOnRelease: [],
     created: { status: 201, body: { id: 4242 } },
     uploadFails: {},
+    releases: [],
+    login: "acme",
+    createRepo: { status: 201, body: { id: 1 } },
   };
   work = mkdtempSync(join(tmpdir(), "fpai-publish-"));
   saved = {
@@ -463,5 +479,86 @@ describe("an upload that fails partway", () => {
     expect(text).toMatch(/Re-run the same command/);
     // It stopped where it broke: the checksums were never attempted.
     expect(uploadsOf(PACK_CHECKSUMS_ASSET)).toEqual([]);
+  });
+});
+
+describe("the version, when nobody says what it is", () => {
+  it("starts at 1.0.0 on a repository that has never released", async () => {
+    const r = await publish([writeEntry(), "--repo", "acme/guards"]);
+    expect(r.exitCode).toBe(0);
+    expect(r.lines.join("\n")).toMatch(/acme\/guards@1\.0\.0/);
+  });
+
+  it("counts one past the highest already published", async () => {
+    github.releases = [{ tag_name: "1.0.0" }, { tag_name: "v1.0.1" }];
+    const r = await publish([writeEntry(), "--repo", "acme/guards"]);
+    expect(r.lines.join("\n")).toMatch(/@1\.0\.2/);
+  });
+
+  it("compares numerically, not as text", async () => {
+    // The failure this pins: sorting strings puts "1.0.9" after "1.0.10", so a
+    // tenth release would be handed 1.0.10 a second time.
+    github.releases = [{ tag_name: "1.0.9" }, { tag_name: "1.0.10" }];
+    const r = await publish([writeEntry(), "--repo", "acme/guards"]);
+    expect(r.lines.join("\n")).toMatch(/@1\.0\.11/);
+  });
+
+  it("ignores releases that are not versions rather than guessing at them", async () => {
+    // A repo whose releases are named `nightly` has no sequence to continue.
+    github.releases = [{ tag_name: "nightly" }, { tag_name: "latest" }];
+    const r = await publish([writeEntry(), "--repo", "acme/guards"]);
+    expect(r.lines.join("\n")).toMatch(/@1\.0\.0/);
+  });
+
+  it("reads the repository's own releases, not anything local", async () => {
+    github.releases = [{ tag_name: "3.4.5" }];
+    await publish([writeEntry(), "--repo", "acme/guards"]);
+    expect(requests.some((r) => r.method === "GET" && /\/releases$/.test(r.path))).toBe(true);
+  });
+});
+
+describe("a repository that is not there yet", () => {
+  it("creates it, so publishing is one command and not two tools", async () => {
+    github.repo = { status: 404, body: { message: "Not Found" } };
+    const r = await publish([writeEntry(), "--repo", "acme/guards", "--version", "1.0.0"]);
+    expect(r.exitCode).toBe(0);
+    expect(r.lines.join("\n")).toMatch(/Created acme\/guards \(public\)/);
+  });
+
+  it("creates it PUBLIC, because a private one publishes to nobody", async () => {
+    // Installs are anonymous HTTPS with no credential to offer, so a private
+    // repo 404s for everyone — creating one would manufacture that dead end.
+    github.repo = { status: 404, body: { message: "Not Found" } };
+    await publish([writeEntry(), "--repo", "acme/guards", "--version", "1.0.0"]);
+    const create = requests.find((r) => r.method === "POST" && /repos$/.test(r.path));
+    expect(create).toBeDefined();
+    expect(JSON.parse(create!.body.toString()).private).toBe(false);
+  });
+
+  it("uses the personal endpoint when the credential owns the name", async () => {
+    github.repo = { status: 404, body: { message: "Not Found" } };
+    github.login = "acme";
+    await publish([writeEntry(), "--repo", "acme/guards", "--version", "1.0.0"]);
+    expect(requests.some((r) => r.method === "POST" && r.path === "/user/repos")).toBe(true);
+  });
+
+  it("uses the organisation endpoint when it does not", async () => {
+    // The only way to tell which applies is to ask who the token belongs to.
+    github.repo = { status: 404, body: { message: "Not Found" } };
+    github.login = "someone-else";
+    await publish([writeEntry(), "--repo", "acme/guards", "--version", "1.0.0"]);
+    expect(requests.some((r) => r.method === "POST" && r.path === "/orgs/acme/repos")).toBe(true);
+  });
+
+  it("names who it authenticated as when creation is refused", async () => {
+    // Without that, "could not create" gives no way to tell it picked the wrong
+    // account from the credential being wrong.
+    github.repo = { status: 404, body: { message: "Not Found" } };
+    github.login = "someone-else";
+    github.createRepo = { status: 403, body: { message: "Forbidden" } };
+    const r = await publish([writeEntry(), "--repo", "acme/guards", "--version", "1.0.0"]);
+    expect(r.exitCode).toBe(1);
+    expect(r.lines.join("\n")).toMatch(/someone-else/);
+    expect(r.lines.join("\n")).toMatch(/gh repo create/);
   });
 });

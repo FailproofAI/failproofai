@@ -332,6 +332,8 @@ export interface PackAddOptions {
   only?: string[];
   categories?: string[];
   all?: boolean;
+  /** Agent CLIs this pack should guard. Omitted means all of them. */
+  clis?: string[];
 }
 
 export interface AddedPack {
@@ -643,7 +645,7 @@ export async function checkPackArtifact(
 
 export async function addPack(
   source: string,
-  opts?: { only?: string[]; categories?: string[]; all?: boolean },
+  opts?: PackAddOptions,
 ): Promise<AddPackResult> {
   if (process.env.FAILPROOFAI_NO_DOWNLOAD) {
     throw new Error(
@@ -740,6 +742,11 @@ export async function addPack(
     policies: fetched.policies,
     ...(fetched.effect ? { effect: fetched.effect } : {}),
     ...(enabled ? { enabled } : {}),
+    // Omitted, not written as the full list, when the user did not narrow it.
+    // An absent `clis` means "every agent", and it keeps meaning that when a
+    // thirteenth CLI is supported — whereas a materialised list of twelve would
+    // silently exclude the new one from every pack installed before it existed.
+    ...(opts?.clis ? { clis: opts.clis } : {}),
   };
 
   const absorbed = upsertInstalled(record);

@@ -425,9 +425,16 @@ export async function evaluateHookEvent(
         if (!cloudManaged && policyId && disabledCustomPolicies.has(policyId)) continue;
         // Same rule for a session pause — it suspends local policy, never cloud.
         if (!cloudManaged && activePause) continue;
+        // A pack narrowed to particular agents does not fire on the others.
+        // Setup wires hooks into every supported CLI — hooks alone enforce
+        // nothing — so the choice of which agents a pack guards is made when the
+        // pack is installed, and this is where it takes effect. `clis: null`
+        // means every agent, which is what an install with no narrowing writes
+        // and what every pack installed before this field existed reads as.
+        if (pack?.clis && !pack.clis.includes(cli)) continue;
         // A pack's artifact registers everything it contains; the user may have
         // taken only some of it. `enabled: null` means the whole pack, which is
-        // what `pack add` writes when no selection was made.
+        // what `policies add` writes when no selection was made.
         if (pack?.enabled && !pack.enabled.includes(hook.name)) continue;
         // A pack policy whose name is an ENABLED BUILTIN is the same guard
         // twice. The two register under different keys — `failproofai/block-sudo`

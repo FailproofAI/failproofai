@@ -32,7 +32,6 @@ import { dirname, resolve, sep } from "node:path";
 
 import {
   selectOne,
-  multiSelect,
   promptText,
   intro,
   outro,
@@ -223,7 +222,6 @@ export function buildAgentChoices(scope: HookScope, cwd: string): MultiChoice<In
   });
 }
 
-const ALL_CLIS = "__all_clis__";
 
 const DIM_NOTE = "(auto-loaded)";
 
@@ -938,54 +936,24 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   // An "Everything available" row protects every supported CLI (detected +
   // set-up-ahead); when ticked it wins over the individual boxes.
   //
-  // Always asked, never inferred. This is the one decision setup genuinely
-  // cannot make for you: which agents on this machine should be guarded. The
-  // detected ones are pre-ticked, so the common answer is a single keypress.
+  // Every supported agent, detected or not — setup asks nothing about this.
   //
-  // No `allowBack`: with the policy step and the scope fork both gone, there is
-  // nothing inside setup to return to.
-  let clisSel: string[];
-  {
-    const picked = await multiSelect<string>({
-      message: "Which harnesses should it protect?",
-      choices: [
-        {
-          label: "Everything available",
-          value: ALL_CLIS,
-          // Counts only what this scope can actually take — expanding to all 12
-          // under project scope is what crashed the apply on Hermes.
-          hint: `protect all ${clisSupportingScope(primaryScope).length} CLIs configurable here`,
-          // A selector, not a harness. Counting it gave "13 harnesses" for
-          // the 12 supported CLIs, and listed "Everything available" among them.
-          summaryExclude: true,
-        },
-        ...buildAgentChoices(primaryScope, cwd),
-      ],
-      minSelected: 1,
-      summaryNoun: "harnesses",
-      hint: "detected CLIs are pre-selected · space toggles · ctrl+a all · ↵ confirm",
-      stdin,
-      stdout,
-    });
-    if (picked === null) return cancel();
-    clisSel = picked;
-  }
-  // Filter to what the chosen scopes support in BOTH branches: "Everything
-  // available" must not expand to CLIs that cannot take any selected scope,
-  // and a locked row can't be ticked but belt-and-braces keeps the invariant
-  // local to the one place `clis` is built.
+  // It used to be the one question left, on the reasoning that which agents to
+  // guard is a real choice. It stopped being one when this package stopped
+  // shipping policies: hooks alone enforce nothing, so wiring them everywhere
+  // costs a config entry and changes no behaviour until a pack arrives. What it
+  // buys is that an agent installed NEXT WEEK is guarded from its first tool
+  // call, instead of running unguarded until somebody remembers to re-run setup
+  // — and nobody remembers, because nothing tells them to.
   //
-  // The union across scopes, not the intersection: under "Both", a user-scope-
-  // only gateway like Hermes is still installable via the user half, and
-  // dropping it because project scope cannot take it would silently protect
-  // less than the user asked for. `installHooks` is called per scope below and
-  // skips what a given scope cannot take.
-  const supported = new Set(scopes.flatMap((s) => clisSupportingScope(s)));
-  const clis: IntegrationType[] = (
-    clisSel.includes(ALL_CLIS)
-      ? [...INTEGRATION_TYPES]
-      : (clisSel.filter((v) => v !== ALL_CLIS) as IntegrationType[])
-  ).filter((id) => supported.has(id));
+  // ALL twelve, not the detected ones, for exactly that reason. The cost is
+  // honest and worth naming: hook config appears under `~/.cursor/`,
+  // `~/.factory/` and the rest for agents that may never be installed.
+  //
+  // Which policies run, and on which of these agents, is chosen at
+  // `failproofai policies add` — where the user is looking at a real list
+  // instead of answering in the abstract.
+  const clis: IntegrationType[] = [...clisSupportingScope(primaryScope)];
 
   // 4 — Connect this machine? Last, because by this point the user has decided
   // what to protect, so "would you like to see it in a dashboard?" follows

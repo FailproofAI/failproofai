@@ -369,34 +369,62 @@ see docs.befailproof.ai. Denials are reported to the agent, never to you.
     if (extraArgs.length > 0) {
       throw new CliError(`Unexpected argument: ${extraArgs[0]}\nRun \`failproofai help\` for usage.`);
     }
-    console.log(`
-failproofai v${version}                       -v version   -h this screen
-  Usage  failproofai <command> [options]    Detail  failproofai help <command>
-  ━━ 1  GET IT RUNNING ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  config, setup       Interactive setup: agents, daemon, cloud
-  update              Finish an npm upgrade: migrate home, match daemon
-  ━━ 2  CHOOSE WHAT IT ENFORCES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  policies            Every policy on this machine, and whether it is on
-  policies add        Pick from a list, or name one: <policy> or <owner>/<repo>
-  policies remove     Turn one policy off, or uninstall a whole pack
-  policies show       What a pack contains, before you install it
-  policies -i / -u    Wire failproofai into your agent CLIs
-  publish             Ship your own policies as a pack anyone can install
-  ━━ 3  SEE WHAT IT CAUGHT ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  (no args)           Open the policy dashboard on localhost:8020
-  audit               Scan your agents' history, then open the audit view
-  config --status     Cloud connection, daemon version, pause state
-  harness             Extra paths to capture agent sessions from
-  ━━ 4  PUT IT RIGHT ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  config --pause      Pause enforcement for one session (30m; max 8h)
-  flush               Deliver everything already spooled, right now
-  backfill            Re-send history the collector already read past
-  migrate             Run pending ~/.failproofai layout migrations
-  uninstall           Remove hooks and daemon, BEFORE npm rm -g failproofai
+    // Built row by row rather than as one literal, so the command column can be
+    // painted without the escape sequences becoming part of the layout. Colour
+    // is decoration here and never meaning: the column position already says
+    // which half is a command, so this reads identically under NO_COLOR, piped
+    // to a file, or on a terminal that has never heard of 24-bit.
+    const { brandAnsi, ANSI_RESET, ANSI_BOLD, ANSI_DIM, colorsEnabled } =
+      await import("../src/hooks/tui");
+    const tint = colorsEnabled(process.stdout);
+    const pink = (t) => (tint ? `${brandAnsi("pink")}${t}${ANSI_RESET}` : t);
+    const mint = (t) => (tint ? `${brandAnsi("guide")}${t}${ANSI_RESET}` : t);
+    const dim = (t) => (tint ? `${ANSI_DIM}${t}${ANSI_RESET}` : t);
+    const bold = (t) => (tint ? `${ANSI_BOLD}${t}${ANSI_RESET}` : t);
 
-  Docs  docs.befailproof.ai           Code  github.com/failproofai/failproofai
-  Chat  discord.befailproof.ai        Forum reddit.com/r/failproofai
-`.trimStart());
+    // Padded BEFORE painting: an escape sequence has no width, so padding a
+    // coloured string right-aligns nothing and the description column drifts.
+    const row = (cmd, desc) => `  ${pink(cmd.padEnd(18))}${desc}`;
+    // 78 visible columns, matching the body. Computed from the VISIBLE prefix —
+    // `"  \u2501\u2501 "` is 5, the label is `${n}  ${title}`, then one space — because the
+    // painted string's length counts escape bytes and would shorten every rule
+    // by however many the terminal happened to need.
+    const section = (n, title) => {
+      const label = `${n}  ${title}`;
+      const fill = 78 - (5 + label.length + 1);
+      return dim("  \u2501\u2501 ") + bold(label) + " " + dim("\u2501".repeat(Math.max(0, fill)));
+    };
+
+    console.log([
+      `${bold("fa")}${pink("il")}${bold("proofai")} v${version}` +
+        `${" ".repeat(23)}${dim("-v version   -h this screen")}`,
+      `  ${dim("Usage")}  failproofai <command> [options]    ${dim("Detail")}  failproofai help <command>`,
+      section(1, "GET IT RUNNING"),
+      row("config, setup", "Interactive setup: agents, daemon, cloud"),
+      row("config --connect", "Connect to Cloud with no prompts: --token <key>"),
+      row("update", "Finish an npm upgrade: migrate home, match daemon"),
+      section(2, "CHOOSE WHAT IT ENFORCES"),
+      row("policies", "Every policy on this machine, and whether it is on"),
+      row("policies add", "Pick from a list, or name one: <policy> or <owner>/<repo>"),
+      row("policies remove", "Turn one policy off, or uninstall a whole pack"),
+      row("policies show", "What a pack contains, before you install it"),
+      row("publish", "Ship your own policies as a pack anyone can install"),
+      section(3, "SEE WHAT IT CAUGHT"),
+      row("(no args)", "Open the policy dashboard on localhost:8020"),
+      row("audit", "Scan your agents' history, then open the audit view"),
+      row("config --status", "Cloud connection, daemon version, pause state"),
+      row("harness", "Extra paths to capture agent sessions from"),
+      section(4, "PUT IT RIGHT"),
+      row("config --pause", "Pause enforcement for one session (30m; max 8h)"),
+      row("flush --wait", "Send everything spooled now, and block until it lands"),
+      row("backfill --since", "Re-send history already read past: 30d, 6m, YYYY-MM-DD"),
+      row("policies -i / -u", "Wire failproofai into your agent CLIs, or unwire"),
+      row("migrate", "Run pending ~/.failproofai layout migrations"),
+      row("uninstall", "Remove hooks and daemon, BEFORE npm rm -g failproofai"),
+      "",
+      `  ${dim("Docs")}  ${mint("docs.befailproof.ai")}           ${dim("Code")}  github.com/failproofai/failproofai`,
+      `  ${dim("Chat")}  ${mint("discord.befailproof.ai")}        ${dim("Forum")} reddit.com/r/failproofai`,
+    ].join("\n"));
     process.exit(0);
   }
 
@@ -1196,46 +1224,94 @@ WHY THIS EXISTS
       console.log(`
 failproofai publish — ship your policies as a pack anyone can install
 
-USAGE
-  failproofai publish <entry.mjs> --repo <owner>/<repo> --version <version>
+TWO COMMANDS, FROM NOTHING
 
-WHAT IT DOES
-  Validates the file with the loader's own rules, writes the three release
-  assets, creates (or reuses) the release, and attaches them. One command.
+  failproofai publish --init      write a policy to start from
+  failproofai publish             ship it
 
-  Only the release matters. Installs read
-  releases/download/<tag>/<asset> and never touch your git tree — pushing the
-  source is for humans reading it, not for the install to work.
+  Everything else is optional. Every flag below overrides something that is
+  otherwise worked out for you.
 
-OPTIONS
-  --repo <owner>/<repo>   Where to release it. Omit to build the assets only.
-  --version <version>     The pack version. Also the tag, unless --tag says otherwise.
-  --id <publisher/name>   The pack's id. Defaults to --repo.
-  --tag <tag>             Release tag. Defaults to --version; a leading v is fine.
-  --notes <text>          Release notes.
-  --out <dir>             Where to write the assets (default: dist-pack)
-  --effect enforce|observe   observe records and blocks nothing (default: enforce)
-  --dry-run               Build the assets, publish nothing.
+WHAT --init DOES
+  Asks what the pack is called, writes <name>.mjs, and stops. No network, no
+  git, nothing published.
 
-CREDENTIAL
-  GITHUB_TOKEN or GH_TOKEN, else whatever \`gh auth login\` stored. It needs
-  write access to releases on that repository and nothing else. The token is
-  never printed.
+  The file is not a template with blanks — it is one policy that already
+  blocks git push --force. So the first thing you do is edit something that
+  works. Refuses rather than overwriting a file that already exists.
+
+  Then try it on THIS machine, before anyone else can see it:
+
+    failproofai policies -i -c ./<name>.mjs
+
+  That enforces the file right now — any path, any filename. Ask your agent to
+  do the thing you blocked and watch it get refused. Iterate here; nothing is
+  published and nobody else is affected.
+
+WHAT publish DOES
+  In order, and it stops before touching GitHub if anything is wrong:
+
+  1  Finds the policy file here, by CONTENT — one that imports failproofai
+     and calls customPolicies.add — not by filename. So it finds guards.mjs
+     and ignores an unrelated policies.mjs. Not recursive: publishing a
+     fixture is worse than being asked. Two candidates and it lists them.
+  2  Reads the repo from git remote get-url origin, in the FILE's directory
+     rather than yours — a policy in another checkout is normal.
+  3  Decides the version (see below).
+  4  Finds your credential: GITHUB_TOKEN, GH_TOKEN, or gh auth login. Needs
+     release-write and nothing else. Never printed.
+  5  Creates the repository if it does not exist. Public — see below.
+  6  Builds the three assets, validating with the LOADER's own rules: the code
+     that decides what may install on a stranger's machine. A pack that could
+     never install fails here, where you can fix it.
+  7  Creates or reuses the release, and uploads the assets — replacing any of
+     the same name, because the install URL is built from fixed names and a
+     stale copy is what somebody would fetch.
+
+HOW THE VERSION IS DECIDED
+  --version if you pass one. Otherwise a tag on HEAD — someone who tagged
+  v1.2.0 has SAID what this release is. Otherwise one past the highest version
+  the repository has already published: 1.0.0, then 1.0.1, and so on.
+
+  Counted from the repository's own releases, not anything local, so a fresh
+  clone still gets the right number and two people cannot both mint 1.0.1.
+  Releases that are not semver (nightly) are ignored rather than guessed at.
+
+  A tag names a COMMIT, so it is refused when the file has uncommitted changes:
+  those bytes are not in that commit, and two packs would claim one version. A
+  counted version names no commit and has no such problem.
 
 THE REPO MUST BE PUBLIC
   Installs are anonymous HTTPS with no credential to offer, so a private
-  repository publishes to nobody. This warns you if it is.
+  repository publishes to nobody. A repo created here is public for that
+  reason; an existing private one still publishes, and warns.
+
+  Only the release matters. Installs read releases/download/<tag>/<asset> and
+  never touch your git tree — pushing the source is for humans reading it.
 
 YOUR ENTRY FILE
-  One file, no relative imports — only the entry is digest-pinned, so a pack
+  One file, no relative imports: only the entry is digest-pinned, so a pack
   importing siblings could not honestly claim to be verified. Bundle first
   (esbuild, bun build, rollup) if yours is split. Each policy may carry
-  \`category\` and \`defaultEnabled\` alongside the usual fields.
+  category and defaultEnabled alongside the usual fields.
+
+OPTIONS
+  --init [file]           Write a starter policy and stop.
+  --repo <owner>/<repo>   Where to release it, created if missing.
+  --version <version>     Skip the counting and say which version this is.
+  --id <publisher/name>   The pack's id. Defaults to --repo.
+  --tag <tag>             Release tag. Defaults to the version; v prefix ok.
+  --notes <text>          Release notes.
+  --out <dir>             Where to write the assets (default: dist-pack)
+  --effect enforce|observe
+                          observe records and blocks nothing (default: enforce)
+  --dry-run               Build the assets, publish nothing. No credential.
 
 EXAMPLES
-  failproofai publish ./deploy-guard.mjs --repo me/deploy-guard --version 1.0.0
-  failproofai publish ./deploy-guard.mjs --version 1.0.1 --dry-run
-  failproofai publish ./x.mjs --repo me/x --version 2.0.0 --effect observe
+  failproofai publish --init
+  failproofai publish
+  failproofai publish --dry-run
+  failproofai publish ./guards.mjs --repo me/guards --version 2.0.0
 `.trimStart());
       process.exit(0);
     }

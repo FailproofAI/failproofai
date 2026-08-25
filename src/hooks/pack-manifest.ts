@@ -84,6 +84,19 @@ export interface InstalledPackRecord {
    * made against.
    */
   enabled?: string[];
+  /**
+   * Which agent CLIs this pack guards. Absent means ALL of them.
+   *
+   * Setup wires hooks into every supported agent, because hooks alone enforce
+   * nothing — so "which agents" stopped being a setup question and became a
+   * per-pack one, asked where the user is looking at a real list. A team may
+   * want its deploy guards on the agent that ships and not on the one used for
+   * scratch work, and that is a property of the PACK, not of the machine.
+   *
+   * Absent rather than "all twelve" for packs installed before this existed:
+   * a machine upgrading must not silently narrow what it enforces.
+   */
+  clis?: string[];
 }
 
 export interface ResolvedPack {
@@ -98,6 +111,8 @@ export interface ResolvedPack {
   policies: PolicyCatalogEntry[];
   /** Selected policy names, or null when the user took the whole pack. */
   enabled: string[] | null;
+  /** Agent CLIs this pack guards, or null for all of them. */
+  clis: string[] | null;
 }
 
 export interface PackError {
@@ -250,7 +265,20 @@ function parsePack(root: string, value: unknown): ResolvedPack {
     enabled = raw.enabled.filter((n) => names.has(n));
   }
 
+  // Validated but NOT filtered against the known integration list. An unknown
+  // name means this record was written by a newer build that supports an agent
+  // this one does not; dropping it would silently widen the pack back to every
+  // CLI, which is the one direction a narrowing choice must never move.
+  let clis: string[] | null = null;
+  if (raw.clis !== undefined) {
+    if (!Array.isArray(raw.clis) || raw.clis.some((c) => typeof c !== "string")) {
+      throw new Error(`pack ${raw.id} clis is not an array of agent names`);
+    }
+    clis = raw.clis;
+  }
+
   return {
+    clis,
     id: identity.id,
     version: identity.version,
     source: raw.source,

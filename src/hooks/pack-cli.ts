@@ -6,9 +6,13 @@
  * This layer decides nothing; it formats.
  */
 import { execFileSync } from "node:child_process";
+import { homedir } from "node:os";
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { INTEGRATION_TYPES } from "./types";
+import { PACK_VERSION_RE } from "./pack-manifest";
+import { detectInstalledClis } from "./integrations";
 import { parsePackIdentity, parsePackPolicy, readInstalledPacks } from "./pack-manifest";
 import {
   PACK_CHECKSUMS_ASSET,
@@ -31,6 +35,7 @@ import {
   chip,
   emptyState,
   multiSelect,
+  promptText,
   note,
   nextStep,
   optsFor,
@@ -59,7 +64,7 @@ function parseList(rest: string[], flag: string): string[] | undefined {
 }
 
 /** Flags that take a separate value, so it is never mistaken for the source. */
-const VALUE_FLAGS = new Set(["--only", "--policy", "--category"]);
+const VALUE_FLAGS = new Set(["--only", "--policy", "--category", "--cli"]);
 
 /** Find the positional source without mistaking a flag's separate value for it. */
 export function packAddSource(rest: string[]): string | undefined {
@@ -71,14 +76,21 @@ export function packAddSource(rest: string[]): string | undefined {
 }
 
 /** Names taken by our own policies, so a selection can be checked before install. */
-function selectionFrom(rest: string[]): { only?: string[]; categories?: string[]; all?: boolean } {
+function selectionFrom(rest: string[]): {
+  only?: string[];
+  categories?: string[];
+  all?: boolean;
+  clis?: string[];
+} {
   // `--policy` reads right for one ("give me this policy"), `--only` for a set.
   // They are the same switch; taking both means neither is the wrong guess.
   const only = parseList(rest, "--policy") ?? parseList(rest, "--only");
   const categories = parseList(rest, "--category");
+  const clis = parseList(rest, "--cli");
   return {
     ...(only ? { only } : {}),
     ...(categories ? { categories } : {}),
+    ...(clis ? { clis } : {}),
     ...(rest.includes("--all") ? { all: true } : {}),
   };
 }
@@ -333,6 +345,393 @@ export async function runPolicyPicker(
 }
 
 
+/**
+ * Write a working starter policy, because the blank file is the hardest step.
+ *
+ * `publish --help` described the shape in prose, which leaves a newcomer to
+ * hand-write their first `customPolicies.add({...})` from a description and
+ * find out whether they got it right at publish time. What lands here is a
+ * policy that already RUNS and already blocks something real, so the first
+ * action is editing a working thing rather than authoring an empty one.
+ */
+async function scaffold(target: string | null): Promise<PackCliResult> {
+  // Ask what the pack is called when nothing was named and there is somebody to
+  // ask. The answer becomes the FILENAME and the header, so what lands on disk
+  // is already theirs rather than a file called `my-policies.mjs` that everybody
+  // then has to remember to rename. Skipped entirely for an explicit path or a
+  // non-TTY, where there is no question to ask and no one to answer it.
+  let chosen = target;
+  if (!chosen && process.stdin.isTTY && process.stdout.isTTY) {
+    const answer = await promptText({
+      message: "What is this pack called?",
+      hint: "used for the filename — letters, numbers, dashes",
+      defaultValue: "my-policies",
+      validate: (v) =>
+        /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(v.trim())
+          ? null
+          : "letters, numbers, dots, dashes and underscores",
+      stdin: process.stdin,
+      stdout: process.stdout,
+    });
+    if (answer === null) return ok(["Nothing written."]);
+    chosen = `./${answer.trim().replace(/\.(mjs|js|ts)$/, "")}.mjs`;
+  }
+  const path = resolve(chosen ?? "./my-policies.mjs");
+  if (existsSync(path)) {
+    return fail([`${path} already exists — name a different file, or edit that one.`]);
+  }
+  mkdirSync(resolve(path, ".."), { recursive: true });
+  writeFileSync(
+    path,
+    `import { customPolicies, allow, deny } from "failproofai";
+
+// One file, no relative imports: only this entry is digest-pinned, so a pack
+// that imported siblings could not honestly claim to be verified.
+
+customPolicies.add({
+  name: "block-force-push",
+  description: "Block git push --force on any branch",
+  // Groups it in the picker, and is what --category selects on.
+  category: "Git",
+  // Whether it is ON for somebody who installs with no flags. Defaults to false.
+  defaultEnabled: true,
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (ctx.toolName !== "Bash") return allow();
+    const cmd = String(ctx.toolInput?.command ?? "");
+    if (/\\bgit\\s+push\\b[^|;&]*\\s(-f|--force)\\b/.test(cmd)) {
+      return deny("Force-push rewrites history someone else may have pulled.");
+    }
+    return allow();
+  },
+});
+`,
+    "utf8",
+  );
+  return ok([
+    `Wrote ${path} — one policy, already working.`,
+    "",
+    "Try it on this machine before anyone else sees it:",
+    `  failproofai policies -i -c ${path}`,
+    "  then ask your agent to force-push — it gets refused",
+    "",
+    "Then publish it:",
+    `  failproofai publish ${path} --repo <you>/<repo> --version 1.0.0`,
+  ]);
+}
+
+/**
+ * The GitHub repository this file lives in, from its own git remote.
+ *
+ * Typing `--repo you/guards` from inside the checkout of `you/guards` is asking
+ * somebody to restate what the directory already knows. Read from the ENTRY
+ * FILE's directory rather than the process cwd: publishing a policy that lives
+ * in another checkout is normal, and the answer must describe the file, not
+ * wherever the shell happens to be.
+ */
+function inferRepo(entryPath: string): string | null {
+  try {
+    const url = execFileSync("git", ["remote", "get-url", "origin"], {
+      cwd: resolve(entryPath, ".."),
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 5_000,
+    }).trim();
+    // Both spellings git hands out: scp-style and https.
+    const m = url.match(/github\.com[:/]([^/]+)\/(.+?)(?:\.git)?$/i);
+    return m ? `${m[1]}/${m[2]}` : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A tag on HEAD, when there is one and the file is clean.
+ *
+ * Somebody who tagged `v1.2.0` has SAID what this release is, which a counted
+ * number cannot. Absent a tag there is nothing here to infer — the version is
+ * counted from what the repository has already published instead.
+ */
+function inferTaggedVersion(entryPath: string): string | null {
+  const cwd = resolve(entryPath, "..");
+  const git = (args: string[]): string | null => {
+    try {
+      return execFileSync("git", args, {
+        cwd,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 5_000,
+      }).trim();
+    } catch {
+      return null;
+    }
+  };
+  const tag = git(["describe", "--tags", "--exact-match", "HEAD"]);
+  if (!tag || !PACK_VERSION_RE.test(tag)) return null;
+  // A tag NAMES a commit, so shipping edited bytes under it publishes something
+  // that commit does not contain — and two artifacts would claim one version,
+  // which `id|version|sha256` compares in both the audit key and the pack
+  // upsert. A counted version names no commit and has no such problem, so this
+  // refusal belongs to the tagged path alone.
+  if (git(["status", "--porcelain", "--", entryPath])) return null;
+  return tag;
+}
+
+/**
+ * The policy file in this directory, when there is exactly one.
+ *
+ * Naming the path is restating something the directory already answers: a
+ * checkout with one policy file in it has no ambiguity to resolve. So the
+ * common case is `failproofai publish`, and the argument stays for the cases
+ * that genuinely need it.
+ *
+ * Identified by CONTENT, not by filename. A name convention would either miss
+ * `guards.mjs` or match an unrelated `policies.mjs` that configures something
+ * else entirely; a file that imports `failproofai` and calls
+ * `customPolicies.add` is a policy file whatever it is called.
+ *
+ * Returns ALL of them. Splitting policies across files is the normal thing to
+ * do past about three, and they are one pack — so several files is an answer,
+ * not an ambiguity, and they get bundled into the single artifact a pack must
+ * be. Naming a path explicitly still publishes exactly that file.
+ *
+ * Non-recursive on purpose. Walking the tree finds fixtures, examples and
+ * anything vendored, and publishing those is the failure this avoids.
+ */
+function findEntry(dir: string): string[] {
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return [];
+  }
+  const found: string[] = [];
+  for (const name of names) {
+    if (!/\.(mjs|js|ts)$/.test(name)) continue;
+    const full = resolve(dir, name);
+    try {
+      // Policy entries are small; anything large is not one, and reading it
+      // would be the expensive half of this scan.
+      if (statSync(full).size > 512 * 1024) continue;
+      const text = readFileSync(full, "utf8");
+      if (/from\s+["']failproofai["']/.test(text) && /customPolicies\s*\.\s*add\s*\(/.test(text)) {
+        found.push(full);
+      }
+    } catch {
+      continue;
+    }
+  }
+  return found.sort();
+}
+
+/**
+ * The version after whatever this repository has already published.
+ *
+ * A commit SHA names exactly where bytes came from and tells a reader nothing
+ * else: it does not order, so `a1b2c3d` and `f9e8d7c` give no clue which came
+ * first, and nobody can say "I am on the older one". Counting instead — 1.0.0,
+ * then 1.0.1 — costs one API call and answers both.
+ *
+ * Reads the repository's own releases rather than anything local, because the
+ * releases ARE the published record: a machine that has never published from
+ * this checkout still computes the right next number, and two people publishing
+ * from different clones cannot both mint 1.0.1 without one of them seeing the
+ * other's release first.
+ *
+ * Non-semver tags are ignored rather than parsed heroically — a repo whose
+ * releases are named `nightly` has no sequence to continue, and starting a
+ * fresh count is more honest than inventing one.
+ */
+async function nextVersion(owner: string, name: string, token: string): Promise<string> {
+  const res = await gh(`${GITHUB_API}/repos/${owner}/${name}/releases?per_page=100`, token);
+  const tags = Array.isArray(res.json)
+    ? (res.json as unknown as Array<{ tag_name?: unknown }>)
+        .map((r) => (typeof r.tag_name === "string" ? r.tag_name : ""))
+        .filter(Boolean)
+    : [];
+  let best: [number, number, number] | null = null;
+  for (const tag of tags) {
+    const m = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(tag.trim());
+    if (!m) continue;
+    const parsed: [number, number, number] = [Number(m[1]), Number(m[2]), Number(m[3])];
+    if (
+      !best ||
+      parsed[0] > best[0] ||
+      (parsed[0] === best[0] && parsed[1] > best[1]) ||
+      (parsed[0] === best[0] && parsed[1] === best[1] && parsed[2] > best[2])
+    ) {
+      best = parsed;
+    }
+  }
+  return best ? `${best[0]}.${best[1]}.${best[2] + 1}` : "1.0.0";
+}
+
+/**
+ * The repository, created if it is not there.
+ *
+ * Creating it was the only step `publish` did not do, and the one that made
+ * "one command" untrue — it sent the publisher to a different tool and back.
+ *
+ * PUBLIC, always. A private repository publishes to nobody, because installs
+ * are anonymous HTTPS with no credential to offer, so creating one here would
+ * manufacture the exact dead end the caller then warns about. Somebody who
+ * wants a private pack makes it themselves and knows why.
+ */
+async function ensureRepo(
+  owner: string,
+  name: string,
+  id: string,
+  token: string,
+): Promise<{ info: Awaited<ReturnType<typeof gh>>; created: boolean } | { error: string[] }> {
+  let info = await gh(`${GITHUB_API}/repos/${owner}/${name}`, token);
+  let created = false;
+  if (info.status === 404) {
+    // Personal and organisation repositories are different endpoints, and the
+    // only way to tell which applies is to ask who the token belongs to.
+    const me = await gh(`${GITHUB_API}/user`, token);
+    const login = typeof me.json?.login === "string" ? me.json.login : null;
+    const endpoint =
+      login && login.toLowerCase() === owner.toLowerCase()
+        ? `${GITHUB_API}/user/repos`
+        : `${GITHUB_API}/orgs/${owner}/repos`;
+    const made = await gh(endpoint, token, {
+      method: "POST",
+      contentType: "application/json",
+      body: JSON.stringify({
+        name,
+        private: false,
+        description: `failproofai policy pack — ${id}`,
+        auto_init: true,
+      }),
+    });
+    if (made.status >= 400) {
+      return {
+        error: [
+          `${owner}/${name} does not exist and could not be created: ${ghError(made)}`,
+          login
+            ? `The credential belongs to ${login}. Creating under a different owner needs`
+            : "The credential could not be identified. Creating a repository needs",
+          "  rights to that account or organisation — or make it by hand:",
+          `  gh repo create ${owner}/${name} --public`,
+        ],
+      };
+    }
+    created = true;
+    info = await gh(`${GITHUB_API}/repos/${owner}/${name}`, token);
+  }
+  if (info.status >= 400) {
+    return { error: [`Could not read ${owner}/${name}: ${ghError(info)}`] };
+  }
+  return { info, created };
+}
+
+/**
+ * Where `bun` is, if it is anywhere.
+ *
+ * Bundling needs it, and a CLI installed from npm runs under node — so bun is
+ * likely present (it is in `engines`) but never guaranteed. Checked in the
+ * places it actually installs to, because `npm i -g bun` puts it in ONE nvm
+ * version's bin dir and `nvm use` then drops it off PATH.
+ */
+function findBun(): string | null {
+  const candidates = [
+    "bun",
+    process.env.BUN_INSTALL ? resolve(process.env.BUN_INSTALL, "bin", "bun") : null,
+    resolve(homedir(), ".bun", "bin", "bun"),
+    "/opt/homebrew/bin/bun",
+    "/usr/local/bin/bun",
+  ].filter((c): c is string => c !== null);
+  for (const candidate of candidates) {
+    try {
+      execFileSync(candidate, ["--version"], { stdio: "ignore", timeout: 5_000 });
+      return candidate;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+/**
+ * Collapse several policy files, or one that imports its neighbours, into the
+ * single artifact a pack has to be.
+ *
+ * One entry file is a real constraint — only the entry is content-addressed, so
+ * a multi-file pack could not honestly claim to be digest-pinned — but that is a
+ * constraint on what gets PUBLISHED, not on how anybody writes. Splitting
+ * policies across files is the normal thing to do past about three of them, and
+ * telling someone to go and configure a bundler first is the tool refusing to do
+ * the one mechanical step it already does for its own pack.
+ *
+ * `--external failproofai` because the loader supplies it: bundling our own
+ * module into the artifact would ship a second copy of the registry, and
+ * policies would register into an object nothing reads.
+ */
+function bundleEntry(
+  sources: string[],
+  outDir: string,
+): { path: string } | { error: string[] } {
+  const bun = findBun();
+  if (!bun) {
+    return {
+      error: [
+        sources.length > 1
+          ? `${sources.length} policy files here, and bundling them needs bun, which is not installed.`
+          : `${sources[0]} imports other files, and bundling needs bun, which is not installed.`,
+        "Either install bun (https://bun.sh), bundle it yourself first —",
+        "  esbuild <entry> --bundle --format=esm --external:failproofai --outfile=pack.mjs",
+        "then publish the bundle — or name a single self-contained file.",
+      ],
+    };
+  }
+  mkdirSync(outDir, { recursive: true });
+  // A generated entry that imports each file for its SIDE EFFECT: every policy
+  // file registers by calling `customPolicies.add` at module scope, so importing
+  // it is what puts the policies in the registry. Same shape as the generated
+  // entry this repo builds its own pack from.
+  const entry = resolve(outDir, ".entry.generated.mjs");
+  writeFileSync(
+    entry,
+    sources.map((f) => `import ${JSON.stringify(f.startsWith("/") ? f : resolve(f))};`).join("\n") + "\n",
+    "utf8",
+  );
+  const bundled = resolve(outDir, ".bundled.mjs");
+  try {
+    execFileSync(
+      bun,
+      ["build", "--target=node", "--format=esm", "--external", "failproofai",
+       "--outfile", bundled, entry],
+      { stdio: ["ignore", "pipe", "pipe"], timeout: 120_000 },
+    );
+  } catch (err) {
+    const detail = err instanceof Error && "stderr" in err
+      ? String((err as { stderr?: Buffer }).stderr ?? "").trim().split("\n").slice(0, 6)
+      : [];
+    return { error: [`Could not bundle those files:`, ...detail.map((l) => `  ${l}`)] };
+  }
+  return { path: bundled };
+}
+
+/**
+ * The entry path among publish's arguments, and nothing that merely follows a
+ * flag.
+ *
+ * `packAddSource` knows the flags `policies add` takes, not the ones `publish`
+ * takes — so `publish --id me/x --version 1.0.0` read `me/x` as the file to
+ * publish and failed on ENOENT. It only ever worked because every example wrote
+ * the path first.
+ */
+const PUBLISH_VALUE_FLAGS = new Set([
+  "--repo", "--version", "--id", "--tag", "--notes", "--out", "--effect", "--entry", "--init",
+]);
+function publishEntryArg(rest: string[]): string | undefined {
+  const consumed = new Set<number>();
+  for (let i = 0; i < rest.length; i += 1) {
+    if (PUBLISH_VALUE_FLAGS.has(rest[i])) consumed.add(i + 1);
+  }
+  return rest.find((a, i) => !a.startsWith("--") && !consumed.has(i));
+}
+
 // ── publish ───────────────────────────────────────────────────────────────
 
 const GITHUB_API = process.env.FAILPROOFAI_GITHUB_API ?? "https://api.github.com";
@@ -430,18 +829,37 @@ async function publish(rest: string[]): Promise<PackCliResult> {
     return rest[i].includes("=") ? rest[i].split("=").slice(1).join("=") : rest[i + 1];
   };
 
-  const repo = flag("repo");
-  const version = flag("version");
-  const entry = packAddSource(rest.filter((a) => a !== "--dry-run")) ?? flag("entry");
+  if (rest.includes("--init")) {
+    return scaffold(flag("init") ?? publishEntryArg(rest) ?? null);
+  }
+
+  let entry = publishEntryArg(rest.filter((a) => a !== "--dry-run")) ?? flag("entry");
+  // Every policy file here, bundled into one artifact below. Named explicitly,
+  // it is that file and only that file.
+  const discovered = entry ? [] : findEntry(process.cwd());
+  if (!entry && discovered.length > 0) entry = discovered[0];
+  const repo = flag("repo") ?? (entry ? inferRepo(entry) : null) ?? undefined;
+  // A tag on HEAD is somebody SAYING what this release is, so it wins over a
+  // counted one. Everything else is decided after the repository is known,
+  // because the count comes from what that repository has already published.
+  let version = flag("version") ?? (entry ? inferTaggedVersion(entry) : null) ?? undefined;
+  let versionCounted = false;
   // The id and the repo are usually the same words, and requiring both is asking
   // the same question twice. Either one alone answers for the other.
   const id = flag("id") ?? repo;
-  const tag = flag("tag") ?? version;
   const dryRun = rest.includes("--dry-run") || !repo;
+  const [owner, name] = (repo ?? "/").split("/");
+  if (repo && (!owner || !name || repo.split("/").length !== 2)) {
+    return fail([`--repo must be <owner>/<repo>, got ${JSON.stringify(repo)}`]);
+  }
 
-  if (!entry || !version || !id) {
+  if (!entry || !id) {
     return fail([
-      "Usage: failproofai publish <entry.mjs> --repo <owner>/<repo> --version <version>",
+      "Usage: failproofai publish <entry.mjs> [--repo <owner>/<repo>] [--version <v>]",
+      "",
+      "Inside a git checkout with a github remote, both are inferred — the repo",
+      "from the remote, the version from a tag on HEAD or the short commit SHA.",
+      "Outside one, name them:",
       "       [--id <publisher/name>] [--tag <tag>] [--notes <text>]",
       "       [--out <dir>] [--effect enforce|observe] [--dry-run]",
       "",
@@ -449,14 +867,86 @@ async function publish(rest: string[]): Promise<PackCliResult> {
     ]);
   }
 
-  // Build first, always. There is no point authenticating against GitHub to
-  // discover the pack does not load.
-  const built = await build([entry, "--id", id, "--version", version, ...outFlagFrom(rest), ...effectFlagFrom(rest)]);
+  // Check an EXPLICIT tag against an explicit version before anything reaches
+  // the network. When the version is counted the tag simply follows it and can
+  // never disagree — but a tag the user typed can, and refusing it here is what
+  // stops a doomed publish from first creating a repository for itself.
+  const explicitTag = flag("tag");
+  if (explicitTag && version && !packTagMatchesVersion(explicitTag, version)) {
+    return fail([
+      `Tag ${explicitTag} does not describe version ${version}, so nobody could install it.`,
+      `A pack is fetched from releases/download/${explicitTag}/… and then reports`,
+      `${version} — which names no release. Use --tag ${version} (a leading v is`,
+      "fine), or build the pack at the version the tag says.",
+    ]);
+  }
+
+  // The version may still be unknown here: with nothing explicit and no tag, it
+  // is one past whatever the repository has already published, which cannot be
+  // known without asking it. So the credential and the repository come first —
+  // the reverse of the old order, where building first avoided authenticating
+  // for a pack that does not load. That trade is still paid: the build runs
+  // immediately after, before anything is created or uploaded.
+  let token: string | null = null;
+  let created = false;
+  let repoInfo: Awaited<ReturnType<typeof gh>> | null = null;
+  if (!dryRun) {
+    token = githubToken();
+    if (!token) {
+      return fail([
+        "No GitHub credential found.",
+        "Set GITHUB_TOKEN (or GH_TOKEN), or sign in once with `gh auth login`.",
+        "It needs write access to releases on that repository, and nothing else.",
+      ]);
+    }
+      const ensured = await ensureRepo(owner, name, id, token);
+    if ("error" in ensured) return fail(ensured.error);
+    created = ensured.created;
+    repoInfo = ensured.info;
+    if (!version) {
+      version = await nextVersion(owner, name, token);
+      versionCounted = true;
+    }
+  }
+  // A dry run has nothing to count against, so it reports the first version. It
+  // says so rather than implying the number is settled.
+  if (!version) {
+    version = "1.0.0";
+    versionCounted = true;
+  }
+
+  const tag = flag("tag") ?? version;
+
+  // One artifact, however many files it was written across. `build` refuses an
+  // entry with relative imports because only the entry is digest-pinned — so
+  // the fix is to make it ONE file here, not to send the author away to set up
+  // a bundler for a step this tool already performs for its own pack.
+  const outDirEarly = resolve(flag("out") ?? "dist-pack");
+  let entryToBuild = entry;
+  const needsBundle =
+    discovered.length > 1 ||
+    /(?:^|\n)\s*(?:import|export)[^;\n]*from\s+["']\.[^"']*["']/.test(
+      readFileSync(entry, "utf8"),
+    );
+  if (needsBundle) {
+    const sources = discovered.length > 1 ? discovered : [entry];
+    const bundled = bundleEntry(sources, outDirEarly);
+    if ("error" in bundled) return fail(bundled.error);
+    entryToBuild = bundled.path;
+  }
+
+  const built = await build([entryToBuild, "--id", id, "--version", version, ...outFlagFrom(rest), ...effectFlagFrom(rest)]);
   if (built.exitCode !== 0) return built;
 
-  const outDir = resolve(flag("out") ?? "dist-pack");
+  const outDir = outDirEarly;
+  const bundleNote =
+    discovered.length > 1
+      ? [`Bundled ${discovered.length} files into one artifact:`,
+         ...discovered.map((f) => `  ${f.replace(process.cwd() + "/", "")}`), ""]
+      : [];
   if (dryRun) {
     return ok([
+      ...bundleNote,
       ...built.lines.slice(0, 4),
       "",
       ...(repo
@@ -468,7 +958,11 @@ async function publish(rest: string[]): Promise<PackCliResult> {
     ]);
   }
 
-  if (!packTagMatchesVersion(tag!, version)) {
+  // Narrowed once: every path reaching here passed through the `!dryRun` branch
+  // above, which returns when there is no credential.
+  const auth = token as string;
+
+  if (!packTagMatchesVersion(tag, version)) {
     return fail([
       `Tag ${tag} does not describe version ${version}, so nobody could install it.`,
       `A pack is fetched from releases/download/${tag}/… and then reports ${version} —`,
@@ -477,41 +971,20 @@ async function publish(rest: string[]): Promise<PackCliResult> {
     ]);
   }
 
-  const [owner, name] = repo!.split("/");
-  if (!owner || !name || repo!.split("/").length !== 2) {
-    return fail([`--repo must be <owner>/<repo>, got ${JSON.stringify(repo)}`]);
-  }
 
-  const token = githubToken();
-  if (!token) {
-    return fail([
-      "No GitHub credential found.",
-      "Set GITHUB_TOKEN (or GH_TOKEN), or sign in once with `gh auth login`.",
-      "It needs write access to releases on that repository, and nothing else.",
-    ]);
-  }
-
-  const repoInfo = await gh(`${GITHUB_API}/repos/${owner}/${name}`, token);
-  if (repoInfo.status === 404) {
-    return fail([
-      `${repo} does not exist, or that credential cannot see it.`,
-      `Create it first:  gh repo create ${repo} --public`,
-    ]);
-  }
-  if (repoInfo.status >= 400) return fail([`Could not read ${repo}: ${ghError(repoInfo)}`]);
   // A private repo is not a smaller audience, it is no audience: `pack add`
   // sends no Authorization header at all, by design, so every install 404s.
-  const isPrivate = repoInfo.json?.private === true;
+  const isPrivate = repoInfo?.json?.private === true;
 
   // Reuse a release on this tag rather than failing on it. Re-publishing a
   // corrected artifact under an existing tag is a normal thing to need, and the
   // digest change is visible to anyone who reinstalls.
   let releaseId: number | null = null;
-  const existing = await gh(`${GITHUB_API}/repos/${owner}/${name}/releases/tags/${encodeURIComponent(tag!)}`, token);
+  const existing = await gh(`${GITHUB_API}/repos/${owner}/${name}/releases/tags/${encodeURIComponent(tag)}`, auth);
   if (existing.status === 200 && typeof existing.json?.id === "number") {
     releaseId = existing.json.id;
   } else {
-    const created = await gh(`${GITHUB_API}/repos/${owner}/${name}/releases`, token, {
+    const created = await gh(`${GITHUB_API}/repos/${owner}/${name}/releases`, auth, {
       method: "POST",
       contentType: "application/json",
       body: JSON.stringify({
@@ -533,7 +1006,7 @@ async function publish(rest: string[]): Promise<PackCliResult> {
 
   const assets = [PACK_MANIFEST_ASSET, PACK_ENTRY_ASSET, PACK_CHECKSUMS_ASSET];
   const uploaded: string[] = [];
-  const listed = await gh(`${GITHUB_API}/repos/${owner}/${name}/releases/${releaseId}/assets?per_page=100`, token);
+  const listed = await gh(`${GITHUB_API}/repos/${owner}/${name}/releases/${releaseId}/assets?per_page=100`, auth);
   const already = Array.isArray(listed.json)
     ? (listed.json as unknown as Array<{ id: number; name: string }>)
     : [];
@@ -543,12 +1016,12 @@ async function publish(rest: string[]): Promise<PackCliResult> {
     // append.
     const prior = already.find((a) => a.name === asset);
     if (prior) {
-      await gh(`${GITHUB_API}/repos/${owner}/${name}/releases/assets/${prior.id}`, token, { method: "DELETE" });
+      await gh(`${GITHUB_API}/repos/${owner}/${name}/releases/assets/${prior.id}`, auth, { method: "DELETE" });
     }
     const bytes = readFileSync(resolve(outDir, asset));
     const upload = await gh(
       `${GITHUB_UPLOADS}/repos/${owner}/${name}/releases/${releaseId}/assets?name=${encodeURIComponent(asset)}`,
-      token,
+      auth,
       {
         method: "POST",
         contentType: asset.endsWith(".json") ? "application/json" : "application/octet-stream",
@@ -566,7 +1039,10 @@ async function publish(rest: string[]): Promise<PackCliResult> {
   }
 
   const lines = [
-    `Published ${id}@${version} to ${repo} at tag ${tag}.`,
+    ...bundleNote,
+    ...(created ? [`Created ${repo} (public).`] : []),
+    `Published ${id}@${version} to ${repo} at tag ${tag}.` +
+      (versionCounted ? " Next publish will be one past it." : ""),
     `  ${assets.length} assets attached`,
     "",
     "Anyone can now install it:",
@@ -599,6 +1075,43 @@ function effectFlagFrom(rest: string[]): string[] {
 /** `failproofai publish` — exported for bin/failproofai.mjs and the tests. */
 export async function runPublishCommand(rest: string[]): Promise<PackCliResult> {
   return publish(rest);
+}
+
+/**
+ * Which agents should this pack guard?
+ *
+ * Asked BEFORE the policy list, because it is the coarser question and the
+ * answer changes what the second screen is for. Setup no longer asks it: hooks
+ * go into every supported agent, since hooks alone enforce nothing, so the
+ * decision moved here — where the user is looking at a concrete pack instead of
+ * answering in the abstract before anything is installed.
+ *
+ * Every supported agent is offered and all are pre-ticked. Detected ones are
+ * marked, but an undetected agent is NOT excluded: installing one next week is
+ * exactly the case setup's install-everywhere behaviour exists to cover, and a
+ * pack that silently skipped it would undo that.
+ *
+ * Returns null when cancelled — distinct from picking every agent.
+ */
+async function pickClis(
+  io: { stdin: TTYIn; stdout: TTYOut },
+): Promise<string[] | null> {
+  const detected = new Set(detectInstalledClis());
+  const choices: MultiChoice<string>[] = INTEGRATION_TYPES.map((id) => ({
+    label: id,
+    value: id,
+    checked: true,
+    hint: detected.has(id) ? "installed here" : "",
+  }));
+  return multiSelect<string>({
+    message: "Which agents should this pack guard?",
+    choices,
+    minSelected: 1,
+    summaryNoun: "agents",
+    hint: `space toggles · ctrl+a all · ↵ confirm · ${detected.size} detected on this machine`,
+    stdin: io.stdin,
+    stdout: io.stdout,
+  });
 }
 
 /**
@@ -683,6 +1196,15 @@ async function add(rest: string[]): Promise<PackCliResult> {
   const io = { stdin: process.stdin as TTYIn, stdout: process.stdout as TTYOut };
   const chose = !selection.only && !selection.categories && !selection.all;
   if (chose && io.stdin.isTTY && io.stdout.isTTY) {
+    // Agents first, then policies. Coarse before fine, and the coarse answer is
+    // the one somebody can give without reading thirty-eight descriptions.
+    if (!selection.clis) {
+      const agents = await pickClis(io);
+      if (agents === null) return ok(["Nothing installed."]);
+      // Every agent ticked is the same as not narrowing at all, and writing the
+      // full list would freeze this pack out of any CLI supported later.
+      if (agents.length < INTEGRATION_TYPES.length) selection.clis = agents;
+    }
     const picked = await pickFromSource(resolvedSource!, io);
     if (picked === null) return ok(["Nothing installed."]);
     selection.only = picked;

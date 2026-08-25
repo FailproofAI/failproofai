@@ -15,7 +15,7 @@ import { INTEGRATION_TYPES, type IntegrationType } from "../hooks/types";
 import { ADAPTERS } from "./cli-adapters";
 import { AUDIT_DETECTORS } from "./detectors";
 import { severityForBuiltin } from "./features";
-import { readCachedTranscriptResult, writeCachedTranscriptResult } from "./cache";
+import { readCachedTranscript, writeCachedTranscriptResult } from "./cache";
 import { initReplay, replayEvent, restoreReplay } from "./replay";
 import {
   AUDIT_EXAMPLE_MAX_CHARS,
@@ -87,7 +87,24 @@ function parseSinceOpt(since: string | undefined): number | undefined {
   throw new Error(`Invalid --since value: "${since}" (expected e.g. "7d", "30d", or "2026-04-01")`);
 }
 
-async function scanOneTranscript(meta: TranscriptMetadata): Promise<TranscriptAuditResult> {
+/**
+ * What a scan covered, alongside the result — so the caller can record a resume
+ * point without re-deriving it.
+ *
+ * `bytesScanned` is 0 when the source cannot be resumed at all (a database, or
+ * an adapter with no `streamEventsFrom`), which is what stops a resume point
+ * being written for something that has no bytes to resume from.
+ */
+interface ScanOutcome {
+  result: TranscriptAuditResult;
+  bytesScanned: number;
+  detectorState: DetectorSessionState;
+}
+
+async function scanOneTranscript(
+  meta: TranscriptMetadata,
+  resume?: { fromByte: number; detectorState: DetectorSessionState },
+): Promise<ScanOutcome> {
   const empty: TranscriptAuditResult = {
     transcriptPath: meta.transcriptPath,
     cli: meta.cli,
@@ -102,17 +119,54 @@ async function scanOneTranscript(meta: TranscriptMetadata): Promise<TranscriptAu
     rangeByName: {},
   };
 
+  const adapter = ADAPTERS[meta.cli];
   // Stream failures must propagate so the orchestrator counts them in
   // `errors` rather than silently returning an empty hits map.
-  const events = await ADAPTERS[meta.cli].streamEvents(meta);
-  if (events.length === 0) return empty;
+  let events: NormalizedToolEvent[];
+  let bytesScanned = 0;
+  // A resumed scan carries the stateful detectors' state forward across the
+  // boundary. Starting them empty would silently change what they find — the
+  // re-read detector's countdown spans tool calls, so an edit before the offset
+  // and its wasteful re-read after it would stop being a pair.
+  const sessionState: DetectorSessionState = resume?.detectorState ?? {};
+
+  if (adapter.streamEventsFrom) {
+    // A full scan is a resume from zero, deliberately — not a separate branch.
+    //
+    // The separate branch is what got this wrong: it recorded `meta.sizeBytes`
+    // as scanned, which is the whole FILE, including a trailing partial line
+    // that was never parsed. Transcripts are appended to while the audit reads
+    // them, so that tail is routinely half a line — and the next run then
+    // resumed past an event nobody had read. Only the reader knows where the
+    // last complete line ended, so only the reader gets to say.
+    const scan = await adapter.streamEventsFrom(meta, resume?.fromByte ?? 0);
+    // Null means it could not be read from there after all — truncated,
+    // unreadable, unparseable. A thrown error would count as a scan failure,
+    // so fall back to a full read instead and keep the transcript scannable.
+    if (!scan) {
+      events = await adapter.streamEvents(meta);
+      bytesScanned = 0;
+    } else {
+      events = scan.events;
+      bytesScanned = scan.bytesConsumed;
+      empty.cwd = scan.cwd ?? "";
+    }
+  } else {
+    // A source with no byte offsets to speak of — a database. Scanned whole,
+    // every time, and given no resume point to mislead the next run with.
+    events = await adapter.streamEvents(meta);
+    bytesScanned = 0;
+  }
+
+  if (events.length === 0) {
+    return { result: empty, bytesScanned, detectorState: sessionState };
+  }
 
   const result = empty;
   result.eventsScanned = events.length;
   // Capture the session's cwd from the first event that carried one — every
   // event in a single transcript shares the same cwd by construction.
-  result.cwd = events[0].cwd || "";
-  const sessionState: DetectorSessionState = {};
+  result.cwd = result.cwd || events[0].cwd || "";
 
   for (const event of events) {
     // Run audit detectors first (stateful, must see every event).
@@ -146,7 +200,7 @@ async function scanOneTranscript(meta: TranscriptMetadata): Promise<TranscriptAu
     }
   }
 
-  return result;
+  return { result, bytesScanned, detectorState: sessionState };
 }
 
 function formatPolicyExample(_policyName: string, event: NormalizedToolEvent): string {
@@ -157,6 +211,55 @@ function formatPolicyExample(_policyName: string, event: NormalizedToolEvent): s
   const filePath = (event.toolInput as { file_path?: unknown }).file_path;
   if (typeof filePath === "string") return `${event.toolName} ${filePath}`;
   return `${event.toolName}`;
+}
+
+/**
+ * Fold a tail-scan into the result the cache already held for the same
+ * transcript.
+ *
+ * Mirrors `recordHit` exactly, and has to: counts add, examples stay capped at
+ * the same limit, ranges widen. The one asymmetry is `cwd` — the cached value
+ * came from the FIRST event in the file and the tail's came from the first
+ * event after the offset, so the older one wins.
+ */
+function mergeIncremental(
+  cached: TranscriptAuditResult,
+  tail: TranscriptAuditResult,
+): TranscriptAuditResult {
+  const out: TranscriptAuditResult = {
+    ...cached,
+    mtimeMs: tail.mtimeMs,
+    sizeBytes: tail.sizeBytes,
+    cwd: cached.cwd || tail.cwd || "",
+    eventsScanned: (cached.eventsScanned ?? 0) + (tail.eventsScanned ?? 0),
+    hitsByName: { ...cached.hitsByName },
+    examplesByName: {},
+    rangeByName: { ...cached.rangeByName },
+  };
+  for (const [name, list] of Object.entries(cached.examplesByName)) {
+    out.examplesByName[name] = [...list];
+  }
+  for (const [name, count] of Object.entries(tail.hitsByName)) {
+    out.hitsByName[name] = (out.hitsByName[name] ?? 0) + count;
+  }
+  for (const [name, list] of Object.entries(tail.examplesByName)) {
+    const exs = out.examplesByName[name] ?? [];
+    for (const ex of list) {
+      if (exs.length >= AUDIT_MAX_EXAMPLES_PER_NAME) break;
+      exs.push(ex);
+    }
+    out.examplesByName[name] = exs;
+  }
+  for (const [name, range] of Object.entries(tail.rangeByName)) {
+    const existing = out.rangeByName[name];
+    if (!existing) {
+      out.rangeByName[name] = { ...range };
+    } else {
+      if (range.first < existing.first) existing.first = range.first;
+      if (range.last > existing.last) existing.last = range.last;
+    }
+  }
+  return out;
 }
 
 function recordHit(
@@ -300,14 +403,31 @@ async function runAuditInner(opts: RunAuditOptions, startedAt: number): Promise<
   let skipped = 0;
   let errors = 0;
   const tasks = allTranscripts.map((meta) => async (): Promise<TranscriptAuditResult> => {
+    let resume: { fromByte: number; detectorState: DetectorSessionState } | undefined;
+    let cachedPrefix: TranscriptAuditResult | null = null;
     if (!opts.noCache) {
-      const cached = readCachedTranscriptResult(meta.transcriptPath, meta.mtimeMs, meta.sizeBytes);
-      if (cached) return cached;
+      const found = readCachedTranscript(meta.transcriptPath, meta.mtimeMs, meta.sizeBytes);
+      if (found?.kind === "hit") return found.result;
+      resume = found?.kind === "resume"
+        ? { fromByte: found.fromByte, detectorState: found.detectorState }
+        : undefined;
+      cachedPrefix = found?.kind === "resume" ? found.result : null;
     }
     try {
-      const fresh = await scanOneTranscript(meta);
+      const scan = await scanOneTranscript(meta, resume);
+      // A resumed scan produced hits for the TAIL only; the cached result holds
+      // everything before it. Merging is what makes the two halves one answer.
+      const fresh = cachedPrefix ? mergeIncremental(cachedPrefix, scan.result) : scan.result;
       if (!opts.noCache) {
-        writeCachedTranscriptResult(meta.transcriptPath, meta.mtimeMs, meta.sizeBytes, fresh);
+        writeCachedTranscriptResult(
+          meta.transcriptPath,
+          meta.mtimeMs,
+          meta.sizeBytes,
+          fresh,
+          scan.bytesScanned > 0
+            ? { bytesScanned: scan.bytesScanned, detectorState: scan.detectorState }
+            : undefined,
+        );
       }
       return fresh;
     } catch {

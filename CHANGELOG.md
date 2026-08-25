@@ -4,6 +4,7 @@
 
 ### Features
 
+- `failproofai audit` resumes a transcript that GREW instead of re-reading it from byte zero. The cache was all-or-nothing per file, so a long-running session gaining one line was re-parsed and re-replayed in full — and the sessions that gain lines are the largest ones. Measured on a 29 MB transcript with one line appended: 14.0s to 2.4s (#738)
 - `failproofai audit` no longer shells out to the `opencode` CLI once per session — it reads opencode's SQLite database directly, like every other SQLite-backed integration. Each spawn cost ~1.5s and there were three per session, which on a 30-session history was ~135s of a ~140s audit; measured 140s to 3s on the same machine, with byte-identical output (#738)
 - `failproofai publish` asks where to publish instead of requiring `--repo`, defaulting to your account and the folder name — write policies in a git repo, run one command, answer one question (#738). Nothing prompts on a pipe or in CI, where flags remain the whole interface
 

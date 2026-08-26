@@ -55,6 +55,24 @@ export const PACK_ID_RE = /^[A-Za-z0-9._-]{1,64}\/[A-Za-z0-9._-]{1,64}$/;
 /** A version string, kept loose enough for semver and a tag. */
 export const PACK_VERSION_RE = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/;
 /**
+ * The git commit a pack was built from — PROVENANCE, and deliberately not the
+ * same thing as `sha256`.
+ *
+ * `sha256` is the digest of the entry artifact: the security pin, re-verified
+ * before every import, and the reason a pack cannot change under a machine
+ * after it was installed. This answers a different question — WHICH SOURCE
+ * produced that artifact — which no digest can, because the digest is of the
+ * bundled output and the output names no input.
+ *
+ * Always optional. A pack published from a directory that is not a git checkout
+ * has no commit, and that is a supported way to publish, so every surface that
+ * reads this must render its absence rather than treat it as a defect.
+ *
+ * Abbreviated forms are accepted from 7 characters, which is what `git log`
+ * prints and therefore what somebody copying one will have.
+ */
+export const PACK_COMMIT_RE = /^[0-9a-f]{7,40}$/;
+/**
  * A pack policy's own name. `/` is REFUSED, and that is the important character:
  * `normalizePolicyName` passes any name containing one straight through, and
  * `registerPolicy` REPLACES by canonical name — so a pack shipping a policy
@@ -72,6 +90,8 @@ export interface InstalledPackRecord {
   /** Path to the single entry artifact, relative to `packsDir()`. */
   entry: string;
   sha256: string;
+  /** The git commit this pack was built from, when its publisher had one. */
+  commit?: string;
   effect?: string;
   policies?: unknown;
   /**
@@ -106,6 +126,8 @@ export interface ResolvedPack {
   /** Absolute, real, verified-to-be-inside-the-root path to the entry module. */
   path: string;
   sha256: string;
+  /** The git commit this pack was built from, when its publisher had one. */
+  commit?: string;
   effect: PolicyEffect;
   /** The pack's own catalog, in declared order. */
   policies: PolicyCatalogEntry[];
@@ -152,7 +174,8 @@ export function parsePackIdentity(value: {
   id?: unknown;
   version?: unknown;
   effect?: unknown;
-}): { id: string; version: string; effect: PolicyEffect } {
+  commit?: unknown;
+}): { id: string; version: string; effect: PolicyEffect; commit?: string } {
   if (typeof value.id !== "string" || !PACK_ID_RE.test(value.id)) {
     throw new Error(`unsafe pack id ${JSON.stringify(value.id)}`);
   }
@@ -162,10 +185,20 @@ export function parsePackIdentity(value: {
   if (value.effect !== undefined && value.effect !== "enforce" && value.effect !== "observe") {
     throw new Error(`unknown effect ${JSON.stringify(value.effect)} for pack ${value.id}`);
   }
+  // Malformed provenance is DROPPED, never fatal. It is a label on the artifact,
+  // not part of what makes it safe to run — so a publisher who wrote something
+  // odd here gets a pack that installs and simply says nothing about its
+  // origin, rather than a pack nobody can install. The digest still decides
+  // whether the bytes are the ones that were published.
+  const commit =
+    typeof value.commit === "string" && PACK_COMMIT_RE.test(value.commit.trim().toLowerCase())
+      ? value.commit.trim().toLowerCase()
+      : undefined;
   return {
     id: value.id,
     version: value.version,
     effect: (value.effect as PolicyEffect | undefined) ?? "enforce",
+    ...(commit ? { commit } : {}),
   };
 }
 

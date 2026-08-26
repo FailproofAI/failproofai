@@ -88,6 +88,10 @@ const uploadsOf = (asset?: string) =>
   );
 
 const publish = (rest: string[]) => packCli.runPublishCommand(rest);
+/** Today, from the implementation rather than restated here — a test that
+ *  computed its own UTC date would pass a build whose date logic had drifted,
+ *  which is the one thing it is here to catch. */
+const utcToday = () => packCli.utcToday();
 
 const writeEntry = (body = ENTRY) => {
   const p = join(work, "policies.mjs");
@@ -482,32 +486,53 @@ describe("an upload that fails partway", () => {
   });
 });
 
+// Versions are DATES now, not a count. These used to assert 1.0.0 / 1.0.1 /
+// 1.0.2 and they assert the same PROPERTIES against the new scheme: a first
+// publish gets something usable, a second continues rather than repeats, the
+// comparison is numeric rather than textual, and a tag carrying no sequence
+// seeds nothing. The old numbers are gone because a counter dressed as semver
+// implied a breaking/feature/patch distinction nothing enforced.
 describe("the version, when nobody says what it is", () => {
-  it("starts at 1.0.0 on a repository that has never released", async () => {
+  it("dates a repository that has never released", async () => {
     const r = await publish([writeEntry(), "--repo", "acme/guards"]);
     expect(r.exitCode).toBe(0);
-    expect(r.lines.join("\n")).toMatch(/acme\/guards@1\.0\.0/);
+    expect(r.lines.join("\n")).toContain(`acme/guards@${utcToday()}`);
   });
 
-  it("counts one past the highest already published", async () => {
-    github.releases = [{ tag_name: "1.0.0" }, { tag_name: "v1.0.1" }];
+  it("continues the day's sequence rather than re-minting it", async () => {
+    github.releases = [{ tag_name: utcToday() }];
     const r = await publish([writeEntry(), "--repo", "acme/guards"]);
-    expect(r.lines.join("\n")).toMatch(/@1\.0\.2/);
+    expect(r.lines.join("\n")).toContain(`@${utcToday()}-2`);
   });
 
-  it("compares numerically, not as text", async () => {
-    // The failure this pins: sorting strings puts "1.0.9" after "1.0.10", so a
-    // tenth release would be handed 1.0.10 a second time.
-    github.releases = [{ tag_name: "1.0.9" }, { tag_name: "1.0.10" }];
+  it("compares the ordinal numerically, not as text", async () => {
+    // The same failure the semver version of this test pinned, in the place it
+    // moved to: sorting strings puts "-9" after "-10", so a tenth publish in
+    // one day would be handed -10 a second time.
+    github.releases = [{ tag_name: `${utcToday()}-9` }, { tag_name: `${utcToday()}-10` }];
     const r = await publish([writeEntry(), "--repo", "acme/guards"]);
-    expect(r.lines.join("\n")).toMatch(/@1\.0\.11/);
+    expect(r.lines.join("\n")).toContain(`@${utcToday()}-11`);
   });
 
-  it("ignores releases that are not versions rather than guessing at them", async () => {
-    // A repo whose releases are named `nightly` has no sequence to continue.
-    github.releases = [{ tag_name: "nightly" }, { tag_name: "latest" }];
+  it("ignores releases that carry no sequence rather than guessing at them", async () => {
+    // `nightly` has no sequence to continue — and neither, now, does a semver
+    // history: those releases stay installable by tag forever, they simply do
+    // not seed a date. A pack moving to this scheme starts its own sequence
+    // beside them rather than having them reinterpreted as dates.
+    github.releases = [{ tag_name: "nightly" }, { tag_name: "latest" }, { tag_name: "1.0.1" }];
     const r = await publish([writeEntry(), "--repo", "acme/guards"]);
-    expect(r.lines.join("\n")).toMatch(/@1\.0\.0/);
+    expect(r.lines.join("\n")).toContain(`@${utcToday()}`);
+  });
+
+  it("never goes backwards, however far ahead the published version is", async () => {
+    // Two people publishing one pack from Auckland and Los Angeles disagree
+    // about what day it is. Without the clamp the second mints a version LOWER
+    // than the one already released — and a lower version that is nonetheless
+    // newer is exactly what dating the releases is meant to prevent. The same
+    // clamp covers a machine whose clock is simply wrong.
+    github.releases = [{ tag_name: "2099.01.01" }];
+    const r = await publish([writeEntry(), "--repo", "acme/guards"]);
+    expect(r.lines.join("\n")).toContain("@2099.01.01-2");
   });
 
   it("reads the repository's own releases, not anything local", async () => {

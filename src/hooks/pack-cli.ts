@@ -22,6 +22,7 @@ import {
   checkPackArtifact,
   fetchPackPreview,
   packTagMatchesVersion,
+  parsePackSpec,
   removePack,
   setPackPolicyEnabled,
   slugifyCategory,
@@ -48,9 +49,27 @@ import {
 export interface PackCliResult {
   lines: string[];
   exitCode: number;
+  /**
+   * What a successful `build` produced, for a caller that has to describe it
+   * somewhere other than the terminal — today only `publish`, writing the
+   * release body. Carried on the RESULT rather than recomputed by the caller,
+   * because recomputing means re-deriving `defaultEnabled` from a second copy
+   * of the same rule, and the two copies drift.
+   */
+  meta?: PackBuildMeta;
 }
 
-const ok = (lines: string[]): PackCliResult => ({ lines, exitCode: 0 });
+export interface PackBuildMeta {
+  policies: number;
+  defaultOn: number;
+  commit?: string;
+}
+
+const ok = (lines: string[], meta?: PackBuildMeta): PackCliResult => ({
+  lines,
+  exitCode: 0,
+  ...(meta ? { meta } : {}),
+});
 const fail = (lines: string[]): PackCliResult => ({ lines, exitCode: 1 });
 
 function parseList(rest: string[], flag: string): string[] | undefined {
@@ -249,6 +268,7 @@ async function build(rest: string[]): Promise<PackCliResult> {
   const entry = packAddSource(rest) ?? flag("entry");
   const id = flag("id");
   const version = flag("version");
+  const commit = flag("commit");
   const effect = flag("effect") ?? "enforce";
   const outDir = resolve(flag("out") ?? "dist-pack");
 
@@ -258,9 +278,9 @@ async function build(rest: string[]): Promise<PackCliResult> {
       "       [--out <dir>] [--effect enforce|observe]",
     ]);
   }
-  let identity: { id: string; version: string; effect: PolicyEffect };
+  let identity: { id: string; version: string; effect: PolicyEffect; commit?: string };
   try {
-    identity = parsePackIdentity({ id, version, effect });
+    identity = parsePackIdentity({ id, version, effect, commit });
   } catch (err) {
     return fail([err instanceof Error ? err.message : String(err)]);
   }
@@ -338,9 +358,19 @@ async function build(rest: string[]): Promise<PackCliResult> {
     }
   }
 
+  // `commit` is omitted entirely rather than written as null when there is none.
+  // The manifest is hashed and the hash is the pin, so every byte in here is
+  // part of what a machine verifies — a field carrying "there was nothing to
+  // say" earns none of that cost. Readers already treat absence as ordinary.
   const manifest =
     JSON.stringify(
-      { id: identity.id, version: identity.version, effect: identity.effect, policies },
+      {
+        id: identity.id,
+        version: identity.version,
+        effect: identity.effect,
+        ...(identity.commit ? { commit: identity.commit } : {}),
+        policies,
+      },
       null,
       2,
     ) + "\n";
@@ -365,7 +395,50 @@ async function build(rest: string[]): Promise<PackCliResult> {
     "",
     `Publish: attach all three to a GitHub release tagged ${identity.version}, then anyone runs:`,
     `  failproofai policies add <owner>/<repo>`,
-  ]);
+  ], { policies: policies.length, defaultOn: on, ...(identity.commit ? { commit: identity.commit } : {}) });
+}
+
+/**
+ * The release body, and the format `--releases` reads back out of it.
+ *
+ * Two audiences, one string. A person opening the releases page sees what the
+ * release contains; `policies show --releases` parses the same lines rather
+ * than downloading a manifest per release. Keep them parseable — the reader is
+ * `parseReleaseBody` directly below, and the two have to move together.
+ *
+ * Nothing here is TRUSTED. It is publisher-controlled text on somebody else's
+ * repository, so it decides what a listing displays and never what a machine
+ * installs: the manifest inside the digest-pinned assets remains the only
+ * source for that.
+ */
+export function releaseBody(id: string, version: string, meta?: PackBuildMeta): string {
+  const lines = [`${id}@${version}`];
+  if (meta) {
+    lines.push("", `${meta.policies} policies, ${meta.defaultOn} on by default`);
+    if (meta.commit) lines.push(`commit ${meta.commit}`);
+  }
+  return lines.join("\n") + "\n";
+}
+
+export interface ReleaseBodyFacts {
+  policies?: number;
+  defaultOn?: number;
+  commit?: string;
+}
+
+/** Read back what {@link releaseBody} wrote. Absent facts stay absent — a
+ *  release published before this format, or by hand, simply says less. */
+export function parseReleaseBody(body: string | null | undefined): ReleaseBodyFacts {
+  const text = typeof body === "string" ? body : "";
+  const facts: ReleaseBodyFacts = {};
+  const counts = /(\d+)\s+policies,\s*(\d+)\s+on by default/.exec(text);
+  if (counts) {
+    facts.policies = Number(counts[1]);
+    facts.defaultOn = Number(counts[2]);
+  }
+  const commit = /(?:^|\n)\s*commit\s+([0-9a-f]{7,40})\b/i.exec(text);
+  if (commit) facts.commit = commit[1].toLowerCase();
+  return facts;
 }
 
 /**
@@ -513,7 +586,7 @@ async function scaffold(target: string | null): Promise<PackCliResult> {
   if (!chosen && process.stdin.isTTY && process.stdout.isTTY) {
     const answer = await promptText({
       message: "What is this pack called?",
-      hint: "used for the filename — letters, numbers, dashes",
+      hint: "used for the filename",
       defaultValue: "my-policies",
       validate: (v) =>
         /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(v.trim())
@@ -606,6 +679,44 @@ function inferRepo(entryPath: string): string | null {
  * number cannot. Absent a tag there is nothing here to infer — the version is
  * counted from what the repository has already published instead.
  */
+/**
+ * The commit the policies being published are sitting at.
+ *
+ * Provenance only — it never decides the version and never gates the publish.
+ * A pack published from a directory that is not a git checkout has no commit,
+ * and that is a supported way to publish, so this returns null the same way
+ * `inferRepo` does and every reader treats absence as ordinary.
+ *
+ * Read from the ENTRY FILE's directory rather than the process cwd, for the
+ * reason `inferRepo` gives: a policy that lives in another checkout is normal,
+ * and the answer has to describe the file rather than wherever the shell is.
+ *
+ * Deliberately NOT `--dirty`-aware. A tag-derived VERSION is refused on a dirty
+ * tree because a tag names a commit and uncommitted bytes are not in it; this
+ * is a label saying which commit the tree was near, and refusing to record one
+ * because a README changed would leave the artifact with no provenance at all
+ * — strictly worse than an approximate one. `publishedFrom` in the release body
+ * says `<sha> (dirty)` so the approximation is stated rather than hidden.
+ */
+function inferCommit(entryPath: string): { sha: string; dirty: boolean } | null {
+  const cwd = resolve(entryPath, "..");
+  const git = (args: string[]): string | null => {
+    try {
+      return execFileSync("git", args, {
+        cwd,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 5_000,
+      }).trim();
+    } catch {
+      return null;
+    }
+  };
+  const sha = git(["rev-parse", "HEAD"]);
+  if (!sha || !/^[0-9a-f]{40}$/.test(sha)) return null;
+  return { sha, dirty: Boolean(git(["status", "--porcelain"])) };
+}
+
 function inferTaggedVersion(entryPath: string): string | null {
   const cwd = resolve(entryPath, "..");
   const git = (args: string[]): string | null => {
@@ -681,21 +792,131 @@ function findEntry(dir: string): string[] {
 /**
  * The version after whatever this repository has already published.
  *
- * A commit SHA names exactly where bytes came from and tells a reader nothing
- * else: it does not order, so `a1b2c3d` and `f9e8d7c` give no clue which came
- * first, and nobody can say "I am on the older one". Counting instead — 1.0.0,
- * then 1.0.1 — costs one API call and answers both.
+ * DATES, not a counter. `1.0.1 → 1.0.2` is a counter wearing semver's clothes:
+ * it implies a breaking/feature/patch distinction that nothing enforces and
+ * that nobody actually made, so the number carries a claim it cannot support.
+ * A date carries one that is true.
+ *
+ * Not the commit SHA either, which is the other obvious answer and the wrong
+ * one. A SHA names exactly where bytes came from and tells a reader nothing
+ * else: it does not ORDER, so `a1b2c3d` and `f9e8d7c` give no clue which came
+ * first, and every local question — am I behind? is this newer? — stops being
+ * answerable without a network call, on surfaces that deliberately work
+ * offline. The commit is recorded beside the version instead (`inferCommit`),
+ * where it answers provenance without being asked to answer sequence too.
  *
  * Reads the repository's own releases rather than anything local, because the
  * releases ARE the published record: a machine that has never published from
- * this checkout still computes the right next number, and two people publishing
- * from different clones cannot both mint 1.0.1 without one of them seeing the
- * other's release first.
+ * this checkout still computes the right next version, and two people
+ * publishing from different clones cannot both mint the same one without one of
+ * them seeing the other's release first.
  *
- * Non-semver tags are ignored rather than parsed heroically — a repo whose
+ * Non-sequence tags are ignored rather than parsed heroically — a repo whose
  * releases are named `nightly` has no sequence to continue, and starting a
- * fresh count is more honest than inventing one.
+ * fresh count is more honest than inventing one. The same applies to a repo
+ * whose history is SEMVER: those releases stay installable by tag forever, they
+ * simply do not seed a date, so the first calendar publish starts its own
+ * sequence beside them rather than reinterpreting them.
  */
+export interface CalendarVersion {
+  /** `YYYY.MM.DD`, zero-padded so a lexical sort is a chronological one. */
+  date: string;
+  /** 1 for the first publish of that day, which carries no suffix. */
+  ordinal: number;
+}
+
+/** `2026.08.26` / `2026.08.26-2`, or null for anything that is not one. */
+export function parseCalendarVersion(tag: string): CalendarVersion | null {
+  const m = /^v?((\d{4})\.(\d{2})\.(\d{2}))(?:-(\d+))?$/.exec(tag.trim());
+  if (!m) return null;
+  // Date-SHAPED is not the same as a date. `2026.88.26` — one fat-fingered
+  // hand-tag — used to read as a perfectly good version, and then outranked
+  // every real date for the rest of that year: the clamp below pins each later
+  // publish onto it, so a repo mints `2026.88.26-2`, `-3`, … forever and never
+  // returns to real days. That is the same failure the "junk seeds nothing"
+  // rule already covers for `nightly`, so an impossible day is junk too —
+  // refused here, it orders nothing and the next publish starts from today.
+  const [year, month, day] = [Number(m[2]), Number(m[3]), Number(m[4])];
+  const asDate = new Date(Date.UTC(year, month - 1, day));
+  if (
+    asDate.getUTCFullYear() !== year ||
+    asDate.getUTCMonth() + 1 !== month ||
+    asDate.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  if (m[5] === undefined) return { date: m[1], ordinal: 1 };
+  const ordinal = Number(m[5]);
+  // `-0` and `-1` are refused rather than normalised: the first publish of a day
+  // has NO suffix, so either spelling is a second name for a version that
+  // already exists, and two names for one version is the ambiguity this whole
+  // scheme exists to avoid. A leading zero (`-02`) is NOT refused with them,
+  // deliberately: it names a version that exists under no other spelling, so
+  // ignoring it would mint beneath a published release — the one outcome the
+  // clamp exists to prevent — while reading it as 2 continues above it.
+  //
+  // Past the safe-integer range `Number` stops being able to hold the digits it
+  // was given, and both ways it fails are silent. `-9007199254740993` rounds,
+  // so the parse would claim a version whose text is not the tag's; anything
+  // bigger renders back out of `formatCalendarVersion` in exponential form
+  // (`2026.08.26-1e+23`), which no parser reads again — leaving the next
+  // publish seeing no sequence at all, restarting at `-2`, and creating a
+  // release it has already created. Refused, such a tag orders nothing and the
+  // real sequence beside it keeps counting. The top of the safe range is still
+  // a version that cannot be counted past; nine quadrillion publishes in one
+  // day is not a case anyone reaches.
+  if (ordinal < 2 || !Number.isSafeInteger(ordinal)) return null;
+  return { date: m[1], ordinal };
+}
+
+/** The rendered form. The first of a day is bare; later ones carry `-N`. */
+export function formatCalendarVersion(v: CalendarVersion): string {
+  return v.ordinal <= 1 ? v.date : `${v.date}-${v.ordinal}`;
+}
+
+/** Today, in UTC. Split out so a test can pin the day without pinning a clock. */
+export function utcToday(now: Date = new Date()): string {
+  return [
+    now.getUTCFullYear(),
+    String(now.getUTCMonth() + 1).padStart(2, "0"),
+    String(now.getUTCDate()).padStart(2, "0"),
+  ].join(".");
+}
+
+/**
+ * The next version, given today and what the repository has already published.
+ *
+ * UTC, not local time, and then clamped so it can never go BACKWARDS. Those are
+ * the same defect seen from two sides: two people publishing the same pack from
+ * Auckland and Los Angeles disagree about what day it is by up to a full date,
+ * so a local-time counter lets the second publisher mint a version lower than
+ * the one already released — and a lower version that is nonetheless newer is
+ * exactly the thing calendar versioning is chosen to prevent. UTC shrinks the
+ * disagreement to nothing; the clamp covers the rest, including a machine whose
+ * clock is simply wrong.
+ *
+ * Pure, so the interesting cases are tested without a fake clock.
+ */
+export function nextCalendarVersion(existingTags: string[], today: string): string {
+  let highest: CalendarVersion | null = null;
+  for (const tag of existingTags) {
+    const parsed = parseCalendarVersion(tag);
+    if (!parsed) continue;
+    if (
+      !highest ||
+      parsed.date > highest.date ||
+      (parsed.date === highest.date && parsed.ordinal > highest.ordinal)
+    ) {
+      highest = parsed;
+    }
+  }
+  if (!highest) return today;
+  // Already published today, or published from a zone or a clock ahead of this
+  // one: continue THAT day's sequence rather than restarting it.
+  if (highest.date >= today) return formatCalendarVersion({ date: highest.date, ordinal: highest.ordinal + 1 });
+  return today;
+}
+
 async function nextVersion(owner: string, name: string, token: string): Promise<string> {
   const res = await gh(`${GITHUB_API}/repos/${owner}/${name}/releases?per_page=100`, token);
   const tags = Array.isArray(res.json)
@@ -703,21 +924,7 @@ async function nextVersion(owner: string, name: string, token: string): Promise<
         .map((r) => (typeof r.tag_name === "string" ? r.tag_name : ""))
         .filter(Boolean)
     : [];
-  let best: [number, number, number] | null = null;
-  for (const tag of tags) {
-    const m = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(tag.trim());
-    if (!m) continue;
-    const parsed: [number, number, number] = [Number(m[1]), Number(m[2]), Number(m[3])];
-    if (
-      !best ||
-      parsed[0] > best[0] ||
-      (parsed[0] === best[0] && parsed[1] > best[1]) ||
-      (parsed[0] === best[0] && parsed[1] === best[1] && parsed[2] > best[2])
-    ) {
-      best = parsed;
-    }
-  }
-  return best ? `${best[0]}.${best[1]}.${best[2] + 1}` : "1.0.0";
+  return nextCalendarVersion(tags, utcToday());
 }
 
 /**
@@ -990,6 +1197,7 @@ function bundleEntry(
  */
 const PUBLISH_VALUE_FLAGS = new Set([
   "--repo", "--version", "--id", "--tag", "--notes", "--out", "--effect", "--entry", "--init",
+  "--commit",
 ]);
 function publishEntryArg(rest: string[]): string | undefined {
   const consumed = new Set<number>();
@@ -1000,6 +1208,19 @@ function publishEntryArg(rest: string[]): string | undefined {
 }
 
 // ── publish ───────────────────────────────────────────────────────────────
+
+/**
+ * The three attachments a release needs before anybody can install it. One list,
+ * because `publish` uploads exactly these and `--releases` marks a release
+ * `incomplete` for missing any of them — two hand-written copies of the same
+ * three names would let the listing call a release installable that the
+ * installer then 404s on.
+ */
+const INSTALLABLE_PACK_ASSETS: readonly string[] = [
+  PACK_MANIFEST_ASSET,
+  PACK_ENTRY_ASSET,
+  PACK_CHECKSUMS_ASSET,
+];
 
 const GITHUB_API = process.env.FAILPROOFAI_GITHUB_API ?? "https://api.github.com";
 const GITHUB_UPLOADS = process.env.FAILPROOFAI_GITHUB_UPLOADS ?? "https://uploads.github.com";
@@ -1034,15 +1255,22 @@ function githubToken(): string | null {
   }
 }
 
+/**
+ * `token` is nullable because ONE caller has no credential to offer: listing a
+ * public repository's releases is a read anybody can do, and requiring
+ * `gh auth login` to look at what a pack has published would be a worse answer
+ * than the 60-per-hour anonymous rate limit. Every WRITE still passes a token —
+ * they are unreachable without one, since `publish` fails before it gets here.
+ */
 async function gh(
   url: string,
-  token: string,
+  token: string | null,
   init: { method?: string; body?: BodyInit; contentType?: string } = {},
 ): Promise<{ status: number; json: Record<string, unknown> | null; text: string }> {
   const response = await fetch(url, {
     method: init.method ?? "GET",
     headers: {
-      Authorization: `Bearer ${token}`,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
       "User-Agent": "failproofai",
@@ -1112,12 +1340,16 @@ async function askWhereToPublish(
   io: { stdin: TTYIn; stdout: TTYOut },
 ): Promise<string | null> {
   const answer = await promptText({
-    // The suggestion goes in the HINT, not just in `defaultValue`: the hint is
-    // what renders as the placeholder, while `defaultValue` is only applied on
-    // an empty submit and is never shown. Passing it as the default alone left
-    // the one keystroke that finishes this prompt — return — invisible.
+    // The suggestion is NOT repeated in the hint. `promptText` renders a
+    // `defaultValue` as `↵ <value>` ahead of whatever hint it is given, so
+    // spelling it here too printed it twice — and the half that says which key
+    // takes it belongs to every prompt with a default, not to this one.
     message: "Where should this publish?",
-    hint: `${suggestion}  ·  created if it does not exist`,
+    // Kept short deliberately: `promptText` truncates to ONE physical row, and
+    // the whole line is the message plus `↵ <owner>/<repo>` plus this. At 80
+    // columns the longer spelling — "created if it does not exist" — pushed
+    // itself off the end, so the fact was written and never read.
+    hint: "created if missing",
     defaultValue: suggestion,
     validate: (v) => {
       const t = v.trim();
@@ -1268,10 +1500,14 @@ async function publish(rest: string[]): Promise<PackCliResult> {
       versionCounted = true;
     }
   }
-  // A dry run has nothing to count against, so it reports the first version. It
-  // says so rather than implying the number is settled.
+  // A dry run never asks the repository what it has published, so it reports
+  // TODAY rather than a settled number — which is also what a first publish
+  // would get. It says the number is provisional rather than implying it is
+  // decided. (Hardcoding `1.0.0` here was right while versions were counted
+  // and became a lie the moment they became dates: it named a version the real
+  // publish would never have chosen.)
   if (!version) {
-    version = "1.0.0";
+    version = utcToday();
     versionCounted = true;
   }
 
@@ -1295,7 +1531,19 @@ async function publish(rest: string[]): Promise<PackCliResult> {
     entryToBuild = bundled.path;
   }
 
-  const built = await build([entryToBuild, "--id", id, "--version", version, ...outFlagFrom(rest), ...effectFlagFrom(rest)]);
+  // Read from the SOURCE entry, never from the bundled one: `bundleEntry` writes
+  // its output into `dist-pack/`, which is gitignored in every pack this tool
+  // scaffolds, so asking git about that path answers about the wrong tree or
+  // about no tree at all.
+  const provenance = inferCommit(entry);
+  const built = await build([
+    entryToBuild,
+    "--id", id,
+    "--version", version,
+    ...(provenance ? ["--commit", provenance.sha] : []),
+    ...outFlagFrom(rest),
+    ...effectFlagFrom(rest),
+  ]);
   if (built.exitCode !== 0) return built;
 
   const outDir = outDirEarly;
@@ -1356,7 +1604,15 @@ async function publish(rest: string[]): Promise<PackCliResult> {
       body: JSON.stringify({
         tag_name: tag,
         name: `${id} ${version}`,
-        body: flag("notes") ?? `${id}@${version}`,
+        // The body is what `policies show --releases` reads. Putting the counts
+        // and the commit HERE rather than in the manifest is what makes that
+        // command ONE request: the release list returns bodies inline, while
+        // the counts otherwise cost a manifest download per release and scale
+        // with history. It doubles as what a human sees on the releases page,
+        // which is the second reason to write it rather than a marker nobody
+        // reads. `--notes` still wins outright — an author who wrote release
+        // notes gets their release notes.
+        body: flag("notes") ?? releaseBody(id, version, built.meta),
         // A prerelease is invisible to `releases/latest`, which is how a tagless
         // `policies add owner/repo` resolves a version — so publishing one would
         // make the pack installable only by people who already knew its tag.
@@ -1370,7 +1626,7 @@ async function publish(rest: string[]): Promise<PackCliResult> {
     releaseId = created.json.id;
   }
 
-  const assets = [PACK_MANIFEST_ASSET, PACK_ENTRY_ASSET, PACK_CHECKSUMS_ASSET];
+  const assets = INSTALLABLE_PACK_ASSETS;
   const uploaded: string[] = [];
   const listed = await gh(`${GITHUB_API}/repos/${owner}/${name}/releases/${releaseId}/assets?per_page=100`, auth);
   const already = Array.isArray(listed.json)
@@ -1649,6 +1905,179 @@ function remove(rest: string[]): PackCliResult {
  * downloading or importing the entry artifact, so looking at a stranger's pack
  * cannot run a stranger's code.
  */
+/**
+ * `failproofai policies show <owner>/<repo> --releases` — every release a pack
+ * has published, and which one is on this machine.
+ *
+ * ONE request. The obvious implementation downloads each release's manifest to
+ * count its policies, which costs a request per release and gets slower the
+ * longer a pack has existed; instead `publish` writes those counts into the
+ * release BODY, and `GET /releases` returns bodies inline. See `releaseBody`.
+ *
+ * A LISTING, and never an install path. Installs construct their URLs from
+ * owner/repo/tag and discover nothing, which is what leaves no index to poison
+ * — this reads the API because "what else is there?" is a question that has no
+ * answer without one, and the worst a wrong answer here can do is print a row.
+ * Nothing on this screen is trusted: the counts and the commit are
+ * publisher-controlled text, shown as claims, while what a machine actually
+ * installs still comes from the digest-pinned manifest.
+ */
+async function listReleases(source: string): Promise<PackCliResult> {
+  const opts = optsFor(process.stdout);
+  let spec;
+  try {
+    spec = parsePackSpec(source);
+  } catch (err) {
+    return fail([err instanceof Error ? err.message : String(err)]);
+  }
+
+  // Best-effort: a token raises the rate limit from 60/hour to 5000 and lets a
+  // private repo answer at all. Its absence is not an error.
+  const res = await gh(
+    `${GITHUB_API}/repos/${spec.owner}/${spec.repo}/releases?per_page=100`,
+    githubToken(),
+  );
+  if (res.status === 404) {
+    return fail([
+      `No repository at ${spec.owner}/${spec.repo}, or it is private and this machine has no credential for it.`,
+      "A pack has to be public to install anyway — installs are anonymous HTTPS with no credential to offer.",
+    ]);
+  }
+  if (res.status === 403 && /rate limit/i.test(res.text)) {
+    return fail([
+      "GitHub rate-limited this listing.",
+      "Sign in once with `gh auth login` (or set GITHUB_TOKEN) to raise the limit from 60 requests an hour to 5000.",
+    ]);
+  }
+  if (res.status >= 400 || !Array.isArray(res.json)) {
+    return fail([`Could not list releases for ${spec.owner}/${spec.repo}: ${ghError(res)}`]);
+  }
+
+  const releases = res.json as unknown as Array<{
+    tag_name?: unknown; body?: unknown; published_at?: unknown; created_at?: unknown;
+    prerelease?: unknown; draft?: unknown; assets?: unknown;
+  }>;
+  if (releases.length === 0) {
+    return ok(
+      stack(
+        title(`${spec.owner}/${spec.repo}`, "no releases", opts),
+        emptyState(
+          {
+            what: "This repository has published no releases, so there is nothing to install.",
+            hint: "Its author publishes one with:",
+            cmd: "failproofai publish",
+          },
+          opts,
+        ),
+      ),
+    );
+  }
+
+  // Which of them is on THIS machine — the question somebody runs this to
+  // answer. Read by pack id rather than by source string: a pack installed as
+  // `github:o/r@v1` and one installed from the URL are the same pack, and
+  // comparing the spellings would say they are not.
+  const installedVersions = new Map<string, string>();
+  try {
+    for (const pack of readInstalledPacks().packs) installedVersions.set(pack.id.toLowerCase(), pack.version);
+  } catch {
+    /* an unreadable manifest costs the marker, not the listing */
+  }
+  const here = installedVersions.get(`${spec.owner}/${spec.repo}`.toLowerCase());
+
+  const rows: Array<string[] | { section: string }> = [];
+  // The newest INSTALLABLE tag for the hint below, picked in this same pass —
+  // GitHub returns releases newest-first. It used to be a second `find` over the
+  // raw list, which disagreed with the loop twice: a release whose `tag_name`
+  // was an empty string is skipped below but passed that `typeof === "string"`
+  // test, so the hint read `policies add owner/repo@`, and a release carrying
+  // none of the three assets was offered as the thing to install.
+  let newest: string | undefined;
+  for (const release of releases) {
+    const tag = typeof release.tag_name === "string" ? release.tag_name : "";
+    if (!tag) continue;
+    const facts = parseReleaseBody(typeof release.body === "string" ? release.body : "");
+    const when = typeof release.published_at === "string" ? release.published_at
+      : typeof release.created_at === "string" ? release.created_at
+        : "";
+    // By NAME, not by count. Counting said "three attachments" where the claim
+    // is "these three attachments", so any repository that ships three binaries
+    // per release — most of them — read as installable, and one that attaches
+    // nothing at all read as fine. Both then sent somebody to an install that
+    // 404s on an asset that was never there.
+    const attached = Array.isArray(release.assets)
+      ? new Set(
+        (release.assets as Array<{ name?: unknown }>)
+          .map((a) => (a && typeof a.name === "string" ? a.name : ""))
+          .filter(Boolean),
+      )
+      : new Set<string>();
+    const installable = INSTALLABLE_PACK_ASSETS.every((name) => attached.has(name));
+    const flags = [
+      release.draft === true ? "draft" : "",
+      release.prerelease === true ? "prerelease" : "",
+      installable ? "" : "incomplete",
+      here && packTagMatchesVersion(tag, here) ? "installed" : "",
+    ].filter(Boolean).join(" · ");
+    if (newest === undefined && installable && release.draft !== true) newest = tag;
+    rows.push([
+      tag,
+      when ? relativeAge(when) : "—",
+      facts.commit ? facts.commit.slice(0, 7) : "—",
+      facts.policies === undefined ? "—" : String(facts.policies),
+      facts.defaultOn === undefined ? "—" : String(facts.defaultOn),
+      flags,
+    ]);
+  }
+  return ok(
+    stack(
+      title(`${spec.owner}/${spec.repo}`, `${rows.length} release${rows.length === 1 ? "" : "s"}`, opts),
+      table(
+        { head: ["version", "published", "commit", "policies", "default", ""], rows },
+        opts,
+      ),
+      // `—` is load-bearing: it means "this release did not say", which is what
+      // a release published before this format did, and what anybody else's
+      // hand-made release does. Filling those in would cost a manifest download
+      // each, and a listing that silently costs a hundred downloads is worse
+      // than one with gaps in it.
+      note("— means the release did not record it.", opts),
+      nextStep(
+        `failproofai policies add ${spec.owner}/${spec.repo}@${newest ?? "<tag>"}`,
+        "Install a particular one with:",
+        opts,
+      ),
+    ),
+  );
+}
+
+/** `2 hours ago`, `6 days ago`. Coarse on purpose — the question is "how stale",
+ *  and a timestamp to the second answers a question nobody asked. */
+function relativeAge(iso: string): string {
+  const then = Date.parse(iso);
+  if (!Number.isFinite(then)) return "—";
+  const seconds = Math.max(0, Math.round((Date.now() - then) / 1000));
+  // Each pair is "divide by this, and the result is measured in THAT" — so the
+  // label belongs to the unit arrived at, never the one left behind. Written
+  // the other way round it was off by a whole unit across the entire range: a
+  // release from yesterday read `1 hour ago`, one from six months ago read
+  // `5 weeks ago`, and 90 seconds read `just now`. The column exists to answer
+  // "how stale is this pack", so an answer two units too fresh is worse than no
+  // column at all.
+  const units: Array<[number, string]> = [
+    [60, "minute"], [60, "hour"], [24, "day"], [7, "week"], [4.35, "month"], [12, "year"],
+  ];
+  let value = seconds;
+  let label = "second";
+  for (const [size, next] of units) {
+    if (value < size) break;
+    value = Math.floor(value / size);
+    label = next;
+  }
+  if (label === "second" && value < 60) return value < 10 ? "just now" : `${value} seconds ago`;
+  return `${value} ${label}${value === 1 ? "" : "s"} ago`;
+}
+
 async function listRemote(source: string): Promise<PackCliResult> {
   const opts = optsFor(process.stdout);
   let preview;
@@ -1836,8 +2265,19 @@ export async function runPackCommand(argv: string[]): Promise<PackCliResult> {
     case "list":
     case undefined: {
       // `pack list` is what is installed here; `pack list <source>` is what a
-      // pack out there contains.
+      // pack out there contains; `--releases` is what it has published over
+      // time. All three are "show me", which is why they are one word with a
+      // flag rather than a third subcommand nobody would find.
       const source = packAddSource(rest);
+      if (rest.includes("--releases")) {
+        if (!source) {
+          return fail([
+            "Usage: failproofai policies show <owner>/<repo> --releases",
+            "`--releases` reports what a pack out there has published; run `failproofai policies` for what is installed here.",
+          ]);
+        }
+        return listReleases(source);
+      }
       return source ? listRemote(source) : list();
     }
     default:

@@ -13,7 +13,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { runPublishCommand } from "@/src/hooks/pack-cli";
+import { runPublishCommand, utcToday } from "@/src/hooks/pack-cli";
 
 let work: string;
 let prevCwd: string;
@@ -301,14 +301,17 @@ describe("taking the version from a tag", () => {
     git("tag", "v2.1.0");
     writeFileSync(join(work, "p.mjs"), policy("alpha") + "\n// edited\n");
     await runPublishCommand(["--dry-run"]);
-    // Falls through to the counted version rather than the stale tag.
-    expect(manifest().version).toBe("1.0.0");
+    // Falls through to the dated version rather than the stale tag. Asserted
+    // both ways round: the point is that the TAG was refused, and a version
+    // that merely differs from "v2.1.0" could still be a second bug.
+    expect(manifest().version).not.toBe("v2.1.0");
+    expect(manifest().version).toBe(utcToday());
   });
 
   it("ignores a tag that is not a usable version", async () => {
     git("tag", "nightly/2026-08-25");
     await runPublishCommand(["--dry-run"]);
-    expect(manifest().version).toBe("1.0.0");
+    expect(manifest().version).toBe(utcToday());
   });
 
   it("lets an explicit --version win over everything", async () => {

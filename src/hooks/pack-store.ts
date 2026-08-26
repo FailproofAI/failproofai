@@ -17,10 +17,15 @@
  *
  * Asset URLs are CONSTRUCTED from an owner, repo and concrete tag. When the
  * user omits a tag, one `releases/latest` redirect resolves it before any asset
- * is fetched or written. There is no API lookup or rate-limit dependency, and
- * the installed record always names the pinned result — which has to AGREE with
- * the version that pack's manifest declares, or nothing is installed at all
+ * is fetched or written. There is no index to poison, and the installed record
+ * always names the pinned result — which has to AGREE with the version that
+ * pack's manifest declares, or nothing is installed at all
  * (`packTagMatchesVersion`).
+ *
+ * `resolveTagForCommit` is the ONE exception, and it is opt-in: typing
+ * `owner/repo@a1b2c3d` asks a question no URL can answer, so that path — and no
+ * other — reads the releases API. It chooses WHICH release; every verification
+ * below runs on the result exactly as it would on a typed tag.
  *
  * ## Never on the hook path
  *
@@ -30,7 +35,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { packsRoot, parsePackIdentity, parsePackPolicy, readInstalledPacks } from "./pack-manifest";
+import { PACK_COMMIT_RE, packsRoot, parsePackIdentity, parsePackPolicy, readInstalledPacks } from "./pack-manifest";
 import type { ResolvedPack } from "./pack-manifest";
 import type { InstalledPackRecord } from "./pack-manifest";
 import type { PolicyCatalogEntry } from "./policy-types";
@@ -211,6 +216,132 @@ export async function resolveLatestTag(spec: PackSpec): Promise<string> {
 }
 
 /**
+ * The GitHub API, for the ONE lookup on this whole path that needs one.
+ *
+ * Read per call rather than captured at import, the way `baseUrl()` above is:
+ * the value has to be settable by a test that points it at a local server, and
+ * a module-level const would freeze whatever the environment happened to hold
+ * when this file was first imported.
+ */
+function githubApiBase(): string {
+  return (process.env.FAILPROOFAI_GITHUB_API ?? "https://api.github.com").replace(/\/+$/, "");
+}
+
+/**
+ * The release tag published from a given git commit, or null when no release
+ * claims it.
+ *
+ * ## Why this is the only API call in the install path
+ *
+ * Everything else here CONSTRUCTS its URLs from owner, repo and tag and
+ * discovers nothing — that is what leaves no index to poison, and it must stay
+ * true for everybody who did not opt in. A commit is the one spelling that
+ * cannot be turned into a URL, because the mapping from commit to tag exists
+ * only on the server. So this runs when, and only when, the user typed a hex
+ * string after the `@` themselves.
+ *
+ * ## What the answer is allowed to decide
+ *
+ * WHICH release, and nothing else. The release body is publisher-controlled
+ * text on somebody else's repository and can say anything, so it selects a tag
+ * and then every downstream check — SHA256SUMS, the digest pin recorded in
+ * `installed.json`, `packTagMatchesVersion` — runs exactly as it would for a
+ * typed tag. A body that lies picks the wrong release; it cannot make an
+ * unverified artifact install.
+ *
+ * ## Ambiguity is a refusal, not a guess
+ *
+ * A 7-character prefix colliding across two releases is precisely why git
+ * itself refuses to resolve one, and picking either would install code the user
+ * did not ask for while reporting success. The matching tags and their full
+ * commits go in the message so the next command can be typed from it.
+ */
+export async function resolveTagForCommit(spec: PackSpec, commit: string): Promise<string | null> {
+  const prefix = commit.toLowerCase();
+  const url = `${githubApiBase()}/repos/${spec.owner}/${spec.repo}/releases?per_page=100`;
+  let payload: unknown;
+  try {
+    // No credential is required — a pack has to be public to install at all,
+    // since installs are anonymous HTTPS. A token is taken when one happens to
+    // be in the environment purely for the rate limit (60/hour → 5000).
+    const token = (process.env.GITHUB_TOKEN || process.env.GH_TOKEN || "").trim();
+    const response = await fetch(url, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "failproofai",
+      },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      redirect: "follow",
+    });
+    if (!response.ok) throw new Error(`GET ${url} returned ${response.status}`);
+    payload = await response.json();
+  } catch (err) {
+    // Deliberately NOT a fall-through to "treat it as a literal tag". A lookup
+    // that could not run has established nothing — the fall-through would then
+    // 404 on an asset URL built from a commit, and report a missing SHA256SUMS
+    // for a release nobody ever claimed existed. Name the thing that failed.
+    throw new Error(
+      `could not resolve commit ${commit} in ${spec.owner}/${spec.repo}: ${errText(err)}. ` +
+        `Name the release tag instead if you know it.`,
+    );
+  }
+
+  // Imported here rather than at the top of the file: `pack-cli` imports this
+  // module, so a static import would close a cycle for the sake of one format
+  // reader. The reader has to be the SAME one `publish` writes with, or the two
+  // drift silently and a listing and an install disagree about the same body.
+  const { parseReleaseBody } = await import("./pack-cli");
+  const releases = Array.isArray(payload)
+    ? (payload as Array<{ tag_name?: unknown; body?: unknown }>)
+    : [];
+  const matches: Array<{ tag: string; commit: string }> = [];
+  for (const release of releases) {
+    const tag = typeof release.tag_name === "string" ? release.tag_name : "";
+    // A tag from the API becomes part of an asset URL, so it passes the same
+    // check a typed one does rather than being trusted for having come back
+    // over HTTPS.
+    if (!tag || !TAG_RE.test(tag)) continue;
+    const facts = parseReleaseBody(typeof release.body === "string" ? release.body : "");
+    // The typed string is a PREFIX of the recorded commit, which is the
+    // direction git works in and therefore the one a person copying out of
+    // `git log` will have.
+    if (facts.commit && facts.commit.startsWith(prefix)) matches.push({ tag, commit: facts.commit });
+  }
+
+  if (matches.length > 1) {
+    throw new Error(
+      `commit ${commit} matches ${matches.length} releases of ${spec.owner}/${spec.repo}: ` +
+        matches.map((m) => `${m.tag} (${m.commit})`).join(", ") +
+        `. Name one of those tags, or type more of the commit.`,
+    );
+  }
+  return matches.length === 1 ? matches[0].tag : null;
+}
+
+/**
+ * The concrete tag to install, from whatever the user typed after the `@`.
+ *
+ * Three shapes, in the order they are tried:
+ *
+ *  - nothing — resolved from `releases/latest`, as it always was;
+ *  - a hex string — looked up as a COMMIT first, because typing one is how a
+ *    person asks for that; and
+ *  - anything else — taken literally.
+ *
+ * A hex string that matches no release falls back to being a literal tag. A
+ * repository may genuinely have a tag named `abc1234`, and refusing to install
+ * a tag that exists because it also looks like a commit would be a regression
+ * for somebody who never asked for commit resolution at all.
+ */
+export async function resolveSpecTag(parsed: PackSpec): Promise<string> {
+  if (parsed.tag === null) return resolveLatestTag(parsed);
+  if (!PACK_COMMIT_RE.test(parsed.tag)) return parsed.tag;
+  return (await resolveTagForCommit(parsed, parsed.tag)) ?? parsed.tag;
+}
+
+/**
  * The canonical spelling recorded in `installed.json`.
  *
  * Always carries the CONCRETE tag, never the tagless form the user may have
@@ -324,6 +455,8 @@ interface FetchedPack {
   version: string;
   policies: PolicyCatalogEntry[];
   effect?: PolicyEffect;
+  /** The git commit the publisher built this from, when they had one. */
+  commit?: string;
   artifact: Buffer;
   artifactDigest: string;
 }
@@ -395,6 +528,8 @@ export interface PackPreview {
   id: string;
   version: string;
   effect: PolicyEffect;
+  /** The git commit the publisher built this from, when they had one. */
+  commit?: string;
   policies: PolicyCatalogEntry[];
   /** The exact source the preview was read from, tag resolved and pinned. */
   source: string;
@@ -421,10 +556,7 @@ export async function fetchPackPreview(source: string): Promise<PackPreview> {
   }
   const parsed = parsePackSpec(source);
   const resolvedFromLatest = parsed.tag === null;
-  const spec: PinnedPackSpec =
-    parsed.tag !== null
-      ? { ...parsed, tag: parsed.tag }
-      : { ...parsed, tag: await resolveLatestTag(parsed) };
+  const spec: PinnedPackSpec = { ...parsed, tag: await resolveSpecTag(parsed) };
 
   const checksums = (await fetchBytes(packAssetUrl(spec, PACK_CHECKSUMS_ASSET))).toString("utf8");
   const manifestBytes = await fetchBytes(packAssetUrl(spec, PACK_MANIFEST_ASSET));
@@ -443,7 +575,9 @@ export async function fetchPackPreview(source: string): Promise<PackPreview> {
     throw new Error(`${PACK_MANIFEST_ASSET} is not valid JSON: ${errText(err)}`);
   }
   if (!raw || typeof raw !== "object") throw new Error(`${PACK_MANIFEST_ASSET} is not an object`);
-  const value = raw as { id?: unknown; version?: unknown; policies?: unknown; effect?: unknown };
+  const value = raw as {
+    id?: unknown; version?: unknown; policies?: unknown; effect?: unknown; commit?: unknown;
+  };
   const identity = parsePackIdentity(value);
   if (!Array.isArray(value.policies) || value.policies.length === 0) {
     throw new Error("pack manifest declares no policies");
@@ -452,6 +586,7 @@ export async function fetchPackPreview(source: string): Promise<PackPreview> {
     id: identity.id,
     version: identity.version,
     effect: identity.effect,
+    ...(identity.commit ? { commit: identity.commit } : {}),
     policies: value.policies.map((policy, i) => parsePackPolicy(identity.id, policy, i)),
     source: formatPackSpec(spec),
     resolvedFromLatest,
@@ -498,7 +633,9 @@ async function fetchPack(spec: PinnedPackSpec): Promise<FetchedPack> {
     throw new Error(`${PACK_MANIFEST_ASSET} is not valid JSON: ${errText(err)}`);
   }
   if (!parsed || typeof parsed !== "object") throw new Error(`${PACK_MANIFEST_ASSET} is not an object`);
-  const raw = parsed as { id?: unknown; version?: unknown; policies?: unknown; effect?: unknown };
+  const raw = parsed as {
+    id?: unknown; version?: unknown; policies?: unknown; effect?: unknown; commit?: unknown;
+  };
   const identity = parsePackIdentity(raw);
   if (!Array.isArray(raw.policies) || raw.policies.length === 0) {
     throw new Error("pack manifest declares no policies");
@@ -513,6 +650,7 @@ async function fetchPack(spec: PinnedPackSpec): Promise<FetchedPack> {
     version: identity.version,
     policies,
     ...(raw.effect !== undefined ? { effect: identity.effect } : {}),
+    ...(identity.commit ? { commit: identity.commit } : {}),
     artifact,
     artifactDigest,
   };
@@ -669,9 +807,7 @@ export async function addPack(
   // Resolve BEFORE anything is written, and pin the concrete result. A tagless
   // source is a convenience for the person typing; what the machine records must
   // always name one release.
-  const spec: PinnedPackSpec = parsed.tag
-    ? { ...parsed, tag: parsed.tag }
-    : { ...parsed, tag: await resolveLatestTag(parsed) };
+  const spec: PinnedPackSpec = { ...parsed, tag: await resolveSpecTag(parsed) };
   const resolvedFromLatest = parsed.tag === null;
   const fetched = await fetchPack(spec);
   // Checked here, before a byte is written and before the artifact is imported,
@@ -753,6 +889,10 @@ export async function addPack(
     entry: artifactRel,
     sha256: fetched.artifactDigest,
     policies: fetched.policies,
+    // Provenance, carried through from the manifest so `policies` and the
+    // dashboard can say which source produced what is installed. NOT part of
+    // verification — `sha256` above is the pin, and this is a label beside it.
+    ...(fetched.commit ? { commit: fetched.commit } : {}),
     ...(fetched.effect ? { effect: fetched.effect } : {}),
     ...(enabled ? { enabled } : {}),
     // Omitted, not written as the full list, when the user did not narrow it.

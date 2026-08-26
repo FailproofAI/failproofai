@@ -133,45 +133,49 @@ afterEach(() => {
 
 const text = (r: { lines: string[] }) => r.lines.join("\n");
 
-describe("the short name for our own policies", () => {
-  // `failproofai policies add FailproofAI/policies` is the honest form and
-  // nobody types it, so `core` is the short spelling of exactly that source. It
-  // is FETCHED — the package carries no copy any more — which is why these
-  // tests stand up a release server rather than pointing at a directory.
-  it.each(["core", "failproofai", "official"])("takes `%s` as the source", async (alias) => {
-    const r = await runPackCommand(["add", alias]);
-    expect(r.exitCode).toBe(0);
-    expect(text(r)).toMatch(/Installed failproofai\/core@/);
-  });
+describe("our own policies, named the way anyone else's are", () => {
+  // There is no short name. `core` used to be one and was retired: a spelling
+  // only WE can type makes our policies read as part of the tool rather than as
+  // one pack among many, which is the distinction this surface exists to
+  // remove. Ours is FETCHED like everyone's — which is why these tests stand up
+  // a release server rather than pointing at a directory.
+  it.each(["core", "failproofai", "official"])(
+    "refuses `%s`, and names what to type instead",
+    async (retired) => {
+      const r = await runPackCommand(["add", retired]);
+      expect(r.exitCode).not.toBe(0);
+      expect(text(r)).toMatch(/FailproofAI\/policies/);
+    },
+  );
 
   it("takes one policy by name, and does not read the flag's value as the source", async () => {
-    const r = await runPackCommand(["add", "core", "--policy", "block-rm-rf"]);
+    const r = await runPackCommand(["add", "FailproofAI/policies", "--policy", "block-rm-rf"]);
     expect(r.exitCode).toBe(0);
     expect(text(r)).toMatch(/enabled \(1\//);
     expect(text(r)).toContain("block-rm-rf");
   });
 
   it("still takes --only, so anything scripted against it keeps working", async () => {
-    const r = await runPackCommand(["add", "core", "--only", "block-rm-rf"]);
+    const r = await runPackCommand(["add", "FailproofAI/policies", "--only", "block-rm-rf"]);
     expect(r.exitCode).toBe(0);
     expect(text(r)).toMatch(/enabled \(1\//);
   });
 
   it("takes a whole category", async () => {
-    const r = await runPackCommand(["add", "core", "--category", "dangerous-commands"]);
+    const r = await runPackCommand(["add", "FailproofAI/policies", "--category", "dangerous-commands"]);
     expect(r.exitCode).toBe(0);
     expect(text(r)).toContain("block-sudo");
   });
 
   it("names the categories that exist when given one that does not", async () => {
-    const r = await runPackCommand(["add", "core", "--category", "nope"]);
+    const r = await runPackCommand(["add", "FailproofAI/policies", "--category", "nope"]);
     expect(r.exitCode).toBe(1);
     expect(text(r)).toMatch(/no such category: nope/);
     expect(text(r)).toContain("dangerous-commands");
   });
 
   it("suggests the selection flags when it did not install everything", async () => {
-    const r = await runPackCommand(["add", "core"]);
+    const r = await runPackCommand(["add", "FailproofAI/policies"]);
     expect(text(r)).toContain("--policy");
     expect(text(r)).toContain("--category");
     expect(text(r)).toContain("--all");

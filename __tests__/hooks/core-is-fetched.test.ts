@@ -17,11 +17,11 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { CORE_ALIASES, CORE_SOURCE } from "../../src/hooks/pack-store";
+import { RETIRED_CORE_ALIASES, CORE_SOURCE } from "../../src/hooks/pack-store";
 
 const pkgRoot = resolve(__dirname, "..", "..");
 
-describe("`core` is a spelling of a GitHub source", () => {
+describe("our pack is typed the way everyone else's is", () => {
   it("points at the repository the policies are released from", () => {
     expect(CORE_SOURCE).toBe("FailproofAI/policies");
     // No slash-free special case beyond the aliases themselves: `CORE_SOURCE`
@@ -30,9 +30,24 @@ describe("`core` is a spelling of a GitHub source", () => {
     expect(CORE_SOURCE).toMatch(/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/);
   });
 
-  it("keeps every short spelling anyone has been told to type", () => {
-    for (const alias of ["core", "failproofai", "official"]) {
-      expect(CORE_ALIASES.has(alias)).toBe(true);
+  it("has NO short spelling of its own", async () => {
+    // `core` used to resolve here. It is gone deliberately: a name only WE can
+    // type makes our policies read as part of the tool rather than as one pack
+    // among others, which is the distinction this whole surface exists to
+    // remove. Ours is `FailproofAI/policies`, the same shape as anyone's.
+    const { parsePackSpec } = await import("../../src/hooks/pack-store");
+    for (const retired of ["core", "failproofai", "official"]) {
+      expect(() => parsePackSpec(retired)).toThrow();
+    }
+  });
+
+  it("tells anyone who types a retired spelling what to type instead", async () => {
+    // Not a bare parse failure: the spellings were documented for months, and
+    // "must be owner/repo" does not tell someone holding those instructions
+    // which owner and which repo.
+    const { parsePackSpec } = await import("../../src/hooks/pack-store");
+    for (const retired of RETIRED_CORE_ALIASES) {
+      expect(() => parsePackSpec(retired)).toThrow(new RegExp(CORE_SOURCE));
     }
   });
 

@@ -10,6 +10,9 @@
 
 ### Fixes
 
+- Our own pack has no short name any more: it is `failproofai policies add FailproofAI/policies`, the same shape anyone else's is typed in. `core`, `failproofai` and `official` are retired and say what to type instead rather than failing as unparseable (#738)
+- `failproofai policies` and the first-run audit now say how to get policies when none are installed — setup deliberately installs none, so both surfaces used to be dead ends for a brand-new machine (#738)
+- `failproofai publish` refuses a pack carrying two policies with the same name. A name is what `--policy` selects and what the picker toggles, so a duplicate made one of the pair unreachable and let the other's on/off state decide for both — reachable by accident whenever `publish --init` wrote a starter into a folder that already had a policy of that name (#738)
 - Stop `failproofai policies` warning about hooks in multiple scopes on a machine whose hooks are in one file — a user-scope-only CLI answered for every scope, and from `$HOME` a project path resolves to the user file (#738)
 - `failproofai publish` with no arguments now publishes instead of printing its own help, which is what the help itself documents it as doing (#738)
 - `failproofai publish --dry-run` works in a folder that has no git remote yet — the case a dry run exists for (#738)

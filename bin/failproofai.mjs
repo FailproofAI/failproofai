@@ -725,10 +725,10 @@ OPTIONS
 failproofai pack — install policy packs published as GitHub releases
 
 Usage:
-  failproofai pack add core                     the Failproof AI policies
-  failproofai pack add core --policy <a,b>      just these
-  failproofai pack add core --category <x,y>    whole categories
-  failproofai pack add core --all               everything in it
+  failproofai policies add FailproofAI/policies                     the Failproof AI policies
+  failproofai policies add FailproofAI/policies --policy <a,b>      just these
+  failproofai policies add FailproofAI/policies --category <x,y>    whole categories
+  failproofai policies add FailproofAI/policies --all               everything in it
   failproofai pack list                         packs installed here
   failproofai pack list <source>                what a pack out there contains
   failproofai pack add <source> [--policy <a,b>] [--category <x,y>] [--all]
@@ -739,7 +739,7 @@ A pack is one entry artifact plus a manifest, verified against the release's
 SHA256SUMS at install time. The digest is recorded, and re-verified before every
 import — so a pack cannot change under this machine after you installed it.
 
-<source> is core for the Failproof AI policies, or any of these:
+<source> is any GitHub repo publishing a pack — ours included:
   acme/support-agent                 newest release, pinned to its exact tag
   acme/support-agent@v2.1.0          that release
   github:acme/support-agent@v2.1.0   same, explicit
@@ -761,7 +761,7 @@ rest back on.
 
 Examples:
   failproofai pack add FailproofAI/policies
-  failproofai pack add core --category sanitize,git
+  failproofai policies add FailproofAI/policies --category sanitize,git
   failproofai pack add github:acme/support-agent@v2.1.0 --only block-refunds
   failproofai pack remove acme/support-agent
 
@@ -1371,7 +1371,7 @@ USAGE
   failproofai policies add                 Pick from what is installed here
   failproofai policies add <name>          Turn one policy on
   failproofai policies add <owner>/<repo>  Install someone's pack
-  failproofai policies add core            Our pack, fetched like any other
+  failproofai policies add FailproofAI/policies            Our pack, fetched like any other
   failproofai policies remove <name>       Turn one policy off
   failproofai policies remove <pack-id>    Uninstall a pack
   failproofai policies show <owner>/<repo> What a pack contains, before you take it
@@ -1404,7 +1404,7 @@ EXAMPLES
   failproofai policies add
   failproofai policies add block-sudo
   failproofai policies add sanitize-api-keys --scope project
-  failproofai policies add core --category sanitize,git
+  failproofai policies add FailproofAI/policies --category sanitize,git
   failproofai policies add acme/deploy-guard --policy block-prod-deploy
   failproofai policies show acme/deploy-guard
   failproofai policies remove block-sudo
@@ -1429,13 +1429,16 @@ keep enforcing. FAILPROOFAI_PACK_BASE_URL points it all at a mirror.
       !!firstPositional &&
       (firstPositional.includes("/") || firstPositional.startsWith("github:"));
     if (!looksLikeSource && firstPositional) {
-      // `core` is the one sourcey word with no slash in it. Read the alias set
-      // from the layer that OWNS it rather than restating it here, where the
-      // copy would drift the first time an alias is added — that exact drift
-      // already shipped once, when the dashboard could not resolve a name the
-      // CLI could.
-      const { CORE_ALIASES } = await import("../src/hooks/pack-store");
-      looksLikeSource = CORE_ALIASES.has(firstPositional.toLowerCase());
+      // A retired spelling of our own pack — `core` and friends — is still
+      // routed to the pack lane, which is the only layer that can say what to
+      // type instead. Sent anywhere else it reads as an unknown POLICY name and
+      // the reply lists 38 names, none of which is the answer.
+      //
+      // Read from the layer that owns the set rather than restated here, where
+      // the copy would drift. That exact drift already shipped once, when the
+      // dashboard could not resolve a name the CLI could.
+      const { RETIRED_CORE_ALIASES } = await import("../src/hooks/pack-store");
+      looksLikeSource = RETIRED_CORE_ALIASES.has(firstPositional.toLowerCase());
     }
 
     if (action === "show" || looksLikeSource) {
@@ -1665,8 +1668,8 @@ EXAMPLES
   failproofai policies --uninstall --cli pi
   failproofai policies -u
   failproofai policies --uninstall --custom
-  failproofai pack add core
-  failproofai pack add core --category git,database
+  failproofai policies add FailproofAI/policies
+  failproofai policies add FailproofAI/policies --category git,database
   failproofai pack list acme/support-agent
   failproofai pack build ./my-policies.mjs --id acme/support --version 1.0.0
 `.trimStart());

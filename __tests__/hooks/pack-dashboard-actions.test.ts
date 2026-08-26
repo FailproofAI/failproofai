@@ -144,15 +144,22 @@ describe("installing a pack from the dashboard", () => {
 });
 
 describe("parity with the CLI", () => {
-  it("takes `core` in the dashboard, exactly as the terminal does", async () => {
+  it("refuses `core` in the dashboard, exactly as the terminal does", async () => {
     // The alias list lived in pack-cli.ts, so `core` worked in the terminal and
-    // failed in the browser. Both go through one resolver in pack-store now.
-    //
-    // And what it resolves TO is the thing worth pinning: `core` is a spelling
-    // of a GitHub source, not a directory inside the package. Asserting on the
-    // URL that was requested is what catches a reintroduced local path — an id
-    // assertion alone would pass either way.
+    // failed in the browser. Both go through one resolver in pack-store now, and
+    // that parity is what this pins — it just runs the other way since the
+    // spelling was retired. A resolver that still special-cased it in one place
+    // would show up here as a success.
     const result = await addPackWebAction("core");
+    expect(result.ok).toBe(false);
+    expect(String((result as { error?: string }).error ?? "")).toMatch(/FailproofAI\/policies/);
+  });
+
+  it("installs our pack from a RELEASE, not a directory inside the package", async () => {
+    // What it resolves to is the thing worth pinning: ours is a GitHub source
+    // like anyone else's. Asserting on the URL requested is what catches a
+    // reintroduced local path — an id assertion alone would pass either way.
+    const result = await addPackWebAction("FailproofAI/policies");
     expect(result.ok).toBe(true);
     expect(result.id).toBe("failproofai/core");
     expect(requested.some((u) => u.startsWith("/FailproofAI/policies/"))).toBe(true);

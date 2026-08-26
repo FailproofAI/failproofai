@@ -22,7 +22,7 @@ import type { AddressInfo } from "node:net";
 import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { CORE_ALIASES } from "../../src/hooks/pack-store";
+import { RETIRED_CORE_ALIASES } from "../../src/hooks/pack-store";
 import { runPolicyPicker } from "../../src/hooks/pack-cli";
 
 const BINARY = resolve(__dirname, "..", "..", "bin", "failproofai.mjs");
@@ -188,22 +188,26 @@ describe("a name or a source, told apart by the slash", () => {
     expect(r.all).toMatch(/fetch|download|FAILPROOFAI_NO_DOWNLOAD/i);
   });
 
-  it("sends every core alias to the pack lane, though none of them has a slash", async () => {
-    // Read from the layer that OWNS the aliases. Restating them here is the
-    // drift that already shipped once, when the dashboard could not resolve a
-    // name the CLI could.
-    expect(CORE_ALIASES.size).toBeGreaterThan(0);
-    for (const alias of CORE_ALIASES) {
-      const r = await cli(["policies", "add", alias, "--policy", "block-rm-rf"]);
-      expect(r.exitCode, `${alias} should install our pack`).toBe(0);
-      expect(r.all).toMatch(/failproofai\/core/);
+  it("still routes a RETIRED spelling to the pack lane, so it can say what to type", async () => {
+    // `core` no longer resolves — but it has to reach the layer that knows
+    // that. Sent anywhere else it reads as an unknown POLICY name and the reply
+    // lists 38 names, none of which is the answer.
+    //
+    // Read from the layer that OWNS the set. Restating it here is the drift
+    // that already shipped once, when the dashboard could not resolve a name
+    // the CLI could.
+    expect(RETIRED_CORE_ALIASES.size).toBeGreaterThan(0);
+    for (const retired of RETIRED_CORE_ALIASES) {
+      const r = await cli(["policies", "add", retired, "--policy", "block-rm-rf"]);
+      expect(r.exitCode, `${retired} should not silently succeed`).not.toBe(0);
+      expect(r.all, `${retired} should name the replacement`).toMatch(/FailproofAI\/policies/);
     }
   });
 
-  it("is case-insensitive about those aliases, because nobody types Core on purpose", async () => {
+  it("is case-insensitive about those spellings, because nobody types Core on purpose", async () => {
     const r = await cli(["policies", "add", "CORE", "--policy", "block-rm-rf"]);
-    expect(r.exitCode).toBe(0);
-    expect(r.all).toMatch(/failproofai\/core/);
+    expect(r.exitCode).not.toBe(0);
+    expect(r.all).toMatch(/FailproofAI\/policies/);
   });
 });
 
@@ -239,7 +243,7 @@ describe("`policies add` with nothing after it", () => {
       expect(result.exitCode).toBe(0);
       const text = result.lines.join("\n");
       expect(text).toContain("No policies are installed yet.");
-      expect(text).toContain("failproofai policies add core");
+      expect(text).toContain("failproofai policies add FailproofAI/policies");
       expect(text).toContain("<owner>/<repo>");
     } finally {
       if (before === undefined) delete process.env.FAILPROOFAI_PACK_DIR;
@@ -258,14 +262,14 @@ describe("`policies add` with nothing after it", () => {
 
 describe("what the unified command actually does", () => {
   it("installs part of a pack and reports the part it did not take", async () => {
-    const r = await cli(["policies", "add", "core", "--policy", "block-rm-rf"]);
+    const r = await cli(["policies", "add", "FailproofAI/policies", "--policy", "block-rm-rf"]);
     expect(r.exitCode).toBe(0);
     expect(r.stdout).toMatch(/enabled \(1\//);
     expect(r.stdout).toMatch(/not enabled/);
   });
 
   it("uninstalls a whole pack by its id, which has a slash and so is a source", async () => {
-    await cli(["policies", "add", "core", "--policy", "block-rm-rf"]);
+    await cli(["policies", "add", "FailproofAI/policies", "--policy", "block-rm-rf"]);
     const removed = await cli(["policies", "remove", "failproofai/core"]);
     expect(removed.exitCode).toBe(0);
     expect(removed.stdout).toMatch(/Removed failproofai\/core/);
@@ -278,18 +282,18 @@ describe("what the unified command actually does", () => {
     // to promise "re-adding it works offline", which stopped being true the day
     // the package stopped carrying policies. A message that promises offline
     // and then fails offline is worse than no message.
-    await cli(["policies", "add", "core", "--policy", "block-rm-rf"]);
+    await cli(["policies", "add", "FailproofAI/policies", "--policy", "block-rm-rf"]);
     const removed = await cli(["policies", "remove", "failproofai/core"]);
     expect(removed.exitCode).toBe(0);
     expect(removed.all).not.toMatch(/offline/i);
 
-    const offline = await cli(["policies", "add", "core"], { offline: true });
+    const offline = await cli(["policies", "add", "FailproofAI/policies"], { offline: true });
     expect(offline.exitCode).not.toBe(0);
     expect(offline.all).toMatch(/FAILPROOFAI_NO_DOWNLOAD/);
   });
 
   it("suggests the new spelling, never the retired one, when it has more to offer", async () => {
-    const r = await cli(["policies", "add", "core", "--policy", "block-rm-rf"]);
+    const r = await cli(["policies", "add", "FailproofAI/policies", "--policy", "block-rm-rf"]);
     expect(r.stdout).not.toMatch(/failproofai pack (add|list)/);
   });
 });

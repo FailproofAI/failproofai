@@ -25,6 +25,8 @@
  * an exit code. See `runScheduledAudit`.
  */
 import { runAudit } from "./index";
+import { hasInstalledPacks } from "../hooks/pack-manifest";
+import { CORE_SOURCE } from "../hooks/pack-store";
 import { acquireAuditLock, type AuditLockInfo } from "./audit-lock";
 import { writeDashboardCache } from "./dashboard-cache";
 import type { AuditResult, RunAuditOptions } from "./types";
@@ -504,6 +506,16 @@ export async function runPostSetupAudit(): Promise<void> {
     writeDashboardCache({}, result);
     printSummary(result);
     process.stdout.write("\n");
+    // The audit says what ALREADY happened; nothing here says how to stop it
+    // happening again. This is the first thing a new machine runs, and setup
+    // installs no policies by design, so without this the whole first session
+    // ends on a count of findings and no way to act on it.
+    if (!hasInstalledPacks()) {
+      process.stdout.write(
+        `  ${c(DIM, "none of this is being enforced yet. take ours, or anyone's:")}\n` +
+          `    ${c(CYAN, `failproofai policies add ${CORE_SOURCE}`)}\n\n`,
+      );
+    }
   } finally {
     attempt.lock.release();
   }

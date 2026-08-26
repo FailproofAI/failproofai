@@ -973,7 +973,7 @@ export function resetHome(from: number, to: number = LAYOUT_VERSION): ResetOutco
   //
   // Nothing needs carrying either: `enabledPolicies` is left exactly where it
   // is, and the no-pack fallback reads it, so a machine mid-upgrade keeps
-  // enforcing precisely what it enforced before. `failproofai policies add core`
+  // enforcing precisely what it enforced before. `failproofai policies add FailproofAI/policies`
   // turns those names into a real pack, carrying the same selection into it.
   // The step's OWN target, not LAYOUT_VERSION.
   //

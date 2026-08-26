@@ -20,9 +20,7 @@ import {
   PACK_MANIFEST_ASSET,
   addPack,
   checkPackArtifact,
-  CORE_ALIASES,
   fetchPackPreview,
-  CORE_SOURCE,
   packTagMatchesVersion,
   removePack,
   setPackPolicyEnabled,
@@ -175,6 +173,29 @@ async function build(rest: string[]): Promise<PackCliResult> {
     ]);
   }
 
+  // Two policies cannot share a name, and this is where that has to be caught.
+  //
+  // Nothing downstream can resolve the ambiguity: a name is what `--policy`
+  // selects, what the picker toggles, and what the enabled list stores — so a
+  // duplicate makes one of the two unreachable and the other's on/off state
+  // decide for both. Bundling several files makes it easy to reach by accident:
+  // a starter written by `publish --init` into a folder that already had a
+  // policy of the same name published as exactly this, twice over, with no
+  // complaint at build time.
+  const byName = new Map<string, number>();
+  for (const hook of hooks) byName.set(hook.name, (byName.get(hook.name) ?? 0) + 1);
+  const duplicates = [...byName.entries()].filter(([, n]) => n > 1).map(([name]) => name);
+  if (duplicates.length > 0) {
+    return fail([
+      duplicates.length === 1
+        ? `Two policies are called ${JSON.stringify(duplicates[0])}.`
+        : `${duplicates.length} names are used by more than one policy: ${duplicates.join(", ")}.`,
+      "A name is what --policy selects and what the picker toggles, so a pack",
+      "cannot carry the same one twice — one of them would be unreachable.",
+      "Rename or delete one of each pair.",
+    ]);
+  }
+
   const policies: unknown[] = [];
   for (const [index, hook] of hooks.entries()) {
     // `category` and `defaultEnabled` are pack-manifest fields a plain custom
@@ -274,7 +295,7 @@ export async function runPolicyPicker(
           {
             what: "No policies are installed yet.",
             hint: "Take ours, or anyone's:",
-            cmd: "failproofai policies add core",
+            cmd: "failproofai policies add FailproofAI/policies",
           },
           opts,
         ),
@@ -1384,17 +1405,14 @@ async function add(rest: string[]): Promise<PackCliResult> {
   const source = packAddSource(rest);
   const selection = selectionFrom(rest);
 
-  // Our own pack, by the short name. `core` is a SPELLING of a GitHub source,
-  // not a second delivery path: it resolves to CORE_SOURCE and is fetched,
-  // verified and pinned exactly like anybody else's.
-  //
-  // The package used to carry a copy so this worked with no network. It no
-  // longer does, on purpose. A pack that ships inside the binary is a policy set
-  // we picked for you and wrote to your disk before you asked for it, and it
-  // gave our own policies a route no third-party pack could use — which is the
-  // opposite of the thing this whole lane exists to make possible.
-  const resolvedSource =
-    source && CORE_ALIASES.has(source.toLowerCase()) ? CORE_SOURCE : source;
+  // No short name for our own pack any more. `core` resolved to CORE_SOURCE and
+  // was fetched, verified and pinned like anybody else's — but a spelling only
+  // WE get to use still made our policies read as part of the tool rather than
+  // as one pack among others, which is the distinction this lane exists to
+  // erase. Ours is typed the same way yours is: `FailproofAI/policies`.
+  // `parsePackSource` still recognises the retired spellings, so typing one
+  // gets told what to type instead.
+  const resolvedSource = source;
 
   if (!resolvedSource) {
     return fail(["Usage: failproofai policies add <source> [--policy a,b] [--category x,y] [--all]"]);

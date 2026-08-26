@@ -578,7 +578,7 @@ async function installHooksImpl(
       } catch (err) {
         console.log(
           `\nWarning: could not fetch the policy pack (${err instanceof Error ? err.message : String(err)}).\n` +
-            `Run \`failproofai policies add core\` once you are online.`,
+            `Run \`failproofai policies add FailproofAI/policies\` once you are online.`,
         );
       }
     } else {
@@ -990,6 +990,24 @@ export async function listHooks(cwd?: string): Promise<void> {
   // reads as the end of the output — while a warning at the very end is the one
   // a reader scrolling back from their prompt actually sees.
   const footer: Array<string[] | null> = [note(`Config: ${globalPolicyConfigFile()}`, opts)];
+
+  // A machine with hooks wired and no policies to run is the normal state right
+  // after setup — setup installs the hooks and deliberately chooses nothing —
+  // and this listing said NOTHING about how to leave it. A reader who had just
+  // finished `failproofai config` saw a header, a config path, and no next
+  // step. Ours is named in full, the same way anyone else's pack is typed,
+  // because it IS one.
+  if (packCount === 0) {
+    footer.unshift(
+      nextStep(
+        `failproofai policies add ${CORE_SOURCE}`,
+        "Nothing is enforcing yet. Take ours, or anyone's:",
+        opts,
+      ),
+      note("Someone else's:  failproofai policies add <owner>/<repo>", opts),
+      note("Look first:      failproofai policies show <owner>/<repo>", opts),
+    );
+  }
 
   if (installedScopes.length > 1) {
     footer.push(

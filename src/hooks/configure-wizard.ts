@@ -30,6 +30,8 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, resolve, sep } from "node:path";
 
+import { CORE_SOURCE } from "./pack-store";
+
 import {
   selectOne,
   promptText,
@@ -914,7 +916,7 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   //
   // Setup no longer asks which policies to enable, and that is deliberate.
   // failproofai ships no policies of its own any more: they arrive as packs —
-  // from inside this package (`pack add core`) or from anyone's GitHub release.
+  // from inside this package (`policies add FailproofAI/policies`) or from anyone's GitHub release.
   // A wizard that pre-ticks OUR list makes a product decision on behalf of
   // somebody who has not seen the list yet, and not everyone wants the set we
   // would have chosen. So setup wires the hooks, and choosing what they
@@ -1463,6 +1465,18 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
     { ok: true },
     stdout,
   );
+  // Setup wires the hooks and deliberately chooses NO policies, so a machine
+  // that has just finished it enforces almost nothing — and the summary line
+  // says "0 policies" without saying what to do about it. Anyone else's pack is
+  // typed the same way, which is the point: ours is named in full rather than
+  // by a short name only we could use.
+  if (policies.length === 0) {
+    stdout.write(
+      `\n  Nothing is enforcing yet. Take ours, or anyone's:\n` +
+        `    failproofai policies add ${CORE_SOURCE}\n` +
+        `    failproofai policies show <owner>/<repo>   (look first)\n\n`,
+    );
+  }
   return {
     applied: true,
     target,

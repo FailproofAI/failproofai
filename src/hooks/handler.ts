@@ -323,7 +323,7 @@ export async function evaluateHookEvent(
       if (legacyNames.length > 0) {
         hookLogWarn(
           `enforcing ${legacyNames.length} policies from this build because no pack is installed — ` +
-            `run \`failproofai policies add core\` to move them into a real pack`,
+            `run \`failproofai policies add FailproofAI/policies\` to move them into a real pack`,
         );
       }
       // What actually registered, for the pack-duplicate check below. A paused

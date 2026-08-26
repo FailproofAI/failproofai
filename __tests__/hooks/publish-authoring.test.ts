@@ -203,6 +203,28 @@ describe("several files are one pack", () => {
     expect(manifest().policies.map((p) => p.name)).toEqual(["shared-user"]);
   });
 
+  it("refuses two policies that share a name", async () => {
+    // A name is what --policy selects, what the picker toggles and what the
+    // enabled list stores, so a duplicate makes one of the pair unreachable and
+    // the other's on/off state decide for both. Bundling several files makes it
+    // easy to hit by accident — a starter written by `publish --init` into a
+    // folder that already had a policy of that name published exactly this,
+    // twice, with no complaint.
+    writeFileSync(join(work, "a.mjs"), policy("block-force-push"));
+    writeFileSync(join(work, "b.mjs"), policy("block-force-push"));
+    const r = await runPublishCommand(["--id", "me/dupes", "--dry-run"]);
+    expect(r.exitCode).toBe(1);
+    expect(r.lines.join("\n")).toMatch(/block-force-push/);
+  });
+
+  it("allows the same name in two DIFFERENT packs", async () => {
+    // Only within one pack is it ambiguous. Two packs both defining
+    // `block-force-push` is normal and already resolved by pack id.
+    writeFileSync(join(work, "a.mjs"), policy("block-force-push"));
+    const r = await runPublishCommand(["--id", "me/one", "--dry-run"]);
+    expect(r.exitCode).toBe(0);
+  });
+
   it("ships ONE artifact however many files went in", async () => {
     for (const n of ["one", "two"]) writeFileSync(join(work, `${n}.mjs`), policy(n));
     await runPublishCommand(["--id", "me/x", "--version", "1.0.0", "--dry-run"]);

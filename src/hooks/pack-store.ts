@@ -91,6 +91,15 @@ function baseUrl(): string {
 const OWNER_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const TAG_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/;
 
+export const CORE_SOURCE = "FailproofAI/policies";
+
+/**
+ * Spellings that USED to resolve to our own pack, kept only so typing one gets
+ * an answer rather than a parse error. They are not resolved any more — see the
+ * throw in `parsePackSource`.
+ */
+export const RETIRED_CORE_ALIASES = new Set(["core", "failproofai", "official"]);
+
 /**
  * Parse a pack source into owner, repo and an optional tag.
  *
@@ -136,6 +145,17 @@ export function parsePackSpec(source: string): PackSpec {
   const tag = at > 0 ? withoutScheme.slice(at + 1) : null;
   const slash = repoPart.indexOf("/");
   if (slash <= 0 || slash === repoPart.length - 1) {
+    // `core` / `failproofai` / `official` used to be spellings of our own pack.
+    // They are gone on purpose: a short name only WE get to use makes our
+    // policies look like part of the tool rather than a pack like any other,
+    // which is exactly the distinction this whole surface exists to remove.
+    // Named explicitly here so the spelling that used to work says what to type
+    // instead of failing as an unparseable source.
+    if (RETIRED_CORE_ALIASES.has(repoPart.trim().toLowerCase())) {
+      throw new Error(
+        `${JSON.stringify(source)} is no longer a pack name — ours is a pack like anyone else's now. Use ${CORE_SOURCE} instead.`,
+      );
+    }
     throw new Error(
       `pack source must be owner/repo, owner/repo@tag, or a github.com URL — got ${JSON.stringify(source)}`,
     );
@@ -325,8 +345,6 @@ interface FetchedPack {
  * gives our own policies a delivery path nobody else's pack can use. One lane,
  * the same for everyone — ours are just the pack whose short name we spell.
  */
-export const CORE_SOURCE = "FailproofAI/policies";
-export const CORE_ALIASES = new Set(["core", "failproofai", "official"]);
 
 export interface PackAddOptions {
   only?: string[];
@@ -358,12 +376,7 @@ export async function addPackFromSource(
   source: string,
   opts: PackAddOptions = {},
 ): Promise<AddedPack> {
-  // `core` is a spelling of CORE_SOURCE, not a second delivery path. Resolved
-  // HERE rather than in the CLI so the dashboard and the CLI cannot disagree
-  // about what the short name means — they did once, and a name the CLI could
-  // resolve failed in the browser.
-  const resolved = CORE_ALIASES.has(source.trim().toLowerCase()) ? CORE_SOURCE : source;
-  const result = await addPack(resolved, opts);
+  const result = await addPack(source, opts);
   return {
     id: result.id,
     version: result.version,

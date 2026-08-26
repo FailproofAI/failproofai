@@ -186,7 +186,7 @@ describe("the migration shim", () => {
     }
     const log = written.join("");
     expect(log).toMatch(/no pack is installed/);
-    expect(log).toMatch(/failproofai policies add core/);
+    expect(log).toMatch(/failproofai policies add FailproofAI\/policies/);
     expect(log).not.toMatch(/failproofai update/);
   });
 

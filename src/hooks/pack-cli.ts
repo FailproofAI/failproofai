@@ -1956,10 +1956,35 @@ async function listReleases(source: string): Promise<PackCliResult> {
     return fail([`Could not list releases for ${spec.owner}/${spec.repo}: ${ghError(res)}`]);
   }
 
-  const releases = res.json as unknown as Array<{
+  const raw = res.json as unknown as Array<{
     tag_name?: unknown; body?: unknown; published_at?: unknown; created_at?: unknown;
     prerelease?: unknown; draft?: unknown; assets?: unknown;
   }>;
+  // Sorted HERE, by when each was PUBLISHED, rather than trusting the order the
+  // API returned.
+  //
+  // GitHub orders this endpoint by `created_at`, and `created_at` on a release
+  // is the date of the COMMIT its tag points at — not the moment the release
+  // was made. Two releases cut from one commit therefore tie, and the tie broke
+  // backwards: the pack repository's own listing put a release from 14:38 above
+  // the one from 15:27, and the install hint below offered the older of the
+  // two as the thing to install.
+  //
+  // That was survivable while versions sorted by themselves and is not now. A
+  // sha carries no order, so this list is the ONLY place the question "which of
+  // these is newest?" gets answered, and `publish --help` sends people here to
+  // ask it.
+  const when = (r: { published_at?: unknown; created_at?: unknown }): number => {
+    for (const value of [r.published_at, r.created_at]) {
+      if (typeof value !== "string") continue;
+      const parsed = Date.parse(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    // A release carrying no usable date sinks rather than floats: it cannot be
+    // shown as the newest thing on a claim it has not made.
+    return Number.NEGATIVE_INFINITY;
+  };
+  const releases = [...raw].sort((a, b) => when(b) - when(a));
   if (releases.length === 0) {
     return ok(
       stack(

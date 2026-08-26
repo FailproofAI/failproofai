@@ -239,10 +239,14 @@ afterEach(() => {
 
 describe("what the listing renders", () => {
   it("prints one row per release, newest first, under the columns it promises", async () => {
+    // Deliberately handed over in an order that is NOT the answer — newest in
+    // the middle, undated last — so "newest first" is a property of the render
+    // rather than of the fixture. See the dedicated sorting test below for why
+    // the API's own order cannot be trusted.
     apiBody = JSON.stringify([
-      release("2026.08.26-2"),
+      release("2026.08.26-2", { published_at: daysAgo(3) }),
       release("2026.08.26", { published_at: daysAgo(1) }),
-      release("2026.08.20", { published_at: undefined }),
+      release("2026.08.20", { published_at: undefined, created_at: undefined }),
     ]);
 
     const r = await run("acme/finance", "--releases");
@@ -253,9 +257,10 @@ describe("what the listing renders", () => {
     expect(text).toMatch(/acme\/finance/);
     expect(text).toMatch(/3 releases/);
 
-    // GitHub returns newest first and the listing keeps that order rather than
-    // sorting: a calendar version and a semver tag do not compare.
-    const order = ["2026.08.26-2", "2026.08.26", "2026.08.20"].map((tag) =>
+    // By PUBLISHED date, descending, with the undated one last. Not by version:
+    // a sha does not compare to anything, which is the whole reason this
+    // listing exists.
+    const order = ["2026.08.26", "2026.08.26-2", "2026.08.20"].map((tag) =>
       r.lines.findIndex((l) => l.trimStart().startsWith(tag)),
     );
     expect(order.every((i) => i >= 0)).toBe(true);
@@ -501,6 +506,61 @@ describe("what the listing renders", () => {
 
     expect(r.exitCode).toBe(0);
     expect(cells(r.lines, "2026.08.26")).toHaveLength(5);
+  });
+
+  // The listing SORTS; it does not inherit an order.
+  //
+  // GitHub orders this endpoint by `created_at`, and a release's `created_at`
+  // is the date of the COMMIT its tag points at — not when the release was cut.
+  // Two releases made from one commit therefore tie, and the tie broke
+  // backwards on the real FailproofAI/policies repository: a release published
+  // at 14:38 sat above one published at 15:27, and the install hint offered the
+  // older of the two.
+  //
+  // Survivable while versions sorted by themselves. Not survivable now: a sha
+  // carries no order, so this list is the only place "which is newest?" is
+  // answered, and `publish --help` sends people here to ask it.
+  it("sorts by when each was PUBLISHED, not by the order the API returned", async () => {
+    apiBody = JSON.stringify([
+      // API order, verbatim from the tie GitHub actually produced: the older
+      // publish first, both claiming the same created_at.
+      release("2026.08.26", { created_at: "2026-08-26T10:48:55Z", published_at: daysAgo(1) }),
+      release("5b0e6e4e666c", { created_at: "2026-08-26T10:48:55Z", published_at: daysAgo(0) }),
+    ]);
+
+    const r = await run("acme/finance", "--releases");
+    const text = r.lines.join("\n");
+    expect(r.exitCode).toBe(0);
+
+    const newer = text.indexOf("5b0e6e4e666c");
+    const older = text.indexOf("2026.08.26");
+    expect(newer).toBeGreaterThan(-1);
+    expect(older).toBeGreaterThan(-1);
+    expect(newer).toBeLessThan(older);
+
+    // The other half, and the one that actually cost somebody an install: the
+    // hint has to name the newest too, not whatever the API happened to put
+    // first.
+    expect(text).toContain("acme/finance@5b0e6e4e666c");
+    expect(text).not.toContain("acme/finance@2026.08.26");
+  });
+
+  it("sinks a release carrying no usable date rather than floating it to the top", async () => {
+    // Absent and unparseable dates both. A release that has made no claim about
+    // when it happened must not be shown as the newest thing on the strength of
+    // it — which is what `undefined - number = NaN` does to a comparator that
+    // does not handle it, since NaN leaves the pair in whatever order it found.
+    apiBody = JSON.stringify([
+      release("no-date", { created_at: undefined, published_at: undefined }),
+      release("bad-date", { created_at: "not-a-date", published_at: "also-not" }),
+      release("dated", { published_at: daysAgo(9) }),
+    ]);
+
+    const r = await run("acme/finance", "--releases");
+    const text = r.lines.join("\n");
+    expect(text.indexOf("dated")).toBeLessThan(text.indexOf("no-date"));
+    expect(text.indexOf("dated")).toBeLessThan(text.indexOf("bad-date"));
+    expect(text).toContain("acme/finance@dated");
   });
 
   it("counts one release in the singular", async () => {

@@ -15,7 +15,6 @@ import { INTEGRATION_TYPES,
   type IntegrationType,
 } from "./types";
 import { claudeCode, getIntegration, settingsPathsFor, type Integration } from "./integrations";
-import { promptPolicySelection } from "./install-prompt";
 import { configuredCustomPolicyPaths, readMergedHooksConfig, readScopedHooksConfig, writeScopedHooksConfig, syncConventionPolicies, findProjectConfigDir } from "./hooks-config";
 import type { HooksConfig, ConventionPolicyRecord } from "./policy-types";
 import { BUILTIN_POLICIES } from "./builtin-policies";
@@ -462,9 +461,25 @@ async function installHooksImpl(
       ? [...new Set(incoming)]
       : [...new Set([...previousConfig.enabledPolicies, ...incoming])];
   } else {
-    // Interactive — pre-load current config if it exists
-    const preSelected = previousConfig.enabledPolicies.length > 0 ? previousConfig.enabledPolicies : undefined;
-    selectedPolicies = await promptPolicySelection(preSelected, { includeBeta });
+    // NOT a policy picker. `--install` wires hooks; choosing what they enforce
+    // is `policies add` / `policies remove`.
+    //
+    // It used to open a second picker here, over `BUILTIN_POLICIES` — the
+    // COMPILED catalog, which is no longer how policies arrive. So it offered a
+    // list that did not match what was installed, in an older prompt engine
+    // that looks nothing like the rest, and wrote its answer to
+    // `enabledPolicies` while every pack records its selection in
+    // `installed.json`.
+    //
+    // Two independent enabled-sets, and this one silently overwrote the other:
+    // `policies remove block-env-files` followed by `policies --install` put
+    // block-env-files straight back on, because the picker pre-ticked from the
+    // legacy key and saved all of it again. A command whose job is wiring must
+    // not undo a policy decision made somewhere else.
+    //
+    // Whatever was enabled stays enabled. Explicit names still work
+    // (`--install block-sudo`) for the migration shim, which has only this key.
+    selectedPolicies = previousConfig.enabledPolicies;
   }
 
   // Preserve existing config fields when updating. New writes use the plural
@@ -556,7 +571,21 @@ async function installHooksImpl(
   // pack does not carry it and asking for it by name is a selection the pack
   // cannot satisfy. It ships compiled in and registers regardless.
   const alwaysOnNames = new Set(BUILTIN_POLICIES.filter((p) => p.alwaysOn).map((p) => p.name));
-  const fromPack = selectedPolicies.filter((name) => !alwaysOnNames.has(name));
+  // ONLY names the caller actually asked for.
+  //
+  // This used to take whatever sat in `enabledPolicies` and switch those names
+  // on in the pack. It is additive — it can turn a policy on and never off — so
+  // a stale entry in that key resurrected a policy the user had deliberately
+  // removed, on the next `policies --install`, with no mention of it.
+  // `remove block-env-files` then `--install` put it straight back.
+  //
+  // And the key goes stale by design now: nothing writes pack selections there,
+  // so anything left in it is a leftover from before packs, kept only for the
+  // migration shim. Re-applying a leftover as if it were a decision is how a
+  // machine ends up enforcing something its owner switched off.
+  const fromPack = policyNames === undefined
+    ? []
+    : selectedPolicies.filter((name) => !alwaysOnNames.has(name));
   if (fromPack.length > 0) {
     // ONLY when there is no pack yet. Fetching the core pack with
     // `only: <selection>` REPLACES whatever the machine had chosen, and
@@ -592,7 +621,13 @@ async function installHooksImpl(
       }
     }
   }
-  console.log(`\nEnabled ${selectedPolicies.length} policy(ies): ${selectedPolicies.join(", ")}\n`);
+  // Only when this run actually changed something. `--install` with no names
+  // wires hooks and touches no policy, and announcing "Enabled 0 policy(ies):"
+  // with an empty list described work it had not done — or worse, re-stated a
+  // stale key as though it were this run's decision.
+  if (policyNames !== undefined && selectedPolicies.length > 0) {
+    console.log(`\nEnabled ${selectedPolicies.length} policy(ies): ${selectedPolicies.join(", ")}\n`);
+  }
   if (removeCustomHooks) {
     console.log("Custom hooks path cleared.");
   } else if (configToWrite.customPoliciesPaths?.length || configToWrite.customPoliciesPath) {

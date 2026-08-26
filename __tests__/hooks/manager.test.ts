@@ -42,6 +42,21 @@ vi.mock("../../src/hooks/hooks-config", () => ({
   }),
 }));
 
+// The pack layer, mocked so `installHooks` cannot reach a real manifest or the
+// network. `addPack` FETCHES — it is the one path in `policies --install` that
+// needs it — and the tests below assert precisely that a bare `--install` never
+// gets there.
+vi.mock("../../src/hooks/pack-store", () => ({
+  CORE_SOURCE: "FailproofAI/policies",
+  addPack: vi.fn(() => Promise.resolve()),
+  setPackPolicyEnabled: vi.fn(() => true),
+}));
+
+vi.mock("../../src/hooks/pack-manifest", () => ({
+  hasInstalledPacks: vi.fn(() => false),
+  readInstalledPacks: vi.fn(() => ({ packs: [], errors: [] })),
+}));
+
 vi.mock("../../src/hooks/hook-telemetry", () => ({
   trackHookEvent: vi.fn(() => Promise.resolve()),
 }));
@@ -108,9 +123,19 @@ describe("hooks/manager", () => {
       }
     });
 
-    it("calls promptPolicySelection and writeHooksConfig in interactive mode", async () => {
+    // `--install` with no names WIRES HOOKS. It does not choose policies, and
+    // it used to: a second picker opened here over BUILTIN_POLICIES — the
+    // compiled catalog, which is not how policies arrive any more — and wrote
+    // its answer to `enabledPolicies`, while every pack records its selection
+    // in installed.json. Two enabled-sets, one silently overwriting the other:
+    // `policies remove block-env-files` then `policies --install` put
+    // block-env-files back on, because the picker pre-ticked from the legacy
+    // key and saved all of it again.
+    it("interactive install asks nothing and leaves the policy selection alone", async () => {
       vi.mocked(existsSync).mockReturnValue(true);
       vi.mocked(readFileSync).mockReturnValue("{}");
+      const { readScopedHooksConfig } = await import("../../src/hooks/hooks-config");
+      vi.mocked(readScopedHooksConfig).mockReturnValue({ enabledPolicies: ["block-sudo"] });
 
       const { installHooks } = await import("../../src/hooks/manager");
       const { promptPolicySelection } = await import("../../src/hooks/install-prompt");
@@ -118,9 +143,10 @@ describe("hooks/manager", () => {
 
       await installHooks();
 
-      expect(promptPolicySelection).toHaveBeenCalledOnce();
+      expect(promptPolicySelection).not.toHaveBeenCalled();
+      // Written back UNCHANGED — not re-derived, not defaulted, not widened.
       expect(writeScopedHooksConfig).toHaveBeenCalledWith(
-        { enabledPolicies: ["block-sudo", "block-env-files", "sanitize-jwt"] },
+        { enabledPolicies: ["block-sudo"] },
         "user",
         undefined,
       );
@@ -169,18 +195,26 @@ describe("hooks/manager", () => {
       await expect(installHooks(["block-sudo", "fake-policy"])).rejects.toThrow("Unknown policy name");
     });
 
-    it("pre-loads current config in interactive mode", async () => {
+    // The other half of the same bug: `fromPack` is ADDITIVE — it can switch a
+    // policy on and never off — so re-applying whatever sat in `enabledPolicies`
+    // resurrected a policy the user had deliberately removed. Nothing writes
+    // pack selections to that key any more, so anything left in it is a
+    // leftover from before packs, kept for the migration shim. A leftover is
+    // not a decision.
+    it("does not push the legacy enabled list back into an installed pack", async () => {
       vi.mocked(existsSync).mockReturnValue(true);
       vi.mocked(readFileSync).mockReturnValue("{}");
       const { readScopedHooksConfig } = await import("../../src/hooks/hooks-config");
-      vi.mocked(readScopedHooksConfig).mockReturnValue({ enabledPolicies: ["block-sudo"] });
+      vi.mocked(readScopedHooksConfig).mockReturnValue({
+        enabledPolicies: ["block-sudo", "block-env-files"],
+      });
+      const { addPack, setPackPolicyEnabled } = await import("../../src/hooks/pack-store");
 
       const { installHooks } = await import("../../src/hooks/manager");
-      const { promptPolicySelection } = await import("../../src/hooks/install-prompt");
-
       await installHooks();
 
-      expect(promptPolicySelection).toHaveBeenCalledWith(["block-sudo"], { includeBeta: false });
+      expect(addPack).not.toHaveBeenCalled();
+      expect(setPackPolicyEnabled).not.toHaveBeenCalled();
     });
 
     it("preserves existing non-failproofai hooks", async () => {

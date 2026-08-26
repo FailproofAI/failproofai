@@ -18,6 +18,7 @@
 - `failproofai policies` and the first-run audit now say how to get policies when none are installed — setup deliberately installs none, so both surfaces used to be dead ends for a brand-new machine (#738)
 - `failproofai publish` refuses a pack carrying two policies with the same name. A name is what `--policy` selects and what the picker toggles, so a duplicate made one of the pair unreachable and let the other's on/off state decide for both — reachable by accident whenever `publish --init` wrote a starter into a folder that already had a policy of that name (#738)
 - `failproofai config --token <key>` asks nothing at all on a terminal, not just off one. It still drew the Cloud question and the review prompt, so the one command that says "connect me, don't ask" asked twice. Only the sudo password is left, because no flag can supply it (#738)
+- `failproofai policies --install` no longer opens a policy picker, and no longer pushes a stale `enabledPolicies` back into an installed pack. Wiring hooks is not choosing policies: it offered a second list — over the COMPILED catalog, which is not how policies arrive any more — and saved the answer to a key nothing else writes. `policies remove block-env-files` followed by `policies --install` put block-env-files straight back on, silently (#738)
 
 ## 1.0.2-beta.5 — 2026-08-25
 

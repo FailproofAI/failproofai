@@ -10,6 +10,8 @@
 
 ### Fixes
 
+- The hook never waits forever for its payload. `readStdinPayload` is on the enforcement path — every tool call, on all eleven agent CLIs — and had no bound: its only early exit was `readableEnded`, which helps only when stdin is ALREADY closed. A parent that spawned the hook with a pipe it had not closed, or an inherited terminal, froze that tool call indefinitely with no output. A terminal now returns immediately and an open pipe gets a 10s clock, both reported rather than silent (#738)
+- `failproofai config` on a machine with no terminal exits 1 instead of 0. It printed "needs an interactive terminal" and reported success, so a CI job or an agent driving setup carried on believing the machine was configured. `WizardAbort` had declared `not_a_tty` and `running_as_sudo` since it was written and never assigned either (#738)
 - Our own pack has no short name any more: it is `failproofai policies add FailproofAI/policies`, the same shape anyone else's is typed in. `core`, `failproofai` and `official` are retired and say what to type instead rather than failing as unparseable (#738)
 - `failproofai policies` and the first-run audit now say how to get policies when none are installed — setup deliberately installs none, so both surfaces used to be dead ends for a brand-new machine (#738)
 - `failproofai publish` refuses a pack carrying two policies with the same name. A name is what `--policy` selects and what the picker toggles, so a duplicate made one of the pair unreachable and let the other's on/off state decide for both — reachable by accident whenever `publish --init` wrote a starter into a folder that already had a policy of that name (#738)

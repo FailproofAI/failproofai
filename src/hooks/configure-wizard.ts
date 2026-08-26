@@ -708,7 +708,13 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
         "Use the flag form instead, e.g.:\n" +
         "  failproofai policies --install --scope user --cli claude\n",
     );
-    return { applied: false };
+    // `not_a_tty`, not a bare `{applied:false}`. The caller exits 0 unless an
+    // abort reason is present and is not "cancelled" — so returning no reason
+    // reported SUCCESS for a run that configured nothing. A CI job or an agent
+    // driving this saw exit 0 and carried on onto a machine with no hooks
+    // installed, which is the failure mode headless setup exists to prevent:
+    // silent, and indistinguishable from having worked.
+    return { applied: false, abort: "not_a_tty" };
   }
 
   // Running the wizard itself under sudo configures the WRONG ACCOUNT, and
@@ -726,7 +732,10 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
         "The one step that needs root (installing the service) asks for your password\n" +
         "on its own.\n",
     );
-    return { applied: false };
+    // Same reason as above: this configured nothing, and it is not a
+    // cancellation. `running_as_sudo` has been in `WizardAbort` since it was
+    // written and was never once assigned.
+    return { applied: false, abort: "running_as_sudo" };
   }
 
   // Fire-and-forget: never block the wizard's first paint on telemetry.

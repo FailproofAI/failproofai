@@ -156,6 +156,12 @@ const mkTtyStdout = (): TTYOut =>
   ({ isTTY: true, write: vi.fn(() => true), columns: 80 }) as unknown as TTYOut;
 const ttyIO = () => ({ stdin: mkTtyStdin(), stdout: mkTtyStdout() });
 
+/** A pipe, a CI job, or an agent driving the CLI — anything without a terminal. */
+const headlessIO = () => ({
+  stdin: { isTTY: false } as unknown as TTYIn,
+  stdout: { isTTY: false, write: vi.fn(() => true), columns: 80 } as unknown as TTYOut,
+});
+
 /**
  * Queue answers for a wizard run BY NAME rather than by position.
  *
@@ -844,6 +850,40 @@ describe("configure-wizard daemon integration", () => {
     // Not marked seen: the next command must offer setup again, because none
     // of it happened.
     expect(hasSeenLauncher()).toBe(false);
+  });
+
+  it("reports WHY it configured nothing when there is no terminal", async () => {
+    // The caller exits 0 unless an abort reason is present and is not
+    // "cancelled". This path returned a bare `{applied:false}`, so a headless
+    // run — CI, a container, an agent driving the CLI — got exit 0 for a run
+    // that installed nothing, and carried on believing the machine was set up.
+    // Silent, and indistinguishable from having worked.
+    //
+    // `not_a_tty` has been in `WizardAbort` since it was written and was never
+    // once assigned.
+    const result = await runConfigureWizard(headlessIO());
+
+    expect(result.applied).toBe(false);
+    expect(result.abort).toBe("not_a_tty");
+    expect(installHooks).not.toHaveBeenCalled();
+  });
+
+  it("reports WHY it configured nothing when run under sudo", async () => {
+    // Same class: it configured nothing and it was not a cancellation, so it
+    // must not read as success. `running_as_sudo` was likewise declared and
+    // never assigned.
+    const getuid = process.getuid;
+    Object.defineProperty(process, "getuid", { value: () => 0, configurable: true });
+    vi.stubEnv("SUDO_USER", "chetan");
+    try {
+      const result = await runConfigureWizard(ttyIO());
+      expect(result.applied).toBe(false);
+      expect(result.abort).toBe("running_as_sudo");
+      expect(installHooks).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(process, "getuid", { value: getuid, configurable: true });
+      vi.unstubAllEnvs();
+    }
   });
 
   it("ABORTS without writing anything when the service will not install", async () => {

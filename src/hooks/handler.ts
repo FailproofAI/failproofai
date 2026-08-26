@@ -786,6 +786,18 @@ export async function handleHookEvent(eventType: string, cli: IntegrationType = 
       error_type: "oversized",
     });
   }
+  if (stdinRead.timedOut) {
+    // Reported distinctly from a read error because the remedy is different and
+    // the cause is upstream: the agent spawned the hook and did not close its
+    // stdin. Before this was bounded it was not reported at all — the process
+    // simply never returned, and the tool call it was gating never resolved.
+    hookLogWarn(`stdin never closed for ${eventType}; evaluated nothing`);
+    void trackHookEvent(getInstanceId(), "hook_stdin_error", {
+      event_type: eventType,
+      cli,
+      error_type: "timeout",
+    });
+  }
 
   const result = await evaluateHookEvent(eventType, cli, stdinRead.payload);
 

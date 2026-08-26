@@ -8,6 +8,7 @@
 
 ### Fixes
 
+- The audit's "already protected" split now counts policies that arrived in a PACK. It read `enabledPolicies` and nothing else — a key that predates packs and which `pack-store` never writes, since a pack records its selection in `installed.json` — so every finding read as slipping through however many policies were installed, and the number the audit leads with never moved. Measured before: identical 302 hits and 17 findings with nothing installed and with all 38 (#738)
 - `policies add <pack> --cli` refuses a name that is not an agent, instead of installing and guarding nothing. `--cli claud` printed "Installed", exited 0, and applied the pack to no agent at all because the misspelling matched none (#738)
 - `policies add <pack> --cli claude codex` keeps BOTH. The pack lane split on commas while the policy lane split on spaces, so a space-separated list was silently truncated to its first entry. Either spelling now works on both (#738)
 - `policies add --scope project <pack>` installs the pack instead of going looking for one called "project", and `-c ./file.mjs` is no longer read as the pack name — a flag's value could be taken as the positional whenever the flag came first (#738)

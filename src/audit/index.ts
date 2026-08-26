@@ -10,6 +10,7 @@
 import { batchAll } from "../../lib/concurrency";
 import { BUILTIN_POLICIES } from "../hooks/builtin-policies";
 import { readMergedHooksConfig } from "../hooks/hooks-config";
+import { readInstalledPacks } from "../hooks/pack-manifest";
 import { normalizePolicyName } from "../hooks/policy-registry";
 import { INTEGRATION_TYPES, type IntegrationType } from "../hooks/types";
 import { ADAPTERS } from "./cli-adapters";
@@ -379,12 +380,42 @@ async function runAuditInner(opts: RunAuditOptions, startedAt: number): Promise<
   const clis = (opts.clis ?? Array.from(INTEGRATION_TYPES)) as IntegrationType[];
   const sinceMs = parseSinceOpt(opts.since);
 
-  // Snapshot which builtin policies the user currently has enabled — drives
-  // the "already protected" vs "slipping through" split in the report.
+  // What the user actually has switched on — drives the "already protected"
+  // vs "slipping through" split.
+  //
+  // Read from BOTH places it can live, because it moved and this only followed
+  // it half way. `enabledPolicies` is the pre-packs key, still written by
+  // `policies add <name>` and still true on a machine running the migration
+  // shim. Everything installed as a PACK records its selection in
+  // `installed.json` instead, and `pack-store` never writes `enabledPolicies`
+  // at all — so reading that key alone meant installing a pack could not move
+  // this split. Every policy read as slipping through no matter what was
+  // enforcing, and the number the audit leads with never changed however many
+  // policies you installed. Verified: same 302 hits, same 17 findings, before
+  // and after installing all 38.
+  //
+  // The split, not the REPLAY. What gets replayed stays the compiled builtins
+  // on purpose — see `initReplay`: an audit is a fixed yardstick, and one that
+  // changed shape with whatever pack a machine happened to have could not be
+  // compared against its own history. A pack policy sharing a builtin's name
+  // marks that builtin protected, which is exactly right: the same rule is
+  // enforcing, whichever artifact carries it.
   const userConfig = readMergedHooksConfig();
   const enabledBuiltins = new Set(
     (userConfig.enabledPolicies ?? []).map((n) => normalizePolicyName(n)),
   );
+  try {
+    for (const pack of readInstalledPacks().packs) {
+      // `enabled: null` means the whole pack was taken, so every policy in its
+      // catalog counts — the field records a SELECTION, and its absence is not
+      // an empty one.
+      const taken = pack.enabled ?? pack.policies.map((entry) => entry.name);
+      for (const name of taken) enabledBuiltins.add(normalizePolicyName(name));
+    }
+  } catch {
+    // An unreadable manifest must not fail the audit. It costs the split its
+    // pack half, which is the same answer this gave for every machine before.
+  }
 
   // 1. Discover transcripts across all selected CLIs.
   const allTranscripts: TranscriptMetadata[] = [];

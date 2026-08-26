@@ -13,7 +13,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { runPublishCommand, utcToday } from "@/src/hooks/pack-cli";
+import { runPublishCommand, versionFromCommit } from "@/src/hooks/pack-cli";
 
 let work: string;
 let prevCwd: string;
@@ -44,13 +44,18 @@ customPolicies.add({
 });
 `;
 
-function git(...args: string[]): string {
+function gitAt(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, {
-    cwd: work,
+    cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"],
     env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" },
   }).trim();
+}
+
+/** The checkout these tests live in, which is also the shell's cwd. */
+function git(...args: string[]): string {
+  return gitAt(work, ...args);
 }
 
 /** The manifest publish would upload, read back off disk. */
@@ -126,8 +131,13 @@ describe("publish --init", () => {
   it("writes a starter file that publish then finds on its own", async () => {
     // The two halves of the flow have to meet: whatever --init writes is what
     // a bare `publish` in that directory picks up.
+    //
+    // `--version` is named because the version now comes from the commit, and a
+    // directory that was created a line ago is not a checkout — which this test
+    // has no opinion about. Its subject is DISCOVERY, so the version is pinned
+    // out of the way rather than left to a path asserted elsewhere.
     await runPublishCommand(["--init", "myguards"]);
-    const r = await runPublishCommand(["--dry-run"]);
+    const r = await runPublishCommand(["--version", "1.0.0", "--dry-run"]);
     expect(r.exitCode).toBe(0);
     expect(r.lines.join("\n")).toMatch(/1 policies/);
   });
@@ -210,9 +220,13 @@ describe("several files are one pack", () => {
     // easy to hit by accident — a starter written by `publish --init` into a
     // folder that already had a policy of that name published exactly this,
     // twice, with no complaint.
+    //
+    // `--version` because these bare temp directories are not checkouts and the
+    // version is the commit now. Without it the run stops one step earlier, at
+    // the version, and would pass this test for the wrong reason.
     writeFileSync(join(work, "a.mjs"), policy("block-force-push"));
     writeFileSync(join(work, "b.mjs"), policy("block-force-push"));
-    const r = await runPublishCommand(["--id", "me/dupes", "--dry-run"]);
+    const r = await runPublishCommand(["--id", "me/dupes", "--version", "1.0.0", "--dry-run"]);
     expect(r.exitCode).toBe(1);
     expect(r.lines.join("\n")).toMatch(/block-force-push/);
   });
@@ -220,9 +234,28 @@ describe("several files are one pack", () => {
   it("allows the same name in two DIFFERENT packs", async () => {
     // Only within one pack is it ambiguous. Two packs both defining
     // `block-force-push` is normal and already resolved by pack id.
+    //
+    // Both packs are built, because the claim is about a PAIR. With one pack in
+    // the body and `exitCode` as the only assertion, this passed against a
+    // duplicate check scoped to the whole process rather than to one build —
+    // and against no check at all.
     writeFileSync(join(work, "a.mjs"), policy("block-force-push"));
-    const r = await runPublishCommand(["--id", "me/one", "--dry-run"]);
-    expect(r.exitCode).toBe(0);
+    const one = await runPublishCommand(["--id", "me/one", "--version", "1.0.0", "--dry-run"]);
+    expect(one.exitCode).toBe(0);
+    expect(manifest().policies.map((p) => p.name)).toEqual(["block-force-push"]);
+    expect(manifest().id).toBe("me/one");
+
+    const elsewhere = join(work, "other");
+    mkdirSync(elsewhere);
+    writeFileSync(join(elsewhere, "b.mjs"), policy("block-force-push"));
+    process.chdir(elsewhere);
+    const two = await runPublishCommand(["--id", "me/two", "--version", "1.0.0", "--dry-run"]);
+    expect(two.exitCode).toBe(0);
+    const second: { id: string; policies: Array<{ name: string }> } = JSON.parse(
+      readFileSync(join(elsewhere, "dist-pack", "failproofai-pack.json"), "utf8"),
+    );
+    expect(second.policies.map((p) => p.name)).toEqual(["block-force-push"]);
+    expect(second.id).toBe("me/two");
   });
 
   it("ships ONE artifact however many files went in", async () => {
@@ -255,13 +288,21 @@ describe("reading the repository from git", () => {
     expect(manifest().id).toBe("acme/guards");
   });
 
-  it("dry-runs without a git repository, because that is what a dry run is for", async () => {
+  it("dry-runs without a git REMOTE, because that is what a dry run is for", async () => {
     // It used to refuse: the pack id comes from the git remote, and a folder
     // that has not been given one yet has no remote to read. That refused the
     // exact case a dry run exists for — looking at the pack BEFORE committing
     // to a repository for it. The folder name stands in, marked `local/` so a
     // manifest built here cannot be mistaken for one built for an account.
+    //
+    // A COMMIT is a different matter and this test used to conflate the two.
+    // The version is settled identically for a dry run, because it describes
+    // the tree rather than the repository's history — so a directory with no
+    // commit has to name a version, and then the id fallback works as before.
+    git("init", "-q", "-b", "main");
     writeFileSync(join(work, "p.mjs"), policy("alpha"));
+    git("add", "-A");
+    git("commit", "-qm", "init");
     const r = await runPublishCommand(["--dry-run"]);
     expect(r.exitCode).toBe(0);
     expect(r.lines.join("\n")).toMatch(/local\//);
@@ -269,10 +310,44 @@ describe("reading the repository from git", () => {
     expect(r.lines.join("\n")).toMatch(/--repo/);
   });
 
+  it("reads the ENTRY's checkout, not the one the shell happens to be in", async () => {
+    // A pack kept in its own checkout beside the repository it guards is
+    // ordinary, and the version has to describe the FILE rather than wherever
+    // the shell was when it ran. Arranged so reading the cwd is wrong twice
+    // over: the surrounding checkout is dirty, which would refuse the publish
+    // outright, and it sits at a different commit, which would name source that
+    // never produced these bytes — the "present but wrong" answer, which is
+    // worse than no answer because the manifest states it as fact.
+    git("init", "-q", "-b", "main");
+    writeFileSync(join(work, "outer.txt"), "outer\n");
+    git("add", "-A");
+    git("commit", "-qm", "outer");
+    const outerSha = git("rev-parse", "HEAD");
+    writeFileSync(join(work, "outer.txt"), "outer, edited\n");
+
+    const inner = join(work, "pack");
+    mkdirSync(inner);
+    writeFileSync(join(inner, "p.mjs"), policy("alpha"));
+    gitAt(inner, "init", "-q", "-b", "main");
+    gitAt(inner, "add", "-A");
+    gitAt(inner, "commit", "-qm", "inner");
+    const innerSha = gitAt(inner, "rev-parse", "HEAD");
+    // Two commits, or the assertion below cannot tell them apart.
+    expect(innerSha).not.toBe(outerSha);
+
+    const r = await runPublishCommand(["./pack/p.mjs", "--id", "me/x", "--dry-run"]);
+    expect(r.exitCode).toBe(0);
+    expect(manifest().version).toBe(versionFromCommit(innerSha));
+    expect(manifest().version).not.toBe(versionFromCommit(outerSha));
+  });
+
   it("still refuses to PUBLISH without somewhere to publish to", async () => {
     // The fallback id is for building assets locally, never for reaching
     // GitHub — a guessed owner must not become a real release.
+    git("init", "-q", "-b", "main");
     writeFileSync(join(work, "p.mjs"), policy("alpha"));
+    git("add", "-A");
+    git("commit", "-qm", "init");
     const r = await runPublishCommand([]);
     expect(r.lines.join("\n")).toMatch(/--repo/);
     expect(r.lines.join("\n")).not.toMatch(/Published/);
@@ -300,18 +375,36 @@ describe("taking the version from a tag", () => {
     // both the audit key and the installed-pack upsert.
     git("tag", "v2.1.0");
     writeFileSync(join(work, "p.mjs"), policy("alpha") + "\n// edited\n");
-    await runPublishCommand(["--dry-run"]);
-    // Falls through to the dated version rather than the stale tag. Asserted
-    // both ways round: the point is that the TAG was refused, and a version
-    // that merely differs from "v2.1.0" could still be a second bug.
-    expect(manifest().version).not.toBe("v2.1.0");
-    expect(manifest().version).toBe(utcToday());
+    const r = await runPublishCommand(["--dry-run"]);
+    // What the tag falls through TO changed, and the change is the whole
+    // interaction worth pinning here. Editing the file dirties the tree, and
+    // the sha names the same commit the tag does — so the fallback refuses on
+    // exactly the ground the tag did, and the publish stops rather than
+    // continuing under some third version.
+    //
+    // That is more correct than what it replaced. The dated fallback published
+    // the edited bytes anyway, under a version that named no source at all, so
+    // the refusal of the tag amounted to relabelling the problem. Nothing is
+    // built now, which is the answer a version that claims to name a commit has
+    // to give.
+    expect(r.exitCode).toBe(1);
+    expect(r.lines.join("\n")).toMatch(/uncommitted changes/);
+    // Asserted both ways round, as before: the point is that the TAG was
+    // refused, and a run that merely failed could still be failing for a
+    // second reason.
+    expect(r.lines.join("\n")).not.toMatch(/v2\.1\.0/);
+    expect(existsSync(join(work, "dist-pack", "failproofai-pack.json"))).toBe(false);
   });
 
   it("ignores a tag that is not a usable version", async () => {
     git("tag", "nightly/2026-08-25");
     await runPublishCommand(["--dry-run"]);
-    expect(manifest().version).toBe(utcToday());
+    // The fallback is the commit, not the date this used to assert. Read out of
+    // this checkout's own git and through the implementation's own truncation,
+    // so neither the sha nor the twelve characters is restated here — a test
+    // that hardcoded either would keep passing through a change to it.
+    expect(manifest().version).not.toBe("nightly/2026-08-25");
+    expect(manifest().version).toBe(versionFromCommit(git("rev-parse", "HEAD")));
   });
 
   it("lets an explicit --version win over everything", async () => {

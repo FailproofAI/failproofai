@@ -268,12 +268,21 @@ describe("what the unified command actually does", () => {
     expect(r.stdout).toMatch(/not enabled/);
   });
 
+  // Removed by the id the pack DECLARES, which is now the id it is installed
+  // from. It used to be `failproofai/core` — the published manifest said that
+  // while `pack-store` and every piece of help said `FailproofAI/policies`, so
+  // `policies remove FailproofAI/policies` answered "no installed pack with
+  // that id" for the one pack everybody has. Two names, and neither surface
+  // agreed with the other.
   it("uninstalls a whole pack by its id, which has a slash and so is a source", async () => {
     await cli(["policies", "add", "FailproofAI/policies", "--policy", "block-rm-rf"]);
-    const removed = await cli(["policies", "remove", "failproofai/core"]);
+    const removed = await cli(["policies", "remove", "FailproofAI/policies"]);
     expect(removed.exitCode).toBe(0);
-    expect(removed.stdout).toMatch(/Removed failproofai\/core/);
+    expect(removed.stdout).toMatch(/Removed FailproofAI\/policies/);
     expect((await cli(["policies"])).stdout).not.toMatch(/✓ PACK/);
+    // The half that would have caught the original drift: the id you INSTALL
+    // by is the id you REMOVE by, whatever it happens to be.
+    expect(removed.stdout).not.toMatch(/failproofai\/core|failproofai\/builtins/);
   });
 
   it("needs the network to re-add what it removed, and says so plainly", async () => {
@@ -283,7 +292,7 @@ describe("what the unified command actually does", () => {
     // the package stopped carrying policies. A message that promises offline
     // and then fails offline is worse than no message.
     await cli(["policies", "add", "FailproofAI/policies", "--policy", "block-rm-rf"]);
-    const removed = await cli(["policies", "remove", "failproofai/core"]);
+    const removed = await cli(["policies", "remove", "FailproofAI/policies"]);
     expect(removed.exitCode).toBe(0);
     expect(removed.all).not.toMatch(/offline/i);
 

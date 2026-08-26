@@ -37,6 +37,9 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+// The one place the pack's id is decided. Imported rather than restated — see
+// PACK_ID below for what restating it cost.
+import { CORE_SOURCE } from "../src/hooks/pack-store.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // `--out <dir>` lets the conformance test generate into a temp directory rather
@@ -47,10 +50,17 @@ const outArg = process.argv.indexOf("--out");
 const OUT_DIR = outArg !== -1 && process.argv[outArg + 1]
   ? resolve(process.argv[outArg + 1])
   : join(ROOT, "policy-pack");
-// Not `failproofai/builtins`. These stop being builtins the moment they ship as
-// a pack, and an id is the most durable place a retired word can hide — it ends
-// up in every machine's installed.json and in the listing every user reads.
-const PACK_ID = "failproofai/core";
+// Not restated. The id is the most durable place a retired word can hide — it
+// ends up in every machine's installed.json and in the listing every user reads
+// — and restating it here is how it hid twice: `failproofai/builtins` shipped
+// first, was corrected to `failproofai/core` HERE and nowhere else, and then
+// `core` was retired in pack-store while this line went on saying it. The one
+// published release still declares `failproofai/builtins`, so a machine that
+// installed it cannot be addressed by either name anybody would type.
+//
+// Read from the layer that owns the set, so the next rename reaches this file
+// whether or not somebody remembers it exists.
+const PACK_ID = CORE_SOURCE;
 const ENTRY_ASSET = "failproofai-pack.mjs";
 const MANIFEST_ASSET = "failproofai-pack.json";
 const CHECKSUMS_ASSET = "SHA256SUMS";
@@ -60,6 +70,17 @@ const version = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).ver
 // A generated entry that registers every non-alwaysOn builtin through the public
 // policy API — the same API a third-party pack uses. `failproofai` stays external
 // so the loader's shim resolves it, exactly as it does for any other pack.
+//
+// It registers `category` and `defaultEnabled` as well as name/description/
+// match/fn, and that is not decoration. This script builds ITS manifest straight
+// from POLICY_CATALOG, so omitting them from the ENTRY looked harmless — and was
+// not: the entry IS the artifact, and anything that rebuilds a manifest from it
+// saw 38 policies filed under "General" with none on by default. `failproofai
+// publish` does exactly that, which is how a release that would have enforced
+// nothing on a default install got as far as a dry run.
+//
+// Note for whoever edits the template below: it is a template literal, so a
+// backtick inside it ends the string. Comments in there stay backtick-free.
 const entrySource = `
 import { customPolicies } from "failproofai";
 import { BUILTIN_POLICIES } from ${JSON.stringify(join(ROOT, "src/hooks/builtin-policies.ts"))};
@@ -69,6 +90,9 @@ for (const policy of BUILTIN_POLICIES) {
   customPolicies.add({
     name: policy.name,
     description: policy.description,
+    // Both fields matter here; see the note above entrySource.
+    category: policy.category,
+    defaultEnabled: policy.defaultEnabled === true,
     match: policy.match,
     fn: policy.fn,
   });

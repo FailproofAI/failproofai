@@ -10,16 +10,18 @@
  *
  * The server records every request it is handed, which is what makes the two
  * halves of this file's contract testable at all: that the publishing paths send
- * what they claim to send, and — for `--dry-run`, a bad tag, and a missing
- * credential — that they send NOTHING. A command that reaches GitHub before it
- * has decided it should is a command that half-publishes.
+ * what they claim to send, and — for `--dry-run`, a bad tag, a missing
+ * credential, a dirty tree and a directory that is not a checkout — that they
+ * send NOTHING. A command that reaches GitHub before it has decided it should
+ * is a command that half-publishes.
  *
  * The token is a fixture string and is never printed into an assertion message;
  * one test exists purely to hold the line that it never reaches stdout either.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 import { createServer, type Server } from "node:http";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
@@ -65,7 +67,11 @@ interface FakeGitHub {
   created: { status: number; body: Record<string, unknown> };
   /** Per-asset upload outcome; anything unnamed uploads fine. */
   uploadFails: Record<string, { status: number; body: Record<string, unknown> }>;
-  /** Tags already released here, which is what the next version is counted from. */
+  /**
+   * Tags already released here. Nothing reads them any more — the version is
+   * the commit — and the route below is kept precisely so a test can fill this
+   * in and prove the request is still never made.
+   */
   releases: Array<{ tag_name: string }>;
   /** Who the credential belongs to — decides personal vs organisation creation. */
   login: string;
@@ -88,10 +94,6 @@ const uploadsOf = (asset?: string) =>
   );
 
 const publish = (rest: string[]) => packCli.runPublishCommand(rest);
-/** Today, from the implementation rather than restated here — a test that
- *  computed its own UTC date would pass a build whose date logic had drifted,
- *  which is the one thing it is here to catch. */
-const utcToday = () => packCli.utcToday();
 
 const writeEntry = (body = ENTRY) => {
   const p = join(work, "policies.mjs");
@@ -134,7 +136,9 @@ beforeAll(async () => {
 
       m = /^\/repos\/[^/]+\/[^/]+\/releases$/.exec(p);
       if (m && method === "POST") return send(github.created.status, github.created.body);
-      // Listing releases is how the next version is counted.
+      // Listing releases used to be how the next version was counted. The route
+      // stays so "nothing is counted" is provable: a test that deleted it would
+      // watch the request 404 rather than watch it never happen.
       if (m && method === "GET") return send(200, github.releases);
 
       if (p === "/user" && method === "GET") return send(200, { login: github.login });
@@ -486,59 +490,338 @@ describe("an upload that fails partway", () => {
   });
 });
 
-// Versions are DATES now, not a count. These used to assert 1.0.0 / 1.0.1 /
-// 1.0.2 and they assert the same PROPERTIES against the new scheme: a first
-// publish gets something usable, a second continues rather than repeats, the
-// comparison is numeric rather than textual, and a tag carrying no sequence
-// seeds nothing. The old numbers are gone because a counter dressed as semver
-// implied a breaking/feature/patch distinction nothing enforced.
+// The version is the COMMIT now. This block used to be about counting: it
+// listed the repository's releases, found the highest date already there and
+// minted the next ordinal after it. Every one of those tests is gone because
+// the thing they described is gone — nothing is counted, nothing is asked of
+// GitHub, and the answer is a property of the tree in front of you. What is
+// asserted instead is that property: the same source always yields the same
+// version, and the version is never minted where it would be a lie about which
+// commit produced these bytes.
+//
+// These run against a REAL git checkout in the temp directory rather than a
+// stubbed `git`, for the reason the sibling authoring suite gives: the whole
+// point of the path is that it reads what git actually reports, and a stub
+// would assert my idea of its output instead of its own.
 describe("the version, when nobody says what it is", () => {
-  it("dates a repository that has never released", async () => {
-    const r = await publish([writeEntry(), "--repo", "acme/guards"]);
+  const gitIn = (cwd: string, ...args: string[]): string =>
+    execFileSync("git", args, {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "t",
+        GIT_AUTHOR_EMAIL: "t@t",
+        GIT_COMMITTER_NAME: "t",
+        GIT_COMMITTER_EMAIL: "t@t",
+      },
+    }).trim();
+
+  /**
+   * Where the built assets go — deliberately a SIBLING of the checkout below,
+   * never inside it, so the only thing dirtying that tree is whatever a test
+   * dirtied on purpose.
+   *
+   * Output landing INSIDE the checkout is not an unsupported arrangement, it is
+   * the default one, and it has two tests of its own further down: the command
+   * skips its own output directory when it reads the tree, and it is that skip
+   * rather than this harness choice that keeps a second publish working.
+   */
+  const OUT = () => join(work, "dist-pack");
+
+  /** A checkout with the entry committed in it, and the sha it sits at. */
+  function checkout(): { entry: string; sha: string } {
+    const dir = join(work, "pack");
+    mkdirSync(dir, { recursive: true });
+    const entry = join(dir, "policies.mjs");
+    writeFileSync(entry, ENTRY, "utf8");
+    gitIn(dir, "init", "-q", "-b", "main");
+    gitIn(dir, "add", "-A");
+    gitIn(dir, "commit", "-qm", "policies");
+    return { entry, sha: gitIn(dir, "rev-parse", "HEAD") };
+  }
+
+  const manifestVersion = (): { version: string; commit?: string } =>
+    JSON.parse(readFileSync(join(OUT(), PACK_MANIFEST_ASSET), "utf8"));
+
+  it("publishes a clean checkout at its own short sha", async () => {
+    const { entry, sha } = checkout();
+    const r = await publish([entry, "--repo", "acme/guards", "--out", OUT()]);
+
     expect(r.exitCode).toBe(0);
-    expect(r.lines.join("\n")).toContain(`acme/guards@${utcToday()}`);
+    const version = packCli.versionFromCommit(sha);
+    // The whole line, not just the `@version` fragment: a version carrying an
+    // extra suffix still CONTAINS the fragment, so the fragment alone would
+    // read a counted `<sha>-2` as a pass. The tag is pinned in the same breath
+    // because a release whose tag and version disagree installs as neither.
+    expect(r.lines.join("\n")).toContain(
+      `Published acme/guards@${version} to acme/guards at tag ${version}.`,
+    );
+    expect(manifestVersion().version).toBe(version);
+    // The ABBREVIATION is what reaches the artifact — the version is a prefix
+    // of the commit and not the whole forty characters of it. Which prefix is
+    // pinned in pack-commit-version.test.ts; what is pinned here is that the
+    // publish path truncates at all rather than writing the sha out twice.
+    expect(manifestVersion().version).not.toBe(sha);
+    expect(sha.startsWith(manifestVersion().version)).toBe(true);
+    // And abbreviating loses nothing, because the FULL sha is still written
+    // beside it — that is what a commit lookup resolves a tag from.
+    expect(manifestVersion().commit).toBe(sha);
   });
 
-  it("continues the day's sequence rather than re-minting it", async () => {
-    github.releases = [{ tag_name: utcToday() }];
-    const r = await publish([writeEntry(), "--repo", "acme/guards"]);
-    expect(r.lines.join("\n")).toContain(`@${utcToday()}-2`);
+  it("gives the same source the same version, however many times it is published", async () => {
+    // The sharpest difference from counting. The old scheme handed a second
+    // publish of identical bytes a NEW version, so a re-publish after a failed
+    // upload silently became a different artifact and nobody could tell the two
+    // apart by name. There is nothing to count now, so there is nothing to move.
+    const { entry, sha } = checkout();
+    const version = packCli.versionFromCommit(sha);
+
+    const first = await publish([entry, "--repo", "acme/guards", "--out", OUT()]);
+    expect(first.exitCode).toBe(0);
+    expect(first.lines.join("\n")).toContain(
+      `Published acme/guards@${version} to acme/guards at tag ${version}.`,
+    );
+
+    // The release the first publish made is now sitting on that tag.
+    github.releaseOnTag = { id: 77 };
+    requests.length = 0;
+
+    const second = await publish([entry, "--repo", "acme/guards", "--out", OUT()]);
+    expect(second.exitCode).toBe(0);
+    expect(second.lines.join("\n")).toContain(
+      `Published acme/guards@${version} to acme/guards at tag ${version}.`,
+    );
+    expect(manifestVersion().version).toBe(version);
+    // Asserted at the wire too, because the printed line is downstream of the
+    // decision: the second run looked for a release on the SAME tag, and then
+    // uploaded onto the one it found rather than making a second release.
+    expect(requests.find((q) => /\/releases\/tags\//.test(q.path))?.path).toBe(
+      `/repos/acme/guards/releases/tags/${version}`,
+    );
+    expect(requests.filter((q) => q.method === "POST" && /\/releases$/.test(q.path))).toEqual([]);
+    expect(uploadsOf().map((q) => q.path)).toEqual([
+      "/repos/acme/guards/releases/77/assets",
+      "/repos/acme/guards/releases/77/assets",
+      "/repos/acme/guards/releases/77/assets",
+    ]);
   });
 
-  it("compares the ordinal numerically, not as text", async () => {
-    // The same failure the semver version of this test pinned, in the place it
-    // moved to: sorting strings puts "-9" after "-10", so a tenth publish in
-    // one day would be handed -10 a second time.
-    github.releases = [{ tag_name: `${utcToday()}-9` }, { tag_name: `${utcToday()}-10` }];
-    const r = await publish([writeEntry(), "--repo", "acme/guards"]);
-    expect(r.lines.join("\n")).toContain(`@${utcToday()}-11`);
+  it("refuses a dirty tree, and publishes nothing at all", async () => {
+    // The version claims to name a commit. Uncommitted bytes are not in that
+    // commit, so minting it would point both the version and the `commit` field
+    // beside it at source that does not contain what was published.
+    const { entry } = checkout();
+    writeFileSync(entry, `${ENTRY}\n// edited\n`, "utf8");
+
+    const r = await publish([entry, "--repo", "acme/guards", "--out", OUT()]);
+
+    expect(r.exitCode).toBe(1);
+    expect(r.lines.join("\n")).toMatch(/uncommitted changes/);
+    // Refusing AFTER creating a repository and a release would be worse than
+    // not refusing: it leaves a half-made artifact somebody has to clean up.
+    expect(requests).toEqual([]);
+    // Nothing was BUILT either, which the request log cannot see. A refusal
+    // that still wrote the three assets leaves a complete, uploadable pack on
+    // disk carrying a version the command had just decided it must not mint.
+    expect(existsSync(join(OUT(), PACK_MANIFEST_ASSET))).toBe(false);
+    // And it says which flag gets past it, or the refusal is a dead end.
+    expect(r.lines.join("\n")).toMatch(/--version <version>/);
   });
 
-  it("ignores releases that carry no sequence rather than guessing at them", async () => {
-    // `nightly` has no sequence to continue — and neither, now, does a semver
-    // history: those releases stay installable by tag forever, they simply do
-    // not seed a date. A pack moving to this scheme starts its own sequence
-    // beside them rather than having them reinterpreted as dates.
-    github.releases = [{ tag_name: "nightly" }, { tag_name: "latest" }, { tag_name: "1.0.1" }];
-    const r = await publish([writeEntry(), "--repo", "acme/guards"]);
-    expect(r.lines.join("\n")).toContain(`@${utcToday()}`);
+  it("refuses dirt anywhere in the tree, not only in the file being published", async () => {
+    // A pack is every policy file in the directory, not only the one named, so
+    // a check scoped to the entry would ship a dirty sibling under a commit
+    // that does not contain it. The entry here is committed and untouched —
+    // what disqualifies the publish is the rest of the tree.
+    //
+    // Both spellings of dirt count, and the second is the one that bites: a
+    // file that was never `git add`ed is not in the commit at all, so a version
+    // naming that commit is exactly as false as one minted over an edit.
+    const { entry } = checkout();
+    const dir = join(work, "pack");
+    writeFileSync(join(dir, "README.md"), "# guards\n", "utf8");
+    gitIn(dir, "add", "-A");
+    gitIn(dir, "commit", "-qm", "readme");
+
+    writeFileSync(join(dir, "README.md"), "# guards, edited\n", "utf8");
+    const edited = await publish([entry, "--repo", "acme/guards", "--out", OUT()]);
+    expect(edited.exitCode).toBe(1);
+    expect(edited.lines.join("\n")).toMatch(/uncommitted changes/);
+    expect(requests).toEqual([]);
+
+    gitIn(dir, "checkout", "--", "README.md");
+    writeFileSync(join(dir, "notes.txt"), "scratch\n", "utf8");
+    const untracked = await publish([entry, "--repo", "acme/guards", "--out", OUT()]);
+    expect(untracked.exitCode).toBe(1);
+    expect(untracked.lines.join("\n")).toMatch(/uncommitted changes/);
+    expect(requests).toEqual([]);
   });
 
-  it("never goes backwards, however far ahead the published version is", async () => {
-    // Two people publishing one pack from Auckland and Los Angeles disagree
-    // about what day it is. Without the clamp the second mints a version LOWER
-    // than the one already released — and a lower version that is nonetheless
-    // newer is exactly what dating the releases is meant to prevent. The same
-    // clamp covers a machine whose clock is simply wrong.
-    github.releases = [{ tag_name: "2099.01.01" }];
-    const r = await publish([writeEntry(), "--repo", "acme/guards"]);
-    expect(r.lines.join("\n")).toContain("@2099.01.01-2");
+  it("is not refused by the dist-pack its own previous run wrote", async () => {
+    // The headline command is `cd my-policies && failproofai publish`, and its
+    // default output directory is `dist-pack` under the cwd — so it writes
+    // build output INTO the checkout whose cleanliness it reads. Untracked
+    // files are dirt to `git status`, so the second publish of an unchanged,
+    // fully committed tree was refused for uncommitted changes the command had
+    // itself created, and the remedy it printed — `git add -A` — commits the
+    // build output into the pack repository.
+    //
+    // Run through cwd with no --out rather than pointing --out inside the tree,
+    // because the default is the whole point: a user who passes nothing gets
+    // this arrangement and cannot see why the refusal is not about their work.
+    const { sha } = checkout();
+    const version = packCli.versionFromCommit(sha);
+    const dir = join(work, "pack");
+    const before = process.cwd();
+    // `findDistIndex()` falls back to `<cwd>/dist` to resolve the `failproofai`
+    // import inside a policy file, and chdir'ing out of the repo takes that
+    // fallback away — the loader would then fail for a reason this test has no
+    // opinion about. Pin it to the same directory the fallback would have found.
+    const prevDist = process.env.FAILPROOFAI_DIST_PATH;
+    process.env.FAILPROOFAI_DIST_PATH = join(before, "dist");
+    process.chdir(dir);
+    try {
+      const first = await publish(["--repo", "acme/guards"]);
+      expect(first.exitCode).toBe(0);
+      expect(existsSync(join(dir, "dist-pack", PACK_MANIFEST_ASSET))).toBe(true);
+
+      // The release the first run made is now on that tag, as it would be.
+      github.releaseOnTag = { id: 77 };
+      const second = await publish(["--repo", "acme/guards"]);
+      expect(second.exitCode).toBe(0);
+      expect(second.lines.join("\n")).toContain(
+        `Published acme/guards@${version} to acme/guards at tag ${version}.`,
+      );
+    } finally {
+      process.chdir(before);
+      if (prevDist === undefined) delete process.env.FAILPROOFAI_DIST_PATH;
+      else process.env.FAILPROOFAI_DIST_PATH = prevDist;
+    }
   });
 
-  it("reads the repository's own releases, not anything local", async () => {
-    github.releases = [{ tag_name: "3.4.5" }];
-    await publish([writeEntry(), "--repo", "acme/guards"]);
-    expect(requests.some((r) => r.method === "GET" && /\/releases$/.test(r.path))).toBe(true);
+  it("skips that output directory by its place in the REPOSITORY, not in the entry's folder", async () => {
+    // Both halves of the skip, on the arrangement that tells them apart: the
+    // policies live in a subdirectory, so the repository root and the directory
+    // git is run in are not the same place.
+    //
+    // The output directory has to be named from the ROOT — a pathspec is read
+    // relative to git's cwd, so a relative one would exclude
+    // `guards/dist-pack`, leave the real `dist-pack/` in the read, and hand the
+    // self-inflicted refusal straight back to anyone whose pack is not at the
+    // top of its repository. And the read still has to span the WHOLE
+    // repository, or skipping one directory would quietly become "look only in
+    // the entry's folder" and stop seeing dirt that belongs in the artifact.
+    const dir = join(work, "repo");
+    const nested = join(dir, "guards");
+    mkdirSync(nested, { recursive: true });
+    const entry = join(nested, "policies.mjs");
+    writeFileSync(entry, ENTRY, "utf8");
+    writeFileSync(join(dir, "README.md"), "# guards\n", "utf8");
+    gitIn(dir, "init", "-q", "-b", "main");
+    gitIn(dir, "add", "-A");
+    gitIn(dir, "commit", "-qm", "policies");
+    const version = packCli.versionFromCommit(gitIn(dir, "rev-parse", "HEAD"));
+    const out = join(dir, "dist-pack");
+
+    const first = await publish([entry, "--repo", "acme/guards", "--out", out]);
+    expect(first.exitCode).toBe(0);
+    expect(existsSync(join(out, PACK_MANIFEST_ASSET))).toBe(true);
+
+    github.releaseOnTag = { id: 77 };
+    const second = await publish([entry, "--repo", "acme/guards", "--out", out]);
+    expect(second.exitCode).toBe(0);
+    expect(second.lines.join("\n")).toContain(
+      `Published acme/guards@${version} to acme/guards at tag ${version}.`,
+    );
+
+    // Dirt two levels up from the file being published, with the same skip in
+    // play, still stops it.
+    writeFileSync(join(dir, "README.md"), "# guards, edited\n", "utf8");
+    requests.length = 0;
+    const third = await publish([entry, "--repo", "acme/guards", "--out", out]);
+    expect(third.exitCode).toBe(1);
+    expect(third.lines.join("\n")).toMatch(/uncommitted changes/);
+    expect(requests).toEqual([]);
+  });
+
+  it("refuses a directory that is not a checkout, and publishes nothing at all", async () => {
+    const entry = writeEntry();
+    // The temp directory must not itself sit inside a repository, or this test
+    // would be measuring the harness rather than the refusal.
+    expect(() => gitIn(work, "rev-parse", "HEAD")).toThrow();
+
+    const r = await publish([entry, "--repo", "acme/guards", "--out", OUT()]);
+
+    expect(r.exitCode).toBe(1);
+    expect(r.lines.join("\n")).toMatch(/not a git checkout/);
+    expect(requests).toEqual([]);
+    expect(existsSync(join(OUT(), PACK_MANIFEST_ASSET))).toBe(false);
+    expect(r.lines.join("\n")).toMatch(/--version <version>/);
+  });
+
+  it("lets --version through both refusals, because it is the stated way past them", async () => {
+    // Both messages name this flag, so both have to honour it — a refusal that
+    // advertises an escape hatch it does not have is worse than a plain refusal.
+    //
+    // The whole line each time, not the `@version` fragment: the fragment is
+    // still contained in a version carrying a suffix, and the tag has to agree
+    // with the version or the release installs as neither.
+    const bare = writeEntry();
+    const bareOut = join(work, "out-bare");
+    const r1 = await publish([bare, "--repo", "acme/guards", "--version", "1.0.0", "--out", bareOut]);
+    expect(r1.exitCode).toBe(0);
+    expect(r1.lines.join("\n")).toContain(
+      "Published acme/guards@1.0.0 to acme/guards at tag 1.0.0.",
+    );
+    // No checkout, so there is no commit to record — and an invented one would
+    // be worse than none, because `commit` is what a reader resolves back to
+    // source.
+    expect(JSON.parse(readFileSync(join(bareOut, PACK_MANIFEST_ASSET), "utf8")).commit).toBeUndefined();
+
+    const { entry, sha } = checkout();
+    writeFileSync(entry, `${ENTRY}\n// edited\n`, "utf8");
+    const dirtyOut = join(work, "out-dirty");
+    const r2 = await publish([entry, "--repo", "acme/guards", "--version", "2.0.0", "--out", dirtyOut]);
+    expect(r2.exitCode).toBe(0);
+    expect(r2.lines.join("\n")).toContain(
+      "Published acme/guards@2.0.0 to acme/guards at tag 2.0.0.",
+    );
+    // The escape hatch overrides the VERSION and nothing else: the commit the
+    // tree sits at is still recorded, so the artifact says where it came from
+    // even when its name does not.
+    expect(JSON.parse(readFileSync(join(dirtyOut, PACK_MANIFEST_ASSET), "utf8")).commit).toBe(sha);
+    // Known gap, pinned at the wire so it stays a decision rather than a
+    // surprise: the release body names that commit and says nowhere that the
+    // published bytes are not in it, so a reader who resolves the commit finds
+    // source that does not match what they installed. Give the body a marker
+    // for it and this line is the one that changes.
+    const body = requests
+      .filter((q) => q.method === "POST" && /\/releases$/.test(q.path))
+      .map((q) => JSON.parse(q.body.toString("utf8")))
+      .find((b) => b.tag_name === "2.0.0");
+    expect(body).toBeDefined();
+    expect(body.body).toContain(sha);
+    expect(body.body).not.toMatch(/dirty/i);
+    // And the sha-derived version is not silently smuggled in beside the one
+    // that was asked for.
+    expect(r2.lines.join("\n")).not.toContain(packCli.versionFromCommit(sha));
+  });
+
+  it("asks the repository nothing in order to choose the version", async () => {
+    // Not asking is now the design, not an optimisation: a fresh clone, an
+    // air-gapped machine and a second publisher all compute the same answer for
+    // the same source without knowing what the repository has published before.
+    // The stand-in still serves a release list, and it stays untouched.
+    github.releases = [{ tag_name: "2099.01.01" }, { tag_name: "3.4.5" }];
+    const { entry, sha } = checkout();
+
+    const r = await publish([entry, "--repo", "acme/guards", "--out", OUT()]);
+
+    expect(r.exitCode).toBe(0);
+    expect(r.lines.join("\n")).toContain(`acme/guards@${packCli.versionFromCommit(sha)}`);
+    expect(requests.filter((q) => q.method === "GET" && /\/releases$/.test(q.path))).toEqual([]);
   });
 });
 

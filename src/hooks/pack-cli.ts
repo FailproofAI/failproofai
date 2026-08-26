@@ -9,9 +9,9 @@ import { execFileSync } from "node:child_process";
 import { homedir, tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { INTEGRATION_TYPES } from "./types";
-import { PACK_VERSION_RE } from "./pack-manifest";
+import { PACK_COMMIT_RE, PACK_VERSION_RE } from "./pack-manifest";
 import { detectInstalledClis } from "./integrations";
 import { parsePackIdentity, parsePackPolicy, readInstalledPacks } from "./pack-manifest";
 import {
@@ -673,32 +673,26 @@ function inferRepo(entryPath: string): string | null {
 }
 
 /**
- * A tag on HEAD, when there is one and the file is clean.
- *
- * Somebody who tagged `v1.2.0` has SAID what this release is, which a counted
- * number cannot. Absent a tag there is nothing here to infer — the version is
- * counted from what the repository has already published instead.
- */
-/**
  * The commit the policies being published are sitting at.
  *
- * Provenance only — it never decides the version and never gates the publish.
- * A pack published from a directory that is not a git checkout has no commit,
- * and that is a supported way to publish, so this returns null the same way
- * `inferRepo` does and every reader treats absence as ordinary.
+ * This DECIDES the version and gates the publish — `versionForPublish` reads
+ * both fields. It used to be a label that did neither, which is why the reads
+ * below are stricter than they look. A pack published from a directory that is
+ * not a git checkout has no commit; absence is ordinary and returns null the
+ * same way `inferRepo` does, and the refusal is spelled out one caller up.
  *
  * Read from the ENTRY FILE's directory rather than the process cwd, for the
  * reason `inferRepo` gives: a policy that lives in another checkout is normal,
  * and the answer has to describe the file rather than wherever the shell is.
  *
- * Deliberately NOT `--dirty`-aware. A tag-derived VERSION is refused on a dirty
- * tree because a tag names a commit and uncommitted bytes are not in it; this
- * is a label saying which commit the tree was near, and refusing to record one
- * because a README changed would leave the artifact with no provenance at all
- * — strictly worse than an approximate one. `publishedFrom` in the release body
- * says `<sha> (dirty)` so the approximation is stated rather than hidden.
+ * `dirty` still travels beyond the version: with `--version` given, a dirty
+ * tree publishes anyway and the recorded `commit` is then an approximation.
+ *
+ * `outDir` is the directory the build is about to write into, and everything
+ * under it is left OUT of the dirty read — see {@link skipOutDir} for the
+ * self-inflicted refusal that costs.
  */
-function inferCommit(entryPath: string): { sha: string; dirty: boolean } | null {
+function inferCommit(entryPath: string, outDir?: string): { sha: string; dirty: boolean } | null {
   const cwd = resolve(entryPath, "..");
   const git = (args: string[]): string | null => {
     try {
@@ -714,9 +708,72 @@ function inferCommit(entryPath: string): { sha: string; dirty: boolean } | null 
   };
   const sha = git(["rev-parse", "HEAD"]);
   if (!sha || !/^[0-9a-f]{40}$/.test(sha)) return null;
-  return { sha, dirty: Boolean(git(["status", "--porcelain"])) };
+  // `git()` answers "" for a clean tree and null when it could not run the
+  // command at all, and the `Boolean()` this used to be read BOTH as clean.
+  // Harmless while `dirty` was a label; now that it decides the version, an
+  // unreadable status minted a commit-named version for bytes nobody had
+  // checked against that commit — the one claim this scheme exists to refuse.
+  // Reachable, not theoretical: `rev-parse` never touches the index, so a repo
+  // whose index is unreadable answers the first question and fails the second,
+  // and `status` walks the whole worktree so it is also the one that hits the
+  // 5s timeout. Unknown therefore falls on the dirty side: refusing a tree we
+  // cannot vouch for costs one `--version`, and the alternative is publishing
+  // one we could not read.
+  const status = git(["status", "--porcelain", ...skipOutDir(git, entryPath, outDir)]);
+  return { sha, dirty: status !== "" };
 }
 
+/**
+ * The build output directory, spelled as a pathspec `git status` skips.
+ *
+ * `publish` writes its three assets to `dist-pack` under the cwd unless told
+ * otherwise, so the documented `cd my-policies && failproofai publish` leaves
+ * untracked build output INSIDE the checkout it just read. Without this, the
+ * next publish of an unchanged, fully committed tree reads that output as
+ * uncommitted changes and refuses — the command breaking its own second run,
+ * over a directory it wrote itself, with a remedy (`git add -A`) that commits
+ * build output into the pack repository.
+ *
+ * Narrow on purpose, because hiding a change from this read is hiding the one
+ * thing the commit version claims. Nothing is skipped when the output lands
+ * outside the repository, which cannot dirty it anyway, and nothing is skipped
+ * when the output directory CONTAINS the entry file — `--out .` in a folder of
+ * policies is a directory full of source, where skipping it would conceal
+ * exactly what the check exists to catch.
+ */
+function skipOutDir(
+  git: (args: string[]) => string | null,
+  entryPath: string,
+  outDir: string | undefined,
+): string[] {
+  if (!outDir) return [];
+  const out = resolve(outDir);
+  if (resolve(entryPath).startsWith(out + sep)) return [];
+  const top = git(["rev-parse", "--show-toplevel"]);
+  if (!top) return [];
+  const rel = relative(resolve(top), out);
+  if (!rel || rel.startsWith("..") || isAbsolute(rel)) return [];
+  // `top` on the exclusion is what makes it mean the directory it names: `rel`
+  // is measured from the repository root, while a pathspec is read relative to
+  // the directory git runs in — the ENTRY's folder. Without it, publishing
+  // `guards/policies.mjs` would exclude `guards/dist-pack` and leave the real
+  // `dist-pack/` in the read, so the self-inflicted refusal comes straight
+  // back for anyone whose policies sit in a subdirectory.
+  //
+  // The leading `:(top)` states the whole-repository scope rather than leaning
+  // on git's rule that a list of exclusions alone applies to all paths, and
+  // `literal` stops a directory named with a glob character from taking its
+  // neighbours out of the read with it.
+  return ["--", ":(top)", `:(exclude,literal,top)${rel.split(sep).join("/")}`];
+}
+
+/**
+ * A tag on HEAD, when there is one and the file is clean.
+ *
+ * Somebody who tagged `v1.2.0` has SAID what this release is, which a derived
+ * name cannot — so this wins over the commit version. Absent a tag there is
+ * nothing here to infer, and the commit the tree sits at is used instead.
+ */
 function inferTaggedVersion(entryPath: string): string | null {
   const cwd = resolve(entryPath, "..");
   const git = (args: string[]): string | null => {
@@ -736,9 +793,10 @@ function inferTaggedVersion(entryPath: string): string | null {
   // A tag NAMES a commit, so shipping edited bytes under it publishes something
   // that commit does not contain — and two artifacts would claim one version,
   // which `id|version|sha256` compares in both the audit key and the pack
-  // upsert. A counted version names no commit and has no such problem, so this
-  // refusal belongs to the tagged path alone.
-  if (git(["status", "--porcelain", "--", entryPath])) return null;
+  // upsert. Compared against "" rather than tested for truthiness for the reason
+  // `inferCommit` gives: null is "could not read the tree", and reading that as
+  // clean is how a dirty tree slips out under a tag that does not describe it.
+  if (git(["status", "--porcelain", "--", entryPath]) !== "") return null;
   return tag;
 }
 
@@ -790,141 +848,93 @@ function findEntry(dir: string): string[] {
 }
 
 /**
- * The version after whatever this repository has already published.
+ * How many characters of a commit a version names.
  *
- * DATES, not a counter. `1.0.1 → 1.0.2` is a counter wearing semver's clothes:
- * it implies a breaking/feature/patch distinction that nothing enforces and
- * that nobody actually made, so the number carries a claim it cannot support.
- * A date carries one that is true.
+ * Twelve, not git's default seven. Seven collides in a repository with enough
+ * objects — git itself lengthens the abbreviation as a repo grows — and a
+ * version that stops being unique is worse than a long one, because two
+ * artifacts would claim the same name. Twelve is short enough to read in a
+ * listing and long enough that no real pack repository will reach it.
  *
- * Not the commit SHA either, which is the other obvious answer and the wrong
- * one. A SHA names exactly where bytes came from and tells a reader nothing
- * else: it does not ORDER, so `a1b2c3d` and `f9e8d7c` give no clue which came
- * first, and every local question — am I behind? is this newer? — stops being
- * answerable without a network call, on surfaces that deliberately work
- * offline. The commit is recorded beside the version instead (`inferCommit`),
- * where it answers provenance without being asked to answer sequence too.
- *
- * Reads the repository's own releases rather than anything local, because the
- * releases ARE the published record: a machine that has never published from
- * this checkout still computes the right next version, and two people
- * publishing from different clones cannot both mint the same one without one of
- * them seeing the other's release first.
- *
- * Non-sequence tags are ignored rather than parsed heroically — a repo whose
- * releases are named `nightly` has no sequence to continue, and starting a
- * fresh count is more honest than inventing one. The same applies to a repo
- * whose history is SEMVER: those releases stay installable by tag forever, they
- * simply do not seed a date, so the first calendar publish starts its own
- * sequence beside them rather than reinterpreting them.
+ * The FULL sha is still recorded as `commit` in the manifest, so nothing is
+ * lost by abbreviating the version.
  */
-export interface CalendarVersion {
-  /** `YYYY.MM.DD`, zero-padded so a lexical sort is a chronological one. */
-  date: string;
-  /** 1 for the first publish of that day, which carries no suffix. */
-  ordinal: number;
-}
+export const VERSION_SHA_LENGTH = 12;
 
-/** `2026.08.26` / `2026.08.26-2`, or null for anything that is not one. */
-export function parseCalendarVersion(tag: string): CalendarVersion | null {
-  const m = /^v?((\d{4})\.(\d{2})\.(\d{2}))(?:-(\d+))?$/.exec(tag.trim());
-  if (!m) return null;
-  // Date-SHAPED is not the same as a date. `2026.88.26` — one fat-fingered
-  // hand-tag — used to read as a perfectly good version, and then outranked
-  // every real date for the rest of that year: the clamp below pins each later
-  // publish onto it, so a repo mints `2026.88.26-2`, `-3`, … forever and never
-  // returns to real days. That is the same failure the "junk seeds nothing"
-  // rule already covers for `nightly`, so an impossible day is junk too —
-  // refused here, it orders nothing and the next publish starts from today.
-  const [year, month, day] = [Number(m[2]), Number(m[3]), Number(m[4])];
-  const asDate = new Date(Date.UTC(year, month - 1, day));
-  if (
-    asDate.getUTCFullYear() !== year ||
-    asDate.getUTCMonth() + 1 !== month ||
-    asDate.getUTCDate() !== day
-  ) {
-    return null;
-  }
-  if (m[5] === undefined) return { date: m[1], ordinal: 1 };
-  const ordinal = Number(m[5]);
-  // `-0` and `-1` are refused rather than normalised: the first publish of a day
-  // has NO suffix, so either spelling is a second name for a version that
-  // already exists, and two names for one version is the ambiguity this whole
-  // scheme exists to avoid. A leading zero (`-02`) is NOT refused with them,
-  // deliberately: it names a version that exists under no other spelling, so
-  // ignoring it would mint beneath a published release — the one outcome the
-  // clamp exists to prevent — while reading it as 2 continues above it.
-  //
-  // Past the safe-integer range `Number` stops being able to hold the digits it
-  // was given, and both ways it fails are silent. `-9007199254740993` rounds,
-  // so the parse would claim a version whose text is not the tag's; anything
-  // bigger renders back out of `formatCalendarVersion` in exponential form
-  // (`2026.08.26-1e+23`), which no parser reads again — leaving the next
-  // publish seeing no sequence at all, restarting at `-2`, and creating a
-  // release it has already created. Refused, such a tag orders nothing and the
-  // real sequence beside it keeps counting. The top of the safe range is still
-  // a version that cannot be counted past; nine quadrillion publishes in one
-  // day is not a case anyone reaches.
-  if (ordinal < 2 || !Number.isSafeInteger(ordinal)) return null;
-  return { date: m[1], ordinal };
-}
-
-/** The rendered form. The first of a day is bare; later ones carry `-N`. */
-export function formatCalendarVersion(v: CalendarVersion): string {
-  return v.ordinal <= 1 ? v.date : `${v.date}-${v.ordinal}`;
-}
-
-/** Today, in UTC. Split out so a test can pin the day without pinning a clock. */
-export function utcToday(now: Date = new Date()): string {
-  return [
-    now.getUTCFullYear(),
-    String(now.getUTCMonth() + 1).padStart(2, "0"),
-    String(now.getUTCDate()).padStart(2, "0"),
-  ].join(".");
+/** The version a commit names. */
+export function versionFromCommit(sha: string): string {
+  return sha.trim().toLowerCase().slice(0, VERSION_SHA_LENGTH);
 }
 
 /**
- * The next version, given today and what the repository has already published.
+ * The version this publish should carry: the commit it was built from.
  *
- * UTC, not local time, and then clamped so it can never go BACKWARDS. Those are
- * the same defect seen from two sides: two people publishing the same pack from
- * Auckland and Los Angeles disagree about what day it is by up to a full date,
- * so a local-time counter lets the second publisher mint a version lower than
- * the one already released — and a lower version that is nonetheless newer is
- * exactly the thing calendar versioning is chosen to prevent. UTC shrinks the
- * disagreement to nothing; the clamp covers the rest, including a machine whose
- * clock is simply wrong.
+ * A version answers ONE question here — which source produced these bytes —
+ * and the commit answers it exactly, with nothing to decide and nothing to
+ * count. Nothing is read from the repository's releases: the version is a
+ * property of the tree in front of you, so a fresh clone, an air-gapped
+ * machine and a second publisher all compute the same answer for the same
+ * source, and none of them has to ask GitHub what happened before.
  *
- * Pure, so the interesting cases are tested without a fake clock.
+ * The costs are real and are the reason this is an explicit choice rather than
+ * a default. A sha does not ORDER — `a1b2c3d` and `f9e8d7c` give no clue which
+ * came first — so "am I on the newest?" is a question only the release list can
+ * answer. `policies show <source> --releases` is where it is answered, newest
+ * first, which is why that surface exists.
+ *
+ * What it REFUSES rather than approximates, all for the same reason: the
+ * version claims to name a commit, so it must not be minted where that claim
+ * would be false.
+ *
+ * - **No git.** There is no commit to name. Publishing from a directory that
+ *   is not a checkout used to work; under this scheme it cannot, and saying so
+ *   beats inventing a number that names nothing.
+ * - **A dirty tree.** The bytes being published are not the bytes in that
+ *   commit, so the version — and `commit` in the manifest beside it — would
+ *   both point at source that does not contain them.
+ * - **A sha that is not one.** No caller in the publish path produces one, so
+ *   this is a guard rather than a case; see the comment on it below.
+ *
+ * `--version` overrides all of it, and every refusal names it for that reason.
  */
-export function nextCalendarVersion(existingTags: string[], today: string): string {
-  let highest: CalendarVersion | null = null;
-  for (const tag of existingTags) {
-    const parsed = parseCalendarVersion(tag);
-    if (!parsed) continue;
-    if (
-      !highest ||
-      parsed.date > highest.date ||
-      (parsed.date === highest.date && parsed.ordinal > highest.ordinal)
-    ) {
-      highest = parsed;
-    }
+export function versionForPublish(
+  provenance: { sha: string; dirty: boolean } | null,
+): { version: string } | { error: string[] } {
+  if (!provenance) {
+    return {
+      error: [
+        "This pack is versioned by the commit it is built from, and this directory is not a git checkout.",
+        "  git init && git add -A && git commit -m \"first policies\"",
+        "Then publish again. To publish without git, name the version yourself: --version <version>.",
+      ],
+    };
   }
-  if (!highest) return today;
-  // Already published today, or published from a zone or a clock ahead of this
-  // one: continue THAT day's sequence rather than restarting it.
-  if (highest.date >= today) return formatCalendarVersion({ date: highest.date, ordinal: highest.ordinal + 1 });
-  return today;
-}
-
-async function nextVersion(owner: string, name: string, token: string): Promise<string> {
-  const res = await gh(`${GITHUB_API}/repos/${owner}/${name}/releases?per_page=100`, token);
-  const tags = Array.isArray(res.json)
-    ? (res.json as unknown as Array<{ tag_name?: unknown }>)
-        .map((r) => (typeof r.tag_name === "string" ? r.tag_name : ""))
-        .filter(Boolean)
-    : [];
-  return nextCalendarVersion(tags, utcToday());
+  if (provenance.dirty) {
+    return {
+      error: [
+        `The version names commit ${versionFromCommit(provenance.sha)}, and this tree has uncommitted changes —`,
+        "so the bytes about to be published are not the bytes in that commit.",
+        "  git add -A && git commit -m \"...\"",
+        "Then publish again, or name the version yourself: --version <version>.",
+      ],
+    };
+  }
+  // Same refusal as the other two, from the other direction: a version that is
+  // not an abbreviated sha names no commit either. `inferCommit` only ever hands
+  // over forty lower-case hex, so nothing in the publish path reaches this —
+  // which is exactly why it is worth stating. Truncating a non-sha silently
+  // yields a `version` the manifest validator rejects much later, or an EMPTY
+  // one, and the publish then fails somewhere that says nothing about the sha.
+  const sha = provenance.sha.trim().toLowerCase();
+  if (!PACK_COMMIT_RE.test(sha)) {
+    return {
+      error: [
+        `The version names the commit it was built from, and ${JSON.stringify(provenance.sha.slice(0, 64))} is not one.`,
+        "Name the version yourself instead: --version <version>.",
+      ],
+    };
+  }
+  return { version: versionFromCommit(sha) };
 }
 
 /**
@@ -1325,11 +1335,10 @@ function ghError(res: { status: number; json: Record<string, unknown> | null; te
  * demanded as flags.
  *
  * Everything else it already derives: the policy files by content, the version
- * by counting the repository's own releases, the id from the repository, the
- * credential from the environment. What is left is genuinely a question —
- * WHERE this should live, when the folder has no git remote naming somewhere —
- * and a confirmation, because publishing is public and a version number can
- * never be reused.
+ * from the commit the tree sits at, the id from the repository, the credential
+ * from the environment. What is left is genuinely a question — WHERE this
+ * should live, when the folder has no git remote naming somewhere — and a
+ * confirmation, because publishing is public and cannot be taken back.
  *
  * Only ever on a TTY. A pipe, a CI job or a test gets the old behaviour: flags
  * decide, and a missing `--repo` still means "build the assets and stop"
@@ -1420,11 +1429,11 @@ async function publish(rest: string[]): Promise<PackCliResult> {
     if (answered === null) return ok(["Nothing was published."]);
     repo = answered;
   }
-  // A tag on HEAD is somebody SAYING what this release is, so it wins over a
-  // counted one. Everything else is decided after the repository is known,
-  // because the count comes from what that repository has already published.
+  // A tag on HEAD is somebody SAYING what this release is, so it wins over the
+  // sha, which only reports one. Both are properties of the tree, so neither
+  // waits on the repository being known — see the block below the usage text.
   let version = flag("version") ?? (entry ? inferTaggedVersion(entry) : null) ?? undefined;
-  let versionCounted = false;
+  let versionFromSha = false;
   // The id and the repo are usually the same words, and requiring both is asking
   // the same question twice. Either one alone answers for the other.
   const dryRun = rest.includes("--dry-run") || !repo;
@@ -1459,10 +1468,29 @@ async function publish(rest: string[]): Promise<PackCliResult> {
     ]);
   }
 
-  // Check an EXPLICIT tag against an explicit version before anything reaches
-  // the network. When the version is counted the tag simply follows it and can
-  // never disagree — but a tag the user typed can, and refusing it here is what
-  // stops a doomed publish from first creating a repository for itself.
+  // The version is a property of the TREE, not of the repository's history, so
+  // it is settled here — before the credential, before the repo, and identically
+  // for a dry run. Nothing is counted and nothing is asked of GitHub.
+  //
+  // Provenance is read ONCE, because it decides the version AND is recorded in
+  // the manifest beside it. Reading it twice is how the two come to disagree.
+  //
+  // The output directory is settled first only so the dirty read can skip it:
+  // it is where the LAST run's assets are sitting, and inside the checkout by
+  // default. See `skipOutDir`.
+  const outDirEarly = resolve(flag("out") ?? "dist-pack");
+  const provenance = entry ? inferCommit(entry, outDirEarly) : null;
+  if (!version) {
+    const resolved = versionForPublish(provenance);
+    if ("error" in resolved) return fail(resolved.error);
+    version = resolved.version;
+    versionFromSha = true;
+  }
+
+  // Check an EXPLICIT tag against the version before anything reaches the
+  // network. A tag the user typed can disagree with the version, and refusing
+  // it here is what stops a doomed publish from first creating a repository
+  // for itself.
   const explicitTag = flag("tag");
   if (explicitTag && version && !packTagMatchesVersion(explicitTag, version)) {
     return fail([
@@ -1473,12 +1501,9 @@ async function publish(rest: string[]): Promise<PackCliResult> {
     ]);
   }
 
-  // The version may still be unknown here: with nothing explicit and no tag, it
-  // is one past whatever the repository has already published, which cannot be
-  // known without asking it. So the credential and the repository come first —
-  // the reverse of the old order, where building first avoided authenticating
-  // for a pack that does not load. That trade is still paid: the build runs
-  // immediately after, before anything is created or uploaded.
+  // The version is already known, so the credential and the repository are
+  // needed only to publish. The build still runs immediately after, before
+  // anything is created or uploaded.
   let token: string | null = null;
   let created = false;
   let repoInfo: Awaited<ReturnType<typeof gh>> | null = null;
@@ -1495,29 +1520,13 @@ async function publish(rest: string[]): Promise<PackCliResult> {
     if ("error" in ensured) return fail(ensured.error);
     created = ensured.created;
     repoInfo = ensured.info;
-    if (!version) {
-      version = await nextVersion(owner, name, token);
-      versionCounted = true;
-    }
   }
-  // A dry run never asks the repository what it has published, so it reports
-  // TODAY rather than a settled number — which is also what a first publish
-  // would get. It says the number is provisional rather than implying it is
-  // decided. (Hardcoding `1.0.0` here was right while versions were counted
-  // and became a lie the moment they became dates: it named a version the real
-  // publish would never have chosen.)
-  if (!version) {
-    version = utcToday();
-    versionCounted = true;
-  }
-
   const tag = flag("tag") ?? version;
 
   // One artifact, however many files it was written across. `build` refuses an
   // entry with relative imports because only the entry is digest-pinned — so
   // the fix is to make it ONE file here, not to send the author away to set up
   // a bundler for a step this tool already performs for its own pack.
-  const outDirEarly = resolve(flag("out") ?? "dist-pack");
   let entryToBuild = entry;
   const needsBundle =
     discovered.length > 1 ||
@@ -1531,11 +1540,6 @@ async function publish(rest: string[]): Promise<PackCliResult> {
     entryToBuild = bundled.path;
   }
 
-  // Read from the SOURCE entry, never from the bundled one: `bundleEntry` writes
-  // its output into `dist-pack/`, which is gitignored in every pack this tool
-  // scaffolds, so asking git about that path answers about the wrong tree or
-  // about no tree at all.
-  const provenance = inferCommit(entry);
   const built = await build([
     entryToBuild,
     "--id", id,
@@ -1563,10 +1567,9 @@ async function publish(rest: string[]): Promise<PackCliResult> {
             "Nothing was published: name a repository to release it on.",
             // Just the repository. It used to spell out the entry file and the
             // version too — naming ONE of the files it had that moment finished
-            // bundling, and pinning a version it works out by counting the
-            // repository's own releases. Both were wrong the moment they were
-            // printed, and both taught the reader that publishing needs flags
-            // it does not need.
+            // bundling, and pinning a version it works out for itself. Both
+            // were wrong the moment they were printed, and both taught the
+            // reader that publishing needs flags it does not need.
             "  failproofai publish --repo <owner>/<repo>",
           ]),
     ]);
@@ -1664,7 +1667,7 @@ async function publish(rest: string[]): Promise<PackCliResult> {
     ...bundleNote,
     ...(created ? [`Created ${repo} (public).`] : []),
     `Published ${id}@${version} to ${repo} at tag ${tag}.` +
-      (versionCounted ? " Next publish will be one past it." : ""),
+      (versionFromSha ? " That names the commit it was built from." : ""),
     `  ${assets.length} assets attached`,
     "",
     "Anyone can now install it:",

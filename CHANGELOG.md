@@ -1,21 +1,32 @@
 # Changelog
 
-## 1.0.2-beta.5 — 2026-08-25
+## 1.0.2-beta.6 — 2026-08-26
 
 ### Features
 
 - `failproofai config` sets a machine up when there is no terminal, instead of refusing. It printed "needs an interactive terminal" and did nothing, and `installDaemonService()` had exactly one caller — the wizard — so no CI job, container or agent could reach the daemon-configured state at all. No flag: the command IS the request. Add `--token <key>` (or `FAILPROOFAI_CLOUD_TOKEN`) to connect to Cloud in the same run; the URL defaults to app.befailproof.ai. Exit 1 if anything asked for did not happen, including a key the server refused and a machine that could not reach root (#738)
+
+### Fixes
+
+- `policies add <pack> --cli` refuses a name that is not an agent, instead of installing and guarding nothing. `--cli claud` printed "Installed", exited 0, and applied the pack to no agent at all because the misspelling matched none (#738)
+- `policies add <pack> --cli claude codex` keeps BOTH. The pack lane split on commas while the policy lane split on spaces, so a space-separated list was silently truncated to its first entry. Either spelling now works on both (#738)
+- `policies add --scope project <pack>` installs the pack instead of going looking for one called "project", and `-c ./file.mjs` is no longer read as the pack name — a flag's value could be taken as the positional whenever the flag came first (#738)
+- The hook never waits forever for its payload. `readStdinPayload` is on the enforcement path — every tool call, on all eleven agent CLIs — and had no bound: its only early exit was `readableEnded`, which helps only when stdin is ALREADY closed. A parent that spawned the hook with a pipe it had not closed, or an inherited terminal, froze that tool call indefinitely with no output. A terminal now returns immediately and an open pipe gets a 10s clock, both reported rather than silent (#738)
+- `failproofai config` run under sudo exits 1 instead of 0. It explained the problem and reported success, so a script carried on believing the machine was configured — `WizardAbort` had declared `running_as_sudo` since it was written and never once assigned it (#738)
+- Our own pack has no short name any more: it is `failproofai policies add FailproofAI/policies`, the same shape anyone else's is typed in. `core`, `failproofai` and `official` are retired and say what to type instead rather than failing as unparseable (#738)
+- `failproofai policies` and the first-run audit now say how to get policies when none are installed — setup deliberately installs none, so both surfaces used to be dead ends for a brand-new machine (#738)
+- `failproofai publish` refuses a pack carrying two policies with the same name. A name is what `--policy` selects and what the picker toggles, so a duplicate made one of the pair unreachable and let the other's on/off state decide for both — reachable by accident whenever `publish --init` wrote a starter into a folder that already had a policy of that name (#738)
+
+## 1.0.2-beta.5 — 2026-08-25
+
+### Features
+
 - `failproofai audit` resumes a transcript that GREW instead of re-reading it from byte zero. The cache was all-or-nothing per file, so a long-running session gaining one line was re-parsed and re-replayed in full — and the sessions that gain lines are the largest ones. Measured on a 29 MB transcript with one line appended: 14.0s to 2.4s (#738)
 - `failproofai audit` no longer shells out to the `opencode` CLI once per session — it reads opencode's SQLite database directly, like every other SQLite-backed integration. Each spawn cost ~1.5s and there were three per session, which on a 30-session history was ~135s of a ~140s audit; measured 140s to 3s on the same machine, with byte-identical output (#738)
 - `failproofai publish` asks where to publish instead of requiring `--repo`, defaulting to your account and the folder name — write policies in a git repo, run one command, answer one question (#738). Nothing prompts on a pipe or in CI, where flags remain the whole interface
 
 ### Fixes
 
-- The hook never waits forever for its payload. `readStdinPayload` is on the enforcement path — every tool call, on all eleven agent CLIs — and had no bound: its only early exit was `readableEnded`, which helps only when stdin is ALREADY closed. A parent that spawned the hook with a pipe it had not closed, or an inherited terminal, froze that tool call indefinitely with no output. A terminal now returns immediately and an open pipe gets a 10s clock, both reported rather than silent (#738)
-- `failproofai config` on a machine with no terminal exits 1 instead of 0. It printed "needs an interactive terminal" and reported success, so a CI job or an agent driving setup carried on believing the machine was configured. `WizardAbort` had declared `not_a_tty` and `running_as_sudo` since it was written and never assigned either (#738)
-- Our own pack has no short name any more: it is `failproofai policies add FailproofAI/policies`, the same shape anyone else's is typed in. `core`, `failproofai` and `official` are retired and say what to type instead rather than failing as unparseable (#738)
-- `failproofai policies` and the first-run audit now say how to get policies when none are installed — setup deliberately installs none, so both surfaces used to be dead ends for a brand-new machine (#738)
-- `failproofai publish` refuses a pack carrying two policies with the same name. A name is what `--policy` selects and what the picker toggles, so a duplicate made one of the pair unreachable and let the other's on/off state decide for both — reachable by accident whenever `publish --init` wrote a starter into a folder that already had a policy of that name (#738)
 - Stop `failproofai policies` warning about hooks in multiple scopes on a machine whose hooks are in one file — a user-scope-only CLI answered for every scope, and from `$HOME` a project path resolves to the user file (#738)
 - `failproofai publish` with no arguments now publishes instead of printing its own help, which is what the help itself documents it as doing (#738)
 - `failproofai publish --dry-run` works in a folder that has no git remote yet — the case a dry run exists for (#738)

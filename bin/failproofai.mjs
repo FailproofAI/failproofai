@@ -1424,7 +1424,27 @@ keep enforcing. FAILPROOFAI_PACK_BASE_URL points it all at a mirror.
     // without a slash that is still a source — it is the short spelling of our
     // own pack, and is checked by the pack lane itself rather than duplicated
     // here.
-    const firstPositional = rest.find((a) => !a.startsWith("-"));
+    // The first positional that is NOT some flag's value.
+    //
+    // A plain `rest.find(a => !a.startsWith("-"))` reads the first VALUE it
+    // meets instead: `policies add --cli claude codex acme/x` picked "claude",
+    // decided that was not a source because it has no slash, and sent the whole
+    // command down the policy lane — where it died on "Unknown flag: --policy".
+    // The same shape works, and misroutes, for --scope and --custom.
+    //
+    // `--cli` takes SEVERAL values, bounded the way pack-cli.ts bounds them: a
+    // pack source always carries a slash and an agent name never does, which
+    // separates the list from what follows it exactly.
+    const VALUE_TAKING = new Set(["--scope", "--policy", "--category", "--only", "--custom", "-c"]);
+    const skip = new Set();
+    for (let i = 0; i < rest.length; i += 1) {
+      if (VALUE_TAKING.has(rest[i])) skip.add(i + 1);
+      if (rest[i] !== "--cli") continue;
+      for (let j = i + 1; j < rest.length && !rest[j].startsWith("-") && !rest[j].includes("/"); j += 1) {
+        skip.add(j);
+      }
+    }
+    const firstPositional = rest.find((a, i) => !a.startsWith("-") && !skip.has(i));
     let looksLikeSource =
       !!firstPositional &&
       (firstPositional.includes("/") || firstPositional.startsWith("github:"));

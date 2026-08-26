@@ -202,7 +202,7 @@ dependencies = [
 
 [[package]]
 name = "failproofaid"
-version = "1.0.2-beta.5"
+version = "1.0.2-beta.6"
 dependencies = [
  "fpai-collect",
  "fpai-ipc",
@@ -265,7 +265,7 @@ dependencies = [
 
 [[package]]
 name = "fpai-collect"
-version = "1.0.2-beta.5"
+version = "1.0.2-beta.6"
 dependencies = [
  "notify",
  "reqwest",
@@ -280,7 +280,7 @@ dependencies = [
 
 [[package]]
 name = "fpai-ipc"
-version = "1.0.2-beta.5"
+version = "1.0.2-beta.6"
 dependencies = [
  "libc",
  "proptest",

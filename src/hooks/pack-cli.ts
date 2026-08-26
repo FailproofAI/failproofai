@@ -61,34 +61,153 @@ function parseList(rest: string[], flag: string): string[] | undefined {
   return raw.split(",").map((s) => s.trim()).filter(Boolean);
 }
 
-/** Flags that take a separate value, so it is never mistaken for the source. */
-const VALUE_FLAGS = new Set(["--only", "--policy", "--category", "--cli"]);
+/**
+ * Flags that take a separate value, so it is never mistaken for the source.
+ *
+ * Must list every flag that can REACH this lane, not just the ones this lane
+ * acts on. `--scope` and `--custom` are handled by the caller and passed
+ * through untouched — and their values were being read as the pack to install,
+ * so `policies add --scope project acme/x` tried to fetch a pack called
+ * "project". A flag this file ignores still has a value this file must skip.
+ */
+const VALUE_FLAGS = new Set([
+  "--only",
+  "--policy",
+  "--category",
+  "--cli",
+  "--scope",
+  "--custom",
+  "-c",
+]);
+
+/**
+ * Every index `--cli` claims, so the source is not found among its values.
+ *
+ * `--cli` is the one flag that takes MORE than one token, because the other
+ * lane spells it `--cli claude codex` and somebody typing that here should not
+ * be quietly given a different answer. Shared with `packAddSource` so the two
+ * agree by construction: a token consumed as a CLI name is never also read as
+ * the pack to install.
+ */
+/**
+ * Could this token be an agent name rather than the pack to install?
+ *
+ * `--cli` consumes several tokens, so it has to know where its own list ends,
+ * and "not a flag" is not enough: `--cli claude codex acme/x` would swallow the
+ * SOURCE and leave the command with nothing to install. A pack source always
+ * carries a slash — `parsePackSource` accepts nothing else — and no agent name
+ * has one, which separates them exactly.
+ *
+ * Deliberately NOT "is it a known agent". An unknown name has to be consumed to
+ * be REJECTED: stopping at `claud` would hand it to the source parser instead,
+ * and the reply would be about pack syntax rather than about the typo.
+ */
+function looksLikeCliName(token: string): boolean {
+  return !token.startsWith("-") && !token.includes("/");
+}
+
+function cliValueIndices(rest: string[]): Set<number> {
+  const taken = new Set<number>();
+  for (let i = 0; i < rest.length; i += 1) {
+    if (rest[i] !== "--cli" && !rest[i].startsWith("--cli=")) continue;
+    if (rest[i].startsWith("--cli=")) continue; // its value is in the same token
+    for (let j = i + 1; j < rest.length && looksLikeCliName(rest[j]); j += 1) {
+      taken.add(j);
+    }
+  }
+  return taken;
+}
 
 /** Find the positional source without mistaking a flag's separate value for it. */
 export function packAddSource(rest: string[]): string | undefined {
-  const consumed = new Set<number>();
+  const consumed = cliValueIndices(rest);
   for (let i = 0; i < rest.length; i += 1) {
     if (VALUE_FLAGS.has(rest[i])) consumed.add(i + 1);
   }
-  return rest.find((arg, index) => !arg.startsWith("--") && !consumed.has(index));
+  // ONE dash, not two. `-c` passed a `startsWith("--")` filter and was returned
+  // as the pack to install — and no GitHub owner or repo may begin with a
+  // hyphen, so nothing legitimate is excluded by widening it.
+  return rest.find((arg, index) => !arg.startsWith("-") && !consumed.has(index));
+}
+
+/**
+ * The agent CLIs named by `--cli`, in either spelling, all of them validated.
+ *
+ * Two separate silent failures lived here, and both reported success:
+ *
+ *  - An unknown name was accepted. `--cli claud` installed the pack, printed
+ *    "Installed", exited 0, and guarded NOTHING — the misspelling matched no
+ *    agent, so the pack applied to none of them.
+ *  - A space-separated list was truncated to its first entry.
+ *    `--cli claude codex` recorded `["claude"]` and dropped codex on the floor,
+ *    because this lane split on commas while the other split on spaces.
+ *
+ * Both now take either spelling and refuse a name that is not an agent. The set
+ * comes from `INTEGRATION_TYPES` rather than a list written out here, because
+ * the copy in `bin/failproofai.mjs` is already a second hand-maintained one and
+ * a third would be the one that drifts.
+ */
+function parseCliList(rest: string[]): { clis?: string[] } | { error: string[] } {
+  const idx = rest.findIndex((a) => a === "--cli" || a.startsWith("--cli="));
+  if (idx === -1) return {};
+  const values: string[] = [];
+  if (rest[idx].startsWith("--cli=")) {
+    values.push(...rest[idx].slice("--cli=".length).split(","));
+  } else {
+    for (let j = idx + 1; j < rest.length && looksLikeCliName(rest[j]); j += 1) {
+      values.push(...rest[j].split(","));
+    }
+  }
+  const names = values.map((v) => v.trim()).filter(Boolean);
+  if (names.length === 0) return { clis: [] };
+
+  const known = new Set<string>(INTEGRATION_TYPES);
+  const unknown = names.filter((n) => !known.has(n));
+  if (unknown.length > 0) {
+    // Thrown, not warned. A pack scoped to an agent that does not exist is
+    // enforcing on nothing, and saying so afterwards is no use to the script
+    // that already read exit 0 and moved on.
+    const near = (bad: string) =>
+      INTEGRATION_TYPES.find((k) => k.startsWith(bad.slice(0, 3)) || bad.startsWith(k.slice(0, 3)));
+    const hint = unknown.map((u) => (near(u) ? `${u} (did you mean ${near(u)}?)` : u)).join(", ");
+    return {
+      error: [
+        `Not an agent: ${hint}`,
+        `--cli takes any of: ${INTEGRATION_TYPES.join(", ")}`,
+      ],
+    };
+  }
+  return { clis: names };
 }
 
 /** Names taken by our own policies, so a selection can be checked before install. */
+/**
+ * Exported for tests: the parse is where both `--cli` bugs lived, and asserting
+ * it through a real `add` would need a release server for a question that is
+ * purely about argument shapes.
+ */
+export function selectionFromForTest(rest: string[]) {
+  return selectionFrom(rest);
+}
+
 function selectionFrom(rest: string[]): {
   only?: string[];
   categories?: string[];
   all?: boolean;
   clis?: string[];
+  /** Present when the selection itself is unusable — see `parseCliList`. */
+  error?: string[];
 } {
   // `--policy` reads right for one ("give me this policy"), `--only` for a set.
   // They are the same switch; taking both means neither is the wrong guess.
   const only = parseList(rest, "--policy") ?? parseList(rest, "--only");
   const categories = parseList(rest, "--category");
-  const clis = parseList(rest, "--cli");
+  const parsedClis = parseCliList(rest);
+  if ("error" in parsedClis) return { error: parsedClis.error };
   return {
     ...(only ? { only } : {}),
     ...(categories ? { categories } : {}),
-    ...(clis ? { clis } : {}),
+    ...(parsedClis.clis ? { clis: parsedClis.clis } : {}),
     ...(rest.includes("--all") ? { all: true } : {}),
   };
 }
@@ -1404,6 +1523,10 @@ async function pickFromSource(
 async function add(rest: string[]): Promise<PackCliResult> {
   const source = packAddSource(rest);
   const selection = selectionFrom(rest);
+  // Refused before anything is fetched or written: a pack scoped to an agent
+  // that does not exist enforces on nothing, and saying so afterwards is no use
+  // to the script that already read exit 0 and moved on.
+  if (selection.error) return fail(selection.error);
 
   // No short name for our own pack any more. `core` resolved to CORE_SOURCE and
   // was fetched, verified and pinned like anybody else's — but a spelling only

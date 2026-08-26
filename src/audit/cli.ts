@@ -35,7 +35,8 @@ import { getInstanceId } from "../../lib/telemetry-id";
 import { sanitizeErrorMessage } from "../../lib/telemetry-sanitize";
 import { openWhenReady } from "./open-browser";
 import { describeOutcome, reportHarm } from "./report-harm";
-import { brandAnsi, ANSI_RESET, ANSI_BOLD, ANSI_DIM } from "../hooks/tui";
+import { brandAnsi, ANSI_RESET, ANSI_BOLD, ANSI_DIM, helpScreen, helpOptsFor } from "../hooks/tui";
+import { version } from "../../package.json";
 
 /** Port the bundled dashboard binds to. Matches `scripts/launch.ts`'s default
  *  for `start` mode, which `failproofai` (bare) already uses. */
@@ -64,9 +65,6 @@ export const AUDIT_STAGES: ReadonlyArray<{ label: string; detail: string }> = [
   { label: "aggregating results", detail: "counting hits, ranking by frequency" },
 ];
 
-/** Column the description text starts at. The widest command line is 37 wide. */
-const HELP_DESC_COL = 40;
-
 /**
  * `audit --help`.
  *
@@ -82,41 +80,44 @@ const HELP_DESC_COL = 40;
  * one. It still works, and still refuses every argument it always refused.
  */
 export function helpText(): string {
-  const row = (command: string, lines: string[]): string => {
-    // Padding is measured on the RAW command — `c()` adds escape bytes that
-    // occupy no columns, so colouring first would misalign every row.
-    const pad = " ".repeat(Math.max(1, HELP_DESC_COL - 2 - command.length));
-    return lines
-      .map((line, i) =>
-        i === 0 ? `  ${c(CYAN, command)}${pad}${line}` : `${" ".repeat(HELP_DESC_COL)}${line}`,
-      )
-      .join("\n");
-  };
-
-  return [
-    `${c(BOLD, "failproofai audit")} — review your agent CLIs for risky and wasteful patterns.`,
-    c(DIM, "Everything runs on this machine; only a scheduled digest ever leaves it."),
-    "",
-    c(BOLD, "USAGE"),
-    row("failproofai audit", [
-      "Scan your session history, then open",
-      `http://localhost:${DASHBOARD_PORT}/audit`,
-    ]),
-    row("failproofai audit --schedule [days]", [
-      "Scan on a timer and email the findings.",
-      "Default 7 days, range 1-90.",
-      "Signs you in the first time; add",
-      "--email <address> to skip a prompt.",
-    ]),
-    row("failproofai audit --no-schedule", ["Stop the timer. Leaves you signed in."]),
-    row("failproofai audit --status", [
-      "Whether scheduling is on, where reports",
-      "go, the daemon's state, and when the",
-      "next scan is due.",
-    ]),
-    row("failproofai audit -h, --help", ["Show this help."]),
-    "",
-  ].join("\n");
+  // Drawn by the same renderer as `config --help` and `policies --help`, from
+  // the same kit `audit`'s output already uses for its palette. It used to
+  // build its own rows against a hand-set HELP_DESC_COL, which is how `audit`
+  // and `config` ended up with their descriptions in different columns.
+  //
+  // The `failproofai audit` prefix is dropped from the rows: the heading two
+  // lines above already carries it, and repeating it cost 17 of the 80 columns
+  // on every row — which is what forced the four-word-per-line descriptions.
+  const lines = helpScreen(
+    {
+      command: "audit",
+      version,
+      tagline: "review your agent CLIs for risky and wasteful patterns",
+      sections: [
+        {
+          label: "usage",
+          entries: [
+            ["(bare)", `Scan your session history, then open http://localhost:${DASHBOARD_PORT}/audit`],
+            ["--schedule [days]", "Scan on a timer and email the findings. Default 7 days, range 1-90. Signs you in the first time."],
+            // Its own row now, rather than a clause inside --schedule's. It
+            // does not stand alone, which is why it used to be a clause — but
+            // a clause wraps, and `--email <address>` landing with the flag at
+            // the end of one line and its placeholder at the start of the next
+            // is not a flag anybody can read or copy.
+            ["--email <address>", "With --schedule, skips the sign-in prompt."],
+            ["--no-schedule", "Stop the timer. Leaves you signed in."],
+            ["--status", "Whether scheduling is on, where reports go, the daemon's state, and when the next scan is due."],
+            ["-h, --help", "Show this help."],
+          ],
+        },
+      ],
+      footer: ["Everything runs on this machine; only a scheduled digest ever leaves it."],
+    },
+    helpOptsFor(process.stdout),
+  );
+  // The margins `printBlock` would add, spelled out because this one returns
+  // its text for a caller to write rather than writing it.
+  return ["", ...lines, ""].join("\n") + "\n";
 }
 
 // ── ANSI helpers ────────────────────────────────────────────────────────────

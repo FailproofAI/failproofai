@@ -47,9 +47,9 @@ describe("top-level: --help", () => {
   it("prints help and exits 0", () => {
     const result = runCli("--help");
     assertSuccess(result);
-    // The index no longer shouts a USAGE heading — it spends its 26 lines on
-    // commands and names the shape once, inline, on the second row.
-    expect(result.stdout).toContain("Usage  failproofai <command>");
+    // The index no longer shouts a USAGE heading — it spends its lines on
+    // commands and names the shape once, in the footer under them.
+    expect(result.stdout).toContain("failproofai <command> [options]");
     expect(result.stdout).toContain("policies");
     // The half that replaced every inlined flag.
     expect(result.stdout).toContain("failproofai help <command>");
@@ -58,7 +58,7 @@ describe("top-level: --help", () => {
   it("-h shorthand prints help and exits 0", () => {
     const result = runCli("-h");
     assertSuccess(result);
-    expect(result.stdout).toContain("Usage  failproofai <command>");
+    expect(result.stdout).toContain("failproofai <command> [options]");
   });
 
   it("rejects extra argument after --help", () => {
@@ -190,7 +190,9 @@ describe("pack: --help", () => {
     const result = runCli("pack", "add", "--help");
     assertSuccess(result);
     expect(result.stdout).toContain("failproofai policies add|remove|show");
-    expect(result.stdout).toContain("A NAME OR A SOURCE");
+    // Section headings are lowercase now — the brand's display type is, and
+    // twelve screens sharing one renderer means they share its case too.
+    expect(result.stdout).toContain("a name or a source");
   });
 });
 

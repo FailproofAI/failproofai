@@ -73,11 +73,18 @@ function indexLines(): string[] {
 /**
  * The command words the index advertises.
  *
- * The rows sit between the first section rule and the blank line before the
- * footer; each is `<command spec>  <description>`, separated by a run of two or
- * more spaces. A spec may name alternatives (`config, setup`) or a command plus
- * its flags (`policies add`, `config --status`) — the command word is the first
- * token of each alternative, and `(no args)` names no command at all.
+ * The rows sit between the first section rule and the footer, which opens with
+ * the `failproofai help <command>` pointer; each is `<command spec>  <desc>`,
+ * separated by a run of two or more spaces. A spec may name alternatives
+ * (`harness, flush, backfill`) or a command plus its flags (`policies add`,
+ * `config --status`) — the command word is the first token of each
+ * alternative, and `(no args)` names no command at all.
+ *
+ * Blank lines are SKIPPED, not a terminator. They used to be one, because the
+ * sections were flush against each other and the only blank on the screen was
+ * the one before the footer. The sections breathe now, so stopping at the first
+ * blank would have read section one and reported the other three as commands
+ * the index does not advertise.
  */
 function indexCommands(lines: string[]): string[] {
   const firstRule = lines.findIndex((l) => l.includes("━"));
@@ -85,10 +92,14 @@ function indexCommands(lines: string[]): string[] {
 
   const rows: string[] = [];
   for (const line of lines.slice(firstRule)) {
-    if (line.trim() === "") break;
+    if (line.includes("failproofai help")) break;
+    if (line.trim() === "") continue;
     if (line.includes("━")) continue;
     rows.push(line);
   }
+  // Not vacuous: the loop above must actually have found the body, not stopped
+  // on the first line it saw.
+  expect(rows.length).toBeGreaterThan(5);
 
   const commands = new Set<string>();
   for (const row of rows) {
@@ -269,8 +280,8 @@ describe("a bare command runs, it does not describe itself", () => {
       const out = `${run.stdout ?? ""}${run.stderr ?? ""}`;
       // It has nothing to publish in an empty directory, so it must FAIL —
       // but as the command failing, not as a manual.
-      expect(out).not.toMatch(/TWO COMMANDS, FROM NOTHING/);
-      expect(out).not.toMatch(/WHAT --init DOES/);
+      expect(out).not.toMatch(/two commands, from nothing/i);
+      expect(out).not.toMatch(/what --init does/i);
     } finally {
       rmSync(empty, { recursive: true, force: true });
     }
@@ -279,6 +290,6 @@ describe("a bare command runs, it does not describe itself", () => {
   it("publish --help still prints it", () => {
     const run = cli("publish", "--help");
     expect(run.exitCode).toBe(0);
-    expect(run.stdout).toMatch(/TWO COMMANDS, FROM NOTHING/);
+    expect(run.stdout).toMatch(/two commands, from nothing/i);
   });
 });

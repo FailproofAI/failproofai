@@ -12,6 +12,10 @@ import {
   danger,
   emptyState,
   helpBlock,
+  helpColumn,
+  helpHeading,
+  helpOptsFor,
+  helpScreen,
   note,
   nextStep,
   optsFor,
@@ -706,5 +710,142 @@ describe("a repaint is one atomic frame", () => {
       (c) => /\u001b\[\d+A\u001b\[J/.test(c) && !c.includes("pick"),
     );
     expect(clearOnly).toEqual([]);
+  });
+});
+
+describe("helpScreen — the one shape all twelve --help screens take", () => {
+  const SPEC = {
+    command: "policies",
+    version: "9.9.9",
+    tagline: "manage the policies your agents run under",
+    sections: [
+      {
+        label: "usage",
+        entries: [
+          ["add <name>", "Turn one policy on"],
+          ["show <owner>/<repo>", "What a pack holds, before you take it"],
+        ] as Array<[string, string?]>,
+      },
+      {
+        label: "options",
+        entries: [["--beta", "Include beta policies"]] as Array<[string, string?]>,
+        after: ["A pause always expires on its own."],
+      },
+      { label: "examples", lines: ["failproofai policies add block-sudo"] },
+    ],
+    footer: ["policy, pack and p are all spellings of policies."],
+  };
+
+  it("opens with the command, the version and one line of what it is", () => {
+    const out = helpScreen(SPEC, PLAIN);
+    expect(out[0]).toContain("failproofai policies");
+    expect(out[0]).toContain("v9.9.9");
+    expect(out[1]).toContain("manage the policies your agents run under");
+  });
+
+  it("gives every section the same rule heading", () => {
+    const out = helpScreen(SPEC, PLAIN).filter((l) => l.includes("━"));
+    expect(out).toHaveLength(3);
+    for (const label of ["usage", "options", "examples"]) {
+      expect(out.some((l) => l.includes(label))).toBe(true);
+    }
+  });
+
+  it("computes the description column PER SECTION, not per screen", () => {
+    // One column across the page is what a screen of like-shaped entries wants
+    // and exactly wrong on a screen that has both: `show <owner>/<repo>` is 19
+    // columns and `--beta` is 6, and a shared column left every flag on the
+    // page hanging with nothing under it.
+    const out = helpScreen(SPEC, PLAIN);
+    const usageRow = out.find((l) => l.includes("Turn one policy on"))!;
+    const optionRow = out.find((l) => l.includes("Include beta policies"))!;
+    expect(usageRow.indexOf("Turn one")).toBeGreaterThan(optionRow.indexOf("Include beta"));
+  });
+
+  it("puts a section's `after` note under its table, in the same section", () => {
+    const out = helpScreen(SPEC, PLAIN);
+    const note = out.findIndex((l) => l.includes("always expires on its own"));
+    const examples = out.findIndex((l) => l.includes("examples"));
+    expect(note).toBeGreaterThan(-1);
+    // Under options, above the next heading — not orphaned after the screen.
+    expect(note).toBeLessThan(examples);
+  });
+
+  it("emits no ANSI at all when colour is off, at every width", () => {
+    for (const cols of WIDTHS) {
+      expect(helpScreen(SPEC, { cols, color: false }).join("")).not.toContain("\x1B");
+    }
+  });
+
+  it("fits the width it was given, coloured or not", () => {
+    for (const cols of WIDTHS) {
+      for (const color of [true, false]) {
+        for (const line of helpScreen(SPEC, { cols, color })) {
+          expect(visibleWidth(line)).toBeLessThanOrEqual(cols);
+        }
+      }
+    }
+  });
+
+  it("skips a section with nothing in it rather than printing a bare heading", () => {
+    const out = helpScreen(
+      { ...SPEC, sections: [...SPEC.sections, { label: "empty", lines: [] }] },
+      PLAIN,
+    );
+    expect(out.some((l) => l.includes("empty"))).toBe(false);
+  });
+});
+
+describe("helpColumn", () => {
+  it("ignores entries with no description", () => {
+    // A bare usage line describes itself and has nothing in the second column.
+    // Letting it vote pushed every real description out to its own width.
+    const wide: Array<[string, string?]> = [
+      ["failproofai flush [--wait] [--timeout <secs>]"],
+      ["--wait", "Block until the spool drains"],
+    ];
+    expect(helpColumn(wide)).toBe(helpColumn([["--wait", "Block until the spool drains"]]));
+  });
+
+  it("caps the column so one long flag cannot push every description off", () => {
+    expect(helpColumn([["-".repeat(60), "x"]])).toBeLessThanOrEqual(34);
+  });
+});
+
+describe("helpHeading", () => {
+  it("drops the version onto its own line rather than wrapping it into the name", () => {
+    const out = helpHeading(
+      { command: "policies add|remove|show", version: "1.0.0-beta.6", tagline: "t" },
+      { cols: 30, color: false },
+    );
+    expect(out[0]).toContain("policies add|remove|show");
+    expect(out[1].trim()).toBe("v1.0.0-beta.6");
+  });
+
+  it("paints the wordmark without changing what it occupies", () => {
+    const plain = helpHeading({ version: "1.0.0", tagline: "t" }, PLAIN);
+    const painted = helpHeading({ version: "1.0.0", tagline: "t" }, COLOR);
+    expect(painted[0]).toContain("\x1B");
+    expect(visibleWidth(painted[0])).toBe(visibleWidth(plain[0]));
+  });
+});
+
+describe("helpOptsFor", () => {
+  it("never renders help wider than 80, however wide the terminal is", () => {
+    expect(helpOptsFor({ isTTY: true, columns: 220, write: () => true } as unknown as TTYOut).cols).toBe(80);
+  });
+
+  it("still narrows to a terminal smaller than that", () => {
+    expect(helpOptsFor({ isTTY: true, columns: 60, write: () => true } as unknown as TTYOut).cols).toBe(60);
+  });
+});
+
+describe("rule — the one accent every sectioned surface carries", () => {
+  it("paints the lead but occupies the same columns either way", () => {
+    const plain = rule("Convention Policies", PLAIN)[0];
+    const painted = rule("Convention Policies", COLOR)[0];
+    expect(painted).toContain(brandAnsi("pink"));
+    expect(visibleWidth(painted)).toBe(visibleWidth(plain));
+    expect(visibleWidth(plain)).toBe(80 - INDENT.length);
   });
 });

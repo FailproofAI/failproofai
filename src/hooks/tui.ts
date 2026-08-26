@@ -1254,9 +1254,14 @@ export function rule(label?: string, opts?: RenderOpts): string[] {
   const { cols, c } = ctx(opts);
   const width = Math.max(4, cols - INDENT.length * 2);
   if (!label) return [`${INDENT}${c.dim("─".repeat(width))}`];
-  const head = `━━ ${label} `;
-  const tail = Math.max(3, width - head.length);
-  return [`${INDENT}${c.dim(head + "━".repeat(tail))}`];
+  const tail = Math.max(3, width - `━━ ${label} `.length);
+  // The one accent every sectioned surface carries: a pink lead into a bold
+  // label. Decoration only — the glyphs and the spacing are identical without
+  // colour, so a piped render and a painted one are the same width and say the
+  // same thing. Changing it here moves `policies`, `harness`, `pack list`,
+  // every `table` section and all twelve help screens together, which is the
+  // reason they share this function instead of each drawing their own line.
+  return [`${INDENT}${c.pink("━━")} ${c.bold(label)} ${c.dim("━".repeat(tail))}`];
 }
 
 export interface Row {
@@ -1524,52 +1529,181 @@ export interface HelpSpec {
   usage: Array<[string, string?]>;
   options?: Array<[string, string]>;
   examples?: string[];
-  /** Free lines under the heading, before USAGE. */
+  /** Free lines above the first section. */
   lead?: string[];
 }
 
 /**
- * One shape for all five help screens.
+ * The description column for one block of entries, derived from its widest
+ * described name and capped.
  *
- * `policy --help`, `audit --help`, `pack --help`, `harness --help` and the top
- * level each position their description column differently and indent
- * differently, so reading two of them in a row feels like two products. The
- * column is computed here from the widest entry, capped so a long flag cannot
- * push every description off the right edge.
+ * Its own step because the callers differ on the SCOPE they compute it over —
+ * {@link helpBlock} across usage and options together, {@link helpScreen} per
+ * section — and neither should be restating the cap or the floor.
+ */
+export function helpColumn(entries: Array<[string, string?]>): number {
+  // Only DESCRIBED entries set the column. A bare usage line — `failproofai
+  // flush [--wait] [--timeout <secs>]`, which describes itself — is 44
+  // characters and has nothing in the second column, so letting it vote pushed
+  // every real description on the screen out to column 38.
+  const named = entries.filter(([, d]) => d).map(([n]) => visibleWidth(n));
+  return Math.min(34, Math.max(12, ...named));
+}
+
+/** `<name>  <description>` at a column the caller fixed. */
+export function helpEntries(
+  items: Array<[string, string?]>,
+  nameWidth: number,
+  opts?: RenderOpts,
+): string[] {
+  const { cols, c } = ctx(opts);
+  const out: string[] = [];
+  for (const [raw, description] of items) {
+    // Pink is what you TYPE, dim is what it means, bold is the section it sits
+    // in. Three tones, the same three on every screen, so a flag looks like a
+    // flag whether you found it on `publish --help` or on the index. Decoration
+    // only: the column already separates the two halves, so the screen reads
+    // the same piped to a file or under NO_COLOR.
+    const name = c.pink(raw);
+    if (!description) {
+      out.push(`${INDENT}${name}`);
+      continue;
+    }
+    const budget = Math.max(12, cols - INDENT.length * 2 - nameWidth - 2);
+    const [first, ...rest] = wrap(description, budget);
+    // A name wider than the column takes its own line rather than shoving the
+    // description out — the top-level help has several of these today.
+    if (visibleWidth(raw) > nameWidth) {
+      out.push(`${INDENT}${name}`);
+      for (const line of [first, ...rest]) {
+        if (line !== undefined) out.push(`${INDENT}${" ".repeat(nameWidth)}  ${c.dim(line)}`);
+      }
+      continue;
+    }
+    // Padded on the VISIBLE width, so a painted name still lands the column
+    // where an unpainted one does.
+    const gap = nameWidth - visibleWidth(raw);
+    out.push(`${INDENT}${name}${" ".repeat(gap)}  ${c.dim(first ?? "")}`);
+    for (const line of rest) out.push(`${INDENT}${" ".repeat(nameWidth)}  ${c.dim(line)}`);
+  }
+  return out;
+}
+
+/**
+ * A usage/options/examples block, on one column across all three.
+ *
+ * The plain shape, for a surface with nothing else to say. A screen with prose
+ * sections, a heading, or a footer wants {@link helpScreen}, which is what the
+ * twelve `--help` screens use.
  */
 export function helpBlock(spec: HelpSpec, opts?: RenderOpts): string[] {
-  const { cols, c } = ctx(opts);
-  const entries = [...spec.usage.map(([n]) => n), ...(spec.options ?? []).map(([n]) => n)];
-  const nameWidth = Math.min(34, Math.max(12, ...entries.map((n) => n.length)));
-  const section = (heading: string, body: string[]): string[] =>
-    body.length === 0 ? [] : [c.dim(heading), ...body];
-  const entryLines = (items: Array<[string, string?]>): string[] => {
-    const out: string[] = [];
-    for (const [name, description] of items) {
-      if (!description) {
-        out.push(`${INDENT}${name}`);
-        continue;
-      }
-      const budget = Math.max(12, cols - INDENT.length * 2 - nameWidth - 2);
-      const [first, ...rest] = wrap(description, budget);
-      // A name wider than the column takes its own line rather than shoving the
-      // description out — the top-level help has several of these today.
-      if (name.length > nameWidth) {
-        out.push(`${INDENT}${name}`);
-        for (const line of [first, ...rest]) {
-          if (line !== undefined) out.push(`${INDENT}${" ".repeat(nameWidth)}  ${c.dim(line)}`);
-        }
-        continue;
-      }
-      out.push(`${INDENT}${name.padEnd(nameWidth)}  ${c.dim(first ?? "")}`);
-      for (const line of rest) out.push(`${INDENT}${" ".repeat(nameWidth)}  ${c.dim(line)}`);
-    }
-    return out;
-  };
+  const nameWidth = helpColumn([...spec.usage, ...(spec.options ?? [])]);
+  const section = (label: string, body: string[]): string[] =>
+    body.length === 0 ? [] : [...rule(label, opts), ...body];
   return stack(
     spec.lead ? spec.lead.map((l) => `${INDENT}${l}`) : null,
-    section("USAGE", entryLines(spec.usage)),
-    section("OPTIONS", entryLines(spec.options ?? [])),
-    section("EXAMPLES", (spec.examples ?? []).map((e) => `${INDENT}${e}`)),
+    section("usage", helpEntries(spec.usage, nameWidth, opts)),
+    section("options", helpEntries(spec.options ?? [], nameWidth, opts)),
+    section("examples", (spec.examples ?? []).map((e) => `${INDENT}${e}`)),
   );
+}
+
+/**
+ * Help is the one family of screens read at every width that belongs to no
+ * terminal in particular. Capped at 80 so `publish --help` is the same shape in
+ * a maximised window as in a tmux pane — and never wider than the terminal it
+ * is actually in, so the cap can only ever narrow.
+ */
+export const HELP_COLS = 80;
+
+/** {@link optsFor}, capped to {@link HELP_COLS}. Every help screen uses this. */
+export function helpOptsFor(stdout: TTYOut = process.stdout): Required<RenderOpts> {
+  const base = optsFor(stdout);
+  return { cols: Math.min(base.cols, HELP_COLS), color: base.color };
+}
+
+export interface HelpHeading {
+  /** The command being documented. Omitted for the top-level index. */
+  command?: string;
+  version: string;
+  /** One line: what this command is for. */
+  tagline: string;
+}
+
+/**
+ * The two lines every help screen opens with.
+ *
+ * The wordmark carries the same pink on `il` that {@link renderBrandLogo} tints,
+ * so a help screen and the wizard are visibly one product rather than two that
+ * happen to ship together. The version sits right-aligned and dim because it is
+ * the fact you want when a help screen and its binary disagree, and the fact you
+ * never want in the way otherwise.
+ */
+export function helpHeading(spec: HelpHeading, opts?: RenderOpts): string[] {
+  const { cols, c } = ctx(opts);
+  const mark = `${c.bold("fa")}${c.pink("il")}${c.bold("proofai")}`;
+  const left = `${INDENT}${mark}${spec.command ? ` ${c.bold(spec.command)}` : ""}`;
+  const right = c.dim(`v${spec.version}`);
+  const gap = cols - visibleWidth(left) - visibleWidth(right) - INDENT.length;
+  // Too narrow for both: the version goes under rather than wrapping into the
+  // middle of the name, where it reads as part of the command.
+  const head = gap < 2 ? [left, `${INDENT}${right}`] : [left + " ".repeat(gap) + right];
+  return [...head, ...note(spec.tagline, opts)];
+}
+
+/**
+ * A section of a help screen: a table of names, a paragraph, or lines that are
+ * already laid out. Every one of them gets the same `rule` heading, which is
+ * what makes twelve screens one screen.
+ */
+export type HelpSection =
+  /** A table of names. `after` is a paragraph under it, in the same section —
+   *  the alternative was a second heading over three lines of caveat, or an
+   *  unlabelled `rule` that read as the screen having lost its place. */
+  | { label: string; entries: Array<[string, string?]>; after?: string[] }
+  | { label: string; prose: string }
+  | { label: string; lines: string[] };
+
+export interface HelpScreenSpec extends HelpHeading {
+  sections: HelpSection[];
+  /** Dim closing lines — where to read more. */
+  footer?: string[];
+}
+
+/**
+ * A whole `--help`, assembled the same way twelve times.
+ *
+ * Before this, every screen was its own template literal: `USAGE` here and
+ * `Usage:` there, a description column hand-counted per file, no version on the
+ * page, and no colour on any of them while the index it was reached from had
+ * all three. The screens still say exactly what their authors wrote — this owns
+ * only the shape.
+ */
+export function helpScreen(spec: HelpScreenSpec, opts?: RenderOpts): string[] {
+  const { cols, c } = ctx(opts);
+  const width = Math.max(12, cols - INDENT.length * 2);
+  const groups: Array<string[] | null> = [helpHeading(spec, opts)];
+  for (const section of spec.sections) {
+    // Per SECTION, not per screen. One column across the whole page is what a
+    // screen of like-shaped entries wants, and it is exactly wrong on a screen
+    // that has both: `failproofai policies show <owner>/<repo>` is 40 columns
+    // and `--all` is 5, so a shared column left every flag description hanging
+    // 34 columns out with nothing under it. What made two screens read as two
+    // products was the INDENT and the heading, and those are shared here.
+    const body =
+      "entries" in section
+        ? [
+            ...helpEntries(section.entries, helpColumn(section.entries), opts),
+            ...(section.after?.length
+              ? ["", ...section.after.map((l) => (l.trim() === "" ? "" : `${INDENT}${l}`))]
+              : []),
+          ]
+        : "prose" in section
+          ? wrap(section.prose, width).map((l) => `${INDENT}${l}`)
+          : section.lines.map((l) => (l.trim() === "" ? "" : `${INDENT}${l}`));
+    if (body.length === 0) continue;
+    groups.push([...rule(section.label, opts), ...body]);
+  }
+  if (spec.footer?.length) groups.push(spec.footer.map((l) => `${INDENT}${c.dim(l)}`));
+  return stack(...groups);
 }

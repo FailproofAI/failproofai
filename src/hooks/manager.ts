@@ -1032,7 +1032,20 @@ export async function listHooks(cwd?: string): Promise<void> {
   // finished `failproofai config` saw a header, a config path, and no next
   // step. Ours is named in full, the same way anyone else's pack is typed,
   // because it IS one.
-  if (packCount === 0) {
+  // `packCount` counts ENABLED policies, so a pack installed with everything
+  // switched off reaches zero the same way an empty machine does — and the
+  // advice for the two could not be more different. Telling somebody who has
+  // just unticked all 38 to `policies add FailproofAI/policies` sends them to
+  // install what they already have, and doing it would change nothing: the
+  // selection is what is empty, not the shelf.
+  const packsInstalled = (() => {
+    try {
+      return readInstalledPacks().packs.length;
+    } catch {
+      return 0;
+    }
+  })();
+  if (packCount === 0 && packsInstalled === 0) {
     footer.unshift(
       nextStep(
         `failproofai policies add ${CORE_SOURCE}`,
@@ -1041,6 +1054,15 @@ export async function listHooks(cwd?: string): Promise<void> {
       ),
       note("Someone else's:  failproofai policies add <owner>/<repo>", opts),
       note("Look first:      failproofai policies show <owner>/<repo>", opts),
+    );
+  } else if (packCount === 0) {
+    footer.unshift(
+      nextStep(
+        "failproofai policies add",
+        `Nothing is enforcing: ${packsInstalled === 1 ? "the pack above is" : "the packs above are"} installed with everything switched off. Pick what should be on:`,
+        opts,
+      ),
+      note("Or by name:  failproofai policies add <policy>", opts),
     );
   }
 

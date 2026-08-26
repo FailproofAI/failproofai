@@ -86,7 +86,8 @@ export async function addBundledPackWebAction(): Promise<PackActionResult> {
 }
 
 export async function removePackWebAction(id: string): Promise<PackActionResult> {
-  return removePack(id) ? { ok: true, id } : { ok: false, error: `No installed pack with id ${id}` };
+  const removed = removePack(id);
+  return removed ? { ok: true, id: removed } : { ok: false, error: `No installed pack with id ${id}` };
 }
 
 /**

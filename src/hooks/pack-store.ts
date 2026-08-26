@@ -1008,23 +1008,60 @@ export function setPackPolicyEnabled(
   return { ok: true };
 }
 
-export function removePack(id: string): boolean {
+/**
+ * The spellings of a pack id that `remove` accepts.
+ *
+ * Exactly one used to work — the stored id, byte for byte — and it was a form
+ * shown nowhere on its own, so every spelling a user could SEE or had TYPED
+ * failed:
+ *
+ *   add    failproofai/policies                stores `FailproofAI/policies`
+ *   remove failproofai/policies                no installed pack with id …
+ *   remove FailproofAI/policies@06b802b63f4f   no installed pack with id …
+ *
+ * The first is what they installed it with — GitHub is case-insensitive, so
+ * `add` accepts any case and then records the CANONICAL id off the manifest.
+ * The second is the listing's own heading, copied. Both are refused, and the
+ * one that works appears only as half of that heading. A pack whose owner
+ * happens to be lowercase (`chhhee10/deploy-guard`) removes on the first try,
+ * which is what makes this look like the core pack being unremovable rather
+ * than a name-matching bug.
+ *
+ * So: case-insensitive, and an `@<version>` suffix is dropped. A pack id cannot
+ * contain `@` — `PACK_ID_RE` forbids it — so splitting at the last one is
+ * unambiguous. The version is not checked against what is installed: there is
+ * only ever one row per id, and refusing `pack@1.0.0` because 1.0.1 is
+ * installed would be the same unhelpfulness in a new hat.
+ */
+function packIdMatches(stored: string, typed: string): boolean {
+  const bare = (value: string): string => {
+    const at = value.lastIndexOf("@");
+    return (at > 0 ? value.slice(0, at) : value).trim().toLowerCase();
+  };
+  return bare(stored) === bare(typed);
+}
+
+/** The id actually removed — the CANONICAL one, not the spelling that was
+ *  typed — or null when nothing matched. Callers report it back so a user who
+ *  typed a different case learns the name the machine holds. */
+export function removePack(id: string): string | null {
   const manifestPath = resolve(packsRoot(), "installed.json");
-  if (!existsSync(manifestPath)) return false;
+  if (!existsSync(manifestPath)) return null;
   let raw: { schemaVersion?: number; packs?: InstalledPackRecord[] };
   try {
     raw = JSON.parse(readFileSync(manifestPath, "utf8"));
   } catch {
-    return false;
+    return null;
   }
   const packs = Array.isArray(raw.packs) ? raw.packs : [];
-  const remaining = packs.filter((p) => p?.id !== id);
-  if (remaining.length === packs.length) return false;
+  const removed = packs.find((p) => p?.id && packIdMatches(p.id, id));
+  const remaining = packs.filter((p) => p !== removed);
+  if (!removed || remaining.length === packs.length) return null;
   // The artifact is left on disk deliberately: it is content-addressed and inert
   // once nothing points at it, so keeping it makes a re-add offline-safe. Same
   // choice the cloud reconciler makes.
   writeAtomic(manifestPath, JSON.stringify({ schemaVersion: 1, packs: remaining }, null, 2) + "\n");
-  return true;
+  return removed.id;
 }
 
 /**

@@ -485,9 +485,14 @@ describe("addPack", () => {
 });
 
 describe("removePack", () => {
+  // Returns the id it REMOVED rather than a boolean, so the caller can report
+  // the name the machine holds instead of echoing back whatever was typed —
+  // `remove FAILPROOFAI/POLICIES` succeeding and repeating that back teaches a
+  // spelling nothing else in the product uses. `null` where it used to be
+  // false. Matching itself is covered in pack-selection-merge.test.ts.
   it("deactivates a pack and leaves its artifact on disk", async () => {
     const { artifact } = await addPack("github:acme/finance@v1.2.0");
-    expect(removePack("acme/finance")).toBe(true);
+    expect(removePack("acme/finance")).toBe("acme/finance");
     expect(installed().packs).toEqual([]);
     expect(readInstalledPacks().packs).toEqual([]);
     // Content-addressed and inert once nothing points at it, so keeping it makes
@@ -495,9 +500,9 @@ describe("removePack", () => {
     expect(existsSync(artifact)).toBe(true);
   });
 
-  it("reports false for a pack that was never installed", async () => {
+  it("reports nothing removed for a pack that was never installed", async () => {
     await addPack("github:acme/finance@v1.2.0");
-    expect(removePack("other/pack")).toBe(false);
+    expect(removePack("other/pack")).toBeNull();
     expect(installed().packs).toHaveLength(1);
   });
 });

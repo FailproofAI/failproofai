@@ -2155,9 +2155,13 @@ async function add(rest: string[]): Promise<PackCliResult> {
 function remove(rest: string[]): PackCliResult {
   const id = rest[0];
   if (!id) return fail(["Usage: failproofai policies remove <publisher/name>"]);
-  if (!removePack(id)) return fail([`No installed pack with id ${id}`]);
+  // Reported with the id the MACHINE holds, not the spelling that was typed:
+  // `remove FAILPROOFAI/POLICIES` succeeding and echoing that back teaches a
+  // name nothing else in the product uses.
+  const removedId = removePack(id);
+  if (!removedId) return fail([`No installed pack with id ${id}`]);
   return ok([
-    `Removed ${id}. Its policies stop enforcing now; re-add it any time with the same command.`,
+    `Removed ${removedId}. Its policies stop enforcing now; re-add it any time with the same command.`,
   ]);
 }
 

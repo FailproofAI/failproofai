@@ -23,7 +23,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 
-import { addPack } from "@/src/hooks/pack-store";
+import { addPack, removePack } from "@/src/hooks/pack-store";
 import { readInstalledPacks } from "@/src/hooks/pack-manifest";
 
 // Registers exactly the policies the manifest declares. `addPack` imports the
@@ -507,5 +507,63 @@ describe("an agent narrowing survives the next add", () => {
 
     await addPack(SOURCE, { only: [], merge: false });
     expect(record().clis).toBeUndefined();
+  });
+});
+
+describe("removing a pack by the name you actually have", () => {
+  // Exactly one spelling used to work — the stored id, byte for byte — and it
+  // is shown nowhere on its own, so every spelling a user could SEE or had
+  // TYPED was refused:
+  //
+  //   add    failproofai/policies              stores `FailproofAI/policies`
+  //   remove failproofai/policies              no installed pack with id …
+  //   remove FailproofAI/policies@06b8…        no installed pack with id …
+  //
+  // The first is what they installed it with — GitHub is case-insensitive, so
+  // `add` takes any case and records the canonical id off the manifest. The
+  // second is the listing's own heading, copied. A pack whose owner happens to
+  // be lowercase removes on the first try, which is what made this look like
+  // one particular pack being unremovable rather than a name-matching bug.
+  it.each([
+    ["the case it was installed with", (id: string) => id.toLowerCase()],
+    ["shouted", (id: string) => id.toUpperCase()],
+    ["the listing's heading, version and all", (id: string) => `${id}@1.0.0`],
+    ["a heading in the wrong case", (id: string) => `${id.toLowerCase()}@1.0.0`],
+    ["surrounded by whitespace", (id: string) => `  ${id}  `],
+  ])("removes it when named %s", async (_label, spell) => {
+    await addPack(SOURCE, { all: true });
+    const stored = record().id;
+    expect(removePack(spell(stored))).toBe(stored);
+    expect(readInstalledPacks().packs).toHaveLength(0);
+  });
+
+  it("reports the id the MACHINE holds, not the spelling that was typed", async () => {
+    // A `remove FAILPROOFAI/POLICIES` that succeeds and echoes that back
+    // teaches a name nothing else in the product uses.
+    await addPack(SOURCE, { all: true });
+    const stored = record().id;
+    expect(removePack(stored.toUpperCase())).toBe(stored);
+  });
+
+  it("still refuses a name that is genuinely not installed", async () => {
+    // The loosening must not turn into "removes whatever is there". A wrong
+    // name has to stay wrong, or a typo silently uninstalls the pack.
+    await addPack(SOURCE, { all: true });
+    expect(removePack("acme/not-installed")).toBeNull();
+    expect(removePack("acme/not-installed@1.0.0")).toBeNull();
+    expect(readInstalledPacks().packs).toHaveLength(1);
+  });
+
+  it("does not match on the owner alone, or on the name alone", async () => {
+    // `@` is the only separator dropped. A pack id cannot contain one —
+    // PACK_ID_RE forbids it — but the halves either side of the SLASH are
+    // still both significant, and matching on one would remove a stranger's
+    // pack that happened to share an owner.
+    await addPack(SOURCE, { all: true });
+    const [owner, name] = record().id.split("/");
+    expect(removePack(owner)).toBeNull();
+    expect(removePack(name)).toBeNull();
+    expect(removePack(`${owner}/something-else`)).toBeNull();
+    expect(readInstalledPacks().packs).toHaveLength(1);
   });
 });

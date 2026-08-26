@@ -108,6 +108,8 @@ const RADIO_OFF = "○";
 export const CHECK_ON = "◼";
 export const CHECK_OFF = "◻";
 export const CARET = "❯";
+/** The return key, as the multi-select hints already spell it. */
+export const CARET_RETURN = "↵";
 const MARK = "\u25AE\u25AE"; // ▮▮ — the brand mark, per the design system
 
 // ── color ─────────────────────────────────────────────────────────────────
@@ -933,6 +935,24 @@ export function promptText(opts: PromptTextOptions): Promise<string | null> {
     });
   }
 
+  // A default nobody can see is a default nobody uses.
+  //
+  // `defaultValue` is applied on an empty submit and is otherwise INVISIBLE, so
+  // every prompt carrying one had to remember to spell it into its own hint —
+  // and the one where it mattered most, "Where should this publish?", spelled
+  // out the value while never saying that return was the key that took it.
+  // Somebody looking at a prefilled-looking placeholder types the whole thing
+  // out again. Owned here so a prompt cannot be added without it.
+  //
+  // Never for a masked prompt: those hold credentials, and the entire reason
+  // the characters are hidden is that the screen is being shared or recorded.
+  const hintText = [
+    opts.defaultValue && !opts.mask ? `${CARET_RETURN} ${opts.defaultValue}` : "",
+    opts.hint ?? "",
+  ]
+    .filter(Boolean)
+    .join("  ·  ");
+
   return new Promise((resolve) => {
     let value = "";
     const draw = (error?: string) => {
@@ -942,7 +962,7 @@ export function promptText(opts: PromptTextOptions): Promise<string | null> {
       // steps aside as soon as there is a real answer to look at. Keeping both
       // on one line put the example and the input side by side, which is the
       // arrangement most likely to make somebody wonder which one is theirs.
-      const hint = opts.hint && value.length === 0 ? `  ${c.dim(opts.hint)}` : "";
+      const hint = hintText && value.length === 0 ? `  ${c.dim(hintText)}` : "";
       // Truncate to ONE physical row. `\r\x1b[2K` erases the row the cursor is
       // on and nothing above it — so a line wider than the terminal wraps, the
       // erase reaches only its last row, and every keystroke leaves the earlier

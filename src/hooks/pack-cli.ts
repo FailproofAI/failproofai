@@ -214,6 +214,7 @@ function selectionFrom(rest: string[]): {
   categories?: string[];
   all?: boolean;
   clis?: string[];
+  merge?: boolean;
   /** Present when the selection itself is unusable — see `parseCliList`. */
   error?: string[];
 } {
@@ -228,6 +229,11 @@ function selectionFrom(rest: string[]): {
     ...(categories ? { categories } : {}),
     ...(parsedClis.clis ? { clis: parsedClis.clis } : {}),
     ...(rest.includes("--all") ? { all: true } : {}),
+    // A FLAG adds. The command's first word is `add`, and on an
+    // already-installed pack `--category Git` means "also turn Git on" rather
+    // than "make Git the only thing on". The interactive picker overrides this
+    // back to false, because its list is the complete answer.
+    merge: true,
   };
 }
 
@@ -845,6 +851,224 @@ function findEntry(dir: string): string[] {
     }
   }
   return found.sort();
+}
+
+/**
+ * Make the git claim TRUE instead of refusing it, where doing that is safe.
+ *
+ * The version names a commit, so publishing needs one — and the first version
+ * of this simply refused when there was not one, handing the user two commands
+ * to run and asking them to start again. That is a burden the tool can carry:
+ * it already knows the directory, and it already knows which files it is about
+ * to bundle.
+ *
+ * Two situations, and they are NOT the same risk, which is why only one of them
+ * is fully automatic:
+ *
+ * - **No checkout at all.** `git init` + commit everything. There is no history
+ *   to disturb, no branch to confuse and no unrelated work to sweep up: the
+ *   directory is inert until this runs. Safe. An initialised checkout that has
+ *   never been committed to reaches this case too — `rev-parse HEAD` answers
+ *   nothing for an unborn HEAD — and it is safe on the SAME terms only at that
+ *   checkout's root. Below the root the directory is not inert at all, so that
+ *   is refused rather than settled; see the branch itself for what it cost.
+ *
+ *
+ * - **A checkout with uncommitted changes.** `git add -A` here is NOT safe. It
+ *   sweeps up whatever else is in the tree — a half-finished edit in a sibling
+ *   file, a scratch `.env`, a debugging change nobody had decided on — and
+ *   "publish committed my unrelated work" is a far worse surprise than being
+ *   asked to commit. So only the POLICY FILES are committed, the ones publish
+ *   found and is about to bundle, and anything else dirty stops the run with
+ *   those files named. Committing the artifact's own inputs is defensible;
+ *   committing the rest of somebody's desk is not.
+ *
+ * TTY only. In CI a commit made here exists on the runner and nowhere else, so
+ * the version would name provenance nobody can resolve — `--version` is the
+ * answer there, and the refusal says so.
+ *
+ * Returns null when there is nothing to do or nothing safe to do, leaving
+ * {@link versionForPublish} to refuse with its own message.
+ */
+function settleGitState(
+  entryPath: string,
+  provenance: { sha: string; dirty: boolean } | null,
+  packFiles: string[],
+  id: string,
+  outDir: string | undefined,
+): { provenance: { sha: string; dirty: boolean }; lines: string[] } | { error: string[] } | null {
+  const cwd = resolve(entryPath, "..");
+  const raw = (args: string[]): string | null => {
+    try {
+      return execFileSync("git", args, {
+        cwd,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: 30_000,
+      });
+    } catch {
+      return null;
+    }
+  };
+  const git = (args: string[]): string | null => {
+    const out = raw(args);
+    return out === null ? null : out.trim();
+  };
+  // A commit needs an identity, and a machine that has never configured one
+  // fails INSIDE `git commit` with a wall of advice about --global. Checked
+  // first so the refusal names the two commands rather than quoting git at
+  // somebody who did not run git.
+  const identity = (): string[] | null => {
+    if (git(["config", "user.email"]) && git(["config", "user.name"])) return null;
+    return [
+      "git has no name and email configured on this machine, so nothing can be committed.",
+      '  git config --global user.name "You"',
+      '  git config --global user.email "you@example.com"',
+      "Then publish again, or name the version yourself: --version <version>.",
+    ];
+  };
+
+  if (provenance === null) {
+    const problem = identity();
+    if (problem) return { error: problem };
+    // No commit is not the same fact as no repository. `inferCommit` reads
+    // `rev-parse HEAD`, and a checkout that has been initialised but never
+    // committed to answers nothing — so this branch is also where an UNBORN
+    // HEAD lands, and `git init` there is being run inside somebody's existing
+    // work tree.
+    //
+    // `--show-prefix` is git's own answer to "where am I in this work tree":
+    // null outside one, "" at its root, `policies/` below it. Asked of git
+    // rather than compared as paths because `cwd` is built from the entry
+    // argument and can carry symlinks that `--show-toplevel` resolves away,
+    // and a spelling difference would refuse a publish that is perfectly fine.
+    const prefix = git(["rev-parse", "--show-prefix"]);
+    if (prefix !== null && prefix !== "") {
+      // `git init` here created a NESTED repository inside the parent's work
+      // tree and committed into that. The pack was then versioned by a commit
+      // living in a repository the author will never push — the parent shows
+      // only an untracked `policies/` — so the version named provenance nobody
+      // could resolve, which is the one thing this whole path exists to avoid.
+      // Not settled automatically either: everything in an unborn checkout is
+      // untracked, so the only add that would work is one sweeping the parent's
+      // whole work tree, which is exactly the surprise the dirty branch below
+      // refuses to hand anyone.
+      return { error: [
+        "The version names a commit, and this folder is inside a git checkout that has no commits yet.",
+        `  ${prefix.replace(/\/$/, "")} — inside a repository whose first commit has not been made`,
+        "Make that first commit yourself, then publish again —",
+        "or name the version yourself: --version <version>.",
+      ] };
+    }
+    // Only when there is genuinely no repository. Re-initialising one that
+    // exists is a no-op git tolerates, but the line reported below would then
+    // claim to have started something that was already there.
+    if (prefix === null && git(["init", "-q"]) === null) return null;
+    // `-A` minus the build output. A first commit that swept in `dist-pack/`
+    // would put the artifact inside the very commit it is supposed to name.
+    //
+    // No `--` of its own: `skipOutDir` returns one ALREADY, along with the
+    // `:(top)` scope it needs. Adding a second separator made git read it as a
+    // literal filename, the add failed, and the commit then failed on an empty
+    // index — reported as "could not make the first commit", which is true and
+    // says nothing about why.
+    git(["add", "-A", ...skipOutDir(git, entryPath, outDir)]);
+    // Counted from the INDEX, not from the policy files. The first commit takes
+    // everything here — a README, a .gitignore, whatever else the author has
+    // beside their policies — and reporting the number of policy files instead
+    // understated what had just been committed on their behalf.
+    const staged = (git(["diff", "--cached", "--name-only"]) ?? "").split("\n").filter(Boolean).length;
+    if (git(["commit", "-q", "-m", `publish ${id}`]) === null) {
+      return { error: [
+        `Could not make the first commit in ${cwd}.`,
+        "Commit by hand, or name the version yourself: --version <version>.",
+      ] };
+    }
+    const made = inferCommit(entryPath, outDir);
+    if (!made) return null;
+    const files = `${staged} file${staged === 1 ? "" : "s"}`;
+    return {
+      provenance: made,
+      lines: [
+        prefix === null
+          ? `Started a git repository here and committed ${files}.`
+          : `Made this repository's first commit — ${files}.`,
+      ],
+    };
+  }
+
+  if (!provenance.dirty) return null;
+
+  // Which paths are actually dirty, as git sees them — relative to the REPO
+  // ROOT, not to the entry's directory, which are different whenever the
+  // policies live in a subdirectory.
+  const root = git(["rev-parse", "--show-toplevel"]);
+  // The SAME exclusion `inferCommit` applied when it decided the tree was
+  // dirty. Without it this would try to commit the assets the last run wrote —
+  // which are gitignored in every pack this tool scaffolds, and are the build
+  // output either way.
+  // UNTRIMMED. A porcelain line is `XY <path>`, and for an unstaged edit the X
+  // column is a SPACE — so trimming the output eats the first line's leading
+  // space, and `slice(3)` then eats the first character of its path too. It
+  // reported `ests.mjs`, decided that was not one of the policy files, and
+  // refused the publish over a file that did not exist. Only the first line is
+  // affected, which is exactly the kind of wrongness that survives a casual
+  // test with two dirty files in it.
+  //
+  // `--untracked-files=all` because the default COLLAPSES a wholly untracked
+  // directory into one line naming the directory: a new `policies/` folder
+  // inside an existing checkout reads as `?? policies/` and never mentions the
+  // files in it. That path matches no policy file, so it landed in `foreign`
+  // and publish refused a brand new folder of policies by naming the folder
+  // itself as somebody else's work — the bootstrap case this whole function
+  // exists for. Only reproducible below the repository root; an untracked file
+  // AT the root is reported individually, which is why every fixture that
+  // publishes from the root missed it. The exclusion still applies, so the
+  // expansion does not drag the build output back into the read.
+  const status = raw([
+    "status",
+    "--porcelain",
+    "--untracked-files=all",
+    ...skipOutDir(git, entryPath, outDir),
+  ]);
+  if (root === null || status === null) return null;
+  const dirty = status
+    .split("\n")
+    .map((line) => line.slice(3).trim())
+    // A rename reads `old -> new`; the new path is the one that exists.
+    .map((path) => (path.includes(" -> ") ? path.split(" -> ")[1] : path))
+    .map((path) => path.replace(/^"|"$/g, ""))
+    .filter(Boolean)
+    .map((path) => resolve(root, path));
+  if (dirty.length === 0) return null;
+
+  const mine = new Set(packFiles.map((f) => resolve(f)));
+  const foreign = dirty.filter((path) => !mine.has(path));
+  if (foreign.length > 0) {
+    return { error: [
+      `The version names a commit, and this tree has uncommitted changes outside the policy files.`,
+      ...foreign.slice(0, 8).map((path) => `  ${relative(root, path)}`),
+      ...(foreign.length > 8 ? [`  …and ${foreign.length - 8} more`] : []),
+      "Those are not this command's to commit. Commit or stash them, then publish again —",
+      "or name the version yourself: --version <version>.",
+    ] };
+  }
+
+  const problem = identity();
+  if (problem) return { error: problem };
+  git(["add", "--", ...dirty]);
+  if (git(["commit", "-q", "-m", `publish ${id}`]) === null) {
+    return { error: [
+      "Could not commit the policy files.",
+      "Commit by hand, or name the version yourself: --version <version>.",
+    ] };
+  }
+  const made = inferCommit(entryPath, outDir);
+  if (!made || made.dirty) return null;
+  return {
+    provenance: made,
+    lines: [`Committed ${dirty.length} changed policy file${dirty.length === 1 ? "" : "s"}.`],
+  };
 }
 
 /**
@@ -1479,7 +1703,25 @@ async function publish(rest: string[]): Promise<PackCliResult> {
   // it is where the LAST run's assets are sitting, and inside the checkout by
   // default. See `skipOutDir`.
   const outDirEarly = resolve(flag("out") ?? "dist-pack");
-  const provenance = entry ? inferCommit(entry, outDirEarly) : null;
+  let provenance = entry ? inferCommit(entry, outDirEarly) : null;
+  const gitLines: string[] = [];
+  if (!version && entry && interactive) {
+    // Carry the git work rather than handing it back. TTY only: a commit made
+    // in CI exists on the runner and nowhere else, so the version would name
+    // provenance nobody can resolve, and `--version` is the answer there.
+    const settled = settleGitState(
+      entry,
+      provenance,
+      discovered.length > 0 ? discovered : [entry],
+      id,
+      outDirEarly,
+    );
+    if (settled && "error" in settled) return fail(settled.error);
+    if (settled) {
+      provenance = settled.provenance;
+      gitLines.push(...settled.lines);
+    }
+  }
   if (!version) {
     const resolved = versionForPublish(provenance);
     if ("error" in resolved) return fail(resolved.error);
@@ -1544,7 +1786,12 @@ async function publish(rest: string[]): Promise<PackCliResult> {
     entryToBuild,
     "--id", id,
     "--version", version,
-    ...(provenance ? ["--commit", provenance.sha] : []),
+    // NOT when the tree is dirty, even though `--version` let the publish
+    // through. `commit` claims these bytes came from that commit, and on a
+    // dirty tree they did not — recording it anyway put the exact false claim
+    // the dirty refusal exists to prevent through the door right next to it,
+    // reachable by taking the escape hatch that refusal recommends.
+    ...(provenance && !provenance.dirty ? ["--commit", provenance.sha] : []),
     ...outFlagFrom(rest),
     ...effectFlagFrom(rest),
   ]);
@@ -1558,6 +1805,8 @@ async function publish(rest: string[]): Promise<PackCliResult> {
       : [];
   if (dryRun) {
     return ok([
+      ...gitLines,
+      ...(gitLines.length ? [""] : []),
       ...bundleNote,
       ...built.lines.slice(0, 4),
       "",
@@ -1664,6 +1913,11 @@ async function publish(rest: string[]): Promise<PackCliResult> {
   }
 
   const lines = [
+    // What was done to the user's own directory, before what was done to
+    // GitHub. A side effect on somebody's working tree is never silent, even
+    // when it is the side effect they wanted.
+    ...gitLines,
+    ...(gitLines.length ? [""] : []),
     ...bundleNote,
     ...(created ? [`Created ${repo} (public).`] : []),
     `Published ${id}@${version} to ${repo} at tag ${tag}.` +
@@ -1834,6 +2088,10 @@ async function add(rest: string[]): Promise<PackCliResult> {
     const picked = await pickFromSource(resolvedSource!, io);
     if (picked === null) return ok(["Nothing installed."]);
     selection.only = picked;
+    // The picker REPLACES. What is ticked is what should be on, so a flag's
+    // additive reading must not leak into it — otherwise unticking something
+    // here could never turn it off.
+    selection.merge = false;
     // An empty pick is a real answer — install the pack, enable none of it —
     // but `{only: []}` is indistinguishable from "no selection" downstream, so
     // it is carried as an explicit empty list the resolver can see.
@@ -1858,6 +2116,10 @@ async function add(rest: string[]): Promise<PackCliResult> {
       defaults: "the pack's defaults",
       selected: "your selection",
       carried: "your existing selection",
+      // Named differently from `selected` on purpose: it is the one outcome
+      // where the set is LARGER than what was asked for, and a reader who does
+      // not see that said out loud will read the number as their whole answer.
+      added: "what you added, plus what was already on",
       all: "everything in the pack",
     }[result.selection];
     // `summarise([])` is the empty string, which would print a line ending in a

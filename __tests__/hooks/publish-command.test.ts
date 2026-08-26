@@ -788,22 +788,22 @@ describe("the version, when nobody says what it is", () => {
     expect(r2.lines.join("\n")).toContain(
       "Published acme/guards@2.0.0 to acme/guards at tag 2.0.0.",
     );
-    // The escape hatch overrides the VERSION and nothing else: the commit the
-    // tree sits at is still recorded, so the artifact says where it came from
-    // even when its name does not.
-    expect(JSON.parse(readFileSync(join(dirtyOut, PACK_MANIFEST_ASSET), "utf8")).commit).toBe(sha);
-    // Known gap, pinned at the wire so it stays a decision rather than a
-    // surprise: the release body names that commit and says nowhere that the
-    // published bytes are not in it, so a reader who resolves the commit finds
-    // source that does not match what they installed. Give the body a marker
-    // for it and this line is the one that changes.
+    // NO commit is recorded on a dirty tree, even though --version let the
+    // publish through. `commit` claims these bytes came from that commit, and
+    // on a dirty tree they did not — so recording it put the exact false claim
+    // the dirty refusal exists to prevent through the door right beside it,
+    // reachable by taking the escape hatch that refusal recommends. This used
+    // to be a documented gap; it is now closed, and the two assertions below
+    // are what keeps it closed.
+    expect(JSON.parse(readFileSync(join(dirtyOut, PACK_MANIFEST_ASSET), "utf8")).commit).toBeUndefined();
+    // And nowhere else either: the release body is the other place a reader
+    // would resolve a commit from, so the sha must not appear there.
     const body = requests
       .filter((q) => q.method === "POST" && /\/releases$/.test(q.path))
       .map((q) => JSON.parse(q.body.toString("utf8")))
       .find((b) => b.tag_name === "2.0.0");
     expect(body).toBeDefined();
-    expect(body.body).toContain(sha);
-    expect(body.body).not.toMatch(/dirty/i);
+    expect(body.body).not.toContain(sha);
     // And the sha-derived version is not silently smuggled in beside the one
     // that was asked for.
     expect(r2.lines.join("\n")).not.toContain(packCli.versionFromCommit(sha));

@@ -483,6 +483,18 @@ export interface PackAddOptions {
   only?: string[];
   categories?: string[];
   all?: boolean;
+  /**
+   * Add to what is already on, rather than replacing it.
+   *
+   * Set by the CLI FLAGS (`--policy`, `--category`) and deliberately NOT by the
+   * interactive picker: the picker's list is the complete answer — unticking
+   * everything means enable none — while a flag on an already-installed pack
+   * means "also turn these on". Without the distinction, following the pack
+   * README's own path (take the defaults, then add a category) silently
+   * switched the defaults off. No effect on a first install, where there is
+   * nothing to merge with.
+   */
+  merge?: boolean;
   /** Agent CLIs this pack should guard. Omitted means all of them. */
   clis?: string[];
 }
@@ -680,7 +692,9 @@ export function slugifyCategory(category: string): string {
  */
 function resolveSelection(
   policies: PolicyCatalogEntry[],
-  opts: { only?: string[]; categories?: string[]; all?: boolean } | undefined,
+  opts:
+    | { only?: string[]; categories?: string[]; all?: boolean; merge?: boolean }
+    | undefined,
   previous: string[] | null | undefined,
   previouslyInstalled: boolean,
 ): { enabled: string[] | null; reason: SelectionReason } {
@@ -716,8 +730,29 @@ function resolveSelection(
   // opposite of what was chosen, reported as "the pack's defaults". Presence of
   // the key is the signal, not its length.
   if (opts?.only !== undefined || opts?.categories?.length) {
+    // `merge` separates the two callers that both arrive here with a list.
+    //
+    // The PICKER's list is the complete answer: what is ticked is what should
+    // be on, and unticking everything means enable none — which is why an
+    // expressed selection replaces at all, and must keep replacing.
+    //
+    // A FLAG is an addition. `policies add <pack> --category Git` on a pack
+    // that is already installed means "also turn Git on", and replacing there
+    // switched off everything the user had. Following the pack README's own
+    // path — take the defaults, then add a category — left them with SIX
+    // policies on where they had started with ten, silently, from a command
+    // whose first word is `add`.
+    //
     // Kept in the pack's declared order, which is the order everything else
     // presents them in.
+    if (opts.merge && previouslyInstalled) {
+      // Already the whole catalog. Adding to everything is everything, and
+      // `null` is how "the whole pack" is recorded — materialising it into a
+      // list here would freeze out any policy a later version adds.
+      if (previous === null) return { enabled: null, reason: "carried" };
+      for (const name of previous ?? []) picked.add(name);
+      return { enabled: available.filter((n) => picked.has(n)), reason: "added" };
+    }
     return { enabled: available.filter((n) => picked.has(n)), reason: "selected" };
   }
 
@@ -730,7 +765,7 @@ function resolveSelection(
   return { enabled: policies.filter((p) => p.defaultEnabled).map((p) => p.name), reason: "defaults" };
 }
 
-export type SelectionReason = "all" | "selected" | "carried" | "defaults";
+export type SelectionReason = "all" | "selected" | "carried" | "defaults" | "added";
 
 /**
  * Import the artifact and check it registers what the manifest promised.
@@ -899,7 +934,24 @@ export async function addPack(
     // An absent `clis` means "every agent", and it keeps meaning that when a
     // thirteenth CLI is supported — whereas a materialised list of twelve would
     // silently exclude the new one from every pack installed before it existed.
-    ...(opts?.clis ? { clis: opts.clis } : {}),
+    //
+    // A prior narrowing is CARRIED when this caller named none, for the same
+    // reason `enabled` is: `upsertInstalled` replaces the row wholesale, so
+    // writing nothing here threw the user's scope away. A pack scoped to Claude
+    // silently started guarding all eleven agents on the next `policies add` —
+    // the same shape as the bug `merge` fixes, in the widening direction, which
+    // is the worse one: it over-enforces, on agents nobody chose.
+    //
+    // `merge === false` is the ONE caller this must not do it for. The picker
+    // says "every agent" by leaving `clis` absent (pack-cli.ts, where a full
+    // tick deliberately writes nothing) — so for it, absent is an ANSWER, and
+    // carrying a prior narrowing would make widening back to all impossible.
+    // Everywhere else absent means no opinion was expressed.
+    ...(opts?.clis
+      ? { clis: opts.clis }
+      : opts?.merge !== false && prior?.clis
+        ? { clis: prior.clis }
+        : {}),
   };
 
   const absorbed = upsertInstalled(record);

@@ -112,6 +112,31 @@ export interface WizardIO {
 }
 
 /**
+ * Answers supplied up front, so the run needs nobody at the keyboard.
+ *
+ * This is the whole of headless setup, and it is small for a reason nobody
+ * planned: the wizard stopped DECIDING most of what it used to. Scope, agents,
+ * policies and the custom-policy toggle are all hardcoded now (see the
+ * constants further down), so there is no decision surface left to expose —
+ * only the three questions that remain, and each has one sensible unattended
+ * answer.
+ *
+ * None of this skips sudo. Installing a system service needs root and nothing
+ * here changes that: elevation goes through `sudo -n`, which never prompts, and
+ * a machine that cannot elevate is told exactly what to run as root.
+ */
+export interface WizardAnswers {
+  /** Cloud API key. Its presence IS the request to connect. */
+  token?: string;
+  /** Where to connect. Defaults to the same URL the wizard infers. */
+  url?: string;
+  machineId?: string;
+  machineLabel?: string;
+  /** Record decisions only, no session transcripts. */
+  noTranscripts?: boolean;
+}
+
+/**
  * Why a wizard run ended without applying. Distinguished so the caller can
  * pick an exit code — a user who pressed Esc did nothing wrong (exit 0), a
  * machine that could not install the required daemon did not get set up
@@ -122,8 +147,9 @@ export type WizardAbort =
   | "needs_root"
   | "daemon_failed"
   | "unsupported_platform"
-  | "not_a_tty"
-  | "running_as_sudo";
+  | "running_as_sudo"
+  /** A cloud key was supplied and the server refused it. Unattended only. */
+  | "cloud_unverified";
 
 export interface WizardResult {
   applied: boolean;
@@ -697,25 +723,27 @@ export async function maybeFirstRunConfigure(
 
 // ── The wizard ───────────────────────────────────────────────────────────────
 
-export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResult> {
+export async function runConfigureWizard(
+  io: WizardIO = {},
+  answers: WizardAnswers = {},
+): Promise<WizardResult> {
   const stdin: TTYIn = io.stdin ?? process.stdin;
   const stdout: TTYOut = io.stdout ?? process.stdout;
   const cwd = process.cwd();
+  // No terminal means no questions — not a refusal.
+  //
+  // `failproofai config` IS the authorisation: somebody typed the command whose
+  // entire job is to configure this machine. Requiring a flag on top of that to
+  // permit what the command already means is asking the same question twice,
+  // and this used to refuse outright — so a CI job, a container or an agent
+  // could not set a machine up at all, which is the gap this closes.
+  //
+  // Safe to do here because the IMPLICIT path is guarded separately:
+  // `maybeFirstRunConfigure` has its own TTY check and returns before ever
+  // reaching this function, so setup never runs off the back of some other
+  // command on a headless box.
+  const unattended = !stdin.isTTY || !stdout.isTTY;
 
-  if (!stdin.isTTY || !stdout.isTTY) {
-    stdout.write(
-      "failproofai config needs an interactive terminal.\n" +
-        "Use the flag form instead, e.g.:\n" +
-        "  failproofai policies --install --scope user --cli claude\n",
-    );
-    // `not_a_tty`, not a bare `{applied:false}`. The caller exits 0 unless an
-    // abort reason is present and is not "cancelled" — so returning no reason
-    // reported SUCCESS for a run that configured nothing. A CI job or an agent
-    // driving this saw exit 0 and carried on onto a machine with no hooks
-    // installed, which is the failure mode headless setup exists to prevent:
-    // silent, and indistinguishable from having worked.
-    return { applied: false, abort: "not_a_tty" };
-  }
 
   // Running the wizard itself under sudo configures the WRONG ACCOUNT, and
   // does it silently: homedir() becomes /root, so the hooks land in root's
@@ -858,7 +886,13 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
         ? "failproofaid can't evaluate — every tool call is denied. Rebuilding needs sudo.\n\n"
         : "Installing failproofaid — needs sudo once.\n\n",
     );
-    if (!primeElevation()) {
+    // `primeElevation` runs `sudo -v`, which PROMPTS. An unattended run has
+    // nobody to type a password, so it goes straight to the `sudo -n` that
+    // `runPrivileged` uses anyway — exactly what `failproofai update` already
+    // does — and a machine that cannot elevate gets the commands below instead
+    // of a hung terminal. This is the same answer for both: sudo cannot be
+    // conjured away, only asked for at a moment somebody can answer.
+    if (!(unattended ? canElevate() : primeElevation())) {
       // Required means required: write nothing at all, so a machine that could
       // not be set up is left exactly as it was found rather than carrying
       // half a configuration. The commands are printed so an admin can do the
@@ -877,7 +911,7 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
       "failproofaid is running, but from a service definition written by an older\n" +
         "version — it cannot start a scheduled audit. Refreshing it needs root once.\n\n",
     );
-    if (!primeElevation()) {
+    if (!(unattended ? canElevate() : primeElevation())) {
       // NOT an abort, unlike the install branch above. There is a working
       // daemon here and hooks are enforcing; only the scheduled audit is out
       // of reach. Stopping setup over that would make an upgrade the thing
@@ -982,7 +1016,13 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   let connect: { url: string; token: string; machineId: string; machineLabel: string } | null = null;
 
   {
-    const choice = await selectOne<"key" | "local">({
+    // Supplying a key IS asking to connect — there is no other reason to pass
+    // one — so an unattended run with a token skips straight past the question,
+    // and one without a token stays local, which is the same "Not now" branch a
+    // person picks. Neither needs a separate flag to say so.
+    const choice = unattended
+      ? (answers.token ? "key" : "local")
+      : await selectOne<"key" | "local">({
       message: "Connect this machine to FailproofAI Cloud?",
       // The hint says what you GET; the body says what LEAVES.
       //
@@ -1065,7 +1105,16 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
       let machineId = resolveMachineId();
       let machineLabel = existing?.machineLabel ?? resolveMachineLabel();
 
-      if (existing) {
+      if (existing && unattended && !answers.url) {
+        // Already enrolled, and this run did not name a different place to
+        // enrol. Reusing is what the person picks here too, and re-verifying a
+        // working credential is the one thing an unattended re-run must not
+        // turn into a failure.
+        url = existing.url;
+        token = answers.token ?? existing.token;
+        machineId = answers.machineId ?? existing.machineId;
+        machineLabel = answers.machineLabel ?? existing.machineLabel ?? machineLabel;
+      } else if (existing && !unattended) {
         const reuse = await selectOne<"reuse" | "other">({
           message: `Use this machine's existing connection to ${existing.url}?`,
           choices: [
@@ -1137,6 +1186,12 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
         }
       }
 
+      if (token === null && unattended) {
+        // Supplied on the command line, so nothing is asked and nothing is
+        // echoed. Reaching here without one cannot happen — an unattended run
+        // only takes the "key" branch BECAUSE a token was given.
+        token = answers.token ?? null;
+      }
       if (token === null) {
         token = await promptText({
           // The destination is in the question now that it is no longer a
@@ -1160,6 +1215,14 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
       // persisted here.
       stdout.write("\nChecking the key… ");
       const probe = await validateIngestKey({ url: ingestUrlFor(url), key: token });
+      if (!probe.ok && unattended) {
+        // A key that does not work is a FAILED setup, not a prompt. The
+        // interactive path offers "save it anyway" because a person can weigh
+        // an outage against their own impatience; a script cannot, and one that
+        // exited 0 here would leave a fleet believing it was reporting.
+        stdout.write(`\nThat key did not work: ${probe.reason}\n`);
+        return { applied: false, abort: "cloud_unverified" };
+      }
       if (!probe.ok) {
         stdout.write(`\nThat did not work: ${probe.reason}\n`);
         const retry = await selectOne<"skip" | "anyway">({
@@ -1184,7 +1247,15 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
     }
   }
   // 5 — Review & apply
-  const decision = await selectOne<"apply" | "cancel">({
+  //
+  // The last question, and the only one a headless run skips outright rather
+  // than answering from a flag. There is nothing to confirm when nobody is
+  // watching, and the command itself was the confirmation.
+  //
+  // NOT the same call as `uninstall`, which does require --yes: that one
+  // REMOVES things, so silence there would destroy on a signal as weak as a
+  // missing terminal. This one does exactly what its name says.
+  const decision = unattended ? "apply" : await selectOne<"apply" | "cancel">({
     message: "Ready to apply?",
     body: reviewLines({
       target,

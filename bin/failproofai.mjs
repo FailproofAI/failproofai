@@ -1895,19 +1895,38 @@ EXAMPLES
   if (args[0] === "config") {
     if (args.includes("--help") || args.includes("-h")) {
       console.log(`
-failproofai config — interactive setup
+failproofai config — set this machine up
 
 USAGE
-  failproofai config             Guided setup: choose scope, agents, and policies
+  failproofai config             Guided setup
   failproofai configure          Alias for config
   failproofai setup              Alias for config
 
 WHAT IT DOES
-  Walks you through 4 quick steps and writes everything for you:
-    1. Where      — global (all projects) or just this project
-    2. Harnesses  — which agent CLIs to protect (Claude, Codex, ...)
-    3. Policies   — presets (combine any), Everything, or a custom pick
-    4. Review     — confirms the exact files it will change, then applies
+  Installs the failproofaid service (needs root once), wires hooks into every
+  agent CLI it supports, and optionally connects this machine to Cloud. It
+  chooses NO policies — take some with 'failproofai policies add <owner>/<repo>'.
+
+WITH NO TERMINAL (CI, containers, an agent driving it)
+  It just runs. There is nothing to confirm when nobody is watching, so it
+  applies rather than asking — no flag needed.
+
+  failproofai config                          set up, stay local
+  failproofai config --token <key>            set up and connect to Cloud
+    --url <url>                     somewhere other than app.befailproof.ai
+    --machine-id <id>               defaults to a stable per-machine key
+    --machine-label <name>          defaults to this host's name
+    --no-transcripts                decisions only, no session transcripts
+
+  The key can come from FAILPROOFAI_CLOUD_TOKEN instead of the command line,
+  and the url from FAILPROOFAI_CLOUD_URL — the same variable the daemon reads.
+  Prefer the environment: an argument is readable from 'ps' by every user on
+  the box, and lands in shell history and CI logs.
+
+  Exit 1 if anything it was asked to do did not happen — including a key the
+  server refused, and a machine that could not reach root. 'sudo' is never
+  prompted for here; it either works without a password or you are told the
+  exact commands to run.
 
 FAILPROOF CLOUD
   failproofai config --connect <url> --token <key> [--machine-id <id>]
@@ -2096,8 +2115,33 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
       return;
     }
 
+    // Headless setup. `--token` IS the request to connect — there is no other
+    // reason to pass a key — so there is no separate --connect to remember, and
+    // the URL keeps the default the wizard already infers rather than being a
+    // question the flag path alone asks.
+    //
+    // The key is taken from the environment when the flag is absent, because a
+    // secret on argv is readable from `ps` by every user on the box and lands
+    // in shell history and CI logs. FAILPROOFAI_CLOUD_TOKEN is the name the
+    // Rust daemon already reads, so this unifies rather than invents.
+    const valueFor = (flag) => {
+      const i = args.indexOf(flag);
+      if (i < 0) return undefined;
+      const v = args[i + 1];
+      if (!v || v.startsWith("-")) throw new CliError(`Missing value after ${flag}.`);
+      return v;
+    };
     const { runConfigureWizard } = await import("../src/hooks/configure-wizard");
-    const result = await runConfigureWizard();
+    const result = await runConfigureWizard(
+      {},
+      {
+        token: valueFor("--token") ?? process.env.FAILPROOFAI_CLOUD_TOKEN,
+        url: valueFor("--url") ?? process.env.FAILPROOFAI_CLOUD_URL,
+        machineId: valueFor("--machine-id"),
+        machineLabel: valueFor("--machine-label"),
+        noTranscripts: args.includes("--no-transcripts"),
+      },
+    );
     await track("cli_configure_invoked", {
       applied: result.applied,
       // `target` and `scopes`, not `scope`: the wizard rework replaced that

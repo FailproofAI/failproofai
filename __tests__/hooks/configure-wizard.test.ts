@@ -77,6 +77,7 @@ vi.mock("../../src/hooks/daemon-service", async (importOriginal) => {
     // Step 0 primes sudo before anything is drawn. Mocked true by default so
     // no test can block on a real password prompt.
     primeElevation: vi.fn(() => true),
+    canElevate: vi.fn(() => true),
     // The end-to-end health probe opens the real daemon socket. Default true —
     // "the service manager says running" and "it can actually answer" agree on
     // a healthy machine, which is what every pre-existing test here means by
@@ -129,6 +130,7 @@ import {
   daemonServiceFilePath,
   ensureDaemonServiceCurrent,
   primeElevation,
+  canElevate,
   probeDaemon,
   probeDaemonEndToEnd,
   uninstallDaemonService,
@@ -573,14 +575,25 @@ describe("configure-wizard orchestration", () => {
     expect(installHooks).not.toHaveBeenCalled();
   });
 
-  it("returns guidance and does nothing in a non-TTY context", async () => {
+  it("applies in a non-TTY context instead of returning guidance", async () => {
+    // It used to print "needs an interactive terminal" and do nothing, so no
+    // CI job, container or agent could configure a machine at all. There is
+    // nothing to confirm when nobody is watching, and `failproofai config` is
+    // itself the authorisation — somebody typed the command whose entire job
+    // is to configure this machine. Requiring a flag on top of that asked the
+    // same question twice.
+    //
+    // Safe because the IMPLICIT path is guarded separately:
+    // `maybeFirstRunConfigure` has its own TTY check and returns before ever
+    // reaching the wizard, so this never fires off the back of another command.
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
     const stdout = mkTtyStdout();
     const result = await runConfigureWizard({
       stdin: { isTTY: false } as unknown as TTYIn,
       stdout,
     });
-    expect(result.applied).toBe(false);
-    expect(installHooks).not.toHaveBeenCalled();
+    expect(result.applied).toBe(true);
+    expect(installHooks).toHaveBeenCalled();
   });
 });
 
@@ -852,20 +865,78 @@ describe("configure-wizard daemon integration", () => {
     expect(hasSeenLauncher()).toBe(false);
   });
 
-  it("reports WHY it configured nothing when there is no terminal", async () => {
-    // The caller exits 0 unless an abort reason is present and is not
-    // "cancelled". This path returned a bare `{applied:false}`, so a headless
-    // run — CI, a container, an agent driving the CLI — got exit 0 for a run
-    // that installed nothing, and carried on believing the machine was set up.
-    // Silent, and indistinguishable from having worked.
-    //
-    // `not_a_tty` has been in `WizardAbort` since it was written and was never
-    // once assigned.
+  it("runs with no terminal at all when the answers were supplied", async () => {
+    // The whole point of headless setup: `--yes` answers the one question that
+    // is left, so the terminal requirement no longer applies. Before this there
+    // was NO non-interactive path to a configured machine at all —
+    // `installDaemonService` had exactly one caller, the wizard, and the wizard
+    // refused without a TTY.
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
     const result = await runConfigureWizard(headlessIO());
 
+    expect(result.applied).toBe(true);
+    expect(installHooks).toHaveBeenCalled();
+  });
+
+  it("draws no prompt of any kind when answered", async () => {
+    // Not "the prompts default sensibly" — they must not RUN. A prompt that
+    // degrades to its default on a non-TTY is how a script silently gets a
+    // decision nobody made.
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
+    await runConfigureWizard(headlessIO());
+
+    expect(vi.mocked(selectOne)).not.toHaveBeenCalled();
+    expect(vi.mocked(multiSelect)).not.toHaveBeenCalled();
+    expect(vi.mocked(promptText)).not.toHaveBeenCalled();
+  });
+
+  it("asks sudo for nothing it cannot be answered for", async () => {
+    // `primeElevation` runs `sudo -v`, which PROMPTS — the one gate that would
+    // hang an unattended run. It goes straight to the non-interactive check
+    // instead, which is what `failproofai update` already does.
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
+    await runConfigureWizard(headlessIO());
+
+    expect(vi.mocked(primeElevation)).not.toHaveBeenCalled();
+    expect(vi.mocked(canElevate)).toHaveBeenCalled();
+  });
+
+  it("stays local when no key was given, and connects when one was", async () => {
+    // Supplying a key IS the request to connect; there is no other reason to
+    // pass one, so there is no second flag to remember.
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
+    const local = await runConfigureWizard(headlessIO());
+    expect(local.connected).toBeFalsy();
+
+    const connected = await runConfigureWizard(headlessIO(), { token: "k".repeat(20) });
+    expect(connected.connected).toBe(true);
+  });
+
+  it("fails rather than saving a key the server refused", async () => {
+    // The interactive path offers "save it anyway", because a person can weigh
+    // an outage against their own impatience. A script cannot, and one that
+    // exited 0 here would leave a fleet believing it was reporting.
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
+    vi.mocked(validateIngestKey).mockResolvedValueOnce({ ok: false, reason: "401" } as never);
+
+    const result = await runConfigureWizard(headlessIO(), { token: "k".repeat(20) });
+
     expect(result.applied).toBe(false);
-    expect(result.abort).toBe("not_a_tty");
+    expect(result.abort).toBe("cloud_unverified");
     expect(installHooks).not.toHaveBeenCalled();
+  });
+
+  it("sets the machine up when there is no terminal, rather than refusing", async () => {
+    // It used to print "needs an interactive terminal" and decline — so a CI
+    // job, a container or an agent could not configure a machine at all. There
+    // is nothing to confirm when nobody is watching, and `failproofai config`
+    // is itself the authorisation: somebody typed the command whose whole job
+    // is to configure this machine.
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
+    const result = await runConfigureWizard(headlessIO());
+
+    expect(result.applied).toBe(true);
+    expect(installHooks).toHaveBeenCalled();
   });
 
   it("reports WHY it configured nothing when run under sudo", async () => {

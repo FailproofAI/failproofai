@@ -221,8 +221,11 @@ describe("unsupported_platform — a permanent property of the machine", () => {
 });
 
 describe("reasons that are properties of the invocation, not the machine", () => {
-  it("re-offers for not_a_tty and running_as_sudo", () => {
-    for (const reason of ["not_a_tty", "running_as_sudo"] as const) {
+  it("re-offers for running_as_sudo", () => {
+    // `not_a_tty` was here too, and is gone with the refusal it named: a run
+    // with no terminal has no questions to ask, so it applies rather than
+    // declining, and there is nothing to re-offer.
+    for (const reason of ["running_as_sudo"] as const) {
       expect(blockerCleared(attempt({ reason }), probe()), reason).toBe(true);
     }
   });
@@ -249,7 +252,6 @@ describe("what the user is told", () => {
       "daemon_failed",
       "cancelled",
       "unsupported_platform",
-      "not_a_tty",
       "running_as_sudo",
     ] as const) {
       const text = attemptHintLines(attempt({ reason })).join("\n");

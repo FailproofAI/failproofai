@@ -17,6 +17,7 @@
 - Our own pack has no short name any more: it is `failproofai policies add FailproofAI/policies`, the same shape anyone else's is typed in. `core`, `failproofai` and `official` are retired and say what to type instead rather than failing as unparseable (#738)
 - `failproofai policies` and the first-run audit now say how to get policies when none are installed — setup deliberately installs none, so both surfaces used to be dead ends for a brand-new machine (#738)
 - `failproofai publish` refuses a pack carrying two policies with the same name. A name is what `--policy` selects and what the picker toggles, so a duplicate made one of the pair unreachable and let the other's on/off state decide for both — reachable by accident whenever `publish --init` wrote a starter into a folder that already had a policy of that name (#738)
+- `failproofai config --token <key>` asks nothing at all on a terminal, not just off one. It still drew the Cloud question and the review prompt, so the one command that says "connect me, don't ask" asked twice. Only the sudo password is left, because no flag can supply it (#738)
 
 ## 1.0.2-beta.5 — 2026-08-25
 

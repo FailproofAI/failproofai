@@ -926,6 +926,30 @@ describe("configure-wizard daemon integration", () => {
     expect(installHooks).not.toHaveBeenCalled();
   });
 
+  it("asks NOTHING when a key was supplied, terminal or not", async () => {
+    // Somebody typing `failproofai config --token <key>` has said: set this
+    // machine up, connect it, send its data. Asking "Connect to Cloud?", then
+    // for the key, then "Ready to apply?" made the flag look unread — reported
+    // from a real run. The only thing left worth stopping for is the sudo
+    // password, which is a credential rather than a question.
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
+    const result = await runConfigureWizard(ttyIO(), { token: "k".repeat(20) });
+
+    expect(vi.mocked(selectOne)).not.toHaveBeenCalled();
+    expect(vi.mocked(promptText)).not.toHaveBeenCalled();
+    expect(result.applied).toBe(true);
+    expect(result.connected).toBe(true);
+  });
+
+  it("still asks on a terminal when NOTHING was supplied", async () => {
+    // The flag suppresses the questions it answers. With no flag there is a
+    // person there and the questions are the point.
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
+    drive(HAPPY);
+    await runConfigureWizard(ttyIO());
+    expect(vi.mocked(selectOne)).toHaveBeenCalled();
+  });
+
   it("sets the machine up when there is no terminal, rather than refusing", async () => {
     // It used to print "needs an interactive terminal" and decline — so a CI
     // job, a container or an agent could not configure a machine at all. There

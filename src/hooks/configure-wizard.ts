@@ -743,6 +743,16 @@ export async function runConfigureWizard(
   // reaching this function, so setup never runs off the back of some other
   // command on a headless box.
   const unattended = !stdin.isTTY || !stdout.isTTY;
+  // A key on the command line settles the whole run, not just the question it
+  // literally answers.
+  //
+  // Somebody typing `failproofai config --token <key>` has said: set this
+  // machine up, connect it, send its data. There is nothing left to confirm —
+  // so asking "Connect to Cloud?", then the key, then "Ready to apply?" made
+  // the flag look like it had not been read. The only thing still worth
+  // stopping for is the sudo password, which is a CREDENTIAL rather than a
+  // question, and no flag can supply it.
+  const preAnswered = Boolean(answers.token);
 
 
   // Running the wizard itself under sudo configures the WRONG ACCOUNT, and
@@ -1020,9 +1030,15 @@ export async function runConfigureWizard(
     // one — so an unattended run with a token skips straight past the question,
     // and one without a token stays local, which is the same "Not now" branch a
     // person picks. Neither needs a separate flag to say so.
-    const choice = unattended
-      ? (answers.token ? "key" : "local")
-      : await selectOne<"key" | "local">({
+    const choice = answers.token
+      // A key on the command line IS the answer to this question. Gating it on
+      // there being no terminal was wrong: `--token` means "use this key", not
+      // "use this key only if nobody is watching", and a run that asked anyway
+      // made the flag look broken to the person who had just typed it.
+      ? "key"
+      : unattended
+        ? "local"
+        : await selectOne<"key" | "local">({
       message: "Connect this machine to FailproofAI Cloud?",
       // The hint says what you GET; the body says what LEAVES.
       //
@@ -1186,12 +1202,10 @@ export async function runConfigureWizard(
         }
       }
 
-      if (token === null && unattended) {
-        // Supplied on the command line, so nothing is asked and nothing is
-        // echoed. Reaching here without one cannot happen — an unattended run
-        // only takes the "key" branch BECAUSE a token was given.
-        token = answers.token ?? null;
-      }
+      // Supplied on the command line, so nothing is asked and nothing is
+      // echoed — terminal or not. Prompting for a value the caller already gave
+      // is the failure this whole flag exists to avoid.
+      if (token === null) token = answers.token ?? null;
       if (token === null) {
         token = await promptText({
           // The destination is in the question now that it is no longer a
@@ -1255,7 +1269,7 @@ export async function runConfigureWizard(
   // NOT the same call as `uninstall`, which does require --yes: that one
   // REMOVES things, so silence there would destroy on a signal as weak as a
   // missing terminal. This one does exactly what its name says.
-  const decision = unattended ? "apply" : await selectOne<"apply" | "cancel">({
+  const decision = unattended || preAnswered ? "apply" : await selectOne<"apply" | "cancel">({
     message: "Ready to apply?",
     body: reviewLines({
       target,

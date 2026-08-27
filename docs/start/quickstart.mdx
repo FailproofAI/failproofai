@@ -8,6 +8,18 @@ Set up Failproof AI on one machine, then stay local or connect Cloud.
 
 If your agent runs in a [supported harness](/reference/harnesses), follow these steps. For agents built with LangChain, CrewAI, LlamaIndex, Pydantic AI, or your own runtime, start with [instrument your agent](/start/integrations).
 
+## Let your agent guide setup
+
+Install the Failproof AI umbrella skill into a compatible agent:
+
+```bash
+npx skills add FailproofAI/skills --skill failproofai
+```
+
+The skill understands local and Cloud setup, daemon health, sessions, audits,
+policies, and troubleshooting. It guides the work and routes specialized tasks to
+the right Failproof AI skill; it does not replace the CLI installation below.
+
 ## Set up the machine
 
 <Steps>

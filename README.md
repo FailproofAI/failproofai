@@ -134,6 +134,15 @@ your own runtime — [talk to us](mailto:support@befailproof.ai) and we'll map i
 
 ## Install
 
+Give a compatible agent the Failproof AI skill if you want it to guide setup,
+inspect the machine, and route policy, audit, session, and Cloud work correctly:
+
+```sh
+npx skills add FailproofAI/skills --skill failproofai
+```
+
+The skill supplies operating instructions; install and configure the product itself with:
+
 ```sh
 npm install -g failproofai
 failproofai config

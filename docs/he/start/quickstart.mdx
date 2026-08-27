@@ -1,15 +1,16 @@
 ---
+---
 title: "התחלה מהירה"
-description: "תופס סשן של סוכן, מוצא כשל, והתחל למנוע אותו."
+description: "תפוס הפעלת סוכן, מצא כשל והתחל למנוע אותו."
 icon: "zap"
 ---
 
-התחלה מהירה זו מגבילה מכונה אחת לדיווח סשנים, מפעילה ביקורת, וממשנת מדיניות. השתמש בכישרון כדי להגדיר את Failproof AI, או עקוב אחר השלבים הידניים.
+התחלה מהירה זו מעלה מכונה אחת לדיווח הפעלות, מריצה ביקורת ופורסת מדיניות. השתמש בכישור כדי להגדיר את Failproof AI, או בצע את השלבים ידנית.
 
-**איזה נתיב הוא שלך?** אם הסוכן שלך פועל באחד מ-12 [מנשקים](/he/reference/harnesses) שנתמכים — CLI לקידוד, או שער כמו Hermes או OpenClaw — עקוב אחר השלבים למטה; אתה צריך Node.js 20.9 או מאוחר יותר. אם לסוכן שלך אין מנשק, תרגם אותו עם [Python SDK](/he/reference/custom-agents) לעקיבה וביקורות, ואז חזור ל-[הפעל את בדיקת הכשל הראשונה שלך](/he/start/first-audit); אוכיפוי בנתיב זה דורש hook בסביבת הריצה שלך.
+**איזו דרך היא שלך?** אם הסוכן שלך פועל באחד מ-12 [הרתקים](/he/reference/harnesses) הנתמכים — CLI קידוד, או שער כמו Hermes או OpenClaw — בצע את השלבים להלן; אתה זקוק Node.js 20.9 ואילך. אם לסוכן שלך אין הרתק, צור אותו בעזרת [Python SDK](/he/reference/custom-agents) לעקיבה וביקורות, ואז חזור אל [הרץ את בדיקת הכשל הראשונה שלך](/he/start/first-audit); אכיפה בנתיב זה דורשת hook בזמן ריצה שלך.
 
 <Tabs>
-  <Tab title="השתמש בכישרון">
+  <Tab title="השתמש בכישור">
     <Steps>
       <Step title="התקן את כישורי Failproof AI">
         ```bash
@@ -21,22 +22,22 @@ icon: "zap"
         Set up Failproof AI for this project, connect this machine, install the right hooks and policies, and verify that a session arrives.
         ```
 
-        הסוכן שלך בוחן את הפרויקט, בוחר את האינטגרציה הרלוונטית, מבצע את ההגדרה, ומאמת אותה. ראה את [מאגר הכישורים של FailproofAI](https://github.com/FailproofAI/skills) לכישורים בודדים ואפשרויות התקנה מתקדמות.
+        הסוכן שלך בוחן את הפרויקט, בוחר את האינטגרציה הרלוונטית, מבצע את ההגדרה ומאמת אותה. ראה את [מאגר כישורי FailproofAI](https://github.com/FailproofAI/skills) לקבלת כישורים בודדים ואפשרויות התקנה מתקדמות.
       </Step>
     </Steps>
   </Tab>
   <Tab title="הגדרה ידנית">
     ## לפני שתתחיל
 
-1. פתח את [לוח הבקרה של Failproof AI](https://app.befailproof.ai) וצור חשבון או התחבר עם אימייל עבודה.
-2. עבור ל-**Administration → Keys** וצור מפתח עם `events:add` ו-`policies:pull`.
-3. העתק את הסוד החד-פעמי ושמור אותו במכונת היעד:
+1. פתח את [לוח הבקרה של Failproof AI](https://app.befailproof.ai) וצור חשבון או היכנס עם כתובת הדוא"ל שלך בעבודה.
+2. עבור אל **Administration → Keys** וצור מפתח עם `events:add` ו-`policies:pull`.
+3. העתק את הסוד לשימוש חד-פעמי והנח אותו במכונת היעד:
 
 ```bash
 export FAILPROOFAI_KEY="<one-time-secret>"
 ```
 
-    ## התקן
+    ## התקנה
 
 <Steps>
   <Step title="התקן וחבר את Failproof AI">
@@ -45,9 +46,9 @@ export FAILPROOFAI_KEY="<one-time-secret>"
     failproofai config --connect https://app.befailproof.ai --token "$FAILPROOFAI_KEY"
     ```
 
-    תמלילי סשן נשלחים כברירת מחדל. הוסף `--no-transcripts` כדי לדווח על פעילות hook והחלטות מדיניות ללא תוכן תמלילים.
+    תמלילי הפעלות נשלחים כברירת מחדל. הוסף `--no-transcripts` כדי לדווח על פעילות hook והחלטות מדיניות ללא תוכן תמליל.
 
-    אם למכונה זו יש כבר היסטוריה של סוכן, תצפה וייבא את שבעת הימים האחרונים, ואז חכה שההסגרה תסתיים. דלג על שלב זה במכונה חדשה.
+    אם למכונה זו כבר יש היסטוריה סוכן, הצג תצוגה מקדימה וייבא את שבעת הימים האחרונים, ואז חכה שהמסירה תסתיים. דלג על שלב זה במכונה חדשה.
 
     ```bash
     failproofai backfill --since 7d --dry-run
@@ -55,30 +56,30 @@ export FAILPROOFAI_KEY="<one-time-secret>"
     failproofai flush --wait
     ```
 
-    פתח את **Sessions** ב-Failproof AI ובחר סשן שיובא.
+    פתח **Sessions** ב-Failproof AI ובחר הפעלה מיובאת.
   </Step>
-  <Step title="התקן hooks של סוכנים ומדיניויות">
-    זה מחבר את Failproof AI למנשק שלך ומתקין את 40 המדיניויות המובנות. השתמש בהם כדי לראות החלטות מדיניות מקומיות ולנסות אוכיפוי לפני שFailproof AI מבקר בסשנים שלך וכותב מדיניויות לסוכנים שלך.
+  <Step title="התקן hooks וקניינות סוכן">
+    פעולה זו מחברת את Failproof AI להרתק שלך ומתקנת את 39 המדיניות הבנויות. השתמש בהם כדי לראות החלטות מדיניות מקומיות וכדי לנסות אכיפה לפני שFailproof AI מבקר בהפעלות שלך וכותב מדיניות לסוכנים שלך.
 
-    תן למתקין לגלות את המנשק שלך, או תן שם למשהו באופן מפורש. כל אחד מ-12 הוא ערך `--cli` תקף — `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity`, `goose`.
+    אפשר לגלאי להעלות את ההרתק שלך, או ציין אחד במפורש. כל אחד מ-12 הוא ערך `--cli` תקף — `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity`, `goose`.
 
     ```bash
     failproofai policies --install --cli claude --scope user     # a coding CLI
     failproofai policies --install --cli hermes --scope user     # a Slack/Telegram gateway
     ```
 
-    חסימת קריאת כלי לפני שהיא פועלת מתאומתת בכל 12. שערי סוף תור מתאומתים ב-8 — ראה [יכולת אוכיפוי](/he/reference/harnesses#enforcement-capability) למטריצת ההפעלה לכל מנשק.
+    חסימת קריאת כלי לפני שהיא רצה מאומתת על כל 12. שערים בסוף פנייה מאומתים ב-8 — ראה [יכולת אכיפה](/he/reference/harnesses#enforcement-capability) למטריצה לפי הרתק.
   </Step>
-  <Step title="בקר בהתנהגות">
-    עקוב אחר [הפעל את בדיקת הכשל הראשונה שלך](/he/start/first-audit). השתמש במטרה קונקרטית כגון "מצא סשנים שבהם הסוכן ניסה שוב כלי שנכשל ללא שינוי בגישתו."
+  <Step title="בדוק את ההתנהגות">
+    עקוב אחר [הרץ את בדיקת הכשל הראשונה שלך](/he/start/first-audit). השתמש במטרה קונקרטית כמו "מצא הפעלות שבהן הסוכן ניסה שוב כלי שכישל ללא שינוי בגישתו."
   </Step>
   <Step title="מנע את הכשל">
-    עקוב אחר [מנע את הכשל הראשון שלך עם מדיניות](/he/start/first-policy). התחל במצב צפייה, בדוק התאמות, ואז אוכף את הגרסה שנבדקה.
+    עקוב אחר [מנע את הכשל הראשון שלך עם מדיניות](/he/start/first-policy). התחל במצב תצפית, בדוק התאמות, ואז אכוף את הגרסה שבדוקה.
   </Step>
 </Steps>
 
 <Check>
-  הפעל `failproofai config --status`. הגדרה בריאה מדווחת על חיבור הענן, מצב daemon, ואם אוכיפוי מושהה.
+  הרץ `failproofai config --status`. הגדרה בריאה מדווחת על חיבור ענן, מצב daemon, ויומא האכיפה מושהה.
 </Check>
   </Tab>
 </Tabs>

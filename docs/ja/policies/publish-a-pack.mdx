@@ -1,0 +1,91 @@
+---
+title: "パックを公開する"
+description: "独自のポリシーをGitHubリリースとして公開し、誰でもインストールできるようにする。"
+icon: "upload"
+---
+
+パックはGitHubリリースに添付された3つのファイルで構成されます。`failproofai pack build` は、既存のポリシーファイルからこの3つをすべて生成します。
+
+## 1. ポリシーを記述する
+
+カスタムポリシーと同じAPIを使用した1つのファイルです。パックに特有の追加フィールドが2つあります。
+
+```js
+import { customPolicies, deny, allow } from "failproofai";
+
+customPolicies.add({
+  name: "block-refunds",
+  description: "Refunds above the approved limit need a human",
+  category: "Billing",        // groups it, and is what --category selects on
+  defaultEnabled: true,       // switched on by a plain `pack add`
+  match: { events: ["PreToolUse"], tools: ["Bash"] },
+  fn: async (ctx) =>
+    String(ctx.toolInput?.command ?? "").includes("refund")
+      ? deny("Refunds need a human. Ask before running this.")
+      : allow(),
+});
+```
+
+`defaultEnabled` を省略した場合、デフォルトは **false** になります。通常の `failproofai pack add` は、明示的にマークしたポリシーのみを有効化します。見知らぬ人のすべてのポリシーを無人でインストールするかどうかは、インストーラーがユーザーに代わって決定すべきことではありません。
+
+<Warning>
+エントリは**完全に自己完結した1つのファイル**でなければなりません。ダイジェストが固定されるのはエントリのみであるため、ローカルファイルをインポートするパックは、ダイジェストが実際に実行される内容を保証していると誠実には言えません。まず（`esbuild`、`bun build`、`rollup` などで）バンドルし、バンドルからパックをビルドしてください。`pack build` はローカルインポートを検出した場合、履行できない約束を出荷するのではなく、処理を拒否します。
+</Warning>
+
+## 2. リリースアセットをビルドする
+
+```bash
+failproofai pack build ./policies.mjs \
+  --id acme/support-agent \
+  --version 1.0.0 \
+  --out ./dist-pack
+```
+
+このコマンドは3つのファイルを生成し、まず**ローダー自身のルール**ですべてのポリシーを検証します。インストールできないパックは、修正できるこの段階で失敗します。
+
+| ファイル | 内容 |
+| --- | --- |
+| `failproofai-pack.json` | マニフェスト: ID、バージョン、エフェクト、各ポリシーのエントリ |
+| `failproofai-pack.mjs` | エントリファイル（そのまま） |
+| `SHA256SUMS` | 他の2ファイルの `<sha256>  <ファイル名>` |
+
+ビルド時に拒否される条件: `publisher/name` 形式でないID、`/` を含むポリシー名、`alwaysOn` を宣言するポリシー、`description`・`category`・`match` のいずれかが欠落している場合、何も登録しないエントリ、ローカルファイルをインポートするエントリ。
+
+## 3. リリースに添付する
+
+ビルド時に指定したバージョンでリリースにタグを付け、3つのファイルすべてをリリースアセットとして添付します。
+
+```bash
+gh release create 1.0.0 \
+  ./dist-pack/failproofai-pack.json \
+  ./dist-pack/failproofai-pack.mjs \
+  ./dist-pack/SHA256SUMS
+```
+
+これで誰でもインストールできるようになります。
+
+```bash
+failproofai pack add acme/support-agent
+```
+
+アセット名は固定されています。コンシューマーのCLIはAPIコールや自動検出なしに、このアセット名からURLを構築します。
+
+## 新バージョンの公開
+
+新しい `--version` でビルドし、新しいリリースにタグを付け、3つのアセットを再度添付します。コンシューマーは同じ `pack add` を実行すれば、以前選択していたポリシーのサブセットが維持されます。無効化していたポリシーは、アップグレード後も無効のままです。
+
+ポリシーの **name** を変更することは破壊的変更です。そのポリシーを無効化していたマシンは、もはや存在しない名前を無効化しようとすることになり、新しい名前は `defaultEnabled` の設定に従って有効化されます。
+
+## ユーザーが信頼するもの
+
+`SHA256SUMS` はアーティファクトと同じリリースに存在するため、バイト列があなたが公開したものであることを証明しますが、あなたが誰であるかは証明しません。リポジトリへの書き込み権限を持つ人は、両方のファイルを書き換えることができます。ユーザーを守るのは、インストール時にダイジェストが固定されるという点です。つまり、公開後に内容が変更されても、インストール済みのユーザーには影響しません。
+
+書き込みアクセスを自分でコントロールできるリポジトリから公開し、パックのリリースをパッケージの公開と同様に扱ってください。
+
+## 適用する前に観察する
+
+マニフェストに `"effect": "observe"` を宣言することができます。これらのポリシーは実行され、判定結果が**記録されますが破棄されます**。つまり、何もブロックされません。新しいルールを実際のトラフィックに対して測定し、誰かの作業を中断させる前に効果を確認するための方法です。
+
+```json
+{ "id": "acme/support-agent", "version": "1.1.0", "effect": "observe", "policies": [ ... ] }
+```

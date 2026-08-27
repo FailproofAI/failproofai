@@ -22,29 +22,29 @@
 
 **الترجمات:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
-**قابلية الملاحظة والفرض لكل بيئة تقنية يعمل فيها وكيلك الذكي.** أينما يعمل وكيلك
-الذكي، نحن نراه — ويمكننا الرفض. يتصل failproofai بـ 12 بيئة تقنية — واجهات سطر
-أوامر البرمجة مثل Claude Code و Codex، بوابات الدردشة مثل Hermes، المساعدات ذاتية
-الاستضافة مثل OpenClaw — لالتقاط كل عملية وحجب استدعاءات الأدوات الخطيرة قبل تنفيذها.
-40 سياسة مدمجة. بدون تأخير. يعمل محليًا.
+**قابلية الملاحظة والإنفاذ لكل محرك يشغّل وكلاءك.**
+حيثما يعمل وكلاؤك، نحن نراهم — ويمكننا الاعتراض. يدعم failproofai 12 محرك وكيل
+— واجهات سطر أوامر الترميز مثل Claude Code و Codex، وبوابات الدردشة مثل Hermes،
+والمساعدات ذاتية الاستضافة مثل OpenClaw — حيث يعكس كل عملية تشغيل ويحجب استدعاءات الأدوات الخطرة
+قبل تنفيذها. 39 سياسة مدمجة. لا توجد تأخيرات زمنية. يعمل محلياً.
 
 </div>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/readme-arch-hq.gif" alt="Failproof AI in action" width="800" />
+  <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/readme-arch-hq.gif" alt="Failproof AI في العمل" width="800" />
 </p>
 
 ---
 
-## البيئات التقنية المدعومة
+## المحركات المدعومة
 
-اثنتا عشرة بيئة تقنية في فئتين — عشر واجهات سطر أوامر برمجة، وبوابتا دردشة ومساعد
-(Hermes، OpenClaw). نفس الأحداث، نفس السياسات، نفس سجل الجلسة، أيًا كانت البيئة التي
-يعمل فيها وكيلك الذكي.
+اثنا عشر محركاً في فئتين — عشر واجهات سطر أوامر للترميز، وبوابتان للدردشة والمساعدات
+(Hermes، OpenClaw). نفس الأحداث، نفس السياسات، نفس سجل الجلسات،
+أياً كان المحرك الذي يعمل فيه وكيلك.
 
-الوكلاء الذين لا يعملون في أي منها يقدمون التقارير من خلال [Python SDK](https://docs.befailproof.ai/reference/custom-agents)،
-والذي يوفر لك التتبع والجلسات والتدقيق. يحتاج الفرض هناك إلى خطاف في وقت التشغيل الخاص بك
-— [تحدث معنا](mailto:support@befailproof.ai) وسنقوم بتعيينه.
+تقدم الوكلاء الذين لا يعملون في أي منهم تقاريرهم عبر [Python SDK](https://docs.befailproof.ai/reference/custom-agents)،
+والذي يوفر لك التتبع والجلسات والمراجعات. يتطلب الإنفاذ هناك ربط في
+وقت تشغيلك الخاص — [تحدث إلينا](mailto:support@befailproof.ai) وسنقوم بتعيينه.
 
 {/* A 6-column table instead of inline <img> runs: table columns never re-wrap,
      so the grid stays 2×6 at any window width (scrolling on very narrow screens
@@ -144,38 +144,38 @@
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # أو قم بتشغيل `failproofai` فقط واقبل رسالة التشغيل الأول
+failproofai policies --install   # أو فقط قم بتشغيل `failproofai` واقبل موجه التشغيل الأول
 failproofai
 ```
 
-40 سياسة مدمجة تتفعل فورًا. لوحة التحكم في `localhost:8020`. عطّل رسالة التشغيل الأول باستخدام `FAILPROOFAI_NO_FIRST_RUN=1`.
+39 سياسة مدمجة تُفعَّل فوراً. لوحة المعلومات على `localhost:8020`. عطّل موجه التشغيل الأول باستخدام `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
-## ما يمنعه
+## ما الذي يوقفه
 
-| السياسة | ما يحجبه |
+| السياسة | ما الذي يحجبه |
 |---|---|
-| `sanitize-api-keys` | تسرب مفاتيح API إلى سياق الوكيل |
+| `sanitize-api-keys` | مفاتيح API تتسرب إلى سياق الوكيل |
 | `block-env-files` | قراءة ملفات `.env` والملفات السرية الأخرى |
-| `warn-repeated-tool-calls` | حلقة الوكيل على نفس الاستدعاء |
+| `warn-repeated-tool-calls` | الوكيل يكرر نفس الاستدعاء |
 | `block-sudo` | تصعيد الامتيازات |
-| `warn-destructive-sql` | `DROP`, `TRUNCATE`, `DELETE` غير المحدود |
-| `block-terraform` / `block-kubectl` | التغييرات غير المراجعة للبنية الأساسية الحية |
+| `warn-destructive-sql` | `DROP`، `TRUNCATE`، `DELETE` غير المحدود |
+| `block-terraform` / `block-kubectl` | تغييرات غير مراجعة على البنية التحتية الحية |
 | `block-rm-rf` | حذف الملفات بشكل متكرر |
 | `block-force-push` / `block-push-master` | `git push --force`، الدفع المباشر إلى `main` |
 
-تنطبق أول خمسة على أي وكيل يمكنه استدعاء أداة. الثلاثة الأخيرة هي المفضلة لدى المطورين —
-واجهات سطر أوامر البرمجة هي الفئة من البيئات التقنية التي نغطيها بعمق أكثر.
+الخمس الأولى تنطبق على أي وكيل يمكنه استدعاء أداة. الثلاث الأخيرة مفضلة المطورين —
+واجهات سطر أوامر الترميز هي فئة المحرك التي نغطيها بعمق أكبر.
 
-→ [جميع السياسات المدمجة البالغ عددها 40](https://docs.befailproof.ai/policies/builtin)
+→ [جميع السياسات المدمجة الـ 39](https://docs.befailproof.ai/policies/builtin)
 
 ---
 
 ## سياساتك الخاصة
 
-ضع ملفًا في `.failproofai/policies/` — يتم تحميله تلقائيًا، لا توجد حاجة لعلامات.
-قم بارتكابه وستحصل الفريق بأكمله عليه في الجلب التالي.
+ضع ملفاً في `.failproofai/policies/` — يحمّل تلقائياً، لا توجد أعلام مطلوبة.
+التزمه وستحصل الفريق بالكامل عليه في السحب التالي.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -185,19 +185,19 @@ customPolicies.add({
   match: { events: ["PreToolUse"] },
   fn: async (ctx) => {
     if (ctx.toolInput?.file_path?.includes("production"))
-      return deny("Writes to production paths are blocked.");
+      return deny("الكتابة إلى مسارات الإنتاج محجوبة.");
     return allow();
   },
 });
 ```
 
-هناك ثلاثة قرارات متاحة لكل سياسة:
+ثلاثة قرارات متاحة لكل سياسة:
 
 | القرار | التأثير |
 |---|---|
 | `allow()` | السماح بالعملية |
-| `deny(message)` | حجبها — يعود الرسالة إلى الوكيل |
-| `instruct(message)` | السماح بها، لكن أضف سياقًا إلى المحفز التالي للوكيل |
+| `deny(message)` | حجبها — الرسالة تعود إلى الوكيل |
+| `instruct(message)` | السماح بها، لكن أضف سياق إلى موجه الوكيل التالي |
 
 → [دليل السياسات المخصصة](https://docs.befailproof.ai/policies/custom)
 
@@ -205,29 +205,31 @@ customPolicies.add({
 
 ## قابلية الملاحظة
 
-الفرض نصف واحد. النصف الآخر هو رؤية ما فعله الوكيل فعلاً.
+الإنفاذ هو نصف واحد. النصف الآخر هو رؤية ما فعله الوكيل فعلاً.
 
-قم بتشغيل `failproofai` بدون مُعاملات وسيخدم لوحة تحكم على `localhost:8020`
-تقرأ سجل التشغيل الموجود بالفعل على جهازك — لا حساب، لا تسجيل، لا شيء يترك الصندوق.
-تحصل على قائمة الجلسة، وتسلسل استدعاءات النموذج، واستدعاءات الأدوات وقرارات الخطاف داخل كل تشغيل،
-وما تم حجبه وما قالته السياسة للوكيل، وتدقيق غير متصل (`failproofai audit`) الذي يمسح سجلك
-بحثًا عن أنماط محفوفة بالمخاطر ويقترح السياسات لإيقافها.
+شغّل `failproofai` بدون وسائط وسيخدم لوحة معلومات على `localhost:8020`
+قارئاً سجل التشغيل الموجود بالفعل على جهازك — لا حساب، لا اشتراك، لا شيء
+يترك الصندوق. تحصل على قائمة الجلسات، وتسلسل استدعاءات النموذج، واستدعاءات الأدوات
+وقرارات الربط داخل كل تشغيل، ما تم حجبه وما قالته السياسة للوكيل،
+وتدقيق غير متصل (`failproofai audit`) الذي يفحص سجلك بحثاً عن أنماط محفوفة بالمخاطر
+ويقترح سياسات لإيقافها.
 
-→ [لوحة التحكم المحلية](https://docs.befailproof.ai/reference/local-dashboard) ·
-[اقرأ تتبعًا](https://docs.befailproof.ai/sessions/read-a-trace) ·
+→ [لوحة المعلومات المحلية](https://docs.befailproof.ai/reference/local-dashboard) ·
+[قراءة التتبع](https://docs.befailproof.ai/sessions/read-a-trace) ·
 [التدقيق المحلي](https://docs.befailproof.ai/audits/local-audit)
 
-**Failproof AI Observability** هو الجانب المستضاف من نفس نموذج البيانات، للفرق التي
-تدير الوكلاء عبر أسطول: كل تشغيل من كل بيئة تقنية في مكان واحد، رسم بياني للتنفيذ مع
-وكلاء فرعيين متوازيين على ممراتهم الخاصة، كمون p50/p95/p99 للنماذج والأدوات والخطافات،
-التكلفة لكل نموذج وتتبع نافذة السياق، تتبع الأخطاء، SQL فوق آثارك مع لوحات تحكم قابلة
-للمشاركة، التقييمات التي تسجلها خدمتك الخاصة، المراجعات المجدولة التي تحول الأعطال المتكررة
-إلى نتائج مدعومة بالأدلة، والتنبيهات الموجهة إلى Slack أو البريد الإلكتروني أو webhook موقّع.
-الاستضافة الذاتية في مجموعتك الخاصة متاحة في خطة Enterprise.
+**قابلية ملاحظة Failproof AI** هي الجانب المستضاف من نفس نموذج البيانات، للفرق
+التي تشغّل الوكلاء عبر مجموعة: كل تشغيل من كل محرك في مكان واحد، رسم بياني للتنفيذ
+مع وكلاء فرعيين متوازيين على مساراتهم الخاصة، زمن الاستجابة p50/p95/p99
+للنماذج والأدوات والربط، التكلفة لكل نموذج وتتبع نافذة السياق، تتبع الأخطاء، SQL
+على تتبعاتك الخاصة مع لوحات معلومات قابلة للمشاركة، التقييمات المسجلة من قبل خدمتك الخاصة،
+التدقيقات المجدولة التي تحول الفشل المتكرر إلى نتائج مدعومة بالأدلة، والتنبيهات
+الموجهة إلى Slack أو البريد الإلكتروني أو webhook موقع. الاستضافة الذاتية في مجموعتك الخاصة
+متاحة في خطة Enterprise.
 
 → [الجلسات](https://docs.befailproof.ai/sessions/overview) ·
 [التدقيقات](https://docs.befailproof.ai/audits/overview) ·
-[احجز عرضًا توضيحيًا](https://befailproof.ai/get-a-demo)
+[احجز عرضاً توضيحياً](https://befailproof.ai/get-a-demo)
 
 ---
 
@@ -235,50 +237,49 @@ customPolicies.add({
 
 | ابدأ | |
 |---|---|
-| [البدء السريع](https://docs.befailproof.ai/start/quickstart) | التثبيت، والاتصال بالبيئة التقنية، وشاهد التشغيل الأول |
-| [المفاهيم](https://docs.befailproof.ai/start/concepts) | كيف يعمل نظام الخطاف |
-| [البيئات التقنية المدعومة](https://docs.befailproof.ai/reference/harnesses) | الكل 12، وما يمكن لكل منها فرضه |
+| [البدء السريع](https://docs.befailproof.ai/start/quickstart) | التثبيت وربط محرك وشاهد التشغيل الأول |
+| [المفاهيم](https://docs.befailproof.ai/start/concepts) | كيفية عمل نظام الربط |
+| [المحركات المدعومة](https://docs.befailproof.ai/reference/harnesses) | جميع الـ 12 وما يمكن لكل واحد منها إنفاذه |
 
 | لاحظ | |
 |---|---|
-| [الجلسات](https://docs.befailproof.ai/sessions/overview) | تابع التشغيل: النماذج والأدوات والأخطاء والكمون |
-| [اقرأ تتبعًا](https://docs.befailproof.ai/sessions/read-a-trace) | ما يخبرك به الرسم البياني للتنفيذ |
-| [التدقيقات](https://docs.befailproof.ai/audits/overview) | ابحث عن أنماط الفشل عبر جلسات كثيرة |
-| [لوحة التحكم المحلية](https://docs.befailproof.ai/reference/local-dashboard) | `localhost:8020`، لا حاجة للحساب |
+| [الجلسات](https://docs.befailproof.ai/sessions/overview) | اتبع تشغيلاً: النماذج والأدوات والأخطاء وزمن الاستجابة |
+| [قراءة التتبع](https://docs.befailproof.ai/sessions/read-a-trace) | ما الذي يخبرك به رسم البياني للتنفيذ |
+| [التدقيقات](https://docs.befailproof.ai/audits/overview) | ابحث عن أنماط الفشل عبر عدد من الجلسات |
+| [لوحة المعلومات المحلية](https://docs.befailproof.ai/reference/local-dashboard) | `localhost:8020`، لا يوجد حساب مطلوب |
 
-| فرض | |
+| أنفذ | |
 |---|---|
-| [السياسات المدمجة](https://docs.befailproof.ai/policies/builtin) | جميع السياسات الـ 40 مع المعاملات |
-| [السياسات المخصصة](https://docs.befailproof.ai/policies/custom) | اكتب الخاصة بك |
+| [السياسات المدمجة](https://docs.befailproof.ai/policies/builtin) | جميع السياسات الـ 39 مع المعاملات |
+| [السياسات المخصصة](https://docs.befailproof.ai/policies/custom) | اكتب سياساتك الخاصة |
 | [التكوين](https://docs.befailproof.ai/policies/local-configuration) | نطاقات التكوين وقواعد الدمج |
 
-| أداة وكيلك الخاص | |
+| أدوات وكيلك الخاص | |
 |---|---|
-| [Python SDK](https://docs.befailproof.ai/reference/custom-agents) | الإبلاغ عن التشغيلات من وكيل بدون بيئة تقنية |
+| [Python SDK](https://docs.befailproof.ai/reference/custom-agents) | ابلغ عن التشغيلات من وكيل بدون محرك |
 | [Policy SDK](https://docs.befailproof.ai/reference/policy-sdk) | مرجع `allow` / `deny` / `instruct` |
 
 ---
 
 ## الترخيص
 
-MIT مع [Commons Clause](https://commonsclause.com/) — مجاني للاستخدام الداخلي والشخصي؛
-يتطلب إعادة بيع تجارية لـ failproofai نفسه اتفاقية منفصلة. انظر [LICENSE](../../LICENSE) للنص الكامل.
+MIT مع [Commons Clause](https://commonsclause.com/) — مجاني للاستخدام الداخلي والشخصي؛ إعادة بيع تجارية من failproofai نفسه يتطلب اتفاقية منفصلة. انظر [LICENSE](../../LICENSE) للنص الكامل.
 
 ---
 
 ## المساهمة
 
-انظر [CONTRIBUTING.md](../../CONTRIBUTING.md). السياسات الجديدة والحالات الحدية والترجمات كلها مرحب بها.
+انظر [CONTRIBUTING.md](../../CONTRIBUTING.md). السياسات الجديدة والحالات الحدية والترجمات جميعها مرحب بها.
 
-> **ابنِ قبل أن تبدأ.** قم بتشغيل `bun install && bun run build` أولاً. يعمل هذا المستودع
-> خطافات failproofai الخاصة به على نفسه، وهي تحل استيراد `failproofai` مقابل حزمة `dist/`
-> المترجمة — بدون بناء ستواجه أخطاء خطاف `Cannot find package 'failproofai'`. أعد البناء
-> بعد تغيير `src/`. انظر
-> [ابنِ قبل أن تعمل خطافات dev داخل المستودع](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+> **بناء قبل أن تبدأ.** شغّل `bun install && bun run build` أولاً. يشغّل هذا الريبو
+> ربطات failproofai الخاصة به على نفسه، ويحل استيراد `failproofai` مقابل
+> حزمة `dist/` المترجمة — بدون بناء ستصطدم بأخطاء ربط `Cannot find package 'failproofai'`.
+> أعد البناء بعد تغيير `src/`. انظر
+> [بناء قبل أن تعمل ربطات dev في المريبو](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 
-تم البناء بـ ❤️ بواسطة [befailproof.ai](https://befailproof.ai) في SF وBengaluru.
+بُني بـ ❤️ من قِبل [befailproof.ai](https://befailproof.ai) في SF و Bengaluru.
 
 
 </div>

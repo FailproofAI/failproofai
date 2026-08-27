@@ -1,19 +1,20 @@
 ---
+---
 title: "Comportamento in caso di errore"
 description: "Comprendi cosa accade quando la valutazione delle policy o il daemon locale non è disponibile."
 icon: "shield-alert"
 ---
 
-Failproof AI è progettato in modo che un errore di enforcement sia visibile piuttosto che consentire silenziosamente operazioni rischiose.
+Failproof AI è progettato affinché un errore di enforcement sia visibile piuttosto che consentire silenziosamente lavori rischiosi.
 
 ## Diagnosticare un blocco failure-closed
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vai su **Admin → enforcement** e apri la macchina.
-    2. Verifica il suo ultimo check-in, la deployment assegnata e la deployment segnalata.
-    3. Vai su **Observe → policy** e apri la sessione della decisione negata.
-    4. Conferma se il motivo segnala la raggiungibilità del daemon, lo skew di versione o la policy stessa.
+    1. Vai a **Admin → enforcement** e apri la macchina.
+    2. Controlla il suo ultimo check-in, il deployment assegnato e il deployment segnalato.
+    3. Vai a **Observe → policy** e apri la sessione della decisione negata.
+    4. Conferma se il motivo segnala raggiungibilità del daemon, version skew o la policy stessa.
 
   </Tab>
   <Tab title="CLI">
@@ -23,21 +24,45 @@ Failproof AI è progettato in modo che un errore di enforcement sia visibile piu
     failproofai config
     ```
 
-    Rieseguire `failproofai config` aggiorna e riavvia il daemon dopo un aggiornamento del pacchetto.
+    Rieseguire `failproofai config` aggiorna e riavvia il daemon dopo un upgrade del pacchetto.
   </Tab>
 </Tabs>
 
-Su una macchina configurata per utilizzare `failproofaid`, il daemon è l'unico valutatore. Se non è raggiungibile o la sua versione di protocollo non corrisponde a quella della CLI, la valutazione dell'hook fallisce in modalità chiusa. L'azione viene negata con un motivo che dirige l'operatore a controllare o aggiornare il daemon.
+Su una macchina configurata per usare `failproofaid`, il daemon è l'unico valutatore. Se non è raggiungibile o la sua versione del protocollo non corrisponde alla CLI, la valutazione dell'hook fallisce in modo chiuso. L'azione viene negata con un motivo che indirizza l'operatore a controllare o aggiornare il daemon.
 
-Prima della configurazione del daemon, gli hook valutano le policy in process. Una volta registrata la configurazione del daemon, Failproof AI non ritorna silenziosamente a un secondo valutatore quando il daemon fallisce.
+Prima della configurazione del daemon, gli hook valutano le policy in process. Una volta registrata la configurazione del daemon, Failproof AI non torna silenziosamente a un secondo valutatore quando il daemon fallisce.
 
 ## Rispondere a una decisione failure-closed
 
 1. Esegui `failproofai config --status`.
 2. Se le versioni differiscono, riesegui `failproofai config` dopo aver aggiornato il pacchetto.
-3. Se il daemon non è raggiungibile, ispeziona lo stato del servizio e i log locali.
-4. Riprendi il lavoro dell'agent solo dopo aver verificato che un percorso noto di valutazione delle policy è sano.
+3. Se il daemon non è raggiungibile, ispeziona lo stato del suo servizio e i log locali.
+4. Riprendi il lavoro dell'agent solo dopo aver verificato che un percorso di valutazione della policy noto è sano.
 
 <Warning>
-  Non riprovare ripetutamente l'azione bloccata. Una risposta failure-closed significa che il sistema non ha potuto stabilire che l'azione fosse sicura.
+  Non ritentare ripetutamente l'azione bloccata. Una risposta failure-closed significa che il sistema non ha potuto stabilire che l'azione era sicura.
 </Warning>
+
+## Un pack non si caricherà
+
+Una macchina a cui è stato ordinato di applicare un pack, e che non può eseguirlo, nega piuttosto che continuare silenziosamente. Il trigger è un'**aspettativa registrata**, mai una vuota: una macchina senza pack installati è silenziosa, mentre un pack che è dichiarato e non si risolverà — o che registra meno di quanto dichiara il suo manifest — nega.
+
+La negazione è **ristretta**, a differenza di un daemon non raggiungibile. Un daemon che non può essere raggiunto significa che nessuna valutazione è avvenuta affatto, quindi nulla può essere conosciuto come sicuro. Un pack che non si carica ha un insieme enumerabile di guardie mancanti, perché ogni policy dichiarata porta il suo `match` — quindi nega solo gli eventi e i tool coperti da quelle policy, e tutto il resto procede.
+
+Non si attiva per:
+
+- un pack `observe`, che valuta e scarta per costruzione
+- policy che non hai mai preso, o che hai esplicitamente disattivato
+- un pack che il loader non ha mai ricevuto, dove "nessuna registrazione" non può essere distinta da un salto deliberato
+- una pausa di sessione attiva
+- un timeout di caricamento, che è transitorio — un momento di disco lento non deve negare fino a quando un umano interviene
+
+`UserPromptSubmit` **istruisce** invece di negare, indipendentemente da cosa dichiarava la policy mancante. Una negazione generale la porterebbe con sé e ti bloccherebbe fuori dall'agent che potrebbe risolvere il problema.
+
+### Cosa fare
+
+```bash
+failproofai pack list
+```
+
+Elenca qualsiasi pack installato che non si carica, spiega il motivo, ed esce con codice non-zero. Poi o reinstallalo (`failproofai pack add <source>`) o rimuovilo (`failproofai pack remove <publisher/name>`) — rimuoverlo ritira l'aspettativa, e la negazione si ferma con essa.

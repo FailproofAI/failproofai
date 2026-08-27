@@ -1,19 +1,19 @@
 ---
 title: "Fehlerverhalten"
-description: "Verstehen Sie, was passiert, wenn die Richtlinienauswertung oder der lokale Daemon nicht verfügbar ist."
+description: "Verstehen, was passiert, wenn die Richtlinienauswertung oder der lokale Daemon nicht verfügbar ist."
 icon: "shield-alert"
 ---
 
-Failproof AI ist so konzipiert, dass ein Durchsetzungsfehler sichtbar wird, anstatt riskante Aktionen stillschweigend zuzulassen.
+Failproof AI ist so konzipiert, dass ein Durchsetzungsfehler sichtbar wird, anstatt riskante Aktionen stillschweigend zu erlauben.
 
-## Einen failure-closed-Block diagnostizieren
+## Einen „failure-closed"-Block diagnostizieren
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehen Sie zu **Admin → Durchsetzung** und öffnen Sie die Maschine.
-    2. Überprüfen Sie das letzte Check-in, die zugewiesene Bereitstellung und die gemeldete Bereitstellung.
-    3. Gehen Sie zu **Beobachten → Richtlinie** und öffnen Sie die Sitzung der abgelehnten Entscheidung.
-    4. Bestätigen Sie, ob der Grund auf die Erreichbarkeit des Daemons, einen Versionsunterschied oder die Richtlinie selbst hindeutet.
+    1. Gehen Sie zu **Admin → Durchsetzung** und öffnen Sie den Computer.
+    2. Prüfen Sie seinen letzten Check-in, das zugewiesene Deployment und das gemeldete Deployment.
+    3. Gehen Sie zu **Observe → Richtlinie** und öffnen Sie die Sitzung der abgelehnten Entscheidung.
+    4. Stellen Sie fest, ob der Grund auf Daemon-Erreichbarkeit, Versionsunterschiede oder die Richtlinie selbst hinweist.
 
   </Tab>
   <Tab title="CLI">
@@ -27,17 +27,41 @@ Failproof AI ist so konzipiert, dass ein Durchsetzungsfehler sichtbar wird, anst
   </Tab>
 </Tabs>
 
-Auf einer Maschine, die zur Verwendung von `failproofaid` konfiguriert ist, ist der Daemon der einzige Auswertungsdienst. Ist er nicht erreichbar oder stimmt seine Protokollversion nicht mit der CLI überein, schlägt die Hook-Auswertung failure-closed fehl. Die Aktion wird mit einer Begründung abgelehnt, die den Operator anweist, den Daemon zu überprüfen oder zu aktualisieren.
+Auf einem Computer, der zur Verwendung von `failproofaid` konfiguriert ist, ist der Daemon der einzige Auswertungsinstanz. Ist er nicht erreichbar oder stimmt seine Protokollversion nicht mit der CLI überein, schlägt die Hook-Auswertung geschlossen fehl. Die Aktion wird mit einer Begründung abgelehnt, die den Betreiber anweist, den Daemon zu prüfen oder zu aktualisieren.
 
-Vor der Daemon-Konfiguration wertet Failproof AI Richtlinien direkt im Prozess aus. Sobald die Daemon-Konfiguration gespeichert ist, fällt Failproof AI bei einem Daemon-Ausfall nicht stillschweigend auf einen zweiten Auswertungsdienst zurück.
+Vor der Daemon-Konfiguration werten Hooks Richtlinien im Prozess aus. Sobald die Daemon-Konfiguration gespeichert ist, fällt Failproof AI bei einem Daemon-Fehler nicht stillschweigend auf eine zweite Auswertungsinstanz zurück.
 
-## Auf eine failure-closed-Entscheidung reagieren
+## Auf eine „failure-closed"-Entscheidung reagieren
 
 1. Führen Sie `failproofai config --status` aus.
-2. Wenn sich die Versionen unterscheiden, führen Sie nach dem Aktualisieren des Pakets erneut `failproofai config` aus.
-3. Wenn der Daemon nicht erreichbar ist, prüfen Sie seinen Dienststatus und die lokalen Protokolle.
-4. Setzen Sie die Agent-Arbeit erst fort, wenn ein bekannter Richtlinienauswertungspfad fehlerfrei funktioniert.
+2. Wenn sich die Versionen unterscheiden, führen Sie `failproofai config` nach dem Aktualisieren des Pakets erneut aus.
+3. Ist der Daemon nicht erreichbar, prüfen Sie seinen Servicestatus und die lokalen Logs.
+4. Nehmen Sie die Agenten-Arbeit erst wieder auf, wenn ein bekannter Richtlinienauswertungspfad funktionsfähig ist.
 
 <Warning>
-  Versuchen Sie nicht wiederholt, die blockierte Aktion erneut auszuführen. Eine failure-closed-Antwort bedeutet, dass das System nicht feststellen konnte, ob die Aktion sicher war.
+  Versuchen Sie nicht wiederholt, die blockierte Aktion zu wiederholen. Eine „failure-closed"-Antwort bedeutet, dass das System nicht feststellen konnte, dass die Aktion sicher war.
 </Warning>
+
+## Ein Pack lässt sich nicht laden
+
+Ein Computer, der angewiesen wurde, ein Pack durchzusetzen, und es nicht ausführen kann, lehnt ab, anstatt stillschweigend fortzufahren. Auslöser ist eine **aufgezeichnete Erwartung**, niemals eine leere: Ein Computer ohne installierte Packs ist still, während ein Pack, das deklariert ist und sich nicht auflösen lässt – oder das weniger registriert als sein Manifest angibt – ablehnt.
+
+Die Ablehnung ist **eng gefasst**, anders als bei einem nicht erreichbaren Daemon. Ein Daemon, der nicht erreichbar ist, bedeutet, dass überhaupt keine Auswertung stattgefunden hat, sodass nichts als sicher bekannt sein kann. Ein Pack, das sich nicht lädt, hat eine aufzählbare Menge fehlender Wächter, da jede deklarierte Richtlinie ihr eigenes `match` mitbringt – daher lehnt es nur die Ereignisse und Tools ab, die von diesen Richtlinien abgedeckt werden, und alles andere läuft weiter.
+
+Es greift nicht bei:
+
+- einem `observe`-Pack, das konstruktionsbedingt auswertet und verwirft
+- Richtlinien, die Sie nie übernommen oder explizit deaktiviert haben
+- einem Pack, das der Loader nie empfangen hat, wo sich „keine Registrierungen" nicht von einem bewussten Überspringen unterscheiden lässt
+- einer aktiven Sitzungspause
+- einem Lade-Timeout, das vorübergehend ist – ein einzelner langsamer Festplattenmoment darf nicht ablehnen, bis ein Mensch eingreift
+
+`UserPromptSubmit` **instruiert** anstatt abzulehnen, unabhängig davon, was die fehlende Richtlinie deklariert hat. Eine pauschale Ablehnung würde es ebenfalls erfassen und Sie aus dem Agenten aussperren, der das Problem beheben könnte.
+
+### Vorgehensweise
+
+```bash
+failproofai pack list
+```
+
+Dieser Befehl nennt alle installierten Packs, die sich nicht laden lassen, gibt den Grund an und beendet sich mit einem Fehlercode. Installieren Sie das Pack anschließend neu (`failproofai pack add <source>`) oder entfernen Sie es (`failproofai pack remove <publisher/name>`) – durch das Entfernen wird die Erwartung zurückgezogen, und die Ablehnung hört damit auf.

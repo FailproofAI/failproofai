@@ -1,0 +1,91 @@
+---
+title: "Publier un pack"
+description: "Distribuez vos propres politiques sous forme de release GitHub que tout le monde peut installer."
+icon: "upload"
+---
+
+Un pack est composé de trois fichiers attachés à une release GitHub. `failproofai pack build` génère les trois à partir d'un fichier de politiques que vous possédez déjà.
+
+## 1. Écrire les politiques
+
+Un seul fichier, utilisant la même API que n'importe quelle politique personnalisée. Deux champs supplémentaires sont importants pour un pack :
+
+```js
+import { customPolicies, deny, allow } from "failproofai";
+
+customPolicies.add({
+  name: "block-refunds",
+  description: "Refunds above the approved limit need a human",
+  category: "Billing",        // groups it, and is what --category selects on
+  defaultEnabled: true,       // switched on by a plain `pack add`
+  match: { events: ["PreToolUse"], tools: ["Bash"] },
+  fn: async (ctx) =>
+    String(ctx.toolInput?.command ?? "").includes("refund")
+      ? deny("Refunds need a human. Ask before running this.")
+      : allow(),
+});
+```
+
+`defaultEnabled` vaut **false** par défaut si vous l'omettez. Un simple `failproofai pack add` n'active que ce que vous avez marqué — activer en bloc toutes les politiques d'un inconnu sans supervision n'est pas une décision que l'installeur devrait prendre à la place de son utilisateur.
+
+<Warning>
+L'entrée doit être **un fichier unique et autonome**. Seule l'entrée est épinglée par son condensat, donc un pack qui importe des fichiers locaux ne pourrait pas honnêtement prétendre que le condensat couvre ce qui s'exécute. Bundlez d'abord (`esbuild`, `bun build`, `rollup`) et construisez le pack à partir du bundle — `pack build` refuse une importation locale plutôt que de livrer une promesse qu'il ne peut pas tenir.
+</Warning>
+
+## 2. Construire les assets de la release
+
+```bash
+failproofai pack build ./policies.mjs \
+  --id acme/support-agent \
+  --version 1.0.0 \
+  --out ./dist-pack
+```
+
+Cette commande génère trois fichiers et valide chaque politique avec **les propres règles du chargeur** — ainsi, un pack qui ne pourrait jamais s'installer échoue ici, là où vous pouvez corriger le problème :
+
+| Fichier | Description |
+| --- | --- |
+| `failproofai-pack.json` | Le manifeste : id, version, effet, et une entrée par politique |
+| `failproofai-pack.mjs` | Votre entrée, verbatim |
+| `SHA256SUMS` | `<sha256>  <filename>` pour les deux autres fichiers |
+
+Refusés à la construction : un id qui n'est pas `publisher/name`, un nom de politique contenant `/`, une politique déclarant `alwaysOn`, une `description`, une `category` ou un `match` manquants, une entrée qui n'enregistre rien, et une entrée qui importe des fichiers locaux.
+
+## 3. Attacher les fichiers à une release
+
+Taguez la release avec la même version que celle utilisée lors de la construction, et attachez les trois fichiers comme assets de la release :
+
+```bash
+gh release create 1.0.0 \
+  ./dist-pack/failproofai-pack.json \
+  ./dist-pack/failproofai-pack.mjs \
+  ./dist-pack/SHA256SUMS
+```
+
+N'importe qui peut désormais l'installer :
+
+```bash
+failproofai pack add acme/support-agent
+```
+
+Les noms des assets sont fixes — c'est à partir d'eux que le CLI du consommateur construit ses URLs, sans appel API ni mécanisme de découverte.
+
+## Publier une nouvelle version
+
+Construisez avec le nouveau `--version`, taguez une nouvelle release, attachez à nouveau les trois assets. Les consommateurs exécutent le même `pack add` et conservent le sous-ensemble qu'ils avaient choisi ; une politique qu'ils ont désactivée reste désactivée après la mise à jour.
+
+Changer le **nom** d'une politique est un changement cassant : une machine qui l'avait désactivée désactive un nom qui n'existe plus, et le nouveau nom arrive avec ce que `defaultEnabled` indique.
+
+## Ce que vos utilisateurs vous font confiance
+
+`SHA256SUMS` se trouve dans la même release que l'artefact, ce qui prouve que les octets sont bien ceux que vous avez publiés — mais pas qui vous êtes. Quiconque peut écrire dans le dépôt peut écrire les deux fichiers. La protection de vos utilisateurs réside dans le fait que le condensat est épinglé au moment de l'installation, ce qui empêche ce que vous avez publié de changer à leur insu par la suite.
+
+Publiez depuis un dépôt dont vous contrôlez les accès en écriture, et traitez une release de pack comme la publication d'un package.
+
+## Observer avant d'appliquer
+
+Un manifeste peut déclarer `"effect": "observe"`. Ces politiques s'exécutent et leurs verdicts sont **enregistrés puis ignorés** — rien n'est bloqué. C'est la façon de mesurer une nouvelle règle face au trafic réel avant qu'elle ne puisse interrompre le travail de quiconque.
+
+```json
+{ "id": "acme/support-agent", "version": "1.1.0", "effect": "observe", "policies": [ ... ] }
+```

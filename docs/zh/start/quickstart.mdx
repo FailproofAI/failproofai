@@ -1,27 +1,27 @@
 ---
-title: "快速开始"
-description: "捕获一个 Agent 会话，定位故障，并开始预防它。"
+title: "快速入门"
+description: "捕获一次 Agent 会话，发现故障，并开始预防它。"
 icon: "zap"
 ---
 
-本快速入门将帮助你完成：让一台机器开始上报会话、运行审计、并部署策略。你可以使用技能包完成配置，也可以按照手动步骤操作。
+本快速入门将引导你完成：让一台机器上报会话、运行审计，并部署一条策略。你可以使用技能来配置 Failproof，也可以按照手动步骤操作。
 
-**选择你的路径：** 如果你的 Agent 运行在 12 个受支持的[运行环境](/zh/reference/harnesses)之一——例如编程 CLI，或者 Hermes、OpenClaw 等网关——请按照以下步骤操作；你需要 Node.js 20.9 或更高版本。如果你的 Agent 没有对应的运行环境，请使用 [Python SDK](/zh/reference/custom-agents) 对其进行追踪和审计的插桩，然后从[运行你的第一次故障检查](/zh/start/first-audit)继续；该路径下的执行强制需要在你的运行时中添加 hook。
+**你适合哪种方式？** 如果你的 Agent 运行在 12 个受支持的[运行框架](/zh/reference/harnesses)之一中——例如编码 CLI，或像 Hermes、OpenClaw 这样的网关——请按照以下步骤操作；你需要 Node.js 20.9 或更高版本。如果你的 Agent 没有对应的运行框架，请使用 [Python SDK](/zh/reference/custom-agents) 对其进行追踪和审计插桩，然后在[运行你的首次故障检查](/zh/start/first-audit)时重新加入；该路径上的执行控制需要在你的运行时中添加 hook。
 
 <Tabs>
-  <Tab title="使用技能包">
+  <Tab title="使用技能">
     <Steps>
-      <Step title="安装 Failproof AI 技能包">
+      <Step title="安装 Failproof AI 技能">
         ```bash
         npx skills add FailproofAI/skills
         ```
       </Step>
-      <Step title="让你的 Agent 完成所有设置">
+      <Step title="让你的 Agent 完成所有配置">
         ```text
         Set up Failproof AI for this project, connect this machine, install the right hooks and policies, and verify that a session arrives.
         ```
 
-        你的 Agent 会检查项目、选择相关集成、执行配置并验证结果。有关各项技能和高级安装选项，请参阅 [FailproofAI skills repository](https://github.com/FailproofAI/skills)。
+        你的 Agent 会检查项目，选择相关集成，执行配置，并验证会话是否正常到达。有关各项技能和高级安装选项，请参阅 [FailproofAI skills 仓库](https://github.com/FailproofAI/skills)。
       </Step>
     </Steps>
   </Tab>
@@ -30,7 +30,7 @@ icon: "zap"
 
 1. 打开 [Failproof AI 控制台](https://app.befailproof.ai)，创建账号或使用工作邮箱登录。
 2. 前往 **Administration → Keys**，创建一个具有 `events:add` 和 `policies:pull` 权限的密钥。
-3. 复制一次性密钥，并在目标机器上进行存储：
+3. 复制一次性密钥，并将其保存到目标机器上：
 
 ```bash
 export FAILPROOFAI_KEY="<one-time-secret>"
@@ -45,9 +45,9 @@ export FAILPROOFAI_KEY="<one-time-secret>"
     failproofai config --connect https://app.befailproof.ai --token "$FAILPROOFAI_KEY"
     ```
 
-    默认情况下会发送会话记录。添加 `--no-transcripts` 参数可在不上传记录内容的情况下上报 hook 活动和策略决策。
+    默认情况下，会话转录内容会一并上传。添加 `--no-transcripts` 选项可仅上报 hook 活动和策略决策，而不包含转录内容。
 
-    如果此机器已有 Agent 历史记录，可预览并导入最近七天的数据，然后等待传输完成。新机器可跳过此步骤。
+    如果该机器上已有 Agent 历史记录，可以预览并导入最近七天的数据，然后等待上传完成。在全新机器上可跳过此步骤。
 
     ```bash
     failproofai backfill --since 7d --dry-run
@@ -55,30 +55,30 @@ export FAILPROOFAI_KEY="<one-time-secret>"
     failproofai flush --wait
     ```
 
-    在 Failproof AI 中打开 **Sessions**，选择一个已导入的会话。
+    在 Failproof AI 中打开 **Sessions** 并选择一个已导入的会话。
   </Step>
-  <Step title="安装 Agent Hook 和策略">
-    此步骤将 Failproof AI 接入你的运行环境，并安装 40 条内置策略。你可以用它们查看本地策略决策，并在 Failproof AI 审计会话、为你的 Agent 生成策略之前先行体验执行强制功能。
+  <Step title="安装 Agent hooks 和策略">
+    此步骤将 Failproof AI 与你的运行框架关联，并安装 39 条内置策略。你可以用它们查看本地策略决策，并在 Failproof AI 审计你的会话、为 Agent 生成策略之前，提前试验执行控制效果。
 
-    可让安装程序自动检测你的运行环境，也可以显式指定。以下 12 个值均为有效的 `--cli` 参数——`claude`、`codex`、`copilot`、`cursor`、`opencode`、`pi`、`hermes`、`openclaw`、`factory`、`devin`、`antigravity`、`goose`。
+    你可以让安装程序自动检测你的运行框架，也可以显式指定一个。12 个运行框架均为有效的 `--cli` 值——`claude`、`codex`、`copilot`、`cursor`、`opencode`、`pi`、`hermes`、`openclaw`、`factory`、`devin`、`antigravity`、`goose`。
 
     ```bash
-    failproofai policies --install --cli claude --scope user     # 编程 CLI
+    failproofai policies --install --cli claude --scope user     # 编码 CLI
     failproofai policies --install --cli hermes --scope user     # Slack/Telegram 网关
     ```
 
-    所有 12 个运行环境均已验证支持在工具调用执行前进行拦截。轮次结束门控已在 8 个运行环境上验证——详见[执行强制能力](/zh/reference/harnesses#enforcement-capability)中的各运行环境矩阵。
+    在工具调用执行前拦截的能力已在全部 12 个运行框架上验证；轮次结束时的拦截门控已在 8 个上验证——各运行框架的详细矩阵请参阅[执行控制能力](/zh/reference/harnesses#enforcement-capability)。
   </Step>
   <Step title="审计行为">
-    参考[运行你的第一次故障检查](/zh/start/first-audit)。请使用具体的目标，例如"查找 Agent 在工具调用持续失败时未改变方式而重复重试的会话"。
+    按照[运行你的首次故障检查](/zh/start/first-audit)进行操作。使用具体的目标，例如"找出 Agent 在工具调用失败后未改变策略而直接重试的会话"。
   </Step>
   <Step title="预防故障">
-    参考[使用策略预防你的第一次故障](/zh/start/first-policy)。从观察模式开始，检查匹配项，然后对审核后的版本启用强制执行。
+    按照[使用策略预防你的第一个故障](/zh/start/first-policy)进行操作。从观察模式开始，检查匹配结果，然后对审查后的版本启用执行控制。
   </Step>
 </Steps>
 
 <Check>
-  运行 `failproofai config --status`。配置正常时，会输出云端连接状态、守护进程状态，以及执行强制是否已暂停。
+  运行 `failproofai config --status`。配置正常时，将显示云连接状态、守护进程状态，以及执行控制是否处于暂停状态。
 </Check>
   </Tab>
 </Tabs>

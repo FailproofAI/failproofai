@@ -1,0 +1,91 @@
+---
+title: "发布 Pack"
+description: "将您自己的策略作为 GitHub Release 发布，任何人都可以安装。"
+icon: "upload"
+---
+
+一个 pack 由附加到 GitHub Release 上的三个文件组成。`failproofai pack build` 会从您已有的策略文件中生成这三个文件。
+
+## 1. 编写策略
+
+只需一个文件，使用与自定义策略相同的 API。Pack 有两个额外的字段需要关注：
+
+```js
+import { customPolicies, deny, allow } from "failproofai";
+
+customPolicies.add({
+  name: "block-refunds",
+  description: "Refunds above the approved limit need a human",
+  category: "Billing",        // groups it, and is what --category selects on
+  defaultEnabled: true,       // switched on by a plain `pack add`
+  match: { events: ["PreToolUse"], tools: ["Bash"] },
+  fn: async (ctx) =>
+    String(ctx.toolInput?.command ?? "").includes("refund")
+      ? deny("Refunds need a human. Ask before running this.")
+      : allow(),
+});
+```
+
+省略 `defaultEnabled` 时，其默认值为 **false**。普通的 `failproofai pack add` 只会启用您标记了的策略——是否不加甄别地安装陌生人的所有策略，不应该由安装器替用户做决定。
+
+<Warning>
+入口文件必须是**一个自包含的文件**。只有入口文件会被 digest 固定，因此一个导入本地文件的 pack 无法真实地声明 digest 涵盖了实际运行的内容。请先打包（使用 `esbuild`、`bun build` 或 `rollup`），再从打包产物构建 pack——`pack build` 会拒绝包含本地导入的文件，而不是发出一个无法兑现的承诺。
+</Warning>
+
+## 2. 构建 Release 资产
+
+```bash
+failproofai pack build ./policies.mjs \
+  --id acme/support-agent \
+  --version 1.0.0 \
+  --out ./dist-pack
+```
+
+该命令会生成三个文件，并首先使用**加载器自身的规则**验证每条策略——这样一个无法安装的 pack 会在此处报错，您可以就地修复：
+
+| 文件 | 说明 |
+| --- | --- |
+| `failproofai-pack.json` | 清单文件：id、版本、effect，以及每条策略的条目 |
+| `failproofai-pack.mjs` | 您的入口文件，原样保留 |
+| `SHA256SUMS` | 另外两个文件的 `<sha256>  <filename>` |
+
+以下情况会在构建时被拒绝：id 不符合 `publisher/name` 格式、策略名称包含 `/`、策略声明了 `alwaysOn`、缺少 `description`、`category` 或 `match`、入口文件未注册任何策略，以及入口文件导入了本地文件。
+
+## 3. 将文件附加到 Release
+
+使用与构建时相同的版本号为 Release 打标签，并将三个文件作为 Release 资产附上：
+
+```bash
+gh release create 1.0.0 \
+  ./dist-pack/failproofai-pack.json \
+  ./dist-pack/failproofai-pack.mjs \
+  ./dist-pack/SHA256SUMS
+```
+
+任何人现在都可以安装它：
+
+```bash
+failproofai pack add acme/support-agent
+```
+
+资产文件名是固定的——CLI 在构建 URL 时直接使用这些文件名，无需任何 API 调用或服务发现。
+
+## 发布新版本
+
+使用新的 `--version` 构建，为新 Release 打标签，再次附上三个资产文件。用户运行相同的 `pack add` 即可升级，并保留他们已选择的策略子集；他们曾关闭的策略在升级后依然保持关闭状态。
+
+修改策略的**名称**是一个破坏性变更：曾将其关闭的机器现在关闭的是一个已不存在的名称，而新名称会按照 `defaultEnabled` 的设置生效。
+
+## 用户信任的内容
+
+`SHA256SUMS` 与产物文件存放在同一个 Release 中，因此它能证明这些字节是您发布的内容——但无法证明您的身份。任何对仓库有写权限的人都可以同时修改这两个文件。用户的保障在于：digest 在安装时被固定，因此您发布的内容事后无法在他们不知情的情况下被篡改。
+
+请从您能控制写入权限的仓库发布，并像对待发布软件包一样对待 pack 的发布。
+
+## 先观察，再执行
+
+清单文件可以声明 `"effect": "observe"`。这些策略会运行，但其判决结果**仅被记录，然后丢弃**——不会阻断任何操作。这是在新规则正式拦截任何人的工作之前，先针对真实流量进行评估的方式。
+
+```json
+{ "id": "acme/support-agent", "version": "1.1.0", "effect": "observe", "policies": [ ... ] }
+```

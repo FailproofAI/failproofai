@@ -303,6 +303,18 @@ export interface LoadAllResult {
   conventionSources: ConventionSource[];
   /** Import failures keyed by pack id, including artifacts that registered no hooks. */
   packFailures: Map<string, PolicyLoadFailure>;
+  /**
+   * Every pack id that shares one artifact, keyed by the id the collapse kept.
+   *
+   * Packs with identical entry bytes load once, and every hook that comes back
+   * carries only the surviving record's id — so a registration recorded under
+   * it says nothing about the other pack. `missingGuards` skips a pack that
+   * appears in neither the failure map nor the registered map, which means an
+   * artifact that imports FINE but omits a policy only the non-winning record
+   * selected produced no guard at all: not registered, and not denied either.
+   * Only present for a path more than one pack resolved to.
+   */
+  packAliases: Map<string, string[]>;
 }
 
 export function customPolicyId(file: string, name: string): string {
@@ -725,5 +737,10 @@ export async function loadAllCustomHooks(
     }
   }
 
-  return { hooks: allHooks, conventionSources, packFailures };
+  const packAliases = new Map<string, string[]>();
+  for (const [path, ids] of packIdsByPath) {
+    const winner = packByPath.get(path);
+    if (winner && ids.length > 1) packAliases.set(winner.id, ids);
+  }
+  return { hooks: allHooks, conventionSources, packFailures, packAliases };
 }

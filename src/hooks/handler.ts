@@ -455,9 +455,18 @@ export async function evaluateHookEvent(
         // a pack too; once the shim stops, nothing else registers by name.
         if (pack && enabledBuiltinNames.has(hook.name)) continue;
         if (pack) {
-          const seen = registeredByPack.get(pack.id) ?? new Set<string>();
-          seen.add(hook.name);
-          registeredByPack.set(pack.id, seen);
+          // Recorded against EVERY pack behind these bytes, not just the id the
+          // collapse kept. A shared artifact loads once and every hook carries
+          // the surviving record's id, so registering under it alone left the
+          // other pack in neither map — and `missingGuards` skips a pack in
+          // neither map, so an artifact that imported fine while omitting a
+          // policy only that pack had selected produced no guard: not
+          // registered, and not denied either.
+          for (const id of loadResult.packAliases?.get(pack.id) ?? [pack.id]) {
+            const seen = registeredByPack.get(id) ?? new Set<string>();
+            seen.add(hook.name);
+            registeredByPack.set(id, seen);
+          }
         }
         const hookName = hook.name;
         const conventionScope = (hook as CustomHook & { __conventionScope?: string }).__conventionScope;

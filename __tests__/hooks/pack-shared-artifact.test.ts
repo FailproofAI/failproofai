@@ -607,3 +607,69 @@ describe("a broken artifact two packs share", () => {
     expect(await evaluate("anything", "claude", "Write")).not.toContain("deny");
   });
 });
+
+// The mirror of the broken-artifact case, on the SUCCESS path. An artifact that
+// imports fine can still fail to register a policy its manifest declared — a
+// publisher's catalog and their source drifting apart. Registration is recorded
+// per pack id and the collapse leaves one id holding the merged record, so a
+// policy selected only by the NON-winning pack was in neither map, and
+// `missingGuards` skips a pack in neither map. Nothing registered it and
+// nothing denied for it.
+describe("a shared artifact that omits one pack's selected policy", () => {
+  // Registers `block-refunds` and nothing else. `require-deploy-note` is
+  // declared by the manifest below and never added here.
+  const PARTIAL = `
+    import { customPolicies, allow } from "failproofai";
+    customPolicies.add({
+      name: "block-refunds",
+      description: "d",
+      match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+      fn: async () => allow(),
+    });
+  `;
+  const PARTIAL_DIGEST = createHash("sha256").update(PARTIAL).digest("hex");
+
+  function installPartial(): void {
+    const scoped = (name: string, tool: string): PolicyCatalogEntry => ({
+      name,
+      description: "d",
+      category: "Ops",
+      defaultEnabled: true,
+      match: { events: ["PreToolUse"], toolNames: [tool] },
+    });
+    const entry = (id: string, version: string, name: string, tool: string) => ({
+      id,
+      version,
+      source: `github:${id}@v${version}`,
+      entry: `artifacts/${PARTIAL_DIGEST}.mjs`,
+      sha256: PARTIAL_DIGEST,
+      policies: [scoped(name, tool)],
+      enabled: [name],
+    });
+    writeFileSync(join(packRoot, "artifacts", `${PARTIAL_DIGEST}.mjs`), PARTIAL);
+    writeFileSync(
+      join(packRoot, "installed.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        packs: [
+          // The winner registers what it selected, so it looks healthy.
+          entry("acme/first", "1.0.0", "block-refunds", "Bash"),
+          // This one's policy is in the manifest and not in the artifact.
+          entry("other/second", "2.0.0", "require-deploy-note", "Write"),
+        ],
+      }),
+    );
+  }
+
+  it("denies the scope of the policy that never registered", async () => {
+    installPartial();
+    expect(await evaluate("anything", "claude", "Write")).toContain("deny");
+  });
+
+  it("leaves the scope that DID register alone", async () => {
+    installPartial();
+    // `block-refunds` registered and allows, so nothing should deny here — a
+    // guard firing on Bash would mean the fix over-corrected into a blanket.
+    expect(await evaluate("anything", "claude", "Bash")).not.toContain("deny");
+  });
+});

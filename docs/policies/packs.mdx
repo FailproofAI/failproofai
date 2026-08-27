@@ -1,110 +1,62 @@
 ---
 title: "Policy packs"
-description: "Install a set of policies published as a GitHub release, and manage what it enforces."
+description: "Inspect and install versioned policy sets published through GitHub."
 icon: "package"
 ---
 
-A pack is a set of policies published as a GitHub release. One command installs it, the release's own checksums are verified before anything runs, and the digest is recorded so the pack cannot change under your machine afterwards.
-
-## Install the Failproof AI policies
+A policy pack is a versioned set of policies published as a public GitHub release. The package ships no pack of its own; install ours like any other:
 
 ```bash
-failproofai pack add core
+failproofai policies show FailproofAI/policies
+failproofai policies add FailproofAI/policies
 ```
 
-That installs the set we publish, from the copy inside the package — so it needs no network and cannot fail behind a proxy. Take part of it:
+`show` reads the manifest without running the pack's code.
+
+## Choose what to install
 
 ```bash
-failproofai pack add core --policy block-rm-rf         # one, or a comma-separated few
-failproofai pack add core --category dangerous-commands # a whole category
-failproofai pack add core --all                         # everything in it
+failproofai policies add owner/repo --policy block-refunds
+failproofai policies add owner/repo --category billing,git
+failproofai policies add owner/repo --all
 ```
 
-`failproofai pack list` names every category the pack offers.
+With no selection, the pack uses its publisher's defaults. Re-adding a newer release keeps your existing selection.
 
-## See what a pack contains, before installing it
+Anything with a slash is a pack source. Anything without one is a policy name.
 
-```bash
-failproofai pack list acme/support-agent
-```
-
-Lists every policy the pack carries, grouped by category, marking which ones its author switches on by default and which are opt-in. It reads **only the manifest** — the entry artifact is never downloaded and never imported, so looking at a stranger's pack cannot run a stranger's code. The manifest is still checked against the release's own `SHA256SUMS`, so what you are reading is what would install.
-
-`failproofai pack list` with no source lists the packs already installed here.
-
-## Install somebody else's pack
-
-```bash
-failproofai pack add acme/support-agent
-```
-
-Any of these work — paste whichever you have:
+## Pin a release
 
 | Source | Result |
 | --- | --- |
-| `acme/support-agent` | Newest release, **pinned** to the exact tag it resolved |
-| `acme/support-agent@v2.1.0` | That release |
-| `github:acme/support-agent@v2.1.0` | The same, written explicitly |
-| `https://github.com/acme/support-agent/releases/tag/v2.1.0` | The same, copied from a browser |
+| `owner/repo` | Newest release, pinned after resolution |
+| `owner/repo@a1b2c3d4e5f6` | Exact commit-based release |
+| `owner/repo@v2.1.0` | Exact named release |
+| GitHub release URL | The release in that URL |
 
-Naming no tag installs the newest release **and pins it**, then tells you which tag it chose. What gets recorded always names exactly one release, so a reinstall cannot drift.
+A pack normally uses the 12-character commit SHA it was built from. Use `failproofai policies show owner/repo --releases` to see release order.
 
-## Take part of a pack
-
-By default you get the pack's **own** defaults — the policies its author marked safe to switch on unattended — not everything it contains.
+## Manage installed packs
 
 ```bash
-failproofai pack add acme/support-agent --category billing,git
-failproofai pack add acme/support-agent --policy block-refunds
-failproofai pack add acme/support-agent --all
+failproofai policies
+failproofai policies remove block-refunds
+failproofai policies add block-refunds
+failproofai policies remove owner/repo
 ```
 
-`--category` and `--policy` combine as a union (`--only` is accepted as a synonym for `--policy`). Re-adding at a newer version keeps whatever you chose rather than switching the rest back on.
+If two installed packs contain the same policy name, the CLI refuses the ambiguous bare name. Select the policy through one pack or uninstall the other pack.
 
-## Manage what is on
+## Safety and availability
 
-```bash
-failproofai policies                    # every source in one list, packs included
-failproofai pack list                   # packs only, grouped by category
-failproofai policies --uninstall block-refunds        # turn one pack policy off
-failproofai policies --install block-refunds          # and back on
-failproofai pack remove acme/support-agent
-```
+Each release contains a manifest, bundled policy code, and checksums. Failproof AI verifies the recorded digest before loading it. Checksums prove the bytes match the release; they do not prove who published it.
 
-A bare name means the **builtin** when one exists by that name. Name a pack's copy explicitly when you need to:
-
-```bash
-failproofai policies --uninstall acme/support-agent:block-refunds
-```
-
-<Note>
-If a pack ships a policy whose name is also an **enabled builtin**, the builtin runs and the pack's copy is skipped — the same guard would otherwise be evaluated twice. Turn the builtin off to use the pack's copy instead.
-</Note>
-
-## Where the Failproof AI policies come from
-
-`core` reads the copy vendored in the npm package. The same set is published as a GitHub release, which is what you install if you want a specific version:
-
-```bash
-failproofai pack add core                    # from this package, no network
-failproofai pack add FailproofAI/policies    # the same set, from its GitHub release
-```
-
-## What integrity does and does not buy
-
-`SHA256SUMS` ships in the same release as the artifact, so it is **not** a signature and proves nothing about who published it. What it does prove is that the bytes are the ones that release published — and because the digest is recorded when you add the pack and re-verified before every import, a pack cannot change under your machine afterwards. A repository that retags or replaces an asset stops loading instead of quietly running something else.
-
-At install time the pack is also **imported once** and checked against its own manifest. A pack whose artifact does not parse, or that registers something other than what it declares, is refused before anything is activated — rather than installing cleanly and failing on your next tool call.
-
-## When a pack will not load
-
-A pack this machine was told to enforce and cannot run **denies** the events its missing policies covered, rather than allowing them silently. See [Failure behavior](/policies/failure-behavior). `failproofai pack list` names any pack in that state and exits non-zero.
-
-## Offline and mirrors
+A selected pack that cannot load fails closed for the events it declared. See [policy failure behavior](/policies/failure-behavior).
 
 | Variable | Effect |
 | --- | --- |
-| `FAILPROOFAI_NO_DOWNLOAD=1` | Refuses to fetch; packs already installed keep enforcing |
-| `FAILPROOFAI_PACK_BASE_URL` | Points pack fetching at a mirror instead of `github.com` |
+| `FAILPROOFAI_NO_DOWNLOAD=1` | Refuse new downloads; installed packs keep running |
+| `FAILPROOFAI_PACK_BASE_URL` | Use a mirror |
+| `FAILPROOFAI_PACK_DIR` | Move the pack store |
 
-Publishing your own pack: see [Publish a pack](/policies/publish-a-pack).
+Browse packs in the [Policy Hub](https://befailproof.ai/policy-hub/) or [publish your own](/policies/publish-a-pack).

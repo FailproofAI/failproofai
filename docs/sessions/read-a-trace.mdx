@@ -1,48 +1,58 @@
 ---
 title: "Read a trace"
-description: "Find the event that changed the course of an agent session."
+description: "Find the event that changed the course of an agent run."
 icon: "route"
 ---
 
-A trace turns a flat event stream into the causal story of the run. Read it from the first divergence, not backward from the last error.
-
-## Open the trace
+A trace is the timeline of one agent run. Start at the first unexpected event, not the final error.
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Observe → Sessions** and open a session.
-    2. Use the profile summary to check outcome, timing, errors, and evaluation scores.
-    3. Scan the timeline and minimap. Filter event types or time when the session is large.
-    4. Select an event to inspect it. Use **export** for evaluator JSON, or copy the page URL to share a deep link to the selected evidence.
+    1. Open **Observe → Sessions**.
+    2. Choose a session.
+    3. Scan for the first error, unusual tool call, long wait, or policy decision.
+    4. Open the event and inspect the request, response, input, and output.
 
     ![A session detail view with its execution graph, event timeline, evaluation panel, and tool, model, and hook breakdown.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp --json sessions --session-id <session-id>
-    fp events --session-id <session-id> --order asc --all
-    fp --json events --full --session-id <session-id> --all
+    fp events --session-id <session-id> --order asc --all --limit 5000
+    fp --json events --full --session-id <session-id> --all --limit 2000
     ```
 
-    Use the light event feed first. Request full payloads only when the event summaries do not contain enough evidence.
+    Use `--full` only when the event summary lacks enough evidence. A non-null `next_cursor` means the limit was reached before the end.
   </Tab>
 </Tabs>
 
-<Steps>
-  <Step title="Orient yourself">
-    Confirm the agent, environment, timing, outcome, and duration, then scan for errors, long spans, repeated tools, human waits, and denied policy decisions.
-  </Step>
-  <Step title="Expand the first suspicious event">
-    Inspect its request, response, tool input, output, and correlation ID. Sensitive content is visible only when transcript capture is enabled and your permissions allow it.
-  </Step>
-  <Step title="Inspect the preceding context">
-    The cause often sits one event earlier: an incorrect model response, missing tool result, or stale assumption.
-  </Step>
-  <Step title="Turn the evidence into action">
-    Add the session to an audit scope, link it to an issue, or use the failure mode to author a policy.
-  </Step>
-</Steps>
+## Follow the evidence
+
+1. Confirm the agent, goal, environment, and outcome.
+2. Find the first error or unexpected decision.
+3. Inspect the event immediately before it.
+4. Follow matching IDs across request and response pairs.
+5. Turn the evidence into an audit, issue, or policy.
+
+| Pair | Matching field |
+| --- | --- |
+| Model request and response | `request_id` |
+| Tool call and result | `tool_call_id` |
+| Hook start and completion | `hook_id` |
+| Agent pause and resume | `pause_id` |
+| Human wait and input | `input_id` |
+
+A decision appears on `hook_completed`. The row names the outcome and policy source. An observe-mode decision appears as an allow with the would-be verdict in `failproofai_observed`.
 
 <Warning>
-  Long duration does not always mean model latency. Separate model, tool, hook, and human-wait time before deciding what to fix.
+  Long session duration is not always model latency. Separate model, tool, hook, and human-wait time before deciding what to fix.
 </Warning>
+
+<CardGroup cols={2}>
+  <Card title="Policy decisions" icon="shield-check" href="/sessions/policy-decisions">
+    See what enforcement allowed, guided, or blocked.
+  </Card>
+  <Card title="Live events" icon="radio" href="/sessions/live-events">
+    Understand event types and delivery.
+  </Card>
+</CardGroup>

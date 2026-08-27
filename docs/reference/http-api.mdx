@@ -4,43 +4,53 @@ description: "Authenticate to the public Failproof AI Cloud `/v1` API and use th
 icon: "braces"
 ---
 
-The public API is served under `/v1` on your Failproof AI dashboard origin.
+The public API is served under `/v1` on your Failproof AI dashboard origin. On Failproof AI Cloud that origin is `https://app.befailproof.ai`, so the base path is `https://app.befailproof.ai/v1`. On a self-hosted deployment it is your own dashboard host followed by `/v1`; pass that host to `fp` with `--base-url <url>` or `FP_DASHBOARD_URL`.
 
 ## Create a key and make a request
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Open **Administration → Keys**, select **Create key**, and choose the narrowest permission preset that covers the integration.
+    1. Open **Administration → Keys**, select **new key**, and choose the narrowest permission preset that covers the integration.
     2. Add individual grants only when needed, create the key, and copy its one-time secret.
     3. Make a test request to `/v1/sessions` and confirm the key remains active in the Keys page.
     4. Rotate or disable the key from its action menu when the integration changes ownership.
 
     ![The new API key drawer with permission presets and individual grants.](/images/dashboard/key-create.png)
 
-    The creation drawer is shown above. The one-time secret appears only after you select **create**; copy it before closing that confirmation.
+    The creation drawer is shown above. The one-time secret appears only after the key is created; copy it before closing that confirmation.
   </Tab>
   <Tab title="CLI">
-    Create a read key and use it directly with either `fp` or `curl`:
+    Create a read key and use it directly with either `fp` or `curl`. `fp` reads the key from `--api-key` or from `FP_API_KEY`:
 
     ```bash
     fp keys create reliability-reader \
       --permission-set read-only
 
-    fp --api-key <key> sessions --since 24h
+    export FP_API_KEY="<one-time-secret>"
+    fp --org reliability-team sessions --since 24h
     ```
 
     ```bash
     curl "https://app.befailproof.ai/v1/sessions?limit=20" \
-      -H "Authorization: Bearer $FAILPROOFAI_KEY"
+      -H "Authorization: Bearer $FP_API_KEY" \
+      -H "X-AgentEye-Org: reliability-team"
     ```
   </Tab>
 </Tabs>
 
-Keys are scoped to an organization and permission set. A request without the endpoint's required permission returns `403` and identifies the missing permission.
+Keys are scoped to an organization and to a flat list of permissions. A permission set only seeds that list at creation time — the key stores the expanded grants, so changing the set afterwards does not change the key. A request without the endpoint's required permission returns `403` and identifies the missing permission.
 
 ## Organization selection
 
-An organization key acts on its organization automatically. An instance-scoped key can select an organization per request:
+An organization key acts on its organization automatically. An instance-scoped key selects an organization per request, and a tenant with more than one organization must always name one in key mode — `fp` never sends a saved organization when it is authenticating with a key.
+
+| Caller | How you name the organization |
+| --- | --- |
+| `fp`, per invocation | `--org <slug>`, before the subcommand |
+| `fp`, from the environment | `FP_ORG` |
+| Raw HTTP | the `X-AgentEye-Org: <slug>` request header |
+
+`X-AgentEye-Org` keeps its original spelling on the wire. It is the header the dashboard reads to resolve the active organization, and renaming it in a client breaks the request.
 
 <Tabs>
   <Tab title="Dashboard">
@@ -48,27 +58,67 @@ An organization key acts on its organization automatically. An instance-scoped k
 
   </Tab>
   <Tab title="CLI">
-    Use `--org` before the command, or send the organization header for an instance-scoped API key.
+    Use `--org` before the command, or send the organization header for an instance-scoped API key. `fp orgs list` does not discover the slug for you here — it refuses in key mode; read the slug from the dashboard's organization switcher instead.
 
     ```bash
-    fp orgs list
     fp --org reliability-team sessions --since 24h
     ```
 
     ```bash
     curl "https://app.befailproof.ai/v1/usage" \
-      -H "Authorization: Bearer $FAILPROOFAI_KEY" \
+      -H "Authorization: Bearer $FP_API_KEY" \
       -H "X-AgentEye-Org: reliability-team"
     ```
   </Tab>
 </Tabs>
 
+## Pagination
+
+List endpoints are keyset-paginated, and the same contract applies whether you call them through `fp` or through `curl`.
+
+| Element | Meaning |
+| --- | --- |
+| `limit` query parameter | Rows requested in this call. `fp` clamps a single request to 200 rows on every endpoint. A raw request is bound by the server's own per-endpoint ceiling instead. |
+| `cursor` query parameter | An opaque token that resumes the feed after a previous page. |
+| `next_cursor` response field | The token for the next page. `null` means the feed is exhausted. |
+
+Those ceilings differ by endpoint, and each endpoint page names its own default and cap:
+
+| Endpoint | Default | Cap |
+| --- | --- | --- |
+| `/events`, `/events/summary` | 50 | 1000 |
+| `/issues`, `/alerts/{id}/issues` | 200 | 1000 |
+| `/evaluation-jobs` | 100 | 500 |
+| `/audits/findings` | 100 | 500 |
+| `/sessions`, `/evaluations` | 50 | 200 |
+| `/audits/{id}/runs` | 50 | 200 |
+
+Read a full feed by re-issuing the same request with `cursor` set to the previous response's `next_cursor` until `next_cursor` comes back `null`. The equivalent `fp` flags — `--all`, `--cursor` and `--page-size` — are documented in the [Cloud CLI reference](/reference/cloud-cli).
+
+## Endpoint reference and error handling
+
 Use the generated endpoint pages in this section for current paths, parameters, permission requirements, and status codes. The specification is generated from the server route annotations and checked against the `/v1` router.
 
-The current specification has complete route, method, parameter, permission, and status-code coverage. Some response bodies remain intentionally untyped because the server still constructs them as dynamic JSON. Inspect a real response before generating a strongly typed client around an endpoint without a response schema.
+The current specification has complete route, method, parameter, permission, and status-code coverage. Request bodies are typed; response bodies are not — the spec carries no response schemas today, because the server still constructs them as dynamic JSON. Inspect a real response before generating a strongly typed client.
 
-Use `Content-Type: application/json` for JSON writes. Treat `401` as missing or invalid authentication, `403` as a valid identity without the required permission, `404` as a missing or organization-inaccessible resource, `409` as a state conflict, and `422` as an invalid field or permission value. Error responses include a human-readable message; permission failures also name the required grant.
+Use `Content-Type: application/json` for JSON writes. Treat `401` as missing or invalid authentication, `403` as a valid identity without the required permission, `404` as a missing or organization-inaccessible resource, `409` as a state conflict, `400` as a rejected parameter — an unknown filter value, a malformed query parameter, a statement that would not run — and `422` as an invalid field or permission value in a request body. Error responses include a human-readable message; permission failures also name the required grant.
+
+## Surfaces that `/v1` does not carry
+
+Cloud-managed policies, the fleet and the guardrail decision feed are operator surfaces — reads and writes alike. They are root-only on the server and deliberately absent from `/v1`, which is internet-facing. Publishing a policy version or deploying it to a machine, for example, is not something an API key can do, and reading back what the fleet decided is on the same surface.
+
+An API key therefore gets a refusal by design on those routes, and `fp` refuses before it opens a connection rather than letting the request 404 with no explanation:
+
+| Command | Behavior under an API key |
+| --- | --- |
+| `fp policies` | Refuses with exit `2` and names cloud-managed policies as an operator surface |
+| `fp fleet` | Refuses with exit `2` and names the fleet as an operator surface |
+| `fp guardrails` | Refuses with exit `2` and names the guardrail feed as an operator surface |
+| `fp agent` | Refuses with exit `2`; the assistant is implemented by the dashboard, not the API |
+| `fp orgs` | Refuses with exit `2`; org membership belongs to a signed-in user, and a key already acts for one org |
+
+Run these under a signed-in user session (`fp login`) instead, or use the dashboard. The read and administration families — sessions, events, evaluations, audits, issues, alerts, keys, permission sets, users, settings, queries and usage — each have a `/v1` route and work with a key. The one gap is `fp keys update`: it needs `keys:update`, a permission no API key can hold, so a key can mint and disable keys but never edit one's permissions. `fp login` and `fp logout` also refuse in key mode, for a different reason: a key already is the credential, and it is never saved to disk.
 
 <Warning>
-  Policy enforcement deployment is intentionally managed outside the ordinary public `/v1` surface. Use the supported Cloud deployment workflow.
+  Policy enforcement deployment is intentionally managed outside the ordinary public `/v1` surface. Use the supported Cloud deployment workflow described in [Deploy policies](/policies/deploy).
 </Warning>

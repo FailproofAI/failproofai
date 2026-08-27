@@ -1,68 +1,68 @@
 ---
 title: "Choose your setup"
-description: "Choose local enforcement, Failproof AI Cloud, or an enterprise deployment."
-icon: "waypoints"
+description: "Run Failproof AI locally or connect the machine to Failproof AI Cloud."
+icon: "settings"
 ---
 
-<CardGroup cols={3}>
-  <Card title="Local enforcement" icon="laptop">
-    Install hooks and policies on a machine. Use this when you need immediate guardrails without sending session data to Cloud.
+Failproof AI can run entirely on one machine or connect to Cloud for shared sessions and policy management.
+
+## Local, no account
+
+```bash
+npm install -g failproofai
+failproofai config
+failproofai policies add FailproofAI/policies
+failproofai
+```
+
+This installs the service, connects supported agents, adds a policy pack, and opens the dashboard at `http://localhost:8020`.
+
+Run `failproofai audit` to scan agent history already on the machine.
+
+## Connect Failproof AI Cloud
+
+Create a machine key in Cloud, then run:
+
+```bash
+failproofai config --token <machine-key>
+failproofai config --machine-label checkout-runner-01
+failproofai policies add FailproofAI/policies
+failproofai config --status
+```
+
+Or export `FAILPROOFAI_CLOUD_TOKEN=<machine-key>` and run bare `failproofai config`. Prefer the environment variable on shared machines and in CI so the key does not land in shell history or process listings.
+
+Cloud uses one connection for two separate jobs:
+
+- Pull policies assigned to this machine.
+- Send policy decisions and session transcripts.
+
+Use `--no-transcripts` during setup if only decisions should leave the machine.
+
+<Note>
+  `--machine-label` renames a machine that is already connected. Run it after the setup command, not as part of the first connection.
+</Note>
+
+## Unattended setup
+
+`failproofai config` does not require a special non-interactive flag. In CI or a container it applies the requested setup without prompting.
+
+```bash
+export FAILPROOFAI_CLOUD_TOKEN="<key>"
+failproofai config --token "$FAILPROOFAI_CLOUD_TOKEN" --no-transcripts
+```
+
+Administrator access is needed once to install the background service. Setup never opens an interactive `sudo` password prompt: it either succeeds without one or prints the commands an administrator must run.
+
+## Platform support
+
+Setup supports Linux and macOS. On another platform it exits without writing hooks or partial setup state.
+
+<CardGroup cols={2}>
+  <Card title="Check delivery" icon="activity" href="/reference/troubleshooting">
+    Diagnose a missing session or policy assignment.
   </Card>
-  <Card title="Failproof AI Cloud" icon="cloud">
-    Add centralized sessions, audits, online evaluations, dashboards, alerts, and fleet policy deployment.
-  </Card>
-  <Card title="Enterprise deployment" icon="building-2">
-    Use organization controls, scoped keys, private infrastructure, and deployment-specific security requirements.
+  <Card title="Supported agents" icon="bot" href="/reference/harnesses">
+    See scopes and enforcement support for each harness.
   </Card>
 </CardGroup>
-
-## Recommended production path
-
-1. Connect a non-production machine with transcript capture enabled.
-2. Verify sessions and evaluations in Cloud.
-3. Create an audit for a known failure mode.
-4. Deploy the first policy in observe mode.
-5. Expand to production after reviewing matches and false positives.
-
-## Connect a machine to Cloud
-
-<Tabs>
-  <Tab title="Dashboard">
-    1. Go to **Administration → Keys** and create a key with `events:add` and `policies:pull`.
-    2. Copy the one-time secret to the target machine.
-    3. After running the CLI connection command, go to **Admin → enforcement** and confirm the machine appears.
-    4. Go to **Observe → Events** and confirm its first event arrives.
-
-    The key drawer shows the two grants needed by a connected machine: event ingestion and policy delivery.
-
-    ![The new API key drawer used to grant event ingestion and policy delivery permissions.](/images/dashboard/key-create.png)
-
-    After connection, the machine should appear in enforcement with its desired and reported policy state.
-
-    ![The Enforcement fleet with an enrolled machine expanded to show its desired policy state and deployment status.](/images/dashboard/enforcement-fleet.png)
-
-    The first arriving event confirms that the daemon can deliver data to Cloud, independently of policy deployment.
-
-    ![The live event stream showing recent agent, model, and tool events.](/images/dashboard/events-stream-current.png)
-
-    Continue only after both the machine and its first event are visible.
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai config --connect https://app.befailproof.ai \
-      --token "$FAILPROOFAI_KEY" \
-      --machine-label checkout-runner-01
-
-    failproofai policies --install --cli claude --scope user
-    failproofai config --status
-    ```
-
-    Add `--no-transcripts` when transcript content must remain local.
-  </Tab>
-</Tabs>
-
-Connecting to Cloud verifies event ingestion and policy delivery independently. A key may therefore be valid but missing one required permission. Use `failproofai config --status` to see which capability is configured.
-
-<Info>
-  Cloud setup writes local credentials only after the relevant capability succeeds. A failed verification does not leave a machine looking connected when it is not.
-</Info>

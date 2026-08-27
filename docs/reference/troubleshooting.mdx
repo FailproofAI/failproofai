@@ -1,167 +1,100 @@
 ---
 title: "Troubleshooting"
-description: "Diagnose missing sessions, missing policies, failed delivery, and blocked agent actions."
+description: "Diagnose setup, delivery, policy, and session problems."
 icon: "wrench"
 ---
 
-<AccordionGroup>
-  <Accordion title="No sessions appear in Cloud">
-    <Tabs>
-      <Tab title="Dashboard">
-        Open **Administration → Keys** and confirm the machine key is active and has `events:add`. Then open **Observe → Events**, widen the time range, and clear environment and agent filters. If events exist, search the session ID and then check **Observe → Sessions** for grouping. If no events exist, diagnose the Failproof daemon from the CLI.
+Start with:
 
-        ![The live Events stream with its primary filters visible and recent agent events arriving.](/images/dashboard/events-stream-current.png)
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai flush --wait --timeout 60
-        fp list envs
-        fp events --since 24h --limit 20
-        fp sessions --since 24h --limit 20
-        ```
+```bash
+failproofai config --status
+failproofai policies
+```
 
-        Confirm capture is enabled, the configured key has `events:add`, and the dashboard filter matches the emitted environment.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="Python SDK events remain on disk">
-    <Tabs>
-      <Tab title="Dashboard">
-        Clear filters in **Observe → Events** and search the exact SDK session ID. If nothing appears, inspect the SDK spool and Failproof daemon on the source machine.
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai flush --wait
-        ```
+## An agent is not connected
 
-        Confirm a daemon is running and connected — the SDK spools whether or not one is. The spool directory does **not** need to pre-exist (the writer creates it), and no environment variable selects it: `$FAILPROOFAI_HOME/custom-agents`, otherwise `~/.failproofai/custom-agents`, is the only root, and `configure(base_dir=...)` is the only override. If the process was `SIGKILL`ed or OOM-killed, whatever was still queued was lost — handle `SIGTERM` to bound that.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="The machine does not receive policies">
-    <Tabs>
-      <Tab title="Dashboard">
-        Open **Admin → enforcement**, select the machine, and compare its assigned, reported, and previous versions. Confirm the deployment scope includes the machine and its key has `policies:pull`. Ingest can work even when policy delivery does not.
+Run setup again:
 
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai update
-        failproofai config --status
-        ```
+```bash
+failproofai config
+```
 
-        Confirm the machine ID and label match the dashboard target. Reconnect with a policy-capable key if the existing credential only grants event ingestion.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="An action is denied because the daemon is unavailable">
-    <Tabs>
-      <Tab title="Dashboard">
-        Open **Admin → enforcement** and inspect the machine's last-seen time and reported version. If the machine is stale, treat this as a local daemon problem. Do not weaken the deployed policy solely to bypass an unavailable daemon.
+Setup supports Linux and macOS. It needs administrator access once to install the service, but never prompts for a sudo password.
 
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai update
-        failproofai config
-        failproofai config --status
-        ```
+Check harness paths and scopes in [Harnesses](/reference/harnesses).
 
-        Restart or update `failproofaid`; rerun configuration when the CLI and daemon protocol versions differ. The configured daemon path fails closed by design.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="A custom policy does not load">
-    <Tabs>
-      <Tab title="Dashboard">
-        For a Cloud-authored policy, open **Admin → policy editor**, select the draft, and review validation errors before publishing. For a local policy, use the CLI to validate it, then open **Observe → policy** after a test action to confirm decisions arrive.
+## A session is missing
 
-      </Tab>
-      <Tab title="CLI">
-        Confirm the filename ends in `policies.js`, `policies.mjs`, or `policies.ts`, the module calls `customPolicies.add(...)`, and imports resolve from the policy file.
+```bash
+failproofai flush --wait
+failproofai backfill --since 30d --dry-run
+failproofai harness list
+```
 
-        ```bash
-        failproofai policies --install --custom ./checkout.policies.ts
-        failproofai policies
-        ```
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="An audit returns no findings">
-    <Tabs>
-      <Tab title="Dashboard">
-        Open **Analyze → audits**, select the run, and check whether model analysis ran. Then compare its scope and window with **Observe → sessions** and open representative traces from that population.
+Drop `--dry-run` to resend old history. Add another transcript location with:
 
-        A zero result is meaningful only when analysis ran successfully. If analysis was skipped or failed, the run produces no findings and keeps the unanalysed window open for a future successful run. If model analysis is disabled, the audit also produces no findings because the deterministic credential and PII scan records statistics but no longer raises findings.
+```bash
+failproofai harness add-path <harness> [label=]<path>
+```
 
-        ![The audit form where environment, agent, cadence, and sweep window define the session population.](/images/dashboard/audit-new.png)
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        fp audits show <audit-name>
-        fp audits runs <audit-name>
-        fp sessions --since 24h --env production
-        fp audits context-show <audit-name>
-        fp audits run <audit-name>
-        fp audits findings --audit <audit-name>
-        ```
+Use a label when two locations contain copies of the same project.
 
-        If the run stayed queued, wait for audit-agent capacity or ask the deployment operator to inspect the audit fleet. A queued audit retries; it is not immediately skipped.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="Online evaluations do not run automatically">
-    <Tabs>
-      <Tab title="Dashboard">
-        Open a completed session and check whether a manual evaluation succeeds. Hosted Cloud currently has no evaluator endpoint control in the dashboard; the server operator must configure it.
-      </Tab>
-      <Tab title="CLI">
-        Verify the evaluator itself, then inspect recent evaluation states:
+## Every protected action is denied
 
-        ```bash
-        curl https://evaluator.example.com/health
-        fp evals --since 1h
-        ```
+On a configured machine, `failproofaid` is the only evaluator. If it cannot answer, protected actions fail closed.
 
-        On self-hosted Cloud, confirm `EVALUATOR_ENDPOINT` is present on the server and `EVALUATOR_TOKEN` matches the evaluator. Automatic evaluation is disabled when the endpoint is absent.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="Cloud CLI authentication targets the wrong organization">
-    <Tabs>
-      <Tab title="Dashboard">
-        Use the organization switcher and confirm the expected slug and permissions before comparing results with the CLI.
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        fp whoami
-        fp orgs current
-        fp orgs perms
-        ```
+```bash
+failproofai config --status
+systemctl status failproofaid@$USER        # Linux
+sudo launchctl print system/ai.failproof.failproofaid.$USER  # macOS
+```
 
-        In API-key mode, specify `fp --org <slug> --api-key <key> ...` or set `AGENTEYE_ORG`. Saved human-session organization state is intentionally ignored for API-key requests.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="A policy blocks valid work">
-    <Tabs>
-      <Tab title="Dashboard">
-        Open **Observe → policy**, preserve the decision and linked session, and identify the false-positive condition. Then open **Admin → enforcement** and roll the affected machines back to the prior version. Create a narrower version in **Policy editor**, test it on a small scope, and expand only after valid work succeeds.
+Run `failproofai config` to repair or reinstall the service.
 
-      </Tab>
-      <Tab title="CLI">
-        Cloud deployment rollback is dashboard-only. A local session pause does not disable Cloud-managed policies. If the dashboard is unavailable, capture the machine and deployment state and restore dashboard access rather than repeatedly retrying the blocked action.
+## One pack is denying
 
-        ```bash
-        failproofai config --status
-        ```
-      </Tab>
-    </Tabs>
-  </Accordion>
-</AccordionGroup>
+`failproofai policies` names packs that cannot load. A selected pack fails closed instead of disappearing.
 
-When contacting support, include the CLI version, harness, environment, relevant session or deployment ID, and the output of `failproofai config --status` with secrets removed.
+Common causes:
+
+- The artifact changed after installation.
+- The manifest and bundled policies disagree.
+- The file is missing or cannot be imported.
+- The pack uses an unsupported event, tool, or policy shape.
+
+Remove the pack or install a corrected release:
+
+```bash
+failproofai policies remove owner/repo
+failproofai policies add owner/repo@<release>
+```
+
+## Cloud is disconnected
+
+Prefer an environment variable for the key:
+
+```bash
+export FAILPROOFAI_CLOUD_TOKEN="<key>"
+failproofai config --token "$FAILPROOFAI_CLOUD_TOKEN"
+failproofai config --status
+```
+
+A machine can pull policies and send activity independently. Status reports both.
+
+## A policy did not block
+
+Check three things:
+
+1. The policy is on: `failproofai policies`.
+2. Its event and tool match the action.
+3. That harness can enforce the event.
+
+A tool-call deny is verified on all 12 supported harnesses. Other events vary. See [enforcement capability](/reference/harnesses#enforcement-capability).
+
+## Downloads are blocked
+
+- `FAILPROOFAI_NO_DOWNLOAD=1` refuses network downloads.
+- `FAILPROOFAI_DAEMON_BASE_URL` points service downloads at a mirror.
+- `FAILPROOFAI_PACK_BASE_URL` points pack downloads at a mirror.
+
+Installed packs keep enforcing when downloads are disabled.

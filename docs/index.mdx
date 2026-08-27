@@ -1,41 +1,58 @@
 ---
 title: "Make your agent failproof"
-description: "Observability and enforcement for every harness your agents run in — coding CLIs, chat gateways, self-hosted assistants, and your own instrumented agents."
+description: "See what your agents do, find failures, and stop them happening again."
 icon: "shield-check"
 ---
 
-Failproof AI helps teams understand what agents did, find where they failed, and deploy safeguards before the same behavior happens again.
+Failproof AI helps anyone running agents understand what happened, find failures, and prevent them from repeating.
 
-A **harness** is whatever your agent actually runs inside. Failproof AI hooks 12 of them — coding CLIs like Claude Code and Codex, chat gateways like Hermes, self-hosted assistants like OpenClaw — and the same events, the same policies, and the same session history apply to every one. Agents with no harness report in through the [Python SDK](/reference/custom-agents), which traces and audits them; enforcing a policy there needs a hook in your own runtime.
+It works with 12 common agent environments, including Claude Code, Codex, Hermes, OpenClaw, and Goose. Agents built with LangChain, CrewAI, LlamaIndex, Pydantic AI, or your own runtime can report through the [Python SDK](/reference/custom-agents).
 
 <Columns cols={2}>
-  <Card title="Set Failproof up" icon="wand-sparkles" href="/start/quickstart">
-    Use the skill to instrument your project, connect it, and verify that agent logs arrive.
+  <Card title="Set up this machine" icon="wand-sparkles" href="/start/quickstart">
+    Install Failproof AI, connect your agents, and choose what to enforce.
   </Card>
-  <Card title="Ask the Failproof Assistant" icon="message-square-text" href="/sessions/assistant">
-    Analyze, query, build dashboards, and run audits in natural language on your agent logs.
+  <Card title="Ask about your agents" icon="message-square-text" href="/sessions/assistant">
+    Query sessions, investigate failures, and build dashboards in natural language.
   </Card>
 </Columns>
+
+## Start locally or connect Cloud
+
+<Columns cols={2}>
+  <Card title="Local, no account" icon="laptop" href="/audits/local-audit">
+    Open the dashboard at `localhost:8020` and run `failproofai audit`. Your agent history stays on this machine.
+  </Card>
+  <Card title="Failproof AI Cloud" icon="cloud" href="/start/setup">
+    See sessions across machines and manage policies for your team.
+  </Card>
+</Columns>
+
+Setup deliberately chooses no policy pack. Add ours after setup:
+
+```bash
+failproofai policies add FailproofAI/policies
+```
+
+Until then, only `block-failproofai-commands` runs. It stops an agent disabling Failproof AI.
+
+## What you can do
 
 <Columns cols={3}>
-  <Card title="See what the agent did" icon="route" href="/sessions/overview">
-    Follow model calls, tools, errors, human input, latency, and policy decisions in one session.
+  <Card title="See what happened" icon="route" href="/sessions/overview">
+    Follow an agent run through model calls, tools, errors, and policy decisions.
   </Card>
-  <Card title="Find failures systematically" icon="scan-search" href="/audits/overview">
-    Audit a defined set of sessions, review evidence-backed findings, and track remediation as issues.
+  <Card title="Find failures" icon="scan-search" href="/audits/overview">
+    Review evidence across one run or many.
   </Card>
   <Card title="Prevent recurrence" icon="shield-check" href="/policies/overview">
-    Turn a known failure mode into a policy, observe its impact, and deploy it across your fleet.
+    Observe a safeguard on real activity, then enforce it when ready.
   </Card>
 </Columns>
 
-> **Session → Audit → Finding → Issue → Policy**<br />
-> Trace what happened, find the failure, manage the response, then prevent the same behavior in future runs.
+> **Session → Audit → Finding → Issue → Policy**
+> See what happened, find the failure, own the response, then prevent it.
 
-## Start here
-
-If you are deploying your first instrumented agent, start with the [quickstart](/start/quickstart). If data is already arriving, open [Sessions](/sessions/overview) and inspect a real run before configuring audits or policies.
-
-<Card title="Find and prevent one failure" icon="arrow-right" href="/start/quickstart">
-  Complete the end-to-end workflow from capture to a safely deployed policy.
-</Card>
+<Note>
+  Setup supports Linux and macOS. See [supported harnesses](/reference/harnesses) for what each agent environment can observe or block.
+</Note>

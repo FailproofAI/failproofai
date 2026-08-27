@@ -1,45 +1,41 @@
 ---
 title: "Live events"
-description: "Watch agent activity arrive while a session is running."
+description: "Watch agent activity arrive in Failproof AI Cloud."
 icon: "radio"
 ---
 
-Live events help you confirm instrumentation and watch a risky run without waiting for the session to finish.
+Live events shows activity as agents run: model calls, tools, errors, human input, hooks, and policy decisions.
 
 ## Watch activity
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. Go to **Observe → Events**.
-    2. Start with the current time window and no filters to confirm data is arriving.
-    3. Filter by environment, event type, agent, or session. Use search for payload text.
-    4. Select an event to inspect its summary and details. Follow its session link for the full trace.
+Go to **Observe → Live events**, or run:
 
-    ![The live Events stream showing traffic from a Hermes chat gateway alongside coding-CLI runs, filtered by time, environment, event type, agent, model, context, and session.](/images/dashboard/events-stream-current.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp events --env production --event-type tool_use,error --limit 100
-    fp events --session-id <session-id> --order asc --all
-    fp --json events --full --session-id <session-id> --all
-    ```
+```bash
+fp events --since 1h
+fp events --event-type tool_use,tool_result --since 1h
+fp --json events --full --session-id <session-id> --all --limit 2000
+```
 
-    The default feed omits raw payloads. Use `--full` only for a bounded session investigation.
-  </Tab>
-</Tabs>
+Use `--full` when you need payload contents. The light feed is faster and enough for most filtering.
 
-Use the event stream to answer three immediate questions:
+Common event types include:
 
-- Is the expected agent reporting to the correct environment?
-- Are model calls, tool calls, and policy decisions arriving in order?
-- Has the session stopped making progress or started repeating an action?
+- `session_start` and `session_end`
+- `model_request` and `model_response`
+- `tool_use` and `tool_result`
+- `hook_triggered` and `hook_completed`
+- `error`
+- `human_wait` and `human_input`
+- `agent_pause` and `agent_resume`
 
-Event types include agent lifecycle events, model requests and responses, tool use and results, hook execution, human waits and interrupts, and explicit errors. Correlation IDs join paired events such as a tool call and its result.
+## If events do not appear
 
-<Tip>
-  Keep the live view broad while verifying a new integration. Add filters only after you see the first event; an incorrect filter can look like failed ingestion.
-</Tip>
+```bash
+failproofai flush --wait
+failproofai config --status
+failproofai backfill --since 30d --dry-run
+```
 
-If no events appear, run `failproofai config --status`, then [troubleshoot ingestion](/reference/troubleshooting).
+The default environment is `local`. A filter for `production` returns nothing until you change the environment label.
 
-Agents that do not run in one of the 12 supported [harnesses](/reference/harnesses) report the same event types through the [Python SDK](/reference/custom-agents), including the human-in-the-loop events (`human_wait`, `human_input`, `human_interrupt`) that gateway and production agents depend on.
+For an agent outside a supported harness, use the [Python SDK](/reference/custom-agents).

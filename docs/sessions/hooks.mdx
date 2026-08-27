@@ -1,25 +1,34 @@
 ---
 title: "Hooks"
-description: "Measure hook activity, triggers, and latency separately from policy outcomes."
+description: "See when Failproof AI evaluated an agent event and what it decided."
 icon: "webhook"
 ---
 
-Hooks shows when agent lifecycle hooks run and how long they take. Policy decisions are a separate view.
+A hook is a point where an agent asks Failproof AI for a decision. Hook activity records the event, policy, outcome, and evaluation time.
+
+## Investigate hook activity
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Observe → Hooks**.
-    2. Filter by environment, hook name, trigger event, agent, or session ID.
-    3. Review hook latency and distribution.
-    4. Select a chart point or hook segment to open the underlying events.
+    Go to **Observe → Hooks**. Filter by environment, event, agent, or session.
 
     ![The Hooks page showing latency grouped by hook name and trigger event.](/images/dashboard/hooks.png)
   </Tab>
   <Tab title="CLI">
     ```bash
+    fp guardrails summary --since 24h
+    fp --json events --full --event-type hook_completed --session-id <session-id> --all --limit 500
     fp list hooks
-    fp events --event-type hook_triggered,hook_completed --env production --since 24h
-    fp events --search "PreToolUse" --since 24h
     ```
   </Tab>
 </Tabs>
+
+By default, every `deny` and `instruct` decision is sent in full. Repeated allows are grouped to reduce noise. Set `collector.hooks_verbosity` in `~/.failproofai/config.json` to `all`, `decisions`, or `off`.
+
+<Warning>
+  Hook activity proves that evaluation ran, not that the harness could block that event. See [enforcement capability](/reference/harnesses#enforcement-capability). An unlisted harness-event pair is unverified.
+</Warning>
+
+<Card title="Policy decisions" icon="shield-check" href="/sessions/policy-decisions">
+  Read the same activity by outcome and policy.
+</Card>

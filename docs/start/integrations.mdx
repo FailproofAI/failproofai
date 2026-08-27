@@ -25,6 +25,19 @@ Your agent already produces everything worth recording — model calls, tool cal
   </Card>
 </Columns>
 
+## Before you start
+
+Two things this path assumes, neither of which the code below does for you:
+
+| Requirement | Why |
+| --- | --- |
+| Python 3.10 or newer | The floor the SDK declares. |
+| A machine set up with `failproofai config` | That command installs the failproofaid daemon, and the daemon is the only thing that ships what the SDK writes. Without it the batches pile up in the spool directory and never leave. |
+
+<Note>
+  **This path records; it does not enforce.** The SDK captures what your agent did. Policies fire from a hook inside an agent CLI, so enforcing on a framework agent means putting a hook in your own runtime — see [Policies](/policies/overview).
+</Note>
+
 ## Three lines, whichever framework
 
 <CodeGroup>
@@ -97,11 +110,25 @@ The extra installs the **framework**. Every adapter ships in the base wheel, so 
 
 Run one instrumented session, then open **Observe → Sessions** and select your environment. The run appears as a reconstructed trace.
 
-If nothing arrives, confirm the machine is connected with `failproofai config --status`. See [Set up capture](/start/setup).
+If nothing arrives, confirm the machine is set up and connected with `failproofai config --status`. If it is not, run `failproofai config`. See [Choose your setup](/start/setup).
 
 <Warning>
   Do not check the spool directory to confirm delivery. The Failproof daemon collects and deletes each batch within milliseconds, so reading it races the collector and shows far fewer events than were emitted.
 </Warning>
+
+To prove the SDK is writing at all, stop the daemon first, then run your session and look in `~/.failproofai/custom-agents/events/`. With the daemon running, an empty directory is the healthy state.
+
+<CodeGroup>
+```bash Linux
+sudo systemctl stop failproofaid@$USER
+```
+
+```bash macOS
+sudo launchctl bootout system/ai.failproof.failproofaid.$USER
+```
+</CodeGroup>
+
+Run `failproofai config` afterwards to put it back. While the daemon is stopped, hook events on this machine have no evaluator and are denied, so stop it only for as long as the check takes.
 
 ## Next
 

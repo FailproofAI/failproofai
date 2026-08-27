@@ -1,63 +1,76 @@
 ---
 title: "Policies"
-description: "Observe, guide, or block agent actions before a known failure repeats."
+description: "Guide or block an agent before a known failure repeats."
 icon: "shield-check"
 ---
 
-A policy evaluates an agent hook event and returns one of three decisions:
+A policy watches an agent action and returns one of three decisions:
 
-- `allow` lets the action continue.
-- `instruct` gives the agent corrective guidance.
-- `deny` blocks the action with a reason.
+- `allow` continues.
+- `instruct` gives the agent guidance when its harness supports it.
+- `deny` blocks the action.
 
-## Use the three policy surfaces
+Use policies for known, repeatable behavior: deleting protected files, exposing secrets, pushing to the wrong branch, or changing production infrastructure.
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. Go to **Observe → policy** to filter and inspect policy decisions from sessions.
-    2. Go to **Admin → policy editor** to compose, validate, publish, disable, or inspect immutable versions.
-    3. Go to **Admin → enforcement** to assign versions and effects to machines.
+## Add policies to this machine
 
-    Use the Policy page to understand what is already matching before authoring or changing enforcement.
+Setup chooses no policy pack. Add the Failproof AI pack after setup:
 
-    ![The Policy page showing decision totals and local and Cloud-managed policy mappings.](/images/dashboard/policy-observe.png)
+```bash
+failproofai config
+failproofai policies add FailproofAI/policies
+failproofai policies
+```
 
-    The editor is where you turn a failure condition into source, validate it, and publish an immutable version.
+The package does not contain a privileged built-in pack. Ours installs the same way as anyone else's.
 
-    ![The Policy editor used to compose and publish an immutable policy version.](/images/dashboard/policy-editor.png)
+Policies can also come from a local file, a published pack, or a Cloud assignment:
 
-    Enforcement then assigns that published version and its observe or enforce effect to machines.
+| Source | Add it |
+| --- | --- |
+| Local file | Put `*policies.{js,mjs,ts}` under `.failproofai/policies/` |
+| Any file path | `failproofai policies -i -c <path>` |
+| Published pack | `failproofai policies add <owner>/<repo>` |
+| Cloud | Assign it in the dashboard or with `fp fleet deploy` |
 
-    ![The Enforcement fleet showing machine coverage and assigned policy versions.](/images/dashboard/enforcement-fleet.png)
+`block-failproofai-commands` always runs and cannot be switched off. It stops an agent disabling its own enforcement.
 
-    Verify decisions back on the Policy page after deployment so the authoring and fleet views are tied to real agent activity.
-  </Tab>
-  <Tab title="CLI">
-    Use `failproofai` for local policy installation and validation:
+## Observe before enforcing
 
-    ```bash
-    failproofai policies
-    failproofai policy add block-rm-rf --scope project
-    failproofai config --status
-    ```
+Observe mode runs the real policy and records what it would have done, but does not block the agent.
 
-    Use `fp` to find the Cloud sessions and events containing policy decisions. Cloud authoring and fleet deployment remain dashboard workflows.
-  </Tab>
-</Tabs>
+```bash
+fp policies test ./checkout.policy.mjs --tool Bash --command "git push --force" --expect deny
+fp fleet deploy ci-runner-01 --add checkout-guard:observe
+fp guardrails summary --since 24h --machine ci-runner-01
+fp fleet deploy ci-runner-01 --add checkout-guard:enforce
+```
 
-Policies have three distinct surfaces in Failproof AI:
+<Warning>
+  A bare `fp fleet deploy <machine> --add <id>` enforces immediately. Add `:observe` for a shadow rollout.
+</Warning>
 
-1. **Analyze decisions** in sessions, dashboards, and audits.
-2. **Author versions** with builtin rules, code, or the policy editor.
-3. **Deploy and enforce** versions across selected machines.
+A policy that times out in observe mode records an allow, because that is what would happen while enforcing. Only non-allow observed decisions are recorded.
 
-Start from a confirmed failure mode. Define the smallest event and tool match that identifies it, test legitimate and unsafe examples, then observe before enforcing.
+For a pack used without Cloud, publish it with `failproofai publish --effect observe`.
 
-<Columns cols={2}>
-  <Card title="Use a builtin policy" icon="library" href="/policies/builtin">
-    Enable a reviewed rule for common secret, shell, Git, cloud, and workflow risks.
+## Choose the right path
+
+<CardGroup cols={2}>
+  <Card title="Use a reviewed policy" icon="library" href="/policies/builtin">
+    Choose from 39 policies for secrets, files, Git, infrastructure, and workflows.
   </Card>
-  <Card title="Write a custom policy" icon="code-2" href="/policies/custom">
-    Express a workflow-specific decision in JavaScript or TypeScript.
+  <Card title="Install a pack" icon="package" href="/policies/packs">
+    Add a published policy set from GitHub or the Policy Hub.
   </Card>
-</Columns>
+  <Card title="Write a policy" icon="code-2" href="/policies/custom">
+    Define a rule for your own agent or workflow.
+  </Card>
+  <Card title="Deploy across machines" icon="server" href="/policies/deploy">
+    Observe, promote, and roll back a Cloud policy.
+  </Card>
+</CardGroup>
+
+<Note>
+  Enforcement support varies by harness. A tool-call deny is verified on all 12 supported harnesses; other events vary. See [supported harnesses](/reference/harnesses#enforcement-capability).
+</Note>

@@ -1,10 +1,10 @@
 ---
 title: "Alerts"
-description: "Detect recurrence and route an incident to the right responders."
+description: "Detect recurrence and route an issue to the right responders."
 icon: "bell-ring"
 ---
 
-Alerts watch a measurable condition and create an incident when it triggers. Use them when a failure should produce a timely response, whether or not a policy can block it.
+An alert watches a measurable condition and opens an issue when it fires. Use one when a failure should produce a timely response, whether or not a policy can block it.
 
 ## Create and test an alert
 
@@ -13,7 +13,7 @@ Alerts watch a measurable condition and create an incident when it triggers. Use
     1. Go to **Analyze → Alerts** and select **new alert**. You can also start from the bell on a representative error.
     2. Enter the name, severity, trigger kind, condition, evaluation interval, breach count, window, and channels.
     3. Save the alert, open its detail page, and run **test**.
-    4. Go to **Analyze → Issues** to acknowledge, assign, discuss, subscribe to, and resolve incidents created by the alert.
+    4. Go to **Analyze → Issues** to acknowledge, assign, discuss, subscribe to, and resolve the issues the alert opens.
 
     The first part of the form identifies the alert and the signal that should trigger it.
 
@@ -23,31 +23,67 @@ Alerts watch a measurable condition and create an incident when it triggers. Use
 
     ![The second part of the new-alert form with breach logic, schedule, severity, delivery channels, and create action.](/images/dashboard/alert-new-routing.png)
 
-    After saving, use the Alerts list to confirm the rule is enabled and that its trigger, window, severity, and channels match what you intended.
+    After saving, use the Alerts list to confirm the rule is enabled and that its trigger, window, severity, and channels match what you intended. A card that has open issues shows the count; a card with none omits the line entirely, so its absence tells you nothing. To read the figure for every rule including the zeroes, use `fp alerts show <name>`, which always prints it.
 
     ![The Alerts page showing alert rules with their triggers, evaluation windows, channels, and severity.](/images/dashboard/alerts.png)
-
-    Test the alert before depending on it for production response.
   </Tab>
   <Tab title="CLI">
     ```bash
     fp alerts create high-errors \
       --trigger-kind metric_threshold \
       --severity warning \
-      --trigger-spec '{"metric":"error_count","op":">","value":50,"window_secs":900}'
+      --trigger-spec '{"metric":"error_count","op":">","value":50,"window_secs":900}' \
+      --eval-interval-secs 300 \
+      --min-breaches 2 \
+      --eval-window 3
 
     fp alerts show high-errors
     fp alerts test high-errors
     fp alerts update high-errors --severity critical --yes
     ```
 
-    Use `fp alerts list` to review rules and `fp alerts delete <name>` to remove one.
+    New alerts start **enabled**, and a name collision is rejected before anything is created.
+
+    `fp alerts update` replaces the whole definition server-side, so the CLI re-reads the alert and layers your flags on top — a flag-only update needs `alerts:read` **as well as** `alerts:write`, and it confirms unless you pass `--yes`.
+
+    Use `fp alerts list` to review rules and `fp alerts delete <name>` to remove one. Delete previews the rule — including its open-issue count — and confirms before acting, because it cannot be undone.
+
+    Delete is not the way to silence a noisy rule. `DELETE /alerts/{id}` cascades: every issue the alert ever opened goes with it, taking its comments, subscribers, and activity history. The CLI's confirmation box words this as the open issues being "orphaned"; the API contract is a cascading delete, so treat the history as gone. To stop a rule firing and keep what it recorded, turn it off instead — the dashboard's alert form has the enabled toggle, and neither `fp alerts create` nor `fp alerts update` exposes an `--enabled` flag, so the CLI route is `fp alerts update <name> --file` with a full definition carrying `enabled: false`.
 
     See the [`fp alerts` reference](/reference/cloud-cli#alerts) for the complete alert command set.
   </Tab>
 </Tabs>
 
-Alert conditions can be based on errors, evaluation scores, evaluation combinations, or custom SQL. Add recipients, test the rule, and open the resulting incident to acknowledge, assign, comment, subscribe, and resolve it.
+<Warning>
+  **test** delivers real notifications. It sends to the alert's real email, Slack, and webhook channels and opens a synthetic issue, so it can page whoever is on call. It confirms first on an interactive terminal; `--yes`, `--json`, and a redirected stdin all skip that prompt. The server also reports success as soon as it dispatches, so a green test proves the message left, not that it arrived.
+</Warning>
+
+## Define the trigger
+
+There are five trigger kinds:
+
+| `--trigger-kind` | Fires when |
+| --- | --- |
+| `metric_threshold` | A metric crosses a threshold — errors, latency, cost, or anything else you can measure. |
+| `per_event` | A single matching event arrives. |
+| `evaluation_score` | An evaluator's score crosses a threshold. |
+| `eval_compound` | Several score conditions combine, such as two of three scores failing. |
+| `custom_sql` | A query you write returns a breach. |
+
+The condition itself goes in `--trigger-spec`, shaped for the kind you chose.
+
+## Set the evaluation numbers
+
+The dashboard form and the CLI ask for the same four values.
+
+| Setting | Flag | Accepted values |
+| --- | --- | --- |
+| Severity | `--severity` | `info`, `warning`, `critical` |
+| Evaluation interval | `--eval-interval-secs` | 30–86,400 seconds |
+| Breach count | `--min-breaches` | At least 1, and never more than the window |
+| Evaluation window | `--eval-window` | At least 1, counted in **intervals**, not seconds |
+
+So `--eval-interval-secs 300 --min-breaches 2 --eval-window 3` means "evaluate every five minutes, and fire when two of the last three evaluations breached".
 
 ## Good alert design
 
@@ -56,7 +92,12 @@ Alert conditions can be based on errors, evaluation scores, evaluation combinati
 - Set a window and threshold that avoid reacting to one harmless event.
 - Include a link or query that leads responders to sessions.
 - Assign an owner before enabling the rule.
+- Check `fp alerts show <name>` for the open-issue count before adding another rule for the same symptom. The dashboard card prints that line only when the count is non-zero.
 
 <Tip>
   After resolving an audit finding, add an alert when the same failure could recur outside the policy's coverage.
 </Tip>
+
+<Card title="Work the issues an alert opens" icon="clipboard-check" href="/audits/findings-and-issues">
+  Acknowledge, assign, comment, subscribe, and resolve — the workflow every firing alert lands in.
+</Card>

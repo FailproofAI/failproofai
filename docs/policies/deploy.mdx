@@ -1,51 +1,54 @@
 ---
 title: "Deploy policies"
-description: "Roll out a reviewed policy version to the intended machines."
+description: "Observe a policy on real agent activity, then enforce or roll it back."
 icon: "cloud-upload"
 ---
 
-A deployment connects one or more policy versions to a target set of enrolled machines.
+Deploy a reviewed policy to one machine at a time. Start in observe mode.
 
-## Apply a deployment
+## Roll out from the CLI
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. Go to **Admin → enforcement**, find the machine, and expand its row.
-    2. Select **edit**, add the reviewed policy version, and choose **observe** or its enforcing effect.
-    3. Apply the change, then wait for the machine's next check-in and confirm its deployment and coverage state.
-    4. Go to **Observe → policy** to inspect live decisions.
+```bash
+fp policies test ./rule.mjs --tool Bash --command "git push --force" --expect deny
+fp policies publish no-force-push ./rule.mjs
+fp fleet deploy <machine> --add no-force-push:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add no-force-push:enforce
+```
 
-    ![The machine deployment editor with policy versions, enforce and observe effects, and the apply deployment action.](/images/dashboard/enforcement-editor.png)
-  </Tab>
-  <Tab title="CLI">
-    Deploy from the CLI with `fp fleet`. Review the resulting set before applying it — `deploy` prints the full plan and asks **only on an interactive terminal without `--json`**. Under `--json`, with `--yes`, or with stdin redirected (a CI step, a script, an agent shelling out) it applies immediately with no plan and no prompt — so run `fp fleet show <machine>` first if you want review:
-
-    ```bash
-    fp fleet list
-    fp fleet show <machine-id>
-    fp fleet deploy <machine-id> --add no-force-push
-    ```
-
-    `fp fleet diff <machine-id>` shows intent vs delivery (a machine reads as `behind` until it next polls), `fp fleet history <machine-id>` lists the generations, and `fp fleet rollback <machine-id> <generation>` reinstates one — it refuses if that generation names a policy since disabled or deleted.
-
-    Check the machine itself with `failproofai config --status`, and use `fp sessions --env production --since 24h` and `fp events --event-type hook_completed` after deployment to verify activity reaches Cloud.
-  </Tab>
-</Tabs>
-
-<Steps>
-  <Step title="Choose the version and targets">
-    Deploy a reviewed version, not a mutable draft, starting with a non-production machine or small cohort whose sessions you can inspect.
-  </Step>
-  <Step title="Observe decisions">
-    Review matches, reasons, affected tools, and false positives without blocking work.
-  </Step>
-  <Step title="Enforce and verify coverage">
-    Promote after observed matches separate unsafe actions from valid ones, then confirm every intended machine has pulled the deployment and is reporting decisions.
-  </Step>
-</Steps>
-
-Machines need the `policies:pull` capability. Event reporting is separately controlled by `events:add`; verify both when you expect Cloud analysis and enforcement.
+Observe mode evaluates the real policy and records non-allow decisions, but does not block the agent.
 
 <Warning>
-  Enforcement management is an administrative Cloud workflow. Do not treat root-only enforcement routes as ordinary customer `/v1` API endpoints.
+  A bare `--add no-force-push` enforces immediately. Add `:observe` for a shadow rollout.
 </Warning>
+
+If enforcement causes problems:
+
+```bash
+fp fleet history <machine>
+fp fleet rollback <machine> <generation>
+```
+
+## Deploy from the dashboard
+
+1. Go to **Admin → enforcement**.
+2. Open the target machine.
+3. Add the policy version with effect **observe**.
+4. Apply the deployment.
+5. Review results under **Observe → policy**.
+6. Promote the same version to **enforce** when the matches are correct.
+
+![The machine deployment editor with policy versions, enforce and observe effects, and the apply deployment action.](/images/dashboard/enforcement-editor.png)
+
+## Replace or pre-stage a set
+
+- `--remove <id>` removes one policy.
+- `--set <ref>...` replaces the complete policy set.
+- `--create` prepares a deployment before a machine first checks in.
+- `fp fleet diff <machine>` compares intended and applied state.
+
+<Note>
+  Without Cloud, publish a pack with `failproofai publish --effect observe` and inspect decisions in the local dashboard.
+</Note>
+
+Machines need `policies:pull` to receive deployments and `events:add` to report decisions.

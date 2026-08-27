@@ -1,22 +1,30 @@
 ---
 title: "Administration"
-description: "Operate access, usage, organizations, and security without mixing them into the reliability workflow."
+description: "Operate Cloud access, membership, settings, and consumption without mixing them into the reliability workflow."
 icon: "settings-2"
 ---
 
-Administration contains the controls needed to run Failproof AI across a team. Most readers can stay in Sessions, Audits, and Policies; administrators use this section to manage access and operating boundaries.
+Administration is the Cloud half of Failproof AI. Organizations, members, API keys, org settings, and metered consumption all need a Cloud connection.
+
+<Note>
+  Failproof AI also runs with no account at all. A local machine enforces policy, keeps its session history on disk, serves the [local dashboard](/reference/local-dashboard) on `localhost:8020`, and runs `failproofai audit` without sending anything anywhere. If that is your deployment, one half of one page here still applies to you: [Data handling, per machine](/admin/settings-and-security#data-handling-per-machine) documents the `collector` keys in `~/.failproofai/config.json` — including `redact` and `environment` — and clean removal with `failproofai uninstall --purge`. All of that is machine-local and works with no account. Skip the rest.
+</Note>
+
+## Where the controls live
 
 <Tabs>
   <Tab title="Dashboard">
-    Use the Cloud sidebar's **Admin** section for **policy editor**, **enforcement**, **usage**, **keys**, **users**, and **settings**. A locked item shows that your account is missing its read permission.
+    The Cloud sidebar's **admin** group holds **policy editor**, **enforcement**, **usage**, **keys**, **users**, and **settings**.
 
-    ![The Admin section of the Cloud sidebar with policy editor, enforcement, usage, keys, users, and settings.](/images/dashboard/admin-navigation.png)
+    ![The admin group of the Cloud sidebar with policy editor, enforcement, usage, keys, users, and settings.](/images/dashboard/admin-navigation.png)
   </Tab>
   <Tab title="CLI">
+    Install the Cloud CLI as an isolated tool, then sign in:
+
     ```bash
+    uv tool install fp-cloud-cli
+    fp login
     fp whoami
-    fp orgs current
-    fp orgs perms
     fp usage
     ```
 
@@ -24,17 +32,43 @@ Administration contains the controls needed to run Failproof AI across a team. M
   </Tab>
 </Tabs>
 
+## Signed-in human, or API key
+
+`fp` runs in one of two authentication modes, and the split decides which commands work. A command an API key cannot perform refuses before it opens a connection and names the reason, rather than letting a 401 or a 403 stand in for it.
+
+| Command | API key | Permission |
+| --- | --- | --- |
+| `fp whoami` | Yes | none |
+| `fp usage` | Yes | `usage:read` |
+| `fp keys list` / `show` | Yes | `keys:read` |
+| `fp keys create` | Yes | `keys:create` |
+| `fp keys disable` | Yes | `keys:disable` |
+| `fp keys regenerate` | Yes | `keys:regenerate` |
+| `fp keys update` | No | `keys:update`, which no key can hold |
+| `fp users list` / `show` | Yes | `users:read` |
+| `fp users create` | Yes | `users:create` |
+| `fp users update` | Yes | `users:update` |
+| `fp users disable` / `enable` | Yes | `users:delete` |
+| `fp settings list` / `schema` | Yes | `settings:read` |
+| `fp settings set` | Yes | `settings:write` |
+| `fp orgs list` / `switch` / `current` / `perms` | No | signed-in session only |
+
+`fp usage` is the command to give a reporting script: it runs unattended under a key and needs only `usage:read`.
+
 <Columns cols={2}>
-  <Card title="Usage" icon="chart-no-axes-combined" href="/admin/usage">
-    Inspect billing windows and organization consumption.
-  </Card>
   <Card title="Keys and permissions" icon="key-round" href="/admin/keys-and-permissions">
-    Give machines and automation only the permissions they require.
+    Mint the machine credential, and give every workload only the grants it needs.
   </Card>
   <Card title="Users and organizations" icon="users" href="/admin/users-and-organizations">
-    Manage membership, defaults, and organization boundaries.
+    Manage membership, and keep each organization's data and actions scoped.
   </Card>
   <Card title="Settings and security" icon="lock-keyhole" href="/admin/settings-and-security">
-    Configure operational settings, data handling, and deployment security.
+    Set sign-in and alerting values, and decide what agent data leaves a machine.
+  </Card>
+  <Card title="Usage" icon="chart-no-axes-combined" href="/admin/usage">
+    Read what the organization metered during its current 30-day window.
+  </Card>
+  <Card title="Fleet coverage" icon="network" href="/policies/fleet">
+    See which machines are enrolled, how they are identified, and what they enforce.
   </Card>
 </Columns>

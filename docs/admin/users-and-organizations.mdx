@@ -4,18 +4,13 @@ description: "Control membership and keep each organization's data and actions s
 icon: "users"
 ---
 
-Organizations isolate sessions, evaluations, audits, issues, alerts, queries, dashboards, users, and keys. Confirm the active organization before changing administrative resources.
+Organizations isolate sessions, evaluations, audits, issues, alerts, queries, dashboards, users, and keys. Confirm the active organization before you change any administrative resource.
 
-## Manage members and organizations
+## Choose the organization
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Use the organization switcher at the top of the Cloud sidebar to change organizations.
-    2. Go to **Administration → Users** to search members or filter by active state and role.
-    3. Select **new user**, enter the email, choose a permission set, and adjust overrides if needed.
-    4. Open a user later to update grants, disable sign-in, or enable the account again.
-
-    ![The Users page showing member email addresses, permission sets, and edit and disable controls.](/images/dashboard/users.png)
+    Use the organization switcher at the top of the Cloud sidebar. Everything below it — including every page in **admin** — then reads and writes that organization.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -23,22 +18,62 @@ Organizations isolate sessions, evaluations, audits, issues, alerts, queries, da
     fp orgs switch reliability-team
     fp orgs current
     fp orgs perms
+    ```
 
+    `fp orgs switch` with no slug opens an arrow-key picker starting on your current organization; a non-interactive run falls back to a numbered prompt, and under `--json` a slug is required. The choice persists to `~/.failproofai/fpcli/cli-auth.json`, so later commands send it as the active tenant. Override it for one command with `--org <slug>` or `FP_ORG`.
+  </Tab>
+</Tabs>
+
+<Note>
+  Every `fp orgs` command needs a signed-in human and refuses under an API key, because org membership belongs to a person and a key already acts for one organization. The `fp users` commands below work either way.
+</Note>
+
+## Manage members
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Go to **admin → users** and search members by email, or narrow the list with the `protected`, `admin`, `standard`, and `read-only` filter chips.
+    2. Select **new user**, enter the email, choose a permission set, and adjust per-member overrides if needed.
+    3. Open a member later to change grants, disable sign-in, or enable the account again.
+
+    ![The users page with the email search box, the filter chips, and a member card showing its grants grouped by resource.](/images/dashboard/users.png)
+
+    The grant chips in this frame predate the `incidents:*` to `issues:*` rename; the [permission catalog](/admin/keys-and-permissions#permission-catalog) is current.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp users list
+    fp users list --active-only
     fp users create engineer@example.com --permission-set standard
     fp users show engineer@example.com
     fp users update engineer@example.com --add audits:write
     fp users disable engineer@example.com
     fp users enable engineer@example.com
     ```
+
+    Members are addressed by email and resolved case-insensitively, so `fp users show Alice.Chen@Example.com` and `fp users create alice.chen@example.com` refer to the same person.
   </Tab>
 </Tabs>
 
-Administrators can create, update, disable, and re-enable users, then assign the permission set appropriate for their role. The API uses a delete operation for disabling, but it does not remove the account or its membership record.
+### Grants, and what each verb needs
+
+Member grants use the same arithmetic as [keys](/admin/keys-and-permissions#grant-arithmetic): effective grants are `(set ∪ added) − removed`, and `--add` / `--remove` take compact `slug:action.action` tokens where dotted actions expand.
+
+| Verb | Permission | Notes |
+| --- | --- | --- |
+| `fp users list` / `show` | `users:read` | `--active-only` hides disabled members. |
+| `fp users create` | `users:create` | `--permission-set` seeds the role; `--add` / `--remove` layer overrides. |
+| `fp users update` | `users:update` | `--permission-set` **replaces** the member's per-member overrides; `--add` / `--remove` alone are incremental against their current grants. |
+| `fp users disable` / `enable` | `users:delete` | Both, including enable — grant it deliberately. |
+
+Disabling refuses two cases outright, as a Forbidden error rather than a validation message: a **protected** member cannot be disabled, and you cannot disable your own account. Disabling an already-disabled member, or enabling an already-active one, is a calm no-op. The API uses a delete operation for disabling, but it removes neither the account nor its membership record.
+
+Two organization settings govern membership and live on the [settings page](/admin/settings-and-security#organization-setting-reference): `default_user_permissions` preselects the permission set for a new invitation, and `allowed_sign_ins` gates which addresses can receive a sign-in code at all.
 
 <Warning>
   Disabling a user blocks that identity from signing in to every organization, not only the organization currently selected. Re-enabling restores global sign-in and the member's permissions in this organization.
 </Warning>
 
 <Tip>
-  Give service accounts descriptive names tied to a workload and owner. Avoid sharing keys between organizations or between people and machines.
+  Give service accounts descriptive names tied to a workload and an owner. Do not share a key between organizations, or between a person and a machine.
 </Tip>

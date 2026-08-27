@@ -15,7 +15,7 @@ What every setting, method and field does. If you are instrumenting for the firs
   </Card>
 </Columns>
 
-Python 3.10 or newer. No runtime dependencies.
+Python 3.10 or newer, and **zero runtime dependencies** — a policy, not an accident. The SDK installs into other people's agent processes, so anything it declared they would inherit. A test scans the core modules and launches a fresh interpreter to prove no framework lands in `sys.modules`.
 
 ## Install
 
@@ -29,7 +29,7 @@ The package is installed as `failproofai-sdk` and imported in Python as `failpro
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Admin → Keys** and create a key with `events:add`.
+    1. Go to **Administration → Keys** and create a key with `events:add`.
     2. [Connect the Failproof daemon to Cloud](/start/setup#connect-a-machine-to-cloud) on the agent machine.
     3. Run one instrumented session, then find its exact ID under **Observe → Events**.
     4. Go to **Observe → Sessions**, select the same environment, and open the reconstructed trace.
@@ -38,11 +38,12 @@ The package is installed as `failproofai-sdk` and imported in Python as `failpro
   </Tab>
   <Tab title="CLI">
     ```bash
-    failproofai config \
-      --connect https://app.befailproof.ai \
-      --token <events-add-key>
+    export FAILPROOFAI_CLOUD_TOKEN=<events-add-key>
+    failproofai config
     failproofai config --status
     ```
+
+    Prefer the environment variable over `--token`: a command-line argument is readable from `ps` by every user on the box, and it lands in shell history and CI logs.
   </Tab>
 </Tabs>
 
@@ -62,7 +63,9 @@ failproofai_sdk.configure(
 | --- | --- |
 | `environment` | The label on every event — `production`, `staging`, `prod-eu`. Defaults to `dev`. |
 | `flush_interval` | How often the background thread writes to disk, in seconds. Defaults to `0.5`. |
-| `base_dir` | Where to write. Defaults to the daemon's spool, which is what you want unless you know otherwise. |
+| `base_dir` | Where to write. Defaults to `$FAILPROOFAI_HOME/custom-agents`, otherwise `~/.failproofai/custom-agents` — the spool the daemon watches, which is what you want unless you know otherwise. |
+
+`configure()` is **keyword-only** — `configure(None, 0.5, "prod")` is a `TypeError`. It also validates every argument before applying any of them, and raises `ValueError` if `flush_interval` is not a finite number greater than zero, so a rejected call leaves the SDK exactly as it was rather than half-moved.
 
 Set by environment variable instead:
 
@@ -81,6 +84,39 @@ Set by environment variable instead:
 
 Events are queued in memory and written in the background every `flush_interval` seconds, with a final flush at interpreter exit. A process killed outright loses whatever had not been written yet.
 
+## Scopes
+
+Three context managers, each usable with `with` and `async with`:
+
+| Scope | Binds | Emits |
+| --- | --- | --- |
+| `session()` | A session id. Yields it | Nothing — identity only |
+| `agent(name)` | An agent id, and a `parent_id` inferred from the enclosing agent | `agent_start` on entry, `agent_end` on exit |
+| `tool_call(name)` | Nothing new — inherits the enclosing identity | `tool_use` on entry, `tool_result` on exit |
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("planner"):
+        with failproofai_sdk.tool_call("web_search", input={"q": q}) as t:
+            t.output = search(q)
+```
+
+`tool_call()` defaults `tool_call_id` to a fresh `uuid4().hex` and resolves identity once, at entry, so a tool that pushes its own scope inside cannot make the closing `tool_result` land on a different agent. On failure it emits `tool_result(error="TypeName: msg")` and **no `error` event** — a tool failure the loop catches is not a run-level error, and one that propagates is reported exactly once, by the enclosing `agent()`. Cancellation closes the leaf with no error string at all.
+
+## Adapters
+
+`instrument()` wires a supported framework to the scopes above. With no argument it auto-detects the frameworks already imported in this process; pass a name to install exactly one.
+
+```python
+failproofai_sdk.instrument()              # everything already imported
+failproofai_sdk.instrument("crewai")      # exactly one
+failproofai_sdk.uninstrument("crewai")    # restore the original attributes
+```
+
+The four names are `"langchain"` (which covers LangGraph, since LangGraph runs on langchain-core's callback manager), `"crewai"`, `"llama_index"` and `"pydantic_ai"`. The framework import happens inside the call, which is what keeps `import failproofai_sdk` zero-dependency.
+
+Each framework has its own page: [LangChain](/start/integrations/langchain), [CrewAI](/start/integrations/crewai), [LlamaIndex](/start/integrations/llamaindex), [Pydantic AI](/start/integrations/pydantic-ai).
+
 ## Identity
 
 Every event belongs to a session and an agent. **The scopes fill both in**, so you rarely pass them:
@@ -91,7 +127,18 @@ with failproofai_sdk.session():
         failproofai_sdk.event.tool_use(tool_name="search", tool_call_id="c1")
 ```
 
-Passing `session_id` or `agent_id` explicitly still works and wins. With neither bound nor passed, the call raises `TypeError` rather than emitting an event Cloud would quietly discard.
+Passing `session_id` or `agent_id` explicitly still works and wins.
+
+The two are **not** symmetrical when nothing is bound:
+
+| Omitted | With nothing bound |
+| --- | --- |
+| `session_id` | Raises `TypeError`, rather than emitting an event Cloud would quietly discard |
+| `agent_id` | Falls back to `main`, so events emitted inside `session()` with no `agent()` around them all land under a single agent named `main` |
+
+Inventing a session id would scatter one run across as many sessions as it has emit sites, which is why only that one raises.
+
+`session_id` and `agent_id` are also the only two names checked for emptiness: a non-string raises `TypeError`, and an empty or whitespace-only id raises `ValueError`. The server *accepts* a blank id, so without that check every event sent with one would be grouped under a single blank id and look present while being silently merged.
 
 <Note>
   Identity rides on context variables. It follows `asyncio` tasks automatically, but **not** new threads — wrap a worker in `failproofai_sdk.propagate()` or its events land unattached.
@@ -99,16 +146,16 @@ Passing `session_id` or `agent_id` explicitly still works and wins. With neither
 
 ## Event catalog
 
-Fifteen methods. Most come in **pairs** — you call the opener, then the closer, and the SDK times the gap.
+Fifteen methods. Most come in **pairs** — an opener and a closer.
 
-| | Opens | Closes |
-| --- | --- | --- |
-| **Agents** | `agent_start` | `agent_end` |
-| | `agent_pause` | `agent_resume` |
-| **Models** | `model_request` | `model_response` |
-| **Tools** | `tool_use` | `tool_result` |
-| **Hooks** | `hook_triggered` | `hook_completed` |
-| **Humans** | `human_wait` | `human_input` |
+| | Opens | Closes | Timed by the SDK |
+| --- | --- | --- | --- |
+| **Agents** | `agent_start` | `agent_end` | No |
+| | `agent_pause` | `agent_resume` | Yes |
+| **Models** | `model_request` | `model_response` | No — correlated in Cloud |
+| **Tools** | `tool_use` | `tool_result` | Yes |
+| **Hooks** | `hook_triggered` | `hook_completed` | Yes |
+| **Humans** | `human_wait` | `human_input` | Yes |
 
 Three stand alone: `error`, `human_pause`, `human_interrupt`.
 
@@ -144,17 +191,20 @@ Every method also takes `session_id` and `agent_id`, which the scopes fill in fo
 
 **One rule: give the closing event the same id as its opener.** That is what pairs them, and what lets the SDK time the gap.
 
-| Pair | Matched on |
-| --- | --- |
-| `tool_use` → `tool_result` | `tool_call_id` |
-| `hook_triggered` → `hook_completed` | `hook_id` |
-| `agent_pause` → `agent_resume` | `pause_id` |
-| `human_wait` → `human_input` | `input_id` |
-| `model_request` → `model_response` | `request_id` |
+| Pair | Matched on | Tracking key |
+| --- | --- | --- |
+| `tool_use` → `tool_result` | `tool_call_id` | `tool:{session_id}:{tool_call_id}` |
+| `hook_triggered` → `hook_completed` | `hook_id` | `hook:{session_id}:{hook_id}` |
+| `agent_pause` → `agent_resume` | `pause_id` | `pause:{session_id}:{pause_id}` |
+| `human_wait` → `human_input` | `input_id` | `human:{session_id}:{input_id}` |
 
-**Do not pass `duration_ms` yourself.** The SDK measures it, and passing it raises `ValueError`.
+The key is namespaced by session, which is what makes both edge cases below true.
 
-The one exception is `model_response`, where only you know the real provider latency. Pass a whole number of milliseconds — a float raises, because the column is a 32-bit integer and would otherwise land empty.
+**Do not pass `duration_ms` yourself** on those four closers. The SDK measures it, and passing it raises `ValueError`.
+
+<Note>
+  `model_request` and `model_response` are a pair Cloud correlates on `request_id`. The SDK does not track them and measures nothing locally, which is why `model_response` is the one event that takes `duration_ms` from you. Pass a whole number of milliseconds — a float raises, because the column is a 32-bit integer and would otherwise land empty.
+</Note>
 
 <Accordion title="Edge cases" icon="circle-help">
 
@@ -180,12 +230,33 @@ failproofai_sdk.event.tool_use(
 Prefer JSON types if you want to query them later. Anything else — a UUID, a datetime, a `Decimal`, a set, bytes, a model object — is stored as a string.
 
 <Warning>
+  **Eleven names are the exception, and they raise rather than stringify.** Ingest lifts each into a typed column and stores `NULL` for anything else, at `200 OK`, invisibly — so the SDK refuses them at the call site instead.
+
+  | Names | Must be |
+  | --- | --- |
+  | `duration_ms`, `input_tokens`, `output_tokens` | An `int` in the unsigned 32-bit range |
+  | `tool_name`, `tool_call_id`, `hook_name`, `hook_id`, `input_id`, `pause_id`, `error_type`, `model` | A string — `None` raises `ValueError`, any non-string raises `TypeError` |
+
+  This applies whether the value arrives as a named parameter or as one of your own extras. `model_response` validates its `input_tokens` and `output_tokens` on the way in for the same reason — they are the likeliest to be filled straight from a provider's usage object.
+</Warning>
+
+<Warning>
   **Prefix your field names.** Extras are applied last, so a field called `model`, `tool_name` or `outcome` silently overwrites the real one. The framework adapters use `fw_`; do the same and nothing can collide.
 
   This is also why a misspelled optional field never errors — it just becomes a new custom field. If a standard field is missing in Cloud, check the spelling first.
 </Warning>
 
 These five names are reserved and rejected outright: `timestamp`, `session_id`, `agent_id`, `type`, `environment`.
+
+## Other exports
+
+| Export | What it is |
+| --- | --- |
+| `current()` | The identity bound right now, as an `Identity`. `current().session_id is None` means nothing is bound |
+| `Identity` | `session_id`, `agent_id`, `parent_id`, `depth`. Never `None` itself — check the fields |
+| `propagate(fn)` | Wraps `fn` so it runs with the identity bound at the moment of wrapping. Needed for `Thread`, `pool.submit`, `pool.map`, `run_in_executor` |
+| `_writer.flush_now()` | Drain and write buffered entries immediately, for a test or a forced flush before exit |
+| `__version__` | The installed SDK version |
 
 ## Deliver and verify
 

@@ -8,15 +8,15 @@ Use these as starting goals, then add your agent, environment, and expected work
 
 <Tabs>
   <Tab title="Dashboard">
-    Go to **Analyze → Audits → New audit**, copy one recipe into the description or brief, then add the relevant environment, agent, lookback, and reference URLs. Create the audit and inspect the first run before scheduling it.
+    Go to **Analyze → Audits → New audit**. A recipe line from this page is the **description** — what you expect this audit to catch. The workflow rules that make the goal judgeable go in **your brief**, in the **what it knows** card: background the model reads before it looks at a single event, capped at 8,192 characters, added to what the audit already looks for. A brief is never a replacement for the goal and never evidence for a finding.
+
+    Then set scope in **what it reads**, because half of these recipes are noise without it. Environments and agents narrow the population; **errors to ignore** lists the error types you expect and handle by design, so they stop counting as failures. It takes error type names only, and it is what keeps the retry-loop recipe from flooding.
 
     The new audit form turns a recipe into an executable failure check by adding scope, context, cadence, and notifications.
 
     ![The new audit form configured with a focused goal, schedule, agent and environment scope, context, and notification channels.](/images/dashboard/audit-new.png)
 
     After creation, confirm the audit appears in the list with the expected status and schedule before relying on recurring runs.
-
-    ![The Audits page where a workflow-specific audit recipe appears after creation.](/images/dashboard/audits.png)
 
     Open the first run and refine the recipe if its findings are broader or narrower than the intended failure mode.
   </Tab>
@@ -25,30 +25,69 @@ Use these as starting goals, then add your agent, environment, and expected work
 
     ```bash
     fp audits create retry-loop-review \
+      --description "Find agents that repeat a failing tool call without changing anything" \
       --scope '{"environments":["production"]}' \
+      --ignore-error-type RateLimitRetried \
       --text-file ./retry-loop-audit.txt \
       --schedule-interval-secs 86400
     ```
+
+    `--text` and `--text-file` are two ways to send the same brief; pass one, not both. Add reference pages with `--url`, up to five, public `https://` only. Send all of it with the create request: a new enabled audit is due immediately, so context written in a second call can miss the first run.
   </Tab>
 </Tabs>
+
+## Judge the recipe, not just the wording
+
+Two settings move the result more than the phrasing does. **Sensitivity** (`low`, `medium`, `high`, default `medium`) decides how eagerly a run flags a pattern; **findings per run** (`--top-k`, default 50) caps how many it keeps. Raise sensitivity for a question where a miss costs more than a false positive, and lower it for a volume pattern that would otherwise fill the queue. Each recipe below names a starting point — change it after reading the first run, not before.
+
+Task abandonment and missed human escalation are judgements against what an agent was supposed to do, not against an error it raised. Write that agent's [agent context](/audits/agent-contracts) first, or the analysis has no standard to grade against.
 
 <AccordionGroup>
   <Accordion title="Repeated retry loops">
     Find sessions where the agent repeats the same failing tool call without changing input, selecting an alternative tool, or escalating to a human.
+
+    Start at `medium`, and list the error types you retry on purpose under **errors to ignore**.
   </Accordion>
   <Accordion title="Incorrect tool use">
     Find sessions where the chosen tool does not match the stated task, or where tool input violates the workflow's required preconditions.
+
+    Start at `medium`. Put the preconditions themselves in the brief; without them the analysis has no rule to check.
   </Accordion>
   <Accordion title="Unsafe data access">
     Find sessions that read, write, or transmit sensitive data outside the approved paths and services for this agent.
+
+    Start at `high`. A missed exposure costs more than a false positive you dismiss once.
   </Accordion>
   <Accordion title="Task abandonment">
     Find sessions that end without the requested outcome, a clear error, or an explicit handoff to a human.
+
+    Start at `medium`, and write the agent's **Done when** section first — this recipe is a judgement against it.
   </Accordion>
   <Accordion title="Cost or latency regression">
     Find sessions whose model, tool, or total duration exceeds the expected budget, and identify the event pattern responsible.
+
+    Start at `low` and raise it if the first run is thin. Budgets belong in the brief, and any error type a slow path raises by design belongs in **errors to ignore**.
   </Accordion>
   <Accordion title="Missed human escalation">
     Find sessions where confidence, repeated failure, or policy guidance required a human decision but the agent continued autonomously.
+
+    Start at `high`, and state the escalation rule in the agent's **Must not** section so the analysis grades against it.
   </Accordion>
 </AccordionGroup>
+
+## Get a first answer before you create anything
+
+Several of these patterns already have offline detectors in the local audit, which reads the agent histories on your own machine and needs no account:
+
+| Detector | Pattern it counts |
+| --- | --- |
+| `sleep-polling-loop` | A long `sleep`, or a `while … sleep … done` polling loop |
+| `reread-after-edit` | A read of a file the agent just edited or wrote |
+| `find-from-root` | `find` against `/` or another high-level directory |
+| `redundant-cd-cwd` | `cd` into the directory the shell is already in |
+| `prefer-edit-over-read-cat` | `cat`, `head`, `tail`, `less`, or `more` on a single source file |
+| `prefer-edit-over-sed-awk` | In-place edits through `sed -i` or `awk … > file` |
+| `prefer-write-over-heredoc` | Multi-line content written through a heredoc or `echo > file` |
+| `git-commit-no-verify` | `git commit --no-verify`, skipping hooks |
+
+These detectors count; they do not block, and none of them measures cost or latency. Run `failproofai audit` to see which wasteful and risky shell patterns your agents already produce before you pay for a Cloud audit of the same ground — see [Audit local agent history](/audits/local-audit).

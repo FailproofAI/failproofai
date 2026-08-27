@@ -1,84 +1,91 @@
 ---
 title: "Quickstart"
-description: "Capture an agent session, find a failure, and start preventing it."
+description: "Set up one machine, choose policies, and see what your agents are doing."
 icon: "zap"
 ---
 
-This quickstart gets one machine reporting sessions, runs an audit, and deploys a policy. Use the skill to set Failproof up, or follow the manual steps.
+Set up Failproof AI on one machine, then stay local or connect Cloud.
 
-**Which path is yours?** If your agent runs in one of the 12 supported [harnesses](/reference/harnesses) — a coding CLI, or a gateway like Hermes or OpenClaw — follow the steps below; you need Node.js 20.9 or later. If your agent has no harness, instrument it with the [Python SDK](/reference/custom-agents) for tracing and audits, then rejoin at [Run your first failure check](/start/first-audit); enforcement on that path needs a hook in your runtime.
+If your agent runs in a [supported harness](/reference/harnesses), follow these steps. For agents built with LangChain, CrewAI, LlamaIndex, Pydantic AI, or your own runtime, start with [instrument your agent](/start/integrations).
 
-<Tabs>
-  <Tab title="Use the skill">
-    <Steps>
-      <Step title="Install the Failproof AI skills">
-        ```bash
-        npx skills add FailproofAI/skills
-        ```
-      </Step>
-      <Step title="Ask your agent to set everything up">
-        ```text
-        Set up Failproof AI for this project, connect this machine, install the right hooks and policies, and verify that a session arrives.
-        ```
-
-        Your agent inspects the project, chooses the relevant integration, performs the setup, and verifies it. See the [FailproofAI skills repository](https://github.com/FailproofAI/skills) for individual skills and advanced installation options.
-      </Step>
-    </Steps>
-  </Tab>
-  <Tab title="Manual setup">
-    ## Before you start
-
-1. Open the [Failproof AI dashboard](https://app.befailproof.ai) and create an account or sign in with your work email.
-2. Go to **Administration → Keys** and create a key with `events:add` and `policies:pull`.
-3. Copy the one-time secret and store it on the target machine:
-
-```bash
-export FAILPROOFAI_KEY="<one-time-secret>"
-```
-
-    ## Install
+## Set up the machine
 
 <Steps>
-  <Step title="Install and connect Failproof AI">
+  <Step title="Install and configure Failproof AI">
     ```bash
     npm install -g failproofai
-    failproofai config --connect https://app.befailproof.ai --token "$FAILPROOFAI_KEY"
+    failproofai config
     ```
 
-    Session transcripts are sent by default. Add `--no-transcripts` to report hook activity and policy decisions without transcript content.
+    Setup installs the background service and connects every supported agent it finds. It may ask for administrator access once. It supports Linux and macOS.
+  </Step>
 
-    If this machine already has agent history, preview and import the last seven days, then wait for delivery to finish. Skip this step on a new machine.
+  <Step title="Choose policies">
+    Setup chooses no policy pack. Add the Failproof AI pack:
 
     ```bash
-    failproofai backfill --since 7d --dry-run
-    failproofai backfill --since 7d
-    failproofai flush --wait
+    failproofai policies add FailproofAI/policies
+    failproofai policies
     ```
 
-    Open **Sessions** in Failproof AI and select an imported session.
+    The second command shows every policy on this machine and whether it is on. Until you add a pack, only `block-failproofai-commands` runs.
   </Step>
-  <Step title="Install agent hooks and policies">
-    This attaches Failproof AI to your harness and installs the 39 built-in policies. Use them to see local policy decisions and try enforcement before Failproof AI audits your sessions and writes policies for your agents.
 
-    Let the installer detect your harness, or name one explicitly. Every one of the 12 is a valid `--cli` value — `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity`, `goose`.
-
+  <Step title="Check the machine">
     ```bash
-    failproofai policies --install --cli claude --scope user     # a coding CLI
-    failproofai policies --install --cli hermes --scope user     # a Slack/Telegram gateway
+    failproofai config --status
     ```
 
-    Blocking a tool call before it runs is verified on all 12. Turn-end gates are verified on 8 — see [enforcement capability](/reference/harnesses#enforcement-capability) for the per-harness matrix.
-  </Step>
-  <Step title="Audit the behavior">
-    Follow [Run your first failure check](/start/first-audit). Use a concrete goal such as “find sessions where the agent retried a failing tool without changing its approach.”
-  </Step>
-  <Step title="Prevent the failure">
-    Follow [Prevent your first failure with a policy](/start/first-policy). Start in observe mode, inspect matches, then enforce the reviewed version.
+    This reports the service, Cloud connection, and pause state.
   </Step>
 </Steps>
 
-<Check>
-  Run `failproofai config --status`. A healthy setup reports the cloud connection, daemon state, and whether enforcement is paused.
-</Check>
+## Choose local or Cloud
+
+<Tabs>
+  <Tab title="Stay local">
+    No account is required.
+
+    ```bash
+    failproofai
+    failproofai audit
+    ```
+
+    The first command opens the local dashboard at `http://localhost:8020`. The second scans agent history already on this machine.
+  </Tab>
+
+  <Tab title="Connect Cloud">
+    Create a machine key in Failproof AI Cloud, then run:
+
+    ```bash
+    failproofai config --token <machine-key>
+    failproofai config --status
+    ```
+
+    Cloud receives policy decisions and session transcripts. Add `--no-transcripts` if you only want policy decisions sent. For shared shells and CI, use `FAILPROOFAI_CLOUD_TOKEN` instead of putting the key in command history.
   </Tab>
 </Tabs>
+
+## Verify it
+
+Run one of your agents and ask it to perform a normal task. Then:
+
+- Open **Policies → Activity** in the local dashboard to see policy decisions.
+- Open **Observe → Sessions** in Cloud to see the full run.
+- Run `failproofai audit` to look for risky or wasteful patterns.
+
+<Warning>
+  After setup, the `failproofaid` service is the evaluator. If it cannot answer, protected actions are denied. Run `failproofai config --status` when an agent unexpectedly stops.
+</Warning>
+
+<CardGroup cols={3}>
+  <Card title="Understand the concepts" icon="book-open" href="/start/concepts">
+    Learn the session-to-policy workflow.
+  </Card>
+  <Card title="Run your first audit" icon="scan-search" href="/start/first-audit">
+    Find one failure worth fixing.
+  </Card>
+  <Card title="Add your first policy" icon="shield-check" href="/start/first-policy">
+    Observe a safeguard before enforcing it.
+  </Card>
+</CardGroup>

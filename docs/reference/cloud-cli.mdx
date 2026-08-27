@@ -6,14 +6,18 @@ icon: "cloud-cog"
 
 Use `fp` to inspect Cloud telemetry, manage cloud-managed enforcement (policies, fleet deployments, guardrail decisions), and manage audits, findings, issues, alerts, keys, users, queries, and settings. Use [`failproofai`](/reference/failproof-cli) for local hooks, policies, capture, and machine enrollment.
 
-Install the released Cloud CLI as an isolated tool:
+Install the released Cloud CLI as an isolated tool. It needs Python 3.10 or newer.
 
 ```bash
 uv tool install fp-cloud-cli
 fp version
 ```
 
+The distribution is `fp-cloud-cli` and the installed command is `fp` — they differ because `fp` was already taken on PyPI.
+
 ## Sign in
+
+`fp login` emails you a six-digit code and saves the session. Against a dashboard with a self-signed certificate, add `--insecure` at login time.
 
 ```bash
 fp login
@@ -191,7 +195,7 @@ Permission tokens use `resource:action`, such as `events:add`. Repeat `--add`, c
 | `fp query create NAME` | Save a query. | `--sql <text\|@file>`; `--description` |
 | `fp query update NAME` | Update or rename a query. | `--name`; `--sql`; `--description`; `--yes`, `-y` |
 | `fp query delete NAME` | Delete a saved query. | `--yes`, `-y` |
-| `fp query run [NAME]` | Run a saved query or ad-hoc SQL. | `--sql`; `--limit`; `--all`; `--arg`, `--param` |
+| `fp query run [NAME]` | Run a saved query or ad-hoc SQL. `--limit` caps the **table** view only, at 50 by default; `--json` always returns every row. | `--sql`; `--limit`; `--all`; `--arg`, `--param` |
 | `fp query schema [TABLE]` | List queryable tables or inspect one table. | — |
 
 ### Users
@@ -240,7 +244,7 @@ Alert severities are `info`, `warning`, and `critical`. Trigger kinds are `metri
 | `fp audits context-show NAME` | Show the brief and reference URL fetch state. | — |
 | `fp audits context-set NAME` | Change the brief or reference URLs. | `--text`; `--text-file`; `--url`; `--clear-urls` |
 | `fp audits context-refresh NAME` | Re-fetch reference URLs. | — |
-| `fp audits findings` | List findings. | `--audit`; `--run-id`; `--status`; `--limit`, `-n`; `--offset`; `--show-id` |
+| `fp audits findings` | List findings. `--limit` defaults to 100 here, not the 50 used elsewhere, and the server caps it at 500. | `--audit`; `--run-id`; `--status`; `--limit`, `-n`; `--offset`; `--show-id` |
 | `fp audits finding FINDING_ID` | Show one finding and its evidence. | — |
 | `fp audits ack FINDING_ID` | Acknowledge a finding. | `--reason` |
 | `fp audits mute FINDING_ID` | Suppress a recurring pattern. | `--reason`; `--yes`, `-y` |
@@ -321,32 +325,77 @@ Valid issue states are `firing`, `acknowledged`, and `resolved`. Standalone issu
 
 ### Policies
 
-Cloud-managed policy versions. **Session-only** — every command here exits `2` under an API key, before any request, because these are root-only write routes deliberately absent from `/v1`.
+Cloud-managed policy versions. **Session-only** — every command here except `fp policies test` exits `2` under an API key, before any request, because these are root-only write routes deliberately absent from `/v1`. `fp policies test` is the deliberate exception: it runs entirely locally against `node` and talks to no server, so it carries neither an auth requirement nor a key-mode refusal and works logged out and under an API key alike.
 
 | Command | Purpose | Options |
 | --- | --- | --- |
-| `fp policies list` | List policy versions. | `--json` |
+| `fp policies list` | List policy versions, newest of each policy first. | — |
 | `fp policies show POLICY_ID` | Show one policy, with its source. | — |
-| `fp policies publish NAME PATH` | Mint a version from a local `.mjs`. | `--description`; `--no-verify` |
+| `fp policies publish POLICY_ID [SOURCE]` | Mint a new version; it never edits one in place. `SOURCE` is a path, `@path`, or `-` for stdin — omit it to paste. | `--description`; `--no-verify` |
 | `fp policies enable POLICY_ID` | Add it back to every deployment it was removed from, minting a new generation on each. | `--yes`, `-y` |
 | `fp policies disable POLICY_ID` | Remove it from every deployment carrying it, minting a new generation on each. | `--yes`, `-y` |
 | `fp policies delete POLICY_ID` | Delete a policy version. | `--yes`, `-y` |
-| `fp policies test PATH` | Run a policy locally against a synthetic context. Applies each policy's `match` filter, so one that does not cover the given event/tool is reported `skipped` rather than run. | `--event`; `--tool`; `--command`; `--file-path`; `--expect` |
-| `fp policies compose PROMPT` | Draft a policy with the assistant. Needs `policies:write`. | — |
+| `fp policies test [SOURCE]` | Run a policy locally against a synthetic context. Applies each policy's `match` filter, so one that does not cover the given event/tool is reported `skipped` rather than run. Needs `node` on PATH. | `--event`; `--tool`; `--command`; `--file`; `--expect` |
+| `fp policies compose PROMPT` | Draft a policy with the assistant. Prints the draft and does nothing else by default. Needs `policies:write`. | `--out <path>`; `--publish <policy-id>` |
 
 ### Fleet
 
-Which machines run which policies.  **Session-only**, same reason as above.
+Which machines run which policies. **Session-only** — every command here, with no exception, exits `2` under an API key.
 
 | Command | Purpose | Options |
 | --- | --- | --- |
 | `fp fleet list` | List enrolled machines and their deployment generation. | — |
 | `fp fleet show MACHINE_ID` | The policy set a machine currently runs. | — |
-| `fp fleet deploy MACHINE_ID` | **Replaces the machine's whole policy set.** Prints the plan and asks only on an interactive terminal without `--json`. | `--add`; `--remove`; `--set`; `--create`; `--yes`, `-y` |
-| `fp fleet diff MACHINE_ID` | Compare a machine against another deployment. | — |
-| `fp fleet history MACHINE_ID` | Past deployments for a machine. | — |
-| `fp fleet rollback MACHINE_ID` | Restore a previous deployment. | `--yes`, `-y` |
-| `fp fleet rename MACHINE_ID` | Give a machine a readable name. | required `--name` |
+| `fp fleet deploy MACHINE_ID` | Change what a machine enforces. Prints the full resulting set first, and asks only on an interactive terminal without `--json`. | `--add`; `--remove`; `--set`; `--create`; `--yes`, `-y` |
+| `fp fleet diff [MACHINE_ID]` | Intent versus delivery — what a machine is told to run against what it last pulled. Omit the id for the whole fleet. | — |
+| `fp fleet history MACHINE_ID` | Every generation for a machine, newest first. | — |
+| `fp fleet rollback MACHINE_ID GENERATION` | Reinstate a past generation's policy set. The generation number comes from `fp fleet history MACHINE_ID`. | `--yes`, `-y` |
+| `fp fleet rename MACHINE_ID LABEL` | Give a machine a readable label. The id itself never changes. | — |
+
+```bash
+fp fleet history ci-runner-01
+fp fleet rollback ci-runner-01 3
+fp fleet rename ci-runner-01 "CI runner (eu-west)"
+```
+
+#### Policy references
+
+`--add` and `--set` take a policy reference, not a bare id:
+
+| Form | Means |
+| --- | --- |
+| `id` | Current version, current effect |
+| `id@3` | Version 3, current effect |
+| `id:observe` | Current version, recorded but not enforced |
+| `id@3:observe` | Version 3, recorded but not enforced |
+
+The effect is `enforce` or `observe`. Resolution is: an explicit effect wins; otherwise the effect already deployed for that policy; otherwise `enforce`.
+
+<Warning>
+  A bare `--add` **enforces immediately**. `fp fleet deploy ci-runner-01 --add checkout-guard` starts blocking on that machine as soon as it next pulls. `:observe` is what makes it a shadow rollout:
+
+  ```bash
+  fp fleet deploy ci-runner-01 --add checkout-guard:observe   # records only
+  fp fleet deploy ci-runner-01 --add checkout-guard           # enforces now
+  ```
+
+  Observe is not off. The policy is evaluated for real, under the same 10-second timeout and the same error handling as an enforcing one, and every non-allow verdict is recorded — only the enforcement is withheld. That is what makes the measurement worth reading.
+</Warning>
+
+#### Deltas, replacement, and races
+
+`--add` and `--remove` read the machine's current set and apply a delta, so nothing you did not name is disturbed. A bare `--add` on a policy the machine already runs keeps its pinned version rather than silently upgrading it; pass `id@version` to move it.
+
+`--set` replaces everything and is the only way to drop policies you do not name. It cannot be combined with `--add` or `--remove`. Passing none of the three is a usage error, not a no-op.
+
+```bash
+fp fleet deploy ci-runner-01 --add prod-guard@1:observe --remove old-rule
+fp fleet deploy ci-runner-01 --set no-force-push --set no-secret-echo
+```
+
+The write itself is a full replace on every path, because the endpoint takes the whole policy set. There is no server-side lock, so the CLI records the generation it read and refuses if the result is not exactly one higher — that means somebody else deployed in between, and a replace does not merge. Re-read with `fp fleet show`, then deploy again.
+
+`--create` deploys to a machine id that has not checked in yet, for pre-staging. Without it, an id the server does not know is refused, because a typo would otherwise mint a machine nobody owns carrying policies nobody collects.
 
 ### Guardrails
 
@@ -356,6 +405,31 @@ What enforcement actually did. **Session-only**, same reason as above.
 | --- | --- | --- |
 | `fp guardrails summary` | Coverage, blocked/evaluated totals, a deny sparkline, and the per-policy table. | `--since` (`1h`, `6h`, `24h`, `7d`); `--machine` |
 | `fp guardrails timeline` | Decisions bucketed over the window, summed across every policy source. | `--since` (`1h`, `6h`, `24h`, `7d`); `--machine` |
+
+A `(no policy)` row in the summary is normal rather than a gap: most evaluations are allows nothing objected to, and the row keeps the denominator on screen.
+
+### Roll a policy out without breaking anyone
+
+The three groups above are one sequence. Decide locally, publish, shadow, measure, then enforce.
+
+```bash
+fp policies test ./checkout.policy.mjs --tool Bash --command "git push --force" --expect deny
+fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
+fp fleet deploy ci-runner-01 --add checkout-guard:observe
+fp guardrails summary --since 24h --machine ci-runner-01
+fp fleet deploy ci-runner-01 --add checkout-guard:enforce
+```
+
+| Step | Why it is there |
+| --- | --- |
+| `fp policies test` | No server and no auth. Runs the real file against a context you describe and prints allow, deny, or instruct per registered policy. `--expect` turns that into a CI assertion. |
+| `fp policies publish` | Mints a new immutable version; it never edits one in place. |
+| `fp fleet deploy --add <id>:observe` | The shadow rollout. **`:observe` is not optional here** — a bare `--add` enforces the moment the machine pulls. |
+| `fp guardrails summary` | Separates the unsafe matches from the legitimate work the policy would also have blocked. |
+| `fp fleet deploy --add <id>:enforce` | Promotion, once the recorded verdicts say what you expected. |
+| `fp fleet rollback <machine> <generation>` | The way back if enforcement goes wrong. |
+
+The single-machine equivalent, with no Cloud involved, is publishing the pack with `failproofai publish --effect observe` and reading the recorded verdicts on the [local dashboard](/reference/local-dashboard).
 
 ## Global flags
 
@@ -389,7 +463,9 @@ What enforcement actually did. **Session-only**, same reason as above.
 | `FP_ANALYTICS_DISABLED` or `DO_NOT_TRACK` | Disable anonymous CLI analytics. |
 | `NO_COLOR` | Disable colored output. |
 
-Explicit flags override environment variables, which override saved configuration. In API-key mode, select the tenant explicitly with `--org` or `FP_ORG`.
+Explicit flags override environment variables, which override saved configuration.
+
+In API-key mode the organization saved by a human `fp login` is **ignored**, not merely overridden — only an explicit `--org` or `FP_ORG` is sent. Nothing is inherited from a saved login, so pass `--org` whenever the key can act for more than one organization. Omitting it does not fail loudly: an instance-scoped key with no `--org` resolves server-side to the **default** organization and answers with that organization's data, with no error anywhere. Run `fp whoami` first to confirm which tenant a key is actually talking to.
 
 <Warning>
   The `AGENTEYE_*` spellings of these are **not read by `fp`** and never were — the CLI declares `FP_*` (`fp_cli/app.py`), and an unknown variable is not an error. Setting `AGENTEYE_DASHBOARD_URL` does not retarget the CLI; it is ignored and the command silently runs against the saved dashboard instead.

@@ -43,8 +43,10 @@ For unattended Cloud setup:
 
 ```bash
 export FAILPROOFAI_CLOUD_TOKEN="<key>"
-failproofai config --token "$FAILPROOFAI_CLOUD_TOKEN" --no-transcripts
+failproofai config --token "$FAILPROOFAI_CLOUD_TOKEN"
 ```
+
+To send decisions without transcripts, connect first and set `collector.sessions` to `false` in `~/.failproofai/config.json`. The current `--no-transcripts` setup flag is parsed but does not apply that setting.
 
 Use `--machine-label <name>` after the machine is connected to rename it. `--connect <url>` is the narrower enrol-only command for a machine already set up.
 

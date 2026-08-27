@@ -30,9 +30,9 @@ before they execute.
 
 ## Supported harnesses
 
-Twelve supported harnesses cover coding tools, chat gateways, and self-hosted
-assistants. The policy API and session history are shared; which events can block
-varies by harness.
+Twelve harnesses in two classes are supported: ten coding CLIs, plus two
+gateways: Hermes, OpenClaw. The policy API and session history are shared; which
+events can block varies by harness.
 
 Agents that run in none of them report through the [Python SDK](https://docs.befailproof.ai/reference/custom-agents),
 which gives you tracing, sessions and audits. Enforcement there needs a hook in

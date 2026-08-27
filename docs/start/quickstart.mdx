@@ -62,13 +62,16 @@ If your agent runs in a [supported harness](/reference/harnesses), follow these 
     failproofai config --status
     ```
 
-    Cloud receives policy decisions and session transcripts. Add `--no-transcripts` if you only want policy decisions sent. For shared shells and CI, use `FAILPROOFAI_CLOUD_TOKEN` instead of putting the key in command history.
+    Cloud receives policy decisions and session transcripts. To send decisions only, connect first, then set `collector.sessions` to `false` in `~/.failproofai/config.json`; the current `--no-transcripts` setup flag does not apply that setting. For shared shells and CI, use `FAILPROOFAI_CLOUD_TOKEN` instead of putting the key in command history.
   </Tab>
 </Tabs>
 
 ## Verify it
 
 Run one of your agents and ask it to perform a normal task. Then:
+
+A tool-call deny is verified on all 12 supported harnesses. Turn-end enforcement
+is verified on 8; other harness-event pairs may be observation-only or unverified.
 
 - Open **Policies → Activity** in the local dashboard to see policy decisions.
 - Open **Observe → Sessions** in Cloud to see the full run.

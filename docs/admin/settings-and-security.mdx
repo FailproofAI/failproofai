@@ -13,7 +13,7 @@ fp settings set <key> <value>
 
 ## Data handling
 
-A connected machine sends policy decisions and full session transcripts by default. Use `failproofai config --token <key> --no-transcripts` to send decisions only.
+A connected machine sends policy decisions and full session transcripts by default. To send decisions only, set `collector.sessions` to `false` in the machine's `~/.failproofai/config.json` after connecting. The current `--no-transcripts` setup flag does not apply that setting.
 
 Credentials are scrubbed on the machine before upload, but redaction is a safety floor, not a substitute for access control.
 
@@ -28,7 +28,7 @@ Use separate keys for people, automation, and machines. Give each only the permi
 ## Checklist
 
 - Require the narrowest useful permissions.
-- Use `--no-transcripts` where full content is unnecessary.
+- Set `collector.sessions` to `false` where full content is unnecessary.
 - Review who can deploy enforcing policies.
 - Test policies in observe mode before enforcement.
 - Keep machine labels clear and machine IDs stable.

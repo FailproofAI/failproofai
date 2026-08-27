@@ -58,7 +58,7 @@ An evaluator receives a session that has finished, which means one of two things
 
 `ended_at` is present only when the session emitted an end event, so a session dispatched on inactivity arrives without one. Polling cadence follows `next_poll_secs`, then the evaluator's `default_poll_interval_secs`, then the server's `EVALUATOR_POLLING_INTERVAL_SECS`, clamped between one second and one hour with a one-hour wall-clock cap.
 
-Because the request carries complete event payloads, an evaluator sees full transcript content. That is worth knowing on a machine connected with `--no-transcripts`: the decisions it sends will not include the transcripts an evaluator would otherwise read.
+Because the request carries complete event payloads, an evaluator sees full transcript content. Treat evaluator delivery as transcript delivery when deciding what data the machine may send.
 
 ## Good evaluation targets
 

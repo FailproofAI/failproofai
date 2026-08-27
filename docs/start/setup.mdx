@@ -37,7 +37,7 @@ Cloud uses one connection for two separate jobs:
 - Pull policies assigned to this machine.
 - Send policy decisions and session transcripts.
 
-Use `--no-transcripts` during setup if only decisions should leave the machine.
+To send decisions only, connect first, then set `collector.sessions` to `false` in `~/.failproofai/config.json`. Do not rely on `--no-transcripts`: the current setup path parses the flag but does not apply it. See [events and configuration](/reference/events-and-configuration#machine-configuration).
 
 <Note>
   `--machine-label` renames a machine that is already connected. Run it after the setup command, not as part of the first connection.
@@ -49,7 +49,7 @@ Use `--no-transcripts` during setup if only decisions should leave the machine.
 
 ```bash
 export FAILPROOFAI_CLOUD_TOKEN="<key>"
-failproofai config --token "$FAILPROOFAI_CLOUD_TOKEN" --no-transcripts
+failproofai config --token "$FAILPROOFAI_CLOUD_TOKEN"
 ```
 
 Administrator access is needed once to install the background service. Setup never opens an interactive `sudo` password prompt: it either succeeds without one or prints the commands an administrator must run.

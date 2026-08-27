@@ -740,6 +740,13 @@ function globCouldNameState(token: string): boolean {
 const BRACE_EXPANSION_LIMIT = 4096;
 
 /**
+ * How many expansion passes one token gets. One pass resolves the outermost
+ * group of every word, so this is a nesting-depth budget — and, like the width
+ * one, running out collapses what is left rather than leaving it unresolved.
+ */
+const BRACE_EXPANSION_ROUNDS = 24;
+
+/**
  * The words a token expands into, the way the shell would expand them.
  *
  * When the product would exceed the limit, every brace group collapses to `*`
@@ -749,7 +756,12 @@ const BRACE_EXPANSION_LIMIT = 4096;
  */
 function expandBraces(token: string): string[] {
   let words = [token];
-  for (let round = 0; round < 16; round++) {
+  // Bounded on WORK, not on nesting depth. A round cap that returned its
+  // half-expanded words handed a still-braced word to a compiler that escapes
+  // braces as literals, so seventeen levels of `{x,{x,…{x,a*}…}}` — legal shell
+  // with a branch that becomes `~/.fa*ilproofai` — came out matching nothing.
+  // Running out of budget must never mean "unresolved", only "collapsed".
+  for (let round = 0; round < BRACE_EXPANSION_ROUNDS; round++) {
     const next: string[] = [];
     let expanded = false;
     for (const word of words) {
@@ -764,10 +776,40 @@ function expandBraces(token: string): string[] {
       }
     }
     if (!expanded) return next;
-    if (next.length > BRACE_EXPANSION_LIMIT) return [token.replace(/\{[^{}]*\}/g, "*")];
+    if (next.length > BRACE_EXPANSION_LIMIT) return [collapseBraces(token)];
     words = next;
   }
-  return words;
+  return words.map(collapseBraces);
+}
+
+/**
+ * Every brace group in a word replaced by `*`, innermost first.
+ *
+ * The answer whenever expansion is given up on, and safe to be the answer
+ * because it can only WIDEN: `{a*,x}` reaches strictly less than `*` does. So a
+ * token too deep or too wide to expand is still decided, and still has to pass
+ * the same decoy test that keeps `rm -rf *` allowed. A brace left unmatched
+ * becomes `*` too, on the same reasoning.
+ */
+function collapseBraces(word: string): string {
+  let out = "";
+  let depth = 0;
+  for (const ch of word) {
+    if (ch === "{") {
+      // The OUTERMOST group, replaced whole. Resolving innermost-first needs one
+      // pass per level, which is another depth budget and another way to run out
+      // holding a word that still has braces in it. One pass, any depth.
+      if (depth === 0) out += "*";
+      depth++;
+      continue;
+    }
+    if (ch === "}") {
+      if (depth > 0) depth--;
+      continue;
+    }
+    if (depth === 0) out += ch;
+  }
+  return out;
 }
 
 /** The first brace group in a word, split on its TOP-LEVEL commas. */

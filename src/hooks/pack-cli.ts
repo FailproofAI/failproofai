@@ -2444,7 +2444,18 @@ async function add(rest: string[]): Promise<PackCliResult> {
     const result = await addPack(resolvedSource!, selection);
     const lines = [
       ...(result.replaced?.length
-        ? [`Replaced ${result.replaced.join(", ")} — same policies under a new name; your selection was kept.`]
+        ? [
+            // What was OBSERVED, and then the inference — not the inference
+            // stated as fact. Identical artifact bytes are the only evidence
+            // there is, and they cannot tell a renamed pack from a second pack
+            // one repository builds from the same source. Absorbing is the
+            // right default (a publisher renaming a set must not reset everyone
+            // who narrowed it), but the record that goes away is one the user
+            // installed on purpose, so the line has to say what to do when the
+            // guess was wrong instead of asserting it was right.
+            `Replaced ${result.replaced.join(", ")} — same artifact, so it was taken as this pack renamed, and your selection was carried over.`,
+            `If ${result.replaced.length > 1 ? "those are separate packs" : "that is a separate pack"}, re-add ${result.replaced.join(", ")} to restore ${result.replaced.length > 1 ? "them" : "it"}.`,
+          ]
         : []),
       result.resolvedFromLatest
         ? `Installed ${result.id}@${result.version} from ${result.source} (newest release; pinned to ${result.tag})`

@@ -708,6 +708,13 @@ describe("block-failproofai-commands — the state guard", () => {
       // exists for shell groups (`{ rm -rf x; }`) used to eat it.
       ["a brace that closes the token", "rm -rf ~/.{fail*,zz}"],
       ["a brace glob above the state", "shred ~/.f{a*,x}ilproofai/policies-config.json"],
+      // Deeper than any expansion budget. Running out of budget must collapse
+      // what is left to `*` — a superset — rather than hand a still-braced word
+      // to a compiler that escapes braces as literals.
+      ["17 levels, one round past the old cap", `rm -rf ~/.f${"{x,".repeat(17)}a*${"}".repeat(17)}ilproofai`],
+      ["200 levels", `rm -rf ~/.f${"{x,".repeat(200)}a*${"}".repeat(200)}ilproofai`],
+      ["200 levels, beneath the directory", `rm -rf ~/.f${"{x,".repeat(200)}a*${"}".repeat(200)}ilproofai/policies`],
+      ["200 levels, no glob in the branch", `rm -rf ~/.f${"{x,".repeat(200)}ai${"}".repeat(200)}lproofai`],
     ])("denies %s", async (_label, command) => {
       expect(await decide(command)).toBe("deny");
     });
@@ -726,6 +733,7 @@ describe("block-failproofai-commands — the state guard", () => {
       ["ordinary brace expansion", "rm -rf {dist,build}/*"],
       ["braces over unrelated dotfiles", "rm -rf ~/.{cache,config}/*"],
       ["braces naming nothing near the state", "rm -rf {a,b}{c,d}"],
+      ["deep braces over an unrelated path", `rm -rf /tmp/${"{x,".repeat(40)}a*${"}".repeat(40)}build`],
     ])("allows %s", async (_label, command) => {
       expect(await decide(command)).not.toBe("deny");
     });

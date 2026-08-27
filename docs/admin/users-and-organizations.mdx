@@ -38,7 +38,7 @@ Organizations isolate sessions, evaluations, audits, issues, alerts, queries, da
 
     ![The users page with the email search box, the filter chips, and a member card showing its grants grouped by resource.](/images/dashboard/users.png)
 
-    The grant chips in this frame predate the `incidents:*` to `issues:*` rename; the [permission catalog](/admin/keys-and-permissions#permission-catalog) is current.
+    The grant chips in this frame predate the `incidents:*` to `issues:*` rename; the [common permissions](/admin/keys-and-permissions#common-permissions) list is current.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -57,7 +57,7 @@ Organizations isolate sessions, evaluations, audits, issues, alerts, queries, da
 
 ### Grants, and what each verb needs
 
-Member grants use the same arithmetic as [keys](/admin/keys-and-permissions#grant-arithmetic): effective grants are `(set ∪ added) − removed`, and `--add` / `--remove` take compact `slug:action.action` tokens where dotted actions expand.
+Member grants use the same arithmetic as keys: effective grants are `(set ∪ added) − removed`, and `--add` / `--remove` take compact `slug:action.action` tokens where dotted actions expand. See [keys and permissions](/admin/keys-and-permissions).
 
 | Verb | Permission | Notes |
 | --- | --- | --- |
@@ -68,7 +68,7 @@ Member grants use the same arithmetic as [keys](/admin/keys-and-permissions#gran
 
 Disabling refuses two cases outright, as a Forbidden error rather than a validation message: a **protected** member cannot be disabled, and you cannot disable your own account. Disabling an already-disabled member, or enabling an already-active one, is a calm no-op. The API uses a delete operation for disabling, but it removes neither the account nor its membership record.
 
-Two organization settings govern membership and live on the [settings page](/admin/settings-and-security#organization-setting-reference): `default_user_permissions` preselects the permission set for a new invitation, and `allowed_sign_ins` gates which addresses can receive a sign-in code at all.
+Two organization settings govern membership: `default_user_permissions` preselects the permission set for a new invitation, and `allowed_sign_ins` gates which addresses can receive a sign-in code at all. Manage them from the [settings page](/admin/settings-and-security).
 
 <Warning>
   Disabling a user blocks that identity from signing in to every organization, not only the organization currently selected. Re-enabling restores global sign-in and the member's permissions in this organization.

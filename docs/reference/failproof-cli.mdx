@@ -43,7 +43,7 @@ For unattended Cloud setup:
 
 ```bash
 export FAILPROOFAI_CLOUD_TOKEN="<key>"
-failproofai config --token "$FAILPROOFAI_CLOUD_TOKEN"
+failproofai config
 ```
 
 To send decisions without transcripts, connect first and set `collector.sessions` to `false` in `~/.failproofai/config.json`. The current `--no-transcripts` setup flag is parsed but does not apply that setting.

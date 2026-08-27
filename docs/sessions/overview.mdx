@@ -17,7 +17,7 @@ A session is one agent run. It connects the prompt, model calls, tools, errors, 
 
     ```bash
     export FAILPROOFAI_CLOUD_TOKEN="<key>"
-    failproofai config --token "$FAILPROOFAI_CLOUD_TOKEN"
+    failproofai config
     ```
 
     Cloud receives full transcripts by default. To send policy decisions only, connect first, then set `collector.sessions` to `false` in `~/.failproofai/config.json`. The current `--no-transcripts` setup flag does not apply that setting.

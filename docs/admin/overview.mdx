@@ -7,7 +7,7 @@ icon: "settings-2"
 Administration is the Cloud half of Failproof AI. Organizations, members, API keys, org settings, and metered consumption all need a Cloud connection.
 
 <Note>
-  Failproof AI also runs with no account at all. A local machine enforces policy, keeps its session history on disk, serves the [local dashboard](/reference/local-dashboard) on `localhost:8020`, and runs `failproofai audit` without sending anything anywhere. If that is your deployment, one half of one page here still applies to you: [Data handling, per machine](/admin/settings-and-security#data-handling-per-machine) documents the `collector` keys in `~/.failproofai/config.json` — including `redact` and `environment` — and clean removal with `failproofai uninstall --purge`. All of that is machine-local and works with no account. Skip the rest.
+  Failproof AI also runs with no account at all. A local machine enforces policy, keeps its session history on disk, serves the [local dashboard](/reference/local-dashboard) on `localhost:8020`, and runs `failproofai audit` without sending anything anywhere. See [machine configuration](/reference/events-and-configuration#machine-configuration) for the local `collector` keys. Skip the rest of this section if you are not using Cloud.
 </Note>
 
 ## Where the controls live

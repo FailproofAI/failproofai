@@ -1,6 +1,19 @@
 # Changelog
 
-## 1.0.2-beta.9 — 2026-08-27
+## 1.0.2 — 2026-08-27
+
+The stable cut of the `1.0.2-beta.*` line, which stays documented in its own
+sections underneath. The entries below shipped in no beta — `next` stopped at
+`1.0.2-beta.8` — so they reach users for the first time here.
+
+Worth stating plainly for anyone arriving from 1.0.1: **`policies` is now the
+one noun**, and the package ships NO policies of its own. `policy`, `pack` and
+`p` still reach the same command, but a policy set is something you add
+(`failproofai policies add FailproofAI/policies`) or publish
+(`failproofai publish`) rather than something the install carries. A pack is
+pinned by the digest of its artifact and by the commit it was built from, and a
+pack that cannot be loaded DENIES within the scope it declared rather than
+disappearing quietly.
 
 ### Fixes
 

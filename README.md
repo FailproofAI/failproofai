@@ -138,10 +138,12 @@ Give a compatible agent the Failproof AI skill if you want it to guide setup,
 inspect the machine, and route policy, audit, session, and Cloud work correctly:
 
 ```sh
-npx skills add FailproofAI/skills --skill failproofai
+npx skills add FailproofAI/skills
 ```
 
-The skill supplies operating instructions; install and configure the product itself with:
+This installs the umbrella skill and its specialist siblings. To install only the
+umbrella, add `--skill failproofai`. Skills supply operating instructions; install
+and configure the product itself with:
 
 ```sh
 npm install -g failproofai

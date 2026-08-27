@@ -480,7 +480,7 @@ describe("a checkout with uncommitted policy files", () => {
 
     const r = await runPublishCommand(["--id", "me/x", "--dry-run"]);
     expect(r.exitCode).toBe(1);
-    expect(r.lines.join("\n")).toMatch(/uncommitted changes/);
+    expect(r.lines.join("\n")).toMatch(/policy files differ from it|uncommitted changes/);
     expect(r.lines.join("\n")).not.toMatch(/Committed/);
     expect(git("rev-parse", "HEAD")).toBe(head);
   }, 60_000);

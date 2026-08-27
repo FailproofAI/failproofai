@@ -618,7 +618,7 @@ describe("the version, when nobody says what it is", () => {
     const r = await publish([entry, "--repo", "acme/guards", "--out", OUT()]);
 
     expect(r.exitCode).toBe(1);
-    expect(r.lines.join("\n")).toMatch(/uncommitted changes/);
+    expect(r.lines.join("\n")).toMatch(/policy files differ from it|uncommitted changes/);
     // Refusing AFTER creating a repository and a release would be worse than
     // not refusing: it leaves a half-made artifact somebody has to clean up.
     expect(requests).toEqual([]);
@@ -648,14 +648,14 @@ describe("the version, when nobody says what it is", () => {
     writeFileSync(join(dir, "README.md"), "# guards, edited\n", "utf8");
     const edited = await publish([entry, "--repo", "acme/guards", "--out", OUT()]);
     expect(edited.exitCode).toBe(1);
-    expect(edited.lines.join("\n")).toMatch(/uncommitted changes/);
+    expect(edited.lines.join("\n")).toMatch(/policy files differ from it|uncommitted changes/);
     expect(requests).toEqual([]);
 
     gitIn(dir, "checkout", "--", "README.md");
     writeFileSync(join(dir, "notes.txt"), "scratch\n", "utf8");
     const untracked = await publish([entry, "--repo", "acme/guards", "--out", OUT()]);
     expect(untracked.exitCode).toBe(1);
-    expect(untracked.lines.join("\n")).toMatch(/uncommitted changes/);
+    expect(untracked.lines.join("\n")).toMatch(/policy files (differ from it|are not in it)|uncommitted changes/);
     expect(requests).toEqual([]);
   });
 
@@ -742,7 +742,7 @@ describe("the version, when nobody says what it is", () => {
     requests.length = 0;
     const third = await publish([entry, "--repo", "acme/guards", "--out", out]);
     expect(third.exitCode).toBe(1);
-    expect(third.lines.join("\n")).toMatch(/uncommitted changes/);
+    expect(third.lines.join("\n")).toMatch(/policy files (differ from it|are not in it)|uncommitted changes/);
     expect(requests).toEqual([]);
   });
 

@@ -270,7 +270,7 @@ describe("versionForPublish", () => {
     // commit` is useless advice to somebody with no repository, and the two
     // messages collapsed into one generic paragraph would satisfy this test and
     // the next one at the same time while helping neither reader.
-    expect(text).not.toContain("uncommitted changes");
+    expect(text).not.toMatch(/differ from it|are not in it|uncommitted changes/);
     // No version is smuggled back beside the refusal.
     expect(resolved).not.toHaveProperty("version");
   });
@@ -285,6 +285,11 @@ describe("versionForPublish", () => {
     expect("error" in resolved).toBe(true);
     if (!("error" in resolved)) return;
     const text = resolved.error.join("\n");
+    // The GENERIC dirty refusal — no `unpublishable`, so no source was named as
+    // the problem and the tree as a whole is what is wrong. The per-source
+    // refusal is a separate branch with its own remedy (`git add -f` for an
+    // ignored file), and collapsing the two into one paragraph would help
+    // neither reader.
     expect(text).toContain("uncommitted changes");
     expect(text).toContain("not the bytes in that commit");
     expect(text).toContain("--version <version>");
@@ -464,7 +469,7 @@ describe("provenance git could not be read", () => {
 
     expect(r.exitCode).toBe(1);
     const text = r.lines.join("\n");
-    expect(text).toContain("uncommitted changes");
+    expect(text).toMatch(/policy files differ from it|policy files are not in it/);
     expect(text).toContain("--version <version>");
     // It refuses under the DIRTY message rather than the not-a-checkout one.
     // Both fail closed, so exit 1 alone cannot tell them apart — and sending

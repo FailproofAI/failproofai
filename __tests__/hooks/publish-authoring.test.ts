@@ -388,7 +388,7 @@ describe("taking the version from a tag", () => {
     // built now, which is the answer a version that claims to name a commit has
     // to give.
     expect(r.exitCode).toBe(1);
-    expect(r.lines.join("\n")).toMatch(/uncommitted changes/);
+    expect(r.lines.join("\n")).toMatch(/policy files differ from it|uncommitted changes/);
     // Asserted both ways round, as before: the point is that the TAG was
     // refused, and a run that merely failed could still be failing for a
     // second reason.

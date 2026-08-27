@@ -8,7 +8,7 @@
 import { execFileSync } from "node:child_process";
 import { homedir, tmpdir } from "node:os";
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { INTEGRATION_TYPES } from "./types";
 import { PACK_COMMIT_RE, PACK_VERSION_RE } from "./pack-manifest";
@@ -716,19 +716,29 @@ function inferRepo(entryPath: string): string | null {
  * under it is left OUT of the dirty read — see {@link skipOutDir} for the
  * self-inflicted refusal that costs.
  */
-function inferCommit(entryPath: string, outDir?: string): { sha: string; dirty: boolean } | null {
+function inferCommit(
+  entryPath: string,
+  outDir?: string,
+  sources?: string[],
+): Provenance | null {
   const cwd = resolve(entryPath, "..");
-  const git = (args: string[]): string | null => {
+  // Two readers over one runner: `raw` for output whose LEADING bytes carry
+  // meaning (a porcelain status column is a space), `git` for the rest.
+  const raw = (args: string[]): string | null => {
     try {
       return execFileSync("git", args, {
         cwd,
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
         timeout: 5_000,
-      }).trim();
+      });
     } catch {
       return null;
     }
+  };
+  const git = (args: string[]): string | null => {
+    const out = raw(args);
+    return out === null ? null : out.trim();
   };
   const sha = git(["rev-parse", "HEAD"]);
   if (!sha || !/^[0-9a-f]{40}$/.test(sha)) return null;
@@ -744,7 +754,150 @@ function inferCommit(entryPath: string, outDir?: string): { sha: string; dirty: 
   // cannot vouch for costs one `--version`, and the alternative is publishing
   // one we could not read.
   const status = git(["status", "--porcelain", ...skipOutDir(git, entryPath, outDir)]);
-  return { sha, dirty: status !== "" };
+  // The sources are checked BY NAME as well as the tree as a whole. A clean
+  // tree does not mean the bytes being bundled are in HEAD: `.gitignore` hides
+  // a source from the tree read entirely, and the artifact would then carry a
+  // commit that does not contain it.
+  const sourceState = sources ? sourcesInHead(git, raw, sources) : ({ ok: true } as const);
+  return {
+    sha,
+    dirty: status !== "" || !sourceState.ok,
+    ...(sourceState.ok ? {} : { unpublishable: sourceState }),
+  };
+}
+
+/**
+ * `git status --porcelain -z`, parsed.
+ *
+ * The format is NOT one record per NUL field. Each entry is `XY <path>`, and a
+ * rename or copy is followed by its ORIGINAL path as a separate NUL field
+ * carrying NO status prefix:
+ *
+ *     R  b.mjs\0a.mjs\0
+ *
+ * Splitting on NUL and slicing three characters off every field therefore turns
+ * `a.mjs` into `js` — a path that resolves to nothing, is in nobody's file set,
+ * and made `publish` refuse a policy file its author had simply renamed. The
+ * original has to be CONSUMED by the entry that produced it.
+ */
+function porcelainEntries(status: string): Array<{ code: string; path: string; from?: string }> {
+  const fields = status.split("\0");
+  const out: Array<{ code: string; path: string; from?: string }> = [];
+  for (let i = 0; i < fields.length; i += 1) {
+    const entry = fields[i];
+    if (!entry || entry.length < 4) continue;
+    const code = entry.slice(0, 2);
+    const path = entry.slice(3);
+    if (code.startsWith("R") || code.startsWith("C")) {
+      const from = fields[i + 1];
+      i += 1;
+      out.push({ code, path, ...(from ? { from } : {}) });
+      continue;
+    }
+    out.push({ code, path });
+  }
+  return out;
+}
+
+/** What a checkout says about the bytes being published. `unpublishable` names
+ *  the sources that are not in HEAD, so the refusal can list them. */
+export interface Provenance {
+  sha: string;
+  dirty: boolean;
+  unpublishable?: { offending: string[]; why: "missing" | "modified" };
+}
+
+/**
+ * Whether every file about to be BUNDLED is in HEAD and unmodified.
+ *
+ * The whole-tree read above answers "is this checkout clean", which is a
+ * different question and misses three ways a source reaches the artifact
+ * without reaching the commit:
+ *
+ * - **Ignored files.** `git status --porcelain` omits anything `.gitignore`
+ *   matches, even with `--untracked-files=all`. A policy file the author
+ *   ignored therefore read as clean, got bundled, and the manifest recorded
+ *   HEAD as the commit it came from — bytes that commit does not contain.
+ * - **Untracked files in an otherwise clean tree**, for the same reason once
+ *   the ignore rules are wide.
+ * - **A tag.** `inferTaggedVersion` checked only the ENTRY, while `publish`
+ *   bundles every discovered policy file. A tagged commit, a clean entry and a
+ *   modified sibling published that sibling under a tag naming a commit
+ *   without it.
+ *
+ * One check for all of them, run against the actual source LIST, because that
+ * is the set whose bytes end up in the artifact — and provenance is a claim
+ * about those bytes and nothing else.
+ *
+ * `-z` rather than line splitting: git C-quotes a path containing a newline or
+ * a quote, so the parsed path is escape sequences that resolve to no file, and
+ * a legal filename containing ` -> ` is truncated by the rename split. NUL
+ * separation has neither problem — and a rename arrives as two NUL-separated
+ * fields rather than one arrow-joined line — which is what
+ * {@link porcelainEntries} reads.
+ */
+/**
+ * A path spelled the way git spells it: symlinks resolved.
+ *
+ * `rev-parse --show-toplevel` answers with the RESOLVED root, so a source named
+ * through a symlinked directory — `publish ~/policies/guards.mjs`, where
+ * `~/policies` links into a checkout — measures as outside the repository
+ * against it, and a committed, untouched file was reported as never committed
+ * with `git add -f` as the advice, which does nothing for it.
+ *
+ * It cuts the other way too, which is why this resolves the SOURCES rather than
+ * only un-resolving the root: a policy file that is itself a symlink out of the
+ * repository has a blob in HEAD holding the link's TARGET NAME, while the bytes
+ * bundled are the target's. Asking about the link's own path called that
+ * publishable and recorded a commit containing none of those bytes.
+ *
+ * Falls back to the path as given when it cannot be resolved, so a source that
+ * has since been deleted is still reported rather than throwing here.
+ */
+function realOrSelf(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    return path;
+  }
+}
+
+function sourcesInHead(
+  git: (args: string[]) => string | null,
+  raw: (args: string[]) => string | null,
+  sources: string[],
+): { ok: true } | { ok: false; offending: string[]; why: "missing" | "modified" } {
+  const paths = sources.map((f) => realOrSelf(resolve(f)));
+  // Present in the commit at all. `cat-file -e HEAD:<path>` is the cheapest
+  // question that distinguishes "tracked and committed" from "tracked but
+  // added only to the index", which `ls-files` would answer yes to.
+  const shown = git(["rev-parse", "--show-toplevel"]);
+  const top = shown === null ? null : realOrSelf(resolve(shown));
+  const missing: string[] = [];
+  for (const path of paths) {
+    const rel = top ? relative(top, path) : null;
+    if (!rel || rel.startsWith("..") || isAbsolute(rel)) {
+      missing.push(path);
+      continue;
+    }
+    if (git(["cat-file", "-e", `HEAD:${rel}`]) === null) missing.push(path);
+  }
+  if (missing.length > 0) return { ok: false, offending: missing, why: "missing" };
+
+  // `--ignored=matching` so an ignored source is REPORTED rather than omitted,
+  // which is the whole point of asking about the sources by name.
+  const status = raw([
+    "status", "--porcelain", "-z", "--untracked-files=all", "--ignored=matching",
+    "--", ...paths,
+  ]);
+  if (status === null) return { ok: false, offending: paths, why: "modified" };
+  // Both halves of a rename count: either one being listed means the set on
+  // disk is not the set HEAD holds.
+  const dirty = porcelainEntries(status).flatMap((entry) =>
+    [entry.path, entry.from].filter(Boolean).map((path) => resolve(top ?? ".", path as string)),
+  );
+  if (dirty.length > 0) return { ok: false, offending: dirty, why: "modified" };
+  return { ok: true };
 }
 
 /**
@@ -798,19 +951,23 @@ function skipOutDir(
  * name cannot — so this wins over the commit version. Absent a tag there is
  * nothing here to infer, and the commit the tree sits at is used instead.
  */
-function inferTaggedVersion(entryPath: string): string | null {
+function inferTaggedVersion(entryPath: string, sources?: string[]): string | null {
   const cwd = resolve(entryPath, "..");
-  const git = (args: string[]): string | null => {
+  const raw = (args: string[]): string | null => {
     try {
       return execFileSync("git", args, {
         cwd,
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
         timeout: 5_000,
-      }).trim();
+      });
     } catch {
       return null;
     }
+  };
+  const git = (args: string[]): string | null => {
+    const out = raw(args);
+    return out === null ? null : out.trim();
   };
   const tag = git(["describe", "--tags", "--exact-match", "HEAD"]);
   if (!tag || !PACK_VERSION_RE.test(tag)) return null;
@@ -820,6 +977,13 @@ function inferTaggedVersion(entryPath: string): string | null {
   // upsert. Compared against "" rather than tested for truthiness for the reason
   // `inferCommit` gives: null is "could not read the tree", and reading that as
   // clean is how a dirty tree slips out under a tag that does not describe it.
+  // Every source that will be BUNDLED, not just the entry. `publish` discovers
+  // and bundles each policy file in the directory, so a tagged commit with a
+  // clean entry and a modified sibling published that sibling under a tag
+  // naming a commit without it. Same check the sha path uses, so the two
+  // cannot disagree about what "this commit contains these bytes" means.
+  const covered = sourcesInHead(git, raw, sources ?? [entryPath]);
+  if (!covered.ok) return null;
   if (git(["status", "--porcelain", "--", entryPath]) !== "") return null;
   return tag;
 }
@@ -869,6 +1033,78 @@ function findEntry(dir: string): string[] {
     }
   }
   return found.sort();
+}
+
+/**
+ * Every relative specifier a source file names, in the four spellings a bundler
+ * follows. Anchored to a line start for the two import FORMS, because that is
+ * where a real one is: a `"./x.mjs"` inside a policy's own deny message is a
+ * string, not an edge of the module graph, and the file it happens to spell
+ * should not be dragged into a provenance check it has nothing to do with.
+ */
+const LOCAL_IMPORT_RES: readonly RegExp[] = [
+  /(?:^|\n)\s*(?:import|export)[^;\n]*?from\s*["'](\.[^"'\n]*)["']/g,
+  /(?:^|\n)\s*import\s*["'](\.[^"'\n]*)["']/g,
+  /\bimport\s*\(\s*["'](\.[^"'\n]*)["']\s*\)/g,
+  /\brequire\s*\(\s*["'](\.[^"'\n]*)["']\s*\)/g,
+];
+
+/** What a specifier without an extension can name on disk, in resolution order. */
+const LOCAL_IMPORT_EXTENSIONS: readonly string[] = [
+  "", ".mjs", ".js", ".ts", ".mts", ".cts", ".cjs", ".jsx", ".tsx", ".json",
+  "/index.mjs", "/index.js", "/index.ts",
+];
+
+/**
+ * The policy files plus everything they IMPORT.
+ *
+ * A file reaches the artifact by being imported, not only by being discovered.
+ * `findEntry` recognises policy files — ones that import failproofai and call
+ * `customPolicies.add` — while `bundleEntry` inlines whatever those files pull
+ * in, so a plain `./patterns.mjs` of shared matchers is in nobody's source list
+ * and in every byte of the bundle. Ignored, it is the exact bug
+ * {@link sourcesInHead} exists to close with a different file on the end of it:
+ * `git status` reports a clean tree, the policy file itself is committed, and
+ * the pack ships bytes HEAD does not contain under a version naming HEAD.
+ *
+ * Only files that EXIST are added, so a specifier this resolves differently
+ * from the bundler adds nothing rather than inventing a path to refuse over.
+ * Static and CommonJS spellings only — a computed `import(name)` is not
+ * followed here, and is not bundled either.
+ */
+function withLocalImports(sources: string[]): string[] {
+  const seen = new Set(sources.map((f) => resolve(f)));
+  const queue = [...seen];
+  // A pack is a handful of files; the cap is there so a cycle or a vendored
+  // tree cannot turn a publish into a filesystem walk.
+  while (queue.length > 0 && seen.size < 500) {
+    const file = queue.shift() as string;
+    let text: string;
+    try {
+      if (statSync(file).size > 512 * 1024) continue;
+      text = readFileSync(file, "utf8");
+    } catch {
+      continue;
+    }
+    for (const re of LOCAL_IMPORT_RES) {
+      for (const match of text.matchAll(re)) {
+        const base = resolve(dirname(file), match[1]);
+        for (const ext of LOCAL_IMPORT_EXTENSIONS) {
+          const candidate = base + ext;
+          if (seen.has(candidate)) break;
+          try {
+            if (!statSync(candidate).isFile()) continue;
+          } catch {
+            continue;
+          }
+          seen.add(candidate);
+          queue.push(candidate);
+          break;
+        }
+      }
+    }
+  }
+  return [...seen];
 }
 
 /**
@@ -1002,7 +1238,7 @@ function settleGitState(
         "Commit by hand, or name the version yourself: --version <version>.",
       ] };
     }
-    const made = inferCommit(entryPath, outDir);
+    const made = inferCommit(entryPath, outDir, packFiles);
     if (!made) return null;
     const files = `${staged} file${staged === 1 ? "" : "s"}`;
     return {
@@ -1043,25 +1279,45 @@ function settleGitState(
   // AT the root is reported individually, which is why every fixture that
   // publishes from the root missed it. The exclusion still applies, so the
   // expansion does not drag the build output back into the read.
+  // `-z`, not line splitting.
+  //
+  // The line parser this replaces was wrong twice over on paths git is entitled
+  // to hand back. Git C-QUOTES a path containing a newline or a quote, so the
+  // value parsed out was escape sequences resolving to no file on disk — and a
+  // legal policy file named `guards -> final.mjs` was truncated to `final.mjs`
+  // by the rename split. Either way the path matched none of the pack's files,
+  // landed in `foreign`, and publish refused to commit its OWN source over a
+  // filename it had mangled itself.
+  //
+  // NUL separation has neither problem: no quoting is applied, and a rename
+  // arrives as two separate entries rather than one arrow-joined line — so the
+  // old path is listed in its own right, which is correct here, since a rename
+  // leaves the tree differing from HEAD at both ends.
   const status = raw([
     "status",
     "--porcelain",
+    "-z",
     "--untracked-files=all",
     ...skipOutDir(git, entryPath, outDir),
   ]);
   if (root === null || status === null) return null;
-  const dirty = status
-    .split("\n")
-    .map((line) => line.slice(3).trim())
-    // A rename reads `old -> new`; the new path is the one that exists.
-    .map((path) => (path.includes(" -> ") ? path.split(" -> ")[1] : path))
-    .map((path) => path.replace(/^"|"$/g, ""))
-    .filter(Boolean)
-    .map((path) => resolve(root, path));
+  const entries = porcelainEntries(status);
+  // The path that EXISTS is the one to stage and the one to judge. A rename's
+  // original is staged too — otherwise the deletion half is left uncommitted
+  // and the tree is still dirty afterwards — but it is NOT judged foreign on
+  // its own: renaming one of the pack's own files is the pack's business, and
+  // treating the vacated name as somebody else's file made publish refuse a
+  // policy file its author had merely renamed.
+  const dirty = entries.map((entry) => resolve(root, entry.path));
+  const renamedFrom = entries
+    .filter((entry) => entry.from)
+    .map((entry) => resolve(root, entry.from as string));
   if (dirty.length === 0) return null;
 
   const mine = new Set(packFiles.map((f) => resolve(f)));
   const foreign = dirty.filter((path) => !mine.has(path));
+  // Staged alongside, so a rename lands whole.
+  const toStage = [...dirty, ...renamedFrom];
   if (foreign.length > 0) {
     return { error: [
       `The version names a commit, and this tree has uncommitted changes outside the policy files.`,
@@ -1074,14 +1330,14 @@ function settleGitState(
 
   const problem = identity();
   if (problem) return { error: problem };
-  git(["add", "--", ...dirty]);
+  git(["add", "--", ...toStage]);
   if (git(["commit", "-q", "-m", `publish ${id}`]) === null) {
     return { error: [
       "Could not commit the policy files.",
       "Commit by hand, or name the version yourself: --version <version>.",
     ] };
   }
-  const made = inferCommit(entryPath, outDir);
+  const made = inferCommit(entryPath, outDir, packFiles);
   if (!made || made.dirty) return null;
   return {
     provenance: made,
@@ -1140,7 +1396,7 @@ export function versionFromCommit(sha: string): string {
  * `--version` overrides all of it, and every refusal names it for that reason.
  */
 export function versionForPublish(
-  provenance: { sha: string; dirty: boolean } | null,
+  provenance: Provenance | null,
 ): { version: string } | { error: string[] } {
   if (!provenance) {
     return {
@@ -1148,6 +1404,28 @@ export function versionForPublish(
         "This pack is versioned by the commit it is built from, and this directory is not a git checkout.",
         "  git init && git add -A && git commit -m \"first policies\"",
         "Then publish again. To publish without git, name the version yourself: --version <version>.",
+      ],
+    };
+  }
+  // A source that is not in HEAD at all — ignored by `.gitignore`, or never
+  // committed — gets its own refusal. The generic "this tree has uncommitted
+  // changes" is wrong for it and its remedy (`git add -A && git commit`) does
+  // not work: an ignored file stays ignored, so the advice would loop.
+  if (provenance.unpublishable) {
+    const { offending, why } = provenance.unpublishable;
+    return {
+      error: [
+        why === "missing"
+          ? "The version names a commit, and these policy files are not in it — ignored, or never committed:"
+          : "The version names a commit, and these policy files differ from it:",
+        ...offending.slice(0, 8).map((path) => `  ${path}`),
+        ...(offending.length > 8 ? [`  …and ${offending.length - 8} more`] : []),
+        why === "missing"
+          ? "They would be bundled into the artifact while the commit it names does not contain them."
+          : "They would be bundled as they are now, not as that commit holds them.",
+        why === "missing"
+          ? "Commit them — `git add -f` if they are ignored — or name the version yourself: --version <version>."
+          : "Commit them, or name the version yourself: --version <version>.",
       ],
     };
   }
@@ -1674,7 +1952,15 @@ async function publish(rest: string[]): Promise<PackCliResult> {
   // A tag on HEAD is somebody SAYING what this release is, so it wins over the
   // sha, which only reports one. Both are properties of the tree, so neither
   // waits on the repository being known — see the block below the usage text.
-  let version = flag("version") ?? (entry ? inferTaggedVersion(entry) : null) ?? undefined;
+  // The set that will actually be BUNDLED — every discovered policy file, not
+  // just the entry, and everything those files IMPORT, which the bundler inlines
+  // and discovery never names. Both the tag path and the sha path are handed it,
+  // so neither can accept a version for bytes the commit does not hold.
+  const bundledSources = withLocalImports(
+    discovered.length > 0 ? discovered : entry ? [entry] : [],
+  );
+  let version =
+    flag("version") ?? (entry ? inferTaggedVersion(entry, bundledSources) : null) ?? undefined;
   let versionFromSha = false;
   // The id and the repo are usually the same words, and requiring both is asking
   // the same question twice. Either one alone answers for the other.
@@ -1721,7 +2007,7 @@ async function publish(rest: string[]): Promise<PackCliResult> {
   // it is where the LAST run's assets are sitting, and inside the checkout by
   // default. See `skipOutDir`.
   const outDirEarly = resolve(flag("out") ?? "dist-pack");
-  let provenance = entry ? inferCommit(entry, outDirEarly) : null;
+  let provenance = entry ? inferCommit(entry, outDirEarly, bundledSources) : null;
   const gitLines: string[] = [];
   if (!version && entry && interactive) {
     // Carry the git work rather than handing it back. TTY only: a commit made

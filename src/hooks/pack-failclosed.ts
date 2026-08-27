@@ -112,6 +112,26 @@ function unionMatch(matchers: PolicyMatcher[]): PolicyMatcher {
  * user took 3 of 40 from is not a failure because the other 37 did not load.
  * `disabled` is the `disabledCustomPolicies` set, keyed `pack:<id>@<ver>:<name>`.
  */
+/**
+ * True when a pack scoped to specific agents does not cover the one running.
+ *
+ * The registration path already skips a pack whose `clis` excludes this agent;
+ * the fail-closed path did not, so a pack scoped to `codex` that failed to load
+ * denied on `claude` too — locking an agent out over enforcement it was never
+ * configured to have, until a human repaired a pack it does not use. `null` or
+ * absent means every agent, as it does everywhere else.
+ */
+function outOfScope(clis: string[] | null | undefined, cli: string | undefined): boolean {
+  if (!cli) return false;
+  // `Array.isArray`, not truthiness. A `clis` of `"codex"` is a truthy value
+  // with a `length` and an `includes`, so a string scope silently narrowed this
+  // to nothing and skipped the guard for every agent — a check meant to stop
+  // over-denying turning into the thing that under-denies. Unreadable scope
+  // means every agent, exactly as an unreadable `match` means every event.
+  if (!Array.isArray(clis) || clis.length === 0) return false;
+  return !clis.every((c) => typeof c === "string") ? false : !clis.includes(cli);
+}
+
 export function missingGuards(input: {
   errors: PackError[];
   packs: ResolvedPack[];
@@ -120,6 +140,8 @@ export function missingGuards(input: {
   /** Packs handed to the loader whose entry artifact failed to import. */
   failed: Map<string, PolicyLoadFailure>;
   disabled: ReadonlySet<string>;
+  /** The agent this evaluation is for, so a pack scoped away from it stays quiet. */
+  cli?: string;
 }): MissingGuard[] {
   const out: MissingGuard[] = [];
 
@@ -128,6 +150,7 @@ export function missingGuards(input: {
     // An observe pack denying on failure would deny for something that, had it
     // loaded, would have allowed.
     if (err.effect === "observe") continue;
+    if (outOfScope(err.clis, input.cli)) continue;
     const declared = err.declared ?? [];
     out.push({
       packId: err.id ?? "(unnamed pack)",
@@ -143,6 +166,7 @@ export function missingGuards(input: {
   // (c) Resolved, but registered less than it declared.
   for (const pack of input.packs) {
     if (pack.effect === "observe") continue;
+    if (outOfScope(pack.clis, input.cli)) continue;
     const loadFailure = input.failed.get(pack.id);
     if (loadFailure && PERMANENT_LOAD_FAILURES.has(loadFailure.type)) {
       const taken = pack.enabled ?? pack.policies.map((p) => p.name);

@@ -716,8 +716,16 @@ const GLOB_DECOYS = [
  * allowed because they sweep the decoys too; `rm -rf /tmp/test-failures*` stays
  * allowed because it reaches no candidate at all.
  */
-function globCouldNameState(token: string): boolean {
-  if (!/[*?[{]/.test(token)) return false;
+function globCouldNameState(raw: string): boolean {
+  // Both readings of a trailing `)`: part of the pattern, and the close of a
+  // subshell that wrapped it. Trying both is safe in the way widening always is
+  // here — the decoy test still has to pass.
+  const stripped = raw.replace(/^[()]+|[()]+$/g, "");
+  return globWordCouldNameState(raw) || (stripped !== raw && globWordCouldNameState(stripped));
+}
+
+function globWordCouldNameState(token: string): boolean {
+  if (!GLOB_METACHAR_RE.test(token)) return false;
   // Braces FIRST, because that is the order the shell works in: brace expansion
   // rewrites the word into several words, and only then is each one matched
   // against the disk. Compiling `{a*,x}` as an alternation of escaped literals
@@ -862,6 +870,90 @@ function wordNamesState(word: string): boolean {
 }
 
 /**
+ * Everything that makes a token a PATTERN rather than a path.
+ *
+ * The extended-glob operators are two characters wide, and three of them begin
+ * with a character that means nothing on its own — which is how
+ * `rm -rf ~/.f@(ailproofai)` was not even recognised as a glob, let alone
+ * compiled wrong.
+ */
+const GLOB_METACHAR_RE = /[*?[{]|[@+!]\(/;
+
+/**
+ * A glob compiled to regex source, extended-glob operators included.
+ *
+ * `@(a|b)`, `?(a|b)`, `*(a|b)`, `+(a|b)` and `!(a|b)` are groups carrying a
+ * quantifier, and their alternatives are patterns in their own right — so this
+ * recurses rather than escaping whatever it finds inside them. `!(…)` is a
+ * negation a regex cannot express against a whole path segment, so it becomes
+ * `[^/]*`: a superset, which is the direction that stays safe here, because
+ * reaching too far is settled by the decoy test and reaching too little is a
+ * bypass.
+ */
+function compileGlobPattern(token: string): string {
+  let pattern = "";
+  for (let i = 0; i < token.length; i++) {
+    const extended = extglobAt(token, i);
+    if (extended) {
+      pattern += extended.source;
+      i = extended.end;
+      continue;
+    }
+    const ch = token[i];
+    if (ch === "*") pattern += "[^/]*";
+    else if (ch === "?") pattern += "[^/]";
+    else if (ch === "[") {
+      const bracket = bracketExpressionAt(token, i);
+      if (!bracket) {
+        // An unclosed `[` is a literal `[` to the shell, so it is one here.
+        // Bailing out would answer "names nothing" on the strength of a
+        // malformed pattern — the same shape as a budget that returns instead
+        // of collapsing.
+        pattern += "\\[";
+        continue;
+      }
+      pattern += bracket.source;
+      i = bracket.end;
+    } else pattern += ch.replace(/[.+^${}()|\\\]]/g, "\\$&");
+  }
+  return pattern;
+}
+
+/** One `@(…)`-style group, with its alternatives compiled as patterns. */
+function extglobAt(token: string, start: number): { source: string; end: number } | null {
+  const operator = token[start];
+  if (!"?*+@!".includes(operator) || token[start + 1] !== "(") return null;
+  const alternatives: string[] = [];
+  let current = "";
+  let depth = 0;
+  let i = start + 1;
+  for (; i < token.length; i++) {
+    const ch = token[i];
+    if (ch === "(") {
+      depth++;
+      if (depth === 1) continue;
+    } else if (ch === ")") {
+      depth--;
+      if (depth === 0) {
+        alternatives.push(current);
+        break;
+      }
+    } else if (ch === "|" && depth === 1) {
+      alternatives.push(current);
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  // Unterminated, so the operator is an ordinary character rather than a group.
+  if (i >= token.length) return null;
+  if (operator === "!") return { source: "[^/]*", end: i };
+  const body = alternatives.map((alternative) => compileGlobPattern(alternative)).join("|");
+  const quantifier = operator === "?" ? "?" : operator === "*" ? "*" : operator === "+" ? "+" : "";
+  return { source: `(?:${body})${quantifier}`, end: i };
+}
+
+/**
  * One shell bracket expression, translated into a JavaScript character class.
  *
  * Copying the shell's text into a regex verbatim reads two of its spellings
@@ -918,26 +1010,8 @@ function bracketExpressionAt(token: string, start: number): { source: string; en
  * the candidates. Braces are already gone by here; an unmatched one is literal.
  */
 function globPrefixNamesState(token: string): boolean {
-  if (!/[*?[]/.test(token)) return false;
-  let pattern = "^";
-  for (let i = 0; i < token.length; i++) {
-    const ch = token[i];
-    if (ch === "*") pattern += "[^/]*";
-    else if (ch === "?") pattern += "[^/]";
-    else if (ch === "[") {
-      const bracket = bracketExpressionAt(token, i);
-      if (!bracket) {
-        // An unclosed `[` is a literal `[` to the shell, so it is one here.
-        // Bailing out would answer "names nothing" on the strength of a
-        // malformed pattern — the same shape as a budget that returns instead
-        // of collapsing.
-        pattern += "\\[";
-        continue;
-      }
-      pattern += bracket.source;
-      i = bracket.end;
-    } else pattern += ch.replace(/[.+^${}()|\\\]]/g, "\\$&");
-  }
+  if (!GLOB_METACHAR_RE.test(token)) return false;
+  const pattern = "^" + compileGlobPattern(token);
   let re: RegExp;
   try {
     re = new RegExp(pattern + "$");
@@ -1000,17 +1074,19 @@ function bareToken(token: string): string {
 }
 
 /**
- * The same strip, MINUS the braces, for the glob scan.
+ * Quotes only, for the glob scan.
  *
- * `bareToken` drops `{` and `}` because a shell group writes them around a
- * command (`{ rm -rf x; }`). A brace EXPANSION wears the same characters and
- * ends the token with one, so `~/.{fail*,zz}` arrived here as `~/.{fail*,zz` —
- * an unterminated group that expands to nothing and compiles to a pattern
- * matching nothing. A trailing `}` that really did close a shell group leaves a
- * word still carrying the literal path, which the literal check reads.
+ * `bareToken` also drops `(`, `)`, `{` and `}`, because a shell group and a
+ * subshell write them around a command. Every one of those characters is ALSO
+ * how a pattern is spelled, and both spellings end the token with one: a brace
+ * expansion (`~/.{fail*,zz}`) and an extended glob (`~/.f@(ailproofai)`) each
+ * arrived here decapitated — an unterminated group that expands to nothing and
+ * compiles to a pattern matching nothing. A closing character that really did
+ * belong to a shell group leaves a word still carrying the literal path, which
+ * the literal check reads, and `globCouldNameState` tries the stripped form too.
  */
 function unquotedToken(token: string): string {
-  return token.replace(/^[()'"]+|[()'"]+$/g, "");
+  return token.replace(/^['"]+|['"]+$/g, "");
 }
 
 /** The name a shell would exec, given a token: `/usr/bin/rm` → `rm`. */

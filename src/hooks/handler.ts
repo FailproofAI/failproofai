@@ -570,6 +570,7 @@ export async function evaluateHookEvent(
           registered: registeredByPack,
           failed: loadResult.packFailures,
           disabled: disabledCustomPolicies,
+          cli,
         });
         if (guards.length > 0) {
           const reason = packFailureReason(guards);

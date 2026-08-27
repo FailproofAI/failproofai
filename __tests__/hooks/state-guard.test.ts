@@ -732,6 +732,22 @@ describe("block-failproofai-commands — the state guard", () => {
       // An unclosed `[` is a literal `[` to the shell. Bailing out would answer
       // "names nothing" off a malformed pattern.
       ["an unclosed bracket beside the literal", "rm -rf ~/.failproofai[x"],
+      // Bash extended globs. Three of the five operators begin with a character
+      // that means nothing on its own, so `@(`, `+(` and `!(` were not even
+      // recognised as making the token a pattern.
+      ["an extglob group", "rm -rf ~/.f@(ailproofai)"],
+      ["an extglob through bash -O extglob -c", "bash -O extglob -c 'rm -rf ~/.f@(ailproofai)'"],
+      ["an extglob with alternatives", "rm -rf ~/.f@(ailproofai|other)"],
+      ["an optional group", "rm -rf ~/.f?(a)ilproofai"],
+      ["a starred group", "rm -rf ~/.f*(a)ilproofai"],
+      ["a plussed group", "rm -rf ~/.f+(a)ilproofai"],
+      ["a nested extglob", "rm -rf ~/.f@(@(a)ilproofai)"],
+      ["a star inside an extglob", "rm -rf ~/.f@(a*)ilproofai"],
+      ["a negated class inside an extglob", "rm -rf ~/.f@([!b])ilproofai"],
+      ["an extglob wrapping the whole name", "rm -rf ~/@(.failproofai)"],
+      ["an extglob beneath the directory", "rm -rf ~/.f@(ailproofai)/policies"],
+      ["an extglob above a state file", "shred ~/.f@(ailproofai)/policies-config.json"],
+      ["an extglob inside a brace", "rm -rf ~/.f{@(a),x}ilproofai"],
     ])("denies %s", async (_label, command) => {
       expect(await decide(command)).toBe("deny");
     });
@@ -754,6 +770,10 @@ describe("block-failproofai-commands — the state guard", () => {
       ["a negated class over an unrelated dotfile", "rm -rf ~/.[!x]onfig"],
       ["a negated class on an unrelated path", "rm -rf /tmp/[!a]uild"],
       ["a read through a negated class", "cat ~/.f[!b]ilproofai/policies-config.json"],
+      ["an extglob elsewhere", "rm -rf /tmp/@(build|dist)"],
+      ["a negated extglob sweeping home", "rm -rf ~/.!(config)"],
+      ["a read through an extglob", "cat ~/.f@(ailproofai)/policies-config.json"],
+      ["an unterminated group", "rm -rf /tmp/@(build"],
     ])("allows %s", async (_label, command) => {
       expect(await decide(command)).not.toBe("deny");
     });

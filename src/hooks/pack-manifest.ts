@@ -157,6 +157,14 @@ export interface PackError {
    * Lets the deny name what is missing instead of being blanket.
    */
   declared?: PolicyCatalogEntry[];
+  /**
+   * The agents this pack was scoped to, when the manifest got far enough to say.
+   *
+   * Carried for the same reason `effect` is. A pack scoped to one CLI that fails
+   * to load must not deny on the others: they were never guarded by it, so a
+   * deny on their behalf locks an agent out over enforcement it never had.
+   */
+  clis?: string[] | null;
 }
 
 export interface PackReadResult {
@@ -403,6 +411,14 @@ export function readInstalledPacks(): PackReadResult {
         // Best effort: an entry too malformed to list policies yields nothing
         // here, and a deny built from it is unavoidably blanket.
         ...(Array.isArray(rec?.policies) ? { declared: safeDeclared(rec.policies) } : {}),
+        // A list of names, or nothing. Anything else is unreadable scope, and
+        // unreadable scope has to mean "every agent" — the same reasoning that
+        // widens an unreadable `match`: a narrowing nobody can parse says
+        // nothing true, and here the narrowing would be the thing that lets an
+        // unguarded agent through.
+        ...(Array.isArray(rec?.clis) && rec.clis.every((c) => typeof c === "string")
+          ? { clis: rec.clis }
+          : {}),
       });
     }
   }

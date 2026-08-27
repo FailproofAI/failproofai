@@ -196,6 +196,57 @@ describe("a match nobody can read", () => {
   });
 });
 
+// The registration path skips a pack whose `clis` excludes this agent. The
+// fail-closed path did not, so a pack scoped to one agent that failed to load
+// denied on every other one — locking an agent out over enforcement it was
+// never configured to have, until a human repaired a pack it does not use.
+describe("a pack scoped away from the agent that is running", () => {
+  it("does not deny an agent the pack never covered", () => {
+    const guards = call({
+      packs: [pack({ clis: ["codex"], policies: [policy("p")] })],
+      registered: new Map([["acme/finance", new Set()]]),
+      cli: "claude",
+    });
+    expect(guards).toEqual([]);
+  });
+
+  it("still denies the agent it does cover", () => {
+    const guards = call({
+      packs: [pack({ clis: ["codex"], policies: [policy("p")] })],
+      registered: new Map([["acme/finance", new Set()]]),
+      cli: "codex",
+    });
+    expect(guards).toHaveLength(1);
+  });
+
+  it("denies every agent when the pack named none", () => {
+    for (const clis of [null, undefined, []]) {
+      const guards = call({
+        packs: [pack({ clis, policies: [policy("p")] })],
+        registered: new Map([["acme/finance", new Set()]]),
+        cli: "claude",
+      });
+      expect(guards, String(clis)).toHaveLength(1);
+    }
+  });
+
+  // Same reasoning as an unreadable `match`: a narrowing nobody can parse says
+  // nothing true, and here the narrowing is what would let an agent through.
+  it("denies every agent when the scope is unreadable", () => {
+    const guards = call({
+      errors: [{ id: "acme/x", reason: "artifact missing", effect: "enforce", clis: "codex" } as never],
+      cli: "claude",
+    });
+    expect(guards).toHaveLength(1);
+  });
+
+  it("scopes a pack that failed before it could be resolved", () => {
+    const scoped = { id: "acme/x", reason: "artifact missing", effect: "enforce", clis: ["codex"] };
+    expect(call({ errors: [scoped as never], cli: "claude" })).toEqual([]);
+    expect(call({ errors: [scoped as never], cli: "codex" })).toHaveLength(1);
+  });
+});
+
 describe("the message", () => {
   it("names the pack, the missing policies, and the human command", () => {
     // Recovery is a human terminal action: the agent cannot run it, because

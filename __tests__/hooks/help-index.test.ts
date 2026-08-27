@@ -292,4 +292,20 @@ describe("a bare command runs, it does not describe itself", () => {
     expect(run.exitCode).toBe(0);
     expect(run.stdout).toMatch(/two commands, from nothing/i);
   });
+
+  // Behaviour changed and the screen describing it did not. `publish` now
+  // REFUSES an existing private repository — exit 1, nothing created — but this
+  // help still promised "an existing private one still publishes, and warns",
+  // and named `--allow-private` nowhere at all. So the only documentation of the
+  // command told a publisher the run would go through, and left the one flag
+  // that gets past the refusal discoverable only by triggering it.
+  it("publish --help describes the private-repo refusal and names the way past it", () => {
+    const run = cli("publish", "--help");
+
+    expect(run.exitCode).toBe(0);
+    expect(run.stdout).toMatch(/--allow-private/);
+    expect(run.stdout).toMatch(/REFUSED/);
+    // The stale promise, in the words it was written in.
+    expect(run.stdout).not.toMatch(/still publishes/);
+  });
 });

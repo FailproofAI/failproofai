@@ -1,5 +1,6 @@
 "use server";
 
+import { readPackPolicyParams } from "@/src/hooks/policy-evaluator";
 import { configuredCustomPolicyPaths, readMergedHooksConfig } from "@/src/hooks/hooks-config";
 import { hooksInstalledInSettings, getSettingsPath } from "@/src/hooks/manager";
 import { listIntegrations } from "@/src/hooks/integrations";
@@ -258,7 +259,13 @@ export async function getHooksConfigAction(): Promise<HooksConfigPayload> {
                   { type: v.type, description: v.description, default: v.default },
                 ]),
               ),
-              currentParams: config.policyParams?.[policy.name] ?? {},
+              // The evaluator's OWN lookup, called rather than re-implemented.
+              // This side had its own copy with an unscoped bare-name
+              // fallback, so a stranger's pack that happened to declare
+              // `block-sudo` was shown our pack's saved parameters — which the
+              // modal then seeded its inputs from and Save wrote back under
+              // the stranger's key, making the wrong display real.
+              currentParams: readPackPolicyParams(config.policyParams, pack.id, policy.name) ?? {},
             }
           : {}),
       });

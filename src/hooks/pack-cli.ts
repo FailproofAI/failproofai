@@ -1844,11 +1844,15 @@ function ghError(res: { status: number; json: Record<string, unknown> | null; te
  * and stop. That is what `pack build` now resolves to, so the old command keeps
  * working and means the same thing.
  *
- * Two failures the manual flow let through silently, both refused here:
+ * Two failures the manual flow let through silently, both refused BEFORE
+ * anything is created or uploaded:
  *   - a tag that does not describe the manifest version, which installs and then
  *     reports a version matching no URL;
- *   - a private repository, which publishes to nobody, because installs are
- *     anonymous HTTPS with no credential to offer.
+ *   - an existing private repository, which publishes to nobody, because
+ *     installs are anonymous HTTPS with no credential to offer. `--allow-private`
+ *     is for an author who genuinely wants that and will distribute the artifact
+ *     some other way; a repository publish CREATES is public by construction, so
+ *     the refusal only ever fires on reuse.
  */
 /**
  * The two things `publish` cannot work out on its own, asked instead of
@@ -1965,6 +1969,11 @@ async function publish(rest: string[]): Promise<PackCliResult> {
   // The id and the repo are usually the same words, and requiring both is asking
   // the same question twice. Either one alone answers for the other.
   const dryRun = rest.includes("--dry-run") || !repo;
+  // The way past the private-repository refusal below, for somebody who really
+  // does want a pack nobody can `policies add` and will distribute the assets
+  // another way. It buys a publish, never a working install, so the success
+  // message still says so.
+  const allowPrivate = rest.includes("--allow-private");
   // A dry run publishes nothing, so the id only has to name the artifact it
   // writes — and refusing to build one because the folder has no git remote
   // yet blocked the exact thing a dry run is for: looking at the pack BEFORE
@@ -1991,6 +2000,7 @@ async function publish(rest: string[]): Promise<PackCliResult> {
       "Outside one, name them:",
       "       [--id <publisher/name>] [--tag <tag>] [--notes <text>]",
       "       [--out <dir>] [--effect enforce|observe] [--dry-run]",
+      "       [--allow-private]  (a private repo installs for nobody; this says so)",
       "",
       "With no --repo it writes the three release assets and stops.",
     ]);
@@ -2066,6 +2076,27 @@ async function publish(rest: string[]): Promise<PackCliResult> {
     if ("error" in ensured) return fail(ensured.error);
     created = ensured.created;
     repoInfo = ensured.info;
+    // A private repository is not a smaller audience, it is no audience:
+    // `fetchBytes` in pack-store.ts sends no Authorization header at all, by
+    // design, so every install 404s. This used to upload all three assets, exit
+    // 0, print `policies add <repo>` and merely append a warning underneath —
+    // reporting success for a release nobody could install and leaving assets
+    // behind that advertise that dead route. Refuse HERE, before the release
+    // exists and before anything is built, so there is nothing to clean up.
+    // A repository this command creates is made public, so this only ever
+    // fires on reuse of one that was already private.
+    if (repoInfo.json?.private === true && !allowPrivate) {
+      return fail([
+        `${repo} is PRIVATE, so nothing was published.`,
+        "Installing a pack fetches its release assets over anonymous HTTPS with no",
+        "credential to offer, so every install would 404 — including your own from",
+        "another machine. Publishing would only have attached three assets",
+        "advertising a route nobody can take.",
+        `Make it public and re-run:  gh repo edit ${repo} --visibility public`,
+        "Or, to keep it private and hand the pack over some other way, publish it",
+        "with --allow-private.",
+      ]);
+    }
   }
   const tag = flag("tag") ?? version;
 
@@ -2142,8 +2173,9 @@ async function publish(rest: string[]): Promise<PackCliResult> {
   }
 
 
-  // A private repo is not a smaller audience, it is no audience: `pack add`
-  // sends no Authorization header at all, by design, so every install 404s.
+  // Only ever true when --allow-private was passed — the refusal above returns
+  // otherwise — so this is the warning that goes with a publish the author
+  // asked for anyway, not a discovery made too late to act on.
   const isPrivate = repoInfo?.json?.private === true;
 
   // Reuse a release on this tag rather than failing on it. Re-publishing a
@@ -2228,18 +2260,24 @@ async function publish(rest: string[]): Promise<PackCliResult> {
       (versionFromSha ? " That names the commit it was built from." : ""),
     `  ${assets.length} assets attached`,
     "",
-    "Anyone can now install it:",
-    `  failproofai policies add ${repo}`,
-    `  failproofai policies show ${repo}      (look first, without running it)`,
+    // The install lines are the whole point of the success message, and on a
+    // private repository they are a lie — `policies add` 404s there. Print the
+    // warning INSTEAD of them, never underneath them: a reader who copies the
+    // first command they see must not be copying one that cannot work.
+    ...(isPrivate
+      ? [
+          `WARNING: ${repo} is PRIVATE, so nobody can install this — you asked for`,
+          "that with --allow-private. Installs are anonymous HTTPS with no credential",
+          "to offer, so every `failproofai policies add` will 404. Distribute the",
+          "three assets yourself, or make it public:",
+          `  gh repo edit ${repo} --visibility public`,
+        ]
+      : [
+          "Anyone can now install it:",
+          `  failproofai policies add ${repo}`,
+          `  failproofai policies show ${repo}      (look first, without running it)`,
+        ]),
   ];
-  if (isPrivate) {
-    lines.push(
-      "",
-      `WARNING: ${repo} is PRIVATE, so nobody can install this.`,
-      "Installs are anonymous HTTPS with no credential to offer — every one will 404.",
-      `Make it public:  gh repo edit ${repo} --visibility public`,
-    );
-  }
   return ok(lines);
 }
 

@@ -406,12 +406,26 @@ describe("a release that is already there", () => {
   });
 });
 
-describe("a private repository", () => {
-  it("publishes, then warns that every install will 404", async () => {
-    github.repo = { status: 200, body: { private: true } };
-    const entry = writeEntry();
-    const r = await publish([
-      entry,
+// Reusing an existing PRIVATE repository used to upload all three assets, exit
+// 0, print `failproofai policies add <repo>` and append a warning underneath —
+// a success message for a release nobody can install. `fetchBytes` in
+// pack-store.ts sends no Authorization header at all, by design, so every
+// install of a private pack 404s; there is no credential a reader could supply
+// to make that publish work. So it is refused before the release is created,
+// and `--allow-private` is the way past it for somebody who will hand the
+// assets over another way.
+describe("an existing private repository", () => {
+  const publishTo = (extra: string[] = []) =>
+    publish([
+      // Deliberately AHEAD OF THE ENTRY PATH, which every other test here puts
+      // first. `publishEntryArg` finds the entry by skipping whatever follows a
+      // flag that takes a value, so a valueless flag wrongly listed in
+      // PUBLISH_VALUE_FLAGS eats the path after it and publish falls back to
+      // scanning the cwd for policy files. Put anywhere else — between --repo
+      // and its value, say — that mistake is invisible: `flag()` does not
+      // consult that list, so the repo still resolves and the run still passes.
+      ...extra,
+      writeEntry(),
       "--repo",
       "acme/support",
       "--version",
@@ -420,16 +434,79 @@ describe("a private repository", () => {
       join(work, "dist-pack"),
     ]);
 
-    // Published — the assets really are attached.
-    expect(r.exitCode).toBe(0);
-    expect(uploadsOf()).toHaveLength(3);
+  it("refuses, and uploads nothing at all", async () => {
+    github.repo = { status: 200, body: { private: true } };
+
+    const r = await publishTo();
+
+    expect(r.exitCode).toBe(1);
+    // Not the exit code alone. The bug being fixed was a SUCCESS that had
+    // already attached three assets, so what has to hold is at the wire: no
+    // release created, nothing uploaded, nothing deleted. The one request left
+    // is the read that discovered the visibility in the first place — there is
+    // no way to learn it without asking.
+    expect(requests.map((q) => `${q.method} ${q.path}`)).toEqual(["GET /repos/acme/support"]);
+    expect(uploadsOf()).toEqual([]);
+    // Nothing was BUILT either, which the request log cannot see: a complete,
+    // uploadable pack left on disk under a publish the command just refused is
+    // one `gh release upload` away from the dead end it refused to make.
+    expect(existsSync(join(work, "dist-pack", PACK_MANIFEST_ASSET))).toBe(false);
+  });
+
+  it("names the repository, why no install can work, and both ways out", async () => {
+    github.repo = { status: 200, body: { private: true } };
+
+    const r = await publishTo();
 
     const text = r.lines.join("\n");
-    expect(text).toMatch(/Published acme\/support@1\.0\.0/);
     expect(text).toMatch(/acme\/support is PRIVATE/);
-    // `pack add` sends no Authorization header at all, by design — so the
-    // warning has to say what that costs, not just that the repo is private.
-    expect(text).toMatch(/Installs are anonymous HTTPS[^\n]*404/);
+    // "It is private" is not the reason — plenty of private things work. The
+    // reason is that the install carries no credential, so it 404s.
+    expect(text).toMatch(/anonymous HTTPS/);
+    expect(text).toMatch(/404/);
+    expect(text).toMatch(/gh repo edit acme\/support --visibility public/);
+    expect(text).toMatch(/--allow-private/);
+    // And a refusal must not print the install line it just refused to make
+    // work — that line is the whole thing that was dishonest before.
+    expect(r.lines.some((l) => l.includes("policies add"))).toBe(false);
+  });
+
+  it("publishes under --allow-private, and still says nobody can install it", async () => {
+    github.repo = { status: 200, body: { private: true } };
+
+    const r = await publishTo(["--allow-private"]);
+
+    expect(r.exitCode).toBe(0);
+    expect(uploadsOf().map((q) => q.query.get("name"))).toEqual([
+      PACK_MANIFEST_ASSET,
+      PACK_ENTRY_ASSET,
+      PACK_CHECKSUMS_ASSET,
+    ]);
+    const text = r.lines.join("\n");
+    expect(text).toMatch(/Published acme\/support@1\.0\.0/);
+    // The flag buys a publish, never a working install, so the warning stays.
+    expect(text).toMatch(/acme\/support is PRIVATE/);
+    expect(text).toMatch(/anonymous HTTPS/);
+    // Printed INSTEAD of the install lines, not underneath them: a reader who
+    // copies the first command they see must not be copying one that 404s.
+    expect(text).not.toMatch(/Anyone can now install it/);
+    expect(r.lines).not.toContain("  failproofai policies add acme/support");
+  });
+
+  it("leaves a public repository alone, flag or no flag", async () => {
+    // The flag permits a private destination; it does not change what a public
+    // publish says or does. A regression here would mute the install lines for
+    // everybody who passed it out of habit.
+    github.repo = { status: 200, body: { private: false } };
+
+    const r = await publishTo(["--allow-private"]);
+
+    expect(r.exitCode).toBe(0);
+    expect(uploadsOf()).toHaveLength(3);
+    const text = r.lines.join("\n");
+    expect(text).toMatch(/Published acme\/support@1\.0\.0/);
+    expect(text).not.toMatch(/PRIVATE/);
+    expect(r.lines).toContain("  failproofai policies add acme/support");
   });
 });
 
@@ -841,6 +918,34 @@ describe("a repository that is not there yet", () => {
     const create = requests.find((r) => r.method === "POST" && /repos$/.test(r.path));
     expect(create).toBeDefined();
     expect(JSON.parse(create!.body.toString()).private).toBe(false);
+  });
+
+  it("stays public under --allow-private, which is not a request to create one", async () => {
+    // The flag's name reads like an instruction ("make it private") and is not
+    // one: it only acknowledges a repository that was ALREADY private. Wiring it
+    // into the creation body would mint a brand-new pack nobody can install, for
+    // somebody who passed the flag purely to get past a refusal — the exact dead
+    // end that refusal exists to prevent, reached through its own escape hatch.
+    github.repo = { status: 404, body: { message: "Not Found" } };
+
+    const r = await publish([
+      "--allow-private",
+      writeEntry(),
+      "--repo",
+      "acme/guards",
+      "--version",
+      "1.0.0",
+      "--out",
+      join(work, "dist-pack"),
+    ]);
+
+    expect(r.exitCode).toBe(0);
+    const create = requests.find((q) => q.method === "POST" && /repos$/.test(q.path));
+    expect(create, "the repository has to have been created for this to mean anything").toBeDefined();
+    expect(JSON.parse(create!.body.toString()).private).toBe(false);
+    // And because it came back public, the install lines stand — the flag
+    // suppresses them only for a destination that really is private.
+    expect(r.lines).toContain("  failproofai policies add acme/guards");
   });
 
   it("uses the personal endpoint when the credential owns the name", async () => {

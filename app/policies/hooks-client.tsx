@@ -25,6 +25,7 @@ import {
 import type { PackPreviewResult } from "@/app/actions/pack-actions";
 import { installHooksWebAction, removeHooksWebAction } from "@/app/actions/install-hooks-web";
 import { updatePolicyParamsAction } from "@/app/actions/update-policy-params";
+import { packPolicyParamKey } from "@/src/hooks/policy-evaluator";
 import { useAutoRefresh } from "@/contexts/AutoRefreshContext";
 import { usePostHog } from "@/contexts/PostHogContext";
 import { useUrlParams } from "@/lib/use-url-params";
@@ -1284,13 +1285,26 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
       return;
     }
     setHooksWarning(null);
+    // A policy name is unique only WITHIN a pack, so `config.policies` — the
+    // flat list across every installed pack — can hold two `block-sudo` rows.
+    // The write below targets (packId, name); matching the optimistic update on
+    // the name alone flipped the OTHER pack's row too, showing a change nothing
+    // persisted until the next reload silently undid it.
+    //
+    // Matched on the pair with no fallback to the name. `PolicyInfo.packId` is
+    // required — every policy comes from a pack — and `togglePackPolicyAction`
+    // takes a `string`, so a row without one is a type error at the call below,
+    // not a case to widen for here. A `packId === undefined ||` guard would only
+    // ever restore the conflation this line exists to remove.
     // Optimistic update
     setConfig((prev) => {
       if (!prev) return prev;
       return {
         ...prev,
         policies: prev.policies.map((p) =>
-          p.name === name ? { ...p, enabled: !currentlyEnabled } : p,
+          p.name === name && p.packId === policy.packId
+            ? { ...p, enabled: !currentlyEnabled }
+            : p,
         ),
         packs: prev.packs.map((pack) =>
           pack.id === policy.packId
@@ -1380,7 +1394,14 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
 
   const handleSaveParams = (params: Record<string, unknown>) => {
     if (!configuringPolicy) return;
-    const policyName = configuringPolicy.name;
+    // A PACK policy is saved under the stable pack-qualified key, because the
+    // bare name is not what the evaluator looks up — it registers pack policies
+    // as `pack/<id>@<version>/<name>`, so a bare key was written, displayed as
+    // saved, and ignored at runtime. Version-less on purpose: a key carrying
+    // the version would be orphaned by the publisher's next release.
+    const policyName = configuringPolicy.packId
+      ? packPolicyParamKey(configuringPolicy.packId, configuringPolicy.name)
+      : configuringPolicy.name;
     setConfiguringPolicy(null);
     startTransition(async () => {
       try {
@@ -1642,8 +1663,12 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
             </div>
             {/* Policy rows */}
             {policies.map((policy) => (
+              // Keyed by pack AND name: two installed packs may each declare
+              // `block-sudo` in the same category, and a bare name key made
+              // them one React key — React warns and reuses the first row's
+              // state for the second.
               <div
-                key={policy.name}
+                key={`${policy.packId}/${policy.name}`}
                 className="flex items-start gap-3 px-4 py-3 border-b border-border/20 hover:bg-muted/20 transition-colors"
               >
                 <div className="mt-0.5 shrink-0">

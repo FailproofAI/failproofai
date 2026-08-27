@@ -28,6 +28,7 @@ import { readActiveCloudManagedPolicies } from "./cloud-managed-policies";
 import { CORE_SOURCE, addPack, setPackPolicyEnabled } from "./pack-store";
 import type { ResolvedPack } from "./pack-manifest";
 import { hasInstalledPacks, readInstalledPacks } from "./pack-manifest";
+import { packPolicyParamKey } from "./policy-evaluator";
 import {
   chip,
   note,
@@ -951,10 +952,21 @@ export async function listHooks(cwd?: string): Promise<void> {
   // Names a `policyParams` key may legitimately use: every policy an installed
   // pack carries. Previously the compiled catalog, which no longer describes
   // what runs.
+  //
+  // BOTH spellings, because both are read at runtime. The dashboard writes the
+  // pack-qualified `packPolicyParamKey` and the evaluator prefers it; the bare
+  // name is the legacy key still honoured for our own pack. Knowing only the
+  // bare one made this command call every parameter saved through the UI a
+  // "possible typo" — and fire a `policy_params_validation_warning` for it —
+  // the moment the dashboard started qualifying its keys. Built with the shared
+  // helper rather than a third copy of the `pack/<id>/<name>` format.
   const knownPolicyNames = new Set<string>();
   try {
     for (const pack of readInstalledPacks().packs) {
-      for (const policy of pack.policies) knownPolicyNames.add(policy.name);
+      for (const policy of pack.policies) {
+        knownPolicyNames.add(policy.name);
+        knownPolicyNames.add(packPolicyParamKey(pack.id, policy.name));
+      }
     }
   } catch {
     // Unreadable manifest: skip the typo warning rather than invent one.

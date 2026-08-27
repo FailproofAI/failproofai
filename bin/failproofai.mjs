@@ -1408,11 +1408,19 @@ async function runCli() {
             ],
           },
           {
+            // This screen said "an existing private one still publishes, and
+            // warns" for as long as that was true. It is REFUSED now — exit 1,
+            // nothing created or uploaded — and `--allow-private` was named
+            // nowhere in this help, so the one documented behaviour pointed a
+            // publisher at a command that exits 1 and gave them no way through.
             label: "the repo must be public",
             lines: [
               "Installs are anonymous HTTPS with no credential to offer, so a private",
               "repository publishes to nobody. A repo created here is public for that",
-              "reason; an existing private one still publishes, and warns.",
+              "reason; an existing private one is REFUSED, before anything is built,",
+              "created or uploaded. --allow-private publishes to one anyway, for",
+              "somebody who will hand the three assets over another way — it still",
+              "says plainly that no `policies add` can reach them.",
               "",
               "Only the release matters. Installs read releases/download/<tag>/<asset>",
               "and never touch your git tree — pushing the source is for humans.",
@@ -1444,6 +1452,7 @@ async function runCli() {
               ["--out <dir>", "Where to write the assets. Default: dist-pack."],
               ["--effect <effect>", "enforce or observe. observe records and blocks nothing. Default: enforce."],
               ["--dry-run", "Build the assets, publish nothing. No credential."],
+              ["--allow-private", "Publish to an already-private repo anyway. Nobody can install it."],
             ],
           },
           {

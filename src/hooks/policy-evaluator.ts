@@ -4,6 +4,14 @@
  */
 import type { HookEventType, SessionMetadata } from "./types";
 import type { PolicyContext, HooksConfig } from "./policy-types";
+// Read from the layer that owns it rather than restated here — restating a
+// pack id is exactly how `failproofai/builtins` and `failproofai/core` both
+// outlived their rename. This is on the hook path, so the cost was measured
+// rather than assumed: bundling policy-evaluator with this import is 38,627
+// bytes against 37,491 without it, because only the constant survives
+// tree-shaking. 1.1 KB is not worth a second copy of a name that has already
+// drifted twice.
+import { CORE_SOURCE } from "./pack-store";
 import { DEFAULT_POLICY_NAMESPACE, getPoliciesForEvent } from "./policy-registry";
 import { hookLogInfo, hookLogWarn } from "./hook-logger";
 import { trackHookEvent } from "./hook-telemetry";
@@ -29,13 +37,86 @@ export interface EvaluationResult {
 
 
 /**
+ * The config key a PACK policy's parameters are stored under.
+ *
+ * Version-less on purpose. A pack policy registers as
+ * `pack/<id>@<version>/<name>`, so a key carrying the version would be orphaned
+ * by every republish — the parameters would read as unset the moment the pack
+ * was upgraded, which is the same failure `enabled` avoids by outliving the
+ * version it was chosen against.
+ *
+ * Exported because the DASHBOARD writes this key and the evaluator reads it.
+ * They disagreed before — the dashboard wrote the bare policy name while the
+ * evaluator looked up the fully qualified one and fell back to bare only inside
+ * the `failproofai/` namespace — so a parameter saved through the UI was
+ * displayed as saved and ignored at runtime, on every pack including our own.
+ * One function so the two cannot drift again.
+ */
+export function packPolicyParamKey(packId: string, policyName: string): string {
+  return `pack/${packId}/${policyName}`;
+}
+
+/**
+ * The parameters a PACK policy actually runs with, resolved out of a config's
+ * `policyParams` map: the stable qualified key first, then the BARE name for
+ * our own pack alone.
+ *
+ * The bare read is the migration. Every `policyParams["block-sudo"]` already on
+ * disk — written by a build that predates packs, or by the dashboard before it
+ * qualified its keys — means the builtin under the name it always had.
+ *
+ * It is scoped to our pack because a policy name is unique only WITHIN a pack:
+ * two installed packs may each declare a `block-sudo`, and a bare key cannot
+ * say which was meant. Handing a stranger's pack our pack's configuration runs
+ * a third party's code on parameters chosen for ours.
+ *
+ * Exported because the DASHBOARD's read side resolves the same lookup, and it
+ * resolved it differently — an UNSCOPED bare fallback — so a stranger's pack
+ * declaring `block-sudo` was SHOWN our saved parameters while this function
+ * handed that policy the schema defaults. The config modal seeds its inputs
+ * from what was shown and Save writes them back under the stranger's own key,
+ * which is the point a display lie turns into configuration that really runs.
+ * One function so the two cannot diverge again.
+ */
+export function readPackPolicyParams(
+  policyParams: Record<string, Record<string, unknown>> | undefined,
+  packId: string,
+  policyName: string,
+): Record<string, unknown> | undefined {
+  if (!policyParams) return undefined;
+  const qualified = policyParams[packPolicyParamKey(packId, policyName)];
+  if (qualified) return qualified;
+  // Case-insensitively: the id reaches here from a manifest and from a source
+  // somebody typed, and GitHub treats `failproofai/policies` and
+  // `FailproofAI/policies` as one repository.
+  if (packId.toLowerCase() === CORE_SOURCE.toLowerCase()) return policyParams[policyName];
+  return undefined;
+}
+
+/** `pack/<id>@<version>/<name>` split back into the parts a key is built from. */
+function parsePackPolicyName(canonicalName: string): { packId: string; name: string } | null {
+  if (!canonicalName.startsWith("pack/")) return null;
+  const rest = canonicalName.slice("pack/".length);
+  const slash = rest.lastIndexOf("/");
+  if (slash <= 0) return null;
+  const idWithVersion = rest.slice(0, slash);
+  const at = idWithVersion.lastIndexOf("@");
+  return {
+    packId: at > 0 ? idWithVersion.slice(0, at) : idWithVersion,
+    name: rest.slice(slash + 1),
+  };
+}
+
+/**
  * Look up policy params for a canonical policy name in the user config,
  * tolerating either flat ("block-force-push") or qualified
  * ("failproofai/block-force-push") config keys for built-in policies.
  *
  * The flat-key fallback is intentionally limited to the default namespace
  * so namespace isolation is preserved: `policyParams.foo` only matches
- * `failproofai/foo`, never `myorg/foo` or `custom/foo`.
+ * `failproofai/foo`, never `myorg/foo` or `custom/foo`. A `pack/...` name gets
+ * the same isolation from `readPackPolicyParams` and returns before reaching
+ * that branch, so the two fallbacks never both apply to one name.
  */
 function getConfigParamsFor(
   config: HooksConfig | undefined,
@@ -44,6 +125,15 @@ function getConfigParamsFor(
   if (!config?.policyParams) return undefined;
   const canonicalParams = config.policyParams[canonicalName];
   if (canonicalParams) return canonicalParams;
+
+  // A pack policy: qualified key, then the bare name for our pack only. Shared
+  // with the dashboard's read side rather than restated, so what is displayed
+  // stays what runs.
+  const packPolicy = parsePackPolicyName(canonicalName);
+  if (packPolicy) {
+    return readPackPolicyParams(config.policyParams, packPolicy.packId, packPolicy.name);
+  }
+
   const defaultPrefix = `${DEFAULT_POLICY_NAMESPACE}/`;
   if (!canonicalName.startsWith(defaultPrefix)) return undefined;
   return config.policyParams[canonicalName.slice(defaultPrefix.length)];

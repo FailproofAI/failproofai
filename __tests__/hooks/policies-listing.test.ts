@@ -156,6 +156,43 @@ describe("failproofai policies", () => {
     expect(warn).toBeGreaterThan(config);
   });
 
+  it("does not call a parameter saved through the dashboard a typo", async () => {
+    // The dashboard writes a pack policy's parameters under the pack-qualified
+    // `pack/<id>/<name>` key, because that is the one the evaluator reads back —
+    // a bare name is not unique across installed packs. This command checked
+    // keys against BARE policy names only, so every parameter a user saved in
+    // the UI was reported as a "possible typo" and shipped as a
+    // `policy_params_validation_warning` event, while the key was in fact the
+    // only spelling that takes effect.
+    installPack();
+    writeFileSync(
+      join(home, "policies-config.json"),
+      JSON.stringify({
+        enabledPolicies: [],
+        policyParams: { "pack/acme/finance/block-big-refund": { limit: 5 } },
+      }),
+    );
+    const text = await run();
+    expect(text).not.toMatch(/unknown policyParams key/);
+  });
+
+  it("still flags a key that names no installed policy", async () => {
+    // The other half: widening the known set to both spellings must not turn
+    // the typo warning off. A key qualified with a pack that is not installed
+    // configures nothing, exactly like a misspelled bare name.
+    installPack();
+    writeFileSync(
+      join(home, "policies-config.json"),
+      JSON.stringify({
+        enabledPolicies: [],
+        policyParams: { "pack/acme/finance/no-such-policy": { limit: 5 } },
+      }),
+    );
+    const text = await run();
+    expect(text).toMatch(/unknown policyParams key/);
+    expect(text).toContain("no-such-policy");
+  });
+
   it("says nothing is installed, and what to run", async () => {
     const text = await run();
     expect(text).toContain("nothing installed");

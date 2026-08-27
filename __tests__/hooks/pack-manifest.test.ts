@@ -188,3 +188,41 @@ describe("readInstalledPacks", () => {
     });
   });
 });
+
+// The other end of the fail-closed fix. A `match` was checked for being an
+// object and nothing else, so `events: "PreToolUse"` installed cleanly and only
+// showed up later as a deny narrowed to the letters of that string — a guard
+// matching no event that exists. Refused here, where the publisher can still
+// fix it, rather than surviving on disk as metadata nothing can read.
+describe("parsePackPolicy — the shape of a match, not just its presence", () => {
+  const good = {
+    name: "block-refunds",
+    description: "Block refunds",
+    category: "Finance",
+    defaultEnabled: true,
+  };
+  const parse = async (match: unknown) => {
+    const { parsePackPolicy } = await import("../../src/hooks/pack-manifest");
+    return () => parsePackPolicy("acme/finance", { ...good, match }, 0);
+  };
+
+  it.each([
+    ["events as a string", { events: "PreToolUse" }],
+    ["events as a number", { events: 5 }],
+    ["events holding a null", { events: [null] }],
+    ["events holding an empty name", { events: [""] }],
+    ["toolNames as a string", { events: ["PreToolUse"], toolNames: "Bash" }],
+    ["toolNames holding a number", { toolNames: [1] }],
+  ])("refuses %s", async (_label, match) => {
+    expect(await parse(match)).toThrow(/not a list of names/);
+  });
+
+  it.each([
+    ["a scoped match", { events: ["PreToolUse"], toolNames: ["Bash"] }],
+    ["events alone", { events: ["PreToolUse"] }],
+    ["an empty match, which means everywhere", {}],
+    ["an explicitly empty list", { events: [] }],
+  ])("accepts %s", async (_label, match) => {
+    expect(await parse(match)).not.toThrow();
+  });
+});

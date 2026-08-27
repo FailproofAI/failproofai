@@ -253,6 +253,19 @@ export function parsePackPolicy(packId: string, value: unknown, index: number): 
   if (!raw.match || typeof raw.match !== "object") {
     throw new Error(`${where} is missing a match`);
   }
+  // The SHAPE, not just the presence. `match` was accepted as any object, so a
+  // manifest declaring `events: "PreToolUse"` installed cleanly and then
+  // narrowed the fail-closed deny to the letters of that string — a guard
+  // matching no event that exists. Refused at install now, where the publisher
+  // can still fix it, rather than surviving as metadata nothing can read.
+  const matchShape = raw.match as { events?: unknown; toolNames?: unknown };
+  for (const key of ["events", "toolNames"] as const) {
+    const value = matchShape[key];
+    if (value === undefined) continue;
+    if (!Array.isArray(value) || value.some((e) => typeof e !== "string" || e.length === 0)) {
+      throw new Error(`${where} has a match.${key} that is not a list of names`);
+    }
+  }
   return raw as unknown as PolicyCatalogEntry;
 }
 

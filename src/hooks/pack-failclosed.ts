@@ -59,16 +59,40 @@ export const PERMANENT_LOAD_FAILURES: ReadonlySet<string> = new Set([
   "path_missing",
 ]);
 
+/**
+ * A declared list, or null when it cannot be read as one.
+ *
+ * Null means UNKNOWN, and unknown has to widen the deny rather than narrow it —
+ * this whole function exists to say where a missing guard applied, and a
+ * narrowing derived from metadata nobody can parse says nothing true.
+ *
+ * A malformed list is not hypothetical: `match` was validated only as
+ * `typeof === "object"`, so a manifest declaring `events: "PreToolUse"` reached
+ * here as a STRING, was iterated character by character, and narrowed the
+ * fail-closed deny to `["P","r","e","T","o","l","U","s"]` — a set matching no
+ * event that exists. The pack failed to load, the guard fired on nothing, and
+ * the machine went on running unguarded with a deny it never used. `events: 5`
+ * was worse still: `for (const e of 5)` throws, on the hook path.
+ */
+function declaredList(value: unknown): string[] | null {
+  if (value === undefined || value === null) return null;
+  if (!Array.isArray(value)) return null;
+  if (value.some((entry) => typeof entry !== "string" || entry.length === 0)) return null;
+  return value as string[];
+}
+
 function unionMatch(matchers: PolicyMatcher[]): PolicyMatcher {
   const events = new Set<HookEventType>();
   const toolNames = new Set<string>();
   let anyEvent = false;
   let anyTool = false;
   for (const m of matchers) {
-    if (!m.events || m.events.length === 0) anyEvent = true;
-    else for (const e of m.events) events.add(e);
-    if (!m.toolNames || m.toolNames.length === 0) anyTool = true;
-    else for (const t of m.toolNames) toolNames.add(t);
+    const declaredEvents = declaredList(m?.events);
+    const declaredTools = declaredList(m?.toolNames);
+    if (!declaredEvents || declaredEvents.length === 0) anyEvent = true;
+    else for (const e of declaredEvents) events.add(e as HookEventType);
+    if (!declaredTools || declaredTools.length === 0) anyTool = true;
+    else for (const t of declaredTools) toolNames.add(t);
   }
   const scoped: PolicyMatcher = {};
   // Every declared event is kept, INCLUDING UserPromptSubmit. This says where

@@ -651,14 +651,6 @@ describe("block-failproofai-commands — the state guard", () => {
       expect(await decide("rm -rf ~/.cache/*")).toBe("allow");
     });
 
-    // What is still open, stated rather than hidden: a pattern that carries no
-    // `fail` cannot be told apart from any other glob, and the floor that keeps
-    // `rm -rf *` allowed is what makes it so.
-    it("does not catch a glob that hides the literal it matches", async () => {
-      expect(await decide("rm -rf ~/.f*ailproofai")).toBe("allow");
-      expect(await decide("rm -rf ~/.[f]ailproofai")).toBe("allow");
-    });
-
     // Same class as the indirection limit the binary half already documents:
     // when the path is BUILT at run time the literal never appears, so there is
     // nothing to match. The real fix is action-gating on the resolved path,
@@ -685,6 +677,42 @@ describe("block-failproofai-commands — the state guard", () => {
     it("over-denies a tar backup and an interpreter read, which is the chosen failure", async () => {
       expect(await decide("tar -cf /tmp/backup.tar ~/.failproofai")).toBe("deny");
       expect(await decide("python3 -c \"print(open('/home/u/.failproofai/policies-config.json').read())\"")).toBe("deny");
+    });
+  });
+
+  // A glob is the cheapest bypass there is, and the floor that was supposed to
+  // stop a bare `*` from denying every build directory was a literal `fail`
+  // substring test — which is precisely the letter a metacharacter stands in
+  // for. Every spelling here reached the state with no `fail` in it.
+  describe("a glob that spells the state without spelling it", () => {
+    it.each([
+      ["a star inside the name", "rm -rf ~/.f*ailproofai"],
+      ["a star mid-word", "rm -rf ~/.fa*lproofai"],
+      ["a one-letter class", "rm -rf ~/.[f]ailproofai"],
+      ["a class mid-word", "rm -rf ~/.fa[i]lproofai"],
+      ["a brace alternation", "rm -rf ~/.f{a,b}ilproofai"],
+      ["a brace naming it outright", "rm -rf ~/.{failproofai,other}"],
+      ["a question mark", "rm -rf ~/.f?ilproofai"],
+      ["an unexpanded $HOME", "rm -rf $HOME/.f*ailproofai"],
+      ["find, which deletes without a verb", "find ~/.f*ailproofai -delete"],
+      ["a glob in a segment that is not the last", "shred ~/.f*ailproofai/policies-config.json"],
+    ])("denies %s", async (_label, command) => {
+      expect(await decide(command)).toBe("deny");
+    });
+
+    // The other half of the same fix, and the reason the floor existed. A
+    // pattern that also sweeps up `node_modules` or `~/.config` is not aimed at
+    // the state, and an always-on guard that denied `rm -rf *` would be
+    // switched off by the first person who met it.
+    it.each([
+      ["a bare star", "rm -rf *"],
+      ["every dotfile in home", "rm -rf ~/.*"],
+      ["a directory that merely carries the word", "rm -rf /tmp/test-failures*"],
+      ["a build directory", "rm -rf dist/*"],
+      ["a search that names no path", "find . -name '*.fail*' -type f"],
+      ["a read through a glob", "grep -r x ~/.fail*"],
+    ])("allows %s", async (_label, command) => {
+      expect(await decide(command)).not.toBe("deny");
     });
   });
 

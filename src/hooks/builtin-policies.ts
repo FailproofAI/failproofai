@@ -683,17 +683,56 @@ const STATE_GLOB_CANDIDATES = [
 ];
 
 /**
+ * Ordinary paths a targeted pattern must NOT be able to match.
+ *
+ * The floor a bare `*` has to fail. `rm -rf *` in a build directory compiles to
+ * a regex that matches every state candidate, and denying it would make the one
+ * guard nobody can switch off fire on the most ordinary command there is. A
+ * pattern that also lands on `node_modules` or `.config` is not aimed at the
+ * state; a pattern that lands on `.failproofai` and on none of these is.
+ */
+const GLOB_DECOYS = [
+  ".config", ".cache", ".local", ".git", ".npm", ".ssh", ".bashrc",
+  "node_modules", "dist", "build", "target", "coverage", "tmp", "src",
+  "~/.config", "~/.cache", "$HOME/.config", "${HOME}/.cache",
+  "/home/u/.config", "/Users/u/.config", "/root/.cache", "/tmp/build",
+  "a", "foo.txt", "test-failures",
+];
+
+/**
  * True when this token is a glob that could expand onto failproofai's state.
  *
- * Requires a literal `fail` in the pattern as well as a match. Without that
- * floor a bare `*` compiles to a regex that matches every candidate, and
- * `cd /tmp/build && rm -rf *` — a command with nothing to do with failproofai
- * — would deny. With it, `rm -rf /tmp/test-failures*` also stays allowed,
- * because carrying the word is not the same as being able to match.
+ * The floor used to be a literal `fail` in the token, and that is exactly what
+ * a glob is for: `rm -rf ~/.f*ailproofai` spells the same directory without the
+ * substring anywhere in it, so the pattern was thrown out before it was ever
+ * compiled. `.[f]ailproofai`, `.fa*lproofai`, `.fa[i]lproofai` and
+ * `.f{a,b}ilproofai` all walked through the same hole.
+ *
+ * A substring cannot decide this, because the whole point of the metacharacter
+ * is to stand where a letter was. What CAN decide it is the pattern's reach: it
+ * has to hit the state and miss everything ordinary. So the floor is now
+ * computed the same way the match is — compile once, require a candidate, and
+ * reject anything that also catches a decoy. `rm -rf *` and `rm -rf ~/.*` stay
+ * allowed because they sweep the decoys too; `rm -rf /tmp/test-failures*` stays
+ * allowed because it reaches no candidate at all.
  */
 function globCouldNameState(token: string): boolean {
-  if (!/[*?[]/.test(token)) return false;
-  if (!token.includes("fail")) return false;
+  if (!/[*?[{]/.test(token)) return false;
+  // Every path PREFIX, not just the whole token. The candidates are the state
+  // directory itself, so `~/.f*ailproofai/policies-config.json` — a glob in a
+  // segment that is not the last one — compiled to a pattern that could never
+  // equal `~/.failproofai` and was read as naming nothing. Naming a file INSIDE
+  // the state is naming the state.
+  const segments = token.split("/");
+  for (let end = 1; end <= segments.length; end++) {
+    if (globPrefixNamesState(segments.slice(0, end).join("/"))) return true;
+  }
+  return false;
+}
+
+/** One `/`-delimited prefix of a token, compiled and tried against the candidates. */
+function globPrefixNamesState(token: string): boolean {
+  if (!/[*?[{]/.test(token)) return false;
   let pattern = "^";
   for (let i = 0; i < token.length; i++) {
     const ch = token[i];
@@ -704,14 +743,25 @@ function globCouldNameState(token: string): boolean {
       if (close === -1) return false;
       pattern += token.slice(i, close + 1);
       i = close;
+    } else if (ch === "{") {
+      // Brace expansion is not a glob the shell matches against the disk — it
+      // is rewritten into separate words BEFORE any matching happens. Compiled
+      // as an alternation it reaches the same set, which is all this needs.
+      const close = token.indexOf("}", i + 1);
+      if (close === -1) return false;
+      const alternatives = token.slice(i + 1, close).split(",");
+      pattern += `(?:${alternatives.map((a) => a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`;
+      i = close;
     } else pattern += ch.replace(/[.+^${}()|\\\]]/g, "\\$&");
   }
+  let re: RegExp;
   try {
-    const re = new RegExp(pattern + "$");
-    return STATE_GLOB_CANDIDATES.some((candidate) => re.test(candidate));
+    re = new RegExp(pattern + "$");
   } catch {
     return false;
   }
+  if (!STATE_GLOB_CANDIDATES.some((candidate) => re.test(candidate))) return false;
+  return !GLOB_DECOYS.some((decoy) => re.test(decoy));
 }
 
 /**

@@ -155,6 +155,47 @@ describe("how narrow the deny is", () => {
   });
 });
 
+// `match` was validated as "is an object" and nothing more, so a manifest
+// could declare a shape nobody can read and the narrowing derived from it
+// pointed at events that do not exist. The deny survived, matched nothing, and
+// the machine ran unguarded — fail-closed in name only.
+describe("a match nobody can read", () => {
+  it.each([
+    ["a string where a list belongs", "PreToolUse"],
+    ["a bare number", 5],
+    ["a list with a hole in it", [null]],
+    ["a list of the wrong type", [1, 2]],
+    ["an object", { PreToolUse: true }],
+  ])("widens to everything on %s, instead of narrowing to nothing", (_label, events) => {
+    const guards = call({
+      packs: [pack({ policies: [policy("p", { events } as never)] })],
+      registered: new Map([["acme/finance", new Set()]]),
+    });
+    expect(guards).toHaveLength(1);
+    expect(guards[0].match.events).toBeUndefined();
+  });
+
+  it("widens on an unreadable toolNames without losing a readable events", () => {
+    const guards = call({
+      packs: [pack({ policies: [policy("p", { events: ["PreToolUse"], toolNames: "Bash" } as never)] })],
+      registered: new Map([["acme/finance", new Set()]]),
+    });
+    expect(guards[0].match.events).toEqual(["PreToolUse"]);
+    expect(guards[0].match.toolNames).toBeUndefined();
+  });
+
+  // `for (const e of 5)` throws, and this runs on the hook path — so the shape
+  // that fails open the hardest also took the process down with it.
+  it("does not throw on metadata that is not iterable", () => {
+    expect(() =>
+      call({
+        packs: [pack({ policies: [policy("p", { events: 5 } as never)] })],
+        registered: new Map([["acme/finance", new Set()]]),
+      }),
+    ).not.toThrow();
+  });
+});
+
 describe("the message", () => {
   it("names the pack, the missing policies, and the human command", () => {
     // Recovery is a human terminal action: the agent cannot run it, because

@@ -862,6 +862,58 @@ function wordNamesState(word: string): boolean {
 }
 
 /**
+ * One shell bracket expression, translated into a JavaScript character class.
+ *
+ * Copying the shell's text into a regex verbatim reads two of its spellings
+ * backwards. POSIX negates with `!`, so bash expands `~/.f[!b]ilproofai` onto
+ * the state while JavaScript read `[!b]` as "either `!` or `b`" and matched
+ * nothing — a one-character bypass of the guard nobody can switch off. And a
+ * `]` in the FIRST position is a literal `]` rather than the end of the class,
+ * so scanning for the next `]` closed `[]abc]` on the wrong character.
+ *
+ * Anything exotic — a POSIX class, a collating symbol, an equivalence class —
+ * becomes `[^/]`, which matches any single character a path segment can hold
+ * and so reaches at least as far as the original. Widening is safe here in a
+ * way narrowing never is: the decoy test is what decides, and it is unchanged.
+ */
+function bracketExpressionAt(token: string, start: number): { source: string; end: number } | null {
+  let i = start + 1;
+  let negated = false;
+  if (token[i] === "!" || token[i] === "^") {
+    negated = true;
+    i++;
+  }
+  // A `]` here is content, not the terminator.
+  let body = "";
+  if (token[i] === "]") {
+    body += "]";
+    i++;
+  }
+  while (i < token.length && token[i] !== "]") {
+    // `[:alpha:]`, `[.a.]` and `[=a=]` carry a `]` of their own, which closed
+    // the class early and left a stray `]` matching as a literal.
+    const inner = token[i] === "[" ? token[i + 1] : undefined;
+    if (inner === ":" || inner === "." || inner === "=") {
+      const close = token.indexOf(`${inner}]`, i + 2);
+      if (close !== -1) {
+        body += token.slice(i, close + 2);
+        i = close + 2;
+        continue;
+      }
+    }
+    body += token[i];
+    i++;
+  }
+  if (i >= token.length) return null;
+  if (/\[[.=:]/.test(body)) return { source: "[^/]", end: i };
+  // `\` and `]` are the two characters that would end or escape the class in
+  // JavaScript; the rest of a bracket expression means the same in both.
+  const escaped = body.replace(/[\\\]]/g, "\\$&");
+  if (escaped.length === 0) return { source: "[^/]", end: i };
+  return { source: `[${negated ? "^" : ""}${escaped}]`, end: i };
+}
+
+/**
  * One `/`-delimited prefix of a brace-expanded word, compiled and tried against
  * the candidates. Braces are already gone by here; an unmatched one is literal.
  */
@@ -873,10 +925,17 @@ function globPrefixNamesState(token: string): boolean {
     if (ch === "*") pattern += "[^/]*";
     else if (ch === "?") pattern += "[^/]";
     else if (ch === "[") {
-      const close = token.indexOf("]", i + 1);
-      if (close === -1) return false;
-      pattern += token.slice(i, close + 1);
-      i = close;
+      const bracket = bracketExpressionAt(token, i);
+      if (!bracket) {
+        // An unclosed `[` is a literal `[` to the shell, so it is one here.
+        // Bailing out would answer "names nothing" on the strength of a
+        // malformed pattern — the same shape as a budget that returns instead
+        // of collapsing.
+        pattern += "\\[";
+        continue;
+      }
+      pattern += bracket.source;
+      i = bracket.end;
     } else pattern += ch.replace(/[.+^${}()|\\\]]/g, "\\$&");
   }
   let re: RegExp;

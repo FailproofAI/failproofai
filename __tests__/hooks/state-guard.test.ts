@@ -715,6 +715,23 @@ describe("block-failproofai-commands — the state guard", () => {
       ["200 levels", `rm -rf ~/.f${"{x,".repeat(200)}a*${"}".repeat(200)}ilproofai`],
       ["200 levels, beneath the directory", `rm -rf ~/.f${"{x,".repeat(200)}a*${"}".repeat(200)}ilproofai/policies`],
       ["200 levels, no glob in the branch", `rm -rf ~/.f${"{x,".repeat(200)}ai${"}".repeat(200)}lproofai`],
+      // POSIX negates a bracket expression with `!`; JavaScript spells it `^`,
+      // and reads `[!b]` as "either `!` or `b`". Copying the shell's text into
+      // a regex read the pattern backwards, one character wide.
+      ["POSIX negation", "rm -rf ~/.f[!b]ilproofai"],
+      ["caret negation", "rm -rf ~/.f[^b]ilproofai"],
+      ["a negated range", "rm -rf ~/.f[!0-9]ilproofai"],
+      ["a negated class beneath the directory", "rm -rf ~/.f[!b]ilproofai/policies"],
+      ["a negated class above a state file", "shred ~/.f[!b]ilproofai/policies-config.json"],
+      ["a POSIX character class", "rm -rf ~/.f[[:alpha:]]ilproofai"],
+      // A `]` in the first position is content, not the terminator.
+      ["a literal ] leading the class", "rm -rf ~/.f[]a]ilproofai"],
+      ["a literal ] after the negation", "rm -rf ~/.f[!]b]ilproofai"],
+      ["a negated class inside a brace", "rm -rf ~/.f{[!b],x}ilproofai"],
+      ["a negated class 30 braces deep", `rm -rf ~/.f${"{x,".repeat(30)}[!b]${"}".repeat(30)}ilproofai`],
+      // An unclosed `[` is a literal `[` to the shell. Bailing out would answer
+      // "names nothing" off a malformed pattern.
+      ["an unclosed bracket beside the literal", "rm -rf ~/.failproofai[x"],
     ])("denies %s", async (_label, command) => {
       expect(await decide(command)).toBe("deny");
     });
@@ -734,6 +751,9 @@ describe("block-failproofai-commands — the state guard", () => {
       ["braces over unrelated dotfiles", "rm -rf ~/.{cache,config}/*"],
       ["braces naming nothing near the state", "rm -rf {a,b}{c,d}"],
       ["deep braces over an unrelated path", `rm -rf /tmp/${"{x,".repeat(40)}a*${"}".repeat(40)}build`],
+      ["a negated class over an unrelated dotfile", "rm -rf ~/.[!x]onfig"],
+      ["a negated class on an unrelated path", "rm -rf /tmp/[!a]uild"],
+      ["a read through a negated class", "cat ~/.f[!b]ilproofai/policies-config.json"],
     ])("allows %s", async (_label, command) => {
       expect(await decide(command)).not.toBe("deny");
     });

@@ -906,8 +906,15 @@ export async function addPack(
     const at = source.lastIndexOf("@");
     return at > source.indexOf(":") ? source.slice(0, at) : source;
   };
+  // Only when it is the SAME id. This binds an id to the origin it first came
+  // from, and `priorRecordFor` also answers with a same-DIGEST record under a
+  // different id — for which the check is not just unnecessary but wrong: a
+  // second pack that happens to ship identical bytes from another repository is
+  // not the installed one being hijacked, and refusing it said `pack id X is
+  // already installed from Y` while naming an id the user never asked for.
   if (
     prior &&
+    prior.id === fetched.id &&
     !prior.source.startsWith("bundled:") &&
     repoOf(prior.source) !== repoOf(formatPackSpec(spec))
   ) {

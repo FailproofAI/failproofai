@@ -100,6 +100,17 @@ interface ScanOutcome {
   result: TranscriptAuditResult;
   bytesScanned: number;
   detectorState: DetectorSessionState;
+  /**
+   * Whether this result covers the TAIL only, or the whole transcript.
+   *
+   * The caller merges a cached prefix onto the result, which is right for a
+   * resumed scan and wrong for a full one — and a resume that could not be
+   * honoured falls back to a full read RIGHT HERE, several returns away from
+   * the merge. Without this the fallback merged a whole-file result onto a
+   * prefix that already contained it, and every finding before the resume point
+   * was counted twice.
+   */
+  resumed: boolean;
 }
 
 async function scanOneTranscript(
@@ -125,6 +136,7 @@ async function scanOneTranscript(
   // `errors` rather than silently returning an empty hits map.
   let events: NormalizedToolEvent[];
   let bytesScanned = 0;
+  let resumed = false;
   // A resumed scan carries the stateful detectors' state forward across the
   // boundary. Starting them empty would silently change what they find — the
   // re-read detector's countdown spans tool calls, so an edit before the offset
@@ -151,6 +163,7 @@ async function scanOneTranscript(
       events = scan.events;
       bytesScanned = scan.bytesConsumed;
       empty.cwd = scan.cwd ?? "";
+      resumed = true;
     }
   } else {
     // A source with no byte offsets to speak of — a database. Scanned whole,
@@ -160,7 +173,7 @@ async function scanOneTranscript(
   }
 
   if (events.length === 0) {
-    return { result: empty, bytesScanned, detectorState: sessionState };
+    return { result: empty, bytesScanned, detectorState: sessionState, resumed };
   }
 
   const result = empty;
@@ -201,7 +214,7 @@ async function scanOneTranscript(
     }
   }
 
-  return { result, bytesScanned, detectorState: sessionState };
+  return { result, bytesScanned, detectorState: sessionState, resumed };
 }
 
 function formatPolicyExample(_policyName: string, event: NormalizedToolEvent): string {
@@ -447,8 +460,15 @@ async function runAuditInner(opts: RunAuditOptions, startedAt: number): Promise<
     try {
       const scan = await scanOneTranscript(meta, resume);
       // A resumed scan produced hits for the TAIL only; the cached result holds
-      // everything before it. Merging is what makes the two halves one answer.
-      const fresh = cachedPrefix ? mergeIncremental(cachedPrefix, scan.result) : scan.result;
+      // everything before it. Merging is what makes the two halves one answer —
+      // and `scan.resumed`, not `cachedPrefix`, is what says there are two
+      // halves. A resume the reader could not honour (truncated, unparseable
+      // from that offset, rewritten under us) falls back to reading the WHOLE
+      // file, and merging the prefix onto that counted everything before the
+      // resume point twice.
+      const fresh = cachedPrefix && scan.resumed
+        ? mergeIncremental(cachedPrefix, scan.result)
+        : scan.result;
       if (!opts.noCache) {
         writeCachedTranscriptResult(
           meta.transcriptPath,

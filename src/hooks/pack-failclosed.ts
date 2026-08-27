@@ -220,6 +220,27 @@ export function missingGuards(input: {
  * because the agent cannot run it: `block-failproofai-commands` denies every
  * `failproofai` invocation from a tool call, deliberately and unconditionally.
  */
+/**
+ * One matcher covering every missing guard, for the single policy that stands
+ * in for all of them.
+ *
+ * Narrow only where EVERY guard is narrow: a guard that declared no events
+ * applied everywhere, so a union that dropped it would deny less than the packs
+ * did. Both axes by the same rule — `toolNames` used to be left out of the
+ * combined object entirely, which reads as "every tool", so two failed packs
+ * each scoped to Bash denied Write and Read as well. One failed pack narrowed
+ * correctly and two widened to everything, which is the wrong way round:
+ * combining two limited scopes cannot produce a larger one.
+ */
+export function combinedGuardMatch(guards: MissingGuard[]): PolicyMatcher {
+  if (guards.length === 1) return guards[0].match;
+  const axis = <K extends "events" | "toolNames">(key: K): PolicyMatcher[K] | undefined =>
+    guards.every((g) => g.match[key]?.length)
+      ? ([...new Set(guards.flatMap((g) => g.match[key] ?? []))] as PolicyMatcher[K])
+      : undefined;
+  return { events: axis("events"), toolNames: axis("toolNames") };
+}
+
 export function packFailureReason(guards: MissingGuard[]): string {
   const named = guards
     .map((g) => {

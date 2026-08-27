@@ -9,7 +9,7 @@
  * call by design.
  */
 import { describe, it, expect } from "vitest";
-import { missingGuards, packFailureReason, PERMANENT_LOAD_FAILURES } from "@/src/hooks/pack-failclosed";
+import { missingGuards, packFailureReason, combinedGuardMatch, PERMANENT_LOAD_FAILURES } from "@/src/hooks/pack-failclosed";
 import type { PackError, ResolvedPack } from "@/src/hooks/pack-manifest";
 
 const policy = (name: string, match: object = { events: ["PreToolUse"], toolNames: ["Bash"] }) =>
@@ -244,6 +244,48 @@ describe("a pack scoped away from the agent that is running", () => {
     const scoped = { id: "acme/x", reason: "artifact missing", effect: "enforce", clis: ["codex"] };
     expect(call({ errors: [scoped as never], cli: "claude" })).toEqual([]);
     expect(call({ errors: [scoped as never], cli: "codex" })).toHaveLength(1);
+  });
+});
+
+// One policy stands in for every missing guard, so its matcher has to cover all
+// of them without covering more.
+describe("the matcher that covers several missing guards at once", () => {
+  const guard = (match: object) =>
+    ({ packId: "acme/x", packVersion: "1", policies: ["p"], match, reason: "r" }) as never;
+
+  it("unions both axes when every guard narrowed both", () => {
+    expect(
+      combinedGuardMatch([
+        guard({ events: ["PreToolUse"], toolNames: ["Bash"] }),
+        guard({ events: ["PostToolUse"], toolNames: ["Write"] }),
+      ]),
+    ).toEqual({ events: ["PreToolUse", "PostToolUse"], toolNames: ["Bash", "Write"] });
+  });
+
+  // THE BUG. `toolNames` was left out of the combined object entirely, which
+  // reads as "every tool" — so two failed packs each scoped to Bash denied
+  // Write and Read as well, while ONE failed pack scoped correctly. Combining
+  // two limited scopes cannot produce a larger one.
+  it("does not widen to every tool just because there are two guards", () => {
+    const combined = combinedGuardMatch([
+      guard({ events: ["PreToolUse"], toolNames: ["Bash"] }),
+      guard({ events: ["PreToolUse"], toolNames: ["Bash"] }),
+    ]);
+    expect(combined.toolNames).toEqual(["Bash"]);
+  });
+
+  it("widens an axis only when a guard left it open", () => {
+    const combined = combinedGuardMatch([
+      guard({ events: ["PreToolUse"], toolNames: ["Bash"] }),
+      guard({ events: ["PreToolUse"] }),
+    ]);
+    expect(combined.events).toEqual(["PreToolUse"]);
+    expect(combined.toolNames).toBeUndefined();
+  });
+
+  it("passes a lone guard through untouched", () => {
+    const only = { events: ["PreToolUse"], toolNames: ["Bash"] };
+    expect(combinedGuardMatch([guard(only)])).toEqual(only);
   });
 });
 

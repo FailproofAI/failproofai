@@ -44,7 +44,7 @@ import { hookLogInfo, hookLogWarn } from "./hook-logger";
 import { readStdinPayload } from "./read-stdin";
 import { readActiveCloudManagedPolicies, type CloudManagedPolicyArtifact } from "./cloud-managed-policies";
 import { hasInstalledPacks, readInstalledPacks, type PackError, type ResolvedPack } from "./pack-manifest";
-import { missingGuards, packFailureReason } from "./pack-failclosed";
+import { missingGuards, packFailureReason, combinedGuardMatch } from "./pack-failclosed";
 import { readActivePause, type ActivePause } from "./session-pause";
 import { layoutWarningForHook } from "./fp-reset";
 
@@ -574,13 +574,7 @@ export async function evaluateHookEvent(
         });
         if (guards.length > 0) {
           const reason = packFailureReason(guards);
-          const match = guards.length === 1
-            ? guards[0].match
-            : {
-                events: guards.every((g) => g.match.events)
-                  ? [...new Set(guards.flatMap((g) => g.match.events ?? []))]
-                  : undefined,
-              };
+          const match = combinedGuardMatch(guards);
           const name = "pack/failproofai-pack-unavailable";
           policyAttribution.set(name, {
             source: "pack",

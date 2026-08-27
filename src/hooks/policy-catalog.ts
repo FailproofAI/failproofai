@@ -169,7 +169,15 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     // PermissionRequest is carried over from the merged-in `block-self-pause`.
     // It is a real enforcement point on Copilot and Devin, and dropping it would
     // have left this guard blind on both.
-    match: { events: ["PreToolUse", "PermissionRequest"], toolNames: ["Bash"] },
+    // Write/Edit are here because the Bash-only surface left the shortest way
+    // through this guard unguarded: the agent never needs a shell to overwrite
+    // `~/.failproofai/policies-config.json` with `{"enabledPolicies":[]}` — it
+    // just writes the file. Every CLI canonicalizes its own file tool's path
+    // key to `file_path`, so one branch covers all of them.
+    match: {
+      events: ["PreToolUse", "PermissionRequest"],
+      toolNames: ["Bash", "Write", "Edit", "NotebookEdit"],
+    },
     defaultEnabled: true,
     alwaysOn: true,
     category: "Dangerous Commands",

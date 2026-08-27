@@ -25,7 +25,7 @@ import {
 import type { PackPreviewResult } from "@/app/actions/pack-actions";
 import { installHooksWebAction, removeHooksWebAction } from "@/app/actions/install-hooks-web";
 import { updatePolicyParamsAction } from "@/app/actions/update-policy-params";
-import { packPolicyParamKey } from "@/src/hooks/policy-evaluator";
+import { packPolicyParamKey } from "@/src/hooks/pack-param-key";
 import { useAutoRefresh } from "@/contexts/AutoRefreshContext";
 import { usePostHog } from "@/contexts/PostHogContext";
 import { useUrlParams } from "@/lib/use-url-params";
@@ -1320,7 +1320,19 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
     });
     startTransition(async () => {
       try {
-        await togglePackPolicyAction(policy.packId, name, !currentlyEnabled);
+        // The RESULT, not just the absence of a throw. This action reports a
+        // missing pack, an unreadable manifest, or a policy an intervening pack
+        // update removed by RETURNING `{ ok: false, error }` — deliberately,
+        // because none of those is exceptional. Awaiting and discarding it left
+        // the optimistic row showing enforcement that was never written: the
+        // dashboard said a policy was on, and nothing was running it. Every
+        // reachable path there is a stale dashboard, which is the ordinary
+        // state of a tab somebody left open.
+        const result = await togglePackPolicyAction(policy.packId, name, !currentlyEnabled);
+        if (!result.ok) {
+          fireActionError("policy_toggle", result.error ?? "Failed to save policy change.");
+          reload();
+        }
       } catch {
         fireActionError("policy_toggle", "Failed to save policy change.");
         reload();

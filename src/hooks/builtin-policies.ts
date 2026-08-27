@@ -458,8 +458,594 @@ const GIT_COMMIT_MERGE_RE = /git\s+(commit|merge|rebase|cherry-pick)\b/;
  * Named separately from the binary walk because it never mentions the binary:
  * the target is a path, and the verb is an ordinary file command.
  */
-const FAILPROOFAI_STATE_WRITE_RE =
-  /\b(?:rm|unlink|shred|mv|truncate)\b[^;&|]*\.failproofai(?:\/|\b)/;
+const FAILPROOFAI_STATE_PATH_RE = /\.failproofai(?:\/|\b)/;
+
+/**
+ * Everything the state guard is allowed to let PAST, as a list of commands that
+ * can only read.
+ *
+ * This is the third shape of this check, and the first that is an allowlist.
+ * The first was one verb-then-path regex,
+ * `\b(?:rm|unlink|shred|mv|truncate)\b[^;&|]*\.failproofai` — `find
+ * ~/.failproofai -delete` names none of those words and walked straight
+ * through the one guard that cannot be switched off. The second kept the
+ * blocklist shape and added the verbs that miss implied (`find -delete`,
+ * `-exec`, `dd`, `tee`, redirects, `--delete`), which left
+ * `python3 -c 'shutil.rmtree(...)'`, `perl -e 'rmtree(...)'`,
+ * `node -e 'fs.rmSync(...)'`, `git clean -xdff`, `sed -i`, `gio trash`,
+ * `install /dev/null`, `tar --overwrite` and `chmod 000` all still open — and
+ * `cp /dev/null <path>`, which its own doc comment claimed was covered and
+ * which the regex never mentioned.
+ *
+ * A blocklist of destructive verbs cannot be finished: every interpreter on the
+ * machine is one more verb. This list can be, because the reasons to point a
+ * command at `~/.failproofai` at all are few and all of them read. So the
+ * direction is inverted, and the failure modes go with it: a name missing from
+ * a blocklist silently disables enforcement and nothing reports it, while a
+ * name missing from THIS list denies a command an operator can see and file a
+ * bug about. For the one guard nobody can switch off, take the visible failure.
+ */
+const STATE_READ_COMMANDS = new Set([
+  // Contents
+  "cat", "bat", "less", "more", "head", "tail", "nl", "strings", "xxd", "od",
+  "jq", "yq", "diff", "cmp", "wc", "sort", "uniq", "column", "awk", "cut",
+  // Listing and metadata
+  "ls", "dir", "tree", "stat", "file", "du", "df", "readlink", "realpath",
+  "basename", "dirname", "pwd", "test", "find",
+  // Search
+  "grep", "egrep", "fgrep", "rg", "ag", "ack",
+  // Integrity
+  "md5sum", "sha1sum", "sha256sum", "shasum", "cksum",
+  // Navigation, which moves no bytes on its own
+  "cd", "pushd", "popd",
+  // Copy-family: a read only when the state is the SOURCE — see COPY_COMMANDS
+  "cp", "rsync", "install", "tee",
+  // Editors-as-readers and no-ops
+  "sed", "true", "false", ":", "echo", "printf",
+  // Shell grammar. `[ -f ~/.failproofai/policies-config.json ]` and
+  // `for f in ~/.failproofai/*` are not commands that touch anything — a loop
+  // header only expands words, and a test only stats. They were reaching the
+  // unknown-head branch and denying, which is how an always-on guard starts
+  // blocking the ordinary way of checking whether the state is there.
+  "[", "[[", "]", "]]", "test", "read", "for", "select", "case", "done", "fi", "esac",
+]);
+
+/**
+ * Shell keywords that stand in FRONT of a real command.
+ *
+ * Skipped like a runner, so `do rm -rf "$f"` is judged as the `rm` it is
+ * rather than as an unknown head called `do`. That cuts both ways and both are
+ * wanted: `do cat "$f"` stops denying, and `until rm -rf ~/.failproofai` stops
+ * relying on `until` being unrecognised.
+ */
+const SHELL_KEYWORD_PREFIXES = new Set(["do", "then", "else", "elif", "if", "while", "until", "!"]);
+
+/**
+ * A loop header, which hands its word list to the body that follows.
+ *
+ * `find ~/.failproofai -type f | while read f; do rm "$f"; done` names the
+ * state only in the header — every `;` after it starts a pipeline with nothing
+ * failproofai-shaped in it, so the body was judged against a path it never
+ * mentions. The header's reach has to carry into the body, and stop at `done`.
+ */
+const LOOP_HEADER_RE = /(?:^|[\s(])(?:while|until|for|select)\s/;
+
+/**
+ * Commands whose verdict depends on which END of the argument list the state
+ * path sits at.
+ *
+ * `cp -r ~/.failproofai /tmp/backup` is how somebody preserves the state before
+ * touching it; `cp /dev/null ~/.failproofai/policies-config.json` is how
+ * somebody empties a file without ever naming `rm`. The tool is the same and
+ * only the destination separates them, so the destination is what decides.
+ */
+const COPY_COMMANDS = new Set(["cp", "rsync", "install"]);
+
+/**
+ * Commands that write EVERY path operand they are given.
+ *
+ * `tee` was an unknown head, so it denied wherever it appeared — including
+ * `cat ~/.failproofai/policies-config.json | tee /tmp/out.json`, which is a
+ * read with a transcript. What decides is the same thing that decides for the
+ * copy family: which end of the pipe the state sits on.
+ */
+const OPERAND_WRITE_COMMANDS = new Set(["tee"]);
+
+/**
+ * Readers whose LAST operand is an output file rather than another input.
+ *
+ * `uniq /dev/null ~/.failproofai/policies-config.json` and
+ * `xxd -r -p /tmp/hex ~/.failproofai/policies-config.json` both empty the
+ * config while sitting in the read allowlist. One operand is still a read, so
+ * `xxd ~/.failproofai/policies-config.json | head` stays allowed.
+ */
+const SECOND_OPERAND_WRITERS = new Set(["uniq", "xxd"]);
+
+/**
+ * Readers that write to a file NAMED BY A FLAG, per command.
+ *
+ * `sort -o` is the shape that matters: an allowlisted reader that takes its
+ * destination as an option, so nothing about its head or its operand order
+ * says it is writing. `curl` is here rather than treated as a pure mention
+ * command because `curl -o ~/.failproofai/policies-config.json <url>` replaces
+ * the config with whatever a server returns.
+ */
+const OUTPUT_FLAG_COMMANDS: Record<string, readonly string[]> = {
+  sort: ["-o", "--output"],
+  tree: ["-o", "--output"],
+  curl: ["-o", "--output", "--output-dir", "-D", "--dump-header", "--trace", "--trace-ascii"],
+};
+
+/**
+ * `find` actions that write a file of their own, as opposed to running one.
+ *
+ * `find /etc -fprint ~/.failproofai/policies-config.json` truncates the config
+ * without touching the state directory at all — the state is the *report*
+ * target, and `find` is on the read allowlist.
+ */
+const FIND_WRITE_ACTIONS = new Set(["-fprint", "-fprint0", "-fprintf", "-fls"]);
+
+/**
+ * Commands safe to hand a matched path to from `find -exec`.
+ *
+ * Deliberately NARROWER than `STATE_READ_COMMANDS`: the copy family and `sed`
+ * are reads only because of where their operands sit, and `-exec` decides that
+ * for them — `find ~/.failproofai -type f -exec cp /dev/null {} \;` and
+ * `-exec sed -i …` empty every file in the state through two names that were
+ * both on the allowlist. `find` itself is excluded for the same reason
+ * (`-exec find {} -delete \;`).
+ */
+const SAFE_EXEC_COMMANDS = new Set([
+  "cat", "bat", "head", "tail", "nl", "strings", "xxd", "od", "jq", "yq", "wc",
+  "ls", "stat", "file", "du", "readlink", "realpath", "basename", "dirname",
+  "grep", "egrep", "fgrep", "rg", "md5sum", "sha1sum", "sha256sum", "shasum",
+  "cksum", "echo", "printf", "true", ":",
+]);
+
+/**
+ * `git` subcommands that rewrite or delete a working tree.
+ *
+ * `git` is otherwise treated as carrying a path as PROSE — `git commit -m
+ * "document ~/.failproofai layout"` must not deny — but `git clean -xdff
+ * .failproofai` deletes the directory as thoroughly as `rm -rf` does.
+ */
+const GIT_DESTRUCTIVE_SUBCOMMANDS = new Set([
+  "clean", "rm", "restore", "checkout", "reset", "stash",
+]);
+
+/**
+ * `git`'s own options that swallow the token after them.
+ *
+ * The subcommand is the first token that is not an option — but `git -c
+ * core.x=1 -C ~/.failproofai clean -xdff` makes `core.x=1` the first such
+ * token, so the walk settled on it, found no destructive subcommand, and let a
+ * `git clean -xdff` of the state directory through.
+ */
+const GIT_FLAGS_WITH_OPERANDS = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"]);
+
+/** The `git` subcommand, with git's own global options walked off first. */
+function gitSubcommand(args: string[]): string | undefined {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (GIT_FLAGS_WITH_OPERANDS.has(arg)) {
+      i++;
+      continue;
+    }
+    if (arg.startsWith("-")) continue;
+    return arg;
+  }
+  return undefined;
+}
+
+/**
+ * Commands that take a path as text to record or print, not as a file to open.
+ *
+ * Without them the always-on guard denies an agent writing a commit message or
+ * a PR body that names `~/.failproofai` — the same false positive the binary
+ * half of this policy already had to be anchored to avoid.
+ */
+const STATE_MENTION_COMMANDS = new Set(["git", "gh", "glab", "echo", "printf", "curl", "code", "open"]);
+
+/** `find` actions that hand the matched paths to an arbitrary command. */
+const FIND_EXEC_ACTIONS = new Set(["-exec", "-execdir", "-ok", "-okdir"]);
+
+/**
+ * The pieces a shell treats as SEPARATE commands.
+ *
+ * `|` is deliberately absent. A pipeline is one unit of work: `find
+ * ~/.failproofai -print0 | xargs -0 rm -f` names the path on the left and the
+ * verb on the right, and splitting there made each half look innocent. `;`,
+ * `&&`, `||`, `&` and a newline do start a genuinely new command, which is what
+ * keeps `cat ~/.failproofai/config.json && rm /tmp/scratch` allowed.
+ */
+const PIPELINE_SEPARATORS = /\|\||&&|[;\n\r&]+/;
+
+/** A `$VAR` or `${VAR}` reference, wherever it sits. */
+const VAR_REFERENCE_RE = /\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?/g;
+
+/**
+ * The spellings of the state directory a glob would have to match.
+ *
+ * A glob is expanded by the shell, so `rm -rf ~/.failproof*` never contains the
+ * literal — it was the cheapest bypass left standing, and cheap matters most
+ * for the one guard that cannot be switched off. What can be decided from the
+ * pre-expansion string is whether the pattern COULD land on the state, so the
+ * pattern is compiled and tried against the paths it would have to hit.
+ */
+const STATE_GLOB_CANDIDATES = [
+  ".failproofai",
+  "~/.failproofai",
+  "$HOME/.failproofai",
+  "${HOME}/.failproofai",
+  "/root/.failproofai",
+  "/home/u/.failproofai",
+  "/Users/u/.failproofai",
+];
+
+/**
+ * True when this token is a glob that could expand onto failproofai's state.
+ *
+ * Requires a literal `fail` in the pattern as well as a match. Without that
+ * floor a bare `*` compiles to a regex that matches every candidate, and
+ * `cd /tmp/build && rm -rf *` — a command with nothing to do with failproofai
+ * — would deny. With it, `rm -rf /tmp/test-failures*` also stays allowed,
+ * because carrying the word is not the same as being able to match.
+ */
+function globCouldNameState(token: string): boolean {
+  if (!/[*?[]/.test(token)) return false;
+  if (!token.includes("fail")) return false;
+  let pattern = "^";
+  for (let i = 0; i < token.length; i++) {
+    const ch = token[i];
+    if (ch === "*") pattern += "[^/]*";
+    else if (ch === "?") pattern += "[^/]";
+    else if (ch === "[") {
+      const close = token.indexOf("]", i + 1);
+      if (close === -1) return false;
+      pattern += token.slice(i, close + 1);
+      i = close;
+    } else pattern += ch.replace(/[.+^${}()|\\\]]/g, "\\$&");
+  }
+  try {
+    const re = new RegExp(pattern + "$");
+    return STATE_GLOB_CANDIDATES.some((candidate) => re.test(candidate));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Every command-substitution body in a command, `$(…)` and backticked alike.
+ *
+ * A substitution runs its contents as a command of its own, so
+ * `echo $(rm -rf ~/.failproofai)` deletes the state while presenting `echo` —
+ * a mention command — as the head. Splitting on parentheses instead would have
+ * cost the opposite case: `rm -rf $(ls -d ~/.failproofai)` is a real delete
+ * whose INNER command only reads, and the outer `rm` has to keep denying. So
+ * the bodies are pulled out and judged as commands as well as, not instead of,
+ * the whole string.
+ */
+function substitutionBodies(command: string): string[] {
+  const bodies: string[] = [];
+  for (let i = 0; i < command.length; i++) {
+    if (command[i] === "`") {
+      const close = command.indexOf("`", i + 1);
+      if (close === -1) break;
+      bodies.push(command.slice(i + 1, close));
+      i = close;
+      continue;
+    }
+    if (command[i] !== "$" || command[i + 1] !== "(") continue;
+    let depth = 1;
+    let j = i + 2;
+    for (; j < command.length && depth > 0; j++) {
+      if (command[j] === "(") depth++;
+      else if (command[j] === ")") depth--;
+    }
+    if (depth === 0) bodies.push(command.slice(i + 2, j - 1));
+    i = j - 1;
+  }
+  return bodies;
+}
+
+/** An output redirect and the token it targets: `>f`, `> f`, `2>f`, `>>f`, `>|f`. */
+const REDIRECT_TARGET_RE = /\d*>{1,2}\|?\s*("[^"]*"|'[^']*'|[^\s;&|<>]+)/g;
+
+/**
+ * Strip the punctuation a shell consumes, so `(cd` reads as `cd`.
+ *
+ * Quotes come off for the same reason the brackets do, and they are the pair
+ * that mattered: `bash -c 'cat ~/.failproofai/policies-config.json'` presented
+ * a head of `'cat`, which is on no allowlist, so the guard denied a plain read
+ * of the config through the most ordinary wrapper there is. Stripping them
+ * cannot let a deleter past — `"rm"` unquotes to `rm`, which is still not a
+ * reader.
+ */
+function bareToken(token: string): string {
+  return token.replace(/^[(){}'"]+|[(){}'"]+$/g, "");
+}
+
+/** The name a shell would exec, given a token: `/usr/bin/rm` → `rm`. */
+function commandBasename(token: string): string {
+  const bare = bareToken(token);
+  return bare.slice(bare.lastIndexOf("/") + 1);
+}
+
+/**
+ * Walk off everything a shell resolves before it settles on the command word,
+ * and return the tokens from the command word on. Mirrors the walk in
+ * `classifySelfInvocation` — the same prefixes hide a deleter that hid the
+ * binary, and `xargs -0 rm -f` is the one that matters most here.
+ */
+function commandWords(simpleCommand: string): string[] {
+  const tokens = simpleCommand.trim().split(/\s+/).map(bareToken).filter(Boolean);
+  let i = 0;
+  while (i < tokens.length) {
+    const token = tokens[i];
+    // A redirect operator and, when it stands alone, the token it targets —
+    // `> file` must not leave `file` sitting where the command word goes.
+    if (/^\d*(?:>{1,2}\|?|<{1,3})/.test(token)) {
+      i += /^\d*(?:>{1,2}\|?|<{1,3})$/.test(token) ? 2 : 1;
+      continue;
+    }
+    const skippable =
+      ENV_ASSIGNMENT_RE.test(token) ||
+      token.startsWith("-") ||
+      RUNNER_OPERAND_RE.test(token) ||
+      SHELL_KEYWORD_PREFIXES.has(token) ||
+      COMMAND_PREFIX_TOKENS.has(commandBasename(token));
+    if (!skippable) break;
+    i++;
+  }
+  return tokens.slice(i);
+}
+
+/**
+ * True when this one simple command would destroy whatever it is pointed at.
+ *
+ * Reached only for a command that already names failproofai's state, so the
+ * question is narrow: is this a read, or is it everything else.
+ */
+function simpleCommandDestroys(words: string[], namesState: (text: string) => boolean): boolean {
+  if (words.length === 0) return false;
+  const head = commandBasename(words[0]);
+  const args = words.slice(1);
+
+  // `find` is a read until one of its ACTIONS turns it into something else.
+  // `-delete` is the miss that started all of this; `-exec` runs anything at
+  // all, so it is judged by the command it hands the paths to, and an
+  // unrecognised one is treated as destructive rather than waved through.
+  if (head === "find") {
+    if (args.some((a) => a === "-delete")) return true;
+    // `-fprint <file>` and its siblings truncate the file they report INTO, so
+    // `find /etc -fprint ~/.failproofai/policies-config.json` empties the config
+    // while never descending into the state at all.
+    if (args.some((a) => FIND_WRITE_ACTIONS.has(a))) return true;
+    // EVERY `-exec`, not the first: `find … -exec cat {} + -o -exec rm {} +`
+    // put a read in front of the deleter and walked past a findIndex.
+    return args.some(
+      (a, i) => FIND_EXEC_ACTIONS.has(a) && !SAFE_EXEC_COMMANDS.has(commandBasename(args[i + 1] ?? "")),
+    );
+  }
+
+  // `sed -i` edits in place — and so does the `w` command inside a script,
+  // which needs no flag at all: `sed 's/a/b/w <state>' /etc/hosts` writes the
+  // state without `-i` anywhere on the line.
+  if (head === "sed") {
+    if (args.some((a) => a.startsWith("-i") || a.startsWith("--in-place"))) return true;
+    // The filename may ride in the same token (`'s/a/b/w<path>'`) or in the
+    // next one, because a quoted script containing a space is two tokens by the
+    // time it gets here. `s/a/b/w` and a bare `w` both end in a `w` that
+    // follows a delimiter, which is what separates them from a word like `raw`.
+    return args.some(
+      (a, i) => /(?:^|[;}/\s])w$/.test(a) && namesState(args[i + 1] ?? ""),
+    ) || args.some((a) => /(?:^|[;}/\s])w\s*\S*\.failproofai/.test(a));
+  }
+
+  // `awk` can run a shell (`system("rm -rf …")`) or pipe into one, so its
+  // program has to be read for those two, not just for the `>` the redirect
+  // scan already catches.
+  if (head === "awk" || head === "gawk" || head === "mawk") {
+    return args.some((a) => /system\s*\(|\|\s*["']|\|&/.test(a));
+  }
+
+  // Copying the state OUT is a backup. Copying anything ONTO it — classically
+  // `/dev/null` — empties it without naming a delete verb. The destination is
+  // the last operand, unless `-t` names it instead: `cp -t ~/.failproofai
+  // /dev/null` puts the destination FIRST and left the last operand innocent.
+  if (COPY_COMMANDS.has(head)) {
+    // `rsync --remove-source-files` deletes what it just copied, so the state
+    // being the SOURCE — the shape that makes every other copy a backup — is
+    // what makes this one a move.
+    if (args.includes("--remove-source-files") && args.some((a) => namesState(a))) return true;
+    const targetAt = args.findIndex((a) => a === "-t" || a === "--target-directory");
+    if (targetAt !== -1 && namesState(args[targetAt + 1] ?? "")) return true;
+    if (args.some((a) => a.startsWith("--target-directory=") && namesState(a))) return true;
+    const operands = args.filter((a) => !a.startsWith("-"));
+    const destination = operands[operands.length - 1];
+    return destination !== undefined && namesState(destination);
+  }
+
+  // `tee` writes every operand it is given and reads none of them.
+  if (OPERAND_WRITE_COMMANDS.has(head)) {
+    return args.some((a) => !a.startsWith("-") && namesState(a));
+  }
+
+  // `uniq INPUT OUTPUT` and `xxd IN OUT`: the second operand is written.
+  if (SECOND_OPERAND_WRITERS.has(head)) {
+    const operands = args.filter((a) => !a.startsWith("-"));
+    return operands.length > 1 && namesState(operands[operands.length - 1]);
+  }
+
+  // `git` normally carries the path as prose in a message or a body.
+  if (head === "git") {
+    const subcommand = gitSubcommand(args);
+    return subcommand !== undefined && GIT_DESTRUCTIVE_SUBCOMMANDS.has(subcommand);
+  }
+
+  // A reader whose destination arrives as an option rather than as an operand.
+  // Checked before the allowlist, or `sort -o <state> /dev/null` reads as the
+  // `sort` it is named after.
+  if (writesViaOutputFlag(head, args, namesState)) return true;
+
+  if (STATE_READ_COMMANDS.has(head) || STATE_MENTION_COMMANDS.has(head)) return false;
+  return true;
+}
+
+/**
+ * True when a flag on this command names the state as an output file.
+ *
+ * `sort -o`, `tree -o` and `curl -o` all take their destination as an option,
+ * so nothing about the head or the operand order says they are writing — and
+ * all three heads were on a list that said they only read. Short options bundle
+ * (`curl -sfo <file>`), so the trailing letter is what decides.
+ */
+function writesViaOutputFlag(head: string, args: string[], namesState: (text: string) => boolean): boolean {
+  const flags = OUTPUT_FLAG_COMMANDS[head];
+  if (!flags) return false;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    const long = flags.find((f) => f.startsWith("--") && arg.startsWith(`${f}=`));
+    if (long && namesState(arg)) return true;
+    const bundled = /^-[A-Za-z]*[oD]$/.test(arg) && flags.includes(`-${arg[arg.length - 1]}`);
+    if ((flags.includes(arg) || bundled) && namesState(args[i + 1] ?? "")) return true;
+  }
+  return false;
+}
+
+/**
+ * True when `command` would delete, move or overwrite failproofai's own state.
+ *
+ * Deleting the state IS disabling enforcement, and it never names the binary:
+ * `rm ~/.failproofai/policies/packs/installed.json` switches off every pack
+ * policy on the machine, and fail-closed does NOT fire, because a missing store
+ * reads as a fresh machine rather than a broken one — so nothing anywhere
+ * reports it.
+ *
+ * Two things carry the path into a command that never spells it, and both were
+ * live bypasses of the per-segment version:
+ *
+ * - `cd ~/.failproofai && rm -rf .` — the path is an argument of `cd`, and the
+ *   destroying command names only `.`
+ * - `D=~/.failproofai; rm -rf $D` — the path is a value, and the destroying
+ *   command names only `$D`
+ *
+ * So the walk is stateful: it remembers which variables hold the path and
+ * whether the shell has been moved INTO the directory, and carries both
+ * forward. What it does NOT do is treat every later command as suspect —
+ * `cat ~/.failproofai/config.json && rm /tmp/scratch` has to stay allowed, and
+ * does, because nothing in the second command reaches the state.
+ */
+function destroysFailproofaiState(command: string, depth = 0): boolean {
+  // A substitution runs its body as a command of its own, so it is judged as
+  // one — `echo $(rm -rf ~/.failproofai)` otherwise presents `echo` as the head
+  // and walks straight through. Bounded, because a body can contain another.
+  // Breadth-first with a budget rather than depth-limited recursion: a nest
+  // deeper than the limit is trivial to write (`echo $(echo $(… rm …))`), and
+  // every level of it presents `echo` as the head. The budget is what bounds
+  // the work instead, because siblings multiply where depth does not.
+  if (depth === 0) {
+    const bodies = substitutionBodies(command);
+    for (let i = 0; i < bodies.length && i < 64; i++) {
+      if (destroysFailproofaiState(bodies[i], 1)) return true;
+      bodies.push(...substitutionBodies(bodies[i]));
+    }
+  }
+
+  // Variables that hold the path. The scan used to ask only whether a value
+  // CONTAINED the path, which caught `D=~/.failproofai; rm -rf $D` and missed
+  // `A=~/.failproofai; B=$A; rm -rf $B` — the second hop names no path at all,
+  // only the first variable. So a value referencing a known state variable
+  // counts too. Repeating to a fixpoint costs four lines and makes the result
+  // independent of the order the assignments appear in, rather than resting on
+  // a shell evaluating them top to bottom.
+  const assignments = [
+    ...command.matchAll(/(?:^|[\s;&|(])(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;&|)]+)/g),
+  ].map(([, name, value]) => [name, value.replace(/^["']|["']$/g, "")] as const);
+  const stateVars = new Set<string>();
+  for (let pass = 0; pass < assignments.length + 1; pass++) {
+    const before = stateVars.size;
+    for (const [name, value] of assignments) {
+      const holdsState =
+        FAILPROOFAI_STATE_PATH_RE.test(value) ||
+        [...value.matchAll(VAR_REFERENCE_RE)].some(([, ref]) => stateVars.has(ref));
+      if (holdsState) stateVars.add(name);
+    }
+    if (stateVars.size === before) break;
+  }
+
+  const namesState = (text: string): boolean => {
+    if (FAILPROOFAI_STATE_PATH_RE.test(text)) return true;
+    for (const [, name] of text.matchAll(VAR_REFERENCE_RE)) {
+      if (stateVars.has(name)) return true;
+    }
+    // Per token, not over the whole text: a glob compiled from a whole command
+    // line matches nothing, and it is the individual operand — `~/.failproof*`
+    // — that would expand onto the state.
+    return text.split(/\s+/).some((token) => globCouldNameState(bareToken(token)));
+  };
+
+  let cwdInState = false;
+  // How deep in `( … )` the walk is, and how deep it was when the `cd` fired.
+  // A `cd` inside a subshell moves the subshell only, so the window closes when
+  // the parenthesis does: `(cd ~/.failproofai && cat x); rm -rf node_modules`
+  // was denying a cleanup in an entirely unrelated directory.
+  let parenDepth = 0;
+  let cdParenDepth: number | null = null;
+  // A loop header hands its word list to the body, and the body is a separate
+  // pipeline that names nothing. Without this, `for f in ~/.failproofai/*; do
+  // rm -rf $f; done` is a header that only expands and a body that only deletes
+  // something called `$f`.
+  let loopCarriesState = false;
+  for (const pipeline of command.split(PIPELINE_SEPARATORS)) {
+    if (!pipeline.trim()) continue;
+    const simpleCommands = pipeline.split("|");
+    const reachesState = namesState(pipeline) || cwdInState || loopCarriesState;
+    if (reachesState && LOOP_HEADER_RE.test(pipeline)) loopCarriesState = true;
+    if (/(?:^|\s)done(?:\s|$)/.test(pipeline)) loopCarriesState = false;
+
+    // A redirect is a write with no command in front of it — `> path` empties a
+    // file on its own. Only a redirect whose TARGET is the state counts: the
+    // previous version matched any `>` anywhere in the segment, so
+    // `grep -r sudo ~/.failproofai 2>/dev/null` and
+    // `cat ~/.failproofai/config.json > /tmp/backup.json` both denied, which is
+    // exactly the diagnosis this guard must not block.
+    if (reachesState) {
+      for (const [, target] of pipeline.matchAll(REDIRECT_TARGET_RE)) {
+        if (namesState(target.replace(/^["']|["']$/g, ""))) return true;
+      }
+    }
+
+    for (const simple of simpleCommands) {
+      parenDepth += (simple.match(/\(/g) ?? []).length;
+      const words = commandWords(simple);
+      const head = words.length > 0 ? commandBasename(words[0]) : "";
+      // Track the shell's position before judging: a `cd` INTO the state makes
+      // every later relative path a state path, and a `cd` back out ends that.
+      if (head === "cd" || head === "pushd") {
+        const operand = words.slice(1).find((w) => !w.startsWith("-"));
+        cwdInState = operand !== undefined && namesState(operand);
+        cdParenDepth = cwdInState ? parenDepth : null;
+      } else if (head === "popd") {
+        // `popd` returns to wherever the shell was before `pushd`, which ends
+        // the window as surely as a `cd` out does. Without it every command for
+        // the rest of the line was judged as if it stood in the state directory.
+        cwdInState = false;
+        cdParenDepth = null;
+      } else if (reachesState && words.length > 0 && simpleCommandDestroys(words, namesState)) {
+        // Judged BEFORE the closing parenthesis is counted: a `rm -rf ./*)`
+        // still runs inside the subshell it closes.
+        return true;
+      }
+      parenDepth -= (simple.match(/\)/g) ?? []).length;
+      if (cdParenDepth !== null && parenDepth < cdParenDepth) {
+        cwdInState = false;
+        cdParenDepth = null;
+      }
+    }
+  }
+  return false;
+}
 
 const FAILPROOFAI_UNINSTALL_RE = /(?:npm\s+(?:uninstall|remove|un|r)\s.*failproofai|bun\s+remove\s.*failproofai|yarn\s+global\s+remove\s+failproofai|pnpm\s+(?:remove|uninstall|un)\s.*failproofai)/;
 
@@ -1453,6 +2039,22 @@ function blockWorkOnMain(ctx: PolicyContext): PolicyResult {
  * merge keeps the behaviour users have.
  */
 function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
+  // A file tool reaches the state without a shell at all. Writing
+  // `{"enabledPolicies":[]}` over `~/.failproofai/policies-config.json`, or an
+  // empty `policies/packs/installed.json`, disables enforcement exactly as
+  // completely as `rm -rf` does — and the machine still reads as fresh, so
+  // fail-closed never fires. Reading is not offered by these tools' write half,
+  // so naming the state at all is the whole test.
+  if (ctx.toolName === "Write" || ctx.toolName === "Edit" || ctx.toolName === "NotebookEdit") {
+    const path = getFilePath(ctx) || ((ctx.toolInput?.notebook_path as string) ?? "");
+    if (FAILPROOFAI_STATE_PATH_RE.test(path)) {
+      return deny(
+        "Writing to failproofai's own state would switch enforcement off. " +
+          "If a policy is blocking legitimate work, say so and let the operator decide.",
+      );
+    }
+    return allow();
+  }
   if (ctx.toolName !== "Bash") return allow();
   const cmd = getCommand(ctx);
   // The raw command AND its shell-unescaped form: a shell strips quotes and
@@ -1476,13 +2078,12 @@ function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
     return deny("Uninstalling failproofai is blocked");
   }
   // Deleting the state IS disabling enforcement, without ever naming the binary.
-  // `rm ~/.failproofai/policies/packs/installed.json` switched off every pack
-  // policy on the machine and fail-closed did NOT fire, because a missing store
-  // reads as a fresh machine rather than a broken one — so nothing anywhere
-  // reported it.
-  if (FAILPROOFAI_STATE_WRITE_RE.test(cmd) || FAILPROOFAI_STATE_WRITE_RE.test(unescaped)) {
+  // Checked on the raw command AND its shell-unescaped form for the same reason
+  // the binary walk is: `rm -rf ~/.failproof"ai"` presents a broken literal to a
+  // matcher and a real path to the shell.
+  if (destroysFailproofaiState(cmd) || destroysFailproofaiState(unescaped)) {
     return deny(
-      "Deleting or moving failproofai's own state would switch enforcement off. " +
+      "Deleting, moving or overwriting failproofai's own state would switch enforcement off. " +
         "If a policy is blocking legitimate work, say so and let the operator decide.",
     );
   }

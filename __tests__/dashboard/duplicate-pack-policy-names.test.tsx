@@ -23,7 +23,12 @@ import type { HooksConfigPayload } from "@/app/actions/get-hooks-config";
  * indistinguishable from a correct one until somebody clicks the other.
  */
 
-const togglePackPolicyAction = vi.fn(async () => {});
+// Returns what the real server action returns. `togglePackPolicyAction` reports
+// failure by RESOLVING to `{ ok: false, error }`, and the component now reads
+// that field, so a stub resolving to `undefined` puts every click below on the
+// failure path — error banner, refetch, row reverted — and none of these cases
+// would be testing the success path they read as testing.
+const togglePackPolicyAction = vi.fn(async () => ({ ok: true, id: "alpha" }));
 const updatePolicyParamsAction = vi.fn(async () => {});
 const getHooksConfigAction = vi.fn(async () => payload);
 

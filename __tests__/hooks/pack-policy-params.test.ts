@@ -347,16 +347,32 @@ describe("round trip: the dashboard writes the key the evaluator reads", () => {
     // `readPackPolicyParams`. Sharing only the key format is what left the read
     // side free to keep its own unscoped bare fallback and show a stranger's
     // pack our saved parameters.
+    //
+    // The write side's MODULE is now a choice of two, and this test went red
+    // when it moved: `packPolicyParamKey` was lifted out of `policy-evaluator`
+    // into the leaf `pack-param-key`, because a client component importing it
+    // dragged `pack-store`'s `node:fs` into the browser bundle and failed the
+    // Next build. Both spellings resolve to the SAME function — the identity
+    // check below is what makes that a fact rather than a claim — so pinning
+    // one module path was pinning the wrong thing. What must not move is that
+    // the format is never hand-rolled.
     const expected = {
-      "app/policies/hooks-client.tsx": "packPolicyParamKey",
-      "app/actions/get-hooks-config.ts": "readPackPolicyParams",
+      "app/policies/hooks-client.tsx": {
+        helper: "packPolicyParamKey",
+        from: ["@/src/hooks/pack-param-key", "@/src/hooks/policy-evaluator"],
+      },
+      "app/actions/get-hooks-config.ts": {
+        helper: "readPackPolicyParams",
+        from: ["@/src/hooks/policy-evaluator"],
+      },
     } as const;
 
-    for (const [file, helper] of Object.entries(expected)) {
+    for (const [file, { helper, from }] of Object.entries(expected)) {
       const src = readFileSync(join(REPO_ROOT, file), "utf8");
-      expect(src, file).toMatch(
-        new RegExp(`import \\{ ${helper} \\} from "@/src/hooks/policy-evaluator";`),
+      const imported = from.some((mod) =>
+        new RegExp(`import \\{ ${helper} \\} from "${mod}";`).test(src),
       );
+      expect(imported, `${file} must import ${helper} from one of ${from.join(" | ")}`).toBe(true);
       expect(src, file).toMatch(new RegExp(`${helper}\\(`));
       // An interpolated `pack/${...}` literal is a hand-rolled key; the helper
       // is the only place that format may be spelled.
@@ -368,6 +384,41 @@ describe("round trip: the dashboard writes the key the evaluator reads", () => {
     // other pack that happened to reuse a policy name.
     const readSide = readFileSync(join(REPO_ROOT, "app/actions/get-hooks-config.ts"), "utf8");
     expect(readSide).not.toMatch(/policyParams\?\.\[policy\.name\]/);
+  });
+
+  /**
+   * The two module paths above must name one function, not two copies of one
+   * format. A re-export makes that true and a second `return \`pack/...\`` would
+   * not — and nothing else would go red, because both copies would agree on the
+   * day they were written and only drift later. That drift is the whole defect
+   * this file exists for, one indirection up.
+   */
+  it("the evaluator's export and the leaf module are the same function", async () => {
+    const leaf = await import("@/src/hooks/pack-param-key");
+    const evaluator = await import("@/src/hooks/policy-evaluator");
+    expect(evaluator.packPolicyParamKey).toBe(leaf.packPolicyParamKey);
+  });
+
+  /**
+   * The leaf module reaches the BROWSER, and that is the only reason it exists.
+   * One value import here — `pack-store`, `hooks-config`, anything that touches
+   * `node:fs` — and the Next build fails with `Module not found: Can't resolve
+   * 'fs/promises'`. That failure surfaces only in CI's `build` job, minutes
+   * later and pointing at the client component rather than at the import that
+   * caused it, so pin the contract where it is cheap to read.
+   *
+   * `import type` is allowed: it is erased before a bundler ever sees it.
+   */
+  it("the key module the browser reaches stays free of value imports", () => {
+    const src = readFileSync(join(REPO_ROOT, "src/hooks/pack-param-key.ts"), "utf8");
+    const valueImports = src
+      .split("\n")
+      .filter((line) => /^\s*import\s/.test(line) && !/^\s*import\s+type\s/.test(line));
+    expect(valueImports).toEqual([]);
+    expect(src).not.toMatch(/\brequire\(/);
+    // And it must actually still hold the format, or the two tests above pass
+    // against an empty file that every other module has quietly stopped using.
+    expect(src).toMatch(/export function packPolicyParamKey/);
   });
 });
 

@@ -12,6 +12,8 @@ import type { PolicyContext, HooksConfig } from "./policy-types";
 // tree-shaking. 1.1 KB is not worth a second copy of a name that has already
 // drifted twice.
 import { CORE_SOURCE } from "./pack-store";
+import { packPolicyParamKey, parsePackPolicyName } from "./pack-param-key";
+export { packPolicyParamKey } from "./pack-param-key";
 import { DEFAULT_POLICY_NAMESPACE, getPoliciesForEvent } from "./policy-registry";
 import { hookLogInfo, hookLogWarn } from "./hook-logger";
 import { trackHookEvent } from "./hook-telemetry";
@@ -52,9 +54,6 @@ export interface EvaluationResult {
  * displayed as saved and ignored at runtime, on every pack including our own.
  * One function so the two cannot drift again.
  */
-export function packPolicyParamKey(packId: string, policyName: string): string {
-  return `pack/${packId}/${policyName}`;
-}
 
 /**
  * The parameters a PACK policy actually runs with, resolved out of a config's
@@ -93,19 +92,6 @@ export function readPackPolicyParams(
   return undefined;
 }
 
-/** `pack/<id>@<version>/<name>` split back into the parts a key is built from. */
-function parsePackPolicyName(canonicalName: string): { packId: string; name: string } | null {
-  if (!canonicalName.startsWith("pack/")) return null;
-  const rest = canonicalName.slice("pack/".length);
-  const slash = rest.lastIndexOf("/");
-  if (slash <= 0) return null;
-  const idWithVersion = rest.slice(0, slash);
-  const at = idWithVersion.lastIndexOf("@");
-  return {
-    packId: at > 0 ? idWithVersion.slice(0, at) : idWithVersion,
-    name: rest.slice(slash + 1),
-  };
-}
 
 /**
  * Look up policy params for a canonical policy name in the user config,

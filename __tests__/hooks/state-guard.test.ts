@@ -696,6 +696,18 @@ describe("block-failproofai-commands — the state guard", () => {
       ["an unexpanded $HOME", "rm -rf $HOME/.f*ailproofai"],
       ["find, which deletes without a verb", "find ~/.f*ailproofai -delete"],
       ["a glob in a segment that is not the last", "shred ~/.f*ailproofai/policies-config.json"],
+      // A glob INSIDE a brace. The shell expands braces first and globs second,
+      // so `{a*,x}` becomes `~/.fa*ilproofai` and then the directory itself —
+      // while compiling the alternation put a literal `*` in the pattern.
+      ["a star inside a brace alternative", "rm -rf ~/.f{a*,x}ilproofai"],
+      ["a class inside a brace alternative", "rm -rf ~/.f{[a],x}ilproofai"],
+      ["a question mark inside a brace", "rm -rf ~/.f{a?,x}lproofai"],
+      ["nested braces around a glob", "rm -rf ~/.f{{a,b}*,x}ilproofai"],
+      ["two brace groups multiplying", "rm -rf ~/.f{a,x}{i,y}lproofai"],
+      // The token ends with the brace, and the leading/trailing strip that
+      // exists for shell groups (`{ rm -rf x; }`) used to eat it.
+      ["a brace that closes the token", "rm -rf ~/.{fail*,zz}"],
+      ["a brace glob above the state", "shred ~/.f{a*,x}ilproofai/policies-config.json"],
     ])("denies %s", async (_label, command) => {
       expect(await decide(command)).toBe("deny");
     });
@@ -711,9 +723,22 @@ describe("block-failproofai-commands — the state guard", () => {
       ["a build directory", "rm -rf dist/*"],
       ["a search that names no path", "find . -name '*.fail*' -type f"],
       ["a read through a glob", "grep -r x ~/.fail*"],
+      ["ordinary brace expansion", "rm -rf {dist,build}/*"],
+      ["braces over unrelated dotfiles", "rm -rf ~/.{cache,config}/*"],
+      ["braces naming nothing near the state", "rm -rf {a,b}{c,d}"],
     ])("allows %s", async (_label, command) => {
       expect(await decide(command)).not.toBe("deny");
     });
+  });
+
+  // Brace expansion multiplies, so it is bounded rather than trusted. Past the
+  // bound every group collapses to `*`, which reaches at least as far as the
+  // braces could — an oversized token stays decidable instead of becoming a
+  // way to stall the hook path.
+  it("answers a brace bomb quickly instead of expanding it", async () => {
+    const started = Date.now();
+    expect(await decide(`rm -rf ${"{a,b}".repeat(20)}`)).toBe("allow");
+    expect(Date.now() - started).toBeLessThan(2000);
   });
 
   describe("the guard's own standing", () => {

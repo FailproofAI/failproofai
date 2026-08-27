@@ -718,21 +718,113 @@ const GLOB_DECOYS = [
  */
 function globCouldNameState(token: string): boolean {
   if (!/[*?[{]/.test(token)) return false;
-  // Every path PREFIX, not just the whole token. The candidates are the state
+  // Braces FIRST, because that is the order the shell works in: brace expansion
+  // rewrites the word into several words, and only then is each one matched
+  // against the disk. Compiling `{a*,x}` as an alternation of escaped literals
+  // put a literal `*` inside the pattern, so `~/.f{a*,x}ilproofai` — which the
+  // shell turns into `~/.fa*ilproofai` and then into `~/.failproofai` — read as
+  // naming nothing at all.
+  for (const word of expandBraces(token)) {
+    if (wordNamesState(word)) return true;
+  }
+  return false;
+}
+
+/**
+ * How many words one token may expand into before the expansion is abandoned.
+ *
+ * `{a,b}{c,d}{e,f}…` multiplies, so this is bounded rather than trusted. A real
+ * attempt needs a handful; anything past this is answered by the fallback in
+ * `expandBraces`, which is a superset and so cannot hide anything.
+ */
+const BRACE_EXPANSION_LIMIT = 4096;
+
+/**
+ * The words a token expands into, the way the shell would expand them.
+ *
+ * When the product would exceed the limit, every brace group collapses to `*`
+ * instead. That is a SUPERSET of what the braces could produce — it reaches at
+ * least everything they reach — so an oversized token can still be recognised,
+ * and is still held to the same decoy test that keeps `rm -rf *` allowed.
+ */
+function expandBraces(token: string): string[] {
+  let words = [token];
+  for (let round = 0; round < 16; round++) {
+    const next: string[] = [];
+    let expanded = false;
+    for (const word of words) {
+      const group = firstBraceGroup(word);
+      if (!group) {
+        next.push(word);
+        continue;
+      }
+      expanded = true;
+      for (const alternative of group.alternatives) {
+        next.push(word.slice(0, group.start) + alternative + word.slice(group.end + 1));
+      }
+    }
+    if (!expanded) return next;
+    if (next.length > BRACE_EXPANSION_LIMIT) return [token.replace(/\{[^{}]*\}/g, "*")];
+    words = next;
+  }
+  return words;
+}
+
+/** The first brace group in a word, split on its TOP-LEVEL commas. */
+function firstBraceGroup(word: string): { start: number; end: number; alternatives: string[] } | null {
+  const start = word.indexOf("{");
+  if (start === -1) return null;
+  let depth = 0;
+  const alternatives: string[] = [];
+  let current = "";
+  for (let i = start; i < word.length; i++) {
+    const ch = word[i];
+    if (ch === "{") {
+      depth++;
+      if (depth === 1) continue;
+    } else if (ch === "}") {
+      depth--;
+      if (depth === 0) {
+        alternatives.push(current);
+        return { start, end: i, alternatives };
+      }
+    } else if (ch === "," && depth === 1) {
+      alternatives.push(current);
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  return null;
+}
+
+/**
+ * True when one brace-expanded word names the state.
+ *
+ * The literal check comes first because expansion can PRODUCE the literal:
+ * `~/.{failproofai,other}` carries no `.failproofai` as written, and the word it
+ * expands to needs no glob compilation to be recognised.
+ */
+function wordNamesState(word: string): boolean {
+  if (FAILPROOFAI_STATE_PATH_RE.test(word)) return true;
+  // Every path PREFIX, not just the whole word. The candidates are the state
   // directory itself, so `~/.f*ailproofai/policies-config.json` — a glob in a
   // segment that is not the last one — compiled to a pattern that could never
   // equal `~/.failproofai` and was read as naming nothing. Naming a file INSIDE
   // the state is naming the state.
-  const segments = token.split("/");
+  const segments = word.split("/");
   for (let end = 1; end <= segments.length; end++) {
     if (globPrefixNamesState(segments.slice(0, end).join("/"))) return true;
   }
   return false;
 }
 
-/** One `/`-delimited prefix of a token, compiled and tried against the candidates. */
+/**
+ * One `/`-delimited prefix of a brace-expanded word, compiled and tried against
+ * the candidates. Braces are already gone by here; an unmatched one is literal.
+ */
 function globPrefixNamesState(token: string): boolean {
-  if (!/[*?[{]/.test(token)) return false;
+  if (!/[*?[]/.test(token)) return false;
   let pattern = "^";
   for (let i = 0; i < token.length; i++) {
     const ch = token[i];
@@ -742,15 +834,6 @@ function globPrefixNamesState(token: string): boolean {
       const close = token.indexOf("]", i + 1);
       if (close === -1) return false;
       pattern += token.slice(i, close + 1);
-      i = close;
-    } else if (ch === "{") {
-      // Brace expansion is not a glob the shell matches against the disk — it
-      // is rewritten into separate words BEFORE any matching happens. Compiled
-      // as an alternation it reaches the same set, which is all this needs.
-      const close = token.indexOf("}", i + 1);
-      if (close === -1) return false;
-      const alternatives = token.slice(i + 1, close).split(",");
-      pattern += `(?:${alternatives.map((a) => a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`;
       i = close;
     } else pattern += ch.replace(/[.+^${}()|\\\]]/g, "\\$&");
   }
@@ -813,6 +896,20 @@ const REDIRECT_TARGET_RE = /\d*>{1,2}\|?\s*("[^"]*"|'[^']*'|[^\s;&|<>]+)/g;
  */
 function bareToken(token: string): string {
   return token.replace(/^[(){}'"]+|[(){}'"]+$/g, "");
+}
+
+/**
+ * The same strip, MINUS the braces, for the glob scan.
+ *
+ * `bareToken` drops `{` and `}` because a shell group writes them around a
+ * command (`{ rm -rf x; }`). A brace EXPANSION wears the same characters and
+ * ends the token with one, so `~/.{fail*,zz}` arrived here as `~/.{fail*,zz` —
+ * an unterminated group that expands to nothing and compiles to a pattern
+ * matching nothing. A trailing `}` that really did close a shell group leaves a
+ * word still carrying the literal path, which the literal check reads.
+ */
+function unquotedToken(token: string): string {
+  return token.replace(/^[()'"]+|[()'"]+$/g, "");
 }
 
 /** The name a shell would exec, given a token: `/usr/bin/rm` → `rm`. */
@@ -1032,7 +1129,7 @@ function destroysFailproofaiState(command: string, depth = 0): boolean {
     // Per token, not over the whole text: a glob compiled from a whole command
     // line matches nothing, and it is the individual operand — `~/.failproof*`
     // — that would expand onto the state.
-    return text.split(/\s+/).some((token) => globCouldNameState(bareToken(token)));
+    return text.split(/\s+/).some((token) => globCouldNameState(unquotedToken(token)));
   };
 
   let cwdInState = false;

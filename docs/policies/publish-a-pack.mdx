@@ -1,0 +1,91 @@
+---
+title: "Publish a pack"
+description: "Ship your own policies as a GitHub release that anyone can install."
+icon: "upload"
+---
+
+A pack is three files attached to a GitHub release. `failproofai pack build` writes all three from a policy file you already have.
+
+## 1. Write the policies
+
+One file, using the same API as any custom policy. Two extra fields matter for a pack:
+
+```js
+import { customPolicies, deny, allow } from "failproofai";
+
+customPolicies.add({
+  name: "block-refunds",
+  description: "Refunds above the approved limit need a human",
+  category: "Billing",        // groups it, and is what --category selects on
+  defaultEnabled: true,       // switched on by a plain `pack add`
+  match: { events: ["PreToolUse"], tools: ["Bash"] },
+  fn: async (ctx) =>
+    String(ctx.toolInput?.command ?? "").includes("refund")
+      ? deny("Refunds need a human. Ask before running this.")
+      : allow(),
+});
+```
+
+`defaultEnabled` defaults to **false** when you omit it. A plain `failproofai pack add` switches on only what you marked — installing a stranger's every policy unattended is not a decision the installer should make for its user.
+
+<Warning>
+The entry must be **one self-contained file**. Only the entry is digest-pinned, so a pack that imports local files could not honestly claim the digest covers what runs. Bundle first (`esbuild`, `bun build`, `rollup`) and build the pack from the bundle — `pack build` refuses a local import rather than shipping a promise it cannot keep.
+</Warning>
+
+## 2. Build the release assets
+
+```bash
+failproofai pack build ./policies.mjs \
+  --id acme/support-agent \
+  --version 1.0.0 \
+  --out ./dist-pack
+```
+
+It writes three files, and validates every policy with the **loader's own rules** first — so a pack that could never install fails here, where you can fix it:
+
+| File | What it is |
+| --- | --- |
+| `failproofai-pack.json` | The manifest: id, version, effect, and one entry per policy |
+| `failproofai-pack.mjs` | Your entry, verbatim |
+| `SHA256SUMS` | `<sha256>  <filename>` for the other two |
+
+Refused at build time: an id that is not `publisher/name`, a policy name containing `/`, a policy declaring `alwaysOn`, a missing `description`, `category` or `match`, an entry that registers nothing, and an entry that imports local files.
+
+## 3. Attach them to a release
+
+Tag the release with the same version you built, and attach all three files as release assets:
+
+```bash
+gh release create 1.0.0 \
+  ./dist-pack/failproofai-pack.json \
+  ./dist-pack/failproofai-pack.mjs \
+  ./dist-pack/SHA256SUMS
+```
+
+Anyone can now install it:
+
+```bash
+failproofai pack add acme/support-agent
+```
+
+The asset names are fixed — they are what a consumer's CLI constructs its URLs from, with no API call and no discovery.
+
+## Shipping a new version
+
+Build with the new `--version`, tag a new release, attach the three assets again. Consumers run the same `pack add` and keep whatever subset they had chosen; a policy they turned off stays off across the upgrade.
+
+Changing a policy's **name** is a breaking change: a machine that had turned it off is turning off a name that no longer exists, and the new name arrives at whatever `defaultEnabled` says.
+
+## What your users are trusting
+
+`SHA256SUMS` lives in the same release as the artifact, so it proves the bytes are the ones you published — not who you are. Whoever can write to the repository can write both files. Your users' protection is that the digest is pinned when they install, so what you shipped cannot change under them afterwards.
+
+Publish from a repository whose write access you control, and treat a pack release like publishing a package.
+
+## Observe before you enforce
+
+A manifest may declare `"effect": "observe"`. Those policies run and their verdicts are **recorded and discarded** — nothing is blocked. It is the way to measure a new rule against real traffic before it can interrupt anyone's work.
+
+```json
+{ "id": "acme/support-agent", "version": "1.1.0", "effect": "observe", "policies": [ ... ] }
+```

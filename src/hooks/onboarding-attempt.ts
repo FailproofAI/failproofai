@@ -157,10 +157,11 @@ export function blockerCleared(attempt: OnboardingAttempt, probe: RetryProbe): b
       // command would just repeat the hard-fail. Only a new release is a reason
       // to ask again (it might add support for this platform).
       return probe.cliVersion !== attempt.cliVersion;
-    case "not_a_tty":
     case "running_as_sudo":
-      // Both are properties of the invocation, not of the machine, so the next
-      // one may well be fine.
+      // A property of the invocation, not of the machine, so the next one may
+      // well be fine. (`not_a_tty` used to sit here too. It is gone because
+      // there is no such refusal any more: a run with no terminal has no
+      // questions to ask, so it applies rather than declining.)
       return true;
     default:
       return true;
@@ -174,7 +175,6 @@ export function attemptHintLines(attempt: OnboardingAttempt): string[] {
     daemon_failed: "the failproofaid service could not be started",
     cancelled: "it was cancelled",
     unsupported_platform: "failproofaid does not run on this platform",
-    not_a_tty: "there was no terminal to ask in",
     running_as_sudo: "it was run under sudo",
   };
   const detail = why[attempt.reason] ?? "it did not finish";

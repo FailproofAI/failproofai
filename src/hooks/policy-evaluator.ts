@@ -4,8 +4,17 @@
  */
 import type { HookEventType, SessionMetadata } from "./types";
 import type { PolicyContext, HooksConfig } from "./policy-types";
-import { BUILTIN_POLICIES } from "./builtin-policies";
-import { DEFAULT_POLICY_NAMESPACE, getPoliciesForEvent, normalizePolicyName } from "./policy-registry";
+// Read from the layer that owns it rather than restated here — restating a
+// pack id is exactly how `failproofai/builtins` and `failproofai/core` both
+// outlived their rename. This is on the hook path, so the cost was measured
+// rather than assumed: bundling policy-evaluator with this import is 38,627
+// bytes against 37,491 without it, because only the constant survives
+// tree-shaking. 1.1 KB is not worth a second copy of a name that has already
+// drifted twice.
+import { CORE_SOURCE } from "./pack-store";
+import { packPolicyParamKey, parsePackPolicyName } from "./pack-param-key";
+export { packPolicyParamKey } from "./pack-param-key";
+import { DEFAULT_POLICY_NAMESPACE, getPoliciesForEvent } from "./policy-registry";
 import { hookLogInfo, hookLogWarn } from "./hook-logger";
 import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId } from "../../lib/telemetry-id";
@@ -28,11 +37,61 @@ export interface EvaluationResult {
   decision: "allow" | "deny" | "instruct";
 }
 
-// Build a map from canonical policy name to its params schema (for injecting defaults).
-// Keyed by canonical name because registered policies always carry the canonical form.
-const POLICY_PARAMS_MAP = new Map(
-  BUILTIN_POLICIES.filter((p) => p.params).map((p) => [normalizePolicyName(p.name), p.params!]),
-);
+
+/**
+ * The config key a PACK policy's parameters are stored under.
+ *
+ * Version-less on purpose. A pack policy registers as
+ * `pack/<id>@<version>/<name>`, so a key carrying the version would be orphaned
+ * by every republish — the parameters would read as unset the moment the pack
+ * was upgraded, which is the same failure `enabled` avoids by outliving the
+ * version it was chosen against.
+ *
+ * Exported because the DASHBOARD writes this key and the evaluator reads it.
+ * They disagreed before — the dashboard wrote the bare policy name while the
+ * evaluator looked up the fully qualified one and fell back to bare only inside
+ * the `failproofai/` namespace — so a parameter saved through the UI was
+ * displayed as saved and ignored at runtime, on every pack including our own.
+ * One function so the two cannot drift again.
+ */
+
+/**
+ * The parameters a PACK policy actually runs with, resolved out of a config's
+ * `policyParams` map: the stable qualified key first, then the BARE name for
+ * our own pack alone.
+ *
+ * The bare read is the migration. Every `policyParams["block-sudo"]` already on
+ * disk — written by a build that predates packs, or by the dashboard before it
+ * qualified its keys — means the builtin under the name it always had.
+ *
+ * It is scoped to our pack because a policy name is unique only WITHIN a pack:
+ * two installed packs may each declare a `block-sudo`, and a bare key cannot
+ * say which was meant. Handing a stranger's pack our pack's configuration runs
+ * a third party's code on parameters chosen for ours.
+ *
+ * Exported because the DASHBOARD's read side resolves the same lookup, and it
+ * resolved it differently — an UNSCOPED bare fallback — so a stranger's pack
+ * declaring `block-sudo` was SHOWN our saved parameters while this function
+ * handed that policy the schema defaults. The config modal seeds its inputs
+ * from what was shown and Save writes them back under the stranger's own key,
+ * which is the point a display lie turns into configuration that really runs.
+ * One function so the two cannot diverge again.
+ */
+export function readPackPolicyParams(
+  policyParams: Record<string, Record<string, unknown>> | undefined,
+  packId: string,
+  policyName: string,
+): Record<string, unknown> | undefined {
+  if (!policyParams) return undefined;
+  const qualified = policyParams[packPolicyParamKey(packId, policyName)];
+  if (qualified) return qualified;
+  // Case-insensitively: the id reaches here from a manifest and from a source
+  // somebody typed, and GitHub treats `failproofai/policies` and
+  // `FailproofAI/policies` as one repository.
+  if (packId.toLowerCase() === CORE_SOURCE.toLowerCase()) return policyParams[policyName];
+  return undefined;
+}
+
 
 /**
  * Look up policy params for a canonical policy name in the user config,
@@ -41,7 +100,9 @@ const POLICY_PARAMS_MAP = new Map(
  *
  * The flat-key fallback is intentionally limited to the default namespace
  * so namespace isolation is preserved: `policyParams.foo` only matches
- * `failproofai/foo`, never `myorg/foo` or `custom/foo`.
+ * `failproofai/foo`, never `myorg/foo` or `custom/foo`. A `pack/...` name gets
+ * the same isolation from `readPackPolicyParams` and returns before reaching
+ * that branch, so the two fallbacks never both apply to one name.
  */
 function getConfigParamsFor(
   config: HooksConfig | undefined,
@@ -50,6 +111,15 @@ function getConfigParamsFor(
   if (!config?.policyParams) return undefined;
   const canonicalParams = config.policyParams[canonicalName];
   if (canonicalParams) return canonicalParams;
+
+  // A pack policy: qualified key, then the bare name for our pack only. Shared
+  // with the dashboard's read side rather than restated, so what is displayed
+  // stays what runs.
+  const packPolicy = parsePackPolicyName(canonicalName);
+  if (packPolicy) {
+    return readPackPolicyParams(config.policyParams, packPolicy.packId, packPolicy.name);
+  }
+
   const defaultPrefix = `${DEFAULT_POLICY_NAMESPACE}/`;
   if (!canonicalName.startsWith(defaultPrefix)) return undefined;
   return config.policyParams[canonicalName.slice(defaultPrefix.length)];
@@ -91,18 +161,25 @@ export async function evaluatePolicies(
     // Inject params: merge policyParams[policy.name] over schema defaults.
     // policy.name is canonical (e.g. "failproofai/block-force-push"); user
     // config keys may be flat or canonical — getConfigParamsFor accepts both.
-    const schema = POLICY_PARAMS_MAP.get(policy.name);
+    // The schema comes off the REGISTERED policy, so a pack's or a cloud
+    // assignment's declared params work exactly like a builtin's. It used to be
+    // looked up in a map built from the builtin catalog, which could only ever
+    // describe policies compiled into this build.
+    const schema = policy.params;
+    const userParams = getConfigParamsFor(config, policy.name) ?? {};
     let ctx: PolicyContext;
     if (schema) {
-      const userParams = getConfigParamsFor(config, policy.name) ?? {};
       const resolvedParams: Record<string, unknown> = {};
       for (const [key, spec] of Object.entries(schema)) {
         resolvedParams[key] = key in userParams ? userParams[key] : spec.default;
       }
       ctx = { ...baseCtx, params: resolvedParams };
     } else {
-      // Custom hooks and policies without schema get empty params
-      ctx = { ...baseCtx, params: {} };
+      // No schema means no defaults to merge — but the user may still have
+      // configured params for it, and silently dropping what they wrote is how
+      // a policy ends up ignoring its own configuration. Absent config still
+      // yields `{}`, which is what every schema-less policy saw before.
+      ctx = { ...baseCtx, params: userParams };
     }
 
     let result: Awaited<ReturnType<typeof policy.fn>>;
@@ -111,11 +188,18 @@ export async function evaluatePolicies(
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hookLogWarn(`policy "${policy.name}" threw: ${msg}`);
-      // Custom hooks are wrapped in handler.ts with their own try/catch that
-      // emits custom_hook_error. Anything reaching here is a builtin policy
-      // crash — track separately so we can surface regressions in builtins.
-      const isCustom = policy.name.startsWith("custom/") || policy.name.startsWith(".failproofai-");
-      if (!isCustom) {
+      // `policy_evaluation_error` exists to surface regressions in the policies
+      // WE compile in, so it must fire only for those.
+      //
+      // Tested positively — a builtin is exactly a policy in the `failproofai/`
+      // namespace — rather than by listing the prefixes that are not builtins.
+      // The list version enumerated `custom/` and `.failproofai-` only, so
+      // `cloud/…` and `pack/…` both failed it and reported a third party's
+      // crash as ours, under a publisher-controlled policy name. Reproduced
+      // exactly that way by an observe-mode pack on this branch. A positive test
+      // also means the NEXT source kind cannot re-open this by omission.
+      const isBuiltin = policy.name.startsWith(`${DEFAULT_POLICY_NAMESPACE}/`);
+      if (isBuiltin) {
         void trackHookEvent(getInstanceId(), "policy_evaluation_error", {
           policy_name: policy.name,
           event_type: eventType,

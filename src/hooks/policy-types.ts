@@ -35,6 +35,14 @@ export interface RegisteredPolicy {
   fn: PolicyFunction;
   match: PolicyMatcher;
   priority: number;
+  /**
+   * The policy's declared params, carried HERE rather than looked up in a map
+   * built from the builtin catalog. That map could only ever describe policies
+   * compiled into this build, so anything arriving from a pack, a cloud
+   * assignment or a custom file fell through to `params: {}` — which discarded
+   * the user's OWN configured `policyParams` for it, not merely the defaults.
+   */
+  params?: PolicyParamsSchema;
 }
 
 export interface PolicyParamsSchema {
@@ -45,12 +53,30 @@ export interface PolicyParamsSchema {
   };
 }
 
+/**
+ * A builtin policy minus its implementation — exactly what `policy-catalog.ts`
+ * holds. Derived from {@link BuiltinPolicyDefinition} rather than declared
+ * separately so a field added to one can never be forgotten on the other.
+ */
+export type PolicyCatalogEntry = Omit<BuiltinPolicyDefinition, "fn">;
+
 export interface BuiltinPolicyDefinition {
   name: string;
   description: string;
   fn: PolicyFunction;
   match: PolicyMatcher;
   defaultEnabled: boolean;
+  /**
+   * Registered on every evaluation regardless of the user's `enabledPolicies`,
+   * an active session pause, or an unreadable config — and never eligible to
+   * move out of the package into a fetched pack. Reserved for the guard that
+   * stops an agent from disabling failproofai itself; a guard the agent can
+   * switch off by the same means it is meant to prevent is decorative.
+   *
+   * `defaultEnabled` stays `true` alongside it so the policy still appears
+   * enabled everywhere the catalog is listed rather than looking switched off.
+   */
+  alwaysOn?: boolean;
   category: string;
   beta?: boolean;
   params?: PolicyParamsSchema;

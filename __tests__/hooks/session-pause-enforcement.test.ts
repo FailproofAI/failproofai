@@ -34,6 +34,15 @@ vi.mock("../../lib/telemetry-id", () => ({ getInstanceId: vi.fn(() => "test-inst
 vi.mock("../../src/hooks/hook-logger", () => ({
   hookLogInfo: vi.fn(), hookLogWarn: vi.fn(), hookLogError: vi.fn(),
 }));
+vi.mock("../../src/hooks/pack-manifest", () => ({
+  // Isolation, not convenience: unmocked, `readInstalledPacks` reads the REAL
+  // ~/.failproofai/policies/packs of whoever runs the suite, so these tests would
+  // pass on a clean machine and behave differently on one with a pack installed.
+  readInstalledPacks: vi.fn(() => ({ packs: [], errors: [] })),
+  // The handler asks this per event to decide whether the migration shim
+  // still applies. Mirrors the mocked readInstalledPacks above.
+  hasInstalledPacks: vi.fn(() => false),
+}));
 
 import { evaluateHookEvent } from "../../src/hooks/handler";
 import { registerBuiltinPolicies } from "../../src/hooks/builtin-policies";

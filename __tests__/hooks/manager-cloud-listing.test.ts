@@ -19,6 +19,12 @@ describe("failproofai policies — cloud-managed section", () => {
     spy = vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => {
       out.push(a.map(String).join(" "));
     });
+    // The listing prints one block through `process.stdout`, not a console.log
+    // per line, so the capture has to follow the stream it actually writes to.
+    vi.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
+      out.push(...String(chunk).split("\n"));
+      return true;
+    });
   });
   afterEach(() => spy.mockRestore());
 
@@ -64,7 +70,8 @@ describe("failproofai policies — cloud-managed section", () => {
     });
     await expect(listHooks()).resolves.not.toThrow();
     expect(text()).not.toContain("Cloud-managed");
-    // The builtin listing above it must still have printed.
-    expect(text()).toContain("Failproof AI Hook Policies");
+    // The builtin listing above it must still have printed. The heading is the
+    // command's own name now, like every other surface.
+    expect(text()).toContain("failproofai policies");
   });
 });

@@ -1,8 +1,8 @@
 "use server";
 
+import { readPackPolicyParams } from "@/src/hooks/policy-evaluator";
 import { configuredCustomPolicyPaths, readMergedHooksConfig } from "@/src/hooks/hooks-config";
 import { hooksInstalledInSettings, getSettingsPath } from "@/src/hooks/manager";
-import { BUILTIN_POLICIES } from "@/src/hooks/builtin-policies";
 import { listIntegrations } from "@/src/hooks/integrations";
 import { HOOK_SCOPES } from "@/src/hooks/types";
 import type { HookScope, IntegrationType } from "@/src/hooks/types";
@@ -13,6 +13,8 @@ import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { customPoliciesDir } from "@/src/hooks/fp-home";
+import { readInstalledPacks } from "@/src/hooks/pack-manifest";
+import type { PackError, ResolvedPack } from "@/src/hooks/pack-manifest";
 
 export interface PolicyParamSpec {
   type: string;
@@ -30,6 +32,9 @@ export interface PolicyInfo {
   eventScope: string;
   params?: Record<string, PolicyParamSpec>;
   currentParams?: Record<string, unknown>;
+  /** The pack this policy came from — every policy has one now. */
+  packId: string;
+  packVersion: string;
 }
 
 export interface CustomPolicyInfo {
@@ -68,6 +73,25 @@ export interface CliInstallStatus {
   detected: boolean;
 }
 
+/** One policy carried by an installed pack. */
+export interface PackPolicyInfo {
+  name: string;
+  description: string;
+  category: string;
+  enabled: boolean;
+}
+
+export interface InstalledPackInfo {
+  id: string;
+  version: string;
+  /** Where it came from, verbatim — `github:acme/ops@v1.0.0` or `bundled:...`. */
+  source: string;
+  effect: "enforce" | "observe";
+  policies: PackPolicyInfo[];
+  /** Set when the record itself could not be read, e.g. its digest changed. */
+  error?: string;
+}
+
 export interface HooksConfigPayload {
   enabledPolicies: string[];
   /** Claude-only legacy field; kept for back-compat. New UI should consume `clis`. */
@@ -83,6 +107,8 @@ export interface HooksConfigPayload {
   customPolicies?: CustomPolicyInfo[];
   /** Convention-discovered policy files, project scope first. */
   conventionPolicies: ConventionPolicyFile[];
+  /** Installed policy packs, read from `installed.json`. */
+  packs: InstalledPackInfo[];
 }
 
 /**
@@ -179,7 +205,6 @@ export async function getHooksConfigAction(): Promise<HooksConfigPayload> {
   // Match runtime enforcement: project, local, and user config all
   // contribute to the effective policy state shown by the dashboard.
   const config = readMergedHooksConfig(launchCwd);
-  const enabledSet = new Set(config.enabledPolicies);
   const disabledCustomPolicies = new Set(config.disabledCustomPolicies ?? []);
 
   const installedScopes = HOOK_SCOPES.filter((s) => hooksInstalledInSettings(s));
@@ -194,21 +219,58 @@ export async function getHooksConfigAction(): Promise<HooksConfigPayload> {
     detected: integration.detectInstalled(),
   }));
 
-  const policies: PolicyInfo[] = BUILTIN_POLICIES.map((p) => ({
-    name: p.name,
-    description: p.description,
-    category: p.category,
-    defaultEnabled: p.defaultEnabled,
-    beta: !!p.beta,
-    enabled: enabledSet.has(p.name),
-    eventScope: buildEventScope(p.match),
-    params: p.params
-      ? Object.fromEntries(
-          Object.entries(p.params).map(([k, v]) => [k, { type: v.type, description: v.description, default: v.default }])
-        )
-      : undefined,
-    currentParams: p.params ? (config.policyParams?.[p.name] ?? {}) : undefined,
-  }));
+  // Read once, ahead of everything that needs it: the policy list IS the packs'
+  // policies now, and the pack listing further down describes the same read.
+  let installedPacks: ResolvedPack[] = [];
+  let packErrors: PackError[] = [];
+  try {
+    const result = readInstalledPacks();
+    installedPacks = result.packs;
+    packErrors = result.errors;
+  } catch {
+    // A listing must not be the thing that turns an unreadable manifest into a
+    // broken page.
+  }
+
+  // Every policy that enforces here comes from an installed PACK. Nothing is
+  // compiled into this build any more except the always-on self-protection
+  // guard — which no listing can switch off, so it has no row.
+  const policies: PolicyInfo[] = [];
+  for (const pack of installedPacks) {
+    const taken = pack.enabled ?? pack.policies.map((p) => p.name);
+    for (const policy of pack.policies) {
+      policies.push({
+        name: policy.name,
+        description: policy.description,
+        category: policy.category,
+        defaultEnabled: policy.defaultEnabled,
+        beta: false,
+        enabled:
+          taken.includes(policy.name) &&
+          !disabledCustomPolicies.has(`pack:${pack.id}@${pack.version}:${policy.name}`),
+        eventScope: buildEventScope(policy.match),
+        packId: pack.id,
+        packVersion: pack.version,
+        ...(policy.params
+          ? {
+              params: Object.fromEntries(
+                Object.entries(policy.params).map(([k, v]) => [
+                  k,
+                  { type: v.type, description: v.description, default: v.default },
+                ]),
+              ),
+              // The evaluator's OWN lookup, called rather than re-implemented.
+              // This side had its own copy with an unscoped bare-name
+              // fallback, so a stranger's pack that happened to declare
+              // `block-sudo` was shown our pack's saved parameters — which the
+              // modal then seeded its inputs from and Save wrote back under
+              // the stranger's key, making the wrong display real.
+              currentParams: readPackPolicyParams(config.policyParams, pack.id, policy.name) ?? {},
+            }
+          : {}),
+      });
+    }
+  }
 
   const customPoliciesPaths = configuredCustomPolicyPaths(config);
   const launchRoot = findProjectConfigDir(launchCwd);
@@ -232,6 +294,41 @@ export async function getHooksConfigAction(): Promise<HooksConfigPayload> {
     new Set(resolvedCustomPaths),
   );
 
+  // Metadata only — deliberately never imported. Same rule as the convention
+  // files above: this runs on every page load, and importing a pack's artifact
+  // would execute a third party's code inside the long-lived dashboard server.
+  // The import check that proves a pack still loads belongs to the CLI and to
+  // the user-initiated install action.
+  const packs: InstalledPackInfo[] = installedPacks.map((pack) => {
+    const taken = pack.enabled ?? pack.policies.map((p) => p.name);
+    return {
+      id: pack.id,
+      version: pack.version,
+      source: pack.source,
+      effect: pack.effect,
+      policies: pack.policies.map((policy) => ({
+        name: policy.name,
+        description: policy.description,
+        category: policy.category,
+        enabled:
+          taken.includes(policy.name) &&
+          !disabledCustomPolicies.has(`pack:${pack.id}@${pack.version}:${policy.name}`),
+      })),
+    };
+  });
+  for (const err of packErrors) {
+    // A pack that will not load is what the machine denies for; a listing that
+    // omitted it would be the quietest possible way to report that.
+    packs.push({
+      id: err.id ?? "(unnamed pack)",
+      version: "",
+      source: "",
+      effect: "enforce",
+      policies: [],
+      error: err.reason,
+    });
+  }
+
   return {
     enabledPolicies: config.enabledPolicies,
     installedScopes,
@@ -242,5 +339,6 @@ export async function getHooksConfigAction(): Promise<HooksConfigPayload> {
     customPoliciesPath: customPoliciesPaths.length === 1 ? customPoliciesPaths[0] : undefined,
     customPolicies: customPolicies.length ? customPolicies : undefined,
     conventionPolicies,
+    packs,
   };
 }

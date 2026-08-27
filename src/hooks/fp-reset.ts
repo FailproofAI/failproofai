@@ -964,6 +964,17 @@ export function resetHome(from: number, to: number = LAYOUT_VERSION): ResetOutco
   // straight out of the same file. Both paths end at the same key, and only one
   // of them represents something a person typed.
   if (telemetryOptOut) updateConfig({ telemetry: { enabled: false } });
+  // No pack is installed here, deliberately.
+  //
+  // There is no copy in this package to install — our policies are fetched from
+  // their GitHub release like anybody else's — and `resetHome` is SYNCHRONOUS
+  // and runs inside `failproofai update`. An upgrade that blocks on github.com,
+  // and fails when it is unreachable, is a worse upgrade than one that finishes.
+  //
+  // Nothing needs carrying either: `enabledPolicies` is left exactly where it
+  // is, and the no-pack fallback reads it, so a machine mid-upgrade keeps
+  // enforcing precisely what it enforced before. `failproofai policies add FailproofAI/policies`
+  // turns those names into a real pack, carrying the same selection into it.
   // The step's OWN target, not LAYOUT_VERSION.
   //
   // Every step used to end stamping the current layout, which was harmless

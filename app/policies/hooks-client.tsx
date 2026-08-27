@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, useTransition } from
 import * as React from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { Check, ChevronDown, Code, Copy, Settings, Shield, ShieldAlert, ShieldCheck, ShieldX, TriangleAlert, X } from "lucide-react";
+import { Check, ChevronDown, Code, Copy, Package, Plus, Settings, Shield, ShieldAlert, ShieldCheck, ShieldX, Trash2, TriangleAlert, X } from "lucide-react";
 import PaginationControls from "@/app/components/pagination-controls";
 import { getHookActivityAction, searchHookActivityAction } from "@/app/actions/get-hook-activity";
 import type { HookActivityPayload } from "@/app/actions/get-hook-activity";
@@ -12,11 +12,20 @@ import { getActivePausesAction } from "@/app/actions/get-active-pauses";
 import type { ActivePause } from "@/src/hooks/session-pause";
 import { PausedBanner, PausedNote, PausedPill } from "@/app/components/pause-notices";
 import { getHooksConfigAction } from "@/app/actions/get-hooks-config";
-import type { HooksConfigPayload, PolicyInfo } from "@/app/actions/get-hooks-config";
+import type { HooksConfigPayload, InstalledPackInfo, PolicyInfo } from "@/app/actions/get-hooks-config";
 import type { IntegrationType } from "@/src/hooks/types";
-import { toggleCustomPolicyAction, togglePolicyAction } from "@/app/actions/update-hooks-config";
+import { toggleCustomPolicyAction } from "@/app/actions/update-hooks-config";
+import {
+  addBundledPackWebAction,
+  addPackWebAction,
+  previewPackWebAction,
+  removePackWebAction,
+  togglePackPolicyAction,
+} from "@/app/actions/pack-actions";
+import type { PackPreviewResult } from "@/app/actions/pack-actions";
 import { installHooksWebAction, removeHooksWebAction } from "@/app/actions/install-hooks-web";
 import { updatePolicyParamsAction } from "@/app/actions/update-policy-params";
+import { packPolicyParamKey } from "@/src/hooks/pack-param-key";
 import { useAutoRefresh } from "@/contexts/AutoRefreshContext";
 import { usePostHog } from "@/contexts/PostHogContext";
 import { useUrlParams } from "@/lib/use-url-params";
@@ -481,9 +490,9 @@ function ActivityTab({
     const v = url.get("cli");
     return isKnownCli(v) ? v : "";
   });
-  const [filterSource, setFilterSource] = useState<"" | "builtin" | "custom" | "convention" | "cloud">(() => {
+  const [filterSource, setFilterSource] = useState<"" | "custom" | "convention" | "cloud" | "pack">(() => {
     const v = url.get("source");
-    return v === "builtin" || v === "custom" || v === "convention" || v === "cloud" ? v : "";
+    return v === "custom" || v === "convention" || v === "cloud" || v === "pack" ? v : "";
   });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const filterTelemetryFirstRunRef = useRef(true);
@@ -654,17 +663,17 @@ function ActivityTab({
               onChange={(e) => {
                 const v = e.target.value;
                 setFilterSource(
-                  v === "builtin" || v === "custom" || v === "convention" || v === "cloud" ? v : "",
+                  v === "custom" || v === "convention" || v === "cloud" || v === "pack" ? v : "",
                 );
               }}
               className="filter-input"
               aria-label="Filter by policy source"
             >
               <option value="">all sources</option>
-              <option value="builtin">builtin</option>
               <option value="custom">custom</option>
               <option value="convention">convention</option>
               <option value="cloud">cloud</option>
+              <option value="pack">pack</option>
             </select>
           </div>
           <div className="filter-group">
@@ -1259,7 +1268,16 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
     });
   };
 
-  const handleToggle = (name: string, currentlyEnabled: boolean) => {
+  /**
+   * Turn one policy on or off.
+   *
+   * Writes the PACK's selection, because that is what enforcement reads now.
+   * `togglePolicyAction` edits `enabledPolicies`, which stopped deciding
+   * anything the moment this build stopped registering builtins — leaving the
+   * toggle pointed there would have moved a switch that changes nothing.
+   */
+  const handleToggle = (policy: PolicyInfo, currentlyEnabled: boolean) => {
+    const name = policy.name;
     if (!config) return;
     const installed = config.clis.some((c) => c.installed);
     if (!installed) {
@@ -1267,22 +1285,54 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
       return;
     }
     setHooksWarning(null);
+    // A policy name is unique only WITHIN a pack, so `config.policies` — the
+    // flat list across every installed pack — can hold two `block-sudo` rows.
+    // The write below targets (packId, name); matching the optimistic update on
+    // the name alone flipped the OTHER pack's row too, showing a change nothing
+    // persisted until the next reload silently undid it.
+    //
+    // Matched on the pair with no fallback to the name. `PolicyInfo.packId` is
+    // required — every policy comes from a pack — and `togglePackPolicyAction`
+    // takes a `string`, so a row without one is a type error at the call below,
+    // not a case to widen for here. A `packId === undefined ||` guard would only
+    // ever restore the conflation this line exists to remove.
     // Optimistic update
     setConfig((prev) => {
       if (!prev) return prev;
       return {
         ...prev,
         policies: prev.policies.map((p) =>
-          p.name === name ? { ...p, enabled: !currentlyEnabled } : p,
+          p.name === name && p.packId === policy.packId
+            ? { ...p, enabled: !currentlyEnabled }
+            : p,
         ),
-        enabledPolicies: currentlyEnabled
-          ? prev.enabledPolicies.filter((n) => n !== name)
-          : [...prev.enabledPolicies, name],
+        packs: prev.packs.map((pack) =>
+          pack.id === policy.packId
+            ? {
+                ...pack,
+                policies: pack.policies.map((p) =>
+                  p.name === name ? { ...p, enabled: !currentlyEnabled } : p,
+                ),
+              }
+            : pack,
+        ),
       };
     });
     startTransition(async () => {
       try {
-        await togglePolicyAction(name, !currentlyEnabled);
+        // The RESULT, not just the absence of a throw. This action reports a
+        // missing pack, an unreadable manifest, or a policy an intervening pack
+        // update removed by RETURNING `{ ok: false, error }` — deliberately,
+        // because none of those is exceptional. Awaiting and discarding it left
+        // the optimistic row showing enforcement that was never written: the
+        // dashboard said a policy was on, and nothing was running it. Every
+        // reachable path there is a stale dashboard, which is the ordinary
+        // state of a tab somebody left open.
+        const result = await togglePackPolicyAction(policy.packId, name, !currentlyEnabled);
+        if (!result.ok) {
+          fireActionError("policy_toggle", result.error ?? "Failed to save policy change.");
+          reload();
+        }
       } catch {
         fireActionError("policy_toggle", "Failed to save policy change.");
         reload();
@@ -1356,7 +1406,14 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
 
   const handleSaveParams = (params: Record<string, unknown>) => {
     if (!configuringPolicy) return;
-    const policyName = configuringPolicy.name;
+    // A PACK policy is saved under the stable pack-qualified key, because the
+    // bare name is not what the evaluator looks up — it registers pack policies
+    // as `pack/<id>@<version>/<name>`, so a bare key was written, displayed as
+    // saved, and ignored at runtime. Version-less on purpose: a key carrying
+    // the version would be orphaned by the publisher's next release.
+    const policyName = configuringPolicy.packId
+      ? packPolicyParamKey(configuringPolicy.packId, configuringPolicy.name)
+      : configuringPolicy.name;
     setConfiguringPolicy(null);
     startTransition(async () => {
       try {
@@ -1564,7 +1621,18 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
       {/* Policy summary */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-border/40 bg-muted/5">
         <span className="text-xs text-muted-foreground">
-          <span className="font-semibold text-foreground">{config.enabledPolicies.length}</span>
+          {/* What is actually ON, counted from the policies rendered below.
+              `enabledPolicies` is the old builtin switch list — it stopped
+              deciding anything when this build stopped registering builtins, so
+              counting it reported a number matching nothing on screen. */}
+          <span className="font-semibold text-foreground">
+            {config.policies.filter((p) => p.enabled).length +
+              (config.customPolicies?.filter((p) => p.enabled).length ?? 0) +
+              (config.conventionPolicies?.reduce(
+                (n, e) => n + e.policies.filter((p) => p.enabled).length,
+                0,
+              ) ?? 0)}
+          </span>
           {" / "}
           {config.policies.length + (config.customPolicies?.length ?? 0) + (config.conventionPolicies?.reduce((n, e) => n + e.policies.length, 0) ?? 0)}{" "}
           policies enabled
@@ -1607,14 +1675,18 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
             </div>
             {/* Policy rows */}
             {policies.map((policy) => (
+              // Keyed by pack AND name: two installed packs may each declare
+              // `block-sudo` in the same category, and a bare name key made
+              // them one React key — React warns and reuses the first row's
+              // state for the second.
               <div
-                key={policy.name}
+                key={`${policy.packId}/${policy.name}`}
                 className="flex items-start gap-3 px-4 py-3 border-b border-border/20 hover:bg-muted/20 transition-colors"
               >
                 <div className="mt-0.5 shrink-0">
                   <PolicyToggle
                     enabled={policy.enabled}
-                    onChange={() => handleToggle(policy.name, policy.enabled)}
+                    onChange={() => handleToggle(policy, policy.enabled)}
                     disabled={isPending}
                   />
                 </div>
@@ -1791,8 +1863,278 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
           )}
         </div>
       ))}
+
+      {/* Policy packs — sets of policies published as a GitHub release. Anyone
+          can publish one from their own repository, so this is the surface that
+          makes an installed pack visible and switchable without the CLI. */}
+      <PackSection
+        packs={config.packs ?? []}
+        disabled={isPending}
+        onChanged={reload}
+        onError={(message) => fireActionError("pack_action", message)}
+      />
     </div>
     </>
+  );
+}
+
+/** Install a pack, and manage the ones already installed. */
+function PackSection({
+  packs,
+  disabled,
+  onChanged,
+  onError,
+}: {
+  packs: InstalledPackInfo[];
+  disabled?: boolean;
+  onChanged: () => void;
+  onError: (message: string) => void;
+}) {
+  const [source, setSource] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [installed, setInstalled] = useState<string | null>(null);
+  const [preview, setPreview] = useState<PackPreviewResult | null>(null);
+  const { capture } = usePostHog();
+
+  // Reading a pack before installing it. Fetches the manifest only — the entry
+  // artifact is never downloaded, so looking at a stranger's pack cannot run a
+  // stranger's code inside this server.
+  const runPreview = async () => {
+    if (!source.trim()) return;
+    setBusy("preview");
+    setPreview(null);
+    try {
+      const result = await previewPackWebAction(source);
+      if (!result.ok) {
+        onError(result.error ?? "Could not read that pack.");
+        return;
+      }
+      setPreview(result);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const run = async (label: string, action: () => Promise<{ ok: boolean; id?: string; version?: string; error?: string }>) => {
+    setBusy(label);
+    setInstalled(null);
+    try {
+      const result = await action();
+      if (!result.ok) {
+        // The refusal's own words. Every one of them names what was wrong —
+        // a source that resolves to nothing, a digest that does not match, a
+        // manifest declaring a policy its artifact never registers.
+        onError(result.error ?? "Could not install that pack.");
+        return;
+      }
+      setInstalled(result.version ? `${result.id}@${result.version}` : (result.id ?? null));
+      setSource("");
+      onChanged();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Could not install that pack.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between px-4 py-2.5 bg-muted/20 border-b border-border/50">
+        <span className="text-[0.7rem] font-semibold uppercase tracking-wider text-muted-foreground">
+          Policy Packs
+        </span>
+        <span className="text-[0.7rem] text-muted-foreground">
+          {packs.length === 0 ? "none installed" : `${packs.length} installed`}
+        </span>
+      </div>
+
+      {/* Install by name — any owner/repo on GitHub, not only ours. */}
+      <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-border/20">
+        <input
+          value={source}
+          onChange={(e) => setSource(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && source.trim() && !busy) {
+              capture("pack_install_submitted", { via: "input" });
+              void run("input", () => addPackWebAction(source));
+            }
+          }}
+          placeholder="core  ·  acme/ops  ·  acme/ops@v1.2.0  ·  a release URL"
+          spellCheck={false}
+          disabled={disabled || busy !== null}
+          className="flex-1 min-w-[16rem] rounded-md border border-border/60 bg-background px-2.5 py-1.5 text-xs font-mono placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
+          aria-label="Pack source"
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={disabled || busy !== null || source.trim().length === 0}
+          onClick={() => {
+            capture("pack_preview_submitted", {});
+            void runPreview();
+          }}
+        >
+          {busy === "preview" ? "Reading…" : "Preview"}
+        </Button>
+        <Button
+          size="sm"
+          variant="default"
+          disabled={disabled || busy !== null || source.trim().length === 0}
+          onClick={() => {
+            capture("pack_install_submitted", { via: "button" });
+            void run("input", () => addPackWebAction(source));
+          }}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {busy === "input" ? "Installing…" : "Install"}
+        </Button>
+      </div>
+
+      {/* What the pack CONTAINS, read from its manifest before anything is
+          installed. Marks are the publisher's defaults, not this machine's
+          state — nothing is installed, so an "on" would describe no machine. */}
+      {preview?.ok && (
+        <div className="border-b border-border/20 bg-muted/5">
+          <div className="flex items-center gap-3 px-4 py-2.5">
+            <Package className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <span className="text-xs font-mono text-foreground">
+              {preview.id}@{preview.version}
+            </span>
+            <span className="text-[0.7rem] text-muted-foreground">
+              {preview.policies?.length ?? 0} policies ·{" "}
+              {preview.policies?.filter((p) => p.defaultEnabled).length ?? 0} on by default
+            </span>
+            {preview.effect === "observe" && (
+              <span className="text-[0.65rem] uppercase tracking-wider text-amber-500">
+                observes only
+              </span>
+            )}
+            <button
+              onClick={() => setPreview(null)}
+              className="ml-auto text-muted-foreground/60 hover:text-foreground"
+              aria-label="Close preview"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="max-h-64 overflow-y-auto">
+            {preview.policies?.map((policy) => (
+              <div key={policy.name} className="flex items-start gap-3 px-4 py-2 border-t border-border/10">
+                <span
+                  className={`text-[0.65rem] uppercase tracking-wider w-14 shrink-0 mt-0.5 ${
+                    policy.defaultEnabled ? "text-emerald-500" : "text-muted-foreground/50"
+                  }`}
+                >
+                  {policy.defaultEnabled ? "default" : "opt-in"}
+                </span>
+                <span className="text-xs font-mono text-foreground w-56 shrink-0 truncate">
+                  {policy.name}
+                </span>
+                <span className="text-xs text-muted-foreground leading-relaxed min-w-0">
+                  {policy.description}
+                  <span className="block text-[0.65rem] text-muted-foreground/40 font-mono mt-0.5">
+                    {policy.category}
+                  </span>
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="px-4 py-2.5 border-t border-border/20">
+            <Button
+              size="sm"
+              variant="default"
+              disabled={disabled || busy !== null}
+              onClick={() => {
+                capture("pack_install_submitted", { via: "preview" });
+                void run("input", () => addPackWebAction(source)).then(() => setPreview(null));
+              }}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Install its defaults
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Ours, in one click — both the released pack and the copy that ships
+          inside this package, which needs no network at all. */}
+      <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-border/20 bg-muted/10">
+        <span className="text-[0.7rem] text-muted-foreground/70 mr-1">Failproof AI policies:</span>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={disabled || busy !== null}
+          onClick={() => {
+            capture("pack_install_submitted", { via: "ours" });
+            void run("ours", () => addPackWebAction("FailproofAI/policies"));
+          }}
+        >
+          {busy === "ours" ? "Installing…" : "Install from GitHub"}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={disabled || busy !== null}
+          onClick={() => {
+            capture("pack_install_submitted", { via: "bundled" });
+            void run("bundled", () => addBundledPackWebAction());
+          }}
+        >
+          {busy === "bundled" ? "Installing…" : "Install offline copy"}
+        </Button>
+        {installed && (
+          <span className="text-[0.7rem] text-emerald-500 font-mono">installed {installed}</span>
+        )}
+      </div>
+
+      {packs.map((pack) => (
+        <div key={`${pack.id}@${pack.version}`}>
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-border/20">
+            <Package className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <span className="text-xs font-mono text-foreground truncate">
+              {pack.id}{pack.version ? `@${pack.version}` : ""}
+            </span>
+            {pack.effect === "observe" && (
+              <span className="text-[0.65rem] uppercase tracking-wider text-amber-500">observing</span>
+            )}
+            <span className="text-[0.65rem] text-muted-foreground/50 font-mono truncate hidden lg:inline">
+              {pack.source}
+            </span>
+            <button
+              onClick={() => void run(pack.id, () => removePackWebAction(pack.id))}
+              disabled={disabled || busy !== null}
+              className="ml-auto text-muted-foreground/60 hover:text-foreground disabled:opacity-40"
+              aria-label={`Remove ${pack.id}`}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          {pack.error ? (
+            // A pack that will not load is what the machine denies for. Saying
+            // it here is the difference between a fixable problem and a
+            // mysterious one.
+            <div className="flex items-start gap-2 px-4 py-2.5 border-b border-border/20 bg-amber-500/5">
+              <TriangleAlert className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
+              <p className="text-[0.7rem] text-muted-foreground leading-relaxed">
+                This pack will not load: {pack.error}
+              </p>
+            </div>
+          ) : (
+            // NOT a second list of the pack's policies. Every policy that
+            // enforces here is in the categorised list above, whichever pack it
+            // came from — rendering them again under the pack made the same
+            // toggles appear twice, the second time with no category.
+            <div className="flex items-center gap-3 px-4 py-2.5 border-b border-border/20">
+              <span className="text-[0.7rem] text-muted-foreground">
+                {pack.policies.filter((p) => p.enabled).length} of {pack.policies.length} on —
+                listed by category above
+              </span>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }
 

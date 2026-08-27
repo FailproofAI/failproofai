@@ -39,17 +39,24 @@ describe("audit --help", () => {
 
   it("lists every command a person can type", () => {
     const text = plain(render(false));
+    // The heading carries `failproofai audit`; the rows carry what you add to
+    // it. Repeating the prefix on every row cost 17 of the 80 columns and was
+    // what forced the descriptions down to four words a line.
+    expect(text).toContain("failproofai audit");
     for (const command of [
-      "failproofai audit",
-      "failproofai audit --schedule [days]",
-      "failproofai audit --no-schedule",
-      "failproofai audit --status",
-      "failproofai audit -h, --help",
+      "(bare)",
+      "--schedule [days]",
+      "--no-schedule",
+      "--status",
+      "-h, --help",
     ]) {
       expect(text).toContain(command);
     }
-    // --email modifies --schedule rather than standing alone, so it is named in
-    // that entry rather than given a row of its own.
+    // --email modifies --schedule rather than standing alone. It still gets a
+    // row: as a clause inside --schedule's description it wrapped, leaving the
+    // flag at the end of one line and `<address>` at the start of the next —
+    // which is not a spelling anybody can read off the screen or copy. Assert
+    // it is CONTIGUOUS, which is the property that broke.
     expect(text).toContain("--email <address>");
   });
 
@@ -71,9 +78,9 @@ describe("audit --help", () => {
     }
 
     // Every command row and every continuation line shares one description
-    // column. Derive it from the first row rather than restating the constant,
+    // column. Derive it from the first row rather than restating a constant,
     // so this fails on drift instead of being updated to match it.
-    const first = lines.find((l) => l.includes("failproofai audit  "));
+    const first = lines.find((l) => l.trim().startsWith("(bare)"));
     expect(first).toBeDefined();
     const descCol = first!.indexOf("Scan your session history");
     expect(descCol).toBeGreaterThan(0);
@@ -81,10 +88,14 @@ describe("audit --help", () => {
     const continuations = lines.filter(
       (l) => l.startsWith(" ".repeat(descCol)) && l.trim().length > 0,
     );
-    // The rows carry six continuation lines between them. A floor rather than
-    // an exact count, so reworded copy does not fail this — but a regression in
-    // the padding math moves them off `descCol` entirely and drops it to zero.
-    expect(continuations.length).toBeGreaterThanOrEqual(6);
+    // A NON-VACUITY floor, not a layout assertion. The real check is the loop
+    // below — every continuation starts exactly at `descCol` — and this only
+    // proves it ran over something. Deliberately well under the count the
+    // current copy produces: pinning it to the exact number is what made this
+    // line fail twice for wording changes that improved the screen, once when
+    // dropping the `failproofai audit` prefix widened the column and again
+    // when `--email <address>` moved to a row of its own.
+    expect(continuations.length).toBeGreaterThanOrEqual(2);
     for (const line of continuations) {
       expect(line[descCol]).not.toBe(" ");
     }

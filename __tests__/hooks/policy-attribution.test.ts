@@ -30,6 +30,15 @@ vi.mock("../../lib/telemetry-id", () => ({ getInstanceId: vi.fn(() => "test-id")
 vi.mock("../../src/hooks/hook-logger", () => ({
   hookLogInfo: vi.fn(), hookLogWarn: vi.fn(), hookLogError: vi.fn(),
 }));
+vi.mock("../../src/hooks/pack-manifest", () => ({
+  // Isolation, not convenience: unmocked, `readInstalledPacks` reads the REAL
+  // ~/.failproofai/policies/packs of whoever runs the suite, so these tests would
+  // pass on a clean machine and behave differently on one with a pack installed.
+  readInstalledPacks: vi.fn(() => ({ packs: [], errors: [] })),
+  // The handler asks this per event to decide whether the migration shim
+  // still applies. Mirrors the mocked readInstalledPacks above.
+  hasInstalledPacks: vi.fn(() => false),
+}));
 
 import { evaluateHookEvent } from "../../src/hooks/handler";
 import { loadAllCustomHooks } from "../../src/hooks/custom-hooks-loader";
@@ -224,5 +233,32 @@ describe("observe mode", () => {
     await evaluateHookEvent("PreToolUse", "claude", stdin);
     const result = await (await registeredFn("org-guard"))({});
     expect(result.decision).toBe("allow");
+  });
+});
+
+describe("pack attribution", () => {
+  it("files a pack decision as 'pack', with the pack's id and version", async () => {
+    // Without this the row said "custom" — which is also what a user's own local
+    // .mjs gets, so the two were indistinguishable unless something re-parsed
+    // the `pack/` prefix off our own display name.
+    vi.mocked(loadAllCustomHooks).mockResolvedValue({
+      hooks: [Object.assign(
+        { name: "block-refunds", description: "d", match: { events: ["PreToolUse"] }, fn: async () => ({ decision: "deny", reason: "no" }) },
+        { __pack: { id: "acme/finance", version: "1.2.0", effect: "enforce", policies: [], enabled: null, path: "/x", sha256: "s", source: "github:acme/finance@v1.2.0" } },
+      )],
+      conventionSources: [],
+    } as never);
+    vi.mocked(evaluatePolicies).mockReturnValue({
+      exitCode: 0, stdout: "", stderr: "", decision: "deny",
+      policyName: "pack/acme/finance@1.2.0/block-refunds", reason: "no",
+    } as never);
+
+    await evaluateHookEvent("PreToolUse", "claude", stdin);
+
+    const written = row();
+    expect(written.policySource).toBe("pack");
+    expect(written.packId).toBe("acme/finance");
+    expect(written.packVersion).toBe("1.2.0");
+    expect(written.cloudPolicyId).toBeUndefined();
   });
 });

@@ -40,11 +40,21 @@ let initialized = false;
  *  (e.g. the Next.js dashboard) doesn't wipe any prior policy registrations. */
 let savedSnapshot: RegisteredPolicy[] | null = null;
 
-/** Register every builtin policy (regardless of user config) so the replay
- *  shows what *could* be caught, not just what's currently enabled. Called
- *  once per `runAudit` invocation. Snapshots the existing registry so it can
- *  be restored by `restoreReplay()` once the audit is done. */
-export function initReplay(): void {
+/**
+ * Register every builtin policy (regardless of user config) so the replay shows
+ * what *could* be caught, not just what is currently enabled. Called once per
+ * `runAudit` invocation. Snapshots the existing registry so `restoreReplay()`
+ * can put it back.
+ *
+ * The implementations compiled into this build, and ONLY those. The audit used
+ * to prefer a vendored `policy-pack/` copy where one existed, which was
+ * meaningful while the package shipped that directory; it no longer ships it, so
+ * that branch could not fire in any published build and existed only to be
+ * misread as "the audit scores against installed packs". It does not, and must
+ * not: an audit is a fixed yardstick, and one that changed shape with whatever
+ * pack a machine happened to have could not be compared against its own history.
+ */
+export async function initReplay(): Promise<void> {
   if (initialized) return;
   savedSnapshot = getAllPolicies();
   clearPolicies();
@@ -87,7 +97,7 @@ export interface ReplayHit {
  *  is reported too, so sanitize policies that emit informational notes still
  *  surface in the audit. */
 export async function replayEvent(event: NormalizedToolEvent): Promise<ReplayHit[]> {
-  if (!initialized) initReplay();
+  if (!initialized) await initReplay();
 
   const session: SessionMetadata = {
     sessionId: event.sessionId,

@@ -48,6 +48,12 @@ describe("listHooks — convention policy column width", () => {
     logSpy = vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
       lines.push(args.map(String).join(" "));
     });
+    // The listing prints one block through `process.stdout`, not a console.log
+    // per line, so the capture has to follow the stream it actually writes to.
+    vi.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
+      lines.push(...String(chunk).split("\n"));
+      return true;
+    });
   });
 
   afterEach(() => {

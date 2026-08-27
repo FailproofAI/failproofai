@@ -63,13 +63,22 @@ pub struct HookRow {
     // is exactly the substring-parsing this data was added to replace: every
     // row arrives unattributed, so "how much is my org's policy actually
     // doing" has no answer.
-    /// `builtin` | `custom` | `convention` | `cloud`. Absent on rows written
-    /// before attribution existed, which is meaningful — see the note in
+    /// `builtin` | `custom` | `convention` | `cloud` | `pack`. Absent on rows
+    /// written before attribution existed, which is meaningful — see the note in
     /// `hook-activity-store.ts` about not guessing a bucket.
+    ///
+    /// Deliberately `Option<String>` and forwarded verbatim rather than a typed
+    /// enum: this side has no opinion about the value, so adding a source on the
+    /// TypeScript side needs no coordinated release here. The doc comment is the
+    /// only thing that goes stale, which is the trade taken on purpose.
     #[serde(rename = "policySource")]
     pub policy_source: Option<String>,
     #[serde(rename = "cloudPolicyId")]
     pub cloud_policy_id: Option<String>,
+    #[serde(rename = "packId")]
+    pub pack_id: Option<String>,
+    #[serde(rename = "packVersion")]
+    pub pack_version: Option<String>,
     /// `cloudRevision` is the pre-rename spelling, and the alias is what keeps
     /// history attributed.
     ///
@@ -117,6 +126,8 @@ pub struct HookRow {
 pub struct Attribution {
     pub policy_source: Option<String>,
     pub cloud_policy_id: Option<String>,
+    pub pack_id: Option<String>,
+    pub pack_version: Option<String>,
     pub cloud_version: Option<i64>,
     pub cloud_deployment: Option<i64>,
     pub paused: bool,
@@ -127,6 +138,8 @@ impl Attribution {
         Self {
             policy_source: row.policy_source.clone(),
             cloud_policy_id: row.cloud_policy_id.clone(),
+            pack_id: row.pack_id.clone(),
+            pack_version: row.pack_version.clone(),
             cloud_version: row.cloud_version,
             cloud_deployment: row.cloud_deployment,
             paused: row.paused_by.is_some(),
@@ -144,6 +157,12 @@ impl Attribution {
         }
         if let Some(id) = &self.cloud_policy_id {
             m.insert("cloud_policy_id".into(), json!(id));
+        }
+        if let Some(id) = &self.pack_id {
+            m.insert("pack_id".into(), json!(id));
+        }
+        if let Some(version) = &self.pack_version {
+            m.insert("pack_version".into(), json!(version));
         }
         if let Some(r) = self.cloud_version {
             m.insert("cloud_version".into(), json!(r));
@@ -447,13 +466,15 @@ impl AllowBucket {
         m.insert(
             "hook_id".into(),
             json!(format!(
-                "{}:{}:{}:{}:{}:{}:{}:{}:{}:agg",
+                "{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:agg",
                 self.session_id,
                 self.minute_ms,
                 self.event_name,
                 self.tool_name.as_deref().unwrap_or("-"),
                 a.policy_source.as_deref().unwrap_or("-"),
                 a.cloud_policy_id.as_deref().unwrap_or("-"),
+                a.pack_id.as_deref().unwrap_or("-"),
+                a.pack_version.as_deref().unwrap_or("-"),
                 a.cloud_version
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "-".into()),
@@ -522,5 +543,21 @@ mod rename_compat_tests {
         .expect("current rows deserialize");
         assert_eq!(row.cloud_version, Some(4));
         assert_eq!(row.cloud_deployment, Some(11));
+    }
+
+    #[test]
+    fn pack_identity_survives_collection() {
+        let row: HookRow = serde_json::from_str(
+            r#"{"timestamp":1700000000,"policySource":"pack","packId":"acme/finance","packVersion":"1.2.0"}"#,
+        )
+        .expect("pack-attributed rows deserialize");
+        let attribution = Attribution::of(&row);
+        assert_eq!(attribution.pack_id.as_deref(), Some("acme/finance"));
+        assert_eq!(attribution.pack_version.as_deref(), Some("1.2.0"));
+
+        let mut output = Map::new();
+        attribution.apply(&mut output);
+        assert_eq!(output.get("pack_id"), Some(&json!("acme/finance")));
+        assert_eq!(output.get("pack_version"), Some(&json!("1.2.0")));
     }
 }

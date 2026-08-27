@@ -2,9 +2,10 @@
  * OpenCode (sst/opencode) session transcript loader.
  *
  * Sessions live in opencode's SQLite DB (`~/.local/share/opencode/opencode.db`),
- * not on disk as JSONL like the other CLIs. We read them by shelling out to
- * `opencode db --format json "<sql>"` — same surface as `lib/opencode-projects.ts`
- * and the same fail-open contract (binary missing → return null).
+ * not on disk as JSONL like the other CLIs. Read directly through
+ * `lib/opencode-db.ts` — see there for why this stopped shelling out to
+ * `opencode db` — with the same fail-open contract as every other provider
+ * (database unreadable → return null).
  *
  * Schema verified live on opencode v1.14.31:
  *   • `session(id, project_id, parent_id, slug, directory, title, time_*, …)`
@@ -17,7 +18,7 @@
  *
  * Refs: https://opencode.ai/docs/   (CLI reference)
  */
-import { execFileSync } from "node:child_process";
+import { withOpenCodeDb } from "./opencode-db";
 import { runtimeCache } from "./runtime-cache";
 import {
   baseEntry,
@@ -59,19 +60,19 @@ interface OpenCodePartRow {
   data: string; // JSON-encoded
 }
 
-/** Run a parameter-free SELECT against opencode's DB. Returns `null` on any
- *  failure (binary missing, query error, malformed output). */
-function runOpenCodeDb<T>(sql: string): T[] | null {
+/**
+ * One query, with its failure isolated to itself.
+ *
+ * The three reads below used to be three separate processes, so one of them
+ * failing left the others' results intact — and the callers depend on that: a
+ * session row that loads while its messages do not yields an EMPTY log rather
+ * than a missing one. Running all three inside a single open would otherwise
+ * turn any one failure into a null for the whole session, which reads to the
+ * dashboard as "no such session" rather than "no messages".
+ */
+function safeQuery<T>(run: () => T[]): T[] | null {
   try {
-    const stdout = execFileSync("opencode", ["db", "--format", "json", sql], {
-      encoding: "utf8",
-      timeout: 5_000,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    if (!stdout.trim()) return [];
-    const parsed = JSON.parse(stdout) as unknown;
-    if (!Array.isArray(parsed)) return null;
-    return parsed as T[];
+    return run();
   } catch {
     return null;
   }
@@ -215,19 +216,33 @@ export interface OpenCodeSessionLogData {
  * or the binary is unavailable.
  */
 export async function getOpenCodeSessionLog(sessionId: string): Promise<OpenCodeSessionLogData | null> {
-  if (!sessionId || !/^[A-Za-z0-9_-]+$/.test(sessionId)) return null; // SQL-injection guard
-  const sessions = runOpenCodeDb<OpenCodeSessionRow>(
-    `SELECT id, project_id, slug, directory, title, time_created, time_updated FROM session WHERE id = '${sessionId}'`,
-  );
+  // Parameter binding already makes injection impossible, so this guard is no
+  // longer load-bearing for that — but an id that cannot match anything is
+  // still not worth a database open, and weakening an existing check while
+  // changing transport is how a regression gets in unnoticed.
+  if (!sessionId || !/^[A-Za-z0-9_-]+$/.test(sessionId)) return null;
+  // One open, three queries. Each of these was a separate `opencode db`
+  // process — and this function is called once per session by the audit, so
+  // the spawns were the audit.
+  const rows = await withOpenCodeDb((db) => ({
+    sessions: safeQuery(() => db.query<OpenCodeSessionRow>(
+      "SELECT id, project_id, slug, directory, title, time_created, time_updated FROM session WHERE id = ?",
+      [sessionId],
+    )),
+    messages: safeQuery(() => db.query<OpenCodeMessageRow>(
+      "SELECT id, session_id, time_created, time_updated, data FROM message WHERE session_id = ? ORDER BY time_created ASC",
+      [sessionId],
+    )),
+    parts: safeQuery(() => db.query<OpenCodePartRow>(
+      "SELECT id, message_id, session_id, time_created, time_updated, data FROM part WHERE session_id = ? ORDER BY time_created ASC",
+      [sessionId],
+    )),
+  }));
+  const sessions = rows?.sessions ?? null;
   if (!sessions || sessions.length === 0) return null;
   const session = sessions[0];
-
-  const messages = runOpenCodeDb<OpenCodeMessageRow>(
-    `SELECT id, session_id, time_created, time_updated, data FROM message WHERE session_id = '${sessionId}' ORDER BY time_created ASC`,
-  );
-  const parts = runOpenCodeDb<OpenCodePartRow>(
-    `SELECT id, message_id, session_id, time_created, time_updated, data FROM part WHERE session_id = '${sessionId}' ORDER BY time_created ASC`,
-  );
+  const messages = rows?.messages ?? null;
+  const parts = rows?.parts ?? null;
   if (!messages) return { entries: [], rawLines: [], cwd: session.directory ?? undefined, filePath: `opencode://${sessionId}` };
 
   // Group parts by message_id for O(1) lookup.
@@ -289,20 +304,28 @@ export interface OpenCodeSessionExportData {
 
 export async function getOpenCodeSessionExport(sessionId: string): Promise<OpenCodeSessionExportData | null> {
   if (!sessionId || !/^[A-Za-z0-9_-]+$/.test(sessionId)) return null;
-  const sessions = runOpenCodeDb<OpenCodeSessionRow>(
-    `SELECT id, project_id, slug, directory, title, time_created, time_updated FROM session WHERE id = '${sessionId}'`,
-  );
+  const rows = await withOpenCodeDb((db) => ({
+    sessions: safeQuery(() => db.query<OpenCodeSessionRow>(
+      "SELECT id, project_id, slug, directory, title, time_created, time_updated FROM session WHERE id = ?",
+      [sessionId],
+    )),
+    messages: safeQuery(() => db.query<OpenCodeMessageRow>(
+      "SELECT id, session_id, time_created, time_updated, data FROM message WHERE session_id = ? ORDER BY time_created ASC",
+      [sessionId],
+    )),
+    parts: safeQuery(() => db.query<OpenCodePartRow>(
+      "SELECT id, message_id, session_id, time_created, time_updated, data FROM part WHERE session_id = ? ORDER BY time_created ASC",
+      [sessionId],
+    )),
+  }));
+  const sessions = rows?.sessions ?? null;
   if (!sessions || sessions.length === 0) return null;
   // Don't coalesce a `null` return (query failure) into `[]` — that would
   // silently serve an "empty session" export. A genuinely empty session has
   // an `[]` from the DB; a query failure has `null`. Treat the latter as
   // not-found so the route returns 404 rather than a misleading 200.
-  const messages = runOpenCodeDb<OpenCodeMessageRow>(
-    `SELECT id, session_id, time_created, time_updated, data FROM message WHERE session_id = '${sessionId}' ORDER BY time_created ASC`,
-  );
-  const parts = runOpenCodeDb<OpenCodePartRow>(
-    `SELECT id, message_id, session_id, time_created, time_updated, data FROM part WHERE session_id = '${sessionId}' ORDER BY time_created ASC`,
-  );
+  const messages = rows?.messages ?? null;
+  const parts = rows?.parts ?? null;
   if (messages === null || parts === null) return null;
   return {
     session: sessions[0],

@@ -210,6 +210,26 @@ export const globalPolicyConfigFile = (home?: string) =>
  */
 export const cloudPoliciesDir = (home?: string) => resolve(policiesDir(home), "cloud-policies");
 
+/**
+ * Installed policy packs — a sibling of `cloudPoliciesDir` and flat for the same
+ * reason: `artifacts/<sha256>.mjs` is content-addressed, so an install can only
+ * ever write a file that does not exist yet and is structurally incapable of
+ * disturbing what is currently live. `installed.json` names which artifacts are
+ * active and is written last, so activation is one atomic flip.
+ *
+ * Living under `policies/` is safe ONLY because the convention loader does not
+ * recurse — `discoverPolicyFiles` and `findSkippedPolicyFiles` both filter on
+ * `isFile()`, so nothing under `packs/` can be picked up as an unverified
+ * convention policy. `fp-home.test.ts` pins that non-recursion.
+ */
+export const packsDir = (home?: string) => resolve(policiesDir(home), "packs");
+
+/** The activation pointer. Written last and atomically. */
+export const packsInstalledFile = (home?: string) => resolve(packsDir(home), "installed.json");
+
+/** Content-addressed pack artifacts, shared across packs and versions. */
+export const packArtifactsDir = (home?: string) => resolve(packsDir(home), "artifacts");
+
 // ── Collector ────────────────────────────────────────────────────────────────
 
 /** Per-source watermarks. One directory per source — never shared: the cursor
@@ -634,6 +654,14 @@ export const HOME_CLASSES: readonly { path: (home?: string) => string; class: Da
   // directory holds both the files a person wrote and the ones the fleet sent,
   // and only the second kind may be thrown away.
   { path: cloudPoliciesDir, class: "refetchable" },
+  // Installed packs. Third-party packs are re-fetchable by `failproofai pack
+  // add`; the bundled default pack is restored from the package immediately
+  // after reset. So this is the fleet's argument again: one directory holds both
+  // what a person wrote and what a command fetched, and only the second kind may
+  // be thrown away. Without this row `packs/` inherits `policiesDir`'s
+  // `user-typed` and survives a reset that is supposed to clear re-fetchable
+  // state.
+  { path: packsDir, class: "refetchable" },
 
   // ── Never touched ──
   // A downloaded daemon binary is large, version-pinned and re-verified on use,

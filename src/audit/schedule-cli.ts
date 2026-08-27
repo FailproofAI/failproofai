@@ -37,8 +37,13 @@ import {
   ANSI_RESET,
   brandAnsi,
   colorsEnabled,
+  optsFor,
   outro,
+  printBlock,
+  rows as kitRows,
+  stack,
   step,
+  title,
 } from "../hooks/tui";
 
 /** Mirrors `fp-config`'s own bounds so the error can name them before writing. */
@@ -61,30 +66,6 @@ const pink = (s: string) => wrap(brandAnsi("pink"), s);
 const green = (s: string) => wrap(brandAnsi("guide"), s);
 const dim = (s: string) => wrap(ANSI_DIM, s);
 const bold = (s: string) => wrap(ANSI_BOLD, s);
-
-/**
- * The readout's left margin.
- *
- * Deliberately NOT the `│` spine the sign-in uses. A spine means "a flow is
- * happening, with a beginning and an end"; `--status` is a snapshot of a
- * machine, and hanging one off a frame that never opened reads as an unfinished
- * wizard. Alignment does the work here instead.
- */
-const rail = () => " ";
-
-/**
- * One labelled row of the `--status` readout.
- *
- * A fixed label column so the values line up into a second column that can be
- * read straight down — the whole point of this command is answering "what is
- * this machine doing" at a glance, and a ragged left edge makes four facts read
- * as four sentences.
- */
-const LABEL_WIDTH = 15;
-function row(label: string, value: string, note?: string): string {
-  const gap = " ".repeat(Math.max(1, LABEL_WIDTH - label.length));
-  return `${rail()}  ${dim(label)}${gap}${value}${note ? `  ${dim(note)}` : ""}`;
-}
 
 /**
  * Turn scheduled audits on, signing in first if needed.
@@ -219,62 +200,77 @@ export function runScheduleStatus(): void {
   const daemon = daemonServiceStatus();
 
   const on = config.audit.auto;
-  const out: string[] = [""];
+  const opts = optsFor(process.stdout);
+  const detail: Array<[string, string]> = [];
 
-  // The state first and alone, in the accent that matches it — everything below
-  // is detail about a machine that is either doing this or not, and reading the
-  // detail first is reading the answer to a question nobody asked yet.
-  out.push(
-    `${rail()}  ${bold("scheduled audit")}   ${on ? green("on") : dim("off")}` +
-      (on ? dim(`  every ${config.audit.intervalDays} days`) : ""),
-  );
-  out.push(rail());
+  // The state first, because everything below is detail about a machine that is
+  // either doing this or not, and reading the detail first answers a question
+  // nobody has asked yet. It is a ROW like the rest, though: the headline used
+  // to be hand-padded to a different column than `row()` used, which is why this
+  // readout printed its first value at column 21 and every other at 18.
+  detail.push([
+    "scheduled audit",
+    on
+      ? `${green("on")}${dim(`  every ${config.audit.intervalDays} days`)}`
+      : dim("off"),
+  ]);
 
   // A session whose refresh window has closed cannot mint another access token,
   // so it is a destination in name only. Showing the address for one would tell
   // somebody their digests are going somewhere they are not.
   const live = auth && auth.refresh_expires_at * 1000 > Date.now() ? auth : null;
-  out.push(row("reports to", live ? live.user.email : dim("— signed out")));
+  detail.push(["reports to", live ? live.user.email : dim("— signed out")]);
   if (on && !live) {
     // The state the reporter surfaces as "signed-out". Named here for the same
     // reason the settings panel names it: the scans keep running, so silence
     // about the digests would look like the feature failing.
-    out.push(row("", pink("scans continue; digests are paused until you sign in")));
+    detail.push(["", pink("scans continue; digests are paused until you sign in")]);
   } else if (on && config.audit.reportsConsentedAt === undefined) {
     // Signed in, scheduled, and still not sending: this machine set `audit.auto`
     // when it only meant "scan locally", so nothing has consented to the digest
     // leaving the box. Without this row the status screen would show a healthy
     // schedule and a live address and still mail nothing, with no explanation
     // anywhere the user can see.
-    out.push(
-      row("", pink("scans continue; digests need a fresh opt-in — run `--schedule` to turn them on")),
-    );
+    detail.push([
+      "",
+      pink("scans continue; digests need a fresh opt-in — run `--schedule` to turn them on"),
+    ]);
   }
 
-  out.push(row("daemon", describeDaemon(daemon)));
+  detail.push(["daemon", describeDaemon(daemon)]);
 
   if (sched?.nextDueAtMs != null && on) {
-    out.push(row("next scan", untilPhrase(sched.nextDueAtMs)));
+    detail.push(["next scan", untilPhrase(sched.nextDueAtMs)]);
   }
   if (sched?.lastRunAtMs != null) {
     const exit = sched.lastExitCode;
-    out.push(
-      row(
-        "last scheduled",
-        agoPhrase(sched.lastRunAtMs),
-        exit != null && exit !== 0 && exit !== 75 ? pink(`exit ${exit}`) : undefined,
-      ),
-    );
+    const failed = exit != null && exit !== 0 && exit !== 75;
+    detail.push([
+      "last scheduled",
+      agoPhrase(sched.lastRunAtMs) + (failed ? `  ${pink(`exit ${exit}`)}` : ""),
+    ]);
   }
-  out.push(
-    row("last result", meta?.cachedAt ? agoPhrase(Date.parse(meta.cachedAt)) : dim("none yet")),
-  );
+  detail.push([
+    "last result",
+    meta?.cachedAt ? agoPhrase(Date.parse(meta.cachedAt)) : dim("none yet"),
+  ]);
   if (machine?.last_reported_at) {
-    out.push(row("last reported", agoPhrase(Date.parse(machine.last_reported_at))));
+    detail.push(["last reported", agoPhrase(Date.parse(machine.last_reported_at))]);
   }
-  out.push("");
 
-  process.stdout.write(out.join("\n"));
+  printBlock(
+    process.stdout,
+    stack(
+      // The meta carries a fact, not the word "status" — a heading that repeats
+      // the command name tells the reader nothing they did not just type.
+      title(
+        "failproofai audit",
+        on ? `scheduled · every ${config.audit.intervalDays} days` : "not scheduled",
+        opts,
+      ),
+      kitRows(detail, opts),
+    ),
+  );
 }
 
 function describeDaemon(status: ReturnType<typeof daemonServiceStatus>): string {

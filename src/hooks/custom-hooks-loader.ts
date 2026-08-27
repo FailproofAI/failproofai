@@ -29,7 +29,7 @@ import {
 import { findProjectConfigDir } from "./hooks-config";
 import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId } from "../../lib/telemetry-id";
-import type { CustomHook } from "./policy-types";
+import type { CustomHook, PolicyCatalogEntry } from "./policy-types";
 import type { CloudManagedPolicyArtifact } from "./cloud-managed-policies";
 import type { ResolvedPack } from "./pack-manifest";
 import { customPoliciesDir, shimsDir } from "./fp-home";
@@ -448,6 +448,37 @@ export async function loadAllCustomHooks(
   // Resolved the same way and for the same reason — toward ENFORCEMENT, because
   // over-enforcing is visible to whoever hits it and under-enforcing is the
   // silent failure — and announced, so an operator can act on it.
+  /** `null` means "all of it" on both `enabled` and `clis`, so it absorbs any
+   *  list. Two lists become their union — never their intersection, which is
+   *  what dropping one of them amounted to. */
+  const unionSelection = (a: string[] | null, b: string[] | null): string[] | null =>
+    a === null || b === null ? null : [...new Set([...a, ...b])];
+
+  /**
+   * The CATALOGS have to merge for the same reason the selections do, and the
+   * union of `enabled` is what made it load-bearing: it lets the loser's policy
+   * run, and the catalog is where a pack declares that policy's PARAMS SCHEMA.
+   * `registerPolicy` reads the schema off `pack.policies` by name, so a policy
+   * present only in the loser's catalog registered with none — and a policy with
+   * no schema gets no defaults, so every value its publisher declared silently
+   * arrived as `undefined` in `ctx.params`. Enforcement running on the wrong
+   * numbers is the same silent-wrong as enforcement not running.
+   *
+   * Two packs sharing bytes is most likely a fork or a re-publish, and a fork
+   * that only re-declares a default changes no source at all — so differing
+   * catalogs behind one artifact is the EXPECTED shape here, not a corner.
+   *
+   * Winner precedence on a name both declare, because the merged record carries
+   * the winner's id and version and there is no merging two different defaults.
+   */
+  const unionCatalog = (
+    winner: PolicyCatalogEntry[],
+    other: PolicyCatalogEntry[],
+  ): PolicyCatalogEntry[] => [
+    ...winner,
+    ...other.filter((p) => !winner.some((w) => w.name === p.name)),
+  ];
+
   const packByPath = new Map<string, ResolvedPack>();
   for (const pack of opts?.packs ?? []) {
     const key = resolve(pack.path);
@@ -458,11 +489,32 @@ export async function loadAllCustomHooks(
     }
     hookLogWarn(
       `packs ${existing.id} and ${pack.id} have identical source, so they share one artifact ` +
-        `and load as one pack; enforcing it if either asks to enforce`,
+        `and load as one pack; enforcing it if either asks to enforce, and taking ` +
+        `the union of what each has enabled and of the agents each guards`,
     );
-    if (existing.effect !== "enforce" && pack.effect === "enforce") {
-      packByPath.set(key, pack);
-    }
+    // The EFFECT was resolved toward enforcement here and the SELECTIONS were
+    // not, which made the collapse silently subtractive.
+    //
+    // Only the winner's `enabled` reached the tag, and `handler.ts` gates every
+    // hook on that one list — so two packs sharing bytes, one having taken
+    // `foo` and the other `bar`, registered whichever list won and dropped the
+    // other's policy entirely. `pack-failclosed.ts` ignores a pack absent from
+    // the registered map, so nothing reported it: a policy the user had
+    // installed and enabled simply never ran. `clis` had the same shape — a
+    // pack scoped to one agent decided the scope for both.
+    //
+    // Unioned, for the reason the effect is resolved toward enforcement: over-
+    // enforcing is visible to whoever hits it, under-enforcing is silent. `null`
+    // means "everything" on both fields, so it absorbs any list rather than
+    // being intersected away.
+    const winner = existing.effect !== "enforce" && pack.effect === "enforce" ? pack : existing;
+    const other = winner === existing ? pack : existing;
+    packByPath.set(key, {
+      ...winner,
+      policies: unionCatalog(winner.policies, other.policies),
+      enabled: unionSelection(winner.enabled, other.enabled),
+      clis: unionSelection(winner.clis, other.clis),
+    });
   }
 
   // 1. Explicit custom policy paths. Accept a string for callers/configs using

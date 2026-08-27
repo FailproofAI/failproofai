@@ -954,7 +954,12 @@ export async function addPack(
         : {}),
   };
 
-  const absorbed = upsertInstalled(record);
+  // `--all` is an ANSWER, not a silence. `upsertInstalled` carries an absorbed
+  // row's narrower selection onto a record that names none — which is right for
+  // a rename nobody expressed an opinion about, and wrong for a caller who just
+  // said "everything". Left ungated, `policies add <renamed pack> --all`
+  // reported the whole catalog and wrote the old id's one-policy list.
+  const absorbed = upsertInstalled(record, reason !== "all");
   return {
     replaced: absorbed,
     id: fetched.id,
@@ -1034,11 +1039,27 @@ export function setPackPolicyEnabled(
  * installed would be the same unhelpfulness in a new hat.
  */
 function packIdMatches(stored: string, typed: string): boolean {
-  const bare = (value: string): string => {
-    const at = value.lastIndexOf("@");
-    return (at > 0 ? value.slice(0, at) : value).trim().toLowerCase();
-  };
-  return bare(stored) === bare(typed);
+  return bareId(stored).toLowerCase() === bareId(typed).toLowerCase();
+}
+
+/** The id with any `@<version>` suffix and surrounding space removed, CASE
+ *  INTACT — the exact-match pass needs the original spelling. */
+function bareId(value: string): string {
+  const trimmed = value.trim();
+  const at = trimmed.lastIndexOf("@");
+  return (at > 0 ? trimmed.slice(0, at) : trimmed).trim();
+}
+
+/** Two installed packs answer to one loosely-typed name. Thrown rather than
+ *  guessed at: the caller prints the canonical ids so the user can say which. */
+export class AmbiguousPackId extends Error {
+  constructor(readonly candidates: string[], typed: string) {
+    super(
+      `${typed} matches ${candidates.length} installed packs: ${candidates.join(", ")}. ` +
+        `Name one of them exactly.`,
+    );
+    this.name = "AmbiguousPackId";
+  }
 }
 
 /** The id actually removed — the CANONICAL one, not the spelling that was
@@ -1054,7 +1075,24 @@ export function removePack(id: string): string | null {
     return null;
   }
   const packs = Array.isArray(raw.packs) ? raw.packs : [];
-  const removed = packs.find((p) => p?.id && packIdMatches(p.id, id));
+  // EXACT first, and a loose match only when it is the only one.
+  //
+  // Ids are stored and upserted with `===`, so `Acme/guard` and `acme/guard`
+  // are two rows on one machine — and a `find()` over the loose matcher then
+  // removed whichever happened to sit first, which is not the pack that was
+  // named. A convenience for typing a name is not worth uninstalling something
+  // else, so an ambiguous name is REFUSED and the candidates are printed:
+  // asking again with the exact id is a keystroke, and the alternative is
+  // silently deactivating a pack the user still wanted enforcing.
+  const exact = packs.find((p) => p?.id === bareId(id));
+  const loose = packs.filter((p) => p?.id && packIdMatches(p.id, id));
+  if (!exact && loose.length > 1) {
+    throw new AmbiguousPackId(
+      loose.map((p) => p.id).filter((v): v is string => typeof v === "string"),
+      id,
+    );
+  }
+  const removed = exact ?? loose[0];
   const remaining = packs.filter((p) => p !== removed);
   if (!removed || remaining.length === packs.length) return null;
   // The artifact is left on disk deliberately: it is content-addressed and inert
@@ -1084,7 +1122,17 @@ export function removePack(id: string): string | null {
  * say so — an earlier version deleted the old row silently, taking the user's
  * selection and the enforcement it gave them with it.
  */
-function upsertInstalled(record: InstalledPackRecord): string[] {
+function upsertInstalled(
+  record: InstalledPackRecord,
+  /**
+   * False when the record's absent `enabled` is an EXPRESSED "everything"
+   * (`--all`) rather than an unexpressed one. Carrying there overrides the
+   * user's own answer with a set they left behind under the old id, and the
+   * returned `AddedPack` still reports the whole catalog — installed says
+   * three, disk enforces one.
+   */
+  carryAbsorbedSelection = true,
+): string[] {
   const manifestPath = resolve(packsRoot(), "installed.json");
   let packs: InstalledPackRecord[] = [];
   if (existsSync(manifestPath)) {
@@ -1105,7 +1153,7 @@ function upsertInstalled(record: InstalledPackRecord): string[] {
     .map((p) => p.id);
   // The selection the user had under the old id is theirs — carry it, rather
   // than resetting them to defaults because a publisher renamed something.
-  if (!record.enabled) {
+  if (carryAbsorbedSelection && !record.enabled) {
     const prior = packs.find((p) => absorbed.includes(p?.id));
     const carried = prior?.enabled?.filter((n) =>
       (record.policies as Array<{ name?: unknown }> | undefined)?.some((rp) => rp?.name === n),

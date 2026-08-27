@@ -15,6 +15,7 @@ import { PACK_COMMIT_RE, PACK_VERSION_RE } from "./pack-manifest";
 import { detectInstalledClis } from "./integrations";
 import { parsePackIdentity, parsePackPolicy, readInstalledPacks } from "./pack-manifest";
 import {
+  AmbiguousPackId,
   PACK_CHECKSUMS_ASSET,
   PACK_ENTRY_ASSET,
   PACK_MANIFEST_ASSET,
@@ -178,7 +179,24 @@ function parseCliList(rest: string[]): { clis?: string[] } | { error: string[] }
     }
   }
   const names = values.map((v) => v.trim()).filter(Boolean);
-  if (names.length === 0) return { clis: [] };
+  // `--cli` with nothing after it is a typo, not a scope.
+  //
+  // It used to become `clis: []`, which `installed.json` stores verbatim and
+  // `handler.ts` reads as "guard NO agent" (`pack.clis && !includes(cli)`) —
+  // so `policies add <pack> --cli` exited 0, printed "enabled (1/3, the pack's
+  // defaults)", and installed a pack that enforced nowhere. `--cli` is last on
+  // the line, or followed by the source or another flag, more easily than any
+  // other flag: `looksLikeCliName` stops at anything with a `-` or a `/`.
+  // Refused the same way `--policy` and `--category` refuse an empty list, and
+  // before anything is fetched.
+  if (names.length === 0) {
+    return {
+      error: [
+        "--cli needs at least one agent name, comma-separated",
+        `--cli takes any of: ${INTEGRATION_TYPES.join(", ")}`,
+      ],
+    };
+  }
 
   const known = new Set<string>(INTEGRATION_TYPES);
   const unknown = names.filter((n) => !known.has(n));
@@ -2158,7 +2176,23 @@ function remove(rest: string[]): PackCliResult {
   // Reported with the id the MACHINE holds, not the spelling that was typed:
   // `remove FAILPROOFAI/POLICIES` succeeding and echoing that back teaches a
   // name nothing else in the product uses.
-  const removedId = removePack(id);
+  let removedId: string | null;
+  try {
+    removedId = removePack(id);
+  } catch (err) {
+    // Two installed packs answer to one loosely-typed name. Refused rather
+    // than guessed at — the loose match exists so a remembered name works, and
+    // uninstalling something the user did not name is a worse outcome than
+    // asking them to be exact.
+    if (err instanceof AmbiguousPackId) {
+      return fail([
+        `${id} matches ${err.candidates.length} installed packs:`,
+        ...err.candidates.map((candidate) => `  ${candidate}`),
+        "Name one of them exactly.",
+      ]);
+    }
+    throw err;
+  }
   if (!removedId) return fail([`No installed pack with id ${id}`]);
   return ok([
     `Removed ${removedId}. Its policies stop enforcing now; re-add it any time with the same command.`,

@@ -23,7 +23,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 
-import { addPack, removePack } from "@/src/hooks/pack-store";
+import { addPack, removePack, AmbiguousPackId } from "@/src/hooks/pack-store";
+import { runPackCommand } from "@/src/hooks/pack-cli";
 import { readInstalledPacks } from "@/src/hooks/pack-manifest";
 
 // Registers exactly the policies the manifest declares. `addPack` imports the
@@ -194,6 +195,11 @@ describe("a flag on a FRESH install", () => {
     // by neither flag, so a first install that reached the union branch and
     // pulled the publisher's defaults in beside the flag would show up here.
     expect(byCategory.enabled).not.toContain("block-big-refund");
+    // And the flag narrowed what is ON, not what the pack CONTAINS. Filter
+    // `available` alongside `enabled` and `pack add` stops printing its
+    // "not enabled (2): …" line — the only place a user is told the rest of
+    // the pack exists and can be switched on.
+    expect(byCategory.available).toEqual(DECLARED);
 
     // The same call again, now that a record exists, is the contrast that makes
     // the guard the only difference: identical input, identical result, and
@@ -362,7 +368,15 @@ describe("the picker still REPLACES", () => {
     const second = await addPack(SOURCE, { only: [], merge: false });
     expect(second.enabled).toEqual([]);
     expect(record().enabled).toEqual([]);
-    expect(record().enabled).not.toBeUndefined();
+    // Read BACK through the loader, which is the shape the hook path sees:
+    // `readInstalledPacks` turns an absent `enabled` into `null`, and
+    // `handler.ts` gates on `pack?.enabled && !pack.enabled.includes(name)` —
+    // so `[]` skips every policy and `null` runs every policy. Asserting the
+    // raw file alone would pass on a reader that normalised the empty array
+    // away, and the pack would enforce ALL THREE of the policies its owner
+    // had just unticked.
+    expect(readInstalledPacks().packs[0].enabled).toEqual([]);
+    expect(readInstalledPacks().packs[0].enabled).not.toBeNull();
   });
 
   it("is what an empty pick needs — the same empty list from a FLAG would not clear", async () => {
@@ -435,19 +449,110 @@ describe("a pack taken whole", () => {
   });
 });
 
+describe("a rename that ABSORBS the row you already had", () => {
+  /**
+   * Same repository, same artifact BYTES, a different declared id — which is
+   * what a publisher renaming a pack ships. `upsertInstalled` matches on the
+   * digest, collapses the two rows into one, and reports the absorbed id so
+   * `pack add` can say "same policies under a new name".
+   *
+   * Both halves are load-bearing: a different repo would be refused outright
+   * (`already installed from …`), and different bytes would leave two rows
+   * standing with nothing to absorb.
+   */
+  function renamed(): void {
+    release({ repo: "acme/finance", id: "acme/renamed", version: "2.0.0" });
+  }
+  const RENAMED = "github:acme/finance@v2.0.0";
+
+  it("carries the old id's selection when the new add expressed none", async () => {
+    // The reason the carry exists. A publisher renaming their pack must not
+    // reset everybody who had narrowed it back to the publisher's defaults.
+    await addPack(SOURCE, { only: ["require-approval-note"], merge: true });
+    renamed();
+    const carried = await addPack(RENAMED, { merge: true });
+
+    expect(carried.replaced).toEqual(["acme/finance"]);
+    expect(carried.selection).toBe("carried");
+    expect(carried.enabled).toEqual(["require-approval-note"]);
+    expect(record("acme/renamed").enabled).toEqual(["require-approval-note"]);
+    expect(readInstalledPacks().packs).toHaveLength(1);
+  });
+
+  it("does NOT let that carry override an explicit --all", async () => {
+    // THE BUG. `--all` is an ANSWER, and the carry fired on any record with no
+    // `enabled` — which is exactly how "the whole pack" is stored. So
+    // `policies add <renamed pack> --all` printed "enabled (3/3, everything in
+    // the pack)" and wrote the old id's one-name list: three policies reported
+    // on, one enforcing, the divergence never surfacing anywhere.
+    //
+    // The same-id case cannot catch this — with no row to absorb the carry
+    // never runs — so it took a rename to make it reachable at all.
+    await addPack(SOURCE, { only: ["require-approval-note"], merge: true });
+    renamed();
+    const all = await addPack(RENAMED, { all: true, merge: true });
+
+    expect(all.selection).toBe("all");
+    expect(all.enabled).toEqual(DECLARED);
+    expect(record("acme/renamed").enabled).toBeUndefined();
+    // Read back through the loader as well: `null` is what the hook path reads
+    // as "the whole pack", and it is the value that has to agree with the three
+    // names the command just printed.
+    expect(readInstalledPacks().packs[0].enabled).toBeNull();
+  });
+
+  it("unions a flag with the old id's selection rather than losing it", async () => {
+    // The merge has to find the prior record by DIGEST here, not by id — the id
+    // it is looking for does not exist on disk yet. Look it up by id alone and
+    // a rename turns the first `add --category` after it into a silent replace.
+    await addPack(SOURCE, { only: ["require-approval-note"], merge: true });
+    renamed();
+    const merged = await addPack(RENAMED, { categories: ["audit-trail"], merge: true });
+
+    expect(merged.selection).toBe("added");
+    expect(merged.enabled).toEqual(["require-approval-note", "audit-log-writes"]);
+    expect(record("acme/renamed").enabled).toEqual(["require-approval-note", "audit-log-writes"]);
+  });
+});
+
 describe("the reason the CLI prints", () => {
+  /**
+   * The REAL `policies add`, because the sentence a person reads is the thing
+   * being claimed. Asserting `result.selection` alone only pins the enum — the
+   * `why` map in `pack-cli.ts` that turns it into words was covered by no test
+   * in this repo, so collapsing two of its five entries into one string broke
+   * nothing.
+   */
+  async function addViaCli(...flags: string[]): Promise<string> {
+    const r = await runPackCommand(["add", SOURCE, ...flags]);
+    expect(r.exitCode).toBe(0);
+    return r.lines.join("\n");
+  }
+
   it("says added for a merge and selected for a replace", async () => {
-    // `pack-cli` maps these two to different sentences — "what you added, plus
-    // what was already on" against "your selection" — because the merge is the
-    // one outcome where the result is LARGER than what the user typed. Collapse
-    // them into one string and the reader takes the printed set for their whole
-    // answer.
     await addPack(SOURCE);
     const merged = await addPack(SOURCE, { categories: ["audit-trail"], merge: true });
     expect(merged.selection).toBe("added");
 
     const replaced = await addPack(SOURCE, { categories: ["audit-trail"], merge: false });
     expect(replaced.selection).toBe("selected");
+  });
+
+  it("prints those two as different sentences, and the count is the union's", async () => {
+    // The merge is the one outcome where the result is LARGER than what the
+    // user typed, so it has to SAY so: read "your selection" over three
+    // policies when you asked for one category and you take the printed set for
+    // your whole answer. The first add is the contrast — same flag shape, no
+    // prior record, so it really is only your selection.
+    const first = await addViaCli("--category", "audit-trail");
+    expect(first).toContain("enabled (1/3, your selection): audit-log-writes");
+
+    const second = await addViaCli("--category", "finance");
+    expect(second).toContain("enabled (3/3, what you added, plus what was already on)");
+    // The name that came from the PRIOR record, not from this flag — the half
+    // the sentence exists to account for.
+    expect(second).toContain("audit-log-writes");
+    expect(second).not.toContain("your selection");
   });
 
   it("still says defaults and carried on the paths that express no selection", async () => {
@@ -462,6 +567,17 @@ describe("the reason the CLI prints", () => {
     const upgrade = await addPack("github:acme/finance@v1.3.0", { merge: true });
     expect(upgrade.selection).toBe("carried");
     expect(upgrade.enabled).toEqual(["block-big-refund"]);
+  });
+
+  it("gives defaults, carried and all their own words too", async () => {
+    // The other three entries of the same map, through the same command. All
+    // five sentences are distinct on purpose — "the pack's defaults" is the
+    // publisher's opinion, "your existing selection" is yours from last time,
+    // and "everything in the pack" is neither — and a reader who cannot tell
+    // them apart cannot tell whose decision put these policies on their machine.
+    expect(await addViaCli()).toContain("enabled (1/3, the pack's defaults): block-big-refund");
+    expect(await addViaCli()).toContain("enabled (1/3, your existing selection): block-big-refund");
+    expect(await addViaCli("--all")).toContain("enabled (3/3, everything in the pack)");
   });
 });
 
@@ -507,6 +623,40 @@ describe("an agent narrowing survives the next add", () => {
 
     await addPack(SOURCE, { only: [], merge: false });
     expect(record().clis).toBeUndefined();
+  });
+
+  // `--cli` naming NOTHING, in the three shapes that produce it. It is the
+  // easiest flag on the line to leave dangling — `looksLikeCliName` stops at
+  // anything carrying a `-` or a `/`, so the source and the next flag both
+  // terminate the list rather than joining it.
+  //
+  // It used to parse as `clis: []`, which is stored verbatim and which
+  // `handler.ts` reads as guard NO agent (`pack.clis && !includes(cli)`). So
+  // the command exited 0, printed "enabled (1/3, the pack's defaults)", and
+  // installed a pack that enforced nowhere — the worst shape a guardrail tool
+  // has, since the report says it is on. `--policy` and `--category` refuse an
+  // empty list two lines above; this one did not.
+  it.each([
+    ["dangling at the end of the line", ["add", SOURCE, "--cli"]],
+    ["swallowed by the source", ["add", "--cli", SOURCE]],
+    ["written as an empty --cli=", ["add", SOURCE, "--cli="]],
+  ])("refuses --cli %s instead of scoping the pack to no agent", async (_label, argv) => {
+    const r = await runPackCommand(argv);
+    expect(r.exitCode).not.toBe(0);
+    expect(r.lines.join("\n")).toContain("--cli needs at least one agent name");
+    // And nothing was installed. A refusal that still wrote the record would
+    // leave the inert pack behind under an error message.
+    expect(readInstalledPacks().packs).toHaveLength(0);
+  });
+
+  it("never writes an empty clis, which would be a pack guarding nobody", async () => {
+    // The invariant behind the parse fix, asserted where it actually bites: an
+    // absent `clis` means every agent, a list means those agents, and there is
+    // no third reading. Anything that lands `[]` on disk installs a pack that
+    // reports itself enabled and fires on no CLI at all.
+    await addPack(SOURCE, { clis: ["claude"], merge: true });
+    await runPackCommand(["add", SOURCE, "--cli"]);
+    expect(record().clis).toEqual(["claude"]);
   });
 });
 
@@ -565,5 +715,129 @@ describe("removing a pack by the name you actually have", () => {
     expect(removePack(name)).toBeNull();
     expect(removePack(`${owner}/something-else`)).toBeNull();
     expect(readInstalledPacks().packs).toHaveLength(1);
+  });
+
+  // Two rows whose ids differ ONLY in case, and whose artifact BYTES differ.
+  //
+  // Both halves are load-bearing. Ids are stored and upserted with `===`, so
+  // `Acme/guard` and `ACME/guard` really are two rows on one machine — but
+  // `upsertInstalled` absorbs anything carrying the same sha256 as the same
+  // pack renamed, so a pair built from identical policies would collapse into
+  // one row and there would be no collision left to construct.
+  //
+  // Neither stored id is lowercase on purpose: the exact pass runs first, so a
+  // lowercase spelling has to match NEITHER of them to reach the loose one.
+  async function installCaseVariants(): Promise<void> {
+    release({ repo: "Acme/guard", id: "Acme/guard", version: "1.0.0",
+      policies: [POLICY, POLICY_2, POLICY_3] });
+    release({ repo: "ACME/guard", id: "ACME/guard", version: "1.0.0",
+      policies: [OTHER_POLICY, OTHER_POLICY_2] });
+    await addPack("github:Acme/guard@v1.0.0", { all: true });
+    await addPack("github:ACME/guard@v1.0.0", { all: true });
+  }
+
+  it("refuses a loose name TWO installed packs answer to, and removes neither", async () => {
+    // The finding. Loosening `remove` to match case-insensitively made the
+    // lookup a `.find()`, which returns whichever row happens to sit first —
+    // so `remove acme/guard` uninstalled a pack the user did not name, and
+    // reported success under the canonical id of the one it took. A guess is
+    // not worth a keystroke here: an ambiguous name is refused and both
+    // candidates are named so the next command can be typed from the message.
+    await installCaseVariants();
+    expect(readInstalledPacks().packs.map((p) => p.id)).toEqual(["Acme/guard", "ACME/guard"]);
+
+    let thrown: unknown;
+    try {
+      removePack("acme/guard");
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(AmbiguousPackId);
+    expect((thrown as AmbiguousPackId).candidates).toEqual(["Acme/guard", "ACME/guard"]);
+    // Both spellings in the message, not a count — "matches 2 installed packs"
+    // on its own leaves the reader with nothing to type next.
+    expect((thrown as AmbiguousPackId).message).toContain("Acme/guard");
+    expect((thrown as AmbiguousPackId).message).toContain("ACME/guard");
+
+    // And the refusal comes BEFORE the write. A throw raised after
+    // `installed.json` was rewritten would satisfy a test that only asserted
+    // the throw, while the pack it picked is already gone — the original bug
+    // with an error message stapled on.
+    expect(readInstalledPacks().packs.map((p) => p.id)).toEqual(["Acme/guard", "ACME/guard"]);
+  });
+
+  it("takes the EXACT id outright when a case-variant sibling exists", async () => {
+    // The half that keeps the loosening useful rather than just refusing more.
+    // Check ambiguity first and a user who typed the stored id byte for byte
+    // gets told their own pack's name is ambiguous — a spelling that worked
+    // before the fix now failing is a worse regression than the one being
+    // fixed. Exact wins outright; loose is consulted only when it does not.
+    release({ repo: "Acme/guard", id: "Acme/guard", version: "1.0.0",
+      policies: [POLICY, POLICY_2, POLICY_3] });
+    release({ repo: "acme/guard", id: "acme/guard", version: "1.0.0",
+      policies: [OTHER_POLICY, OTHER_POLICY_2] });
+    await addPack("github:Acme/guard@v1.0.0", { all: true });
+    await addPack("github:acme/guard@v1.0.0", { all: true });
+
+    expect(removePack("acme/guard")).toBe("acme/guard");
+    // The sibling is untouched — an exact match must remove exactly one row,
+    // not every row that answers loosely to the same name.
+    expect(readInstalledPacks().packs.map((p) => p.id)).toEqual(["Acme/guard"]);
+  });
+
+  it("still sees the ambiguity through an @version suffix on the typed name", async () => {
+    // `pack list`'s heading is `id@version`, so the copied spelling carries the
+    // suffix. Strip it only on the exact pass and the loose pass compares
+    // `acme/guard@1.0.0` against two ids that contain no `@`, matches neither,
+    // and `remove` answers "No installed pack with id …" — an ambiguity turned
+    // into a flat wrong answer for the one spelling users are most likely to
+    // paste.
+    await installCaseVariants();
+
+    let thrown: unknown;
+    try {
+      removePack("acme/guard@1.0.0");
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(AmbiguousPackId);
+    expect((thrown as AmbiguousPackId).candidates).toEqual(["Acme/guard", "ACME/guard"]);
+    expect(readInstalledPacks().packs).toHaveLength(2);
+  });
+
+  it("removes a MIXED-CASE stored id from a lowercase spelling when it is the only one", async () => {
+    // Why the loose pass exists at all, on a pack whose stored id is NOT what
+    // the user typed to install it: `add` accepts any case (GitHub is
+    // case-insensitive) and then records the canonical id off the manifest, so
+    // the spelling they have is the one `remove` used to refuse. Uniqueness is
+    // what makes resolving it safe — with one candidate there is no other pack
+    // to take by mistake. Tighten this to exact-only and the original bug is
+    // back.
+    release({ repo: "Acme/guard", id: "Acme/guard", version: "1.0.0",
+      policies: [POLICY, POLICY_2, POLICY_3] });
+    await addPack("github:Acme/guard@v1.0.0", { all: true });
+
+    expect(removePack("acme/guard")).toBe("Acme/guard");
+    expect(readInstalledPacks().packs).toHaveLength(0);
+  });
+
+  it("exits non-zero from the CLI and prints both candidates, rather than throwing", async () => {
+    // `removePack` now throws on a path that used to only ever return, and
+    // `remove()` is the one caller a person actually types at. An uncaught
+    // `AmbiguousPackId` reaches the terminal as a stack trace at whatever exit
+    // code the top-level handler picks — awaiting this call is itself the
+    // assertion that it does not escape.
+    await installCaseVariants();
+
+    const result = await runPackCommand(["remove", "acme/guard"]);
+    expect(result.exitCode).not.toBe(0);
+    const printed = result.lines.join("\n");
+    expect(printed).toContain("Acme/guard");
+    expect(printed).toContain("ACME/guard");
+    // Not the not-installed sentence: catching the throw and falling into the
+    // null branch would exit non-zero too, while telling the user the pack
+    // they can see in `pack list` is not there.
+    expect(printed).not.toContain("No installed pack");
+    expect(readInstalledPacks().packs).toHaveLength(2);
   });
 });

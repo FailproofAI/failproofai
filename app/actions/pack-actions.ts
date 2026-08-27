@@ -86,7 +86,17 @@ export async function addBundledPackWebAction(): Promise<PackActionResult> {
 }
 
 export async function removePackWebAction(id: string): Promise<PackActionResult> {
-  const removed = removePack(id);
+  // The dashboard always sends an id it read off an installed pack, so the
+  // ambiguous case is unreachable from here — caught anyway, because an
+  // uncaught throw in a server action reaches the browser as a generic failure
+  // with the reason stripped, and "something went wrong" is the least useful
+  // thing this could say.
+  let removed: string | null;
+  try {
+    removed = removePack(id);
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
   return removed ? { ok: true, id: removed } : { ok: false, error: `No installed pack with id ${id}` };
 }
 

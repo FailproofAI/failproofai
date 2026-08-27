@@ -480,8 +480,22 @@ export async function loadAllCustomHooks(
   ];
 
   const packByPath = new Map<string, ResolvedPack>();
+  /**
+   * Every pack id behind each artifact path, not just the one that survived
+   * the collapse.
+   *
+   * A failure is recorded per PACK ID, and the collapse leaves one id holding
+   * the merged record — so an artifact with a syntax error marked the winner
+   * failed and said nothing about the other. `missingGuards` skips a pack that
+   * appears in neither the failure map nor the registered map, so the second
+   * pack's selected policies were absent, unguarded, and unreported: the exact
+   * silent under-enforcement the selection union was written to stop, arriving
+   * through the failure path instead.
+   */
+  const packIdsByPath = new Map<string, string[]>();
   for (const pack of opts?.packs ?? []) {
     const key = resolve(pack.path);
+    packIdsByPath.set(key, [...(packIdsByPath.get(key) ?? []), pack.id]);
     const existing = packByPath.get(key);
     if (!existing) {
       packByPath.set(key, pack);
@@ -541,7 +555,11 @@ export async function loadAllCustomHooks(
           verifyEntrySha:
             cloudManaged?.sha256 ?? pack?.sha256,
         });
-        if (failure && pack) packFailures.set(pack.id, failure);
+        // Every id behind these bytes. One artifact, one import, one failure —
+        // but as many fail-closed guards as there are packs depending on it.
+        if (failure && pack) {
+          for (const id of packIdsByPath.get(absPath) ?? [pack.id]) packFailures.set(id, failure);
+        }
         for (const hook of getCustomHooks().slice(hooksBefore)) {
           const tagged = hook as CustomHook & {
             __policyId?: string;
@@ -562,7 +580,10 @@ export async function loadAllCustomHooks(
       }
     } else {
       hookLogWarn(`custom policy path not found: ${absPath}`);
-      if (pack) packFailures.set(pack.id, { type: "path_missing", reason: `path missing: ${absPath}` });
+      if (pack) {
+        const missing = { type: "path_missing", reason: `path missing: ${absPath}` } as const;
+        for (const id of packIdsByPath.get(absPath) ?? [pack.id]) packFailures.set(id, missing);
+      }
     }
   }
 

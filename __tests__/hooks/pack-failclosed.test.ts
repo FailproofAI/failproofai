@@ -9,7 +9,7 @@
  * call by design.
  */
 import { describe, it, expect } from "vitest";
-import { missingGuards, packFailureReason, combinedGuardMatch, PERMANENT_LOAD_FAILURES } from "@/src/hooks/pack-failclosed";
+import { missingGuards, packFailureReason, combinedGuardMatch, guardsCover, PERMANENT_LOAD_FAILURES } from "@/src/hooks/pack-failclosed";
 import type { PackError, ResolvedPack } from "@/src/hooks/pack-manifest";
 
 const policy = (name: string, match: object = { events: ["PreToolUse"], toolNames: ["Bash"] }) =>
@@ -286,6 +286,56 @@ describe("the matcher that covers several missing guards at once", () => {
   it("passes a lone guard through untouched", () => {
     const only = { events: ["PreToolUse"], toolNames: ["Bash"] };
     expect(combinedGuardMatch([guard(only)])).toEqual(only);
+  });
+});
+
+// The union of two axes is a CROSS PRODUCT, and the registry ANDs them — so the
+// matcher that gets the policy dispatched is wider than any guard asked for.
+// It has to be: a tighter matcher would never be called at all.
+describe("which event and tool a combined guard actually covers", () => {
+  const guard = (match: object) =>
+    ({ packId: "acme/x", packVersion: "1", policies: ["p"], match, reason: "r" }) as never;
+  const pair = [
+    guard({ events: ["PreToolUse"], toolNames: ["Bash"] }),
+    guard({ events: ["PostToolUse"], toolNames: ["Write"] }),
+  ];
+
+  it("covers the pairs the packs declared", () => {
+    expect(guardsCover(pair, "PreToolUse", "Bash")).toBe(true);
+    expect(guardsCover(pair, "PostToolUse", "Write")).toBe(true);
+  });
+
+  // THE BUG. Both of these are inside the unioned matcher and inside neither
+  // guard, so the combined policy denied calls no pack ever asked to guard.
+  it("does not cover the pairs the cross product invented", () => {
+    expect(guardsCover(pair, "PreToolUse", "Write")).toBe(false);
+    expect(guardsCover(pair, "PostToolUse", "Bash")).toBe(false);
+  });
+
+  it("covers every tool for a guard that named none", () => {
+    const open = [guard({ events: ["PreToolUse"] })];
+    expect(guardsCover(open, "PreToolUse", "Write")).toBe(true);
+    expect(guardsCover(open, "PreToolUse", undefined)).toBe(true);
+    expect(guardsCover(open, "PostToolUse", "Write")).toBe(false);
+  });
+
+  it("covers everything for a guard that named nothing", () => {
+    expect(guardsCover([guard({})], "Stop", undefined)).toBe(true);
+  });
+
+  // A tool-scoped guard on an event that carries no tool name.
+  it("does not cover a tool-scoped guard when there is no tool", () => {
+    expect(guardsCover([guard({ toolNames: ["Bash"] })], "Stop", undefined)).toBe(false);
+  });
+
+  // The matcher must stay a superset, or the policy is never dispatched and the
+  // pairing check never runs.
+  it("stays reachable through the matcher it is dispatched by", () => {
+    const match = combinedGuardMatch(pair);
+    for (const [event, tool] of [["PreToolUse", "Bash"], ["PostToolUse", "Write"]] as const) {
+      expect(match.events?.includes(event as never) ?? true).toBe(true);
+      expect(match.toolNames?.includes(tool) ?? true).toBe(true);
+    }
   });
 });
 

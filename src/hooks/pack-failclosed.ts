@@ -232,6 +232,33 @@ export function missingGuards(input: {
  * correctly and two widened to everything, which is the wrong way round:
  * combining two limited scopes cannot produce a larger one.
  */
+/**
+ * True when at least one guard actually applied to this event and tool.
+ *
+ * `combinedGuardMatch` unions the two axes independently, and the registry ANDs
+ * them — so guards scoped to (PreToolUse, Bash) and (PostToolUse, Write) produce
+ * a matcher that also catches (PreToolUse, Write) and (PostToolUse, Bash), pairs
+ * neither pack ever asked to guard. The union cannot be tightened without
+ * losing dispatch: the matcher has to be a SUPERSET or the policy is never
+ * reached. So the matcher stays wide enough to be called, and the pairing is
+ * checked here, where the real event and tool are known.
+ */
+export function guardsCover(
+  guards: MissingGuard[],
+  eventType: string,
+  toolName: string | undefined,
+): boolean {
+  return guards.some((g) => {
+    const events = g.match.events;
+    if (events && events.length > 0 && !events.includes(eventType as (typeof events)[number])) {
+      return false;
+    }
+    const tools = g.match.toolNames;
+    if (tools && tools.length > 0 && (!toolName || !tools.includes(toolName))) return false;
+    return true;
+  });
+}
+
 export function combinedGuardMatch(guards: MissingGuard[]): PolicyMatcher {
   if (guards.length === 1) return guards[0].match;
   const axis = <K extends "events" | "toolNames">(key: K): PolicyMatcher[K] | undefined =>

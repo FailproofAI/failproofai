@@ -44,7 +44,7 @@ import { hookLogInfo, hookLogWarn } from "./hook-logger";
 import { readStdinPayload } from "./read-stdin";
 import { readActiveCloudManagedPolicies, type CloudManagedPolicyArtifact } from "./cloud-managed-policies";
 import { hasInstalledPacks, readInstalledPacks, type PackError, type ResolvedPack } from "./pack-manifest";
-import { missingGuards, packFailureReason, combinedGuardMatch } from "./pack-failclosed";
+import { missingGuards, packFailureReason, combinedGuardMatch, guardsCover } from "./pack-failclosed";
 import { readActivePause, type ActivePause } from "./session-pause";
 import { layoutWarningForHook } from "./fp-reset";
 
@@ -584,13 +584,21 @@ export async function evaluateHookEvent(
           registerPolicy(
             name,
             "A policy pack this machine enforces could not be loaded",
-            async (): Promise<PolicyResult> =>
+            async (ctx): Promise<PolicyResult> => {
+              // The matcher is a union of both axes and the registry ANDs them,
+              // so being CALLED is not proof any guard covered this pair. Two
+              // packs scoped to (PreToolUse, Bash) and (PostToolUse, Write)
+              // produce a matcher that also catches (PreToolUse, Write) —
+              // neither pack's business. The pairing is decided here, where the
+              // real event and tool are known.
+              if (!guardsCover(guards, canonicalEventType, ctx.toolName)) return { decision: "allow" };
               // UserPromptSubmit instructs rather than denies, whatever the
               // missing policies declared: a deny there locks the user out of
               // their own agent, which is the one thing that stops them fixing it.
-              canonicalEventType === "UserPromptSubmit"
+              return canonicalEventType === "UserPromptSubmit"
                 ? { decision: "instruct", reason }
-                : { decision: "deny", reason },
+                : { decision: "deny", reason };
+            },
             match,
             // Above builtins (0) and custom (-1), so the short-circuit attributes
             // the deny to the missing pack rather than to whichever surviving

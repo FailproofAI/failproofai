@@ -115,7 +115,7 @@ function installTwoPacks(a: Record<string, unknown>, b: Record<string, unknown>)
   );
 }
 
-async function evaluate(command: string, cli: IntegrationType = "claude") {
+async function evaluate(command: string, cli: IntegrationType = "claude", toolName = "Bash") {
   const { evaluateHookEvent } = await import("@/src/hooks/handler");
   return JSON.stringify(
     await evaluateHookEvent(
@@ -123,7 +123,7 @@ async function evaluate(command: string, cli: IntegrationType = "claude") {
       cli,
       JSON.stringify({
         hook_event_name: "PreToolUse",
-        tool_name: "Bash",
+        tool_name: toolName,
         tool_input: { command },
         session_id: "s1",
         cwd: home,
@@ -503,5 +503,107 @@ describe("what the operator is told", () => {
     expect(hooks[0].__pack?.enabled).toEqual(["block-refunds"]);
     expect(hooks[2].__pack?.id).toBe("other/second");
     expect(hooks[2].__pack?.enabled).toEqual(["require-deploy-note"]);
+  });
+});
+
+// One artifact, two packs, and bytes that will not import. A failure is
+// recorded per PACK ID while the collapse leaves ONE id holding the merged
+// record, so the second pack got no failure — and `missingGuards` skips a pack
+// missing from both the failure map and the registration map. Its selected
+// policy was absent, unguarded, and unreported.
+describe("a broken artifact two packs share", () => {
+  const BROKEN = "export const = ;\n";
+  const BROKEN_DIGEST = createHash("sha256").update(BROKEN).digest("hex");
+
+  /** Complementary selections, each scoped to a different tool. */
+  function installTwoBrokenPacks(): void {
+    const scoped = (name: string, tool: string): PolicyCatalogEntry => ({
+      name,
+      description: "d",
+      category: "Ops",
+      defaultEnabled: true,
+      match: { events: ["PreToolUse"], toolNames: [tool] },
+    });
+    const entry = (id: string, version: string, enabled: string[], tool: string) => ({
+      id,
+      version,
+      source: `github:${id}@v${version}`,
+      entry: `artifacts/${BROKEN_DIGEST}.mjs`,
+      sha256: BROKEN_DIGEST,
+      policies: [scoped(enabled[0], tool)],
+      enabled,
+    });
+    writeFileSync(join(packRoot, "artifacts", `${BROKEN_DIGEST}.mjs`), BROKEN);
+    writeFileSync(
+      join(packRoot, "installed.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        packs: [
+          entry("acme/first", "1.0.0", ["block-refunds"], "Bash"),
+          entry("other/second", "2.0.0", ["require-deploy-note"], "Write"),
+        ],
+      }),
+    );
+  }
+
+  it("denies for BOTH packs' scopes, not just the collapse winner's", async () => {
+    installTwoBrokenPacks();
+    // Whichever pack loses the collapse used to have no guard at all, so one of
+    // these two sails through while the machine reports itself enforcing.
+    expect(await evaluate("anything", "claude", "Bash")).toContain("deny");
+    expect(await evaluate("anything", "claude", "Write")).toContain("deny");
+  });
+
+  it("names both packs in what it reports", async () => {
+    installTwoBrokenPacks();
+    const denied = await evaluate("anything", "claude", "Write");
+    expect(denied).toContain("other/second");
+  });
+
+  it("leaves a tool neither pack guarded alone", async () => {
+    installTwoBrokenPacks();
+    expect(await evaluate("anything", "claude", "Read")).not.toContain("deny");
+  });
+
+  // The other half of the same fix, and it only shows when the two guards
+  // differ on BOTH axes. Unioning them independently produces a cross product —
+  // (PreToolUse, Write) is inside the combined matcher and inside neither
+  // guard — while the registry ANDs the axes, so the combined policy denied a
+  // pair no pack ever asked to guard. The matcher cannot be tightened without
+  // losing dispatch, so the pairing is settled during evaluation.
+  it("does not deny a pair the cross product invented", async () => {
+    const entry = (id: string, version: string, name: string, event: string, tool: string) => ({
+      id,
+      version,
+      source: `github:${id}@v${version}`,
+      entry: `artifacts/${BROKEN_DIGEST}.mjs`,
+      sha256: BROKEN_DIGEST,
+      policies: [
+        {
+          name,
+          description: "d",
+          category: "Ops",
+          defaultEnabled: true,
+          match: { events: [event], toolNames: [tool] },
+        },
+      ],
+      enabled: [name],
+    });
+    writeFileSync(join(packRoot, "artifacts", `${BROKEN_DIGEST}.mjs`), BROKEN);
+    writeFileSync(
+      join(packRoot, "installed.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        packs: [
+          entry("acme/first", "1.0.0", "block-refunds", "PreToolUse", "Bash"),
+          entry("other/second", "2.0.0", "require-deploy-note", "PostToolUse", "Write"),
+        ],
+      }),
+    );
+
+    // Declared by a pack, so it denies.
+    expect(await evaluate("anything", "claude", "Bash")).toContain("deny");
+    // Invented by the union of the two axes, so it must not.
+    expect(await evaluate("anything", "claude", "Write")).not.toContain("deny");
   });
 });

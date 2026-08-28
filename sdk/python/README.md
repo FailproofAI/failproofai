@@ -12,12 +12,11 @@ the platform.
 
 ## Evaluator v2 status
 
-This package currently provides tracing and event emission only. The legacy
-inbound `agenteye-evaluator` package has been retired; do not build new evaluator
-services against its server-push HTTP contract. A customer-hosted, outbound-only
-worker runtime will be added under the lazy `failproofai_sdk.evaluator` namespace
-as part of Evaluator v2. Until that API ships, no evaluator module is included in
-the distribution.
+The legacy inbound `agenteye-evaluator` package has been retired; do not build new
+evaluator services against its server-push HTTP contract. Evaluator v2 authoring
+and its customer-hosted, outbound-only worker runtime live under the lazy
+`failproofai_sdk.evaluator` namespace. Importing the top-level tracing SDK does not
+import or start the evaluator runtime.
 
 ## Installation
 

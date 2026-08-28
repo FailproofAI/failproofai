@@ -1,0 +1,225 @@
+{
+  "fixture_revision": "evaluator-v2-2026-08-28.2",
+  "protocol": {
+    "supported_major_versions": ["2"],
+    "transcript_schema_version": "2",
+    "result_schema_version": "2"
+  },
+  "http": {
+    "register": "/v1/evaluator/workers/register",
+    "claim": "/v1/evaluator/assignments/claim",
+    "transcript": "/v1/evaluator/assignments/{assignment_id}/transcript",
+    "plan": "/v1/evaluator/assignments/{assignment_id}/plan",
+    "heartbeat": "/v1/evaluator/runs/heartbeat",
+    "result": "/v1/evaluator/runs/{evaluation_run_id}/result",
+    "worker_id_header": "X-FailproofAI-Worker-Id",
+    "lease_generation_header": "X-FailproofAI-Lease-Generation"
+  },
+  "timing": {
+    "heartbeat_interval_seconds": 30,
+    "lease_duration_seconds": 120,
+    "max_claim_wait_seconds": 25,
+    "max_attempts": 5
+  },
+  "limits": {
+    "max_catalog_definitions": 100,
+    "max_claim_capacity": 32,
+    "max_transcript_bytes": 26214400,
+    "max_results_per_run": 25,
+    "max_eval_key_bytes": 128,
+    "max_display_name_bytes": 128,
+    "max_version_bytes": 128,
+    "max_worker_id_bytes": 128,
+    "max_label_bytes": 64,
+    "max_labels_per_result": 20,
+    "max_summary_bytes": 4096,
+    "max_reasoning_bytes": 16384,
+    "max_unit_bytes": 64,
+    "max_display_value_bytes": 256,
+    "max_description_bytes": 1000,
+    "max_error_code_bytes": 64,
+    "max_error_message_bytes": 4096
+  },
+  "errors": {
+    "invalid_credentials": {"http_status": 401, "retryable": false},
+    "instance_disabled": {"http_status": 403, "retryable": false},
+    "assignment_not_found": {"http_status": 404, "retryable": false},
+    "run_not_found": {"http_status": 404, "retryable": false},
+    "catalog_mismatch": {"http_status": 409, "retryable": false},
+    "lease_lost": {"http_status": 409, "retryable": false},
+    "plan_conflict": {"http_status": 409, "retryable": false},
+    "submission_conflict": {"http_status": 409, "retryable": false},
+    "retry_budget_exhausted": {"http_status": 409, "retryable": false},
+    "transcript_too_large": {"http_status": 413, "retryable": false},
+    "invalid_request": {"http_status": 422, "retryable": false},
+    "invalid_catalog": {"http_status": 422, "retryable": false},
+    "unsupported_protocol_version": {"http_status": 426, "retryable": false},
+    "internal_error": {"http_status": 500, "retryable": true}
+  },
+  "samples": {
+    "register_request": {
+      "protocol_version": "2",
+      "worker_id": "pod-7f8c9",
+      "sdk_version": "0.0.1b2",
+      "catalog_revision": "sha256:b4e2c077aa9f91b5de1f3184ebf96811bce07eec00c7f417896ab269c67c88fb",
+      "max_concurrency": 4,
+      "definitions": [
+        {
+          "eval_key": "tool_efficiency",
+          "display_name": "Tool efficiency",
+          "eval_version": "1.2.0",
+          "result_kind": "score",
+          "labels": ["tools", "deterministic"]
+        }
+      ]
+    },
+    "register_response": {
+      "protocol_version": "2",
+      "evaluator_instance_id": "018f47a8-7c1d-7e21-a22a-79f7a4d23101",
+      "evaluator_kind": "customer",
+      "heartbeat_interval_seconds": 30,
+      "lease_duration_seconds": 120,
+      "claim_limit": 4,
+      "disabled_definitions": []
+    },
+    "claim_request": {
+      "protocol_version": "2",
+      "worker_id": "pod-7f8c9",
+      "catalog_revision": "sha256:b4e2c077aa9f91b5de1f3184ebf96811bce07eec00c7f417896ab269c67c88fb",
+      "capacity": 2,
+      "wait_seconds": 20
+    },
+    "claim_response": {
+      "protocol_version": "2",
+      "assignments": [
+        {
+          "assignment_id": "018f47a8-7c1d-7e21-a22a-79f7a4d23102",
+          "lease_generation": 3,
+          "lease_expires_at": "2026-08-28T12:02:00.000000Z",
+          "session_id": "session-42",
+          "session_revision_id": "evt-agent-end-42",
+          "agent_id": "support-agent",
+          "environment": "production",
+          "trigger_reason": "agent_end",
+          "event_count": 42,
+          "transcript_url": "/v1/evaluator/assignments/018f47a8-7c1d-7e21-a22a-79f7a4d23102/transcript"
+        }
+      ]
+    },
+    "transcript_response": {
+      "schema_version": "2",
+      "assignment_id": "018f47a8-7c1d-7e21-a22a-79f7a4d23102",
+      "session_id": "session-42",
+      "session_revision_id": "evt-agent-end-42",
+      "agent_id": "support-agent",
+      "environment": "production",
+      "started_at": "2026-08-28T11:58:00.000000Z",
+      "ended_at": "2026-08-28T12:00:00.000000Z",
+      "event_count": 2,
+      "events": [
+        {
+          "id": "evt-tool-1",
+          "ts": "2026-08-28T11:59:00.000000Z",
+          "event_type": "tool_use",
+          "payload": {"tool_name": "search"}
+        },
+        {
+          "id": "evt-end-1",
+          "ts": "2026-08-28T12:00:00.000000Z",
+          "event_type": "agent_end",
+          "payload": {"summary": "Done"}
+        }
+      ]
+    },
+    "plan_request": {
+      "protocol_version": "2",
+      "worker_id": "pod-7f8c9",
+      "lease_generation": 3,
+      "selected": [
+        {"eval_key": "tool_efficiency", "eval_version": "1.2.0"}
+      ],
+      "skipped": [
+        {
+          "eval_key": "answer_groundedness",
+          "eval_version": "2.1.0",
+          "reason_code": "no_retrieval_events"
+        }
+      ]
+    },
+    "plan_response": {
+      "protocol_version": "2",
+      "assignment_id": "018f47a8-7c1d-7e21-a22a-79f7a4d23102",
+      "assignment_status": "planned",
+      "runs": [
+        {
+          "evaluation_run_id": "018f47a8-7c1d-7e21-a22a-79f7a4d23103",
+          "eval_key": "tool_efficiency",
+          "eval_version": "1.2.0"
+        }
+      ]
+    },
+    "heartbeat_request": {
+      "protocol_version": "2",
+      "worker_id": "pod-7f8c9",
+      "lease_generation": 3,
+      "runs": [
+        {
+          "evaluation_run_id": "018f47a8-7c1d-7e21-a22a-79f7a4d23103",
+          "state": "running",
+          "progress": 0.5
+        }
+      ]
+    },
+    "heartbeat_response": {
+      "protocol_version": "2",
+      "lease_expires_at": "2026-08-28T12:02:30.000000Z",
+      "accepted_run_ids": ["018f47a8-7c1d-7e21-a22a-79f7a4d23103"]
+    },
+    "result_request": {
+      "protocol_version": "2",
+      "result_schema_version": "2",
+      "submission_id": "018f47a8-7c1d-7e21-a22a-79f7a4d23104",
+      "worker_id": "pod-7f8c9",
+      "lease_generation": 3,
+      "status": "succeeded",
+      "started_at": "2026-08-28T12:00:10.000000Z",
+      "finished_at": "2026-08-28T12:00:10.812000Z",
+      "duration_ms": 812,
+      "summary": "Used a compact tool set without retries.",
+      "results": [
+        {
+          "result_key": "tool_efficiency",
+          "result_kind": "score",
+          "numeric_value": 0.92,
+          "bool_value": true,
+          "text_value": null,
+          "unit": "ratio",
+          "display_value": "92%",
+          "description": "Distinct tools divided by total tool calls",
+          "reasoning": "3 distinct tools across 3 calls",
+          "labels": ["tools", "deterministic"]
+        }
+      ],
+      "error_code": null,
+      "error_message": null
+    },
+    "result_response": {
+      "protocol_version": "2",
+      "evaluation_run_id": "018f47a8-7c1d-7e21-a22a-79f7a4d23103",
+      "submission_id": "018f47a8-7c1d-7e21-a22a-79f7a4d23104",
+      "status": "committed",
+      "idempotent_replay": false,
+      "result_count": 1,
+      "result_checksum": "sha256:8cbd34f2d95d"
+    },
+    "error_response": {
+      "protocol_version": "2",
+      "error": {
+        "code": "lease_lost",
+        "message": "The assignment lease is no longer owned by this worker.",
+        "retryable": false,
+        "request_id": "req-018f47a8"
+      }
+    }
+  }
+}

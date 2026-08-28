@@ -10,6 +10,15 @@ the platform.
 - **Dependencies:** none. Standard library only, so installing it constrains
   nothing else in your environment.
 
+## Evaluator v2 status
+
+This package currently provides tracing and event emission only. The legacy
+inbound `agenteye-evaluator` package has been retired; do not build new evaluator
+services against its server-push HTTP contract. A customer-hosted, outbound-only
+worker runtime will be added under the lazy `failproofai_sdk.evaluator` namespace
+as part of Evaluator v2. Until that API ships, no evaluator module is included in
+the distribution.
+
 ## Installation
 
 ```bash

@@ -16,6 +16,9 @@ moved the version here automatically; nothing has landed against `0.0.1b2` yet.
 Add entries as changes merge — this section becomes the GitHub Release body when
 it ships.
 
+- Document that the retired inbound evaluator package is not part of this SDK
+  and reserve evaluator authoring for the forthcoming outbound-only v2 runtime.
+
 ## 0.0.1b1 — 2026-08-24
 
 The first release under this name. Everything below describes the package as it

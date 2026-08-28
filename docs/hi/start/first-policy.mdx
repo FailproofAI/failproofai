@@ -1,48 +1,70 @@
 ---
 ---
-title: "अपनी पहली विफलता को एक नीति के साथ रोकें"
-description: "एक नीति संस्करण लेखन करें, इसे observe मोड में तैनात करें, और फिर इसे लागू करें।"
+title: "अपनी पहली विफलता को रोकें"
+description: "एक समीक्षित नीति सक्षम करें या अपनी खुद की परीक्षा करें।"
 icon: "shield-check"
 ---
 
-किसी नीति का उपयोग केवल तभी करें जब आप असुरक्षित कार्रवाई और उन वैध कार्रवाइयों का वर्णन कर सकें जिन्हें अनुमत रहना चाहिए।
+एक ऐसे व्यवहार से शुरू करें जिसे आप रोकना चाहते हैं और एक वैध कार्रवाई जो अभी भी काम करनी चाहिए।
 
-<Tabs>
-  <Tab title="Dashboard">
-    <Steps>
-      <Step title="नीति लिखें">
-        **Admin → policy editor** पर जाएं। डेमो नीति से शुरुआत करें, इसके स्रोत की समीक्षा करें या संपादित करें, फिर **publish version** चुनें। प्रकाशन एक अपरिवर्तनीय संस्करण बनाता है जिसे आप मशीनों पर तैनात कर सकते हैं।
+## पहले एक समीक्षित नीति आज़माएं
 
-        ![पॉलिसी एडिटर कंपोज़ व्यू एक डेमो नीति के साथ एक अपरिवर्तनीय संस्करण के रूप में प्रकाशित करने के लिए तैयार है।](/images/dashboard/policy-editor.png)
-      </Step>
-      <Step title="इसे एक मशीन पर तैनात करें">
-        **Admin → enforcement** पर जाएं, लक्ष्य मशीन को विस्तारित करें, और **edit this machine** चुनें। प्रकाशित डेमो नीति जोड़ें, इसके संस्करण को पिन करें, **observe** चुनें, और तैनाती लागू करें।
+```bash
+failproofai policies
+failproofai policies add block-rm-rf
+```
 
-        ![मशीन तैनाती संपादक एक प्रकाशित नीति संस्करण के साथ observe मोड में तैनाती लागू करने से पहले चुना गया है।](/images/dashboard/enforcement-editor.png)
-      </Step>
-      <Step title="नीति की पुष्टि करें">
-        उस मशीन पर एक नया एजेंट सत्र चलाएं, फिर **Observe → policy** खोलें। मशीन चुनें और पुष्टि करें कि डेमो नीति नीति मानचित्रण और निर्णय समयरेखा में दिखाई देती है। Observe मोड रिकॉर्ड करता है कि नीति क्या करेगी बिना कार्रवाई को ब्लॉक किए।
+Failproof AI में 39 समीक्षित नीतियां शामिल हैं। एक नई नीति लिखने से पहले [कैटलॉग](/hi/policies/builtin-catalog) देखें।
 
-        ![पॉलिसी पेज निर्णय योग, समय के साथ प्रवर्तन गतिविधि, और स्थानीय और क्लाउड-प्रबंधित नीति मानचित्रण दिखा रहा है।](/images/dashboard/policy-observe.png)
-      </Step>
-    </Steps>
-  </Tab>
-  <Tab title="CLI">
-    क्लाउड नीति लेखन और फ्लीट तैनाती प्रशासनिक वर्कफ़्लो हैं। इसे प्रकाशित करने से पहले स्थानीय CLI का उपयोग करके एक ही नीति को मान्य करें:
+## अपनी खुद की लिखें और परीक्षा करें
 
+<Steps>
+  <Step title="एक कार्यशील नीति बनाएं">
     ```bash
-    failproofai policies --install --custom ./payment-retry.policies.ts \
-      --cli claude --scope project
-    failproofai config --status
+    failproofai publish --init guards.mjs
     ```
 
-    क्लाउड-दृश्यमान नीति निर्णयों का निरीक्षण करने के लिए `fp` का उपयोग करें:
-
+    यह एक नीति लिखता है जो `git push --force` को ब्लॉक करती है। अपने नियम के लिए इसे संपादित करें।
+  </Step>
+  <Step title="इसे इस मशीन पर लागू करें">
     ```bash
-    fp events --event-type hook_completed --env production --since 24h
-    fp sessions --env production --since 24h
+    failproofai policies -i -c ./guards.mjs
     ```
 
-    दोनों चरण CLI से भी उपलब्ध हैं: `fp policies publish <id> <file>` एक संस्करण बनाता है और `fp fleet deploy <machine-id> --add <id>` इसे एक मशीन पर रखता है। डैशबोर्ड समकक्ष **Admin → policy editor** और **Admin → enforcement** हैं।
-  </Tab>
-</Tabs>
+    अपने एजेंट को ब्लॉक की गई कार्रवाई करने के लिए कहें, फिर स्थानीय डैशबोर्ड में **Policies → Activity** जांचें।
+  </Step>
+  <Step title="इसे रखें या हटाएं">
+    इसे स्वचालित रूप से लोड करने के लिए `.failproofai/policies/` के अंतर्गत एक `*policies.mjs` फ़ाइल रखें।
+
+    निम्न के साथ स्पष्ट कस्टम फ़ाइलों को हटाएं:
+
+    ```bash
+    failproofai policies -u -c
+    ```
+  </Step>
+</Steps>
+
+## इसे साझा करें
+
+एक सार्वजनिक पैक प्रकाशित करें:
+
+```bash
+failproofai publish
+```
+
+कोई भी इसे `failproofai policies add <owner>/<repo>` के साथ स्थापित कर सकता है। [Policy Hub](https://befailproof.ai/policy-hub/) इसे अनुक्रमित कर सके, इसके लिए स्वयं GitHub विषय `failproofai-policies` जोड़ें।
+
+क्लाउड रोलआउट के लिए:
+
+```bash
+fp policies publish checkout-guard ./guards.mjs
+fp fleet deploy <machine> --add checkout-guard:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add checkout-guard:enforce
+```
+
+<Warning>
+  एक साधारण `--add checkout-guard` तुरंत लागू करता है। एजेंट को ब्लॉक किए बिना नीति क्या करेगी यह दर्ज करने के लिए `:observe` जोड़ें।
+</Warning>
+
+पूर्ण वर्कफ़्लो के लिए [एक पैक प्रकाशित करें](/hi/policies/publish-a-pack) या [नीतियां तैनात करें](/hi/policies/deploy) देखें।

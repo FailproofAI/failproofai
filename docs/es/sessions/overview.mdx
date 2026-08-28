@@ -1,57 +1,66 @@
 ---
 title: "Sesiones"
-description: "Comienza con el registro completo de una ejecución de agente."
-icon: "workflow"
+description: "Sigue una ejecución de agente desde su objetivo hasta las herramientas, decisiones y resultado."
+icon: "route"
 ---
 
-Una sesión es el mejor punto de partida cuando un agente se comporta de forma inesperada. Reúne las solicitudes al modelo, las respuestas, las llamadas a herramientas, las interacciones humanas, los errores, las evaluaciones y las decisiones de políticas que pertenecen a una ejecución.
+Una sesión es una ejecución de agente. Conecta el prompt, las llamadas al modelo, las herramientas, los errores, la entrada humana, las decisiones de políticas y el resultado final.
 
-Las sesiones tienen el mismo aspecto independientemente del entorno que las generó. Una ejecución de Claude Code que reescribe un repositorio, un agente Hermes que responde a un cliente en Slack y un servicio Python instrumentado con el SDK llegan al mismo formato de traza, de modo que una sola vista cubre toda la flota.
-
-<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with Failproof AI" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
-</div>
-
-Sigue una ejecución de agente desde su objetivo, pasando por las llamadas al modelo y las herramientas, hasta la respuesta final.
-
-## Encontrar una sesión
+## Dónde se almacenan las sesiones
 
 <Tabs>
-  <Tab title="Panel de control">
-    1. En la barra lateral de Cloud, ve a **Observar → Sesiones**.
-    2. Establece el intervalo de tiempo y filtra por entorno, estado, agente o ID de sesión.
-    3. Añade rangos de puntuación o métrica cuando necesites un corte por calidad, coste, tokens o latencia.
-    4. Selecciona una fila para abrir su traza. Usa el control de copia junto al ID de sesión cuando la compartas.
-
-    ![La lista de sesiones mostrando una fila por ejecución con filtros de entorno, agente, estado y puntuación de evaluación.](/images/dashboard/sessions-list.png)
+  <Tab title="Local">
+    Ejecuta `failproofai` para abrir el panel de control en `http://localhost:8020`. El historial de sesiones se mantiene en esta máquina.
   </Tab>
-  <Tab title="CLI">
+  <Tab title="Cloud">
+    Conecta la máquina y luego abre **Observe → Sessions**:
+
     ```bash
-    fp sessions --env production --since 24h
-    fp sessions --status error,timeout --agent-id checkout-agent
-    fp --json sessions --session-id <session-id>
+    export FAILPROOFAI_CLOUD_TOKEN="<key>"
+    failproofai config
     ```
 
-    Añade `--agents` para expandir ejecuciones multiagente, `--all` para paginar, o `--fields` para elegir las columnas de salida.
+    Cloud recibe las transcripciones completas de forma predeterminada. Para enviar solo las decisiones de políticas, conéctate primero y luego establece `collector.sessions` en `false` en `~/.failproofai/config.json`. El indicador de configuración `--no-transcripts` no aplica esa configuración.
   </Tab>
 </Tabs>
 
-## Qué puedes hacer
+Las sesiones provienen de los 12 [agentes compatibles](/es/reference/harnesses) y de agentes instrumentados con el [SDK de Python](/es/reference/custom-agents).
 
-- Encontrar una ejecución por agente, entorno, tiempo, modelo, tipo de evento o estado de error.
-- Seguir la secuencia exacta que produjo un resultado.
-- Comparar ejecuciones exitosas y fallidas.
-- Abrir la evidencia utilizada por un hallazgo de auditoría o un incidente de alerta.
-- Exportar una sesión cuando necesites un registro sin conexión.
+## Encontrar una sesión
 
-## Un orden de investigación fiable
+En Cloud, filtra por tiempo, entorno, estado, agente o ID de sesión. Desde la CLI:
 
-1. Confirma el objetivo y el entorno de la sesión.
-2. Encuentra el primer error o decisión inesperada, no solo el fallo final.
-3. Inspecciona el contexto del modelo y la entrada de la herramienta inmediatamente antes.
-4. Comprueba los reintentos, la latencia y las interrupciones humanas.
-5. Revisa las puntuaciones de evaluación y las decisiones de políticas.
+```bash
+fp sessions --since 24h
+fp sessions --status error,timeout --agent-id checkout-agent
+fp --json sessions --session-id <session-id>
+```
 
-<Card title="Leer una traza" icon="route" href="/es/sessions/read-a-trace">
-  Aprende a pasar del resumen de la sesión al evento que causó el resultado.
-</Card>
+Usa `fp errors --since 24h` para fallos que nunca fueron evaluados. `fp sessions --status` utiliza el último resultado de evaluación, por lo que una sesión sin evaluar no tiene estado.
+
+## Leer una ejecución
+
+1. Confirma el objetivo del agente y su entorno.
+2. Encuentra el primer error o decisión inesperada.
+3. Inspecciona el contexto del modelo y la entrada de herramientas inmediatamente antes.
+4. Verifica los reintentos, la latencia y las interrupciones humanas.
+5. Revisa las evaluaciones y las decisiones de políticas.
+
+## Si falta una sesión
+
+```bash
+failproofai flush --wait
+failproofai config --status
+failproofai backfill --since 30d --dry-run
+```
+
+Usa `failproofai harness add-path <harness> [<label>=]<path>` cuando las sesiones se encuentren fuera de la ubicación habitual del harness, como otro perfil, directorio de inicio de un contenedor o un directorio de equipo montado.
+
+<CardGroup cols={2}>
+  <Card title="Leer un trace" icon="route" href="/es/sessions/read-a-trace">
+    Encuentra el evento que causó el resultado.
+  </Card>
+  <Card title="Decisiones de políticas" icon="shield-check" href="/es/sessions/policy-decisions">
+    Consulta qué permitió, orientó o bloqueó la aplicación de reglas.
+  </Card>
+</CardGroup>

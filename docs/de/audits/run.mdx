@@ -1,21 +1,21 @@
 ---
-title: "Audit ausführen und überprüfen"
-description: "Einen Audit ausführen, seine Abdeckung verifizieren und die resultierenden Findings inspizieren."
+title: "Audit ausführen und prüfen"
+description: "Einen Audit ausführen, die Abdeckung überprüfen und die resultierenden Ergebnisse untersuchen."
 icon: "play"
 ---
 
-Führen Sie einen Audit aus, sobald Ziel und Population so konkret formuliert sind, dass ein anderer Operator weiß, wie ein valides Finding aussieht.
+Führen Sie einen Audit aus, sobald Ziel und Untersuchungsbereich so klar definiert sind, dass ein anderer Operator weiß, wie ein gültiger Befund aussieht.
 
-## Ausführen und inspizieren
+## Ausführen und untersuchen
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Navigieren Sie zu **Analyze → Audits**, öffnen Sie den Audit und wählen Sie **run now**. Eine Meldung über die Einreihung in die Warteschlange bedeutet, dass der Dispatcher ihn in Kürze startet.
-    2. Öffnen Sie den neuen Run, um Status, Zeitfenster, Dauer, Anzahl der Findings und Bericht einzusehen.
-    3. Wählen Sie eine Evidence-Session aus, um den genauen Trace zu öffnen.
-    4. Kehren Sie zur Audit-Seite zurück, um Einstellungen zu bearbeiten, den Zeitplan zu deaktivieren oder ältere Runs zu inspizieren.
+    1. Gehen Sie zu **Analyze → Audits**, öffnen Sie den Audit und wählen Sie **run now**. Eine Warteschlangen-Antwort bedeutet, dass der Dispatcher ihn in Kürze startet.
+    2. Öffnen Sie den neuen Lauf, um Status, Zeitfenster, Dauer, Anzahl der Befunde und Bericht zu überprüfen.
+    3. Wählen Sie eine Evidence-Session aus, um die genaue Ablaufverfolgung zu öffnen.
+    4. Kehren Sie zur Audit-Seite zurück, um Einstellungen zu bearbeiten, den Zeitplan zu deaktivieren oder ältere Läufe zu untersuchen.
 
-    ![Eine Audit-Detailseite mit offenen Findings, Status des letzten und nächsten Runs, Sweep-Fenster, Kontext, Run-now-Steuerung und priorisierten Findings.](/images/dashboard/audit-detail.png)
+    ![Eine Audit-Detailseite mit offenen Befunden, Status des letzten und nächsten Laufs, Sweep-Fenster, Kontext, Run-Now-Steuerung und priorisierten Befunden.](/images/dashboard/audit-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -25,43 +25,82 @@ Führen Sie einen Audit aus, sobald Ziel und Population so konkret formuliert si
     fp audits findings --audit checkout-reliability
     ```
 
-    Siehe die [`fp audits`-Referenz](/de/reference/cloud-cli#audits) für Run-Verlauf, Findings und Triage-Befehle.
+    `fp audits run` stellt den Audit in die Warteschlange und wartet nicht auf ihn. Folgen Sie diesem Befehl mit `fp audits runs <name>` und lesen Sie die Befunde, sobald ein Lauf abgeschlossen ist. `--limit` gibt nie mehr als die 50 neuesten Läufe zurück, unabhängig davon, was Sie angeben.
+
+    Die Triage arbeitet mit einer Befund-ID, nicht mit dem Audit:
+
+    ```bash
+    fp audits finding <finding-id>
+    fp audits ack <finding-id> --reason "owner assigned"
+    fp audits assign <finding-id> --to engineer@example.com
+    fp audits mute <finding-id> --reason "expected in staging" --yes
+    fp audits dismiss <finding-id> --reason "false positive" --yes
+    fp audits resolve <finding-id> --yes
+    fp audits reopen <finding-id>
+    ```
+
+    `mute`, `dismiss` und `resolve` fordern vor der Ausführung eine Bestätigung an — übergeben Sie daher `--yes` in Skripten. `ack`, `assign` und `reopen` wirken sofort.
+
+    Siehe die [`fp audits`-Referenz](/de/reference/cloud-cli#audits) für Laufhistorie, Befunde und Triage-Befehle.
   </Tab>
 </Tabs>
 
-## Vor der Ausführung
+**run now** kann abgelehnt werden. Ein bereits laufender Audit und ein deaktivierter Audit antworten beide mit `409`, wobei der Grund im `error`-Feld der Antwort steht; ein nicht vorhandener Audit oder einer, der einer anderen Organisation gehört, antwortet mit `404`.
 
-- Bestätigen Sie, dass im ausgewählten Zeitfenster Sessions vorhanden sind.
-- Überprüfen Sie die Umgebungs- und Agent-Filter.
-- Stellen Sie sicher, dass der Referenzkontext aktuell ist.
-- Vergewissern Sie sich, dass das Ziel einen Fehlermodus beschreibt und keine gewünschte Schlussfolgerung vorwegnimmt.
-
-## Den Run überprüfen
-
-Beginnen Sie mit Run-Status, Session-Abdeckung und ob die Modellanalyse ausgeführt wurde. Inspizieren Sie anschließend bei jedem Finding den Schweregrad, die Beschreibung, die Evidence-Sessions, die unterstützenden Abfragen und den vorgeschlagenen Präventionspfad.
-
-Verwenden Sie den Finding-Status, um Arbeit zu bestätigen, stummzuschalten, abzulehnen, aufzulösen, wieder zu öffnen oder zuzuweisen. Bewahren Sie die Evidence auch dann auf, wenn das Finding abgelehnt wird – sie erklärt, warum die Entscheidung getroffen wurde.
-
-## Einen leeren oder verzögerten Run interpretieren
-
-| Run-Zustand | Bedeutung | Maßnahme |
+| Ablehnung | Bedeutung | Vorgehensweise |
 | --- | --- | --- |
-| Analyse wurde ausgeführt und ergab null Findings | Die ausgewählten Beweise unterstützten bei der konfigurierten Empfindlichkeit kein Finding. | Bestätigen Sie, dass der Scope repräsentative Sessions enthält, und behandeln Sie das Ergebnis als unbedenklich – es sei denn, Ziel oder Kontext waren zu vage. |
-| Modellanalyse wurde übersprungen oder ist fehlgeschlagen | Der Run wird mit null Findings abgeschlossen, hat aber keine agentische Untersuchung durchgeführt. Der deterministische Credential- und PII-Scan meldet weiterhin Trefferanzahlen in den Run-Statistiken, erstellt jedoch keine Findings. | Beheben Sie den Analysedienst oder die Konfiguration und führen Sie den Run erneut aus. Interpretieren Sie das leere Ergebnis nicht als Beleg dafür, dass die Population unbedenklich ist. |
-| Modellanalyse ist deaktiviert | Der Run wird mit null Findings erfolgreich abgeschlossen. Der deterministische Scan ersetzt weder die Modellanalyse noch öffnet er Findings. | Aktivieren Sie die Modellanalyse oder deaktivieren Sie den Audit, anstatt sich auf einen Audit zu verlassen, der keine Findings produzieren kann. |
-| Keine Analysekapazität ist unmittelbar verfügbar | Der Audit bleibt in der Warteschlange und wiederholt den Versuch, anstatt die Population zu überspringen. | Warten Sie auf verfügbare Kapazität oder verteilen Sie die Audit-Anker. Betreiber mit Self-Hosting sollten die Audit-Agent-Replikas und die dazu passende Dispatcher-Kapazität skalieren. |
-| Kapazität bleibt während des Retry-Fensters nicht verfügbar | Der Run bricht mit null Findings ab und sendet eine Fehlerbenachrichtigung, sofern E-Mail-Zustellung verfügbar ist. | Prüfen Sie, ob die Audit-Flotte ausgelastet ist oder wiederholt neu startet. |
+| Unbekannter Audit | Der Audit existiert nicht oder gehört einer anderen Organisation. | Bestätigen Sie den Namen mit `fp audits list`. |
+| Der Audit ist deaktiviert | Ein deaktivierter Audit hat keinen Warteschlangeneintrag, sodass es nichts zu fälligem gibt. Ein pausierter Audit zeigt weiterhin eine **run now**-Steuerung an. | Reaktivieren Sie ihn zuerst oder verwenden Sie `fp audits edit <name> --enabled --yes`. |
+| Ein Lauf ist bereits im Gange | Pro Audit ist jeweils nur ein Lauf möglich; der aktuelle muss abgeschlossen sein, bevor ein weiterer in die Warteschlange gestellt wird. | Prüfen Sie den Status mit `fp audits runs <name>`. |
 
-Wenn die Analyse nicht ausgeführt wird, halten `since_last`-Audits dieses unanalysierte Fenster für den nächsten erfolgreichen Run offen. Bestehende Findings werden nicht zurückgezogen, da eine übersprungene Analyse kein Beleg dafür ist, dass das Problem verschwunden ist.
+## Vor dem Ausführen
 
-## Fehlerbenachrichtigungen verstehen
+- Vergewissern Sie sich, dass im ausgewählten Zeitfenster Sessions vorhanden sind.
+- Überprüfen Sie die Umgebungs- und Agent-Filter.
+- Stellen Sie sicher, dass der Referenzkontext aktuell ist. Jeder Lauf liest die Seiten des Audits erneut ein und greift auf die gespeicherte Kopie zurück, wenn eine Seite nicht erreichbar ist. Eine verschobene oder offline genommene Seite liefert daher veralteten Text, bis Sie die URL korrigieren.
+- Stellen Sie sicher, dass das Ziel einen Fehlerfall beschreibt, keine erwünschte Schlussfolgerung.
 
-Bei einem fehlgeschlagenen Run oder einem fehlgeschlagenen Modellanalyse-Schritt werden die E-Mail-Empfänger des Audits verwendet. Hat der Audit keinen E-Mail-Kanal, greift Failproof AI auf die Einstellung `alerts.email_default_recipients` der Organisation zurück, damit ein still gebrochener Audit noch einen Eskalationspfad hat.
+## Den Lauf überprüfen
 
-E-Mail muss für die Organisation aktiviert und SMTP muss konfiguriert sein. Andernfalls wird der Fehler protokolliert, aber keine E-Mail kann zugestellt werden. Run-Fehler verschieben den festen Zeitplananker des Audits nicht.
+Die Audit-Detailseite öffnet sich mit fünf Kacheln: **open findings** (ausstehende Triage), **last run**, **next run**, **window** (wie weit jeder Lauf zurückliest) und **sensitivity** (wie eifrig ein Lauf ein Muster markiert: `low`, `medium`, `high`). Das „höchstens N Befunde pro Lauf"-Limit ist eine separate Einstellung, Befunde pro Lauf (`--top-k`, Standard 50). Diese fünf Kacheln beantworten die Abdeckungsfrage schneller als das Öffnen eines Laufs.
 
-Jeder Run speichert außerdem den exakten [Agent-Kontext](/de/audits/agent-contracts), der für jeden Agent verwendet wurde, als Contract-Snapshot. Spätere Bearbeitungen ändern den mit einem früheren Run aufgezeichneten Evidence-Standard nicht.
+Untersuchen Sie dann den Schweregrad, die Beschreibung, die Evidence-Sessions, die unterstützenden Abfragen und den vorgeschlagenen Präventionspfad jedes Befunds. Befunde sind nach einem **priority**-Score zwischen 0 und 1 geordnet, pro Lauf gereiht, und jeder Befund zeigt die vier gewichteten Faktoren dahinter:
+
+| Rankingfaktor | Gewichtung |
+| --- | --- |
+| Coverage | 0,30 |
+| Magnitude | 0,25 |
+| Severity | 0,25 |
+| Recency | 0,20 |
+
+Ein Befund befindet sich in genau einem von fünf Status: `open`, `recurring`, `resolved`, `dismissed` oder `muted`. Eine `findings`-Abfrage ohne Statusfilter gibt den aktiven Satz zurück — `open` plus `recurring`. Ein Befund, den Sie stumm schalten, verwerfen oder als gelöst markieren, verlässt diesen Satz; `ack` und `assign` lassen den Status unverändert, sodass der Befund in der Warteschlange verbleibt — mit niedrigerer Priorität oder zugewiesen, aber nicht entfernt. Geben Sie einen Status explizit an, um Befunde zu sehen, die diesen Satz verlassen haben.
+
+Verwenden Sie den Befundstatus, um Arbeit zu bestätigen, stummzuschalten, zu verwerfen, zu lösen, wiederzueröffnen oder zuzuweisen. Bewahren Sie die Nachweise auch dann auf, wenn der Befund verworfen wird; sie erklären, warum die Entscheidung getroffen wurde. [Findings and issues](/de/audits/findings-and-issues) beschreibt, was jedes Verb mit zukünftigen Läufen macht.
+
+## Einen leeren oder verzögerten Lauf interpretieren
+
+| Laufzustand | Bedeutung | Vorgehensweise |
+| --- | --- | --- |
+| Analyse lief durch, ergab null Befunde | Die ausgewählten Nachweise unterstützten bei der konfigurierten Sensitivität keinen Befund. | Bestätigen Sie, dass der Bereich repräsentative Sessions enthält, und behandeln Sie das Ergebnis dann als einwandfrei — sofern das Ziel oder der Kontext nicht zu vage war. |
+| Modellanalyse wurde übersprungen oder ist fehlgeschlagen | Der Lauf schließt mit null Befunden ab, ohne die agentische Untersuchung durchgeführt zu haben. Der deterministische Credential- und PII-Scan meldet weiterhin Trefferanzahlen in den Laufstatistiken, erstellt aber keine Befunde. | Beheben Sie den Analysedienst oder die Konfiguration und führen Sie den Lauf erneut durch. Interpretieren Sie das leere Ergebnis nicht als Beweis, dass die Population einwandfrei ist. |
+| Modellanalyse ist deaktiviert | Der Lauf endet erfolgreich mit null Befunden. Der deterministische Scan ersetzt die Modellanalyse nicht und öffnet keine Befunde. | Aktivieren Sie die Modellanalyse oder deaktivieren Sie den Audit, anstatt sich auf einen Audit zu verlassen, der keine Befunde produzieren kann. |
+| Keine Analysekapazität ist sofort verfügbar | Der Audit bleibt in der Warteschlange und wiederholt den Versuch, anstatt die Population zu überspringen. | Warten Sie auf Kapazität oder verteilen Sie die Audit-Anker. Operatoren mit Self-Hosted-Bereitstellung sollten die Audit-Agent-Replikate und die entsprechende Dispatcher-Kapazität skalieren. |
+| Kapazität bleibt während des Wiederholungsfensters nicht verfügbar | Der Lauf bricht mit null Befunden ab und sendet eine Fehlerbenachrichtigung, wenn E-Mail-Zustellung verfügbar ist. | Überprüfen Sie, ob der Audit-Fleet ausgelastet ist oder wiederholt neu startet. |
+
+Die letzten drei Zeilen beschreiben das Verhalten des Cloud-API-Servers und seines Dispatchers. Bei Managed Cloud liegt deren Behebung bei Failproof AI; bei einer Self-Hosted-Bereitstellung liegt sie bei Ihnen.
+
+Wenn die Analyse nicht durchgeführt wird, halten `since_last`-Audits dieses nicht analysierte Fenster für den nächsten erfolgreichen Lauf offen. Bestehende Befunde werden nicht ausgemustert, da eine übersprungene Analyse kein Beweis dafür ist, dass der Fehler verschwunden ist.
+
+## Benachrichtigungen verstehen
+
+Ein erfolgreicher Lauf benachrichtigt nur dann, wenn er etwas **Neues** findet. Stille von einem einwandfreien Audit ist der Normalfall und kein Zeichen dafür, dass nichts gelaufen ist — prüfen Sie **last run** auf der Audit-Seite oder `fp audits runs <name>`, um zu sehen, dass er gelaufen ist. Ein Audit ohne ausgewählte Kanäle speichert seine Befunde und benachrichtigt niemanden.
+
+Ein fehlgeschlagener Lauf oder ein fehlgeschlagener Modellanalyse-Schritt verwendet die E-Mail-Empfänger des Audits. Wenn der Audit keinen E-Mail-Kanal hat, greift Failproof AI auf die Einstellung `alerts.email_default_recipients` der Organisation zurück, sodass ein still fehlerhafter Audit weiterhin einen Eskalationspfad hat.
+
+E-Mail muss für die Organisation aktiviert sein und SMTP muss konfiguriert sein. Andernfalls wird der Fehler protokolliert, aber es kann keine E-Mail zugestellt werden. Laufausfälle verschieben den festen Zeitplananker des Audits nicht.
+
+Jeder Lauf speichert außerdem den genauen [Agent-Kontext](/de/audits/agent-contracts), der für jeden Agent als Contract-Snapshot verwendet wurde. Spätere Bearbeitungen ändern den mit einem früheren Lauf aufgezeichneten Nachweisstandard nicht.
 
 <Warning>
-  Setzen Sie keine blockierende Richtlinie direkt auf Basis eines unverifizierten Findings ein. Öffnen Sie die zitierten Traces und bestätigen Sie, dass die Regel unsicheres Verhalten von legitimer Arbeit trennt.
+  Stellen Sie keine blockierende Richtlinie direkt aus einem unverifizierten Befund bereit. Öffnen Sie die zitierten Traces und überprüfen Sie, ob die Regel unsicheres Verhalten von legitimer Arbeit trennt.
 </Warning>

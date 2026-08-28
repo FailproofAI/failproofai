@@ -4,40 +4,70 @@ description: "Suivez les signaux de fiabilité qui comptent pour un agent ou un 
 icon: "layout-dashboard"
 ---
 
-Les tableaux de bord combinent des requêtes sauvegardées en une vue opérationnelle. Construisez-en un autour d'une décision qu'une personne est censée prendre — et non autour de toutes les métriques disponibles.
+Les tableaux de bord regroupent des requêtes sauvegardées dans une vue opérationnelle. Construisez-en un autour d'une décision qu'une personne est censée prendre — et non autour de toutes les métriques disponibles.
+
+Les tableaux de bord sont une fonctionnalité Cloud. Le tableau de bord local sur `localhost:8020` couvre l'activité des politiques, les projets, les sessions et les résultats d'audit, mais il ne dispose ni de requêtes sauvegardées ni de tuiles — ainsi, une machine qui ne s'est pas connectée n'a rien à construire ici. Voir [Tableau de bord local](/fr/reference/local-dashboard).
 
 ## Créer un tableau de bord
 
 <Tabs>
   <Tab title="Tableau de bord">
     1. Accédez à **Analyser → Requêtes**, créez ou ouvrez une requête sauvegardée, et validez son résultat.
-    2. Sélectionnez **ajouter au tableau de bord**, puis choisissez un tableau de bord existant ou créez-en un sous **Analyser → Tableaux de bord**.
-    3. Ouvrez le tableau de bord, passez en mode édition, arrangez les tuiles et enregistrez la mise en page.
-    4. Revenez à la requête lorsque vous devez modifier les données ou les filtres d'une tuile.
+    2. Sélectionnez **ajouter au tableau de bord**, puis choisissez un tableau de bord existant ou créez-en un via **Analyser → Tableaux de bord**.
+    3. Ouvrez le tableau de bord, passez en mode édition, arrangez les tuiles, puis sauvegardez la disposition.
+    4. Revenez à la requête lorsque vous souhaitez modifier les données ou les filtres derrière une tuile.
 
     ![Un tableau de bord composé de requêtes sauvegardées pour le volume d'événements, les erreurs, la latence et l'utilisation des tokens du modèle.](/images/dashboard/dashboard-fleet.png)
   </Tab>
   <Tab title="CLI">
-    Le CRUD des tableaux de bord n'est pas exposé par le CLI Cloud actuel. Utilisez le CLI pour construire et vérifier la requête sauvegardée, puis ajoutez-la à un tableau de bord via l'interface utilisateur.
+    Le CRUD des tableaux de bord n'est pas exposé par le CLI Cloud actuel. Utilisez le CLI pour écrire et vérifier la requête sauvegardée, puis ajoutez-la à un tableau de bord depuis l'interface.
 
     ```bash
     fp query schema
-    fp query create "production error rate" --sql "SELECT ..."
-    fp query run <query-id>
+    fp query run --sql "select count(*) from analytics.events"
+    fp query create "event volume" --sql "select count(*) from analytics.events"
+    fp query run "event volume"
     ```
+
+    Exécutez d'abord le SQL avec `--sql` : il s'exécute sur le même pool d'analytique en lecture seule sans rien sauvegarder, ce qui vous permet de détecter un nom de colonne incorrect avant qu'une tuile ne le fasse. `--sql @file.sql` lit l'instruction depuis un fichier. `fp query schema` liste les tables interrogeables et leurs colonnes ; passez un nom de table pour restreindre la liste à une seule.
+
+    Les requêtes sauvegardées sont adressées par **nom**, et non par id — `fp query run "event volume"` — car `fp query list` masque l'id brut à moins que vous ne passiez `--show-id`. Un id au format UUID est également accepté.
+
+    Pour une tuile paramétrée, liez chaque `$1..$N` positionnel avec `--arg`, qui est répétable et lie dans l'ordre : `fp query run <name> --arg checkout-agent`.
+
+    `--limit` et `--all` ajustent uniquement le plafond de prévisualisation du tableau ; `--json` retourne toujours toutes les lignes, sous la forme `{columns: [{name, type}], rows: [[...]], truncated, elapsed_ms}`.
+
+    | Sous-commande | Permission |
+    | --- | --- |
+    | `query list`, `query show`, `query schema` | `queries:read` |
+    | `query create`, `query update` | `queries:write` |
+    | `query run` | `queries:run` |
+    | `query delete` | `queries:delete` |
+
+    Chaque sous-commande qui prend un **nom** de requête le résout en listant d'abord les requêtes de l'organisation, donc `query create`, `query update`, `query delete` et `query run <name>` nécessitent `queries:read` en plus de la permission ci-dessus. Seuls `fp query run --sql` et `fp query schema` ne l'exigent pas.
+
+    Aucune commande de `fp query` n'est bloquée en mode clé API, ce qui permet de créer et de vérifier les requêtes d'un tableau de bord depuis la CI.
   </Tab>
 </Tabs>
 
-Les groupes de tableaux de bord utiles comprennent :
+Parmi les groupes de tableaux de bord utiles, on trouve :
 
 - **Modèles :** volume, latence, utilisation des tokens, taux d'erreur et scores d'évaluation.
 - **Évaluations :** taux de succès et tendances des scores par agent ou environnement.
 - **Outils :** volume d'appels, taux d'échec, durée et appels répétés.
 - **Hooks et politiques :** décisions, refus et taux de correspondance des politiques.
-- **Métriques de workflow personnalisées :** résultats issus de vos propres champs d'événements et SQL.
+- **Métriques de workflow personnalisées :** résultats issus de vos propres champs d'événements et de votre SQL.
 
-Commencez par une requête sauvegardée, validez son résultat, puis ajoutez-la en tant que tuile. Gardez les filtres de production et de développement explicites afin que le trafic de test ne masque pas une régression.
+Commencez par une requête sauvegardée, validez son résultat, puis ajoutez-la en tant que tuile. Rendez les filtres de production et de développement explicites pour que le trafic de test ne masque pas une régression.
+
+<Warning>
+  Une tuile de hook qui compte les lignes indique un mauvais dénominateur. Avec le niveau de verbosité par défaut des hooks, chaque deny et instruct est émis sous la forme d'une paire `hook_triggered` / `hook_completed`, tout comme chaque allow en mode observation ; les allow simples sont agrégés par session, événement, outil et attribution de politique par minute en un seul `hook_completed` portant `failproofai_allow_count`. Additionnez ce champ plutôt que de compter les lignes, sinon une flotte ayant évalué des dizaines de milliers d'appels semblera n'en avoir évalué que quelques centaines. Voir [Décisions de politique](/fr/sessions/policy-decisions) et [Hooks](/fr/sessions/hooks).
+</Warning>
 
 <Tip>
   Attribuez à chaque tableau de bord un responsable et une question à laquelle il doit répondre, par exemple « La fiabilité de checkout-agent est-elle moins bonne que la semaine dernière ? »
 </Tip>
+
+<Card title="Requêtes" icon="database" href="/fr/sessions/queries">
+  Rédigez, sauvegardez et partagez le SQL que chaque tuile d'un tableau de bord utilise comme source de données.
+</Card>

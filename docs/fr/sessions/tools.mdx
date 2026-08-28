@@ -1,25 +1,38 @@
 ---
 title: "Outils"
-description: "Identifiez les outils lents, défaillants ou surutilisés à travers les sessions d'agents."
+description: "Identifiez les outils lents, défaillants ou surutilisés dans les exécutions d'agents."
 icon: "wrench"
 ---
 
-La section Outils regroupe les appels d'outils entre les sessions afin que vous puissiez comparer la latence et la distribution des appels.
+La page Outils affiche ce que les agents appellent, la fréquence des échecs et les sessions concernées.
+
+Les noms des outils proviennent de chaque harnais d'agent, de sorte qu'une même fonctionnalité peut porter des noms différents. Par exemple, un appel shell peut apparaître sous la forme `Bash`, `exec`, `Shell`, `terminal` ou `run_command`. Exécutez `fp list tools` avant de construire un filtre.
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Accédez à **Observe → Tools**.
-    2. Filtrez par environnement, nom d'outil, agent ou identifiant de session.
-    3. Examinez la latence et la distribution des outils.
-    4. Sélectionnez un point du graphique ou un segment d'outil pour ouvrir les événements et sessions correspondants.
+    Accédez à **Observer → Outils**. Filtrez par environnement, outil, agent ou session.
 
-    ![La page Outils affichant la latence, les répartitions succès/échecs et la distribution des appels d'outils.](/images/dashboard/tools.png)
+    ![La page Outils affichant la latence, les répartitions des succès et des échecs, ainsi que la distribution des appels d'outils.](/images/dashboard/tools.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp list tools
-    fp events --event-type tool_use,tool_result --env production --since 24h
-    fp --json events --full --session-id <session-id> --all
+    fp events --event-type tool_use,tool_result --since 24h
+    fp errors --event-type tool_result --since 24h
+    fp --json events --full --event-type tool_use,tool_result --session-id <session-id> --all --limit 2000
     ```
+
+    Utilisez `--full` lorsque vous avez besoin de champs de charge utile tels que la durée par appel.
   </Tab>
 </Tabs>
+
+Utilisez cette page pour identifier les échecs répétés, comparer les exécutions réussies et défaillantes, ou confirmer qu'un outil ciblé par une politique est effectivement utilisé.
+
+<CardGroup cols={2}>
+  <Card title="Erreurs" icon="circle-alert" href="/fr/sessions/errors">
+    Ouvrez les sessions à l'origine des échecs d'outils.
+  </Card>
+  <Card title="Hooks" icon="webhook" href="/fr/sessions/hooks">
+    Consultez les noms canoniques des outils et les décisions de politique.
+  </Card>
+</CardGroup>

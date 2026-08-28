@@ -1,56 +1,64 @@
 ---
 title: "監査"
-description: "定義されたセッション群を対象に、トレースだけでは明らかにならない障害を検出します。"
+description: "繰り返しの失敗、リスクのある動作、無駄な処理をエージェントの実行履歴から検索します。"
 icon: "scan-search"
 ---
 
-監査は、選択されたセッション群に対して特定の障害目標を検索します。トレースの証拠、評価結果、ポリシーのヒット、および参照コンテキストを組み合わせて、実際に対処できる調査結果を生成します。
+監査は、多数のエージェント実行をある目標に照らして検証し、根拠に基づいた調査結果を返します。
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Find agent failures automatically with Failproof AI audits" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-スケジュールされた実行から、証拠に基づいた修正可能な障害の発見まで、監査の流れを確認してください。
+## ローカル監査とクラウド監査
 
-## 監査を開く
+| | ローカル監査 | クラウド監査 |
+| --- | --- | --- |
+| コマンド | `failproofai audit` | `fp audits` |
+| 参照先 | このマシン上のエージェント履歴 | クラウド組織内のセッション |
+| 出力先 | `localhost:8020/audit` のローカル結果 | 共有された調査結果、Issue、アラート |
+| 必要条件 | アカウント不要 | クラウド接続と API キー |
 
-<Tabs>
-  <Tab title="ダッシュボード">
-    **Analyze → Audits** に移動します。このページには、スケジュール状態、未解決の調査結果、前回の実行、次回の実行、実行頻度、およびブリーフや参照ページの有無が表示されます。カードを選択すると設定と実行履歴が確認でき、**new audit** を選択すると新しい監査を作成できます。
+単一マシンの素早い確認にはローカル監査を使用してください。チームが複数のエージェントやマシンにまたがって定期的な監査を必要とする場合はクラウドを使用してください。
 
-    ![スケジュール、感度、実行状態が表示された定期監査の一覧ページ。](/images/dashboard/audits.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp audits list
-    fp audits list --enabled-only --show-id
-    fp audits show <audit-name>
-    fp audits findings --status open --limit 20
-    ```
-  </Tab>
-</Tabs>
+## 監査で答えられる質問
 
-次のようなポピュレーションレベルの質問に答える必要がある場合に監査を使用します。
-
-- エージェントはどこでエスカレーションせずにタスクを放棄しているか？
-- どのツール障害が非効率なリトライにつながっているか？
+- エージェントはどこでエスカレーションせずに停止しているか？
+- どのツール障害が非効率な再試行につながっているか？
 - エージェントは意図したワークフロー外のデータにアクセスしているか？
-- モデル、プロンプト、またはツールのリリース後に何が変わったか？
+- モデル、プロンプト、またはツールの更新後に何が変化したか？
 
-## 監査のレスポンスフロー
+## クラウド監査を開く
+
+**Analyze → Audits** に移動するか、以下を使用してください：
+
+```bash
+fp audits list
+fp audits show <audit-name>
+fp audits findings --status open --limit 20
+```
+
+監査コマンドは監査名またはフル ID を使用します。調査結果はそれぞれ固有の ID で参照されます。
+
+## 調査結果から予防措置へ
 
 ```text
 Session → Audit → Finding → Issue → Policy
-                         ↘ Alert for recurrence
+                         ↘ Alert
 ```
 
-調査結果は障害モードを明確に示し、証拠を指し示す必要があります。Issue は修正作業を担います。Policy は既知のアクションパターンを防止し、Alert は防止が不可能な場合やモニタリングが必要な場合に再発を検出します。
+調査結果は証拠を指し示します。Issue は対応方針を管理します。ポリシーは既知のアクションパターンを防止し、アラートは再発を監視します。
 
-<Columns cols={2}>
-  <Card title="監査を設定する" icon="sliders-horizontal" href="/ja/audits/setup">
-    初回実行前に目標、対象セッション群、および参照コンテキストを定義します。
+すべての調査結果がポリシーになるべきとは限りません。`policy` の調査結果は実施可能なルールを記述します。`failure` や `improvement` の場合は、代わりにワークフロー、プロンプト、モデル、またはツールの変更が必要になることがあります。
+
+<CardGroup cols={3}>
+  <Card title="このマシンを監査する" icon="laptop-minimal-check" href="/ja/audits/local-audit">
+    アカウント不要でローカル履歴をスキャンします。
   </Card>
-  <Card title="エージェントコンテキストを追加する" icon="bot" href="/ja/audits/agent-contracts">
-    各エージェントが生成しなければならないものと、絶対に行ってはならないことを定義します。
+  <Card title="クラウド監査を設定する" icon="sliders-horizontal" href="/ja/audits/setup">
+    目標、セッション、スケジュールを選択します。
   </Card>
-</Columns>
+  <Card title="調査結果を確認する" icon="list-checks" href="/ja/audits/findings-and-issues">
+    証拠をトリアージし、対応方針を割り当てます。
+  </Card>
+</CardGroup>

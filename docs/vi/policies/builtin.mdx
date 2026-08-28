@@ -1,57 +1,101 @@
 ---
-title: "Các chính sách tích hợp sẵn"
-description: "Kích hoạt các hành lang bảo vệ được duy trì cho các chế độ lỗi phổ biến của agent."
+---
+title: "Các chính sách tích hợp"
+description: "Áp dụng các biện pháp bảo vệ được duy trì cho các chế độ lỗi phổ biến của agent, và bật những chính sách bạn muốn."
 icon: "library"
 ---
 
-Các chính sách tích hợp sẵn bao gồm xử lý bí mật, tệp môi trường, lệnh shell phá huỷ, nhánh được bảo vệ, các công cụ đám mây và cơ sở hạ tầng, công bố gói, các lệnh gọi lặp lại, và kiểm tra quy trình làm việc kết thúc tác vụ.
+Các chính sách tích hợp là 39 chính sách được duy trì bao quát chín danh mục lỗi của agent. Tất cả trừ một được **cung cấp dưới dạng gói**, `FailproofAI/policies`, giống như cách bất kỳ chính sách nào khác được cung cấp. Gói không đi kèm bộ chính sách riêng, do đó cài đặt mới sẽ không thực thi gì cho đến khi bạn chọn nó:
 
-## Kích hoạt và xác minh một chính sách tích hợp sẵn
+```bash
+failproofai policies add FailproofAI/policies
+```
+
+Điều này kích hoạt các giá trị mặc định của gói — 10 trong 38 chính sách mà gói mang theo. Chính sách thứ 39 là `block-failproofai-commands`, luôn bật: nó được biên dịch vào gói, đăng ký trên mỗi đánh giá, và không thể bị tắt hoặc tạm dừng. Một gói không thể khai báo `alwaysOn`, đó là lý do biện pháp bảo vệ đó không đi qua kênh gói.
+
+## Chín danh mục bao quát nội dung gì
+
+| Danh mục | slug `--category` | Chính sách |
+| --- | --- | --- |
+| Sanitize | `sanitize` | 5 |
+| Environment | `environment` | 3 |
+| Dangerous Commands | `dangerous-commands` | 5 |
+| Infra Commands | `infra-commands` | 7 |
+| Git | `git` | 6 |
+| Database | `database` | 2 |
+| Packages & System | `packages-system` | 5 |
+| AI Behavior | `ai-behavior` | 1 |
+| Workflow | `workflow` | 5 |
+
+Đó là các số đếm của danh mục biên dịch, và chúng cộng lại thành 39. Gói mang theo 38 trong số chúng, vì `block-failproofai-commands` là `alwaysOn` và không bao giờ đi qua kênh gói — do đó `--category dangerous-commands` chọn bốn chính sách còn lại.
+
+Lấy một phần thay vì các giá trị mặc định:
+
+```bash
+failproofai policies add FailproofAI/policies --category git,database
+failproofai policies add FailproofAI/policies --policy block-rm-rf
+failproofai policies add FailproofAI/policies --all
+```
+
+## Đọc danh mục trước khi áp dụng nó
 
 <Tabs>
-  <Tab title="Dashboard">
-    1. Cài đặt chính sách trên một máy được kết nối bằng CLI cục bộ.
-    2. Chạy một hành động kiểm tra an toàn trong agent được cấu trúc.
-    3. Đi tới **Observe → policy** và lọc theo tên chính sách, môi trường máy hoặc quyết định.
-    4. Mở phiên được liên kết để xác nhận đầu vào công cụ phù hợp và lý do được trả về.
-
-  </Tab>
   <Tab title="CLI">
     ```bash
+    failproofai policies show FailproofAI/policies
     failproofai policies
-    failproofai policy add block-rm-rf --cli claude --scope project
-    failproofai config --status
     ```
 
-    Xoá nó bằng `failproofai policy remove block-rm-rf --cli claude --scope project`.
+    `policies show` đọc bản kê khai được xuất bản — mọi chính sách, được nhóm theo danh mục, được đánh dấu mặc định hoặc chọn tham gia — mà không tải xuống hoặc nhập mã của gói. `failproofai policies` liệt kê những gì được bật trên máy này: tệp tùy chỉnh, tệp quy ước, gói đã cài đặt và các bài tập của Cloud. Nó không có phần tích hợp, do đó nó trả lời những gì bật ở đây, không bao giờ những gì tồn tại.
+  </Tab>
+  <Tab title="Policy Hub">
+    Duyệt danh mục tương tự trong trình duyệt, không cần CLI, tại [befailproof.ai/policy-hub](https://befailproof.ai/policy-hub/). Mỗi gói có trang tại `/policy-hub/<owner>/<pack>/` và mỗi chính sách có trang tại `/policy-hub/<owner>/<pack>/<policy-name>/`.
+  </Tab>
+  <Tab title="Dashboard">
+    1. Cài đặt chính sách trên máy được kết nối bằng CLI cục bộ.
+    2. Chạy một hành động thử nghiệm an toàn trong agent được thiết lập.
+    3. Đi tới **Observe → policy** và lọc theo tên chính sách, môi trường máy hoặc quyết định.
+    4. Mở phiên được liên kết để xác nhận đầu vào công cụ được khớp và lý do được trả về.
   </Tab>
 </Tabs>
 
-Liệt kê các chính sách có sẵn trong phiên bản đã cài đặt của bạn:
+## Bật hoặc tắt một chính sách
 
 ```bash
-failproofai policies
+failproofai policies add block-rm-rf --cli claude --scope project
+failproofai policies remove block-rm-rf --cli claude --scope project
 ```
 
-Kích hoạt một chính sách cho một dự án:
-
-```bash
-failproofai policy add block-rm-rf --scope project
-```
-
-Kích hoạt nhiều chính sách cho các harness được chọn:
+`policies add` và `policies remove` lấy chính xác **một** tên chính sách. Chạy chúng mà không có tên nào cả và bạn sẽ nhận được một bộ chọn, với những gì đã bật được đánh dấu. Đối với nhiều tên cùng một lúc, hãy sử dụng biểu mẫu cài đặt:
 
 ```bash
 failproofai policies --install block-sudo block-force-push \
   --cli claude codex --scope project
 ```
 
-Một số chính sách chấp nhận các tham số hoặc được đánh dấu là beta. Hãy xem lại mô tả, phạm vi khớp, và hành vi mặc định trước khi triển khai. Một chính sách bảo vệ một quy trình làm việc có thể chặn các hoạt động hợp lệ trong hoạt động khác.
+<Note>
+  Trên máy không cài đặt gói nào, `failproofai policies add <builtin-name>` tìm nạp `FailproofAI/policies` từ bản phát hành GitHub của nó để thỏa mãn tên — do đó lệnh đầu tiên cần mạng.
+</Note>
 
-<Card title="Duyệt danh mục chính sách tích hợp sẵn đầy đủ" icon="list-checks" href="/vi/policies/builtin-catalog">
-  Xem lại tất cả 40 chính sách hiện tại, các kích hoạt của chúng, đường cơ sở được đề xuất, và các tham số.
+## Không phải mọi chính sách đều thực thi trên mọi bộ khai thác
+
+Một chính sách chỉ thay đổi hành vi nơi bộ khai thác sử dụng phán quyết cho sự kiện của nó. Hai trường hợp đáng kiểm tra trước khi bạn dựa vào một chính sách tích hợp:
+
+| Sự kiện | Nơi phủ nhận được xác minh thay đổi hành vi |
+| --- | --- |
+| `PreToolUse` | Tất cả 12 bộ khai thác |
+| `Stop` | claude, codex, copilot, cursor, openclaw, factory, devin, antigravity. Không có `Stop` hook được cài đặt trên goose hoặc hermes, pi mang lý do vào lượt tiếp theo thay vào đó, và opencode không được xác minh |
+
+Vì vậy năm chính sách `require-*-before-stop` trong danh mục Workflow có thể được bật trên máy và vẫn không bao giờ kích hoạt, tùy thuộc vào agent nào chạy ở đó. Máy ảo Cursor Cloud Agent không chạy hook dừng nào cả.
+
+Các chính sách `warn-*` và `prefer-*` trả về `instruct` thay vì `deny`. Trên Hermes và Goose, và bên ngoài kênh `Stop` trên Pi, OpenClaw, Factory và Antigravity, `instruct` giảm xuống thành allow cộng với ghi chú trên stderr: người vận hành thấy nó trong nhật ký, agent không.
+
+Một số chính sách chấp nhận tham số. Xem lại mô tả, khớp phạm vi và mặc định trước khi triển khai — một chính sách bảo vệ một quy trình làm việc có thể chặn các hoạt động hợp lệ trong một quy trình khác.
+
+<Card title="Duyệt danh mục tích hợp hoàn chỉnh" icon="list-checks" href="/vi/policies/builtin-catalog">
+  Tất cả 39 chính sách tích hợp, theo danh mục, với các kích hoạt, giá trị mặc định và tham số của chúng.
 </Card>
 
 <Tip>
-  Ưu tiên phạm vi dự án cho các kỳ vọng cụ thể của kho lưu trữ và phạm vi người dùng cho các yêu cầu an toàn trên toàn máy.
+  `failproofai config` kết nối mọi agent được hỗ trợ ở phạm vi người dùng và không chọn chính sách nào — nó không có cờ `--scope`. Chỉ truyền `--scope project` tới `failproofai policies add` hoặc `failproofai policies --install` khi kỳ vọng thực sự thuộc về một kho lưu trữ.
 </Tip>

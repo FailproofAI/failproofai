@@ -1,21 +1,21 @@
 ---
-title: "Chạy và xem xét một cuộc kiểm toán"
-description: "Chạy một cuộc kiểm toán, xác minh phạm vi bao phủ của nó và kiểm tra các phát hiện kết quả."
+title: "Chạy và đánh giá một kiểm toán"
+description: "Chạy kiểm toán, xác minh phạm vi bao phủ và kiểm tra các phát hiện kết quả."
 icon: "play"
 ---
 
-Chạy một cuộc kiểm toán sau khi mục tiêu và quần thể của nó đã cụ thể đến mức một nhà điều hành khác sẽ biết một phát hiện hợp lệ trông như thế nào.
+Chạy kiểm toán sau khi mục tiêu và tập hợp của nó đủ cụ thể để một nhà điều hành khác biết được phát hiện hợp lệ trông như thế nào.
 
-## Chạy và kiểm tra nó
+## Chạy và kiểm tra
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Đi tới **Analyze → Audits**, mở cuộc kiểm toán và chọn **run now**. Một phản hồi trong hàng chờ có nghĩa là dispatcher sẽ bắt đầu nó sớm.
-    2. Mở lần chạy mới để xem xét trạng thái, cửa sổ, thời lượng, số lượng phát hiện và báo cáo của nó.
+    1. Đi tới **Analyze → Audits**, mở kiểm toán và chọn **run now**. Một phản hồi trong hàng đợi có nghĩa là bộ phân phối sẽ khởi động sớm.
+    2. Mở lần chạy mới để xem lại trạng thái, cửa sổ, thời lượng, số lượng phát hiện và báo cáo.
     3. Chọn một phiên bằng chứng để mở dấu vết chính xác.
-    4. Quay lại trang kiểm toán để chỉnh sửa cài đặt, tắt lịch hoặc kiểm tra các lần chạy cũ hơn.
+    4. Quay lại trang kiểm toán để chỉnh sửa cài đặt, tắt lịch trình hoặc kiểm tra các lần chạy cũ hơn.
 
-    ![Một trang chi tiết kiểm toán với các phát hiện mở, trạng thái lần chạy cuối cùng và tiếp theo, cửa sổ quét, bối cảnh, kiểm soát chạy ngay bây giờ và các phát hiện được xếp hạng.](/images/dashboard/audit-detail.png)
+    ![Trang chi tiết kiểm toán với các phát hiện mở, trạng thái lần chạy cuối cùng và tiếp theo, cửa sổ quét, ngữ cảnh, điều khiển chạy ngay bây giờ và các phát hiện được xếp hạng.](/images/dashboard/audit-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -25,43 +25,82 @@ Chạy một cuộc kiểm toán sau khi mục tiêu và quần thể của nó 
     fp audits findings --audit checkout-reliability
     ```
 
-    Xem [tham chiếu `fp audits`](/vi/reference/cloud-cli#audits) để xem lịch sử chạy, phát hiện và các lệnh phân loại.
+    `fp audits run` đưa kiểm toán vào hàng đợi; nó không chờ. Theo sau nó bằng `fp audits runs <name>` và đọc các phát hiện sau khi lần chạy hoàn thành. `--limit` không bao giờ trả về nhiều hơn 50 lần chạy gần đây nhất, dù bạn yêu cầu bao nhiêu.
+
+    Phân loại hoạt động trên id phát hiện, không phải trên kiểm toán:
+
+    ```bash
+    fp audits finding <finding-id>
+    fp audits ack <finding-id> --reason "owner assigned"
+    fp audits assign <finding-id> --to engineer@example.com
+    fp audits mute <finding-id> --reason "expected in staging" --yes
+    fp audits dismiss <finding-id> --reason "false positive" --yes
+    fp audits resolve <finding-id> --yes
+    fp audits reopen <finding-id>
+    ```
+
+    `mute`, `dismiss` và `resolve` xác nhận trước khi hoạt động, do đó hãy chuyển `--yes` trong tập lệnh. `ack`, `assign` và `reopen` hoạt động ngay lập tức.
+
+    Xem [tham chiếu `fp audits`](/vi/reference/cloud-cli#audits) để lấy lịch sử chạy, phát hiện và lệnh phân loại.
   </Tab>
 </Tabs>
 
-## Trước khi bạn chạy
+**run now** có thể bị từ chối. Một lần chạy đã đang trong quá trình và kiểm toán bị tắt đều trả lời `409`, với lý do trong trường `error` của phản hồi; một kiểm toán không tồn tại hoặc thuộc về tổ chức khác trả lời `404`.
 
-- Xác nhận các phiên tồn tại trong cửa sổ thời gian được chọn.
-- Xác minh các bộ lọc môi trường và agent.
-- Kiểm tra xem bối cảnh tham chiếu có hiện tại không.
+| Lý do từ chối | Ý nghĩa | Cách khắc phục |
+| --- | --- | --- |
+| Kiểm toán không xác định | Kiểm toán không tồn tại hoặc nó thuộc về tổ chức khác. | Xác nhận tên bằng `fp audits list`. |
+| Kiểm toán bị tắt | Kiểm toán bị tắt không có hàng đợi, vì vậy không có gì phải làm. Kiểm toán tạm dừng vẫn hiển thị điều khiển **run now**. | Tiếp tục nó trước tiên hoặc `fp audits edit <name> --enabled --yes`. |
+| Một lần chạy đã đang trong quá trình | Một lần chạy cho mỗi kiểm toán; cái hiện tại phải hoàn thành trước khi một cái khác được đưa vào hàng đợi. | Kiểm tra nó bằng `fp audits runs <name>`. |
+
+## Trước khi chạy
+
+- Xác nhận phiên tồn tại trong cửa sổ thời gian đã chọn.
+- Xác minh các bộ lọc môi trường và tác nhân.
+- Kiểm tra xem ngữ cảnh tham chiếu có phải là hiện tại không. Mỗi lần chạy đều đọc lại các trang kiểm toán và quay lại bản sao được lưu trữ khi không thể truy cập được, vì vậy một trang đã bị di chuyển hoặc gỡ xuống tiếp tục phục vụ văn bản cũ cho đến khi bạn sửa URL.
 - Đảm bảo mục tiêu mô tả một chế độ lỗi, không phải một kết luận mong muốn.
 
-## Xem xét lần chạy
+## Xem lại lần chạy
 
-Bắt đầu với trạng thái chạy, phạm vi bao phủ phiên và liệu phân tích mô hình có chạy hay không. Sau đó kiểm tra mức độ nghiêm trọng, mô tả, phiên bằng chứng, truy vấn hỗ trợ và con đường phòng ngừa được đề xuất của mỗi phát hiện.
+Trang chi tiết kiểm toán mở với năm ô: **phát hiện mở** chờ phân loại, **lần chạy cuối cùng**, **lần chạy tiếp theo**, **cửa sổ** (mỗi lần chạy đọc lại bao xa) và **độ nhạy** (một lần chạy đánh dấu mô hình nhanh chóng như thế nào: `low`, `medium`, `high`). Tối đa N phát hiện trên mỗi lần chạy là một cài đặt riêng biệt, phát hiện trên mỗi lần chạy (`--top-k`, mặc định 50). Năm ô đó trả lời câu hỏi bao phủ nhanh hơn việc mở lần chạy.
 
-Sử dụng trạng thái phát hiện để xác nhận, tắt tiếng, loại bỏ, giải quyết, mở lại hoặc giao công việc. Bảo tồn bằng chứng ngay cả khi phát hiện bị loại bỏ; nó giải thích lý do quyết định được đưa ra.
+Sau đó kiểm tra mức độ nghiêm trọng, mô tả, phiên bằng chứng, truy vấn hỗ trợ và đường dẫn ngăn chặn được đề xuất của mỗi phát hiện. Các phát hiện được sắp xếp theo điểm **ưu tiên** từ 0 đến 1, được xếp hạng mỗi lần chạy và mỗi phát hiện cho thấy bốn yếu tố có trọng số đằng sau nó:
 
-## Diễn giải một lần chạy trống hoặc bị trễ
+| Yếu tố xếp hạng | Trọng số |
+| --- | --- |
+| Coverage | 0.30 |
+| Magnitude | 0.25 |
+| Severity | 0.25 |
+| Recency | 0.20 |
 
-| Điều kiện chạy | Ý nghĩa của nó | Những gì cần làm |
+Một phát hiện chính xác là một trong năm trạng thái: `open`, `recurring`, `resolved`, `dismissed` hoặc `muted`. Truy vấn `findings` không có bộ lọc trạng thái trả về tập hợp trực tiếp — `open` cộng `recurring`. Một phát hiện mà bạn tắt tiếng, từ chối hoặc giải quyết rời khỏi tập hợp đó; `ack` và `assign` không thay đổi trạng thái, vì vậy phát hiện vẫn ở trong hàng đợi — được hạ thấp ưu tiên hoặc được sở hữu, không bị xóa. Yêu cầu trạng thái một cách rõ ràng để xem những cái đã rời khỏi.
+
+Sử dụng trạng thái phát hiện để xác nhận, tắt tiếng, từ chối, giải quyết, mở lại hoặc gán công việc. Bảo quản bằng chứng ngay cả khi phát hiện bị từ chối; nó giải thích lý do quyết định được đưa ra. [Findings and issues](/vi/audits/findings-and-issues) bao gồm những gì mỗi động từ làm cho các lần chạy trong tương lai.
+
+## Giải thích lần chạy trống hoặc bị trì hoãn
+
+| Điều kiện chạy | Ý nghĩa | Cách khắc phục |
 | --- | --- | --- |
-| Phân tích chạy và tạo ra không phát hiện | Bằng chứng được chọn không hỗ trợ phát hiện ở độ nhạy được cấu hình. | Xác nhận phạm vi chứa các phiên đại diện, sau đó coi kết quả là lành mạnh trừ khi mục tiêu hoặc bối cảnh quá mơ hồ. |
-| Phân tích mô hình bị bỏ qua hoặc thất bại | Lần chạy hoàn thành với số phát hiện bằng không, nhưng nó không thực hiện điều tra có tác nhân. Quét xác định thông tin xác thực và PII vẫn báo cáo số lượng kết hợp trong thống kê chạy nhưng không tạo phát hiện. | Sửa dịch vụ phân tích hoặc cấu hình và chạy lại. Không diễn giải kết quả trống rỗng như bằng chứng quần thể lành mạnh. |
-| Phân tích mô hình bị vô hiệu hóa | Lần chạy thành công với không phát hiện. Quét xác định không thay thế phân tích mô hình hoặc mở phát hiện. | Bật phân tích mô hình hoặc vô hiệu hóa kiểm toán thay vì dựa vào kiểm toán không thể tạo phát hiện. |
-| Không có dung lượng phân tích khả dụng ngay lập tức | Kiểm toán vẫn ở hàng chờ và thử lại thay vì bỏ qua quần thể. | Chờ dung lượng hoặc lan tỏa các neo kiểm toán. Các nhà điều hành tự lưu trữ phải mở rộng các bản sao audit-agent và dung lượng dispatcher phù hợp. |
-| Dung lượng vẫn không khả dụng cho cửa sổ thử lại | Lần chạy từ bỏ với không phát hiện và gửi thông báo lỗi khi phân phối email khả dụng. | Kiểm tra xem nhfleet kiểm toán có bão hòa hoặc liên tục khởi động lại hay không. |
+| Phân tích đã chạy và tạo ra không phát hiện | Bằng chứng được chọn không hỗ trợ phát hiện ở độ nhạy được cấu hình. | Xác nhận phạm vi chứa các phiên đại diện, sau đó coi kết quả là lành mạnh trừ khi mục tiêu hoặc ngữ cảnh quá mơ hồ. |
+| Phân tích mô hình bị bỏ qua hoặc thất bại | Lần chạy hoàn thành với không phát hiện, nhưng nó không thực hiện cuộc điều tra tác nhân. Quét thông tin xác thực xác định và PII vẫn báo cáo số lần khớp trong thống kê chạy nhưng không tạo phát hiện. | Sửa dịch vụ phân tích hoặc cấu hình và chạy lại. Đừng giải thích kết quả rỗng như bằng chứng rằng dân số lành mạnh. |
+| Phân tích mô hình bị vô hiệu hóa | Lần chạy thành công với không phát hiện. Quét xác định không thay thế phân tích mô hình hoặc mở phát hiện. | Bật phân tích mô hình hoặc vô hiệu hóa kiểm toán thay vì dựa vào kiểm toán không thể tạo ra phát hiện. |
+| Không có dung lượng phân tích có sẵn ngay lập tức | Kiểm toán vẫn ở trong hàng đợi và thử lại thay vì bỏ qua dân số. | Chờ dung lượng hoặc trải rộng các neo kiểm toán. Các nhà điều hành tự lưu trữ nên mở rộng quy mô bản sao audit-agent và dung lượng bộ phân phối phù hợp. |
+| Dung lượng vẫn không có sẵn cho cửa sổ thử lại | Lần chạy bỏ cuộc với không phát hiện và gửi thông báo lỗi khi giao hàng email có sẵn. | Kiểm tra xem flota kiểm toán có bão hòa hoặc khởi động lại liên tục không. |
 
-Khi phân tích không chạy, `since_last` kiểm toán giữ cửa sổ chưa được phân tích mở cho lần chạy tiếp theo thành công. Các phát hiện hiện có không được loại bỏ vì phân tích bị bỏ qua không phải là bằng chứng cho thấy lỗi đã biến mất.
+Ba hàng cuối cùng mô tả hành vi của máy chủ Cloud API và bộ phân phối của nó. Trên Cloud được quản lý, đó là trách nhiệm của Failproof AI để sửa; trên triển khai tự lưu trữ, đó là trách nhiệm của bạn.
 
-## Hiểu thông báo lỗi
+Khi phân tích không chạy, kiểm toán `since_last` giữ cửa sổ chưa phân tích đó mở cho lần chạy thành công tiếp theo. Các phát hiện hiện có không bị loại vì phân tích bị bỏ qua không phải là bằng chứng rằng lỗi biến mất.
 
-Một lần chạy thất bại hoặc bước phân tích mô hình thất bại sử dụng các máy nhận email của kiểm toán. Nếu kiểm toán không có kênh email, Failproof AI quay lại cài đặt `alerts.email_default_recipients` của tổ chức để kiểm toán bị hỏng âm thầm vẫn có một con đường ngoài cùng.
+## Hiểu thông báo
 
-Email phải được bật cho tổ chức và SMTP phải được cấu hình. Nếu không, lỗi sẽ được ghi nhật ký nhưng không thể gửi email. Các lỗi chạy không di chuyển neo lịch cố định của kiểm toán.
+Lần chạy thành công chỉ thông báo khi nó tìm thấy điều gì đó **mới**. Sự yên tĩnh từ kiểm toán lành mạnh là trường hợp bình thường, không phải dấu hiệu rằng không có gì chạy — kiểm tra **lần chạy cuối cùng** trên trang kiểm toán, hoặc `fp audits runs <name>`, để xem rằng nó đã chạy. Kiểm toán không có kênh được chọn sẽ lưu trữ các phát hiện của nó và không thông báo cho ai.
 
-Mỗi lần chạy cũng lưu trữ chính xác [bối cảnh agent](/vi/audits/agent-contracts) được sử dụng cho mỗi agent như một ảnh chụp hợp đồng. Các chỉnh sửa sau này không thay đổi tiêu chuẩn bằng chứng được ghi lại với lần chạy trước đó.
+Lần chạy thất bại hoặc bước phân tích mô hình thất bại sử dụng các nhận chỉ định email kiểm toán. Nếu kiểm toán không có kênh email, Failproof AI quay lại cài đặt `alerts.email_default_recipients` của tổ chức để kiểm toán bị hỏng âm thầm vẫn có đường dẫn escalation.
+
+Email phải được bật cho tổ chức và SMTP phải được cấu hình. Nếu không, lỗi được ghi nhật ký nhưng không thể gửi email. Lỗi chạy không di chuyển neo lịch trình cố định kiểm toán.
+
+Mỗi lần chạy cũng lưu trữ [ngữ cảnh tác nhân](/vi/audits/agent-contracts) chính xác được sử dụng cho mỗi tác nhân như ảnh chụp nhanh hợp đồng. Các chỉnh sửa sau này không thay đổi tiêu chuẩn bằng chứng được ghi lại với lần chạy trước đó.
 
 <Warning>
-  Không triển khai chính sách chặn trực tiếp từ một phát hiện chưa được xác minh. Mở các dấu vết được trích dẫn và xác nhận quy tắc tách hành vi không an toàn khỏi công việc hợp pháp.
+  Đừng triển khai chính sách chặn trực tiếp từ phát hiện chưa được xác minh. Mở các dấu vết được trích dẫn và xác nhận quy tắc tách hành vi không an toàn khỏi công việc hợp pháp.
 </Warning>

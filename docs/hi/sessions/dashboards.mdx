@@ -1,43 +1,73 @@
 ---
 title: "डैशबोर्ड"
-description: "एजेंट या वर्कफ़्लो के लिए महत्वपूर्ण विश्वसनीयता संकेतों को ट्रैक करें।"
+description: "किसी एजेंट या वर्कफ़्लो के लिए महत्वपूर्ण विश्वसनीयता संकेतों को ट्रैक करें।"
 icon: "layout-dashboard"
 ---
 
-डैशबोर्ड सहेजी गई क्वेरीज़ को एक ऑपरेशनल दृश्य में संयोजित करते हैं। एक ऐसे निर्णय के चारों ओर एक बनाएं जो आप किसी को लेने की अपेक्षा करते हैं—हर उपलब्ध मेट्रिक के चारों ओर नहीं।
+डैशबोर्ड सहेजे गए क्वेरीज़ को एक ऑपरेशनल व्यू में संयोजित करते हैं। किसी निर्णय के चारों ओर एक बनाएं जिसे आप किसी को लेने की उम्मीद करते हैं—हर उपलब्ध मीट्रिक के चारों ओर नहीं।
+
+डैशबोर्ड एक Cloud सर्फेस हैं। `localhost:8020` पर स्थानीय डैशबोर्ड नीति गतिविधि, प्रोजेक्ट, सेशन और ऑडिट परिणामों को कवर करता है, लेकिन इसके पास कोई सहेजे गए क्वेरीज़ और कोई टाइलें नहीं हैं — इसलिए एक मशीन जो कनेक्ट नहीं हुई है उसके पास यहाँ बनाने के लिए कुछ नहीं है। [स्थानीय डैशबोर्ड](/hi/reference/local-dashboard) देखें।
 
 ## डैशबोर्ड बनाएं
 
 <Tabs>
   <Tab title="Dashboard">
     1. **Analyze → Queries** पर जाएं, एक सहेजी गई क्वेरी बनाएं या खोलें, और इसके परिणाम को मान्य करें।
-    2. **add to dashboard** चुनें, फिर एक मौजूदा डैशबोर्ड चुनें या **Analyze → Dashboards** के अंतर्गत एक नया बनाएं।
-    3. डैशबोर्ड खोलें, संपादन मोड में प्रवेश करें, टाइलों को व्यवस्थित करें, और लेआउट को सहेजें।
-    4. जब आपको टाइल के पीछे डेटा या फ़िल्टर बदलने की आवश्यकता हो तो क्वेरी पर वापस जाएं।
+    2. **डैशबोर्ड में जोड़ें** चुनें, फिर एक मौजूदा डैशबोर्ड चुनें या **Analyze → Dashboards** के तहत एक नया बनाएं।
+    3. डैशबोर्ड खोलें, संपादन मोड में प्रवेश करें, टाइलें व्यवस्थित करें, और लेआउट सहेजें।
+    4. जब आपको किसी टाइल के पीछे डेटा या फ़िल्टर बदलने की आवश्यकता हो तो क्वेरी पर वापस लौटें।
 
-    ![event volume, errors, latency, और model token use के लिए सहेजी गई क्वेरीज़ से बना एक डैशबोर्ड।](/images/dashboard/dashboard-fleet.png)
+    ![event volume, errors, latency और model token use के लिए सहेजी गई क्वेरीज़ से बना एक डैशबोर्ड।](/images/dashboard/dashboard-fleet.png)
   </Tab>
   <Tab title="CLI">
-    डैशबोर्ड CRUD वर्तमान Cloud CLI द्वारा उजागर नहीं किया गया है। सहेजी गई क्वेरी को बनाने और सत्यापित करने के लिए CLI का उपयोग करें, फिर इसे UI में एक डैशबोर्ड में जोड़ें।
+    Dashboard CRUD वर्तमान Cloud CLI द्वारा उजागर नहीं किया गया है। CLI का उपयोग सहेजी गई क्वेरी लिखने और सत्यापित करने के लिए करें, फिर इसे UI में डैशबोर्ड में जोड़ें।
 
     ```bash
     fp query schema
-    fp query create "production error rate" --sql "SELECT ..."
-    fp query run <query-id>
+    fp query run --sql "select count(*) from analytics.events"
+    fp query create "event volume" --sql "select count(*) from analytics.events"
+    fp query run "event volume"
     ```
+
+    `--sql` के साथ पहले SQL चलाएं: यह किसी भी चीज़ को सहेजे बिना एक ही read-only analytics पूल के विरुद्ध निष्पादित होता है, इसलिए आप एक खराब कॉलम नाम को एक टाइल करने से पहले खोजते हैं। `--sql @file.sql` फ़ाइल से कथन पढ़ता है। `fp query schema` क्वेरीयोग्य तालिकाओं और उनके कॉलम को सूचीबद्ध करता है; एक तालिका नाम पास करके इसे एक तक सीमित करें।
+
+    सहेजी गई क्वेरीज़ को **नाम** द्वारा संबोधित किया जाता है, id द्वारा नहीं — `fp query run "event volume"` — क्योंकि `fp query list` कच्चे id को तब तक छिपाता है जब तक आप `--show-id` पास न करें। एक UUID-आकार का id भी स्वीकार किया जाता है।
+
+    एक पैरामीट्राइज़्ड टाइल के लिए, प्रत्येक positional `$1..$N` को `--arg` के साथ बाइंड करें, जो दोहराए जाने योग्य है और क्रम में बाइंड करता है: `fp query run <name> --arg checkout-agent`।
+
+    `--limit` और `--all` केवल तालिका पूर्वावलोकन कैप को समायोजित करते हैं; `--json` हमेशा हर पंक्ति को `{columns: [{name, type}], rows: [[...]], truncated, elapsed_ms}` के रूप में लौटाता है।
+
+    | Subcommand | Permission |
+    | --- | --- |
+    | `query list`, `query show`, `query schema` | `queries:read` |
+    | `query create`, `query update` | `queries:write` |
+    | `query run` | `queries:run` |
+    | `query delete` | `queries:delete` |
+
+    हर subcommand जो एक क्वेरी **नाम** लेता है वह पहले org की क्वेरीज़ को सूचीबद्ध करके इसे हल करता है, इसलिए `query create`, `query update`, `query delete` और `query run <name>` को ऊपर दिए गए अनुमति के अलावा `queries:read` की आवश्यकता है। केवल `fp query run --sql` और `fp query schema` नहीं करते।
+
+    कोई भी `fp query` API-key मोड में ब्लॉक नहीं किया गया है, इसलिए डैशबोर्ड की क्वेरीज़ को CI से बनाया और सत्यापित किया जा सकता है।
   </Tab>
 </Tabs>
 
 उपयोगी डैशबोर्ड समूहों में शामिल हैं:
 
 - **Models:** volume, latency, token use, error rate, और evaluation scores।
-- **Evaluations:** agent या environment के आधार पर success rate और score trends।
+- **Evaluations:** success rate और score trends by agent या environment।
 - **Tools:** call volume, failure rate, duration, और repeat calls।
 - **Hooks and policies:** decisions, denials, और policy match rate।
-- **Custom workflow metrics:** आपके अपने event fields और SQL से परिणाम।
+- **Custom workflow metrics:** your own event fields और SQL से परिणाम।
 
-एक सहेजी गई क्वेरी से शुरू करें, इसके परिणाम को मान्य करें, फिर इसे एक टाइल के रूप में जोड़ें। production और development फ़िल्टर को स्पष्ट रखें ताकि test traffic एक regression को छुपा न दे।
+एक सहेजी गई क्वेरी से शुरू करें, इसके परिणाम को मान्य करें, फिर इसे एक टाइल के रूप में जोड़ें। production और development फ़िल्टर को स्पष्ट रखें ताकि test traffic किसी regression को छिपाए नहीं।
+
+<Warning>
+  एक hook टाइल जो rows को count करता है गलत denominator की रिपोर्ट करता है। डिफ़ॉल्ट hook verbosity पर, हर deny और instruct एक `hook_triggered` / `hook_completed` जोड़ी के रूप में emitted होता है, और observe-mode allow भी है; plain allows session, event, tool, और policy attribution per minute के अनुसार rolled up हैं एक single `hook_completed` में जो `failproofai_allow_count` carry करता है। उस फ़ील्ड को sum करें rows count करने के बजाय, या एक fleet जो tens of thousands of calls को evaluate करती है वह ऐसी दिखेगी कि कुछ सौ को evaluate किया गया। [Policy decisions](/hi/sessions/policy-decisions) और [Hooks](/hi/sessions/hooks) देखें।
+</Warning>
 
 <Tip>
-  हर डैशबोर्ड को एक owner और एक response question दें, जैसे "क्या checkout-agent की विश्वसनीयता पिछले हफ़्ते से बदतर है?"
+  हर डैशबोर्ड को एक owner और response question दें, जैसे "क्या checkout-agent reliability पिछले हफ्ते से बदतर है?"
 </Tip>
+
+<Card title="Queries" icon="database" href="/hi/sessions/queries">
+  SQL लिखें, सहेजें, और साझा करें जो डैशबोर्ड पर हर टाइल पढ़ता है।
+</Card>

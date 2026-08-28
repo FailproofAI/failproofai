@@ -1,21 +1,24 @@
 ---
 title: "Configurar una auditoría"
-description: "Define el objetivo, la población de sesiones y el contexto de evidencia de una auditoría."
+description: "Define el objetivo de la auditoría, la población de sesiones y el contexto de evidencia."
 icon: "sliders-horizontal"
 ---
 
-La calidad de una auditoría comienza con su alcance. Una solicitud amplia como "encontrar problemas" produce resultados menos útiles que una pregunta de fallo concreta.
+La calidad de una auditoría comienza por su alcance. Una solicitud amplia como "encuentra problemas" produce resultados menos útiles que una pregunta de fallo concreta.
 
 ## Configurar la auditoría
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Ve a **Analyze → Audits → New audit** e introduce el nombre y la descripción.
-    2. Establece la cadencia, la ventana de tiempo, el alcance de agente/entorno, los errores ignorados, la sensibilidad y el número máximo de hallazgos.
-    3. En **agents**, añade o revisa el contexto del agente, luego añade el brief del operador y cualquier URL de referencia HTTPS pública.
-    4. Elige los canales de notificación y selecciona **create audit**. La primera ejecución se pone en cola inmediatamente.
+    1. Ve a **Analyze → Audits → New audit** e introduce el nombre y la descripción. El nombre es único por organización; la descripción registra qué esperas que detecte esta auditoría.
+    2. En **when it runs**, establece la cadencia y la ventana. En **what it reads**, acota la población con entornos, agentes y los tipos de error que ignorar — un campo vacío incluye todo. En **how it judges**, configura la sensibilidad y los hallazgos por ejecución.
+    3. En **what it knows**, escribe el informe del operador y añade las páginas que lee la auditoría. El informe es el contexto que el modelo lee antes de examinar un solo evento: se suma a lo que esta auditoría ya busca, nunca lo reemplaza, y nunca actúa como evidencia para un hallazgo.
+    4. Abre el panel **agents** para añadir o revisar el contexto de cada agente. Se guarda de forma independiente a la auditoría, y su encabezado muestra cuántos de tus agentes ya tienen uno. Consulta [agent context](/es/audits/agent-contracts).
+    5. Elige los canales de notificación y selecciona **create audit**. Una auditoría nueva comienza habilitada y su primera ejecución se pone en cola de inmediato.
 
-    ![El formulario de nueva auditoría con nombre, descripción, cadencia, ventana, entorno y alcance del agente, errores ignorados, configuración de análisis, brief, páginas de referencia y canales de notificación.](/images/dashboard/audit-new.png)
+    ![El formulario de nueva auditoría con nombre, descripción, cadencia, ventana, alcance de entorno y agente, errores ignorados, configuración de análisis, informe, páginas de referencia y canales de notificación.](/images/dashboard/audit-new.png)
+
+    **agents** en la tarjeta **what it reads** es un filtro de alcance — determina qué sesiones recorre cada ejecución. El propósito de un agente vive en el panel de agentes separado.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -29,16 +32,44 @@ La calidad de una auditoría comienza con su alcance. Una solicitud amplia como 
       --url https://runbooks.example.com/checkout
     ```
 
-    La primera ejecución se pone en cola inmediatamente. Incluye el brief y las URLs de referencia durante la creación para que esa ejecución los reciba.
+    Todos los campos excepto el nombre tienen un valor predeterminado en el servidor, por lo que un simple `fp audits create nightly` ya es una auditoría diaria válida. Un nombre que ya esté en uso se rechaza de inmediato, antes de que se cree nada. Las auditorías nuevas comienzan habilitadas a menos que pases `--disabled`, y la primera ejecución de una auditoría habilitada se pone en cola de inmediato.
+
+    Basa una definición en JSON guardado con `--file audit.json` y combínalo con indicadores adicionales. Es el camino reproducible cuando las definiciones de auditoría se revisan o se mantienen en control de versiones.
 
     Consulta la referencia completa de [`fp audits create`](/es/reference/cloud-cli#audits).
   </Tab>
 </Tabs>
 
+## Rangos y valores predeterminados
+
+La configuración numérica se valida en ambos extremos, por lo que un valor fuera de rango es un error de uso y no una solicitud rechazada.
+
+| Configuración | Indicador CLI | Valores aceptados | Predeterminado |
+| --- | --- | --- | --- |
+| Cadencia | `--schedule-interval-secs` | 3600–604800 (1 hora a 7 días) | 86400 (diario) |
+| Ancla del calendario | `--schedule-anchor` | UTC ISO 8601; se rechaza un ancla a más de 365 días vista | El siguiente 09:00 UTC |
+| Ventana | `--window-mode` | `fixed`, `since_last` | `since_last` |
+| Período de retrospectiva | `--lookback-window-secs` | 3600–7776000 (1 hora a 90 días) | 604800 (7 días) |
+| Sensibilidad | `--sensitivity` | `low`, `medium`, `high` | `medium` |
+| Hallazgos por ejecución | `--top-k` | 1 o más | 50 |
+
+El ancla fija la fase del calendario: las ejecuciones aterrizan en `anchor + N * interval`, de modo que una ejecución lenta o un **run now** manual no puede desplazar la cadencia. La primera ejecución se pone en cola de inmediato al crear la auditoría, independientemente del ancla.
+
+## Informe y páginas de referencia
+
+El formulario muestra ambos límites como contadores, y la CLI impone los mismos dos:
+
+- El informe tiene un límite de 8.192 caracteres (`--text`, o `--text-file` para leerlo desde un archivo — pasa uno u otro, no ambos).
+- Una auditoría referencia como máximo cinco páginas, solo `https://` públicas (`--url`, repetido).
+
+Las URLs de referencia se validan al guardar. Las direcciones privadas, de bucle local y de metadatos en la nube son rechazadas, y una URL rechazada hace fallar toda la creación — no queda ninguna auditoría a medias. Las páginas aceptadas se obtienen en segundo plano, por lo que un sitio lento nunca bloquea el guardado. Cada ejecución las vuelve a leer y recurre a la instantánea almacenada cuando alguna no es accesible; las instantáneas se actualizan automáticamente cada semana. Usa `fp audits context-refresh <name>` cuando sepas que una página ha cambiado y quieras que se recoja antes de la próxima ejecución.
+
+Envía el informe y las URLs junto con la solicitud de creación, no en una segunda llamada. Una auditoría nueva habilitada vence en el instante en que su fila se confirma, por lo que el contexto escrito después puede ser adelantado por el despachador y perderse en la primera ejecución — la que estás observando. Cámbialo más adelante con `fp audits context-set <name>`, que reemplaza la mitad que indiques y deja la otra intacta.
+
 <Tip>
-  Empieza con una sesión fallida conocida y varias sesiones normales. Esto le proporciona a la auditoría tanto un ejemplo positivo como un conjunto de comparación.
+  Comienza con una sesión fallida conocida y varias sesiones normales. Esto le da a la auditoría tanto un ejemplo positivo como un conjunto de comparación.
 </Tip>
 
 <Info>
-  El contexto de la auditoría se almacena como su propio recurso, por lo que editar una auditoría no elimina accidentalmente el material de referencia.
+  El contexto de auditoría se almacena como su propio recurso. El endpoint de definición rechaza escribirlo en actualizaciones, por lo que una edición ordinaria sin relación a la auditoría nunca puede sobrescribir el informe ni las páginas de referencia.
 </Info>

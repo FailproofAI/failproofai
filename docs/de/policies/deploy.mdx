@@ -1,51 +1,54 @@
 ---
-title: "Richtlinien bereitstellen"
-description: "Eine geprüfte Richtlinienversion auf den vorgesehenen Maschinen ausrollen."
+title: "Policies deployen"
+description: "Eine Policy auf echte Agent-Aktivität beobachten, dann durchsetzen oder zurückrollen."
 icon: "cloud-upload"
 ---
 
-Eine Bereitstellung verbindet eine oder mehrere Richtlinienversionen mit einer Zielgruppe eingetragener Maschinen.
+Deploye eine geprüfte Policy schrittweise auf eine Maschine nach der anderen. Beginne im Beobachtungsmodus.
 
-## Eine Bereitstellung anwenden
+## Rollout über die CLI
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. Gehe zu **Admin → Durchsetzung**, finde die Maschine und klappe ihre Zeile aus.
-    2. Wähle **Bearbeiten**, füge die geprüfte Richtlinienversion hinzu und wähle **Beobachten** oder den durchsetzenden Effekt.
-    3. Wende die Änderung an, warte dann auf den nächsten Check-in der Maschine und bestätige ihren Bereitstellungs- und Abdeckungsstatus.
-    4. Gehe zu **Beobachten → Richtlinie**, um Live-Entscheidungen zu prüfen.
+```bash
+fp policies test ./rule.mjs --tool Bash --command "git push --force" --expect deny
+fp policies publish no-force-push ./rule.mjs
+fp fleet deploy <machine> --add no-force-push:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add no-force-push:enforce
+```
 
-    ![Der Maschinen-Bereitstellungseditor mit Richtlinienversionen, Durchsetzen- und Beobachten-Effekten sowie der Aktion zur Anwendung der Bereitstellung.](/images/dashboard/enforcement-editor.png)
-  </Tab>
-  <Tab title="CLI">
-    Bereitstellen über die CLI mit `fp fleet`. Überprüfe die resultierende Konfiguration, bevor du sie anwendest – `deploy` gibt den vollständigen Plan aus und fragt **nur in einem interaktiven Terminal ohne `--json`** nach. Mit `--json`, mit `--yes` oder bei umgeleitetem stdin (ein CI-Schritt, ein Skript, ein Agent) wird die Konfiguration sofort ohne Plan und ohne Bestätigung angewendet – führe daher zuerst `fp fleet show <machine>` aus, wenn du prüfen möchtest:
-
-    ```bash
-    fp fleet list
-    fp fleet show <machine-id>
-    fp fleet deploy <machine-id> --add no-force-push
-    ```
-
-    `fp fleet diff <machine-id>` zeigt Soll-/Ist-Zustand (eine Maschine gilt als `behind`, bis sie das nächste Mal abfragt), `fp fleet history <machine-id>` listet die Generationen auf, und `fp fleet rollback <machine-id> <generation>` stellt eine davon wieder her – dies schlägt fehl, wenn die betreffende Generation eine inzwischen deaktivierte oder gelöschte Richtlinie referenziert.
-
-    Überprüfe die Maschine selbst mit `failproofai config --status` und nutze nach der Bereitstellung `fp sessions --env production --since 24h` sowie `fp events --event-type hook_completed`, um sicherzustellen, dass Aktivitäten die Cloud erreichen.
-  </Tab>
-</Tabs>
-
-<Steps>
-  <Step title="Version und Zielmaschinen wählen">
-    Stelle eine geprüfte Version bereit, keinen veränderlichen Entwurf. Beginne mit einer Maschine außerhalb der Produktion oder einer kleinen Gruppe, deren Sitzungen du einsehen kannst.
-  </Step>
-  <Step title="Entscheidungen beobachten">
-    Prüfe Treffer, Begründungen, betroffene Tools und Fehlerkennungen, ohne die Arbeit zu blockieren.
-  </Step>
-  <Step title="Durchsetzen und Abdeckung prüfen">
-    Stufe die Richtlinie hoch, nachdem beobachtete Treffer unsichere Aktionen von gültigen getrennt haben. Bestätige dann, dass jede vorgesehene Maschine die Bereitstellung abgerufen hat und Entscheidungen meldet.
-  </Step>
-</Steps>
-
-Maschinen benötigen die Berechtigung `policies:pull`. Die Ereignisberichterstattung wird separat durch `events:add` gesteuert; überprüfe beides, wenn du Cloud-Analyse und -Durchsetzung erwartest.
+Der Beobachtungsmodus wertet die echte Policy aus und protokolliert Nicht-Allow-Entscheidungen, blockiert den Agenten jedoch nicht.
 
 <Warning>
-  Das Enforcement-Management ist ein administrativer Cloud-Workflow. Behandle rein administrative Durchsetzungsrouten nicht wie gewöhnliche Kunden-Endpunkte unter `/v1`.
+  Ein einfaches `--add no-force-push` setzt die Policy sofort durch. Füge `:observe` für einen Shadow-Rollout hinzu.
 </Warning>
+
+Falls die Durchsetzung Probleme verursacht:
+
+```bash
+fp fleet history <machine>
+fp fleet rollback <machine> <generation>
+```
+
+## Deployment über das Dashboard
+
+1. Gehe zu **Admin → Enforcement**.
+2. Öffne die Zielmaschine.
+3. Füge die Policy-Version mit dem Effekt **observe** hinzu.
+4. Wende das Deployment an.
+5. Überprüfe die Ergebnisse unter **Observe → Policy**.
+6. Hebe dieselbe Version auf **enforce** an, wenn die Treffer korrekt sind.
+
+![Der Maschinen-Deployment-Editor mit Policy-Versionen, Enforce- und Observe-Effekten sowie der Aktion zum Anwenden des Deployments.](/images/dashboard/enforcement-editor.png)
+
+## Ein Set ersetzen oder vorab einrichten
+
+- `--remove <id>` entfernt eine einzelne Policy.
+- `--set <ref>...` ersetzt das komplette Policy-Set.
+- `--create` bereitet ein Deployment vor, bevor eine Maschine sich erstmals einbucht.
+- `fp fleet diff <machine>` vergleicht den beabsichtigten und den angewendeten Zustand.
+
+<Note>
+  Ohne Cloud veröffentlichst du ein Pack mit `failproofai publish --effect observe` und prüfst Entscheidungen im lokalen Dashboard.
+</Note>
+
+Maschinen benötigen `policies:pull`, um Deployments zu empfangen, und `events:add`, um Entscheidungen zu melden.

@@ -1,25 +1,34 @@
 ---
 title: "Hooks"
-description: "Đo lường hoạt động hook, kích hoạt và độ trễ riêng biệt với kết quả chính sách."
+description: "Xem khi Failproof AI đánh giá một sự kiện agent và quyết định như thế nào."
 icon: "webhook"
 ---
 
-Hooks hiển thị khi các hook vòng đời của agent chạy và thời gian chúng mất. Các quyết định chính sách là một chế độ xem riêng biệt.
+Một hook là một điểm mà một agent yêu cầu Failproof AI đưa ra quyết định. Hoạt động hook ghi lại sự kiện, chính sách, kết quả và thời gian đánh giá.
+
+## Điều tra hoạt động hook
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Đi tới **Observe → Hooks**.
-    2. Lọc theo môi trường, tên hook, sự kiện kích hoạt, agent hoặc ID phiên.
-    3. Xem lại độ trễ hook và phân phối.
-    4. Chọn một điểm trên biểu đồ hoặc phân đoạn hook để mở các sự kiện bên dưới.
+    Đi tới **Observe → Hooks**. Lọc theo môi trường, sự kiện, agent hoặc phiên.
 
     ![Trang Hooks hiển thị độ trễ được nhóm theo tên hook và sự kiện kích hoạt.](/images/dashboard/hooks.png)
   </Tab>
   <Tab title="CLI">
     ```bash
+    fp guardrails summary --since 24h
+    fp --json events --full --event-type hook_completed --session-id <session-id> --all --limit 500
     fp list hooks
-    fp events --event-type hook_triggered,hook_completed --env production --since 24h
-    fp events --search "PreToolUse" --since 24h
     ```
   </Tab>
 </Tabs>
+
+Theo mặc định, mọi quyết định `deny` và `instruct` được gửi đầy đủ. Các cho phép lặp lại được nhóm lại để giảm tiếng ồn. Đặt `collector.hooks_verbosity` trong `~/.failproofai/config.json` thành `all`, `decisions` hoặc `off`.
+
+<Warning>
+  Hoạt động hook chứng minh rằng đánh giá đã chạy, không phải là harness có thể chặn sự kiện đó. Xem [khả năng thực thi](/vi/reference/harnesses#enforcement-capability). Một cặp harness-event không được liệt kê là chưa được xác minh.
+</Warning>
+
+<Card title="Quyết định chính sách" icon="shield-check" href="/vi/sessions/policy-decisions">
+  Đọc hoạt động tương tự theo kết quả và chính sách.
+</Card>

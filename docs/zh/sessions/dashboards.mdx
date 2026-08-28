@@ -1,43 +1,73 @@
 ---
-title: "仪表板"
-description: "追踪对 Agent 或工作流至关重要的可靠性指标。"
+title: "仪表盘"
+description: "追踪对 Agent 或工作流程最重要的可靠性指标。"
 icon: "layout-dashboard"
 ---
 
-仪表板将已保存的查询整合成一个操作视图。请围绕某个需要做出决策的场景来构建仪表板，而不是把所有可用指标都堆进去。
+仪表盘将已保存的查询整合为一个运营视图。围绕某个需要做出决策的场景来构建仪表盘，而不是把所有可用指标都堆进去。
 
-## 构建仪表板
+仪表盘是云端功能。`localhost:8020` 上的本地仪表盘涵盖策略活动、项目、会话和审计结果，但没有已保存的查询，也没有图块——因此未联网的机器无法在此构建任何内容。请参阅[本地仪表盘](/zh/reference/local-dashboard)。
+
+## 构建仪表盘
 
 <Tabs>
-  <Tab title="仪表板">
+  <Tab title="仪表盘">
     1. 前往 **Analyze → Queries**，创建或打开一个已保存的查询，并验证其结果。
-    2. 选择 **add to dashboard**，然后选择一个已有的仪表板，或在 **Analyze → Dashboards** 下新建一个。
-    3. 打开仪表板，进入编辑模式，排列卡片，并保存布局。
-    4. 当需要修改某个卡片背后的数据或过滤条件时，返回对应查询进行调整。
+    2. 选择 **add to dashboard**，然后选择一个已有的仪表盘，或在 **Analyze → Dashboards** 下新建一个。
+    3. 打开仪表盘，进入编辑模式，排列图块，然后保存布局。
+    4. 当需要修改某个图块背后的数据或过滤条件时，回到对应查询进行编辑。
 
-    ![由已保存查询组成的仪表板，包含事件量、错误、延迟和模型 Token 用量。](/images/dashboard/dashboard-fleet.png)
+    ![由已保存查询组成的仪表盘，涵盖事件量、错误、延迟和模型 token 用量。](/images/dashboard/dashboard-fleet.png)
   </Tab>
   <Tab title="CLI">
-    当前 Cloud CLI 未暴露仪表板的增删改查功能。请使用 CLI 构建并验证已保存的查询，然后在 UI 中将其添加到仪表板。
+    当前 Cloud CLI 未开放仪表盘的 CRUD 操作。请使用 CLI 编写并验证已保存的查询，然后在 UI 中将其添加到仪表盘。
 
     ```bash
     fp query schema
-    fp query create "production error rate" --sql "SELECT ..."
-    fp query run <query-id>
+    fp query run --sql "select count(*) from analytics.events"
+    fp query create "event volume" --sql "select count(*) from analytics.events"
+    fp query run "event volume"
     ```
+
+    建议先用 `--sql` 运行 SQL：它会在同一个只读分析数据库上执行，但不会保存任何内容，这样可以在图块使用之前发现错误的列名。`--sql @file.sql` 可以从文件中读取 SQL 语句。`fp query schema` 会列出可查询的表及其列名；传入表名可将结果缩小到单张表。
+
+    已保存的查询通过**名称**而非 ID 来引用——例如 `fp query run "event volume"`——因为 `fp query list` 默认隐藏原始 ID，除非传入 `--show-id`。也可以使用 UUID 格式的 ID。
+
+    对于带参数的图块，用 `--arg` 绑定各位置参数 `$1..$N`，该参数可重复使用，按顺序绑定：`fp query run <name> --arg checkout-agent`。
+
+    `--limit` 和 `--all` 仅调整表格预览的行数上限；`--json` 始终返回所有行，格式为 `{columns: [{name, type}], rows: [[...]], truncated, elapsed_ms}`。
+
+    | 子命令 | 所需权限 |
+    | --- | --- |
+    | `query list`, `query show`, `query schema` | `queries:read` |
+    | `query create`, `query update` | `queries:write` |
+    | `query run` | `queries:run` |
+    | `query delete` | `queries:delete` |
+
+    所有接受查询**名称**的子命令都会先列出组织的查询进行解析，因此 `query create`、`query update`、`query delete` 和 `query run <name>` 除上表所列权限外，还需要 `queries:read` 权限。只有 `fp query run --sql` 和 `fp query schema` 不需要。
+
+    `fp query` 的所有命令在 API 密钥模式下均不受限制，因此仪表盘的查询可以在 CI 环境中创建和验证。
   </Tab>
 </Tabs>
 
-推荐的仪表板分组包括：
+常用的仪表盘分组包括：
 
-- **模型：** 调用量、延迟、Token 用量、错误率和评估分数。
+- **模型：** 调用量、延迟、token 用量、错误率和评估分数。
 - **评估：** 按 Agent 或环境划分的成功率和分数趋势。
-- **工具：** 调用量、失败率、耗时和重复调用次数。
+- **工具：** 调用量、失败率、耗时和重复调用。
 - **Hooks 与策略：** 决策次数、拒绝次数和策略匹配率。
 - **自定义工作流指标：** 来自自定义事件字段和 SQL 的结果。
 
-从一个已保存的查询开始，验证其结果，再将其添加为卡片。明确设置生产环境和开发环境的过滤条件，避免测试流量掩盖回归问题。
+从一个已保存的查询开始，验证结果后将其添加为图块。明确设置生产环境和开发环境的过滤条件，避免测试流量掩盖回归问题。
+
+<Warning>
+  通过计数行数来统计 hook 图块会导致分母错误。在默认的 hook 详细程度下，每次 deny 和 instruct 都会以 `hook_triggered` / `hook_completed` 事件对的形式发出，观察模式下的 allow 也是如此；普通的 allow 则按会话、事件、工具和策略归因，每分钟汇总为一条携带 `failproofai_allow_count` 字段的 `hook_completed`。请对该字段求和，而非计数行数——否则评估了数万次调用的集群看起来只评估了数百次。请参阅[策略决策](/zh/sessions/policy-decisions)和 [Hooks](/zh/sessions/hooks)。
+</Warning>
 
 <Tip>
-  为每个仪表板指定一名负责人，并明确一个对应的核心问题，例如："checkout-agent 的可靠性是否比上周更差？"
+  为每个仪表盘指定一个负责人，并设定一个明确的响应问题，例如"checkout-agent 的可靠性是否比上周更差？"
 </Tip>
+
+<Card title="查询" icon="database" href="/zh/sessions/queries">
+  编写、保存和共享仪表盘中每个图块所读取的 SQL。
+</Card>

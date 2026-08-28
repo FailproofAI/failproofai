@@ -1,53 +1,103 @@
 ---
 title: "쿼리"
-description: "재사용 가능한 SQL로 세션, 이벤트, 평가 데이터를 탐색합니다."
+description: "재사용 가능한 SQL로 세션, 이벤트, 평가 데이터를 탐색하세요."
 icon: "database"
 ---
 
-쿼리는 대시보드, 감사, 조사 아래에 있는 유연한 계층입니다. 임시 SQL로 아이디어를 검증한 후, 반복 워크플로에 포함될 때 쿼리를 저장하세요.
+쿼리는 대시보드, 감사, 조사 아래에 있는 유연한 레이어입니다. 임시 SQL로 아이디어를 테스트하고, 반복 워크플로의 일부가 되면 쿼리를 저장하세요.
 
 ## 쿼리 생성 및 실행
 
 <Tabs>
   <Tab title="대시보드">
-    1. **Analyze → Queries**로 이동하여 **new query**를 선택합니다.
-    2. 스키마 브라우저를 열고 이벤트, 세션, 평가 데이터에서 필드를 선택합니다.
-    3. SQL을 작성하고 필요한 경우 파라미터를 추가한 후 쿼리를 실행합니다.
-    4. 명확한 이름과 설명으로 저장한 후, 결과를 모니터링해야 하는 경우 **add to dashboard**를 사용합니다.
+    1. **분석 → 쿼리**로 이동하여 **새 쿼리**를 선택합니다.
+    2. 스키마 브라우저를 열고 이벤트, 세션 또는 평가 데이터에서 필드를 선택합니다.
+    3. SQL을 작성하고 필요에 따라 파라미터를 추가한 후 쿼리를 실행합니다.
+    4. 명확한 이름과 설명으로 저장하고, 결과를 모니터링해야 할 경우 **대시보드에 추가**를 사용합니다.
 
-    쿼리 에디터는 이벤트 스키마, SQL, 파라미터, 결과 미리보기를 통합하여 저장 전에 질문을 검증할 수 있습니다.
+    쿼리 에디터는 이벤트 스키마, SQL, 파라미터, 결과 미리보기를 결합하여 저장 전에 질문을 검증할 수 있도록 합니다.
 
-    ![스키마 브라우저와 실시간 결과 그리드가 포함된 SQL 쿼리 에디터.](/images/dashboard/query-lab.png)
+    ![스키마 브라우저와 실시간 결과 그리드가 있는 SQL 쿼리 에디터.](/images/dashboard/query-lab.png)
 
-    저장된 쿼리는 공유 라이브러리에 표시되며, 팀원들이 다시 실행하거나 결과를 대시보드에 추가할 수 있습니다.
+    저장된 쿼리는 공유 라이브러리에 표시되며, 팀원들이 재실행하거나 결과를 대시보드에 추가할 수 있습니다.
 
-    ![재사용 가능한 기본 제공 및 커스텀 쿼리가 포함된 저장된 쿼리 라이브러리.](/images/dashboard/queries.png)
+    ![재사용 가능한 기본 제공 쿼리와 커스텀 쿼리가 포함된 저장 쿼리 라이브러리.](/images/dashboard/queries.png)
 
     SQL을 다시 열지 않아도 결과를 이해할 수 있도록 명확한 이름과 설명을 사용하세요.
   </Tab>
   <Tab title="CLI">
+    SQL의 순서대로 작업하세요. 스키마를 확인하고, 임시로 구문을 실행한 후, 이름이 생길 만큼 가치 있어지면 저장합니다.
+
     ```bash
     fp query schema
-    fp query create "retry loops" --sql "SELECT ..."
-    fp query run <query-id>
-    fp query show <query-id>
-    fp query update <query-id> --sql "SELECT ..."
+    fp query schema events
+
+    fp query run --sql "SELECT agent_id, count() FROM analytics.events GROUP BY agent_id"
+    fp query run --sql @retry-loops.sql
+
+    fp query create "retry loops" --sql @retry-loops.sql --description "repeated tool calls per session"
     ```
 
-    `fp query list`로 ID를 찾고, `fp query delete <query-id>`로 저장된 쿼리를 삭제합니다.
+    이후의 모든 작업은 id가 아닌 쿼리의 **이름**을 사용합니다.
+
+    ```bash
+    fp query list
+    fp query run "retry loops"
+    fp query show "retry loops"
+    fp query update "retry loops" --sql @retry-loops-v2.sql --yes
+    fp query delete "retry loops" --yes
+    ```
+
+    이름은 조직 내에서 고유하며, 이것이 안전한 핸들로 사용될 수 있는 이유입니다. UUID 형식의 id도 이름이 사용되는 곳이라면 어디서나 허용되지만, `fp query list`는 id를 출력하지 않으며 컬럼은 `name`, `description`, `created by`, `created`(쿼리가 마지막으로 편집된 시점이 아닌 생성된 시점)입니다. 짧은 id 컬럼을 보려면 `--show-id`를 추가하거나, 항상 전체 id를 포함하는 `--json`을 사용하세요.
+
+    저장된 쿼리의 위치 파라미터는 `--arg`(별칭 `--param`)로 바인딩하며, `$1..$N` 순서에 맞게 반복합니다.
+
+    ```bash
+    fp query run <query-name> --arg agent-codegen --arg 0.5
+    ```
+
+    | 서브커맨드 | 권한 | 비고 |
+    | --- | --- | --- |
+    | `fp query schema [TABLE]` | `queries:read` | 테이블 이름을 전달하면 해당 컬럼으로 필터링됩니다. |
+    | `fp query list` | `queries:read` | `--show-id`로 id를 표시하고, `--fields`로 원시 필드를 프로젝션합니다. |
+    | `fp query show <name>` | `queries:read` | 메타데이터 카드와 전체 SQL을 표시합니다. |
+    | `fp query create <name> --sql ...` | `queries:write` | 이름 충돌은 사전에 거부됩니다. |
+    | `fp query update <name>` | `queries:write` | `--name`, `--sql`, `--description` 중 하나 이상을 전달합니다. 먼저 확인 후 진행하며, 변경 사항이 없으면 저장 없이 종료됩니다. |
+    | `fp query delete <name>` | `queries:delete` | 삭제될 내용 미리보기와 함께 먼저 확인합니다. |
+    | `fp query run <name>` 또는 `--sql ...` | `queries:run` | 둘 중 정확히 하나만 사용합니다. `--limit`과 `--all`로 테이블 미리보기를 조정합니다. |
+
+    `update`와 `delete`는 인터랙티브 터미널에서만 확인을 요청합니다. `--json` 사용 시 또는 stdin이 리디렉션된 경우 확인 없이 진행되므로, `--yes`는 스크립트가 아닌 터미널 사용 시에 적용됩니다.
+
+    쿼리는 읽기 전용 분석 풀에서 실행됩니다. `--sql @file.sql`은 파일에서 구문을 읽으며, 버전 관리에 보관할 가치가 있는 형식입니다.
   </Tab>
 </Tabs>
+
+## 쿼리 스크립팅
+
+`fp --json query run`은 테이블 미리보기 제한에 관계없이 모든 행을 반환하며, `{columns: [{name, type}], rows: [[...]], truncated, elapsed_ms}` 형식입니다.
+
+```bash
+fp --json query run "retry loops" | jq '.rows | length'
+```
+
+`fp --json query schema`는 `{schema, columns: [{table, column, type, nullable}]}`를 반환하며, 이는 스키마 브라우저의 머신 리더블 형식입니다.
+
+두 가지 실패는 텍스트 파싱이 아닌 종료 코드로 처리하는 것이 좋습니다. 일치하는 이름이 없으면 `✗ no query named "…"`를 렌더링하고 6으로 종료하며, SQL 또는 실행 오류는 서버의 상세 정보가 포함된 `✗ query failed — …`를 렌더링합니다.
 
 ## 주요 활용 사례
 
 - 동일한 도구에 반복 호출이 있는 세션을 찾습니다.
 - 모델 또는 환경별 평가 점수를 비교합니다.
-- 사람의 대기와 재개 사이의 시간을 측정합니다.
-- 정책 거부 후 성공적인 대안이 이어지는 패턴을 식별합니다.
+- 사람이 대기한 시점과 재개 시점 사이의 시간을 측정합니다.
+- 정책 거부 후 성공적인 대안이 이어진 경우를 식별합니다.
 - 감사를 위한 코호트를 구성합니다.
 
-익숙하지 않은 필드를 대상으로 쿼리를 작성하기 전에 **Queries → Schema**를 먼저 확인하세요. 명시적인 시간 및 환경 필터를 사용하고, 탐색 중에는 결과 개수 제한을 유지하세요.
+익숙하지 않은 필드에 쿼리를 작성하기 전에 스키마를 먼저 열어보세요. 대시보드의 **분석 → 쿼리** 또는 `fp query schema`를 사용합니다. 명시적인 시간 및 환경 필터를 사용하고, 탐색 중에는 결과 제한을 유지하세요.
 
 <Warning>
-  쿼리는 의심스러운 패턴을 식별할 수 있지만, 그 자체만으로 장애 모드를 확정짓지는 않습니다. 결과를 정책으로 전환하기 전에 대표적인 트레이스를 열거나 감사를 실행하세요.
+  쿼리는 의심스러운 패턴을 식별할 수 있지만, 그 자체로 실패 원인을 확정하지는 않습니다. 결과를 정책으로 전환하기 전에 대표적인 트레이스를 열거나 감사를 실행하세요.
 </Warning>
+
+<Card title="대시보드" icon="layout-dashboard" href="/ko/sessions/dashboards">
+  결과를 모니터링할 가치가 있다고 판단되면 저장된 쿼리를 공유 보드에 추가하세요.
+</Card>

@@ -1,74 +1,56 @@
 ---
 title: "Auditer l'historique local de l'agent"
-description: "Analysez hors ligne les historiques des CLI d'agents pris en charge et examinez localement les comportements risqués ou inutiles."
+description: "Analyser l'historique de l'agent sur cette machine pour détecter les comportements risqués ou inutiles."
 icon: "laptop-minimal-check"
 ---
 
-Effectuez un audit local pour une revue immédiate et privée avant de connecter une machine à Failproof AI Cloud. Il analyse les historiques d'agents déjà stockés sur votre machine, rejoue l'activité des outils via les politiques intégrées, et ouvre un tableau de bord de résultats en local.
+Un audit local lit l'historique de l'agent déjà présent sur cette machine et affiche les résultats à l'adresse `http://localhost:8020/audit`. Aucun compte n'est nécessaire.
 
-## Lancer un audit interactif
+```bash
+failproofai audit
+```
 
-<Tabs>
-  <Tab title="Tableau de bord">
-    L'audit local démarre depuis le CLI car il doit découvrir les historiques sur la machine en cours. Exécutez `failproofai audit` ; après l'analyse, Failproof AI lance le tableau de bord intégré et ouvre **http://localhost:8020/audit**.
+L'analyse couvre l'historique de tous les harnais pris en charge détectés sur la machine. Elle rejoue le catalogue de 39 politiques intégré à cette version ; les packs installés et les politiques personnalisées ne sont pas inclus.
 
-    Dans la vue d'audit, examinez le nombre de sessions, d'appels d'outils, de projets et de correspondances de politiques. Commencez par les résultats les plus fréquents, puis inspectez le projet concerné et l'historique de l'agent avant d'activer l'application des politiques.
+## Lire les résultats
 
-    <Info>Le tableau de bord d'audit local est distinct de **Analyser → Audits** dans Failproof AI Cloud. Les audits locaux restent sur la machine et ne nécessitent ni compte ni connexion réseau.</Info>
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    npm install -g failproofai
-    failproofai audit
-    ```
+Commencez par les résultats les plus fréquents, puis ouvrez la session concernée avant d'activer l'application des règles.
 
-    La commande effectue une analyse complète de chaque historique pris en charge qu'elle trouve. La commande actuelle n'accepte pas de filtres tels que `--since`, `--cli`, `--project`, `--port` ou `--no-open`.
+Trois limites sont à retenir :
 
-    Laissez le processus s'exécuter pendant l'utilisation du tableau de bord local. Appuyez sur <kbd>Ctrl</kbd>+<kbd>C</kbd> lorsque vous avez terminé.
-  </Tab>
-</Tabs>
+- L'audit reconstruit les événements d'outil, pas `Stop`, donc les politiques `require-*-before-stop` n'apparaissent pas.
+- Huit vérifications « Audit uniquement » identifient des patterns inutiles sans politique de correspondance exacte.
+- `warn-repeated-tool-calls` est ignoré car le rejouer modifierait l'état côté transcript.
 
-Les adaptateurs d'audit actuels peuvent lire les historiques de Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory, Devin, Antigravity et Goose. Seuls les historiques disponibles localement sont analysés.
+Pour un résultat applicable, utilisez la commande de politique indiquée dans le résultat. Consultez la [prise en charge de l'application par harnais](/fr/reference/harnesses#enforcement-capability) avant de vous y fier.
 
-## Planifier des audits locaux récurrents
+Le résultat mis en cache se trouve dans `~/.failproofai/audit/dashboard.json` et expire après sept jours.
 
-<Tabs>
-  <Tab title="Tableau de bord">
-    Ouvrez **Paramètres** dans le tableau de bord local, activez les audits planifiés, choisissez l'intervalle et renseignez l'adresse e-mail qui doit recevoir les résultats. Le tableau de bord et le CLI mettent à jour la même configuration machine.
-  </Tab>
-  <Tab title="CLI">
-    Activez un audit hebdomadaire et envoyez les résultats à l'adresse indiquée :
+## Planifier des analyses
 
-    ```bash
-    failproofai audit --schedule 7 --email reliability@example.com
-    failproofai audit --status
-    ```
+```bash
+failproofai audit --schedule 7
+failproofai audit --status
+failproofai audit --no-schedule
+```
 
-    L'intervalle accepte des valeurs de 1 à 90 jours et vaut 7 par défaut si omis. La première configuration vous connecte si nécessaire ; `--email` fournit l'adresse du rapport sans demande de confirmation.
+L'intervalle accepte des valeurs de 1 à 90 jours, avec une valeur par défaut de 7. La première planification nécessite une connexion interactive. Le service en arrière-plan doit être en cours d'exécution.
 
-    Arrêtez la planification sans supprimer l'historique d'audit local :
+### Ce qui quitte la machine
 
-    ```bash
-    failproofai audit --no-schedule
-    ```
-  </Tab>
-</Tabs>
+Un audit interactif n'envoie aucun résultat. La télémétrie CLI anonyme est activée par défaut ; désactivez-la avec `FAILPROOFAI_TELEMETRY_DISABLED=1`.
 
-Le démon exécute les analyses planifiées en arrière-plan, actualise le résultat mis en cache utilisé par le tableau de bord local, et envoie le rapport configuré par e-mail. Utilisez `failproofai audit` pour lancer immédiatement une analyse interactive.
-
-## Passer des preuves locales aux opérations Cloud
-
-Un audit local constitue une base de référence rapide. Connectez la machine à Failproof AI Cloud lorsque vous avez besoin de traces partagées, d'audits de population récurrents, de résultats et de problèmes, d'alertes, de déploiement de politiques à l'échelle de l'organisation ou d'une vue de la santé du parc.
-
-<CardGroup cols={2}>
-  <Card title="Créer un audit Cloud" icon="scan-search" href="/fr/audits/setup">
-    Définissez un objectif récurrent, une population, une fenêtre de preuves et des canaux de réponse.
-  </Card>
-  <Card title="Activer une politique" icon="shield-check" href="/fr/start/first-policy">
-    Validez localement, publiez de manière réfléchie, et déployez d'abord sur un groupe de machines restreint.
-  </Card>
-</CardGroup>
+Après avoir opté pour la planification, chaque analyse planifiée envoie l'identifiant de la machine, son libellé, la plateforme et la fenêtre d'analyse. Si des patterns nuisibles sont détectés, elle envoie également un résumé limité comprenant des comptages, des horodatages et jusqu'à trois exemples expurgés. Les analyses sans résultat n'envoient aucune donnée et aucun e-mail.
 
 <Warning>
-  Le résultat d'un audit constitue des éléments à examiner, non la preuve que chaque action signalée est dangereuse. Confirmez le contexte avant de transformer un résultat en règle bloquante.
+  Les résultats d'audit constituent des éléments à examiner, non la preuve que chaque action signalée est dangereuse. Vérifiez la session avant de transformer un résultat en blocage d'application.
 </Warning>
+
+<CardGroup cols={2}>
+  <Card title="Audits cloud" icon="scan-search" href="/fr/audits/setup">
+    Exécutez des audits partagés et récurrents sur plusieurs agents et machines.
+  </Card>
+  <Card title="Installer un pack de politiques" icon="package" href="/fr/policies/packs">
+    Ajoutez des politiques vérifiées après avoir confirmé un résultat.
+  </Card>
+</CardGroup>

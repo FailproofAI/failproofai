@@ -1,28 +1,62 @@
 ---
----
 title: "החלטות מדיניות"
-description: "ראה אילו מדיניות הוערכו, חסמו, הוראו או אישרו."
+description: "ראה אילו מדיניות הוערכו, הנחו, חסמו או ניטרו."
 icon: "shield-check"
 ---
 
-Policy decisions מסביר מה עשה האכיפה. השתמש בזה כדי לאמת גלגול, למדוד שיעור חסימה, ולמצוא פעילות לא מוגנת.
+החלטות מדיניות מראות מה Failproof AI עשה במהלך הרצת סוכן.
 
 <Tabs>
   <Tab title="Dashboard">
-    1. עבור אל **Observe → policy** ובחר את טווח הזמן וכן בחר במכונה אחת (אופציונלי).
-    2. בדוק פעולות מוערכות, חסימות, שיעור חסימה, החלטות Cloud, פעולות לא מוגנות, ופעילות בעת השהייה.
-    3. סנן את טבלת ממפת המדיניות והשקף הקצאות שפורסמו.
-    4. בחר בנקודת גרף כדי לפתוח את ההחלטות ותיקיות הישיבה שלהן.
+    עבור אל **Observe → policy** כדי לבדוק החלטות, שיעור חסימה, מכונות והקצאות שפורסמו.
 
-    ![עמוד Policy המציג סכומי החלטות, מסנן מכונה, פעילות אכיפה לאורך זמן, וטבלת ממפת המדיניות.](/images/dashboard/policy-observe.png)
+    ![דף Policy המציג סך הכל החלטות, מסנן מכונה, פעילות אכיפה לאורך זמן וטבלת מיפוי מדיניות.](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
     ```bash
-    fp events --event-type hook_completed --env production --since 24h
-    fp events --search "deny" --since 24h
+    fp guardrails summary --since 24h
+    fp guardrails timeline --since 24h
+    failproofai policies
     failproofai config --status
     ```
 
-    השתמש ב-`failproofai` למצב אכיפה מקומי של המכונה וב-`fp` לחקירת אירועי Cloud.
+    `--since` מקבל `1h`, `6h`, `24h`, או `7d`. הוסף `--machine <id>` כדי להתמקד במכונה אחת.
   </Tab>
 </Tabs>
+
+## קריאת הצבה של observe
+
+מצב Observe מריץ את המדיניות האמיתית וחותם כל החלטה `deny` או `instruct`. הסוכן עדיין מורשה להמשיך.
+
+```bash
+fp fleet deploy <machine> --add <policy>:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add <policy>:enforce
+```
+
+<Warning>
+  `--add <policy>` בודד אוכף מיד כאשר למדיניות אין הצבה קיימת. הוסף `:observe` לצבירת צל.
+</Warning>
+
+רק החלטות שנצפו שאינן allow חותמות. קצר זמן חותם כ-allow, מכיוון שזה גם מה שקורה במצב enforce.
+
+deny שנחתם אינו הוכחה שהערכה עצרה את הפעולה. denies של Tool-call מאומתים בכל 12 הערכות התומכות; אירועים אחרים משתנים. ראה [יכולת אכיפה](/he/reference/harnesses#enforcement-capability).
+
+## חקור תוצאה לא צפויה
+
+| מה שאתה רואה | בדוק |
+| --- | --- |
+| אין החלטות | `failproofai config --status` ואם ההפעלה מושהית |
+| הרבה שלילות ללא שם מדיניות | [התנהגות כשל של מדיניות](/he/policies/failure-behavior) |
+| כל פעולה מוגנת נדחית | האם שירות `failproofaid` בריא |
+| deny שאתה לא יכול להשבית | `block-failproofai-commands` תמיד פעיל |
+| אין נתונים עבור `--env production` | מכונות חדשות משתמשות בסביבה `local` |
+
+<CardGroup cols={2}>
+  <Card title="Fleet deployments" icon="server-cog" href="/he/policies/fleet">
+    השווה מדיניויות מעוזרות ופעולות.
+  </Card>
+  <Card title="Failure behavior" icon="triangle-alert" href="/he/policies/failure-behavior">
+    הבן החלטות סגורות בכשל.
+  </Card>
+</CardGroup>

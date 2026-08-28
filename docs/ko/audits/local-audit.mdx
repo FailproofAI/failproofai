@@ -1,74 +1,56 @@
 ---
-title: "로컬 에이전트 기록 감사"
-description: "지원되는 에이전트 CLI 기록을 오프라인으로 스캔하고 위험하거나 낭비적인 동작을 로컬에서 검토합니다."
+title: "로컬 에이전트 히스토리 감사"
+description: "이 머신의 에이전트 히스토리를 스캔하여 위험하거나 낭비적인 동작을 탐지합니다."
 icon: "laptop-minimal-check"
 ---
 
-Failproof AI Cloud에 머신을 연결하기 전에 로컬 감사를 사용하면 즉각적이고 비공개적인 검토를 수행할 수 있습니다. 머신에 이미 저장된 에이전트 기록을 스캔하고, 내장 정책을 통해 도구 활동을 재현하며, 로컬 결과 대시보드를 엽니다.
+로컬 감사는 이 머신에 이미 저장된 에이전트 히스토리를 읽어 `http://localhost:8020/audit`에서 결과를 엽니다. 계정이 필요하지 않습니다.
 
-## 대화형 감사 실행
+```bash
+failproofai audit
+```
 
-<Tabs>
-  <Tab title="대시보드">
-    로컬 감사는 현재 머신에서 기록을 검색해야 하므로 CLI에서 시작합니다. `failproofai audit`을 실행하면 스캔 완료 후 Failproof AI가 번들 대시보드를 시작하고 **http://localhost:8020/audit**를 엽니다.
+스캔은 발견된 모든 지원 하네스의 히스토리를 대상으로 합니다. 이 버전에 내장된 39개 정책 카탈로그를 재실행하며, 설치된 팩과 커스텀 정책은 포함되지 않습니다.
 
-    감사 뷰에서 세션 수, 도구 호출 수, 프로젝트 수, 정책 적중 수를 검토합니다. 자주 발생하는 결과부터 시작한 다음 영향을 받은 프로젝트와 에이전트 기록을 검사한 후 적용을 활성화하세요.
+## 결과 읽기
 
-    <Info>로컬 감사 대시보드는 Failproof AI Cloud의 **분석 → 감사**와는 별개입니다. 로컬 감사는 머신에 유지되며 계정이나 네트워크 연결이 필요하지 않습니다.</Info>
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    npm install -g failproofai
-    failproofai audit
-    ```
+가장 자주 발견된 항목부터 시작한 뒤, 적용을 활성화하기 전에 해당 세션을 열어 확인하세요.
 
-    이 명령은 발견된 모든 지원 기록의 전체 스캔을 수행합니다. 현재 명령은 `--since`, `--cli`, `--project`, `--port`, `--no-open`과 같은 필터를 지원하지 않습니다.
+세 가지 제한 사항이 있습니다:
 
-    로컬 대시보드를 사용하는 동안 프로세스를 실행 상태로 유지하세요. 완료되면 <kbd>Ctrl</kbd>+<kbd>C</kbd>를 누르세요.
-  </Tab>
-</Tabs>
+- 감사는 `Stop`이 아닌 도구 이벤트를 재구성하므로, `require-*-before-stop` 정책은 표시되지 않습니다.
+- 8개의 "감사 전용" 검사는 정확히 매칭되는 정책 없이 낭비적인 패턴을 식별합니다.
+- `warn-repeated-tool-calls`는 재실행 시 트랜스크립트 측 상태를 변경할 수 있어 건너뜁니다.
 
-현재 감사 어댑터는 Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory, Devin, Antigravity, Goose의 기록을 읽을 수 있습니다. 로컬에서 사용 가능한 기록만 스캔됩니다.
+적용 가능한 발견 항목에 대해서는 결과에 표시된 정책 명령어를 사용하세요. 적용 전에 [하네스 적용 지원](/ko/reference/harnesses#enforcement-capability)을 먼저 확인하세요.
 
-## 반복 로컬 감사 예약
+캐시된 결과는 `~/.failproofai/audit/dashboard.json`에 저장되며 7일 후 만료됩니다.
 
-<Tabs>
-  <Tab title="대시보드">
-    로컬 대시보드에서 **설정**을 열고, 예약된 감사를 활성화한 다음, 간격을 선택하고 결과를 받을 이메일 주소를 설정합니다. 대시보드와 CLI는 동일한 머신 구성을 업데이트합니다.
-  </Tab>
-  <Tab title="CLI">
-    주간 감사를 활성화하고 결과를 지정된 주소로 전송합니다:
+## 스캔 예약
 
-    ```bash
-    failproofai audit --schedule 7 --email reliability@example.com
-    failproofai audit --status
-    ```
+```bash
+failproofai audit --schedule 7
+failproofai audit --status
+failproofai audit --no-schedule
+```
 
-    간격은 1~90일을 허용하며 생략 시 기본값은 7입니다. 최초 설정 시 필요한 경우 로그인을 안내하며, `--email`은 별도의 프롬프트 없이 보고서 주소를 지정합니다.
+간격은 1~90일을 허용하며 기본값은 7일입니다. 처음 예약할 때는 대화형 로그인이 필요합니다. 백그라운드 서비스가 실행 중이어야 합니다.
 
-    로컬 감사 기록을 삭제하지 않고 예약을 중지합니다:
+### 머신 외부로 전송되는 데이터
 
-    ```bash
-    failproofai audit --no-schedule
-    ```
-  </Tab>
-</Tabs>
+대화형 감사는 발견 항목을 전송하지 않습니다. 익명 CLI 텔레메트리는 기본적으로 활성화되어 있으며, `FAILPROOFAI_TELEMETRY_DISABLED=1`로 비활성화할 수 있습니다.
 
-데몬은 예약된 스캔을 백그라운드에서 실행하고, 로컬 대시보드에서 사용하는 캐시된 결과를 새로 고치며, 설정된 보고서를 이메일로 전송합니다. 즉시 대화형 스캔을 실행하려면 `failproofai audit`을 사용하세요.
-
-## 로컬 증거에서 Cloud 운영으로 전환
-
-로컬 감사는 빠른 기준선 검토입니다. 공유 추적, 반복 집단 감사, 결과 및 이슈, 알림, 조직 전체 정책 배포, 또는 플릿 상태 관리가 필요한 경우 머신을 Failproof AI Cloud에 연결하세요.
-
-<CardGroup cols={2}>
-  <Card title="Cloud 감사 생성" icon="scan-search" href="/ko/audits/setup">
-    반복 목표, 대상 집단, 증거 기간, 응답 채널을 정의합니다.
-  </Card>
-  <Card title="정책 활성화" icon="shield-check" href="/ko/start/first-policy">
-    로컬에서 검증하고, 신중하게 게시하며, 먼저 소규모 머신 그룹에 배포합니다.
-  </Card>
-</CardGroup>
+예약을 선택한 후에는 각 예약 스캔 시 머신 ID, 레이블, 플랫폼, 스캔 기간이 전송됩니다. 유해한 패턴이 발견된 경우에는 횟수, 타임스탬프, 최대 3개의 편집된 예시가 포함된 제한적인 요약도 함께 전송됩니다. 문제 없는 스캔은 발견 항목이나 이메일을 전송하지 않습니다.
 
 <Warning>
-  감사 출력은 검토를 위한 증거이지, 플래그된 모든 작업이 안전하지 않다는 증명이 아닙니다. 결과를 차단 적용으로 전환하기 전에 컨텍스트를 확인하세요.
+  감사 결과는 검토를 위한 근거이지, 플래그된 모든 작업이 안전하지 않다는 증거가 아닙니다. 발견 항목을 차단 적용으로 전환하기 전에 반드시 세션을 확인하세요.
 </Warning>
+
+<CardGroup cols={2}>
+  <Card title="클라우드 감사" icon="scan-search" href="/ko/audits/setup">
+    에이전트와 머신 전체에 걸쳐 공유되는 반복 감사를 실행합니다.
+  </Card>
+  <Card title="정책 팩 설치" icon="package" href="/ko/policies/packs">
+    발견 항목을 확인한 후 검토된 정책을 추가합니다.
+  </Card>
+</CardGroup>

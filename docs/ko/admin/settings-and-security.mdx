@@ -1,68 +1,37 @@
 ---
 title: "설정 및 보안"
-description: "운영 설정을 구성하고 에이전트 데이터에 대한 정책을 신중하게 결정하세요."
-icon: "lock-keyhole"
+description: "조직 기본값, 데이터 처리, 머신 자격 증명을 관리합니다."
+icon: "shield"
 ---
 
-Settings를 사용하여 배포별 운영 값과 모델 컨텍스트 윈도우 오버라이드를 관리하세요. API 또는 CLI를 통해 값을 변경하기 전에 설정 스키마를 먼저 확인하세요.
+조직 설정은 해당 Cloud 조직의 모든 구성원에게 영향을 미칩니다. **Admin → settings**에서 변경하거나 `fp settings` 명령을 사용하세요.
 
-## 조직 설정 변경
+```bash
+fp settings list
+fp settings set <key> <value>
+```
 
-<Tabs>
-  <Tab title="대시보드">
-    1. **Administration → Settings**로 이동하여 설정 그룹을 찾고, 설명과 현재 소스를 확인합니다.
-    2. 값을 변경하고 저장합니다.
-    3. 모델 컨텍스트 윈도우의 경우, 모델 오버라이드를 추가하거나 업데이트하고 유효 한도를 확인합니다.
-    4. 변경된 값에 의존하는 세션 및 메트릭을 다시 확인합니다.
+## 데이터 처리
 
-    ![조직 인증 및 운영 설정을 보여주는 Settings 페이지.](/images/dashboard/settings.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp settings list
-    fp settings schema
-    fp settings set <key> --value <scalar>
-    fp settings set alerts.email_default_recipients \
-      --json-value '["oncall@example.com"]'
-    ```
+연결된 머신은 기본적으로 정책 결정 사항과 전체 세션 기록을 전송합니다. 결정 사항만 전송하려면, 머신을 연결한 후 `~/.failproofai/config.json`의 `collector.sessions`를 `false`로 설정하세요. 현재 `--no-transcripts` 설정 플래그는 해당 설정을 적용하지 않습니다.
 
-    설치된 CLI에서 사용하는 값 타입과 확인 플래그는 `fp settings set --help`를 실행하여 확인하세요.
-  </Tab>
-</Tabs>
+자격 증명은 업로드 전 머신에서 제거되지만, 이는 최소한의 안전 장치일 뿐 접근 제어를 대체하지 않습니다.
 
-## 데이터 처리 정책
+로컬 전용으로 사용하는 경우 계정이 필요 없습니다. 세션 기록과 감사 내역은 머신에 저장되며, 예외적으로 예약된 로컬 감사의 경우 사용자가 동의한 후에만 머신 식별 정보와 제한된 요약 정보를 전송합니다. 익명 CLI 원격 측정은 `FAILPROOFAI_TELEMETRY_DISABLED=1`로 비활성화할 수 있습니다.
 
-Failproof AI CLI를 연결하면 기본적으로 트랜스크립트가 전송됩니다. 이는 추적 및 감사 기능이 해당 내용에 의존하기 때문입니다. 프롬프트, 파일 내용, 터미널 입력이 로컬에 유지되어야 하는 경우 `--no-transcripts`를 사용하세요. 훅 활동 및 정책 결정은 계속 보고될 수 있습니다.
+## 자격 증명
 
-로컬 수집 자격 증명은 비밀이 아닌 데몬 설정과 별도로 저장되며, 제한적인 권한으로 기록됩니다. API 키는 여전히 프로덕션 시크릿으로 관리해야 합니다.
+머신 토큰은 `~/.failproofai/` 디렉토리에 소유자 전용 권한으로 저장됩니다. 서비스 정의에는 기록되지 않습니다.
 
-## 조직 설정 참조
+사람, 자동화, 머신에 대해 별도의 키를 사용하세요. 각각 필요한 권한만 부여하고, 소유권이 변경될 때 교체하며, 머신이나 워크플로가 폐기될 때 revoke하세요.
 
-대시보드에서 편집 가능한 모든 설정은 조직 범위입니다. 배포 전체에 영향을 미치는 동작은 서버 환경 설정으로 유지됩니다.
+## 체크리스트
 
-| 키 | 기본값 | 목적 |
-| --- | --- | --- |
-| `allowed_sign_ins` | `[]` | 기존 멤버를 특정 이메일 또는 `*@domain` 형식으로 제한합니다. 빈 목록은 추가 제한이 없음을 의미합니다. |
-| `session_ttl_secs` | `86400` | 대시보드 세션 유효 기간으로, 허용 범위는 60초~30일입니다. |
-| `otp_ttl_secs` | `600` | OTP 및 매직 링크 유효 기간으로, 허용 범위는 60~1800초입니다. |
-| `alerts.email_default_recipients` | `[]` | 알림 이메일 채널에서 수신자를 별도로 지정하지 않을 때 사용되는 기본 수신자 목록입니다. |
-| `alerts.slack_default_webhook` | 비어 있음 | 기본 Slack incoming-webhook URL입니다. |
-| `alerts.webhook_default_url` | 비어 있음 | 기본 범용 JSON webhook URL입니다. |
-| `alerts.webhook_signing_secret` | 비어 있음 | `X-AgentEye-Signature` 헤더에 사용되는 HMAC-SHA256 키로, 조회 시 마스킹됩니다. |
-| `alerts.enabled_channels` | email, Slack, webhook | 알림 규칙이 발송할 수 있는 조직 전체 채널 종류입니다. |
-| `default_user_permissions` | `standard` | 새 초대에 미리 선택되는 명명된 권한 집합입니다. |
+- 필요한 최소한의 권한만 요청하세요.
+- 전체 콘텐츠가 불필요한 경우 `collector.sessions`를 `false`로 설정하세요.
+- 강제 정책을 배포할 수 있는 대상을 검토하세요.
+- 정책을 적용하기 전에 observe 모드에서 테스트하세요.
+- 머신 레이블을 명확하게 유지하고 머신 ID를 안정적으로 관리하세요.
+- 연결 설정을 변경한 후 `failproofai config --status`를 실행하세요.
 
-`allowed_sign_ins`는 접근을 부여하는 것이 아니라 필터 역할을 합니다. 해당 사람은 이미 조직 멤버여야 합니다. 모든 멤버를 허용하려면 빈 목록을 사용하세요. 단독 값 `*`는 거부됩니다. 알림 URL은 루프백 개발 주소를 제외하고 HTTPS를 사용해야 합니다.
-
-## 보안 체크리스트
-
-- Cloud 연결에 HTTPS를 사용하세요.
-- 키는 최소 권한 집합으로 범위를 제한하세요.
-- 프로덕션 환경과 비프로덕션 환경을 분리하세요.
-- 출시 전에 트랜스크립트 및 리댁션 설정을 검토하세요.
-- 사용자, 키, 조직 변경 사항을 감사하세요.
-- 배포 환경에 맞는 백업, 보존 정책, 인시던트 대응 요건을 테스트하세요.
-
-<Warning>
-  트랜스크립트 캡처를 끄면 감사 및 조사에서 증명할 수 있는 내용이 달라집니다. 해당 결정과 예상되는 제한 사항을 기록해 두세요.
-</Warning>
+권한 카탈로그는 [키 및 권한](/ko/admin/keys-and-permissions)을 참조하세요.

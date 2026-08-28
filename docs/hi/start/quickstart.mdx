@@ -1,84 +1,103 @@
 ---
-title: "क्विकस्टार्ट"
-description: "एक एजेंट सेशन कैप्चर करें, विफलता खोजें, और इसे रोकना शुरू करें।"
+title: "त्वरित शुरुआत"
+description: "एक मशीन सेट अप करें, नीतियां चुनें, और देखें कि आपके एजेंट क्या कर रहे हैं।"
 icon: "zap"
 ---
 
-यह क्विकस्टार्ट एक मशीन को सेशन रिपोर्ट करने के लिए सेट करता है, एक ऑडिट चलाता है, और एक नीति तैनात करता है। Failproof AI को सेट अप करने के लिए स्किल का उपयोग करें, या मैनुअल स्टेप्स का पालन करें।
+एक मशीन पर Failproof AI सेट अप करें, फिर स्थानीय रहें या Cloud से कनेक्ट करें।
 
-**आपका पाथ कौन सा है?** यदि आपका एजेंट 12 समर्थित [harnesses](/hi/reference/harnesses) में से एक में चलता है — एक कोडिंग CLI, या Hermes या OpenClaw जैसा गेटवे — नीचे दिए गए स्टेप्स का पालन करें; आपको Node.js 20.9 या बाद का संस्करण चाहिए। यदि आपके एजेंट के पास कोई harness नहीं है, तो ट्रेसिंग और ऑडिट के लिए इसे [Python SDK](/hi/reference/custom-agents) से इंस्ट्रूमेंट करें, फिर [Run your first failure check](/hi/start/first-audit) पर वापस आएं; उस पाथ पर एनफोर्समेंट के लिए आपके रनटाइम में एक हुक की आवश्यकता होती है।
+यदि आपका एजेंट [समर्थित हार्नेस](/hi/reference/harnesses) में चलता है, तो ये चरण अनुसरण करें। LangChain, CrewAI, LlamaIndex, Pydantic AI, या अपने स्वयं के रनटाइम के साथ बनाए गए एजेंट के लिए, [अपने एजेंट को इंस्ट्रूमेंट करें](/hi/start/integrations) से शुरू करें।
 
-<Tabs>
-  <Tab title="स्किल का उपयोग करें">
-    <Steps>
-      <Step title="Failproof AI स्किल्स इंस्टॉल करें">
-        ```bash
-        npx skills add FailproofAI/skills
-        ```
-      </Step>
-      <Step title="अपने एजेंट को सब कुछ सेट अप करने के लिए कहें">
-        ```text
-        Set up Failproof AI for this project, connect this machine, install the right hooks and policies, and verify that a session arrives.
-        ```
+## अपने एजेंट को सेटअप गाइड करने दें
 
-        आपका एजेंट प्रोजेक्ट की जांच करता है, प्रासंगिक इंटीग्रेशन चुनता है, सेटअप करता है, और इसे सत्यापित करता है। व्यक्तिगत स्किल्स और उन्नत इंस्टॉलेशन विकल्प के लिए [FailproofAI skills repository](https://github.com/FailproofAI/skills) देखें।
-      </Step>
-    </Steps>
-  </Tab>
-  <Tab title="मैनुअल सेटअप">
-    ## शुरुआत करने से पहले
-
-1. [Failproof AI डैशबोर्ड](https://app.befailproof.ai) खोलें और एक खाता बनाएं या अपने कार्य ईमेल से साइन इन करें।
-2. **Administration → Keys** पर जाएं और `events:add` और `policies:pull` के साथ एक कुंजी बनाएं।
-3. एकबारगी गुप्त को कॉपी करें और इसे लक्ष्य मशीन पर स्टोर करें:
+एक संगत एजेंट में Failproof AI छत्र कौशल स्थापित करें:
 
 ```bash
-export FAILPROOFAI_KEY="<one-time-secret>"
+npx skills add FailproofAI/skills
 ```
 
-    ## इंस्टॉल करें
+यह छत्र कौशल और इसके विशेषज्ञ भाई-बहनों को स्थापित करता है। यदि आप केवल छत्र चाहते हैं तो `--skill failproofai` का उपयोग करें। यह स्थानीय और Cloud सेटअप, डेमन स्वास्थ्य, सत्र, ऑडिट, नीतियां, और समस्या निवारण को समझता है। यह काम को निर्देशित करता है और विशेष कार्यों को सही Failproof AI कौशल तक पहुंचाता है; यह नीचे CLI स्थापना को प्रतिस्थापित नहीं करता है।
+
+## मशीन सेट अप करें
 
 <Steps>
-  <Step title="Failproof AI को इंस्टॉल और कनेक्ट करें">
+  <Step title="Failproof AI स्थापित और कॉन्फ़िगर करें">
     ```bash
     npm install -g failproofai
-    failproofai config --connect https://app.befailproof.ai --token "$FAILPROOFAI_KEY"
+    failproofai config
     ```
 
-    सेशन ट्रांसक्रिप्ट्स डिफ़ॉल्ट रूप से भेजे जाते हैं। ट्रांसक्रिप्ट सामग्री के बिना हुक गतिविधि और नीति निर्णयों की रिपोर्ट करने के लिए `--no-transcripts` जोड़ें।
+    सेटअप पृष्ठभूमि सेवा स्थापित करता है और इसे खोजने वाले प्रत्येक समर्थित एजेंट को कनेक्ट करता है। यह एक बार व्यवस्थापक पहुंच मांग सकता है। यह Linux और macOS का समर्थन करता है।
+  </Step>
 
-    यदि इस मशीन पर पहले से एजेंट इतिहास है, तो अंतिम सात दिनों का पूर्वावलोकन करें और आयात करें, फिर डिलीवरी समाप्त होने की प्रतीक्षा करें। नई मशीन पर इस स्टेप को छोड़ दें।
+  <Step title="नीतियां चुनें">
+    सेटअप कोई नीति पैक नहीं चुनता है। Failproof AI पैक जोड़ें:
 
     ```bash
-    failproofai backfill --since 7d --dry-run
-    failproofai backfill --since 7d
-    failproofai flush --wait
+    failproofai policies add FailproofAI/policies
+    failproofai policies
     ```
 
-    Failproof AI में **Sessions** खोलें और एक आयातित सेशन चुनें।
+    दूसरी कमांड इस मशीन पर हर नीति दिखाती है और चाहे वह चालू हो। जब तक आप एक पैक जोड़ते हैं, केवल `block-failproofai-commands` चलता है।
   </Step>
-  <Step title="एजेंट हुक्स और नीतियां इंस्टॉल करें">
-    यह Failproof AI को आपके harness से जोड़ता है और 39 बिल्ट-इन नीतियां इंस्टॉल करता है। स्थानीय नीति निर्णय देखने के लिए और Failproof AI आपके सेशन ऑडिट करने और आपके एजेंट्स के लिए नीतियां लिखने से पहले एनफोर्समेंट आजमाने के लिए इनका उपयोग करें।
 
-    इंस्टॉलर को अपना harness डिटेक्ट करने दें, या एक स्पष्ट रूप से नाम दें। 12 में से प्रत्येक एक वैध `--cli` मान है — `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity`, `goose`।
-
+  <Step title="मशीन की जांच करें">
     ```bash
-    failproofai policies --install --cli claude --scope user     # a coding CLI
-    failproofai policies --install --cli hermes --scope user     # a Slack/Telegram gateway
+    failproofai config --status
     ```
 
-    सभी 12 पर चलने से पहले एक टूल कॉल को ब्लॉक करना सत्यापित है। टर्न-एंड गेट्स 8 पर सत्यापित हैं — प्रति-harness मैट्रिक्स के लिए [enforcement capability](/hi/reference/harnesses#enforcement-capability) देखें।
-  </Step>
-  <Step title="व्यवहार का ऑडिट करें">
-    [Run your first failure check](/hi/start/first-audit) का पालन करें। एक ठोस लक्ष्य का उपयोग करें जैसे "सेशन खोजें जहां एजेंट ने अपने दृष्टिकोण को बदले बिना विफल टूल को फिर से आजमाया।"
-  </Step>
-  <Step title="विफलता को रोकें">
-    [Prevent your first failure with a policy](/hi/start/first-policy) का पालन करें। अवलोकन मोड में शुरू करें, मिलान का निरीक्षण करें, फिर समीक्षा किए गए संस्करण को लागू करें।
+    यह सेवा, Cloud कनेक्शन, और विराम स्थिति की रिपोर्ट करता है।
   </Step>
 </Steps>
 
-<Check>
-  `failproofai config --status` चलाएं। एक स्वस्थ सेटअप क्लाउड कनेक्शन, डेमॉन स्थिति, और क्या एनफोर्समेंट को रोका गया है इसकी रिपोर्ट करता है।
-</Check>
+## स्थानीय या Cloud चुनें
+
+<Tabs>
+  <Tab title="स्थानीय रहें">
+    कोई खाता आवश्यक नहीं है।
+
+    ```bash
+    failproofai
+    failproofai audit
+    ```
+
+    पहली कमांड `http://localhost:8020` पर स्थानीय डैशबोर्ड खोलती है। दूसरी कमांड इस मशीन पर पहले से मौजूद एजेंट इतिहास को स्कैन करती है।
+  </Tab>
+
+  <Tab title="Cloud से कनेक्ट करें">
+    Failproof AI Cloud में एक मशीन कुंजी बनाएं, फिर चलाएं:
+
+    ```bash
+    failproofai config --token <machine-key>
+    failproofai config --status
+    ```
+
+    Cloud नीति निर्णय और सत्र प्रतिलेख प्राप्त करता है। केवल निर्णय भेजने के लिए, पहले कनेक्ट करें, फिर `~/.failproofai/config.json` में `collector.sessions` को `false` सेट करें; वर्तमान `--no-transcripts` सेटअप फ्लैग वह सेटिंग लागू नहीं करता है। साझा शेल और CI के लिए, कमांड इतिहास में कुंजी डालने के बजाय `FAILPROOFAI_CLOUD_TOKEN` का उपयोग करें।
   </Tab>
 </Tabs>
+
+## इसे सत्यापित करें
+
+अपने एजेंट में से एक को चलाएं और इसे एक सामान्य कार्य करने के लिए कहें। फिर:
+
+एक टूल-कॉल अस्वीकार सभी 12 समर्थित हार्नेस पर सत्यापित है। टर्न-एंड प्रवर्तन 8 पर सत्यापित है; अन्य हार्नेस-इवेंट जोड़े अवलोकन-केवल या असत्यापित हो सकते हैं।
+
+- स्थानीय डैशबोर्ड में **Policies → Activity** खोलें नीति निर्णय देखने के लिए।
+- Cloud में **Observe → Sessions** खोलें पूर्ण रन देखने के लिए।
+- जोखिम भरे या बेकार पैटर्न के लिए `failproofai audit` चलाएं।
+
+<Warning>
+  सेटअप के बाद, `failproofaid` सेवा मूल्यांकनकर्ता है। यदि वह उत्तर नहीं दे सकता, तो सुरक्षित कार्य अस्वीकार किए जाते हैं। जब कोई एजेंट अप्रत्याशित रूप से रुके तो `failproofai config --status` चलाएं।
+</Warning>
+
+<CardGroup cols={3}>
+  <Card title="अवधारणाओं को समझें" icon="book-open" href="/hi/start/concepts">
+    सत्र-से-नीति वर्कफ़्लो जानें।
+  </Card>
+  <Card title="अपना पहला ऑडिट चलाएं" icon="scan-search" href="/hi/start/first-audit">
+    ठीक करने योग्य एक विफलता खोजें।
+  </Card>
+  <Card title="अपनी पहली नीति जोड़ें" icon="shield-check" href="/hi/start/first-policy">
+    इसे लागू करने से पहले एक सुरक्षा उपाय देखें।
+  </Card>
+</CardGroup>

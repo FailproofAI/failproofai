@@ -1,31 +1,45 @@
 ---
-title: "Ajanınızı enstrüman edin"
+---
+title: "Aracınızı enstrüman edin"
 sidebarTitle: "Frameworks"
-description: "Desteklenen herhangi bir ajan çerçevesini Failproof AI'ye tek bir çağrıyla bağlayın."
+description: "Failproof AI ile desteklenen herhangi bir ajan çerçevesini tek bir çağrı ile bağlayın."
 icon: "plug"
 ---
 
-Ajanınız zaten kaydedilmeye değer her şeyi üretir — model çağrıları, araç çağrıları, düğüm sınırları, insan beklentileri, hatalar. Çerçeve bunu atar. SDK onu tutar.
+Ajanınız zaten kaydedilmeye değer her şeyi üretiyor — model çağrıları, araç çağrıları, düğüm sınırları, insan beklentileri, başarısızlıklar. Framework bunu atıyor. SDK bunu tutuyor.
 
 <Columns cols={3}>
   <Card title="Özel ajanlar" icon="wrench" href="/tr/start/quickstarts/custom-agents">
-    Kendiniz yazdığınız bir ajan ya da burada listelenmemiş bir ajan.
+    Kendiniz yazdığınız bir ajan veya burada listelenmemiş bir ajan.
   </Card>
   <Card title="LangChain ve LangGraph" icon="share-2" href="/tr/start/quickstarts/langchain">
     Grafikler, düğümler, araçlar, alıcılar, modeller.
   </Card>
   <Card title="CrewAI" icon="users" href="/tr/start/quickstarts/crewai">
-    Ekipler, akışlar, role göre ajanlar, araçlar.
+    Ekipler, akışlar, rol tarafından ajanlar, araçlar.
   </Card>
   <Card title="LlamaIndex" icon="database" href="/tr/start/quickstarts/llamaindex">
-    İş akışları, adımlar, fonksiyon ajanları, alıcılar.
+    İş akışları, adımlar, işlev ajanları, alıcılar.
   </Card>
   <Card title="Pydantic AI" icon="badge-check" href="/tr/start/quickstarts/pydantic-ai">
     Yazılı ajanlar, yetenekler, araçlar, yeniden denemeler.
   </Card>
 </Columns>
 
-## Hangi çerçeve olursa olsun üç satır
+## Başlamadan önce
+
+Bu yolun varsaydığı iki şey, ikisi de aşağıdaki kod tarafından sizin için yapılmaz:
+
+| Gereksinim | Neden |
+| --- | --- |
+| Python 3.10 veya daha yeni | SDK'nın bildirdiği minimum sürüm. |
+| `failproofai config` ile ayarlanmış bir makine | Bu komut failproofaid daemon'ını yükler ve daemon, SDK'nın yazdığı şeyi göndermek için gereken tek şeydir. Olmadan toplu işler spool dizininde birikir ve hiçbir zaman ayrılmaz. |
+
+<Note>
+  **Bu yol kaydeder; uygulamaz.** SDK ajanınızın ne yaptığını yakalar. İlkeler bir ajan CLI içindeki bir hook'tan ateşlenir, bu nedenle bir çerçeve ajanında uygulamak, kendi çalışma zamanınıza bir hook koymak anlamına gelir — bkz. [Policies](/tr/policies/overview).
+</Note>
+
+## Üç satır, hangi framework olursa olsun
 
 <CodeGroup>
 ```bash LangGraph
@@ -56,10 +70,10 @@ failproofai_sdk.configure(environment="production")
 failproofai_sdk.instrument()          # içe aktardığınız çerçeveleri algılar
 
 with failproofai_sdk.session():
-    ...                               # mevcut ajan çağrınız, değişmemiş
+    ...                               # var olan ajan çağrınız, değişmez
 ```
 
-Fonksiyonlarınız üzerinde dekoratör yok, çağrılarınıza iletilen geri arama yok, kodunuzda iliştirilmiş kimlikler yok. Yalnızca oturum içindeki çağrı farklı:
+Fonksiyonlarınızda dekoratör yok, çağrılarınıza geçilen callback yok, kodunuzda iplik edilen id'ler yok. Sadece session içindeki çağrı farklı:
 
 <Tabs>
   <Tab title="LangGraph">
@@ -91,30 +105,44 @@ Fonksiyonlarınız üzerinde dekoratör yok, çağrılarınıza iletilen geri ar
   </Tab>
 </Tabs>
 
-Ekstra yükleme **çerçeveyi** kurar. Her adaptör temel wheel'de gönderilir, bu nedenle zaten çerçevesi olan bir proje hiç ekstraya ihtiyaç duymaz.
+Ekstra yükleme **çerçeveyi** kurar. Her adapter temel wheel'de gönderilir, bu nedenle zaten çerçevesine sahip bir proje hiç ekstra ihtiyaç duymaz.
 
 ## Geldiğini kontrol edin
 
-Bir enstrüman edilmiş oturumu çalıştırın, ardından **Observe → Sessions** açın ve ortamınızı seçin. Çalıştırma yeniden oluşturulmuş bir iz olarak görünür.
+Enstrüman edilmiş bir session çalıştırın, ardından **Observe → Sessions** sayfasını açın ve ortamınızı seçin. Çalışma yeniden oluşturulmuş bir trace olarak görünür.
 
-Hiçbir şey gelmezse, makinenin `failproofai config --status` ile bağlı olduğunu doğrulayın. Bkz. [Yakalamayı ayarlayın](/tr/start/setup).
+Hiçbir şey gelmezse, makinenin ayarlandığını ve `failproofai config --status` ile bağlı olduğunu doğrulayın. Değilse, `failproofai config` çalıştırın. Bkz. [Kurulumunuzu seçin](/tr/start/setup).
 
 <Warning>
-  Teslimatı doğrulamak için spool dizinini kontrol etmeyin. Failproof daemon her bir toplu işi milisaniyeler içinde toplar ve siler, bu nedenle onu okumak toplayıcı ile yarışır ve yayılan olaylardan çok daha azını gösterir.
+  Teslimatı doğrulamak için spool dizinini kontrol etmeyin. Failproof daemon her toplu işi milisaniyeler içinde toplayıp siler, bu nedenle onu okumak toplayıcı ile yarışır ve yayılan olaylardan çok daha azını gösterir.
 </Warning>
+
+SDK'nın hiç yazıp yazmadığını kanıtlamak için, daemon'u önce durdurun, session'ınızı çalıştırın ve `~/.failproofai/custom-agents/events/` klasörüne bakın. Daemon çalışırken, boş bir dizin sağlıklı bir durumdur.
+
+<CodeGroup>
+```bash Linux
+sudo systemctl stop failproofaid@$USER
+```
+
+```bash macOS
+sudo launchctl bootout system/ai.failproof.failproofaid.$USER
+```
+</CodeGroup>
+
+Geri koymak için sonrasında `failproofai config` çalıştırın. Daemon durdurulduğu sürece, bu makinedeki hook etkinlikleri hiçbir değerlendirici olmadan reddedilir, bu nedenle sadece kontrol süresi kadar durdurun.
 
 ## Sonraki adım
 
-Yukarıdaki her hızlı başlangıç, tam kılavuzuna bağlantı verir — neler kaydedilir, seçenekler, akış, açıklık adlandırması ve insanların gerçekten karşılaştığı sorunlar. Bunlar **Trace Agents → Ajanınızı bağlayın** altında bulunur.
+Yukarıdaki her quickstart kendi tam rehberine bağlanır — neler kaydedilir, seçenekler, streaming, span adlandırması ve insanların gerçekten karşılaştığı sorunlar. **Trace Agents → Plug in your agent** altında yer alırlar.
 
 <Columns cols={3}>
   <Card title="Nasıl çalışır" icon="workflow" href="/tr/start/integrations/custom-agents#going-deeper">
-    Veri modeli, kimlikler, olay türleri ve olayların Cloud'a nasıl ulaştığı.
+    Veri modeli, id'ler, olay türleri ve olayların Cloud'a nasıl ulaştığı.
   </Card>
-  <Card title="Bir izi oku" icon="route" href="/tr/sessions/read-a-trace">
-    Bağlantısız günlüklerin yerine bir oturum aracılığıyla nedenselliği takip edin.
+  <Card title="Trace'i oku" icon="route" href="/tr/sessions/read-a-trace">
+    Bağlantısız loglar yerine bir session'da nedenselliği izle.
   </Card>
-  <Card title="İlk hatanı bul" icon="scan-search" href="/tr/start/first-audit">
-    Az önce yakaladığınız oturumları denetleyin.
+  <Card title="İlk başarısızlığını bul" icon="scan-search" href="/tr/start/first-audit">
+    Az önce yakaladığın session'ları denetle.
   </Card>
 </Columns>

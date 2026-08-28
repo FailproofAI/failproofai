@@ -1,41 +1,68 @@
 ---
 title: "Rollback"
-description: "Stellen Sie eine bekannte Richtlinienversion wieder her, wenn ein Rollout gültige Agent-Aufgaben beeinträchtigt."
+description: "Einen bekannten Policy-Deploymentstand wiederherstellen, wenn ein Rollout valide Agenten-Arbeit unterbricht."
 icon: "rotate-ccw"
 ---
 
-Rollback ändert die eingesetzte Version oder entfernt eine Richtlinienzuweisung; die Entscheidungshistorie, die den Vorfall erklärt, wird dabei nicht gelöscht.
+Ein Rollback ändert die deployte Version oder entfernt eine Policy-Zuweisung; er löscht nicht den Entscheidungsverlauf, der den Vorfall erklärt.
 
-## Rollback einer Maschine
+## Eine Maschine zurücksetzen
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehen Sie zu **Admin → enforcement**, erweitern Sie die betroffene Maschine und identifizieren Sie deren zuletzt bekannte funktionierende Richtliniensammlung.
-    2. Wählen Sie **edit**, stellen Sie die betreffenden Versionen und Effekte wieder her, und wenden Sie das neue Deployment an.
-    3. Warten Sie auf den Check-in der Maschine und überprüfen Sie anschließend das gemeldete Deployment.
-    4. Öffnen Sie **Observe → policy** sowie die betroffenen Sitzungen, um zu bestätigen, dass gültige Aufgaben nicht länger blockiert werden.
+    1. Gehe zu **Admin → enforcement**, klappe die betroffene Maschine auf und identifiziere ihr zuletzt bekanntes funktionsfähiges Policy-Set.
+    2. Wähle **edit**, stelle diese Versionen und Effekte wieder her und wende das neue Deployment an.
+    3. Warte auf den nächsten Check-in der Maschine und verifiziere dann das gemeldete Deployment.
+    4. Öffne **Observe → policy** sowie die betroffenen Sessions, um zu bestätigen, dass valide Arbeit nicht länger blockiert wird.
 
   </Tab>
   <Tab title="CLI">
-    Ein Cloud-Deployment-Rollback ist ein Dashboard-Workflow. Verwenden Sie den lokalen Status, um zu bestätigen, dass das korrigierte Deployment die Maschine erreicht hat:
+    Finde die Generation, zu der zurückgekehrt werden soll, stelle sie wieder her und bestätige, dass sie angekommen ist:
 
     ```bash
+    fp fleet history ci-runner-01
+    fp fleet rollback ci-runner-01 3
+    fp fleet diff ci-runner-01
     failproofai config --status
     ```
 
-    `failproofai config --pause` pausiert integrierte, benutzerdefinierte und konventionsbasierte Richtlinien für eine lokale Sitzung. Cloud-verwaltete Richtlinien werden dabei nicht pausiert – dieser Befehl ist daher kein Workaround für ein fehlerhaftes Cloud-Deployment.
+    `fp fleet rollback` erstellt eine **neue** Generation mit dem alten Set, anstatt den Zähler zurückzudrehen – der Verlauf bleibt damit append-only. Der Befehl verweigert die Ausführung, wenn die angegebene Generation eine Policy referenziert, die inzwischen deaktiviert oder gelöscht wurde — der Server meldet dies, anstatt ein Set wiederherzustellen, das nicht ausgeliefert werden kann.
+
+    `fp fleet diff` zeigt Soll- versus Ist-Zustand. Eine Maschine gilt als gedriftet, bis sie das nächste Mal pollt — prüfe daher den Diff, bevor du davon ausgehst, dass der Rollback nicht gegriffen hat. `failproofai config --status` bestätigt den Zustand direkt auf der Maschine.
   </Tab>
 </Tabs>
 
-## Wann ein Rollback durchgeführt werden sollte
+## Pause ist kein Rollback
 
-- Eine Richtlinie blockiert eine erwartete Produktionsoperation.
-- Das Match-Volumen ist deutlich höher als beim beobachteten Rollout vorhergesagt.
-- Eine Richtlinie hängt von Feldern ab, die eine Integration nicht bereitstellt.
-- Eine neue Version ändert das Verhalten außerhalb des beabsichtigten Fehlerbereichs.
+Eine Pause setzt alle lokal installierten Policies für **eine Session** außer Kraft und läuft immer automatisch ab — Packs, benutzerdefinierte Dateien, Konventionsdateien und Builtins gleichermaßen. Nur Cloud-verwaltete Policies und der dauerhaft aktive `block-failproofai-commands`-Schutz bleiben in Kraft. Eine Pause ist daher kein Workaround für ein fehlerhaftes Cloud-Deployment, und ihr Wirkungsbereich ist wesentlich größer als es zunächst scheint: Ein Pack enthält im Wesentlichen die gesamte lokale Durchsetzung, und der Pack-Fail-Closed-Schutz wird für die Dauer ebenfalls übergangen.
 
-Öffnen Sie nach dem Rollback die betroffenen Sitzungen und identifizieren Sie die Bedingung, die den False Positive verursacht hat. Erstellen Sie eine neue Version, testen Sie sowohl den unsicheren als auch den legitimen Fall, und wiederholen Sie anschließend die Observe-Phase.
+| Befehl | Wirkung |
+|---|---|
+| `failproofai config --pause` | Die neueste Agenten-Session in diesem Verzeichnis, für 30 Minuten |
+| `failproofai config --pause 10m` | Eine bestimmte Zeitspanne. Maximum 8h; Suffixe `s`/`m`/`h`, eine nackte Zahl bedeutet Minuten |
+| `failproofai config --pause --session <id>` | Eine bestimmte Session als Ziel |
+| `failproofai config --resume` | Die Pause vorzeitig beenden |
+| `failproofai config --resume --all` | Alle aktiven Pausen beenden |
+| `failproofai config --status` | Was pausiert ist und wann es aufgehoben wird |
+
+## Wann ein Rollback sinnvoll ist
+
+- Eine Policy blockiert eine erwartete Produktionsaktion.
+- Das Match-Volumen ist deutlich höher als das beobachtete Rollout vorhergesagt hatte.
+- Eine Policy hängt von Feldern ab, die eine Integration nicht bereitstellt.
+- Eine neue Version ändert das Verhalten außerhalb des beabsichtigten Fehlerfalles.
+
+Nach dem Rollback öffne die betroffenen Sessions und identifiziere die Bedingung, die das False Positive ausgelöst hat. Erstelle eine neue Version, teste sowohl den unsicheren als auch den legitimen Fall lokal und durchlaufe dann erneut Observe, bevor du wieder enforced:
+
+```bash
+fp policies test ./policy.mjs --tool Bash --command '<the legitimate case>' --expect allow
+fp policies publish my-policy ./policy.mjs
+fp fleet deploy ci-runner-01 --add my-policy:observe
+fp guardrails summary --since 24h --machine ci-runner-01
+```
+
+`:observe` macht daraus ein Shadow-Rollout. Ein nacktes `fp fleet deploy ... --add my-policy` **setzt sofort durch** — ein ausgelassener Effekt wird zum bereits deployten Effekt aufgelöst und dann zu `enforce` — was bei einer Policy, die du gerade zurückgesetzt hast, bedeutet, dass der Vorfall wieder eingesetzt wird. Der Observe-Modus wertet die Policy trotzdem in Echtzeit aus und zeichnet alle Nicht-allow-Urteile auf; nur die Durchsetzung wird zurückgehalten. `fp guardrails summary` misst die neue Version daher am selben Traffic, an dem die alte gescheitert ist. Promote mit `--add my-policy:enforce`, wenn die Zahlen es rechtfertigen.
 
 <Warning>
-  Das Pausieren der Durchsetzung kann während eines Vorfalls angemessen sein, vergrößert jedoch die Angriffsfläche für jede aktive Richtlinie in diesem Scope. Bevorzugen Sie nach Möglichkeit den Rollback der spezifischen Richtlinienversion.
+  Das Pausieren der Durchsetzung kann während eines Vorfalls angemessen sein, erweitert aber die Angriffsfläche für alle aktiven Policies in diesem Scope. Bevorzuge nach Möglichkeit das Zurücksetzen der spezifischen Policy-Version.
 </Warning>

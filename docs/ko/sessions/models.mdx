@@ -1,27 +1,54 @@
 ---
 title: "모델"
-description: "모델 지연 시간, 토큰, 컨텍스트 사용량, 트래픽 분포를 비교합니다."
+description: "모델별 지연 시간, 토큰, 컨텍스트 사용량, 트래픽 분포를 비교합니다."
 icon: "cpu"
 ---
 
-모델 페이지를 사용하면 모델, 에이전트, 환경 또는 시간 범위에 따라 신뢰성이나 비용이 어떻게 변했는지 확인할 수 있습니다.
+모델, 에이전트, 환경, 시간 범위에 따라 신뢰성 또는 비용이 변경되었는지 확인하려면 Models를 사용하세요.
 
 <Tabs>
   <Tab title="대시보드">
     1. **Observe → Models**로 이동합니다.
-    2. 시간 범위를 설정한 후 환경, 모델, 에이전트 또는 세션 ID로 필터링합니다.
+    2. 시간 범위를 설정한 후 환경, 모델, 에이전트, 세션 ID로 필터링합니다.
     3. 지연 시간, 토큰 소비량, 컨텍스트 윈도우 사용량, 모델 분포를 검토합니다.
-    4. 차트의 포인트 또는 분포 세그먼트를 선택하면 해당하는 이벤트가 표시됩니다.
+    4. 차트의 특정 지점이나 분포 세그먼트를 선택하면 해당 이벤트가 열립니다.
 
     ![지연 시간, 백분위수, 토큰, 비용, 컨텍스트 윈도우, 모델 분포 뷰를 보여주는 Models 페이지.](/images/dashboard/models.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp list models
-    fp events --event-type model_request,model_response --env production --since 24h
-    fp --json events --fields ts,agent_id,session_id,event_type,output_tokens,context_fill
+    fp events --event-type model_request,model_response --since 24h
+    fp --json events --event-type model_response --since 24h --all --limit 500 --fields ts,agent_id,session_id,output_tokens,context_window,context_fill
     ```
 
-    전용 CLI 명령으로 제공되지 않는 모델 수준의 집계 데이터가 필요한 경우 저장된 쿼리를 활용하세요.
+    세 명령 모두 `events:read` 권한이 필요합니다.
+
+    `--fields`는 열을 투영할 뿐, 행을 필터링하지 않습니다. `--event-type`과 시간 범위를 함께 사용하세요. 그렇지 않으면 모든 유형의 최신 이벤트 50개가 반환되고, 모델과 관련 없는 이벤트에서는 `output_tokens`와 `context_fill`이 null로 표시됩니다. `--all`은 `--limit`(기본값 50)에서 중단됩니다.
+
+    `context_fill`은 반드시 `context_window`와 함께 읽어야 합니다. 윈도우 크기 없이 채움 수치는 의미가 없습니다.
+
+    데몬은 별도로 변경하지 않는 한 모든 이벤트에 `local` 환경 레이블을 붙입니다. 따라서 기본 설치 상태에서는 `--env production`에 일치하는 이벤트가 없습니다. [환경 레이블 변경](/ko/reference/events-and-configuration#change-an-environment-label)을 참고하세요.
   </Tab>
 </Tabs>
+
+## CLI로 확인할 수 있는 것과 없는 것
+
+기본 이벤트 피드에는 페이로드가 포함되지 않습니다. `output_tokens`, `context_window`, `context_fill`은 승격된 컬럼으로 제공되며, 모델 호출에 대한 다른 정보는 포함되지 않습니다.
+
+| 값 | 위치 |
+| --- | --- |
+| 출력 토큰, 컨텍스트 윈도우, 컨텍스트 채움 | 라이트 피드 컬럼 — `fp events`에서 직접 사용 가능. |
+| 모델 이름 | 페이로드 — `fp events --full` 사용, 단일 세션으로 제한. |
+| 입력 토큰 | 페이로드 — SDK는 양쪽 절반을 모두 기록하지만, 출력 절반만 승격됨. |
+| 호출별 지연 시간 | 라이트 피드에 `duration_ms` 컬럼이 없으며, SDK의 `model_response`에도 포함되지 않음. 요청과 응답을 쌍으로 연결하여 직접 계산해야 함. |
+
+`model_request`와 `model_response`는 `request_id`로 쌍을 이룹니다. 이 필드는 요청과 응답을 매칭하기 위해 존재하며, 원시 이벤트에서 호출별 지연 시간을 계산하는 유일한 방법입니다.
+
+```bash
+fp --json events --full --event-type model_request,model_response --session-id <session-id> --all --limit 500
+```
+
+모델 이름은 각 하네스의 트랜스크립트에서 그대로 전달됩니다. 캡처 경로에서 이름을 정규화하지 않으므로, 동일한 모델이 분포 차트에서 여러 공급자별 ID로 표시될 수 있습니다. `fp list models`를 실행하면 실제 배포에서 사용 중인 표기법을 확인할 수 있습니다.
+
+전용 CLI 명령으로 노출되지 않는 모델 수준의 집계에는 저장된 쿼리를 사용하세요.

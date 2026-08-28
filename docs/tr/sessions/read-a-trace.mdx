@@ -1,48 +1,58 @@
 ---
-title: "İzlemeyi oku"
-description: "Bir aracı oturumunun seyrini değiştiren olayı bulun."
+title: "Bir trace okuyun"
+description: "Agent çalışmasının seyrini değiştiren olayı bulun."
 icon: "route"
 ---
 
-İzleme, düz bir olay akışını çalışmanın nedensel hikayesine dönüştürür. Bunu son hatadan geriye değil, ilk sapma noktasından okuyun.
-
-## İzlemeyi aç
+Bir trace, bir agent çalışmasının zaman çizelgesidir. Son hata değil, ilk beklenmedik olaydan başlayın.
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Observe → Sessions** bölümüne gidin ve bir oturum açın.
-    2. Sonuç, zamanlama, hatalar ve değerlendirme puanlarını kontrol etmek için profil özetini kullanın.
-    3. Zaman çizelgesini ve mini haritayı tarayın. Oturum büyük olduğunda olay türlerini veya zamanı filtreleyin.
-    4. Bir olayı incelemek için seçin. Değerlendirici JSON için **export** kullanın veya seçilen kanıta derin bağlantı paylaşmak için sayfa URL'sini kopyalayın.
+    1. **Observe → Sessions** kısmını açın.
+    2. Bir session seçin.
+    3. İlk hatayı, olağandışı araç çağrısını, uzun beklemeyi veya politika kararını tarayın.
+    4. Olayı açın ve isteği, yanıtı, girişi ve çıkışı inceleyin.
 
-    ![Yürütme grafiği, olay zaman çizelgesi, değerlendirme paneli ve araç, model ve kanca analizi içeren bir oturum detay görünümü.](/images/dashboard/session-detail.png)
+    ![Yürütme grafiği, olay zaman çizelgesi, değerlendirme paneli ve araç, model ve hook dökümünü gösteren bir session detay görünümü.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp --json sessions --session-id <session-id>
-    fp events --session-id <session-id> --order asc --all
-    fp --json events --full --session-id <session-id> --all
+    fp events --session-id <session-id> --order asc --all --limit 5000
+    fp --json events --full --session-id <session-id> --all --limit 2000
     ```
 
-    Önce hafif olay akışını kullanın. Olay özetleri yeterli kanıt içermediğinde tam yükleri isteyin.
+    Olay özeti yeterli kanıt sağlamadığında `--full` kullanın. Boş olmayan bir `next_cursor`, limitin sona ulaşılmadan önce tukenmış olduğu anlamına gelir.
   </Tab>
 </Tabs>
 
-<Steps>
-  <Step title="Kendinizi konumlandırın">
-    Aracı, ortam, zamanlama, sonuç ve süreyi onaylayın, ardından hataları, uzun zaman aralıklarını, tekrarlanan araçları, insan beklentilerini ve reddedilen politika kararlarını tarayın.
-  </Step>
-  <Step title="İlk şüpheli olayı genişletin">
-    İsteğini, yanıtını, araç girişini, çıkışını ve korelasyon kimliğini inceleyin. Hassas içerik, yalnızca transkript yakalama etkinleştirildiğinde ve izinleriniz bunu sağladığında görünür.
-  </Step>
-  <Step title="Önceki bağlamı inceleyin">
-    Neden genellikle bir olay öncesinde yer alır: yanlış bir model yanıtı, eksik araç sonucu veya eski bir varsayım.
-  </Step>
-  <Step title="Kanıtı eyleme dönüştürün">
-    Oturumu bir denetim kapsamına ekleyin, bunu bir soruna bağlayın veya hata modunu kullanarak bir politika yazın.
-  </Step>
-</Steps>
+## Kanıtları takip edin
+
+1. Agent, hedef, ortam ve sonucu doğrulayın.
+2. İlk hatayı veya beklenmedik kararı bulun.
+3. Bunun hemen öncesindeki olayı inceleyin.
+4. İstek ve yanıt çiftleri arasında eşleşen kimlikleri takip edin.
+5. Kanıtları bir denetim, sorun veya politikaya dönüştürün.
+
+| Çift | Eşleşen alan |
+| --- | --- |
+| Model isteği ve yanıtı | `request_id` |
+| Araç çağrısı ve sonucu | `tool_call_id` |
+| Hook başlangıcı ve tamamlanması | `hook_id` |
+| Agent duraklaması ve devamı | `pause_id` |
+| İnsan bekleme ve giriş | `input_id` |
+
+Bir karar `hook_completed` üzerinde görünür. Satır sonucu ve politika kaynağını adlandırır. Bir observe-mode kararı, `failproofai_observed` içinde olabilecek veriyle birlikte izin olarak görünür.
 
 <Warning>
-  Uzun süre her zaman model gecikmesi anlamına gelmez. Ne düzeltileceğine karar vermeden önce model, araç, kanca ve insan bekleme süresini ayırt edin.
+  Uzun session süresi her zaman model gecikmesi değildir. Neyi düzelteceksinize karar vermeden önce model, araç, hook ve insan bekleme süresini ayırın.
 </Warning>
+
+<CardGroup cols={2}>
+  <Card title="Politika kararları" icon="shield-check" href="/tr/sessions/policy-decisions">
+    Uygulamanın ne izin verdiğini, yönlendirdiğini veya engellediğini görün.
+  </Card>
+  <Card title="Canlı olaylar" icon="radio" href="/tr/sessions/live-events">
+    Olay türlerini ve teslimini anlayın.
+  </Card>
+</CardGroup>

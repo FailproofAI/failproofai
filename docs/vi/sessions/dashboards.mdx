@@ -1,30 +1,52 @@
 ---
-title: "Bảng Điều Khiển"
-description: "Theo dõi các tín hiệu độ tin cậy quan trọng cho agent hoặc workflow."
+title: "Bảng điều khiển"
+description: "Theo dõi những tín hiệu độ tin cậy quan trọng đối với một agent hoặc workflow."
 icon: "layout-dashboard"
 ---
 
-Bảng điều khiển kết hợp các truy vấn đã lưu thành một khung nhìn hoạt động. Xây dựng một bảng xung quanh quyết định bạn mong đợi ai đó sẽ đưa ra—không phải xung quanh tất cả các chỉ số có sẵn.
+Bảng điều khiển kết hợp các truy vấn đã lưu thành một chế độ xem vận hành. Xây dựng một bảng điều khiển xung quanh một quyết định mà bạn kỳ vọng ai đó sẽ đưa ra—không phải xung quanh từng số liệu có sẵn.
 
-## Xây dựng bảng điều khiển
+Bảng điều khiển là một bề mặt Cloud. Bảng điều khiển cục bộ trên `localhost:8020` bao gồm hoạt động chính sách, dự án, phiên làm việc và kết quả kiểm toán, nhưng nó không có các truy vấn đã lưu và không có các tile — do đó một máy chưa kết nối sẽ không có gì để xây dựng ở đây. Xem [Bảng điều khiển cục bộ](/vi/reference/local-dashboard).
+
+## Xây dựng một bảng điều khiển
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Truy cập **Analyze → Queries**, tạo hoặc mở một truy vấn đã lưu, và xác thực kết quả của nó.
+    1. Đi tới **Analyze → Queries**, tạo hoặc mở một truy vấn đã lưu và xác thực kết quả của nó.
     2. Chọn **add to dashboard**, sau đó chọn một bảng điều khiển hiện có hoặc tạo một bảng mới trong **Analyze → Dashboards**.
-    3. Mở bảng điều khiển, vào chế độ chỉnh sửa, sắp xếp các ô, và lưu bố cục.
-    4. Quay lại truy vấn khi bạn cần thay đổi dữ liệu hoặc bộ lọc đằng sau một ô.
+    3. Mở bảng điều khiển, vào chế độ chỉnh sửa, sắp xếp các tile và lưu bố cục.
+    4. Quay lại truy vấn khi bạn cần thay đổi dữ liệu hoặc bộ lọc đằng sau một tile.
 
-    ![Một bảng điều khiển được tạo thành từ các truy vấn đã lưu về khối lượng sự kiện, lỗi, độ trễ và sử dụng token mô hình.](/images/dashboard/dashboard-fleet.png)
+    ![Một bảng điều khiển được tạo từ các truy vấn đã lưu cho khối lượng sự kiện, lỗi, độ trễ và sử dụng token mô hình.](/images/dashboard/dashboard-fleet.png)
   </Tab>
   <Tab title="CLI">
-    CRUD bảng điều khiển hiện không được công khai bởi Cloud CLI. Sử dụng CLI để xây dựng và xác minh truy vấn đã lưu, sau đó thêm nó vào bảng điều khiển trong UI.
+    CRUD bảng điều khiển không được tiếp xúc bởi Cloud CLI hiện tại. Sử dụng CLI để viết và xác minh truy vấn đã lưu, sau đó thêm nó vào bảng điều khiển trong giao diện người dùng.
 
     ```bash
     fp query schema
-    fp query create "production error rate" --sql "SELECT ..."
-    fp query run <query-id>
+    fp query run --sql "select count(*) from analytics.events"
+    fp query create "event volume" --sql "select count(*) from analytics.events"
+    fp query run "event volume"
     ```
+
+    Chạy SQL với `--sql` trước: nó thực thi trên cùng một nhóm phân tích chỉ đọc mà không lưu bất cứ thứ gì, vì vậy bạn tìm thấy tên cột xấu trước khi một tile làm như vậy. `--sql @file.sql` đọc câu lệnh từ một tệp thay thế. `fp query schema` liệt kê các bảng có thể truy vấn và các cột của chúng; truyền một tên bảng để thu hẹp nó thành một bảng.
+
+    Các truy vấn đã lưu được xử lý theo **tên**, không phải theo id — `fp query run "event volume"` — bởi vì `fp query list` ẩn id thô trừ khi bạn chuyển `--show-id`. Một id hình dạng UUID cũng được chấp nhận.
+
+    Đối với một tile được tham số hóa, liên kết mỗi vị trí `$1..$N` với `--arg`, có thể lặp lại và liên kết theo thứ tự: `fp query run <name> --arg checkout-agent`.
+
+    `--limit` và `--all` chỉ điều chỉnh giới hạn xem trước bảng; `--json` luôn trả về mọi hàng, như `{columns: [{name, type}], rows: [[...]], truncated, elapsed_ms}`.
+
+    | Lệnh phụ | Quyền |
+    | --- | --- |
+    | `query list`, `query show`, `query schema` | `queries:read` |
+    | `query create`, `query update` | `queries:write` |
+    | `query run` | `queries:run` |
+    | `query delete` | `queries:delete` |
+
+    Mỗi lệnh phụ nhận một **tên** truy vấn giải quyết nó bằng cách liệt kê các truy vấn của tổ chức trước tiên, vì vậy `query create`, `query update`, `query delete` và `query run <name>` cần `queries:read` ngoài quyền ở trên. Chỉ `fp query run --sql` và `fp query schema` thì không.
+
+    Không có `fp query` nào bị chặn ở chế độ khóa API, vì vậy các truy vấn của bảng điều khiển có thể được tạo và xác minh từ CI.
   </Tab>
 </Tabs>
 
@@ -36,8 +58,16 @@ Các nhóm bảng điều khiển hữu ích bao gồm:
 - **Hooks and policies:** quyết định, từ chối và tỷ lệ khớp chính sách.
 - **Custom workflow metrics:** kết quả từ các trường sự kiện và SQL của riêng bạn.
 
-Bắt đầu với một truy vấn đã lưu, xác thực kết quả của nó, sau đó thêm nó dưới dạng một ô. Giữ cho các bộ lọc sản xuất và phát triển rõ ràng để lưu lượng truy cập kiểm tra không che giấu một hồi quy.
+Bắt đầu với một truy vấn đã lưu, xác thực kết quả của nó, sau đó thêm nó dưới dạng một tile. Giữ các bộ lọc sản xuất và phát triển rõ ràng để lưu lượng kiểm tra không che giấu một hồi quy.
+
+<Warning>
+  Một tile hook đếm hàng báo cáo mẫu số sai. Ở mức chi tiết hook mặc định, mỗi deny và instruct được phát ra dưới dạng một cặp `hook_triggered` / `hook_completed`, và mỗi allow ở chế độ quan sát cũng vậy; plain allows được tính gộp mỗi phiên, sự kiện, công cụ và quy định bằng phút thành một `hook_completed` duy nhất mang `failproofai_allow_count`. Tính tổng trường đó thay vì đếm hàng, hoặc một đội đã đánh giá hàng chục nghìn cuộc gọi sẽ trông giống như nó đã đánh giá vài trăm. Xem [Policy decisions](/vi/sessions/policy-decisions) và [Hooks](/vi/sessions/hooks).
+</Warning>
 
 <Tip>
-  Gán cho mọi bảng điều khiển một chủ sở hữu và một câu hỏi phản hồi, chẳng hạn như "Độ tin cậy của checkout-agent có tệ hơn tuần trước không?"
+  Cấp cho mỗi bảng điều khiển một chủ sở hữu và một câu hỏi phản hồi, chẳng hạn như "Có phải độ tin cậy của checkout-agent tệ hơn tuần trước không?"
 </Tip>
+
+<Card title="Queries" icon="database" href="/vi/sessions/queries">
+  Viết, lưu và chia sẻ SQL mà mỗi tile trên bảng điều khiển đọc từ.
+</Card>

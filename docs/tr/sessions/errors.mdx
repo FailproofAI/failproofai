@@ -1,43 +1,63 @@
 ---
 title: "Hatalar"
-description: "Tekrarlanan hataları gruplandırın ve arkalarındaki oturumları açın."
+description: "Tekrarlanan hataları filtreleyin ve arkasındaki oturumları açın."
 icon: "circle-alert"
 ---
 
-Hatalar size oturumlar arasında başarısızlık odaklı bir görünüm sunar. Tekrarlanan operasyonel sorunları bulmak için hata türü, ajan, ortam, model, araç veya zaman penceresine göre gruplandırın.
+Hatalar size oturumlar arasında hata-öncelikli bir görünüm sağlar. Ortam, olay türü, hata türü, agent veya oturum'a göre filtreleyin ve tekrarlanan operasyonel sorunları bulmak için zaman penceresini daraltın.
 
 ## Hataları araştırın
 
 <Tabs>
   <Tab title="Dashboard">
     1. **Observe → Errors** bölümüne gidin.
-    2. Ortam, olay türü, hata türü, ajan, oturum kimliği veya arama metniyle filtreleyin.
-    3. Gruplandırılmış bir hatayı genişleterek oluşumları görün. Tam olayı oturumunda açmak için bir satır seçin.
-    4. Benzer hatalar için uyarı başlatmak üzere temsili bir hatadaki zil denetimini seçin.
+    2. Ortam, olay türü, hata türü, agent, oturum kimliği veya arama metni'ne göre filtreleyin.
+    3. Bir satırı seçerek exact olayı oturumunda açın.
+    4. Benzer hatalar için uyarı başlatmak üzere temsili bir satırda **alert** seçin.
 
-    ![Hata histogramı, gruplandırılmış hatalar ve uyarı oluşturma denetimini gösteren Hatalar sayfası.](/images/dashboard/errors.png)
+    ![Hata histogram'ını, filtrelenmiş hata olayları listesini ve satır başına uyarı kontrolünü gösteren Hatalar sayfası.](/images/dashboard/errors.png)
   </Tab>
   <Tab title="CLI">
     ```bash
-    fp errors --env production --since 24h
+    fp errors --since 24h
     fp errors --error-type TimeoutError --agent-id checkout-agent
-    fp errors --aggregate --env production --since 7d
+    fp errors --event-type tool_result --since 24h
+    fp errors --aggregate --env local --since 7d
     ```
 
-    Bir hata özetinin arkasındaki ham yükü almanız gerektiğinde `fp events --full --session-id <id>` komutunu kullanın.
+    Bir araç hatası, bare `error` olayı yerine hatalı bir `tool_result` olayı olarak gelir, bu nedenle `--event-type tool_result`, araç hatalarını model ve runtime hatalarından ayırmanın yoludur. `is_error` ve `error_type` her satırda sunucu tarafından hesaplanan sütunlardır, bu nedenle hiçbir mod payload'ları ayrıştırmaz.
+
+    Geçerli filtre değerlerini tahmin etmek yerine keşfedin: `fp list error_types`, `fp list agents`, `fp list envs`, ve `fp list event_types`.
+
+    **Bu beş `fp errors` filtresi tam olarak birer değer alır** — `--env`, `--error-type`, `--event-type`, `--agent-id`, `--session-id`. (`--search` istisna olup tekrarlanabilir.) `fp events` ve `fp sessions` üzerindeki aynı bayrak adları tekrarlanan veya virgülle ayrılmış değerleri kabul eder, bu nedenle `--env prod,staging` orada çalışırken burada literal `prod,staging` dizesini eşleştirir. Bu hata yerine boş sonuç döndürür; "hata yok" olarak okunur.
+
+    Daemon, değiştirene kadar olayları `local` olarak etiketler, bu nedenle `--env production` varsayılan yüklemede hiçbir şeyle eşleşmez. Bkz. [Ortam etiketini değiştirin](/tr/reference/events-and-configuration#change-an-environment-label).
+
+    `--all` yalnızca `--limit`'e kadar otomatik sayfalandırır, bu varsayılan olarak 50'dir — bundan fazlasını istediğinizde `--all --limit 500` yazın. Diğer liste-modu bayrakları `--order asc|desc`, `--cursor`, `--page-size` (max 200), `--fields` ve `--full-ids`'dir. `--search` tekrarlanabilir ve her iki modu da uygular — bir satır eşleşir ve terimlerden herhangi birini içerirse.
+
+    `fp errors` için `events:read` gerekir. `--json` altında, liste modu `{"errors": [...], "next_cursor": ...}` döndürür ve `--aggregate` `{total, sessions, agents, last_ts, bins}` döndürür. Bir hata özeti arkasındaki raw payload'a ihtiyacınız olduğunda `fp events --full --session-id <id>` kullanın.
   </Tab>
 </Tabs>
 
-## Şu durumlarda Hatalar'ı kullanın
+## Hataları şu durumlarda kullanın
 
 - Üretimde en sık görülen hata sınıfını bulun.
-- Tek bir aracın veya modelin bir artışa neden olup olmadığını belirleyin.
-- Toplam sayımdan temsili oturumlara atla.
-- Tekrarlanması için bir uyarı oluşturun.
-- Etkilenen popülasyonu bir denetimin içine dahil edin.
+- Tek bir aracın veya modelin bir spike'a neden olup olmadığını belirleyin.
+- Toplam sayımdan temsili oturumlara atlayın.
+- Tekrar için uyarı oluşturun.
+- Etkilenen popülasyonu bir denetim'e dahil edin.
 
-Hata, gözlemlenen bir olaydır. Başarısız bir değerlendirme bir kalite yargısı ve denetim bulgusu araştırılan bir başarısızlık kalıbıdır. Hangi yanıt iş akışını kullanacağına karar verirken bu ayrımları göz önünde bulundurun.
+Bir hata, gözlenen bir olaydır. Başarısız bir değerlendirme, bir kalite yargısıdır ve bir denetim bulgusu, araştırılmış bir hata modelidir. Hangi yanıt iş akışını kullanacağınıza karar verirken bu ayrımları koruyun.
 
-<Card title="Uyarı oluştur" icon="bell-ring" href="/tr/audits/alerts">
-  Bir hata veya kalite koşulu bir eşiği aştığında yanıtlayanları bilgilendirin.
-</Card>
+## Cloud hesabı olmadan
+
+Hatalar, Cloud yüzeyidir. Bağlanmamış bir makinede `failproofai audit`, disk üzerinde zaten olan oturum geçmişini riskli ve israf etme modellerine karşı tarar ve `http://localhost:8020/audit` açar. Zamanlayıcıya göre yeniden taramak ve bulguları e-posta'ya göndermek için `--schedule [days]` ekleyin (varsayılan 7 gün, aralık 1 ile 90 arası), planlamanın açık olup olmadığını kontrol etmek için `--status` ve durdurtmak için `--no-schedule`. Her şey makinede çalışır, iki istisna dışında. Planlanan bir tarama, temiz bir tarama da dahil olmak üzere her çalıştırmada bu makinenin kimliğini, etiketini, platformunu ve kapladığı pencereyi gönderir — temiz bir taramanın gizlediği, istek değil, özettir. Ve `FAILPROOFAI_TELEMETRY_DISABLED=1` ayarlamadığınız sürece anonim CLI telemetrisi her denetimde gönderilir.
+
+<CardGroup cols={2}>
+  <Card title="Uyarı oluşturun" icon="bell-ring" href="/tr/audits/alerts">
+    Bir hata veya kalite koşulu eşik değerini aştığında yanıt verenlere bildirin.
+  </Card>
+  <Card title="Bulgular ve sorunlar" icon="clipboard-list" href="/tr/audits/findings-and-issues">
+    Tekrarlanan bir hatayı, sahibi olan araştırılmış bir modele dönüştürün.
+  </Card>
+</CardGroup>

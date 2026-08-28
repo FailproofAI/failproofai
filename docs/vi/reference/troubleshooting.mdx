@@ -1,167 +1,100 @@
 ---
 title: "Khắc phục sự cố"
-description: "Chẩn đoán các phiên bị thiếu, chính sách bị thiếu, lỗi gửi và các hành động agent bị chặn."
+description: "Chẩn đoán các vấn đề về cài đặt, gửi dữ liệu, chính sách và phiên."
 icon: "wrench"
 ---
 
-<AccordionGroup>
-  <Accordion title="Không có phiên nào xuất hiện trong Cloud">
-    <Tabs>
-      <Tab title="Dashboard">
-        Mở **Administration → Keys** và xác nhận khóa máy đang hoạt động và có `events:add`. Sau đó mở **Observe → Events**, mở rộng phạm vi thời gian và xóa các bộ lọc environment và agent. Nếu có sự kiện, tìm kiếm ID phiên và sau đó kiểm tra **Observe → Sessions** để xem nhóm. Nếu không có sự kiện nào, hãy chẩn đoán daemon Failproof từ CLI.
+Bắt đầu bằng:
 
-        ![Luồng sự kiện trực tiếp với các bộ lọc chính và các sự kiện agent gần đây đang đến.](/images/dashboard/events-stream-current.png)
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai flush --wait --timeout 60
-        fp list envs
-        fp events --since 24h --limit 20
-        fp sessions --since 24h --limit 20
-        ```
+```bash
+failproofai config --status
+failproofai policies
+```
 
-        Xác nhận rằng chế độ thu thập đã được bật, khóa được cấu hình có `events:add` và bộ lọc dashboard phù hợp với environment được phát ra.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="Các sự kiện Python SDK vẫn còn trên đĩa">
-    <Tabs>
-      <Tab title="Dashboard">
-        Xóa các bộ lọc trong **Observe → Events** và tìm kiếm ID phiên SDK chính xác. Nếu không xuất hiện gì, hãy kiểm tra spool SDK và daemon Failproof trên máy nguồn.
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai flush --wait
-        ```
+## Một agent không kết nối được
 
-        Xác nhận một daemon đang chạy và được kết nối — SDK spool bất kể có hay không. Thư mục spool **không** cần tồn tại trước (writer sẽ tạo nó) và không có biến môi trường nào chọn nó: `$FAILPROOFAI_HOME/custom-agents`, nếu không thì `~/.failproofai/custom-agents` là thư mục gốc duy nhất, và `configure(base_dir=...)` là ghi đè duy nhất. Nếu tiến trình bị `SIGKILL` hoặc OOM-killed, bất cứ thứ gì vẫn còn trong hàng đợi đã bị mất — xử lý `SIGTERM` để giới hạn điều đó.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="Máy không nhận được chính sách">
-    <Tabs>
-      <Tab title="Dashboard">
-        Mở **Admin → enforcement**, chọn máy và so sánh các phiên bản được gán, báo cáo và trước đó của nó. Xác nhận phạm vi triển khai bao gồm máy và khóa của nó có `policies:pull`. Ingest có thể hoạt động ngay cả khi gửi chính sách không hoạt động.
+Chạy lại cài đặt:
 
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai update
-        failproofai config --status
-        ```
+```bash
+failproofai config
+```
 
-        Xác nhận ID máy và nhãn phù hợp với mục tiêu dashboard. Kết nối lại với khóa có khả năng chính sách nếu thông tin xác thực hiện tại chỉ cấp quyền ingest sự kiện.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="Một hành động bị từ chối vì daemon không khả dụng">
-    <Tabs>
-      <Tab title="Dashboard">
-        Mở **Admin → enforcement** và kiểm tra thời gian cuối cùng được nhìn thấy của máy và phiên bản được báo cáo. Nếu máy đã lỗi thời, hãy coi đây là vấn đề daemon cục bộ. Không làm yếu chính sách triển khai chỉ để bỏ qua daemon không khả dụng.
+Cài đặt hỗ trợ Linux và macOS. Nó cần quyền quản trị viên một lần để cài đặt dịch vụ, nhưng không bao giờ yêu cầu mật khẩu sudo.
 
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai update
-        failproofai config
-        failproofai config --status
-        ```
+Kiểm tra các đường dẫn harness và scope trong [Harnesses](/vi/reference/harnesses).
 
-        Khởi động lại hoặc cập nhật `failproofaid`; chạy lại cấu hình khi phiên bản giao thức CLI và daemon khác nhau. Đường dẫn daemon được cấu hình tất yếu thất bại theo thiết kế.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="Chính sách tùy chỉnh không tải được">
-    <Tabs>
-      <Tab title="Dashboard">
-        Đối với chính sách được tạo trên Cloud, mở **Admin → policy editor**, chọn bản nháp và xem lỗi xác thực trước khi xuất bản. Đối với chính sách cục bộ, sử dụng CLI để xác thực nó, sau đó mở **Observe → policy** sau một hành động kiểm tra để xác nhận quyết định đến.
+## Một phiên bị thiếu
 
-      </Tab>
-      <Tab title="CLI">
-        Xác nhận tên tệp kết thúc bằng `policies.js`, `policies.mjs` hoặc `policies.ts`, mô-đun gọi `customPolicies.add(...)` và các import được phân giải từ tệp chính sách.
+```bash
+failproofai flush --wait
+failproofai backfill --since 30d --dry-run
+failproofai harness list
+```
 
-        ```bash
-        failproofai policies --install --custom ./checkout.policies.ts
-        failproofai policies
-        ```
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="Một cuộc kiểm toán không trả về kết quả">
-    <Tabs>
-      <Tab title="Dashboard">
-        Mở **Analyze → audits**, chọn lần chạy và kiểm tra xem phân tích mô hình có chạy không. Sau đó so sánh phạm vi và cửa sổ của nó với **Observe → sessions** và mở các dấu vết tiêu biểu từ dân số đó.
+Bỏ `--dry-run` để gửi lại lịch sử cũ. Thêm một vị trí transcript khác bằng:
 
-        Kết quả bằng không chỉ có ý nghĩa khi phân tích chạy thành công. Nếu phân tích bị bỏ qua hoặc thất bại, lần chạy không tạo ra kết quả và giữ cửa sổ chưa được phân tích mở cho lần chạy thành công trong tương lai. Nếu phân tích mô hình bị vô hiệu hóa, cuộc kiểm toán cũng không tạo ra kết quả vì quét thông tin xác thực xác định và PII ghi lại thống kê nhưng không còn tạo ra kết quả.
+```bash
+failproofai harness add-path <harness> [label=]<path>
+```
 
-        ![Biểu mẫu kiểm toán trong đó environment, agent, nhịp điệu và cửa sổ quét xác định dân số phiên.](/images/dashboard/audit-new.png)
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        fp audits show <audit-name>
-        fp audits runs <audit-name>
-        fp sessions --since 24h --env production
-        fp audits context-show <audit-name>
-        fp audits run <audit-name>
-        fp audits findings --audit <audit-name>
-        ```
+Sử dụng nhãn khi hai vị trí chứa bản sao của cùng một dự án.
 
-        Nếu lần chạy vẫn ở trong hàng đợi, hãy đợi dung lượng audit-agent hoặc yêu cầu toán tử triển khai kiểm tra fleet kiểm toán. Một cuộc kiểm toán ở trong hàng đợi sẽ thử lại; nó không bị bỏ qua ngay lập tức.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="Các đánh giá trực tuyến không chạy tự động">
-    <Tabs>
-      <Tab title="Dashboard">
-        Mở một phiên đã hoàn thành và kiểm tra xem đánh giá thручручthủ công có thành công không. Cloud được lưu trữ hiện tại không có kiểm soát điểm cuối đánh giá trong dashboard; toán tử máy chủ phải cấu hình nó.
-      </Tab>
-      <Tab title="CLI">
-        Xác minh bộ đánh giá, sau đó kiểm tra các trạng thái đánh giá gần đây:
+## Mọi hành động được bảo vệ đều bị từ chối
 
-        ```bash
-        curl https://evaluator.example.com/health
-        fp evals --since 1h
-        ```
+Trên một máy được cấu hình, `failproofaid` là người đánh giá duy nhất. Nếu nó không thể trả lời, các hành động được bảo vệ sẽ thất bại.
 
-        Trên Cloud tự lưu trữ, xác nhận `EVALUATOR_ENDPOINT` có trên máy chủ và `EVALUATOR_TOKEN` khớp với bộ đánh giá. Đánh giá tự động bị vô hiệu hóa khi điểm cuối không có.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="Xác thực Cloud CLI nhắm đến tổ chức sai">
-    <Tabs>
-      <Tab title="Dashboard">
-        Sử dụng bộ chuyển tổ chức và xác nhận slug dự kiến và quyền trước khi so sánh kết quả với CLI.
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        fp whoami
-        fp orgs current
-        fp orgs perms
-        ```
+```bash
+failproofai config --status
+systemctl status failproofaid@$USER        # Linux
+sudo launchctl print system/ai.failproof.failproofaid.$USER  # macOS
+```
 
-        Ở chế độ khóa API, chỉ định `fp --org <slug> --api-key <key> ...` hoặc đặt `AGENTEYE_ORG`. Trạng thái tổ chức phiên con người đã lưu có chủ ý bị bỏ qua cho các yêu cầu khóa API.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="Một chính sách chặn công việc hợp lệ">
-    <Tabs>
-      <Tab title="Dashboard">
-        Mở **Observe → policy**, bảo toàn quyết định và phiên liên kết, và xác định điều kiện dương tính giả. Sau đó mở **Admin → enforcement** và quay lui các máy bị ảnh hưởng về phiên bản trước đó. Tạo phiên bản hẹp hơn trong **Policy editor**, kiểm tra nó trên phạm vi nhỏ, và chỉ mở rộng sau khi công việc hợp lệ thành công.
+Chạy `failproofai config` để sửa chữa hoặc cài đặt lại dịch vụ.
 
-      </Tab>
-      <Tab title="CLI">
-        Quay lui triển khai Cloud chỉ là dashboard. Tạm dừng phiên cục bộ không vô hiệu hóa chính sách do Cloud quản lý. Nếu dashboard không khả dụng, hãy chụp trạng thái máy và triển khai và khôi phục quyền truy cập dashboard thay vì thử lại hành động bị chặn nhiều lần.
+## Một pack đang từ chối
 
-        ```bash
-        failproofai config --status
-        ```
-      </Tab>
-    </Tabs>
-  </Accordion>
-</AccordionGroup>
+`failproofai policies` liệt kê các pack không thể tải. Một pack được chọn sẽ thất bại thay vì biến mất.
 
-Khi liên hệ với hỗ trợ, hãy bao gồm phiên bản CLI, harness, environment, ID phiên hoặc triển khai liên quan và đầu ra của `failproofai config --status` với các bí mật đã được xóa.
+Nguyên nhân thường gặp:
+
+- Artifact đã thay đổi sau khi cài đặt.
+- Manifest và các chính sách được nhóm gói không phù hợp.
+- Tệp bị thiếu hoặc không thể được import.
+- Pack sử dụng một sự kiện, công cụ hoặc hình dạng chính sách không được hỗ trợ.
+
+Xóa pack hoặc cài đặt bản phát hành được sửa:
+
+```bash
+failproofai policies remove owner/repo
+failproofai policies add owner/repo@<release>
+```
+
+## Cloud bị ngắt kết nối
+
+Ưu tiên sử dụng một biến môi trường cho khóa:
+
+```bash
+export FAILPROOFAI_CLOUD_TOKEN="<key>"
+failproofai config
+failproofai config --status
+```
+
+Một máy có thể kéo chính sách và gửi hoạt động độc lập. Báo cáo trạng thái cả hai.
+
+## Một chính sách không chặn
+
+Kiểm tra ba điều:
+
+1. Chính sách đang bật: `failproofai policies`.
+2. Sự kiện và công cụ của nó phù hợp với hành động.
+3. Harness đó có thể thực thi sự kiện.
+
+Một lệnh từ chối tool-call được xác minh trên tất cả 12 harness được hỗ trợ. Các sự kiện khác có thể khác nhau. Xem [khả năng thực thi](/vi/reference/harnesses#enforcement-capability).
+
+## Các bản tải xuống bị chặn
+
+- `FAILPROOFAI_NO_DOWNLOAD=1` từ chối các bản tải xuống mạng.
+- `FAILPROOFAI_DAEMON_BASE_URL` chỉ dẫn các bản tải xuống dịch vụ đến một mirror.
+- `FAILPROOFAI_PACK_BASE_URL` chỉ dẫn các bản tải xuống pack đến một mirror.
+
+Các pack đã cài đặt tiếp tục thực thi khi các bản tải xuống bị vô hiệu hóa.

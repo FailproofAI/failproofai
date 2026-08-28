@@ -1,21 +1,21 @@
 ---
 title: "自定义 Agents"
-description: "failproofai-sdk 的配置、事件目录、关联规则及数据投递说明。"
+description: "failproofai-sdk 的配置、事件目录、关联规则与事件投递。"
 icon: "python"
 ---
 
-本页面涵盖每项配置、方法和字段的详细说明。如果你是第一次接入，建议先阅读指南——本页面主要用于查阅参考。
+本页说明每个配置项、方法和字段的具体作用。如果你是第一次接入，请先阅读指南——本页供查阅使用。
 
 <Columns cols={2}>
   <Card title="自定义 Agents 指南" icon="code" href="/zh/start/integrations/custom-agents">
     安装、接入、事件方法、完整示例及常见问题。
   </Card>
-  <Card title="使用框架？" icon="plug" href="/zh/start/integrations">
-    LangChain、CrewAI、LlamaIndex 和 Pydantic AI 只需一次调用即可完成接入。
+  <Card title="正在使用某个框架？" icon="plug" href="/zh/start/integrations">
+    LangChain、CrewAI、LlamaIndex 和 Pydantic AI 只需一次调用即可自动完成接入。
   </Card>
 </Columns>
 
-需要 Python 3.10 或更高版本。无运行时依赖。
+要求 Python 3.10 或更高版本，且**零运行时依赖**——这是一项设计原则，而非偶然。SDK 需要安装到他人的 agent 进程中，若声明了依赖，这些依赖就会被对方继承。测试会扫描核心模块，并启动一个全新的解释器来验证没有任何框架出现在 `sys.modules` 中。
 
 ## 安装
 
@@ -23,26 +23,27 @@ icon: "python"
 pip install failproofai-sdk
 ```
 
-该包以 `failproofai-sdk` 形式安装，在 Python 中以 `failproofai_sdk` 导入。框架扩展（如 `failproofai-sdk[langgraph]`）会同时安装对应框架本身；适配器始终包含在基础安装包中。
+包名为 `failproofai-sdk`，在 Python 中以 `failproofai_sdk` 导入。`failproofai-sdk[langgraph]` 等框架扩展会安装框架本身；适配器始终包含在基础 wheel 中。
 
 ## 连接 Failproof 守护进程
 
 <Tabs>
   <Tab title="控制台">
-    1. 前往 **Admin → Keys**，创建一个具有 `events:add` 权限的密钥。
-    2. 在 Agent 所在机器上[将 Failproof 守护进程连接到 Cloud](/zh/start/setup#connect-a-machine-to-cloud)。
-    3. 运行一次已接入的会话，然后在 **Observe → Events** 下找到其精确 ID。
-    4. 前往 **Observe → Sessions**，选择相同环境，打开重建后的追踪视图。
+    1. 前往 **Administration → Keys**，创建一个具有 `events:add` 权限的密钥。
+    2. 在 agent 所在机器上[将 Failproof 守护进程连接到 Cloud](/zh/start/setup#connect-failproof-ai-cloud)。
+    3. 运行一次已接入的会话，然后在 **Observe → Events** 下找到其确切 ID。
+    4. 前往 **Observe → Sessions**，选择相同的环境，打开重建的追踪记录。
 
-    ![以执行图和有序事件追踪形式重建的自定义 Python Agent 会话。](/images/dashboard/session-detail.png)
+    ![自定义 Python agent 会话以执行图和有序事件追踪的形式重建展示。](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
-    failproofai config \
-      --connect https://app.befailproof.ai \
-      --token <events-add-key>
+    export FAILPROOFAI_CLOUD_TOKEN=<events-add-key>
+    failproofai config
     failproofai config --status
     ```
+
+    建议使用环境变量而非 `--token`：命令行参数可被该机器上的所有用户通过 `ps` 读取，并且会出现在 shell 历史记录和 CI 日志中。
   </Tab>
 </Tabs>
 
@@ -60,30 +61,65 @@ failproofai_sdk.configure(
 
 | 参数 | 说明 |
 | --- | --- |
-| `environment` | 每条事件上的标签，例如 `production`、`staging`、`prod-eu`，默认为 `dev`。 |
-| `flush_interval` | 后台线程写入磁盘的间隔时间（秒），默认为 `0.5`。 |
-| `base_dir` | 写入位置，默认为守护进程的 spool 目录，除非有特殊需求，否则无需修改。 |
+| `environment` | 附加在每个事件上的标签，如 `production`、`staging`、`prod-eu`。默认值为 `dev`。 |
+| `flush_interval` | 后台线程写入磁盘的间隔，单位为秒。默认值为 `0.5`。 |
+| `base_dir` | 写入位置。默认为 `$FAILPROOFAI_HOME/custom-agents`，否则为 `~/.failproofai/custom-agents`——即守护进程监控的缓冲目录，通常无需更改。 |
+
+`configure()` 仅支持**关键字参数**——`configure(None, 0.5, "prod")` 会触发 `TypeError`。它会在应用所有参数之前先对每个参数进行验证，若 `flush_interval` 不是大于零的有限数值则抛出 `ValueError`，因此被拒绝的调用不会使 SDK 处于中间状态。
 
 也可通过环境变量进行设置：
 
 | 变量 | 说明 |
 | --- | --- |
-| `AGENTEYE_ENVIRONMENT` | 无需修改代码即可设置 `environment`，适用于标签由部署环境而非应用代码决定的场景。`configure()` 参数的优先级高于该变量。 |
-| `FAILPROOFAI_HOME` | 修改 Failproof AI 根目录（存放 spool 的位置）。 |
-| `FAILPROOFAI_SDK_STRICT` | 设为 `1` 时，接入错误会直接抛出异常，而不是仅记录日志。 |
-| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | 设为 `1` 时，框架兼容性问题会直接抛出异常，而不是仅发出警告后继续运行。 |
+| `AGENTEYE_ENVIRONMENT` | 无需修改代码即可设置 `environment`，适合标签属于部署环境而非应用本身的场景。`configure()` 中的参数优先级高于此变量。 |
+| `FAILPROOFAI_HOME` | 更改存放缓冲目录的 Failproof AI 根目录。 |
+| `FAILPROOFAI_SDK_STRICT` | 设为 `1` 时，接入错误将抛出异常而非仅记录日志。 |
+| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | 设为 `1` 时，框架兼容性问题将抛出异常而非仅发出警告并继续执行。 |
 
 <Warning>
-  **`environment` 中不能包含逗号。** 数据摄取会按逗号分割该字段以构建过滤器，任何标签中包含逗号的事件都会被跳过——导致整个运行任务静默消失。请写 `prod-eu`，而不是 `prod,eu`。
+  **`environment` 中不能含有逗号。** 数据摄取会按逗号分割该字段以构建过滤器，包含逗号的标签对应的事件将被跳过——整个运行会无声地消失。请写 `prod-eu`，而非 `prod,eu`。
 
-  `configure(environment="prod,eu")` 会立即抛出异常，方便你及时发现问题。而 `AGENTEYE_ENVIRONMENT` 无法抛出异常（因为没有调用方可接收），因此它只会警告一次并回退到 `dev`。
+  `configure(environment="prod,eu")` 会立即抛出异常。`AGENTEYE_ENVIRONMENT` 无法抛出异常（没有调用方可以接收），因此它会发出一次警告并回退到 `dev`。
 </Warning>
 
-事件会先缓存在内存中，后台线程每隔 `flush_interval` 秒写入一次，解释器退出时会执行最后一次 flush。如果进程被强制终止，尚未写入的数据将会丢失。
+事件会在内存中排队，每隔 `flush_interval` 秒由后台写入一次，解释器退出时执行最终刷新。被强制终止的进程会丢失尚未写入的数据。
+
+## 作用域
+
+三个上下文管理器，均可使用 `with` 和 `async with`：
+
+| 作用域 | 绑定内容 | 发出事件 |
+| --- | --- | --- |
+| `session()` | 一个 session id，并将其作为 yield 值返回 | 无——仅标识用途 |
+| `agent(name)` | 一个 agent id，以及从外层 agent 推断出的 `parent_id` | 进入时发出 `agent_start`，退出时发出 `agent_end` |
+| `tool_call(name)` | 无新绑定——继承外层标识 | 进入时发出 `tool_use`，退出时发出 `tool_result` |
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("planner"):
+        with failproofai_sdk.tool_call("web_search", input={"q": q}) as t:
+            t.output = search(q)
+```
+
+`tool_call()` 默认将 `tool_call_id` 设为新生成的 `uuid4().hex`，并在进入时一次性解析标识，因此在其内部推送自身作用域的工具无法使 `tool_result` 归属到不同的 agent。发生异常时会发出 `tool_result(error="TypeName: msg")`，**不会发出 `error` 事件**——循环捕获的工具失败不属于运行级别错误，向外传播的异常由外层 `agent()` 精确上报一次。取消操作会关闭叶节点，且不含错误字符串。
+
+## 适配器
+
+`instrument()` 将受支持的框架连接到上述作用域。不带参数时自动检测当前进程中已导入的框架；传入名称则精确安装指定的一个。
+
+```python
+failproofai_sdk.instrument()              # 检测所有已导入的框架
+failproofai_sdk.instrument("crewai")      # 仅安装指定框架
+failproofai_sdk.uninstrument("crewai")    # 还原原始属性
+```
+
+四个可用名称为：`"langchain"`（涵盖 LangGraph，因为 LangGraph 运行在 langchain-core 的回调管理器上）、`"crewai"`、`"llama_index"` 和 `"pydantic_ai"`。框架的导入发生在调用内部，这也是 `import failproofai_sdk` 保持零依赖的原因。
+
+每个框架均有专属页面：[LangChain](/zh/start/integrations/langchain)、[CrewAI](/zh/start/integrations/crewai)、[LlamaIndex](/zh/start/integrations/llamaindex)、[Pydantic AI](/zh/start/integrations/pydantic-ai)。
 
 ## 标识
 
-每条事件都归属于某个 session 和某个 agent。**使用上下文管理器会自动填充两者**，因此通常无需手动传入：
+每个事件都属于某个 session 和 agent。**作用域会自动填充两者**，因此通常无需手动传入：
 
 ```python
 with failproofai_sdk.session():
@@ -91,30 +127,41 @@ with failproofai_sdk.session():
         failproofai_sdk.event.tool_use(tool_name="search", tool_call_id="c1")
 ```
 
-显式传入 `session_id` 或 `agent_id` 同样有效，且优先级更高。如果两者均未绑定也未传入，调用会抛出 `TypeError`，而不是静默发送一条 Cloud 会悄悄丢弃的事件。
+显式传入 `session_id` 或 `agent_id` 同样有效，且优先级更高。
+
+两者在**未绑定任何内容时的行为并不对称**：
+
+| 省略项 | 未绑定时的行为 |
+| --- | --- |
+| `session_id` | 抛出 `TypeError`，而非发出一个 Cloud 会静默丢弃的事件 |
+| `agent_id` | 回退为 `main`，因此在 `session()` 内、没有 `agent()` 包裹的情况下发出的事件全部归属到名为 `main` 的单个 agent 下 |
+
+若自动生成 session id，一次运行会被分散到与发射点数量相同的多个 session 中，这也是只有 `session_id` 缺失时才会抛出异常的原因。
+
+`session_id` 和 `agent_id` 也是仅有的两个会检查空值的字段：非字符串类型抛出 `TypeError`，空字符串或纯空白字符串抛出 `ValueError`。服务端*接受*空白 id，因此若不加以检查，使用空白 id 发送的所有事件都会被归并到同一个空白 id 下，表面上看似存在，实则被静默合并。
 
 <Note>
-  标识信息存储在上下文变量中，会自动跟随 `asyncio` 任务传播，但**不会**跟随新线程传播——请用 `failproofai_sdk.propagate()` 包装 worker 线程，否则其事件将无法关联到对应 session。
+  标识通过上下文变量传递。它会自动跟随 `asyncio` 任务，但**不会**跟随新线程——请用 `failproofai_sdk.propagate()` 包装 worker，否则其事件将无法关联到正确的上下文。
 </Note>
 
 ## 事件目录
 
-共 15 个方法，大多数以**成对**形式出现——先调用开始方法，再调用结束方法，SDK 会自动计算两者之间的耗时。
+共 15 个方法，大多数以**成对**形式出现——一个开启，一个关闭。
 
-| | 开始 | 结束 |
-| --- | --- | --- |
-| **Agents** | `agent_start` | `agent_end` |
-| | `agent_pause` | `agent_resume` |
-| **模型** | `model_request` | `model_response` |
-| **工具** | `tool_use` | `tool_result` |
-| **Hooks** | `hook_triggered` | `hook_completed` |
-| **人工** | `human_wait` | `human_input` |
+| | 开启 | 关闭 | SDK 计时 |
+| --- | --- | --- | --- |
+| **Agents** | `agent_start` | `agent_end` | 否 |
+| | `agent_pause` | `agent_resume` | 是 |
+| **Models** | `model_request` | `model_response` | 否——在 Cloud 中关联 |
+| **Tools** | `tool_use` | `tool_result` | 是 |
+| **Hooks** | `hook_triggered` | `hook_completed` | 是 |
+| **Humans** | `human_wait` | `human_input` | 是 |
 
-另有三个独立方法：`error`、`human_pause`、`human_interrupt`。
+三个独立方法：`error`、`human_pause`、`human_interrupt`。
 
 <Accordion title="每个方法的所有字段" icon="table">
 
-每个方法同样接受 `session_id` 和 `agent_id`，上下文管理器会自动填充。值为 `None` 的字段会被丢弃，不会以 JSON `null` 形式发送，且每个方法均返回 `None`。
+每个方法还接受 `session_id` 和 `agent_id`，作用域会自动填充这两个值。保持为 `None` 的字段会被丢弃，而非以 JSON `null` 形式发送；每个方法均返回 `None`。
 
 | 方法 | 必填 | 可选 |
 | --- | --- | --- |
@@ -137,38 +184,41 @@ with failproofai_sdk.session():
 </Accordion>
 
 <Warning>
-  要将某次运行标记为失败，`outcome` 必须为以下值之一：`failed`、`error`、`timeout` 或 `rejected`。其他任何值——包括容易混淆的 `"failure"`——都会被视为成功。
+  要将一次运行标记为失败，`outcome` 必须为以下之一：`failed`、`error`、`timeout` 或 `rejected`。其他任何值——包括拼写相近的 `"failure"`——均视为成功。
 </Warning>
 
-## 配对与耗时
+## 配对与计时
 
-**一条规则：结束事件的 id 必须与其对应开始事件相同。** 这是配对的依据，也是 SDK 计算耗时的基础。
+**一条规则：为关闭事件传入与开启事件相同的 id。** 这是配对的依据，也是 SDK 计算时间差的方式。
 
-| 配对 | 匹配字段 |
-| --- | --- |
-| `tool_use` → `tool_result` | `tool_call_id` |
-| `hook_triggered` → `hook_completed` | `hook_id` |
-| `agent_pause` → `agent_resume` | `pause_id` |
-| `human_wait` → `human_input` | `input_id` |
-| `model_request` → `model_response` | `request_id` |
+| 配对 | 匹配字段 | 追踪键 |
+| --- | --- | --- |
+| `tool_use` → `tool_result` | `tool_call_id` | `tool:{session_id}:{tool_call_id}` |
+| `hook_triggered` → `hook_completed` | `hook_id` | `hook:{session_id}:{hook_id}` |
+| `agent_pause` → `agent_resume` | `pause_id` | `pause:{session_id}:{pause_id}` |
+| `human_wait` → `human_input` | `input_id` | `human:{session_id}:{input_id}` |
 
-**不要自行传入 `duration_ms`。** SDK 会自动计算，手动传入会抛出 `ValueError`。
+追踪键以 session 为命名空间，这也是下面两个边界情况均成立的原因。
 
-唯一例外是 `model_response`——只有你才知道真实的 provider 延迟。请传入整数毫秒值，传入浮点数会抛出异常，因为该列为 32 位整数，否则将会存储为空值。
+**不要在这四个关闭事件中自行传入 `duration_ms`。** SDK 会自动测量，手动传入会抛出 `ValueError`。
+
+<Note>
+  `model_request` 和 `model_response` 是一对，Cloud 通过 `request_id` 进行关联。SDK 不在本地追踪或计时，这也是 `model_response` 是唯一需要你手动传入 `duration_ms` 的事件的原因。请传入整数毫秒数——浮点数会抛出异常，因为该列为 32 位整数，传入浮点数会导致值为空。
+</Note>
 
 <Accordion title="边界情况" icon="circle-help">
 
-- **id 只需在同类事件和同一 session 内唯一。** 工具调用和 hook 可以共用同一个 id；同时运行的两个 session 可以复用相同的 id 而不会冲突。
-- **id 不限定于某个 agent 的作用域。** 在一个 agent 下开始、在另一个 agent 下结束的配对仍然可以匹配——这在多 agent 代码中是正常情况。
-- **建议使用 `request_id`，但非必填。** 不传时，模型事件按到达顺序配对，因此同一 agent 中的两个并发调用可能会配对错误。
-- **跨进程的配对**在 Cloud 中仍然可以匹配，但 SDK 无法计算耗时——因为两个进程都只看到了一半。
-- **最多同时等待 10,000 个开始事件。** 超出后最旧的会被丢弃，确保内存泄漏不会无限增长。
+- **Id 只需在同一类型、同一 session 内唯一。** 一个 tool call 和一个 hook 可以共用同一个 id；同时运行的两个 session 也可以复用相同的 id，不会发生冲突。
+- **Id 的作用域不限于单个 agent。** 在一个 agent 下开启、在另一个 agent 下关闭的配对仍然能够匹配——这在多 agent 代码中是正常情况。
+- **`request_id` 可选但建议填写。** 若不填写，model 事件会按到达顺序配对，同一 agent 中的两个并发调用可能会错配。
+- **跨进程的配对**在 Cloud 中仍然能够匹配，但 SDK 无法计时——两个进程都未同时看到配对的两端。
+- **最多 10,000 个开启事件等待关闭事件。** 超过此限制后最旧的条目会被丢弃，因此泄漏不会无限增长。
 
 </Accordion>
 
 ## 自定义字段
 
-传入的任何额外关键字参数都会随事件一起存储：
+传入的任何额外关键字都会随事件一起存储：
 
 ```python
 failproofai_sdk.event.tool_use(
@@ -177,21 +227,42 @@ failproofai_sdk.event.tool_use(
 )
 ```
 
-如果后续需要查询，建议使用 JSON 兼容类型。其他类型——UUID、datetime、`Decimal`、set、bytes、模型对象——都会被转换为字符串存储。
+如需后续查询，建议使用 JSON 兼容类型。其他类型——UUID、datetime、`Decimal`、set、bytes、模型对象——均会以字符串形式存储。
 
 <Warning>
-  **为自定义字段名添加前缀。** 额外字段会在最后应用，因此名为 `model`、`tool_name` 或 `outcome` 的字段会静默覆盖真正的标准字段。框架适配器使用 `fw_` 前缀；沿用这一约定可以避免任何冲突。
+  **有十一个字段名是例外，传入时会抛出异常而非转为字符串。** 数据摄取会将这些字段提升到带类型的列中，其他值则在返回 `200 OK` 时静默存为 `NULL`——因此 SDK 在调用处直接拒绝它们。
 
-  这也解释了为什么拼写错误的可选字段不会报错——它只会变成一个新的自定义字段。如果 Cloud 中某个标准字段缺失，请首先检查拼写。
+  | 字段名 | 必须为 |
+  | --- | --- |
+  | `duration_ms`, `input_tokens`, `output_tokens` | 无符号 32 位范围内的 `int` |
+  | `tool_name`, `tool_call_id`, `hook_name`, `hook_id`, `input_id`, `pause_id`, `error_type`, `model` | 字符串——`None` 抛出 `ValueError`，非字符串抛出 `TypeError` |
+
+  无论该值是作为具名参数传入还是作为自定义字段传入，上述规则均适用。`model_response` 在接收时会验证 `input_tokens` 和 `output_tokens`，原因相同——这两个字段最有可能直接从 provider 的 usage 对象中填充。
 </Warning>
 
-以下五个字段名为保留字，传入后会直接被拒绝：`timestamp`、`session_id`、`agent_id`、`type`、`environment`。
+<Warning>
+  **请为自定义字段名添加前缀。** 额外字段最后应用，因此名为 `model`、`tool_name` 或 `outcome` 的字段会静默覆盖原有字段。框架适配器使用 `fw_` 前缀；采用相同约定即可避免冲突。
 
-## 数据投递与验证
+  这也是为什么拼错的可选字段不会报错——它只会变成一个新的自定义字段。如果 Cloud 中某个标准字段缺失，请先检查拼写。
+</Warning>
+
+以下五个字段名为保留字段，传入时会被直接拒绝：`timestamp`、`session_id`、`agent_id`、`type`、`environment`。
+
+## 其他导出项
+
+| 导出项 | 说明 |
+| --- | --- |
+| `current()` | 当前绑定的标识，返回 `Identity` 对象。`current().session_id is None` 表示当前没有绑定任何标识 |
+| `Identity` | 包含 `session_id`、`agent_id`、`parent_id`、`depth`。对象本身不会为 `None`——请检查其字段 |
+| `propagate(fn)` | 将 `fn` 包装，使其以包装时绑定的标识运行。用于 `Thread`、`pool.submit`、`pool.map`、`run_in_executor` |
+| `_writer.flush_now()` | 立即清空并写入缓冲条目，用于测试或在退出前强制刷新 |
+| `__version__` | 已安装的 SDK 版本 |
+
+## 投递与验证
 
 <Tabs>
   <Tab title="控制台">
-    在 **Observe → Events** 中，确认第一条事件为 `agent_start`，最后一条为 `agent_end`。然后打开 **Observe → Sessions**，确认模型、工具、人工、hook 和错误事件按预期顺序出现。使用 session ID 作为排查问题的首要线索。
+    在 **Observe → Events** 中，先确认 `agent_start` 存在于最前，`agent_end` 存在于最后。然后打开 **Observe → Sessions**，确认 model、tool、human、hook 和 error 事件按预期顺序出现。使用 session ID 作为主要的排查线索。
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -203,14 +274,14 @@ failproofai_sdk.event.tool_use(
   </Tab>
 </Tabs>
 
-如果 Cloud 中没有数据，请检查 `$FAILPROOFAI_HOME/custom-agents/events`，否则检查 `~/.failproofai/custom-agents/events`。JSONL 文件的存在证明 SDK 已成功发出事件；spool 持续增长说明问题在于守护进程配置或数据投递，而 spool 为空则说明问题在于接入代码或进程生命周期。
+若 Cloud 中没有数据，请检查 `$FAILPROOFAI_HOME/custom-agents/events`，否则检查 `~/.failproofai/custom-agents/events`。JSONL 文件证明 SDK 已成功发出事件；缓冲目录持续增长说明问题在守护进程配置或投递环节，缓冲目录为空则说明问题在接入代码或进程生命周期。
 
 <Note>
-  只在守护进程停止时检查 spool。守护进程运行期间，它会在毫秒内收集并删除每批数据，因此目录列表会与收集器产生竞争，显示的事件数量会远少于实际发出的数量。
+  仅在守护进程停止时检查缓冲目录。守护进程运行期间会在毫秒内收集并删除每个批次，因此目录列表会与收集器竞争，显示的事件数量远少于实际发出的数量。
 </Note>
 
-## 在自定义运行时中防止故障
+## 在自定义运行时中防止失败
 
-利用审计发现和关联追踪来定义不安全操作、所需证据及预期响应。自定义执行集成必须在操作执行前将其暴露出来，将其结构化输入传递给策略引擎，并执行相应的 allow、instruct 或 deny 决策。
+使用审计发现和关联追踪记录来定义不安全操作、所需证据和预期响应。自定义执行接入必须在执行前暴露操作，将其结构化输入传递给策略引擎，并应用所得的 allow、instruct 或 deny 决策。
 
-[联系 Failproof AI](mailto:support@befailproof.ai)，我们将帮助你将运行时的模型、工具和生命周期边界映射到策略 hook，并与你共同验证集成结果。
+[联系 Failproof AI](mailto:support@befailproof.ai)，我们将协助你将运行时的 model、tool 和生命周期边界映射到策略钩子，并与你共同验证该接入。

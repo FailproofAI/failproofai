@@ -1,22 +1,30 @@
 ---
 title: "Administration"
-description: "Zugriff, Nutzung, Organisationen und Sicherheit verwalten – ohne den Zuverlässigkeits-Workflow zu beeinträchtigen."
+description: "Cloud-Zugang, Mitgliedschaft, Einstellungen und Verbrauch verwalten, ohne diese in den Zuverlässigkeits-Workflow einzumischen."
 icon: "settings-2"
 ---
 
-Die Administration enthält alle Steuerelemente, die für den Betrieb von Failproof AI im Team erforderlich sind. Die meisten Benutzer arbeiten in Sessions, Audits und Policies; Administratoren nutzen diesen Bereich, um Zugriff und Betriebsgrenzen zu verwalten.
+Administration ist die Cloud-Seite von Failproof AI. Organisationen, Mitglieder, API-Schlüssel, Organisationseinstellungen und verbrauchsbasierte Abrechnung erfordern alle eine Cloud-Verbindung.
+
+<Note>
+  Failproof AI läuft auch ganz ohne Account. Eine lokale Maschine erzwingt Richtlinien, speichert den Sitzungsverlauf auf der Festplatte, stellt das [lokale Dashboard](/de/reference/local-dashboard) unter `localhost:8020` bereit und führt `failproofai audit` aus, ohne etwas zu übertragen. Unter [Maschinenkonfiguration](/de/reference/events-and-configuration#machine-configuration) findest du die lokalen `collector`-Schlüssel. Überspringe den Rest dieses Abschnitts, wenn du Cloud nicht nutzt.
+</Note>
+
+## Wo die Steuerelemente zu finden sind
 
 <Tabs>
   <Tab title="Dashboard">
-    Verwenden Sie den Bereich **Admin** in der Cloud-Seitenleiste für den **Policy-Editor**, **Durchsetzung**, **Nutzung**, **Schlüssel**, **Benutzer** und **Einstellungen**. Ein gesperrtes Element zeigt an, dass Ihrem Konto die erforderliche Leseberechtigung fehlt.
+    Die **Admin**-Gruppe in der Cloud-Seitenleiste enthält **Policy-Editor**, **Durchsetzung**, **Nutzung**, **Schlüssel**, **Benutzer** und **Einstellungen**.
 
-    ![Der Admin-Bereich der Cloud-Seitenleiste mit Policy-Editor, Durchsetzung, Nutzung, Schlüssel, Benutzer und Einstellungen.](/images/dashboard/admin-navigation.png)
+    ![Die Admin-Gruppe der Cloud-Seitenleiste mit Policy-Editor, Durchsetzung, Nutzung, Schlüsseln, Benutzern und Einstellungen.](/images/dashboard/admin-navigation.png)
   </Tab>
   <Tab title="CLI">
+    Installiere die Cloud CLI als eigenständiges Tool und melde dich an:
+
     ```bash
+    uv tool install fp-cloud-cli
+    fp login
     fp whoami
-    fp orgs current
-    fp orgs perms
     fp usage
     ```
 
@@ -24,17 +32,43 @@ Die Administration enthält alle Steuerelemente, die für den Betrieb von Failpr
   </Tab>
 </Tabs>
 
+## Angemeldeter Benutzer oder API-Schlüssel
+
+`fp` läuft in einem von zwei Authentifizierungsmodi, und die Unterscheidung bestimmt, welche Befehle verfügbar sind. Ein Befehl, den ein API-Schlüssel nicht ausführen kann, lehnt die Ausführung ab, bevor eine Verbindung geöffnet wird, und gibt den Grund an – anstatt einen 401- oder 403-Fehler sprechen zu lassen.
+
+| Befehl | API-Schlüssel | Berechtigung |
+| --- | --- | --- |
+| `fp whoami` | Ja | keine |
+| `fp usage` | Ja | `usage:read` |
+| `fp keys list` / `show` | Ja | `keys:read` |
+| `fp keys create` | Ja | `keys:create` |
+| `fp keys disable` | Ja | `keys:disable` |
+| `fp keys regenerate` | Ja | `keys:regenerate` |
+| `fp keys update` | Nein | `keys:update`, das kein Schlüssel besitzen kann |
+| `fp users list` / `show` | Ja | `users:read` |
+| `fp users create` | Ja | `users:create` |
+| `fp users update` | Ja | `users:update` |
+| `fp users disable` / `enable` | Ja | `users:delete` |
+| `fp settings list` / `schema` | Ja | `settings:read` |
+| `fp settings set` | Ja | `settings:write` |
+| `fp orgs list` / `switch` / `current` / `perms` | Nein | nur angemeldete Sitzung |
+
+`fp usage` ist der Befehl für Reporting-Skripte: Er läuft unbeaufsichtigt unter einem Schlüssel und benötigt nur `usage:read`.
+
 <Columns cols={2}>
-  <Card title="Nutzung" icon="chart-no-axes-combined" href="/de/admin/usage">
-    Abrechnungszeiträume und den Verbrauch der Organisation einsehen.
-  </Card>
   <Card title="Schlüssel und Berechtigungen" icon="key-round" href="/de/admin/keys-and-permissions">
-    Maschinen und Automatisierungen nur die notwendigen Berechtigungen erteilen.
+    Erstelle die Maschinenzugangsdaten und weise jeder Arbeitslast nur die benötigten Rechte zu.
   </Card>
   <Card title="Benutzer und Organisationen" icon="users" href="/de/admin/users-and-organizations">
-    Mitgliedschaften, Standardwerte und Organisationsgrenzen verwalten.
+    Verwalte die Mitgliedschaft und stelle sicher, dass Daten und Aktionen jeder Organisation abgegrenzt bleiben.
   </Card>
   <Card title="Einstellungen und Sicherheit" icon="lock-keyhole" href="/de/admin/settings-and-security">
-    Betriebseinstellungen, Datenverarbeitung und Bereitstellungssicherheit konfigurieren.
+    Lege Anmelde- und Benachrichtigungswerte fest und bestimme, welche Agentendaten eine Maschine verlassen.
+  </Card>
+  <Card title="Nutzung" icon="chart-no-axes-combined" href="/de/admin/usage">
+    Lies aus, was die Organisation im laufenden 30-Tage-Fenster verbraucht hat.
+  </Card>
+  <Card title="Flottenabdeckung" icon="network" href="/de/policies/fleet">
+    Sieh, welche Maschinen eingebunden sind, wie sie identifiziert werden und was sie durchsetzen.
   </Card>
 </Columns>

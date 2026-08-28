@@ -1,25 +1,34 @@
 ---
 title: "Hooks"
-description: "Hook-Aktivitäten, Auslöser und Latenz getrennt von Policy-Ergebnissen messen."
+description: "Zeigt an, wann Failproof AI ein Agent-Event ausgewertet hat und welche Entscheidung getroffen wurde."
 icon: "webhook"
 ---
 
-Hooks zeigt an, wann Agent-Lifecycle-Hooks ausgeführt werden und wie lange sie dauern. Policy-Entscheidungen sind in einer separaten Ansicht zu finden.
+Ein Hook ist ein Punkt, an dem ein Agent Failproof AI um eine Entscheidung bittet. Hook-Aktivitätsdatensätze erfassen das Event, die Richtlinie, das Ergebnis und die Auswertungszeit.
+
+## Hook-Aktivität untersuchen
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehe zu **Observe → Hooks**.
-    2. Filtere nach Umgebung, Hook-Name, Auslöserereignis, Agent oder Session-ID.
-    3. Überprüfe Hook-Latenz und -Verteilung.
-    4. Wähle einen Chart-Punkt oder ein Hook-Segment aus, um die zugrundeliegenden Ereignisse zu öffnen.
+    Gehe zu **Observe → Hooks**. Filtere nach Umgebung, Event, Agent oder Session.
 
-    ![Die Hooks-Seite mit nach Hook-Name und Auslöserereignis gruppierter Latenz.](/images/dashboard/hooks.png)
+    ![Die Hooks-Seite mit nach Hook-Name und Trigger-Event gruppierter Latenz.](/images/dashboard/hooks.png)
   </Tab>
   <Tab title="CLI">
     ```bash
+    fp guardrails summary --since 24h
+    fp --json events --full --event-type hook_completed --session-id <session-id> --all --limit 500
     fp list hooks
-    fp events --event-type hook_triggered,hook_completed --env production --since 24h
-    fp events --search "PreToolUse" --since 24h
     ```
   </Tab>
 </Tabs>
+
+Standardmäßig wird jede `deny`- und `instruct`-Entscheidung vollständig übermittelt. Wiederholte allows werden gebündelt, um das Rauschen zu reduzieren. Setze `collector.hooks_verbosity` in `~/.failproofai/config.json` auf `all`, `decisions` oder `off`.
+
+<Warning>
+  Hook-Aktivität belegt, dass eine Auswertung stattgefunden hat – nicht, dass das Harness das entsprechende Event hätte blockieren können. Siehe [Enforcement-Fähigkeit](/de/reference/harnesses#enforcement-capability). Ein nicht aufgeführtes Harness-Event-Paar gilt als nicht verifiziert.
+</Warning>
+
+<Card title="Richtlinienentscheidungen" icon="shield-check" href="/de/sessions/policy-decisions">
+  Dieselbe Aktivität nach Ergebnis und Richtlinie einsehen.
+</Card>

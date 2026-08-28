@@ -1,21 +1,16 @@
 ---
 title: "Benutzer und Organisationen"
-description: "Mitgliedschaften verwalten und Daten sowie Aktionen jeder Organisation isoliert halten."
+description: "Mitgliedschaften verwalten und Daten sowie Aktionen jeder Organisation voneinander abgrenzen."
 icon: "users"
 ---
 
-Organisationen isolieren Sitzungen, Auswertungen, Audits, Issues, Warnmeldungen, Abfragen, Dashboards, Benutzer und Schlüssel. Bestätigen Sie die aktive Organisation, bevor Sie administrative Ressourcen ändern.
+Organisationen isolieren Sitzungen, Evaluierungen, Audits, Issues, Alerts, Abfragen, Dashboards, Benutzer und Schlüssel. Bestätigen Sie die aktive Organisation, bevor Sie administrative Ressourcen ändern.
 
-## Mitglieder und Organisationen verwalten
+## Organisation auswählen
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Verwenden Sie den Organisationsumschalter oben in der Cloud-Seitenleiste, um die Organisation zu wechseln.
-    2. Gehen Sie zu **Administration → Benutzer**, um Mitglieder zu suchen oder nach Status und Rolle zu filtern.
-    3. Wählen Sie **Neuer Benutzer**, geben Sie die E-Mail-Adresse ein, wählen Sie ein Berechtigungsset aus und passen Sie bei Bedarf Überschreibungen an.
-    4. Öffnen Sie einen Benutzer später, um Berechtigungen zu aktualisieren, die Anmeldung zu deaktivieren oder das Konto wieder zu aktivieren.
-
-    ![Die Benutzerseite mit Mitglieds-E-Mail-Adressen, Berechtigungssets sowie Bearbeiten- und Deaktivieren-Steuerelementen.](/images/dashboard/users.png)
+    Verwenden Sie den Organisations-Umschalter oben in der Cloud-Seitenleiste. Alles darunter – einschließlich jeder Seite unter **admin** – liest und schreibt dann in dieser Organisation.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -23,22 +18,62 @@ Organisationen isolieren Sitzungen, Auswertungen, Audits, Issues, Warnmeldungen,
     fp orgs switch reliability-team
     fp orgs current
     fp orgs perms
+    ```
 
+    `fp orgs switch` ohne Slug öffnet eine Pfeilnavigation, die bei Ihrer aktuellen Organisation beginnt; bei nicht-interaktiver Ausführung wird auf eine nummerierte Eingabeaufforderung zurückgegriffen, und unter `--json` ist ein Slug erforderlich. Die Auswahl wird in `~/.failproofai/fpcli/cli-auth.json` gespeichert, sodass spätere Befehle sie als aktiven Mandanten übermitteln. Überschreiben Sie die Auswahl für einen einzelnen Befehl mit `--org <slug>` oder `FP_ORG`.
+  </Tab>
+</Tabs>
+
+<Note>
+  Jeder `fp orgs`-Befehl erfordert einen angemeldeten Benutzer und wird unter einem API-Schlüssel abgelehnt, da die Organisations-Mitgliedschaft einer Person gehört und ein Schlüssel bereits für eine Organisation agiert. Die `fp users`-Befehle unten funktionieren in beiden Fällen.
+</Note>
+
+## Mitglieder verwalten
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehen Sie zu **admin → users** und suchen Sie Mitglieder per E-Mail, oder schränken Sie die Liste mit den Filter-Chips `protected`, `admin`, `standard` und `read-only` ein.
+    2. Wählen Sie **new user**, geben Sie die E-Mail-Adresse ein, wählen Sie einen Berechtigungssatz und passen Sie bei Bedarf mitgliedsspezifische Überschreibungen an.
+    3. Öffnen Sie ein Mitglied später, um Berechtigungen zu ändern, die Anmeldung zu deaktivieren oder das Konto wieder zu aktivieren.
+
+    ![Die Benutzerseite mit dem E-Mail-Suchfeld, den Filter-Chips und einer Mitgliedskarte, die die nach Ressource gruppierten Berechtigungen anzeigt.](/images/dashboard/users.png)
+
+    Die Berechtigungs-Chips in diesem Frame stammen noch aus der Zeit vor der Umbenennung von `incidents:*` zu `issues:*`; die Liste der [allgemeinen Berechtigungen](/de/admin/keys-and-permissions#common-permissions) ist aktuell.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp users list
+    fp users list --active-only
     fp users create engineer@example.com --permission-set standard
     fp users show engineer@example.com
     fp users update engineer@example.com --add audits:write
     fp users disable engineer@example.com
     fp users enable engineer@example.com
     ```
+
+    Mitglieder werden per E-Mail-Adresse angesprochen und ohne Berücksichtigung der Groß-/Kleinschreibung aufgelöst. `fp users show Alice.Chen@Example.com` und `fp users create alice.chen@example.com` beziehen sich daher auf dieselbe Person.
   </Tab>
 </Tabs>
 
-Administratoren können Benutzer erstellen, aktualisieren, deaktivieren und wieder aktivieren sowie das für ihre Rolle passende Berechtigungsset zuweisen. Die API verwendet für die Deaktivierung einen Löschvorgang, entfernt jedoch weder das Konto noch den Mitgliedschaftsdatensatz.
+### Berechtigungen und was jede Aktion erfordert
+
+Mitgliederberechtigungen verwenden dieselbe Arithmetik wie Schlüssel: Effektive Berechtigungen sind `(set ∪ added) − removed`, und `--add` / `--remove` akzeptieren kompakte `slug:action.action`-Token, bei denen durch Punkte getrennte Aktionen expandiert werden. Siehe [Schlüssel und Berechtigungen](/de/admin/keys-and-permissions).
+
+| Aktion | Berechtigung | Hinweise |
+| --- | --- | --- |
+| `fp users list` / `show` | `users:read` | `--active-only` blendet deaktivierte Mitglieder aus. |
+| `fp users create` | `users:create` | `--permission-set` legt die Rolle fest; `--add` / `--remove` fügen Überschreibungen hinzu. |
+| `fp users update` | `users:update` | `--permission-set` **ersetzt** die mitgliedsspezifischen Überschreibungen; `--add` / `--remove` allein sind inkrementell gegenüber den aktuellen Berechtigungen. |
+| `fp users disable` / `enable` | `users:delete` | Beide, einschließlich enable – diese Berechtigung bewusst vergeben. |
+
+Das Deaktivieren wird in zwei Fällen direkt abgelehnt – als Forbidden-Fehler, nicht als Validierungsmeldung: Ein **protected**-Mitglied kann nicht deaktiviert werden, und Sie können Ihr eigenes Konto nicht deaktivieren. Das erneute Deaktivieren eines bereits deaktivierten Mitglieds oder das Aktivieren eines bereits aktiven Mitglieds ist ein stilles No-op. Die API verwendet für das Deaktivieren einen Delete-Vorgang, entfernt jedoch weder das Konto noch seinen Mitgliedschaftsdatensatz.
+
+Zwei Organisationseinstellungen steuern die Mitgliedschaft: `default_user_permissions` wählt den Berechtigungssatz für eine neue Einladung vor, und `allowed_sign_ins` legt fest, welche Adressen überhaupt einen Anmeldecode erhalten können. Verwalten Sie diese Einstellungen auf der [Einstellungsseite](/de/admin/settings-and-security).
 
 <Warning>
-  Das Deaktivieren eines Benutzers blockiert diese Identität in allen Organisationen – nicht nur in der aktuell ausgewählten. Die erneute Aktivierung stellt die globale Anmeldemöglichkeit sowie die Mitgliedsberechtigungen in dieser Organisation wieder her.
+  Das Deaktivieren eines Benutzers sperrt diese Identität für die Anmeldung in jeder Organisation, nicht nur in der aktuell ausgewählten. Die Reaktivierung stellt die globale Anmeldung sowie die Berechtigungen des Mitglieds in dieser Organisation wieder her.
 </Warning>
 
 <Tip>
-  Geben Sie Dienstkonten aussagekräftige Namen, die mit einem Workload und einem Verantwortlichen verknüpft sind. Vermeiden Sie die gemeinsame Nutzung von Schlüsseln zwischen Organisationen oder zwischen Personen und Maschinen.
+  Geben Sie Dienstkonten beschreibende Namen, die an eine Workload und einen Verantwortlichen geknüpft sind. Teilen Sie einen Schlüssel nicht zwischen Organisationen oder zwischen einer Person und einer Maschine.
 </Tip>

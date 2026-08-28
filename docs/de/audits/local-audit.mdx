@@ -1,74 +1,56 @@
 ---
-title: "Lokalen Agentenverlauf prüfen"
-description: "Unterstützte Agent-CLI-Verläufe offline scannen und riskantes oder verschwenderisches Verhalten lokal überprüfen."
+title: "Lokalen Agenten-Verlauf prüfen"
+description: "Agenten-Verlauf auf diesem Gerät auf riskantes oder ineffizientes Verhalten scannen."
 icon: "laptop-minimal-check"
 ---
 
-Verwende ein lokales Audit für eine sofortige, private Überprüfung, bevor du einen Rechner mit Failproof AI Cloud verbindest. Es scannt die bereits auf deinem Rechner gespeicherten Agentenverläufe, repliziert die Tool-Aktivität durch integrierte Richtlinien und öffnet ein lokales Ergebnis-Dashboard.
+Ein lokales Audit liest den Agenten-Verlauf auf diesem Gerät und öffnet die Ergebnisse unter `http://localhost:8020/audit`. Es ist kein Konto erforderlich.
 
-## Interaktives Audit ausführen
+```bash
+failproofai audit
+```
 
-<Tabs>
-  <Tab title="Dashboard">
-    Das lokale Audit startet über die CLI, da es Verläufe auf dem aktuellen Rechner auffinden muss. Führe `failproofai audit` aus; nach dem Scan startet Failproof AI das mitgelieferte Dashboard und öffnet **http://localhost:8020/audit**.
+Der Scan erfasst den Verlauf aller unterstützten Harnesses, die gefunden werden. Er wendet den in dieser Version integrierten Katalog mit 39 Richtlinien an; installierte Packs und benutzerdefinierte Richtlinien sind nicht enthalten.
 
-    Überprüfe in der Audit-Ansicht die Anzahl der Sitzungen, Tool-Aufrufe, Projekte und Richtlinientreffer. Beginne mit häufigen Befunden, und untersuche dann das betroffene Projekt und den Agentenverlauf, bevor du die Durchsetzung aktivierst.
+## Ergebnisse lesen
 
-    <Info>Das lokale Audit-Dashboard ist von **Analyze → Audits** in Failproof AI Cloud getrennt. Lokale Audits verbleiben auf dem Rechner und erfordern kein Konto oder keine Netzwerkverbindung.</Info>
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    npm install -g failproofai
-    failproofai audit
-    ```
+Beginne mit den häufigsten Befunden und öffne dann die betroffene Sitzung, bevor du die Durchsetzung aktivierst.
 
-    Der Befehl führt einen vollständigen Scan aller gefundenen unterstützten Verläufe durch. Der aktuelle Befehl akzeptiert keine Filter wie `--since`, `--cli`, `--project`, `--port` oder `--no-open`.
+Drei Einschränkungen sind zu beachten:
 
-    Halte den Prozess am Laufen, während du das lokale Dashboard verwendest. Drücke <kbd>Ctrl</kbd>+<kbd>C</kbd>, wenn du fertig bist.
-  </Tab>
-</Tabs>
+- Das Audit rekonstruiert Tool-Ereignisse, nicht `Stop`, daher erscheinen `require-*-before-stop`-Richtlinien nicht.
+- Acht „Nur-Audit"-Prüfungen identifizieren ineffiziente Muster ohne eine exakt passende Richtlinie.
+- `warn-repeated-tool-calls` wird übersprungen, da eine Wiederholung den transskriptseitigen Zustand verändern würde.
 
-Die aktuellen Audit-Adapter können Verläufe von Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory, Devin, Antigravity und Goose lesen. Es werden nur lokal verfügbare Verläufe gescannt.
+Für einen durchsetzbaren Befund verwende den im Ergebnis angezeigten Richtlinienbefehl. Überprüfe die [Harness-Durchsetzungsunterstützung](/de/reference/harnesses#enforcement-capability), bevor du dich darauf verlässt.
 
-## Regelmäßige lokale Audits planen
+Das gecachte Ergebnis liegt unter `~/.failproofai/audit/dashboard.json` und verfällt nach sieben Tagen.
 
-<Tabs>
-  <Tab title="Dashboard">
-    Öffne **Einstellungen** im lokalen Dashboard, aktiviere geplante Audits, wähle das Intervall und gib die E-Mail-Adresse an, die Befunde erhalten soll. Dashboard und CLI aktualisieren dieselbe Rechnerkonfiguration.
-  </Tab>
-  <Tab title="CLI">
-    Ein wöchentliches Audit aktivieren und Befunde an die angegebene Adresse senden:
+## Scans planen
 
-    ```bash
-    failproofai audit --schedule 7 --email reliability@example.com
-    failproofai audit --status
-    ```
+```bash
+failproofai audit --schedule 7
+failproofai audit --status
+failproofai audit --no-schedule
+```
 
-    Das Intervall akzeptiert 1–90 Tage und ist standardmäßig 7, wenn es weggelassen wird. Bei der ersten Einrichtung wirst du bei Bedarf angemeldet; `--email` gibt die Berichtsadresse an, ohne eine Eingabeaufforderung zu zeigen.
+Das Intervall akzeptiert 1–90 Tage und ist standardmäßig auf 7 gesetzt. Bei der erstmaligen Planung ist eine interaktive Anmeldung erforderlich. Der Hintergrunddienst muss laufen.
 
-    Den Zeitplan deaktivieren, ohne den lokalen Audit-Verlauf zu löschen:
+### Was das Gerät verlässt
 
-    ```bash
-    failproofai audit --no-schedule
-    ```
-  </Tab>
-</Tabs>
+Ein interaktives Audit sendet keine Befunde. Anonyme CLI-Telemetrie ist standardmäßig aktiviert; deaktiviere sie mit `FAILPROOFAI_TELEMETRY_DISABLED=1`.
 
-Der Daemon führt geplante Scans im Hintergrund aus, aktualisiert das zwischengespeicherte Ergebnis für das lokale Dashboard und sendet den konfigurierten Bericht per E-Mail. Verwende `failproofai audit`, wenn du sofort einen interaktiven Scan ausführen möchtest.
-
-## Von lokalen Erkenntnissen zu Cloud-Betrieb wechseln
-
-Ein lokales Audit ist eine schnelle Ausgangsbasis. Verbinde den Rechner mit Failproof AI Cloud, wenn du gemeinsame Traces, wiederkehrende Populations-Audits, Befunde und Probleme, Warnmeldungen, organisationsweite Richtlinienbereitstellung oder Fleet-Übersicht benötigst.
-
-<CardGroup cols={2}>
-  <Card title="Cloud-Audit erstellen" icon="scan-search" href="/de/audits/setup">
-    Definiere ein wiederkehrendes Ziel, eine Population, ein Nachweisfenster und Reaktionskanäle.
-  </Card>
-  <Card title="Richtlinie aktivieren" icon="shield-check" href="/de/start/first-policy">
-    Lokal validieren, gezielt veröffentlichen und zunächst für eine kleine Rechnergruppe bereitstellen.
-  </Card>
-</CardGroup>
+Nachdem du dich für die Planung entschieden hast, sendet jeder geplante Scan die Geräte-ID, den Label, die Plattform und das Scan-Fenster. Werden schädliche Muster gefunden, wird außerdem ein eingeschränkter Digest mit Zählungen, Zeitstempeln und bis zu drei redigierten Beispielen übermittelt. Saubere Scans senden keine Befunde und keine E-Mail.
 
 <Warning>
-  Audit-Ausgabe ist ein Überprüfungsnachweis, kein Beweis dafür, dass jede markierte Aktion unsicher ist. Überprüfe den Kontext, bevor du einen Befund in eine blockierende Durchsetzungsmaßnahme umwandelst.
+  Audit-Ergebnisse sind Hinweise zur Überprüfung, kein Beweis dafür, dass jede markierte Aktion unsicher ist. Prüfe die Sitzung, bevor du einen Befund in eine blockierende Durchsetzung umwandelst.
 </Warning>
+
+<CardGroup cols={2}>
+  <Card title="Cloud-Audits" icon="scan-search" href="/de/audits/setup">
+    Gemeinsame, wiederkehrende Audits über Agenten und Geräte hinweg ausführen.
+  </Card>
+  <Card title="Ein Richtlinien-Pack installieren" icon="package" href="/de/policies/packs">
+    Geprüfte Richtlinien nach Bestätigung eines Befunds hinzufügen.
+  </Card>
+</CardGroup>

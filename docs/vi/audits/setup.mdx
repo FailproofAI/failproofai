@@ -1,21 +1,24 @@
 ---
-title: "Thiết lập một cuộc kiểm toán"
-description: "Xác định mục tiêu kiểm toán, dân số phiên làm việc và bối cảnh bằng chứng."
+title: "Thiết lập một audit"
+description: "Xác định mục tiêu audit, dân số phiên làm việc và ngữ cảnh bằng chứng."
 icon: "sliders-horizontal"
 ---
 
-Chất lượng của một cuộc kiểm toán bắt đầu từ phạm vi của nó. Một yêu cầu rộng như "tìm các vấn đề" sẽ cho ra kết quả ít hữu ích hơn so với một câu hỏi về lỗi cụ thể.
+Chất lượng của một audit bắt đầu từ phạm vi của nó. Một yêu cầu rộng như "tìm các vấn đề" sẽ cho kết quả ít hữu ích hơn một câu hỏi về lỗi cụ thể.
 
-## Cấu hình cuộc kiểm toán
+## Cấu hình audit
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Đi tới **Analyze → Audits → New audit** và nhập tên và mô tả.
-    2. Đặt tần suất, cửa sổ thời gian, phạm vi agent/môi trường, lỗi bị bỏ qua, độ nhạy cảm và số lượng phát hiện tối đa.
-    3. Trong **agents**, thêm hoặc xem lại bối cảnh agent, sau đó thêm tóm tắt điều hành và bất kỳ URL tham khảo HTTPS công khai nào.
-    4. Chọn các kênh thông báo và chọn **create audit**. Lần chạy đầu tiên sẽ được xếp hàng ngay lập tức.
+    1. Đi tới **Analyze → Audits → New audit** và nhập tên và mô tả. Tên là duy nhất cho mỗi tổ chức; mô tả ghi lại những gì bạn muốn audit này phát hiện.
+    2. Trong **when it runs**, đặt tần suất và cửa sổ thời gian. Trong **what it reads**, thu hẹp dân số với các môi trường, agent và các loại lỗi để bỏ qua — một trường trống bao gồm mọi thứ. Trong **how it judges**, đặt độ nhạy cảm và số lượng phát hiện trên mỗi lần chạy.
+    3. Trong **what it knows**, viết tóm tắt cho nhà điều hành và thêm các trang mà audit đọc. Tóm tắt là thông tin nền mà mô hình đọc trước khi xem một sự kiện duy nhất: nó được thêm vào những gì audit này đã tìm kiếm, không bao giờ là sự thay thế, và không bao giờ là bằng chứng cho một phát hiện.
+    4. Mở ngăn kéo **agents** để thêm hoặc xem lại ngữ cảnh của mỗi agent. Nó được lưu độc lập với audit, và tiêu đề của nó đếm có bao nhiêu agent của bạn đã có một. Xem [agent context](/vi/audits/agent-contracts).
+    5. Chọn các kênh thông báo và chọn **create audit**. Một audit mới được bật và lần chạy đầu tiên của nó được xếp hàng ngay lập tức.
 
-    ![Biểu mẫu kiểm toán mới với tên, mô tả, tần suất, cửa sổ, phạm vi môi trường và agent, lỗi bị bỏ qua, cài đặt phân tích, tóm tắt, trang tham khảo và các kênh thông báo.](/images/dashboard/audit-new.png)
+    ![Biểu mẫu audit mới với tên, mô tả, tần suất, cửa sổ thời gian, phạm vi môi trường và agent, các lỗi bỏ qua, cài đặt phân tích, tóm tắt, trang tham khảo và các kênh thông báo.](/images/dashboard/audit-new.png)
+
+    **agents** trong thẻ **what it reads** là một bộ lọc phạm vi — nó quyết định phiên làm việc nào mỗi lần chạy quét. Những gì agent *phục vụ* nằm trong ngăn kéo agent riêng biệt.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -29,16 +32,44 @@ Chất lượng của một cuộc kiểm toán bắt đầu từ phạm vi củ
       --url https://runbooks.example.com/checkout
     ```
 
-    Lần chạy đầu tiên sẽ được xếp hàng ngay lập tức. Hãy bao gồm tóm tắt và các URL tham khảo trong quá trình tạo để lần chạy đó nhận được chúng.
+    Mọi trường ngoại trừ tên đều có một mặc định máy chủ, vì vậy một `fp audits create nightly` trần đơn đã là một audit hàng ngày hợp lệ. Một tên được lấy sẽ bị từ chối ở phía trước, trước khi bất cứ điều gì được tạo. Audit mới được bật trừ khi bạn chuyển `--disabled`, và lần chạy đầu tiên của một audit được bật sẽ được xếp hàng ngay lập tức.
 
-    Xem tài liệu tham khảo đầy đủ [`fp audits create`](/vi/reference/cloud-cli#audits).
+    Dựa trên định nghĩa được lưu với JSON bằng `--file audit.json` và đặt các cờ ở trên. Đó là đường dẫn có thể tái tạo khi các định nghĩa audit được xem xét hoặc lưu giữ trong kiểm soát phiên bản.
+
+    Xem [`fp audits create` reference](/vi/reference/cloud-cli#audits) hoàn chỉnh.
   </Tab>
 </Tabs>
 
+## Phạm vi và mặc định
+
+Các cài đặt số được xác thực ở cả hai phía, vì vậy một giá trị ngoài phạm vi là một lỗi sử dụng chứ không phải là một yêu cầu bị từ chối.
+
+| Cài đặt | Cờ CLI | Giá trị được chấp nhận | Mặc định |
+| --- | --- | --- | --- |
+| Tần suất | `--schedule-interval-secs` | 3600–604800 (1 giờ đến 7 ngày) | 86400 (hàng ngày) |
+| Điểm neo lịch trình | `--schedule-anchor` | ISO 8601 UTC; một điểm neo hơn 365 ngày bị từ chối | 09:00 UTC tiếp theo |
+| Cửa sổ | `--window-mode` | `fixed`, `since_last` | `since_last` |
+| Lookback | `--lookback-window-secs` | 3600–7776000 (1 giờ đến 90 ngày) | 604800 (7 ngày) |
+| Độ nhạy cảm | `--sensitivity` | `low`, `medium`, `high` | `medium` |
+| Phát hiện trên mỗi lần chạy | `--top-k` | 1 hoặc nhiều hơn | 50 |
+
+Điểm neo cố định pha của lịch trình: các lần chạy hạ cánh trên `anchor + N * interval`, vì vậy một lần chạy chậm hoặc một **run now** thủ công không thể làm trôi tần suất. Lần chạy đầu tiên được xếp hàng ngay lập tức khi tạo bất kể điểm neo.
+
+## Tóm tắt và trang tham khảo
+
+Biểu mẫu hiển thị cả hai giới hạn dưới dạng bộ đếm, và CLI thực thi cùng hai:
+
+- Tóm tắt được giới hạn ở 8.192 ký tự (`--text`, hoặc `--text-file` để đọc từ một tệp — chuyển một hoặc cái khác, không cả hai).
+- Một audit tham chiếu tối đa năm trang, chỉ `https://` công khai (`--url`, lặp lại).
+
+URL tham khảo được xác thực khi bạn lưu. Các địa chỉ riêng tư, loopback và cloud-metadata bị từ chối, và một URL bị từ chối sẽ làm cho toàn bộ create thất bại — không có audit nửa vời được tạo ra. Các trang được chấp nhận được tìm nạp ở chế độ nền, vì vậy một trang chậm không bao giờ chặn việc lưu. Mỗi lần chạy sẽ đọc lại chúng và quay lại ảnh chụp đã lưu khi không thể tiếp cận, và ảnh chụp tự làm mới hàng tuần. Sử dụng `fp audits context-refresh <name>` khi bạn biết một trang đã thay đổi và muốn nó được chọn trước lần chạy tiếp theo.
+
+Gửi tóm tắt và URL với yêu cầu tạo thay vì trong một cuộc gọi thứ hai. Một audit được bật mới là do ngay khi hàng của nó được cam kết, vì vậy ngữ cảnh được viết sau có thể bị vượt qua bởi dispatcher và bỏ lỡ lần chạy đầu tiên — lần chạy bạn đang xem. Thay đổi nó sau với `fp audits context-set <name>`, nó thay thế nửa bất kỳ bạn đặt tên và để cái kia một mình.
+
 <Tip>
-  Bắt đầu với một phiên làm việc đã biết thất bại và một số phiên làm việc bình thường. Điều này cung cấp cho cuộc kiểm toán cả một ví dụ tích cực và một tập hợp so sánh.
+  Bắt đầu với một phiên làm việc thất bại đã biết và nhiều phiên làm việc bình thường. Điều này cung cấp cho audit cả một ví dụ tích cực và một bộ so sánh.
 </Tip>
 
 <Info>
-  Bối cảnh kiểm toán được lưu trữ như một tài nguyên riêng, vì vậy chỉnh sửa một cuộc kiểm toán sẽ không vô tình xóa tài liệu tham khảo.
+  Ngữ cảnh audit được lưu trữ như tài nguyên của riêng nó. Điểm cuối định nghĩa từ chối viết nó khi cập nhật, vì vậy một chỉnh sửa liên quan thông thường khác đến audit không bao giờ có thể ghi đè tóm tắt hoặc các trang tham khảo.
 </Info>

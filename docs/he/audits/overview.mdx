@@ -1,56 +1,64 @@
 ---
-title: "审核"
-description: "Review a defined population of sessions for failures that traces alone will not reveal."
+title: "ביקורות"
+description: "חפש הרצות של סוכנים עם כשלים חוזרים, התנהגות מסוכנת, ومאמצים מבוזבזים."
 icon: "scan-search"
 ---
 
-An audit searches a selected set of sessions for a stated failure goal. It combines trace evidence, evaluation results, policy hits, and reference context to produce findings you can act on.
+ביקורת בוחנת הרצות רבות של סוכנים מול יעד והחזרה ממצאים המבוססים על עדויות.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Find agent failures automatically with Failproof AI audits" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-See how an audit moves from a scheduled run to evidence-backed failures you can fix.
+## ביקורת מקומית או בענן
 
-## Open audits
+| | ביקורת מקומית | ביקורת בענן |
+| --- | --- | --- |
+| פקודה | `failproofai audit` | `fp audits` |
+| קורא מ | היסטוריית סוכנים במחשב זה | הפעלות בארגון ענן שלך |
+| מייצר | תוצאות מקומיות ב-`localhost:8020/audit` | ממצאים משותפים, בעיות, והתרעות |
+| דורש | ללא חשבון | חיבור ענן ומפתח API |
 
-<Tabs>
-  <Tab title="Dashboard">
-    Go to **Analyze → Audits**. The page shows scheduled state, open findings, last run, next run, cadence, and whether the audit has a brief or reference pages. Select a card for settings and run history; select **new audit** to create one.
+השתמש בביקורת מקומית לסקר מהיר של מחשב אחד. השתמש בענן כאשר לצוות נדרשת ביקורת חוזרת על סוכנים ומחשבים.
 
-    ![The Audits page showing recurring audits with their schedule, sensitivity, and run state.](/images/dashboard/audits.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp audits list
-    fp audits list --enabled-only --show-id
-    fp audits show <audit-name>
-    fp audits findings --status open --limit 20
-    ```
-  </Tab>
-</Tabs>
+## שאלות שביקורת יכולה לענות עליהן
 
-Use an audit when you need to answer a population-level question such as:
+- איפה סוכנים עוצרים ללא הסלמה?
+- אילו כשלי כלים מובילים לנסיונות חוזרים לא יעילים?
+- האם סוכנים ניגשים לנתונים מחוץ לזרימת העבודה המיועדת?
+- מה השתנה לאחר עדכון מודל, הנחיה, או כלי?
 
-- Where do agents abandon tasks without escalating?
-- Which tool failures lead to ineffective retries?
-- Are agents accessing data outside the intended workflow?
-- What changed after a model, prompt, or tool release?
+## פתח ביקורות בענן
 
-## Audit response flow
+עבור אל **Analyze → Audits**, או השתמש ב:
+
+```bash
+fp audits list
+fp audits show <audit-name>
+fp audits findings --status open --limit 20
+```
+
+פקודות ביקורת משתמשות בשם הביקורת או במזהה מלא. ממצאים מועברים לפי מזהה שלהם.
+
+## מממצא למניעה
 
 ```text
 Session → Audit → Finding → Issue → Policy
-                         ↘ Alert for recurrence
+                         ↘ Alert
 ```
 
-A finding should name the failure mode and point to evidence. An issue owns the remediation. A policy prevents a known action pattern; an alert detects recurrence when prevention is not possible or needs monitoring.
+ממצא מצביע על עדות. בעיה בעלת אחריות התגובה. מדיניות מונעת דפוס פעולה ידוע; התרעה צופה בחזרה על ההתרחשות.
 
-<Columns cols={2}>
-  <Card title="Set up an audit" icon="sliders-horizontal" href="/he/audits/setup">
-    Define the goal, population, and reference context before the first run.
+לא כל ממצא צריך להפוך למדיניות. ממצא `policy` מתאר כלל שניתן להוציא לפועל. `failure` או `improvement` עשויים להצריך שינוי בזרימת עבודה, הנחיה, מודל, או כלי בחום.
+
+<CardGroup cols={3}>
+  <Card title="ביקור מחשב זה" icon="laptop-minimal-check" href="/he/audits/local-audit">
+    סרוק היסטוריה מקומית ללא חשבון.
   </Card>
-  <Card title="Add agent context" icon="bot" href="/he/audits/agent-contracts">
-    State what each agent must produce and what it must never do.
+  <Card title="הגדר ביקורת בענן" icon="sliders-horizontal" href="/he/audits/setup">
+    בחר את היעד, ההפעלות, וההתוכנית.
   </Card>
-</Columns>
+  <Card title="בדוק ממצאים" icon="list-checks" href="/he/audits/findings-and-issues">
+    טריאז' עדויות והקצה תגובה.
+  </Card>
+</CardGroup>

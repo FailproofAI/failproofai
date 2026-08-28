@@ -1,21 +1,16 @@
 ---
 title: "Utenti e organizzazioni"
-description: "Controlla l'appartenenza e mantieni i dati e le azioni di ogni organizzazione isolati."
+description: "Controlla l'iscrizione e mantieni i dati e le azioni di ogni organizzazione isolati."
 icon: "users"
 ---
 
-Le organizzazioni isolano sessioni, valutazioni, audit, problemi, avvisi, query, dashboard, utenti e chiavi. Conferma l'organizzazione attiva prima di modificare le risorse amministrative.
+Le organizzazioni isolano sessioni, valutazioni, audit, problemi, avvisi, query, dashboard, utenti e chiavi. Conferma l'organizzazione attiva prima di modificare qualsiasi risorsa amministrativa.
 
-## Gestisci membri e organizzazioni
+## Scegli l'organizzazione
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Utilizza il selettore dell'organizzazione in cima alla barra laterale Cloud per cambiare organizzazione.
-    2. Vai a **Amministrazione → Utenti** per cercare i membri o filtrare per stato attivo e ruolo.
-    3. Seleziona **nuovo utente**, inserisci l'email, scegli un set di permessi e regola gli override se necessario.
-    4. Apri un utente in seguito per aggiornare i grant, disabilitare l'accesso o abilitare di nuovo l'account.
-
-    ![La pagina Utenti che mostra indirizzi email dei membri, set di permessi e controlli di modifica e disabilitazione.](/images/dashboard/users.png)
+    Utilizza il selettore di organizzazione in cima alla barra laterale del Cloud. Tutto ciò che si trova sotto di esso — inclusa ogni pagina in **admin** — legge e scrive in quella organizzazione.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -23,22 +18,62 @@ Le organizzazioni isolano sessioni, valutazioni, audit, problemi, avvisi, query,
     fp orgs switch reliability-team
     fp orgs current
     fp orgs perms
+    ```
 
+    `fp orgs switch` senza slug apre un selettore con frecce iniziando dall'organizzazione corrente; un'esecuzione non interattiva ricade su un prompt numerato, e con `--json` è richiesto uno slug. La scelta persiste in `~/.failproofai/fpcli/cli-auth.json`, così i comandi successivi lo inviano come tenant attivo. Sostituiscilo per un comando con `--org <slug>` o `FP_ORG`.
+  </Tab>
+</Tabs>
+
+<Note>
+  Ogni comando `fp orgs` richiede una persona autenticata e rifiuta con una chiave API, perché l'iscrizione all'organizzazione appartiene a una persona e una chiave agisce già per un'organizzazione. I comandi `fp users` sottostanti funzionano in entrambi i modi.
+</Note>
+
+## Gestisci i membri
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Vai a **admin → users** e cerca i membri per email, o riduci l'elenco con i chip di filtro `protected`, `admin`, `standard` e `read-only`.
+    2. Seleziona **new user**, inserisci l'email, scegli un set di autorizzazioni e regola gli override per singolo membro se necessario.
+    3. Apri un membro in seguito per modificare le autorizzazioni, disabilitare l'accesso o riabilitare l'account.
+
+    ![La pagina degli utenti con la casella di ricerca email, i chip di filtro e una carta membro che mostra le sue autorizzazioni raggruppate per risorsa.](/images/dashboard/users.png)
+
+    I chip di autorizzazione in questo frame precedono la ridenominazione da `incidents:*` a `issues:*`; l'elenco delle [autorizzazioni comuni](/it/admin/keys-and-permissions#common-permissions) è aggiornato.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp users list
+    fp users list --active-only
     fp users create engineer@example.com --permission-set standard
     fp users show engineer@example.com
     fp users update engineer@example.com --add audits:write
     fp users disable engineer@example.com
     fp users enable engineer@example.com
     ```
+
+    I membri sono indirizzati per email e risolti in modo case-insensitive, quindi `fp users show Alice.Chen@Example.com` e `fp users create alice.chen@example.com` si riferiscono alla stessa persona.
   </Tab>
 </Tabs>
 
-Gli amministratori possono creare, aggiornare, disabilitare e riabilitare gli utenti, quindi assegnare il set di permessi appropriato per il loro ruolo. L'API utilizza un'operazione di eliminazione per disabilitare, ma non rimuove l'account o il suo record di appartenenza.
+### Autorizzazioni e cosa ogni verbo richiede
+
+Le autorizzazioni dei membri utilizzano la stessa aritmetica delle chiavi: le autorizzazioni effettive sono `(set ∪ added) − removed`, e `--add` / `--remove` prendono token compatti `slug:action.action` dove le azioni puntate si espandono. Vedi [chiavi e autorizzazioni](/it/admin/keys-and-permissions).
+
+| Verbo | Autorizzazione | Note |
+| --- | --- | --- |
+| `fp users list` / `show` | `users:read` | `--active-only` nasconde i membri disabilitati. |
+| `fp users create` | `users:create` | `--permission-set` prepara il ruolo; `--add` / `--remove` stratificano gli override. |
+| `fp users update` | `users:update` | `--permission-set` **sostituisce** gli override per singolo membro del membro; `--add` / `--remove` da soli sono incrementali rispetto alle loro autorizzazioni attuali. |
+| `fp users disable` / `enable` | `users:delete` | Entrambi, inclusa l'abilitazione — accordala deliberatamente. |
+
+La disabilitazione rifiuta due casi espliciti, come errore Forbidden piuttosto che come messaggio di validazione: un membro **protected** non può essere disabilitato, e non puoi disabilitare il tuo account. Disabilitare un membro già disabilitato o abilitare uno già attivo è un'operazione no-op tranquilla. L'API utilizza un'operazione di eliminazione per la disabilitazione, ma non rimuove né l'account né il record di iscrizione.
+
+Due impostazioni dell'organizzazione governano l'iscrizione: `default_user_permissions` preseleziona il set di autorizzazioni per un nuovo invito, e `allowed_sign_ins` filtra quali indirizzi possono ricevere un codice di accesso. Gestiscili dalla [pagina delle impostazioni](/it/admin/settings-and-security).
 
 <Warning>
-  La disabilitazione di un utente impedisce a quell'identità di accedere a ogni organizzazione, non solo all'organizzazione attualmente selezionata. La riabilitazione ripristina l'accesso globale e i permessi del membro in questa organizzazione.
+  La disabilitazione di un utente blocca quella identità dall'accesso a ogni organizzazione, non solo all'organizzazione attualmente selezionata. La riabilitazione ripristina l'accesso globale e le autorizzazioni del membro in questa organizzazione.
 </Warning>
 
 <Tip>
-  Assegna ai service account nomi descrittivi legati a un carico di lavoro e a un proprietario. Evita di condividere chiavi tra organizzazioni o tra persone e macchine.
+  Dai ai service account nomi descrittivi legati a un carico di lavoro e a un proprietario. Non condividere una chiave tra organizzazioni o tra una persona e una macchina.
 </Tip>

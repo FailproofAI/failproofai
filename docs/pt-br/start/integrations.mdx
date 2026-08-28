@@ -5,27 +5,40 @@ description: "Conecte qualquer framework de agente compatível ao Failproof AI c
 icon: "plug"
 ---
 
-Seu agente já produz tudo que vale a pena registrar — chamadas de modelo, chamadas de ferramenta, limites de nós, esperas humanas, falhas. O framework descarta tudo isso. O SDK preserva.
+Seu agente já produz tudo o que vale a pena registrar — chamadas de modelo, chamadas de ferramenta, limites de nó, esperas humanas, falhas. O framework descarta tudo isso. O SDK mantém.
 
 <Columns cols={3}>
-  <Card title="Agentes personalizados" icon="wrench" href="/pt-br/start/quickstarts/custom-agents">
+  <Card title="Agentes customizados" icon="wrench" href="/pt-br/start/quickstarts/custom-agents">
     Um agente que você mesmo escreveu, ou um que não está listado aqui.
   </Card>
   <Card title="LangChain e LangGraph" icon="share-2" href="/pt-br/start/quickstarts/langchain">
     Grafos, nós, ferramentas, retrievers, modelos.
   </Card>
   <Card title="CrewAI" icon="users" href="/pt-br/start/quickstarts/crewai">
-    Crews, fluxos, agentes por papel, ferramentas.
+    Crews, flows, agentes por função, ferramentas.
   </Card>
   <Card title="LlamaIndex" icon="database" href="/pt-br/start/quickstarts/llamaindex">
-    Workflows, etapas, function agents, retrievers.
+    Workflows, steps, agentes de função, retrievers.
   </Card>
   <Card title="Pydantic AI" icon="badge-check" href="/pt-br/start/quickstarts/pydantic-ai">
-    Agentes tipados, capacidades, ferramentas, retentativas.
+    Agentes tipados, capacidades, ferramentas, retries.
   </Card>
 </Columns>
 
-## Três linhas, qualquer framework
+## Antes de começar
+
+Dois requisitos que este caminho assume, e que o código abaixo não resolve por você:
+
+| Requisito | Por quê |
+| --- | --- |
+| Python 3.10 ou mais recente | O mínimo declarado pelo SDK. |
+| Uma máquina configurada com `failproofai config` | Esse comando instala o daemon failproofaid, e o daemon é o único responsável por enviar o que o SDK grava. Sem ele, os lotes se acumulam no diretório de spool e nunca saem. |
+
+<Note>
+  **Este caminho registra; não aplica políticas.** O SDK captura o que seu agente fez. As políticas são disparadas por um hook dentro de uma CLI de agente, então aplicar políticas a um agente de framework significa adicionar um hook ao seu próprio runtime — veja [Policies](/pt-br/policies/overview).
+</Note>
+
+## Três linhas, independente do framework
 
 <CodeGroup>
 ```bash LangGraph
@@ -53,13 +66,13 @@ pip install failproofai-sdk
 import failproofai_sdk
 
 failproofai_sdk.configure(environment="production")
-failproofai_sdk.instrument()          # detecta os frameworks que você importou
+failproofai_sdk.instrument()          # detects the frameworks you imported
 
 with failproofai_sdk.session():
-    ...                               # sua chamada de agente existente, sem alterações
+    ...                               # your existing agent call, unchanged
 ```
 
-Sem decoradores nas suas funções, sem callbacks passados para suas chamadas, sem IDs espalhados pelo seu código. Apenas a chamada dentro da sessão é diferente:
+Sem decoradores nas suas funções, sem callbacks passados nas suas chamadas, sem ids espalhados pelo seu código. Apenas a chamada dentro da sessão é diferente:
 
 <Tabs>
   <Tab title="LangGraph">
@@ -74,7 +87,7 @@ Sem decoradores nas suas funções, sem callbacks passados para suas chamadas, s
   </Tab>
   <Tab title="LlamaIndex">
     ```python
-    await agent.run("...")        # dentro de `async with failproofai_sdk.session():`
+    await agent.run("...")        # under `async with failproofai_sdk.session():`
     ```
   </Tab>
   <Tab title="Pydantic AI">
@@ -91,17 +104,31 @@ Sem decoradores nas suas funções, sem callbacks passados para suas chamadas, s
   </Tab>
 </Tabs>
 
-O extra instala o **framework**. Todos os adaptadores já estão incluídos no pacote base, então um projeto que já possui seu framework não precisa de nenhum extra.
+O extra instala o **framework**. Todos os adaptadores já vêm no pacote base, portanto um projeto que já possui seu framework não precisa de nenhum extra.
 
 ## Verifique se chegou
 
-Execute uma sessão instrumentada e, em seguida, abra **Observe → Sessions** e selecione seu ambiente. A execução aparece como um trace reconstruído.
+Execute uma sessão instrumentada e abra **Observe → Sessions**, selecionando seu ambiente. A execução aparece como um trace reconstruído.
 
-Se nada chegar, confirme que a máquina está conectada com `failproofai config --status`. Consulte [Configurar captura](/pt-br/start/setup).
+Se nada aparecer, confirme que a máquina está configurada e conectada com `failproofai config --status`. Se não estiver, execute `failproofai config`. Veja [Choose your setup](/pt-br/start/setup).
 
 <Warning>
-  Não verifique o diretório de spool para confirmar a entrega. O daemon do Failproof coleta e exclui cada lote em milissegundos, então ler esse diretório compete com o coletor e exibe muito menos eventos do que foram emitidos.
+  Não verifique o diretório de spool para confirmar a entrega. O daemon do Failproof coleta e exclui cada lote em milissegundos, então ler o diretório cria uma condição de corrida com o coletor e exibe muito menos eventos do que foram emitidos.
 </Warning>
+
+Para verificar se o SDK está gravando, pare o daemon primeiro, execute sua sessão e verifique `~/.failproofai/custom-agents/events/`. Com o daemon em execução, um diretório vazio é o estado esperado.
+
+<CodeGroup>
+```bash Linux
+sudo systemctl stop failproofaid@$USER
+```
+
+```bash macOS
+sudo launchctl bootout system/ai.failproof.failproofaid.$USER
+```
+</CodeGroup>
+
+Execute `failproofai config` depois para restaurar o daemon. Enquanto ele estiver parado, eventos de hook nesta máquina não terão avaliador e serão negados, portanto pare-o apenas pelo tempo necessário para a verificação.
 
 ## Próximos passos
 
@@ -109,10 +136,10 @@ Cada quickstart acima leva ao seu guia completo — o que é registrado, opçõe
 
 <Columns cols={3}>
   <Card title="Como funciona" icon="workflow" href="/pt-br/start/integrations/custom-agents#going-deeper">
-    O modelo de dados, os IDs, os tipos de eventos e como os eventos chegam à Cloud.
+    O modelo de dados, os ids, os tipos de evento e como os eventos chegam à Cloud.
   </Card>
   <Card title="Leia um trace" icon="route" href="/pt-br/sessions/read-a-trace">
-    Acompanhe a causalidade ao longo de uma sessão em vez de logs desconectados.
+    Siga a causalidade ao longo de uma sessão em vez de logs desconexos.
   </Card>
   <Card title="Encontre sua primeira falha" icon="scan-search" href="/pt-br/start/first-audit">
     Audite as sessões que você acabou de capturar.

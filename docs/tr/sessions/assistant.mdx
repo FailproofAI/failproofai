@@ -1,10 +1,10 @@
 ---
-title: "Failproof Assistant"
-description: "Failproof AI'yi doğal dil ile analiz edin ve çalıştırın; sorulardan ve sorgulardan gösterge panolarına ve denetimlerine kadar."
+title: "Bulut yardımcısı"
+description: "Failproof AI'ı doğal dil ile analiz edin ve çalıştırın; sorulardan ve sorgulardan kontrol panolarına ve denetimlere kadar."
 icon: "message-square-text"
 ---
 
-Failproof Assistant'a Failproof AI'de doğal dil ile her şeyi yapmasını söyleyebilirsiniz. Oturumları ve başarısızlıkları analiz edebilir, sorguları çalıştırabilir, gösterge panolarını oluşturabilir, değerlendirmeleri ve uyarıları araştırabilir ve görevleri ürün ekranlarına veya CLI komutlarına çevirmek zorunda kalmadan denetimler oluşturabilir ve çalıştırabilir.
+Failproof AI Bulut yardımcısı, filoğunuz hakkındaki soruları doğal dil ile yanıtlar. Oturumları ve hataları analiz edebilir, sorgu çalıştırabilir, kontrol panolarını oluşturabilir, değerlendirmeleri ve uyarıları araştırabilir ve görevi ürün ekranlarına veya CLI komutlarına çevirmeden denetimler oluşturup çalıştırmanıza yardımcı olabilir. Kontrol panelinde denetim **Aracı sohbetini aç** olarak etiketlenmiştir; [`fp` CLI](/tr/reference/cloud-cli) üzerinde `fp agent` komut grubudur.
 
 ```text
 Why did production checkout agents regress this week?
@@ -13,41 +13,77 @@ Create an audit that finds agents retrying the same failed action without changi
 Show me the sessions behind the most common audit finding.
 ```
 
-Asistan, aktif kuruluşta bulunan veriler ve izinlerle çalışır. Diğer kullanıcıları veya ajanları etkileyen işlemleri uygulamadan önce kanıtlarını ve önerilen değişiklikleri gözden geçirin.
+Yardımcı, etkin kuruluşta bulunan veriler ve izinler ile çalışır. Diğer kullanıcıları veya aracıları etkileyen işlemleri uygulamadan önce kanıtlarını ve önerilen değişiklikleri gözden geçirin.
 
-## Asistana soru sorun
+<Note>
+  Yardımcı kontrol panelinde çalışır ve sohbetleri bir kişiye aittir, bu nedenle bir anahtarın çağırabileceği arkasında API yolu yoktur. Her `fp agent` alt komutu oturum açmış bir oturum (`fp login`) ve `agent:use` izni gerektirir ve `--api-key` veya `FP_API_KEY` altında 2 olarak çıkar. Bir API anahtarı buna asla ulaşamaz, bu nedenle zamanlanmış bir işin `--token` veya `FP_TOKEN` içinde oturum açmış bir oturum tokeni taşıması gerekir. Bu işe yarar — `fp agent ask` TTY olmadığında soruyu stdin'den okur — ancak oturum tokeni `fp login` sonrasında kabaca 24 saat sonra sona erer, bu da yardımcıyı çalışmasına rağmen gözetimsiz otomasyon için uygun olmayan bir seçim yapar.
+</Note>
+
+## Yardımcıya sorun
 
 <Tabs>
-  <Tab title="Dashboard">
-    1. **Open agent chat** seçeneğini seçin ve anlamak, oluşturmak veya çalıştırmak istediğiniz şeyi açıklayın.
-    2. Asistanın araç çağrılarını, tabloları ve sorgu sonuçlarını çalışırken gözden geçirin.
-    3. Alıntı yapılan oturumu, uyarıyı veya sorguyu açarak sonucu kaynak veriye karşı doğrulayın.
-    4. Farklı bir araştırma için yeni bir sohbet başlatın veya aynı analiz yönüne devam etmek için sohbet geçmişini kullanın.
+  <Tab title="Kontrol Paneli">
+    1. **Aracı sohbetini aç** seçeneğini belirleyin ve anlamak, oluşturmak veya çalıştırmak istediğiniz şeyi açıklayın.
+    2. Yardımcı çalışırken araç çağrılarını, tabloları ve sorgu sonuçlarını gözden geçirin.
+    3. Sonucu kaynak verilerine göre doğrulamak için alıntılanan oturumu, uyarıyı veya sorguyu açın.
+    4. Farklı bir araştırma için yeni bir sohbet başlatın veya sohbet geçmişini kullanarak aynı analiz satırını devam ettirin.
 
-    ![Bulut asistanı gözlemlenebilirlik sorusuna destekleyici analiz ve sorgularla yanıt veriyor.](/images/dashboard/assistant.png)
+    ![Bulut yardımcısı, destekleyici analiz ve sorgular ile gözlemlenebilirlik sorusunu yanıtlıyor.](/images/dashboard/assistant.png)
   </Tab>
   <Tab title="CLI">
+    `health` ile başlayın. Bu dağıtım için yardımcının etkin olup olmadığını ve bir LLM'nin bunun için yapılandırılıp yapılandırılmadığını bildirir. LLM olmadığı yerlerde, `ask` başarısız olur ve `models` hiçbir şey raporlamaz — `chats`, `show`, `rename` ve `delete` hiçbir zaman durumu hiç kontrol etmez ve çalışmaya devam eder.
+
     ```bash
     fp agent health
     fp agent models
     fp agent ask "Which production checkout agents had the most tool errors in the last 24 hours?"
+    ```
+
+    `fp agent models` bu dağıtımın izin verdiği modelleri ve varsayılan olanı listeler. `ask --model <name>` öğesine bir model geçirin. Zaten sahip olduğunuz metinle bir cevabı temellendir `--page-context <text>` ve soruyu bir dosya veya önceki bir komuttan geldiğinde bağımsız değişken olarak geçirmek yerine stdin üzerinden yönlendirin:
+
+    ```bash
+    cat incident-notes.md | fp agent ask --model <model>
+    ```
+
+    Her soru bir sohbete kaydedilir. `--chat` olmadan yeni bir tane başlatır ve kısa kimliğini yazdırır; `--chat` ile bu iş parçacığına devam eder.
+
+    ```bash
     fp agent chats
     fp agent show <chat-id>
     fp agent ask "Open representative sessions" --chat <chat-id>
+    fp agent rename <chat-id> --title "checkout regression"
+    fp agent delete <chat-id> --yes
     ```
 
-    Bir araştırmayı tanınabilir tutmak için `fp agent rename <chat-id> --title <title>` komutunu kullanın ve kaldırmak için `fp agent delete <chat-id>` komutunu kullanın.
+    `fp agent chats` sohbetlerinizi `chat-id · title · messages · updated` olarak en yeni ilk sırada listeler; burada `updated` sohbetin son etkinlik yaşıdır. Gösterilen `chat-id`, kısa olanıdır — ilk 8 karakter — ve `show`, `rename`, `delete` ve `ask --chat` tümü bu ön eki çözümler. Hiçbir şeyle eşleşmeyen bir kimlik, `chat not found` kutusu ile 6 ile çıkar; birkaç şeyle eşleşen bir kimlik, daha uzun bir ön ek ister.
+
+    `fp agent delete` önce onay ister. `--yes` istemi atlar ve tüm etkileşimsiz çağrı da yapar: `--json` altında veya stdin yeniden yönlendirildiğinde, sormadan devam eder.
   </Tab>
 </Tabs>
 
-## Asistanla etkili şekilde çalışın
+## Yardımcı ile etkili çalışın
 
-- Önce ona bir hedef verin; sınırlar önemliyse ortam, iş akışı veya zaman aralığı ekleyin.
-- Oluşturulan SQL ve özetleri nihai kanıt değil, bir araştırma yardımcısı olarak değerlendirin.
-- Bir denetim, sorun, uyarı veya ilke oluşturmadan önce temsilci oturumları açın.
+- Ona önce bir hedef verin; bu sınırlar önemli olduğunda bir ortam, iş akışı veya zaman aralığı ekleyin.
+- Oluşturulan SQL'i ve özetleri son kanıt değil, araştırma yardımı olarak değerlendirin.
+- Denetim, sorun, uyarı veya ilke oluşturmadan önce temsili oturumları açın.
 - Kuruluş, ortam ve zaman filtrelerini açık tutun.
-- Faydalı SQL'i bir sorgu olarak kaydedin, böylece başka bir operatör sonucu yeniden oluşturabilir.
+- Kullanışlı SQL'i bir sorgu olarak kaydedin, böylece başka bir operatör sonucu yeniden oluşturabilsin.
 
 <Warning>
-  Asistan yalnızca mevcut kullanıcınızın erişebildiği şeyleri okuyabilir. Bir soruyu çözmek için izinleri genişletmeyin; bunun yerine yetkili bir operatörün araştırmayı çalıştırmasını isteyin.
+  İki izin katmanı uygulanır ve farklı şekilde başarısız olur. `agent:use` özelliğin kendisini engeller: olmadan `fp agent` ve kontrol paneli sohbeti kullanılamaz. Cevaplar daha sonra oturum açmış kullanıcının veri izinleri — `events:read`, `evaluations:read`, `queries:run`, `policies:read` — ile sınırlandırılır, bu nedenle yardımcıyı açabilen bir kullanıcı okuyamadığı veriler için yine de boş bir cevap alabilir. Bir soruyu çalıştırmak için izinleri genişletmeyin; bunun yerine yetkili bir operatörü araştırmayı çalıştırması için isteyin. Bkz. [Anahtarlar ve izinler](/tr/admin/keys-and-permissions).
 </Warning>
+
+<CardGroup cols={2}>
+  <Card title="Sorgular" icon="database" href="/tr/sessions/queries">
+    Yardımcının yazdığı SQL'i kaydedin, böylece başka bir operatör yeniden çalıştırabilsin.
+  </Card>
+  <Card title="Kontrol Panolarıi" icon="layout-dashboard" href="/tr/sessions/dashboards">
+    Kaydedilmiş bir sorguyu ekip tarafından izlenen bir grafiğe dönüştürün.
+  </Card>
+  <Card title="Denetimler" icon="scan-search" href="/tr/audits/overview">
+    Bir oturum nüfusu arasında hata desenini araştırın.
+  </Card>
+  <Card title="İlkeler" icon="shield-check" href="/tr/policies/overview">
+    Tekrarlanabilir bir işlemi, gelecek hafta yeniden bulma yerine, engelleyin.
+  </Card>
+</CardGroup>

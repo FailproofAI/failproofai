@@ -1,57 +1,66 @@
 ---
-title: "סשנים"
-description: "התחל עם רשומה מלאה של הרצה אחת של Agent."
-icon: "workflow"
+title: "הפעלות"
+description: "עקוב אחרי הפעלה אחת של סוכן מהיעד שלו דרך כלים, החלטות, ותוצאה."
+icon: "route"
 ---
 
-סשן הוא נקודת ההתחלה הטובה ביותר כאשר agent מתנהג בצורה בלתי צפויה. הוא מחבר את בקשות המודל, התגובות, קריאות הכלים, האינטראקציות האנושיות, השגיאות, ההערכות וההחלטות המדיניות השייכות להרצה אחת.
+הפעלה היא ריצה אחת של סוכן. היא מחברת את ההנמקה, קריאות המודל, הכלים, טעויות, קלט אנושי, החלטות מדיניות, והתוצאה הסופית.
 
-סשנים נראים זהים ללא קשר לאיזה harness ייצר אותם. הרצת Claude Code שכותבת מחדש ריפוזיטוריום, agent Hermes שעונה ללקוח ב-Slack, ושירות Python שמצויד ב-SDK - כולם מגיעים לאותה תבנית trace, כך שתצפית אחת מכסה את כל הFleet.
-
-<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with Failproof AI" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
-</div>
-
-עקוב אחר הרצה אחת של agent מהמטרה שלו דרך קריאות המודל, הכלים והתגובה הסופית.
-
-## מצא סשן
+## היכן הפעלות חיות
 
 <Tabs>
-  <Tab title="Dashboard">
-    1. בסרגל הצד של Cloud, עבור ל-**Observe → Sessions**.
-    2. קבע את חלון הזמן, ואז סנן לפי environment, status, agent, או session ID.
-    3. הוסף score או metric ranges כאשר אתה זקוק לפרוסת quality, cost, token, או latency.
-    4. בחר בשורה לפתיחת ה-trace שלה. השתמש בפקד ההעתקה ליד session ID בעת שיתוף.
-
-    ![רשימת Sessions המציגה שורה אחת לכל הרצה עם מסננים של environment, agent, status, ו-evaluation score.](/images/dashboard/sessions-list.png)
+  <Tab title="Local">
+    הפעל את `failproofai` כדי לפתוח את הלוח בחיווג `http://localhost:8020`. היסטוריית ההפעלות נשארת במחשב זה.
   </Tab>
-  <Tab title="CLI">
+  <Tab title="Cloud">
+    חבר את המחשב, ואז פתח את **Observe → Sessions**:
+
     ```bash
-    fp sessions --env production --since 24h
-    fp sessions --status error,timeout --agent-id checkout-agent
-    fp --json sessions --session-id <session-id>
+    export FAILPROOFAI_CLOUD_TOKEN="<key>"
+    failproofai config
     ```
 
-    הוסף `--agents` להרחבת הרצות multi-agent, `--all` לעימוד, או `--fields` לבחירת עמודות output.
+    Cloud מקבל תמלולים מלאים כברירת מחדל. כדי לשלוח החלטות מדיניות בלבד, חבר תחילה, ואז הגדר את `collector.sessions` ל-`false` בקובץ `~/.failproofai/config.json`. דגל ההגדרה הנוכחי `--no-transcripts` אינו חל על הגדרה זו.
   </Tab>
 </Tabs>
 
-## מה אתה יכול לעשות
+הפעלות מגיעות מ-12 [קונסולות סוכנים](/he/reference/harnesses) בתמיכה ומסוכנים שהותקנו באמצעות ה-[Python SDK](/he/reference/custom-agents).
 
-- מצא הרצה לפי agent, environment, זמן, model, event type, או error state.
-- עקוב אחר הרצף המדויק שהוביל לתוצאה.
-- השווה הרצות מוצלחות ושנכשלו.
-- פתח את הראיות המשמשות ממצא ביקורת או incident של alert.
-- ייצא סשן כאשר אתה זקוק לרשומה offline.
+## מצא הפעלה
 
-## סדר חקירה אמין
+ב-Cloud, סנן לפי זמן, סביבה, סטטוס, סוכן, או מזהה הפעלה. מה-CLI:
 
-1. אשר את goal ו-environment של הסשן.
-2. מצא את השגיאה הראשונה או ההחלטה בלתי צפויה - לא רק את הכישלון הסופי.
-3. בדוק את context המודל ו-tool input מיד לפניו.
-4. בדוק retries, latency, ו-human interruptions.
-5. סקור את evaluation scores וההחלטות המדיניות.
+```bash
+fp sessions --since 24h
+fp sessions --status error,timeout --agent-id checkout-agent
+fp --json sessions --session-id <session-id>
+```
 
-<Card title="קרא trace" icon="route" href="/he/sessions/read-a-trace">
-  למד כיצד לעבור מסיכום הסשן לאירוע שגרם לתוצאה.
-</Card>
+השתמש ב-`fp errors --since 24h` לתקלות שמעולם לא הוערכו. `fp sessions --status` משתמש בתוצאת ההערכה העדכנית ביותר, כך שלהפעלה שלא הוערכה אין סטטוס.
+
+## קרא הפעלה
+
+1. אשר את היעד והסביבה של הסוכן.
+2. מצא את הטעות או ההחלטה הלא צפויה הראשונה.
+3. בחן את הקשר של המודל וקלט הכלי מיד לפניה.
+4. בדוק ניסיונות חוזרים, זמן תגובה, והפרעות אנושיות.
+5. סקור הערכות והחלטות מדיניות.
+
+## אם הפעלה חסרה
+
+```bash
+failproofai flush --wait
+failproofai config --status
+failproofai backfill --since 30d --dry-run
+```
+
+השתמש ב-`failproofai harness add-path <harness> [<label>=]<path>` כאשר הפעלות חיות מחוץ למיקום הרגיל של קונסולה, כגון פרופיל אחר, בית המכל, או ספרייה בעלת קבוצה מעוגנת.
+
+<CardGroup cols={2}>
+  <Card title="קרא עקבה" icon="route" href="/he/sessions/read-a-trace">
+    מצא את האירוע שגרם לתוצאה.
+  </Card>
+  <Card title="החלטות מדיניות" icon="shield-check" href="/he/sessions/policy-decisions">
+    ראה מה ההטלת כוח אפשרה, הנחה, או חסמה.
+  </Card>
+</CardGroup>

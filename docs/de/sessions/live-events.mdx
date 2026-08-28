@@ -1,45 +1,41 @@
 ---
-title: "Live-Events"
-description: "Beobachte Agenten-Aktivitäten in Echtzeit während einer laufenden Session."
+title: "Live-Ereignisse"
+description: "Beobachten Sie Agenten-Aktivitäten in Echtzeit in Failproof AI Cloud."
 icon: "radio"
 ---
 
-Live-Events helfen dir, die Instrumentierung zu bestätigen und einen riskanten Durchlauf zu beobachten, ohne auf das Ende der Session warten zu müssen.
+Live-Ereignisse zeigen die Aktivität von Agenten in Echtzeit: Modellaufrufe, Tools, Fehler, menschliche Eingaben, Hooks und Richtlinienentscheidungen.
 
 ## Aktivität beobachten
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. Gehe zu **Observe → Events**.
-    2. Starte mit dem aktuellen Zeitfenster und ohne Filter, um zu bestätigen, dass Daten ankommen.
-    3. Filtere nach Umgebung, Event-Typ, Agent oder Session. Verwende die Suche für Payload-Text.
-    4. Wähle ein Event aus, um seine Zusammenfassung und Details einzusehen. Folge dem Session-Link für den vollständigen Trace.
+Gehen Sie zu **Observe → Live events** oder führen Sie folgendes aus:
 
-    ![Der Live-Events-Stream zeigt Traffic von einem Hermes-Chat-Gateway neben Coding-CLI-Läufen, gefiltert nach Zeit, Umgebung, Event-Typ, Agent, Modell, Kontext und Session.](/images/dashboard/events-stream-current.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp events --env production --event-type tool_use,error --limit 100
-    fp events --session-id <session-id> --order asc --all
-    fp --json events --full --session-id <session-id> --all
-    ```
+```bash
+fp events --since 1h
+fp events --event-type tool_use,tool_result --since 1h
+fp --json events --full --session-id <session-id> --all --limit 2000
+```
 
-    Der Standard-Feed lässt rohe Payloads weg. Verwende `--full` nur für eine eingegrenzte Session-Untersuchung.
-  </Tab>
-</Tabs>
+Verwenden Sie `--full`, wenn Sie die Inhalte der Nutzdaten benötigen. Der kompakte Feed ist schneller und für die meisten Filterzwecke ausreichend.
 
-Nutze den Event-Stream, um drei unmittelbare Fragen zu beantworten:
+Häufige Ereignistypen sind:
 
-- Meldet sich der erwartete Agent an die richtige Umgebung?
-- Kommen Modellaufrufe, Tool-Aufrufe und Policy-Entscheidungen in der richtigen Reihenfolge an?
-- Hat die Session aufgehört, Fortschritte zu machen, oder wiederholt sie eine Aktion?
+- `session_start` und `session_end`
+- `model_request` und `model_response`
+- `tool_use` und `tool_result`
+- `hook_triggered` und `hook_completed`
+- `error`
+- `human_wait` und `human_input`
+- `agent_pause` und `agent_resume`
 
-Event-Typen umfassen Agent-Lifecycle-Events, Modellanfragen und -antworten, Tool-Nutzung und -Ergebnisse, Hook-Ausführung, menschliche Wartezeiten und Unterbrechungen sowie explizite Fehler. Korrelations-IDs verbinden zusammengehörige Events, wie etwa einen Tool-Aufruf und sein Ergebnis.
+## Falls keine Ereignisse angezeigt werden
 
-<Tip>
-  Lass die Live-Ansicht zunächst breit, während du eine neue Integration verifizierst. Füge Filter erst hinzu, nachdem du das erste Event gesehen hast – ein falscher Filter kann wie eine fehlgeschlagene Ingestion aussehen.
-</Tip>
+```bash
+failproofai flush --wait
+failproofai config --status
+failproofai backfill --since 30d --dry-run
+```
 
-Wenn keine Events erscheinen, führe `failproofai config --status` aus und [behebe Ingestion-Probleme](/de/reference/troubleshooting).
+Die Standardumgebung ist `local`. Ein Filter für `production` liefert keine Ergebnisse, bis Sie die Umgebungsbezeichnung entsprechend ändern.
 
-Agents, die nicht in einem der 12 unterstützten [Harnesses](/de/reference/harnesses) laufen, melden dieselben Event-Typen über das [Python SDK](/de/reference/custom-agents), einschließlich der Human-in-the-Loop-Events (`human_wait`, `human_input`, `human_interrupt`), auf die Gateway- und Produktions-Agents angewiesen sind.
+Für einen Agenten außerhalb eines unterstützten Frameworks verwenden Sie das [Python SDK](/de/reference/custom-agents).

@@ -1,41 +1,68 @@
 ---
 title: "Rollback"
-description: "Restaurez un déploiement de politique connu lorsqu'un déploiement perturbe le travail valide d'un agent."
+description: "Restaurer un déploiement de politique connu lorsqu'une mise en production perturbe le travail valide des agents."
 icon: "rotate-ccw"
 ---
 
-Le rollback modifie la version déployée ou supprime une affectation de politique ; il n'efface pas l'historique des décisions qui explique l'incident.
+Le rollback modifie la version déployée ou supprime une affectation de politique ; il n'efface pas l'historique des décisions qui expliquent l'incident.
 
-## Effectuer un rollback sur une machine
+## Revenir en arrière sur une machine
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Accédez à **Admin → enforcement**, développez la machine concernée et identifiez son dernier ensemble de politiques en bon état connu.
+    1. Allez dans **Admin → enforcement**, développez la machine concernée et identifiez son dernier ensemble de politiques connu comme valide.
     2. Sélectionnez **edit**, restaurez ces versions et effets, puis appliquez le nouveau déploiement.
-    3. Attendez l'enregistrement de la machine, puis vérifiez le déploiement signalé.
+    3. Attendez que la machine se reconnecte, puis vérifiez le déploiement signalé.
     4. Ouvrez **Observe → policy** et les sessions concernées pour confirmer que le travail valide n'est plus bloqué.
 
   </Tab>
   <Tab title="CLI">
-    Le rollback d'un déploiement Cloud s'effectue via le tableau de bord. Utilisez le statut local pour confirmer que le déploiement corrigé a bien atteint la machine :
+    Trouvez la génération vers laquelle revenir, rétablissez-la, puis confirmez qu'elle est bien prise en compte :
 
     ```bash
+    fp fleet history ci-runner-01
+    fp fleet rollback ci-runner-01 3
+    fp fleet diff ci-runner-01
     failproofai config --status
     ```
 
-    `failproofai config --pause` met en pause les politiques intégrées, personnalisées et de convention pour une session locale. Il ne met pas en pause les politiques gérées par le Cloud, ce n'est donc pas un contournement pour un mauvais déploiement Cloud.
+    `fp fleet rollback` crée une **nouvelle** génération portant l'ancien ensemble plutôt que de rembobiner le compteur, de sorte que l'historique reste en ajout uniquement. La commande échoue si cette génération fait référence à une politique qui a depuis été désactivée ou supprimée — le serveur l'indique explicitement plutôt que de rétablir un ensemble qui ne peut pas être livré.
+
+    `fp fleet diff` montre l'intention par rapport à la livraison effective. Une machine apparaît comme dérivée jusqu'à son prochain sondage, aussi vérifiez le diff avant de conclure que le rollback n'a pas été appliqué. `failproofai config --status` le confirme directement sur la machine.
   </Tab>
 </Tabs>
+
+## Une pause n'est pas un rollback
+
+Une pause suspend toutes les politiques installées localement pour **une session**, et expire toujours d'elle-même — packs, fichiers personnalisés, fichiers de convention et builtins confondus. Seules les politiques gérées par Cloud et le garde `block-failproofai-commands` toujours actif continuent à s'appliquer. Une pause n'est donc pas un contournement pour un mauvais déploiement Cloud, et son rayon d'impact est plus large qu'il n'y paraît : un pack est là où réside la quasi-totalité de l'enforcement local, et le garde de fermeture en cas d'échec du pack est également ignoré pendant toute la durée.
+
+| Commande | Effet |
+|---|---|
+| `failproofai config --pause` | La session agent la plus récente de ce répertoire, pendant 30 minutes |
+| `failproofai config --pause 10m` | Une durée donnée. Maximum 8h ; suffixes `s`/`m`/`h`, un nombre seul signifie des minutes |
+| `failproofai config --pause --session <id>` | Cibler une session spécifique |
+| `failproofai config --resume` | Mettre fin à la pause avant l'échéance |
+| `failproofai config --resume --all` | Mettre fin à toutes les pauses actives |
+| `failproofai config --status` | Ce qui est en pause et quand cela se lève |
 
 ## Quand effectuer un rollback
 
 - Une politique bloque une action de production attendue.
-- Le volume de correspondances est sensiblement plus élevé que ce que le déploiement observé avait prévu.
+- Le volume de correspondances est nettement supérieur à ce que le déploiement observé avait prédit.
 - Une politique dépend de champs qu'une intégration ne fournit pas.
 - Une nouvelle version modifie le comportement en dehors du mode d'échec prévu.
 
-Après le rollback, ouvrez les sessions concernées et identifiez la condition qui a provoqué le faux positif. Créez une nouvelle version, testez les cas dangereux et légitimes, puis répétez la phase d'observation.
+Après le rollback, ouvrez les sessions concernées et identifiez la condition qui a causé le faux positif. Créez une nouvelle version, testez localement le cas dangereux et le cas légitime, puis repassez par le mode observe avant de réappliquer l'enforcement :
+
+```bash
+fp policies test ./policy.mjs --tool Bash --command '<the legitimate case>' --expect allow
+fp policies publish my-policy ./policy.mjs
+fp fleet deploy ci-runner-01 --add my-policy:observe
+fp guardrails summary --since 24h --machine ci-runner-01
+```
+
+`:observe` est ce qui fait de cela un déploiement fantôme. Un simple `fp fleet deploy ... --add my-policy` **applique l'enforcement immédiatement** — un effet omis se résout à l'effet déjà déployé, puis à `enforce` — ce qui, sur une politique que vous venez de faire revenir en arrière, revient à rétablir l'incident. Le mode observe évalue tout de même la politique pour de vrai et enregistre chaque verdict non-allow ; seul l'enforcement est retenu, de sorte que `fp guardrails summary` mesure la nouvelle version sur le même trafic qui avait échoué avec l'ancienne. Promouvez avec `--add my-policy:enforce` lorsque les chiffres le confirment.
 
 <Warning>
-  Mettre en pause l'application des politiques peut être approprié lors d'un incident, mais cela élargit l'exposition pour toutes les politiques actives dans cette portée. Préférez effectuer un rollback sur la version spécifique de la politique dans la mesure du possible.
+  Mettre en pause l'enforcement peut être approprié lors d'un incident, mais cela élargit l'exposition pour toutes les politiques actives dans ce périmètre. Préférez revenir en arrière sur la version spécifique de la politique lorsque c'est possible.
 </Warning>

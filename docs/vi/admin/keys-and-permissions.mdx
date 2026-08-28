@@ -1,74 +1,54 @@
 ---
-title: "Khóa và quyền hạn"
-description: "Tạo khóa API có phạm vi cho máy, tự động hóa và người vận hành."
+title: "Khóa và quyền"
+description: "Tạo thông tin xác thực cho mọi người, tự động hóa và máy."
 icon: "key-round"
 ---
 
-Khóa API thuộc về một tổ chức và mang theo các quyền hạn rõ ràng. Sử dụng các khóa riêng biệt cho nhập liệu agent, phân phối chính sách, bộ đánh giá, tự động hóa CI và các tập lệnh quản trị.
+Sử dụng một khóa riêng biệt cho mỗi người, máy hoặc công việc tự động hóa. Chỉ cấp những quyền mà nó cần.
 
-## Tạo và xoay vòng khóa
+## Tạo và xoay khóa
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. Chuyển đến **Administration → Keys**, chọn **new key** và nhập tên khối lượng công việc.
-    2. Chọn một bộ quyền hạn và chỉ điều chỉnh từng quyền hạn khi bộ cài sẵn không đủ.
-    3. Tạo khóa và sao chép bí mật một lần của nó ngay lập tức.
-    4. Mở khóa sau này để cập nhật các grant, vô hiệu hóa nó hoặc tạo lại bí mật.
+Sử dụng **Admin → Keys**, hoặc Cloud CLI:
 
-    Ngăn kéo tạo là nơi bạn chọn các grant hẹp nhất cần thiết cho khối lượng công việc.
+```bash
+fp keys list
+fp keys create "audit automation" --add audits:read
+fp keys disable "audit automation"
+```
 
-    ![Ngăn kéo khóa API mới với bộ quyền hạn cài sẵn và các grant riêng lẻ.](/images/dashboard/key-create.png)
+Lưu trữ bí mật khi nó được tạo; nó sẽ không được hiển thị lại. Xoay khóa bằng cách tạo khóa thay thế, cập nhật người tiêu thụ, sau đó vô hiệu hóa khóa cũ.
 
-    Sau khi tạo, trang Keys hiển thị siêu dữ liệu và các hành động quản lý bền vững. Bí mật một lần không được hiển thị lại.
+## Khóa máy
 
-    ![Trang Khóa API hiển thị quyền hạn khóa, thời gian tạo và các hành động tạo lại và vô hiệu hóa.](/images/dashboard/api-keys.png)
+Một khóa máy kết nối dịch vụ cục bộ với Cloud:
 
-    Sử dụng danh sách này để xem xét các grant thường xuyên và vô hiệu hóa các khóa không còn ánh xạ tới khối lượng công việc hoạt động.
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp keys create production-agents \
-      --add events:add \
-      --add policies:pull
-    fp keys show production-agents
-    fp keys update production-agents --add events:read
-    fp keys regenerate production-agents --yes
-    fp keys disable production-agents
-    ```
+```bash
+export FAILPROOFAI_CLOUD_TOKEN="<key>"
+failproofai config
+```
 
-    Chuyển hướng hoặc ghi lại kết quả tạo/tạo lại một cách an toàn; bí mật được trả về một lần.
-  </Tab>
-</Tabs>
+Một máy được kết nối có thể cần hai khả năng:
 
-Hai quyền hạn cần thiết bởi máy Failproof AI kết nối là độc lập:
+- `policies:pull` để nhận các chính sách được quản lý bởi Cloud.
+- `events:add` để gửi quyết định và phiên.
 
-- `events:add` gửi các sự kiện và dữ liệu phiên.
-- `policies:pull` truy xuất các triển khai chính sách được gán.
+Trạng thái báo cáo những điều này riêng biệt vì một trong những điều có thể hoạt động trong khi cái kia không.
 
-Các bí mật khóa được hiển thị khi tạo hoặc tạo lại. Lưu trữ chúng trong trình quản lý bí mật và xoay vòng chúng mà không sử dụng lại thông tin đăng nhập tương tác của người vận hành.
+## Quyền thông thường
 
-## Danh mục quyền hạn
-
-| Khu vực | Quyền hạn |
+| Quyền | Cho phép |
 | --- | --- |
-| Sự kiện | `events:add`, `events:read` |
-| Khóa | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` chỉ dành cho phiên con người |
-| Người dùng | `users:create`, `users:read`, `users:update`, `users:delete` |
-| Đánh giá | `evaluations:read`, `evaluations:trigger` |
-| Bảng điều khiển | `dashboards:read`, `dashboards:write`, `dashboards:delete` |
-| Truy vấn | `queries:read`, `queries:write`, `queries:delete`, `queries:run` |
-| Trợ lý | `agent:use` |
-| Cài đặt | `settings:read`, `settings:write` |
-| Cảnh báo | `alerts:read`, `alerts:write` |
-| Vấn đề | `issues:read`, `issues:create`, `issues:close` |
-| Kiểm toán | `audits:read`, `audits:write` |
-| Chính sách | `policies:read`, `policies:write`, `policies:pull` |
-| Sử dụng | `usage:read` |
+| `events:add` | Gửi sự kiện |
+| `events:read` | Đọc sự kiện và lỗi |
+| `evaluations:read` | Đọc phiên và đánh giá |
+| `audits:read` / `audits:write` | Xem hoặc quản lý kiểm toán |
+| `policies:read` / `policies:write` | Xem hoặc triển khai chính sách |
+| `policies:pull` | Kéo các gán chính sách máy |
+| `keys:create` / `keys:disable` | Tạo hoặc vô hiệu hóa khóa |
+| `orgs:admin` | Quản trị tổ chức ở cấp độ thể hiện; không có thể gán cho khóa tổ chức |
 
-`orgs:admin` được dành riêng cho người vận hành instance và không thể được cấp cho khóa tổ chức hoặc thành viên bình thường. Các token `incidents:*` và `alerts:ack` đã loại bỏ được chấp nhận để tương thích và chuẩn hóa thành quyền hạn `issues:*` hiện tại.
-
-Các bộ quyền hạn tích hợp sẵn là `read-only`, `standard` và `admin`. `standard` thêm kích hoạt đánh giá, thực thi truy vấn, phản hồi vấn đề và sử dụng trợ lý cho các quyền hạn đọc. Tạo khóa loại bỏ các grant chỉ dành cho con người ngay cả khi một bộ quyền hạn chứa chúng.
+Một số lệnh quản trị `fp fleet` và `fp guardrails` yêu cầu phiên người dùng đã ký nhập thay vì khóa API. Văn bản trợ giúp của họ nêu rõ điều này trước khi thực hiện yêu cầu.
 
 <Warning>
-  Các khóa có phạm vi instance có thể chọn một tổ chức bằng tiêu đề `X-AgentEye-Org`. Đặt nó một cách rõ ràng trên các triển khai đa tổ chức; bỏ qua có thể chọn tổ chức mặc định.
+  Không bao giờ sử dụng lại thông tin xác thực nhập như `AGENTEYE_KEY` hoặc `AGENTEYE_API_KEY` làm `FP_API_KEY`. Chúng phục vụ các hệ thống và quyền khác nhau.
 </Warning>

@@ -1,68 +1,68 @@
 ---
-title: "セットアップ方法を選択する"
-description: "ローカル適用、Failproof AI Cloud、またはエンタープライズ展開を選択してください。"
-icon: "waypoints"
+title: "セットアップ方法を選ぶ"
+description: "Failproof AI をローカルで実行するか、Failproof AI Cloud に接続します。"
+icon: "settings"
 ---
 
-<CardGroup cols={3}>
-  <Card title="ローカル適用" icon="laptop">
-    マシンにフックとポリシーをインストールします。セッションデータをCloudに送信せず、即座にガードレールが必要な場合に適しています。
+Failproof AI は単一マシン上で完結して動作することも、Cloud に接続してセッションの共有やポリシー管理を行うこともできます。
+
+## ローカル・アカウント不要
+
+```bash
+npm install -g failproofai
+failproofai config
+failproofai policies add FailproofAI/policies
+failproofai
+```
+
+これによりサービスがインストールされ、対応エージェントが接続され、ポリシーパックが追加され、`http://localhost:8020` にダッシュボードが開きます。
+
+`failproofai audit` を実行すると、マシン上に既存のエージェント履歴をスキャンできます。
+
+## Failproof AI Cloud に接続する
+
+Cloud でマシンキーを作成し、次のコマンドを実行します：
+
+```bash
+failproofai config --token <machine-key>
+failproofai config --machine-label checkout-runner-01
+failproofai policies add FailproofAI/policies
+failproofai config --status
+```
+
+または `FAILPROOFAI_CLOUD_TOKEN=<machine-key>` をエクスポートして、`failproofai config` をそのまま実行することもできます。共有マシンや CI 環境では環境変数の使用を推奨します。シェル履歴やプロセス一覧にキーが残らないためです。
+
+Cloud は一つの接続で二つの役割を担います：
+
+- このマシンに割り当てられたポリシーを取得する。
+- ポリシーの判定結果とセッショントランスクリプトを送信する。
+
+判定結果のみを送信するには、まず接続してから `~/.failproofai/config.json` 内の `collector.sessions` を `false` に設定してください。`--no-transcripts` には依存しないでください。現在のセットアッププロセスはこのフラグを解析しますが、適用はされません。詳細は [イベントと設定](/ja/reference/events-and-configuration#machine-configuration) を参照してください。
+
+<Note>
+  `--machine-label` は既に接続済みのマシンをリネームします。最初の接続コマンドと一緒にではなく、セットアップコマンドの後に実行してください。
+</Note>
+
+## 無人セットアップ
+
+`failproofai config` は特別な非対話フラグを必要としません。CI やコンテナ環境では、プロンプトを表示せずにリクエストされたセットアップを適用します。
+
+```bash
+export FAILPROOFAI_CLOUD_TOKEN="<key>"
+failproofai config
+```
+
+バックグラウンドサービスのインストールには、一度だけ管理者権限が必要です。セットアップは対話型の `sudo` パスワードプロンプトを開きません。パスワードなしで成功するか、管理者が実行すべきコマンドを表示します。
+
+## プラットフォームサポート
+
+セットアップは Linux と macOS に対応しています。それ以外のプラットフォームでは、フックや中途半端なセットアップ状態を書き込まずに終了します。
+
+<CardGroup cols={2}>
+  <Card title="配信状況を確認する" icon="activity" href="/ja/reference/troubleshooting">
+    セッションやポリシー割り当てが見当たらない場合の診断方法。
   </Card>
-  <Card title="Failproof AI Cloud" icon="cloud">
-    セッションの一元管理、監査、オンライン評価、ダッシュボード、アラート、フリートへのポリシー展開を追加できます。
-  </Card>
-  <Card title="エンタープライズ展開" icon="building-2">
-    組織コントロール、スコープ付きキー、プライベートインフラ、展開固有のセキュリティ要件を利用できます。
+  <Card title="対応エージェント" icon="bot" href="/ja/reference/harnesses">
+    各ハーネスのスコープと適用サポートを確認する。
   </Card>
 </CardGroup>
-
-## 推奨する本番環境への移行手順
-
-1. トランスクリプトキャプチャを有効にした非本番マシンを接続する。
-2. CloudでセッションとEvaluationを確認する。
-3. 既知の障害モードに対する監査を作成する。
-4. 最初のポリシーをオブザーブモードで展開する。
-5. マッチ結果と誤検知を確認した後、本番環境に展開する。
-
-## マシンをCloudに接続する
-
-<Tabs>
-  <Tab title="ダッシュボード">
-    1. **Administration → Keys** に移動し、`events:add` と `policies:pull` 権限を持つキーを作成する。
-    2. ワンタイムシークレットをターゲットマシンにコピーする。
-    3. CLI接続コマンドを実行した後、**Admin → enforcement** に移動し、マシンが表示されていることを確認する。
-    4. **Observe → Events** に移動し、最初のイベントが届いていることを確認する。
-
-    キードロワーには、接続済みマシンに必要な2つの権限（イベントの取り込みとポリシーの配信）が表示されます。
-
-    ![イベント取り込みとポリシー配信権限を付与するための新しいAPIキードロワー。](/images/dashboard/key-create.png)
-
-    接続後、マシンは期待されるポリシー状態と展開ステータスとともにenforcementに表示されます。
-
-    ![登録済みマシンを展開して期待ポリシー状態と展開ステータスを表示したenforcementフリート。](/images/dashboard/enforcement-fleet.png)
-
-    最初のイベントが届くことで、ポリシー展開とは独立して、デーモンがCloudにデータを送信できることが確認されます。
-
-    ![最近のエージェント、モデル、ツールのイベントを表示するライブイベントストリーム。](/images/dashboard/events-stream-current.png)
-
-    マシンと最初のイベントの両方が表示されてから次に進んでください。
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai config --connect https://app.befailproof.ai \
-      --token "$FAILPROOFAI_KEY" \
-      --machine-label checkout-runner-01
-
-    failproofai policies --install --cli claude --scope user
-    failproofai config --status
-    ```
-
-    トランスクリプトの内容をローカルに保持する必要がある場合は `--no-transcripts` を追加してください。
-  </Tab>
-</Tabs>
-
-Cloudへの接続では、イベントの取り込みとポリシーの配信が独立して検証されます。そのため、キーが有効であっても必要な権限の一方が欠けている場合があります。`failproofai config --status` を使用して、どの機能が設定済みかを確認してください。
-
-<Info>
-  Cloudのセットアップでは、該当する機能の検証が成功した後にのみローカルの認証情報が書き込まれます。検証が失敗した場合、実際には接続されていないにもかかわらず接続済みと表示される状態にはなりません。
-</Info>

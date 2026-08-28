@@ -1,53 +1,62 @@
 ---
 ---
-title: "मशीनों को नीतियां तैनात करें"
-description: "जानें कि कौन सी मशीनें नामांकित हैं, वर्तमान हैं, और इच्छित नीति संस्करणों को लागू कर रही हैं।"
+title: "Fleet coverage"
+description: "देखें कि कौन सी मशीनों ने इच्छित policies को प्राप्त और लागू किया।"
 icon: "network"
 ---
 
-फ्लीट कवरेज इस बात का जवाब देता है कि क्या कोई नीति वह जगह है जहां जोखिम है। मशीनों को स्थिर आईडी और एक मानव-पठनीय लेबल से ट्रैक करें, फिर उनकी असाइन की गई और रिपोर्ट की गई तैनाती स्थिति की तुलना करें।
+Fleet coverage Cloud द्वारा निर्दिष्ट और प्रत्येक मशीन द्वारा अंतिम बार लागू की गई चीजों की तुलना करता है।
 
-## कवरेज जांचें
-
-<Tabs>
-  <Tab title="Dashboard">
-    1. **Admin → enforcement** पर जाएं और लागू करने और देखने वाले कुल की समीक्षा करें।
-    2. आईडी या लेबल से मशीन खोजें, या नीति से रहित मशीनों के लिए फ़िल्टर करें।
-    3. असाइन की गई नीतियों, रिपोर्ट की गई तैनाती, अंतिम चेक-इन और इतिहास की तुलना करने के लिए एक पंक्ति को विस्तारित करें।
-    4. मशीन के पोलिंग अंतराल के बाद रीफ़्रेश करें जब लागू की गई तैनाती लंबित रहे।
-
-    ![प्रवर्तन फ्लीट नीति कवरेज, मशीन तैनाती स्थिति, और अवलोकन और प्रवर्तन असाइनमेंट दिखा रहा है।](/images/dashboard/enforcement-fleet.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai config --status
-    failproofai config --machine-label checkout-runner-03
-    failproofai flush --wait
-    ```
-
-    मशीन की एजेंट गतिविधि क्लाउड तक पहुंचती है यह पुष्टि करने के लिए `fp events --agent-id <agent-id> --since 24h` का उपयोग करें।
-  </Tab>
-</Tabs>
-
-कवरेज दृश्यों का उपयोग खोजने के लिए करें:
-
-- मशीनें जिन्होंने कभी नवीनतम तैनाती को नहीं खींचा
-- नामांकित मशीनें जिन्होंने रिपोर्टिंग गतिविधि बंद कर दी
-- एक नीति जो गलत परिवेश या समूह को असाइन की गई है
-- एक बाधित अपडेट के बाद संस्करण ड्रिफ्ट
-
-इसे पुनः कनेक्ट किए बिना एक मशीन का नाम बदलें:
-
-```bash
-failproofai config --machine-label checkout-runner-03
-```
-
-स्थानीय स्थिति की जांच करें:
+## एक मशीन की जांच करें
 
 ```bash
 failproofai config --status
+failproofai flush --wait --timeout 120
 ```
 
-<Tip>
-  लेबल का उपयोग करें जो कार्यभार और वातावरण की पहचान करें। ऑटोस्केलिंग या मशीन प्रतिस्थापन के बाद अकेले होस्टनाम अक्सर अपर्याप्त होते हैं।
-</Tip>
+Cloud से:
+
+```bash
+fp fleet list
+fp fleet diff
+fp fleet show <machine-id>
+```
+
+`fp fleet` को signed-in session की आवश्यकता है, API key नहीं।
+
+| Command | यह क्या करता है |
+| --- | --- |
+| `fp fleet list` | मशीनों और deployment state की सूची बनाएं |
+| `fp fleet show <machine>` | एक मशीन की policy set दिखाएं |
+| `fp fleet deploy <machine> --add <ref>` | एक policy जोड़ें या update करें |
+| `fp fleet deploy <machine> --remove <id>` | एक policy हटाएं |
+| `fp fleet deploy <machine> --set <ref>...` | पूरे set को बदलें |
+| `fp fleet diff [machine]` | इच्छित और लागू किए गए versions की तुलना करें |
+| `fp fleet history <machine>` | deployment generations की सूची बनाएं |
+| `fp fleet rollback <machine> <generation>` | एक generation restore करें |
+| `fp fleet rename <machine> "<label>"` | Cloud label बदलें |
+
+<Warning>
+  `--set` संपूर्ण policy set को बदल देता है। एक साधारण `--add <id>` नई policy को तुरंत लागू करता है। Shadow rollout के लिए `--add <id>:observe` का उपयोग करें।
+</Warning>
+
+## Observe करें, फिर enforce करें
+
+```bash
+fp fleet deploy ci-runner-01 --add prod-guard:observe
+fp guardrails summary --since 24h --machine ci-runner-01
+fp fleet deploy ci-runner-01 --add prod-guard:enforce
+```
+
+Observe mode वास्तविक policy का मूल्यांकन करता है और agent को ब्लॉक किए बिना non-allow decisions को record करता है।
+
+## Machine identity
+
+Machine ID स्थिर है और मशीन की पहचान करता है। Label केवल display के लिए है और बदल सकता है:
+
+```bash
+failproofai config --machine-label checkout-runner-03
+fp fleet rename <machine-id> "Checkout runner 03"
+```
+
+Label बदलने से मशीन reconnect या re-key नहीं होती है।

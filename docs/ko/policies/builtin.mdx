@@ -1,57 +1,100 @@
 ---
-title: "기본 제공 정책"
-description: "일반적인 에이전트 오류 모드에 대한 관리형 가드레일을 활성화합니다."
+title: "내장 정책"
+description: "일반적인 에이전트 실패 유형에 대한 가드레일을 확인하고, 원하는 항목을 활성화하세요."
 icon: "library"
 ---
 
-기본 제공 정책은 시크릿 처리, 환경 파일, 파괴적인 셸 명령, 보호된 브랜치, 클라우드 및 인프라 도구, 패키지 게시, 반복 호출, 작업 종료 시 워크플로 검사를 포함합니다.
+내장 정책은 9가지 에이전트 실패 유형을 다루는 39개의 관리형 정책으로 구성됩니다. 하나를 제외한 나머지는 **팩 형태로 제공**되며, `FailproofAI/policies`는 다른 누구의 정책과 동일한 방식으로 전달됩니다. 패키지 자체에는 자체 팩이 포함되지 않으므로, 새로 설치한 경우 다음 명령을 실행하기 전까지는 아무것도 적용되지 않습니다:
 
-## 기본 제공 정책 활성화 및 확인
+```bash
+failproofai policies add FailproofAI/policies
+```
+
+이 명령을 실행하면 팩의 기본값이 활성화됩니다 — 팩에 포함된 38개 정책 중 10개가 켜집니다. 39번째 정책인 `block-failproofai-commands`는 별도로 항상 활성화됩니다. 이 정책은 패키지에 컴파일되어 포함되며, 모든 평가 시 등록되고 비활성화하거나 일시 중지할 수 없습니다. 팩은 `alwaysOn`을 선언할 수 없기 때문에, 이 가드는 팩 경로를 통해 배포되지 않습니다.
+
+## 9가지 카테고리가 다루는 내용
+
+| 카테고리 | `--category` 슬러그 | 정책 수 |
+| --- | --- | --- |
+| Sanitize | `sanitize` | 5 |
+| Environment | `environment` | 3 |
+| Dangerous Commands | `dangerous-commands` | 5 |
+| Infra Commands | `infra-commands` | 7 |
+| Git | `git` | 6 |
+| Database | `database` | 2 |
+| Packages & System | `packages-system` | 5 |
+| AI Behavior | `ai-behavior` | 1 |
+| Workflow | `workflow` | 5 |
+
+위 수치는 컴파일된 카탈로그 기준이며, 합산하면 39개입니다. `block-failproofai-commands`는 `alwaysOn`이므로 팩 경로를 통해 배포되지 않아, 팩에는 38개만 포함됩니다. 따라서 `--category dangerous-commands`를 사용하면 나머지 4개가 선택됩니다.
+
+기본값 대신 일부만 가져올 수도 있습니다:
+
+```bash
+failproofai policies add FailproofAI/policies --category git,database
+failproofai policies add FailproofAI/policies --policy block-rm-rf
+failproofai policies add FailproofAI/policies --all
+```
+
+## 적용하기 전에 카탈로그를 먼저 확인하세요
 
 <Tabs>
-  <Tab title="대시보드">
-    1. 로컬 CLI를 사용하여 연결된 머신에 정책을 설치합니다.
-    2. 계측된 에이전트에서 안전한 테스트 작업을 실행합니다.
-    3. **Observe → policy**로 이동하여 정책 이름, 머신 환경, 또는 결정으로 필터링합니다.
-    4. 연결된 세션을 열어 매칭된 도구 입력과 반환된 이유를 확인합니다.
-
-  </Tab>
   <Tab title="CLI">
     ```bash
+    failproofai policies show FailproofAI/policies
     failproofai policies
-    failproofai policy add block-rm-rf --cli claude --scope project
-    failproofai config --status
     ```
 
-    `failproofai policy remove block-rm-rf --cli claude --scope project`로 제거합니다.
+    `policies show`는 게시된 매니페스트를 읽어옵니다 — 모든 정책을 카테고리별로 묶고, 기본값 또는 선택적 활성화 여부를 표시합니다 — 팩의 코드를 다운로드하거나 임포트하지 않습니다. `failproofai policies`는 이 머신에서 활성화된 항목을 나열합니다: 커스텀 파일, 컨벤션 파일, 설치된 팩 및 Cloud 할당. 내장 섹션은 없으므로 "여기에서 켜진 것"을 답할 뿐, "존재하는 것"을 답하지 않습니다.
+  </Tab>
+  <Tab title="Policy Hub">
+    CLI 없이 브라우저에서 동일한 카탈로그를 [befailproof.ai/policy-hub](https://befailproof.ai/policy-hub/)에서 탐색할 수 있습니다. 각 팩은 `/policy-hub/<owner>/<pack>/`에 페이지가 있고, 각 정책은 `/policy-hub/<owner>/<pack>/<policy-name>/`에 페이지가 있습니다.
+  </Tab>
+  <Tab title="Dashboard">
+    1. 로컬 CLI로 연결된 머신에 정책을 설치합니다.
+    2. 계측된 에이전트에서 안전한 테스트 액션을 실행합니다.
+    3. **Observe → policy**로 이동하여 정책 이름, 머신 환경 또는 결정으로 필터링합니다.
+    4. 연결된 세션을 열어 일치한 도구 입력과 반환된 이유를 확인합니다.
   </Tab>
 </Tabs>
 
-설치된 버전에서 사용 가능한 정책 목록 확인:
+## 개별 정책 켜기/끄기
 
 ```bash
-failproofai policies
+failproofai policies add block-rm-rf --cli claude --scope project
+failproofai policies remove block-rm-rf --cli claude --scope project
 ```
 
-프로젝트에 정책 하나 활성화:
-
-```bash
-failproofai policy add block-rm-rf --scope project
-```
-
-선택한 하네스에 여러 정책 활성화:
+`policies add`와 `policies remove`는 정책 이름을 정확히 **하나만** 받습니다. 이름 없이 실행하면 선택기가 나타나며, 이미 활성화된 항목은 체크 표시됩니다. 여러 이름을 한 번에 처리하려면 install 형식을 사용하세요:
 
 ```bash
 failproofai policies --install block-sudo block-force-push \
   --cli claude codex --scope project
 ```
 
-일부 정책은 파라미터를 허용하거나 베타로 표시되어 있습니다. 배포 전에 설명, 매칭 범위, 기본 동작을 검토하세요. 특정 워크플로를 보호하는 정책이 다른 워크플로에서 유효한 작업을 차단할 수 있습니다.
+<Note>
+  팩이 설치되지 않은 머신에서 `failproofai policies add <builtin-name>`을 실행하면, 해당 이름을 충족시키기 위해 GitHub 릴리스에서 `FailproofAI/policies`를 가져옵니다 — 따라서 첫 번째 명령은 네트워크가 필요합니다.
+</Note>
 
-<Card title="전체 기본 제공 카탈로그 보기" icon="list-checks" href="/ko/policies/builtin-catalog">
-  현재 제공되는 40개의 모든 정책, 트리거, 권장 기준선 및 파라미터를 검토하세요.
+## 모든 정책이 모든 하네스에서 적용되는 것은 아닙니다
+
+정책은 하네스가 해당 이벤트에 대한 판정을 소비하는 경우에만 동작을 변경합니다. 내장 정책을 신뢰하기 전에 두 가지 경우를 확인하는 것이 좋습니다:
+
+| 이벤트 | deny가 동작 변경을 검증받은 위치 |
+| --- | --- |
+| `PreToolUse` | 모든 12개 하네스 |
+| `Stop` | claude, codex, copilot, cursor, openclaw, factory, devin, antigravity. goose와 hermes에는 `Stop` 훅이 설치되지 않으며, pi는 이유를 다음 턴으로 전달하고, opencode는 검증되지 않음 |
+
+따라서 Workflow 카테고리의 5개 `require-*-before-stop` 정책은 머신에 활성화되어 있어도, 실행 중인 에이전트에 따라 전혀 발동되지 않을 수 있습니다. Cursor Cloud Agent VM은 stop 훅을 전혀 실행하지 않습니다.
+
+`warn-*` 및 `prefer-*` 정책은 `deny` 대신 `instruct`를 반환합니다. Hermes와 Goose에서, 그리고 Pi, OpenClaw, Factory, Antigravity의 `Stop` 채널 외부에서는, `instruct`가 allow로 강등되고 stderr에 노트가 추가됩니다: 운영자는 로그에서 확인할 수 있지만, 에이전트는 알 수 없습니다.
+
+일부 정책은 파라미터를 허용합니다. 롤아웃 전에 설명, 매치 범위 및 기본값을 검토하세요 — 하나의 워크플로를 보호하는 정책이 다른 워크플로에서 유효한 작업을 차단할 수 있습니다.
+
+<Card title="전체 내장 카탈로그 탐색" icon="list-checks" href="/ko/policies/builtin-catalog">
+  39개 내장 정책 전체를 카테고리별로, 트리거·기본값·파라미터와 함께 확인하세요.
 </Card>
 
 <Tip>
-  저장소별 기대치에는 프로젝트 범위를, 머신 전체 보안 요구사항에는 사용자 범위를 사용하는 것을 권장합니다.
+  `failproofai config`는 지원되는 모든 에이전트를 사용자 범위에서 연결하며 정책을 선택하지 않습니다 — `--scope` 플래그가 없습니다. `failproofai policies add` 또는 `failproofai policies --install`에 `--scope project`를 전달하는 것은, 해당 기대치가 진정으로 하나의 리포지토리에 속할 때만 사용하세요.
 </Tip>

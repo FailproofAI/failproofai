@@ -1,94 +1,134 @@
 ---
 title: "내장 정책 카탈로그"
-description: "Failproof AI의 모든 내장 정책, 트리거, 권장 상태 및 구성 가능한 파라미터를 확인하세요."
+description: "Failproof AI의 모든 내장 정책, 트리거, 기본 상태, 구성 가능한 파라미터를 확인하세요."
 icon: "list-checks"
 ---
 
-설치된 패키지가 정책 가용성의 기준이 됩니다. 패키지를 업그레이드할 때마다 `failproofai policies`를 실행하세요. 카탈로그 항목과 동작은 패키지 버전에 따라 변경될 수 있습니다.
+39개의 내장 정책 중 38개는 `FailproofAI/policies` 팩으로 제공됩니다. `block-failproofai-commands`는 팩에서 `alwaysOn`을 선언할 수 없기 때문에 패키지에 컴파일되어 포함됩니다. 설치된 팩이 이 머신에서 적용할 수 있는 내용의 기준입니다:
 
-## 권장 기본 설정
-
-안내형 설정의 권장 선택 항목은 현재 시크릿 제거, 환경 보호, 자체 보호, 치명적 명령 차단, 보호 브랜치 안전 기능을 활성화합니다:
-
-```text
-sanitize-jwt                 sanitize-api-keys
-sanitize-connection-strings sanitize-private-key-content
-sanitize-bearer-tokens       protect-env-vars
-block-env-files              block-secrets-write
-block-failproofai-commands   block-sudo
-block-curl-pipe-sh           block-rm-rf
-block-push-master            block-force-push
+```bash
+failproofai policies show FailproofAI/policies   # the catalog, as published
+failproofai policies                             # what is enabled here
 ```
 
-`block-failproofai-commands`는 **항상 활성화**됩니다. 완전한 목록을 위해 위에 포함되었지만, 활성화 목록에 포함 여부와 관계없이 모든 평가 시 등록되며 비활성화하거나 일시 중지할 수 없습니다. 에이전트가 끌 수 있는 강제 집행 스위치는 진정한 보호 장치가 아니기 때문입니다.
+`failproofai policies`는 커스텀 파일, 컨벤션 파일, 설치된 팩 및 Cloud 할당 목록을 표시합니다. 내장 섹션은 없으므로 "어떤 내장 정책이 있는지"에 대한 답을 제공하지 않습니다 — 그 질문에 대한 답은 `policies show`와 [Policy Hub](https://befailproof.ai/policy-hub/FailproofAI/policies/)에서 확인할 수 있습니다.
 
-권장 설정은 의도적으로 **전체(Everything)** 보다 좁은 범위로 구성되어 있습니다. 인프라 및 워크플로 정책은 정상적인 작업을 방해할 수 있으므로, 필요한 저장소와 머신에서만 활성화해야 합니다.
+## 기본값 및 선택 방법
 
-## 시크릿 및 환경
+`failproofai policies add FailproofAI/policies`만 실행하면 팩 자체의 기본값이 활성화됩니다 — 아래 표에서 **on**으로 표시된 10개 항목입니다. `block-failproofai-commands`는 선택 여부와 관계없이 항상 활성화되며 해당 선택에 포함되지 않습니다. `--all`은 전체를 선택하고, `--category <slug>` 및 `--policy <name>`은 일부만 선택합니다. 각 제목 옆의 슬러그가 `--category`와 매칭되는 값입니다:
 
-| 정책 | 트리거 | 결과 |
+```bash
+failproofai policies add FailproofAI/policies --category git,database
+```
+
+`block-failproofai-commands`는 **항상 활성화**되어 있습니다. 이 정책은 선택 목록에 포함되어 있는지 여부와 관계없이 모든 평가에서 동작하며, 비활성화하거나 일시 중지할 수 없습니다 — 에이전트가 끌 수 있는 적용 장치는 실질적인 보호 수단이 아닙니다. 팩에서 `alwaysOn`을 선언할 수 없기 때문에, 이 정책만 팩이 아닌 패키지에 직접 컴파일되어 포함됩니다.
+
+## Sanitize — `sanitize`
+
+이 정책들은 도구가 실행된 후 `PostToolUse`에서 동작합니다. **도구 결과를 감지하고 거부**하며, 일부 문자열만 삭제하고 나머지를 반환하지 않습니다.
+
+여기서의 거부는 `PostToolUse` 판정을 소비하는 하네스에서만 모델에 전달됩니다 — **codex**와 **copilot**에서는 거부 이유가 전체 도구 결과를 대체합니다. claude, cursor, opencode, pi, hermes, openclaw, factory, devin, antigravity, goose에서는 `PostToolUse`가 관찰 전용입니다: 감지 내용은 기록되지만 출력은 여전히 모델에 전달됩니다.
+
+| 정책 | 트리거 | 기본값 | 결과 |
+| --- | --- | --- | --- |
+| `sanitize-jwt` | `PostToolUse` | on | JWT가 포함된 도구 결과 거부. |
+| `sanitize-api-keys` | `PostToolUse` | on | OpenAI, Anthropic, GitHub, AWS, Stripe 또는 Google 키가 포함된 도구 결과 거부. |
+| `sanitize-connection-strings` | `PostToolUse` | on | 자격 증명이 포함된 데이터베이스 연결 문자열이 있는 도구 결과 거부. |
+| `sanitize-private-key-content` | `PostToolUse` | on | PEM 개인 키 콘텐츠가 포함된 도구 결과 거부. |
+| `sanitize-bearer-tokens` | `PostToolUse` | on | `Authorization: Bearer` 토큰이 포함된 도구 결과 거부. |
+
+## Environment — `environment`
+
+| 정책 | 트리거 | 기본값 | 결과 |
+| --- | --- | --- | --- |
+| `protect-env-vars` | `Bash`에서 `PreToolUse` | on | 환경 변수를 읽는 명령 차단. |
+| `block-env-files` | `PreToolUse` | on | `.env` 파일 읽기 및 쓰기 차단. |
+| `block-read-outside-cwd` | `Read`, `Glob`, `Grep`, `Bash`에서 `PreToolUse` | off | 파일 읽기를 세션 작업 디렉터리 내로 제한. |
+
+## Dangerous commands — `dangerous-commands`
+
+| 정책 | 트리거 | 기본값 | 결과 |
+| --- | --- | --- | --- |
+| `block-sudo` | `Bash`에서 `PreToolUse`, `PermissionRequest` | on | allow 패턴이 일치하지 않는 한 `sudo` 차단. |
+| `block-curl-pipe-sh` | `Bash`에서 `PreToolUse` | on | 셸에 직접 파이프되는 다운로드 스크립트 차단. |
+| `block-failproofai-commands` | `Bash`, `Write`, `Edit`, `NotebookEdit`에서 `PreToolUse`, `PermissionRequest` | **항상 on** | 모든 Failproof AI CLI 호출, 자체 일시 중지 및 제거 차단. |
+| `block-rm-rf` | `Bash`에서 `PreToolUse` | off | 재귀 삭제 패턴 차단. |
+| `block-secrets-write` | `Write`에서 `PreToolUse` | off | 일반적인 시크릿 키 및 자격 증명 파일명으로의 쓰기 차단. |
+
+## Infra commands — `infra-commands`
+
+7개 모두 기본적으로 비활성화되어 있습니다: 이 정책들은 실제 작업에서 상시 사용되는 도구를 제한하므로, 해당 도구가 필요한 저장소와 머신에서 별도로 적용해야 합니다.
+
+| 정책 | 트리거 | 기본값 | 결과 |
+| --- | --- | --- | --- |
+| `block-kubectl` | `Bash`에서 `PreToolUse` | off | `kubectl` 클러스터 변경 작업 제한. |
+| `block-terraform` | `Bash`에서 `PreToolUse` | off | `terraform` 및 `tofu` 명령 제한. |
+| `block-aws-cli` | `Bash`에서 `PreToolUse` | off | `aws` CLI 명령 제한. |
+| `block-gcloud` | `Bash`에서 `PreToolUse` | off | `gcloud` 명령 제한. |
+| `block-az-cli` | `Bash`에서 `PreToolUse` | off | `az` 명령 제한. |
+| `block-helm` | `Bash`에서 `PreToolUse` | off | `helm` 명령 제한. |
+| `block-gh-pipeline` | `Bash`에서 `PreToolUse` | off | 변경을 유발하는 `gh` 작업 제한: workflow run, run rerun 및 cancel, pr merge, release create 및 delete, cache delete, secret set 및 delete. `gh pr view`와 같은 읽기 전용 하위 명령은 매칭되지 않습니다. |
+
+## Git — `git`
+
+| 정책 | 트리거 | 기본값 | 결과 |
+| --- | --- | --- | --- |
+| `block-push-master` | `Bash`에서 `PreToolUse` | on | 설정된 보호 브랜치로의 직접 푸시 차단. |
+| `block-force-push` | `Bash`에서 `PreToolUse` | off | 강제 푸시 차단. `--force-with-lease` 및 `--force-if-includes`는 허용됩니다. |
+| `block-work-on-main` | `Bash`에서 `PreToolUse` | off | 보호 브랜치에서의 커밋 및 머지 차단. |
+| `warn-git-amend` | `Bash`에서 `PreToolUse` | off | `--amend`로 커밋을 수정하기 전에 경고. |
+| `warn-git-stash-drop` | `Bash`에서 `PreToolUse` | off | 스태시를 영구적으로 삭제하거나 비우기 전에 경고. |
+| `warn-all-files-staged` | `Bash`에서 `PreToolUse` | off | `git add -A`, `git add .` 또는 `git add --all`과 같은 광범위한 스테이징 시 경고. |
+
+## Database — `database`
+
+| 정책 | 트리거 | 기본값 | 결과 |
+| --- | --- | --- | --- |
+| `warn-destructive-sql` | `Bash`에서 `PreToolUse` | off | 인식된 데이터베이스 클라이언트를 통한 `DROP`, `TRUNCATE`, `WHERE` 없는 `DELETE` 시 경고. |
+| `warn-schema-alteration` | `Bash`에서 `PreToolUse` | off | 인식된 `ALTER TABLE` 컬럼 및 이름 변경 작업 시 경고. |
+
+## Packages and system — `packages-system`
+
+| 정책 | 트리거 | 기본값 | 결과 |
+| --- | --- | --- | --- |
+| `warn-package-publish` | `Bash`에서 `PreToolUse` | off | npm, PyPI, crates.io, RubyGems 등 레지스트리에 게시하기 전에 경고. |
+| `warn-global-package-install` | `Bash`에서 `PreToolUse` | off | 전역 패키지 설치 전에 경고. |
+| `prefer-package-manager` | `Bash`에서 `PreToolUse` | off | 허용되지 않은 패키지 매니저를 차단하고 에이전트에게 허용된 것을 사용하도록 지시. |
+| `warn-large-file-write` | `Write`에서 `PreToolUse` | off | 설정된 파일 크기 임계값을 초과할 때 경고. |
+| `warn-background-process` | `Bash`에서 `PreToolUse` | off | 분리되거나 백그라운드 프로세스 패턴 시 경고. |
+
+## AI behavior — `ai-behavior`
+
+| 정책 | 트리거 | 기본값 | 결과 |
+| --- | --- | --- | --- |
+| `warn-repeated-tool-calls` | `PreToolUse` | off | 동일한 파라미터로 같은 도구가 세 번 이상 호출될 때 경고. |
+
+## Workflow — `workflow`
+
+5개 모두 `Stop`에서 동작하며 기본적으로 비활성화되어 있습니다.
+
+| 정책 | 기본값 | 결과 |
 | --- | --- | --- |
-| `sanitize-jwt` | `PostToolUse` | 모델이 보기 전에 도구 출력에서 JWT를 제거합니다. |
-| `sanitize-api-keys` | `PostToolUse` | 일반적인 OpenAI, Anthropic, GitHub, AWS, Stripe, Google 키를 제거합니다. |
-| `sanitize-connection-strings` | `PostToolUse` | 인증 정보가 포함된 데이터베이스 연결 문자열을 제거합니다. |
-| `sanitize-private-key-content` | `PostToolUse` | PEM 개인 키 본문을 제거합니다. |
-| `sanitize-bearer-tokens` | `PostToolUse` | 인증 Bearer 토큰을 제거합니다. |
-| `protect-env-vars` | 셸 도구에서 `PreToolUse` | 환경 변수를 덤프하는 명령을 차단합니다. |
-| `block-env-files` | `PreToolUse` | `.env` 파일의 읽기 및 쓰기를 차단합니다. |
-| `block-read-outside-cwd` | 읽기, glob, grep, 셸 도구에서 `PreToolUse` | 세션 작업 디렉터리 내에서만 읽기를 허용합니다. |
-| `block-secrets-write` | 쓰기 도구에서 `PreToolUse` | 일반적인 시크릿 키 및 자격 증명 파일명에 대한 쓰기를 차단합니다. |
+| `require-commit-before-stop` | off | 트래킹된 변경 사항이 커밋되지 않은 상태에서 완료 거부. |
+| `require-push-before-stop` | off | 커밋이 로컬에만 존재하는 상태에서 완료 거부. |
+| `require-pr-before-stop` | off | 현재 브랜치에 대한 풀 리퀘스트 요구. |
+| `require-no-conflicts-before-stop` | off | 설정된 베이스 브랜치와의 클린 머지 요구. |
+| `require-ci-green-before-stop` | off | 현재 HEAD 커밋의 CI 검사 통과 요구 (이전 커밋의 오래된 실행은 무시). |
 
-## 위험한 명령 및 인프라
+이 정책들은 `Stop` 판정을 소비하는 하네스에서만 작동합니다. 모든 하네스가 해당되는 것은 아닙니다:
 
-| 정책 | 트리거 | 결과 |
-| --- | --- | --- |
-| `block-sudo` | `PreToolUse`, `PermissionRequest` | allow 패턴이 일치하지 않는 한 `sudo`를 차단합니다. |
-| `block-curl-pipe-sh` | `PreToolUse` | 셸로 직접 파이프되는 다운로드 스크립트를 차단합니다. |
-| `block-rm-rf` | `PreToolUse` | 재귀적 삭제 패턴을 차단합니다. |
-| `block-failproofai-commands` | `PreToolUse`, `PermissionRequest` | **항상 활성화, 비활성화 불가.** 모든 Failproof AI CLI 호출, 자체 일시 중지, 패키지 관리자 제거를 차단합니다. |
-| `block-kubectl` | `PreToolUse` | Kubernetes 명령을 제한합니다. |
-| `block-terraform` | `PreToolUse` | Terraform 및 OpenTofu 명령을 제한합니다. |
-| `block-aws-cli` | `PreToolUse` | AWS CLI 명령을 제한합니다. |
-| `block-gcloud` | `PreToolUse` | Google Cloud CLI 명령을 제한합니다. |
-| `block-az-cli` | `PreToolUse` | Azure CLI 명령을 제한합니다. |
-| `block-helm` | `PreToolUse` | Helm 명령을 제한합니다. |
-| `block-gh-pipeline` | `PreToolUse` | 변경을 유발하는 GitHub CLI의 workflow, run, merge, release, cache, secret 작업을 제한합니다. |
-
-## Git 및 데이터베이스 안전
-
-| 정책 | 트리거 | 결과 |
-| --- | --- | --- |
-| `block-push-master` | `PreToolUse` | 설정된 보호 브랜치로의 직접 푸시를 차단합니다. |
-| `block-force-push` | `PreToolUse` | 강제 푸시를 차단합니다. `--force-with-lease`는 현재 구현에서 허용됩니다. |
-| `block-work-on-main` | `PreToolUse` | 보호 브랜치에서의 커밋 및 병합을 차단합니다. |
-| `warn-git-amend` | `PreToolUse` | `--amend`로 커밋을 재작성하기 전에 경고합니다. |
-| `warn-git-stash-drop` | `PreToolUse` | 스태시를 영구적으로 삭제하거나 초기화하기 전에 경고합니다. |
-| `warn-all-files-staged` | `PreToolUse` | `git add -A`, `git add .`, `git add --all`과 같은 광범위한 스테이징 시 경고합니다. |
-| `warn-destructive-sql` | `PreToolUse` | 인식된 데이터베이스 클라이언트를 통해 `WHERE` 없이 `DROP`, `TRUNCATE`, `DELETE`를 실행할 때 경고합니다. |
-| `warn-schema-alteration` | `PreToolUse` | 인식된 `ALTER TABLE` 컬럼 및 이름 변경 작업 시 경고합니다. |
-
-## 패키지, 시스템 동작 및 에이전트 루프
-
-| 정책 | 트리거 | 결과 |
-| --- | --- | --- |
-| `warn-package-publish` | `PreToolUse` | 패키지 레지스트리에 게시하기 전에 경고합니다. |
-| `warn-global-package-install` | `PreToolUse` | 전역 패키지 설치 전에 경고합니다. |
-| `prefer-package-manager` | `PreToolUse` | 허용된 패키지 관리자를 사용하도록 에이전트에 지시합니다. |
-| `warn-large-file-write` | 쓰기 도구에서 `PreToolUse` | 설정된 파일 크기 임계값을 초과하면 경고합니다. |
-| `warn-background-process` | `PreToolUse` | 분리되거나 장시간 실행되는 백그라운드 프로세스 패턴 시 경고합니다. |
-| `warn-repeated-tool-calls` | `PreToolUse` | 동일한 도구 호출이 3회 이상 반복되면 경고합니다. |
-
-## 작업 종료 워크플로
-
-이 정책들은 호환 가능한 `Stop` 이벤트를 발생시키는 하네스가 필요합니다.
-
-| 정책 | 결과 |
+| 하네스 | `Stop` |
 | --- | --- |
-| `require-commit-before-stop` | 추적된 작업이 커밋되지 않은 상태로 남아 있으면 완료를 거부합니다. |
-| `require-push-before-stop` | 커밋이 로컬에만 남아 있으면 완료를 거부합니다. |
-| `require-pr-before-stop` | 현재 브랜치에 대한 풀 리퀘스트를 요구합니다. |
-| `require-no-conflicts-before-stop` | 설정된 기본 브랜치에 대해 충돌 없는 병합 상태를 요구합니다. |
-| `require-ci-green-before-stop` | 현재 HEAD의 CI 검사가 성공적으로 완료될 것을 요구합니다. |
+| claude, codex, copilot, cursor, openclaw, factory, devin, antigravity | 차단 확인됨: 거부가 추가 턴을 강제합니다 |
+| pi | 관찰 모드. 거부 이유는 게이트가 아닌 지침으로 다음 턴에 전달됩니다 |
+| goose, hermes | `Stop` 훅이 설치되어 있지 않으므로 이 5가지 정책이 절대 실행되지 않습니다 |
+| opencode | 미검증. `Stop`은 opencode가 판정을 소비하는 이벤트에 포함되지 않습니다 |
+
+Cursor Cloud Agent VM에는 stop 훅이 전혀 설치되어 있지 않으므로, 로컬 Cursor는 적용되더라도 해당 환경의 Cursor 세션은 보호받지 못합니다.
+
+<Note>
+  `warn-*` 정책은 `deny`가 아닌 `instruct`를 반환합니다. (`prefer-package-manager`는 `block-*`이 아닌 이름 중 예외로, `deny`를 반환하므로 `PreToolUse` 판정을 소비하는 모든 하네스 — 12개 전체 — 에서 차단됩니다.) Hermes와 Goose, `Stop` 채널 외부의 Pi, OpenClaw, Factory, 그리고 `Stop`과 `UserPromptSubmit` 외부의 Antigravity에서는 `instruct`가 allow + stderr 메모로 다운그레이드됩니다 — 에이전트에게 알림이 전달되지 않습니다. Antigravity의 `UserPromptSubmit`은 실제 두 번째 채널입니다: 모델이 실행되기 전에 지침이 일시적 메시지로 주입됩니다.
+</Note>
 
 ## 파라미터 참조
 
@@ -96,7 +136,7 @@ block-push-master            block-force-push
 
 | 정책 | 파라미터 | 타입 및 기본값 |
 | --- | --- | --- |
-| `sanitize-api-keys` | `additionalPatterns` | `pattern[]`, `[]`; 항목에 `regex`와 `label` 포함 |
+| `sanitize-api-keys` | `additionalPatterns` | `pattern[]`, `[]`; 각 항목에 `regex`와 `label` 포함 |
 | `block-read-outside-cwd` | `allowPaths` | `string[]`, `[]` |
 | `block-sudo` | `allowPatterns` | `string[]`, `[]` |
 | `block-rm-rf` | `allowPaths` | `string[]`, `[]` |
@@ -112,7 +152,6 @@ block-push-master            block-force-push
 
 ```json
 {
-  "enabledPolicies": ["block-sudo", "block-push-master"],
   "policyParams": {
     "block-sudo": {
       "allowPatterns": ["sudo systemctl status"]
@@ -124,6 +163,10 @@ block-push-master            block-force-push
 }
 ```
 
+<Note>
+  `policyParams` 키로 사용되는 단순 정책 이름은 `FailproofAI/policies`에 대해서만 적용됩니다. 다른 팩의 경우 키는 `pack/<owner>/<repo>/<policy>` 형식이어야 합니다 — 동일한 정책 이름을 선언한 다른 팩은 사용자의 파라미터가 아닌 스키마 기본값을 적용받습니다.
+</Note>
+
 <Warning>
-  allow 패턴은 에이전트가 수행할 수 있는 작업 범위를 넓힙니다. 플릿 전체에 배포하기 전에 대상 하네스에서 정확한 토크나이징 방식과 명령 변형을 테스트하세요.
+  allow 패턴은 에이전트가 수행할 수 있는 범위를 넓힙니다. 플리트 전체에 배포하기 전에 대상 하네스에서 정확한 토크나이제이션과 명령 변형을 테스트하세요.
 </Warning>

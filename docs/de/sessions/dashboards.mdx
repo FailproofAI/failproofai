@@ -4,40 +4,70 @@ description: "Verfolge die Zuverlässigkeitssignale, die für einen Agenten oder
 icon: "layout-dashboard"
 ---
 
-Dashboards kombinieren gespeicherte Abfragen zu einer operativen Ansicht. Baue eines rund um eine Entscheidung auf, die jemand treffen soll – nicht rund um alle verfügbaren Metriken.
+Dashboards kombinieren gespeicherte Abfragen zu einer operativen Übersicht. Baue ein Dashboard um eine Entscheidung herum, die jemand treffen soll – nicht um jede verfügbare Metrik.
 
-## Dashboard erstellen
+Dashboards sind eine Cloud-Oberfläche. Das lokale Dashboard auf `localhost:8020` umfasst Policy-Aktivitäten, Projekte, Sessions und Audit-Ergebnisse, hat aber keine gespeicherten Abfragen und keine Kacheln – eine Maschine, die keine Verbindung hergestellt hat, hat daher hier nichts aufzubauen. Siehe [Lokales Dashboard](/de/reference/local-dashboard).
+
+## Ein Dashboard erstellen
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehe zu **Analyze → Queries**, erstelle oder öffne eine gespeicherte Abfrage und validiere ihr Ergebnis.
-    2. Wähle **add to dashboard**, dann wähle ein bestehendes Dashboard oder erstelle eines unter **Analyze → Dashboards**.
-    3. Öffne das Dashboard, wechsle in den Bearbeitungsmodus, ordne die Kacheln an und speichere das Layout.
+    1. Gehe zu **Analyze → Queries**, erstelle oder öffne eine gespeicherte Abfrage und überprüfe ihr Ergebnis.
+    2. Wähle **add to dashboard**, dann wähle ein vorhandenes Dashboard aus oder erstelle eines unter **Analyze → Dashboards**.
+    3. Öffne das Dashboard, wechsle in den Bearbeitungsmodus, ordne Kacheln an und speichere das Layout.
     4. Kehre zur Abfrage zurück, wenn du die Daten oder Filter hinter einer Kachel ändern möchtest.
 
-    ![Ein Dashboard, das aus gespeicherten Abfragen für Event-Volumen, Fehler, Latenz und Modell-Token-Nutzung zusammengestellt ist.](/images/dashboard/dashboard-fleet.png)
+    ![Ein Dashboard aus gespeicherten Abfragen für Ereignisvolumen, Fehler, Latenz und Modell-Token-Nutzung.](/images/dashboard/dashboard-fleet.png)
   </Tab>
   <Tab title="CLI">
-    Dashboard-CRUD ist im aktuellen Cloud CLI nicht verfügbar. Verwende die CLI, um die gespeicherte Abfrage zu erstellen und zu überprüfen, und füge sie anschließend über die Benutzeroberfläche einem Dashboard hinzu.
+    Dashboard-CRUD ist im aktuellen Cloud-CLI nicht verfügbar. Nutze die CLI, um die gespeicherte Abfrage zu schreiben und zu überprüfen, und füge sie dann über die UI einem Dashboard hinzu.
 
     ```bash
     fp query schema
-    fp query create "production error rate" --sql "SELECT ..."
-    fp query run <query-id>
+    fp query run --sql "select count(*) from analytics.events"
+    fp query create "event volume" --sql "select count(*) from analytics.events"
+    fp query run "event volume"
     ```
+
+    Führe das SQL zuerst mit `--sql` aus: Es wird gegen denselben schreibgeschützten Analytics-Pool ausgeführt, ohne etwas zu speichern – so findest du einen falschen Spaltennamen, bevor eine Kachel es tut. `--sql @file.sql` liest die Anweisung stattdessen aus einer Datei. `fp query schema` listet die abfragbaren Tabellen und ihre Spalten auf; übergebe einen Tabellennamen, um die Ausgabe einzugrenzen.
+
+    Gespeicherte Abfragen werden nach **Name** adressiert, nicht nach ID – `fp query run "event volume"` – weil `fp query list` die rohe ID verbirgt, sofern du nicht `--show-id` übergibst. Eine UUID-förmige ID wird ebenfalls akzeptiert.
+
+    Für eine parametrisierte Kachel bindest du jedes positionelle `$1..$N` mit `--arg`, das wiederholbar ist und der Reihe nach bindet: `fp query run <name> --arg checkout-agent`.
+
+    `--limit` und `--all` passen nur die Vorschaubegrenzung der Tabelle an; `--json` gibt immer jede Zeile zurück, als `{columns: [{name, type}], rows: [[...]], truncated, elapsed_ms}`.
+
+    | Unterbefehl | Berechtigung |
+    | --- | --- |
+    | `query list`, `query show`, `query schema` | `queries:read` |
+    | `query create`, `query update` | `queries:write` |
+    | `query run` | `queries:run` |
+    | `query delete` | `queries:delete` |
+
+    Jeder Unterbefehl, der einen Abfrage-**Namen** entgegennimmt, löst diesen auf, indem er zuerst die Abfragen der Organisation auflistet. Daher benötigen `query create`, `query update`, `query delete` und `query run <name>` zusätzlich zu der oben genannten Berechtigung auch `queries:read`. Nur `fp query run --sql` und `fp query schema` nicht.
+
+    Keiner der `fp query`-Befehle wird im API-Key-Modus blockiert, sodass die Abfragen eines Dashboards aus einer CI-Umgebung erstellt und überprüft werden können.
   </Tab>
 </Tabs>
 
 Nützliche Dashboard-Gruppen umfassen:
 
-- **Models:** Volumen, Latenz, Token-Nutzung, Fehlerrate und Evaluierungswerte.
-- **Evaluations:** Erfolgsrate und Score-Trends nach Agent oder Umgebung.
-- **Tools:** Aufrufvolumen, Fehlerrate, Dauer und wiederholte Aufrufe.
-- **Hooks and policies:** Entscheidungen, Ablehnungen und Policy-Trefferrate.
-- **Custom workflow metrics:** Ergebnisse aus eigenen Event-Feldern und SQL.
+- **Modelle:** Volumen, Latenz, Token-Nutzung, Fehlerrate und Evaluierungswerte.
+- **Evaluierungen:** Erfolgsrate und Score-Trends nach Agent oder Umgebung.
+- **Tools:** Aufrufvolumen, Fehlerrate, Dauer und Wiederholungsaufrufe.
+- **Hooks und Policies:** Entscheidungen, Ablehnungen und Policy-Trefferrate.
+- **Benutzerdefinierte Workflow-Metriken:** Ergebnisse aus eigenen Ereignisfeldern und SQL.
 
-Beginne mit einer gespeicherten Abfrage, validiere ihr Ergebnis und füge sie dann als Kachel hinzu. Halte Produktions- und Entwicklungsfilter explizit, damit Test-Traffic keine Regression verdeckt.
+Beginne mit einer gespeicherten Abfrage, überprüfe ihr Ergebnis und füge sie dann als Kachel hinzu. Halte Produktions- und Entwicklungsfilter explizit, damit Testdatenverkehr keine Regression verdeckt.
+
+<Warning>
+  Eine Hook-Kachel, die Zeilen zählt, meldet den falschen Nenner. Bei der standardmäßigen Hook-Ausführlichkeit wird jedes deny und instruct als `hook_triggered`/`hook_completed`-Paar ausgegeben, ebenso wie jedes allow im Observe-Modus; einfache allows werden pro Session, Ereignis, Tool und Policy-Attribution pro Minute zu einem einzigen `hook_completed` zusammengefasst, das `failproofai_allow_count` enthält. Summiere dieses Feld statt Zeilen zu zählen, sonst sieht eine Flotte, die zehntausende von Aufrufen ausgewertet hat, so aus, als hätte sie nur ein paar Hundert ausgewertet. Siehe [Policy decisions](/de/sessions/policy-decisions) und [Hooks](/de/sessions/hooks).
+</Warning>
 
 <Tip>
-  Weise jedem Dashboard einen Verantwortlichen und eine Leitfrage zu, z. B. „Ist die Zuverlässigkeit des checkout-agent schlechter als letzte Woche?"
+  Weise jedem Dashboard einen Verantwortlichen und eine Antwortfrage zu, beispielsweise: „Ist die Zuverlässigkeit von checkout-agent schlechter als letzte Woche?"
 </Tip>
+
+<Card title="Queries" icon="database" href="/de/sessions/queries">
+  Schreibe, speichere und teile das SQL, das jede Kachel auf einem Dashboard liest.
+</Card>

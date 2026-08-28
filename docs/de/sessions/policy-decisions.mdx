@@ -1,27 +1,62 @@
 ---
-title: "Richtlinienentscheidungen"
-description: "Sehen Sie, welche Richtlinien ausgewertet, blockiert, angewiesen oder zugelassen wurden."
+title: "Policy-Entscheidungen"
+description: "Sehen Sie, welche Policies ausgewertet, gesteuert, blockiert oder beobachtet haben."
 icon: "shield-check"
 ---
 
-Richtlinienentscheidungen erläutern, was die Durchsetzung bewirkt hat. Verwenden Sie diese Ansicht, um ein Rollout zu überprüfen, die Blockierrate zu messen und ungeschützte Aktivitäten zu finden.
+Policy-Entscheidungen zeigen, was Failproof AI während eines Agent-Durchlaufs getan hat.
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Navigieren Sie zu **Observe → policy** und wählen Sie den Zeitraum sowie optional eine Maschine aus.
-    2. Überprüfen Sie ausgewertete Aktionen, Blockierungen, Blockierrate, Cloud-Entscheidungen, ungeschützte Aktionen und Aktivitäten während einer Pause.
-    3. Filtern Sie die Richtlinien-Mapping-Tabelle und prüfen Sie die bereitgestellten Zuweisungen.
-    4. Wählen Sie einen Diagrammpunkt aus, um die Entscheidungen und die zugehörigen Sitzungen zu öffnen.
+    Gehen Sie zu **Observe → policy**, um Entscheidungen, Blockierungsrate, Maschinen und bereitgestellte Zuweisungen zu überprüfen.
 
-    ![Die Policy-Seite mit Entscheidungsgesamtzahlen, einem Maschinenfilter, Durchsetzungsaktivität über die Zeit und der Richtlinien-Mapping-Tabelle.](/images/dashboard/policy-observe.png)
+    ![Die Policy-Seite mit Entscheidungsgesamtzahlen, einem Maschinenfilter, Durchsetzungsaktivität im Zeitverlauf und der Policy-Zuordnungstabelle.](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
     ```bash
-    fp events --event-type hook_completed --env production --since 24h
-    fp events --search "deny" --since 24h
+    fp guardrails summary --since 24h
+    fp guardrails timeline --since 24h
+    failproofai policies
     failproofai config --status
     ```
 
-    Verwenden Sie `failproofai` für den lokalen Durchsetzungsstatus der Maschine und `fp` für die Cloud-Ereignisuntersuchung.
+    `--since` akzeptiert `1h`, `6h`, `24h` oder `7d`. Fügen Sie `--machine <id>` hinzu, um sich auf eine Maschine zu konzentrieren.
   </Tab>
 </Tabs>
+
+## Einen Observe-Rollout lesen
+
+Der Observe-Modus führt die echte Policy aus und zeichnet alle `deny`- oder `instruct`-Entscheidungen auf. Der Agent darf dabei weiter ausgeführt werden.
+
+```bash
+fp fleet deploy <machine> --add <policy>:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add <policy>:enforce
+```
+
+<Warning>
+  Ein bloßes `--add <policy>` erzwingt die Policy sofort, wenn sie noch nicht bereitgestellt ist. Fügen Sie `:observe` für einen Shadow-Rollout hinzu.
+</Warning>
+
+Es werden nur Nicht-allow-Entscheidungen aufgezeichnet. Ein Timeout wird als allow erfasst, da dasselbe auch im Enforce-Modus geschieht.
+
+Ein aufgezeichnetes deny ist kein Beweis dafür, dass das Harness die Aktion gestoppt hat. Tool-Call-Denies werden über alle 12 unterstützten Harnesses hinweg verifiziert; andere Ereignisse variieren. Siehe [Durchsetzungsfähigkeit](/de/reference/harnesses#enforcement-capability).
+
+## Ein unerwartetes Ergebnis untersuchen
+
+| Was Sie sehen | Prüfen |
+| --- | --- |
+| Keine Entscheidungen | `failproofai config --status` und ob die Sitzung pausiert ist |
+| Viele Ablehnungen ohne Policy-Namen | [Policy-Fehlerverhalten](/de/policies/failure-behavior) |
+| Jede geschützte Aktion wird abgelehnt | Ob der `failproofaid`-Dienst fehlerfrei läuft |
+| Ein deny, das Sie nicht deaktivieren können | `block-failproofai-commands` ist immer aktiviert |
+| Keine Daten für `--env production` | Neue Maschinen verwenden die Umgebung `local` |
+
+<CardGroup cols={2}>
+  <Card title="Fleet-Bereitstellungen" icon="server-cog" href="/de/policies/fleet">
+    Beabsichtigte und angewendete Policies vergleichen.
+  </Card>
+  <Card title="Fehlerverhalten" icon="triangle-alert" href="/de/policies/failure-behavior">
+    Fail-Closed-Entscheidungen verstehen.
+  </Card>
+</CardGroup>

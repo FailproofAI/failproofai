@@ -1,27 +1,54 @@
 ---
 title: "Modeller"
-description: "Model latensisini, token sayısını, bağlam kullanımını ve trafik dağılımını karşılaştırın."
+description: "Model gecikmesini, jetonları, bağlam kullanımını ve trafik dağılımını karşılaştırın."
 icon: "cpu"
 ---
 
-Modeller aracılığıyla bir model, agent, ortam veya zaman aralığı ile güvenilirlik ya da maliyetin değişip değişmediğini görebilirsiniz.
+Bir modelle, ajanla, ortamla veya zaman aralığıyla güvenilirliğin veya maliyetin değişip değişmediğini görmek için Modeller'i kullanın.
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Observe → Models** bölümüne gidin.
-    2. Zaman aralığını ayarlayın, ardından ortam, model, agent veya session ID'ye göre filtreleyin.
-    3. Latens, token tüketimi, bağlam-penceresi kullanımı ve model dağılımını inceleyin.
-    4. Eşleşen olayları açmak için bir grafik noktası veya dağılım segmentini seçin.
+    1. **Observe → Models** sayfasına gidin.
+    2. Zaman aralığını ayarlayın, ardından ortam, model, ajan veya oturum kimliğine göre filtreleyin.
+    3. Gecikme, jeton tüketimi, bağlam penceresi kullanımı ve model dağılımını inceleyin.
+    4. Eşleşen olayları açmak için bir grafik noktasını veya dağılım segmentini seçin.
 
-    ![Latens, yüzdelik dilim, token, maliyet, bağlam-penceresi ve model-dağılımı görünümlerini gösteren Models sayfası.](/images/dashboard/models.png)
+    ![Gecikme, yüzdelik dilim, jeton, maliyet, bağlam penceresi ve model dağılımı görünümlerini gösteren Modeller sayfası.](/images/dashboard/models.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp list models
-    fp events --event-type model_request,model_response --env production --since 24h
-    fp --json events --fields ts,agent_id,session_id,event_type,output_tokens,context_fill
+    fp events --event-type model_request,model_response --since 24h
+    fp --json events --event-type model_response --since 24h --all --limit 500 --fields ts,agent_id,session_id,output_tokens,context_window,context_fill
     ```
 
-    Özel bir CLI komutu olarak sunulmayan model düzeyinde toplamalar için kaydedilmiş bir sorgu kullanın.
+    Her üçü de `events:read` gerektirir.
+
+    `--fields` sütunları yansıtır; satırları filtrelemez. `--event-type` ve bir zaman penceresiyle eşleştirin, aksi takdirde en yeni 50 olayı her tür için `output_tokens` ve `context_fill` değerleri null olarak alırsınız. `--all` `--limit` öğesinde durur ve bu da varsayılan olarak 50'dir.
+
+    `context_fill` değerini `context_window` değerinin yanında okuyun: ölçüldüğü pencere olmadan bir doldurma rakamının anlamı yoktur.
+
+    Daemon, ortamı değiştirmediğiniz sürece her olayı `local` ortamıyla damgalar, bu nedenle standart bir kurulumda `--env production` hiçbir şeyle eşleşmez. Bkz. [Bir ortam etiketi değiştirin](/tr/reference/events-and-configuration#change-an-environment-label).
   </Tab>
 </Tabs>
+
+## CLI'nin yapabilecekleri ve yapamayacakları
+
+Varsayılan olay akışı yükten arındırılmıştır. `output_tokens`, `context_window` ve `context_fill` değerlerini tanıtılmış sütunlar olarak taşır ve model çağrısı hakkında başka hiçbir şey taşımaz:
+
+| Değer | Konumu |
+| --- | --- |
+| Çıkış jetonları, bağlam penceresi, bağlam doldurması | Hafif akış sütunları — `fp events` öğesinden doğrudan kullanılabilir. |
+| Model adı | Yük — `fp events --full` kullanın, tek bir oturumla sınırlı. |
+| Giriş jetonları | Yük — SDK her iki tarafı da kaydeder, sadece çıkış tarafı tanıtılır. |
+| Çağrı başına gecikme | Hafif akışta `duration_ms` sütunu yok ve SDK'nın `model_response` değerinde de yok. İsteği yanıtıyla eşleştirerek türetin. |
+
+`model_request` ve `model_response` `request_id` üzerinde çiftleşir. Bu alan tam olarak bir isteğin cevabıyla eşleştirilmesi için ve ham olaylardan çağrı başına gecikmeyi hesaplamanın tek yolu olması için vardır:
+
+```bash
+fp --json events --full --event-type model_request,model_response --session-id <session-id> --all --limit 500
+```
+
+Model adları her koşulun transkriptinden aynen gelir. Yakalama yolunda hiçbir şey onları normalleştirmez, bu nedenle temel alan bir model, dağılım grafiğinde birkaç sağlayıcıya özgü kimlik altında görünebilir. Dağıtımın gerçekte kullandığı yazımları görmek için `fp list models` çalıştırın.
+
+Adanmış bir CLI komutu olarak kullanıma sunulmayan model düzeyindeki toplamalar için kaydedilmiş bir sorgu kullanın.

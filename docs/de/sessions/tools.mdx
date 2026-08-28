@@ -1,25 +1,38 @@
 ---
 title: "Tools"
-description: "Langsame, fehlerhafte oder übermäßig genutzte Tools über Agent-Sessions hinweg finden."
+description: "Langsame, fehlerhafte oder übermäßig genutzte Tools über Agent-Läufe hinweg finden."
 icon: "wrench"
 ---
 
-Tools gruppiert Tool-Aufrufe über Sessions hinweg, damit Sie Latenz und Aufrufverteilung vergleichen können.
+Tools zeigt, was Agents aufrufen, wie oft Aufrufe fehlschlagen und welche Sessions betroffen sind.
+
+Tool-Namen stammen aus dem jeweiligen Agent-Harness, daher kann dieselbe Funktion unter verschiedenen Namen erscheinen. Ein Shell-Aufruf kann beispielsweise als `Bash`, `exec`, `Shell`, `terminal` oder `run_command` auftauchen. Führe `fp list tools` aus, bevor du einen Filter erstellst.
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehen Sie zu **Observe → Tools**.
-    2. Filtern Sie nach Umgebung, Tool-Name, Agent oder Session-ID.
-    3. Überprüfen Sie Latenz und Tool-Verteilung.
-    4. Wählen Sie einen Diagrammpunkt oder ein Tool-Segment aus, um passende Events und Sessions zu öffnen.
+    Gehe zu **Observe → Tools**. Filtere nach Umgebung, Tool, Agent oder Session.
 
-    ![Die Tools-Seite mit Latenz, Aufschlüsselung nach Erfolg und Fehler sowie Tool-Aufrufverteilung.](/images/dashboard/tools.png)
+    ![Die Tools-Seite zeigt Latenz, Erfolgs- und Fehleraufschlüsselungen sowie die Verteilung der Tool-Aufrufe.](/images/dashboard/tools.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp list tools
-    fp events --event-type tool_use,tool_result --env production --since 24h
-    fp --json events --full --session-id <session-id> --all
+    fp events --event-type tool_use,tool_result --since 24h
+    fp errors --event-type tool_result --since 24h
+    fp --json events --full --event-type tool_use,tool_result --session-id <session-id> --all --limit 2000
     ```
+
+    Verwende `--full`, wenn du Payload-Felder wie die Dauer pro Aufruf benötigst.
   </Tab>
 </Tabs>
+
+Nutze diese Seite, um wiederkehrende Fehler zu finden, funktionierende und fehlerhafte Läufe zu vergleichen oder zu bestätigen, dass ein durch eine Policy gezieltes Tool tatsächlich verwendet wird.
+
+<CardGroup cols={2}>
+  <Card title="Errors" icon="circle-alert" href="/de/sessions/errors">
+    Öffne die Sessions hinter Tool-Fehlern.
+  </Card>
+  <Card title="Hooks" icon="webhook" href="/de/sessions/hooks">
+    Zeige kanonische Tool-Namen und Policy-Entscheidungen an.
+  </Card>
+</CardGroup>

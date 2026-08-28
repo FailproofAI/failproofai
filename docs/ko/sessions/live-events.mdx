@@ -1,45 +1,41 @@
 ---
-title: "라이브 이벤트"
-description: "세션이 실행 중인 동안 에이전트 활동을 실시간으로 확인합니다."
+title: "실시간 이벤트"
+description: "Failproof AI Cloud에서 에이전트 활동을 실시간으로 확인하세요."
 icon: "radio"
 ---
 
-라이브 이벤트를 통해 계측 설정을 확인하고, 세션이 완료될 때까지 기다리지 않고도 위험한 실행을 실시간으로 모니터링할 수 있습니다.
+실시간 이벤트는 에이전트가 실행되는 동안 모델 호출, 도구, 오류, 사람의 입력, 훅, 정책 결정 등의 활동을 표시합니다.
 
 ## 활동 모니터링
 
-<Tabs>
-  <Tab title="대시보드">
-    1. **Observe → Events**로 이동합니다.
-    2. 데이터가 정상적으로 유입되는지 확인하려면 현재 시간 범위를 선택하고 필터를 적용하지 않은 상태로 시작합니다.
-    3. 환경, 이벤트 유형, 에이전트, 세션으로 필터링합니다. 페이로드 텍스트는 검색을 활용하세요.
-    4. 이벤트를 선택하면 요약 및 상세 정보를 확인할 수 있습니다. 세션 링크를 따라가면 전체 트레이스를 볼 수 있습니다.
+**Observe → Live events**로 이동하거나 다음 명령어를 실행하세요:
 
-    ![Hermes 채팅 게이트웨이의 트래픽과 코딩-CLI 실행 결과가 시간, 환경, 이벤트 유형, 에이전트, 모델, 컨텍스트, 세션으로 필터링되어 표시된 라이브 이벤트 스트림.](/images/dashboard/events-stream-current.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp events --env production --event-type tool_use,error --limit 100
-    fp events --session-id <session-id> --order asc --all
-    fp --json events --full --session-id <session-id> --all
-    ```
+```bash
+fp events --since 1h
+fp events --event-type tool_use,tool_result --since 1h
+fp --json events --full --session-id <session-id> --all --limit 2000
+```
 
-    기본 피드에는 원시 페이로드가 포함되지 않습니다. `--full` 옵션은 특정 세션을 집중적으로 조사할 때만 사용하세요.
-  </Tab>
-</Tabs>
+페이로드 내용이 필요할 때는 `--full`을 사용하세요. 경량 피드는 더 빠르며 대부분의 필터링 용도에 충분합니다.
 
-이벤트 스트림을 통해 다음 세 가지 사항을 즉시 확인할 수 있습니다:
+주요 이벤트 유형은 다음과 같습니다:
 
-- 예상한 에이전트가 올바른 환경에 보고하고 있는가?
-- 모델 호출, 도구 호출, 정책 결정이 순서대로 유입되고 있는가?
-- 세션이 진행을 멈추거나 동일한 작업을 반복하기 시작했는가?
+- `session_start` 및 `session_end`
+- `model_request` 및 `model_response`
+- `tool_use` 및 `tool_result`
+- `hook_triggered` 및 `hook_completed`
+- `error`
+- `human_wait` 및 `human_input`
+- `agent_pause` 및 `agent_resume`
 
-이벤트 유형에는 에이전트 생명주기 이벤트, 모델 요청 및 응답, 도구 사용 및 결과, 훅 실행, 사람 대기 및 인터럽트, 명시적 오류가 포함됩니다. 상관 ID(Correlation ID)는 도구 호출과 그 결과처럼 쌍을 이루는 이벤트를 연결합니다.
+## 이벤트가 나타나지 않을 때
 
-<Tip>
-  새로운 통합을 검증할 때는 라이브 뷰를 광범위하게 유지하세요. 첫 번째 이벤트가 확인된 후에만 필터를 추가하세요. 잘못된 필터를 적용하면 데이터 수집에 실패한 것처럼 보일 수 있습니다.
-</Tip>
+```bash
+failproofai flush --wait
+failproofai config --status
+failproofai backfill --since 30d --dry-run
+```
 
-이벤트가 표시되지 않으면 `failproofai config --status`를 실행한 후 [수집 문제 해결](/ko/reference/troubleshooting)을 참고하세요.
+기본 환경은 `local`입니다. `production`에 대한 필터는 환경 레이블을 변경하기 전까지 아무것도 반환하지 않습니다.
 
-지원되는 12개의 [하네스](/ko/reference/harnesses) 중 하나에서 실행되지 않는 에이전트는 [Python SDK](/ko/reference/custom-agents)를 통해 동일한 이벤트 유형을 보고하며, 여기에는 게이트웨이 및 프로덕션 에이전트가 의존하는 휴먼-인-더-루프 이벤트(`human_wait`, `human_input`, `human_interrupt`)도 포함됩니다.
+지원되는 하네스 외부의 에이전트의 경우 [Python SDK](/ko/reference/custom-agents)를 사용하세요.

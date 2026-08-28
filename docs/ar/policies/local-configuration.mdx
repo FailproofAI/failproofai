@@ -1,85 +1,50 @@
 ---
+title: "تكوين السياسات المحلية"
+description: "اختر مكان تطبيق السياسات وحدد معاملات تشغيلها."
+icon: "sliders-horizontal"
 ---
-title: "التكوين المحلي"
-description: "التحكم في نطاق السياسة والمعاملات والملفات المخصصة وإعدادات Failproof AI على مستوى الجهاز."
-icon: "file-cog"
----
 
-يفصل Failproof AI بين اختيار السياسة وإعدادات الجهاز والخادم. يحافظ هذا على مراجعة خيارات السياسة في المستودع بينما تبقى بيانات الاعتماد وحالة الخادم خارج المستودع.
+استخدم النطاق (scope) لتحديد من سيتلقى سياسة محلية:
 
-## اختر نطاق السياسة
-
-<Tabs>
-  <Tab title="Dashboard">
-    شغّل `failproofai` بدون معاملات لفتح لوحة معلومات السياسة المحلية. اختر نطاق المستخدم أو المشروع أو المحلي قبل تفعيل السياسة بحيث يتم كتابة التغيير في ملف التكوين المقصود.
-
-    - **User** ينطبق على جميع المشاريع على هذا الجهاز.
-    - **Project** ينتمي إلى المستودع ويمكن التزامه.
-    - **Local** يتجاوز مشروعاً واحداً لمستخدم واحد ويجب أن يبقى في gitignore.
-
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai policy add block-rm-rf --scope user
-    failproofai policy add block-force-push --scope project
-    failproofai policy add warn-large-file-write --scope local
-    failproofai policies
-    ```
-
-    لا يدعم كل محرّك النطاق المحلي. ترفض واجهة سطر الأوامر نطاقاً لا يمكن للمحرّك المحدد تمثيله.
-  </Tab>
-</Tabs>
-
-| النطاق | ملف تكوين السياسة |
+| النطاق | ينطبق على |
 | --- | --- |
-| Project | `<project>/.failproofai/policies-config.json` |
-| Local | `<project>/.failproofai/policies-config.local.json` |
-| User | `~/.failproofai/policies-config.json` |
+| `user` | وكلاؤك المدعومون على هذا الجهاز |
+| `project` | الوكلاء الذين يعملون في هذا المشروع |
+| `local` | Claude فقط، في إعدادات المشروع المحلي |
+| `all` | الإلغاء فقط |
 
-يتم دمج السياسات المفعّلة كاتحاد. معاملات السياسة تستخدم النطاق الأول الذي يحدد المعاملات لتلك السياسة، بترتيب project → local → user. مسارات السياسة المخصصة الصريحة تستخدم النطاق الأول الذي يحددها.
+```bash
+failproofai policies add block-sudo --scope user
+failproofai policies add block-rm-rf --scope project
+```
 
-## قم بتكوين معاملات السياسة
+يدعم Hermes وOpenClaw نطاق المستخدم فقط. تدعم معظم الأدوات الأخرى نطاق المستخدم والمشروع. يدعم Claude أيضًا النطاق المحلي. اطّلع على [Harnesses](/ar/reference/harnesses).
 
-<Tabs>
-  <Tab title="Dashboard">
-    افتح السياسة في لوحة معلومات المحلية، عدّل معاملات مدعومة، وحفظ في النطاق المحدد. شغّل إجراء وكيل متطابق وغير متطابق، ثم افحص القرار في **Observe → policy**.
+## معاملات السياسة
 
-  </Tab>
-  <Tab title="CLI">
-    عدّل `policies-config.json` للنطاق المحدد، ثم شغّل `failproofai policies` لإظهار أسماء السياسات أو مفاتيح المعاملات غير المعروفة.
+توجد إعدادات السياسة في `policies-config.json` عند النطاق المطابق. استخدم عرض **Policies → Configure** من لوحة المعلومات المحلية عند الإمكان.
 
-    ```json
-    {
-      "enabledPolicies": ["block-rm-rf", "block-force-push"],
-      "policyParams": {
-        "block-rm-rf": {
-          "allowPaths": ["/tmp/build-output"]
-        }
-      }
-    }
-    ```
+يتعلق المعامل بسياسة واحدة فقط ويغير كيفية اتخاذ تلك السياسة قرارًا. على سبيل المثال، يمكن لقائمة السماح بجعل سياسة الحجب تقبل الأوامر أو المسارات الآمنة المعروفة.
 
-    ```bash
-    failproofai policies
-    ```
-  </Tab>
-</Tabs>
+يمكن تحميل ملفات السياسات المخصصة تلقائيًا من `.failproofai/policies/`، أو بشكل صريح:
 
-## افهم ملفات الجهاز
+```bash
+failproofai policies -i -c ./guards.mjs --scope project
+```
 
-`~/.failproofai` يحتوي على ملفات منفصلة لحدود الثقة المختلفة:
+أزل المسارات الصريحة باستخدام:
 
-| المسار | الغرض |
+```bash
+failproofai policies -u -c
+```
+
+## الملفات
+
+| الملف | الغرض |
 | --- | --- |
-| `config.json` | إعدادات الخادم والتدقيق والقياس غير السرية |
-| `credentials.json` | بيانات اعتماد السحابة؛ مخزنة برخصات المالك فقط |
-| `policies-config.json` | اختيار نطاق المستخدم المدمج والمعاملات والمسارات المخصصة الصريحة |
-| `policies/` | سياسات اتفاقية المستخدم وأيضاً سياسات مدارة بواسطة السحابة |
-| `hook-activity/` | سجل قرار السياسة المحلي |
-| `state/` | الخادم والصحة والإيقاف المؤقت وحالة وقت التشغيل |
+| `~/.failproofai/config.json` | إعدادات الجهاز والمجمّع |
+| `policies-config.json` | السياسات المفعّلة والمعاملات لنطاق معين |
+| `.failproofai/policies/*policies.mjs` | السياسات المحملة بالاتفاقية |
+| `~/.failproofai/policies/packs/installed.json` | الحزم المثبتة والاختيارات |
 
-استخدم `FAILPROOFAI_HOME` لنقل مخطط الجهاز الكامل لحاوية أو اختبار معزول. لا تنقل دلائل الحالة الفردية بشكل مستقل.
-
-<Warning>
-  لا تلتزم أبداً بـ `credentials.json`. التزم بتكوين سياسة المشروع ومشروع سياسات الاتفاقية فقط بعد مراجعتها كرمز التطبيق.
-</Warning>
+لا تحرّر معاملات الحزمة المثبتة مباشرة. أعد التثبيت أو انشر إصدارًا معدّلًا.

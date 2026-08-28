@@ -1,35 +1,35 @@
 ---
 title: "Politiques personnalisées"
-description: "Rédigez, testez et déployez des politiques JavaScript ou TypeScript pour les défaillances spécifiques à vos agents."
+description: "Créez, testez et déployez des politiques JavaScript ou TypeScript pour les défaillances spécifiques à vos agents."
 icon: "shield-plus"
 ---
 
-Les politiques personnalisées transforment un schéma de défaillance issu de vos traces ou audits en une décision qui s'exécute pendant qu'un agent travaille. Une politique peut autoriser une action, fournir des conseils à l'agent ou refuser l'action avant qu'elle ne provoque un nouvel incident.
+Les politiques personnalisées transforment un schéma de défaillance issu de vos traces ou audits en une décision qui s'exécute pendant qu'un agent travaille. Une politique peut autoriser une action, fournir des conseils à l'agent ou bloquer l'action avant qu'elle ne provoque un nouvel incident.
 
 Utilisez une politique personnalisée lorsque le comportement dépend de vos outils, chemins, commandes, environnements ou règles de fonctionnement. Consultez d'abord le [catalogue des politiques intégrées](/fr/policies/builtin-catalog) pour ne pas recréer un contrôle existant.
 
-## Rédiger une politique personnalisée
+## Créer une politique personnalisée
 
 <Tabs>
-  <Tab title="Dashboard">
-    1. Accédez à **Admin → éditeur de politiques**, sélectionnez **Nouvelle politique** et décrivez la défaillance que vous souhaitez prévenir.
-    2. Ajoutez le code source de la politique, puis testez les correspondances attendues et les non-correspondances sûres dans l'éditeur. Corrigez chaque erreur de validation.
+  <Tab title="Tableau de bord">
+    1. Rendez-vous dans **Admin → éditeur de politiques**, sélectionnez **Nouvelle politique** et décrivez la défaillance que vous souhaitez prévenir.
+    2. Ajoutez le code source de la politique, puis testez les correspondances attendues et les non-correspondances sûres dans l'éditeur. Résolvez toutes les erreurs de validation.
     3. Enregistrez le brouillon et sélectionnez **Publier la version** pour créer une version immuable.
-    4. Accédez à **Admin → application**, déployez la version sur une machine de test en mode **observe**, et vérifiez ses décisions sous **Observe → policy** avant de l'appliquer.
+    4. Rendez-vous dans **Admin → application**, déployez la version sur une machine de test en mode **observer** et vérifiez ses décisions sous **Observer → politique** avant de l'appliquer.
 
-    ![L'éditeur de politiques utilisé pour rédiger et publier une politique personnalisée.](/images/dashboard/policy-editor.png)
+    ![L'éditeur de politiques utilisé pour créer et publier une politique personnalisée.](/images/dashboard/policy-editor.png)
   </Tab>
   <Tab title="CLI">
-    1. Créez `.failproofai/policies/checkout-policies.ts`. Le nom de fichier doit se terminer par `policies.js`, `policies.mjs` ou `policies.ts`.
+    1. Générez une politique de départ avec `failproofai publish --init`, ou créez `.failproofai/policies/checkout-policies.ts` manuellement. Par convention, le nom de fichier doit se terminer par `policies.js`, `policies.mjs` ou `policies.ts`.
     2. Enregistrez une ou plusieurs politiques avec `customPolicies.add()`.
-    3. Validez et installez le fichier avec `failproofai policies --install --custom ./.failproofai/policies/checkout-policies.ts --scope project`.
-    4. Déclenchez une action correspondante et une action sûre. Exécutez `failproofai policies`, puis inspectez les décisions attribuées sous **Observe → policy**.
+    3. Appliquez le fichier sur cette machine immédiatement : `failproofai policies -i -c ./.failproofai/policies/checkout-policies.ts`.
+    4. Déclenchez une action correspondante et une action sûre. Exécutez `failproofai policies`, puis ouvrez **Politiques → Activité** sur le [tableau de bord local](/fr/reference/local-dashboard) et filtrez par source pour voir quelle politique a décidé.
   </Tab>
 </Tabs>
 
-## Commencer par une règle ciblée
+## Commencer par une règle restreinte
 
-Cette politique bloque les commandes Kubernetes destructives uniquement lorsque la commande cible la production. Tout ce qui est en dehors de ce schéma de défaillance précis renvoie `allow()`.
+Cette politique bloque les commandes Kubernetes destructrices uniquement lorsque la commande cible la production. Tout ce qui se trouve en dehors de ce schéma de défaillance exact renvoie `allow()`.
 
 ```ts
 import { customPolicies, allow, deny } from "failproofai";
@@ -55,20 +55,33 @@ customPolicies.add({
 });
 ```
 
-Les bonnes politiques sont suffisamment ciblées pour être expliquées en une seule phrase. Correspondez à l'action observable — et non à l'intention que vous espérez de l'agent — et retournez `allow()` dès que la règle ne s'applique pas.
+Les bonnes politiques sont suffisamment précises pour être expliquées en une seule phrase. Ciblez l'action observable — pas l'intention que vous supposez à l'agent — et renvoyez `allow()` dès que la règle ne s'applique pas.
 
 ## Choisir une décision
 
 | Fonction | Résultat | À utiliser quand |
 | --- | --- | --- |
-| `allow(reason?)` | L'opération continue. | La politique ne s'applique pas ou l'action est sûre. |
-| `instruct(reason)` | L'opération continue avec des conseils là où le harnais le permet. | Vous souhaitez orienter l'agent vers une meilleure approche sans appliquer une contrainte stricte. |
-| `deny(reason)` | L'opération est bloquée lorsque l'événement et le harnais prennent en charge le blocage. | L'action ne doit pas se poursuivre. |
+| `allow(reason?)` | L'opération se poursuit. | La politique ne s'applique pas ou l'action est sûre. |
+| `instruct(reason)` | L'opération se poursuit, et la raison est transmise à l'agent sur les harnais disposant d'un canal pour cela. | Vous souhaitez orienter l'agent vers une meilleure approche sans imposer une contrainte. |
+| `deny(reason)` | L'opération est bloquée sur le harnais et les paires d'événements vérifiés pour consommer un verdict bloquant. | L'action ne doit pas se poursuivre. |
 
-Rédigez la raison à l'attention de l'agent qui doit se reprendre. Expliquez ce qui a été détecté et ce qu'il devrait faire à la place.
+Rédigez la raison à destination de l'agent qui doit se rétablir. Expliquez ce qui a été détecté et ce qu'il devrait faire à la place.
+
+### Où `instruct()` est réellement reçu
+
+`instruct()` nécessite un canal de contexte supplémentaire dans le harnais. Six harnais n'en disposent pas sur certains ou tous les événements ; dans ce cas, l'opération est autorisée et le message est écrit sur stderr, que l'agent ne lit jamais.
+
+| Harnais | Événements qui transmettent l'instruction |
+| --- | --- |
+| Claude, Codex, Copilot, Cursor, Devin, OpenCode | `PreToolUse`, `PostToolUse`, `UserPromptSubmit` et `PermissionRequest` la transmettent comme contexte supplémentaire. `Stop` et `SubagentStop` la transmettent via le canal de nouvelle tentative. Tout autre événement émet un message que le harnais ignore. |
+| Antigravity | `UserPromptSubmit` et `Stop` uniquement. |
+| Factory, Pi, OpenClaw | `Stop` uniquement. |
+| Hermes, Goose | Aucun. Toujours allow avec une note sur stderr. |
+
+Aucun harnais ne déclenche l'ensemble des 29 événements canoniques, de sorte que la première ligne est limitée par ce que chacun installe — une instruction n'arrive que sur un événement que ce harnais déclenche réellement. Vérifiez l'ensemble des événements installés par harnais dans [Harnais d'agents](/fr/reference/harnesses) avant de vous y fier.
 
 <Warning>
-  N'utilisez pas `instruct()` pour délimiter une frontière de sécurité. La transmission des conseils varie selon le harnais d'agent. Utilisez `deny()` lorsque l'action doit être empêchée.
+  N'utilisez pas `instruct()` pour une frontière de sécurité. Sur Hermes et Goose, il n'atteint jamais l'agent, et sur Antigravity, Factory, Pi et OpenClaw, il ne l'atteint pas sur les événements d'outils. Utilisez `deny()` lorsque l'action doit être empêchée.
 </Warning>
 
 ## Objet politique
@@ -84,32 +97,34 @@ customPolicies.add({
 
 | Champ | Requis | Description |
 | --- | --- | --- |
-| `name` | Oui | Identifiant stable de la politique. Gardez des noms uniques dans tous les fichiers. |
-| `description` | Non | Objectif lisible par l'humain, affiché dans les listes de politiques et les décisions. |
+| `name` | Oui | Identifiant stable de la politique. Conservez des noms uniques entre les fichiers. |
+| `description` | Non | Description lisible par l'humain, affichée dans les listes de politiques et les décisions. |
 | `match.events` | Non | Types d'événements qui invoquent la politique. Omettre `match` l'invoque pour chaque événement disponible. |
-| `fn` | Oui | Fonction synchrone ou asynchrone qui retourne un résultat `allow`, `instruct` ou `deny`. |
+| `fn` | Oui | Fonction synchrone ou asynchrone qui renvoie un résultat `allow`, `instruct` ou `deny`. |
 
 Filtrez les outils à l'intérieur de `fn`. `match.toolNames` ne fait pas partie du type public de politique personnalisée.
 
-## Contexte de la politique
+Une politique publiée dans un pack peut comporter deux champs supplémentaires, `category` et `defaultEnabled`. Voir [D'un fichier à un pack](#from-a-file-to-a-pack).
+
+## Contexte de politique
 
 Chaque politique reçoit un `PolicyContext`.
 
 | Champ | Type | Ce qu'il contient |
 | --- | --- | --- |
 | `eventType` | `HookEventType` | Événement normalisé en cours d'évaluation. |
-| `toolName` | `string \| undefined` | Nom canonique de l'outil, comme `Bash`, `Read`, `Write` ou `Edit`. |
+| `toolName` | `string \| undefined` | Nom canonique de l'outil, tel que `Bash`, `Read`, `Write` ou `Edit`. |
 | `toolInput` | `Record<string, unknown> \| undefined` | Entrée canonique pour l'appel d'outil actuel. |
 | `payload` | `Record<string, unknown>` | Charge utile complète de l'événement normalisé. |
-| `session` | `SessionMetadata \| undefined` | ID de session, répertoire de travail, chemin de transcription, mode de permission et métadonnées du harnais, lorsque disponibles. |
-| `cli` | `string \| undefined` | Harnais d'agent source, comme `claude`, `codex` ou `cursor`. |
-| `params` | `Record<string, unknown>` | Paramètres des politiques intégrées. Les politiques personnalisées reçoivent actuellement un objet vide. |
+| `session` | `SessionMetadata \| undefined` | ID de session, répertoire de travail, chemin de transcription, mode de permission et métadonnées du harnais, le cas échéant. |
+| `cli` | `string \| undefined` | Harnais d'agent source, tel que `claude`, `codex` ou `cursor`. |
+| `params` | `Record<string, unknown>` | Paramètres pour cette politique. Un builtin ou une politique de pack déclare un schéma, et les valeurs configurées par l'utilisateur sont fusionnées par-dessus ses valeurs par défaut. Une politique dans un fichier personnalisé ne déclare pas de schéma, elle reçoit donc ce que l'utilisateur a configuré sous son nom, et `{}` si rien n'est configuré. |
 
 Traitez chaque valeur optionnelle comme réellement optionnelle. Les versions d'agents et les types d'événements ne fournissent pas tous les mêmes champs.
 
 ### Entrées d'outils courantes
 
-Failproof AI normalise les outils courants entre les harnais pris en charge, de sorte qu'une politique peut généralement utiliser une seule forme d'entrée.
+Failproof AI normalise les outils courants entre les harnais supportés afin qu'une politique puisse généralement utiliser une même forme d'entrée.
 
 | Outil | Champs courants |
 | --- | --- |
@@ -128,23 +143,23 @@ const filePath = String(ctx.toolInput?.file_path ?? "");
 
 ## Choisir l'événement
 
-| Événement | Quand il s'exécute | Usage typique |
+| Événement | Quand il s'exécute | Utilisation typique |
 | --- | --- | --- |
-| `PreToolUse` | Avant l'exécution d'un outil. | Bloquer ou guider les commandes, les écritures, les lectures et les actions externes. |
-| `PostToolUse` | Après le retour d'un outil. | Inspecter les résultats avant qu'ils n'atteignent l'agent. Un deny bloque le résultat entier ; il ne supprime pas les champs sélectionnés. |
-| `PermissionRequest` | Lorsque l'agent demande une permission. | Appliquer des règles de permission propres à l'organisation. |
-| `UserPromptSubmit` | Avant qu'une invite soumise ne continue. | Rejeter des instructions interdites ou ajouter des conseils de workflow. |
-| `Stop` | Lorsque l'agent tente de terminer. | Exiger une condition d'achèvement accessible, comme une étape de vérification locale. |
-| `SubagentStop` | Lorsqu'un sous-agent tente de terminer. | Contrôler le travail délégué avant qu'il ne retourne au parent. |
+| `PreToolUse` | Avant l'exécution d'un outil. | Bloquer ou orienter les commandes, écritures, lectures et actions externes. C'est le point de garde. |
+| `PostToolUse` | Après que l'outil s'est déjà exécuté. | Inspecter ou remplacer le résultat que le modèle lit. Il ne peut pas annuler l'effet secondaire — l'écriture ou la commande a déjà eu lieu — et sur dix des douze harnais, le verdict ne peut rien arrêter. Seuls Codex et Copilot le consomment, et même dans ce cas il remplace le résultat que le modèle lit plutôt que d'empêcher l'appel. Ne l'utilisez jamais comme point de garde. |
+| `PermissionRequest` | Quand l'agent demande une permission. | Appliquer des règles de permission propres à l'organisation. |
+| `UserPromptSubmit` | Avant qu'une invite soumise ne continue. | Rejeter les instructions interdites ou ajouter des conseils de workflow. |
+| `Stop` | Quand l'agent tente de terminer. | Exiger une condition d'achèvement atteignable, comme une étape de vérification locale. |
+| `SubagentStop` | Quand un sous-agent tente de terminer. | Contrôler le travail délégué avant qu'il ne retourne au parent. |
 | `SessionStart` / `SessionEnd` | Aux limites de session. | Enregistrer ou vérifier l'état au niveau de la session. |
 
-La disponibilité des événements et le comportement de blocage dépendent du harnais d'agent. Consultez [Agent harnesses](/fr/reference/harnesses) avant de vous appuyer sur un événement dans une flotte mixte.
+La disponibilité des événements et le comportement de blocage dépendent du harnais d'agent, et les différences sont importantes : Failproof AI n'installe aucun hook `Stop` pour Goose ou Hermes, donc un point de garde sur Stop ne se déclenche jamais sur l'un ou l'autre. Consultez [Harnais d'agents](/fr/reference/harnesses) avant de vous fier à un événement sur une flotte mixte.
 
 <Accordion title="Tous les noms d'événements de politique">
-  `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PermissionDenied`, `PostToolUse`, `PostToolUseFailure`, `Notification`, `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `Stop`, `StopFailure`, `TeammateIdle`, `InstructionsLoaded`, `ConfigChange`, `CwdChanged`, `FileChanged`, `WorktreeCreate`, `WorktreeRemove`, `PreCompact`, `PostCompact`, `Elicitation`, `ElicitationResult`, `UserPromptExpansion`, `PostToolBatch` et `Setup`.
+  `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PermissionDenied`, `PostToolUse`, `PostToolUseFailure`, `Notification`, `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `Stop`, `StopFailure`, `TeammateIdle`, `InstructionsLoaded`, `ConfigChange`, `CwdChanged`, `FileChanged`, `WorktreeCreate`, `WorktreeRemove`, `PreCompact`, `PostCompact`, `Elicitation`, `ElicitationResult`, `UserPromptExpansion`, `PostToolBatch` et `Setup`. C'est l'ensemble complet des 29 noms d'événements canoniques dans lesquels le vocabulaire d'événements propre à chaque harnais est normalisé.
 </Accordion>
 
-## Rédiger des schémas de politiques courants
+## Créer des schémas de politiques courants
 
 ### Bloquer les écritures vers des chemins protégés
 
@@ -186,7 +201,7 @@ customPolicies.add({
 });
 ```
 
-### Conditionner la fin de session
+### Contrôler la fin de session
 
 ```ts
 import { execFileSync } from "node:child_process";
@@ -215,10 +230,10 @@ customPolicies.add({
 ```
 
 <Warning>
-  Un événement `Stop` refusé peut amener l'agent à réessayer. Ne conditionnez qu'à une condition que l'agent peut satisfaire dans l'environnement actuel, et limitez chaque appel à un sous-processus ou réseau.
+  Un événement `Stop` refusé peut amener l'agent à réessayer. Ne conditionnez que sur une condition que l'agent peut satisfaire dans l'environnement actuel, et limitez chaque sous-processus ou appel réseau.
 </Warning>
 
-## Charger des fichiers de politiques
+## Charger les fichiers de politiques
 
 ### Fichiers de convention
 
@@ -232,9 +247,26 @@ Les fichiers de convention se chargent automatiquement :
 - Les répertoires de politiques du projet et de l'utilisateur sont tous deux chargés.
 - Les fichiers se chargent par ordre alphabétique dans chaque répertoire.
 - Un fichier doit se terminer par `policies.js`, `policies.mjs` ou `policies.ts`.
-- Plusieurs appels `customPolicies.add()` dans un seul fichier sont pris en charge.
+- Plusieurs appels à `customPolicies.add()` dans un même fichier sont pris en charge.
 - Les imports relatifs depuis des modules locaux sont pris en charge.
-- Les politiques de projet peuvent être soumises au dépôt afin que les mêmes règles suivent le référentiel.
+- Les politiques du projet peuvent être committées afin que les mêmes règles suivent le dépôt.
+
+<Warning>
+  Un fichier dans le répertoire dont le nom ne se termine pas par `policies.{js,mjs,ts}` est ignoré. Il semble installé et n'applique rien. Le chargeur liste chaque fichier ignoré avec le nom vers lequel le renommer ; lisez cet avertissement plutôt que de supposer qu'une politique est active. Ce dépôt avait livré `block-version-bumps.mjs` de cette façon, et le garde écrit après un mauvais bump de version n'avait jamais été exécuté une seule fois.
+</Warning>
+
+`~/.failproofai/policies/` contient également deux sous-répertoires que vous n'y avez pas placés : `cloud-policies/` pour les déploiements gérés par flotte et `packs/` pour les packs installés. Le chargeur ne descend jamais dans l'un ou l'autre, donc rien dans ces répertoires n'est récupéré comme politique de convention non vérifiée.
+
+### Désactiver une politique découverte
+
+Deux clés dans `policies-config.json` désactivent les politiques de convention sans supprimer ni renommer le fichier :
+
+| Clé | Effet |
+| --- | --- |
+| `disabledCustomPolicies` | Un tableau d'identifiants de politiques qualifiés par source qui ne sont pas enregistrés. |
+| `customPoliciesEnabled` | Mettre à `false` pour arrêter de charger `.failproofai/policies/` entièrement. Absent signifie activé. |
+
+L'onglet **Politiques → Configurer** du [tableau de bord local](/fr/reference/local-dashboard) écrit `disabledCustomPolicies` pour vous. `customPoliciesEnabled` est écrit par `failproofai config`, ou manuellement.
 
 ### Fichiers explicites
 
@@ -247,57 +279,94 @@ failproofai policies --install \
   --scope project
 ```
 
-Les fichiers explicites se chargent en premier, suivis des fichiers de convention du projet, puis des fichiers de convention utilisateur. Un fichier découvert via les deux chemins n'est chargé qu'une seule fois.
+Les fichiers explicites se chargent en premier, suivis des fichiers de convention du projet, puis des fichiers de convention utilisateur. Un fichier découvert par les deux chemins n'est chargé qu'une seule fois.
 
 ## Valider et tester
 
-La validation exécute le module via le chargeur de production et confirme qu'il enregistre au moins une politique.
+`-c` est la forme courte de `--custom`, et `-i` de `--install`. Cela applique le fichier immédiatement, quel que soit le chemin et le nom de fichier :
 
 ```bash
-failproofai policies --install \
-  --custom ./.failproofai/policies/checkout-policies.ts \
-  --scope project
+failproofai policies -i -c ./checkout-policies.ts
 failproofai policies
 ```
 
-La validation détecte les fichiers manquants, les erreurs de syntaxe, les imports non résolus, les exceptions de premier niveau et les délais d'attente au chargement du module. Elle ne prouve pas que votre logique de correspondance est correcte.
+Demandez à votre agent d'effectuer l'action bloquée et observez son refus. Rien n'est publié et aucune autre machine n'est affectée.
+
+La validation exécute le module via le chargeur de production et confirme qu'il enregistre au moins une politique. Elle détecte les fichiers manquants, les erreurs de syntaxe, les imports non résolus, les exceptions de niveau supérieur et les délais d'expiration de chargement de module. Elle ne prouve pas que votre logique de correspondance est correcte.
 
 Testez au moins ces cas :
 
-- Une action qui doit correspondre et produire la raison de politique prévue.
-- Une action proche mais sûre qui doit retourner `allow()`.
-- Des champs d'outils manquants ou mal formés.
-- Une syntaxe de commande alternative, des chemins, des guillemets, des casses et des espaces blancs.
+- Une action qui doit correspondre et produire la raison de politique attendue.
+- Une action voisine mais sûre qui doit renvoyer `allow()`.
+- Des champs d'outils manquants ou malformés.
+- Des variantes de syntaxe de commande, chemins, guillemets, casse et espaces blancs.
 - Un sous-processus ou une dépendance réseau indisponible.
 
-Attribuez le résultat à votre politique personnalisée sous **Observe → policy**. Un test bloqué n'est pas suffisant si c'est une politique intégrée différente qui a pris la décision.
+Attribuez le résultat à votre politique personnalisée sous **Politiques → Activité** sur le tableau de bord local. Un test bloqué n'est pas suffisant si c'est une autre politique intégrée qui a pris la décision.
 
 ## Comportement à l'exécution
 
-- Les politiques intégrées s'évaluent avant les politiques personnalisées.
+- Les politiques intégrées sont évaluées avant les politiques personnalisées.
 - Le premier `deny` arrête l'évaluation des politiques suivantes.
 - Plusieurs résultats `instruct` peuvent être combinés lorsqu'aucune politique ne refuse l'événement.
-- Une fonction de politique a un délai d'exécution de 10 secondes.
-- Une exception levée ou un délai d'attente est journalisé et traité comme `allow()`.
-- Un fichier de convention qui échoue au chargement est ignoré ; les autres fichiers personnalisés et les politiques intégrées continuent.
-- Le chargement du module de premier niveau a également un délai de 10 secondes.
-- Le mode observe cloud exécute la politique mais enregistre une décision non-allow sans l'appliquer.
+- Une fonction de politique a un délai d'exécution de 10 secondes. Le chargement du module de niveau supérieur a le même délai.
+- Une exception levée ou un délai d'expiration est consigné et traité comme `allow()`.
+- Un fichier de convention qui ne parvient pas à se charger est ignoré ; les autres fichiers personnalisés et les politiques intégrées continuent.
+- Le mode observer exécute réellement la politique et enregistre tout verdict non-allow sans l'appliquer. Deux niveaux le définissent : `failproofai publish --effect observe` sur un pack que vous publiez, et `fp fleet deploy <machine> --add <id>:observe` sur un déploiement Cloud. Dans les deux cas, la politique est évaluée sous le même délai de 10 secondes qu'une politique en application, donc une politique qui expire est enregistrée comme un allow.
 
-Gardez les modules de politique déterministes et rapides. Évitez les appels réseau de premier niveau ou le démarrage de serveur. Limitez le travail dans `fn`, gérez les échecs de dépendances, et choisissez délibérément si cet échec doit autoriser ou refuser l'opération.
+### Où le chargeur échoue de manière fermée
+
+La règle d'échec ouvert ci-dessus couvre un fichier que vous avez déposé vous-même. Deux chemins font délibérément l'opposé, car tous deux signifient que cette machine a été informée qu'elle disposait d'une application qu'elle n'a pas.
+
+| Situation | Résultat |
+| --- | --- |
+| Un pack sélectionné ne peut pas être chargé, ou son condensé épinglé ne correspond pas | Chaque événement dans la portée que ce pack a déclarée est refusé, attribué à `pack/failproofai-pack-unavailable`. `UserPromptSubmit` utilise instruct plutôt que deny, de sorte que vous n'êtes jamais bloqué hors de l'agent dont vous avez besoin pour le corriger. Des métadonnées de pack illisibles élargissent la portée refusée plutôt que de la réduire. |
+| Le daemon `failproofaid` est inaccessible sur une machine ayant terminé la configuration | Chaque événement est refusé. Aucune configuration n'est lue et aucune politique personnalisée ne s'exécute, car un daemon inaccessible n'aurait pas pu les exécuter non plus. Une incompatibilité de version de protocole refuse également, avec un message nommant `failproofai config`. |
+
+Sur une machine ayant terminé la configuration, `failproofaid` est le seul évaluateur, donc votre `fn` s'exécute à l'intérieur du worker warm du daemon plutôt que dans le processus hook. Le client hook autorise 150 ms pour se connecter et 30 secondes pour la réponse, bien au-dessus du délai fixe de 10 secondes accordé à chaque fonction de politique.
+
+Gardez les modules de politique déterministes et rapides. Évitez les appels réseau de niveau supérieur ou le démarrage de serveur. Limitez le travail à l'intérieur de `fn`, interceptez les échecs de dépendance et choisissez délibérément si cet échec doit autoriser ou refuser l'opération.
+
+## D'un fichier à un pack
+
+Un pack est la façon dont un fichier de politique devient quelque chose que d'autres machines peuvent installer. Deux commandes vous amènent de zéro à un pack publié :
+
+```bash
+failproofai publish --init
+failproofai publish
+```
+
+`--init` demande le nom du pack, écrit `<name>.mjs` et s'arrête. Le fichier n'est pas un modèle avec des espaces vides — c'est une politique qui bloque déjà `git push --force`, donc la première chose que vous modifiez est quelque chose qui fonctionne. Vérifiez-le localement avec `failproofai policies -i -c ./<name>.mjs`, puis exécutez `failproofai publish` depuis l'intérieur du dépôt git qui le contient.
+
+Deux champs sont importants une fois qu'une politique est livrée dans un pack :
+
+| Champ | Ce qu'il fait |
+| --- | --- |
+| `category` | Ce que `failproofai policies add <owner>/<repo> --category git,database` sélectionne. |
+| `defaultEnabled` | Si un simple `failproofai policies add <owner>/<repo>` active cette politique. Par défaut à `false`. |
+
+`--effect` est défini par pack plutôt que par politique : `failproofai publish --effect observe` publie un pack qui enregistre ce que ses politiques auraient décidé sans rien bloquer. La valeur par défaut est `enforce`. C'est le mode observer sur une seule machine sans connexion Cloud — lisez les verdicts enregistrés sous **Politiques → Activité** sur le tableau de bord local.
+
+La version du pack est le sha de commit court en 12 caractères depuis lequel il a été construit, donc `publish` refuse en dehors d'un checkout git et sur un arbre modifié. Consultez [Publier un pack](/fr/policies/publish-a-pack) pour le flux complet, et [Packs de politiques](/fr/policies/packs) pour la façon dont les installations résolvent une version.
 
 ## Exports API
 
 | Export | Objectif |
 | --- | --- |
-| `customPolicies.add(policy)` | Enregistrer une politique personnalisée au chargement du module. |
-| `allow(reason?)` | Autoriser l'opération. |
-| `instruct(reason)` | Autoriser l'opération et fournir des conseils là où c'est pris en charge. |
-| `deny(reason)` | Bloquer l'opération là où c'est pris en charge. |
-| `getCustomHooks()` | Retourner les politiques actuellement enregistrées dans le registre du module. |
-| `clearCustomHooks()` | Effacer ce registre, principalement pour les tests et les chargeurs. |
+| `customPolicies.add(policy)` | Enregistre une politique personnalisée au chargement du module. |
+| `allow(reason?)` | Autorise l'opération. |
+| `instruct(reason)` | Autorise l'opération et fournit des conseils là où c'est pris en charge. |
+| `deny(reason)` | Bloque l'opération là où c'est pris en charge. |
+| `getCustomHooks()` | Renvoie les politiques actuellement enregistrées dans le registre du module. |
+| `clearCustomHooks()` | Efface ce registre, principalement pour les tests et les chargeurs. |
 
 TypeScript exporte `PolicyContext`, `PolicyResult`, `CustomHook`, `PolicyDecision` et `PolicyFunction`.
 
-<Card title="Déployer des politiques personnalisées" icon="server-cog" href="/fr/policies/deploy">
-  Publiez une version, déployez-la en mode observe, vérifiez les décisions et passez à l'application.
-</Card>
+<Columns cols={2}>
+  <Card title="Publier un pack" icon="package" href="/fr/policies/publish-a-pack">
+    Distribuez vos politiques sous forme de pack que n'importe qui peut installer depuis une release GitHub publique.
+  </Card>
+  <Card title="Déployer des politiques personnalisées" icon="server-cog" href="/fr/policies/deploy">
+    Publiez une version, déployez-la en mode observer, vérifiez les décisions et passez à l'application.
+  </Card>
+</Columns>

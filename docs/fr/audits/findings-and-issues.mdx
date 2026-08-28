@@ -1,35 +1,44 @@
 ---
-title: "Constats et problèmes"
-description: "Transformez les preuves d'audit en travaux de remédiation attribués et suivables."
+title: "Constats et incidents"
+description: "Transformez les preuves d'audit en travaux de remédiation attribués et traçables."
 icon: "clipboard-check"
 ---
 
-Un constat est l'énoncé, étayé par des preuves, qu'un audit formule à propos d'une défaillance. Un problème est le flux de travail durable permettant d'y répondre.
+Un constat est l'affirmation étayée par des preuves d'un échec détecté lors d'un audit. Un incident est le flux de travail durable pour y répondre.
+
+Ces deux objets utilisent des vocabulaires différents et apparaissent côte à côte — il vaut donc la peine de bien les distinguer dès le départ :
+
+| | Constat | Incident |
+| --- | --- | --- |
+| États | `open`, `recurring`, `resolved`, `dismissed`, `muted` | `firing`, `acknowledged`, `resolved` |
+| Indicateur de filtre | `--status` | `--state` |
+| Identifiant | ID du constat | ID de l'incident |
+| Affichage par défaut | L'ensemble actif : open et recurring | Les plus récents en premier |
 
 ## Trier et attribuer le travail
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Ouvrez **Analyser → Audits**, choisissez une exécution terminée et sélectionnez un constat pour en examiner l'analyse, la recommandation, les sessions et les requêtes de preuves.
-    2. Accusez réception, attribuez, ignorez, mettez en sourdine, résolvez ou rouvrez le constat après avoir vérifié ses preuves.
-    3. Accédez à **Analyser → Problèmes** et filtrez la boîte de réception durable par statut, sévérité ou responsable.
-    4. Ouvrez le problème pour l'attribuer, ajouter des commentaires ou des abonnés, et le résoudre une fois le correctif vérifié.
+    1. Ouvrez **Analyser → Audits**, sélectionnez une exécution terminée et choisissez un constat pour consulter son analyse, sa recommandation, ses sessions et ses requêtes de preuves.
+    2. Acquittez, attribuez, rejetez, mettez en sourdine, résolvez ou rouvrez le constat après avoir vérifié ses preuves.
+    3. Accédez à **Analyser → Incidents** et filtrez la file de travail durable par état, sévérité ou responsable.
+    4. Ouvrez l'incident pour l'attribuer, ajouter des commentaires ou des abonnés, et le résoudre une fois le correctif vérifié.
 
-    Commencez par le résumé du constat. Vérifiez que la description de la défaillance, la réponse recommandée, la sévérité et le classement correspondent aux sessions que vous attendiez de l'audit.
+    Commencez par le résumé du constat. Vérifiez que la description de l'échec, la réponse recommandée, la sévérité et le classement correspondent aux sessions que l'audit devait examiner.
 
-    ![Un constat d'audit avec sa sévérité, le nombre d'occurrences, l'analyse de la cause racine, l'action recommandée, les facteurs de classement et les preuves.](/images/dashboard/audit-finding.png)
+    ![Un constat d'audit avec sa sévérité, son nombre d'occurrences, l'analyse de la cause racine, l'action recommandée, les facteurs de classement et les preuves.](/images/dashboard/audit-finding.png)
 
-    Ensuite, ouvrez une session affectée plutôt que de décider à partir du seul résumé. La trace liée doit montrer l'événement exact et la charge utile qui appuient le constat.
+    Ensuite, ouvrez une session concernée plutôt que de décider sur la seule base du résumé. La trace liée doit montrer l'événement exact et la charge utile qui étayent le constat.
 
-    ![Une session liée depuis un constat d'audit, ouverte à l'erreur pertinente avec ses métadonnées d'événement et sa charge utile brute.](/images/dashboard/audit-linked-session.png)
+    ![Une session liée à un constat d'audit, ouverte au niveau de l'erreur concernée avec ses métadonnées d'événement et la charge utile brute.](/images/dashboard/audit-linked-session.png)
 
-    Après avoir vérifié les preuves, utilisez les Problèmes pour attribuer un responsable à la réponse et en assurer le suivi indépendamment des exécutions d'audit futures.
+    Après avoir vérifié les preuves, utilisez les Incidents pour attribuer la réponse à un responsable et en assurer le suivi indépendamment des futures exécutions d'audit.
 
-    ![La boîte de réception des Problèmes affichant les travaux en cours, accusés de réception et résolus, avec leur sévérité et leur responsable.](/images/dashboard/incidents.png)
+    ![La file d'incidents affichant les travaux en cours, acquittés et résolus avec leur sévérité et leur propriétaire.](/images/dashboard/incidents.png)
 
-    Ouvrez le problème pour consigner les notes d'investigation, notifier les abonnés et conserver l'historique des réponses. Ne le résolvez qu'une fois la remédiation déployée et vérifiée.
+    Ouvrez l'incident pour consigner les notes d'investigation, notifier les abonnés et conserver l'historique des actions. Ne le résolvez qu'une fois la remédiation déployée et vérifiée.
 
-    ![La vue détaillée d'un problème avec sa source, les preuves de violation, les personnes assignées, les abonnés, la chronologie et les commentaires.](/images/dashboard/incident-detail.png)
+    ![La vue détaillée d'un incident avec sa source, les preuves de dépassement, les responsables, les abonnés, la chronologie et les commentaires.](/images/dashboard/incident-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -37,57 +46,91 @@ Un constat est l'énoncé, étayé par des preuves, qu'un audit formule à propo
     fp audits finding <finding-id>
     fp audits ack <finding-id> --reason "owner assigned"
     fp audits assign <finding-id> --to engineer@example.com
+    fp audits mute <finding-id> --reason "expected in staging" --yes
+    fp audits dismiss <finding-id> --reason "false positive" --yes
+    fp audits resolve <finding-id> --yes
+    fp audits reopen <finding-id>
 
-    fp issues list
+    fp issues list --state firing
     fp issues show <issue-id>
+    fp issues ack <issue-id>
     fp issues assign <issue-id> --assignee engineer@example.com
     fp issues comment-add <issue-id> --body "policy is in observe mode"
     fp issues resolve <issue-id> --yes
     ```
 
-    Utilisez `fp issues subscribe <issue-id>`, `fp issues unsubscribe <issue-id>` et `fp issues subscribers <issue-id>` pour gérer les observateurs.
+    `mute`, `dismiss` et `resolve` suppriment ou ferment un constat, ce qui nécessite une confirmation — passez `--yes` dans les scripts. `ack`, `reopen` et `assign` sont des opérations de suivi réversibles qui s'appliquent immédiatement. `ack`, `mute` et `dismiss` acceptent `--reason`, et il vaut la peine de le renseigner : il est conservé comme retour durable sur le constat, et non écrit dans un journal puis oublié. `resolve`, `reopen` et `assign` n'acceptent pas de raison.
 
-    Consultez la [référence CLI Cloud pour les audits et les problèmes](/fr/reference/cloud-cli#audits) pour les constats d'audit et [`fp issues`](/fr/reference/cloud-cli#issues) pour la gestion des problèmes.
+    L'attribution fonctionne différemment selon l'objet. `fp audits assign` requiert `--to <email>` et définit un seul propriétaire ; relancer la commande réattribue. `fp issues assign` accepte `--assignee` de façon répétable et **remplace** la liste entière — l'omettre efface donc tous les responsables.
+
+    Utilisez `fp issues comment-list <issue-id>`, `fp issues count --state firing` et `fp issues subscribe`/`unsubscribe`/`subscribers <issue-id>` pour le reste des fonctionnalités d'incidents.
+
+    Consultez la [référence CLI Cloud pour les audits et incidents](/fr/reference/cloud-cli#audits) pour les constats d'audit et [`fp issues`](/fr/reference/cloud-cli#issues) pour la gestion des incidents.
   </Tab>
 </Tabs>
 
-## Examiner un constat
+## Analyser un constat
 
-Vérifiez qu'il contient :
+Deux champs déterminent la marche à suivre avant tout le reste.
 
-- Un mode de défaillance stable, et pas seulement un titre ponctuel
+**`kind`** distingue un `failure` (quelque chose s'est mal passé) d'une violation de `policy` (une règle enfreinte) et d'une `improvement` (le travail pourrait être mieux exécuté). Il est affiché sous forme de badge sur le constat. Un constat de type `policy` est celui qu'une politique peut clore ; les deux autres nécessitent généralement un changement de flux de travail, une alerte ou une intervention humaine.
+
+**`priority`** est un score entre 0 et 1, recalculé à chaque exécution, qui détermine l'ordre de tri de la file de constats. La page du constat le décompose sous **pourquoi il est classé ici**, en valeur × poids :
+
+| Facteur | Poids |
+| --- | --- |
+| Couverture | 0.30 |
+| Sévérité | 0.25 |
+| Magnitude | 0.25 |
+| Récence | 0.20 |
+
+Vérifiez ensuite que le constat contient :
+
+- Un mode d'échec stable, et pas seulement un titre ponctuel
 - La sévérité et l'impact opérationnel
-- Les identifiants de sessions affectées ou les requêtes de support
+- Les identifiants de sessions concernées ou les requêtes de support
 - Suffisamment de contexte pour reproduire le comportement
-- Une réponse proposée cohérente avec les preuves
+- Une réponse proposée qui correspond aux preuves
 
-## Utiliser un problème pour gérer la réponse
+Pour reproduire un constat, récupérez-le en intégralité : `fp --json audits finding <id>` renvoie l'enregistrement complet avec ses champs `evidence`, `evidence_queries` et `scope` intacts, ce qui correspond à ce sur quoi l'analyse a réellement porté. `--json` est une option globale et se place avant la commande.
 
-Créez ou associez un problème lorsque le constat nécessite une attribution, une discussion, des changements de statut, des commentaires ou des abonnés. Les problèmes peuvent également représenter des incidents d'alerte et des signalements manuels, c'est pourquoi ils se trouvent dans la réponse aux audits plutôt que dans la navigation principale.
+## Utiliser un incident pour gérer la réponse
 
-Résolvez le problème lorsque la remédiation est déployée et vérifiée. Résolvez le constat lorsque le mode de défaillance a été traité pour la population d'audit. Ces deux moments peuvent différer.
+Créez ou liez un incident lorsque le constat nécessite une attribution, une discussion, des changements d'état, des commentaires ou des abonnés. Le champ `source` d'un incident indique son origine — `audit`, `alert` ou `manual` — c'est pourquoi le tableau de bord donne aux incidents leur propre vue **Incidents** plutôt que de les imbriquer sous un audit.
 
-## Transformer un problème en ébauche de politique
+L'abonnement est en partie automatique. Les personnes sont abonnées lorsqu'elles acquittent un incident, le commentent, y sont assignées ou l'ouvrent — `fp issues subscribers` liste uniquement les abonnés actifs, ce n'est donc pas simplement la liste des abonnements manuels. Un commentaire envoie un e-mail à tous les abonnés actifs, et commenter ne requiert que `issues:read`, de sorte qu'un relecteur en lecture seule n'est jamais un observateur silencieux.
+
+Résolvez l'incident lorsque la remédiation est déployée et vérifiée. Résolvez le constat lorsque le mode d'échec a été traité pour la population d'audit. Ces moments peuvent différer.
+
+## Transformer un incident en ébauche de politique
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Ouvrez le problème et vérifiez son constat, les sessions citées, la cause racine et la recommandation.
-    2. Sélectionnez **générer une politique** et examinez le résultat de candidature et l'intention d'application proposée. Un résultat **aucune politique** signifie que le comportement peut nécessiter une alerte, un changement de flux de travail ou une intervention humaine.
-    3. Sélectionnez **écrire cette politique**, puis examinez et testez le code source généré dans **Admin → éditeur de politique** avant de sélectionner **publier la version**. Utilisez **ouvrir l'éditeur quand même** si vous êtes en désaccord avec la vérification de candidature.
+    1. Ouvrez l'incident et vérifiez son constat, les sessions citées, la cause racine et la recommandation.
+    2. Sélectionnez **générer une politique** et examinez le résultat d'admissibilité et l'intention d'application proposée. Un résultat **aucune politique** signifie que le comportement peut nécessiter une alerte, un changement de flux de travail ou une réponse humaine.
+    3. Sélectionnez **écrire cette politique**, puis examinez et testez le code source généré dans **Admin → éditeur de politiques** avant de sélectionner **publier la version**. Utilisez **ouvrir l'éditeur quand même** si vous n'êtes pas d'accord avec la vérification d'admissibilité.
     4. Accédez à **Admin → application**, déployez la version en mode **observe** et vérifiez ses décisions sous **Observer → politique** avant de l'appliquer.
 
-    Le titre du problème, la description du constat, la cause racine, la recommandation et l'intention de candidature contribuent à la rédaction de l'ébauche. Rien n'est publié ni déployé automatiquement.
+    Le titre de l'incident, la description du constat, la cause racine, la recommandation et l'intention d'admissibilité contribuent à composer l'ébauche. Rien n'est publié ni déployé automatiquement.
   </Tab>
   <Tab title="CLI">
-    Utilisez la CLI pour inspecter les preuves avant d'ouvrir le problème dans le tableau de bord :
+    Utilisez le CLI pour inspecter les preuves avant d'ouvrir l'incident dans le tableau de bord :
 
     ```bash
     fp issues show <issue-id>
-    fp audits finding <finding-id>
+    fp --json audits finding <finding-id>
     fp events --session-id <session-id> --full --all
     ```
 
-    La candidature de politique, la publication Cloud et le déploiement sur la flotte sont des flux de travail du tableau de bord. Utilisez `failproofai policies --install --custom <file>` si vous souhaitez valider d'abord un code source de politique équivalent en local.
+    Le tableau de bord est une voie ; le CLI en est une autre. `fp policies compose "<ce qu'elle doit faire>"` rédige une politique, `fp policies publish <id> ./policy.mjs` crée une version (la publication ne déploie rien), et `fp fleet deploy <machine> --add <id>:observe` la place sur une machine en mode fantôme. Le suffixe `:observe` est requis — un simple `--add <id>` applique immédiatement. Lisez ce qu'elle aurait fait avec `fp guardrails summary --since 24h`, puis promouvez avec `--add <id>:enforce`.
+
+    Pour tester une source de politique équivalente sur votre propre machine d'abord, pointez le CLI local vers le fichier :
+
+    ```bash
+    failproofai policies -i -c ./checkout-policies.js
+    ```
+
+    Un fichier dont le nom se termine par `policies.js`, `policies.mjs` ou `policies.ts`, déposé dans `.failproofai/policies/` dans le projet ou sous `~/`, est chargé à chaque événement de hook sans aucun indicateur.
   </Tab>
 </Tabs>
 

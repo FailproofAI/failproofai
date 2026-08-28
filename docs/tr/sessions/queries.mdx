@@ -1,53 +1,103 @@
 ---
 title: "Sorgular"
-description: "Yeniden kullanılabilir SQL ile oturum, etkinlik ve değerlendirme verilerini keşfedin."
+description: "Oturum, olay ve değerlendirme verilerini yeniden kullanılabilir SQL ile keşfedin."
 icon: "database"
 ---
 
-Sorgular, panolar, denetimler ve araştırmaların altında yer alan esnek katmandır. Bir fikri test etmek için geçici SQL kullanın, ardından sorgu yinelenen bir iş akışının parçası haline geldiğinde kaydedin.
+Sorgular, panolar, denetimler ve araştırmaların altında yer alan esnek katmandır. Bir fikri test etmek için ad hoc SQL kullanın, ardından sorgu yinelenen bir iş akışının parçası haline geldiğinde kaydedin.
 
 ## Sorgu oluşturma ve çalıştırma
 
 <Tabs>
   <Tab title="Pano">
-    1. **Analiz → Sorgular** bölümüne gidin ve **yeni sorgu** seçin.
-    2. Şema tarayıcısını açın ve etkinlik, oturum veya değerlendirme verilerinden alanlar seçin.
-    3. SQL yazın, gerektiğinde parametreler ekleyin ve sorguyu çalıştırın.
-    4. Açık bir ad ve açıklama ile kaydedin, sonuç izlenmelidir ise **panoya ekle** kullanın.
+    1. **Analiz → Sorgular**'a gidin ve **yeni sorgu**'yu seçin.
+    2. Şema tarayıcısını açın ve olay, oturum veya değerlendirme verilerinden alanları seçin.
+    3. SQL yazın, gerekirse parametreler ekleyin ve sorguyu çalıştırın.
+    4. Açık bir ad ve açıklama ile kaydedin, ardından sonucun izlenmesi gerektiğinde **panoya ekle** seçeneğini kullanın.
 
-    Sorgu editörü olay şemasını, SQL'i, parametreleri ve bir sonuç önizlemesini birleştirerek soruyu kaydetmeden önce doğrulamanızı sağlar.
+    Sorgu düzenleyici, olay şemasını, SQL'i, parametreleri ve sonuç önizlemesini birleştirerek, sorguyu kaydetmeden önce sorunuzu doğrulayabilmenizi sağlar.
 
-    ![Şema tarayıcısı ve canlı sonuç ızgarası içeren SQL sorgu editörü.](/images/dashboard/query-lab.png)
+    ![SQL sorgu düzenleyicisi şema tarayıcısı ve canlı sonuç ızgarası ile.](/images/dashboard/query-lab.png)
 
-    Kaydedilen sorgular daha sonra paylaşılan kütüphanede görünür; burada takım arkadaşlarınız bunları yeniden çalıştırabilir veya sonuçlarını panlolara ekleyebilir.
+    Kaydedilen sorgular daha sonra paylaşılan kitaplıkta görünür ve burada takım arkadaşları onları yeniden çalıştırabilir veya sonuçlarını panoların eklemeye ekleyebilir.
 
-    ![Yeniden kullanılabilir yerleşik ve özel sorgular içeren kaydedilmiş Sorgular kütüphanesi.](/images/dashboard/queries.png)
+    ![Yeniden kullanılabilir yerleşik ve özel sorgular içeren kaydedilmiş Sorgular kitaplığı.](/images/dashboard/queries.png)
 
-    SQL'ini yeniden açmadan sonuç anlaşılır kalması için açık bir ad ve açıklama kullanın.
+    Sonuç, SQL'i yeniden açmadan anlaşılabilir kalacak şekilde açık bir ad ve açıklama kullanın.
   </Tab>
   <Tab title="CLI">
+    SQL'in kendisinin yaptığı sırada çalışın: şemaya bakın, açıklamayı ad hoc olarak çalıştırın, ardından bir ad kazandıktan sonra kaydedin.
+
     ```bash
     fp query schema
-    fp query create "retry loops" --sql "SELECT ..."
-    fp query run <query-id>
-    fp query show <query-id>
-    fp query update <query-id> --sql "SELECT ..."
+    fp query schema events
+
+    fp query run --sql "SELECT agent_id, count() FROM analytics.events GROUP BY agent_id"
+    fp query run --sql @retry-loops.sql
+
+    fp query create "retry loops" --sql @retry-loops.sql --description "repeated tool calls per session"
     ```
 
-    Kimlikleri bulmak için `fp query list` kullanın ve kaydedilmiş bir sorguyu kaldırmak için `fp query delete <query-id>` kullanın.
+    Bundan sonra her şey sorgunun **adını** alır, bir kimliği değil:
+
+    ```bash
+    fp query list
+    fp query run "retry loops"
+    fp query show "retry loops"
+    fp query update "retry loops" --sql @retry-loops-v2.sql --yes
+    fp query delete "retry loops" --yes
+    ```
+
+    Adlar kuruluş başına benzersizdir, bu onları güvenli bir tanıtıcı yapar. UUID şeklindeki bir kimlik, bir adın kabul edildiği herhangi bir yerde kabul edilir, ancak `fp query list` bir ad yazdırmaz — sütunları `name`, `description`, `created by` ve `created` (sorgunun yapıldığı zaman, son düzenlenme zamanı değil). `--show-id` için kısa bir id sütunu görmek veya `--json` okumak için, her zaman tam kimliği taşır.
+
+    Kaydedilen bir sorgunun konumsal parametrelerini `--arg` (takma ad `--param`) ile bağlayın, sırayla her `$1..$N` için bir kez tekrarlayın:
+
+    ```bash
+    fp query run <query-name> --arg agent-codegen --arg 0.5
+    ```
+
+    | Alt komut | İzin | Notlar |
+    | --- | --- | --- |
+    | `fp query schema [TABLE]` | `queries:read` | Sütunlara filtrelemek için bir tablo adı geçin. |
+    | `fp query list` | `queries:read` | `--show-id` kimlik gösterir; `--fields` ham alanları projeler. |
+    | `fp query show <name>` | `queries:read` | Meta veri kartı artı tam SQL. |
+    | `fp query create <name> --sql ...` | `queries:write` | Ad çakışması baştan reddedilir. |
+    | `fp query update <name>` | `queries:write` | En az `--name`, `--sql`, `--description` birini geçin. Önce onaylar; hiçbir işlem olmadan çıkış yapar. |
+    | `fp query delete <name>` | `queries:delete` | Önce onaylar, ne gideceğinin önizlemesi ile. |
+    | `fp query run <name>` veya `--sql ...` | `queries:run` | İkisinden tam olarak biri. `--limit` ve `--all` tablo önizlemesini ayarlar. |
+
+    `update` ve `delete` yalnızca etkileşimli bir terminalde uyarır. `--json` altında veya stdin yeniden yönlendirilirse, sormadan devam ederler — bu nedenle `--yes` terminal durumu için, betikler için değil.
+
+    Sorgular salt okunur analitik havuzuna karşı çalışır. `--sql @file.sql` deyimi bir dosyadan okur, bu form sürüm kontrolünde tutmaya değer.
   </Tab>
 </Tabs>
 
+## Sorguya komut dosyası yazma
+
+`fp --json query run` tablo önizleme kapasitesine bakılmaksızın her satırı döndürür, `{columns: [{name, type}], rows: [[...]], truncated, elapsed_ms}` olarak şekillenir:
+
+```bash
+fp --json query run "retry loops" | jq '.rows | length'
+```
+
+`fp --json query schema` `{schema, columns: [{table, column, type, nullable}]}` döndürür, bu şema tarayıcısının makine tarafından okunabilir biçimidir.
+
+İki hata, metni ayrıştırmak yerine çıkış kodu ile işlenmeye değerdir: bir ad eşleşme yapmayan hiçbir şey `✗ no query named "…"` gösterir ve 6 ile çıkar, SQL veya yürütme hatası `✗ query failed — …` gösterir ve sunucunun kendi ayrıntısı katlanmıştır.
+
 ## Yaygın kullanımlar
 
-- Aynı araca yapılan yinelenen çağrıları içeren oturumları bulun.
+- Aynı araca tekrarlanan çağrıları olan oturumları bulun.
 - Değerlendirme puanlarını modeller veya ortamlar arasında karşılaştırın.
 - İnsan bekleme ile devam etme arasındaki zamanı ölçün.
-- İlke reddetmelerini başarılı bir alternatifle takip edin.
-- Bir denetim için bir kohorta oluşturun.
+- Başarılı bir alternatifte izlenen politika inkarını belirleyin.
+- Denetim için bir kohort oluşturun.
 
-Tanımadığınız alanlarla çalışmadan önce **Sorgular → Şema** açın. Açık zaman ve ortam filtreleri tercih edin ve keşif sırasında sonuç sınırlarını koruyun.
+Tanımadığınız alanlarla yazmadan önce şemayı açın — panoda **Analiz → Sorgular** veya `fp query schema`. Açık zaman ve ortam filtreleri tercih edin ve keşif sırasında sonuç sınırlarını tutun.
 
 <Warning>
-  Bir sorgu şüpheli bir deseni belirleyebilir, ancak tek başına arıza modunu oluşturmaz. Temsilci izleri açın veya sonucu bir ilkeye dönüştürmeden önce bir denetim çalıştırın.
+  Bir sorgu şüpheli bir kalıbı belirleyebilir, ancak başarısız modu kendi başına belirlemeyin. Temsili izlemeleri açın veya sonucu bir politikaya dönüştürmeden önce bir denetim çalıştırın.
 </Warning>
+
+<Card title="Panolar" icon="layout-dashboard" href="/tr/sessions/dashboards">
+  Kaydedilen sorguyu, sonuç izlenmeye değer olduktan sonra paylaşılan bir tahtaya koyun.
+</Card>

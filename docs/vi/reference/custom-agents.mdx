@@ -1,21 +1,21 @@
 ---
-title: "Các tác nhân tùy chỉnh"
-description: "Cấu hình, danh mục sự kiện, quy tắc tương quan và phân phối cho failproofai-sdk."
+title: "Custom agents"
+description: "Configuration, the event catalog, correlation rules, and delivery for failproofai-sdk."
 icon: "python"
 ---
 
-Mô tả chức năng của mọi cài đặt, phương thức và trường. Nếu bạn đang thiết lập lần đầu tiên, hãy bắt đầu với hướng dẫn — trang này dùng để tra cứu thông tin.
+Mô tả chi tiết về từng cài đặt, phương thức và trường. Nếu bạn instrumenting lần đầu tiên, hãy bắt đầu với hướng dẫn — trang này dành cho việc tra cứu thông tin.
 
 <Columns cols={2}>
-  <Card title="Hướng dẫn các tác nhân tùy chỉnh" icon="code" href="/vi/start/integrations/custom-agents">
-    Cài đặt, thiết lập công cụ, các phương thức sự kiện, ví dụ thực tế và những vấn đề phổ biến.
+  <Card title="Hướng dẫn custom agents" icon="code" href="/vi/start/integrations/custom-agents">
+    Cài đặt, instrument, các phương thức sự kiện, ví dụ thực tế, và những vấn đề thường gặp.
   </Card>
-  <Card title="Sử dụng một framework?" icon="plug" href="/vi/start/integrations">
-    LangChain, CrewAI, LlamaIndex và Pydantic AI tự động thiết lập với một lệnh duy nhất.
+  <Card title="Sử dụng framework?" icon="plug" href="/vi/start/integrations">
+    LangChain, CrewAI, LlamaIndex và Pydantic AI tự động instrument với một lệnh gọi.
   </Card>
 </Columns>
 
-Python 3.10 hoặc mới hơn. Không có phụ thuộc runtime.
+Python 3.10 hoặc mới hơn, và **không có phụ thuộc runtime** — đó là chính sách, không phải do tình cờ. SDK được cài đặt vào các process agent của những người khác, vì vậy bất cứ thứ gì nó khai báo họ sẽ kế thừa. Một bài kiểm tra quét các mô-đun cốt lõi và khởi chạy một trình thông dịch mới để chứng minh rằng không có framework nào được đưa vào `sys.modules`.
 
 ## Cài đặt
 
@@ -23,26 +23,27 @@ Python 3.10 hoặc mới hơn. Không có phụ thuộc runtime.
 pip install failproofai-sdk
 ```
 
-Gói được cài đặt dưới dạng `failproofai-sdk` và được nhập trong Python dưới dạng `failproofai_sdk`. Các bộ mở rộng framework như `failproofai-sdk[langgraph]` cài đặt chính framework; các adapter luôn được đi kèm trong wheel cơ bản.
+Gói được cài đặt dưới dạng `failproofai-sdk` và nhập trong Python dưới dạng `failproofai_sdk`. Các extras framework như `failproofai-sdk[langgraph]` cài đặt chính framework đó; các adapter luôn được cung cấp trong wheel cơ bản.
 
 ## Kết nối daemon Failproof
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Đi tới **Admin → Keys** và tạo một khóa có `events:add`.
-    2. [Kết nối daemon Failproof với Cloud](/vi/start/setup#connect-a-machine-to-cloud) trên máy tác nhân.
-    3. Chạy một phiên thiết lập công cụ, sau đó tìm ID chính xác của nó trong **Observe → Events**.
-    4. Đi tới **Observe → Sessions**, chọn môi trường tương tự và mở trace được tái tạo.
+    1. Đi đến **Administration → Keys** và tạo một key với `events:add`.
+    2. [Kết nối daemon Failproof với Cloud](/vi/start/setup#connect-failproof-ai-cloud) trên máy agent.
+    3. Chạy một phiên được instrument, sau đó tìm ID chính xác của nó trong **Observe → Events**.
+    4. Đi đến **Observe → Sessions**, chọn cùng một environment, và mở trace được tái tạo lại.
 
-    ![Một phiên tác nhân Python tùy chỉnh được tái tạo dưới dạng biểu đồ thực hiện và dấu vết sự kiện theo thứ tự.](/images/dashboard/session-detail.png)
+    ![Một phiên Python agent tùy chỉnh được tái tạo lại dưới dạng đồ thị thực thi và trace sự kiện được sắp xếp.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
-    failproofai config \
-      --connect https://app.befailproof.ai \
-      --token <events-add-key>
+    export FAILPROOFAI_CLOUD_TOKEN=<events-add-key>
+    failproofai config
     failproofai config --status
     ```
+
+    Ưu tiên biến môi trường hơn `--token`: một đối số dòng lệnh có thể được đọc từ `ps` bởi mọi người dùng trên máy, và nó xuất hiện trong lịch sử shell và nhật ký CI.
   </Tab>
 </Tabs>
 
@@ -60,30 +61,65 @@ failproofai_sdk.configure(
 
 | Đối số | Chức năng |
 | --- | --- |
-| `environment` | Nhãn trên mọi sự kiện — `production`, `staging`, `prod-eu`. Mặc định là `dev`. |
+| `environment` | Nhãn trên mỗi sự kiện — `production`, `staging`, `prod-eu`. Mặc định là `dev`. |
 | `flush_interval` | Tần suất luồng nền ghi vào đĩa, tính bằng giây. Mặc định là `0.5`. |
-| `base_dir` | Nơi ghi. Mặc định là spool của daemon, đó là điều bạn muốn trừ khi bạn biết ngược lại. |
+| `base_dir` | Nơi để ghi. Mặc định là `$FAILPROOFAI_HOME/custom-agents`, nếu không thì `~/.failproofai/custom-agents` — spool mà daemon theo dõi, đó là những gì bạn muốn trừ khi bạn biết cách khác. |
+
+`configure()` là **keyword-only** — `configure(None, 0.5, "prod")` sẽ gây ra `TypeError`. Nó cũng xác thực mỗi đối số trước khi áp dụng bất kỳ đối số nào, và nâng `ValueError` nếu `flush_interval` không phải là một số hữu hạn lớn hơn không, vì vậy một lệnh gọi bị từ chối sẽ để SDK chính xác như nó vốn là thay vì nửa đã di chuyển.
 
 Đặt theo biến môi trường thay thế:
 
 | Biến | Chức năng |
 | --- | --- |
-| `AGENTEYE_ENVIRONMENT` | Đặt `environment` mà không thay đổi mã, cho khi nhãn thuộc về triển khai chứ không phải ứng dụng. Một đối số `configure()` sẽ ưu tiên hơn nó. |
-| `FAILPROOFAI_HOME` | Di chuyển gốc Failproof AI chứa spool. |
-| `FAILPROOFAI_SDK_STRICT` | `1` làm cho lỗi thiết lập công cụ nâng cao thay vì được ghi lại. |
-| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | `1` làm cho vấn đề tương thích framework nâng cao thay vì cảnh báo và tiếp tục. |
+| `AGENTEYE_ENVIRONMENT` | Đặt `environment` mà không cần thay đổi mã, cho khi nhãn thuộc về deployment chứ không phải ứng dụng. Một đối số `configure()` sẽ thắng nó. |
+| `FAILPROOFAI_HOME` | Di chuyển gốc Failproof AI nắm giữ spool. |
+| `FAILPROOFAI_SDK_STRICT` | `1` làm cho instrumentation errors tăng thay vì được ghi nhật ký. |
+| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | `1` làm cho vấn đề tương thích framework tăng thay vì cảnh báo và tiếp tục. |
 
 <Warning>
-  **Không có dấu phẩy trong `environment`.** Ingest chia trường đó thành dấu phẩy để xây dựng bộ lọc của nó và bỏ qua mọi sự kiện có nhãn chứa một — vì vậy toàn bộ quá trình chạy biến mất im lặng. Viết `prod-eu`, không phải `prod,eu`.
+  **Không có dấu phẩy trong `environment`.** Ingest chia trường đó trên dấu phẩy để xây dựng các bộ lọc của nó, và bỏ qua bất kỳ sự kiện nào có nhãn chứa một — vì vậy toàn bộ chạy im lặng biến mất. Viết `prod-eu`, không phải `prod,eu`.
 
-  `configure(environment="prod,eu")` nâng cao để bạn biết ngay lập tức. `AGENTEYE_ENVIRONMENT` không thể nâng cao — không có gì gọi bạn — vì vậy nó cảnh báo một lần và quay lại `dev`.
+  `configure(environment="prod,eu")` tăng lên để bạn phát hiện ra ngay lập tức. `AGENTEYE_ENVIRONMENT` không thể tăng — không có ai gọi bạn — vì vậy nó cảnh báo một lần và quay lại `dev`.
 </Warning>
 
-Sự kiện được xếp hàng trong bộ nhớ và ghi trong nền mỗi giây `flush_interval`, có một lần xả cuối cùng khi thoát trình thông dịch. Một quá trình bị giết hoàn toàn mất bất cứ điều gì chưa được ghi.
+Các sự kiện được xếp hàng trong bộ nhớ và được ghi trong nền cứ sau `flush_interval` giây, với một lệnh flush cuối cùng khi thoát trình thông dịch. Một process bị giết hoàn toàn sẽ mất bất cứ điều gì chưa được ghi.
+
+## Scopes
+
+Ba context manager, mỗi cái có thể sử dụng với `with` và `async with`:
+
+| Scope | Ràng buộc | Phát hành |
+| --- | --- | --- |
+| `session()` | Một session id. Mang lại nó | Không có gì — chỉ là nhận dạng |
+| `agent(name)` | Một agent id, và một `parent_id` được suy ra từ agent bao quanh | `agent_start` khi vào, `agent_end` khi thoát |
+| `tool_call(name)` | Không có gì mới — kế thừa danh tính bao quanh | `tool_use` khi vào, `tool_result` khi thoát |
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("planner"):
+        with failproofai_sdk.tool_call("web_search", input={"q": q}) as t:
+            t.output = search(q)
+```
+
+`tool_call()` đặt mặc định `tool_call_id` thành một `uuid4().hex` mới và phân giải danh tính một lần, khi vào, vì vậy một tool đẩy scope của riêng nó vào trong không thể làm cho `tool_result` đóng lại trên một agent khác. Khi thất bại, nó phát hành `tool_result(error="TypeName: msg")` và **không `error` event** — một tool failure mà vòng lặp bắt được không phải là lỗi cấp chạy, và một event lan rộng được báo cáo chính xác một lần, bởi `agent()` bao quanh. Hủy bỏ đóng lá với không có chuỗi lỗi nào cả.
+
+## Adapters
+
+`instrument()` dây một framework được hỗ trợ vào scopes ở trên. Không có đối số nó auto-detects các framework đã được nhập trong process này; vượt qua một tên để cài đặt chính xác một.
+
+```python
+failproofai_sdk.instrument()              # everything already imported
+failproofai_sdk.instrument("crewai")      # exactly one
+failproofai_sdk.uninstrument("crewai")    # restore the original attributes
+```
+
+Bốn tên là `"langchain"` (bao gồm LangGraph, vì LangGraph chạy trên trình quản lý gọi lại của langchain-core), `"crewai"`, `"llama_index"` và `"pydantic_ai"`. Import framework xảy ra bên trong lệnh gọi, đó là điều giữ `import failproofai_sdk` không phụ thuộc.
+
+Mỗi framework có trang riêng: [LangChain](/vi/start/integrations/langchain), [CrewAI](/vi/start/integrations/crewai), [LlamaIndex](/vi/start/integrations/llamaindex), [Pydantic AI](/vi/start/integrations/pydantic-ai).
 
 ## Nhận dạng
 
-Mọi sự kiện thuộc về một phiên và một tác nhân. **Phạm vi điền vào cả hai**, vì vậy bạn hiếm khi truyền chúng:
+Mỗi sự kiện thuộc về một phiên và một agent. **Scopes điền cả hai vào**, vì vậy bạn hiếm khi truyền chúng:
 
 ```python
 with failproofai_sdk.session():
@@ -91,30 +127,41 @@ with failproofai_sdk.session():
         failproofai_sdk.event.tool_use(tool_name="search", tool_call_id="c1")
 ```
 
-Truyền `session_id` hoặc `agent_id` một cách rõ ràng vẫn hoạt động và thắng. Không có ràng buộc hay truyền, cuộc gọi sẽ nâng cao `TypeError` chứ không phải phát ra một sự kiện Cloud sẽ im lặng loại bỏ.
+Truyền `session_id` hoặc `agent_id` một cách rõ ràng vẫn hoạt động và thắng.
+
+Hai cái này **không** đối xứng khi không có gì được ràng buộc:
+
+| Bỏ qua | Không có gì được ràng buộc |
+| --- | --- |
+| `session_id` | Nâng `TypeError`, thay vì phát hành một sự kiện Cloud sẽ im lặng bỏ qua |
+| `agent_id` | Quay lại `main`, vì vậy các sự kiện phát hành bên trong `session()` mà không có `agent()` xung quanh chúng tất cả đều bị hạ cánh dưới một agent duy nhất có tên `main` |
+
+Phát minh một session id sẽ phân tán một chạy trên vì nhiều phiên như nó có emit site, đó là lý do tại sao chỉ cái đó tăng lên.
+
+`session_id` và `agent_id` cũng là hai tên duy nhất được kiểm tra tính trống rỗng: một non-string tăng `TypeError`, và một id trống hoặc chỉ chứa khoảng trắng tăng `ValueError`. Máy chủ *chấp nhận* một id trống, vì vậy không có kiểm tra đó mỗi sự kiện được gửi đi với một sẽ được nhóm dưới một id trống duy nhất và trông có mặt trong khi bị hợp nhất im lặng.
 
 <Note>
-  Nhân dạng đi trên các biến bối cảnh. Nó theo `asyncio` tác vụ tự động, nhưng **không** các luồng mới — gói một worker trong `failproofai_sdk.propagate()` hoặc các sự kiện của nó hạ cánh không được đính kèm.
+  Nhận dạng di chuyển trên các biến ngữ cảnh. Nó theo dõi các tác vụ `asyncio` tự động, nhưng **không** các luồng mới — bao bọc một worker trong `failproofai_sdk.propagate()` hoặc các sự kiện của nó hạ cánh không gắn.
 </Note>
 
 ## Danh mục sự kiện
 
-Mười lăm phương thức. Hầu hết đều có **cặp** — bạn gọi trình mở, sau đó trình đóng, và SDK đo khoảng cách.
+Mười lăm phương thức. Hầu hết đều có **cặp** — một người mở và một người đóng.
 
-| | Mở | Đóng |
-| --- | --- | --- |
-| **Tác nhân** | `agent_start` | `agent_end` |
-| | `agent_pause` | `agent_resume` |
-| **Mô hình** | `model_request` | `model_response` |
-| **Công cụ** | `tool_use` | `tool_result` |
-| **Hooks** | `hook_triggered` | `hook_completed` |
-| **Con người** | `human_wait` | `human_input` |
+| | Mở | Đóng | Tính thời gian bởi SDK |
+| --- | --- | --- | --- |
+| **Agents** | `agent_start` | `agent_end` | Không |
+| | `agent_pause` | `agent_resume` | Có |
+| **Models** | `model_request` | `model_response` | Không — tương quan trong Cloud |
+| **Tools** | `tool_use` | `tool_result` | Có |
+| **Hooks** | `hook_triggered` | `hook_completed` | Có |
+| **Humans** | `human_wait` | `human_input` | Có |
 
 Ba cái đứng riêng: `error`, `human_pause`, `human_interrupt`.
 
-<Accordion title="Mọi trường, theo phương thức" icon="table">
+<Accordion title="Mỗi trường, theo phương thức" icon="table">
 
-Mọi phương thức cũng lấy `session_id` và `agent_id`, mà các phạm vi điền vào cho bạn. Bất cứ điều gì còn lại là `None` được thả ra chứ không được gửi dưới dạng JSON `null`, và mọi phương thức đều trả về `None`.
+Mỗi phương thức cũng lấy `session_id` và `agent_id`, mà scopes điền vào cho bạn. Bất cứ điều gì còn lại là `None` được bỏ thay vì được gửi dưới dạng JSON `null`, và mỗi phương thức trả về `None`.
 
 | Phương thức | Bắt buộc | Tùy chọn |
 | --- | --- | --- |
@@ -137,61 +184,85 @@ Mọi phương thức cũng lấy `session_id` và `agent_id`, mà các phạm v
 </Accordion>
 
 <Warning>
-  Để đánh dấu một lần chạy là không thành công, `outcome` phải là một trong `failed`, `error`, `timeout` hoặc `rejected`. Bất cứ điều gì khác — bao gồm cả `failure` gần như — được tính là thành công.
+  Để đánh dấu một chạy là thất bại, `outcome` phải là một trong `failed`, `error`, `timeout` hoặc `rejected`. Bất cứ điều gì khác — bao gồm cả `"failure"` gần như — được tính là thành công.
 </Warning>
 
-## Ghép và thời lượng
+## Ghép đôi và thời lượng
 
-**Một quy tắc: cung cấp cho sự kiện đóng cùng id với trình mở của nó.** Đó là những gì ghép chúng lại, và những gì cho phép SDK đo khoảng cách.
+**Một quy tắc: cung cấp cho sự kiện đóng cùng một id như người mở của nó.** Đó là những gì ghép chúng, và những gì cho phép SDK đo thời gian khoảng cách.
 
-| Cặp | Phù hợp trên |
-| --- | --- |
-| `tool_use` → `tool_result` | `tool_call_id` |
-| `hook_triggered` → `hook_completed` | `hook_id` |
-| `agent_pause` → `agent_resume` | `pause_id` |
-| `human_wait` → `human_input` | `input_id` |
-| `model_request` → `model_response` | `request_id` |
+| Cặp | Khớp với | Khóa theo dõi |
+| --- | --- | --- |
+| `tool_use` → `tool_result` | `tool_call_id` | `tool:{session_id}:{tool_call_id}` |
+| `hook_triggered` → `hook_completed` | `hook_id` | `hook:{session_id}:{hook_id}` |
+| `agent_pause` → `agent_resume` | `pause_id` | `pause:{session_id}:{pause_id}` |
+| `human_wait` → `human_input` | `input_id` | `human:{session_id}:{input_id}` |
 
-**Không tự truyền `duration_ms`.** SDK đo nó, và truyền nó nâng cao `ValueError`.
+Khóa được đặt tên không gian theo phiên, đó là những gì làm cho cả hai trường hợp edge bên dưới đúng.
 
-Ngoại lệ duy nhất là `model_response`, nơi chỉ bạn biết độ trễ nhà cung cấp thực sự. Truyền một số nguyên milliseconds — một float nâng cao, vì cột là một số nguyên 32-bit và sẽ hạ cánh trống.
+**Không truyền `duration_ms` của bạn** trên bốn người đóng đó. SDK đo lường nó, và truyền nó tăng `ValueError`.
 
-<Accordion title="Trường hợp biên" icon="circle-help">
+<Note>
+  `model_request` và `model_response` là một cặp Cloud tương quan về `request_id`. SDK không theo dõi chúng và không đo bất cứ điều gì cục bộ, đó là lý do tại sao `model_response` là sự kiện duy nhất mà lấy `duration_ms` từ bạn. Truyền một số nguyên toàn bộ của mili giây — một float tăng lên, vì cột là một số nguyên 32-bit và sẽ hạ cánh trống.
+</Note>
 
-- **Ids chỉ cần duy nhất cho mỗi loại, mỗi phiên.** Một lệnh gọi công cụ và một hook có thể chia sẻ một; hai phiên chạy cùng một lúc có thể tái sử dụng các id tương tự mà không va chạm.
-- **Chúng không được xác định phạm vi cho một tác nhân.** Một cặp mở dưới một tác nhân và đóng dưới tác nhân khác vẫn khớp — đó là trường hợp bình thường trong mã đa tác nhân.
-- **`request_id` là tùy chọn nhưng được khuyến nghị.** Không có nó, sự kiện mô hình ghép cặp theo thứ tự chúng đến, vì vậy hai cuộc gọi đồng thời trong cùng một tác nhân có thể không ghép cặp.
-- **Một cặp chia tách giữa các quá trình** vẫn khớp trong Cloud, nhưng SDK không thể đo nó — không có gì trong quá trình nào thấy cả hai nửa.
-- **Tối đa 10.000 trình mở chờ một trình đóng cùng một lúc.** Quá điểm đó cái cũ nhất bị thả, vì vậy một rò rỉ không thể phát triển mà không bị ràng buộc.
+<Accordion title="Trường hợp edge" icon="circle-help">
+
+- **Ids chỉ cần duy nhất cho mỗi loại, mỗi phiên.** Một tool call và một hook có thể chia sẻ một; hai phiên chạy cùng một lúc có thể tái sử dụng cùng một id mà không va chạm.
+- **Chúng không được phạm vi cho một agent.** Một cặp mở dưới một agent và đóng dưới một agent khác vẫn khớp — đó là trường hợp bình thường trong mã multi-agent.
+- **`request_id` là tùy chọn nhưng được khuyến cáo.** Không có nó, các sự kiện mô hình ghép đôi theo thứ tự họ đến, vì vậy hai cuộc gọi đồng thời trong cùng một agent có thể ghép đôi sai.
+- **Một cặp chia tách giữa các process** vẫn khớp trong Cloud, nhưng SDK không thể đo thời gian nó — không có gì trong process nào thấy cả hai nửa.
+- **Tối đa 10,000 opener chờ một closer cùng một lúc.** Quá điều đó cái cũ nhất bị bỏ qua, vì vậy một rò rỉ không thể phát triển không ràng buộc.
 
 </Accordion>
 
-## Các trường của riêng bạn
+## Các trường của bạn
 
-Bất kỳ từ khóa bổ sung nào bạn truyền được lưu trữ với sự kiện:
+Bất kỳ keyword bổ sung nào bạn truyền được lưu trữ với sự kiện:
 
 ```python
 failproofai_sdk.event.tool_use(
     tool_name="search", tool_call_id="c1",
-    fw_tenant="acme", fw_region="eu-west-1",     # của bạn
+    fw_tenant="acme", fw_region="eu-west-1",     # your own
 )
 ```
 
-Ưu tiên các loại JSON nếu bạn muốn truy vấn chúng sau. Bất cứ điều gì khác — một UUID, một datetime, một `Decimal`, một tập hợp, byte, một đối tượng mô hình — được lưu trữ dưới dạng chuỗi.
+Ưu tiên các loại JSON nếu bạn muốn truy vấn chúng sau. Bất cứ điều gì khác — một UUID, một datetime, một `Decimal`, một set, bytes, một đối tượng mô hình — được lưu trữ dưới dạng chuỗi.
 
 <Warning>
-  **Tiền tố tên trường của bạn.** Các phụ được áp dụng cuối cùng, vì vậy một trường gọi là `model`, `tool_name` hoặc `outcome` im lặng ghi đè lên cái thực. Các adapter framework sử dụng `fw_`; làm tương tự và không có gì có thể va chạm.
+  **Mười một tên là ngoại lệ, và chúng tăng thay vì stringify.** Ingest nâng mỗi cái thành một cột được gõ và lưu trữ `NULL` cho bất cứ điều gì khác, tại `200 OK`, vô hình — vì vậy SDK từ chối chúng tại trang web gọi thay thế.
 
-  Đây cũng là lý do tại sao một trường tùy chọn sai chính tả không bao giờ lỗi — nó chỉ trở thành một trường tùy chỉnh mới. Nếu một trường tiêu chuẩn bị thiếu trong Cloud, trước tiên hãy kiểm tra chính tả.
+  | Tên | Phải là |
+  | --- | --- |
+  | `duration_ms`, `input_tokens`, `output_tokens` | Một `int` trong phạm vi unsigned 32-bit |
+  | `tool_name`, `tool_call_id`, `hook_name`, `hook_id`, `input_id`, `pause_id`, `error_type`, `model` | Một chuỗi — `None` tăng `ValueError`, bất kỳ non-string nào tăng `TypeError` |
+
+  Điều này áp dụng cho dù giá trị đến như một tham số được đặt tên hoặc là một trong những extras của riêng bạn. `model_response` xác thực `input_tokens` và `output_tokens` của nó trên đường vào vì lý do tương tự — chúng có khả năng được điền trực tiếp từ đối tượng sử dụng của nhà cung cấp.
 </Warning>
 
-Năm cái tên này được dành riêng và bị từ chối hoàn toàn: `timestamp`, `session_id`, `agent_id`, `type`, `environment`.
+<Warning>
+  **Tiền tố tên trường của bạn.** Extras được áp dụng cuối cùng, vì vậy một trường được gọi là `model`, `tool_name` hoặc `outcome` im lặng ghi đè lên cái thực. Framework adapters sử dụng `fw_`; làm điều tương tự và không có gì có thể va chạm.
 
-## Phân phối và xác minh
+  Đây cũng là lý do tại sao một trường tùy chọn lỗi chính tả không bao giờ gây lỗi — nó chỉ trở thành một trường tùy chỉnh mới. Nếu một trường tiêu chuẩn bị thiếu trong Cloud, trước tiên hãy kiểm tra chính tả.
+</Warning>
+
+Năm tên này được dành riêng và bị từ chối hoàn toàn: `timestamp`, `session_id`, `agent_id`, `type`, `environment`.
+
+## Các export khác
+
+| Export | Là gì |
+| --- | --- |
+| `current()` | Danh tính được ràng buộc ngay bây giờ, dưới dạng một `Identity`. `current().session_id is None` có nghĩa là không có gì được ràng buộc |
+| `Identity` | `session_id`, `agent_id`, `parent_id`, `depth`. Không bao giờ `None` chính nó — kiểm tra các trường |
+| `propagate(fn)` | Bao bọc `fn` vì vậy nó chạy với danh tính được ràng buộc tại thời điểm gói. Cần thiết cho `Thread`, `pool.submit`, `pool.map`, `run_in_executor` |
+| `_writer.flush_now()` | Thoát và ghi các mục được đệm ngay lập tức, cho một bài kiểm tra hoặc một lần flush bắt buộc trước khi thoát |
+| `__version__` | Phiên bản SDK được cài đặt |
+
+## Cung cấp và xác minh
 
 <Tabs>
   <Tab title="Dashboard">
-    Trong **Observe → Events**, xác minh `agent_start` tồn tại trước tiên và `agent_end` tồn tại cuối cùng. Sau đó mở **Observe → Sessions** và xác nhận sự kiện mô hình, công cụ, con người, hook và lỗi xuất hiện theo thứ tự dự kiến. Sử dụng ID phiên làm khóa khắc phục sự cố chính.
+    Trong **Observe → Events**, xác minh `agent_start` tồn tại trước tiên và `agent_end` tồn tại cuối cùng. Sau đó mở **Observe → Sessions** và xác nhận các sự kiện mô hình, công cụ, con người, hook và lỗi xuất hiện theo thứ tự dự kiến. Sử dụng session ID làm khóa khắc phục sự cố chính.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -203,14 +274,14 @@ Năm cái tên này được dành riêng và bị từ chối hoàn toàn: `tim
   </Tab>
 </Tabs>
 
-Nếu Cloud trống, kiểm tra `$FAILPROOFAI_HOME/custom-agents/events`, nếu không thì `~/.failproofai/custom-agents/events`. Các tệp JSONL chứng minh phát thải SDK; một spool phát triển chỉ đến cấu hình daemon hoặc phân phối, trong khi một spool trống chỉ đến thiết lập công cụ hoặc thời gian sống quy trình.
+Nếu Cloud trống, hãy kiểm tra `$FAILPROOFAI_HOME/custom-agents/events`, nếu không thì `~/.failproofai/custom-agents/events`. Các tệp JSONL chứng minh phát hành SDK; một spool phát triển chỉ đến cấu hình daemon hoặc cung cấp, trong khi một spool trống chỉ đến instrumentation hoặc lifetime process.
 
 <Note>
-  Chỉ kiểm tra spool khi daemon bị dừng. Trong khi nó chạy, nó thu thập và xóa mỗi lô trong vài mili giây, vì vậy danh sách thư mục đua với bộ sưu tập và hiển thị ít sự kiện hơn nhiều so với những gì được phát thải.
+  Chỉ kiểm tra spool khi daemon bị dừng. Trong khi nó chạy, nó thu thập và xóa mỗi batch trong vòng mili giây, vì vậy danh sách thư mục chạy đua người thu thập và hiển thị ít sự kiện hơn được phát hành.
 </Note>
 
-## Ngăn chặn lỗi trong runtime tùy chỉnh
+## Ngăn chặn lỗi trong một runtime tùy chỉnh
 
-Sử dụng phát hiện kiểm tra và dấu vết được liên kết để xác định hành động không an toàn, bằng chứng cần thiết và phản ứng dự định. Tích hợp thực thi tùy chỉnh phải tiết lộ hành động trước khi thực hiện, chuyển đầu vào có cấu trúc của nó cho động cơ chính sách và áp dụng quyết định `allow`, `instruct` hoặc `deny` kết quả.
+Sử dụng các phát hiện kiểm tra và các trace được liên kết để xác định hành động không an toàn, bằng chứng bắt buộc và phản hồi dự kiến. Một tích hợp thực thi tùy chỉnh phải phơi bày hành động trước khi thực thi, chuyển đầu vào có cấu trúc của nó tới công cụ chính sách, và áp dụng quyết định allow, instruct hoặc deny kết quả.
 
-[Liên hệ với Failproof AI](mailto:support@befailproof.ai) và chúng tôi sẽ giúp bạn ánh xạ ranh giới mô hình, công cụ và vòng đời của runtime của bạn đối với hook chính sách, sau đó xác thực tích hợp với bạn.
+[Liên hệ Failproof AI](mailto:support@befailproof.ai) và chúng tôi sẽ giúp bạn ánh xạ các ranh giới mô hình, công cụ và vòng đời của runtime của bạn tới policy hooks, sau đó xác thực tích hợp với bạn.

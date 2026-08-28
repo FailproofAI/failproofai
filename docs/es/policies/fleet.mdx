@@ -1,52 +1,61 @@
 ---
-title: "Desplegar políticas en máquinas"
-description: "Conoce qué máquinas están inscritas, actualizadas y aplicando las versiones de política previstas."
+title: "Cobertura de flota"
+description: "Consulta qué máquinas recibieron y aplicaron las políticas previstas."
 icon: "network"
 ---
 
-La cobertura de flota responde si existe una política donde existe el riesgo. Rastrea las máquinas por ID estable y una etiqueta legible, luego compara su estado de despliegue asignado y reportado.
+La cobertura de flota compara lo que Cloud asignó con lo que cada máquina aplicó por última vez.
 
-## Verificar cobertura
-
-<Tabs>
-  <Tab title="Panel de control">
-    1. Ve a **Admin → enforcement** y revisa los totales de aplicación y observación.
-    2. Busca una máquina por ID o etiqueta, o filtra las máquinas que no tienen política asignada.
-    3. Expande una fila para comparar las políticas asignadas, el despliegue reportado, el último registro de actividad y el historial.
-    4. Actualiza tras el intervalo de sondeo de la máquina cuando un despliegue aplicado permanezca pendiente.
-
-    ![El panel de flota de Enforcement mostrando la cobertura de políticas, el estado de despliegue de máquinas y las asignaciones de observación y aplicación.](/images/dashboard/enforcement-fleet.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai config --status
-    failproofai config --machine-label checkout-runner-03
-    failproofai flush --wait
-    ```
-
-    Usa `fp events --agent-id <agent-id> --since 24h` para confirmar que la actividad del agente de la máquina llega a Cloud.
-  </Tab>
-</Tabs>
-
-Usa las vistas de cobertura para identificar:
-
-- Máquinas que nunca descargaron el último despliegue
-- Máquinas inscritas que dejaron de reportar actividad
-- Una política asignada al entorno o cohorte equivocado
-- Deriva de versión tras una actualización interrumpida
-
-Renombra una máquina sin reconectarla:
-
-```bash
-failproofai config --machine-label checkout-runner-03
-```
-
-Verifica el estado local:
+## Verificar una máquina
 
 ```bash
 failproofai config --status
+failproofai flush --wait --timeout 120
 ```
 
-<Tip>
-  Usa etiquetas que identifiquen la carga de trabajo y el entorno. Los nombres de host por sí solos suelen ser insuficientes tras el autoescalado o el reemplazo de máquinas.
-</Tip>
+Desde Cloud:
+
+```bash
+fp fleet list
+fp fleet diff
+fp fleet show <machine-id>
+```
+
+`fp fleet` requiere una sesión con sesión iniciada, no una clave de API.
+
+| Comando | Qué hace |
+| --- | --- |
+| `fp fleet list` | Lista las máquinas y el estado de despliegue |
+| `fp fleet show <machine>` | Muestra el conjunto de políticas de una máquina |
+| `fp fleet deploy <machine> --add <ref>` | Añade o actualiza una política |
+| `fp fleet deploy <machine> --remove <id>` | Elimina una política |
+| `fp fleet deploy <machine> --set <ref>...` | Reemplaza el conjunto completo |
+| `fp fleet diff [machine]` | Compara las versiones previstas y aplicadas |
+| `fp fleet history <machine>` | Lista las generaciones de despliegue |
+| `fp fleet rollback <machine> <generation>` | Restaura una generación |
+| `fp fleet rename <machine> "<label>"` | Cambia la etiqueta en Cloud |
+
+<Warning>
+  `--set` reemplaza el conjunto completo de políticas. Un `--add <id>` simple aplica la nueva política de inmediato. Usa `--add <id>:observe` para un despliegue en modo sombra.
+</Warning>
+
+## Observar y luego aplicar
+
+```bash
+fp fleet deploy ci-runner-01 --add prod-guard:observe
+fp guardrails summary --since 24h --machine ci-runner-01
+fp fleet deploy ci-runner-01 --add prod-guard:enforce
+```
+
+El modo observación evalúa la política real y registra las decisiones que no son allow sin bloquear al agente.
+
+## Identidad de la máquina
+
+El ID de máquina es estable e identifica la máquina. La etiqueta es solo para visualización y puede cambiar:
+
+```bash
+failproofai config --machine-label checkout-runner-03
+fp fleet rename <machine-id> "Checkout runner 03"
+```
+
+Cambiar la etiqueta no reconecta ni renueva las claves de la máquina.

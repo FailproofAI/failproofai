@@ -1,74 +1,56 @@
 ---
-title: "Audit della cronologia dell'agent locale"
-description: "Scansiona le cronologie CLI dell'agent supportate offline e rivedi il comportamento rischioso o inefficiente localmente."
+title: "Audit della cronologia dell'agente locale"
+description: "Esegui la scansione della cronologia dell'agente su questa macchina per individuare comportamenti rischiosi o inefficienti."
 icon: "laptop-minimal-check"
 ---
 
-Utilizza un audit locale per una revisione immediata e privata prima di connettere una macchina a Failproof AI Cloud. Esegue la scansione delle cronologie dell'agent già archiviate sulla tua macchina, riproduce l'attività degli strumenti attraverso le policy integrate e apre una dashboard dei risultati locale.
+Un audit locale legge la cronologia dell'agente già presente su questa macchina e apre i risultati su `http://localhost:8020/audit`. Non richiede alcun account.
 
-## Eseguire un audit interattivo
+```bash
+failproofai audit
+```
 
-<Tabs>
-  <Tab title="Dashboard">
-    L'audit locale inizia dalla CLI perché deve scoprire le cronologie sulla macchina corrente. Esegui `failproofai audit`; dopo la scansione, Failproof AI avvia la dashboard integrata e apre **http://localhost:8020/audit**.
+La scansione copre la cronologia da tutti i harness supportati che trova. Replica il catalogo di 39 politiche integrato in questa versione; i pack installati e le politiche personalizzate non sono inclusi.
 
-    Nella vista dell'audit, rivedi il numero di sessioni, chiamate a strumenti, progetti e policy hit. Inizia con i risultati più frequenti, quindi ispeziona il progetto interessato e la cronologia dell'agent prima di abilitare l'enforcement.
+## Leggi il risultato
 
-    <Info>La dashboard dell'audit locale è separata da **Analyze → Audits** in Failproof AI Cloud. Gli audit locali rimangono sulla macchina e non richiedono un account o una connessione di rete.</Info>
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    npm install -g failproofai
-    failproofai audit
-    ```
+Inizia dai risultati più frequenti, quindi apri la sessione interessata prima di abilitare l'enforcement.
 
-    Il comando esegue una scansione completa di ogni cronologia supportata che trova. Il comando attuale non accetta filtri come `--since`, `--cli`, `--project`, `--port` o `--no-open`.
+Tre limiti sono importanti:
 
-    Mantieni il processo in esecuzione mentre utilizzi la dashboard locale. Premi <kbd>Ctrl</kbd>+<kbd>C</kbd> quando hai finito.
-  </Tab>
-</Tabs>
+- L'audit ricostruisce gli eventi degli strumenti, non `Stop`, quindi le politiche `require-*-before-stop` non appaiono.
+- Otto controlli "Solo per audit" identificano modelli inefficienti senza una politica corrispondente esatta.
+- `warn-repeated-tool-calls` viene saltato perché replicarlo modificherebbe lo stato della parte dei transcript.
 
-Gli attuali adapter di audit possono leggere cronologie da Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory, Devin, Antigravity e Goose. Vengono scansionate solo le cronologie disponibili localmente.
+Per un risultato applicabile, usa il comando della politica mostrato nel risultato. Verifica il [supporto dell'enforcement dell'harness](/it/reference/harnesses#enforcement-capability) prima di affidarti.
 
-## Pianificare audit locali ricorrenti
+Il risultato memorizzato nella cache si trova su `~/.failproofai/audit/dashboard.json` e scade dopo sette giorni.
 
-<Tabs>
-  <Tab title="Dashboard">
-    Apri **Settings** nella dashboard locale, abilita gli audit pianificati, scegli l'intervallo e imposta l'indirizzo email che deve ricevere i risultati. La dashboard e la CLI aggiornano la stessa configurazione della macchina.
-  </Tab>
-  <Tab title="CLI">
-    Abilita un audit settimanale e invia i risultati all'indirizzo specificato:
+## Pianifica scansioni
 
-    ```bash
-    failproofai audit --schedule 7 --email reliability@example.com
-    failproofai audit --status
-    ```
+```bash
+failproofai audit --schedule 7
+failproofai audit --status
+failproofai audit --no-schedule
+```
 
-    L'intervallo accetta 1–90 giorni e predefinito a 7 quando omesso. La prima configurazione ti accede quando necessario; `--email` fornisce l'indirizzo del report senza chiedere conferma.
+L'intervallo accetta 1–90 giorni e il valore predefinito è 7. La pianificazione per la prima volta richiede un accesso interattivo. Il servizio in background deve essere in esecuzione.
 
-    Interrompi la pianificazione senza eliminare la cronologia dell'audit locale:
+### Cosa lascia la macchina
 
-    ```bash
-    failproofai audit --no-schedule
-    ```
-  </Tab>
-</Tabs>
+Un audit interattivo non invia risultati. La telemetria CLI anonima è abilitata per impostazione predefinita; disabilitala con `FAILPROOFAI_TELEMETRY_DISABLED=1`.
 
-Il daemon esegue le scansioni pianificate in background, aggiorna il risultato memorizzato nella cache utilizzato dalla dashboard locale e invia un email del report configurato. Utilizza `failproofai audit` quando desideri eseguire una scansione interattiva immediatamente.
-
-## Passare da evidenze locali a operazioni Cloud
-
-Un audit locale è una baseline veloce. Connetti la macchina a Failproof AI Cloud quando hai bisogno di tracce condivise, audit ricorrenti della popolazione, risultati e problemi, avvisi, distribuzione di policy a livello organizzativo o salute della flotta.
-
-<CardGroup cols={2}>
-  <Card title="Creare un audit Cloud" icon="scan-search" href="/it/audits/setup">
-    Definisci un obiettivo ricorrente, una popolazione, una finestra di evidenza e canali di risposta.
-  </Card>
-  <Card title="Abilitare una policy" icon="shield-check" href="/it/start/first-policy">
-    Convalida localmente, pubblica deliberatamente e distribuisci prima a un gruppo ristretto di macchine.
-  </Card>
-</CardGroup>
+Dopo aver aderito alla pianificazione, ogni scansione pianificata invia l'ID macchina, l'etichetta, la piattaforma e la finestra di scansione. Se vengono trovati modelli dannosi, invia anche un digest limitato con conteggi, timestamp e fino a tre esempi oscurati. Le scansioni pulite non inviano risultati e nessuna email.
 
 <Warning>
-  L'output dell'audit è evidenza per la revisione, non prova che ogni azione segnalata sia non sicura. Conferma il contesto prima di trasformare un risultato in enforcement bloccante.
+  I risultati dell'audit sono prove per la revisione, non la prova che ogni azione segnalata sia non sicura. Verifica la sessione prima di trasformare un risultato in un enforcement di blocco.
 </Warning>
+
+<CardGroup cols={2}>
+  <Card title="Audit nel cloud" icon="scan-search" href="/it/audits/setup">
+    Esegui audit condivisi e ricorrenti su agenti e macchine.
+  </Card>
+  <Card title="Installa un policy pack" icon="package" href="/it/policies/packs">
+    Aggiungi politiche verificate dopo aver confermato un risultato.
+  </Card>
+</CardGroup>

@@ -1,53 +1,103 @@
 ---
 title: "Truy vấn"
-description: "Khám phá dữ liệu phiên, sự kiện và đánh giá bằng SQL tái sử dụng được."
+description: "Khám phá dữ liệu phiên, sự kiện và đánh giá bằng SQL có thể tái sử dụng."
 icon: "database"
 ---
 
-Truy vấn là lớp linh hoạt nằm dưới các bảng điều khiển, kiểm toán và điều tra. Sử dụng SQL ad-hoc để kiểm tra một ý tưởng, sau đó lưu truy vấn khi nó trở thành một phần của quy trình làm việc định kỳ.
+Truy vấn là lớp linh hoạt nằm dưới các dashboard, audit và điều tra. Sử dụng SQL ad-hoc để kiểm tra một ý tưởng, sau đó lưu truy vấn khi nó trở thành phần của quy trình làm việc thường xuyên.
 
 ## Tạo và chạy truy vấn
 
 <Tabs>
   <Tab title="Dashboard">
     1. Đi tới **Analyze → Queries** và chọn **new query**.
-    2. Mở trình duyệt schema và chọn các trường từ dữ liệu event, session hoặc evaluation.
-    3. Viết SQL, thêm các tham số khi cần thiết và chạy truy vấn.
+    2. Mở trình duyệt schema và chọn các trường từ dữ liệu sự kiện, phiên hoặc đánh giá.
+    3. Viết SQL, thêm tham số khi cần và chạy truy vấn.
     4. Lưu nó với một tên và mô tả rõ ràng, sau đó sử dụng **add to dashboard** khi kết quả cần được theo dõi.
 
-    Trình soạn thảo truy vấn kết hợp schema event, SQL, các tham số và bản xem trước kết quả để bạn có thể xác thực câu hỏi trước khi lưu nó.
+    Trình soạn thảo truy vấn kết hợp schema sự kiện, SQL, tham số và xem trước kết quả để bạn có thể xác thực câu hỏi trước khi lưu nó.
 
     ![Trình soạn thảo truy vấn SQL với trình duyệt schema và lưới kết quả trực tiếp.](/images/dashboard/query-lab.png)
 
-    Các truy vấn đã lưu sau đó xuất hiện trong thư viện được chia sẻ, nơi các đồng nghiệp có thể chạy lại chúng hoặc thêm kết quả của chúng vào các bảng điều khiển.
+    Các truy vấn đã lưu sau đó xuất hiện trong thư viện được chia sẻ, nơi đồng đội có thể chạy lại chúng hoặc thêm kết quả của chúng vào các dashboard.
 
-    ![Thư viện Queries đã lưu chứa các truy vấn được xây dựng sẵn và tùy chỉnh có thể tái sử dụng.](/images/dashboard/queries.png)
+    ![Thư viện Queries đã lưu chứa các truy vấn tích hợp và tùy chỉnh có thể tái sử dụng.](/images/dashboard/queries.png)
 
-    Sử dụng một tên và mô tả rõ ràng để kết quả vẫn có thể hiểu được mà không cần mở lại SQL của nó.
+    Sử dụng một tên và mô tả rõ ràng để kết quả vẫn có thể hiểu được mà không cần phải mở lại SQL của nó.
   </Tab>
   <Tab title="CLI">
+    Làm việc theo thứ tự mà chính SQL thực hiện: xem schema, chạy câu lệnh ad-hoc, sau đó lưu nó khi nó có một cái tên.
+
     ```bash
     fp query schema
-    fp query create "retry loops" --sql "SELECT ..."
-    fp query run <query-id>
-    fp query show <query-id>
-    fp query update <query-id> --sql "SELECT ..."
+    fp query schema events
+
+    fp query run --sql "SELECT agent_id, count() FROM analytics.events GROUP BY agent_id"
+    fp query run --sql @retry-loops.sql
+
+    fp query create "retry loops" --sql @retry-loops.sql --description "repeated tool calls per session"
     ```
 
-    Sử dụng `fp query list` để tìm ID và `fp query delete <query-id>` để xóa một truy vấn đã lưu.
+    Mọi thứ sau đó sử dụng **name** của truy vấn, không phải id:
+
+    ```bash
+    fp query list
+    fp query run "retry loops"
+    fp query show "retry loops"
+    fp query update "retry loops" --sql @retry-loops-v2.sql --yes
+    fp query delete "retry loops" --yes
+    ```
+
+    Tên là duy nhất trên mỗi tổ chức, đó là lý do chúng là một cách xử lý an toàn. Một id có hình dáng UUID được chấp nhận ở bất cứ đâu cần một tên, nhưng `fp query list` không in một — các cột của nó là `name`, `description`, `created by` và `created` (khi truy vấn được tạo, không phải khi nó được chỉnh sửa lần cuối). Thêm `--show-id` để có một cột id ngắn, hoặc đọc `--json`, luôn có id đầy đủ.
+
+    Liên kết các tham số vị trí của truy vấn đã lưu với `--arg` (bí danh `--param`), lặp lại một lần cho mỗi `$1..$N` theo thứ tự:
+
+    ```bash
+    fp query run <query-name> --arg agent-codegen --arg 0.5
+    ```
+
+    | Subcommand | Permission | Notes |
+    | --- | --- | --- |
+    | `fp query schema [TABLE]` | `queries:read` | Chuyển tên bảng để lọc các cột của nó. |
+    | `fp query list` | `queries:read` | `--show-id` cho thấy ids; `--fields` chiếu các trường thô. |
+    | `fp query show <name>` | `queries:read` | Thẻ metadata cộng với SQL đầy đủ. |
+    | `fp query create <name> --sql ...` | `queries:write` | Một va chạm tên bị từ chối ngay từ đầu. |
+    | `fp query update <name>` | `queries:write` | Chuyển ít nhất một trong `--name`, `--sql`, `--description`. Xác nhận trước; một no-op thoát mà không lưu. |
+    | `fp query delete <name>` | `queries:delete` | Xác nhận trước, với bản xem trước những gì sẽ xảy ra. |
+    | `fp query run <name>` hoặc `--sql ...` | `queries:run` | Chính xác một trong hai. `--limit` và `--all` điều chỉnh bản xem trước bảng. |
+
+    `update` và `delete` chỉ nhắc lên một terminal tương tác. Dưới `--json`, hoặc với stdin được chuyển hướng, chúng tiếp tục mà không hỏi — vì vậy `--yes` dành cho trường hợp terminal, không phải cho các script.
+
+    Truy vấn chạy dựa trên một nhóm phân tích chỉ đọc. `--sql @file.sql` đọc câu lệnh từ một tệp, đó là hình thức đáng giữ trong kiểm soát phiên bản.
   </Tab>
 </Tabs>
 
-## Các cách sử dụng phổ biến
+## Viết kịch bản cho truy vấn
 
-- Tìm các phiên với các lệnh gọi lặp lại đến cùng một công cụ.
-- So sánh điểm đánh giá giữa các mô hình hoặc môi trường.
-- Đo thời gian giữa việc chờ đợi của con người và tiếp tục.
-- Xác định các mục từ chối của chính sách theo sau bởi một phương án thay thế thành công.
-- Xây dựng một nhóm để kiểm toán.
+`fp --json query run` trả về mỗi hàng bất kể giới hạn bản xem trước bảng, được định hình là `{columns: [{name, type}], rows: [[...]], truncated, elapsed_ms}`:
 
-Mở **Queries → Schema** trước khi viết lại các trường không quen thuộc. Ưu tiên các bộ lọc thời gian và môi trường rõ ràng, và giữ giới hạn kết quả trong quá trình khám phá.
+```bash
+fp --json query run "retry loops" | jq '.rows | length'
+```
+
+`fp --json query schema` trả về `{schema, columns: [{table, column, type, nullable}]}`, đó là dạng có thể đọc máy của trình duyệt schema.
+
+Hai lỗi đáng xử lý theo mã thoát hơn là phân tích cú pháp văn bản: một tên không khớp với gì hiển thị `✗ no query named "…"` và thoát 6, và một lỗi SQL hoặc thực thi hiển thị `✗ query failed — …` với chi tiết của riêng máy chủ được gập vào.
+
+## Các trường hợp sử dụng phổ biến
+
+- Tìm các phiên có các cuộc gọi lặp lại đến cùng một công cụ.
+- So sánh điểm đánh giá trên các mô hình hoặc môi trường.
+- Đo thời gian giữa lúc con người chờ đợi và tiếp tục.
+- Xác định các từ chối chính sách theo sau là một giải pháp thay thế thành công.
+- Xây dựng một nhóm dân cư để kiểm toán.
+
+Mở schema — **Analyze → Queries** trong dashboard, hoặc `fp query schema` — trước khi viết dựa trên các trường không quen thuộc. Ưu tiên các bộ lọc thời gian và môi trường rõ ràng, và giữ giới hạn kết quả trong quá trình khám phá.
 
 <Warning>
-  Một truy vấn có thể xác định một mẫu đáng ngờ, nhưng nó không tự thiết lập chế độ lỗi. Mở các trace đại diện hoặc chạy một kiểm toán trước khi chuyển kết quả thành chính sách.
+  Một truy vấn có thể xác định một mô hình đáng ngờ, nhưng nó không tự thiết lập chế độ lỗi. Mở các trace đại diện hoặc chạy một audit trước khi chuyển kết quả thành chính sách.
 </Warning>
+
+<Card title="Dashboards" icon="layout-dashboard" href="/vi/sessions/dashboards">
+  Đặt một truy vấn đã lưu trên một bảng được chia sẻ khi kết quả đáng giá theo dõi.
+</Card>

@@ -1,22 +1,31 @@
 ---
-title: "Quản trị"
-description: "Vận hành quyền truy cập, sử dụng, tổ chức và bảo mật mà không làm pha trộn chúng vào quy trình đảm bảo độ tin cậy."
+---
+title: "Quản lý"
+description: "Vận hành quyền truy cập Cloud, thành viên, cài đặt và mức tiêu thụ mà không trộn lẫn chúng vào quy trình công việc đảm bảo độ tin cậy."
 icon: "settings-2"
 ---
 
-Quản trị chứa các điều khiển cần thiết để vận hành Failproof AI trên một nhóm. Hầu hết người dùng có thể ở lại trong Sessions, Audits và Policies; những người quản trị sử dụng phần này để quản lý quyền truy cập và ranh giới vận hành.
+Quản lý là nửa Cloud của Failproof AI. Các tổ chức, thành viên, khóa API, cài đặt tổ chức và mức tiêu thụ được đo lường đều cần kết nối Cloud.
+
+<Note>
+  Failproof AI cũng có thể chạy mà không cần tài khoản. Một máy cục bộ thực thi chính sách, lưu giữ lịch sử phiên trên đĩa, phục vụ [bảng điều khiển cục bộ](/vi/reference/local-dashboard) trên `localhost:8020`, và chạy `failproofai audit` mà không gửi bất cứ điều gì ở bất cứ đâu. Xem [cấu hình máy](/vi/reference/events-and-configuration#machine-configuration) để biết các khóa `collector` cục bộ. Bỏ qua phần còn lại của mục này nếu bạn không sử dụng Cloud.
+</Note>
+
+## Vị trí của các điều khiển
 
 <Tabs>
   <Tab title="Dashboard">
-    Sử dụng phần **Admin** của thanh bên Cloud để truy cập **policy editor**, **enforcement**, **usage**, **keys**, **users** và **settings**. Một mục bị khóa cho thấy rằng tài khoản của bạn thiếu quyền đọc.
+    Nhóm **admin** của thanh bên Cloud chứa **trình chỉnh sửa chính sách**, **thực thi**, **sử dụng**, **khóa**, **người dùng** và **cài đặt**.
 
-    ![Phần Admin của thanh bên Cloud với policy editor, enforcement, usage, keys, users và settings.](/images/dashboard/admin-navigation.png)
+    ![Nhóm admin của thanh bên Cloud với trình chỉnh sửa chính sách, thực thi, sử dụng, khóa, người dùng và cài đặt.](/images/dashboard/admin-navigation.png)
   </Tab>
   <Tab title="CLI">
+    Cài đặt Cloud CLI như một công cụ độc lập, sau đó đăng nhập:
+
     ```bash
+    uv tool install fp-cloud-cli
+    fp login
     fp whoami
-    fp orgs current
-    fp orgs perms
     fp usage
     ```
 
@@ -24,17 +33,43 @@ Quản trị chứa các điều khiển cần thiết để vận hành Failpro
   </Tab>
 </Tabs>
 
+## Người dùng đã đăng nhập, hoặc khóa API
+
+`fp` chạy ở một trong hai chế độ xác thực, và sự phân chia này quyết định những lệnh nào hoạt động. Một lệnh mà khóa API không thể thực hiện sẽ từ chối trước khi nó mở kết nối và nêu ra lý do, thay vì để một lỗi 401 hoặc 403 đứng thay cho nó.
+
+| Lệnh | Khóa API | Quyền hạn |
+| --- | --- | --- |
+| `fp whoami` | Có | không có |
+| `fp usage` | Có | `usage:read` |
+| `fp keys list` / `show` | Có | `keys:read` |
+| `fp keys create` | Có | `keys:create` |
+| `fp keys disable` | Có | `keys:disable` |
+| `fp keys regenerate` | Có | `keys:regenerate` |
+| `fp keys update` | Không | `keys:update`, mà không có khóa nào có thể nắm giữ |
+| `fp users list` / `show` | Có | `users:read` |
+| `fp users create` | Có | `users:create` |
+| `fp users update` | Có | `users:update` |
+| `fp users disable` / `enable` | Có | `users:delete` |
+| `fp settings list` / `schema` | Có | `settings:read` |
+| `fp settings set` | Có | `settings:write` |
+| `fp orgs list` / `switch` / `current` / `perms` | Không | chỉ phiên đã đăng nhập |
+
+`fp usage` là lệnh cần cung cấp cho tập lệnh báo cáo: nó chạy không giám sát dưới một khóa và chỉ cần `usage:read`.
+
 <Columns cols={2}>
-  <Card title="Sử dụng" icon="chart-no-axes-combined" href="/vi/admin/usage">
-    Kiểm tra các cửa sổ thanh toán và mức tiêu thụ của tổ chức.
-  </Card>
   <Card title="Khóa và quyền hạn" icon="key-round" href="/vi/admin/keys-and-permissions">
-    Cấp cho máy và tự động hóa chỉ những quyền hạn mà chúng cần.
+    Tạo thông tin đăng nhập máy và cấp cho mỗi khối lượng công việc chỉ những quyền hạn mà nó cần.
   </Card>
   <Card title="Người dùng và tổ chức" icon="users" href="/vi/admin/users-and-organizations">
-    Quản lý thành viên, mặc định và ranh giới tổ chức.
+    Quản lý thành viên và giữ dữ liệu cũng như hành động của mỗi tổ chức trong phạm vi.
   </Card>
   <Card title="Cài đặt và bảo mật" icon="lock-keyhole" href="/vi/admin/settings-and-security">
-    Cấu hình cài đặt vận hành, xử lý dữ liệu và bảo mật triển khai.
+    Đặt các giá trị đăng nhập và cảnh báo, và quyết định dữ liệu agent nào rời khỏi máy.
+  </Card>
+  <Card title="Sử dụng" icon="chart-no-axes-combined" href="/vi/admin/usage">
+    Đọc những gì tổ chức đã đo lường trong cửa sổ 30 ngày hiện tại của nó.
+  </Card>
+  <Card title="Phạm vi bộ máy" icon="network" href="/vi/policies/fleet">
+    Xem những máy nào được đăng ký, cách chúng được xác định và những gì chúng thực thi.
   </Card>
 </Columns>

@@ -1,10 +1,11 @@
 ---
-title: "Failproof Assistant"
-description: "Phân tích và vận hành Failproof AI bằng ngôn ngữ tự nhiên, từ các câu hỏi và truy vấn đến bảng điều khiển và kiểm toán."
+---
+title: "Trợ lý cloud"
+description: "Phân tích và vận hành Failproof AI bằng ngôn ngữ tự nhiên, từ câu hỏi và truy vấn đến bảng điều khiển và kiểm toán."
 icon: "message-square-text"
 ---
 
-Yêu cầu Failproof Assistant thực hiện bất kỳ điều gì trong Failproof AI bằng ngôn ngữ tự nhiên. Nó có thể phân tích các phiên và lỗi, chạy truy vấn, xây dựng bảng điều khiển, điều tra các đánh giá và cảnh báo, và giúp tạo và chạy kiểm toán mà không cần bạn chuyển đổi nhiệm vụ thành màn hình sản phẩm hoặc lệnh CLI.
+Trợ lý Failproof AI Cloud trả lời các câu hỏi về hạm đội của bạn bằng ngôn ngữ tự nhiên. Nó có thể phân tích các phiên và lỗi, chạy truy vấn, xây dựng bảng điều khiển, điều tra đánh giá và cảnh báo, và giúp tạo cũng như chạy các cuộc kiểm toán mà không cần bạn phải chuyển đổi tác vụ thành các màn hình sản phẩm hoặc lệnh CLI. Trong bảng điều khiển, điều khiển được ghi nhãn là **Open agent chat**; trên [`fp` CLI](/vi/reference/cloud-cli) nó là nhóm lệnh `fp agent`.
 
 ```text
 Why did production checkout agents regress this week?
@@ -13,41 +14,77 @@ Create an audit that finds agents retrying the same failed action without changi
 Show me the sessions behind the most common audit finding.
 ```
 
-Trợ lý hoạt động với dữ liệu và quyền có sẵn trong tổ chức hoạt động. Xem xét bằng chứng và những thay đổi được đề xuất của nó trước khi áp dụng các hành động ảnh hưởng đến người dùng hoặc agent khác.
+Trợ lý làm việc với dữ liệu và quyền hạn có sẵn trong tổ chức đang hoạt động. Hãy xem lại bằng chứng và các thay đổi được đề xuất của nó trước khi áp dụng các hành động ảnh hưởng đến những người dùng hoặc agent khác.
+
+<Note>
+  Trợ lý chạy trong bảng điều khiển và các cuộc trò chuyện của nó thuộc về một người, vì vậy không có tuyến đường API đằng sau nó để một khóa gọi. Mỗi lệnh con `fp agent` yêu cầu một phiên đã đăng nhập (`fp login`) và quyền `agent:use`, và thoát 2 dưới `--api-key` hoặc `FP_API_KEY`. Một khóa API không bao giờ có thể tiếp cận nó, vì vậy một công việc được lên lịch phải mang một token phiên đã đăng nhập trong `--token` hoặc `FP_TOKEN`. Điều đó hoạt động — `fp agent ask` đọc câu hỏi từ stdin khi không có TTY — nhưng token phiên hết hạn khoảng 24 giờ sau `fp login`, điều này khiến trợ lý trở thành lựa chọn kém cho tự động hóa không giám sát mặc dù nó chạy.
+</Note>
 
 ## Hỏi trợ lý
 
 <Tabs>
-  <Tab title="Dashboard">
+  <Tab title="Bảng điều khiển">
     1. Chọn **Open agent chat** và mô tả những gì bạn muốn hiểu, tạo hoặc vận hành.
-    2. Xem xét các lệnh gọi công cụ, bảng và kết quả truy vấn của trợ lý trong quá trình nó hoạt động.
+    2. Xem lại các lệnh công cụ, bảng và kết quả truy vấn của trợ lý trong khi nó làm việc.
     3. Mở phiên, cảnh báo hoặc truy vấn được trích dẫn để xác minh kết quả so với dữ liệu nguồn.
-    4. Bắt đầu một cuộc trò chuyện mới để điều tra khác, hoặc sử dụng lịch sử trò chuyện để tiếp tục cùng một dòng phân tích.
+    4. Bắt đầu một cuộc trò chuyện mới cho một cuộc điều tra khác, hoặc sử dụng lịch sử trò chuyện để tiếp tục cùng một dòng phân tích.
 
-    ![Trợ lý Cloud trả lời câu hỏi khả quan sát với hỗ trợ phân tích và truy vấn.](/images/dashboard/assistant.png)
+    ![Trợ lý Cloud trả lời một câu hỏi quan sát với phân tích và truy vấn hỗ trợ.](/images/dashboard/assistant.png)
   </Tab>
   <Tab title="CLI">
+    Bắt đầu với `health`. Nó báo cáo xem trợ lý có được bật cho triển khai này hay không và xem LLM có được định cấu hình cho nó hay không. Nơi không có LLM, `ask` sẽ không thành công và `models` không báo cáo gì — `chats`, `show`, `rename`, và `delete` không bao giờ kiểm tra sức khỏe cả và tiếp tục hoạt động.
+
     ```bash
     fp agent health
     fp agent models
     fp agent ask "Which production checkout agents had the most tool errors in the last 24 hours?"
+    ```
+
+    `fp agent models` liệt kê các mô hình mà triển khai này cho phép và mô hình nào là mô hình mặc định. Chuyển một mô hình cho `ask --model <name>`. Căn cứ một câu trả lời trong văn bản bạn đã có với `--page-context <text>`, và đưa câu hỏi qua stdin thay vì chuyển nó dưới dạng đối số khi nó đến từ một tệp hoặc lệnh trước:
+
+    ```bash
+    cat incident-notes.md | fp agent ask --model <model>
+    ```
+
+    Mỗi cuộc hỏi được lưu vào một cuộc trò chuyện. Nếu không có `--chat` nó sẽ bắt đầu một cuộc mới và in id ngắn của nó; với `--chat` nó tiếp tục luồng đó.
+
+    ```bash
     fp agent chats
     fp agent show <chat-id>
     fp agent ask "Open representative sessions" --chat <chat-id>
+    fp agent rename <chat-id> --title "checkout regression"
+    fp agent delete <chat-id> --yes
     ```
 
-    Sử dụng `fp agent rename <chat-id> --title <title>` để giữ cho một cuộc điều tra dễ nhận biết và `fp agent delete <chat-id>` để xóa nó.
+    `fp agent chats` liệt kê các cuộc trò chuyện của bạn từ mới nhất đến `chat-id · title · messages · updated`, trong đó `updated` là độ tuổi hoạt động cuối cùng của cuộc trò chuyện. `chat-id` được hiển thị là chiếc ngắn — 8 ký tự đầu tiên — và `show`, `rename`, `delete`, và `ask --chat` đều phân giải tiền tố đó. Một id không khớp với bất cứ điều gì thoát 6 với một hộp `chat not found`; một id khớp với nhiều yêu cầu tiền tố dài hơn.
+
+    `fp agent delete` xác nhận trước. `--yes` bỏ qua lời nhắc, và cũng vậy với bất kỳ lệnh gọi không tương tác nào: dưới `--json`, hoặc với stdin được chuyển hướng, nó tiếp tục mà không cần hỏi.
   </Tab>
 </Tabs>
 
 ## Làm việc hiệu quả với trợ lý
 
-- Đặt mục tiêu trước tiên; thêm môi trường, quy trình công việc hoặc khoảng thời gian khi những ranh giới đó quan trọng.
+- Hãy đặt mục tiêu cho nó trước; thêm môi trường, quy trình công việc hoặc phạm vi thời gian khi những ranh giới đó quan trọng.
 - Coi SQL được tạo và tóm tắt là một công cụ hỗ trợ điều tra, không phải bằng chứng cuối cùng.
-- Mở các phiên đại diện trước khi tạo kiểm toán, sự cố, cảnh báo hoặc chính sách.
-- Giữ các bộ lọc tổ chức, môi trường và thời gian rõ ràng.
-- Lưu SQL hữu ích dưới dạng truy vấn để một nhà khai thác khác có thể tái tạo kết quả.
+- Mở các phiên tiêu biểu trước khi tạo kiểm toán, sự cố, cảnh báo hoặc chính sách.
+- Giữ cho bộ lọc tổ chức, môi trường và thời gian rõ ràng.
+- Lưu SQL hữu ích dưới dạng truy vấn để một toán tử khác có thể tái tạo kết quả.
 
 <Warning>
-  Trợ lý chỉ có thể đọc những gì người dùng hiện tại của bạn có thể truy cập. Không mở rộng quyền để giải quyết một câu hỏi; thay vào đó, yêu cầu một nhà khai thác được ủy quyền chạy cuộc điều tra.
+  Hai lớp quyền áp dụng, và chúng không thành công khác nhau. `agent:use` gây ra tính năng chính nó: nếu không có nó, `fp agent` và chat trên bảng điều khiển không khả dụng. Các câu trả lời sau đó bị giới hạn bởi quyền dữ liệu của người dùng đã đăng nhập — `events:read`, `evaluations:read`, `queries:run`, `policies:read` — vì vậy một người dùng có thể mở trợ lý vẫn có thể nhận được câu trả lời trống cho dữ liệu họ không thể đọc. Đừng mở rộng quyền để làm cho câu hỏi hoạt động; hãy yêu cầu một toán tử được phép để chạy cuộc điều tra. Xem [Keys and permissions](/vi/admin/keys-and-permissions).
 </Warning>
+
+<CardGroup cols={2}>
+  <Card title="Queries" icon="database" href="/vi/sessions/queries">
+    Lưu SQL mà trợ lý đã viết để một toán tử khác có thể chạy lại nó.
+  </Card>
+  <Card title="Dashboards" icon="layout-dashboard" href="/vi/sessions/dashboards">
+    Chuyển một truy vấn đã lưu thành biểu đồ mà nhóm theo dõi.
+  </Card>
+  <Card title="Audits" icon="scan-search" href="/vi/audits/overview">
+    Điều tra một mô hình lỗi trên một tập hợp các phiên.
+  </Card>
+  <Card title="Policies" icon="shield-check" href="/vi/policies/overview">
+    Ngăn chặn một hành động có thể lặp lại thay vì tìm nó lại tuần tới.
+  </Card>
+</CardGroup>

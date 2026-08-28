@@ -1,167 +1,100 @@
 ---
 title: "פתרון בעיות"
-description: "אבחון של הפעלות חסרות, מדיניויות חסרות, כשל בהעברה וביצועים חסומים של סוכנים."
+description: "אבחון בעיות בהגדרה, משלוח, מדיניות וסשן."
 icon: "wrench"
 ---
 
-<AccordionGroup>
-  <Accordion title="אין הפעלות בCloud">
-    <Tabs>
-      <Tab title="Dashboard">
-        פתח **Administration → Keys** ובדוק שמפתח המכונה פעיל ויש לו הרשאת `events:add`. לאחר מכן פתח **Observe → Events**, הרחב את טווח הזמן, והסר מסננים של סביבה וסוכן. אם קיימים אירועים, חפש את ID ההפעלה ולאחר מכן בדוק את **Observe → Sessions** לקיבוץ. אם אין אירועים, בצע אבחון של ה-Failproof daemon מה-CLI.
+התחל עם:
 
-        ![ה-Events stream החי עם המסננים הראשיים שלו גלויים ואירועי סוכן עדכניים מגיעים.](/images/dashboard/events-stream-current.png)
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai flush --wait --timeout 60
-        fp list envs
-        fp events --since 24h --limit 20
-        fp sessions --since 24h --limit 20
-        ```
+```bash
+failproofai config --status
+failproofai policies
+```
 
-        בדוק שהקיפול מופעל, ללמפתח המוגדר יש `events:add`, והמסנן ב-dashboard תואם את הסביבה שנשלחה.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="אירועי Python SDK נותרים בדיסק">
-    <Tabs>
-      <Tab title="Dashboard">
-        הסר מסננים ב-**Observe → Events** וחפש את ID ההפעלה המדויק של ה-SDK. אם שום דבר לא מופיע, בדוק את ה-SDK spool ו-Failproof daemon במכונת המקור.
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai flush --wait
-        ```
+## סוכן אינו מחובר
 
-        בדוק ש-daemon מורץ ומחובר — ה-SDK משמור תמיד בין אם כן או לא. תיקיית ה-spool **לא** צריכה להתקיים מראש (הכותב יוצר אותה), ואף משתנה סביבה לא בוחר בה: `$FAILPROOFAI_HOME/custom-agents`, או `~/.failproofai/custom-agents`, היא הרק שורש, ו-`configure(base_dir=...)` הוא ההחלפה היחידה. אם התהליך נעצר ב-`SIGKILL` או הוצא מהזיכרון, כל מה שעדיין בתור הושמד — טפל ב-`SIGTERM` כדי להגביל זאת.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="המכונה לא מקבלת מדיניויות">
-    <Tabs>
-      <Tab title="Dashboard">
-        פתח **Admin → enforcement**, בחר את המכונה, והשווה בין הגרסאות המוקצות, המדווחות והקודמות שלה. בדוק שטווח ההצבה כולל את המכונה וההרשאה `policies:pull` למפתח שלה. ספיגה יכולה לעבוד גם כאשר העברת מדיניות לא.
+הרץ את ההגדרה שוב:
 
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai update
-        failproofai config --status
-        ```
+```bash
+failproofai config
+```
 
-        בדוק שה-ID והתווית של המכונה תואמים את היעד ב-dashboard. התחבר מחדש עם מפתח המסוגל להתמודד עם מדיניויות אם הפנייה הקיימת מעניקה רק ספיגת אירועים.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="פעולה נדחתה כי ה-daemon לא זמין">
-    <Tabs>
-      <Tab title="Dashboard">
-        פתח **Admin → enforcement** ובדוק את זמן הראייה האחרון והגרסה המדווחת של המכונה. אם המכונה ישנה, התייחס לכך כבעיה ב-daemon מקומי. אל תחלול את המדיניות המפוותרת רק כדי לעקוף daemon לא זמין.
+ההגדרה תומכת ב-Linux ו-macOS. היא זקוקה לגישת מנהל פעם אחת כדי להתקין את השירות, אך לעולם לא מבקשת סיסמת sudo.
 
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai update
-        failproofai config
-        failproofai config --status
-        ```
+בדוק נתיבי harness וטווחים ב-[Harnesses](/he/reference/harnesses).
 
-        הפעל מחדש או עדכן את `failproofaid`; הרץ תצורה מחדש כאשר גרסאות פרוטוקול CLI ו-daemon שונות. נתיב ה-daemon המוגדר נכשל בעיצוב סגור.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="מדיניות מותאמת אישית לא נטענת">
-    <Tabs>
-      <Tab title="Dashboard">
-        למדיניות שנכתבה בענן, פתח **Admin → policy editor**, בחר את הטיוטה, ובדוק שגיאות אימות לפני פרסום. למדיניות מקומית, השתמש ב-CLI לאימות שלה, לאחר מכן פתח **Observe → policy** אחרי פעולת בדיקה כדי לאשר שהחלטות מגיעות.
+## סשן חסר
 
-      </Tab>
-      <Tab title="CLI">
-        בדוק שהשם הקובץ מסתיים ב-`policies.js`, `policies.mjs`, או `policies.ts`, המודול מקרא את `customPolicies.add(...)`, וההורדות מתחברות מקובץ המדיניות.
+```bash
+failproofai flush --wait
+failproofai backfill --since 30d --dry-run
+failproofai harness list
+```
 
-        ```bash
-        failproofai policies --install --custom ./checkout.policies.ts
-        failproofai policies
-        ```
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="ביקורת חוזרת ללא ממצאים">
-    <Tabs>
-      <Tab title="Dashboard">
-        פתח **Analyze → audits**, בחר את ההרצה, ובדוק אם ניתוח דגם רץ. לאחר מכן השווה את ההיקף והחלון שלו עם **Observe → sessions** ופתח עקבות מייצגות מאותה אוכלוסייה.
+הסר את `--dry-run` כדי לשלוח מחדש היסטוריה ישנה. הוסף מיקום תמלול נוסף עם:
 
-        תוצאה של אפס היא משמעותית רק כאשר הניתוח רץ בהצלחה. אם הניתוח דולג או נכשל, ההרצה לא מייצרת ממצאים ושומרת את החלון שלא נותח פתוח להרצה מוצלחת בעתיד. אם ניתוח דגם מכובה, הביקורת גם לא מייצרת ממצאים מכיוון שסריקת פנייה וPII קובעת סטטיסטיקות אבל כבר לא מעלה ממצאים.
+```bash
+failproofai harness add-path <harness> [label=]<path>
+```
 
-        ![טופס הביקורת שבו סביבה, סוכן, קצב וחלון הסריקה מגדירים את אוכלוסיית ההפעלה.](/images/dashboard/audit-new.png)
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        fp audits show <audit-name>
-        fp audits runs <audit-name>
-        fp sessions --since 24h --env production
-        fp audits context-show <audit-name>
-        fp audits run <audit-name>
-        fp audits findings --audit <audit-name>
-        ```
+השתמש בתווית כאשר שתי מיקומים מכילים עותקים של אותו פרויקט.
 
-        אם ההרצה נשארה בתור, המתן לקיבולת audit-agent או בקש מפעיל ההצבה לבדוק את צי הביקורת. ביקורת בתור מנסה שוב; היא לא דלגה מיד.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="הערכות מקוונות לא רצות באופן אוטומטי">
-    <Tabs>
-      <Tab title="Dashboard">
-        פתח הפעלה שהושלמה ובדוק אם הערכה ידנית הצליחה. Cloud המתוחזקת בענן כרגע אין שליטה של נקודת קצה מעריך בדאשבורד; על מפעיל השרת להגדיר אותה.
-      </Tab>
-      <Tab title="CLI">
-        אמת את המעריך עצמו, ולאחר מכן בדוק מצבי הערכה עדכניים:
+## כל פעולה מוגנת נדחית
 
-        ```bash
-        curl https://evaluator.example.com/health
-        fp evals --since 1h
-        ```
+במכונה מוגדרת, `failproofaid` הוא ההערכן היחיד. אם הוא לא יכול לענות, פעולות מוגנות נכשלות בצורה סגורה.
 
-        בענן Cloud המכובד עצמי, בדוק ש-`EVALUATOR_ENDPOINT` קיים על השרת ו-`EVALUATOR_TOKEN` תואם את המעריך. הערכה אוטומטית מכובה כאשר נקודת הקצה חסרה.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="אימות Cloud CLI פונה לארגון שגוי">
-    <Tabs>
-      <Tab title="Dashboard">
-        השתמש במחליף הארגון וודא את ה-slug וההרשאות הצפויים לפני השוואת תוצאות עם ה-CLI.
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        fp whoami
-        fp orgs current
-        fp orgs perms
-        ```
+```bash
+failproofai config --status
+systemctl status failproofaid@$USER        # Linux
+sudo launchctl print system/ai.failproof.failproofaid.$USER  # macOS
+```
 
-        במצב מפתח API, ציין `fp --org <slug> --api-key <key> ...` או הגדר את `AGENTEYE_ORG`. מצב ארגון הפעלות אדם שמור מתעלמים כוונה לבקשות מפתח API.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="מדיניות חוסמת עבודה תקפה">
-    <Tabs>
-      <Tab title="Dashboard">
-        פתח **Observe → policy**, שמור את ההחלטה וההפעלה המקושרת, וזהה את תנאי החיובי השקר. לאחר מכן פתח **Admin → enforcement** והחזר את המכונות המושפעות לגרסה הקודמת. צור גרסה צרה יותר ב-**Policy editor**, בדוק אותה על היקף קטן, והרחב רק אחרי שעבודה תקפה הצליחה.
+הרץ את `failproofai config` כדי לתקן או להתקין מחדש את השירות.
 
-      </Tab>
-      <Tab title="CLI">
-        רולבק של הצבת ענן הוא רק דאשבורד. השהיית הפעלה מקומית לא מבטלת מדיניויות שמנוהלות בענן. אם הדאשבורד לא זמין, תפוס את מצב המכונה וההצבה והחזר גישה לדאשבורד במקום להשתמש ללא הרף בפעולה החסומה.
+## חבילה אחת דוחה
 
-        ```bash
-        failproofai config --status
-        ```
-      </Tab>
-    </Tabs>
-  </Accordion>
-</AccordionGroup>
+`failproofai policies` מונה חבילות שלא ניתן לטעון. חבילה שנבחרה נכשלת בצורה סגורה במקום להיעלם.
 
-כאשר פונים לתמיכה, כלול את גרסת CLI, הכלי, הסביבה, ID הפעלה או הצבה רלוונטי, והפלט של `failproofai config --status` עם סודות שהוסרו.
+סיבות נפוצות:
+
+- ההיצע השתנה לאחר ההתקנה.
+- המניפסט והמדיניויות המצורפות לא מסכימות.
+- הקובץ חסר או לא ניתן לייבא אותו.
+- החבילה משתמשת באירוע, כלי או צורת מדיניות שלא נתמכה.
+
+הסר את החבילה או התקן גרסה מתוקנת:
+
+```bash
+failproofai policies remove owner/repo
+failproofai policies add owner/repo@<release>
+```
+
+## ענן מנותק
+
+יש להעדיף משתנה סביבה עבור המפתח:
+
+```bash
+export FAILPROOFAI_CLOUD_TOKEN="<key>"
+failproofai config
+failproofai config --status
+```
+
+מכונה יכולה למשוך מדיניויות ולשלוח פעילות באופן עצמאי. דוח סטטוס מציג את שניהם.
+
+## מדיניות לא חסמה
+
+בדוק שלוש דברים:
+
+1. המדיניות פועלת: `failproofai policies`.
+2. האירוע והכלי שלה תואמים את הפעולה.
+3. ה-harness הזה יכול אכוף את האירוע.
+
+דחיית קריאת כלים מאומתת על כל 12 ה-harnesses הנתמכים. אירועים אחרים משתנים. ראה [יכולת אכיפה](/he/reference/harnesses#enforcement-capability).
+
+## הורדות חסומות
+
+- `FAILPROOFAI_NO_DOWNLOAD=1` דוחה הורדות ברשת.
+- `FAILPROOFAI_DAEMON_BASE_URL` מפנה הורדות שירות למראה.
+- `FAILPROOFAI_PACK_BASE_URL` מפנה הורדות חבילה למראה.
+
+חבילות מותקנות ממשיכות להאכוף כאשר הורדות מוגבלות.

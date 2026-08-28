@@ -1,25 +1,38 @@
 ---
-title: "Tools"
-description: "Tìm các tools chậm, bị lỗi hoặc được sử dụng quá mức trên các phiên làm việc của agent."
+title: "Công cụ"
+description: "Tìm các công cụ chậm, lỗi hoặc được sử dụng quá mức trên các lần chạy agent."
 icon: "wrench"
 ---
 
-Tools nhóm các lệnh gọi tool trên các phiên làm việc để bạn có thể so sánh độ trễ và phân bố lệnh gọi.
+Công cụ hiển thị những gì các agent gọi, tần suất các lệnh gọi thất bại và các phiên nào bị ảnh hưởng.
+
+Tên công cụ xuất phát từ mỗi agent harness, vì vậy cùng một khả năng có thể có các tên khác nhau. Ví dụ: một lệnh shell có thể xuất hiện dưới dạng `Bash`, `exec`, `Shell`, `terminal`, hoặc `run_command`. Chạy `fp list tools` trước khi xây dựng một bộ lọc.
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Đi tới **Observe → Tools**.
-    2. Lọc theo môi trường, tên tool, agent hoặc ID phiên làm việc.
-    3. Xem xét độ trễ và phân bố tool.
-    4. Chọn một điểm biểu đồ hoặc phân đoạn tool để mở các sự kiện và phiên làm việc phù hợp.
+    Đi tới **Observe → Tools**. Lọc theo môi trường, công cụ, agent hoặc phiên.
 
-    ![Trang Tools hiển thị độ trễ, phân tích thành công và thất bại, cũng như phân bố lệnh gọi tool.](/images/dashboard/tools.png)
+    ![Trang Tools hiển thị độ trễ, độ trễ, phân tích thành công và thất bại, cũng như phân phối lệnh gọi công cụ.](/images/dashboard/tools.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp list tools
-    fp events --event-type tool_use,tool_result --env production --since 24h
-    fp --json events --full --session-id <session-id> --all
+    fp events --event-type tool_use,tool_result --since 24h
+    fp errors --event-type tool_result --since 24h
+    fp --json events --full --event-type tool_use,tool_result --session-id <session-id> --all --limit 2000
     ```
+
+    Sử dụng `--full` khi bạn cần các trường payload như thời gian trên mỗi lệnh gọi.
   </Tab>
 </Tabs>
+
+Sử dụng trang này để tìm các lỗi lặp lại, so sánh các lần chạy hoạt động và không hoạt động, hoặc xác nhận rằng một công cụ được nhắm mục tiêu theo chính sách thực sự được sử dụng.
+
+<CardGroup cols={2}>
+  <Card title="Lỗi" icon="circle-alert" href="/vi/sessions/errors">
+    Mở các phiên phía sau các lỗi công cụ.
+  </Card>
+  <Card title="Hooks" icon="webhook" href="/vi/sessions/hooks">
+    Xem tên công cụ chính tắc và quyết định chính sách.
+  </Card>
+</CardGroup>

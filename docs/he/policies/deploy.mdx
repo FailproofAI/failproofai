@@ -1,52 +1,55 @@
 ---
 ---
-title: "הצגת מדיניות"
-description: "הפצה של גרסת מדיניות שנבדקה לשרתים המעוניינים."
+title: "פריסת מדיניות"
+description: "צפה במדיניות על פעילות agent בזמן אמת, ואז אכוף או החזר אותה."
 icon: "cloud-upload"
 ---
 
-הצגה מחברת גרסת מדיניות אחת או יותר לקבוצת שרתים שנרשמו ליעד.
+פרוס מדיניות שעברה בדיקה למכונה אחת בכל פעם. התחל במצב צפייה.
 
-## החלת הצגה
+## הפצה מה-CLI
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. עבור אל **Admin → enforcement**, מצא את השרת והרחב את השורה שלו.
-    2. בחר **edit**, הוסף את גרסת המדיניות שנבדקה, ובחר **observe** או את ההשפעה האוכפת שלה.
-    3. החל את השינוי, ואז המתן לבדיקה הבאה של השרת וודא את מצב ההצגה והכיסוי שלו.
-    4. עבור אל **Observe → policy** כדי לבדוק החלטות חיות.
+```bash
+fp policies test ./rule.mjs --tool Bash --command "git push --force" --expect deny
+fp policies publish no-force-push ./rule.mjs
+fp fleet deploy <machine> --add no-force-push:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add no-force-push:enforce
+```
 
-    ![עורך הצגת השרת עם גרסאות מדיניות, השפעות אכיפה ותצפית, וההצגה של פעולת ההצגה.](/images/dashboard/enforcement-editor.png)
-  </Tab>
-  <Tab title="CLI">
-    הצג מה-CLI עם `fp fleet`. בדוק את הקבוצה המתקבלת לפני החלתה — `deploy` מדפיס את התוכנית המלאה ושואל **רק בטרמינל אינטראקטיבי ללא `--json`**. תחת `--json`, עם `--yes`, או עם stdin מופנה לאחרים (שלב CI, סקריפט, agent shelling out) הוא מיישם מיד ללא תוכנית ללא הנמקה — אז הפעל `fp fleet show <machine>` תחילה אם אתה רוצה ביקורת:
-
-    ```bash
-    fp fleet list
-    fp fleet show <machine-id>
-    fp fleet deploy <machine-id> --add no-force-push
-    ```
-
-    `fp fleet diff <machine-id>` מציג את כוונה לעומת הספקה (שרת קורא כ-`behind` עד שהוא הסוקר הבא), `fp fleet history <machine-id>` רשימות הדורות, ו-`fp fleet rollback <machine-id> <generation>` משחזר אחד — הוא מסרב אם הדור הזה שם מדיניות מאז מובטל או מחוקק.
-
-    בדוק את השרת עצמו עם `failproofai config --status`, והשתמש ב-`fp sessions --env production --since 24h` ו-`fp events --event-type hook_completed` לאחר הצגה כדי לוודא שפעילות מגיעה ל-Cloud.
-  </Tab>
-</Tabs>
-
-<Steps>
-  <Step title="בחר את הגרסה והיעדים">
-    הצג גרסה שנבדקה, לא טיוטה משתנה, החל מ-non-production machine או קוהורט קטן שסשן שלו תוכל לבדוק.
-  </Step>
-  <Step title="תצפית על החלטות">
-    בדוק התאמות, סיבות, כלים מושפעים וחיובי שווא ללא חסימת עבודה.
-  </Step>
-  <Step title="אכוף וודא כיסוי">
-    קדם לאחר התאמות שצופו להפריד בין פעולות בלתי בטוחות לבין תקפות, ואז אשר שכל שרת המתכוון שלך שלף את ההצגה ודיווח החלטות.
-  </Step>
-</Steps>
-
-שרתים זקוקים ל-`policies:pull` capability. דיווח אירועים נשלט בנפרד על ידי `events:add`; אמת את שניהם כאשר אתה מצפה לניתוח ואכיפה בענן.
+מצב צפייה מעריך את המדיניות בפועל ורושם החלטות שאינן allow, אך לא חוסם את ה-agent.
 
 <Warning>
-  ניהול אכיפה הוא זרימת עבודה ניהולית בענן. אל תתייחס למסלולי אכיפה root-only כנקודות קצה רגילות של `/v1` API של לקוח.
+  `--add no-force-push` בלבד אוכף מיד. הוסף `:observe` לפריסה צללית.
 </Warning>
+
+אם אכיפה גורמת לבעיות:
+
+```bash
+fp fleet history <machine>
+fp fleet rollback <machine> <generation>
+```
+
+## פריסה מהלוח המחווט
+
+1. עבור אל **Admin → enforcement**.
+2. פתח את המכונה המטרה.
+3. הוסף את גרסת המדיניות עם אפקט **observe**.
+4. החל את הפריסה.
+5. בחן תוצאות תחת **Observe → policy**.
+6. קדם את אותה גרסה ל-**enforce** כאשר ההתאמות נכונות.
+
+![עורך פריסת המכונה עם גרסאות מדיניות, אפקטי enforce ו-observe, וכן פעולת החלת הפריסה.](/images/dashboard/enforcement-editor.png)
+
+## החלפה או הכנה מקדמית של קבוצה
+
+- `--remove <id>` מסיר מדיניות אחת.
+- `--set <ref>...` מחליף את קבוצת המדיניות השלמה.
+- `--create` מכין פריסה לפני שמכונה בודקת בפעם הראשונה.
+- `fp fleet diff <machine>` משווה מצב מיועד וממומש.
+
+<Note>
+  ללא Cloud, פרסם חבילה עם `failproofai publish --effect observe` וחקור החלטות בלוח המחווט המקומי.
+</Note>
+
+מכונות זקוקות ל-`policies:pull` כדי לקבל פריסות ול-`events:add` כדי לדווח על החלטות.

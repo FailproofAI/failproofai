@@ -1,68 +1,37 @@
 ---
 title: "设置与安全"
-description: "配置运维设置，并对 Agent 数据做出合理的处理选择。"
-icon: "lock-keyhole"
+description: "管理组织默认配置、数据处理方式及机器凭据。"
+icon: "shield"
 ---
 
-使用「设置」管理部署相关的运维参数和模型上下文窗口覆盖值。在通过 API 或 CLI 修改任何值之前，请先查阅设置模式（schema）。
+组织设置对该 Cloud 组织中的所有成员生效。可通过 **Admin → settings** 或 `fp settings` 命令进行修改。
 
-## 修改组织设置
+```bash
+fp settings list
+fp settings set <key> <value>
+```
 
-<Tabs>
-  <Tab title="控制台">
-    1. 前往 **Administration → Settings**，找到对应的设置分组，阅读其说明及当前来源。
-    2. 修改值并保存。
-    3. 对于模型上下文窗口，添加或更新模型覆盖项，并确认生效的限制值。
-    4. 重新检查依赖该值的会话和指标。
+## 数据处理
 
-    ![设置页面，展示组织的身份验证和运维设置。](/images/dashboard/settings.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp settings list
-    fp settings schema
-    fp settings set <key> --value <scalar>
-    fp settings set alerts.email_default_recipients \
-      --json-value '["oncall@example.com"]'
-    ```
+已连接的机器默认会发送策略决策和完整的会话记录。若只需发送决策数据，请在连接后将机器 `~/.failproofai/config.json` 中的 `collector.sessions` 设为 `false`。当前的 `--no-transcripts` 安装标志不会应用该设置。
 
-    运行 `fp settings set --help` 可查看已安装 CLI 所使用的值类型和确认标志。
-  </Tab>
-</Tabs>
+凭据在上传前会在机器端进行脱敏处理，但脱敏只是安全底线，不能替代访问控制。
 
-## 数据处理选择
+纯本地使用无需账号。会话历史和审计记录保存在本地机器上；但启用定时本地审计后，系统会发送机器身份标识和有限摘要信息。可通过设置 `FAILPROOFAI_TELEMETRY_DISABLED=1` 来禁用匿名 CLI 遥测。
 
-连接 Failproof AI CLI 时，默认会发送对话记录（transcripts），因为追踪和审计功能依赖其内容。如果提示词、文件内容或终端输入必须保留在本地，请使用 `--no-transcripts`；此时 hook 活动和策略决策仍可正常上报。
+## 凭据
 
-本地采集凭据与非机密的守护进程设置分开存储，并以受限权限写入。API 密钥仍应作为生产环境机密进行管理。
+机器令牌存储在 `~/.failproofai/` 目录下，并设置为仅所有者可读写权限，不会写入服务定义文件中。
 
-## 组织设置参考
+请为人员、自动化流程和机器分别使用独立密钥。每个密钥只授予其所需的最小权限，在所有权变更时进行轮换，在机器或工作流退役时及时撤销。
 
-所有可在控制台编辑的设置均为组织级别。部署范围的行为仍由服务器环境配置决定。
+## 检查清单
 
-| 键 | 默认值 | 用途 |
-| --- | --- | --- |
-| `allowed_sign_ins` | `[]` | 将现有成员限制为指定邮箱或 `*@domain` 格式；空列表表示不添加额外限制。 |
-| `session_ttl_secs` | `86400` | 控制台会话有效期；可接受范围为 60 秒至 30 天。 |
-| `otp_ttl_secs` | `600` | OTP 和魔法链接的有效期；可接受范围为 60–1800 秒。 |
-| `alerts.email_default_recipients` | `[]` | 当告警邮件渠道未覆盖收件人时使用的默认收件人列表。 |
-| `alerts.slack_default_webhook` | 空 | 默认 Slack 传入 Webhook URL。 |
-| `alerts.webhook_default_url` | 空 | 默认通用 JSON Webhook URL。 |
-| `alerts.webhook_signing_secret` | 空 | 用于 `X-AgentEye-Signature` 请求头的 HMAC-SHA256 密钥；读取时会被遮蔽。 |
-| `alerts.enabled_channels` | email、Slack、webhook | 组织范围内允许告警规则使用的渠道类型。 |
-| `default_user_permissions` | `standard` | 新邀请时预先选定的权限集名称。 |
+- 仅授予必要的最小权限。
+- 在不需要完整内容的场景下，将 `collector.sessions` 设为 `false`。
+- 审查哪些人员有权部署强制执行策略。
+- 在正式执行前，先在观察模式下测试策略。
+- 保持机器标签清晰，机器 ID 稳定。
+- 修改连接设置后，执行 `failproofai config --status` 进行验证。
 
-`allowed_sign_ins` 是一个过滤器，而非授权入口：用户必须已是组织成员。使用空列表允许所有成员；裸值 `*` 会被拒绝。告警 URL 必须使用 HTTPS，回环开发地址除外。
-
-## 安全检查清单
-
-- 云端连接使用 HTTPS。
-- 将密钥权限范围限制到最小。
-- 将生产环境与非生产环境分离。
-- 在上线前审查对话记录和脱敏设置。
-- 审计用户、密钥和组织变更。
-- 针对您的部署测试备份、保留策略和事件响应要求。
-
-<Warning>
-  关闭对话记录采集会影响审计和调查所能证明的内容。请记录该决定及其预期的局限性。
-</Warning>
+权限目录请参阅[密钥与权限](/zh/admin/keys-and-permissions)。

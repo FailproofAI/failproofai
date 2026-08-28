@@ -1,40 +1,74 @@
 ---
 title: "Yönetim"
-description: "Erişim, kullanım, kuruluşlar ve güvenliği güvenilirlik iş akışıyla karıştırmadan yönetin."
+description: "Bulut erişimini, üyeliği, ayarları ve tüketimi güvenilirlik iş akışıyla karıştırmadan yönetin."
 icon: "settings-2"
 ---
 
-Yönetim, Failproof AI'ı bir ekip genelinde çalıştırmak için gereken denetimleri içerir. Çoğu kullanıcı Oturumlar, Denetimler ve İlkeler bölümünde kalabilir; yöneticiler bu bölümü erişimi ve işletim sınırlarını yönetmek için kullanır.
+Yönetim, Failproof AI'nin Bulut tarafıdır. Kuruluşlar, üyeler, API anahtarları, kuruluş ayarları ve ölçülen tüketim, tümü bir Bulut bağlantısı gerektirir.
+
+<Note>
+  Failproof AI hiç hesap olmadan da çalışır. Yerel bir makine politikayı uygular, oturum geçmişini diskte tutar, `localhost:8020` üzerinde [yerel panoyu](/tr/reference/local-dashboard) sunar ve `failproofai audit` komutunu hiçbir yere bir şey göndermeden çalıştırır. Yerel `collector` anahtarları için [makine yapılandırması](/tr/reference/events-and-configuration#machine-configuration) bölümüne bakın. Bulut kullanmıyorsanız bu bölümün geri kalanını atlayabilirsiniz.
+</Note>
+
+## Kontroller nerede bulunur
 
 <Tabs>
   <Tab title="Pano">
-    Cloud kenar çubuğunun **Yönetici** bölümünde **politika editörü**, **zorlama**, **kullanım**, **anahtarlar**, **kullanıcılar** ve **ayarlar** seçeneklerini kullanın. Kilitli bir öğe, hesabınızda okuma izni eksik olduğunu gösterir.
+    Bulut kenar çubuğunun **admin** grubu **policy editor**, **enforcement**, **usage**, **keys**, **users** ve **settings** içerir.
 
-    ![Cloud kenar çubuğunun Yönetici bölümü, politika editörü, zorlama, kullanım, anahtarlar, kullanıcılar ve ayarlar seçenekleriyle.](/images/dashboard/admin-navigation.png)
+    ![Bulut kenar çubuğunun admin grubu: policy editor, enforcement, usage, keys, users ve settings.](/images/dashboard/admin-navigation.png)
   </Tab>
   <Tab title="CLI">
+    Bulut CLI'yi yalıtılmış bir araç olarak yükleyin, ardından oturum açın:
+
     ```bash
+    uv tool install fp-cloud-cli
+    fp login
     fp whoami
-    fp orgs current
-    fp orgs perms
     fp usage
     ```
 
-    Global seçenekleri komutun önüne koyun, örneğin `fp --org reliability-team --json usage`.
+    Global seçenekleri komutten önce koyun, örneğin `fp --org reliability-team --json usage`.
   </Tab>
 </Tabs>
 
+## Oturum açmış insan veya API anahtarı
+
+`fp` iki kimlik doğrulama modundan birinde çalışır ve bu ayrım hangi komutların çalışacağını belirler. Bir API anahtarının gerçekleştiremediği komut, bir bağlantı açmadan ve nedenini adlandırarak çalıştırılmayı reddeder; 401 veya 403 hatasının yerine geçer.
+
+| Komut | API anahtarı | İzin |
+| --- | --- | --- |
+| `fp whoami` | Evet | yok |
+| `fp usage` | Evet | `usage:read` |
+| `fp keys list` / `show` | Evet | `keys:read` |
+| `fp keys create` | Evet | `keys:create` |
+| `fp keys disable` | Evet | `keys:disable` |
+| `fp keys regenerate` | Evet | `keys:regenerate` |
+| `fp keys update` | Hayır | `keys:update`, hiçbir anahtar tutamaz |
+| `fp users list` / `show` | Evet | `users:read` |
+| `fp users create` | Evet | `users:create` |
+| `fp users update` | Evet | `users:update` |
+| `fp users disable` / `enable` | Evet | `users:delete` |
+| `fp settings list` / `schema` | Evet | `settings:read` |
+| `fp settings set` | Evet | `settings:write` |
+| `fp orgs list` / `switch` / `current` / `perms` | Hayır | yalnızca oturum açmış oturum |
+
+`fp usage`, bir raporlama betiğine verilecek komuttur: bir anahtar altında katılımsız çalışır ve yalnızca `usage:read` gerektirir.
+
 <Columns cols={2}>
-  <Card title="Kullanım" icon="chart-no-axes-combined" href="/tr/admin/usage">
-    Faturalandırma pencerelerini ve kuruluş tüketimini inceleyin.
-  </Card>
   <Card title="Anahtarlar ve izinler" icon="key-round" href="/tr/admin/keys-and-permissions">
-    Makinelere ve otomasyon sistemlerine yalnızca gerekli izinleri verin.
+    Makine kimlik bilgisini oluşturun ve her iş yüküne yalnızca ihtiyacı olan izinleri verin.
   </Card>
   <Card title="Kullanıcılar ve kuruluşlar" icon="users" href="/tr/admin/users-and-organizations">
-    Üyeliği, varsayılanları ve kuruluş sınırlarını yönetin.
+    Üyeliği yönetin ve her kuruluşun verilerini ve eylemlerini kapsamlı tutun.
   </Card>
   <Card title="Ayarlar ve güvenlik" icon="lock-keyhole" href="/tr/admin/settings-and-security">
-    İşletim ayarlarını, veri işlemesini ve dağıtım güvenliğini yapılandırın.
+    Oturum açma ve uyarı değerlerini ayarlayın ve aracı verilerinin bir makineden ne kadarının çıkacağına karar verin.
+  </Card>
+  <Card title="Kullanım" icon="chart-no-axes-combined" href="/tr/admin/usage">
+    Kuruluşun mevcut 30 günlük pencerede ölçtüğü şeyi okuyun.
+  </Card>
+  <Card title="Filo kapsamı" icon="network" href="/tr/policies/fleet">
+    Hangi makinelerin kayıtlı olduğunu, nasıl tanımlandıklarını ve neleri uyguladıklarını görün.
   </Card>
 </Columns>

@@ -1,52 +1,80 @@
 ---
-title: "Évaluations en ligne"
-description: "Évaluez les sessions en cours et terminées selon la qualité, la conformité, le coût et la latence."
+title: "Évaluations"
+description: "Notez les sessions terminées selon la qualité, la conformité, le coût et la latence."
 icon: "gauge"
 ---
 
-Les évaluations en ligne appliquent des jugements cohérents aux sessions d'agents. Utilisez-les pour les signaux qui doivent être mesurés en continu plutôt qu'examinés uniquement lors d'un audit.
+Les évaluations appliquent des jugements cohérents aux sessions d'agents. Utilisez-les pour les signaux qui doivent être mesurés en continu plutôt qu'examinés uniquement lors d'un audit.
+
+Un évaluateur reçoit une session terminée, ce qui signifie l'une de deux choses : la session a émis un événement de fin, ou elle a cessé d'émettre pendant plus longtemps que le délai `inactivity_timeout_secs` de l'évaluateur. Il n'existe pas de notation d'une exécution encore en cours.
+
+<Note>
+  L'évaluation automatique s'applique à l'ensemble du déploiement et reste désactivée jusqu'à ce qu'un opérateur définisse `EVALUATOR_ENDPOINT`. Jusqu'alors, cette vue est vide, `fp evals` ne retourne rien, et `fp sessions` affiche un statut vierge pour chaque ligne — ce qui signifie généralement qu'aucun évaluateur n'est configuré, et non que rien n'a obtenu un mauvais score. Voir [Evaluator SDK](/fr/reference/evaluator-sdk).
+</Note>
 
 ## Examiner la qualité des évaluations
 
 <Tabs>
-  <Tab title="Tableau de bord">
+  <Tab title="Dashboard">
     1. Accédez à **Observe → Evaluations**.
     2. Ajoutez une série et choisissez l'agent, l'environnement, le score d'évaluation, la statistique et la courbe.
     3. Ajoutez des séries pour comparer des environnements, des agents ou des clés de score.
-    4. Sélectionnez un résultat pour ouvrir les sessions correspondantes ou partager la vue filtrée. Utilisez **Observe → Metrics** pour la latence, les tokens, le coût et autres valeurs quantitatives.
+    4. Sélectionnez un résultat pour ouvrir les sessions correspondantes ou partager la vue filtrée. Utilisez **Observe → Metrics** pour la latence, les tokens, le coût et autres valeurs de magnitude.
 
     ![Un tableau de bord qualité affichant les scores d'évaluation moyens et les tendances dans le temps.](/images/dashboard/dashboard-quality.png)
 
-    Ouvrez une session depuis le détail pour inspecter le raisonnement par score :
+    Ouvrez une session depuis la vue détaillée pour inspecter le raisonnement par score :
 
-    ![Une vue détaillée d'une session montrant les scores d'évaluation et le raisonnement associé, à côté de la trace complète.](/images/dashboard/session-detail.png)
+    ![Une vue détaillée de session affichant les scores d'évaluation et le raisonnement à côté de la trace complète.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
+    fp list score_filters
     fp evals --agent-id checkout-agent --aggregate
-    fp evals --aggregate --env production --status error
-    fp evals --score helpfulness:0.8.. --since 7d
+    fp evals --aggregate --status error --since 7d
+    fp evals --score helpfulness:0.5..0.8 --score tool_efficiency:..0.3 --since 7d
+    fp evals --scores-full --since 24h
     ```
 
-    Ajoutez le flag global `--json` avant `evals` pour l'automatisation, par exemple `fp --json evals --aggregate --env production`.
+    Tout ce qui est présenté ici nécessite `evaluations:read` — y compris `fp sessions`, qui lit le même résultat de dernière évaluation. C'est pourquoi une clé dont la portée est limitée à `events:read` voit les traces mais pas les scores.
+
+    Commencez par `fp list score_filters` : cela retourne les clés de score que ce déploiement produit réellement, ce qui rend un filtre `--score` vérifiable plutôt qu'une supposition.
+
+    `--score KEY:MIN..MAX` accepte chaque borne de façon optionnelle et est répétable, avec toutes les plages requises ensemble : `helpfulness:0.5..0.8`, `tool_efficiency:..0.3`, `factuality:0.9..`. Une valeur mal formée est rejetée avant la requête plutôt qu'ignorée silencieusement. `--status` accepte exactement l'une des valeurs `done`, `error`, ou `timeout`. `--scores-full` affiche chaque paire de scores au lieu des premiers plus un `+N`. `--all` s'arrête à `--limit`, qui vaut 50 par défaut.
+
+    Les options globales précèdent la commande, donc l'automatisation utilise `fp --json evals --aggregate`.
+
+    Le daemon estampille chaque événement avec l'environnement `local` sauf si vous le modifiez, donc `--env production` ne correspond à rien sur une installation par défaut. Voir [Modifier un libellé d'environnement](/fr/reference/events-and-configuration#change-an-environment-label).
   </Tab>
 </Tabs>
 
-Un évaluateur reçoit l'identité de la session, l'environnement, les horodatages et les événements ordonnés. Il peut retourner des clés de score numériques avec un raisonnement optionnel et un résumé. Les évaluateurs à longue durée d'exécution peuvent retourner un job en attente et être interrogés ultérieurement.
+## Ce qu'échange un évaluateur
 
-## Bonnes cibles d'évaluation
+| Message | Champs |
+| --- | --- |
+| `EvalRequest` (entrant) | `schema_version` (actuellement `"1"`), `session_id`, `agent_id`, `environment`, `started_at`, `ended_at`, et `events` — le flux ordonné complet, chaque événement portant sa charge utile complète. |
+| `EvalResponse` (sortant) | `scores` sous forme de clés numériques, `reasoning` aligné sur ces mêmes clés, et un `summary`. |
+| `JobPending` (sortant) | `job_id` et `next_poll_secs`, pour les travaux ne pouvant pas se terminer en une seule requête. |
 
-- Accomplissement des tâches ou exactitude
-- Fondement et risque d'hallucination
+`ended_at` n'est présent que lorsque la session a émis un événement de fin ; une session envoyée pour cause d'inactivité arrive donc sans ce champ. La cadence de sondage suit `next_poll_secs`, puis `default_poll_interval_secs` de l'évaluateur, puis `EVALUATOR_POLLING_INTERVAL_SECS` du serveur, encadrée entre une seconde et une heure avec une limite absolue d'une heure.
+
+Étant donné que la requête contient les charges utiles d'événements complètes, un évaluateur voit le contenu intégral de la transcription. Traitez la livraison à l'évaluateur comme une livraison de transcription lorsque vous décidez quelles données la machine peut transmettre.
+
+## Bons candidats à l'évaluation
+
+- Accomplissement de la tâche ou exactitude
+- Ancrage factuel et risque d'hallucination
 - Sélection et efficacité des outils
 - Conformité aux politiques ou aux processus
 - Budgets de coût et de latence
 - Escalade humaine requise
 
+Les clés de score sont des identifiants stables. Renommer une clé démarre une nouvelle série de graphique plutôt que de modifier l'ancienne, ce qui brise silencieusement une tendance — choisissez le nom avant de le mettre en graphique.
+
 ## Du score à la réponse
 
-Affichez les scores dans des tableaux de bord pour suivre les tendances. Créez des alertes pour des seuils ou des conditions combinées. Lorsqu'un score baisse sur une population, lancez un audit pour en comprendre la cause ; lorsque la cause est une action reproductible, déployez une politique.
+Affichez les scores dans des tableaux de bord pour suivre les tendances. Créez des alertes pour des seuils ou des conditions composées. Lorsqu'un score baisse sur une population, lancez un audit pour en comprendre la cause ; lorsque la cause est une action répétable, déployez une politique.
 
 <Card title="Créer un évaluateur" icon="code-2" href="/fr/reference/evaluator-sdk">
-  Implémentez une évaluation synchrone ou asynchrone avec le SDK Python pour évaluateurs.
+  Implémentez une évaluation synchrone ou asynchrone avec le SDK d'évaluateur Python.
 </Card>

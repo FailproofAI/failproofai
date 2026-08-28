@@ -1,91 +1,89 @@
 ---
-title: "Xuất bản một pack"
-description: "Gửi các policies của riêng bạn dưới dạng GitHub release mà bất kỳ ai cũng có thể cài đặt."
+title: "Xuất bản policies"
+description: "Phát hành policies của bạn dưới dạng GitHub release công khai mà bất kỳ ai cũng có thể cài đặt."
 icon: "upload"
 ---
 
-Một pack bao gồm ba tệp được đính kèm vào GitHub release. `failproofai pack build` viết cả ba tệp từ một tệp policy mà bạn đã có.
+Tạo một policy hoạt động, kiểm tra nó cục bộ, sau đó xuất bản nó dưới dạng một bộ.
 
-## 1. Viết các policies
+## Tạo và kiểm tra
 
-Một tệp, sử dụng cùng API như bất kỳ custom policy nào. Hai trường bổ sung quan trọng cho một pack:
+```bash
+failproofai publish --init guards.mjs
+failproofai policies -i -c ./guards.mjs
+```
+
+`--init` tạo một policy đã chặn `git push --force`. Chỉnh sửa nó, yêu cầu agent của bạn thử hành động bị chặn, và kiểm tra **Policies → Activity** trong dashboard cục bộ.
+
+Một policy pack có thể bao gồm:
 
 ```js
-import { customPolicies, deny, allow } from "failproofai";
+import { customPolicies, allow, deny } from "failproofai";
 
 customPolicies.add({
   name: "block-refunds",
-  description: "Refunds above the approved limit need a human",
-  category: "Billing",        // groups it, and is what --category selects on
-  defaultEnabled: true,       // switched on by a plain `pack add`
-  match: { events: ["PreToolUse"], tools: ["Bash"] },
-  fn: async (ctx) =>
-    String(ctx.toolInput?.command ?? "").includes("refund")
-      ? deny("Refunds need a human. Ask before running this.")
-      : allow(),
+  description: "Refunds above the limit need a human",
+  category: "Billing",
+  defaultEnabled: true,
+  match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+  fn: async (ctx) => {
+    // return allow(), instruct(), or deny()
+  },
 });
 ```
 
-`defaultEnabled` mặc định là **false** khi bạn bỏ qua nó. Một `failproofai pack add` đơn giản chỉ bật những gì bạn đã đánh dấu — cài đặt mọi policy của người lạ mà không giám sát không phải là quyết định mà trình cài đặt nên đưa ra cho người dùng của nó.
+`defaultEnabled` mặc định là `false`.
+
+## Xuất bản
+
+Commit các tệp của bạn, sau đó chạy:
+
+```bash
+failproofai publish
+```
+
+Publish tìm tệp policy, xác thực nó bằng cùng một loader được sử dụng trong quá trình cài đặt, và tải các tài sản pack lên GitHub release. Nó sử dụng `GITHUB_TOKEN`, `GH_TOKEN`, hoặc `gh auth login`.
+
+Repository phải là công khai vì cài đặt sử dụng HTTPS ẩn danh.
+
+Phiên bản mặc định là SHA 12 ký tự của commit hiện tại. Publish từ chối một cây bẩn hoặc một thư mục ngoài Git trừ khi bạn cung cấp `--version`. Một tag trên `HEAD` được ưu tiên hơn SHA.
+
+Người dùng cài đặt nó bằng:
+
+```bash
+failproofai policies add owner/repo
+```
+
+## Xuất bản ở chế độ observe
+
+```bash
+failproofai publish --effect observe
+```
+
+Chế độ observe đánh giá policy thực tế và ghi lại các quyết định không phải allow, nhưng cho phép agent tiếp tục. Một timeout được ghi lại là allow.
+
+Xuất bản lại bằng `--effect enforce` khi các kết quả quan sát là chính xác.
+
+## Các tùy chọn hữu ích
+
+| Flag | Hiệu ứng |
+| --- | --- |
+| `--init [file]` | Viết một policy khởi đầu |
+| `--repo <owner>/<repo>` | Chọn hoặc tạo repository |
+| `--version <version>` | Ghi đè phiên bản dựa trên commit |
+| `--effect enforce\|observe` | Chọn xem pack có chặn hay không |
+| `--dry-run` | Xây dựng và xác thực mà không xuất bản |
+| `--allow-private` | Xuất bản riêng tư, biết rằng `policies add` không thể cài đặt nó |
+
+```bash
+failproofai publish --dry-run
+failproofai publish ./guards.mjs --repo me/guards --version 2.0.0
+```
+
+<Note>
+  Thêm chủ đề GitHub `failproofai-policies` sau khi xuất bản để [Policy Hub](https://befailproof.ai/policy-hub/) có thể lập chỉ mục cho bộ. CLI không thiết lập nó cho bạn.
+</Note>
 
 <Warning>
-Mục nhập phải là **một tệp tự chứa đầy đủ**. Chỉ mục nhập được ghim digest, vì vậy một pack nhập các tệp cục bộ không thể thành thật khẳng định rằng digest bao gồm những gì chạy. Gộp lại trước (`esbuild`, `bun build`, `rollup`) và xây dựng pack từ bundle — `pack build` từ chối nhập cục bộ thay vì gửi một lời hứa mà nó không thể giữ.
+  Đổi tên một policy là một thay đổi phá vỡ đối với các lựa chọn hiện có. Giữ tên ổn định trên các bản phát hành.
 </Warning>
-
-## 2. Xây dựng release assets
-
-```bash
-failproofai pack build ./policies.mjs \
-  --id acme/support-agent \
-  --version 1.0.0 \
-  --out ./dist-pack
-```
-
-Nó viết ba tệp và xác thực mọi policy với **các quy tắc của chính trình tải** trước — vì vậy một pack không bao giờ có thể cài đặt sẽ thất bại tại đây, nơi bạn có thể sửa nó:
-
-| Tệp | Nó là gì |
-| --- | --- |
-| `failproofai-pack.json` | Manifest: id, version, effect, và một mục cho mỗi policy |
-| `failproofai-pack.mjs` | Mục nhập của bạn, nguyên văn |
-| `SHA256SUMS` | `<sha256>  <filename>` cho hai cái kia |
-
-Bị từ chối tại thời điểm xây dựng: một id không phải `publisher/name`, tên policy chứa `/`, policy khai báo `alwaysOn`, thiếu `description`, `category` hoặc `match`, mục nhập không đăng ký bất cứ điều gì, và mục nhập nhập các tệp cục bộ.
-
-## 3. Đính kèm chúng vào một release
-
-Gắn thẻ release với cùng version mà bạn đã xây dựng, và đính kèm cả ba tệp làm release assets:
-
-```bash
-gh release create 1.0.0 \
-  ./dist-pack/failproofai-pack.json \
-  ./dist-pack/failproofai-pack.mjs \
-  ./dist-pack/SHA256SUMS
-```
-
-Bất kỳ ai cũng có thể cài đặt nó ngay bây giờ:
-
-```bash
-failproofai pack add acme/support-agent
-```
-
-Tên asset được cố định — đó là những gì CLI của người tiêu dùng xây dựng URL từ, không có API call và không có discovery.
-
-## Gửi một phiên bản mới
-
-Xây dựng với `--version` mới, gắn thẻ release mới, đính kèm ba asset lại. Người tiêu dùng chạy cùng `pack add` và giữ bất kỳ tập hợp con nào họ đã chọn; một policy mà họ tắt sẽ vẫn tắt trong suốt quá trình nâng cấp.
-
-Thay đổi **name** của một policy là một breaking change: một máy đã tắt nó sẽ tắt một tên không còn tồn tại, và tên mới đến với bất kỳ `defaultEnabled` nào.
-
-## Những gì người dùng của bạn đang tin tưởng
-
-`SHA256SUMS` sống trong cùng release như artifact, vì vậy nó chứng minh các byte là những byte bạn đã xuất bản — không phải ai bạn. Bất kỳ ai có thể ghi vào kho lưu trữ đều có thể ghi cả hai tệp. Bảo vệ của người dùng bạn là digest được ghim khi họ cài đặt, vì vậy những gì bạn gửi không thể thay đổi dưới họ sau đó.
-
-Xuất bản từ một kho lưu trữ mà bạn kiểm soát quyền ghi, và coi một pack release giống như xuất bản một package.
-
-## Quan sát trước khi bạn thực thi
-
-Một manifest có thể khai báo `"effect": "observe"`. Những policies đó chạy và bản án của chúng được **ghi lại và loại bỏ** — không có gì bị chặn. Đó là cách để đo lường một quy tắc mới với lưu lượng thực tế trước khi nó có thể gián đoạn công việc của bất kỳ ai.
-
-```json
-{ "id": "acme/support-agent", "version": "1.1.0", "effect": "observe", "policies": [ ... ] }
-```

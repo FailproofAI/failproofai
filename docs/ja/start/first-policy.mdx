@@ -1,47 +1,69 @@
 ---
-title: "ポリシーで最初の失敗を防ぐ"
-description: "ポリシーのバージョンを作成し、オブザーブモードでデプロイして、その後強制適用します。"
+title: "最初の失敗を防ぐ"
+description: "レビュー済みのポリシーを有効にするか、独自のポリシーをテストしましょう。"
 icon: "shield-check"
 ---
 
-ポリシーを使用するのは、安全でないアクションと、引き続き許可すべき正当なアクションを明確に説明できるようになってからにしてください。
+まず、止めたい動作と、引き続き許可すべき正当なアクションを明確にしましょう。
 
-<Tabs>
-  <Tab title="ダッシュボード">
-    <Steps>
-      <Step title="ポリシーを作成する">
-        **Admin → policy editor** に移動します。デモポリシーから始め、ソースを確認または編集して、**publish version** を選択します。公開すると、マシンにデプロイできるイミュータブルなバージョンが作成されます。
+## まずレビュー済みのポリシーを試す
 
-        ![デモポリシーがイミュータブルなバージョンとして公開される準備が整ったポリシーエディターの作成ビュー。](/images/dashboard/policy-editor.png)
-      </Step>
-      <Step title="マシンにデプロイする">
-        **Admin → enforcement** に移動し、対象のマシンを展開して **edit this machine** を選択します。公開済みのデモポリシーを追加し、バージョンをピン留めして、**observe** を選択し、デプロイメントを適用します。
+```bash
+failproofai policies
+failproofai policies add block-rm-rf
+```
 
-        ![デプロイメントを適用する前に、オブザーブモードで公開済みポリシーバージョンが選択されたマシンデプロイメントエディター。](/images/dashboard/enforcement-editor.png)
-      </Step>
-      <Step title="ポリシーを検証する">
-        そのマシンで新しいエージェントセッションを実行し、**Observe → policy** を開きます。マシンを選択し、デモポリシーがポリシーマッピングと決定タイムラインに表示されることを確認します。オブザーブモードでは、アクションをブロックせずにポリシーが行う動作を記録します。
+Failproof AI には39個のレビュー済みポリシーが含まれています。新しいポリシーを書く前に[カタログ](/ja/policies/builtin-catalog)を確認してください。
 
-        ![決定の集計、時系列の強制適用アクティビティ、ローカルおよびクラウド管理のポリシーマッピングを表示するポリシーページ。](/images/dashboard/policy-observe.png)
-      </Step>
-    </Steps>
-  </Tab>
-  <Tab title="CLI">
-    クラウドでのポリシー作成とフリートへのデプロイは管理者向けのワークフローです。公開前に同じポリシーをローカルの CLI で検証するには、以下を使用します。
+## 独自のポリシーを作成してテストする
 
+<Steps>
+  <Step title="動作するポリシーを作成する">
     ```bash
-    failproofai policies --install --custom ./payment-retry.policies.ts \
-      --cli claude --scope project
-    failproofai config --status
+    failproofai publish --init guards.mjs
     ```
 
-    クラウドから参照できるポリシーの決定を確認するには `fp` を使用します。
-
+    これにより、`git push --force` をブロックするポリシーが生成されます。独自のルールに合わせて編集してください。
+  </Step>
+  <Step title="このマシンに適用する">
     ```bash
-    fp events --event-type hook_completed --env production --since 24h
-    fp sessions --env production --since 24h
+    failproofai policies -i -c ./guards.mjs
     ```
 
-    どちらのステップも CLI から実行できます。`fp policies publish <id> <file>` でバージョンを発行し、`fp fleet deploy <machine-id> --add <id>` でマシンに適用します。ダッシュボードでの対応操作はそれぞれ **Admin → policy editor** と **Admin → enforcement** です。
-  </Tab>
-</Tabs>
+    エージェントにブロック対象のアクションを実行させ、ローカルダッシュボードの **Policies → Activity** で結果を確認してください。
+  </Step>
+  <Step title="維持するか削除するか">
+    `.failproofai/policies/` 配下に `*policies.mjs` ファイルを配置すると、自動的に読み込まれます。
+
+    明示的に指定したカスタムファイルを削除するには：
+
+    ```bash
+    failproofai policies -u -c
+    ```
+  </Step>
+</Steps>
+
+## 公開する
+
+パブリックパックを公開するには：
+
+```bash
+failproofai publish
+```
+
+公開後は `failproofai policies add <owner>/<repo>` でインストールできます。[Policy Hub](https://befailproof.ai/policy-hub/) にインデックスされるよう、GitHub トピックに `failproofai-policies` を自分で追加してください。
+
+クラウドへのロールアウトには：
+
+```bash
+fp policies publish checkout-guard ./guards.mjs
+fp fleet deploy <machine> --add checkout-guard:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add checkout-guard:enforce
+```
+
+<Warning>
+  `--add checkout-guard` を単体で使用すると即座に強制適用されます。エージェントをブロックせずにポリシーの動作を記録するには `:observe` を付けてください。
+</Warning>
+
+詳細なワークフローについては、[パックの公開](/ja/policies/publish-a-pack)または[ポリシーのデプロイ](/ja/policies/deploy)を参照してください。

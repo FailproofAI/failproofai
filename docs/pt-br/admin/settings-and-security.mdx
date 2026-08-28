@@ -1,68 +1,37 @@
 ---
 title: "Configurações e segurança"
-description: "Configure definições operacionais e tome decisões sobre os dados do agente."
-icon: "lock-keyhole"
+description: "Controle os padrões da organização, o tratamento de dados e as credenciais de máquinas."
+icon: "shield"
 ---
 
-Use as Configurações para valores operacionais específicos de implantação e substituições de janela de contexto do modelo. Inspecione o esquema de configurações antes de alterar um valor pela API ou CLI.
+As configurações da organização afetam todos os membros dessa organização no Cloud. Altere-as em **Admin → settings** ou com `fp settings`.
 
-## Alterar uma configuração da organização
+```bash
+fp settings list
+fp settings set <key> <value>
+```
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. Acesse **Administração → Configurações**, localize o grupo de configurações e leia sua descrição e fonte atual.
-    2. Altere o valor e salve.
-    3. Para janelas de contexto de modelos, adicione ou atualize a substituição do modelo e confirme o limite efetivo.
-    4. Verifique novamente as sessões e métricas que dependem do valor alterado.
+## Tratamento de dados
 
-    ![A página de Configurações exibindo autenticação da organização e definições operacionais.](/images/dashboard/settings.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp settings list
-    fp settings schema
-    fp settings set <key> --value <scalar>
-    fp settings set alerts.email_default_recipients \
-      --json-value '["oncall@example.com"]'
-    ```
+Por padrão, uma máquina conectada envia decisões de política e transcrições completas de sessão. Para enviar apenas as decisões, defina `collector.sessions` como `false` no arquivo `~/.failproofai/config.json` da máquina após a conexão. A flag de configuração `--no-transcripts` não aplica essa configuração.
 
-    Execute `fp settings set --help` para o tipo de valor e as flags de confirmação usadas pela CLI instalada.
-  </Tab>
-</Tabs>
+As credenciais são removidas na máquina antes do envio, mas a redação é uma camada de segurança mínima — não um substituto para controle de acesso.
 
-## Escolhas sobre tratamento de dados
+O uso exclusivamente local não requer uma conta. O histórico de sessões e as auditorias permanecem na máquina, exceto que auditorias locais agendadas enviam a identidade da máquina e um resumo limitado após você optar por isso. A telemetria anônima da CLI pode ser desativada com `FAILPROOFAI_TELEMETRY_DISABLED=1`.
 
-Conectar o CLI do Failproof AI envia transcrições por padrão, pois rastreamentos e auditorias dependem do conteúdo delas. Use `--no-transcripts` quando prompts, conteúdos de arquivos ou entradas de terminal precisam permanecer locais; a atividade de hooks e as decisões de políticas ainda podem ser reportadas.
+## Credenciais
 
-As credenciais de ingestão local são armazenadas separadamente das configurações do daemon não secretas e gravadas com permissões restritivas. As chaves de API ainda devem ser gerenciadas como segredos de produção.
+Os tokens de máquina são armazenados em `~/.failproofai/` com permissões exclusivas do proprietário. Eles não são gravados na definição do serviço.
 
-## Referência de configurações da organização
+Use chaves separadas para pessoas, automações e máquinas. Conceda a cada uma apenas as permissões necessárias, faça a rotação ao mudar de responsável e revogue ao desativar a máquina ou o fluxo de trabalho.
 
-Todas as configurações editáveis pelo dashboard têm escopo de organização. O comportamento em toda a implantação permanece como configuração do ambiente do servidor.
+## Lista de verificação
 
-| Chave | Padrão | Finalidade |
-| --- | --- | --- |
-| `allowed_sign_ins` | `[]` | Restringe membros existentes a e-mails exatos ou `*@domínio`; uma lista vazia significa nenhuma restrição adicional. |
-| `session_ttl_secs` | `86400` | Tempo de vida da sessão no dashboard; o intervalo aceito é de 60 segundos a 30 dias. |
-| `otp_ttl_secs` | `600` | Tempo de vida do OTP e magic link; o intervalo aceito é de 60 a 1800 segundos. |
-| `alerts.email_default_recipients` | `[]` | Destinatários padrão quando um canal de e-mail de alerta não os substitui. |
-| `alerts.slack_default_webhook` | vazio | URL padrão do webhook de entrada do Slack. |
-| `alerts.webhook_default_url` | vazio | URL padrão de webhook JSON genérico. |
-| `alerts.webhook_signing_secret` | vazio | Chave HMAC-SHA256 usada para o cabeçalho `X-AgentEye-Signature`; leituras são mascaradas. |
-| `alerts.enabled_channels` | e-mail, Slack, webhook | Tipos de canais em nível de organização que as regras de alerta podem despachar. |
-| `default_user_permissions` | `standard` | Conjunto de permissões pré-selecionado para novos convites. |
+- Exija as permissões mínimas necessárias.
+- Defina `collector.sessions` como `false` onde o conteúdo completo não for necessário.
+- Revise quem pode implantar políticas de aplicação.
+- Teste as políticas no modo de observação antes de aplicá-las.
+- Mantenha os rótulos de máquinas claros e os IDs de máquinas estáveis.
+- Execute `failproofai config --status` após alterar as configurações de conexão.
 
-`allowed_sign_ins` é um filtro, não uma concessão: a pessoa já deve ser membro da organização. Use uma lista vazia para permitir todos os membros; o valor simples `*` é rejeitado. As URLs de alerta devem usar HTTPS, exceto para endereços de loopback em desenvolvimento.
-
-## Lista de verificação de segurança
-
-- Use HTTPS para conexões com a nuvem.
-- Restrinja as chaves ao menor conjunto de permissões possível.
-- Separe os ambientes de produção e não produção.
-- Revise as configurações de transcrição e redação antes da implantação.
-- Audite alterações de usuários, chaves e organizações.
-- Teste os requisitos de backup, retenção e resposta a incidentes para sua implantação.
-
-<Warning>
-  Desativar a captura de transcrições altera o que auditorias e investigações podem comprovar. Registre a decisão e suas limitações esperadas.
-</Warning>
+Consulte [chaves e permissões](/pt-br/admin/keys-and-permissions) para o catálogo de permissões.

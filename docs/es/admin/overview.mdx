@@ -1,22 +1,30 @@
 ---
 title: "Administración"
-description: "Gestiona el acceso, el uso, las organizaciones y la seguridad sin mezclarlos con el flujo de trabajo de fiabilidad."
+description: "Gestiona el acceso a Cloud, membresías, configuraciones y consumo sin mezclarlos con el flujo de trabajo de fiabilidad."
 icon: "settings-2"
 ---
 
-Administración contiene los controles necesarios para ejecutar Failproof AI en todo un equipo. La mayoría de los usuarios pueden quedarse en Sesiones, Auditorías y Políticas; los administradores utilizan esta sección para gestionar el acceso y los límites operativos.
+La administración es la mitad Cloud de Failproof AI. Las organizaciones, miembros, claves API, configuraciones de la organización y el consumo medido requieren una conexión a Cloud.
+
+<Note>
+  Failproof AI también funciona sin ninguna cuenta. Una máquina local aplica políticas, mantiene el historial de sesiones en disco, sirve el [panel local](/es/reference/local-dashboard) en `localhost:8020` y ejecuta `failproofai audit` sin enviar nada a ningún lugar. Consulta la [configuración de máquina](/es/reference/events-and-configuration#machine-configuration) para las claves locales de `collector`. Omite el resto de esta sección si no usas Cloud.
+</Note>
+
+## Dónde se encuentran los controles
 
 <Tabs>
-  <Tab title="Panel de control">
-    Usa la sección **Admin** de la barra lateral en la nube para acceder al **editor de políticas**, **aplicación**, **uso**, **claves**, **usuarios** y **configuración**. Un elemento bloqueado indica que a tu cuenta le falta el permiso de lectura correspondiente.
+  <Tab title="Panel">
+    El grupo **admin** en la barra lateral de Cloud contiene el **editor de políticas**, **aplicación**, **uso**, **claves**, **usuarios** y **configuración**.
 
-    ![La sección Admin de la barra lateral en la nube con editor de políticas, aplicación, uso, claves, usuarios y configuración.](/images/dashboard/admin-navigation.png)
+    ![El grupo admin de la barra lateral de Cloud con editor de políticas, aplicación, uso, claves, usuarios y configuración.](/images/dashboard/admin-navigation.png)
   </Tab>
   <Tab title="CLI">
+    Instala el CLI de Cloud como herramienta independiente y luego inicia sesión:
+
     ```bash
+    uv tool install fp-cloud-cli
+    fp login
     fp whoami
-    fp orgs current
-    fp orgs perms
     fp usage
     ```
 
@@ -24,17 +32,43 @@ Administración contiene los controles necesarios para ejecutar Failproof AI en 
   </Tab>
 </Tabs>
 
+## Usuario autenticado o clave API
+
+`fp` opera en uno de dos modos de autenticación, y esta distinción determina qué comandos funcionan. Un comando que una clave API no puede ejecutar rechaza la operación antes de abrir una conexión e indica el motivo, en lugar de dejar que un error 401 o 403 lo explique.
+
+| Comando | Clave API | Permiso |
+| --- | --- | --- |
+| `fp whoami` | Sí | ninguno |
+| `fp usage` | Sí | `usage:read` |
+| `fp keys list` / `show` | Sí | `keys:read` |
+| `fp keys create` | Sí | `keys:create` |
+| `fp keys disable` | Sí | `keys:disable` |
+| `fp keys regenerate` | Sí | `keys:regenerate` |
+| `fp keys update` | No | `keys:update`, que ninguna clave puede tener |
+| `fp users list` / `show` | Sí | `users:read` |
+| `fp users create` | Sí | `users:create` |
+| `fp users update` | Sí | `users:update` |
+| `fp users disable` / `enable` | Sí | `users:delete` |
+| `fp settings list` / `schema` | Sí | `settings:read` |
+| `fp settings set` | Sí | `settings:write` |
+| `fp orgs list` / `switch` / `current` / `perms` | No | solo sesión autenticada |
+
+`fp usage` es el comando indicado para scripts de informes: se ejecuta de forma desatendida con una clave y solo necesita `usage:read`.
+
 <Columns cols={2}>
-  <Card title="Uso" icon="chart-no-axes-combined" href="/es/admin/usage">
-    Inspecciona los períodos de facturación y el consumo de la organización.
-  </Card>
   <Card title="Claves y permisos" icon="key-round" href="/es/admin/keys-and-permissions">
-    Otorga a las máquinas y la automatización únicamente los permisos que necesitan.
+    Genera las credenciales de máquina y asigna a cada carga de trabajo únicamente los permisos que necesita.
   </Card>
   <Card title="Usuarios y organizaciones" icon="users" href="/es/admin/users-and-organizations">
-    Gestiona la membresía, los valores predeterminados y los límites de la organización.
+    Gestiona membresías y mantiene los datos y acciones de cada organización correctamente delimitados.
   </Card>
   <Card title="Configuración y seguridad" icon="lock-keyhole" href="/es/admin/settings-and-security">
-    Configura los ajustes operativos, el manejo de datos y la seguridad del despliegue.
+    Define los valores de inicio de sesión y alertas, y decide qué datos del agente salen de la máquina.
+  </Card>
+  <Card title="Uso" icon="chart-no-axes-combined" href="/es/admin/usage">
+    Consulta lo que la organización ha consumido durante su ventana actual de 30 días.
+  </Card>
+  <Card title="Cobertura de flota" icon="network" href="/es/policies/fleet">
+    Consulta qué máquinas están registradas, cómo se identifican y qué políticas aplican.
   </Card>
 </Columns>

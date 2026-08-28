@@ -1,149 +1,135 @@
 ---
 title: "Failproof AI CLI"
-description: "Установите hooks, управляйте локальными политиками, подключитесь к Cloud и управляйте локальным daemon."
+description: "Настройте машину, управляйте политиками, проверяйте локальную активность и подключитесь к облаку."
 icon: "terminal"
 ---
 
-Установите локальный CLI с помощью `npm install -g failproofai`. Запустите его без аргументов, чтобы открыть локальную панель управления политиками.
+Установите с помощью `npm install -g failproofai`. Запустите `failproofai` без аргументов, чтобы открыть локальный панель управления.
 
-Пакет требует Node.js 20.9 или новее. Bun 1.3 или новее поддерживается для разработки и установки из исходного кода. `failproofai configure` и `failproofai setup` являются псевдонимами для `failproofai config`; `failproofai p` является псевдонимом для `failproofai policies`.
+## Основные команды
+
+| Команда | Что она делает |
+| --- | --- |
+| `failproofai config` | Настройте агентов, фоновый сервис и дополнительное подключение к облаку |
+| `failproofai config --token <key>` | Настройка и подключение без вопросов |
+| `failproofai config --status` | Показать статус подключения, версию сервиса и состояние паузы |
+| `failproofai policies` | Список политик и их статус включения |
+| `failproofai policies add <name>` | Включить одну политику |
+| `failproofai policies add <owner>/<repo>` | Установить пакет политик |
+| `failproofai policies remove <name-or-pack>` | Отключить политику или удалить пакет |
+| `failproofai policies show <owner>/<repo>` | Проверить пакет перед установкой |
+| `failproofai publish` | Опубликовать ваши политики как пакет |
+| `failproofai audit` | Сканировать локальную историю агента |
+| `failproofai harness` | Управление дополнительными местоположениями сеансов |
+| `failproofai flush` | Отправить очередные события немедленно |
+| `failproofai backfill` | Перечитать более старую историю агента |
+| `failproofai update` | Завершить обновление npm и обновить сервис |
+| `failproofai uninstall` | Удалить хуки и сервис |
+
+`policy`, `pack` и `p` также являются допустимыми сокращениями для `policies`, но документация использует `policies`.
 
 ## Настройка машины
 
 ```bash
 npm install -g failproofai
-failproofai config \
-  --connect https://app.befailproof.ai \
-  --token <machine-key> \
-  --machine-label checkout-prod-01
-failproofai policies --install
+failproofai config
+failproofai policies add FailproofAI/policies
 failproofai config --status
 ```
 
-Запустите `failproofai` без аргументов, чтобы открыть локальную панель управления политиками.
+Во время установки пакет политик не выбирается. Пока вы его не добавите, работает только `block-failproofai-commands`.
 
-| Команда | Результат |
-| --- | --- |
-| `failproofai config` | Запустить интерактивную настройку машины |
-| `failproofai config --connect <url> --token <key>` | Подключить Cloud ingestion и доставку политик |
-| `failproofai config --status` | Показать состояние подключения, daemon, доставки и паузы |
-| `failproofai policies` | Список встроенных, пользовательских, соглашений, пакетов и управляемых Cloud политик |
-| `failproofai policies --install` | Установить hooks и включить политики |
-| `failproofai policy add <name>` | Включить одну политику — встроенную или `<pack-id>:<name>` из установленного пакета |
-| `failproofai policy remove <name>` | Отключить одну политику, аналогичное именование |
-| `failproofai policies --uninstall` | Отключить политики или удалить hooks harness |
-| `failproofai pack list` | Список установленных пакетов политик и всех политик в каждом |
-| `failproofai pack add <source>` | Установить пакет политик из GitHub release; отсутствие тега выбирает новейший и закрепляет его |
-| `failproofai pack add --bundled` | Установить встроенные политики как пакет из этого пакета без сетевого доступа |
-| `failproofai pack build <entry.mjs>` | Собрать три ресурса release для вашего собственного пакета |
-| `failproofai pack remove <publisher/name>` | Деактивировать установленный пакет |
-| `failproofai audit` | Сканировать локальную историю агента и открыть локальный audit view |
-| `failproofai audit --schedule [days] --email <address>` | Планировать повторяющиеся локальные сканирования и отправлять их результаты по email |
-| `failproofai audit --status` | Показать адрес отчета, интервал и следующее запланированное сканирование |
-| `failproofai audit --no-schedule` | Остановить повторяющиеся сканирования без удаления истории аудита |
-| `failproofai harness list` | Список дополнительных путей захвата |
-| `failproofai flush --wait` | Доставить текущий event spool |
-| `failproofai backfill --since 30d` | Перечитать ранее пройденную историю |
-| `failproofai config --pause [duration]` | Приостановить одну локальную сессию на 30 минут по умолчанию, до 8 часов |
-| `failproofai config --resume` | Возобновить одну приостановленную локальную сессию; добавьте `--all` для очистки всех пауз |
-| `failproofai update` | Завершить миграции пакетов и обновить daemon |
-| `failproofai migrate --dry-run` | Предпросмотреть или выполнить ожидающие миграции home-layout |
-| `failproofai uninstall` | Удалить hooks и daemon перед удалением пакета |
-| `failproofai --version` | Вывести версию установленного пакета |
-| `failproofai --help` | Показать команды и глобальное использование |
+Для автоматизированной настройки облака:
 
-## Флаги конфигурации
+```bash
+export FAILPROOFAI_CLOUD_TOKEN="<key>"
+failproofai config
+```
+
+Чтобы отправлять решения без записей транскриптов, сначала подключитесь и установите `collector.sessions` на `false` в `~/.failproofai/config.json`. Текущий флаг `--no-transcripts` при установке анализируется, но не применяет этот параметр.
+
+Используйте `--machine-label <name>` после подключения машины, чтобы переименовать её. `--connect <url>` — это более узкая команда только для регистрации машины, уже настроенной.
+
+## Политики и пакеты
+
+```bash
+failproofai policies
+failproofai policies add block-sudo
+failproofai policies show owner/repo
+failproofai policies add owner/repo --category git,database
+failproofai policies remove owner/repo
+```
+
+Всё со слэшем — это источник пакета; всё без слэша — это имя политики.
+
+Полезные флаги выбора пакета:
 
 | Флаг | Использование |
 | --- | --- |
-| `--connect <url> --token <key>` | Подключение без интерактивного режима |
-| `--machine-id <id>` | Установить стабильный ID машины |
-| `--machine-label <name>` | Установить или изменить ярлык панели |
-| `--no-transcripts` | Отправлять решения без содержимого транскрипта |
-| `--disconnect` | Остановить Cloud policy pulls и доставку событий |
-| `--status` | Показать текущее состояние машины |
-| `--pause [duration]` | Приостановить новую сессию в текущей директории; принимает секунды, минуты или часы и по умолчанию составляет 30 минут |
-| `--resume` | Завершить соответствующую паузу раньше |
-| `--session <id>` | Целевая явная сессия для паузы или возобновления |
-| `--all` | С `--resume`, завершить все активные паузы |
+| `--policy a,b` | Выбрать именованные политики |
+| `--category x,y` | Выбрать категории |
+| `--all` | Выбрать всё |
+| `--cli <agents...>` | Ограничить именованными harness |
 
-Локальные паузы приостанавливают встроенные, пользовательские, соглашения и пакетные политики для одной сессии. Они всегда истекают и не отключают управляемые Cloud политики. `block-failproofai-commands` — который всегда включен и не может быть отключен или приостановлен сам по себе — предотвращает использование этого лазейки инструментированным агентом.
+Используйте `failproofai policies -i -c <path>` для загрузки пользовательской политики из любого пути. Файлы соглашений с именами `*policies.{js,mjs,ts}` в `.failproofai/policies/` загружаются автоматически.
 
-## Флаги политик
-
-| Флаг | Использование |
-| --- | --- |
-| `--install`, `-i` | Включить политики и установить hooks harness |
-| `--uninstall`, `-u` | Отключить политики или удалить hooks |
-| `--cli <names...>` | Целевой один или несколько поддерживаемых harnesses |
-| `--scope user\|project\|local\|all` | Выбрать scope конфигурации; `all` для uninstall |
-| `--beta` | Включить бета политики |
-| `--custom`, `-c <path>` | Валидировать и загрузить пользовательский файл политики; повторяемо |
-
-## Флаги доставки и обслуживания
-
-| Команда | Флаги |
-| --- | --- |
-| `backfill` | `--since <30d\|6m\|YYYY-MM-DD>`, `--dry-run` |
-| `flush` | `--wait`, `--timeout <seconds>` |
-| `update` | `--no-daemon` |
-| `migrate` | `--dry-run` |
-| `uninstall` | `--purge`, `--dry-run`, `--yes` |
-
-`failproofai update` следует запускать после `npm install -g failproofai@latest`; он выполняет миграции home-layout, устанавливает соответствующий binary daemon и перезапускает сервис. `--no-daemon` выполняет только миграцию layout.
-
-## Пути Harness
-
-```text
-failproofai harness list [harness]
-failproofai harness add-path <harness> [label=]<path>
-failproofai harness remove-path <harness> <path-or-label>
-```
-
-Поддерживаемые имена harness: `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity` и `goose`.
-
-Ярлыки создают namespace производных ID агентов, когда два корня содержат копии одного проекта. Перекрывающиеся корни и дублирующиеся ярлыки отклоняются для предотвращения дублирования сбора или повреждения курсора. Конфигурация дополнительного пути перезагружается без перезагрузки daemon.
-
-Окружение контейнеров может заменить сконфигурированные в файлах дополнительные пути переменной, разделенной запятыми, с именем `FAILPROOFAI_<HARNESS>_EXTRA_PATHS`, например:
+## Пауза в принудительном применении
 
 ```bash
-export FAILPROOFAI_OPENCLAW_EXTRA_PATHS="user1=/srv/openclaw-a,user2=/srv/openclaw-b"
-```
-
-## Переменные окружения
-
-Используйте файлы конфигурации для постоянного поведения машины. Переменные окружения наиболее полезны для контейнеров, тестов и одного процесса.
-
-| Переменная | Использование |
-| --- | --- |
-| `FAILPROOFAI_HOME` | Переместить полный layout `~/.failproofai` |
-| `FAILPROOFAI_LOG_LEVEL` | Установить verbosity локального логирования |
-| `FAILPROOFAI_HOOK_LOG_FILE` | Записать диагностику hook в выбранный файл |
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Отключить анонимную телеметрию для этого процесса |
-| `FAILPROOFAI_NO_FIRST_RUN=1` | Пропустить интерактивную настройку при первом запуске |
-| `FAILPROOFAI_NO_AUTO_AUDIT=1` | Пропустить локальный аудит после настройки |
-| `FAILPROOFAI_LLM_BASE_URL` | Переопределить используемую LLM политиками совместимую с OpenAI конечную точку |
-| `FAILPROOFAI_LLM_API_KEY` | Предоставить API ключ, используемый LLM политиками |
-| `FAILPROOFAI_LLM_MODEL` | Выбрать модель, используемую LLM политиками |
-| `FAILPROOFAI_POLICY_LOAD_TIMEOUT_MS` | Ограничить загрузку модуля пользовательской политики |
-| `FAILPROOFAI_NO_DOWNLOAD=1` | Отказать в загрузке пакетов и binaries daemon; установленное остается в работе |
-| `FAILPROOFAI_PACK_BASE_URL` | Загружать пакеты с зеркала вместо `github.com` |
-| `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` | Заменить сконфигурированные дополнительные пути захвата для одного harness |
-| `NO_COLOR` | Отключить цветной вывод терминала |
-
-Переменные home, специфичные для агента, такие как `CLAUDE_PROJECTS_PATH`, `CURSOR_HOME`, `HERMES_HOME` и `OPENCLAW_HOME`, переопределяют место, где Failproof AI обнаруживает локальные сессии для этого harness.
-
-## Безопасно приостановить или удалить машину
-
-```bash
-failproofai config --pause
+failproofai config --pause 10m
 failproofai config --status
 failproofai config --resume
 ```
 
-Локальная пауза сессии не отключает управляемые Cloud политики. Восстановите Cloud deployments через Cloud enforcement workflow, когда сам rollout является проблемой.
+Пауза применяется к одному локальному сеансу и всегда истекает. Она не паузирует облачные политики или `block-failproofai-commands`.
 
-Перед удалением npm пакета удалите установленные hooks и daemon:
+## Аудит и доставка
+
+```bash
+failproofai audit
+failproofai audit --schedule 7 --email team@example.com
+failproofai audit --status
+failproofai flush --wait
+failproofai backfill --since 30d --dry-run
+```
+
+`backfill` читает `~/.failproofai/config.json`. Удалите `--dry-run`, чтобы отправить историю снова.
+
+## Дополнительные местоположения сеансов
+
+```bash
+failproofai harness list
+failproofai harness add-path claude work=/srv/team/.claude/projects
+failproofai harness remove-path claude work
+```
+
+Метки предотвращают объединение сеансов из двух скопированных домов под одним выведенным ID агента.
+
+Поддерживаемые harness: `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity` и `goose`. Поддержка области действия различается; см. [Harnesses](/ru/reference/harnesses).
+
+## Полезные переменные окружения
+
+| Переменная | Использование |
+| --- | --- |
+| `FAILPROOFAI_CLOUD_TOKEN` | Облачный ключ машины |
+| `FAILPROOFAI_CLOUD_URL` | Переопределить URL облака |
+| `FAILPROOFAI_HOME` | Перемещение локального каталога состояния |
+| `FAILPROOFAI_NO_DOWNLOAD=1` | Отказать в загрузке пакетов и сервиса |
+| `FAILPROOFAI_DAEMON_BASE_URL` | Использовать зеркало бинарного файла сервиса |
+| `FAILPROOFAI_PACK_BASE_URL` | Использовать зеркало пакетов |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | Отключить подсказки при первом запуске |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Отключить анонимную телеметрию CLI |
+| `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` | Заменить дополнительные пути для одного harness |
+| `NO_COLOR` | Отключить цвет терминала |
+
+## Удаление или обновление
+
+```bash
+npm install -g failproofai@latest
+failproofai update
+```
+
+Перед удалением пакета:
 
 ```bash
 failproofai uninstall --dry-run
@@ -151,8 +137,8 @@ failproofai uninstall --yes
 npm rm -g failproofai
 ```
 
-Запустите `failproofai <command> --help` для версионно-специфичных деталей.
-
 <Warning>
-  Запустите `failproofai uninstall` перед `npm rm -g failproofai`; npm не удаляет установленные agent hooks и сервис daemon.
+  Запустите `failproofai uninstall` перед удалением npm пакета. npm не удаляет установленные хуки и фоновый сервис.
 </Warning>
+
+Запустите `failproofai help <command>` для просмотра полного набора опций в вашей установленной версии.

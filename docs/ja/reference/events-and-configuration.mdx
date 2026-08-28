@@ -4,38 +4,49 @@ description: "イベントモデル、環境、ローカルストレージ、設
 icon: "list-tree"
 ---
 
+## 2種類のイベント体系
+
+Failproof AI には2種類のイベントがあり、名前が重複することはありません。
+
+| 体系 | 生成元 | 名前の形式 | リファレンス |
+| --- | --- | --- | --- |
+| テレメトリーイベント | `failproofai-sdk`（エージェント内部から） | `tool_use`, `tool_result`, `hook_triggered`, `model_response` | [Python SDK](/ja/reference/custom-agents) |
+| フックイベント | エージェントハーネス（failproofai が正規化） | `PreToolUse`, `PostToolUse`, `Stop`, `UserPromptSubmit` | [カスタムポリシー](/ja/reference/policy-sdk#choose-the-event) |
+
+フック側は、あらゆるハーネス固有のイベント名を29種類の標準タイプに正規化します。テレメトリー側には15のメソッドと独自のフィールド仕様があります。`hook_triggered` と `PreToolUse` は同じものの別名ではありません。
+
 ## イベントファミリー
 
-- エージェントの開始、終了、一時停止、再開
+- エージェントの開始・終了・一時停止・再開
 - モデルのリクエストとレスポンス
 - ツールの使用と結果
 - フックのトリガーと完了
-- 人間の待機、入力、一時停止、割り込み
+- 人間の待機・入力・一時停止・中断
 - 明示的なエラー
 
-すべてのイベントには、タイムスタンプ、セッションID、エージェントID、イベントタイプ、および環境が含まれます。イベント固有のフィールドには、モデル、ツール、相関、結果、コンテンツ、継続時間、またはエラーのデータが含まれます。
+すべてのイベントには、タイムスタンプ、セッションID、エージェントID、イベントタイプ、環境が含まれます。イベント固有のフィールドには、モデル、ツール、相関、結果、コンテンツ、所要時間、エラーのデータが含まれます。
 
-## イベントコントラクトを調べる
+## イベント仕様の確認
 
 <Tabs>
   <Tab title="ダッシュボード">
     1. **Observe → Events** を開きます。
-    2. 短い時間範囲を設定し、環境、エージェント、イベントタイプでフィルタリングします。
-    3. イベントを選択して正規化されたフィールドと生のペイロードを確認し、セッションを開いて実行コンテキストを確認します。
-    4. ペアの継続時間が見つからない場合は、開始イベントと完了イベントが同じ相関IDを使用しているか確認してください。
+    2. 短い時間範囲を設定し、環境・エージェント・イベントタイプでフィルタリングします。
+    3. イベントを選択して正規化されたフィールドと生のペイロードを確認し、そのセッションを開いて実行コンテキストを確認します。
+    4. ペアとなる所要時間が見当たらない場合は、開始イベントと完了イベントが同じ相関IDを使用しているか確認してください。
 
-    Eventsストリームを使用してデータを1つのエージェント実行に絞り込み、正規化されたイベントフィールドを調べます。
+    Eventsストリームを使って、特定のエージェント実行にデータを絞り込み、正規化されたイベントフィールドを確認します。
 
-    ![環境、エージェント、セッション、イベントタイプのフィルターが付いたライブEventsストリーム。](/images/dashboard/events-stream.png)
+    ![環境・エージェント・セッション・イベントタイプのフィルター付きリアルタイムEventsストリーム](/images/dashboard/events-stream.png)
 
-    次に、イベントからそのセッションへと進みます。トレースには、そのイベントの直前と直後に何が起きたかが表示されます。これは、ペイロードだけでは判断が難しい場合に必要な情報です。
+    次に、イベントからセッションへと追跡します。トレースには直前と直後に何が起きたかが示され、ペイロードだけでは判断が難しい場合に有用です。
 
-    ![実行コンテキストでイベントを調べるために使用されるリンクされたセッショントレース。](/images/dashboard/session-detail.png)
+    ![実行コンテキストでイベントを確認するためのリンクされたセッショントレース](/images/dashboard/session-detail.png)
 
-    ペアになったイベントや継続時間が見つからない場合は、両方のビューで相関IDとタイムスタンプを比較してください。
+    ペアとなるイベントや所要時間が見当たらない場合は、両方のビューで相関IDとタイムスタンプを比較してください。
   </Tab>
   <Tab title="CLI">
-    有効なフィルター値を確認し、1つのセッションのイベントペイロード全体を取得します：
+    有効なフィルター値を調べてから、1セッション分のイベントペイロードをすべて取得します：
 
     ```bash
     fp list event_types
@@ -51,34 +62,105 @@ icon: "list-tree"
   </Tab>
 </Tabs>
 
-## 予約済みSDKフィールド
+## SDK の予約フィールド
 
-`timestamp`、`session_id`、`agent_id`、`type`、`environment` をカスタムPython SDKフィールドとして使用しないでください。ツール結果の継続時間などのペアイベントの継続時間はSDKによって計算されるため、手動で設定することはできません。
+以下の5つの名前は、SDKがすべてのイベントに設定するため、カスタムフィールドとして使用できません：
+
+`timestamp`, `session_id`, `agent_id`, `type`, `environment`
+
+さらに11の名前は受け付けられますが、型チェックが行われます。インジェストエンドポイントがこれらをペイロードから取り出して型付きカラムに格納しており、型が不正な場合は `NULL` として無音で保存されるためです。SDKは、値を生成した場所（コールサイト）で例外を発生させます。
+
+| 名前 | 要求される型 |
+| --- | --- |
+| `duration_ms`, `input_tokens`, `output_tokens` | `int`（符号なし32ビット範囲内）。float または bool は例外を発生させます。 |
+| `tool_name`, `tool_call_id`, `hook_name`, `hook_id`, `input_id`, `pause_id`, `error_type`, `model` | `str`。`None` は例外を発生させます。`None` だとそのフィールドのすべてのフィルターから行が見えなくなるためです（ただし 200 OK でレスポンスは返ります）。 |
+
+### 所要時間
+
+SDKは4つのペアイベント間の時間差を自動計測し、手動で `duration_ms` を渡すことはできません：`tool_use` → `tool_result`、`hook_triggered` → `hook_completed`、`agent_pause` → `agent_resume`、`human_wait` → `human_input`。
+
+`model_response` は例外です。SDKはモデル呼び出しの時間を計測しないため、ミリ秒単位の整数で `duration_ms` を自分で指定します。ペアのマッチング方法については[相関ルール](/ja/reference/custom-agents)を参照してください。
 
 ## ローカルの境界
 
-- Failproof AI の状態は、明示的に別の設定をしない限り `~/.failproofai` 以下に保存されます。
-- `failproofai-sdk` は常に `~/.failproofai/custom-agents` にスプールします。`FAILPROOFAI_HOME` でホームディレクトリを変更できますが、`custom-agents` セグメントは常に追加されるため、スプールをその外に配置することはできません。SDKの `configure(base_dir=...)` のみが別の場所に書き込みます。`AGENTEYE_HOME` は古い `agenteye-collector` が監視対象を決定するために読み取るものであり、SDKの書き込み先には影響しません。
-- 環境ラベルはSDK設定または `AGENTEYE_ENVIRONMENT` で設定できます。
-- デーモンの認証情報は、非シークレット設定とは別に保存されます。
+- Failproof AI の状態は、明示的に変更しない限り `~/.failproofai` に保存されます。
+- `failproofai-sdk` は常に `~/.failproofai/custom-agents` にスプールします。`FAILPROOFAI_HOME` でホームの場所を変更できますが、`custom-agents` セグメントは常に末尾に付加されるため、スプールをその外に配置することはできません。SDKの `configure(base_dir=...)` だけが別の場所に書き込めます。`AGENTEYE_HOME` は古い `agenteye-collector` が監視対象の場所を決定するために読み取るものであり、SDKの書き込み先には影響しません。
+- 認証情報は `~/.failproofai/credentials.json` に `0600` で書き込まれます。`config.json` には意図的に含まれていません。`config.json` は通常の書き込みで作成されて umask を引き継ぐため、ローカルのすべてのユーザーが読めるようになります。
 
-安定した、カーディナリティの低い環境名を使用してください。デーモンの環境ラベルにカンマは使用できません。
+環境名には安定した低カーディナリティのものを使用してください。カンマはどちらの書き込み側でも拒否されます：デーモンは `collector.environment` でカンマを拒否し、SDKは `configure(environment=...)` で例外を発生させます。理由は両側で同じです。インジェストエンドポイントがこのフィールドをカンマで分割し、行全体をスキップしながら `200 OK` を返し、何も保存しないためです。
 
-## 環境ラベルを変更する
+## マシン設定
+
+デーモンの非シークレット設定は `~/.failproofai/config.json` です。`hooks_verbosity`、`redact`、`environment` にはCLIフラグがなく、ファイルを直接編集する必要があります。`sessions`、`hooks`、`machine_id` は、このマシンをCloudに接続する際に `failproofai config` が書き込みます。
+
+| キー | 値 | デフォルト | 制御内容 |
+| --- | --- | --- | --- |
+| `collector.sessions` | `true` / `false` | `false`（Cloudに接続すると `true`） | エージェントセッションのトランスクリプトを送信します。トランスクリプトにはプロンプト、ファイルの内容、ターミナルに貼り付けた内容が含まれます。 |
+| `collector.hooks` | `true` / `false` | `true` | フックアクティビティを送信します。決定事項とツール名が含まれますが、ファイルの内容は含まれません。 |
+| `collector.hooks_verbosity` | `all` / `decisions` / `off` | `decisions` | `decisions` は deny と instruct をすべて正確に保持し、約99%を占める allow を集約します。 |
+| `collector.redact` | `minimal` / `off` | `minimal` | マシンからデータが送出される前に適用されるリダクション。 |
+| `collector.environment` | カンマを含まない任意の文字列 | `local` | このマシンが送信するすべてのイベントに付与されるラベル。 |
+| `collector.machine_id` | 任意の文字列 | ディスク上に既存のIDがあればそれを使用、なければ新しいランダムUUID | ダッシュボードがこのデータをグループ化するマシンを識別します。`--machine-id` で書き込まれます。ホスト名からは導出されません。 |
+
+<Note>
+  `failproofai backfill --help` は `~/.failproofai/config.toml` を参照しています。これは以前のホームレイアウトの古いパスであり、現在のビルドはこのファイルを書き込みません。正しいファイルは `config.json` です。
+</Note>
+
+Cloudへの接続では、ポリシーの決定とセッションのトランスクリプト全体の両方が送信されます。
+
+<Warning>
+  `--no-transcripts` は、セットアップ時にトランスクリプトを無効にしません。`failproofai config --token <key> --no-transcripts` はフラグを解析しますが、その後一切読み取らず、ウィザードはセッションを有効にしたまま接続するため、オプトアウトしたと思っていてもトランスクリプトは送信され続けます。
+
+  決定事項のみを送信するには、接続後に `~/.failproofai/config.json` で `collector.sessions` を `false` に設定してください：
+
+  ```json
+  {
+    "collector": {
+      "sessions": false
+    }
+  }
+  ```
+</Warning>
+
+バックフィルは同じコレクター設定に従うため、設定で不要と指定したものは送信されません。再送は安全です。リダクションは決定論的であるため、再送されたイベントは初回送信と同じハッシュ値になり、既存の行に折りたたまれます。
+
+## 環境ラベルの変更
+
+SDKとデーモンはそれぞれ独自のラベルを付与し、設定場所も異なります。
 
 <Tabs>
-  <Tab title="ダッシュボード">
-    環境ラベルは、送信するSDKまたは Failproof デーモンによって割り当てられます。変更後は、**Observe → Sessions** を開き、環境フィルターを使用して新しいセッションに新しい値が反映されていることを確認してください。既存のセッションは元の環境を保持します。
+  <Tab title="Python SDK">
+    コード内、またはイベントを発行するプロセスの環境変数で設定します。デフォルトは `dev` です。
 
-  </Tab>
-  <Tab title="CLI">
-    `failproofai-sdk` の場合は、コード内またはレガシーの環境変数で環境を設定します。マシンレベルの設定を変更する場合はデーモンの設定を再実行してください。
+    ```python
+    import failproofai_sdk
+
+    failproofai_sdk.configure(environment="production-us-east")
+    ```
 
     ```bash
     export AGENTEYE_ENVIRONMENT=production-us-east
-    failproofai config
+    ```
+
+    `AGENTEYE_ENVIRONMENT` は `failproofai-sdk` のみが読み取ります。CLIもデーモンもこれを読み取らないため、エクスポートしてもマシンの設定は変わりません。
+  </Tab>
+  <Tab title="Daemon">
+    `~/.failproofai/config.json` の `collector.environment` を編集します。デフォルトは `local` であり、CLIフラグでは設定できません。
+
+    ```json
+    {
+      "collector": {
+        "environment": "production-us-east"
+      }
+    }
+    ```
+
+    ```bash
     failproofai config --status
     fp sessions --since 1h --env production-us-east
     ```
+  </Tab>
+  <Tab title="ダッシュボード">
+    環境ラベルは発行元のSDKまたは Failproof デーモンによって割り当てられるため、ここで変更するものはありません。ソースで変更した後、**Observe → Sessions** を開き、環境フィルターを使って新しいセッションに新しい値が反映されているか確認してください。既存のセッションは元の環境を保持します。
   </Tab>
 </Tabs>

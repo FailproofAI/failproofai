@@ -1,25 +1,34 @@
 ---
 title: "Hooks"
-description: "Agent lifecycle hooks की activity, triggers, और latency को policy outcomes से अलग से measure करें।"
+description: "देखें कि Failproof AI ने एक agent event का मूल्यांकन कब किया और उसने क्या निर्णय लिया।"
 icon: "webhook"
 ---
 
-Hooks दिखाता है कि agent lifecycle hooks कब चलते हैं और उन्हें कितना समय लगता है। Policy decisions एक अलग view हैं।
+एक hook एक बिंदु है जहाँ एक agent Failproof AI से निर्णय के लिए अनुरोध करता है। Hook activity इस event, policy, outcome और evaluation time को record करती है।
+
+## Hook activity की जांच करें
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Observe → Hooks** पर जाएं।
-    2. Environment, hook name, trigger event, agent, या session ID के आधार पर filter करें।
-    3. Hook latency और distribution की समीक्षा करें।
-    4. किसी chart point या hook segment को select करके underlying events को खोलें।
+    **Observe → Hooks** पर जाएं। Environment, event, agent या session के आधार पर filter करें।
 
     ![The Hooks page showing latency grouped by hook name and trigger event.](/images/dashboard/hooks.png)
   </Tab>
   <Tab title="CLI">
     ```bash
+    fp guardrails summary --since 24h
+    fp --json events --full --event-type hook_completed --session-id <session-id> --all --limit 500
     fp list hooks
-    fp events --event-type hook_triggered,hook_completed --env production --since 24h
-    fp events --search "PreToolUse" --since 24h
     ```
   </Tab>
 </Tabs>
+
+डिफ़ॉल्ट रूप से, हर `deny` और `instruct` निर्णय पूरी तरह भेजा जाता है। Repeated allows को noise कम करने के लिए grouped किया जाता है। `~/.failproofai/config.json` में `collector.hooks_verbosity` को `all`, `decisions` या `off` पर सेट करें।
+
+<Warning>
+  Hook activity यह साबित करती है कि evaluation चली, यह नहीं कि harness उस event को block कर सकता था। [enforcement capability](/hi/reference/harnesses#enforcement-capability) देखें। एक unlisted harness-event pair unverified है।
+</Warning>
+
+<Card title="Policy decisions" icon="shield-check" href="/hi/sessions/policy-decisions">
+  outcome और policy के आधार पर same activity पढ़ें।
+</Card>

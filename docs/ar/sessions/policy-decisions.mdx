@@ -1,28 +1,63 @@
 ---
 ---
 title: "قرارات السياسة"
-description: "اطّلع على السياسات التي تم تقييمها أو حظرها أو توجيهها أو السماح بها."
+description: "اطّلع على السياسات التي تم تقييمها أو توجيهها أو حظرها أو مراقبتها."
 icon: "shield-check"
 ---
 
-يشرح قرارات السياسة ما قامت به الإنفاذ. استخدمه للتحقق من النشر، وقياس معدل الحظر، والعثور على الأنشطة غير المحمية.
+تعرض قرارات السياسة ما قامت به Failproof AI أثناء تشغيل الوكيل.
 
 <Tabs>
   <Tab title="لوحة التحكم">
-    1. انتقل إلى **Observe → policy** واختر نطاق الوقت وبشكل اختياري جهاز واحد.
-    2. راجع الإجراءات المقيّمة والحظر ومعدل الحظر وقرارات Cloud والإجراءات غير المحمية والنشاط أثناء الإيقاف المؤقت.
-    3. قم بتصفية جدول تعيين السياسة وفحص التعيينات المنشورة.
-    4. حدد نقطة على الرسم البياني لفتح القرارات وجلساتها.
+    انتقل إلى **Observe → policy** لمراجعة القرارات ومعدل الحظر والأجهزة والتعيينات المنشرة.
 
-    ![صفحة السياسة تعرض إجمالي القرارات وفلتر الجهاز ونشاط الإنفاذ بمرور الوقت وجدول تعيين السياسة.](/images/dashboard/policy-observe.png)
+    ![صفحة السياسة تعرض إجمالي القرارات وفلتر الأجهزة ونشاط الإنفاذ بمرور الوقت وجدول خريطة السياسة.](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
     ```bash
-    fp events --event-type hook_completed --env production --since 24h
-    fp events --search "deny" --since 24h
+    fp guardrails summary --since 24h
+    fp guardrails timeline --since 24h
+    failproofai policies
     failproofai config --status
     ```
 
-    استخدم `failproofai` لحالة الإنفاذ المحلي للجهاز و`fp` لتحقيق أحداث Cloud.
+    يقبل `--since` القيم `1h` أو `6h` أو `24h` أو `7d`. أضف `--machine <id>` للتركيز على جهاز واحد.
   </Tab>
 </Tabs>
+
+## قراءة نشر المراقبة
+
+يقوم وضع المراقبة بتشغيل السياسة الفعلية وتسجيل أي قرار `deny` أو `instruct`. لا يزال بإمكان الوكيل المتابعة.
+
+```bash
+fp fleet deploy <machine> --add <policy>:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add <policy>:enforce
+```
+
+<Warning>
+  إن `--add <policy>` البسيط يفرض على الفور عندما لا تحتوي السياسة على نشر موجود. أضف `:observe` لنشر ظل.
+</Warning>
+
+يتم تسجيل قرارات المراقبة غير المسموح بها فقط. يتم تسجيل انتهاء المهلة الزمنية كـ allow، لأن هذا هو ما يحدث أيضًا في وضع الإنفاذ.
+
+القرار deny المسجل ليس إثباتًا على أن أداة الاختبار أوقفت الإجراء. يتم التحقق من رفع أدوات الاتصال عبر جميع أدوات الاختبار المدعومة الـ 12؛ تختلف الأحداث الأخرى. راجع [قدرة الإنفاذ](/ar/reference/harnesses#enforcement-capability).
+
+## التحقيق في النتيجة غير المتوقعة
+
+| ما تراه | تحقق من |
+| --- | --- |
+| لا توجد قرارات | `failproofai config --status` وما إذا كانت الجلسة متوقفة |
+| العديد من الرفوض بدون اسم سياسة | [سلوك فشل السياسة](/ar/policies/failure-behavior) |
+| يتم حظر كل إجراء محمي | ما إذا كانت خدمة `failproofaid` سليمة |
+| قرار حظر لا يمكنك تعطيله | `block-failproofai-commands` مفعّل دائمًا |
+| لا توجد بيانات لـ `--env production` | تستخدم الأجهزة الجديدة البيئة `local` |
+
+<CardGroup cols={2}>
+  <Card title="نشر الأسطول" icon="server-cog" href="/ar/policies/fleet">
+    قارن السياسات المقصودة والمطبقة.
+  </Card>
+  <Card title="سلوك الفشل" icon="triangle-alert" href="/ar/policies/failure-behavior">
+    فهم قرارات الإغلاق الفاشل.
+  </Card>
+</CardGroup>

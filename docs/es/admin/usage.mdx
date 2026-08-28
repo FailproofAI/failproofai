@@ -1,21 +1,24 @@
 ---
 title: "Uso"
-description: "Inspecciona el consumo de la organización y la ventana de facturación activa."
+description: "Inspecciona el consumo de la organización en la ventana de medición actual de 30 días."
 icon: "chart-no-axes-combined"
 ---
 
-Uso muestra el consumo de la organización actual y sus ventanas de facturación. Utilízalo para entender cómo el despliegue en producción, el volumen de transcripciones, las evaluaciones y la cadencia de auditorías afectan a tu plan.
+Uso muestra lo que la organización actual ha medido durante su ventana de 30 días en curso. La ventana es fija y está anclada por organización, y el uso es de solo lectura: no aplica ni muestra límites, cuotas ni umbrales de plan. Ambas interfaces lo indican — el panel de la CLI imprime "read-only usage, no limits applied".
 
 ## Revisar el uso
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Ve a **Administración → Uso**.
-    2. Confirma la organización y la ventana de medición.
-    3. Revisa la ingesta, sesiones, evaluaciones, métricas, auditorías, hallazgos, alertas, usuarios y claves.
-    4. Compara el trabajo de auditoría iniciado y completado cuando el uso de auditorías sea inesperado.
+    1. Ve a **admin → usage**.
+    2. Confirma la organización y la ventana de medición — el encabezado muestra el inicio y fin de la ventana, el día dentro de ella y cuánto ha transcurrido.
+    3. Lee el bloque principal: eventos ingeridos, sesiones, agentes y entornos.
+    4. Lee las dos canalizaciones: evaluaciones (con puntuaciones y métricas) y auditorías (con incidencias y alertas), cada una mostrando ejecuciones completadas frente a ejecuciones iniciadas.
+    5. Lee los bloques de espacio de trabajo y acceso: consultas guardadas, dashboards, alertas, incidencias únicas, miembros y claves de API.
 
-    ![La página de Uso mostrando la ventana de medición, eventos capturados, pipelines de evaluación y auditoría, recursos del espacio de trabajo, miembros y claves de API.](/images/dashboard/usage-overview.png)
+    Las cifras están en caché, no son en tiempo real. Usa el control de actualización en la parte superior derecha después de un cambio que esperes ver reflejado.
+
+    ![La página de uso que muestra la ventana de medición, eventos capturados, las canalizaciones de evaluación y auditoría, recursos del espacio de trabajo, miembros y claves de API.](/images/dashboard/usage-overview.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -23,15 +26,52 @@ Uso muestra el consumo de la organización actual y sus ventanas de facturación
     fp --json usage
     fp --org reliability-team --json usage
     ```
+
+    `fp usage` requiere `usage:read` y se ejecuta bajo una clave de API, lo que lo convierte en el comando adecuado para un cron de informes.
+
+    Con `--json` devuelve la respuesta del dashboard sin modificar: `org_id`, `billing_anchor`, `window`, `usage`, `calculated_at` y `stale_after`. `calculated_at` y `stale_after` permiten saber qué tan antigua es una cifra.
+
+    `fp usage` no acepta flags propios — solo los globales `--json` y `--org`. Informa sobre la ventana actual y nada anterior, así que mantén tu propio historial ejecutándolo de forma programada y almacenando el payload de `--json` en lugar de esperar poder consultar una ventana anterior más adelante.
+
+    ```bash
+    fp --json usage | jq '.usage.events_ingested'
+    ```
   </Tab>
 </Tabs>
 
+### Claves de métricas
+
+Todo lo que está bajo `usage` en el payload JSON, para que un script pueda nombrar un campo en lugar de analizar un panel.
+
+| Grupo | Claves |
+| --- | --- |
+| Telemetría | `events_ingested`, `sessions`, `agents`, `environments` |
+| Evaluaciones | `evaluation_runs`, `evaluation_finishes`, `evaluations`, `metrics` |
+| Auditorías | `audit_runs`, `audit_finishes`, `issues_created`, `alerts_created` |
+| Espacio de trabajo | `queries_created`, `dashboards_created` |
+| Acceso | `users_active`, `users_created`, `keys_active`, `keys_created` |
+
+Cada canalización informa los conteos de inicio y finalización por separado, por lo que una diferencia entre `audit_runs` y `audit_finishes` indica trabajo que comenzó y no se completó — vale la pena verificarlo antes de interpretar los conteos de incidencias que aparecen debajo.
+
 ## Investigar un cambio
 
-1. Confirma la organización activa y la ventana.
-2. Compara el incremento con el volumen de sesiones por entorno.
-3. Verifica si una nueva integración comenzó a enviar transcripciones.
-4. Revisa los cambios en la cadencia de evaluadores y auditorías.
-5. Compara con los límites del plan de precios actual.
+El volumen de ingesta se decide por máquina, no de forma centralizada. Comienza desde la organización y la ventana, luego analiza qué cambió en las máquinas que reportan a ella.
 
-La CLI devuelve el mismo resumen para scripts.
+| Causa | Dónde verificar | Qué cambiar |
+| --- | --- | --- |
+| Una máquina está enviando transcripciones de sesión | `collector.sessions` en el `~/.failproofai/config.json` de esa máquina | Establécelo en `false` para enviar solo decisiones |
+| La actividad de hooks se está enviando completa | `collector.hooks_verbosity` en el mismo archivo | `decisions` agrega permisos por minuto; `off` detiene los eventos de hooks por completo |
+| Se agregó una nueva ubicación de captura | `failproofai harness list` | Elimínala con `failproofai harness remove-path <harness> <path or label>` |
+| Se reenvió el historial | Las ejecuciones de `failproofai backfill` en la máquina | Los reenvíos se deduplichan mediante un hash de contenido y se fusionan con las filas ya existentes, por lo que no duplican el conteo |
+| Una nueva integración comenzó a reportar | Los conteos de `agents` y `environments`, y la lista de sesiones | Configura los ajustes del recopilador de la nueva máquina antes de desplegarlo |
+
+El uso no compara nada contra un plan. Haz eso fuera del producto.
+
+<Columns cols={2}>
+  <Card title="Configuración y seguridad" icon="lock-keyhole" href="/es/admin/settings-and-security">
+    Los ajustes de manejo de datos por máquina detrás de estas cifras.
+  </Card>
+  <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/es/reference/cloud-cli">
+    La superficie completa de `fp`, incluyendo instalación e inicio de sesión.
+  </Card>
+</Columns>

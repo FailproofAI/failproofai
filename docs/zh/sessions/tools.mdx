@@ -1,25 +1,38 @@
 ---
 title: "工具"
-description: "在 Agent 会话中发现速度慢、失败或过度调用的工具。"
+description: "发现 agent 运行中缓慢、失败或过度调用的工具。"
 icon: "wrench"
 ---
 
-工具页面汇总各会话中的工具调用，便于比较延迟和调用分布情况。
+工具页面展示了 agent 的调用情况、调用失败频率以及受影响的会话。
+
+工具名称来源于各个 agent 框架，因此相同的功能可能有不同的名称。例如，一次 shell 调用可能以 `Bash`、`exec`、`Shell`、`terminal` 或 `run_command` 的形式出现。在构建过滤器之前，请先运行 `fp list tools`。
 
 <Tabs>
-  <Tab title="控制台">
-    1. 前往 **Observe → Tools**。
-    2. 按环境、工具名称、Agent 或会话 ID 进行筛选。
-    3. 查看延迟及工具分布情况。
-    4. 点击图表上的数据点或工具区段，打开对应的事件和会话。
+  <Tab title="仪表板">
+    前往 **Observe → Tools**，按环境、工具、agent 或会话进行筛选。
 
-    ![工具页面，展示延迟、成功与失败分布以及工具调用分布。](/images/dashboard/tools.png)
+    ![工具页面，展示延迟、成功与失败分布以及工具调用分布情况。](/images/dashboard/tools.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp list tools
-    fp events --event-type tool_use,tool_result --env production --since 24h
-    fp --json events --full --session-id <session-id> --all
+    fp events --event-type tool_use,tool_result --since 24h
+    fp errors --event-type tool_result --since 24h
+    fp --json events --full --event-type tool_use,tool_result --session-id <session-id> --all --limit 2000
     ```
+
+    当需要获取每次调用的耗时等 payload 字段时，请使用 `--full`。
   </Tab>
 </Tabs>
+
+使用此页面可发现重复失败的工具、对比正常与失败的运行记录，或确认某个策略所针对的工具是否确实被使用。
+
+<CardGroup cols={2}>
+  <Card title="错误" icon="circle-alert" href="/zh/sessions/errors">
+    查看工具失败背后的会话详情。
+  </Card>
+  <Card title="Hooks" icon="webhook" href="/zh/sessions/hooks">
+    查看规范化工具名称及策略决策。
+  </Card>
+</CardGroup>

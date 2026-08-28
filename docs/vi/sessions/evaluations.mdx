@@ -1,53 +1,80 @@
 ---
----
-title: "Đánh giá trực tuyến"
-description: "Chấm điểm các phiên hoạt động trực tiếp và hoàn thành để đảm bảo chất lượng, tuân thủ, chi phí và độ trễ."
+title: "Đánh giá"
+description: "Chấm điểm các phiên làm việc hoàn thành theo chất lượng, tuân thủ, chi phí và độ trễ."
 icon: "gauge"
 ---
 
-Đánh giá trực tuyến áp dụng những phán xét nhất quán cho các phiên hoạt động của agent. Sử dụng chúng để thu thập các tín hiệu cần được đo lường liên tục thay vì chỉ điều tra trong quá trình kiểm toán.
+Evaluations áp dụng các phán xét nhất quán cho các phiên làm việc của agent. Sử dụng chúng cho các tín hiệu cần được đo lường liên tục thay vì chỉ điều tra trong quá trình kiểm tra.
 
-## Xem lại chất lượng đánh giá
+Một evaluator nhận một phiên làm việc đã hoàn thành, có nghĩa là một trong hai điều: phiên làm việc phát ra một end event, hoặc nó ngừng phát trong thời gian lâu hơn `inactivity_timeout_secs` của evaluator. Không có điểm số cho một lần chạy vẫn đang diễn ra.
+
+<Note>
+  Đánh giá tự động là toàn bộ triển khai và vẫn tắt cho đến khi một nhà điều hành đặt `EVALUATOR_ENDPOINT`. Cho đến lúc đó, view này trống, `fp evals` không trả về gì, và `fp sessions` hiển thị trạng thái trống cho mỗi hàng — điều này thường có nghĩa là không có evaluator được cấu hình, không phải là không có gì được chấm điểm kém. Xem [Evaluator SDK](/vi/reference/evaluator-sdk).
+</Note>
+
+## Xem xét chất lượng đánh giá
 
 <Tabs>
   <Tab title="Dashboard">
     1. Đi tới **Observe → Evaluations**.
-    2. Thêm một chuỗi dữ liệu và chọn agent, môi trường, điểm đánh giá, thống kê và đường cong.
-    3. Thêm các chuỗi để so sánh các môi trường, agent hoặc khóa điểm.
-    4. Chọn một kết quả để mở các phiên phù hợp hoặc chia sẻ chế độ xem được lọc. Sử dụng **Observe → Metrics** cho độ trễ, tokens, chi phí và các giá trị độ lớn khác.
+    2. Thêm một series và chọn agent, môi trường, điểm đánh giá, thống kê và đường cong.
+    3. Thêm series để so sánh các môi trường, agent hoặc score key.
+    4. Chọn một kết quả để mở các phiên khớp hoặc chia sẻ view được lọc. Sử dụng **Observe → Metrics** cho độ trễ, token, chi phí và các giá trị độ lớn khác.
 
     ![Bảng điều khiển chất lượng hiển thị điểm đánh giá trung bình và xu hướng theo thời gian.](/images/dashboard/dashboard-quality.png)
 
-    Mở một phiên từ chi tiết phân tích để kiểm tra lý do đánh giá từng điểm:
+    Mở một phiên từ drill-down để kiểm tra lý do từng điểm của nó:
 
     ![Chế độ xem chi tiết phiên hiển thị điểm đánh giá và lý do bên cạnh dấu vết hoàn chỉnh.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
+    fp list score_filters
     fp evals --agent-id checkout-agent --aggregate
-    fp evals --aggregate --env production --status error
-    fp evals --score helpfulness:0.8.. --since 7d
+    fp evals --aggregate --status error --since 7d
+    fp evals --score helpfulness:0.5..0.8 --score tool_efficiency:..0.3 --since 7d
+    fp evals --scores-full --since 24h
     ```
 
-    Thêm `--json` toàn cục trước `evals` để tự động hóa, ví dụ như `fp --json evals --aggregate --env production`.
+    Mọi thứ ở đây cần `evaluations:read` — bao gồm `fp sessions`, vì nó đọc cùng kết quả đánh giá mới nhất. Đó là lý do tại sao một khóa có phạm vi `events:read` thấy được dấu vết nhưng không có điểm.
+
+    Bắt đầu với `fp list score_filters`: nó trả về các score key mà triển khai này thực sự tạo ra, đây là điều làm cho bộ lọc `--score` có thể kiểm chứng được thay vì là một phỏng đoán.
+
+    `--score KEY:MIN..MAX` có mỗi giới hạn là tùy chọn và có thể lặp lại, với tất cả các phạm vi được yêu cầu cùng nhau: `helpfulness:0.5..0.8`, `tool_efficiency:..0.3`, `factuality:0.9..`. Một giá trị không đúng định dạng sẽ bị từ chối trước yêu cầu thay vì bị bỏ qua im lặng. `--status` nhận chính xác một trong `done`, `error`, hoặc `timeout`. `--scores-full` in mỗi cặp điểm thay vì vài cái đầu tiên cộng với `+N`. `--all` dừng lại ở `--limit`, mặc định là 50.
+
+    Các tùy chọn toàn cục đi trước lệnh, vì vậy tự động hóa đọc `fp --json evals --aggregate`.
+
+    Daemon dấu thời gian mỗi sự kiện với môi trường `local` trừ khi bạn thay đổi nó, vì vậy `--env production` không khớp với bất cứ điều gì trên cài đặt tiêu chuẩn. Xem [Thay đổi nhãn môi trường](/vi/reference/events-and-configuration#change-an-environment-label).
   </Tab>
 </Tabs>
 
-Một bộ đánh giá nhận được nhận dạng phiên, môi trường, dấu thời gian và các sự kiện được sắp xếp. Nó có thể trả về các khóa điểm số với lý do tùy chọn và tóm tắt. Các bộ đánh giá chạy lâu dài có thể trả về một công việc đang chờ xử lý và được kiểm tra lại sau.
+## Evaluator trao đổi cái gì
 
-## Mục tiêu đánh giá tốt
+| Thông điệp | Trường |
+| --- | --- |
+| `EvalRequest` (in) | `schema_version` (hiện tại `"1"`), `session_id`, `agent_id`, `environment`, `started_at`, `ended_at`, và `events` — luồng hoàn chỉnh có thứ tự, mỗi sự kiện mang theo tải trọng hoàn chỉnh của nó. |
+| `EvalResponse` (out) | `scores` dưới dạng các khóa số, `reasoning` được khóa để phản ánh chúng, và một `summary`. |
+| `JobPending` (out) | `job_id` và `next_poll_secs`, cho công việc không thể hoàn thành trong một yêu cầu. |
 
-- Hoàn thành hoặc độ chính xác của tác vụ
-- Tính trọn vẹn dựa trên nguồn và rủi ro tưởng tượng
+`ended_at` chỉ có khi phiên làm việc phát ra một end event, vì vậy một phiên được gửi đi do không hoạt động sẽ không có nó. Tần suất bỏ phiếu tuân theo `next_poll_secs`, sau đó là `default_poll_interval_secs` của evaluator, sau đó là `EVALUATOR_POLLING_INTERVAL_SECS` của máy chủ, được giới hạn giữa một giây và một giờ với giới hạn đồng hồ treo 1 giờ.
+
+Vì yêu cầu mang theo tải trọng sự kiện hoàn chỉnh, một evaluator thấy nội dung bản ghi hoàn chỉnh. Xem xét việc gửi evaluator như gửi bản ghi khi quyết định dữ liệu nào máy có thể gửi.
+
+## Các mục tiêu đánh giá tốt
+
+- Hoàn thành nhiệm vụ hoặc độ chính xác
+- Độ tin cậy và rủi ro ảo tưởng
 - Lựa chọn công cụ và hiệu quả công cụ
 - Tuân thủ chính sách hoặc quy trình
 - Ngân sách chi phí và độ trễ
-- Sự leo thang cho con người cần thiết
+- Yêu cầu làm tăng tinh vân cần thiết
+
+Score key là các định danh ổn định. Đổi tên một cái bắt đầu một series biểu đồ mới thay vì thay đổi cái cũ, điều này phá vỡ một xu hướng im lặng — chọn tên trước khi bạn vẽ biểu đồ nó.
 
 ## Từ điểm đến phản hồi
 
-Hiển thị điểm trong các bảng điều khiển để theo dõi xu hướng. Tạo cảnh báo cho các ngưỡng hoặc điều kiện phức hợp. Khi điểm giảm trên một quần thể, chạy kiểm toán để điều tra lý do; khi nguyên nhân là một hành động có thể lặp lại, triển khai chính sách.
+Hiển thị điểm trong bảng điều khiển để theo dõi xu hướng. Tạo cảnh báo cho các ngưỡng hoặc điều kiện phức hợp. Khi một điểm giảm trên một tập hợp, chạy một kiểm tra để điều tra tại sao; khi nguyên nhân là một hành động có thể lặp lại, triển khai một chính sách.
 
-<Card title="Xây dựng một bộ đánh giá" icon="code-2" href="/vi/reference/evaluator-sdk">
-  Thực hiện đánh giá đồng bộ hoặc không đồng bộ bằng SDK bộ đánh giá Python.
+<Card title="Xây dựng một evaluator" icon="code-2" href="/vi/reference/evaluator-sdk">
+  Triển khai đánh giá đồng bộ hoặc không đồng bộ bằng Python evaluator SDK.
 </Card>

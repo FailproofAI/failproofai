@@ -1,6 +1,6 @@
 ---
 title: "Configurare un audit"
-description: "Definisci un obiettivo di audit, la popolazione della sessione e il contesto delle evidenze."
+description: "Definisci un obiettivo di audit, la popolazione della sessione e il contesto delle prove."
 icon: "sliders-horizontal"
 ---
 
@@ -10,12 +10,15 @@ La qualità di un audit inizia dal suo ambito. Una richiesta generica come "trov
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vai a **Analyze → Audits → New audit** e inserisci il nome e la descrizione.
-    2. Imposta la cadenza, la finestra temporale, l'ambito dell'agent/environment, gli errori ignorati, la sensibilità e il numero massimo di risultati.
-    3. In **agents**, aggiungi o rivedi il contesto dell'agent, quindi aggiungi il brief dell'operatore e qualsiasi URL di riferimento HTTPS pubblico.
-    4. Scegli i canali di notifica e seleziona **create audit**. La prima esecuzione viene messa in coda immediatamente.
+    1. Vai a **Analyze → Audits → New audit** e inserisci il nome e la descrizione. Il nome è univoco per organizzazione; la descrizione registra cosa ti aspetti che questo audit rilevi.
+    2. In **when it runs**, imposta la cadenza e la finestra. In **what it reads**, restringi la popolazione con ambienti, agenti e i tipi di errore da ignorare — un campo vuoto include tutto. In **how it judges**, imposta la sensibilità e i risultati per esecuzione.
+    3. In **what it knows**, scrivi il briefing dell'operatore e aggiungi le pagine che l'audit legge. Il briefing è il background che il modello legge prima di esaminare un singolo evento: viene aggiunto a quello che questo audit sta già cercando, mai una sostituzione, e mai una prova per un risultato.
+    4. Apri il drawer **agents** per aggiungere o rivedere il contesto di ogni agente. Si salva indipendentemente dall'audit, e l'intestazione conta quanti dei tuoi agenti ne hanno già uno. Vedi [agent context](/it/audits/agent-contracts).
+    5. Scegli i canali di notifica e seleziona **create audit**. Un nuovo audit inizia abilitato e la sua prima esecuzione viene messa in coda immediatamente.
 
-    ![Il modulo nuovo audit con nome, descrizione, cadenza, finestra, ambito di environment e agent, errori ignorati, impostazioni di analisi, brief, pagine di riferimento e canali di notifica.](/images/dashboard/audit-new.png)
+    ![Il modulo new audit con nome, descrizione, cadenza, finestra, ambito di ambiente e agente, errori ignorati, impostazioni di analisi, briefing, pagine di riferimento e canali di notifica.](/images/dashboard/audit-new.png)
+
+    **agents** nella scheda **what it reads** è un filtro di ambito — decide quali sessioni ogni esecuzione esamina. Cosa un agente *serve* è nel drawer agents separato.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -29,16 +32,44 @@ La qualità di un audit inizia dal suo ambito. Una richiesta generica come "trov
       --url https://runbooks.example.com/checkout
     ```
 
-    La prima esecuzione viene messa in coda immediatamente. Includi il brief e gli URL di riferimento durante la creazione in modo che l'esecuzione li riceva.
+    Ogni campo eccetto il nome ha un default del server, quindi un semplice `fp audits create nightly` è già un audit giornaliero valido. Un nome che è già in uso viene rifiutato subito, prima che qualcosa venga creato. I nuovi audit iniziano abilitati a meno che tu non passi `--disabled`, e la prima esecuzione di un audit abilitato viene messa in coda immediatamente.
 
-    Consulta il [riferimento completo di `fp audits create`](/it/reference/cloud-cli#audits).
+    Basa una definizione su JSON salvato con `--file audit.json` e sovrapponi i flag. Questo è il percorso riproducibile quando le definizioni di audit vengono esaminate o mantenute nel controllo di versione.
+
+    Vedi il riferimento completo di [`fp audits create`](/it/reference/cloud-cli#audits).
   </Tab>
 </Tabs>
 
+## Intervalli e valori predefiniti
+
+Le impostazioni numeriche vengono convalidate su entrambi i lati, quindi un valore fuori intervallo è un errore di utilizzo piuttosto che una richiesta rifiutata.
+
+| Impostazione | Flag CLI | Valori accettati | Predefinito |
+| --- | --- | --- | --- |
+| Cadenza | `--schedule-interval-secs` | 3600–604800 (1 ora a 7 giorni) | 86400 (giornaliero) |
+| Ancoraggio pianificazione | `--schedule-anchor` | ISO 8601 UTC; un ancoraggio a più di 365 giorni viene rifiutato | Il prossimo 09:00 UTC |
+| Finestra | `--window-mode` | `fixed`, `since_last` | `since_last` |
+| Lookback | `--lookback-window-secs` | 3600–7776000 (1 ora a 90 giorni) | 604800 (7 giorni) |
+| Sensibilità | `--sensitivity` | `low`, `medium`, `high` | `medium` |
+| Risultati per esecuzione | `--top-k` | 1 o più | 50 |
+
+L'ancoraggio fissa la fase della pianificazione: le esecuzioni cadono su `anchor + N * interval`, quindi un'esecuzione lenta o un **run now** manuale non possono far derivare la cadenza. La prima esecuzione viene messa in coda immediatamente al momento della creazione indipendentemente dall'ancoraggio.
+
+## Briefing e pagine di riferimento
+
+Il modulo mostra entrambi i limiti come contatori, e il CLI applica gli stessi due:
+
+- Il briefing è limitato a 8.192 caratteri (`--text`, o `--text-file` per leggerlo da un file — passa uno o l'altro, non entrambi).
+- Un audit fa riferimento a un massimo di cinque pagine, solo `https://` pubblici (`--url`, ripetuto).
+
+Gli URL di riferimento vengono convalidati mentre salvi. Gli indirizzi privati, di loopback e di cloud-metadata vengono rifiutati, e un URL rifiutato fa fallire l'intera creazione — nessun audit a metà rimane indietro. Le pagine accettate vengono recuperate in background, quindi un sito lento non blocca mai il salvataggio. Ogni esecuzione le rilegge e ricade sullo snapshot memorizzato quando uno non può essere raggiunto, e gli snapshot si aggiornano automaticamente ogni settimana. Usa `fp audits context-refresh <name>` quando sai che una pagina è cambiata e vuoi che venga ripresa prima della prossima esecuzione.
+
+Invia il briefing e gli URL con la richiesta di creazione piuttosto che in una seconda chiamata. Un nuovo audit abilitato è dovuto nell'istante in cui la sua riga viene committata, quindi il contesto scritto dopo può essere superato dal dispatcher e non riuscire nella prima esecuzione — l'esecuzione che stai guardando. Modificalo in seguito con `fp audits context-set <name>`, che sostituisce qualunque metà denomini e lascia l'altra sola.
+
 <Tip>
-  Inizia con una sessione di errore nota e diverse sessioni normali. Questo fornisce all'audit sia un esempio positivo che un set di confronto.
+  Inizia con una sessione con errore noto e diverse sessioni normali. Questo dà all'audit sia un esempio positivo che un set di confronto.
 </Tip>
 
 <Info>
-  Il contesto di audit viene archiviato come risorsa propria, quindi modificare un audit non rimuove accidentalmente il materiale di riferimento.
+  Il contesto di audit è archiviato come risorsa propria. L'endpoint della definizione rifiuta di scriverlo all'aggiornamento, quindi una modifica ordinaria non correlata all'audit non può mai sovrascrivere il briefing o le pagine di riferimento.
 </Info>

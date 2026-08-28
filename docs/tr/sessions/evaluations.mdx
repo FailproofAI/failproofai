@@ -1,52 +1,80 @@
 ---
-title: "Çevrimiçi değerlendirmeler"
-description: "Canlı ve tamamlanan oturumları kalite, uyum, maliyet ve gecikme açısından puanlayın."
+title: "Değerlendirmeler"
+description: "Tamamlanan oturumları kalite, uyum, maliyet ve gecikme açısından puanlayın."
 icon: "gauge"
 ---
 
-Çevrimiçi değerlendirmeler, ajan oturumlarına tutarlı değerlendirmeler uygular. Bunları sadece denetim sırasında araştırılmak yerine sürekli olarak ölçülmesi gereken sinyaller için kullanın.
+Değerlendirmeler, ajan oturumlarına tutarlı yargılar uygular. Bunları, yalnızca bir denetim sırasında araştırılması gereken sinyaller yerine sürekli olarak ölçülmesi gereken sinyaller için kullanın.
+
+Bir değerlendirici, tamamlanmış bir oturumu alır; bu iki anlamdan birine gelir: oturum bir son olayı gönderdi veya değerlendirmenin `inactivity_timeout_secs` kadar süre boyunca olay göndermeyi durdurdu. Halen çalışan bir çalıştırma için herhangi bir puanlama yapılmaz.
+
+<Note>
+  Otomatik değerlendirme dağıtım genelinde gerçekleşir ve bir operatör `EVALUATOR_ENDPOINT` ayarlayana kadar kapalı kalır. O zamana kadar bu görünüm boş olur, `fp evals` hiçbir şey döndürmez ve `fp sessions` her satır için boş bir durum gösterir — bu genellikle hiçbir değerlendirici yapılandırılmadığı anlamına gelir, kötü puanlanan bir şey olmadığı anlamına gelmez. Bkz. [Evaluator SDK](/tr/reference/evaluator-sdk).
+</Note>
 
 ## Değerlendirme kalitesini gözden geçirin
 
 <Tabs>
-  <Tab title="Dashboard">
-    1. **Observe → Evaluations** sayfasına gidin.
-    2. Bir seri ekleyin ve ajanı, ortamı, değerlendirme puanını, istatistiği ve eğriyi seçin.
-    3. Ortamları, ajanları veya puan anahtarlarını karşılaştırmak için seri ekleyin.
-    4. Eşleşen oturumları açmak veya filtrelenmiş görünümü paylaşmak için bir sonuç seçin. Gecikme, belirteçler, maliyet ve diğer büyüklük değerleri için **Observe → Metrics** kullanın.
+  <Tab title="Pano">
+    1. **Observe → Evaluations** bölümüne gidin.
+    2. Bir seri ekleyin ve ajanı, ortamı, değerlendirme puanını, istatistiği ve eğrisi seçin.
+    3. Ortamları, ajanları veya puan anahtarlarını karşılaştırmak için seriler ekleyin.
+    4. Eşleşen oturumları açmak veya filtrelenmiş görünümü paylaşmak için bir sonuç seçin. Gecikme, tokenler, maliyet ve diğer büyüklük değerleri için **Observe → Metrics** kullanın.
 
-    ![Ortalama değerlendirme puanlarını ve zaman içindeki eğilimleri gösteren bir kalite panosu.](/images/dashboard/dashboard-quality.png)
+    ![Ortalama değerlendirme puanları ve zaman içindeki trendleri gösteren bir kalite panosu.](/images/dashboard/dashboard-quality.png)
 
-    Detaylandırılmış görünümden bir oturumu açarak puan başına gerekçelendirmesini inceleyin:
+    Detaya gitme işleminden bir oturumu açarak puanlaması başına akıl yürütmeyi inceleyin:
 
-    ![Oturum ayrıntı görünümü, değerlendirme puanlarını ve gerekçelendirmesini tam izlemenin yanında göstermektedir.](/images/dashboard/session-detail.png)
+    ![Tam izleme yanında değerlendirme puanları ve akıl yürütmeyi gösteren bir oturum ayrıntı görünümü.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
+    fp list score_filters
     fp evals --agent-id checkout-agent --aggregate
-    fp evals --aggregate --env production --status error
-    fp evals --score helpfulness:0.8.. --since 7d
+    fp evals --aggregate --status error --since 7d
+    fp evals --score helpfulness:0.5..0.8 --score tool_efficiency:..0.3 --since 7d
+    fp evals --scores-full --since 24h
     ```
 
-    Otomasyon için `evals` öncesinde genel `--json` ekleyin, örneğin `fp --json evals --aggregate --env production`.
+    Buradaki her şey `evaluations:read` gerektirir — `fp sessions` dahil, bu da aynı son değerlendirme sonucunu okur. Bu yüzden `events:read` kapsamına sahip bir anahtar izleri görür ancak puanları görmez.
+
+    `fp list score_filters` ile başlayın: bu, dağıtımın gerçekten ürettiği puan anahtarlarını döndürür ve bu da `--score` filtresini bir tahminden ziyade kontrol edilebilir kılar.
+
+    `--score KEY:MIN..MAX` her sınırın isteğe bağlı olması ve tekrarlanabilir olması, tüm aralıkların birlikte gerekli olmasıdır: `helpfulness:0.5..0.8`, `tool_efficiency:..0.3`, `factuality:0.9..`. Hatalı biçimlendirilmiş bir değer, sessizce göz ardı edilmek yerine istek öncesinde reddedilir. `--status` tam olarak `done`, `error` veya `timeout` değerlerinden birini alır. `--scores-full` ilk birkaçı ve bir `+N` yerine her puan çiftini yazdırır. `--all` `--limit` değerinde durur; bu varsayılan olarak 50'dir.
+
+    Genel seçenekler komuttan önce gelir, bu nedenle otomasyon `fp --json evals --aggregate` okur.
+
+    Daemon, ortamı `local` olarak damgalar, aksi takdirde bunu değiştirmezseniz, `--env production` standart yüklemede hiçbir şeyle eşleşmez. Bkz. [Bir ortam etiketini değiştirin](/tr/reference/events-and-configuration#change-an-environment-label).
   </Tab>
 </Tabs>
 
-Bir değerlendirici, oturum kimliğini, ortamı, zaman damgalarını ve sıralı olayları alır. İsteğe bağlı gerekçelendirme ve özet ile sayısal puan anahtarları döndürebilir. Uzun süren değerlendirmeciler, beklemede bir iş döndürebilir ve daha sonra sorgulanabilir.
+## Bir değerlendirici ne alışveriş yapar
+
+| İleti | Alanlar |
+| --- | --- |
+| `EvalRequest` (giriş) | `schema_version` (şu anda `"1"`), `session_id`, `agent_id`, `environment`, `started_at`, `ended_at` ve `events` — tam sıralı akış, her olay tam yükünü taşır. |
+| `EvalResponse` (çıkış) | `scores` sayısal anahtarlar olarak, `reasoning` bunları yansıtmak için anahtarlanmış ve bir `summary`. |
+| `JobPending` (çıkış) | `job_id` ve `next_poll_secs`, bir istek içinde tamamlanamayan iş için. |
+
+`ended_at` yalnızca oturum bir son olayı gönderdiğinde mevcuttur, bu nedenle etkin olmama işlemi nedeniyle gönderilen bir oturum bunu içermez. Yoklama sıklığı `next_poll_secs` değerini izler, ardından değerlendirmenin `default_poll_interval_secs` değerini, ardından sunucunun `EVALUATOR_POLLING_INTERVAL_SECS` değerini izler; bir saniye ve bir saat arasında sınırlandırılmıştır ve bir saatlik duvar saati üst sınırı vardır.
+
+İstek tam olay yüklerini taşıdığından, bir değerlendirici tam transkript içeriğini görür. Değerlendirici dağıtımını transkript dağıtımı olarak ele alın; makinenin hangi verileri gönderebileceğine karar verirken.
 
 ## İyi değerlendirme hedefleri
 
 - Görev tamamlama veya doğruluk
-- Dayanak tutarlılığı ve halüsinasyon riski
+- Gerçekçilik ve halüsinasyon riski
 - Araç seçimi ve araç verimliliği
-- İlke veya süreç uyumu
+- İlke veya işlem uyumluluğu
 - Maliyet ve gecikme bütçeleri
-- Gerekli insan eskalasyonu
+- Gerekli insan yükseltme
+
+Puan anahtarları kararlı tanımlayıcılardır. Bir tanesini yeniden adlandırmak, eski olanı değiştirmek yerine yeni bir grafik serisi başlatır ve bu, bir trendi sessizce kırar — onu grafiğe koymadan önce adı seçin.
 
 ## Puandan yanıta
 
-Eğilimleri izlemek için puanları panolarda gösterin. Eşikleri veya bileşik koşulları için uyarılar oluşturun. Bir puanın bir popülasyon genelinde düştüğünde, neden olduğunu araştırmak için bir denetim çalıştırın; neden tekrarlanabilir bir eylem olduğunda, bir ilke dağıtın.
+Trendleri izlemek için puanları panolarda gösterin. Eşikler veya bileşik koşullar için uyarılar oluşturun. Bir puan bir popülasyon genelinde azaldığında, nedenini araştırmak için bir denetim çalıştırın; neden tekrarlanabilir bir eylem olduğunda, bir ilke dağıtın.
 
 <Card title="Bir değerlendirici oluşturun" icon="code-2" href="/tr/reference/evaluator-sdk">
-  Python değerlendirici SDK'sı ile senkron veya asenkron değerlendirme gerçekleştirin.
+  Python değerlendirici SDK'sı ile senkron veya asenkron değerlendirme uygulayın.
 </Card>

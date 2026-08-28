@@ -1,167 +1,100 @@
 ---
 title: "समस्या निवारण"
-description: "लापता सेशन, लापता नीतियों, विफल डिलीवरी और ब्लॉक किए गए एजेंट कार्यों का निदान करें।"
+description: "सेटअप, डिलीवरी, पॉलिसी और सत्र की समस्याओं का निदान करें।"
 icon: "wrench"
 ---
 
-<AccordionGroup>
-  <Accordion title="Cloud में कोई सेशन नहीं दिखाई देते">
-    <Tabs>
-      <Tab title="Dashboard">
-        **Administration → Keys** खोलें और पुष्टि करें कि मशीन की कुंजी सक्रिय है और इसके पास `events:add` है। फिर **Observe → Events** खोलें, समय सीमा को चौड़ा करें और परिवेश तथा एजेंट फ़िल्टर को साफ़ करें। यदि イベंट मौजूद हैं, तो सेशन ID खोजें और फिर समूहीकरण के लिए **Observe → Sessions** देखें। यदि कोई इवेंट नहीं हैं, तो CLI से Failproof डेमन का निदान करें।
+शुरुआत करें:
 
-        ![लाइव Events स्ट्रीम अपने प्राथमिक फ़िल्टर और हाल की एजेंट इवेंट के साथ दिखाई दे रहे हैं।](/images/dashboard/events-stream-current.png)
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai flush --wait --timeout 60
-        fp list envs
-        fp events --since 24h --limit 20
-        fp sessions --since 24h --limit 20
-        ```
+```bash
+failproofai config --status
+failproofai policies
+```
 
-        पुष्टि करें कि कैप्चर सक्षम है, कॉन्फ़िगर की गई कुंजी के पास `events:add` है, और डैशबोर्ड फ़िल्टर उत्सर्जित परिवेश से मेल खाता है।
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="Python SDK इवेंट डिस्क पर रहते हैं">
-    <Tabs>
-      <Tab title="Dashboard">
-        **Observe → Events** में फ़िल्टर साफ़ करें और सटीक SDK सेशन ID खोजें। यदि कुछ नहीं दिखाई देता, तो स्रोत मशीन पर SDK स्पूल और Failproof डेमन की जांच करें।
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai flush --wait
-        ```
+## एजेंट कनेक्ट नहीं है
 
-        पुष्टि करें कि एक डेमन चल रहा है और जुड़ा हुआ है — SDK स्पूल करता है चाहे कोई हो या न हो। स्पूल डायरेक्टरी को पहले से मौजूद होने की **आवश्यकता नहीं** है (लेखक इसे बनाता है), और कोई पर्यावरण चर इसे नहीं चुनता: `$FAILPROOFAI_HOME/custom-agents`, अन्यथा `~/.failproofai/custom-agents` ही एकमात्र रूट है, और `configure(base_dir=...)` एकमात्र ओवरराइड है। यदि प्रक्रिया `SIGKILL` की गई थी या OOM-killed की गई थी, तो जो कुछ भी अभी भी कतारबद्ध था, वह खो गया — `SIGTERM` को हैंडल करें।
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="मशीन को नीतियां नहीं मिलती हैं">
-    <Tabs>
-      <Tab title="Dashboard">
-        **Admin → enforcement** खोलें, मशीन का चयन करें और इसके असाइन किए गए, रिपोर्ट किए गए और पिछले संस्करणों की तुलना करें। पुष्टि करें कि तैनाती का दायरा मशीन को शामिल करता है और इसकी कुंजी के पास `policies:pull` है। इनजेस्ट तब भी काम कर सकता है जब नीति डिलीवरी न हो।
+सेटअप फिर से चलाएँ:
 
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai update
-        failproofai config --status
-        ```
+```bash
+failproofai config
+```
 
-        पुष्टि करें कि मशीन ID और लेबल डैशबोर्ड लक्ष्य से मेल खाते हैं। यदि मौजूदा क्रेडेंशियल केवल इवेंट इनजेस्शन देता है, तो नीति-सक्षम कुंजी के साथ फिर से कनेक्ट करें।
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="डेमन अनुपलब्ध होने के कारण कोई कार्य नकार दिया जाता है">
-    <Tabs>
-      <Tab title="Dashboard">
-        **Admin → enforcement** खोलें और मशीन के अंतिम-देखे गए समय और रिपोर्ट किए गए संस्करण की जांच करें। यदि मशीन पुरानी है, तो इसे स्थानीय डेमन समस्या के रूप में मानें। अनुपलब्ध डेमन को बायपास करने के लिए तैनात नीति को कमजोर न करें।
+सेटअप Linux और macOS को समर्थित करता है। सेवा को इंस्टॉल करने के लिए एक बार प्रशासक एक्सेस की आवश्यकता है, लेकिन कभी sudo पासवर्ड के लिए संकेत नहीं देता।
 
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai update
-        failproofai config
-        failproofai config --status
-        ```
+[हार्नेसेस](/hi/reference/harnesses) में हार्नेस पथ और स्कोप जांचें।
 
-        `failproofaid` को पुनः प्रारंभ या अपडेट करें; जब CLI और डेमन प्रोटोकॉल संस्करण भिन्न हों तो कॉन्फ़िगरेशन को फिर से चलाएं। कॉन्फ़िगर किया गया डेमन पाथ डिजाइन से विफल रहता है।
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="कस्टम नीति लोड नहीं होती है">
-    <Tabs>
-      <Tab title="Dashboard">
-        Cloud द्वारा लिखी गई नीति के लिए, **Admin → policy editor** खोलें, ड्राफ्ट का चयन करें और प्रकाशित करने से पहले सत्यापन त्रुटियों की समीक्षा करें। स्थानीय नीति के लिए, CLI का उपयोग करके इसे सत्यापित करें, फिर परीक्षण कार्य के बाद **Observe → policy** खोलें यह पुष्टि करने के लिए कि निर्णय आए हैं।
+## एक सत्र गायब है
 
-      </Tab>
-      <Tab title="CLI">
-        पुष्टि करें कि फ़ाइल नाम `policies.js`, `policies.mjs`, या `policies.ts` में समाप्त होता है, मॉड्यूल `customPolicies.add(...)` को कॉल करता है, और आयात नीति फ़ाइल से हल होते हैं।
+```bash
+failproofai flush --wait
+failproofai backfill --since 30d --dry-run
+failproofai harness list
+```
 
-        ```bash
-        failproofai policies --install --custom ./checkout.policies.ts
-        failproofai policies
-        ```
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="एक ऑडिट कोई खोज नहीं देता है">
-    <Tabs>
-      <Tab title="Dashboard">
-        **Analyze → audits** खोलें, रन का चयन करें और जांचें कि क्या मॉडल विश्लेषण चला। फिर इसके दायरे और विंडो की तुलना **Observe → sessions** के साथ करें और उस जनसंख्या से प्रतिनिधि ट्रेस खोलें।
+पुरानी हिस्ट्री को फिर से भेजने के लिए `--dry-run` को छोड़ें। इसके साथ एक और ट्रांसक्रिप्ट स्थान जोड़ें:
 
-        एक शून्य परिणाम तभी सार्थक है जब विश्लेषण सफलतापूर्वक चले। यदि विश्लेषण छोड़ा गया था या विफल रहा था, तो रन कोई खोज नहीं देता है और अविश्लेषित विंडो को भविष्य के सफल रन के लिए खुला रखता है। यदि मॉडल विश्लेषण अक्षम है, तो ऑडिट भी कोई खोज नहीं देता है क्योंकि नियतकालिक क्रेडेंशियल और PII स्कैन सांख्यिकी रिकॉर्ड करता है लेकिन अब निष्कर्ष नहीं निकालता है।
+```bash
+failproofai harness add-path <harness> [label=]<path>
+```
 
-        ![ऑडिट फॉर्म जहां पर्यावरण, एजेंट, कैडेंस और स्वीप विंडो सेशन जनसंख्या को परिभाषित करते हैं।](/images/dashboard/audit-new.png)
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        fp audits show <audit-name>
-        fp audits runs <audit-name>
-        fp sessions --since 24h --env production
-        fp audits context-show <audit-name>
-        fp audits run <audit-name>
-        fp audits findings --audit <audit-name>
-        ```
+जब दोनों स्थान एक ही प्रोजेक्ट की प्रतियां रखते हैं तो लेबल का उपयोग करें।
 
-        यदि रन कतारबद्ध रहा, तो ऑडिट-एजेंट क्षमता की प्रतीक्षा करें या तैनाती ऑपरेटर को ऑडिट फ्लीट का निरीक्षण करने के लिए कहें। एक कतारबद्ध ऑडिट पुनः प्रयास करता है; यह तुरंत छोड़ा नहीं जाता है।
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="ऑनलाइन मूल्यांकन स्वचालित रूप से नहीं चलते हैं">
-    <Tabs>
-      <Tab title="Dashboard">
-        एक पूर्ण सेशन खोलें और जांचें कि क्या मैनुअल मूल्यांकन सफल होता है। होस्ट किया गया Cloud वर्तमान में डैशबोर्ड में कोई मूल्यांकनकर्ता एंडपॉइंट नियंत्रण नहीं है; सर्वर ऑपरेटर को इसे कॉन्फ़िगर करना होगा।
-      </Tab>
-      <Tab title="CLI">
-        मूल्यांकनकर्ता को सत्यापित करें, फिर हाल की मूल्यांकन स्थितियों का निरीक्षण करें:
+## हर सुरक्षित कार्य अस्वीकृत है
 
-        ```bash
-        curl https://evaluator.example.com/health
-        fp evals --since 1h
-        ```
+एक कॉन्फ़िगर की गई मशीन पर, `failproofaid` एकमात्र मूल्यांकनकर्ता है। यदि यह उत्तर नहीं दे सकता, तो सुरक्षित कार्य बंद हो जाते हैं।
 
-        स्व-होस्ट किए गए Cloud पर, पुष्टि करें कि `EVALUATOR_ENDPOINT` सर्वर पर मौजूद है और `EVALUATOR_TOKEN` मूल्यांकनकर्ता से मेल खाता है। जब एंडपॉइंट अनुपस्थित हो तो स्वचालित मूल्यांकन अक्षम है।
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="Cloud CLI प्रमाणीकरण गलत संगठन को लक्ष्य करता है">
-    <Tabs>
-      <Tab title="Dashboard">
-        संगठन स्विचर का उपयोग करें और CLI के साथ परिणामों की तुलना करने से पहले अपेक्षित slug और अनुमतियों की पुष्टि करें।
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        fp whoami
-        fp orgs current
-        fp orgs perms
-        ```
+```bash
+failproofai config --status
+systemctl status failproofaid@$USER        # Linux
+sudo launchctl print system/ai.failproof.failproofaid.$USER  # macOS
+```
 
-        API-कुंजी मोड में, `fp --org <slug> --api-key <key> ...` निर्दिष्ट करें या `AGENTEYE_ORG` सेट करें। सहेजी गई मानव-सेशन संगठन स्थिति जानबूझकर API-कुंजी अनुरोधों के लिए अनदेखी की जाती है।
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="एक नीति वैध कार्य को ब्लॉक करती है">
-    <Tabs>
-      <Tab title="Dashboard">
-        **Observe → policy** खोलें, निर्णय और जुड़े सेशन को सुरक्षित रखें और झूठी-सकारात्मक स्थिति की पहचान करें। फिर **Admin → enforcement** खोलें और प्रभावित मशीनों को पिछले संस्करण पर रोल करें। **Policy editor** में एक संकीर्ण संस्करण बनाएं, इसे एक छोटे दायरे पर परीक्षण करें और केवल वैध कार्य के सफल होने के बाद ही विस्तार करें।
+सेवा को मरम्मत या पुनः इंस्टॉल करने के लिए `failproofai config` चलाएँ।
 
-      </Tab>
-      <Tab title="CLI">
-        Cloud तैनाती रोलबैक केवल डैशबोर्ड है। स्थानीय सेशन पॉज़ Cloud-प्रबंधित नीतियों को अक्षम नहीं करता है। यदि डैशबोर्ड उपलब्ध नहीं है, तो मशीन और तैनाती स्थिति को कैप्चर करें और डैशबोर्ड पहुंच को पुनः स्थापित करें बजाय बार-बार ब्लॉक किए गए कार्य को फिर से प्रयास करने के।
+## एक पैक अस्वीकृत है
 
-        ```bash
-        failproofai config --status
-        ```
-      </Tab>
-    </Tabs>
-  </Accordion>
-</AccordionGroup>
+`failproofai policies` उन पैकों का नाम बताते हैं जो लोड नहीं हो सकते। एक चुना हुआ पैक गायब होने के बजाय बंद हो जाता है।
 
-सहायता से संपर्क करते समय, CLI संस्करण, हार्नेस, पर्यावरण, प्रासंगिक सेशन या तैनाती ID और `failproofai config --status` का आउटपुट शामिल करें (गोपनीयता सामग्री को हटाकर)।
+सामान्य कारण:
+
+- इंस्टॉलेशन के बाद आर्टिफैक्ट बदल गया।
+- मैनिफेस्ट और बंडल की गई पॉलिसीज असहमत हैं।
+- फ़ाइल गायब है या आयात नहीं की जा सकती।
+- पैक एक असमर्थित इवेंट, टूल या पॉलिसी आकार का उपयोग करता है।
+
+पैक को हटाएं या सही रिलीज़ इंस्टॉल करें:
+
+```bash
+failproofai policies remove owner/repo
+failproofai policies add owner/repo@<release>
+```
+
+## क्लाउड डिस्कनेक्ट है
+
+कुंजी के लिए एक पर्यावरण चर पसंद करें:
+
+```bash
+export FAILPROOFAI_CLOUD_TOKEN="<key>"
+failproofai config
+failproofai config --status
+```
+
+एक मशीन पॉलिसीज खींच सकती है और स्वतंत्र रूप से गतिविधि भेज सकती है। स्थिति दोनों की रिपोर्ट करती है।
+
+## एक पॉलिसी ने ब्लॉक नहीं किया
+
+तीन चीजें जांचें:
+
+1. पॉलिसी चालू है: `failproofai policies`।
+2. इसका इवेंट और टूल कार्य से मेल खाते हैं।
+3. वह हार्नेस इवेंट को लागू कर सकता है।
+
+एक टूल-कॉल डिनाई सभी 12 समर्थित हार्नेसेस पर सत्यापित है। अन्य इवेंट अलग-अलग हैं। [प्रवर्तन क्षमता](/hi/reference/harnesses#enforcement-capability) देखें।
+
+## डाउनलोड ब्लॉक हैं
+
+- `FAILPROOFAI_NO_DOWNLOAD=1` नेटवर्क डाउनलोड को अस्वीकार करता है।
+- `FAILPROOFAI_DAEMON_BASE_URL` सेवा डाउनलोड को एक मिरर की ओर इंगित करता है।
+- `FAILPROOFAI_PACK_BASE_URL` पैक डाउनलोड को एक मिरर की ओर इंगित करता है।
+
+इंस्टॉल किए गए पैक तब भी लागू होते रहते हैं जब डाउनलोड अक्षम होते हैं।

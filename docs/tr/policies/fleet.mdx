@@ -1,53 +1,61 @@
 ---
----
-title: "İlkeleri makinelere dağıt"
-description: "Hangi makinelerin kayıtlı, güncel ve amaçlanan ilke sürümlerini uyguladığını bilin."
+title: "Fleet kapsamı"
+description: "Hangi makinelerin amaçlanan politikaları aldığını ve uyguladığını görün."
 icon: "network"
 ---
 
-Fleet kapsamı, riskin olduğu yerde bir ilkenin bulunup bulunmadığını yanıtlar. Makineleri kararlı kimlik ve insan tarafından okunabilir etiketle izleyin, ardından atanan ve bildirilen dağıtım durumlarını karşılaştırın.
+Fleet kapsamı, Cloud'un atadığı ilkeleri her makinenin son olarak uyguladığı ilkelerle karşılaştırır.
 
-## Kapsamı kontrol et
-
-<Tabs>
-  <Tab title="Dashboard">
-    1. **Admin → enforcement** bölümüne gidin ve zorlama ve gözlemleme toplamlarını inceleyin.
-    2. Bir makineyı kimlik veya etiketle arayın veya ilkesi olmayan makineler için filtreleyin.
-    3. Atanan ilkeleri, bildirilen dağıtımı, son kontrol girişini ve geçmişi karşılaştırmak için bir satırı genişletin.
-    4. Uygulanan bir dağıtım beklemede kalırsa, makinenin yoklama aralığından sonra yenileyin.
-
-    ![Enforcement fleet gösterimi, ilke kapsamı, makine dağıtım durumu ve gözlemleme ile zorlama atamalarını göstermektedir.](/images/dashboard/enforcement-fleet.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai config --status
-    failproofai config --machine-label checkout-runner-03
-    failproofai flush --wait
-    ```
-
-    Makinenin aracı etkinliğinin Cloud'a ulaştığını doğrulamak için `fp events --agent-id <agent-id> --since 24h` kullanın.
-  </Tab>
-</Tabs>
-
-Kapsamı bulmak için kullanın:
-
-- En son dağıtımı asla çekmeyen makineler
-- Etkinlik bildirmeyi durduran kayıtlı makineler
-- Yanlış ortam veya kohort'a atanan ilkeler
-- Kesintiye uğrayan bir güncellemenin ardından sürüm kayması
-
-Bir makineyi yeniden bağlanmadan yeniden adlandırın:
-
-```bash
-failproofai config --machine-label checkout-runner-03
-```
-
-Yerel durumu kontrol et:
+## Bir makinenin durumunu kontrol etme
 
 ```bash
 failproofai config --status
+failproofai flush --wait --timeout 120
 ```
 
-<Tip>
-  İş yükü ve ortamı tanımlayan etiketler kullanın. Otomatik ölçeklendirme veya makine değişikliğinden sonra hostname'ler genellikle yetersizdir.
-</Tip>
+Cloud'dan:
+
+```bash
+fp fleet list
+fp fleet diff
+fp fleet show <machine-id>
+```
+
+`fp fleet` için oturum açılmış bir session gerekir, API anahtarı değil.
+
+| Komut | İşlevi |
+| --- | --- |
+| `fp fleet list` | Makineleri ve dağıtım durumunu listele |
+| `fp fleet show <machine>` | Bir makinenin ilke setini göster |
+| `fp fleet deploy <machine> --add <ref>` | Bir ilkeyi ekle veya güncelle |
+| `fp fleet deploy <machine> --remove <id>` | Bir ilkeyi kaldır |
+| `fp fleet deploy <machine> --set <ref>...` | Tüm seti değiştir |
+| `fp fleet diff [machine]` | Amaçlanan ve uygulanan sürümleri karşılaştır |
+| `fp fleet history <machine>` | Dağıtım nesilleri listesini göster |
+| `fp fleet rollback <machine> <generation>` | Bir nesili geri yükle |
+| `fp fleet rename <machine> "<label>"` | Cloud etiketini değiştir |
+
+<Warning>
+  `--set` tüm ilke setini değiştirir. Tek başına `--add <id>` yeni bir ilkeyi hemen uygulamaya zorlayacaktır. Gölge başlatma için `--add <id>:observe` kullanın.
+</Warning>
+
+## Gözlemle, sonra uygula
+
+```bash
+fp fleet deploy ci-runner-01 --add prod-guard:observe
+fp guardrails summary --since 24h --machine ci-runner-01
+fp fleet deploy ci-runner-01 --add prod-guard:enforce
+```
+
+Gözlem modu, gerçek ilkeyi değerlendirir ve izin verilmeyen kararları ajan'ı engellemeden kaydeder.
+
+## Makine kimliği
+
+Makine ID'si sabit olup, makinenin kimliğini tanımlar. Etiket yalnızca görüntüleme amaçlı olup değişebilir:
+
+```bash
+failproofai config --machine-label checkout-runner-03
+fp fleet rename <machine-id> "Checkout runner 03"
+```
+
+Etiketi değiştirmek makinenin yeniden bağlanmasını veya yeniden anahtarlanmasını gerektirmez.

@@ -1,68 +1,48 @@
 ---
----
-title: "Hành vi khi bị lỗi"
-description: "Hiểu điều gì xảy ra khi đánh giá chính sách hoặc daemon cục bộ không khả dụng."
+title: "Hành vi khi chính sách không hoạt động"
+description: "Tìm hiểu lý do Failproof AI từ chối khi đánh giá không thể chạy."
 icon: "shield-alert"
 ---
 
-Failproof AI được thiết kế để khi xảy ra lỗi thực thi, nó sẽ hiển thị rõ ràng thay vì im lặng cho phép công việc rủi ro.
+Sau khi thiết lập, dịch vụ `failproofaid` cục bộ là người đánh giá duy nhất. Nếu không thể trả lời, các hành động được bảo vệ sẽ bị từ chối thay vì im lặng cho phép.
 
-## Chẩn đoán khối từ chối do lỗi
-
-<Tabs>
-  <Tab title="Dashboard">
-    1. Đi đến **Admin → enforcement** và mở máy.
-    2. Kiểm tra lần check-in cuối cùng, triển khai được gán và triển khai được báo cáo của nó.
-    3. Đi đến **Observe → policy** và mở phiên của quyết định bị từ chối.
-    4. Xác nhận xem lý do có báo cáo khả năng tiếp cận daemon, phiên bản không khớp hay chính sách đó.
-
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai config --status
-    npm install -g failproofai@latest
-    failproofai config
-    ```
-
-    Chạy lại `failproofai config` sẽ cập nhật và khởi động lại daemon sau khi nâng cấp gói.
-  </Tab>
-</Tabs>
-
-Trên máy được cấu hình để sử dụng `failproofaid`, daemon là trình đánh giá duy nhất. Nếu nó không thể tiếp cận hoặc phiên bản giao thức của nó không khớp với CLI, đánh giá hook sẽ thất bại và từ chối. Hành động bị từ chối kèm theo lý do hướng dẫn người vận hành kiểm tra hoặc cập nhật daemon.
-
-Trước khi cấu hình daemon, hook sẽ đánh giá chính sách trong quá trình xử lý. Khi cấu hình daemon được ghi lại, Failproof AI sẽ không im lặng quay lại trình đánh giá thứ hai khi daemon bị lỗi.
-
-## Đối ứng với quyết định từ chối do lỗi
-
-1. Chạy `failproofai config --status`.
-2. Nếu các phiên bản khác nhau, hãy chạy lại `failproofai config` sau khi cập nhật gói.
-3. Nếu daemon không thể tiếp cận, hãy kiểm tra trạng thái dịch vụ của nó và nhật ký cục bộ.
-4. Chỉ tiếp tục công việc agent sau khi một đường dẫn đánh giá chính sách đã biết khỏe mạnh.
-
-<Warning>
-  Không thử lại hành động bị chặn nhiều lần. Một phản hồi từ chối do lỗi có nghĩa là hệ thống không thể thiết lập rằng hành động là an toàn.
-</Warning>
-
-## Một gói sẽ không tải
-
-Máy được yêu cầu thực thi một gói nhưng không thể chạy nó sẽ từ chối thay vì tiếp tục im lặng. Kích hoạt là một **kỳ vọng được ghi lại**, không bao giờ là kỳ vọng trống: máy không có gói nào được cài đặt sẽ im lặng, trong khi một gói được khai báo nhưng sẽ không được phân giải — hoặc đăng ký ít hơn khai báo của nó — sẽ từ chối.
-
-Sự từ chối **hẹp**, không giống như daemon không thể tiếp cận. Daemon không thể tiếp cận có nghĩa là không có đánh giá nào xảy ra, vì vậy không gì có thể được biết là an toàn. Một gói không tải được có một tập hợp các bảo vệ bị thiếu có thể liệt kê, vì mỗi chính sách được khai báo đều mang theo `match` riêng — vì vậy nó chỉ từ chối các sự kiện và công cụ mà những chính sách đó bao quát, và mọi thứ khác diễn ra bình thường.
-
-Nó không kích hoạt cho:
-
-- gói `observe`, được đánh giá và loại bỏ theo cấu trúc
-- chính sách bạn không bao giờ lấy, hoặc rõ ràng tắt
-- gói mà trình tải không bao giờ nhận được, trong đó không thể phân biệt "không có đăng ký" và một bỏ qua có chủ đích
-- tạm dừng phiên hoạt động
-- hết thời gian tải, đây là tạm thời — một khoảnh khắc đĩa chậm không được từ chối cho đến khi con người can thiệp
-
-`UserPromptSubmit` **hướng dẫn** thay vì từ chối, bất kể chính sách bị thiếu đã khai báo gì. Một lệnh từ chối toàn diện sẽ đi kèm nó và khóa bạn không thể dùng agent có thể khắc phục sự cố.
-
-### Cần làm gì
+## Chẩn đoán một lệnh cấm trên toàn máy
 
 ```bash
-failproofai pack list
+failproofai config --status
+systemctl status failproofaid@$USER        # Linux
+sudo launchctl print system/ai.failproof.failproofaid.$USER  # macOS
 ```
 
-Nó liệt kê bất kỳ gói được cài đặt nào sẽ không tải, cho biết tại sao, và thoát với mã khác không. Sau đó hãy cài đặt lại nó (`failproofai pack add <source>`) hoặc xóa nó (`failproofai pack remove <publisher/name>`) — xóa nó sẽ rút lại kỳ vọng, và sự từ chối sẽ dừng lại cùng nó.
+Chạy `failproofai config` để sửa chữa dịch vụ hoặc cài đặt phiên bản phù hợp.
+
+Hai lỗi có thể trông giống nhau:
+
+| Lỗi | Ý nghĩa |
+| --- | --- |
+| Dịch vụ không thể truy cập | Socket không có người đánh giá đang hoạt động phía sau |
+| Phiên bản không khớp | CLI và dịch vụ không đồng ý về giao thức |
+
+Cả hai đều từ chối, nhưng báo cáo trạng thái sẽ báo cáo chúng riêng biệt.
+
+## Một gói không được tải
+
+Một gói được chọn bị thiếu, thay đổi hoặc không hợp lệ sẽ từ chối các sự kiện được bao phủ bởi các chính sách được chọn của nó. Điều này ngăn chặn một gói bị hỏng biến mất trong khi máy vẫn xuất hiện được bảo vệ.
+
+`failproofai policies` cung cấp tên gói và lỗi tải.
+
+```bash
+failproofai policies
+failproofai policies remove owner/repo
+failproofai policies add owner/repo@<release>
+```
+
+Siêu dữ liệu không thể đọc được sẽ mở rộng lệnh từ chối an toàn thay vì thu hẹp lại từ dữ liệu không thể tin cậy được.
+
+## Những gì vẫn khả dụng
+
+Bảng điều khiển cục bộ và các lệnh trạng thái vẫn hoạt động trong khi đánh giá chính sách bị lỗi. Sử dụng chúng để xác định dịch vụ, gói hoặc phiên bản cần sửa chữa.
+
+<Warning>
+  Không cố gắng vượt qua quyết định từ chối bằng cách xóa các tệp dịch vụ hoặc gói. Hãy sửa chữa dịch vụ, cài đặt lại gói hoặc xóa bài tập thông qua CLI để máy quay trở lại trạng thái đã biết.
+</Warning>

@@ -1,57 +1,66 @@
 ---
 title: "Sessions"
-description: "Commencez par l'enregistrement complet d'une exécution d'agent."
-icon: "workflow"
+description: "Suivez une exécution d'agent de son objectif jusqu'aux outils, décisions et résultat."
+icon: "route"
 ---
 
-Une session est le meilleur point de départ lorsqu'un agent se comporte de manière inattendue. Elle regroupe les requêtes au modèle, les réponses, les appels d'outils, les interactions humaines, les erreurs, les évaluations et les décisions de politique qui appartiennent à une même exécution.
+Une session correspond à une exécution d'agent. Elle regroupe le prompt, les appels au modèle, les outils, les erreurs, les interventions humaines, les décisions de politique et le résultat final.
 
-Les sessions se présentent de la même façon quel que soit le harnais qui les a produites. Une exécution Claude Code réécrivant un dépôt, un agent Hermes répondant à un client dans Slack, et un service Python instrumenté avec le SDK aboutissent tous dans le même format de trace — une seule vue couvre donc l'ensemble de la flotte.
-
-<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with Failproof AI" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
-</div>
-
-Suivez une exécution d'agent depuis son objectif jusqu'aux appels de modèle, aux outils et à la réponse finale.
-
-## Trouver une session
+## Où se trouvent les sessions
 
 <Tabs>
-  <Tab title="Tableau de bord">
-    1. Dans la barre latérale Cloud, accédez à **Observe → Sessions**.
-    2. Définissez la fenêtre temporelle, puis filtrez par environnement, statut, agent ou ID de session.
-    3. Ajoutez des plages de scores ou de métriques lorsque vous avez besoin d'un filtre sur la qualité, le coût, les tokens ou la latence.
-    4. Sélectionnez une ligne pour ouvrir sa trace. Utilisez le contrôle de copie à côté de l'ID de session pour le partager.
-
-    ![La liste des sessions affichant une ligne par exécution avec des filtres sur l'environnement, l'agent, le statut et le score d'évaluation.](/images/dashboard/sessions-list.png)
+  <Tab title="Local">
+    Exécutez `failproofai` pour ouvrir le tableau de bord sur `http://localhost:8020`. L'historique des sessions reste sur cette machine.
   </Tab>
-  <Tab title="CLI">
+  <Tab title="Cloud">
+    Connectez la machine, puis ouvrez **Observe → Sessions** :
+
     ```bash
-    fp sessions --env production --since 24h
-    fp sessions --status error,timeout --agent-id checkout-agent
-    fp --json sessions --session-id <session-id>
+    export FAILPROOFAI_CLOUD_TOKEN="<key>"
+    failproofai config
     ```
 
-    Ajoutez `--agents` pour développer les exécutions multi-agents, `--all` pour paginer, ou `--fields` pour choisir les colonnes de sortie.
+    Le Cloud reçoit les transcripts complets par défaut. Pour n'envoyer que les décisions de politique, connectez-vous d'abord, puis définissez `collector.sessions` sur `false` dans `~/.failproofai/config.json`. L'option de configuration `--no-transcripts` n'applique pas ce paramètre.
   </Tab>
 </Tabs>
 
-## Ce que vous pouvez faire
+Les sessions proviennent des 12 [harnais d'agents](/fr/reference/harnesses) pris en charge ainsi que des agents instrumentés avec le [SDK Python](/fr/reference/custom-agents).
 
-- Trouver une exécution par agent, environnement, heure, modèle, type d'événement ou état d'erreur.
-- Suivre la séquence exacte qui a produit un résultat.
-- Comparer des exécutions réussies et échouées.
-- Ouvrir les preuves utilisées par un résultat d'audit ou un incident d'alerte.
-- Exporter une session lorsque vous avez besoin d'un enregistrement hors ligne.
+## Trouver une session
 
-## Un ordre d'investigation fiable
+Dans le Cloud, filtrez par période, environnement, statut, agent ou identifiant de session. Depuis la CLI :
 
-1. Confirmer l'objectif et l'environnement de la session.
-2. Identifier la première erreur ou décision inattendue — pas seulement l'échec final.
-3. Inspecter le contexte du modèle et l'entrée de l'outil immédiatement avant cela.
-4. Vérifier les nouvelles tentatives, la latence et les interruptions humaines.
-5. Examiner les scores d'évaluation et les décisions de politique.
+```bash
+fp sessions --since 24h
+fp sessions --status error,timeout --agent-id checkout-agent
+fp --json sessions --session-id <session-id>
+```
 
-<Card title="Lire une trace" icon="route" href="/fr/sessions/read-a-trace">
-  Apprenez à passer du résumé de session à l'événement qui a causé le résultat.
-</Card>
+Utilisez `fp errors --since 24h` pour les échecs qui n'ont jamais été évalués. `fp sessions --status` utilise le résultat de la dernière évaluation ; une session non évaluée n'a donc pas de statut.
+
+## Lire une exécution
+
+1. Confirmez l'objectif de l'agent et son environnement.
+2. Repérez la première erreur ou décision inattendue.
+3. Examinez le contexte du modèle et l'entrée de l'outil juste avant celle-ci.
+4. Vérifiez les tentatives de relance, la latence et les interruptions humaines.
+5. Passez en revue les évaluations et les décisions de politique.
+
+## Si une session est manquante
+
+```bash
+failproofai flush --wait
+failproofai config --status
+failproofai backfill --since 30d --dry-run
+```
+
+Utilisez `failproofai harness add-path <harness> [<label>=]<path>` lorsque des sessions se trouvent en dehors de l'emplacement habituel du harnais, comme un autre profil, le répertoire home d'un conteneur ou un répertoire d'équipe monté.
+
+<CardGroup cols={2}>
+  <Card title="Lire une trace" icon="route" href="/fr/sessions/read-a-trace">
+    Trouvez l'événement qui a causé le résultat.
+  </Card>
+  <Card title="Décisions de politique" icon="shield-check" href="/fr/sessions/policy-decisions">
+    Voyez ce que l'application des règles a autorisé, guidé ou bloqué.
+  </Card>
+</CardGroup>

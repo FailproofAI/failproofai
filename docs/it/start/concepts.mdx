@@ -1,27 +1,51 @@
 ---
----
 title: "Concetti fondamentali"
-description: "L'insieme ristretto di concetti utilizzati in Failproof AI."
+description: "I termini utilizzati per osservare, controllare e proteggere gli agenti."
 icon: "boxes"
 ---
 
-| Concetto | Cosa significa | Cosa puoi ottenere |
-| --- | --- | --- |
-| Session | Un'attività o un'esecuzione dell'agente | Ricostruire un singolo risultato |
-| Event | Un'azione registrata in una session | Ispezionare una chiamata del modello, un utilizzo di strumento, un errore, un'azione umana o una decisione di policy |
-| Trace | La visualizzazione ordinata e annidata della session | Comprendere la causalità invece di leggere log disconnessi |
-| Evaluation | Un punteggio o un giudizio su una session | Tracciare continuamente la qualità, la conformità, i costi o la latenza |
-| Audit | Una revisione di una popolazione di session selezionata | Cercare modelli di errore con un obiettivo e una cadenza definiti |
-| Finding | Un fallimento scoperto da un audit con prove a supporto | Visualizzare la modalità di errore, la gravità e le session interessate |
-| Issue | Un record di risposta durevole | Assegnare, discutere e risolvere un finding o un incidente di alert |
-| Alert | Una regola che rileva la ricorrenza | Notificare ai responder quando una condizione nota si ripete |
-| Policy | Una regola valutata durante l'attività dell'agente | Osservare, bloccare o reindirizzare il comportamento rischioso |
-| Deployment | Un rollout di policy versionato alle macchine | Controllare dove viene eseguita una policy e eseguire il rollback in sicurezza |
+Failproof AI registra ciò che gli agenti fanno e decide cosa possono fare.
 
-## Il ciclo di affidabilità
+## Osservare
 
-Inizia dalle prove. Una session mostra cosa è accaduto. Un audit determina se è un errore isolato o un modello ricorrente. Un finding identifica la modalità di errore; un issue gestisce la risposta. Una policy previene lo stesso comportamento, mentre gli alert ti informano se la condizione si ripete.
+| Termine | Significato |
+| --- | --- |
+| Session | Un'esecuzione dell'agente |
+| Event | Un'azione all'interno di una sessione |
+| Trace | La visualizzazione ordinata di una sessione |
+| Evaluation | Un punteggio o un giudizio |
+| Audit | Una revisione di molte sessioni |
+| Finding | Evidenza di un pattern di errore |
+| Issue | La risposta di cui qualcuno è responsabile |
+| Alert | Una regola che rileva la ricorrenza |
+
+## Applicare
+
+| Termine | Significato |
+| --- | --- |
+| Harness | L'ambiente in cui esegue un agente |
+| Hook | Un punto in cui l'harness chiede una decisione |
+| Policy | Una regola che consente, guida o blocca |
+| Policy pack | Un set di policy versionato che chiunque può installare |
+| Daemon | Il servizio locale che valuta le policy |
+| Deployment | Policy assegnate a una macchina |
+
+## Il flusso di lavoro
+
+```text
+Session → Audit → Finding → Issue → Policy
+```
+
+Inizia con l'evidenza. Trova l'errore ripetuto, assegna la risposta, quindi prevenilo.
+
+Una policy restituisce `allow`, `instruct` o `deny`. La guida tramite `instruct` dipende dall'harness; utilizza `deny` quando l'azione deve essere interrotta.
+
+La modalità Observe è separata dalla decisione. Esegue la policy reale e registra cosa farebbe mentre consente all'agente di continuare.
 
 <Warning>
-  Un `failproofai audit` locale analizza la cronologia locale dell'agente. Un audit Cloud ricorrente esamina le session archiviate in Failproof AI Cloud. Sono flussi di lavoro separati con ambito e pianificazione diversi.
+  Un semplice `fp fleet deploy <machine> --add <policy>` applica immediatamente. Aggiungi `:observe` per un rollout shadow.
 </Warning>
+
+La configurazione non sceglie alcun policy pack. Prima di aggiungerne uno, esegue solo `block-failproofai-commands`. Il catalogo compilato contiene 39 policy su 9 categorie.
+
+Consulta gli [harness supportati](/it/reference/harnesses#enforcement-capability) prima di assumere che un evento possa bloccarsi in ogni ambiente agente.

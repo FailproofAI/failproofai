@@ -1,84 +1,50 @@
 ---
-title: "本地配置"
-description: "管理策略范围、参数、自定义文件以及机器级别的 Failproof AI 设置。"
-icon: "file-cog"
+title: "本地策略配置"
+description: "选择策略的应用范围并设置其参数。"
+icon: "sliders-horizontal"
 ---
 
-Failproof AI 将策略选择与机器配置和守护进程设置分离开来。这样一来，仓库中的策略配置可以接受审查，而凭据和守护进程状态则保存在仓库之外。
+使用 scope 来决定本地策略应用于哪些对象：
 
-## 选择策略范围
-
-<Tabs>
-  <Tab title="控制台">
-    不带参数运行 `failproofai`，打开本地策略控制台。在启用策略之前，先选择用户、项目或本地范围，以确保更改写入正确的配置文件。
-
-    - **用户**范围适用于此机器上的所有项目。
-    - **项目**范围属于仓库，可以提交。
-    - **本地**范围针对单个用户覆盖某个项目的配置，应添加到 gitignore 中。
-
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai policy add block-rm-rf --scope user
-    failproofai policy add block-force-push --scope project
-    failproofai policy add warn-large-file-write --scope local
-    failproofai policies
-    ```
-
-    并非所有 harness 都支持本地范围。如果所选 harness 不支持指定的范围，CLI 会拒绝执行。
-  </Tab>
-</Tabs>
-
-| 范围 | 策略配置文件 |
+| Scope | 应用于 |
 | --- | --- |
-| 项目 | `<project>/.failproofai/policies-config.json` |
-| 本地 | `<project>/.failproofai/policies-config.local.json` |
-| 用户 | `~/.failproofai/policies-config.json` |
+| `user` | 本机上所有受支持的 Agent |
+| `project` | 在当前项目中运行的 Agent |
+| `local` | 仅 Claude，位于本地项目设置中 |
+| `all` | 仅用于卸载 |
 
-已启用的策略以并集方式合并。策略参数使用第一个为该策略定义了参数的范围，顺序为：项目 → 本地 → 用户。显式自定义策略路径同样使用第一个定义了路径的范围。
+```bash
+failproofai policies add block-sudo --scope user
+failproofai policies add block-rm-rf --scope project
+```
 
-## 配置策略参数
+Hermes 和 OpenClaw 仅支持 user scope。大多数其他 harness 支持 user 和 project。Claude 还支持 local scope。详见 [Harnesses](/zh/reference/harnesses)。
 
-<Tabs>
-  <Tab title="控制台">
-    在本地控制台中打开对应策略，编辑其支持的参数，然后在所选范围内保存。运行一个匹配和一个不匹配的 Agent 操作，再在 **Observe → policy** 中查看决策结果。
+## 策略参数
 
-  </Tab>
-  <Tab title="CLI">
-    编辑所选范围的 `policies-config.json`，然后运行 `failproofai policies` 检查是否存在未知的策略名称或参数键。
+策略设置存储在对应 scope 下的 `policies-config.json` 中。建议尽量使用本地控制台的 **Policies → Configure** 视图进行配置。
 
-    ```json
-    {
-      "enabledPolicies": ["block-rm-rf", "block-force-push"],
-      "policyParams": {
-        "block-rm-rf": {
-          "allowPaths": ["/tmp/build-output"]
-        }
-      }
-    }
-    ```
+参数归属于某一条策略，用于改变该策略的判断逻辑。例如，一个允许列表可以让拦截型策略放行已知安全的命令或路径。
 
-    ```bash
-    failproofai policies
-    ```
-  </Tab>
-</Tabs>
+自定义策略文件可以从 `.failproofai/policies/` 自动加载，也可以显式指定：
 
-## 了解机器级文件
+```bash
+failproofai policies -i -c ./guards.mjs --scope project
+```
 
-`~/.failproofai` 包含针对不同信任边界的独立文件：
+移除显式路径：
 
-| 路径 | 用途 |
+```bash
+failproofai policies -u -c
+```
+
+## 文件说明
+
+| 文件 | 用途 |
 | --- | --- |
-| `config.json` | 非敏感的守护进程、审计和遥测设置 |
-| `credentials.json` | 云端凭据，以仅限所有者访问的权限存储 |
-| `policies-config.json` | 用户范围的内置策略选择、参数及显式自定义路径 |
-| `policies/` | 用户约定策略和云端管理的策略构件 |
-| `hook-activity/` | 本地策略决策日志 |
-| `state/` | 守护进程队列、健康状态、暂停状态及运行时状态 |
+| `~/.failproofai/config.json` | 机器及数据收集器设置 |
+| `policies-config.json` | 某个 scope 下已启用的策略及其参数 |
+| `.failproofai/policies/*policies.mjs` | 按约定自动加载的策略文件 |
+| `~/.failproofai/policies/packs/installed.json` | 已安装的策略包及其选择项 |
 
-使用 `FAILPROOFAI_HOME` 可将完整的机器目录布局迁移到容器或隔离测试环境中。请勿单独迁移各个状态目录。
-
-<Warning>
-  切勿提交 `credentials.json`。项目策略配置和项目约定策略只有在将其作为执行代码进行审查后，才可提交到仓库。
-</Warning>
+请勿直接编辑已安装策略包的产物文件。如需修改，请重新安装或发布修正版本。

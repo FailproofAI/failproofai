@@ -1,10 +1,10 @@
 ---
-title: "Failproof Assistant"
-description: "자연어로 Failproof AI를 분석하고 운영하세요. 질문과 쿼리부터 대시보드와 감사까지 모두 지원합니다."
+title: "클라우드 어시스턴트"
+description: "질문과 쿼리부터 대시보드와 감사까지, 자연어로 Failproof AI를 분석하고 운영하세요."
 icon: "message-square-text"
 ---
 
-Failproof Assistant에게 Failproof AI에서 하고 싶은 작업을 자연어로 요청하세요. 세션과 오류를 분석하고, 쿼리를 실행하고, 대시보드를 구성하고, 평가와 알림을 조사하고, 제품 화면이나 CLI 명령으로 직접 번역하지 않아도 감사를 생성하고 실행하는 데 도움을 줍니다.
+Failproof AI 클라우드 어시스턴트는 자연어로 플릿에 관한 질문에 답합니다. 세션과 장애를 분석하고, 쿼리를 실행하고, 대시보드를 구성하고, 평가 및 알림을 조사하며, 제품 화면이나 CLI 명령으로 작업을 직접 번역하지 않아도 감사를 생성하고 실행하는 데 도움을 줍니다. 대시보드에서는 **Open agent chat** 버튼으로 제어하며, [`fp` CLI](/ko/reference/cloud-cli)에서는 `fp agent` 명령 그룹을 사용합니다.
 
 ```text
 Why did production checkout agents regress this week?
@@ -13,41 +13,77 @@ Create an audit that finds agents retrying the same failed action without changi
 Show me the sessions behind the most common audit finding.
 ```
 
-어시스턴트는 현재 활성화된 조직에서 사용 가능한 데이터와 권한을 바탕으로 작동합니다. 다른 사용자나 에이전트에 영향을 미치는 작업을 적용하기 전에 어시스턴트가 제시한 근거와 변경 제안을 반드시 검토하세요.
+어시스턴트는 활성 조직에서 사용 가능한 데이터와 권한을 기반으로 동작합니다. 다른 사용자나 에이전트에 영향을 미치는 작업을 적용하기 전에 제시된 근거와 변경 제안을 반드시 검토하세요.
 
-## 어시스턴트에게 요청하기
+<Note>
+  어시스턴트는 대시보드에서 실행되며 채팅은 개인 소유이므로, API 키가 호출할 수 있는 API 라우트가 없습니다. 모든 `fp agent` 서브커맨드는 로그인된 세션(`fp login`)과 `agent:use` 권한이 필요하며, `--api-key` 또는 `FP_API_KEY` 사용 시 종료 코드 2로 종료됩니다. API 키로는 어시스턴트에 접근할 수 없으므로, 스케줄된 작업은 `--token` 또는 `FP_TOKEN`에 로그인된 세션 토큰을 포함해야 합니다. 이 방법은 작동하며 — TTY가 없을 경우 `fp agent ask`는 stdin에서 질문을 읽어옵니다 — 다만 세션 토큰은 `fp login` 후 약 24시간이 지나면 만료되므로, 어시스턴트는 무인 자동화에는 적합하지 않습니다.
+</Note>
+
+## 어시스턴트 사용하기
 
 <Tabs>
-  <Tab title="Dashboard">
-    1. **Open agent chat**을 선택하고 이해하거나 생성하거나 운영하려는 내용을 설명합니다.
+  <Tab title="대시보드">
+    1. **Open agent chat**을 선택하고 이해하거나 생성하거나 운영하고 싶은 내용을 설명합니다.
     2. 어시스턴트가 작업하는 동안 도구 호출, 테이블, 쿼리 결과를 검토합니다.
-    3. 인용된 세션, 알림, 또는 쿼리를 열어 원본 데이터와 결과를 비교 검증합니다.
-    4. 다른 조사를 위해 새 채팅을 시작하거나, 기존 분석을 이어가려면 채팅 기록을 활용합니다.
+    3. 인용된 세션, 알림, 또는 쿼리를 열어 결과를 원본 데이터와 대조해 확인합니다.
+    4. 다른 조사를 위해 새 채팅을 시작하거나, 채팅 기록을 통해 동일한 분석을 이어갑니다.
 
-    ![관련 분석 및 쿼리와 함께 관찰 가능성 질문에 답하는 Cloud 어시스턴트.](/images/dashboard/assistant.png)
+    ![클라우드 어시스턴트가 분석과 쿼리를 제공하며 관측 가능성 질문에 답하는 모습.](/images/dashboard/assistant.png)
   </Tab>
   <Tab title="CLI">
+    `health`로 시작하세요. 이 배포에서 어시스턴트가 활성화되어 있는지, LLM이 구성되어 있는지 확인합니다. LLM이 없으면 `ask`는 실패하고 `models`는 아무것도 반환하지 않습니다. `chats`, `show`, `rename`, `delete`는 health를 전혀 참조하지 않으므로 계속 정상 작동합니다.
+
     ```bash
     fp agent health
     fp agent models
     fp agent ask "Which production checkout agents had the most tool errors in the last 24 hours?"
+    ```
+
+    `fp agent models`는 이 배포에서 허용되는 모델 목록과 기본 모델을 표시합니다. `ask --model <name>`으로 모델을 지정할 수 있습니다. `--page-context <text>`로 이미 보유한 텍스트를 답변의 근거로 제공하고, 질문이 파일이나 이전 명령에서 오는 경우 인수로 전달하는 대신 stdin으로 파이프할 수 있습니다:
+
+    ```bash
+    cat incident-notes.md | fp agent ask --model <model>
+    ```
+
+    모든 질문은 채팅에 저장됩니다. `--chat`을 지정하지 않으면 새 채팅을 시작하고 짧은 ID를 출력하며, `--chat`을 지정하면 해당 스레드를 이어갑니다.
+
+    ```bash
     fp agent chats
     fp agent show <chat-id>
     fp agent ask "Open representative sessions" --chat <chat-id>
+    fp agent rename <chat-id> --title "checkout regression"
+    fp agent delete <chat-id> --yes
     ```
 
-    `fp agent rename <chat-id> --title <title>`을 사용하면 조사 내용을 알아보기 쉽게 이름을 지정할 수 있으며, `fp agent delete <chat-id>`로 삭제할 수 있습니다.
+    `fp agent chats`는 채팅 목록을 최신 순으로 `chat-id · title · messages · updated` 형식으로 표시하며, `updated`는 마지막 활동 이후 경과 시간입니다. 표시되는 `chat-id`는 처음 8자로 구성된 짧은 ID이며, `show`, `rename`, `delete`, `ask --chat` 모두 이 접두사로 해석합니다. 일치하는 ID가 없으면 종료 코드 6과 함께 `chat not found` 박스가 출력되고, 여러 개가 일치하면 더 긴 접두사를 요청합니다.
+
+    `fp agent delete`는 실행 전에 확인을 요청합니다. `--yes`를 사용하면 확인을 건너뛰며, 비대화형 호출(`--json` 사용 또는 stdin이 리다이렉트된 경우)에서도 확인 없이 진행됩니다.
   </Tab>
 </Tabs>
 
 ## 어시스턴트를 효과적으로 활용하기
 
-- 먼저 목표를 제시하고, 범위가 중요한 경우 환경, 워크플로우, 시간 범위를 추가로 지정하세요.
-- 생성된 SQL과 요약 내용은 최종 근거가 아닌 조사 보조 수단으로 활용하세요.
-- 감사, 이슈, 알림, 정책을 생성하기 전에 대표적인 세션을 먼저 열어 확인하세요.
-- 조직, 환경, 시간 필터는 명확하게 지정하세요.
-- 유용한 SQL은 쿼리로 저장해 다른 운영자가 결과를 재현할 수 있도록 하세요.
+- 먼저 목표를 제시하고, 해당 범위가 중요한 경우 환경, 워크플로우, 또는 시간 범위를 추가하세요.
+- 생성된 SQL과 요약은 조사의 보조 수단으로 활용하고, 최종 근거로 삼지 마세요.
+- 감사, 이슈, 알림, 또는 정책을 생성하기 전에 대표적인 세션을 직접 확인하세요.
+- 조직, 환경, 시간 필터를 명시적으로 지정하세요.
+- 유용한 SQL은 쿼리로 저장하여 다른 운영자가 결과를 재현할 수 있도록 하세요.
 
 <Warning>
-  어시스턴트는 현재 사용자가 접근할 수 있는 데이터만 읽을 수 있습니다. 질문이 작동하도록 권한을 확장하지 마세요. 대신 권한이 있는 운영자에게 조사를 요청하세요.
+  두 가지 권한 레이어가 적용되며, 각각 다르게 실패합니다. `agent:use`는 기능 자체에 대한 접근을 제어합니다. 이 권한이 없으면 `fp agent`와 대시보드 채팅을 사용할 수 없습니다. 이후 답변은 로그인된 사용자의 데이터 권한(`events:read`, `evaluations:read`, `queries:run`, `policies:read`)에 의해 제한됩니다. 따라서 어시스턴트를 열 수 있는 사용자라도 읽기 권한이 없는 데이터에 대해서는 빈 답변을 받을 수 있습니다. 질문을 해결하기 위해 권한을 확대하지 마세요. 대신 권한이 있는 운영자에게 조사를 요청하세요. [키와 권한](/ko/admin/keys-and-permissions)을 참조하세요.
 </Warning>
+
+<CardGroup cols={2}>
+  <Card title="쿼리" icon="database" href="/ko/sessions/queries">
+    어시스턴트가 작성한 SQL을 저장하여 다른 운영자가 재실행할 수 있도록 합니다.
+  </Card>
+  <Card title="대시보드" icon="layout-dashboard" href="/ko/sessions/dashboards">
+    저장된 쿼리를 팀이 모니터링하는 차트로 변환합니다.
+  </Card>
+  <Card title="감사" icon="scan-search" href="/ko/audits/overview">
+    세션 집합 전반에 걸쳐 장애 패턴을 조사합니다.
+  </Card>
+  <Card title="정책" icon="shield-check" href="/ko/policies/overview">
+    반복 가능한 작업을 다음 주에 다시 발견하는 대신 사전에 방지합니다.
+  </Card>
+</CardGroup>

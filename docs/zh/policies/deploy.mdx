@@ -1,51 +1,54 @@
 ---
 title: "部署策略"
-description: "将经过审核的策略版本下发到目标机器。"
+description: "在真实 Agent 活动上观察策略，然后执行或回滚。"
 icon: "cloud-upload"
 ---
 
-部署将一个或多个策略版本与一组已注册的目标机器关联起来。
+每次将经过审查的策略部署到一台机器上。从观察模式开始。
 
-## 应用部署
+## 通过 CLI 发布
 
-<Tabs>
-  <Tab title="仪表板">
-    1. 前往 **Admin → enforcement**，找到目标机器并展开其行。
-    2. 选择 **edit**，添加经过审核的策略版本，并选择 **observe** 或其强制执行效果。
-    3. 应用更改，然后等待机器下次签入，确认其部署和覆盖状态。
-    4. 前往 **Observe → policy** 查看实时决策。
+```bash
+fp policies test ./rule.mjs --tool Bash --command "git push --force" --expect deny
+fp policies publish no-force-push ./rule.mjs
+fp fleet deploy <machine> --add no-force-push:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add no-force-push:enforce
+```
 
-    ![带有策略版本、enforce 和 observe 效果以及应用部署操作的机器部署编辑器。](/images/dashboard/enforcement-editor.png)
-  </Tab>
-  <Tab title="CLI">
-    使用 `fp fleet` 通过 CLI 进行部署。在应用之前请检查生成的方案——`deploy` 会打印完整计划，并**仅在没有 `--json` 参数的交互式终端下**进行确认提示。在使用 `--json`、`--yes` 或重定向 stdin（CI 步骤、脚本、Agent 调用）时，命令会立即执行，不显示计划也不提示确认——因此如需审查，请先运行 `fp fleet show <machine>`：
-
-    ```bash
-    fp fleet list
-    fp fleet show <machine-id>
-    fp fleet deploy <machine-id> --add no-force-push
-    ```
-
-    `fp fleet diff <machine-id>` 显示预期与实际交付之间的差异（机器在下次轮询之前显示为 `behind` 状态），`fp fleet history <machine-id>` 列出历史版本，`fp fleet rollback <machine-id> <generation>` 回滚到指定版本——若该版本引用的策略已被禁用或删除，则会拒绝回滚。
-
-    使用 `failproofai config --status` 检查机器本身的状态，并在部署后使用 `fp sessions --env production --since 24h` 和 `fp events --event-type hook_completed` 验证活动是否已上报至 Cloud。
-  </Tab>
-</Tabs>
-
-<Steps>
-  <Step title="选择版本和目标机器">
-    部署经过审核的版本而非可变的草稿，从非生产环境的机器或小批量机器开始，以便检查其会话。
-  </Step>
-  <Step title="观察决策">
-    在不阻塞工作的情况下，审查匹配结果、原因、受影响的工具以及误报情况。
-  </Step>
-  <Step title="强制执行并验证覆盖范围">
-    在观察到的匹配结果能够区分不安全操作与合法操作之后，再提升为强制执行，然后确认每台目标机器已拉取部署并正在上报决策。
-  </Step>
-</Steps>
-
-机器需要具备 `policies:pull` 能力。事件上报由 `events:add` 单独控制；当您期望 Cloud 进行分析和强制执行时，请确认两者均已启用。
+观察模式会评估真实策略并记录非 allow 的决策，但不会阻止 Agent。
 
 <Warning>
-  强制执行管理是一项管理员级别的 Cloud 工作流。请勿将仅限 root 的强制执行路由视为普通的客户 `/v1` API 端点。
+  单独使用 `--add no-force-push` 会立即执行。添加 `:observe` 可进行影子发布。
 </Warning>
+
+如果执行导致问题：
+
+```bash
+fp fleet history <machine>
+fp fleet rollback <machine> <generation>
+```
+
+## 通过控制台部署
+
+1. 前往 **Admin → enforcement**。
+2. 打开目标机器。
+3. 添加效果为 **observe** 的策略版本。
+4. 应用部署。
+5. 在 **Observe → policy** 下查看结果。
+6. 当匹配结果正确时，将相同版本提升为 **enforce**。
+
+![机器部署编辑器，显示策略版本、enforce 和 observe 效果以及应用部署操作。](/images/dashboard/enforcement-editor.png)
+
+## 替换或预暂存策略集
+
+- `--remove <id>` 移除一个策略。
+- `--set <ref>...` 替换完整的策略集。
+- `--create` 在机器首次签入之前预备部署。
+- `fp fleet diff <machine>` 比较预期状态与已应用状态。
+
+<Note>
+  在没有 Cloud 的情况下，使用 `failproofai publish --effect observe` 发布策略包，并在本地控制台中检查决策。
+</Note>
+
+机器需要 `policies:pull` 权限来接收部署，需要 `events:add` 权限来上报决策。

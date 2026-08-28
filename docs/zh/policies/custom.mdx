@@ -1,72 +1,51 @@
 ---
 title: "自定义策略"
-description: "为您的 Agent 工作流中特有的故障模式编写策略。"
-icon: "shield-plus"
+description: "为您的 agent 或工作流的特定行为编写规则。"
+icon: "code-2"
 ---
 
-在 `.failproofai/policies/` 目录下创建以 `policies.js`、`policies.mjs` 或 `policies.ts` 结尾的文件。约定文件会在项目和用户范围内自动加载。
+在编写策略之前，请先查看[内置目录](/zh/policies/builtin-catalog)。经过审核的规则通常比新规则更安全。
 
-## 发布到云端前先测试策略
+## 从可用策略开始
 
-<Tabs>
-  <Tab title="控制台">
-    1. 在一台测试机器上安装自定义策略，分别触发一次匹配操作和一次合法的非匹配操作。
-    2. 前往 **Observe → policy**，对比两次决策结果。
-    3. 打开每个关联的会话，验证事件载荷中包含足够的规则判断依据。
-    4. 确认行为正确后，将审查通过的源代码移至 **Admin → policy editor** 并发布版本。
+```bash
+failproofai publish --init guards.mjs
+failproofai policies -i -c ./guards.mjs
+```
 
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai policies --install --custom ./security.policies.ts \
-      --cli claude --scope project
-    failproofai policies
-    ```
+初始模板会阻止 `git push --force`。编辑它，让您的 agent 尝试执行被阻止的操作，然后在 **Policies → Activity** 中查看结果。
 
-    `.failproofai/policies/` 下的约定文件无需 `--custom` 即可加载。当验证需要在模块损坏时失败，请在 CI 中保留显式的安装命令。
-  </Tab>
-</Tabs>
-
-```ts
+```js
 import { customPolicies, allow, deny } from "failproofai";
 
 customPolicies.add({
-  name: "protect-production-paths",
-  description: "Block writes to production configuration",
-  match: { events: ["PreToolUse"] },
-  fn: async (ctx) => {
-    if (ctx.toolName !== "Write" && ctx.toolName !== "Edit") return allow();
-    const path = String(ctx.toolInput?.file_path ?? "").replaceAll("\\", "/");
-    if (path.split("/").includes("production")) {
-      return deny("Writes to production configuration require approval.");
-    }
-    return allow();
-  },
+  name: "protect-production",
+  description: "Production changes need a human",
+  match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+  fn: async (ctx) =>
+    String(ctx.toolInput?.command ?? "").includes("production")
+      ? deny("Ask a human before changing production.")
+      : allow(),
 });
 ```
 
-此规则匹配 `production/config.yml`、`/srv/production/config.yml`、`/srv/production` 以及 `C:\\production\\config.yml`，对 `Write` 和 `Edit` 均生效。它不会匹配 `production-backup` 这类名称，因为 `production` 必须是完整的路径段。
+策略返回 `allow()`、`deny(message)` 或 `instruct(message)`。当操作必须停止时使用 `deny`；并非每个运行环境都能将指令传回给 agent。
 
-验证并安装指定文件：
+## 自动加载
 
-```bash
-failproofai policies --install --custom ./security.policies.ts
-```
+将命名为 `*policies.js`、`*policies.mjs` 或 `*policies.ts` 的文件放置在以下目录中：
 
-策略上下文包含：事件类型、规范化载荷、工具名称和输入、会话元数据、参数，以及可用时的来源 CLI 信息。
+- `.failproofai/policies/`：适用于单个项目。
+- `~/.failproofai/policies/`：适用于当前用户。
 
 ## 测试失败路径
 
-修改入口文件或其导入的任何本地模块后，运行验证：
+同时测试不安全的操作以及外观相似的合法操作。确认决策来自您的策略，而非其他规则。
+
+使用以下命令删除显式测试文件：
 
 ```bash
-failproofai policies --install --custom ./security.policies.ts --scope project
+failproofai policies -u -c
 ```
 
-严格 CLI 路径会在以下情况下失败：文件缺失、语法错误、导入无法解析、顶层异常以及模块加载超时。在执行阶段，损坏的自定义文件会被记录日志并跳过，以便内置策略可以继续运行。请将任何加载警告视为预期执行的缺失，并在生产日志中对其进行告警。
-
-在显式策略、约定策略和云端管理策略之间使用全局唯一的名称。保持策略函数的确定性，对外部调用设置较短的超时时间，并在每条执行路径上明确返回 `allow`、`instruct` 或 `deny`。
-
-<Warning>
-  自定义策略是执行代码。请测试字段缺失、工具名称变体和格式错误的输入——而不仅仅是预期的匹配场景。
-</Warning>
+策略准备就绪后，可[发布为策略包](/zh/policies/publish-a-pack)或[通过 Cloud 部署](/zh/policies/deploy)。

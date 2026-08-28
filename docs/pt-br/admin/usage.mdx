@@ -1,21 +1,24 @@
 ---
 title: "Uso"
-description: "Inspecione o consumo da organização e a janela de faturamento ativa."
+description: "Inspecione o consumo da organização na janela de medição atual de 30 dias."
 icon: "chart-no-axes-combined"
 ---
 
-Uso exibe o consumo da organização atual e suas janelas de faturamento. Utilize essa seção para entender como o rollout em produção, o volume de transcrições, as avaliações e a cadência de auditorias afetam o seu plano.
+Uso mostra o que a organização atual mediu durante sua janela atual de 30 dias. A janela é fixa e ancorada por organização, e o uso é somente leitura: não aplica nem exibe limites, cotas ou limiares de plano. Ambas as superfícies deixam isso claro — o painel da CLI exibe "uso somente leitura, sem limites aplicados".
 
 ## Revisar uso
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Acesse **Administração → Uso**.
-    2. Confirme a organização e a janela de medição.
-    3. Revise ingestão, sessões, avaliações, métricas, auditorias, achados, alertas, usuários e chaves.
-    4. Compare auditorias iniciadas e concluídas quando o uso de auditoria parecer inesperado.
+    1. Acesse **admin → usage**.
+    2. Confirme a organização e a janela de medição — o cabeçalho mostra o início e o fim da janela, o dia dentro dela e quanto já decorreu.
+    3. Leia o bloco principal: eventos ingeridos, sessões, agentes e ambientes.
+    4. Leia os dois pipelines: avaliações (com pontuações e métricas) e auditorias (com problemas e alertas), cada um mostrando execuções concluídas em relação às iniciadas.
+    5. Leia os blocos de workspace e acesso: consultas salvas, dashboards, alertas, problemas únicos, membros e chaves de API.
 
-    ![A página de Uso exibindo a janela de medição, eventos capturados, pipelines de avaliação e auditoria, recursos do workspace, membros e chaves de API.](/images/dashboard/usage-overview.png)
+    Os valores são armazenados em cache, não são em tempo real. Use o controle de atualização no canto superior direito após uma alteração que você espera visualizar.
+
+    ![A página de uso exibindo a janela de medição, eventos capturados, os pipelines de avaliação e auditoria, recursos do workspace, membros e chaves de API.](/images/dashboard/usage-overview.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -23,15 +26,52 @@ Uso exibe o consumo da organização atual e suas janelas de faturamento. Utiliz
     fp --json usage
     fp --org reliability-team --json usage
     ```
+
+    `fp usage` requer `usage:read` e é executado sob uma chave de API, o que o torna o comando ideal para um cron de relatórios.
+
+    Com `--json`, retorna a resposta do dashboard sem alterações: `org_id`, `billing_anchor`, `window`, `usage`, `calculated_at` e `stale_after`. `calculated_at` e `stale_after` são como você identifica a idade de um valor.
+
+    `fp usage` não aceita flags próprias — apenas as globais `--json` e `--org`. Ele reporta apenas a janela atual e nada anterior, portanto mantenha seu próprio histórico executando o comando em um agendamento e armazenando o payload `--json`, em vez de esperar consultar uma janela anterior mais tarde.
+
+    ```bash
+    fp --json usage | jq '.usage.events_ingested'
+    ```
   </Tab>
 </Tabs>
 
+### Chaves de métricas
+
+Tudo que está sob `usage` no payload JSON, para que um script possa referenciar um campo pelo nome em vez de analisar um painel.
+
+| Grupo | Chaves |
+| --- | --- |
+| Telemetria | `events_ingested`, `sessions`, `agents`, `environments` |
+| Avaliações | `evaluation_runs`, `evaluation_finishes`, `evaluations`, `metrics` |
+| Auditorias | `audit_runs`, `audit_finishes`, `issues_created`, `alerts_created` |
+| Workspace | `queries_created`, `dashboards_created` |
+| Acesso | `users_active`, `users_created`, `keys_active`, `keys_created` |
+
+Cada pipeline reporta contagens de início e conclusão separadamente, portanto uma diferença entre `audit_runs` e `audit_finishes` indica trabalho que foi iniciado e não foi concluído — vale verificar antes de tirar conclusões a partir das contagens de problemas abaixo.
+
 ## Investigar uma mudança
 
-1. Confirme a organização ativa e a janela de faturamento.
-2. Compare o aumento com o volume de sessões por ambiente.
-3. Verifique se uma nova integração começou a enviar transcrições.
-4. Revise mudanças na cadência de avaliadores e auditorias.
-5. Compare com os limites do plano de preços atual.
+O volume de ingestão é definido por máquina, não de forma centralizada. Comece pela organização e pela janela, depois verifique o que mudou nas máquinas que estão reportando para ela.
 
-O CLI retorna o mesmo resumo para scripts.
+| Causa | Onde verificar | O que alterar |
+| --- | --- | --- |
+| Uma máquina está enviando transcrições de sessão | `collector.sessions` no arquivo `~/.failproofai/config.json` dessa máquina | Defina como `false` para enviar apenas decisões |
+| A atividade de hook está sendo enviada na íntegra | `collector.hooks_verbosity` no mesmo arquivo | `decisions` agrega permissões por minuto; `off` interrompe completamente os eventos de hook |
+| Um novo local de captura foi adicionado | `failproofai harness list` | Remova com `failproofai harness remove-path <harness> <path or label>` |
+| O histórico foi reenviado | As execuções de `failproofai backfill` da máquina | Reenvios são deduplicados por hash de conteúdo e colapsados em linhas já existentes, portanto não geram dupla contagem |
+| Uma nova integração começou a reportar | As contagens de `agents` e `environments`, e a lista de sessões | Configure os ajustes do coletor da nova máquina antes de implantá-la |
+
+O uso não compara nada com um plano. Faça isso fora do produto.
+
+<Columns cols={2}>
+  <Card title="Configurações e segurança" icon="lock-keyhole" href="/pt-br/admin/settings-and-security">
+    As configurações de tratamento de dados por máquina por trás desses números.
+  </Card>
+  <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/pt-br/reference/cloud-cli">
+    A superfície completa do `fp`, incluindo instalação e login.
+  </Card>
+</Columns>

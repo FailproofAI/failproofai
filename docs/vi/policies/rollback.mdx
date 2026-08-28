@@ -1,42 +1,68 @@
 ---
----
 title: "Rollback"
-description: "Khôi phục một triển khai chính sách đã biết khi một quá trình triển khai gây gián đoạn công việc hợp lệ của agent."
+description: "Restore a known policy deployment when a rollout disrupts valid agent work."
 icon: "rotate-ccw"
 ---
 
-Rollback thay đổi phiên bản được triển khai hoặc xóa một phân công chính sách; nó không xóa lịch sử quyết định giải thích sự cố.
+Rollback thay đổi phiên bản được triển khai hoặc loại bỏ một gán chính sách; nó không xóa lịch sử quyết định giải thích sự cố.
 
 ## Rollback một máy
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vào **Admin → enforcement**, mở rộng máy bị ảnh hưởng và xác định bộ chính sách lần cuối được biết là tốt của nó.
-    2. Chọn **edit**, khôi phục các phiên bản và hiệu ứng đó, rồi áp dụng triển khai mới.
-    3. Chờ máy check-in, sau đó xác minh triển khai được báo cáo.
-    4. Mở **Observe → policy** và các phiên làm việc bị ảnh hưởng để xác nhận rằng công việc hợp lệ không còn bị chặn.
+    1. Đi đến **Admin → enforcement**, mở rộng máy bị ảnh hưởng và xác định bộ chính sách được biết là tốt lần cuối cùng của nó.
+    2. Chọn **edit**, khôi phục các phiên bản và hiệu ứng đó, và áp dụng triển khai mới.
+    3. Đợi check-in máy, sau đó xác minh triển khai được báo cáo.
+    4. Mở **Observe → policy** và các phiên bị ảnh hưởng để xác nhận công việc hợp lệ không còn bị chặn.
 
   </Tab>
   <Tab title="CLI">
-    Rollback triển khai trên cloud là quy trình trên dashboard. Sử dụng trạng thái cục bộ để xác nhận rằng triển khai đã được sửa đã đến máy:
+    Tìm generation để quay lại, khôi phục nó, sau đó xác nhận nó được triển khai:
 
     ```bash
+    fp fleet history ci-runner-01
+    fp fleet rollback ci-runner-01 3
+    fp fleet diff ci-runner-01
     failproofai config --status
     ```
 
-    `failproofai config --pause` tạm dừng các chính sách tích hợp, tùy chỉnh và quy ước cho một phiên cục bộ. Nó không tạm dừng các chính sách do cloud quản lý, do đó không phải là giải pháp thay thế cho triển khai cloud xấu.
+    `fp fleet rollback` tạo ra một generation **mới** mang theo bộ cũ thay vì quay lại bộ đếm, vì vậy lịch sử vẫn chỉ được nối thêm. Nó từ chối nếu generation đó đặt tên cho một chính sách đã bị vô hiệu hóa hoặc xóa — máy chủ sẽ nói vậy thay vì khôi phục một bộ không thể được cung cấp.
+
+    `fp fleet diff` cho thấy ý định so với cung cấp. Một máy sẽ được đọc là drifted cho đến khi nó tiếp theo bỏ phiếu, vì vậy hãy kiểm tra diff trước khi kết luận rollback không diễn ra. `failproofai config --status` xác nhận nó trên máy chính nó.
   </Tab>
 </Tabs>
 
-## Khi nào nên rollback
+## Pause không phải là rollback
 
-- Một chính sách chặn một hành động sản xuất dự kiến.
-- Khối lượng khớp cao hơn đáng kể so với rollout được quan sát dự đoán.
-- Một chính sách phụ thuộc vào các trường mà một tích hợp không cung cấp.
-- Một phiên bản mới thay đổi hành vi ngoài chế độ lỗi dự định.
+Pause tạm dừng mọi chính sách được cài đặt cục bộ cho **một phiên**, và luôn hết hạn tự động — packs, tệp tùy chỉnh, tệp quy ước và builtins. Chỉ các chính sách được quản lý bởi Cloud và bộ bảo vệ `block-failproofai-commands` luôn bật tiếp tục thực thi. Vì vậy, pause không phải là một cách khắc phục cho triển khai Cloud xấu, và nó có bán kính tác động rộng hơn so với cách nó đọc: pack là nơi về cơ bản tất cả thực thi cục bộ sống, và bộ bảo vệ fail-closed của pack bị bỏ qua trong suốt thời gian.
 
-Sau khi rollback, mở các phiên làm việc bị ảnh hưởng và xác định điều kiện gây ra dương tính giả. Tạo một phiên bản mới, kiểm tra cả các trường hợp không an toàn và hợp pháp, sau đó lặp lại giai đoạn quan sát.
+| Lệnh | Hiệu ứng |
+|---|---|
+| `failproofai config --pause` | Phiên agent mới nhất của thư mục này, trong 30 phút |
+| `failproofai config --pause 10m` | Một thời gian nhất định. Tối đa 8h; hậu tố `s`/`m`/`h`, một số bare có nghĩa là phút |
+| `failproofai config --pause --session <id>` | Nhắm mục tiêu một phiên cụ thể |
+| `failproofai config --resume` | Kết thúc pause sớm |
+| `failproofai config --resume --all` | Kết thúc mọi pause hoạt động |
+| `failproofai config --status` | Cái gì đang bị tạm dừng và khi nó được hạ |
+
+## Khi nào để rollback
+
+- Một chính sách chặn một hành động production mong đợi.
+- Khối lượng trùng khớp cao hơn đáng kể so với rollout quan sát dự đoán.
+- Một chính sách phụ thuộc vào các trường mà tích hợp không cung cấp.
+- Một phiên bản mới thay đổi hành vi bên ngoài chế độ lỗi dự định.
+
+Sau rollback, mở các phiên bị ảnh hưởng và xác định điều kiện gây ra dương tính giả. Tạo một phiên bản mới, kiểm tra cả trường hợp không an toàn và trường hợp hợp pháp cục bộ, sau đó đi qua observe trước khi bạn thực thi lại:
+
+```bash
+fp policies test ./policy.mjs --tool Bash --command '<the legitimate case>' --expect allow
+fp policies publish my-policy ./policy.mjs
+fp fleet deploy ci-runner-01 --add my-policy:observe
+fp guardrails summary --since 24h --machine ci-runner-01
+```
+
+`:observe` là những gì làm cho đó là một shadow rollout. Một `fp fleet deploy ... --add my-policy` bare **thực thi ngay lập tức** — một hiệu ứng bị bỏ qua được phân giải thành hiệu ứng đã được triển khai, và sau đó là `enforce` — mà trên một chính sách bạn vừa rollback có nghĩa là khôi phục sự cố. Chế độ Observe vẫn đánh giá chính sách cho thực tế và ghi lại mọi phán quyết không phải allow; chỉ có thực thi bị tạm ngừng, vì vậy `fp guardrails summary` đo lường phiên bản mới so với lưu lượng tương tự đã phá vỡ cái cũ. Thúc đẩy với `--add my-policy:enforce` khi những con số nói như vậy.
 
 <Warning>
-  Tạm dừng thực thi có thể thích hợp trong quá trình sự cố, nhưng nó mở rộng tiếp xúc cho mọi chính sách hoạt động trong phạm vi đó. Ưu tiên rollback phiên bản chính sách cụ thể khi có thể.
+  Tạm dừng thực thi có thể phù hợp trong một sự cố, nhưng nó mở rộng phơi bày cho mọi chính sách hoạt động trong phạm vi đó. Thích rollback phiên bản chính sách cụ thể khi có thể.
 </Warning>

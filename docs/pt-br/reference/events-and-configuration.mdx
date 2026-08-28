@@ -1,19 +1,30 @@
 ---
 title: "Eventos e configuração"
-description: "Referência do modelo de eventos, ambientes, armazenamento local e limites de configuração."
+description: "Referência ao modelo de eventos, ambientes, armazenamento local e limites de configuração."
 icon: "list-tree"
 ---
+
+## Dois vocabulários de eventos
+
+O Failproof AI trabalha com dois tipos diferentes de evento, e eles nunca compartilham um nome.
+
+| Vocabulário | Produzido por | Nomes se parecem com | Referência |
+| --- | --- | --- | --- |
+| Eventos de telemetria | `failproofai-sdk`, de dentro do seu agente | `tool_use`, `tool_result`, `hook_triggered`, `model_response` | [Python SDK](/pt-br/reference/custom-agents) |
+| Eventos de hook | O harness do agente, normalizado pelo failproofai | `PreToolUse`, `PostToolUse`, `Stop`, `UserPromptSubmit` | [Políticas personalizadas](/pt-br/reference/policy-sdk#choose-the-event) |
+
+O lado dos hooks normaliza os nomes de eventos de cada harness em 29 tipos canônicos. O lado de telemetria possui 15 métodos e seu próprio contrato de campos. `hook_triggered` e `PreToolUse` não são duas grafias da mesma coisa.
 
 ## Famílias de eventos
 
 - Início, fim, pausa e retomada do agente
 - Requisição e resposta do modelo
-- Uso de ferramenta e resultado
-- Hook acionado e concluído
+- Uso e resultado de ferramenta
+- Hook disparado e concluído
 - Espera humana, entrada, pausa e interrupção
 - Erros explícitos
 
-Cada evento carrega um timestamp, ID de sessão, ID do agente, tipo de evento e ambiente. Os campos específicos do evento contêm dados de modelo, ferramenta, correlação, resultado, conteúdo, duração ou erro.
+Cada evento carrega um timestamp, ID de sessão, ID do agente, tipo de evento e ambiente. Campos específicos do evento contêm dados de modelo, ferramenta, correlação, resultado, conteúdo, duração ou erro.
 
 ## Inspecionar um contrato de evento
 
@@ -21,21 +32,21 @@ Cada evento carrega um timestamp, ID de sessão, ID do agente, tipo de evento e 
   <Tab title="Dashboard">
     1. Abra **Observe → Events**.
     2. Defina uma janela de tempo curta e filtre por ambiente, agente e tipo de evento.
-    3. Selecione um evento para inspecionar seus campos normalizados e o payload bruto, depois abra sua sessão para ver o contexto de execução.
-    4. Se uma duração pareada estiver ausente, verifique se os eventos de início e conclusão usam o mesmo ID de correlação.
+    3. Selecione um evento para inspecionar seus campos normalizados e payload bruto, depois abra sua sessão para ver o contexto de execução.
+    4. Se uma duração pareada estiver faltando, verifique se os eventos de início e conclusão usam o mesmo correlation ID.
 
-    Use o stream de Events para restringir os dados a uma execução de agente e inspecionar os campos de evento normalizados.
+    Use o stream de Eventos para restringir os dados a uma execução de agente e inspecionar os campos de evento normalizados.
 
-    ![O stream de Events ao vivo com filtros para ambiente, agente, sessão e tipo de evento.](/images/dashboard/events-stream.png)
+    ![O stream de Eventos ao vivo com filtros para ambiente, agente, sessão e tipo de evento.](/images/dashboard/events-stream.png)
 
-    Em seguida, siga o evento até sua sessão. O trace mostra o que aconteceu imediatamente antes e depois dele, o que é necessário quando o payload por si só é ambíguo.
+    Em seguida, siga o evento para sua sessão. O trace mostra o que aconteceu imediatamente antes e depois dele, o que é necessário quando o payload sozinho é ambíguo.
 
     ![O trace de sessão vinculado usado para inspecionar o evento no contexto de execução.](/images/dashboard/session-detail.png)
 
-    Compare os IDs de correlação e timestamps nas duas visualizações quando um evento pareado ou duração estiver ausente.
+    Compare correlation IDs e timestamps em ambas as visualizações quando um evento pareado ou duração estiver faltando.
   </Tab>
   <Tab title="CLI">
-    Descubra valores de filtro válidos e depois busque payloads completos de eventos para uma sessão:
+    Descubra valores de filtro válidos e depois busque os payloads completos de eventos para uma sessão:
 
     ```bash
     fp list event_types
@@ -53,32 +64,103 @@ Cada evento carrega um timestamp, ID de sessão, ID do agente, tipo de evento e 
 
 ## Campos reservados do SDK
 
-Não use `timestamp`, `session_id`, `agent_id`, `type` ou `environment` como campos personalizados do SDK Python. As durações de eventos pareados, como a duração do resultado de ferramenta, são calculadas pelo SDK e não podem ser fornecidas manualmente.
+Cinco nomes são recusados diretamente como campos personalizados, pois o SDK os define em cada evento:
+
+`timestamp`, `session_id`, `agent_id`, `type`, `environment`.
+
+Mais onze são aceitos, mas verificados quanto ao tipo, pois o endpoint de ingestão os extrai do payload para colunas tipadas e armazena `NULL` silenciosamente para qualquer valor do tipo errado. O SDK gera um erro no local da chamada, onde você ainda pode ver o que produziu o valor.
+
+| Nomes | Tipo exigido |
+| --- | --- |
+| `duration_ms`, `input_tokens`, `output_tokens` | `int`, dentro do intervalo unsigned de 32 bits. Um float ou bool gera erro. |
+| `tool_name`, `tool_call_id`, `hook_name`, `hook_id`, `input_id`, `pause_id`, `error_type`, `model` | `str`. `None` gera erro, pois a linha chegaria com 200 OK e seria invisível para qualquer filtro nesse campo. |
+
+### Durações
+
+O SDK mede o intervalo entre quatro pares de eventos e recusa um `duration_ms` que você passe manualmente: `tool_use` → `tool_result`, `hook_triggered` → `hook_completed`, `agent_pause` → `agent_resume` e `human_wait` → `human_input`.
+
+`model_response` é a exceção. O SDK nunca mede chamadas ao modelo, então você mesmo fornece `duration_ms`, como um número inteiro de milissegundos. Veja as [regras de correlação](/pt-br/reference/custom-agents) para entender como um par é associado.
 
 ## Limites locais
 
-- O estado do Failproof AI fica em `~/.failproofai`, salvo configuração explícita em contrário.
-- O `failproofai-sdk` sempre cria o spool em `~/.failproofai/custom-agents`. A variável `FAILPROOFAI_HOME` realoca esse diretório home; o segmento `custom-agents` é sempre acrescentado, portanto o spool não pode ser colocado fora dele. Apenas o próprio `configure(base_dir=...)` do SDK grava em outro local. A variável `AGENTEYE_HOME` é lida pelo `agenteye-collector` mais antigo para escolher o que monitorar, e não afeta mais onde o SDK escreve.
-- Os rótulos de ambiente podem ser definidos por meio da configuração do SDK ou via `AGENTEYE_ENVIRONMENT`.
-- As credenciais do daemon são armazenadas separadamente das configurações não secretas.
+- O estado do Failproof AI fica em `~/.failproofai`, a menos que configurado explicitamente de outra forma.
+- `failproofai-sdk` sempre armazena em spool sob `~/.failproofai/custom-agents`. `FAILPROOFAI_HOME` reposiciona esse diretório home; o segmento `custom-agents` é sempre adicionado, portanto o spool não pode ser colocado fora dele. Apenas o próprio `configure(base_dir=...)` do SDK grava em outro lugar. `AGENTEYE_HOME` é lido pelo antigo `agenteye-collector` para escolher o que observar, e não afeta mais onde o SDK grava.
+- As credenciais ficam em `~/.failproofai/credentials.json`, gravado com permissão `0600`. Deliberadamente não estão em `config.json`, que é gravado com uma escrita simples e herda o umask, tornando-o legível por qualquer usuário local na máquina.
 
-Use nomes de ambiente estáveis e de baixa cardinalidade. Vírgulas não são suportadas nos rótulos de ambiente do daemon.
+Use nomes de ambiente estáveis e de baixa cardinalidade. Uma vírgula é rejeitada em ambos os escritores: o daemon a recusa em `collector.environment`, e o SDK gera erro em `configure(environment=...)`. O motivo é o mesmo dos dois lados — o endpoint de ingestão divide esse campo por vírgulas e ignora a linha inteira, respondendo `200 OK` sem armazenar nada.
+
+## Configuração da máquina
+
+As configurações não secretas do daemon ficam em `~/.failproofai/config.json`. `hooks_verbosity`, `redact` e `environment` não possuem flag de CLI — edite o arquivo diretamente. `sessions`, `hooks` e `machine_id` são gravados por `failproofai config` quando esta máquina é conectada ao Cloud.
+
+| Chave | Valores | Padrão | O que controla |
+| --- | --- | --- | --- |
+| `collector.sessions` | `true` / `false` | `false`, e `true` após conectar ao Cloud | Enviar transcrições de sessões do agente. Uma transcrição carrega prompts, conteúdos de arquivos e tudo que foi colado em um terminal. |
+| `collector.hooks` | `true` / `false` | `true` | Enviar atividade de hooks. Carrega decisões e nomes de ferramentas, nunca conteúdos de arquivos. |
+| `collector.hooks_verbosity` | `all` / `decisions` / `off` | `decisions` | `decisions` mantém cada deny e instruct exatamente e agrega os aproximadamente 99% que são allow. |
+| `collector.redact` | `minimal` / `off` | `minimal` | Redação aplicada antes que qualquer dado saia da máquina. |
+| `collector.environment` | qualquer string sem vírgula | `local` | O rótulo marcado em cada evento que esta máquina envia. |
+| `collector.machine_id` | qualquer string | um ID já em disco, ou um UUID aleatório novo | Sob qual máquina o dashboard agrupa esses dados. Gravado por `--machine-id`. Nunca é derivado do hostname. |
+
+<Note>
+  `failproofai backfill --help` menciona `~/.failproofai/config.toml`. Esse é um caminho desatualizado de um layout anterior; nenhuma versão atual o grava. O arquivo é `config.json`.
+</Note>
+
+Conectar ao Cloud envia tanto as decisões de política quanto as transcrições completas de sessão.
+
+<Warning>
+  `--no-transcripts` não desativa as transcrições no fluxo de configuração. `failproofai config --token <key> --no-transcripts` analisa a flag e depois nunca a lê, e o assistente conecta com sessões ativadas de qualquer forma — portanto as transcrições continuam sendo enviadas enquanto você acredita ter optado por não participar.
+
+  Para enviar apenas decisões, defina `collector.sessions` como `false` em `~/.failproofai/config.json` após conectar:
+
+  ```json
+  {
+    "collector": {
+      "sessions": false
+    }
+  }
+  ```
+</Warning>
+
+Um backfill segue as mesmas configurações do collector, portanto nunca envia algo que sua configuração diz que você não deseja. Reenviar é seguro: a redação é determinística, então um evento reenviado gera o mesmo hash que seu primeiro envio e colapsa na linha já existente.
 
 ## Alterar um rótulo de ambiente
 
-<Tabs>
-  <Tab title="Dashboard">
-    Os rótulos de ambiente são atribuídos pelo SDK emissor ou pelo daemon do Failproof. Após alterar um rótulo, abra **Observe → Sessions** e use o filtro de ambiente para confirmar que as novas sessões carregam o novo valor. As sessões existentes mantêm seu ambiente original.
+O SDK e o daemon cada um carimba seu próprio rótulo, e eles são definidos em locais diferentes.
 
-  </Tab>
-  <Tab title="CLI">
-    Para o `failproofai-sdk`, configure o ambiente no código ou com sua variável de ambiente legada. Execute novamente a configuração do daemon ao alterar configurações no nível da máquina.
+<Tabs>
+  <Tab title="Python SDK">
+    Defina no código ou no ambiente do processo que emite os eventos. O padrão é `dev`.
+
+    ```python
+    import failproofai_sdk
+
+    failproofai_sdk.configure(environment="production-us-east")
+    ```
 
     ```bash
     export AGENTEYE_ENVIRONMENT=production-us-east
-    failproofai config
+    ```
+
+    `AGENTEYE_ENVIRONMENT` é lido apenas pelo `failproofai-sdk`. Nem o CLI nem o daemon o lê, portanto exportá-lo não altera nada sobre a máquina.
+  </Tab>
+  <Tab title="Daemon">
+    Edite `collector.environment` em `~/.failproofai/config.json`. O padrão é `local` e nenhuma flag de CLI o define.
+
+    ```json
+    {
+      "collector": {
+        "environment": "production-us-east"
+      }
+    }
+    ```
+
+    ```bash
     failproofai config --status
     fp sessions --since 1h --env production-us-east
     ```
+  </Tab>
+  <Tab title="Dashboard">
+    Os rótulos de ambiente são atribuídos pelo SDK emissor ou pelo daemon do Failproof, portanto não há nada a alterar aqui. Após alterar um em sua origem, abra **Observe → Sessions** e use o filtro de ambiente para confirmar que as novas sessões carregam o novo valor. As sessões existentes retêm seu ambiente original.
   </Tab>
 </Tabs>

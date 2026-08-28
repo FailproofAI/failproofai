@@ -1,25 +1,34 @@
 ---
 title: "Hooks"
-description: "Mide la actividad de los hooks, los disparadores y la latencia de forma independiente a los resultados de las políticas."
+description: "Consulta cuándo Failproof AI evaluó un evento de agente y qué decidió."
 icon: "webhook"
 ---
 
-Hooks muestra cuándo se ejecutan los hooks del ciclo de vida del agente y cuánto tiempo tardan. Las decisiones de políticas son una vista separada.
+Un hook es un punto donde un agente solicita a Failproof AI una decisión. El registro de actividad de hooks captura el evento, la política, el resultado y el tiempo de evaluación.
+
+## Investigar la actividad de hooks
 
 <Tabs>
-  <Tab title="Dashboard">
-    1. Ve a **Observe → Hooks**.
-    2. Filtra por entorno, nombre del hook, evento disparador, agente o ID de sesión.
-    3. Revisa la latencia de los hooks y su distribución.
-    4. Selecciona un punto del gráfico o un segmento de hook para abrir los eventos subyacentes.
+  <Tab title="Panel de control">
+    Ve a **Observe → Hooks**. Filtra por entorno, evento, agente o sesión.
 
-    ![La página de Hooks que muestra la latencia agrupada por nombre de hook y evento disparador.](/images/dashboard/hooks.png)
+    ![La página de Hooks mostrando la latencia agrupada por nombre de hook y evento desencadenante.](/images/dashboard/hooks.png)
   </Tab>
   <Tab title="CLI">
     ```bash
+    fp guardrails summary --since 24h
+    fp --json events --full --event-type hook_completed --session-id <session-id> --all --limit 500
     fp list hooks
-    fp events --event-type hook_triggered,hook_completed --env production --since 24h
-    fp events --search "PreToolUse" --since 24h
     ```
   </Tab>
 </Tabs>
+
+De forma predeterminada, cada decisión deny e instruct se envía completa. Los allow repetidos se agrupan para reducir el ruido. Establece `collector.hooks_verbosity` en `~/.failproofai/config.json` con el valor `all`, `decisions` o `off`.
+
+<Warning>
+  La actividad de hooks demuestra que la evaluación se ejecutó, no que el arnés pudiera bloquear ese evento. Consulta [capacidad de aplicación](/es/reference/harnesses#enforcement-capability). Un par arnés-evento no listado no está verificado.
+</Warning>
+
+<Card title="Decisiones de política" icon="shield-check" href="/es/sessions/policy-decisions">
+  Consulta la misma actividad organizada por resultado y política.
+</Card>

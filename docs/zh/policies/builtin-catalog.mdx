@@ -1,106 +1,146 @@
 ---
 title: "内置策略目录"
-description: "查阅每条 Failproof AI 内置策略的触发条件、推荐状态及可配置参数。"
+description: "查阅 Failproof AI 每条内置策略的触发条件、默认状态及可配置参数。"
 icon: "list-checks"
 ---
 
-已安装的软件包是策略可用性的唯一权威来源。每次升级后请运行 `failproofai policies`，因为目录条目和行为可能随软件包版本而变化。
+39 条内置策略中的 38 条以 `FailproofAI/policies` 包的形式发布；`block-failproofai-commands` 直接编译进安装包，因为包声明不支持 `alwaysOn`。已安装的包是本机可执行策略的权威来源：
 
-## 推荐基线
-
-引导安装的推荐选项目前启用了密钥脱敏、环境保护、自我保护、灾难性命令防护以及受保护分支安全：
-
-```text
-sanitize-jwt                 sanitize-api-keys
-sanitize-connection-strings sanitize-private-key-content
-sanitize-bearer-tokens       protect-env-vars
-block-env-files              block-secrets-write
-block-failproofai-commands   block-sudo
-block-curl-pipe-sh           block-rm-rf
-block-push-master            block-force-push
+```bash
+failproofai policies show FailproofAI/policies   # 已发布的目录
+failproofai policies                             # 本机已启用的策略
 ```
 
-`block-failproofai-commands` **始终开启**。上方列出它仅为完整起见，但无论是否出现在您的启用列表中，它都会在每次评估时注册，且无法被禁用或暂停——一个可被 Agent 自行关闭的守卫，根本算不上守卫。
+`failproofai policies` 会列出自定义文件、约定文件、已安装的包以及云端分配。该命令没有内置策略部分，因此无法回答"哪些内置策略存在"——`policies show` 和 [Policy Hub](https://befailproof.ai/policy-hub/FailproofAI/policies/) 才能解答这个问题。
 
-推荐范围有意窄于**全部启用**。基础设施和工作流策略可能会中断正常工作，应仅在需要的仓库和机器上启用。
+## 默认值与选择方式
 
-## 密钥与环境
+直接执行 `failproofai policies add FailproofAI/policies` 会启用该包自身的默认策略——即下表中标记为 **on** 的 10 条。`block-failproofai-commands` 无论是否出现在选择中都会处于启用状态，且不在该选择范围内。`--all` 启用全部策略；`--category <slug>` 和 `--policy <name>` 启用指定子集。每个标题旁边的 slug 即为 `--category` 的匹配值：
 
-| 策略 | 触发条件 | 效果 |
+```bash
+failproofai policies add FailproofAI/policies --category git,database
+```
+
+`block-failproofai-commands` **始终处于启用状态**。无论是否出现在你的选择中，它都会在每次评估时生效，且无法被禁用或暂停——一个智能体可以关闭的防护，并不是真正的防护。由于包声明不支持 `alwaysOn`，这条策略才被直接编译进安装包而非放入包中。
+
+## 脱敏 — `sanitize`
+
+这些策略在 `PostToolUse` 阶段运行，即工具已执行完毕之后。它们**检测并拒绝工具返回结果**；不会对子字符串进行脱敏处理后返回剩余内容。
+
+此处的拒绝操作仅在使用 `PostToolUse` 判决的运行环境中才会传达给模型——即 **codex** 和 **copilot**，在这两个环境中，拒绝原因会替换整个工具结果。在 claude、cursor、opencode、pi、hermes、openclaw、factory、devin、antigravity 和 goose 中，`PostToolUse` 仅为观察模式：检测结果会被记录，但输出仍会传递给模型。
+
+| 策略 | 触发条件 | 默认状态 | 结果 |
+| --- | --- | --- | --- |
+| `sanitize-jwt` | `PostToolUse` | on | 拒绝包含 JWT 的工具结果。 |
+| `sanitize-api-keys` | `PostToolUse` | on | 拒绝包含 OpenAI、Anthropic、GitHub、AWS、Stripe 或 Google 密钥的工具结果。 |
+| `sanitize-connection-strings` | `PostToolUse` | on | 拒绝包含嵌入凭据的数据库连接字符串的工具结果。 |
+| `sanitize-private-key-content` | `PostToolUse` | on | 拒绝包含 PEM 私钥内容的工具结果。 |
+| `sanitize-bearer-tokens` | `PostToolUse` | on | 拒绝包含 `Authorization: Bearer` 令牌的工具结果。 |
+
+## 环境 — `environment`
+
+| 策略 | 触发条件 | 默认状态 | 结果 |
+| --- | --- | --- | --- |
+| `protect-env-vars` | `PreToolUse` on `Bash` | on | 阻止读取环境变量的命令。 |
+| `block-env-files` | `PreToolUse` | on | 阻止对 `.env` 文件的读写操作。 |
+| `block-read-outside-cwd` | `PreToolUse` on `Read`、`Glob`、`Grep`、`Bash` | off | 将文件读取限制在会话工作目录内。 |
+
+## 危险命令 — `dangerous-commands`
+
+| 策略 | 触发条件 | 默认状态 | 结果 |
+| --- | --- | --- | --- |
+| `block-sudo` | `PreToolUse`、`PermissionRequest` on `Bash` | on | 阻止 `sudo`，除非匹配到允许模式。 |
+| `block-curl-pipe-sh` | `PreToolUse` on `Bash` | on | 阻止将下载的脚本直接管道传输到 shell 执行。 |
+| `block-failproofai-commands` | `PreToolUse`、`PermissionRequest` on `Bash`、`Write`、`Edit`、`NotebookEdit` | **始终启用** | 阻止所有 Failproof AI CLI 调用、自我暂停及卸载操作。 |
+| `block-rm-rf` | `PreToolUse` on `Bash` | off | 阻止灾难性的递归删除操作。 |
+| `block-secrets-write` | `PreToolUse` on `Write` | off | 阻止向常见密钥和凭据文件名写入内容。 |
+
+## 基础设施命令 — `infra-commands`
+
+全部七条默认关闭：它们管控的是正常工作中频繁使用的工具，因此应由需要这些工具的代码仓库和机器自行决定是否启用。
+
+| 策略 | 触发条件 | 默认状态 | 结果 |
+| --- | --- | --- | --- |
+| `block-kubectl` | `PreToolUse` on `Bash` | off | 管控 `kubectl` 集群变更操作。 |
+| `block-terraform` | `PreToolUse` on `Bash` | off | 管控 `terraform` 和 `tofu` 命令。 |
+| `block-aws-cli` | `PreToolUse` on `Bash` | off | 管控 `aws` CLI 命令。 |
+| `block-gcloud` | `PreToolUse` on `Bash` | off | 管控 `gcloud` 命令。 |
+| `block-az-cli` | `PreToolUse` on `Bash` | off | 管控 `az` 命令。 |
+| `block-helm` | `PreToolUse` on `Bash` | off | 管控 `helm` 命令。 |
+| `block-gh-pipeline` | `PreToolUse` on `Bash` | off | 管控 `gh` 的变更操作：workflow run、run rerun 和 cancel、pr merge、release create 和 delete、cache delete、secret set 和 delete。`gh pr view` 等只读子命令不在匹配范围内。 |
+
+## Git — `git`
+
+| 策略 | 触发条件 | 默认状态 | 结果 |
+| --- | --- | --- | --- |
+| `block-push-master` | `PreToolUse` on `Bash` | on | 阻止直接推送到已配置的受保护分支。 |
+| `block-force-push` | `PreToolUse` on `Bash` | off | 阻止强制推送。`--force-with-lease` 和 `--force-if-includes` 仍然允许。 |
+| `block-work-on-main` | `PreToolUse` on `Bash` | off | 阻止在受保护分支上提交和合并。 |
+| `warn-git-amend` | `PreToolUse` on `Bash` | off | 在使用 `--amend` 重写提交前发出警告。 |
+| `warn-git-stash-drop` | `PreToolUse` on `Bash` | off | 在永久删除或清除暂存区前发出警告。 |
+| `warn-all-files-staged` | `PreToolUse` on `Bash` | off | 在执行 `git add -A`、`git add .` 或 `git add --all` 等大范围暂存操作时发出警告。 |
+
+## 数据库 — `database`
+
+| 策略 | 触发条件 | 默认状态 | 结果 |
+| --- | --- | --- | --- |
+| `warn-destructive-sql` | `PreToolUse` on `Bash` | off | 通过已识别的数据库客户端执行 `DROP`、`TRUNCATE` 以及不带 `WHERE` 的 `DELETE` 时发出警告。 |
+| `warn-schema-alteration` | `PreToolUse` on `Bash` | off | 执行已识别的 `ALTER TABLE` 列操作和重命名操作时发出警告。 |
+
+## 包管理与系统 — `packages-system`
+
+| 策略 | 触发条件 | 默认状态 | 结果 |
+| --- | --- | --- | --- |
+| `warn-package-publish` | `PreToolUse` on `Bash` | off | 在向 npm、PyPI、crates.io、RubyGems 等注册表发布前发出警告。 |
+| `warn-global-package-install` | `PreToolUse` on `Bash` | off | 在全局安装包前发出警告。 |
+| `prefer-package-manager` | `PreToolUse` on `Bash` | off | 阻止使用非首选包管理器，并指示智能体使用允许的包管理器。 |
+| `warn-large-file-write` | `PreToolUse` on `Write` | off | 超过配置的文件大小阈值时发出警告。 |
+| `warn-background-process` | `PreToolUse` on `Bash` | off | 检测到后台进程或守护进程模式时发出警告。 |
+
+## AI 行为 — `ai-behavior`
+
+| 策略 | 触发条件 | 默认状态 | 结果 |
+| --- | --- | --- | --- |
+| `warn-repeated-tool-calls` | `PreToolUse` | off | 当同一工具以相同参数被调用三次或以上时发出警告。 |
+
+## 工作流 — `workflow`
+
+全部五条策略在 `Stop` 时触发，默认均关闭。
+
+| 策略 | 默认状态 | 结果 |
 | --- | --- | --- |
-| `sanitize-jwt` | `PostToolUse` | 在模型看到工具输出之前，将其中的 JWT 脱敏处理。 |
-| `sanitize-api-keys` | `PostToolUse` | 脱敏常见的 OpenAI、Anthropic、GitHub、AWS、Stripe 和 Google 密钥。 |
-| `sanitize-connection-strings` | `PostToolUse` | 脱敏包含凭据的数据库连接字符串。 |
-| `sanitize-private-key-content` | `PostToolUse` | 脱敏 PEM 私钥正文。 |
-| `sanitize-bearer-tokens` | `PostToolUse` | 脱敏 Authorization bearer token。 |
-| `protect-env-vars` | Shell 工具的 `PreToolUse` | 拦截会转储环境变量的命令。 |
-| `block-env-files` | `PreToolUse` | 拦截对 `.env` 文件的读写操作。 |
-| `block-read-outside-cwd` | 读取、glob、grep 或 shell 工具的 `PreToolUse` | 将读操作限制在会话工作目录内。 |
-| `block-secrets-write` | 写入工具的 `PreToolUse` | 拦截对常见密钥和凭据文件名的写操作。 |
+| `require-commit-before-stop` | off | 存在未提交的已跟踪改动时，拒绝完成任务。 |
+| `require-push-before-stop` | off | 存在仅本地的提交时，拒绝完成任务。 |
+| `require-pr-before-stop` | off | 要求当前分支存在 Pull Request。 |
+| `require-no-conflicts-before-stop` | off | 要求与已配置的基础分支合并无冲突。 |
+| `require-ci-green-before-stop` | off | 要求当前 HEAD 提交的 CI 检查通过，忽略之前提交上的过期运行结果。 |
 
-## 危险命令与基础设施
+这些策略需要运行环境能够消费 `Stop` 判决，但并非所有运行环境都支持：
 
-| 策略 | 触发条件 | 效果 |
-| --- | --- | --- |
-| `block-sudo` | `PreToolUse`、`PermissionRequest` | 拦截 `sudo`，除非命令匹配允许规则。 |
-| `block-curl-pipe-sh` | `PreToolUse` | 拦截将下载脚本直接通过管道传给 shell 的操作。 |
-| `block-rm-rf` | `PreToolUse` | 拦截灾难性的递归删除模式。 |
-| `block-failproofai-commands` | `PreToolUse`、`PermissionRequest` | **始终开启，无法禁用。** 拦截所有 Failproof AI CLI 调用、自我暂停以及包管理器卸载操作。 |
-| `block-kubectl` | `PreToolUse` | 管控 Kubernetes 命令。 |
-| `block-terraform` | `PreToolUse` | 管控 Terraform 和 OpenTofu 命令。 |
-| `block-aws-cli` | `PreToolUse` | 管控 AWS CLI 命令。 |
-| `block-gcloud` | `PreToolUse` | 管控 Google Cloud CLI 命令。 |
-| `block-az-cli` | `PreToolUse` | 管控 Azure CLI 命令。 |
-| `block-helm` | `PreToolUse` | 管控 Helm 命令。 |
-| `block-gh-pipeline` | `PreToolUse` | 管控具有变更性质的 GitHub CLI 工作流、运行、合并、发布、缓存及密钥操作。 |
-
-## Git 与数据库安全
-
-| 策略 | 触发条件 | 效果 |
-| --- | --- | --- |
-| `block-push-master` | `PreToolUse` | 拦截直接推送到已配置的受保护分支。 |
-| `block-force-push` | `PreToolUse` | 拦截强制推送；当前实现中 `--force-with-lease` 仍被允许。 |
-| `block-work-on-main` | `PreToolUse` | 拦截在受保护分支上的提交和合并操作。 |
-| `warn-git-amend` | `PreToolUse` | 在使用 `--amend` 改写提交前发出警告。 |
-| `warn-git-stash-drop` | `PreToolUse` | 在永久丢弃或清空 stash 前发出警告。 |
-| `warn-all-files-staged` | `PreToolUse` | 对 `git add -A`、`git add .` 或 `git add --all` 等大范围暂存操作发出警告。 |
-| `warn-destructive-sql` | `PreToolUse` | 对通过已识别数据库客户端执行的 `DROP`、`TRUNCATE` 以及不带 `WHERE` 的 `DELETE` 发出警告。 |
-| `warn-schema-alteration` | `PreToolUse` | 对已识别的 `ALTER TABLE` 列操作和重命名操作发出警告。 |
-
-## 包管理、系统行为与 Agent 循环
-
-| 策略 | 触发条件 | 效果 |
-| --- | --- | --- |
-| `warn-package-publish` | `PreToolUse` | 在发布到包注册中心前发出警告。 |
-| `warn-global-package-install` | `PreToolUse` | 在全局安装包之前发出警告。 |
-| `prefer-package-manager` | `PreToolUse` | 指示 Agent 使用已允许的包管理器。 |
-| `warn-large-file-write` | 写入工具的 `PreToolUse` | 当文件大小超过配置阈值时发出警告。 |
-| `warn-background-process` | `PreToolUse` | 对分离式或长期运行的后台进程模式发出警告。 |
-| `warn-repeated-tool-calls` | `PreToolUse` | 在三次或以上相同工具调用后发出警告。 |
-
-## 任务结束工作流
-
-这些策略需要能够发出兼容 `Stop` 事件的执行框架。
-
-| 策略 | 效果 |
+| 运行环境 | `Stop` |
 | --- | --- |
-| `require-commit-before-stop` | 当已跟踪的工作存在未提交内容时，拒绝完成任务。 |
-| `require-push-before-stop` | 当存在仅在本地的提交时，拒绝完成任务。 |
-| `require-pr-before-stop` | 要求为当前分支创建 Pull Request。 |
-| `require-no-conflicts-before-stop` | 要求与已配置的基础分支无合并冲突。 |
-| `require-ci-green-before-stop` | 要求当前 HEAD 的 CI 检查全部通过。 |
+| claude、codex、copilot、cursor、openclaw、factory、devin、antigravity | 已验证可阻断：拒绝操作会强制进入下一轮对话 |
+| pi | 仅观察。拒绝原因会作为指令带入下一轮对话，而非作为拦截门控 |
+| goose、hermes | 未安装 `Stop` 钩子，因此这五条策略永远不会触发 |
+| opencode | 未验证。`Stop` 不在 opencode 消费判决的事件列表中 |
+
+Cursor Cloud Agent 虚拟机完全不运行停止钩子，因此即便本地 Cursor 不受影响，在那里运行的 Cursor 会话也不受这些策略保护。
+
+<Note>
+  `warn-*` 策略返回 `instruct`，而非 `deny`。（`prefer-package-manager` 是非 `block-*` 命名中的例外：它返回 `deny`，因此会在所有消费 `PreToolUse` 判决的运行环境中生效——共十二个。）在 Hermes 和 Goose 上，在 `Stop` 通道之外的 Pi、OpenClaw 和 Factory 上，以及在 `Stop` 和 `UserPromptSubmit` 之外的 Antigravity 上，`instruct` 会降级为允许操作并在 stderr 上附加一条说明——智能体不会收到通知。Antigravity 的 `UserPromptSubmit` 是一个真实的第二通道：指令会在模型运行前作为临时消息注入。
+</Note>
 
 ## 参数参考
 
-在对应作用域的 `policyParams` 对象下配置参数。每条策略会对参数类型进行校验。
+在所选作用域的 `policyParams` 对象下配置参数。各策略会对类型进行验证。
 
-| 策略 | 参数 | 类型及默认值 |
+| 策略 | 参数 | 类型与默认值 |
 | --- | --- | --- |
 | `sanitize-api-keys` | `additionalPatterns` | `pattern[]`，`[]`；条目包含 `regex` 和 `label` |
 | `block-read-outside-cwd` | `allowPaths` | `string[]`，`[]` |
 | `block-sudo` | `allowPatterns` | `string[]`，`[]` |
 | `block-rm-rf` | `allowPaths` | `string[]`，`[]` |
-| 基础设施拦截器 | `allowPatterns` | `string[]`，`[]` |
+| 基础设施拦截策略 | `allowPatterns` | `string[]`，`[]` |
 | `block-secrets-write` | `additionalPatterns` | `string[]`，`[]` |
 | `block-push-master` | `protectedBranches` | `string[]`，`["main", "master"]` |
 | `block-work-on-main` | `protectedBranches` | `string[]`，`["main", "master"]` |
@@ -112,7 +152,6 @@ block-push-master            block-force-push
 
 ```json
 {
-  "enabledPolicies": ["block-sudo", "block-push-master"],
   "policyParams": {
     "block-sudo": {
       "allowPatterns": ["sudo systemctl status"]
@@ -124,6 +163,10 @@ block-push-master            block-force-push
 }
 ```
 
+<Note>
+  直接使用策略名称作为 `policyParams` 的键，仅对 `FailproofAI/policies` 有效。对于其他任何包，键的格式为 `pack/<owner>/<repo>/<policy>`——来自第三方包中声明了相同策略名称的包，将使用 schema 默认值，而非你配置的参数。
+</Note>
+
 <Warning>
-  允许规则会扩大 Agent 的操作权限。在将其部署到整个机器集群之前，请先在目标执行框架上测试确切的 token 解析方式和命令变体。
+  允许模式会扩大智能体的操作权限。在将其部署到整个机器群之前，请务必在目标运行环境上测试精确的标记化处理和命令变体。
 </Warning>

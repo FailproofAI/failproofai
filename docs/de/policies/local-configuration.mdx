@@ -1,84 +1,50 @@
 ---
-title: "Lokale Konfiguration"
-description: "Steuerung von Policy-Scope, Parametern, benutzerdefinierten Dateien und maschinenbezogenen Failproof AI-Einstellungen."
-icon: "file-cog"
+title: "Lokale Richtlinienkonfiguration"
+description: "Legen Sie fest, wo Richtlinien gelten und konfigurieren Sie deren Parameter."
+icon: "sliders-horizontal"
 ---
 
-Failproof AI trennt die Policy-Auswahl von Maschinen- und Daemon-Einstellungen. So bleiben Repository-Policy-Entscheidungen überprüfbar, während Anmeldedaten und Daemon-Zustand außerhalb des Repositorys gespeichert werden.
+Verwenden Sie den Scope, um festzulegen, wer eine lokale Richtlinie erhält:
 
-## Einen Policy-Scope wählen
-
-<Tabs>
-  <Tab title="Dashboard">
-    Führen Sie `failproofai` ohne Argumente aus, um das lokale Policy-Dashboard zu öffnen. Wählen Sie den User-, Project- oder Local-Scope, bevor Sie eine Policy aktivieren, damit die Änderung in die richtige Konfigurationsdatei geschrieben wird.
-
-    - **User** gilt projektübergreifend auf dieser Maschine.
-    - **Project** gehört zum Repository und kann committet werden.
-    - **Local** überschreibt ein Projekt für einen einzelnen Benutzer und sollte gitignored bleiben.
-
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai policy add block-rm-rf --scope user
-    failproofai policy add block-force-push --scope project
-    failproofai policy add warn-large-file-write --scope local
-    failproofai policies
-    ```
-
-    Nicht jedes Harness unterstützt den Local-Scope. Die CLI lehnt einen Scope ab, den das gewählte Harness nicht abbilden kann.
-  </Tab>
-</Tabs>
-
-| Scope | Policy-Konfigurationsdatei |
+| Scope | Gilt für |
 | --- | --- |
-| Project | `<project>/.failproofai/policies-config.json` |
-| Local | `<project>/.failproofai/policies-config.local.json` |
-| User | `~/.failproofai/policies-config.json` |
+| `user` | Ihre unterstützten Agents auf diesem Rechner |
+| `project` | Agents, die in diesem Projekt ausgeführt werden |
+| `local` | Claude nur in den lokalen Projekteinstellungen |
+| `all` | Nur zum Deinstallieren |
 
-Aktivierte Policies werden als Vereinigungsmenge zusammengeführt. Policy-Parameter verwenden den ersten Scope, der Parameter für die jeweilige Policy definiert, in der Reihenfolge Project → Local → User. Explizite benutzerdefinierte Policy-Pfade verwenden den ersten Scope, der sie definiert.
+```bash
+failproofai policies add block-sudo --scope user
+failproofai policies add block-rm-rf --scope project
+```
 
-## Policy-Parameter konfigurieren
+Hermes und OpenClaw unterstützen ausschließlich den User-Scope. Die meisten anderen Harnesses unterstützen User- und Project-Scope. Claude unterstützt zusätzlich den Local-Scope. Siehe [Harnesses](/de/reference/harnesses).
 
-<Tabs>
-  <Tab title="Dashboard">
-    Öffnen Sie die Policy im lokalen Dashboard, bearbeiten Sie die unterstützten Parameter und speichern Sie im gewählten Scope. Führen Sie eine passende und eine nicht passende Agent-Aktion aus und überprüfen Sie die Entscheidung unter **Observe → policy**.
+## Richtlinienparameter
 
-  </Tab>
-  <Tab title="CLI">
-    Bearbeiten Sie die `policies-config.json` des gewählten Scopes und führen Sie anschließend `failproofai policies` aus, um unbekannte Policy-Namen oder Parameter-Keys zu erkennen.
+Richtlinieneinstellungen werden in `policies-config.json` im entsprechenden Scope gespeichert. Verwenden Sie nach Möglichkeit die Ansicht **Richtlinien → Konfigurieren** im lokalen Dashboard.
 
-    ```json
-    {
-      "enabledPolicies": ["block-rm-rf", "block-force-push"],
-      "policyParams": {
-        "block-rm-rf": {
-          "allowPaths": ["/tmp/build-output"]
-        }
-      }
-    }
-    ```
+Ein Parameter gehört zu einer einzelnen Richtlinie und beeinflusst deren Entscheidungsverhalten. Beispielsweise kann eine Allow-Liste dazu führen, dass eine blockierende Richtlinie bekannte sichere Befehle oder Pfade akzeptiert.
 
-    ```bash
-    failproofai policies
-    ```
-  </Tab>
-</Tabs>
+Benutzerdefinierte Richtliniendateien können automatisch aus `.failproofai/policies/` geladen oder explizit angegeben werden:
 
-## Die Maschinendateien verstehen
+```bash
+failproofai policies -i -c ./guards.mjs --scope project
+```
 
-`~/.failproofai` enthält separate Dateien für separate Vertrauensgrenzen:
+Explizite Pfade werden entfernt mit:
 
-| Pfad | Zweck |
+```bash
+failproofai policies -u -c
+```
+
+## Dateien
+
+| Datei | Zweck |
 | --- | --- |
-| `config.json` | Nicht-geheime Daemon-, Audit- und Telemetrie-Einstellungen |
-| `credentials.json` | Cloud-Anmeldedaten; mit Nur-Eigentümer-Berechtigungen gespeichert |
-| `policies-config.json` | User-Scope-Builtin-Auswahl, Parameter und explizite benutzerdefinierte Pfade |
-| `policies/` | Benutzerkonvention-Policies und Cloud-verwaltete Policy-Artefakte |
-| `hook-activity/` | Lokales Policy-Entscheidungsprotokoll |
-| `state/` | Daemon-Spool, Health-, Pause- und Laufzeitzustand |
+| `~/.failproofai/config.json` | Rechner- und Collector-Einstellungen |
+| `policies-config.json` | Aktivierte Richtlinien und Parameter für einen Scope |
+| `.failproofai/policies/*policies.mjs` | Konventionsbasiert geladene Richtlinien |
+| `~/.failproofai/policies/packs/installed.json` | Installierte Packs und deren Auswahl |
 
-Verwenden Sie `FAILPROOFAI_HOME`, um das gesamte Maschinen-Layout für einen Container oder isolierten Test zu verschieben. Verschieben Sie einzelne Zustandsverzeichnisse nicht unabhängig voneinander.
-
-<Warning>
-  Committen Sie niemals `credentials.json`. Committen Sie Project-Policy-Konfigurationen und Projektkonvention-Policies nur, nachdem Sie diese als Durchsetzungscode überprüft haben.
-</Warning>
+Bearbeiten Sie installierte Pack-Artefakte nicht direkt. Installieren Sie das Pack neu oder veröffentlichen Sie eine korrigierte Version.

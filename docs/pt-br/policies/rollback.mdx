@@ -10,32 +10,59 @@ O rollback altera a versão implantada ou remove uma atribuição de política; 
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Acesse **Admin → enforcement**, expanda a máquina afetada e identifique o último conjunto de políticas em bom estado.
-    2. Selecione **edit**, restaure essas versões e efeitos e aplique a nova implantação.
-    3. Aguarde o check-in da máquina e verifique a implantação reportada.
+    1. Acesse **Admin → enforcement**, expanda a máquina afetada e identifique o último conjunto de políticas reconhecidamente correto.
+    2. Selecione **edit**, restaure as versões e os efeitos desejados e aplique o novo deployment.
+    3. Aguarde o check-in da máquina e verifique o deployment reportado.
     4. Abra **Observe → policy** e as sessões afetadas para confirmar que o trabalho válido não está mais sendo bloqueado.
 
   </Tab>
   <Tab title="CLI">
-    O rollback de implantação na nuvem é um fluxo de trabalho do dashboard. Use o status local para confirmar que a implantação corrigida chegou à máquina:
+    Encontre a geração para a qual deseja retornar, reinstale-a e confirme que foi aplicada:
 
     ```bash
+    fp fleet history ci-runner-01
+    fp fleet rollback ci-runner-01 3
+    fp fleet diff ci-runner-01
     failproofai config --status
     ```
 
-    O `failproofai config --pause` pausa as políticas builtin, custom e de convenção para uma sessão local. Ele não pausa políticas gerenciadas pela nuvem, portanto não é uma solução alternativa para uma implantação Cloud com problemas.
+    O `fp fleet rollback` cria uma **nova** geração contendo o conjunto antigo, em vez de retroceder o contador — o histórico permanece somente para acréscimo. O comando recusa a operação se essa geração referenciar uma política que foi desativada ou excluída desde então; o servidor informa isso explicitamente em vez de reinstalar um conjunto que não pode ser entregue.
+
+    O `fp fleet diff` mostra a intenção versus a entrega. Uma máquina aparece como divergida até o próximo polling, então verifique o diff antes de concluir que o rollback não surtiu efeito. O `failproofai config --status` confirma isso na própria máquina.
   </Tab>
 </Tabs>
+
+## Pausar não é o mesmo que fazer rollback
+
+Uma pausa suspende todas as políticas instaladas localmente por **uma sessão** e sempre expira automaticamente — packs, arquivos customizados, arquivos de convenção e builtins incluídos. Apenas as políticas gerenciadas pelo Cloud e o guard `block-failproofai-commands` (sempre ativo) continuam sendo aplicados. Portanto, uma pausa não é uma solução alternativa para um deployment Cloud com problemas, e o seu raio de impacto é maior do que parece: um pack é onde praticamente toda a aplicação local reside, e o guard de fail-closed do pack também é ignorado durante esse período.
+
+| Comando | Efeito |
+|---|---|
+| `failproofai config --pause` | Sessão mais recente do agente neste diretório, por 30 minutos |
+| `failproofai config --pause 10m` | Um tempo determinado. Máximo de 8h; sufixos `s`/`m`/`h`; um número simples equivale a minutos |
+| `failproofai config --pause --session <id>` | Direciona uma sessão específica |
+| `failproofai config --resume` | Encerra a pausa antecipadamente |
+| `failproofai config --resume --all` | Encerra todas as pausas ativas |
+| `failproofai config --status` | O que está pausado e quando será retomado |
 
 ## Quando fazer rollback
 
 - Uma política bloqueia uma ação de produção esperada.
-- O volume de correspondências é materialmente maior do que o previsto pelo rollout observado.
+- O volume de matches é materialmente superior ao previsto pelo rollout observado.
 - Uma política depende de campos que uma integração não fornece.
 - Uma nova versão altera o comportamento fora do modo de falha pretendido.
 
-Após o rollback, abra as sessões afetadas e identifique a condição que causou o falso positivo. Crie uma nova versão, teste os casos de uso inseguro e legítimo, e então repita a fase de observação.
+Após o rollback, abra as sessões afetadas e identifique a condição que causou o falso positivo. Crie uma nova versão, teste tanto o caso inseguro quanto o legítimo localmente, e então passe novamente pelo observe antes de voltar a aplicar:
+
+```bash
+fp policies test ./policy.mjs --tool Bash --command '<the legitimate case>' --expect allow
+fp policies publish my-policy ./policy.mjs
+fp fleet deploy ci-runner-01 --add my-policy:observe
+fp guardrails summary --since 24h --machine ci-runner-01
+```
+
+O `:observe` é o que torna isso um shadow rollout. Um `fp fleet deploy ... --add my-policy` simples **aplica imediatamente** — um efeito omitido resolve para o efeito já implantado e, em seguida, para `enforce` — o que, em uma política que você acabou de reverter, significa reinstalar o incidente. O modo observe ainda avalia a política de forma real e registra todos os veredictos diferentes de allow; apenas a aplicação é suspensa, então o `fp guardrails summary` mede a nova versão contra o mesmo tráfego que quebrou com a versão anterior. Promova com `--add my-policy:enforce` quando os números indicarem isso.
 
 <Warning>
-  Pausar a aplicação de políticas pode ser apropriado durante um incidente, mas amplia a exposição para todas as políticas ativas naquele escopo. Prefira reverter a versão específica da política quando possível.
+  Pausar a aplicação pode ser apropriado durante um incidente, mas amplia a exposição para todas as políticas ativas naquele escopo. Prefira fazer rollback da versão específica da política quando possível.
 </Warning>

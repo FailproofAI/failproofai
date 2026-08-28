@@ -1,74 +1,124 @@
 ---
 title: "HTTP API"
-description: "Autentique-se na API pública Failproof AI Cloud `/v1` e utilize a referência de endpoints gerada."
+description: "Autentique-se na API pública do Failproof AI Cloud `/v1` e utilize a referência de endpoints gerada."
 icon: "braces"
 ---
 
-A API pública está disponível em `/v1` na origem do seu painel Failproof AI.
+A API pública está disponível em `/v1` na origem do seu painel do Failproof AI. No Failproof AI Cloud, essa origem é `https://app.befailproof.ai`, portanto o caminho base é `https://app.befailproof.ai/v1`. Em uma implantação auto-hospedada, é o seu próprio host do painel seguido de `/v1`; informe esse host ao `fp` com `--base-url <url>` ou `FP_DASHBOARD_URL`.
 
 ## Criar uma chave e fazer uma requisição
 
 <Tabs>
   <Tab title="Painel">
-    1. Abra **Administração → Chaves**, selecione **Criar chave** e escolha o conjunto de permissões mais restrito que atenda à integração.
-    2. Adicione concessões individuais apenas quando necessário, crie a chave e copie o segredo de uso único.
+    1. Abra **Administração → Chaves**, selecione **nova chave** e escolha o conjunto de permissões mais restrito que atenda à integração.
+    2. Adicione concessões individuais somente quando necessário, crie a chave e copie o segredo de uso único.
     3. Faça uma requisição de teste para `/v1/sessions` e confirme que a chave permanece ativa na página de Chaves.
-    4. Rotacione ou desative a chave pelo menu de ações quando a integração mudar de responsável.
+    4. Alterne ou desative a chave pelo menu de ações quando a integração mudar de responsável.
 
-    ![O painel de criação de nova chave de API com presets de permissões e concessões individuais.](/images/dashboard/key-create.png)
+    ![O painel de criação de chave de API com conjuntos de permissões e concessões individuais.](/images/dashboard/key-create.png)
 
-    O painel de criação é exibido acima. O segredo de uso único aparece apenas após você selecionar **criar**; copie-o antes de fechar a confirmação.
+    O painel de criação é exibido acima. O segredo de uso único aparece somente após a criação da chave; copie-o antes de fechar a confirmação.
   </Tab>
   <Tab title="CLI">
-    Crie uma chave de leitura e utilize-a diretamente com `fp` ou `curl`:
+    Crie uma chave de leitura e use-a diretamente com `fp` ou `curl`. O `fp` lê a chave de `--api-key` ou de `FP_API_KEY`:
 
     ```bash
     fp keys create reliability-reader \
       --permission-set read-only
 
-    fp --api-key <key> sessions --since 24h
-    ```
-
-    ```bash
-    curl "https://app.befailproof.ai/v1/sessions?limit=20" \
-      -H "Authorization: Bearer $FAILPROOFAI_KEY"
-    ```
-  </Tab>
-</Tabs>
-
-As chaves têm escopo definido por organização e conjunto de permissões. Uma requisição sem a permissão necessária para o endpoint retorna `403` e identifica a permissão ausente.
-
-## Seleção de organização
-
-Uma chave de organização age automaticamente sobre sua organização. Uma chave com escopo de instância pode selecionar uma organização por requisição:
-
-<Tabs>
-  <Tab title="Painel">
-    Utilize o seletor de organização no cabeçalho do painel antes de abrir **Administração → Chaves**. As chaves criadas ali pertencem à organização selecionada. Confirme o slug da organização na URL e nos detalhes da chave antes de copiar a credencial para automação.
-
-  </Tab>
-  <Tab title="CLI">
-    Use `--org` antes do comando, ou envie o cabeçalho de organização para uma chave de API com escopo de instância.
-
-    ```bash
-    fp orgs list
+    export FP_API_KEY="<one-time-secret>"
     fp --org reliability-team sessions --since 24h
     ```
 
     ```bash
-    curl "https://app.befailproof.ai/v1/usage" \
-      -H "Authorization: Bearer $FAILPROOFAI_KEY" \
+    curl "https://app.befailproof.ai/v1/sessions?limit=20" \
+      -H "Authorization: Bearer $FP_API_KEY" \
       -H "X-AgentEye-Org: reliability-team"
     ```
   </Tab>
 </Tabs>
 
-Utilize as páginas de endpoints geradas nesta seção para consultar rotas atuais, parâmetros, requisitos de permissão e códigos de status. A especificação é gerada a partir das anotações de rotas do servidor e verificada em relação ao roteador `/v1`.
+As chaves têm escopo por organização e por uma lista plana de permissões. Um conjunto de permissões apenas inicializa essa lista no momento da criação — a chave armazena as concessões expandidas, portanto alterar o conjunto posteriormente não altera a chave. Uma requisição sem a permissão exigida pelo endpoint retorna `403` e identifica a permissão ausente.
 
-A especificação atual possui cobertura completa de rotas, métodos, parâmetros, permissões e códigos de status. Alguns corpos de resposta permanecem intencionalmente sem tipagem, pois o servidor ainda os constrói como JSON dinâmico. Inspecione uma resposta real antes de gerar um cliente fortemente tipado para um endpoint sem esquema de resposta.
+## Seleção de organização
 
-Utilize `Content-Type: application/json` para escritas JSON. Trate `401` como autenticação ausente ou inválida, `403` como identidade válida sem a permissão necessária, `404` como recurso inexistente ou inacessível pela organização, `409` como conflito de estado e `422` como valor de campo ou permissão inválido. As respostas de erro incluem uma mensagem legível; falhas de permissão também indicam a concessão necessária.
+Uma chave de organização opera automaticamente em sua organização. Uma chave com escopo de instância seleciona uma organização por requisição, e um tenant com mais de uma organização deve sempre nomear uma no modo de chave — o `fp` nunca envia uma organização salva quando está autenticando com uma chave.
+
+| Quem chama | Como nomear a organização |
+| --- | --- |
+| `fp`, por invocação | `--org <slug>`, antes do subcomando |
+| `fp`, a partir do ambiente | `FP_ORG` |
+| HTTP direto | o cabeçalho de requisição `X-AgentEye-Org: <slug>` |
+
+O `X-AgentEye-Org` mantém sua grafia original no protocolo. É o cabeçalho que o painel lê para resolver a organização ativa; renomeá-lo em um cliente quebra a requisição.
+
+<Tabs>
+  <Tab title="Painel">
+    Use o seletor de organização no cabeçalho do painel antes de abrir **Administração → Chaves**. As chaves criadas ali pertencem à organização selecionada. Confirme o slug da organização na URL e nos detalhes da chave antes de copiar a credencial para automação.
+
+  </Tab>
+  <Tab title="CLI">
+    Use `--org` antes do comando, ou envie o cabeçalho de organização para uma chave de API com escopo de instância. O `fp orgs list` não descobre o slug para você aqui — ele recusa no modo de chave; leia o slug no seletor de organização do painel.
+
+    ```bash
+    fp --org reliability-team sessions --since 24h
+    ```
+
+    ```bash
+    curl "https://app.befailproof.ai/v1/usage" \
+      -H "Authorization: Bearer $FP_API_KEY" \
+      -H "X-AgentEye-Org: reliability-team"
+    ```
+  </Tab>
+</Tabs>
+
+## Paginação
+
+Os endpoints de listagem utilizam paginação por keyset, e o mesmo contrato se aplica tanto ao chamar via `fp` quanto via `curl`.
+
+| Elemento | Significado |
+| --- | --- |
+| Parâmetro de query `limit` | Linhas solicitadas nesta chamada. O `fp` limita uma única requisição a 200 linhas em todos os endpoints. Uma requisição direta é limitada pelo teto por endpoint do próprio servidor. |
+| Parâmetro de query `cursor` | Um token opaco que retoma o feed após uma página anterior. |
+| Campo de resposta `next_cursor` | O token para a próxima página. `null` significa que o feed foi esgotado. |
+
+Esses tetos variam por endpoint, e cada página de endpoint define seu próprio padrão e limite máximo:
+
+| Endpoint | Padrão | Limite |
+| --- | --- | --- |
+| `/events`, `/events/summary` | 50 | 1000 |
+| `/issues`, `/alerts/{id}/issues` | 200 | 1000 |
+| `/evaluation-jobs` | 100 | 500 |
+| `/audits/findings` | 100 | 500 |
+| `/sessions`, `/evaluations` | 50 | 200 |
+| `/audits/{id}/runs` | 50 | 200 |
+
+Leia um feed completo reenviando a mesma requisição com `cursor` definido como o `next_cursor` da resposta anterior, até que `next_cursor` retorne `null`. As flags equivalentes do `fp` — `--all`, `--cursor` e `--page-size` — estão documentadas na [referência do Cloud CLI](/pt-br/reference/cloud-cli).
+
+## Referência de endpoints e tratamento de erros
+
+Use as páginas de endpoints geradas nesta seção para obter caminhos atuais, parâmetros, requisitos de permissão e códigos de status. A especificação é gerada a partir das anotações de rotas do servidor e verificada em relação ao roteador `/v1`.
+
+A especificação atual tem cobertura completa de rota, método, parâmetro, permissão e código de status. Os corpos de requisição são tipados; os corpos de resposta não — a especificação não carrega esquemas de resposta atualmente, pois o servidor ainda os constrói como JSON dinâmico. Inspecione uma resposta real antes de gerar um cliente fortemente tipado.
+
+Use `Content-Type: application/json` para escritas em JSON. Trate `401` como autenticação ausente ou inválida, `403` como uma identidade válida sem a permissão necessária, `404` como recurso ausente ou inacessível pela organização, `409` como conflito de estado, `400` como parâmetro rejeitado — um valor de filtro desconhecido, um parâmetro de query malformado, uma instrução que não seria executada — e `422` como campo ou valor de permissão inválido no corpo da requisição. As respostas de erro incluem uma mensagem legível por humanos; falhas de permissão também nomeiam a concessão necessária.
+
+## Superfícies que o `/v1` não cobre
+
+Políticas gerenciadas na nuvem, a frota e o feed de decisões de guardrail são superfícies de operador — tanto leituras quanto escritas. Elas são root-only no servidor e estão deliberadamente ausentes do `/v1`, que é voltado para a internet. Publicar uma versão de política ou implantá-la em uma máquina, por exemplo, não é algo que uma chave de API pode fazer, e ler o que a frota decidiu está na mesma superfície.
+
+Uma chave de API, portanto, recebe uma recusa por design nessas rotas, e o `fp` recusa antes de abrir uma conexão, em vez de deixar a requisição retornar 404 sem explicação:
+
+| Comando | Comportamento com uma chave de API |
+| --- | --- |
+| `fp policies` | Recusa com saída `2` e identifica políticas gerenciadas na nuvem como superfície de operador |
+| `fp fleet` | Recusa com saída `2` e identifica a frota como superfície de operador |
+| `fp guardrails` | Recusa com saída `2` e identifica o feed de guardrail como superfície de operador |
+| `fp agent` | Recusa com saída `2`; o assistente é implementado pelo painel, não pela API |
+| `fp orgs` | Recusa com saída `2`; a associação a orgs pertence a um usuário autenticado, e uma chave já opera por uma org |
+
+Execute esses comandos em uma sessão de usuário autenticado (`fp login`), ou use o painel. As famílias de leitura e administração — sessions, events, evaluations, audits, issues, alerts, keys, permission sets, users, settings, queries e usage — cada uma tem uma rota `/v1` e funciona com uma chave. A única lacuna é o `fp keys update`: ele precisa de `keys:update`, uma permissão que nenhuma chave de API pode ter, portanto uma chave pode criar e desativar chaves, mas nunca editar as permissões de uma. O `fp login` e o `fp logout` também recusam no modo de chave, por um motivo diferente: uma chave já é a credencial em si e nunca é salva em disco.
 
 <Warning>
-  A implantação de aplicação de políticas é gerenciada intencionalmente fora da superfície pública `/v1` padrão. Utilize o fluxo de implantação Cloud suportado.
+  A implantação de aplicação de políticas é gerenciada intencionalmente fora da superfície pública comum `/v1`. Use o fluxo de implantação na nuvem suportado descrito em [Implantar políticas](/pt-br/policies/deploy).
 </Warning>

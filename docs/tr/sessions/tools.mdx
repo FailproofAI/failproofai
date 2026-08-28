@@ -1,25 +1,38 @@
 ---
 title: "Araçlar"
-description: "Ajan oturumları arasında yavaş, başarısız veya aşırı kullanılan araçları bulun."
+description: "Agent çalıştırmalarında yavaş, başarısız veya aşırı kullanılan araçları bulun."
 icon: "wrench"
 ---
 
-Araçlar, oturumlardaki araç çağrılarını gruplandırır; böylece gecikme süresi ve çağrı dağılımını karşılaştırabilirsiniz.
+Araçlar, agent'ların neyi çağırdığını, çağrıların ne sıklıkta başarısız olduğunu ve hangi oturumları etkilediğini gösterir.
+
+Araç adları her agent harness'inden gelir, bu nedenle aynı özellik farklı adlara sahip olabilir. Örneğin, bir shell çağrısı `Bash`, `exec`, `Shell`, `terminal` veya `run_command` olarak görünebilir. Bir filtre oluşturmadan önce `fp list tools` komutunu çalıştırın.
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Observe → Tools** bölümüne gidin.
-    2. Ortam, araç adı, ajan veya oturum kimliğine göre filtreleyin.
-    3. Gecikme süresi ve araç dağılımını gözden geçirin.
-    4. Bir grafik noktasını veya araç segmentini seçerek eşleşen olayları ve oturumları açın.
+    **Observe → Tools** bölümüne gidin. Ortam, araç, agent veya oturuma göre filtreleyin.
 
-    ![Gecikme süresi, başarı ve başarısızlık dağılımlarını ve araç çağrısı dağılımını gösteren Araçlar sayfası.](/images/dashboard/tools.png)
+    ![Araçlar sayfası, gecikme süresi, başarı ve başarısızlık dağılımı ile araç çağrı dağılımını gösteriyor.](/images/dashboard/tools.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp list tools
-    fp events --event-type tool_use,tool_result --env production --since 24h
-    fp --json events --full --session-id <session-id> --all
+    fp events --event-type tool_use,tool_result --since 24h
+    fp errors --event-type tool_result --since 24h
+    fp --json events --full --event-type tool_use,tool_result --session-id <session-id> --all --limit 2000
     ```
+
+    Çağrı başına süre gibi yük alanlarına ihtiyacınız olduğunda `--full` kullanın.
   </Tab>
 </Tabs>
+
+Bu sayfayı tekrarlanan başarısızlıkları bulmak, çalışan ve başarısız çalıştırmaları karşılaştırmak veya bir politika tarafından hedeflenen aracın gerçekten kullanıldığını doğrulamak için kullanın.
+
+<CardGroup cols={2}>
+  <Card title="Hatalar" icon="circle-alert" href="/tr/sessions/errors">
+    Araç başarısızlıklarının arkasındaki oturumları açın.
+  </Card>
+  <Card title="Hooks" icon="webhook" href="/tr/sessions/hooks">
+    Kanonik araç adlarını ve politika kararlarını görün.
+  </Card>
+</CardGroup>

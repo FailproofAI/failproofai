@@ -1,40 +1,74 @@
 ---
 title: "管理"
-description: "アクセス、使用状況、組織、およびセキュリティを信頼性ワークフローと混在させることなく管理します。"
+description: "クラウドのアクセス、メンバーシップ、設定、使用量を、信頼性ワークフローと混在させることなく運用します。"
 icon: "settings-2"
 ---
 
-管理セクションには、チーム全体でFailproof AIを運用するために必要なコントロールが含まれています。ほとんどのユーザーはセッション、監査、ポリシーの画面を利用すればよく、管理者はこのセクションでアクセスと運用範囲を管理します。
+管理は Failproof AI のクラウド側の機能です。組織、メンバー、API キー、組織設定、および従量制の使用量はすべてクラウド接続が必要です。
+
+<Note>
+  Failproof AI はアカウントなしでも動作します。ローカルマシンはポリシーを適用し、セッション履歴をディスクに保存し、`localhost:8020` 上で[ローカルダッシュボード](/ja/reference/local-dashboard)を提供し、どこにも送信することなく `failproofai audit` を実行します。ローカルの `collector` キーについては[マシン設定](/ja/reference/events-and-configuration#machine-configuration)を参照してください。クラウドを使用しない場合は、このセクションの残りをスキップしてください。
+</Note>
+
+## コントロールの場所
 
 <Tabs>
   <Tab title="ダッシュボード">
-    クラウドサイドバーの **Admin** セクションから **policy editor**、**enforcement**、**usage**、**keys**、**users**、**settings** にアクセスできます。ロックされた項目は、そのアカウントに読み取り権限がないことを示しています。
+    クラウドサイドバーの **admin** グループには、**policy editor**、**enforcement**、**usage**、**keys**、**users**、**settings** が含まれています。
 
-    ![The Admin section of the Cloud sidebar with policy editor, enforcement, usage, keys, users, and settings.](/images/dashboard/admin-navigation.png)
+    ![policy editor、enforcement、usage、keys、users、settings を含むクラウドサイドバーの admin グループ。](/images/dashboard/admin-navigation.png)
   </Tab>
   <Tab title="CLI">
+    Cloud CLI を独立したツールとしてインストールし、サインインします:
+
     ```bash
+    uv tool install fp-cloud-cli
+    fp login
     fp whoami
-    fp orgs current
-    fp orgs perms
     fp usage
     ```
 
-    グローバルオプションはコマンドの前に指定します。例：`fp --org reliability-team --json usage`
+    グローバルオプションはコマンドの前に指定します。例: `fp --org reliability-team --json usage`
   </Tab>
 </Tabs>
 
+## サインイン済みユーザー、または API キー
+
+`fp` は 2 つの認証モードのいずれかで動作し、その違いによって使用できるコマンドが決まります。API キーでは実行できないコマンドは、接続を開く前に拒否され、401 や 403 でその理由を代替させることなく、理由が明示されます。
+
+| コマンド | API キー | 権限 |
+| --- | --- | --- |
+| `fp whoami` | 可 | なし |
+| `fp usage` | 可 | `usage:read` |
+| `fp keys list` / `show` | 可 | `keys:read` |
+| `fp keys create` | 可 | `keys:create` |
+| `fp keys disable` | 可 | `keys:disable` |
+| `fp keys regenerate` | 可 | `keys:regenerate` |
+| `fp keys update` | 不可 | `keys:update`（キーが保持できない権限） |
+| `fp users list` / `show` | 可 | `users:read` |
+| `fp users create` | 可 | `users:create` |
+| `fp users update` | 可 | `users:update` |
+| `fp users disable` / `enable` | 可 | `users:delete` |
+| `fp settings list` / `schema` | 可 | `settings:read` |
+| `fp settings set` | 可 | `settings:write` |
+| `fp orgs list` / `switch` / `current` / `perms` | 不可 | サインイン済みセッションのみ |
+
+`fp usage` はレポートスクリプトに適したコマンドです。キーのもとで無人実行でき、`usage:read` のみが必要です。
+
 <Columns cols={2}>
-  <Card title="使用状況" icon="chart-no-axes-combined" href="/ja/admin/usage">
-    請求期間と組織の消費量を確認します。
-  </Card>
   <Card title="キーと権限" icon="key-round" href="/ja/admin/keys-and-permissions">
-    マシンと自動化に必要最小限の権限のみを付与します。
+    マシンのクレデンシャルを発行し、各ワークロードに必要な権限のみを付与します。
   </Card>
   <Card title="ユーザーと組織" icon="users" href="/ja/admin/users-and-organizations">
-    メンバーシップ、デフォルト設定、組織の境界を管理します。
+    メンバーシップを管理し、各組織のデータとアクションをスコープ内に保ちます。
   </Card>
   <Card title="設定とセキュリティ" icon="lock-keyhole" href="/ja/admin/settings-and-security">
-    運用設定、データ処理、デプロイメントセキュリティを構成します。
+    サインインとアラートの値を設定し、エージェントデータがマシンから送出されるかどうかを決定します。
+  </Card>
+  <Card title="使用量" icon="chart-no-axes-combined" href="/ja/admin/usage">
+    現在の 30 日間ウィンドウにおける組織の従量計測結果を確認します。
+  </Card>
+  <Card title="フリートカバレッジ" icon="network" href="/ja/policies/fleet">
+    登録済みのマシン、その識別方法、適用されているポリシーを確認します。
   </Card>
 </Columns>

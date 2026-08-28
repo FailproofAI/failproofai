@@ -1,84 +1,50 @@
 ---
-title: "Cấu hình cục bộ"
-description: "Kiểm soát phạm vi chính sách, tham số, tệp tùy chỉnh và cài đặt Failproof AI cấp máy."
-icon: "file-cog"
+title: "Cấu hình chính sách cục bộ"
+description: "Chọn nơi các chính sách áp dụng và đặt các tham số của chúng."
+icon: "sliders-horizontal"
 ---
 
-Failproof AI tách rời việc lựa chọn chính sách khỏi cài đặt máy và daemon. Điều này giữ cho lựa chọn chính sách kho lưu trữ có thể được xem xét, trong khi thông tin xác thực và trạng thái daemon ở bên ngoài kho lưu trữ.
+Sử dụng scope để quyết định ai sẽ nhận một chính sách cục bộ:
 
-## Chọn phạm vi chính sách
-
-<Tabs>
-  <Tab title="Dashboard">
-    Chạy `failproofai` mà không có tham số để mở bảng điều khiển chính sách cục bộ. Chọn phạm vi người dùng, dự án hoặc cục bộ trước khi bật chính sách để thay đổi được ghi vào tệp cấu hình dự định.
-
-    - **User** áp dụng trên các dự án trên máy này.
-    - **Project** thuộc kho lưu trữ và có thể được cam kết.
-    - **Local** ghi đè một dự án cho một người dùng và phải giữ trong gitignore.
-
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai policy add block-rm-rf --scope user
-    failproofai policy add block-force-push --scope project
-    failproofai policy add warn-large-file-write --scope local
-    failproofai policies
-    ```
-
-    Không phải mọi harness đều hỗ trợ phạm vi cục bộ. CLI từ chối một phạm vi mà harness được chọn không thể đại diện.
-  </Tab>
-</Tabs>
-
-| Phạm vi | Tệp cấu hình chính sách |
+| Scope | Áp dụng cho |
 | --- | --- |
-| Project | `<project>/.failproofai/policies-config.json` |
-| Local | `<project>/.failproofai/policies-config.local.json` |
-| User | `~/.failproofai/policies-config.json` |
+| `user` | Các agents hỗ trợ của bạn trên máy này |
+| `project` | Các agents chạy trong dự án này |
+| `local` | Chỉ Claude, trong cài đặt dự án cục bộ |
+| `all` | Chỉ gỡ cài đặt |
 
-Các chính sách được bật được hợp nhất dưới dạng một liên kết. Các tham số chính sách sử dụng phạm vi đầu tiên xác định tham số cho chính sách đó, theo thứ tự project → local → user. Đường dẫn chính sách tùy chỉnh rõ ràng sử dụng phạm vi đầu tiên xác định chúng.
+```bash
+failproofai policies add block-sudo --scope user
+failproofai policies add block-rm-rf --scope project
+```
 
-## Cấu hình tham số chính sách
+Hermes và OpenClaw chỉ hỗ trợ scope user. Hầu hết các harness khác hỗ trợ user và project. Claude cũng hỗ trợ scope local. Xem [Harnesses](/vi/reference/harnesses).
 
-<Tabs>
-  <Tab title="Dashboard">
-    Mở chính sách trong bảng điều khiển cục bộ, chỉnh sửa các tham số được hỗ trợ của nó, và lưu trong phạm vi được chọn. Chạy một hành động agent phù hợp và không phù hợp, sau đó kiểm tra quyết định trong **Observe → policy**.
+## Tham số chính sách
 
-  </Tab>
-  <Tab title="CLI">
-    Chỉnh sửa tệp `policies-config.json` của phạm vi được chọn, sau đó chạy `failproofai policies` để hiển thị các tên chính sách hoặc khóa tham số không xác định.
+Cài đặt chính sách nằm trong `policies-config.json` ở scope phù hợp. Sử dụng chế độ xem **Policies → Configure** của bảng điều khiển cục bộ khi có thể.
 
-    ```json
-    {
-      "enabledPolicies": ["block-rm-rf", "block-force-push"],
-      "policyParams": {
-        "block-rm-rf": {
-          "allowPaths": ["/tmp/build-output"]
-        }
-      }
-    }
-    ```
+Một tham số thuộc về một chính sách và thay đổi cách chính sách đó quyết định. Ví dụ, danh sách cho phép có thể làm cho một chính sách chặn chấp nhận các lệnh hoặc đường dẫn an toàn đã biết.
 
-    ```bash
-    failproofai policies
-    ```
-  </Tab>
-</Tabs>
+Các tệp chính sách tùy chỉnh có thể được tải tự động từ `.failproofai/policies/`, hoặc một cách rõ ràng:
 
-## Hiểu các tệp trên máy
+```bash
+failproofai policies -i -c ./guards.mjs --scope project
+```
 
-`~/.failproofai` chứa các tệp riêng biệt cho các ranh giới tin tưởng riêng biệt:
+Xóa các đường dẫn rõ ràng bằng:
 
-| Đường dẫn | Mục đích |
+```bash
+failproofai policies -u -c
+```
+
+## Tệp
+
+| Tệp | Mục đích |
 | --- | --- |
-| `config.json` | Cài đặt daemon, kiểm tra và telemetry không bí mật |
-| `credentials.json` | Thông tin xác thực đám mây; được lưu trữ với quyền chỉ dành cho chủ sở hữu |
-| `policies-config.json` | Lựa chọn builtin phạm vi người dùng, tham số và đường dẫn tùy chỉnh rõ ràng |
-| `policies/` | Chính sách quy ước người dùng và tạo phẩm chính sách do đám mây quản lý |
-| `hook-activity/` | Nhật ký quyết định chính sách cục bộ |
-| `state/` | Daemon spool, health, pause và trạng thái runtime |
+| `~/.failproofai/config.json` | Cài đặt máy và bộ sưu tập |
+| `policies-config.json` | Các chính sách được bật và tham số cho một scope |
+| `.failproofai/policies/*policies.mjs` | Các chính sách được tải theo quy ước |
+| `~/.failproofai/policies/packs/installed.json` | Các gói được cài đặt và lựa chọn |
 
-Sử dụng `FAILPROOFAI_HOME` để thay đổi bố cục máy hoàn chỉnh cho một container hoặc bài kiểm tra cô lập. Không thay đổi các thư mục trạng thái riêng lẻ một cách độc lập.
-
-<Warning>
-  Không bao giờ cam kết `credentials.json`. Chỉ cam kết cấu hình chính sách dự án và chính sách quy ước dự án sau khi xem xét chúng như mã thực thi.
-</Warning>
+Không chỉnh sửa trực tiếp các hiện vật gói được cài đặt. Cài đặt lại hoặc xuất bản một bản phát hành được sửa chữa.

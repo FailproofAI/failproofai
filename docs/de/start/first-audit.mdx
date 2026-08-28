@@ -1,30 +1,64 @@
 ---
 title: "Erste Fehlerprüfung ausführen"
-description: "Erstelle ein Audit über das Cloud-Dashboard oder die fp CLI und überprüfe die ersten Ergebnisse."
+description: "Scanne den Agent-Verlauf dieser Maschine mit failproofai audit, oder erstelle ein regelmäßiges Audit über die in Failproof AI Cloud gespeicherten Sitzungen."
 icon: "scan-search"
 ---
 
-Ein Audit wandelt eine Reihe von Sitzungen in priorisierte, belegbasierte Fehlerbefunde um. Beginne mit einer konkreten Fehlerfrage.
+Ein Audit wandelt eine Menge von Sitzungen in priorisierte, belegbasierte Fehlerbefunde um. Beginne mit einer eng gefassten Fehlerfrage.
+
+Es gibt zwei Audit-Varianten. Sie lesen unterschiedliche Daten und werden mit unterschiedlichen Tools aufgerufen:
+
+| Audit | Liest | Konto erforderlich | Befunde erscheinen in |
+| --- | --- | --- | --- |
+| Lokal — `failproofai audit` | Den auf dieser Maschine vorhandenen Agent-Verlauf | Nein | `http://localhost:8020/audit` |
+| Cloud — **Analyze → Audits**, oder die `fp` CLI | Die in Failproof AI Cloud gespeicherten Sitzungen | Ja | Das Cloud-Dashboard |
+
+Führe zuerst das lokale Audit aus. Es benötigt nichts außer der CLI. Befunde bleiben lokal, während anonyme CLI-Telemetrie standardmäßig gesendet wird, sofern du nicht `FAILPROOFAI_TELEMETRY_DISABLED=1` setzt.
 
 <Tabs>
-  <Tab title="Dashboard">
+  <Tab title="Lokal">
+    ```bash
+    failproofai audit
+    ```
+
+    Es scannt jeden unterstützten Agent-Verlauf, den es auf dieser Maschine findet, repliziert die Tool-Aktivität durch den eingebauten Policy-Katalog und öffnet dann **http://localhost:8020/audit**. Lass den Prozess laufen, während du die Ergebnisse liest; drücke <kbd>Ctrl</kbd>+<kbd>C</kbd>, wenn du fertig bist.
+
+    Analyse und Befunde verbleiben auf dieser Maschine. Anonyme CLI-Telemetrie wird standardmäßig gesendet, sofern nicht deaktiviert. Nachdem du die Planung aktiviert hast, sendet jeder Scan auch Maschinenmetadaten und kann einen eingeschränkten Befund-Digest übertragen.
+
+    | Flag | Funktion |
+    | --- | --- |
+    | `--schedule [days]` | Scannt nach einem Timer und sendet die Befunde per E-Mail. Standard 7 Tage, Bereich 1–90. Meldet dich beim ersten Mal an. |
+    | `--email <address>` | Mit `--schedule`, gibt die Berichtsadresse an, anstatt danach zu fragen. |
+    | `--no-schedule` | Stoppt den Timer. Du bleibst angemeldet. |
+    | `--status` | Zeigt, ob die Planung aktiv ist, wohin Berichte gehen, den Status des Daemons und wann der nächste Scan fällig ist. |
+
+    ```bash
+    failproofai audit --schedule 7 --email reliability@example.com
+    failproofai audit --status
+    ```
+
+    Siehe [Lokalen Agent-Verlauf auditieren](/de/audits/local-audit) für Informationen darüber, welche Verläufe jeder Adapter liest und wie der geplante Scan abläuft.
+  </Tab>
+  <Tab title="Cloud-Dashboard">
     <Steps>
       <Step title="Audits öffnen">
         Gehe in der Cloud-Seitenleiste zu **Analyze → Audits**. Wähle **new audit**.
       </Step>
       <Step title="Audit einrichten">
-        Gib einen Namen und ein konkretes Fehlerziel ein, z. B. „Produktionssitzungen finden, die denselben fehlgeschlagenen Zahlungsaufruf wiederholen, ohne die Eingabe zu ändern oder eskalieren." Wähle den Agent, die Umgebung, das Zeitfenster und den Zeitplan aus. Füge eine kurze Beschreibung und Referenz-URLs hinzu, wenn der Auditor deine Workflow-Regeln benötigt.
+        Gib einen Namen und ein konkretes Fehlerziel ein, z. B. „Produktionssitzungen finden, die denselben fehlgeschlagenen Zahlungsaufruf ohne Änderung der Eingabe oder Eskalation wiederholen." Wähle den Agent, die Umgebung, das Zeitfenster und den Zeitplan. Füge eine kurze Beschreibung und Referenz-URLs hinzu, wenn der Auditor deine Workflow-Regeln benötigt.
       </Step>
-      <Step title="Erstellen und auf den Lauf warten">
-        Wähle **create audit**. Der erste Lauf wird sofort in die Warteschlange gestellt. Öffne die Audit-Karte, um den Fortschritt von „queued" über „running" bis „complete" zu verfolgen.
+      <Step title="Audit erstellen und auf den Durchlauf warten">
+        Wähle **create audit**. Der erste Durchlauf wird sofort in die Warteschlange gestellt. Öffne die Audit-Karte, um zu beobachten, wie er von „in der Warteschlange" zu „läuft" zu „abgeschlossen" wechselt.
       </Step>
     </Steps>
 
-    Nach Abschluss des Laufs öffne einen Befund und prüfe seine Sitzungsbelege. Anschließend kannst du ihn bestätigen, zuweisen, verwerfen, stummschalten oder auflösen.
+    Nachdem der Durchlauf abgeschlossen ist, öffne einen Befund und überprüfe seine Sitzungsbelege. Du kannst ihn anschließend bestätigen, zuweisen, verwerfen, stummschalten oder auflösen.
 
-    ![Ein abgeschlossener Audit-Befund mit Fehlerbeschreibung, empfohlener Maßnahme, Belegen und betroffenen Sitzungen.](/images/dashboard/audit-finding.png)
+    ![Ein abgeschlossener Audit-Befund mit Fehlerbeschreibung, empfohlener Maßnahme, unterstützenden Belegen und betroffenen Sitzungen.](/images/dashboard/audit-finding.png)
   </Tab>
-  <Tab title="CLI">
+  <Tab title="Cloud CLI">
+    `fp` ist die Failproof AI Cloud CLI. Sie liest zurück, was Cloud gespeichert hat; sie ist ein anderes Programm als `failproofai`, das auf dieser Maschine durchsetzt.
+
     ```bash
     fp audits create payment-retry-failures \
       --description "Find production sessions that retry a failed payment call without changing input or escalating" \
@@ -45,8 +79,8 @@ Ein Audit wandelt eine Reihe von Sitzungen in priorisierte, belegbasierte Fehler
     fp audits run payment-retry-failures
     ```
 
-    Verwende `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>` oder `fp audits reopen <finding-id>`, um einen Befund durch den Triage-Prozess zu führen.
+    Verwende `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>` oder `fp audits reopen <finding-id>`, um einen Befund durch die Triage zu führen.
   </Tab>
 </Tabs>
 
-Als nächstes [verhindere deinen ersten Fehler mit einer Policy](/de/start/first-policy) für eine bestätigte, wiederholbare Aktion.
+Als Nächstes: [Ersten Fehler mit einer Policy verhindern](/de/start/first-policy) für eine bestätigte, wiederholbare Aktion.

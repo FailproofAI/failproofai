@@ -1,68 +1,49 @@
 ---
 ---
-title: "Hata davranışı"
-description: "İlke değerlendirmesi veya yerel daemon'un kullanılamadığı durumları anlayın."
+title: "İlke başarısızlık davranışı"
+description: "Failproof AI'nin değerlendirme çalıştırılamadığında neden reddettiğini anlayın."
 icon: "shield-alert"
 ---
 
-Failproof AI, bir zorlama hatasının sessizce riskli işlere izin vermek yerine görünür olması için tasarlanmıştır.
+Kurulumdan sonra, yerel `failproofaid` hizmeti tek değerlendiricidir. Eğer yanıt veremezse, korunan eylemler sessizce izin verilmek yerine reddedilir.
 
-## Başarısızlık-kapalı engeli tanılayın
+## Makine genelindeki bloğu tanılayın
 
-<Tabs>
-  <Tab title="Pano">
-    1. **Admin → enforcement** bölümüne gidin ve makineyi açın.
-    2. Son check-in zamanını, atanmış deployment'ını ve bildirilen deployment'ını kontrol edin.
-    3. **Observe → policy** bölümüne gidin ve reddedilen kararın oturumunu açın.
-    4. Nedenin daemon erişilebilirliğini, sürüm uyumsuzluğunu veya ilkenin kendisini bildirip bildirmediğini doğrulayın.
+```bash
+failproofai config --status
+systemctl status failproofaid@$USER        # Linux
+sudo launchctl print system/ai.failproof.failproofaid.$USER  # macOS
+```
 
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai config --status
-    npm install -g failproofai@latest
-    failproofai config
-    ```
+Hizmeti onarmak veya eşleşen sürümü yüklemek için `failproofai config` komutunu çalıştırın.
 
-    `failproofai config` komutu paket yükseltmesinden sonra daemon'u günceller ve yeniden başlatır.
-  </Tab>
-</Tabs>
+İki başarısızlık benzer görünebilir:
 
-`failproofaid` kullanacak şekilde yapılandırılmış bir makinede, daemon tek değerlendiricidir. Erişilemez ise veya protokol sürümü CLI ile eşleşmez ise, hook değerlendirmesi kapalı durumda başarısız olur. İşlem, operatörü daemon'u kontrol etmeye veya güncelleştirmeye yönlendiren bir nedenle reddedilir.
+| Başarısızlık | Anlamı |
+| --- | --- |
+| Hizmete ulaşılamıyor | Soketin arkasında çalışan bir değerlendirici yok |
+| Sürüm uyuşmazlığı | CLI ve hizmet protokol konusunda anlaşamıyor |
 
-Daemon yapılandırmasından önce, hook'lar ilkeleri işlem içinde değerlendirir. Daemon yapılandırması kaydedildikten sonra, Failproof AI daemon başarısız olduğunda ikinci bir değerlendirici'ye sessizce geri dönmez.
-
-## Başarısızlık-kapalı karara yanıt verin
-
-1. `failproofai config --status` komutunu çalıştırın.
-2. Sürümler farklı ise, paketi güncelledikten sonra `failproofai config` komutunu çalıştırın.
-3. Daemon erişilemez ise, hizmet durumunu ve yerel günlükleri inceleyin.
-4. Bilinen bir ilke değerlendirmesi yolu sağlıklı olana kadar aracı işini devam ettirin.
-
-<Warning>
-  Engellenen işemi tekrarlı olarak denemeyin. Başarısızlık-kapalı yanıt, sistemin işlemin güvenli olduğunu doğrulayamadığı anlamına gelir.
-</Warning>
+Her ikisi de reddeder, ancak durum raporu onları ayrı ayrı bildirir.
 
 ## Bir paket yüklenmeyecek
 
-Bir paket zorunlu kılmak için söylenen ve çalıştıramayan bir makine, sessizce devam etmek yerine reddeder. Tetikleyici **kaydedilmiş bir beklenti**dir, hiçbir zaman boş değildir: kurulu paketi olmayan bir makine sessizdir, ancak bildirilen ve çözülmeyecek olan veya manifestinin bildirdiğinden daha az tescil eden bir paket reddeder.
+Eksik, değiştirilmiş veya geçersiz olan seçili bir paket, seçili ilkeleri tarafından kapsanan olayları reddeder. Bu, kırılmış bir paketin makine korumalı görünürken kaybolmasını engeller.
 
-Reddetme **dar kapsamlı**dır, ulaşılamayan daemon'dan farklı olarak. Ulaşılamayan bir daemon hiçbir değerlendirme yapılmadığı anlamına gelir, bu nedenle hiçbir şey güvenli olarak bilinemez. Yüklenmeyecek bir pakette, her bildirilen ilke kendi `match`'e sahip olduğu için numaralandırılabilir eksik guardlar kümesi vardır — bu nedenle yalnızca bu ilkelerin kapsadığı olaylar ve araçları reddeder, diğer her şey devam eder.
-
-Aşağıdakiler için tetiklenmez:
-
-- yapısı gereği değerlendiren ve atan `observe` paketi
-- asla almadığınız veya açıkça kapattığınız ilkeler
-- yükleyicinin hiçbir zaman almadığı paket; burada "kayıt yok" bilinçli atlamadan ayrılamaz
-- aktif bir oturum pausu
-- bir yükleme timeout'u, bu geçici — bir yavaş disk anı sorun çözene kadar reddetmemelidir
-
-`UserPromptSubmit` eksik ilkenin ne bildirdiğine bakılmaksızın reddetten ziyade **talimatlar** verir. Genel bir reddetme, sorunun çözülmesini sağlayabilecek aracıyı kilitleyerek ilerler.
-
-### Ne yapmalı
+`failproofai policies` paket adını ve yükleme hatasını bildirir.
 
 ```bash
-failproofai pack list
+failproofai policies
+failproofai policies remove owner/repo
+failproofai policies add owner/repo@<release>
 ```
 
-Yüklenmeyecek olan kurulu paketleri adlandırır, nedenini söyler ve sıfır olmayan bir değer döndürerek çıkış yapar. Daha sonra ya yeniden yükleyin (`failproofai pack add <source>`) ya da kaldırın (`failproofai pack remove <publisher/name>`) — kaldırılması beklentiyi geri çeker ve reddetme bununla birlikte durur.
+Okunamayan meta veriler, güvenilmez olabilecek verilerden daraltan yer almak yerine güvenli reddi genişletir.
+
+## Mevcut kalanlar
+
+İlke değerlendirmesi başarısız olurken yerel pano ve durum komutları yine de çalışır. Onarılması gereken hizmeti, paketi veya sürümü belirlemek için bunları kullanın.
+
+<Warning>
+  Başarısızlık kapalı bir kararı geçici olarak çözmek için hizmet veya paket dosyalarını silmeyin. Hizmeti onarın, paketi yeniden yükleyin veya CLI üzerinden atamayı kaldırın, böylece makine bilinen bir duruma döner.
+</Warning>

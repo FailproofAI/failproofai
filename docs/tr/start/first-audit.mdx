@@ -1,30 +1,64 @@
 ---
-title: "İlk başarısızlık kontrolünü çalıştırın"
-description: "Cloud panosundan veya fp CLI'dan bir denetim oluşturun ve ilk bulgularını inceleyin."
+title: "İlk hata kontrolünüzü çalıştırın"
+description: "failproofai audit ile bu makinenin ajan geçmişini tarayın veya Failproof AI Cloud'da depolanan oturumlar üzerinde tekrarlayan bir denetim oluşturun."
 icon: "scan-search"
 ---
 
-Bir denetim, bir dizi oturumu sıralanmış, kanıtlarla desteklenen başarısızlık bulgularına dönüştürür. Dar kapsamlı bir başarısızlık sorusundan başlayın.
+Bir denetim, bir oturum setini sıralanmış, kanıta dayalı hata bulgularına dönüştürür. Dar kapsamlı bir hata sorusuyla başlayın.
+
+İki tür denetim vardır. Farklı verileri okurlar ve farklı araçlara yanıt verirler:
+
+| Denetim | Okur | Hesap Gerekli | Bulgular Görüntülenir |
+| --- | --- | --- | --- |
+| Yerel — `failproofai audit` | Bu makinede zaten bulunan ajan geçmişi | Hayır | `http://localhost:8020/audit` |
+| Bulut — **Analyze → Audits** veya `fp` CLI | Failproof AI Cloud'da depolanan oturumlar | Evet | Bulut panosu |
+
+Yerel olanı önce çalıştırın. Yalnızca CLI gerektirir. Bulgular yerel kalır, anonim CLI telemetrisi varsayılan olarak `FAILPROOFAI_TELEMETRY_DISABLED=1` ayarlamazsanız gönderilir.
 
 <Tabs>
-  <Tab title="Pano">
+  <Tab title="Yerel">
+    ```bash
+    failproofai audit
+    ```
+
+    Bu makinede bulduğu her desteklenen ajan geçmişini tarar, araç etkinliğini yerleşik ilke kataloğu üzerinden yeniden oynatır, ardından **http://localhost:8020/audit** açar. Sonuçları okurken işlemi çalışır durumda tutun; işiniz bittiğinde <kbd>Ctrl</kbd>+<kbd>C</kbd> tuşuna basın.
+
+    Analiz ve bulgular bu makinede kalır. Anonim CLI telemetrisi varsayılan olarak gönderilir, devre dışı bırakılmadığı sürece. Zamanlamayı etkinleştirdikten sonra, her tarama ayrıca makine meta verilerini gönderir ve sınırlı bir bulgu özetini gönderebilir.
+
+    | Bayrak | Ne yapar |
+    | --- | --- |
+    | `--schedule [days]` | Bir zamanlayıcıda tara ve bulguları e-postayla gönder. Varsayılan 7 gün, aralık 1–90. İlk kez sizi imzalar. |
+    | `--email <address>` | `--schedule` ile birlikte, istem yerine rapor adresini sağlar. |
+    | `--no-schedule` | Zamanlayıcıyı durdur. Sizi imzalı tutar. |
+    | `--status` | Zamanlamanın açık olup olmadığı, raporların nereye gittiği, daemon'un durumu ve sonraki taramanın ne zaman yapılacağı. |
+
+    ```bash
+    failproofai audit --schedule 7 --email reliability@example.com
+    failproofai audit --status
+    ```
+
+    Her bir adaptörün hangi geçmişleri okuduğu ve zamanlanmış taramanın nasıl çalıştığı hakkında [Yerel ajan geçmişini denetle](/tr/audits/local-audit) bölümüne bakın.
+  </Tab>
+  <Tab title="Bulut panosu">
     <Steps>
-      <Step title="Denetimleri Açın">
-        Cloud kenar çubuğunda **Analiz → Denetimler**'e gidin. **yeni denetim**'i seçin.
+      <Step title="Audits'i açın">
+        Bulut kenar çubuğunda **Analyze → Audits** bölümüne gidin. **new audit** seçeneğini belirleyin.
       </Step>
-      <Step title="Denetimi ayarlayın">
-        Bir ad ve doğrudan başarısızlık hedefi girin; örneğin, "girişi değiştirmeden veya yükseltmeden aynı başarısız ödeme çağrısını yeniden deneyen üretim oturumlarını bulun." Aracı, ortamı, zaman penceresini ve zamanlamayı seçin. Denetçinin iş akışı kurallarınıza ihtiyaç duyduğunda kısa bir bilgilendirme ve referans URL'leri ekleyin.
+      <Step title="Denetimi kurun">
+        Bir ad ve doğrudan hata hedefi girin; örneğin, "girişi değiştirmeden veya yükseltmeden aynı başarısız ödeme çağrısını yeniden deneyen üretim oturumlarını bulun." Ajanı, ortamı, zaman penceresini ve zamanlamayı seçin. Denetçinin iş akışı kurallarına ihtiyaç duyduğu durumlarda kısa bir özet ve referans URL'leri ekleyin.
       </Step>
-      <Step title="Denetimi oluşturun ve çalışmasını bekleyin">
-        **denetim oluştur**'u seçin. İlk çalışma hemen sıraya alınır. Denetim kartını açarak sırada beklemekten çalışmaya, ardından tamamlanmaya geçişini izleyin.
+      <Step title="Oluşturun ve çalıştırılması için bekleyin">
+        **create audit** seçeneğini belirleyin. İlk çalıştırma hemen sıraya alınır. Sırada beklemeden çalışmaya, ardından tamamlanmaya geçişini izlemek için denetim kartını açın.
       </Step>
     </Steps>
 
-    Çalışma tamamlandıktan sonra, bir bulguyu açın ve oturum kanıtını inceleyin. Daha sonra onaylayabilir, atayabilir, reddedebilir, susturabilir veya çözebilirsiniz.
+    Çalıştırma tamamlandıktan sonra, bir bulguyu açın ve oturum kanıtını gözden geçirin. Daha sonra bunu kabul edebilir, atayabilir, reddedebilir, sessize alabilir veya çözebilirsiniz.
 
-    ![Başarısızlık açıklaması, önerilen eylem, destekleyici kanıt ve etkilenen oturumları gösteren tamamlanmış bir denetim bulgusu.](/images/dashboard/audit-finding.png)
+    ![Hata açıklamasını, önerilen eylemi, destekleyici kanıtı ve etkilenen oturumları gösteren tamamlanmış bir denetim bulgusu.](/images/dashboard/audit-finding.png)
   </Tab>
-  <Tab title="CLI">
+  <Tab title="Bulut CLI">
+    `fp` Failproof AI Cloud CLI'dir. Cloud'un depoladıklarını geri okur; bu makinede uygulayan `failproofai`'den farklı bir programdır.
+
     ```bash
     fp audits create payment-retry-failures \
       --description "Find production sessions that retry a failed payment call without changing input or escalating" \
@@ -45,8 +79,8 @@ Bir denetim, bir dizi oturumu sıralanmış, kanıtlarla desteklenen başarısı
     fp audits run payment-retry-failures
     ```
 
-    Bir bulguyu değerlendirmede ilerletmek için `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>` veya `fp audits reopen <finding-id>` kullanın.
+    Bir bulguyu triaj aşamasından geçirmek için `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>` veya `fp audits reopen <finding-id>` kullanın.
   </Tab>
 </Tabs>
 
-Ardından, [ilk başarısızlığı bir politika ile önleyin](/tr/start/first-policy) doğrulanmış tekrarlanabilir bir eylem için.
+Ardından, [onaylanmış tekrarlanabilir bir eylem için bir ilke ile ilk hatanızı önleyin](/tr/start/first-policy).

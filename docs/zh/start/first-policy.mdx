@@ -1,47 +1,69 @@
 ---
-title: "用策略阻止第一次失误"
-description: "编写策略版本，以观察模式部署，然后强制执行。"
+title: "阻止第一次失败"
+description: "启用一个已审核的策略或测试你自己的策略。"
 icon: "shield-check"
 ---
 
-只有当你能够描述不安全的操作以及必须继续允许的合法操作时，再使用策略。
+从你想要阻止的行为和必须仍然正常工作的合法操作开始。
 
-<Tabs>
-  <Tab title="控制台">
-    <Steps>
-      <Step title="编写策略">
-        进入 **Admin → policy editor**。从演示策略开始，查看或编辑其源码，然后选择 **publish version**。发布后将创建不可变版本，可部署到机器上。
+## 先尝试已审核的策略
 
-        ![策略编辑器的编写视图，演示策略已准备好发布为不可变版本。](/images/dashboard/policy-editor.png)
-      </Step>
-      <Step title="将策略部署到机器">
-        进入 **Admin → enforcement**，展开目标机器，选择 **edit this machine**。添加已发布的演示策略，固定其版本，选择 **observe** 模式，然后应用部署。
+```bash
+failproofai policies
+failproofai policies add block-rm-rf
+```
 
-        ![机器部署编辑器，已选择发布的策略版本并处于观察模式，等待应用部署。](/images/dashboard/enforcement-editor.png)
-      </Step>
-      <Step title="验证策略">
-        在该机器上运行一个新的 Agent 会话，然后打开 **Observe → policy**。选择该机器，确认演示策略出现在策略映射和决策时间线中。观察模式会记录策略将执行的操作，但不会阻止该操作。
+Failproof AI 包含 39 个已审核策略。在编写新策略之前，请查看[策略目录](/zh/policies/builtin-catalog)。
 
-        ![策略页面，显示决策总数、随时间变化的执行活动，以及本地和云端管理的策略映射。](/images/dashboard/policy-observe.png)
-      </Step>
-    </Steps>
-  </Tab>
-  <Tab title="CLI">
-    云端策略编写和集群部署属于管理工作流。在发布之前，可使用本地 CLI 验证相同的策略：
+## 编写并测试你自己的策略
 
+<Steps>
+  <Step title="创建一个可用的策略">
     ```bash
-    failproofai policies --install --custom ./payment-retry.policies.ts \
-      --cli claude --scope project
-    failproofai config --status
+    failproofai publish --init guards.mjs
     ```
 
-    使用 `fp` 查看云端可见的策略决策：
-
+    这会生成一个阻止 `git push --force` 的策略。将其编辑为你自己的规则。
+  </Step>
+  <Step title="在本机上强制执行">
     ```bash
-    fp events --event-type hook_completed --env production --since 24h
-    fp sessions --env production --since 24h
+    failproofai policies -i -c ./guards.mjs
     ```
 
-    这两个步骤也可通过 CLI 完成：`fp policies publish <id> <file>` 用于创建版本，`fp fleet deploy <machine-id> --add <id>` 用于将其部署到机器。对应的控制台操作为 **Admin → policy editor** 和 **Admin → enforcement**。
-  </Tab>
-</Tabs>
+    让你的 Agent 执行被阻止的操作，然后在本地仪表盘中查看 **Policies → Activity**。
+  </Step>
+  <Step title="保留或移除策略">
+    将 `*policies.mjs` 文件放在 `.failproofai/policies/` 目录下，即可自动加载。
+
+    使用以下命令移除显式自定义文件：
+
+    ```bash
+    failproofai policies -u -c
+    ```
+  </Step>
+</Steps>
+
+## 分享策略
+
+发布一个公开的策略包：
+
+```bash
+failproofai publish
+```
+
+任何人都可以通过 `failproofai policies add <owner>/<repo>` 安装它。自行添加 GitHub topic `failproofai-policies`，以便 [Policy Hub](https://befailproof.ai/policy-hub/) 对其进行索引。
+
+云端部署流程：
+
+```bash
+fp policies publish checkout-guard ./guards.mjs
+fp fleet deploy <machine> --add checkout-guard:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add checkout-guard:enforce
+```
+
+<Warning>
+  直接使用 `--add checkout-guard` 会立即强制执行。添加 `:observe` 可以在不阻止 Agent 的情况下记录策略的预期行为。
+</Warning>
+
+完整工作流程请参阅[发布策略包](/zh/policies/publish-a-pack)或[部署策略](/zh/policies/deploy)。

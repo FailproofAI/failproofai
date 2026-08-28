@@ -1,19 +1,23 @@
 ---
 title: "Failproof Cloud CLI"
-description: "Tài liệu tham khảo đầy đủ để truy vấn và quản trị Failproof AI Cloud bằng fp."
+description: "Tham chiếu hoàn chỉnh để truy vấn và quản lý Failproof AI Cloud với fp."
 icon: "cloud-cog"
 ---
 
-Sử dụng `fp` để kiểm tra telemetry trên Cloud, quản lý enforcement được quản lý bởi cloud (policies, fleet deployments, guardrail decisions), và quản lý audits, findings, issues, alerts, keys, users, queries, và settings. Sử dụng [`failproofai`](/vi/reference/failproof-cli) cho local hooks, policies, capture, và machine enrollment.
+Sử dụng `fp` để kiểm tra dữ liệu viễn thám Cloud, quản lý thực thi do cloud quản lý (policies, fleet deployments, guardrail decisions), và quản lý audits, findings, issues, alerts, keys, users, queries, và settings. Sử dụng [`failproofai`](/vi/reference/failproof-cli) cho local hooks, policies, capture, và machine enrollment.
 
-Cài đặt Cloud CLI được phát hành như một công cụ độc lập:
+Cài đặt Cloud CLI được phát hành như một công cụ độc lập. Nó cần Python 3.10 hoặc mới hơn.
 
 ```bash
 uv tool install fp-cloud-cli
 fp version
 ```
 
+Distribution là `fp-cloud-cli` và lệnh được cài đặt là `fp` — chúng khác nhau vì `fp` đã được sử dụng trên PyPI.
+
 ## Đăng nhập
+
+`fp login` gửi email cho bạn một mã sáu chữ số và lưu phiên. Với dashboard có chứng chỉ tự ký, thêm `--insecure` vào lúc đăng nhập.
 
 ```bash
 fp login
@@ -26,25 +30,25 @@ fp whoami
 fp [GLOBAL_OPTIONS] COMMAND [SUBCOMMAND] [ARGUMENTS] [OPTIONS]
 ```
 
-Global options phải đứng trước command:
+Các tùy chọn toàn cục phải đứng trước lệnh:
 
 ```bash
 fp --json sessions --since 24h
 ```
 
-Chạy `fp COMMAND --help` hoặc `fp COMMAND SUBCOMMAND --help` để xem trợ giúp trên terminal.
+Chạy `fp COMMAND --help` hoặc `fp COMMAND SUBCOMMAND --help` để xem trợ giúp terminal.
 
 ## Các lệnh CLI
 
-### Xác thực
+### Authentication
 
-| Command | Mục đích | Options |
+| Lệnh | Mục đích | Tùy chọn |
 | --- | --- | --- |
-| `fp login` | Đăng nhập bằng mã một lần được gửi qua email và chọn một tổ chức. | `--email`, `-e`; `--org`; `--force` |
+| `fp login` | Đăng nhập bằng mã một lần được gửi qua email và chọn tổ chức. | `--email`, `-e`; `--org`; `--force` |
 | `fp logout` | Thu hồi và xóa phiên người dùng đã lưu. | — |
-| `fp whoami` | Hiển thị danh tính hiện tại, chế độ xác thực, tổ chức, và quyền. | — |
+| `fp whoami` | Hiển thị danh tính hiện tại, chế độ xác thực, tổ chức và quyền hạn. | — |
 | `fp version` | Hiển thị phiên bản CLI đã cài đặt. | — |
-| `fp help` | Hiển thị trợ giúp command ở cấp cao nhất. | — |
+| `fp help` | Hiển thị trợ giúp lệnh cấp cao nhất. | — |
 
 ```bash
 fp login --email you@example.com --org reliability-team
@@ -57,23 +61,23 @@ fp whoami
 fp events [OPTIONS]
 ```
 
-Liệt kê các agent events riêng lẻ. Feed light mặc định loại trừ raw payloads; chỉ sử dụng `--full` cho một cuộc điều tra bị giới hạn.
+Liệt kê các sự kiện agent riêng lẻ. Luồng nhẹ mặc định loại trừ các payload thô; chỉ sử dụng `--full` để điều tra có ranh giới.
 
-| Option | Mô tả |
+| Tùy chọn | Mô tả |
 | --- | --- |
-| `--limit`, `-n <n>` | Tổng số hàng tối đa. Mặc định: `50`. |
+| `--limit`, `-n <n>` | Số hàng tối đa. Mặc định: `50`. |
 | `--since <window>` | `all`, `15m`, `1h`, `6h`, `24h`, hoặc `7d`. |
-| `--from <timestamp>` / `--to <timestamp>` | Dải ISO 8601 UTC; ghi đè `--since`. |
-| `--env <value>` | Bộ lọc environment; lặp lại hoặc phân tách bằng dấu phẩy. |
+| `--from <timestamp>` / `--to <timestamp>` | Khoảng ISO 8601 UTC; ghi đè `--since`. |
+| `--env <value>` | Bộ lọc Environment; lặp lại hoặc phân tách bằng dấu phẩy. |
 | `--event-type <value>` | Bộ lọc event-type; lặp lại hoặc phân tách bằng dấu phẩy. |
-| `--agent-id <value>` | Bộ lọc agent; lặp lại hoặc phân tách bằng dấu phẩy. |
-| `--session-id <value>` | Bộ lọc session; lặp lại hoặc phân tách bằng dấu phẩy. |
-| `--search <text>` | Tìm kiếm text payload; có thể lặp lại, bất kỳ thuật ngữ nào cũng khớp. |
+| `--agent-id <value>` | Bộ lọc Agent; lặp lại hoặc phân tách bằng dấu phẩy. |
+| `--session-id <value>` | Bộ lọc Session; lặp lại hoặc phân tách bằng dấu phẩy. |
+| `--search <text>` | Tìm kiếm văn bản payload; có thể lặp lại, kết quả với bất kỳ thuật ngữ nào khớp. |
 | `--order asc\|desc` | Thứ tự thời gian. Mặc định: mới nhất trước. |
-| `--all` | Tự động phân trang lên đến `--limit`. |
-| `--cursor <token>` | Tiếp tục từ một cursor opaque. |
+| `--all` | Tự động phân trang lên tới `--limit`. |
+| `--cursor <token>` | Tiếp tục từ một cursor mờ đục. |
 | `--page-size <n>` | Hàng trên mỗi yêu cầu với `--all`; tối đa `200`. |
-| `--full` | Bao gồm raw payloads thông qua endpoint event nặng hơn. |
+| `--full` | Bao gồm payload thô thông qua endpoint event nặng hơn. |
 | `--fields <csv>` | Chỉ trả về các trường được chọn; yêu cầu `payload` bật chế độ đầy đủ. |
 
 ```bash
@@ -82,7 +86,7 @@ fp --json events --full --session-id <session-id> --all --limit 10000
 ```
 
 <Note>
-  `--all` phân trang **lên đến `--limit`**, mặc định là **50** — vì vậy `--all` một mình dừng ở 50 hàng. Khi nó dừng sớm, phản hồi mang `next_cursor` để tiếp tục; `"next_cursor": null` nghĩa là feed thực sự đã cạn kiệt.
+  `--all` phân trang **lên tới `--limit`**, mặc định là **50** — vì vậy `--all` duy nhất dừng lại ở 50 hàng. Khi nó dừng sớm, phản hồi mang theo `next_cursor` để tiếp tục từ đó; `"next_cursor": null` có nghĩa là luồng thực sự đã hết.
 </Note>
 
 ### Sessions
@@ -91,21 +95,21 @@ fp --json events --full --session-id <session-id> --all --limit 10000
 fp sessions [OPTIONS]
 ```
 
-| Option | Mô tả |
+| Tùy chọn | Mô tả |
 | --- | --- |
-| `--limit`, `-n <n>` | Tổng số hàng tối đa. Mặc định: `50`. |
+| `--limit`, `-n <n>` | Số hàng tối đa. Mặc định: `50`. |
 | `--since <window>` | `all`, `15m`, `1h`, `6h`, `24h`, hoặc `7d`. |
-| `--from <timestamp>` / `--to <timestamp>` | Dải ISO 8601 UTC; ghi đè `--since`. |
-| `--env <value>` | Bộ lọc environment; lặp lại hoặc phân tách bằng dấu phẩy. |
+| `--from <timestamp>` / `--to <timestamp>` | Khoảng ISO 8601 UTC; ghi đè `--since`. |
+| `--env <value>` | Bộ lọc Environment; lặp lại hoặc phân tách bằng dấu phẩy. |
 | `--status <value>` | `done`, `error`, hoặc `timeout`; lặp lại hoặc phân tách bằng dấu phẩy. |
-| `--agent-id <value>` | So khớp các sessions liên quan đến bất kỳ agent được chọn. |
-| `--session-id <value>` | Bộ lọc session; lặp lại hoặc phân tách bằng dấu phẩy. |
-| `--all` | Tự động phân trang lên đến `--limit`. |
-| `--cursor <token>` | Tiếp tục từ một cursor opaque. |
+| `--agent-id <value>` | Các phiên khớp liên quan đến bất kỳ agent nào được chọn. |
+| `--session-id <value>` | Bộ lọc Session; lặp lại hoặc phân tách bằng dấu phẩy. |
+| `--all` | Tự động phân trang lên tới `--limit`. |
+| `--cursor <token>` | Tiếp tục từ một cursor mờ đục. |
 | `--page-size <n>` | Hàng trên mỗi yêu cầu với `--all`; tối đa `200`. |
 | `--fields <csv>` | Chỉ trả về các trường được chọn. |
 | `--full-ids` | Không rút ngắn session IDs trong đầu ra terminal. |
-| `--agents` | Mở rộng danh sách agents cho multi-agent sessions. |
+| `--agents` | Mở rộng danh sách agent cho các phiên multi-agent. |
 
 ### Evaluations
 
@@ -113,17 +117,17 @@ fp sessions [OPTIONS]
 fp evals [OPTIONS]
 ```
 
-| Option | Mô tả |
+| Tùy chọn | Mô tả |
 | --- | --- |
-| `--aggregate` | Hiển thị tổng và thống kê theo điểm thay vì evaluations riêng lẻ. |
-| `--limit`, `-n <n>` | Tối đa hàng danh sách. Mặc định: `50`. |
+| `--aggregate` | Hiển thị tổng cộng và thống kê theo điểm thay vì các đánh giá riêng lẻ. |
+| `--limit`, `-n <n>` | Số hàng danh sách tối đa. Mặc định: `50`. |
 | `--since`, `--from`, `--to` | Chọn khoảng thời gian. |
-| `--env`, `--status`, `--agent-id`, `--session-id` | Hạn chế một giá trị chính xác trên mỗi bộ lọc. |
-| `--score KEY:MIN..MAX` | Dải điểm; có thể lặp lại và tất cả dải phải khớp. |
-| `--all`, `--cursor`, `--page-size` | Điều khiển phân trang danh sách. |
+| `--env`, `--status`, `--agent-id`, `--session-id` | Thu hẹp thành một giá trị chính xác mỗi bộ lọc. |
+| `--score KEY:MIN..MAX` | Khoảng điểm; có thể lặp lại và tất cả khoảng phải khớp. |
+| `--all`, `--cursor`, `--page-size` | Kiểm soát phân trang danh sách. |
 | `--fields <csv>` | Chỉ trả về các trường được chọn. |
 | `--full-ids` | Hiển thị session IDs hoàn chỉnh. |
-| `--scores-full` | Hiển thị mỗi điểm trong đầu ra terminal. |
+| `--scores-full` | Hiển thị mọi điểm trong đầu ra terminal. |
 
 ### Errors
 
@@ -131,120 +135,120 @@ fp evals [OPTIONS]
 fp errors [OPTIONS]
 ```
 
-| Option | Mô tả |
+| Tùy chọn | Mô tả |
 | --- | --- |
-| `--aggregate` | Tổng hợp các lỗi phù hợp thay vì liệt kê hàng. |
-| `--limit`, `-n <n>` | Tối đa hàng danh sách. Mặc định: `50`. |
+| `--aggregate` | Tóm tắt các lỗi phù hợp thay vì liệt kê hàng. |
+| `--limit`, `-n <n>` | Số hàng danh sách tối đa. Mặc định: `50`. |
 | `--since`, `--from`, `--to` | Chọn khoảng thời gian. |
-| `--env`, `--error-type`, `--event-type`, `--agent-id`, `--session-id` | Thu hẹp phân loại lỗi. |
-| `--search <text>` | Tìm kiếm text payload; có thể lặp lại. |
+| `--env`, `--error-type`, `--event-type`, `--agent-id`, `--session-id` | Thu hẹp quần thể lỗi. |
+| `--search <text>` | Tìm kiếm văn bản payload; có thể lặp lại. |
 | `--order asc\|desc` | Thứ tự thời gian. |
-| `--all`, `--cursor`, `--page-size` | Điều khiển phân trang danh sách. |
+| `--all`, `--cursor`, `--page-size` | Kiểm soát phân trang danh sách. |
 | `--fields <csv>` | Chỉ trả về các trường được chọn. |
 | `--full-ids` | Hiển thị session IDs hoàn chỉnh. |
 
-### Usage và filter values
+### Usage and filter values
 
-| Command | Mục đích |
+| Lệnh | Mục đích |
 | --- | --- |
-| `fp usage` | Hiển thị usage cho cửa sổ metering hiện tại. |
-| `fp list envs` | Liệt kê các environments được quan sát. |
+| `fp usage` | Hiển thị cách sử dụng cho cửa sổ đo lường hiện tại. |
+| `fp list envs` | Liệt kê các environment được quan sát. |
 | `fp list agents` | Liệt kê các agent IDs được quan sát. |
-| `fp list event_types` | Liệt kê event types. |
-| `fp list score_filters` | Liệt kê các khóa evaluation scores. |
-| `fp list models` | Liệt kê tên models. |
-| `fp list hooks` | Liệt kê tên hooks. |
-| `fp list tools` | Liệt kê tên tools. |
-| `fp list error_types` | Liệt kê error types. |
+| `fp list event_types` | Liệt kê các loại sự kiện. |
+| `fp list score_filters` | Liệt kê các khóa điểm đánh giá. |
+| `fp list models` | Liệt kê tên mô hình. |
+| `fp list hooks` | Liệt kê tên hook. |
+| `fp list tools` | Liệt kê tên tool. |
+| `fp list error_types` | Liệt kê các loại lỗi. |
 
 ### Organizations
 
-| Command | Mục đích |
+| Lệnh | Mục đích |
 | --- | --- |
-| `fp orgs list` | Liệt kê các organizations có thể truy cập. |
-| `fp orgs switch [SLUG]` | Lưu một organization hoạt động; nhắc khi bị bỏ qua. |
-| `fp orgs current` | Hiển thị organization hoạt động. |
-| `fp orgs perms` | Hiển thị quyền của bạn trong organization hoạt động. |
+| `fp orgs list` | Liệt kê các tổ chức có thể truy cập được. |
+| `fp orgs switch [SLUG]` | Lưu một tổ chức hoạt động; nhắc khi bỏ qua. |
+| `fp orgs current` | Hiển thị tổ chức hoạt động. |
+| `fp orgs perms` | Hiển thị quyền của bạn trong tổ chức hoạt động. |
 
 ### API keys
 
-| Command | Mục đích | Options |
+| Lệnh | Mục đích | Tùy chọn |
 | --- | --- | --- |
-| `fp keys list` | Liệt kê organization keys. | `--show-id`; `--fields <csv>` |
-| `fp keys show NAME` | Hiển thị một key và các grants của nó. | — |
-| `fp keys create NAME` | Tạo một key và tiết lộ secret của nó một lần. | `--permission-set`; `--add`; `--remove` |
-| `fp keys update NAME` | Thay thế permission set hoặc điều chỉnh grants. | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
-| `fp keys regenerate NAME` | Xoay vòng secret và tiết lộ cái thay thế một lần. | `--yes`, `-y` |
-| `fp keys disable NAME` | Vĩnh viễn thu hồi một key. | `--yes`, `-y` |
+| `fp keys list` | Liệt kê các khóa tổ chức. | `--show-id`; `--fields <csv>` |
+| `fp keys show NAME` | Hiển thị một khóa và các quyền của nó. | — |
+| `fp keys create NAME` | Tạo một khóa và tiết lộ bí mật của nó một lần. | `--permission-set`; `--add`; `--remove` |
+| `fp keys update NAME` | Thay thế tập quyền hoặc điều chỉnh quyền. | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
+| `fp keys regenerate NAME` | Xoay vòng bí mật và tiết lộ phiên bản thay thế một lần. | `--yes`, `-y` |
+| `fp keys disable NAME` | Thu hồi vĩnh viễn một khóa. | `--yes`, `-y` |
 
-Permission tokens sử dụng `resource:action`, chẳng hạn như `events:add`. Lặp lại `--add`, phân tách bằng dấu phẩy, hoặc sử dụng các hành động dấu chấm như `events:read.add`.
+Token quyền sử dụng `resource:action`, chẳng hạn như `events:add`. Lặp lại `--add`, phân tách bằng dấu phẩy, hoặc sử dụng các hành động có dấu chấm như `events:read.add`.
 
 ### Queries
 
-| Command | Mục đích | Options |
+| Lệnh | Mục đích | Tùy chọn |
 | --- | --- | --- |
-| `fp query list` | Liệt kê các saved queries. | `--show-id`; `--fields <csv>` |
+| `fp query list` | Liệt kê các query đã lưu. | `--show-id`; `--fields <csv>` |
 | `fp query show NAME` | Hiển thị một query. | — |
 | `fp query create NAME` | Lưu một query. | `--sql <text\|@file>`; `--description` |
 | `fp query update NAME` | Cập nhật hoặc đổi tên một query. | `--name`; `--sql`; `--description`; `--yes`, `-y` |
-| `fp query delete NAME` | Xóa một saved query. | `--yes`, `-y` |
-| `fp query run [NAME]` | Chạy một saved query hoặc SQL ad-hoc. | `--sql`; `--limit`; `--all`; `--arg`, `--param` |
-| `fp query schema [TABLE]` | Liệt kê các queryable tables hoặc kiểm tra một bảng. | — |
+| `fp query delete NAME` | Xóa một query đã lưu. | `--yes`, `-y` |
+| `fp query run [NAME]` | Chạy một query đã lưu hoặc SQL ad-hoc. `--limit` chỉ giới hạn chế độ **bảng**, mặc định 50; `--json` luôn trả về mọi hàng. | `--sql`; `--limit`; `--all`; `--arg`, `--param` |
+| `fp query schema [TABLE]` | Liệt kê các bảng có thể truy vấn hoặc kiểm tra một bảng. | — |
 
 ### Users
 
-| Command | Mục đích | Options |
+| Lệnh | Mục đích | Tùy chọn |
 | --- | --- | --- |
-| `fp users list` | Liệt kê thành viên organization. | `--active-only`; `--show-id` |
-| `fp users show EMAIL` | Hiển thị một thành viên và các grants của họ. | — |
+| `fp users list` | Liệt kê các thành viên tổ chức. | `--active-only`; `--show-id` |
+| `fp users show EMAIL` | Hiển thị một thành viên và quyền của họ. | — |
 | `fp users create EMAIL` | Thêm một thành viên. | `--permission-set`; `--add`; `--remove` |
-| `fp users update EMAIL` | Thay đổi grants của một thành viên. | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
+| `fp users update EMAIL` | Thay đổi quyền của một thành viên. | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
 | `fp users disable EMAIL` | Vô hiệu hóa đăng nhập. | `--yes`, `-y` |
 | `fp users enable EMAIL` | Bật lại đăng nhập. | `--yes`, `-y` |
 
 ### Settings
 
-| Command | Mục đích | Options |
+| Lệnh | Mục đích | Tùy chọn |
 | --- | --- | --- |
-| `fp settings list` | Liệt kê organization settings và giá trị hiện tại. | — |
+| `fp settings list` | Liệt kê các cài đặt tổ chức và giá trị hiện tại. | — |
 | `fp settings schema` | Hiển thị các giá trị được chấp nhận và mô tả. | — |
-| `fp settings set KEY` | Thay đổi một setting hiện có. | chính xác một trong `--value`, `--json-value`, `--file`; tùy chọn `--yes`, `-y` |
+| `fp settings set KEY` | Thay đổi một cài đặt hiện có. | chính xác một trong `--value`, `--json-value`, `--file`; tùy chọn `--yes`, `-y` |
 
 ### Alerts
 
-| Command | Mục đích | Options |
+| Lệnh | Mục đích | Tùy chọn |
 | --- | --- | --- |
-| `fp alerts list` | Liệt kê alert rules. | `--show-id` |
-| `fp alerts show NAME` | Hiển thị một alert. | — |
-| `fp alerts create NAME` | Tạo một alert. | `--file`; `--description`; `--severity`; `--trigger-kind`; `--trigger-spec`; `--channels`; `--eval-interval-secs`; `--min-breaches`; `--eval-window` |
-| `fp alerts update NAME` | Cập nhật hoặc đổi tên một alert. | create options cộng `--name`; `--yes`, `-y` |
-| `fp alerts delete NAME` | Xóa một alert. | `--yes`, `-y` |
-| `fp alerts test NAME` | Gửi một test notification. | `--channels`; `--yes`, `-y` |
+| `fp alerts list` | Liệt kê các quy tắc cảnh báo. | `--show-id` |
+| `fp alerts show NAME` | Hiển thị một cảnh báo. | — |
+| `fp alerts create NAME` | Tạo một cảnh báo. | `--file`; `--description`; `--severity`; `--trigger-kind`; `--trigger-spec`; `--channels`; `--eval-interval-secs`; `--min-breaches`; `--eval-window` |
+| `fp alerts update NAME` | Cập nhật hoặc đổi tên một cảnh báo. | các tùy chọn create cộng với `--name`; `--yes`, `-y` |
+| `fp alerts delete NAME` | Xóa một cảnh báo. | `--yes`, `-y` |
+| `fp alerts test NAME` | Gửi một thông báo kiểm tra. | `--channels`; `--yes`, `-y` |
 
-Alert severities là `info`, `warning`, và `critical`. Trigger kinds là `metric_threshold`, `custom_sql`, `evaluation_score`, `eval_compound`, và `per_event`. Evaluation intervals phải nằm trong khoảng 30 đến 86.400 giây.
+Mức độ nghiêm trọng cảnh báo là `info`, `warning`, và `critical`. Các loại kích hoạt là `metric_threshold`, `custom_sql`, `evaluation_score`, `eval_compound`, và `per_event`. Khoảng thời gian đánh giá phải nằm trong khoảng 30 và 86.400 giây.
 
 ### Audits
 
-| Command | Mục đích | Options |
+| Lệnh | Mục đích | Tùy chọn |
 | --- | --- | --- |
 | `fp audits list` | Liệt kê audits. | `--enabled-only`; `--show-id` |
-| `fp audits show NAME` | Hiển thị một audit definition và state. | — |
-| `fp audits create NAME` | Tạo một audit và ngay lập tức xếp hàng đợi cho lần chạy đầu tiên của nó. | Xem [create options](#audit-create-options). |
-| `fp audits edit NAME` | Thay thế audit settings trong khi giữ các giá trị không được chỉ định. | create definition options; `--name`; `--yes`, `-y` |
-| `fp audits delete NAME` | Xóa một audit, các findings, và run history. | `--yes`, `-y` |
-| `fp audits run NAME` | Xếp hàng đợi một manual run. | — |
-| `fp audits runs NAME` | Liệt kê run history. | `--limit`, `-n`; `--show-id` |
-| `fp audits context-show NAME` | Hiển thị brief và reference URL fetch state. | — |
-| `fp audits context-set NAME` | Thay đổi brief hoặc reference URLs. | `--text`; `--text-file`; `--url`; `--clear-urls` |
-| `fp audits context-refresh NAME` | Tái tìm nạp reference URLs. | — |
-| `fp audits findings` | Liệt kê findings. | `--audit`; `--run-id`; `--status`; `--limit`, `-n`; `--offset`; `--show-id` |
-| `fp audits finding FINDING_ID` | Hiển thị một finding và evidence của nó. | — |
+| `fp audits show NAME` | Hiển thị một định nghĩa audit và trạng thái. | — |
+| `fp audits create NAME` | Tạo một audit và ngay lập tức xếp hàng lần chạy đầu tiên của nó. | Xem [các tùy chọn tạo](#audit-create-options). |
+| `fp audits edit NAME` | Thay thế các cài đặt audit trong khi giữ lại các giá trị không được chỉ định. | các tùy chọn định nghĩa tạo; `--name`; `--yes`, `-y` |
+| `fp audits delete NAME` | Xóa một audit, findings, và lịch sử chạy của nó. | `--yes`, `-y` |
+| `fp audits run NAME` | Xếp hàng một lần chạy thủ công. | — |
+| `fp audits runs NAME` | Liệt kê lịch sử chạy. | `--limit`, `-n`; `--show-id` |
+| `fp audits context-show NAME` | Hiển thị trạng thái tóm tắt và tìm nạp URL tham chiếu. | — |
+| `fp audits context-set NAME` | Thay đổi tóm tắt hoặc URL tham chiếu. | `--text`; `--text-file`; `--url`; `--clear-urls` |
+| `fp audits context-refresh NAME` | Tìm nạp lại các URL tham chiếu. | — |
+| `fp audits findings` | Liệt kê findings. `--limit` mặc định là 100 ở đây, không phải 50 được sử dụng ở nơi khác, và máy chủ giới hạn nó ở 500. | `--audit`; `--run-id`; `--status`; `--limit`, `-n`; `--offset`; `--show-id` |
+| `fp audits finding FINDING_ID` | Hiển thị một finding và bằng chứng của nó. | — |
 | `fp audits ack FINDING_ID` | Xác nhận một finding. | `--reason` |
-| `fp audits mute FINDING_ID` | Chặn một mẫu định kỳ. | `--reason`; `--yes`, `-y` |
-| `fp audits dismiss FINDING_ID` | Đánh dấu một mẫu không khả thi hành động và chặn nó. | `--reason`; `--yes`, `-y` |
-| `fp audits resolve FINDING_ID` | Đánh dấu một finding đã sửa mà không chặn trong tương lai. | `--yes`, `-y` |
-| `fp audits reopen FINDING_ID` | Trả về một finding cho hàng đợi live và xóa chặn. | — |
-| `fp audits assign FINDING_ID` | Đặt finding owner. | yêu cầu `--to <email>` |
+| `fp audits mute FINDING_ID` | Triệt tiêu một mẫu định kỳ. | `--reason`; `--yes`, `-y` |
+| `fp audits dismiss FINDING_ID` | Đánh dấu một mẫu không thể hành động và triệt tiêu nó. | `--reason`; `--yes`, `-y` |
+| `fp audits resolve FINDING_ID` | Đánh dấu một finding là đã sửa mà không có triệt tiêu trong tương lai. | `--yes`, `-y` |
+| `fp audits reopen FINDING_ID` | Trả lại một finding vào hàng chờ trực tiếp và xóa triệt tiêu. | — |
+| `fp audits assign FINDING_ID` | Đặt chủ sở hữu finding. | bắt buộc `--to <email>` |
 
 #### Audit create options
 
@@ -259,122 +263,192 @@ fp audits create checkout-reliability \
   --url https://runbooks.example.com/checkout
 ```
 
-| Option | Mô tả |
+| Tùy chọn | Mô tả |
 | --- | --- |
-| `--file <path>` | Dựa trên định nghĩa JSON, hoặc sử dụng `-` cho stdin. Các cờ rõ ràng ghi đè giá trị file. |
-| `--description <text>` | Nêu rõ câu hỏi thất bại hoặc mục đích. |
-| `--enabled` / `--disabled` | Bắt đầu lên lịch trên hoặc tắt. Mặc định: enabled. |
+| `--file <path>` | Dựa trên định nghĩa JSON, hoặc sử dụng `-` cho stdin. Các cờ rõ ràng ghi đè các giá trị tệp. |
+| `--description <text>` | Nêu câu hỏi lỗi hoặc mục đích. |
+| `--enabled` / `--disabled` | Bắt đầu lên lịch hoặc tắt. Mặc định: bật. |
 | `--schedule-interval-secs <n>` | `3600`–`604800`. Mặc định: `86400`. |
-| `--schedule-anchor <timestamp>` | Pha UTC cố định ở dạng ISO 8601. Mặc định: 09:00 UTC tiếp theo. |
-| `--window-mode since_last\|fixed` | Tiếp tục sau cửa sổ được phân tích đầy đủ cuối cùng hoặc lặp lại kiểm tra cửa sổ lăn động. Mặc định: `since_last`. |
+| `--schedule-anchor <timestamp>` | Pha UTC cố định ở dạng ISO 8601. Mặc định: tiếp theo 09:00 UTC. |
+| `--window-mode since_last\|fixed` | Tiếp tục sau cửa sổ được phân tích cuối cùng hoặc liên tục kiểm tra một cửa sổ lăn. Mặc định: `since_last`. |
 | `--lookback-window-secs <n>` | `3600`–`7776000`. Mặc định: `604800`. |
-| `--scope '<json>'` | Bộ lọc theo `environments`, `agent_ids`, hoặc các trường scope được hỗ trợ khác. |
-| `--ignore-error-type <type>` | Loại trừ error types; lặp lại hoặc phân tách bằng dấu phẩy. |
-| `--llm` / `--no-llm` | Bật hoặc tắt agentic analysis. Mặc định: enabled. |
+| `--scope '<json>'` | Lọc theo `environments`, `agent_ids`, hoặc các trường scope được hỗ trợ khác. |
+| `--ignore-error-type <type>` | Loại trừ các loại lỗi; lặp lại hoặc phân tách bằng dấu phẩy. |
+| `--llm` / `--no-llm` | Bật hoặc tắt phân tích agent. Mặc định: bật. |
 | `--top-k <n>` | Giữ lại `1`–`500` findings. Mặc định: `50`. |
-| `--sensitivity low\|medium\|high` | Đặt reporting sensitivity. Mặc định: `medium`. |
-| `--channels '<json>'` | Mảng notification channel. |
-| `--text <brief>` | Brief inline, tối đa 8.192 ký tự. |
-| `--text-file <path>` | Đọc brief từ một file; loại trừ lẫn nhau với `--text`. |
-| `--url <https-url>` | Thêm một tham chiếu HTTPS công khai; lặp lại lên đến năm lần. |
+| `--sensitivity low\|medium\|high` | Đặt mức độ nhạy cảm báo cáo. Mặc định: `medium`. |
+| `--channels '<json>'` | Mảng kênh thông báo. |
+| `--text <brief>` | Tóm tắt nội tuyến, tối đa 8.192 ký tự. |
+| `--text-file <path>` | Đọc tóm tắt từ một tệp; loại trừ lẫn nhau với `--text`. |
+| `--url <https-url>` | Thêm tham chiếu HTTPS công khai; lặp lại tối đa năm lần. |
 
-Bao gồm context trong quá trình tạo khi lần chạy đầu tiên cần nó. Creation commits định nghĩa và context cùng nhau trước khi lần chạy được xếp hàng đợi bắt đầu.
+Bao gồm ngữ cảnh trong quá trình tạo khi lần chạy đầu tiên cần nó. Việc tạo cam kết định nghĩa và ngữ cảnh cùng nhau trước khi lần chạy xếp hàng bắt đầu.
 
 <Note>
-  `fp audits run` là không đồng bộ. Poll `fp audits runs NAME` cho đến khi lần chạy mới nhất thành công hoặc thất bại trước khi đọc các findings của nó.
+  `fp audits run` là không đồng bộ. Poll `fp audits runs NAME` cho đến khi lần chạy mới nhất thành công hoặc thất bại trước khi đọc findings của nó.
 </Note>
 
 ### Issues
 
-| Command | Mục đích | Options |
+| Lệnh | Mục đích | Tùy chọn |
 | --- | --- | --- |
 | `fp issues list` | Liệt kê issues. | `--state`; `--alert-id`; `--limit`, `-n`; `--show-id` |
-| `fp issues count` | Đếm open hoặc các issue states được chọn. | `--state` |
-| `fp issues show INCIDENT_ID` | Hiển thị issue details, comments, subscribers, và activity. | — |
-| `fp issues open` | Mở một manual hoặc alert-linked issue. | yêu cầu `--summary`; tùy chọn `--title`, `--alert-id`, `--severity` |
+| `fp issues count` | Đếm các trạng thái issue mở hoặc được chọn. | `--state` |
+| `fp issues show INCIDENT_ID` | Hiển thị chi tiết issue, nhận xét, người đăng ký và hoạt động. | — |
+| `fp issues open` | Mở một issue thủ công hoặc liên kết cảnh báo. | bắt buộc `--summary`; tùy chọn `--title`, `--alert-id`, `--severity` |
 | `fp issues ack INCIDENT_ID` | Xác nhận một issue. | — |
-| `fp issues assign INCIDENT_ID` | Thay thế assignees; bỏ qua option để xóa chúng. | lặp lại `--assignee` |
+| `fp issues assign INCIDENT_ID` | Thay thế người được giao; bỏ qua tùy chọn để xóa họ. | lặp lại `--assignee` |
 | `fp issues resolve INCIDENT_ID` | Giải quyết một issue. | `--yes`, `-y` |
-| `fp issues comment-list INCIDENT_ID` | Liệt kê comments. | — |
-| `fp issues comment-add INCIDENT_ID` | Thêm một comment. | chính xác một trong `--body`, `--file` |
-| `fp issues comment-delete INCIDENT_ID COMMENT_ID` | Xóa một comment. | `--yes`, `-y` |
-| `fp issues subscribers INCIDENT_ID` | Liệt kê subscribers. | — |
-| `fp issues subscribe INCIDENT_ID` | Theo dõi chính mình hoặc một operator khác. | `--email` |
-| `fp issues unsubscribe INCIDENT_ID` | Xóa một subscription. | `--email` |
+| `fp issues comment-list INCIDENT_ID` | Liệt kê nhận xét. | — |
+| `fp issues comment-add INCIDENT_ID` | Thêm một nhận xét. | chính xác một trong `--body`, `--file` |
+| `fp issues comment-delete INCIDENT_ID COMMENT_ID` | Xóa một nhận xét. | `--yes`, `-y` |
+| `fp issues subscribers INCIDENT_ID` | Liệt kê những người đăng ký. | — |
+| `fp issues subscribe INCIDENT_ID` | Đăng ký chính mình hoặc một toán tử khác. | `--email` |
+| `fp issues unsubscribe INCIDENT_ID` | Xóa một đăng ký. | `--email` |
 
-Valid issue states là `firing`, `acknowledged`, và `resolved`. Standalone issue severities là `info`, `warning`, và `critical`.
+Các trạng thái issue hợp lệ là `firing`, `acknowledged`, và `resolved`. Mức độ nghiêm trọng issue độc lập là `info`, `warning`, và `critical`.
 
 ### Cloud assistant
 
-| Command | Mục đích | Options |
+| Lệnh | Mục đích | Tùy chọn |
 | --- | --- | --- |
-| `fp agent health` | Kiểm tra assistant availability và configuration. | — |
-| `fp agent models` | Liệt kê các available assistant models. | — |
-| `fp agent chats` | Liệt kê các saved chats. | — |
-| `fp agent ask [MESSAGE]` | Bắt đầu hoặc tiếp tục một chat; đọc stdin khi message bị bỏ qua. | `--chat`; `--model`; `--page-context` |
-| `fp agent show CHAT_ID` | Hiển thị một saved conversation. | — |
-| `fp agent rename CHAT_ID` | Đổi tên một conversation. | yêu cầu `--title` |
-| `fp agent delete CHAT_ID` | Xóa một conversation. | `--yes`, `-y` |
+| `fp agent health` | Kiểm tra tính khả dụng và cấu hình của trợ lý. | — |
+| `fp agent models` | Liệt kê các mô hình trợ lý có sẵn. | — |
+| `fp agent chats` | Liệt kê các cuộc trò chuyện đã lưu. | — |
+| `fp agent ask [MESSAGE]` | Bắt đầu hoặc tiếp tục một cuộc trò chuyện; đọc stdin khi bỏ qua tin nhắn. | `--chat`; `--model`; `--page-context` |
+| `fp agent show CHAT_ID` | Hiển thị một cuộc hội thoại đã lưu. | — |
+| `fp agent rename CHAT_ID` | Đổi tên một cuộc hội thoại. | bắt buộc `--title` |
+| `fp agent delete CHAT_ID` | Xóa một cuộc hội thoại. | `--yes`, `-y` |
 
 ### Policies
 
-Cloud-managed policy versions. **Session-only** — mọi command ở đây thoát `2` dưới một API key, trước bất kỳ yêu cầu nào, bởi vì đây là root-only write routes cố ý vắng mặt từ `/v1`.
+Các phiên bản policy do cloud quản lý. **Chỉ phiên** — mọi lệnh ở đây ngoài `fp policies test` thoát `2` dưới một khóa API, trước bất kỳ yêu cầu nào, vì đây là các tuyến viết chỉ root được cố ý không có trong `/v1`. `fp policies test` là ngoại lệ cố ý: nó chạy hoàn toàn cục bộ so với `node` và không nói chuyện với máy chủ, vì vậy nó không mang yêu cầu auth cũng không từ chối chế độ khóa và hoạt động khi đăng xuất và dưới khóa API.
 
-| Command | Mục đích | Options |
+| Lệnh | Mục đích | Tùy chọn |
 | --- | --- | --- |
-| `fp policies list` | Liệt kê policy versions. | `--json` |
-| `fp policies show POLICY_ID` | Hiển thị một policy, với source của nó. | — |
-| `fp policies publish NAME PATH` | Mint một version từ một `.mjs` local. | `--description`; `--no-verify` |
-| `fp policies enable POLICY_ID` | Thêm nó trở lại mọi deployment nó được loại bỏ, minting một generation mới trên mỗi. | `--yes`, `-y` |
-| `fp policies disable POLICY_ID` | Loại bỏ nó khỏi mọi deployment mang nó, minting một generation mới trên mỗi. | `--yes`, `-y` |
-| `fp policies delete POLICY_ID` | Xóa một policy version. | `--yes`, `-y` |
-| `fp policies test PATH` | Chạy một policy cục bộ so với một context tổng hợp. Áp dụng bộ lọc `match` của mỗi policy, vì vậy một cái không bao gồm event/tool được cho sẽ được báo cáo `skipped` thay vì chạy. | `--event`; `--tool`; `--command`; `--file-path`; `--expect` |
-| `fp policies compose PROMPT` | Soạn một policy với assistant. Cần `policies:write`. | — |
+| `fp policies list` | Liệt kê các phiên bản policy, mới nhất của mỗi policy trước. | — |
+| `fp policies show POLICY_ID` | Hiển thị một policy, cùng với nguồn của nó. | — |
+| `fp policies publish POLICY_ID [SOURCE]` | Tạo một phiên bản mới bất biến; nó không bao giờ chỉnh sửa một tại chỗ. `SOURCE` là một đường dẫn, `@path`, hoặc `-` cho stdin — bỏ qua nó để dán. | `--description`; `--no-verify` |
+| `fp policies enable POLICY_ID` | Thêm nó trở lại mọi triển khai nó bị xóa khỏi, tạo ra một thế hệ mới trên mỗi. | `--yes`, `-y` |
+| `fp policies disable POLICY_ID` | Xóa nó khỏi mọi triển khai mang theo nó, tạo ra một thế hệ mới trên mỗi. | `--yes`, `-y` |
+| `fp policies delete POLICY_ID` | Xóa một phiên bản policy. | `--yes`, `-y` |
+| `fp policies test [SOURCE]` | Chạy một policy cục bộ so với một ngữ cảnh tổng hợp. Áp dụng bộ lọc `match` của mỗi policy, vì vậy một cái không bao gồm sự kiện/công cụ được cung cấp được báo cáo `skipped` thay vì chạy. Cần `node` trên PATH. | `--event`; `--tool`; `--command`; `--file`; `--expect` |
+| `fp policies compose PROMPT` | Dự thảo một policy với trợ lý. In bản dự thảo và không làm gì khác theo mặc định. Cần `policies:write`. | `--out <path>`; `--publish <policy-id>` |
 
 ### Fleet
 
-Những máy nào chạy những policies nào. **Session-only**, lý do tương tự như trên.
+Những máy nào chạy những policy nào. **Chỉ phiên** — mọi lệnh ở đây, không có ngoại lệ, thoát `2` dưới một khóa API.
 
-| Command | Mục đích | Options |
+| Lệnh | Mục đích | Tùy chọn |
 | --- | --- | --- |
-| `fp fleet list` | Liệt kê enrolled machines và deployment generation của chúng. | — |
-| `fp fleet show MACHINE_ID` | Policy set mà một machine hiện đang chạy. | — |
-| `fp fleet deploy MACHINE_ID` | **Thay thế toàn bộ policy set của machine.** In ra kế hoạch và chỉ hỏi trên một terminal tương tác mà không `--json`. | `--add`; `--remove`; `--set`; `--create`; `--yes`, `-y` |
-| `fp fleet diff MACHINE_ID` | So sánh một machine với một deployment khác. | — |
-| `fp fleet history MACHINE_ID` | Past deployments cho một machine. | — |
-| `fp fleet rollback MACHINE_ID` | Khôi phục một deployment trước đó. | `--yes`, `-y` |
-| `fp fleet rename MACHINE_ID` | Cho một machine một tên có thể đọc được. | yêu cầu `--name` |
+| `fp fleet list` | Liệt kê các máy được đăng ký và thế hệ triển khai của chúng. | — |
+| `fp fleet show MACHINE_ID` | Tập policy mà máy hiện đang chạy. | — |
+| `fp fleet deploy MACHINE_ID` | Thay đổi những gì mà một máy thực thi. In tập kết quả đầy đủ trước tiên, và chỉ yêu cầu trên một terminal tương tác mà không có `--json`. | `--add`; `--remove`; `--set`; `--create`; `--yes`, `-y` |
+| `fp fleet diff [MACHINE_ID]` | Ý định so với giao hàng — những gì mà một máy được yêu cầu chạy so với những gì nó kéo lần cuối. Bỏ qua id cho toàn bộ fleet. | — |
+| `fp fleet history MACHINE_ID` | Mọi thế hệ cho một máy, mới nhất trước. | — |
+| `fp fleet rollback MACHINE_ID GENERATION` | Phục hồi tập policy của một thế hệ quá khứ. Số thế hệ đến từ `fp fleet history MACHINE_ID`. | `--yes`, `-y` |
+| `fp fleet rename MACHINE_ID LABEL` | Đặt cho máy một nhãn có thể đọc được. Chính id itself không bao giờ thay đổi. | — |
+
+```bash
+fp fleet history ci-runner-01
+fp fleet rollback ci-runner-01 3
+fp fleet rename ci-runner-01 "CI runner (eu-west)"
+```
+
+#### Policy references
+
+`--add` và `--set` lấy một tham chiếu policy, không phải một id trần:
+
+| Hình thức | Ý nghĩa |
+| --- | --- |
+| `id` | Phiên bản hiện tại, hiệu lực hiện tại |
+| `id@3` | Phiên bản 3, hiệu lực hiện tại |
+| `id:observe` | Phiên bản hiện tại, được ghi lại nhưng không thực thi |
+| `id@3:observe` | Phiên bản 3, được ghi lại nhưng không thực thi |
+
+Hiệu lực là `enforce` hoặc `observe`. Độ phân giải là: một hiệu lực rõ ràng thắng; nếu không thì hiệu lực đã được triển khai cho policy đó; nếu không thì `enforce`.
+
+<Warning>
+  Một `--add` trần **thực thi ngay lập tức**. `fp fleet deploy ci-runner-01 --add checkout-guard` bắt đầu chặn trên máy đó ngay khi nó tiếp theo kéo. `:observe` là những gì làm cho nó trở thành một triển khai shadow:
+
+  ```bash
+  fp fleet deploy ci-runner-01 --add checkout-guard:observe   # chỉ ghi lại
+  fp fleet deploy ci-runner-01 --add checkout-guard           # thực thi ngay bây giờ
+  ```
+
+  Observe không phải là tắt. Policy được đánh giá cho thật, theo cùng một timeout 10 giây và cùng một xử lý lỗi như một cái thực thi, và mọi phán quyết non-allow được ghi lại — chỉ có thực thi là bị giữ lại. Đó là những gì làm cho phép đo đáng để đọc.
+</Warning>
+
+#### Deltas, replacement, và races
+
+`--add` và `--remove` đọc tập hiện tại của máy và áp dụng một delta, vì vậy không có gì bạn không đặt tên bị xáo trộn. Một `--add` trần trên một policy mà máy đã chạy giữ phiên bản được ghim thay vì âm thầm nâng cấp nó; chuyển `id@version` để di chuyển nó.
+
+`--set` thay thế mọi thứ và là cách duy nhất để xóa các policy bạn không đặt tên. Nó không thể được kết hợp với `--add` hoặc `--remove`. Không chuyển bất kỳ ba cái nào là một lỗi sử dụng, không phải một no-op.
+
+```bash
+fp fleet deploy ci-runner-01 --add prod-guard@1:observe --remove old-rule
+fp fleet deploy ci-runner-01 --set no-force-push --set no-secret-echo
+```
+
+Bản ghi chép chính nó là một thay thế đầy đủ trên mọi đường, vì endpoint lấy toàn bộ tập policy. Không có khóa phía máy chủ, vì vậy CLI ghi lại thế hệ nó đọc và từ chối nếu kết quả không chính xác cao hơn một — điều đó có nghĩa là ai đó khác triển khai ở giữa, và một thay thế không hợp nhất. Đọc lại với `fp fleet show`, sau đó triển khai lại.
+
+`--create` triển khai cho một machine id chưa kiểm tra, để xếp giai đoạn trước. Mà không có nó, một id mà máy chủ không biết bị từ chối, vì một lỗi đánh máy sẽ cách khác tạo ra một máy mà không ai sở hữu mang các policy mà không ai thu thập.
 
 ### Guardrails
 
-Những gì enforcement thực sự đã làm. **Session-only**, lý do tương tự như trên.
+Những gì thực thi thực sự đã làm. **Chỉ phiên**, lý do giống như ở trên.
 
-| Command | Mục đích | Options |
+| Lệnh | Mục đích | Tùy chọn |
 | --- | --- | --- |
-| `fp guardrails summary` | Coverage, blocked/evaluated totals, một deny sparkline, và bảng per-policy. | `--since` (`1h`, `6h`, `24h`, `7d`); `--machine` |
-| `fp guardrails timeline` | Decisions bucketed qua cửa sổ, tổng hợp trên mọi policy source. | `--since` (`1h`, `6h`, `24h`, `7d`); `--machine` |
+| `fp guardrails summary` | Bảo hiểm, chặn/đánh giá tổng cộng, một sparkline từ chối, và bảng mỗi policy. | `--since` (`1h`, `6h`, `24h`, `7d`); `--machine` |
+| `fp guardrails timeline` | Quyết định được xếp theo thời gian trong cửa sổ, tính tổng trên mọi nguồn policy. | `--since` (`1h`, `6h`, `24h`, `7d`); `--machine` |
+
+Một hàng `(no policy)` trong tóm tắt là bình thường thay vì một khoảng trống: hầu hết các đánh giá cho phép không có gì phản đối, và hàng giữ mẫu số trên màn hình.
+
+### Roll a policy out without breaking anyone
+
+Ba nhóm ở trên là một chuỗi. Quyết định cục bộ, xuất bản, shadow, đo lường, sau đó thực thi.
+
+```bash
+fp policies test ./checkout.policy.mjs --tool Bash --command "git push --force" --expect deny
+fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
+fp fleet deploy ci-runner-01 --add checkout-guard:observe
+fp guardrails summary --since 24h --machine ci-runner-01
+fp fleet deploy ci-runner-01 --add checkout-guard:enforce
+```
+
+| Bước | Tại sao nó ở đó |
+| --- | --- |
+| `fp policies test` | Không có máy chủ và không có auth. Chạy tệp thực tế so với một ngữ cảnh bạn mô tả và in allow, deny, hoặc instruct trên mỗi policy đã đăng ký. `--expect` biến nó thành một khẳng định CI. |
+| `fp policies publish` | Tạo ra một phiên bản bất biến mới; nó không bao giờ chỉnh sửa một tại chỗ. |
+| `fp fleet deploy --add <id>:observe` | Triển khai shadow. **`:observe` không phải là tùy chọn ở đây** — một `--add` trần thực thi ngay khi máy kéo. |
+| `fp guardrails summary` | Tách các trận đấu không an toàn khỏi công việc hợp pháp mà policy cũng sẽ đã chặn. |
+| `fp fleet deploy --add <id>:enforce` | Quảng cáo, một khi các phán quyết ghi lại nói những gì bạn mong đợi. |
+| `fp fleet rollback <machine> <generation>` | Cách quay lại nếu thực thi sai. |
+
+Tương đương single-machine, không có Cloud liên quan, là xuất bản gói với `failproofai publish --effect observe` và đọc các phán quyết được ghi lại trên [bảng điều khiển cục bộ](/vi/reference/local-dashboard).
 
 ## Global flags
 
-| Flag | Mô tả |
+| Cờ | Mô tả |
 | --- | --- |
-| `--json` | Phát hành machine-readable JSON. |
-| `--base-url <url>` | Sử dụng một self-hosted hoặc development dashboard. |
-| `--org <slug>` | Chọn một organization cho lệnh gọi này. |
-| `--token <token>` | Ghi đè saved user-session token. |
-| `--api-key <key>` | Xác thực automation bằng một API key; không bao giờ được lưu. |
-| `--timeout <seconds>` | HTTP timeout; phải tích cực. Mặc định: `30`. |
-| `--quiet`, `-q` | Loại bỏ status output trên stderr. |
-| `--no-color` | Vô hiệu hóa colored output. |
-| `--insecure` / `--secure` | Vô hiệu hóa hoặc khôi phục TLS certificate verification. |
-| `--version` | In phiên bản không hộp và thoát. |
+| `--json` | Phát ra JSON có thể đọc được bởi máy. |
+| `--base-url <url>` | Sử dụng một bảng điều khiển tự lưu trữ hoặc phát triển. |
+| `--org <slug>` | Chọn một tổ chức cho lần gọi này. |
+| `--token <token>` | Ghi đè token phiên người dùng đã lưu. |
+| `--api-key <key>` | Xác thực tự động bằng khóa API; không bao giờ được lưu. |
+| `--timeout <seconds>` | HTTP timeout; phải dương. Mặc định: `30`. |
+| `--quiet`, `-q` | Triệt tiêu đầu ra trạng thái trên stderr. |
+| `--no-color` | Vô hiệu hóa đầu ra được tô màu. |
+| `--insecure` / `--secure` | Vô hiệu hóa hoặc khôi phục xác minh chứng chỉ TLS. |
+| `--version` | In phiên bản không được mở ra và thoát. |
 | `--help`, `-h` | Hiển thị trợ giúp. |
 
-`--api-key` dùng cho automation. Login, organization switching, và assistant commands yêu cầu một user session.
+`--api-key` dự định cho tự động hóa. Đăng nhập, chuyển đổi tổ chức, và các lệnh trợ lý yêu cầu một phiên người dùng.
 
 ## Environment variables
 
-| Variable | Tương đương hoặc mục đích |
+| Biến | Tương đương hoặc mục đích |
 | --- | --- |
 | `FP_DASHBOARD_URL` | `--base-url` |
 | `FP_ORG` | `--org` |
@@ -382,18 +456,20 @@ Những gì enforcement thực sự đã làm. **Session-only**, lý do tương 
 | `FP_API_KEY` | `--api-key` |
 | `FP_JSON` | `--json` |
 | `FP_INSECURE` | `--insecure` |
-| `FP_HOME` | Chuyển thư mục cấu hình CLI (mặc định `~/.failproofai/fpcli`). |
-| `FP_ANALYTICS_DISABLED` hoặc `DO_NOT_TRACK` | Vô hiệu hóa anonymous CLI analytics. |
-| `NO_COLOR` | Vô hiệu hóa colored output. |
+| `FP_HOME` | Chuyển vị trí thư mục cấu hình CLI (mặc định `~/.failproofai/fpcli`). |
+| `FP_ANALYTICS_DISABLED` hoặc `DO_NOT_TRACK` | Vô hiệu hóa phân tích CLI ẩn danh. |
+| `NO_COLOR` | Vô hiệu hóa đầu ra được tô màu. |
 
-Explicit flags ghi đè environment variables, cái nào ghi đè saved configuration. Trong API-key mode, chọn tenant rõ ràng với `--org` hoặc `FP_ORG`.
+Các cờ rõ ràng ghi đè các biến môi trường, ghi đè cấu hình đã lưu.
+
+Ở chế độ khóa API, tổ chức được lưu bởi một `fp login` người thực sự bị **bỏ qua**, không chỉ bị ghi đè — chỉ một `--org` rõ ràng hoặc `FP_ORG` được gửi. Không có gì được kế thừa từ một đăng nhập đã lưu, vì vậy hãy chuyển `--org` bất cứ khi nào khóa có thể hoạt động cho nhiều hơn một tổ chức. Bỏ qua nó không thất bại to lớn: một khóa scoped-instance mà không có `--org` phân giải phía máy chủ thành tổ chức **mặc định** và trả lời bằng dữ liệu tổ chức đó, không có lỗi ở bất cứ nơi nào. Chạy `fp whoami` trước tiên để xác nhận máy chủ nào mà một khóa thực sự nói chuyện với.
 
 <Warning>
-  Các cách viết `AGENTEYE_*` của những cái này **không được `fp` đọc** và không bao giờ được — CLI khai báo `FP_*` (`fp_cli/app.py`), và một unknown variable không phải là lỗi. Thiết lập `AGENTEYE_DASHBOARD_URL` không chuyển hướng CLI; nó bị bỏ qua và lệnh im lặng chạy so với saved dashboard thay vào đó.
+  Cách đánh vần `AGENTEYE_*` của những cái này **không được đọc bởi `fp`** và không bao giờ được — CLI khai báo `FP_*` (`fp_cli/app.py`), và một biến không xác định không phải là một lỗi. Đặt `AGENTEYE_DASHBOARD_URL` không định hướng lại CLI; nó bị bỏ qua và lệnh chạy im lặng so với bảng điều khiển đã lưu thay vào đó.
 
-  `AGENTEYE_HOME` và `AGENTEYE_ENVIRONMENT` vẫn tồn tại, nhưng chúng thuộc về **collector và telemetry SDK**, không phải CLI này.
+  `AGENTEYE_HOME` và `AGENTEYE_ENVIRONMENT` vẫn tồn tại, nhưng chúng thuộc về **bộ thu thập và SDK viễn thám**, không phải CLI này.
 </Warning>
 
 <Warning>
-  Các commands mà xóa, thu hồi, chặn, giải quyết, hoặc thay thế configuration nhắc theo mặc định. Sử dụng `--yes` chỉ sau khi xác minh active organization và target.
+  Các lệnh xóa, thu hồi, triệt tiêu, giải quyết, hoặc thay thế cấu hình nhắc theo mặc định. Chỉ sử dụng `--yes` sau khi xác minh tổ chức hoạt động và mục tiêu.
 </Warning>

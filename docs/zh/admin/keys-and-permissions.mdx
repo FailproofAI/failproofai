@@ -1,74 +1,54 @@
 ---
 title: "密钥与权限"
-description: "为机器、自动化流程和运营人员创建范围化的 API 密钥。"
+description: "为人员、自动化流程和机器创建凭据。"
 icon: "key-round"
 ---
 
-API 密钥归属于某个组织，并携带显式权限。请为代理数据摄取、策略分发、评估器、CI 自动化和管理脚本分别使用独立的密钥。
+为每位人员、每台机器或每个自动化任务使用独立的密钥，并仅授予其所需的权限。
 
-## 创建与轮换密钥
+## 创建和轮换密钥
 
-<Tabs>
-  <Tab title="控制台">
-    1. 前往 **Administration → Keys**，选择 **new key**，并输入工作负载名称。
-    2. 选择一个权限预设，仅在预设不满足需求时才单独调整各项权限。
-    3. 创建密钥并立即复制其一次性密钥值。
-    4. 之后可再次打开该密钥，更新授权、禁用它或重新生成密钥值。
+使用 **Admin → Keys**，或通过 Cloud CLI 操作：
 
-    创建抽屉面板是你选择工作负载所需最小授权范围的地方。
+```bash
+fp keys list
+fp keys create "audit automation" --add audits:read
+fp keys disable "audit automation"
+```
 
-    ![带有权限预设和单项授权的新建 API 密钥抽屉面板。](/images/dashboard/key-create.png)
+密钥在创建时需立即保存，之后将不再显示。轮换密钥的步骤为：创建新密钥，更新使用方，然后停用旧密钥。
 
-    创建完成后，密钥列表页面将显示持久化的元数据和管理操作。一次性密钥值不会再次显示。
+## 机器密钥
 
-    ![显示密钥权限、创建时间以及重新生成和禁用操作的 API 密钥页面。](/images/dashboard/api-keys.png)
+机器密钥用于将本地服务连接到 Cloud：
 
-    请定期使用此列表审查授权，并禁用不再对应活跃工作负载的密钥。
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp keys create production-agents \
-      --add events:add \
-      --add policies:pull
-    fp keys show production-agents
-    fp keys update production-agents --add events:read
-    fp keys regenerate production-agents --yes
-    fp keys disable production-agents
-    ```
+```bash
+export FAILPROOFAI_CLOUD_TOKEN="<key>"
+failproofai config
+```
 
-    请安全地重定向或捕获创建/重新生成命令的输出；密钥值仅返回一次。
-  </Tab>
-</Tabs>
+已连接的机器可能需要以下两项能力：
 
-已连接的 Failproof AI 机器所需的两项权限是相互独立的：
+- `policies:pull`：接收 Cloud 管理的策略。
+- `events:add`：发送决策记录和会话数据。
 
-- `events:add`：发送事件和会话数据。
-- `policies:pull`：获取已分配的策略部署。
+状态报告会分别显示这两项，因为其中一项可能正常而另一项异常。
 
-密钥值在创建或重新生成时显示。请将其存储在密钥管理器中，并在轮换时不要复用操作人员的交互式凭证。
+## 常用权限
 
-## 权限目录
-
-| 领域 | 权限 |
+| 权限 | 说明 |
 | --- | --- |
-| 事件 | `events:add`, `events:read` |
-| 密钥 | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`；`keys:update` 仅限人工会话 |
-| 用户 | `users:create`, `users:read`, `users:update`, `users:delete` |
-| 评估 | `evaluations:read`, `evaluations:trigger` |
-| 仪表板 | `dashboards:read`, `dashboards:write`, `dashboards:delete` |
-| 查询 | `queries:read`, `queries:write`, `queries:delete`, `queries:run` |
-| 助手 | `agent:use` |
-| 设置 | `settings:read`, `settings:write` |
-| 告警 | `alerts:read`, `alerts:write` |
-| 问题 | `issues:read`, `issues:create`, `issues:close` |
-| 审计 | `audits:read`, `audits:write` |
-| 策略 | `policies:read`, `policies:write`, `policies:pull` |
-| 用量 | `usage:read` |
+| `events:add` | 发送事件 |
+| `events:read` | 读取事件和错误信息 |
+| `evaluations:read` | 读取会话和评估记录 |
+| `audits:read` / `audits:write` | 查看或管理审计记录 |
+| `policies:read` / `policies:write` | 查看或部署策略 |
+| `policies:pull` | 拉取机器策略分配 |
+| `keys:create` / `keys:disable` | 创建或停用密钥 |
+| `orgs:admin` | 实例级别的组织管理；不可分配给组织密钥 |
 
-`orgs:admin` 为实例运营方专用，不可授予组织密钥或普通成员。已废弃的 `incidents:*` 和 `alerts:ack` 令牌出于兼容性仍被接受，并会规范化为当前的 `issues:*` 权限。
-
-内置权限集包括 `read-only`、`standard` 和 `admin`。`standard` 在只读权限基础上增加了评估触发、查询执行、问题响应和助手使用权限。创建密钥时，即使权限集中包含仅限人工使用的授权，也会自动剔除。
+部分 `fp fleet` 和 `fp guardrails` 管理命令需要已登录的用户会话，而非 API 密钥。其帮助文本会在发起请求前注明这一要求。
 
 <Warning>
-  实例范围的密钥可通过 `X-AgentEye-Org` 请求头选择组织。在多组织部署环境中，请务必显式设置该请求头；若省略，可能会选中默认组织。
+  请勿将 `AGENTEYE_KEY` 或 `AGENTEYE_API_KEY` 等摄取凭据复用为 `FP_API_KEY`。它们服务于不同的系统，对应不同的权限。
 </Warning>

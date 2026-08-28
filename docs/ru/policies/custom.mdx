@@ -1,72 +1,51 @@
 ---
 title: "Пользовательские политики"
-description: "Напишите политику для режима отказа, уникального для вашего рабочего процесса агента."
-icon: "shield-plus"
+description: "Напишите правило для поведения, специфичного для вашего агента или рабочего процесса."
+icon: "code-2"
 ---
 
-Создайте файл с расширением `policies.js`, `policies.mjs` или `policies.ts` в папке `.failproofai/policies/`. Файлы соглашений загружаются автоматически на уровне проекта и пользователя.
+Проверьте [встроенный каталог](/ru/policies/builtin-catalog) перед написанием политики. Проверенное правило обычно безопаснее нового.
 
-## Протестируйте политику перед публикацией в облако
+## Начните с работающей политики
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. Установите пользовательскую политику на одном тестовом компьютере и запустите как соответствующее действие, так и легитимное несовпадение.
-    2. Перейдите в **Observe → policy** и сравните два решения.
-    3. Откройте каждый связанный сеанс и убедитесь, что полезная нагрузка события содержит достаточно доказательств для правила.
-    4. Когда поведение будет правильным, переместите проверенный исходный код в **Admin → policy editor** и опубликуйте версию.
+```bash
+failproofai publish --init guards.mjs
+failproofai policies -i -c ./guards.mjs
+```
 
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai policies --install --custom ./security.policies.ts \
-      --cli claude --scope project
-    failproofai policies
-    ```
+Стартовый блок блокирует `git push --force`. Отредактируйте его, попросите своего агента попробовать заблокированное действие и проверьте **Policies → Activity**.
 
-    Файлы соглашений в `.failproofai/policies/` загружаются без `--custom`. Сохраняйте явную команду установки в CI, когда валидация должна завершиться ошибкой при нарушении модуля.
-  </Tab>
-</Tabs>
-
-```ts
+```js
 import { customPolicies, allow, deny } from "failproofai";
 
 customPolicies.add({
-  name: "protect-production-paths",
-  description: "Block writes to production configuration",
-  match: { events: ["PreToolUse"] },
-  fn: async (ctx) => {
-    if (ctx.toolName !== "Write" && ctx.toolName !== "Edit") return allow();
-    const path = String(ctx.toolInput?.file_path ?? "").replaceAll("\\", "/");
-    if (path.split("/").includes("production")) {
-      return deny("Writes to production configuration require approval.");
-    }
-    return allow();
-  },
+  name: "protect-production",
+  description: "Production changes need a human",
+  match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+  fn: async (ctx) =>
+    String(ctx.toolInput?.command ?? "").includes("production")
+      ? deny("Ask a human before changing production.")
+      : allow(),
 });
 ```
 
-Это совпадает с `production/config.yml`, `/srv/production/config.yml`, `/srv/production` и `C:\\production\\config.yml` для `Write` и `Edit`. Не совпадает с названиями вроде `production-backup`, так как `production` должно быть полным сегментом пути.
+Политика возвращает `allow()`, `deny(message)` или `instruct(message)`. Используйте `deny`, когда действие должно остановиться; не все системы могут доставить инструкцию обратно агенту.
 
-Проверьте и установите явный файл:
+## Автоматическая загрузка
+
+Поместите файлы с именами `*policies.js`, `*policies.mjs` или `*policies.ts` в:
+
+- `.failproofai/policies/` для одного проекта.
+- `~/.failproofai/policies/` для вашего пользователя.
+
+## Тестирование путей отказа
+
+Протестируйте как небезопасное действие, так и легитимную работу, которая выглядит похоже. Убедитесь, что решение исходит от вашей политики, а не от другого правила.
+
+Удалите явные тестовые файлы с помощью:
 
 ```bash
-failproofai policies --install --custom ./security.policies.ts
+failproofai policies -u -c
 ```
 
-Контекст политики включает тип события, нормализованную полезную нагрузку, имя и вход инструмента, метаданные сеанса, параметры и исходный CLI, если доступен.
-
-## Протестируйте пути отказа
-
-Запустите валидацию после изменения файла входа или любого локального модуля, который он импортирует:
-
-```bash
-failproofai policies --install --custom ./security.policies.ts --scope project
-```
-
-Строгий путь CLI завершается ошибкой при отсутствии файлов, синтаксических ошибках, неразрешённых импортах, исключениях верхнего уровня и превышении времени загрузки модуля. Во время принудительного применения сломанный пользовательский файл регистрируется и пропускается, так что встроенные политики могут продолжить работу. Рассматривайте любое предупреждение загрузки как потерю ожидаемого принудительного применения и создавайте оповещение о нём в журналах производства.
-
-Используйте глобально уникальные имена во всех явных, соглашение и управляемых облаком политиках. Держите функции политик детерминированными, привязывайте внешние вызовы к коротким тайм-аутам и возвращайте намеренный `allow`, `instruct` или `deny` на каждом пути.
-
-<Warning>
-  Пользовательская политика — это код принудительного применения. Тестируйте отсутствующие поля, альтернативные имена инструментов и неправильно сформированный ввод — не только ожидаемое совпадение.
-</Warning>
+Когда политика готова, [опубликуйте пакет](/ru/policies/publish-a-pack) или [разверните его через Cloud](/ru/policies/deploy).

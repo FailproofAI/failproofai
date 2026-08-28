@@ -5,7 +5,7 @@ description: "Conecta cualquier framework de agentes compatible con Failproof AI
 icon: "plug"
 ---
 
-Tu agente ya produce todo lo que vale la pena registrar: llamadas a modelos, llamadas a herramientas, límites de nodos, esperas humanas y fallos. El framework lo descarta. El SDK lo conserva.
+Tu agente ya produce todo lo que vale la pena registrar: llamadas a modelos, llamadas a herramientas, límites de nodos, esperas humanas, fallos. El framework lo descarta. El SDK lo conserva.
 
 <Columns cols={3}>
   <Card title="Agentes personalizados" icon="wrench" href="/es/start/quickstarts/custom-agents">
@@ -18,12 +18,25 @@ Tu agente ya produce todo lo que vale la pena registrar: llamadas a modelos, lla
     Crews, flujos, agentes por rol, herramientas.
   </Card>
   <Card title="LlamaIndex" icon="database" href="/es/start/quickstarts/llamaindex">
-    Workflows, pasos, agentes de funciones, retrievers.
+    Workflows, pasos, agentes de función, retrievers.
   </Card>
   <Card title="Pydantic AI" icon="badge-check" href="/es/start/quickstarts/pydantic-ai">
     Agentes tipados, capacidades, herramientas, reintentos.
   </Card>
 </Columns>
+
+## Antes de empezar
+
+Dos cosas que este camino asume, ninguna de las cuales hace el código a continuación:
+
+| Requisito | Por qué |
+| --- | --- |
+| Python 3.10 o superior | El mínimo que declara el SDK. |
+| Una máquina configurada con `failproofai config` | Ese comando instala el daemon failproofaid, y el daemon es lo único que envía lo que escribe el SDK. Sin él, los lotes se acumulan en el directorio de cola y nunca salen. |
+
+<Note>
+  **Este camino registra; no aplica políticas.** El SDK captura lo que hizo tu agente. Las políticas se activan desde un hook dentro de un CLI de agente, por lo que aplicarlas en un agente de framework implica colocar un hook en tu propio runtime — consulta [Políticas](/es/policies/overview).
+</Note>
 
 ## Tres líneas, cualquiera que sea el framework
 
@@ -59,7 +72,7 @@ with failproofai_sdk.session():
     ...                               # tu llamada al agente existente, sin cambios
 ```
 
-Sin decoradores en tus funciones, sin callbacks pasados a tus llamadas, sin ids propagados por tu código. Solo difiere la llamada dentro de la sesión:
+Sin decoradores en tus funciones, sin callbacks pasados a tus llamadas, sin ids distribuidos por todo tu código. Solo la llamada dentro de la sesión es diferente:
 
 <Tabs>
   <Tab title="LangGraph">
@@ -91,25 +104,39 @@ Sin decoradores en tus funciones, sin callbacks pasados a tus llamadas, sin ids 
   </Tab>
 </Tabs>
 
-El extra instala el **framework**. Cada adaptador viene incluido en el paquete base, por lo que un proyecto que ya tenga su framework no necesita ningún extra en absoluto.
+El extra instala el **framework**. Todos los adaptadores se incluyen en la rueda base, por lo que un proyecto que ya tiene su framework no necesita ningún extra en absoluto.
 
 ## Verifica que llegó
 
 Ejecuta una sesión instrumentada y luego abre **Observe → Sessions** y selecciona tu entorno. La ejecución aparece como una traza reconstruida.
 
-Si no llega nada, confirma que la máquina está conectada con `failproofai config --status`. Consulta [Configurar la captura](/es/start/setup).
+Si no llega nada, confirma que la máquina está configurada y conectada con `failproofai config --status`. Si no lo está, ejecuta `failproofai config`. Consulta [Elige tu configuración](/es/start/setup).
 
 <Warning>
-  No compruebes el directorio de spool para confirmar la entrega. El daemon de Failproof recopila y elimina cada lote en cuestión de milisegundos, por lo que leerlo compite con el recolector y muestra muchos menos eventos de los que se emitieron.
+  No compruebes el directorio de cola para confirmar la entrega. El daemon de Failproof recopila y elimina cada lote en milisegundos, por lo que leerlo compite con el colector y muestra muchos menos eventos de los que se emitieron.
 </Warning>
 
-## Siguientes pasos
+Para comprobar que el SDK está escribiendo, detén primero el daemon, luego ejecuta tu sesión y mira en `~/.failproofai/custom-agents/events/`. Con el daemon en ejecución, un directorio vacío es el estado correcto.
 
-Cada quickstart de arriba enlaza a su guía completa: qué se registra, opciones, streaming, nombres de spans y los problemas que la gente realmente encuentra. Se encuentran en **Trace Agents → Plug in your agent**.
+<CodeGroup>
+```bash Linux
+sudo systemctl stop failproofaid@$USER
+```
+
+```bash macOS
+sudo launchctl bootout system/ai.failproof.failproofaid.$USER
+```
+</CodeGroup>
+
+Ejecuta `failproofai config` después para restaurarlo. Mientras el daemon esté detenido, los eventos de hook en esta máquina no tienen evaluador y se deniegan, así que detenlo solo el tiempo que dure la comprobación.
+
+## Siguiente paso
+
+Cada quickstart anterior enlaza a su guía completa: qué se registra, opciones, streaming, nombres de spans y los problemas que la gente realmente encuentra. Se encuentran en **Trace Agents → Plug in your agent**.
 
 <Columns cols={3}>
   <Card title="Cómo funciona" icon="workflow" href="/es/start/integrations/custom-agents#going-deeper">
-    El modelo de datos, los ids, los tipos de eventos y cómo los eventos llegan a Cloud.
+    El modelo de datos, los ids, los tipos de eventos y cómo llegan los eventos a Cloud.
   </Card>
   <Card title="Lee una traza" icon="route" href="/es/sessions/read-a-trace">
     Sigue la causalidad a través de una sesión en lugar de logs desconectados.

@@ -1,27 +1,62 @@
 ---
 title: "नीति निर्णय"
-description: "देखें कि कौन सी नीतियों का मूल्यांकन किया गया, अवरुद्ध किया गया, निर्दেश दिया गया, या अनुमति दी गई।"
+description: "देखें कि कौन सी नीतियों का मूल्यांकन किया गया, निर्देशित किया गया, अवरुद्ध किया गया, या निरीक्षण किया गया।"
 icon: "shield-check"
 ---
 
-Policy decisions यह समझाता है कि enforcement ने क्या किया। इसका उपयोग rollout को verify करने, block rate को मापने और unguarded activity को खोजने के लिए करें।
+नीति निर्णय दिखाते हैं कि Failproof AI ने एजेंट रन के दौरान क्या किया।
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Observe → policy** पर जाएं और समय सीमा चुनें और वैकल्पिक रूप से एक मशीन चुनें।
-    2. मूल्यांकित किए गए actions, blocks, block rate, Cloud decisions, unguarded actions और paused रहने के समय की activity की समीक्षा करें।
-    3. policy mapping table को filter करें और deployed assignments का inspection करें।
-    4. एक चार्ट बिंदु का चयन करें decisions और उनके sessions को खोलने के लिए।
+    निर्णयों, ब्लॉक दर, मशीनों और तैनात असाइनमेंट की समीक्षा करने के लिए **Observe → policy** पर जाएं।
 
-    ![Policy page जो decision totals, machine filter, enforcement activity over time, और policy mapping table दिखा रहा है।](/images/dashboard/policy-observe.png)
+    ![Policy पृष्ठ जो निर्णय कुल, एक मशीन फ़िल्टर, समय के साथ प्रवर्तन गतिविधि, और नीति मैपिंग तालिका दिखा रहा है।](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
     ```bash
-    fp events --event-type hook_completed --env production --since 24h
-    fp events --search "deny" --since 24h
+    fp guardrails summary --since 24h
+    fp guardrails timeline --since 24h
+    failproofai policies
     failproofai config --status
     ```
 
-    मशीन की local enforcement state के लिए `failproofai` का उपयोग करें और Cloud event investigation के लिए `fp` का उपयोग करें।
+    `--since` `1h`, `6h`, `24h`, या `7d` लेता है। एक मशीन पर ध्यान केंद्रित करने के लिए `--machine <id>` जोड़ें।
   </Tab>
 </Tabs>
+
+## observe रोलआउट को पढ़ें
+
+Observe मोड वास्तविक नीति चलाता है और किसी भी `deny` या `instruct` निर्णय को रिकॉर्ड करता है। एजेंट को अभी भी जारी रखने की अनुमति है।
+
+```bash
+fp fleet deploy <machine> --add <policy>:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add <policy>:enforce
+```
+
+<Warning>
+  एक सामान्य `--add <policy>` तुरंत प्रवर्तित करता है जब नीति का कोई मौजूदा तैनाती नहीं है। एक छाया रोलआउट के लिए `:observe` जोड़ें।
+</Warning>
+
+केवल गैर-allow देखे गए निर्णय रिकॉर्ड किए जाते हैं। एक टाइमआउट एक allow के रूप में रिकॉर्ड होता है, क्योंकि यह enforce मोड में भी होता है।
+
+एक रिकॉर्ड किया गया deny यह साक्ष्य नहीं है कि harness ने कार्रवाई को रोका है। Tool-call denies सभी 12 समर्थित harnesses में सत्यापित किए जाते हैं; अन्य घटनाएं भिन्न होती हैं। [प्रवर्तन क्षमता](/hi/reference/harnesses#enforcement-capability) देखें।
+
+## अप्रत्याशित परिणाम की जांच करें
+
+| आप क्या देखते हैं | जांचें |
+| --- | --- |
+| कोई निर्णय नहीं | `failproofai config --status` और क्या सत्र को रोका गया है |
+| कोई नीति का नाम नहीं के साथ कई इनकार | [नीति विफलता व्यवहार](/hi/policies/failure-behavior) |
+| हर संरक्षित कार्रवाई इनकार की गई | क्या `failproofaid` सेवा स्वस्थ है |
+| एक deny जिसे आप अक्षम नहीं कर सकते | `block-failproofai-commands` हमेशा चालू है |
+| `--env production` के लिए कोई डेटा नहीं | नई मशीनें environment `local` का उपयोग करती हैं |
+
+<CardGroup cols={2}>
+  <Card title="Fleet deployments" icon="server-cog" href="/hi/policies/fleet">
+    इरादे की गई और लागू की गई नीतियों की तुलना करें।
+  </Card>
+  <Card title="Failure behavior" icon="triangle-alert" href="/hi/policies/failure-behavior">
+    fail-closed निर्णयों को समझें।
+  </Card>
+</CardGroup>

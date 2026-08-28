@@ -1,21 +1,24 @@
 ---
 title: "Configurar uma auditoria"
-description: "Defina um objetivo de auditoria, população de sessões e contexto de evidências."
+description: "Defina o objetivo de uma auditoria, a população de sessões e o contexto de evidências."
 icon: "sliders-horizontal"
 ---
 
-A qualidade de uma auditoria começa pelo seu escopo. Uma solicitação ampla como "encontre problemas" produz resultados menos úteis do que uma pergunta de falha concreta.
+A qualidade de uma auditoria começa pelo seu escopo. Uma solicitação ampla como "encontre problemas" produz resultados menos úteis do que uma pergunta objetiva sobre uma falha específica.
 
 ## Configurar a auditoria
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Acesse **Analyze → Audits → New audit** e insira o nome e a descrição.
-    2. Defina a cadência, a janela de tempo, o escopo de agente/ambiente, erros ignorados, sensibilidade e número máximo de achados.
-    3. Em **agents**, adicione ou revise o contexto do agente, depois adicione o briefing do operador e quaisquer URLs de referência HTTPS públicas.
-    4. Escolha os canais de notificação e selecione **create audit**. A primeira execução é enfileirada imediatamente.
+    1. Acesse **Analyze → Audits → New audit**, insira o nome e a descrição. O nome é único por organização; a descrição registra o que você espera que esta auditoria detecte.
+    2. Em **when it runs**, defina a cadência e a janela. Em **what it reads**, restrinja a população com ambientes, agentes e os tipos de erro a ignorar — um campo vazio inclui tudo. Em **how it judges**, configure a sensibilidade e as descobertas por execução.
+    3. Em **what it knows**, escreva o briefing do operador e adicione as páginas que a auditoria lê. O briefing é um contexto de fundo que o modelo lê antes de analisar qualquer evento: ele é somado ao que esta auditoria já busca, nunca o substitui, e nunca serve como evidência para uma descoberta.
+    4. Abra o drawer de **agents** para adicionar ou revisar o contexto de cada agente. Ele é salvo de forma independente da auditoria, e seu cabeçalho indica quantos dos seus agentes já possuem um contexto. Veja [contexto do agente](/pt-br/audits/agent-contracts).
+    5. Escolha os canais de notificação e selecione **create audit**. Uma nova auditoria começa habilitada e sua primeira execução é enfileirada imediatamente.
 
     ![O formulário de nova auditoria com nome, descrição, cadência, janela, escopo de ambiente e agente, erros ignorados, configurações de análise, briefing, páginas de referência e canais de notificação.](/images/dashboard/audit-new.png)
+
+    O campo **agents** no card **what it reads** é um filtro de escopo — ele define quais sessões cada execução analisa. O propósito de um agente fica no drawer de agentes separado.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -29,16 +32,44 @@ A qualidade de uma auditoria começa pelo seu escopo. Uma solicitação ampla co
       --url https://runbooks.example.com/checkout
     ```
 
-    A primeira execução é enfileirada imediatamente. Inclua o briefing e as URLs de referência durante a criação para que a execução os receba.
+    Todo campo exceto o nome tem um valor padrão no servidor, portanto um simples `fp audits create nightly` já é uma auditoria diária válida. Um nome que já esteja em uso é rejeitado de imediato, antes que qualquer coisa seja criada. Novas auditorias começam habilitadas a menos que você passe `--disabled`, e a primeira execução de uma auditoria habilitada é enfileirada imediatamente.
+
+    Baseie uma definição em JSON salvo com `--file audit.json` e sobreponha flags adicionais. Esse é o caminho reproduzível quando as definições de auditoria são revisadas ou mantidas em controle de versão.
 
     Consulte a referência completa de [`fp audits create`](/pt-br/reference/cloud-cli#audits).
   </Tab>
 </Tabs>
+
+## Intervalos e padrões
+
+As configurações numéricas são validadas em ambos os extremos, então um valor fora do intervalo é tratado como erro de uso, não como uma requisição rejeitada.
+
+| Configuração | Flag CLI | Valores aceitos | Padrão |
+| --- | --- | --- | --- |
+| Cadência | `--schedule-interval-secs` | 3600–604800 (1 hora a 7 dias) | 86400 (diário) |
+| Âncora do agendamento | `--schedule-anchor` | ISO 8601 UTC; uma âncora com mais de 365 dias no futuro é rejeitada | O próximo 09:00 UTC |
+| Janela | `--window-mode` | `fixed`, `since_last` | `since_last` |
+| Lookback | `--lookback-window-secs` | 3600–7776000 (1 hora a 90 dias) | 604800 (7 dias) |
+| Sensibilidade | `--sensitivity` | `low`, `medium`, `high` | `medium` |
+| Descobertas por execução | `--top-k` | 1 ou mais | 50 |
+
+A âncora fixa a fase do agendamento: as execuções ocorrem em `anchor + N * interval`, portanto uma execução lenta ou um **run now** manual não pode deslocar a cadência. A primeira execução é enfileirada imediatamente na criação, independentemente da âncora.
+
+## Briefing e páginas de referência
+
+O formulário exibe ambos os limites como contadores, e a CLI impõe os mesmos dois:
+
+- O briefing é limitado a 8.192 caracteres (`--text`, ou `--text-file` para lê-lo de um arquivo — passe um ou outro, não ambos).
+- Uma auditoria referencia no máximo cinco páginas, somente URLs públicas com `https://` (`--url`, repetido).
+
+As URLs de referência são validadas ao salvar. Endereços privados, de loopback e de metadados de nuvem são recusados, e uma URL recusada invalida toda a criação — nenhuma auditoria incompleta é deixada para trás. As páginas aceitas são buscadas em segundo plano, então um site lento nunca bloqueia o salvamento. Cada execução as relê e recorre ao snapshot armazenado quando uma não pode ser acessada; os snapshots são atualizados automaticamente toda semana. Use `fp audits context-refresh <name>` quando souber que uma página foi alterada e quiser que ela seja captada antes da próxima execução.
+
+Envie o briefing e as URLs junto com a requisição de criação, e não em uma segunda chamada. Uma nova auditoria habilitada fica disponível no instante em que seu registro é confirmado, então um contexto gravado depois pode ser ultrapassado pelo dispatcher e não ser incluído na primeira execução — justamente a que você está acompanhando. Altere-o posteriormente com `fp audits context-set <name>`, que substitui apenas a parte que você especificar e mantém a outra intacta.
 
 <Tip>
   Comece com uma sessão com falha conhecida e várias sessões normais. Isso fornece à auditoria tanto um exemplo positivo quanto um conjunto de comparação.
 </Tip>
 
 <Info>
-  O contexto da auditoria é armazenado como um recurso próprio, de modo que editar uma auditoria não remove acidentalmente o material de referência.
+  O contexto da auditoria é armazenado como um recurso próprio. O endpoint de definição se recusa a gravá-lo em uma atualização, portanto uma edição comum e não relacionada na auditoria nunca pode sobrescrever o briefing ou as páginas de referência.
 </Info>

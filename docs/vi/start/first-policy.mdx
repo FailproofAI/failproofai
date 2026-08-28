@@ -1,48 +1,69 @@
 ---
----
-title: "Ngăn chặn lần thất bại đầu tiên bằng một chính sách"
-description: "Tạo một phiên bản chính sách, triển khai nó ở chế độ quan sát, và sau đó thực thi nó."
+title: "Ngăn chặn lỗi đầu tiên của bạn"
+description: "Kích hoạt một chính sách được xem xét hoặc kiểm thử một chính sách của riêng bạn."
 icon: "shield-check"
 ---
 
-Chỉ sử dụng một chính sách sau khi bạn có thể mô tả hành động không an toàn và những hành động hợp pháp phải được phép thực hiện.
+Bắt đầu với một hành vi bạn muốn ngăn chặn và một hành động hợp pháp phải vẫn hoạt động.
 
-<Tabs>
-  <Tab title="Dashboard">
-    <Steps>
-      <Step title="Tạo chính sách">
-        Đi tới **Admin → policy editor**. Bắt đầu với chính sách demo, xem xét hoặc chỉnh sửa mã nguồn của nó, sau đó chọn **publish version**. Xuất bản tạo ra phiên bản bất biến mà bạn có thể triển khai cho các máy.
+## Hãy thử một chính sách được xem xét trước
 
-        ![Chế độ xác thực của Trình soạn thảo chính sách với một chính sách demo sẵn sàng xuất bản dưới dạng phiên bản bất biến.](/images/dashboard/policy-editor.png)
-      </Step>
-      <Step title="Triển khai nó cho một máy">
-        Đi tới **Admin → enforcement**, mở rộng máy mục tiêu, và chọn **edit this machine**. Thêm chính sách demo đã xuất bản, ghim phiên bản của nó, chọn **observe**, và áp dụng triển khai.
+```bash
+failproofai policies
+failproofai policies add block-rm-rf
+```
 
-        ![Trình chỉnh sửa triển khai máy với một phiên bản chính sách đã xuất bản được chọn ở chế độ quan sát trước khi áp dụng triển khai.](/images/dashboard/enforcement-editor.png)
-      </Step>
-      <Step title="Xác minh chính sách">
-        Chạy một phiên làm việc tác nhân mới trên máy đó, sau đó mở **Observe → policy**. Chọn máy và xác nhận rằng chính sách demo xuất hiện trong ánh xạ chính sách và dòng thời gian quyết định. Chế độ quan sát ghi lại những gì chính sách sẽ làm mà không chặn hành động.
+Failproof AI bao gồm 39 chính sách được xem xét. Kiểm tra [danh mục](/vi/policies/builtin-catalog) trước khi viết một chính sách mới.
 
-        ![Trang Chính sách hiển thị tổng số quyết định, hoạt động thực thi theo thời gian, và ánh xạ chính sách do địa phương và Cloud quản lý.](/images/dashboard/policy-observe.png)
-      </Step>
-    </Steps>
-  </Tab>
-  <Tab title="CLI">
-    Tạo chính sách Cloud và triển khai hfleet là các quy trình làm việc hành chính. Sử dụng CLI cục bộ để xác thực chính sách tương tự trước khi xuất bản nó:
+## Viết và kiểm thử của riêng bạn
 
+<Steps>
+  <Step title="Tạo một chính sách hoạt động">
     ```bash
-    failproofai policies --install --custom ./payment-retry.policies.ts \
-      --cli claude --scope project
-    failproofai config --status
+    failproofai publish --init guards.mjs
     ```
 
-    Sử dụng `fp` để kiểm tra các quyết định chính sách nhìn thấy từ Cloud:
-
+    Điều này ghi một chính sách chặn `git push --force`. Chỉnh sửa nó cho quy tắc của bạn.
+  </Step>
+  <Step title="Áp dụng nó trên máy này">
     ```bash
-    fp events --event-type hook_completed --env production --since 24h
-    fp sessions --env production --since 24h
+    failproofai policies -i -c ./guards.mjs
     ```
 
-    Cả hai bước đều có sẵn từ CLI: `fp policies publish <id> <file>` tạo một phiên bản và `fp fleet deploy <machine-id> --add <id>` đặt nó trên một máy. Các tương đương trong bảng điều khiển là **Admin → policy editor** và **Admin → enforcement**.
-  </Tab>
-</Tabs>
+    Yêu cầu agent của bạn thực hiện hành động bị chặn, sau đó kiểm tra **Policies → Activity** trong bảng điều khiển cục bộ.
+  </Step>
+  <Step title="Giữ hoặc loại bỏ nó">
+    Đặt một tệp `*policies.mjs` dưới `.failproofai/policies/` để tải nó tự động.
+
+    Loại bỏ các tệp tùy chỉnh rõ ràng với:
+
+    ```bash
+    failproofai policies -u -c
+    ```
+  </Step>
+</Steps>
+
+## Chia sẻ nó
+
+Xuất bản một gói công khai:
+
+```bash
+failproofai publish
+```
+
+Bất cứ ai cũng có thể cài đặt nó với `failproofai policies add <owner>/<repo>`. Tự thêm chủ đề GitHub `failproofai-policies` để [Policy Hub](https://befailproof.ai/policy-hub/) có thể lập chỉ mục nó.
+
+Để triển khai Cloud:
+
+```bash
+fp policies publish checkout-guard ./guards.mjs
+fp fleet deploy <machine> --add checkout-guard:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add checkout-guard:enforce
+```
+
+<Warning>
+  Một `--add checkout-guard` trần áy sẽ áp dụng ngay lập tức. Thêm `:observe` để ghi lại những gì chính sách sẽ làm mà không chặn agent.
+</Warning>
+
+Xem [xuất bản một gói](/vi/policies/publish-a-pack) hoặc [triển khai chính sách](/vi/policies/deploy) để biết toàn bộ quy trình.

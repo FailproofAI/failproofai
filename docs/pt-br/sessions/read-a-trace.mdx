@@ -1,48 +1,58 @@
 ---
-title: "Leia um trace"
-description: "Encontre o evento que mudou o curso de uma sessão do agente."
+title: "Ler um trace"
+description: "Encontre o evento que mudou o curso de uma execução do agente."
 icon: "route"
 ---
 
-Um trace transforma um fluxo plano de eventos na história causal da execução. Leia-o a partir da primeira divergência, não de trás para frente a partir do último erro.
-
-## Abra o trace
+Um trace é a linha do tempo de uma execução do agente. Comece pelo primeiro evento inesperado, não pelo erro final.
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vá em **Observe → Sessions** e abra uma sessão.
-    2. Use o resumo do perfil para verificar resultado, tempo, erros e pontuações de avaliação.
-    3. Percorra a linha do tempo e o minimapa. Filtre tipos de eventos ou período quando a sessão for muito grande.
-    4. Selecione um evento para inspecioná-lo. Use **export** para JSON do avaliador, ou copie a URL da página para compartilhar um link direto para a evidência selecionada.
+    1. Abra **Observe → Sessions**.
+    2. Escolha uma sessão.
+    3. Procure o primeiro erro, chamada de ferramenta incomum, espera longa ou decisão de política.
+    4. Abra o evento e inspecione a requisição, resposta, entrada e saída.
 
-    ![Uma visão detalhada de sessão com seu grafo de execução, linha do tempo de eventos, painel de avaliação e resumo de ferramentas, modelo e hooks.](/images/dashboard/session-detail.png)
+    ![Uma visão detalhada da sessão com seu grafo de execução, linha do tempo de eventos, painel de avaliação e detalhamento de ferramentas, modelo e hooks.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp --json sessions --session-id <session-id>
-    fp events --session-id <session-id> --order asc --all
-    fp --json events --full --session-id <session-id> --all
+    fp events --session-id <session-id> --order asc --all --limit 5000
+    fp --json events --full --session-id <session-id> --all --limit 2000
     ```
 
-    Use primeiro o feed de eventos leve. Solicite payloads completos apenas quando os resumos dos eventos não contiverem evidências suficientes.
+    Use `--full` somente quando o resumo do evento não tiver evidências suficientes. Um `next_cursor` não nulo significa que o limite foi atingido antes do fim.
   </Tab>
 </Tabs>
 
-<Steps>
-  <Step title="Oriente-se">
-    Confirme o agente, o ambiente, o tempo, o resultado e a duração; em seguida, verifique erros, spans longos, ferramentas repetidas, esperas humanas e decisões de política negadas.
-  </Step>
-  <Step title="Expanda o primeiro evento suspeito">
-    Inspecione sua requisição, resposta, entrada e saída da ferramenta e ID de correlação. Conteúdo sensível fica visível somente quando a captura de transcrição está habilitada e suas permissões permitem.
-  </Step>
-  <Step title="Inspecione o contexto anterior">
-    A causa geralmente está um evento antes: uma resposta incorreta do modelo, resultado de ferramenta ausente ou premissa desatualizada.
-  </Step>
-  <Step title="Transforme a evidência em ação">
-    Adicione a sessão a um escopo de auditoria, vincule-a a um problema ou use o modo de falha para criar uma política.
-  </Step>
-</Steps>
+## Siga as evidências
+
+1. Confirme o agente, objetivo, ambiente e resultado.
+2. Encontre o primeiro erro ou decisão inesperada.
+3. Inspecione o evento imediatamente anterior a ele.
+4. Siga os IDs correspondentes entre pares de requisição e resposta.
+5. Transforme as evidências em uma auditoria, issue ou política.
+
+| Par | Campo correspondente |
+| --- | --- |
+| Requisição e resposta do modelo | `request_id` |
+| Chamada de ferramenta e resultado | `tool_call_id` |
+| Início e conclusão do hook | `hook_id` |
+| Pausa e retomada do agente | `pause_id` |
+| Espera humana e entrada | `input_id` |
+
+Uma decisão aparece em `hook_completed`. A linha indica o resultado e a fonte da política. Uma decisão em modo observe aparece como allow com o veredicto que seria aplicado em `failproofai_observed`.
 
 <Warning>
-  Duração longa nem sempre significa latência do modelo. Separe o tempo de modelo, ferramenta, hook e espera humana antes de decidir o que corrigir.
+  Uma longa duração de sessão nem sempre é latência do modelo. Separe o tempo de modelo, ferramenta, hook e espera humana antes de decidir o que corrigir.
 </Warning>
+
+<CardGroup cols={2}>
+  <Card title="Decisões de política" icon="shield-check" href="/pt-br/sessions/policy-decisions">
+    Veja o que o enforcement permitiu, orientou ou bloqueou.
+  </Card>
+  <Card title="Eventos ao vivo" icon="radio" href="/pt-br/sessions/live-events">
+    Entenda os tipos de eventos e a entrega.
+  </Card>
+</CardGroup>

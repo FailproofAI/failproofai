@@ -1,30 +1,64 @@
 ---
-title: "첫 번째 실패 검사 실행하기"
-description: "Cloud 대시보드 또는 fp CLI에서 감사를 생성하고 첫 번째 결과를 검토합니다."
+title: "첫 번째 실패 점검 실행하기"
+description: "failproofai audit으로 이 머신의 에이전트 기록을 스캔하거나, Failproof AI Cloud에 저장된 세션에 대한 반복 감사를 생성하세요."
 icon: "scan-search"
 ---
 
-감사는 세션 집합을 우선순위가 매겨진, 증거 기반의 실패 결과로 변환합니다. 하나의 구체적인 실패 질문부터 시작하세요.
+감사(audit)는 세션 집합을 분석하여 근거가 뒷받침된 실패 발견 사항을 순위별로 제공합니다. 하나의 구체적인 실패 질문으로 시작하세요.
+
+감사에는 두 가지 종류가 있습니다. 각각 다른 데이터를 읽고 다른 도구를 사용합니다.
+
+| 감사 | 읽는 데이터 | 계정 필요 여부 | 발견 사항 표시 위치 |
+| --- | --- | --- | --- |
+| 로컬 — `failproofai audit` | 이 머신에 이미 있는 에이전트 기록 | 불필요 | `http://localhost:8020/audit` |
+| 클라우드 — **Analyze → Audits** 또는 `fp` CLI | Failproof AI Cloud에 저장된 세션 | 필요 | 클라우드 대시보드 |
+
+먼저 로컬 감사를 실행해 보세요. CLI 외에 아무것도 필요하지 않습니다. 발견 사항은 로컬에 유지되며, `FAILPROOFAI_TELEMETRY_DISABLED=1`을 설정하지 않으면 기본적으로 익명 CLI 텔레메트리가 전송됩니다.
 
 <Tabs>
-  <Tab title="대시보드">
+  <Tab title="로컬">
+    ```bash
+    failproofai audit
+    ```
+
+    이 머신에서 지원되는 모든 에이전트 기록을 스캔하고, 내장 정책 카탈로그를 통해 도구 활동을 재현한 후 **http://localhost:8020/audit**를 엽니다. 결과를 확인하는 동안 프로세스를 계속 실행 상태로 유지하고, 완료되면 <kbd>Ctrl</kbd>+<kbd>C</kbd>를 누르세요.
+
+    분석 및 발견 사항은 이 머신에 유지됩니다. 비활성화하지 않으면 기본적으로 익명 CLI 텔레메트리가 전송됩니다. 스케줄링을 활성화하면 각 스캔 시 머신 메타데이터도 전송되며, 제한된 발견 사항 요약이 전송될 수 있습니다.
+
+    | 플래그 | 동작 설명 |
+    | --- | --- |
+    | `--schedule [days]` | 타이머로 스캔하고 발견 사항을 이메일로 전송합니다. 기본값은 7일이며 1~90일 범위입니다. 최초 실행 시 로그인이 필요합니다. |
+    | `--email <address>` | `--schedule`과 함께 사용하여 프롬프트 대신 리포트 수신 주소를 지정합니다. |
+    | `--no-schedule` | 타이머를 중지합니다. 로그인 상태는 유지됩니다. |
+    | `--status` | 스케줄링 활성화 여부, 리포트 수신 주소, 데몬 상태, 다음 스캔 예정 시간을 표시합니다. |
+
+    ```bash
+    failproofai audit --schedule 7 --email reliability@example.com
+    failproofai audit --status
+    ```
+
+    각 어댑터가 읽는 기록과 예약된 스캔의 실행 방식은 [로컬 에이전트 기록 감사](/ko/audits/local-audit)를 참고하세요.
+  </Tab>
+  <Tab title="클라우드 대시보드">
     <Steps>
-      <Step title="감사 열기">
-        Cloud 사이드바에서 **분석 → 감사**로 이동합니다. **새 감사**를 선택합니다.
+      <Step title="Audits 열기">
+        클라우드 사이드바에서 **Analyze → Audits**로 이동한 후 **new audit**를 선택합니다.
       </Step>
       <Step title="감사 설정">
-        이름과 직접적인 실패 목표를 입력합니다. 예: "입력값을 변경하거나 에스컬레이션 없이 동일한 결제 호출을 재시도하는 프로덕션 세션 찾기". 에이전트, 환경, 시간 범위, 일정을 선택합니다. 감사자가 워크플로우 규칙을 이해해야 하는 경우 간단한 설명과 참고 URL을 추가합니다.
+        이름과 구체적인 실패 목표를 입력합니다. 예: "입력값 변경이나 에스컬레이션 없이 동일한 결제 호출을 반복 재시도하는 프로덕션 세션 찾기." 에이전트, 환경, 시간 범위, 스케줄을 선택합니다. 감사자가 워크플로 규칙을 파악할 수 있도록 간략한 설명과 참조 URL을 추가하세요.
       </Step>
-      <Step title="생성 후 실행 대기">
-        **감사 생성**을 선택합니다. 첫 번째 실행은 즉시 대기열에 추가됩니다. 감사 카드를 열어 대기 중 → 실행 중 → 완료로 상태가 변경되는 과정을 확인합니다.
+      <Step title="감사 생성 및 실행 대기">
+        **create audit**를 선택합니다. 첫 번째 실행은 즉시 대기열에 추가됩니다. 감사 카드를 열어 대기 중 → 실행 중 → 완료 순으로 진행되는 상태를 확인하세요.
       </Step>
     </Steps>
 
-    실행이 완료되면 결과를 열고 세션 증거를 검토합니다. 이후 결과를 확인, 할당, 기각, 음소거, 또는 해결 처리할 수 있습니다.
+    실행이 완료되면 발견 사항을 열어 세션 증거를 검토합니다. 이후 확인(acknowledge), 할당(assign), 무시(dismiss), 음소거(mute), 또는 해결(resolve) 처리를 할 수 있습니다.
 
-    ![실패 설명, 권장 조치, 지원 증거 및 영향받은 세션을 보여주는 완료된 감사 결과.](/images/dashboard/audit-finding.png)
+    ![실패 설명, 권장 조치, 뒷받침 증거, 영향 받은 세션을 표시하는 완료된 감사 발견 사항 화면.](/images/dashboard/audit-finding.png)
   </Tab>
-  <Tab title="CLI">
+  <Tab title="클라우드 CLI">
+    `fp`는 Failproof AI Cloud CLI입니다. 클라우드에 저장된 데이터를 조회하며, 이 머신에서 정책을 적용하는 `failproofai`와는 별개의 프로그램입니다.
+
     ```bash
     fp audits create payment-retry-failures \
       --description "Find production sessions that retry a failed payment call without changing input or escalating" \
@@ -37,7 +71,7 @@ icon: "scan-search"
     fp audits finding <finding-id>
     ```
 
-    참고 컨텍스트를 추가하고 소스가 변경될 때 갱신합니다:
+    참조 컨텍스트를 추가하고, 소스가 변경될 때 갱신합니다.
 
     ```bash
     fp audits context-set payment-retry-failures --url https://example.com/payment-runbook
@@ -45,8 +79,8 @@ icon: "scan-search"
     fp audits run payment-retry-failures
     ```
 
-    `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>`, 또는 `fp audits reopen <finding-id>`를 사용하여 결과를 트리아지 단계별로 이동합니다.
+    발견 사항을 트리아지 단계별로 처리하려면 `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>`, `fp audits reopen <finding-id>`을 사용하세요.
   </Tab>
 </Tabs>
 
-다음으로, 반복 가능하다고 확인된 작업에 대해 [정책으로 첫 번째 실패를 방지하기](/ko/start/first-policy)를 진행하세요.
+다음으로, 반복 확인된 액션에 대해 [정책으로 첫 번째 실패를 방지하기](/ko/start/first-policy)를 진행하세요.

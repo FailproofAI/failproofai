@@ -4,38 +4,49 @@ description: "Référence du modèle d'événements, des environnements, du stoc
 icon: "list-tree"
 ---
 
+## Deux vocabulaires d'événements
+
+Failproof AI utilise deux types d'événements distincts, qui ne partagent jamais de nom.
+
+| Vocabulaire | Produit par | Noms ressemblant à | Référence |
+| --- | --- | --- | --- |
+| Événements de télémétrie | `failproofai-sdk`, depuis l'intérieur de votre agent | `tool_use`, `tool_result`, `hook_triggered`, `model_response` | [Python SDK](/fr/reference/custom-agents) |
+| Événements de hook | Le harnais d'agent, normalisé par failproofai | `PreToolUse`, `PostToolUse`, `Stop`, `UserPromptSubmit` | [Politiques personnalisées](/fr/reference/policy-sdk#choose-the-event) |
+
+Le côté hook normalise les noms d'événements propres à chaque harnais en 29 types canoniques. Le côté télémétrie dispose de 15 méthodes et de son propre contrat de champs. `hook_triggered` et `PreToolUse` ne sont pas deux orthographes d'une même chose.
+
 ## Familles d'événements
 
-- Démarrage, fin, pause et reprise d'agent
+- Démarrage, fin, pause et reprise de l'agent
 - Requête et réponse du modèle
 - Utilisation et résultat d'outil
-- Déclenchement et achèvement de hook
+- Déclenchement et complétion de hook
 - Attente humaine, saisie, pause et interruption
 - Erreurs explicites
 
-Chaque événement porte un horodatage, un identifiant de session, un identifiant d'agent, un type d'événement et un environnement. Les champs spécifiques à l'événement contiennent des données de modèle, d'outil, de corrélation, de résultat, de contenu, de durée ou d'erreur.
+Chaque événement porte un horodatage, un identifiant de session, un identifiant d'agent, un type d'événement et un environnement. Les champs spécifiques à chaque événement contiennent des données relatives au modèle, à l'outil, à la corrélation, au résultat, au contenu, à la durée ou à l'erreur.
 
 ## Inspecter un contrat d'événement
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Ouvrez **Observe → Events**.
+    1. Ouvrez **Observer → Événements**.
     2. Définissez une courte fenêtre temporelle et filtrez par environnement, agent et type d'événement.
-    3. Sélectionnez un événement pour inspecter ses champs normalisés et sa charge utile brute, puis ouvrez sa session pour voir le contexte d'exécution.
-    4. Si une durée appariée est manquante, vérifiez que les événements de début et de fin utilisent le même identifiant de corrélation.
+    3. Sélectionnez un événement pour inspecter ses champs normalisés et sa charge brute, puis ouvrez sa session pour voir le contexte d'exécution.
+    4. Si une durée appariée est manquante, vérifiez que les événements de démarrage et de complétion utilisent le même identifiant de corrélation.
 
-    Utilisez le flux Events pour restreindre les données à une seule exécution d'agent et inspecter les champs d'événement normalisés.
+    Utilisez le flux d'événements pour restreindre les données à une seule exécution d'agent et inspecter les champs d'événement normalisés.
 
-    ![Le flux Events en direct avec des filtres pour l'environnement, l'agent, la session et le type d'événement.](/images/dashboard/events-stream.png)
+    ![Le flux d'événements en direct avec des filtres pour l'environnement, l'agent, la session et le type d'événement.](/images/dashboard/events-stream.png)
 
-    Suivez ensuite l'événement dans sa session. La trace montre ce qui s'est passé juste avant et après, ce qui est nécessaire lorsque la charge utile seule est ambiguë.
+    Suivez ensuite l'événement dans sa session. La trace montre ce qui s'est passé immédiatement avant et après, ce qui est nécessaire lorsque la charge seule est ambiguë.
 
     ![La trace de session liée utilisée pour inspecter l'événement dans son contexte d'exécution.](/images/dashboard/session-detail.png)
 
     Comparez les identifiants de corrélation et les horodatages dans les deux vues lorsqu'un événement apparié ou une durée est manquant.
   </Tab>
   <Tab title="CLI">
-    Découvrez les valeurs de filtre valides, puis récupérez les charges utiles complètes des événements pour une session :
+    Découvrez les valeurs de filtre valides, puis récupérez les charges complètes d'événements pour une session :
 
     ```bash
     fp list event_types
@@ -51,34 +62,105 @@ Chaque événement porte un horodatage, un identifiant de session, un identifian
   </Tab>
 </Tabs>
 
-## Champs réservés du SDK
+## Champs SDK réservés
 
-N'utilisez pas `timestamp`, `session_id`, `agent_id`, `type` ou `environment` comme champs Python SDK personnalisés. Les durées d'événements appariés, telles que la durée du résultat d'outil, sont calculées par le SDK et ne peuvent pas être fournies manuellement.
+Cinq noms sont refusés catégoriquement comme champs personnalisés, car le SDK les définit sur chaque événement :
+
+`timestamp`, `session_id`, `agent_id`, `type`, `environment`.
+
+Onze autres sont acceptés mais vérifiés par type, car le point de terminaison d'ingestion les extrait de la charge vers des colonnes typées et stocke silencieusement `NULL` pour tout élément d'un type incorrect. Le SDK lève une erreur à la place, au niveau de l'appel où vous pouvez encore voir ce qui a produit la valeur.
+
+| Noms | Type requis |
+| --- | --- |
+| `duration_ms`, `input_tokens`, `output_tokens` | `int`, dans la plage non signée sur 32 bits. Un float ou un bool lève une erreur. |
+| `tool_name`, `tool_call_id`, `hook_name`, `hook_id`, `input_id`, `pause_id`, `error_type`, `model` | `str`. `None` lève une erreur, car la ligne arriverait avec un statut 200 OK et serait invisible pour tout filtre appliqué à ce champ. |
+
+### Durées
+
+Le SDK mesure l'écart entre quatre paires d'événements et refuse un `duration_ms` que vous passeriez vous-même : `tool_use` → `tool_result`, `hook_triggered` → `hook_completed`, `agent_pause` → `agent_resume`, et `human_wait` → `human_input`.
+
+`model_response` est l'exception. Le SDK ne chronomètre jamais les appels de modèle, vous devez donc fournir `duration_ms` vous-même, sous forme d'un nombre entier de millisecondes. Consultez les [règles de corrélation](/fr/reference/custom-agents) pour savoir comment une paire est associée.
 
 ## Limites locales
 
-- L'état de Failproof AI réside sous `~/.failproofai` sauf configuration explicite contraire.
-- `failproofai-sdk` spooule toujours sous `~/.failproofai/custom-agents`. `FAILPROOFAI_HOME` déplace ce répertoire home ; le segment `custom-agents` est toujours ajouté, de sorte que le spool ne peut pas être placé en dehors de celui-ci. Seul le propre `configure(base_dir=...)` du SDK écrit ailleurs. `AGENTEYE_HOME` est lu par l'ancien `agenteye-collector` pour choisir ce qu'il surveille, et n'affecte plus l'endroit où le SDK écrit.
-- Les labels d'environnement peuvent être définis via la configuration du SDK ou `AGENTEYE_ENVIRONMENT`.
-- Les identifiants du daemon sont stockés séparément des paramètres non secrets.
+- L'état de Failproof AI réside sous `~/.failproofai`, sauf configuration explicite contraire.
+- `failproofai-sdk` met toujours en file d'attente sous `~/.failproofai/custom-agents`. `FAILPROOFAI_HOME` déplace ce répertoire racine ; le segment `custom-agents` est toujours ajouté, de sorte que la file d'attente ne peut pas être placée en dehors de celui-ci. Seul le propre `configure(base_dir=...)` du SDK écrit ailleurs. `AGENTEYE_HOME` est lu par l'ancien `agenteye-collector` pour choisir ce qu'il surveille, et n'affecte plus l'endroit où le SDK écrit.
+- Les identifiants résident dans `~/.failproofai/credentials.json`, écrit avec les permissions `0600`. Ils ne se trouvent délibérément pas dans `config.json`, qui est écrit avec une écriture ordinaire et hérite de l'umask, ce qui le rend lisible par tous les utilisateurs locaux de la machine.
 
-Utilisez des noms d'environnement stables et à faible cardinalité. Les virgules ne sont pas prises en charge dans les labels d'environnement du daemon.
+Utilisez des noms d'environnement stables et à faible cardinalité. Une virgule est rejetée par les deux rédacteurs : le démon en refuse une dans `collector.environment`, et le SDK lève une erreur sur `configure(environment=...)`. La raison est la même des deux côtés — le point de terminaison d'ingestion divise ce champ sur les virgules et ignore toute la ligne, répondant `200 OK` sans rien stocker.
 
-## Modifier un label d'environnement
+## Configuration de la machine
+
+Les paramètres non secrets du démon se trouvent dans `~/.failproofai/config.json`. `hooks_verbosity`, `redact` et `environment` n'ont pas d'option CLI — modifiez le fichier directement. `sessions`, `hooks` et `machine_id` sont écrits par `failproofai config` lorsqu'il connecte cette machine au Cloud.
+
+| Clé | Valeurs | Par défaut | Ce qu'elle contrôle |
+| --- | --- | --- | --- |
+| `collector.sessions` | `true` / `false` | `false`, et `true` une fois connecté au Cloud | Envoie les transcriptions de sessions d'agent. Une transcription contient des invites, du contenu de fichiers et tout ce qui a été collé dans un terminal. |
+| `collector.hooks` | `true` / `false` | `true` | Envoie l'activité des hooks. Contient les décisions et les noms d'outils, jamais le contenu des fichiers. |
+| `collector.hooks_verbosity` | `all` / `decisions` / `off` | `decisions` | `decisions` conserve chaque deny et instruct exactement et agrège les environ 99 % qui allow. |
+| `collector.redact` | `minimal` / `off` | `minimal` | Rédaction appliquée avant que quoi que ce soit ne quitte la machine. |
+| `collector.environment` | toute chaîne sans virgule | `local` | L'étiquette apposée sur chaque événement envoyé par cette machine. |
+| `collector.machine_id` | toute chaîne | un identifiant déjà sur le disque, sinon un UUID aléatoire fraîchement généré | La machine sous laquelle le tableau de bord regroupe ces données. Écrit par `--machine-id`. Il n'est jamais dérivé du nom d'hôte. |
+
+<Note>
+  `failproofai backfill --help` mentionne `~/.failproofai/config.toml`. Il s'agit d'un chemin obsolète d'une ancienne organisation du répertoire racine ; aucune version actuelle ne l'écrit. Le fichier est `config.json`.
+</Note>
+
+La connexion au Cloud envoie à la fois les décisions de politique et les transcriptions complètes de session.
+
+<Warning>
+  `--no-transcripts` ne désactive pas les transcriptions sur le chemin de configuration. `failproofai config --token <key> --no-transcripts` analyse l'option puis ne la lit jamais, et l'assistant de configuration se connecte avec les sessions activées quoi qu'il arrive, de sorte que les transcriptions continuent d'être envoyées pendant que vous croyez vous être désabonné.
+
+  Pour n'envoyer que les décisions, définissez `collector.sessions` à `false` dans `~/.failproofai/config.json` après la connexion :
+
+  ```json
+  {
+    "collector": {
+      "sessions": false
+    }
+  }
+  ```
+</Warning>
+
+Un backfill suit les mêmes paramètres de collecteur, il n'envoie donc jamais quelque chose que votre configuration indique comme indésirable. Le renvoi est sans risque : la rédaction est déterministe, donc un événement renvoyé produit un hash identique à son premier envoi et se fusionne dans la ligne déjà présente.
+
+## Modifier une étiquette d'environnement
+
+Le SDK et le démon apposent chacun leur propre étiquette, et elles sont définies à des endroits différents.
 
 <Tabs>
-  <Tab title="Tableau de bord">
-    Les labels d'environnement sont assignés par le SDK émetteur ou le daemon Failproof. Après en avoir modifié un, ouvrez **Observe → Sessions** et utilisez le filtre d'environnement pour confirmer que les nouvelles sessions portent la nouvelle valeur. Les sessions existantes conservent leur environnement d'origine.
+  <Tab title="Python SDK">
+    Définissez-la dans le code ou dans l'environnement du processus qui émet les événements. La valeur par défaut est `dev`.
 
-  </Tab>
-  <Tab title="CLI">
-    Pour `failproofai-sdk`, configurez l'environnement dans le code ou avec sa variable d'environnement héritée. Relancez la configuration du daemon lors de la modification des paramètres au niveau de la machine.
+    ```python
+    import failproofai_sdk
+
+    failproofai_sdk.configure(environment="production-us-east")
+    ```
 
     ```bash
     export AGENTEYE_ENVIRONMENT=production-us-east
-    failproofai config
+    ```
+
+    `AGENTEYE_ENVIRONMENT` est lu uniquement par `failproofai-sdk`. Ni la CLI ni le démon ne le lisent, donc l'exporter ne change rien concernant la machine.
+  </Tab>
+  <Tab title="Daemon">
+    Modifiez `collector.environment` dans `~/.failproofai/config.json`. La valeur par défaut est `local` et aucune option CLI ne la définit.
+
+    ```json
+    {
+      "collector": {
+        "environment": "production-us-east"
+      }
+    }
+    ```
+
+    ```bash
     failproofai config --status
     fp sessions --since 1h --env production-us-east
     ```
+  </Tab>
+  <Tab title="Tableau de bord">
+    Les étiquettes d'environnement sont assignées par le SDK émetteur ou le démon Failproof, il n'y a donc rien à modifier ici. Après avoir modifié une étiquette à sa source, ouvrez **Observer → Sessions** et utilisez le filtre d'environnement pour confirmer que les nouvelles sessions portent la nouvelle valeur. Les sessions existantes conservent leur environnement d'origine.
   </Tab>
 </Tabs>

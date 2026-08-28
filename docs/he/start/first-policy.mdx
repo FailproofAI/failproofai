@@ -1,48 +1,69 @@
 ---
----
-title: "מנעו את הכשל הראשון שלכם באמצעות מדיניות"
-description: "כתבו גרסת מדיניות, פרסמו אותה במצב צפייה, ולאחר מכן אכפו אותה."
+title: "מנע את הכשל הראשון שלך"
+description: "הפעל מדיניות שנבדקה או בדוק אחת משלך."
 icon: "shield-check"
 ---
 
-השתמשו במדיניות רק לאחר שתוכלו לתאר את הפעולה הלא בטוחה ואת הפעולות החוקיות שחייבות להישאר מותרות.
+התחל עם התנהגות שאתה רוצה להפסיק ופעולה לגיטימית שחייבת להמשיך לעבוד.
 
-<Tabs>
-  <Tab title="Dashboard">
-    <Steps>
-      <Step title="כתבו את המדיניות">
-        עברו אל **Admin → policy editor**. התחילו עם מדיניות ההדגמה, בדקו או ערכו את קוד המקור שלה, ואז בחרו **publish version**. פרסום יוצר את הגרסה הבלתי ניתנת לשינוי שתוכלו לפרוס למכונות.
+## נסה מדיניות שנבדקה תחילה
 
-        ![תצוגת ההרכבה של עורך המדיניות עם מדיניות הדגמה מוכנה לפרסום כגרסה בלתי ניתנת לשינוי.](/images/dashboard/policy-editor.png)
-      </Step>
-      <Step title="פרסמו אותה למכונה">
-        עברו אל **Admin → enforcement**, הרחיבו את המכונה היעד, ובחרו **edit this machine**. הוסיפו את מדיניות ההדגמה המפורסמת, קבעו את גרסתה, בחרו **observe**, והחילו את הפרסום.
+```bash
+failproofai policies
+failproofai policies add block-rm-rf
+```
 
-        ![עורך פרסום המכונה עם גרסת מדיניות מפורסמת שנבחרה במצב צפייה לפני החלת הפרסום.](/images/dashboard/enforcement-editor.png)
-      </Step>
-      <Step title="אימתו את המדיניות">
-        הריצו סשן סוכן חדש באותה מכונה, ואז פתחו את **Observe → policy**. בחרו את המכונה וודאו שמדיניות ההדגמה מופיעה במיפוי המדיניות ובציר הזמן של ההחלטות. מצב צפייה רושם מה המדיניות הייתה עושה ללא חסימת הפעולה.
+Failproof AI כולל 39 מדיניויות שנבדקו. בדוק את ה-[קטלוג](/he/policies/builtin-catalog) לפני שכתיבת חדשה.
 
-        ![עמוד Policy המציג סכומי החלטות, פעילות אכיפה לאורך זמן, ומיפויי מדיניות מנוהלים מקומיים וקלאוד.](/images/dashboard/policy-observe.png)
-      </Step>
-    </Steps>
-  </Tab>
-  <Tab title="CLI">
-    כתיבת מדיניות קלאוד ופרסום צי הן זרימות עבודה ניהוליות. השתמשו ב-CLI המקומי לאימות של אותה מדיניות לפני פרסומה:
+## כתוב ובדוק שלך
 
+<Steps>
+  <Step title="צור מדיניות עובדת">
     ```bash
-    failproofai policies --install --custom ./payment-retry.policies.ts \
-      --cli claude --scope project
-    failproofai config --status
+    failproofai publish --init guards.mjs
     ```
 
-    השתמשו ב-`fp` לבדיקת החלטות מדיניות גלויות בקלאוד:
-
+    זה כותב מדיניות החוסמת `git push --force`. ערוך אותה לפי הכלל שלך.
+  </Step>
+  <Step title="אכוף אותה על המכונה הזו">
     ```bash
-    fp events --event-type hook_completed --env production --since 24h
-    fp sessions --env production --since 24h
+    failproofai policies -i -c ./guards.mjs
     ```
 
-    שני השלבים זמינים גם מה-CLI: `fp policies publish <id> <file>` יוצר גרסה ו-`fp fleet deploy <machine-id> --add <id>` שם אותה על מכונה. השקילים של לוח הבקרה הם **Admin → policy editor** ו-**Admin → enforcement**.
-  </Tab>
-</Tabs>
+    בקש מהאגנט שלך לבצע את הפעולה החסומה, ואז בדוק את **Policies → Activity** בלוח המחוונים המקומי.
+  </Step>
+  <Step title="שמור או הסר אותה">
+    הנח קובץ `*policies.mjs` תחת `.failproofai/policies/` כדי לטעון אותו באופן אוטומטי.
+
+    הסר קבצים מותאמים אישית מפורשים עם:
+
+    ```bash
+    failproofai policies -u -c
+    ```
+  </Step>
+</Steps>
+
+## שתף אותה
+
+פרסם חבילה ציבורית:
+
+```bash
+failproofai publish
+```
+
+כל אחד יכול להתקין אותה עם `failproofai policies add <owner>/<repo>`. הוסף את הנושא בגיטהאב `failproofai-policies` בעצמך כדי ש-[Policy Hub](https://befailproof.ai/policy-hub/) יוכל לאינדקס אותה.
+
+עבור rollout ענן:
+
+```bash
+fp policies publish checkout-guard ./guards.mjs
+fp fleet deploy <machine> --add checkout-guard:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add checkout-guard:enforce
+```
+
+<Warning>
+  `--add checkout-guard` בודד אכוף מיד. הוסף `:observe` כדי לתעד מה המדיניות הייתה עושה ללא חסימת האגנט.
+</Warning>
+
+ראה [פרסם חבילה](/he/policies/publish-a-pack) או [פרוס מדיניויות](/he/policies/deploy) עבור זרימת העבודה המלאה.

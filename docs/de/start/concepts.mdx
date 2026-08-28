@@ -1,26 +1,51 @@
 ---
-title: "Kernkonzepte"
-description: "Die wenigen Konzepte, die in Failproof AI durchgängig verwendet werden."
+title: "Grundlegende Konzepte"
+description: "Die Begriffe zum Beobachten, Überprüfen und Schützen von Agents."
 icon: "boxes"
 ---
 
-| Konzept | Bedeutung | Was Sie erreichen können |
-| --- | --- | --- |
-| Session | Eine Agenten-Aufgabe oder -Ausführung | Einzelnes Ergebnis nachvollziehen |
-| Event | Eine aufgezeichnete Aktion in einer Session | Modellaufruf, Werkzeugnutzung, Fehler, menschliche Aktion oder Policy-Entscheidung untersuchen |
-| Trace | Die geordnete und verschachtelte Session-Ansicht | Kausalität verstehen statt unzusammenhängende Logs zu lesen |
-| Evaluation | Eine Bewertung oder ein Urteil über eine Session | Qualität, Compliance, Kosten oder Latenz kontinuierlich verfolgen |
-| Audit | Eine Überprüfung einer ausgewählten Session-Population | Mit definiertem Ziel und Rhythmus nach Fehlermustern suchen |
-| Finding | Ein durch ein Audit entdeckter, belegter Fehler | Fehlermodus, Schweregrad und betroffene Sessions einsehen |
-| Issue | Ein dauerhafter Antwortdatensatz | Ein Finding oder einen Alert-Vorfall zuweisen, diskutieren und lösen |
-| Alert | Eine Regel, die Wiederholungen erkennt | Zuständige benachrichtigen, wenn eine bekannte Bedingung erneut auftritt |
-| Policy | Eine Regel, die während der Agentenaktivität ausgewertet wird | Riskantes Verhalten beobachten, blockieren oder umleiten |
-| Deployment | Ein versionierter Policy-Rollout auf Maschinen | Steuern, wo eine Policy ausgeführt wird, und sie sicher zurückrollen |
+Failproof AI zeichnet auf, was Agents tun, und entscheidet, was sie tun dürfen.
 
-## Der Zuverlässigkeitskreislauf
+## Beobachten
 
-Starten Sie mit Belegen. Eine Session zeigt, was passiert ist. Ein Audit bestimmt, ob es sich um einen Einzelfehler oder ein Muster handelt. Ein Finding identifiziert den Fehlermodus; ein Issue übernimmt die Verantwortung für die Reaktion. Eine Policy verhindert dasselbe Verhalten, während Alerts Sie informieren, falls die Bedingung erneut auftritt.
+| Begriff | Bedeutung |
+| --- | --- |
+| Session | Ein einzelner Agent-Lauf |
+| Event | Eine einzelne Aktion innerhalb einer Session |
+| Trace | Die geordnete Ansicht einer Session |
+| Evaluation | Eine Bewertung oder Beurteilung |
+| Audit | Eine Überprüfung mehrerer Sessions |
+| Finding | Nachweis eines Fehlermusters |
+| Issue | Die Reaktion, für die jemand verantwortlich ist |
+| Alert | Eine Regel, die Wiederholungen erkennt |
+
+## Durchsetzen
+
+| Begriff | Bedeutung |
+| --- | --- |
+| Harness | Die Umgebung, in der ein Agent ausgeführt wird |
+| Hook | Ein Punkt, an dem der Harness eine Entscheidung anfordert |
+| Policy | Eine Regel, die erlaubt, anleitet oder blockiert |
+| Policy pack | Ein versioniertes Policy-Set, das jeder installieren kann |
+| Daemon | Der lokale Dienst, der Policies auswertet |
+| Deployment | Policies, die einem Rechner zugewiesen sind |
+
+## Der Arbeitsablauf
+
+```text
+Session → Audit → Finding → Issue → Policy
+```
+
+Beginne mit Belegen. Identifiziere den wiederkehrenden Fehler, weise die Verantwortung zu und verhindere ihn dann.
+
+Eine Policy gibt `allow`, `instruct` oder `deny` zurück. Anleitung über `instruct` hängt vom Harness ab; verwende `deny`, wenn die Aktion zwingend gestoppt werden muss.
+
+Der Beobachtungsmodus ist von der Entscheidung getrennt. Er führt die echte Policy aus und zeichnet auf, was sie tun würde, während der Agent weiterläuft.
 
 <Warning>
-  Ein lokales `failproofai audit` durchsucht den lokalen Agentenverlauf. Ein wiederkehrendes Cloud-Audit überprüft Sessions, die in Failproof AI Cloud gespeichert sind. Es handelt sich um separate Workflows mit unterschiedlichem Umfang und Zeitplanung.
+  Ein bloßes `fp fleet deploy <machine> --add <policy>` setzt sofort durch. Füge `:observe` für einen Shadow-Rollout hinzu.
 </Warning>
+
+Bei der Einrichtung wird kein Policy pack ausgewählt. Bevor du eines hinzufügst, läuft nur `block-failproofai-commands`. Der kompilierte Katalog enthält 39 Policies in 9 Kategorien.
+
+Lies [unterstützte Harnesses](/de/reference/harnesses#enforcement-capability), bevor du davon ausgehst, dass ein Event in jeder Agent-Umgebung blockieren kann.

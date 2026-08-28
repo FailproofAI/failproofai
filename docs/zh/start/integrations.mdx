@@ -1,29 +1,42 @@
 ---
-title: "接入你的智能体"
+title: "为您的 Agent 添加监测"
 sidebarTitle: "框架"
-description: "通过一次调用，将任意受支持的智能体框架连接到 Failproof AI。"
+description: "只需一次调用，即可将任意受支持的 Agent 框架接入 Failproof AI。"
 icon: "plug"
 ---
 
-你的智能体已经产生了所有值得记录的内容——模型调用、工具调用、节点边界、人工等待、失败信息。框架会将这些数据丢弃，而 SDK 会将其保留。
+您的 Agent 已经产出了一切值得记录的内容——模型调用、工具调用、节点边界、人工等待、失败信息。框架会将这些丢弃，而 SDK 会将其保留。
 
 <Columns cols={3}>
-  <Card title="自定义智能体" icon="wrench" href="/zh/start/quickstarts/custom-agents">
-    你自己编写的智能体，或此处未列出的智能体。
+  <Card title="自定义 Agent" icon="wrench" href="/zh/start/quickstarts/custom-agents">
+    您自己编写的 Agent，或未在此列出的 Agent。
   </Card>
   <Card title="LangChain 和 LangGraph" icon="share-2" href="/zh/start/quickstarts/langchain">
     图、节点、工具、检索器、模型。
   </Card>
   <Card title="CrewAI" icon="users" href="/zh/start/quickstarts/crewai">
-    团队、流程、按角色划分的智能体、工具。
+    Crews、flows、按角色分配的 Agent、工具。
   </Card>
   <Card title="LlamaIndex" icon="database" href="/zh/start/quickstarts/llamaindex">
-    工作流、步骤、函数智能体、检索器。
+    工作流、步骤、函数 Agent、检索器。
   </Card>
   <Card title="Pydantic AI" icon="badge-check" href="/zh/start/quickstarts/pydantic-ai">
-    类型化智能体、能力、工具、重试。
+    类型化 Agent、能力、工具、重试。
   </Card>
 </Columns>
+
+## 开始之前
+
+以下两项前提条件，下方代码均不会自动处理：
+
+| 要求 | 原因 |
+| --- | --- |
+| Python 3.10 或更高版本 | SDK 声明的最低版本要求。 |
+| 已通过 `failproofai config` 完成机器配置 | 该命令会安装 failproofaid 守护进程，而守护进程是唯一负责发送 SDK 写入内容的组件。若缺少守护进程，批次数据会堆积在缓冲目录中，永远无法发出。 |
+
+<Note>
+  **此路径仅用于记录，不执行策略。** SDK 捕获您的 Agent 所做的事情。策略从 Agent CLI 内部的 hook 触发，因此对框架 Agent 执行策略意味着需要在您自己的运行时中添加 hook——请参阅 [策略](/zh/policies/overview)。
+</Note>
 
 ## 三行代码，适用任意框架
 
@@ -53,13 +66,13 @@ pip install failproofai-sdk
 import failproofai_sdk
 
 failproofai_sdk.configure(environment="production")
-failproofai_sdk.instrument()          # 自动检测你已导入的框架
+failproofai_sdk.instrument()          # 自动检测您已导入的框架
 
 with failproofai_sdk.session():
-    ...                               # 你现有的智能体调用，无需任何修改
+    ...                               # 您现有的 Agent 调用，无需改动
 ```
 
-无需在函数上添加装饰器，无需向调用传递回调，也无需在代码中传递 ID。唯一的变化是将调用放在 session 内部：
+无需在函数上添加装饰器，无需向调用传递回调，也无需在代码中传递各种 ID。唯一的变化是将原有调用包裹在 session 中：
 
 <Tabs>
   <Tab title="LangGraph">
@@ -91,30 +104,44 @@ with failproofai_sdk.session():
   </Tab>
 </Tabs>
 
-额外安装的是**框架**本身。所有适配器均已内置在基础包中，因此已安装框架的项目无需任何额外依赖。
+额外安装的包用于支持对应**框架**。所有适配器均已内置于基础安装包中，因此已安装框架的项目无需额外安装任何内容。
 
-## 验证数据是否已到达
+## 确认数据已到达
 
-运行一次已接入的会话，然后打开 **Observe → Sessions** 并选择你的环境。该运行将以重建的追踪形式显示。
+运行一次已添加监测的 session，然后打开 **Observe → Sessions** 并选择您的环境。该次运行将以重建的追踪链路形式呈现。
 
-如果没有数据到达，请使用 `failproofai config --status` 确认机器已连接。请参阅[设置数据捕获](/zh/start/setup)。
+如果没有数据到达，请使用 `failproofai config --status` 确认机器已完成配置且处于连接状态。如果未连接，请运行 `failproofai config`。详见[选择您的配置方式](/zh/start/setup)。
 
 <Warning>
-  请勿通过查看缓冲目录来确认数据是否已送达。Failproof 守护进程会在毫秒内收集并删除每个批次，因此读取该目录时会与收集器产生竞争，显示的事件数将远少于实际发出的数量。
+  请勿通过查看缓冲目录来确认数据是否已发送。Failproof 守护进程会在数毫秒内收集并删除每批数据，因此读取该目录会与收集器产生竞争，显示的事件数量将远少于实际发出的数量。
 </Warning>
+
+若要验证 SDK 是否正在写入数据，请先停止守护进程，再运行您的 session，然后查看 `~/.failproofai/custom-agents/events/` 目录。在守护进程运行时，该目录为空才是正常状态。
+
+<CodeGroup>
+```bash Linux
+sudo systemctl stop failproofaid@$USER
+```
+
+```bash macOS
+sudo launchctl bootout system/ai.failproof.failproofaid.$USER
+```
+</CodeGroup>
+
+检查完成后，运行 `failproofai config` 以恢复守护进程。守护进程停止期间，此机器上的 hook 事件将没有评估器，会被拒绝，因此请尽量缩短停止时间。
 
 ## 下一步
 
-上方每个快速入门均链接到完整指南——包括记录的内容、选项、流式处理、span 命名以及常见问题。这些内容位于 **Trace Agents → Plug in your agent** 下。
+上方每个快速入门链接均指向其完整指南——包括记录的内容、配置选项、流式传输、span 命名以及常见问题。这些指南位于 **Trace Agents → Plug in your agent** 下。
 
 <Columns cols={3}>
   <Card title="工作原理" icon="workflow" href="/zh/start/integrations/custom-agents#going-deeper">
-    数据模型、ID、事件类型，以及事件如何上报至云端。
+    数据模型、ID 机制、事件类型，以及事件如何到达云端。
   </Card>
-  <Card title="解读追踪" icon="route" href="/zh/sessions/read-a-trace">
-    通过因果关系串联整个会话，而非查看零散的日志。
+  <Card title="读懂追踪链路" icon="route" href="/zh/sessions/read-a-trace">
+    在 session 中沿因果关系追踪，而非查看零散日志。
   </Card>
-  <Card title="发现首个故障" icon="scan-search" href="/zh/start/first-audit">
-    对刚刚捕获的会话进行审计。
+  <Card title="发现您的第一个故障" icon="scan-search" href="/zh/start/first-audit">
+    对刚刚捕获的 session 进行审计。
   </Card>
 </Columns>

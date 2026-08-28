@@ -1,74 +1,124 @@
 ---
-title: "API HTTP"
-description: "Autentícate en la API pública `/v1` de Failproof AI Cloud y utiliza la referencia de endpoints generada."
+title: "HTTP API"
+description: "Autentícate en la API pública de Failproof AI Cloud `/v1` y utiliza la referencia de endpoints generada."
 icon: "braces"
 ---
 
-La API pública se sirve bajo `/v1` en el origen de tu panel de Failproof AI.
+La API pública se sirve bajo `/v1` en el origen de tu panel de Failproof AI. En Failproof AI Cloud ese origen es `https://app.befailproof.ai`, por lo que la ruta base es `https://app.befailproof.ai/v1`. En un despliegue autogestionado es tu propio host del panel seguido de `/v1`; pasa ese host a `fp` con `--base-url <url>` o `FP_DASHBOARD_URL`.
 
 ## Crear una clave y realizar una solicitud
 
 <Tabs>
   <Tab title="Panel">
-    1. Abre **Administración → Claves**, selecciona **Crear clave** y elige el conjunto de permisos más restrictivo que cubra la integración.
-    2. Añade permisos individuales solo cuando sea necesario, crea la clave y copia su secreto de un solo uso.
+    1. Abre **Administración → Claves**, selecciona **nueva clave** y elige el conjunto de permisos más restrictivo que cubra la integración.
+    2. Agrega concesiones individuales solo cuando sea necesario, crea la clave y copia su secreto de un solo uso.
     3. Realiza una solicitud de prueba a `/v1/sessions` y confirma que la clave permanece activa en la página de Claves.
     4. Rota o deshabilita la clave desde su menú de acciones cuando la integración cambie de propietario.
 
-    ![El panel de creación de clave de API con preajustes de permisos y permisos individuales.](/images/dashboard/key-create.png)
+    ![El panel de nueva clave API con conjuntos de permisos y concesiones individuales.](/images/dashboard/key-create.png)
 
-    El panel de creación se muestra arriba. El secreto de un solo uso aparece únicamente tras seleccionar **crear**; cópialo antes de cerrar esa confirmación.
+    El panel de creación se muestra arriba. El secreto de un solo uso aparece únicamente después de crear la clave; cópialo antes de cerrar esa confirmación.
   </Tab>
   <Tab title="CLI">
-    Crea una clave de solo lectura y úsala directamente con `fp` o `curl`:
+    Crea una clave de lectura y úsala directamente con `fp` o `curl`. `fp` lee la clave de `--api-key` o de `FP_API_KEY`:
 
     ```bash
     fp keys create reliability-reader \
       --permission-set read-only
 
-    fp --api-key <key> sessions --since 24h
-    ```
-
-    ```bash
-    curl "https://app.befailproof.ai/v1/sessions?limit=20" \
-      -H "Authorization: Bearer $FAILPROOFAI_KEY"
-    ```
-  </Tab>
-</Tabs>
-
-Las claves están asociadas a una organización y a un conjunto de permisos. Una solicitud que no cuente con el permiso requerido por el endpoint devuelve `403` e identifica el permiso faltante.
-
-## Selección de organización
-
-Una clave de organización actúa automáticamente sobre su propia organización. Una clave de ámbito de instancia puede seleccionar una organización por solicitud:
-
-<Tabs>
-  <Tab title="Panel">
-    Usa el selector de organización en la cabecera del panel antes de abrir **Administración → Claves**. Las claves creadas allí pertenecen a la organización seleccionada. Confirma el slug de la organización en la URL y en el detalle de la clave antes de copiar la credencial en la automatización.
-
-  </Tab>
-  <Tab title="CLI">
-    Usa `--org` antes del comando, o envía la cabecera de organización para una clave de API de ámbito de instancia.
-
-    ```bash
-    fp orgs list
+    export FP_API_KEY="<one-time-secret>"
     fp --org reliability-team sessions --since 24h
     ```
 
     ```bash
-    curl "https://app.befailproof.ai/v1/usage" \
-      -H "Authorization: Bearer $FAILPROOFAI_KEY" \
+    curl "https://app.befailproof.ai/v1/sessions?limit=20" \
+      -H "Authorization: Bearer $FP_API_KEY" \
       -H "X-AgentEye-Org: reliability-team"
     ```
   </Tab>
 </Tabs>
 
-Consulta las páginas de endpoints generadas en esta sección para conocer las rutas actuales, parámetros, requisitos de permisos y códigos de estado. La especificación se genera a partir de las anotaciones de rutas del servidor y se verifica contra el router `/v1`.
+Las claves están vinculadas a una organización y a una lista plana de permisos. Un conjunto de permisos solo inicializa esa lista en el momento de la creación — la clave almacena las concesiones expandidas, por lo que cambiar el conjunto después no modifica la clave. Una solicitud que carece del permiso requerido por el endpoint devuelve `403` e identifica el permiso faltante.
 
-La especificación actual tiene cobertura completa de rutas, métodos, parámetros, permisos y códigos de estado. Algunos cuerpos de respuesta permanecen intencionadamente sin tipar porque el servidor aún los construye como JSON dinámico. Inspecciona una respuesta real antes de generar un cliente fuertemente tipado para un endpoint que no tenga esquema de respuesta.
+## Selección de organización
 
-Usa `Content-Type: application/json` para escrituras JSON. Trata `401` como autenticación ausente o inválida, `403` como identidad válida sin el permiso requerido, `404` como recurso inexistente o inaccesible para la organización, `409` como conflicto de estado y `422` como campo o valor de permiso inválido. Las respuestas de error incluyen un mensaje legible por humanos; los fallos de permisos también indican el permiso requerido.
+Una clave de organización actúa sobre su organización automáticamente. Una clave con alcance de instancia selecciona una organización por solicitud, y un tenant con más de una organización siempre debe indicar una en modo clave — `fp` nunca envía una organización guardada cuando se autentica con una clave.
+
+| Emisor | Cómo se indica la organización |
+| --- | --- |
+| `fp`, por invocación | `--org <slug>`, antes del subcomando |
+| `fp`, desde el entorno | `FP_ORG` |
+| HTTP directo | la cabecera de solicitud `X-AgentEye-Org: <slug>` |
+
+`X-AgentEye-Org` conserva su ortografía original en el wire. Es la cabecera que el panel lee para resolver la organización activa; cambiarle el nombre en un cliente rompe la solicitud.
+
+<Tabs>
+  <Tab title="Panel">
+    Usa el selector de organización en el encabezado del panel antes de abrir **Administración → Claves**. Las claves creadas allí pertenecen a la organización seleccionada. Confirma el slug de la organización en la URL y en el detalle de la clave antes de copiar la credencial en la automatización.
+
+  </Tab>
+  <Tab title="CLI">
+    Usa `--org` antes del comando, o envía la cabecera de organización para una clave API con alcance de instancia. `fp orgs list` no descubre el slug aquí — se rechaza en modo clave; lee el slug desde el selector de organización del panel.
+
+    ```bash
+    fp --org reliability-team sessions --since 24h
+    ```
+
+    ```bash
+    curl "https://app.befailproof.ai/v1/usage" \
+      -H "Authorization: Bearer $FP_API_KEY" \
+      -H "X-AgentEye-Org: reliability-team"
+    ```
+  </Tab>
+</Tabs>
+
+## Paginación
+
+Los endpoints de listado utilizan paginación por keyset, y el mismo contrato se aplica tanto si los llamas a través de `fp` como de `curl`.
+
+| Elemento | Significado |
+| --- | --- |
+| Parámetro de consulta `limit` | Filas solicitadas en esta llamada. `fp` limita una sola solicitud a 200 filas en todos los endpoints. Una solicitud directa está limitada por el techo propio del servidor para cada endpoint. |
+| Parámetro de consulta `cursor` | Un token opaco que reanuda el feed después de una página anterior. |
+| Campo de respuesta `next_cursor` | El token para la siguiente página. `null` significa que el feed está agotado. |
+
+Esos techos varían según el endpoint, y cada página de endpoint indica su propio valor predeterminado y límite máximo:
+
+| Endpoint | Predeterminado | Límite |
+| --- | --- | --- |
+| `/events`, `/events/summary` | 50 | 1000 |
+| `/issues`, `/alerts/{id}/issues` | 200 | 1000 |
+| `/evaluation-jobs` | 100 | 500 |
+| `/audits/findings` | 100 | 500 |
+| `/sessions`, `/evaluations` | 50 | 200 |
+| `/audits/{id}/runs` | 50 | 200 |
+
+Lee un feed completo volviendo a emitir la misma solicitud con `cursor` establecido en el `next_cursor` de la respuesta anterior, hasta que `next_cursor` devuelva `null`. Los flags equivalentes de `fp` — `--all`, `--cursor` y `--page-size` — están documentados en la [referencia de Cloud CLI](/es/reference/cloud-cli).
+
+## Referencia de endpoints y manejo de errores
+
+Usa las páginas de endpoints generadas en esta sección para conocer las rutas actuales, los parámetros, los requisitos de permisos y los códigos de estado. La especificación se genera a partir de las anotaciones de rutas del servidor y se verifica contra el router `/v1`.
+
+La especificación actual tiene cobertura completa de rutas, métodos, parámetros, permisos y códigos de estado. Los cuerpos de solicitud están tipados; los cuerpos de respuesta no — la especificación no incluye esquemas de respuesta hoy en día, porque el servidor todavía los construye como JSON dinámico. Inspecciona una respuesta real antes de generar un cliente fuertemente tipado.
+
+Usa `Content-Type: application/json` para escrituras JSON. Trata `401` como autenticación ausente o inválida, `403` como identidad válida sin el permiso requerido, `404` como recurso ausente o inaccesible para la organización, `409` como conflicto de estado, `400` como parámetro rechazado — un valor de filtro desconocido, un parámetro de consulta malformado, una sentencia que no se ejecutaría — y `422` como campo o valor de permiso inválido en el cuerpo de una solicitud. Las respuestas de error incluyen un mensaje legible por humanos; los errores de permiso también indican la concesión requerida.
+
+## Superficies que `/v1` no expone
+
+Las políticas gestionadas en la nube, la flota y el feed de decisiones del guardrail son superficies de operador — tanto lecturas como escrituras. Son exclusivas del root en el servidor y están deliberadamente ausentes de `/v1`, que está orientado a internet. Publicar una versión de política o desplegarla en una máquina, por ejemplo, no es algo que una clave API pueda hacer, y la lectura de las decisiones de la flota pertenece a la misma superficie.
+
+Una clave API recibe por tanto una denegación por diseño en esas rutas, y `fp` rechaza antes de abrir una conexión en lugar de dejar que la solicitud devuelva un 404 sin explicación:
+
+| Comando | Comportamiento con una clave API |
+| --- | --- |
+| `fp policies` | Se rechaza con salida `2` e identifica las políticas gestionadas en la nube como superficie de operador |
+| `fp fleet` | Se rechaza con salida `2` e identifica la flota como superficie de operador |
+| `fp guardrails` | Se rechaza con salida `2` e identifica el feed del guardrail como superficie de operador |
+| `fp agent` | Se rechaza con salida `2`; el asistente está implementado por el panel, no por la API |
+| `fp orgs` | Se rechaza con salida `2`; la membresía en orgs pertenece a un usuario autenticado, y una clave ya actúa para una org |
+
+Ejecuta estos comandos bajo una sesión de usuario autenticado (`fp login`), o usa el panel. Las familias de lectura y administración — sesiones, eventos, evaluaciones, auditorías, issues, alertas, claves, conjuntos de permisos, usuarios, configuración, consultas y uso — tienen cada una una ruta `/v1` y funcionan con una clave. La única excepción es `fp keys update`: necesita `keys:update`, un permiso que ninguna clave API puede tener, por lo que una clave puede crear y deshabilitar claves pero nunca editar los permisos de una. `fp login` y `fp logout` también se rechazan en modo clave, por una razón diferente: una clave ya es la credencial, y nunca se guarda en disco.
 
 <Warning>
-  El despliegue de la aplicación de políticas se gestiona intencionadamente fuera de la superficie pública ordinaria `/v1`. Utiliza el flujo de despliegue en la nube soportado.
+  El despliegue de la aplicación de políticas se gestiona intencionalmente fuera de la superficie pública ordinaria de `/v1`. Usa el flujo de despliegue en la nube compatible descrito en [Desplegar políticas](/es/policies/deploy).
 </Warning>

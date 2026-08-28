@@ -6,6 +6,8 @@ icon: "braces"
 
 Wählen Sie die Integration, die am besten zu Ihrer bestehenden Agent-Umgebung passt.
 
+Dieser Abschnitt behandelt zwei Kommandozeilen-Tools mit unterschiedlichen Aufgaben. `failproofai` läuft auf dem Rechner, auf dem Ihr Agent läuft, und setzt Richtlinien innerhalb der Agent-Schleife durch; `fp` kommuniziert mit Failproof AI Cloud und liest zurück, was diese Schleife getan hat. Die Maschineneinrichtung wird nur unter Linux und macOS unterstützt — `failproofai config` verweigert die Ausführung auf anderen Systemen und schreibt nichts, anstatt eine halb konfigurierte Maschine zu hinterlassen.
+
 <Columns cols={2}>
   <Card title="Agent-Harnesses" icon="plug-zap" href="/de/reference/harnesses">
     Hooks für unterstützte Coding- und autonome Agent-CLIs installieren.
@@ -16,66 +18,81 @@ Wählen Sie die Integration, die am besten zu Ihrer bestehenden Agent-Umgebung p
   <Card title="Python-SDK-Referenz" icon="python" href="/de/reference/custom-agents">
     Konfiguration, der Event-Katalog, Korrelationsregeln und Zustellung.
   </Card>
+  <Card title="Events und Konfiguration" icon="list-tree" href="/de/reference/events-and-configuration">
+    Die beiden Event-Vokabulare, reservierte Felder und die eigene Einstellungsdatei des Rechners.
+  </Card>
   <Card title="Lokales Dashboard" icon="monitor-cog" href="/de/reference/local-dashboard">
-    Lokale Projekte, Sitzungen, Policy-Aktivität und Offline-Audits einsehen.
+    Lokale Projekte, Sitzungen, Richtlinienaktivität und Offline-Audits einsehen.
   </Card>
   <Card title="Failproof AI CLI" icon="terminal" href="/de/reference/failproof-cli">
-    Lokale Erfassung, Hooks, Policies, Audits, Zustellung und Maschinenstatus konfigurieren.
+    Lokale Erfassung, Hooks, Richtlinien, Audits, Zustellung und Maschinenzustand konfigurieren.
   </Card>
   <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/de/reference/cloud-cli#cli-commands">
-    Cloud-Sitzungen, Audits, Issues, Alerts, Schlüssel, Benutzer und Einstellungen abfragen und verwalten.
+    Cloud-Sitzungen, Audits, Probleme, Warnungen, Schlüssel, Benutzer und Einstellungen abfragen und verwalten.
   </Card>
   <Card title="Evaluator SDK" icon="gauge" href="/de/reference/evaluator-sdk">
-    Abgeschlossene oder inaktive Sitzungen mit einem FastAPI-Dienst bewerten.
+    Vollständige oder inaktive Sitzungen mit einem FastAPI-Dienst bewerten.
   </Card>
-  <Card title="Benutzerdefinierte Policies" icon="shield-plus" href="/de/reference/policy-sdk">
+  <Card title="Benutzerdefinierte Richtlinien" icon="shield-plus" href="/de/reference/policy-sdk">
     Workflow-spezifische allow-, instruct- und deny-Entscheidungen erstellen und testen.
+  </Card>
+  <Card title="HTTP API" icon="code" href="/de/reference/http-api">
+    Die generierte Referenz für die öffentliche `/v1`-Oberfläche.
+  </Card>
+  <Card title="Fehlerbehebung" icon="circle-help" href="/de/reference/troubleshooting">
+    Hooks diagnostizieren, die nicht auslösen, Events, die nicht ankommen, und unerwartete Ablehnungen.
   </Card>
   <Card title="Self-Hosting" icon="cloud-cog" href="/de/reference/self-hosting">
     Die Cloud-Steuerungsebene auf einem kundenverwalteten Kubernetes-Cluster bereitstellen.
   </Card>
 </Columns>
 
-Die generierte [HTTP-API-Referenz](/de/reference/http-api) deckt die öffentliche `/v1`-Oberfläche ab. Manuell verfasste Seiten erläutern Workflows, die mehrere Endpunkte umfassen oder administrative Schnittstellen außerhalb dieser öffentlichen Oberfläche verwenden.
+Die generierten HTTP-API-Seiten decken die öffentliche `/v1`-Oberfläche ab. Manuell erstellte Seiten erläutern Workflows, die mehrere Endpunkte umfassen oder administrative Schnittstellen außerhalb dieser öffentlichen Oberfläche verwenden.
 
-## Einen Agenten verbinden und Daten überprüfen
+## Einen Agenten verbinden und Daten prüfen
 
 <Tabs>
   <Tab title="Dashboard">
     1. Öffnen Sie **Administration → Keys**, erstellen Sie einen Schlüssel mit `events:add` und `policies:pull`, und kopieren Sie das Secret.
     2. Konfigurieren Sie die Integration über die entsprechende Seite oben.
-    3. Öffnen Sie **Observe → Events**, um den Eingang von Events zu bestätigen, dann **Observe → Sessions**, um zu bestätigen, dass diese vollständige Ausführungen bilden.
-    4. Filtern Sie nach der Umgebung der Integration und prüfen Sie eine Sitzung auf die für Audits benötigten Felder: Modell, Tool, Fehler und Policy.
+    3. Öffnen Sie **Observe → Events**, um zu bestätigen, dass Events ankommen, dann **Observe → Sessions**, um zu bestätigen, dass sie vollständige Läufe bilden.
+    4. Filtern Sie nach der Umgebung der Integration und prüfen Sie eine Sitzung auf die Modell-, Tool-, Fehler- und Richtlinienfelder, die für Audits benötigt werden.
 
-    Beginnen Sie mit dem Schlüssel-Drawer. Die ausgewählten Berechtigungen bestimmen, ob die Maschine Events senden und Cloud-verwaltete Policies empfangen kann.
+    Beginnen Sie mit der Key-Seitenleiste. Die ausgewählten Berechtigungen bestimmen, ob der Rechner Events senden und Cloud-verwaltete Richtlinien empfangen kann.
 
-    ![Der neue API-Schlüssel-Drawer zum Erteilen von Berechtigungen für die Event-Aufnahme und Policy-Zustellung.](/images/dashboard/key-create.png)
+    ![Die neue API-Key-Seitenleiste zum Erteilen von Berechtigungen für Event-Ingestion und Richtlinien-Zustellung.](/images/dashboard/key-create.png)
 
-    Verwenden Sie nach dem Verbinden der Integration die Sitzungsliste, um zu bestätigen, dass die Events in der erwarteten Umgebung zu vollständigen Ausführungen gruppiert werden.
+    Verwenden Sie nach dem Verbinden der Integration die Sessions-Liste, um zu bestätigen, dass deren Events in vollständige Läufe in der erwarteten Umgebung gruppiert werden.
 
-    ![Die Sitzungsliste zur Überprüfung, ob eine neu verbundene Integration vollständige Agent-Ausführungen meldet.](/images/dashboard/sessions-list.png)
+    ![Die Sessions-Liste zur Überprüfung, ob eine neu verbundene Integration vollständige Agent-Läufe meldet.](/images/dashboard/sessions-list.png)
 
-    Öffnen Sie eine dieser Sitzungen, bevor Sie die Integration als abgeschlossen betrachten. Der Trace sollte das Modell, Tool, den Fehler und die Policy-Nachweise enthalten, die Ihre Audits benötigen.
+    Öffnen Sie eine dieser Sitzungen, bevor Sie die Integration als abgeschlossen betrachten; der Trace sollte das Modell, das Tool, den Fehler und die Richtliniennachweise enthalten, die Ihre Audits benötigen.
   </Tab>
   <Tab title="CLI">
-    Erstellen Sie einen Maschinenschlüssel, verbinden Sie den Failproof-Daemon und überprüfen Sie die erste Sitzung.
+    Erstellen Sie einen Maschinenschlüssel, richten Sie diesen Rechner ein und verbinden Sie ihn, wählen Sie Richtlinien und überprüfen Sie dann die erste Sitzung.
 
     ```bash
     fp keys create agent-production \
       --add events:add \
       --add policies:pull
 
-    failproofai config \
-      --connect https://app.befailproof.ai \
-      --token <machine-key>
+    failproofai config --token <machine-key>
+
+    failproofai policies add FailproofAI/policies
 
     failproofai flush --wait
-    fp sessions --since 1h --env production
-    fp events --since 1h --env production --limit 20
+    fp sessions --since 1h
+    fp events --since 1h --limit 20
     ```
 
-    Verwenden Sie `fp --json sessions ...`, wenn das Ergebnis von einem anderen Tool verarbeitet werden soll. Globale Flags wie `--json`, `--org` und `--base-url` müssen vor dem Befehl angegeben werden.
+    Keiner der Überprüfungsbefehle filtert nach einer Umgebung, da ein frisch konfigurierter Rechner jedes Event mit `local` stempelt. Fügen Sie `--env production` erst hinzu, nachdem Sie `collector.environment` gesetzt haben — siehe [Umgebungsbezeichnung ändern](/de/reference/events-and-configuration#change-an-environment-label).
 
-    Weitere Informationen finden Sie in der [Failproof AI CLI-Referenz](/de/reference/failproof-cli) für lokale Befehle und in der [Failproof Cloud CLI-Referenz](/de/reference/cloud-cli#cli-commands) für `fp`-Befehle.
+    Die Übergabe eines Tokens ist die Verbindungsanforderung, daher erledigt `failproofai config --token <machine-key>` dasselbe in einem Befehl. Bevorzugen Sie die Umgebungsvariable: Ein Argument ist über `ps` für jeden Benutzer auf dem Rechner lesbar und landet in der Shell-History und in CI-Logs.
+
+    Der Richtlinienschritt ist nicht optional. `failproofai config` installiert den Daemon und verdrahtet alle unterstützten Agent-CLIs, wählt aber bewusst keine Richtlinien aus — ein frisch konfigurierter Rechner setzt daher nichts durch, bis Sie ein Paket hinzufügen.
+
+    Verwenden Sie `fp --json sessions ...`, wenn ein anderes Tool das Ergebnis weiterverarbeiten soll. Globale Flags wie `--json`, `--org` und `--base-url` müssen vor dem Befehl stehen.
+
+    Siehe die [Failproof AI CLI-Referenz](/de/reference/failproof-cli) für lokale Befehle und die [Failproof Cloud CLI-Referenz](/de/reference/cloud-cli#cli-commands) für `fp`-Befehle.
   </Tab>
 </Tabs>

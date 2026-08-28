@@ -1,75 +1,54 @@
 ---
----
 title: "מפתחות והרשאות"
-description: "צור מפתחות API בהיקף מוגבל למכונות, אוטומציה ומפעילים."
+description: "צור אישורים לאנשים, אוטומציה ומכונות."
 icon: "key-round"
 ---
 
-מפתחות API שייכים לארגון ונושאים הרשאות מפורשות. השתמש במפתחות נפרדים לספיגת סוכנים, משלוח מדיניות, מעריכים, אוטומציה CI וסקריפטים ניהוליים.
+השתמש במפתח נפרד לכל אדם, מכונה או עבודת אוטומציה. הענק רק את ההרשאות שהוא זקוק להן.
 
 ## יצירה וסיבוב של מפתח
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. עבור אל **Administration → Keys**, בחר **new key**, והזן שם עומס עבודה.
-    2. בחר קבוצת הרשאות והתאם הרשאות בודדות רק כאשר הקבוע אינו מספיק.
-    3. צור את המפתח והעתק את הסוד החד-פעמי שלו מיד.
-    4. פתח את המפתח מאוחר יותר כדי לעדכן הענקות, להשבית אותו, או ליצור מחדש את הסוד.
+השתמש ב-**Admin → Keys**, או ב-Cloud CLI:
 
-    תיבת היצירה היא המקום בו אתה בוחר את ההענקות הצרות ביותר הנדרשות על ידי עומס העבודה.
+```bash
+fp keys list
+fp keys create "audit automation" --add audits:read
+fp keys disable "audit automation"
+```
 
-    ![תיבת מפתח API חדש עם קבוצות הרשאות והענקות בודדות.](/images/dashboard/key-create.png)
+שמור את הסוד בזמן יצירתו; הוא לא יוצג שוב. בצע סיבוב על ידי יצירת החלפה, עדכון הצרכן, ואז השבתת המפתח הישן.
 
-    לאחר היצירה, עמוד Keys מציג את המטא-נתונים הקבועים וביצועי הניהול. הסוד החד-פעמי לא יוצג שוב.
+## מפתחות מכונה
 
-    ![עמוד מפתחות API המציג הרשאות מפתח, זמן יצירה וביצועי יצירה מחדש והשבתה.](/images/dashboard/api-keys.png)
+מפתח מכונה מחבר את השירות המקומי ל-Cloud:
 
-    השתמש ברשימה זו כדי לבדוק הענקות באופן קבוע והשבת מפתחות שלא עוד ממופים לעומס עבודה פעיל.
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp keys create production-agents \
-      --add events:add \
-      --add policies:pull
-    fp keys show production-agents
-    fp keys update production-agents --add events:read
-    fp keys regenerate production-agents --yes
-    fp keys disable production-agents
-    ```
+```bash
+export FAILPROOFAI_CLOUD_TOKEN="<key>"
+failproofai config
+```
 
-    הפנה או תעד את פלט create/regenerate בצורה מאובטחת; הסוד מוחזר פעם אחת.
-  </Tab>
-</Tabs>
+מכונה מחוברת עשויה להזדקק לשתי יכולות:
 
-שתי ההרשאות הנדרשות על ידי מכונת Failproof AI מחוברת הן עצמאיות:
+- `policies:pull` לקבלת מדיניות מנוהלת ב-Cloud.
+- `events:add` לשליחת החלטות ותרומות.
 
-- `events:add` שולחת אירועים ונתוני הפעלה.
-- `policies:pull` משוחזרת הפריסות של מדיניות שהוקצו.
+דוחות סטטוס מדווחים על אלה בנפרד מכיוון שאחת עשויה לעבוד בעוד השנייה לא.
 
-סודות מפתח מוצגים בעת יצירה או יצירה מחדש. אחסן אותם במנהל סודות וסובב אותם מבלי לעשות שימוש חוזר בתפקידי אינטראקטיביים של מפעיל.
+## הרשאות נפוצות
 
-## קטלוג הרשאות
-
-| אזור | הרשאות |
+| הרשאה | מאפשרת |
 | --- | --- |
-| אירועים | `events:add`, `events:read` |
-| מפתחות | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` הוא הפעלה אנושית בלבד |
-| משתמשים | `users:create`, `users:read`, `users:update`, `users:delete` |
-| הערכות | `evaluations:read`, `evaluations:trigger` |
-| לוחות מחוונים | `dashboards:read`, `dashboards:write`, `dashboards:delete` |
-| שאילתות | `queries:read`, `queries:write`, `queries:delete`, `queries:run` |
-| עוזר | `agent:use` |
-| הגדרות | `settings:read`, `settings:write` |
-| התראות | `alerts:read`, `alerts:write` |
-| בעיות | `issues:read`, `issues:create`, `issues:close` |
-| ביקורות | `audits:read`, `audits:write` |
-| מדיניות | `policies:read`, `policies:write`, `policies:pull` |
-| שימוש | `usage:read` |
+| `events:add` | שלח אירועים |
+| `events:read` | קרא אירועים ושגיאות |
+| `evaluations:read` | קרא תרומות והערכות |
+| `audits:read` / `audits:write` | בדוק או נהל ביקורות |
+| `policies:read` / `policies:write` | בדוק או פרוס מדיניות |
+| `policies:pull` | משוך הקצאות מדיניות מכונה |
+| `keys:create` / `keys:disable` | צור או השבת מפתחות |
+| `orgs:admin` | ניהול ארגון ברמת מופע; לא ניתן להקצאה למפתח ארגון |
 
-`orgs:admin` שמור למפעיל המופע ולא ניתן להעניק למפתח ארגון או לחבר רגיל. אסימונים בדלקו `incidents:*` ו-`alerts:ack` מקובלים לתאימות ומנרמלים להרשאות `issues:*` הנוכחיות.
-
-קבוצות הרשאה מובנות הן `read-only`, `standard`, ו-`admin`. `standard` מוסיף הדלקת הערכה, ביצוע שאילתה, תגובת בעיה והשימוש בעוזר לקריאת הרשאות. יצירת מפתח מסרק הענקות בלבד בני אדם אפילו כאשר קבוצת הרשאה מכילה אותן.
+כמה פקודות ניהול `fp fleet` ו-`fp guardrails` דורשות פעילות משתמש מחובר ולא מפתח API. טקסט העזרה שלהם קובע זאת לפני הגשת בקשה.
 
 <Warning>
-  מפתחות בהיקף מופע יכולים לבחור ארגון עם ה-`X-AgentEye-Org` header. הגדר אותו בצורה מפורשת בהפריסות ריבוי-ארגוניות; השמטה עשויה לבחור בארגון ברירת המחדל.
+  לעולם אל תשתמש שוב בהרשאות בילוע כגון `AGENTEYE_KEY` או `AGENTEYE_API_KEY` כ-`FP_API_KEY`. הם משרתים מערכות והרשאות שונות.
 </Warning>

@@ -1,42 +1,58 @@
 ---
----
-title: "הפוך את ה-Agent שלך לבטוח לחלוטין"
-description: "Observability והטמעת אכיפה עבור כל harness שה-agents שלך רץ בתוכו — CLIs קידוד, gateways צ'אט, עוזרים self-hosted, וה-agents שלך עם instrumentation."
+title: "הפוך את הסוכנים שלך ל-failproof"
+description: "ראה מה הסוכנים שלך עושים, מצא כשלים, ועצור אותם מלהתרחש שוב."
 icon: "shield-check"
 ---
 
-Failproof AI עוזר לצוותים להבין מה עשו ה-agents, למצוא היכן הם נכשלו, והיישם safeguards לפני שאותו ההתנהגות תקרה שוב.
+Failproof AI עוזר לכל מי שמריץ סוכנים להבין מה קרה, למצוא כשלים, ולמנוע מהם להתרחש שוב.
 
-**harness** הוא בעצם מה שה-agent שלך רץ בפנים. Failproof AI חוקר 12 מהם — CLIs קידוד כמו Claude Code ו-Codex, chat gateways כמו Hermes, עוזרים self-hosted כמו OpenClaw — וכל האירועים, אותן policies, וההיסטוריית ההפעלה זהה עבור כל אחד. Agents ללא harness דיווחים דרך ה-[Python SDK](/he/reference/custom-agents), שעוקבים אחריהם ומבצעים ביקורת; הטמעת policy שם דורשת hook בה-runtime שלך.
+זה עובד עם 12 סביבות סוכנים נפוצות, כולל Claude Code, Codex, Hermes, OpenClaw, וGoose. סוכנים שבנויים עם LangChain, CrewAI, LlamaIndex, Pydantic AI, או הריטיים שלך יכולים לדווח דרך [Python SDK](/he/reference/custom-agents).
 
 <Columns cols={2}>
-  <Card title="הגדר את Failproof" icon="wand-sparkles" href="/he/start/quickstart">
-    השתמש בכישור כדי לבצע instrumentation בפרויקט שלך, התחבר, וודא שלוגים של agents הגיעו.
+  <Card title="הגדר את המכונה הזו" icon="wand-sparkles" href="/he/start/quickstart">
+    התקן את Failproof AI, חבר את הסוכנים שלך, ובחר מה לכפות.
   </Card>
-  <Card title="שאל את Failproof Assistant" icon="message-square-text" href="/he/sessions/assistant">
-    בצע ניתוח, שאלה, בנה dashboards, והפעל ביקורות בשפה טבעית על לוגים של agents.
+  <Card title="שאל על הסוכנים שלך" icon="message-square-text" href="/he/sessions/assistant">
+    בקש שאלות על הפעלות, חקור כשלים, ובנה דאשבורדים בשפה טבעית.
   </Card>
 </Columns>
+
+## התחל ברמה מקומית או התחבר ל-Cloud
+
+<Columns cols={2}>
+  <Card title="מקומי, ללא חשבון" icon="laptop" href="/he/audits/local-audit">
+    פתח את הדאשבורד ב-`localhost:8020` והפעל `failproofai audit`. היסטוריית הסוכן שלך נשארת על המכונה הזו.
+  </Card>
+  <Card title="Failproof AI Cloud" icon="cloud" href="/he/start/setup">
+    ראה הפעלות על פני מכונות והנהל מדיניויות לצוות שלך.
+  </Card>
+</Columns>
+
+ההגדרה בוחרת בכוונה ללא חבילת מדיניות. הוסף את שלנו אחרי ההגדרה:
+
+```bash
+failproofai policies add FailproofAI/policies
+```
+
+עד אז, רק `block-failproofai-commands` פועל. זה עוצר סוכן מביטול Failproof AI.
+
+## מה אתה יכול לעשות
 
 <Columns cols={3}>
-  <Card title="ראה מה ה-agent עשה" icon="route" href="/he/sessions/overview">
-    עקוב אחר קריאות מודל, כלים, שגיאות, קלט אנושי, latency, והחלטות policies בהפעלה אחת.
+  <Card title="ראה מה קרה" icon="route" href="/he/sessions/overview">
+    עקוב אחרי הפעלת סוכן דרך קריאות מודל, כלים, שגיאות, והחלטות מדיניות.
   </Card>
-  <Card title="מצא כשלים בצורה שיטתית" icon="scan-search" href="/he/audits/overview">
-    בצע ביקורת על סט מוגדר של הפעלות, בדוק ממצאים מבוססי ראיות, ועקוב אחר תיקון כבעיות.
+  <Card title="מצא כשלים" icon="scan-search" href="/he/audits/overview">
+    בדוק ראיות על פני הפעלה אחת או רבות.
   </Card>
   <Card title="מנע חזרה" icon="shield-check" href="/he/policies/overview">
-    הפוך מצב כשל ידוע לpolicy, בחן את השפעתו, והטמע אותו בכל ה-fleet שלך.
+    צפה בשמירה על פעילות אמיתית, ואז כוף אותה כשתהיה מוכן.
   </Card>
 </Columns>
 
-> **Session → Audit → Finding → Issue → Policy**<br />
-> עקוב מה קרה, מצא את הכשל, נהל את התגובה, ואז מנע את אותה ההתנהגות בהפעלות עתידיות.
+> **הפעלה → ביקורת → ממצא → בעיה → מדיניות**
+> ראה מה קרה, מצא את הכשל, קבל אחריות על התגובה, ואז מנע אותו.
 
-## התחל כאן
-
-אם אתה מטמיע את ה-agent בעל instrumentation הראשון שלך, התחל עם ה-[quickstart](/he/start/quickstart). אם נתונים כבר הגיעו, פתח את [Sessions](/he/sessions/overview) וביקור בריצה אמיתית לפני שתגדיר ביקורות או policies.
-
-<Card title="מצא ומנע כשל אחד" icon="arrow-right" href="/he/start/quickstart">
-  השלם את זרימת העבודה end-to-end מ-capture לpolicy שהוטמע בבטחה.
-</Card>
+<Note>
+  ההגדרה תומכת ב-Linux וב-macOS. ראה [harnesses נתמכים](/he/reference/harnesses) כדי לראות מה כל סביבת סוכן יכולה להתבונן או לחסום.
+</Note>

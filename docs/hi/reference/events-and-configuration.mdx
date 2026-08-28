@@ -1,8 +1,19 @@
 ---
 title: "Events और configuration"
-description: "Event model, environments, local storage, और configuration boundaries को reference करें।"
+description: "Event model, environments, local storage, और configuration boundaries के reference को देखें।"
 icon: "list-tree"
 ---
+
+## दो event vocabularies
+
+Failproof AI दो अलग-अलग प्रकार की events को ले जाता है, और वे कभी एक नाम साझा नहीं करते।
+
+| Vocabulary | उत्पादित | Names दिखते हैं | Reference |
+| --- | --- | --- | --- |
+| Telemetry events | `failproofai-sdk`, आपके agent के अंदर से | `tool_use`, `tool_result`, `hook_triggered`, `model_response` | [Python SDK](/hi/reference/custom-agents) |
+| Hook events | Agent harness, failproofai द्वारा normalized | `PreToolUse`, `PostToolUse`, `Stop`, `UserPromptSubmit` | [Custom policies](/hi/reference/policy-sdk#choose-the-event) |
+
+Hook पक्ष प्रत्येक harness की अपनी event names को 29 canonical types में normalize करता है। Telemetry पक्ष के 15 methods और अपना field contract है। `hook_triggered` और `PreToolUse` एक ही चीज़ की दो अलग spelling नहीं हैं।
 
 ## Event families
 
@@ -13,26 +24,26 @@ icon: "list-tree"
 - Human wait, input, pause, और interrupt
 - Explicit errors
 
-हर event के साथ एक timestamp, session ID, agent ID, event type, और environment होता है। Event-specific fields में model, tool, correlation, outcome, content, duration, या error data होता है।
+प्रत्येक event एक timestamp, session ID, agent ID, event type, और environment ले जाता है। Event-specific fields में model, tool, correlation, outcome, content, duration, या error data होते हैं।
 
 ## Event contract को inspect करें
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Observe → Events** को open करें।
-    2. एक short time window सेट करें और environment, agent, और event type के आधार पर filter करें।
-    3. किसी event को select करें इसके normalized fields और raw payload को inspect करने के लिए, फिर execution context देखने के लिए इसके session को open करें।
-    4. अगर कोई paired duration missing है, तो verify करें कि start और completion events एक ही correlation ID use कर रहे हैं।
+    1. **Observe → Events** को खोलें।
+    2. एक छोटी time window सेट करें और environment, agent, और event type के आधार पर filter करें।
+    3. एक event को select करें इसके normalized fields और raw payload को inspect करने के लिए, फिर execution context को देखने के लिए इसके session को खोलें।
+    4. अगर कोई paired duration missing है, तो verify करें कि start और completion events एक ही correlation ID का उपयोग करते हैं।
 
-    Events stream को use करके data को एक agent run तक narrow करें और normalized event fields को inspect करें।
+    Events stream को एक agent run के डेटा को narrow करने और normalized event fields को inspect करने के लिए उपयोग करें।
 
-    ![Live Events stream जिसमें environment, agent, session, और event type के लिए filters हैं।](/images/dashboard/events-stream.png)
+    ![Environment, agent, session, और event type के लिए filters के साथ live Events stream।](/images/dashboard/events-stream.png)
 
-    फिर event को इसके session में follow करें। Trace दिखाता है कि इससे तुरंत पहले और बाद में क्या हुआ, जो तब आवश्यक है जब payload अकेले ambiguous हो।
+    फिर event को इसके session में follow करें। Trace दिखाता है कि इससे तुरंत पहले और बाद में क्या हुआ, जो आवश्यक है जब payload अकेले ambiguous हो।
 
-    ![Event को execution context में inspect करने के लिए इस्तेमाल किया गया linked session trace।](/images/dashboard/session-detail.png)
+    ![Execution context में event को inspect करने के लिए linked session trace।](/images/dashboard/session-detail.png)
 
-    जब कोई paired event या duration missing है तो दोनों views में correlation IDs और timestamps की तुलना करें।
+    दोनों views में correlation IDs और timestamps को compare करें जब कोई paired event या duration missing हो।
   </Tab>
   <Tab title="CLI">
     Valid filter values को discover करें, फिर एक session के लिए full event payloads को fetch करें:
@@ -47,38 +58,109 @@ icon: "list-tree"
       --full
     ```
 
-    Machine-readable inspection के लिए `fp --json events ... --fields ts,event_type,session_id,payload` को use करें।
+    Machine-readable inspection के लिए `fp --json events ... --fields ts,event_type,session_id,payload` को उपयोग करें।
   </Tab>
 </Tabs>
 
 ## Reserved SDK fields
 
-`timestamp`, `session_id`, `agent_id`, `type`, या `environment` को custom Python SDK fields के रूप में use न करें। Tool result duration जैसे paired event durations को SDK द्वारा calculate किया जाता है और manually supply नहीं किया जा सकता।
+पाँच नामों को सीधे तौर पर custom fields के रूप में refuse किया जाता है, क्योंकि SDK उन्हें हर event पर सेट करता है:
+
+`timestamp`, `session_id`, `agent_id`, `type`, `environment`.
+
+ग्यारह अन्य को स्वीकार किया जाता है लेकिन type-checked किया जाता है, क्योंकि ingest endpoint उन्हें payload से बाहर typed columns में lift करता है और गलत type के लिए silently `NULL` store करता है। SDK इसके बजाय raise करता है, call site पर जहाँ आप अभी भी देख सकते हैं कि मान को किसने उत्पादित किया।
+
+| Names | Required type |
+| --- | --- |
+| `duration_ms`, `input_tokens`, `output_tokens` | `int`, unsigned 32-bit range के भीतर। Float या bool raise करता है। |
+| `tool_name`, `tool_call_id`, `hook_name`, `hook_id`, `input_id`, `pause_id`, `error_type`, `model` | `str`। `None` raise करता है, क्योंकि row 200 OK पर arrive करेगी और उस field पर हर filter के लिए invisible होगी। |
+
+### Durations
+
+SDK चार paired events के बीच के gap को measure करता है और आप जो `duration_ms` खुद pass करते हैं उसे refuse करता है: `tool_use` → `tool_result`, `hook_triggered` → `hook_completed`, `agent_pause` → `agent_resume`, और `human_wait` → `human_input`।
+
+`model_response` exception है। SDK कभी model calls को time नहीं करता, इसलिए आप `duration_ms` को खुद supply करते हैं, milliseconds के whole number के रूप में। देखें [correlation rules](/hi/reference/custom-agents) कि कैसे एक pair को match किया जाता है।
 
 ## Local boundaries
 
-- Failproof AI state `~/.failproofai` के अंतर्गत रहता है जब तक कि स्पष्ट रूप से अन्यथा configured न किया जाए।
-- `failproofai-sdk` हमेशा `~/.failproofai/custom-agents` के अंतर्गत spool करता है। `FAILPROOFAI_HOME` उस home को relocate करता है; `custom-agents` segment हमेशा appended होता है, इसलिए spool को इसके बाहर place नहीं किया जा सकता। केवल SDK का अपना `configure(base_dir=...)` कहीं और लिखता है। `AGENTEYE_HOME` को पुराने `agenteye-collector` द्वारा पढ़ा जाता है यह चुनने के लिए कि क्या देखना है, और यह अब प्रभावित नहीं करता कि SDK कहां लिखता है।
-- Environment labels को SDK configuration या `AGENTEYE_ENVIRONMENT` के माध्यम से सेट किया जा सकता है।
-- Daemon credentials को non-secret settings से अलग से store किया जाता है।
+- Failproof AI state `~/.failproofai` के अंतर्गत रहता है जब तक explicitly configure न किया जाए।
+- `failproofai-sdk` हमेशा `~/.failproofai/custom-agents` के अंतर्गत spool करता है। `FAILPROOFAI_HOME` उस home को relocate करता है; `custom-agents` segment हमेशा appended होता है, इसलिए spool को इससे बाहर रखा नहीं जा सकता। केवल SDK का अपना `configure(base_dir=...)` कहीं और लिखता है। `AGENTEYE_HOME` को older `agenteye-collector` द्वारा पढ़ा जाता है यह choose करने के लिए कि क्या watch करना है, और अब यह प्रभावित नहीं करता कि SDK कहाँ लिखता है।
+- Credentials `~/.failproofai/credentials.json` में रहते हैं, written `0600`। वे intentionally `config.json` में नहीं हैं, जो plain write के साथ written होता है और umask को inherit करता है, इसलिए यह box पर हर local user के लिए readable होता है।
 
-Stable, low-cardinality environment names का use करें। Daemon environment labels में commas को support नहीं किया जाता है।
+Stable, low-cardinality environment names का उपयोग करें। एक comma दोनों writers द्वारा reject किया जाता है: daemon `collector.environment` में एक को refuse करता है, और SDK `configure(environment=...)` पर raise करता है। कारण दोनों sides पर समान है—ingest endpoint इस field को commas पर split करता है और पूरी line को skip करता है, `200 OK` का answer देता है जबकि कुछ नहीं store करता।
 
-## Environment label को change करें
+## Machine configuration
+
+Daemon की non-secret settings `~/.failproofai/config.json` हैं। `hooks_verbosity`, `redact` और `environment` के पास कोई CLI flag नहीं है — file को directly edit करें। `sessions`, `hooks` और `machine_id` को `failproofai config` द्वारा written किया जाता है जब यह इस machine को Cloud से connect करता है।
+
+| Key | Values | Default | यह क्या नियंत्रित करता है |
+| --- | --- | --- | --- |
+| `collector.sessions` | `true` / `false` | `false`, और Cloud से connect करने के बाद `true` | Agent session transcripts को ship करें। एक transcript prompts, file contents, और जो कुछ terminal में paste किया गया था उसे ले जाता है। |
+| `collector.hooks` | `true` / `false` | `true` | Hook activity को ship करें। Decisions और tool names को ले जाता है, कभी file contents नहीं। |
+| `collector.hooks_verbosity` | `all` / `decisions` / `off` | `decisions` | `decisions` हर deny और instruct को exact रखता है और लगभग 99% को aggregate करता है जो allow करते हैं। |
+| `collector.redact` | `minimal` / `off` | `minimal` | Redaction जो कुछ भी machine से leave करने से पहले applied किया जाता है। |
+| `collector.environment` | comma के बिना कोई भी string | `local` | Label जो इस machine द्वारा भेजी जाने वाली हर event पर stamped होता है। |
+| `collector.machine_id` | कोई भी string | disk पर पहले से एक id, नहीं तो एक fresh random UUID | Dashboard किस machine के अंतर्गत इस डेटा को group करता है। `--machine-id` द्वारा written। यह कभी hostname से derived नहीं होता। |
+
+<Note>
+  `failproofai backfill --help` को `~/.failproofai/config.toml` का नाम दिया जाता है। यह एक पुरानी path है एक earlier home layout से; कोई current build इसे नहीं लिखता। File `config.json` है।
+</Note>
+
+Cloud से connect करना policy decisions और full session transcripts दोनों को भेजता है।
+
+<Warning>
+  `--no-transcripts` setup path पर transcripts को turn off नहीं करता। `failproofai config --token <key> --no-transcripts` flag को parse करता है और फिर इसे कभी नहीं पढ़ता, और wizard sessions के साथ connect करता है anyway, इसलिए transcripts भेजते रहते हैं जबकि आप मानते हैं कि आपने opt out किया।
+
+  Decisions केवल भेजने के लिए, connect करने के बाद `~/.failproofai/config.json` में `collector.sessions` को `false` पर सेट करें:
+
+  ```json
+  {
+    "collector": {
+      "sessions": false
+    }
+  }
+  ```
+</Warning>
+
+एक backfill समान collector settings को follow करता है, इसलिए यह कभी ऐसा कुछ नहीं भेजता जो आपकी configuration कहती है कि आप नहीं चाहते। Re-sending safe है: redaction deterministic है, इसलिए एक re-sent event अपनी पहली send के समान hash करता है और पहले से वहाँ row में collapse हो जाता है।
+
+## एक environment label को change करें
+
+SDK और daemon दोनों अपना-अपना label stamp करते हैं, और वे अलग-अलग जगहों पर सेट होते हैं।
 
 <Tabs>
-  <Tab title="Dashboard">
-    Environment labels को emitting SDK या Failproof daemon द्वारा assign किया जाता है। एक को change करने के बाद, **Observe → Sessions** को open करें और environment filter को use करके confirm करें कि नए sessions नई value carry कर रहे हैं। Existing sessions अपने original environment को retain करते हैं।
+  <Tab title="Python SDK">
+    Code में या उस process के environment में इसे सेट करें जो events को emit करता है। Default `dev` है।
 
-  </Tab>
-  <Tab title="CLI">
-    `failproofai-sdk` के लिए, environment को code में या इसके legacy environment variable के साथ configure करें। Machine-level settings को change करते समय daemon configuration को rerun करें।
+    ```python
+    import failproofai_sdk
+
+    failproofai_sdk.configure(environment="production-us-east")
+    ```
 
     ```bash
     export AGENTEYE_ENVIRONMENT=production-us-east
-    failproofai config
+    ```
+
+    `AGENTEYE_ENVIRONMENT` को केवल `failproofai-sdk` द्वारा पढ़ा जाता है। न तो CLI और न ही daemon इसे पढ़ता है, इसलिए इसे export करना machine के बारे में कुछ नहीं बदलता।
+  </Tab>
+  <Tab title="Daemon">
+    `~/.failproofai/config.json` में `collector.environment` को edit करें। Default `local` है और कोई CLI flag इसे सेट नहीं करता।
+
+    ```json
+    {
+      "collector": {
+        "environment": "production-us-east"
+      }
+    }
+    ```
+
+    ```bash
     failproofai config --status
     fp sessions --since 1h --env production-us-east
     ```
+  </Tab>
+  <Tab title="Dashboard">
+    Environment labels को emitting SDK या Failproof daemon द्वारा assign किया जाता है, इसलिए यहाँ change करने के लिए कुछ नहीं है। एक को अपने source पर change करने के बाद, **Observe → Sessions** को खोलें और नए sessions को नया value carry करते हुए confirm करने के लिए environment filter का उपयोग करें। Existing sessions अपने original environment को retain करते हैं।
   </Tab>
 </Tabs>

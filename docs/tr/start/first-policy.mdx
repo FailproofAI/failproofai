@@ -1,47 +1,70 @@
 ---
-title: "İlk başarısızlığınızı bir ilke ile önleyin"
-description: "Bir ilke sürümü yazın, gözlem modunda dağıtın ve ardından zorunlu kılın."
+---
+title: "İlk başarısızlığınızı önleyin"
+description: "İncelenen bir politikayı etkinleştirin veya kendi politikanızı test edin."
 icon: "shield-check"
 ---
 
-Bir ilkeyi yalnızca güvensiz eylemi ve izin verilmesi gereken yasal eylemleri tanımlayabildikten sonra kullanın.
+Durdurmak istediğiniz bir davranıştan ve yine de çalışması gereken meşru bir eylemden başlayın.
 
-<Tabs>
-  <Tab title="Dashboard">
-    <Steps>
-      <Step title="İlkeyi yazın">
-        **Admin → policy editor** adresine gidin. Demo ilkesiyle başlayın, kaynağını gözden geçirin veya düzenleyin, ardından **publish version** seçeneğini tıklayın. Yayınlama, makinelere dağıtabileceğiniz değişmez sürümü oluşturur.
+## Önce incelenen bir politikayı deneyin
 
-        ![Demo ilkesi değişmez bir sürüm olarak yayınlanmaya hazır olan İlke editörü oluşturma görünümü.](/images/dashboard/policy-editor.png)
-      </Step>
-      <Step title="Bir makineye dağıtın">
-        **Admin → enforcement** adresine gidin, hedef makineyi genişletin ve **edit this machine** seçeneğini tıklayın. Yayınlanan demo ilkesini ekleyin, sürümünü sabitleyin, **observe** seçeneğini seçin ve dağıtımı uygulayın.
+```bash
+failproofai policies
+failproofai policies add block-rm-rf
+```
 
-        ![Yayınlanan bir ilke sürümü seçili olan makine dağıtım editörü, dağıtımı uygulamadan önce gözlem modunda.](/images/dashboard/enforcement-editor.png)
-      </Step>
-      <Step title="İlkeyi doğrulayın">
-        O makinede yeni bir agent oturumu çalıştırın, ardından **Observe → policy** açın. Makineyi seçin ve demo ilkesinin ilke eşlemesinde ve karar zaman çizelgesinde görüntülendiğini doğrulayın. Gözlem modu, ilkenin eylemi bloke etmeden ne yapacağını kaydeder.
+Failproof AI, 39 incelenen politika içerir. Yeni bir tane yazmadan önce [kataloğu](/tr/policies/builtin-catalog) kontrol edin.
 
-        ![Karar toplamlarını, zaman içinde zorlama etkinliğini ve yerel ve Bulut tarafından yönetilen ilke eşlemelerini gösteren İlke sayfası.](/images/dashboard/policy-observe.png)
-      </Step>
-    </Steps>
-  </Tab>
-  <Tab title="CLI">
-    Bulut ilkesi yazımı ve filo dağıtımı yönetimsel iş akışlarıdır. Yayınlamadan önce aynı ilkeyi doğrulamak için yerel CLI'yi kullanın:
+## Kendi politikanızı yazın ve test edin
 
+<Steps>
+  <Step title="Çalışan bir politika oluşturun">
     ```bash
-    failproofai policies --install --custom ./payment-retry.policies.ts \
-      --cli claude --scope project
-    failproofai config --status
+    failproofai publish --init guards.mjs
     ```
 
-    Bulut tarafından görünen ilke kararlarını incelemek için `fp` kullanın:
-
+    Bu, `git push --force` komutunu engelleyen bir politika yazar. Kuralınıza uyarlamak için düzenleyin.
+  </Step>
+  <Step title="Bu makinede uygulayın">
     ```bash
-    fp events --event-type hook_completed --env production --since 24h
-    fp sessions --env production --since 24h
+    failproofai policies -i -c ./guards.mjs
     ```
 
-    Her iki adım da CLI'den kullanılabilir: `fp policies publish <id> <file>` bir sürüm oluşturur ve `fp fleet deploy <machine-id> --add <id>` bunu bir makineye yerleştirir. Dashboard eşdeğerleri **Admin → policy editor** ve **Admin → enforcement** adreslerdir.
-  </Tab>
-</Tabs>
+    Agentinizden engellenen eylemi gerçekleştirmesini isteyin, ardından yerel pano da **Policies → Activity** kısmını kontrol edin.
+  </Step>
+  <Step title="Tutun veya kaldırın">
+    `.failproofai/policies/` altına otomatik olarak yüklenecek şekilde bir `*policies.mjs` dosyası yerleştirin.
+
+    Açık özel dosyaları şu komutla kaldırın:
+
+    ```bash
+    failproofai policies -u -c
+    ```
+  </Step>
+</Steps>
+
+## Paylaşın
+
+Herkese açık bir paket yayınlayın:
+
+```bash
+failproofai publish
+```
+
+Herhangi biri daha sonra `failproofai policies add <owner>/<repo>` ile yükleyebilir. GitHub konusu `failproofai-policies` ekleyerek [Policy Hub](https://befailproof.ai/policy-hub/) tarafından dizine alınabilir.
+
+Cloud dağıtımı için:
+
+```bash
+fp policies publish checkout-guard ./guards.mjs
+fp fleet deploy <machine> --add checkout-guard:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add checkout-guard:enforce
+```
+
+<Warning>
+  Boş bir `--add checkout-guard` komutu hemen uygulamaya konur. Politikanın ajanı engellemeden ne yapacağını kaydetmek için `:observe` ekleyin.
+</Warning>
+
+Tam iş akışı için [paket yayınlama](/tr/policies/publish-a-pack) veya [politika dağıtımı](/tr/policies/deploy) bölümüne bakın.

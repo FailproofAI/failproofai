@@ -1,57 +1,100 @@
 ---
 title: "組み込みポリシー"
-description: "エージェントによくある障害モードに対する、メンテナンス済みのガードレールを有効化します。"
+description: "エージェントの一般的な障害モードに対応したメンテナンス済みガードレールを活用し、必要なものを有効にしましょう。"
 icon: "library"
 ---
 
-組み込みポリシーは、シークレットの取り扱い、環境ファイル、破壊的なシェルコマンド、保護されたブランチ、クラウドおよびインフラツール、パッケージの公開、繰り返し呼び出し、タスク終了時のワークフローチェックをカバーしています。
+組み込みポリシーは、エージェント障害の9つのカテゴリをカバーする39件のメンテナンス済みポリシーです。そのうち38件は**パックとして提供**されます。`FailproofAI/policies` というパックは、他の誰のポリシーと同じ方法で配信されます。パッケージ自体には独自のパックが同梱されていないため、新規インストール直後は何も適用されません。まずは以下を実行してください：
 
-## 組み込みポリシーの有効化と確認
+```bash
+failproofai policies add FailproofAI/policies
+```
+
+このコマンドはパックのデフォルト設定を有効にします。パックが持つ38件のポリシーのうち、10件がデフォルトで有効になります。39件目は `block-failproofai-commands` で、これは常に有効です。パッケージにコンパイル済みとして組み込まれており、すべての評価で登録され、無効化や一時停止はできません。パックは `alwaysOn` を宣言できないため、このガードはパックの配信経路を経由しません。
+
+## 9つのカテゴリの内容
+
+| カテゴリ | `--category` スラッグ | ポリシー数 |
+| --- | --- | --- |
+| サニタイズ | `sanitize` | 5 |
+| 環境 | `environment` | 3 |
+| 危険なコマンド | `dangerous-commands` | 5 |
+| インフラコマンド | `infra-commands` | 7 |
+| Git | `git` | 6 |
+| データベース | `database` | 2 |
+| パッケージとシステム | `packages-system` | 5 |
+| AI動作 | `ai-behavior` | 1 |
+| ワークフロー | `workflow` | 5 |
+
+これはコンパイル済みカタログの件数で、合計39件です。`block-failproofai-commands` は `alwaysOn` であり、パックの配信経路を経由しないため、パックには38件が含まれます。そのため、`--category dangerous-commands` を指定すると残りの4件が選択されます。
+
+デフォルトではなく、特定の部分だけを取得することもできます：
+
+```bash
+failproofai policies add FailproofAI/policies --category git,database
+failproofai policies add FailproofAI/policies --policy block-rm-rf
+failproofai policies add FailproofAI/policies --all
+```
+
+## 適用前にカタログを確認する
 
 <Tabs>
-  <Tab title="ダッシュボード">
-    1. ローカル CLI を使って、接続済みのマシンにポリシーをインストールします。
-    2. インストルメント済みエージェントで安全なテストアクションを実行します。
-    3. **Observe → policy** に移動し、ポリシー名、マシン環境、または判定でフィルタリングします。
-    4. リンクされたセッションを開いて、マッチしたツール入力と返された理由を確認します。
-
-  </Tab>
   <Tab title="CLI">
     ```bash
+    failproofai policies show FailproofAI/policies
     failproofai policies
-    failproofai policy add block-rm-rf --cli claude --scope project
-    failproofai config --status
     ```
 
-    削除するには `failproofai policy remove block-rm-rf --cli claude --scope project` を実行します。
+    `policies show` は公開済みのマニフェストを読み込みます。カテゴリごとにすべてのポリシーが表示され、デフォルトかオプトインかがマークされています。パックのコードのダウンロードやインポートは行われません。`failproofai policies` は、このマシンで有効になっているもの（カスタムファイル、規約ファイル、インストール済みパック、クラウド割り当て）を一覧表示します。組み込みのセクションはないため、「何が存在するか」ではなく「ここで何が有効か」を確認するためのコマンドです。
+  </Tab>
+  <Tab title="Policy Hub">
+    CLIを使わずに、ブラウザでも同じカタログを閲覧できます。[befailproof.ai/policy-hub](https://befailproof.ai/policy-hub/) にアクセスしてください。各パックのページは `/policy-hub/<owner>/<pack>/`、各ポリシーのページは `/policy-hub/<owner>/<pack>/<policy-name>/` にあります。
+  </Tab>
+  <Tab title="ダッシュボード">
+    1. ローカルCLIを使って、接続済みマシンにポリシーをインストールする。
+    2. 計測済みエージェントで安全なテストアクションを実行する。
+    3. **Observe → policy** に移動し、ポリシー名、マシン環境、または判定でフィルタリングする。
+    4. リンクされたセッションを開いて、一致したツール入力と返された理由を確認する。
   </Tab>
 </Tabs>
 
-インストール済みバージョンで利用可能なポリシーを一覧表示します:
+## ポリシーを有効化・無効化する
 
 ```bash
-failproofai policies
+failproofai policies add block-rm-rf --cli claude --scope project
+failproofai policies remove block-rm-rf --cli claude --scope project
 ```
 
-プロジェクトに対して1つのポリシーを有効化します:
-
-```bash
-failproofai policy add block-rm-rf --scope project
-```
-
-選択したハーネスに対して複数のポリシーを有効化します:
+`policies add` と `policies remove` は**1件**のポリシー名のみを受け付けます。名前を指定せずに実行すると、既に有効なものにチェックが入ったピッカーが表示されます。複数の名前を一度に指定するには、インストール形式を使用してください：
 
 ```bash
 failproofai policies --install block-sudo block-force-push \
   --cli claude codex --scope project
 ```
 
-パラメータを受け付けるポリシーや、ベータとしてマークされているポリシーもあります。展開前に、説明、マッチスコープ、デフォルトの動作を確認してください。あるワークフローを保護するポリシーが、別のワークフローでは正当な操作をブロックしてしまう場合があります。
+<Note>
+  パックがインストールされていないマシンで `failproofai policies add <builtin-name>` を実行すると、名前を解決するために `FailproofAI/policies` をGitHubリリースから取得します。そのため、最初のコマンドにはネットワーク接続が必要です。
+</Note>
 
-<Card title="組み込みカタログ全体を参照する" icon="list-checks" href="/ja/policies/builtin-catalog">
-  現在の40件のポリシーすべて、そのトリガー、推奨ベースライン、およびパラメータを確認できます。
+## すべてのポリシーがすべてのハーネスで適用されるわけではない
+
+ポリシーが動作を変えるのは、ハーネスがそのイベントに対する判定を消費している場合に限られます。組み込みポリシーを利用する前に、以下の2点を確認することをお勧めします：
+
+| イベント | denyが動作変更を検証済みの対象 |
+| --- | --- |
+| `PreToolUse` | 全12ハーネス |
+| `Stop` | claude、codex、copilot、cursor、openclaw、factory、devin、antigravity。gooseおよびhermesには `Stop` フックがインストールされていない。piは理由を次のターンに引き継ぐ。opencodeは未検証 |
+
+そのため、ワークフローカテゴリの `require-*-before-stop` ポリシー5件は、マシンで有効になっていても、実行されるエージェントによっては一度も発火しない場合があります。Cursor Cloud AgentのVMにはstopフックがまったく存在しません。
+
+`warn-*` および `prefer-*` ポリシーは `deny` ではなく `instruct` を返します。HermesおよびGoose、さらにPi、OpenClaw、Factory、Antigravityの `Stop` チャンネル以外では、`instruct` はallowに降格されてstderrにメモが出力されます。オペレーターはログで確認できますが、エージェントには伝わりません。
+
+パラメータを受け付けるポリシーもあります。ロールアウト前に説明、マッチスコープ、デフォルト値を確認してください。あるワークフローを保護するポリシーが、別のワークフローで有効な操作をブロックしてしまう可能性があります。
+
+<Card title="組み込みカタログ全件を閲覧する" icon="list-checks" href="/ja/policies/builtin-catalog">
+  全39件の組み込みポリシーをカテゴリ別に、トリガー・デフォルト・パラメータとともに掲載しています。
 </Card>
 
 <Tip>
-  リポジトリ固有の要件にはプロジェクトスコープを、マシン全体のセキュリティ要件にはユーザースコープを優先してください。
+  `failproofai config` はすべての対応エージェントをユーザースコープで設定しますが、ポリシーは選択しません。また、`--scope` フラグはありません。期待値が特定のリポジトリにのみ属する場合に限り、`failproofai policies add` または `failproofai policies --install` に `--scope project` を渡してください。
 </Tip>

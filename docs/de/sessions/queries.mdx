@@ -4,50 +4,100 @@ description: "Erkunden Sie Sitzungs-, Ereignis- und Auswertungsdaten mit wiederv
 icon: "database"
 ---
 
-Abfragen bilden die flexible Schicht unterhalb von Dashboards, Audits und Untersuchungen. Nutzen Sie Ad-hoc-SQL, um eine Idee zu testen, und speichern Sie die Abfrage, sobald sie Teil eines wiederkehrenden Workflows wird.
+Abfragen bilden die flexible Schicht unterhalb von Dashboards, Audits und Untersuchungen. Verwenden Sie Ad-hoc-SQL, um eine Idee zu testen, und speichern Sie die Abfrage, sobald sie Teil eines wiederkehrenden Workflows wird.
 
-## Eine Abfrage erstellen und ausführen
+## Abfrage erstellen und ausführen
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Navigieren Sie zu **Analyze → Queries** und wählen Sie **new query**.
+    1. Gehen Sie zu **Analysieren → Abfragen** und wählen Sie **Neue Abfrage**.
     2. Öffnen Sie den Schema-Browser und wählen Sie Felder aus den Ereignis-, Sitzungs- oder Auswertungsdaten.
-    3. Schreiben Sie SQL, fügen Sie bei Bedarf Parameter hinzu und führen Sie die Abfrage aus.
-    4. Speichern Sie sie mit einem aussagekräftigen Namen und einer Beschreibung, und verwenden Sie **add to dashboard**, wenn das Ergebnis überwacht werden soll.
+    3. Schreiben Sie SQL, fügen Sie bei Bedarf Parameter hinzu, und führen Sie die Abfrage aus.
+    4. Speichern Sie sie mit einem aussagekräftigen Namen und einer Beschreibung, und verwenden Sie **Zum Dashboard hinzufügen**, wenn das Ergebnis überwacht werden soll.
 
-    Der Abfrageeditor vereint das Ereignisschema, SQL, Parameter und eine Ergebnisvorschau, damit Sie die Fragestellung validieren können, bevor Sie sie speichern.
+    Der Abfrageeditor kombiniert das Ereignisschema, SQL, Parameter und eine Ergebnisvorschau, sodass Sie die Frage vor dem Speichern validieren können.
 
-    ![Der SQL-Abfrageeditor mit Schema-Browser und Live-Ergebnisgitter.](/images/dashboard/query-lab.png)
+    ![Der SQL-Abfrageeditor mit Schema-Browser und Live-Ergebnisraster.](/images/dashboard/query-lab.png)
 
     Gespeicherte Abfragen erscheinen anschließend in der gemeinsamen Bibliothek, wo Teammitglieder sie erneut ausführen oder ihre Ergebnisse zu Dashboards hinzufügen können.
 
     ![Die gespeicherte Abfragebibliothek mit wiederverwendbaren integrierten und benutzerdefinierten Abfragen.](/images/dashboard/queries.png)
 
-    Verwenden Sie einen klaren Namen und eine aussagekräftige Beschreibung, damit das Ergebnis auch ohne erneutes Öffnen des SQL verständlich bleibt.
+    Verwenden Sie einen aussagekräftigen Namen und eine Beschreibung, damit das Ergebnis auch ohne erneutes Öffnen des SQL verständlich bleibt.
   </Tab>
   <Tab title="CLI">
+    Arbeiten Sie in der Reihenfolge, die das SQL selbst vorgibt: Betrachten Sie zunächst das Schema, führen Sie die Anweisung ad-hoc aus, und speichern Sie sie dann, sobald sie einen Namen verdient.
+
     ```bash
     fp query schema
-    fp query create "retry loops" --sql "SELECT ..."
-    fp query run <query-id>
-    fp query show <query-id>
-    fp query update <query-id> --sql "SELECT ..."
+    fp query schema events
+
+    fp query run --sql "SELECT agent_id, count() FROM analytics.events GROUP BY agent_id"
+    fp query run --sql @retry-loops.sql
+
+    fp query create "retry loops" --sql @retry-loops.sql --description "repeated tool calls per session"
     ```
 
-    Verwenden Sie `fp query list`, um IDs zu finden, und `fp query delete <query-id>`, um eine gespeicherte Abfrage zu entfernen.
+    Alles danach verwendet den **Namen** der Abfrage, keine ID:
+
+    ```bash
+    fp query list
+    fp query run "retry loops"
+    fp query show "retry loops"
+    fp query update "retry loops" --sql @retry-loops-v2.sql --yes
+    fp query delete "retry loops" --yes
+    ```
+
+    Namen sind pro Organisation eindeutig, was sie zu einem sicheren Handle macht. Eine UUID-förmige ID wird überall akzeptiert, wo ein Name zulässig ist, aber `fp query list` gibt keine aus — die Spalten sind `name`, `description`, `created by` und `created` (Erstellungszeitpunkt der Abfrage, nicht der letzte Bearbeitungszeitpunkt). Fügen Sie `--show-id` für eine kurze ID-Spalte hinzu, oder lesen Sie `--json`, das immer die vollständige ID enthält.
+
+    Binden Sie positionale Parameter einer gespeicherten Abfrage mit `--arg` (Alias `--param`), einmal pro `$1..$N` in der richtigen Reihenfolge:
+
+    ```bash
+    fp query run <query-name> --arg agent-codegen --arg 0.5
+    ```
+
+    | Unterbefehl | Berechtigung | Hinweise |
+    | --- | --- | --- |
+    | `fp query schema [TABLE]` | `queries:read` | Einen Tabellennamen übergeben, um auf dessen Spalten zu filtern. |
+    | `fp query list` | `queries:read` | `--show-id` zeigt IDs an; `--fields` projiziert rohe Felder. |
+    | `fp query show <name>` | `queries:read` | Metadatenkarte plus das vollständige SQL. |
+    | `fp query create <name> --sql ...` | `queries:write` | Eine Namenskollision wird im Vorfeld abgelehnt. |
+    | `fp query update <name>` | `queries:write` | Mindestens eines von `--name`, `--sql`, `--description` angeben. Bestätigt zuerst; ein No-op beendet sich ohne Speichern. |
+    | `fp query delete <name>` | `queries:delete` | Bestätigt zuerst, mit einer Vorschau des Gelöschten. |
+    | `fp query run <name>` oder `--sql ...` | `queries:run` | Genau eines von beiden. `--limit` und `--all` passen die Tabellenvorschau an. |
+
+    `update` und `delete` fragen nur in einem interaktiven Terminal nach. Unter `--json` oder bei umgeleitetem stdin werden sie ohne Rückfrage ausgeführt — `--yes` ist daher für den Terminalfall gedacht, nicht für Skripte.
+
+    Abfragen werden gegen einen schreibgeschützten Analytics-Pool ausgeführt. `--sql @file.sql` liest die Anweisung aus einer Datei, was die empfohlene Form für die Versionskontrolle ist.
   </Tab>
 </Tabs>
+
+## Abfragen skripten
+
+`fp --json query run` gibt alle Zeilen zurück, unabhängig vom Limit der Tabellenvorschau, im Format `{columns: [{name, type}], rows: [[...]], truncated, elapsed_ms}`:
+
+```bash
+fp --json query run "retry loops" | jq '.rows | length'
+```
+
+`fp --json query schema` gibt `{schema, columns: [{table, column, type, nullable}]}` zurück, was der maschinenlesbare Form des Schema-Browsers entspricht.
+
+Zwei Fehlertypen lassen sich besser über den Exit-Code als durch Text-Parsing behandeln: Ein Name, dem nichts entspricht, gibt `✗ no query named "…"` aus und beendet sich mit Code 6; ein SQL- oder Ausführungsfehler gibt `✗ query failed — …` mit dem zugehörigen Serverdetail aus.
 
 ## Häufige Anwendungsfälle
 
 - Sitzungen mit wiederholten Aufrufen desselben Tools finden.
-- Auswertungsergebnisse über verschiedene Modelle oder Umgebungen hinweg vergleichen.
-- Zeit zwischen einem menschlichen Wartezustand und der Wiederaufnahme messen.
-- Policy-Ablehnungen identifizieren, auf die eine erfolgreiche Alternative folgte.
+- Auswertungsergebnisse über Modelle oder Umgebungen hinweg vergleichen.
+- Zeit zwischen einem menschlichen Warte- und Wiederaufnahmeereignis messen.
+- Richtlinienverweigerungen identifizieren, denen eine erfolgreiche Alternative folgte.
 - Eine Kohorte für ein Audit erstellen.
 
-Öffnen Sie **Queries → Schema**, bevor Sie gegen unbekannte Felder schreiben. Bevorzugen Sie explizite Zeit- und Umgebungsfilter, und beschränken Sie die Ergebnismenge während der Erkundungsphase.
+Öffnen Sie das Schema — **Analysieren → Abfragen** im Dashboard oder `fp query schema` — bevor Sie Abfragen gegen unbekannte Felder schreiben. Bevorzugen Sie explizite Zeit- und Umgebungsfilter, und begrenzen Sie die Ergebnisse während der Erkundungsphase.
 
 <Warning>
-  Eine Abfrage kann ein verdächtiges Muster identifizieren, begründet aber für sich allein keinen Fehlermodus. Öffnen Sie repräsentative Traces oder führen Sie ein Audit durch, bevor Sie das Ergebnis in eine Policy überführen.
+  Eine Abfrage kann ein verdächtiges Muster identifizieren, stellt jedoch den Fehlermodus nicht allein fest. Öffnen Sie repräsentative Traces oder führen Sie ein Audit durch, bevor Sie das Ergebnis in eine Richtlinie umwandeln.
 </Warning>
+
+<Card title="Dashboards" icon="layout-dashboard" href="/de/sessions/dashboards">
+  Fügen Sie eine gespeicherte Abfrage einem gemeinsamen Board hinzu, sobald das Ergebnis es wert ist, überwacht zu werden.
+</Card>

@@ -1,25 +1,38 @@
 ---
 title: "ツール"
-description: "エージェントセッション全体で、遅延・失敗・過剰使用されているツールを検出します。"
+description: "エージェントの実行全体にわたって、低速・失敗・過剰使用のツールを特定します。"
 icon: "wrench"
 ---
 
-ツールページでは、セッションをまたいでツール呼び出しをグループ化し、レイテンシや呼び出し分布を比較できます。
+ツールページでは、エージェントが何を呼び出しているか、呼び出しの失敗頻度、および影響を受けるセッションを確認できます。
+
+ツール名は各エージェントハーネスから取得されるため、同じ機能でも名前が異なる場合があります。たとえば、シェル呼び出しは `Bash`、`exec`、`Shell`、`terminal`、`run_command` などとして表示されることがあります。フィルターを作成する前に `fp list tools` を実行してください。
 
 <Tabs>
   <Tab title="ダッシュボード">
-    1. **Observe → Tools** に移動します。
-    2. 環境、ツール名、エージェント、またはセッションIDでフィルタリングします。
-    3. レイテンシとツールの分布を確認します。
-    4. グラフ上の点またはツールセグメントを選択すると、対応するイベントやセッションが表示されます。
+    **Observe → Tools** に移動します。環境、ツール、エージェント、またはセッションでフィルタリングできます。
 
-    ![レイテンシ、成功・失敗の内訳、ツール呼び出し分布を表示したツールページ。](/images/dashboard/tools.png)
+    ![レイテンシ、成功・失敗の内訳、ツール呼び出しの分布を示すツールページ。](/images/dashboard/tools.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp list tools
-    fp events --event-type tool_use,tool_result --env production --since 24h
-    fp --json events --full --session-id <session-id> --all
+    fp events --event-type tool_use,tool_result --since 24h
+    fp errors --event-type tool_result --since 24h
+    fp --json events --full --event-type tool_use,tool_result --session-id <session-id> --all --limit 2000
     ```
+
+    呼び出しごとの実行時間などのペイロードフィールドが必要な場合は `--full` を使用してください。
   </Tab>
 </Tabs>
+
+このページを使用して、繰り返し発生する障害の特定、正常な実行と失敗した実行の比較、またはポリシー対象のツールが実際に使用されているかどうかの確認を行えます。
+
+<CardGroup cols={2}>
+  <Card title="エラー" icon="circle-alert" href="/ja/sessions/errors">
+    ツール障害の背後にあるセッションを開きます。
+  </Card>
+  <Card title="フック" icon="webhook" href="/ja/sessions/hooks">
+    正規のツール名とポリシーの判断を確認します。
+  </Card>
+</CardGroup>

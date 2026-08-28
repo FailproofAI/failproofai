@@ -1,68 +1,68 @@
 ---
 title: "Choisir votre configuration"
-description: "Choisissez entre l'application locale, Failproof AI Cloud ou un déploiement en entreprise."
-icon: "waypoints"
+description: "Exécutez Failproof AI en local ou connectez la machine à Failproof AI Cloud."
+icon: "settings"
 ---
 
-<CardGroup cols={3}>
-  <Card title="Application locale" icon="laptop">
-    Installez des hooks et des politiques sur une machine. Utilisez cette option lorsque vous avez besoin de garde-fous immédiats sans envoyer les données de session vers le Cloud.
+Failproof AI peut fonctionner entièrement sur une seule machine ou se connecter au Cloud pour des sessions partagées et une gestion centralisée des politiques.
+
+## Local, sans compte
+
+```bash
+npm install -g failproofai
+failproofai config
+failproofai policies add FailproofAI/policies
+failproofai
+```
+
+Cette commande installe le service, connecte les agents compatibles, ajoute un pack de politiques et ouvre le tableau de bord à l'adresse `http://localhost:8020`.
+
+Exécutez `failproofai audit` pour analyser l'historique des agents déjà présents sur la machine.
+
+## Connecter Failproof AI Cloud
+
+Créez une clé machine dans Cloud, puis exécutez :
+
+```bash
+failproofai config --token <machine-key>
+failproofai config --machine-label checkout-runner-01
+failproofai policies add FailproofAI/policies
+failproofai config --status
+```
+
+Vous pouvez également exporter `FAILPROOFAI_CLOUD_TOKEN=<machine-key>` et lancer simplement `failproofai config`. Privilégiez la variable d'environnement sur les machines partagées et en CI afin que la clé n'apparaisse pas dans l'historique du shell ou dans la liste des processus.
+
+Cloud utilise une seule connexion pour deux rôles distincts :
+
+- Récupérer les politiques assignées à cette machine.
+- Envoyer les décisions de politiques et les transcriptions de sessions.
+
+Pour n'envoyer que les décisions, connectez-vous d'abord, puis définissez `collector.sessions` à `false` dans `~/.failproofai/config.json`. Ne comptez pas sur `--no-transcripts` : le chemin de configuration actuel analyse bien ce flag, mais ne l'applique pas. Voir [événements et configuration](/fr/reference/events-and-configuration#machine-configuration).
+
+<Note>
+  `--machine-label` renomme une machine déjà connectée. Exécutez cette commande après la commande de configuration initiale, et non lors de la première connexion.
+</Note>
+
+## Configuration sans intervention
+
+`failproofai config` ne nécessite pas de flag spécial pour fonctionner en mode non interactif. En CI ou dans un conteneur, la configuration demandée est appliquée sans aucune invite.
+
+```bash
+export FAILPROOFAI_CLOUD_TOKEN="<key>"
+failproofai config
+```
+
+Un accès administrateur est nécessaire une seule fois pour installer le service en arrière-plan. La configuration n'ouvre jamais une invite `sudo` interactive pour demander un mot de passe : elle réussit sans en avoir besoin, ou affiche les commandes qu'un administrateur doit exécuter manuellement.
+
+## Plateformes supportées
+
+La configuration fonctionne sur Linux et macOS. Sur toute autre plateforme, le processus s'arrête sans écrire de hooks ni laisser d'état de configuration partiel.
+
+<CardGroup cols={2}>
+  <Card title="Vérifier la livraison" icon="activity" href="/fr/reference/troubleshooting">
+    Diagnostiquer une session manquante ou une assignation de politique.
   </Card>
-  <Card title="Failproof AI Cloud" icon="cloud">
-    Ajoutez des sessions centralisées, des audits, des évaluations en ligne, des tableaux de bord, des alertes et le déploiement de politiques à l'échelle de votre parc.
-  </Card>
-  <Card title="Déploiement en entreprise" icon="building-2">
-    Utilisez les contrôles d'organisation, les clés à portée limitée, l'infrastructure privée et les exigences de sécurité propres à votre déploiement.
+  <Card title="Agents supportés" icon="bot" href="/fr/reference/harnesses">
+    Voir les portées et la prise en charge de l'application des politiques pour chaque harness.
   </Card>
 </CardGroup>
-
-## Parcours de mise en production recommandé
-
-1. Connectez une machine hors production avec la capture de transcriptions activée.
-2. Vérifiez les sessions et les évaluations dans Cloud.
-3. Créez un audit pour un mode de défaillance connu.
-4. Déployez la première politique en mode observation.
-5. Étendez à la production après avoir examiné les correspondances et les faux positifs.
-
-## Connecter une machine à Cloud
-
-<Tabs>
-  <Tab title="Tableau de bord">
-    1. Accédez à **Administration → Clés** et créez une clé avec les permissions `events:add` et `policies:pull`.
-    2. Copiez le secret à usage unique sur la machine cible.
-    3. Après avoir exécuté la commande de connexion CLI, accédez à **Admin → Application** et confirmez que la machine apparaît bien.
-    4. Accédez à **Observer → Événements** et confirmez la réception de son premier événement.
-
-    Le panneau de clé affiche les deux autorisations nécessaires à une machine connectée : l'ingestion d'événements et la distribution de politiques.
-
-    ![Le panneau de création de clé API permettant d'accorder les permissions d'ingestion d'événements et de distribution de politiques.](/images/dashboard/key-create.png)
-
-    Après la connexion, la machine doit apparaître dans l'application avec son état de politique souhaité et son état rapporté.
-
-    ![Le parc applicatif avec une machine enrôlée développée pour afficher son état de politique souhaité et son statut de déploiement.](/images/dashboard/enforcement-fleet.png)
-
-    Le premier événement reçu confirme que le daemon peut transmettre des données à Cloud, indépendamment du déploiement de politiques.
-
-    ![Le flux d'événements en direct affichant les événements récents d'agent, de modèle et d'outil.](/images/dashboard/events-stream-current.png)
-
-    Continuez uniquement une fois que la machine et son premier événement sont tous deux visibles.
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai config --connect https://app.befailproof.ai \
-      --token "$FAILPROOFAI_KEY" \
-      --machine-label checkout-runner-01
-
-    failproofai policies --install --cli claude --scope user
-    failproofai config --status
-    ```
-
-    Ajoutez `--no-transcripts` si le contenu des transcriptions doit rester local.
-  </Tab>
-</Tabs>
-
-La connexion à Cloud vérifie l'ingestion d'événements et la distribution de politiques de manière indépendante. Une clé peut donc être valide tout en manquant l'une des permissions requises. Utilisez `failproofai config --status` pour voir quelle capacité est configurée.
-
-<Info>
-  La configuration Cloud n'écrit les identifiants locaux qu'une fois la capacité concernée vérifiée avec succès. Un échec de vérification ne laisse pas une machine apparaître comme connectée alors qu'elle ne l'est pas.
-</Info>

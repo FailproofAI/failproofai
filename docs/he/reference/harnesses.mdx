@@ -1,80 +1,164 @@
 ---
-title: "חיבורי סוכנים"
-description: "תפוס הפעלות והטל מדיניות על פני 12 חיבורים נתמכים."
+---
+title: "חיבורי סוכן"
+description: "צפו בהפעלות וגרשו מדיניות על פני כל 12 חיבורי הסוכן הנתמכים."
 icon: "plug-zap"
 ---
 
 חיבור הוא כל מה שהסוכן שלך בעצם רץ בתוכו. Failproof AI תומך בשנים עשר מהם, בשתי קטגוריות:
 
-- **CLI קודינג** (10) — Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Factory Droid, Devin CLI, Antigravity CLI, Goose
-- **שערים לצ'אט ועוזרים** (2) — Hermes (Slack, Telegram, cron), OpenClaw (עוזר אירוח עצמי)
+- **ממשקי שורת פקודה לקידוד** (10) — Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Factory Droid, Devin CLI, Antigravity CLI, Goose
+- **שערי צ'אט ועוזרים** (2) — Hermes (Slack, Telegram, cron), OpenClaw (עוזר מארח עצמאי)
 
-אותן מדיניות ואותו היסטוריית הפעלה חלים על כל חיבור שהסוכן רץ בתוכו. שכבת מתאם אחת ממפה את שמות האירועים המקוריים של כל חיבור, שמות הכלים ושדות קלט כלים על 29 אירועים קנוניים לפני הפעלת כל מדיניות.
+אותן מדיניויות והיסטוריית הפעלות זהה חלים לפי איזה חיבור הסוכן רץ בו. שכבת מתאם אחת ממפה את שמות האירועים המקוריים של כל חיבור, שמות הכלים ושדות קלט כלים ל-29 אירועים קנוניים לפני הרצת כל מדיניות.
 
-סוכן שרץ בשום אחד מהשנים עשר מתורגם ישירות עם [Python SDK](/he/reference/custom-agents). זה חוזה שונה, וכדאי להציג בבירור: ה-SDK מספק עקיבה, הפעלות, הערכות וביקורות — **הוא לא אוכף מדיניות בעצמו.** חסימת פעולה בלתי בטוחה לפני ביצוע דורשת חוק אכיפה בגבול הכלים של זמן הריצה שלך; [צור קשר איתנו](mailto:support@befailproof.ai) ואנחנו נממפה את זה.
+סוכן שרץ ב**אף אחד** מ-12 החיבורים מקבל אינסטרומנטציה ישירה עם [Python SDK](/he/reference/custom-agents). זה חוזה שונה, ומעיר זאת בבירור: ה-SDK מספק מעקב, הפעלות, הערכות וביקורות — **הוא לא אוכף מדיניות בעצמו.** חסימת פעולה לא בטוחה לפני ההוצאה לפועל דורשת hook אכיפה בגבול הכלים של הזמן ריצה שלך; [צרו איתנו קשר](mailto:support@befailproof.ai) והנו נמפה את זה.
 
-| חיבור | טווח חוקים נתמך |
+## טווחי Hook
+
+| חיבור | טווחי hook נתמכים |
 | --- | --- |
 | Claude Code | משתמש, פרויקט, מקומי |
 | Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi | משתמש, פרויקט |
 | Factory Droid, Devin CLI, Antigravity CLI, Goose | משתמש, פרויקט |
 | Hermes, OpenClaw | משתמש |
 
-כל אינטגרציה מנרמלת שמות אירועי חוקים מקוריים, שמות כלים ושדות קלט כלים לפני הפעלת מדיניות. מדיניות יכולה לפעול רק על אירועים שהחיבור חושף; בדוק התנהגות סוף תור והדרכה בחיבור ובגרסה המדויקים שבהם תפרוס.
+Claude Code הוא החיבור היחיד עם טווח **מקומי**. Hermes ו-OpenClaw אין להם כל תצורת פרויקט — הם רק טווח משתמש, והממשק בשורת הפקודה דוחה `--scope project` עבורם.
+
+כל אינטגרציה מנרמלת את שמות אירועי ה-hook המקוריים שלה, שמות כלים ושדות קלט כלים לפני הרצת מדיניויות. מדיניות יכולה לפעול רק על אירועים שהחיבור חושף; בדקו התנהגות של סוף תור והנחיות בחיבור וגרסה המדוקדקים שבהם אתם פורסים.
+
+## היכן נחתת תצורת ה-Hook
+
+| חיבור | טווח משתמש | טווח פרויקט |
+| --- | --- | --- |
+| Claude Code | `~/.claude/settings.json` | `.claude/settings.json` (מקומי: `.claude/settings.local.json`) |
+| Codex | `~/.codex/hooks.json` | `.codex/hooks.json` |
+| GitHub Copilot CLI | `~/.copilot/hooks/failproofai.json` | `.github/hooks/failproofai.json` |
+| Cursor | `~/.cursor/hooks.json` | `.cursor/hooks.json` |
+| OpenCode | `~/.config/opencode/opencode.json` | `.opencode/opencode.json` |
+| Pi | `~/.pi/agent/settings.json` | `.pi/settings.json` |
+| Hermes | `~/.hermes/config.yaml` | — |
+| OpenClaw | `~/.openclaw/openclaw.json` | — |
+| Factory Droid | `~/.factory/hooks.json` | `.factory/hooks.json` |
+| Devin CLI | `~/.config/devin/config.json` | `.devin/config.json` |
+| Antigravity CLI | `~/.gemini/config/hooks.json` | `.agents/hooks.json` |
+| Goose | `~/.agents/plugins/failproofai/hooks/hooks.json` | `.agents/plugins/failproofai/hooks/hooks.json` |
+
+OpenCode, Pi ו-OpenClaw הם אינטגרציות פלאגין ולא אינטגרציות shell-hook: הקובץ למעלה רושם חבילת פלאגין או הרחבה, המקרא את בינארי ה-failproofai ותורגם את הפסקו.
 
 ## יכולת אכיפה
 
-"חסום" פירושו שהוצאת הגזר של המתאם הנוכחי נצרכת על ידי החיבור המצוין. חסימה לאחר הכלי עשויה להחליף את התוצאה המוצגת למודל אך לא יכולה לבטל אפקט צד של כלי שכבר התרחש.
+"Block" פירושו שגזירת החיזור של המתאם הנוכחי נצרכת על ידי החיבור שצוין. חסימה לאחר כלי עשויה להחליף את התוצאה שהוצגה למודל אך אינה יכולה להחזיר בחזור תופעת צד של כלים שכבר התרחשה.
 
-| חיבור | אירועי חסימה מאומתים | אזהרות ללא חסימה או ללא חסימה |
+| חיבור | אירועי חסימה מאומתים | הערות חסימה יחיד-צפייה או לא-חוסמים |
 | --- | --- | --- |
-| Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact`, ואירועי משימה/קונפיגורציה נוספים | `PostToolUse`, מחזור חיים הפעלה, הודעות, ואירועים לאחר כשל הם תצפיתניים. |
-| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | חסימה לאחר כלי מחליפה את התוצאה לאחר ביצוע; אירועי התחלת הפעלה וקומפקטיות הם תצפיתניים במתאם הנוכחי. |
-| GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | חסימה לאחר כלי מחליפה את התוצאה לאחר ביצוע; אירועי הפעלה והודעה הם תצפיתניים. |
-| Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` ואירועי הפעלה הם תצפיתניים. |
-| OpenCode | `PreToolUse` | אירועי לאחר כלי ומחזור חיים הם תצפיתניים; טיפול עצירה נוכחי הוא הדרכה לתור מאוחר יותר ולא שער מאומת. |
-| Pi | `PreToolUse`, `UserPromptSubmit` | אירועי לאחר כלי ומחזור חיים הם תצפיתניים; הדרכת עצירה חלה על תור מאוחר יותר. |
-| Hermes | `PreToolUse` | גזרי לאחר כלי, הפעלה וסוכן-עצירה הם לא שערים. |
-| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | אירועי לאחר כלי, הפעלה, סוכן-עצירה וקומפקטיות הם תצפיתניים. |
-| Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | גזרי לאחר כלי וסוכן-עצירה הם תצפיתניים. |
-| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, תנאי `PermissionRequest` | חוקי הרשאה לא רצים בכל מצב הרשאה; אירועי לאחר כלי והפעלה הם תצפיתניים. |
-| Antigravity CLI | `PreToolUse`, `Stop` | גזרי הנמקה משתמש ולאחר כלי הם תצפיתניים; הוראות הנמקה עדיין יכולות להיות מוזרקות. |
-| Goose | `PreToolUse` | אירועי הנמקה משתמש, לאחר כלי והפעלה הם תצפיתניים. חוק עצירה חסימה מקומי קיים במעלה הזרם אך אינו מותקן על ידי המתאם הנוכחי. |
+| Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact` ומספר אירועי משימה/תצורה | `PostToolUse`, מחזור חיים הפעלה, התראות ואירועים לאחר כשל הם תצפיתיים. |
+| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | חסימה לאחר כלי מחליפה את התוצאה לאחר ביצוע; אירועי התחלת הפעלה וקומפקטי הם תצפיתיים במתאם הנוכחי. |
+| GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | חסימה לאחר כלי מחליפה את התוצאה לאחר ביצוע; אירועי הפעלה והתראה הם תצפיתיים. |
+| Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` ואירועי הפעלה הם תצפיתיים. |
+| OpenCode | `PreToolUse` | אירועים לאחר כלי ומחזור חיים הם תצפיתיים; טיפול עצירה נוכחי הוא הנחיה לתור מאוחר יותר ולא שער מאומת. `PermissionRequest` לא פועל כלל. |
+| Pi | `PreToolUse`, `UserPromptSubmit` | אירועים לאחר כלי ומחזור חיים הם תצפיתיים; הנחיית עצירה חלה על תור מאוחר יותר. |
+| Hermes | `PreToolUse` | הערכות לאחר כלי, הפעלה וסוף סוכן-תת אינם שערים. אין אירוע `Stop` מותקן. |
+| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | אירועים לאחר כלי, הפעלה, סוף סוכן-תת וקומפקטציה הם תצפיתיים. |
+| Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | הערכות לאחר כלי וסוף סוכן-תת הן תצפיתיות. |
+| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PermissionRequest` מותנה | hooks הרשאה לא פועלות בכל מצב הרשאה; אירועים לאחר כלי והפעלה הם תצפיתיים. |
+| Antigravity CLI | `PreToolUse`, `Stop` | גזירות הנחיית משתמש ולאחר כלי הן תצפיתיות; הנחיות הנחיה עדיין יכולות להיות מוזרקות. |
+| Goose | `PreToolUse` | אירועי הנחיית משתמש, לאחר כלי והפעלה הם תצפיתיים. קיים hook עצירה חוסם מקורי במעלה אך לא מותקן על ידי המתאם הנוכחי. |
 
-יכולות תלויות גרסה. בדוק מחדש לאחר שדרוג CLI של סוכן, במיוחד כאשר מדיניות מסתמכת על התנהגות הנמקה, עצירה, הרשאה או לאחר כלי במקום השער הקדם-כלים הנפוץ.
+אירוע שחסר משתי עמודות הוא **לא מאומת** — התייחסו אליו כלא ידוע, לעולם לא כחוסם.
 
-## התקן חיבורי תפיסה וחוקים
+### תנאים על שער רשום
+
+מספר שורות למעלה הן שערים אמיתיים שעם זאת מוגבלים או מותנים. מדיניות התלויה באחד מאלה צריכה את התנאי בדיוק כמו את השורה.
+
+| חיבור | אירוע | תנאי |
+| --- | --- | --- |
+| Claude Code | `Stop`, `SubagentStop` | מוגבל על ידי `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`, ברירת מחדל 8. הושלך בנתיבי סוף-תור |
+| Cursor | `Stop` | מוגבל על ידי `loop_limit`, ברירת מחדל 5, וצרוך רק כאשר התור מסתיים — ביטול משתמש או שגיאת תור משליכים אותו |
+| Cursor | `Stop` | **Cursor Cloud Agent VMs אינם מריצים hooks `stop` או `subagentStop` כלל.** השער מכסה הפעלות מקומיות בלבד |
+| Codex | `SubagentStop` | רק ThreadSpawn subagents משדרים את זה; כל מקור subagent אחר לא מעולם מריץ את ה-hook |
+| GitHub Copilot CLI | `SubagentStop` | דלג לחלוטין עבור subagents `isSidekick` |
+| Devin CLI | `PermissionRequest` | לא מופעל תחת `--permission-mode dangerous`, ולא עבור כלים אוטומטיים קריאה-בלבד מאושרים |
+| OpenCode | `PermissionRequest` | hook מת: `permission.ask` מוצהר ותיעד במעלה אך לא מעולם מופעל, כך שהמדיניות לא אפילו מופעלת |
+| Hermes | `Stop` | אין אירוע `Stop` מותקן, בבחירה. חמישת `require-*-before-stop` הבנויים הם חלים על Hermes |
+| Goose | `Stop` | אותה תוצאה: לא `Stop` מותקן, כך שחמישת `require-*-before-stop` הבנויים הם חלים |
+
+### היכן `instruct()` מתדרדר
+
+`deny` אינה ההערכה היחידה שמדיניות מחזירה. `instruct()` נותן לסוכן הנחיה ומאפשר לפעולה להמשיך — אך לא לכל חיבור יש ערוץ לשאת אחת. היכן שאין, failproofai מאפשר את הפעולה וכותב את ההנחיה ל-stderr לקלטות של המפעיל; המודל לא רואה את זה.
+
+| חיבור | אירועים שבהם `instruct()` מתדרדר להערה stderr |
+| --- | --- |
+| Hermes | כל אירוע |
+| Goose | כל אירוע |
+| Pi | כל אירוע פרט ל-`Stop` |
+| OpenClaw | כל אירוע פרט ל-`Stop` |
+| Factory Droid | כל אירוע פרט ל-`Stop` |
+| Antigravity CLI | כל אירוע פרט ל-`Stop` ו-`UserPromptSubmit` |
+
+בכל מקום אחר, ההנחיה מוחזרת דרך ערוץ הקשר נוסף של החיבור שלו.
+
+### גרסאות שהטענות הללו נבחנו עבורן
+
+גרסה היא חלק מהטענה, לא הערת שוליים. בדקו מחדש לאחר שדרוג CLI סוכן, במיוחד כאשר מדיניות נשעה על התנהגות הנחיה, עצירה, הרשאה או לאחר כלי ולא על שער pre-tool משותף.
+
+| חיבור | גרסה שנבחנה |
+| --- | --- |
+| Claude Code | 2.1.220 |
+| Codex | `fe01054a`, עם `PostToolUse` שנבחן מחדש בשידור בחי ב-0.147.0 |
+| GitHub Copilot CLI | 1.0.71, חלק מאתרי קריאה שקראו מחדש ב-1.0.68 ו-1.0.78 |
+| Cursor | cursor-agent 2026.07.16-899851b |
+| OpenCode | 1.18.9, נבדק מחדש ב-1.14.33 |
+| Pi | 0.80.10 |
+| Hermes | hermes-agent `5771a6e` |
+| OpenClaw | v2026.7.2 |
+| Factory Droid | droid 0.175.1 |
+| Devin CLI | 3000.2.17 |
+| Antigravity CLI | agy 1.1.8 |
+| Goose | 1.43.0 |
+
+<Warning>
+  מספר שורות Codex מצטטות נתיבי מקור שנמבנו מחדש לאחר `fe01054a` וכבר לא קיימים ב-0.147.0. הם לא ידועים-שגויים, אך הם לא מאומתים כנגד כל Codex משודר והם בתור לבדיקה מחדש. רק שורת `PostToolUse` Codex נבחנה מחדש בשידור חי.
+</Warning>
+
+## מצב סוכן VS Code
+
+מצב סוכן Copilot Chat המובנה של VS Code **אינו אינטגרציה שלוש עשרה**. הוא מגלה תצורת hook מ-`.github/hooks/*.json`, `~/.copilot/hooks/*.json` ו-`~/.claude/settings.json` — בדיוק הנתיבים שה-`copilot` ו-`claude` מתקנות כבר כתובים — ומשתמש בחוזה deny בצורת Claude זהה. התקנה של אחד כבר אוכפת בתוך הפעלות מצב סוכן VS Code.
+
+התכונה היא תצוגה מקדימה וזקוקה למנוי GitHub Copilot פעיל בתוספת מצב סוכן.
+
+## התקן hooks צפייה ומדיניות
 
 <Tabs>
-  <Tab title="לוח בקרה">
-    1. פתח **ניהול → מפתחות** וצור מפתח עם `events:add` ו-`policies:pull`, בשם המכונה או הסביבה.
-    2. במכונת היעד, חבר את ה-CLI המקומי עם המפתח המוצג והתקן את חיבורי החוק.
-    3. התחל הפעלת סוכן חדשה, ואז אשר את אירועי החוק וההפעלה שלה תחת **צפוי → אירועים**.
-    4. פתח **צפוי → מדיניות** לאותו חלון זמן ואשר שהחלטת מדיניות מיוחסת למכונה.
+  <Tab title="Dashboard">
+    1. פתחו **Administration → Keys** וצרו מפתח עם `events:add` ו-`policies:pull`, שם לפי המכונה או הסביבה.
+    2. במכונה היעד, חברו את ה-CLI המקומי עם המפתח המוצג.
+    3. התחילו הפעלת סוכן חדשה, ולאחר מכן אשרו את hook וחיזור אירועי ההפעלה שלה תחת **Observe → Events**.
+    4. פתחו **Observe → policy** עבור אותו חלון זמן ואשרו שהחלטת מדיניות מיוחסת למכונה.
 
-    החיבור מתחיל עם מפתח מכונה. אשר שהוא כולל הן הרשאות הטלה וקבלת מדיניות לפני העתקת הסוד שלו.
+    התחברות מתחילה עם מפתח מכונה. אשרו שהוא כולל הרשאות אינג'סט וחלוקת מדיניות לפני העתקת הסוד שלה.
 
-    ![המגירה מפתח API החדשה המשמשת להעניק הרשאות הטלה ושילוח מדיניות.](/images/dashboard/key-create.png)
+    ![המגירה של מפתח API חדש המשמשת להעניית הרשאות אינג'סט מדיניות ו-delivery.](/images/dashboard/key-create.png)
 
-    לאחר התקנת החוקים, זרם האירועים צריך להראות אירועים חדשים מהמכונה והסביבה שחיברת.
+    לאחר התקנת ה-hooks, זרם Events צריך להציג אירועים חדשים מהמכונה והסביבה שחברתם.
 
-    ![זרם האירועים הלייב המשמש לאישור הדוח החדש של חיבור.](/images/dashboard/events-stream.png)
+    ![זרם Events החי המשמש לאימות שחיבור harness שהותקן לאחרונה מדווח.](/images/dashboard/events-stream.png)
 
-    לבסוף, אשר שהחלטות מדיניות מיוחסות לאותה מכונה. זה מאשר שהחיבור דוגל בפעילות מדיניות כמו גם אירועי עקיבה.
+    לבסוף, אשרו שהחלטות מדיניות מיוחסות לאותה מכונה. זה מאשר שהחיבור מדווח על פעילות מדיניות כמו גם אירועי זיהוי.
 
-    ![דף המדיניות המשמש לאימות החלטות מדיניות מחיבור מחובר חדש.](/images/dashboard/policy-observe.png)
+    ![דף המדיניות המשמש לאימות החלטות מדיניות מחיבור harness המחובר לאחרונה.](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
-    התקן חוקים לכל חיבור שזוהה:
+    `failproofai config` חוטים hooks לכל CLI סוכן נתמך שהוא מוצא, מתקין את הדיימון, וחיבורי Cloud כאשר מפתח קיים:
 
     ```bash
-    failproofai config \
-      --connect https://app.befailproof.ai \
-      --token <machine-key>
-    failproofai policies --install
+    failproofai config --token <machine-key>
+    failproofai policies add FailproofAI/policies
     ```
 
-    או עבור חיבורים ממוקדים וטווח קונפיגורציה:
+    ההגדרה בוחרת אין מדיניויות, וזו הסיבה שהפקודה השנייה שם.
+
+    לחוט חיבור אחד ביד — עם `--cli` הושמט, `--install` מגלה מה מותקן ו­­­asks:
 
     ```bash
     failproofai policies --install \
@@ -82,9 +166,9 @@ icon: "plug-zap"
       --scope user
     ```
 
-    טווח פרויקט שומר קונפיגורציה חוק עם מאגר. טווח משתמש מכסה עבודה על פני מאגרים. Claude Code תומך גם בטווח מקומי; התמיכה משתנה לפי חיבור וה-CLI דוחה שילובים בלתי נתמכים.
+    טווח פרויקט שומר תצורת hook עם מאגר. טווח משתמש מכסה עבודה על פני מאגרים. בדוק את טבלת ה-scope למעלה לפני שילוב `--cli` ו-`--scope`; ה-CLI דוחה זוג לא נתמך.
 
-    אשר את המכונה והאירועים שלה:
+    אשרו את המכונה ואירועיה:
 
     ```bash
     failproofai config --status
@@ -94,16 +178,20 @@ icon: "plug-zap"
   </Tab>
 </Tabs>
 
-## הוסף נתיב הפעלה שאינו ברירת מחדל
+<Warning>
+  בהרצות headless `copilot -p` שהתחילו מתיקייה טרייה, הפרויקט-scope `.github/hooks/failproofai.json` **לא** נטען. התייחסו לטווח משתמש כנקודת אכיפה אמינה עבור Copilot ב-CI עד שזה מאומת אחרת.
+</Warning>
+
+## הוסף נתיב הפעלה לא-ברירת מחדל
 
 <Tabs>
-  <Tab title="לוח בקרה">
-    נתיבים נוספים רשומים במכונה, לא בקלאוד. לאחר הוספת אחד, פתח **צפוי → הפעלות**, סנן לסביבת המכונה, ואשר שהפעלות מהנתיב החדש מופיעות. פתח הפעלה וחפש את הסוכן, החיבור וחותמות הזמן של אירועים לפני הסתמכות עליה בביקורת.
+  <Tab title="Dashboard">
+    נתיבים נוספים רושמים על המכונה, לא בעננו. לאחר הוספת אחד, פתחו **Observe → Sessions**, סננו לסביבת המכונה, ואשרו הפעלות מהנתיב החדש מופיעות. פתחו הפעלה ובדקו את הסוכן, החיבור, וחותמות זמן אירוע לפני התאמה עליו בביקורת.
 
-    ![רשימת ההפעלות מסוננת לסביבה המקבלת נתונים מנתיב התפיסה הנוסף.](/images/dashboard/sessions-list.png)
+    ![רשימת ה-Sessions מסוננת לסביבה שמקבלת נתונים מנתיב צפייה נוסף.](/images/dashboard/sessions-list.png)
   </Tab>
   <Tab title="CLI">
-    הוסף נתיב עם תווית אופציונלית, ואז בדוק את הנתיבים המוגדרים:
+    הוסף נתיב עם תווית אופציונלית, ולאחר מכן בחן את הנתיבים המוגדרים:
 
     ```bash
     failproofai harness add-path claude checkout=/srv/checkout/.claude
@@ -113,9 +201,11 @@ icon: "plug-zap"
     ```
 
     הסר נתיב עם `failproofai harness remove-path claude checkout`.
+
+    התווית מרחב שמות זיהויות סוכן נגזרות. שתי מיקומים המחזיקים עותקים של אותו פרויקט מפיקים את אותו id מהתמליל, כך בלא תווית הם מתמזגים לסוכן אחד. שורשים חופפים ותוויות כפולות מסורבות — ראה [ה-CLI reference](/he/reference/failproof-cli) למה כל דחיה קיימת.
   </Tab>
 </Tabs>
 
 <Tip>
-  הפעל הפעלה חדשה אחת לאחר התקנה. אשר גם את זרם האירועים הלייב וגם החלטת מדיניות בפועל לפני הרחבת ההוצאה.
+  הרץ הפעלה חדשה אחת לאחר התקנה. אשרו גם את זרם האירועים החי וגם החלטת מדיניות ממשית לפני הרחבת ההטבעה.
 </Tip>

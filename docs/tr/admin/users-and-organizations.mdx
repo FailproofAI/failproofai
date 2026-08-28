@@ -1,21 +1,16 @@
 ---
 title: "Kullanıcılar ve organizasyonlar"
-description: "Üyeliği kontrol edin ve her organizasyonun verilerini ve işlemlerini sınırlandırın."
+description: "Üyeliği kontrol edin ve her organizasyonun verilerini ve işlemlerini kapsamlı tutun."
 icon: "users"
 ---
 
-Organizasyonlar oturumları, değerlendirmeleri, denetim günlüklerini, sorunları, uyarıları, sorguları, panoları, kullanıcıları ve anahtarları izole eder. İdari kaynakları değiştirmeden önce etkin organizasyonu doğrulayın.
+Organizasyonlar oturumları, değerlendirmeleri, denetimleri, sorunları, uyarıları, sorguları, panoları, kullanıcıları ve anahtarları izole eder. Herhangi bir yönetim kaynağını değiştirmeden önce etkin organizasyonu doğrulayın.
 
-## Üyeleri ve organizasyonları yönetin
+## Organizasyonu seçin
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Cloud kenar çubuğunun üst kısmındaki organizasyon değiştiricisini kullanarak organizasyonları değiştirin.
-    2. Üyeleri aramak veya aktif duruma ve role göre filtrelemek için **Administration → Users** bölümüne gidin.
-    3. **new user** seçeneğini belirleyin, e-posta adresini girin, bir izin seti seçin ve gerekirse geçersiz kılmaları ayarlayın.
-    4. Bir kullanıcıyı daha sonra açarak yetkiyi güncelleyin, oturum açmayı devre dışı bırakın veya hesabı yeniden etkinleştirin.
-
-    ![Üye e-posta adreslerini, izin setlerini ve düzenleme ve devre dışı bırakma kontrollerini gösteren Users sayfası.](/images/dashboard/users.png)
+    Cloud kenar çubuğunun üstündeki organizasyon değiştiricisini kullanın. Bunun altındaki her şey — **yönetim** alanındaki her sayfa dahil — o organizasyonu okur ve yazar.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -23,22 +18,62 @@ Organizasyonlar oturumları, değerlendirmeleri, denetim günlüklerini, sorunla
     fp orgs switch reliability-team
     fp orgs current
     fp orgs perms
+    ```
 
+    Slug olmadan `fp orgs switch` kullanıldığında ok tuşları seçici açılır ve geçerli organizasyondan başlar; etkileşimli olmayan bir çalıştırma numaralı isteme geri döner ve `--json` altında bir slug gereklidir. Seçim `~/.failproofai/fpcli/cli-auth.json` dosyasında kalıcı hale gelir, böylece sonraki komutlar bunu etkin kiracı olarak gönderir. Tek bir komut için `--org <slug>` veya `FP_ORG` ile geçersiz kılın.
+  </Tab>
+</Tabs>
+
+<Note>
+  Her `fp orgs` komutu oturum açmış bir insan gerektirir ve API anahtarı altında reddedilir, çünkü org üyeliği bir kişiye aittir ve anahtar zaten bir organizasyon için hareket eder. Aşağıdaki `fp users` komutları her iki şekilde de çalışır.
+</Note>
+
+## Üyeleri yönetin
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **yönetim → kullanıcılar** sayfasına gidin ve üyeleri e-posta ile arayın veya listeyi `korunan`, `yönetici`, `standart` ve `salt okunur` filtre butonları ile daraltın.
+    2. **yeni kullanıcı** seçeneğini seçin, e-posta girin, bir izin seti seçin ve gerekirse üye başına geçersiz kılmaları ayarlayın.
+    3. İzinleri değiştirmek, oturum açmayı devre dışı bırakmak veya hesabı yeniden etkinleştirmek için daha sonra bir üyeyi açın.
+
+    ![E-posta arama kutusu, filtre butonları ve kaynaklar tarafından gruplandırılmış izinleri gösteren bir üye kartı içeren kullanıcılar sayfası.](/images/dashboard/users.png)
+
+    Bu çerçevede izin butonları `incidents:*` ile `issues:*` yeniden adlandırılmadan öncedir; [ortak izinler](/tr/admin/keys-and-permissions#common-permissions) listesi günceldir.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp users list
+    fp users list --active-only
     fp users create engineer@example.com --permission-set standard
     fp users show engineer@example.com
     fp users update engineer@example.com --add audits:write
     fp users disable engineer@example.com
     fp users enable engineer@example.com
     ```
+
+    Üyeler e-posta ile adreslendirilir ve büyük-küçük harf duyarsız bir şekilde çözümlenir, bu nedenle `fp users show Alice.Chen@Example.com` ve `fp users create alice.chen@example.com` aynı kişiye atıfta bulunur.
   </Tab>
 </Tabs>
 
-Yöneticiler kullanıcıları oluşturabilir, güncelleyebilir, devre dışı bırakabilir ve yeniden etkinleştirebilir, ardından rollerine uygun izin setini atayabilir. API devre dışı bırakma işlemi için bir silme işlemi kullanır, ancak hesabı veya üyelik kaydını kaldırmaz.
+### İzinler ve her eylemin ihtiyaç duyduğu şey
+
+Üye izinleri anahtarlarla aynı aritmetik kullanır: etkili izinler `(set ∪ added) − removed` şeklindedir ve `--add` / `--remove` noktalı eylemlerin genişletildiği kompakt `slug:action.action` jetonlarını alırlar. Bkz. [anahtarlar ve izinler](/tr/admin/keys-and-permissions).
+
+| Eylem | İzin | Notlar |
+| --- | --- | --- |
+| `fp users list` / `show` | `users:read` | `--active-only` devre dışı üyeleri gizler. |
+| `fp users create` | `users:create` | `--permission-set` rolü başlatır; `--add` / `--remove` geçersiz kılmaları katmanlar. |
+| `fp users update` | `users:update` | `--permission-set` üyenin üye başına geçersiz kılmalarını **değiştirir**; `--add` / `--remove` tek başına mevcut izinlerine karşı artan işlemdir. |
+| `fp users disable` / `enable` | `users:delete` | Her ikisi de — etkinleştirme dahil — bilerek verin. |
+
+Devre dışı bırakma iki durumu kesin bir şekilde reddeder, bir doğrulama mesajı yerine Forbidden hatası olarak: **korunan** üye devre dışı bırakılamaz ve kendi hesabınızı devre dışı bırakamazsınız. Zaten devre dışı bırakılan bir üyeyi devre dışı bırakmak veya zaten etkin olan bir üyeyi etkinleştirmek sakin bir işlem değildir. API, devre dışı bırakma için bir silme işlemi kullanır, ancak hesabı veya üyelik kaydını kaldırmaz.
+
+İki organizasyon ayarı üyeliği yönetir: `default_user_permissions` yeni bir davetiye için izin setini önceden seçer ve `allowed_sign_ins` hangi adreslerin hiç olmazsa bir oturum açma kodu alabileceğini belirler. [Ayarlar sayfasından](/tr/admin/settings-and-security) bunları yönetin.
 
 <Warning>
-  Bir kullanıcıyı devre dışı bırakmak o kimliğin yalnızca seçili olan organizasyona değil, her organizasyonda oturum açmasını engeller. Yeniden etkinleştirmek genel oturum açmayı ve üyenin bu organizasyondaki izinlerini geri yükler.
+  Bir kullanıcıyı devre dışı bırakmak, o kimliği yalnızca şu anda seçili olan organizasyonun değil, her organizasyonda oturum açmaktan engeller. Yeniden etkinleştirmek genel oturum açmayı ve üyenin bu organizasyondaki izinlerini geri yükler.
 </Warning>
 
 <Tip>
-  Hizmet hesaplarına bir iş yüküne ve sahibine bağlı açıklayıcı adlar verin. Anahtarları organizasyonlar arasında veya kişiler ve makineler arasında paylaşmaktan kaçının.
+  Hizmet hesaplarına bir iş yüküne ve bir sahibine bağlı açıklayıcı adlar verin. Bir anahtarı organizasyonlar arasında veya bir kişi ile makine arasında paylaşmayın.
 </Tip>

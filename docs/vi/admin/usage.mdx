@@ -1,21 +1,25 @@
 ---
+---
 title: "Sử dụng"
-description: "Kiểm tra mức tiêu thụ của tổ chức và cửa sổ thanh toán đang hoạt động."
+description: "Kiểm tra lượng tiêu thụ của tổ chức cho cửa sổ đo lường 30 ngày hiện tại."
 icon: "chart-no-axes-combined"
 ---
 
-Sử dụng hiển thị mức tiêu thụ cho tổ chức hiện tại và các cửa sổ thanh toán của nó. Sử dụng nó để hiểu cách triển khai sản xuất, khối lượng phiên ghi âm, đánh giá và tần suất kiểm toán ảnh hưởng đến gói của bạn.
+Usage hiển thị những gì tổ chức hiện tại đã đo lường trong cửa sổ 30 ngày của nó. Cửa sổ được cố định và neo với mỗi tổ chức, và usage chỉ đọc: nó không áp dụng và hiển thị giới hạn, hạn ngạch hoặc ngưỡng kế hoạch. Cả hai giao diện đều cho biết — bảng điều khiển CLI in "read-only usage, no limits applied".
 
-## Xem xét mức sử dụng
+## Xem xét sử dụng
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Đi tới **Administration → Usage**.
-    2. Xác nhận tổ chức và cửa sổ đo lường.
-    3. Xem xét tiếp nhận, phiên, đánh giá, chỉ số, kiểm toán, phát hiện, cảnh báo, người dùng và khóa.
-    4. So sánh công việc kiểm toán đã bắt đầu và hoàn thành khi mức sử dụng kiểm toán có vẻ bất thường.
+    1. Đi tới **admin → usage**.
+    2. Xác nhận tổ chức và cửa sổ đo lường — tiêu đề hiển thị điểm bắt đầu và kết thúc của cửa sổ, ngày trong đó, và bao nhiêu đã trôi qua.
+    3. Đọc khối chính: sự kiện nhập vào, phiên, agents và environments.
+    4. Đọc hai đường ống: evaluations (có điểm và metric) và audits (có issues và alerts), mỗi cái hiển thị các lần chạy đã hoàn thành so với lần chạy đã bắt đầu.
+    5. Đọc các khối workspace và access: saved queries, dashboards, alerts, unique issues, members và API keys.
 
-    ![Trang Usage hiển thị cửa sổ đo lường, sự kiện được ghi lại, đường ống đánh giá và kiểm toán, tài nguyên không gian làm việc, thành viên và khóa API.](/images/dashboard/usage-overview.png)
+    Các con số được lưu vào bộ nhớ đệm, không phải trực tiếp. Sử dụng điều khiển làm mới ở góc trên cùng bên phải sau khi thay đổi mà bạn mong muốn thấy.
+
+    ![Trang usage hiển thị cửa sổ đo lường, events captured, các đường ống evaluation và audit, workspace resources, members và API keys.](/images/dashboard/usage-overview.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -23,15 +27,52 @@ Sử dụng hiển thị mức tiêu thụ cho tổ chức hiện tại và các
     fp --json usage
     fp --org reliability-team --json usage
     ```
+
+    `fp usage` cần `usage:read` và chạy trong API key, làm cho nó trở thành lệnh phù hợp cho cron báo cáo.
+
+    Với `--json` nó trả về phản hồi dashboard không thay đổi: `org_id`, `billing_anchor`, `window`, `usage`, `calculated_at` và `stale_after`. `calculated_at` và `stale_after` là cách bạn biết được con số cũ bao lâu.
+
+    `fp usage` không có flag của riêng nó — chỉ có global `--json` và `--org`. Nó báo cáo cửa sổ hiện tại và không có gì trước nó, vì vậy hãy giữ lịch sử của riêng bạn bằng cách chạy nó theo lịch trình và lưu trữ payload `--json` thay vì mong đợi truy vấn một cửa sổ trước đó sau này.
+
+    ```bash
+    fp --json usage | jq '.usage.events_ingested'
+    ```
   </Tab>
 </Tabs>
 
+### Metric keys
+
+Mọi thứ dưới `usage` trong payload JSON, vì vậy một script có thể đặt tên một trường thay vì phân tích một bảng điều khiển.
+
+| Group | Keys |
+| --- | --- |
+| Telemetry | `events_ingested`, `sessions`, `agents`, `environments` |
+| Evaluations | `evaluation_runs`, `evaluation_finishes`, `evaluations`, `metrics` |
+| Audits | `audit_runs`, `audit_finishes`, `issues_created`, `alerts_created` |
+| Workspace | `queries_created`, `dashboards_created` |
+| Access | `users_active`, `users_created`, `keys_active`, `keys_created` |
+
+Mỗi đường ống báo cáo số lượng bắt đầu và hoàn thành riêng biệt, vì vậy khoảng cách giữa `audit_runs` và `audit_finishes` có nghĩa là công việc bắt đầu nhưng không hoàn thành — đáng để kiểm tra trước khi bạn đọc bất cứ điều gì vào trong số lượng issue dưới nó.
+
 ## Điều tra một thay đổi
 
-1. Xác nhận tổ chức đang hoạt động và cửa sổ.
-2. So sánh mức tăng với khối lượng phiên theo môi trường.
-3. Kiểm tra xem một tích hợp mới có bắt đầu gửi phiên ghi âm hay không.
-4. Xem xét các thay đổi trong tần suất đánh giá viên và kiểm toán.
-5. So sánh với các giới hạn trong gói giá hiện tại.
+Lượng nhập vào được quyết định cho từng máy, không phải ở trung tâm. Bắt đầu từ tổ chức và cửa sổ, sau đó làm việc thông qua những gì đã thay đổi trên các máy báo cáo vào đó.
 
-CLI trả về cùng một bản tóm tắt cho các tập lệnh.
+| Nguyên nhân | Nơi để kiểm tra | Những gì cần thay đổi |
+| --- | --- | --- |
+| Một máy đang gửi session transcripts | `collector.sessions` trong `~/.failproofai/config.json` của máy đó | Đặt nó thành `false` để chỉ gửi decisions |
+| Hook activity đang được gửi đầy đủ | `collector.hooks_verbosity` trong cùng một tệp | `decisions` cho phép aggregates mỗi phút; `off` dừng hook events hoàn toàn |
+| Một vị trí capture mới đã được thêm vào | `failproofai harness list` | Xóa nó bằng `failproofai harness remove-path <harness> <path or label>` |
+| History đã được gửi lại | Các lần chạy `failproofai backfill` của máy | Re-sends khử trùng trên hash nội dung và sập vào các hàng đã có, vì vậy chúng không được tính hai lần |
+| Một integration mới bắt đầu báo cáo | Số lượng `agents` và `environments`, và danh sách sessions | Scope cài đặt collector của máy mới trước khi triển khai |
+
+Usage không so sánh với bất kỳ kế hoạch nào. Làm điều đó ngoài sản phẩm.
+
+<Columns cols={2}>
+  <Card title="Settings and security" icon="lock-keyhole" href="/vi/admin/settings-and-security">
+    Các cài đặt xử lý dữ liệu trên mỗi máy đằng sau các con số này.
+  </Card>
+  <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/vi/reference/cloud-cli">
+    Toàn bộ bề mặt `fp`, bao gồm cài đặt và đăng nhập.
+  </Card>
+</Columns>

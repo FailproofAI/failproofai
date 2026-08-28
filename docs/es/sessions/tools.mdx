@@ -1,25 +1,38 @@
 ---
 title: "Herramientas"
-description: "Encuentra herramientas lentas, con errores o sobreutilizadas en las sesiones de agentes."
+description: "Encuentra herramientas lentas, fallidas o sobreutilizadas en las ejecuciones de agentes."
 icon: "wrench"
 ---
 
-La sección de herramientas agrupa las llamadas a herramientas entre sesiones para que puedas comparar la latencia y la distribución de llamadas.
+Herramientas muestra qué llaman los agentes, con qué frecuencia fallan las llamadas y qué sesiones se ven afectadas.
+
+Los nombres de las herramientas provienen de cada agente, por lo que la misma capacidad puede tener nombres distintos. Por ejemplo, una llamada de shell puede aparecer como `Bash`, `exec`, `Shell`, `terminal` o `run_command`. Ejecuta `fp list tools` antes de crear un filtro.
 
 <Tabs>
-  <Tab title="Panel de control">
-    1. Ve a **Observe → Tools**.
-    2. Filtra por entorno, nombre de herramienta, agente o ID de sesión.
-    3. Revisa la latencia y la distribución de herramientas.
-    4. Selecciona un punto del gráfico o un segmento de herramienta para abrir los eventos y sesiones correspondientes.
+  <Tab title="Dashboard">
+    Ve a **Observe → Tools**. Filtra por entorno, herramienta, agente o sesión.
 
-    ![La página de herramientas mostrando la latencia, el desglose de éxitos y errores, y la distribución de llamadas a herramientas.](/images/dashboard/tools.png)
+    ![La página de Herramientas mostrando latencia, desglose de éxitos y fallos, y distribución de llamadas a herramientas.](/images/dashboard/tools.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp list tools
-    fp events --event-type tool_use,tool_result --env production --since 24h
-    fp --json events --full --session-id <session-id> --all
+    fp events --event-type tool_use,tool_result --since 24h
+    fp errors --event-type tool_result --since 24h
+    fp --json events --full --event-type tool_use,tool_result --session-id <session-id> --all --limit 2000
     ```
+
+    Usa `--full` cuando necesites campos del payload como la duración por llamada.
   </Tab>
 </Tabs>
+
+Usa esta página para encontrar fallos repetidos, comparar ejecuciones exitosas y fallidas, o confirmar que una herramienta objetivo de una política realmente se está utilizando.
+
+<CardGroup cols={2}>
+  <Card title="Errores" icon="circle-alert" href="/es/sessions/errors">
+    Abre las sesiones asociadas a fallos de herramientas.
+  </Card>
+  <Card title="Hooks" icon="webhook" href="/es/sessions/hooks">
+    Consulta los nombres canónicos de herramientas y las decisiones de política.
+  </Card>
+</CardGroup>

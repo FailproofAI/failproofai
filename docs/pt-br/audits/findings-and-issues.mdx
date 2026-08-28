@@ -4,7 +4,16 @@ description: "Transforme evidências de auditoria em trabalho de remediação ra
 icon: "clipboard-check"
 ---
 
-Uma descoberta é a declaração baseada em evidências da auditoria sobre uma falha. Um problema é o fluxo de trabalho durável para responder a ela.
+Uma descoberta é a afirmação baseada em evidências da auditoria sobre uma falha. Um problema é o fluxo de trabalho duradouro para responder a ela.
+
+Os dois objetos usam vocabulários diferentes e ficam lado a lado, por isso vale a pena fixá-los na mente antes de prosseguir:
+
+| | Descoberta (Finding) | Problema (Issue) |
+| --- | --- | --- |
+| Estados | `open`, `recurring`, `resolved`, `dismissed`, `muted` | `firing`, `acknowledged`, `resolved` |
+| Flag de filtro | `--status` | `--state` |
+| Identificador | ID da descoberta | ID do problema |
+| Listagem padrão | O conjunto ativo: open e recurring | Mais recentes primeiro |
 
 ## Triagem e atribuição do trabalho
 
@@ -12,24 +21,24 @@ Uma descoberta é a declaração baseada em evidências da auditoria sobre uma f
   <Tab title="Dashboard">
     1. Abra **Analyze → Audits**, escolha uma execução concluída e selecione uma descoberta para inspecionar sua análise, recomendação, sessões e consultas de evidência.
     2. Reconheça, atribua, descarte, silencie, resolva ou reabra a descoberta após verificar suas evidências.
-    3. Vá para **Analyze → Issues** e filtre a caixa de entrada durável por status, severidade ou responsável.
+    3. Vá para **Analyze → Issues** e filtre a caixa de entrada duradoura por estado, severidade ou responsável.
     4. Abra o problema para atribuí-lo, adicionar comentários ou assinantes, e resolva-o após a correção ser verificada.
 
     Comece pelo resumo da descoberta. Confirme se a descrição da falha, a resposta recomendada, a severidade e o ranking estão de acordo com as sessões que você esperava que a auditoria examinasse.
 
     ![Uma descoberta de auditoria com severidade, contagem de ocorrências, análise de causa raiz, ação recomendada, fatores de ranking e evidências.](/images/dashboard/audit-finding.png)
 
-    Em seguida, abra uma sessão afetada em vez de decidir apenas com base no resumo. O rastreamento vinculado deve mostrar o evento exato e o payload que sustentam a descoberta.
+    Em seguida, abra uma sessão afetada em vez de decidir apenas com base no resumo. O rastreamento vinculado deve mostrar o evento exato e o payload que suportam a descoberta.
 
-    ![Uma sessão vinculada a uma descoberta de auditoria, aberta no erro relevante com seus metadados de evento e payload bruto.](/images/dashboard/audit-linked-session.png)
+    ![Uma sessão vinculada a partir de uma descoberta de auditoria, aberta no erro relevante com seus metadados de evento e payload bruto.](/images/dashboard/audit-linked-session.png)
 
-    Após verificar as evidências, use Issues para atribuir um responsável à resposta e acompanhá-la de forma independente de execuções futuras de auditoria.
+    Após verificar as evidências, use Issues para atribuir um responsável à resposta e acompanhá-la independentemente de futuras execuções de auditoria.
 
-    ![A caixa de entrada de Issues mostrando trabalhos em andamento, reconhecidos e resolvidos, com severidade e responsável.](/images/dashboard/incidents.png)
+    ![A caixa de entrada de Issues mostrando trabalhos em firing, acknowledged e resolved com severidade e responsabilidade.](/images/dashboard/incidents.png)
 
-    Abra o problema para registrar notas de investigação, notificar assinantes e preservar o histórico da resposta. Resolva-o somente após a remediação ser implantada e verificada.
+    Abra o problema para registrar anotações de investigação, notificar assinantes e preservar o histórico de resposta. Resolva-o somente após a remediação ser implantada e verificada.
 
-    ![Visão detalhada de um problema com sua origem, evidências de violação, responsáveis, assinantes, linha do tempo e comentários.](/images/dashboard/incident-detail.png)
+    ![Uma visão detalhada de um problema com sua origem, evidências de violação, responsáveis, assinantes, linha do tempo e comentários.](/images/dashboard/incident-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -37,43 +46,69 @@ Uma descoberta é a declaração baseada em evidências da auditoria sobre uma f
     fp audits finding <finding-id>
     fp audits ack <finding-id> --reason "owner assigned"
     fp audits assign <finding-id> --to engineer@example.com
+    fp audits mute <finding-id> --reason "expected in staging" --yes
+    fp audits dismiss <finding-id> --reason "false positive" --yes
+    fp audits resolve <finding-id> --yes
+    fp audits reopen <finding-id>
 
-    fp issues list
+    fp issues list --state firing
     fp issues show <issue-id>
+    fp issues ack <issue-id>
     fp issues assign <issue-id> --assignee engineer@example.com
     fp issues comment-add <issue-id> --body "policy is in observe mode"
     fp issues resolve <issue-id> --yes
     ```
 
-    Use `fp issues subscribe <issue-id>`, `fp issues unsubscribe <issue-id>` e `fp issues subscribers <issue-id>` para gerenciar observadores.
+    `mute`, `dismiss` e `resolve` suprimem ou fecham uma descoberta, por isso cada um pede confirmação antes — passe `--yes` em scripts. `ack`, `reopen` e `assign` são operações de organização reversíveis e atuam imediatamente. `ack`, `mute` e `dismiss` aceitam `--reason`, e vale a pena passar: ele é mantido como feedback duradouro na descoberta, não gravado em um log e esquecido. `resolve`, `reopen` e `assign` não aceitam reason.
 
-    Consulte a [referência de auditoria e problemas do Cloud CLI](/pt-br/reference/cloud-cli#audits) para descobertas de auditoria e [`fp issues`](/pt-br/reference/cloud-cli#issues) para gerenciamento de problemas.
+    A atribuição funciona de forma diferente em cada objeto. `fp audits assign` exige `--to <email>` e define um único responsável; executar novamente reatribui. `fp issues assign` aceita `--assignee` repetível e **substitui** a lista inteira, portanto omiti-lo limpa todos os responsáveis.
+
+    Use `fp issues comment-list <issue-id>`, `fp issues count --state firing`, e `fp issues subscribe`/`unsubscribe`/`subscribers <issue-id>` para o restante da interface de problemas.
+
+    Consulte a [referência de auditoria e issues do Cloud CLI](/pt-br/reference/cloud-cli#audits) para descobertas de auditoria e [`fp issues`](/pt-br/reference/cloud-cli#issues) para gerenciamento de problemas.
   </Tab>
 </Tabs>
 
-## Revisão de uma descoberta
+## Revisar uma descoberta
 
-Confirme que ela contém:
+Dois campos decidem o que fazer com ela antes de qualquer outra coisa.
 
-- Um modo de falha estável, não apenas um título isolado
+**`kind`** separa uma `failure` (algo deu errado) de uma violação de `policy` (uma regra que foi quebrada) e uma `improvement` (o trabalho poderia ser feito melhor). Ele é renderizado como um badge na descoberta. Uma descoberta do tipo `policy` é aquela que uma política pode fechar; as outras duas geralmente precisam de uma mudança no fluxo de trabalho, um alerta ou uma intervenção humana.
+
+**`priority`** é uma pontuação de 0 a 1, recalculada a cada execução, e é a ordem de classificação da fila de descobertas. A página da descoberta a detalha em **why it ranks here**, como valor × peso:
+
+| Fator | Peso |
+| --- | --- |
+| Coverage | 0,30 |
+| Severity | 0,25 |
+| Magnitude | 0,25 |
+| Recency | 0,20 |
+
+Em seguida, confirme se a descoberta contém:
+
+- Um modo de falha estável, não apenas um título pontual
 - Severidade e impacto operacional
 - IDs de sessões afetadas ou consultas de suporte
 - Contexto suficiente para reproduzir o comportamento
-- Uma resposta proposta compatível com as evidências
+- Uma resposta proposta que corresponda às evidências
 
-## Usando um problema para gerenciar a resposta
+Para reproduzir uma descoberta, extraia-a completa: `fp --json audits finding <id>` retorna o registro completo com seus campos `evidence`, `evidence_queries` e `scope` intactos, que é o que a análise realmente executou. `--json` é uma opção global, portanto vai antes do comando.
 
-Crie ou vincule um problema quando a descoberta precisar de atribuição, discussão, mudanças de status, comentários ou assinantes. Problemas também podem representar incidentes de alerta e ocorrências relatadas manualmente, por isso ficam em resposta a auditorias e não na navegação principal.
+## Usar um problema para gerenciar a resposta
+
+Crie ou vincule um problema quando a descoberta precisar de atribuição, discussão, mudanças de status, comentários ou assinantes. O campo `source` de um problema registra sua origem — `audit`, `alert` ou `manual` — e é por isso que o dashboard oferece aos problemas sua própria visão **Issues** em vez de aninhá-los sob uma auditoria.
+
+A assinatura é parcialmente automática. As pessoas são inscritas quando reconhecem um problema, comentam nele, são atribuídas a ele ou o abrem — `fp issues subscribers` lista apenas os assinantes ativos, portanto não é apenas a lista de inscrições manuais. Um comentário envia e-mail para todos os assinantes ativos, e comentar requer apenas `issues:read`, de modo que um revisor somente-leitura nunca é um observador silencioso.
 
 Resolva o problema quando a remediação for implantada e verificada. Resolva a descoberta quando o modo de falha tiver sido tratado para a população da auditoria. Esses momentos podem ser diferentes.
 
-## Transformando um problema em rascunho de política
+## Transformar um problema em um rascunho de política
 
 <Tabs>
   <Tab title="Dashboard">
     1. Abra o problema e verifique sua descoberta, sessões citadas, causa raiz e recomendação.
     2. Selecione **generate policy** e revise o resultado de candidatura e a intenção de aplicação proposta. Um resultado **no policy** significa que o comportamento pode exigir um alerta, mudança de fluxo de trabalho ou resposta humana.
-    3. Selecione **write this policy**, depois revise e teste o código gerado em **Admin → policy editor** antes de selecionar **publish version**. Use **open the editor anyway** quando discordar da verificação de candidatura.
+    3. Selecione **write this policy**, depois revise e teste o código-fonte gerado em **Admin → policy editor** antes de selecionar **publish version**. Use **open the editor anyway** quando discordar da verificação de candidatura.
     4. Vá para **Admin → enforcement**, implante a versão no modo **observe** e verifique suas decisões em **Observe → policy** antes de aplicá-la.
 
     O título do problema, a descrição da descoberta, a causa raiz, a recomendação e a intenção de candidatura ajudam a compor o rascunho. Nada é publicado ou implantado automaticamente.
@@ -83,14 +118,22 @@ Resolva o problema quando a remediação for implantada e verificada. Resolva a 
 
     ```bash
     fp issues show <issue-id>
-    fp audits finding <finding-id>
+    fp --json audits finding <finding-id>
     fp events --session-id <session-id> --full --all
     ```
 
-    Candidatura de política, publicação no Cloud e implantação em frota são fluxos de trabalho do dashboard. Use `failproofai policies --install --custom <file>` quando quiser validar o código de política equivalente localmente primeiro.
+    O dashboard é uma via; o CLI é a outra. `fp policies compose "<o que deve fazer>"` cria um rascunho de política, `fp policies publish <id> ./policy.mjs` gera uma versão (publicar não implanta nada), e `fp fleet deploy <machine> --add <id>:observe` coloca a política em uma máquina em modo sombra. O sufixo `:observe` é obrigatório — um `--add <id>` simples aplica imediatamente. Leia o que teria feito com `fp guardrails summary --since 24h`, depois promova com `--add <id>:enforce`.
+
+    Para testar o código-fonte de política equivalente na sua própria máquina primeiro, aponte o CLI local para o arquivo:
+
+    ```bash
+    failproofai policies -i -c ./checkout-policies.js
+    ```
+
+    Um arquivo cujo nome termina em `policies.js`, `policies.mjs` ou `policies.ts`, colocado em `.failproofai/policies/` no projeto ou em `~/`, é carregado a cada evento de hook sem nenhuma flag adicional.
   </Tab>
 </Tabs>
 
 <Card title="Criar uma política" icon="shield-plus" href="/pt-br/policies/editor">
-  Converta um padrão de ação confirmado e recorrente em uma versão de política.
+  Converta um padrão de ação confirmado e repetível em uma versão de política.
 </Card>

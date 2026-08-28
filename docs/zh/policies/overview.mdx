@@ -1,63 +1,76 @@
 ---
 title: "策略"
-description: "在已知故障重复发生之前，观察、引导或阻止代理操作。"
+description: "在已知故障重复发生之前引导或阻止智能体。"
 icon: "shield-check"
 ---
 
-策略评估代理钩子事件并返回三种决策之一：
+策略监视智能体的操作并返回以下三种决策之一：
 
-- `allow` 允许操作继续执行。
-- `instruct` 向代理提供纠正指导。
-- `deny` 以给定原因阻止操作。
+- `allow` 继续执行。
+- `instruct` 在其运行环境支持的情况下向智能体提供指导。
+- `deny` 阻止该操作。
 
-## 使用三个策略界面
+将策略用于已知的、可重复出现的行为：删除受保护的文件、暴露密钥、推送到错误的分支，或修改生产基础设施。
 
-<Tabs>
-  <Tab title="仪表板">
-    1. 前往 **观察 → 策略**，筛选并查看会话中的策略决策。
-    2. 前往 **管理 → 策略编辑器**，编写、验证、发布、禁用或查看不可变版本。
-    3. 前往 **管理 → 执行**，将版本和效果分配给机器。
+## 将策略添加到此机器
 
-    在编写或更改执行策略之前，使用策略页面了解当前已匹配的内容。
+安装时默认不选择任何策略包。安装完成后添加 Failproof AI 包：
 
-    ![策略页面显示决策总数以及本地和云管理策略映射。](/images/dashboard/policy-observe.png)
+```bash
+failproofai config
+failproofai policies add FailproofAI/policies
+failproofai policies
+```
 
-    编辑器是将故障条件转化为源码、验证并发布不可变版本的地方。
+该软件包不包含特权内置包，我们的包与其他任何人的包安装方式相同。
 
-    ![用于编写和发布不可变策略版本的策略编辑器。](/images/dashboard/policy-editor.png)
+策略也可以来自本地文件、已发布的包或 Cloud 分配：
 
-    执行页面随后将已发布的版本及其观察或执行效果分配给机器。
+| 来源 | 添加方式 |
+| --- | --- |
+| 本地文件 | 将 `*policies.{js,mjs,ts}` 放在 `.failproofai/policies/` 目录下 |
+| 任意文件路径 | `failproofai policies -i -c <path>` |
+| 已发布的包 | `failproofai policies add <owner>/<repo>` |
+| Cloud | 在控制台中分配，或使用 `fp fleet deploy` |
 
-    ![执行机群显示机器覆盖情况和已分配的策略版本。](/images/dashboard/enforcement-fleet.png)
+`block-failproofai-commands` 始终运行且无法关闭，它能防止智能体自行禁用其强制执行机制。
 
-    部署后在策略页面验证决策，以便将编写视图和机群视图与真实的代理活动关联起来。
-  </Tab>
-  <Tab title="CLI">
-    使用 `failproofai` 进行本地策略安装和验证：
+## 先观察，再执行
 
-    ```bash
-    failproofai policies
-    failproofai policy add block-rm-rf --scope project
-    failproofai config --status
-    ```
+观察模式会运行真实策略并记录其本应执行的操作，但不会阻止智能体。
 
-    使用 `fp` 查找包含策略决策的云端会话和事件。云端策略编写和机群部署仍属于仪表板工作流。
-  </Tab>
-</Tabs>
+```bash
+fp policies test ./checkout.policy.mjs --tool Bash --command "git push --force" --expect deny
+fp fleet deploy ci-runner-01 --add checkout-guard:observe
+fp guardrails summary --since 24h --machine ci-runner-01
+fp fleet deploy ci-runner-01 --add checkout-guard:enforce
+```
 
-策略在 Failproof AI 中有三个独立的界面：
+<Warning>
+  直接执行 `fp fleet deploy <machine> --add <id>` 会立即生效强制执行。请添加 `:observe` 进行影子灰度发布。
+</Warning>
 
-1. **分析决策**——在会话、仪表板和审计中查看。
-2. **编写版本**——使用内置规则、代码或策略编辑器。
-3. **部署和执行**——在选定机器上推送版本。
+在观察模式下超时的策略会记录为 allow，因为这正是强制执行时会发生的情况。只有非 allow 的观察决策才会被记录。
 
-从已确认的故障模式出发。定义能够识别该故障的最小事件和工具匹配条件，测试合法示例和不安全示例，然后先观察再执行。
+对于不使用 Cloud 的包，可通过 `failproofai publish --effect observe` 发布。
 
-<Columns cols={2}>
-  <Card title="使用内置策略" icon="library" href="/zh/policies/builtin">
-    启用针对常见密钥、Shell、Git、云和工作流风险的已审核规则。
+## 选择适合的路径
+
+<CardGroup cols={2}>
+  <Card title="使用经过审核的策略" icon="library" href="/zh/policies/builtin">
+    从 39 个策略中选择，涵盖密钥、文件、Git、基础设施和工作流。
   </Card>
-  <Card title="编写自定义策略" icon="code-2" href="/zh/policies/custom">
-    使用 JavaScript 或 TypeScript 表达特定工作流的决策逻辑。
+  <Card title="安装策略包" icon="package" href="/zh/policies/packs">
+    从 GitHub 或策略中心添加已发布的策略集。
   </Card>
-</Columns>
+  <Card title="编写策略" icon="code-2" href="/zh/policies/custom">
+    为自己的智能体或工作流定义规则。
+  </Card>
+  <Card title="跨机器部署" icon="server" href="/zh/policies/deploy">
+    观察、推进并回滚 Cloud 策略。
+  </Card>
+</CardGroup>
+
+<Note>
+  各运行环境对强制执行的支持程度不同。工具调用 deny 已在所有 12 个受支持的运行环境上得到验证，其他事件的支持情况各有差异。请参阅[支持的运行环境](/zh/reference/harnesses#enforcement-capability)。
+</Note>

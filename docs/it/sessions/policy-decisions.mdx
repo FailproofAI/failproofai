@@ -1,28 +1,63 @@
 ---
 ---
 title: "Decisioni delle policy"
-description: "Scopri quali policy sono state valutate, bloccate, istruite o consentite."
+description: "Visualizza quali policy sono state valutate, guidate, bloccate o osservate."
 icon: "shield-check"
 ---
 
-Le decisioni delle policy spiegano cosa ha fatto l'enforcement. Usale per verificare un rollout, misurare il tasso di blocco e trovare attività non protette.
+Le decisioni delle policy mostrano cosa ha fatto Failproof AI durante l'esecuzione di un agente.
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vai a **Observe → policy** e scegli l'intervallo di tempo e opzionalmente una macchina.
-    2. Esamina le azioni valutate, i blocchi, il tasso di blocco, le decisioni Cloud, le azioni non protette e l'attività mentre in pausa.
-    3. Filtra la tabella di mapping delle policy e ispeziona gli assegnamenti distribuiti.
-    4. Seleziona un punto del grafico per aprire le decisioni e le loro sessioni.
+    Vai su **Observe → policy** per esaminare le decisioni, il tasso di blocco, le macchine e gli incarichi distribuiti.
 
-    ![La pagina Policy che mostra i totali delle decisioni, un filtro per macchina, l'attività di enforcement nel tempo e la tabella di mapping delle policy.](/images/dashboard/policy-observe.png)
+    ![La pagina Policy che mostra i totali delle decisioni, un filtro per macchina, l'attività di applicazione nel tempo e la tabella di mappatura delle policy.](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
     ```bash
-    fp events --event-type hook_completed --env production --since 24h
-    fp events --search "deny" --since 24h
+    fp guardrails summary --since 24h
+    fp guardrails timeline --since 24h
+    failproofai policies
     failproofai config --status
     ```
 
-    Usa `failproofai` per lo stato di enforcement locale della macchina e `fp` per l'investigazione degli eventi Cloud.
+    `--since` accetta `1h`, `6h`, `24h` o `7d`. Aggiungi `--machine <id>` per focalizzarti su una macchina.
   </Tab>
 </Tabs>
+
+## Leggere un rollout in modalità observe
+
+La modalità observe esegue la policy reale e registra qualsiasi decisione `deny` o `instruct`. L'agente può comunque continuare.
+
+```bash
+fp fleet deploy <machine> --add <policy>:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add <policy>:enforce
+```
+
+<Warning>
+  Un `--add <policy>` semplice applica immediatamente quando la policy non ha una distribuzione esistente. Aggiungi `:observe` per un rollout shadow.
+</Warning>
+
+Solo le decisioni osservate non-allow sono registrate. Un timeout viene registrato come allow, perché è quello che accade anche in modalità enforce.
+
+Un deny registrato non è una prova che il harness abbia fermato l'azione. I deny delle tool-call sono verificati su tutti i 12 harness supportati; gli altri eventi variano. Vedi [enforcement capability](/it/reference/harnesses#enforcement-capability).
+
+## Investigare un risultato inatteso
+
+| Quello che vedi | Controlla |
+| --- | --- |
+| Nessuna decisione | `failproofai config --status` e se la sessione è in pausa |
+| Molti dinieghi senza nome di policy | [Policy failure behavior](/it/policies/failure-behavior) |
+| Ogni azione protetta negata | Se il servizio `failproofaid` è in salute |
+| Un deny che non puoi disabilitare | `block-failproofai-commands` è sempre attivo |
+| Nessun dato per `--env production` | Le nuove macchine usano l'ambiente `local` |
+
+<CardGroup cols={2}>
+  <Card title="Fleet deployments" icon="server-cog" href="/it/policies/fleet">
+    Confronta le policy intese e applicate.
+  </Card>
+  <Card title="Failure behavior" icon="triangle-alert" href="/it/policies/failure-behavior">
+    Comprendi le decisioni fail-closed.
+  </Card>
+</CardGroup>

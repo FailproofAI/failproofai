@@ -1,11 +1,10 @@
 ---
----
 title: "Modelli"
-description: "Confronta la latenza dei modelli, i token, l'utilizzo del contesto e la distribuzione del traffico."
+description: "Confronta latenza, token, utilizzo del contesto e distribuzione del traffico dei modelli."
 icon: "cpu"
 ---
 
-Utilizza Modelli per verificare se l'affidabilità o il costo sono cambiati con un modello, un agente, un ambiente o un intervallo di tempo.
+Usa Modelli per verificare se l'affidabilità o il costo sono cambiati con un modello, agente, ambiente o intervallo di tempo.
 
 <Tabs>
   <Tab title="Dashboard">
@@ -19,10 +18,37 @@ Utilizza Modelli per verificare se l'affidabilità o il costo sono cambiati con 
   <Tab title="CLI">
     ```bash
     fp list models
-    fp events --event-type model_request,model_response --env production --since 24h
-    fp --json events --fields ts,agent_id,session_id,event_type,output_tokens,context_fill
+    fp events --event-type model_request,model_response --since 24h
+    fp --json events --event-type model_response --since 24h --all --limit 500 --fields ts,agent_id,session_id,output_tokens,context_window,context_fill
     ```
 
-    Utilizza una query salvata per gli aggregati a livello di modello che non sono esposti come comando CLI dedicato.
+    Tutti e tre richiedono `events:read`.
+
+    `--fields` proietta colonne; non filtra righe. Abbinalo con `--event-type` e una finestra temporale, altrimenti ottieni i 50 eventi più recenti di ogni tipo con `output_tokens` e `context_fill` null su tutti quelli non relativi ai modelli. `--all` si ferma a `--limit`, che ha un valore predefinito di 50.
+
+    Leggi `context_fill` insieme a `context_window`: una cifra di riempimento non ha significato senza la finestra su cui viene misurata.
+
+    Il daemon contrassegna ogni evento con ambiente `local` a meno che non lo modifichi, quindi `--env production` non corrisponde a nulla in un'installazione standard. Vedi [Modificare un'etichetta di ambiente](/it/reference/events-and-configuration#change-an-environment-label).
   </Tab>
 </Tabs>
+
+## Cosa la CLI può e non può mostrare
+
+Il feed di eventi predefinito è privo di payload. Trasporta `output_tokens`, `context_window` e `context_fill` come colonne promosse, e nient'altro riguardante una chiamata al modello:
+
+| Valore | Dove si trova |
+| --- | --- |
+| Token di output, finestra di contesto, riempimento del contesto | Colonne del feed leggero — disponibili direttamente da `fp events`. |
+| Nome del modello | Payload — usa `fp events --full`, limitato a una sessione. |
+| Token di input | Payload — l'SDK registra entrambe le parti, solo la parte di output è promossa. |
+| Latenza per chiamata | Nessuna colonna `duration_ms` sul feed leggero, e nemmeno `model_response` dell'SDK ne contiene una. Derivala accoppiando la richiesta con la sua risposta. |
+
+`model_request` e `model_response` si abbinano su `request_id`. Questo campo esiste precisamente affinché una richiesta possa essere abbinata alla sua risposta, ed è l'unico modo per calcolare la latenza per chiamata da eventi grezzi:
+
+```bash
+fp --json events --full --event-type model_request,model_response --session-id <session-id> --all --limit 500
+```
+
+I nomi dei modelli arrivano verbatim da ogni trascrizione dell'harness. Nulla nel percorso di acquisizione li normalizza, quindi un modello sottostante può apparire sotto diversi ID specifici del provider nel grafico di distribuzione. Esegui `fp list models` per visualizzare le ortografie che una distribuzione effettivamente ha.
+
+Usa una query salvata per aggregati a livello di modello che non sono esposti come comando CLI dedicato.

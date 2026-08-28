@@ -1,110 +1,62 @@
 ---
-title: "חבילות מדיניויות"
-description: "התקן מערכת מדיניויות שפורסמה כהוצאת GitHub, וניהל את מה שהיא אוכפת."
+title: "חבילות מדיניות"
+description: "בחן והתקן ערכות מדיניות בגרסה שפורסמו דרך GitHub."
 icon: "package"
 ---
 
-חבילה היא מערכת מדיניויות שפורסמה כהוצאת GitHub. פקודה אחת מתקינה אותה, סכומי הביקורת של ההוצאה מאומתים לפני כל פעולה, והתמצות מתועדת כדי שהחבילה לא תוכל להשתנות במכונה שלך בעתיד.
-
-## התקן את מדיניויות Failproof AI
+חבילת מדיניות היא ערכה בגרסה של מדיניויות שפורסמה כ-release ציבורי ב-GitHub. החבילה אינה משלחת חבילה משלה; התקן את שלנו כמו כל חבילה אחרת:
 
 ```bash
-failproofai pack add core
+failproofai policies show FailproofAI/policies
+failproofai policies add FailproofAI/policies
 ```
 
-זה מתקין את המערכה שאנו מפרסמים, מהעותק בתוך החבילה — לכן הוא לא צריך רשת ולא יכול להיכשל מאחורי proxy. קח חלק ממנה:
+`show` קורא את ה-manifest ללא הרצת קוד החבילה.
+
+## בחר מה להתקין
 
 ```bash
-failproofai pack add core --policy block-rm-rf         # אחת, או כמה מופרדות בפסיק
-failproofai pack add core --category dangerous-commands # קטגוריה שלמה
-failproofai pack add core --all                         # הכל בה
+failproofai policies add owner/repo --policy block-refunds
+failproofai policies add owner/repo --category billing,git
+failproofai policies add owner/repo --all
 ```
 
-`failproofai pack list` מפרט כל קטגוריה שהחבילה מציעה.
+ללא בחירה, החבילה משתמשת בברירות ברירת המחדל של המוציא לאור שלה. הוספה מחדש של release חדש יותר שומר את הבחירה הקיימת שלך.
 
-## ראה מה חבילה מכילה, לפני התקנה
+כל דבר עם slash הוא מקור חבילה. כל דבר ללא slash הוא שם מדיניות.
 
-```bash
-failproofai pack list acme/support-agent
-```
-
-מפרט כל מדיניות שהחבילה מחזיקה, מקובצת לפי קטגוריה, וסימון איזו מהן הכותב שלה מפעיל כברירת מחדל ואילו הן הצמדות. זה קורא **רק את המניפסט** — הקובץ העיקרי לעולם לא מוּרד ולעולם לא יובא, כך שהסתכלות בחבילה של זר לא יכול להריץ קוד של זר. המניפסט עדיין בדוק נגד `SHA256SUMS` של ההוצאה עצמה, לכן מה שאתה קורא זה מה שיתקין.
-
-`failproofai pack list` ללא מקור מפרט את החבילות שכבר מותקנות כאן.
-
-## התקן חבילה של מישהו אחר
-
-```bash
-failproofai pack add acme/support-agent
-```
-
-כל אלה עובדים — הדבק איזה שיש לך:
+## הצמד release
 
 | מקור | תוצאה |
 | --- | --- |
-| `acme/support-agent` | הוצאה החדשה ביותר, **מוצמדת** לתג המדויק שלה |
-| `acme/support-agent@v2.1.0` | הוצאה זו |
-| `github:acme/support-agent@v2.1.0` | אותו הדבר, כתוב במפורש |
-| `https://github.com/acme/support-agent/releases/tag/v2.1.0` | אותו הדבר, מועתק מדפדפן |
+| `owner/repo` | Release החדש ביותר, מוצמד לאחר החלטה |
+| `owner/repo@a1b2c3d4e5f6` | Release מבוסס-commit מדויק |
+| `owner/repo@v2.1.0` | Release בעל שם מדויק |
+| כתובת URL של GitHub release | ה-release בכתובת URL זו |
 
-ללא שם תג מתקין את ההוצאה החדשה ביותר **ומצמיד אותה**, ואז מגיד לך איזה תג הוא בחר. מה שנרשם תמיד קובע בדיוק הוצאה אחת, כך שהתקנה חוזרת לא יכולה להסחף.
+חבילה בדרך כלל משתמשת ב-SHA commit בן 12 תווים שעליו היא נבנתה. השתמש ב-`failproofai policies show owner/repo --releases` כדי לראות סדר release.
 
-## קח חלק מחבילה
-
-כברירת מחדל אתה מקבל את **שלה** של החבילה עצמה — המדיניויות שהכותב שלה סימן כבטוחות להפעלה ללא השגחה — לא הכל שהיא מכילה.
+## ניהול חבילות מותקנות
 
 ```bash
-failproofai pack add acme/support-agent --category billing,git
-failproofai pack add acme/support-agent --policy block-refunds
-failproofai pack add acme/support-agent --all
+failproofai policies
+failproofai policies remove block-refunds
+failproofai policies add block-refunds
+failproofai policies remove owner/repo
 ```
 
-`--category` ו-`--policy` משתלבים כאיחוד (`--only` מקובל כנרדף ל-`--policy`). הוספה חוזרת בגרסה חדשה יותר שומרת על מה שבחרת במקום להחזיר את השאר בהפעלה.
+אם שתי חבילות מותקנות מכילות את אותו שם מדיניות, ה-CLI מסרב לשם ישן שאינו בר-הבחנה. בחר את המדיניות דרך חבילה אחת או הסר התקנה של החבילה השנייה.
 
-## נהל מה פועל
+## בטיחות וזמינות
 
-```bash
-failproofai policies                    # כל מקור ברשימה אחת, חבילות כלולות
-failproofai pack list                   # רק חבילות, מקובצות לפי קטגוריה
-failproofai policies --uninstall block-refunds        # כבה מדיניות חבילה אחת
-failproofai policies --install block-refunds          # ובחזרה הפעל
-failproofai pack remove acme/support-agent
-```
+כל release מכיל manifest, קוד מדיניות מקופל, ו-checksums. Failproof AI מוודא את ה-digest המוקלט לפני הטעינה. Checksums מוכיחים שהבתים תואמים את ה-release; הם אינם מוכיחים מי פרסם אותו.
 
-שם חשוף פירושו ה-**builtin** כאשר קיים אחד בשם זה. שם את עותק החבילה בבירור כשאתה צריך ל:
-
-```bash
-failproofai policies --uninstall acme/support-agent:block-refunds
-```
-
-<Note>
-אם חבילה משלחת מדיניות שגם שם שלה הוא **builtin מופעל**, ה-builtin רץ והעותק של החבילה דלוק — אותו הגן היה מוערך פעמיים אחרת. כבה את ה-builtin כדי להשתמש בעותק של החבילה במקום.
-</Note>
-
-## מהיכן מדיניויות Failproof AI מגיעות
-
-`core` קורא את העותק שנשלח בחבילת npm. אותה מערכה פורסמת כהוצאת GitHub, שמה שאתה מתקין אם אתה רוצה גרסה ספציפית:
-
-```bash
-failproofai pack add core                    # מחבילה זו, ללא רשת
-failproofai pack add FailproofAI/policies    # אותה מערכה, מהוצאת GitHub שלה
-```
-
-## מה שלמות עושה ולא עושה
-
-`SHA256SUMS` משלח בהוצאה זהה לקובץ, כך שהוא **לא** חתימה ולא מוכיח כלום על מי פרסם אותה. מה שהוא כן מוכיח זה שה-bytes הם שהוצאה פרסמה — וכי תמצות מתועדת כאשר אתה מוסיף את החבילה וחדש־אומתת לפני כל יבוא, חבילה לא יכולה להשתנות תחת מכונתך. מאגר שמסדר מחדש תגים או מחליף קובץ מפסיק לטעון במקום להריץ בשקט משהו אחר.
-
-בזמן התקנה החבילה גם **מיובאת פעם אחת** ובדוקה נגד המניפסט שלה. חבילה שקובץ שלה לא משתתח, או שרושמת משהו שלא הוא הצהיר, מסורבת לפני שום הפעלה — במקום התקנה ניקיה וכשל בקריאת כלי הבאה שלך.
-
-## כאשר חבילה לא תטען
-
-חבילה שמכונה זו נאמרה לאכוף ולא יכולה להריץ **דוחה** את האירועים שהמדיניויות החסרות שלה כיסו, במקום להתיר אותם בשקט. ראה [Failure behavior](/he/policies/failure-behavior). `failproofai pack list` מפרט כל חבילה במצב זה וצוא לא אפס.
-
-## אופלין וראי
+חבילה שנבחרה שלא יכולה להטען נכשלת בצורה סגורה לאירועים שהיא הצהירה עליהם. ראה [התנהגות כשל מדיניות](/he/policies/failure-behavior).
 
 | משתנה | השפעה |
 | --- | --- |
-| `FAILPROOFAI_NO_DOWNLOAD=1` | מסרב להביא; חבילות שכבר מותקנות ממשיכות אוכיפות |
-| `FAILPROOFAI_PACK_BASE_URL` | מצביע הבאה חבילות על ראי במקום `github.com` |
+| `FAILPROOFAI_NO_DOWNLOAD=1` | סרב להורדות חדשות; חבילות מותקנות ממשיכות לפעול |
+| `FAILPROOFAI_PACK_BASE_URL` | השתמש במראה |
+| `FAILPROOFAI_PACK_DIR` | הזז את חנות החבילות |
 
-פרסום החבילה שלך: ראה [Publish a pack](/he/policies/publish-a-pack).
+עיין בחבילות ב-[Policy Hub](https://befailproof.ai/policy-hub/) או [פרסם את שלך](/he/policies/publish-a-pack).

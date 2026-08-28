@@ -4,77 +4,160 @@ description: "지원되는 12개의 에이전트 하네스 전반에 걸쳐 세�
 icon: "plug-zap"
 ---
 
-하네스는 에이전트가 실제로 실행되는 환경을 말합니다. Failproof AI는 두 가지 유형으로 분류된 12개의 하네스를 지원합니다.
+하네스란 에이전트가 실제로 실행되는 환경을 의미합니다. Failproof AI는 두 가지 유형으로 구분된 12개의 하네스를 지원합니다.
 
 - **코딩 CLI** (10개) — Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Factory Droid, Devin CLI, Antigravity CLI, Goose
 - **채팅 및 어시스턴트 게이트웨이** (2개) — Hermes (Slack, Telegram, cron), OpenClaw (자체 호스팅 어시스턴트)
 
-에이전트가 어느 하네스에서 실행되더라도 동일한 정책과 동일한 세션 기록이 적용됩니다. 단일 어댑터 레이어가 각 하네스의 고유 이벤트 이름, 도구 이름, 도구 입력 필드를 정책이 실행되기 전에 29개의 표준 이벤트로 매핑합니다.
+에이전트가 어떤 하네스에서 실행되든 동일한 정책과 동일한 세션 기록이 적용됩니다. 하나의 어댑터 레이어가 각 하네스의 네이티브 이벤트 이름, 도구 이름, 도구 입력 필드를 정책 실행 전에 29개의 표준 이벤트로 매핑합니다.
 
-12개 중 **어디에도 해당하지 않는** 하네스에서 실행되는 에이전트는 [Python SDK](/ko/reference/custom-agents)를 통해 직접 계측됩니다. 이는 별도의 계약 방식으로, 명확히 말씀드리자면 SDK는 추적, 세션, 평가, 감사 기능을 제공하지만 **독자적으로 정책을 적용하지는 않습니다.** 실행 전에 안전하지 않은 작업을 차단하려면 런타임의 도구 경계에 적용 훅이 필요합니다. [문의하기](mailto:support@befailproof.ai)를 통해 연락주시면 매핑을 도와드리겠습니다.
+12개 하네스 중 **어느 것도** 사용하지 않는 에이전트는 [Python SDK](/ko/reference/custom-agents)를 통해 직접 계측됩니다. 이는 별도의 계약이며 명확히 짚고 넘어갈 필요가 있습니다. SDK는 트레이싱, 세션, 평가, 감사 기능을 제공하지만 **자체적으로 정책을 집행하지는 않습니다.** 안전하지 않은 작업이 실행되기 전에 차단하려면 런타임의 도구 경계에서 집행 훅이 필요합니다. [문의하기](mailto:support@befailproof.ai)를 통해 연락주시면 매핑해 드리겠습니다.
+
+## 훅 범위
 
 | 하네스 | 지원되는 훅 범위 |
 | --- | --- |
-| Claude Code | User, project, local |
-| Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi | User, project |
-| Factory Droid, Devin CLI, Antigravity CLI, Goose | User, project |
-| Hermes, OpenClaw | User |
+| Claude Code | 사용자, 프로젝트, 로컬 |
+| Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi | 사용자, 프로젝트 |
+| Factory Droid, Devin CLI, Antigravity CLI, Goose | 사용자, 프로젝트 |
+| Hermes, OpenClaw | 사용자 |
 
-각 통합은 정책이 실행되기 전에 고유 훅 이벤트 이름, 도구 이름, 도구 입력 필드를 정규화합니다. 정책은 하네스가 노출하는 이벤트에만 작동할 수 있으므로, 실제로 배포하는 하네스와 버전에서 턴 종료 및 지시 동작을 테스트하시기 바랍니다.
+**로컬** 범위를 지원하는 하네스는 Claude Code가 유일합니다. Hermes와 OpenClaw는 프로젝트 설정이 전혀 없으며 사용자 범위만 지원합니다. 이 하네스에 대해 CLI는 `--scope project`를 거부합니다.
 
-## 적용 기능
+각 통합은 정책 실행 전에 네이티브 훅 이벤트 이름, 도구 이름, 도구 입력 필드를 정규화합니다. 정책은 해당 하네스가 노출하는 이벤트에 대해서만 동작할 수 있으므로, 실제로 배포하는 정확한 하네스와 버전에서 턴 종료 및 지시 동작을 테스트하세요.
 
-"차단(Block)"은 현재 어댑터가 반환한 판정을 해당 하네스가 소비함을 의미합니다. 도구 사후 차단은 모델에 표시되는 결과를 대체할 수 있지만, 이미 발생한 도구 부작용을 되돌릴 수는 없습니다.
+## 훅 설정 파일 위치
 
-| 하네스 | 검증된 차단 이벤트 | 관찰 전용 또는 비차단 주의사항 |
+| 하네스 | 사용자 범위 | 프로젝트 범위 |
 | --- | --- | --- |
-| Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact`, 및 여러 작업/설정 이벤트 | `PostToolUse`, 세션 생명주기, 알림, 실패 후 이벤트는 관찰 전용입니다. |
-| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | 도구 사후 차단은 실행 후 결과를 대체합니다. 세션 시작 및 컴팩트 이벤트는 현재 어댑터에서 관찰 전용입니다. |
-| GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | 도구 사후 차단은 실행 후 결과를 대체합니다. 세션 및 알림 이벤트는 관찰 전용입니다. |
-| Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` 및 세션 이벤트는 관찰 전용입니다. |
-| OpenCode | `PreToolUse` | 도구 사후 및 생명주기 이벤트는 관찰 전용입니다. 현재 중지 처리는 검증된 게이트가 아닌 이후 턴에 대한 안내입니다. |
-| Pi | `PreToolUse`, `UserPromptSubmit` | 도구 사후 및 생명주기 이벤트는 관찰 전용입니다. 중지 안내는 이후 턴에 적용됩니다. |
-| Hermes | `PreToolUse` | 도구 사후, 세션, 서브에이전트 중지 판정은 게이트가 아닙니다. |
-| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | 도구 사후, 세션, 서브에이전트 중지, 컴팩션 이벤트는 관찰 전용입니다. |
-| Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | 도구 사후 및 서브에이전트 중지 판정은 관찰 전용입니다. |
-| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, 조건부 `PermissionRequest` | 권한 훅은 모든 권한 모드에서 실행되지 않습니다. 도구 사후 및 세션 이벤트는 관찰 전용입니다. |
-| Antigravity CLI | `PreToolUse`, `Stop` | 사용자 프롬프트 및 도구 사후 판정은 관찰 전용입니다. 프롬프트 지시는 여전히 주입될 수 있습니다. |
-| Goose | `PreToolUse` | 사용자 프롬프트, 도구 사후, 세션 이벤트는 관찰 전용입니다. 네이티브 차단 중지 훅이 업스트림에 존재하지만 현재 어댑터에는 설치되어 있지 않습니다. |
+| Claude Code | `~/.claude/settings.json` | `.claude/settings.json` (로컬: `.claude/settings.local.json`) |
+| Codex | `~/.codex/hooks.json` | `.codex/hooks.json` |
+| GitHub Copilot CLI | `~/.copilot/hooks/failproofai.json` | `.github/hooks/failproofai.json` |
+| Cursor | `~/.cursor/hooks.json` | `.cursor/hooks.json` |
+| OpenCode | `~/.config/opencode/opencode.json` | `.opencode/opencode.json` |
+| Pi | `~/.pi/agent/settings.json` | `.pi/settings.json` |
+| Hermes | `~/.hermes/config.yaml` | — |
+| OpenClaw | `~/.openclaw/openclaw.json` | — |
+| Factory Droid | `~/.factory/hooks.json` | `.factory/hooks.json` |
+| Devin CLI | `~/.config/devin/config.json` | `.devin/config.json` |
+| Antigravity CLI | `~/.gemini/config/hooks.json` | `.agents/hooks.json` |
+| Goose | `~/.agents/plugins/failproofai/hooks/hooks.json` | `.agents/plugins/failproofai/hooks/hooks.json` |
 
-기능은 버전에 따라 달라집니다. 특히 정책이 일반적인 도구 사전 게이트가 아닌 프롬프트, 중지, 권한, 도구 사후 동작에 의존하는 경우, 에이전트 CLI를 업그레이드한 후 반드시 재테스트하시기 바랍니다.
+OpenCode, Pi, OpenClaw은 셸 훅 통합이 아닌 플러그인 통합입니다. 위 파일은 플러그인 또는 확장 패키지를 등록하며, 해당 패키지가 failproofai 바이너리를 호출하고 판정 결과를 변환합니다.
+
+## 집행 기능
+
+"차단"은 현재 어댑터가 반환한 판정이 해당 하네스에 의해 소비됨을 의미합니다. 도구 사후 차단은 모델에 표시되는 결과를 교체할 수 있지만, 이미 발생한 도구의 부작용은 되돌릴 수 없습니다.
+
+| 하네스 | 검증된 차단 이벤트 | 관찰 전용 또는 비차단 비고 |
+| --- | --- | --- |
+| Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact` 및 여러 태스크/설정 이벤트 | `PostToolUse`, 세션 수명주기, 알림, 실패 후 이벤트는 관찰 전용입니다. |
+| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | 도구 사후 차단은 실행 후 결과를 교체하며, 세션 시작 및 컴팩트 이벤트는 현재 어댑터에서 관찰 전용입니다. |
+| GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | 도구 사후 차단은 실행 후 결과를 교체하며, 세션 및 알림 이벤트는 관찰 전용입니다. |
+| Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` 및 세션 이벤트는 관찰 전용입니다. |
+| OpenCode | `PreToolUse` | 도구 사후 및 수명주기 이벤트는 관찰 전용입니다. 현재 stop 처리는 검증된 게이트가 아닌 다음 턴에 대한 안내입니다. `PermissionRequest`는 전혀 실행되지 않습니다. |
+| Pi | `PreToolUse`, `UserPromptSubmit` | 도구 사후 및 수명주기 이벤트는 관찰 전용이며, stop 안내는 다음 턴에 적용됩니다. |
+| Hermes | `PreToolUse` | 도구 사후, 세션, 서브에이전트 stop 판정은 게이트가 아닙니다. `Stop` 이벤트가 설치되어 있지 않습니다. |
+| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | 도구 사후, 세션, 서브에이전트 stop, 컴팩션 이벤트는 관찰 전용입니다. |
+| Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | 도구 사후 및 서브에이전트 stop 판정은 관찰 전용입니다. |
+| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, 조건부 `PermissionRequest` | 퍼미션 훅은 모든 퍼미션 모드에서 실행되지 않으며, 도구 사후 및 세션 이벤트는 관찰 전용입니다. |
+| Antigravity CLI | `PreToolUse`, `Stop` | 사용자 프롬프트 및 도구 사후 판정은 관찰 전용이지만, 프롬프트 지시는 여전히 주입될 수 있습니다. |
+| Goose | `PreToolUse` | 사용자 프롬프트, 도구 사후, 세션 이벤트는 관찰 전용입니다. 네이티브 차단 stop 훅이 업스트림에 존재하지만 현재 어댑터에는 설치되어 있지 않습니다. |
+
+두 열 모두에 없는 이벤트는 **검증되지 않은** 것으로, 차단으로 간주하지 말고 미확인 상태로 처리하세요.
+
+### 나열된 게이트의 조건
+
+위의 일부 행은 실제 게이트이지만 경계 조건이나 조건부로 동작합니다. 이러한 게이트에 의존하는 정책은 해당 행만큼이나 조건도 중요합니다.
+
+| 하네스 | 이벤트 | 조건 |
+| --- | --- | --- |
+| Claude Code | `Stop`, `SubagentStop` | `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`에 의해 제한되며 기본값은 8입니다. 턴 종료 경로에서는 무시됩니다. |
+| Cursor | `Stop` | `loop_limit`(기본값 5)에 의해 제한되며, 턴이 완료될 때만 소비됩니다. 사용자 중단 또는 턴 오류 발생 시 무시됩니다. |
+| Cursor | `Stop` | **Cursor Cloud Agent VM은 `stop` 또는 `subagentStop` 훅을 전혀 실행하지 않습니다.** 이 게이트는 로컬 세션에만 적용됩니다. |
+| Codex | `SubagentStop` | ThreadSpawn 서브에이전트만 이를 디스패치하며, 다른 모든 서브에이전트 소스는 훅을 실행하지 않습니다. |
+| GitHub Copilot CLI | `SubagentStop` | `isSidekick` 서브에이전트에 대해서는 완전히 건너뜁니다. |
+| Devin CLI | `PermissionRequest` | `--permission-mode dangerous` 하에서는 실행되지 않으며, 자동 승인된 읽기 전용 도구에도 실행되지 않습니다. |
+| OpenCode | `PermissionRequest` | 비활성 훅입니다. `permission.ask`는 업스트림에 선언되고 문서화되어 있지만 실제로 호출되지 않으므로 정책이 실행조차 되지 않습니다. |
+| Hermes | `Stop` | `Stop` 이벤트가 의도적으로 설치되지 않았습니다. `require-*-before-stop` 내장 정책 5개는 Hermes에서 적용할 수 없습니다. |
+| Goose | `Stop` | 동일한 결과: `Stop`이 설치되어 있지 않으므로, `require-*-before-stop` 내장 정책 5개는 적용할 수 없습니다. |
+
+### `instruct()`가 저하되는 경우
+
+정책이 반환하는 판정은 `deny`만 있는 것이 아닙니다. `instruct()`는 에이전트에게 지시를 전달하고 작업을 진행시키지만, 모든 하네스에 지시를 전달할 채널이 있는 것은 아닙니다. 채널이 없는 경우, failproofai는 작업을 허용하고 운영자 로그를 위해 지시를 stderr에 기록합니다. 모델은 해당 지시를 볼 수 없습니다.
+
+| 하네스 | `instruct()`가 stderr 메모로 저하되는 이벤트 |
+| --- | --- |
+| Hermes | 모든 이벤트 |
+| Goose | 모든 이벤트 |
+| Pi | `Stop`을 제외한 모든 이벤트 |
+| OpenClaw | `Stop`을 제외한 모든 이벤트 |
+| Factory Droid | `Stop`을 제외한 모든 이벤트 |
+| Antigravity CLI | `Stop` 및 `UserPromptSubmit`을 제외한 모든 이벤트 |
+
+그 외의 경우에는 하네스 자체의 추가 컨텍스트 채널을 통해 지시가 반환됩니다.
+
+### 검증에 사용된 버전
+
+버전은 각주가 아닌 검증 주장의 일부입니다. 특히 정책이 일반적인 도구 사전 게이트가 아닌 프롬프트, stop, 퍼미션, 도구 사후 동작에 의존하는 경우, 에이전트 CLI를 업그레이드한 후 반드시 재테스트하세요.
+
+| 하네스 | 검증된 버전 |
+| --- | --- |
+| Claude Code | 2.1.220 |
+| Codex | `fe01054a`, `PostToolUse`는 0.147.0에서 라이브 재검증 |
+| GitHub Copilot CLI | 1.0.71, 일부 호출 지점은 1.0.68 및 1.0.78에서 재확인 |
+| Cursor | cursor-agent 2026.07.16-899851b |
+| OpenCode | 1.18.9, 1.14.33에서 재확인 |
+| Pi | 0.80.10 |
+| Hermes | hermes-agent `5771a6e` |
+| OpenClaw | v2026.7.2 |
+| Factory Droid | droid 0.175.1 |
+| Devin CLI | 3000.2.17 |
+| Antigravity CLI | agy 1.1.8 |
+| Goose | 1.43.0 |
+
+<Warning>
+  일부 Codex 행은 `fe01054a` 이후 구조가 변경되어 0.147.0에서는 더 이상 존재하지 않는 소스 경로를 인용합니다. 알려진 오류는 아니지만, 출시된 Codex에 대한 검증이 이루어지지 않았으며 재검증이 필요합니다. Codex `PostToolUse` 행만 라이브로 재검증되었습니다.
+</Warning>
+
+## VS Code 에이전트 모드
+
+VS Code의 내장 Copilot Chat 에이전트 모드는 **13번째 통합이 아닙니다.** 이 모드는 `copilot` 및 `claude` 설치 시 이미 기록되는 경로인 `.github/hooks/*.json`, `~/.copilot/hooks/*.json`, `~/.claude/settings.json`에서 훅 설정을 탐색하며, Claude와 동일한 deny 계약을 사용합니다. 둘 중 하나를 설치하면 VS Code 에이전트 모드 세션에서도 이미 정책이 집행됩니다.
+
+이 기능은 프리뷰 상태이며 활성 GitHub Copilot 구독과 에이전트 모드가 필요합니다.
 
 ## 캡처 및 정책 훅 설치
 
 <Tabs>
   <Tab title="대시보드">
-    1. **Administration → Keys**를 열고 머신 또는 환경에 맞는 이름으로 `events:add` 및 `policies:pull` 권한이 있는 키를 생성합니다.
-    2. 대상 머신에서 표시된 키로 로컬 CLI를 연결하고 하네스 훅을 설치합니다.
+    1. **Administration → Keys**를 열고 `events:add` 및 `policies:pull` 권한을 가진 키를 생성합니다. 머신 또는 환경에 맞는 이름을 지정하세요.
+    2. 대상 머신에서 표시된 키로 로컬 CLI를 연결합니다.
     3. 새 에이전트 세션을 시작한 후 **Observe → Events**에서 훅 및 세션 이벤트를 확인합니다.
-    4. 동일한 시간 범위에서 **Observe → policy**를 열어 해당 머신에 정책 결정이 귀속되는지 확인합니다.
+    4. 동일한 시간 창에서 **Observe → policy**를 열고 머신에 정책 결정이 귀속되는지 확인합니다.
 
     연결은 머신 키로 시작됩니다. 시크릿을 복사하기 전에 수집 및 정책 전달 권한이 모두 포함되어 있는지 확인하세요.
 
     ![이벤트 수집 및 정책 전달 권한을 부여하는 데 사용되는 새 API 키 드로어.](/images/dashboard/key-create.png)
 
-    훅을 설치한 후 Events 스트림에 연결한 머신과 환경에서 새 이벤트가 표시되어야 합니다.
+    훅을 설치한 후 Events 스트림에서 연결한 머신 및 환경으로부터 새 이벤트가 표시되어야 합니다.
 
-    ![새로 설치된 하네스가 보고 중임을 확인하는 데 사용되는 실시간 Events 스트림.](/images/dashboard/events-stream.png)
+    ![새로 설치된 하네스가 보고 중인지 확인하는 데 사용되는 라이브 Events 스트림.](/images/dashboard/events-stream.png)
 
-    마지막으로, 정책 결정이 동일한 머신에 귀속되는지 확인합니다. 이를 통해 하네스가 추적 이벤트뿐만 아니라 정책 활동도 보고하고 있음을 확인할 수 있습니다.
+    마지막으로, 정책 결정이 동일한 머신에 귀속되는지 확인합니다. 이를 통해 하네스가 트레이스 이벤트뿐만 아니라 정책 활동도 보고하고 있음을 확인할 수 있습니다.
 
-    ![새로 연결된 하네스의 정책 결정을 확인하는 데 사용되는 Policy 페이지.](/images/dashboard/policy-observe.png)
+    ![새로 연결된 하네스의 정책 결정을 검증하는 데 사용되는 Policy 페이지.](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
-    감지된 모든 하네스에 훅을 설치합니다:
+    `failproofai config`는 발견된 모든 지원 에이전트 CLI에 훅을 연결하고, 데몬을 설치하며, 키가 있을 경우 Cloud에 연결합니다.
 
     ```bash
-    failproofai config \
-      --connect https://app.befailproof.ai \
-      --token <machine-key>
-    failproofai policies --install
+    failproofai config --token <machine-key>
+    failproofai policies add FailproofAI/policies
     ```
 
-    또는 특정 하네스와 설정 범위를 지정합니다:
+    설정 시 기본적으로 정책이 선택되지 않으므로 두 번째 명령이 필요합니다.
+
+    하나의 하네스를 수동으로 연결하려면 — `--cli`를 생략하면 `--install`이 설치된 것을 감지하고 프롬프트를 표시합니다.
 
     ```bash
     failproofai policies --install \
@@ -82,9 +165,9 @@ icon: "plug-zap"
       --scope user
     ```
 
-    프로젝트 범위는 훅 설정을 리포지토리와 함께 유지합니다. 사용자 범위는 리포지토리 전반의 작업을 포괄합니다. Claude Code는 로컬 범위도 지원하며, 지원 여부는 하네스마다 다르고 CLI는 지원하지 않는 조합을 거부합니다.
+    프로젝트 범위는 훅 설정을 저장소와 함께 유지합니다. 사용자 범위는 여러 저장소에 걸친 작업에 적용됩니다. `--cli`와 `--scope`를 함께 사용하기 전에 위의 범위 표를 확인하세요. CLI는 지원되지 않는 조합을 거부합니다.
 
-    머신과 이벤트를 확인합니다:
+    머신 및 이벤트를 확인합니다.
 
     ```bash
     failproofai config --status
@@ -93,6 +176,10 @@ icon: "plug-zap"
     ```
   </Tab>
 </Tabs>
+
+<Warning>
+  새 디렉터리에서 시작된 헤드리스 `copilot -p` 실행에서 프로젝트 범위의 `.github/hooks/failproofai.json`이 **로드되지 않았습니다.** 이것이 달리 검증될 때까지 CI에서의 Copilot에 대한 신뢰할 수 있는 집행 지점으로 사용자 범위를 사용하세요.
+</Warning>
 
 ## 기본값이 아닌 세션 경로 추가
 
@@ -103,7 +190,7 @@ icon: "plug-zap"
     ![추가 캡처 경로에서 데이터를 수신하는 환경으로 필터링된 Sessions 목록.](/images/dashboard/sessions-list.png)
   </Tab>
   <Tab title="CLI">
-    선택적 레이블과 함께 경로를 추가한 후 설정된 경로를 확인합니다:
+    선택적 레이블과 함께 경로를 추가한 후 설정된 경로를 확인합니다.
 
     ```bash
     failproofai harness add-path claude checkout=/srv/checkout/.claude
@@ -113,9 +200,11 @@ icon: "plug-zap"
     ```
 
     `failproofai harness remove-path claude checkout`으로 경로를 제거합니다.
+
+    레이블은 파생된 에이전트 ID의 네임스페이스를 구분합니다. 동일한 프로젝트의 복사본을 보유한 두 위치는 트랜스크립트에서 동일한 ID를 파생하므로, 레이블 없이는 하나의 에이전트로 병합됩니다. 루트 경로 중복 및 레이블 중복은 거부됩니다. 각 거부 이유는 [CLI 레퍼런스](/ko/reference/failproof-cli)를 참조하세요.
   </Tab>
 </Tabs>
 
 <Tip>
-  설치 후 새 세션을 한 번 실행해 보세요. 롤아웃을 확장하기 전에 실시간 이벤트 스트림과 실제 정책 결정을 모두 확인하시기 바랍니다.
+  설치 후 새 세션을 하나 실행해 보세요. 롤아웃을 확장하기 전에 라이브 이벤트 스트림과 실제 정책 결정을 모두 확인하세요.
 </Tip>

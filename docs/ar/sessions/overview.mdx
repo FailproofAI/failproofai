@@ -1,58 +1,67 @@
 ---
 ---
 title: "الجلسات"
-description: "ابدأ بالسجل الكامل لتشغيل وكيل واحد."
-icon: "workflow"
+description: "تابع تشغيل وكيل واحد من هدفه عبر الأدوات والقرارات والنتيجة."
+icon: "route"
 ---
 
-الجلسة هي أفضل نقطة انطلاق عندما يتصرف وكيل بشكل غير متوقع. فهي تجمع بين طلبات النموذج والاستجابات واستدعاءات الأدوات والتفاعلات البشرية والأخطاء والتقييمات وقرارات السياسة التي تنتمي إلى تشغيل واحد.
+الجلسة هي تشغيل وكيل واحد. وهي تربط بين الطلب ونداءات النموذج والأدوات والأخطاء والإدخال البشري وقرارات السياسة والنتيجة النهائية.
 
-تبدو الجلسات متطابقة بغض النظر عن الأداة التي أنتجتها. سواء كان تشغيل Claude Code يعيد كتابة مستودع، أو وكيل Hermes يجيب على عميل في Slack، أو خدمة Python مزودة بـ Agents SDK، فإنها جميعاً تصل إلى نفس صيغة التتبع، لذا عرض واحد يغطي أسطول كامل.
-
-<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with Failproof AI" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
-</div>
-
-اتبع تشغيل وكيل واحد من هدفه عبر استدعاءات النموذج والأدوات والاستجابة النهائية.
-
-## البحث عن جلسة
+## أين تعيش الجلسات
 
 <Tabs>
-  <Tab title="لوحة التحكم">
-    1. في الشريط الجانبي للسحابة، انتقل إلى **Observe → Sessions**.
-    2. عيّن نافذة زمنية، ثم صفّي حسب البيئة والحالة والوكيل أو معرّف الجلسة.
-    3. أضف نطاقات الدرجات أو المقاييس عندما تحتاج إلى شرائح الجودة أو التكلفة أو الرموز أو الكمون.
-    4. حدد صفاً لفتح تتبعه. استخدم عنصر النسخ بجانب معرّف الجلسة عند مشاركتها.
-
-    ![قائمة الجلسات تعرض صفاً واحداً لكل تشغيل مع مرشحات البيئة والوكيل والحالة ودرجة التقييم.](/images/dashboard/sessions-list.png)
+  <Tab title="محلي">
+    شغّل `failproofai` لفتح لوحة التحكم على `http://localhost:8020`. يبقى سجل الجلسات على هذا الجهاز.
   </Tab>
-  <Tab title="واجهة سطر الأوامر">
+  <Tab title="سحابة">
+    اربط الجهاز، ثم افتح **Observe → Sessions**:
+
     ```bash
-    fp sessions --env production --since 24h
-    fp sessions --status error,timeout --agent-id checkout-agent
-    fp --json sessions --session-id <session-id>
+    export FAILPROOFAI_CLOUD_TOKEN="<key>"
+    failproofai config
     ```
 
-    أضف `--agents` لتوسيع تشغيلات متعددة الوكلاء، أو `--all` للترقيم، أو `--fields` لاختيار أعمدة الإخراج.
+    تستقبل السحابة النصوص الكاملة بشكل افتراضي. لإرسال قرارات السياسة فقط، اربط أولاً، ثم اضبط `collector.sessions` على `false` في `~/.failproofai/config.json`. لا ينطبق إعداد العلم الحالي `--no-transcripts` على هذا الإعداد.
   </Tab>
 </Tabs>
 
-## ما يمكنك القيام به
+تصل الجلسات من [12 بيئة وكيل مدعومة](/ar/reference/harnesses) ومن الوكلاء المجهزين باستخدام [Python SDK](/ar/reference/custom-agents).
 
-- ابحث عن تشغيل حسب الوكيل والبيئة والوقت والنموذج ونوع الحدث أو حالة الخطأ.
-- اتبع التسلسل الدقيق الذي أنتج النتيجة.
-- قارن بين التشغيلات الناجحة والفاشلة.
-- افتح الأدلة المستخدمة من قبل نتيجة التدقيق أو حادثة تنبيه.
-- صدّر جلسة عندما تحتاج إلى سجل دون اتصال.
+## البحث عن جلسة
 
-## ترتيب التحقيق الموثوق
+في السحابة، قم بالتصفية حسب الوقت أو البيئة أو الحالة أو الوكيل أو معرّف الجلسة. من سطر الأوامر:
 
-1. أكد هدف الجلسة والبيئة.
-2. ابحث عن أول خطأ أو قرار غير متوقع—ليس الفشل النهائي فقط.
-3. افحص سياق النموذج ومدخل الأداة قبل ذلك مباشرة.
-4. تحقق من المحاولات الجديدة والكمون والمقاطعات البشرية.
-5. راجع درجات التقييم وقرارات السياسة.
+```bash
+fp sessions --since 24h
+fp sessions --status error,timeout --agent-id checkout-agent
+fp --json sessions --session-id <session-id>
+```
 
-<Card title="قراءة التتبع" icon="route" href="/ar/sessions/read-a-trace">
-  تعرف على كيفية الانتقال من ملخص الجلسة إلى الحدث الذي تسبب في النتيجة.
-</Card>
+استخدم `fp errors --since 24h` للفشل الذي لم يتم تقييمه مطلقاً. يستخدم `fp sessions --status` أحدث نتيجة تقييم، لذا فإن الجلسة غير المقيّمة ليس لها حالة.
+
+## قراءة التشغيل
+
+1. أكّد هدف الوكيل والبيئة.
+2. ابحث عن الخطأ الأول أو القرار غير المتوقع.
+3. افحص سياق النموذج ومدخلات الأداة مباشرة قبله.
+4. تحقق من إعادة المحاولات والكمون والمقاطعات البشرية.
+5. راجع التقييمات وقرارات السياسة.
+
+## إذا كانت الجلسة مفقودة
+
+```bash
+failproofai flush --wait
+failproofai config --status
+failproofai backfill --since 30d --dry-run
+```
+
+استخدم `failproofai harness add-path <harness> [<label>=]<path>` عندما تعيش الجلسات خارج الموقع المعتاد للبيئة، مثل ملف تعريف آخر أو منزل حاوية أو دليل فريق مرفوع.
+
+<CardGroup cols={2}>
+  <Card title="قراءة الأثر" icon="route" href="/ar/sessions/read-a-trace">
+    ابحث عن الحدث الذي أدى إلى النتيجة.
+  </Card>
+  <Card title="قرارات السياسة" icon="shield-check" href="/ar/sessions/policy-decisions">
+    انظر ما سمحت به الإنفاذ أو وجهه أو حجبه.
+  </Card>
+</CardGroup>

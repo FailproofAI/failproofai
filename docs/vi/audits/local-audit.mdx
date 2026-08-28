@@ -1,74 +1,56 @@
 ---
-title: "Kiểm toán lịch sử agent cục bộ"
-description: "Quét các lịch sử CLI agent được hỗ trợ ngoại tuyến và xem xét hành vi rủi ro hoặc lãng phí cục bộ."
+title: "Kiểm tra lịch sử agent cục bộ"
+description: "Quét lịch sử agent trên máy này để tìm các hành vi rủi ro hoặc lãng phí."
 icon: "laptop-minimal-check"
 ---
 
-Sử dụng kiểm toán cục bộ để xem xét ngay lập tức, riêng tư trước khi kết nối máy với Failproof AI Cloud. Nó quét các lịch sử agent đã được lưu trữ trên máy của bạn, phát lại hoạt động công cụ thông qua các chính sách tích hợp, và mở bảng điều khiển kết quả cục bộ.
+Kiểm tra cục bộ đọc lịch sử agent đã có trên máy này và mở kết quả tại `http://localhost:8020/audit`. Không cần tài khoản.
 
-## Chạy kiểm toán tương tác
+```bash
+failproofai audit
+```
 
-<Tabs>
-  <Tab title="Bảng điều khiển">
-    Kiểm toán cục bộ bắt đầu từ CLI vì nó phải khám phá các lịch sử trên máy hiện tại. Chạy `failproofai audit`; sau khi quét xong, Failproof AI khởi động bảng điều khiển được đóng gói và mở **http://localhost:8020/audit**.
+Quét bao gồm lịch sử từ tất cả các harness được hỗ trợ mà nó tìm thấy. Nó chạy lại danh mục 39 chính sách được tích hợp trong phiên bản này; các gói đã cài đặt và chính sách tùy chỉnh không được bao gồm.
 
-    Trong chế độ xem kiểm toán, xem xét số phiên làm việc, lệnh gọi công cụ, dự án và các lần chính sách được tìm thấy. Bắt đầu với những phát hiện thường xuyên, sau đó kiểm tra dự án bị ảnh hưởng và lịch sử agent trước khi kích hoạt thực thi.
+## Đọc kết quả
 
-    <Info>Bảng điều khiển kiểm toán cục bộ riêng biệt với **Analyze → Audits** trong Failproof AI Cloud. Các kiểm toán cục bộ nằm trên máy và không yêu cầu tài khoản hoặc kết nối mạng.</Info>
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    npm install -g failproofai
-    failproofai audit
-    ```
+Bắt đầu với những phát hiện thường xuyên nhất, sau đó mở phiên bị ảnh hưởng trước khi bật thực thi.
 
-    Lệnh thực hiện quét đầy đủ mọi lịch sử được hỗ trợ mà nó tìm thấy. Lệnh hiện tại không chấp nhận các bộ lọc như `--since`, `--cli`, `--project`, `--port`, hoặc `--no-open`.
+Ba giới hạn quan trọng:
 
-    Giữ quy trình chạy trong khi sử dụng bảng điều khiển cục bộ. Nhấn <kbd>Ctrl</kbd>+<kbd>C</kbd> khi bạn hoàn thành.
-  </Tab>
-</Tabs>
+- Kiểm tra tái tạo các sự kiện công cụ, không phải `Stop`, vì vậy các chính sách `require-*-before-stop` không xuất hiện.
+- Tám kiểm tra "Chỉ kiểm tra" xác định các mẫu lãng phí mà không có chính sách phù hợp chính xác.
+- `warn-repeated-tool-calls` bị bỏ qua vì chạy lại nó sẽ sửa đổi trạng thái phía bên cạnh bảng điểm.
 
-Các bộ điều hợp kiểm toán hiện tại có thể đọc lịch sử từ Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory, Devin, Antigravity, và Goose. Chỉ các lịch sử có sẵn cục bộ mới được quét.
+Để tìm kiếm có thể thực thi, hãy sử dụng lệnh chính sách được hiển thị trong kết quả. Kiểm tra [hỗ trợ thực thi harness](/vi/reference/harnesses#enforcement-capability) trước khi dựa vào nó.
 
-## Lên lịch kiểm toán cục bộ định kỳ
+Kết quả được lưu trong bộ nhớ cache tại `~/.failproofai/audit/dashboard.json` và hết hạn sau bảy ngày.
 
-<Tabs>
-  <Tab title="Bảng điều khiển">
-    Mở **Settings** trong bảng điều khiển cục bộ, bật kiểm toán được lên lịch, chọn khoảng thời gian, và đặt địa chỉ email sẽ nhận các phát hiện. Bảng điều khiển và CLI cập nhật cùng một cấu hình máy.
-  </Tab>
-  <Tab title="CLI">
-    Bật kiểm toán hàng tuần và gửi các phát hiện đến địa chỉ được chỉ định:
+## Lên lịch quét
 
-    ```bash
-    failproofai audit --schedule 7 --email reliability@example.com
-    failproofai audit --status
-    ```
+```bash
+failproofai audit --schedule 7
+failproofai audit --status
+failproofai audit --no-schedule
+```
 
-    Khoảng thời gian chấp nhận 1–90 ngày và mặc định là 7 khi bị bỏ qua. Thiết lập đầu tiên sẽ yêu cầu bạn đăng nhập khi cần thiết; `--email` cung cấp địa chỉ báo cáo mà không cần nhắc.
+Khoảng thời gian chấp nhận 1–90 ngày và mặc định là 7. Lần lên lịch đầu tiên yêu cầu đăng nhập tương tác. Dịch vụ nền phải đang chạy.
 
-    Dừng lịch mà không xóa lịch sử kiểm toán cục bộ:
+### Những gì rời khỏi máy
 
-    ```bash
-    failproofai audit --no-schedule
-    ```
-  </Tab>
-</Tabs>
+Kiểm tra tương tác không gửi bất kỳ phát hiện nào. Telemetry CLI ẩn danh được bật theo mặc định; vô hiệu hóa nó bằng `FAILPROOFAI_TELEMETRY_DISABLED=1`.
 
-Daemon chạy các quét được lên lịch trong nền, làm mới kết quả được lưu vào bộ nhớ cache được sử dụng bởi bảng điều khiển cục bộ, và gửi email báo cáo đã định cấu hình. Sử dụng `failproofai audit` khi bạn muốn chạy quét tương tác ngay lập tức.
-
-## Chuyển từ bằng chứng cục bộ sang hoạt động Cloud
-
-Kiểm toán cục bộ là một điểm cơ sở nhanh. Kết nối máy với Failproof AI Cloud khi bạn cần các dấu vết được chia sẻ, kiểm toán dân số định kỳ, phát hiện và vấn đề, cảnh báo, triển khai chính sách trên toàn tổ chức, hoặc tình trạng fleet.
-
-<CardGroup cols={2}>
-  <Card title="Tạo kiểm toán Cloud" icon="scan-search" href="/vi/audits/setup">
-    Xác định mục tiêu định kỳ, dân số, cửa sổ bằng chứng và các kênh phản hồi.
-  </Card>
-  <Card title="Bật chính sách" icon="shield-check" href="/vi/start/first-policy">
-    Xác thực cục bộ, xuất bản cố ý, và triển khai cho một nhóm máy hẹp trước tiên.
-  </Card>
-</CardGroup>
+Sau khi bạn chọn vào lên lịch, mỗi quét được lên lịch sẽ gửi ID máy, nhãn, nền tảng và cửa sổ quét. Nếu tìm thấy các mẫu có hại, nó cũng sẽ gửi một tóm tắt giới hạn với số lượng, dấu thời gian và tối đa ba ví dụ được biên tập lại. Quét sạch không gửi bất kỳ phát hiện và không gửi email nào.
 
 <Warning>
-  Đầu ra kiểm toán là bằng chứng để xem xét, không phải bằng chứng rằng mọi hành động được cờ là không an toàn. Xác nhận ngữ cảnh trước khi chuyển một phát hiện thành thực thi chặn.
+  Kết quả kiểm tra là bằng chứng để xem xét, không phải bằng chứng rằng mọi hành động được gắn cờ đều không an toàn. Kiểm tra phiên trước khi chuyển một phát hiện thành thực thi chặn.
 </Warning>
+
+<CardGroup cols={2}>
+  <Card title="Kiểm tra đám mây" icon="scan-search" href="/vi/audits/setup">
+    Chạy kiểm tra chung, định kỳ trên các agent và máy.
+  </Card>
+  <Card title="Cài đặt gói chính sách" icon="package" href="/vi/policies/packs">
+    Thêm các chính sách đã xem xét sau khi xác nhận một phát hiện.
+  </Card>
+</CardGroup>

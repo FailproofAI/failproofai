@@ -1,31 +1,45 @@
 ---
-title: "כלי-עזר לאגנט שלך"
+---
+title: "כיול של ה-agent שלך"
 sidebarTitle: "Frameworks"
-description: "חבר כל framework אגנט נתמך ל-Failproof AI עם קריאה אחת."
+description: "חבר כל framework agent נתמך ל-Failproof AI בקריאה אחת."
 icon: "plug"
 ---
 
-האגנט שלך כבר מייצר הכל שכדאי להקליט — קריאות למודל, קריאות לכלים, גבולות צמתים, חיכויים לאדם, כשלים. ה-framework זורק את זה. ה-SDK שומר על זה.
+ה-agent שלך כבר מייצר את כל מה שכדאי להקליט — קריאות מודל, קריאות כלים, גבולות nodes, המתנות אדם, כשלים. ה-framework זורק את זה. ה-SDK שומר עליו.
 
 <Columns cols={3}>
-  <Card title="אגנטים מותאמים" icon="wrench" href="/he/start/quickstarts/custom-agents">
-    אגנט שכתבת בעצמך, או אחד שלא רשום כאן.
+  <Card title="Custom agents" icon="wrench" href="/he/start/quickstarts/custom-agents">
+    Agent שכתבת בעצמך, או אחד שלא מופיע כאן.
   </Card>
-  <Card title="LangChain ו-LangGraph" icon="share-2" href="/he/start/quickstarts/langchain">
-    גרפים, צמתים, כלים, retriever-ים, מודלים.
+  <Card title="LangChain and LangGraph" icon="share-2" href="/he/start/quickstarts/langchain">
+    גרפים, nodes, כלים, retrievers, מודלים.
   </Card>
   <Card title="CrewAI" icon="users" href="/he/start/quickstarts/crewai">
-    צוותים, זרימות, אגנטים לפי תפקיד, כלים.
+    צוותים, flows, agents לפי תפקיד, כלים.
   </Card>
   <Card title="LlamaIndex" icon="database" href="/he/start/quickstarts/llamaindex">
-    סדרי עבודה, שלבים, function agents, retriever-ים.
+    Workflows, צעדים, function agents, retrievers.
   </Card>
   <Card title="Pydantic AI" icon="badge-check" href="/he/start/quickstarts/pydantic-ai">
-    אגנטים מטיפוסים, יכולות, כלים, ניסיונות חוזרים.
+    Typed agents, capabilities, כלים, retries.
   </Card>
 </Columns>
 
-## שלוש שורות, איזה framework שלא יהיה
+## לפני שתתחיל
+
+שני דברים שהנתיב הזה מניח, ואף אחד מהם לא מכוסה בקוד להלן:
+
+| דרישה | סיבה |
+| --- | --- |
+| Python 3.10 או חדש יותר | הרצפה שה-SDK מכריז עליה. |
+| מכונה שנקבעה עם `failproofai config` | הפקודה הזו מתקינה את daemon failproofaid, והדeamon הוא הדבר היחיד שמשלח את מה ש-SDK כותב. בלעדיו הביצים מצטברות בתיקיית spool ולעולם לא עוזבות. |
+
+<Note>
+  **הנתיב הזה מקליט; הוא לא כופה.** ה-SDK תופס את מה שה-agent שלך עשה. פוליטיקות נורות מ-hook בתוך CLI של agent, אז כפיית אכיפה על agent framework פירושה הכנסת hook לתוך ה-runtime שלך — ראה [Policies](/he/policies/overview).
+</Note>
+
+## שלוש שורות, כל framework
 
 <CodeGroup>
 ```bash LangGraph
@@ -59,7 +73,7 @@ with failproofai_sdk.session():
     ...                               # your existing agent call, unchanged
 ```
 
-אין דקורטורים על הפונקציות שלך, אין callback שעוברת לקריאות שלך, אין ids המשודרים בקוד שלך. רק הקריאה בתוך ה-session שונה:
+ללא decorators בפונקציות שלך, לא callback שמועבר לקריאות שלך, לא ids מתורגלים דרך הקוד שלך. רק הקריאה בתוך ה-session שונה:
 
 <Tabs>
   <Tab title="LangGraph">
@@ -91,30 +105,44 @@ with failproofai_sdk.session():
   </Tab>
 </Tabs>
 
-ההתקנה הנוספת היא ל-**framework**. כל adapter משודר בגלגל הבסיס, כך שפרויקט שכבר יש לו את ה-framework שלו לא צריך שום דבר נוסף בכלל.
+ההתקנה הנוספת מתקינה את ה-**framework**. כל adapter נושא בגלגל הבסיס, אז פרויקט שכבר יש לו את ה-framework שלו לא צריך כלום.
 
 ## בדוק שהגיע
 
-הפעל session אחד עם כלי-עזר, ואז פתח **Observe → Sessions** ובחר את ה-environment שלך. ה-run מופיע כ-trace שנבנה מחדש.
+הרץ session אחד מכויל, ואז פתח **Observe → Sessions** ובחר את ה-environment שלך. ההרצה מופיעה כ-trace משוחזר.
 
-אם לא הגיע כלום, אשר שהמכונה מחוברת עם `failproofai config --status`. ראה [Set up capture](/he/start/setup).
+אם כלום לא הגיע, אשר שהמכונה מוגדרת ומחוברת עם `failproofai config --status`. אם היא לא, הרץ `failproofai config`. ראה [Choose your setup](/he/start/setup).
 
 <Warning>
-  אל תבדוק את ספיריית ה-spool כדי לאשר משלוח. ה-Failproof daemon אוגר ומוחק כל batch תוך אלפיות שנייה, כך שקריאתו מהיר מהאוסף ומראה הרבה פחות אירועים מאלה שנקלטו.
+  אל תבדוק את תיקיית spool לאישור משלוח. ה-Failproof daemon אוסף ומוחק כל batch בתוך אלפיות שנייה, אז קריאה שלה מתחרה בקולט ומציגה הרבה פחות events מאשר נשלחו.
 </Warning>
 
-## הבא
+כדי להוכיח שה-SDK כותב בכלל, עצור תחילה את ה-daemon, ואז הרץ את ה-session שלך והסתכל ב-`~/.failproofai/custom-agents/events/`. כאשר ה-daemon רץ, תיקייה ריקה היא המצב הבריא.
 
-כל quickstart למעלה מקשר להנחיה המלאה שלו — מה מתרשם, אפשרויות, streaming, קביעת שם span, והבעיות שאנשים באמת פוגשים. הם יושבים תחת **Trace Agents → Plug in your agent**.
+<CodeGroup>
+```bash Linux
+sudo systemctl stop failproofaid@$USER
+```
+
+```bash macOS
+sudo launchctl bootout system/ai.failproof.failproofaid.$USER
+```
+</CodeGroup>
+
+הרץ `failproofai config` אחר כך להחזיר אותו. בזמן שה-daemon עצור, hook events במכונה הזו לא יש evaluator ודחויים, אז עצור אותו רק כמה זמן שהבדיקה לוקחת.
+
+## הלאה
+
+כל quickstart למעלה קישור לידי ההנחיה המלאה שלו — מה מוקלט, אפשרויות, streaming, span naming, ובעיות שאנשים בעצם פוגשים. הם חיים תחת **Trace Agents → Plug in your agent**.
 
 <Columns cols={3}>
   <Card title="איך זה עובד" icon="workflow" href="/he/start/integrations/custom-agents#going-deeper">
-    מודל הנתונים, ה-ids, סוגי האירועים, וכיצד אירועים מגיעים ל-Cloud.
+    מודל הנתונים, ה-ids, סוגי ה-events, וכיצד events מגיעים ל-Cloud.
   </Card>
   <Card title="קרא trace" icon="route" href="/he/sessions/read-a-trace">
-    עקוב אחר סיבתיות דרך session במקום יומנים מנותקים.
+    עקוב אחר סיבתיות דרך session במקום logs מנותקים.
   </Card>
   <Card title="מצא את הכשל הראשון שלך" icon="scan-search" href="/he/start/first-audit">
-    בדוק את ה-sessions שזה עתה תפסת.
+    בדוק את ה-sessions שהשגת זה עתה.
   </Card>
 </Columns>

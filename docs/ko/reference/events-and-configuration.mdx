@@ -1,41 +1,52 @@
 ---
-title: "이벤트 및 구성"
-description: "이벤트 모델, 환경, 로컬 스토리지, 구성 경계를 참조합니다."
+title: "이벤트 및 설정"
+description: "이벤트 모델, 환경, 로컬 스토리지, 설정 경계에 대한 참조 문서입니다."
 icon: "list-tree"
 ---
 
+## 두 가지 이벤트 체계
+
+Failproof AI는 두 종류의 이벤트를 다루며, 이름이 겹치는 경우는 없습니다.
+
+| 체계 | 생성 주체 | 이름 형태 | 참조 |
+| --- | --- | --- | --- |
+| 텔레메트리 이벤트 | `failproofai-sdk`, 에이전트 내부에서 생성 | `tool_use`, `tool_result`, `hook_triggered`, `model_response` | [Python SDK](/ko/reference/custom-agents) |
+| 훅 이벤트 | 에이전트 하네스에서 생성되며 failproofai가 정규화 | `PreToolUse`, `PostToolUse`, `Stop`, `UserPromptSubmit` | [커스텀 정책](/ko/reference/policy-sdk#choose-the-event) |
+
+훅 측은 각 하네스 고유의 이벤트 이름을 29가지 표준 타입으로 정규화합니다. 텔레메트리 측은 15개의 메서드와 자체 필드 계약을 갖습니다. `hook_triggered`와 `PreToolUse`는 동일한 것을 다르게 표기한 것이 아닙니다.
+
 ## 이벤트 패밀리
 
-- 에이전트 시작, 종료, 일시 정지, 재개
+- 에이전트 시작, 종료, 일시 중지, 재개
 - 모델 요청 및 응답
 - 도구 사용 및 결과
 - 훅 트리거 및 완료
-- 대기, 입력, 일시 정지, 중단
+- 사람 대기, 입력, 일시 중지, 중단
 - 명시적 오류
 
-모든 이벤트에는 타임스탬프, 세션 ID, 에이전트 ID, 이벤트 유형, 환경이 포함됩니다. 이벤트별 필드에는 모델, 도구, 상관관계, 결과, 콘텐츠, 지속 시간, 오류 데이터가 담겨 있습니다.
+모든 이벤트에는 타임스탬프, 세션 ID, 에이전트 ID, 이벤트 타입, 환경이 포함됩니다. 이벤트별 필드에는 모델, 도구, 상관관계, 결과, 콘텐츠, 소요 시간, 오류 데이터가 담길 수 있습니다.
 
 ## 이벤트 계약 검사
 
 <Tabs>
   <Tab title="대시보드">
     1. **Observe → Events**를 엽니다.
-    2. 짧은 시간 범위를 설정하고 환경, 에이전트, 이벤트 유형으로 필터링합니다.
+    2. 짧은 시간 범위를 설정하고 환경, 에이전트, 이벤트 타입으로 필터링합니다.
     3. 이벤트를 선택해 정규화된 필드와 원시 페이로드를 검사한 다음, 해당 세션을 열어 실행 컨텍스트를 확인합니다.
-    4. 쌍을 이루는 지속 시간이 없는 경우, 시작 이벤트와 완료 이벤트가 동일한 상관관계 ID를 사용하는지 확인합니다.
+    4. 페어링된 소요 시간이 없다면, 시작 이벤트와 완료 이벤트가 동일한 상관 ID를 사용하는지 확인하세요.
 
-    Events 스트림을 사용해 데이터를 단일 에이전트 실행으로 좁히고 정규화된 이벤트 필드를 검사합니다.
+    Events 스트림을 사용해 데이터를 특정 에이전트 실행으로 좁히고 정규화된 이벤트 필드를 검사합니다.
 
-    ![환경, 에이전트, 세션, 이벤트 유형 필터가 적용된 실시간 Events 스트림.](/images/dashboard/events-stream.png)
+    ![환경, 에이전트, 세션, 이벤트 타입 필터가 있는 라이브 Events 스트림.](/images/dashboard/events-stream.png)
 
-    그런 다음 이벤트를 따라 해당 세션으로 이동합니다. 트레이스는 이벤트 바로 전후에 일어난 일을 보여주며, 페이로드만으로는 판단이 모호할 때 반드시 확인해야 합니다.
+    이벤트를 해당 세션으로 따라가 확인하세요. 트레이스는 이벤트 직전과 직후에 무슨 일이 일어났는지 보여주며, 페이로드만으로 판단하기 모호한 경우에 꼭 필요합니다.
 
     ![실행 컨텍스트에서 이벤트를 검사하는 데 사용되는 연결된 세션 트레이스.](/images/dashboard/session-detail.png)
 
-    쌍을 이루는 이벤트나 지속 시간이 없을 때는 두 뷰에서 상관관계 ID와 타임스탬프를 비교합니다.
+    페어링된 이벤트나 소요 시간이 누락된 경우, 두 뷰에서 상관 ID와 타임스탬프를 비교하세요.
   </Tab>
   <Tab title="CLI">
-    유효한 필터 값을 확인한 다음, 단일 세션의 전체 이벤트 페이로드를 가져옵니다:
+    유효한 필터 값을 확인한 후, 특정 세션의 전체 이벤트 페이로드를 가져옵니다:
 
     ```bash
     fp list event_types
@@ -47,38 +58,109 @@ icon: "list-tree"
       --full
     ```
 
-    머신 가독 형식으로 검사하려면 `fp --json events ... --fields ts,event_type,session_id,payload`를 사용합니다.
+    머신 가독성 형태로 검사하려면 `fp --json events ... --fields ts,event_type,session_id,payload`를 사용하세요.
   </Tab>
 </Tabs>
 
-## 예약된 SDK 필드
+## SDK 예약 필드
 
-`timestamp`, `session_id`, `agent_id`, `type`, `environment`는 커스텀 Python SDK 필드로 사용하지 마십시오. 도구 결과 지속 시간과 같은 쌍 이벤트 지속 시간은 SDK가 자동으로 계산하며, 수동으로 지정할 수 없습니다.
+다음 5개 이름은 SDK가 모든 이벤트에 직접 설정하기 때문에 커스텀 필드로 사용할 수 없습니다:
+
+`timestamp`, `session_id`, `agent_id`, `type`, `environment`.
+
+11개는 수락되지만 타입 검사를 거칩니다. 인제스트 엔드포인트가 이 값들을 페이로드에서 꺼내 타입이 지정된 컬럼에 저장하며, 타입이 맞지 않으면 조용히 `NULL`로 저장하기 때문입니다. SDK는 값을 생성한 코드 위치에서 즉시 예외를 발생시켜 문제를 빠르게 파악할 수 있습니다.
+
+| 이름 | 필요 타입 |
+| --- | --- |
+| `duration_ms`, `input_tokens`, `output_tokens` | 부호 없는 32비트 범위 내의 `int`. float이나 bool이면 예외 발생. |
+| `tool_name`, `tool_call_id`, `hook_name`, `hook_id`, `input_id`, `pause_id`, `error_type`, `model` | `str`. `None`이면 예외 발생 — 행은 200 OK로 도착하지만 해당 필드의 모든 필터에서 보이지 않게 됩니다. |
+
+### 소요 시간
+
+SDK는 4쌍의 이벤트 간 간격을 직접 측정하며, 직접 전달하는 `duration_ms`는 거부합니다: `tool_use` → `tool_result`, `hook_triggered` → `hook_completed`, `agent_pause` → `agent_resume`, `human_wait` → `human_input`.
+
+`model_response`는 예외입니다. SDK는 모델 호출 시간을 측정하지 않으므로, 밀리초 단위의 정수로 `duration_ms`를 직접 전달해야 합니다. 페어 매칭 방식은 [상관관계 규칙](/ko/reference/custom-agents)을 참조하세요.
 
 ## 로컬 경계
 
-- Failproof AI 상태는 명시적으로 다르게 구성하지 않는 한 `~/.failproofai` 하위에 저장됩니다.
-- `failproofai-sdk`는 항상 `~/.failproofai/custom-agents` 하위에 스풀링됩니다. `FAILPROOFAI_HOME`을 설정하면 홈 위치가 변경되지만, `custom-agents` 세그먼트는 항상 추가되므로 스풀을 그 외부에 배치할 수 없습니다. SDK 자체의 `configure(base_dir=...)`만 다른 위치에 쓸 수 있습니다. `AGENTEYE_HOME`은 이전 버전의 `agenteye-collector`가 감시 대상을 결정할 때 읽는 변수로, 더 이상 SDK가 쓰는 위치에는 영향을 미치지 않습니다.
-- 환경 레이블은 SDK 구성 또는 `AGENTEYE_ENVIRONMENT`를 통해 설정할 수 있습니다.
-- 데몬 자격증명은 비밀이 아닌 설정과 별도로 저장됩니다.
+- Failproof AI 상태는 명시적으로 다르게 설정하지 않는 한 `~/.failproofai` 아래에 저장됩니다.
+- `failproofai-sdk`는 항상 `~/.failproofai/custom-agents` 아래에 스풀링합니다. `FAILPROOFAI_HOME`으로 홈 위치를 변경할 수 있지만, `custom-agents` 세그먼트는 항상 뒤에 붙으므로 스풀을 그 밖에 둘 수 없습니다. SDK 자체의 `configure(base_dir=...)`만 다른 위치에 씁니다. `AGENTEYE_HOME`은 이전 `agenteye-collector`가 감시 대상을 결정할 때 사용하며, 더 이상 SDK가 쓰는 위치에는 영향을 미치지 않습니다.
+- 자격 증명은 `~/.failproofai/credentials.json`에 저장되며 `0600` 권한으로 작성됩니다. 의도적으로 `config.json`에 두지 않는데, `config.json`은 일반 쓰기로 작성되어 umask를 그대로 상속하므로 같은 머신의 모든 로컬 사용자가 읽을 수 있는 상태로 저장됩니다.
 
-안정적이고 카디널리티가 낮은 환경 이름을 사용하십시오. 데몬 환경 레이블에는 쉼표를 사용할 수 없습니다.
+환경 이름은 안정적이고 카디널리티가 낮은 이름을 사용하세요. 쉼표는 두 곳 모두에서 거부됩니다: 데몬은 `collector.environment`에서, SDK는 `configure(environment=...)`에서 거부합니다. 이유는 같습니다 — 인제스트 엔드포인트가 이 필드를 쉼표로 분리하고 해당 라인 전체를 건너뛰며, 저장은 아무것도 하지 않으면서 `200 OK`를 반환합니다.
+
+## 머신 설정
+
+데몬의 비밀이 아닌 설정은 `~/.failproofai/config.json`에 있습니다. `hooks_verbosity`, `redact`, `environment`는 CLI 플래그가 없으므로 파일을 직접 편집해야 합니다. `sessions`, `hooks`, `machine_id`는 이 머신을 Cloud에 연결할 때 `failproofai config`가 씁니다.
+
+| 키 | 값 | 기본값 | 설명 |
+| --- | --- | --- | --- |
+| `collector.sessions` | `true` / `false` | `false`, Cloud 연결 후에는 `true` | 에이전트 세션 트랜스크립트 전송. 트랜스크립트에는 프롬프트, 파일 내용, 터미널에 붙여 넣은 내용이 포함됩니다. |
+| `collector.hooks` | `true` / `false` | `true` | 훅 활동 전송. 결정 사항과 도구 이름이 포함되며, 파일 내용은 포함되지 않습니다. |
+| `collector.hooks_verbosity` | `all` / `decisions` / `off` | `decisions` | `decisions`는 모든 deny와 instruct를 그대로 유지하고, 약 99%를 차지하는 allow는 집계합니다. |
+| `collector.redact` | `minimal` / `off` | `minimal` | 머신을 떠나기 전에 적용되는 난독화. |
+| `collector.environment` | 쉼표 없는 임의의 문자열 | `local` | 이 머신이 전송하는 모든 이벤트에 찍히는 레이블. |
+| `collector.machine_id` | 임의의 문자열 | 디스크에 이미 있는 ID, 없으면 새로운 무작위 UUID | 대시보드가 이 데이터를 묶는 기준이 되는 머신. `--machine-id`로 작성됩니다. 호스트명에서 파생되지 않습니다. |
+
+<Note>
+  `failproofai backfill --help`에는 `~/.failproofai/config.toml`이 표시됩니다. 이는 이전 홈 레이아웃에서 사용하던 오래된 경로이며, 현재 빌드에서는 이 파일을 작성하지 않습니다. 실제 파일은 `config.json`입니다.
+</Note>
+
+Cloud에 연결하면 정책 결정과 전체 세션 트랜스크립트가 모두 전송됩니다.
+
+<Warning>
+  `--no-transcripts`는 설정 경로에서 트랜스크립트를 끄지 않습니다. `failproofai config --token <key> --no-transcripts`는 플래그를 파싱하지만 읽지는 않으며, 위저드는 sessions를 활성화한 채로 연결하므로 옵트아웃했다고 생각하는 동안에도 트랜스크립트가 계속 전송됩니다.
+
+  결정 사항만 전송하려면, 연결 후 `~/.failproofai/config.json`에서 `collector.sessions`를 `false`로 설정하세요:
+
+  ```json
+  {
+    "collector": {
+      "sessions": false
+    }
+  }
+  ```
+</Warning>
+
+백필은 동일한 collector 설정을 따르므로, 설정에서 원하지 않는다고 명시한 데이터는 전송하지 않습니다. 재전송은 안전합니다: 난독화는 결정론적이므로 재전송된 이벤트는 첫 번째 전송과 동일한 해시를 가지며, 이미 존재하는 행으로 합쳐집니다.
 
 ## 환경 레이블 변경
 
-<Tabs>
-  <Tab title="대시보드">
-    환경 레이블은 이벤트를 발신하는 SDK 또는 Failproof 데몬이 지정합니다. 레이블을 변경한 후에는 **Observe → Sessions**를 열고 환경 필터를 사용해 새 세션에 변경된 값이 적용되는지 확인합니다. 기존 세션은 원래 환경을 그대로 유지합니다.
+SDK와 데몬은 각자 자신의 레이블을 찍으며, 설정 위치도 다릅니다.
 
-  </Tab>
-  <Tab title="CLI">
-    `failproofai-sdk`의 경우, 코드 내에서 환경을 구성하거나 레거시 환경 변수를 사용합니다. 머신 수준 설정을 변경할 때는 데몬 구성을 다시 실행합니다.
+<Tabs>
+  <Tab title="Python SDK">
+    코드에서 설정하거나, 이벤트를 생성하는 프로세스의 환경 변수로 설정합니다. 기본값은 `dev`입니다.
+
+    ```python
+    import failproofai_sdk
+
+    failproofai_sdk.configure(environment="production-us-east")
+    ```
 
     ```bash
     export AGENTEYE_ENVIRONMENT=production-us-east
-    failproofai config
+    ```
+
+    `AGENTEYE_ENVIRONMENT`는 `failproofai-sdk`만 읽습니다. CLI나 데몬은 이 변수를 읽지 않으므로, 이 값을 내보내도 머신 설정에는 아무런 영향이 없습니다.
+  </Tab>
+  <Tab title="데몬">
+    `~/.failproofai/config.json`에서 `collector.environment`를 편집합니다. 기본값은 `local`이며 CLI 플래그로는 설정할 수 없습니다.
+
+    ```json
+    {
+      "collector": {
+        "environment": "production-us-east"
+      }
+    }
+    ```
+
+    ```bash
     failproofai config --status
     fp sessions --since 1h --env production-us-east
     ```
+  </Tab>
+  <Tab title="대시보드">
+    환경 레이블은 이벤트를 생성하는 SDK 또는 Failproof 데몬이 지정하므로 여기서 변경할 내용은 없습니다. 소스에서 레이블을 변경한 후, **Observe → Sessions**를 열고 환경 필터를 사용해 새 세션에 새 값이 적용되는지 확인하세요. 기존 세션은 원래 환경을 그대로 유지합니다.
   </Tab>
 </Tabs>

@@ -1,56 +1,65 @@
 ---
+---
 title: "Audit"
-description: "Esamina una popolazione definita di sessioni per individuare errori che le tracce da sole non riveleranno."
+description: "Cerca le esecuzioni degli agenti per individuare errori ripetuti, comportamenti rischiosi e sforzi sprecati."
 icon: "scan-search"
 ---
 
-Un audit ricerca in un insieme selezionato di sessioni un obiettivo di errore dichiarato. Combina prove di traccia, risultati di valutazione, policy hit e contesto di riferimento per produrre risultati su cui puoi agire.
+Un audit esamina molte esecuzioni degli agenti rispetto a un obiettivo e restituisce risultati supportati da prove.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Trova automaticamente i fallimenti degli agenti con gli audit di Failproof AI" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Find agent failures automatically with Failproof AI audits" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-Scopri come un audit passa da un'esecuzione pianificata a errori supportati da prove che puoi correggere.
+## Locale o Cloud
 
-## Apri gli audit
+| | Audit locale | Audit Cloud |
+| --- | --- | --- |
+| Comando | `failproofai audit` | `fp audits` |
+| Legge | Cronologia degli agenti su questo computer | Sessioni nella tua organizzazione Cloud |
+| Produce | Risultati locali su `localhost:8020/audit` | Risultati, problemi e avvisi condivisi |
+| Richiede | Nessun account | Connessione Cloud e chiave API |
 
-<Tabs>
-  <Tab title="Dashboard">
-    Vai a **Analyze → Audits**. La pagina mostra lo stato pianificato, i risultati aperti, l'ultima esecuzione, la prossima esecuzione, la cadenza e se l'audit ha pagine di sintesi o di riferimento. Seleziona una scheda per le impostazioni e la cronologia delle esecuzioni; seleziona **new audit** per crearne uno.
+Usa un audit locale per una revisione rapida di un singolo computer. Usa Cloud quando un team ha bisogno di un audit ricorrente su più agenti e computer.
 
-    ![La pagina Audits che mostra i ricorrenti audit con il loro programma, sensibilità e stato di esecuzione.](/images/dashboard/audits.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp audits list
-    fp audits list --enabled-only --show-id
-    fp audits show <audit-name>
-    fp audits findings --status open --limit 20
-    ```
-  </Tab>
-</Tabs>
+## Domande a cui un audit può rispondere
 
-Utilizza un audit quando hai bisogno di rispondere a una domanda a livello di popolazione come:
+- Dove gli agenti si fermano senza escalare?
+- Quali errori degli strumenti portano a tentativi inefficaci?
+- Gli agenti accedono a dati al di fuori del flusso di lavoro previsto?
+- Cosa è cambiato dopo un aggiornamento del modello, del prompt o dello strumento?
 
-- Dove gli agenti abbandonano i compiti senza escalare?
-- Quali errori di strumento portano a nuovi tentativi inefficaci?
-- Gli agenti accedono ai dati al di fuori del flusso di lavoro previsto?
-- Cosa è cambiato dopo un rilascio di modello, prompt o strumento?
+## Aprire gli audit Cloud
 
-## Flusso di risposta dell'audit
+Vai a **Analyze → Audits**, oppure usa:
+
+```bash
+fp audits list
+fp audits show <audit-name>
+fp audits findings --status open --limit 20
+```
+
+I comandi di audit utilizzano il nome dell'audit o l'ID completo. I risultati sono referenziati dal loro ID.
+
+## Dal risultato alla prevenzione
 
 ```text
 Session → Audit → Finding → Issue → Policy
-                         ↘ Alert for recurrence
+                         ↘ Alert
 ```
 
-Un risultato deve nominare la modalità di errore e puntare alle prove. Un problema possiede la correzione. Una policy previene uno schema di azione noto; un alert rileva la ricorrenza quando la prevenzione non è possibile o ha bisogno di monitoraggio.
+Un risultato punta a prove. Un problema possiede la risposta. Una policy previene uno schema di azioni noto; un avviso monitora la ricorrenza.
 
-<Columns cols={2}>
-  <Card title="Configura un audit" icon="sliders-horizontal" href="/it/audits/setup">
-    Definisci l'obiettivo, la popolazione e il contesto di riferimento prima della prima esecuzione.
+Non tutti i risultati dovrebbero diventare una policy. Un risultato di tipo `policy` descrive una regola applicabile. Un `failure` o un `improvement` potrebbe richiedere invece una modifica al flusso di lavoro, al prompt, al modello o allo strumento.
+
+<CardGroup cols={3}>
+  <Card title="Audit questo computer" icon="laptop-minimal-check" href="/it/audits/local-audit">
+    Scansiona la cronologia locale senza account.
   </Card>
-  <Card title="Aggiungi contesto agente" icon="bot" href="/it/audits/agent-contracts">
-    Dichiara cosa ogni agente deve produrre e cosa non deve mai fare.
+  <Card title="Configura un audit Cloud" icon="sliders-horizontal" href="/it/audits/setup">
+    Scegli l'obiettivo, le sessioni e la pianificazione.
   </Card>
-</Columns>
+  <Card title="Rivedi i risultati" icon="list-checks" href="/it/audits/findings-and-issues">
+    Triage delle prove e assegnazione di una risposta.
+  </Card>
+</CardGroup>

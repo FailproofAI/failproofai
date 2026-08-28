@@ -1,63 +1,76 @@
 ---
-title: "Policies"
-description: "Osserva, guida o blocca le azioni dell'agente prima che un errore noto si ripeta."
+title: "Politiche"
+description: "Guida o blocca un agente prima che un errore noto si ripeta."
 icon: "shield-check"
 ---
 
-Una policy valuta un evento hook dell'agente e restituisce una di tre decisioni:
+Una politica monitora un'azione dell'agente e restituisce una di tre decisioni:
 
-- `allow` consente all'azione di proseguire.
-- `instruct` fornisce all'agente una guida correttiva.
-- `deny` blocca l'azione con una motivazione.
+- `allow` consente di continuare.
+- `instruct` fornisce indicazioni all'agente quando il suo harness lo supporta.
+- `deny` blocca l'azione.
 
-## Utilizza le tre superfici di policy
+Usa le politiche per comportamenti noti e ripetibili: eliminazione di file protetti, esposizione di segreti, push su un ramo sbagliato o modifiche dell'infrastruttura di produzione.
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. Vai su **Observe → policy** per filtrare e ispezionare le decisioni di policy dalle sessioni.
-    2. Vai su **Admin → policy editor** per comporre, convalidare, pubblicare, disabilitare o ispezionare versioni immutabili.
-    3. Vai su **Admin → enforcement** per assegnare versioni ed effetti alle macchine.
+## Aggiungi politiche a questa macchina
 
-    Utilizza la pagina Policy per capire cosa sta già corrispondendo prima di creare o modificare l'enforcement.
+L'installazione non sceglie alcun pacchetto di politiche. Aggiungi il pacchetto Failproof AI dopo l'installazione:
 
-    ![La pagina Policy che mostra i totali delle decisioni e i mapping di policy gestiti localmente e su Cloud.](/images/dashboard/policy-observe.png)
+```bash
+failproofai config
+failproofai policies add FailproofAI/policies
+failproofai policies
+```
 
-    L'editor è il luogo in cui converti una condizione di errore in codice, la convalidi e pubblichi una versione immutabile.
+Il pacchetto non contiene un pack built-in privilegiato. Il nostro si installa allo stesso modo di qualsiasi altro.
 
-    ![L'editor di Policy utilizzato per comporre e pubblicare una versione di policy immutabile.](/images/dashboard/policy-editor.png)
+Le politiche possono provenire anche da un file locale, da un pacchetto pubblicato o da un'assegnazione Cloud:
 
-    L'enforcement assegna quindi quella versione pubblicata e il suo effetto di observe o enforce alle macchine.
+| Origine | Aggiungila |
+| --- | --- |
+| File locale | Metti `*policies.{js,mjs,ts}` sotto `.failproofai/policies/` |
+| Qualsiasi percorso di file | `failproofai policies -i -c <path>` |
+| Pacchetto pubblicato | `failproofai policies add <owner>/<repo>` |
+| Cloud | Assegnala nella dashboard o con `fp fleet deploy` |
 
-    ![La flotta di Enforcement che mostra la copertura delle macchine e le versioni di policy assegnate.](/images/dashboard/enforcement-fleet.png)
+`block-failproofai-commands` viene sempre eseguita e non può essere disattivata. Impedisce a un agente di disabilitare la propria imposizione.
 
-    Verifica le decisioni di nuovo nella pagina Policy dopo la distribuzione, in modo che le viste di authoring e flotta siano collegate all'attività reale dell'agente.
-  </Tab>
-  <Tab title="CLI">
-    Utilizza `failproofai` per l'installazione e la convalidazione locale delle policy:
+## Osserva prima di applicare
 
-    ```bash
-    failproofai policies
-    failproofai policy add block-rm-rf --scope project
-    failproofai config --status
-    ```
+La modalità osservazione esegue la vera politica e registra cosa avrebbe fatto, ma non blocca l'agente.
 
-    Utilizza `fp` per trovare le sessioni Cloud e gli eventi contenenti decisioni di policy. L'authoring Cloud e la distribuzione della flotta rimangono flussi di lavoro del dashboard.
-  </Tab>
-</Tabs>
+```bash
+fp policies test ./checkout.policy.mjs --tool Bash --command "git push --force" --expect deny
+fp fleet deploy ci-runner-01 --add checkout-guard:observe
+fp guardrails summary --since 24h --machine ci-runner-01
+fp fleet deploy ci-runner-01 --add checkout-guard:enforce
+```
 
-Le policy hanno tre superfici distinte in Failproof AI:
+<Warning>
+  Un semplice `fp fleet deploy <machine> --add <id>` applica immediatamente. Aggiungi `:observe` per un rollout shadow.
+</Warning>
 
-1. **Analizza decisioni** in sessioni, dashboard e audit.
-2. **Crea versioni** con regole built-in, codice o l'editor di policy.
-3. **Distribuisci e applica** versioni su macchine selezionate.
+Una politica che va in timeout in modalità osservazione registra un allow, perché è quello che accadrebbe durante l'imposizione. Vengono registrate solo le decisioni osservate non-allow.
 
-Inizia da una modalità di errore confermata. Definisci l'evento più piccolo e la corrispondenza dello strumento che l'identifica, testa esempi legittimi e non sicuri, quindi osserva prima di applicare.
+Per un pacchetto utilizzato senza Cloud, pubblicalo con `failproofai publish --effect observe`.
 
-<Columns cols={2}>
-  <Card title="Utilizza una policy built-in" icon="library" href="/it/policies/builtin">
-    Abilita una regola controllata per i rischi comuni di segreti, shell, Git, cloud e workflow.
+## Scegli il percorso giusto
+
+<CardGroup cols={2}>
+  <Card title="Usa una politica revisionata" icon="library" href="/it/policies/builtin">
+    Scegli tra 39 politiche per segreti, file, Git, infrastruttura e workflow.
   </Card>
-  <Card title="Scrivi una policy personalizzata" icon="code-2" href="/it/policies/custom">
-    Esprimi una decisione specifica del workflow in JavaScript o TypeScript.
+  <Card title="Installa un pacchetto" icon="package" href="/it/policies/packs">
+    Aggiungi un set di politiche pubblicato da GitHub o dal Policy Hub.
   </Card>
-</Columns>
+  <Card title="Scrivi una politica" icon="code-2" href="/it/policies/custom">
+    Definisci una regola per il tuo agente o workflow personalizzato.
+  </Card>
+  <Card title="Distribuisci su più macchine" icon="server" href="/it/policies/deploy">
+    Osserva, promuovi e rollback di una politica Cloud.
+  </Card>
+</CardGroup>
+
+<Note>
+  Il supporto dell'imposizione varia per harness. Un deny di tool-call è verificato su tutti i 12 harness supportati; altri eventi variano. Vedi [harness supportati](/it/reference/harnesses#enforcement-capability).
+</Note>

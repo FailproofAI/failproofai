@@ -1,48 +1,58 @@
 ---
 title: "Leggere una traccia"
-description: "Trova l'evento che ha cambiato il corso di una sessione dell'agente."
+description: "Trova l'evento che ha cambiato il corso di un'esecuzione dell'agent."
 icon: "route"
 ---
 
-Una traccia trasforma un flusso di eventi lineare nella storia causale dell'esecuzione. Leggila dal primo punto di divergenza, non all'indietro dall'ultimo errore.
-
-## Aprire la traccia
+Una traccia è la cronologia di un'esecuzione dell'agent. Inizia dal primo evento inaspettato, non dall'errore finale.
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vai a **Observe → Sessions** e apri una sessione.
-    2. Usa il riepilogo del profilo per verificare risultato, timing, errori e punteggi di valutazione.
-    3. Scansiona la timeline e la minimappa. Filtra i tipi di evento o il tempo quando la sessione è grande.
-    4. Seleziona un evento per ispezionarlo. Usa **export** per il JSON dell'evaluator, o copia l'URL della pagina per condividere un deep link alle prove selezionate.
+    1. Apri **Observe → Sessions**.
+    2. Scegli una sessione.
+    3. Cerca il primo errore, una chiamata a strumento inusuale, un'attesa lunga o una decisione di policy.
+    4. Apri l'evento e ispeziona la richiesta, la risposta, l'input e l'output.
 
-    ![Una visualizzazione dettagliata della sessione con il suo grafo di esecuzione, timeline degli eventi, pannello di valutazione e suddivisione di strumenti, modello e hook.](/images/dashboard/session-detail.png)
+    ![Una vista dettagliata della sessione con il grafico di esecuzione, la cronologia degli eventi, il pannello di valutazione e la suddivisione per strumento, modello e hook.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp --json sessions --session-id <session-id>
-    fp events --session-id <session-id> --order asc --all
-    fp --json events --full --session-id <session-id> --all
+    fp events --session-id <session-id> --order asc --all --limit 5000
+    fp --json events --full --session-id <session-id> --all --limit 2000
     ```
 
-    Usa prima il feed di eventi leggero. Richiedi i payload completi solo quando i riepiloghi degli eventi non contengono prove sufficienti.
+    Usa `--full` solo quando il riepilogo dell'evento non fornisce prove sufficienti. Un `next_cursor` non nullo significa che il limite è stato raggiunto prima della fine.
   </Tab>
 </Tabs>
 
-<Steps>
-  <Step title="Orienta te stesso">
-    Conferma l'agente, l'ambiente, il timing, il risultato e la durata, quindi scansiona per errori, intervalli lunghi, strumenti ripetuti, attese umane e decisioni di policy negate.
-  </Step>
-  <Step title="Espandi il primo evento sospetto">
-    Ispeziona la sua richiesta, risposta, input dello strumento, output e ID di correlazione. Il contenuto sensibile è visibile solo quando l'acquisizione della trascrizione è abilitata e le tue autorizzazioni lo consentono.
-  </Step>
-  <Step title="Ispeziona il contesto precedente">
-    La causa spesso si trova un evento prima: una risposta del modello non corretta, un risultato dello strumento mancante o un'assunzione obsoleta.
-  </Step>
-  <Step title="Trasforma le prove in azione">
-    Aggiungi la sessione a un ambito di audit, collegala a un problema, o usa la modalità di errore per creare una policy.
-  </Step>
-</Steps>
+## Seguire le prove
+
+1. Conferma l'agent, l'obiettivo, l'ambiente e il risultato.
+2. Trova il primo errore o la prima decisione inaspettata.
+3. Ispeziona l'evento immediatamente precedente.
+4. Segui gli ID corrispondenti nelle coppie richiesta-risposta.
+5. Trasforma le prove in un audit, un problema o una policy.
+
+| Coppia | Campo corrispondente |
+| --- | --- |
+| Richiesta e risposta del modello | `request_id` |
+| Chiamata a strumento e risultato | `tool_call_id` |
+| Inizio e completamento dell'hook | `hook_id` |
+| Pausa e ripresa dell'agent | `pause_id` |
+| Attesa umana e input | `input_id` |
+
+Una decisione appare su `hook_completed`. La riga nomina il risultato e la fonte della policy. Una decisione in modalità observe appare come un allow con il verdetto potenziale in `failproofai_observed`.
 
 <Warning>
-  Una lunga durata non sempre significa latenza del modello. Separa il tempo di modello, strumento, hook e attesa umana prima di decidere cosa correggere.
+  La lunga durata della sessione non è sempre dovuta alla latenza del modello. Separa il tempo del modello, dello strumento, dell'hook e dell'attesa umana prima di decidere cosa correggere.
 </Warning>
+
+<CardGroup cols={2}>
+  <Card title="Decisioni di policy" icon="shield-check" href="/it/sessions/policy-decisions">
+    Vedi cosa l'enforcement ha consentito, guidato o bloccato.
+  </Card>
+  <Card title="Eventi live" icon="radio" href="/it/sessions/live-events">
+    Comprendi i tipi di evento e la consegna.
+  </Card>
+</CardGroup>

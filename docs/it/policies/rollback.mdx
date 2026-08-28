@@ -1,41 +1,68 @@
 ---
 title: "Rollback"
-description: "Ripristina una distribuzione di policy nota quando un rollout interrompe il lavoro valido degli agent."
+description: "Ripristina una distribuzione di policy nota quando un rollout interrompe il lavoro valido dell'agent."
 icon: "rotate-ccw"
 ---
 
-Il rollback modifica la versione distribuita o rimuove un'assegnazione di policy; non cancella la cronologia delle decisioni che spiega l'incidente.
+Il rollback cambia la versione distribuita o rimuove un'assegnazione di policy; non cancella la cronologia delle decisioni che spiega l'incidente.
 
 ## Eseguire il rollback di una macchina
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vai a **Admin → enforcement**, espandi la macchina interessata e identifica il suo ultimo set di policy noto e funzionante.
-    2. Seleziona **edit**, ripristina quelle versioni e i loro effetti, e applica la nuova distribuzione.
+    1. Vai a **Admin → enforcement**, espandi la macchina interessata e identifica il suo ultimo set di policy noto come buono.
+    2. Seleziona **edit**, ripristina quelle versioni ed effetti, e applica la nuova distribuzione.
     3. Attendi il check-in della macchina, quindi verifica la distribuzione segnalata.
-    4. Apri **Observe → policy** e le sessioni interessate per confermare che il lavoro valido non è più bloccato.
+    4. Apri **Observe → policy** e le sessioni interessate per confermare che il lavoro valido non sia più bloccato.
 
   </Tab>
   <Tab title="CLI">
-    Il rollback della distribuzione cloud è un flusso di lavoro del dashboard. Usa lo stato locale per confermare che la distribuzione corretta ha raggiunto la macchina:
+    Trova la generazione a cui tornare, reintegrala, quindi confermala:
 
     ```bash
+    fp fleet history ci-runner-01
+    fp fleet rollback ci-runner-01 3
+    fp fleet diff ci-runner-01
     failproofai config --status
     ```
 
-    `failproofai config --pause` pausa le policy builtin, custom e convention per una sessione locale. Non pausa le policy gestite da Cloud, quindi non è una soluzione alternativa per una distribuzione cloud non corretta.
+    `fp fleet rollback` crea una **nuova** generazione con il vecchio set anziché decrementare il contatore, quindi la cronologia rimane solo aggiunta. Rifiuta se quella generazione nomina una policy che è stata successivamente disabilitata o eliminata — il server lo comunica anziché reintegrare un set che non può essere consegnato.
+
+    `fp fleet diff` mostra l'intenzione rispetto alla consegna. Una macchina viene letta come deviata fino al prossimo polling, quindi controlla il diff prima di concludere che il rollback non ha avuto effetto. `failproofai config --status` lo conferma sulla macchina stessa.
   </Tab>
 </Tabs>
+
+## La pausa non è un rollback
+
+Una pausa sospende ogni policy installata localmente per **una sessione**, e scade sempre automaticamente — pack, file personalizzati, file di convenzione e built-in inclusi. Solo le policy gestite da Cloud e la guardia sempre attiva `block-failproofai-commands` continuano a fare enforcement. Quindi una pausa non è una soluzione per una distribuzione Cloud errata, ed ha un raggio di impatto più ampio di quanto sembri: un pack è dove sostanzialmente vive tutto l'enforcement locale, e la guardia fail-closed del pack viene saltata per la durata.
+
+| Comando | Effetto |
+|---|---|
+| `failproofai config --pause` | La sessione agent più recente di questa directory, per 30 minuti |
+| `failproofai config --pause 10m` | Un tempo specifico. Massimo 8h; suffissi `s`/`m`/`h`, un numero nudo significa minuti |
+| `failproofai config --pause --session <id>` | Indirizza una sessione specifica |
+| `failproofai config --resume` | Termina la pausa anticipatamente |
+| `failproofai config --resume --all` | Termina ogni pausa attiva |
+| `failproofai config --status` | Cosa è in pausa e quando si solleva |
 
 ## Quando eseguire il rollback
 
 - Una policy blocca un'azione di produzione prevista.
 - Il volume di match è materialmente superiore a quanto previsto dal rollout osservato.
 - Una policy dipende da campi che un'integrazione non fornisce.
-- Una nuova versione modifica il comportamento al di fuori della modalità di errore prevista.
+- Una nuova versione cambia il comportamento al di fuori della modalità di errore prevista.
 
-Dopo il rollback, apri le sessioni interessate e identifica la condizione che ha causato il falso positivo. Crea una nuova versione, testa sia i casi non sicuri che quelli legittimi, quindi ripeti la fase di osservazione.
+Dopo il rollback, apri le sessioni interessate e identifica la condizione che ha causato il falso positivo. Crea una nuova versione, prova sia il caso non sicuro che il caso legittimo localmente, quindi passa di nuovo attraverso observe prima di fare enforcement di nuovo:
+
+```bash
+fp policies test ./policy.mjs --tool Bash --command '<the legitimate case>' --expect allow
+fp policies publish my-policy ./policy.mjs
+fp fleet deploy ci-runner-01 --add my-policy:observe
+fp guardrails summary --since 24h --machine ci-runner-01
+```
+
+`:observe` è quello che rende questo un rollout shadow. Un `fp fleet deploy ... --add my-policy` nudo **fa enforcement immediatamente** — un effetto omesso si risolve nell'effetto già distribuito, e poi in `enforce` — che su una policy che hai appena fatto il rollback significa reintegrare l'incidente. La modalità observe valuta comunque la policy per davvero e registra ogni verdetto non-allow; solo l'enforcement viene sospeso, quindi `fp guardrails summary` misura la nuova versione rispetto allo stesso traffico che ha rotto quella vecchia. Promuovi con `--add my-policy:enforce` quando i numeri lo dicono.
 
 <Warning>
-  Sospendere l'enforcement può essere appropriato durante un incidente, ma amplia l'esposizione per ogni policy attiva in questo ambito. Preferisci eseguire il rollback della versione della policy specifica quando possibile.
+  La pausa dell'enforcement può essere appropriata durante un incidente, ma allarga l'esposizione per ogni policy attiva in quello scope. Preferisci eseguire il rollback della versione specifica della policy quando possibile.
 </Warning>

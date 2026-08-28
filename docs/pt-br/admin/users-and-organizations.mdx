@@ -1,21 +1,16 @@
 ---
 title: "Usuários e organizações"
-description: "Controle o acesso de membros e mantenha os dados e ações de cada organização isolados."
+description: "Controle a associação e mantenha os dados e as ações de cada organização devidamente isolados."
 icon: "users"
 ---
 
-As organizações isolam sessões, avaliações, auditorias, issues, alertas, consultas, dashboards, usuários e chaves. Confirme a organização ativa antes de alterar recursos administrativos.
+As organizações isolam sessões, avaliações, auditorias, problemas, alertas, consultas, dashboards, usuários e chaves. Confirme a organização ativa antes de alterar qualquer recurso administrativo.
 
-## Gerenciar membros e organizações
+## Escolher a organização
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Use o seletor de organização no topo da barra lateral do Cloud para trocar de organização.
-    2. Vá para **Administração → Usuários** para pesquisar membros ou filtrar por status ativo e função.
-    3. Selecione **novo usuário**, informe o e-mail, escolha um conjunto de permissões e ajuste as substituições se necessário.
-    4. Abra um usuário posteriormente para atualizar concessões, desativar o login ou reativar a conta.
-
-    ![A página de Usuários exibindo endereços de e-mail dos membros, conjuntos de permissões e controles de edição e desativação.](/images/dashboard/users.png)
+    Use o seletor de organização no topo da barra lateral do Cloud. Tudo abaixo dele — incluindo todas as páginas em **admin** — passa a ler e gravar naquela organização.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -23,22 +18,62 @@ As organizações isolam sessões, avaliações, auditorias, issues, alertas, co
     fp orgs switch reliability-team
     fp orgs current
     fp orgs perms
+    ```
 
+    `fp orgs switch` sem um slug abre um seletor por teclas de seta a partir da organização atual; em execuções não interativas, cai em um prompt numerado e, com `--json`, um slug é obrigatório. A escolha é persistida em `~/.failproofai/fpcli/cli-auth.json`, de modo que comandos posteriores a utilizam como tenant ativo. Para sobrescrever em um único comando, use `--org <slug>` ou a variável `FP_ORG`.
+  </Tab>
+</Tabs>
+
+<Note>
+  Todo comando `fp orgs` exige um usuário autenticado e é recusado sob uma chave de API, pois a associação a uma organização pertence a uma pessoa — e uma chave já age em nome de uma organização. Os comandos `fp users` abaixo funcionam de ambas as formas.
+</Note>
+
+## Gerenciar membros
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Acesse **admin → users** e pesquise membros por e-mail, ou filtre a lista com os chips `protected`, `admin`, `standard` e `read-only`.
+    2. Selecione **new user**, informe o e-mail, escolha um conjunto de permissões e ajuste as substituições por membro, se necessário.
+    3. Abra um membro posteriormente para alterar permissões, desativar o login ou reativar a conta.
+
+    ![A página de usuários com a caixa de pesquisa por e-mail, os chips de filtro e um cartão de membro exibindo suas permissões agrupadas por recurso.](/images/dashboard/users.png)
+
+    Os chips de permissão neste frame são anteriores à renomeação de `incidents:*` para `issues:*`; a lista de [permissões comuns](/pt-br/admin/keys-and-permissions#common-permissions) está atualizada.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp users list
+    fp users list --active-only
     fp users create engineer@example.com --permission-set standard
     fp users show engineer@example.com
     fp users update engineer@example.com --add audits:write
     fp users disable engineer@example.com
     fp users enable engineer@example.com
     ```
+
+    Os membros são identificados por e-mail e resolvidos sem distinção de maiúsculas/minúsculas, portanto `fp users show Alice.Chen@Example.com` e `fp users create alice.chen@example.com` referem-se à mesma pessoa.
   </Tab>
 </Tabs>
 
-Os administradores podem criar, atualizar, desativar e reativar usuários, atribuindo o conjunto de permissões adequado para cada função. A API utiliza uma operação de exclusão para desativação, mas isso não remove a conta nem o registro de membro.
+### Permissões e o que cada operação exige
+
+As permissões de membros seguem a mesma aritmética das chaves: as permissões efetivas são `(conjunto ∪ adicionadas) − removidas`, e `--add` / `--remove` aceitam tokens compactos no formato `slug:action.action`, onde ações separadas por ponto são expandidas. Consulte [keys and permissions](/pt-br/admin/keys-and-permissions).
+
+| Operação | Permissão | Observações |
+| --- | --- | --- |
+| `fp users list` / `show` | `users:read` | `--active-only` oculta membros desativados. |
+| `fp users create` | `users:create` | `--permission-set` define o papel inicial; `--add` / `--remove` aplicam substituições adicionais. |
+| `fp users update` | `users:update` | `--permission-set` **substitui** as substituições por membro; `--add` / `--remove` isolados são incrementais em relação às permissões atuais. |
+| `fp users disable` / `enable` | `users:delete` | Ambos, incluindo reativação — conceda essa permissão de forma deliberada. |
+
+A desativação é recusada em dois casos com erro Forbidden (e não como mensagem de validação): um membro **protected** não pode ser desativado, e você não pode desativar sua própria conta. Desativar um membro já desativado ou reativar um membro já ativo é uma operação silenciosa sem efeito. A API usa uma operação de exclusão para desativação, mas não remove a conta nem o registro de associação.
+
+Duas configurações da organização regem a associação: `default_user_permissions` pré-seleciona o conjunto de permissões para um novo convite, e `allowed_sign_ins` controla quais endereços podem receber um código de login. Gerencie-as na [página de configurações](/pt-br/admin/settings-and-security).
 
 <Warning>
-  Desativar um usuário impede que essa identidade faça login em todas as organizações, não apenas na organização atualmente selecionada. Reativar o usuário restaura o login global e as permissões do membro nesta organização.
+  Desativar um usuário impede que essa identidade faça login em todas as organizações, não apenas na organização atualmente selecionada. Reativar restaura o login global e as permissões do membro nesta organização.
 </Warning>
 
 <Tip>
-  Dê nomes descritivos às contas de serviço, vinculados a uma carga de trabalho e a um responsável. Evite compartilhar chaves entre organizações ou entre pessoas e sistemas automatizados.
+  Dê nomes descritivos às contas de serviço, vinculados a uma carga de trabalho e a um responsável. Não compartilhe uma chave entre organizações nem entre uma pessoa e uma máquina.
 </Tip>

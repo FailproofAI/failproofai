@@ -1,45 +1,41 @@
 ---
 title: "Canlı etkinlikler"
-description: "Oturum çalışırken aracı etkinliğini gerçek zamanlı izleyin."
+description: "Failproof AI Cloud'da aracı etkinliklerini izleyin."
 icon: "radio"
 ---
 
-Canlı etkinlikler, enstrümantasyonu doğrulamak ve oturum bitmesini beklemeden riskli bir çalışmayı izlemenize yardımcı olur.
+Canlı etkinlikler, aracılar çalışırken etkinliği gösterir: model çağrıları, araçlar, hatalar, insan girdisi, kancalar ve politika kararları.
 
 ## Etkinliği izleyin
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. **Observe → Events** kısmına gidin.
-    2. Verilerin geldiğini doğrulamak için geçerli zaman penceresiyle başlayın ve filtre uygulamayın.
-    3. Ortam, etkinlik türü, aracı veya oturum ile filtreleyin. Yük metni için aramayı kullanın.
-    4. Bir etkinliği seçerek özeti ve ayrıntılarını inceleyin. Tam izleme için oturum bağlantısını takip edin.
+**Observe → Live events** bölümüne gidin veya şu komutu çalıştırın:
 
-    ![Hermes sohbet ağ geçidinden gelen trafiği ve kodlama-CLI çalışmalarını gösteren, zaman, ortam, etkinlik türü, aracı, model, bağlam ve oturum ile filtrelenen canlı Etkinlikler akışı.](/images/dashboard/events-stream-current.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp events --env production --event-type tool_use,error --limit 100
-    fp events --session-id <session-id> --order asc --all
-    fp --json events --full --session-id <session-id> --all
-    ```
+```bash
+fp events --since 1h
+fp events --event-type tool_use,tool_result --since 1h
+fp --json events --full --session-id <session-id> --all --limit 2000
+```
 
-    Varsayılan akış ham yükleri hariç tutar. `--full` seçeneğini yalnızca sınırlı bir oturum incelemesi için kullanın.
-  </Tab>
-</Tabs>
+Yük içeriklerine ihtiyaç duyduğunuzda `--full` kullanın. Hafif akış daha hızlıdır ve çoğu filtreleme için yeterlidir.
 
-Üç temel soruyu cevaplamak için etkinlik akışını kullanın:
+Yaygın etkinlik türleri şunları içerir:
 
-- Beklenen aracı doğru ortama raportu veriyor mu?
-- Model çağrıları, araç çağrıları ve politika kararları sırada mı geliyor?
-- Oturum ilerlemeyi durdurdu mu yoksa bir eylemi tekrarlamaya mı başladı?
+- `session_start` ve `session_end`
+- `model_request` ve `model_response`
+- `tool_use` ve `tool_result`
+- `hook_triggered` ve `hook_completed`
+- `error`
+- `human_wait` ve `human_input`
+- `agent_pause` ve `agent_resume`
 
-Etkinlik türleri aracı yaşam döngüsü etkinliklerini, model isteklerini ve yanıtlarını, araç kullanımını ve sonuçlarını, kanca yürütmesini, insan beklentilerini ve kesintilerini ve açık hataları içerir. Korelasyon kimlikleri araç çağrısı ve sonucu gibi eşleştirilmiş etkinlikleri birleştirir.
+## Etkinlikler görünmüyorsa
 
-<Tip>
-  Yeni bir entegrasyonu doğrularken canlı görünümü geniş tutun. İlk etkinliği gördükten sonra filtre ekleyin; yanlış bir filtre başarısız alımı izlenebilir hale getirebilir.
-</Tip>
+```bash
+failproofai flush --wait
+failproofai config --status
+failproofai backfill --since 30d --dry-run
+```
 
-Hiçbir etkinlik görünmezse `failproofai config --status` komutunu çalıştırın, ardından [alımı giderin](/tr/reference/troubleshooting).
+Varsayılan ortam `local` olduğundan, ortam etiketini değiştirene kadar `production` için bir filtre hiçbir şey döndürmez.
 
-Desteklenen 12 [harnisten](/tr/reference/harnesses) birinde çalışmayan aracılar, insan-döngüde etkinlikleri (`human_wait`, `human_input`, `human_interrupt`) dahil olmak üzere [Python SDK](/tr/reference/custom-agents) aracılığıyla aynı etkinlik türlerini raportar; bu etkinlikler ağ geçidi ve üretim aracılarının bağlı olduğu etkinliklerdir.
+Desteklenen bir donanım dışında bir aracı için [Python SDK](/tr/reference/custom-agents) kullanın.

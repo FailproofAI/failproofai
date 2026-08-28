@@ -1,10 +1,10 @@
 ---
 title: "Erros"
-description: "Agrupe erros repetidos e acesse as sessões por trás deles."
+description: "Filtre erros repetidos e abra as sessões por trás deles."
 icon: "circle-alert"
 ---
 
-Erros oferece uma visão focada em falhas entre todas as sessões. Agrupe por tipo de erro, agente, ambiente, modelo, ferramenta ou janela de tempo para identificar problemas operacionais recorrentes.
+Erros oferece uma visão com foco em falhas em todas as sessões. Filtre por ambiente, tipo de evento, tipo de erro, agente ou sessão, e ajuste a janela de tempo para encontrar problemas operacionais recorrentes.
 
 ## Investigar erros
 
@@ -12,32 +12,52 @@ Erros oferece uma visão focada em falhas entre todas as sessões. Agrupe por ti
   <Tab title="Dashboard">
     1. Acesse **Observe → Errors**.
     2. Filtre por ambiente, tipo de evento, tipo de erro, agente, ID de sessão ou texto de busca.
-    3. Expanda um erro agrupado para ver as ocorrências. Selecione uma linha para abrir o evento exato em sua sessão.
-    4. Selecione o controle de sino em um erro representativo para criar um alerta para erros semelhantes.
+    3. Selecione uma linha para abrir o evento exato na sua sessão.
+    4. Selecione **alert** em uma linha representativa para criar um alerta para erros semelhantes.
 
-    ![A página de Erros mostrando um histograma de falhas, erros agrupados e o controle para criar um alerta.](/images/dashboard/errors.png)
+    ![A página de Erros exibindo um histograma de falhas, uma lista filtrada de eventos com erro e o controle de alerta por linha.](/images/dashboard/errors.png)
   </Tab>
   <Tab title="CLI">
     ```bash
-    fp errors --env production --since 24h
+    fp errors --since 24h
     fp errors --error-type TimeoutError --agent-id checkout-agent
-    fp errors --aggregate --env production --since 7d
+    fp errors --event-type tool_result --since 24h
+    fp errors --aggregate --env local --since 7d
     ```
 
-    Use `fp events --full --session-id <id>` quando precisar do payload bruto por trás de um resumo de erro.
+    Uma falha de ferramenta chega como um evento `tool_result` com erro, e não como um evento `error` simples. Portanto, `--event-type tool_result` é a forma de separar falhas de ferramentas de falhas de modelo e de runtime. `is_error` e `error_type` são colunas computadas pelo servidor em cada linha, então nenhum dos modos analisa os payloads.
+
+    Descubra valores de filtro válidos em vez de tentar adivinhar: `fp list error_types`, `fp list agents`, `fp list envs` e `fp list event_types`.
+
+    **Esses cinco filtros do `fp errors` aceitam exatamente um valor cada** — `--env`, `--error-type`, `--event-type`, `--agent-id`, `--session-id`. (`--search` é a exceção e pode ser repetido.) Os mesmos nomes de flag em `fp events` e `fp sessions` aceitam valores repetidos ou separados por vírgula, então `--env prod,staging` funciona lá, enquanto aqui corresponde apenas à string literal `prod,staging`. Isso retorna um resultado vazio em vez de um erro, o que aparece como "sem erros".
+
+    O daemon marca eventos como `local` até que você altere isso, portanto `--env production` não corresponde a nada em uma instalação padrão. Consulte [Alterar um rótulo de ambiente](/pt-br/reference/events-and-configuration#change-an-environment-label).
+
+    `--all` pagina automaticamente apenas até `--limit`, cujo padrão é 50 — use `--all --limit 500` quando quiser mais do que isso. Outras flags do modo lista são `--order asc|desc`, `--cursor`, `--page-size` (máximo 200), `--fields` e `--full-ids`. `--search` é repetível e se aplica a ambos os modos — uma linha corresponde se contiver qualquer um dos termos.
+
+    `fp errors` requer `events:read`. Com `--json`, o modo lista retorna `{"errors": [...], "next_cursor": ...}` e `--aggregate` retorna `{total, sessions, agents, last_ts, bins}`. Use `fp events --full --session-id <id>` quando precisar do payload bruto por trás de um resumo de erro.
   </Tab>
 </Tabs>
 
 ## Use Erros quando precisar
 
 - Encontrar a classe de erro mais frequente em produção.
-- Determinar se uma ferramenta ou modelo específico causa um pico.
+- Determinar se uma ferramenta ou modelo específico está causando um pico.
 - Navegar de uma contagem agregada para sessões representativas.
-- Criar um alerta para recorrências.
+- Criar um alerta para recorrência.
 - Incluir a população afetada em uma auditoria.
 
-Um erro é um evento observado. Uma avaliação com falha é um julgamento de qualidade, e um achado de auditoria é um padrão de falha investigado. Mantenha essas distinções ao decidir qual fluxo de resposta utilizar.
+Um erro é um evento observado. Uma avaliação com falha é um julgamento de qualidade, e uma descoberta de auditoria é um padrão de falha investigado. Mantenha essas distinções ao decidir qual fluxo de resposta utilizar.
 
-<Card title="Criar um alerta" icon="bell-ring" href="/pt-br/audits/alerts">
-  Notifique os responsáveis quando um erro ou condição de qualidade ultrapassar um limite.
-</Card>
+## Sem uma conta Cloud
+
+Erros é um recurso do Cloud. Em uma máquina que não foi conectada, `failproofai audit` analisa o histórico de sessões já presente no disco em busca de padrões arriscados e dispendiosos, e abre `http://localhost:8020/audit`. Adicione `--schedule [days]` para reanalisar em um timer e enviar os resultados por e-mail (padrão 7 dias, intervalo de 1 a 90), `--status` para verificar se o agendamento está ativo, e `--no-schedule` para desativá-lo. Tudo é executado na máquina, com duas exceções. Uma análise agendada publica o id, o rótulo, a plataforma desta máquina e a janela coberta a cada execução, incluindo as análises sem problemas — o que uma análise limpa omite é o digest, não a requisição. E a telemetria anônima da CLI é enviada a cada auditoria, a menos que você defina `FAILPROOFAI_TELEMETRY_DISABLED=1`.
+
+<CardGroup cols={2}>
+  <Card title="Criar um alerta" icon="bell-ring" href="/pt-br/audits/alerts">
+    Notifique os responsáveis quando um erro ou condição de qualidade ultrapassar um limite.
+  </Card>
+  <Card title="Descobertas e problemas" icon="clipboard-list" href="/pt-br/audits/findings-and-issues">
+    Transforme um erro recorrente em um padrão investigado com um responsável.
+  </Card>
+</CardGroup>

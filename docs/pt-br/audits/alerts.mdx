@@ -1,62 +1,103 @@
 ---
 title: "Alertas"
-description: "Detecte recorrências e direcione um incidente para os responsáveis corretos."
+description: "Detecte recorrências e direcione um problema para os responsáveis certos."
 icon: "bell-ring"
 ---
 
-Os alertas monitoram uma condição mensurável e criam um incidente quando ela é acionada. Use-os quando uma falha deve produzir uma resposta oportuna, independentemente de uma política poder bloqueá-la ou não.
+Um alerta monitora uma condição mensurável e abre um problema quando ela é acionada. Use um alerta quando uma falha deve gerar uma resposta oportuna, independentemente de uma política poder bloqueá-la.
 
 ## Criar e testar um alerta
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vá em **Analyze → Alerts** e selecione **new alert**. Você também pode começar pelo sino em um erro representativo.
+    1. Vá para **Analyze → Alerts** e selecione **new alert**. Você também pode começar pelo ícone de sino em um erro representativo.
     2. Informe o nome, severidade, tipo de gatilho, condição, intervalo de avaliação, contagem de violações, janela e canais.
     3. Salve o alerta, abra sua página de detalhes e execute **test**.
-    4. Vá em **Analyze → Issues** para reconhecer, atribuir, discutir, assinar e resolver incidentes criados pelo alerta.
+    4. Vá para **Analyze → Issues** para reconhecer, atribuir, discutir, assinar e resolver os problemas que o alerta abre.
 
     A primeira parte do formulário identifica o alerta e o sinal que deve acioná-lo.
 
-    ![A primeira parte do formulário de novo alerta com nome, descrição, estado de ativação e tipo de gatilho.](/images/dashboard/alert-new-trigger.png)
+    ![A primeira parte do formulário de novo alerta com seu nome, descrição, estado habilitado e tipo de gatilho.](/images/dashboard/alert-new-trigger.png)
 
     A segunda parte controla por quanto tempo a condição deve persistir, com que frequência ela é avaliada e para onde as notificações são enviadas.
 
     ![A segunda parte do formulário de novo alerta com lógica de violação, agendamento, severidade, canais de entrega e ação de criação.](/images/dashboard/alert-new-routing.png)
 
-    Após salvar, use a lista de Alertas para confirmar que a regra está habilitada e que seu gatilho, janela, severidade e canais correspondem ao que você pretendia.
+    Após salvar, use a lista de Alertas para confirmar que a regra está habilitada e que seu gatilho, janela, severidade e canais correspondem ao que você pretendia. Um cartão com problemas abertos exibe a contagem; um cartão sem nenhum omite a linha por completo — portanto, a ausência dela não significa nada. Para ver o número de cada regra, incluindo os zeros, use `fp alerts show <name>`, que sempre o exibe.
 
-    ![A página de Alertas mostrando regras de alerta com seus gatilhos, janelas de avaliação, canais e severidade.](/images/dashboard/alerts.png)
-
-    Teste o alerta antes de depender dele para resposta em produção.
+    ![A página de Alertas mostrando regras com seus gatilhos, janelas de avaliação, canais e severidade.](/images/dashboard/alerts.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp alerts create high-errors \
       --trigger-kind metric_threshold \
       --severity warning \
-      --trigger-spec '{"metric":"error_count","op":">","value":50,"window_secs":900}'
+      --trigger-spec '{"metric":"error_count","op":">","value":50,"window_secs":900}' \
+      --eval-interval-secs 300 \
+      --min-breaches 2 \
+      --eval-window 3
 
     fp alerts show high-errors
     fp alerts test high-errors
     fp alerts update high-errors --severity critical --yes
     ```
 
-    Use `fp alerts list` para revisar regras e `fp alerts delete <name>` para remover uma.
+    Novos alertas começam **habilitados**, e uma colisão de nomes é rejeitada antes que qualquer coisa seja criada.
+
+    `fp alerts update` substitui toda a definição no servidor, portanto a CLI relê o alerta e aplica suas flags por cima — uma atualização apenas com flags requer `alerts:read` **além de** `alerts:write`, e solicita confirmação a menos que você passe `--yes`.
+
+    Use `fp alerts list` para revisar as regras e `fp alerts delete <name>` para remover uma. O comando delete exibe uma prévia da regra — incluindo a contagem de problemas abertos — e confirma antes de agir, pois a operação não pode ser desfeita.
+
+    Delete não é a forma de silenciar uma regra barulhenta. `DELETE /alerts/{id}` é em cascata: todos os problemas que o alerta já abriu são removidos junto, levando seus comentários, assinantes e histórico de atividades. A caixa de confirmação da CLI descreve os problemas abertos como sendo "órfãos"; o contrato da API é uma exclusão em cascata, portanto trate o histórico como perdido. Para interromper o disparo de uma regra e manter o que foi registrado, desative-a — o formulário de alerta no dashboard tem o botão de habilitação, e nem `fp alerts create` nem `fp alerts update` expõem uma flag `--enabled`, portanto o caminho pela CLI é `fp alerts update <name> --file` com uma definição completa contendo `enabled: false`.
 
     Consulte a [referência de `fp alerts`](/pt-br/reference/cloud-cli#alerts) para o conjunto completo de comandos de alerta.
   </Tab>
 </Tabs>
 
-As condições de alerta podem ser baseadas em erros, pontuações de avaliação, combinações de avaliação ou SQL personalizado. Adicione destinatários, teste a regra e abra o incidente resultante para reconhecê-lo, atribuí-lo, comentar, assinar e resolvê-lo.
+<Warning>
+  **test** envia notificações reais. Ele envia para os canais reais de e-mail, Slack e webhook do alerta e abre um problema sintético, podendo acionar quem estiver de plantão. Ele solicita confirmação em um terminal interativo; `--yes`, `--json` e um stdin redirecionado ignoram esse prompt. O servidor também reporta sucesso assim que despacha a mensagem, portanto um teste bem-sucedido prova que a mensagem foi enviada, não que chegou ao destino.
+</Warning>
 
-## Boas práticas no design de alertas
+## Definir o gatilho
+
+Existem cinco tipos de gatilho:
+
+| `--trigger-kind` | Dispara quando |
+| --- | --- |
+| `metric_threshold` | Uma métrica cruza um limite — erros, latência, custo ou qualquer outra coisa mensurável. |
+| `per_event` | Um único evento correspondente chega. |
+| `evaluation_score` | A pontuação de um avaliador cruza um limite. |
+| `eval_compound` | Várias condições de pontuação se combinam, como duas de três pontuações falhando. |
+| `custom_sql` | Uma consulta que você escreve retorna uma violação. |
+
+A condição em si vai em `--trigger-spec`, formatada para o tipo escolhido.
+
+## Definir os números de avaliação
+
+O formulário do dashboard e a CLI solicitam os mesmos quatro valores.
+
+| Configuração | Flag | Valores aceitos |
+| --- | --- | --- |
+| Severidade | `--severity` | `info`, `warning`, `critical` |
+| Intervalo de avaliação | `--eval-interval-secs` | 30–86.400 segundos |
+| Contagem de violações | `--min-breaches` | Pelo menos 1, e nunca mais do que a janela |
+| Janela de avaliação | `--eval-window` | Pelo menos 1, contado em **intervalos**, não em segundos |
+
+Portanto, `--eval-interval-secs 300 --min-breaches 2 --eval-window 3` significa "avaliar a cada cinco minutos e disparar quando duas das três últimas avaliações violaram a condição".
+
+## Boas práticas de design de alertas
 
 - Nomeie a condição e o fluxo de trabalho afetado.
 - Defina o ambiente explicitamente.
 - Configure uma janela e um limite que evitem reagir a um único evento inofensivo.
 - Inclua um link ou consulta que leve os responsáveis às sessões.
 - Atribua um responsável antes de habilitar a regra.
+- Verifique `fp alerts show <name>` para a contagem de problemas abertos antes de adicionar outra regra para o mesmo sintoma. O cartão do dashboard exibe essa linha somente quando a contagem for diferente de zero.
 
 <Tip>
   Após resolver uma descoberta de auditoria, adicione um alerta para quando a mesma falha puder ocorrer novamente fora da cobertura da política.
 </Tip>
+
+<Card title="Trabalhe nos problemas que um alerta abre" icon="clipboard-check" href="/pt-br/audits/findings-and-issues">
+  Reconheça, atribua, comente, assine e resolva — o fluxo de trabalho em que todo alerta disparado é registrado.
+</Card>

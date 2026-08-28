@@ -1,53 +1,103 @@
 ---
 title: "クエリ"
-description: "再利用可能なSQLでセッション、イベント、評価データを調査する。"
+description: "再利用可能なSQLでセッション、イベント、評価データを探索します。"
 icon: "database"
 ---
 
-クエリは、ダッシュボード・監査・調査の下に位置する柔軟なレイヤーです。アドホックSQLでアイデアを検証し、定期的なワークフローの一部になったらクエリを保存しましょう。
+クエリは、ダッシュボード・監査・調査の基盤となる柔軟なレイヤーです。アドホックなSQLでアイデアを検証し、定期的なワークフローの一部になったタイミングでクエリを保存できます。
 
 ## クエリの作成と実行
 
 <Tabs>
   <Tab title="ダッシュボード">
     1. **Analyze → Queries** に移動し、**new query** を選択します。
-    2. スキーマブラウザを開き、イベント・セッション・評価データからフィールドを選びます。
-    3. SQLを記述し、必要に応じてパラメータを追加してクエリを実行します。
+    2. スキーマブラウザを開き、イベント・セッション・評価データからフィールドを選択します。
+    3. SQLを記述し、必要に応じてパラメータを追加して、クエリを実行します。
     4. わかりやすい名前と説明を付けて保存し、結果をモニタリングしたい場合は **add to dashboard** を使用します。
 
-    クエリエディタはイベントスキーマ、SQL、パラメータ、結果プレビューを統合しており、保存前に問いを検証できます。
+    クエリエディタには、イベントスキーマ・SQL・パラメータ・結果プレビューが統合されており、保存前に内容を検証できます。
 
-    ![スキーマブラウザとライブ結果グリッドを備えたSQLクエリエディタ。](/images/dashboard/query-lab.png)
+    ![スキーマブラウザとリアルタイム結果グリッドを備えたSQLクエリエディタ。](/images/dashboard/query-lab.png)
 
     保存されたクエリは共有ライブラリに表示され、チームメンバーが再実行したり、結果をダッシュボードに追加したりできます。
 
     ![再利用可能な組み込みクエリとカスタムクエリを含む保存済みクエリライブラリ。](/images/dashboard/queries.png)
 
-    SQLを開き直さなくても結果が理解できるよう、わかりやすい名前と説明を付けましょう。
+    SQLを開かなくても結果の意味が伝わるよう、わかりやすい名前と説明を付けてください。
   </Tab>
   <Tab title="CLI">
+    SQLの流れに沿って順番に作業します。スキーマを確認し、アドホックでステートメントを実行し、名前を付ける価値があると判断したら保存します。
+
     ```bash
     fp query schema
-    fp query create "retry loops" --sql "SELECT ..."
-    fp query run <query-id>
-    fp query show <query-id>
-    fp query update <query-id> --sql "SELECT ..."
+    fp query schema events
+
+    fp query run --sql "SELECT agent_id, count() FROM analytics.events GROUP BY agent_id"
+    fp query run --sql @retry-loops.sql
+
+    fp query create "retry loops" --sql @retry-loops.sql --description "repeated tool calls per session"
     ```
 
-    IDの確認には `fp query list` を、保存済みクエリの削除には `fp query delete <query-id>` を使用します。
+    それ以降の操作はすべて、IDではなくクエリの**名前**を使用します。
+
+    ```bash
+    fp query list
+    fp query run "retry loops"
+    fp query show "retry loops"
+    fp query update "retry loops" --sql @retry-loops-v2.sql --yes
+    fp query delete "retry loops" --yes
+    ```
+
+    名前はOrganization内で一意であるため、安全なハンドルとして機能します。UUID形式のIDも名前の代わりに使用できますが、`fp query list` はIDを表示しません。表示される列は `name`、`description`、`created by`、`created`（最終編集日時ではなくクエリの作成日時）です。短いID列を表示するには `--show-id` を追加するか、常に完全なIDを含む `--json` を使用してください。
+
+    保存済みクエリの位置引数パラメータをバインドするには、`$1..$N` の順序に合わせて `--arg`（エイリアス: `--param`）を繰り返し指定します。
+
+    ```bash
+    fp query run <query-name> --arg agent-codegen --arg 0.5
+    ```
+
+    | サブコマンド | 権限 | 備考 |
+    | --- | --- | --- |
+    | `fp query schema [TABLE]` | `queries:read` | テーブル名を指定するとそのカラムに絞り込みます。 |
+    | `fp query list` | `queries:read` | `--show-id` でIDを表示。`--fields` で生フィールドを投影。 |
+    | `fp query show <name>` | `queries:read` | メタデータカードと完全なSQLを表示します。 |
+    | `fp query create <name> --sql ...` | `queries:write` | 名前の衝突は事前に拒否されます。 |
+    | `fp query update <name>` | `queries:write` | `--name`、`--sql`、`--description` のいずれかを少なくとも1つ指定します。確認を求め、変更がない場合は保存せずに終了します。 |
+    | `fp query delete <name>` | `queries:delete` | 削除対象のプレビューとともに確認を求めます。 |
+    | `fp query run <name>` または `--sql ...` | `queries:run` | どちらか一方のみ指定します。`--limit` と `--all` でテーブルプレビューを調整します。 |
+
+    `update` と `delete` は対話型ターミナルの場合のみ確認を求めます。`--json` 使用時、またはstdinがリダイレクトされている場合は確認なしに処理が進むため、`--yes` はスクリプトではなくターミナル操作向けのオプションです。
+
+    クエリは読み取り専用の分析プールに対して実行されます。`--sql @file.sql` はファイルからステートメントを読み込みます。バージョン管理に残す場合はこの形式を推奨します。
   </Tab>
 </Tabs>
 
+## クエリのスクリプト化
+
+`fp --json query run` はテーブルプレビューの上限に関わらずすべての行を返し、`{columns: [{name, type}], rows: [[...]], truncated, elapsed_ms}` の形式で出力されます。
+
+```bash
+fp --json query run "retry loops" | jq '.rows | length'
+```
+
+`fp --json query schema` は `{schema, columns: [{table, column, type, nullable}]}` を返します。これはスキーマブラウザの機械可読な形式です。
+
+テキストを解析するのではなく、終了コードで処理すべき失敗が2種類あります。一致する名前が存在しない場合は `✗ no query named "…"` と表示されて終了コード6で終了し、SQLまたは実行エラーの場合はサーバーの詳細情報とともに `✗ query failed — …` と表示されます。
+
 ## 主な用途
 
-- 同じツールへの繰り返し呼び出しを含むセッションを検索する。
+- 同じツールへの繰り返し呼び出しを含むセッションを見つける。
 - モデルや環境をまたいで評価スコアを比較する。
 - 人間の待機から再開までの時間を計測する。
-- ポリシーによる拒否の後に成功した代替手段が続くケースを特定する。
-- 監査用のコホートを作成する。
+- ポリシー拒否の後に成功した代替手段を特定する。
+- 監査用のコホートを構築する。
 
-未知のフィールドに対してクエリを書く前に **Queries → Schema** を開いて確認しましょう。時間や環境のフィルタは明示的に指定し、調査中は結果件数に上限を設けることをお勧めします。
+不慣れなフィールドに対してクエリを書く前に、ダッシュボードの **Analyze → Queries** または `fp query schema` でスキーマを確認してください。時間や環境のフィルタは明示的に指定し、探索中は結果の上限を設定することを推奨します。
 
 <Warning>
-  クエリは疑わしいパターンを発見できますが、それだけで障害モードが確定するわけではありません。結果をポリシーに反映する前に、代表的なトレースを開くか監査を実施してください。
+  クエリは疑わしいパターンを特定できますが、それだけで障害モードを確定させることはできません。結果をポリシーに反映する前に、代表的なトレースを開いて確認するか、監査を実施してください。
 </Warning>
+
+<Card title="ダッシュボード" icon="layout-dashboard" href="/ja/sessions/dashboards">
+  モニタリングする価値のある結果が得られたら、保存済みクエリを共有ボードに追加しましょう。
+</Card>

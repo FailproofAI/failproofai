@@ -1,56 +1,64 @@
 ---
 title: "Audits"
-description: "Überprüfe eine definierte Menge von Sessions auf Fehler, die Traces allein nicht aufdecken würden."
+description: "Durchsuche Agent-Läufe nach wiederkehrenden Fehlern, riskantem Verhalten und unnötigem Aufwand."
 icon: "scan-search"
 ---
 
-Ein Audit durchsucht eine ausgewählte Menge von Sessions nach einem definierten Fehlerziel. Dabei werden Trace-Daten, Evaluierungsergebnisse, Policy-Treffer und Referenzkontext kombiniert, um verwertbare Erkenntnisse zu liefern.
+Ein Audit überprüft viele Agent-Läufe anhand eines Ziels und liefert belegbasierte Erkenntnisse.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Find agent failures automatically with Failproof AI audits" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-Sieh, wie ein Audit vom geplanten Durchlauf zu belegten Fehlern führt, die du beheben kannst.
+## Lokal oder Cloud
 
-## Audits öffnen
+| | Lokaler Audit | Cloud-Audit |
+| --- | --- | --- |
+| Befehl | `failproofai audit` | `fp audits` |
+| Liest | Agent-Verlauf auf diesem Gerät | Sessions in deiner Cloud-Organisation |
+| Ergebnis | Lokale Resultate unter `localhost:8020/audit` | Gemeinsame Erkenntnisse, Issues und Alerts |
+| Voraussetzung | Kein Konto erforderlich | Cloud-Verbindung und API-Schlüssel |
 
-<Tabs>
-  <Tab title="Dashboard">
-    Gehe zu **Analyze → Audits**. Die Seite zeigt den Planungsstatus, offene Findings, letzten Durchlauf, nächsten Durchlauf, den Rhythmus sowie ob der Audit einen Brief oder Referenzseiten hat. Wähle eine Karte für Einstellungen und den Verlauf der Durchläufe aus; wähle **New Audit**, um einen neuen zu erstellen.
+Verwende einen lokalen Audit für eine schnelle Überprüfung eines einzelnen Geräts. Nutze die Cloud, wenn ein Team einen wiederkehrenden Audit über mehrere Agents und Maschinen hinweg benötigt.
 
-    ![Die Audits-Seite mit wiederkehrenden Audits, ihrem Zeitplan, ihrer Sensitivität und ihrem Ausführungsstatus.](/images/dashboard/audits.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp audits list
-    fp audits list --enabled-only --show-id
-    fp audits show <audit-name>
-    fp audits findings --status open --limit 20
-    ```
-  </Tab>
-</Tabs>
+## Fragen, die ein Audit beantworten kann
 
-Nutze einen Audit, wenn du eine Frage auf Populations-Ebene beantworten möchtest, zum Beispiel:
-
-- Wo brechen Agents Aufgaben ab, ohne sie eskaliert zu haben?
-- Welche Tool-Fehler führen zu wirkungslosen Wiederholungsversuchen?
+- Wo brechen Agents ab, ohne zu eskalieren?
+- Welche Tool-Fehler führen zu ineffektiven Wiederholungsversuchen?
 - Greifen Agents auf Daten außerhalb des vorgesehenen Workflows zu?
-- Was hat sich nach einem Modell-, Prompt- oder Tool-Release geändert?
+- Was hat sich nach einer Modell-, Prompt- oder Tool-Aktualisierung verändert?
 
-## Ablauf der Audit-Reaktion
+## Cloud-Audits öffnen
+
+Gehe zu **Analyze → Audits** oder verwende:
+
+```bash
+fp audits list
+fp audits show <audit-name>
+fp audits findings --status open --limit 20
+```
+
+Audit-Befehle verwenden den Audit-Namen oder die vollständige ID. Erkenntnisse werden über ihre eigene ID referenziert.
+
+## Von der Erkenntnis zur Prävention
 
 ```text
 Session → Audit → Finding → Issue → Policy
-                         ↘ Alert for recurrence
+                         ↘ Alert
 ```
 
-Ein Finding sollte den Fehlermodus benennen und auf Belege verweisen. Ein Issue übernimmt die Behebung. Eine Policy verhindert bekannte Aktionsmuster; ein Alert erkennt das erneute Auftreten, wenn eine Prävention nicht möglich ist oder überwacht werden muss.
+Eine Erkenntnis verweist auf Belege. Ein Issue übernimmt die Reaktion darauf. Eine Policy verhindert ein bekanntes Aktionsmuster; ein Alert überwacht auf erneutes Auftreten.
 
-<Columns cols={2}>
-  <Card title="Einen Audit einrichten" icon="sliders-horizontal" href="/de/audits/setup">
-    Definiere Ziel, Population und Referenzkontext vor dem ersten Durchlauf.
+Nicht jede Erkenntnis sollte zu einer Policy werden. Eine `policy`-Erkenntnis beschreibt eine durchsetzbare Regel. Eine `failure`- oder `improvement`-Erkenntnis erfordert möglicherweise stattdessen eine Änderung am Workflow, Prompt, Modell oder Tool.
+
+<CardGroup cols={3}>
+  <Card title="Dieses Gerät auditen" icon="laptop-minimal-check" href="/de/audits/local-audit">
+    Lokalen Verlauf ohne Konto scannen.
   </Card>
-  <Card title="Agent-Kontext hinzufügen" icon="bot" href="/de/audits/agent-contracts">
-    Lege fest, was jeder Agent produzieren muss und was er niemals tun darf.
+  <Card title="Cloud-Audit einrichten" icon="sliders-horizontal" href="/de/audits/setup">
+    Ziel, Sessions und Zeitplan festlegen.
   </Card>
-</Columns>
+  <Card title="Erkenntnisse überprüfen" icon="list-checks" href="/de/audits/findings-and-issues">
+    Belege sichten und eine Reaktion zuweisen.
+  </Card>
+</CardGroup>

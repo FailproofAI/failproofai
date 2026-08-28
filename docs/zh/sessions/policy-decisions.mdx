@@ -1,27 +1,62 @@
 ---
 title: "策略决策"
-description: "查看策略的评估、拦截、指示或放行情况。"
+description: "查看哪些策略进行了评估、引导、拦截或观察。"
 icon: "shield-check"
 ---
 
-策略决策说明了执行操作的具体内容。可用于验证策略推出效果、统计拦截率，以及发现未受保护的活动。
+策略决策展示了 Failproof AI 在 agent 运行期间所执行的操作。
 
 <Tabs>
   <Tab title="控制台">
-    1. 前往 **Observe → policy**，选择时间范围，可选择某台机器。
-    2. 查看已评估的操作、拦截情况、拦截率、Cloud 决策、未受保护的操作以及暂停期间的活动。
-    3. 筛选策略映射表并查看已部署的分配情况。
-    4. 点击图表中的某个时间点，查看对应的决策及其会话。
+    前往 **Observe → policy**，查看决策记录、拦截率、机器列表及已部署的分配情况。
 
-    ![策略页面，显示决策总数、机器筛选器、随时间变化的执法活动以及策略映射表。](/images/dashboard/policy-observe.png)
+    ![策略页面，展示决策总计、机器过滤器、随时间变化的执行活动以及策略映射表。](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
     ```bash
-    fp events --event-type hook_completed --env production --since 24h
-    fp events --search "deny" --since 24h
+    fp guardrails summary --since 24h
+    fp guardrails timeline --since 24h
+    failproofai policies
     failproofai config --status
     ```
 
-    使用 `failproofai` 查看机器本地的执行状态，使用 `fp` 进行 Cloud 事件调查。
+    `--since` 支持 `1h`、`6h`、`24h` 或 `7d`。添加 `--machine <id>` 可聚焦到单台机器。
   </Tab>
 </Tabs>
+
+## 解读观察模式的推出情况
+
+观察模式会运行真实策略，并记录所有 `deny` 或 `instruct` 决策，但 agent 仍可继续执行。
+
+```bash
+fp fleet deploy <machine> --add <policy>:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add <policy>:enforce
+```
+
+<Warning>
+  如果该策略尚无已有部署，裸用 `--add <policy>` 会立即进入执行模式。请添加 `:observe` 以进行影子推出。
+</Warning>
+
+系统仅记录非 allow 的观察决策。超时会被记录为 allow，这与执行模式下的行为一致。
+
+记录到 deny 并不代表 harness 一定阻止了该操作。工具调用的 deny 已在所有 12 个受支持的 harness 上得到验证；其他事件的情况各有不同。详见[执行能力](/zh/reference/harnesses#enforcement-capability)。
+
+## 排查意外结果
+
+| 现象 | 检查项 |
+| --- | --- |
+| 无决策记录 | `failproofai config --status`，以及会话是否已暂停 |
+| 大量没有策略名称的拦截 | [策略失败行为](/zh/policies/failure-behavior) |
+| 所有受保护操作均被拦截 | `failproofaid` 服务是否正常运行 |
+| 无法关闭某条拦截规则 | `block-failproofai-commands` 始终处于启用状态 |
+| `--env production` 无数据 | 新机器默认使用环境 `local` |
+
+<CardGroup cols={2}>
+  <Card title="Fleet 部署" icon="server-cog" href="/zh/policies/fleet">
+    对比预期策略与实际应用策略。
+  </Card>
+  <Card title="失败行为" icon="triangle-alert" href="/zh/policies/failure-behavior">
+    了解故障关闭（fail-closed）决策机制。
+  </Card>
+</CardGroup>

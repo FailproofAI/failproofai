@@ -4,50 +4,100 @@ description: "Explorez les données de sessions, d'événements et d'évaluation
 icon: "database"
 ---
 
-Les requêtes constituent la couche flexible qui sous-tend les tableaux de bord, les audits et les investigations. Utilisez du SQL ad-hoc pour tester une idée, puis sauvegardez la requête lorsqu'elle fait partie d'un flux de travail récurrent.
+Les requêtes constituent la couche flexible qui sous-tend les tableaux de bord, les audits et les investigations. Utilisez du SQL ad hoc pour tester une idée, puis sauvegardez la requête lorsqu'elle s'intègre à un flux de travail récurrent.
 
 ## Créer et exécuter une requête
 
 <Tabs>
   <Tab title="Tableau de bord">
     1. Accédez à **Analyser → Requêtes** et sélectionnez **nouvelle requête**.
-    2. Ouvrez l'explorateur de schéma et choisissez des champs parmi les données d'événements, de sessions ou d'évaluations.
+    2. Ouvrez le navigateur de schéma et choisissez des champs parmi les données d'événements, de sessions ou d'évaluations.
     3. Rédigez le SQL, ajoutez des paramètres si nécessaire, puis exécutez la requête.
     4. Sauvegardez-la avec un nom et une description clairs, puis utilisez **ajouter au tableau de bord** lorsque le résultat doit être surveillé.
 
     L'éditeur de requêtes combine le schéma d'événements, le SQL, les paramètres et un aperçu des résultats, ce qui vous permet de valider la question avant de la sauvegarder.
 
-    ![L'éditeur de requêtes SQL avec un explorateur de schéma et une grille de résultats en temps réel.](/images/dashboard/query-lab.png)
+    ![L'éditeur de requêtes SQL avec un navigateur de schéma et une grille de résultats en direct.](/images/dashboard/query-lab.png)
 
-    Les requêtes sauvegardées apparaissent ensuite dans la bibliothèque partagée, où les membres de l'équipe peuvent les relancer ou ajouter leurs résultats à des tableaux de bord.
+    Les requêtes sauvegardées apparaissent ensuite dans la bibliothèque partagée, où vos coéquipiers peuvent les relancer ou ajouter leurs résultats à des tableaux de bord.
 
     ![La bibliothèque de requêtes sauvegardées contenant des requêtes intégrées et personnalisées réutilisables.](/images/dashboard/queries.png)
 
     Utilisez un nom et une description clairs afin que le résultat reste compréhensible sans avoir à rouvrir le SQL.
   </Tab>
   <Tab title="CLI">
+    Travaillez dans l'ordre naturel du SQL lui-même : examinez le schéma, exécutez l'instruction en mode ad hoc, puis sauvegardez-la une fois qu'elle mérite un nom.
+
     ```bash
     fp query schema
-    fp query create "retry loops" --sql "SELECT ..."
-    fp query run <query-id>
-    fp query show <query-id>
-    fp query update <query-id> --sql "SELECT ..."
+    fp query schema events
+
+    fp query run --sql "SELECT agent_id, count() FROM analytics.events GROUP BY agent_id"
+    fp query run --sql @retry-loops.sql
+
+    fp query create "retry loops" --sql @retry-loops.sql --description "repeated tool calls per session"
     ```
 
-    Utilisez `fp query list` pour trouver les identifiants et `fp query delete <query-id>` pour supprimer une requête sauvegardée.
+    Toutes les opérations suivantes utilisent le **nom** de la requête, et non un identifiant :
+
+    ```bash
+    fp query list
+    fp query run "retry loops"
+    fp query show "retry loops"
+    fp query update "retry loops" --sql @retry-loops-v2.sql --yes
+    fp query delete "retry loops" --yes
+    ```
+
+    Les noms sont uniques par organisation, ce qui en fait un identifiant fiable. Un identifiant au format UUID est accepté partout où un nom l'est, mais `fp query list` n'en affiche pas — ses colonnes sont `name`, `description`, `created by` et `created` (date de création de la requête, non de sa dernière modification). Ajoutez `--show-id` pour afficher une colonne d'identifiant court, ou lisez `--json`, qui contient toujours l'identifiant complet.
+
+    Liez les paramètres positionnels d'une requête sauvegardée avec `--arg` (alias `--param`), répété une fois par `$1..$N` dans l'ordre :
+
+    ```bash
+    fp query run <query-name> --arg agent-codegen --arg 0.5
+    ```
+
+    | Sous-commande | Permission | Remarques |
+    | --- | --- | --- |
+    | `fp query schema [TABLE]` | `queries:read` | Passez un nom de table pour filtrer sur ses colonnes. |
+    | `fp query list` | `queries:read` | `--show-id` révèle les identifiants ; `--fields` projette les champs bruts. |
+    | `fp query show <name>` | `queries:read` | Fiche de métadonnées avec le SQL complet. |
+    | `fp query create <name> --sql ...` | `queries:write` | Un conflit de nom est rejeté d'emblée. |
+    | `fp query update <name>` | `queries:write` | Passez au moins l'un de `--name`, `--sql`, `--description`. Demande confirmation ; une opération sans effet se termine sans sauvegarder. |
+    | `fp query delete <name>` | `queries:delete` | Demande confirmation, avec un aperçu de ce qui sera supprimé. |
+    | `fp query run <name>` ou `--sql ...` | `queries:run` | Exactement l'une des deux formes. `--limit` et `--all` ajustent l'aperçu tabulaire. |
+
+    `update` et `delete` ne demandent confirmation que sur un terminal interactif. Avec `--json`, ou lorsque stdin est redirigé, ils s'exécutent sans demander — `--yes` est donc destiné au cas du terminal, pas aux scripts.
+
+    Les requêtes s'exécutent sur un pool analytique en lecture seule. `--sql @file.sql` lit l'instruction depuis un fichier, ce qui est la forme à privilégier pour le contrôle de version.
   </Tab>
 </Tabs>
 
-## Usages courants
+## Utilisation en script
 
-- Trouver des sessions avec des appels répétés au même outil.
+`fp --json query run` retourne toutes les lignes indépendamment du plafond d'aperçu tabulaire, sous la forme `{columns: [{name, type}], rows: [[...]], truncated, elapsed_ms}` :
+
+```bash
+fp --json query run "retry loops" | jq '.rows | length'
+```
+
+`fp --json query schema` retourne `{schema, columns: [{table, column, type, nullable}]}`, qui est la forme lisible par machine du navigateur de schéma.
+
+Deux types d'échecs méritent d'être gérés par code de sortie plutôt que par analyse du texte : un nom sans correspondance produit `✗ no query named "…"` et sort avec le code 6, tandis qu'une erreur SQL ou d'exécution produit `✗ query failed — …` avec le détail fourni par le serveur.
+
+## Cas d'usage courants
+
+- Trouver les sessions comportant des appels répétés au même outil.
 - Comparer les scores d'évaluation entre différents modèles ou environnements.
 - Mesurer le temps écoulé entre une attente humaine et la reprise.
 - Identifier les refus de politique suivis d'une alternative réussie.
 - Constituer une cohorte pour un audit.
 
-Ouvrez **Requêtes → Schéma** avant d'écrire des requêtes sur des champs inconnus. Privilégiez des filtres explicites sur le temps et l'environnement, et limitez les résultats lors de l'exploration.
+Ouvrez le schéma — **Analyser → Requêtes** dans le tableau de bord, ou `fp query schema` — avant d'écrire des requêtes sur des champs peu familiers. Privilégiez des filtres explicites sur le temps et l'environnement, et conservez des limites de résultats durant l'exploration.
 
 <Warning>
-  Une requête peut identifier un schéma suspect, mais elle n'établit pas à elle seule le mode de défaillance. Ouvrez des traces représentatives ou exécutez un audit avant de transformer le résultat en politique.
+  Une requête peut identifier un motif suspect, mais elle n'établit pas à elle seule le mode de défaillance. Ouvrez des traces représentatives ou lancez un audit avant de transformer le résultat en politique.
 </Warning>
+
+<Card title="Tableaux de bord" icon="layout-dashboard" href="/fr/sessions/dashboards">
+  Ajoutez une requête sauvegardée à un tableau partagé dès lors que le résultat mérite d'être surveillé.
+</Card>

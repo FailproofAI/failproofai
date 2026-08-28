@@ -1,30 +1,64 @@
 ---
-title: "अपनी पहली विफलता जांच चलाएं"
-description: "क्लाउड डैशबोर्ड या fp CLI से ऑडिट बनाएं और इसकी पहली खोजें देखें।"
+title: "अपनी पहली failure check चलाएं"
+description: "failproofai audit से इस मशीन के agent history को स्कैन करें, या Failproof AI Cloud में संग्रहीत sessions पर recurring audit बनाएं।"
 icon: "scan-search"
 ---
 
-एक ऑडिट सत्रों के एक समूह को रैंक किए गए, साक्ष्य-समर्थित विफलता निष्कर्षों में बदल देता है। एक संकीर्ण विफलता प्रश्न से शुरू करें।
+एक audit sessions के एक set को ranked, evidence-backed failure findings में बदल देता है। एक narrow failure question के साथ शुरू करें।
+
+दो audits हैं। वे अलग-अलग data को पढ़ते हैं और अलग-अलग tools के लिए जवाब देते हैं:
+
+| Audit | पढ़ता है | खाते की जरूरत है | Findings दिखाई देते हैं |
+| --- | --- | --- | --- |
+| Local — `failproofai audit` | इस मशीन पर पहले से agent history | नहीं | `http://localhost:8020/audit` |
+| Cloud — **Analyze → Audits**, या `fp` CLI | Failproof AI Cloud में संग्रहीत sessions | हां | Cloud dashboard |
+
+पहले local को चलाएं। इसे CLI के अलावा कुछ भी नहीं चाहिए। Findings local रहते हैं, जबकि anonymous CLI telemetry डिफ़ॉल्ट रूप से भेजी जाती है जब तक आप `FAILPROOFAI_TELEMETRY_DISABLED=1` सेट न करें।
 
 <Tabs>
-  <Tab title="Dashboard">
+  <Tab title="Local">
+    ```bash
+    failproofai audit
+    ```
+
+    यह इस मशीन पर मिलने वाले हर supported agent history को स्कैन करता है, builtin policy catalog के माध्यम से tool activity को replay करता है, फिर **http://localhost:8020/audit** खोलता है। जब तक आप परिणाम पढ़ते हैं तब तक प्रक्रिया चलती रहे; जब आप पूरा कर लें तो <kbd>Ctrl</kbd>+<kbd>C</kbd> दबाएं।
+
+    Analysis और findings इस मशीन पर रहते हैं। Anonymous CLI telemetry डिफ़ॉल्ट रूप से भेजी जाती है जब तक अक्षम न किया जाए। जब आप scheduling के लिए ऑप्ट इन करते हैं, तो प्रत्येक scan machine metadata भी भेजता है और एक सीमित findings digest भेज सकता है।
+
+    | Flag | यह क्या करता है |
+    | --- | --- |
+    | `--schedule [days]` | टाइमर पर स्कैन करें और findings को ईमेल करें। डिफ़ॉल्ट 7 दिन, रेंज 1–90। पहली बार आपको साइन इन करता है। |
+    | `--email <address>` | `--schedule` के साथ, प्रॉम्प्ट के बजाय रिपोर्ट पते को सप्लाई करता है। |
+    | `--no-schedule` | टाइमर बंद करें। आपको साइन इन रखता है। |
+    | `--status` | क्या scheduling चालू है, रिपोर्ट कहां जाती हैं, daemon की स्थिति, और अगली scan कब बकाया है। |
+
+    ```bash
+    failproofai audit --schedule 7 --email reliability@example.com
+    failproofai audit --status
+    ```
+
+    [Local agent history को Audit करें](/hi/audits/local-audit) देखें कि प्रत्येक adapter कौन से histories को पढ़ता है और scheduled scan कैसे चलता है।
+  </Tab>
+  <Tab title="Cloud dashboard">
     <Steps>
-      <Step title="ऑडिट खोलें">
-        क्लाउड साइडबार में, **विश्लेषण → ऑडिट** पर जाएं। **नया ऑडिट** चुनें।
+      <Step title="Audits खोलें">
+        Cloud sidebar में, **Analyze → Audits** पर जाएं। **new audit** चुनें।
       </Step>
-      <Step title="ऑडिट सेट अप करें">
-        एक नाम और सीधा विफलता लक्ष्य दर्ज करें, जैसे "उत्पादन सत्र खोजें जो इनपुट बदले बिना या बढ़ाए बिना एक ही विफल भुगतान कॉल को फिर से प्रयास करते हैं।" एजेंट, वातावरण, समय विंडो और शेड्यूल चुनें। एक संक्षिप्त विवरण और संदर्भ URLs जोड़ें जब ऑडिटर को आपके वर्कफ़्लो नियमों की आवश्यकता हो।
+      <Step title="Audit सेट अप करें">
+        एक नाम और एक direct failure goal दर्ज करें, जैसे "production sessions खोजें जो input बदले बिना या escalate किए बिना एक ही failed payment call को retry करते हैं।" Agent, environment, time window, और schedule चुनें। एक short brief और reference URLs जोड़ें जब auditor को आपके workflow rules की जरूरत हो।
       </Step>
-      <Step title="ऑडिट बनाएं और प्रतीक्षा करें">
-        **ऑडिट बनाएं** चुनें। पहला रन तुरंत कतार में डाल दिया जाता है। इसे कतारबद्ध से चल रहे से पूर्ण तक जाते हुए देखने के लिए ऑडिट कार्ड खोलें।
+      <Step title="बनाएं और run के लिए प्रतीक्षा करें">
+        **create audit** चुनें। पहला run तुरंत queued है। Audit card को खोलें इसे queued से running से complete में जाते देखने के लिए।
       </Step>
     </Steps>
 
-    चलने के बाद, एक खोज खोलें और इसके सत्र साक्ष्य की समीक्षा करें। आप इसे स्वीकार, असाइन, खारिज, म्यूट या हल कर सकते हैं।
+    जब run पूरा हो जाए, एक finding खोलें और इसके session evidence की समीक्षा करें। फिर आप इसे acknowledge, assign, dismiss, mute, या resolve कर सकते हैं।
 
-    ![एक पूर्ण ऑडिट खोज जो इसके विफलता विवरण, अनुशंसित कार्रवाई, समर्थन साक्ष्य और प्रभावित सत्र दिखाता है।](/images/dashboard/audit-finding.png)
+    ![एक completed audit finding अपने failure description, recommended action, supporting evidence, और affected sessions को दिखाता है।](/images/dashboard/audit-finding.png)
   </Tab>
-  <Tab title="CLI">
+  <Tab title="Cloud CLI">
+    `fp` Failproof AI Cloud CLI है। यह Cloud द्वारा संग्रहीत को वापस पढ़ता है; यह `failproofai` से एक अलग प्रोग्राम है, जो इस मशीन पर लागू होता है।
+
     ```bash
     fp audits create payment-retry-failures \
       --description "Find production sessions that retry a failed payment call without changing input or escalating" \
@@ -37,7 +71,7 @@ icon: "scan-search"
     fp audits finding <finding-id>
     ```
 
-    संदर्भ संदर्भ जोड़ें, फिर इसे तब ताज़ा करें जब स्रोत बदले:
+    Reference context जोड़ें, फिर इसे refresh करें जब source बदले:
 
     ```bash
     fp audits context-set payment-retry-failures --url https://example.com/payment-runbook
@@ -45,8 +79,8 @@ icon: "scan-search"
     fp audits run payment-retry-failures
     ```
 
-    एक खोज को त्रिया के माध्यम से ले जाने के लिए `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>`, या `fp audits reopen <finding-id>` का उपयोग करें।
+    Finding को triage के माध्यम से move करने के लिए `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>`, या `fp audits reopen <finding-id>` का उपयोग करें।
   </Tab>
 </Tabs>
 
-अगला, [एक पुष्टि किए गए दोहराए जाने वाले कार्य के लिए नीति के साथ अपनी पहली विफलता को रोकें](/hi/start/first-policy)।
+अगला, [एक confirmed repeatable action के लिए एक policy के साथ अपनी पहली failure को रोकें](/hi/start/first-policy)।

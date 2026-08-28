@@ -1,92 +1,89 @@
 ---
----
-title: "نشر حزمة"
-description: "شحن سياساتك الخاصة كإصدار GitHub يمكن لأي شخص تثبيته."
+title: "نشر السياسات"
+description: "شارك سياساتك كإصدار عام على GitHub يمكن لأي شخص تثبيته."
 icon: "upload"
 ---
 
-الحزمة عبارة عن ثلاثة ملفات مرفقة بإصدار GitHub. يكتب `failproofai pack build` جميع الثلاثة من ملف سياسة لديك بالفعل.
+أنشئ سياسة تعمل، اختبرها محليًا، ثم انشرها كحزمة.
 
-## 1. اكتب السياسات
+## الإنشاء والاختبار
 
-ملف واحد، يستخدم نفس الواجهة البرمجية لأي سياسة مخصصة. يهمان حقلان إضافيان للحزمة:
+```bash
+failproofai publish --init guards.mjs
+failproofai policies -i -c ./guards.mjs
+```
+
+يكتب `--init` سياسة تحظر بالفعل `git push --force`. عدّلها، اطلب من وكيلك محاولة الإجراء المحظور، وتحقق من **Policies → Activity** في لوحة التحكم المحلية.
+
+يمكن لسياسة الحزمة أن تتضمن:
 
 ```js
-import { customPolicies, deny, allow } from "failproofai";
+import { customPolicies, allow, deny } from "failproofai";
 
 customPolicies.add({
   name: "block-refunds",
-  description: "Refunds above the approved limit need a human",
-  category: "Billing",        // groups it, and is what --category selects on
-  defaultEnabled: true,       // switched on by a plain `pack add`
-  match: { events: ["PreToolUse"], tools: ["Bash"] },
-  fn: async (ctx) =>
-    String(ctx.toolInput?.command ?? "").includes("refund")
-      ? deny("Refunds need a human. Ask before running this.")
-      : allow(),
+  description: "Refunds above the limit need a human",
+  category: "Billing",
+  defaultEnabled: true,
+  match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+  fn: async (ctx) => {
+    // return allow(), instruct(), or deny()
+  },
 });
 ```
 
-يتم تعيين `defaultEnabled` افتراضيًا إلى **false** عند حذفه. `failproofai pack add` البسيط يقوم بتشغيل فقط ما حددته — تثبيت كل سياسة من سياسات الغريب دون مراقبة ليست قرارًا يجب على المثبت أن يتخذه للمستخدم.
+الإعداد الافتراضي لـ `defaultEnabled` هو `false`.
+
+## النشر
+
+التزم بملفاتك، ثم شغّل:
+
+```bash
+failproofai publish
+```
+
+يجد الأمر `publish` ملف السياسة، يتحقق منه باستخدام نفس محمّل التحميل المستخدم أثناء التثبيت، ويرفع أصول الحزمة إلى إصدار GitHub. يستخدم `GITHUB_TOKEN` أو `GH_TOKEN` أو `gh auth login`.
+
+يجب أن تكون المستودع عام لأن التثبيت يستخدم HTTPS مجهول.
+
+الإصدار الافتراضي هو SHA المكون من 12 حرفًا للالتزام الحالي. يرفض الأمر `publish` شجرة غير نظيفة أو دليل خارج Git ما لم تقدم `--version`. العلامة على `HEAD` تتفوق على SHA.
+
+يثبتها المستخدمون باستخدام:
+
+```bash
+failproofai policies add owner/repo
+```
+
+## النشر في وضع المراقبة
+
+```bash
+failproofai publish --effect observe
+```
+
+يقيّم وضع المراقبة السياسة الفعلية ويسجل القرارات غير المسموحة، لكنه يسمح للوكيل بالمتابعة. ينسجل انتهاء المهلة الزمنية كسماح.
+
+انشر مجددًا مع `--effect enforce` عندما تكون المطابقات المراقبة صحيحة.
+
+## الخيارات المفيدة
+
+| العلم | التأثير |
+| --- | --- |
+| `--init [file]` | اكتب سياسة بادئة |
+| `--repo <owner>/<repo>` | اختر أو أنشئ المستودع |
+| `--version <version>` | تجاوز الإصدار المستند إلى الالتزام |
+| `--effect enforce\|observe` | اختر ما إذا كانت الحزمة تحظر |
+| `--dry-run` | بناء والتحقق بدون نشر |
+| `--allow-private` | انشر بشكل خاص، مع معرفة أن `policies add` لا يمكنه تثبيته |
+
+```bash
+failproofai publish --dry-run
+failproofai publish ./guards.mjs --repo me/guards --version 2.0.0
+```
+
+<Note>
+  أضف موضوع GitHub `failproofai-policies` بعد النشر حتى يتمكن [Policy Hub](https://befailproof.ai/policy-hub/) من فهرسة الحزمة. واجهة سطر الأوامر لا تفعل ذلك نيابة عنك.
+</Note>
 
 <Warning>
-يجب أن يكون الإدخال **ملف واحد مكتفٍ بذاته**. فقط الإدخال هو ما يتم تثبيت الخلاصة عليه، لذا فإن حزمة تستورد ملفات محلية لا يمكنها بصراحة المطالبة بأن الخلاصة تغطي ما يعمل. قم بالدمج أولاً (`esbuild` أو `bun build` أو `rollup`) وأنشئ الحزمة من الحزمة المدمجة — يرفض `pack build` الاستيراد المحلي بدلاً من شحن وعد لا يمكنه الوفاء به.
+  إعادة تسمية السياسة هي تغيير كبير بالنسبة للاختيارات الموجودة. اجعل الأسماء مستقرة عبر الإصدارات.
 </Warning>
-
-## 2. بناء أصول الإصدار
-
-```bash
-failproofai pack build ./policies.mjs \
-  --id acme/support-agent \
-  --version 1.0.0 \
-  --out ./dist-pack
-```
-
-يكتب ثلاثة ملفات ويتحقق من صحة كل سياسة باستخدام **قواعد المُحمِّل الخاصة** أولاً — لذا فإن الحزمة التي لن تتمكن من التثبيت تفشل هنا، حيث يمكنك إصلاحها:
-
-| الملف | ما هو |
-| --- | --- |
-| `failproofai-pack.json` | البيان: المعرّف والإصدار والتأثير وإدخال واحد لكل سياسة |
-| `failproofai-pack.mjs` | إدخالك، كما هو حرفيًا |
-| `SHA256SUMS` | `<sha256>  <filename>` للملفين الآخرين |
-
-تم الرفض عند وقت البناء: معرف ليس `publisher/name`، اسم سياسة يحتوي على `/`، سياسة تعلن `alwaysOn`، وصف مفقود أو `category` أو `match`، إدخال لا يسجل أي شيء، وإدخال يستورد ملفات محلية.
-
-## 3. أرفقها بإصدار
-
-ضع علامة على الإصدار بنفس الإصدار الذي أنشأته، وأرفق جميع الملفات الثلاثة كأصول الإصدار:
-
-```bash
-gh release create 1.0.0 \
-  ./dist-pack/failproofai-pack.json \
-  ./dist-pack/failproofai-pack.mjs \
-  ./dist-pack/SHA256SUMS
-```
-
-يمكن لأي شخص الآن تثبيته:
-
-```bash
-failproofai pack add acme/support-agent
-```
-
-أسماء الأصول ثابتة — وهي ما ينشئها CLI الخاص بالمستهلك من عناوين URL الخاصة به، بدون استدعاء API وبدون اكتشاف.
-
-## شحن إصدار جديد
-
-قم بالبناء باستخدام `--version` الجديد، وضع علامة على إصدار جديد، وأرفق الأصول الثلاثة مرة أخرى. يقوم المستهلكون بتشغيل نفس `pack add` والاحتفاظ بأي مجموعة اختاروها؛ تبقى السياسة التي أطفأوها مطفأة عبر الترقية.
-
-تغيير **اسم** السياسة هو تغيير كسر: جهاز قام بإيقاف تشغيله يقوم بإيقاف تشغيل اسم لم يعد موجودًا، والاسم الجديد يصل إلى أيًا كان `defaultEnabled` يقول.
-
-## ما يثق به المستخدمون
-
-`SHA256SUMS` يعيش في نفس الإصدار مثل الأصل، لذا فإنه يثبت أن البايتات هي تلك التي نشرتها — وليس من أنت. أي شخص يمكنه الكتابة إلى المستودع يمكنه كتابة كلا الملفين. حماية المستخدمين هي أن الخلاصة يتم تثبيتها عند التثبيت، بحيث لا يمكن لما شحنته أن يتغير تحتهم بعد ذلك.
-
-قم بالنشر من مستودع يمكنك التحكم في الوصول الكتابي إليه، وتعامل مع إصدار حزمة مثل نشر حزمة.
-
-## راقب قبل أن تفرض
-
-قد يعلن البيان عن `"effect": "observe"`. تعمل تلك السياسات وتُسجل أحكامها **وتُرفض** — لا شيء محجوب. إنها الطريقة لقياس قاعدة جديدة مقابل حركة المرور الحقيقية قبل أن تتمكن من مقاطعة عمل أي شخص.
-
-```json
-{ "id": "acme/support-agent", "version": "1.1.0", "effect": "observe", "policies": [ ... ] }
-```

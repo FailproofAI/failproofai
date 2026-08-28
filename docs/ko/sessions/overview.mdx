@@ -1,57 +1,66 @@
 ---
 title: "세션"
-description: "에이전트 실행의 전체 기록부터 시작하세요."
-icon: "workflow"
+description: "목표에서 도구, 결정, 결과까지 에이전트 실행 전 과정을 추적합니다."
+icon: "route"
 ---
 
-에이전트가 예상치 못한 동작을 보일 때 세션이 최적의 출발점입니다. 세션은 하나의 실행에 속하는 모델 요청, 응답, 도구 호출, 사람의 개입, 오류, 평가, 정책 결정을 하나로 묶어줍니다.
+세션은 하나의 에이전트 실행을 의미합니다. 프롬프트, 모델 호출, 도구, 오류, 사용자 입력, 정책 결정, 최종 결과를 하나로 연결합니다.
 
-세션은 어떤 환경에서 생성됐든 동일한 형태로 표시됩니다. 저장소를 재작성하는 Claude Code 실행, Slack에서 고객에게 응답하는 Hermes 에이전트, SDK로 계측된 Python 서비스 모두 동일한 트레이스 형식으로 저장되므로, 단일 뷰로 전체 플릿을 파악할 수 있습니다.
-
-<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with Failproof AI" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
-</div>
-
-에이전트 실행의 목표부터 모델 호출, 도구 사용, 최종 응답까지 전 과정을 추적하세요.
-
-## 세션 찾기
+## 세션 위치
 
 <Tabs>
-  <Tab title="대시보드">
-    1. 클라우드 사이드바에서 **Observe → Sessions**으로 이동합니다.
-    2. 시간 범위를 설정한 후 환경, 상태, 에이전트, 세션 ID로 필터링합니다.
-    3. 품질, 비용, 토큰, 지연 시간 기준으로 좁혀볼 때는 점수 또는 메트릭 범위를 추가합니다.
-    4. 행을 선택하면 트레이스가 열립니다. 세션 ID 옆의 복사 컨트롤을 사용하면 공유할 수 있습니다.
-
-    ![환경, 에이전트, 상태, 평가 점수 필터와 함께 실행당 한 행으로 표시되는 Sessions 목록.](/images/dashboard/sessions-list.png)
+  <Tab title="로컬">
+    `failproofai`를 실행하면 `http://localhost:8020`에서 대시보드가 열립니다. 세션 기록은 해당 머신에 저장됩니다.
   </Tab>
-  <Tab title="CLI">
+  <Tab title="클라우드">
+    머신을 연결한 후 **Observe → Sessions**를 엽니다:
+
     ```bash
-    fp sessions --env production --since 24h
-    fp sessions --status error,timeout --agent-id checkout-agent
-    fp --json sessions --session-id <session-id>
+    export FAILPROOFAI_CLOUD_TOKEN="<key>"
+    failproofai config
     ```
 
-    `--agents`를 추가하면 멀티 에이전트 실행을 펼쳐 볼 수 있고, `--all`로 페이지네이션을, `--fields`로 출력 컬럼을 선택할 수 있습니다.
+    클라우드는 기본적으로 전체 트랜스크립트를 수신합니다. 정책 결정만 전송하려면 먼저 연결한 다음 `~/.failproofai/config.json`에서 `collector.sessions`를 `false`로 설정하세요. 현재 `--no-transcripts` 설정 플래그는 해당 설정을 적용하지 않습니다.
   </Tab>
 </Tabs>
 
-## 할 수 있는 작업
+세션은 지원되는 12개의 [에이전트 하네스](/ko/reference/harnesses)와 [Python SDK](/ko/reference/custom-agents)로 계측된 에이전트에서 전송됩니다.
 
-- 에이전트, 환경, 시간, 모델, 이벤트 유형, 오류 상태로 실행을 검색합니다.
-- 특정 결과를 만들어낸 정확한 순서를 추적합니다.
-- 성공한 실행과 실패한 실행을 비교합니다.
-- 감사 결과나 알림 인시던트의 근거 자료를 확인합니다.
-- 오프라인 기록이 필요할 때 세션을 내보냅니다.
+## 세션 찾기
 
-## 신뢰할 수 있는 조사 순서
+클라우드에서는 시간, 환경, 상태, 에이전트, 세션 ID로 필터링할 수 있습니다. CLI에서는 다음과 같이 사용합니다:
 
-1. 세션의 목표와 환경을 확인합니다.
-2. 최종 실패만이 아니라, 첫 번째 오류 또는 예상치 못한 결정을 찾습니다.
-3. 해당 시점 직전의 모델 컨텍스트와 도구 입력을 검사합니다.
-4. 재시도, 지연 시간, 사람의 개입 여부를 확인합니다.
-5. 평가 점수와 정책 결정을 검토합니다.
+```bash
+fp sessions --since 24h
+fp sessions --status error,timeout --agent-id checkout-agent
+fp --json sessions --session-id <session-id>
+```
 
-<Card title="트레이스 읽기" icon="route" href="/ko/sessions/read-a-trace">
-  세션 요약에서 결과를 유발한 이벤트까지 이동하는 방법을 알아보세요.
-</Card>
+평가되지 않은 실패의 경우 `fp errors --since 24h`를 사용하세요. `fp sessions --status`는 최신 평가 결과를 기준으로 하므로, 평가되지 않은 세션은 상태가 없습니다.
+
+## 실행 내용 확인
+
+1. 에이전트의 목표와 환경을 확인합니다.
+2. 첫 번째 오류 또는 예상치 못한 결정을 찾습니다.
+3. 바로 직전의 모델 컨텍스트와 도구 입력을 검사합니다.
+4. 재시도, 지연 시간, 사용자 개입을 확인합니다.
+5. 평가 결과와 정책 결정을 검토합니다.
+
+## 세션이 없는 경우
+
+```bash
+failproofai flush --wait
+failproofai config --status
+failproofai backfill --since 30d --dry-run
+```
+
+세션이 하네스의 일반적인 위치가 아닌 다른 프로필, 컨테이너 홈, 마운트된 팀 디렉터리 등에 있을 경우 `failproofai harness add-path <harness> [<label>=]<path>`를 사용하세요.
+
+<CardGroup cols={2}>
+  <Card title="트레이스 읽기" icon="route" href="/ko/sessions/read-a-trace">
+    결과를 유발한 이벤트를 찾습니다.
+  </Card>
+  <Card title="정책 결정" icon="shield-check" href="/ko/sessions/policy-decisions">
+    정책 적용에서 허용, 안내, 차단한 내용을 확인합니다.
+  </Card>
+</CardGroup>

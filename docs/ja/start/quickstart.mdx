@@ -1,84 +1,104 @@
 ---
 title: "クイックスタート"
-description: "エージェントセッションをキャプチャし、障害を発見して、防止を開始する。"
+description: "1台のマシンをセットアップし、ポリシーを選択して、エージェントの動作を確認しましょう。"
 icon: "zap"
 ---
 
-このクイックスタートでは、1台のマシンでセッションのレポートを開始し、監査を実行して、ポリシーをデプロイします。スキルを使って Failproof をセットアップするか、手動の手順に従ってください。
+1台のマシンに Failproof AI をセットアップして、ローカルのまま使うか、クラウドに接続するかを選べます。
 
-**どちらの方法を選びますか？** エージェントが12種類のサポートされた[ハーネス](/ja/reference/harnesses)（コーディング CLI、または Hermes や OpenClaw などのゲートウェイ）で動作している場合は、以下の手順に従ってください。Node.js 20.9 以降が必要です。エージェントにハーネスがない場合は、[Python SDK](/ja/reference/custom-agents) を使ってトレースと監査のインストルメンテーションを行い、[最初の障害チェックを実行する](/ja/start/first-audit) から再合流してください。このパスでの強制実行には、ランタイムにフックが必要です。
+エージェントが[対応ハーネス](/ja/reference/harnesses)で動作している場合は、以下の手順に従ってください。LangChain、CrewAI、LlamaIndex、Pydantic AI、または独自のランタイムで構築されたエージェントの場合は、[エージェントのインストルメント化](/ja/start/integrations)から始めてください。
 
-<Tabs>
-  <Tab title="スキルを使用する">
-    <Steps>
-      <Step title="Failproof AI スキルをインストールする">
-        ```bash
-        npx skills add FailproofAI/skills
-        ```
-      </Step>
-      <Step title="エージェントにすべてのセットアップを依頼する">
-        ```text
-        Set up Failproof AI for this project, connect this machine, install the right hooks and policies, and verify that a session arrives.
-        ```
+## エージェントにセットアップをガイドさせる
 
-        エージェントがプロジェクトを検査し、適切なインテグレーションを選択してセットアップを実行し、検証します。個別のスキルや高度なインストールオプションについては、[FailproofAI skills リポジトリ](https://github.com/FailproofAI/skills) を参照してください。
-      </Step>
-    </Steps>
-  </Tab>
-  <Tab title="手動セットアップ">
-    ## 開始前の準備
-
-1. [Failproof AI ダッシュボード](https://app.befailproof.ai) を開き、アカウントを作成するか、仕事用メールアドレスでサインインします。
-2. **Administration → Keys** に移動し、`events:add` と `policies:pull` のキーを作成します。
-3. ワンタイムシークレットをコピーして、対象マシンに保存します。
+対応エージェントに Failproof AI アンブレラスキルをインストールします：
 
 ```bash
-export FAILPROOFAI_KEY="<one-time-secret>"
+npx skills add FailproofAI/skills
 ```
 
-    ## インストール
+これによりアンブレラスキルとその専門スキルがインストールされます。アンブレラスキルのみが必要な場合は `--skill
+failproofai` を使用してください。ローカルおよびクラウドのセットアップ、デーモンの状態確認、セッション、監査、ポリシー、トラブルシューティングについて理解しており、作業を導きながら適切な Failproof AI スキルに専門タスクをルーティングします。以下の CLI インストールを置き換えるものではありません。
+
+## マシンをセットアップする
 
 <Steps>
-  <Step title="Failproof AI をインストールして接続する">
+  <Step title="Failproof AI をインストールして設定する">
     ```bash
     npm install -g failproofai
-    failproofai config --connect https://app.befailproof.ai --token "$FAILPROOFAI_KEY"
+    failproofai config
     ```
 
-    セッションのトランスクリプトはデフォルトで送信されます。トランスクリプトの内容を含めずにフックアクティビティとポリシー決定のみをレポートするには、`--no-transcripts` を追加してください。
+    セットアップによりバックグラウンドサービスがインストールされ、検出されたすべての対応エージェントに接続されます。管理者アクセスを一度求められる場合があります。Linux と macOS に対応しています。
+  </Step>
 
-    このマシンにすでにエージェントの履歴がある場合は、過去7日間のデータをプレビューしてインポートし、配信が完了するまで待ちます。新しいマシンではこの手順をスキップしてください。
+  <Step title="ポリシーを選択する">
+    セットアップではポリシーパックは選択されません。Failproof AI パックを追加します：
 
     ```bash
-    failproofai backfill --since 7d --dry-run
-    failproofai backfill --since 7d
-    failproofai flush --wait
+    failproofai policies add FailproofAI/policies
+    failproofai policies
     ```
 
-    Failproof AI の **Sessions** を開き、インポートしたセッションを選択します。
+    2番目のコマンドは、このマシン上のすべてのポリシーとその有効状態を表示します。パックを追加するまでは、`block-failproofai-commands` のみが実行されます。
   </Step>
-  <Step title="エージェントフックとポリシーをインストールする">
-    これにより Failproof AI がハーネスにアタッチされ、39個の組み込みポリシーがインストールされます。Failproof AI がセッションを監査してエージェント用のポリシーを作成する前に、ローカルのポリシー決定を確認したり、強制実行を試したりするために使用できます。
 
-    インストーラーにハーネスを自動検出させるか、明示的に指定してください。12種類すべてが有効な `--cli` の値です — `claude`、`codex`、`copilot`、`cursor`、`opencode`、`pi`、`hermes`、`openclaw`、`factory`、`devin`、`antigravity`、`goose`。
-
+  <Step title="マシンの状態を確認する">
     ```bash
-    failproofai policies --install --cli claude --scope user     # コーディング CLI
-    failproofai policies --install --cli hermes --scope user     # Slack/Telegram ゲートウェイ
+    failproofai config --status
     ```
 
-    実行前のツール呼び出しのブロックは全12種類で検証済みです。ターン終了ゲートは8種類で検証済みです — ハーネスごとの対応状況は[強制実行の対応状況](/ja/reference/harnesses#enforcement-capability)を参照してください。
-  </Step>
-  <Step title="動作を監査する">
-    [最初の障害チェックを実行する](/ja/start/first-audit) に従ってください。「エージェントがアプローチを変えずに失敗したツールを再試行したセッションを見つける」など、具体的な目標を使用してください。
-  </Step>
-  <Step title="障害を防止する">
-    [ポリシーで最初の障害を防止する](/ja/start/first-policy) に従ってください。オブザーブモードで開始し、マッチを確認してから、レビュー済みのバージョンを強制適用してください。
+    サービス、クラウド接続、および一時停止状態を報告します。
   </Step>
 </Steps>
 
-<Check>
-  `failproofai config --status` を実行してください。正常なセットアップでは、クラウド接続、デーモンの状態、および強制実行が一時停止されているかどうかが報告されます。
-</Check>
+## ローカルかクラウドかを選択する
+
+<Tabs>
+  <Tab title="ローカルのまま使う">
+    アカウントは不要です。
+
+    ```bash
+    failproofai
+    failproofai audit
+    ```
+
+    最初のコマンドは `http://localhost:8020` でローカルダッシュボードを開きます。2番目のコマンドはこのマシン上のエージェント履歴をスキャンします。
+  </Tab>
+
+  <Tab title="クラウドに接続する">
+    Failproof AI Cloud でマシンキーを作成し、次を実行します：
+
+    ```bash
+    failproofai config --token <machine-key>
+    failproofai config --status
+    ```
+
+    クラウドはポリシーの判定結果とセッションのトランスクリプトを受信します。判定結果のみを送信する場合は、まず接続してから `~/.failproofai/config.json` の `collector.sessions` を `false` に設定してください。現在の `--no-transcripts` セットアップフラグはその設定を適用しません。共有シェルや CI 環境では、コマンド履歴にキーが残らないよう、`FAILPROOFAI_CLOUD_TOKEN` 環境変数を使用してください。
   </Tab>
 </Tabs>
+
+## 動作を確認する
+
+エージェントを起動して、通常のタスクを実行させます。その後：
+
+ツールコールの deny は対応する全12ハーネスで検証済みです。ターン終了時の強制適用は8ハーネスで検証済みです。その他のハーネスとイベントの組み合わせは観測のみ、または未検証の場合があります。
+
+- ローカルダッシュボードの **Policies → Activity** を開いて、ポリシーの判定結果を確認します。
+- クラウドの **Observe → Sessions** を開いて、完全な実行内容を確認します。
+- `failproofai audit` を実行して、リスクのあるパターンや非効率なパターンを探します。
+
+<Warning>
+  セットアップ後、`failproofaid` サービスが評価エンジンとなります。応答できない場合、保護されたアクションは拒否されます。エージェントが予期せず停止した場合は `failproofai config --status` を実行してください。
+</Warning>
+
+<CardGroup cols={3}>
+  <Card title="コンセプトを理解する" icon="book-open" href="/ja/start/concepts">
+    セッションからポリシーへのワークフローを学ぶ。
+  </Card>
+  <Card title="初めての監査を実行する" icon="scan-search" href="/ja/start/first-audit">
+    修正する価値のある問題を1つ見つける。
+  </Card>
+  <Card title="初めてのポリシーを追加する" icon="shield-check" href="/ja/start/first-policy">
+    強制適用前にセーフガードを観察する。
+  </Card>
+</CardGroup>

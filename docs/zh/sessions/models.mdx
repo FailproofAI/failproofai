@@ -1,27 +1,54 @@
 ---
 title: "模型"
-description: "比较模型的延迟、Token 数量、上下文使用情况和流量分布。"
+description: "比较模型延迟、Token 数量、上下文使用情况和流量分布。"
 icon: "cpu"
 ---
 
-使用「模型」页面，查看可靠性或成本是否随模型、Agent、环境或时间范围的变化而改变。
+使用"模型"视图，可以查看可靠性或成本是否随模型、Agent、环境或时间范围的变化而发生改变。
 
 <Tabs>
-  <Tab title="仪表板">
+  <Tab title="仪表盘">
     1. 前往 **Observe → Models**。
-    2. 设置时间范围，然后按环境、模型、Agent 或会话 ID 进行筛选。
+    2. 设置时间范围，然后按环境、模型、Agent 或会话 ID 筛选。
     3. 查看延迟、Token 消耗、上下文窗口使用情况和模型分布。
     4. 选择图表中的某个数据点或分布区段，以打开对应的事件。
 
-    ![模型页面，展示延迟、百分位、Token、成本、上下文窗口和模型分布视图。](/images/dashboard/models.png)
+    ![模型页面，展示延迟、百分位数、Token、成本、上下文窗口及模型分布视图。](/images/dashboard/models.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp list models
-    fp events --event-type model_request,model_response --env production --since 24h
-    fp --json events --fields ts,agent_id,session_id,event_type,output_tokens,context_fill
+    fp events --event-type model_request,model_response --since 24h
+    fp --json events --event-type model_response --since 24h --all --limit 500 --fields ts,agent_id,session_id,output_tokens,context_window,context_fill
     ```
 
-    对于未作为独立 CLI 命令公开的模型级聚合数据，可使用已保存的查询。
+    以上三条命令均需要 `events:read` 权限。
+
+    `--fields` 用于投影列，而非过滤行。请与 `--event-type` 和时间窗口配合使用，否则将获取每种类型最新的 50 条事件，其中所有非模型事件的 `output_tokens` 和 `context_fill` 均为 null。`--all` 会在达到 `--limit` 时停止，默认值为 50。
+
+    阅读 `context_fill` 时请结合 `context_window`：脱离了所对应的窗口，填充率数值本身没有意义。
+
+    除非手动修改，否则守护进程会将每个事件的环境标记为 `local`，因此在默认安装中 `--env production` 不会匹配到任何结果。请参阅[更改环境标签](/zh/reference/events-and-configuration#change-an-environment-label)。
   </Tab>
 </Tabs>
+
+## CLI 能显示和不能显示的内容
+
+默认事件流不含载荷内容。它将 `output_tokens`、`context_window` 和 `context_fill` 作为提升列提供，除此之外不包含任何模型调用的其他信息：
+
+| 值 | 所在位置 |
+| --- | --- |
+| 输出 Token 数、上下文窗口、上下文填充率 | 轻量级 Feed 列——可直接通过 `fp events` 获取。 |
+| 模型名称 | 载荷——使用 `fp events --full`，限定在单个会话内。 |
+| 输入 Token 数 | 载荷——SDK 记录了输入和输出两部分，但只有输出部分被提升为列。 |
+| 单次调用延迟 | 轻量级 Feed 中没有 `duration_ms` 列，SDK 的 `model_response` 也不携带该值。需通过将请求与其响应配对来推算。 |
+
+`model_request` 和 `model_response` 通过 `request_id` 配对。该字段的存在正是为了将请求与其响应匹配，也是从原始事件中计算单次调用延迟的唯一方式：
+
+```bash
+fp --json events --full --event-type model_request,model_response --session-id <session-id> --all --limit 500
+```
+
+模型名称直接来源于各运行环境的记录脚本，捕获路径中没有任何规范化处理，因此同一个底层模型可能在分布图中以多个提供商特定的 ID 出现。运行 `fp list models` 可查看某个部署中实际使用的模型名称拼写。
+
+对于未作为专用 CLI 命令暴露的模型级聚合数据，请使用已保存的查询。

@@ -1,34 +1,36 @@
 ---
-title: "Cruscotto locale"
-description: "Rivedi progetti locali, sessioni, attività delle policy, configurazione, audit e scansioni programmate."
+title: "Dashboard locale"
+description: "Esamina progetti locali, sessioni, attività dei criteri, configurazione, audit e scansioni programmate."
 icon: "monitor-cog"
 ---
 
-Esegui `failproofai` senza argomenti per avviare il cruscotto integrato su `http://localhost:8020`. Legge le cronologie degli agenti locali, la configurazione delle policy, i risultati degli audit e l'attività degli hook direttamente dalla macchina.
+Esegui `failproofai` senza argomenti per avviare il dashboard integrato su `http://localhost:8020`. Legge le cronologie locali degli agent, la configurazione dei criteri, i risultati degli audit e l'attività degli hook direttamente dal computer.
 
-Il cruscotto locale è separato da Failproof AI Cloud. Funziona senza un account Cloud e non prova che gli eventi siano stati consegnati alla tua organizzazione.
+Su un computer non ancora configurato, il comando bare esegue prima la configurazione iniziale prima di aprire il dashboard. Lo fa solo su un terminale interattivo: in caso di pipe o in CI, stampa un suggerimento su una riga e apre il dashboard, poiché una procedura guidata a cui nessuno può rispondere non deve mai bloccare il comando che hai digitato. Imposta `FAILPROOFAI_NO_FIRST_RUN=1` per saltare completamente il reindirizzamento e andare direttamente al dashboard.
 
-## Aree del cruscotto
+Il dashboard locale è separato da Failproof AI Cloud. Funziona senza un account Cloud e non prova che gli eventi siano stati consegnati alla tua organizzazione. Su un computer che ha completato la configurazione, le decisioni visualizzate sono state prese dal daemon `failproofaid`, che è l'unico valutatore lì; su un computer non ancora configurato, gli hook valutano in-process.
+
+## Aree del dashboard
 
 | Area | Cosa puoi fare |
 | --- | --- |
-| Policy → Attività | Ispeziona le decisioni locali allow, instruct e deny; filtra per decisione, evento, CLI, strumento, sorgente, policy e sessione. |
-| Policy → Configura | Abilita i builtin, modifica i parametri supportati, attiva/disattiva le policy personalizzate rilevate e seleziona i harness target. |
-| Progetti | Sfoglia i progetti rilevati nelle cronologie degli agenti supportati e confronta le loro sessioni più recenti. |
-| Sessioni del progetto | Apri una trascrizione locale, rivedi le voci ordinate grezze e i sottoagenti, scaricala e correla l'attività delle policy. |
-| Audit | Rivedi l'ultima scansione offline, i pattern rischiosi, i punti di forza, i progetti interessati e le policy builtin consigliate. |
-| Impostazioni | Configura le scansioni locali programmate e i report di audit inviati per email quando il daemon/piattaforma li supporta. |
+| Criteri → Attività | Ispeziona le decisioni locali allow, instruct e deny; filtra per decisione, evento, CLI, sorgente, criterio e sessione. |
+| Criteri → Configura | Abilita i criteri da un pacchetto installato, modifica i parametri supportati, attiva/disattiva i criteri custom e convention scoperti, e seleziona i target harness. |
+| Progetti | Sfoglia i progetti scoperti nelle cronologie degli agent supportate e confronta le loro sessioni più recenti. |
+| Sessioni del progetto | Apri una trascrizione locale, esamina le voci ordinate non elaborate e i subagent, scaricala e correla l'attività dei criteri. |
+| Audit | Esamina l'ultima scansione offline, i modelli rischiosi, i punti di forza, i progetti interessati e i criteri builtin suggeriti. |
+| Impostazioni | Configura le scansioni locali programmate e i report audit inviati per email quando il daemon/platform li supporta. |
 
-## Rivedi l'attività delle policy
+## Esamina l'attività dei criteri
 
 <Tabs>
-  <Tab title="Cruscotto">
-    1. Apri **Policy → Attività** e imposta i filtri di decisione e sorgente.
-    2. Restringi per evento, harness, strumento o nome della policy.
-    3. Espandi una riga per ispezionare la sua motivazione, le policy associate, la sorgente, la modalità di esecuzione e la durata.
-    4. Segui il collegamento della sessione per posizionare la decisione nel contesto della trascrizione.
+  <Tab title="Dashboard">
+    1. Apri **Criteri → Attività** e imposta i filtri di decisione e sorgente.
+    2. Restringi per evento, harness, nome del criterio o sessione.
+    3. La riga contiene la decisione, l'evento, l'harness, lo strumento, il criterio, la modalità di autorizzazione e la durata. Espandila per visualizzare il motivo completo, ogni criterio abbinato, la sorgente decisiva, la distribuzione cloud e la directory di lavoro e il percorso della trascrizione della sessione. Il nome dello strumento è mostrato nella riga ma non è un filtro.
+    4. Segui il link della sessione per inserire la decisione nel contesto della trascrizione.
 
-    Una riga che sembra negata può comunque essere osservazionale su una coppia harness/evento che non consuma verdetti di blocco. La vista dei dettagli segnala la capacità di enforcement verificata.
+    Una riga che sembra negata può comunque essere osservazionale su una coppia harness/evento che non consuma verdetti bloccanti. La vista dettagli evidenzia la capacità di applicazione verificata.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -37,41 +39,44 @@ Il cruscotto locale è separato da Failproof AI Cloud. Funziona senza un account
     failproofai
     ```
 
-    L'attività locale è archiviata in `~/.failproofai/hook-activity`. Usa il cruscotto invece di modificare questi file.
+    L'attività locale è archiviata in `~/.failproofai/hook-activity`. Usa il dashboard invece di modificare questi file.
   </Tab>
 </Tabs>
 
-## Configura le policy localmente
+## Configura i criteri localmente
 
 <Tabs>
-  <Tab title="Cruscotto">
-    1. Apri **Policy → Configura** e scegli gli harness e l'ambito della configurazione.
-    2. Abilita una policy builtin o una policy personalizzata rilevata.
-    3. Per una policy builtin parametrizzata, apri il suo controllo di configurazione e salva i valori supportati.
-    4. Ritorna ad Attività ed esegui azioni corrispondenti e non corrispondenti.
+  <Tab title="Dashboard">
+    1. Apri **Criteri → Configura** e scegli gli harness e l'ambito di configurazione. La scheda è raggiungibile direttamente su `http://localhost:8020/policies?tab=policies`.
+    2. Abilita un criterio da un pacchetto installato, oppure un criterio custom o convention scoperto.
+    3. Per un criterio parametrizzato, apri il controllo di configurazione e salva i valori supportati.
+    4. Torna ad Attività ed esegui azioni corrispondenti e non corrispondenti.
 
-    Le policy per convenzione mostrano la loro sorgente di progetto o utente. I cambiamenti espliciti su percorsi personalizzati potrebbero richiedere di rieseguire la configurazione CLI in modo che il percorso selezionato sia registrato.
+    L'elenco è vuoto finché non viene installato un pacchetto — questa build non compila criteri propri, quindi esegui prima `failproofai policies add FailproofAI/policies`. I criteri convention mostrano la loro sorgente di progetto o utente. Le modifiche di percorso custom esplicito possono richiedere di rieseguire la configurazione CLI in modo che il percorso selezionato venga registrato.
   </Tab>
   <Tab title="CLI">
     ```bash
-    failproofai policy add block-sudo --scope project
+    failproofai policies show FailproofAI/policies
+    failproofai policies add block-sudo --scope project
     failproofai policies --install --custom ./security.policies.ts --scope project
     failproofai policies
     ```
+
+    `policies show <owner>/<repo>` legge il contenuto di un pacchetto prima di installarlo. `--scope` accetta `user`, `project` o `local`; solo Claude Code supporta `local`, e Hermes e OpenClaw accettano solo `user`.
   </Tab>
 </Tabs>
 
 ## Sfoglia progetti e sessioni
 
-La pagina Progetti combina i repository di cronologie locali supportati. Seleziona un progetto per elencare le sue sessioni, quindi apri una sessione per il visualizzatore di log grezzi, i segmenti dei sottoagenti, l'azione di download e l'attività delle policy con ambito di sessione.
+La pagina Progetti combina gli archivi di cronologie locali supportati. Seleziona un progetto per elencarne le sessioni, quindi apri una sessione per il visualizzatore di log non elaborato, i segmenti dei subagent, l'azione di download e l'attività dei criteri con ambito di sessione.
 
-Se un progetto o una sessione mancano, conferma che l'harness utilizzi la sua posizione di cronologia predefinita o registra una radice aggiuntiva con `failproofai harness add-path`.
+Se un progetto o una sessione manca, conferma che l'harness utilizzi la sua posizione di cronologia predefinita o registra una radice aggiuntiva con `failproofai harness add-path <harness> [<label>=]<path>`.
 
 ## Programma audit offline
 
 <Tabs>
-  <Tab title="Cruscotto">
-    Apri **Impostazioni**, abilita la scansione programmata, scegli il suo intervallo supportato e configura la consegna dei report quando disponibile. La pagina segnala l'esecuzione successiva, l'ultima esecuzione, il codice di uscita e se il daemon in background è supportato sulla piattaforma.
+  <Tab title="Dashboard">
+    Apri **Impostazioni**, abilita la scansione programmata, scegli l'intervallo supportato e configura la consegna dei report quando disponibile. La pagina segnala l'esecuzione successiva, l'ultima esecuzione, il codice di uscita e se il daemon in background è supportato sulla piattaforma.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -79,10 +84,16 @@ Se un progetto o una sessione mancano, conferma che l'harness utilizzi la sua po
     failproofai audit --status
     ```
 
-    Cambia il numero di giorni per impostare un diverso intervallo di 1–90 giorni. Disabilita le scansioni ricorrenti con `failproofai audit --no-schedule`; esegui `failproofai audit` per una scansione interattiva immediata.
+    Modifica il numero di giorni per impostare un intervallo diverso da 1 a 90 giorni. Disabilita le scansioni ricorrenti con `failproofai audit --no-schedule`, che arresta il timer e ti mantiene connesso; esegui `failproofai audit` per una scansione interattiva immediata.
+
+    La programmazione ti connette la prima volta, perché i risultati vengono inviati per email. `--email <address>` fornisce l'indirizzo in anticipo e ignora il prompt di accesso.
   </Tab>
 </Tabs>
 
+<Note>
+  L'analisi e i risultati rimangono su questo computer. La telemetria CLI anonima viene inviata per impostazione predefinita a meno che non imposti `FAILPROOFAI_TELEMETRY_DISABLED=1`. Le scansioni programmate inviano anche i metadati del computer e possono inviare un digest dei risultati limitato dopo aver acconsentito.
+</Note>
+
 <Warning>
-  Il cruscotto locale può visualizzare prompt, input degli strumenti, contenuto dei file e output del terminale dalle cronologie degli agenti locali. Associalo solo a interfacce affidabili e arresta il processo al termine della revisione.
+  Il dashboard locale può visualizzare prompt, input degli strumenti, contenuto di file e output del terminale dalle cronologie locali degli agent. Collegalo solo a interfacce attendibili e arresta il processo al termine della revisione.
 </Warning>

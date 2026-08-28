@@ -4,38 +4,49 @@ description: "Tham khảo mô hình sự kiện, môi trường, lưu trữ cụ
 icon: "list-tree"
 ---
 
+## Hai từ vựng sự kiện
+
+Failproof AI có hai loại sự kiện khác nhau và chúng không bao giờ chia sẻ cùng một tên.
+
+| Từ vựng | Được tạo bởi | Tên trông như | Tham khảo |
+| --- | --- | --- | --- |
+| Sự kiện đo đạc | `failproofai-sdk`, từ bên trong agent của bạn | `tool_use`, `tool_result`, `hook_triggered`, `model_response` | [Python SDK](/vi/reference/custom-agents) |
+| Hook events | Bộ cấp agent, bình thường hóa bởi failproofai | `PreToolUse`, `PostToolUse`, `Stop`, `UserPromptSubmit` | [Custom policies](/vi/reference/policy-sdk#choose-the-event) |
+
+Phía hook bình thường hóa tên sự kiện riêng của mỗi bộ cấp thành 29 loại chính tắc. Phía đo đạc có 15 phương thức và hợp đồng trường riêng của nó. `hook_triggered` và `PreToolUse` không phải là hai cách viết của một thứ.
+
 ## Các nhóm sự kiện
 
-- Agent khởi động, kết thúc, tạm dừng và tiếp tục
-- Yêu cầu và phản hồi của mô hình
+- Agent bắt đầu, kết thúc, tạm dừng và tiếp tục
+- Yêu cầu và phản hồi mô hình
 - Sử dụng công cụ và kết quả
 - Hook được kích hoạt và hoàn thành
-- Chờ đợi con người, nhập liệu, tạm dừng và ngắt
+- Con người chờ đợi, nhập liệu, tạm dừng và ngắt
 - Lỗi rõ ràng
 
-Mỗi sự kiện mang theo một dấu thời gian, ID phiên, ID agent, loại sự kiện và môi trường. Các trường dành riêng cho sự kiện chứa dữ liệu mô hình, công cụ, tương quan, kết quả, nội dung, thời lượng hoặc lỗi.
+Mỗi sự kiện đều có dấu thời gian, ID phiên, ID agent, loại sự kiện và môi trường. Các trường cụ thể sự kiện chứa dữ liệu mô hình, công cụ, tương quan, kết quả, nội dung, thời lượng hoặc lỗi.
 
 ## Kiểm tra hợp đồng sự kiện
 
 <Tabs>
   <Tab title="Dashboard">
     1. Mở **Observe → Events**.
-    2. Đặt một khoảng thời gian ngắn và lọc theo môi trường, agent và loại sự kiện.
-    3. Chọn một sự kiện để kiểm tra các trường được chuẩn hóa và payload thô của nó, sau đó mở phiên của nó để xem ngữ cảnh thực thi.
-    4. Nếu thiếu một thời lượng được ghép nối, hãy xác minh rằng các sự kiện khởi động và hoàn thành sử dụng cùng một ID tương quan.
+    2. Đặt một cửa sổ thời gian ngắn và lọc theo môi trường, agent và loại sự kiện.
+    3. Chọn một sự kiện để kiểm tra các trường bình thường hóa của nó và tải trọng thô, sau đó mở phiên của nó để xem ngữ cảnh thực thi.
+    4. Nếu thiếu thời lượng được ghép nối, hãy xác minh rằng các sự kiện bắt đầu và hoàn thành sử dụng cùng một ID tương quan.
 
-    Sử dụng luồng Events để thu hẹp dữ liệu thành một lần chạy agent duy nhất và kiểm tra các trường sự kiện được chuẩn hóa.
+    Sử dụng luồng Events để thu hẹp dữ liệu thành một lần chạy agent và kiểm tra các trường sự kiện bình thường hóa.
 
     ![Luồng Events trực tiếp với bộ lọc cho môi trường, agent, phiên và loại sự kiện.](/images/dashboard/events-stream.png)
 
-    Sau đó, theo dõi sự kiện vào phiên của nó. Dấu vết cho thấy những gì đã xảy ra ngay trước và sau nó, điều này là cần thiết khi payload chỉ riêng lẻ gây nhầm lẫn.
+    Sau đó, theo sự kiện vào phiên của nó. Dấu vết cho thấy điều gì xảy ra ngay trước và sau nó, điều này là cần thiết khi tải trọng một mình là không rõ ràng.
 
-    ![Dấu vết phiên được liên kết được sử dụng để kiểm tra sự kiện trong ngữ cảnh thực thi.](/images/dashboard/session-detail.png)
+    ![Dấu vết phiên được liên kết để kiểm tra sự kiện trong ngữ cảnh thực thi.](/images/dashboard/session-detail.png)
 
-    So sánh ID tương quan và dấu thời gian trên cả hai chế độ xem khi thiếu một sự kiện hoặc thời lượng được ghép nối.
+    So sánh các ID tương quan và dấu thời gian trên cả hai chế độ xem khi thiếu sự kiện hoặc thời lượng được ghép nối.
   </Tab>
   <Tab title="CLI">
-    Khám phá các giá trị bộ lọc hợp lệ, sau đó tìm nạp payload sự kiện đầy đủ cho một phiên:
+    Khám phá các giá trị bộ lọc hợp lệ, sau đó tìm nạp tải trọng sự kiện đầy đủ cho một phiên:
 
     ```bash
     fp list event_types
@@ -51,34 +62,105 @@ Mỗi sự kiện mang theo một dấu thời gian, ID phiên, ID agent, loại
   </Tab>
 </Tabs>
 
-## Các trường SDK được bảo lưu
+## Các trường SDK được dành riêng
 
-Không sử dụng `timestamp`, `session_id`, `agent_id`, `type` hoặc `environment` làm các trường Python SDK tùy chỉnh. Thời lượng sự kiện được ghép nối chẳng hạn như thời lượng kết quả công cụ được SDK tính toán và không thể được cung cấp thủ công.
+Năm tên bị từ chối hoàn toàn làm trường tùy chỉnh, vì SDK đặt chúng trên mọi sự kiện:
+
+`timestamp`, `session_id`, `agent_id`, `type`, `environment`.
+
+Mười một cái khác được chấp nhận nhưng được kiểm tra loại, vì điểm cuối nhập nâng chúng ra khỏi tải trọng vào các cột được nhập và âm thầm lưu trữ `NULL` cho bất kỳ thứ gì có loại sai. SDK sẽ tăng lên thay vào đó, tại điểm gọi nơi bạn vẫn có thể thấy giá trị được tạo ra.
+
+| Tên | Loại bắt buộc |
+| --- | --- |
+| `duration_ms`, `input_tokens`, `output_tokens` | `int`, trong phạm vi 32-bit không dấu. Float hoặc bool sẽ tăng. |
+| `tool_name`, `tool_call_id`, `hook_name`, `hook_id`, `input_id`, `pause_id`, `error_type`, `model` | `str`. `None` sẽ tăng, vì hàng sẽ đến tại 200 OK và vô hình đối với mọi bộ lọc trên trường đó. |
+
+### Thời lượng
+
+SDK đo khoảng cách giữa bốn sự kiện được ghép nối và từ chối `duration_ms` mà bạn tự truyền: `tool_use` → `tool_result`, `hook_triggered` → `hook_completed`, `agent_pause` → `agent_resume`, và `human_wait` → `human_input`.
+
+`model_response` là ngoại lệ. SDK không bao giờ hẹn các cuộc gọi mô hình, vì vậy bạn cung cấp `duration_ms` của chính mình, dưới dạng toàn bộ số mili giây. Xem [correlation rules](/vi/reference/custom-agents) để biết cách một cặp được khớp.
 
 ## Ranh giới cục bộ
 
 - Trạng thái Failproof AI nằm dưới `~/.failproofai` trừ khi được cấu hình rõ ràng khác.
-- `failproofai-sdk` luôn cấp dưới `~/.failproofai/custom-agents`. `FAILPROOFAI_HOME` chuyển vị trí đó; phân đoạn `custom-agents` luôn được thêm vào, do đó cấp không thể được đặt bên ngoài nó. Chỉ SDK của chính nó `configure(base_dir=...)` ghi ở nơi khác. `AGENTEYE_HOME` được đọc bởi `agenteye-collector` cũ hơn để chọn những gì để xem, và không còn ảnh hưởng đến nơi SDK ghi.
-- Nhãn môi trường có thể được đặt thông qua cấu hình SDK hoặc `AGENTEYE_ENVIRONMENT`.
-- Thông tin xác thực daemon được lưu trữ riêng biệt với cài đặt không bí mật.
+- `failproofai-sdk` luôn dùi dưới `~/.failproofai/custom-agents`. `FAILPROOFAI_HOME` dịch chuyển nhà đó; phân đoạn `custom-agents` luôn được thêm vào, vì vậy dùi không thể được đặt bên ngoài nó. Chỉ `configure(base_dir=...)` riêng của SDK ghi ở nơi khác. `AGENTEYE_HOME` được đọc bởi `agenteye-collector` cũ hơn để chọn cái nào để xem, và không còn ảnh hưởng đến vị trí SDK ghi.
+- Thông tin xác thực nằm trong `~/.failproofai/credentials.json`, được ghi `0600`. Chúng có ý định không ở trong `config.json`, được ghi bằng cách ghi thuần túy và kế thừa umask, vì vậy nó có thể đọc được bởi mọi người dùng cục bộ trên hộp.
 
-Sử dụng tên môi trường ổn định, cardinality thấp. Dấu phẩy không được hỗ trợ trong nhãn môi trường daemon.
+Sử dụng tên môi trường ổn định, cardinality thấp. Dấu phẩy bị từ chối ở cả hai bên ghi: daemon từ chối một dấu phẩy trong `collector.environment`, và SDK tăng lên trên `configure(environment=...)`. Lý do giống nhau ở cả hai phía—điểm cuối nhập chia trường này trên dấu phẩy và bỏ qua toàn bộ dòng, trả lời `200 OK` trong khi không lưu trữ gì cả.
+
+## Cấu hình máy
+
+Các cài đặt không bí mật của daemon là `~/.failproofai/config.json`. `hooks_verbosity`, `redact` và `environment` không có cờ CLI — chỉnh sửa tệp trực tiếp. `sessions`, `hooks` và `machine_id` được ghi bởi `failproofai config` khi nó kết nối máy này với Cloud.
+
+| Khóa | Giá trị | Mặc định | Điều khiển gì |
+| --- | --- | --- | --- |
+| `collector.sessions` | `true` / `false` | `false`, và `true` khi bạn kết nối với Cloud | Vận chuyển bảng điểm phiên agent. Bảng điểm mang lại lời nhắc, nội dung tệp và bất kỳ thứ gì được dán vào terminal. |
+| `collector.hooks` | `true` / `false` | `true` | Vận chuyển hoạt động hook. Mang lại quyết định và tên công cụ, không bao giờ nội dung tệp. |
+| `collector.hooks_verbosity` | `all` / `decisions` / `off` | `decisions` | `decisions` giữ mọi deny và instruct chính xác và tổng hợp khoảng 99% cho phép. |
+| `collector.redact` | `minimal` / `off` | `minimal` | Biên tập áp dụng trước khi bất kỳ thứ gì rời khỏi máy. |
+| `collector.environment` | bất kỳ chuỗi nào không có dấu phẩy | `local` | Nhãn được đóng dấu trên mọi sự kiện máy này gửi. |
+| `collector.machine_id` | bất kỳ chuỗi nào | một id đã trên đĩa, nếu không là UUID ngẫu nhiên mới | Máy nào dashboard nhóm dữ liệu này dưới. Được ghi bởi `--machine-id`. Nó không bao giờ được lấy từ tên máy chủ. |
+
+<Note>
+  `failproofai backfill --help` đặt tên `~/.failproofai/config.toml`. Đó là một đường dẫn cũ từ bố cục nhà trước đó; không có bản dựng hiện tại nào ghi nó. Tệp là `config.json`.
+</Note>
+
+Kết nối với Cloud gửi cả quyết định chính sách và bảng điểm phiên đầy đủ.
+
+<Warning>
+  `--no-transcripts` không tắt bảng điểm trên đường dẫn thiết lập. `failproofai config --token <key> --no-transcripts` phân tích cờ và sau đó không bao giờ đọc nó, và wizard kết nối với các phiên bất kể, vì vậy bảng điểm tiếp tục vận chuyển trong khi bạn tin rằng bạn đã chọn không tham gia.
+
+  Để chỉ gửi quyết định, đặt `collector.sessions` thành `false` trong `~/.failproofai/config.json` sau khi kết nối:
+
+  ```json
+  {
+    "collector": {
+      "sessions": false
+    }
+  }
+  ```
+</Warning>
+
+Một backfill tuân theo các cài đặt bộ thu thập giống nhau, vì vậy nó không bao giờ gửi thứ gì đó mà cấu hình của bạn nói bạn không muốn. Gửi lại là an toàn: biên tập là xác định, vì vậy sự kiện được gửi lại hashes giống hệt với lần gửi đầu tiên của nó và sụp đổ vào hàng đã ở đó.
 
 ## Thay đổi nhãn môi trường
 
-<Tabs>
-  <Tab title="Dashboard">
-    Nhãn môi trường được gán bởi SDK phát hành hoặc daemon Failproof. Sau khi thay đổi, mở **Observe → Sessions** và sử dụng bộ lọc môi trường để xác nhận các phiên mới mang giá trị mới. Các phiên hiện có giữ lại môi trường ban đầu của chúng.
+SDK và daemon mỗi cái đóng dấu nhãn riêng của chúng, và chúng được đặt ở các nơi khác nhau.
 
-  </Tab>
-  <Tab title="CLI">
-    Đối với `failproofai-sdk`, hãy cấu hình môi trường trong mã hoặc với biến môi trường kế thừa của nó. Chạy lại cấu hình daemon khi thay đổi cài đặt cấp máy.
+<Tabs>
+  <Tab title="Python SDK">
+    Đặt nó trong mã, hoặc trong môi trường của quy trình phát ra sự kiện. Mặc định là `dev`.
+
+    ```python
+    import failproofai_sdk
+
+    failproofai_sdk.configure(environment="production-us-east")
+    ```
 
     ```bash
     export AGENTEYE_ENVIRONMENT=production-us-east
-    failproofai config
+    ```
+
+    `AGENTEYE_ENVIRONMENT` chỉ được đọc bởi `failproofai-sdk`. Cả CLI cũng như daemon đều không đọc nó, vì vậy xuất nó không thay đổi bất cứ điều gì về máy.
+  </Tab>
+  <Tab title="Daemon">
+    Chỉnh sửa `collector.environment` trong `~/.failproofai/config.json`. Mặc định là `local` và không có cờ CLI nào đặt nó.
+
+    ```json
+    {
+      "collector": {
+        "environment": "production-us-east"
+      }
+    }
+    ```
+
+    ```bash
     failproofai config --status
     fp sessions --since 1h --env production-us-east
     ```
+  </Tab>
+  <Tab title="Dashboard">
+    Nhãn môi trường được gán bởi SDK hoặc daemon Failproof phát hành, vì vậy không có gì để thay đổi ở đây. Sau khi thay đổi một ở nguồn của nó, mở **Observe → Sessions** và sử dụng bộ lọc môi trường để xác nhận các phiên mới mang giá trị mới. Các phiên hiện tại giữ lại môi trường gốc của chúng.
   </Tab>
 </Tabs>

@@ -4,71 +4,121 @@ description: "Xác thực với API Failproof AI Cloud `/v1` công khai và sử
 icon: "braces"
 ---
 
-API công khai được cung cấp dưới `/v1` trên nguồn gốc bảng điều khiển Failproof AI của bạn.
+API công khai được phục vụ dưới `/v1` trên nguồn gốc bảng điều khiển Failproof AI của bạn. Trên Failproof AI Cloud, nguồn gốc đó là `https://app.befailproof.ai`, vì vậy đường dẫn cơ sở là `https://app.befailproof.ai/v1`. Trên triển khai tự lưu trữ, đó là máy chủ bảng điều khiển của bạn theo sau bởi `/v1`; truyền máy chủ đó cho `fp` với `--base-url <url>` hoặc `FP_DASHBOARD_URL`.
 
 ## Tạo khóa và thực hiện yêu cầu
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Mở **Administration → Keys**, chọn **Create key**, và chọn preset quyền hạn nhất có thể bao gồm tích hợp.
-    2. Chỉ thêm các cấp phép cá nhân khi cần thiết, tạo khóa, và sao chép bí mật một lần của nó.
+    1. Mở **Administration → Keys**, chọn **new key** và chọn cài đặt quyền hạn hẹp nhất bao gồm tích hợp.
+    2. Chỉ thêm các cấp quyền riêng lẻ khi cần thiết, tạo khóa và sao chép bí mật một lần của nó.
     3. Thực hiện yêu cầu kiểm tra đến `/v1/sessions` và xác nhận khóa vẫn hoạt động trong trang Keys.
-    4. Xoay hoặc vô hiệu hóa khóa từ menu hành động của nó khi quyền sở hữu tích hợp thay đổi.
+    4. Xoay vòng hoặc vô hiệu hóa khóa từ menu hành động của nó khi quyền sở hữu tích hợp thay đổi.
 
-    ![Ngăn kéo khóa API mới với preset quyền hạn và cấp phép cá nhân.](/images/dashboard/key-create.png)
+    ![Drawer khóa API mới với cài đặt quyền hạn và cấp quyền riêng lẻ.](/images/dashboard/key-create.png)
 
-    Ngăn kéo tạo được hiển thị ở trên. Bí mật một lần chỉ xuất hiện sau khi bạn chọn **create**; sao chép nó trước khi đóng xác nhận đó.
+    Drawer tạo được hiển thị ở trên. Bí mật một lần chỉ xuất hiện sau khi khóa được tạo; sao chép nó trước khi đóng xác nhận đó.
   </Tab>
   <Tab title="CLI">
-    Tạo khóa đọc và sử dụng nó trực tiếp với `fp` hoặc `curl`:
+    Tạo khóa đọc và sử dụng nó trực tiếp với `fp` hoặc `curl`. `fp` đọc khóa từ `--api-key` hoặc từ `FP_API_KEY`:
 
     ```bash
     fp keys create reliability-reader \
       --permission-set read-only
 
-    fp --api-key <key> sessions --since 24h
-    ```
-
-    ```bash
-    curl "https://app.befailproof.ai/v1/sessions?limit=20" \
-      -H "Authorization: Bearer $FAILPROOFAI_KEY"
-    ```
-  </Tab>
-</Tabs>
-
-Các khóa được xác định phạm vi cho một tổ chức và bộ quyền hạn. Yêu cầu không có quyền hạn bắt buộc của điểm cuối trả về `403` và xác định quyền hạn bị thiếu.
-
-## Lựa chọn tổ chức
-
-Khóa tổ chức hoạt động trên tổ chức của nó một cách tự động. Khóa có phạm vi instance có thể chọn một tổ chức cho mỗi yêu cầu:
-
-<Tabs>
-  <Tab title="Dashboard">
-    Sử dụng công tắc chuyển đổi tổ chức trong tiêu đề bảng điều khiển trước khi mở **Administration → Keys**. Các khóa được tạo ở đó thuộc về tổ chức được chọn. Xác nhận slug tổ chức trong URL và chi tiết khóa trước khi sao chép thông tin xác thực vào tự động hóa.
-
-  </Tab>
-  <Tab title="CLI">
-    Sử dụng `--org` trước lệnh, hoặc gửi tiêu đề tổ chức cho khóa API có phạm vi instance.
-
-    ```bash
-    fp orgs list
+    export FP_API_KEY="<one-time-secret>"
     fp --org reliability-team sessions --since 24h
     ```
 
     ```bash
-    curl "https://app.befailproof.ai/v1/usage" \
-      -H "Authorization: Bearer $FAILPROOFAI_KEY" \
+    curl "https://app.befailproof.ai/v1/sessions?limit=20" \
+      -H "Authorization: Bearer $FP_API_KEY" \
       -H "X-AgentEye-Org: reliability-team"
     ```
   </Tab>
 </Tabs>
 
-Sử dụng các trang điểm cuối được tạo trong phần này cho các đường dẫn, tham số, yêu cầu quyền hạn và mã trạng thái hiện tại. Thông số kỹ thuật được tạo từ các chú thích tuyến đường máy chủ và được kiểm tra so với bộ định tuyến `/v1`.
+Khóa có phạm vi tổ chức và danh sách quyền hạn phẳng. Một bộ quyền hạn chỉ gieo hạt cho danh sách đó tại thời điểm tạo — khóa lưu trữ các cấp quyền được mở rộng, vì vậy thay đổi bộ sau đó không thay đổi khóa. Yêu cầu không có quyền hạn bắt buộc của điểm cuối trả về `403` và xác định quyền hạn còn thiếu.
 
-Thông số kỹ thuật hiện tại có phạm vi đầy đủ tuyến đường, phương thức, tham số, quyền hạn và mã trạng thái. Một số phần nội dung phản hồi vẫn được để không được nhập vào một cách cố ý vì máy chủ vẫn xây dựng chúng dưới dạng JSON động. Kiểm tra phản hồi thực tế trước khi tạo máy khách được nhập mạnh xung quanh điểm cuối mà không có lược đồ phản hồi.
+## Lựa chọn tổ chức
 
-Sử dụng `Content-Type: application/json` cho ghi JSON. Coi `401` là xác thực bị thiếu hoặc không hợp lệ, `403` là danh tính hợp lệ mà không có quyền hạn bắt buộc, `404` là tài nguyên bị thiếu hoặc không thể truy cập tổ chức, `409` là xung đột trạng thái, và `422` là giá trị trường hoặc quyền hạn không hợp lệ. Phản hồi lỗi bao gồm thông báo có thể đọc được của con người; các lỗi quyền hạn cũng đặt tên cho cấp phép bắt buộc.
+Khóa tổ chức hoạt động trên tổ chức của nó một cách tự động. Khóa có phạm vi thực thể chọn tổ chức cho mỗi yêu cầu, và người thuê có nhiều hơn một tổ chức phải luôn đặt tên một tổ chức trong chế độ khóa — `fp` không bao giờ gửi tổ chức đã lưu khi nó xác thực bằng khóa.
+
+| Người gọi | Cách bạn đặt tên tổ chức |
+| --- | --- |
+| `fp`, trên mỗi lần gọi | `--org <slug>`, trước lệnh con |
+| `fp`, từ môi trường | `FP_ORG` |
+| HTTP thô | tiêu đề yêu cầu `X-AgentEye-Org: <slug>` |
+
+`X-AgentEye-Org` giữ cách viết gốc của nó trên dây. Đó là tiêu đề mà bảng điều khiển đọc để giải quyết tổ chức hoạt động, và đổi tên nó trong khách hàng sẽ phá vỡ yêu cầu.
+
+<Tabs>
+  <Tab title="Dashboard">
+    Sử dụng công tắc tổ chức trong tiêu đề bảng điều khiển trước khi mở **Administration → Keys**. Các khóa được tạo ở đó thuộc về tổ chức được chọn. Xác nhận slug tổ chức trong URL và chi tiết khóa trước khi sao chép thông tin xác thực vào tự động hóa.
+
+  </Tab>
+  <Tab title="CLI">
+    Sử dụng `--org` trước lệnh hoặc gửi tiêu đề tổ chức cho khóa API có phạm vi thực thể. `fp orgs list` không khám phá slug cho bạn ở đây — nó từ chối ở chế độ khóa; đọc slug từ công tắc tổ chức của bảng điều khiển.
+
+    ```bash
+    fp --org reliability-team sessions --since 24h
+    ```
+
+    ```bash
+    curl "https://app.befailproof.ai/v1/usage" \
+      -H "Authorization: Bearer $FP_API_KEY" \
+      -H "X-AgentEye-Org: reliability-team"
+    ```
+  </Tab>
+</Tabs>
+
+## Phân trang
+
+Các điểm cuối danh sách được phân trang bằng keyset, và cùng một hợp đồng áp dụng cho dù bạn gọi chúng thông qua `fp` hay thông qua `curl`.
+
+| Phần tử | Ý nghĩa |
+| --- | --- |
+| tham số truy vấn `limit` | Các hàng được yêu cầu trong lệnh gọi này. `fp` giới hạn một yêu cầu duy nhất ở 200 hàng trên mỗi điểm cuối. Yêu cầu thô bị ràng buộc bởi trần giới hạn mỗi điểm cuối của chính máy chủ. |
+| tham số truy vấn `cursor` | Mã thông báo không rõ ràng tiếp tục nguồn cấp dữ liệu sau trang trước. |
+| trường phản hồi `next_cursor` | Mã thông báo cho trang tiếp theo. `null` có nghĩa là nguồn cấp dữ liệu được sử dụng hết. |
+
+Các trần giới hạn đó khác nhau tùy theo điểm cuối, và mỗi trang điểm cuối đặt tên mặc định và giới hạn của riêng nó:
+
+| Điểm cuối | Mặc định | Giới hạn |
+| --- | --- | --- |
+| `/events`, `/events/summary` | 50 | 1000 |
+| `/issues`, `/alerts/{id}/issues` | 200 | 1000 |
+| `/evaluation-jobs` | 100 | 500 |
+| `/audits/findings` | 100 | 500 |
+| `/sessions`, `/evaluations` | 50 | 200 |
+| `/audits/{id}/runs` | 50 | 200 |
+
+Đọc một nguồn cấp dữ liệu đầy đủ bằng cách phát hành lại yêu cầu tương tự với `cursor` được đặt thành `next_cursor` của phản hồi trước cho đến khi `next_cursor` trở lại `null`. Các cờ `fp` tương đương — `--all`, `--cursor` và `--page-size` — được ghi lại trong [tham chiếu Cloud CLI](/vi/reference/cloud-cli).
+
+## Tham chiếu điểm cuối và xử lý lỗi
+
+Sử dụng các trang điểm cuối được tạo trong phần này để lấy đường dẫn hiện tại, tham số, yêu cầu quyền hạn và mã trạng thái. Thông số kỹ thuật được tạo từ chú thích tuyến đường máy chủ và được kiểm tra so với router `/v1`.
+
+Thông số kỹ thuật hiện tại có phạm vi đầy đủ về tuyến đường, phương pháp, tham số, quyền hạn và mã trạng thái. Phần thân yêu cầu được nhập; phần thân phản hồi không — thông số kỹ thuật không mang theo lược đồ phản hồi ngày hôm nay, vì máy chủ vẫn xây dựng chúng dưới dạng JSON động. Kiểm tra phản hồi thực tế trước khi tạo khách hàng được nhập mạnh.
+
+Sử dụng `Content-Type: application/json` cho ghi JSON. Coi `401` là xác thực bị thiếu hoặc không hợp lệ, `403` là danh tính hợp lệ không có quyền hạn bắt buộc, `404` là tài nguyên bị thiếu hoặc không thể truy cập tổ chức, `409` là xung đột trạng thái, `400` là tham số bị từ chối — giá trị bộ lọc không xác định, tham số truy vấn được định dạng sai, câu lệnh sẽ không chạy — và `422` là giá trị trường hoặc quyền hạn không hợp lệ trong phần thân yêu cầu. Phản hồi lỗi bao gồm thông báo có thể đọc được; các lỗi quyền hạn cũng đặt tên cho cấp quyền bắt buộc.
+
+## Bề mặt mà `/v1` không mang theo
+
+Chính sách được quản lý bởi đám mây, fleet và nguồn cấp dữ liệu quyết định guardrail là bề mặt nhà điều hành — đọc và ghi giống nhau. Chúng là chỉ gốc trên máy chủ và cố ý vắng mặt từ `/v1`, which is internet-facing. Xuất bản phiên bản chính sách hoặc triển khai nó cho máy, ví dụ, không phải là điều khóa API có thể làm, và đọc lại những gì fleet quyết định là trên cùng bề mặt.
+
+Do đó, khóa API nhận được từ chối bằng thiết kế trên các tuyến đó, và `fp` từ chối trước khi nó mở kết nối thay vì để yêu cầu 404 không có giải thích:
+
+| Lệnh | Hành vi dưới khóa API |
+| --- | --- |
+| `fp policies` | Từ chối với exit `2` và đặt tên các chính sách được quản lý bởi đám mây là bề mặt nhà điều hành |
+| `fp fleet` | Từ chối với exit `2` và đặt tên fleet là bề mặt nhà điều hành |
+| `fp guardrails` | Từ chối với exit `2` và đặt tên nguồn cấp dữ liệu guardrail là bề mặt nhà điều hành |
+| `fp agent` | Từ chối với exit `2`; trợ lý được thực hiện bởi bảng điều khiển, không phải API |
+| `fp orgs` | Từ chối với exit `2`; thành viên tổ chức thuộc về người dùng đã đăng nhập, và khóa đã hoạt động cho một tổ chức |
+
+Chạy những điều này dưới phiên người dùng đã đăng nhập (`fp login`) thay vào đó, hoặc sử dụng bảng điều khiển. Các họ đọc và quản trị — phiên, sự kiện, đánh giá, kiểm toán, vấn đề, cảnh báo, khóa, bộ quyền hạn, người dùng, cài đặt, truy vấn và sử dụng — mỗi yêu cầu có tuyến `/v1` và hoạt động với khóa. Lỗ hổng duy nhất là `fp keys update`: nó cần `keys:update`, quyền hạn không khóa API nào có thể nắm giữ, vì vậy khóa có thể tạo ra và vô hiệu hóa khóa nhưng không bao giờ chỉnh sửa quyền hạn của nó. `fp login` và `fp logout` cũng từ chối ở chế độ khóa, vì một lý do khác: khóa đã là thông tin xác thực, và nó không bao giờ được lưu vào đĩa.
 
 <Warning>
-  Triển khai thực thi chính sách được quản lý cố ý bên ngoài bề mặt `/v1` công khai thông thường. Sử dụng quy trình triển khai Cloud được hỗ trợ.
+  Triển khai thực thi chính sách được quản lý cố ý bên ngoài bề mặt `/v1` công khai thông thường. Sử dụng quy trình triển khai Cloud được hỗ trợ được mô tả trong [Deploy policies](/vi/policies/deploy).
 </Warning>

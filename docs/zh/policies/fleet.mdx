@@ -1,52 +1,61 @@
 ---
-title: "将策略部署到机器"
-description: "了解哪些机器已注册、处于最新状态并正在执行预期的策略版本。"
+title: "Fleet 覆盖率"
+description: "查看哪些机器已接收并应用了预期的策略。"
 icon: "network"
 ---
 
-机群覆盖情况用于回答风险所在位置是否存在对应策略。通过稳定 ID 和可读标签追踪机器，然后比较其已分配和已上报的部署状态。
+Fleet 覆盖率会对比 Cloud 分配的内容与每台机器上次应用的内容。
 
-## 检查覆盖情况
-
-<Tabs>
-  <Tab title="仪表板">
-    1. 进入 **Admin → enforcement**，查看执行中和观察中的数量汇总。
-    2. 按 ID 或标签搜索机器，或筛选缺少策略的机器。
-    3. 展开某行，比较已分配策略、已上报部署情况、最后签入时间及历史记录。
-    4. 若某次已应用的部署仍处于待处理状态，请在该机器的轮询间隔后刷新。
-
-    ![显示策略覆盖情况、机器部署状态以及观察和执行分配的 Enforcement 机群视图。](/images/dashboard/enforcement-fleet.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai config --status
-    failproofai config --machine-label checkout-runner-03
-    failproofai flush --wait
-    ```
-
-    使用 `fp events --agent-id <agent-id> --since 24h` 确认该机器的 Agent 活动已到达 Cloud。
-  </Tab>
-</Tabs>
-
-使用覆盖视图查找：
-
-- 从未拉取最新部署的机器
-- 已注册但停止上报活动的机器
-- 分配到错误环境或队列的策略
-- 更新中断后产生的版本漂移
-
-无需重新连接即可重命名机器：
-
-```bash
-failproofai config --machine-label checkout-runner-03
-```
-
-检查本地状态：
+## 检查机器状态
 
 ```bash
 failproofai config --status
+failproofai flush --wait --timeout 120
 ```
 
-<Tip>
-  使用能够标识工作负载和环境的标签。在自动扩缩容或机器替换后，仅靠主机名往往是不够的。
-</Tip>
+从 Cloud 端执行：
+
+```bash
+fp fleet list
+fp fleet diff
+fp fleet show <machine-id>
+```
+
+`fp fleet` 需要已登录的会话，而非 API 密钥。
+
+| 命令 | 功能说明 |
+| --- | --- |
+| `fp fleet list` | 列出机器及其部署状态 |
+| `fp fleet show <machine>` | 显示某台机器的策略集 |
+| `fp fleet deploy <machine> --add <ref>` | 添加或更新单条策略 |
+| `fp fleet deploy <machine> --remove <id>` | 移除单条策略 |
+| `fp fleet deploy <machine> --set <ref>...` | 替换整个策略集 |
+| `fp fleet diff [machine]` | 对比预期版本与已应用版本 |
+| `fp fleet history <machine>` | 列出部署历史版本 |
+| `fp fleet rollback <machine> <generation>` | 还原到指定历史版本 |
+| `fp fleet rename <machine> "<label>"` | 修改 Cloud 中的显示标签 |
+
+<Warning>
+  `--set` 会替换完整的策略集。单独使用 `--add <id>` 会立即强制执行新策略。如需灰度发布，请使用 `--add <id>:observe`。
+</Warning>
+
+## 先观察，再强制执行
+
+```bash
+fp fleet deploy ci-runner-01 --add prod-guard:observe
+fp guardrails summary --since 24h --machine ci-runner-01
+fp fleet deploy ci-runner-01 --add prod-guard:enforce
+```
+
+观察模式会评估实际策略并记录非 allow 决策，但不会阻断 Agent 的执行。
+
+## 机器标识
+
+机器 ID 是固定不变的，用于唯一标识该机器。标签仅用于显示，可以随时更改：
+
+```bash
+failproofai config --machine-label checkout-runner-03
+fp fleet rename <machine-id> "Checkout runner 03"
+```
+
+修改标签不会重新连接机器或重置其密钥。

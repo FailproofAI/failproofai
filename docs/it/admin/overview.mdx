@@ -1,40 +1,74 @@
 ---
 title: "Amministrazione"
-description: "Gestisci accesso, utilizzo, organizzazioni e sicurezza senza mescolarli nel flusso di lavoro di affidabilità."
+description: "Gestisci l'accesso al Cloud, l'appartenenza, le impostazioni e il consumo senza mescolarli nel flusso di lavoro di affidabilità."
 icon: "settings-2"
 ---
 
-L'Amministrazione contiene i controlli necessari per eseguire Failproof AI in un team. La maggior parte dei lettori può restare in Sessions, Audits e Policies; gli amministratori utilizzano questa sezione per gestire l'accesso e i limiti operativi.
+L'amministrazione è la metà Cloud di Failproof AI. Organizzazioni, membri, chiavi API, impostazioni dell'organizzazione e il consumo misurato richiedono tutti una connessione Cloud.
+
+<Note>
+  Failproof AI funziona anche senza alcun account. Una macchina locale applica la policy, mantiene la cronologia della sessione su disco, serve la [dashboard locale](/it/reference/local-dashboard) su `localhost:8020` e esegue `failproofai audit` senza inviare nulla da nessuna parte. Vedi [configurazione della macchina](/it/reference/events-and-configuration#machine-configuration) per le chiavi locali di `collector`. Salta il resto di questa sezione se non stai utilizzando il Cloud.
+</Note>
+
+## Dove si trovano i controlli
 
 <Tabs>
   <Tab title="Dashboard">
-    Utilizza la sezione **Admin** della barra laterale Cloud per **editor delle policy**, **enforcement**, **usage**, **keys**, **users** e **settings**. Un elemento bloccato indica che il tuo account non dispone del permesso di lettura.
+    Il gruppo **admin** della barra laterale Cloud contiene **editor delle policy**, **applicazione**, **utilizzo**, **chiavi**, **utenti** e **impostazioni**.
 
-    ![La sezione Admin della barra laterale Cloud con editor delle policy, enforcement, usage, keys, users e settings.](/images/dashboard/admin-navigation.png)
+    ![Il gruppo admin della barra laterale Cloud con editor delle policy, applicazione, utilizzo, chiavi, utenti e impostazioni.](/images/dashboard/admin-navigation.png)
   </Tab>
   <Tab title="CLI">
+    Installa la Cloud CLI come strumento isolato, quindi accedi:
+
     ```bash
+    uv tool install fp-cloud-cli
+    fp login
     fp whoami
-    fp orgs current
-    fp orgs perms
     fp usage
     ```
 
-    Inserisci le opzioni globali prima del comando, ad esempio `fp --org reliability-team --json usage`.
+    Metti le opzioni globali prima del comando, ad esempio `fp --org reliability-team --json usage`.
   </Tab>
 </Tabs>
 
+## Umano connesso o chiave API
+
+`fp` viene eseguito in una delle due modalità di autenticazione, e la divisione determina quali comandi funzionano. Un comando che una chiave API non può eseguire rifiuta prima di aprire una connessione e indica il motivo, piuttosto che lasciare che un 401 o un 403 lo rappresentino.
+
+| Comando | Chiave API | Permesso |
+| --- | --- | --- |
+| `fp whoami` | Sì | nessuno |
+| `fp usage` | Sì | `usage:read` |
+| `fp keys list` / `show` | Sì | `keys:read` |
+| `fp keys create` | Sì | `keys:create` |
+| `fp keys disable` | Sì | `keys:disable` |
+| `fp keys regenerate` | Sì | `keys:regenerate` |
+| `fp keys update` | No | `keys:update`, che nessuna chiave può possedere |
+| `fp users list` / `show` | Sì | `users:read` |
+| `fp users create` | Sì | `users:create` |
+| `fp users update` | Sì | `users:update` |
+| `fp users disable` / `enable` | Sì | `users:delete` |
+| `fp settings list` / `schema` | Sì | `settings:read` |
+| `fp settings set` | Sì | `settings:write` |
+| `fp orgs list` / `switch` / `current` / `perms` | No | solo sessione connessa |
+
+`fp usage` è il comando da fornire a uno script di reporting: viene eseguito incustodito sotto una chiave e richiede solo `usage:read`.
+
 <Columns cols={2}>
-  <Card title="Utilizzo" icon="chart-no-axes-combined" href="/it/admin/usage">
-    Ispeziona le finestre di fatturazione e il consumo dell'organizzazione.
-  </Card>
-  <Card title="Keys e permessi" icon="key-round" href="/it/admin/keys-and-permissions">
-    Concedi a macchine e automazioni solo i permessi di cui hanno bisogno.
+  <Card title="Chiavi e permessi" icon="key-round" href="/it/admin/keys-and-permissions">
+    Crea le credenziali della macchina e assegna a ogni carico di lavoro solo i permessi di cui ha bisogno.
   </Card>
   <Card title="Utenti e organizzazioni" icon="users" href="/it/admin/users-and-organizations">
-    Gestisci l'appartenenza, i valori predefiniti e i limiti dell'organizzazione.
+    Gestisci l'appartenenza e mantieni i dati e le azioni di ogni organizzazione nello scope appropriato.
   </Card>
   <Card title="Impostazioni e sicurezza" icon="lock-keyhole" href="/it/admin/settings-and-security">
-    Configura le impostazioni operative, la gestione dei dati e la sicurezza della distribuzione.
+    Imposta i valori di accesso e avviso, e decidi quali dati dell'agente escono da una macchina.
+  </Card>
+  <Card title="Utilizzo" icon="chart-no-axes-combined" href="/it/admin/usage">
+    Leggi cosa l'organizzazione ha misurato durante la sua finestra di 30 giorni corrente.
+  </Card>
+  <Card title="Copertura della flotta" icon="network" href="/it/policies/fleet">
+    Vedi quali macchine sono iscritte, come sono identificate e cosa applicano.
   </Card>
 </Columns>

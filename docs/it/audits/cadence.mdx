@@ -1,27 +1,29 @@
 ---
 title: "Cadenza di audit"
-description: "Scegli quando eseguire gli audit ricorrenti e quanti dati esaminare."
+description: "Scegli quando eseguire gli audit ricorrenti e quanti dati revisionare."
 icon: "calendar-clock"
 ---
 
 Utilizza gli audit ricorrenti per le modalità di errore che possono ripresentarsi al variare di agenti, prompt, strumenti e modelli.
 
-## Cambia la pianificazione
+## Modificare la pianificazione
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vai a **Analyze → Audits** e apri l'audit.
-    2. Apri le impostazioni e modifica lo stato di abilitazione, l'intervallo, l'ancoraggio UTC, la modalità della finestra o il lookback.
-    3. Salva l'audit e conferma l'ora della prossima esecuzione sulla scheda dell'audit.
-    4. Usa **run now** una volta dopo una modifica importante di ambito o contesto.
+    1. Vai su **Analyze → Audits** e apri l'audit.
+    2. Seleziona **edit settings** e modifica la cadenza, la finestra, la sensibilità o i risultati per esecuzione.
+    3. Salva l'audit e conferma l'ora della prossima esecuzione nell'intestazione dell'audit.
+    4. Pausa e riprendi la pianificazione dalla stessa intestazione, accanto a **run now**.
+    5. Usa **run now** una volta dopo un cambio importante di ambito o contesto.
 
-    ![L'editor dell'audit che mostra cadenza, finestra di sweep, ambito, impostazioni di analisi, contesto e canali di notifica.](/images/dashboard/audit-edit.png)
+    ![Un'intestazione di audit che mostra il suo stato di pausa, i risultati aperti, l'ultima esecuzione, la prossima esecuzione, la finestra di sweep e la sensibilità, con i controlli run now, edit settings e resume.](/images/dashboard/audit-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp audits edit checkout-reliability \
       --schedule-interval-secs 86400 \
       --schedule-anchor 2026-08-15T09:00:00Z \
+      --window-mode since_last \
       --lookback-window-secs 86400 \
       --yes
 
@@ -29,21 +31,50 @@ Utilizza gli audit ricorrenti per le modalità di errore che possono ripresentar
     fp audits edit checkout-reliability --enabled --yes
     ```
 
-    Consulta il riferimento [`fp audits`](/it/reference/cloud-cli#audits) per i limiti della pianificazione, il comportamento della finestra e tutti i comandi di audit.
+    `fp audits edit` chiede conferma prima di apportare modifiche, motivo per cui ogni esempio qui passa `--yes`. Il server sostituisce l'intera definizione ad ogni modifica, quindi la CLI rinvia l'audit corrente con le tue modifiche applicate — una modifica solo con flag richiede `audits:read` **nonché** `audits:write`. Specifica l'ambito di una chiave CI per entrambi.
+
+    Consulta il [riferimento di `fp audits`](/it/reference/cloud-cli#audits) per i limiti di pianificazione, il comportamento della finestra e tutti i comandi di audit.
   </Tab>
 </Tabs>
 
-Scegli la cadenza in base alla velocità e al costo del rischio:
+## I due limiti di pianificazione
+
+Ogni raccomandazione di seguito deve rientrare in questi. Gli intervalli provengono dal server e `fp` li rispecchia sul lato client, quindi un valore esterno a uno esce con codice 2 localmente piuttosto che costare un round-trip 422.
+
+| Campo | Flag | Intervallo | Predefinito |
+| --- | --- | --- | --- |
+| Intervallo di pianificazione | `--schedule-interval-secs` | 3.600–604.800 secondi (1 ora a 7 giorni) | 86.400 (giornaliero) |
+| Finestra di lookback | `--lookback-window-secs` | 3.600–7.776.000 secondi (1 ora a 90 giorni) | 604.800 (7 giorni) |
+
+Sette giorni è il massimo sulla cadenza. Non esiste un audit Cloud mensile.
+
+## Scegli una cadenza
+
+Scegli in base alla velocità e al costo del rischio:
 
 | Modello di rischio | Cadenza iniziale |
 | --- | --- |
-| Azione di produzione ad alto impatto | Giornaliera |
+| Azione di produzione ad alto impatto | Giornaliera, o oraria mentre è in corso una modifica rischiosa |
 | Regressione del flusso di lavoro o del modello | Settimanale |
-| Revisione di governance o accesso | Mensile |
-| Indagine di rilascio una tantum | Esegui una volta |
+| Revisione di governance o accesso | Settimanale — l'intervallo più lungo disponibile |
 
-Allinea la finestra di lookback con la cadenza in modo che le esecuzioni non lascino vuoti né esaminino ripetutamente una popolazione inutilmente grande. Dopo aver modificato l'obiettivo o il contesto di un audit, eseguilo manualmente una volta prima di affidarti al prossimo risultato pianificato.
+Allinea la finestra di lookback con la cadenza in modo che le esecuzioni non lascino vuoti né riesamino inutilmente una popolazione eccessivamente ampia.
+
+Non esiste un audit una tantum; ogni audit ha un intervallo di pianificazione. Per un'indagine di rilascio, crealo abilitato, lascia che la prima esecuzione si attivi — la prima esecuzione si accoda immediatamente al momento della creazione, indipendentemente dall'anchor — quindi mettila in pausa con `fp audits edit <name> --disabled --yes`. Riabilita prima di usare **run now**: un audit disabilitato non ha una riga di coda e un'esecuzione manuale contro uno viene rifiutata con un 409.
+
+## Modalità finestra e anchor
+
+`--window-mode` decide quale finestra ogni esecuzione sweeper:
+
+| Modalità | Comportamento |
+| --- | --- |
+| `since_last` | Continua dalla fine dell'ultima finestra completamente analizzata, quindi un'esecuzione saltata non lascia vuoti. |
+| `fixed` | Reinspeziona un `lookback_window_secs` mobile ad ogni esecuzione, indipendentemente da ciò che l'ultima esecuzione ha coperto. |
+
+`--schedule-anchor` fissa la fase piuttosto che la frequenza: le esecuzioni si verificano su `anchor + N × interval`. Omettilo e l'anchor di default è il prossimo 09:00 UTC; un anchor più di 365 giorni nel futuro viene rifiutato. La modifica dell'intervallo o dell'anchor ha effetto alla successiva ripianificazione, non sull'esecuzione già in coda, e un'esecuzione fallita non sposta l'anchor.
+
+Dopo aver modificato l'obiettivo o il contesto di un audit, eseguilo manualmente una volta prima di affidarti al prossimo risultato pianificato.
 
 <Note>
-  Gli audit pianificati locali sono configurati sulla macchina e scansionano la cronologia dell'agente locale. Le pianificazioni degli audit Cloud operano sulle sessioni Cloud. Tratta i loro risultati e la loro proprietà separatamente.
+  Questa pagina riguarda le pianificazioni degli audit Cloud, che operano sulle sessioni Cloud. L'audit locale ha il suo timer: `failproofai audit --schedule [days]` accetta 1–90 giorni e di default 7, scansiona la cronologia dell'agente su quella macchina e è l'unica superficie con un'opzione mensile. I suoi risultati e la sua proprietà sono separati da tutto ciò che trovi qui — vedi [Audit local agent history](/it/audits/local-audit).
 </Note>

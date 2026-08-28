@@ -1,63 +1,76 @@
 ---
 title: "Policies"
-description: "에이전트 동작을 관찰하고, 안내하거나, 알려진 오류가 반복되기 전에 차단합니다."
+description: "알려진 실패가 반복되기 전에 에이전트를 안내하거나 차단합니다."
 icon: "shield-check"
 ---
 
-Policy는 에이전트 훅 이벤트를 평가하고 세 가지 결정 중 하나를 반환합니다:
+policy는 에이전트 작업을 감시하고 다음 세 가지 결정 중 하나를 반환합니다:
 
-- `allow`는 작업을 계속 진행합니다.
-- `instruct`는 에이전트에게 수정 지침을 제공합니다.
-- `deny`는 사유와 함께 작업을 차단합니다.
+- `allow` — 계속 진행합니다.
+- `instruct` — 하네스가 지원하는 경우 에이전트에게 안내를 제공합니다.
+- `deny` — 작업을 차단합니다.
 
-## 세 가지 Policy 인터페이스 활용하기
+보호된 파일 삭제, 시크릿 노출, 잘못된 브랜치로 push, 프로덕션 인프라 변경 등 알려진 반복 가능한 동작에 policy를 사용하세요.
 
-<Tabs>
-  <Tab title="대시보드">
-    1. **Observe → policy**로 이동하여 세션의 policy 결정을 필터링하고 검토합니다.
-    2. **Admin → policy editor**로 이동하여 policy를 작성, 검증, 게시, 비활성화하거나 변경 불가능한 버전을 검토합니다.
-    3. **Admin → enforcement**로 이동하여 머신에 버전과 효과를 할당합니다.
+## 이 머신에 policy 추가하기
 
-    Policy 페이지를 활용해 작성하거나 적용을 변경하기 전에 이미 매칭되고 있는 항목을 파악하세요.
+설치 시 기본적으로 policy 팩이 선택되지 않습니다. 설치 후 Failproof AI 팩을 추가하세요:
 
-    ![결정 총계와 로컬 및 클라우드 관리 policy 매핑을 보여주는 Policy 페이지.](/images/dashboard/policy-observe.png)
+```bash
+failproofai config
+failproofai policies add FailproofAI/policies
+failproofai policies
+```
 
-    편집기는 실패 조건을 소스로 전환하고, 검증한 뒤 변경 불가능한 버전으로 게시하는 곳입니다.
+이 패키지에는 특권이 부여된 빌트인 팩이 포함되어 있지 않습니다. 저희 팩도 다른 팩과 동일한 방식으로 설치됩니다.
 
-    ![변경 불가능한 policy 버전을 작성하고 게시하는 데 사용되는 Policy 편집기.](/images/dashboard/policy-editor.png)
+policy는 로컬 파일, 배포된 팩, 또는 Cloud 할당에서도 가져올 수 있습니다:
 
-    Enforcement는 게시된 버전과 관찰 또는 적용 효과를 머신에 할당합니다.
+| 소스 | 추가 방법 |
+| --- | --- |
+| 로컬 파일 | `.failproofai/policies/` 아래에 `*policies.{js,mjs,ts}` 파일 배치 |
+| 임의 파일 경로 | `failproofai policies -i -c <path>` |
+| 배포된 팩 | `failproofai policies add <owner>/<repo>` |
+| Cloud | 대시보드 또는 `fp fleet deploy`로 할당 |
 
-    ![머신 커버리지와 할당된 policy 버전을 보여주는 Enforcement 플릿.](/images/dashboard/enforcement-fleet.png)
+`block-failproofai-commands`는 항상 실행되며 비활성화할 수 없습니다. 이는 에이전트가 자체 적용을 비활성화하는 것을 방지합니다.
 
-    배포 후 Policy 페이지에서 결정을 다시 확인하여 작성 뷰와 플릿 뷰가 실제 에이전트 활동과 연결되어 있는지 검증하세요.
-  </Tab>
-  <Tab title="CLI">
-    로컬 policy 설치 및 검증에는 `failproofai`를 사용하세요:
+## 적용 전 관찰하기
 
-    ```bash
-    failproofai policies
-    failproofai policy add block-rm-rf --scope project
-    failproofai config --status
-    ```
+관찰 모드는 실제 policy를 실행하고 어떤 결정을 내렸을지 기록하지만, 에이전트를 차단하지는 않습니다.
 
-    `fp`를 사용하면 policy 결정이 포함된 클라우드 세션과 이벤트를 찾을 수 있습니다. 클라우드 작성 및 플릿 배포는 대시보드 워크플로우로 유지됩니다.
-  </Tab>
-</Tabs>
+```bash
+fp policies test ./checkout.policy.mjs --tool Bash --command "git push --force" --expect deny
+fp fleet deploy ci-runner-01 --add checkout-guard:observe
+fp guardrails summary --since 24h --machine ci-runner-01
+fp fleet deploy ci-runner-01 --add checkout-guard:enforce
+```
 
-Failproof AI에서 Policy는 세 가지 독립적인 인터페이스를 가집니다:
+<Warning>
+  `fp fleet deploy <machine> --add <id>`만 단독으로 사용하면 즉시 적용됩니다. 섀도 롤아웃을 위해 `:observe`를 추가하세요.
+</Warning>
 
-1. **결정 분석**: 세션, 대시보드, 감사 로그에서 결정을 확인합니다.
-2. **버전 작성**: 내장 규칙, 코드, 또는 policy 편집기로 버전을 만듭니다.
-3. **배포 및 적용**: 선택한 머신 전체에 버전을 배포하고 적용합니다.
+관찰 모드에서 타임아웃이 발생한 policy는 allow로 기록됩니다. 적용 중에도 동일한 결과가 발생하기 때문입니다. allow가 아닌 관찰된 결정만 기록됩니다.
 
-확인된 실패 모드에서 시작하세요. 해당 실패를 식별하는 최소한의 이벤트 및 도구 매칭을 정의하고, 정상적인 예시와 위험한 예시를 테스트한 뒤, 적용하기 전에 먼저 관찰하세요.
+Cloud 없이 팩을 사용하는 경우 `failproofai publish --effect observe`로 배포하세요.
 
-<Columns cols={2}>
-  <Card title="내장 policy 사용하기" icon="library" href="/ko/policies/builtin">
-    시크릿, 셸, Git, 클라우드, 워크플로우 등 일반적인 위험에 대한 검토된 규칙을 활성화합니다.
+## 적합한 경로 선택하기
+
+<CardGroup cols={2}>
+  <Card title="검토된 policy 사용하기" icon="library" href="/ko/policies/builtin">
+    시크릿, 파일, Git, 인프라, 워크플로우를 위한 39개의 policy 중에서 선택하세요.
   </Card>
-  <Card title="커스텀 policy 작성하기" icon="code-2" href="/ko/policies/custom">
-    워크플로우에 특화된 결정을 JavaScript 또는 TypeScript로 표현합니다.
+  <Card title="팩 설치하기" icon="package" href="/ko/policies/packs">
+    GitHub 또는 Policy Hub에서 배포된 policy 세트를 추가하세요.
   </Card>
-</Columns>
+  <Card title="policy 작성하기" icon="code-2" href="/ko/policies/custom">
+    자체 에이전트 또는 워크플로우에 맞는 규칙을 정의하세요.
+  </Card>
+  <Card title="여러 머신에 배포하기" icon="server" href="/ko/policies/deploy">
+    Cloud policy를 관찰, 승격, 롤백하세요.
+  </Card>
+</CardGroup>
+
+<Note>
+  적용 지원은 하네스에 따라 다릅니다. 툴 호출 deny는 지원되는 12개 하네스 모두에서 검증되며, 다른 이벤트는 하네스마다 다를 수 있습니다. [지원되는 하네스](/ko/reference/harnesses#enforcement-capability)를 참조하세요.
+</Note>

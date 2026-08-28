@@ -1,67 +1,48 @@
 ---
-title: "故障行为"
-description: "了解策略评估或本地守护进程不可用时会发生什么。"
+title: "策略失败行为"
+description: "了解为什么在评估无法运行时 Failproof AI 会拒绝操作。"
 icon: "shield-alert"
 ---
 
-Failproof AI 的设计原则是：执行失败时应清晰可见，而非静默放行有风险的操作。
+完成设置后，本地 `failproofaid` 服务是唯一的评估器。如果它无法响应，受保护的操作将被拒绝，而不是静默放行。
 
-## 诊断失败关闭阻断
-
-<Tabs>
-  <Tab title="控制台">
-    1. 前往 **Admin → enforcement**，打开对应机器。
-    2. 检查其最后签入时间、已分配的部署和上报的部署。
-    3. 前往 **Observe → policy**，打开被拒绝决策的会话。
-    4. 确认原因是否报告了守护进程可达性问题、版本偏差或策略本身的问题。
-
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai config --status
-    npm install -g failproofai@latest
-    failproofai config
-    ```
-
-    升级包后重新运行 `failproofai config` 可更新并重启守护进程。
-  </Tab>
-</Tabs>
-
-在配置为使用 `failproofaid` 的机器上，守护进程是唯一的评估器。如果守护进程不可达，或其协议版本与 CLI 不匹配，hook 评估将失败关闭。操作将被拒绝，并附有原因说明，指引操作人员检查或更新守护进程。
-
-在配置守护进程之前，hook 会在进程内评估策略。一旦记录了守护进程配置，当守护进程出现故障时，Failproof AI 不会静默回退到第二个评估器。
-
-## 响应失败关闭决策
-
-1. 运行 `failproofai config --status`。
-2. 如果版本不一致，更新包后重新运行 `failproofai config`。
-3. 如果守护进程不可达，检查其服务状态和本地日志。
-4. 仅在策略评估路径确认健康后，再恢复 Agent 工作。
-
-<Warning>
-  请勿反复重试被阻断的操作。失败关闭响应意味着系统无法确认该操作是安全的。
-</Warning>
-
-## 包无法加载
-
-如果一台机器被要求执行某个包，但无法运行该包，它会拒绝而不是静默继续。触发条件是**已记录的预期**，而非空预期：没有安装任何包的机器是静默的；而一个已声明但无法解析的包——或注册内容少于其清单声明的包——则会触发拒绝。
-
-与守护进程不可达不同，此处的拒绝是**范围受限的**。守护进程无法访问意味着完全没有进行评估，因此无法确定任何操作是安全的。而无法加载的包有明确的缺失守卫集合，因为每条已声明的策略都携带自己的 `match`——所以它只拒绝这些策略所覆盖的事件和工具，其余操作照常进行。
-
-以下情况不会触发拒绝：
-
-- `observe` 包，按其构造原理只评估不拦截
-- 从未采用或已显式关闭的策略
-- 加载器从未收到的包，此时"无注册"与有意跳过无法区分
-- 活跃会话暂停
-- 加载超时，这属于瞬态情况——偶发的磁盘慢响应不应在人工介入前就触发拒绝
-
-无论缺失的策略声明了什么，`UserPromptSubmit` 都会使用 **instruct** 而非拒绝。全面拒绝会连带锁定你，使你无法使用本可修复问题的 Agent。
-
-### 处理方法
+## 诊断全机器范围的阻断
 
 ```bash
-failproofai pack list
+failproofai config --status
+systemctl status failproofaid@$USER        # Linux
+sudo launchctl print system/ai.failproof.failproofaid.$USER  # macOS
 ```
 
-该命令会列出所有无法加载的已安装包，说明原因，并以非零状态退出。然后可以重新安装（`failproofai pack add <source>`）或移除（`failproofai pack remove <publisher/name>`）——移除操作会撤销该预期，拒绝也随之停止。
+运行 `failproofai config` 以修复服务或安装匹配的版本。
+
+两种失败情况看起来相似：
+
+| 失败类型 | 含义 |
+| --- | --- |
+| 服务不可达 | 套接字后面没有可用的评估器 |
+| 版本不匹配 | CLI 与服务在协议上存在分歧 |
+
+两者都会触发拒绝，但状态报告会分别说明。
+
+## 策略包无法加载
+
+已选定的策略包如果缺失、被修改或无效，则其所涵盖策略对应的事件将被拒绝。这可以防止损坏的策略包在机器看似受保护的情况下悄然失效。
+
+`failproofai policies` 会显示策略包名称及加载错误信息。
+
+```bash
+failproofai policies
+failproofai policies remove owner/repo
+failproofai policies add owner/repo@<release>
+```
+
+无法读取的元数据会扩大安全拒绝范围，而不是基于不可信的数据来缩小它。
+
+## 仍可使用的功能
+
+在策略评估失败期间，本地仪表板和状态命令仍可正常使用。使用它们来确定需要修复的服务、策略包或版本。
+
+<Warning>
+  请勿通过删除服务或策略包文件来绕过失败关闭决策。应修复服务、重新安装策略包，或通过 CLI 移除对应分配，以使机器恢复到已知状态。
+</Warning>

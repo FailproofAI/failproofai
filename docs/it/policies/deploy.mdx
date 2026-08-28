@@ -1,51 +1,54 @@
 ---
-title: "Distribuire i criteri"
-description: "Distribuisci una versione di criterio rivista alle macchine di destinazione."
+title: "Distribuire le policy"
+description: "Osserva una policy sull'attività reale dell'agente, quindi applica o esegui il rollback."
 icon: "cloud-upload"
 ---
 
-Una distribuzione collega una o più versioni di criterio a un set mirato di macchine registrate.
+Distribuisci una policy revisionata a una macchina alla volta. Inizia in modalità observe.
 
-## Applicare una distribuzione
+## Distribuire dalla CLI
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. Vai a **Admin → enforcement**, trova la macchina ed espandi la sua riga.
-    2. Seleziona **edit**, aggiungi la versione di criterio rivista e scegli **observe** o il suo effetto di applicazione.
-    3. Applica la modifica, quindi attendi il successivo check-in della macchina e conferma lo stato di distribuzione e copertura.
-    4. Vai a **Observe → policy** per ispezionare le decisioni in tempo reale.
+```bash
+fp policies test ./rule.mjs --tool Bash --command "git push --force" --expect deny
+fp policies publish no-force-push ./rule.mjs
+fp fleet deploy <machine> --add no-force-push:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add no-force-push:enforce
+```
 
-    ![L'editor di distribuzione della macchina con versioni dei criteri, effetti enforce e observe e l'azione di distribuzione applicata.](/images/dashboard/enforcement-editor.png)
-  </Tab>
-  <Tab title="CLI">
-    Distribuisci dalla CLI con `fp fleet`. Rivedi il set risultante prima di applicarlo — `deploy` stampa il piano completo e chiede **solo su un terminale interattivo senza `--json`**. Con `--json`, con `--yes`, o con stdin reindirizzato (un step CI, uno script, un agente che si avvia) applica immediatamente senza piano e senza prompt — quindi esegui prima `fp fleet show <machine>` se desideri una revisione:
-
-    ```bash
-    fp fleet list
-    fp fleet show <machine-id>
-    fp fleet deploy <machine-id> --add no-force-push
-    ```
-
-    `fp fleet diff <machine-id>` mostra l'intenzione rispetto alla consegna (una macchina si legge come `behind` finché non esegue il successivo polling), `fp fleet history <machine-id>` elenca le generazioni, e `fp fleet rollback <machine-id> <generation>` ripristina una — rifiuta se quella generazione nomina un criterio da allora disabilitato o eliminato.
-
-    Controlla la macchina stessa con `failproofai config --status` e usa `fp sessions --env production --since 24h` e `fp events --event-type hook_completed` dopo la distribuzione per verificare che l'attività raggiunga Cloud.
-  </Tab>
-</Tabs>
-
-<Steps>
-  <Step title="Scegli la versione e gli obiettivi">
-    Distribuisci una versione rivista, non una bozza mutabile, iniziando con una macchina non in produzione o un piccolo gruppo le cui sessioni puoi ispezionare.
-  </Step>
-  <Step title="Osserva le decisioni">
-    Rivedi i match, i motivi, gli strumenti interessati e i falsi positivi senza bloccare il lavoro.
-  </Step>
-  <Step title="Applica e verifica la copertura">
-    Promuovi dopo che i match osservati separano le azioni non sicure da quelle valide, quindi conferma che ogni macchina prevista ha scaricato la distribuzione e sta segnalando le decisioni.
-  </Step>
-</Steps>
-
-Le macchine necessitano della capacità `policies:pull`. La segnalazione degli eventi è controllata separatamente da `events:add`; verifica entrambe quando prevedi analisi e applicazione di Cloud.
+La modalità observe valuta la policy reale e registra le decisioni non-allow, ma non blocca l'agente.
 
 <Warning>
-  La gestione dell'applicazione è un flusso di lavoro amministrativo di Cloud. Non trattare le route di applicazione di sola root come endpoint API `/v1` ordinari per i clienti.
+  Un semplice `--add no-force-push` applica immediatamente. Aggiungi `:observe` per un rollout in shadow mode.
 </Warning>
+
+Se l'applicazione causa problemi:
+
+```bash
+fp fleet history <machine>
+fp fleet rollback <machine> <generation>
+```
+
+## Distribuire dal dashboard
+
+1. Vai a **Admin → enforcement**.
+2. Apri la macchina di destinazione.
+3. Aggiungi la versione della policy con effetto **observe**.
+4. Applica la distribuzione.
+5. Rivedi i risultati sotto **Observe → policy**.
+6. Promuovi la stessa versione a **enforce** quando le corrispondenze sono corrette.
+
+![L'editor di distribuzione delle macchine con versioni delle policy, effetti enforce e observe, e l'azione apply deployment.](/images/dashboard/enforcement-editor.png)
+
+## Sostituire o predisporre un set
+
+- `--remove <id>` rimuove una policy.
+- `--set <ref>...` sostituisce l'intero set di policy.
+- `--create` prepara una distribuzione prima che una macchina si registri per la prima volta.
+- `fp fleet diff <machine>` confronta lo stato previsto e quello applicato.
+
+<Note>
+  Senza Cloud, pubblica un pack con `failproofai publish --effect observe` e ispeziona le decisioni nel dashboard locale.
+</Note>
+
+Le macchine necessitano di `policies:pull` per ricevere le distribuzioni e `events:add` per segnalare le decisioni.

@@ -1,43 +1,73 @@
 ---
 title: "Panolar"
-description: "Bir aracı veya iş akışı için önemli olan güvenilirlik sinyallerini izleyin."
+description: "Bir aracı veya iş akışı için önemli güvenilirlik sinyallerini izleyin."
 icon: "layout-dashboard"
 ---
 
-Panolar, kaydedilmiş sorguları operasyonel bir görünümde birleştirir. Bir pano, her kullanılabilir metrik etrafında değil, birinin vermesini beklediğiniz bir karar etrafında oluşturun.
+Panolar, kaydedilmiş sorguları operasyonel bir görünümde birleştirir. Bir panoyu mevcut her metrik için değil, birinin almış olacağını beklediğiniz bir karar etrafında oluşturun.
 
-## Pano oluşturma
+Panolar bir Cloud yüzeyidir. `localhost:8020` üzerindeki yerel pano politika etkinliğini, projeleri, oturumları ve denetim sonuçlarını kapsar, ancak kaydedilmiş sorguları ve döşemeleri yoktur — bu nedenle bağlanmamış bir makinede buraya koyacak bir şey yoktur. Bkz. [Yerel pano](/tr/reference/local-dashboard).
+
+## Pano oluşturun
 
 <Tabs>
   <Tab title="Pano">
-    1. **Analyze → Queries** bölümüne gidin, kaydedilmiş bir sorgu oluşturun veya açın ve sonucunu doğrulayın.
-    2. **add to dashboard** seçeneğini seçin, ardından mevcut bir panoyu seçin veya **Analyze → Dashboards** altında yeni bir pano oluşturun.
-    3. Panoyu açın, düzenleme moduna girin, kutucukları düzenleyin ve düzeni kaydedin.
-    4. Bir kutucuğun arkasındaki verileri veya filtreleri değiştirmeniz gerektiğinde sorguya geri dönün.
+    1. **Analiz → Sorgular**'a gidin, kaydedilmiş bir sorgu oluşturun veya açın ve sonucunu doğrulayın.
+    2. **Panoya ekle**'yi seçin, ardından mevcut bir panoyu seçin veya **Analiz → Panolar** altında yeni bir tane oluşturun.
+    3. Panoyu açın, düzenleme moduna girin, döşemeleri düzenleyin ve düzeni kaydedin.
+    4. Bir döşemenin arkasındaki verileri veya filtreleri değiştirmeniz gerektiğinde sorguya geri dönün.
 
-    ![Olay hacmi, hatalar, gecikme süresi ve model jeton kullanımı için kaydedilmiş sorgulardan oluşturulan bir pano.](/images/dashboard/dashboard-fleet.png)
+    ![Olay hacmi, hatalar, gecikme süresi ve model token kullanımı için kaydedilmiş sorgulardan oluşturulan bir pano.](/images/dashboard/dashboard-fleet.png)
   </Tab>
   <Tab title="CLI">
-    Pano CRUD işlemleri geçerli Cloud CLI tarafından açığa çıkarılmamıştır. Kaydedilmiş sorguyu oluşturmak ve doğrulamak için CLI'yı kullanın, ardından UI'da bir panoya ekleyin.
+    Pano CRUD, mevcut Cloud CLI tarafından sunulmamaktadır. Kaydedilmiş sorguyu yazmak ve doğrulamak için CLI kullanın, ardından UI'de bir panoya ekleyin.
 
     ```bash
     fp query schema
-    fp query create "production error rate" --sql "SELECT ..."
-    fp query run <query-id>
+    fp query run --sql "select count(*) from analytics.events"
+    fp query create "event volume" --sql "select count(*) from analytics.events"
+    fp query run "event volume"
     ```
+
+    SQL'i önce `--sql` ile çalıştırın: aynı salt okunur analitik havuzuna karşı yürütülür ve hiçbir şey kaydedilmez, bu nedenle bir döşeme yapması yapmadan önce bir hatalı sütun adını bulursunuz. `--sql @file.sql` ifadeyi bir dosyadan okur. `fp query schema` sorgulanabilir tabloları ve sütunlarını listeler; bir taneye daraltmak için bir tablo adını iletin.
+
+    Kaydedilmiş sorgular **ad** ile, id ile değil — `fp query run "event volume"` — adreslendirilir çünkü `fp query list`, `--show-id` geçmediğiniz sürece ham id'yi gizler. UUID şeklindeki bir id da kabul edilir.
+
+    Parametreli bir döşeme için, her pozisyonel `$1..$N` öğesini `--arg` ile bağlayın, bu da tekrarlanabilir ve sırayla bağlanır: `fp query run <name> --arg checkout-agent`.
+
+    `--limit` ve `--all`, tablo önizleme sınırını ayarlar; `--json` her zaman her satırı, `{columns: [{name, type}], rows: [[...]], truncated, elapsed_ms}` olarak döndürür.
+
+    | Alt komut | İzin |
+    | --- | --- |
+    | `query list`, `query show`, `query schema` | `queries:read` |
+    | `query create`, `query update` | `queries:write` |
+    | `query run` | `queries:run` |
+    | `query delete` | `queries:delete` |
+
+    Bir sorgu **adını** alan her alt komut, önce kuruluşun sorgularını listeleyerek onu çözer, bu nedenle `query create`, `query update`, `query delete` ve `query run <name>` yukarıdaki izne ek olarak `queries:read` gerekir. Sadece `fp query run --sql` ve `fp query schema` değil.
+
+    `fp query`'nin hiçbiri API anahtar modunda bloklanmaz, bu nedenle bir pano sorgularının CI'den oluşturulması ve doğrulanması mümkündür.
   </Tab>
 </Tabs>
 
 Yararlı pano grupları şunlardır:
 
-- **Models:** hacim, gecikme süresi, jeton kullanımı, hata oranı ve değerlendirme puanları.
-- **Evaluations:** başarı oranı ve aracı veya ortama göre puan eğilimleri.
-- **Tools:** çağrı hacmi, başarısızlık oranı, süre ve tekrarlanan çağrılar.
-- **Hooks and policies:** kararlar, reddetmeler ve politika eşleşme oranı.
-- **Custom workflow metrics:** kendi olay alanlarınızdan ve SQL'den sonuçlar.
+- **Modeller:** hacim, gecikme süresi, token kullanımı, hata oranı ve değerlendirme puanları.
+- **Değerlendirmeler:** aracı veya ortama göre başarı oranı ve puan eğilimleri.
+- **Araçlar:** çağrı hacmi, hata oranı, süre ve tekrarlanan çağrılar.
+- **Kancalar ve politikalar:** kararlar, reddetmeler ve politika eşleşme oranı.
+- **Özel iş akışı metrikleri:** kendi olay alanlarınızdan ve SQL'den sonuçlar.
 
-Kaydedilmiş bir sorgudan başlayın, sonucunu doğrulayın, ardından bir kutucuk olarak ekleyin. Üretim ve geliştirme filtreleri açık tutun, böylece test trafiği bir regresyonu gizlemesin.
+Kaydedilmiş bir sorguyla başlayın, sonucunu doğrulayın, ardından bir döşeme olarak ekleyin. Test trafiğinin bir gerilemeyi gizlemesi için üretim ve geliştirme filtrelerini açık tutun.
+
+<Warning>
+  Satır sayısı rapor eden bir kanca döşemesi yanlış paydayı rapor eder. Varsayılan kanca ayrıntılı seviyelesinde, her reddetme ve talimat bir `hook_triggered` / `hook_completed` çifti olarak yayınlanır; gözlem modunda izin veren her şey de öyledir; düz izinler oturum, olay, araç ve politika atıflamaya göre dakikada bir kez `failproofai_allow_count` taşıyan tek bir `hook_completed` içine toplanır. Bunun yerine bu alanı toplayın veya satırları sayın, aksi takdirde on binlerce çağrı değerlendiren bir filo birkaç yüzü değerlendirmiş gibi görünecektir. Bkz. [Politika kararları](/tr/sessions/policy-decisions) ve [Kancalar](/tr/sessions/hooks).
+</Warning>
 
 <Tip>
-  Her panoya bir sahip ve "checkout-agent güvenilirliği geçen haftadan daha kötü mü?" gibi bir yanıt sorusu verin.
+  Her panoya bir sahip ve "checkout-agent güvenilirliği geçen haftadan daha mı kötü?" gibi bir yanıt sorusu verin.
 </Tip>
+
+<Card title="Sorgular" icon="database" href="/tr/sessions/queries">
+  Bir panodaki her döşemenin okuduğu SQL'i yazın, kaydedin ve paylaşın.
+</Card>

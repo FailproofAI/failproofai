@@ -1,84 +1,108 @@
 ---
 title: "Avvio rapido"
-description: "Acquisisci una sessione di agent, trova un errore e inizia a prevenirlo."
+description: "Configura una macchina, scegli le policy e vedi cosa stanno facendo i tuoi agent."
 icon: "zap"
 ---
 
-Questo avvio rapido configura una macchina per segnalare sessioni, esegue un audit e distribuisce una policy. Usa la skill per configurare Failproof, oppure segui i passaggi manuali.
+Configura Failproof AI su una macchina, poi rimani in locale o connettiti al Cloud.
 
-**Qual è il tuo percorso?** Se il tuo agent viene eseguito in uno dei 12 [harness](/it/reference/harnesses) supportati — una CLI di coding o un gateway come Hermes oppure OpenClaw — segui i passaggi qui sotto; hai bisogno di Node.js 20.9 o successivo. Se il tuo agent non ha un harness, strumentalo con l'[SDK Python](/it/reference/custom-agents) per il tracing e gli audit, quindi prosegui verso [Esegui il tuo primo controllo di errore](/it/start/first-audit); l'enforcement su quel percorso richiede un hook nel tuo runtime.
+Se il tuo agent gira in un [harness supportato](/it/reference/harnesses), segui questi passaggi. Per agent costruiti con LangChain, CrewAI, LlamaIndex, Pydantic AI, o il tuo runtime personalizzato, inizia con [instrumentare il tuo agent](/it/start/integrations).
 
-<Tabs>
-  <Tab title="Usa la skill">
-    <Steps>
-      <Step title="Installa le skill di Failproof AI">
-        ```bash
-        npx skills add FailproofAI/skills
-        ```
-      </Step>
-      <Step title="Chiedi al tuo agent di configurare tutto">
-        ```text
-        Set up Failproof AI for this project, connect this machine, install the right hooks and policies, and verify that a session arrives.
-        ```
+## Lascia che il tuo agent guidi la configurazione
 
-        Il tuo agent ispeziona il progetto, sceglie l'integrazione rilevante, esegue la configurazione e la verifica. Consulta il [repository delle skill di FailproofAI](https://github.com/FailproofAI/skills) per le singole skill e le opzioni di installazione avanzate.
-      </Step>
-    </Steps>
-  </Tab>
-  <Tab title="Configurazione manuale">
-    ## Prima di iniziare
-
-1. Apri il [dashboard di Failproof AI](https://app.befailproof.ai) e crea un account o accedi con la tua email aziendale.
-2. Vai a **Administration → Keys** e crea una chiave con `events:add` e `policies:pull`.
-3. Copia il segreto monouso e salvalo sulla macchina di destinazione:
+Installa la competenza ombrello Failproof AI in un agent compatibile:
 
 ```bash
-export FAILPROOFAI_KEY="<one-time-secret>"
+npx skills add FailproofAI/skills
 ```
 
-    ## Installa
+Questo installa la competenza ombrello e le sue sorelle specializzate. Usa `--skill
+failproofai` se vuoi solo l'ombrello. Capisce la configurazione locale e Cloud,
+la salute del daemon, le sessioni, i controlli, le policy e la risoluzione dei problemi. Guida il lavoro
+e instrada le attività specializzate alla giusta competenza Failproof AI; non sostituisce
+l'installazione CLI qui sotto.
+
+## Configura la macchina
 
 <Steps>
-  <Step title="Installa e connetti Failproof AI">
+  <Step title="Installa e configura Failproof AI">
     ```bash
     npm install -g failproofai
-    failproofai config --connect https://app.befailproof.ai --token "$FAILPROOFAI_KEY"
+    failproofai config
     ```
 
-    I transcript delle sessioni vengono inviati per impostazione predefinita. Aggiungi `--no-transcripts` per segnalare l'attività dei hook e le decisioni delle policy senza il contenuto del transcript.
+    La configurazione installa il servizio in background e connette ogni agent supportato che trova. Potrebbe chiedere l'accesso amministratore una volta. Supporta Linux e macOS.
+  </Step>
 
-    Se questa macchina ha già una cronologia di agent, visualizza in anteprima e importa gli ultimi sette giorni, quindi attendi il completamento della consegna. Salta questo passaggio su una nuova macchina.
+  <Step title="Scegli le policy">
+    La configurazione non sceglie alcun policy pack. Aggiungi il pack Failproof AI:
 
     ```bash
-    failproofai backfill --since 7d --dry-run
-    failproofai backfill --since 7d
-    failproofai flush --wait
+    failproofai policies add FailproofAI/policies
+    failproofai policies
     ```
 
-    Apri **Sessions** in Failproof AI e seleziona una sessione importata.
+    Il secondo comando mostra ogni policy su questa macchina e se è attiva. Finché non aggiungi un pack, solo `block-failproofai-commands` è in esecuzione.
   </Step>
-  <Step title="Installa gli hook di agent e le policy">
-    Questo allega Failproof AI al tuo harness e installa le 39 policy integrate. Usale per vedere le decisioni delle policy locali e prova l'enforcement prima che Failproof AI auditi le tue sessioni e scriva policy per i tuoi agent.
 
-    Lascia che il programma di installazione rilevi il tuo harness, oppure specifica esplicitamente uno. Ognuno dei 12 è un valore `--cli` valido — `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity`, `goose`.
-
+  <Step title="Controlla la macchina">
     ```bash
-    failproofai policies --install --cli claude --scope user     # a coding CLI
-    failproofai policies --install --cli hermes --scope user     # a Slack/Telegram gateway
+    failproofai config --status
     ```
 
-    Il blocco di una chiamata di tool prima che venga eseguita è verificato su tutti i 12. I gate di fine turno sono verificati su 8 — vedi [enforcement capability](/it/reference/harnesses#enforcement-capability) per la matrice per harness.
-  </Step>
-  <Step title="Audita il comportamento">
-    Segui [Esegui il tuo primo controllo di errore](/it/start/first-audit). Usa un obiettivo concreto come "trova le sessioni in cui l'agent ha ritentato uno strumento che non funzionava senza cambiare il suo approccio."
-  </Step>
-  <Step title="Previeni l'errore">
-    Segui [Previeni il tuo primo errore con una policy](/it/start/first-policy). Inizia in modalità observe, ispeziona le corrispondenze, quindi applica l'enforcement sulla versione revisionata.
+    Questo segnala il servizio, la connessione Cloud e lo stato di pausa.
   </Step>
 </Steps>
 
-<Check>
-  Esegui `failproofai config --status`. Una configurazione integra segnala la connessione al cloud, lo stato del daemon e se l'enforcement è in pausa.
-</Check>
+## Scegli locale o Cloud
+
+<Tabs>
+  <Tab title="Rimani in locale">
+    Non è richiesto alcun account.
+
+    ```bash
+    failproofai
+    failproofai audit
+    ```
+
+    Il primo comando apre il dashboard locale su `http://localhost:8020`. Il secondo scansiona la cronologia degli agent già su questa macchina.
+  </Tab>
+
+  <Tab title="Connettiti al Cloud">
+    Crea una machine key in Failproof AI Cloud, poi esegui:
+
+    ```bash
+    failproofai config --token <machine-key>
+    failproofai config --status
+    ```
+
+    Cloud riceve le decisioni di policy e i trascritti delle sessioni. Per inviare solo le decisioni, connettiti prima, poi imposta `collector.sessions` a `false` in `~/.failproofai/config.json`; il flag di configurazione `--no-transcripts` attuale non applica quella impostazione. Per shell condivise e CI, usa `FAILPROOFAI_CLOUD_TOKEN` invece di mettere la key nella cronologia dei comandi.
   </Tab>
 </Tabs>
+
+## Verifica
+
+Esegui uno dei tuoi agent e chiedigli di eseguire un compito normale. Poi:
+
+Un diniego di tool-call è verificato su tutti i 12 harness supportati. L'enforcement a fine turno
+è verificato su 8; altre coppie harness-event potrebbero essere solo di osservazione o non verificate.
+
+- Apri **Policies → Activity** nel dashboard locale per vedere le decisioni di policy.
+- Apri **Observe → Sessions** nel Cloud per vedere l'esecuzione completa.
+- Esegui `failproofai audit` per cercare pattern rischiosi o inefficienti.
+
+<Warning>
+  Dopo la configurazione, il servizio `failproofaid` è l'evaluator. Se non riesce a rispondere, le azioni protette vengono negate. Esegui `failproofai config --status` quando un agent si ferma inaspettatamente.
+</Warning>
+
+<CardGroup cols={3}>
+  <Card title="Comprendi i concetti" icon="book-open" href="/it/start/concepts">
+    Scopri il workflow sessione-policy.
+  </Card>
+  <Card title="Esegui il tuo primo audit" icon="scan-search" href="/it/start/first-audit">
+    Trova un errore che vale la pena correggere.
+  </Card>
+  <Card title="Aggiungi la tua prima policy" icon="shield-check" href="/it/start/first-policy">
+    Osserva una salvaguardia prima di applicarla.
+  </Card>
+</CardGroup>

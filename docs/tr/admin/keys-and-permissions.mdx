@@ -1,74 +1,54 @@
 ---
 title: "Anahtarlar ve izinler"
-description: "Makineler, otomasyon ve operatörler için kapsamlı API anahtarları oluşturun."
+description: "Kişiler, otomasyonlar ve makineler için kimlik bilgileri oluşturun."
 icon: "key-round"
 ---
 
-API anahtarları bir organizasyona aittir ve açık izinler taşır. Ajan alımı, politika dağıtımı, değerlendiriciler, CI otomasyonu ve yönetim betikleri için ayrı anahtarlar kullanın.
+Her kişi, makine veya otomasyon işi için ayrı bir anahtar kullanın. Yalnızca ihtiyaç duyduğu izinleri verin.
 
-## Anahtar oluşturma ve döndürme
+## Anahtar oluşturun ve döndürün
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. **Administration → Keys** bölümüne gidin, **new key** seçeneğini tıklayın ve iş yükü adını girin.
-    2. Bir izin seti seçin ve önceden tanımlanmış izinler yetersiz olduğunda yalnızca bireysel izinleri ayarlayın.
-    3. Anahtarı oluşturun ve tek seferlik sırrını hemen kopyalayın.
-    4. Anahtarı daha sonra açarak yetkilendirmeleri güncelleyin, devre dışı bırakın veya sırrı yeniden oluşturun.
+**Admin → Keys** seçeneğini veya Cloud CLI'yi kullanın:
 
-    Oluşturma çekmeceği, iş yükü tarafından gerekli olan en dar yetkilendirmeleri seçebileceğiniz yerdir.
+```bash
+fp keys list
+fp keys create "audit automation" --add audits:read
+fp keys disable "audit automation"
+```
 
-    ![İzin ön ayarları ve bireysel yetkilendirmeler ile yeni API anahtar çekmecesi.](/images/dashboard/key-create.png)
+Anahtar oluşturulduğunda sırrı saklayın; bir daha gösterilmez. Eski anahtarı devre dışı bırakmadan önce bir yedek oluşturarak, tüketiciyi güncelleyerek döndürün.
 
-    Oluşturulduktan sonra, Keys sayfası kalıcı meta verileri ve yönetim eylemlerini gösterir. Tek seferlik sır bir daha gösterilmez.
+## Makine anahtarları
 
-    ![API Keys sayfası, anahtar izinleri, oluşturma zamanı ve yeniden oluştur ile devre dışı bırak eylemlerini gösteriyor.](/images/dashboard/api-keys.png)
+Makine anahtarı yerel hizmeti Cloud'a bağlar:
 
-    İzinleri düzenli olarak gözden geçirmek ve artık etkin bir iş yüküne karşılık gelmeyen anahtarları devre dışı bırakmak için bu listeyi kullanın.
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp keys create production-agents \
-      --add events:add \
-      --add policies:pull
-    fp keys show production-agents
-    fp keys update production-agents --add events:read
-    fp keys regenerate production-agents --yes
-    fp keys disable production-agents
-    ```
+```bash
+export FAILPROOFAI_CLOUD_TOKEN="<key>"
+failproofai config
+```
 
-    Oluşturma/yeniden oluşturma çıktısını güvenli bir şekilde yönlendirin veya yakalayın; sır yalnızca bir kez döndürülür.
-  </Tab>
-</Tabs>
+Bağlı bir makine iki yeteneğe ihtiyaç duyabilir:
 
-Bağlı bir Failproof AI makinesi tarafından gereken iki izin bağımsızdır:
+- Cloud tarafından yönetilen politikaları almak için `policies:pull`.
+- Kararları ve oturumları göndermek için `events:add`.
 
-- `events:add` olayları ve oturum verilerini gönderir.
-- `policies:pull` atanan politika dağıtımlarını alır.
+Durum bunları ayrı olarak raporlar çünkü biri çalışırken diğeri çalışmayabilir.
 
-Anahtar sırları oluşturma veya yeniden oluşturma sırasında gösterilir. Bunları bir sır yöneticisinde saklayın ve bir operatörün etkileşimli kimlik bilgilerini yeniden kullanmadan döndürün.
+## Yaygın izinler
 
-## İzin kataloğu
-
-| Alan | İzinler |
+| İzin | İzin Verir |
 | --- | --- |
-| Olaylar | `events:add`, `events:read` |
-| Anahtarlar | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` yalnızca insan oturumu |
-| Kullanıcılar | `users:create`, `users:read`, `users:update`, `users:delete` |
-| Değerlendirmeler | `evaluations:read`, `evaluations:trigger` |
-| Panolar | `dashboards:read`, `dashboards:write`, `dashboards:delete` |
-| Sorgular | `queries:read`, `queries:write`, `queries:delete`, `queries:run` |
-| Asistan | `agent:use` |
-| Ayarlar | `settings:read`, `settings:write` |
-| Uyarılar | `alerts:read`, `alerts:write` |
-| Sorunlar | `issues:read`, `issues:create`, `issues:close` |
-| Denetimler | `audits:read`, `audits:write` |
-| Politikalar | `policies:read`, `policies:write`, `policies:pull` |
-| Kullanım | `usage:read` |
+| `events:add` | Olayları gönder |
+| `events:read` | Olayları ve hataları oku |
+| `evaluations:read` | Oturumları ve değerlendirmeleri oku |
+| `audits:read` / `audits:write` | Denetlemeleri gözden geçir veya yönet |
+| `policies:read` / `policies:write` | Politikaları gözden geçir veya dağıt |
+| `policies:pull` | Makine politikası atamalarını çek |
+| `keys:create` / `keys:disable` | Anahtarlar oluştur veya devre dışı bırak |
+| `orgs:admin` | Örnek düzeyinde kuruluş yönetimi; kuruluş anahtarına atanamaz |
 
-`orgs:admin` örnek operatörü için ayrılmıştır ve bir organizasyon anahtarına veya sıradan üyeye verilemez. Emekli `incidents:*` ve `alerts:ack` belirteçleri uyumluluk için kabul edilir ve mevcut `issues:*` izinlerine normalleştirilir.
-
-Yerleşik izin setleri `read-only`, `standard` ve `admin` dır. `standard`, oku izinlerine değerlendirme tetikleme, sorgu yürütme, sorun yanıtı ve asistan kullanımını ekler. Anahtar oluşturma, bir izin seti bunları içerse bile yalnızca insan izinlerini kaldırır.
+Bazı idari `fp fleet` ve `fp guardrails` komutları, API anahtarı yerine oturum açmış bir kullanıcı oturumu gerektirir. Yardım metinleri istek yapmadan önce bunu belirtir.
 
 <Warning>
-  Örnek kapsamlı anahtarlar `X-AgentEye-Org` üstbilgisiyle bir organizasyon seçebilir. Çok organizasyonlu dağıtımlarda bunu açıkça ayarlayın; atlama varsayılan organizasyonu seçebilir.
+  `AGENTEYE_KEY` veya `AGENTEYE_API_KEY` gibi yutma kimlik bilgilerini asla `FP_API_KEY` olarak yeniden kullanmayın. Farklı sistemlere ve izinlere hizmet ederler.
 </Warning>

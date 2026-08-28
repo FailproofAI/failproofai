@@ -1,25 +1,34 @@
 ---
 title: "Hooks"
-description: "Hook aktivitesini, tetikleyicileri ve gecikmeyi politika sonuçlarından ayrı olarak ölçün."
+description: "Failproof AI'ın bir aracı olayını ne zaman değerlendirdiğini ve ne kararı verdiğini görün."
 icon: "webhook"
 ---
 
-Hooks, agent yaşam döngüsü hook'larının ne zaman çalıştığını ve ne kadar zaman aldığını gösterir. Politika kararları ayrı bir görünümdür.
+Hook, bir aracının Failproof AI'dan karar istemesi için bir noktadır. Hook etkinliği kaydı, olayı, politikayı, sonucu ve değerlendirme zamanını kaydeder.
+
+## Hook etkinliğini araştırın
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Observe → Hooks** bölümüne gidin.
-    2. Ortam, hook adı, tetikleyici olay, agent veya oturum kimliğine göre filtreleyin.
-    3. Hook gecikmesini ve dağılımını gözden geçirin.
-    4. Altta yatan olayları açmak için bir grafik noktasını veya hook bölümünü seçin.
+    **Observe → Hooks** bölümüne gidin. Ortam, olay, aracı veya oturum için filtreleyin.
 
-    ![Hook adı ve tetikleyici olayına göre gruplanmış gecikmeyi gösteren Hooks sayfası.](/images/dashboard/hooks.png)
+    ![Hook adına ve tetikleyici olaya göre gruplanmış gecikmeyi gösteren Hooks sayfası.](/images/dashboard/hooks.png)
   </Tab>
   <Tab title="CLI">
     ```bash
+    fp guardrails summary --since 24h
+    fp --json events --full --event-type hook_completed --session-id <session-id> --all --limit 500
     fp list hooks
-    fp events --event-type hook_triggered,hook_completed --env production --since 24h
-    fp events --search "PreToolUse" --since 24h
     ```
   </Tab>
 </Tabs>
+
+Varsayılan olarak, her `deny` ve `instruct` kararı tamamen gönderilir. Tekrarlanan izinler gürültüyü azaltmak için gruplandırılır. `~/.failproofai/config.json` içindeki `collector.hooks_verbosity` değerini `all`, `decisions` veya `off` olarak ayarlayın.
+
+<Warning>
+  Hook etkinliği değerlendirmenin çalıştığını kanıtlar, ancak sistemin bu olayı bloke edebileceğini değil. Bkz. [enforcement capability](/tr/reference/harnesses#enforcement-capability). Listelenmeyen bir harness-event çifti doğrulanmamıştır.
+</Warning>
+
+<Card title="Policy decisions" icon="shield-check" href="/tr/sessions/policy-decisions">
+  Aynı etkinliği sonuç ve politikaya göre okuyun.
+</Card>

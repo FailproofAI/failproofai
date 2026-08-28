@@ -1,26 +1,52 @@
 ---
+---
 title: "מושגים ליבה"
-description: "קבוצה קטנה של מושגים המשמשים ב-Failproof AI."
+description: "התנאים המשמשים לצפייה, ביקורת והגנה על agents."
 icon: "boxes"
 ---
 
-| מושג | משמעות | מה אתה יכול להשיג |
-| --- | --- | --- |
-| Session | משימה או ריצה אחת של agent | שחזור תוצאה בודדת |
-| Event | פעולה אחת שתועדה ב-session | בדיקת קריאת מודל, שימוש בכלי, שגיאה, פעולה אנושית או החלטת מדיניות |
-| Trace | התצוגה הממוינת והמקוננת של session | הבנת סיבתיות במקום קריאת יומנים מנותקים |
-| Evaluation | ניקוד או שיקול על session | מעקב אחר איכות, ציות, עלות או חביון בעדכון קבוע |
-| Audit | סקירה של אוכלוסיית session שנבחרה | חיפוש דפוסי כשל עם מטרה וקצב מוגדרים |
-| Finding | כשל מבוסס-ראיות שגילה audit | צפייה במצב הכשל, חומרת הבעיה וה-sessions המושפעים |
-| Issue | רשומת תגובה עמידה | הקצאה, דיון והחלטה על finding או אירוע alert |
-| Alert | כלל המזהה חזרה | הודעה ללוחמי הכיבוי כאשר תנאי ידוע חוזר |
-| Policy | כלל המוערך במהלך פעילות agent | צפייה, חסימה או הפניה חוזרת של התנהגות מסוכנת |
-| Deployment | הטלת מדיניות עם גרסה לשרי-קצה | שליטה היכן מדיניות פועלת וביצוע rollback בטוח |
+Failproof AI מתעד את מה שעושים agents ומחליט מה הם רשאים לעשות.
 
-## לולאת האמינות
+## Observe
 
-התחל מראיות. Session מראה מה קרה. Audit קובע האם זו טעות מבודדת או דפוס. Finding מזהה את מצב הכשל; issue בעלות על התגובה. Policy מונע את אותה התנהגות, בעוד שalerts אומרים לך אם התנאי חוזר.
+| Term | משמעות |
+| --- | --- |
+| Session | הרצת agent אחת |
+| Event | פעולה אחת בתוך session |
+| Trace | התצוגה המסודרת של session |
+| Evaluation | ניקוד או שיפוט |
+| Audit | בדיקה של הרבה sessions |
+| Finding | ראיות לתבנית כשל |
+| Issue | התגובה שמישהו אחראי לה |
+| Alert | כלל שמוצא חזרה על התופעה |
+
+## Enforce
+
+| Term | משמעות |
+| --- | --- |
+| Harness | הסביבה שבה רץ agent |
+| Hook | נקודה שבה ה-harness שואל על החלטה |
+| Policy | כלל שמאפשר, מנחה או חוסם |
+| Policy pack | קבוצת policies מוגדרת גרסה שכל אחד יכול להתקין |
+| Daemon | השירות המקומי שמעריך policies |
+| Deployment | Policies המוקצים למכונה |
+
+## The workflow
+
+```text
+Session → Audit → Finding → Issue → Policy
+```
+
+התחל בראיות. מצא את הכשל החוזר, הקצה את התגובה, ואז מנע אותו.
+
+Policy מחזיר `allow`, `instruct`, או `deny`. הנחיה דרך `instruct` תלויה ב-harness; השתמש ב-`deny` כאשר על הפעולה להיעצר.
+
+Observe mode הוא נפרד מההחלטה. הוא מריץ את ה-policy האמיתי ומתעד מה הוא היה עושה תוך שהוא מאפשר ל-agent להמשיך.
 
 <Warning>
-  `failproofai audit` מקומי סורק היסטוריית agent מקומית. Audit ענן חוזר בודק sessions המאוחסנות ב-Failproof AI Cloud. אלו הם זרימי עבודה נפרדים עם scope וזמנון שונים.
+  `fp fleet deploy <machine> --add <policy>` חשוף אוכף מיד. הוסף `:observe` לגלגול צל.
 </Warning>
+
+Setup לא בוחר policy pack. לפני שתוסיף אחד, רק `block-failproofai-commands` רץ. הקטלוג המהודר מכיל 39 policies על פני 9 קטגוריות.
+
+ראה [harnesses נתמכים](/he/reference/harnesses#enforcement-capability) לפני שאתה מניח שאירוע יכול לחסום בכל סביבת agent.

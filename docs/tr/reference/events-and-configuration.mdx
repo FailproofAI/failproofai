@@ -4,13 +4,24 @@ description: "Olay modelini, ortamları, yerel depolamayı ve yapılandırma sı
 icon: "list-tree"
 ---
 
+## İki olay sözlüğü
+
+Failproof AI iki farklı olay türü taşır ve hiçbir zaman adlarını paylaşmazlar.
+
+| Sözlük | Tarafından üretilir | Adlar şu şekildedir | Referans |
+| --- | --- | --- | --- |
+| Telemetri olayları | `failproofai-sdk`, aracınızın içinden | `tool_use`, `tool_result`, `hook_triggered`, `model_response` | [Python SDK](/tr/reference/custom-agents) |
+| Hook olayları | Ajan yöneticisi, failproofai tarafından normalize edilir | `PreToolUse`, `PostToolUse`, `Stop`, `UserPromptSubmit` | [Özel politikalar](/tr/reference/policy-sdk#choose-the-event) |
+
+Hook tarafı, her yöneticinin kendi olay adlarını 29 kanonik türe normalize eder. Telemetri tarafı 15 methoda ve kendi alan sözleşmesine sahiptir. `hook_triggered` ve `PreToolUse` aynı şeyin iki farklı yazılımı değildir.
+
 ## Olay aileleri
 
-- Ajan başlama, bitme, duraklatma ve devam ettirme
+- Ajan başlama, bitiş, durdurma ve devam ettirme
 - Model isteği ve yanıtı
 - Araç kullanımı ve sonucu
-- Hook tetikleme ve tamamlama
-- İnsan bekleme, girdi, duraklatma ve kesintiye uğratma
+- Hook tetiklenmesi ve tamamlanması
+- İnsan bekleme, giriş, durdurma ve kesintiye uğratma
 - Açık hatalar
 
 Her olay bir zaman damgası, oturum kimliği, ajan kimliği, olay türü ve ortam taşır. Olaya özgü alanlar model, araç, korelasyon, sonuç, içerik, süre veya hata verilerini içerir.
@@ -18,24 +29,24 @@ Her olay bir zaman damgası, oturum kimliği, ajan kimliği, olay türü ve orta
 ## Bir olay sözleşmesini inceleyin
 
 <Tabs>
-  <Tab title="Dashboard">
-    1. **Observe → Events** öğesini açın.
+  <Tab title="Pano">
+    1. **Gözlemle → Olaylar** öğesini açın.
     2. Kısa bir zaman penceresi ayarlayın ve ortam, ajan ve olay türüne göre filtreleyin.
-    3. Normalleştirilmiş alanlarını ve ham yükünü incelemek için bir olayı seçin, ardından yürütme bağlamını görmek için oturumunu açın.
-    4. Eşleştirilmiş bir süre eksikse, başlama ve tamamlama olaylarının aynı korelasyon kimliğini kullandığını doğrulayın.
+    3. Normalize edilmiş alanlarını ve ham yükünü incelemek için bir olayı seçin, ardından yürütme bağlamını görmek için oturusunu açın.
+    4. Eşleştirilmiş bir süre eksikse, başlangıç ve tamamlanma olaylarının aynı korelasyon kimliğini kullandığını doğrulayın.
 
-    Verileri tek bir ajan çalışmasına daraltmak ve normalleştirilmiş olay alanlarını incelemek için Events akışını kullanın.
+    Olaylar akışını kullanarak verileri bir ajan çalıştırmasına daraltın ve normalize edilmiş olay alanlarını inceleyin.
 
-    ![Ortam, ajan, oturum ve olay türü filtreleriyle birlikte canlı Events akışı.](/images/dashboard/events-stream.png)
+    ![Ortam, ajan, oturum ve olay türü filtreleriyle canlı Olaylar akışı.](/images/dashboard/events-stream.png)
 
-    Ardından olayı oturumunun içine takip edin. İz, bundan hemen önce ve sonra ne olduğunu gösterir; bu, yükün tek başına belirsiz olduğunda gereklidir.
+    Ardından olayı oturusuna takip edin. İz, bundan hemen önce ve sonra ne olduğunu gösterir; bu, yükün tek başına belirsiz olduğu zaman gereklidir.
 
     ![Olayı yürütme bağlamında incelemek için kullanılan bağlantılı oturum izi.](/images/dashboard/session-detail.png)
 
-    Eşleştirilmiş bir olay veya süre eksikse her iki görünümde de korelasyon kimlikleri ve zaman damgalarını karşılaştırın.
+    Eşleştirilmiş bir olay veya süre eksikse, her iki görünümdeki korelasyon kimlikleri ve zaman damgalarını karşılaştırın.
   </Tab>
   <Tab title="CLI">
-    Geçerli filtre değerlerini keşfedin, ardından tek bir oturum için tam olay yüklerini getirin:
+    Geçerli filtre değerlerini keşfedin, ardından bir oturum için tam olay yüklerini getirin:
 
     ```bash
     fp list event_types
@@ -47,38 +58,109 @@ Her olay bir zaman damgası, oturum kimliği, ajan kimliği, olay türü ve orta
       --full
     ```
 
-    Makine tarafından okunabilir inceleme için `fp --json events ... --fields ts,event_type,session_id,payload` komutunu kullanın.
+    Makine tarafından okunabilir inceleme için `fp --json events ... --fields ts,event_type,session_id,payload` kullanın.
   </Tab>
 </Tabs>
 
 ## Ayrılmış SDK alanları
 
-`timestamp`, `session_id`, `agent_id`, `type` veya `environment` öğelerini özel Python SDK alanları olarak kullanmayın. Tool result süresi gibi eşleştirilmiş olay süreleri SDK tarafından hesaplanır ve el ile sağlanamaz.
+Beş ad, SDK her olayda bunları belirlediği için özel alanlar olarak tamamen reddedilir:
+
+`timestamp`, `session_id`, `agent_id`, `type`, `environment`.
+
+On bir tane daha kabul edilir ancak tür denetlenmesi yapılır; çünkü alma uç noktası bunları yükün dışına yazılı sütunlara taşır ve yanlış türde herhangi bir şey için sessizce `NULL` depolar. SDK bunun yerine yükseltir; değeri üretmiş olabilecek çağrı sahasında.
+
+| Adlar | Gerekli tür |
+| --- | --- |
+| `duration_ms`, `input_tokens`, `output_tokens` | `int`, işaretsiz 32-bit aralığında. Bir float veya bool yükseltir. |
+| `tool_name`, `tool_call_id`, `hook_name`, `hook_id`, `input_id`, `pause_id`, `error_type`, `model` | `str`. `None` yükseltir; çünkü satır 200 OK ile gelir ve o alandaki her filtre için görünmez olur. |
+
+### Süreler
+
+SDK, dört eşleştirilmiş olay arasındaki boşluğu ölçer ve kendisi geçirdiğiniz bir `duration_ms` reddeder: `tool_use` → `tool_result`, `hook_triggered` → `hook_completed`, `agent_pause` → `agent_resume` ve `human_wait` → `human_input`.
+
+`model_response` istisnadır. SDK hiçbir zaman model çağrılarını zamanlamaz; siz bunun yerine `duration_ms` öğesini milisaniye cinsinden tam bir sayı olarak sağlarsınız. Bir çiftin nasıl eşleştirildiği için [korelasyon kurallarına](/tr/reference/custom-agents) bakın.
 
 ## Yerel sınırlar
 
-- Failproof AI durumu, açıkça başka şekilde yapılandırılmadığı sürece `~/.failproofai` altında bulunur.
-- `failproofai-sdk` her zaman `~/.failproofai/custom-agents` altında spool yapar. `FAILPROOFAI_HOME` bu ana dizini yeniden konumlandırır; `custom-agents` segmenti her zaman eklenir, bu nedenle spool bunun dışına yerleştirilemez. Yalnızca SDK'nın kendi `configure(base_dir=...)` öğesi başka yerlere yazar. `AGENTEYE_HOME`, eski `agenteye-collector` tarafından izlenecek öğeleri seçmek için okunur ve SDK'nın yazacağı yeri artık etkilemez.
-- Ortam etiketleri SDK yapılandırması veya `AGENTEYE_ENVIRONMENT` aracılığıyla ayarlanabilir.
-- Daemon kimlik bilgileri, gizli olmayan ayarlardan ayrı olarak depolanır.
+- Failproof AI durumu, açıkça farklı şekilde yapılandırılmadığı sürece `~/.failproofai` altında yaşar.
+- `failproofai-sdk` her zaman `~/.failproofai/custom-agents` altında spool yapar. `FAILPROOFAI_HOME` o ana konum değiştirir; `custom-agents` segmenti her zaman eklenir; bu nedenle spool dışına yerleştirilemez. Yalnızca SDK'nın kendi `configure(base_dir=...)` başka yerlere yazar. `AGENTEYE_HOME`, eski `agenteye-collector` tarafından okunur ve SDK'nın yazdığı yeri artık etkilemez.
+- Kimlik bilgileri `~/.failproofai/credentials.json` içinde yaşar; `0600` olarak yazılır. Bunlar kasıtlı olarak `config.json` içinde değildir; bu, düz yazı ile yazılır ve umaskı devralır; bu nedenle kutudaki her yerel kullanıcı tarafından okunabilir olarak yer alır.
 
-Kararlı, düşük kardinaliteli ortam adlarını kullanın. Daemon ortam etiketlerinde virgüller desteklenmez.
+Kararlı, düşük kardinaliteli ortam adlarını kullanın. Virgül her iki yazıcı tarafından da reddedilir: daemon `collector.environment` içinde birini reddeder ve SDK `configure(environment=...)` öğesinde yükseltir. Sebep her iki tarafta da aynıdır—alma uç noktası bu alanı virgüllerde böler ve tüm satırı atlar; hiçbir şey depolarken `200 OK` yanıtı verir.
 
-## Bir ortam etiketini değiştirin
+## Makine yapılandırması
+
+Daemon'un gizli olmayan ayarları `~/.failproofai/config.json` içindedir. `hooks_verbosity`, `redact` ve `environment` CLI bayrağı olmaz — dosyayı doğrudan düzenleyin. `sessions`, `hooks` ve `machine_id` `failproofai config` tarafından yazılır; bu makineyi Cloud'a bağladığında.
+
+| Anahtar | Değerler | Varsayılan | Ne kontrol eder |
+| --- | --- | --- | --- |
+| `collector.sessions` | `true` / `false` | `false`; Cloud'a bağlandıktan sonra `true` | Ajan oturum transkriptlerini gönderin. Bir transkript komut istemi ve dosya içerikleri ile yapıştırılan her şeyi taşır. |
+| `collector.hooks` | `true` / `false` | `true` | Hook etkinliğini gönderin. Kararları ve araç adlarını taşır; hiçbir zaman dosya içeriklerini değil. |
+| `collector.hooks_verbosity` | `all` / `decisions` / `off` | `decisions` | `decisions`, her deny ve instruct öğesini tam olarak tutar ve kabaca yüzde 99 olan izin verilen öğeleri toplar. |
+| `collector.redact` | `minimal` / `off` | `minimal` | Makineden hiçbir şey ayrılmadan önce uygulanmış redaksiyon. |
+| `collector.environment` | virgülsüz herhangi bir dize | `local` | Bu makinenin gönderdiği her olaya damga vurulan etiket. |
+| `collector.machine_id` | herhangi bir dize | diskte zaten bir kimlik; yoksa yeni bir rastgele UUID | Panonun bu verileri altında gruplandırdığı makine. `--machine-id` tarafından yazılır. Hiçbir zaman ana bilgisayar adından türetilmez. |
+
+<Note>
+  `failproofai backfill --help`, `~/.failproofai/config.toml` adını verir. Bu eski bir ana bilgisayar düzeninden eski bir yoldur; geçerli yapı bunu yazmaz. Dosya `config.json` içindedir.
+</Note>
+
+Cloud'a bağlanmak hem politika kararlarını hem de tam oturum transkriptlerini gönderir.
+
+<Warning>
+  `--no-transcripts`, kurulum yolunda transkriptleri kapatmaz. `failproofai config --token <key> --no-transcripts` bayrağı ayrıştırır ve ardından bunu hiçbir zaman okumaz; sihirbaz bağımsız olarak oturumlarla bağlantı kurar; transkriptler, vazgeçtiğinize inanırken gönderilmeye devam eder.
+
+  Yalnızca kararları göndermek için, bağlandıktan sonra `~/.failproofai/config.json` içinde `collector.sessions` öğesini `false` olarak ayarlayın:
+
+  ```json
+  {
+    "collector": {
+      "sessions": false
+    }
+  }
+  ```
+</Warning>
+
+Bir backfill aynı toplayıcı ayarlarını izler; bu nedenle yapılandırmanız istemediğinizi söyleyen bir şey asla göndermez. Yeniden gönderme güvenlidir: redaksiyon deterministik olduğundan; yeniden gönderilen bir olay ilk gönderisine özdeş bir şekilde hashlanır ve orada zaten olan satırda çöker.
+
+## Ortam etiketini değiştirin
+
+SDK ve daemon her biri kendi etiketini damgalar ve farklı yerlerde belirlenir.
 
 <Tabs>
-  <Tab title="Dashboard">
-    Ortam etiketleri, yayan SDK veya Failproof daemon tarafından atanır. Değiştirdikten sonra **Observe → Sessions** öğesini açın ve ortam filtresini kullanarak yeni oturumların yeni değeri taşıdığını onaylayın. Mevcut oturumlar orijinal ortamlarını korurlar.
+  <Tab title="Python SDK">
+    Kodda veya olayları yayan işlemin ortamında ayarlayın. Varsayılan `dev` dir.
 
-  </Tab>
-  <Tab title="CLI">
-    `failproofai-sdk` için ortamı kodda veya eski ortam değişkeni ile yapılandırın. Makine düzeyindeki ayarları değiştirirken daemon yapılandırmasını yeniden çalıştırın.
+    ```python
+    import failproofai_sdk
+
+    failproofai_sdk.configure(environment="production-us-east")
+    ```
 
     ```bash
     export AGENTEYE_ENVIRONMENT=production-us-east
-    failproofai config
+    ```
+
+    `AGENTEYE_ENVIRONMENT` yalnızca `failproofai-sdk` tarafından okunur. Ne CLI ne de daemon bunu okur; bu nedenle dışa aktarma makinede hiçbir şeyi değiştirmez.
+  </Tab>
+  <Tab title="Daemon">
+    `~/.failproofai/config.json` içinde `collector.environment` öğesini düzenleyin. Varsayılan `local` olur ve CLI bayrağı bunu hiçbir şekilde ayarlamaz.
+
+    ```json
+    {
+      "collector": {
+        "environment": "production-us-east"
+      }
+    }
+    ```
+
+    ```bash
     failproofai config --status
     fp sessions --since 1h --env production-us-east
     ```
+  </Tab>
+  <Tab title="Pano">
+    Ortam etiketleri gönderen SDK veya Failproof daemon tarafından atanır; bu nedenle burada değiştirilecek bir şey yoktur. Kaynağında birini değiştirdikten sonra **Gözlemle → Oturumlar** öğesini açın ve ortam filtresini kullanarak yeni oturumların yeni değeri taşıyıp taşımadığını doğrulayın. Mevcut oturumlar orijinal ortamlarını korur.
   </Tab>
 </Tabs>

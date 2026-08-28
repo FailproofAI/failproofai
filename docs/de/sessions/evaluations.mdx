@@ -1,52 +1,80 @@
 ---
-title: "Online-Auswertungen"
-description: "Bewerte aktive und abgeschlossene Sessions hinsichtlich Qualität, Compliance, Kosten und Latenz."
+title: "Evaluierungen"
+description: "Abgeschlossene Sitzungen nach Qualität, Compliance, Kosten und Latenz bewerten."
 icon: "gauge"
 ---
 
-Online-Auswertungen wenden konsistente Beurteilungen auf Agent-Sessions an. Verwende sie für Signale, die kontinuierlich gemessen werden sollten – anstatt erst bei einem Audit untersucht zu werden.
+Evaluierungen wenden konsistente Bewertungen auf Agent-Sitzungen an. Verwende sie für Signale, die kontinuierlich gemessen werden sollten, anstatt nur bei einer Prüfung untersucht zu werden.
 
-## Auswertungsqualität prüfen
+Ein Evaluator erhält eine abgeschlossene Sitzung. Das bedeutet eines von zwei Dingen: Die Sitzung hat ein End-Event gesendet, oder sie hat aufgehört, länger als das `inactivity_timeout_secs` des Evaluators Ereignisse zu senden. Eine noch laufende Ausführung wird nicht bewertet.
+
+<Note>
+  Die automatische Evaluierung gilt für die gesamte Deployment und ist deaktiviert, bis ein Operator `EVALUATOR_ENDPOINT` setzt. Bis dahin ist diese Ansicht leer, `fp evals` gibt nichts zurück, und `fp sessions` zeigt für jede Zeile einen leeren Status an — was in der Regel bedeutet, dass kein Evaluator konfiguriert ist, nicht dass nichts schlecht bewertet wurde. Siehe [Evaluator SDK](/de/reference/evaluator-sdk).
+</Note>
+
+## Evaluierungsqualität prüfen
 
 <Tabs>
   <Tab title="Dashboard">
     1. Gehe zu **Observe → Evaluations**.
-    2. Füge eine Reihe hinzu und wähle den Agent, die Umgebung, den Auswertungswert, die Statistik und die Kurve.
-    3. Füge weitere Reihen hinzu, um Umgebungen, Agents oder Score-Schlüssel zu vergleichen.
-    4. Wähle ein Ergebnis aus, um passende Sessions zu öffnen oder die gefilterte Ansicht zu teilen. Nutze **Observe → Metrics** für Latenz, Tokens, Kosten und andere Mengenwerte.
+    2. Füge eine Datenreihe hinzu und wähle Agent, Umgebung, Evaluierungswert, Statistik und Kurve.
+    3. Füge Datenreihen hinzu, um Umgebungen, Agents oder Score-Keys zu vergleichen.
+    4. Wähle ein Ergebnis aus, um passende Sitzungen zu öffnen oder die gefilterte Ansicht zu teilen. Nutze **Observe → Metrics** für Latenz, Tokens, Kosten und andere Kennzahlen.
 
-    ![Ein Qualitäts-Dashboard mit durchschnittlichen Auswertungswerten und zeitlichen Trends.](/images/dashboard/dashboard-quality.png)
+    ![Ein Qualitäts-Dashboard mit durchschnittlichen Evaluierungswerten und Trends über die Zeit.](/images/dashboard/dashboard-quality.png)
 
-    Öffne eine Session über die Drill-down-Ansicht, um die auswertungsspezifische Begründung zu prüfen:
+    Öffne eine Sitzung aus der Detailansicht, um die sitzungsspezifische Begründung zu prüfen:
 
-    ![Eine Session-Detailansicht mit Auswertungswerten und Begründungen neben dem vollständigen Trace.](/images/dashboard/session-detail.png)
+    ![Eine Sitzungsdetailansicht mit Evaluierungswerten und Begründungen neben dem vollständigen Trace.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
+    fp list score_filters
     fp evals --agent-id checkout-agent --aggregate
-    fp evals --aggregate --env production --status error
-    fp evals --score helpfulness:0.8.. --since 7d
+    fp evals --aggregate --status error --since 7d
+    fp evals --score helpfulness:0.5..0.8 --score tool_efficiency:..0.3 --since 7d
+    fp evals --scores-full --since 24h
     ```
 
-    Füge das globale Flag `--json` vor `evals` für die Automatisierung hinzu, z. B. `fp --json evals --aggregate --env production`.
+    Alle diese Befehle erfordern `evaluations:read` — einschließlich `fp sessions`, das dasselbe aktuelle Evaluierungsergebnis liest. Deshalb sieht ein auf `events:read` beschränkter Key zwar Traces, aber keine Scores.
+
+    Beginne mit `fp list score_filters`: Dies gibt die Score-Keys zurück, die dieses Deployment tatsächlich produziert, was einen `--score`-Filter überprüfbar macht, anstatt ihn zu erraten.
+
+    `--score KEY:MIN..MAX` hat optionale Grenzen und ist wiederholbar, wobei alle Bereiche gemeinsam gelten müssen: `helpfulness:0.5..0.8`, `tool_efficiency:..0.3`, `factuality:0.9..`. Ein fehlerhafter Wert wird abgelehnt, bevor die Anfrage gesendet wird, anstatt stillschweigend ignoriert zu werden. `--status` akzeptiert genau einen der Werte `done`, `error` oder `timeout`. `--scores-full` gibt alle Score-Paare aus, anstatt nur die ersten mit einem `+N`. `--all` stoppt bei `--limit`, das standardmäßig 50 beträgt.
+
+    Globale Optionen stehen vor dem Befehl, daher liest die Automatisierung `fp --json evals --aggregate`.
+
+    Der Daemon versieht jedes Event mit der Umgebung `local`, sofern du das nicht änderst. Daher trifft `--env production` bei einer Standardinstallation auf nichts zu. Siehe [Change an environment label](/de/reference/events-and-configuration#change-an-environment-label).
   </Tab>
 </Tabs>
 
-Ein Evaluator erhält die Session-Identität, Umgebung, Zeitstempel und geordnete Ereignisse. Er kann numerische Score-Schlüssel mit optionaler Begründung und einer Zusammenfassung zurückgeben. Lang laufende Evaluatoren können einen ausstehenden Job zurückgeben und später abgefragt werden.
+## Was ein Evaluator austauscht
 
-## Geeignete Auswertungsziele
+| Nachricht | Felder |
+| --- | --- |
+| `EvalRequest` (eingehend) | `schema_version` (aktuell `"1"`), `session_id`, `agent_id`, `environment`, `started_at`, `ended_at` und `events` — der vollständige geordnete Stream, wobei jedes Event seine vollständige Nutzlast trägt. |
+| `EvalResponse` (ausgehend) | `scores` als numerische Keys, `reasoning` gespiegelt dazu, und eine `summary`. |
+| `JobPending` (ausgehend) | `job_id` und `next_poll_secs`, für Aufgaben, die nicht innerhalb einer einzigen Anfrage abgeschlossen werden können. |
+
+`ended_at` ist nur vorhanden, wenn die Sitzung ein End-Event gesendet hat — eine Sitzung, die aufgrund von Inaktivität weitergeleitet wird, hat daher keines. Das Polling-Intervall richtet sich nach `next_poll_secs`, dann nach `default_poll_interval_secs` des Evaluators, dann nach `EVALUATOR_POLLING_INTERVAL_SECS` des Servers, begrenzt auf einen Sekunden- bis Einstunden-Bereich mit einer maximalen Laufzeit von einer Stunde.
+
+Da die Anfrage vollständige Event-Nutzlasten enthält, sieht ein Evaluator den vollständigen Transkriptinhalt. Behandle die Übermittlung an den Evaluator wie die Übermittlung eines Transkripts, wenn du entscheidest, welche Daten das System senden darf.
+
+## Geeignete Evaluierungsziele
 
 - Aufgabenerfüllung oder Korrektheit
-- Faktentreue und Halluzinationsrisiko
-- Tool-Auswahl und Tool-Effizienz
+- Fundiertheit und Halluzinationsrisiko
+- Werkzeugauswahl und Werkzeugeffizienz
 - Richtlinien- oder Prozess-Compliance
 - Kosten- und Latenzbudgets
-- Erforderliche Eskalation an Menschen
+- Erforderliche menschliche Eskalation
 
-## Von der Bewertung zur Reaktion
+Score-Keys sind stabile Bezeichner. Das Umbenennen eines Keys startet eine neue Diagrammreihe, anstatt die alte zu ändern, was einen Trend still unterbricht — wähle den Namen, bevor du ihn in einem Diagramm verwendest.
 
-Zeige Werte in Dashboards an, um Trends zu verfolgen. Erstelle Alerts für Schwellenwerte oder zusammengesetzte Bedingungen. Wenn ein Score über eine Population hinweg sinkt, führe ein Audit durch, um die Ursache zu untersuchen; wenn die Ursache eine wiederholbare Aktion ist, setze eine Policy ein.
+## Vom Score zur Reaktion
+
+Zeige Scores in Dashboards, um Trends zu verfolgen. Erstelle Alerts für Schwellenwerte oder zusammengesetzte Bedingungen. Wenn ein Score in einer Population sinkt, führe eine Prüfung durch, um die Ursache zu untersuchen. Wenn die Ursache eine wiederholbare Aktion ist, deploye eine Richtlinie.
 
 <Card title="Einen Evaluator erstellen" icon="code-2" href="/de/reference/evaluator-sdk">
-  Implementiere synchrone oder asynchrone Auswertungen mit dem Python Evaluator SDK.
+  Implementiere synchrone oder asynchrone Evaluierung mit dem Python-Evaluator-SDK.
 </Card>

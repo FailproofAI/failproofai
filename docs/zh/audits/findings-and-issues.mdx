@@ -1,35 +1,44 @@
 ---
 title: "发现与问题"
-description: "将审计证据转化为有责任人、可追踪的修复工作。"
+description: "将审计证据转化为可归属、可追踪的整改工作。"
 icon: "clipboard-check"
 ---
 
-发现（finding）是审计基于证据对失败行为所作的陈述。问题（issue）是用于响应该陈述的持久化工作流。
+发现（finding）是审计基于证据对某一失败所作的陈述，问题（issue）则是响应该失败的持久化工作流。
+
+这两个对象使用不同的术语，且并排出现，因此有必要先将它们区分清楚：
+
+| | Finding | Issue |
+| --- | --- | --- |
+| 状态 | `open`、`recurring`、`resolved`、`dismissed`、`muted` | `firing`、`acknowledged`、`resolved` |
+| 过滤标志 | `--status` | `--state` |
+| 标识 | Finding id | Issue id |
+| 默认列表 | 活跃集合：open 加 recurring | 最新打开的排在最前 |
 
 ## 分类与分配工作
 
 <Tabs>
-  <Tab title="仪表板">
-    1. 打开 **Analyze → Audits**，选择一次已完成的运行，然后选择一条发现，查看其分析结果、建议、会话和证据查询。
-    2. 在核查证据后，对该发现执行确认、分配、忽略、静音、解决或重新打开等操作。
-    3. 前往 **Analyze → Issues**，按状态、严重性或负责人筛选持久化收件箱。
-    4. 打开问题，为其分配负责人、添加评论或订阅者，并在修复验证完成后将其解决。
+  <Tab title="控制台">
+    1. 打开 **Analyze → Audits**，选择一次已完成的运行，点击某个 finding 查看其分析结果、建议措施、会话及证据查询。
+    2. 核查证据后，对 finding 执行确认、分配、忽略、静默、解决或重新打开操作。
+    3. 前往 **Analyze → Issues**，按状态、严重程度或负责人过滤持久化收件箱。
+    4. 打开 issue，分配负责人、添加评论或订阅者，并在确认修复后将其解决。
 
-    首先查看发现摘要，确认故障描述、建议响应、严重性和排名是否与您预期审计所检查的会话一致。
+    从 finding 摘要开始。确认失败描述、推荐响应、严重程度和排名与你预期审计检查的会话相符。
 
-    ![包含严重性、发生次数、根因分析、建议操作、排名因素和证据的审计发现。](/images/dashboard/audit-finding.png)
+    ![一个包含严重程度、发生次数、根因分析、推荐措施、排名因素及证据的审计 finding。](/images/dashboard/audit-finding.png)
 
-    接下来，打开一个受影响的会话，而不是仅凭摘要做出判断。关联的追踪记录应展示支持该发现的确切事件和有效载荷。
+    接下来，打开一个受影响的会话，而不是仅凭摘要作出判断。链接的追踪记录应展示支持该 finding 的确切事件和载荷。
 
-    ![从审计发现链接的会话，在相关错误处打开，显示其事件元数据和原始有效载荷。](/images/dashboard/audit-linked-session.png)
+    ![从审计 finding 链接的会话，定位到相关错误处，显示其事件元数据和原始载荷。](/images/dashboard/audit-linked-session.png)
 
-    验证证据后，使用 Issues 为响应工作指定责任人，并独立于后续审计运行进行追踪。
+    核实证据后，使用 Issues 为响应工作指定负责人，并独立于后续审计运行进行追踪。
 
-    ![Issues 收件箱，显示触发中、已确认和已解决的工作，以及严重性和所有权信息。](/images/dashboard/incidents.png)
+    ![Issues 收件箱，显示触发中、已确认和已解决的工作及其严重程度与负责人。](/images/dashboard/incidents.png)
 
-    打开问题以记录调查说明、通知订阅者并保留响应历史。仅在修复措施部署并验证完成后才将其解决。
+    打开 issue 以记录调查笔记、通知订阅者并保存响应历史。仅在整改措施部署并验证后才解决该 issue。
 
-    ![问题详情视图，包含来源、违规证据、负责人、订阅者、时间线和评论。](/images/dashboard/incident-detail.png)
+    ![Issue 详情视图，包含来源、违规证据、负责人、订阅者、时间线和评论。](/images/dashboard/incident-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -37,60 +46,94 @@ icon: "clipboard-check"
     fp audits finding <finding-id>
     fp audits ack <finding-id> --reason "owner assigned"
     fp audits assign <finding-id> --to engineer@example.com
+    fp audits mute <finding-id> --reason "expected in staging" --yes
+    fp audits dismiss <finding-id> --reason "false positive" --yes
+    fp audits resolve <finding-id> --yes
+    fp audits reopen <finding-id>
 
-    fp issues list
+    fp issues list --state firing
     fp issues show <issue-id>
+    fp issues ack <issue-id>
     fp issues assign <issue-id> --assignee engineer@example.com
     fp issues comment-add <issue-id> --body "policy is in observe mode"
     fp issues resolve <issue-id> --yes
     ```
 
-    使用 `fp issues subscribe <issue-id>`、`fp issues unsubscribe <issue-id>` 和 `fp issues subscribers <issue-id>` 管理关注者。
+    `mute`、`dismiss` 和 `resolve` 会抑制或关闭 finding，因此每次操作都会先进行确认 — 在脚本中传入 `--yes`。`ack`、`reopen` 和 `assign` 是可撤销的记账操作，会立即生效。`ack`、`mute` 和 `dismiss` 接受 `--reason` 参数，建议填写：该原因作为持久化反馈保存在 finding 上，而非写入日志后被遗忘。`resolve`、`reopen` 和 `assign` 不接受原因参数。
 
-    审计发现相关命令请参阅 [Cloud CLI 审计与问题参考](/zh/reference/cloud-cli#audits)，问题管理请参阅 [`fp issues`](/zh/reference/cloud-cli#issues)。
+    两个对象的分配方式有所不同。`fp audits assign` 需要 `--to <email>` 且只设置一位负责人；再次运行会重新分配。`fp issues assign` 接受可重复的 `--assignee` 参数，并**替换**整个列表，因此省略该参数会清除所有负责人。
+
+    使用 `fp issues comment-list <issue-id>`、`fp issues count --state firing` 以及 `fp issues subscribe`/`unsubscribe`/`subscribers <issue-id>` 访问其余 issue 功能。
+
+    审计 finding 相关内容请参阅 [Cloud CLI 审计与 issue 参考](/zh/reference/cloud-cli#audits)，issue 管理请参阅 [`fp issues`](/zh/reference/cloud-cli#issues)。
   </Tab>
 </Tabs>
 
-## 审查发现
+## 审查 finding
 
-确认其包含以下内容：
+在做任何决定之前，有两个字段需要首先确认。
 
-- 稳定的故障模式，而非仅有一次性的标题描述
-- 严重性和运营影响
+**`kind`** 区分 `failure`（发生了错误）、`policy` 违规（违反了某条规则）和 `improvement`（工作可以做得更好）。它以徽章形式显示在 finding 上。`policy` 类型的 finding 可以由策略关闭；其他两类通常需要工作流变更、告警或人工介入。
+
+**`priority`** 是一个 0–1 的分值，每次运行时重新计算，finding 队列按此排序。Finding 页面在 **why it ranks here** 下以"值 × 权重"的形式进行分解：
+
+| 因素 | 权重 |
+| --- | --- |
+| Coverage | 0.30 |
+| Severity | 0.25 |
+| Magnitude | 0.25 |
+| Recency | 0.20 |
+
+然后确认 finding 包含以下内容：
+
+- 稳定的失败模式，而非仅有一次性的标题
+- 严重程度和运营影响
 - 受影响的会话 ID 或支撑查询
-- 足以复现该行为的上下文信息
+- 足够重现该行为的上下文
 - 与证据相符的建议响应
 
-## 使用问题管理响应工作
+要重现一个 finding，可完整拉取：`fp --json audits finding <id>` 会返回完整记录，包含其 `evidence`、`evidence_queries` 和 `scope` 字段，这正是分析实际运行的依据。`--json` 是全局选项，需放在命令之前。
 
-当发现需要分配、讨论、状态变更、评论或订阅者时，请创建或关联一个问题。问题还可以代表告警事件和手动上报的问题，这也是它归属于审计响应而非主导航栏的原因。
+## 使用 issue 管理响应
 
-修复措施部署并验证后，解决问题。当该故障模式已在审计范围内得到处理后，解决发现。这两个时刻可能并不一致。
+当 finding 需要分配、讨论、状态变更、评论或订阅者时，创建或关联一个 issue。Issue 的 `source` 字段记录其来源 — `audit`、`alert` 或 `manual` — 这也是控制台为 issues 提供独立 **Issues** 视图而非将其嵌套在审计下的原因。
 
-## 将问题转化为策略草稿
+订阅部分是自动进行的。用户在确认 issue、对其发表评论、被分配到 issue 或打开 issue 时会自动订阅 — `fp issues subscribers` 只列出活跃订阅者，因此它不仅仅是手动订阅的列表。评论会向所有活跃订阅者发送邮件，且发表评论只需要 `issues:read` 权限，因此只读审阅者永远不会是沉默的旁观者。
+
+整改措施部署并验证后解决 issue；失败模式在审计范围内得到处理后解决 finding。这两个时机可能并不相同。
+
+## 将 issue 转化为策略草稿
 
 <Tabs>
-  <Tab title="仪表板">
-    1. 打开问题，验证其发现、引用的会话、根本原因和建议。
-    2. 选择 **generate policy**，查看候选结果和建议的执行意图。**no policy** 结果意味着该行为可能需要告警、工作流变更或人工响应，而非策略。
-    3. 选择 **write this policy**，然后在 **Admin → policy editor** 中审查并测试生成的源码，再选择 **publish version**。若您不认可候选检查结果，可使用 **open the editor anyway**。
-    4. 前往 **Admin → enforcement**，以 **observe** 模式部署该版本，并在 **Observe → policy** 下验证其决策，然后再正式执行。
+  <Tab title="控制台">
+    1. 打开 issue，核实其 finding、引用的会话、根因和建议措施。
+    2. 选择 **generate policy**，查看候选结果和拟定的执行意图。**no policy** 结果意味着该行为可能需要告警、工作流变更或人工响应。
+    3. 选择 **write this policy**，然后在 **Admin → policy editor** 中审查并测试生成的源码，再选择 **publish version**。若不认同候选检查结果，可使用 **open the editor anyway**。
+    4. 前往 **Admin → enforcement**，以 **observe** 模式部署该版本，并在 **Observe → policy** 下验证其决策，再切换为强制执行。
 
-    问题标题、发现描述、根本原因、建议和候选意图将共同构成草稿。不会自动发布或部署任何内容。
+    Issue 标题、finding 描述、根因、建议措施和候选意图有助于构成草稿。不会自动发布或部署任何内容。
   </Tab>
   <Tab title="CLI">
-    在仪表板中打开问题之前，使用 CLI 检查证据：
+    在控制台打开 issue 之前，先用 CLI 检查证据：
 
     ```bash
     fp issues show <issue-id>
-    fp audits finding <finding-id>
+    fp --json audits finding <finding-id>
     fp events --session-id <session-id> --full --all
     ```
 
-    策略候选、Cloud 发布和集群部署均为仪表板工作流。如需先在本地验证等效策略源码，请使用 `failproofai policies --install --custom <file>`。
+    控制台是一条通道，CLI 是另一条。`fp policies compose "<what it should do>"` 起草一个策略，`fp policies publish <id> ./policy.mjs` 生成一个版本（发布不等于部署），`fp fleet deploy <machine> --add <id>:observe` 以影子模式将其部署到某台机器上。`:observe` 后缀是必需的 — 单独使用 `--add <id>` 会立即强制执行。通过 `fp guardrails summary --since 24h` 查看其本应执行的操作，然后用 `--add <id>:enforce` 提升为强制执行。
+
+    如需先在本机测试等效的策略源码，将本地 CLI 指向该文件：
+
+    ```bash
+    failproofai policies -i -c ./checkout-policies.js
+    ```
+
+    文件名以 `policies.js`、`policies.mjs` 或 `policies.ts` 结尾的文件，放入项目中的 `.failproofai/policies/` 目录或 `~/` 下，无需任何标志即可在每次 hook 事件时自动加载。
   </Tab>
 </Tabs>
 
 <Card title="编写策略" icon="shield-plus" href="/zh/policies/editor">
-  将已确认的、可重复的操作模式转化为策略版本。
+  将已确认的、可重现的行为模式转化为一个策略版本。
 </Card>

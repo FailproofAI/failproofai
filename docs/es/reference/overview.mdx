@@ -1,20 +1,25 @@
 ---
 title: "Integraciones y referencia"
-description: "Conecta harnesses de agentes compatibles, SDKs, CLIs y la API HTTP."
+description: "Conecta agentes, SDKs, CLIs y la API HTTP compatibles."
 icon: "braces"
 ---
 
 Elige la integración más cercana al entorno donde ya se ejecuta tu agente.
 
+Esta sección cubre dos herramientas de línea de comandos con funciones distintas. `failproofai` se ejecuta en la máquina donde corre tu agente y aplica la política dentro del bucle del agente; `fp` se comunica con Failproof AI Cloud y devuelve lo que hizo ese bucle. La configuración de máquinas solo está disponible en Linux y macOS — `failproofai config` rechaza cualquier otro sistema y no escribe nada, en lugar de dejar una máquina a medio configurar.
+
 <Columns cols={2}>
-  <Card title="Harnesses de agentes" icon="plug-zap" href="/es/reference/harnesses">
-    Instala hooks para CLIs de agentes de código y autónomos compatibles.
+  <Card title="Agentes compatibles (harnesses)" icon="plug-zap" href="/es/reference/harnesses">
+    Instala hooks para CLIs de agentes de codificación y autónomos compatibles.
   </Card>
   <Card title="Frameworks de agentes y SDKs" icon="plug" href="/es/start/integrations">
     Instrumenta LangGraph, CrewAI, LlamaIndex, Pydantic AI o un agente personalizado.
   </Card>
   <Card title="Referencia del SDK de Python" icon="python" href="/es/reference/custom-agents">
-    Configuración, el catálogo de eventos, reglas de correlación y entrega.
+    Configuración, catálogo de eventos, reglas de correlación y entrega.
+  </Card>
+  <Card title="Eventos y configuración" icon="list-tree" href="/es/reference/events-and-configuration">
+    Los dos vocabularios de eventos, campos reservados y el archivo de configuración de la máquina.
   </Card>
   <Card title="Panel local" icon="monitor-cog" href="/es/reference/local-dashboard">
     Revisa proyectos locales, sesiones, actividad de políticas y auditorías sin conexión.
@@ -23,59 +28,71 @@ Elige la integración más cercana al entorno donde ya se ejecuta tu agente.
     Configura la captura local, hooks, políticas, auditorías, entrega y estado de la máquina.
   </Card>
   <Card title="CLI de Failproof Cloud" icon="cloud-cog" href="/es/reference/cloud-cli#cli-commands">
-    Consulta y administra sesiones de Cloud, auditorías, incidencias, alertas, claves, usuarios y configuraciones.
+    Consulta y administra sesiones, auditorías, incidencias, alertas, claves, usuarios y configuraciones de Cloud.
   </Card>
-  <Card title="SDK del evaluador" icon="gauge" href="/es/reference/evaluator-sdk">
+  <Card title="SDK de evaluador" icon="gauge" href="/es/reference/evaluator-sdk">
     Puntúa sesiones completas o inactivas con un servicio FastAPI.
   </Card>
   <Card title="Políticas personalizadas" icon="shield-plus" href="/es/reference/policy-sdk">
     Crea y prueba decisiones allow, instruct y deny específicas para tu flujo de trabajo.
   </Card>
-  <Card title="Auto-hospedaje" icon="cloud-cog" href="/es/reference/self-hosting">
-    Despliega el plano de control de Cloud en un clúster de Kubernetes gestionado por el cliente.
+  <Card title="API HTTP" icon="code" href="/es/reference/http-api">
+    Referencia generada para la superficie pública `/v1`.
+  </Card>
+  <Card title="Resolución de problemas" icon="circle-help" href="/es/reference/troubleshooting">
+    Diagnostica hooks que no se disparan, eventos que no llegan y denegaciones inesperadas.
+  </Card>
+  <Card title="Autoalojamiento" icon="cloud-cog" href="/es/reference/self-hosting">
+    Despliega el plano de control de Cloud en un clúster Kubernetes gestionado por el cliente.
   </Card>
 </Columns>
 
-La [referencia de la API HTTP](/es/reference/http-api) generada cubre la superficie pública `/v1`. Las páginas escritas manualmente explican flujos de trabajo que abarcan múltiples endpoints o utilizan interfaces administrativas fuera de esa superficie pública.
+Las páginas de la API HTTP generadas cubren la superficie pública `/v1`. Las páginas escritas a mano explican flujos de trabajo que abarcan múltiples endpoints o que usan interfaces administrativas fuera de esa superficie pública.
 
-## Conectar un agente y verificar los datos
+## Conectar un agente y verificar datos
 
 <Tabs>
   <Tab title="Panel">
     1. Abre **Administración → Claves**, crea una clave con `events:add` y `policies:pull`, y copia el secreto.
-    2. Configura la integración utilizando la página correspondiente indicada arriba.
-    3. Abre **Observar → Eventos** para confirmar que los eventos llegan, luego **Observar → Sesiones** para confirmar que forman ejecuciones completas.
+    2. Configura la integración usando la página correspondiente de arriba.
+    3. Abre **Observar → Eventos** para confirmar que llegan eventos, luego **Observar → Sesiones** para confirmar que forman ejecuciones completas.
     4. Filtra por el entorno de la integración e inspecciona una sesión para verificar los campos de modelo, herramienta, error y política que necesitan las auditorías.
 
-    Comienza con el panel de claves. Los permisos seleccionados determinan si la máquina puede enviar eventos y recibir políticas gestionadas desde Cloud.
+    Comienza por el panel de claves. Los permisos seleccionados determinan si la máquina puede enviar eventos y recibir políticas gestionadas desde Cloud.
 
-    ![El panel de nueva clave API utilizado para conceder permisos de ingesta de eventos y entrega de políticas.](/images/dashboard/key-create.png)
+    ![El panel de nueva clave API usado para conceder permisos de ingesta de eventos y entrega de políticas.](/images/dashboard/key-create.png)
 
-    Después de conectar la integración, usa la lista de Sesiones para confirmar que sus eventos se están agrupando en ejecuciones completas en el entorno esperado.
+    Tras conectar la integración, usa la lista de Sesiones para confirmar que sus eventos se están agrupando en ejecuciones completas en el entorno esperado.
 
-    ![La lista de Sesiones utilizada para verificar que una integración recién conectada está reportando ejecuciones completas del agente.](/images/dashboard/sessions-list.png)
+    ![La lista de Sesiones usada para verificar que una integración recién conectada reporta ejecuciones completas del agente.](/images/dashboard/sessions-list.png)
 
-    Abre una de estas sesiones antes de dar la integración por completa; el trazado debe contener el modelo, la herramienta, el error y la evidencia de política que necesitan tus auditorías.
+    Abre una de estas sesiones antes de considerar la integración completa; el rastreo debe contener el modelo, la herramienta, el error y la evidencia de política que necesitan tus auditorías.
   </Tab>
   <Tab title="CLI">
-    Crea una clave de máquina, conecta el daemon de Failproof y verifica la primera sesión.
+    Crea una clave de máquina, configura y conecta esta máquina, elige políticas y verifica la primera sesión.
 
     ```bash
     fp keys create agent-production \
       --add events:add \
       --add policies:pull
 
-    failproofai config \
-      --connect https://app.befailproof.ai \
-      --token <machine-key>
+    failproofai config --token <machine-key>
+
+    failproofai policies add FailproofAI/policies
 
     failproofai flush --wait
-    fp sessions --since 1h --env production
-    fp events --since 1h --env production --limit 20
+    fp sessions --since 1h
+    fp events --since 1h --limit 20
     ```
+
+    Ninguno de los comandos de verificación filtra por entorno, porque una máquina recién configurada etiqueta todos los eventos como `local`. Añade `--env production` solo después de establecer `collector.environment` — consulta [Cambiar una etiqueta de entorno](/es/reference/events-and-configuration#change-an-environment-label).
+
+    Pasar un token es la solicitud de conexión, por lo que `failproofai config --token <machine-key>` hace lo mismo en un solo comando. Es preferible usar la variable de entorno: un argumento es visible desde `ps` por cualquier usuario del sistema, y queda registrado en el historial de la shell y en los logs de CI.
+
+    El paso de políticas no es opcional. `failproofai config` instala el daemon y conecta todos los CLIs de agentes compatibles, pero no elige ninguna política deliberadamente, por lo que una máquina recién configurada no aplica nada hasta que añadas un paquete.
 
     Usa `fp --json sessions ...` cuando otro programa vaya a consumir el resultado. Los flags globales como `--json`, `--org` y `--base-url` deben ir antes del comando.
 
-    Consulta la [referencia del CLI de Failproof AI](/es/reference/failproof-cli) para los comandos locales y la [referencia del CLI de Failproof Cloud](/es/reference/cloud-cli#cli-commands) para los comandos `fp`.
+    Consulta la [referencia de la CLI de Failproof AI](/es/reference/failproof-cli) para los comandos locales y la [referencia de la CLI de Failproof Cloud](/es/reference/cloud-cli#cli-commands) para los comandos de `fp`.
   </Tab>
 </Tabs>

@@ -1,167 +1,100 @@
 ---
 title: "トラブルシューティング"
-description: "セッションの欠落、ポリシーの欠落、配信の失敗、エージェントアクションのブロックを診断します。"
+description: "セットアップ、配信、ポリシー、セッションの問題を診断します。"
 icon: "wrench"
 ---
 
-<AccordionGroup>
-  <Accordion title="セッションがクラウドに表示されない">
-    <Tabs>
-      <Tab title="ダッシュボード">
-        **Administration → Keys** を開き、マシンキーがアクティブで `events:add` 権限を持っていることを確認します。次に **Observe → Events** を開き、時間範囲を広げ、環境とエージェントのフィルターをクリアします。イベントが存在する場合は、セッション ID を検索し、**Observe → Sessions** でグループ化を確認します。イベントが存在しない場合は、CLI から Failproof デーモンを診断してください。
+まず以下を実行してください：
 
-        ![主要フィルターが表示され、最近のエージェントイベントが届いているライブイベントストリーム。](/images/dashboard/events-stream-current.png)
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai flush --wait --timeout 60
-        fp list envs
-        fp events --since 24h --limit 20
-        fp sessions --since 24h --limit 20
-        ```
+```bash
+failproofai config --status
+failproofai policies
+```
 
-        キャプチャが有効であること、設定済みキーが `events:add` を持っていること、ダッシュボードのフィルターが送出された環境と一致していることを確認します。
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="Python SDK のイベントがディスクに残っている">
-    <Tabs>
-      <Tab title="ダッシュボード">
-        **Observe → Events** のフィルターをクリアし、正確な SDK セッション ID を検索します。何も表示されない場合は、ソースマシン上の SDK スプールと Failproof デーモンを確認してください。
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai flush --wait
-        ```
+## エージェントが接続されていない
 
-        デーモンが起動・接続されていることを確認してください。SDK はデーモンの有無にかかわらずスプールします。スプールディレクトリはあらかじめ存在している必要は**ありません**（ライターが作成します）。環境変数によるスプール先の選択はできません。`$FAILPROOFAI_HOME/custom-agents`、なければ `~/.failproofai/custom-agents` が唯一のルートであり、`configure(base_dir=...)` が唯一のオーバーライド手段です。プロセスが `SIGKILL` または OOM キルされた場合、キュー内に残っていたものは失われます。これを防ぐには `SIGTERM` を処理してください。
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="マシンがポリシーを受信しない">
-    <Tabs>
-      <Tab title="ダッシュボード">
-        **Admin → enforcement** を開き、マシンを選択して、割り当て済み・報告済み・以前のバージョンを比較します。デプロイメントスコープにそのマシンが含まれており、キーが `policies:pull` を持っていることを確認します。ポリシーの配信が機能していない場合でも、インジェストは正常に動作することがあります。
+セットアップを再実行してください：
 
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai update
-        failproofai config --status
-        ```
+```bash
+failproofai config
+```
 
-        マシン ID とラベルがダッシュボードのターゲットと一致していることを確認します。既存のクレデンシャルがイベントインジェストのみを許可している場合は、ポリシー対応キーで再接続してください。
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="デーモンが利用できないためアクションが拒否される">
-    <Tabs>
-      <Tab title="ダッシュボード">
-        **Admin → enforcement** を開き、マシンの最終確認日時と報告されたバージョンを確認します。マシンが古い状態の場合は、ローカルデーモンの問題として対処してください。デーモンが利用できないことを回避するためだけにデプロイ済みポリシーを弱めないでください。
+セットアップは Linux と macOS に対応しています。サービスのインストール時に一度だけ管理者権限が必要ですが、sudo パスワードの入力を求めることはありません。
 
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai update
-        failproofai config
-        failproofai config --status
-        ```
+ハーネスのパスとスコープについては [Harnesses](/ja/reference/harnesses) を参照してください。
 
-        `failproofaid` を再起動または更新し、CLI とデーモンのプロトコルバージョンが異なる場合は設定を再実行してください。設定されたデーモンパスは、設計上フェールクローズ（安全側に倒す）動作をします。
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="カスタムポリシーが読み込まれない">
-    <Tabs>
-      <Tab title="ダッシュボード">
-        クラウドで作成したポリシーの場合は、**Admin → policy editor** を開き、ドラフトを選択して、公開前にバリデーションエラーを確認します。ローカルポリシーの場合は、CLI でバリデーションを行い、テストアクション後に **Observe → policy** を開いて、判断結果が届いているか確認します。
+## セッションが見つからない
 
-      </Tab>
-      <Tab title="CLI">
-        ファイル名が `policies.js`、`policies.mjs`、または `policies.ts` で終わっていること、モジュールが `customPolicies.add(...)` を呼び出していること、ポリシーファイルからインポートが解決できることを確認します。
+```bash
+failproofai flush --wait
+failproofai backfill --since 30d --dry-run
+failproofai harness list
+```
 
-        ```bash
-        failproofai policies --install --custom ./checkout.policies.ts
-        failproofai policies
-        ```
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="監査で検出結果がない">
-    <Tabs>
-      <Tab title="ダッシュボード">
-        **Analyze → audits** を開き、実行を選択して、モデル分析が実行されたかどうかを確認します。次に、スコープとウィンドウを **Observe → sessions** と比較し、その母集団から代表的なトレースを開きます。
+過去の履歴を再送信するには `--dry-run` を外してください。以下のコマンドでトランスクリプトの場所を追加できます：
 
-        ゼロ件の結果が意味を持つのは、分析が正常に実行された場合のみです。分析がスキップまたは失敗した場合、実行は検出結果を生成せず、未分析のウィンドウを将来の正常な実行に向けて開いたままにします。モデル分析が無効になっている場合も、統計は記録されますが検出結果は生成されないため、監査の検出結果はゼロになります。
+```bash
+failproofai harness add-path <harness> [label=]<path>
+```
 
-        ![環境、エージェント、頻度、スイープウィンドウによってセッション母集団を定義する監査フォーム。](/images/dashboard/audit-new.png)
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        fp audits show <audit-name>
-        fp audits runs <audit-name>
-        fp sessions --since 24h --env production
-        fp audits context-show <audit-name>
-        fp audits run <audit-name>
-        fp audits findings --audit <audit-name>
-        ```
+同じプロジェクトのコピーが 2 か所に存在する場合は、ラベルを使用してください。
 
-        実行がキューに留まっている場合は、監査エージェントのキャパシティが空くのを待つか、デプロイメントオペレーターに監査フリートの確認を依頼してください。キューに入った監査はリトライされます。即座にスキップされることはありません。
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="オンライン評価が自動的に実行されない">
-    <Tabs>
-      <Tab title="ダッシュボード">
-        完了したセッションを開き、手動評価が成功するか確認します。ホスト型クラウドでは、現在ダッシュボード上での評価エンドポイント制御はサポートされていません。サーバーオペレーターが設定する必要があります。
-      </Tab>
-      <Tab title="CLI">
-        評価エンドポイント自体を確認し、最近の評価状態を確認します。
+## 保護されたアクションがすべて拒否される
 
-        ```bash
-        curl https://evaluator.example.com/health
-        fp evals --since 1h
-        ```
+設定済みのマシンでは、`failproofaid` が唯一の評価者です。応答できない場合、保護されたアクションはフェイルクローズされます。
 
-        セルフホスト型クラウドでは、サーバーに `EVALUATOR_ENDPOINT` が設定されており、`EVALUATOR_TOKEN` が評価エンドポイントと一致していることを確認します。エンドポイントが存在しない場合、自動評価は無効になります。
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="クラウド CLI の認証が誤った組織を対象にしている">
-    <Tabs>
-      <Tab title="ダッシュボード">
-        組織スイッチャーを使用し、CLI と結果を比較する前に、想定されるスラッグと権限を確認します。
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        fp whoami
-        fp orgs current
-        fp orgs perms
-        ```
+```bash
+failproofai config --status
+systemctl status failproofaid@$USER        # Linux
+sudo launchctl print system/ai.failproof.failproofaid.$USER  # macOS
+```
 
-        API キーモードでは、`fp --org <slug> --api-key <key> ...` を指定するか、`AGENTEYE_ORG` を設定します。保存された人間セッションの組織状態は、API キーリクエストでは意図的に無視されます。
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="ポリシーが正当な作業をブロックする">
-    <Tabs>
-      <Tab title="ダッシュボード">
-        **Observe → policy** を開き、判断結果とリンクされたセッションを保存し、誤検知の条件を特定します。次に **Admin → enforcement** を開き、影響を受けたマシンを以前のバージョンにロールバックします。**Policy editor** でより絞り込んだバージョンを作成し、小さなスコープでテストして、正当な作業が成功した場合のみスコープを拡大してください。
+`failproofai config` を実行してサービスを修復または再インストールしてください。
 
-      </Tab>
-      <Tab title="CLI">
-        クラウドデプロイメントのロールバックはダッシュボードからのみ可能です。ローカルセッションの一時停止では、クラウド管理のポリシーは無効になりません。ダッシュボードが利用できない場合は、マシンとデプロイメントの状態を記録し、ブロックされたアクションを繰り返し再試行するのではなく、ダッシュボードへのアクセスを復元してください。
+## 特定のパックが拒否している
 
-        ```bash
-        failproofai config --status
-        ```
-      </Tab>
-    </Tabs>
-  </Accordion>
-</AccordionGroup>
+`failproofai policies` を実行すると、読み込めないパックが表示されます。選択したパックは削除されずにフェイルクローズされます。
 
-サポートに連絡する際は、CLI バージョン、ハーネス、環境、関連するセッションまたはデプロイメント ID、およびシークレットを除いた `failproofai config --status` の出力を含めてください。
+よくある原因：
+
+- インストール後にアーティファクトが変更された。
+- マニフェストとバンドルされたポリシーの内容が一致していない。
+- ファイルが見つからないか、インポートできない。
+- パックがサポートされていないイベント、ツール、またはポリシーの形式を使用している。
+
+パックを削除するか、修正済みのリリースをインストールしてください：
+
+```bash
+failproofai policies remove owner/repo
+failproofai policies add owner/repo@<release>
+```
+
+## クラウドが切断されている
+
+キーには環境変数の使用を推奨します：
+
+```bash
+export FAILPROOFAI_CLOUD_TOKEN="<key>"
+failproofai config
+failproofai config --status
+```
+
+マシンはポリシーの取得とアクティビティの送信を独立して行えます。ステータスにはその両方が表示されます。
+
+## ポリシーがブロックしなかった
+
+以下の 3 点を確認してください：
+
+1. ポリシーが有効になっている：`failproofai policies`
+2. そのイベントとツールがアクションに一致している。
+3. そのハーネスがイベントを強制できる。
+
+ツールコールの deny は、サポートされている全 12 のハーネスで検証されています。その他のイベントは異なります。[強制実行の対応状況](/ja/reference/harnesses#enforcement-capability) を参照してください。
+
+## ダウンロードがブロックされている
+
+- `FAILPROOFAI_NO_DOWNLOAD=1` を設定すると、ネットワークダウンロードが拒否されます。
+- `FAILPROOFAI_DAEMON_BASE_URL` でサービスのダウンロード先をミラーに向けます。
+- `FAILPROOFAI_PACK_BASE_URL` でパックのダウンロード先をミラーに向けます。
+
+インストール済みのパックは、ダウンロードが無効になっていても引き続き機能します。

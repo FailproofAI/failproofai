@@ -1,149 +1,135 @@
 ---
 title: "Failproof AI CLI"
-description: "安装 hooks、管理本地策略、连接 Cloud 并操作本地守护进程。"
+description: "配置机器、管理策略、查看本地活动并连接 Cloud。"
 icon: "terminal"
 ---
 
-使用 `npm install -g failproofai` 安装本地 CLI。不带参数运行可打开本地策略仪表板。
+使用 `npm install -g failproofai` 安装。不带参数运行 `failproofai` 可打开本地仪表板。
 
-该软件包需要 Node.js 20.9 或更高版本。开发和源码安装支持 Bun 1.3 或更高版本。`failproofai configure` 和 `failproofai setup` 是 `failproofai config` 的别名；`failproofai p` 是 `failproofai policies` 的别名。
+## 核心命令
+
+| 命令 | 功能说明 |
+| --- | --- |
+| `failproofai config` | 配置 Agent、后台服务及可选的 Cloud 连接 |
+| `failproofai config --token <key>` | 免交互配置并连接 |
+| `failproofai config --status` | 显示连接状态、服务版本和暂停状态 |
+| `failproofai policies` | 列出策略及其启用状态 |
+| `failproofai policies add <name>` | 启用某条策略 |
+| `failproofai policies add <owner>/<repo>` | 安装策略包 |
+| `failproofai policies remove <name-or-pack>` | 禁用策略或移除策略包 |
+| `failproofai policies show <owner>/<repo>` | 安装前查看策略包内容 |
+| `failproofai publish` | 将你的策略发布为策略包 |
+| `failproofai audit` | 扫描本地 Agent 历史记录 |
+| `failproofai harness` | 管理额外的会话位置 |
+| `failproofai flush` | 立即发送队列中的事件 |
+| `failproofai backfill` | 重新读取较早的 Agent 历史记录 |
+| `failproofai update` | 完成 npm 升级并更新服务 |
+| `failproofai uninstall` | 移除钩子和服务 |
+
+`policy`、`pack` 和 `p` 均为 `policies` 的别名，但文档统一使用 `policies`。
 
 ## 配置机器
 
 ```bash
 npm install -g failproofai
-failproofai config \
-  --connect https://app.befailproof.ai \
-  --token <machine-key> \
-  --machine-label checkout-prod-01
-failproofai policies --install
+failproofai config
+failproofai policies add FailproofAI/policies
 failproofai config --status
 ```
 
-不带参数运行 `failproofai` 可打开本地策略仪表板。
+初始配置不会选择任何策略包。在添加策略包之前，仅运行 `block-failproofai-commands`。
 
-| 命令 | 说明 |
-| --- | --- |
-| `failproofai config` | 运行交互式机器配置 |
-| `failproofai config --connect <url> --token <key>` | 连接 Cloud 数据采集和策略下发 |
-| `failproofai config --status` | 显示连接、守护进程、下发及暂停状态 |
-| `failproofai policies` | 列出内置、自定义、约定、pack 及 Cloud 托管策略 |
-| `failproofai policies --install` | 安装 hooks 并启用策略 |
-| `failproofai policy add <name>` | 启用单条策略——内置策略或来自已安装 pack 的 `<pack-id>:<name>` |
-| `failproofai policy remove <name>` | 禁用单条策略，命名方式相同 |
-| `failproofai policies --uninstall` | 禁用策略或移除 harness hooks |
-| `failproofai pack list` | 列出已安装的策略 pack 及其包含的所有策略 |
-| `failproofai pack add <source>` | 从 GitHub release 安装策略 pack；不指定 tag 则获取最新版本并锁定 |
-| `failproofai pack add --bundled` | 以 pack 形式安装内置策略，来源为本软件包，无需网络 |
-| `failproofai pack build <entry.mjs>` | 为自定义 pack 构建三个发布资产 |
-| `failproofai pack remove <publisher/name>` | 停用已安装的 pack |
-| `failproofai audit` | 扫描本地 agent 历史记录并打开本地审计视图 |
-| `failproofai audit --schedule [days] --email <address>` | 定期安排本地扫描并将结果发送至指定邮箱 |
-| `failproofai audit --status` | 显示报告地址、间隔时间及下次计划扫描时间 |
-| `failproofai audit --no-schedule` | 停止定期扫描，但不删除审计历史 |
-| `failproofai harness list` | 列出额外的捕获路径 |
-| `failproofai flush --wait` | 投递当前事件缓冲队列 |
-| `failproofai backfill --since 30d` | 重新读取此前已处理的历史记录 |
-| `failproofai config --pause [duration]` | 暂停当前本地会话，默认 30 分钟，最长 8 小时 |
-| `failproofai config --resume` | 恢复已暂停的本地会话；添加 `--all` 可清除所有暂停 |
-| `failproofai update` | 完成软件包迁移并更新守护进程 |
-| `failproofai migrate --dry-run` | 预览或执行待处理的 home 目录布局迁移 |
-| `failproofai uninstall` | 在移除软件包前卸载 hooks 和守护进程 |
-| `failproofai --version` | 打印已安装的软件包版本 |
-| `failproofai --help` | 显示命令和全局用法 |
+无人值守的 Cloud 配置方式：
 
-## 配置标志
+```bash
+export FAILPROOFAI_CLOUD_TOKEN="<key>"
+failproofai config
+```
+
+如需在不发送会话记录的情况下上报决策，请先完成连接，然后在 `~/.failproofai/config.json` 中将 `collector.sessions` 设为 `false`。当前 `--no-transcripts` 启动标志已被解析，但不会自动应用该设置。
+
+在机器完成连接后，使用 `--machine-label <name>` 可对其重命名。`--connect <url>` 是仅用于注册的命令，适用于已完成配置的机器。
+
+## 策略与策略包
+
+```bash
+failproofai policies
+failproofai policies add block-sudo
+failproofai policies show owner/repo
+failproofai policies add owner/repo --category git,database
+failproofai policies remove owner/repo
+```
+
+包含斜杠的参数为策略包来源，不含斜杠的参数为策略名称。
+
+常用策略包选择标志：
 
 | 标志 | 用途 |
 | --- | --- |
-| `--connect <url> --token <key>` | 非交互式连接 |
-| `--machine-id <id>` | 设置稳定的机器 ID |
-| `--machine-label <name>` | 设置或更改仪表板标签 |
-| `--no-transcripts` | 仅发送决策结果，不包含对话记录内容 |
-| `--disconnect` | 停止 Cloud 策略拉取和事件投递 |
-| `--status` | 显示当前机器状态 |
-| `--pause [duration]` | 暂停当前目录中最新的会话；接受秒、分钟或小时，默认 30 分钟 |
-| `--resume` | 提前结束匹配的暂停 |
-| `--session <id>` | 为暂停或恢复指定明确的会话 |
-| `--all` | 与 `--resume` 配合使用，结束所有活跃暂停 |
+| `--policy a,b` | 选择指定名称的策略 |
+| `--category x,y` | 按类别选择 |
+| `--all` | 选择全部 |
+| `--cli <agents...>` | 限定为指定的 Harness |
 
-本地暂停会为单个会话挂起内置、自定义、约定和 pack 策略。暂停始终会到期，且不会禁用 Cloud 托管策略。`block-failproofai-commands`——该策略始终开启且无法被禁用或暂停——可防止被监控的 agent 自行使用此逃逸入口。
+使用 `failproofai policies -i -c <path>` 可从任意路径加载自定义策略。`.failproofai/policies/` 目录下符合 `*policies.{js,mjs,ts}` 命名规范的文件会自动加载。
 
-## 策略标志
-
-| 标志 | 用途 |
-| --- | --- |
-| `--install`, `-i` | 启用策略并安装 harness hooks |
-| `--uninstall`, `-u` | 禁用策略或移除 hooks |
-| `--cli <names...>` | 针对一个或多个受支持的 harness |
-| `--scope user\|project\|local\|all` | 选择配置作用域；`all` 用于卸载 |
-| `--beta` | 包含 beta 策略 |
-| `--custom`, `-c <path>` | 验证并加载自定义策略文件；可重复使用 |
-
-## 数据投递与维护标志
-
-| 命令 | 标志 |
-| --- | --- |
-| `backfill` | `--since <30d\|6m\|YYYY-MM-DD>`, `--dry-run` |
-| `flush` | `--wait`, `--timeout <seconds>` |
-| `update` | `--no-daemon` |
-| `migrate` | `--dry-run` |
-| `uninstall` | `--purge`, `--dry-run`, `--yes` |
-
-`failproofai update` 应在 `npm install -g failproofai@latest` 之后运行；它会执行 home 目录布局迁移、安装匹配的守护进程二进制文件并重启服务。`--no-daemon` 仅执行布局迁移。
-
-## Harness 路径
-
-```text
-failproofai harness list [harness]
-failproofai harness add-path <harness> [label=]<path>
-failproofai harness remove-path <harness> <path-or-label>
-```
-
-支持的 harness 名称包括 `claude`、`codex`、`copilot`、`cursor`、`opencode`、`pi`、`hermes`、`openclaw`、`factory`、`devin`、`antigravity` 和 `goose`。
-
-当两个根目录包含同一项目的副本时，标签会为派生的 agent ID 提供命名空间。重叠的根目录和重复的标签会被拒绝，以防止重复采集或游标损坏。额外路径配置无需重启守护进程即可重新加载。
-
-容器环境可以使用逗号分隔的变量 `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` 替换文件配置的额外路径，例如：
+## 暂停策略执行
 
 ```bash
-export FAILPROOFAI_OPENCLAW_EXTRA_PATHS="user1=/srv/openclaw-a,user2=/srv/openclaw-b"
-```
-
-## 环境变量
-
-持久化机器行为请使用配置文件。环境变量最适合用于容器、测试和单进程场景。
-
-| 变量 | 用途 |
-| --- | --- |
-| `FAILPROOFAI_HOME` | 重定位完整的 `~/.failproofai` 目录布局 |
-| `FAILPROOFAI_LOG_LEVEL` | 设置本地日志详细级别 |
-| `FAILPROOFAI_HOOK_LOG_FILE` | 将 hook 诊断信息写入指定文件 |
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | 为当前进程禁用匿名遥测 |
-| `FAILPROOFAI_NO_FIRST_RUN=1` | 跳过交互式首次运行配置 |
-| `FAILPROOFAI_NO_AUTO_AUDIT=1` | 跳过配置完成后的本地审计 |
-| `FAILPROOFAI_LLM_BASE_URL` | 覆盖 LLM 策略使用的 OpenAI 兼容端点 |
-| `FAILPROOFAI_LLM_API_KEY` | 提供 LLM 策略使用的 API 密钥 |
-| `FAILPROOFAI_LLM_MODEL` | 选择 LLM 策略使用的模型 |
-| `FAILPROOFAI_POLICY_LOAD_TIMEOUT_MS` | 限制自定义策略模块的加载超时 |
-| `FAILPROOFAI_NO_DOWNLOAD=1` | 拒绝获取 pack 和守护进程二进制文件；已安装的内容继续执行 |
-| `FAILPROOFAI_PACK_BASE_URL` | 从镜像而非 `github.com` 获取 pack |
-| `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` | 替换指定 harness 已配置的额外捕获路径 |
-| `NO_COLOR` | 禁用彩色终端输出 |
-
-Agent 专属的 home 变量（如 `CLAUDE_PROJECTS_PATH`、`CURSOR_HOME`、`HERMES_HOME` 和 `OPENCLAW_HOME`）可覆盖 Failproof AI 发现对应 harness 本地会话的路径。
-
-## 安全地暂停或移除机器
-
-```bash
-failproofai config --pause
+failproofai config --pause 10m
 failproofai config --status
 failproofai config --resume
 ```
 
-本地会话暂停不会禁用 Cloud 托管策略。当发布流程本身出现问题时，请通过 Cloud 执行工作流恢复 Cloud 部署。
+暂停仅作用于当前本地会话，且始终会到期。它不会暂停 Cloud 管理的策略或 `block-failproofai-commands`。
 
-移除 npm 软件包之前，请先移除已安装的 hooks 和守护进程：
+## 审计与数据上报
+
+```bash
+failproofai audit
+failproofai audit --schedule 7 --email team@example.com
+failproofai audit --status
+failproofai flush --wait
+failproofai backfill --since 30d --dry-run
+```
+
+`backfill` 会读取 `~/.failproofai/config.json`。去掉 `--dry-run` 即可重新发送历史记录。
+
+## 额外会话位置
+
+```bash
+failproofai harness list
+failproofai harness add-path claude work=/srv/team/.claude/projects
+failproofai harness remove-path claude work
+```
+
+标签可防止来自两个相同 Home 目录副本的会话因推导出相同 Agent ID 而被合并。
+
+支持的 Harness 包括：`claude`、`codex`、`copilot`、`cursor`、`opencode`、`pi`、`hermes`、`openclaw`、`factory`、`devin`、`antigravity` 和 `goose`。各 Harness 的作用域支持情况不同，详见 [Harnesses](/zh/reference/harnesses)。
+
+## 常用环境变量
+
+| 变量 | 用途 |
+| --- | --- |
+| `FAILPROOFAI_CLOUD_TOKEN` | Cloud 机器密钥 |
+| `FAILPROOFAI_CLOUD_URL` | 覆盖 Cloud URL |
+| `FAILPROOFAI_HOME` | 修改本地状态目录路径 |
+| `FAILPROOFAI_NO_DOWNLOAD=1` | 拒绝下载策略包和服务 |
+| `FAILPROOFAI_DAEMON_BASE_URL` | 使用服务二进制镜像 |
+| `FAILPROOFAI_PACK_BASE_URL` | 使用策略包镜像 |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | 禁用首次运行提示 |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | 禁用匿名 CLI 遥测 |
+| `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` | 替换某个 Harness 的额外路径 |
+| `NO_COLOR` | 禁用终端颜色输出 |
+
+## 移除或升级
+
+```bash
+npm install -g failproofai@latest
+failproofai update
+```
+
+移除软件包前请先执行：
 
 ```bash
 failproofai uninstall --dry-run
@@ -151,8 +137,8 @@ failproofai uninstall --yes
 npm rm -g failproofai
 ```
 
-运行 `failproofai <command> --help` 可查看特定版本的详细信息。
-
 <Warning>
-  请在 `npm rm -g failproofai` 之前运行 `failproofai uninstall`；npm 不会移除已安装的 agent hooks 或守护进程服务。
+  请在移除 npm 包之前运行 `failproofai uninstall`。npm 不会自动移除已安装的钩子或后台服务。
 </Warning>
+
+运行 `failproofai help <command>` 可查看当前安装版本的完整选项。

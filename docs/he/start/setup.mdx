@@ -1,69 +1,69 @@
 ---
 ---
 title: "בחר את ההגדרה שלך"
-description: "בחר אכיפה מקומית, Failproof AI Cloud, או פריסה ארגונית."
-icon: "waypoints"
+description: "הרץ את Failproof AI locally או התחבר ל-Failproof AI Cloud."
+icon: "settings"
 ---
 
-<CardGroup cols={3}>
-  <Card title="אכיפה מקומית" icon="laptop">
-    התקן hooks ומדיניות על מכונה. השתמש בזה כאשר אתה זקוק להגנות מיידיות ללא שליחת נתוני הפעילות ל-Cloud.
+Failproof AI יכול לפעול לחלוטין על מכונה אחת או להתחבר ל-Cloud לשיתוף שיחות וניהול מדיניות.
+
+## Local, ללא חשבון
+
+```bash
+npm install -g failproofai
+failproofai config
+failproofai policies add FailproofAI/policies
+failproofai
+```
+
+זה מתקין את השירות, מחבר agents נתמכים, מוסיף חבילת מדיניות, ופותח את לוח הבקרה ב-`http://localhost:8020`.
+
+הרץ `failproofai audit` כדי סרוק את היסטוריית agent שכבר קיימת על המכונה.
+
+## התחבר ל-Failproof AI Cloud
+
+צור machine key ב-Cloud, ואז הרץ:
+
+```bash
+failproofai config --token <machine-key>
+failproofai config --machine-label checkout-runner-01
+failproofai policies add FailproofAI/policies
+failproofai config --status
+```
+
+או ייצא `FAILPROOFAI_CLOUD_TOKEN=<machine-key>` והרץ `failproofai config` בסיסי. עדיף להשתמש במשתנה הסביבה על מכונות משותפות וב-CI כדי שהמפתח לא יגיע להיסטוריית shell או לרשימות תהליכים.
+
+Cloud משתמש בחיבור אחד לשתי עבודות נפרדות:
+
+- משוך מדיניויות שהוקצו למכונה זו.
+- שלח החלטות מדיניות וטרנסקריפציות שיחות.
+
+כדי לשלוח החלטות בלבד, התחבר תחילה, ואז הגדר את `collector.sessions` ל-`false` ב-`~/.failproofai/config.json`. אל תסתמוך על `--no-transcripts`: נתיב ההגדרה הנוכחי פועל עם הדגל אך לא מחיל אותו. ראה [events and configuration](/he/reference/events-and-configuration#machine-configuration).
+
+<Note>
+  `--machine-label` שינויי שם של מכונה שכבר מחוברת. הרץ אותו אחרי פקודת ההגדרה, לא כחלק מהחיבור הראשון.
+</Note>
+
+## הגדרה ללא השגחה
+
+`failproofai config` לא דורש דגל מיוחד לא-אינטרקטיבי. ב-CI או בקונטיינר הוא מחיל את ההגדרה המבוקשת ללא הנחיות.
+
+```bash
+export FAILPROOFAI_CLOUD_TOKEN="<key>"
+failproofai config
+```
+
+גישת מנהל נדרשת פעם אחת כדי להתקין את השירות ברקע. ההגדרה לא פותחת לעולם הנחיית סיסמה אינטרקטיבית `sudo`: היא או מצליחה ללא אחת או מדפיסה את הפקודות שמנהל חייב להריץ.
+
+## תמיכה בפלטפורמה
+
+ההגדרה תומכת ב-Linux וב-macOS. על פלטפורמה אחרת היא יוצאת ללא כתיבת hooks או מצב הגדרה חלקי.
+
+<CardGroup cols={2}>
+  <Card title="בדוק משלוח" icon="activity" href="/he/reference/troubleshooting">
+    אבחן שיחה או הקצאת מדיניות חסרה.
   </Card>
-  <Card title="Failproof AI Cloud" icon="cloud">
-    הוסף הפעילויות מרוכזות, ביקורות, הערכות מקוונות, לוחות מחוונים, התראות והפצת מדיניות על פי קFleet.
-  </Card>
-  <Card title="Enterprise deployment" icon="building-2">
-    השתמש בבקרות ארגוניות, מפתחות בתחום, תשתית פרטית ודרישות אבטחה ספציפיות להפצה.
+  <Card title="Agents נתמכים" icon="bot" href="/he/reference/harnesses">
+    ראה scopes ותמיכת אכיפה עבור כל harness.
   </Card>
 </CardGroup>
-
-## נתיב ייצור מומלץ
-
-1. חבר מכונה שאינה בייצור עם צילום תמלול מופעל.
-2. אמת הפעילויות והערכות ב-Cloud.
-3. צור ביקורת למצב כישלון ידוע.
-4. העלה את המדיניות הראשונה במצב צפייה.
-5. הרחב לייצור לאחר בדיקת ההתאמות והחיובים השקריים.
-
-## חבר מכונה ל-Cloud
-
-<Tabs>
-  <Tab title="Dashboard">
-    1. עבור ל-**Administration → Keys** וצור מפתח עם `events:add` ו-`policies:pull`.
-    2. העתק את הסוד החד-פעמי אל מכונת היעד.
-    3. לאחר הרצת פקודת חיבור ה-CLI, עבור ל-**Admin → enforcement** ואשר שהמכונה מופיעה.
-    4. עבור ל-**Observe → Events** ואשר שהאירוע הראשון שלה הגיע.
-
-    מגירת המפתח מציגה את שני ההרשאות הנדרשות על ידי מכונה מחוברת: ספיגת אירועים והפצת מדיניות.
-
-    ![מגירת מפתח API חדשה המשמשת להעניית הרשאות ספיגה אירועים והפצת מדיניות.](/images/dashboard/key-create.png)
-
-    לאחר החיבור, המכונה צריכה להופיע בעם את מצב המדיניות הרצוי והדווח.
-
-    ![ה-Enforcement fleet עם מכונה רשומה מורחבת כדי להציג את מצב המדיניות הרצוי וסטטוס ההפצה.](/images/dashboard/enforcement-fleet.png)
-
-    האירוע הראשון שהגיע מאשר שה-daemon יכול להעביר נתונים ל-Cloud, בנפרד מהפצת מדיניות.
-
-    ![זרימת האירועים החיה המציגה אירועי סוכן, דגם וכלי אחרונים.](/images/dashboard/events-stream-current.png)
-
-    המשך רק לאחר שהמכונה והאירוע הראשון שלה גלויים.
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai config --connect https://app.befailproof.ai \
-      --token "$FAILPROOFAI_KEY" \
-      --machine-label checkout-runner-01
-
-    failproofai policies --install --cli claude --scope user
-    failproofai config --status
-    ```
-
-    הוסף `--no-transcripts` כאשר תוכן התמלול חייב להישאר מקומי.
-  </Tab>
-</Tabs>
-
-חיבור ל-Cloud מאמת ספיגת אירועים והפצת מדיניות בנפרד. מפתח עשוי אפוא להיות תקף אך חסר הרשאה אחת נדרשת. השתמש ב-`failproofai config --status` כדי לראות אילו יכולת מוגדרת.
-
-<Info>
-  התקנה ב-Cloud כותבת רק אישורים מקומיים לאחר שהיכולת הרלוונטית הצליחה. אימות כושל אינו משאיר מכונה שנראית מחוברת כאשר היא לא.
-</Info>

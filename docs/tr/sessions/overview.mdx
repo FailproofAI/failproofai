@@ -1,57 +1,66 @@
 ---
 title: "Oturumlar"
-description: "Tek bir aracı çalışmasının tam kaydıyla başlayın."
-icon: "workflow"
+description: "Bir aracı çalışmasını hedefinden araçlara, kararlarına ve sonucuna kadar takip edin."
+icon: "route"
 ---
 
-Bir oturum, bir aracı beklenmedik şekilde davrandığında başlamak için en iyi başlangıç noktasıdır. Model isteklerini, yanıtlarını, araç çağrılarını, insan etkileşimlerini, hataları, değerlendirmeleri ve tek bir çalışmaya ait politika kararlarını bir araya getirir.
+Bir oturum, bir aracı çalışmasıdır. İstem, model çağrıları, araçlar, hatalar, insan girdisi, politika kararları ve son sonucu birbirine bağlar.
 
-Oturumlar, onları hangi araç ortamı üretirse üretsin aynı görünür. Bir depoyu yeniden yazan Claude Code çalışması, Slack'te müşteriye yanıt veren bir Hermes aracısı ve SDK ile enstrüman edilen bir Python hizmeti, hepsi aynı trace formatında yer aldığından, bir görünüm tüm filo için yeterlidir.
-
-<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with Failproof AI" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
-</div>
-
-Tek bir aracı çalışmasını hedefinden model çağrıları, araçlar ve son yanıt yoluyla takip edin.
-
-## Oturum bulma
+## Oturumlar nerede bulunur
 
 <Tabs>
-  <Tab title="Dashboard">
-    1. Cloud kenar çubuğunda **Observe → Sessions** bölümüne gidin.
-    2. Zaman penceresini ayarlayın, ardından ortam, durum, aracı veya oturum kimliğine göre filtreleyin.
-    3. Kalite, maliyet, token veya gecikme dilimi gerektiğinde puan veya metrik aralıkları ekleyin.
-    4. Trace'i açmak için bir satıra tıklayın. Oturum kimliğinin yanındaki kopyalama kontrolünü paylaşırken kullanın.
-
-    ![Ortam, aracı, durum ve değerlendirme puanı filtrelerine sahip çalışma başına bir satır gösteren Oturumlar listesi.](/images/dashboard/sessions-list.png)
+  <Tab title="Yerel">
+    `failproofai` komutunu çalıştırarak panoyu `http://localhost:8020` adresinde açın. Oturum geçmişi bu makinede kalır.
   </Tab>
-  <Tab title="CLI">
+  <Tab title="Bulut">
+    Makineyi bağlayın, ardından **Observe → Sessions** (Gözlem → Oturumlar) seçeneğine gidin:
+
     ```bash
-    fp sessions --env production --since 24h
-    fp sessions --status error,timeout --agent-id checkout-agent
-    fp --json sessions --session-id <session-id>
+    export FAILPROOFAI_CLOUD_TOKEN="<key>"
+    failproofai config
     ```
 
-    Çok aracılı çalışmaları genişletmek için `--agents` ekleyin, sayfalandırmak için `--all` ekleyin veya çıkış sütunlarını seçmek için `--fields` ekleyin.
+    Bulut, varsayılan olarak tam transkriptleri alır. Yalnızca politika kararlarını göndermek için önce bağlantı kurun, ardından `~/.failproofai/config.json` dosyasında `collector.sessions` seçeneğini `false` olarak ayarlayın. Mevcut `--no-transcripts` kurulum bayrağı bu ayarı uygulamaz.
   </Tab>
 </Tabs>
 
-## Yapabileceğiniz şeyler
+Oturumlar, desteklenen 12 [aracı ortamından](/tr/reference/harnesses) ve [Python SDK](/tr/reference/custom-agents) ile enstrümante edilen aracılardan gelir.
 
-- Aracı, ortam, zaman, model, olay türü veya hata durumuna göre bir çalışma bulun.
-- Bir sonuca yol açan tam sırayı takip edin.
-- Başarılı ve başarısız çalışmaları karşılaştırın.
-- Bir denetim bulgusunun veya uyarı olayının kullandığı kanıtları açın.
-- Çevrimdışı kayıt gerektiğinde bir oturum dışa aktarın.
+## Bir oturum bulun
 
-## Güvenilir bir araştırma sırası
+Bulutta, zamanı, ortamı, durumu, aracıyı veya oturum kimliğini filtreleyerek arayın. CLI'den:
 
-1. Oturum hedefini ve ortamını onaylayın.
-2. İlk hatayı veya beklenmedik kararı bulun—yalnızca son hatayı değil.
-3. Hemen öncesindeki model bağlamını ve araç girişini inceleyin.
-4. Yeniden denemeleri, gecikmeyi ve insan müdahaleleri kontrol edin.
-5. Değerlendirme puanlarını ve politika kararlarını gözden geçirin.
+```bash
+fp sessions --since 24h
+fp sessions --status error,timeout --agent-id checkout-agent
+fp --json sessions --session-id <session-id>
+```
 
-<Card title="Trace'i okuyun" icon="route" href="/tr/sessions/read-a-trace">
-  Oturum özetinden sonucu etkileyen olaya nasıl geçileceğini öğrenin.
-</Card>
+Hiçbir zaman değerlendirilmemiş arızalar için `fp errors --since 24h` komutunu kullanın. `fp sessions --status` en son değerlendirme sonucunu kullanır, bu nedenle değerlendirilmemiş bir oturumun durumu yoktur.
+
+## Bir çalışmayı okuyun
+
+1. Aracının hedefini ve ortamını doğrulayın.
+2. İlk hatayı veya beklenmedik kararı bulun.
+3. Bundan hemen önceki model bağlamını ve araç girdisini inceleyeyin.
+4. Yeniden denemeler, gecikme süresi ve insan müdahalelerini kontrol edin.
+5. Değerlendirmeleri ve politika kararlarını gözden geçirin.
+
+## Bir oturum eksikse
+
+```bash
+failproofai flush --wait
+failproofai config --status
+failproofai backfill --since 30d --dry-run
+```
+
+Oturumlar ortamın olağan konumu dışında, örneğin başka bir profil, konteyner ana dizini veya bağlı takım dizininde bulunduğunda `failproofai harness add-path <harness> [<label>=]<path>` komutunu kullanın.
+
+<CardGroup cols={2}>
+  <Card title="İz okuyun" icon="route" href="/tr/sessions/read-a-trace">
+    Sonuca neden olan olayı bulun.
+  </Card>
+  <Card title="Politika kararları" icon="shield-check" href="/tr/sessions/policy-decisions">
+    Zorunluluğun neyi izin verdiğini, yönlendirdiğini veya engellediğini görün.
+  </Card>
+</CardGroup>

@@ -1,30 +1,64 @@
 ---
-title: "运行首次故障检查"
-description: "通过 Cloud 控制台或 fp CLI 创建审计，并查看初次发现的问题。"
+title: "运行你的第一次失败检查"
+description: "使用 failproofai audit 扫描本机的 Agent 历史记录，或对存储在 Failproof AI Cloud 中的会话创建定期审计。"
 icon: "scan-search"
 ---
 
-审计会将一组会话转化为经过排序、有证据支撑的故障发现。从一个具体的故障问题开始。
+审计将一组会话转化为经过优先级排序、有证据支撑的失败发现。从一个具体的失败问题开始。
+
+审计分为两种。它们读取不同的数据，并对应不同的工具：
+
+| 审计类型 | 读取数据 | 是否需要账户 | 发现结果显示位置 |
+| --- | --- | --- | --- |
+| 本地 — `failproofai audit` | 本机上已有的 Agent 历史记录 | 否 | `http://localhost:8020/audit` |
+| 云端 — **Analyze → Audits**，或 `fp` CLI | 存储在 Failproof AI Cloud 中的会话 | 是 | 云端控制台 |
+
+先运行本地审计。它只需要 CLI，无需其他依赖。发现结果保留在本地；除非设置 `FAILPROOFAI_TELEMETRY_DISABLED=1`，默认会发送匿名 CLI 遥测数据。
 
 <Tabs>
-  <Tab title="控制台">
+  <Tab title="本地">
+    ```bash
+    failproofai audit
+    ```
+
+    它会扫描本机上所有受支持的 Agent 历史记录，通过内置策略目录重放工具活动，然后打开 **http://localhost:8020/audit**。查看结果时请保持进程运行；完成后按 <kbd>Ctrl</kbd>+<kbd>C</kbd> 退出。
+
+    分析和发现结果保留在本机。除非禁用，否则默认发送匿名 CLI 遥测数据。启用定时扫描后，每次扫描还会发送机器元数据，并可能发送有限的发现摘要。
+
+    | 参数 | 作用 |
+    | --- | --- |
+    | `--schedule [days]` | 按计时器扫描并通过邮件发送发现结果。默认 7 天，范围 1–90。首次使用时会引导你登录。 |
+    | `--email <address>` | 配合 `--schedule` 使用，指定报告接收邮箱，无需交互式输入。 |
+    | `--no-schedule` | 停止计时器，保持登录状态。 |
+    | `--status` | 显示是否已启用定时扫描、报告发送地址、守护进程状态以及下次扫描时间。 |
+
+    ```bash
+    failproofai audit --schedule 7 --email reliability@example.com
+    failproofai audit --status
+    ```
+
+    参阅[审计本地 Agent 历史记录](/zh/audits/local-audit)，了解每个适配器读取哪些历史记录以及定时扫描的运行方式。
+  </Tab>
+  <Tab title="云端控制台">
     <Steps>
-      <Step title="打开审计">
-        在 Cloud 侧边栏中，前往 **Analyze → Audits**。选择 **new audit**。
+      <Step title="打开 Audits">
+        在云端侧边栏中，进入 **Analyze → Audits**，选择 **new audit**。
       </Step>
       <Step title="配置审计">
-        输入名称和明确的故障目标，例如"查找在未更改输入或未上报的情况下重复重试同一失败支付请求的生产环境会话"。选择 Agent、环境、时间范围和计划。当审计员需要了解您的工作流规则时，可添加简短说明和参考 URL。
+        输入名称和具体的失败目标，例如"查找在未更改输入或未进行上报的情况下重复发起相同失败支付请求的生产会话"。选择 Agent、环境、时间窗口和计划。当审计员需要了解你的工作流规则时，可添加简短说明和参考 URL。
       </Step>
-      <Step title="创建并等待运行完成">
-        选择 **create audit**。首次运行会立即进入队列。打开审计卡片，观察其从排队、运行到完成的状态变化。
+      <Step title="创建并等待运行">
+        选择 **create audit**。第一次运行将立即加入队列。打开审计卡片，观察其从排队到运行再到完成的状态变化。
       </Step>
     </Steps>
 
-    运行完成后，打开某个发现并查看其会话证据。您可以对其进行确认、分配、忽略、静默或解决操作。
+    运行完成后，打开某条发现结果并查看其会话证据。你可以对其进行确认、分配、关闭、静音或解决操作。
 
-    ![一个已完成的审计发现，展示其故障描述、建议操作、支撑证据和受影响的会话。](/images/dashboard/audit-finding.png)
+    ![已完成的审计发现结果，显示失败描述、建议操作、支撑证据和受影响的会话。](/images/dashboard/audit-finding.png)
   </Tab>
-  <Tab title="CLI">
+  <Tab title="云端 CLI">
+    `fp` 是 Failproof AI Cloud CLI。它读取云端存储的数据；与在本机执行策略的 `failproofai` 是不同的程序。
+
     ```bash
     fp audits create payment-retry-failures \
       --description "Find production sessions that retry a failed payment call without changing input or escalating" \
@@ -45,8 +79,8 @@ icon: "scan-search"
     fp audits run payment-retry-failures
     ```
 
-    使用 `fp audits ack <finding-id>`、`fp audits assign <finding-id> --to <email>`、`fp audits dismiss <finding-id>`、`fp audits mute <finding-id>`、`fp audits resolve <finding-id>` 或 `fp audits reopen <finding-id>` 来推进发现的分类处理流程。
+    使用 `fp audits ack <finding-id>`、`fp audits assign <finding-id> --to <email>`、`fp audits dismiss <finding-id>`、`fp audits mute <finding-id>`、`fp audits resolve <finding-id>` 或 `fp audits reopen <finding-id>` 对发现结果进行分类处理。
   </Tab>
 </Tabs>
 
-接下来，[通过策略阻止首个已确认的可重复故障](/zh/start/first-policy)。
+接下来，[通过策略预防你的第一个失败](/zh/start/first-policy)，针对已确认的可重现操作进行防护。

@@ -1,30 +1,64 @@
 ---
 title: "Ejecuta tu primera verificación de fallos"
-description: "Crea una auditoría desde el panel de Cloud o la CLI fp y revisa sus primeros hallazgos."
+description: "Escanea el historial del agente en esta máquina con failproofai audit, o crea una auditoría recurrente sobre las sesiones almacenadas en Failproof AI Cloud."
 icon: "scan-search"
 ---
 
 Una auditoría convierte un conjunto de sesiones en hallazgos de fallos priorizados y respaldados por evidencia. Comienza con una pregunta de fallo concreta y acotada.
 
+Existen dos tipos de auditoría. Leen datos distintos y corresponden a herramientas diferentes:
+
+| Auditoría | Lee | Requiere cuenta | Los hallazgos aparecen en |
+| --- | --- | --- | --- |
+| Local — `failproofai audit` | El historial del agente ya presente en esta máquina | No | `http://localhost:8020/audit` |
+| Cloud — **Analyze → Audits**, o la CLI `fp` | Las sesiones almacenadas en Failproof AI Cloud | Sí | El panel de Cloud |
+
+Ejecuta primero la local. Solo necesita la CLI. Los hallazgos permanecen en local, aunque por defecto se envía telemetría anónima de la CLI a menos que establezcas `FAILPROOFAI_TELEMETRY_DISABLED=1`.
+
 <Tabs>
-  <Tab title="Panel de control">
+  <Tab title="Local">
+    ```bash
+    failproofai audit
+    ```
+
+    Escanea todo el historial de agentes compatibles que encuentra en esta máquina, reproduce la actividad de herramientas a través del catálogo de políticas integrado y luego abre **http://localhost:8020/audit**. Mantén el proceso en ejecución mientras lees los resultados; pulsa <kbd>Ctrl</kbd>+<kbd>C</kbd> cuando hayas terminado.
+
+    El análisis y los hallazgos permanecen en esta máquina. Por defecto se envía telemetría anónima de la CLI salvo que esté desactivada. Después de activar la programación, cada escaneo también envía metadatos de la máquina y puede enviar un resumen limitado de hallazgos.
+
+    | Opción | Qué hace |
+    | --- | --- |
+    | `--schedule [days]` | Escanea según un temporizador y envía los hallazgos por correo. Por defecto 7 días, rango 1–90. La primera vez inicia sesión automáticamente. |
+    | `--email <address>` | Junto con `--schedule`, indica la dirección del informe en lugar de solicitarla. |
+    | `--no-schedule` | Detiene el temporizador. Mantiene la sesión iniciada. |
+    | `--status` | Indica si la programación está activa, a dónde van los informes, el estado del daemon y cuándo es el próximo escaneo. |
+
+    ```bash
+    failproofai audit --schedule 7 --email reliability@example.com
+    failproofai audit --status
+    ```
+
+    Consulta [Auditar historial local del agente](/es/audits/local-audit) para saber qué historiales lee cada adaptador y cómo se ejecuta el escaneo programado.
+  </Tab>
+  <Tab title="Cloud dashboard">
     <Steps>
-      <Step title="Abrir Auditorías">
+      <Step title="Abrir Audits">
         En la barra lateral de Cloud, ve a **Analyze → Audits**. Selecciona **new audit**.
       </Step>
       <Step title="Configurar la auditoría">
-        Ingresa un nombre y un objetivo de fallo directo, como «encontrar sesiones de producción que reintenten la misma llamada de pago fallida sin cambiar la entrada ni escalar». Selecciona el agente, el entorno, el período de tiempo y la programación. Agrega un resumen breve y URLs de referencia cuando el auditor necesite conocer las reglas de tu flujo de trabajo.
+        Introduce un nombre y un objetivo de fallo concreto, como "encontrar sesiones de producción que reintenten la misma llamada de pago fallida sin cambiar la entrada ni escalar". Selecciona el agente, el entorno, la ventana de tiempo y la programación. Añade un breve resumen y URLs de referencia cuando el auditor necesite conocer las reglas de tu flujo de trabajo.
       </Step>
       <Step title="Crear y esperar la ejecución">
-        Selecciona **create audit**. La primera ejecución se pone en cola de inmediato. Abre la tarjeta de auditoría para seguir su progreso: de en cola a en ejecución y luego a completado.
+        Selecciona **create audit**. La primera ejecución se encola de inmediato. Abre la tarjeta de auditoría para ver cómo avanza de encolada a en ejecución y luego a completada.
       </Step>
     </Steps>
 
-    Una vez completada la ejecución, abre un hallazgo y revisa la evidencia de sesión asociada. Puedes reconocerlo, asignarlo, descartarlo, silenciarlo o resolverlo.
+    Una vez completada la ejecución, abre un hallazgo y revisa su evidencia de sesión. Luego puedes reconocerlo, asignarlo, descartarlo, silenciarlo o resolverlo.
 
     ![Un hallazgo de auditoría completado que muestra su descripción del fallo, la acción recomendada, la evidencia de respaldo y las sesiones afectadas.](/images/dashboard/audit-finding.png)
   </Tab>
-  <Tab title="CLI">
+  <Tab title="Cloud CLI">
+    `fp` es la CLI de Failproof AI Cloud. Recupera lo que Cloud almacenó; es un programa distinto de `failproofai`, que aplica las políticas en esta máquina.
+
     ```bash
     fp audits create payment-retry-failures \
       --description "Find production sessions that retry a failed payment call without changing input or escalating" \
@@ -37,7 +71,7 @@ Una auditoría convierte un conjunto de sesiones en hallazgos de fallos prioriza
     fp audits finding <finding-id>
     ```
 
-    Agrega contexto de referencia y actualízalo cuando cambie la fuente:
+    Añade contexto de referencia y actualízalo cuando cambie la fuente:
 
     ```bash
     fp audits context-set payment-retry-failures --url https://example.com/payment-runbook
@@ -45,8 +79,8 @@ Una auditoría convierte un conjunto de sesiones en hallazgos de fallos prioriza
     fp audits run payment-retry-failures
     ```
 
-    Usa `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>` o `fp audits reopen <finding-id>` para gestionar el triaje de un hallazgo.
+    Usa `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>` o `fp audits reopen <finding-id>` para mover un hallazgo a través del proceso de triaje.
   </Tab>
 </Tabs>
 
-A continuación, [prevén tu primer fallo con una política](/es/start/first-policy) para una acción repetible confirmada.
+A continuación, [previene tu primer fallo con una política](/es/start/first-policy) para una acción repetible confirmada.

@@ -1,47 +1,69 @@
 ---
-title: "Verhindern Sie Ihren ersten Fehler mit einer Policy"
-description: "Erstellen Sie eine Policy-Version, stellen Sie sie im Beobachtungsmodus bereit und setzen Sie sie dann durch."
+title: "Verhindern Sie Ihren ersten Fehler"
+description: "Aktivieren Sie eine geprüfte Richtlinie oder testen Sie eine eigene."
 icon: "shield-check"
 ---
 
-Verwenden Sie eine Policy erst, wenn Sie die unsichere Aktion und die legitimen Aktionen, die weiterhin erlaubt bleiben müssen, beschreiben können.
+Beginnen Sie mit einem Verhalten, das Sie unterbinden möchten, und einer legitimen Aktion, die weiterhin funktionieren muss.
 
-<Tabs>
-  <Tab title="Dashboard">
-    <Steps>
-      <Step title="Die Policy erstellen">
-        Gehen Sie zu **Admin → Policy-Editor**. Starten Sie mit der Demo-Policy, prüfen oder bearbeiten Sie den Quellcode und wählen Sie dann **Version veröffentlichen**. Das Veröffentlichen erstellt die unveränderliche Version, die Sie auf Maschinen bereitstellen können.
+## Zuerst eine geprüfte Richtlinie ausprobieren
 
-        ![Die Compose-Ansicht des Policy-Editors mit einer Demo-Policy, die bereit zur Veröffentlichung als unveränderliche Version ist.](/images/dashboard/policy-editor.png)
-      </Step>
-      <Step title="Sie auf einer Maschine bereitstellen">
-        Gehen Sie zu **Admin → Durchsetzung**, erweitern Sie die Zielmaschine und wählen Sie **diese Maschine bearbeiten**. Fügen Sie die veröffentlichte Demo-Policy hinzu, fixieren Sie deren Version, wählen Sie **Beobachten** und wenden Sie die Bereitstellung an.
+```bash
+failproofai policies
+failproofai policies add block-rm-rf
+```
 
-        ![Der Maschinen-Bereitstellungseditor mit einer ausgewählten veröffentlichten Policy-Version im Beobachtungsmodus, bevor die Bereitstellung angewendet wird.](/images/dashboard/enforcement-editor.png)
-      </Step>
-      <Step title="Die Policy überprüfen">
-        Starten Sie eine neue Agent-Sitzung auf dieser Maschine und öffnen Sie dann **Beobachten → Policy**. Wählen Sie die Maschine aus und bestätigen Sie, dass die Demo-Policy in der Policy-Zuordnung und der Entscheidungszeitachse erscheint. Der Beobachtungsmodus zeichnet auf, was die Policy tun würde, ohne die Aktion zu blockieren.
+Failproof AI enthält 39 geprüfte Richtlinien. Schauen Sie in den [Katalog](/de/policies/builtin-catalog), bevor Sie eine neue schreiben.
 
-        ![Die Policy-Seite mit Entscheidungsgesamtzahlen, Durchsetzungsaktivität im Zeitverlauf sowie lokalen und Cloud-verwalteten Policy-Zuordnungen.](/images/dashboard/policy-observe.png)
-      </Step>
-    </Steps>
-  </Tab>
-  <Tab title="CLI">
-    Das Erstellen von Cloud-Policies und die Fleet-Bereitstellung sind administrative Workflows. Verwenden Sie die lokale CLI, um dieselbe Policy vor der Veröffentlichung zu validieren:
+## Eine eigene Richtlinie schreiben und testen
 
+<Steps>
+  <Step title="Eine funktionierende Richtlinie erstellen">
     ```bash
-    failproofai policies --install --custom ./payment-retry.policies.ts \
-      --cli claude --scope project
-    failproofai config --status
+    failproofai publish --init guards.mjs
     ```
 
-    Verwenden Sie `fp`, um in der Cloud sichtbare Policy-Entscheidungen zu prüfen:
-
+    Dies schreibt eine Richtlinie, die `git push --force` blockiert. Bearbeiten Sie sie für Ihre eigene Regel.
+  </Step>
+  <Step title="Auf diesem Computer durchsetzen">
     ```bash
-    fp events --event-type hook_completed --env production --since 24h
-    fp sessions --env production --since 24h
+    failproofai policies -i -c ./guards.mjs
     ```
 
-    Beide Schritte sind auch über die CLI verfügbar: `fp policies publish <id> <file>` erstellt eine Version und `fp fleet deploy <machine-id> --add <id>` stellt sie auf einer Maschine bereit. Die entsprechenden Dashboard-Funktionen sind **Admin → Policy-Editor** und **Admin → Durchsetzung**.
-  </Tab>
-</Tabs>
+    Fordern Sie Ihren Agenten auf, die blockierte Aktion auszuführen, und überprüfen Sie dann **Policies → Activity** im lokalen Dashboard.
+  </Step>
+  <Step title="Behalten oder entfernen">
+    Legen Sie eine `*policies.mjs`-Datei unter `.failproofai/policies/` ab, um sie automatisch zu laden.
+
+    Explizite benutzerdefinierte Dateien entfernen Sie mit:
+
+    ```bash
+    failproofai policies -u -c
+    ```
+  </Step>
+</Steps>
+
+## Teilen
+
+Ein öffentliches Paket veröffentlichen:
+
+```bash
+failproofai publish
+```
+
+Anschließend kann es jeder mit `failproofai policies add <owner>/<repo>` installieren. Fügen Sie das GitHub-Topic `failproofai-policies` selbst hinzu, damit der [Policy Hub](https://befailproof.ai/policy-hub/) es indizieren kann.
+
+Für ein Cloud-Rollout:
+
+```bash
+fp policies publish checkout-guard ./guards.mjs
+fp fleet deploy <machine> --add checkout-guard:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add checkout-guard:enforce
+```
+
+<Warning>
+  Ein einfaches `--add checkout-guard` setzt sofort durch. Fügen Sie `:observe` hinzu, um aufzuzeichnen, was die Richtlinie tun würde, ohne den Agenten zu blockieren.
+</Warning>
+
+Weitere Informationen zum vollständigen Ablauf finden Sie unter [Paket veröffentlichen](/de/policies/publish-a-pack) oder [Richtlinien deployen](/de/policies/deploy).

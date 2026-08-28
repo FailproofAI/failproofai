@@ -1,35 +1,44 @@
 ---
-title: "Risultati e problemi"
-description: "Trasforma le evidenze di audit in lavori di bonifica posseduti e tracciabili."
+title: "Findings e problemi"
+description: "Trasforma le prove di audit in lavori di remediation posseduti e tracciabili."
 icon: "clipboard-check"
 ---
 
-Un risultato è l'affermazione supportata da evidenze dell'audit su un errore. Un problema è il flusso di lavoro duraturo per rispondervi.
+Un finding è la dichiarazione supportata da prove dell'audit su un fallimento. Un issue è il flusso di lavoro duraturo per rispondervi.
+
+I due oggetti utilizzano vocabolari diversi e si trovano uno accanto all'altro, quindi vale la pena fissarli prima nella mente:
+
+| | Finding | Issue |
+| --- | --- | --- |
+| Stati | `open`, `recurring`, `resolved`, `dismissed`, `muted` | `firing`, `acknowledged`, `resolved` |
+| Flag di filtro | `--status` | `--state` |
+| Handle | Finding id | Issue id |
+| Listato predefinito | L'insieme live: open più recurring | Più recente aperto per primo |
 
 ## Triage e assegnazione del lavoro
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Apri **Analyze → Audits**, scegli un'esecuzione completata e seleziona un risultato per ispezionarne l'analisi, il suggerimento, le sessioni e le query di evidenza.
-    2. Riconosci, assegna, scarta, silenzia, risolvi o riapri il risultato dopo aver verificato le sue evidenze.
-    3. Vai a **Analyze → Issues** e filtra la posta in arrivo durevole per stato, gravità o assegnatario.
-    4. Apri il problema per assegnarlo, aggiungere commenti o sottoscrittori, e risolvilo dopo che la correzione è stata verificata.
+    1. Apri **Analyze → Audits**, scegli un'esecuzione completata e seleziona un finding per ispezionarne l'analisi, la raccomandazione, le sessioni e le query delle prove.
+    2. Riconosci, assegna, respingi, silenzia, risolvi o riapri il finding dopo aver controllato le prove.
+    3. Vai a **Analyze → Issues** e filtra la posta in arrivo duraturo per stato, gravità o assegnatario.
+    4. Apri l'issue per assegnarlo, aggiungi commenti o sottoscrittori e risolvilo dopo aver verificato la correzione.
 
-    Inizia con il riepilogo del risultato. Conferma che la descrizione dell'errore, la risposta consigliata, la gravità e la classificazione corrispondono alle sessioni che ti aspettavi che l'audit esaminasse.
+    Inizia con il riepilogo del finding. Conferma che la descrizione del fallimento, la risposta consigliata, la gravità e la classifica concordino con le sessioni che ti aspettavi che l'audit esaminasse.
 
-    ![Un risultato di audit con gravità, conteggio delle occorrenze, analisi della causa radice, azione consigliata, fattori di classificazione ed evidenza.](/images/dashboard/audit-finding.png)
+    ![Un audit finding con gravità, numero di occorrenze, analisi della causa principale, azione consigliata, fattori di classifica e prove.](/images/dashboard/audit-finding.png)
 
-    Successivamente, apri una sessione interessata piuttosto che decidere solo dal riepilogo. La traccia collegata dovrebbe mostrare l'evento e il payload esatti che supportano il risultato.
+    Successivamente, apri una sessione interessata anziché decidere basandoti solo sul riepilogo. La traccia collegata dovrebbe mostrare l'evento esatto e il payload che supportano il finding.
 
-    ![Una sessione collegata da un risultato di audit, aperta all'errore rilevante con i metadati dell'evento e il payload grezzo.](/images/dashboard/audit-linked-session.png)
+    ![Una sessione collegata da un audit finding, aperta all'errore rilevante con i metadati dell'evento e il payload raw.](/images/dashboard/audit-linked-session.png)
 
-    Dopo aver verificato le evidenze, utilizza Issues per assegnare un proprietario alla risposta e tracciarlo indipendentemente dalle future esecuzioni di audit.
+    Dopo aver verificato le prove, utilizza Issues per assegnare un proprietario alla risposta e tracciarla indipendentemente dalle future esecuzioni di audit.
 
-    ![La posta in arrivo Issues che mostra lavori attivi, riconosciuti e risolti con gravità e proprietà.](/images/dashboard/incidents.png)
+    ![La posta in arrivo Issues che mostra il lavoro firing, acknowledged e resolved con gravità e proprietà.](/images/dashboard/incidents.png)
 
-    Apri il problema per registrare note di indagine, notificare i sottoscrittori e conservare la cronologia delle risposte. Risolvilo solo dopo che la bonifica è stata distribuita e verificata.
+    Apri l'issue per registrare note di indagine, notificare i sottoscrittori e preservare la cronologia delle risposte. Risolvilo solo dopo che la remediation è stata distribuita e verificata.
 
-    ![Una vista dettagliata del problema con la sua origine, evidenza della violazione, assegnatari, sottoscrittori, cronologia e commenti.](/images/dashboard/incident-detail.png)
+    ![Una vista di dettaglio dell'issue con la sua sorgente, prove della violazione, assegnatari, sottoscrittori, timeline e commenti.](/images/dashboard/incident-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -37,60 +46,94 @@ Un risultato è l'affermazione supportata da evidenze dell'audit su un errore. U
     fp audits finding <finding-id>
     fp audits ack <finding-id> --reason "owner assigned"
     fp audits assign <finding-id> --to engineer@example.com
+    fp audits mute <finding-id> --reason "expected in staging" --yes
+    fp audits dismiss <finding-id> --reason "false positive" --yes
+    fp audits resolve <finding-id> --yes
+    fp audits reopen <finding-id>
 
-    fp issues list
+    fp issues list --state firing
     fp issues show <issue-id>
+    fp issues ack <issue-id>
     fp issues assign <issue-id> --assignee engineer@example.com
     fp issues comment-add <issue-id> --body "policy is in observe mode"
     fp issues resolve <issue-id> --yes
     ```
 
-    Usa `fp issues subscribe <issue-id>`, `fp issues unsubscribe <issue-id>` e `fp issues subscribers <issue-id>` per gestire i follower.
+    `mute`, `dismiss` e `resolve` sopprimono o chiudono un finding, quindi ognuno conferma prima — passa `--yes` negli script. `ack`, `reopen` e `assign` sono contabilità reversibile e agiscono immediatamente. `ack`, `mute` e `dismiss` accettano `--reason`, e vale la pena passarlo: viene mantenuto come feedback duraturo sul finding, non scritto su un log e dimenticato. `resolve`, `reopen` e `assign` non accettano una ragione.
 
-    Consulta il [riferimento Cloud CLI audit e issue](/it/reference/cloud-cli#audits) per i risultati di audit e [`fp issues`](/it/reference/cloud-cli#issues) per la gestione dei problemi.
+    L'assegnazione funziona diversamente su ogni oggetto. `fp audits assign` richiede `--to <email>` e imposta un proprietario; rieseguirlo riassegna. `fp issues assign` accetta un `--assignee` ripetibile e **sostituisce** l'intero elenco, quindi ometerlo cancella tutti gli assegnatari.
+
+    Usa `fp issues comment-list <issue-id>`, `fp issues count --state firing` e `fp issues subscribe`/`unsubscribe`/`subscribers <issue-id>` per il resto della superficie dell'issue.
+
+    Vedi il [riferimento audit e issue Cloud CLI](/it/reference/cloud-cli#audits) per i finding di audit e [`fp issues`](/it/reference/cloud-cli#issues) per la gestione degli issue.
   </Tab>
 </Tabs>
 
-## Verifica un risultato
+## Revisione di un finding
 
-Conferma che contenga:
+Due campi decidono cosa farvi prima di qualsiasi altra cosa.
 
-- Una modalità di errore stabile, non solo un titolo isolato
+**`kind`** separa un `failure` (qualcosa è andato male) da una violazione di `policy` (una regola che è stata infranta) e un `improvement` (il lavoro potrebbe essere fatto meglio). È reso come un badge sul finding. Un finding di `policy` è quello che una policy può chiudere; gli altri due di solito hanno bisogno di un cambio di flusso di lavoro, un avviso o un essere umano.
+
+**`priority`** è un punteggio 0–1, ricalcolato per esecuzione, ed è l'ordine in cui la coda dei finding è ordinata. La pagina del finding lo scompone sotto **why it ranks here**, come valore × peso:
+
+| Fattore | Peso |
+| --- | --- |
+| Coverage | 0.30 |
+| Severity | 0.25 |
+| Magnitude | 0.25 |
+| Recency | 0.20 |
+
+Quindi conferma che il finding contiene:
+
+- Una modalità di fallimento stabile, non solo un titolo usa e getta
 - Gravità e impatto operativo
-- ID di sessioni interessate o query di supporto
+- ID di sessione interessate o query di supporto
 - Contesto sufficiente per riprodurre il comportamento
-- Una risposta proposta che corrisponda alle evidenze
+- Una risposta proposta che corrisponda alle prove
 
-## Usa un problema per gestire la risposta
+Per riprodurre un finding, estrailo tutto: `fp --json audits finding <id>` restituisce il record completo con le sue `evidence`, `evidence_queries` e `scope` intatte, che è quello su cui l'analisi ha effettivamente eseguito. `--json` è un'opzione globale, quindi precede il comando.
 
-Crea o collega un problema quando il risultato necessita di assegnazione, discussione, cambiamenti di stato, commenti o sottoscrittori. I problemi possono anche rappresentare incidenti di avviso e problemi segnalati manualmente, per questo motivo risiedono nella risposta di audit piuttosto che nella navigazione principale.
+## Usa un issue per gestire la risposta
 
-Risolvi il problema quando la bonifica è stata distribuita e verificata. Risolvi il risultato quando la modalità di errore è stata affrontata per la popolazione di audit. Questi momenti possono essere diversi.
+Crea o collega un issue quando il finding necessita di assegnazione, discussione, cambiamenti di stato, commenti o sottoscrittori. La `source` di un issue registra da dove proviene — `audit`, `alert` o `manual` — ecco perché il dashboard fornisce agli issue la loro stessa vista **Issues** piuttosto che annidarli sotto un audit.
 
-## Trasforma un problema in una bozza di policy
+La sottoscrizione è parzialmente automatica. Le persone vengono sottoscritte quando riconoscono un issue, commentano, sono assegnate o lo aprono — `fp issues subscribers` elenca solo i sottoscrittori attivi, quindi non è solo l'elenco dei sottoscritti manuali. Un commento invia un'email a ogni sottoscrittore attivo e commentare richiede solo `issues:read`, quindi un revisore di sola lettura non è mai un osservatore silenzioso.
+
+Risolvi l'issue quando la remediation è distribuita e verificata. Risolvi il finding quando la modalità di fallimento è stata affrontata per la popolazione di audit. Questi momenti possono differire.
+
+## Trasforma un issue in una bozza di policy
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Apri il problema e verifica il suo risultato, le sessioni citate, la causa radice e il suggerimento.
-    2. Seleziona **generate policy** e verifica il risultato dell'idoneità e l'intento di applicazione proposto. Un risultato di **no policy** significa che il comportamento potrebbe richiedere un avviso, un cambio di flusso di lavoro o una risposta umana.
-    3. Seleziona **write this policy**, quindi verifica e testa il codice generato in **Admin → policy editor** prima di selezionare **publish version**. Usa **open the editor anyway** quando non sei d'accordo con il controllo di idoneità.
-    4. Vai a **Admin → enforcement**, distribuisci la versione in modalità **observe** e verifica le sue decisioni in **Observe → policy** prima di applicarla.
+    1. Apri l'issue e verifica il suo finding, le sessioni citate, la causa principale e la raccomandazione.
+    2. Seleziona **generate policy** e rivedi il risultato dell'eleggibilità e l'intento di enforcement proposto. Un risultato di **no policy** significa che il comportamento potrebbe richiedere un avviso, un cambio di flusso di lavoro o una risposta umana.
+    3. Seleziona **write this policy**, quindi rivedi e testa il codice generato in **Admin → policy editor** prima di selezionare **publish version**. Usa **open the editor anyway** quando non sei d'accordo con il controllo di eleggibilità.
+    4. Vai a **Admin → enforcement**, distribuisci la versione in modalità **observe** e verifica le sue decisioni sotto **Observe → policy** prima di farla rispettare.
 
-    Il titolo del problema, la descrizione del risultato, la causa radice, il suggerimento e l'intento di idoneità aiutano a comporre la bozza. Nulla viene pubblicato o distribuito automaticamente.
+    Il titolo dell'issue, la descrizione del finding, la causa principale, la raccomandazione e l'intento di eleggibilità aiutano a comporre la bozza. Nulla viene pubblicato o distribuito automaticamente.
   </Tab>
   <Tab title="CLI">
-    Usa la CLI per ispezionare le evidenze prima di aprire il problema nel dashboard:
+    Usa la CLI per ispezionare le prove prima di aprire l'issue nel dashboard:
 
     ```bash
     fp issues show <issue-id>
-    fp audits finding <finding-id>
+    fp --json audits finding <finding-id>
     fp events --session-id <session-id> --full --all
     ```
 
-    L'idoneità della policy, la pubblicazione Cloud e la distribuzione della flotta sono flussi di lavoro del dashboard. Usa `failproofai policies --install --custom <file>` quando vuoi validare localmente il codice di policy equivalente.
+    Il dashboard è una corsia; la CLI è l'altra. `fp policies compose "<what it should do>"` fa una bozza di una policy, `fp policies publish <id> ./policy.mjs` conia una versione (la pubblicazione non distribuisce nulla) e `fp fleet deploy <machine> --add <id>:observe` la mette su una macchina in shadow. Il suffisso `:observe` è obbligatorio — un semplice `--add <id>` applica immediatamente. Leggi quello che avrebbe fatto con `fp guardrails summary --since 24h`, quindi promuovi con `--add <id>:enforce`.
+
+    Per provare il codice della policy equivalente sulla tua macchina locale prima, punta la CLI locale al file:
+
+    ```bash
+    failproofai policies -i -c ./checkout-policies.js
+    ```
+
+    Un file il cui nome termina in `policies.js`, `policies.mjs` o `policies.ts`, rilasciato in `.failproofai/policies/` nel progetto o sotto `~/`, viene caricato su ogni evento hook senza alcun flag.
   </Tab>
 </Tabs>
 
 <Card title="Crea una policy" icon="shield-plus" href="/it/policies/editor">
-  Converti uno schema di azione confermato e ripetibile in una versione di policy.
+  Converti un pattern di azione confermato e ripetibile in una versione policy.
 </Card>

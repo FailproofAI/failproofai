@@ -1,27 +1,62 @@
 ---
 title: "Décisions de politique"
-description: "Consultez ce que les politiques ont évalué, bloqué, instruit ou autorisé."
+description: "Consultez les politiques évaluées, guidées, bloquées ou observées."
 icon: "shield-check"
 ---
 
-Les décisions de politique expliquent ce qu'a fait l'application des règles. Utilisez-les pour vérifier un déploiement, mesurer le taux de blocage et identifier les activités non protégées.
+Les décisions de politique indiquent ce que Failproof AI a effectué lors d'une exécution d'agent.
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Accédez à **Observer → politique** et choisissez la plage de temps et éventuellement une machine.
-    2. Consultez les actions évaluées, les blocages, le taux de blocage, les décisions Cloud, les actions non protégées et l'activité pendant la pause.
-    3. Filtrez le tableau de correspondance des politiques et inspectez les affectations déployées.
-    4. Sélectionnez un point du graphique pour ouvrir les décisions et leurs sessions associées.
+    Accédez à **Observe → policy** pour examiner les décisions, le taux de blocage, les machines et les assignations déployées.
 
-    ![La page Politique affichant les totaux de décisions, un filtre par machine, l'activité d'application des règles dans le temps et le tableau de correspondance des politiques.](/images/dashboard/policy-observe.png)
+    ![La page Policy affichant les totaux de décisions, un filtre par machine, l'activité d'application dans le temps et le tableau de correspondance des politiques.](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
     ```bash
-    fp events --event-type hook_completed --env production --since 24h
-    fp events --search "deny" --since 24h
+    fp guardrails summary --since 24h
+    fp guardrails timeline --since 24h
+    failproofai policies
     failproofai config --status
     ```
 
-    Utilisez `failproofai` pour l'état d'application local de la machine et `fp` pour l'investigation des événements Cloud.
+    `--since` accepte `1h`, `6h`, `24h` ou `7d`. Ajoutez `--machine <id>` pour cibler une machine spécifique.
   </Tab>
 </Tabs>
+
+## Lire un déploiement en mode observation
+
+Le mode observation exécute la politique réelle et enregistre toute décision `deny` ou `instruct`. L'agent est toujours autorisé à continuer.
+
+```bash
+fp fleet deploy <machine> --add <policy>:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add <policy>:enforce
+```
+
+<Warning>
+  Un `--add <policy>` sans suffixe applique immédiatement la politique lorsque celle-ci n'a pas de déploiement existant. Ajoutez `:observe` pour un déploiement en mode fantôme.
+</Warning>
+
+Seules les décisions observées non-allow sont enregistrées. Un délai d'expiration est enregistré comme allow, car c'est également le comportement en mode d'application.
+
+Un deny enregistré ne prouve pas que le système a arrêté l'action. Les deny d'appels d'outils sont vérifiés sur l'ensemble des 12 harnais pris en charge ; les autres événements peuvent varier. Consultez [la capacité d'application](/fr/reference/harnesses#enforcement-capability).
+
+## Investiguer un résultat inattendu
+
+| Ce que vous observez | Vérification |
+| --- | --- |
+| Aucune décision | `failproofai config --status` et si la session est en pause |
+| Nombreux deny sans nom de politique | [Comportement en cas d'échec de politique](/fr/policies/failure-behavior) |
+| Toute action protégée est refusée | Si le service `failproofaid` est en bonne santé |
+| Un deny que vous ne pouvez pas désactiver | `block-failproofai-commands` est toujours actif |
+| Aucune donnée pour `--env production` | Les nouvelles machines utilisent l'environnement `local` |
+
+<CardGroup cols={2}>
+  <Card title="Déploiements de flotte" icon="server-cog" href="/fr/policies/fleet">
+    Comparez les politiques prévues et appliquées.
+  </Card>
+  <Card title="Comportement en cas d'échec" icon="triangle-alert" href="/fr/policies/failure-behavior">
+    Comprendre les décisions de fermeture en cas d'échec.
+  </Card>
+</CardGroup>

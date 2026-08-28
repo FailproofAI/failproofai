@@ -1,27 +1,29 @@
 ---
 title: "Denetim sıklığı"
-description: "Yinelenen denetimlerin ne zaman çalışacağını ve ne kadar veriyi inceleyeceklerini seçin."
+description: "Yinelenen denetimlerin ne zaman çalışacağını ve ne kadar veri inceleyeceğini seçin."
 icon: "calendar-clock"
 ---
 
-Aracılar, istemler, araçlar ve modeller değiştikçe geri dönebilecek hata modleri için yinelenen denetimleri kullanın.
+Ajanlar, istemler, araçlar ve modeller değiştikçe tekrar ortaya çıkabilecek hata modları için yinelenen denetimleri kullanın.
 
-## Zamanlamayı değiştirin
+## Programı değiştirin
 
 <Tabs>
-  <Tab title="Dashboard">
-    1. **Analyze → Audits** sayfasına gidin ve denetimi açın.
-    2. Ayarlarını açın ve etkin durumu, aralığı, UTC bağlantı noktasını, pencere modunu veya geriye dönüş süresini değiştirin.
-    3. Denetimi kaydedin ve denetim kartında sonraki çalışma saatini doğrulayın.
-    4. Büyük bir kapsam veya bağlam değişikliğinden sonra bir kez **run now** kullanın.
+  <Tab title="Pano">
+    1. **Analiz → Denetimler** bölümüne gidin ve denetimi açın.
+    2. **Ayarları düzenle** seçeneğini tıklatın ve sıklığı, pencereyi, duyarlılığı veya çalıştırma başına bulguları değiştirin.
+    3. Denetimi kaydedin ve denetim başlığında sonraki çalışma saatini onaylayın.
+    4. Programı **Şimdi çalıştır** yanındaki aynı başlıktan duraklatın ve devam ettirin.
+    5. Büyük bir kapsam veya bağlam değişikliğinden sonra **Şimdi çalıştır** seçeneğini bir kez kullanın.
 
-    ![Cadence, sweep window, scope, analysis settings, context ve notification channels gösterildiği denetim editörü.](/images/dashboard/audit-edit.png)
+    ![Duraklatılmış durumunu, açık bulguları, son çalışmayı, sonraki çalışmayı, tarama penceresini ve duyarlılığını gösteren bir denetim başlığı; Şimdi Çalıştır, Ayarları Düzenle ve Devam Ettir denetimleriyle.](/images/dashboard/audit-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp audits edit checkout-reliability \
       --schedule-interval-secs 86400 \
       --schedule-anchor 2026-08-15T09:00:00Z \
+      --window-mode since_last \
       --lookback-window-secs 86400 \
       --yes
 
@@ -29,21 +31,50 @@ Aracılar, istemler, araçlar ve modeller değiştikçe geri dönebilecek hata m
     fp audits edit checkout-reliability --enabled --yes
     ```
 
-    Zamanlama sınırları, pencere davranışı ve tüm denetim komutları için [`fp audits` referansına](/tr/reference/cloud-cli#audits) bakın.
+    `fp audits edit` herhangi bir değişiklik yapmadan önce onay ister; bu nedenle buradaki her örnek `--yes` seçeneğini geçer. Sunucu her düzenlemede tüm tanımı değiştirir, bu nedenle CLI mevcut denetimi değişiklikleriniz uygulanmış şekilde yeniden gönderir — yalnızca bayrak içeren bir düzenleme `audits:read` **ve ayrıca** `audits:write` gerektirir. Bir CI anahtarını her ikisi için de kapsam belirleyin.
+
+    Program sınırları, pencere davranışı ve tüm denetim komutları için [`fp audits` başvurusuna](/tr/reference/cloud-cli#audits) bakın.
   </Tab>
 </Tabs>
 
-Risk hızı ve maliyetine göre sıklık seçin:
+## İki program sınırı
 
-| Risk modeli | Başlangıç sıklığı |
+Aşağıdaki her tavsiye bunların içine sığmalıdır. Aralıklar sunucuya aittir ve `fp` bunları istemci tarafında yansıtır, bu nedenle bir aralığın dışında bir değer yerel olarak 2 ile çıkar, 422 gidiş-dönüşü maliyetine girmez.
+
+| Alan | Bayrak | Aralık | Varsayılan |
+| --- | --- | --- | --- |
+| Program aralığı | `--schedule-interval-secs` | 3.600–604.800 saniye (1 saat ila 7 gün) | 86.400 (günlük) |
+| Geriye bakış penceresi | `--lookback-window-secs` | 3.600–7.776.000 saniye (1 saat ila 90 gün) | 604.800 (7 gün) |
+
+Yedi gün, sıklık açısından üst sınırdır. Aylık Cloud denetimi yoktur.
+
+## Sıklık seçin
+
+Riskin hızından ve maliyetinden seçin:
+
+| Risk deseni | Başlangıç sıklığı |
 | --- | --- |
-| Yüksek etkili üretim işlemi | Günlük |
+| Yüksek etkili üretim eylemi | Günlük veya riskli bir değişiklik yayınlanırken saatlik |
 | İş akışı veya model regresyonu | Haftalık |
-| Yönetim veya erişim incelemesi | Aylık |
-| Tek seferlik yayın araştırması | Bir kez çalıştır |
+| Yönetim veya erişim gözden geçirmesi | Haftalık — mevcut en uzun aralık |
 
-Geriye dönüş penceresini sıklıkla hizalandırın, böylece çalışmalar boşluk bırakmaz veya gereksiz yere büyük bir popülasyonu tekrar tekrar incelemez. Bir denetimin hedefini veya bağlamını değiştirdikten sonra, bir sonraki planlanmış sonuca güvenmeden önce bunu manuel olarak bir kez çalıştırın.
+Geriye bakış penceresini sıklıkla hizalayın, böylece çalıştırmalar ne boşluk bırakır ne de gereksiz yere geniş bir popülasyonu tekrar tekrar inceler.
+
+Tek seferlik denetim yoktur; her denetim bir program aralığı taşır. Bir yayın araştırması için etkinleştirilmiş olarak oluşturun, ilk çalışmanın ateşlenmesine izin verin — ilk çalışma ankora bakılmaksızın oluşturulduktan hemen sonra sıraya girer — ardından `fp audits edit <name> --disabled --yes` ile duraklatın. **Şimdi Çalıştır** seçeneğini kullanmadan önce yeniden etkinleştirin: devre dışı bırakılan bir denetimin sıra satırı yoktur ve buna karşı manuel bir çalıştırma 409 ile reddedilir.
+
+## Pencere modu ve yer imi
+
+`--window-mode` her çalıştırmanın taradığı pencereyi belirler:
+
+| Mod | Davranış |
+| --- | --- |
+| `since_last` | Son tam analiz edilen pencerenin sonundan devam edin, böylece atlanan bir çalıştırma boşluk bırakmaz. |
+| `fixed` | Son çalıştırma ne kapsasa da, her çalıştırmada yinelenen `lookback_window_secs` yeniden inceleyin. |
+
+`--schedule-anchor` sıklığı değil, fazı sabitler: çalıştırmalar `anchor + N × interval` üzerine inerler. Bunu atlayın ve yer imi varsayılan olarak sonraki 09:00 UTC'ye ayarlanır; 365 günden fazla olan bir yer imi reddedilir. Aralığı veya yer imini değiştirmek sonraki yeniden programlamada yürürlüğe girer, zaten sıraya alınmış çalıştırmada değil ve başarısız bir çalıştırma yer imini taşımaz.
+
+Bir denetimin hedefini veya bağlamını değiştirdikten sonra, sonraki zamanlanmış sonuca güvenmeden önce onu manuel olarak bir kez çalıştırın.
 
 <Note>
-  Yerel planlanmış denetimler makinede yapılandırılır ve yerel aracı geçmişini tarar. Bulut denetim zamanlamaları Bulut oturumlarında çalışır. Sonuçlarını ve sahipliğini ayrı olarak ele alın.
+  Bu sayfa, Cloud oturumlarında çalışan Cloud denetim programları hakkındadır. Yerel denetimin kendi zamanlayıcısı vardır: `failproofai audit --schedule [days]` 1–90 gün alır ve varsayılan olarak 7'ye ayarlanır, o makine üzerindeki ajan geçmişini tarar ve aylık seçeneğe sahip tek yüzeydir. Sonuçları ve sahipliği buradaki her şeyden ayrıdır — [Yerel ajan geçmişini denetleyin](/tr/audits/local-audit) bölümüne bakın.
 </Note>

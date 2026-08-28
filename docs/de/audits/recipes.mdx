@@ -4,51 +4,90 @@ description: "Ausgangsziele für häufige Untersuchungen von Agent-Fehlern."
 icon: "book-open-check"
 ---
 
-Verwende diese als Ausgangsziele und ergänze dann deinen Agenten, die Umgebung und den erwarteten Arbeitsablauf.
+Verwende diese als Ausgangsziele und ergänze deinen Agenten, die Umgebung und den erwarteten Arbeitsablauf.
 
 <Tabs>
   <Tab title="Dashboard">
-    Gehe zu **Analysieren → Audits → Neues Audit**, kopiere ein Rezept in die Beschreibung oder den Auftrag und füge anschließend die relevante Umgebung, den Agenten, den Betrachtungszeitraum und Referenz-URLs hinzu. Erstelle das Audit und prüfe den ersten Durchlauf, bevor du es planmäßig einrichtest.
+    Gehe zu **Analysieren → Audits → Neues Audit**. Eine Rezeptzeile von dieser Seite ist die **Beschreibung** — was dieses Audit erkennen soll. Die Workflow-Regeln, die das Ziel bewertbar machen, gehören in **dein Briefing**, in die **Was es weiß**-Karte: Hintergrundinformationen, die das Modell liest, bevor es ein einzelnes Ereignis betrachtet, auf 8.192 Zeichen begrenzt, ergänzend zu dem, wonach das Audit ohnehin sucht. Ein Briefing ersetzt niemals das Ziel und ist niemals ein Beweis für einen Befund.
 
-    Das Formular für ein neues Audit verwandelt ein Rezept in eine ausführbare Fehlerprüfung, indem es Umfang, Kontext, Zeitplan und Benachrichtigungen hinzufügt.
+    Lege dann den Umfang unter **Was es liest** fest, denn ohne das sind die Hälfte dieser Rezepte nur Rauschen. Umgebungen und Agenten grenzen die Population ein; **zu ignorierende Fehler** listet die Fehlertypen auf, die du erwartest und planmäßig behandelst, sodass sie nicht mehr als Fehler gezählt werden. Es werden nur Fehlertyp-Namen akzeptiert — das ist es, was verhindert, dass das Rezept für Wiederholungsschleifen überflutet wird.
 
-    ![Das Formular für ein neues Audit, konfiguriert mit einem konkreten Ziel, Zeitplan, Agenten- und Umgebungsumfang, Kontext und Benachrichtigungskanälen.](/images/dashboard/audit-new.png)
+    Das neue Audit-Formular verwandelt ein Rezept in eine ausführbare Fehlerprüfung, indem Umfang, Kontext, Rhythmus und Benachrichtigungen hinzugefügt werden.
 
-    Stelle nach der Erstellung sicher, dass das Audit in der Liste mit dem erwarteten Status und Zeitplan erscheint, bevor du dich auf wiederkehrende Durchläufe verlässt.
+    ![Das neue Audit-Formular, konfiguriert mit einem fokussierten Ziel, Zeitplan, Agenten- und Umgebungsumfang, Kontext und Benachrichtigungskanälen.](/images/dashboard/audit-new.png)
 
-    ![Die Audits-Seite, auf der ein workflow-spezifisches Audit-Rezept nach der Erstellung erscheint.](/images/dashboard/audits.png)
+    Bestätige nach der Erstellung, dass das Audit mit dem erwarteten Status und Zeitplan in der Liste erscheint, bevor du dich auf wiederkehrende Ausführungen verlässt.
 
-    Öffne den ersten Durchlauf und verfeinere das Rezept, wenn seine Ergebnisse breiter oder enger als der beabsichtigte Fehlermodus sind.
+    Öffne die erste Ausführung und verfeinere das Rezept, wenn die Befunde breiter oder enger sind als der beabsichtigte Fehlermodus.
   </Tab>
   <Tab title="CLI">
     Speichere ein Rezept als Textdatei und füge es bei der Erstellung hinzu:
 
     ```bash
     fp audits create retry-loop-review \
+      --description "Find agents that repeat a failing tool call without changing anything" \
       --scope '{"environments":["production"]}' \
+      --ignore-error-type RateLimitRetried \
       --text-file ./retry-loop-audit.txt \
       --schedule-interval-secs 86400
     ```
+
+    `--text` und `--text-file` sind zwei Möglichkeiten, dasselbe Briefing zu übermitteln; übergib nur eine Option, nicht beide. Füge Referenzseiten mit `--url` hinzu, bis zu fünf, nur öffentliche `https://`-URLs. Sende alles mit der Erstellungsanfrage: Ein neu aktiviertes Audit ist sofort fällig, sodass Kontext, der in einem zweiten Aufruf geschrieben wird, die erste Ausführung verpassen kann.
   </Tab>
 </Tabs>
 
+## Das Rezept bewerten, nicht nur die Formulierung
+
+Zwei Einstellungen beeinflussen das Ergebnis stärker als die Formulierung. **Empfindlichkeit** (`low`, `medium`, `high`, Standard `medium`) bestimmt, wie bereitwillig eine Ausführung ein Muster markiert; **Befunde pro Ausführung** (`--top-k`, Standard 50) begrenzt die Anzahl der gespeicherten Befunde. Erhöhe die Empfindlichkeit bei einer Frage, bei der ein übersehener Befund teurer ist als ein falsch positiver, und senke sie bei einem Volumenmuster, das sonst die Warteschlange füllen würde. Jedes der nachfolgenden Rezepte nennt einen Ausgangspunkt — ändere ihn nach dem Lesen der ersten Ausführung, nicht vorher.
+
+Aufgabenabbruch und verpasste Eskalation an Menschen sind Bewertungen daran, was ein Agent hätte tun sollen, nicht an einem Fehler, den er ausgelöst hat. Schreibe zuerst den [Agenten-Kontext](/de/audits/agent-contracts) dieses Agenten, sonst hat die Analyse keinen Standard, an dem sie messen kann.
+
 <AccordionGroup>
   <Accordion title="Wiederholte Wiederholungsschleifen">
-    Finde Sitzungen, in denen der Agent denselben fehlschlagenden Tool-Aufruf wiederholt, ohne die Eingabe zu ändern, ein alternatives Tool auszuwählen oder an einen Menschen eskaliert zu werden.
+    Finde Sitzungen, in denen der Agent denselben fehlgeschlagenen Tool-Aufruf wiederholt, ohne die Eingabe zu ändern, ein alternatives Tool zu wählen oder an einen Menschen zu eskalieren.
+
+    Beginne mit `medium` und liste die Fehlertypen, bei denen du absichtlich wiederholst, unter **zu ignorierende Fehler** auf.
   </Accordion>
-  <Accordion title="Falsche Tool-Nutzung">
-    Finde Sitzungen, in denen das gewählte Tool nicht zur angegebenen Aufgabe passt oder die Tool-Eingabe gegen die erforderlichen Vorbedingungen des Arbeitsablaufs verstößt.
+  <Accordion title="Falscher Tool-Einsatz">
+    Finde Sitzungen, in denen das gewählte Tool nicht zur angegebenen Aufgabe passt oder die Tool-Eingabe gegen die erforderlichen Vorbedingungen des Workflows verstößt.
+
+    Beginne mit `medium`. Füge die Vorbedingungen selbst ins Briefing ein; ohne sie hat die Analyse keine Regel zum Prüfen.
   </Accordion>
   <Accordion title="Unsicherer Datenzugriff">
     Finde Sitzungen, die sensible Daten außerhalb der genehmigten Pfade und Dienste für diesen Agenten lesen, schreiben oder übertragen.
+
+    Beginne mit `high`. Eine übersehene Datenpanne kostet mehr als ein falsch positiver Befund, den du einmal verwirfst.
   </Accordion>
   <Accordion title="Aufgabenabbruch">
-    Finde Sitzungen, die ohne das angeforderte Ergebnis, einen klaren Fehler oder eine ausdrückliche Übergabe an einen Menschen enden.
+    Finde Sitzungen, die ohne das gewünschte Ergebnis, einen klaren Fehler oder eine explizite Übergabe an einen Menschen enden.
+
+    Beginne mit `medium` und schreibe zuerst den Abschnitt **Abgeschlossen wenn** des Agenten — dieses Rezept ist eine Bewertung daran.
   </Accordion>
   <Accordion title="Kosten- oder Latenzregression">
     Finde Sitzungen, deren Modell-, Tool- oder Gesamtdauer das erwartete Budget überschreitet, und identifiziere das verantwortliche Ereignismuster.
+
+    Beginne mit `low` und erhöhe den Wert, wenn die erste Ausführung wenig ergibt. Budgets gehören ins Briefing, und jeder Fehlertyp, den ein langsamer Pfad planmäßig auslöst, gehört unter **zu ignorierende Fehler**.
   </Accordion>
-  <Accordion title="Verpasste Eskalation an einen Menschen">
-    Finde Sitzungen, in denen Unsicherheit, wiederholte Fehler oder Richtlinienvorgaben eine menschliche Entscheidung erforderten, der Agent jedoch autonom weitergemacht hat.
+  <Accordion title="Verpasste Eskalation an Menschen">
+    Finde Sitzungen, in denen Konfidenz, wiederholte Fehler oder Richtlinienvorgaben eine menschliche Entscheidung erforderten, der Agent jedoch autonom weiterarbeitete.
+
+    Beginne mit `high` und lege die Eskalationsregel im Abschnitt **Darf nicht** des Agenten fest, damit die Analyse sie als Maßstab verwendet.
   </Accordion>
 </AccordionGroup>
+
+## Eine erste Antwort erhalten, bevor du etwas erstellst
+
+Mehrere dieser Muster haben bereits Offline-Detektoren im lokalen Audit, das die Agenten-Historien auf deinem eigenen Rechner liest und kein Konto benötigt:
+
+| Detektor | Muster, das er zählt |
+| --- | --- |
+| `sleep-polling-loop` | Ein langes `sleep` oder eine `while … sleep … done` Polling-Schleife |
+| `reread-after-edit` | Lesen einer Datei, die der Agent gerade bearbeitet oder geschrieben hat |
+| `find-from-root` | `find` gegen `/` oder ein anderes übergeordnetes Verzeichnis |
+| `redundant-cd-cwd` | `cd` in das Verzeichnis, in dem sich die Shell bereits befindet |
+| `prefer-edit-over-read-cat` | `cat`, `head`, `tail`, `less` oder `more` auf einer einzelnen Quelldatei |
+| `prefer-edit-over-sed-awk` | In-place-Bearbeitungen durch `sed -i` oder `awk … > file` |
+| `prefer-write-over-heredoc` | Mehrzeiliger Inhalt, der über ein Heredoc oder `echo > file` geschrieben wird |
+| `git-commit-no-verify` | `git commit --no-verify`, wodurch Hooks übersprungen werden |
+
+Diese Detektoren zählen; sie blockieren nicht, und keiner von ihnen misst Kosten oder Latenz. Führe `failproofai audit` aus, um zu sehen, welche verschwenderischen und riskanten Shell-Muster deine Agenten bereits erzeugen, bevor du für ein Cloud-Audit desselben Bereichs bezahlst — siehe [Lokale Agenten-Historie prüfen](/de/audits/local-audit).

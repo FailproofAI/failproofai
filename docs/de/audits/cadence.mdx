@@ -1,27 +1,29 @@
 ---
-title: "Audit-Rhythmus"
-description: "Legen Sie fest, wann wiederkehrende Audits ausgeführt werden und wie viele Daten dabei geprüft werden."
+title: "Audit-Takt"
+description: "Legen Sie fest, wann wiederkehrende Audits ausgeführt werden und wie viele Daten sie analysieren."
 icon: "calendar-clock"
 ---
 
-Verwenden Sie wiederkehrende Audits für Fehlermuster, die bei Änderungen an Agents, Prompts, Tools und Modellen erneut auftreten können.
+Verwenden Sie wiederkehrende Audits für Fehlerbilder, die erneut auftreten können, wenn sich Agents, Prompts, Tools und Modelle ändern.
 
-## Zeitplan anpassen
+## Zeitplan ändern
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Wechseln Sie zu **Analyze → Audits** und öffnen Sie das Audit.
-    2. Öffnen Sie die Einstellungen und ändern Sie den Aktivierungsstatus, das Intervall, den UTC-Ankerzeitpunkt, den Fenstermodus oder den Rückblickzeitraum.
-    3. Speichern Sie das Audit und überprüfen Sie den nächsten Ausführungszeitpunkt auf der Audit-Karte.
-    4. Verwenden Sie **Jetzt ausführen** einmalig nach einer wesentlichen Änderung des Umfangs oder Kontexts.
+    1. Gehen Sie zu **Analyze → Audits** und öffnen Sie das Audit.
+    2. Wählen Sie **edit settings** und ändern Sie Takt, Fenster, Sensitivität oder Befunde pro Durchlauf.
+    3. Speichern Sie das Audit und bestätigen Sie den nächsten Ausführungszeitpunkt im Audit-Header.
+    4. Halten Sie den Zeitplan über denselben Header an und setzen Sie ihn fort – neben **run now**.
+    5. Verwenden Sie **run now** einmalig nach einer wesentlichen Änderung des Umfangs oder Kontexts.
 
-    ![Der Audit-Editor mit Angaben zu Rhythmus, Sweep-Fenster, Umfang, Analyseeinstellungen, Kontext und Benachrichtigungskanälen.](/images/dashboard/audit-edit.png)
+    ![Ein Audit-Header mit Pausenstatus, offenen Befunden, letztem Durchlauf, nächstem Durchlauf, Sweep-Fenster und Sensitivität sowie den Steuerelementen run now, edit settings und resume.](/images/dashboard/audit-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp audits edit checkout-reliability \
       --schedule-interval-secs 86400 \
       --schedule-anchor 2026-08-15T09:00:00Z \
+      --window-mode since_last \
       --lookback-window-secs 86400 \
       --yes
 
@@ -29,21 +31,50 @@ Verwenden Sie wiederkehrende Audits für Fehlermuster, die bei Änderungen an Ag
     fp audits edit checkout-reliability --enabled --yes
     ```
 
-    Weitere Informationen zu Zeitplangrenzen, Fensterverhalten und allen Audit-Befehlen finden Sie in der [`fp audits`-Referenz](/de/reference/cloud-cli#audits).
+    `fp audits edit` fordert vor jeder Änderung eine Bestätigung an – daher übergibt jedes Beispiel hier `--yes`. Der Server ersetzt bei jedem Bearbeitungsvorgang die gesamte Definition, weshalb die CLI das aktuelle Audit mit Ihren Änderungen erneut sendet. Eine ausschließlich flag-basierte Bearbeitung erfordert `audits:read` **sowie** `audits:write`. Konfigurieren Sie einen CI-Schlüssel für beide Berechtigungen.
+
+    Informationen zu Zeitplangrenzen, Fensterverhalten und allen Audit-Befehlen finden Sie in der [`fp audits`-Referenz](/de/reference/cloud-cli#audits).
   </Tab>
 </Tabs>
 
-Wählen Sie den Rhythmus basierend auf der Geschwindigkeit und den Kosten des Risikos:
+## Die zwei Zeitplangrenzen
 
-| Risikomuster | Empfohlener Einstiegsrhythmus |
+Jede der nachfolgenden Empfehlungen muss innerhalb dieser Grenzen liegen. Die Bereiche sind serverseitig festgelegt, und `fp` spiegelt sie clientseitig wider – ein Wert außerhalb eines Bereichs führt lokal zu einem Exit-Code 2, anstatt einen 422-Roundtrip zu verursachen.
+
+| Feld | Flag | Bereich | Standard |
+| --- | --- | --- | --- |
+| Zeitplanintervall | `--schedule-interval-secs` | 3.600–604.800 Sekunden (1 Stunde bis 7 Tage) | 86.400 (täglich) |
+| Lookback-Fenster | `--lookback-window-secs` | 3.600–7.776.000 Sekunden (1 Stunde bis 90 Tage) | 604.800 (7 Tage) |
+
+Sieben Tage ist die Obergrenze für den Takt. Es gibt kein monatliches Cloud-Audit.
+
+## Takt wählen
+
+Wählen Sie entsprechend der Geschwindigkeit und dem Kostenaufwand des Risikos:
+
+| Risikomuster | Empfohlener Starttakt |
 | --- | --- |
-| Produktionsaktionen mit hohem Einflusspotenzial | Täglich |
+| Produktionsaktionen mit hohem Einfluss | Täglich oder stündlich, während eine riskante Änderung eingespielt wird |
 | Workflow- oder Modell-Regression | Wöchentlich |
-| Governance- oder Zugriffsüberprüfung | Monatlich |
-| Einmalige Release-Untersuchung | Einmalig ausführen |
+| Governance- oder Zugriffsüberprüfung | Wöchentlich – das längste verfügbare Intervall |
 
-Stimmen Sie den Rückblickzeitraum auf den Rhythmus ab, sodass Ausführungen weder Lücken hinterlassen noch unnötig große Datemengen wiederholt prüfen. Nachdem Sie das Ziel oder den Kontext eines Audits geändert haben, führen Sie es einmal manuell aus, bevor Sie sich auf das nächste geplante Ergebnis verlassen.
+Stimmen Sie das Lookback-Fenster auf den Takt ab, damit Durchläufe weder Lücken hinterlassen noch wiederholt eine unnötig große Datenmenge analysieren.
+
+Es gibt kein einmaliges Audit – jedes Audit besitzt ein Zeitplanintervall. Für eine Release-Untersuchung erstellen Sie es im aktivierten Zustand, lassen den ersten Durchlauf starten – der erste Durchlauf wird unabhängig vom Anker sofort nach der Erstellung in die Warteschlange eingereiht – und deaktivieren es anschließend mit `fp audits edit <name> --disabled --yes`. Aktivieren Sie es erneut, bevor Sie **run now** verwenden: Ein deaktiviertes Audit hat keinen Warteschlangeneintrag, und ein manueller Durchlauf gegen ein deaktiviertes Audit wird mit einem 409 abgelehnt.
+
+## Fenstermodus und Anker
+
+`--window-mode` legt fest, welches Fenster jeder Durchlauf erfasst:
+
+| Modus | Verhalten |
+| --- | --- |
+| `since_last` | Setzt am Ende des zuletzt vollständig analysierten Fensters fort, sodass ein ausgelassener Durchlauf keine Lücke hinterlässt. |
+| `fixed` | Analysiert bei jedem Durchlauf ein rollendes Fenster von `lookback_window_secs`, unabhängig davon, was der letzte Durchlauf abgedeckt hat. |
+
+`--schedule-anchor` legt die Phase fest, nicht die Häufigkeit: Durchläufe erfolgen zu `anchor + N × interval`. Wird er weggelassen, wird der Anker standardmäßig auf das nächste 09:00 UTC gesetzt; ein Anker, der mehr als 365 Tage in der Zukunft liegt, wird abgelehnt. Eine Änderung des Intervalls oder Ankers wird erst beim nächsten Neueinplanen wirksam, nicht für den bereits in der Warteschlange befindlichen Durchlauf. Ein fehlgeschlagener Durchlauf verschiebt den Anker nicht.
+
+Führen Sie das Audit nach einer Änderung seines Ziels oder Kontexts einmalig manuell aus, bevor Sie sich auf das nächste geplante Ergebnis verlassen.
 
 <Note>
-  Lokal geplante Audits werden auf dem jeweiligen Gerät konfiguriert und scannen den lokalen Agent-Verlauf. Cloud-Audit-Zeitpläne arbeiten mit Cloud-Sitzungen. Behandeln Sie deren Ergebnisse und Zuständigkeiten getrennt voneinander.
+  Diese Seite behandelt Cloud-Audit-Zeitpläne, die auf Cloud-Sitzungen basieren. Das lokale Audit hat seinen eigenen Timer: `failproofai audit --schedule [days]` akzeptiert 1–90 Tage (Standard: 7), scannt den Agent-Verlauf auf genau diesem einen Rechner und ist die einzige Oberfläche mit einer monatlichen Option. Ergebnisse und Eigentümerschaft sind vollständig unabhängig von den hier beschriebenen Inhalten – siehe [Lokalen Agent-Verlauf auditieren](/de/audits/local-audit).
 </Note>

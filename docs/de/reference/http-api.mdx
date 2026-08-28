@@ -4,71 +4,121 @@ description: "Authentifizierung bei der öffentlichen Failproof AI Cloud `/v1` A
 icon: "braces"
 ---
 
-Die öffentliche API wird unter `/v1` auf der Origin Ihres Failproof AI-Dashboards bereitgestellt.
+Die öffentliche API wird unter `/v1` auf dem Origin Ihres Failproof AI-Dashboards bereitgestellt. In der Failproof AI Cloud ist dieser Origin `https://app.befailproof.ai`, der Basispfad lautet also `https://app.befailproof.ai/v1`. Bei einem selbst gehosteten Deployment ist es Ihr eigener Dashboard-Host gefolgt von `/v1`; übergeben Sie diesen Host an `fp` mit `--base-url <url>` oder `FP_DASHBOARD_URL`.
 
-## Schlüssel erstellen und eine Anfrage stellen
+## Schlüssel erstellen und eine Anfrage senden
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Öffnen Sie **Administration → Keys**, wählen Sie **Create key** und wählen Sie das engste Berechtigungs-Preset, das die Integration abdeckt.
-    2. Fügen Sie individuelle Berechtigungen nur bei Bedarf hinzu, erstellen Sie den Schlüssel und kopieren Sie das einmalig angezeigte Secret.
+    1. Öffnen Sie **Administration → Keys**, wählen Sie **neuer Schlüssel** und wählen Sie das engste Berechtigungs-Preset, das die Integration abdeckt.
+    2. Fügen Sie einzelne Berechtigungen nur bei Bedarf hinzu, erstellen Sie den Schlüssel und kopieren Sie das einmalige Geheimnis.
     3. Senden Sie eine Testanfrage an `/v1/sessions` und bestätigen Sie, dass der Schlüssel auf der Keys-Seite aktiv bleibt.
-    4. Rotieren oder deaktivieren Sie den Schlüssel über sein Aktionsmenü, wenn sich der Eigentümer der Integration ändert.
+    4. Rotieren oder deaktivieren Sie den Schlüssel über sein Aktionsmenü, wenn die Integration den Besitzer wechselt.
 
-    ![Die Drawer-Ansicht für neue API-Schlüssel mit Berechtigungs-Presets und individuellen Grants.](/images/dashboard/key-create.png)
+    ![Der neue API-Schlüssel-Drawer mit Berechtigungs-Presets und individuellen Grants.](/images/dashboard/key-create.png)
 
-    Der Erstellungs-Drawer ist oben abgebildet. Das einmalige Secret erscheint erst, nachdem Sie **create** ausgewählt haben – kopieren Sie es, bevor Sie die Bestätigung schließen.
+    Der Erstellungs-Drawer ist oben abgebildet. Das einmalige Geheimnis erscheint erst nach der Erstellung des Schlüssels; kopieren Sie es, bevor Sie die Bestätigung schließen.
   </Tab>
   <Tab title="CLI">
-    Erstellen Sie einen Read-Schlüssel und verwenden Sie ihn direkt mit `fp` oder `curl`:
+    Erstellen Sie einen Leseschlüssel und verwenden Sie ihn direkt mit `fp` oder `curl`. `fp` liest den Schlüssel aus `--api-key` oder aus `FP_API_KEY`:
 
     ```bash
     fp keys create reliability-reader \
       --permission-set read-only
 
-    fp --api-key <key> sessions --since 24h
-    ```
-
-    ```bash
-    curl "https://app.befailproof.ai/v1/sessions?limit=20" \
-      -H "Authorization: Bearer $FAILPROOFAI_KEY"
-    ```
-  </Tab>
-</Tabs>
-
-Schlüssel sind auf eine Organisation und ein Berechtigungs-Set beschränkt. Eine Anfrage ohne die erforderliche Berechtigung des Endpunkts gibt `403` zurück und benennt die fehlende Berechtigung.
-
-## Organisationsauswahl
-
-Ein organisationsbezogener Schlüssel agiert automatisch im Kontext seiner Organisation. Ein instanzweit gültiger Schlüssel kann pro Anfrage eine Organisation auswählen:
-
-<Tabs>
-  <Tab title="Dashboard">
-    Verwenden Sie den Organisations-Umschalter im Dashboard-Header, bevor Sie **Administration → Keys** öffnen. Dort erstellte Schlüssel gehören zur ausgewählten Organisation. Bestätigen Sie den Organisations-Slug in der URL und den Schlüsseldetails, bevor Sie die Anmeldeinformation in die Automatisierung übernehmen.
-
-  </Tab>
-  <Tab title="CLI">
-    Verwenden Sie `--org` vor dem Befehl oder senden Sie den Organisations-Header für einen instanzweit gültigen API-Schlüssel.
-
-    ```bash
-    fp orgs list
+    export FP_API_KEY="<one-time-secret>"
     fp --org reliability-team sessions --since 24h
     ```
 
     ```bash
-    curl "https://app.befailproof.ai/v1/usage" \
-      -H "Authorization: Bearer $FAILPROOFAI_KEY" \
+    curl "https://app.befailproof.ai/v1/sessions?limit=20" \
+      -H "Authorization: Bearer $FP_API_KEY" \
       -H "X-AgentEye-Org: reliability-team"
     ```
   </Tab>
 </Tabs>
 
-Verwenden Sie die generierten Endpunkt-Seiten in diesem Abschnitt für aktuelle Pfade, Parameter, Berechtigungsanforderungen und Statuscodes. Die Spezifikation wird aus den Server-Route-Annotationen generiert und gegen den `/v1`-Router geprüft.
+Schlüssel sind auf eine Organisation und eine flache Liste von Berechtigungen beschränkt. Ein Berechtigungs-Preset befüllt diese Liste nur zum Zeitpunkt der Erstellung — der Schlüssel speichert die ausgeweiteten Grants, sodass eine spätere Änderung des Presets den Schlüssel nicht beeinflusst. Eine Anfrage ohne die erforderliche Berechtigung des Endpunkts gibt `403` zurück und benennt die fehlende Berechtigung.
 
-Die aktuelle Spezifikation bietet vollständige Abdeckung für Routen, Methoden, Parameter, Berechtigungen und Statuscodes. Einige Response-Bodies bleiben absichtlich untypisiert, da der Server sie noch als dynamisches JSON konstruiert. Untersuchen Sie eine echte Antwort, bevor Sie einen stark typisierten Client für einen Endpunkt ohne Response-Schema generieren.
+## Organisationsauswahl
 
-Verwenden Sie `Content-Type: application/json` für JSON-Schreibvorgänge. Behandeln Sie `401` als fehlende oder ungültige Authentifizierung, `403` als gültige Identität ohne die erforderliche Berechtigung, `404` als fehlende oder für die Organisation nicht zugängliche Ressource, `409` als Zustandskonflikt und `422` als ungültiges Feld oder ungültigen Berechtigungswert. Fehlerantworten enthalten eine lesbare Meldung; bei Berechtigungsfehlern wird zudem der erforderliche Grant benannt.
+Ein Organisationsschlüssel agiert automatisch für seine Organisation. Ein instanzweiter Schlüssel wählt eine Organisation pro Anfrage, und ein Tenant mit mehr als einer Organisation muss im Schlüsselmodus immer eine angeben — `fp` sendet niemals eine gespeicherte Organisation, wenn es sich mit einem Schlüssel authentifiziert.
+
+| Aufrufer | So benennen Sie die Organisation |
+| --- | --- |
+| `fp`, pro Aufruf | `--org <slug>`, vor dem Unterbefehl |
+| `fp`, aus der Umgebung | `FP_ORG` |
+| Rohes HTTP | der `X-AgentEye-Org: <slug>` Anfrage-Header |
+
+`X-AgentEye-Org` behält seine ursprüngliche Schreibweise auf dem Wire. Es ist der Header, den das Dashboard liest, um die aktive Organisation aufzulösen; eine Umbenennung in einem Client macht die Anfrage ungültig.
+
+<Tabs>
+  <Tab title="Dashboard">
+    Verwenden Sie den Organisations-Umschalter im Dashboard-Header, bevor Sie **Administration → Keys** öffnen. Dort erstellte Schlüssel gehören zur ausgewählten Organisation. Überprüfen Sie den Organisations-Slug in der URL und den Schlüsseldetails, bevor Sie die Anmeldedaten in die Automatisierung kopieren.
+
+  </Tab>
+  <Tab title="CLI">
+    Verwenden Sie `--org` vor dem Befehl oder senden Sie den Organisations-Header für einen instanzweiten API-Schlüssel. `fp orgs list` ermittelt den Slug hier nicht für Sie — es verweigert im Schlüsselmodus; lesen Sie den Slug stattdessen aus dem Organisations-Umschalter des Dashboards.
+
+    ```bash
+    fp --org reliability-team sessions --since 24h
+    ```
+
+    ```bash
+    curl "https://app.befailproof.ai/v1/usage" \
+      -H "Authorization: Bearer $FP_API_KEY" \
+      -H "X-AgentEye-Org: reliability-team"
+    ```
+  </Tab>
+</Tabs>
+
+## Paginierung
+
+List-Endpunkte verwenden Keyset-Paginierung, und dieselbe Vereinbarung gilt unabhängig davon, ob Sie sie über `fp` oder über `curl` aufrufen.
+
+| Element | Bedeutung |
+| --- | --- |
+| `limit` Query-Parameter | Zeilen, die in diesem Aufruf angefordert werden. `fp` begrenzt eine einzelne Anfrage auf 200 Zeilen bei jedem Endpunkt. Eine Rohanfrage wird stattdessen durch die eigene endpunktspezifische Obergrenze des Servers begrenzt. |
+| `cursor` Query-Parameter | Ein undurchsichtiges Token, das den Feed nach einer vorherigen Seite fortsetzt. |
+| `next_cursor` Antwortfeld | Das Token für die nächste Seite. `null` bedeutet, dass der Feed erschöpft ist. |
+
+Diese Obergrenzen unterscheiden sich je nach Endpunkt, und jede Endpunktseite benennt ihren eigenen Standard- und Maximalwert:
+
+| Endpunkt | Standard | Maximum |
+| --- | --- | --- |
+| `/events`, `/events/summary` | 50 | 1000 |
+| `/issues`, `/alerts/{id}/issues` | 200 | 1000 |
+| `/evaluation-jobs` | 100 | 500 |
+| `/audits/findings` | 100 | 500 |
+| `/sessions`, `/evaluations` | 50 | 200 |
+| `/audits/{id}/runs` | 50 | 200 |
+
+Lesen Sie einen vollständigen Feed, indem Sie dieselbe Anfrage erneut senden und `cursor` auf den `next_cursor` der vorherigen Antwort setzen, bis `next_cursor` als `null` zurückkommt. Die entsprechenden `fp`-Flags — `--all`, `--cursor` und `--page-size` — sind in der [Cloud CLI-Referenz](/de/reference/cloud-cli) dokumentiert.
+
+## Endpunkt-Referenz und Fehlerbehandlung
+
+Verwenden Sie die generierten Endpunktseiten in diesem Abschnitt für aktuelle Pfade, Parameter, Berechtigungsanforderungen und Statuscodes. Die Spezifikation wird aus den Server-Route-Annotationen generiert und gegen den `/v1`-Router geprüft.
+
+Die aktuelle Spezifikation deckt Route, Methode, Parameter, Berechtigung und Statuscodes vollständig ab. Request-Bodies sind typisiert; Response-Bodies sind es nicht — die Spezifikation enthält derzeit keine Response-Schemas, da der Server diese noch als dynamisches JSON aufbaut. Untersuchen Sie eine echte Antwort, bevor Sie einen stark typisierten Client generieren.
+
+Verwenden Sie `Content-Type: application/json` für JSON-Schreibvorgänge. Behandeln Sie `401` als fehlende oder ungültige Authentifizierung, `403` als gültige Identität ohne die erforderliche Berechtigung, `404` als fehlende oder für die Organisation nicht zugängliche Ressource, `409` als Zustandskonflikt, `400` als abgelehnten Parameter — ein unbekannter Filterwert, ein fehlerhafter Query-Parameter, eine Anweisung, die nicht ausgeführt werden würde — und `422` als ungültiges Feld oder ungültigen Berechtigungswert in einem Request-Body. Fehlerantworten enthalten eine für Menschen lesbare Meldung; Berechtigungsfehler benennen auch den erforderlichen Grant.
+
+## Bereiche, die `/v1` nicht abdeckt
+
+Cloud-verwaltete Richtlinien, die Fleet und der Guardrail-Entscheidungs-Feed sind Operator-Surfaces — sowohl Lese- als auch Schreibzugriffe. Sie sind auf dem Server nur für Root zugänglich und absichtlich nicht in `/v1` enthalten, da diese Schnittstelle internetbasiert ist. Das Veröffentlichen einer Richtlinienversion oder das Deployen auf eine Maschine beispielsweise ist nicht mit einem API-Schlüssel möglich, und das Auslesen der Fleet-Entscheidungen liegt auf derselben Surface.
+
+Ein API-Schlüssel erhält daher auf diesen Routen planmäßig eine Ablehnung, und `fp` verweigert noch vor dem Öffnen einer Verbindung, anstatt die Anfrage mit einem unerklärten 404 scheitern zu lassen:
+
+| Befehl | Verhalten mit einem API-Schlüssel |
+| --- | --- |
+| `fp policies` | Verweigert mit Exit `2` und bezeichnet cloud-verwaltete Richtlinien als Operator-Surface |
+| `fp fleet` | Verweigert mit Exit `2` und bezeichnet die Fleet als Operator-Surface |
+| `fp guardrails` | Verweigert mit Exit `2` und bezeichnet den Guardrail-Feed als Operator-Surface |
+| `fp agent` | Verweigert mit Exit `2`; der Assistent wird vom Dashboard implementiert, nicht von der API |
+| `fp orgs` | Verweigert mit Exit `2`; die Org-Mitgliedschaft gehört einem angemeldeten Benutzer, und ein Schlüssel agiert bereits für eine Org |
+
+Führen Sie diese stattdessen unter einer angemeldeten Benutzersitzung aus (`fp login`), oder verwenden Sie das Dashboard. Die Lese- und Administrationsbereiche — Sessions, Events, Evaluations, Audits, Issues, Alerts, Keys, Berechtigungs-Presets, Benutzer, Einstellungen, Abfragen und Nutzung — haben jeweils eine `/v1`-Route und funktionieren mit einem Schlüssel. Die einzige Lücke ist `fp keys update`: Es benötigt `keys:update`, eine Berechtigung, die kein API-Schlüssel besitzen kann; ein Schlüssel kann also Schlüssel erstellen und deaktivieren, aber niemals die Berechtigungen eines Schlüssels bearbeiten. `fp login` und `fp logout` verweigern ebenfalls im Schlüsselmodus, aus einem anderen Grund: Ein Schlüssel ist bereits die Anmeldedaten und wird nie auf der Festplatte gespeichert.
 
 <Warning>
-  Die Bereitstellung der Richtlinien-Durchsetzung wird absichtlich außerhalb der gewöhnlichen öffentlichen `/v1`-Oberfläche verwaltet. Verwenden Sie den unterstützten Cloud-Deployment-Workflow.
+  Das Deployment der Richtliniendurchsetzung wird absichtlich außerhalb der gewöhnlichen öffentlichen `/v1`-Surface verwaltet. Verwenden Sie den unterstützten Cloud-Deployment-Workflow, der unter [Deploy policies](/de/policies/deploy) beschrieben ist.
 </Warning>

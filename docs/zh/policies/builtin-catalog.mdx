@@ -1,100 +1,100 @@
 ---
 title: "内置策略目录"
-description: "查看每个内置 Failproof AI 策略、其触发条件、推荐状态及可配置参数。"
+description: "查阅每条 Failproof AI 内置策略的触发条件、推荐状态及可配置参数。"
 icon: "list-checks"
 ---
 
-已安装的包是策略可用性的权威来源。每次升级后请运行 `failproofai policies`，因为目录条目和行为可能随包版本变化。
+已安装的软件包是策略可用性的唯一权威来源。每次升级后请运行 `failproofai policies`，因为目录条目和行为可能随软件包版本而变化。
 
 ## 推荐基线
 
-引导式设置的推荐选项当前启用了密钥清理器、环境保护、自我保护、灾难性命令防护以及受保护分支安全：
+引导安装的推荐选项目前启用了密钥脱敏、环境保护、自我保护、灾难性命令防护以及受保护分支安全：
 
 ```text
 sanitize-jwt                 sanitize-api-keys
 sanitize-connection-strings sanitize-private-key-content
 sanitize-bearer-tokens       protect-env-vars
 block-env-files              block-secrets-write
-block-self-pause             block-failproofai-commands
-block-sudo                   block-curl-pipe-sh
-block-rm-rf                  block-push-master
-block-force-push
+block-failproofai-commands   block-sudo
+block-curl-pipe-sh           block-rm-rf
+block-push-master            block-force-push
 ```
 
-推荐选项有意比**全量**范围更窄。基础设施和工作流策略可能会打断正常工作，应仅在需要的仓库和机器上启用。
+`block-failproofai-commands` **始终开启**。上方列出它仅为完整起见，但无论是否出现在您的启用列表中，它都会在每次评估时注册，且无法被禁用或暂停——一个可被 Agent 自行关闭的守卫，根本算不上守卫。
+
+推荐范围有意窄于**全部启用**。基础设施和工作流策略可能会中断正常工作，应仅在需要的仓库和机器上启用。
 
 ## 密钥与环境
 
 | 策略 | 触发条件 | 效果 |
 | --- | --- | --- |
-| `sanitize-jwt` | `PostToolUse` | 在模型读取工具输出前，将其中的 JWT 脱敏处理。 |
+| `sanitize-jwt` | `PostToolUse` | 在模型看到工具输出之前，将其中的 JWT 脱敏处理。 |
 | `sanitize-api-keys` | `PostToolUse` | 脱敏常见的 OpenAI、Anthropic、GitHub、AWS、Stripe 和 Google 密钥。 |
 | `sanitize-connection-strings` | `PostToolUse` | 脱敏包含凭据的数据库连接字符串。 |
-| `sanitize-private-key-content` | `PostToolUse` | 脱敏 PEM 私钥内容。 |
-| `sanitize-bearer-tokens` | `PostToolUse` | 脱敏授权 Bearer Token。 |
-| `protect-env-vars` | `PreToolUse`（Shell 工具） | 阻止转储环境变量的命令。 |
-| `block-env-files` | `PreToolUse` | 阻止对 `.env` 文件的读写操作。 |
-| `block-read-outside-cwd` | `PreToolUse`（读取、glob、grep 或 Shell 工具） | 将读取范围限制在会话工作目录内。 |
-| `block-secrets-write` | `PreToolUse`（写入工具） | 阻止向常见密钥和凭据文件名写入内容。 |
+| `sanitize-private-key-content` | `PostToolUse` | 脱敏 PEM 私钥正文。 |
+| `sanitize-bearer-tokens` | `PostToolUse` | 脱敏 Authorization bearer token。 |
+| `protect-env-vars` | Shell 工具的 `PreToolUse` | 拦截会转储环境变量的命令。 |
+| `block-env-files` | `PreToolUse` | 拦截对 `.env` 文件的读写操作。 |
+| `block-read-outside-cwd` | 读取、glob、grep 或 shell 工具的 `PreToolUse` | 将读操作限制在会话工作目录内。 |
+| `block-secrets-write` | 写入工具的 `PreToolUse` | 拦截对常见密钥和凭据文件名的写操作。 |
 
 ## 危险命令与基础设施
 
 | 策略 | 触发条件 | 效果 |
 | --- | --- | --- |
-| `block-self-pause` | `PreToolUse`、`PermissionRequest` | 防止 Agent 暂停自身的执行强制。 |
-| `block-sudo` | `PreToolUse`、`PermissionRequest` | 阻止 `sudo`，除非匹配到允许模式。 |
-| `block-curl-pipe-sh` | `PreToolUse` | 阻止将下载的脚本直接通过管道传递给 Shell 执行。 |
-| `block-rm-rf` | `PreToolUse` | 阻止灾难性递归删除操作。 |
-| `block-failproofai-commands` | `PreToolUse` | 防止 Agent 修改或卸载 Failproof AI。 |
+| `block-sudo` | `PreToolUse`、`PermissionRequest` | 拦截 `sudo`，除非命令匹配允许规则。 |
+| `block-curl-pipe-sh` | `PreToolUse` | 拦截将下载脚本直接通过管道传给 shell 的操作。 |
+| `block-rm-rf` | `PreToolUse` | 拦截灾难性的递归删除模式。 |
+| `block-failproofai-commands` | `PreToolUse`、`PermissionRequest` | **始终开启，无法禁用。** 拦截所有 Failproof AI CLI 调用、自我暂停以及包管理器卸载操作。 |
 | `block-kubectl` | `PreToolUse` | 管控 Kubernetes 命令。 |
 | `block-terraform` | `PreToolUse` | 管控 Terraform 和 OpenTofu 命令。 |
 | `block-aws-cli` | `PreToolUse` | 管控 AWS CLI 命令。 |
 | `block-gcloud` | `PreToolUse` | 管控 Google Cloud CLI 命令。 |
 | `block-az-cli` | `PreToolUse` | 管控 Azure CLI 命令。 |
 | `block-helm` | `PreToolUse` | 管控 Helm 命令。 |
-| `block-gh-pipeline` | `PreToolUse` | 管控会产生变更的 GitHub CLI 工作流、运行、合并、发布、缓存和密钥操作。 |
+| `block-gh-pipeline` | `PreToolUse` | 管控具有变更性质的 GitHub CLI 工作流、运行、合并、发布、缓存及密钥操作。 |
 
 ## Git 与数据库安全
 
 | 策略 | 触发条件 | 效果 |
 | --- | --- | --- |
-| `block-push-master` | `PreToolUse` | 阻止直接推送到已配置的受保护分支。 |
-| `block-force-push` | `PreToolUse` | 阻止强制推送；当前实现中 `--force-with-lease` 仍被允许。 |
-| `block-work-on-main` | `PreToolUse` | 阻止在受保护分支上执行提交和合并操作。 |
-| `warn-git-amend` | `PreToolUse` | 在使用 `--amend` 重写提交前发出警告。 |
-| `warn-git-stash-drop` | `PreToolUse` | 在永久丢弃或清除暂存区前发出警告。 |
+| `block-push-master` | `PreToolUse` | 拦截直接推送到已配置的受保护分支。 |
+| `block-force-push` | `PreToolUse` | 拦截强制推送；当前实现中 `--force-with-lease` 仍被允许。 |
+| `block-work-on-main` | `PreToolUse` | 拦截在受保护分支上的提交和合并操作。 |
+| `warn-git-amend` | `PreToolUse` | 在使用 `--amend` 改写提交前发出警告。 |
+| `warn-git-stash-drop` | `PreToolUse` | 在永久丢弃或清空 stash 前发出警告。 |
 | `warn-all-files-staged` | `PreToolUse` | 对 `git add -A`、`git add .` 或 `git add --all` 等大范围暂存操作发出警告。 |
-| `warn-destructive-sql` | `PreToolUse` | 通过已识别的数据库客户端执行 `DROP`、`TRUNCATE` 以及不带 `WHERE` 的 `DELETE` 时发出警告。 |
+| `warn-destructive-sql` | `PreToolUse` | 对通过已识别数据库客户端执行的 `DROP`、`TRUNCATE` 以及不带 `WHERE` 的 `DELETE` 发出警告。 |
 | `warn-schema-alteration` | `PreToolUse` | 对已识别的 `ALTER TABLE` 列操作和重命名操作发出警告。 |
 
 ## 包管理、系统行为与 Agent 循环
 
 | 策略 | 触发条件 | 效果 |
 | --- | --- | --- |
-| `warn-package-publish` | `PreToolUse` | 在发布到包注册表前发出警告。 |
+| `warn-package-publish` | `PreToolUse` | 在发布到包注册中心前发出警告。 |
 | `warn-global-package-install` | `PreToolUse` | 在全局安装包之前发出警告。 |
-| `prefer-package-manager` | `PreToolUse` | 指示 Agent 使用允许的包管理器。 |
-| `warn-large-file-write` | `PreToolUse`（写入工具） | 当文件大小超过配置阈值时发出警告。 |
+| `prefer-package-manager` | `PreToolUse` | 指示 Agent 使用已允许的包管理器。 |
+| `warn-large-file-write` | 写入工具的 `PreToolUse` | 当文件大小超过配置阈值时发出警告。 |
 | `warn-background-process` | `PreToolUse` | 对分离式或长期运行的后台进程模式发出警告。 |
-| `warn-repeated-tool-calls` | `PreToolUse` | 在相同工具调用出现三次及以上后发出警告。 |
+| `warn-repeated-tool-calls` | `PreToolUse` | 在三次或以上相同工具调用后发出警告。 |
 
 ## 任务结束工作流
 
-这些策略需要一个能触发兼容 `Stop` 事件的运行环境。
+这些策略需要能够发出兼容 `Stop` 事件的执行框架。
 
 | 策略 | 效果 |
 | --- | --- |
-| `require-commit-before-stop` | 当存在未提交的跟踪变更时，拒绝完成任务。 |
-| `require-push-before-stop` | 当存在仅保留在本地的提交时，拒绝完成任务。 |
+| `require-commit-before-stop` | 当已跟踪的工作存在未提交内容时，拒绝完成任务。 |
+| `require-push-before-stop` | 当存在仅在本地的提交时，拒绝完成任务。 |
 | `require-pr-before-stop` | 要求为当前分支创建 Pull Request。 |
-| `require-no-conflicts-before-stop` | 要求与配置的基础分支干净合并。 |
-| `require-ci-green-before-stop` | 要求当前 HEAD 的 CI 检查全部成功完成。 |
+| `require-no-conflicts-before-stop` | 要求与已配置的基础分支无合并冲突。 |
+| `require-ci-green-before-stop` | 要求当前 HEAD 的 CI 检查全部通过。 |
 
 ## 参数参考
 
-在所选作用域的 `policyParams` 对象下配置参数，各策略会对类型进行校验。
+在对应作用域的 `policyParams` 对象下配置参数。每条策略会对参数类型进行校验。
 
-| 策略 | 参数 | 类型与默认值 |
+| 策略 | 参数 | 类型及默认值 |
 | --- | --- | --- |
 | `sanitize-api-keys` | `additionalPatterns` | `pattern[]`，`[]`；条目包含 `regex` 和 `label` |
 | `block-read-outside-cwd` | `allowPaths` | `string[]`，`[]` |
@@ -125,5 +125,5 @@ block-force-push
 ```
 
 <Warning>
-  允许模式会扩大 Agent 的操作权限。在将其部署到整个机群之前，请在目标运行环境上充分测试确切的标记化规则和命令变体。
+  允许规则会扩大 Agent 的操作权限。在将其部署到整个机器集群之前，请先在目标执行框架上测试确切的 token 解析方式和命令变体。
 </Warning>

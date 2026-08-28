@@ -1,0 +1,91 @@
+---
+title: "פרסום חבילה"
+description: "שלח את המדיניויות שלך כהוצאת GitHub שכל אחד יוכל להתקין."
+icon: "upload"
+---
+
+חבילה היא שלושה קבצים המצורפים להוצאת GitHub. `failproofai pack build` כותב את שלושתם מקובץ מדיניות שכבר יש לך.
+
+## 1. כתוב את המדיניויות
+
+קובץ אחד, תוך שימוש באותה API כמו כל מדיניות מותאמת אישית. שני שדות נוספים משנים:
+
+```js
+import { customPolicies, deny, allow } from "failproofai";
+
+customPolicies.add({
+  name: "block-refunds",
+  description: "Refunds above the approved limit need a human",
+  category: "Billing",        // groups it, and is what --category selects on
+  defaultEnabled: true,       // switched on by a plain `pack add`
+  match: { events: ["PreToolUse"], tools: ["Bash"] },
+  fn: async (ctx) =>
+    String(ctx.toolInput?.command ?? "").includes("refund")
+      ? deny("Refunds need a human. Ask before running this.")
+      : allow(),
+});
+```
+
+`defaultEnabled` מוגדר כברירת מחדל ל־**false** כשאתה משמיט אותו. `failproofai pack add` פשוטה מדליקה רק את מה שסימנת — התקנת כל מדיניות של זר ללא감독מאינה החלטה שהמתקין צריך להחליט עבור המשתמש שלו.
+
+<Warning>
+הקובץ חייב להיות **קובץ עצמאי אחד**. רק הקובץ מוצמד ל־digest, כך שחבילה שמייבאת קבצים מקומיים לא יכולה להצהיר בכנות שה־digest מכסה מה שפועל. צרור קודם (`esbuild`, `bun build`, `rollup`) ובנה את החבילה מה־bundle — `pack build` דוחה ייבוא מקומי ולא משלח הבטחה שהיא לא יכולה לשמור.
+</Warning>
+
+## 2. בנה את נכסי ההוצאה
+
+```bash
+failproofai pack build ./policies.mjs \
+  --id acme/support-agent \
+  --version 1.0.0 \
+  --out ./dist-pack
+```
+
+הוא כותב שלושה קבצים, ומאמת כל מדיניות עם **כללי הטוען שלו** קודם — כך שחבילה שלא הייתה יכולה להתקין אף פעם נכשלת כאן, שם אתה יכול לתקן אותה:
+
+| קובץ | מה זה |
+| --- | --- |
+| `failproofai-pack.json` | המניפסט: id, גרסה, אפקט, וערך אחד לכל מדיניות |
+| `failproofai-pack.mjs` | הקובץ שלך, כפי שהוא |
+| `SHA256SUMS` | `<sha256>  <filename>` לשני האחרים |
+
+דחוי בזמן בנייה: id שאינו `publisher/name`, שם מדיניות המכיל `/`, מדיניות שמצהירה `alwaysOn`, `description`, `category` או `match` חסר, קובץ שלא רושם כלום, וקובץ שמייבא קבצים מקומיים.
+
+## 3. צרף אותם להוצאה
+
+תג את ההוצאה עם אותה גרסה שבנית, וצרף את שלושת הקבצים כנכסי הוצאה:
+
+```bash
+gh release create 1.0.0 \
+  ./dist-pack/failproofai-pack.json \
+  ./dist-pack/failproofai-pack.mjs \
+  ./dist-pack/SHA256SUMS
+```
+
+כל אחד יכול כעת להתקין אותה:
+
+```bash
+failproofai pack add acme/support-agent
+```
+
+שמות הנכסים קבועים — אלה מה שה־CLI של הצרכן בונה את כתובות ה־URL שלהם, ללא קריאת API וללא גילוי.
+
+## משלוח גרסה חדשה
+
+בנה עם ה־`--version` החדש, תג הוצאה חדשה, צרף את שלושת הנכסים שוב. הצרכנים מריצים את אותו `pack add` ושומרים על כל תת־קבוצה שבחרו; מדיניות שהם כיבו נשארת כבויה בעלייה.
+
+שינוי **השם** של מדיניות הוא שינוי משברי: מכונה שכיבתה אותה מדליקה הגדרה שלא קיימת עוד, והשם החדש מגיע בכל מה ש־`defaultEnabled` אומר.
+
+## מה המשתמשים שלך סומכים
+
+`SHA256SUMS` חיה באותה הוצאה כמו הקובץ, כך שהוא מוכיח שהבייטים הם אלה שפרסמת — לא מי אתה. כל מי שיכול לכתוב למאגר יכול לכתוב לשני הקבצים. ההגנה של המשתמשים שלך היא שה־digest מוצמד כשהם מתקינים, כך שמה שחדשת לא יכול להשתנות אחריהם.
+
+פרסום מממאגר שגישת הכתיבה שלו אתה שולט, וטפל בהוצאת חבילה כמו פרסום חבילה.
+
+## התבונן לפני שאתה אוכף
+
+מניפסט עשוי להצהיר `"effect": "observe"`. מדיניויות אלה פועלות והפסקותיהן **מתועדות ומושלכות** — כלום לא חסום. זו הדרך למדוד כלל חדש מול תנועה אמיתית לפני שהוא יכול להפריע לעבודה של מישהו.
+
+```json
+{ "id": "acme/support-agent", "version": "1.1.0", "effect": "observe", "policies": [ ... ] }
+```

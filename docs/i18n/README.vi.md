@@ -20,29 +20,29 @@
 
 **Bản dịch:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
-**Quan sát và thực thi mọi công cụ chạy trên agents của bạn.**
-Bất cứ nơi nào agents chạy, chúng tôi đều thấy được — và chúng tôi có thể từ chối. Failproof kết nối với 12 công cụ agent
-— các CLI lập trình như Claude Code và Codex, các cổng chat như Hermes,
-các trợ lý tự lưu trữ như OpenClaw — ghi lại mọi lần chạy và chặn các lệnh gọi công cụ
-nguy hiểm trước khi chúng thực thi. 40 chính sách được tích hợp sẵn. Độ trễ bằng không. Chạy cục bộ.
+**Quan sát và thực thi cho mỗi công cụ chạy các agents của bạn.**
+Cho dù agents chạy ở đâu, chúng tôi đều nhìn thấy — và chúng tôi có thể từ chối. failproofai kết nối 12 công cụ agent
+— các CLI mã hóa như Claude Code và Codex, các cổng chat như Hermes,
+trợ lý tự lưu trữ như OpenClaw — ghi lại mọi lần chạy và chặn các lệnh gọi công cụ nguy hiểm
+trước khi chúng thực thi. 39 chính sách tích hợp sẵn. Độ trễ bằng không. Chạy cục bộ.
 
 </div>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/readme-arch-hq.gif" alt="Failproof AI hoạt động" width="800" />
+  <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/readme-arch-hq.gif" alt="Failproof AI in action" width="800" />
 </p>
 
 ---
 
 ## Các công cụ được hỗ trợ
 
-Mười hai công cụ trong hai lớp — mười CLI lập trình, và hai cổng chat và trợ lý
-(Hermes, OpenClaw). Cùng các sự kiện, cùng chính sách, cùng lịch sử phiên làm việc,
-bất kể công cụ nào mà agent chạy trên đó.
+Mười hai công cụ trong hai lớp — mười CLI mã hóa và hai cổng chat và trợ lý
+(Hermes, OpenClaw). Các sự kiện giống nhau, các chính sách giống nhau, lịch sử phiên giống nhau,
+bất kể agent của bạn chạy trong công cụ nào.
 
-Các agents chạy trên không có công cụ nào báo cáo thông qua [Python SDK](https://docs.befailproof.ai/reference/custom-agents),
-nó cung cấp cho bạn tracing, phiên làm việc và kiểm toán. Thực thi ở đó cần một hook trong
-runtime của riêng bạn — [hãy liên hệ với chúng tôi](mailto:support@befailproof.ai) và chúng tôi sẽ ánh xạ nó.
+Các agents chạy trong không có công cụ nào báo cáo thông qua [Python SDK](https://docs.befailproof.ai/reference/custom-agents),
+cung cấp cho bạn tracing, phiên và kiểm toán. Thực thi ở đó cần một hook trong
+runtime của riêng bạn — [liên hệ với chúng tôi](mailto:support@befailproof.ai) và chúng tôi sẽ ánh xạ nó.
 
 {/* A 6-column table instead of inline <img> runs: table columns never re-wrap,
      so the grid stays 2×6 at any window width (scrolling on very narrow screens
@@ -146,7 +146,7 @@ failproofai policies --install   # hoặc chỉ chạy `failproofai` và chấp 
 failproofai
 ```
 
-40 chính sách được tích hợp sẵn sẽ kích hoạt ngay lập tức. Bảng điều khiển tại `localhost:8020`. Vô hiệu hóa lời nhắc lần đầu bằng `FAILPROOFAI_NO_FIRST_RUN=1`.
+39 chính sách tích hợp sẵn được kích hoạt ngay lập tức. Dashboard tại `localhost:8020`. Vô hiệu hóa lời nhắc lần đầu với `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
@@ -155,25 +155,25 @@ failproofai
 | Chính sách | Những gì nó chặn |
 |---|---|
 | `sanitize-api-keys` | Các khóa API rò rỉ vào ngữ cảnh của agent |
-| `block-env-files` | Đọc các tệp `.env` và các tệp bí mật khác |
-| `warn-repeated-tool-calls` | Agent lặp lại trên cùng một lệnh gọi |
-| `block-sudo` | Nâng cao đặc quyền |
+| `block-env-files` | Đọc các tệp `.env` và tệp bí mật khác |
+| `warn-repeated-tool-calls` | Agent lặp lại cùng một lệnh gọi |
+| `block-sudo` | Nâng cao quyền hạn |
 | `warn-destructive-sql` | `DROP`, `TRUNCATE`, `DELETE` không giới hạn |
 | `block-terraform` / `block-kubectl` | Các thay đổi không được xem xét đối với cơ sở hạ tầng trực tiếp |
 | `block-rm-rf` | Xóa tệp đệ quy |
-| `block-force-push` / `block-push-master` | `git push --force`, các lần đẩy trực tiếp đến `main` |
+| `block-force-push` / `block-push-master` | `git push --force`, đẩy trực tiếp đến `main` |
 
-Năm chính sách đầu tiên áp dụng cho bất kỳ agent nào có thể gọi một công cụ. Ba chính sách cuối cùng là những yêu thích
-của nhà phát triển — CLI lập trình là lớp công cụ mà chúng tôi bao phủ sâu nhất.
+Năm cái đầu tiên áp dụng cho bất kỳ agent nào có thể gọi một công cụ. Ba cái cuối cùng là
+những yêu thích của nhà phát triển — CLI mã hóa là lớp công cụ chúng tôi bao phủ sâu nhất.
 
-→ [Tất cả 40 chính sách được tích hợp sẵn](https://docs.befailproof.ai/policies/builtin)
+→ [Tất cả 39 chính sách tích hợp sẵn](https://docs.befailproof.ai/policies/builtin)
 
 ---
 
-## Chính sách của riêng bạn
+## Các chính sách của riêng bạn
 
-Thả một tệp vào `.failproofai/policies/` — nó sẽ tải tự động, không cần bất kỳ cờ nào.
-Commit nó và toàn bộ đội sẽ nhận được nó khi kéo xuống tiếp theo.
+Thả một tệp vào `.failproofai/policies/` — nó tải tự động, không cần cờ nào.
+Cam kết nó và toàn bộ nhóm của bạn sẽ nhận được nó vào lần kéo tiếp theo.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -189,44 +189,45 @@ customPolicies.add({
 });
 ```
 
-Ba quyết định có sẵn cho mọi chính sách:
+Ba quyết định có sẵn cho mỗi chính sách:
 
-| Quyết định | Hiệu quả |
+| Quyết định | Hiệu ứng |
 |---|---|
 | `allow()` | Cho phép hoạt động |
-| `deny(message)` | Chặn nó — tin nhắn quay lại agent |
-| `instruct(message)` | Cho phép nó tiếp tục, nhưng thêm ngữ cảnh vào lời nhắc tiếp theo của agent |
+| `deny(message)` | Chặn nó — tin nhắn quay trở lại agent |
+| `instruct(message)` | Cho phép nó, nhưng thêm ngữ cảnh vào lời nhắc tiếp theo của agent |
 
 → [Hướng dẫn chính sách tùy chỉnh](https://docs.befailproof.ai/policies/custom)
 
 ---
 
-## Khả năng quan sát
+## Quan sát
 
-Thực thi là một nửa. Nửa còn lại là thấy được agent thực sự đã làm gì.
+Thực thi là một nửa. Nửa còn lại là nhìn thấy những gì agent thực sự đã làm.
 
-Chạy `failproofai` không có đối số và nó phục vụ một bảng điều khiển trên `localhost:8020`
+Chạy `failproofai` mà không có đối số và nó phục vụ một dashboard trên `localhost:8020`
 đọc lịch sử chạy đã có trên máy của bạn — không có tài khoản, không có đăng ký, không có gì
-rời khỏi hộp. Bạn nhận được danh sách phiên, trình tự các lệnh gọi mô hình, lệnh gọi công cụ
-và quyết định hook bên trong mỗi lần chạy, những gì bị chặn và chính sách nói với agent, và một kiểm toán ngoại tuyến (`failproofai audit`) quét lịch sử của bạn để tìm các mẫu rủi ro
-và gợi ý các chính sách để ngăn chặn chúng.
+rời khỏi hộp. Bạn nhận được danh sách phiên, chuỗi các lệnh gọi mô hình, các lệnh gọi công cụ
+và quyết định hook bên trong mỗi lần chạy, những gì bị chặn và những gì chính sách đã nói với agent,
+và kiểm toán ngoại tuyến (`failproofai audit`) quét lịch sử của bạn để tìm các mô hình rủi ro
+và đề xuất các chính sách để ngăn chặn chúng.
 
-→ [Bảng điều khiển cục bộ](https://docs.befailproof.ai/reference/local-dashboard) ·
+→ [Dashboard cục bộ](https://docs.befailproof.ai/reference/local-dashboard) ·
 [Đọc một trace](https://docs.befailproof.ai/sessions/read-a-trace) ·
 [Kiểm toán cục bộ](https://docs.befailproof.ai/audits/local-audit)
 
-**Failproof AI Observability** là phía lưu trữ của cùng một mô hình dữ liệu, cho các đội
-chạy agents trên một đội: mỗi lần chạy từ mỗi công cụ ở một nơi, biểu đồ thực thi
-với các sub-agents song song trên các làn riêng của chúng, độ trễ p50/p95/p99
-cho mô hình, công cụ và hook, chi phí cho mỗi mô hình và theo dõi cửa sổ ngữ cảnh, theo dõi lỗi, SQL
-trên các trace của riêng bạn với bảng điều khiển có thể chia sẻ, các đánh giá được chấm bởi
-dịch vụ của riêng bạn, các kiểm toán định kỳ biến các lỗi định kỳ thành những phát hiện được hỗ trợ bằng bằng chứng, và các cảnh báo
-được định tuyến đến Slack, email hoặc webhook được ký. Tự lưu trữ trong cluster của riêng bạn
-có sẵn trong gói Enterprise.
+**Failproof AI Observability** là phía được lưu trữ của cùng một mô hình dữ liệu, cho các nhóm
+chạy agents trên một loạt: mỗi lần chạy từ mỗi công cụ ở một nơi, một biểu đồ thực thi
+với các agents phụ song song trên các làn của riêng chúng, độ trễ p50/p95/p99 cho các mô hình, công cụ và hooks,
+chi phí trên mỗi mô hình và theo dõi cửa sổ ngữ cảnh, theo dõi lỗi, SQL trên các traces của riêng bạn
+với các dashboard có thể chia sẻ, các đánh giá được tính điểm bởi dịch vụ của riêng bạn,
+các kiểm toán theo lịch trình biến các lỗi định kỳ thành các kết quả được hỗ trợ bằng bằng chứng,
+và các cảnh báo được định tuyến đến Slack, email hoặc một webhook đã ký. Tự lưu trữ trong
+cụm của riêng bạn có sẵn trong gói Enterprise.
 
-→ [Phiên làm việc](https://docs.befailproof.ai/sessions/overview) ·
+→ [Phiên](https://docs.befailproof.ai/sessions/overview) ·
 [Kiểm toán](https://docs.befailproof.ai/audits/overview) ·
-[Đặt lịch demo](https://befailproof.ai/get-a-demo)
+[Đặt một buổi demo](https://befailproof.ai/get-a-demo)
 
 ---
 
@@ -234,46 +235,46 @@ có sẵn trong gói Enterprise.
 
 | Bắt đầu | |
 |---|---|
-| [Hướng dẫn nhanh](https://docs.befailproof.ai/start/quickstart) | Cài đặt, kết nối một công cụ, xem lần chạy đầu tiên |
-| [Khái niệm](https://docs.befailproof.ai/start/concepts) | Cách hệ thống hook hoạt động |
-| [Các công cụ được hỗ trợ](https://docs.befailproof.ai/reference/harnesses) | Tất cả 12, và những gì mỗi công cụ có thể thực thi |
+| [Quickstart](https://docs.befailproof.ai/start/quickstart) | Cài đặt, kết nối một công cụ, xem lần chạy đầu tiên |
+| [Khái niệm](https://docs.befailproof.ai/start/concepts) | Hệ thống hook hoạt động như thế nào |
+| [Các công cụ được hỗ trợ](https://docs.befailproof.ai/reference/harnesses) | Tất cả 12, và những gì mỗi cái có thể thực thi |
 
 | Quan sát | |
 |---|---|
-| [Phiên làm việc](https://docs.befailproof.ai/sessions/overview) | Theo dõi một lần chạy: mô hình, công cụ, lỗi, độ trễ |
-| [Đọc một trace](https://docs.befailproof.ai/sessions/read-a-trace) | Những gì biểu đồ thực thi đang cho bạn biết |
-| [Kiểm toán](https://docs.befailproof.ai/audits/overview) | Tìm các mẫu lỗi trên nhiều phiên |
-| [Bảng điều khiển cục bộ](https://docs.befailproof.ai/reference/local-dashboard) | `localhost:8020`, không cần tài khoản |
+| [Phiên](https://docs.befailproof.ai/sessions/overview) | Theo dõi một lần chạy: mô hình, công cụ, lỗi, độ trễ |
+| [Đọc một trace](https://docs.befailproof.ai/sessions/read-a-trace) | Biểu đồ thực thi đang nói với bạn điều gì |
+| [Kiểm toán](https://docs.befailproof.ai/audits/overview) | Tìm các mô hình lỗi trên nhiều phiên |
+| [Dashboard cục bộ](https://docs.befailproof.ai/reference/local-dashboard) | `localhost:8020`, không cần tài khoản |
 
 | Thực thi | |
 |---|---|
-| [Chính sách được tích hợp sẵn](https://docs.befailproof.ai/policies/builtin) | Tất cả 40 chính sách với các tham số |
-| [Chính sách tùy chỉnh](https://docs.befailproof.ai/policies/custom) | Viết chính sách của riêng bạn |
-| [Cấu hình](https://docs.befailproof.ai/policies/local-configuration) | Phạm vi cấu hình và quy tắc hợp nhất |
+| [Chính sách tích hợp sẵn](https://docs.befailproof.ai/policies/builtin) | Tất cả 39 chính sách với các tham số |
+| [Chính sách tùy chỉnh](https://docs.befailproof.ai/policies/custom) | Viết của riêng bạn |
+| [Cấu hình](https://docs.befailproof.ai/policies/local-configuration) | Các phạm vi cấu hình và quy tắc hợp nhất |
 
-| Thiết lập agents của riêng bạn | |
+| Công cụ các agent của riêng bạn | |
 |---|---|
 | [Python SDK](https://docs.befailproof.ai/reference/custom-agents) | Báo cáo các lần chạy từ một agent không có công cụ |
-| [Policy SDK](https://docs.befailproof.ai/reference/policy-sdk) | Tham khảo `allow` / `deny` / `instruct` |
+| [Policy SDK](https://docs.befailproof.ai/reference/policy-sdk) | Tham chiếu `allow` / `deny` / `instruct` |
 
 ---
 
 ## Giấy phép
 
-MIT với [Commons Clause](https://commonsclause.com/) — miễn phí để sử dụng nội bộ và cá nhân; bán lại failproofai yêu cầu một thỏa thuận riêng. Xem [LICENSE](../../LICENSE) để biết toàn bộ văn bản.
+MIT với [Commons Clause](https://commonsclause.com/) — miễn phí cho mục đích sử dụng nội bộ và cá nhân; bán lại thương mại của failproofai yêu cầu một thỏa thuận riêng biệt. Xem [LICENSE](../../LICENSE) để xem toàn bộ văn bản.
 
 ---
 
 ## Đóng góp
 
-Xem [CONTRIBUTING.md](../../CONTRIBUTING.md). Các chính sách mới, trường hợp cạnh và bản dịch đều được chào đón.
+Xem [CONTRIBUTING.md](../../CONTRIBUTING.md). Các chính sách mới, trường hợp cạnh và bản dịch đều được hoan nghênh.
 
-> **Build trước khi bạn bắt đầu.** Chạy `bun install && bun run build` trước. Repo này chạy
-> các hook của failproofai trên chính nó, và chúng giải quyết import `failproofai` dựa trên
-> bundled `dist/` được biên dịch — nếu không có build bạn sẽ gặp lỗi hook `Cannot find package 'failproofai'`.
-> Xây dựng lại sau khi thay đổi `src/`. Xem
+> **Xây dựng trước khi bạn bắt đầu.** Chạy `bun install && bun run build` trước tiên. Repo này chạy
+> các hook của failproofai trên chính nó, và chúng phân giải import `failproofai` dựa trên
+> gói đã biên dịch `dist/` — mà không có bản dựng bạn sẽ gặp lỗi hook
+> `Cannot find package 'failproofai'`. Xây dựng lại sau khi thay đổi `src/`. Xem
 > [Build before the in-repo dev hooks will work](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 
-Xây dựng với ❤️ bởi [befailproof.ai](https://befailproof.ai) tại SF và Bengaluru.
+Được xây dựng với ❤️ bởi [befailproof.ai](https://befailproof.ai) ở SF và Bengaluru.

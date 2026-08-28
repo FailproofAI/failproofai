@@ -1,51 +1,55 @@
 ---
 title: "Catálogo de políticas integradas"
-description: "Consulte todas as políticas integradas do Failproof AI, seus gatilhos, estado recomendado e parâmetros configuráveis."
+description: "Revise cada política integrada do Failproof AI, seu gatilho, estado recomendado e parâmetros configuráveis."
 icon: "list-checks"
 ---
 
-O pacote instalado é a fonte de verdade para disponibilidade de políticas. Execute `failproofai policies` após cada atualização, pois entradas do catálogo e comportamentos podem mudar com a versão do pacote.
+O pacote instalado é a fonte de verdade para a disponibilidade das políticas. Execute `failproofai policies` após cada atualização, pois as entradas do catálogo e o comportamento podem mudar com a versão do pacote.
 
-## Baseline recomendado
+## Linha de base recomendada
 
-A seleção recomendada pela configuração guiada habilita atualmente sanitizadores de segredos, proteções de ambiente, autoproteção, bloqueios de comandos catastróficos e segurança de branches protegidos:
+A seleção recomendada pelo assistente de configuração guiada habilita atualmente sanitizadores de segredos, proteções de ambiente, autoproteção, proteções contra comandos catastróficos e segurança de branches protegidas:
 
 ```text
 sanitize-jwt                 sanitize-api-keys
 sanitize-connection-strings sanitize-private-key-content
 sanitize-bearer-tokens       protect-env-vars
 block-env-files              block-secrets-write
-block-self-pause             block-failproofai-commands
-block-sudo                   block-curl-pipe-sh
-block-rm-rf                  block-push-master
-block-force-push
+block-failproofai-commands   block-sudo
+block-curl-pipe-sh           block-rm-rf
+block-push-master            block-force-push
 ```
 
-O recomendado é deliberadamente mais restrito do que **Tudo**. Políticas de infraestrutura e fluxo de trabalho podem interromper trabalhos válidos e devem ser habilitadas apenas nos repositórios e máquinas que realmente precisam delas.
+`block-failproofai-commands` está **sempre ativo**. Ele aparece acima apenas
+por completude, mas se registra em toda avaliação independentemente de constar
+no seu conjunto habilitado, e não pode ser desabilitado ou pausado — uma
+proteção contra o agente que desativa a fiscalização que o próprio agente pode
+desativar não é uma proteção.
+
+O conjunto recomendado é deliberadamente mais restrito do que **Tudo**. Políticas de infraestrutura e fluxo de trabalho podem interromper tarefas válidas e devem ser habilitadas apenas para os repositórios e máquinas que delas necessitem.
 
 ## Segredos e ambiente
 
 | Política | Gatilho | Resultado |
 | --- | --- | --- |
-| `sanitize-jwt` | `PostToolUse` | Oculta JWTs da saída da ferramenta antes que o modelo os veja. |
-| `sanitize-api-keys` | `PostToolUse` | Oculta chaves comuns de OpenAI, Anthropic, GitHub, AWS, Stripe e Google. |
-| `sanitize-connection-strings` | `PostToolUse` | Oculta strings de conexão de banco de dados que contêm credenciais. |
-| `sanitize-private-key-content` | `PostToolUse` | Oculta corpos de chaves privadas PEM. |
-| `sanitize-bearer-tokens` | `PostToolUse` | Oculta tokens bearer de autorização. |
+| `sanitize-jwt` | `PostToolUse` | Redige JWTs da saída da ferramenta antes que o modelo os veja. |
+| `sanitize-api-keys` | `PostToolUse` | Redige chaves comuns de OpenAI, Anthropic, GitHub, AWS, Stripe e Google. |
+| `sanitize-connection-strings` | `PostToolUse` | Redige strings de conexão de banco de dados que contenham credenciais. |
+| `sanitize-private-key-content` | `PostToolUse` | Redige conteúdos de chaves privadas PEM. |
+| `sanitize-bearer-tokens` | `PostToolUse` | Redige tokens de autorização bearer. |
 | `protect-env-vars` | `PreToolUse` em ferramentas de shell | Bloqueia comandos que expõem variáveis de ambiente. |
 | `block-env-files` | `PreToolUse` | Bloqueia leituras e escritas de arquivos `.env`. |
-| `block-read-outside-cwd` | `PreToolUse` em ferramentas de leitura, glob, grep ou shell | Mantém as leituras dentro do diretório de trabalho da sessão. |
-| `block-secrets-write` | `PreToolUse` em ferramentas de escrita | Bloqueia escritas em nomes de arquivo comuns de chaves secretas e credenciais. |
+| `block-read-outside-cwd` | `PreToolUse` em ferramentas de leitura, glob, grep ou shell | Restringe leituras ao diretório de trabalho da sessão. |
+| `block-secrets-write` | `PreToolUse` em ferramentas de escrita | Bloqueia escritas em nomes de arquivos comuns de chaves secretas e credenciais. |
 
 ## Comandos perigosos e infraestrutura
 
 | Política | Gatilho | Resultado |
 | --- | --- | --- |
-| `block-self-pause` | `PreToolUse`, `PermissionRequest` | Impede que um agente pause sua própria aplicação de regras. |
-| `block-sudo` | `PreToolUse`, `PermissionRequest` | Bloqueia `sudo`, a menos que um padrão de permissão corresponda. |
+| `block-sudo` | `PreToolUse`, `PermissionRequest` | Bloqueia `sudo` a menos que um padrão de permissão corresponda. |
 | `block-curl-pipe-sh` | `PreToolUse` | Bloqueia scripts baixados e redirecionados diretamente para um shell. |
 | `block-rm-rf` | `PreToolUse` | Bloqueia padrões de exclusão recursiva catastrófica. |
-| `block-failproofai-commands` | `PreToolUse` | Impede que agentes alterem ou desinstalarem o Failproof AI. |
+| `block-failproofai-commands` | `PreToolUse`, `PermissionRequest` | **Sempre ativo, não pode ser desabilitado.** Bloqueia toda invocação da CLI do Failproof AI, autopausas e desinstalações via gerenciador de pacotes. |
 | `block-kubectl` | `PreToolUse` | Controla comandos do Kubernetes. |
 | `block-terraform` | `PreToolUse` | Controla comandos do Terraform e OpenTofu. |
 | `block-aws-cli` | `PreToolUse` | Controla comandos da AWS CLI. |
@@ -58,36 +62,36 @@ O recomendado é deliberadamente mais restrito do que **Tudo**. Políticas de in
 
 | Política | Gatilho | Resultado |
 | --- | --- | --- |
-| `block-push-master` | `PreToolUse` | Bloqueia pushes diretos para branches protegidos configurados. |
+| `block-push-master` | `PreToolUse` | Bloqueia pushes diretos para branches protegidas configuradas. |
 | `block-force-push` | `PreToolUse` | Bloqueia force-pushes; `--force-with-lease` permanece permitido pela implementação atual. |
-| `block-work-on-main` | `PreToolUse` | Bloqueia commits e merges em branches protegidos. |
+| `block-work-on-main` | `PreToolUse` | Bloqueia commits e merges em branches protegidas. |
 | `warn-git-amend` | `PreToolUse` | Avisa antes de reescrever um commit com `--amend`. |
 | `warn-git-stash-drop` | `PreToolUse` | Avisa antes de descartar ou limpar stashes permanentemente. |
-| `warn-all-files-staged` | `PreToolUse` | Avisa em uso amplo de `git add -A`, `git add .` ou `git add --all`. |
-| `warn-destructive-sql` | `PreToolUse` | Avisa em comandos `DROP`, `TRUNCATE` e `DELETE` sem `WHERE` em clientes de banco de dados reconhecidos. |
-| `warn-schema-alteration` | `PreToolUse` | Avisa em operações reconhecidas de `ALTER TABLE` para colunas e renomeações. |
+| `warn-all-files-staged` | `PreToolUse` | Avisa em `git add -A`, `git add .` ou `git add --all` abrangentes. |
+| `warn-destructive-sql` | `PreToolUse` | Avisa sobre `DROP`, `TRUNCATE` e `DELETE` sem `WHERE` em clientes de banco de dados reconhecidos. |
+| `warn-schema-alteration` | `PreToolUse` | Avisa sobre operações reconhecidas de `ALTER TABLE` em colunas e renomeações. |
 
-## Pacotes, comportamento do sistema e loops de agentes
+## Pacotes, comportamento do sistema e loops do agente
 
 | Política | Gatilho | Resultado |
 | --- | --- | --- |
 | `warn-package-publish` | `PreToolUse` | Avisa antes de publicar em registros de pacotes. |
 | `warn-global-package-install` | `PreToolUse` | Avisa antes de instalar pacotes globalmente. |
 | `prefer-package-manager` | `PreToolUse` | Instrui o agente a usar um gerenciador de pacotes permitido. |
-| `warn-large-file-write` | `PreToolUse` em ferramentas de escrita | Avisa acima do limite de tamanho de arquivo configurado. |
-| `warn-background-process` | `PreToolUse` | Avisa em padrões de processos em segundo plano desanexados ou de longa duração. |
-| `warn-repeated-tool-calls` | `PreToolUse` | Avisa após três ou mais chamadas de ferramenta idênticas. |
+| `warn-large-file-write` | `PreToolUse` em ferramentas de escrita | Avisa quando o tamanho do arquivo ultrapassa o limite configurado. |
+| `warn-background-process` | `PreToolUse` | Avisa sobre padrões de processos em segundo plano desacoplados ou de longa duração. |
+| `warn-repeated-tool-calls` | `PreToolUse` | Avisa após três ou mais chamadas idênticas de ferramentas. |
 
-## Fluxo de trabalho ao fim da tarefa
+## Fluxo de trabalho de fim de tarefa
 
-Estas políticas exigem um harness que emita um evento `Stop` compatível.
+Estas políticas requerem um harness que emita um evento `Stop` compatível.
 
 | Política | Resultado |
 | --- | --- |
 | `require-commit-before-stop` | Recusa a conclusão enquanto houver trabalho rastreado sem commit. |
 | `require-push-before-stop` | Recusa a conclusão enquanto houver commits apenas locais. |
 | `require-pr-before-stop` | Exige um pull request para o branch atual. |
-| `require-no-conflicts-before-stop` | Exige um merge limpo com o branch base configurado. |
+| `require-no-conflicts-before-stop` | Exige um merge limpo contra o branch base configurado. |
 | `require-ci-green-before-stop` | Exige que as verificações de CI do HEAD atual sejam concluídas com sucesso. |
 
 ## Referência de parâmetros

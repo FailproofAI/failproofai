@@ -4,9 +4,9 @@ description: "フックのインストール、ローカルポリシーの管理
 icon: "terminal"
 ---
 
-`npm install -g failproofai` でローカル CLI をインストールします。引数なしで実行すると、ローカルポリシーダッシュボードが開きます。
+`npm install -g failproofai` でローカル CLI をインストールします。引数なしで実行するとローカルポリシーダッシュボードが開きます。
 
-このパッケージには Node.js 20.9 以降が必要です。Bun 1.3 以降は開発およびソースインストールに対応しています。`failproofai configure` と `failproofai setup` は `failproofai config` のエイリアスです。`failproofai p` は `failproofai policies` のエイリアスです。
+このパッケージには Node.js 20.9 以降が必要です。Bun 1.3 以降は開発環境およびソースインストールでサポートされています。`failproofai configure` と `failproofai setup` は `failproofai config` のエイリアスです。`failproofai p` は `failproofai policies` のエイリアスです。
 
 ## マシンのセットアップ
 
@@ -22,60 +22,65 @@ failproofai config --status
 
 引数なしで `failproofai` を実行すると、ローカルポリシーダッシュボードが開きます。
 
-| コマンド | 内容 |
+| コマンド | 動作 |
 | --- | --- |
-| `failproofai config` | マシンのインタラクティブセットアップを実行する |
-| `failproofai config --connect <url> --token <key>` | Cloud のイベント取り込みとポリシー配信を接続する |
-| `failproofai config --status` | 接続状況、デーモン、配信、一時停止の状態を表示する |
-| `failproofai policies` | 組み込みポリシーとカスタムポリシーを一覧表示する |
-| `failproofai policies --install` | フックをインストールしてポリシーを有効にする |
-| `failproofai policy add <name>` | 組み込みポリシーを1つ有効にする |
-| `failproofai policy remove <name>` | 組み込みポリシーを1つ無効にする |
-| `failproofai policies --uninstall` | ポリシーを無効にするか、ハーネスフックを削除する |
-| `failproofai audit` | ローカルエージェントの履歴をスキャンし、ローカル監査ビューを開く |
+| `failproofai config` | 対話式のマシンセットアップを実行する |
+| `failproofai config --connect <url> --token <key>` | Cloud へのイベント取り込みとポリシー配信を接続する |
+| `failproofai config --status` | 接続状態、デーモン、配信、一時停止の状態を表示する |
+| `failproofai policies` | 組み込み、カスタム、規約、パック、Cloud 管理ポリシーを一覧表示する |
+| `failproofai policies --install` | フックをインストールしてポリシーを有効化する |
+| `failproofai policy add <name>` | ポリシーを 1 件有効化する — 組み込みポリシー、またはインストール済みパックの `<pack-id>:<name>` |
+| `failproofai policy remove <name>` | ポリシーを 1 件無効化する（命名規則は同様） |
+| `failproofai policies --uninstall` | ポリシーを無効化するか、ハーネスフックを削除する |
+| `failproofai pack list` | インストール済みポリシーパックと各パックに含まれるポリシーを一覧表示する |
+| `failproofai pack add <source>` | GitHub リリースからポリシーパックをインストールする。タグ未指定の場合は最新版を取得してピン留めする |
+| `failproofai pack add --bundled` | このパッケージからネットワーク不要で組み込みポリシーをパックとしてインストールする |
+| `failproofai pack build <entry.mjs>` | 独自パックのリリースアセット 3 点をビルドする |
+| `failproofai pack remove <publisher/name>` | インストール済みパックを無効化する |
+| `failproofai audit` | ローカルエージェント履歴をスキャンしてローカル監査ビューを開く |
 | `failproofai audit --schedule [days] --email <address>` | 定期的なローカルスキャンをスケジュールし、結果をメール送信する |
-| `failproofai audit --status` | レポートの送信先アドレス、間隔、次回スキャン予定を表示する |
+| `failproofai audit --status` | レポート送信先アドレス、間隔、次回スキャン予定を表示する |
 | `failproofai audit --no-schedule` | 監査履歴を削除せずに定期スキャンを停止する |
 | `failproofai harness list` | 追加のキャプチャパスを一覧表示する |
 | `failproofai flush --wait` | 現在のイベントスプールを配信する |
-| `failproofai backfill --since 30d` | 過去に通過した履歴を再読み込みする |
-| `failproofai config --pause [duration]` | ローカルセッションを一時停止する（デフォルト30分、最大8時間） |
-| `failproofai config --resume` | 一時停止中のローカルセッションを再開する。`--all` を付けると全ての一時停止を解除する |
-| `failproofai update` | パッケージのマイグレーションを完了し、デーモンを更新する |
+| `failproofai backfill --since 30d` | 過去に処理済みの履歴を再読み込みする |
+| `failproofai config --pause [duration]` | ローカルセッションを一時停止する（デフォルト 30 分、最大 8 時間） |
+| `failproofai config --resume` | 一時停止中のローカルセッションを再開する。`--all` を追加すると全ての一時停止を解除する |
+| `failproofai update` | パッケージのマイグレーションを完了してデーモンを更新する |
 | `failproofai migrate --dry-run` | ホームレイアウトの保留中マイグレーションをプレビューまたは実行する |
 | `failproofai uninstall` | パッケージを削除する前にフックとデーモンを削除する |
 | `failproofai --version` | インストール済みパッケージのバージョンを表示する |
-| `failproofai --help` | コマンドとグローバルな使い方を表示する |
+| `failproofai --help` | コマンドと全体的な使用方法を表示する |
 
 ## 設定フラグ
 
 | フラグ | 用途 |
 | --- | --- |
-| `--connect <url> --token <key>` | 非インタラクティブモードで接続する |
+| `--connect <url> --token <key>` | 非対話式で接続する |
 | `--machine-id <id>` | 固定マシン ID を設定する |
 | `--machine-label <name>` | ダッシュボードのラベルを設定または変更する |
-| `--no-transcripts` | トランスクリプトの内容を含めずに判断結果のみ送信する |
-| `--disconnect` | Cloud からのポリシー取得とイベント配信を停止する |
+| `--no-transcripts` | トランスクリプトの内容を含めずに判定結果を送信する |
+| `--disconnect` | Cloud ポリシーの取得とイベント配信を停止する |
 | `--status` | 現在のマシン状態を表示する |
-| `--pause [duration]` | カレントディレクトリの最新セッションを一時停止する。秒・分・時間を指定可能で、デフォルトは30分 |
-| `--resume` | 一致する一時停止を早期に終了する |
+| `--pause [duration]` | カレントディレクトリの最新セッションを一時停止する。秒・分・時間を指定可能。デフォルトは 30 分 |
+| `--resume` | 一致する一時停止を早期終了する |
 | `--session <id>` | 一時停止または再開の対象セッションを明示的に指定する |
-| `--all` | `--resume` と組み合わせて、全てのアクティブな一時停止を終了する |
+| `--all` | `--resume` と組み合わせて、アクティブな全ての一時停止を終了する |
 
-ローカルの一時停止は、1つのセッションについて組み込みポリシー・カスタムポリシー・規約ポリシーを停止します。常に有効期限があり、Cloud 管理ポリシーは無効化しません。`block-self-pause` は、計装済みエージェントがこのエスケープハッチを自ら使用することを防ぎます。
+ローカルの一時停止は、組み込み・カスタム・規約・パックポリシーを 1 セッション分停止します。常に有効期限があり、Cloud 管理ポリシーは無効化されません。`block-failproofai-commands` — 常時有効であり、それ自体を無効化または一時停止することはできません — は、計装済みエージェントがこのエスケープハッチを使用することを防ぎます。
 
 ## ポリシーフラグ
 
 | フラグ | 用途 |
 | --- | --- |
-| `--install`, `-i` | ポリシーを有効にし、ハーネスフックをインストールする |
-| `--uninstall`, `-u` | ポリシーを無効にするか、フックを削除する |
-| `--cli <names...>` | 対象とするハーネスを1つ以上指定する |
+| `--install`, `-i` | ポリシーを有効化してハーネスフックをインストールする |
+| `--uninstall`, `-u` | ポリシーを無効化するかフックを削除する |
+| `--cli <names...>` | サポートされているハーネスを 1 つ以上対象にする |
 | `--scope user\|project\|local\|all` | 設定スコープを選択する。`all` はアンインストール用 |
 | `--beta` | ベータポリシーを含める |
-| `--custom`, `-c <path>` | カスタムポリシーファイルを検証して読み込む（繰り返し指定可能） |
+| `--custom`, `-c <path>` | カスタムポリシーファイルを検証して読み込む。繰り返し指定可能 |
 
-## 配信・メンテナンスフラグ
+## 配信およびメンテナンスフラグ
 
 | コマンド | フラグ |
 | --- | --- |
@@ -85,7 +90,7 @@ failproofai config --status
 | `migrate` | `--dry-run` |
 | `uninstall` | `--purge`, `--dry-run`, `--yes` |
 
-`failproofai update` は `npm install -g failproofai@latest` の後に実行してください。ホームレイアウトのマイグレーション、対応するデーモンバイナリのインストール、サービスの再起動を行います。`--no-daemon` を指定するとレイアウトマイグレーションのみが実行されます。
+`failproofai update` は `npm install -g failproofai@latest` の後に実行してください。ホームレイアウトのマイグレーション、対応するデーモンバイナリのインストール、サービスの再起動を行います。`--no-daemon` はレイアウトのマイグレーションのみを実行します。
 
 ## ハーネスパス
 
@@ -97,9 +102,9 @@ failproofai harness remove-path <harness> <path-or-label>
 
 サポートされているハーネス名は `claude`、`codex`、`copilot`、`cursor`、`opencode`、`pi`、`hermes`、`openclaw`、`factory`、`devin`、`antigravity`、`goose` です。
 
-ラベルは、2つのルートに同じプロジェクトのコピーが存在する場合に、派生エージェント ID を名前空間で区別します。重複するルートや重複するラベルは、二重収集やカーソルの破損を防ぐために拒否されます。追加パスの設定はデーモンを再起動せずにリロードされます。
+ラベルは、2 つのルートに同じプロジェクトのコピーが含まれる場合に、派生したエージェント ID の名前空間を分離します。重複するルートおよび重複するラベルは、収集の二重化やカーソルの破損を防ぐために拒否されます。追加パスの設定はデーモンを再起動せずにリロードされます。
 
-コンテナ環境では、ファイルで設定した追加パスをカンマ区切りの変数 `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` で置き換えられます。例：
+コンテナ環境では、ファイルで設定された追加パスをカンマ区切りの変数 `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` で置き換えることができます。例:
 
 ```bash
 export FAILPROOFAI_OPENCLAW_EXTRA_PATHS="user1=/srv/openclaw-a,user2=/srv/openclaw-b"
@@ -107,22 +112,24 @@ export FAILPROOFAI_OPENCLAW_EXTRA_PATHS="user1=/srv/openclaw-a,user2=/srv/opencl
 
 ## 環境変数
 
-永続的なマシン動作には設定ファイルを使用してください。環境変数はコンテナ、テスト、単一プロセスに最も適しています。
+永続的なマシン設定には設定ファイルを使用してください。環境変数は、コンテナ・テスト・単一プロセスの場合に最も役立ちます。
 
 | 変数 | 用途 |
 | --- | --- |
-| `FAILPROOFAI_HOME` | `~/.failproofai` のレイアウト全体を移動する |
-| `FAILPROOFAI_LOG_LEVEL` | ローカルのログ出力レベルを設定する |
-| `FAILPROOFAI_HOOK_LOG_FILE` | フックの診断情報を指定ファイルに書き出す |
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | このプロセスの匿名テレメトリを無効にする |
-| `FAILPROOFAI_NO_FIRST_RUN=1` | インタラクティブな初回セットアップをスキップする |
+| `FAILPROOFAI_HOME` | `~/.failproofai` のレイアウト全体を別の場所に移動する |
+| `FAILPROOFAI_LOG_LEVEL` | ローカルログの詳細レベルを設定する |
+| `FAILPROOFAI_HOOK_LOG_FILE` | フックの診断情報を指定ファイルに書き込む |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | このプロセスの匿名テレメトリを無効化する |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | 対話式の初回セットアップをスキップする |
 | `FAILPROOFAI_NO_AUTO_AUDIT=1` | セットアップ後のローカル監査をスキップする |
 | `FAILPROOFAI_LLM_BASE_URL` | LLM ポリシーが使用する OpenAI 互換エンドポイントを上書きする |
-| `FAILPROOFAI_LLM_API_KEY` | LLM ポリシーが使用する API キーを設定する |
+| `FAILPROOFAI_LLM_API_KEY` | LLM ポリシーが使用する API キーを指定する |
 | `FAILPROOFAI_LLM_MODEL` | LLM ポリシーが使用するモデルを選択する |
-| `FAILPROOFAI_POLICY_LOAD_TIMEOUT_MS` | カスタムポリシーモジュールの読み込みにタイムアウトを設定する |
-| `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` | 特定のハーネスの追加キャプチャパス設定を上書きする |
-| `NO_COLOR` | ターミナルのカラー出力を無効にする |
+| `FAILPROOFAI_POLICY_LOAD_TIMEOUT_MS` | カスタムポリシーモジュールの読み込み時間を制限する |
+| `FAILPROOFAI_NO_DOWNLOAD=1` | パックとデーモンバイナリの取得を拒否する。インストール済みのものは引き続き適用される |
+| `FAILPROOFAI_PACK_BASE_URL` | `github.com` の代わりにミラーからパックを取得する |
+| `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` | 特定ハーネスの設定済み追加キャプチャパスを置き換える |
+| `NO_COLOR` | ターミナルのカラー出力を無効化する |
 
 `CLAUDE_PROJECTS_PATH`、`CURSOR_HOME`、`HERMES_HOME`、`OPENCLAW_HOME` などのエージェント固有のホーム変数は、Failproof AI が各ハーネスのローカルセッションを検出する場所を上書きします。
 
@@ -134,9 +141,9 @@ failproofai config --status
 failproofai config --resume
 ```
 
-ローカルセッションの一時停止は、Cloud 管理ポリシーを無効化しません。ロールアウト自体が問題の場合は、Cloud の強制適用ワークフローを通じて Cloud デプロイメントを復元してください。
+ローカルセッションの一時停止は Cloud 管理ポリシーを無効化しません。ロールアウト自体が問題の場合は、Cloud 強制適用ワークフローを通じて Cloud デプロイを復元してください。
 
-npm パッケージを削除する前に、インストール済みのフックとデーモンを削除してください：
+npm パッケージを削除する前に、インストール済みのフックとデーモンを削除してください:
 
 ```bash
 failproofai uninstall --dry-run
@@ -144,8 +151,8 @@ failproofai uninstall --yes
 npm rm -g failproofai
 ```
 
-バージョン固有の詳細については `failproofai <command> --help` を実行してください。
+バージョン固有の詳細は `failproofai <command> --help` を実行して確認してください。
 
 <Warning>
-  `npm rm -g failproofai` の前に `failproofai uninstall` を実行してください。npm はインストール済みのエージェントフックやデーモンサービスを削除しません。
+  `npm rm -g failproofai` を実行する前に `failproofai uninstall` を実行してください。npm はインストール済みのエージェントフックやデーモンサービスを削除しません。
 </Warning>

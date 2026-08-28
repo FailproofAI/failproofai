@@ -18,10 +18,10 @@
 [![Docs](https://img.shields.io/badge/docs-befailproof.ai-002CA7?style=flat-square)](https://docs.befailproof.ai/)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-blue?style=flat-square)](../../LICENSE)
 
-**翻訳版:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
+**翻訳:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
-**あらゆるハーネスで動くエージェントに、オブザーバビリティと制御を。**
-エージェントがどこで動いていても、Failproofはすべてを把握し、必要なときに「ノー」と言えます。Failproofは12のエージェントハーネスにフックし — Claude Code や Codex などのコーディングCLI、Hermes などのチャットゲートウェイ、OpenClaw などのセルフホスト型アシスタント — すべての実行を記録し、危険なツール呼び出しを実行前にブロックします。40の組み込みポリシー。レイテンシゼロ。ローカル動作。
+**あらゆるハーネスで動くエージェントに、可観測性と制御を。**
+エージェントがどこで動いていても、私たちはそれを見ています——そして「No」と言えます。Failproof は 12 種類のエージェントハーネスにフックします。Claude Code や Codex のようなコーディング CLI、Hermes のようなチャットゲートウェイ、OpenClaw のようなセルフホスト型アシスタントに対応し、すべての実行をキャプチャして危険なツール呼び出しを実行前にブロックします。39 のビルトインポリシー。レイテンシーゼロ。ローカルで動作。
 
 </div>
 
@@ -33,9 +33,9 @@
 
 ## 対応ハーネス
 
-2つのクラスに分かれた12のハーネス — 10のコーディングCLIと、2つのチャット・アシスタントゲートウェイ（Hermes、OpenClaw）。どのハーネスを使っても、同じイベント、同じポリシー、同じセッション履歴が利用できます。
+12 種類のハーネスを 2 つのクラスに分類しています——コーディング CLI が 10 種類、チャット・アシスタントゲートウェイ（Hermes、OpenClaw）が 2 種類です。どのハーネスで動かしても、同じイベント、同じポリシー、同じセッション履歴が使えます。
 
-いずれのハーネスにも属さないエージェントは [Python SDK](https://docs.befailproof.ai/reference/custom-agents) を通じてレポートできます。トレース、セッション、監査機能が利用可能です。その環境でのエンフォースメントにはご自身のランタイムへのフック実装が必要です — [お問い合わせください](mailto:support@befailproof.ai)。対応方法をご案内します。
+いずれのハーネスでも動作しないエージェントは [Python SDK](https://docs.befailproof.ai/reference/custom-agents) を通じてレポートできます。トレーシング、セッション管理、監査が利用可能です。そこでのエンフォースメントには自前のランタイムへのフックが必要です——[お問い合わせ](mailto:support@befailproof.ai)いただければ対応方法をご案内します。
 
 {/* A 6-column table instead of inline <img> runs: table columns never re-wrap,
      so the grid stays 2×6 at any window width (scrolling on very narrow screens
@@ -135,36 +135,37 @@
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # または `failproofai` を実行して初回プロンプトに従うだけでもOK
+failproofai policies --install   # または `failproofai` を実行して初回起動のプロンプトに従う
 failproofai
 ```
 
-40の組み込みポリシーが即座に有効化されます。ダッシュボードは `localhost:8020` で確認できます。初回プロンプトを無効にするには `FAILPROOFAI_NO_FIRST_RUN=1` を設定してください。
+39 のビルトインポリシーが即座に有効になります。ダッシュボードは `localhost:8020` で確認できます。`FAILPROOFAI_NO_FIRST_RUN=1` を設定すると初回起動プロンプトを無効化できます。
 
 ---
 
-## ブロックできる操作
+## 防げること
 
-| ポリシー | ブロック対象 |
+| ポリシー | ブロックする内容 |
 |---|---|
-| `sanitize-api-keys` | エージェントのコンテキストへのAPIキー漏洩 |
-| `block-env-files` | `.env` などのシークレットファイルの読み取り |
-| `warn-repeated-tool-calls` | 同じ呼び出しをループし続けるエージェント |
+| `sanitize-api-keys` | エージェントのコンテキストへの API キー漏洩 |
+| `block-env-files` | `.env` やその他のシークレットファイルの読み取り |
+| `warn-repeated-tool-calls` | 同じ呼び出しでループするエージェント |
 | `block-sudo` | 権限昇格 |
 | `warn-destructive-sql` | `DROP`、`TRUNCATE`、条件なし `DELETE` |
-| `block-terraform` / `block-kubectl` | 本番インフラへの未レビュー変更 |
+| `block-terraform` / `block-kubectl` | レビューなしの本番インフラへの変更 |
 | `block-rm-rf` | 再帰的なファイル削除 |
 | `block-force-push` / `block-push-master` | `git push --force`、`main` への直接プッシュ |
 
-最初の5つはツールを呼び出せるあらゆるエージェントに適用されます。残りの3つは開発者に特に人気のポリシーで、コーディングCLIはもっとも深くカバーしているハーネスクラスです。
+最初の 5 つはツールを呼び出せるすべてのエージェントに適用されます。残りの 3 つは開発者に特に人気で——コーディング CLI は私たちが最も深くカバーしているハーネスクラスです。
 
-→ [組み込みポリシー一覧（40件）](https://docs.befailproof.ai/policies/builtin)
+→ [39 のビルトインポリシー一覧](https://docs.befailproof.ai/policies/builtin)
 
 ---
 
-## カスタムポリシー
+## 独自ポリシー
 
-`.failproofai/policies/` にファイルを置くだけで自動的に読み込まれます。フラグ不要。コミットすればチーム全員が次のプルで使えます。
+`.failproofai/policies/` にファイルを置くだけで自動的に読み込まれます——フラグ不要です。
+コミットすれば、次回プル時にチーム全員に適用されます。
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -180,29 +181,29 @@ customPolicies.add({
 });
 ```
 
-各ポリシーで使用できる3つの判断：
+すべてのポリシーで使用できる 3 つの判定:
 
-| 判断 | 効果 |
+| 判定 | 効果 |
 |---|---|
 | `allow()` | 操作を許可する |
-| `deny(message)` | ブロックする — メッセージはエージェントに返される |
+| `deny(message)` | ブロックする——メッセージはエージェントに返される |
 | `instruct(message)` | 通過させるが、エージェントの次のプロンプトにコンテキストを追加する |
 
 → [カスタムポリシーガイド](https://docs.befailproof.ai/policies/custom)
 
 ---
 
-## オブザーバビリティ
+## 可観測性
 
-エンフォースメントは半分にすぎません。もう半分は、エージェントが実際に何をしたかを把握することです。
+エンフォースメントは機能の半分です。もう半分は、エージェントが実際に何をしたかを把握することです。
 
-`failproofai` を引数なしで実行すると、`localhost:8020` にダッシュボードが起動し、マシン上の実行履歴を読み込みます — アカウント不要、サインアップ不要、データは外部に出ません。セッション一覧、モデル呼び出しのシーケンス、各実行内のツール呼び出しとフック判断、ブロックされた内容とポリシーがエージェントに伝えた内容、そしてオフライン監査（`failproofai audit`）で履歴からリスクのあるパターンを検出してポリシーの提案を行います。
+引数なしで `failproofai` を実行すると、`localhost:8020` でダッシュボードが起動し、マシン上の実行履歴を読み取ります——アカウント不要、サインアップ不要、データは外部に送信されません。セッション一覧、モデル呼び出しのシーケンス、各実行内のツール呼び出しとフック判定、ブロックされた内容とポリシーがエージェントに伝えた内容、そしてオフライン監査（`failproofai audit`）による履歴スキャンでリスクのあるパターンを検出し、対策ポリシーを提案します。
 
 → [ローカルダッシュボード](https://docs.befailproof.ai/reference/local-dashboard) ·
 [トレースの読み方](https://docs.befailproof.ai/sessions/read-a-trace) ·
 [ローカル監査](https://docs.befailproof.ai/audits/local-audit)
 
-**Failproof AI Observability** は同じデータモデルのホスト型サービスで、フリートでエージェントを運用するチーム向けです。全ハーネスのすべての実行を一か所に集約し、並列サブエージェントを独立レーンで表示する実行グラフ、モデル・ツール・フックのp50/p95/p99レイテンシ、モデルごとのコストとコンテキストウィンドウのトラッキング、エラートラッキング、共有可能なダッシュボード付きSQLクエリ、独自サービスによるスコアリング評価、繰り返す失敗をエビデンスに基づく知見に変える定期監査、そしてSlack・メール・署名付きWebhookへのアラートルーティングを提供します。自社クラスターへのセルフホスティングはEnterpriseプランで利用可能です。
+**Failproof AI Observability** は同じデータモデルのホスト版で、フリートでエージェントを運用するチーム向けです。全ハーネスからのすべての実行を一か所に集約し、並列サブエージェントを独立レーンで表示する実行グラフ、モデル・ツール・フックの p50/p95/p99 レイテンシー、モデルごとのコストとコンテキストウィンドウのトラッキング、エラートラッキング、共有可能なダッシュボード付きの自前トレースへの SQL クエリ、自社サービスによるスコアリング付き評価、繰り返す障害をエビデンスベースの知見に変えるスケジュール監査、そして Slack・メール・署名付き Webhook へのアラートルーティングを提供します。Enterprise プランでは自社クラスターへのセルフホスティングも利用可能です。
 
 → [セッション](https://docs.befailproof.ai/sessions/overview) ·
 [監査](https://docs.befailproof.ai/audits/overview) ·
@@ -216,40 +217,40 @@ customPolicies.add({
 |---|---|
 | [クイックスタート](https://docs.befailproof.ai/start/quickstart) | インストール、ハーネスの接続、最初の実行を確認する |
 | [コンセプト](https://docs.befailproof.ai/start/concepts) | フックシステムの仕組み |
-| [対応ハーネス](https://docs.befailproof.ai/reference/harnesses) | 全12件と各ハーネスで適用できるポリシー |
+| [対応ハーネス](https://docs.befailproof.ai/reference/harnesses) | 全 12 種類と各ハーネスで適用できるエンフォースメント |
 
-| 観測する | |
+| 観察する | |
 |---|---|
-| [セッション](https://docs.befailproof.ai/sessions/overview) | 実行を追う：モデル、ツール、エラー、レイテンシ |
+| [セッション](https://docs.befailproof.ai/sessions/overview) | 実行を追跡する: モデル、ツール、エラー、レイテンシー |
 | [トレースの読み方](https://docs.befailproof.ai/sessions/read-a-trace) | 実行グラフが示していること |
-| [監査](https://docs.befailproof.ai/audits/overview) | 多数のセッションにまたがる失敗パターンを発見する |
+| [監査](https://docs.befailproof.ai/audits/overview) | 複数セッションにまたがる障害パターンを見つける |
 | [ローカルダッシュボード](https://docs.befailproof.ai/reference/local-dashboard) | `localhost:8020`、アカウント不要 |
 
 | 制御する | |
 |---|---|
-| [組み込みポリシー](https://docs.befailproof.ai/policies/builtin) | パラメータ付き全40ポリシー |
-| [カスタムポリシー](https://docs.befailproof.ai/policies/custom) | 独自ポリシーを作成する |
+| [ビルトインポリシー](https://docs.befailproof.ai/policies/builtin) | パラメーター付き全 39 ポリシー |
+| [カスタムポリシー](https://docs.befailproof.ai/policies/custom) | 独自のポリシーを作成する |
 | [設定](https://docs.befailproof.ai/policies/local-configuration) | 設定スコープとマージルール |
 
-| 独自エージェントを計測する | |
+| 独自エージェントを計装する | |
 |---|---|
 | [Python SDK](https://docs.befailproof.ai/reference/custom-agents) | ハーネスなしのエージェントから実行をレポートする |
-| [ポリシーSDK](https://docs.befailproof.ai/reference/policy-sdk) | `allow` / `deny` / `instruct` リファレンス |
+| [Policy SDK](https://docs.befailproof.ai/reference/policy-sdk) | `allow` / `deny` / `instruct` リファレンス |
 
 ---
 
 ## ライセンス
 
-MIT with [Commons Clause](https://commonsclause.com/) — 社内利用・個人利用は無料。failproofai 自体の商業的な再販には別途契約が必要です。全文は [LICENSE](../../LICENSE) をご覧ください。
+MIT with [Commons Clause](https://commonsclause.com/) ——社内利用および個人利用は無料です。failproofai 自体の商用再販には別途契約が必要です。全文は [LICENSE](../../LICENSE) をご覧ください。
 
 ---
 
 ## コントリビューション
 
-[CONTRIBUTING.md](../../CONTRIBUTING.md) をご参照ください。新しいポリシー、エッジケースの対応、翻訳の追加はいずれも歓迎します。
+[CONTRIBUTING.md](../../CONTRIBUTING.md) をご参照ください。新しいポリシー、エッジケースの対応、翻訳はいずれも歓迎します。
 
-> **作業前にビルドしてください。** まず `bun install && bun run build` を実行してください。このリポジトリはfailproofai自身のフックを自分自身に適用しており、フックはコンパイル済みの `dist/` バンドルに対して `failproofai` インポートを解決します。ビルドなしで実行すると `Cannot find package 'failproofai'` というフックエラーが発生します。`src/` を変更した後は再ビルドしてください。詳細は [リポジトリ内の開発用フックを動作させるためのビルド手順](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work) をご覧ください。
+> **作業を始める前にビルドしてください。** まず `bun install && bun run build` を実行してください。このリポジトリは failproofai 自身のフックを自分自身に適用しており、`failproofai` のインポートはコンパイル済みの `dist/` バンドルに対して解決されます——ビルドなしで実行すると `Cannot find package 'failproofai'` というフックエラーが発生します。`src/` を変更した後は再ビルドしてください。詳細は [リポジトリ内の開発フックが動作するようにビルドする](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work) をご覧ください。
 
 ---
 
-SFとベンガルールのチームが ❤️ を込めて開発。[befailproof.ai](https://befailproof.ai)
+❤️ を込めて [befailproof.ai](https://befailproof.ai) が SF とベンガルールで開発。

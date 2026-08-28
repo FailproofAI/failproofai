@@ -1,0 +1,110 @@
+---
+title: "Packs de politiques"
+description: "Installez un ensemble de politiques publiées sous forme de release GitHub et gérez ce qu'elles appliquent."
+icon: "package"
+---
+
+Un pack est un ensemble de politiques publiées sous forme de release GitHub. Une seule commande suffit à l'installer, les checksums de la release sont vérifiés avant toute exécution, et le digest est enregistré pour que le pack ne puisse pas être modifié sur votre machine par la suite.
+
+## Installer les politiques Failproof AI
+
+```bash
+failproofai pack add core
+```
+
+Cette commande installe l'ensemble que nous publions, depuis la copie incluse dans le package — aucune connexion réseau n'est nécessaire et elle ne peut pas échouer derrière un proxy. Vous pouvez n'en prendre qu'une partie :
+
+```bash
+failproofai pack add core --policy block-rm-rf         # une seule, ou quelques-unes séparées par des virgules
+failproofai pack add core --category dangerous-commands # toute une catégorie
+failproofai pack add core --all                         # tout son contenu
+```
+
+`failproofai pack list` liste toutes les catégories proposées par le pack.
+
+## Consulter le contenu d'un pack avant de l'installer
+
+```bash
+failproofai pack list acme/support-agent
+```
+
+Liste toutes les politiques du pack, regroupées par catégorie, en indiquant celles que l'auteur active par défaut et celles qui sont optionnelles. Seul le **manifeste** est lu — l'artefact principal n'est jamais téléchargé ni importé, ce qui fait que consulter le pack d'un inconnu n'exécute aucun code étranger. Le manifeste est tout de même vérifié par rapport au `SHA256SUMS` de la release, de sorte que ce que vous lisez correspond exactement à ce qui serait installé.
+
+`failproofai pack list` sans argument liste les packs déjà installés sur cette machine.
+
+## Installer le pack de quelqu'un d'autre
+
+```bash
+failproofai pack add acme/support-agent
+```
+
+Chacune de ces formes est acceptée — collez celle que vous avez sous la main :
+
+| Source | Résultat |
+| --- | --- |
+| `acme/support-agent` | Dernière release, **épinglée** au tag exact résolu |
+| `acme/support-agent@v2.1.0` | Cette release précise |
+| `github:acme/support-agent@v2.1.0` | La même, écrite explicitement |
+| `https://github.com/acme/support-agent/releases/tag/v2.1.0` | La même, copiée depuis un navigateur |
+
+Ne pas spécifier de tag installe la dernière release **et l'épingle**, puis vous indique le tag choisi. Ce qui est enregistré désigne toujours exactement une release, de sorte qu'une réinstallation ne peut pas dériver.
+
+## Ne prendre qu'une partie d'un pack
+
+Par défaut, vous obtenez les **propres** valeurs par défaut du pack — les politiques que son auteur a jugées sûres à activer sans surveillance — et non son contenu intégral.
+
+```bash
+failproofai pack add acme/support-agent --category billing,git
+failproofai pack add acme/support-agent --policy block-refunds
+failproofai pack add acme/support-agent --all
+```
+
+`--category` et `--policy` se combinent en union (`--only` est accepté comme synonyme de `--policy`). Réinstaller à une version plus récente conserve vos sélections plutôt que de tout réactiver.
+
+## Gérer ce qui est activé
+
+```bash
+failproofai policies                    # toutes les sources en une seule liste, packs inclus
+failproofai pack list                   # les packs uniquement, regroupés par catégorie
+failproofai policies --uninstall block-refunds        # désactiver une politique de pack
+failproofai policies --install block-refunds          # la réactiver
+failproofai pack remove acme/support-agent
+```
+
+Un nom seul désigne la politique **intégrée** si elle existe sous ce nom. Désignez explicitement la copie d'un pack lorsque nécessaire :
+
+```bash
+failproofai policies --uninstall acme/support-agent:block-refunds
+```
+
+<Note>
+Si un pack fournit une politique dont le nom correspond à une **politique intégrée activée**, c'est la version intégrée qui s'exécute et la copie du pack est ignorée — la même protection serait sinon évaluée deux fois. Désactivez la politique intégrée pour utiliser la copie du pack à la place.
+</Note>
+
+## Origine des politiques Failproof AI
+
+`core` lit la copie fournie dans le package npm. Ce même ensemble est publié sous forme de release GitHub, que vous installez si vous souhaitez une version spécifique :
+
+```bash
+failproofai pack add core                    # depuis ce package, sans réseau
+failproofai pack add FailproofAI/policies    # le même ensemble, depuis sa release GitHub
+```
+
+## Ce que l'intégrité garantit et ce qu'elle ne garantit pas
+
+`SHA256SUMS` est livré dans la même release que l'artefact, ce qui signifie que ce **n'est pas** une signature et ne prouve rien sur l'identité de l'éditeur. Ce que cela prouve, c'est que les octets sont bien ceux publiés dans cette release — et comme le digest est enregistré lors de l'ajout du pack et re-vérifié avant chaque import, un pack ne peut pas être modifié sur votre machine par la suite. Un dépôt qui retague ou remplace un artefact cesse de se charger au lieu d'exécuter silencieusement autre chose.
+
+Au moment de l'installation, le pack est également **importé une fois** et vérifié par rapport à son propre manifeste. Un pack dont l'artefact ne se parse pas, ou qui enregistre autre chose que ce qu'il déclare, est refusé avant toute activation — plutôt que de s'installer proprement et d'échouer lors de votre prochain appel d'outil.
+
+## Quand un pack ne se charge pas
+
+Un pack que cette machine a reçu l'ordre d'appliquer et qu'elle ne peut pas exécuter **refuse** les événements couverts par ses politiques manquantes, plutôt que de les autoriser silencieusement. Voir [Comportement en cas d'échec](/fr/policies/failure-behavior). `failproofai pack list` indique tout pack dans cet état et retourne un code de sortie non nul.
+
+## Hors ligne et miroirs
+
+| Variable | Effet |
+| --- | --- |
+| `FAILPROOFAI_NO_DOWNLOAD=1` | Refuse tout téléchargement ; les packs déjà installés continuent d'être appliqués |
+| `FAILPROOFAI_PACK_BASE_URL` | Redirige le téléchargement des packs vers un miroir plutôt que `github.com` |
+
+Pour publier votre propre pack, consultez [Publier un pack](/fr/policies/publish-a-pack).

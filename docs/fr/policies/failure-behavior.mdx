@@ -1,19 +1,19 @@
 ---
 title: "Comportement en cas d'échec"
-description: "Comprenez ce qui se passe lorsque l'évaluation des politiques ou le daemon local est indisponible."
+description: "Comprendre ce qui se passe lorsque l'évaluation des politiques ou le démon local est indisponible."
 icon: "shield-alert"
 ---
 
-Failproof AI est conçu de sorte qu'un échec d'application soit visible plutôt que de permettre silencieusement des actions risquées.
+Failproof AI est conçu de sorte qu'un échec d'application soit visible plutôt que de laisser silencieusement passer des actions risquées.
 
-## Diagnostiquer un blocage en mode échec fermé
+## Diagnostiquer un blocage en mode fermé sur échec
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Accédez à **Admin → enforcement** et ouvrez la machine.
+    1. Allez dans **Admin → enforcement** et ouvrez la machine.
     2. Vérifiez sa dernière connexion, le déploiement assigné et le déploiement rapporté.
-    3. Accédez à **Observe → policy** et ouvrez la session de la décision refusée.
-    4. Confirmez si la raison indique l'accessibilité du daemon, un écart de version ou la politique elle-même.
+    3. Allez dans **Observe → policy** et ouvrez la session de la décision refusée.
+    4. Confirmez si la raison indique une inaccessibilité du démon, un décalage de version ou la politique elle-même.
 
   </Tab>
   <Tab title="CLI">
@@ -23,21 +23,45 @@ Failproof AI est conçu de sorte qu'un échec d'application soit visible plutôt
     failproofai config
     ```
 
-    Relancer `failproofai config` met à jour et redémarre le daemon après une mise à jour du package.
+    Relancer `failproofai config` met à jour et redémarre le démon après une mise à jour du package.
   </Tab>
 </Tabs>
 
-Sur une machine configurée pour utiliser `failproofaid`, le daemon est le seul évaluateur. S'il est inaccessible ou si sa version de protocole ne correspond pas à celle du CLI, l'évaluation des hooks échoue en mode fermé. L'action est refusée avec un message indiquant à l'opérateur de vérifier ou mettre à jour le daemon.
+Sur une machine configurée pour utiliser `failproofaid`, le démon est le seul évaluateur. S'il est inaccessible ou si sa version de protocole ne correspond pas à celle du CLI, l'évaluation des hooks échoue en mode fermé. L'action est refusée avec une raison qui invite l'opérateur à vérifier ou mettre à jour le démon.
 
-Avant la configuration du daemon, les hooks évaluent les politiques en cours de processus. Une fois la configuration du daemon enregistrée, Failproof AI ne bascule pas silencieusement vers un second évaluateur en cas d'échec du daemon.
+Avant la configuration du démon, les hooks évaluent les politiques en cours de processus. Une fois la configuration du démon enregistrée, Failproof AI ne bascule pas silencieusement vers un second évaluateur en cas d'échec du démon.
 
-## Répondre à une décision en mode échec fermé
+## Réagir à une décision de blocage en mode fermé sur échec
 
 1. Exécutez `failproofai config --status`.
 2. Si les versions diffèrent, relancez `failproofai config` après avoir mis à jour le package.
-3. Si le daemon est inaccessible, inspectez son état de service et ses journaux locaux.
-4. Ne reprenez le travail de l'agent qu'après avoir confirmé qu'un chemin d'évaluation des politiques connu est opérationnel.
+3. Si le démon est inaccessible, inspectez l'état de son service et les journaux locaux.
+4. Ne reprenez le travail de l'agent qu'une fois qu'un chemin d'évaluation de politique connu est sain.
 
 <Warning>
-  Ne réessayez pas l'action bloquée de manière répétée. Une réponse en mode échec fermé signifie que le système n'a pas pu établir que l'action était sûre.
+  Ne réessayez pas répétitivement l'action bloquée. Une réponse en mode fermé sur échec signifie que le système n'a pas pu établir que l'action était sûre.
 </Warning>
+
+## Un pack ne se charge pas
+
+Une machine à qui l'on a demandé d'appliquer un pack, et qui ne peut pas l'exécuter, refuse plutôt que de continuer silencieusement. Le déclencheur est une **attente enregistrée**, jamais une attente vide : une machine sans pack installé reste silencieuse, tandis qu'un pack déclaré qui ne peut pas se résoudre — ou qui enregistre moins que ce que son manifeste déclare — provoque un refus.
+
+Le refus est **ciblé**, contrairement à un démon inaccessible. Un démon inaccessible signifie qu'aucune évaluation n'a eu lieu, donc rien ne peut être considéré comme sûr. Un pack qui ne se charge pas dispose d'un ensemble dénombrable de gardes manquantes, car chaque politique déclarée porte son propre `match` — il ne refuse donc que les événements et outils couverts par ces politiques, et tout le reste continue.
+
+Il ne se déclenche pas pour :
+
+- un pack `observe`, qui évalue et ignore par construction
+- des politiques que vous n'avez jamais adoptées, ou explicitement désactivées
+- un pack que le chargeur n'a jamais reçu, où « aucune inscription » ne peut être distinguée d'un saut délibéré
+- une pause de session active
+- un délai d'expiration du chargement, qui est transitoire — un instant de disque lent ne doit pas provoquer un refus jusqu'à ce qu'un humain intervienne
+
+`UserPromptSubmit` **instruit** plutôt que de refuser, quelle que soit la politique manquante déclarée. Un refus général l'emporterait avec lui et vous bloquerait hors de l'agent qui pourrait résoudre le problème.
+
+### Que faire
+
+```bash
+failproofai pack list
+```
+
+Cette commande identifie tout pack installé qui ne se charge pas, indique pourquoi, et se termine avec un code non-zéro. Ensuite, soit réinstallez-le (`failproofai pack add <source>`), soit supprimez-le (`failproofai pack remove <publisher/name>`) — le supprimer retire l'attente, et le refus cesse avec elle.

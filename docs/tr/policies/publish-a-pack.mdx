@@ -1,0 +1,91 @@
+---
+title: "Bir pack yayınla"
+description: "Kendi politikalarını GitHub yayınında paylaş ve herkes kurabilsin."
+icon: "upload"
+---
+
+Bir pack, bir GitHub yayınına bağlı üç dosyadan oluşur. `failproofai pack build`, zaten sahip olduğun bir politika dosyasından üçünü de yazar.
+
+## 1. Politikaları yaz
+
+Bir dosya, herhangi bir özel politika ile aynı API'yi kullanarak. Bir pack için iki fazladan alan önemlidir:
+
+```js
+import { customPolicies, deny, allow } from "failproofai";
+
+customPolicies.add({
+  name: "block-refunds",
+  description: "Refunds above the approved limit need a human",
+  category: "Billing",        // groups it, and is what --category selects on
+  defaultEnabled: true,       // switched on by a plain `pack add`
+  match: { events: ["PreToolUse"], tools: ["Bash"] },
+  fn: async (ctx) =>
+    String(ctx.toolInput?.command ?? "").includes("refund")
+      ? deny("Refunds need a human. Ask before running this.")
+      : allow(),
+});
+```
+
+`defaultEnabled`, bunu atlarsanız **false** değerini alır. Düz bir `failproofai pack add` sadece işaretlediklerini açar — bir yabancının her politikasını izinsiz yüklemek, yükleyenin kullanıcısı için yapması gereken bir karar değildir.
+
+<Warning>
+Girdi **tek bir bağımsız dosya** olmalıdır. Sadece girdi özet-sabitlenmiş olduğundan, yerel dosyaları ithal eden bir pack, özet tarafından neyin çalıştığını kapsadığını dürüstçe iddia edemez. Önce bundle et (`esbuild`, `bun build`, `rollup`) ve packı bundle'ından oluştur — `pack build` yerine getiremeyeceği bir sözü göndermek yerine yerel bir ithalatı reddeder.
+</Warning>
+
+## 2. Yayın varlıklarını oluştur
+
+```bash
+failproofai pack build ./policies.mjs \
+  --id acme/support-agent \
+  --version 1.0.0 \
+  --out ./dist-pack
+```
+
+Üç dosya yazar ve her politikayı önce **yükleyicinin kendi kurallarıyla** doğrular — bu nedenle asla yüklenemeyen bir pack burada başarısız olur, bunu düzeltebileceğin yer:
+
+| Dosya | Ne olduğu |
+| --- | --- |
+| `failproofai-pack.json` | Manifest: id, sürüm, etki ve politika başına bir girdi |
+| `failproofai-pack.mjs` | Senin girdinin, kelimesi kelimesine |
+| `SHA256SUMS` | Diğer ikisinin `<sha256>  <filename>` |
+
+Derleme sırasında reddedilir: `publisher/name` olmayan bir id, `/` içeren bir politika adı, `alwaysOn` bildiren bir politika, eksik `description`, `category` veya `match`, hiçbir şey kayıt etmeyen bir girdi ve yerel dosyaları ithal eden bir girdi.
+
+## 3. Bunları bir yayına ekle
+
+Yayını derlerken kullandığın sürümle etiketle ve üç dosyanın tamamını yayın varlıkları olarak ekle:
+
+```bash
+gh release create 1.0.0 \
+  ./dist-pack/failproofai-pack.json \
+  ./dist-pack/failproofai-pack.mjs \
+  ./dist-pack/SHA256SUMS
+```
+
+Artık herkes kurabilir:
+
+```bash
+failproofai pack add acme/support-agent
+```
+
+Varlık adları sabittir — bunlar, bir tüketicinin CLI'sinin hiçbir API çağrısı ve keşif olmadan URL'lerini neyin oluşturduğudur.
+
+## Yeni bir sürüm göndermek
+
+Yeni `--version` ile derle, yeni bir yayın etiketle, üç varlığı tekrar ekle. Tüketiciler aynı `pack add` işlemini çalıştırırlar ve seçtikleri alt kümesini tutar; bir politikayı kapadıkları yükseltme sırasında kapalı kalır.
+
+Bir politikanın **adını** değiştirmek, kesintiye uğratan bir değişikliktir: kapatmış olduğu bir makine artık mevcut olmayan bir adı kapatıyor ve yeni ad, `defaultEnabled` söyledikleri ile varır.
+
+## Kullanıcılarınız neye güveniyor
+
+`SHA256SUMS` varlıkla aynı yayında yaşar, bu nedenle baytların yayınladığın olanlar olduğunu kanıtlar — kim olduğunu değil. Depoyu yazabilen herkes her iki dosyayı da yazabilir. Kullanıcılarınızın koruması, özet kurulum sırasında sabitlenmiş olmasıdır, bu nedenle gönderdiklerin sonrasında değiştiremez.
+
+Yazma erişimini kontrol ettiğin bir depodan yayınla ve bir pack yayınını bir paket yayınlamak gibi davran.
+
+## Zorunlu kılmadan önce gözle
+
+Bir manifest `"effect": "observe"` bildirebilir. Bu politikalar çalışır ve kararları **kaydedilir ve atılır** — hiçbir şey engellenmez. Yeni bir kuralı gerçek trafiğe karşı, birinin işini kesintiye uğratabilmesinden önce ölçmenin yoludur.
+
+```json
+{ "id": "acme/support-agent", "version": "1.1.0", "effect": "observe", "policies": [ ... ] }
+```

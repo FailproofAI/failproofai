@@ -1,67 +1,48 @@
 ---
-title: "Failure behavior"
-description: "Understand what happens when policy evaluation or the local daemon is unavailable."
+title: "Policy failure behavior"
+description: "Understand why Failproof AI denies when evaluation cannot run."
 icon: "shield-alert"
 ---
 
-Failproof AI is designed so an enforcement failure is visible rather than silently allowing risky work.
+After setup, the local `failproofaid` service is the only evaluator. If it cannot answer, protected actions are denied rather than silently allowed.
 
-## Diagnose a failure-closed block
+## Diagnose a machine-wide block
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. Go to **Admin → enforcement** and open the machine.
-    2. Check its last check-in, assigned deployment, and reported deployment.
-    3. Go to **Observe → policy** and open the denied decision's session.
-    4. Confirm whether the reason reports daemon reachability, version skew, or the policy itself.
+```bash
+failproofai config --status
+systemctl status failproofaid@$USER        # Linux
+sudo launchctl print system/ai.failproof.failproofaid.$USER  # macOS
+```
 
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai config --status
-    npm install -g failproofai@latest
-    failproofai config
-    ```
+Run `failproofai config` to repair the service or install the matching version.
 
-    Rerunning `failproofai config` updates and restarts the daemon after a package upgrade.
-  </Tab>
-</Tabs>
+Two failures can look similar:
 
-On a machine configured to use `failproofaid`, the daemon is the only evaluator. If it is unreachable or its protocol version does not match the CLI, hook evaluation fails closed. The action is denied with a reason that directs the operator to check or update the daemon.
+| Failure | Meaning |
+| --- | --- |
+| Service unreachable | The socket has no working evaluator behind it |
+| Version mismatch | The CLI and service disagree on the protocol |
 
-Before daemon configuration, hooks evaluate policies in process. Once daemon configuration is recorded, Failproof AI does not silently fall back to a second evaluator when the daemon fails.
-
-## Respond to a failure-closed decision
-
-1. Run `failproofai config --status`.
-2. If versions differ, rerun `failproofai config` after updating the package.
-3. If the daemon is unreachable, inspect its service state and local logs.
-4. Resume agent work only after a known policy evaluation path is healthy.
-
-<Warning>
-  Do not repeatedly retry the blocked action. A failure-closed response means the system could not establish that the action was safe.
-</Warning>
+Both deny, but status reports them separately.
 
 ## A pack will not load
 
-A machine that was told to enforce a pack, and cannot run it, denies rather than continuing quietly. The trigger is a **recorded expectation**, never an empty one: a machine with no packs installed is silent, while a pack that is declared and will not resolve — or that registers less than its manifest declares — denies.
+A selected pack that is missing, changed, or invalid denies the events covered by its selected policies. This prevents a broken pack from disappearing while the machine appears protected.
 
-The deny is **narrow**, unlike an unreachable daemon. A daemon that cannot be reached means no evaluation happened at all, so nothing can be known safe. A pack that will not load has an enumerable set of missing guards, because every declared policy carries its own `match` — so it denies only the events and tools those policies covered, and everything else proceeds.
-
-It does not fire for:
-
-- an `observe` pack, which evaluates and discards by construction
-- policies you never took, or explicitly turned off
-- a pack the loader never received, where "no registrations" cannot be told apart from a deliberate skip
-- an active session pause
-- a load timeout, which is transient — one slow disk moment must not deny until a human intervenes
-
-`UserPromptSubmit` **instructs** instead of denying, whatever the missing policy declared. A blanket deny would take it along and lock you out of the agent that could fix the problem.
-
-### What to do
+`failproofai policies` names the pack and the load error.
 
 ```bash
-failproofai pack list
+failproofai policies
+failproofai policies remove owner/repo
+failproofai policies add owner/repo@<release>
 ```
 
-It names any installed pack that will not load, says why, and exits non-zero. Then either reinstall it (`failproofai pack add <source>`) or remove it (`failproofai pack remove <publisher/name>`) — removing it withdraws the expectation, and the deny stops with it.
+Unreadable metadata widens the safe deny instead of narrowing it from data that could not be trusted.
+
+## What remains available
+
+The local dashboard and status commands still work while policy evaluation is failing. Use them to identify the service, pack, or version that needs repair.
+
+<Warning>
+  Do not work around a failure-closed decision by deleting service or pack files. Repair the service, reinstall the pack, or remove the assignment through the CLI so the machine returns to a known state.
+</Warning>

@@ -1,47 +1,69 @@
 ---
-title: "Prevent your first failure with a policy"
-description: "Author a policy version, deploy it in observe mode, and then enforce it."
+title: "Prevent your first failure"
+description: "Enable a reviewed policy or test one of your own."
 icon: "shield-check"
 ---
 
-Use a policy only after you can describe the unsafe action and the legitimate actions that must remain allowed.
+Start with a behavior you want to stop and a legitimate action that must still work.
 
-<Tabs>
-  <Tab title="Dashboard">
-    <Steps>
-      <Step title="Author the policy">
-        Go to **Admin → policy editor**. Start with the demo policy, review or edit its source, then select **publish version**. Publishing creates the immutable version that you can deploy to machines.
+## Try a reviewed policy first
 
-        ![The Policy editor compose view with a demo policy ready to publish as an immutable version.](/images/dashboard/policy-editor.png)
-      </Step>
-      <Step title="Deploy it to a machine">
-        Go to **Admin → enforcement**, expand the target machine, and select **edit this machine**. Add the published demo policy, pin its version, choose **observe**, and apply the deployment.
+```bash
+failproofai policies
+failproofai policies add block-rm-rf
+```
 
-        ![The machine deployment editor with a published policy version selected in observe mode before applying the deployment.](/images/dashboard/enforcement-editor.png)
-      </Step>
-      <Step title="Verify the policy">
-        Run a new agent session on that machine, then open **Observe → policy**. Select the machine and confirm that the demo policy appears in the policy mapping and decision timeline. Observe mode records what the policy would do without blocking the action.
+Failproof AI includes 39 reviewed policies. Check the [catalog](/policies/builtin-catalog) before writing a new one.
 
-        ![The Policy page showing decision totals, enforcement activity over time, and local and Cloud-managed policy mappings.](/images/dashboard/policy-observe.png)
-      </Step>
-    </Steps>
-  </Tab>
-  <Tab title="CLI">
-    Cloud policy authoring and fleet deployment are administrative workflows. Use the local CLI to validate the same policy before publishing it:
+## Write and test your own
 
+<Steps>
+  <Step title="Create a working policy">
     ```bash
-    failproofai policies --install --custom ./payment-retry.policies.ts \
-      --cli claude --scope project
-    failproofai config --status
+    failproofai publish --init guards.mjs
     ```
 
-    Use `fp` to inspect Cloud-visible policy decisions:
-
+    This writes a policy that blocks `git push --force`. Edit it for your rule.
+  </Step>
+  <Step title="Enforce it on this machine">
     ```bash
-    fp events --event-type hook_completed --env production --since 24h
-    fp sessions --env production --since 24h
+    failproofai policies -i -c ./guards.mjs
     ```
 
-    Both steps are available from the CLI too: `fp policies publish <id> <file>` mints a version and `fp fleet deploy <machine-id> --add <id>` puts it on a machine. The dashboard equivalents are **Admin → policy editor** and **Admin → enforcement**.
-  </Tab>
-</Tabs>
+    Ask your agent to perform the blocked action, then check **Policies → Activity** in the local dashboard.
+  </Step>
+  <Step title="Keep or remove it">
+    Put a `*policies.mjs` file under `.failproofai/policies/` to load it automatically.
+
+    Remove explicit custom files with:
+
+    ```bash
+    failproofai policies -u -c
+    ```
+  </Step>
+</Steps>
+
+## Share it
+
+Publish a public pack:
+
+```bash
+failproofai publish
+```
+
+Anyone can then install it with `failproofai policies add <owner>/<repo>`. Add the GitHub topic `failproofai-policies` yourself so the [Policy Hub](https://befailproof.ai/policy-hub/) can index it.
+
+For a Cloud rollout:
+
+```bash
+fp policies publish checkout-guard ./guards.mjs
+fp fleet deploy <machine> --add checkout-guard:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add checkout-guard:enforce
+```
+
+<Warning>
+  A bare `--add checkout-guard` enforces immediately. Add `:observe` to record what the policy would do without blocking the agent.
+</Warning>
+
+See [publish a pack](/policies/publish-a-pack) or [deploy policies](/policies/deploy) for the full workflow.

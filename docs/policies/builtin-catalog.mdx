@@ -1,97 +1,134 @@
 ---
 title: "Builtin policy catalog"
-description: "Review every builtin Failproof AI policy, its trigger, recommended state, and configurable parameters."
+description: "Review every builtin Failproof AI policy, its trigger, default state, and configurable parameters."
 icon: "list-checks"
 ---
 
-The installed package is the source of truth for policy availability. Run `failproofai policies` after every upgrade because catalog entries and behavior can change with the package version.
+38 of the 39 builtin policies are delivered as the `FailproofAI/policies` pack; `block-failproofai-commands` ships compiled into the package because a pack may not declare `alwaysOn`. The installed pack is the source of truth for what this machine can enforce:
 
-## Recommended baseline
-
-The guided setup's recommended selection currently enables secret sanitizers, environment protections, self-protection, catastrophic-command guards, and protected-branch safety:
-
-```text
-sanitize-jwt                 sanitize-api-keys
-sanitize-connection-strings sanitize-private-key-content
-sanitize-bearer-tokens       protect-env-vars
-block-env-files              block-secrets-write
-block-failproofai-commands   block-sudo
-block-curl-pipe-sh           block-rm-rf
-block-push-master            block-force-push
+```bash
+failproofai policies show FailproofAI/policies   # the catalog, as published
+failproofai policies                             # what is enabled here
 ```
 
-`block-failproofai-commands` is **always on**. It is listed above for
-completeness, but it registers on every evaluation whether or not it appears in
-your enabled set, and it cannot be disabled or paused — a guard against the
-agent switching off enforcement that the agent can switch off is not a guard.
+`failproofai policies` lists custom files, convention files, installed packs and Cloud assignments. It has no builtin section, so it cannot answer "which builtins exist" — `policies show` and the [Policy Hub](https://befailproof.ai/policy-hub/FailproofAI/policies/) are where that question is answered.
 
-Recommended is deliberately narrower than **Everything**. Infrastructure and workflow policies can interrupt valid work and should be enabled for the repositories and machines that need them.
+## Defaults, and how to select
 
-## Secrets and environment
+A bare `failproofai policies add FailproofAI/policies` switches on the pack's own defaults — the 10 rows marked **on** below. `block-failproofai-commands` is on regardless and is not part of that selection. `--all` takes everything; `--category <slug>` and `--policy <name>` take a slice. The slug beside each heading is what `--category` matches:
 
-| Policy | Trigger | Outcome |
+```bash
+failproofai policies add FailproofAI/policies --category git,database
+```
+
+`block-failproofai-commands` is **always on**. It registers on every evaluation whether or not it appears in your selection, and it cannot be disabled or paused — a guard against the agent switching off enforcement that the agent can switch off is not a guard. A pack may not declare `alwaysOn`, which is why this one policy ships compiled into the package rather than in the pack.
+
+## Sanitize — `sanitize`
+
+These run on `PostToolUse`, after the tool has already run. They **detect and refuse the tool result**; they do not redact a substring and hand back the rest.
+
+A refusal here only reaches the model on the harnesses that consume a `PostToolUse` verdict — **codex** and **copilot**, where the reason replaces the whole tool result. On claude, cursor, opencode, pi, hermes, openclaw, factory, devin, antigravity and goose, `PostToolUse` is observe-only: the detection is recorded and the output still reaches the model.
+
+| Policy | Trigger | Default | Outcome |
+| --- | --- | --- | --- |
+| `sanitize-jwt` | `PostToolUse` | on | Refuse a tool result containing a JWT. |
+| `sanitize-api-keys` | `PostToolUse` | on | Refuse a tool result containing an OpenAI, Anthropic, GitHub, AWS, Stripe or Google key. |
+| `sanitize-connection-strings` | `PostToolUse` | on | Refuse a tool result containing a database connection string with embedded credentials. |
+| `sanitize-private-key-content` | `PostToolUse` | on | Refuse a tool result containing PEM private-key content. |
+| `sanitize-bearer-tokens` | `PostToolUse` | on | Refuse a tool result containing an `Authorization: Bearer` token. |
+
+## Environment — `environment`
+
+| Policy | Trigger | Default | Outcome |
+| --- | --- | --- | --- |
+| `protect-env-vars` | `PreToolUse` on `Bash` | on | Block commands that read environment variables. |
+| `block-env-files` | `PreToolUse` | on | Block reads and writes of `.env` files. |
+| `block-read-outside-cwd` | `PreToolUse` on `Read`, `Glob`, `Grep`, `Bash` | off | Keep file reads inside the session working directory. |
+
+## Dangerous commands — `dangerous-commands`
+
+| Policy | Trigger | Default | Outcome |
+| --- | --- | --- | --- |
+| `block-sudo` | `PreToolUse`, `PermissionRequest` on `Bash` | on | Block `sudo` unless an allow pattern matches. |
+| `block-curl-pipe-sh` | `PreToolUse` on `Bash` | on | Block downloaded scripts piped directly to a shell. |
+| `block-failproofai-commands` | `PreToolUse`, `PermissionRequest` on `Bash`, `Write`, `Edit`, `NotebookEdit` | **always on** | Block every Failproof AI CLI invocation, self-pause and uninstallation. |
+| `block-rm-rf` | `PreToolUse` on `Bash` | off | Block catastrophic recursive deletion patterns. |
+| `block-secrets-write` | `PreToolUse` on `Write` | off | Block writes to common secret-key and credential filenames. |
+
+## Infra commands — `infra-commands`
+
+All seven are off by default: they gate tools that legitimate work uses constantly, so they belong to the repositories and machines that need them.
+
+| Policy | Trigger | Default | Outcome |
+| --- | --- | --- | --- |
+| `block-kubectl` | `PreToolUse` on `Bash` | off | Gate `kubectl` cluster mutations. |
+| `block-terraform` | `PreToolUse` on `Bash` | off | Gate `terraform` and `tofu` commands. |
+| `block-aws-cli` | `PreToolUse` on `Bash` | off | Gate `aws` CLI commands. |
+| `block-gcloud` | `PreToolUse` on `Bash` | off | Gate `gcloud` commands. |
+| `block-az-cli` | `PreToolUse` on `Bash` | off | Gate `az` commands. |
+| `block-helm` | `PreToolUse` on `Bash` | off | Gate `helm` commands. |
+| `block-gh-pipeline` | `PreToolUse` on `Bash` | off | Gate mutating `gh` operations: workflow run, run rerun and cancel, pr merge, release create and delete, cache delete, secret set and delete. Read-only subcommands such as `gh pr view` are not matched. |
+
+## Git — `git`
+
+| Policy | Trigger | Default | Outcome |
+| --- | --- | --- | --- |
+| `block-push-master` | `PreToolUse` on `Bash` | on | Block direct pushes to configured protected branches. |
+| `block-force-push` | `PreToolUse` on `Bash` | off | Block force-pushes. `--force-with-lease` and `--force-if-includes` remain allowed. |
+| `block-work-on-main` | `PreToolUse` on `Bash` | off | Block commits and merges on protected branches. |
+| `warn-git-amend` | `PreToolUse` on `Bash` | off | Warn before rewriting a commit with `--amend`. |
+| `warn-git-stash-drop` | `PreToolUse` on `Bash` | off | Warn before permanently dropping or clearing stashes. |
+| `warn-all-files-staged` | `PreToolUse` on `Bash` | off | Warn on broad `git add -A`, `git add .` or `git add --all`. |
+
+## Database — `database`
+
+| Policy | Trigger | Default | Outcome |
+| --- | --- | --- | --- |
+| `warn-destructive-sql` | `PreToolUse` on `Bash` | off | Warn on `DROP`, `TRUNCATE`, and `DELETE` without `WHERE` through recognized database clients. |
+| `warn-schema-alteration` | `PreToolUse` on `Bash` | off | Warn on recognized `ALTER TABLE` column and rename operations. |
+
+## Packages and system — `packages-system`
+
+| Policy | Trigger | Default | Outcome |
+| --- | --- | --- | --- |
+| `warn-package-publish` | `PreToolUse` on `Bash` | off | Warn before publishing to npm, PyPI, crates.io, RubyGems and similar registries. |
+| `warn-global-package-install` | `PreToolUse` on `Bash` | off | Warn before global package installation. |
+| `prefer-package-manager` | `PreToolUse` on `Bash` | off | Block a non-preferred package manager and instruct the agent to use an allowed one. |
+| `warn-large-file-write` | `PreToolUse` on `Write` | off | Warn above the configured file-size threshold. |
+| `warn-background-process` | `PreToolUse` on `Bash` | off | Warn on detached or background-process patterns. |
+
+## AI behavior — `ai-behavior`
+
+| Policy | Trigger | Default | Outcome |
+| --- | --- | --- | --- |
+| `warn-repeated-tool-calls` | `PreToolUse` | off | Warn when the same tool is called three or more times with identical parameters. |
+
+## Workflow — `workflow`
+
+All five run on `Stop` and are off by default.
+
+| Policy | Default | Outcome |
 | --- | --- | --- |
-| `sanitize-jwt` | `PostToolUse` | Redact JWTs from tool output before the model sees them. |
-| `sanitize-api-keys` | `PostToolUse` | Redact common OpenAI, Anthropic, GitHub, AWS, Stripe, and Google keys. |
-| `sanitize-connection-strings` | `PostToolUse` | Redact database connection strings containing credentials. |
-| `sanitize-private-key-content` | `PostToolUse` | Redact PEM private-key bodies. |
-| `sanitize-bearer-tokens` | `PostToolUse` | Redact authorization bearer tokens. |
-| `protect-env-vars` | `PreToolUse` on shell tools | Block commands that dump environment variables. |
-| `block-env-files` | `PreToolUse` | Block reads and writes of `.env` files. |
-| `block-read-outside-cwd` | `PreToolUse` on read, glob, grep, or shell tools | Keep reads inside the session working directory. |
-| `block-secrets-write` | `PreToolUse` on write tools | Block writes to common secret-key and credential filenames. |
+| `require-commit-before-stop` | off | Refuse completion while tracked work remains uncommitted. |
+| `require-push-before-stop` | off | Refuse completion while commits remain local-only. |
+| `require-pr-before-stop` | off | Require a pull request for the current branch. |
+| `require-no-conflicts-before-stop` | off | Require a clean merge against the configured base branch. |
+| `require-ci-green-before-stop` | off | Require CI checks on the current HEAD commit to pass, ignoring stale runs on prior commits. |
 
-## Dangerous commands and infrastructure
+These need a harness whose `Stop` verdict is consumed. That is not every harness:
 
-| Policy | Trigger | Outcome |
-| --- | --- | --- |
-| `block-sudo` | `PreToolUse`, `PermissionRequest` | Block `sudo` unless an allow pattern matches. |
-| `block-curl-pipe-sh` | `PreToolUse` | Block downloaded scripts piped directly to a shell. |
-| `block-rm-rf` | `PreToolUse` | Block catastrophic recursive deletion patterns. |
-| `block-failproofai-commands` | `PreToolUse`, `PermissionRequest` | **Always on, cannot be disabled.** Block every Failproof AI CLI invocation, self-pause, and package-manager uninstall. |
-| `block-kubectl` | `PreToolUse` | Gate Kubernetes commands. |
-| `block-terraform` | `PreToolUse` | Gate Terraform and OpenTofu commands. |
-| `block-aws-cli` | `PreToolUse` | Gate AWS CLI commands. |
-| `block-gcloud` | `PreToolUse` | Gate Google Cloud CLI commands. |
-| `block-az-cli` | `PreToolUse` | Gate Azure CLI commands. |
-| `block-helm` | `PreToolUse` | Gate Helm commands. |
-| `block-gh-pipeline` | `PreToolUse` | Gate mutating GitHub CLI workflow, run, merge, release, cache, and secret operations. |
-
-## Git and database safety
-
-| Policy | Trigger | Outcome |
-| --- | --- | --- |
-| `block-push-master` | `PreToolUse` | Block direct pushes to configured protected branches. |
-| `block-force-push` | `PreToolUse` | Block force-pushes; `--force-with-lease` remains allowed by the current implementation. |
-| `block-work-on-main` | `PreToolUse` | Block commits and merges on protected branches. |
-| `warn-git-amend` | `PreToolUse` | Warn before rewriting a commit with `--amend`. |
-| `warn-git-stash-drop` | `PreToolUse` | Warn before permanently dropping or clearing stashes. |
-| `warn-all-files-staged` | `PreToolUse` | Warn on broad `git add -A`, `git add .`, or `git add --all`. |
-| `warn-destructive-sql` | `PreToolUse` | Warn on `DROP`, `TRUNCATE`, and `DELETE` without `WHERE` through recognized database clients. |
-| `warn-schema-alteration` | `PreToolUse` | Warn on recognized `ALTER TABLE` column and rename operations. |
-
-## Packages, system behavior, and agent loops
-
-| Policy | Trigger | Outcome |
-| --- | --- | --- |
-| `warn-package-publish` | `PreToolUse` | Warn before publishing to package registries. |
-| `warn-global-package-install` | `PreToolUse` | Warn before global package installation. |
-| `prefer-package-manager` | `PreToolUse` | Instruct the agent to use an allowed package manager. |
-| `warn-large-file-write` | `PreToolUse` on write tools | Warn above the configured file-size threshold. |
-| `warn-background-process` | `PreToolUse` | Warn on detached or long-lived background-process patterns. |
-| `warn-repeated-tool-calls` | `PreToolUse` | Warn after three or more identical tool calls. |
-
-## End-of-task workflow
-
-These policies require a harness that emits a compatible `Stop` event.
-
-| Policy | Outcome |
+| Harness | `Stop` |
 | --- | --- |
-| `require-commit-before-stop` | Refuse completion while tracked work remains uncommitted. |
-| `require-push-before-stop` | Refuse completion while commits remain local-only. |
-| `require-pr-before-stop` | Require a pull request for the current branch. |
-| `require-no-conflicts-before-stop` | Require a clean merge against the configured base branch. |
-| `require-ci-green-before-stop` | Require current-HEAD CI checks to complete successfully. |
+| claude, codex, copilot, cursor, openclaw, factory, devin, antigravity | Verified to block: the refusal forces another turn |
+| pi | Observe. The reason is carried into the next turn as an instruction, not a gate |
+| goose, hermes | No `Stop` hook is installed, so these five never fire |
+| opencode | Not verified. `Stop` is not among the events opencode consumes a verdict from |
+
+Cursor Cloud Agent VMs run no stop hooks at all, so a Cursor session there is uncovered even though local Cursor is not.
+
+<Note>
+  The `warn-*` policies return `instruct`, not `deny`. (`prefer-package-manager` is the exception among the non-`block-*` names: it returns `deny`, so it blocks on every harness that consumes a `PreToolUse` verdict — which is all twelve.) On Hermes and Goose, on Pi, OpenClaw and Factory outside the `Stop` channel, and on Antigravity outside `Stop` and `UserPromptSubmit`, `instruct` degrades to allow plus a note on stderr — the agent is not told. Antigravity's `UserPromptSubmit` is a real second channel: the instruction is injected as a transient message before the model runs.
+</Note>
 
 ## Parameter reference
 
@@ -115,7 +152,6 @@ Configure parameters under the selected scope's `policyParams` object. Types are
 
 ```json
 {
-  "enabledPolicies": ["block-sudo", "block-push-master"],
   "policyParams": {
     "block-sudo": {
       "allowPatterns": ["sudo systemctl status"]
@@ -126,6 +162,10 @@ Configure parameters under the selected scope's `policyParams` object. Types are
   }
 }
 ```
+
+<Note>
+  A bare policy name as a `policyParams` key is honoured for `FailproofAI/policies` only. For any other pack the key is `pack/<owner>/<repo>/<policy>` — a stranger's pack declaring the same policy name gets the schema defaults, not your parameters.
+</Note>
 
 <Warning>
   An allow pattern broadens what an agent may do. Test the exact tokenization and command variants on the target harness before deploying it across a fleet.

@@ -1,74 +1,54 @@
 ---
 title: "Keys and permissions"
-description: "Create scoped API keys for machines, automation, and operators."
+description: "Create credentials for people, automation, and machines."
 icon: "key-round"
 ---
 
-API keys belong to an organization and carry explicit permissions. Use separate keys for agent ingestion, policy delivery, evaluators, CI automation, and administrative scripts.
+Use a separate key for each person, machine, or automation job. Grant only the permissions it needs.
 
 ## Create and rotate a key
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. Go to **Administration → Keys**, select **new key**, and enter a workload name.
-    2. Choose a permission set and adjust individual permissions only when the preset is insufficient.
-    3. Create the key and copy its one-time secret immediately.
-    4. Open the key later to update grants, disable it, or regenerate the secret.
+Use **Admin → Keys**, or the Cloud CLI:
 
-    The creation drawer is where you choose the narrowest grants required by the workload.
+```bash
+fp keys list
+fp keys create "audit automation" --add audits:read
+fp keys disable "audit automation"
+```
 
-    ![The new API key drawer with permission presets and individual grants.](/images/dashboard/key-create.png)
+Store the secret when it is created; it is not shown again. Rotate by creating a replacement, updating the consumer, then disabling the old key.
 
-    After creation, the Keys page shows the persistent metadata and management actions. The one-time secret is not shown again.
+## Machine keys
 
-    ![The API Keys page showing key permissions, creation time, and regenerate and disable actions.](/images/dashboard/api-keys.png)
+A machine key connects the local service to Cloud:
 
-    Use this list to review grants regularly and disable keys that no longer map to an active workload.
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp keys create production-agents \
-      --add events:add \
-      --add policies:pull
-    fp keys show production-agents
-    fp keys update production-agents --add events:read
-    fp keys regenerate production-agents --yes
-    fp keys disable production-agents
-    ```
+```bash
+export FAILPROOFAI_CLOUD_TOKEN="<key>"
+failproofai config
+```
 
-    Redirect or capture create/regenerate output securely; the secret is returned once.
-  </Tab>
-</Tabs>
+A connected machine may need two capabilities:
 
-The two permissions required by a connected Failproof AI machine are independent:
+- `policies:pull` to receive Cloud-managed policies.
+- `events:add` to send decisions and sessions.
 
-- `events:add` sends events and session data.
-- `policies:pull` retrieves assigned policy deployments.
+Status reports these separately because one may work while the other does not.
 
-Key secrets are shown when created or regenerated. Store them in a secret manager and rotate them without reusing an operator's interactive credentials.
+## Common permissions
 
-## Permission catalog
-
-| Area | Permissions |
+| Permission | Allows |
 | --- | --- |
-| Events | `events:add`, `events:read` |
-| Keys | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` is human-session only |
-| Users | `users:create`, `users:read`, `users:update`, `users:delete` |
-| Evaluations | `evaluations:read`, `evaluations:trigger` |
-| Dashboards | `dashboards:read`, `dashboards:write`, `dashboards:delete` |
-| Queries | `queries:read`, `queries:write`, `queries:delete`, `queries:run` |
-| Assistant | `agent:use` |
-| Settings | `settings:read`, `settings:write` |
-| Alerts | `alerts:read`, `alerts:write` |
-| Issues | `issues:read`, `issues:create`, `issues:close` |
-| Audits | `audits:read`, `audits:write` |
-| Policies | `policies:read`, `policies:write`, `policies:pull` |
-| Usage | `usage:read` |
+| `events:add` | Send events |
+| `events:read` | Read events and errors |
+| `evaluations:read` | Read sessions and evaluations |
+| `audits:read` / `audits:write` | Review or manage audits |
+| `policies:read` / `policies:write` | Review or deploy policies |
+| `policies:pull` | Pull machine policy assignments |
+| `keys:create` / `keys:disable` | Create or disable keys |
+| `orgs:admin` | Instance-level organization administration; not assignable to an organization key |
 
-`orgs:admin` is reserved for the instance operator and cannot be granted to an organization key or ordinary member. Retired `incidents:*` and `alerts:ack` tokens are accepted for compatibility and normalize to current `issues:*` permissions.
-
-Builtin permission sets are `read-only`, `standard`, and `admin`. `standard` adds evaluation triggering, query execution, issue response, and assistant use to read permissions. Key creation strips human-only grants even when a permission set contains them.
+Some administrative `fp fleet` and `fp guardrails` commands require a signed-in user session rather than an API key. Their help text states this before making a request.
 
 <Warning>
-  Instance-scoped keys can select an organization with the `X-AgentEye-Org` header. Set it explicitly on multi-organization deployments; omission may select the default organization.
+  Never reuse ingest credentials such as `AGENTEYE_KEY` or `AGENTEYE_API_KEY` as an `FP_API_KEY`. They serve different systems and permissions.
 </Warning>

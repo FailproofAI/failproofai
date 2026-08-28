@@ -1,25 +1,38 @@
 ---
 title: "Tools"
-description: "Find slow, failing, or overused tools across agent sessions."
+description: "Find slow, failing, or overused tools across agent runs."
 icon: "wrench"
 ---
 
-Tools groups tool calls across sessions so you can compare latency and call distribution.
+Tools shows what agents call, how often calls fail, and which sessions they affect.
+
+Tool names come from each agent harness, so the same capability may have different names. For example, a shell call can appear as `Bash`, `exec`, `Shell`, `terminal`, or `run_command`. Run `fp list tools` before building a filter.
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Observe → Tools**.
-    2. Filter by environment, tool name, agent, or session ID.
-    3. Review latency and tool distribution.
-    4. Select a chart point or tool segment to open matching events and sessions.
+    Go to **Observe → Tools**. Filter by environment, tool, agent, or session.
 
     ![The Tools page showing latency, success and failure breakdowns, and tool-call distribution.](/images/dashboard/tools.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp list tools
-    fp events --event-type tool_use,tool_result --env production --since 24h
-    fp --json events --full --session-id <session-id> --all
+    fp events --event-type tool_use,tool_result --since 24h
+    fp errors --event-type tool_result --since 24h
+    fp --json events --full --event-type tool_use,tool_result --session-id <session-id> --all --limit 2000
     ```
+
+    Use `--full` when you need payload fields such as per-call duration.
   </Tab>
 </Tabs>
+
+Use this page to find repeated failures, compare working and failing runs, or confirm that a policy-targeted tool is actually used.
+
+<CardGroup cols={2}>
+  <Card title="Errors" icon="circle-alert" href="/sessions/errors">
+    Open the sessions behind tool failures.
+  </Card>
+  <Card title="Hooks" icon="webhook" href="/sessions/hooks">
+    See canonical tool names and policy decisions.
+  </Card>
+</CardGroup>

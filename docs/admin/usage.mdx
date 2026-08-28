@@ -1,21 +1,24 @@
 ---
 title: "Usage"
-description: "Inspect organization consumption and the active billing window."
+description: "Inspect organization consumption for the current 30-day metering window."
 icon: "chart-no-axes-combined"
 ---
 
-Usage shows consumption for the current organization and its billing windows. Use it to understand how production rollout, transcript volume, evaluations, and audit cadence affect your plan.
+Usage shows what the current organization has metered during its current 30-day window. The window is fixed and anchored per organization, and usage is read-only: it applies and displays no limits, quotas, or plan thresholds. Both surfaces say so — the CLI panel prints "read-only usage, no limits applied".
 
 ## Review usage
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Administration → Usage**.
-    2. Confirm the organization and metering window.
-    3. Review ingest, sessions, evaluations, metrics, audits, findings, alerts, users, and keys.
-    4. Compare started and completed audit work when audit usage looks unexpected.
+    1. Go to **admin → usage**.
+    2. Confirm the organization and the metering window — the header shows the window's start and end, the day within it, and how much has elapsed.
+    3. Read the hero block: events ingested, sessions, agents, and environments.
+    4. Read the two pipelines: evaluations (with scores and metrics) and audits (with issues and alerts), each showing completed runs against started runs.
+    5. Read the workspace and access blocks: saved queries, dashboards, alerts, unique issues, members, and API keys.
 
-    ![The Usage page showing the metering window, captured events, evaluation and audit pipelines, workspace resources, members, and API keys.](/images/dashboard/usage-overview.png)
+    The figures are cached, not live. Use the refresh control in the top right after a change you expect to see.
+
+    ![The usage page showing the metering window, events captured, the evaluation and audit pipelines, workspace resources, members, and API keys.](/images/dashboard/usage-overview.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -23,15 +26,52 @@ Usage shows consumption for the current organization and its billing windows. Us
     fp --json usage
     fp --org reliability-team --json usage
     ```
+
+    `fp usage` needs `usage:read` and runs under an API key, which makes it the right command for a reporting cron.
+
+    With `--json` it returns the dashboard response unchanged: `org_id`, `billing_anchor`, `window`, `usage`, `calculated_at`, and `stale_after`. `calculated_at` and `stale_after` are how you tell how old a figure is.
+
+    `fp usage` takes no flags of its own — only the global `--json` and `--org`. It reports the current window and nothing before it, so keep your own history by running it on a schedule and storing the `--json` payload rather than expecting to query an earlier window later.
+
+    ```bash
+    fp --json usage | jq '.usage.events_ingested'
+    ```
   </Tab>
 </Tabs>
 
+### Metric keys
+
+Everything under `usage` in the JSON payload, so a script can name a field instead of parsing a panel.
+
+| Group | Keys |
+| --- | --- |
+| Telemetry | `events_ingested`, `sessions`, `agents`, `environments` |
+| Evaluations | `evaluation_runs`, `evaluation_finishes`, `evaluations`, `metrics` |
+| Audits | `audit_runs`, `audit_finishes`, `issues_created`, `alerts_created` |
+| Workspace | `queries_created`, `dashboards_created` |
+| Access | `users_active`, `users_created`, `keys_active`, `keys_created` |
+
+Each pipeline reports started and finished counts separately, so a gap between `audit_runs` and `audit_finishes` means work that began and did not complete — worth checking before you read anything into the issue counts beneath it.
+
 ## Investigate a change
 
-1. Confirm the active organization and window.
-2. Compare the increase with session volume by environment.
-3. Check whether a new integration started sending transcripts.
-4. Review evaluator and audit cadence changes.
-5. Compare against the limits on the current pricing plan.
+Ingest volume is decided per machine, not centrally. Start from the organization and window, then work through what changed on the machines reporting into it.
 
-The CLI returns the same summary for scripts.
+| Cause | Where to check | What to change |
+| --- | --- | --- |
+| A machine is sending session transcripts | `collector.sessions` in that machine's `~/.failproofai/config.json` | Set it to `false` to send decisions only |
+| Hook activity is being sent in full | `collector.hooks_verbosity` in the same file | `decisions` aggregates allows per minute; `off` stops hook events entirely |
+| A new capture location was added | `failproofai harness list` | Remove it with `failproofai harness remove-path <harness> <path or label>` |
+| History was re-sent | The machine's `failproofai backfill` runs | Re-sends deduplicate on a content hash and collapse into rows already there, so they do not double-count |
+| A new integration started reporting | The `agents` and `environments` counts, and the sessions list | Scope the new machine's collector settings before rolling it out |
+
+Usage compares nothing against a plan. Do that outside the product.
+
+<Columns cols={2}>
+  <Card title="Settings and security" icon="lock-keyhole" href="/admin/settings-and-security">
+    The per-machine data-handling settings behind these numbers.
+  </Card>
+  <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/reference/cloud-cli">
+    The full `fp` surface, including installation and sign-in.
+  </Card>
+</Columns>

@@ -6,6 +6,8 @@ icon: "braces"
 
 Choose the integration closest to where your agent already runs.
 
+This section covers two command-line tools with different jobs. `failproofai` runs on the machine your agent runs on and enforces policy inside the agent loop; `fp` talks to Failproof AI Cloud and reads back what that loop did. Machine setup is supported on Linux and macOS only — `failproofai config` refuses on anything else and writes nothing, rather than leaving a half-configured machine behind.
+
 <Columns cols={2}>
   <Card title="Agent harnesses" icon="plug-zap" href="/reference/harnesses">
     Install hooks for supported coding and autonomous agent CLIs.
@@ -15,6 +17,9 @@ Choose the integration closest to where your agent already runs.
   </Card>
   <Card title="Python SDK reference" icon="python" href="/reference/custom-agents">
     Configuration, the event catalog, correlation rules, and delivery.
+  </Card>
+  <Card title="Events and configuration" icon="list-tree" href="/reference/events-and-configuration">
+    The two event vocabularies, reserved fields, and the machine's own settings file.
   </Card>
   <Card title="Local dashboard" icon="monitor-cog" href="/reference/local-dashboard">
     Review local projects, sessions, policy activity, and offline audits.
@@ -31,12 +36,18 @@ Choose the integration closest to where your agent already runs.
   <Card title="Custom policies" icon="shield-plus" href="/reference/policy-sdk">
     Author and test workflow-specific allow, instruct, and deny decisions.
   </Card>
+  <Card title="HTTP API" icon="code" href="/reference/http-api">
+    The generated reference for the public `/v1` surface.
+  </Card>
+  <Card title="Troubleshooting" icon="circle-help" href="/reference/troubleshooting">
+    Diagnose hooks that do not fire, events that do not arrive, and denials you did not expect.
+  </Card>
   <Card title="Self-hosting" icon="cloud-cog" href="/reference/self-hosting">
     Deploy the Cloud control plane on a customer-managed Kubernetes cluster.
   </Card>
 </Columns>
 
-The generated [HTTP API reference](/reference/http-api) covers the public `/v1` surface. Hand-written pages explain workflows that span multiple endpoints or use administrative interfaces outside that public surface.
+The generated HTTP API pages cover the public `/v1` surface. Hand-written pages explain workflows that span multiple endpoints or use administrative interfaces outside that public surface.
 
 ## Connect an agent and verify data
 
@@ -58,21 +69,27 @@ The generated [HTTP API reference](/reference/http-api) covers the public `/v1` 
     Open one of these sessions before considering the integration complete; the trace should contain the model, tool, error, and policy evidence your audits need.
   </Tab>
   <Tab title="CLI">
-    Create a machine key, connect the Failproof daemon, and verify the first session.
+    Create a machine key, set this machine up and connect it, choose policies, then verify the first session.
 
     ```bash
     fp keys create agent-production \
       --add events:add \
       --add policies:pull
 
-    failproofai config \
-      --connect https://app.befailproof.ai \
-      --token <machine-key>
+    failproofai config --token <machine-key>
+
+    failproofai policies add FailproofAI/policies
 
     failproofai flush --wait
-    fp sessions --since 1h --env production
-    fp events --since 1h --env production --limit 20
+    fp sessions --since 1h
+    fp events --since 1h --limit 20
     ```
+
+    Neither verification command filters on an environment, because a freshly configured machine stamps every event `local`. Add `--env production` only after you set `collector.environment` — see [Change an environment label](/reference/events-and-configuration#change-an-environment-label).
+
+    Passing a token is the request to connect, so `failproofai config --token <machine-key>` does the same thing in one command. Prefer the environment variable: an argument is readable from `ps` by every user on the box, and it lands in shell history and CI logs.
+
+    The policy step is not optional. `failproofai config` installs the daemon and wires every supported agent CLI, but it deliberately chooses no policies, so a freshly configured machine enforces nothing until you add a pack.
 
     Use `fp --json sessions ...` when another tool will consume the result. Global flags such as `--json`, `--org`, and `--base-url` must come before the command.
 

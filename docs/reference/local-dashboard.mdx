@@ -6,14 +6,16 @@ icon: "monitor-cog"
 
 Run `failproofai` without arguments to start the bundled dashboard at `http://localhost:8020`. It reads local agent histories, policy configuration, audit results, and hook activity directly from the machine.
 
-The local dashboard is separate from Failproof AI Cloud. It works without a Cloud account and does not prove that events were delivered to your organization.
+On a machine that has not been set up, the bare command runs first-run setup before it opens the dashboard. It does that only on an interactive terminal: piped or in CI, it prints a one-line hint and opens the dashboard, because a wizard nobody can answer must never block the command you typed. Set `FAILPROOFAI_NO_FIRST_RUN=1` to skip the redirect entirely and go straight to the dashboard.
+
+The local dashboard is separate from Failproof AI Cloud. It works without a Cloud account and does not prove that events were delivered to your organization. On a machine that completed setup, the decisions it shows were made by the `failproofaid` daemon, which is the only evaluator there; on a machine that has not been set up, hooks evaluate in-process.
 
 ## Dashboard areas
 
 | Area | What you can accomplish |
 | --- | --- |
-| Policies → Activity | Inspect local allow, instruct, and deny decisions; filter by decision, event, CLI, tool, source, policy, and session. |
-| Policies → Configure | Enable builtins, edit supported parameters, toggle discovered custom policies, and select target harnesses. |
+| Policies → Activity | Inspect local allow, instruct, and deny decisions; filter by decision, event, CLI, source, policy, and session. |
+| Policies → Configure | Enable policies from an installed pack, edit supported parameters, toggle discovered custom and convention policies, and select target harnesses. |
 | Projects | Browse discovered projects across supported agent histories and compare their most recent sessions. |
 | Project sessions | Open one local transcript, review raw ordered entries and subagents, download it, and correlate policy activity. |
 | Audit | Review the last offline scan, risky patterns, strengths, affected projects, and suggested builtin policies. |
@@ -24,8 +26,8 @@ The local dashboard is separate from Failproof AI Cloud. It works without a Clou
 <Tabs>
   <Tab title="Dashboard">
     1. Open **Policies → Activity** and set the decision and source filters.
-    2. Narrow by event, harness, tool, or policy name.
-    3. Expand a row to inspect its reason, matched policies, source, execution mode, and duration.
+    2. Narrow by event, harness, policy name, or session.
+    3. The row carries the decision, event, harness, tool, policy, permission mode, and duration. Expand it for the full reason, every matched policy, the deciding source, the cloud deployment, and the session's working directory and transcript path. Tool name is shown on the row but is not a filter.
     4. Follow the session link to place the decision in transcript context.
 
     A denied-looking row can still be observational on a harness/event pair that does not consume blocking verdicts. The detail view calls out verified enforcement capability.
@@ -45,19 +47,22 @@ The local dashboard is separate from Failproof AI Cloud. It works without a Clou
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Open **Policies → Configure** and choose the harnesses and configuration scope.
-    2. Enable a builtin or discovered custom policy.
-    3. For a parameterized builtin, open its configuration control and save supported values.
+    1. Open **Policies → Configure** and choose the harnesses and configuration scope. The tab is addressable directly at `http://localhost:8020/policies?tab=policies`.
+    2. Enable a policy from an installed pack, or a discovered custom or convention policy.
+    3. For a parameterized policy, open its configuration control and save supported values.
     4. Return to Activity and run matching and non-matching actions.
 
-    Convention policies show their project or user source. Explicit custom-path changes may require rerunning CLI configuration so the selected path is recorded.
+    The list is empty until a pack is installed — this build compiles in no policies of its own, so run `failproofai policies add FailproofAI/policies` first. Convention policies show their project or user source. Explicit custom-path changes may require rerunning CLI configuration so the selected path is recorded.
   </Tab>
   <Tab title="CLI">
     ```bash
-    failproofai policy add block-sudo --scope project
+    failproofai policies show FailproofAI/policies
+    failproofai policies add block-sudo --scope project
     failproofai policies --install --custom ./security.policies.ts --scope project
     failproofai policies
     ```
+
+    `policies show <owner>/<repo>` reads a pack's contents before you install it. `--scope` takes `user`, `project`, or `local`; only Claude Code supports `local`, and Hermes and OpenClaw take `user` only.
   </Tab>
 </Tabs>
 
@@ -65,7 +70,7 @@ The local dashboard is separate from Failproof AI Cloud. It works without a Clou
 
 The Projects page combines supported local history stores. Select a project to list its sessions, then open a session for the raw log viewer, subagent segments, download action, and session-scoped policy activity.
 
-If a project or session is missing, confirm the harness uses its default history location or register an extra root with `failproofai harness add-path`.
+If a project or session is missing, confirm the harness uses its default history location or register an extra root with `failproofai harness add-path <harness> [<label>=]<path>`.
 
 ## Schedule offline audits
 
@@ -79,9 +84,15 @@ If a project or session is missing, confirm the harness uses its default history
     failproofai audit --status
     ```
 
-    Change the number of days to set a different 1–90 day interval. Disable recurring scans with `failproofai audit --no-schedule`; run `failproofai audit` for an immediate interactive scan.
+    Change the number of days to set a different 1–90 day interval. Disable recurring scans with `failproofai audit --no-schedule`, which stops the timer and leaves you signed in; run `failproofai audit` for an immediate interactive scan.
+
+    Scheduling signs you in the first time, because the findings are emailed. `--email <address>` supplies the address up front and skips the sign-in prompt.
   </Tab>
 </Tabs>
+
+<Note>
+  Analysis and findings stay on this machine. Anonymous CLI telemetry is sent by default unless you set `FAILPROOFAI_TELEMETRY_DISABLED=1`. Scheduled scans also send machine metadata and may send a limited findings digest after you opt in.
+</Note>
 
 <Warning>
   The local dashboard can display prompts, tool input, file content, and terminal output from local agent histories. Bind it only to trusted interfaces and stop the process when review is complete.

@@ -1,10 +1,16 @@
 ---
-title: "Online evaluations"
-description: "Score live and completed sessions for quality, compliance, cost, and latency."
+title: "Evaluations"
+description: "Score completed sessions for quality, compliance, cost, and latency."
 icon: "gauge"
 ---
 
-Online evaluations apply consistent judgments to agent sessions. Use them for signals that should be measured continuously rather than investigated only during an audit.
+Evaluations apply consistent judgments to agent sessions. Use them for signals that should be measured continuously rather than investigated only during an audit.
+
+An evaluator receives a session that has finished, which means one of two things: the session emitted an end event, or it stopped emitting for longer than the evaluator's `inactivity_timeout_secs`. There is no scoring of a run still in flight.
+
+<Note>
+  Automatic evaluation is deployment-wide and stays off until an operator sets `EVALUATOR_ENDPOINT`. Until then this view is empty, `fp evals` returns nothing, and `fp sessions` shows a blank status for every row — which usually means no evaluator is configured, not that nothing scored badly. See [Evaluator SDK](/reference/evaluator-sdk).
+</Note>
 
 ## Review evaluation quality
 
@@ -23,16 +29,36 @@ Online evaluations apply consistent judgments to agent sessions. Use them for si
   </Tab>
   <Tab title="CLI">
     ```bash
+    fp list score_filters
     fp evals --agent-id checkout-agent --aggregate
-    fp evals --aggregate --env production --status error
-    fp evals --score helpfulness:0.8.. --since 7d
+    fp evals --aggregate --status error --since 7d
+    fp evals --score helpfulness:0.5..0.8 --score tool_efficiency:..0.3 --since 7d
+    fp evals --scores-full --since 24h
     ```
 
-    Add global `--json` before `evals` for automation, for example `fp --json evals --aggregate --env production`.
+    Everything here needs `evaluations:read` — including `fp sessions`, which reads the same latest-evaluation outcome. That is why a key scoped to `events:read` sees traces but no scores.
+
+    Start with `fp list score_filters`: it returns the score keys this deployment actually produces, which is what makes a `--score` filter checkable rather than a guess.
+
+    `--score KEY:MIN..MAX` has each bound optional and is repeatable, with all ranges required together: `helpfulness:0.5..0.8`, `tool_efficiency:..0.3`, `factuality:0.9..`. A malformed value is refused before the request rather than silently ignored. `--status` takes exactly one of `done`, `error`, or `timeout`. `--scores-full` prints every score pair instead of the first few plus a `+N`. `--all` stops at `--limit`, which defaults to 50.
+
+    Global options come before the command, so automation reads `fp --json evals --aggregate`.
+
+    The daemon stamps every event with environment `local` unless you change it, so `--env production` matches nothing on a stock install. See [Change an environment label](/reference/events-and-configuration#change-an-environment-label).
   </Tab>
 </Tabs>
 
-An evaluator receives the session identity, environment, timestamps, and ordered events. It can return numeric score keys with optional reasoning and a summary. Long-running evaluators can return a pending job and be polled later.
+## What an evaluator exchanges
+
+| Message | Fields |
+| --- | --- |
+| `EvalRequest` (in) | `schema_version` (currently `"1"`), `session_id`, `agent_id`, `environment`, `started_at`, `ended_at`, and `events` — the full ordered stream, each event carrying its complete payload. |
+| `EvalResponse` (out) | `scores` as numeric keys, `reasoning` keyed to mirror them, and a `summary`. |
+| `JobPending` (out) | `job_id` and `next_poll_secs`, for work that cannot finish inside one request. |
+
+`ended_at` is present only when the session emitted an end event, so a session dispatched on inactivity arrives without one. Polling cadence follows `next_poll_secs`, then the evaluator's `default_poll_interval_secs`, then the server's `EVALUATOR_POLLING_INTERVAL_SECS`, clamped between one second and one hour with a one-hour wall-clock cap.
+
+Because the request carries complete event payloads, an evaluator sees full transcript content. Treat evaluator delivery as transcript delivery when deciding what data the machine may send.
 
 ## Good evaluation targets
 
@@ -42,6 +68,8 @@ An evaluator receives the session identity, environment, timestamps, and ordered
 - Policy or process compliance
 - Cost and latency budgets
 - Required human escalation
+
+Score keys are stable identifiers. Renaming one starts a new chart series rather than changing the old one, which breaks a trend quietly — pick the name before you chart it.
 
 ## From score to response
 

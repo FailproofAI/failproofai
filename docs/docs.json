@@ -78,10 +78,10 @@
                   "start/quickstart",
                   "reference/harnesses",
                   "sessions/assistant",
-                  "start/first-audit",
-                  "start/first-policy",
                   "start/setup",
                   "start/concepts",
+                  "start/first-audit",
+                  "start/first-policy",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -121,6 +121,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "start/integrations",
                   "start/integrations/custom-agents",
                   "start/integrations/langchain",
                   "start/integrations/crewai",
@@ -197,7 +198,6 @@
                 "group": "Connect your agents",
                 "pages": [
                   "reference/overview",
-                  "reference/harnesses",
                   "reference/custom-agents",
                   "reference/evaluator-sdk",
                   "reference/policy-sdk",
@@ -206,7 +206,6 @@
               },
               {
                 "group": "Reference",
-                "expanded": false,
                 "pages": [
                   "reference/failproof-cli",
                   "reference/local-dashboard",
@@ -240,10 +239,10 @@
                   "zh/start/quickstart",
                   "zh/reference/harnesses",
                   "zh/sessions/assistant",
-                  "zh/start/first-audit",
-                  "zh/start/first-policy",
                   "zh/start/setup",
                   "zh/start/concepts",
+                  "zh/start/first-audit",
+                  "zh/start/first-policy",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -283,6 +282,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "zh/start/integrations",
                   "zh/start/integrations/custom-agents",
                   "zh/start/integrations/langchain",
                   "zh/start/integrations/crewai",
@@ -359,7 +359,6 @@
                 "group": "Connect your agents",
                 "pages": [
                   "zh/reference/overview",
-                  "zh/reference/harnesses",
                   "zh/reference/custom-agents",
                   "zh/reference/evaluator-sdk",
                   "zh/reference/policy-sdk",
@@ -368,7 +367,6 @@
               },
               {
                 "group": "Reference",
-                "expanded": false,
                 "pages": [
                   "zh/reference/failproof-cli",
                   "zh/reference/local-dashboard",
@@ -396,10 +394,10 @@
                   "ja/start/quickstart",
                   "ja/reference/harnesses",
                   "ja/sessions/assistant",
-                  "ja/start/first-audit",
-                  "ja/start/first-policy",
                   "ja/start/setup",
                   "ja/start/concepts",
+                  "ja/start/first-audit",
+                  "ja/start/first-policy",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -439,6 +437,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "ja/start/integrations",
                   "ja/start/integrations/custom-agents",
                   "ja/start/integrations/langchain",
                   "ja/start/integrations/crewai",
@@ -515,7 +514,6 @@
                 "group": "Connect your agents",
                 "pages": [
                   "ja/reference/overview",
-                  "ja/reference/harnesses",
                   "ja/reference/custom-agents",
                   "ja/reference/evaluator-sdk",
                   "ja/reference/policy-sdk",
@@ -524,7 +522,6 @@
               },
               {
                 "group": "Reference",
-                "expanded": false,
                 "pages": [
                   "ja/reference/failproof-cli",
                   "ja/reference/local-dashboard",
@@ -552,10 +549,10 @@
                   "ko/start/quickstart",
                   "ko/reference/harnesses",
                   "ko/sessions/assistant",
-                  "ko/start/first-audit",
-                  "ko/start/first-policy",
                   "ko/start/setup",
                   "ko/start/concepts",
+                  "ko/start/first-audit",
+                  "ko/start/first-policy",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -595,6 +592,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "ko/start/integrations",
                   "ko/start/integrations/custom-agents",
                   "ko/start/integrations/langchain",
                   "ko/start/integrations/crewai",
@@ -671,7 +669,6 @@
                 "group": "Connect your agents",
                 "pages": [
                   "ko/reference/overview",
-                  "ko/reference/harnesses",
                   "ko/reference/custom-agents",
                   "ko/reference/evaluator-sdk",
                   "ko/reference/policy-sdk",
@@ -680,7 +677,6 @@
               },
               {
                 "group": "Reference",
-                "expanded": false,
                 "pages": [
                   "ko/reference/failproof-cli",
                   "ko/reference/local-dashboard",
@@ -708,10 +704,10 @@
                   "es/start/quickstart",
                   "es/reference/harnesses",
                   "es/sessions/assistant",
-                  "es/start/first-audit",
-                  "es/start/first-policy",
                   "es/start/setup",
                   "es/start/concepts",
+                  "es/start/first-audit",
+                  "es/start/first-policy",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -751,6 +747,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "es/start/integrations",
                   "es/start/integrations/custom-agents",
                   "es/start/integrations/langchain",
                   "es/start/integrations/crewai",
@@ -827,7 +824,6 @@
                 "group": "Connect your agents",
                 "pages": [
                   "es/reference/overview",
-                  "es/reference/harnesses",
                   "es/reference/custom-agents",
                   "es/reference/evaluator-sdk",
                   "es/reference/policy-sdk",
@@ -836,7 +832,6 @@
               },
               {
                 "group": "Reference",
-                "expanded": false,
                 "pages": [
                   "es/reference/failproof-cli",
                   "es/reference/local-dashboard",
@@ -864,10 +859,10 @@
                   "pt-br/start/quickstart",
                   "pt-br/reference/harnesses",
                   "pt-br/sessions/assistant",
-                  "pt-br/start/first-audit",
-                  "pt-br/start/first-policy",
                   "pt-br/start/setup",
                   "pt-br/start/concepts",
+                  "pt-br/start/first-audit",
+                  "pt-br/start/first-policy",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -907,6 +902,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "pt-br/start/integrations",
                   "pt-br/start/integrations/custom-agents",
                   "pt-br/start/integrations/langchain",
                   "pt-br/start/integrations/crewai",
@@ -983,7 +979,6 @@
                 "group": "Connect your agents",
                 "pages": [
                   "pt-br/reference/overview",
-                  "pt-br/reference/harnesses",
                   "pt-br/reference/custom-agents",
                   "pt-br/reference/evaluator-sdk",
                   "pt-br/reference/policy-sdk",
@@ -992,7 +987,6 @@
               },
               {
                 "group": "Reference",
-                "expanded": false,
                 "pages": [
                   "pt-br/reference/failproof-cli",
                   "pt-br/reference/local-dashboard",
@@ -1020,10 +1014,10 @@
                   "de/start/quickstart",
                   "de/reference/harnesses",
                   "de/sessions/assistant",
-                  "de/start/first-audit",
-                  "de/start/first-policy",
                   "de/start/setup",
                   "de/start/concepts",
+                  "de/start/first-audit",
+                  "de/start/first-policy",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -1063,6 +1057,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "de/start/integrations",
                   "de/start/integrations/custom-agents",
                   "de/start/integrations/langchain",
                   "de/start/integrations/crewai",
@@ -1139,7 +1134,6 @@
                 "group": "Connect your agents",
                 "pages": [
                   "de/reference/overview",
-                  "de/reference/harnesses",
                   "de/reference/custom-agents",
                   "de/reference/evaluator-sdk",
                   "de/reference/policy-sdk",
@@ -1148,7 +1142,6 @@
               },
               {
                 "group": "Reference",
-                "expanded": false,
                 "pages": [
                   "de/reference/failproof-cli",
                   "de/reference/local-dashboard",
@@ -1176,10 +1169,10 @@
                   "fr/start/quickstart",
                   "fr/reference/harnesses",
                   "fr/sessions/assistant",
-                  "fr/start/first-audit",
-                  "fr/start/first-policy",
                   "fr/start/setup",
                   "fr/start/concepts",
+                  "fr/start/first-audit",
+                  "fr/start/first-policy",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -1219,6 +1212,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "fr/start/integrations",
                   "fr/start/integrations/custom-agents",
                   "fr/start/integrations/langchain",
                   "fr/start/integrations/crewai",
@@ -1295,7 +1289,6 @@
                 "group": "Connect your agents",
                 "pages": [
                   "fr/reference/overview",
-                  "fr/reference/harnesses",
                   "fr/reference/custom-agents",
                   "fr/reference/evaluator-sdk",
                   "fr/reference/policy-sdk",
@@ -1304,7 +1297,6 @@
               },
               {
                 "group": "Reference",
-                "expanded": false,
                 "pages": [
                   "fr/reference/failproof-cli",
                   "fr/reference/local-dashboard",
@@ -1332,10 +1324,10 @@
                   "ru/start/quickstart",
                   "ru/reference/harnesses",
                   "ru/sessions/assistant",
-                  "ru/start/first-audit",
-                  "ru/start/first-policy",
                   "ru/start/setup",
                   "ru/start/concepts",
+                  "ru/start/first-audit",
+                  "ru/start/first-policy",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -1375,6 +1367,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "ru/start/integrations",
                   "ru/start/integrations/custom-agents",
                   "ru/start/integrations/langchain",
                   "ru/start/integrations/crewai",
@@ -1451,7 +1444,6 @@
                 "group": "Connect your agents",
                 "pages": [
                   "ru/reference/overview",
-                  "ru/reference/harnesses",
                   "ru/reference/custom-agents",
                   "ru/reference/evaluator-sdk",
                   "ru/reference/policy-sdk",
@@ -1460,7 +1452,6 @@
               },
               {
                 "group": "Reference",
-                "expanded": false,
                 "pages": [
                   "ru/reference/failproof-cli",
                   "ru/reference/local-dashboard",
@@ -1488,10 +1479,10 @@
                   "hi/start/quickstart",
                   "hi/reference/harnesses",
                   "hi/sessions/assistant",
-                  "hi/start/first-audit",
-                  "hi/start/first-policy",
                   "hi/start/setup",
                   "hi/start/concepts",
+                  "hi/start/first-audit",
+                  "hi/start/first-policy",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -1531,6 +1522,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "hi/start/integrations",
                   "hi/start/integrations/custom-agents",
                   "hi/start/integrations/langchain",
                   "hi/start/integrations/crewai",
@@ -1607,7 +1599,6 @@
                 "group": "Connect your agents",
                 "pages": [
                   "hi/reference/overview",
-                  "hi/reference/harnesses",
                   "hi/reference/custom-agents",
                   "hi/reference/evaluator-sdk",
                   "hi/reference/policy-sdk",
@@ -1616,7 +1607,6 @@
               },
               {
                 "group": "Reference",
-                "expanded": false,
                 "pages": [
                   "hi/reference/failproof-cli",
                   "hi/reference/local-dashboard",
@@ -1644,10 +1634,10 @@
                   "tr/start/quickstart",
                   "tr/reference/harnesses",
                   "tr/sessions/assistant",
-                  "tr/start/first-audit",
-                  "tr/start/first-policy",
                   "tr/start/setup",
                   "tr/start/concepts",
+                  "tr/start/first-audit",
+                  "tr/start/first-policy",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -1687,6 +1677,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "tr/start/integrations",
                   "tr/start/integrations/custom-agents",
                   "tr/start/integrations/langchain",
                   "tr/start/integrations/crewai",
@@ -1763,7 +1754,6 @@
                 "group": "Connect your agents",
                 "pages": [
                   "tr/reference/overview",
-                  "tr/reference/harnesses",
                   "tr/reference/custom-agents",
                   "tr/reference/evaluator-sdk",
                   "tr/reference/policy-sdk",
@@ -1772,7 +1762,6 @@
               },
               {
                 "group": "Reference",
-                "expanded": false,
                 "pages": [
                   "tr/reference/failproof-cli",
                   "tr/reference/local-dashboard",
@@ -1800,10 +1789,10 @@
                   "vi/start/quickstart",
                   "vi/reference/harnesses",
                   "vi/sessions/assistant",
-                  "vi/start/first-audit",
-                  "vi/start/first-policy",
                   "vi/start/setup",
                   "vi/start/concepts",
+                  "vi/start/first-audit",
+                  "vi/start/first-policy",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -1843,6 +1832,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "vi/start/integrations",
                   "vi/start/integrations/custom-agents",
                   "vi/start/integrations/langchain",
                   "vi/start/integrations/crewai",
@@ -1919,7 +1909,6 @@
                 "group": "Connect your agents",
                 "pages": [
                   "vi/reference/overview",
-                  "vi/reference/harnesses",
                   "vi/reference/custom-agents",
                   "vi/reference/evaluator-sdk",
                   "vi/reference/policy-sdk",
@@ -1928,7 +1917,6 @@
               },
               {
                 "group": "Reference",
-                "expanded": false,
                 "pages": [
                   "vi/reference/failproof-cli",
                   "vi/reference/local-dashboard",
@@ -1956,10 +1944,10 @@
                   "it/start/quickstart",
                   "it/reference/harnesses",
                   "it/sessions/assistant",
-                  "it/start/first-audit",
-                  "it/start/first-policy",
                   "it/start/setup",
                   "it/start/concepts",
+                  "it/start/first-audit",
+                  "it/start/first-policy",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -1999,6 +1987,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "it/start/integrations",
                   "it/start/integrations/custom-agents",
                   "it/start/integrations/langchain",
                   "it/start/integrations/crewai",
@@ -2075,7 +2064,6 @@
                 "group": "Connect your agents",
                 "pages": [
                   "it/reference/overview",
-                  "it/reference/harnesses",
                   "it/reference/custom-agents",
                   "it/reference/evaluator-sdk",
                   "it/reference/policy-sdk",
@@ -2084,7 +2072,6 @@
               },
               {
                 "group": "Reference",
-                "expanded": false,
                 "pages": [
                   "it/reference/failproof-cli",
                   "it/reference/local-dashboard",
@@ -2112,10 +2099,10 @@
                   "ar/start/quickstart",
                   "ar/reference/harnesses",
                   "ar/sessions/assistant",
-                  "ar/start/first-audit",
-                  "ar/start/first-policy",
                   "ar/start/setup",
                   "ar/start/concepts",
+                  "ar/start/first-audit",
+                  "ar/start/first-policy",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -2155,6 +2142,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "ar/start/integrations",
                   "ar/start/integrations/custom-agents",
                   "ar/start/integrations/langchain",
                   "ar/start/integrations/crewai",
@@ -2231,7 +2219,6 @@
                 "group": "Connect your agents",
                 "pages": [
                   "ar/reference/overview",
-                  "ar/reference/harnesses",
                   "ar/reference/custom-agents",
                   "ar/reference/evaluator-sdk",
                   "ar/reference/policy-sdk",
@@ -2240,7 +2227,6 @@
               },
               {
                 "group": "Reference",
-                "expanded": false,
                 "pages": [
                   "ar/reference/failproof-cli",
                   "ar/reference/local-dashboard",
@@ -2268,10 +2254,10 @@
                   "he/start/quickstart",
                   "he/reference/harnesses",
                   "he/sessions/assistant",
-                  "he/start/first-audit",
-                  "he/start/first-policy",
                   "he/start/setup",
                   "he/start/concepts",
+                  "he/start/first-audit",
+                  "he/start/first-policy",
                   {
                     "group": "Starter templates",
                     "expanded": false,
@@ -2311,6 +2297,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "he/start/integrations",
                   "he/start/integrations/custom-agents",
                   "he/start/integrations/langchain",
                   "he/start/integrations/crewai",
@@ -2387,7 +2374,6 @@
                 "group": "Connect your agents",
                 "pages": [
                   "he/reference/overview",
-                  "he/reference/harnesses",
                   "he/reference/custom-agents",
                   "he/reference/evaluator-sdk",
                   "he/reference/policy-sdk",
@@ -2396,7 +2382,6 @@
               },
               {
                 "group": "Reference",
-                "expanded": false,
                 "pages": [
                   "he/reference/failproof-cli",
                   "he/reference/local-dashboard",

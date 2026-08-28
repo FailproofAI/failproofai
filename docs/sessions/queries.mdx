@@ -26,17 +26,63 @@ Queries are the flexible layer beneath dashboards, audits, and investigations. U
     Use a clear name and description so the result remains understandable without reopening its SQL.
   </Tab>
   <Tab title="CLI">
+    Work in the order the SQL itself does: look at the schema, run the statement ad-hoc, then save it once it earns a name.
+
     ```bash
     fp query schema
-    fp query create "retry loops" --sql "SELECT ..."
-    fp query run <query-id>
-    fp query show <query-id>
-    fp query update <query-id> --sql "SELECT ..."
+    fp query schema events
+
+    fp query run --sql "SELECT agent_id, count() FROM analytics.events GROUP BY agent_id"
+    fp query run --sql @retry-loops.sql
+
+    fp query create "retry loops" --sql @retry-loops.sql --description "repeated tool calls per session"
     ```
 
-    Use `fp query list` to find IDs and `fp query delete <query-id>` to remove a saved query.
+    Everything after that takes the query's **name**, not an id:
+
+    ```bash
+    fp query list
+    fp query run "retry loops"
+    fp query show "retry loops"
+    fp query update "retry loops" --sql @retry-loops-v2.sql --yes
+    fp query delete "retry loops" --yes
+    ```
+
+    Names are unique per organization, which is what makes them a safe handle. A UUID-shaped id is accepted anywhere a name is, but `fp query list` does not print one — its columns are `name`, `description`, `created by`, and `created` (when the query was made, not when it was last edited). Add `--show-id` for a short id column, or read `--json`, which always carries the full id.
+
+    Bind a saved query's positional parameters with `--arg` (alias `--param`), repeated once per `$1..$N` in order:
+
+    ```bash
+    fp query run <query-name> --arg agent-codegen --arg 0.5
+    ```
+
+    | Subcommand | Permission | Notes |
+    | --- | --- | --- |
+    | `fp query schema [TABLE]` | `queries:read` | Pass a table name to filter to its columns. |
+    | `fp query list` | `queries:read` | `--show-id` reveals ids; `--fields` projects raw fields. |
+    | `fp query show <name>` | `queries:read` | Metadata card plus the full SQL. |
+    | `fp query create <name> --sql ...` | `queries:write` | A name collision is rejected up front. |
+    | `fp query update <name>` | `queries:write` | Pass at least one of `--name`, `--sql`, `--description`. Confirms first; a no-op exits without saving. |
+    | `fp query delete <name>` | `queries:delete` | Confirms first, with a preview of what goes. |
+    | `fp query run <name>` or `--sql ...` | `queries:run` | Exactly one of the two. `--limit` and `--all` adjust the table preview. |
+
+    `update` and `delete` prompt only on an interactive terminal. Under `--json`, or with stdin redirected, they proceed without asking — so `--yes` is for the terminal case, not for scripts.
+
+    Queries run against a read-only analytics pool. `--sql @file.sql` reads the statement from a file, which is the form worth keeping in version control.
   </Tab>
 </Tabs>
+
+## Scripting a query
+
+`fp --json query run` returns every row regardless of the table preview cap, shaped as `{columns: [{name, type}], rows: [[...]], truncated, elapsed_ms}`:
+
+```bash
+fp --json query run "retry loops" | jq '.rows | length'
+```
+
+`fp --json query schema` returns `{schema, columns: [{table, column, type, nullable}]}`, which is the machine-readable form of the schema browser.
+
+Two failures are worth handling by exit code rather than by parsing text: a name nothing matches renders `✗ no query named "…"` and exits 6, and a SQL or execution error renders `✗ query failed — …` with the server's own detail folded in.
 
 ## Common uses
 
@@ -46,8 +92,12 @@ Queries are the flexible layer beneath dashboards, audits, and investigations. U
 - Identify policy denials followed by a successful alternative.
 - Build a cohort for an audit.
 
-Open **Queries → Schema** before writing against unfamiliar fields. Prefer explicit time and environment filters, and keep result limits during exploration.
+Open the schema — **Analyze → Queries** in the dashboard, or `fp query schema` — before writing against unfamiliar fields. Prefer explicit time and environment filters, and keep result limits during exploration.
 
 <Warning>
   A query can identify a suspicious pattern, but it does not establish the failure mode by itself. Open representative traces or run an audit before turning the result into a policy.
 </Warning>
+
+<Card title="Dashboards" icon="layout-dashboard" href="/sessions/dashboards">
+  Put a saved query on a shared board once the result is worth monitoring.
+</Card>

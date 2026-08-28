@@ -1,6 +1,29 @@
 # Changelog
 
-## 1.0.2-beta.9 — 2026-08-27
+## 1.0.2 — 2026-08-27
+
+The stable cut of the `1.0.2-beta.*` line, which stays documented in its own
+sections underneath. The entries below shipped in no beta — `next` stopped at
+`1.0.2-beta.8` — so they reach users for the first time here.
+
+Worth stating plainly for anyone arriving from 1.0.1: **`policies` is now the
+one noun**, and the package ships NO policies of its own. `policy`, `pack` and
+`p` still reach the same command, but a policy set is something you add
+(`failproofai policies add FailproofAI/policies`) or publish
+(`failproofai publish`) rather than something the install carries. A pack is
+pinned by the digest of its artifact and by the commit it was built from, and a
+pack that cannot be loaded DENIES within the scope it declared rather than
+disappearing quietly.
+
+### Docs
+
+- The documentation is rewritten against the shipped 1.0.2 CLI. An audit of all 68 English pages plus the README found 219 factual errors, and the whole of `start/` documented a setup path that no longer exists: bare `failproofai config` — the verb that installs the daemon and wires every supported agent CLI — appeared on no page, and neither did `failproofai policies add FailproofAI/policies`, so a reader who followed the quickstart end to end finished with hook entries, no daemon, and one enforcing policy. The retired `pack`/`policy` spellings, `pack add core`, `--bundled` and `config --connect <url> --token <key>` are gone; the local no-account path (the dashboard on `localhost:8020`, local findings from `failproofai audit`, and separately documented telemetry controls) is documented for the first time; and `start/integrations.mdx`, which five pages linked to and nothing in the navigation reached, is wired in (#756)
+- Observe mode is documented as what it is: the policy is EVALUATED for real, under the same timeout and error handling as an enforcing one, and its verdict recorded — only the enforcement is withheld. Both layers that set it are named, `failproofai publish --effect observe` for a pack and `fp fleet deploy <machine> --add <id>:observe` for a Cloud deployment, and every page showing `--add` now says that a bare one ENFORCES immediately, which is how a shadow rollout turns into a production incident. `policies/deploy.mdx` had described the workflow entirely as dashboard clicks and named no `fp` command at all; the CLI lane — `fp fleet list/show/deploy/diff/history/rollback`, `fp guardrails summary|timeline`, and `fp policies test`, which decides a policy locally with no server and no auth — is now covered (#756)
+- Enforcement is no longer described as uniform across the twelve harnesses. `docs/index.mdx` claimed "the same events, the same policies, and the same session history apply to every one" — the exact claim `src/hooks/enforcement-capability.ts` exists to stop drifting. A `PreToolUse` deny is verified to stop the tool on all twelve; a `Stop` deny is verified on eight, is `observe` on Pi, and is unverified on OpenCode, Hermes and Goose. Goose has no `Stop` event and we install none on Hermes, so the five `require-*-before-stop` builtins never fire on either. A pair with no row in that file now reads as unverified rather than as blocking (#756)
+- The install no longer claims that policies come with it. "39 built-in policies activate immediately" and "eleven are on when you accept the defaults" were both false: `configure-wizard.ts` enables nothing, so `enabledPolicies` is empty and `builtin-policies.ts` registers only what carries `alwaysOn` — exactly one policy, `block-failproofai-commands`. The eleven `defaultEnabled` flags are catalog metadata that decide nothing until a pack is installed (#756)
+- The Policy Hub at befailproof.ai/policy-hub is documented, including that `failproofai publish` does not set the `failproofai-policies` topic the hub indexes on — so publishing is publish-then-tag-by-hand until it does (#756)
+- Two claims copied out of the CLI's own `--help` are corrected, because the help is wrong. Scope support is not "Codex, Copilot, Cursor, OpenCode and Pi take user or project only": `types.ts` makes Hermes and OpenClaw **user-only** and gives `local` to Claude alone. And `backfill --help` names `~/.failproofai/config.toml`, a layout-2 file no current build writes; the file is `config.json` (#756)
+- Six fabricated commands and flags were caught by an adversarial verification pass before they shipped, among them `fp fleet rename --name` (the command takes two positionals and declares no options), a `tool` filter on the local dashboard's activity view (`HookActivityFilters` has six keys and tool is not one), and `failproofai config --token <key> --machine-label <name>` as a setup one-liner — which sets nothing up, since any invocation carrying `--machine-label` without `--connect` routes straight to the rename path and exits 1 on a machine that is not yet connected (#756)
 
 ### Fixes
 

@@ -6,6 +6,8 @@ icon: "layout-dashboard"
 
 Dashboards combine saved queries into an operational view. Build one around a decision you expect someone to make—not around every available metric.
 
+Dashboards are a Cloud surface. The local dashboard on `localhost:8020` covers policy activity, projects, sessions, and audit results, but it has no saved queries and no tiles — so a machine that has not connected has nothing to build here. See [Local dashboard](/reference/local-dashboard).
+
 ## Build a dashboard
 
 <Tabs>
@@ -18,13 +20,33 @@ Dashboards combine saved queries into an operational view. Build one around a de
     ![A dashboard composed from saved queries for event volume, errors, latency, and model token use.](/images/dashboard/dashboard-fleet.png)
   </Tab>
   <Tab title="CLI">
-    Dashboard CRUD is not exposed by the current Cloud CLI. Use the CLI to build and verify the saved query, then add it to a dashboard in the UI.
+    Dashboard CRUD is not exposed by the current Cloud CLI. Use the CLI to write and verify the saved query, then add it to a dashboard in the UI.
 
     ```bash
     fp query schema
-    fp query create "production error rate" --sql "SELECT ..."
-    fp query run <query-id>
+    fp query run --sql "select count(*) from analytics.events"
+    fp query create "event volume" --sql "select count(*) from analytics.events"
+    fp query run "event volume"
     ```
+
+    Run the SQL with `--sql` first: it executes against the same read-only analytics pool without saving anything, so you find a bad column name before a tile does. `--sql @file.sql` reads the statement from a file instead. `fp query schema` lists the queryable tables and their columns; pass a table name to narrow it to one.
+
+    Saved queries are addressed by **name**, not by id — `fp query run "event volume"` — because `fp query list` hides the raw id unless you pass `--show-id`. A UUID-shaped id is accepted too.
+
+    For a parameterised tile, bind each positional `$1..$N` with `--arg`, which is repeatable and binds in order: `fp query run <name> --arg checkout-agent`.
+
+    `--limit` and `--all` adjust the table preview cap only; `--json` always returns every row, as `{columns: [{name, type}], rows: [[...]], truncated, elapsed_ms}`.
+
+    | Subcommand | Permission |
+    | --- | --- |
+    | `query list`, `query show`, `query schema` | `queries:read` |
+    | `query create`, `query update` | `queries:write` |
+    | `query run` | `queries:run` |
+    | `query delete` | `queries:delete` |
+
+    Every subcommand that takes a query **name** resolves it by listing the org's queries first, so `query create`, `query update`, `query delete` and `query run <name>` need `queries:read` in addition to the permission above. Only `fp query run --sql` and `fp query schema` do not.
+
+    None of `fp query` is blocked in API-key mode, so a dashboard's queries can be created and verified from CI.
   </Tab>
 </Tabs>
 
@@ -38,6 +60,14 @@ Useful dashboard groups include:
 
 Start with a saved query, validate its result, then add it as a tile. Keep production and development filters explicit so test traffic does not hide a regression.
 
+<Warning>
+  A hook tile that counts rows reports the wrong denominator. At the default hook verbosity, every deny and instruct is emitted as a `hook_triggered` / `hook_completed` pair, and so is every observe-mode allow; plain allows are rolled up per session, event, tool, and policy attribution per minute into a single `hook_completed` carrying `failproofai_allow_count`. Sum that field instead of counting rows, or a fleet that evaluated tens of thousands of calls will look like it evaluated a few hundred. See [Policy decisions](/sessions/policy-decisions) and [Hooks](/sessions/hooks).
+</Warning>
+
 <Tip>
   Give every dashboard an owner and a response question, such as “Is checkout-agent reliability worse than last week?”
 </Tip>
+
+<Card title="Queries" icon="database" href="/sessions/queries">
+  Write, save, and share the SQL that every tile on a dashboard reads from.
+</Card>

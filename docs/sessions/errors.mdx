@@ -1,10 +1,10 @@
 ---
 title: "Errors"
-description: "Group repeated errors and open the sessions behind them."
+description: "Filter repeated errors and open the sessions behind them."
 icon: "circle-alert"
 ---
 
-Errors gives you a failure-first view across sessions. Group by error type, agent, environment, model, tool, or time window to find repeated operational problems.
+Errors gives you a failure-first view across sessions. Filter by environment, event type, error type, agent, or session, and scope the time window to find repeated operational problems.
 
 ## Investigate errors
 
@@ -12,19 +12,30 @@ Errors gives you a failure-first view across sessions. Group by error type, agen
   <Tab title="Dashboard">
     1. Go to **Observe → Errors**.
     2. Filter by environment, event type, error type, agent, session ID, or search text.
-    3. Expand a grouped error to see occurrences. Select a row to open the exact event in its session.
-    4. Select the bell control on a representative error to start an alert for similar errors.
+    3. Select a row to open the exact event in its session.
+    4. Select **alert** on a representative row to start an alert for similar errors.
 
-    ![The Errors page showing a failure histogram, grouped errors, and the control for creating an alert.](/images/dashboard/errors.png)
+    ![The Errors page showing a failure histogram, a filtered list of errored events, and the per-row alert control.](/images/dashboard/errors.png)
   </Tab>
   <Tab title="CLI">
     ```bash
-    fp errors --env production --since 24h
+    fp errors --since 24h
     fp errors --error-type TimeoutError --agent-id checkout-agent
-    fp errors --aggregate --env production --since 7d
+    fp errors --event-type tool_result --since 24h
+    fp errors --aggregate --env local --since 7d
     ```
 
-    Use `fp events --full --session-id <id>` when you need the raw payload behind an error summary.
+    A tool failure arrives as an errored `tool_result` event rather than a bare `error` event, so `--event-type tool_result` is how you separate tool failures from model and runtime failures. `is_error` and `error_type` are server-computed columns on every row, so neither mode parses payloads.
+
+    Discover valid filter values instead of guessing them: `fp list error_types`, `fp list agents`, `fp list envs`, and `fp list event_types`.
+
+    **These five `fp errors` filters take exactly one value each** — `--env`, `--error-type`, `--event-type`, `--agent-id`, `--session-id`. (`--search` is the exception, and is repeatable.) The same flag names on `fp events` and `fp sessions` accept repeated or comma-separated values, so `--env prod,staging` works there and here matches only the literal string `prod,staging`. That returns an empty result rather than an error, which reads as "no errors".
+
+    The daemon tags events `local` until you change it, so `--env production` matches nothing on a stock install. See [Change an environment label](/reference/events-and-configuration#change-an-environment-label).
+
+    `--all` auto-paginates only up to `--limit`, which defaults to 50 — write `--all --limit 500` when you want more than that. Other list-mode flags are `--order asc|desc`, `--cursor`, `--page-size` (max 200), `--fields`, and `--full-ids`. `--search` is repeatable and applies to both modes — a row matches if it contains any of the terms.
+
+    `fp errors` needs `events:read`. Under `--json`, list mode returns `{"errors": [...], "next_cursor": ...}` and `--aggregate` returns `{total, sessions, agents, last_ts, bins}`. Use `fp events --full --session-id <id>` when you need the raw payload behind an error summary.
   </Tab>
 </Tabs>
 
@@ -38,6 +49,15 @@ Errors gives you a failure-first view across sessions. Group by error type, agen
 
 An error is an observed event. A failed evaluation is a quality judgment, and an audit finding is an investigated failure pattern. Keep those distinctions when deciding which response workflow to use.
 
-<Card title="Create an alert" icon="bell-ring" href="/audits/alerts">
-  Notify responders when an error or quality condition crosses a threshold.
-</Card>
+## Without a Cloud account
+
+Errors is a Cloud surface. On a machine that has not connected, `failproofai audit` scans the session history already on disk for risky and wasteful patterns and opens `http://localhost:8020/audit`. Add `--schedule [days]` to rescan on a timer and email the findings (default 7 days, range 1 to 90), `--status` to check whether scheduling is on, and `--no-schedule` to stop it. Everything runs on the machine, with two exceptions. A scheduled scan posts this machine's id, label, platform and the window it covered on every run, including a clean one — what a clean scan withholds is the digest, not the request. And anonymous CLI telemetry is sent on every audit unless you set `FAILPROOFAI_TELEMETRY_DISABLED=1`.
+
+<CardGroup cols={2}>
+  <Card title="Create an alert" icon="bell-ring" href="/audits/alerts">
+    Notify responders when an error or quality condition crosses a threshold.
+  </Card>
+  <Card title="Findings and issues" icon="clipboard-list" href="/audits/findings-and-issues">
+    Turn a repeated error into an investigated pattern with an owner.
+  </Card>
+</CardGroup>

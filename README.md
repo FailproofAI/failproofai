@@ -14,11 +14,11 @@
 
 **Translations:** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Русский](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
 
-**Observability and enforcement for every harness your agents run in.**
-Wherever your agents run, we see it — and we can say no. Failproof hooks 12 agent
-harnesses — coding CLIs like Claude Code and Codex, chat gateways like Hermes,
-self-hosted assistants like OpenClaw — capturing every run and blocking dangerous
-tool calls before they execute. 39 built-in policies. Zero latency. Runs locally.
+**See what your agents do. Stop known failures before they repeat.**
+Failproof AI works wherever your agents run: coding tools like Claude Code and
+Codex, chat gateways like Hermes, self-hosted assistants like OpenClaw, and agents
+you instrument yourself. It records each run and can block dangerous tool calls
+before they execute.
 
 </div>
 
@@ -30,9 +30,9 @@ tool calls before they execute. 39 built-in policies. Zero latency. Runs locally
 
 ## Supported harnesses
 
-Twelve harnesses in two classes — ten coding CLIs, and two chat and assistant
-gateways (Hermes, OpenClaw). Same events, same policies, same session history,
-whichever one your agent runs in.
+Twelve harnesses in two classes are supported: ten coding CLIs, plus two
+gateways: Hermes, OpenClaw. The policy API and session history are shared; which
+events can block varies by harness.
 
 Agents that run in none of them report through the [Python SDK](https://docs.befailproof.ai/reference/custom-agents),
 which gives you tracing, sessions and audits. Enforcement there needs a hook in
@@ -134,13 +134,31 @@ your own runtime — [talk to us](mailto:support@befailproof.ai) and we'll map i
 
 ## Install
 
+Give a compatible agent the Failproof AI skill if you want it to guide setup,
+inspect the machine, and route policy, audit, session, and Cloud work correctly:
+
 ```sh
-npm install -g failproofai
-failproofai policies --install   # or just run `failproofai` and accept the first-run prompt
-failproofai
+npx skills add FailproofAI/skills
 ```
 
-39 built-in policies activate immediately. Dashboard at `localhost:8020`. Disable the first-run prompt with `FAILPROOFAI_NO_FIRST_RUN=1`.
+This installs the umbrella skill and its specialist siblings. To install only the
+umbrella, add `--skill failproofai`. Skills supply operating instructions; install
+and configure the product itself with:
+
+```sh
+npm install -g failproofai
+failproofai config
+failproofai policies add FailproofAI/policies
+failproofai                         # dashboard on localhost:8020
+```
+
+Setup connects supported agents and installs the background service. It chooses no
+policy pack: before you add one, only `block-failproofai-commands` runs to stop an
+agent disabling Failproof AI.
+
+Connect Cloud without prompts with `failproofai config --token <machine-key>`. On a
+shared machine or in CI, set `FAILPROOFAI_CLOUD_TOKEN` and run `failproofai config`
+so the key does not appear in command history.
 
 ---
 
@@ -157,8 +175,8 @@ failproofai
 | `block-rm-rf` | Recursive file deletion |
 | `block-force-push` / `block-push-master` | `git push --force`, direct pushes to `main` |
 
-The first five apply to any agent that can call a tool. The last three are the
-developer favourites — coding CLIs are the harness class we cover deepest.
+These policies protect files, credentials, infrastructure, databases, and agent
+workflows. Exact enforcement support varies by harness and event.
 
 → [All 39 built-in policies](https://docs.befailproof.ai/policies/builtin)
 
@@ -192,6 +210,33 @@ Three decisions available to every policy:
 | `instruct(message)` | Let it through, but add context to the agent's next prompt |
 
 → [Custom policies guide](https://docs.befailproof.ai/policies/custom)
+
+---
+
+## Policy packs
+
+A policy pack is a versioned set of policies published from a public GitHub
+repository. Inspect one before installing it:
+
+```sh
+failproofai policies show FailproofAI/policies
+failproofai policies add FailproofAI/policies
+```
+
+Anything with a slash is a pack source; anything without one is a policy name.
+You can install selected categories or policies, and pin a release when needed.
+
+```sh
+failproofai policies add FailproofAI/policies --category git,database
+failproofai policies add owner/repo@a1b2c3d4e5f6
+```
+
+Browse published packs in the [Policy Hub](https://befailproof.ai/policy-hub/), or
+run `failproofai publish --init` to start your own. Observe mode lets a pack record
+what it would have done without blocking: `failproofai publish --effect observe`.
+
+→ [Policy packs](https://docs.befailproof.ai/policies/packs) ·
+[Publish a pack](https://docs.befailproof.ai/policies/publish-a-pack)
 
 ---
 

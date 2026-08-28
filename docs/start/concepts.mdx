@@ -1,26 +1,51 @@
 ---
 title: "Core concepts"
-description: "The small set of concepts used throughout Failproof AI."
+description: "The terms used to observe, audit, and protect agents."
 icon: "boxes"
 ---
 
-| Concept | What it means | What you can achieve |
-| --- | --- | --- |
-| Session | One agent task or run | Reconstruct an individual outcome |
-| Event | One recorded action in a session | Inspect a model call, tool use, error, human action, or policy decision |
-| Trace | The ordered and nested session view | Understand causality instead of reading disconnected logs |
-| Evaluation | A score or judgment on a session | Track quality, compliance, cost, or latency continuously |
-| Audit | A review of a selected session population | Search for failure patterns with a stated goal and cadence |
-| Finding | An evidence-backed failure discovered by an audit | See the failure mode, severity, and affected sessions |
-| Issue | A durable response record | Assign, discuss, and resolve a finding or alert incident |
-| Alert | A rule that detects recurrence | Notify responders when a known condition returns |
-| Policy | A rule evaluated during agent activity | Observe, block, or redirect risky behavior |
-| Deployment | A versioned policy rollout to machines | Control where a policy runs and roll it back safely |
+Failproof AI records what agents do and decides what they may do.
 
-## The reliability loop
+## Observe
 
-Start from evidence. A session shows what happened. An audit determines whether it is an isolated mistake or a pattern. A finding identifies the failure mode; an issue owns the response. A policy prevents the same behavior, while alerts tell you if the condition returns.
+| Term | Meaning |
+| --- | --- |
+| Session | One agent run |
+| Event | One action inside a session |
+| Trace | The ordered view of a session |
+| Evaluation | A score or judgment |
+| Audit | A review of many sessions |
+| Finding | Evidence of a failure pattern |
+| Issue | The response someone owns |
+| Alert | A rule that detects recurrence |
+
+## Enforce
+
+| Term | Meaning |
+| --- | --- |
+| Harness | The environment where an agent runs |
+| Hook | A point where the harness asks for a decision |
+| Policy | A rule that allows, guides, or blocks |
+| Policy pack | A versioned policy set anyone can install |
+| Daemon | The local service that evaluates policies |
+| Deployment | Policies assigned to a machine |
+
+## The workflow
+
+```text
+Session → Audit → Finding → Issue → Policy
+```
+
+Start with evidence. Find the repeated failure, assign the response, then prevent it.
+
+A policy returns `allow`, `instruct`, or `deny`. Guidance through `instruct` depends on the harness; use `deny` when the action must stop.
+
+Observe mode is separate from the decision. It runs the real policy and records what it would do while allowing the agent to continue.
 
 <Warning>
-  A local `failproofai audit` scans local agent history. A recurring Cloud audit reviews sessions stored in Failproof AI Cloud. They are separate workflows with different scope and scheduling.
+  A bare `fp fleet deploy <machine> --add <policy>` enforces immediately. Add `:observe` for a shadow rollout.
 </Warning>
+
+Setup chooses no policy pack. Before you add one, only `block-failproofai-commands` runs. The compiled catalog contains 39 policies across 9 categories.
+
+See [supported harnesses](/reference/harnesses#enforcement-capability) before assuming an event can block on every agent environment.

@@ -285,7 +285,7 @@ def test_server_cannot_add_a_run_when_every_eval_was_skipped():
     assert client.submissions == []
 
 
-def test_server_plan_must_match_assignment_and_include_each_selected_eval():
+def test_server_plan_must_match_assignment_and_include_each_new_selected_eval():
     evaluator = Evaluator(name="test", version="1")
 
     @evaluator.eval("selected", version="1")
@@ -335,6 +335,19 @@ def test_server_plan_must_match_assignment_and_include_each_selected_eval():
     omitted = OmittedRunClient()
     with pytest.raises(RuntimeError, match="omitted a selected evaluation run"):
         asyncio.run(_runtime(evaluator, omitted).process_assignment(omitted.assignment))
+
+    class ReplayedPlanClient(FakeClient):
+        def plan(self, assignment_id, request):
+            return PlanResponse(
+                assignment_id=assignment_id,
+                assignment_status="planned",
+                runs=(),
+                idempotent_replay=True,
+            )
+
+    replayed = ReplayedPlanClient()
+    asyncio.run(_runtime(evaluator, replayed).process_assignment(replayed.assignment))
+    assert replayed.submissions == []
 
 
 def test_server_plan_rejects_duplicate_run_ids():

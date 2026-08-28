@@ -150,6 +150,7 @@
       "protocol_version": "2",
       "assignment_id": "018f47a8-7c1d-7e21-a22a-79f7a4d23102",
       "assignment_status": "planned",
+      "idempotent_replay": false,
       "runs": [
         {
           "evaluation_run_id": "018f47a8-7c1d-7e21-a22a-79f7a4d23103",

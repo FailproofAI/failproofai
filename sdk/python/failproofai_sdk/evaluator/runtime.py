@@ -334,7 +334,7 @@ class WorkerRuntime:
             if definition is None:
                 raise RuntimeError("server returned an unrequested evaluation run")
             run_definitions.append((run.evaluation_run_id, definition))
-        if definitions:
+        if definitions and not plan.idempotent_replay:
             raise RuntimeError("server omitted a selected evaluation run")
 
         tasks = {

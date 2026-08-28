@@ -452,17 +452,22 @@ class PlanResponse(WireModel):
     assignment_id: str
     assignment_status: str
     runs: tuple[PlannedRun, ...]
+    idempotent_replay: bool = False
     protocol_version: str = PROTOCOL_VERSION
 
     @classmethod
     def from_wire(cls, data: Mapping[str, Any]) -> PlanResponse:
         validate_protocol_version(_string(data, "protocol_version"))
+        replay = data.get("idempotent_replay", False)
+        if not isinstance(replay, bool):
+            raise ProtocolError("idempotent_replay must be a boolean")
         return cls(
             assignment_id=_string(data, "assignment_id"),
             assignment_status=_string(data, "assignment_status"),
             runs=tuple(
                 PlannedRun.from_wire(item) for item in _object_list(data, "runs")
             ),
+            idempotent_replay=replay,
         )
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import os
 from urllib.parse import urlsplit
@@ -73,6 +74,15 @@ def _call_judge(question, answer):
     parsed = urlsplit(url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise ValueError("EXAMPLE_JUDGE_URL must be an absolute http(s) URL")
+    hostname = parsed.hostname
+    loopback = hostname == "localhost"
+    if hostname is not None and not loopback:
+        try:
+            loopback = ipaddress.ip_address(hostname).is_loopback
+        except ValueError:
+            loopback = False
+    if parsed.scheme != "https" and not loopback:
+        raise ValueError("EXAMPLE_JUDGE_URL must use https unless it targets loopback")
     token = os.environ.get("EXAMPLE_JUDGE_TOKEN")
     body = json.dumps({"question": question, "answer": answer}).encode("utf-8")
     headers = {"Content-Type": "application/json", "Accept": "application/json"}

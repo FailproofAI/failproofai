@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import random
 import time
@@ -13,6 +14,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from failproofai_sdk.evaluator.protocol import (
     CLAIM_PATH,
+    DEFINITIONS_PATH,
     HEARTBEAT_PATH,
     LEASE_GENERATION_HEADER,
     MAX_TRANSCRIPT_BYTES,
@@ -21,6 +23,7 @@ from failproofai_sdk.evaluator.protocol import (
     RESULT_PATH,
     WORKER_ID_HEADER,
     Assignment,
+    DefinitionsResponse,
     ClaimRequest,
     ClaimResponse,
     ErrorResponse,
@@ -67,7 +70,11 @@ class EvaluatorAPIError(RuntimeError):
 
 
 class EvaluatorClient:
-    """Direct server client; evaluator traffic never passes through the dashboard."""
+    """Client for the public Evaluator v2 machine API.
+
+    Hosted workers normally use the FailproofAI dashboard origin. Its ``/v1``
+    passthrough forwards this worker's bearer credential to the private server.
+    """
 
     def __init__(
         self,
@@ -76,12 +83,22 @@ class EvaluatorClient:
         credential: str,
         timeout_seconds: float = 30,
         max_retries: int = 3,
+        allow_insecure_http: bool = False,
         opener: Callable[..., Any] | None = None,
         sleeper: Callable[[float], None] = time.sleep,
     ) -> None:
         parsed = urlsplit(base_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise ValueError("base_url must be an absolute http(s) URL")
+        hostname = parsed.hostname
+        loopback = hostname == "localhost"
+        if hostname is not None and not loopback:
+            try:
+                loopback = ipaddress.ip_address(hostname).is_loopback
+            except ValueError:
+                loopback = False
+        if parsed.scheme != "https" and not loopback and not allow_insecure_http:
+            raise ValueError("base_url must use https unless it targets loopback")
         if not credential or not credential.strip():
             raise ValueError("credential must not be empty")
         if any(
@@ -128,6 +145,20 @@ class EvaluatorClient:
                 headers=headers,
                 response_limit=MAX_TRANSCRIPT_BYTES,
             )
+        )
+
+    def definitions(
+        self, assignment: Assignment, *, worker_id: str
+    ) -> DefinitionsResponse:
+        headers = {
+            WORKER_ID_HEADER: worker_id,
+            LEASE_GENERATION_HEADER: str(assignment.lease_generation),
+        }
+        path = assignment.definitions_url or DEFINITIONS_PATH.format(
+            assignment_id=assignment.assignment_id
+        )
+        return DefinitionsResponse.from_wire(
+            self._json("GET", path, None, retry=True, headers=headers)
         )
 
     def plan(self, assignment_id: str, request: PlanRequest) -> PlanResponse:

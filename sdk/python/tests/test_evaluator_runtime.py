@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -9,11 +10,14 @@ from pathlib import Path
 import pytest
 
 from failproofai_sdk.evaluator import (
+    AssignmentDefinition,
     ClaimResponse,
     ConditionResult,
+    DefinitionsResponse,
     EvalResult,
     Evaluator,
     EvaluatorAPIError,
+    ExecutionMode,
     HeartbeatResponse,
     PlannedRun,
     PlanResponse,
@@ -23,6 +27,7 @@ from failproofai_sdk.evaluator import (
     SessionTranscript,
     WorkerConfig,
     WorkerRuntime,
+    source_checksum,
 )
 
 FIXTURE = Path(__file__).parent / "fixtures" / "evaluator_v2" / "contract.json"
@@ -38,6 +43,7 @@ class FakeClient:
         self.assignment = ClaimResponse.from_wire(
             samples["claim_response"]
         ).assignments[0]
+        self.assignment = replace(self.assignment, definitions_url="")
         self.session = SessionTranscript.from_wire(samples["transcript_response"])
         self.register_requests = []
         self.claim_requests = []
@@ -92,6 +98,131 @@ def _runtime(evaluator, client):
         ),
         client=client,
     )
+
+
+def test_managed_definition_is_fetched_verified_and_executed():
+    source = "EvalResult(score=Score(0.75, passed=True), summary='hosted')"
+
+    class HostedClient(FakeClient):
+        def __init__(self):
+            super().__init__()
+            self.assignment = replace(
+                self.assignment,
+                definitions_url=f"/v1/evaluator/assignments/{self.assignment.assignment_id}/definitions",
+            )
+
+        def definitions(self, assignment, *, worker_id):
+            assert assignment == self.assignment
+            assert worker_id == "worker-test"
+            return DefinitionsResponse(
+                assignment_id=assignment.assignment_id,
+                catalog_revision="sha256:hosted",
+                definitions=(
+                    AssignmentDefinition(
+                        eval_key="hosted_quality",
+                        display_name="Hosted quality",
+                        eval_version="1",
+                        result_kind=ResultKind.SCORE,
+                        execution_mode=ExecutionMode.PYTHON,
+                        source_checksum=source_checksum(None, source),
+                    ),
+                ),
+            )
+
+        def plan(self, assignment_id, request):
+            self.plans.append(request)
+            return PlanResponse(
+                assignment_id=assignment_id,
+                assignment_status="planned",
+                runs=(
+                    PlannedRun(
+                        "run-hosted",
+                        "hosted_quality",
+                        "1",
+                        execution_mode=ExecutionMode.PYTHON,
+                        evaluator_source=source,
+                        source_checksum=source_checksum(None, source),
+                        timeout_seconds=1,
+                    ),
+                ),
+            )
+
+    client = HostedClient()
+    asyncio.run(
+        _runtime(Evaluator(name="managed", version="1"), client).process_assignment(
+            client.assignment
+        )
+    )
+
+    assert len(client.submissions) == 1
+    run_id, result = client.submissions[0]
+    assert run_id == "run-hosted"
+    assert result.status.value == "succeeded"
+    assert result.summary == "hosted"
+    assert result.results[0].numeric_value == 0.75
+
+
+def test_two_assignments_share_the_bounded_sync_eval_pool_and_keep_heartbeating():
+    evaluator = Evaluator(name="parallel", version="1")
+    lock = threading.Lock()
+    active = 0
+    peak = 0
+
+    def measured(_session):
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        time.sleep(0.04)
+        with lock:
+            active -= 1
+        return EvalResult(score=Score(1))
+
+    for index in range(5):
+        evaluator.eval(
+            f"eval_{index}",
+            version="1",
+            when=lambda session, index=index: (
+                index < 3 if session.session_id == "session-a" else index >= 3
+            ),
+        )(measured)
+
+    class ParallelClient(FakeClient):
+        def transcript(self, assignment, *, worker_id):
+            assert worker_id == "worker-test"
+            return replace(
+                self.session,
+                assignment_id=assignment.assignment_id,
+                session_id=assignment.session_id,
+                session_revision_id=assignment.session_revision_id,
+            )
+
+    client = ParallelClient()
+    first = replace(
+        client.assignment,
+        assignment_id="assignment-a",
+        session_id="session-a",
+        session_revision_id="revision-a",
+    )
+    second = replace(
+        client.assignment,
+        assignment_id="assignment-b",
+        session_id="session-b",
+        session_revision_id="revision-b",
+    )
+    runtime = _runtime(evaluator, client)
+    runtime._heartbeat_interval = 0.01
+
+    async def exercise():
+        await asyncio.gather(
+            runtime.process_assignment(first), runtime.process_assignment(second)
+        )
+
+    asyncio.run(exercise())
+
+    assert peak == 2
+    assert len(client.submissions) == 5
+    assert client.heartbeats
 
 
 def test_condition_failures_are_isolated_and_plan_is_declared_first():
@@ -712,3 +843,5 @@ def test_eval_execution_respects_process_concurrency():
     )
     asyncio.run(runtime.process_assignment(client.assignment))
     assert peak == 1
+    DefinitionsResponse,
+    ExecutionMode,

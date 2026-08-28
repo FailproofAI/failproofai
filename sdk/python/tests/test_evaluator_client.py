@@ -163,6 +163,28 @@ def test_transcript_identity_is_sent_as_fencing_headers():
     assert captured.get_header("X-failproofai-lease-generation") == "3"
 
 
+def test_definitions_use_the_server_supplied_path_and_fencing_headers():
+    samples = _samples()
+    assignment = Assignment.from_wire(samples["claim_response"]["assignments"][0])
+    captured = None
+
+    def opener(request, timeout):
+        nonlocal captured
+        captured = request
+        return Response(samples["definitions_response"])
+
+    client = EvaluatorClient(
+        base_url="https://cloud.example/", credential="secret", opener=opener
+    )
+    response = client.definitions(assignment, worker_id="worker-7")
+
+    assert response.assignment_id == assignment.assignment_id
+    assert response.definitions[0].execution_mode.value == "python"
+    assert captured.full_url.endswith(assignment.definitions_url)
+    assert captured.get_header("X-failproofai-worker-id") == "worker-7"
+    assert captured.get_header("X-failproofai-lease-generation") == "3"
+
+
 def test_constructor_rejects_unsafe_or_incomplete_configuration():
     with pytest.raises(ValueError, match="absolute"):
         EvaluatorClient(base_url="localhost:8080", credential="secret")
@@ -170,6 +192,16 @@ def test_constructor_rejects_unsafe_or_incomplete_configuration():
         EvaluatorClient(base_url="https://cloud.example", credential="")
     with pytest.raises(ValueError, match="control characters"):
         EvaluatorClient(base_url="https://cloud.example", credential="secret\nleak")
+
+
+def test_private_cluster_http_requires_an_explicit_opt_in():
+    with pytest.raises(ValueError, match="must use https"):
+        EvaluatorClient(base_url="http://server:8080", credential="secret")
+    EvaluatorClient(
+        base_url="http://server:8080",
+        credential="secret",
+        allow_insecure_http=True,
+    )
 
 
 def test_protocol_redirect_does_not_forward_the_bearer_credential():

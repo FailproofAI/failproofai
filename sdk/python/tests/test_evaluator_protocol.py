@@ -9,6 +9,7 @@ import pytest
 from failproofai_sdk.evaluator import (
     ClaimRequest,
     ClaimResponse,
+    DefinitionsResponse,
     ErrorResponse,
     HeartbeatRequest,
     HeartbeatResponse,
@@ -38,6 +39,7 @@ def _contract():
         ("register_response", RegisterResponse),
         ("claim_request", ClaimRequest),
         ("claim_response", ClaimResponse),
+        ("definitions_response", DefinitionsResponse),
         ("transcript_response", SessionTranscript),
         ("plan_request", PlanRequest),
         ("plan_response", PlanResponse),
@@ -181,8 +183,9 @@ def test_fixture_constants_match_the_sdk_contract():
     }
     assert contract["http"] == {
         "register": protocol.REGISTER_PATH,
-        "claim": protocol.CLAIM_PATH,
-        "transcript": protocol.TRANSCRIPT_PATH,
+            "claim": protocol.CLAIM_PATH,
+            "transcript": protocol.TRANSCRIPT_PATH,
+            "definitions": protocol.DEFINITIONS_PATH,
         "plan": protocol.PLAN_PATH,
         "heartbeat": protocol.HEARTBEAT_PATH,
         "result": protocol.RESULT_PATH,

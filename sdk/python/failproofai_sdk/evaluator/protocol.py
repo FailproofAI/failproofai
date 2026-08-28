@@ -15,6 +15,7 @@ RESULT_SCHEMA_VERSION = "2"
 REGISTER_PATH = "/v1/evaluator/workers/register"
 CLAIM_PATH = "/v1/evaluator/assignments/claim"
 TRANSCRIPT_PATH = "/v1/evaluator/assignments/{assignment_id}/transcript"
+DEFINITIONS_PATH = "/v1/evaluator/assignments/{assignment_id}/definitions"
 PLAN_PATH = "/v1/evaluator/assignments/{assignment_id}/plan"
 HEARTBEAT_PATH = "/v1/evaluator/runs/heartbeat"
 RESULT_PATH = "/v1/evaluator/runs/{evaluation_run_id}/result"
@@ -89,6 +90,11 @@ class ResultKind(str, Enum):
     SCORE = "score"
     METRIC = "metric"
     ASSERTION = "assertion"
+
+
+class ExecutionMode(str, Enum):
+    LOCAL = "local"
+    PYTHON = "python"
 
 
 class TerminalRunStatus(str, Enum):
@@ -287,6 +293,7 @@ class Assignment(WireModel):
     trigger_reason: str
     event_count: int
     transcript_url: str
+    definitions_url: str = ""
 
     @classmethod
     def from_wire(cls, data: Mapping[str, Any]) -> Assignment:
@@ -301,6 +308,65 @@ class Assignment(WireModel):
             trigger_reason=_string(data, "trigger_reason"),
             event_count=_nonnegative_integer(data, "event_count"),
             transcript_url=_string(data, "transcript_url"),
+            definitions_url=str(data.get("definitions_url") or ""),
+        )
+
+
+@dataclass(frozen=True)
+class AssignmentDefinition(WireModel):
+    eval_key: str
+    display_name: str
+    eval_version: str
+    result_kind: ResultKind
+    labels: tuple[str, ...] = ()
+    execution_mode: ExecutionMode = ExecutionMode.LOCAL
+    condition_source: str | None = None
+    source_checksum: str | None = None
+    timeout_seconds: float | None = None
+
+    @classmethod
+    def from_wire(cls, data: Mapping[str, Any]) -> AssignmentDefinition:
+        timeout = data.get("timeout_seconds")
+        if timeout is not None:
+            if isinstance(timeout, bool) or not isinstance(timeout, (int, float)):
+                raise ProtocolError("timeout_seconds must be a number or null")
+            timeout = float(timeout)
+            if not math.isfinite(timeout) or timeout <= 0:
+                raise ProtocolError("timeout_seconds must be finite and greater than zero")
+        return cls(
+            eval_key=_string(data, "eval_key"),
+            display_name=_string(data, "display_name"),
+            eval_version=_string(data, "eval_version"),
+            result_kind=_enum(ResultKind, data, "result_kind"),
+            labels=_string_list(data, "labels"),
+            execution_mode=_enum(
+                ExecutionMode,
+                {"execution_mode": data.get("execution_mode") or "local"},
+                "execution_mode",
+            ),
+            condition_source=_optional_string(data, "condition_source"),
+            source_checksum=_optional_string(data, "source_checksum"),
+            timeout_seconds=timeout,
+        )
+
+
+@dataclass(frozen=True)
+class DefinitionsResponse(WireModel):
+    assignment_id: str
+    catalog_revision: str
+    definitions: tuple[AssignmentDefinition, ...]
+    protocol_version: str = PROTOCOL_VERSION
+
+    @classmethod
+    def from_wire(cls, data: Mapping[str, Any]) -> DefinitionsResponse:
+        validate_protocol_version(_string(data, "protocol_version"))
+        return cls(
+            assignment_id=_string(data, "assignment_id"),
+            catalog_revision=_string(data, "catalog_revision"),
+            definitions=tuple(
+                AssignmentDefinition.from_wire(item)
+                for item in _object_list(data, "definitions")
+            ),
         )
 
 
@@ -437,13 +503,32 @@ class PlannedRun(WireModel):
     evaluation_run_id: str
     eval_key: str
     eval_version: str
+    execution_mode: ExecutionMode = ExecutionMode.LOCAL
+    evaluator_source: str | None = None
+    source_checksum: str | None = None
+    timeout_seconds: float | None = None
 
     @classmethod
     def from_wire(cls, data: Mapping[str, Any]) -> PlannedRun:
+        timeout = data.get("timeout_seconds")
+        if timeout is not None:
+            if isinstance(timeout, bool) or not isinstance(timeout, (int, float)):
+                raise ProtocolError("timeout_seconds must be a number or null")
+            timeout = float(timeout)
+            if not math.isfinite(timeout) or timeout <= 0:
+                raise ProtocolError("timeout_seconds must be finite and greater than zero")
         return cls(
-            _string(data, "evaluation_run_id"),
-            _string(data, "eval_key"),
-            _string(data, "eval_version"),
+            evaluation_run_id=_string(data, "evaluation_run_id"),
+            eval_key=_string(data, "eval_key"),
+            eval_version=_string(data, "eval_version"),
+            execution_mode=_enum(
+                ExecutionMode,
+                {"execution_mode": data.get("execution_mode") or "local"},
+                "execution_mode",
+            ),
+            evaluator_source=_optional_string(data, "evaluator_source"),
+            source_checksum=_optional_string(data, "source_checksum"),
+            timeout_seconds=timeout,
         )
 
 

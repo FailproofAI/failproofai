@@ -16,11 +16,13 @@ from failproofai_sdk.evaluator.authoring import (
 from failproofai_sdk.evaluator.client import EvaluatorAPIError, EvaluatorClient
 from failproofai_sdk.evaluator.protocol import (
     Assignment,
+    AssignmentDefinition,
     CatalogDefinition,
     ClaimRequest,
     ClaimResponse,
     ErrorResponse,
     EvalSelection,
+    ExecutionMode,
     EvaluatorKind,
     HeartbeatRequest,
     HeartbeatResponse,
@@ -28,6 +30,7 @@ from failproofai_sdk.evaluator.protocol import (
     PlannedRun,
     PlanRequest,
     PlanResponse,
+    DefinitionsResponse,
     ProtocolError,
     RegisterRequest,
     RegisterResponse,
@@ -43,10 +46,17 @@ from failproofai_sdk.evaluator.protocol import (
     UnsupportedProtocolVersion,
 )
 from failproofai_sdk.evaluator.runtime import WorkerConfig, WorkerRuntime
+from failproofai_sdk.evaluator.source import (
+    UnsafeEvaluatorSource,
+    compile_condition,
+    compile_evaluator,
+    source_checksum,
+)
 
 __all__ = [
     "Assertion",
     "Assignment",
+    "AssignmentDefinition",
     "CatalogDefinition",
     "ClaimRequest",
     "ClaimResponse",
@@ -55,6 +65,7 @@ __all__ = [
     "EvalDefinition",
     "EvalResult",
     "EvalSelection",
+    "ExecutionMode",
     "Evaluator",
     "EvaluatorAPIError",
     "EvaluatorClient",
@@ -65,6 +76,7 @@ __all__ = [
     "Metric",
     "PlanRequest",
     "PlanResponse",
+    "DefinitionsResponse",
     "PlannedRun",
     "ProtocolError",
     "RegisterRequest",
@@ -82,4 +94,8 @@ __all__ = [
     "UnsupportedProtocolVersion",
     "WorkerConfig",
     "WorkerRuntime",
+    "UnsafeEvaluatorSource",
+    "compile_condition",
+    "compile_evaluator",
+    "source_checksum",
 ]

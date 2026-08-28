@@ -1,5 +1,5 @@
 {
-  "fixture_revision": "evaluator-v2-2026-08-28.2",
+  "fixture_revision": "evaluator-v2-2026-08-28.3",
   "protocol": {
     "supported_major_versions": ["2"],
     "transcript_schema_version": "2",
@@ -9,6 +9,7 @@
     "register": "/v1/evaluator/workers/register",
     "claim": "/v1/evaluator/assignments/claim",
     "transcript": "/v1/evaluator/assignments/{assignment_id}/transcript",
+    "definitions": "/v1/evaluator/assignments/{assignment_id}/definitions",
     "plan": "/v1/evaluator/assignments/{assignment_id}/plan",
     "heartbeat": "/v1/evaluator/runs/heartbeat",
     "result": "/v1/evaluator/runs/{evaluation_run_id}/result",
@@ -102,7 +103,26 @@
           "environment": "production",
           "trigger_reason": "agent_end",
           "event_count": 42,
-          "transcript_url": "/v1/evaluator/assignments/018f47a8-7c1d-7e21-a22a-79f7a4d23102/transcript"
+          "transcript_url": "/v1/evaluator/assignments/018f47a8-7c1d-7e21-a22a-79f7a4d23102/transcript",
+          "definitions_url": "/v1/evaluator/assignments/018f47a8-7c1d-7e21-a22a-79f7a4d23102/definitions"
+        }
+      ]
+    },
+    "definitions_response": {
+      "protocol_version": "2",
+      "assignment_id": "018f47a8-7c1d-7e21-a22a-79f7a4d23102",
+      "catalog_revision": "sha256:b4e2c077aa9f91b5de1f3184ebf96811bce07eec00c7f417896ab269c67c88fb",
+      "definitions": [
+        {
+          "eval_key": "tool_efficiency",
+          "display_name": "Tool efficiency",
+          "eval_version": "1.2.0",
+          "result_kind": "score",
+          "labels": ["tools", "deterministic"],
+          "execution_mode": "python",
+          "condition_source": null,
+          "source_checksum": "sha256:da6cf174ea9199dd8412af4abebd40bd27dea482f738cb8c28523076472501ea",
+          "timeout_seconds": 30.0
         }
       ]
     },
@@ -155,7 +175,11 @@
         {
           "evaluation_run_id": "018f47a8-7c1d-7e21-a22a-79f7a4d23103",
           "eval_key": "tool_efficiency",
-          "eval_version": "1.2.0"
+          "eval_version": "1.2.0",
+          "execution_mode": "python",
+          "evaluator_source": "EvalResult(score=Score(1.0))",
+          "source_checksum": "sha256:da6cf174ea9199dd8412af4abebd40bd27dea482f738cb8c28523076472501ea",
+          "timeout_seconds": 30.0
         }
       ]
     },

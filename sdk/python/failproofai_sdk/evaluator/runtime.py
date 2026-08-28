@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import inspect
 import logging
 import os
@@ -27,8 +28,10 @@ from failproofai_sdk.evaluator.protocol import (
     MAX_CLAIM_WAIT_SECONDS,
     MAX_WORKER_ID_BYTES,
     Assignment,
+    AssignmentDefinition,
     ClaimRequest,
     EvalSelection,
+    ExecutionMode,
     HeartbeatRequest,
     HeartbeatRun,
     PlanRequest,
@@ -36,6 +39,11 @@ from failproofai_sdk.evaluator.protocol import (
     ResultRequest,
     SkippedEval,
     TerminalRunStatus,
+)
+from failproofai_sdk.evaluator.source import (
+    compile_condition,
+    compile_evaluator,
+    source_checksum,
 )
 
 logger = logging.getLogger("failproofai_sdk.evaluator")
@@ -62,6 +70,18 @@ def _positive_int(name: str, default: int) -> int:
     return value
 
 
+def _boolean(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    normalized = raw.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be a boolean")
+
+
 @dataclass(frozen=True)
 class WorkerConfig:
     server_url: str
@@ -71,6 +91,7 @@ class WorkerConfig:
     claim_wait_seconds: int = 20
     request_timeout_seconds: int = 30
     drain_timeout_seconds: int = 60
+    allow_insecure_http: bool = False
 
     @classmethod
     def from_env(cls) -> WorkerConfig:
@@ -105,6 +126,9 @@ class WorkerConfig:
             drain_timeout_seconds=_positive_int(
                 "FAILPROOFAI_EVALUATOR_DRAIN_TIMEOUT_SECONDS", 60
             ),
+            allow_insecure_http=_boolean(
+                "FAILPROOFAI_EVALUATOR_ALLOW_INSECURE_HTTP"
+            ),
         )
         if config.max_concurrency > MAX_CLAIM_CAPACITY:
             raise ValueError(
@@ -137,6 +161,7 @@ class WorkerRuntime:
             base_url=config.server_url,
             credential=config.credential,
             timeout_seconds=config.request_timeout_seconds,
+            allow_insecure_http=config.allow_insecure_http,
         )
         self._stopping = asyncio.Event()
         self._active: set[asyncio.Task[None]] = set()
@@ -145,6 +170,10 @@ class WorkerRuntime:
         self._lease_duration = 120
         self._disabled_definitions: set[str] = set()
         self._eval_semaphore = asyncio.Semaphore(config.max_concurrency)
+        self._eval_executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=config.max_concurrency,
+            thread_name_prefix="failproof-eval",
+        )
         self._registered = False
         self._last_server_contact: float | None = None
         self._metric_lock = threading.Lock()
@@ -183,44 +212,51 @@ class WorkerRuntime:
 
     async def run_forever(self) -> None:
         await self.register()
-        while not self._stopping.is_set():
-            self._reap_finished()
-            capacity = self._claim_limit - len(self._active)
-            if capacity <= 0:
-                await self._wait_for_progress()
-                continue
-            try:
-                response = await self._call_client(
-                    self.client.claim,
-                    ClaimRequest(
-                        worker_id=self.config.worker_id,
-                        catalog_revision=self.evaluator.catalog_revision,
-                        capacity=capacity,
-                        wait_seconds=self.config.claim_wait_seconds,
-                    ),
+        retry_delay = 1.0
+        try:
+            while not self._stopping.is_set():
+                self._reap_finished()
+                capacity = self._claim_limit - len(self._active)
+                if capacity <= 0:
+                    await self._wait_for_progress()
+                    continue
+                try:
+                    response = await self._call_client(
+                        self.client.claim,
+                        ClaimRequest(
+                            worker_id=self.config.worker_id,
+                            catalog_revision=self.evaluator.catalog_revision,
+                            capacity=capacity,
+                            wait_seconds=self.config.claim_wait_seconds,
+                        ),
+                    )
+                except EvaluatorAPIError as error:
+                    self._increment("claim_failures")
+                    logger.warning(
+                        "evaluator claim failed",
+                        extra={"code": error.code, "retryable": error.retryable},
+                    )
+                    if not error.retryable:
+                        raise
+                    delay = (
+                        float(self._lease_duration)
+                        if error.status is None
+                        else retry_delay
+                    )
+                    await self._wait_or_stop(delay)
+                    retry_delay = min(retry_delay * 2.0, 30.0)
+                    continue
+                retry_delay = 1.0
+                assignments = self._validated_assignments(
+                    response.assignments, capacity
                 )
-            except EvaluatorAPIError as error:
-                self._increment("claim_failures")
-                logger.warning(
-                    "evaluator claim failed",
-                    extra={"code": error.code, "retryable": error.retryable},
-                )
-                if not error.retryable:
-                    raise
-                # With a transport error the server may have committed the
-                # lease while its response was lost. Waiting out that lease is
-                # what prevents a blind second claim from exceeding capacity.
-                await self._wait_or_stop(
-                    float(self._lease_duration) if error.status is None else 1.0
-                )
-                continue
-            assignments = self._validated_assignments(response.assignments, capacity)
-            for assignment in assignments:
-                task = asyncio.create_task(self.process_assignment(assignment))
-                self._active.add(task)
-            self._increment("assignments_claimed", len(assignments))
-
-        await self.drain()
+                for assignment in assignments:
+                    task = asyncio.create_task(self.process_assignment(assignment))
+                    self._active.add(task)
+                self._increment("assignments_claimed", len(assignments))
+        finally:
+            await self.drain()
+            self._eval_executor.shutdown(wait=False, cancel_futures=True)
 
     async def run_once(self) -> int:
         """Claim once and finish the returned assignments; useful for jobs/tests."""
@@ -267,18 +303,37 @@ class WorkerRuntime:
         if session.session_revision_id != assignment.session_revision_id:
             raise RuntimeError("transcript session revision does not match assignment")
 
-        selected: list[EvalDefinition] = []
+        descriptors = await self._assignment_definitions(assignment)
+        selected: list[tuple[AssignmentDefinition, EvalDefinition | None]] = []
         skipped: list[SkippedEval] = []
-        for definition in self.evaluator.definitions:
-            if definition.eval_key in self._disabled_definitions:
-                skipped.append(self._skipped(definition, "disabled_by_server"))
+        local_definitions = {
+            (item.eval_key, item.eval_version): item
+            for item in self.evaluator.definitions
+        }
+        for descriptor in descriptors:
+            local = local_definitions.get(
+                (descriptor.eval_key, descriptor.eval_version)
+            )
+            if descriptor.execution_mode is ExecutionMode.LOCAL and local is None:
+                raise RuntimeError("server requested a definition absent from this worker")
+            if descriptor.eval_key in self._disabled_definitions:
+                skipped.append(self._skipped_descriptor(descriptor, "disabled_by_server"))
                 self._increment("conditions_skipped")
                 continue
-            if definition.condition is None:
-                selected.append(definition)
+            condition_function = (
+                local.condition
+                if local is not None
+                else (
+                    compile_condition(descriptor.condition_source)
+                    if descriptor.condition_source
+                    else None
+                )
+            )
+            if condition_function is None:
+                selected.append((descriptor, local))
                 continue
             try:
-                condition = await self._invoke(definition.condition, session)
+                condition = await self._invoke(condition_function, session)
                 if isinstance(condition, ConditionResult):
                     applicable = condition.applicable
                     reason_code = condition.reason_code
@@ -295,14 +350,14 @@ class WorkerRuntime:
                         "error_type": type(error).__name__,
                     },
                 )
-                skipped.append(self._skipped(definition, "condition_error"))
+                skipped.append(self._skipped_descriptor(descriptor, "condition_error"))
                 self._increment("conditions_skipped")
                 continue
             if applicable:
-                selected.append(definition)
+                selected.append((descriptor, local))
                 self._increment("conditions_selected")
             else:
-                skipped.append(self._skipped(definition, reason_code))
+                skipped.append(self._skipped_descriptor(descriptor, reason_code))
                 self._increment("conditions_skipped")
 
         plan = await self._call_client(
@@ -312,7 +367,8 @@ class WorkerRuntime:
                 worker_id=self.config.worker_id,
                 lease_generation=assignment.lease_generation,
                 selected=tuple(
-                    EvalSelection(item.eval_key, item.eval_version) for item in selected
+                    EvalSelection(item.eval_key, item.eval_version)
+                    for item, _local in selected
                 ),
                 skipped=tuple(skipped),
             ),
@@ -323,16 +379,50 @@ class WorkerRuntime:
         if plan.assignment_status != expected_status:
             raise RuntimeError("server returned an inconsistent assignment status")
 
-        definitions = {(item.eval_key, item.eval_version): item for item in selected}
+        definitions = {
+            (item.eval_key, item.eval_version): (item, local)
+            for item, local in selected
+        }
         run_definitions: list[tuple[str, EvalDefinition]] = []
         run_ids: set[str] = set()
         for run in plan.runs:
             if run.evaluation_run_id in run_ids:
                 raise RuntimeError("server returned a duplicate evaluation run id")
             run_ids.add(run.evaluation_run_id)
-            definition = definitions.pop((run.eval_key, run.eval_version), None)
-            if definition is None:
+            selected_definition = definitions.pop(
+                (run.eval_key, run.eval_version), None
+            )
+            if selected_definition is None:
                 raise RuntimeError("server returned an unrequested evaluation run")
+            descriptor, local = selected_definition
+            if run.execution_mode is not descriptor.execution_mode:
+                raise RuntimeError("server changed the evaluation execution mode")
+            if run.execution_mode is ExecutionMode.LOCAL:
+                if local is None:
+                    raise RuntimeError("local evaluation definition is unavailable")
+                definition = local
+            else:
+                if not run.evaluator_source or not run.source_checksum:
+                    raise RuntimeError("server omitted managed evaluation source")
+                expected = source_checksum(
+                    descriptor.condition_source, run.evaluator_source
+                )
+                if expected != run.source_checksum or (
+                    descriptor.source_checksum
+                    and descriptor.source_checksum != run.source_checksum
+                ):
+                    raise RuntimeError("managed evaluation source checksum mismatch")
+                definition = EvalDefinition(
+                    eval_key=descriptor.eval_key,
+                    display_name=descriptor.display_name,
+                    eval_version=descriptor.eval_version,
+                    result_kind=descriptor.result_kind,
+                    labels=descriptor.labels,
+                    function=compile_evaluator(run.evaluator_source),
+                    condition=None,
+                    on_cancel=None,
+                    timeout_seconds=run.timeout_seconds or descriptor.timeout_seconds,
+                )
             run_definitions.append((run.evaluation_run_id, definition))
         if definitions and not plan.idempotent_replay:
             raise RuntimeError("server omitted a selected evaluation run")
@@ -479,12 +569,21 @@ class WorkerRuntime:
                     },
                 )
                 self._increment("heartbeat_failures")
+            except Exception as error:  # noqa: BLE001 - keep lease renewal alive
+                logger.warning(
+                    "evaluator heartbeat error",
+                    extra={
+                        "assignment_id": assignment.assignment_id,
+                        "error_type": type(error).__name__,
+                    },
+                )
+                self._increment("heartbeat_failures")
 
-    @staticmethod
-    async def _invoke(function, session):
+    async def _invoke(self, function, session):
         if inspect.iscoroutinefunction(function):
             return await function(session)
-        result = await asyncio.to_thread(function, session)
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(self._eval_executor, function, session)
         if inspect.isawaitable(result):
             return await result
         return result
@@ -492,6 +591,35 @@ class WorkerRuntime:
     @staticmethod
     def _skipped(definition: EvalDefinition, reason: str) -> SkippedEval:
         return SkippedEval(definition.eval_key, definition.eval_version, reason)
+
+    @staticmethod
+    def _skipped_descriptor(
+        definition: AssignmentDefinition, reason: str
+    ) -> SkippedEval:
+        return SkippedEval(definition.eval_key, definition.eval_version, reason)
+
+    async def _assignment_definitions(
+        self, assignment: Assignment
+    ) -> tuple[AssignmentDefinition, ...]:
+        if assignment.definitions_url:
+            response = await self._call_client(
+                self.client.definitions,
+                assignment,
+                worker_id=self.config.worker_id,
+            )
+            if response.assignment_id != assignment.assignment_id:
+                raise RuntimeError("server returned definitions for another assignment")
+            return response.definitions
+        return tuple(
+            AssignmentDefinition(
+                eval_key=item.eval_key,
+                display_name=item.display_name,
+                eval_version=item.eval_version,
+                result_kind=item.result_kind,
+                labels=item.labels,
+            )
+            for item in self.evaluator.definitions
+        )
 
     def _reap_finished(self) -> None:
         done = {task for task in self._active if task.done()}

@@ -13,7 +13,7 @@ There are two audits. They read different data and answer to different tools:
 | Local — `failproofai audit` | The agent history already on this machine | No | `http://localhost:8020/audit` |
 | Cloud — **Analyze → Audits**, or the `fp` CLI | The sessions stored in Failproof AI Cloud | Yes | The Cloud dashboard |
 
-Run the local one first. It needs nothing but the CLI, and nothing leaves the box.
+Run the local one first. It needs nothing but the CLI. Findings stay local, while anonymous CLI telemetry is sent by default unless you set `FAILPROOFAI_TELEMETRY_DISABLED=1`.
 
 <Tabs>
   <Tab title="Local">
@@ -23,7 +23,7 @@ Run the local one first. It needs nothing but the CLI, and nothing leaves the bo
 
     It scans every supported agent history it finds on this machine, replays the tool activity through the builtin policy catalog, then opens **http://localhost:8020/audit**. Keep the process running while you read the results; press <kbd>Ctrl</kbd>+<kbd>C</kbd> when you are done.
 
-    Everything runs on this machine. Only a scheduled digest ever leaves it.
+    Analysis and findings stay on this machine. Anonymous CLI telemetry is sent by default unless disabled. After you opt into scheduling, each scan also sends machine metadata and may send a limited findings digest.
 
     | Flag | What it does |
     | --- | --- |

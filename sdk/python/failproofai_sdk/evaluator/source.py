@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import re
 from collections.abc import Callable
 from typing import Any
 
@@ -37,7 +38,11 @@ _ALLOWED_NODES = (
     ast.ListComp,
     ast.SetComp,
     ast.DictComp,
-    ast.GeneratorExp,
+    # `ast.GeneratorExp` is intentionally NOT allowed: a bare generator object's
+    # default repr is `<generator object ... at 0x...>`, which leaks a live host
+    # heap address (an ASLR/memory-layout disclosure) the moment it is coerced to
+    # a string into any result field. List/set/dict comprehensions render as their
+    # data (`[...]`, `{...}`) and cover the same ground — wrap a generator in `[]`.
     ast.comprehension,
     ast.Compare,
     ast.Call,
@@ -87,7 +92,9 @@ _SAFE_GLOBALS = {
     "any": any,
     "bool": bool,
     "dict": dict,
-    "enumerate": enumerate,
+    # `enumerate` is intentionally excluded: an enumerate object's default repr is
+    # `<enumerate object at 0x...>`, leaking a live host heap address into any
+    # result field. Index-aware iteration can use `range(len(...))` instead.
     "float": float,
     "int": int,
     "len": len,
@@ -102,6 +109,104 @@ _SAFE_GLOBALS = {
     "sum": sum,
     "tuple": tuple,
 }
+
+
+# Attribute access is DEFAULT-DENY. A denylist is unwinnable here: dunder access
+# is only one door. `str.format`/`format_map` traverse a format string's fields
+# at the C level; `(x for x in [1]).gi_frame.f_globals` reaches the eval globals
+# through generator/frame introspection; `str.mro()[-1]` reaches the `object`
+# type — and NONE of `format`, `gi_frame`, `f_globals`, `co_names`, `mro`, ...
+# start with an underscore, so the dunder guard never sees them. Rather than
+# chase each introspection family, we allow ONLY the attribute names a real
+# session evaluation needs: the transcript/event data surface plus a fixed set
+# of pure string/collection data methods. Anything else — every current and
+# future introspection attribute — is rejected. `format`/`format_map` are simply
+# absent from this set, so the C-level format escape is closed too.
+_ALLOWED_ATTRS = frozenset(
+    {
+        # SessionTranscript + TranscriptEvent data surface (see protocol.py).
+        "events",
+        "events_of_type",
+        "count",
+        "event_count",
+        "event_type",
+        "payload",
+        "id",
+        "ts",
+        "agent_id",
+        "environment",
+        "session_id",
+        "session_revision_id",
+        "assignment_id",
+        "started_at",
+        "ended_at",
+        "schema_version",
+        # dict data methods.
+        "get",
+        "keys",
+        "values",
+        "items",
+        # str / bytes pure data methods.
+        "lower",
+        "upper",
+        "strip",
+        "lstrip",
+        "rstrip",
+        "split",
+        "rsplit",
+        "splitlines",
+        "startswith",
+        "endswith",
+        "replace",
+        "find",
+        "rfind",
+        "index",
+        "join",
+        "title",
+        "capitalize",
+        "casefold",
+        "swapcase",
+        "isdigit",
+        "isalpha",
+        "isalnum",
+        "isspace",
+        "isnumeric",
+        "isdecimal",
+        "islower",
+        "isupper",
+        "istitle",
+        "zfill",
+        "ljust",
+        "rjust",
+        "center",
+        "partition",
+        "rpartition",
+        "removeprefix",
+        "removesuffix",
+        "encode",
+        "decode",
+        "hex",
+        # set data methods.
+        "union",
+        "intersection",
+        "difference",
+        "symmetric_difference",
+        "issubset",
+        "issuperset",
+        "isdisjoint",
+    }
+)
+
+
+def _fresh_globals() -> dict[str, Any]:
+    """A throwaway globals mapping for one eval call.
+
+    Every evaluation gets its own copy — with a fresh empty ``__builtins__`` —
+    so that even if a future reach exposes the eval's globals (e.g. through a
+    frame object), a mutation cannot persist into another evaluation and poison
+    a shared, process-wide namespace.
+    """
+    return {**_SAFE_GLOBALS, "__builtins__": {}}
 
 
 class UnsafeEvaluatorSource(ValueError):
@@ -129,13 +234,38 @@ def _compile(source: str, *, field_name: str, maximum: int) -> Any:
             raise UnsafeEvaluatorSource(
                 f"{field_name} contains disallowed syntax: {type(node).__name__}"
             )
-        if isinstance(node, ast.Attribute) and node.attr.startswith("_"):
-            raise UnsafeEvaluatorSource(
-                f"{field_name} may not access private or dunder attributes"
-            )
+        if isinstance(node, ast.Attribute):
+            if node.attr.startswith("_"):
+                raise UnsafeEvaluatorSource(
+                    f"{field_name} may not access private or dunder attributes"
+                )
+            if node.attr not in _ALLOWED_ATTRS:
+                raise UnsafeEvaluatorSource(
+                    f"{field_name} may not access attribute '{node.attr}'"
+                )
         if isinstance(node, ast.Name) and node.id.startswith("_"):
             raise UnsafeEvaluatorSource(f"{field_name} may not access private names")
     return compile(tree, f"<{field_name}>", "eval", dont_inherit=True, optimize=2)
+
+
+# CPython's default object repr — `<... at 0x7f...>` — embeds a live heap
+# address (an ASLR/memory-layout disclosure). An expression cannot be stopped
+# from producing such a repr at the source level: it falls out of `str()` on any
+# bound method of an allowed object (`str(payload.get)`), and those methods must
+# stay reachable. So the disclosure is closed at the OUTPUT boundary instead: a
+# result whose text embeds this signature is rejected. The result types are all
+# frozen dataclasses with pointer-free reprs, so scanning the value's repr sees
+# every user-controlled string field. The pattern is the interpreter's own repr
+# grammar, which authored reasoning/summaries never legitimately contain.
+_OBJECT_REPR = re.compile(r"<[^<>]* at 0x[0-9a-fA-F]+")
+
+
+def _forbid_object_reprs(field_name: str, value: Any) -> Any:
+    if _OBJECT_REPR.search(repr(value)):
+        raise UnsafeEvaluatorSource(
+            f"{field_name} result may not embed a runtime object repr"
+        )
+    return value
 
 
 def compile_condition(source: str) -> Callable[[Any], bool | ConditionResult]:
@@ -146,10 +276,10 @@ def compile_condition(source: str) -> Callable[[Any], bool | ConditionResult]:
     )
 
     def condition(session: Any) -> bool | ConditionResult:
-        value = eval(code, _SAFE_GLOBALS, {"session": session})  # noqa: S307
+        value = eval(code, _fresh_globals(), {"session": session})  # noqa: S307
         if not isinstance(value, (bool, ConditionResult)):
             raise TypeError("condition_source must return bool or ConditionResult")
-        return value
+        return _forbid_object_reprs("condition_source", value)
 
     return condition
 
@@ -162,9 +292,9 @@ def compile_evaluator(source: str) -> Callable[[Any], EvalResult]:
     )
 
     def evaluate(session: Any) -> EvalResult:
-        value = eval(code, _SAFE_GLOBALS, {"session": session})  # noqa: S307
+        value = eval(code, _fresh_globals(), {"session": session})  # noqa: S307
         if not isinstance(value, EvalResult):
             raise TypeError("evaluator_source must return EvalResult")
-        return value
+        return _forbid_object_reprs("evaluator_source", value)
 
     return evaluate

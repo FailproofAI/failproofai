@@ -57,6 +57,24 @@ def _utc_now() -> str:
     )
 
 
+def _deferred_managed_eval(source: str):
+    """Compile server-authored source lazily, at invocation time.
+
+    Compilation can reject unsafe or malformed source (``UnsafeEvaluatorSource``).
+    Building the definition with this thunk instead of a pre-compiled function
+    routes that failure through the same per-run ``try/except`` that turns any
+    evaluation error into a bounded ``FAILED`` result — so a poison definition
+    dead-letters cleanly as one failed run instead of raising out of assignment
+    setup, crashing the task, and forcing the whole assignment to be reclaimed
+    and retried until its attempt budget is exhausted.
+    """
+
+    def evaluate(session: Any) -> Any:
+        return compile_evaluator(source)(session)
+
+    return evaluate
+
+
 def _positive_int(name: str, default: int) -> int:
     raw = os.environ.get(name)
     if raw is None:
@@ -418,7 +436,7 @@ class WorkerRuntime:
                     eval_version=descriptor.eval_version,
                     result_kind=descriptor.result_kind,
                     labels=descriptor.labels,
-                    function=compile_evaluator(run.evaluator_source),
+                    function=_deferred_managed_eval(run.evaluator_source),
                     condition=None,
                     on_cancel=None,
                     timeout_seconds=run.timeout_seconds or descriptor.timeout_seconds,

@@ -162,6 +162,76 @@ def test_managed_definition_is_fetched_verified_and_executed():
     assert result.results[0].numeric_value == 0.75
 
 
+def test_managed_definition_that_fails_to_compile_dead_letters_as_one_failed_run():
+    # Unsafe/malformed server-authored source is rejected by the sandbox at
+    # compile time. That rejection must surface as a single bounded FAILED run,
+    # NOT as an exception out of assignment setup that crashes the task and
+    # forces the whole assignment to be reclaimed and retried.
+    unsafe = (
+        'EvalResult(score=Score(1.0), '
+        'reasoning="{0.__class__}".format(session))'
+    )
+
+    class HostedClient(FakeClient):
+        def __init__(self):
+            super().__init__()
+            self.assignment = replace(
+                self.assignment,
+                definitions_url=f"/v1/evaluator/assignments/{self.assignment.assignment_id}/definitions",
+            )
+
+        def definitions(self, assignment, *, worker_id):
+            return DefinitionsResponse(
+                assignment_id=assignment.assignment_id,
+                catalog_revision="sha256:hosted",
+                definitions=(
+                    AssignmentDefinition(
+                        eval_key="hosted_quality",
+                        display_name="Hosted quality",
+                        eval_version="1",
+                        result_kind=ResultKind.SCORE,
+                        execution_mode=ExecutionMode.PYTHON,
+                        source_checksum=source_checksum(None, unsafe),
+                    ),
+                ),
+            )
+
+        def plan(self, assignment_id, request):
+            self.plans.append(request)
+            return PlanResponse(
+                assignment_id=assignment_id,
+                assignment_status="planned",
+                runs=(
+                    PlannedRun(
+                        "run-hosted",
+                        "hosted_quality",
+                        "1",
+                        execution_mode=ExecutionMode.PYTHON,
+                        evaluator_source=unsafe,
+                        source_checksum=source_checksum(None, unsafe),
+                        timeout_seconds=1,
+                    ),
+                ),
+            )
+
+    client = HostedClient()
+    # Must NOT raise — the poison definition is contained to its own run.
+    asyncio.run(
+        _runtime(Evaluator(name="managed", version="1"), client).process_assignment(
+            client.assignment
+        )
+    )
+
+    assert len(client.submissions) == 1
+    run_id, result = client.submissions[0]
+    assert run_id == "run-hosted"
+    assert result.status.value == "failed"
+    assert result.error_code == "eval_error"
+    # Nothing derived from the rejected source may be reported.
+    assert result.results == ()
+    assert result.summary is None
+
+
 def test_two_assignments_share_the_bounded_sync_eval_pool_and_keep_heartbeating():
     evaluator = Evaluator(name="parallel", version="1")
     lock = threading.Lock()

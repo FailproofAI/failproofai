@@ -19,6 +19,23 @@ it ships.
 - Retire the old inbound evaluator boundary and add evaluator authoring plus the
   outbound-only v2 worker runtime under the lazy `failproofai_sdk.evaluator`
   namespace.
+- Harden the managed-evaluator source sandbox against a class of escapes an
+  adversarial review found: `str.format`/`format_map` C-level field traversal,
+  generator/frame introspection (`gi_frame.f_globals`) that reached the eval
+  globals and could poison a process-shared namespace across evaluations, and
+  `type.mro()` type-object reach. Attribute access is now **default-deny** (an
+  allowlist of the transcript data surface plus pure string/collection methods,
+  so every current and future introspection attribute is rejected), each eval
+  runs with **fresh per-call globals**, and a result whose text embeds a runtime
+  object repr (`<... at 0x...>`, a heap-pointer/ASLR disclosure that falls out of
+  any bound method's repr) is rejected at the output boundary. `enumerate` and
+  bare generator expressions are no longer permitted — both were gratuitous
+  pointer-repr sources; use `range(len(...))` and list/set/dict comprehensions.
+- Contain a poison managed definition to its own run: source is now compiled
+  lazily inside the per-run executor, so a definition the sandbox rejects
+  dead-letters as one bounded `failed`/`eval_error` run instead of crashing the
+  assignment task and forcing it to be reclaimed until its attempt budget runs
+  out.
 
 ## 0.0.1b1 — 2026-08-24
 

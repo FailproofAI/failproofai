@@ -24,8 +24,8 @@ from failproofai_sdk.evaluator.authoring import (
 )
 from failproofai_sdk.evaluator.client import EvaluatorAPIError, EvaluatorClient
 from failproofai_sdk.evaluator.protocol import (
+    DEFAULT_POLL_INTERVAL_SECONDS,
     MAX_CLAIM_CAPACITY,
-    MAX_CLAIM_WAIT_SECONDS,
     MAX_WORKER_ID_BYTES,
     Assignment,
     AssignmentDefinition,
@@ -106,7 +106,6 @@ class WorkerConfig:
     credential: str
     worker_id: str
     max_concurrency: int = 1
-    claim_wait_seconds: int = 20
     request_timeout_seconds: int = 30
     drain_timeout_seconds: int = 60
     allow_insecure_http: bool = False
@@ -135,9 +134,6 @@ class WorkerConfig:
             credential=credential,
             worker_id=worker_id,
             max_concurrency=_positive_int("FAILPROOFAI_EVALUATOR_CONCURRENCY", 1),
-            claim_wait_seconds=_positive_int(
-                "FAILPROOFAI_EVALUATOR_CLAIM_WAIT_SECONDS", 20
-            ),
             request_timeout_seconds=_positive_int(
                 "FAILPROOFAI_EVALUATOR_REQUEST_TIMEOUT_SECONDS", 30
             ),
@@ -151,16 +147,6 @@ class WorkerConfig:
         if config.max_concurrency > MAX_CLAIM_CAPACITY:
             raise ValueError(
                 f"FAILPROOFAI_EVALUATOR_CONCURRENCY exceeds {MAX_CLAIM_CAPACITY}"
-            )
-        if config.claim_wait_seconds > MAX_CLAIM_WAIT_SECONDS:
-            raise ValueError(
-                "FAILPROOFAI_EVALUATOR_CLAIM_WAIT_SECONDS exceeds "
-                f"{MAX_CLAIM_WAIT_SECONDS}"
-            )
-        if config.request_timeout_seconds <= config.claim_wait_seconds:
-            raise ValueError(
-                "FAILPROOFAI_EVALUATOR_REQUEST_TIMEOUT_SECONDS must exceed "
-                "FAILPROOFAI_EVALUATOR_CLAIM_WAIT_SECONDS"
             )
         return config
 
@@ -184,6 +170,7 @@ class WorkerRuntime:
         self._stopping = asyncio.Event()
         self._active: set[asyncio.Task[None]] = set()
         self._heartbeat_interval = 30
+        self._poll_interval = DEFAULT_POLL_INTERVAL_SECONDS
         self._claim_limit = config.max_concurrency
         self._lease_duration = 120
         self._disabled_definitions: set[str] = set()
@@ -213,10 +200,12 @@ class WorkerRuntime:
             self._increment("registration_failure")
             raise
         self._heartbeat_interval = response.heartbeat_interval_seconds
+        self._poll_interval = response.poll_interval_seconds
         self._lease_duration = response.lease_duration_seconds
         self._claim_limit = min(self.config.max_concurrency, response.claim_limit)
         if (
             self._heartbeat_interval <= 0
+            or self._poll_interval <= 0
             or self._lease_duration <= self._heartbeat_interval
             or self._claim_limit <= 0
         ):
@@ -245,7 +234,6 @@ class WorkerRuntime:
                             worker_id=self.config.worker_id,
                             catalog_revision=self.evaluator.catalog_revision,
                             capacity=capacity,
-                            wait_seconds=self.config.claim_wait_seconds,
                         ),
                     )
                 except EvaluatorAPIError as error:
@@ -272,6 +260,12 @@ class WorkerRuntime:
                     task = asyncio.create_task(self.process_assignment(assignment))
                     self._active.add(task)
                 self._increment("assignments_claimed", len(assignments))
+                if not assignments:
+                    # Normal short poll: the server returns immediately, so when
+                    # nothing is queued we wait the advertised interval before
+                    # polling again instead of hot-looping. When work IS returned
+                    # we loop straight back to drain any backlog up to capacity.
+                    await self._wait_or_stop(float(self._poll_interval))
         finally:
             await self.drain()
             self._eval_executor.shutdown(wait=False, cancel_futures=True)
@@ -284,7 +278,6 @@ class WorkerRuntime:
                 worker_id=self.config.worker_id,
                 catalog_revision=self.evaluator.catalog_revision,
                 capacity=self._claim_limit,
-                wait_seconds=self.config.claim_wait_seconds,
             ),
         )
         assignments = self._validated_assignments(

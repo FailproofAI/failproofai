@@ -36,6 +36,14 @@ it ships.
   dead-letters as one bounded `failed`/`eval_error` run instead of crashing the
   assignment task and forcing it to be reclaimed until its attempt budget runs
   out.
+- Switch the worker from long-polling to **normal (short) polling**, matching the
+  cadence of our other cloud surfaces. `claim` no longer sends `wait_seconds` and
+  the server returns immediately; when a claim comes back empty the worker sleeps
+  the server-advertised `poll_interval_seconds` (from the register response,
+  default 10 s) before polling again, instead of holding a request open for up to
+  25 s. Removes the `claim_wait_seconds` config knob and the
+  `request_timeout_seconds > claim_wait_seconds` constraint; the poll cadence is
+  now tuned centrally by the server, not per worker.
 
 ## 0.0.1b1 — 2026-08-24
 

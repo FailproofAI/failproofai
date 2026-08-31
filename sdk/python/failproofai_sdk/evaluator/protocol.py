@@ -24,7 +24,10 @@ LEASE_GENERATION_HEADER = "X-FailproofAI-Lease-Generation"
 
 HEARTBEAT_INTERVAL_SECONDS = 30
 LEASE_DURATION_SECONDS = 120
-MAX_CLAIM_WAIT_SECONDS = 25
+# Fallback poll cadence if the register response omits poll_interval_seconds. The
+# worker prefers the server-advertised value; claims are normal short polls, never
+# long-polls, so this only bounds idle latency, not connection lifetime.
+DEFAULT_POLL_INTERVAL_SECONDS = 10
 MAX_ATTEMPTS = 5
 
 MAX_CATALOG_DEFINITIONS = 100
@@ -245,6 +248,7 @@ class RegisterResponse(WireModel):
     evaluator_kind: EvaluatorKind
     heartbeat_interval_seconds: int
     lease_duration_seconds: int
+    poll_interval_seconds: int
     claim_limit: int
     disabled_definitions: tuple[str, ...] = ()
     protocol_version: str = PROTOCOL_VERSION
@@ -257,6 +261,7 @@ class RegisterResponse(WireModel):
             evaluator_kind=_enum(EvaluatorKind, data, "evaluator_kind"),
             heartbeat_interval_seconds=_integer(data, "heartbeat_interval_seconds"),
             lease_duration_seconds=_integer(data, "lease_duration_seconds"),
+            poll_interval_seconds=_integer(data, "poll_interval_seconds"),
             claim_limit=_integer(data, "claim_limit"),
             disabled_definitions=_string_list(data, "disabled_definitions"),
         )
@@ -267,7 +272,6 @@ class ClaimRequest(WireModel):
     worker_id: str
     catalog_revision: str
     capacity: int
-    wait_seconds: int
     protocol_version: str = PROTOCOL_VERSION
 
     @classmethod
@@ -277,7 +281,6 @@ class ClaimRequest(WireModel):
             worker_id=_string(data, "worker_id"),
             catalog_revision=_string(data, "catalog_revision"),
             capacity=_integer(data, "capacity"),
-            wait_seconds=_integer(data, "wait_seconds"),
         )
 
 

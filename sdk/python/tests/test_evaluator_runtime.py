@@ -94,7 +94,6 @@ def _runtime(evaluator, client):
             credential="secret",
             worker_id="worker-test",
             max_concurrency=2,
-            claim_wait_seconds=1,
         ),
         client=client,
     )
@@ -666,6 +665,7 @@ def test_invalid_registration_response_does_not_make_runtime_ready():
                 evaluator_kind=self._kind(),
                 heartbeat_interval_seconds=120,
                 lease_duration_seconds=120,
+                poll_interval_seconds=10,
                 claim_limit=1,
             )
 
@@ -711,6 +711,33 @@ def test_lost_claim_response_waits_out_the_lease_before_claiming_again():
         "claim_failures": 1,
         "registration_success": 1,
     }
+
+
+def test_idle_claim_waits_the_advertised_poll_interval_before_polling_again():
+    # Normal short polling: an empty claim returns immediately (no long-poll), so
+    # the worker sleeps the server-advertised poll_interval_seconds — 10 in the
+    # fixture register response — instead of hot-looping. The claim request also no
+    # longer carries a wait_seconds field.
+    evaluator = Evaluator(name="test", version="1")
+
+    class IdleClient(FakeClient):
+        def claim(self, request):
+            self.claim_requests.append(request)
+            return ClaimResponse(assignments=())
+
+    runtime = _runtime(evaluator, IdleClient())
+    waits = []
+
+    async def stop_after_wait(seconds):
+        waits.append(seconds)
+        runtime.stop()
+
+    runtime._wait_or_stop = stop_after_wait
+    asyncio.run(runtime.run_forever())
+
+    assert waits == [10.0]
+    assert len(runtime.client.claim_requests) == 1
+    assert not hasattr(runtime.client.claim_requests[0], "wait_seconds")
 
 
 def test_nonretryable_claim_failure_stops_the_worker():
@@ -776,6 +803,7 @@ def test_register_applies_server_claim_limit_and_disabled_definitions():
                 evaluator_kind=self._kind(),
                 heartbeat_interval_seconds=10,
                 lease_duration_seconds=120,
+                poll_interval_seconds=10,
                 claim_limit=1,
                 disabled_definitions=("disabled",),
             )
@@ -807,13 +835,33 @@ def test_worker_config_requires_dedicated_credentials(monkeypatch):
         WorkerConfig.from_env()
 
 
-def test_worker_config_keeps_long_poll_inside_the_http_timeout(monkeypatch):
-    monkeypatch.setenv("FAILPROOFAI_EVALUATOR_URL", "https://cloud.example")
-    monkeypatch.setenv("FAILPROOFAI_EVALUATOR_TOKEN", "secret")
-    monkeypatch.setenv("FAILPROOFAI_EVALUATOR_CLAIM_WAIT_SECONDS", "20")
-    monkeypatch.setenv("FAILPROOFAI_EVALUATOR_REQUEST_TIMEOUT_SECONDS", "20")
-    with pytest.raises(ValueError, match="must exceed"):
-        WorkerConfig.from_env()
+def test_register_rejects_non_positive_poll_interval():
+    # The worker adopts the server-advertised poll_interval_seconds (normal short
+    # polling — there is no long-poll wait). A non-positive interval would make the
+    # claim loop hot-spin, so registration must refuse it.
+    evaluator = Evaluator(name="test", version="1")
+
+    class ZeroPollClient(FakeClient):
+        def register(self, request):
+            return RegisterResponse(
+                evaluator_instance_id="instance",
+                evaluator_kind=self._kind(),
+                heartbeat_interval_seconds=30,
+                lease_duration_seconds=120,
+                poll_interval_seconds=0,
+                claim_limit=1,
+            )
+
+        @staticmethod
+        def _kind():
+            from failproofai_sdk.evaluator import EvaluatorKind
+
+            return EvaluatorKind.CUSTOMER
+
+    runtime = _runtime(evaluator, ZeroPollClient())
+    with pytest.raises(RuntimeError, match="invalid evaluator timing"):
+        asyncio.run(runtime.register())
+    assert runtime.is_ready() is False
 
 
 def test_worker_config_rejects_header_control_characters(monkeypatch):

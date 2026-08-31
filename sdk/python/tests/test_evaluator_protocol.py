@@ -195,7 +195,7 @@ def test_fixture_constants_match_the_sdk_contract():
     assert contract["timing"] == {
         "heartbeat_interval_seconds": protocol.HEARTBEAT_INTERVAL_SECONDS,
         "lease_duration_seconds": protocol.LEASE_DURATION_SECONDS,
-        "max_claim_wait_seconds": protocol.MAX_CLAIM_WAIT_SECONDS,
+        "poll_interval_seconds": protocol.DEFAULT_POLL_INTERVAL_SECONDS,
         "max_attempts": protocol.MAX_ATTEMPTS,
     }
     assert contract["limits"] == {

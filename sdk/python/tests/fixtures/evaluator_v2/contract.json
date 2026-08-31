@@ -19,7 +19,7 @@
   "timing": {
     "heartbeat_interval_seconds": 30,
     "lease_duration_seconds": 120,
-    "max_claim_wait_seconds": 25,
+    "poll_interval_seconds": 10,
     "max_attempts": 5
   },
   "limits": {
@@ -80,6 +80,7 @@
       "evaluator_kind": "customer",
       "heartbeat_interval_seconds": 30,
       "lease_duration_seconds": 120,
+      "poll_interval_seconds": 10,
       "claim_limit": 4,
       "disabled_definitions": []
     },
@@ -87,8 +88,7 @@
       "protocol_version": "2",
       "worker_id": "pod-7f8c9",
       "catalog_revision": "sha256:b4e2c077aa9f91b5de1f3184ebf96811bce07eec00c7f417896ab269c67c88fb",
-      "capacity": 2,
-      "wait_seconds": 20
+      "capacity": 2
     },
     "claim_response": {
       "protocol_version": "2",

@@ -111,6 +111,7 @@ def _handler_for(state: ProtocolState):
                         "evaluator_kind": kind,
                         "heartbeat_interval_seconds": 30,
                         "lease_duration_seconds": 120,
+                        "poll_interval_seconds": 10,
                         "claim_limit": body["max_concurrency"],
                         "disabled_definitions": [],
                     },
@@ -410,7 +411,6 @@ def _claim(client: EvaluatorClient, worker_id: str):
             worker_id=worker_id,
             catalog_revision="sha256:" + "a" * 64,
             capacity=1,
-            wait_seconds=0,
         )
     )
 
@@ -432,7 +432,6 @@ def test_real_http_worker_survives_lost_result_response_without_duplicate_commit
                 server_url=state.base_url,
                 credential="customer-a-token",
                 worker_id="worker-a",
-                claim_wait_seconds=1,
             ),
             client=_client(state, "customer-a-token"),
         )

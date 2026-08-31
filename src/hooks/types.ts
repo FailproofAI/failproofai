@@ -19,7 +19,7 @@
 export const HOOK_SCOPES = ["user", "project", "local"] as const;
 export type HookScope = (typeof HOOK_SCOPES)[number];
 
-export const INTEGRATION_TYPES = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose", "grok", "qwen"] as const;
+export const INTEGRATION_TYPES = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose", "grok", "qwen", "ori"] as const;
 export type IntegrationType = (typeof INTEGRATION_TYPES)[number];
 
 export const CODEX_HOOK_SCOPES = ["user", "project"] as const;
@@ -1282,6 +1282,142 @@ export const QWEN_TOOL_MAP: Record<string, string> = {
   todo_write: "TodoWrite",
 };
 
+
+// ── Ori (OpenRouter's ori) ──────────────────────────────────────────────────
+//
+// `ori` is two products behind one binary, and only the second is this
+// integration:
+//
+//   1. A LAUNCHER for other agent CLIs (`ori claude`, `ori codex`, `ori grok`,
+//      `ori opencode`, `ori hermes`, `ori omp`, `ori prime-agent`, `ori kilo`,
+//      `ori dsh`) that runs the real third-party binary under OpenRouter
+//      credentials. It injects credentials and NOTHING else — verified live
+//      against ori 0.12.0+68f9a36: `ori claude` passes `--settings '<json>'`
+//      carrying only `apiKeyHelper` + `env`; `ori codex` passes `-c
+//      model_provider=…` key overrides (which override `config.toml` keys, a
+//      different file from `hooks.json`); `ori grok` and `ori opencode` set env
+//      vars only; and NONE of them redirect HOME or a config dir. Claude's
+//      `--settings` MERGES (proven: a project SessionStart hook fired
+//      identically with and without ori's exact blob) and opencode's
+//      `OPENCODE_CONFIG_CONTENT` merges too (proven against `opencode debug
+//      config`: the `plugin` array survived intact and `openrouter` was added
+//      beside the pre-existing provider). So failproofai's EXISTING per-CLI
+//      hooks keep enforcing under `ori <agent>`, and this integration
+//      deliberately does nothing for that path.
+//
+//   2. ori's OWN agent — bare `ori` / `ori code`, the built-in
+//      `@ori-runloop/agent-loop` harness. THAT is what this integration gates.
+//
+// Enforcement is via ori's PUBLISHED EXTENSION POINTS, supplied by a feature: a
+// workspace package under the global workspace's `features/`, AUTO-DISCOVERED
+// with no config file to register it in (like Goose's dropped plugin dir, and
+// unlike OpenCode, which must be named in `opencode.json`). failproofai
+// generates that feature at `~/.ori/global/features/failproofai/`. USER scope
+// only — bare `ori` boots the GLOBAL workspace rather than the project's, so
+// one install covers every project and there is no project-scope equivalent.
+//
+// Three points, each `policy: "unique"` (exactly one provider apiece, so a
+// competing feature claiming one displaces us):
+//
+//   approval-policy       static {defaultAction, rules[]} — consulted in BOTH modes
+//   approval-asker        dynamic per-call callback       — MANUAL mode only
+//   unattended-approvals  dynamic per-call callback       — unattended runs
+//
+// **The mode caveat is the whole story for coverage** (verified live). ori's
+// approval mode defaults to `self-drive`, which "approves every command without
+// prompting", and in that mode the DYNAMIC points are NEVER CALLED. Proven
+// three ways: no callback fired under self-drive; still none after adding
+// `approval-policy` with `defaultAction:"ask"` (so `ask` degrades to
+// auto-approve); but `defaultAction:"reject"` DID block every tool call — which
+// proves the static point is wired and that it is specifically the dynamic
+// asker self-drive skips. So failproofai's per-argument policies enforce on ori
+// only under `--approvals manual` (or `/approvals` → manual in the TUI). There
+// is no config key or env var to change that default: searched `config.json`,
+// `ori.md` frontmatter, the `ORI_*` env surface and the shipped selfdev docs.
+// `ORI_STATIC_APPROVAL_POLICY` below is what we can still enforce in the
+// default mode, and it is deliberately `ask` (a no-op there) rather than
+// `reject`, because claiming the point with a blanket reject would brick every
+// self-drive session the moment failproofai is installed.
+//
+// The one thing ori does BETTER than every other integration: both dynamic
+// points declare `failureBehavior: "deny"` — "a throwing, rejecting, or
+// malformed provider denies the request". **ori fails closed natively**, so a
+// failproofai fault blocks the call instead of waving it through. Goose and
+// OpenClaw fail open today; everywhere else we built fail-closed ourselves.
+//
+// The verdict shape is `{outcome: "allow" | "deny"}` — binary, and NO reason
+// string reaches the model, so a denial arrives as a bare tool failure.
+// `instruct()` therefore degrades to allow + a stderr note. There is no Stop
+// event at all, so the 5 `require-*-before-stop` builtins are INAPPLICABLE on
+// ori, exactly as on Hermes and Goose.
+//
+// Gate payload, captured live off real tool calls (ori 0.12.0+68f9a36 driving
+// nvidia/nemotron-3.5-lightning:free):
+//   {tool:"bash",  arguments:[{name:"command"}],                capabilities:["execute","read","write"]}
+//   {tool:"read",  arguments:[{name:"path"}],                   capabilities:["read"]}
+//   {tool:"write", arguments:[{name:"path"},{name:"content"}],  capabilities:["write"]}
+//   {tool:"glob",  arguments:[{name:"pattern"}],                capabilities:["read"]}
+//   {tool:"grep",  arguments:[{name:"pattern"},{name:"path"}],  capabilities:["read"]}
+//   {tool:"edit",  arguments:[{name:"patch"}],                  capabilities:["read","write"]}
+//
+// Two properties that bite:
+//   • `arguments` is a flat name/value STRING array — every value arrives
+//     stringified, so a policy expecting a structured tool input sees text.
+//   • The gate fires TWICE per tool call: once with `escalated:false`, then
+//     again with `escalated:true` plus a synthetic `{name:"escalated",
+//     value:"true"}` argument. A policy must be idempotent across that ladder.
+//
+// `edit` is the awkward one: it carries the entire change as a single `patch`
+// string in OpenAI apply_patch format (`*** Begin Patch` / `*** Update File:
+// <path>` / `*** End Patch`) with NO separate path argument — so `file_path`,
+// which `block-env-files`, `block-secrets-write` and every other path builtin
+// reads, is simply absent and those builtins would never fire on an edit.
+// `oriPatchFilePaths()` in tool-name-canonicalize.ts recovers it from the patch
+// header. KNOWN GAP: a multi-file patch yields several paths and `file_path`
+// holds only one, so builtins see the FIRST and a policy that would have denied
+// on a later file does not fire; the full list is exposed as `ori_patch_files`
+// for custom policies to read.
+export const ORI_HOOK_SCOPES = ["user"] as const;
+export type OriHookScope = (typeof ORI_HOOK_SCOPES)[number];
+
+// Only PreToolUse: all three approval points gate a tool call and nothing else.
+// ori has no prompt-submit, post-tool, session or stop hook we can subscribe to
+// (its feature-to-feature `hooks` export is documented upstream as "consumer
+// wiring and dispatch land in #1068" — i.e. not wired yet).
+export const ORI_HOOK_EVENT_TYPES = ["PreToolUse"] as const;
+export type OriHookEventType = (typeof ORI_HOOK_EVENT_TYPES)[number];
+
+// ori tool ids arrive lowercase. All six below were observed at the live
+// approval gate; unknown tools pass through unchanged so they still reach the
+// audit, just unmatched by name-keyed builtins.
+export const ORI_TOOL_MAP: Record<string, string> = {
+  bash: "Bash",
+  read: "Read",
+  write: "Write",
+  edit: "Edit",
+  glob: "Glob",
+  grep: "Grep",
+};
+
+// Keyed by the CANONICAL tool name (the handler canonicalizes the name first).
+// `bash`'s `command`, `glob`/`grep`'s `pattern` and `grep`'s `path` are already
+// the keys Claude builtins read, so they need no entry; `read`/`write` deliver
+// the path as `path`. `Edit` is absent on purpose — its path is inside the
+// patch blob, not a key, and is derived instead.
+export const ORI_TOOL_INPUT_MAP: Record<string, Record<string, string>> = {
+  Read: { path: "file_path" },
+  Write: { path: "file_path" },
+};
+
+// Claimed so `approval-policy` is ours (it is `unique`, so leaving it unclaimed
+// invites another feature to take it), but deliberately inert: `ask` is what
+// self-drive already does. See the mode caveat above for why this is not
+// `reject`.
+export const ORI_STATIC_APPROVAL_POLICY = {
+  defaultAction: "ask",
+  rules: [] as const,
+} as const;
+
 export const HOOK_EVENT_TYPES = [
   "SessionStart",
   "SessionEnd",
@@ -1376,7 +1512,7 @@ export interface SessionMetadata {
    *  Use this for round-tripping the agent-side event name in response shapes
    *  when stdin doesn't include `hook_event_name`. */
   rawHookEventName?: string;
-  /** Which agent CLI fired this hook (claude | codex | copilot | cursor | opencode | pi | hermes | openclaw | factory | devin | antigravity | goose). Set by handler.ts from --cli. */
+  /** Which agent CLI fired this hook (claude | codex | copilot | cursor | opencode | pi | hermes | openclaw | factory | devin | antigravity | goose | ori). Set by handler.ts from --cli. */
   cli?: IntegrationType;
 }
 

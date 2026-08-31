@@ -179,9 +179,9 @@ describe("hooks/install-prompt", () => {
         "install",
       );
 
-      // 1 aggregate "all" + 2 detected + 12 undetected
-      expect(options).toHaveLength(15);
-      expect(undetected).toEqual(["copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose", "grok", "qwen"]);
+      // 1 aggregate "all" + 2 detected + 13 undetected
+      expect(options).toHaveLength(16);
+      expect(undetected).toEqual(["copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose", "grok", "qwen", "ori"]);
 
       expect(options[0]).toMatchObject({ isAll: true, detected: true, value: ["claude", "codex"] });
       expect(options[0].label).toBe("Install for all 2 detected");
@@ -208,6 +208,7 @@ describe("hooks/install-prompt", () => {
         "Goose",
         "grok CLI",
         "Qwen Code",
+        "Ori",
       ]);
     });
 
@@ -224,16 +225,16 @@ describe("hooks/install-prompt", () => {
       expect(options.every((o) => o.detected)).toBe(true);
     });
 
-    it("install with all 14 detected: no aggregate-row needed beyond the standard one, no undetected section", async () => {
+    it("install with all 15 detected: no aggregate-row needed beyond the standard one, no undetected section", async () => {
       const { buildCliMenuOptions } = await import("../../src/hooks/install-prompt");
       const { options, undetected } = buildCliMenuOptions(
-        ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose", "grok", "qwen"],
+        ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose", "grok", "qwen", "ori"],
         "install",
       );
 
       expect(undetected).toEqual([]);
-      expect(options).toHaveLength(15); // aggregate + 14 detected
-      expect(options[0].label).toBe("Install for all 14 detected");
+      expect(options).toHaveLength(16); // aggregate + 15 detected
+      expect(options[0].label).toBe("Install for all 15 detected");
     });
 
     it("install with 1 detected + many undetected: skips aggregate row (1 ≯ 1)", async () => {

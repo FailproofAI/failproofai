@@ -1030,6 +1030,129 @@ failproofai policies --install --cli qwen --scope project
 ```
 
 ### Dogfood configs for Factory / Devin / Antigravity / Goose / grok / Qwen
+### Ori hooks (`~/.ori/global/features/failproofai/`)
+
+Like Hermes and OpenClaw, this repo ships **no dogfood ori config** — ori is user-scope
+only, so an install here would rewire the contributor's whole machine rather than just
+this repo. Ori is a **dual-pillar** integration (live hooks + audit). Everything below was
+**verified live against ori 0.12.0+68f9a36** driving `nvidia/nemotron-3.5-lightning:free`;
+almost none of it is derivable from ori's shipped `.d.ts`.
+
+**`ori` is two products behind one binary, and only the second one is this integration.**
+
+1. **A launcher** — `ori claude`, `ori codex`, `ori grok`, `ori opencode`, `ori hermes`,
+   `ori omp`, `ori prime-agent`, `ori kilo`, `ori dsh` — which runs the real third-party
+   binary under OpenRouter credentials. It injects credentials and **nothing else**, and
+   critically it does **not** redirect `HOME` or any config dir:
+
+   | Launcher | What ori injects |
+   |----------|------------------|
+   | `ori claude` | `--settings '<json>'` carrying only `apiKeyHelper` + `env` |
+   | `ori codex` | `-c model_provider=…` key overrides (against `config.toml`, a *different file* from `hooks.json`) |
+   | `ori grok` | env only (`GROK_MODELS_BASE_URL`, `GROK_XAI_API_BASE_URL`, `XAI_API_KEY`, telemetry off) |
+   | `ori opencode` | `OPENCODE_CONFIG_CONTENT` inline JSON |
+
+   Both injections **merge** rather than replace, and that was proven rather than assumed:
+   a project `SessionStart` hook fired identically with and without ori's exact
+   `--settings` blob, and against `opencode debug config` the `plugin` array survived
+   `OPENCODE_CONFIG_CONTENT` intact with `openrouter` added *beside* the pre-existing
+   provider. **So failproofai's existing per-CLI hooks keep enforcing under `ori <agent>`
+   and we deliberately ship nothing for that path.** (`ori hermes` is unverified — hermes
+   was not installed on the probe box.) This matters because it is the exact bug class
+   from the grok integration, where our Claude hooks ran *inert* inside another CLI.
+
+2. **ori's own agent** — bare `ori` / `ori code`, the built-in `@ori-runloop/agent-loop`
+   harness. That is what this integration gates.
+
+**Enforcement is via published EXTENSION POINTS, not hook events.** A feature is a
+workspace package under the global workspace's `features/`, **auto-discovered with no
+config file to register it in** (like Goose's dropped plugin dir, unlike OpenCode which
+must be named in `opencode.json`). `failproofai policies --install --cli ori` generates
+`~/.ori/global/features/failproofai/{feature.ts,package.json}` plus a `failproofai.json`
+that exists only to give the `Integration` interface a settings path — ori ignores it.
+**User scope only:** bare `ori` boots the **global** workspace rather than the project's,
+so one install covers every project and a project-scope install would never load.
+
+Three points, each `policy: "unique"` (one provider apiece — a competing feature displaces
+us):
+
+| Point | Fires | On provider failure |
+|-------|-------|---------------------|
+| `approval-policy` | both modes — static `{defaultAction, rules[]}` | ignore-malformed |
+| `approval-asker` | **manual mode only** — dynamic per-call callback | **deny** |
+| `unattended-approvals` | unattended runs — dynamic per-call callback | **deny** |
+
+**The mode caveat is the whole story for coverage.** ori's approval mode defaults to
+`self-drive`, which "approves every command without prompting", and in that mode the
+**dynamic points are never called**. Isolated three ways: no callback fired under
+self-drive; still none after claiming `approval-policy` with `defaultAction:"ask"` (so
+`ask` degrades to auto-approve); but `defaultAction:"reject"` **did** block every tool
+call — which proves the static point is wired and that self-drive skips specifically the
+dynamic asker. So failproofai's per-argument policies enforce on ori only under
+`--approvals manual` (or `/approvals` in the TUI). **There is no config key or env var to
+change that default** — searched `config.json`, `ori.md` frontmatter, the `ORI_*` env
+surface and the shipped selfdev docs. We claim `approval-policy` with an inert `ask`
+rather than a blanket `reject` on purpose: claiming it with `reject` would brick every
+self-drive session the moment failproofai is installed.
+
+**ori is the only integration that fails closed for free.** Both dynamic points declare
+`failureBehavior: "deny"` — *"a throwing, rejecting, or malformed provider denies the
+request"* — so the generated shim lets errors propagate instead of swallowing them, and a
+failproofai fault blocks the call. Goose and OpenClaw fail **open** today.
+`FAILPROOFAI_ORI_FAIL_OPEN=1` opts out.
+
+**Gate payload** (captured off real tool calls; `ORI_TOOL_MAP` / `ORI_TOOL_INPUT_MAP` in
+`types.ts` are the canonicalization):
+
+| ori tool | arguments | capabilities | → canonical |
+|----------|-----------|--------------|-------------|
+| `bash` | `command` | execute, read, write | `Bash` (already canonical) |
+| `read` | `path` | read | `Read` (`path`→`file_path`) |
+| `write` | `path`, `content` | write | `Write` (`path`→`file_path`) |
+| `glob` | `pattern` | read | `Glob` (already canonical) |
+| `grep` | `pattern`, `path` | read | `Grep` (already canonical) |
+| `edit` | `patch` | read, write | `Edit` — **see below** |
+
+Two properties that bite. The gate **fires twice per tool call** — `escalated:false`, then
+`escalated:true` with a synthetic `{name:"escalated",value:"true"}` argument the shim
+drops from the tool input, so policies must be idempotent across the ladder. And
+`arguments` is a flat name/value **string** array, so every value arrives stringified.
+
+**`edit` is the sharp edge.** It carries the entire change as one `patch` string in OpenAI
+apply_patch format (`*** Begin Patch` / `*** Update File: <path>` / `*** End Patch`) with
+**no path argument at all** — so `file_path`, which `block-env-files`,
+`block-secrets-write` and every other path builtin reads, was simply absent and those
+builtins would have silently no-opped on every edit. `oriPatchFilePaths()` in
+`tool-name-canonicalize.ts` recovers it from the header and also exposes
+`ori_patch_files`. **KNOWN GAP:** a multi-file patch yields several paths and `file_path`
+holds one, so a builtin that would have denied on a later file does not fire; asserted in
+`__tests__/hooks/ori-canonicalize.test.ts` so it cannot rot into a silent surprise.
+
+The verdict shape is `{outcome:"allow"|"deny"}` — **no reason string reaches the model**,
+so a denial arrives as a bare tool failure, `instruct()` degrades to allow + a stderr note
+(as on Goose and Hermes), and **there is no `Stop` event at all**, leaving the 5
+`require-*-before-stop` builtins **inapplicable** on ori.
+
+**Audit pillar.** The transcript is SQLite at `~/.ori/global/.ori/state.sqlite`:
+`ori_agent_loop_sessions` (session_id, title, **cwd**, model, turns, cost_usd, archived,
+first_prompt, parent_session_id) and `ori_agent_loop_history`, whose **misnamed `prompt`
+column holds the entire serialized conversation** — `{"content":[{role,content},…]}` with
+Claude-style typed blocks (`{type:"reasoning"|"text"}`, `{type:"tool-call",id,name,params}`)
+and results in `role:"tool"` messages, paired by `call-<uuid>` id. Three plausible stores
+are dead ends, recorded so nobody re-derives them: the session dir's `metadata.json` is a
+summary with **no messages** even for a successful tool-using run; `code-*.jsonl` is
+lifecycle logging with **zero** tool records; and the rich `AgentRuntimeEvent` stream
+exists only transiently on `ori code --output jsonl` stdout. `lib/ori-sessions.ts` (pure
+parser) + `lib/ori-projects.ts`; `ORI_HOME` / `ORI_DB_PATH` override for tests.
+**Inherent limitation:** ori stores no per-message timestamp, so every entry carries the
+session's `updated_at` and per-message timing is unrecoverable.
+
+For production users the recommended Ori install is:
+```bash
+failproofai policies --install --cli ori --scope user
+```
+
+### Dogfood configs for Factory / Devin / Antigravity / Goose
 
 Like the Codex / Cursor / OpenCode / Pi setups above, this repo ships
 **project-scope dogfood configs** for the six newest CLIs so failproofai

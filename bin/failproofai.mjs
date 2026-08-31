@@ -86,7 +86,7 @@ let lastPolicyAction = null;
  * passed. __tests__/hooks/integrations.test.ts asserts this equals
  * INTEGRATION_TYPES so the next CLI cannot repeat it.
  */
-const INSTALLABLE_CLIS = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose", "grok", "qwen"];
+const INSTALLABLE_CLIS = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose", "grok", "qwen", "ori"];
 const VALID_CLIS_USAGE = `Missing value(s) for --cli. Usage: --cli ${INSTALLABLE_CLIS.join(" ")} (or any subset)`;
 
 async function track(name, props) {
@@ -134,7 +134,7 @@ const hookIdx = args.indexOf("--hook");
 if (hookIdx >= 0) {
   if (!args[hookIdx + 1]) {
     console.error("Error: Missing event type after --hook");
-    console.error("Usage: failproofai --hook <event> [--cli <claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose|grok|qwen>]");
+    console.error("Usage: failproofai --hook <event> [--cli <claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose|grok|qwen|ori>]");
     process.exit(1);
   }
   const eventType = args[hookIdx + 1];
@@ -158,6 +158,7 @@ if (hookIdx >= 0) {
       || cliArg === "goose"
       || cliArg === "grok"
       || cliArg === "qwen"
+      || cliArg === "ori"
     )
       ? cliArg
       : "claude";
@@ -423,7 +424,7 @@ async function runCli() {
             label: "options",
             entries: [
               ["--hook <event>", "PreToolUse, PostToolUse, UserPromptSubmit, Stop, SubagentStop, SessionStart, SessionEnd, PreCompact, Notification, PermissionRequest"],
-              ["--cli <name>", "claude, codex, copilot, cursor, opencode, pi, hermes, openclaw, factory, devin, antigravity, goose. Defaults to claude. It selects which payload shape to expect: each CLI names its events and tool arguments differently, and failproofai canonicalizes them."],
+              ["--cli <name>", "claude, codex, copilot, cursor, opencode, pi, hermes, openclaw, factory, devin, antigravity, goose, ori. Defaults to claude. It selects which payload shape to expect: each CLI names its events and tool arguments differently, and failproofai canonicalizes them."],
             ],
           },
           {
@@ -1684,7 +1685,7 @@ async function runCli() {
     }
 
     // --cli accepts one or more space-separated values, optionally repeated.
-    const VALID_CLIS = new Set(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose"]);
+    const VALID_CLIS = new Set(INSTALLABLE_CLIS);
     const cliFlagValues = [];
     const cliConsumedIdxs = new Set();
     const cliFlagIdxs = rest.map((a, i) => (a === "--cli" ? i : -1)).filter((i) => i >= 0);

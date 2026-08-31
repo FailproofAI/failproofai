@@ -1,17 +1,17 @@
 ---
 title: "Agent harnesses"
-description: "Capture sessions and enforce policies across all 12 supported agent harnesses."
+description: "Capture sessions and enforce policies across all 15 supported agent harnesses."
 icon: "plug-zap"
 ---
 
-A harness is whatever your agent actually runs inside. Failproof AI supports twelve of them, in two classes:
+A harness is whatever your agent actually runs inside. Failproof AI supports fifteen of them, in two classes:
 
-- **Coding CLIs** (10) — Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Factory Droid, Devin CLI, Antigravity CLI, Goose
+- **Coding CLIs** (13) — Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Factory Droid, Devin CLI, Antigravity CLI, Goose, grok CLI, Qwen Code, Ori
 - **Chat and assistant gateways** (2) — Hermes (Slack, Telegram, cron), OpenClaw (self-hosted assistant)
 
 The same policies and the same session history apply whichever one an agent runs in. One adapter layer maps each harness's native event names, tool names, and tool-input fields onto 29 canonical events before any policy runs.
 
-An agent that runs in **none** of the twelve is instrumented directly with the [Python SDK](/reference/custom-agents). That is a different contract, and worth stating plainly: the SDK delivers tracing, sessions, evaluations and audits — **it does not enforce policies on its own.** Blocking an unsafe action before it executes needs an enforcement hook at your runtime's tool boundary; [contact us](mailto:support@befailproof.ai) and we will map it.
+An agent that runs in **none** of the fifteen is instrumented directly with the [Python SDK](/reference/custom-agents). That is a different contract, and worth stating plainly: the SDK delivers tracing, sessions, evaluations and audits — **it does not enforce policies on its own.** Blocking an unsafe action before it executes needs an enforcement hook at your runtime's tool boundary; [contact us](mailto:support@befailproof.ai) and we will map it.
 
 ## Hook scopes
 
@@ -20,9 +20,10 @@ An agent that runs in **none** of the twelve is instrumented directly with the [
 | Claude Code | User, project, local |
 | Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi | User, project |
 | Factory Droid, Devin CLI, Antigravity CLI, Goose | User, project |
-| Hermes, OpenClaw | User |
+| grok CLI, Qwen Code | User, project |
+| Hermes, OpenClaw, Ori | User |
 
-Claude Code is the only harness with a **local** scope. Hermes and OpenClaw have no project configuration at all — they are user scope only, and the CLI refuses `--scope project` for them.
+Claude Code is the only harness with a **local** scope. Hermes, OpenClaw and Ori have no project configuration at all — they are user scope only, and the CLI refuses `--scope project` for them. Ori is user scope for a different reason than the gateways: bare `ori` boots its **global** workspace rather than the project's, so one install covers every project.
 
 Each integration normalizes its native hook event names, tool names, and tool-input fields before policies run. A policy can only act on events the harness exposes; test end-of-turn and instruction behavior on the exact harness and version you deploy.
 
@@ -42,8 +43,15 @@ Each integration normalizes its native hook event names, tool names, and tool-in
 | Devin CLI | `~/.config/devin/config.json` | `.devin/config.json` |
 | Antigravity CLI | `~/.gemini/config/hooks.json` | `.agents/hooks.json` |
 | Goose | `~/.agents/plugins/failproofai/hooks/hooks.json` | `.agents/plugins/failproofai/hooks/hooks.json` |
+| grok CLI | `~/.grok/hooks/failproofai.json` | `.grok/hooks/failproofai.json` |
+| Qwen Code | `~/.qwen/settings.json` | `.qwen/settings.json` |
+| Ori | `~/.ori/global/features/failproofai/` | — |
 
-OpenCode, Pi and OpenClaw are plugin integrations rather than shell-hook integrations: the file above registers a plugin or extension package, which calls the failproofai binary and translates its verdict.
+OpenCode, Pi, OpenClaw and Ori are plugin integrations rather than shell-hook integrations: the file above registers a plugin or extension package, which calls the failproofai binary and translates its verdict. Ori needs no registration step — a feature directory dropped into its workspace is auto-discovered, as with Goose's plugin directory.
+
+### Ori is also a launcher, and that path needs nothing
+
+`ori` runs other agent CLIs under OpenRouter credentials (`ori claude`, `ori codex`, `ori grok`, `ori opencode`, `ori hermes`, and others). On that path it injects credentials and nothing else — it does not redirect `HOME` or any configuration directory, and the settings it does inject **merge** rather than replace. So the hooks you already installed for those harnesses keep enforcing under `ori <agent>`, with no ori-specific install. The `ori` integration below covers only ori's **own** agent, reached with bare `ori` or `ori code`.
 
 ## Enforcement capability
 
@@ -63,6 +71,9 @@ OpenCode, Pi and OpenClaw are plugin integrations rather than shell-hook integra
 | Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, conditional `PermissionRequest` | Permission hooks do not run in every permission mode; post-tool and session events are observational. |
 | Antigravity CLI | `PreToolUse`, `Stop` | User-prompt and post-tool verdicts are observational; prompt instructions can still be injected. |
 | Goose | `PreToolUse` | User-prompt, post-tool, and session events are observational. A native blocking stop hook exists upstream but is not installed by the current adapter. |
+| grok CLI | `PreToolUse`, `Stop`, `SubagentStop` | grok advertises exactly three blocking events; user-prompt, post-tool and session events are observational no matter what verdict we send. |
+| Qwen Code | `PreToolUse`, `Stop`, `TaskCreated`, `TaskCompleted` | Post-tool, permission, session and subagent events are observational in the current adapter. |
+| Ori | `PreToolUse` | The only gate ori exposes. **Requires manual approval mode** — see the condition below. No stop, prompt, post-tool or session event exists to subscribe to. |
 
 An event absent from both columns is **not verified** — treat it as unknown, never as blocking.
 
@@ -81,6 +92,11 @@ Several rows above are real gates that are nonetheless bounded or conditional. A
 | OpenCode | `PermissionRequest` | A dead hook: `permission.ask` is declared and documented upstream but never invoked, so the policy does not even run |
 | Hermes | `Stop` | No `Stop` event is installed, by choice. The five `require-*-before-stop` builtins are inapplicable on Hermes |
 | Goose | `Stop` | Same outcome: no `Stop` is installed, so the five `require-*-before-stop` builtins are inapplicable |
+| grok CLI | `Stop` | Honoured only when the turn ends with `reason: "end_turn"`; the session-shutdown fire is parsed and discarded upstream. Capped at 8 continuations per turn |
+| grok CLI | project scope | grok discovers project hooks only inside a **git repo**, and only in a folder it considers **trusted** |
+| Qwen Code | `Stop` | `stop_hook_active` is already true on the FIRST fire, so it cannot be used as a loop guard |
+| Ori | `PreToolUse` | **Only under `--approvals manual`.** Ori's default mode, `self-drive`, approves every command without consulting the dynamic approval points, so policies never run. Switch with `ori code --approvals manual` or `/approvals` in the TUI |
+| Ori | `Stop` | No `Stop` event exists, so the five `require-*-before-stop` builtins are inapplicable |
 
 ### Where `instruct()` degrades
 
@@ -90,6 +106,7 @@ A `deny` is not the only verdict a policy returns. `instruct()` hands the agent 
 | --- | --- |
 | Hermes | Every event |
 | Goose | Every event |
+| Ori | Every event |
 | Pi | Every event except `Stop` |
 | OpenClaw | Every event except `Stop` |
 | Factory Droid | Every event except `Stop` |
@@ -115,6 +132,9 @@ A version is part of the claim, not a footnote. Re-test after upgrading an agent
 | Devin CLI | 3000.2.17 |
 | Antigravity CLI | agy 1.1.8 |
 | Goose | 1.43.0 |
+| grok CLI | 1.0.3 (`1a29d5bc12`) |
+| Qwen Code | qwen-code 0.21.12 |
+| Ori | 0.12.0+68f9a36 |
 
 <Warning>
   Several Codex rows cite source paths that were restructured after `fe01054a` and no longer exist at 0.147.0. They are not known-wrong, but they are unverified against any shipping Codex and are due for a re-probe. Only the Codex `PostToolUse` row was re-probed live.
@@ -122,7 +142,7 @@ A version is part of the claim, not a footnote. Re-test after upgrading an agent
 
 ## VS Code agent mode
 
-VS Code's built-in Copilot Chat agent mode is **not a thirteenth integration**. It discovers hook configuration from `.github/hooks/*.json`, `~/.copilot/hooks/*.json` and `~/.claude/settings.json` — exactly the paths the `copilot` and `claude` installs already write — and uses the same Claude-shaped deny contract. Installing either one already enforces inside VS Code agent-mode sessions.
+VS Code's built-in Copilot Chat agent mode is **not a fourteenth integration**. It discovers hook configuration from `.github/hooks/*.json`, `~/.copilot/hooks/*.json` and `~/.claude/settings.json` — exactly the paths the `copilot` and `claude` installs already write — and uses the same Claude-shaped deny contract. Installing either one already enforces inside VS Code agent-mode sessions.
 
 The feature is a preview and needs an active GitHub Copilot subscription plus agent mode.
 

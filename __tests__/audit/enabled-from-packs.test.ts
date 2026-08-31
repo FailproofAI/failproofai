@@ -17,6 +17,14 @@
  * its own history. This is only about which of its findings are already covered.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+
+// Every test here calls `vi.resetModules()` and re-imports the whole audit
+// module graph, so the cost grows with each integration we ship — the graph now
+// pulls a sessions parser, a projects enumerator and an adapter per CLI. At 15
+// integrations the file runs ~3.4s alone and intermittently crossed the default
+// 5s budget under a loaded parallel run. The assertions are unchanged; only the
+// budget is, because the thing that got slower is the import, not the audit.
+vi.setConfig({ testTimeout: 20_000 });
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";

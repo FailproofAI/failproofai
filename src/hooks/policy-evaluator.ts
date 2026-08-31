@@ -378,6 +378,24 @@ export async function evaluatePolicies(
         };
       }
 
+      // Ori: the generated ori feature parses a flat {permission, reason} and
+      // returns ori's own {outcome:"allow"|"deny"} to the approval extension
+      // point. There is exactly one event (PreToolUse) — ori exposes no Stop,
+      // prompt, post-tool or session gate — so unlike Pi/OpenClaw there is no
+      // Stop special case to write. The reason is carried for the operator's
+      // logs only: ori's verdict shape has no reason field, so a denial reaches
+      // the model as a bare tool failure.
+      if (session?.cli === "ori") {
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ permission: "deny", reason: blockedMessage }),
+          stderr: "",
+          policyName: policy.name,
+          reason,
+          decision: "deny",
+        };
+      }
+
       // OpenCode: `session.idle` is a notification-only bus event — by the
       // time the plugin handler fires, OpenCode has already gone idle and
       // throwing from the handler does not force-retry. The only working
@@ -1051,6 +1069,26 @@ export async function evaluatePolicies(
     // additional-context channel), and Goose has no Stop event, so instruct
     // degrades to allow + stderr note, like Hermes / Factory non-Stop events.
     if (session?.cli === "goose") {
+      const stderrMsg = instructEntries
+        .map((e) => `[failproofai] ${e.policyName}: ${e.reason}`)
+        .join("\n");
+      return {
+        exitCode: 0,
+        stdout: "",
+        stderr: stderrMsg + "\n",
+        policyName: policyNames[0],
+        policyNames,
+        reason: combined,
+        decision: "instruct",
+      };
+    }
+
+    // Ori: the approval extension points return {outcome:"allow"|"deny"} and
+    // nothing else — there is no additional-context channel to carry a
+    // directive, and no Stop event to convert one into a retry. So instruct()
+    // allows the action and writes the directive to stderr for the operator's
+    // logs; the model never sees it. Same degradation as Goose and Hermes.
+    if (session?.cli === "ori") {
       const stderrMsg = instructEntries
         .map((e) => `[failproofai] ${e.policyName}: ${e.reason}`)
         .join("\n");

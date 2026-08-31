@@ -28,6 +28,8 @@ import {
   GROK_TOOL_MAP,
   GROK_TOOL_INPUT_MAP,
   QWEN_TOOL_MAP,
+  ORI_TOOL_MAP,
+  ORI_TOOL_INPUT_MAP,
 } from "./types";
 
 /**
@@ -65,6 +67,9 @@ export function canonicalizeToolName(
   // qwen: run_shell_command→Bash, write_file/read_file/edit→file ops, …
   // (verified live against qwen-code 0.21.12).
   if (cli === "qwen") return QWEN_TOOL_MAP[raw] ?? raw;
+  // Ori: tool ids arrive lowercase (bash/read/write/edit/glob/grep) — all six
+  // captured at the live approval gate on ori 0.12.0+68f9a36.
+  if (cli === "ori") return ORI_TOOL_MAP[raw] ?? raw;
   return raw;
 }
 
@@ -109,10 +114,63 @@ export function canonicalizeToolInput(
   // `.env` read walks past block-env-files (verified grok 1.0.3). qwen needs no
   // entry at all — all six of its tools deliver canonical keys.
   else if (cli === "grok") perToolMap = GROK_TOOL_INPUT_MAP[toolName];
+  // Ori: read/write deliver the path as `path`; bash/glob/grep are already
+  // canonical. `edit` is special — its path lives INSIDE the patch blob and is
+  // derived below rather than renamed, because there is no key to rename.
+  else if (cli === "ori") {
+    if (toolName === "Edit") return canonicalizeOriEditInput(rawInput as Record<string, unknown>);
+    perToolMap = ORI_TOOL_INPUT_MAP[toolName];
+  }
   if (!perToolMap) return rawInput;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(rawInput as Record<string, unknown>)) {
     out[perToolMap[k] ?? k] = v;
   }
   return out;
+}
+
+/**
+ * Recover the file path(s) from an ori `edit` patch blob.
+ *
+ * ori's edit tool carries the entire change as ONE `patch` string in OpenAI
+ * apply_patch format and passes no path argument at all, so `file_path` — which
+ * `block-env-files`, `block-secrets-write` and every other path builtin reads —
+ * would simply be absent and those builtins would never fire on an edit.
+ * Captured live off ori 0.12.0+68f9a36:
+ *
+ *   *** Begin Patch
+ *   *** Update File: data.txt
+ *   @@
+ *   -alpha
+ *   +omega
+ *   *** End Patch
+ *
+ * Returns every path the patch touches, in file order.
+ */
+export function oriPatchFilePaths(patch: string): string[] {
+  const re = /^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$/gm;
+  const out: string[] = [];
+  for (const m of patch.matchAll(re)) {
+    const path = m[1]?.trim();
+    if (path) out.push(path);
+  }
+  return out;
+}
+
+/**
+ * ori `edit` → canonical input. Adds `file_path` (the FIRST path the patch
+ * touches) so path builtins fire, and `ori_patch_files` (all of them) so a
+ * custom policy can see the rest. `patch` is preserved verbatim.
+ *
+ * KNOWN GAP: `file_path` holds one path, so on a multi-file patch a builtin
+ * that would have denied on a later file does not fire. Documented in types.ts
+ * and asserted by __tests__/hooks/ori-canonicalize.test.ts so it cannot rot
+ * into a silent surprise.
+ */
+function canonicalizeOriEditInput(input: Record<string, unknown>): Record<string, unknown> {
+  const patch = input.patch;
+  if (typeof patch !== "string") return input;
+  const paths = oriPatchFilePaths(patch);
+  if (paths.length === 0) return input;
+  return { ...input, file_path: paths[0], ori_patch_files: paths };
 }

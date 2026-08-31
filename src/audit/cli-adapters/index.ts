@@ -25,6 +25,7 @@ import { listDevinTranscriptMetadata, streamDevinEvents } from "./devin";
 import { listGooseTranscriptMetadata, streamGooseEvents } from "./goose";
 import { listGrokTranscriptMetadata, streamGrokEvents } from "./grok";
 import { listQwenTranscriptMetadata, streamQwenEvents } from "./qwen";
+import { listOriTranscriptMetadata, streamOriEvents } from "./ori";
 
 export type { ListOpts };
 
@@ -134,6 +135,11 @@ export const ADAPTERS: Record<IntegrationType, CliAdapter> = {
     cli: "qwen",
     listTranscripts: listQwenTranscriptMetadata,
     streamEvents: streamQwenEvents,
+  },
+  ori: {
+    cli: "ori",
+    listTranscripts: listOriTranscriptMetadata,
+    streamEvents: streamOriEvents,
   },
 };
 

@@ -308,6 +308,28 @@ export const ENFORCEMENT_CAPABILITY: Record<
     PostCompact: "observe",
     UserPromptExpansion: "observe",
   },
+
+  // ── ori ───────────────────────────────────────────────────────────────────
+  // ori 0.12.0+68f9a36, probed LIVE against the built-in `@ori-runloop/
+  // agent-loop` harness driving nvidia/nemotron-3.5-lightning:free. Enforcement
+  // is the `approval-asker` / `unattended-approvals` extension points rather
+  // than a hook-event stream, so PreToolUse is the only row there can be: ori
+  // exposes no prompt-submit, post-tool, session or stop gate to subscribe to.
+  ori: {
+    PreToolUse: "block",           // LIVE: {outcome:"deny"} from our approval-asker provision turned 3 tool.started into 3 tool.failed with ZERO tool.succeeded, and ori held the deny across the model's retries. MODE-GATED — read the note below before quoting this row
+    // DELIBERATELY NO OTHER ROWS. Two things this table cannot express, both
+    // verified live and both load-bearing:
+    //   1. ori's approval mode defaults to `self-drive`, and in that mode the
+    //      DYNAMIC points are never called — so no deny is ever PRODUCED, and
+    //      the row above never gets a chance to apply. Isolated three ways: no
+    //      callback under self-drive; still none after claiming approval-policy
+    //      with defaultAction:"ask"; but defaultAction:"reject" DID block every
+    //      call, which proves the static point is wired and that self-drive
+    //      skips specifically the dynamic asker. Coverage therefore requires
+    //      `--approvals manual` (or /approvals in the TUI).
+    //   2. There is no Stop event at all, so the 5 require-*-before-stop
+    //      builtins are INAPPLICABLE on ori, exactly as on Hermes and Goose.
+  },
 };
 
 /**

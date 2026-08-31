@@ -1697,33 +1697,43 @@ function warnPackagePublish(ctx: PolicyContext): PolicyResult {
   return allow();
 }
 
+/** Strip quoted string literals ("..." and '...') from a bash command line to avoid false positives on comments/messages. */
+function stripQuotedStrings(cmd: string): string {
+  return cmd.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, '""');
+}
+
 function protectEnvVars(ctx: PolicyContext): PolicyResult {
   if (ctx.toolName !== "Bash") return allow();
   const cmd = getCommand(ctx);
+  const unquotedCmd = stripQuotedStrings(cmd);
   // Block: env, printenv, echo $VAR, export VAR=
-  if (ENV_PRINTENV_RE.test(cmd)) {
+  if (ENV_PRINTENV_RE.test(unquotedCmd)) {
     return deny("Command reads environment variables");
   }
   if (ECHO_ENV_RE.test(cmd)) {
-    return deny("Command echoes environment variable");
+    // Only check single-quoted strings stripped (double quotes expand vars in bash)
+    const singleUnquotedCmd = cmd.replace(/'(?:[^'\\]|\\.)*'/g, "''");
+    if (ECHO_ENV_RE.test(singleUnquotedCmd)) {
+      return deny("Command echoes environment variable");
+    }
   }
-  if (EXPORT_RE.test(cmd)) {
+  if (EXPORT_RE.test(unquotedCmd)) {
     return deny("Command exports environment variable");
   }
   // PowerShell: $env:VAR
-  if (PS_ENV_VAR_RE.test(cmd)) {
+  if (PS_ENV_VAR_RE.test(unquotedCmd)) {
     return deny("Command reads environment variable via PowerShell");
   }
   // PowerShell: Get-ChildItem Env: / dir env: / gci env: / ls env:
-  if (PS_CHILDITEM_ENV_RE.test(cmd)) {
+  if (PS_CHILDITEM_ENV_RE.test(unquotedCmd)) {
     return deny("Command reads environment variables via PowerShell");
   }
   // PowerShell: [Environment]::GetEnvironmentVariable
-  if (DOTNET_GETENV_RE.test(cmd)) {
+  if (DOTNET_GETENV_RE.test(unquotedCmd)) {
     return deny("Command reads environment variable via .NET");
   }
   // cmd: echo %VAR%
-  if (CMD_ECHO_ENV_RE.test(cmd)) {
+  if (CMD_ECHO_ENV_RE.test(unquotedCmd)) {
     return deny("Command echoes environment variable via cmd");
   }
   return allow();
@@ -1737,9 +1747,12 @@ function blockEnvFiles(ctx: PolicyContext): PolicyResult {
   if (filePath && ENV_FILE_PATH_RE.test(filePath)) {
     return deny("Access to .env file blocked");
   }
-  // Check Bash commands referencing .env files
-  if (ctx.toolName === "Bash" && ENV_CMD_RE.test(cmd)) {
-    return deny("Command references .env file");
+  // Check Bash commands referencing .env files (strip quoted args like commit messages)
+  if (ctx.toolName === "Bash") {
+    const unquotedCmd = stripQuotedStrings(cmd);
+    if (ENV_CMD_RE.test(unquotedCmd)) {
+      return deny("Command references .env file");
+    }
   }
   return allow();
 }

@@ -572,7 +572,7 @@ disappearing quietly.
 
 - Drop the Status link from the docs sidebar. It was a `navigation.global.anchors` entry, which Mintlify pins above the page tree on every page in every tab — permanent real estate for a link that answers a question almost no reader of a docs page is asking. Support stays, since that one is reached from anywhere in the docs by someone who is already stuck. (#718)
 
-- Drop a duplicated entry and a repeated `### Fixes` heading from this release's own section. The canary-images entry was committed twice — once carrying an unfilled `(#760)` placeholder and once as `(#705)` — and the section then opened a second `### Fixes` block a few entries after the first. Both were invisible while the changelog was only ever read on GitHub; the release announcement renders straight from these sections, so a duplicated headline and a heading appearing twice were about to show up in a public channel. (#721)
+- Drop a duplicated entry and a repeated `### Fixes` heading from this release's own section. The canary-images entry was committed twice — once carrying an unfilled `(#PR)` placeholder and once as `(#705)` — and the section then opened a second `### Fixes` block a few entries after the first. Both were invisible while the changelog was only ever read on GitHub; the release announcement renders straight from these sections, so a duplicated headline and a heading appearing twice were about to show up in a public channel. (#721)
 
 ## 1.0.1-beta.0 — 2026-08-14
 

@@ -141,25 +141,65 @@ def test_no_reachable_construct_leaks_a_heap_pointer_repr():
 @pytest.mark.parametrize(
     "inner",
     [
-        # A bound method's repr leaks the underlying object's heap pointer, and
-        # these methods are allowlisted (needed by real evals) so they cannot be
-        # removed. The OUTPUT guard rejects the disclosure wherever it rides out.
+        # A bound method's repr is `<... at 0xADDR>` — a live heap pointer. These
+        # methods stay allowlisted (real evals CALL them), but referencing one as a
+        # bare VALUE only serves to stringify that repr, so it is now rejected at
+        # COMPILE — the disclosure is closed at its source, not at the output.
         "session.events[0].payload.get",
         "''.join",
         "'x'.encode",
         "'a,b'.split",
     ],
 )
-def test_object_repr_pointer_disclosure_is_rejected_at_the_output(inner):
+def test_bare_bound_method_reference_is_rejected_at_compile(inner):
     for field in (
         f'EvalResult(score=Score(1.0), reasoning=str({inner}))',
         f'EvalResult(score=Score(1.0), summary=str({inner}))',
         f'EvalResult(score=Score(1.0, display_value=str({inner})))',
         f'EvalResult(score=Score(1.0), labels=(str({inner}),))',
     ):
-        evaluate = compile_evaluator(field)
-        with pytest.raises(UnsafeEvaluatorSource, match="object repr"):
-            evaluate(Session())
+        with pytest.raises(UnsafeEvaluatorSource, match="only to call it"):
+            compile_evaluator(field)
+
+
+def test_heap_pointer_output_guard_bypasses_are_closed_at_compile():
+    # An adversarial-review finding: the output-boundary regex was anchored on `<`,
+    # so a managed source could keep the address while reshaping the wrapper text —
+    # str(...).replace("<",""), an f-string, or %-formatting all coerce a bound
+    # method at a point the old scan missed. Each needs a BARE bound-method
+    # reference, which the compile-time call-site rule now rejects outright.
+    bypasses = [
+        # str(...).replace("<","") strips the old regex's `<` anchor.
+        'EvalResult(score=Score(1.0), reasoning=str(dict().get).replace("<", ""))',
+        # f-strings coerce at the C level, past the `str` global.
+        'EvalResult(score=Score(1.0), reasoning=f"{session.events[0].payload.get}")',
+        # %-formatting coerces at the C level too.
+        'EvalResult(score=Score(1.0), reasoning="%s" % session.events[0].payload.get)',
+    ]
+    for src in bypasses:
+        with pytest.raises(UnsafeEvaluatorSource, match="only to call it"):
+            compile_evaluator(src)
+
+
+def test_called_methods_and_data_attributes_still_stringify():
+    # The call-site rule blocks only BARE method references. Calling methods and
+    # reading data attributes (both pointer-free) must still work — including the
+    # f-string and %-formatting paths — so legitimate evaluations are unaffected.
+    reasoning_call = compile_evaluator(
+        'EvalResult(score=Score(1.0), '
+        'reasoning=str(session.events[0].payload.get("tool_name")))'
+    )(Session())
+    assert reasoning_call.reasoning == "search"
+
+    fstring = compile_evaluator(
+        'EvalResult(score=Score(1.0), reasoning=f"n={session.event_count}")'
+    )(Session())
+    assert fstring.reasoning == "n=3"
+
+    percent = compile_evaluator(
+        'EvalResult(score=Score(1.0), reasoning="pct=%d" % (session.event_count * 10))'
+    )(Session())
+    assert percent.reasoning == "pct=30"
 
 
 def test_each_evaluation_gets_isolated_globals_so_it_cannot_poison_the_next():

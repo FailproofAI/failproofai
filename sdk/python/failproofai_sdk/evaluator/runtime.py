@@ -335,22 +335,28 @@ class WorkerRuntime:
                 self._increment("conditions_skipped")
                 continue
             try:
+                # Whose condition decides applicability follows the execution mode,
+                # mirroring the evaluator branch below (`run.execution_mode`): a LOCAL
+                # definition's condition is client-authored (`local.condition`); a
+                # PYTHON (managed) definition's is server-authored and MUST govern even
+                # when the worker also registered the same key/version locally. Keying
+                # `local` on `(eval_key, eval_version)` alone means a managed def can
+                # collide with a local one; selecting `local.condition` there would let
+                # a matching local condition override the server's managed rule and run
+                # the managed evaluator against the operator's intent (COR-001).
                 # Compile INSIDE the try: a managed condition the sandbox rejects
                 # (unsafe/malformed source) must dead-letter as `condition_error`,
                 # not raise out of the plan loop and strand the whole assignment
                 # until its retry budget is exhausted.
-                condition_function = (
-                    local.condition
-                    if local is not None
-                    else (
-                        compile_condition(
-                            descriptor.condition_source,
-                            timeout_seconds=descriptor.timeout_seconds,
-                        )
-                        if descriptor.condition_source
-                        else None
+                if descriptor.execution_mode is ExecutionMode.LOCAL:
+                    condition_function = local.condition if local is not None else None
+                elif descriptor.condition_source:
+                    condition_function = compile_condition(
+                        descriptor.condition_source,
+                        timeout_seconds=descriptor.timeout_seconds,
                     )
-                )
+                else:
+                    condition_function = None
                 if condition_function is None:
                     selected.append((descriptor, local))
                     continue

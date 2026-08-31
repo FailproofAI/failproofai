@@ -54,6 +54,7 @@
     "transcript_too_large": {"http_status": 413, "retryable": false},
     "invalid_request": {"http_status": 422, "retryable": false},
     "invalid_catalog": {"http_status": 422, "retryable": false},
+    "incomplete_plan": {"http_status": 422, "retryable": false},
     "unsupported_protocol_version": {"http_status": 426, "retryable": false},
     "internal_error": {"http_status": 500, "retryable": true}
   },

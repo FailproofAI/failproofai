@@ -323,12 +323,13 @@ _SAFE_GLOBALS = {
 # of pure string/collection data methods. Anything else — every current and
 # future introspection attribute — is rejected. `format`/`format_map` are simply
 # absent from this set, so the C-level format escape is closed too.
-_ALLOWED_ATTRS = frozenset(
+# Data attributes on the transcript surface — safe to READ as a value: each is a
+# field of a frozen dataclass (SessionTranscript / TranscriptEvent, whose reprs are
+# field-based and pointer-free) or a JSON scalar/container from an event payload.
+_DATA_ATTRS = frozenset(
     {
         # SessionTranscript + TranscriptEvent data surface (see protocol.py).
         "events",
-        "events_of_type",
-        "count",
         "event_count",
         "event_type",
         "payload",
@@ -342,6 +343,21 @@ _ALLOWED_ATTRS = frozenset(
         "started_at",
         "ended_at",
         "schema_version",
+    }
+)
+
+# Method attributes — pure data methods that must be CALLED, never referenced as a
+# bare value. A bound method's repr is `<... at 0x...>`, a live heap address; a bare
+# reference (`payload.get` uncalled) is only ever useful for smuggling that address
+# into a result field via `str()`, an f-string, or `%`-formatting — none of which a
+# real evaluation needs. `_compile` requires each of these names to appear at a call
+# site, which closes every text-coercion leak at its source: no reachable value can
+# then carry a pointer repr, so the output-boundary scan is only defense in depth.
+_METHOD_ATTRS = frozenset(
+    {
+        # SessionTranscript methods.
+        "events_of_type",
+        "count",
         # dict data methods.
         "get",
         "keys",
@@ -398,6 +414,10 @@ _ALLOWED_ATTRS = frozenset(
     }
 )
 
+# The walk rejects any attribute outside this union, and additionally requires every
+# name in `_METHOD_ATTRS` to appear only as the function of a call.
+_ALLOWED_ATTRS = _DATA_ATTRS | _METHOD_ATTRS
+
 
 def _fresh_globals() -> dict[str, Any]:
     """A throwaway globals mapping for one eval call.
@@ -430,6 +450,14 @@ def _compile(source: str, *, field_name: str, maximum: int) -> Any:
         tree = ast.parse(source, mode="eval")
     except SyntaxError as error:
         raise UnsafeEvaluatorSource(f"{field_name} must be one expression") from error
+    # An Attribute that is the function of a Call is a method invocation; any other
+    # Attribute naming a method (`_METHOD_ATTRS`) is a bare bound-method reference,
+    # whose only use is leaking the method's `<... at 0xADDR>` repr into a result.
+    called_method_nodes = {
+        node.func
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    }
     node_count = 0
     for node in ast.walk(tree):
         node_count += 1
@@ -466,21 +494,26 @@ def _compile(source: str, *, field_name: str, maximum: int) -> Any:
                 raise UnsafeEvaluatorSource(
                     f"{field_name} may not access attribute '{node.attr}'"
                 )
+            if node.attr in _METHOD_ATTRS and node not in called_method_nodes:
+                raise UnsafeEvaluatorSource(
+                    f"{field_name} may reference method '{node.attr}' only to call it; "
+                    "a bare bound method leaks a heap address when stringified"
+                )
         if isinstance(node, ast.Name) and node.id.startswith("_"):
             raise UnsafeEvaluatorSource(f"{field_name} may not access private names")
     return compile(tree, f"<{field_name}>", "eval", dont_inherit=True, optimize=2)
 
 
-# CPython's default object repr — `<... at 0x7f...>` — embeds a live heap
-# address (an ASLR/memory-layout disclosure). An expression cannot be stopped
-# from producing such a repr at the source level: it falls out of `str()` on any
-# bound method of an allowed object (`str(payload.get)`), and those methods must
-# stay reachable. So the disclosure is closed at the OUTPUT boundary instead: a
-# result whose text embeds this signature is rejected. The result types are all
-# frozen dataclasses with pointer-free reprs, so scanning the value's repr sees
-# every user-controlled string field. The pattern is the interpreter's own repr
-# grammar, which authored reasoning/summaries never legitimately contain.
-_OBJECT_REPR = re.compile(r"<[^<>]* at 0x[0-9a-fA-F]+")
+# CPython's default object repr — `<... at 0x7f...>` — embeds a live heap address
+# (an ASLR/memory-layout disclosure). The PRIMARY defense is at compile time: a bound
+# method (the only reachable object with such a repr — the result and transcript types
+# are all frozen, pointer-free dataclasses) can no longer be referenced as a value
+# (`_METHOD_ATTRS` must be called), so no reachable value carries a pointer repr to
+# begin with. This output-boundary scan is DEFENSE IN DEPTH. It matches the "... at
+# 0xADDR" tail every default repr shares, plus a bare `0x`+hex run — deliberately
+# WITHOUT the leading `<`, so reshaping the wrapper (e.g. `str(x).replace("<","")`,
+# the way the compile-time hole was originally bypassed) cannot strip the match.
+_OBJECT_REPR = re.compile(r" at 0x[0-9a-fA-F]+|0x[0-9a-fA-F]{6,}")
 
 
 def _forbid_object_reprs(field_name: str, value: Any) -> Any:

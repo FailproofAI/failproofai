@@ -61,6 +61,7 @@ ERROR_SPECS = {
     "transcript_too_large": {"http_status": 413, "retryable": False},
     "invalid_request": {"http_status": 422, "retryable": False},
     "invalid_catalog": {"http_status": 422, "retryable": False},
+    "incomplete_plan": {"http_status": 422, "retryable": False},
     "unsupported_protocol_version": {"http_status": 426, "retryable": False},
     "internal_error": {"http_status": 500, "retryable": True},
 }

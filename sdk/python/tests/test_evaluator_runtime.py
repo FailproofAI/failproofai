@@ -231,6 +231,59 @@ def test_managed_definition_that_fails_to_compile_dead_letters_as_one_failed_run
     assert result.summary is None
 
 
+def test_managed_condition_governs_even_when_a_local_key_collides():
+    # COR-001: `local` is keyed on (eval_key, eval_version) alone, so a managed
+    # (PYTHON) definition can collide with a local one the worker also registered.
+    # The server's managed condition must decide applicability — NOT the matching
+    # local condition. Here the local condition returns True and the managed
+    # `condition_source` is "False": the definition must be recorded as skipped
+    # (condition_false) and the managed evaluator source must never run.
+    source = "EvalResult(score=Score(1.0), summary='should never run')"
+
+    evaluator = Evaluator(name="managed", version="1")
+
+    @evaluator.eval("hosted_quality", version="1", when=lambda session: True)
+    def hosted_quality(session):  # a colliding LOCAL definition, condition True
+        return EvalResult(score=Score(1.0, passed=True), summary="local")
+
+    class HostedClient(FakeClient):
+        def __init__(self):
+            super().__init__()
+            self.assignment = replace(
+                self.assignment,
+                definitions_url=f"/v1/evaluator/assignments/{self.assignment.assignment_id}/definitions",
+            )
+
+        def definitions(self, assignment, *, worker_id):
+            return DefinitionsResponse(
+                assignment_id=assignment.assignment_id,
+                catalog_revision="sha256:hosted",
+                definitions=(
+                    AssignmentDefinition(
+                        eval_key="hosted_quality",
+                        display_name="Hosted quality",
+                        eval_version="1",
+                        result_kind=ResultKind.SCORE,
+                        execution_mode=ExecutionMode.PYTHON,
+                        condition_source="False",
+                        source_checksum=source_checksum("False", source),
+                        timeout_seconds=1,
+                    ),
+                ),
+            )
+
+    client = HostedClient()
+    asyncio.run(_runtime(evaluator, client).process_assignment(client.assignment))
+
+    # The server's managed condition (False) wins over the local one (True):
+    # recorded as skipped, nothing selected, and no managed run submitted.
+    assert client.plans[0].selected == ()
+    assert {(item.eval_key, item.reason_code) for item in client.plans[0].skipped} == {
+        ("hosted_quality", "condition_false"),
+    }
+    assert client.submissions == []
+
+
 def test_two_assignments_share_the_bounded_sync_eval_pool_and_keep_heartbeating():
     evaluator = Evaluator(name="parallel", version="1")
     lock = threading.Lock()

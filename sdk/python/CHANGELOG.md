@@ -61,6 +61,37 @@ it ships.
 - Require `execution_mode` on the wire instead of coercing a falsy/missing value
   to `local` — a malformed value silently ran a `python` definition down the
   customer path (or vice-versa); it is now a hard protocol error.
+- A managed (`python`) definition's applicability is now governed by the SERVER's
+  `condition_source`, never a colliding local condition (COR-001). `process_assignment`
+  keyed the local-definition lookup on `(eval_key, eval_version)` alone and selected
+  `local.condition` whenever a local definition with that key existed — so a managed
+  definition whose server condition was false could be forced to run anyway if the
+  worker had also registered a local definition under the same key whose condition was
+  true, executing server-managed source against the operator's intent. Condition
+  selection now branches on `execution_mode`, mirroring the evaluator branch: `LOCAL`
+  uses `local.condition`, `PYTHON` compiles and runs the server's `condition_source`
+  regardless of any key collision. Regression test: identical local+managed keys, local
+  condition true and managed false, asserts the definition is skipped and no managed run
+  is submitted.
+- Recognize the server's `incomplete_plan` terminal error (API-001). The server rejects a
+  plan that fails to cover every snapshotted definition with `422 incomplete_plan`; that
+  code is now in the SDK's `ERROR_SPECS` mirror and the shared `contract.json` fixture
+  (byte-identical with the server's), so a worker no longer treats a valid server-defined
+  failure as an unrecognized error. The fixture-equality test covers it.
+- Close a heap-address disclosure bypass in the managed-source sandbox
+  (adversarial-audit SEC). The output-boundary guard that rejects a `<obj at 0xADDR>`
+  repr in a result field was anchored on the literal `<`, so an allow-listed
+  `str(payload.get).replace("<", "")` — or an f-string / `%`-format of a bare bound
+  method — kept the live heap address while stripping the match, leaking an
+  ASLR/memory-layout primitive of the sandbox process into a persisted result. The fix
+  moves the defense to compile time: a bound method (the only reachable value with a
+  pointer repr — the transcript and result types are all frozen, pointer-free
+  dataclasses) may now only be **called**, never referenced as a bare value, so no
+  reachable value can carry a pointer repr through `str()`, an f-string, or `%`. The
+  output-boundary scan is kept and broadened (no longer requires the leading `<`) as
+  defense in depth. Legitimate evaluations — which call methods and read data
+  attributes — are unaffected; regression tests cover the `.replace("<","")`, f-string,
+  and `%` bypasses and confirm called-method/data-attribute stringification still works.
 - Switch the worker from long-polling to **normal (short) polling**, matching the
   cadence of our other cloud surfaces. `claim` no longer sends `wait_seconds` and
   the server returns immediately; when a claim comes back empty the worker sleeps

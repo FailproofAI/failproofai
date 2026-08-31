@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.3-beta.0 — 2026-08-31
+
+### Fixes
+
+- `policies --install <name> --cli <x>` installs hooks again after the first time. Every builtin is also declared by the bundled `FailproofAI/policies` pack, and the first install is what puts that pack on the machine — so from the second install onward an ordinary `--install block-sudo --cli codex` resolved as "the user named only pack policies", took the short-circuit meant for a third-party name, and returned before writing a settings file. Exit 0, an `Enabled … from pack` line where `Failproof AI hooks installed for OpenAI Codex` belonged, and `--cli`, `--scope` and `--custom` all discarded. The first install per machine worked, which is why it survived manual testing; adding a second agent CLI later got silence and no enforcement. A name only a third-party pack declares still short-circuits, because there the switch really is the whole request (#PR)
+
+- The integration suite stops reporting a working CLI as broken enforcement. Probe B scores a leaked sentinel FAIL unless the agent was denied on a route the probe does not target, and that exception recognised only `canary-read-shell` — the shell. An agent denied on the read tool that reaches for some OTHER tool trips `canary-guard` instead, so antigravity scored red for days with 69 hook events and `canary-bash`, `canary-read` and `canary-guard` all denying correctly: every deny issued and honoured, reported as a silent-allow. Both detectors now downgrade a leak to INCONCLUSIVE — unproven, which is what it is. The narrowness is kept: a leak with NEITHER stays FAIL, because that is what a CLI ignoring the deny looks like. Drift is now decided FIRST, ahead of the leak branch, because `canary-guard` denies for two opposite reasons under one name and `NORMALIZATION-DRIFT-SUSPECT` must never be excused by the widened exception (#PR)
+
 ## 1.0.2 — 2026-08-27
 
 The stable cut of the `1.0.2-beta.*` line, which stays documented in its own

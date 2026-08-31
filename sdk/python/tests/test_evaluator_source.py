@@ -277,3 +277,15 @@ def test_server_timeout_cannot_exceed_the_hard_ceiling():
     assert _clamp_budget(0) == 30.0
     assert _clamp_budget(None) == 30.0
     assert _clamp_budget(5) == 5.0
+
+
+def test_oversized_result_is_rejected_before_it_crosses_back():
+    # A result with far more than the 25-item limit must be rejected INSIDE the
+    # sandbox (via result_items), so a huge result can never be serialized and
+    # shipped back to OOM the worker (SEC-001).
+    src = (
+        "EvalResult(score=Score(1.0), "
+        "metrics={'m' + str(i): float(i) for i in range(200)})"
+    )
+    with pytest.raises(ValueError, match="at most"):
+        compile_evaluator(src, eval_key="q")(Session())

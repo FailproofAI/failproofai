@@ -58,7 +58,7 @@ def _utc_now() -> str:
     )
 
 
-def _deferred_managed_eval(source: str, timeout_seconds: int | None):
+def _deferred_managed_eval(source: str, timeout_seconds: int | None, eval_key: str):
     """Compile server-authored source lazily, at invocation time.
 
     Compilation can reject unsafe or malformed source (``UnsafeEvaluatorSource``).
@@ -71,7 +71,9 @@ def _deferred_managed_eval(source: str, timeout_seconds: int | None):
     """
 
     def evaluate(session: Any) -> Any:
-        return compile_evaluator(source, timeout_seconds=timeout_seconds)(session)
+        return compile_evaluator(
+            source, timeout_seconds=timeout_seconds, eval_key=eval_key
+        )(session)
 
     return evaluate
 
@@ -440,6 +442,7 @@ class WorkerRuntime:
                     function=_deferred_managed_eval(
                         run.evaluator_source,
                         run.timeout_seconds or descriptor.timeout_seconds,
+                        descriptor.eval_key,
                     ),
                     condition=None,
                     on_cancel=None,

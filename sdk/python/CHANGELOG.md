@@ -48,8 +48,12 @@ it ships.
   effective budget is **clamped to a hard ceiling** (`MAX_SANDBOX_TIMEOUT_SECONDS`,
   60s) so a large server-provided `timeout_seconds` cannot remove the bound.
   Managed conditions, which previously ran with no timeout at all, are sandboxed
-  the same way. Fails **closed** (`EvaluationSandboxUnavailable`) if the sandbox
-  cannot be spawned or the transcript cannot be serialized. Defense in depth at
+  the same way. The result crossing back is **bounded on both sides** — the child
+  validates it (`result_items`, the 25-result limit) and refuses to serialize
+  anything over 1 MiB, and the parent reads at most that before killing the child
+  — so an oversized result (`metrics={str(x): 1 for x in range(100000)}`) cannot
+  OOM the worker either. Fails **closed** (`EvaluationSandboxUnavailable`) if the
+  sandbox cannot be spawned or the transcript cannot be serialized. Defense in depth at
   compile time: reject `**` with a large/non-constant exponent and cap total AST
   size. A managed condition the sandbox rejects now dead-letters as
   `condition_error` instead of stranding the assignment. Only server-authored

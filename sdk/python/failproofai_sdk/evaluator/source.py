@@ -11,10 +11,14 @@ from __future__ import annotations
 import ast
 import builtins
 import hashlib
+import os
 import pickle
 import re
+import select
 import subprocess
 import sys
+import tempfile
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -51,6 +55,13 @@ DEFAULT_SANDBOX_TIMEOUT_SECONDS = 30
 # execution bound (SEC-001). Wall-clock and CPU are both capped here.
 MAX_SANDBOX_TIMEOUT_SECONDS = 60
 SANDBOX_MEMORY_BYTES = 2 * 1024 * 1024 * 1024  # 2 GiB address space
+# The result crossing back is bounded on BOTH sides: the child refuses to serialize
+# a result larger than this, and the parent stops reading (and kills the child)
+# past it — so a permitted expression that builds a huge result
+# (`EvalResult(metrics={str(x): 1 for x in range(100000)})`) cannot OOM the worker
+# even though the child's RLIMIT_AS lets it construct one. A valid result (<=25
+# items, bounded fields) is far under this.
+SANDBOX_MAX_RESULT_BYTES = 1 * 1024 * 1024  # 1 MiB
 
 
 def _clamp_budget(timeout_seconds: float | None) -> float:
@@ -100,17 +111,19 @@ def _run_sandboxed(
     wall_timeout: float,
     cpu_seconds: float,
     mem_bytes: int,
+    eval_key: str | None = None,
 ) -> Any:
     """Evaluate server-authored ``source`` against ``session`` in a fork+exec'd
-    subprocess that CANNOT outlive its budget.
+    subprocess that CANNOT outlive its budget or flood this process.
 
     A FRESH ``python -m ..._sandbox_runner`` process — never a fork of this
     multi-threaded worker (forking one deadlocks the child on a lock some other
-    thread holds) — installs hard RLIMIT_CPU + RLIMIT_AS on itself and evaluates;
-    this parent kills it after ``wall_timeout``. So an in-process thread running
-    ``sum(range(10**20))`` that cannot be cancelled becomes a separate process the
-    kernel bounds and the parent terminates outright. The transcript crosses in as
-    its wire dict; only the result crosses back, as a small pickle.
+    thread holds) — reads its input from a temp file, installs hard RLIMIT_CPU +
+    RLIMIT_AS on itself, evaluates, and writes a bounded result to stdout. This
+    parent reads stdout up to ``SANDBOX_MAX_RESULT_BYTES`` and no further, killing
+    the child on timeout OR oversize — so neither compute (``sum(range(10**20))``)
+    nor an oversized result (``metrics={str(x):1 for x in range(100000)}``) can
+    exhaust the worker.
     """
     try:
         session_wire = session.to_wire()
@@ -118,26 +131,71 @@ def _run_sandboxed(
         raise EvaluationSandboxUnavailable(
             "sandboxed evaluation requires a serializable transcript"
         ) from error
-    payload = pickle.dumps((kind, source, session_wire, cpu_seconds, mem_bytes))
+    payload = pickle.dumps(
+        (kind, source, session_wire, cpu_seconds, mem_bytes, eval_key)
+    )
+    # Input via a temp file, not stdin: the transcript can be large (up to the
+    # transcript ceiling) and feeding a big stdin while bounding stdout invites a
+    # pipe deadlock. The child reads the file; we only read its stdout.
+    handle, path = tempfile.mkstemp(prefix="fpai-sandbox-", suffix=".pkl")
     try:
-        completed = subprocess.run(  # noqa: S603 - fixed argv, no shell
-            [sys.executable, "-m", "failproofai_sdk.evaluator._sandbox_runner"],
-            input=payload,
-            capture_output=True,
-            timeout=wall_timeout,
-        )
-    except subprocess.TimeoutExpired as error:
-        # subprocess.run has already SIGKILLed the process on the way out.
-        raise EvaluationTimeout("evaluation exceeded its wall-clock budget") from error
-    except OSError as error:
-        # Could not even spawn the sandbox — fail closed rather than run unbounded.
-        raise EvaluationSandboxUnavailable(
-            f"could not start the evaluation sandbox: {error}"
-        ) from error
-    if completed.returncode != 0 or not completed.stdout:
+        with os.fdopen(handle, "wb") as tmp:
+            tmp.write(payload)
+        try:
+            proc = subprocess.Popen(  # noqa: S603 - fixed argv, no shell
+                [sys.executable, "-m", "failproofai_sdk.evaluator._sandbox_runner", path],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+            )
+        except OSError as error:
+            raise EvaluationSandboxUnavailable(
+                f"could not start the evaluation sandbox: {error}"
+            ) from error
+        chunks: list[bytes] = []
+        total = 0
+        timed_out = False
+        too_large = False
+        deadline = time.monotonic() + wall_timeout
+        out_fd = proc.stdout.fileno()
+        try:
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    timed_out = True
+                    break
+                ready, _, _ = select.select([out_fd], [], [], remaining)
+                if not ready:
+                    timed_out = True
+                    break
+                chunk = os.read(out_fd, 65536)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > SANDBOX_MAX_RESULT_BYTES:
+                    too_large = True
+                    break
+                chunks.append(chunk)
+        finally:
+            proc.stdout.close()
+            if proc.poll() is None:
+                proc.kill()
+            proc.wait()
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+    if timed_out:
+        raise EvaluationTimeout("evaluation exceeded its wall-clock budget")
+    if too_large:
+        raise EvaluationTimeout("evaluation result exceeded the size limit")
+    data = b"".join(chunks)
+    if not data:
         # Killed by RLIMIT_CPU/RLIMIT_AS (or otherwise died) before it could write.
         raise EvaluationTimeout("evaluation was terminated before producing a result")
-    outcome = pickle.loads(completed.stdout)
+    outcome = pickle.loads(data)
     if outcome[0] == "ok":
         return outcome[1]
     # Preserve the child's original exception SEMANTICS: an eval's
@@ -481,14 +539,17 @@ def compile_evaluator(
     source: str,
     *,
     timeout_seconds: float | None = DEFAULT_SANDBOX_TIMEOUT_SECONDS,
+    eval_key: str | None = None,
 ) -> Callable[[Any], EvalResult]:
     _compile(source, field_name="evaluator_source", maximum=MAX_EVALUATOR_SOURCE_BYTES)
     budget = _clamp_budget(timeout_seconds)
 
     def evaluate(session: Any) -> EvalResult:
         # The kernel-enforced boundary: this runs in a fork+exec'd subprocess with
-        # hard CPU/memory/wall-clock limits, killed if it exceeds them, so a
-        # server-authored compute bomb cannot exhaust the worker (SEC-001).
+        # hard CPU/memory/wall-clock limits and a bounded result, killed if it
+        # exceeds them, so a server-authored compute or result bomb cannot exhaust
+        # the worker (SEC-001). `eval_key` lets the child validate the result's
+        # 25-item limit before it crosses back.
         return _run_sandboxed(
             "evaluator",
             source,
@@ -496,6 +557,7 @@ def compile_evaluator(
             wall_timeout=budget,
             cpu_seconds=budget,
             mem_bytes=SANDBOX_MEMORY_BYTES,
+            eval_key=eval_key,
         )
 
     return evaluate

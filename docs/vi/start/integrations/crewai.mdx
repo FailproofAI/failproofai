@@ -1,0 +1,224 @@
+---
+title: "CrewAI"
+sidebarTitle: "CrewAI"
+description: "Instrument các crews, flows, agents theo role, tools, memory, và human feedback."
+icon: "/images/frameworks/crewai.svg"
+---
+
+## Cài đặt
+
+```bash
+pip install 'failproofai-sdk[crewai]'
+```
+
+Hỗ trợ: `crewai` 1.13 đến 2.0. 1.13 là bản release đã thêm `started_event_id` và chuẩn hóa token usage, cả hai đều là những gì adapter dựa vào để ghép các events và báo cáo tokens.
+
+## Instrument
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    Crew(agents=[analyst, writer], tasks=[gather, summarise]).kickoff()
+```
+
+`instrument()` đăng ký một listener trên event bus ở mức module của CrewAI và subscribe một handler cho mỗi event class. Không có gì về crew, agents, tasks, hoặc tools của bạn thay đổi.
+
+## Những gì được ghi lại
+
+| CrewAI | Failproof event |
+| --- | --- |
+| Crew kickoff | `agent_start`, `agent_end` |
+| `Agent.kickoff()` (một lite agent, không có crew) | `agent_start`, `agent_end`, với `agent_id` từ role |
+| Flow start và finish | `agent_start`, `agent_end`; một crew được kickoff bên trong flow method lồng dưới nó |
+| Agent execution | Nested `agent_start`, `agent_end`, với `agent_id` từ role. Dưới một hierarchical process, một coworker được delegate lồng dưới manager, không nằm cạnh nó |
+| Task | Không có gì; được ghi lại dưới dạng một link để children resolve thành crew |
+| Flow method, guardrail | `hook_triggered`, `hook_completed` |
+| Tool usage | `tool_use`, `tool_result` |
+| Memory và knowledge operations | `tool_use`, `tool_result`, được đặt tên theo surface bị hit |
+| LLM call | `model_request`, `model_response`, với token usage |
+| Stream chunk | Được gộp vào response dưới dạng chunk count và time to first token |
+| Human feedback requested | `human_wait`, `agent_pause` |
+| Human feedback received | `agent_resume`, `human_input` |
+| Agent execution error | `error`, sau đó `agent_end` với outcome `failed` |
+
+Một task không phát ra bất cứ thứ gì theo ý định. Một CrewAI task là một tập hợp con của agent execution chạy nó, vì vậy phát ra cả hai sẽ nhân đôi mỗi hàng và hiển thị chúng dưới dạng siblings. Task id và name đi kèm trên các events riêng của agent.
+
+Memory và knowledge operations được ghi lại dưới dạng tools, được đặt tên theo surface mà chúng hit, vì vậy chúng xuất hiện bên cạnh các tools thực tế của bạn nơi bạn có thể so sánh latency của chúng.
+
+Trên một hierarchical crew, nesting là thứ làm cho trace có thể đọc được:
+
+```text
+crew
+└─ manager
+   ├─ researcher      delegated
+   └─ writer          delegated
+```
+
+CrewAI parents một delegated execution trên `delegate_work_to_coworker` **tool event**, không phải trên manager trực tiếp, vì vậy adapter theo liên kết đó. Nếu không có nó, mỗi agent đều là sibling của mỗi agent khác và cấu trúc delegation bị mất.
+
+## Ví dụ
+
+```python
+import failproofai_sdk
+from crewai import Agent, Crew, Process, Task
+from crewai.tools import tool
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+MODEL = "openai/gpt-4o-mini"
+METRICS = {"revenue": "$4.2M ARR, up 12% QoQ", "churn": "3.1% monthly, up from 2.4%"}
+
+
+@tool("lookup_metric")
+def lookup_metric(name: str) -> str:
+    """Look up a business metric by name. Valid: revenue, churn."""
+    return METRICS.get(name.lower().strip(), "unknown metric")
+
+
+analyst = Agent(
+    role="analyst",                     # becomes agent_id
+    goal="pull the numbers that matter and state them plainly",
+    backstory="You read dashboards for a living.",
+    tools=[lookup_metric],
+    llm=MODEL,
+)
+writer = Agent(
+    role="writer",
+    goal="turn numbers into three lines an exec will read",
+    backstory="You write board updates. You never pad.",
+    llm=MODEL,
+)
+
+gather = Task(
+    description="Look up 'revenue' and 'churn' with the tool.",
+    expected_output="Two lines, one metric each.",
+    agent=analyst,
+)
+summarise = Task(
+    description="Using the metrics above, write a three-line exec summary.",
+    expected_output="Exactly three lines.",
+    agent=writer,
+    context=[gather],
+)
+
+with failproofai_sdk.session():
+    result = Crew(
+        agents=[analyst, writer],
+        tasks=[gather, summarise],
+        process=Process.sequential,
+    ).kickoff()
+```
+
+Handoff được nhìn thấy trong trace: span `analyst` đóng lại, span `writer` mở ra, và cả hai nằm bên trong một span `crew`.
+
+## Đặt tên spans của bạn
+
+`agent_id` đến từ `Agent(role=...)`, đó là thứ làm cho nó trở thành một dashboard facet có thể đọc được.
+
+```python
+Agent(role="analyst", ...)          # agent_id = "analyst"
+Agent(role="analyst-7f3a2b", ...)   # one facet entry per run
+```
+
+`agent_id` là một cột low-cardinality. Một role chứa run id hoặc timestamp làm giảm nó cho mỗi query bất kỳ ai chạy. Nếu một role trông như một id, adapter từ chối nó và đặt giá trị thực vào một payload field thay thế.
+
+## Kiểm soát session
+
+Được giải quyết theo thứ tự này, match đầu tiên chiến thắng:
+
+1. `instrument("crewai", session_id=...)`
+2. Enclosing `failproofai_sdk.session()` scope
+3. Một generated `uuid4().hex`, một lần cho mỗi crew hoặc flow
+
+Bao bọc kickoff để kiểm soát nó cho mỗi lần chạy:
+
+```python
+with failproofai_sdk.session(f"support-{ticket_id}"):
+    Crew(agents=[...], tasks=[...]).kickoff()
+```
+
+## Tùy chọn
+
+```python
+failproofai_sdk.instrument(
+    "crewai",
+    session_id=None,          # pin every run to one session id
+)
+```
+
+`session_id` là tùy chọn duy nhất adapter này đọc. Prompts và completions luôn được ghi lại, được cắt ngắn để phù hợp với payload budget.
+
+## Human in the loop
+
+CrewAI có **hai** human-in-the-loop surfaces, và cả hai đều được ghi lại dưới dạng bốn events giống nhau.
+
+`@human_feedback` trên một flow method đi qua CrewAI's event bus: runtime phát ra một event trước khi nó chặn một person và một cái khác sau khi có câu trả lời.
+
+`Task(human_input=True)` thì không. Nó gọi `input()` bên trong CrewAI's own input provider và không phát ra bất kỳ event nào cả, vì vậy adapter bao bọc provider đó trực tiếp — nếu không có nó, toàn bộ human wait là vô hình và được tính toán dưới dạng thời gian agent hoạt động.
+
+Bằng cách nào đi nữa, bạn nhận được:
+
+```text
+human_wait      the prompt and its options
+agent_pause     starts the paused-time clock
+agent_resume    stops it
+human_input     the answer, with the wait measured
+```
+
+`agent_pause` đến `agent_resume` là cặp duy nhất cung cấp paused time. Nếu không có nó, một human wait mười phút được tính toán dưới dạng mười phút thời gian agent hoạt động.
+
+<Note>
+  CrewAI không đặt correlation id nào trên human-feedback event, vì vậy adapter ghép chúng trên flow và method name, quay lại pause được mở gần đây nhất. Điều này là sound vì một console prompt chặn. Nếu bạn xây dựng một concurrent feedback provider, đặt `request_id` trên cả hai events.
+</Note>
+
+<Note>
+  Vì đường dẫn `Task(human_input=True)` là một wrapper xung quanh CrewAI's input provider hơn là một event subscription, nó được khôi phục trên `uninstrument()` và re-raise bất cứ thứ gì `input()` raise, bao gồm `KeyboardInterrupt`, không thay đổi.
+</Note>
+
+## Các vấn đề phổ biến
+
+<AccordionGroup>
+  <Accordion title="Agent filter có hàng nghìn entries">
+    Một `role` chứa UUID, timestamp, hoặc per-run suffix. Sử dụng một human role ổn định và đặt run-specific id trong task description.
+  </Accordion>
+
+  <Accordion title="Một test đọc không có events, nhưng dashboard hiển thị chúng">
+    Event bus là asynchronous, và `kickoff()` trả về trước khi các handlers cuối cùng chạy. Drain nó trước:
+
+    ```python
+    from crewai.events.event_bus import crewai_event_bus
+
+    crew.kickoff()
+    crewai_event_bus.flush(timeout=30)
+    ```
+
+    Đây là một thuộc tính của CrewAI, không phải của SDK.
+  </Accordion>
+
+  <Accordion title="Một session hiển thị như ongoing mãi mãi">
+    `agent_end` force-closes các pauses mở nhưng không phải tools hoặc models, vì vậy một run chết bên trong một tool call để span đó mở. Teardown bình thường đóng bất cứ thứ gì vẫn mở và đánh dấu nó incomplete. Chỉ một `SIGKILL` để nó hanging, vì không có gì có thể chạy.
+  </Accordion>
+
+  <Accordion title="Không có gì được ghi lại">
+    Kiểm tra theo thứ tự này: `instrument()` chạy trước `kickoff()`; có một `with failproofai_sdk.session():` xung quanh nó; `crewai` là 1.13 hoặc mới hơn; `FAILPROOFAI_SDK_STRICT=1` đặt, vì vậy một hook degraded raise thay vì được swallowed.
+  </Accordion>
+</AccordionGroup>
+
+## Tiếp theo
+
+<Columns cols={3}>
+  <Card title="Cách nó hoạt động" icon="workflow" href="/vi/start/integrations/custom-agents#going-deeper">
+    Pairs, ids, session lifecycle, và delivery.
+  </Card>
+  <Card title="Đọc một trace" icon="route" href="/vi/sessions/read-a-trace">
+    Follow causality thông qua session bạn vừa capture.
+  </Card>
+  <Card title="Các frameworks khác" icon="plug" href="/vi/start/integrations">
+    LangGraph, LlamaIndex, Pydantic AI, và custom agents.
+  </Card>
+</Columns>

@@ -47,14 +47,18 @@ describe("top-level: --help", () => {
   it("prints help and exits 0", () => {
     const result = runCli("--help");
     assertSuccess(result);
-    expect(result.stdout).toContain("USAGE");
+    // The index no longer shouts a USAGE heading — it spends its lines on
+    // commands and names the shape once, in the footer under them.
+    expect(result.stdout).toContain("failproofai <command> [options]");
     expect(result.stdout).toContain("policies");
+    // The half that replaced every inlined flag.
+    expect(result.stdout).toContain("failproofai help <command>");
   });
 
   it("-h shorthand prints help and exits 0", () => {
     const result = runCli("-h");
     assertSuccess(result);
-    expect(result.stdout).toContain("USAGE");
+    expect(result.stdout).toContain("failproofai <command> [options]");
   });
 
   it("rejects extra argument after --help", () => {
@@ -132,19 +136,20 @@ describe("policies: list (default)", () => {
   it("lists policies and exits 0 with no args", () => {
     const result = runCli("policies");
     assertSuccess(result);
-    expect(result.stdout).toContain("block-sudo");
+    expect(result.stdout).toContain("failproofai policies");
+    expect(result.stdout).not.toContain("block-sudo");
   });
 
   it("lists policies when --list alias is used", () => {
     const result = runCli("policies", "--list");
     assertSuccess(result);
-    expect(result.stdout).toContain("block-sudo");
+    expect(result.stdout).toContain("failproofai policies");
   });
 
   it("p shorthand lists policies", () => {
     const result = runCli("p");
     assertSuccess(result);
-    expect(result.stdout).toContain("block-sudo");
+    expect(result.stdout).toContain("failproofai policies");
   });
 
   it("rejects unexpected positional argument", () => {
@@ -175,6 +180,19 @@ describe("policies: --help", () => {
     const result = runCli("policies", "-h");
     assertSuccess(result);
     expect(result.stdout).toContain("--install");
+  });
+});
+
+describe("pack: --help", () => {
+  it("prints help when the flag follows a nested subcommand", () => {
+    // `pack` is a spelling of `policies` now, so this reaches the unified
+    // add/remove/show help rather than a pack-only one.
+    const result = runCli("pack", "add", "--help");
+    assertSuccess(result);
+    expect(result.stdout).toContain("failproofai policies add|remove|show");
+    // Section headings are lowercase now — the brand's display type is, and
+    // twelve screens sharing one renderer means they share its case too.
+    expect(result.stdout).toContain("a name or a source");
   });
 });
 

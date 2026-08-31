@@ -1,0 +1,249 @@
+---
+title: "LlamaIndex"
+sidebarTitle: "LlamaIndex"
+description: "İş akışlarını, adımları, fonksiyon aracılarını ve alıcıları enstrüman haline getirin."
+icon: "/images/frameworks/llamaindex.svg"
+---
+
+## Yükleme
+
+```bash
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+Desteklenen: `llama-index-core` 0.14.23 ila 0.15. 0.14.23, iş akışı akışının bu adaptörün okuduğu yazılı aracı olaylarını taşımaya başladığı sürümdür. Bunun altında, model adları ve aracı yapısı her ikisi de kaybolur.
+
+## Enstrümantasyon
+
+```python
+import asyncio
+
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+async def main():
+    async with failproofai_sdk.session():
+        await agent.run("...")
+
+
+asyncio.run(main())
+```
+
+LlamaIndex'in aracı API'si asenkrondur. Her kapsam `async with` ve `with` altında çalışır ve aynı olayları üretir.
+
+`instrument()`, bir olay işleyicisi ve bir kapsam işleyicisini LlamaIndex'in genel dağıtıcısına bağlar. Birlikte aracı döngüsünü görünür hale getirirler, sadece model çağrılarını değil.
+
+<Warning>
+  LLM'nizdeki bir ekstra argüman olmadan, izlemenizdeki her token sayısı null olur. Aşağıdaki [Token sayıları](#token-sayıları) bölümüne bakın.
+</Warning>
+
+## Token sayıları
+
+`FunctionAgent`, `astream_chat` çağrısı yapar ve `llama-index-llms-openai` akış yaparken `stream_options={"include_usage": True}` göndermez. Sağlayıcı bu nedenle kullanım yığınını asla göndermez ve herhangi bir enstrümantasyonun okuması için bir şey yoktur.
+
+Bu, yukarı akış LlamaIndex davranışıdır. LLM'nizdeki şunu seçin:
+
+```python
+from llama_index.llms.openai import OpenAI
+
+llm = OpenAI(
+    model="gpt-4o-mini",
+    additional_kwargs={"stream_options": {"include_usage": True}},
+)
+```
+
+Aynı çalışma ve model üzerinde ölçüldü:
+
+| | Giriş token'ları | Çıkış token'ları |
+| --- | --- | --- |
+| Olmadan | `null` | `null` |
+| İle | 148 | 17 |
+
+Akışlı olmayan çağrılar (`llm.chat`, `llm.achat`) yapılandırma olmadan kullanımı bildirir. Sadece varsayılan aracı yolu olan akış yolu buna gerek duyar.
+
+## Kaydedilen şeyler
+
+| LlamaIndex | Failproof olayı |
+| --- | --- |
+| `Workflow.run` kök kapsamı | Session, `agent_start`, `agent_end` |
+| İç içe `Workflow.run` kapsamı | İç içe `agent_start`, `agent_end` |
+| İş akışı adımı kapsamı | `hook_triggered`, `hook_completed` |
+| LLM sohbet başlangıcı ve sonu | `model_request`, `model_response` |
+| `FunctionTool.call` kapsamı | `tool_use`, `tool_result` |
+| Alım başlangıcı ve sonu | `tool_use`, `tool_result`, çıkış özetlendi |
+| Gömme işlemleri | Hiçbir şey, `embeddings=True` olmadıkça |
+| Bir aracı kişi beklerken | `human_wait`, `agent_pause`, sonra `agent_resume`, `human_input` |
+| `AgentWorkflow` devretme | İş akışına üst öğe olan aracı başına bir iç içe `agent_start`, `agent_end` |
+| İstisna | `error`, sonra sonuç `failed` olan `agent_end` ve bunu adlandıran `agent_end.summary` |
+| `handler.cancel_run()` | Sonuç `cancelled` olan `agent_end` ve `error` olmadan — bir durdurma düğmesi başarısızlık değildir |
+
+`agent_id`, bir tane ayarladığınızda `FunctionAgent.name` ve aksi takdirde iş akışı sınıf adıdır. `AgentWorkflow` altında, sıra alan her aracı iş akışı altında kendi iç içe kapsamını alır, bu nedenle bir devretme iki aracı olarak okunur.
+
+Alım çıkışı dökülen yerine özetlenir. Bir alıcı belgeler döndürür ve bunları yüklemede depolamak, sorgu başına bir kez külliyatınızı olaylar mağazasına koyar. Sayı, skor aralığı ve kısaltılmış parçacıklar bunun yerine tutulur.
+
+## Örnek
+
+```python
+import asyncio
+
+import failproofai_sdk
+from llama_index.core.agent.workflow import FunctionAgent
+from llama_index.core.tools import FunctionTool
+from llama_index.llms.openai import OpenAI
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+POP = {"tokyo": "37M", "delhi": "33M"}
+AREA = {"tokyo": "2,194 km2", "delhi": "1,484 km2"}
+
+
+def population(city: str) -> str:
+    """Population of a city. Valid: tokyo, delhi."""
+    return POP.get(city.lower().strip(), "unknown")
+
+
+def area(city: str) -> str:
+    """Land area of a city. Valid: tokyo, delhi."""
+    return AREA.get(city.lower().strip(), "unknown")
+
+
+async def main():
+    agent = FunctionAgent(
+        name="city_analyst",
+        tools=[
+            FunctionTool.from_defaults(fn=population),
+            FunctionTool.from_defaults(fn=area),
+        ],
+        llm=OpenAI(
+            model="gpt-4o-mini",
+            additional_kwargs={"stream_options": {"include_usage": True}},
+        ),
+        system_prompt="Use the tools. Be terse.",
+    )
+
+    async with failproofai_sdk.session():
+        async with failproofai_sdk.agent("city_analyst", goal="compare two cities"):
+            print(await agent.run("Compare Tokyo and Delhi on population and area."))
+
+
+asyncio.run(main())
+```
+
+Aracı döngüsü izlemede kanca çiftleri olarak görünür: `init_run`, `setup_agent`, `run_agent_step`, `parse_agent_output`, `call_tool` ve `aggregate_tool_results`. Bunlar çerçevenin kendi döngüsüdür, bu nedenle aracılar yerine kanca olması `agent_id` anlamlı tutar.
+
+## Kapsamlarınızı adlandırın
+
+`agent_id`, bir tane ayarladığınızda `FunctionAgent.name` ve aksi takdirde iş akışı sınıf adıdır.
+
+```python
+FunctionAgent(name="city_analyst", tools=[...], llm=llm)   # agent_id = "city_analyst"
+```
+
+`AgentWorkflow` içinde, bu ad aynı zamanda her devretmenin kaydedildiği şeyin de adıdır:
+
+```text
+AgentWorkflow            üst span
+├─ city_analyst          tur 1
+├─ cost_analyst          tur 2
+└─ city_analyst          tur 3  — yeni bir tur, yeniden açılmış değil
+```
+
+Bu nedenle `agent_id` size **hangi aracının** işi yaptığını ve `parent_id` **hangi iş akışına** ait olduğunu söyler. Daha sonra kontrol geri veren bir aracı ilk turunu yeniden açmak yerine ikinci bir tur açar.
+
+Geçersiz kılmak için veya birkaç aracıyı tek bir üst öğe altında gruplandırmak için sarın:
+
+```python
+async with failproofai_sdk.agent("research", goal="compare two cities"):
+    await agent.run(...)
+```
+
+`agent_id` düşük kardinalitenin tutun. Her pano yüzeyinde birincil fasettir, bu nedenle bir rol veya iş akışı adı kullanın, asla UUID veya çalışma başına dize kullanmayın.
+
+## Oturumu kontrol edin
+
+Bu adaptör **`session_id` seçeneği almaz**. Oturum kapsayan kapsamdan gelir, aksi takdirde iş akışı çalışması başına oluşturulan `uuid4().hex` dir:
+
+```python
+async with failproofai_sdk.session(f"chat-{user_id}"):
+    await agent.run(...)
+```
+
+## Seçenekler
+
+```python
+failproofai_sdk.instrument(
+    "llama_index",
+    embeddings=False,         # True, gömme çağrılarını kanca çiftleri olarak kaydeder
+    steps=True,               # False, iş akışı-adımı kanca çiftlerini bırakır
+    capture_messages=True,    # False, HER yükü bırakır: istemler, tamamlamalar,
+                              # araç bağımsız değişkenleri ve çıkışı, adım G/Ç, alım
+                              # sorguları, hedefi ve nihai yanıtı
+    capture_limit=8192,       # yakalanan değer başına tutulan karakterler
+    stale_after=600.0,        # terkedilmiş bir LEAF'i zorla kapatmadan önceki saniyeler
+    reaper_interval=30.0,     # orakçı ne sıklıkla temizlenir; 0 onu devre dışı bırakır
+)
+```
+
+| Seçenek | Neden değiştirirsiniz |
+| --- | --- |
+| `embeddings` | Yalnızca gömme gecikme süresi veya maliyetinde hata ayıklama yapılırken açın. Toplu bir dizin oluşturması binlerce çağrıdır ve zaman çizelgesini gömecektir. |
+| `steps` | Yalnızca model ve araç olaylarını istiyorsanız ve aracı döngüsünü gürültülü bulursanız kapatın. |
+| `capture_messages` | Düzenlenmiş veriler için kapatın. Her yük kaydedilmeyi bırakır — istemler, modelin tamamlaması, araç bağımsız değişkenleri ve dönüş değerleri, iş akışı-adımı giriş ve çıkışı, alım sorguları, aracının hedefi ve nihai yanıtı. Yapı, zamanlamalar, jetonlar ve sonuçlar hala kaydedilir. |
+| `capture_limit` | Kesilmeden önce yakalanan değer başına tutulan karakterler. RAG istemi veya alınan içerik kırpılmış geldiğinde bunu yükseltin. |
+| `stale_after` | Terkedilmiş **yaprak** — hiç kimsenin tüketmediği bir akış yanıtı, kapatılması hiç gelmeyen bir model veya araç kapsamı — zorla kapatılmadan önceki saniyeler, böylece oturum çözülür ve `ongoing` sonsuza kadar okunur. Bu, terkedilmiş bir çalışmanın kendisini kapatmaz: görev görevi gözlemci bir çıkış görmeden iptal edilen bir iş akışı, `uninstrument()` yapılana kadar `agent_start` açık tutar. |
+| `reaper_interval` | Temizlik sıklığı. Orakçıyı tamamen devre dışı bırakmak için `0` olarak ayarlayın. |
+
+## İnsan döngüde
+
+Bekleme aracının içinde gerçekleştiğinde yakalanır:
+
+```python
+async def ask_human(question: str) -> str:
+    """Ask a person and wait for their answer."""
+    response = await ctx.wait_for_event(HumanResponseEvent)
+    return response.answer
+```
+
+Düz bir iş akışı adımında `ctx.wait_for_event` yakalanmaz. Çalışma zamanı, dağıtıcıya ulaşmadan önce bırakmayı yakalar, bu nedenle adım çıkar ve daha sonra duraklatmak için anahtar yok olarak yeniden çalışır. LlamaIndex'in belgelediği FunctionAgent deseni, bir araç içinde bekler ve tam olarak yakalanır.
+
+## Yaygın sorunlar
+
+<AccordionGroup>
+  <Accordion title="Her token sayısı null">
+    LLM'nizdeki `additional_kwargs={"stream_options": {"include_usage": True}}` ekleyin. Bkz. [Token sayıları](#token-sayıları).
+  </Accordion>
+
+  <Accordion title="Kullanım dolduruldu ama token sütunları boş">
+    LlamaIndex'in standart bir kullanım alanı yok. Adaptör çeşitli bilinen şekilleri dener ve sayaçlarını yeni bir şey olarak adlandıran bir entegrasyon hiçbiriyle eşleşmez.
+
+    Ham sözlük her zaman gönderilir, bu nedenle sağlayıcıınızın onları ne çağırdığını görmek için yüklemedeki `usage` kontrol edin.
+
+    Dolu bir `usage` boş token sütunları ile birlikte kasıtlıdır — bunun yerine güvenli bir yanlış sayı daha iyidir.
+  </Accordion>
+
+  <Accordion title="Zaman çizelgesi setup_agent ve parse_agent_output ile dolu">
+    Bu FunctionAgent döngüsüdür, yineleme başına bir set. Kontrol panelde kanca adına göre filtreleyin. Bu adım zamanlamaları, genellikle bu adaptörü yalnızca model içeren bir yerine kullanma nedenidir.
+  </Accordion>
+
+  <Accordion title="Hiçbir şey kaydedilmedi">
+    Şu sırayla kontrol edin: `instrument()` çalışmadan önce çalıştı; `await` etrafında bir `async with failproofai_sdk.session():` vardır; `llama-index-core` 0.14.23 veya daha yenisidir; `FAILPROOFAI_SDK_STRICT=1` ayarlanmış, bu nedenle yozlaşmış bir kanca yutulan yerine yükseltilir.
+  </Accordion>
+</AccordionGroup>
+
+## Sonraki
+
+<Columns cols={3}>
+  <Card title="Nasıl çalışır" icon="workflow" href="/tr/start/integrations/custom-agents#going-deeper">
+    Çiftler, kimlikler, oturum yaşam döngüsü ve teslimat.
+  </Card>
+  <Card title="İz okuyun" icon="route" href="/tr/sessions/read-a-trace">
+    Yeni yakaladığınız oturum aracılığıyla nedenselliği izleyin.
+  </Card>
+  <Card title="Diğer çerçeveler" icon="plug" href="/tr/start/integrations">
+    LangGraph, CrewAI, Pydantic AI ve özel aracılar.
+  </Card>
+</Columns>

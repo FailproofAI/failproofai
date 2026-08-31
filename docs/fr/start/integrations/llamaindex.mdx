@@ -1,0 +1,249 @@
+---
+title: "LlamaIndex"
+sidebarTitle: "LlamaIndex"
+description: "Instrumentez les workflows, les étapes, les agents fonctionnels et les retrievers."
+icon: "/images/frameworks/llamaindex.svg"
+---
+
+## Installation
+
+```bash
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+Versions supportées : `llama-index-core` 0.14.23 à 0.15. La version 0.14.23 est celle où le stream de workflow a commencé à transporter les événements d'agent typés que cet adaptateur lit. En dessous, les noms de modèles et la structure de l'agent disparaissent tous les deux.
+
+## Instrumentation
+
+```python
+import asyncio
+
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+async def main():
+    async with failproofai_sdk.session():
+        await agent.run("...")
+
+
+asyncio.run(main())
+```
+
+L'API agent de LlamaIndex est asynchrone. Chaque scope fonctionne avec `async with` aussi bien qu'avec `with` et produit des événements identiques.
+
+`instrument()` attache un gestionnaire d'événements et un gestionnaire de spans au dispatcher global de LlamaIndex. Ensemble, ils rendent la boucle agent visible, pas seulement ses appels au modèle.
+
+<Warning>
+  Sans un argument supplémentaire sur votre LLM, tous les comptages de tokens dans votre trace seront null. Consultez [Comptage de tokens](#token-counts) ci-dessous.
+</Warning>
+
+## Comptage de tokens
+
+`FunctionAgent` appelle `astream_chat`, et `llama-index-llms-openai` n'envoie pas `stream_options={"include_usage": True}` lors du streaming. Le fournisseur n'envoie donc jamais le chunk d'utilisation, et il n'y a rien à lire pour aucune instrumentation.
+
+Il s'agit d'un comportement LlamaIndex en amont. Activez l'option sur votre LLM :
+
+```python
+from llama_index.llms.openai import OpenAI
+
+llm = OpenAI(
+    model="gpt-4o-mini",
+    additional_kwargs={"stream_options": {"include_usage": True}},
+)
+```
+
+Mesuré sur la même exécution et le même modèle :
+
+| | Tokens en entrée | Tokens en sortie |
+| --- | --- | --- |
+| Sans | `null` | `null` |
+| Avec | 148 | 17 |
+
+Les appels non-streaming (`llm.chat`, `llm.achat`) rapportent l'utilisation sans configuration. Seul le chemin streaming, qui est le chemin agent par défaut, en a besoin.
+
+## Ce qui est enregistré
+
+| LlamaIndex | Événement Failproof |
+| --- | --- |
+| Span racine `Workflow.run` | Session, `agent_start`, `agent_end` |
+| Span `Workflow.run` imbriqué | `agent_start`, `agent_end` imbriqués |
+| Span d'étape de workflow | `hook_triggered`, `hook_completed` |
+| Début et fin de chat LLM | `model_request`, `model_response` |
+| Span `FunctionTool.call` | `tool_use`, `tool_result` |
+| Début et fin de retrieval | `tool_use`, `tool_result`, sortie résumée |
+| Embeddings | Rien, sauf si `embeddings=True` |
+| Un outil en attente d'une personne | `human_wait`, `agent_pause`, puis `agent_resume`, `human_input` |
+| Transfert `AgentWorkflow` | Un `agent_start`, `agent_end` imbriqué par agent, rattaché au workflow |
+| Exception | `error`, puis `agent_end` avec outcome `failed`, et `agent_end.summary` le nommant |
+| `handler.cancel_run()` | `agent_end` avec outcome `cancelled` et sans `error` — un bouton stop n'est pas un échec |
+
+`agent_id` correspond au `FunctionAgent.name` si vous en définissez un, sinon au nom de la classe du workflow. Sous un `AgentWorkflow`, chaque agent qui prend un tour obtient sa propre span imbriquée sous le workflow, de sorte qu'un transfert se lit comme deux agents plutôt qu'un.
+
+La sortie du retrieval est résumée plutôt que vidée. Un retriever retourne des documents, et les stocker dans le payload mettrait votre corpus dans le store d'événements à chaque requête. Le nombre, la plage de scores et des extraits tronqués sont conservés à la place.
+
+## Exemple
+
+```python
+import asyncio
+
+import failproofai_sdk
+from llama_index.core.agent.workflow import FunctionAgent
+from llama_index.core.tools import FunctionTool
+from llama_index.llms.openai import OpenAI
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+POP = {"tokyo": "37M", "delhi": "33M"}
+AREA = {"tokyo": "2,194 km2", "delhi": "1,484 km2"}
+
+
+def population(city: str) -> str:
+    """Population of a city. Valid: tokyo, delhi."""
+    return POP.get(city.lower().strip(), "unknown")
+
+
+def area(city: str) -> str:
+    """Land area of a city. Valid: tokyo, delhi."""
+    return AREA.get(city.lower().strip(), "unknown")
+
+
+async def main():
+    agent = FunctionAgent(
+        name="city_analyst",
+        tools=[
+            FunctionTool.from_defaults(fn=population),
+            FunctionTool.from_defaults(fn=area),
+        ],
+        llm=OpenAI(
+            model="gpt-4o-mini",
+            additional_kwargs={"stream_options": {"include_usage": True}},
+        ),
+        system_prompt="Use the tools. Be terse.",
+    )
+
+    async with failproofai_sdk.session():
+        async with failproofai_sdk.agent("city_analyst", goal="compare two cities"):
+            print(await agent.run("Compare Tokyo and Delhi on population and area."))
+
+
+asyncio.run(main())
+```
+
+La boucle agent apparaît dans la trace sous forme de paires de hooks : `init_run`, `setup_agent`, `run_agent_step`, `parse_agent_output`, `call_tool` et `aggregate_tool_results`. Ce sont les boucles propres au framework, donc ce sont des hooks plutôt que des agents, ce qui permet à `agent_id` de rester significatif.
+
+## Nommez vos spans
+
+`agent_id` correspond au `FunctionAgent.name` si vous en définissez un, sinon au nom de la classe du workflow.
+
+```python
+FunctionAgent(name="city_analyst", tools=[...], llm=llm)   # agent_id = "city_analyst"
+```
+
+Dans un `AgentWorkflow`, ce nom est également celui sous lequel chaque transfert est enregistré :
+
+```text
+AgentWorkflow            span parente
+├─ city_analyst          tour 1
+├─ cost_analyst          tour 2
+└─ city_analyst          tour 3  — un nouveau tour, pas une réouverture
+```
+
+Ainsi, `agent_id` indique **quel agent** a effectué le travail et `parent_id` indique **à quel workflow** il appartenait. Un agent qui a rendu le contrôle ouvre un second tour plutôt que de rouvrir le premier.
+
+Enveloppez l'exécution pour le remplacer, ou pour regrouper plusieurs agents sous un même parent :
+
+```python
+async with failproofai_sdk.agent("research", goal="compare two cities"):
+    await agent.run(...)
+```
+
+Gardez `agent_id` à faible cardinalité. C'est la facette principale sur toutes les surfaces du tableau de bord, donc utilisez un rôle ou un nom de workflow, jamais un UUID ou une chaîne propre à une exécution.
+
+## Contrôler la session
+
+Cet adaptateur ne prend **pas d'option `session_id`**. La session provient du scope englobant, sinon un `uuid4().hex` généré par exécution de workflow :
+
+```python
+async with failproofai_sdk.session(f"chat-{user_id}"):
+    await agent.run(...)
+```
+
+## Options
+
+```python
+failproofai_sdk.instrument(
+    "llama_index",
+    embeddings=False,         # True enregistre les appels d'embedding comme des paires d'outils
+    steps=True,               # False supprime les paires de hooks d'étapes de workflow
+    capture_messages=True,    # False supprime TOUTES les charges utiles : prompts, complétions,
+                              # arguments et sorties des outils, E/S des étapes, requêtes
+                              # de retrieval, l'objectif et la réponse finale
+    capture_limit=8192,       # caractères conservés par valeur capturée
+    stale_after=600.0,        # secondes avant qu'une FEUILLE abandonnée soit forcée à se fermer
+    reaper_interval=30.0,     # fréquence de balayage du reaper ; 0 le désactive
+)
+```
+
+| Option | Pourquoi vous la modifieriez |
+| --- | --- |
+| `embeddings` | À activer uniquement lors du débogage de la latence ou du coût des embeddings. Une construction d'index en masse représente des milliers d'appels et noiera la timeline. |
+| `steps` | À désactiver si vous ne voulez que les événements de modèle et d'outil et trouvez la boucle agent trop verbeuse. |
+| `capture_messages` | À désactiver pour les données réglementées. L'enregistrement de toutes les charges utiles s'arrête — prompts, complétions du modèle, arguments et valeurs de retour des outils, entrée et sortie des étapes de workflow, requêtes de retrieval, l'objectif de l'agent et sa réponse finale. La structure, les timings, les tokens et les outcomes sont toujours enregistrés. |
+| `capture_limit` | Caractères conservés par valeur capturée avant troncature. Augmentez-le quand un prompt RAG ou un contexte récupéré arrive tronqué. |
+| `stale_after` | Secondes avant qu'une **feuille** abandonnée — une réponse streaming que personne n'a consommée, une span de modèle ou d'outil dont la fermeture n'est jamais arrivée — soit forcée à se fermer, afin que la session se stabilise au lieu de rester `ongoing` indéfiniment. Cela ne ferme **pas** une exécution abandonnée elle-même : un workflow dont la tâche est annulée sans que le dispatcher voie une sortie garde son `agent_start` ouvert jusqu'à `uninstrument()`. |
+| `reaper_interval` | Fréquence de balayage. Définissez à `0` pour désactiver entièrement le reaper. |
+
+## Humain dans la boucle
+
+Capturé quand l'attente se produit à l'intérieur d'un outil :
+
+```python
+async def ask_human(question: str) -> str:
+    """Ask a person and wait for their answer."""
+    response = await ctx.wait_for_event(HumanResponseEvent)
+    return response.answer
+```
+
+`ctx.wait_for_event` dans une étape de workflow classique n'est pas capturé. Le runtime intercepte l'abandon avant qu'il n'atteigne le dispatcher, donc l'étape se termine et se réexécute plus tard sans signal pour déclencher une pause. Le pattern FunctionAgent, que LlamaIndex documente, attend à l'intérieur d'un outil et est capturé entièrement.
+
+## Problèmes courants
+
+<AccordionGroup>
+  <Accordion title="Tous les comptages de tokens sont null">
+    Ajoutez `additional_kwargs={"stream_options": {"include_usage": True}}` à votre LLM. Voir [Comptage de tokens](#token-counts).
+  </Accordion>
+
+  <Accordion title="L'utilisation est renseignée mais les colonnes de tokens sont vides">
+    LlamaIndex n'a pas de champ d'utilisation standard. L'adaptateur essaie plusieurs formes connues, et une intégration qui nomme ses compteurs différemment ne correspondra à aucune d'elles.
+
+    Le dict brut est toujours transmis, vérifiez donc `usage` dans la charge utile pour voir comment votre fournisseur les a nommés.
+
+    Un `usage` renseigné avec des colonnes de tokens vides est délibéré — c'est préférable à un chiffre erroné affiché avec confiance.
+  </Accordion>
+
+  <Accordion title="La timeline est pleine de setup_agent et parse_agent_output">
+    C'est la boucle FunctionAgent, un ensemble par itération. Filtrez par nom de hook sur le tableau de bord. Ces timings d'étapes sont généralement la raison d'utiliser cet adaptateur plutôt qu'un adaptateur modèle uniquement.
+  </Accordion>
+
+  <Accordion title="Rien n'est enregistré">
+    Vérifiez dans cet ordre : `instrument()` a été exécuté avant l'exécution ; il y a un `async with failproofai_sdk.session():` autour du `await` ; `llama-index-core` est en version 0.14.23 ou plus récente ; `FAILPROOFAI_SDK_STRICT=1` est défini, de sorte qu'un hook dégradé lève une exception plutôt que d'être ignoré silencieusement.
+  </Accordion>
+</AccordionGroup>
+
+## Suite
+
+<Columns cols={3}>
+  <Card title="Comment ça fonctionne" icon="workflow" href="/fr/start/integrations/custom-agents#going-deeper">
+    Paires, ids, cycle de vie de session et livraison.
+  </Card>
+  <Card title="Lire une trace" icon="route" href="/fr/sessions/read-a-trace">
+    Suivez la causalité à travers la session que vous venez de capturer.
+  </Card>
+  <Card title="Autres frameworks" icon="plug" href="/fr/start/integrations">
+    LangGraph, CrewAI, Pydantic AI et agents personnalisés.
+  </Card>
+</Columns>

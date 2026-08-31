@@ -1,47 +1,51 @@
 ---
-title: "Politikaları dağıtma"
-description: "İncelenen bir politika sürümünü hedeflenen makinelere dağıtın."
+title: "İlkeleri dağıtın"
+description: "İncelenen bir ilke sürümünü hedeflenen makinelere aktarın."
 icon: "cloud-upload"
 ---
 
-Bir dağıtım, bir veya daha fazla politika sürümünü, kaydedilmiş makinelerin hedef kümesine bağlar.
+Bir dağıtım, bir veya daha fazla ilke sürümünü kayıtlı makinelerin hedef kümesine bağlar.
 
-## Dağıtımı uygulama
+## Dağıtım uygulayın
 
 <Tabs>
   <Tab title="Dashboard">
     1. **Admin → enforcement** bölümüne gidin, makineyi bulun ve satırını genişletin.
-    2. **edit** seçeneğini seçin, incelenen politika sürümünü ekleyin ve **observe** veya uygulama etkisini seçin.
-    3. Değişikliği uygulayın, ardından makinenin bir sonraki check-in işlemini bekleyin ve dağıtım ile kapsama durumunu onaylayın.
+    2. **edit** seçeneğini tıklayın, incelenen ilke sürümünü ekleyin ve **observe** veya zorlayıcı etkisini seçin.
+    3. Değişikliği uygulayın, ardından makinenin sonraki kontrolünü bekleyin ve dağıtım ile kapsama durumunu doğrulayın.
     4. Canlı kararları incelemek için **Observe → policy** bölümüne gidin.
 
-    ![Politika sürümleri, enforce ve observe etkileri ve dağıtım uygulama eylemiyle makine dağıtım editörü.](/images/dashboard/enforcement-editor.png)
+    ![İlke sürümleri, enforce ve observe efektleri ile dağıtım editörü ve dağıtım uygulaması aksiyonu.](/images/dashboard/enforcement-editor.png)
   </Tab>
   <Tab title="CLI">
-    Bulut dağıtım uç noktaları kasıtlı olarak sıradan `fp` komutları olarak sunulmaz. Makineyi yerel olarak kontrol edin, ardından dashboard aracılığıyla dağıtın:
+    CLI'dan `fp fleet` komutuyla dağıtım yapın. Uygulamadan önce ortaya çıkan kümesini gözden geçirin — `deploy` tam planı yazdırır ve **yalnızca `--json` olmayan etkileşimli terminalde** sorar. `--json` altında, `--yes` ile veya stdin yönlendirildiğinde (bir CI adımı, bir betik, bir aracı shell komutu) plan ve istem olmadan hemen uygulanır — bu nedenle gözden geçirmek istiyorsanız önce `fp fleet show <machine>` çalıştırın:
 
     ```bash
-    failproofai config --status
+    fp fleet list
+    fp fleet show <machine-id>
+    fp fleet deploy <machine-id> --add no-force-push
     ```
 
-    Dağıtımdan sonra aktivitenin Bulut'a ulaştığını doğrulamak için `fp sessions --env production --since 24h` ve `fp events --event-type hook_completed` komutlarını kullanın.
+    `fp fleet diff <machine-id>` amaç ile teslimatı gösterir (bir makine sonraki yoklamasına kadar `behind` olarak okunur), `fp fleet history <machine-id>` nesilleri listeler ve `fp fleet rollback <machine-id> <generation>` birini geri yükler — devre dışı bırakılan veya silinen bir ilkeyi adlandıran nesil varsa reddeder.
+
+    Makineyi `failproofai config --status` ile kontrol edin ve dağıtımdan sonra `fp sessions --env production --since 24h` ile `fp events --event-type hook_completed` kullanarak aktivitenin Cloud'a ulaştığını doğrulayın.
   </Tab>
 </Tabs>
 
 <Steps>
   <Step title="Sürümü ve hedefleri seçin">
-    Değişken bir taslak değil, incelenen bir sürümü dağıtın; oturumlarını inceleyebileceğiniz üretim dışı bir makine veya küçük bir kohortla başlayın.
+    Değişken bir taslak değil, incelenen bir sürümü dağıtın; oturumlarını inceleyebileceğiniz üretim dışı bir makine veya küçük bir grupla başlayın.
   </Step>
   <Step title="Kararları gözlemleyin">
-    İşi engellememek için eşleşmeleri, nedenleri, etkilenen araçları ve yanlış pozitifleri gözden geçirin.
+    Eşleşmeleri, nedenleri, etkilenen araçları ve yanlış pozitif sonuçları işi engellemeden gözden geçirin.
   </Step>
-  <Step title="Uygulama ve kapsama doğrulayın">
-    Gözlemlenen eşleşmeler güvensiz eylemleri geçerli olanlardan ayırdıktan sonra yükseltin, ardından her hedeflenen makinenin dağıtımı çektiğini ve kararları rapor ettiğini onaylayın.
+  <Step title="Zorlama ve kapsama doğrulayın">
+    Gözlenen eşleşmeler güvenli olmayan eylemleri geçerli olanlardan ayırdıktan sonra promosyon yapın, ardından her hedeflenen makinenin dağıtımı çektiğini ve kararları raporladığını doğrulayın.
   </Step>
 </Steps>
 
-Makinelerin `policies:pull` yeteneğine ihtiyacı vardır. Olay raporlaması ayrı olarak `events:add` tarafından kontrol edilir; Bulut analizi ve uygulaması beklediğinizde her ikisini de doğrulayın.
+Makinelerin `policies:pull` yeteneğine ihtiyacı vardır. Olay raporlaması `events:add` tarafından ayrıca kontrol edilir; Cloud analizi ve zorlama beklediğinizde her ikisini de doğrulayın.
 
 <Warning>
-  Uygulamayı yönetme, bir yönetici Bulut iş akışıdır. Yalnızca kök erişimi gerektiren uygulamayı yönetme rotalarını sıradan müşteri `/v1` API uç noktaları olarak değerlendirmeyin.
+  Zorlama yönetimi, idari bir Cloud iş akışıdır. Yalnızca root erişimli zorlama rotalarını sıradan müşteri `/v1` API uç noktaları olarak değerlendirmeyin.
 </Warning>

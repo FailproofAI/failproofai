@@ -1,33 +1,33 @@
 ---
 title: "ポリシーで最初の失敗を防ぐ"
-description: "ポリシーのバージョンを作成し、オブザーブモードでデプロイしてから適用します。"
+description: "ポリシーのバージョンを作成し、オブザーブモードでデプロイして、その後強制適用します。"
 icon: "shield-check"
 ---
 
-安全でないアクションと、引き続き許可すべき正当なアクションを明確に説明できるようになってからポリシーを使用してください。
+ポリシーを使用するのは、安全でないアクションと、引き続き許可すべき正当なアクションを明確に説明できるようになってからにしてください。
 
 <Tabs>
   <Tab title="ダッシュボード">
     <Steps>
       <Step title="ポリシーを作成する">
-        **Admin → policy editor** に移動します。デモポリシーから始め、ソースを確認または編集してから、**publish version** を選択します。公開すると、マシンにデプロイできる不変のバージョンが作成されます。
+        **Admin → policy editor** に移動します。デモポリシーから始め、ソースを確認または編集して、**publish version** を選択します。公開すると、マシンにデプロイできるイミュータブルなバージョンが作成されます。
 
-        ![公開済みの不変バージョンとしてデモポリシーが準備されたポリシーエディタの作成ビュー。](/images/dashboard/policy-editor.png)
+        ![デモポリシーがイミュータブルなバージョンとして公開される準備が整ったポリシーエディターの作成ビュー。](/images/dashboard/policy-editor.png)
       </Step>
       <Step title="マシンにデプロイする">
-        **Admin → enforcement** に移動し、対象マシンを展開して **edit this machine** を選択します。公開済みのデモポリシーを追加し、バージョンを固定して **observe** を選択し、デプロイを適用します。
+        **Admin → enforcement** に移動し、対象のマシンを展開して **edit this machine** を選択します。公開済みのデモポリシーを追加し、バージョンをピン留めして、**observe** を選択し、デプロイメントを適用します。
 
-        ![デプロイを適用する前に、オブザーブモードで公開済みポリシーバージョンが選択されたマシンデプロイメントエディタ。](/images/dashboard/enforcement-editor.png)
+        ![デプロイメントを適用する前に、オブザーブモードで公開済みポリシーバージョンが選択されたマシンデプロイメントエディター。](/images/dashboard/enforcement-editor.png)
       </Step>
-      <Step title="ポリシーを確認する">
-        そのマシンで新しいエージェントセッションを実行し、**Observe → policy** を開きます。マシンを選択し、デモポリシーがポリシーマッピングと決定タイムラインに表示されることを確認します。オブザーブモードでは、アクションをブロックせずにポリシーが行う処理を記録します。
+      <Step title="ポリシーを検証する">
+        そのマシンで新しいエージェントセッションを実行し、**Observe → policy** を開きます。マシンを選択し、デモポリシーがポリシーマッピングと決定タイムラインに表示されることを確認します。オブザーブモードでは、アクションをブロックせずにポリシーが行う動作を記録します。
 
-        ![決定の合計数、経時的な適用アクティビティ、ローカルおよびクラウド管理のポリシーマッピングを表示するポリシーページ。](/images/dashboard/policy-observe.png)
+        ![決定の集計、時系列の強制適用アクティビティ、ローカルおよびクラウド管理のポリシーマッピングを表示するポリシーページ。](/images/dashboard/policy-observe.png)
       </Step>
     </Steps>
   </Tab>
   <Tab title="CLI">
-    クラウドのポリシー作成とフリートデプロイメントは管理者向けのワークフローです。公開前に同じポリシーを検証するには、ローカル CLI を使用してください：
+    クラウドでのポリシー作成とフリートへのデプロイは管理者向けのワークフローです。公開前に同じポリシーをローカルの CLI で検証するには、以下を使用します。
 
     ```bash
     failproofai policies --install --custom ./payment-retry.policies.ts \
@@ -35,13 +35,13 @@ icon: "shield-check"
     failproofai config --status
     ```
 
-    クラウドで確認できるポリシーの決定を検査するには `fp` を使用してください：
+    クラウドから参照できるポリシーの決定を確認するには `fp` を使用します。
 
     ```bash
     fp events --event-type hook_completed --env production --since 24h
     fp sessions --env production --since 24h
     ```
 
-    クラウド CLI はルート専用の適用デプロイメントルートを公開していません。**Admin → policy editor** からバージョンを公開し、**Admin → enforcement** からデプロイしてください。
+    どちらのステップも CLI から実行できます。`fp policies publish <id> <file>` でバージョンを発行し、`fp fleet deploy <machine-id> --add <id>` でマシンに適用します。ダッシュボードでの対応操作はそれぞれ **Admin → policy editor** と **Admin → enforcement** です。
   </Tab>
 </Tabs>

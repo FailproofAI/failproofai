@@ -1,0 +1,37 @@
+---
+title: "CrewAI"
+description: "Kurun, enstrümanı ayarlayın ve ilk izlemenizi göreceğin."
+icon: "/images/frameworks/crewai.svg"
+---
+
+İlk CrewAI izlemenize giden üç adım. Her etkinliğin ne taşıdığı, akışları ve sorun giderme için bkz. [tam kılavuz](/tr/start/integrations/crewai).
+
+## Kurun
+
+```bash
+pip install 'failproofai-sdk[crewai]'
+```
+
+## Enstrüman ayarlayın
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    Crew(agents=[analyst, writer], tasks=[gather, summarise]).kickoff()
+```
+
+Crew'unuzda, ajanlarında, görevlerinde veya araçlarında hiçbir şey değişmez. `instrument()`, CrewAI'nin modül düzeyindeki etkinlik veri yoluna abone olur.
+
+## Geldiğini kontrol edin
+
+Bir kez çalıştırın, ardından **Observe → Sessions** öğesini açın ve ortamınızı seçin. Çalışmanız yeniden oluşturulan bir iz olarak görünür.
+
+Hiçbir şey gelmezse, makine `failproofai config --status` komutu ile bağlı olduğunu doğrulayın.
+
+<Card title="Tam CrewAI kılavuzu" icon="arrow-right" href="/tr/start/integrations/crewai">
+  Neyin kaydedildiği, akışları, token kullanımı, span adlandırması, seçenekler ve yaygın sorunlar.
+</Card>

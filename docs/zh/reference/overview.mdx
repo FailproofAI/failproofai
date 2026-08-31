@@ -1,6 +1,6 @@
 ---
 title: "集成与参考"
-description: "连接支持的 Agent 框架、SDK、CLI 和 HTTP API。"
+description: "连接支持的 Agent 框架、SDK、CLI 及 HTTP API。"
 icon: "braces"
 ---
 
@@ -8,19 +8,22 @@ icon: "braces"
 
 <Columns cols={2}>
   <Card title="Agent 框架" icon="plug-zap" href="/zh/reference/harnesses">
-    为支持的编码和自主 Agent CLI 安装钩子。
+    为支持的编码和自主 Agent CLI 安装 hook。
   </Card>
-  <Card title="自定义 Agent" icon="python" href="/zh/reference/custom-agents">
-    对自定义 Agent 进行 trace 埋点以发现故障，然后联系我们将防护措施添加到您的运行时。
+  <Card title="Agent 框架与 SDK" icon="plug" href="/zh/start/integrations">
+    接入 LangGraph、CrewAI、LlamaIndex、Pydantic AI 或自定义 Agent。
+  </Card>
+  <Card title="Python SDK 参考" icon="python" href="/zh/reference/custom-agents">
+    配置项、事件目录、关联规则及数据投递。
   </Card>
   <Card title="本地仪表板" icon="monitor-cog" href="/zh/reference/local-dashboard">
-    查看本地项目、会话、策略活动和离线审计。
+    查看本地项目、会话、策略活动及离线审计。
   </Card>
   <Card title="Failproof AI CLI" icon="terminal" href="/zh/reference/failproof-cli">
-    配置本地采集、钩子、策略、审计、数据投递和机器状态。
+    配置本地采集、hook、策略、审计、数据投递及机器状态。
   </Card>
   <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/zh/reference/cloud-cli#cli-commands">
-    查询和管理云端会话、审计、问题、告警、密钥、用户和设置。
+    查询和管理云端会话、审计、问题、告警、密钥、用户及设置。
   </Card>
   <Card title="评估器 SDK" icon="gauge" href="/zh/reference/evaluator-sdk">
     使用 FastAPI 服务对已完成或非活跃会话进行评分。
@@ -29,33 +32,33 @@ icon: "braces"
     编写并测试针对特定工作流的 allow、instruct 和 deny 决策。
   </Card>
   <Card title="自托管" icon="cloud-cog" href="/zh/reference/self-hosting">
-    在客户自管的 Kubernetes 集群上部署云端控制平面。
+    在客户自管理的 Kubernetes 集群上部署云端控制面。
   </Card>
 </Columns>
 
-自动生成的 [HTTP API 参考文档](/zh/reference/http-api) 覆盖了公开的 `/v1` 接口。手写页面则对跨多个端点的工作流，以及该公开接口之外的管理界面操作进行了详细说明。
+自动生成的 [HTTP API 参考](/zh/reference/http-api) 涵盖公开的 `/v1` 接口。手写文档页面则说明跨多个端点的工作流，或涉及该公开接口之外的管理界面的操作。
 
 ## 连接 Agent 并验证数据
 
 <Tabs>
   <Tab title="仪表板">
-    1. 打开 **Administration → Keys**，创建一个具有 `events:add` 和 `policies:pull` 权限的密钥，并复制该密钥。
-    2. 参照上方对应页面配置集成。
-    3. 打开 **Observe → Events** 确认事件正常到达，再打开 **Observe → Sessions** 确认事件已形成完整的运行记录。
-    4. 按集成环境进行筛选，并检查某个会话，确认其包含审计所需的模型、工具、错误和策略字段。
+    1. 打开 **Administration → Keys**，创建一个具有 `events:add` 和 `policies:pull` 权限的密钥，并复制密钥内容。
+    2. 按照上方对应页面完成集成配置。
+    3. 打开 **Observe → Events** 确认事件已到达，再打开 **Observe → Sessions** 确认事件已汇聚为完整的运行记录。
+    4. 按集成环境进行过滤，并检查某个会话，核实审计所需的模型、工具、错误和策略字段是否齐全。
 
-    从密钥创建侧滑面板开始操作。所选授权项决定了该机器能否发送事件和接收云端管理的策略。
+    从密钥抽屉开始操作。所选权限决定了该机器是否可以发送事件并接收云端管理的策略。
 
-    ![用于授予事件摄取和策略投递权限的新 API 密钥创建面板。](/images/dashboard/key-create.png)
+    ![用于授予事件摄取和策略下发权限的新建 API 密钥抽屉。](/images/dashboard/key-create.png)
 
-    连接集成后，使用会话列表确认其事件已在预期环境中被归组为完整的运行记录。
+    完成集成配置后，使用会话列表确认相关事件已在预期环境中被归组为完整的运行记录。
 
-    ![用于验证新连接的集成是否正在上报完整 Agent 运行记录的会话列表。](/images/dashboard/sessions-list.png)
+    ![用于验证新连接集成是否正常上报完整 Agent 运行记录的会话列表。](/images/dashboard/sessions-list.png)
 
-    在确认集成完成之前，请打开其中一个会话；trace 中应包含审计所需的模型、工具、错误和策略等信息。
+    在确认集成完成之前，请打开其中一个会话进行检查；追踪记录中应包含审计所需的模型、工具、错误和策略等证据。
   </Tab>
   <Tab title="CLI">
-    创建机器密钥，连接 Failproof 守护进程，并验证第一个会话。
+    创建机器密钥，连接 Failproof 守护进程，并验证首个会话。
 
     ```bash
     fp keys create agent-production \
@@ -71,8 +74,8 @@ icon: "braces"
     fp events --since 1h --env production --limit 20
     ```
 
-    当其他工具需要消费输出结果时，请使用 `fp --json sessions ...`。`--json`、`--org`、`--base-url` 等全局标志必须放在命令之前。
+    当其他工具需要消费输出结果时，请使用 `fp --json sessions ...`。`--json`、`--org`、`--base-url` 等全局标志必须置于命令之前。
 
-    本地命令请参阅 [Failproof AI CLI 参考文档](/zh/reference/failproof-cli)，`fp` 命令请参阅 [Failproof Cloud CLI 参考文档](/zh/reference/cloud-cli#cli-commands)。
+    本地命令请参阅 [Failproof AI CLI 参考](/zh/reference/failproof-cli)，`fp` 命令请参阅 [Failproof Cloud CLI 参考](/zh/reference/cloud-cli#cli-commands)。
   </Tab>
 </Tabs>

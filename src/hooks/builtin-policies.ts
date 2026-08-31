@@ -6,7 +6,13 @@ import { statSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { execSync, execFileSync } from "node:child_process";
 import { homedir } from "node:os";
-import type { BuiltinPolicyDefinition, PolicyContext, PolicyResult, PolicyParamsSchema } from "./policy-types";
+import type {
+  BuiltinPolicyDefinition,
+  PolicyContext,
+  PolicyFunction,
+  PolicyResult,
+} from "./policy-types";
+import { POLICY_CATALOG } from "./policy-catalog";
 import { allow, deny, instruct } from "./policy-helpers";
 import { normalizePolicyName, registerPolicy } from "./policy-registry";
 import { hookLogWarn } from "./hook-logger";
@@ -254,7 +260,7 @@ const SEGMENT_SEPARATORS = /[;&|\n\r(){}`]+/;
  * `/usr/bin/env` and `env` behave identically.
  */
 const COMMAND_PREFIX_TOKENS = new Set([
-  "npx", "bunx", "pnpx", "npm", "pnpm", "yarn", "dlx", "exec", "run",
+  "npx", "bunx", "pnpx", "npm", "pnpm", "yarn", "dlx", "exec", "run", "eval",
   "node", "bun", "deno", "env", "command", "builtin", "nohup", "setsid",
   "time", "timeout", "nice", "stdbuf", "xargs", "sudo", "doas",
   "sh", "bash", "zsh", "dash", "ksh", "fish", "ash",
@@ -264,6 +270,15 @@ const COMMAND_PREFIX_TOKENS = new Set([
  * `failproofai@latest`, `/usr/local/bin/failproofai`,
  * `./node_modules/.bin/failproofai`, `.../failproofai/bin/failproofai.mjs`. */
 const SELF_BINARY_TOKEN_RE = /(?:^|\/)failproofai[^/]*$/;
+
+/**
+ * The same CLI, reached by path rather than by name.
+ *
+ * `node <pkg>/dist/cli.mjs config --pause` put `node` in command position, so
+ * the walk above settled on a path the binary regex did not match — and it
+ * paused enforcement. Verified as a live bypass.
+ */
+const SELF_ENTRY_PATH_RE = /failproofai\/(?:dist\/(?:cli|index)\.mjs|bin\/failproofai\.mjs)$/;
 
 /** `config`, and the two aliases the entrypoint normalizes to it. */
 const CONFIG_SUBCOMMAND_RE = /^(?:config|configure|setup)$/;
@@ -290,7 +305,36 @@ const RUNNER_OPERAND_RE = /^\d+[a-z]*$/i;
  * and denies. That is a far narrower miss than matching every mention, and it
  * errs toward refusing rather than toward silently suspending enforcement.
  */
-function namesSelfPause(command: string): boolean {
+type SelfInvocation = "pause" | "cli";
+
+/**
+ * Classify a command by what it does to failproofai itself, or null when it
+ * does nothing to failproofai at all.
+ *
+ * `pause` outranks `cli` wherever both appear, because the pause verdict is the
+ * one whose message has to explain that suspending enforcement is a human call.
+ */
+function classifySelfInvocation(raw: string): SelfInvocation | null {
+  // `${X}` before anything else looks at it: braces are SEGMENT SEPARATORS, so
+  // the reference was being split into `$` and `X` and matched nothing, while
+  // the shell ran it perfectly well.
+  const command = raw.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, "$$$1");
+  let found: SelfInvocation | null = null;
+  // Variables assigned the binary earlier in the SAME command.
+  //
+  // `x=failproofai; $x config --pause` put `$x` in command position, matched
+  // nothing, and paused enforcement — verified as a live bypass. A shell would
+  // have to be re-implemented to resolve this in general; what is cheap and
+  // covers the actual trick is remembering what was assigned right here.
+  const selfVars = new Set<string>();
+  for (const [, name, value] of command.matchAll(/(?:^|[\s;&|])([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;&|]+)/g)) {
+    const bare = value.replace(/^["']|["']$/g, "");
+    if (SELF_BINARY_TOKEN_RE.test(bare) || SELF_ENTRY_PATH_RE.test(bare)) selfVars.add(name);
+  }
+  const isSelfVarRef = (token: string): boolean => {
+    const m = /^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$/.exec(token);
+    return m ? selfVars.has(m[1]) : false;
+  };
   for (const segment of command.split(SEGMENT_SEPARATORS)) {
     const tokens = segment.split(/\s+/).filter(Boolean);
     let i = 0;
@@ -309,16 +353,24 @@ function namesSelfPause(command: string): boolean {
       i++;
     }
     if (i >= tokens.length) continue;
-    if (!SELF_BINARY_TOKEN_RE.test(tokens[i])) continue;
+    if (
+      !SELF_BINARY_TOKEN_RE.test(tokens[i]) &&
+      !SELF_ENTRY_PATH_RE.test(tokens[i]) &&
+      !isSelfVarRef(tokens[i])
+    ) {
+      continue;
+    }
 
-    // The binary IS the command here. Now require `config … --pause` in the
-    // argument order the CLI actually accepts.
+    // The binary IS the command here. `config … --pause` is singled out only for
+    // its message; every other subcommand is denied just the same.
     const args = tokens.slice(i + 1);
     const configAt = args.findIndex((a) => CONFIG_SUBCOMMAND_RE.test(a));
-    if (configAt === -1) continue;
-    if (args.slice(configAt + 1).some((a) => PAUSE_FLAG_RE.test(a))) return true;
+    if (configAt !== -1 && args.slice(configAt + 1).some((a) => PAUSE_FLAG_RE.test(a))) {
+      return "pause";
+    }
+    found = "cli";
   }
-  return false;
+  return found;
 }
 
 /**
@@ -400,7 +452,925 @@ const SECRET_FILE_CREDENTIALS_RE = /credentials/;
 const GIT_COMMIT_MERGE_RE = /git\s+(commit|merge|rebase|cherry-pick)\b/;
 
 // blockFailproofaiCommands
-const FAILPROOFAI_CLI_RE = /(?:^|;|&&|\|\||\|)\s*failproofai(?:\s|$)/;
+/**
+ * A command that removes or moves failproofai's own state.
+ *
+ * Named separately from the binary walk because it never mentions the binary:
+ * the target is a path, and the verb is an ordinary file command.
+ */
+const FAILPROOFAI_STATE_PATH_RE = /\.failproofai(?:\/|\b)/;
+
+/**
+ * Everything the state guard is allowed to let PAST, as a list of commands that
+ * can only read.
+ *
+ * This is the third shape of this check, and the first that is an allowlist.
+ * The first was one verb-then-path regex,
+ * `\b(?:rm|unlink|shred|mv|truncate)\b[^;&|]*\.failproofai` — `find
+ * ~/.failproofai -delete` names none of those words and walked straight
+ * through the one guard that cannot be switched off. The second kept the
+ * blocklist shape and added the verbs that miss implied (`find -delete`,
+ * `-exec`, `dd`, `tee`, redirects, `--delete`), which left
+ * `python3 -c 'shutil.rmtree(...)'`, `perl -e 'rmtree(...)'`,
+ * `node -e 'fs.rmSync(...)'`, `git clean -xdff`, `sed -i`, `gio trash`,
+ * `install /dev/null`, `tar --overwrite` and `chmod 000` all still open — and
+ * `cp /dev/null <path>`, which its own doc comment claimed was covered and
+ * which the regex never mentioned.
+ *
+ * A blocklist of destructive verbs cannot be finished: every interpreter on the
+ * machine is one more verb. This list can be, because the reasons to point a
+ * command at `~/.failproofai` at all are few and all of them read. So the
+ * direction is inverted, and the failure modes go with it: a name missing from
+ * a blocklist silently disables enforcement and nothing reports it, while a
+ * name missing from THIS list denies a command an operator can see and file a
+ * bug about. For the one guard nobody can switch off, take the visible failure.
+ */
+const STATE_READ_COMMANDS = new Set([
+  // Contents
+  "cat", "bat", "less", "more", "head", "tail", "nl", "strings", "xxd", "od",
+  "jq", "yq", "diff", "cmp", "wc", "sort", "uniq", "column", "awk", "cut",
+  // Listing and metadata
+  "ls", "dir", "tree", "stat", "file", "du", "df", "readlink", "realpath",
+  "basename", "dirname", "pwd", "test", "find",
+  // Search
+  "grep", "egrep", "fgrep", "rg", "ag", "ack",
+  // Integrity
+  "md5sum", "sha1sum", "sha256sum", "shasum", "cksum",
+  // Navigation, which moves no bytes on its own
+  "cd", "pushd", "popd",
+  // Copy-family: a read only when the state is the SOURCE — see COPY_COMMANDS
+  "cp", "rsync", "install", "tee",
+  // Editors-as-readers and no-ops
+  "sed", "true", "false", ":", "echo", "printf",
+  // Shell grammar. `[ -f ~/.failproofai/policies-config.json ]` and
+  // `for f in ~/.failproofai/*` are not commands that touch anything — a loop
+  // header only expands words, and a test only stats. They were reaching the
+  // unknown-head branch and denying, which is how an always-on guard starts
+  // blocking the ordinary way of checking whether the state is there.
+  "[", "[[", "]", "]]", "test", "read", "for", "select", "case", "done", "fi", "esac",
+]);
+
+/**
+ * Shell keywords that stand in FRONT of a real command.
+ *
+ * Skipped like a runner, so `do rm -rf "$f"` is judged as the `rm` it is
+ * rather than as an unknown head called `do`. That cuts both ways and both are
+ * wanted: `do cat "$f"` stops denying, and `until rm -rf ~/.failproofai` stops
+ * relying on `until` being unrecognised.
+ */
+const SHELL_KEYWORD_PREFIXES = new Set(["do", "then", "else", "elif", "if", "while", "until", "!"]);
+
+/**
+ * A loop header, which hands its word list to the body that follows.
+ *
+ * `find ~/.failproofai -type f | while read f; do rm "$f"; done` names the
+ * state only in the header — every `;` after it starts a pipeline with nothing
+ * failproofai-shaped in it, so the body was judged against a path it never
+ * mentions. The header's reach has to carry into the body, and stop at `done`.
+ */
+const LOOP_HEADER_RE = /(?:^|[\s(])(?:while|until|for|select)\s/;
+
+/**
+ * Commands whose verdict depends on which END of the argument list the state
+ * path sits at.
+ *
+ * `cp -r ~/.failproofai /tmp/backup` is how somebody preserves the state before
+ * touching it; `cp /dev/null ~/.failproofai/policies-config.json` is how
+ * somebody empties a file without ever naming `rm`. The tool is the same and
+ * only the destination separates them, so the destination is what decides.
+ */
+const COPY_COMMANDS = new Set(["cp", "rsync", "install"]);
+
+/**
+ * Commands that write EVERY path operand they are given.
+ *
+ * `tee` was an unknown head, so it denied wherever it appeared — including
+ * `cat ~/.failproofai/policies-config.json | tee /tmp/out.json`, which is a
+ * read with a transcript. What decides is the same thing that decides for the
+ * copy family: which end of the pipe the state sits on.
+ */
+const OPERAND_WRITE_COMMANDS = new Set(["tee"]);
+
+/**
+ * Readers whose LAST operand is an output file rather than another input.
+ *
+ * `uniq /dev/null ~/.failproofai/policies-config.json` and
+ * `xxd -r -p /tmp/hex ~/.failproofai/policies-config.json` both empty the
+ * config while sitting in the read allowlist. One operand is still a read, so
+ * `xxd ~/.failproofai/policies-config.json | head` stays allowed.
+ */
+const SECOND_OPERAND_WRITERS = new Set(["uniq", "xxd"]);
+
+/**
+ * Readers that write to a file NAMED BY A FLAG, per command.
+ *
+ * `sort -o` is the shape that matters: an allowlisted reader that takes its
+ * destination as an option, so nothing about its head or its operand order
+ * says it is writing. `curl` is here rather than treated as a pure mention
+ * command because `curl -o ~/.failproofai/policies-config.json <url>` replaces
+ * the config with whatever a server returns.
+ */
+const OUTPUT_FLAG_COMMANDS: Record<string, readonly string[]> = {
+  sort: ["-o", "--output"],
+  tree: ["-o", "--output"],
+  curl: ["-o", "--output", "--output-dir", "-D", "--dump-header", "--trace", "--trace-ascii"],
+};
+
+/**
+ * `find` actions that write a file of their own, as opposed to running one.
+ *
+ * `find /etc -fprint ~/.failproofai/policies-config.json` truncates the config
+ * without touching the state directory at all — the state is the *report*
+ * target, and `find` is on the read allowlist.
+ */
+const FIND_WRITE_ACTIONS = new Set(["-fprint", "-fprint0", "-fprintf", "-fls"]);
+
+/**
+ * Commands safe to hand a matched path to from `find -exec`.
+ *
+ * Deliberately NARROWER than `STATE_READ_COMMANDS`: the copy family and `sed`
+ * are reads only because of where their operands sit, and `-exec` decides that
+ * for them — `find ~/.failproofai -type f -exec cp /dev/null {} \;` and
+ * `-exec sed -i …` empty every file in the state through two names that were
+ * both on the allowlist. `find` itself is excluded for the same reason
+ * (`-exec find {} -delete \;`).
+ */
+const SAFE_EXEC_COMMANDS = new Set([
+  "cat", "bat", "head", "tail", "nl", "strings", "xxd", "od", "jq", "yq", "wc",
+  "ls", "stat", "file", "du", "readlink", "realpath", "basename", "dirname",
+  "grep", "egrep", "fgrep", "rg", "md5sum", "sha1sum", "sha256sum", "shasum",
+  "cksum", "echo", "printf", "true", ":",
+]);
+
+/**
+ * `git` subcommands that rewrite or delete a working tree.
+ *
+ * `git` is otherwise treated as carrying a path as PROSE — `git commit -m
+ * "document ~/.failproofai layout"` must not deny — but `git clean -xdff
+ * .failproofai` deletes the directory as thoroughly as `rm -rf` does.
+ */
+const GIT_DESTRUCTIVE_SUBCOMMANDS = new Set([
+  "clean", "rm", "restore", "checkout", "reset", "stash",
+]);
+
+/**
+ * `git`'s own options that swallow the token after them.
+ *
+ * The subcommand is the first token that is not an option — but `git -c
+ * core.x=1 -C ~/.failproofai clean -xdff` makes `core.x=1` the first such
+ * token, so the walk settled on it, found no destructive subcommand, and let a
+ * `git clean -xdff` of the state directory through.
+ */
+const GIT_FLAGS_WITH_OPERANDS = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"]);
+
+/** The `git` subcommand, with git's own global options walked off first. */
+function gitSubcommand(args: string[]): string | undefined {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (GIT_FLAGS_WITH_OPERANDS.has(arg)) {
+      i++;
+      continue;
+    }
+    if (arg.startsWith("-")) continue;
+    return arg;
+  }
+  return undefined;
+}
+
+/**
+ * Commands that take a path as text to record or print, not as a file to open.
+ *
+ * Without them the always-on guard denies an agent writing a commit message or
+ * a PR body that names `~/.failproofai` — the same false positive the binary
+ * half of this policy already had to be anchored to avoid.
+ */
+const STATE_MENTION_COMMANDS = new Set(["git", "gh", "glab", "echo", "printf", "curl", "code", "open"]);
+
+/** `find` actions that hand the matched paths to an arbitrary command. */
+const FIND_EXEC_ACTIONS = new Set(["-exec", "-execdir", "-ok", "-okdir"]);
+
+/**
+ * The pieces a shell treats as SEPARATE commands.
+ *
+ * `|` is deliberately absent. A pipeline is one unit of work: `find
+ * ~/.failproofai -print0 | xargs -0 rm -f` names the path on the left and the
+ * verb on the right, and splitting there made each half look innocent. `;`,
+ * `&&`, `||`, `&` and a newline do start a genuinely new command, which is what
+ * keeps `cat ~/.failproofai/config.json && rm /tmp/scratch` allowed.
+ */
+const PIPELINE_SEPARATORS = /\|\||&&|[;\n\r&]+/;
+
+/** A `$VAR` or `${VAR}` reference, wherever it sits. */
+const VAR_REFERENCE_RE = /\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?/g;
+
+/**
+ * The spellings of the state directory a glob would have to match.
+ *
+ * A glob is expanded by the shell, so `rm -rf ~/.failproof*` never contains the
+ * literal — it was the cheapest bypass left standing, and cheap matters most
+ * for the one guard that cannot be switched off. What can be decided from the
+ * pre-expansion string is whether the pattern COULD land on the state, so the
+ * pattern is compiled and tried against the paths it would have to hit.
+ */
+const STATE_GLOB_CANDIDATES = [
+  ".failproofai",
+  "~/.failproofai",
+  "$HOME/.failproofai",
+  "${HOME}/.failproofai",
+  "/root/.failproofai",
+  "/home/u/.failproofai",
+  "/Users/u/.failproofai",
+];
+
+/**
+ * Ordinary paths a targeted pattern must NOT be able to match.
+ *
+ * The floor a bare `*` has to fail. `rm -rf *` in a build directory compiles to
+ * a regex that matches every state candidate, and denying it would make the one
+ * guard nobody can switch off fire on the most ordinary command there is. A
+ * pattern that also lands on `node_modules` or `.config` is not aimed at the
+ * state; a pattern that lands on `.failproofai` and on none of these is.
+ */
+const GLOB_DECOYS = [
+  ".config", ".cache", ".local", ".git", ".npm", ".ssh", ".bashrc",
+  "node_modules", "dist", "build", "target", "coverage", "tmp", "src",
+  "~/.config", "~/.cache", "$HOME/.config", "${HOME}/.cache",
+  "/home/u/.config", "/Users/u/.config", "/root/.cache", "/tmp/build",
+  "a", "foo.txt", "test-failures",
+];
+
+/**
+ * True when this token is a glob that could expand onto failproofai's state.
+ *
+ * The floor used to be a literal `fail` in the token, and that is exactly what
+ * a glob is for: `rm -rf ~/.f*ailproofai` spells the same directory without the
+ * substring anywhere in it, so the pattern was thrown out before it was ever
+ * compiled. `.[f]ailproofai`, `.fa*lproofai`, `.fa[i]lproofai` and
+ * `.f{a,b}ilproofai` all walked through the same hole.
+ *
+ * A substring cannot decide this, because the whole point of the metacharacter
+ * is to stand where a letter was. What CAN decide it is the pattern's reach: it
+ * has to hit the state and miss everything ordinary. So the floor is now
+ * computed the same way the match is — compile once, require a candidate, and
+ * reject anything that also catches a decoy. `rm -rf *` and `rm -rf ~/.*` stay
+ * allowed because they sweep the decoys too; `rm -rf /tmp/test-failures*` stays
+ * allowed because it reaches no candidate at all.
+ */
+function globCouldNameState(raw: string): boolean {
+  // Both readings of a trailing `)`: part of the pattern, and the close of a
+  // subshell that wrapped it. Trying both is safe in the way widening always is
+  // here — the decoy test still has to pass.
+  const stripped = raw.replace(/^[()]+|[()]+$/g, "");
+  return globWordCouldNameState(raw) || (stripped !== raw && globWordCouldNameState(stripped));
+}
+
+function globWordCouldNameState(token: string): boolean {
+  if (!GLOB_METACHAR_RE.test(token)) return false;
+  // Braces FIRST, because that is the order the shell works in: brace expansion
+  // rewrites the word into several words, and only then is each one matched
+  // against the disk. Compiling `{a*,x}` as an alternation of escaped literals
+  // put a literal `*` inside the pattern, so `~/.f{a*,x}ilproofai` — which the
+  // shell turns into `~/.fa*ilproofai` and then into `~/.failproofai` — read as
+  // naming nothing at all.
+  for (const word of expandBraces(token)) {
+    if (wordNamesState(word)) return true;
+  }
+  return false;
+}
+
+/**
+ * How many words one token may expand into before the expansion is abandoned.
+ *
+ * `{a,b}{c,d}{e,f}…` multiplies, so this is bounded rather than trusted. A real
+ * attempt needs a handful; anything past this is answered by the fallback in
+ * `expandBraces`, which is a superset and so cannot hide anything.
+ */
+const BRACE_EXPANSION_LIMIT = 4096;
+
+/**
+ * How many expansion passes one token gets. One pass resolves the outermost
+ * group of every word, so this is a nesting-depth budget — and, like the width
+ * one, running out collapses what is left rather than leaving it unresolved.
+ */
+const BRACE_EXPANSION_ROUNDS = 24;
+
+/**
+ * The words a token expands into, the way the shell would expand them.
+ *
+ * When the product would exceed the limit, every brace group collapses to `*`
+ * instead. That is a SUPERSET of what the braces could produce — it reaches at
+ * least everything they reach — so an oversized token can still be recognised,
+ * and is still held to the same decoy test that keeps `rm -rf *` allowed.
+ */
+function expandBraces(token: string): string[] {
+  let words = [token];
+  // Bounded on WORK, not on nesting depth. A round cap that returned its
+  // half-expanded words handed a still-braced word to a compiler that escapes
+  // braces as literals, so seventeen levels of `{x,{x,…{x,a*}…}}` — legal shell
+  // with a branch that becomes `~/.fa*ilproofai` — came out matching nothing.
+  // Running out of budget must never mean "unresolved", only "collapsed".
+  for (let round = 0; round < BRACE_EXPANSION_ROUNDS; round++) {
+    const next: string[] = [];
+    let expanded = false;
+    for (const word of words) {
+      const group = firstBraceGroup(word);
+      if (!group) {
+        next.push(word);
+        continue;
+      }
+      expanded = true;
+      for (const alternative of group.alternatives) {
+        next.push(word.slice(0, group.start) + alternative + word.slice(group.end + 1));
+      }
+    }
+    if (!expanded) return next;
+    if (next.length > BRACE_EXPANSION_LIMIT) return [collapseBraces(token)];
+    words = next;
+  }
+  return words.map(collapseBraces);
+}
+
+/**
+ * Every brace group in a word replaced by `*`, innermost first.
+ *
+ * The answer whenever expansion is given up on, and safe to be the answer
+ * because it can only WIDEN: `{a*,x}` reaches strictly less than `*` does. So a
+ * token too deep or too wide to expand is still decided, and still has to pass
+ * the same decoy test that keeps `rm -rf *` allowed. A brace left unmatched
+ * becomes `*` too, on the same reasoning.
+ */
+function collapseBraces(word: string): string {
+  let out = "";
+  let depth = 0;
+  for (const ch of word) {
+    if (ch === "{") {
+      // The OUTERMOST group, replaced whole. Resolving innermost-first needs one
+      // pass per level, which is another depth budget and another way to run out
+      // holding a word that still has braces in it. One pass, any depth.
+      if (depth === 0) out += "*";
+      depth++;
+      continue;
+    }
+    if (ch === "}") {
+      if (depth > 0) depth--;
+      continue;
+    }
+    if (depth === 0) out += ch;
+  }
+  return out;
+}
+
+/** The first brace group in a word, split on its TOP-LEVEL commas. */
+function firstBraceGroup(word: string): { start: number; end: number; alternatives: string[] } | null {
+  const start = word.indexOf("{");
+  if (start === -1) return null;
+  let depth = 0;
+  const alternatives: string[] = [];
+  let current = "";
+  for (let i = start; i < word.length; i++) {
+    const ch = word[i];
+    if (ch === "{") {
+      depth++;
+      if (depth === 1) continue;
+    } else if (ch === "}") {
+      depth--;
+      if (depth === 0) {
+        alternatives.push(current);
+        return { start, end: i, alternatives };
+      }
+    } else if (ch === "," && depth === 1) {
+      alternatives.push(current);
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  return null;
+}
+
+/**
+ * True when one brace-expanded word names the state.
+ *
+ * The literal check comes first because expansion can PRODUCE the literal:
+ * `~/.{failproofai,other}` carries no `.failproofai` as written, and the word it
+ * expands to needs no glob compilation to be recognised.
+ */
+function wordNamesState(word: string): boolean {
+  if (FAILPROOFAI_STATE_PATH_RE.test(word)) return true;
+  // Every path PREFIX, not just the whole word. The candidates are the state
+  // directory itself, so `~/.f*ailproofai/policies-config.json` — a glob in a
+  // segment that is not the last one — compiled to a pattern that could never
+  // equal `~/.failproofai` and was read as naming nothing. Naming a file INSIDE
+  // the state is naming the state.
+  const segments = word.split("/");
+  for (let end = 1; end <= segments.length; end++) {
+    if (globPrefixNamesState(segments.slice(0, end).join("/"))) return true;
+  }
+  return false;
+}
+
+/**
+ * Everything that makes a token a PATTERN rather than a path.
+ *
+ * The extended-glob operators are two characters wide, and three of them begin
+ * with a character that means nothing on its own — which is how
+ * `rm -rf ~/.f@(ailproofai)` was not even recognised as a glob, let alone
+ * compiled wrong.
+ */
+const GLOB_METACHAR_RE = /[*?[{]|[@+!]\(/;
+
+/**
+ * A glob compiled to regex source, extended-glob operators included.
+ *
+ * `@(a|b)`, `?(a|b)`, `*(a|b)`, `+(a|b)` and `!(a|b)` are groups carrying a
+ * quantifier, and their alternatives are patterns in their own right — so this
+ * recurses rather than escaping whatever it finds inside them. `!(…)` is a
+ * negation a regex cannot express against a whole path segment, so it becomes
+ * `[^/]*`: a superset, which is the direction that stays safe here, because
+ * reaching too far is settled by the decoy test and reaching too little is a
+ * bypass.
+ */
+function compileGlobPattern(token: string): string {
+  let pattern = "";
+  for (let i = 0; i < token.length; i++) {
+    const extended = extglobAt(token, i);
+    if (extended) {
+      pattern += extended.source;
+      i = extended.end;
+      continue;
+    }
+    const ch = token[i];
+    if (ch === "*") pattern += "[^/]*";
+    else if (ch === "?") pattern += "[^/]";
+    else if (ch === "[") {
+      const bracket = bracketExpressionAt(token, i);
+      if (!bracket) {
+        // An unclosed `[` is a literal `[` to the shell, so it is one here.
+        // Bailing out would answer "names nothing" on the strength of a
+        // malformed pattern — the same shape as a budget that returns instead
+        // of collapsing.
+        pattern += "\\[";
+        continue;
+      }
+      pattern += bracket.source;
+      i = bracket.end;
+    } else pattern += ch.replace(/[.+^${}()|\\\]]/g, "\\$&");
+  }
+  return pattern;
+}
+
+/** One `@(…)`-style group, with its alternatives compiled as patterns. */
+function extglobAt(token: string, start: number): { source: string; end: number } | null {
+  const operator = token[start];
+  if (!"?*+@!".includes(operator) || token[start + 1] !== "(") return null;
+  const alternatives: string[] = [];
+  let current = "";
+  let depth = 0;
+  let i = start + 1;
+  for (; i < token.length; i++) {
+    const ch = token[i];
+    if (ch === "(") {
+      depth++;
+      if (depth === 1) continue;
+    } else if (ch === ")") {
+      depth--;
+      if (depth === 0) {
+        alternatives.push(current);
+        break;
+      }
+    } else if (ch === "|" && depth === 1) {
+      alternatives.push(current);
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  // Unterminated, so the operator is an ordinary character rather than a group.
+  if (i >= token.length) return null;
+  if (operator === "!") return { source: "[^/]*", end: i };
+  const body = alternatives.map((alternative) => compileGlobPattern(alternative)).join("|");
+  const quantifier = operator === "?" ? "?" : operator === "*" ? "*" : operator === "+" ? "+" : "";
+  return { source: `(?:${body})${quantifier}`, end: i };
+}
+
+/**
+ * One shell bracket expression, translated into a JavaScript character class.
+ *
+ * Copying the shell's text into a regex verbatim reads two of its spellings
+ * backwards. POSIX negates with `!`, so bash expands `~/.f[!b]ilproofai` onto
+ * the state while JavaScript read `[!b]` as "either `!` or `b`" and matched
+ * nothing — a one-character bypass of the guard nobody can switch off. And a
+ * `]` in the FIRST position is a literal `]` rather than the end of the class,
+ * so scanning for the next `]` closed `[]abc]` on the wrong character.
+ *
+ * Anything exotic — a POSIX class, a collating symbol, an equivalence class —
+ * becomes `[^/]`, which matches any single character a path segment can hold
+ * and so reaches at least as far as the original. Widening is safe here in a
+ * way narrowing never is: the decoy test is what decides, and it is unchanged.
+ */
+function bracketExpressionAt(token: string, start: number): { source: string; end: number } | null {
+  let i = start + 1;
+  let negated = false;
+  if (token[i] === "!" || token[i] === "^") {
+    negated = true;
+    i++;
+  }
+  // A `]` here is content, not the terminator.
+  let body = "";
+  if (token[i] === "]") {
+    body += "]";
+    i++;
+  }
+  while (i < token.length && token[i] !== "]") {
+    // `[:alpha:]`, `[.a.]` and `[=a=]` carry a `]` of their own, which closed
+    // the class early and left a stray `]` matching as a literal.
+    const inner = token[i] === "[" ? token[i + 1] : undefined;
+    if (inner === ":" || inner === "." || inner === "=") {
+      const close = token.indexOf(`${inner}]`, i + 2);
+      if (close !== -1) {
+        body += token.slice(i, close + 2);
+        i = close + 2;
+        continue;
+      }
+    }
+    body += token[i];
+    i++;
+  }
+  if (i >= token.length) return null;
+  if (/\[[.=:]/.test(body)) return { source: "[^/]", end: i };
+  // `\` and `]` are the two characters that would end or escape the class in
+  // JavaScript; the rest of a bracket expression means the same in both.
+  const escaped = body.replace(/[\\\]]/g, "\\$&");
+  if (escaped.length === 0) return { source: "[^/]", end: i };
+  return { source: `[${negated ? "^" : ""}${escaped}]`, end: i };
+}
+
+/**
+ * One `/`-delimited prefix of a brace-expanded word, compiled and tried against
+ * the candidates. Braces are already gone by here; an unmatched one is literal.
+ */
+function globPrefixNamesState(token: string): boolean {
+  if (!GLOB_METACHAR_RE.test(token)) return false;
+  const pattern = "^" + compileGlobPattern(token);
+  let re: RegExp;
+  try {
+    re = new RegExp(pattern + "$");
+  } catch {
+    return false;
+  }
+  if (!STATE_GLOB_CANDIDATES.some((candidate) => re.test(candidate))) return false;
+  return !GLOB_DECOYS.some((decoy) => re.test(decoy));
+}
+
+/**
+ * Every command-substitution body in a command, `$(…)` and backticked alike.
+ *
+ * A substitution runs its contents as a command of its own, so
+ * `echo $(rm -rf ~/.failproofai)` deletes the state while presenting `echo` —
+ * a mention command — as the head. Splitting on parentheses instead would have
+ * cost the opposite case: `rm -rf $(ls -d ~/.failproofai)` is a real delete
+ * whose INNER command only reads, and the outer `rm` has to keep denying. So
+ * the bodies are pulled out and judged as commands as well as, not instead of,
+ * the whole string.
+ */
+function substitutionBodies(command: string): string[] {
+  const bodies: string[] = [];
+  for (let i = 0; i < command.length; i++) {
+    if (command[i] === "`") {
+      const close = command.indexOf("`", i + 1);
+      if (close === -1) break;
+      bodies.push(command.slice(i + 1, close));
+      i = close;
+      continue;
+    }
+    if (command[i] !== "$" || command[i + 1] !== "(") continue;
+    let depth = 1;
+    let j = i + 2;
+    for (; j < command.length && depth > 0; j++) {
+      if (command[j] === "(") depth++;
+      else if (command[j] === ")") depth--;
+    }
+    if (depth === 0) bodies.push(command.slice(i + 2, j - 1));
+    i = j - 1;
+  }
+  return bodies;
+}
+
+/** An output redirect and the token it targets: `>f`, `> f`, `2>f`, `>>f`, `>|f`. */
+const REDIRECT_TARGET_RE = /\d*>{1,2}\|?\s*("[^"]*"|'[^']*'|[^\s;&|<>]+)/g;
+
+/**
+ * Strip the punctuation a shell consumes, so `(cd` reads as `cd`.
+ *
+ * Quotes come off for the same reason the brackets do, and they are the pair
+ * that mattered: `bash -c 'cat ~/.failproofai/policies-config.json'` presented
+ * a head of `'cat`, which is on no allowlist, so the guard denied a plain read
+ * of the config through the most ordinary wrapper there is. Stripping them
+ * cannot let a deleter past — `"rm"` unquotes to `rm`, which is still not a
+ * reader.
+ */
+function bareToken(token: string): string {
+  return token.replace(/^[(){}'"]+|[(){}'"]+$/g, "");
+}
+
+/**
+ * Quotes only, for the glob scan.
+ *
+ * `bareToken` also drops `(`, `)`, `{` and `}`, because a shell group and a
+ * subshell write them around a command. Every one of those characters is ALSO
+ * how a pattern is spelled, and both spellings end the token with one: a brace
+ * expansion (`~/.{fail*,zz}`) and an extended glob (`~/.f@(ailproofai)`) each
+ * arrived here decapitated — an unterminated group that expands to nothing and
+ * compiles to a pattern matching nothing. A closing character that really did
+ * belong to a shell group leaves a word still carrying the literal path, which
+ * the literal check reads, and `globCouldNameState` tries the stripped form too.
+ */
+function unquotedToken(token: string): string {
+  return token.replace(/^['"]+|['"]+$/g, "");
+}
+
+/** The name a shell would exec, given a token: `/usr/bin/rm` → `rm`. */
+function commandBasename(token: string): string {
+  const bare = bareToken(token);
+  return bare.slice(bare.lastIndexOf("/") + 1);
+}
+
+/**
+ * Walk off everything a shell resolves before it settles on the command word,
+ * and return the tokens from the command word on. Mirrors the walk in
+ * `classifySelfInvocation` — the same prefixes hide a deleter that hid the
+ * binary, and `xargs -0 rm -f` is the one that matters most here.
+ */
+function commandWords(simpleCommand: string): string[] {
+  const tokens = simpleCommand.trim().split(/\s+/).map(bareToken).filter(Boolean);
+  let i = 0;
+  while (i < tokens.length) {
+    const token = tokens[i];
+    // A redirect operator and, when it stands alone, the token it targets —
+    // `> file` must not leave `file` sitting where the command word goes.
+    if (/^\d*(?:>{1,2}\|?|<{1,3})/.test(token)) {
+      i += /^\d*(?:>{1,2}\|?|<{1,3})$/.test(token) ? 2 : 1;
+      continue;
+    }
+    const skippable =
+      ENV_ASSIGNMENT_RE.test(token) ||
+      token.startsWith("-") ||
+      RUNNER_OPERAND_RE.test(token) ||
+      SHELL_KEYWORD_PREFIXES.has(token) ||
+      COMMAND_PREFIX_TOKENS.has(commandBasename(token));
+    if (!skippable) break;
+    i++;
+  }
+  return tokens.slice(i);
+}
+
+/**
+ * True when this one simple command would destroy whatever it is pointed at.
+ *
+ * Reached only for a command that already names failproofai's state, so the
+ * question is narrow: is this a read, or is it everything else.
+ */
+function simpleCommandDestroys(words: string[], namesState: (text: string) => boolean): boolean {
+  if (words.length === 0) return false;
+  const head = commandBasename(words[0]);
+  const args = words.slice(1);
+
+  // `find` is a read until one of its ACTIONS turns it into something else.
+  // `-delete` is the miss that started all of this; `-exec` runs anything at
+  // all, so it is judged by the command it hands the paths to, and an
+  // unrecognised one is treated as destructive rather than waved through.
+  if (head === "find") {
+    if (args.some((a) => a === "-delete")) return true;
+    // `-fprint <file>` and its siblings truncate the file they report INTO, so
+    // `find /etc -fprint ~/.failproofai/policies-config.json` empties the config
+    // while never descending into the state at all.
+    if (args.some((a) => FIND_WRITE_ACTIONS.has(a))) return true;
+    // EVERY `-exec`, not the first: `find … -exec cat {} + -o -exec rm {} +`
+    // put a read in front of the deleter and walked past a findIndex.
+    return args.some(
+      (a, i) => FIND_EXEC_ACTIONS.has(a) && !SAFE_EXEC_COMMANDS.has(commandBasename(args[i + 1] ?? "")),
+    );
+  }
+
+  // `sed -i` edits in place — and so does the `w` command inside a script,
+  // which needs no flag at all: `sed 's/a/b/w <state>' /etc/hosts` writes the
+  // state without `-i` anywhere on the line.
+  if (head === "sed") {
+    if (args.some((a) => a.startsWith("-i") || a.startsWith("--in-place"))) return true;
+    // The filename may ride in the same token (`'s/a/b/w<path>'`) or in the
+    // next one, because a quoted script containing a space is two tokens by the
+    // time it gets here. `s/a/b/w` and a bare `w` both end in a `w` that
+    // follows a delimiter, which is what separates them from a word like `raw`.
+    return args.some(
+      (a, i) => /(?:^|[;}/\s])w$/.test(a) && namesState(args[i + 1] ?? ""),
+    ) || args.some((a) => /(?:^|[;}/\s])w\s*\S*\.failproofai/.test(a));
+  }
+
+  // `awk` can run a shell (`system("rm -rf …")`) or pipe into one, so its
+  // program has to be read for those two, not just for the `>` the redirect
+  // scan already catches.
+  if (head === "awk" || head === "gawk" || head === "mawk") {
+    return args.some((a) => /system\s*\(|\|\s*["']|\|&/.test(a));
+  }
+
+  // Copying the state OUT is a backup. Copying anything ONTO it — classically
+  // `/dev/null` — empties it without naming a delete verb. The destination is
+  // the last operand, unless `-t` names it instead: `cp -t ~/.failproofai
+  // /dev/null` puts the destination FIRST and left the last operand innocent.
+  if (COPY_COMMANDS.has(head)) {
+    // `rsync --remove-source-files` deletes what it just copied, so the state
+    // being the SOURCE — the shape that makes every other copy a backup — is
+    // what makes this one a move.
+    if (args.includes("--remove-source-files") && args.some((a) => namesState(a))) return true;
+    const targetAt = args.findIndex((a) => a === "-t" || a === "--target-directory");
+    if (targetAt !== -1 && namesState(args[targetAt + 1] ?? "")) return true;
+    if (args.some((a) => a.startsWith("--target-directory=") && namesState(a))) return true;
+    const operands = args.filter((a) => !a.startsWith("-"));
+    const destination = operands[operands.length - 1];
+    return destination !== undefined && namesState(destination);
+  }
+
+  // `tee` writes every operand it is given and reads none of them.
+  if (OPERAND_WRITE_COMMANDS.has(head)) {
+    return args.some((a) => !a.startsWith("-") && namesState(a));
+  }
+
+  // `uniq INPUT OUTPUT` and `xxd IN OUT`: the second operand is written.
+  if (SECOND_OPERAND_WRITERS.has(head)) {
+    const operands = args.filter((a) => !a.startsWith("-"));
+    return operands.length > 1 && namesState(operands[operands.length - 1]);
+  }
+
+  // `git` normally carries the path as prose in a message or a body.
+  if (head === "git") {
+    const subcommand = gitSubcommand(args);
+    return subcommand !== undefined && GIT_DESTRUCTIVE_SUBCOMMANDS.has(subcommand);
+  }
+
+  // A reader whose destination arrives as an option rather than as an operand.
+  // Checked before the allowlist, or `sort -o <state> /dev/null` reads as the
+  // `sort` it is named after.
+  if (writesViaOutputFlag(head, args, namesState)) return true;
+
+  if (STATE_READ_COMMANDS.has(head) || STATE_MENTION_COMMANDS.has(head)) return false;
+  return true;
+}
+
+/**
+ * True when a flag on this command names the state as an output file.
+ *
+ * `sort -o`, `tree -o` and `curl -o` all take their destination as an option,
+ * so nothing about the head or the operand order says they are writing — and
+ * all three heads were on a list that said they only read. Short options bundle
+ * (`curl -sfo <file>`), so the trailing letter is what decides.
+ */
+function writesViaOutputFlag(head: string, args: string[], namesState: (text: string) => boolean): boolean {
+  const flags = OUTPUT_FLAG_COMMANDS[head];
+  if (!flags) return false;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    const long = flags.find((f) => f.startsWith("--") && arg.startsWith(`${f}=`));
+    if (long && namesState(arg)) return true;
+    const bundled = /^-[A-Za-z]*[oD]$/.test(arg) && flags.includes(`-${arg[arg.length - 1]}`);
+    if ((flags.includes(arg) || bundled) && namesState(args[i + 1] ?? "")) return true;
+  }
+  return false;
+}
+
+/**
+ * True when `command` would delete, move or overwrite failproofai's own state.
+ *
+ * Deleting the state IS disabling enforcement, and it never names the binary:
+ * `rm ~/.failproofai/policies/packs/installed.json` switches off every pack
+ * policy on the machine, and fail-closed does NOT fire, because a missing store
+ * reads as a fresh machine rather than a broken one — so nothing anywhere
+ * reports it.
+ *
+ * Two things carry the path into a command that never spells it, and both were
+ * live bypasses of the per-segment version:
+ *
+ * - `cd ~/.failproofai && rm -rf .` — the path is an argument of `cd`, and the
+ *   destroying command names only `.`
+ * - `D=~/.failproofai; rm -rf $D` — the path is a value, and the destroying
+ *   command names only `$D`
+ *
+ * So the walk is stateful: it remembers which variables hold the path and
+ * whether the shell has been moved INTO the directory, and carries both
+ * forward. What it does NOT do is treat every later command as suspect —
+ * `cat ~/.failproofai/config.json && rm /tmp/scratch` has to stay allowed, and
+ * does, because nothing in the second command reaches the state.
+ */
+function destroysFailproofaiState(command: string, depth = 0): boolean {
+  // A substitution runs its body as a command of its own, so it is judged as
+  // one — `echo $(rm -rf ~/.failproofai)` otherwise presents `echo` as the head
+  // and walks straight through. Bounded, because a body can contain another.
+  // Breadth-first with a budget rather than depth-limited recursion: a nest
+  // deeper than the limit is trivial to write (`echo $(echo $(… rm …))`), and
+  // every level of it presents `echo` as the head. The budget is what bounds
+  // the work instead, because siblings multiply where depth does not.
+  if (depth === 0) {
+    const bodies = substitutionBodies(command);
+    for (let i = 0; i < bodies.length && i < 64; i++) {
+      if (destroysFailproofaiState(bodies[i], 1)) return true;
+      bodies.push(...substitutionBodies(bodies[i]));
+    }
+  }
+
+  // Variables that hold the path. The scan used to ask only whether a value
+  // CONTAINED the path, which caught `D=~/.failproofai; rm -rf $D` and missed
+  // `A=~/.failproofai; B=$A; rm -rf $B` — the second hop names no path at all,
+  // only the first variable. So a value referencing a known state variable
+  // counts too. Repeating to a fixpoint costs four lines and makes the result
+  // independent of the order the assignments appear in, rather than resting on
+  // a shell evaluating them top to bottom.
+  const assignments = [
+    ...command.matchAll(/(?:^|[\s;&|(])(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;&|)]+)/g),
+  ].map(([, name, value]) => [name, value.replace(/^["']|["']$/g, "")] as const);
+  const stateVars = new Set<string>();
+  for (let pass = 0; pass < assignments.length + 1; pass++) {
+    const before = stateVars.size;
+    for (const [name, value] of assignments) {
+      const holdsState =
+        FAILPROOFAI_STATE_PATH_RE.test(value) ||
+        [...value.matchAll(VAR_REFERENCE_RE)].some(([, ref]) => stateVars.has(ref));
+      if (holdsState) stateVars.add(name);
+    }
+    if (stateVars.size === before) break;
+  }
+
+  const namesState = (text: string): boolean => {
+    if (FAILPROOFAI_STATE_PATH_RE.test(text)) return true;
+    for (const [, name] of text.matchAll(VAR_REFERENCE_RE)) {
+      if (stateVars.has(name)) return true;
+    }
+    // Per token, not over the whole text: a glob compiled from a whole command
+    // line matches nothing, and it is the individual operand — `~/.failproof*`
+    // — that would expand onto the state.
+    return text.split(/\s+/).some((token) => globCouldNameState(unquotedToken(token)));
+  };
+
+  let cwdInState = false;
+  // How deep in `( … )` the walk is, and how deep it was when the `cd` fired.
+  // A `cd` inside a subshell moves the subshell only, so the window closes when
+  // the parenthesis does: `(cd ~/.failproofai && cat x); rm -rf node_modules`
+  // was denying a cleanup in an entirely unrelated directory.
+  let parenDepth = 0;
+  let cdParenDepth: number | null = null;
+  // A loop header hands its word list to the body, and the body is a separate
+  // pipeline that names nothing. Without this, `for f in ~/.failproofai/*; do
+  // rm -rf $f; done` is a header that only expands and a body that only deletes
+  // something called `$f`.
+  let loopCarriesState = false;
+  for (const pipeline of command.split(PIPELINE_SEPARATORS)) {
+    if (!pipeline.trim()) continue;
+    const simpleCommands = pipeline.split("|");
+    const reachesState = namesState(pipeline) || cwdInState || loopCarriesState;
+    if (reachesState && LOOP_HEADER_RE.test(pipeline)) loopCarriesState = true;
+    if (/(?:^|\s)done(?:\s|$)/.test(pipeline)) loopCarriesState = false;
+
+    // A redirect is a write with no command in front of it — `> path` empties a
+    // file on its own. Only a redirect whose TARGET is the state counts: the
+    // previous version matched any `>` anywhere in the segment, so
+    // `grep -r sudo ~/.failproofai 2>/dev/null` and
+    // `cat ~/.failproofai/config.json > /tmp/backup.json` both denied, which is
+    // exactly the diagnosis this guard must not block.
+    if (reachesState) {
+      for (const [, target] of pipeline.matchAll(REDIRECT_TARGET_RE)) {
+        if (namesState(target.replace(/^["']|["']$/g, ""))) return true;
+      }
+    }
+
+    for (const simple of simpleCommands) {
+      parenDepth += (simple.match(/\(/g) ?? []).length;
+      const words = commandWords(simple);
+      const head = words.length > 0 ? commandBasename(words[0]) : "";
+      // Track the shell's position before judging: a `cd` INTO the state makes
+      // every later relative path a state path, and a `cd` back out ends that.
+      if (head === "cd" || head === "pushd") {
+        const operand = words.slice(1).find((w) => !w.startsWith("-"));
+        cwdInState = operand !== undefined && namesState(operand);
+        cdParenDepth = cwdInState ? parenDepth : null;
+      } else if (head === "popd") {
+        // `popd` returns to wherever the shell was before `pushd`, which ends
+        // the window as surely as a `cd` out does. Without it every command for
+        // the rest of the line was judged as if it stood in the state directory.
+        cwdInState = false;
+        cdParenDepth = null;
+      } else if (reachesState && words.length > 0 && simpleCommandDestroys(words, namesState)) {
+        // Judged BEFORE the closing parenthesis is counted: a `rm -rf ./*)`
+        // still runs inside the subshell it closes.
+        return true;
+      }
+      parenDepth -= (simple.match(/\)/g) ?? []).length;
+      if (cdParenDepth !== null && parenDepth < cdParenDepth) {
+        cwdInState = false;
+        cdParenDepth = null;
+      }
+    }
+  }
+  return false;
+}
+
 const FAILPROOFAI_UNINSTALL_RE = /(?:npm\s+(?:uninstall|remove|un|r)\s.*failproofai|bun\s+remove\s.*failproofai|yarn\s+global\s+remove\s+failproofai|pnpm\s+(?:remove|uninstall|un)\s.*failproofai)/;
 
 // warnGitAmend
@@ -968,20 +1938,6 @@ function blockSudo(ctx: PolicyContext): PolicyResult {
  * can run `failproofai audit`. Neither gap should leave pausing reachable, so
  * this stays narrow, matches the runner forms, and survives that one being off.
  */
-function blockSelfPause(ctx: PolicyContext): PolicyResult {
-  if (ctx.toolName !== "Bash") return allow();
-  const cmd = getCommand(ctx);
-  // The raw command AND its shell-unescaped form: a shell strips quotes and
-  // backslashes before running the binary, so `fail\proofai config --pause`
-  // reaches the pause CLI even though the literal name is broken.
-  if (namesSelfPause(cmd) || namesSelfPause(stripShellQuoting(cmd))) {
-    return deny(
-      "Pausing failproofai enforcement is a human action, not an agent one. " +
-        "If a policy is blocking legitimate work, say so and let the operator decide.",
-    );
-  }
-  return allow();
-}
 
 function blockCurlPipeSh(ctx: PolicyContext): PolicyResult {
   if (ctx.toolName !== "Bash") return allow();
@@ -1386,20 +2342,75 @@ function blockWorkOnMain(ctx: PolicyContext): PolicyResult {
   return allow();
 }
 
+/**
+ * The one policy that cannot be turned off — see `alwaysOn` on its definition.
+ *
+ * Merged from the former `block-self-pause` and `block-failproofai-commands`,
+ * which were two halves of one guard that disagreed with each other.
+ *
+ * `block-self-pause` had the hardened matcher: it walks off runner prefixes and
+ * re-checks the shell-unescaped form, so `sudo failproofai …`, `npx failproofai
+ * …` and `fail\proofai …` do not get through. But it only ever looked for
+ * `config --pause`. `block-failproofai-commands` had the whole surface — any CLI
+ * call, plus package-manager uninstall — on a regex a single `sudo` defeated.
+ * Keeping the broad surface and dropping the weak matcher is the only
+ * combination stronger than either half.
+ *
+ * They also contradicted each other: `block-self-pause` deliberately ALLOWED
+ * `config --resume`, `config --status` and `policies --install`, while
+ * `block-failproofai-commands` denied them. Both were `defaultEnabled`, so the
+ * deny is what actually happened on every machine and the allow never ran. The
+ * merge keeps the behaviour users have.
+ */
 function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
+  // A file tool reaches the state without a shell at all. Writing
+  // `{"enabledPolicies":[]}` over `~/.failproofai/policies-config.json`, or an
+  // empty `policies/packs/installed.json`, disables enforcement exactly as
+  // completely as `rm -rf` does — and the machine still reads as fresh, so
+  // fail-closed never fires. Reading is not offered by these tools' write half,
+  // so naming the state at all is the whole test.
+  if (ctx.toolName === "Write" || ctx.toolName === "Edit" || ctx.toolName === "NotebookEdit") {
+    const path = getFilePath(ctx) || ((ctx.toolInput?.notebook_path as string) ?? "");
+    if (FAILPROOFAI_STATE_PATH_RE.test(path)) {
+      return deny(
+        "Writing to failproofai's own state would switch enforcement off. " +
+          "If a policy is blocking legitimate work, say so and let the operator decide.",
+      );
+    }
+    return allow();
+  }
   if (ctx.toolName !== "Bash") return allow();
   const cmd = getCommand(ctx);
+  // The raw command AND its shell-unescaped form: a shell strips quotes and
+  // backslashes before running the binary, so `fail\proofai config --pause`
+  // reaches the pause CLI even though the literal name is broken.
+  const unescaped = stripShellQuoting(cmd);
+  const kind = classifySelfInvocation(cmd) ?? classifySelfInvocation(unescaped);
 
-  // Block direct failproofai CLI invocations
-  if (FAILPROOFAI_CLI_RE.test(cmd)) {
+  if (kind === "pause") {
+    return deny(
+      "Pausing failproofai enforcement is a human action, not an agent one. " +
+        "If a policy is blocking legitimate work, say so and let the operator decide.",
+    );
+  }
+  if (kind === "cli") {
     return deny("Running failproofai CLI commands is blocked");
   }
-
-  // Block package-manager uninstallation of failproofai
-  if (FAILPROOFAI_UNINSTALL_RE.test(cmd)) {
+  // Package-manager removal puts the manager in command position, not the
+  // binary, so the walk above never reaches it.
+  if (FAILPROOFAI_UNINSTALL_RE.test(cmd) || FAILPROOFAI_UNINSTALL_RE.test(unescaped)) {
     return deny("Uninstalling failproofai is blocked");
   }
-
+  // Deleting the state IS disabling enforcement, without ever naming the binary.
+  // Checked on the raw command AND its shell-unescaped form for the same reason
+  // the binary walk is: `rm -rf ~/.failproof"ai"` presents a broken literal to a
+  // matcher and a real path to the shell.
+  if (destroysFailproofaiState(cmd) || destroysFailproofaiState(unescaped)) {
+    return deny(
+      "Deleting, moving or overwriting failproofai's own state would switch enforcement off. " +
+        "If a policy is blocking legitimate work, say so and let the operator decide.",
+    );
+  }
   return allow();
 }
 
@@ -2061,561 +3072,113 @@ function requireCiGreenBeforeStop(ctx: PolicyContext): PolicyResult {
 
 // -- Registry --
 
-export const BUILTIN_POLICIES: BuiltinPolicyDefinition[] = [
-  {
-    name: "sanitize-jwt",
-    description: "Stop Claude from reading JWTs in tool responses",
-    displayTitle: "Redacted JWT tokens from tool output",
-    impact: "Stops the agent from echoing auth tokens it saw in command output.",
-    fn: sanitizeJwt,
-    match: { events: ["PostToolUse"] },
-    defaultEnabled: true,
-    category: "Sanitize",
-  },
-  {
-    name: "sanitize-api-keys",
-    description: "Stop Claude from reading API keys (OpenAI, Anthropic, GitHub, AWS, Stripe, Google) in tool responses",
-    displayTitle: "Redacted API keys from tool output",
-    impact: "Catches OpenAI / Anthropic / GitHub / AWS / Stripe / Google keys before the model sees them.",
-    fn: sanitizeApiKeys,
-    match: { events: ["PostToolUse"] },
-    defaultEnabled: true,
-    category: "Sanitize",
-    params: {
-      additionalPatterns: {
-        type: "pattern[]",
-        description: "Additional API key patterns to scrub, each with { regex, label }",
-        default: [],
-      },
-    } satisfies PolicyParamsSchema,
-  },
-  {
-    name: "sanitize-connection-strings",
-    description: "Stop Claude from reading database connection strings with embedded credentials in tool responses",
-    displayTitle: "Redacted database connection strings from tool output",
-    impact: "Strips embedded DB credentials before they reach the model context.",
-    fn: sanitizeConnectionStrings,
-    match: { events: ["PostToolUse"] },
-    defaultEnabled: true,
-    category: "Sanitize",
-  },
-  {
-    name: "sanitize-private-key-content",
-    description: "Stop Claude from reading PEM private key content in tool responses",
-    displayTitle: "Redacted PEM private keys from tool output",
-    impact: "Prevents private key bodies from being echoed into chat context.",
-    fn: sanitizePrivateKeyContent,
-    match: { events: ["PostToolUse"] },
-    defaultEnabled: true,
-    category: "Sanitize",
-  },
-  {
-    name: "sanitize-bearer-tokens",
-    displayTitle: "Redacted bearer tokens from tool output",
-    impact: "Strips Authorization: Bearer values before they hit the model.",
-    description: "Stop Claude from reading Authorization Bearer tokens in tool responses",
-    fn: sanitizeBearerTokens,
-    match: { events: ["PostToolUse"] },
-    defaultEnabled: true,
-    category: "Sanitize",
-  },
-  {
-    name: "protect-env-vars",
-    displayTitle: "Tried to dump environment variables to chat",
-    impact: "Env vars often contain secrets; blocking `env` / `printenv` keeps them out of the model context.",
-    description: "Prevent commands that read environment variables",
-    fn: protectEnvVars,
-    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    defaultEnabled: true,
-    category: "Environment",
-  },
-  {
-    name: "block-env-files",
-    displayTitle: "Tried to read or write a .env file",
-    impact: "`.env` files routinely contain API keys and DB credentials.",
-    description: "Block reading/writing .env files",
-    fn: blockEnvFiles,
-    match: { events: ["PreToolUse"] },
-    defaultEnabled: true,
-    category: "Environment",
-  },
-  {
-    name: "block-read-outside-cwd",
-    displayTitle: "Tried to read files outside your project directory",
-    impact: "Stops the agent from peeking at neighboring repos or your home directory.",
-    description: "Block file reads outside the session working directory",
-    fn: blockReadOutsideCwd,
-    match: { events: ["PreToolUse"], toolNames: ["Read", "Glob", "Grep", "Bash"] },
-    defaultEnabled: false,
-    category: "Environment",
-    params: {
-      allowPaths: {
-        type: "string[]",
-        description: "Absolute paths outside cwd that are allowed to be read",
-        default: [],
-      },
-    } satisfies PolicyParamsSchema,
-  },
-  {
-    name: "block-self-pause",
-    displayTitle: "Tried to pause failproofai enforcement",
-    impact: "An agent that can pause enforcement can switch off every other policy.",
-    description: "Block agents from pausing failproofai enforcement",
-    fn: blockSelfPause,
-    match: { events: ["PreToolUse", "PermissionRequest"], toolNames: ["Bash"] },
-    defaultEnabled: true,
-    category: "Dangerous Commands",
-  },
-  {
-    name: "block-sudo",
-    displayTitle: "Tried to run a command with sudo",
-    impact: "Sudo gives the agent root — blocked unless explicitly allow-listed.",
-    description: "Block sudo commands",
-    fn: blockSudo,
-    // PermissionRequest is Codex's escalation-approval event; fire the same
-    // sudo guard there so Codex sandbox bypasses are blocked too.
-    match: { events: ["PreToolUse", "PermissionRequest"], toolNames: ["Bash"] },
-    defaultEnabled: true,
-    category: "Dangerous Commands",
-    params: {
-      allowPatterns: {
-        type: "string[]",
-        description: "Sudo command patterns to allow, matched token-by-token (e.g. 'sudo systemctl status')",
-        default: [],
-      },
-    } satisfies PolicyParamsSchema,
-  },
-  {
-    name: "block-curl-pipe-sh",
-    displayTitle: "Tried to pipe a downloaded script straight to a shell",
-    impact: "`curl ... | sh` runs unverified remote code on your machine.",
-    description: "Block piping downloads to shell",
-    fn: blockCurlPipeSh,
-    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    defaultEnabled: true,
-    category: "Dangerous Commands",
-  },
-  {
-    name: "block-rm-rf",
-    displayTitle: "Tried to recursively delete a system path",
-    impact: "Catches catastrophic `rm -rf /` and Windows equivalents.",
-    description: "Prevent catastrophic deletions",
-    fn: blockRmRf,
-    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    defaultEnabled: false,
-    category: "Dangerous Commands",
-    params: {
-      allowPaths: {
-        type: "string[]",
-        description: "Paths that are allowed to be recursively deleted",
-        default: [],
-      },
-    } satisfies PolicyParamsSchema,
-  },
-  {
-    name: "block-failproofai-commands",
-    displayTitle: "Tried to disable or modify failproofai itself",
-    impact: "Prevents the agent from turning off the policies that protect you.",
-    description: "Block failproofai CLI commands and uninstallation",
-    fn: blockFailproofaiCommands,
-    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    defaultEnabled: true,
-    category: "Dangerous Commands",
-  },
-  {
-    name: "block-kubectl",
-    displayTitle: "Tried to run a Kubernetes command",
-    impact: "kubectl can change live cluster state — gated unless allow-listed.",
-    description: "Block kubectl commands (Kubernetes cluster mutations)",
-    fn: blockKubectl,
-    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    defaultEnabled: false,
-    category: "Infra Commands",
-    params: {
-      allowPatterns: {
-        type: "string[]",
-        description: "kubectl command patterns to allow, matched token-by-token (e.g. 'kubectl get *', 'kubectl describe *')",
-        default: [],
-      },
-    } satisfies PolicyParamsSchema,
-  },
-  {
-    name: "block-terraform",
-    displayTitle: "Tried to run a Terraform/OpenTofu command",
-    impact: "Terraform mutates real infrastructure — gated unless allow-listed.",
-    description: "Block terraform and tofu (OpenTofu) commands",
-    fn: blockTerraform,
-    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    defaultEnabled: false,
-    category: "Infra Commands",
-    params: {
-      allowPatterns: {
-        type: "string[]",
-        description: "terraform/tofu command patterns to allow (e.g. 'terraform plan', 'terraform validate')",
-        default: [],
-      },
-    } satisfies PolicyParamsSchema,
-  },
-  {
-    name: "block-aws-cli",
-    displayTitle: "Tried to run an AWS CLI command",
-    impact: "AWS CLI can spend money or break prod — gated.",
-    description: "Block aws CLI commands",
-    fn: blockAwsCli,
-    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    defaultEnabled: false,
-    category: "Infra Commands",
-    params: {
-      allowPatterns: {
-        type: "string[]",
-        description: "aws CLI command patterns to allow (e.g. 'aws s3 ls *', 'aws sts get-caller-identity')",
-        default: [],
-      },
-    } satisfies PolicyParamsSchema,
-  },
-  {
-    name: "block-gcloud",
-    displayTitle: "Tried to run a Google Cloud command",
-    impact: "gcloud can spend money or break prod — gated.",
-    description: "Block gcloud (Google Cloud) CLI commands",
-    fn: blockGcloud,
-    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    defaultEnabled: false,
-    category: "Infra Commands",
-    params: {
-      allowPatterns: {
-        type: "string[]",
-        description: "gcloud command patterns to allow (e.g. 'gcloud auth list', 'gcloud config list')",
-        default: [],
-      },
-    } satisfies PolicyParamsSchema,
-  },
-  {
-    name: "block-az-cli",
-    displayTitle: "Tried to run an Azure CLI command",
-    impact: "az can spend money or break prod — gated.",
-    description: "Block az (Azure) CLI commands",
-    fn: blockAzCli,
-    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    defaultEnabled: false,
-    category: "Infra Commands",
-    params: {
-      allowPatterns: {
-        type: "string[]",
-        description: "az CLI command patterns to allow (e.g. 'az account show', 'az group list')",
-        default: [],
-      },
-    } satisfies PolicyParamsSchema,
-  },
-  {
-    name: "block-helm",
-    displayTitle: "Tried to run a Helm command",
-    impact: "Helm releases mutate cluster state — gated.",
-    description: "Block helm commands",
-    fn: blockHelm,
-    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    defaultEnabled: false,
-    category: "Infra Commands",
-    params: {
-      allowPatterns: {
-        type: "string[]",
-        description: "helm command patterns to allow (e.g. 'helm list', 'helm status *')",
-        default: [],
-      },
-    } satisfies PolicyParamsSchema,
-  },
-  {
-    name: "block-gh-pipeline",
-    displayTitle: "Tried to run a privileged GitHub CLI pipeline command",
-    impact: "Catches `gh workflow run`, `gh pr merge`, `gh secret set`, etc.",
-    description: "Block gh CLI pipeline-trigger subcommands (workflow run, run rerun/cancel, pr merge, release create/delete, cache delete, secret set/delete)",
-    fn: blockGhPipeline,
-    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    defaultEnabled: false,
-    category: "Infra Commands",
-    params: {
-      allowPatterns: {
-        type: "string[]",
-        description: "gh pipeline command patterns to allow (e.g. specific scripted invocations); read-only gh subcommands like 'gh pr view' and 'gh run list' are not matched by this policy",
-        default: [],
-      },
-    } satisfies PolicyParamsSchema,
-  },
-  {
-    name: "block-secrets-write",
-    displayTitle: "Tried to write a secret-key file",
-    impact: "Stops the agent from creating `.pem`, `id_rsa`, `credentials.json`, etc.",
-    description: "Block writing secret key files",
-    fn: blockSecretsWrite,
-    match: { events: ["PreToolUse"], toolNames: ["Write"] },
-    defaultEnabled: false,
-    category: "Dangerous Commands",
-    params: {
-      additionalPatterns: {
-        type: "string[]",
-        description: "Additional filename patterns (substrings) to block",
-        default: [],
-      },
-    } satisfies PolicyParamsSchema,
-  },
-  {
-    name: "block-push-master",
-    displayTitle: "Tried to push directly to main/master",
-    impact: "Direct pushes to a protected branch bypass review.",
-    description: "Block pushing to main/master",
-    fn: blockPushMaster,
-    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    defaultEnabled: true,
-    category: "Git",
-    params: {
-      protectedBranches: {
-        type: "string[]",
-        description: "Branch names to protect from direct pushes",
-        default: ["main", "master"],
-      },
-    } satisfies PolicyParamsSchema,
-  },
-  {
-    name: "block-force-push",
-    displayTitle: "Tried to force-push",
-    impact: "Force-pushes rewrite history and can clobber teammates' work.",
-    description: "Prevent force-pushing to any branch",
-    fn: blockForcePush,
-    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    defaultEnabled: false,
-    category: "Git",
-  },
-  {
-    name: "block-work-on-main",
-    displayTitle: "Tried to commit or merge on main/master",
-    impact: "Work should land via PR — direct commits skip review.",
-    description: "Block git commits and merges on main/master branch",
-    fn: blockWorkOnMain,
-    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    defaultEnabled: false,
-    category: "Git",
-    params: {
-      protectedBranches: {
-        type: "string[]",
-        description: "Branch names where commits/merges are blocked",
-        default: ["main", "master"],
-      },
-    } satisfies PolicyParamsSchema,
-  },
-  {
-    name: "warn-git-amend",
-    displayTitle: "Used git commit --amend",
-    impact: "Amending after a push rewrites history that others may have pulled.",
-    description: "Warns before amending git commits, which rewrites history",
-    fn: warnGitAmend,
-    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    defaultEnabled: false,
-    category: "Git",
-  },
-  {
-    name: "warn-git-stash-drop",
-    displayTitle: "Tried to drop or clear git stash",
-    impact: "Stash deletions are permanent and silent.",
-    description: "Warns before permanently deleting stashed changes",
-    fn: warnGitStashDrop,
-    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    defaultEnabled: false,
-    category: "Git",
-  },
-  {
-    name: "warn-all-files-staged",
-    displayTitle: "Staged all files with git add -A / .",
-    impact: "Wide stages routinely catch generated files or secrets you didn't intend to commit.",
-    description: "Warns before staging all working tree files with git add -A / . / --all",
-    fn: warnAllFilesStaged,
-    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    defaultEnabled: false,
-    category: "Git",
-  },
-  {
-    name: "warn-destructive-sql",
-    displayTitle: "Ran destructive SQL (DROP / TRUNCATE / DELETE without WHERE)",
-    impact: "Easy way to wipe a table by accident.",
-    description: "Warn before executing destructive SQL (DROP/TRUNCATE/DELETE without WHERE) via database clients",
-    fn: warnDestructiveSql,
-    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    defaultEnabled: false,
-    category: "Database",
-  },
-  {
-    name: "warn-schema-alteration",
-    displayTitle: "Altered a database schema column",
-    impact: "ALTER TABLE operations can lock tables and break readers.",
-    description: "Warns before SQL schema changes (ALTER TABLE with column or rename operations)",
-    fn: warnSchemaAlteration,
-    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    defaultEnabled: false,
-    category: "Database",
-  },
-  {
-    name: "warn-package-publish",
-    displayTitle: "Tried to publish a package",
-    impact: "Publishes are irreversible — `npm publish` / `cargo publish` shouldn't happen without intent.",
-    description: "Warn before publishing packages to public registries (npm, PyPI, crates.io, RubyGems, etc.)",
-    fn: warnPackagePublish,
-    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    defaultEnabled: false,
-    category: "Packages & System",
-  },
-  {
-    name: "warn-global-package-install",
-    displayTitle: "Installed a package globally",
-    impact: "`npm i -g`, `cargo install`, `pip --user` pollute your machine outside the project.",
-    description: "Warns before installing packages globally (npm -g, cargo install, etc.)",
-    fn: warnGlobalPackageInstall,
-    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    defaultEnabled: false,
-    category: "Packages & System",
-  },
-  {
-    name: "prefer-package-manager",
-    displayTitle: "Used a non-preferred package manager",
-    impact: "Mixing package managers creates lockfile churn for your team.",
-    description: "Blocks non-preferred package managers and tells Claude to use an allowed one (e.g., uv instead of pip)",
-    fn: preferPackageManager,
-    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    defaultEnabled: false,
-    category: "Packages & System",
-    params: {
-      allowed: {
-        type: "string[]",
-        description: "Allowed package manager names (e.g. ['uv', 'bun']). Any detected manager not in this list is blocked.",
-        default: [],
-      },
-      blocked: {
-        type: "string[]",
-        description: "Additional manager names to block beyond the built-in list (e.g. ['pdm', 'pipx']).",
-        default: [],
-      },
-    } satisfies PolicyParamsSchema,
-  },
-  {
-    name: "warn-large-file-write",
-    displayTitle: "Wrote a file larger than the configured threshold",
-    impact: "Catches accidentally large file writes (logs, binaries, model dumps).",
-    description: "Warn before writing files larger than 1MB (configurable via thresholdKb param)",
-    fn: warnLargeFileWrite,
-    match: { events: ["PreToolUse"], toolNames: ["Write"] },
-    defaultEnabled: false,
-    category: "Packages & System",
-    params: {
-      thresholdKb: {
-        type: "number",
-        description: "File size threshold in KB above which a warning is issued",
-        default: 1024,
-      },
-    } satisfies PolicyParamsSchema,
-  },
-  {
-    name: "warn-background-process",
-    displayTitle: "Started a long-lived background process",
-    impact: "Catches `nohup` / `&` / `screen` / `tmux` / `disown` patterns that the agent often forgets to clean up.",
-    description: "Warns before starting detached or background processes",
-    fn: warnBackgroundProcess,
-    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    defaultEnabled: false,
-    category: "Packages & System",
-  },
-  {
-    name: "warn-repeated-tool-calls",
-    displayTitle: "Called the same tool 3+ times with identical arguments",
-    impact: "Usually a sign of a stuck loop burning tokens.",
-    description: "Warn when the same tool is called 3+ times with identical parameters",
-    fn: warnRepeatedToolCalls,
-    match: { events: ["PreToolUse"] },
-    defaultEnabled: false,
-    category: "AI Behavior",
-  },
-  {
-    name: "require-commit-before-stop",
-    displayTitle: "Stopped with uncommitted changes",
-    impact: "Work not in a commit is invisible to teammates and easy to lose.",
-    description: "Require all changes to be committed before Claude stops",
-    fn: requireCommitBeforeStop,
-    match: { events: ["Stop"] },
-    defaultEnabled: false,
-    category: "Workflow",
-  },
-  {
-    name: "require-push-before-stop",
-    displayTitle: "Stopped with unpushed commits",
-    impact: "Local-only commits won't trigger CI or be reviewable.",
-    description: "Require all commits to be pushed to remote before Claude stops",
-    fn: requirePushBeforeStop,
-    match: { events: ["Stop"] },
-    defaultEnabled: false,
-    category: "Workflow",
-    params: {
-      remote: {
-        type: "string",
-        description: "Remote name to push to (default: origin)",
-        default: "origin",
-      },
-      baseBranch: {
-        type: "string",
-        description: "Base branch to compare against (default: main)",
-        default: "main",
-      },
-    } satisfies PolicyParamsSchema,
-  },
-  {
-    name: "require-pr-before-stop",
-    displayTitle: "Stopped without a PR for the branch",
-    impact: "Branches without PRs don't get reviewed.",
-    description: "Require a pull request to exist for the current branch before Claude stops",
-    fn: requirePrBeforeStop,
-    match: { events: ["Stop"] },
-    defaultEnabled: false,
-    category: "Workflow",
-    params: {
-      baseBranch: {
-        type: "string",
-        description: "Base branch to compare against (default: main)",
-        default: "main",
-      },
-    } satisfies PolicyParamsSchema,
-  },
-  {
-    name: "require-no-conflicts-before-stop",
-    displayTitle: "Stopped with a branch that conflicts with main",
-    impact: "Conflicting branches can't merge — surface them early.",
-    description: "Require the current branch to merge cleanly with the base branch before Claude stops",
-    fn: requireNoConflictsBeforeStop,
-    match: { events: ["Stop"] },
-    defaultEnabled: false,
-    category: "Workflow",
-    params: {
-      baseBranch: {
-        type: "string",
-        description: "Base branch to check for conflicts against (default: main)",
-        default: "main",
-      },
-    } satisfies PolicyParamsSchema,
-  },
-  {
-    name: "require-ci-green-before-stop",
-    displayTitle: "Stopped with failing CI",
-    impact: "Failing CI blocks deploy.",
-    description: "Require CI checks to pass on the current HEAD commit before Claude stops (ignores stale runs on prior commits)",
-    fn: requireCiGreenBeforeStop,
-    match: { events: ["Stop"] },
-    defaultEnabled: false,
-    category: "Workflow",
-  },
-];
+/**
+ * Name → implementation. The other half of {@link POLICY_CATALOG}.
+ *
+ * Each value is the identical hoisted function object, never a wrapper. Two
+ * things depend on that and neither fails loudly: `audit/cache.ts` hashes
+ * `fn.toString()` into the audit cache's `engineVersion`, so wrapping every
+ * entry would collapse 39 distinct hashes into one and freeze the key — stale
+ * audit results would then be served for the full 30-day TTL with no symptom;
+ * and `gitBranchCache` is module-scoped, so a per-call factory would silently
+ * reset it on every hook event.
+ */
+const POLICY_IMPLEMENTATIONS: Record<string, PolicyFunction> = {
+  "sanitize-jwt": sanitizeJwt,
+  "sanitize-api-keys": sanitizeApiKeys,
+  "sanitize-connection-strings": sanitizeConnectionStrings,
+  "sanitize-private-key-content": sanitizePrivateKeyContent,
+  "sanitize-bearer-tokens": sanitizeBearerTokens,
+  "protect-env-vars": protectEnvVars,
+  "block-env-files": blockEnvFiles,
+  "block-read-outside-cwd": blockReadOutsideCwd,
+  "block-sudo": blockSudo,
+  "block-curl-pipe-sh": blockCurlPipeSh,
+  "block-rm-rf": blockRmRf,
+  "block-failproofai-commands": blockFailproofaiCommands,
+  "block-kubectl": blockKubectl,
+  "block-terraform": blockTerraform,
+  "block-aws-cli": blockAwsCli,
+  "block-gcloud": blockGcloud,
+  "block-az-cli": blockAzCli,
+  "block-helm": blockHelm,
+  "block-gh-pipeline": blockGhPipeline,
+  "block-secrets-write": blockSecretsWrite,
+  "block-push-master": blockPushMaster,
+  "block-force-push": blockForcePush,
+  "block-work-on-main": blockWorkOnMain,
+  "warn-git-amend": warnGitAmend,
+  "warn-git-stash-drop": warnGitStashDrop,
+  "warn-all-files-staged": warnAllFilesStaged,
+  "warn-destructive-sql": warnDestructiveSql,
+  "warn-schema-alteration": warnSchemaAlteration,
+  "warn-package-publish": warnPackagePublish,
+  "warn-global-package-install": warnGlobalPackageInstall,
+  "prefer-package-manager": preferPackageManager,
+  "warn-large-file-write": warnLargeFileWrite,
+  "warn-background-process": warnBackgroundProcess,
+  "warn-repeated-tool-calls": warnRepeatedToolCalls,
+  "require-commit-before-stop": requireCommitBeforeStop,
+  "require-push-before-stop": requirePushBeforeStop,
+  "require-pr-before-stop": requirePrBeforeStop,
+  "require-no-conflicts-before-stop": requireNoConflictsBeforeStop,
+  "require-ci-green-before-stop": requireCiGreenBeforeStop,
+};
+
+/**
+ * Catalog and implementations must be in BIJECTION, and this throws rather than
+ * warns because the failure is otherwise invisible in the worst direction: a
+ * name present here but not there yields `fn: undefined`, `registerPolicy`
+ * stores it unvalidated, and the `TypeError` at `await policy.fn(ctx)` is
+ * swallowed by `policy-evaluator.ts` (warn, count, `continue`). The hook then
+ * ALLOWS, exits 0, and still lists the policy in `matchedPolicies` — a machine
+ * reporting that a guard ran when it never did.
+ */
+function assertCatalogBijection(): void {
+  const implNames = new Set(Object.keys(POLICY_IMPLEMENTATIONS));
+  const missing = POLICY_CATALOG.filter((e) => !implNames.has(e.name)).map((e) => e.name);
+  if (missing.length > 0) {
+    throw new Error(
+      `failproofai: builtin policies missing an implementation: ${missing.join(", ")}`,
+    );
+  }
+  const catalogNames = new Set(POLICY_CATALOG.map((e) => e.name));
+  const orphaned = [...implNames].filter((n) => !catalogNames.has(n));
+  if (orphaned.length > 0) {
+    throw new Error(
+      `failproofai: policy implementations with no catalog entry: ${orphaned.join(", ")}`,
+    );
+  }
+}
+assertCatalogBijection();
+
+/**
+ * The joined view, and the shape every consumer has always seen.
+ *
+ * Deliberately a positional, spread-only, eager `.map()`: it preserves catalog
+ * order, adds no fields, fills no defaults, drops no rows and calls no factory.
+ * Each of those alternatives changes observable behaviour — see the rules on
+ * {@link POLICY_CATALOG} and the invariants in
+ * `__tests__/hooks/policy-catalog.test.ts`.
+ */
+export const BUILTIN_POLICIES: BuiltinPolicyDefinition[] = POLICY_CATALOG.map((entry) => ({
+  ...entry,
+  fn: POLICY_IMPLEMENTATIONS[entry.name] as PolicyFunction,
+}));
 
 export function registerBuiltinPolicies(enabledNames: string[]): void {
   // Tolerate both flat ("sanitize-jwt") and qualified ("failproofai/sanitize-jwt")
   // forms in the user's enabledPolicies config — canonicalize both sides.
   const enabledSet = new Set(enabledNames.map(normalizePolicyName));
   for (const policy of BUILTIN_POLICIES) {
-    if (enabledSet.has(normalizePolicyName(policy.name))) {
-      registerPolicy(policy.name, policy.description, policy.fn, policy.match);
+    // `alwaysOn` deliberately bypasses the enabled set, and the caller's three
+    // ways of producing an empty one with it: a policy the user never enabled,
+    // an active session pause (`handler.ts` passes `[]`), and a config file that
+    // failed to parse (`hooks-config.ts` soft-fails to `{enabledPolicies: []}`).
+    // A guard against the agent disabling failproofai that any of those can
+    // switch off is not a guard.
+    if (policy.alwaysOn || enabledSet.has(normalizePolicyName(policy.name))) {
+      registerPolicy(policy.name, policy.description, policy.fn, policy.match, 0, policy.params);
     }
   }
 }

@@ -358,7 +358,16 @@ export async function promptPolicySelection(
   // If stdin is not a TTY (piped/CI), return defaults
   if (!process.stdin.isTTY) {
     const available = BUILTIN_POLICIES.filter((p) => includeBeta || !p.beta);
-    if (preSelected) return preSelected.filter((name) => available.some((p) => p.name === name));
+    // Returned UNCHANGED, deliberately. This used to intersect with the builtin
+    // catalog, and manager.ts writes the result straight back — so a piped
+    // `policies --install` silently deleted every enabled name the catalog did
+    // not contain: a `failproofai/`-qualified name (a form the enforcement path
+    // explicitly accepts, `registerBuiltinPolicies` canonicalizes both), a beta
+    // policy enabled with `--beta`, and now any pack policy. The line that
+    // reports what was enabled prints only the survivors, so the loss was
+    // invisible. Carrying an unknown name costs nothing — registration looks it
+    // up in a Set and finds nothing — while dropping one destroys configuration.
+    if (preSelected) return [...preSelected];
     return available.filter((p) => p.defaultEnabled).map((p) => p.name);
   }
 
@@ -373,6 +382,14 @@ export async function promptPolicySelection(
       selected: preSelectedSet ? preSelectedSet.has(p.name) : p.defaultEnabled,
       beta: !!p.beta,
     }));
+
+  // Everything the user has enabled that this picker cannot show a row for, for
+  // the same reason as the non-TTY branch above: the picker's universe is the
+  // builtin catalog, and resolving from it alone deletes anything else. Kept in
+  // their original order and appended to whatever the user picks.
+  const carried = preSelected
+    ? preSelected.filter((name) => !items.some((i) => i.name === name))
+    : [];
 
   const total = items.length;
   const WINDOW_SIZE = 10;
@@ -570,10 +587,15 @@ export async function promptPolicySelection(
         cleanup();
         const selected = items.filter((i) => i.selected).map((i) => i.name);
         if (lastLineCount > 0) process.stdout.write(`\x1B[${lastLineCount}A\x1B[J`);
+        // Carried entries are NAMED, not counted. "3 kept" reads as fine right
+        // up until someone needs to know which three.
+        const summary = carried.length > 0
+          ? `${selected.length} selected, kept ${carried.join(", ")}`
+          : `${selected.length} selected`;
         process.stdout.write(
-          `${dim(BAR)}\n${dim(DONE)}  Policies\n${dim(BAR)}  ${dim(`${selected.length} selected`)}\n`,
+          `${dim(BAR)}\n${dim(DONE)}  Policies\n${dim(BAR)}  ${dim(summary)}\n`,
         );
-        resolve(selected);
+        resolve([...selected, ...carried]);
       } else if (key.name === "escape") {
         // Clear search filter
         search = "";

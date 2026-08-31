@@ -1,0 +1,120 @@
+---
+title: "Instrumentez votre agent"
+sidebarTitle: "Frameworks"
+description: "Connectez n'importe quel framework d'agent supporté à Failproof AI en un seul appel."
+icon: "plug"
+---
+
+Votre agent produit déjà tout ce qui mérite d'être enregistré — appels de modèle, appels d'outils, limites de nœuds, attentes humaines, échecs. Le framework les jette. Le SDK les conserve.
+
+<Columns cols={3}>
+  <Card title="Agents personnalisés" icon="wrench" href="/fr/start/quickstarts/custom-agents">
+    Un agent que vous avez écrit vous-même, ou un agent qui ne figure pas dans cette liste.
+  </Card>
+  <Card title="LangChain et LangGraph" icon="share-2" href="/fr/start/quickstarts/langchain">
+    Graphes, nœuds, outils, retrievers, modèles.
+  </Card>
+  <Card title="CrewAI" icon="users" href="/fr/start/quickstarts/crewai">
+    Crews, flows, agents par rôle, outils.
+  </Card>
+  <Card title="LlamaIndex" icon="database" href="/fr/start/quickstarts/llamaindex">
+    Workflows, étapes, agents de fonction, retrievers.
+  </Card>
+  <Card title="Pydantic AI" icon="badge-check" href="/fr/start/quickstarts/pydantic-ai">
+    Agents typés, capacités, outils, tentatives.
+  </Card>
+</Columns>
+
+## Trois lignes, quel que soit le framework
+
+<CodeGroup>
+```bash LangGraph
+pip install 'failproofai-sdk[langgraph]'
+```
+
+```bash CrewAI
+pip install 'failproofai-sdk[crewai]'
+```
+
+```bash LlamaIndex
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+```bash Pydantic AI
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+```bash Custom agents
+pip install failproofai-sdk
+```
+</CodeGroup>
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # détecte les frameworks que vous avez importés
+
+with failproofai_sdk.session():
+    ...                               # votre appel d'agent existant, inchangé
+```
+
+Pas de décorateurs sur vos fonctions, pas de callback passé à vos appels, pas d'identifiants propagés dans votre code. Seul l'appel à l'intérieur de la session diffère :
+
+<Tabs>
+  <Tab title="LangGraph">
+    ```python
+    graph.invoke({"messages": [HumanMessage("...")]})
+    ```
+  </Tab>
+  <Tab title="CrewAI">
+    ```python
+    Crew(agents=[analyst, writer], tasks=[gather, summarise]).kickoff()
+    ```
+  </Tab>
+  <Tab title="LlamaIndex">
+    ```python
+    await agent.run("...")        # sous `async with failproofai_sdk.session():`
+    ```
+  </Tab>
+  <Tab title="Pydantic AI">
+    ```python
+    agent.run_sync("...")
+    ```
+  </Tab>
+  <Tab title="Custom agents">
+    ```python
+    with failproofai_sdk.agent("planner"):
+        with failproofai_sdk.tool_call("search", input={"q": q}) as t:
+            t.output = search(q)
+    ```
+  </Tab>
+</Tabs>
+
+L'installation supplémentaire ajoute le **framework**. Chaque adaptateur est inclus dans le wheel de base, donc un projet qui dispose déjà de son framework n'a besoin d'aucune installation supplémentaire.
+
+## Vérifier que les données sont bien reçues
+
+Exécutez une session instrumentée, puis ouvrez **Observe → Sessions** et sélectionnez votre environnement. L'exécution apparaît sous forme de trace reconstruite.
+
+Si rien n'arrive, vérifiez que la machine est connectée avec `failproofai config --status`. Consultez [Configurer la capture](/fr/start/setup).
+
+<Warning>
+  Ne vérifiez pas le répertoire spool pour confirmer la livraison. Le daemon Failproof collecte et supprime chaque lot en quelques millisecondes, donc lire ce répertoire entre en compétition avec le collecteur et affiche bien moins d'événements que ce qui a été émis.
+</Warning>
+
+## Étape suivante
+
+Chaque démarrage rapide ci-dessus renvoie à son guide complet — ce qui est enregistré, les options, le streaming, le nommage des spans, et les problèmes que les gens rencontrent réellement. Ils se trouvent sous **Trace Agents → Plug in your agent**.
+
+<Columns cols={3}>
+  <Card title="Comment ça fonctionne" icon="workflow" href="/fr/start/integrations/custom-agents#going-deeper">
+    Le modèle de données, les identifiants, les types d'événements, et comment les événements atteignent le Cloud.
+  </Card>
+  <Card title="Lire une trace" icon="route" href="/fr/sessions/read-a-trace">
+    Suivez la causalité à travers une session plutôt que des logs déconnectés.
+  </Card>
+  <Card title="Trouver votre premier échec" icon="scan-search" href="/fr/start/first-audit">
+    Auditez les sessions que vous venez de capturer.
+  </Card>
+</Columns>

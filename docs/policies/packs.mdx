@@ -1,0 +1,62 @@
+---
+title: "Policy packs"
+description: "Inspect and install versioned policy sets published through GitHub."
+icon: "package"
+---
+
+A policy pack is a versioned set of policies published as a public GitHub release. The package ships no pack of its own; install ours like any other:
+
+```bash
+failproofai policies show FailproofAI/policies
+failproofai policies add FailproofAI/policies
+```
+
+`show` reads the manifest without running the pack's code.
+
+## Choose what to install
+
+```bash
+failproofai policies add owner/repo --policy block-refunds
+failproofai policies add owner/repo --category billing,git
+failproofai policies add owner/repo --all
+```
+
+With no selection, the pack uses its publisher's defaults. Re-adding a newer release keeps your existing selection.
+
+Anything with a slash is a pack source. Anything without one is a policy name.
+
+## Pin a release
+
+| Source | Result |
+| --- | --- |
+| `owner/repo` | Newest release, pinned after resolution |
+| `owner/repo@a1b2c3d4e5f6` | Exact commit-based release |
+| `owner/repo@v2.1.0` | Exact named release |
+| GitHub release URL | The release in that URL |
+
+A pack normally uses the 12-character commit SHA it was built from. Use `failproofai policies show owner/repo --releases` to see release order.
+
+## Manage installed packs
+
+```bash
+failproofai policies
+failproofai policies remove block-refunds
+failproofai policies add block-refunds
+failproofai policies remove owner/repo
+```
+
+If two installed packs contain the same policy name, the CLI refuses the ambiguous bare name. Select the policy through one pack or uninstall the other pack.
+
+## Safety and availability
+
+Each release contains a manifest, bundled policy code, and checksums. Failproof AI verifies the recorded digest before loading it. Checksums prove the bytes match the release; they do not prove who published it.
+
+A selected pack that cannot load fails closed for the events it declared. See [policy failure behavior](/policies/failure-behavior).
+
+| Variable | Effect |
+| --- | --- |
+| `FAILPROOFAI_NO_DOWNLOAD=1` | Refuse new downloads; installed packs keep running |
+| `FAILPROOFAI_PACK_BASE_URL` | Use a mirror |
+| `FAILPROOFAI_PACK_DIR` | Move the pack store |
+
+Browse packs in the [Policy Hub](https://befailproof.ai/policy-hub/) or [publish your own](/policies/publish-a-pack).

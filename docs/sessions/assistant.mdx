@@ -1,10 +1,10 @@
 ---
-title: "Failproof Assistant"
+title: "Cloud assistant"
 description: "Analyze and operate Failproof AI in natural language, from questions and queries to dashboards and audits."
 icon: "message-square-text"
 ---
 
-Ask the Failproof Assistant to do anything in Failproof AI in natural language. It can analyze sessions and failures, run queries, build dashboards, investigate evaluations and alerts, and help create and run audits without making you translate the task into product screens or CLI commands.
+The Failproof AI Cloud assistant answers questions about your fleet in natural language. It can analyze sessions and failures, run queries, build dashboards, investigate evaluations and alerts, and help create and run audits without making you translate the task into product screens or CLI commands. In the dashboard the control is labeled **Open agent chat**; on the [`fp` CLI](/reference/cloud-cli) it is the `fp agent` command group.
 
 ```text
 Why did production checkout agents regress this week?
@@ -14,6 +14,10 @@ Show me the sessions behind the most common audit finding.
 ```
 
 The assistant works with the data and permissions available in the active organization. Review its evidence and proposed changes before applying actions that affect other users or agents.
+
+<Note>
+  The assistant runs in the dashboard and its chats belong to a person, so there is no API route behind it for a key to call. Every `fp agent` subcommand requires a signed-in session (`fp login`) and the `agent:use` permission, and exits 2 under `--api-key` or `FP_API_KEY`. An API key can never reach it, so a scheduled job has to carry a signed-in session token in `--token` or `FP_TOKEN`. That works — `fp agent ask` reads the question off stdin when there is no TTY — but a session token expires roughly 24 hours after `fp login`, which makes the assistant a poor fit for unattended automation even though it runs.
+</Note>
 
 ## Ask the assistant
 
@@ -27,16 +31,33 @@ The assistant works with the data and permissions available in the active organi
     ![The Cloud assistant answering an observability question with supporting analysis and queries.](/images/dashboard/assistant.png)
   </Tab>
   <Tab title="CLI">
+    Start with `health`. It reports whether the assistant is enabled for this deployment and whether an LLM is configured for it. Where no LLM is, `ask` fails and `models` reports none — `chats`, `show`, `rename`, and `delete` never consult health at all and keep working.
+
     ```bash
     fp agent health
     fp agent models
     fp agent ask "Which production checkout agents had the most tool errors in the last 24 hours?"
+    ```
+
+    `fp agent models` lists the models this deployment allows and which is the default. Pass one to `ask --model <name>`. Ground an answer in text you already have with `--page-context <text>`, and pipe the question on stdin instead of passing it as the argument when it comes from a file or a previous command:
+
+    ```bash
+    cat incident-notes.md | fp agent ask --model <model>
+    ```
+
+    Every ask is saved to a chat. Without `--chat` it starts a new one and prints its short id; with `--chat` it continues that thread.
+
+    ```bash
     fp agent chats
     fp agent show <chat-id>
     fp agent ask "Open representative sessions" --chat <chat-id>
+    fp agent rename <chat-id> --title "checkout regression"
+    fp agent delete <chat-id> --yes
     ```
 
-    Use `fp agent rename <chat-id> --title <title>` to keep an investigation recognizable and `fp agent delete <chat-id>` to remove it.
+    `fp agent chats` lists your chats newest first as `chat-id · title · messages · updated`, where `updated` is the chat's last-activity age. The `chat-id` shown is the short one — the first 8 characters — and `show`, `rename`, `delete`, and `ask --chat` all resolve that prefix. An id that matches nothing exits 6 with a `chat not found` box; one that matches several asks for a longer prefix.
+
+    `fp agent delete` confirms first. `--yes` skips the prompt, and so does any non-interactive invocation: under `--json`, or with stdin redirected, it proceeds without asking.
   </Tab>
 </Tabs>
 
@@ -49,5 +70,20 @@ The assistant works with the data and permissions available in the active organi
 - Save useful SQL as a query so another operator can reproduce the result.
 
 <Warning>
-  The assistant can read only what your current user can access. Do not broaden permissions to make a question work; ask an authorized operator to run the investigation instead.
+  Two permission layers apply, and they fail differently. `agent:use` gates the feature itself: without it, `fp agent` and the dashboard chat are unavailable. The answers are then bounded by the data permissions of the signed-in user — `events:read`, `evaluations:read`, `queries:run`, `policies:read` — so a user who can open the assistant may still get an empty answer for data they cannot read. Do not broaden permissions to make a question work; ask an authorized operator to run the investigation instead. See [Keys and permissions](/admin/keys-and-permissions).
 </Warning>
+
+<CardGroup cols={2}>
+  <Card title="Queries" icon="database" href="/sessions/queries">
+    Save the SQL the assistant wrote so another operator can rerun it.
+  </Card>
+  <Card title="Dashboards" icon="layout-dashboard" href="/sessions/dashboards">
+    Turn a saved query into a chart the team watches.
+  </Card>
+  <Card title="Audits" icon="scan-search" href="/audits/overview">
+    Investigate a failure pattern across a population of sessions.
+  </Card>
+  <Card title="Policies" icon="shield-check" href="/policies/overview">
+    Prevent a repeatable action instead of finding it again next week.
+  </Card>
+</CardGroup>

@@ -1,0 +1,50 @@
+---
+title: "Özel ajanlar"
+description: "Ajanınızı üç `with` bloğuna sarın ve kayıt almaya başlayın."
+icon: "code"
+---
+
+Kendiniz yazdığınız bir ajan için, ya da Failproof AI'ın adaptörü olmayan bir framework için.
+
+Zaten yaptığınız işi `with` bloklarına sararsınız. Her biri ne zaman başladığını, ne zaman bittiğini ve ne kadar sürdüğünü kaydeder — başka bir şey çağırmanıza gerek yoktur.
+
+## Kurulum
+
+```bash
+pip install failproofai-sdk
+```
+
+Ekstra hiçbir şey yok, bağımlılık da yok.
+
+## Enstrümantasyon
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+
+with failproofai_sdk.session():                 # bir çalışma
+    with failproofai_sdk.agent("planner"):      # bir iş birimi
+        with failproofai_sdk.tool_call("search", input={"q": q}) as t:
+            t.output = search(q)                # bir araç çağrısı
+```
+
+Yukarıdan aşağıya oku ve ne demek istediğini anla:
+
+| Şununla sar | Demek için |
+| --- | --- |
+| `session()` | Bu olaylar aynı çalışmaya ait |
+| `agent()` | Birisi çalışıyor — bir listede tanıyabileceğin bir ad ver |
+| `tool_call()` | Bu bir araçtır ve işte döndüğü değer |
+
+Kodun nasıl iç içe geçiyorsa öyle iç içe geçir. Hiçbir zaman id'ler geçmezsin: her blok neyin içinde olduğunu hatırlar, bu nedenle kaydettiğin her şey doğru çalışmayı ve doğru ajanı otomatik olarak alır. `async with` tamamen aynı şekilde çalışır.
+
+## Geldikten sonra kontrol et
+
+Bir kez çalıştır, sonra **Observe → Sessions** sayfasını aç ve ortamını seç. Çalışmanız yeniden yapılandırılmış bir iz olarak görünür.
+
+Hiçbir şey gelmezse, makinen `failproofai config --status` ile bağlı olduğunu doğrula.
+
+<Card title="Özel ajanlar için tam rehber" icon="arrow-right" href="/tr/start/integrations/custom-agents">
+  Her olay yöntemi, kodun bir istisna fırlatırsa ne olur, çalışan bir örnek, iş parçacıkları ve async, ve adaptörü olmayan bir framework'ü enstrümante etme.
+</Card>

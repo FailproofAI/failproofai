@@ -1,0 +1,120 @@
+---
+title: "Ajanınızı enstrüman edin"
+sidebarTitle: "Frameworks"
+description: "Desteklenen herhangi bir ajan çerçevesini Failproof AI'ye tek bir çağrıyla bağlayın."
+icon: "plug"
+---
+
+Ajanınız zaten kaydedilmeye değer her şeyi üretir — model çağrıları, araç çağrıları, düğüm sınırları, insan beklentileri, hatalar. Çerçeve bunu atar. SDK onu tutar.
+
+<Columns cols={3}>
+  <Card title="Özel ajanlar" icon="wrench" href="/tr/start/quickstarts/custom-agents">
+    Kendiniz yazdığınız bir ajan ya da burada listelenmemiş bir ajan.
+  </Card>
+  <Card title="LangChain ve LangGraph" icon="share-2" href="/tr/start/quickstarts/langchain">
+    Grafikler, düğümler, araçlar, alıcılar, modeller.
+  </Card>
+  <Card title="CrewAI" icon="users" href="/tr/start/quickstarts/crewai">
+    Ekipler, akışlar, role göre ajanlar, araçlar.
+  </Card>
+  <Card title="LlamaIndex" icon="database" href="/tr/start/quickstarts/llamaindex">
+    İş akışları, adımlar, fonksiyon ajanları, alıcılar.
+  </Card>
+  <Card title="Pydantic AI" icon="badge-check" href="/tr/start/quickstarts/pydantic-ai">
+    Yazılı ajanlar, yetenekler, araçlar, yeniden denemeler.
+  </Card>
+</Columns>
+
+## Hangi çerçeve olursa olsun üç satır
+
+<CodeGroup>
+```bash LangGraph
+pip install 'failproofai-sdk[langgraph]'
+```
+
+```bash CrewAI
+pip install 'failproofai-sdk[crewai]'
+```
+
+```bash LlamaIndex
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+```bash Pydantic AI
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+```bash Custom agents
+pip install failproofai-sdk
+```
+</CodeGroup>
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # içe aktardığınız çerçeveleri algılar
+
+with failproofai_sdk.session():
+    ...                               # mevcut ajan çağrınız, değişmemiş
+```
+
+Fonksiyonlarınız üzerinde dekoratör yok, çağrılarınıza iletilen geri arama yok, kodunuzda iliştirilmiş kimlikler yok. Yalnızca oturum içindeki çağrı farklı:
+
+<Tabs>
+  <Tab title="LangGraph">
+    ```python
+    graph.invoke({"messages": [HumanMessage("...")]})
+    ```
+  </Tab>
+  <Tab title="CrewAI">
+    ```python
+    Crew(agents=[analyst, writer], tasks=[gather, summarise]).kickoff()
+    ```
+  </Tab>
+  <Tab title="LlamaIndex">
+    ```python
+    await agent.run("...")        # `async with failproofai_sdk.session():` altında
+    ```
+  </Tab>
+  <Tab title="Pydantic AI">
+    ```python
+    agent.run_sync("...")
+    ```
+  </Tab>
+  <Tab title="Custom agents">
+    ```python
+    with failproofai_sdk.agent("planner"):
+        with failproofai_sdk.tool_call("search", input={"q": q}) as t:
+            t.output = search(q)
+    ```
+  </Tab>
+</Tabs>
+
+Ekstra yükleme **çerçeveyi** kurar. Her adaptör temel wheel'de gönderilir, bu nedenle zaten çerçevesi olan bir proje hiç ekstraya ihtiyaç duymaz.
+
+## Geldiğini kontrol edin
+
+Bir enstrüman edilmiş oturumu çalıştırın, ardından **Observe → Sessions** açın ve ortamınızı seçin. Çalıştırma yeniden oluşturulmuş bir iz olarak görünür.
+
+Hiçbir şey gelmezse, makinenin `failproofai config --status` ile bağlı olduğunu doğrulayın. Bkz. [Yakalamayı ayarlayın](/tr/start/setup).
+
+<Warning>
+  Teslimatı doğrulamak için spool dizinini kontrol etmeyin. Failproof daemon her bir toplu işi milisaniyeler içinde toplar ve siler, bu nedenle onu okumak toplayıcı ile yarışır ve yayılan olaylardan çok daha azını gösterir.
+</Warning>
+
+## Sonraki adım
+
+Yukarıdaki her hızlı başlangıç, tam kılavuzuna bağlantı verir — neler kaydedilir, seçenekler, akış, açıklık adlandırması ve insanların gerçekten karşılaştığı sorunlar. Bunlar **Trace Agents → Ajanınızı bağlayın** altında bulunur.
+
+<Columns cols={3}>
+  <Card title="Nasıl çalışır" icon="workflow" href="/tr/start/integrations/custom-agents#going-deeper">
+    Veri modeli, kimlikler, olay türleri ve olayların Cloud'a nasıl ulaştığı.
+  </Card>
+  <Card title="Bir izi oku" icon="route" href="/tr/sessions/read-a-trace">
+    Bağlantısız günlüklerin yerine bir oturum aracılığıyla nedenselliği takip edin.
+  </Card>
+  <Card title="İlk hatanı bul" icon="scan-search" href="/tr/start/first-audit">
+    Az önce yakaladığınız oturumları denetleyin.
+  </Card>
+</Columns>

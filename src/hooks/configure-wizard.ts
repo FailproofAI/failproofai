@@ -30,10 +30,10 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, resolve, sep } from "node:path";
 
+import { CORE_SOURCE } from "./pack-store";
+
 import {
   selectOne,
-  multiSelect,
-  BACK,
   promptText,
   intro,
   outro,
@@ -54,8 +54,7 @@ import {
 } from "./integrations";
 import { INTEGRATION_TYPES, type IntegrationType, type HookScope } from "./types";
 import { installHooks } from "./manager";
-import { getConfigPathForScope, readHooksConfig, readScopedHooksConfig } from "./hooks-config";
-import { POLICY_PRESETS, resolvePreset, resolveEverything, RECOMMENDED_POLICIES } from "./policy-presets";
+import { getConfigPathForScope, readScopedHooksConfig } from "./hooks-config";
 import { discoverPolicyFiles, findSkippedPolicyFiles } from "./custom-hooks-loader";
 import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId } from "../../lib/telemetry-id";
@@ -91,7 +90,6 @@ import {
 import {
   detectSetupState,
   isConfigured,
-  buildTargetChoices,
   scopesFor,
   type SetupTarget,
 } from "./setup-state";
@@ -114,6 +112,31 @@ export interface WizardIO {
 }
 
 /**
+ * Answers supplied up front, so the run needs nobody at the keyboard.
+ *
+ * This is the whole of headless setup, and it is small for a reason nobody
+ * planned: the wizard stopped DECIDING most of what it used to. Scope, agents,
+ * policies and the custom-policy toggle are all hardcoded now (see the
+ * constants further down), so there is no decision surface left to expose —
+ * only the three questions that remain, and each has one sensible unattended
+ * answer.
+ *
+ * None of this skips sudo. Installing a system service needs root and nothing
+ * here changes that: elevation goes through `sudo -n`, which never prompts, and
+ * a machine that cannot elevate is told exactly what to run as root.
+ */
+export interface WizardAnswers {
+  /** Cloud API key. Its presence IS the request to connect. */
+  token?: string;
+  /** Where to connect. Defaults to the same URL the wizard infers. */
+  url?: string;
+  machineId?: string;
+  machineLabel?: string;
+  /** Record decisions only, no session transcripts. */
+  noTranscripts?: boolean;
+}
+
+/**
  * Why a wizard run ended without applying. Distinguished so the caller can
  * pick an exit code — a user who pressed Esc did nothing wrong (exit 0), a
  * machine that could not install the required daemon did not get set up
@@ -124,8 +147,9 @@ export type WizardAbort =
   | "needs_root"
   | "daemon_failed"
   | "unsupported_platform"
-  | "not_a_tty"
-  | "running_as_sudo";
+  | "running_as_sudo"
+  /** A cloud key was supplied and the server refused it. Unattended only. */
+  | "cloud_unverified";
 
 export interface WizardResult {
   applied: boolean;
@@ -226,175 +250,6 @@ export function buildAgentChoices(scope: HookScope, cwd: string): MultiChoice<In
   });
 }
 
-const EVERYTHING = "__everything__";
-const ALL_CLIS = "__all_clis__";
-/** Sentinel for the locked "Custom" row — informational, never resolves to
- *  builtin policy names (custom policies load by convention, not by config). */
-const CUSTOM = "__custom__";
-/**
- * Sentinel for the locked "enabled individually" row.
- *
- * Policies enabled one at a time (`failproofai policies add <name>`) need not map
- * onto any preset, so seeding the preset boxes cannot represent them. The wizard
- * writes with `replace: true`, which makes the ticked set the WHOLE enabled set —
- * so anything this row stands for must be unioned back in, or confirming the
- * wizard would silently drop it. Locked and pre-checked, because it reports a
- * state rather than offering a choice.
- */
-const INDIVIDUAL = "__individual__";
-
-/**
- * Split what is enabled now into the bundles that cover it and the leftovers.
- *
- * A pure function, and the SINGLE definition of that split — `buildPresetChoices`
- * renders it and the wizard writes from it, so the row the user sees and the set
- * that gets written can never disagree. The first version of this derived the
- * leftovers by parsing them back out of the row's hint text, which coupled a
- * display string to enforcement behaviour and would have broken on any policy
- * name containing the separator.
- */
-export function splitEnabled(currentlyEnabled: readonly string[] = []): {
-  /** Preset ids (or `EVERYTHING`) whose policies are all already enabled. */
-  presets: string[];
-  /** Enabled policies no ticked bundle accounts for. */
-  individual: string[];
-} {
-  const current = new Set(currentlyEnabled);
-  // A bundle is ticked when everything it turns on is already on. Not "any", or
-  // one shared policy would tick every bundle containing it and confirming would
-  // enable all of them.
-  const isOn = (policies: string[]) =>
-    policies.length > 0 && policies.every((name) => current.has(name));
-
-  const everything = resolveEverything();
-  const presets = isOn(everything)
-    ? [EVERYTHING]
-    : POLICY_PRESETS.filter((p) => isOn(resolvePreset(p.id))).map((p) => p.id);
-
-  // Against the TICKED bundles, not all of them: a policy belonging only to a
-  // bundle the user has NOT enabled is still enabled, and that is the fact the
-  // locked row exists to make visible.
-  const accounted = new Set(
-    presets.flatMap((id) => (id === EVERYTHING ? everything : resolvePreset(id))),
-  );
-  const individual = [...current].filter((name) => !accounted.has(name)).sort();
-  return { presets, individual };
-}
-
-/** The themed preset bundles for the wizard's multi-select, plus an "Everything"
- *  option that enables the full builtin policy set. */
-export function buildPresetChoices(
-  cwd: string = process.cwd(),
-  enabled = true,
-  /**
-   * What is enabled at this scope RIGHT NOW, used to tick the boxes.
-   *
-   * Without it every row rendered unticked on every run while the wizard wrote
-   * with `replace: true` — so re-running setup showed a blank slate and then made
-   * that blank slate authoritative, discarding the user's selection with nothing
-   * on screen to say it had happened. The comment on the Custom row below has
-   * always described the intended behaviour ("shows the current state rather than
-   * resetting it every run"); it was implemented for that one row out of eight.
-   *
-   * Optional so the first-run call sites stay unchanged: an empty set ticks
-   * nothing, which is the correct rendering for a machine with no selection.
-   */
-  currentlyEnabled: readonly string[] = [],
-) {
-  const { presets: onPresets, individual } = splitEnabled(currentlyEnabled);
-  const on = new Set(onPresets);
-
-  const choices: MultiChoice<string>[] = POLICY_PRESETS.map((p) => ({
-    label: p.label,
-    value: p.id,
-    hint: p.description,
-    checked: on.has(p.id),
-  }));
-  choices.push({
-    label: "Everything",
-    value: EVERYTHING,
-    hint: `all ${resolveEverything().length} policies`,
-    checked: on.has(EVERYTHING),
-  });
-
-  // The Custom row is ALWAYS present, because it is the only place the feature
-  // is discoverable: a user who has never written a policy cannot learn the
-  // capability exists, and one who wrote a badly-named file cannot learn why
-  // nothing happened.
-  //
-  // When there are loadable files it is a REAL checkbox — unticking writes
-  // `customPoliciesEnabled: false`, which switches convention discovery off
-  // without renaming or deleting anything. With nothing to toggle (no files,
-  // or only skipped ones) it falls back to a locked status row.
-  const custom = describeCustomPolicies(cwd);
-  const skipped = custom.warnings.length;
-  const plural = (n: number) => `${n} file${n === 1 ? "" : "s"}`;
-  const skippedNote = skipped > 0 ? ` · ${skipped} skipped, see next screen` : "";
-
-  if (custom.fileCount > 0) {
-    choices.push({
-      label: "Custom",
-      value: CUSTOM,
-      checked: enabled,
-      // Deliberately NOT summaryExclude'd: this one is a real choice, and the
-      // step summary is the only place the user sees what they picked. Hiding
-      // it meant unticking Custom and every bundle showed "none", giving no
-      // way to tell the toggle had registered.
-      hint: `${plural(custom.fileCount)} in ${custom.scopes.join(" + ")}${skippedNote}`,
-    });
-  } else {
-    choices.push({
-      label: "Custom",
-      value: CUSTOM,
-      locked: true,
-      checked: false,
-      summaryExclude: true,
-      hint:
-        skipped > 0
-          ? `${plural(skipped)} found but NOT loaded — see next screen`
-          : "none yet · drop *-policies.mjs in .failproofai/policies/",
-    });
-  }
-  if (individual.length > 0) {
-    choices.push({
-      label: `${individual.length} enabled individually`,
-      value: INDIVIDUAL,
-      locked: true,
-      hint: `kept as-is · ${individual.join(", ")}`,
-      // Not one of the bundles being counted, like the Everything and Custom rows.
-      summaryExclude: true,
-    });
-  }
-  return choices;
-}
-
-
-/**
- * Resolve the ticked options to a concrete policy set. Presets are additive —
- * the deduped union of every selected preset's policies — while "Everything"
- * enables the full policy set and wins over any presets.
- */
-export function resolvePresetSelection(
-  values: string[],
-  /**
-   * What the locked "enabled individually" row stands for. Unioned in whenever
-   * that row is present, INCLUDING under "Everything": `resolveEverything()`
-   * covers the non-beta builtins only, so a beta policy someone enabled by hand
-   * would otherwise be dropped by the very branch meant to enable everything.
-   */
-  individual: readonly string[] = [],
-): string[] {
-  // The Custom row is informational — custom policies are discovered from disk
-  // by the loader, never named in the enabled-policies config — so it must not
-  // reach resolvePreset(), which only knows builtin bundle ids. Same for the
-  // locked individually-enabled row, which carries its policies in `individual`.
-  const selected = values.filter((v) => v !== CUSTOM && v !== INDIVIDUAL);
-  const carried = values.includes(INDIVIDUAL) ? individual : [];
-  if (selected.includes(EVERYTHING)) {
-    return [...new Set([...resolveEverything(), ...carried])];
-  }
-  return [...new Set([...selected.flatMap((id) => resolvePreset(id)), ...carried])];
-}
 
 const DIM_NOTE = "(auto-loaded)";
 
@@ -528,15 +383,6 @@ export function buildCompletionSummary(
   customEnabled: boolean | undefined,
   daemonInstalled: boolean,
   connected: boolean,
-  /**
-   * What was ticked on the policy step, so the summary can NAME the bundles.
-   *
-   * "9 policies" is a number the user cannot check and did not choose — they
-   * picked two named bundles two screens earlier, and the line that confirms
-   * their setup should say which. Optional so the existing callers and tests
-   * that only have a count keep working and keep the old wording.
-   */
-  presetValues?: readonly string[],
 ): string {
   const extras: string[] = [];
   if (customEnabled === true) extras.push("custom");
@@ -554,9 +400,7 @@ export function buildCompletionSummary(
   // full line will not fit, which is checked rather than guessed at: the extras
   // clause grows too ("custom, daemon, reporting" is 25 characters), so a names
   // budget alone was wrong for exactly the combinations that need it most.
-  const named = line(describeSelection(policiesCount, presetValues));
-  if (named.length <= MAX_SUMMARY_COLUMNS) return named;
-  return line(describeSelection(policiesCount, undefined));
+  return line(describeSelection(policiesCount));
 }
 
 /**
@@ -603,42 +447,12 @@ export function policyNamesLine(names: string[]): string[] {
   return [];
 }
 
-/**
- * Name the bundles rather than counting the policies inside them.
- *
- * BOUNDED AT TWO NAMES ON PURPOSE. `writeLines` truncates with a hard cut and no
- * ellipsis, so an over-long line does not lose its tail, it reads as broken
- * output — the same constraint that stopped this summary naming all twelve CLIs.
- * All four bundle labels joined is 57 characters, which with the prefix, the
- * harness clause and the extras clause runs to about 106. Two names plus a count
- * of the rest stays inside 80 for every combination, and two is also the common
- * case, so most runs see every name.
- *
- * Falls back to the old "N policies" when nothing maps to a bundle — a machine
- * whose policies were all enabled one at a time with `policies add` has no bundle
- * to name, and inventing one would be worse than the count.
- */
-function describeSelection(policiesCount: number, presetValues?: readonly string[]): string {
-  const plural = `${policiesCount} polic${policiesCount === 1 ? "y" : "ies"}`;
-  if (!presetValues) return plural;
-
-  // "Everything" is one name for the whole set, and the count is the useful half
-  // of it — "Everything" alone does not say how much that is.
-  if (presetValues.includes(EVERYTHING)) return `Everything (${plural})`;
-
-  const named = POLICY_PRESETS.filter((p) => presetValues.includes(p.id)).map((p) => p.label);
-  // The locked "enabled individually" row stands for policies outside every
-  // bundle, so it is counted among the unnamed rest rather than named.
-  const individual = presetValues.includes(INDIVIDUAL) ? 1 : 0;
-  if (named.length === 0) return plural;
-
-  const shown = named.slice(0, 2);
-  const rest = named.length - shown.length + individual;
-  // `+N` rather than `+N more`: five characters, and they decide whether the
-  // mixed case (two bundles plus a policy added by hand) gets named at all — with
-  // "more" the line is 83 and falls back to a bare count.
-  return rest > 0 ? `${shown.join(", ")} +${rest}` : shown.join(", ");
+/** The Policies line's value. With policies no longer chosen during setup, this
+ *  reports what is enabled and nothing about how it got that way. */
+function describeSelection(policiesCount: number): string {
+  return `${policiesCount} ${policiesCount === 1 ? "policy" : "policies"}`;
 }
+
 
 export function reviewLines(state: {
   /** What the scope step resolved to. Expands to one or two real scopes. */
@@ -909,19 +723,37 @@ export async function maybeFirstRunConfigure(
 
 // ── The wizard ───────────────────────────────────────────────────────────────
 
-export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResult> {
+export async function runConfigureWizard(
+  io: WizardIO = {},
+  answers: WizardAnswers = {},
+): Promise<WizardResult> {
   const stdin: TTYIn = io.stdin ?? process.stdin;
   const stdout: TTYOut = io.stdout ?? process.stdout;
   const cwd = process.cwd();
+  // No terminal means no questions — not a refusal.
+  //
+  // `failproofai config` IS the authorisation: somebody typed the command whose
+  // entire job is to configure this machine. Requiring a flag on top of that to
+  // permit what the command already means is asking the same question twice,
+  // and this used to refuse outright — so a CI job, a container or an agent
+  // could not set a machine up at all, which is the gap this closes.
+  //
+  // Safe to do here because the IMPLICIT path is guarded separately:
+  // `maybeFirstRunConfigure` has its own TTY check and returns before ever
+  // reaching this function, so setup never runs off the back of some other
+  // command on a headless box.
+  const unattended = !stdin.isTTY || !stdout.isTTY;
+  // A key on the command line settles the whole run, not just the question it
+  // literally answers.
+  //
+  // Somebody typing `failproofai config --token <key>` has said: set this
+  // machine up, connect it, send its data. There is nothing left to confirm —
+  // so asking "Connect to Cloud?", then the key, then "Ready to apply?" made
+  // the flag look like it had not been read. The only thing still worth
+  // stopping for is the sudo password, which is a CREDENTIAL rather than a
+  // question, and no flag can supply it.
+  const preAnswered = Boolean(answers.token);
 
-  if (!stdin.isTTY || !stdout.isTTY) {
-    stdout.write(
-      "failproofai config needs an interactive terminal.\n" +
-        "Use the flag form instead, e.g.:\n" +
-        "  failproofai policies --install --scope user --cli claude\n",
-    );
-    return { applied: false };
-  }
 
   // Running the wizard itself under sudo configures the WRONG ACCOUNT, and
   // does it silently: homedir() becomes /root, so the hooks land in root's
@@ -938,7 +770,10 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
         "The one step that needs root (installing the service) asks for your password\n" +
         "on its own.\n",
     );
-    return { applied: false };
+    // Same reason as above: this configured nothing, and it is not a
+    // cancellation. `running_as_sudo` has been in `WizardAbort` since it was
+    // written and was never once assigned.
+    return { applied: false, abort: "running_as_sudo" };
   }
 
   // Fire-and-forget: never block the wizard's first paint on telemetry.
@@ -1061,7 +896,13 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
         ? "failproofaid can't evaluate — every tool call is denied. Rebuilding needs sudo.\n\n"
         : "Installing failproofaid — needs sudo once.\n\n",
     );
-    if (!primeElevation()) {
+    // `primeElevation` runs `sudo -v`, which PROMPTS. An unattended run has
+    // nobody to type a password, so it goes straight to the `sudo -n` that
+    // `runPrivileged` uses anyway — exactly what `failproofai update` already
+    // does — and a machine that cannot elevate gets the commands below instead
+    // of a hung terminal. This is the same answer for both: sudo cannot be
+    // conjured away, only asked for at a moment somebody can answer.
+    if (!(unattended ? canElevate() : primeElevation())) {
       // Required means required: write nothing at all, so a machine that could
       // not be set up is left exactly as it was found rather than carrying
       // half a configuration. The commands are printed so an admin can do the
@@ -1080,7 +921,7 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
       "failproofaid is running, but from a service definition written by an older\n" +
         "version — it cannot start a scheduled audit. Refreshing it needs root once.\n\n",
     );
-    if (!primeElevation()) {
+    if (!(unattended ? canElevate() : primeElevation())) {
       // NOT an abort, unlike the install branch above. There is a working
       // daemon here and hooks are enforcing; only the scheduled audit is out
       // of reach. Stopping setup over that would make an upgrade the thing
@@ -1104,263 +945,70 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
 
   // 0 — Recommended, or choose everything yourself?
   //
-  // Setup used to open by asking four questions — scope, policy bundles,
-  // harnesses, cloud — of somebody who has just installed the tool and does not
-  // yet know what any of them mean. Every one of those answers has a defensible
-  // default, so asking for all four up front is making the person least able to
-  // answer do the most work.
+  // ONE linear flow, and no opening fork.
   //
-  // Recommended is not a shortcut past the decisions; it IS a decision, taken
-  // once, here, on their behalf: global scope, the CLIs actually on this
-  // machine, and `RECOMMENDED_POLICIES` — which is written out in
-  // policy-presets.ts with the reasoning for every inclusion and every
-  // omission, because "what does Recommended do" has to be answerable without
-  // reading code.
+  // Setup used to ask "Recommended or Customize?" before anything else, which
+  // is a question about the wizard rather than about the machine — you cannot
+  // answer it until you know what the alternatives are, and you only learn that
+  // by picking one. Recommended then silently took global scope, the detected
+  // CLIs, and fifteen policies nobody had seen.
   //
-  // Customize is the wizard exactly as it was. Nothing is removed and nothing
-  // is hidden; it stops being the only way through.
-  const detectedNow = detectInstalledClis();
-  const recommendedClis = detectedNow.filter((id) => clisSupportingScope("user").includes(id));
-  const mode = await selectOne<"recommended" | "customize">({
-    message: "Set up failproofai",
-    choices: [
-      {
-        label: "Recommended",
-        value: "recommended",
-        hint: recommendedClis.length
-          ? `${recommendedClis.length} detected ${recommendedClis.length === 1 ? "CLI" : "CLIs"} · ${RECOMMENDED_POLICIES.length} policies · global`
-          : `${RECOMMENDED_POLICIES.length} policies · global`,
-      },
-      {
-        label: "Customize",
-        value: "customize",
-        hint: "choose scope, policies and harnesses",
-      },
-    ],
-    stdin,
-    stdout,
-  });
-  if (mode === null) return cancel();
-
-  // 1 — Where? Inferred from cwd, then confirmed.
-  //
-  // Running from inside a project and running from a home directory are two
-  // different intents, and asking a context-free "global or project?" made the
-  // user restate something they had already expressed by choosing where to run
-  // the command. So the choices are built from what actually exists here — and
-  // labelled Update vs Set up accordingly — with the likelier target first.
-  const setupState = detectSetupState(cwd);
-  const targetChoices = buildTargetChoices(setupState);
-
-  let target: SetupTarget;
-  if (mode === "recommended") {
-    // Global, always. A project-scoped install guards the one directory the
-    // command happened to be run from and silently leaves every other repo on
-    // the machine unguarded — which is the opposite of what somebody choosing
-    // "Recommended" is asking for.
-    target = "user";
-  } else if (targetChoices.length === 1) {
-    // From a home directory there is no project to configure, so there is no
-    // question to ask. Say what is about to happen rather than silently
-    // deciding it.
-    target = targetChoices[0].value;
-    stdout.write(`Configuring ${targetChoices[0].label.toLowerCase()} — ${targetChoices[0].hint}.\n\n`);
-  } else {
-    const chosen = await selectOne<SetupTarget>({
-      message: "What are we configuring?",
-      choices: targetChoices.map((c) => ({
-        label: c.label,
-        value: c.value,
-        hint: c.hint,
-      })),
-      stdin,
-      stdout,
-    });
-    if (chosen === null) return cancel();
-    target = chosen;
-  }
+  // What is left is three questions, in the order the machine needs them:
+  // the daemon (already installed above, because it is the only step that needs
+  // a password), then which harnesses, then whether to connect. Scope is not
+  // among them: it is GLOBAL, always. A project-scoped install guards the one
+  // directory the command happened to be run from and silently leaves every
+  // other repo on the machine unguarded — `failproofai policies --install
+  // --scope project` is still there for someone who genuinely wants that, and
+  // knows they do.
+  const target: SetupTarget = "user";
   const scopes = scopesFor(target);
-  // The scope whose CURRENT state seeds the pickers below. With "Both" the
-  // project is the more specific of the two and the one the user is standing
-  // in, so it wins; anything it does not define still falls back to global at
-  // merge time, which is exactly the layering the policy loader already does.
   const primaryScope: HookScope = scopes.includes("project") ? "project" : "user";
 
-  // 2 — Which policies? Multi-select of themed presets — additive, so the
-  // enabled set is the union of every ticked bundle.
+  // 2 — Which harnesses?
   //
-  // Before the assistants step, because "what do you want guarded" is the
-  // question the user came here to answer; which CLIs to wire it into is
-  // plumbing that follows from it.
+  // Setup no longer asks which policies to enable, and that is deliberate.
+  // failproofai ships no policies of its own any more: they arrive as packs —
+  // from inside this package (`policies add FailproofAI/policies`) or from anyone's GitHub release.
+  // A wizard that pre-ticks OUR list makes a product decision on behalf of
+  // somebody who has not seen the list yet, and not everyone wants the set we
+  // would have chosen. So setup wires the hooks, and choosing what they
+  // enforce is a separate act, taken later and on purpose.
   //
-  // Seed the Custom checkbox AND the bundle boxes from whatever the config already
-  // says, so the wizard shows the current state rather than resetting it every run.
-  //
-  // Read at the scope this run will WRITE to, not the merged view. `installHooks`
-  // is called with `replace: true` per scope, so seeding from the merge would tick
-  // a bundle because it is enabled at PROJECT scope and then write it into USER
-  // scope — copying a selection between scopes as a side effect of opening the
-  // wizard. `readHooksConfig()` stays for the custom flag, which is read the same
-  // merged way everywhere else.
-  const customEnabledBefore = readHooksConfig().customPoliciesEnabled !== false;
+  // Whatever is already enabled at THIS scope is read and carried through
+  // untouched. `installHooks` is called with `replace: true`, so passing
+  // anything less would switch OFF policies the user had turned on — running
+  // setup a second time must never reduce protection.
   const enabledHere = readScopedHooksConfig(primaryScope, cwd).enabledPolicies ?? [];
-  const presetChoices = buildPresetChoices(cwd, customEnabledBefore, enabledHere);
-  // The policies no ticked bundle accounts for. Derived from the SAME pure split
-  // the rows are built from, so the locked row and the written set agree.
-  const carriedIndividual = splitEnabled(enabledHere).individual;
-  const hasCustomFiles = describeCustomPolicies(cwd).fileCount > 0;
+  const policies = enabledHere;
 
-  // No minimum. Ticking nothing is a real answer — someone who only wants their
-  // own custom policies, or who intends to pick bundles later from the
-  // dashboard, was previously stuck on this step with no way forward and no
-  // explanation beyond "Select at least 1". An empty set is already supported
-  // end to end: `installHooksImpl` documents its explicit-array path as "may be
-  // empty", `replace: true` makes it the full enabled set, and `summarize([])`
-  // renders "none". Hooks still install, so enforcement can be switched on
-  // later without re-running setup.
-  //
-  // The assistants step below keeps its minimum deliberately: an empty CLI list
-  // does NOT mean "no assistants" there — `installHooksImpl` falls back to
-  // ["claude"], so letting it through would silently install for Claude.
-  // Steps 2 and 3 are navigable: ← on the harness step returns to the policy
-  // step with the previous answer still selected. Before this, changing an
-  // earlier answer meant abandoning setup and starting over, because a prompt
-  // had exactly one way out and it was `null`.
-  //
-  // The policy step itself takes no `allowBack`: the only thing before it is
-  // the scope question, which is frequently not asked at all (a single choice
-  // is stated, not prompted), so ← there would sometimes go nowhere.
-  let presets: string[] | null = null;
-  let clisSel: string[] | null = null;
-  /**
-   * What the harness step had ticked when ← was last pressed.
-   *
-   * A SEPARATE variable, because `clisSel` cannot do this job: it is the loop's
-   * own condition (`while (clisSel === null)`), so it is null on every entry into
-   * the body by definition, and it is assigned only on the line that ends the
-   * loop. The restore that read `clisSel` was therefore unreachable — provably
-   * dead, with a comment stating the opposite intent.
-   *
-   * The cost was not cosmetic: deselect a CLI, press ← to fix an earlier answer,
-   * come back, and the step showed the detected defaults again. Pressing ↵ then —
-   * reasonably, having been told the selection was carried back — re-enabled hook
-   * installation for a CLI the user had explicitly turned off.
-   *
-   * `presets` just above works because it is assigned MID-loop and survives to the
-   * next iteration; this mirrors that, filled from the prompt's `onBack`.
-   */
-  const carried: { clis: string[] | null } = { clis: null };
-  // The recommended path answers both questions here, which is what SKIPS the
-  // loop below — its condition is `clisSel === null` and this fills it in.
-  // Written as a pre-fill rather than as an extra clause on the loop condition
-  // so the invariant the rest of the function depends on ("past this loop, both
-  // are assigned") stays provable by the compiler rather than by argument.
-  if (mode === "recommended") {
-    presets = [];
-    clisSel = recommendedClis;
-  }
-  while (clisSel === null) {
-    // Re-entering after a ← must show what was picked, not a blank slate.
-    // Selection state lives on each choice, so carry it back in.
-    // Loop-carried: narrowed to `null` on the first pass, repopulated on a ←.
-    const priorPresets = presets as string[] | null;
-    presets = await multiSelect<string>({
-      message: "What should we guard against?",
-      choices: priorPresets
-        ? presetChoices.map((c) => ({ ...c, checked: priorPresets.includes(c.value) }))
-        : presetChoices,
-      summaryNoun: "bundles",
-      hint: "space toggles · combine presets · ↵ confirm · none is fine",
-      stdin,
-      stdout,
-    });
-    if (presets === null) return cancel();
+  // Left alone, in both modes. This was a checkbox on the policy step, which is
+  // gone; with no row to read, the only honest value is "do not touch it".
+  // Writing `false` here switched off every convention policy on disk as a side
+  // effect of finishing setup.
+  const customEnabled: boolean | undefined = undefined;
 
-    // 3 — Which harnesses? An "Everything available" row protects every supported
-    // CLI (detected + set-up-ahead); when ticked it wins over the individual boxes.
-    // Read off a HOLDER OBJECT, not a bare `let`, and not through a cast.
-    //
-    // A `let` assigned only inside a callback is narrowed by control-flow analysis
-    // to its initializer, so `priorClis.includes` will not compile — and the
-    // original defeated that with `clisSel as string[] | null`. That cast is
-    // precisely why the dead code type-checked and nobody noticed: it silenced the
-    // compiler making exactly the point the reviewer later made by hand, that the
-    // value could only ever be null. A property read carries the declared type
-    // without suppressing anything.
-    const priorClis = carried.clis;
-    const picked: string[] | typeof BACK | null = await multiSelect<string>({
-    message: "Which harnesses should it protect?",
-    choices: [
-      {
-        label: "Everything available",
-        value: ALL_CLIS,
-        // Counts only what this scope can actually take — expanding to all 12
-        // under project scope is what crashed the apply on Hermes.
-        hint: `protect all ${clisSupportingScope(primaryScope).length} CLIs configurable here`,
-        // A selector, not a harness. Counting it gave "13 harnesses" for
-        // the 12 supported CLIs, and listed "Everything available" among them.
-        summaryExclude: true,
-      },
-      ...buildAgentChoices(primaryScope, cwd),
-    ].map((c) => (priorClis ? { ...c, checked: priorClis.includes(c.value) } : c)),
-      minSelected: 1,
-      summaryNoun: "harnesses",
-      hint: "detected CLIs are pre-selected · space toggles · ctrl+a all · ← back · ↵ confirm",
-      allowBack: true as const,
-      // `BACK` is a symbol and cannot carry the selection, so the prompt reports
-      // it here instead — otherwise a ← discards what the user had ticked and the
-      // next pass redraws the detected defaults.
-      onBack: (checkedNow) => {
-        carried.clis = checkedNow;
-      },
-      stdin,
-      stdout,
-    });
-    if (picked === null) return cancel();
-    // ← re-runs the loop, which re-asks the policy step with its answer intact.
-    if (picked === BACK) continue;
-    clisSel = picked;
-  }
-  // Non-null by construction: the loop only exits once both are assigned, and
-  // the recommended path assigned both before it, which is why it never ran.
-  const chosenPresets: string[] = presets ?? [];
-  const policies =
-    mode === "recommended"
-      ? // UNION with what is already enabled here, never a replacement for it.
-        // `installHooks` is called with `replace: true`, so writing the bare
-        // recommended list would silently switch OFF anything the user had
-        // added themselves — turning "give me the sensible defaults" into a
-        // reduction in protection, which is the one direction this must never
-        // move. On a fresh machine `enabledHere` is empty and this is exactly
-        // the 15.
-        [...new Set([...RECOMMENDED_POLICIES, ...enabledHere])]
-      : resolvePresetSelection(chosenPresets, carriedIndividual);
-  // Only meaningful when there are files to switch off; with none, the row is
-  // locked-unchecked and must not write a disabling flag.
+  // An "Everything available" row protects every supported CLI (detected +
+  // set-up-ahead); when ticked it wins over the individual boxes.
   //
-  // `undefined` on the recommended path, which means "leave the flag alone".
-  // The customize expression would read as `false` here — no bundle was ticked,
-  // so `chosenPresets.includes(CUSTOM)` is false — and would write
-  // `customPoliciesEnabled: false`, disabling every convention policy the user
-  // has on disk as a side effect of choosing the default setup.
-  const customEnabled =
-    mode === "recommended" ? undefined : hasCustomFiles ? chosenPresets.includes(CUSTOM) : undefined;
-  // Filter to what the chosen scopes support in BOTH branches: "Everything
-  // available" must not expand to CLIs that cannot take any selected scope,
-  // and a locked row can't be ticked but belt-and-braces keeps the invariant
-  // local to the one place `clis` is built.
+  // Every supported agent, detected or not — setup asks nothing about this.
   //
-  // The union across scopes, not the intersection: under "Both", a user-scope-
-  // only gateway like Hermes is still installable via the user half, and
-  // dropping it because project scope cannot take it would silently protect
-  // less than the user asked for. `installHooks` is called per scope below and
-  // skips what a given scope cannot take.
-  const supported = new Set(scopes.flatMap((s) => clisSupportingScope(s)));
-  const clis: IntegrationType[] = (
-    clisSel.includes(ALL_CLIS)
-      ? [...INTEGRATION_TYPES]
-      : (clisSel.filter((v) => v !== ALL_CLIS) as IntegrationType[])
-  ).filter((id) => supported.has(id));
+  // It used to be the one question left, on the reasoning that which agents to
+  // guard is a real choice. It stopped being one when this package stopped
+  // shipping policies: hooks alone enforce nothing, so wiring them everywhere
+  // costs a config entry and changes no behaviour until a pack arrives. What it
+  // buys is that an agent installed NEXT WEEK is guarded from its first tool
+  // call, instead of running unguarded until somebody remembers to re-run setup
+  // — and nobody remembers, because nothing tells them to.
+  //
+  // ALL twelve, not the detected ones, for exactly that reason. The cost is
+  // honest and worth naming: hook config appears under `~/.cursor/`,
+  // `~/.factory/` and the rest for agents that may never be installed.
+  //
+  // Which policies run, and on which of these agents, is chosen at
+  // `failproofai policies add` — where the user is looking at a real list
+  // instead of answering in the abstract.
+  const clis: IntegrationType[] = [...clisSupportingScope(primaryScope)];
 
   // 4 — Connect this machine? Last, because by this point the user has decided
   // what to protect, so "would you like to see it in a dashboard?" follows
@@ -1378,7 +1026,19 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   let connect: { url: string; token: string; machineId: string; machineLabel: string } | null = null;
 
   {
-    const choice = await selectOne<"key" | "local">({
+    // Supplying a key IS asking to connect — there is no other reason to pass
+    // one — so an unattended run with a token skips straight past the question,
+    // and one without a token stays local, which is the same "Not now" branch a
+    // person picks. Neither needs a separate flag to say so.
+    const choice = answers.token
+      // A key on the command line IS the answer to this question. Gating it on
+      // there being no terminal was wrong: `--token` means "use this key", not
+      // "use this key only if nobody is watching", and a run that asked anyway
+      // made the flag look broken to the person who had just typed it.
+      ? "key"
+      : unattended
+        ? "local"
+        : await selectOne<"key" | "local">({
       message: "Connect this machine to FailproofAI Cloud?",
       // The hint says what you GET; the body says what LEAVES.
       //
@@ -1461,7 +1121,16 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
       let machineId = resolveMachineId();
       let machineLabel = existing?.machineLabel ?? resolveMachineLabel();
 
-      if (existing) {
+      if (existing && unattended && !answers.url) {
+        // Already enrolled, and this run did not name a different place to
+        // enrol. Reusing is what the person picks here too, and re-verifying a
+        // working credential is the one thing an unattended re-run must not
+        // turn into a failure.
+        url = existing.url;
+        token = answers.token ?? existing.token;
+        machineId = answers.machineId ?? existing.machineId;
+        machineLabel = answers.machineLabel ?? existing.machineLabel ?? machineLabel;
+      } else if (existing && !unattended) {
         const reuse = await selectOne<"reuse" | "other">({
           message: `Use this machine's existing connection to ${existing.url}?`,
           choices: [
@@ -1533,6 +1202,10 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
         }
       }
 
+      // Supplied on the command line, so nothing is asked and nothing is
+      // echoed — terminal or not. Prompting for a value the caller already gave
+      // is the failure this whole flag exists to avoid.
+      if (token === null) token = answers.token ?? null;
       if (token === null) {
         token = await promptText({
           // The destination is in the question now that it is no longer a
@@ -1556,6 +1229,14 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
       // persisted here.
       stdout.write("\nChecking the key… ");
       const probe = await validateIngestKey({ url: ingestUrlFor(url), key: token });
+      if (!probe.ok && unattended) {
+        // A key that does not work is a FAILED setup, not a prompt. The
+        // interactive path offers "save it anyway" because a person can weigh
+        // an outage against their own impatience; a script cannot, and one that
+        // exited 0 here would leave a fleet believing it was reporting.
+        stdout.write(`\nThat key did not work: ${probe.reason}\n`);
+        return { applied: false, abort: "cloud_unverified" };
+      }
       if (!probe.ok) {
         stdout.write(`\nThat did not work: ${probe.reason}\n`);
         const retry = await selectOne<"skip" | "anyway">({
@@ -1580,7 +1261,15 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
     }
   }
   // 5 — Review & apply
-  const decision = await selectOne<"apply" | "cancel">({
+  //
+  // The last question, and the only one a headless run skips outright rather
+  // than answering from a flag. There is nothing to confirm when nobody is
+  // watching, and the command itself was the confirmation.
+  //
+  // NOT the same call as `uninstall`, which does require --yes: that one
+  // REMOVES things, so silence there would destroy on a signal as weak as a
+  // missing terminal. This one does exactly what its name says.
+  const decision = unattended || preAnswered ? "apply" : await selectOne<"apply" | "cancel">({
     message: "Ready to apply?",
     body: reviewLines({
       target,
@@ -1764,7 +1453,6 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
     cli: clis,
     cli_count: clis.length,
     policy_count: policies.length,
-    source: chosenPresets.join("+"),
     connected: connect !== null,
   });
 
@@ -1867,11 +1555,22 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
       customEnabled,
       daemonInstalled,
       connected,
-      chosenPresets,
     ),
     { ok: true },
     stdout,
   );
+  // Setup wires the hooks and deliberately chooses NO policies, so a machine
+  // that has just finished it enforces almost nothing — and the summary line
+  // says "0 policies" without saying what to do about it. Anyone else's pack is
+  // typed the same way, which is the point: ours is named in full rather than
+  // by a short name only we could use.
+  if (policies.length === 0) {
+    stdout.write(
+      `\n  Nothing is enforcing yet. Take ours, or anyone's:\n` +
+        `    failproofai policies add ${CORE_SOURCE}\n` +
+        `    failproofai policies show <owner>/<repo>   (look first)\n\n`,
+    );
+  }
   return {
     applied: true,
     target,

@@ -1,0 +1,110 @@
+---
+title: "Policy 팩"
+description: "GitHub 릴리스로 게시된 policy 세트를 설치하고, 적용 항목을 관리합니다."
+icon: "package"
+---
+
+팩은 GitHub 릴리스로 게시된 policy 세트입니다. 명령 하나로 설치할 수 있으며, 실행 전에 릴리스 자체의 체크섬이 검증되고, 설치 후 팩이 변경되지 않도록 다이제스트가 기록됩니다.
+
+## Failproof AI policy 설치
+
+```bash
+failproofai pack add core
+```
+
+이 명령은 패키지 내부에 포함된 사본에서 당사가 게시한 세트를 설치합니다. 따라서 네트워크가 필요 없고 프록시 환경에서도 실패하지 않습니다. 일부만 가져오려면:
+
+```bash
+failproofai pack add core --policy block-rm-rf         # 하나, 또는 쉼표로 구분된 몇 개
+failproofai pack add core --category dangerous-commands # 카테고리 전체
+failproofai pack add core --all                         # 팩의 모든 항목
+```
+
+`failproofai pack list`를 실행하면 팩이 제공하는 모든 카테고리를 확인할 수 있습니다.
+
+## 설치 전에 팩 내용 확인
+
+```bash
+failproofai pack list acme/support-agent
+```
+
+팩에 포함된 모든 policy를 카테고리별로 그룹화하여 나열하며, 작성자가 기본적으로 활성화한 항목과 선택적으로 적용해야 하는 항목을 표시합니다. **매니페스트만** 읽으며, 엔트리 아티팩트는 다운로드되거나 임포트되지 않으므로 낯선 팩을 조회해도 낯선 코드가 실행되지 않습니다. 매니페스트는 여전히 릴리스의 `SHA256SUMS`와 대조 검증되므로, 읽고 있는 내용이 실제로 설치될 내용과 동일합니다.
+
+소스 없이 `failproofai pack list`를 실행하면 현재 설치된 팩 목록을 확인할 수 있습니다.
+
+## 다른 사람의 팩 설치
+
+```bash
+failproofai pack add acme/support-agent
+```
+
+아래 형식 중 어느 것이든 사용할 수 있습니다:
+
+| 소스 | 결과 |
+| --- | --- |
+| `acme/support-agent` | 최신 릴리스, 해당 태그로 **고정** |
+| `acme/support-agent@v2.1.0` | 해당 릴리스 |
+| `github:acme/support-agent@v2.1.0` | 동일, 명시적으로 작성한 형식 |
+| `https://github.com/acme/support-agent/releases/tag/v2.1.0` | 동일, 브라우저에서 복사한 형식 |
+
+태그를 지정하지 않으면 최신 릴리스를 설치하고 **고정**한 뒤, 선택된 태그를 알려줍니다. 기록되는 내용은 항상 정확히 하나의 릴리스를 명시하므로, 재설치 시 버전이 달라지는 일이 없습니다.
+
+## 팩의 일부만 가져오기
+
+기본적으로 팩의 **자체** 기본값, 즉 작성자가 자동 활성화해도 안전하다고 표시한 policy만 적용되며, 팩의 모든 내용이 적용되지는 않습니다.
+
+```bash
+failproofai pack add acme/support-agent --category billing,git
+failproofai pack add acme/support-agent --policy block-refunds
+failproofai pack add acme/support-agent --all
+```
+
+`--category`와 `--policy`는 합집합으로 결합됩니다(`--only`는 `--policy`의 동의어로 사용 가능). 새 버전으로 다시 추가하면 이전에 선택한 항목이 유지되며, 나머지 항목이 다시 켜지지 않습니다.
+
+## 활성화된 항목 관리
+
+```bash
+failproofai policies                    # 팩을 포함한 모든 소스를 한 목록으로 표시
+failproofai pack list                   # 팩만 카테고리별로 그룹화하여 표시
+failproofai policies --uninstall block-refunds        # 팩 policy 하나 비활성화
+failproofai policies --install block-refunds          # 다시 활성화
+failproofai pack remove acme/support-agent
+```
+
+이름만 지정하면 해당 이름의 **내장** policy를 의미합니다. 팩의 사본을 명시적으로 지정해야 할 때는:
+
+```bash
+failproofai policies --uninstall acme/support-agent:block-refunds
+```
+
+<Note>
+팩에 포함된 policy의 이름이 **활성화된 내장** policy와 동일한 경우, 내장 policy가 실행되고 팩의 사본은 건너뜁니다. 동일한 가드가 두 번 평가되는 것을 방지하기 위해서입니다. 팩의 사본을 사용하려면 내장 policy를 비활성화하세요.
+</Note>
+
+## Failproof AI policy의 출처
+
+`core`는 npm 패키지에 포함된 사본을 읽습니다. 동일한 세트가 GitHub 릴리스로도 게시되며, 특정 버전을 원할 경우 해당 방법으로 설치할 수 있습니다:
+
+```bash
+failproofai pack add core                    # 이 패키지에서, 네트워크 불필요
+failproofai pack add FailproofAI/policies    # 동일한 세트, GitHub 릴리스에서
+```
+
+## 무결성 검증이 보장하는 것과 보장하지 않는 것
+
+`SHA256SUMS`는 아티팩트와 동일한 릴리스에 포함되므로 **서명이 아니며**, 게시자가 누구인지는 증명하지 않습니다. 다만 바이트가 해당 릴리스에서 게시된 것과 동일하다는 것은 증명합니다. 팩을 추가할 때 다이제스트가 기록되고 임포트 전마다 재검증되므로, 이후 팩이 변경되어도 해당 머신에서 그대로 사용되는 일이 없습니다. 태그를 재설정하거나 에셋을 교체한 저장소는 다른 내용을 조용히 실행하는 대신 로딩이 중단됩니다.
+
+설치 시 팩은 **한 번 임포트**되어 자체 매니페스트와 대조 확인됩니다. 아티팩트를 파싱할 수 없거나 선언한 내용과 다른 항목을 등록하려는 팩은, 정상적으로 설치된 후 다음 도구 호출 시 실패하는 대신, 활성화 전에 거부됩니다.
+
+## 팩이 로드되지 않는 경우
+
+머신이 적용하도록 설정된 팩을 실행할 수 없는 경우, 해당 팩의 누락된 policy가 처리하던 이벤트를 자동으로 허용하는 것이 아니라 **거부**합니다. 자세한 내용은 [실패 동작](/ko/policies/failure-behavior)을 참조하세요. `failproofai pack list`는 해당 상태의 팩 이름을 표시하고 0이 아닌 종료 코드로 종료합니다.
+
+## 오프라인 및 미러 사용
+
+| 변수 | 효과 |
+| --- | --- |
+| `FAILPROOFAI_NO_DOWNLOAD=1` | 가져오기 거부; 이미 설치된 팩은 계속 적용됨 |
+| `FAILPROOFAI_PACK_BASE_URL` | 팩 가져오기를 `github.com` 대신 미러로 지정 |
+
+자체 팩 게시에 대해서는 [팩 게시](/ko/policies/publish-a-pack)를 참조하세요.

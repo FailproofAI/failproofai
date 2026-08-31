@@ -1,0 +1,249 @@
+---
+title: "LlamaIndex"
+sidebarTitle: "LlamaIndex"
+description: "ワークフロー、ステップ、ファンクションエージェント、リトリーバーをインストルメントします。"
+icon: "/images/frameworks/llamaindex.svg"
+---
+
+## インストール
+
+```bash
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+対応バージョン: `llama-index-core` 0.14.23 〜 0.15。0.14.23 は、このアダプターが読み取る型付きエージェントイベントをワークフローストリームが運ぶようになったリリースです。それより前のバージョンでは、モデル名とエージェント構造の両方が欠落します。
+
+## インストルメント
+
+```python
+import asyncio
+
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+async def main():
+    async with failproofai_sdk.session():
+        await agent.run("...")
+
+
+asyncio.run(main())
+```
+
+LlamaIndex のエージェント API は非同期です。すべてのスコープは `async with` と `with` の両方で動作し、同一のイベントを生成します。
+
+`instrument()` は LlamaIndex のグローバルディスパッチャーにイベントハンドラーとスパンハンドラーをアタッチします。これにより、モデルの呼び出しだけでなく、エージェントループ全体が可視化されます。
+
+<Warning>
+  LLM に追加の引数を指定しないと、トレース内のすべてのトークン数が null になります。下記の[トークン数](#token-counts)を参照してください。
+</Warning>
+
+## トークン数
+
+`FunctionAgent` は `astream_chat` を呼び出しますが、`llama-index-llms-openai` はストリーミング時に `stream_options={"include_usage": True}` を送信しません。そのため、プロバイダーは usage チャンクを送信せず、いかなるインストルメンテーションも読み取るデータがありません。
+
+これは上流の LlamaIndex の挙動です。LLM 側でオプトインしてください:
+
+```python
+from llama_index.llms.openai import OpenAI
+
+llm = OpenAI(
+    model="gpt-4o-mini",
+    additional_kwargs={"stream_options": {"include_usage": True}},
+)
+```
+
+同じ実行・同じモデルでの計測結果:
+
+| | 入力トークン | 出力トークン |
+| --- | --- | --- |
+| なし | `null` | `null` |
+| あり | 148 | 17 |
+
+非ストリーミング呼び出し（`llm.chat`、`llm.achat`）は設定なしで usage を報告します。この設定が必要なのは、デフォルトのエージェントパスであるストリーミングパスのみです。
+
+## 記録される内容
+
+| LlamaIndex | Failproof イベント |
+| --- | --- |
+| `Workflow.run` ルートスパン | Session、`agent_start`、`agent_end` |
+| ネストされた `Workflow.run` スパン | ネストされた `agent_start`、`agent_end` |
+| ワークフローステップスパン | `hook_triggered`、`hook_completed` |
+| LLM チャット開始・終了 | `model_request`、`model_response` |
+| `FunctionTool.call` スパン | `tool_use`、`tool_result` |
+| リトリーバル開始・終了 | `tool_use`、`tool_result`（出力は要約） |
+| エンベディング | `embeddings=True` を指定しない限り記録なし |
+| ツールが人間の応答を待機 | `human_wait`、`agent_pause`、その後 `agent_resume`、`human_input` |
+| `AgentWorkflow` のハンドオフ | エージェントごとにネストされた `agent_start`、`agent_end`（ワークフロー配下） |
+| 例外 | `error`、その後 outcome が `failed` の `agent_end`、および例外名を含む `agent_end.summary` |
+| `handler.cancel_run()` | outcome が `cancelled` の `agent_end`（`error` なし）— 停止ボタンは失敗ではない |
+
+`agent_id` は `FunctionAgent.name` を設定した場合はその値、未設定の場合はワークフローのクラス名になります。`AgentWorkflow` 配下では、ターンを取得した各エージェントがワークフロー下に独立したネストスパンを持つため、ハンドオフは1つのエージェントではなく2つのエージェントとして記録されます。
+
+リトリーバルの出力は、そのまま格納するのではなく要約されます。リトリーバーはドキュメントを返しますが、ペイロードにそのまま格納するとクエリのたびにコーパス全体がイベントストアに入ってしまいます。代わりに件数、スコアの範囲、切り詰めたスニペットが保持されます。
+
+## サンプル
+
+```python
+import asyncio
+
+import failproofai_sdk
+from llama_index.core.agent.workflow import FunctionAgent
+from llama_index.core.tools import FunctionTool
+from llama_index.llms.openai import OpenAI
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+POP = {"tokyo": "37M", "delhi": "33M"}
+AREA = {"tokyo": "2,194 km2", "delhi": "1,484 km2"}
+
+
+def population(city: str) -> str:
+    """Population of a city. Valid: tokyo, delhi."""
+    return POP.get(city.lower().strip(), "unknown")
+
+
+def area(city: str) -> str:
+    """Land area of a city. Valid: tokyo, delhi."""
+    return AREA.get(city.lower().strip(), "unknown")
+
+
+async def main():
+    agent = FunctionAgent(
+        name="city_analyst",
+        tools=[
+            FunctionTool.from_defaults(fn=population),
+            FunctionTool.from_defaults(fn=area),
+        ],
+        llm=OpenAI(
+            model="gpt-4o-mini",
+            additional_kwargs={"stream_options": {"include_usage": True}},
+        ),
+        system_prompt="Use the tools. Be terse.",
+    )
+
+    async with failproofai_sdk.session():
+        async with failproofai_sdk.agent("city_analyst", goal="compare two cities"):
+            print(await agent.run("Compare Tokyo and Delhi on population and area."))
+
+
+asyncio.run(main())
+```
+
+エージェントループはトレース内にフックペアとして表示されます: `init_run`、`setup_agent`、`run_agent_step`、`parse_agent_output`、`call_tool`、`aggregate_tool_results`。これらはフレームワーク自身のループであるため、エージェントではなくフックとして扱われ、`agent_id` の意味が保たれます。
+
+## スパンに名前を付ける
+
+`agent_id` は `FunctionAgent.name` を設定した場合はその値、未設定の場合はワークフローのクラス名になります。
+
+```python
+FunctionAgent(name="city_analyst", tools=[...], llm=llm)   # agent_id = "city_analyst"
+```
+
+`AgentWorkflow` 内では、その名前が各ハンドオフの記録名にもなります:
+
+```text
+AgentWorkflow            親スパン
+├─ city_analyst          ターン 1
+├─ cost_analyst          ターン 2
+└─ city_analyst          ターン 3  — 新しいターン（最初のターンの再開ではない）
+```
+
+つまり、`agent_id` は**どのエージェント**が作業を行ったかを示し、`parent_id` は**どのワークフロー**に属していたかを示します。後でコントロールを引き継いだエージェントは、最初のターンを再開するのではなく、新しいターンを開始します。
+
+実行をラップしてオーバーライドしたり、複数のエージェントを1つの親にまとめることもできます:
+
+```python
+async with failproofai_sdk.agent("research", goal="compare two cities"):
+    await agent.run(...)
+```
+
+`agent_id` は低カーディナリティに保ってください。これはすべてのダッシュボード画面における主要なファセットです。UUID や実行ごとの文字列ではなく、ロール名やワークフロー名を使用してください。
+
+## セッションの制御
+
+このアダプターには **`session_id` オプションはありません**。セッションは外側のスコープから取得され、指定がない場合はワークフロー実行ごとに生成された `uuid4().hex` が使用されます:
+
+```python
+async with failproofai_sdk.session(f"chat-{user_id}"):
+    await agent.run(...)
+```
+
+## オプション
+
+```python
+failproofai_sdk.instrument(
+    "llama_index",
+    embeddings=False,         # True にするとエンベディング呼び出しをツールペアとして記録
+    steps=True,               # False にするとワークフローステップのフックペアを省略
+    capture_messages=True,    # False にするとすべてのペイロードを省略: プロンプト、補完、
+                              # ツールの引数と出力、ステップの I/O、リトリーバル
+                              # クエリ、ゴール、最終回答
+    capture_limit=8192,       # キャプチャされる値ごとに保持する文字数
+    stale_after=600.0,        # 放棄されたリーフを強制クローズするまでの秒数
+    reaper_interval=30.0,     # リーパーのスイープ間隔（秒）。0 で無効化
+)
+```
+
+| オプション | 変更が必要なケース |
+| --- | --- |
+| `embeddings` | エンベディングのレイテンシやコストをデバッグする場合のみ有効化。大量インデックス構築は数千回の呼び出しになり、タイムラインが埋め尽くされます。 |
+| `steps` | モデルとツールのイベントだけが必要で、エージェントループのノイズが不要な場合に無効化。 |
+| `capture_messages` | 規制データを扱う場合に無効化。プロンプト、モデルの補完、ツールの引数と戻り値、ワークフローステップの入出力、リトリーバルクエリ、エージェントのゴールと最終回答がすべて記録されなくなります。構造、タイミング、トークン数、アウトカムは引き続き記録されます。 |
+| `capture_limit` | キャプチャされる値ごとの切り詰め前の文字数。RAG プロンプトや取得コンテキストが途中で切れている場合は増やしてください。 |
+| `stale_after` | 放棄された**リーフ**（誰も消費しなかったストリーミングレスポンス、クローズが届かなかったモデルまたはツールのスパン）を強制クローズするまでの秒数。これによりセッションが永遠に `ongoing` のままにならずに確定します。放棄された実行自体はクローズ**されません**: ディスパッチャーが終了を検知できずにキャンセルされたタスクのワークフローは、`uninstrument()` が呼ばれるまで `agent_start` が開いたままになります。 |
+| `reaper_interval` | スイープの頻度。`0` に設定するとリーパーを完全に無効化します。 |
+
+## ヒューマン・イン・ザ・ループ
+
+待機がツール内で発生した場合にキャプチャされます:
+
+```python
+async def ask_human(question: str) -> str:
+    """Ask a person and wait for their answer."""
+    response = await ctx.wait_for_event(HumanResponseEvent)
+    return response.answer
+```
+
+通常のワークフローステップ内の `ctx.wait_for_event` はキャプチャされません。ランタイムがディスパッチャーに到達する前に中断を検知するため、ステップは終了し、一時停止のシグナルがないまま後で再実行されます。LlamaIndex がドキュメントで紹介している FunctionAgent パターンはツール内で待機するため、完全にキャプチャされます。
+
+## よくある問題
+
+<AccordionGroup>
+  <Accordion title="すべてのトークン数が null になる">
+    LLM に `additional_kwargs={"stream_options": {"include_usage": True}}` を追加してください。[トークン数](#token-counts)を参照してください。
+  </Accordion>
+
+  <Accordion title="usage は入力されているがトークンの列が空になる">
+    LlamaIndex には標準の usage フィールドがありません。アダプターはいくつかの既知の形式を試みますが、カウンターを異なる名前で定義しているインテグレーションはいずれにも一致しません。
+
+    生の dict は常に送信されるため、ペイロード内の `usage` を確認してプロバイダーがどのような名前を使用しているか確認してください。
+
+    `usage` が入力されているにもかかわらずトークンの列が空になるのは意図的な挙動です — 誤った数値を自信を持って表示するよりも適切です。
+  </Accordion>
+
+  <Accordion title="タイムラインが setup_agent と parse_agent_output で埋め尽くされる">
+    これは FunctionAgent ループで、イテレーションごとに1セット表示されます。ダッシュボードでフック名によるフィルタリングを行ってください。これらのステップのタイミングは、モデルのみのアダプターではなくこのアダプターを使用する主な理由であることが多いです。
+  </Accordion>
+
+  <Accordion title="何も記録されない">
+    以下の順序で確認してください: `instrument()` が実行前に呼び出されているか; `await` の周囲に `async with failproofai_sdk.session():` があるか; `llama-index-core` が 0.14.23 以上か; `FAILPROOFAI_SDK_STRICT=1` が設定されていれば、劣化したフックが握り潰される代わりに例外を送出します。
+  </Accordion>
+</AccordionGroup>
+
+## 次のステップ
+
+<Columns cols={3}>
+  <Card title="仕組みを理解する" icon="workflow" href="/ja/start/integrations/custom-agents#going-deeper">
+    ペア、ID、セッションライフサイクル、デリバリーについて。
+  </Card>
+  <Card title="トレースを読む" icon="route" href="/ja/sessions/read-a-trace">
+    キャプチャしたセッションの因果関係を追う。
+  </Card>
+  <Card title="他のフレームワーク" icon="plug" href="/ja/start/integrations">
+    LangGraph、CrewAI、Pydantic AI、カスタムエージェント。
+  </Card>
+</Columns>

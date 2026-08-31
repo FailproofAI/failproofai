@@ -1,0 +1,51 @@
+---
+---
+title: "وكلاء مخصصون"
+description: "غلّف وكيلك في ثلاث كتل `with` وسيبدأ التسجيل."
+icon: "code"
+---
+
+لوكيل كتبته بنفسك، أو إطار عمل لا يملك Failproof AI محول له.
+
+تغلّف العمل الذي تقوم به بالفعل في كتل `with`. كل واحد منها يسجل متى بدأ، ومتى انتهى، والوقت المستغرق — لا تستدعي أي شيء آخر.
+
+## التثبيت
+
+```bash
+pip install failproofai-sdk
+```
+
+لا توجد إضافات، وبدون متطلبات.
+
+## الأداة
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+
+with failproofai_sdk.session():                 # one run
+    with failproofai_sdk.agent("planner"):      # one unit of work
+        with failproofai_sdk.tool_call("search", input={"q": q}) as t:
+            t.output = search(q)                # one tool call
+```
+
+اقرأه من الأعلى للأسفل وسيخبرك بما يعنيه:
+
+| غلّفه في | للقول |
+| --- | --- |
+| `session()` | هذه الأحداث تنتمي إلى نفس التشغيل |
+| `agent()` | شيء ما يقوم بعمل — أعطه اسماً ستتعرف عليه في القائمة |
+| `tool_call()` | هذا هو أداة واحدة، وإليك ما أرجعته |
+
+غلّفها بأي طريقة يتداخل بها الكود. لا تمرر المعرفات حول: كل كتلة تتذكر ما بداخلها، لذا أي شيء تسجله يلتقط التشغيل الصحيح والوكيل الصحيح تلقائياً. `async with` يعمل بنفس الطريقة تماماً.
+
+## تحقق من وصوله
+
+شغّله مرة واحدة، ثم افتح **Observe → Sessions** واختر بيئتك. سيظهر تشغيلك كأثر مُعاد بناؤه.
+
+إذا لم يصل شيء، تأكد من اتصال الجهاز باستخدام `failproofai config --status`.
+
+<Card title="الدليل الكامل للوكلاء المخصصين" icon="arrow-right" href="/ar/start/integrations/custom-agents">
+  كل طريقة حدث، ما يحدث عندما يرفع الكود استثناء، مثال عملي، الخيوط والعمليات غير المتزامنة، وأداة إطار عمل بدون محول.
+</Card>

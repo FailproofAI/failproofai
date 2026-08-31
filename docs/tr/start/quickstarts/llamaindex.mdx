@@ -1,0 +1,48 @@
+---
+title: "LlamaIndex"
+description: "Kurun, enstrüman edin ve ilk izinizi görün."
+icon: "/images/frameworks/llamaindex.svg"
+---
+
+İlk LlamaIndex izinize ulaşmak için üç adım. İş akışı adımları, alma, reaper ve seçenekler için bkz. [tam kılavuz](/tr/start/integrations/llamaindex).
+
+## Kurun
+
+```bash
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+## Enstrüman Edin
+
+LlamaIndex'in agent API'si asenkron. Her scope `async with` ve `with` altında da çalışır.
+
+```python
+import asyncio
+
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+async def main():
+    async with failproofai_sdk.session():
+        await agent.run("...")
+
+
+asyncio.run(main())
+```
+
+<Warning>
+  LLM'nizde ekstra bir argüman olmadan, izinizde her token sayımı null olur — `llama-index-llms-openai` akış halinde kullanım talep etmez. Bkz. [Token sayımları](/tr/start/integrations/llamaindex#token-counts).
+</Warning>
+
+## Geldiğini Kontrol Edin
+
+Bir kez çalıştırın, ardından **Observe → Sessions** öğesini açın ve ortamınızı seçin. Çalışmanız yeniden yapılandırılmış bir iz olarak görünür.
+
+Hiçbir şey gelmezse, makinenin `failproofai config --status` ile bağlı olduğunu doğrulayın.
+
+<Card title="Tam LlamaIndex kılavuzu" icon="arrow-right" href="/tr/start/integrations/llamaindex">
+  Token sayımları, kaydedilen neler, iş akışı adımları, alma, seçenekler ve yaygın sorunlar.
+</Card>

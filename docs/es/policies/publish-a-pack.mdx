@@ -1,0 +1,91 @@
+---
+title: "Publicar un pack"
+description: "Distribuye tus propias políticas como una release de GitHub que cualquiera puede instalar."
+icon: "upload"
+---
+
+Un pack son tres archivos adjuntos a una release de GitHub. `failproofai pack build` genera los tres a partir de un archivo de políticas que ya tienes.
+
+## 1. Escribe las políticas
+
+Un solo archivo, usando la misma API que cualquier política personalizada. Dos campos adicionales son importantes para un pack:
+
+```js
+import { customPolicies, deny, allow } from "failproofai";
+
+customPolicies.add({
+  name: "block-refunds",
+  description: "Refunds above the approved limit need a human",
+  category: "Billing",        // groups it, and is what --category selects on
+  defaultEnabled: true,       // switched on by a plain `pack add`
+  match: { events: ["PreToolUse"], tools: ["Bash"] },
+  fn: async (ctx) =>
+    String(ctx.toolInput?.command ?? "").includes("refund")
+      ? deny("Refunds need a human. Ask before running this.")
+      : allow(),
+});
+```
+
+`defaultEnabled` es **false** por defecto cuando se omite. Un `failproofai pack add` simple solo activa lo que hayas marcado — instalar automáticamente todas las políticas de un desconocido no es una decisión que el instalador deba tomar por su usuario.
+
+<Warning>
+La entrada debe ser **un único archivo autocontenido**. Solo la entrada tiene el digest fijado, por lo que un pack que importe archivos locales no podría garantizar honestamente que el digest cubre lo que se ejecuta. Primero empaqueta con (`esbuild`, `bun build`, `rollup`) y construye el pack desde el bundle — `pack build` rechaza una importación local en lugar de hacer una promesa que no puede cumplir.
+</Warning>
+
+## 2. Construye los archivos de la release
+
+```bash
+failproofai pack build ./policies.mjs \
+  --id acme/support-agent \
+  --version 1.0.0 \
+  --out ./dist-pack
+```
+
+Genera tres archivos y valida cada política con las **reglas propias del loader** antes — así un pack que nunca podría instalarse falla aquí, donde puedes corregirlo:
+
+| Archivo | Descripción |
+| --- | --- |
+| `failproofai-pack.json` | El manifiesto: id, versión, efecto y una entrada por política |
+| `failproofai-pack.mjs` | Tu entrada, tal cual |
+| `SHA256SUMS` | `<sha256>  <nombre_de_archivo>` para los otros dos |
+
+Se rechaza en tiempo de construcción: un id que no sea `publisher/name`, un nombre de política que contenga `/`, una política que declare `alwaysOn`, una `description`, `category` o `match` ausente, una entrada que no registra nada, y una entrada que importa archivos locales.
+
+## 3. Adjúntalos a una release
+
+Etiqueta la release con la misma versión que construiste y adjunta los tres archivos como assets de la release:
+
+```bash
+gh release create 1.0.0 \
+  ./dist-pack/failproofai-pack.json \
+  ./dist-pack/failproofai-pack.mjs \
+  ./dist-pack/SHA256SUMS
+```
+
+Ahora cualquiera puede instalarlo:
+
+```bash
+failproofai pack add acme/support-agent
+```
+
+Los nombres de los assets son fijos — son los que la CLI del consumidor usa para construir sus URLs, sin llamadas a la API ni descubrimiento automático.
+
+## Publicar una nueva versión
+
+Construye con el nuevo `--version`, crea una nueva release, adjunta los tres assets nuevamente. Los consumidores ejecutan el mismo `pack add` y conservan el subconjunto que habían elegido; una política que desactivaron permanece desactivada tras la actualización.
+
+Cambiar el **nombre** de una política es un cambio incompatible: una máquina que la había desactivado está desactivando un nombre que ya no existe, y el nuevo nombre llega con lo que `defaultEnabled` indique.
+
+## En qué confían tus usuarios
+
+`SHA256SUMS` vive en la misma release que el artefacto, por lo que prueba que los bytes son los que publicaste — no quién eres. Cualquiera que pueda escribir en el repositorio puede escribir ambos archivos. La protección de tus usuarios es que el digest queda fijado al instalar, de modo que lo que publicaste no puede cambiar posteriormente.
+
+Publica desde un repositorio cuyo acceso de escritura controles, y trata una release de pack como si fuera la publicación de un paquete.
+
+## Observar antes de aplicar
+
+Un manifiesto puede declarar `"effect": "observe"`. Esas políticas se ejecutan y sus veredictos se **registran y descartan** — nada queda bloqueado. Es la forma de medir una nueva regla frente al tráfico real antes de que pueda interrumpir el trabajo de alguien.
+
+```json
+{ "id": "acme/support-agent", "version": "1.1.0", "effect": "observe", "policies": [ ... ] }
+```

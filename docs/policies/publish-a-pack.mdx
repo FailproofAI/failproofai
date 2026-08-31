@@ -1,0 +1,89 @@
+---
+title: "Publish policies"
+description: "Ship your policies as a public GitHub release anyone can install."
+icon: "upload"
+---
+
+Create a working policy, test it locally, then publish it as a pack.
+
+## Create and test
+
+```bash
+failproofai publish --init guards.mjs
+failproofai policies -i -c ./guards.mjs
+```
+
+`--init` writes a policy that already blocks `git push --force`. Edit it, ask your agent to try the blocked action, and check **Policies → Activity** in the local dashboard.
+
+A pack policy can include:
+
+```js
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "block-refunds",
+  description: "Refunds above the limit need a human",
+  category: "Billing",
+  defaultEnabled: true,
+  match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+  fn: async (ctx) => {
+    // return allow(), instruct(), or deny()
+  },
+});
+```
+
+`defaultEnabled` defaults to `false`.
+
+## Publish
+
+Commit your files, then run:
+
+```bash
+failproofai publish
+```
+
+Publish finds the policy file, validates it with the same loader used during installation, and uploads the pack assets to a GitHub release. It uses `GITHUB_TOKEN`, `GH_TOKEN`, or `gh auth login`.
+
+The repository must be public because installation uses anonymous HTTPS.
+
+The default version is the current commit's 12-character SHA. Publish refuses a dirty tree or a directory outside Git unless you provide `--version`. A tag on `HEAD` wins over the SHA.
+
+Users install it with:
+
+```bash
+failproofai policies add owner/repo
+```
+
+## Publish in observe mode
+
+```bash
+failproofai publish --effect observe
+```
+
+Observe mode evaluates the real policy and records non-allow decisions, but lets the agent continue. A timeout records as an allow.
+
+Publish again with `--effect enforce` when the observed matches are correct.
+
+## Useful options
+
+| Flag | Effect |
+| --- | --- |
+| `--init [file]` | Write a starter policy |
+| `--repo <owner>/<repo>` | Choose or create the repository |
+| `--version <version>` | Override the commit-based version |
+| `--effect enforce|observe` | Choose whether the pack blocks |
+| `--dry-run` | Build and validate without publishing |
+| `--allow-private` | Publish privately, knowing `policies add` cannot install it |
+
+```bash
+failproofai publish --dry-run
+failproofai publish ./guards.mjs --repo me/guards --version 2.0.0
+```
+
+<Note>
+  Add the GitHub topic `failproofai-policies` after publishing so the [Policy Hub](https://befailproof.ai/policy-hub/) can index the pack. The CLI does not set it for you.
+</Note>
+
+<Warning>
+  Renaming a policy is a breaking change for existing selections. Keep names stable across releases.
+</Warning>

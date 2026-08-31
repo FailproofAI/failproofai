@@ -1,0 +1,110 @@
+---
+title: "Policy packs"
+description: "GitHub रिलीज़ के रूप में प्रकाशित नीतियों का एक सेट इंस्टॉल करें, और यह क्या लागू करता है इसे प्रबंधित करें।"
+icon: "package"
+---
+
+एक pack GitHub रिलीज़ के रूप में प्रकाशित नीतियों का एक सेट है। एक कमांड इसे इंस्टॉल करता है, रिलीज़ के अपने चेकसम को कुछ भी चलाने से पहले सत्यापित किया जाता है, और डाइजेस्ट रिकॉर्ड किया जाता है ताकि pack आपकी मशीन के बाद बदल न सके।
+
+## Failproof AI नीतियों को इंस्टॉल करें
+
+```bash
+failproofai pack add core
+```
+
+यह पैकेज के अंदर की कॉपी से प्रकाशित सेट को इंस्टॉल करता है — इसलिए इसे नेटवर्क की आवश्यकता नहीं है और यह प्रॉक्सी के पीछे विफल नहीं हो सकता। इसका एक हिस्सा लें:
+
+```bash
+failproofai pack add core --policy block-rm-rf         # एक, या अल्पविराम से अलग कुछ
+failproofai pack add core --category dangerous-commands # एक पूरी श्रेणी
+failproofai pack add core --all                         # इसमें सब कुछ
+```
+
+`failproofai pack list` pack द्वारा प्रदान की गई हर श्रेणी का नाम देता है।
+
+## इंस्टॉल करने से पहले एक pack में क्या है यह देखें
+
+```bash
+failproofai pack list acme/support-agent
+```
+
+pack द्वारा की जाने वाली हर नीति को सूचीबद्ध करता है, श्रेणी द्वारा समूहीकृत, यह चिह्नित करता है कि इसके लेखक डिफ़ॉल्ट रूप से कौन से को चालू करते हैं और कौन से opt-in हैं। यह **केवल manifest को** पढ़ता है — entry artifact कभी डाउनलोड नहीं किया जाता और कभी imported नहीं किया जाता, इसलिए एक अपरिचित pack को देखना अपरिचित कोड को नहीं चला सकता। manifest को अभी भी रिलीज़ के अपने `SHA256SUMS` के विरुद्ध जांचा जाता है, इसलिए आप जो पढ़ रहे हैं वह वही है जो इंस्टॉल होगा।
+
+`failproofai pack list` कोई स्रोत के बिना यहां पहले से इंस्टॉल किए गए packs को सूचीबद्ध करता है।
+
+## किसी और के pack को इंस्टॉल करें
+
+```bash
+failproofai pack add acme/support-agent
+```
+
+इनमें से कोई भी काम करता है — जो भी आपके पास है वह पेस्ट करें:
+
+| स्रोत | परिणाम |
+| --- | --- |
+| `acme/support-agent` | नवीनतम रिलीज़, **pinned** सटीक टैग के लिए जो इसे हल किया |
+| `acme/support-agent@v2.1.0` | वह रिलीज़ |
+| `github:acme/support-agent@v2.1.0` | वही, स्पष्ट रूप से लिखा |
+| `https://github.com/acme/support-agent/releases/tag/v2.1.0` | वही, ब्राउज़र से कॉपी किया |
+
+कोई टैग नाम नहीं देने से नवीनतम रिलीज़ इंस्टॉल होता है **और इसे pin किया जाता है**, फिर आपको यह बताता है कि किस टैग को चुना। जो कुछ भी रिकॉर्ड किया जाता है वह हमेशा ठीक एक रिलीज़ का नाम देता है, इसलिए एक reinstall drift नहीं हो सकता।
+
+## एक pack का हिस्सा लें
+
+डिफ़ॉल्ट रूप से आप pack के **अपने** defaults प्राप्त करते हैं — जिन नीतियों को इसके लेखक ने निरीक्षण के साथ चालू करने के लिए सुरक्षित चिह्नित किया है — इसमें सब कुछ नहीं।
+
+```bash
+failproofai pack add acme/support-agent --category billing,git
+failproofai pack add acme/support-agent --policy block-refunds
+failproofai pack add acme/support-agent --all
+```
+
+`--category` और `--policy` एक union के रूप में संयोजित होते हैं (`--only` को `--policy` का पर्यायवाची माना जाता है)। एक नए संस्करण में फिर से जोड़ने से आपने जो चुना है वह रहता है न कि बाकी को वापस चालू करना।
+
+## प्रबंधित करें कि क्या चालू है
+
+```bash
+failproofai policies                    # एक सूची में हर स्रोत, packs सहित
+failproofai pack list                   # केवल packs, श्रेणी द्वारा समूहीकृत
+failproofai policies --uninstall block-refunds        # एक pack policy को बंद करें
+failproofai policies --install block-refunds          # और वापस चालू करें
+failproofai pack remove acme/support-agent
+```
+
+एक bare name का अर्थ है **builtin** जब उस नाम द्वारा एक मौजूद हो। जब आपको चाहिए तो एक pack की कॉपी को स्पष्ट रूप से नाम दें:
+
+```bash
+failproofai policies --uninstall acme/support-agent:block-refunds
+```
+
+<Note>
+यदि एक pack एक नीति भेजता है जिसका नाम भी एक **enabled builtin** है, तो builtin चलता है और pack की कॉपी को छोड़ दिया जाता है — अन्यथा एक ही guard का दो बार मूल्यांकन किया जाएगा। इसके बजाय pack की कॉपी का उपयोग करने के लिए builtin को बंद करें।
+</Note>
+
+## Failproof AI नीतियां कहां से आती हैं
+
+`core` npm पैकेज में vendored कॉपी को पढ़ता है। एक ही सेट GitHub रिलीज़ के रूप में प्रकाशित होता है, जो आप इंस्टॉल करते हैं यदि आप एक विशिष्ट संस्करण चाहते हैं:
+
+```bash
+failproofai pack add core                    # इस पैकेज से, कोई नेटवर्क नहीं
+failproofai pack add FailproofAI/policies    # एक ही सेट, इसकी GitHub रिलीज़ से
+```
+
+## अखंडता क्या करती है और नहीं करती है
+
+`SHA256SUMS` artifact के समान रिलीज़ में शिप होता है, इसलिए यह **एक हस्ताक्षर नहीं है** और प्रकाशक के बारे में कुछ भी साबित नहीं करता। जो यह साबित करता है वह यह है कि bytes वही हैं जो उस रिलीज़ ने प्रकाशित किए — और क्योंकि डाइजेस्ट को pack जोड़ते समय रिकॉर्ड किया जाता है और हर import से पहले फिर से सत्यापित किया जाता है, एक pack आपकी मशीन के बाद नहीं बदल सकता। एक repository जो retags करता है या एक asset को बदलता है वह चुप से कुछ और चलाने के बजाय लोड करना बंद कर देता है।
+
+इंस्टॉल समय पर pack को भी **एक बार imported** किया जाता है और अपने manifest के विरुद्ध जांचा जाता है। एक pack जिसके artifact को parse नहीं किया जा सकता, या जो अपनी घोषणा के अलावा कुछ और register करता है, को activate होने के बजाय इंस्टॉल होने से पहले reject किया जाता है — अपने अगले tool call पर विफल होने के बजाय।
+
+## जब एक pack load नहीं होगा
+
+एक pack जिसे यह मशीन लागू करने के लिए कहा गया था और नहीं चला सकता **उन events को deny करता है** जिनकी इसकी missing नीतियों ने coverage दी, बजाय इसके कि उन्हें चुप से allow किया जाए। [Failure behavior](/hi/policies/failure-behavior) देखें। `failproofai pack list` उस state में किसी भी pack का नाम देता है और non-zero के साथ exit करता है।
+
+## Offline और mirrors
+
+| Variable | प्रभाव |
+| --- | --- |
+| `FAILPROOFAI_NO_DOWNLOAD=1` | fetch करने से इनकार करता है; पहले से इंस्टॉल किए गए packs लागू रहते हैं |
+| `FAILPROOFAI_PACK_BASE_URL` | pack fetching को `github.com` के बजाय एक mirror की ओर इंगित करता है |
+
+अपना खुद का pack प्रकाशित करना: [Publish a pack](/hi/policies/publish-a-pack) देखें।

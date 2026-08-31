@@ -13,6 +13,8 @@ The same policies and the same session history apply whichever one an agent runs
 
 An agent that runs in **none** of the twelve is instrumented directly with the [Python SDK](/reference/custom-agents). That is a different contract, and worth stating plainly: the SDK delivers tracing, sessions, evaluations and audits — **it does not enforce policies on its own.** Blocking an unsafe action before it executes needs an enforcement hook at your runtime's tool boundary; [contact us](mailto:support@befailproof.ai) and we will map it.
 
+## Hook scopes
+
 | Harness | Supported hook scopes |
 | --- | --- |
 | Claude Code | User, project, local |
@@ -20,11 +22,32 @@ An agent that runs in **none** of the twelve is instrumented directly with the [
 | Factory Droid, Devin CLI, Antigravity CLI, Goose | User, project |
 | Hermes, OpenClaw | User |
 
+Claude Code is the only harness with a **local** scope. Hermes and OpenClaw have no project configuration at all — they are user scope only, and the CLI refuses `--scope project` for them.
+
 Each integration normalizes its native hook event names, tool names, and tool-input fields before policies run. A policy can only act on events the harness exposes; test end-of-turn and instruction behavior on the exact harness and version you deploy.
+
+## Where the hook configuration lands
+
+| Harness | User scope | Project scope |
+| --- | --- | --- |
+| Claude Code | `~/.claude/settings.json` | `.claude/settings.json` (local: `.claude/settings.local.json`) |
+| Codex | `~/.codex/hooks.json` | `.codex/hooks.json` |
+| GitHub Copilot CLI | `~/.copilot/hooks/failproofai.json` | `.github/hooks/failproofai.json` |
+| Cursor | `~/.cursor/hooks.json` | `.cursor/hooks.json` |
+| OpenCode | `~/.config/opencode/opencode.json` | `.opencode/opencode.json` |
+| Pi | `~/.pi/agent/settings.json` | `.pi/settings.json` |
+| Hermes | `~/.hermes/config.yaml` | — |
+| OpenClaw | `~/.openclaw/openclaw.json` | — |
+| Factory Droid | `~/.factory/hooks.json` | `.factory/hooks.json` |
+| Devin CLI | `~/.config/devin/config.json` | `.devin/config.json` |
+| Antigravity CLI | `~/.gemini/config/hooks.json` | `.agents/hooks.json` |
+| Goose | `~/.agents/plugins/failproofai/hooks/hooks.json` | `.agents/plugins/failproofai/hooks/hooks.json` |
+
+OpenCode, Pi and OpenClaw are plugin integrations rather than shell-hook integrations: the file above registers a plugin or extension package, which calls the failproofai binary and translates its verdict.
 
 ## Enforcement capability
 
-“Block” means the current adapter's returned verdict is consumed by the named harness. Post-tool blocking may replace the result shown to the model but cannot undo a tool side effect that already happened.
+"Block" means the current adapter's returned verdict is consumed by the named harness. Post-tool blocking may replace the result shown to the model but cannot undo a tool side effect that already happened.
 
 | Harness | Verified blocking events | Observe-only or non-blocking caveats |
 | --- | --- | --- |
@@ -32,23 +55,83 @@ Each integration normalizes its native hook event names, tool names, and tool-in
 | Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | Post-tool blocking replaces the result after execution; session-start and compact events are observational in the current adapter. |
 | GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | Post-tool blocking replaces the result after execution; session and notification events are observational. |
 | Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` and session events are observational. |
-| OpenCode | `PreToolUse` | Post-tool and lifecycle events are observational; current stop handling is guidance for a later turn rather than a verified gate. |
+| OpenCode | `PreToolUse` | Post-tool and lifecycle events are observational; current stop handling is guidance for a later turn rather than a verified gate. `PermissionRequest` never runs at all. |
 | Pi | `PreToolUse`, `UserPromptSubmit` | Post-tool and lifecycle events are observational; stop guidance applies to a later turn. |
-| Hermes | `PreToolUse` | Post-tool, session, and subagent-stop verdicts are not gates. |
+| Hermes | `PreToolUse` | Post-tool, session, and subagent-stop verdicts are not gates. No `Stop` event is installed. |
 | OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | Post-tool, session, subagent-stop, and compaction events are observational. |
 | Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | Post-tool and subagent-stop verdicts are observational. |
 | Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, conditional `PermissionRequest` | Permission hooks do not run in every permission mode; post-tool and session events are observational. |
 | Antigravity CLI | `PreToolUse`, `Stop` | User-prompt and post-tool verdicts are observational; prompt instructions can still be injected. |
 | Goose | `PreToolUse` | User-prompt, post-tool, and session events are observational. A native blocking stop hook exists upstream but is not installed by the current adapter. |
 
-Capabilities are version-sensitive. Re-test after upgrading an agent CLI, especially when a policy relies on prompt, stop, permission, or post-tool behavior rather than the common pre-tool gate.
+An event absent from both columns is **not verified** — treat it as unknown, never as blocking.
+
+### Conditions on a listed gate
+
+Several rows above are real gates that are nonetheless bounded or conditional. A policy that depends on one of these needs the condition as much as the row.
+
+| Harness | Event | Condition |
+| --- | --- | --- |
+| Claude Code | `Stop`, `SubagentStop` | Capped by `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`, default 8. Discarded on end-turn paths |
+| Cursor | `Stop` | Capped by `loop_limit`, default 5, and consumed only when the turn completes — a user abort or a turn error discards it |
+| Cursor | `Stop` | **Cursor Cloud Agent VMs run no `stop` or `subagentStop` hooks at all.** The gate covers local sessions only |
+| Codex | `SubagentStop` | Only ThreadSpawn subagents dispatch it; every other subagent source never runs the hook |
+| GitHub Copilot CLI | `SubagentStop` | Skipped entirely for `isSidekick` subagents |
+| Devin CLI | `PermissionRequest` | Never fires under `--permission-mode dangerous`, and never for auto-approved read-only tools |
+| OpenCode | `PermissionRequest` | A dead hook: `permission.ask` is declared and documented upstream but never invoked, so the policy does not even run |
+| Hermes | `Stop` | No `Stop` event is installed, by choice. The five `require-*-before-stop` builtins are inapplicable on Hermes |
+| Goose | `Stop` | Same outcome: no `Stop` is installed, so the five `require-*-before-stop` builtins are inapplicable |
+
+### Where `instruct()` degrades
+
+A `deny` is not the only verdict a policy returns. `instruct()` hands the agent a directive and lets the action proceed — but not every harness has a channel to carry one. Where there is none, failproofai allows the action and writes the instruction to stderr for the operator's logs; the model never sees it.
+
+| Harness | Events where `instruct()` degrades to a stderr note |
+| --- | --- |
+| Hermes | Every event |
+| Goose | Every event |
+| Pi | Every event except `Stop` |
+| OpenClaw | Every event except `Stop` |
+| Factory Droid | Every event except `Stop` |
+| Antigravity CLI | Every event except `Stop` and `UserPromptSubmit` |
+
+Everywhere else, the instruction is returned through the harness's own additional-context channel.
+
+### Versions these claims were probed against
+
+A version is part of the claim, not a footnote. Re-test after upgrading an agent CLI, especially when a policy relies on prompt, stop, permission, or post-tool behavior rather than the common pre-tool gate.
+
+| Harness | Probed version |
+| --- | --- |
+| Claude Code | 2.1.220 |
+| Codex | `fe01054a`, with `PostToolUse` re-probed live at 0.147.0 |
+| GitHub Copilot CLI | 1.0.71, some call sites re-read in 1.0.68 and 1.0.78 |
+| Cursor | cursor-agent 2026.07.16-899851b |
+| OpenCode | 1.18.9, re-checked at 1.14.33 |
+| Pi | 0.80.10 |
+| Hermes | hermes-agent `5771a6e` |
+| OpenClaw | v2026.7.2 |
+| Factory Droid | droid 0.175.1 |
+| Devin CLI | 3000.2.17 |
+| Antigravity CLI | agy 1.1.8 |
+| Goose | 1.43.0 |
+
+<Warning>
+  Several Codex rows cite source paths that were restructured after `fe01054a` and no longer exist at 0.147.0. They are not known-wrong, but they are unverified against any shipping Codex and are due for a re-probe. Only the Codex `PostToolUse` row was re-probed live.
+</Warning>
+
+## VS Code agent mode
+
+VS Code's built-in Copilot Chat agent mode is **not a thirteenth integration**. It discovers hook configuration from `.github/hooks/*.json`, `~/.copilot/hooks/*.json` and `~/.claude/settings.json` — exactly the paths the `copilot` and `claude` installs already write — and uses the same Claude-shaped deny contract. Installing either one already enforces inside VS Code agent-mode sessions.
+
+The feature is a preview and needs an active GitHub Copilot subscription plus agent mode.
 
 ## Install capture and policy hooks
 
 <Tabs>
   <Tab title="Dashboard">
     1. Open **Administration → Keys** and create a key with `events:add` and `policies:pull`, named for the machine or environment.
-    2. On the target machine, connect the local CLI with the displayed key and install the harness hooks.
+    2. On the target machine, connect the local CLI with the displayed key.
     3. Start a new agent session, then confirm its hook and session events under **Observe → Events**.
     4. Open **Observe → policy** for the same time window and confirm a policy decision is attributed to the machine.
 
@@ -65,16 +148,16 @@ Capabilities are version-sensitive. Re-test after upgrading an agent CLI, especi
     ![The Policy page used to verify policy decisions from a newly connected harness.](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
-    Install hooks for every detected harness:
+    `failproofai config` wires hooks into every supported agent CLI it finds, installs the daemon, and connects Cloud when a key is present:
 
     ```bash
-    failproofai config \
-      --connect https://app.befailproof.ai \
-      --token <machine-key>
-    failproofai policies --install
+    failproofai config --token <machine-key>
+    failproofai policies add FailproofAI/policies
     ```
 
-    Or target named harnesses and a configuration scope:
+    Setup chooses no policies, which is why the second command is there.
+
+    To wire one harness by hand — with `--cli` omitted, `--install` detects what is installed and prompts:
 
     ```bash
     failproofai policies --install \
@@ -82,7 +165,7 @@ Capabilities are version-sensitive. Re-test after upgrading an agent CLI, especi
       --scope user
     ```
 
-    Project scope keeps hook configuration with a repository. User scope covers work across repositories. Claude Code also supports local scope; support varies by harness and the CLI rejects unsupported combinations.
+    Project scope keeps hook configuration with a repository. User scope covers work across repositories. Check the scope table above before combining `--cli` and `--scope`; the CLI rejects an unsupported pair.
 
     Verify the machine and its events:
 
@@ -93,6 +176,10 @@ Capabilities are version-sensitive. Re-test after upgrading an agent CLI, especi
     ```
   </Tab>
 </Tabs>
+
+<Warning>
+  In headless `copilot -p` runs started from a fresh directory, the project-scope `.github/hooks/failproofai.json` was **not** loaded. Treat user scope as the reliable enforcement point for Copilot in CI until that is verified otherwise.
+</Warning>
 
 ## Add a non-default session path
 
@@ -113,6 +200,8 @@ Capabilities are version-sensitive. Re-test after upgrading an agent CLI, especi
     ```
 
     Remove a path with `failproofai harness remove-path claude checkout`.
+
+    The label namespaces derived agent ids. Two locations holding copies of the same project derive the same id from the transcript, so without a label they merge into one agent. Overlapping roots and duplicate labels are refused — see [the CLI reference](/reference/failproof-cli) for why each rejection exists.
   </Tab>
 </Tabs>
 

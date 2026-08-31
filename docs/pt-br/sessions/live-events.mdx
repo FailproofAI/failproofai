@@ -1,21 +1,21 @@
 ---
-title: "Eventos em tempo real"
-description: "Acompanhe a atividade do agente enquanto uma sessão está em execução."
+title: "Eventos ao vivo"
+description: "Acompanhe a atividade do agente em tempo real enquanto uma sessão está em execução."
 icon: "radio"
 ---
 
-Os eventos em tempo real ajudam você a confirmar a instrumentação e acompanhar uma execução arriscada sem precisar aguardar o término da sessão.
+Os eventos ao vivo ajudam você a confirmar a instrumentação e acompanhar uma execução de risco sem precisar esperar o término da sessão.
 
-## Monitorar atividade
+## Acompanhar atividade
 
 <Tabs>
   <Tab title="Dashboard">
     1. Acesse **Observe → Events**.
     2. Comece com a janela de tempo atual e sem filtros para confirmar que os dados estão chegando.
-    3. Filtre por ambiente, tipo de evento, agente ou sessão. Use a busca para texto no payload.
-    4. Selecione um evento para inspecionar seu resumo e detalhes. Siga o link da sessão para o rastreamento completo.
+    3. Filtre por ambiente, tipo de evento, agente ou sessão. Use a busca para pesquisar texto no payload.
+    4. Selecione um evento para inspecionar seu resumo e detalhes. Siga o link da sessão para ver o rastreamento completo.
 
-    ![O stream de eventos ao vivo mostrando tráfego de um gateway de chat Hermes ao lado de execuções de CLI de codificação, filtrado por tempo, ambiente, tipo de evento, agente, modelo, contexto e sessão.](/images/dashboard/events-stream-current.png)
+    ![O stream de eventos ao vivo exibindo tráfego de um gateway de chat Hermes junto com execuções do coding-CLI, filtrado por tempo, ambiente, tipo de evento, agente, modelo, contexto e sessão.](/images/dashboard/events-stream-current.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -24,22 +24,22 @@ Os eventos em tempo real ajudam você a confirmar a instrumentação e acompanha
     fp --json events --full --session-id <session-id> --all
     ```
 
-    O feed padrão omite os payloads brutos. Use `--full` apenas para investigações limitadas a uma sessão específica.
+    O feed padrão omite os payloads brutos. Use `--full` apenas para investigar uma sessão com escopo delimitado.
   </Tab>
 </Tabs>
 
 Use o stream de eventos para responder três perguntas imediatas:
 
-- O agente esperado está reportando ao ambiente correto?
+- O agente esperado está reportando para o ambiente correto?
 - As chamadas de modelo, chamadas de ferramenta e decisões de política estão chegando na ordem correta?
 - A sessão parou de progredir ou começou a repetir uma ação?
 
-Os tipos de evento incluem eventos de ciclo de vida do agente, requisições e respostas de modelo, uso de ferramentas e resultados, execução de hooks, esperas e interrupções humanas, e erros explícitos. IDs de correlação conectam eventos pareados, como uma chamada de ferramenta e seu resultado.
+Os tipos de evento incluem eventos do ciclo de vida do agente, requisições e respostas de modelo, uso de ferramentas e resultados, execução de hooks, esperas e interrupções humanas, e erros explícitos. IDs de correlação associam eventos pareados, como uma chamada de ferramenta e seu resultado.
 
 <Tip>
   Mantenha a visualização ao vivo ampla enquanto verifica uma nova integração. Adicione filtros somente após ver o primeiro evento; um filtro incorreto pode parecer uma falha na ingestão.
 </Tip>
 
-Se nenhum evento aparecer, execute `failproofai config --status` e depois [solucione problemas de ingestão](/pt-br/reference/troubleshooting).
+Se nenhum evento aparecer, execute `failproofai config --status` e então [solucione problemas de ingestão](/pt-br/reference/troubleshooting).
 
-Agentes que não executam em um dos 12 [harnesses](/pt-br/reference/harnesses) suportados reportam os mesmos tipos de evento através do [Python SDK](/pt-br/reference/custom-agents), incluindo os eventos de humano no loop (`human_wait`, `human_input`, `human_interrupt`) dos quais os agentes de gateway e produção dependem.
+Agentes que não executam em um dos 12 [harnesses](/pt-br/reference/harnesses) suportados reportam os mesmos tipos de evento por meio do [Python SDK](/pt-br/reference/custom-agents), incluindo os eventos de human-in-the-loop (`human_wait`, `human_input`, `human_interrupt`) dos quais os agentes de gateway e produção dependem.

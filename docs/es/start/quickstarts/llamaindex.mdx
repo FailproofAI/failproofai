@@ -1,0 +1,48 @@
+---
+title: "LlamaIndex"
+description: "Instala, instrumenta y visualiza tu primera traza."
+icon: "/images/frameworks/llamaindex.svg"
+---
+
+Tres pasos para obtener tu primera traza con LlamaIndex. Para ver los pasos de flujo de trabajo, recuperación, el reaper y las opciones disponibles, consulta [la guía completa](/es/start/integrations/llamaindex).
+
+## Instalación
+
+```bash
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+## Instrumentación
+
+La API de agentes de LlamaIndex es asíncrona. Todos los ámbitos funcionan tanto con `async with` como con `with`.
+
+```python
+import asyncio
+
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+async def main():
+    async with failproofai_sdk.session():
+        await agent.run("...")
+
+
+asyncio.run(main())
+```
+
+<Warning>
+  Sin un argumento adicional en tu LLM, cada conteo de tokens en tu traza será nulo — `llama-index-llms-openai` no solicita el uso cuando transmite en streaming. Consulta [Conteo de tokens](/es/start/integrations/llamaindex#token-counts).
+</Warning>
+
+## Verifica que llegó
+
+Ejecútalo una vez, luego abre **Observe → Sessions** y selecciona tu entorno. Tu ejecución aparecerá como una traza reconstruida.
+
+Si no llega nada, confirma que la máquina está conectada con `failproofai config --status`.
+
+<Card title="Guía completa de LlamaIndex" icon="arrow-right" href="/es/start/integrations/llamaindex">
+  Conteo de tokens, qué se registra, pasos de flujo de trabajo, recuperación, opciones y problemas comunes.
+</Card>

@@ -31,7 +31,7 @@ describe("harness extra paths", () => {
     rmSync(home, { recursive: true, force: true });
   });
 
-  // ── the list that cannot be allowed to drift ───────────────────────────
+  // ━━ the list that cannot be allowed to drift ━━━━━━━━━━━━━━━━━━━━━━━━━━─
 
   // Two hand-maintained copies of one list, in two languages, with nothing
   // generating either. A name here the daemon does not know writes a table
@@ -49,7 +49,7 @@ describe("harness extra paths", () => {
     expect([...rustKeys].sort()).toEqual([...HARNESS_KEYS].sort());
   });
 
-  // ── the default-path-only regression ───────────────────────────────────
+  // ━━ the default-path-only regression ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━─
 
   it("writes no [collector.sources] table when nothing is configured", () => {
     writeConfig(DEFAULT_CONFIG);
@@ -75,7 +75,7 @@ describe("harness extra paths", () => {
     expect(readFileSync(configFile(), "utf8")).toBe(before);
   });
 
-  // ── round trips ────────────────────────────────────────────────────────
+  // ━━ round trips ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   it("round-trips a labelled path through real TOML", () => {
     addPath("claude", "work=/srv/team/.claude/projects");
@@ -140,7 +140,7 @@ describe("harness extra paths", () => {
     expect(readConfig().collector.sources?.claude.extraPaths).toEqual(["k=/srv/a=b/projects"]);
   });
 
-  // ── rejections ─────────────────────────────────────────────────────────
+  // ━━ rejections ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━─
 
   it("refuses an unknown harness and names the real ones", () => {
     const r = addPath("claud", "/srv/x");
@@ -181,7 +181,7 @@ describe("harness extra paths", () => {
     expect(addPath("claude", "label=").exitCode).toBe(1);
   });
 
-  // ── removal ────────────────────────────────────────────────────────────
+  // ━━ removal ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   it("removes by label, by path, or by the whole entry", () => {
     for (const target of ["w", "/srv/x", "w=/srv/x"]) {
@@ -206,7 +206,7 @@ describe("harness extra paths", () => {
     expect(readConfig().collector.sources?.claude.extraPaths).toEqual(["b=/srv/b"]);
   });
 
-  // ── list ───────────────────────────────────────────────────────────────
+  // ━━ list ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━─
 
   it("says so plainly when nothing is configured", () => {
     const r = listPaths();
@@ -218,10 +218,12 @@ describe("harness extra paths", () => {
     addPath("claude", "work=/srv/team");
     addPath("hermes", "/srv/hermes-prod/state.db");
     const out = listPaths().lines.join("\n");
-    expect(out).toContain("claude:");
+    // A section rule now, not a `claude:` prose heading — the same shape every
+    // other listing uses.
+    expect(out).toContain("━━ claude");
     expect(out).toContain("/srv/team");
     expect(out).toContain("work-*");
-    expect(out).toContain("hermes:");
+    expect(out).toContain("━━ hermes");
     expect(out).toContain("derived from the folder name");
   });
 
@@ -240,7 +242,7 @@ describe("harness extra paths", () => {
     expect(out).toContain("claud");
   });
 
-  // ── dispatch ───────────────────────────────────────────────────────────
+  // ━━ dispatch ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━─
 
   it("rejects an unknown subcommand and prints usage", () => {
     const r = runHarnessCommand(["frobnicate"]);
@@ -259,7 +261,7 @@ describe("harness extra paths", () => {
     expect(runHarnessCommand(["remove-path", "claude", "w"]).exitCode).toBe(0);
   });
 
-  // ── malformed config on disk ───────────────────────────────────────────
+  // ━━ malformed config on disk ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━─
 
   it("ignores a sources table that is not shaped like one", () => {
     writeConfig(DEFAULT_CONFIG);

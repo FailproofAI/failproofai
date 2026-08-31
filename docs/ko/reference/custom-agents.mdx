@@ -1,45 +1,40 @@
 ---
 title: "커스텀 에이전트"
-description: "커스텀 에이전트의 트레이스를 계측하여 Failproof AI가 실행을 재구성하고 장애를 발견할 수 있도록 합니다."
+description: "failproofai-sdk의 설정, 이벤트 카탈로그, 상관 관계 규칙 및 전달 방식."
 icon: "python"
 ---
 
-`failproofai-sdk`를 사용해 커스텀 에이전트의 트레이스를 계측하면 Failproof AI가 각 실행을 재구성하고, 동작을 감사하며, 근거 기반의 장애를 발견할 수 있습니다. SDK는 Failproof 데몬이 Cloud로 전달할 구조화된 이벤트를 기록합니다. Python 3.10 이상이 필요합니다.
+모든 설정, 메서드, 필드가 무엇을 하는지 설명합니다. 처음 계측을 시작하는 경우라면 가이드부터 시작하세요 — 이 페이지는 참조용입니다.
 
-트레이싱을 통해 커스텀 에이전트를 관측 가능하고 감사 가능한 상태로 만들 수 있습니다. 실행 전에 안전하지 않은 동작을 차단하려면 런타임에 별도의 강제 실행 훅도 필요합니다.
+<Columns cols={2}>
+  <Card title="커스텀 에이전트 가이드" icon="code" href="/ko/start/integrations/custom-agents">
+    설치, 계측, 이벤트 메서드, 실제 예제, 그리고 자주 발생하는 문제들.
+  </Card>
+  <Card title="프레임워크를 사용 중인가요?" icon="plug" href="/ko/start/integrations">
+    LangChain, CrewAI, LlamaIndex, Pydantic AI는 한 번의 호출로 스스로 계측합니다.
+  </Card>
+</Columns>
 
-<Info>
-  커스텀 에이전트 설정에서 정책을 적용하려면 [Failproof AI에 문의](mailto:support@befailproof.ai)하세요. 런타임의 모델, 도구, 라이프사이클 경계를 정책 훅에 매핑하는 작업을 도와드립니다.
-</Info>
+Python 3.10 이상. 런타임 의존성 없음.
 
-<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with the Failproof AI Python SDK" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
-</div>
-
-## `failproofai-sdk` 설치
-
-SDK는 현재 프라이빗 휠로 배포됩니다. 현재 버전 및 다운로드 접근 권한은 Failproof AI 담당자에게 문의하세요.
+## 설치
 
 ```bash
-VERSION=<sdk-version>
-pip install "./failproofai_sdk-${VERSION}-py3-none-any.whl"
-python -c "import failproofai; print(failproofai.__version__)"
+pip install failproofai-sdk
 ```
 
-`uv`를 사용하는 경우, 먼저 휠을 다운로드한 후 `uv add ./failproofai_sdk-${VERSION}-py3-none-any.whl`을 실행하세요. 프라이빗 아티팩트 저장소 또는 의존성 잠금 파일에 휠을 고정하세요.
-
-패키지는 `failproofai-sdk`로 설치되며, Python에서는 `failproofai`로 임포트합니다.
+패키지는 `failproofai-sdk`로 설치되며 Python에서 `failproofai_sdk`로 임포트합니다. `failproofai-sdk[langgraph]` 같은 프레임워크 extras는 해당 프레임워크 자체를 함께 설치하지만, 어댑터는 항상 기본 wheel에 포함되어 있습니다.
 
 ## Failproof 데몬 연결
 
 <Tabs>
   <Tab title="대시보드">
-    1. **Admin → Keys**로 이동하여 `events:add` 권한이 있는 키를 생성합니다.
+    1. **Admin → Keys**로 이동해 `events:add` 권한으로 키를 생성합니다.
     2. 에이전트 머신에서 [Failproof 데몬을 Cloud에 연결](/ko/start/setup#connect-a-machine-to-cloud)합니다.
-    3. 계측된 세션을 한 번 실행한 후, **Observe → Events**에서 정확한 ID를 확인합니다.
-    4. **Observe → Sessions**로 이동하여 동일한 환경을 선택하고 재구성된 트레이스를 엽니다.
+    3. 계측된 세션을 한 번 실행한 뒤, **Observe → Events**에서 정확한 ID를 확인합니다.
+    4. **Observe → Sessions**로 이동해 동일한 환경을 선택하고, 재구성된 트레이스를 엽니다.
 
-    ![실행 그래프와 순서화된 이벤트 트레이스로 재구성된 커스텀 Python 에이전트 세션.](/images/dashboard/session-detail.png)
+    ![커스텀 Python 에이전트 세션이 실행 그래프와 순서가 있는 이벤트 트레이스로 재구성된 모습.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -51,102 +46,84 @@ python -c "import failproofai; print(failproofai.__version__)"
   </Tab>
 </Tabs>
 
-## 전체 실행 계측
-
-프로세스 시작 시 `configure()`를 한 번 호출합니다. 모든 이벤트 호출은 키워드 전용이며, 안정적인 `session_id`와 `agent_id`가 필요합니다.
+## 설정
 
 ```python
-import traceback
-import uuid
+import failproofai_sdk
 
-import failproofai
-
-failproofai.configure(environment="production")
-
-session_id = uuid.uuid4().hex
-agent_id = "checkout-agent"
-
-failproofai.event.agent_start(
-    session_id=session_id,
-    agent_id=agent_id,
-    goal="Resolve a failed checkout",
-)
-
-try:
-    tool_call_id = uuid.uuid4().hex
-    failproofai.event.tool_use(
-        session_id=session_id,
-        agent_id=agent_id,
-        tool_name="lookup_order",
-        tool_call_id=tool_call_id,
-        input={"order_id": "ord_8421"},
-    )
-    result = {"status": "payment_failed"}
-    failproofai.event.tool_result(
-        session_id=session_id,
-        agent_id=agent_id,
-        tool_name="lookup_order",
-        tool_call_id=tool_call_id,
-        output=result,
-    )
-except Exception as exc:
-    failproofai.event.error(
-        session_id=session_id,
-        agent_id=agent_id,
-        error_type=type(exc).__name__,
-        message=str(exc),
-        traceback=traceback.format_exc(),
-    )
-    failproofai.event.agent_end(
-        session_id=session_id,
-        agent_id=agent_id,
-        outcome="failed",
-    )
-    raise
-else:
-    failproofai.event.agent_end(
-        session_id=session_id,
-        agent_id=agent_id,
-        outcome="success",
-        summary="Escalated the failed payment",
-    )
-```
-
-액터당 `agent_start`를 한 번 발행합니다. 서브 에이전트의 경우 부모의 `session_id`를 재사용하고, 각 액터에 고유한 `agent_id`를 부여하며, `parent_id`는 세션 ID가 아닌 부모 **에이전트 ID**로 설정합니다.
-
-## 설정 레퍼런스
-
-```python
-failproofai.configure(
+failproofai_sdk.configure(
     base_dir=None,
     flush_interval=0.5,
     environment="production",
 )
 ```
 
-| 설정 | 동작 |
+| 인자 | 역할 |
 | --- | --- |
-| `base_dir` | 명시적 스풀 루트. 모든 환경 변수보다 우선합니다. |
-| `flush_interval` | 메모리에서 JSONL로의 백그라운드 쓰기 간격(초). 기본값: `0.5`. |
-| `environment` | 모든 이벤트에 붙는 배포 레이블. 기본값은 `dev`. |
-| `FAILPROOFAI_HOME` | `custom-agents` 스풀이 포함된 Failproof AI 루트를 변경합니다. |
+| `environment` | 모든 이벤트에 붙는 레이블 — `production`, `staging`, `prod-eu`. 기본값은 `dev`. |
+| `flush_interval` | 백그라운드 스레드가 디스크에 쓰는 주기(초). 기본값은 `0.5`. |
+| `base_dir` | 쓰기 경로. 기본값은 데몬의 스풀 디렉터리로, 특별한 이유가 없는 한 이 값을 그대로 사용하면 됩니다. |
 
-`base_dir`가 설정된 경우 SDK는 해당 경로에 기록합니다. 그렇지 않으면 `FAILPROOFAI_HOME` 또는 `~/.failproofai` 아래 Failproof 데몬의 `custom-agents` 스풀을 사용합니다.
+환경 변수로 대신 설정할 수도 있습니다:
 
-SDK는 메모리에 호출을 큐에 저장하고 백그라운드 스레드에서 배치를 기록합니다. Python의 `atexit` 핸들링을 통해 최종 플러시도 시도합니다. 수명이 짧은 워커의 경우 정상적인 인터프리터 종료를 허용하세요. 강제 프로세스 종료 시 메모리에 남아있는 이벤트가 손실될 수 있습니다.
+| 변수 | 역할 |
+| --- | --- |
+| `AGENTEYE_ENVIRONMENT` | 코드 변경 없이 `environment`를 설정합니다. 레이블이 앱이 아닌 배포 환경에 속할 때 유용합니다. `configure()` 인자가 이 값보다 우선합니다. |
+| `FAILPROOFAI_HOME` | 스풀을 보관하는 Failproof AI 루트 디렉터리를 변경합니다. |
+| `FAILPROOFAI_SDK_STRICT` | `1`로 설정하면 계측 오류가 로깅 대신 예외를 발생시킵니다. |
+| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | `1`로 설정하면 프레임워크 호환성 문제가 경고 후 계속 진행하는 대신 예외를 발생시킵니다. |
+
+<Warning>
+  **`environment`에 쉼표를 사용하지 마세요.** 수집기는 해당 필드를 쉼표 기준으로 분할하여 필터를 구성하며, 레이블에 쉼표가 포함된 이벤트는 모두 건너뜁니다 — 즉, 실행 전체가 조용히 사라질 수 있습니다. `prod,eu`가 아닌 `prod-eu`로 작성하세요.
+
+  `configure(environment="prod,eu")`는 즉시 예외를 발생시켜 바로 알 수 있습니다. `AGENTEYE_ENVIRONMENT`는 예외를 발생시킬 수 없으므로 — 호출자가 없기 때문에 — 한 번 경고를 출력하고 `dev`로 폴백합니다.
+</Warning>
+
+이벤트는 메모리에 큐잉되고 `flush_interval`초마다 백그라운드에서 기록되며, 인터프리터 종료 시 최종 flush가 실행됩니다. 프로세스가 강제 종료되면 아직 기록되지 않은 이벤트는 손실됩니다.
+
+## 식별자
+
+모든 이벤트는 세션과 에이전트에 속합니다. **스코프가 둘 다 자동으로 채워주므로** 직접 전달할 일은 거의 없습니다:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("planner"):
+        failproofai_sdk.event.tool_use(tool_name="search", tool_call_id="c1")
+```
+
+`session_id`나 `agent_id`를 명시적으로 전달하는 방식도 여전히 유효하며, 이 경우 해당 값이 우선합니다. 스코프에도 바인딩되지 않고 직접 전달하지도 않으면, Cloud가 조용히 버릴 이벤트를 내보내는 대신 `TypeError`가 발생합니다.
+
+<Note>
+  식별자는 컨텍스트 변수를 통해 전달됩니다. `asyncio` 태스크는 자동으로 따라가지만, **새 스레드는 그렇지 않습니다** — 워커를 `failproofai_sdk.propagate()`로 감싸지 않으면 해당 이벤트가 연결되지 않은 상태로 기록됩니다.
+</Note>
 
 ## 이벤트 카탈로그
 
-모든 메서드는 `None`을 반환합니다. `None`으로 남겨진 필드는 JSON `null`로 기록되지 않고 생략됩니다.
+총 15개의 메서드. 대부분 **쌍으로** 구성되어 있으며 — 시작 메서드를 호출한 뒤 종료 메서드를 호출하면, SDK가 그 간격을 측정합니다.
 
-| 메서드 | 식별 필드 외 필수 필드 | 선택 필드 |
+| | 시작 | 종료 |
+| --- | --- | --- |
+| **에이전트** | `agent_start` | `agent_end` |
+| | `agent_pause` | `agent_resume` |
+| **모델** | `model_request` | `model_response` |
+| **툴** | `tool_use` | `tool_result` |
+| **훅** | `hook_triggered` | `hook_completed` |
+| **사람** | `human_wait` | `human_input` |
+
+단독으로 사용하는 세 가지: `error`, `human_pause`, `human_interrupt`.
+
+<Accordion title="메서드별 전체 필드" icon="table">
+
+모든 메서드는 `session_id`와 `agent_id`도 받으며, 스코프가 자동으로 채워줍니다. `None`으로 남겨진 값은 JSON `null`로 전송되지 않고 제외되며, 모든 메서드는 `None`을 반환합니다.
+
+| 메서드 | 필수 | 선택 |
 | --- | --- | --- |
 | `agent_start` | — | `goal`, `parent_id` |
 | `agent_end` | — | `outcome`, `summary` |
 | `agent_pause` | `pause_id` | `reason`, `user_id` |
 | `agent_resume` | `pause_id` | `reason`, `user_id` |
-| `model_request` | — | `model`, `messages`, `system`, `tools` |
-| `model_response` | — | `model`, `stop_reason`, `input_tokens`, `output_tokens`, `content`, `role` |
+| `model_request` | — | `model`, `messages`, `system`, `tools`, `request_id` |
+| `model_response` | — | `model`, `stop_reason`, `input_tokens`, `output_tokens`, `content`, `role`, `request_id`, `duration_ms` |
 | `tool_use` | `tool_name`, `tool_call_id` | `input` |
 | `tool_result` | `tool_name`, `tool_call_id` | `output`, `error` |
 | `hook_triggered` | `hook_name`, `hook_id` | `trigger_event`, `input` |
@@ -157,27 +134,64 @@ SDK는 메모리에 호출을 큐에 저장하고 백그라운드 스레드에�
 | `human_pause` | — | `reason`, `user_id` |
 | `human_interrupt` | — | `reason`, `user_id`, `at_step` |
 
-완료가 실패로 분류되어야 하는 경우 `outcome="failed"`, `"error"`, `"timeout"`, 또는 `"rejected"`를 사용하세요. `"failure"`를 포함한 다른 값은 현재 백엔드에서 실패로 분류되지 않습니다.
+</Accordion>
 
-## 상관관계 및 지속 시간 규칙
+<Warning>
+  실행을 실패로 표시하려면 `outcome`이 반드시 `failed`, `error`, `timeout`, `rejected` 중 하나여야 합니다. 비슷해 보이는 `"failure"`를 포함하여 그 외의 값은 모두 성공으로 처리됩니다.
+</Warning>
 
-- 매칭되는 완료 이벤트에는 동일한 `tool_call_id`, `hook_id`, `pause_id`, 또는 `input_id`를 재사용하세요.
-- SDK는 `tool_result`, `hook_completed`, `agent_resume`, `human_input`의 `duration_ms`를 자동으로 계산합니다. 해당 메서드에 직접 전달하면 `ValueError`가 발생합니다.
-- 도구 및 훅 ID는 프로세스 전체의 단일 대기 맵을 공유합니다. 동시 세션과 두 네임스페이스 모두에서 전역적으로 고유하게 만드세요. 프로바이더 ID나 UUID를 사용하는 것이 가장 안전합니다.
-- 프로세스가 분리된 쌍도 다운스트림에서는 상관관계가 유지되지만, SDK는 프로세스 내 지속 시간을 계산할 수 없습니다.
-- 대기 맵은 최대 10,000개의 시작 항목을 보유하며, 가득 차면 가장 오래된 항목을 제거합니다.
+## 쌍 매칭과 시간 측정
 
-## 커스텀 필드 및 페이로드
+**규칙은 하나: 종료 이벤트에 시작 이벤트와 동일한 id를 전달하세요.** 이것이 둘을 연결하고 SDK가 간격을 측정하는 기준입니다.
 
-모든 이벤트는 추가 키워드 필드를 받을 수 있습니다. 다운스트림 쿼리에서 구조가 필요한 경우 JSON 호환 값을 사용하세요. UUID, datetime, decimal, set, bytes, 모델 객체 등 지원되지 않는 리프 타입은 작성기가 문자열로 변환합니다.
+| 쌍 | 매칭 기준 |
+| --- | --- |
+| `tool_use` → `tool_result` | `tool_call_id` |
+| `hook_triggered` → `hook_completed` | `hook_id` |
+| `agent_pause` → `agent_resume` | `pause_id` |
+| `human_wait` → `human_input` | `input_id` |
+| `model_request` → `model_response` | `request_id` |
 
-예약된 커스텀 이름은 `timestamp`, `session_id`, `agent_id`, `type`, `environment`입니다. 선택 필드의 오타는 새로운 커스텀 필드로 허용되므로, 표준 필드가 Cloud에 표시되지 않을 때는 발행된 JSON을 확인하세요.
+**`duration_ms`를 직접 전달하지 마세요.** SDK가 측정하며, 직접 전달하면 `ValueError`가 발생합니다.
 
-## 전달 및 검증
+유일한 예외는 `model_response`로, 실제 공급자 지연 시간을 오직 여러분만 알 수 있습니다. 정수 밀리초 값을 전달하세요 — float는 예외가 발생합니다. 해당 컬럼은 32비트 정수이므로 float를 전달하면 값이 비어 있는 채로 저장됩니다.
+
+<Accordion title="엣지 케이스" icon="circle-help">
+
+- **Id는 종류별, 세션별로만 고유하면 됩니다.** 툴 호출과 훅이 같은 id를 공유해도 되며, 동시에 실행 중인 두 세션이 같은 id를 재사용해도 충돌하지 않습니다.
+- **에이전트에 스코프가 지정되지 않습니다.** 한 에이전트에서 시작하고 다른 에이전트에서 종료된 쌍도 정상적으로 매칭됩니다 — 멀티 에이전트 코드에서 일반적인 경우입니다.
+- **`request_id`는 선택 사항이지만 권장합니다.** 없으면 모델 이벤트가 도착 순서대로 쌍을 이루므로, 동일한 에이전트에서 두 개의 동시 호출이 잘못 매칭될 수 있습니다.
+- **프로세스를 넘나드는 쌍**은 Cloud에서 여전히 매칭되지만, SDK는 시간을 측정할 수 없습니다 — 어느 프로세스도 양쪽을 모두 보지 못했기 때문입니다.
+- **최대 10,000개의 시작 이벤트가 종료를 기다릴 수 있습니다.** 이를 초과하면 가장 오래된 것이 제거되므로, 누수가 무한히 증가하지는 않습니다.
+
+</Accordion>
+
+## 커스텀 필드
+
+추가로 전달한 키워드는 이벤트와 함께 저장됩니다:
+
+```python
+failproofai_sdk.event.tool_use(
+    tool_name="search", tool_call_id="c1",
+    fw_tenant="acme", fw_region="eu-west-1",     # your own
+)
+```
+
+나중에 쿼리하려면 JSON 타입을 사용하는 것이 좋습니다. UUID, datetime, `Decimal`, set, bytes, 모델 객체 등 그 외의 값은 문자열로 저장됩니다.
+
+<Warning>
+  **필드 이름에 접두사를 붙이세요.** extras는 마지막에 적용되므로, `model`, `tool_name`, `outcome` 같은 이름의 필드는 실제 값을 조용히 덮어씁니다. 프레임워크 어댑터는 `fw_`를 사용합니다. 같은 방식을 따르면 충돌이 발생하지 않습니다.
+
+  이것이 잘못 입력한 선택 필드가 오류를 발생시키지 않는 이유이기도 합니다 — 단순히 새 커스텀 필드가 됩니다. Cloud에서 표준 필드가 보이지 않는다면 먼저 철자를 확인하세요.
+</Warning>
+
+다음 다섯 가지 이름은 예약되어 있으며 사용이 거부됩니다: `timestamp`, `session_id`, `agent_id`, `type`, `environment`.
+
+## 전달 및 확인
 
 <Tabs>
   <Tab title="대시보드">
-    **Observe → Events**에서 처음에 `agent_start`가, 마지막에 `agent_end`가 있는지 확인합니다. 그런 다음 **Observe → Sessions**를 열어 모델, 도구, 휴먼, 훅, 오류 이벤트가 의도한 순서대로 나타나는지 확인합니다. 세션 ID를 주요 트러블슈팅 키로 사용하세요.
+    **Observe → Events**에서 `agent_start`가 첫 번째로, `agent_end`가 마지막으로 존재하는지 확인합니다. 그런 다음 **Observe → Sessions**를 열어 모델, 툴, 사람, 훅, 오류 이벤트가 의도한 순서대로 나타나는지 확인합니다. 세션 ID를 기본 트러블슈팅 키로 활용하세요.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -189,10 +203,14 @@ SDK는 메모리에 호출을 큐에 저장하고 백그라운드 스레드에�
   </Tab>
 </Tabs>
 
-Cloud가 비어 있는 경우, `$FAILPROOFAI_HOME/custom-agents/events`를 확인하거나 해당 경로가 없으면 `~/.failproofai/custom-agents/events`를 확인하세요. JSONL 파일이 존재하면 SDK가 이벤트를 발행한 것이고, 스풀이 계속 증가하면 데몬 설정 또는 전달 문제를, 스풀이 비어 있으면 계측 또는 프로세스 수명 문제를 의심하세요.
+Cloud가 비어 있다면 `$FAILPROOFAI_HOME/custom-agents/events`를, 그렇지 않으면 `~/.failproofai/custom-agents/events`를 확인하세요. JSONL 파일이 있으면 SDK가 이벤트를 내보냈음을 증명합니다. 스풀이 계속 증가하면 데몬 설정이나 전달 문제를, 스풀이 비어 있으면 계측 또는 프로세스 수명 문제를 의심하세요.
+
+<Note>
+  데몬이 중지되었을 때만 스풀을 검사하세요. 실행 중에는 밀리초 단위로 각 배치를 수집하고 삭제하므로, 디렉터리 목록이 실제로 내보낸 이벤트 수보다 훨씬 적게 보일 수 있습니다.
+</Note>
 
 ## 커스텀 런타임에서 장애 방지
 
-감사 결과와 연결된 트레이스를 활용하여 안전하지 않은 동작, 필요한 근거, 의도된 응답을 정의합니다. 커스텀 강제 실행 통합은 실행 전에 동작을 노출하고, 구조화된 입력을 정책 엔진에 전달하며, 결과로 나오는 allow, instruct, 또는 deny 결정을 적용해야 합니다.
+감사 결과와 연결된 트레이스를 활용해 안전하지 않은 액션, 필요한 증거, 의도된 응답을 정의하세요. 커스텀 적용 통합은 실행 전에 액션을 노출하고, 구조화된 입력을 정책 엔진에 전달한 뒤, 결과로 나온 allow, instruct, deny 결정을 적용해야 합니다.
 
-런타임에 맞는 통합을 설계하고 검증하려면 [support@befailproof.ai](mailto:support@befailproof.ai)로 이메일을 보내세요.
+[Failproof AI에 문의](mailto:support@befailproof.ai)하시면 런타임의 모델, 툴, 라이프사이클 경계를 정책 훅에 매핑하고 통합을 함께 검증해 드립니다.

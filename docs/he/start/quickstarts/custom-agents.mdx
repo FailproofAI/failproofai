@@ -1,0 +1,50 @@
+---
+title: "סוכנים מותאמים"
+description: "עטוף את הסוכן שלך בשלוש בלוקי `with` והוא יתחיל להקליט."
+icon: "code"
+---
+
+עבור סוכן שכתבת בעצמך, או framework שלFailproof AI אין לו adapter עבורו.
+
+אתה עוטף את העבודה שכבר עושה בבלוקי `with`. כל אחד מהם מקליט מתי התחיל, מתי סיים, וכמה זמן זה לקח — אתה לא קורא לשום דבר אחר.
+
+## התקנה
+
+```bash
+pip install failproofai-sdk
+```
+
+ללא extras, וללא dependencies.
+
+## Instrument
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+
+with failproofai_sdk.session():                 # one run
+    with failproofai_sdk.agent("planner"):      # one unit of work
+        with failproofai_sdk.tool_call("search", input={"q": q}) as t:
+            t.output = search(q)                # one tool call
+```
+
+קרא את זה מלמעלה למטה וזה אומר מה זה אומר:
+
+| עטוף את זה ב | כדי לומר |
+| --- | --- |
+| `session()` | אירועים אלה שייכים לאותו run |
+| `agent()` | משהו עושה עבודה — תן לו שם שהיית מזהה ברשימה |
+| `tool_call()` | זה כלי אחד, וזה מה שהוא החזיר |
+
+קנן אותם איך שהקוד שלך קנן. אתה לא עובר ids סביב: כל בלוק זוכר מה הוא בתוך זה, אז כל דבר שאתה מקליט בוחר את ה-run הנכון ואת הסוכן הנכון בעצמו. `async with` עובד בדיוק אותו הדבר.
+
+## בדוק שהגיע
+
+הרץ את זה פעם אחת, ואז פתח **Observe → Sessions** ובחר את הסביבה שלך. ה-run שלך מופיע כ-trace משוחזר.
+
+אם שום דבר לא מגיע, אשר שהמכונה מחוברת עם `failproofai config --status`.
+
+<Card title="מדריך מלא לסוכנים מותאמים" icon="arrow-right" href="/he/start/integrations/custom-agents">
+  כל שיטת אירוע, מה קורה כשהקוד שלך מעלה חריגות, דוגמה מעובדת, threads ו-async, וביצוע instrument של framework ללא adapter.
+</Card>

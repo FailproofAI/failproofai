@@ -1,47 +1,49 @@
 ---
 title: "策略编辑器"
-description: "根据已确认的故障模式创建和修订版本化策略。"
+description: "从已确认的故障模式创建和修订带版本控制的策略。"
 icon: "file-pen-line"
 ---
 
-使用策略编辑器将发现的问题转化为可部署的规则。将编写与部署分离，确保草稿不会在未经确认的情况下改变线上行为。
+使用策略编辑器将发现的问题转化为可部署的规则。将创作与部署分离，确保草稿不会悄然改变已上线的行为。
 
-当某个问题具有可重复的操作模式时，在 **Analyze → issues** 下打开该问题并选择 **generate policy**。Failproof AI 会先说明该策略是否能够表达此问题，再将经过审查的意图和发现上下文带入编辑器。生成的源代码在发布之前始终保持草稿状态。
+当某个问题具有可重复的操作模式时，在 **Analyze → issues** 下打开该问题并选择 **generate policy**。Failproof AI 会首先说明该问题是否可以用策略来表达，然后将经过审查的意图和问题上下文带入编辑器。生成的源代码在您发布之前始终保持草稿状态。
 
 ## 发布策略版本
 
 <Tabs>
-  <Tab title="控制台">
-    1. 进入 **Admin → policy editor**，在 **compose** 中描述故障模式或粘贴 JavaScript 策略源代码。
+  <Tab title="仪表板">
+    1. 前往 **Admin → policy editor**，在 **compose** 中描述故障模式或粘贴 JavaScript 策略源代码。
     2. 验证源代码并修复所有报告的错误。
-    3. 填写策略标识并发布，然后使用 **library** 比较或禁用版本。
-    4. 确认版本可用于机器部署后，选择 **enforcement**。
+    3. 输入策略标识并发布，然后使用 **library** 比较或禁用各个版本。
+    4. 当版本准备好进行机器部署时，选择 **enforcement**。
 
-    ![策略编辑器的 compose 视图，包含策略标识、AI 辅助起草、源代码验证和发布控件。](/images/dashboard/policy-editor.png)
+    ![策略编辑器的 compose 视图，包含策略标识、AI 辅助草稿、源代码验证和发布控件。](/images/dashboard/policy-editor.png)
   </Tab>
   <Tab title="CLI">
-    Cloud CLI 不支持发布策略版本。请在本地验证源代码后，再将其复制到编辑器中：
+    通过 CLI 使用 `fp policies publish` 发布。该命令会生成一个**新版本**，而不会在原处编辑，并在发送前使用 node 对源代码进行语法检查——否则语法错误只会在部署到机器上执行时才会暴露：
 
     ```bash
-    failproofai policies --install --custom ./checkout.policies.ts \
-      --cli claude --scope project
+    fp policies test ./checkout.policy.mjs --command "git push --force" --expect deny
+    fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
     ```
 
-    从 **Admin → policy editor** 发布经过审查的版本。
+    发布本身不会部署任何内容——新版本在 `fp fleet deploy` 将其部署到机器之前不会生效。`fp policies compose "<plain English>"` 会使用云端助手生成源代码草稿并打印供审阅，而不会直接发布。
+
+    如需将策略安装到本地 Agent CLI（而非云端），请使用 `failproofai policies --install --custom ./checkout.policies.ts --cli claude --scope project`。
   </Tab>
 </Tabs>
 
-## 编写检查清单
+## 创作检查清单
 
-1. 用操作层面的语言命名故障模式。
-2. 选择包含足够判断依据的钩子事件和工具。
-3. 编写能匹配不安全行为的最窄条件。
-4. 返回一条说明，告知 Agent 或操作员下一步应如何处理。
-5. 添加应匹配的示例以及必须保持允许的示例。
-6. 保存新版本并提交审查。
+1. 用运营语言描述故障模式。
+2. 选择包含足够判断依据的 hook 事件和工具。
+3. 编写能够匹配不安全行为的最精确条件。
+4. 返回一个原因说明，告知 Agent 或操作员下一步应该怎么做。
+5. 添加应当匹配的示例以及必须保持允许状态的示例。
+6. 保存新版本并请求审查。
 
-当 Agent 能够安全纠正操作方向时使用 `instruct`。当允许该操作会带来不可接受或不可逆的风险时使用 `deny`。
+当 Agent 可以安全地自行纠正时，使用 `instruct`。当允许该操作会带来不可接受或不可逆的风险时，使用 `deny`。
 
 <Info>
-  策略版本是不可变的部署输入。编辑草稿会创建新版本，而不应覆盖已分配给机器的现有版本。
+  策略版本是不可变的部署输入。编辑草稿会创建新版本；不应重写已分配给机器的版本。
 </Info>

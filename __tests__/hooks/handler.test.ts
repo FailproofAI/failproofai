@@ -69,6 +69,15 @@ vi.mock("../../src/hooks/hook-logger", () => ({
   hookLogWarn: vi.fn(),
   hookLogError: vi.fn(),
 }));
+vi.mock("../../src/hooks/pack-manifest", () => ({
+  // Isolation, not convenience: unmocked, `readInstalledPacks` reads the REAL
+  // ~/.failproofai/policies/packs of whoever runs the suite, so these tests would
+  // pass on a clean machine and behave differently on one with a pack installed.
+  readInstalledPacks: vi.fn(() => ({ packs: [], errors: [] })),
+  // The handler asks this on every event to decide whether the migration shim
+  // still applies. Mocked for the same reason as the line above.
+  hasInstalledPacks: vi.fn(() => false),
+}));
 
 describe("hooks/handler", () => {
   let stderrSpy: ReturnType<typeof vi.spyOn>;
@@ -1139,6 +1148,7 @@ describe("hooks/handler", () => {
           { name: "hook-b", fn: async () => ({ decision: "allow" as const }), match: { events: ["Stop" as never] } },
         ],
         conventionSources: [],
+        packFailures: new Map(), packAliases: new Map(),
       });
       mockStdin();
       const { trackHookEvent } = await import("../../src/hooks/hook-telemetry");
@@ -1174,6 +1184,7 @@ describe("hooks/handler", () => {
           { name: "bad-hook", fn: async () => { throw new Error("oops"); } },
         ],
         conventionSources: [],
+        packFailures: new Map(), packAliases: new Map(),
       });
       const { registerPolicy } = await import("../../src/hooks/policy-registry");
       const { trackHookEvent } = await import("../../src/hooks/hook-telemetry");
@@ -1203,6 +1214,7 @@ describe("hooks/handler", () => {
           { name: "slow-hook", fn: async () => { throw new Error("timeout"); } },
         ],
         conventionSources: [],
+        packFailures: new Map(), packAliases: new Map(),
       });
       const { registerPolicy } = await import("../../src/hooks/policy-registry");
       const { trackHookEvent } = await import("../../src/hooks/hook-telemetry");

@@ -6,36 +6,36 @@ icon: "list-tree"
 
 ## Familias de eventos
 
-- Inicio, fin, pausa y reanudación de agente
+- Inicio, fin, pausa y reanudación del agente
 - Solicitud y respuesta del modelo
 - Uso de herramienta y resultado
 - Hook activado y completado
-- Espera humana, entrada, pausa e interrupción
+- Espera, entrada, pausa e interrupción humana
 - Errores explícitos
 
-Cada evento incluye una marca de tiempo, ID de sesión, ID de agente, tipo de evento y entorno. Los campos específicos de cada evento contienen datos de modelo, herramienta, correlación, resultado, contenido, duración o error.
+Cada evento incluye una marca de tiempo, ID de sesión, ID de agente, tipo de evento y entorno. Los campos específicos del evento contienen datos sobre el modelo, la herramienta, la correlación, el resultado, el contenido, la duración o el error.
 
 ## Inspeccionar un contrato de evento
 
 <Tabs>
   <Tab title="Panel de control">
     1. Abre **Observe → Events**.
-    2. Define una ventana de tiempo corta y filtra por entorno, agente y tipo de evento.
-    3. Selecciona un evento para inspeccionar sus campos normalizados y el payload en bruto, luego abre su sesión para ver el contexto de ejecución.
-    4. Si falta la duración de un par, verifica que los eventos de inicio y finalización usen el mismo ID de correlación.
+    2. Establece una ventana de tiempo reducida y filtra por entorno, agente y tipo de evento.
+    3. Selecciona un evento para inspeccionar sus campos normalizados y el payload sin procesar; luego abre su sesión para ver el contexto de ejecución.
+    4. Si falta una duración emparejada, verifica que los eventos de inicio y finalización usen el mismo ID de correlación.
 
-    Usa el flujo de Events para reducir los datos a una sola ejecución de agente e inspeccionar los campos de evento normalizados.
+    Usa el flujo de Events para acotar los datos a una ejecución de agente e inspeccionar los campos de evento normalizados.
 
-    ![El flujo en vivo de Events con filtros por entorno, agente, sesión y tipo de evento.](/images/dashboard/events-stream.png)
+    ![El flujo de Events en vivo con filtros por entorno, agente, sesión y tipo de evento.](/images/dashboard/events-stream.png)
 
-    Luego sigue el evento hasta su sesión. El trazado muestra qué ocurrió inmediatamente antes y después, lo cual es necesario cuando el payload por sí solo resulta ambiguo.
+    Luego sigue el evento hasta su sesión. El trazado muestra qué ocurrió inmediatamente antes y después, lo cual es necesario cuando el payload por sí solo es ambiguo.
 
     ![El trazado de sesión vinculado para inspeccionar el evento en su contexto de ejecución.](/images/dashboard/session-detail.png)
 
-    Compara los IDs de correlación y las marcas de tiempo en ambas vistas cuando falte un evento par o una duración.
+    Compara los IDs de correlación y las marcas de tiempo en ambas vistas cuando falte un evento emparejado o una duración.
   </Tab>
   <Tab title="CLI">
-    Descubre los valores de filtro válidos y luego obtén los payloads completos de los eventos para una sesión:
+    Descubre los valores de filtro válidos y luego obtén los payloads completos de los eventos de una sesión:
 
     ```bash
     fp list event_types
@@ -53,26 +53,26 @@ Cada evento incluye una marca de tiempo, ID de sesión, ID de agente, tipo de ev
 
 ## Campos reservados del SDK
 
-No uses `timestamp`, `session_id`, `agent_id`, `type` ni `environment` como campos personalizados del SDK de Python. Las duraciones de eventos pareados, como la duración del resultado de una herramienta, son calculadas por el SDK y no pueden proporcionarse manualmente.
+No uses `timestamp`, `session_id`, `agent_id`, `type` ni `environment` como campos personalizados del SDK de Python. Las duraciones de eventos emparejados, como la duración del resultado de una herramienta, son calculadas por el SDK y no pueden proporcionarse manualmente.
 
 ## Límites locales
 
-- El estado de Failproof AI reside en `~/.failproofai` a menos que se configure explícitamente de otro modo.
-- `failproofai-sdk` usa `AGENTEYE_HOME` para su variable de anulación del directorio base heredada.
-- Las etiquetas de entorno pueden definirse mediante la configuración del SDK o con `AGENTEYE_ENVIRONMENT`.
-- Las credenciales del daemon se almacenan de forma separada de los ajustes no confidenciales.
+- El estado de Failproof AI reside en `~/.failproofai` a menos que se configure explícitamente de otra manera.
+- `failproofai-sdk` siempre escribe en el spool bajo `~/.failproofai/custom-agents`. `FAILPROOFAI_HOME` reubica ese directorio raíz; el segmento `custom-agents` siempre se añade, por lo que el spool no puede colocarse fuera de él. Solo el propio `configure(base_dir=...)` del SDK escribe en otro lugar. `AGENTEYE_HOME` es leído por el antiguo `agenteye-collector` para determinar qué observar, y ya no afecta dónde escribe el SDK.
+- Las etiquetas de entorno pueden establecerse mediante la configuración del SDK o con `AGENTEYE_ENVIRONMENT`.
+- Las credenciales del daemon se almacenan de forma separada de la configuración no secreta.
 
-Usa nombres de entorno estables y de baja cardinalidad. No se admiten comas en las etiquetas de entorno del daemon.
+Usa nombres de entorno estables y de baja cardinalidad. Las comas no están admitidas en las etiquetas de entorno del daemon.
 
 ## Cambiar una etiqueta de entorno
 
 <Tabs>
   <Tab title="Panel de control">
-    Las etiquetas de entorno son asignadas por el SDK emisor o por el daemon de Failproof. Después de cambiar una, abre **Observe → Sessions** y usa el filtro de entorno para confirmar que las nuevas sesiones llevan el nuevo valor. Las sesiones existentes conservan su entorno original.
+    Las etiquetas de entorno son asignadas por el SDK emisor o el daemon de Failproof. Tras cambiar una, abre **Observe → Sessions** y usa el filtro de entorno para confirmar que las nuevas sesiones llevan el nuevo valor. Las sesiones existentes conservan su entorno original.
 
   </Tab>
   <Tab title="CLI">
-    Para `failproofai-sdk`, configura el entorno en el código o mediante su variable de entorno heredada. Vuelve a ejecutar la configuración del daemon al cambiar ajustes a nivel de máquina.
+    Para `failproofai-sdk`, configura el entorno en el código o mediante su variable de entorno heredada. Vuelve a ejecutar la configuración del daemon cuando cambies ajustes a nivel de máquina.
 
     ```bash
     export AGENTEYE_ENVIRONMENT=production-us-east

@@ -1,0 +1,224 @@
+---
+title: "CrewAI"
+sidebarTitle: "CrewAI"
+description: "역할, 도구, 메모리, 사람 피드백 기반으로 크루, 플로우, 에이전트를 계측합니다."
+icon: "/images/frameworks/crewai.svg"
+---
+
+## 설치
+
+```bash
+pip install 'failproofai-sdk[crewai]'
+```
+
+지원 버전: `crewai` 1.13 ~ 2.0. 1.13은 `started_event_id`를 추가하고 토큰 사용량을 정규화한 릴리스로, 어댑터가 이벤트를 쌍으로 묶고 토큰을 보고하는 데 의존하는 두 기능이 모두 포함되어 있습니다.
+
+## 계측
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    Crew(agents=[analyst, writer], tasks=[gather, summarise]).kickoff()
+```
+
+`instrument()`는 CrewAI의 모듈 수준 이벤트 버스에 리스너를 등록하고 이벤트 클래스마다 하나의 핸들러를 구독합니다. 크루, 에이전트, 태스크, 도구는 아무것도 변경되지 않습니다.
+
+## 기록되는 항목
+
+| CrewAI | Failproof 이벤트 |
+| --- | --- |
+| 크루 킥오프 | `agent_start`, `agent_end` |
+| `Agent.kickoff()` (크루 없는 단독 에이전트) | `agent_start`, `agent_end`, 역할에서 가져온 `agent_id` |
+| 플로우 시작 및 종료 | `agent_start`, `agent_end`; 플로우 메서드 내에서 킥오프된 크루는 그 아래에 중첩됨 |
+| 에이전트 실행 | 중첩된 `agent_start`, `agent_end`, 역할에서 가져온 `agent_id`. 계층적 프로세스에서 위임된 동료는 매니저 옆이 아니라 그 아래에 중첩됨 |
+| 태스크 | 없음; 자식이 크루로 귀결되도록 링크로 기록됨 |
+| 플로우 메서드, 가드레일 | `hook_triggered`, `hook_completed` |
+| 도구 사용 | `tool_use`, `tool_result` |
+| 메모리 및 지식 작업 | `tool_use`, `tool_result`, 히트한 표면 이름으로 명명됨 |
+| LLM 호출 | `model_request`, `model_response`, 토큰 사용량 포함 |
+| 스트림 청크 | 청크 수 및 첫 번째 토큰까지의 시간으로 응답에 통합됨 |
+| 사람 피드백 요청됨 | `human_wait`, `agent_pause` |
+| 사람 피드백 수신됨 | `agent_resume`, `human_input` |
+| 에이전트 실행 오류 | `error`, 이후 결과가 `failed`인 `agent_end` |
+
+태스크는 의도적으로 아무것도 발행하지 않습니다. CrewAI 태스크는 이를 실행하는 에이전트 실행의 하위 집합이므로, 둘 다 발행하면 모든 행이 중복되고 형제 관계로 표시됩니다. 태스크 id와 이름은 에이전트 자체 이벤트에 함께 포함됩니다.
+
+메모리 및 지식 작업은 히트한 표면 이름으로 명명된 도구로 기록되므로, 실제 도구 옆에 표시되어 레이턴시를 비교할 수 있습니다.
+
+계층적 크루에서는 중첩 구조가 트레이스를 읽기 쉽게 만듭니다:
+
+```text
+crew
+└─ manager
+   ├─ researcher      delegated
+   └─ writer          delegated
+```
+
+CrewAI는 위임된 실행을 매니저에 직접 연결하지 않고 `delegate_work_to_coworker` **도구 이벤트**에 연결하므로, 어댑터는 해당 링크를 따릅니다. 이것 없이는 모든 에이전트가 서로 형제 관계로 나타나 위임 구조가 사라집니다.
+
+## 예제
+
+```python
+import failproofai_sdk
+from crewai import Agent, Crew, Process, Task
+from crewai.tools import tool
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+MODEL = "openai/gpt-4o-mini"
+METRICS = {"revenue": "$4.2M ARR, up 12% QoQ", "churn": "3.1% monthly, up from 2.4%"}
+
+
+@tool("lookup_metric")
+def lookup_metric(name: str) -> str:
+    """Look up a business metric by name. Valid: revenue, churn."""
+    return METRICS.get(name.lower().strip(), "unknown metric")
+
+
+analyst = Agent(
+    role="analyst",                     # becomes agent_id
+    goal="pull the numbers that matter and state them plainly",
+    backstory="You read dashboards for a living.",
+    tools=[lookup_metric],
+    llm=MODEL,
+)
+writer = Agent(
+    role="writer",
+    goal="turn numbers into three lines an exec will read",
+    backstory="You write board updates. You never pad.",
+    llm=MODEL,
+)
+
+gather = Task(
+    description="Look up 'revenue' and 'churn' with the tool.",
+    expected_output="Two lines, one metric each.",
+    agent=analyst,
+)
+summarise = Task(
+    description="Using the metrics above, write a three-line exec summary.",
+    expected_output="Exactly three lines.",
+    agent=writer,
+    context=[gather],
+)
+
+with failproofai_sdk.session():
+    result = Crew(
+        agents=[analyst, writer],
+        tasks=[gather, summarise],
+        process=Process.sequential,
+    ).kickoff()
+```
+
+트레이스에서 핸드오프가 명확히 보입니다: `analyst` 스팬이 닫히고 `writer` 스팬이 열리며, 둘 다 하나의 `crew` 스팬 안에 위치합니다.
+
+## 스팬 이름 지정
+
+`agent_id`는 `Agent(role=...)`에서 가져오며, 이것이 대시보드 패싯을 읽기 쉽게 만드는 요소입니다.
+
+```python
+Agent(role="analyst", ...)          # agent_id = "analyst"
+Agent(role="analyst-7f3a2b", ...)   # 실행마다 별도의 패싯 항목 생성
+```
+
+`agent_id`는 카디널리티가 낮은 컬럼입니다. 실행 id나 타임스탬프가 포함된 역할은 모든 쿼리의 성능을 저하시킵니다. 역할이 id처럼 보이면 어댑터는 이를 거부하고 실제 값을 페이로드 필드에 대신 저장합니다.
+
+## 세션 제어
+
+다음 순서로 결정되며, 첫 번째로 일치하는 항목이 사용됩니다:
+
+1. `instrument("crewai", session_id=...)`
+2. 감싸고 있는 `failproofai_sdk.session()` 스코프
+3. 크루 또는 플로우 단위로 생성된 `uuid4().hex`
+
+실행별로 세션을 제어하려면 킥오프를 다음과 같이 감쌉니다:
+
+```python
+with failproofai_sdk.session(f"support-{ticket_id}"):
+    Crew(agents=[...], tasks=[...]).kickoff()
+```
+
+## 옵션
+
+```python
+failproofai_sdk.instrument(
+    "crewai",
+    session_id=None,          # 모든 실행을 하나의 세션 id에 고정
+)
+```
+
+`session_id`는 이 어댑터가 읽는 유일한 옵션입니다. 프롬프트와 완성 결과는 항상 기록되며, 페이로드 한도에 맞게 잘립니다.
+
+## 사람 참여 루프
+
+CrewAI에는 **두 가지** 사람 참여 루프 방식이 있으며, 둘 다 동일한 네 가지 이벤트로 기록됩니다.
+
+플로우 메서드의 `@human_feedback`은 CrewAI의 이벤트 버스를 통해 처리됩니다: 런타임이 사람의 입력을 기다리기 전에 이벤트를 발행하고, 답변을 받은 후 또 다른 이벤트를 발행합니다.
+
+`Task(human_input=True)`는 그렇지 않습니다. CrewAI 자체의 입력 프로바이더 내에서 `input()`을 호출하며 어떠한 이벤트도 발행하지 않으므로, 어댑터는 해당 프로바이더를 직접 감쌉니다 — 이것 없이는 전체 사람 대기 시간이 보이지 않고 활성 에이전트 시간으로 청구됩니다.
+
+어느 방식이든 다음과 같이 기록됩니다:
+
+```text
+human_wait      프롬프트와 옵션
+agent_pause     일시 정지 시간 측정 시작
+agent_resume    측정 종료
+human_input     답변 및 측정된 대기 시간
+```
+
+`agent_pause`에서 `agent_resume`까지만 일시 정지 시간으로 집계됩니다. 이것 없이는 10분간의 사람 대기 시간이 10분의 활성 에이전트 시간으로 청구됩니다.
+
+<Note>
+  CrewAI는 두 사람 피드백 이벤트 모두에 상관 관계 id를 설정하지 않으므로, 어댑터는 플로우와 메서드 이름으로 이벤트를 쌍으로 묶고, 가장 최근에 열린 일시 정지를 폴백으로 사용합니다. 콘솔 프롬프트가 블로킹되므로 이 방식은 안전합니다. 동시 피드백 프로바이더를 구축하는 경우 두 이벤트 모두에 `request_id`를 설정하세요.
+</Note>
+
+<Note>
+  `Task(human_input=True)` 경로는 이벤트 구독이 아닌 CrewAI의 입력 프로바이더를 감싸는 방식이기 때문에, `uninstrument()` 시 복원되며 `input()`이 발생시키는 모든 예외(예: `KeyboardInterrupt` 포함)를 그대로 다시 발생시킵니다.
+</Note>
+
+## 자주 발생하는 문제
+
+<AccordionGroup>
+  <Accordion title="에이전트 필터에 수천 개의 항목이 있습니다">
+    `role`에 UUID, 타임스탬프 또는 실행별 접미사가 포함되어 있습니다. 안정적인 사람이 읽을 수 있는 역할을 사용하고, 실행별 id는 태스크 설명에 넣으세요.
+  </Accordion>
+
+  <Accordion title="테스트에서 이벤트가 0개로 읽히지만 대시보드에는 표시됩니다">
+    이벤트 버스는 비동기식이며, `kickoff()`는 마지막 핸들러가 실행되기 전에 반환됩니다. 먼저 드레인하세요:
+
+    ```python
+    from crewai.events.event_bus import crewai_event_bus
+
+    crew.kickoff()
+    crewai_event_bus.flush(timeout=30)
+    ```
+
+    이것은 SDK가 아닌 CrewAI의 특성입니다.
+  </Accordion>
+
+  <Accordion title="세션이 영원히 진행 중으로 표시됩니다">
+    `agent_end`는 열려 있는 일시 정지를 강제 종료하지만 도구나 모델은 그렇지 않습니다. 따라서 도구 호출 중에 실행이 중단되면 해당 스팬이 열린 채로 남습니다. 일반적인 종료 시 열려 있는 모든 항목이 닫히고 불완전으로 표시됩니다. `SIGKILL`의 경우에만 아무것도 실행될 수 없으므로 스팬이 열린 채로 남습니다.
+  </Accordion>
+
+  <Accordion title="아무것도 기록되지 않습니다">
+    다음 순서로 확인하세요: `instrument()`가 `kickoff()` 이전에 실행되었는지; `with failproofai_sdk.session():`으로 감싸져 있는지; `crewai`가 1.13 이상인지; `FAILPROOFAI_SDK_STRICT=1`이 설정되어 있으면 저하된 훅이 무시되는 대신 예외를 발생시킵니다.
+  </Accordion>
+</AccordionGroup>
+
+## 다음 단계
+
+<Columns cols={3}>
+  <Card title="작동 원리" icon="workflow" href="/ko/start/integrations/custom-agents#going-deeper">
+    페어링, id, 세션 생명주기, 전달 방식.
+  </Card>
+  <Card title="트레이스 읽기" icon="route" href="/ko/sessions/read-a-trace">
+    방금 캡처한 세션을 통해 인과 관계를 추적합니다.
+  </Card>
+  <Card title="다른 프레임워크" icon="plug" href="/ko/start/integrations">
+    LangGraph, LlamaIndex, Pydantic AI, 커스텀 에이전트.
+  </Card>
+</Columns>

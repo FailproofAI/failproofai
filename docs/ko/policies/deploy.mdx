@@ -1,47 +1,51 @@
 ---
 title: "정책 배포"
-description: "검토된 정책 버전을 대상 머신에 롤아웃합니다."
+description: "검토된 정책 버전을 대상 머신에 배포합니다."
 icon: "cloud-upload"
 ---
 
-배포는 하나 이상의 정책 버전을 등록된 대상 머신 집합에 연결합니다.
+배포는 하나 이상의 정책 버전을 등록된 머신 대상 집합에 연결합니다.
 
 ## 배포 적용
 
 <Tabs>
   <Tab title="대시보드">
-    1. **Admin → enforcement**으로 이동하여 머신을 찾고 해당 행을 펼칩니다.
-    2. **edit**을 선택하고 검토된 정책 버전을 추가한 후 **observe** 또는 강제 적용 효과를 선택합니다.
-    3. 변경 사항을 적용한 다음 머신의 다음 체크인을 기다리며 배포 및 커버리지 상태를 확인합니다.
+    1. **Admin → enforcement**로 이동하여 머신을 찾고 해당 행을 펼칩니다.
+    2. **edit**를 선택하고 검토된 정책 버전을 추가한 후 **observe** 또는 강제 적용 효과를 선택합니다.
+    3. 변경 사항을 적용한 뒤 머신의 다음 체크인을 기다리며 배포 및 커버리지 상태를 확인합니다.
     4. **Observe → policy**로 이동하여 실시간 결정 사항을 검사합니다.
 
-    ![정책 버전, 강제 적용 및 관찰 효과, 배포 적용 액션이 포함된 머신 배포 편집기.](/images/dashboard/enforcement-editor.png)
+    ![정책 버전, enforce 및 observe 효과, 배포 적용 액션이 표시된 머신 배포 편집기.](/images/dashboard/enforcement-editor.png)
   </Tab>
   <Tab title="CLI">
-    클라우드 배포 엔드포인트는 의도적으로 일반 `fp` 명령으로 노출되지 않습니다. 머신을 로컬에서 확인한 후 대시보드를 통해 배포하세요:
+    `fp fleet`를 사용하여 CLI에서 배포합니다. 적용하기 전에 결과 집합을 검토하세요 — `deploy`는 전체 계획을 출력하며 **`--json` 없이 대화형 터미널에서만** 확인을 요청합니다. `--json` 옵션 사용 시, `--yes` 옵션 사용 시, 또는 stdin이 리다이렉트된 경우(CI 단계, 스크립트, 에이전트 셸 실행)에는 계획 및 프롬프트 없이 즉시 적용됩니다 — 따라서 검토가 필요하다면 먼저 `fp fleet show <machine>`을 실행하세요:
 
     ```bash
-    failproofai config --status
+    fp fleet list
+    fp fleet show <machine-id>
+    fp fleet deploy <machine-id> --add no-force-push
     ```
 
-    배포 후 `fp sessions --env production --since 24h` 및 `fp events --event-type hook_completed`를 사용하여 활동이 클라우드에 도달하는지 확인합니다.
+    `fp fleet diff <machine-id>`는 의도와 실제 전달 간의 차이를 보여주며(머신이 다음 폴링 전까지 `behind`로 표시됨), `fp fleet history <machine-id>`는 세대 목록을 나열하고, `fp fleet rollback <machine-id> <generation>`은 특정 세대로 복원합니다 — 해당 세대가 비활성화 또는 삭제된 정책을 참조하는 경우 거부됩니다.
+
+    `failproofai config --status`로 머신 자체를 확인하고, 배포 후 `fp sessions --env production --since 24h` 및 `fp events --event-type hook_completed`를 사용하여 활동이 Cloud에 도달하는지 검증하세요.
   </Tab>
 </Tabs>
 
 <Steps>
   <Step title="버전 및 대상 선택">
-    수정 가능한 초안이 아닌 검토된 버전을 배포하며, 세션을 검사할 수 있는 비프로덕션 머신이나 소규모 그룹부터 시작합니다.
+    변경 가능한 초안이 아닌 검토된 버전을 배포하며, 세션을 검사할 수 있는 비프로덕션 머신이나 소규모 그룹부터 시작하세요.
   </Step>
   <Step title="결정 사항 관찰">
-    작업을 차단하지 않고 매칭 결과, 사유, 영향을 받는 도구, 오탐(false positive)을 검토합니다.
+    작업을 차단하지 않고 매칭 항목, 이유, 영향받은 도구, 오탐지 등을 검토합니다.
   </Step>
-  <Step title="강제 적용 및 커버리지 확인">
-    관찰된 매칭이 안전하지 않은 작업과 유효한 작업을 구분한 후 승격하고, 대상 머신 전체가 배포를 가져왔으며 결정 사항을 보고하고 있는지 확인합니다.
+  <Step title="적용 및 커버리지 검증">
+    관찰된 매칭이 안전하지 않은 작업과 유효한 작업을 구분한 후 승격하고, 모든 대상 머신이 배포를 가져와 결정 사항을 보고하는지 확인합니다.
   </Step>
 </Steps>
 
-머신에는 `policies:pull` 권한이 필요합니다. 이벤트 보고는 `events:add`로 별도로 제어되므로, 클라우드 분석 및 강제 적용을 기대하는 경우 두 가지 모두 확인하세요.
+머신에는 `policies:pull` 권한이 필요합니다. 이벤트 보고는 `events:add`로 별도 제어됩니다. Cloud 분석 및 강제 적용을 기대하는 경우 두 가지 모두 확인하세요.
 
 <Warning>
-  강제 적용 관리는 관리자 클라우드 워크플로우입니다. 루트 전용 강제 적용 경로를 일반 고객 `/v1` API 엔드포인트로 취급하지 마세요.
+  강제 적용 관리는 관리자 전용 Cloud 워크플로입니다. 루트 전용 강제 적용 경로를 일반 고객용 `/v1` API 엔드포인트로 취급하지 마세요.
 </Warning>

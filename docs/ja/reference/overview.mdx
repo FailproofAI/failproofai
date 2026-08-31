@@ -1,6 +1,6 @@
 ---
 title: "インテグレーションとリファレンス"
-description: "対応エージェントハーネス、SDK、CLI、HTTP API の接続方法。"
+description: "対応するエージェントハーネス、SDK、CLI、HTTP API を接続します。"
 icon: "braces"
 ---
 
@@ -10,52 +10,55 @@ icon: "braces"
   <Card title="エージェントハーネス" icon="plug-zap" href="/ja/reference/harnesses">
     対応するコーディング・自律エージェント CLI 向けにフックをインストールします。
   </Card>
-  <Card title="カスタムエージェント" icon="python" href="/ja/reference/custom-agents">
-    カスタムエージェントの障害を検出するためにトレースを計装し、ランタイムへの防止策の追加についてお問い合わせください。
+  <Card title="エージェントフレームワークと SDK" icon="plug" href="/ja/start/integrations">
+    LangGraph、CrewAI、LlamaIndex、Pydantic AI、またはカスタムエージェントを計装します。
+  </Card>
+  <Card title="Python SDK リファレンス" icon="python" href="/ja/reference/custom-agents">
+    設定、イベントカタログ、相関ルール、デリバリーについて説明します。
   </Card>
   <Card title="ローカルダッシュボード" icon="monitor-cog" href="/ja/reference/local-dashboard">
     ローカルプロジェクト、セッション、ポリシーアクティビティ、オフライン監査を確認します。
   </Card>
   <Card title="Failproof AI CLI" icon="terminal" href="/ja/reference/failproof-cli">
-    ローカルキャプチャ、フック、ポリシー、監査、配信、マシン状態を設定します。
+    ローカルキャプチャ、フック、ポリシー、監査、デリバリー、マシン状態を設定します。
   </Card>
   <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/ja/reference/cloud-cli#cli-commands">
-    Cloud のセッション、監査、Issues、アラート、キー、ユーザー、設定をクエリ・管理します。
+    クラウドのセッション、監査、問題、アラート、キー、ユーザー、設定を照会・管理します。
   </Card>
-  <Card title="エバリュエーター SDK" icon="gauge" href="/ja/reference/evaluator-sdk">
+  <Card title="Evaluator SDK" icon="gauge" href="/ja/reference/evaluator-sdk">
     FastAPI サービスを使って完了済みまたは非アクティブなセッションをスコアリングします。
   </Card>
   <Card title="カスタムポリシー" icon="shield-plus" href="/ja/reference/policy-sdk">
-    ワークフロー固有の allow、instruct、deny の判定を作成・テストします。
+    ワークフロー固有の allow、instruct、deny の判断をオーサリング・テストします。
   </Card>
   <Card title="セルフホスティング" icon="cloud-cog" href="/ja/reference/self-hosting">
-    顧客管理の Kubernetes クラスター上に Cloud コントロールプレーンをデプロイします。
+    顧客管理の Kubernetes クラスターにクラウドコントロールプレーンをデプロイします。
   </Card>
 </Columns>
 
-自動生成された [HTTP API リファレンス](/ja/reference/http-api) は公開 `/v1` エンドポイント全体をカバーしています。手書きのページでは、複数のエンドポイントにまたがるワークフローや、その公開サーフェス外の管理インターフェースを使用するワークフローについて説明しています。
+自動生成された [HTTP API リファレンス](/ja/reference/http-api) は公開 `/v1` サーフェスをカバーしています。手書きのページでは、複数のエンドポイントをまたぐワークフローや、その公開サーフェス外の管理インターフェースを使用するワークフローについて説明しています。
 
-## エージェントを接続してデータを検証する
+## エージェントを接続してデータを確認する
 
 <Tabs>
   <Tab title="ダッシュボード">
-    1. **Administration → Keys** を開き、`events:add` と `policies:pull` 権限を持つキーを作成してシークレットをコピーします。
-    2. 上記の対応するページを参照してインテグレーションを設定します。
-    3. **Observe → Events** を開いてイベントが届いていることを確認し、続いて **Observe → Sessions** でイベントが完全な実行として形成されていることを確認します。
-    4. インテグレーションの環境でフィルタリングし、監査に必要なモデル、ツール、エラー、ポリシーのフィールドが含まれているセッションを 1 つ確認します。
+    1. **Administration → Keys** を開き、`events:add` と `policies:pull` の権限を持つキーを作成してシークレットをコピーします。
+    2. 上記の対応するページを使用してインテグレーションを設定します。
+    3. **Observe → Events** を開いてイベントが届いていることを確認し、次に **Observe → Sessions** でそれらが完全な実行として形成されていることを確認します。
+    4. インテグレーションの環境でフィルタリングし、監査に必要なモデル、ツール、エラー、ポリシーのフィールドを確認するためにセッションを 1 件開きます。
 
-    まずキードロワーから始めてください。選択した権限によって、マシンがイベントを送信し、Cloud 管理のポリシーを受信できるかどうかが決まります。
+    まずキードロワーから始めてください。選択した権限によって、マシンがイベントを送信したり Cloud 管理のポリシーを受信したりできるかどうかが決まります。
 
-    ![イベントインジェストとポリシー配信の権限を付与するための新規 API キードロワー。](/images/dashboard/key-create.png)
+    ![イベント取り込みとポリシーデリバリーの権限を付与するための新しい API キードロワー。](/images/dashboard/key-create.png)
 
-    インテグレーションを接続したら、セッションリストを使用して、イベントが期待される環境で完全な実行としてグループ化されていることを確認してください。
+    インテグレーションを接続したら、Sessions リストを使ってイベントが期待する環境で完全な実行としてグループ化されていることを確認します。
 
-    ![新しく接続されたインテグレーションが完全なエージェント実行を報告しているかを確認するためのセッションリスト。](/images/dashboard/sessions-list.png)
+    ![新しく接続されたインテグレーションが完全なエージェント実行を報告していることを確認するための Sessions リスト。](/images/dashboard/sessions-list.png)
 
-    インテグレーションが完了と見なす前にこれらのセッションの 1 つを開いてください。トレースには、監査に必要なモデル、ツール、エラー、ポリシーの証跡が含まれているはずです。
+    インテグレーションが完了したとみなす前に、これらのセッションのいずれかを開いてください。トレースには、監査に必要なモデル、ツール、エラー、ポリシーのエビデンスが含まれているはずです。
   </Tab>
   <Tab title="CLI">
-    マシンキーを作成し、Failproof デーモンを接続して、最初のセッションを検証します。
+    マシンキーを作成し、Failproof デーモンを接続して、最初のセッションを確認します。
 
     ```bash
     fp keys create agent-production \
@@ -71,7 +74,7 @@ icon: "braces"
     fp events --since 1h --env production --limit 20
     ```
 
-    別のツールで結果を利用する場合は `fp --json sessions ...` を使用してください。`--json`、`--org`、`--base-url` などのグローバルフラグはコマンドの前に指定する必要があります。
+    別のツールが結果を利用する場合は `fp --json sessions ...` を使用してください。`--json`、`--org`、`--base-url` などのグローバルフラグはコマンドの前に指定する必要があります。
 
     ローカルコマンドについては [Failproof AI CLI リファレンス](/ja/reference/failproof-cli) を、`fp` コマンドについては [Failproof Cloud CLI リファレンス](/ja/reference/cloud-cli#cli-commands) を参照してください。
   </Tab>

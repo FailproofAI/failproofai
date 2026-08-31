@@ -1,0 +1,249 @@
+---
+title: "LlamaIndex"
+sidebarTitle: "LlamaIndex"
+description: "वर्कफ़्लो, स्टेप्स, फ़ंक्शन एजेंट और रिट्रीवर्स को इंस्ट्रूमेंट करें।"
+icon: "/images/frameworks/llamaindex.svg"
+---
+
+## इंस्टॉल करें
+
+```bash
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+समर्थित: `llama-index-core` 0.14.23 से 0.15। 0.14.23 वह रिलीज़ है जहां वर्कफ़्लो स्ट्रीम टाइप्ड एजेंट इवेंट्स ले जाना शुरू करता है जिन्हें यह एडाप्टर पढ़ता है। इससे नीचे, मॉडल नाम और एजेंट स्ट्रक्चर दोनों गायब हो जाते हैं।
+
+## इंस्ट्रूमेंट करें
+
+```python
+import asyncio
+
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+async def main():
+    async with failproofai_sdk.session():
+        await agent.run("...")
+
+
+asyncio.run(main())
+```
+
+LlamaIndex का एजेंट API अतुल्यकालिक है। हर स्कोप `async with` के साथ-साथ `with` के तहत काम करता है और समान इवेंट्स तैयार करता है।
+
+`instrument()` LlamaIndex के ग्लोबल डिस्पैचर को एक इवेंट हैंडलर और एक स्पैन हैंडलर से जोड़ता है। साथ में वे एजेंट लूप को दृश्यमान बनाते हैं, केवल इसके मॉडल कॉल्स नहीं।
+
+<Warning>
+  आपके LLM पर एक अतिरिक्त आर्गुमेंट के बिना, आपके ट्रेस में हर टोकन काउंट null है। नीचे [Token counts](#token-counts) देखें।
+</Warning>
+
+## टोकन काउंट्स
+
+`FunctionAgent` को `astream_chat` कॉल करता है, और `llama-index-llms-openai` स्ट्रीम करते समय `stream_options={"include_usage": True}` नहीं भेजता है। प्रोवाइडर इसलिए कभी भी उपयोग चंक नहीं भेजता है, और किसी भी इंस्ट्रूमेंटेशन के लिए पढ़ने के लिए कुछ नहीं है।
+
+यह अपस्ट्रीम LlamaIndex व्यवहार है। अपने LLM पर ऑप्ट इन करें:
+
+```python
+from llama_index.llms.openai import OpenAI
+
+llm = OpenAI(
+    model="gpt-4o-mini",
+    additional_kwargs={"stream_options": {"include_usage": True}},
+)
+```
+
+समान रन और मॉडल पर मापा गया:
+
+| | इनपुट टोकन्स | आउटपुट टोकन्स |
+| --- | --- | --- |
+| बिना | `null` | `null` |
+| साथ | 148 | 17 |
+
+गैर-स्ट्रीमिंग कॉल्स (`llm.chat`, `llm.achat`) बिना कॉन्फ़िगरेशन के उपयोग की रिपोर्ट करते हैं। केवल स्ट्रीमिंग पाथ, जो डिफ़ॉल्ट एजेंट पाथ है, को इसकी आवश्यकता है।
+
+## क्या रिकॉर्ड होता है
+
+| LlamaIndex | Failproof इवेंट |
+| --- | --- |
+| `Workflow.run` रूट स्पैन | Session, `agent_start`, `agent_end` |
+| नेस्टेड `Workflow.run` स्पैन | नेस्टेड `agent_start`, `agent_end` |
+| वर्कफ़्लो स्टेप स्पैन | `hook_triggered`, `hook_completed` |
+| LLM चैट शुरुआत और अंत | `model_request`, `model_response` |
+| `FunctionTool.call` स्पैन | `tool_use`, `tool_result` |
+| रिट्रीवल शुरुआत और अंत | `tool_use`, `tool_result`, आउटपुट सारांशित |
+| एम्बेडिंग्स | कुछ नहीं, जब तक `embeddings=True` |
+| एक टूल एक व्यक्ति की प्रतीक्षा कर रहा हो | `human_wait`, `agent_pause`, फिर `agent_resume`, `human_input` |
+| `AgentWorkflow` हैंडऑफ | एक नेस्टेड `agent_start`, `agent_end` प्रति एजेंट, वर्कफ़्लो के लिए माता-पिता |
+| अपवाद | `error`, फिर `agent_end` परिणाम `failed` के साथ, और `agent_end.summary` इसे नामित करता है |
+| `handler.cancel_run()` | `agent_end` परिणाम `cancelled` के साथ और कोई `error` नहीं — एक स्टॉप बटन एक विफलता नहीं है |
+
+`agent_id` जब आप एक सेट करते हैं तो `FunctionAgent.name` है, अन्यथा वर्कफ़्लो क्लास नाम है। एक `AgentWorkflow` के तहत, प्रत्येक एजेंट जो एक मोड़ लेता है वर्कफ़्लो के तहत अपना नेस्टेड स्पैन मिलता है, इसलिए एक हैंडऑफ दो एजेंट के रूप में पढ़ता है एक के बजाय।
+
+रिट्रीवल आउटपुट डंप करने के बजाय सारांशित है। एक रिट्रीवर दस्तावेज़ लौटाता है, और उन्हें पेलोड में संग्रहीत करने से आपका कॉर्पस प्रति क्वेरी इवेंट्स स्टोर में एक बार जाएगा। काउंट, स्कोर रेंज, और ट्रंकेटेड स्निपेट्स बजाय संरक्षित हैं।
+
+## उदाहरण
+
+```python
+import asyncio
+
+import failproofai_sdk
+from llama_index.core.agent.workflow import FunctionAgent
+from llama_index.core.tools import FunctionTool
+from llama_index.llms.openai import OpenAI
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+POP = {"tokyo": "37M", "delhi": "33M"}
+AREA = {"tokyo": "2,194 km2", "delhi": "1,484 km2"}
+
+
+def population(city: str) -> str:
+    """Population of a city. Valid: tokyo, delhi."""
+    return POP.get(city.lower().strip(), "unknown")
+
+
+def area(city: str) -> str:
+    """Land area of a city. Valid: tokyo, delhi."""
+    return AREA.get(city.lower().strip(), "unknown")
+
+
+async def main():
+    agent = FunctionAgent(
+        name="city_analyst",
+        tools=[
+            FunctionTool.from_defaults(fn=population),
+            FunctionTool.from_defaults(fn=area),
+        ],
+        llm=OpenAI(
+            model="gpt-4o-mini",
+            additional_kwargs={"stream_options": {"include_usage": True}},
+        ),
+        system_prompt="Use the tools. Be terse.",
+    )
+
+    async with failproofai_sdk.session():
+        async with failproofai_sdk.agent("city_analyst", goal="compare two cities"):
+            print(await agent.run("Compare Tokyo and Delhi on population and area."))
+
+
+asyncio.run(main())
+```
+
+एजेंट लूप हुक जोड़ी के रूप में ट्रेस में दिखाई देता है: `init_run`, `setup_agent`, `run_agent_step`, `parse_agent_output`, `call_tool`, और `aggregate_tool_results`। वे फ्रेमवर्क का अपना लूप हैं, इसलिए वे एजेंट के बजाय हुक हैं, जो `agent_id` को सार्थक रखता है।
+
+## अपने स्पैन्स को नाम दें
+
+`agent_id` जब आप एक सेट करते हैं तो `FunctionAgent.name` है, अन्यथा वर्कफ़्लो क्लास नाम है।
+
+```python
+FunctionAgent(name="city_analyst", tools=[...], llm=llm)   # agent_id = "city_analyst"
+```
+
+एक `AgentWorkflow` में, वह नाम भी वह है जिसके तहत प्रत्येक हैंडऑफ रिकॉर्ड किया जाता है:
+
+```text
+AgentWorkflow            parent span
+├─ city_analyst          turn 1
+├─ cost_analyst          turn 2
+└─ city_analyst          turn 3  — a new turn, not a reopened one
+```
+
+तो `agent_id` आपको बताता है **कौन सा एजेंट** काम किया और `parent_id` आपको बताता है **कौन सा वर्कफ़्लो** इसका था। एक एजेंट जो नियंत्रण बाद में वापस लाया गया वह एक दूसरा मोड़ खोलता है बजाय इसके अपना पहला फिर से खोलने के।
+
+रन को ओवरराइड करने के लिए, या कई एजेंट्स को एक माता-पिता के तहत समूहीकृत करने के लिए रैप करें:
+
+```python
+async with failproofai_sdk.agent("research", goal="compare two cities"):
+    await agent.run(...)
+```
+
+`agent_id` को कम कार्डिनलिटी रखें। यह हर डैशबोर्ड सर्फेस पर प्राथमिक पहलू है, इसलिए एक भूमिका या वर्कफ़्लो नाम का उपयोग करें, कभी UUID या प्रति-रन स्ट्रिंग नहीं।
+
+## सत्र को नियंत्रित करें
+
+यह एडाप्टर **कोई `session_id` विकल्प नहीं लेता है**। सत्र संलग्न स्कोप से आता है, अन्यथा प्रति वर्कफ़्लो रन `uuid4().hex` का जनन किया गया:
+
+```python
+async with failproofai_sdk.session(f"chat-{user_id}"):
+    await agent.run(...)
+```
+
+## विकल्प
+
+```python
+failproofai_sdk.instrument(
+    "llama_index",
+    embeddings=False,         # True records embedding calls as tool pairs
+    steps=True,               # False drops workflow-step hook pairs
+    capture_messages=True,    # False drops EVERY payload: prompts, completions,
+                              # tool arguments and output, step I/O, retrieval
+                              # queries, the goal and the final answer
+    capture_limit=8192,       # characters kept per captured value
+    stale_after=600.0,        # seconds before an abandoned LEAF is force-closed
+    reaper_interval=30.0,     # how often the reaper sweeps; 0 disables it
+)
+```
+
+| विकल्प | आप इसे क्यों बदलेंगे |
+| --- | --- |
+| `embeddings` | केवल एम्बेडिंग लेटेंसी या लागत डीबग करते समय चालू करें। एक बल्क इंडेक्स बिल्ड हजारों कॉल्स हैं और टाइमलाइन को दफन कर देगा। |
+| `steps` | यदि आप केवल मॉडल और टूल इवेंट्स चाहते हैं और एजेंट लूप को शोर मानते हैं तो बंद करें। |
+| `capture_messages` | विनियमित डेटा के लिए बंद करें। हर पेलोड रिकॉर्ड करना बंद हो जाता है — प्रॉम्प्ट्स, मॉडल का समापन, टूल आर्गुमेंट्स और रिटर्न वैल्यूज़, वर्कफ़्लो-स्टेप इनपुट और आउटपुट, रिट्रीवल क्वेरीज़, एजेंट का लक्ष्य और इसका अंतिम उत्तर। संरचना, समय, टोकन्स, और परिणाम अभी भी रिकॉर्ड किए जाते हैं। |
+| `capture_limit` | ट्रंकेशन से पहले प्रति कैप्चर किए गए वैल्यू रखे गए वर्ण। इसे बढ़ाएं जब एक RAG प्रॉम्प्ट या पुनः प्राप्त संदर्भ क्लिप आ रहा हो। |
+| `stale_after` | एक परित्यक्त **पत्ती** — एक स्ट्रीमिंग प्रतिक्रिया जिसे कोई नहीं खपाया, एक मॉडल या टूल स्पैन जिसका क्लोज कभी नहीं आया — को बल से बंद किए जाने से पहले सेकंड, ताकि सत्र व्यवस्थित हो जाए बजाय `ongoing` को हमेशा पढ़ने के। यह एक परित्यक्त रन को स्वयं बंद नहीं करता है: एक वर्कफ़्लो जिसका कार्य रद्द किया जाता है डिस्पैचर को देखे बिना एक निकास अपना `agent_start` `uninstrument()` तक खुला रखता है। |
+| `reaper_interval` | स्वीप फ्रीक्वेंसी। रीपर को पूरी तरह अक्षम करने के लिए `0` पर सेट करें। |
+
+## मानव लूप में
+
+जब प्रतीक्षा एक टूल के अंदर होती है तो कैप्चर किया जाता है:
+
+```python
+async def ask_human(question: str) -> str:
+    """Ask a person and wait for their answer."""
+    response = await ctx.wait_for_event(HumanResponseEvent)
+    return response.answer
+```
+
+एक सादे वर्कफ़्लो स्टेप में `ctx.wait_for_event` कैप्चर नहीं है। रनटाइम डिस्पैचर तक पहुंचने से पहले ड्रॉप को पकड़ता है, इसलिए स्टेप निकलता है और बाद में पुनः चलता है कोई संकेत के बिना एक विराम पर कुंजी लगाने के लिए। FunctionAgent पैटर्न, जिसे LlamaIndex दस्तावेज़ करता है, एक टूल के अंदर प्रतीक्षा करता है और पूरी तरह कैप्चर है।
+
+## सामान्य समस्याएं
+
+<AccordionGroup>
+  <Accordion title="हर टोकन काउंट null है">
+    अपने LLM में `additional_kwargs={"stream_options": {"include_usage": True}}` जोड़ें। [Token counts](#token-counts) देखें।
+  </Accordion>
+
+  <Accordion title="उपयोग भरा हुआ है लेकिन टोकन कॉलम खाली हैं">
+    LlamaIndex के पास कोई मानक उपयोग फील्ड नहीं है। एडाप्टर कई ज्ञात आकार की कोशिश करता है, और एक इंटीग्रेशन जो अपने काउंटर को कुछ नया नाम देता है वह उनमें से कोई भी मेल नहीं खाएगा।
+
+    कच्चा dict हमेशा शिप किया जाता है, इसलिए पेलोड में `usage` को चेक करें यह देखने के लिए कि आपके प्रोवाइडर ने उन्हें क्या कहा।
+
+    खाली टोकन कॉलम के साथ एक भरा हुआ `usage` जानबूझकर है — यह एक आत्मविश्वास गलत संख्या से बेहतर है।
+  </Accordion>
+
+  <Accordion title="टाइमलाइन setup_agent और parse_agent_output से भरा हुआ है">
+    यह FunctionAgent लूप है, प्रति पुनरावृत्ति एक सेट। डैशबोर्ड पर हुक नाम द्वारा फ़िल्टर करें। ये स्टेप समय आमतौर पर इस एडाप्टर का उपयोग करने का कारण हैं मॉडल-केवल के बजाय।
+  </Accordion>
+
+  <Accordion title="कुछ भी रिकॉर्ड नहीं है">
+    इस क्रम में जांचें: `instrument()` रन से पहले चला; एक `async with failproofai_sdk.session():` है `await` के चारों ओर; `llama-index-core` 0.14.23 या नवीनतर है; `FAILPROOFAI_SDK_STRICT=1` सेट है, इसलिए एक degraded हुक निगला जाने के बजाय बढ़ता है।
+  </Accordion>
+</AccordionGroup>
+
+## अगला
+
+<Columns cols={3}>
+  <Card title="यह कैसे काम करता है" icon="workflow" href="/hi/start/integrations/custom-agents#going-deeper">
+    जोड़ी, आईडी, सत्र जीवनचक्र, और डिलीवरी।
+  </Card>
+  <Card title="एक ट्रेस पढ़ें" icon="route" href="/hi/sessions/read-a-trace">
+    आप अभी-अभी कैप्चर किए गए सत्र के माध्यम से कार्य-कारण का पालन करें।
+  </Card>
+  <Card title="अन्य फ्रेमवर्क" icon="plug" href="/hi/start/integrations">
+    LangGraph, CrewAI, Pydantic AI, और कस्टम एजेंट्स।
+  </Card>
+</Columns>

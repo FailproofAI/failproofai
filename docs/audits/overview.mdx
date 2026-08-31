@@ -1,56 +1,64 @@
 ---
 title: "Audits"
-description: "Review a defined population of sessions for failures that traces alone will not reveal."
+description: "Search agent runs for repeated failures, risky behavior, and wasted effort."
 icon: "scan-search"
 ---
 
-An audit searches a selected set of sessions for a stated failure goal. It combines trace evidence, evaluation results, policy hits, and reference context to produce findings you can act on.
+An audit reviews many agent runs against a goal and returns evidence-backed findings.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Find agent failures automatically with Failproof AI audits" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-See how an audit moves from a scheduled run to evidence-backed failures you can fix.
+## Local or Cloud
 
-## Open audits
+| | Local audit | Cloud audit |
+| --- | --- | --- |
+| Command | `failproofai audit` | `fp audits` |
+| Reads | Agent history on this machine | Sessions in your Cloud organization |
+| Produces | Local results at `localhost:8020/audit` | Shared findings, issues, and alerts |
+| Requires | No account | Cloud connection and API key |
 
-<Tabs>
-  <Tab title="Dashboard">
-    Go to **Analyze → Audits**. The page shows scheduled state, open findings, last run, next run, cadence, and whether the audit has a brief or reference pages. Select a card for settings and run history; select **new audit** to create one.
+Use a local audit for a quick review of one machine. Use Cloud when a team needs a recurring audit across agents and machines.
 
-    ![The Audits page showing recurring audits with their schedule, sensitivity, and run state.](/images/dashboard/audits.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp audits list
-    fp audits list --enabled-only --show-id
-    fp audits show <audit-name>
-    fp audits findings --status open --limit 20
-    ```
-  </Tab>
-</Tabs>
+## Questions an audit can answer
 
-Use an audit when you need to answer a population-level question such as:
-
-- Where do agents abandon tasks without escalating?
+- Where do agents stop without escalating?
 - Which tool failures lead to ineffective retries?
 - Are agents accessing data outside the intended workflow?
-- What changed after a model, prompt, or tool release?
+- What changed after a model, prompt, or tool update?
 
-## Audit response flow
+## Open Cloud audits
+
+Go to **Analyze → Audits**, or use:
+
+```bash
+fp audits list
+fp audits show <audit-name>
+fp audits findings --status open --limit 20
+```
+
+Audit commands use the audit name or full ID. Findings are referenced by their own ID.
+
+## From finding to prevention
 
 ```text
 Session → Audit → Finding → Issue → Policy
-                         ↘ Alert for recurrence
+                         ↘ Alert
 ```
 
-A finding should name the failure mode and point to evidence. An issue owns the remediation. A policy prevents a known action pattern; an alert detects recurrence when prevention is not possible or needs monitoring.
+A finding points to evidence. An issue owns the response. A policy prevents a known action pattern; an alert watches for recurrence.
 
-<Columns cols={2}>
-  <Card title="Set up an audit" icon="sliders-horizontal" href="/audits/setup">
-    Define the goal, population, and reference context before the first run.
+Not every finding should become a policy. A `policy` finding describes an enforceable rule. A `failure` or `improvement` may need a workflow, prompt, model, or tool change instead.
+
+<CardGroup cols={3}>
+  <Card title="Audit this machine" icon="laptop-minimal-check" href="/audits/local-audit">
+    Scan local history with no account.
   </Card>
-  <Card title="Add agent context" icon="bot" href="/audits/agent-contracts">
-    State what each agent must produce and what it must never do.
+  <Card title="Set up a Cloud audit" icon="sliders-horizontal" href="/audits/setup">
+    Choose the goal, sessions, and schedule.
   </Card>
-</Columns>
+  <Card title="Review findings" icon="list-checks" href="/audits/findings-and-issues">
+    Triage evidence and assign a response.
+  </Card>
+</CardGroup>

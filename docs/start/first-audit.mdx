@@ -1,13 +1,45 @@
 ---
 title: "Run your first failure check"
-description: "Create an audit from the Cloud dashboard or the fp CLI and review its first findings."
+description: "Scan this machine's agent history with failproofai audit, or create a recurring audit over the sessions stored in Failproof AI Cloud."
 icon: "scan-search"
 ---
 
 An audit turns a set of sessions into ranked, evidence-backed failure findings. Start with one narrow failure question.
 
+There are two audits. They read different data and answer to different tools:
+
+| Audit | Reads | Needs an account | Findings appear in |
+| --- | --- | --- | --- |
+| Local — `failproofai audit` | The agent history already on this machine | No | `http://localhost:8020/audit` |
+| Cloud — **Analyze → Audits**, or the `fp` CLI | The sessions stored in Failproof AI Cloud | Yes | The Cloud dashboard |
+
+Run the local one first. It needs nothing but the CLI. Findings stay local, while anonymous CLI telemetry is sent by default unless you set `FAILPROOFAI_TELEMETRY_DISABLED=1`.
+
 <Tabs>
-  <Tab title="Dashboard">
+  <Tab title="Local">
+    ```bash
+    failproofai audit
+    ```
+
+    It scans every supported agent history it finds on this machine, replays the tool activity through the builtin policy catalog, then opens **http://localhost:8020/audit**. Keep the process running while you read the results; press <kbd>Ctrl</kbd>+<kbd>C</kbd> when you are done.
+
+    Analysis and findings stay on this machine. Anonymous CLI telemetry is sent by default unless disabled. After you opt into scheduling, each scan also sends machine metadata and may send a limited findings digest.
+
+    | Flag | What it does |
+    | --- | --- |
+    | `--schedule [days]` | Scan on a timer and email the findings. Default 7 days, range 1–90. Signs you in the first time. |
+    | `--email <address>` | With `--schedule`, supplies the report address instead of prompting. |
+    | `--no-schedule` | Stop the timer. Leaves you signed in. |
+    | `--status` | Whether scheduling is on, where reports go, the daemon's state, and when the next scan is due. |
+
+    ```bash
+    failproofai audit --schedule 7 --email reliability@example.com
+    failproofai audit --status
+    ```
+
+    See [Audit local agent history](/audits/local-audit) for which histories each adapter reads and how the scheduled scan runs.
+  </Tab>
+  <Tab title="Cloud dashboard">
     <Steps>
       <Step title="Open Audits">
         In the Cloud sidebar, go to **Analyze → Audits**. Select **new audit**.
@@ -24,7 +56,9 @@ An audit turns a set of sessions into ranked, evidence-backed failure findings. 
 
     ![A completed audit finding showing its failure description, recommended action, supporting evidence, and affected sessions.](/images/dashboard/audit-finding.png)
   </Tab>
-  <Tab title="CLI">
+  <Tab title="Cloud CLI">
+    `fp` is the Failproof AI Cloud CLI. It reads back what Cloud stored; it is a different program from `failproofai`, which enforces on this machine.
+
     ```bash
     fp audits create payment-retry-failures \
       --description "Find production sessions that retry a failed payment call without changing input or escalating" \

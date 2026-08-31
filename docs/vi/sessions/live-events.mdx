@@ -1,22 +1,21 @@
 ---
----
 title: "Sự kiện trực tiếp"
-description: "Theo dõi hoạt động của agent khi một phiên đang chạy."
+description: "Theo dõi hoạt động của agent khi phiên làm việc đang chạy."
 icon: "radio"
 ---
 
-Sự kiện trực tiếp giúp bạn xác nhận cơ chế đo lường và theo dõi một lần chạy có rủi ro mà không cần chờ phiên kết thúc.
+Sự kiện trực tiếp giúp bạn xác nhận việc thiết lập công cụ và theo dõi các lần chạy có rủi ro mà không cần chờ phiên làm việc kết thúc.
 
 ## Theo dõi hoạt động
 
 <Tabs>
   <Tab title="Dashboard">
     1. Đi tới **Observe → Events**.
-    2. Bắt đầu với cửa sổ thời gian hiện tại và không có bộ lọc để xác nhận dữ liệu đang được nhận.
-    3. Lọc theo môi trường, loại sự kiện, agent hoặc phiên. Sử dụng tìm kiếm để tìm văn bản trong tải trọng dữ liệu.
-    4. Chọn một sự kiện để kiểm tra tóm tắt và chi tiết của nó. Theo liên kết phiên của nó để xem dấu vết đầy đủ.
+    2. Bắt đầu với cửa sổ thời gian hiện tại và không có bộ lọc để xác nhận dữ liệu đang đến.
+    3. Lọc theo môi trường, loại sự kiện, agent, hoặc phiên. Sử dụng tìm kiếm cho văn bản tải trọng.
+    4. Chọn một sự kiện để kiểm tra tóm tắt và chi tiết của nó. Làm theo liên kết phiên của nó để xem toàn bộ dấu vết.
 
-    ![Dòng sự kiện trực tiếp hiển thị lưu lượng từ cổng trò chuyện Hermes cùng với các lần chạy coding-CLI, được lọc theo thời gian, môi trường, loại sự kiện, agent, mô hình, bối cảnh và phiên.](/images/dashboard/events-stream-current.png)
+    ![Dòng Events trực tiếp cho thấy lưu lượng từ cổng Hermes chat cùng với các lần chạy coding-CLI, được lọc theo thời gian, môi trường, loại sự kiện, agent, mô hình, ngữ cảnh và phiên.](/images/dashboard/events-stream-current.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -25,22 +24,22 @@ Sự kiện trực tiếp giúp bạn xác nhận cơ chế đo lường và the
     fp --json events --full --session-id <session-id> --all
     ```
 
-    Luồng mặc định bỏ qua các tải trọng dữ liệu thô. Chỉ sử dụng `--full` cho việc điều tra phiên giới hạn.
+    Nguồn cấp mặc định bỏ qua các tải trọng thô. Chỉ sử dụng `--full` để điều tra phiên bị ràng buộc.
   </Tab>
 </Tabs>
 
-Sử dụng dòng sự kiện để trả lời ba câu hỏi cấp bách:
+Sử dụng dòng sự kiện để trả lời ba câu hỏi ngay lập tức:
 
 - Agent mong đợi có đang báo cáo tới môi trường chính xác không?
-- Các lệnh gọi mô hình, lệnh gọi công cụ và quyết định chính sách có đến đúng thứ tự không?
-- Phiên đã dừng tiến triển hay bắt đầu lặp lại một hành động?
+- Các lệnh gọi mô hình, lệnh gọi công cụ và quyết định chính sách có đến theo thứ tự không?
+- Phiên có dừng tiến hành hoặc bắt đầu lặp lại một hành động không?
 
-Các loại sự kiện bao gồm sự kiện vòng đời agent, yêu cầu và phản hồi của mô hình, sử dụng công cụ và kết quả, thực thi hook, chờ đợi con người và ngắt, cũng như lỗi rõ ràng. ID tương quan kết hợp các sự kiện được ghép nối như một lệnh gọi công cụ và kết quả của nó.
+Các loại sự kiện bao gồm sự kiện vòng đời của agent, yêu cầu và phản hồi mô hình, sử dụng công cụ và kết quả, thực thi hook, chờ đợi và ngắt của con người, và các lỗi rõ ràng. ID tương quan kết nối các sự kiện được ghép nối như lệnh gọi công cụ và kết quả của nó.
 
 <Tip>
-  Giữ chế độ xem trực tiếp rộng trong khi xác minh một tích hợp mới. Chỉ thêm bộ lọc sau khi bạn thấy sự kiện đầu tiên; một bộ lọc không chính xác có thể trông giống như việc nhập không thành công.
+  Giữ chế độ xem trực tiếp rộng khi xác minh một tích hợp mới. Chỉ thêm bộ lọc sau khi bạn thấy sự kiện đầu tiên; bộ lọc không chính xác có thể trông giống như việc tiếp nhận dữ liệu không thành công.
 </Tip>
 
-Nếu không có sự kiện nào xuất hiện, chạy `failproofai config --status`, sau đó [khắc phục sự cố nhập liệu](/vi/reference/troubleshooting).
+Nếu không có sự kiện nào xuất hiện, hãy chạy `failproofai config --status`, sau đó [khắc phục sự cố tiếp nhận dữ liệu](/vi/reference/troubleshooting).
 
-Các agent không chạy trong một trong 12 [harnesses](/vi/reference/harnesses) được hỗ trợ sẽ báo cáo các loại sự kiện giống nhau thông qua [Python SDK](/vi/reference/custom-agents), bao gồm các sự kiện human-in-the-loop (`human_wait`, `human_input`, `human_interrupt`) mà các agent cổng và sản xuất phụ thuộc vào.
+Các agent không chạy trong một trong 12 [harnesses](/vi/reference/harnesses) được hỗ trợ báo cáo các loại sự kiện giống nhau thông qua [Python SDK](/vi/reference/custom-agents), bao gồm các sự kiện con người trong vòng lặp (`human_wait`, `human_input`, `human_interrupt`) mà các agent gateway và sản xuất phụ thuộc vào.

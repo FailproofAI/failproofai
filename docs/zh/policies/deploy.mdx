@@ -1,47 +1,51 @@
 ---
 title: "部署策略"
-description: "将经过审核的策略版本推送到目标机器。"
+description: "将经过审核的策略版本下发到目标机器。"
 icon: "cloud-upload"
 ---
 
-部署操作将一个或多个策略版本关联到一组已注册的目标机器。
+部署将一个或多个策略版本与一组已注册的目标机器关联起来。
 
 ## 应用部署
 
 <Tabs>
-  <Tab title="控制台">
+  <Tab title="仪表板">
     1. 前往 **Admin → enforcement**，找到目标机器并展开其行。
-    2. 选择 **edit**，添加已审核的策略版本，并选择 **observe** 或对应的强制执行效果。
-    3. 应用更改，等待机器下次检入，确认其部署状态和覆盖状态。
+    2. 选择 **edit**，添加经过审核的策略版本，并选择 **observe** 或其强制执行效果。
+    3. 应用更改，然后等待机器下次签入，确认其部署和覆盖状态。
     4. 前往 **Observe → policy** 查看实时决策。
 
-    ![包含策略版本、enforce 和 observe 效果以及应用部署操作的机器部署编辑器。](/images/dashboard/enforcement-editor.png)
+    ![带有策略版本、enforce 和 observe 效果以及应用部署操作的机器部署编辑器。](/images/dashboard/enforcement-editor.png)
   </Tab>
   <Tab title="CLI">
-    云端部署接口有意未作为普通 `fp` 命令暴露。请在本地检查机器状态，再通过控制台进行部署：
+    使用 `fp fleet` 通过 CLI 进行部署。在应用之前请检查生成的方案——`deploy` 会打印完整计划，并**仅在没有 `--json` 参数的交互式终端下**进行确认提示。在使用 `--json`、`--yes` 或重定向 stdin（CI 步骤、脚本、Agent 调用）时，命令会立即执行，不显示计划也不提示确认——因此如需审查，请先运行 `fp fleet show <machine>`：
 
     ```bash
-    failproofai config --status
+    fp fleet list
+    fp fleet show <machine-id>
+    fp fleet deploy <machine-id> --add no-force-push
     ```
 
-    部署完成后，使用 `fp sessions --env production --since 24h` 和 `fp events --event-type hook_completed` 验证活动是否已上报至云端。
+    `fp fleet diff <machine-id>` 显示预期与实际交付之间的差异（机器在下次轮询之前显示为 `behind` 状态），`fp fleet history <machine-id>` 列出历史版本，`fp fleet rollback <machine-id> <generation>` 回滚到指定版本——若该版本引用的策略已被禁用或删除，则会拒绝回滚。
+
+    使用 `failproofai config --status` 检查机器本身的状态，并在部署后使用 `fp sessions --env production --since 24h` 和 `fp events --event-type hook_completed` 验证活动是否已上报至 Cloud。
   </Tab>
 </Tabs>
 
 <Steps>
   <Step title="选择版本和目标机器">
-    部署已审核的版本而非可变草稿，优先从非生产环境机器或少量机器开始，以便逐一检查其会话。
+    部署经过审核的版本而非可变的草稿，从非生产环境的机器或小批量机器开始，以便检查其会话。
   </Step>
   <Step title="观察决策">
-    在不阻断工作的前提下，审查匹配结果、触发原因、受影响的工具以及误报情况。
+    在不阻塞工作的情况下，审查匹配结果、原因、受影响的工具以及误报情况。
   </Step>
   <Step title="强制执行并验证覆盖范围">
-    在观察到的匹配结果能有效区分不安全操作与合法操作后，再提升为强制执行模式，然后确认每台目标机器均已拉取部署并正在上报决策。
+    在观察到的匹配结果能够区分不安全操作与合法操作之后，再提升为强制执行，然后确认每台目标机器已拉取部署并正在上报决策。
   </Step>
 </Steps>
 
-机器需具备 `policies:pull` 能力。事件上报由 `events:add` 单独控制；当您期望云端进行分析和强制执行时，请同时验证这两项能力。
+机器需要具备 `policies:pull` 能力。事件上报由 `events:add` 单独控制；当您期望 Cloud 进行分析和强制执行时，请确认两者均已启用。
 
 <Warning>
-  强制执行管理是一项管理员级别的云端工作流。请勿将仅限 root 的强制执行路由视为普通客户 `/v1` API 端点使用。
+  强制执行管理是一项管理员级别的 Cloud 工作流。请勿将仅限 root 的强制执行路由视为普通的客户 `/v1` API 端点。
 </Warning>

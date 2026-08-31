@@ -1,42 +1,42 @@
 ---
 ---
-title: "Aracınızı failproof yapın"
-description: "Aracılarınızın çalıştığı her ortam için gözlemlenebilirlik ve zorlama — kodlama CLI'ları, sohbet ağ geçitleri, kendi kendini barındıran asistanlar ve kendi enstrümente edilmiş aracılarınız."
+title: "Aracınızı hatasız hale getirin"
+description: "Aracılarınızın çalıştığı her ortam için gözlemlenebilirlik ve uygulama — kodlama CLI'ları, sohbet ağ geçitleri, kendi barındırılan yardımcılar ve kendi enstrümente edilmiş aracılarınız."
 icon: "shield-check"
 ---
 
-Failproof AI, ekiplerin aracılarının ne yaptığını anlamalarına, nerede başarısız olduklarını bulmalarına ve aynı davranış tekrar gerçekleşmeden önce güvenlik önlemleri almalarına yardımcı olur.
+Failproof AI, ekiplerin aracıların ne yaptığını anlamasına, nerede başarısız olduklarını bulmasına ve aynı davranışın tekrar olmasından önce koruyucu önlemler almalarına yardımcı olur.
 
-Bir **harness**, aracılarınızın gerçekten çalıştığı ortamdır. Failproof AI bunlardan 12 tanesine bağlanır — Claude Code ve Codex gibi kodlama CLI'ları, Hermes gibi sohbet ağ geçitleri, OpenClaw gibi kendi kendini barındıran asistanlar — ve aynı olaylar, aynı politikalar ve aynı oturum geçmişi tümünde uygulanır. Harnessi olmayan aracılar [Python SDK](/tr/reference/custom-agents) üzerinden rapor verir; bu rapor izlenir ve denetlenir; bir politika burada uygulamak için kendi çalışma zamanınızda bir kanca gerekir.
+Bir **harness**, aracınızın gerçekten çalıştığı ortamdır. Failproof AI bunlardan 12 tanesine bağlanır — Claude Code ve Codex gibi kodlama CLI'ları, Hermes gibi sohbet ağ geçitleri, OpenClaw gibi kendi barındırılan yardımcılar — ve aynı olaylar, aynı politikalar ve aynı oturum geçmişi her birinde geçerlidir. Harness'i olmayan aracılar [Python SDK](/tr/reference/custom-agents) aracılığıyla rapor verir; bu da onları izler ve denetler; orada bir politika uygulamak kendi runtime'ınızda bir bağlantı gerektirir.
 
 <Columns cols={2}>
   <Card title="Failproof'u kurun" icon="wand-sparkles" href="/tr/start/quickstart">
-    Projenizi enstrümente etmek, bağlamak ve aracı günlüklerinin geldiğini doğrulamak için beceriyi kullanın.
+    Projenizi enstrümente etmek, bağlamak ve aracı günlüklerinin geldiğini doğrulamak için skill'i kullanın.
   </Card>
   <Card title="Failproof Asistanına sorun" icon="message-square-text" href="/tr/sessions/assistant">
-    Aracı günlüklerinizi doğal dilde analiz edin, sorgulayın, panolar oluşturun ve denetimler çalıştırın.
+    Aracı günlükleriniz üzerinde doğal dilde analiz yapın, sorgulayın, panolar oluşturun ve denetimler çalıştırın.
   </Card>
 </Columns>
 
 <Columns cols={3}>
   <Card title="Aracının ne yaptığını görün" icon="route" href="/tr/sessions/overview">
-    Model çağrılarını, araçları, hataları, insan girdisini, gecikmesini ve politika kararlarını bir oturumda izleyin.
+    Model çağrılarını, araçları, hataları, insan girişini, gecikmeyi ve politika kararlarını bir oturumda izleyin.
   </Card>
-  <Card title="Başarısızlıkları sistematik olarak bulun" icon="scan-search" href="/tr/audits/overview">
-    Tanımlanmış bir oturum kümesini denetleyin, kanıtla desteklenen bulguları gözden geçirin ve düzeltmeyi sorun olarak izleyin.
+  <Card title="Hataları sistematik olarak bulun" icon="scan-search" href="/tr/audits/overview">
+    Tanımlanmış bir oturum setini denetleyin, kanıta dayalı bulguları gözden geçirin ve çözümü sorun olarak izleyin.
   </Card>
   <Card title="Tekrarlanmasını önleyin" icon="shield-check" href="/tr/policies/overview">
-    Bilinen bir başarısızlık modunu bir politikaya dönüştürün, etkisini gözlemleyin ve tüm filoğunuzda dağıtın.
+    Bilinen bir hata modunu politikaya dönüştürün, etkisini gözlemleyin ve bunu tüm filosunda dağıtın.
   </Card>
 </Columns>
 
 > **Oturum → Denetim → Bulgu → Sorun → Politika**<br />
-> Ne olduğunu izleyin, başarısızlığı bulun, yanıtı yönetin, ardından gelecekteki çalışmalarda aynı davranışı önleyin.
+> Ne olduğunu izleyin, hatayı bulun, yanıtı yönetin, ardından gelecekteki çalıştırmalarda aynı davranışı önleyin.
 
 ## Buradan başlayın
 
-İlk enstrümente edilmiş aracılarınızı dağıtıyorsanız, [hızlı başlangıç](/tr/start/quickstart) ile başlayın. Eğer veriler zaten geliyorsa, denetimler veya politikalar yapılandırmadan önce gerçek bir çalıştırmayı incelemek üzere [Oturumlar](/tr/sessions/overview)'ı açın.
+İlk enstrümente edilmiş aracınızı dağıtıyorsanız, [hızlı başlangıç](/tr/start/quickstart) ile başlayın. Veriler zaten geliyorsa, [Oturumlar](/tr/sessions/overview)'ı açın ve denetimleri veya politikaları yapılandırmadan önce gerçek bir çalıştırmayı inceleyin.
 
-<Card title="Bir başarısızlığı bulun ve önleyin" icon="arrow-right" href="/tr/start/quickstart">
-  Yakalamadan güvenli bir şekilde dağıtılan bir politikaya kadar uçtan uca iş akışını tamamlayın.
+<Card title="Bir hatayı bulun ve önleyin" icon="arrow-right" href="/tr/start/quickstart">
+  Yakalama işleminden güvenli bir şekilde dağıtılan bir politikaya kadar uçtan uca iş akışını tamamlayın.
 </Card>

@@ -11,17 +11,19 @@ Use recurring audits for failure modes that can return as agents, prompts, tools
 <Tabs>
   <Tab title="Dashboard">
     1. Go to **Analyze → Audits** and open the audit.
-    2. Open its settings and change the enabled state, interval, UTC anchor, window mode, or lookback.
-    3. Save the audit and confirm the next-run time on the audit card.
-    4. Use **run now** once after a major scope or context change.
+    2. Select **edit settings** and change the cadence, window, sensitivity, or findings per run.
+    3. Save the audit and confirm the next-run time in the audit header.
+    4. Pause and resume the schedule from the same header, beside **run now**.
+    5. Use **run now** once after a major scope or context change.
 
-    ![The audit editor showing cadence, sweep window, scope, analysis settings, context, and notification channels.](/images/dashboard/audit-edit.png)
+    ![An audit header showing its paused state, open findings, last run, next run, sweep window, and sensitivity, with run now, edit settings, and resume controls.](/images/dashboard/audit-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp audits edit checkout-reliability \
       --schedule-interval-secs 86400 \
       --schedule-anchor 2026-08-15T09:00:00Z \
+      --window-mode since_last \
       --lookback-window-secs 86400 \
       --yes
 
@@ -29,21 +31,50 @@ Use recurring audits for failure modes that can return as agents, prompts, tools
     fp audits edit checkout-reliability --enabled --yes
     ```
 
+    `fp audits edit` confirms before changing anything, which is why every example here passes `--yes`. The server replaces the whole definition on every edit, so the CLI re-sends the current audit with your changes applied — a flag-only edit needs `audits:read` **as well as** `audits:write`. Scope a CI key for both.
+
     See the [`fp audits` reference](/reference/cloud-cli#audits) for schedule bounds, window behavior, and all audit commands.
   </Tab>
 </Tabs>
 
-Choose cadence from the speed and cost of the risk:
+## The two schedule bounds
+
+Every recommendation below has to fit inside these. The ranges are the server's, and `fp` mirrors them client-side, so a value outside one exits 2 locally rather than costing a 422 round-trip.
+
+| Field | Flag | Range | Default |
+| --- | --- | --- | --- |
+| Schedule interval | `--schedule-interval-secs` | 3,600–604,800 seconds (1 hour to 7 days) | 86,400 (daily) |
+| Lookback window | `--lookback-window-secs` | 3,600–7,776,000 seconds (1 hour to 90 days) | 604,800 (7 days) |
+
+Seven days is the ceiling on cadence. There is no monthly Cloud audit.
+
+## Choose a cadence
+
+Pick from the speed and cost of the risk:
 
 | Risk pattern | Starting cadence |
 | --- | --- |
-| High-impact production action | Daily |
+| High-impact production action | Daily, or hourly while a risky change is landing |
 | Workflow or model regression | Weekly |
-| Governance or access review | Monthly |
-| One-time release investigation | Run once |
+| Governance or access review | Weekly — the longest interval available |
 
-Align the lookback window with the cadence so runs neither leave gaps nor repeatedly examine an unnecessarily large population. After changing an audit's goal or context, run it manually once before relying on the next scheduled result.
+Align the lookback window with the cadence so runs neither leave gaps nor repeatedly examine an unnecessarily large population.
+
+There is no one-shot audit; every audit carries a schedule interval. For a release investigation, create it enabled, let the first run fire — the first run queues immediately on create, regardless of the anchor — then pause it with `fp audits edit <name> --disabled --yes`. Re-enable before using **run now**: a disabled audit has no queue row, and a manual run against one is refused with a 409.
+
+## Window mode and anchor
+
+`--window-mode` decides which window each run sweeps:
+
+| Mode | Behavior |
+| --- | --- |
+| `since_last` | Continue from the end of the last fully analyzed window, so a skipped run leaves no gap. |
+| `fixed` | Re-inspect a rolling `lookback_window_secs` on every run, whatever the last run covered. |
+
+`--schedule-anchor` fixes the phase rather than the frequency: runs land on `anchor + N × interval`. Omit it and the anchor defaults to the next 09:00 UTC; an anchor more than 365 days out is rejected. Changing the interval or the anchor takes effect at the next reschedule, not on the run already queued, and a failed run does not move the anchor.
+
+After changing an audit's goal or context, run it manually once before relying on the next scheduled result.
 
 <Note>
-  Local scheduled audits are configured on the machine and scan local agent history. Cloud audit schedules operate on Cloud sessions. Treat their results and ownership separately.
+  This page is about Cloud audit schedules, which operate on Cloud sessions. The local audit has its own timer: `failproofai audit --schedule [days]` takes 1–90 days and defaults to 7, scans the agent history on that one machine, and is the only surface with a monthly option. Its results and ownership are separate from anything here — see [Audit local agent history](/audits/local-audit).
 </Note>

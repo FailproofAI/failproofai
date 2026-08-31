@@ -1,0 +1,120 @@
+---
+title: "Инструментируй свой агент"
+sidebarTitle: "Frameworks"
+description: "Подключи любой поддерживаемый фреймворк агента к Failproof AI одним вызовом."
+icon: "plug"
+---
+
+Твой агент уже производит всё, что стоит записывать — вызовы модели, вызовы инструментов, границы узлов, ожидания пользователя, ошибки. Фреймворк выбрасывает это. SDK сохраняет.
+
+<Columns cols={3}>
+  <Card title="Пользовательские агенты" icon="wrench" href="/ru/start/quickstarts/custom-agents">
+    Агент, который ты написал сам, или один из тех, что здесь не перечислены.
+  </Card>
+  <Card title="LangChain и LangGraph" icon="share-2" href="/ru/start/quickstarts/langchain">
+    Графы, узлы, инструменты, ретриверы, модели.
+  </Card>
+  <Card title="CrewAI" icon="users" href="/ru/start/quickstarts/crewai">
+    Команды, потоки, агенты по ролям, инструменты.
+  </Card>
+  <Card title="LlamaIndex" icon="database" href="/ru/start/quickstarts/llamaindex">
+    Рабочие процессы, шаги, функциональные агенты, ретриверы.
+  </Card>
+  <Card title="Pydantic AI" icon="badge-check" href="/ru/start/quickstarts/pydantic-ai">
+    Типизированные агенты, возможности, инструменты, повторы.
+  </Card>
+</Columns>
+
+## Три строки, любой фреймворк
+
+<CodeGroup>
+```bash LangGraph
+pip install 'failproofai-sdk[langgraph]'
+```
+
+```bash CrewAI
+pip install 'failproofai-sdk[crewai]'
+```
+
+```bash LlamaIndex
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+```bash Pydantic AI
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+```bash Custom agents
+pip install failproofai-sdk
+```
+</CodeGroup>
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # обнаруживает импортированные фреймворки
+
+with failproofai_sdk.session():
+    ...                               # твой существующий вызов агента, без изменений
+```
+
+Без декораторов на функциях, без коллбэка, передаваемого вызовам, без идентификаторов, пропущенных через твой код. Только вызов внутри сессии отличается:
+
+<Tabs>
+  <Tab title="LangGraph">
+    ```python
+    graph.invoke({"messages": [HumanMessage("...")]})
+    ```
+  </Tab>
+  <Tab title="CrewAI">
+    ```python
+    Crew(agents=[analyst, writer], tasks=[gather, summarise]).kickoff()
+    ```
+  </Tab>
+  <Tab title="LlamaIndex">
+    ```python
+    await agent.run("...")        # под `async with failproofai_sdk.session():`
+    ```
+  </Tab>
+  <Tab title="Pydantic AI">
+    ```python
+    agent.run_sync("...")
+    ```
+  </Tab>
+  <Tab title="Custom agents">
+    ```python
+    with failproofai_sdk.agent("planner"):
+        with failproofai_sdk.tool_call("search", input={"q": q}) as t:
+            t.output = search(q)
+    ```
+  </Tab>
+</Tabs>
+
+Дополнительная установка — это **фреймворк**. Каждый адаптер поставляется в базовом пакете, поэтому проект, который уже имеет свой фреймворк, не нуждается ни в чём дополнительном.
+
+## Проверь доставку
+
+Запусти одну инструментированную сессию, затем открой **Observe → Sessions** и выбери твоё окружение. Запуск появится как восстановленная трасса.
+
+Если ничего не поступило, проверь, подключена ли машина командой `failproofai config --status`. Смотри [Настройка захвата](/ru/start/setup).
+
+<Warning>
+  Не проверяй директорию спула для подтверждения доставки. Daemon Failproof собирает и удаляет каждый пакет в течение миллисекунд, поэтому чтение спула гонится с коллектором и показывает гораздо меньше событий, чем было испущено.
+</Warning>
+
+## Дальше
+
+Каждый быстрый старт выше ссылается на его полное руководство — что записывается, опции, потоковая передача, именование спанов и проблемы, с которыми люди на самом деле сталкиваются. Они находятся в разделе **Trace Agents → Plug in your agent**.
+
+<Columns cols={3}>
+  <Card title="Как это работает" icon="workflow" href="/ru/start/integrations/custom-agents#going-deeper">
+    Модель данных, идентификаторы, типы событий и как события достигают Cloud.
+  </Card>
+  <Card title="Прочитай трассу" icon="route" href="/ru/sessions/read-a-trace">
+    Проследи причинность через сессию вместо разрозненных логов.
+  </Card>
+  <Card title="Найди первый отказ" icon="scan-search" href="/ru/start/first-audit">
+    Проверь сессии, которые ты только что захватил.
+  </Card>
+</Columns>

@@ -1,7 +1,14 @@
 // @vitest-environment node
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+
+vi.mock("../../src/hooks/hook-telemetry", () => ({
+  trackHookEvent: vi.fn(() => Promise.resolve()),
+  flushHookTelemetry: vi.fn(() => Promise.resolve()),
+}));
+
 import { evaluatePolicies } from "../../src/hooks/policy-evaluator";
 import { registerPolicy, clearPolicies } from "../../src/hooks/policy-registry";
+import { trackHookEvent } from "../../src/hooks/hook-telemetry";
 
 describe("hooks/policy-evaluator", () => {
   beforeEach(() => {
@@ -581,6 +588,40 @@ describe("hooks/policy-evaluator", () => {
     });
   });
 
+  describe("crash attribution", () => {
+    // `policy_evaluation_error` is how regressions in OUR compiled policies get
+    // surfaced. Firing it for a third party's pack both pollutes that signal and
+    // sends a publisher-controlled policy name on an event that claims the fault
+    // is ours.
+    const thrower = (name: string) =>
+      registerPolicy(name, "d", async () => { throw new Error("boom"); }, { events: ["PreToolUse"] });
+
+    const errorEvents = () =>
+      vi.mocked(trackHookEvent).mock.calls.filter((c) => c[1] === "policy_evaluation_error");
+
+    it("reports a builtin crash", async () => {
+      vi.mocked(trackHookEvent).mockClear();
+      thrower("failproofai/boomer");
+      await evaluatePolicies("PreToolUse", { tool_name: "Bash" });
+      expect(errorEvents()).toHaveLength(1);
+    });
+
+    it("does NOT report a pack, cloud, custom or convention crash as ours", async () => {
+      for (const name of [
+        "pack/acme/finance@1.2.0/boomer",
+        "cloud/org-guard@7/boomer",
+        "custom/boomer",
+        ".failproofai-project/boomer",
+      ]) {
+        vi.mocked(trackHookEvent).mockClear();
+        clearPolicies();
+        thrower(name);
+        await evaluatePolicies("PreToolUse", { tool_name: "Bash" });
+        expect(errorEvents(), name).toHaveLength(0);
+      }
+    });
+  });
+
   describe("params injection", () => {
     it("injects schema defaults into ctx.params when no policyParams in config", async () => {
       let capturedParams: unknown = null;
@@ -588,16 +629,50 @@ describe("hooks/policy-evaluator", () => {
       const { BUILTIN_POLICIES } = await import("../../src/hooks/builtin-policies");
       const orig = BUILTIN_POLICIES.find((p) => p.name === "block-sudo")!;
 
-      // Wrap the original fn to capture params
+      // The schema is passed AT REGISTRATION now, not looked up by name. That
+      // is what lets a pack or cloud policy declare params at all — and it
+      // closes a hole: a name-keyed lookup handed `block-sudo`'s schema to
+      // ANYTHING registered under that name, including a pack that took it.
       registerPolicy("block-sudo", orig.description, async (ctx) => {
         capturedParams = ctx.params;
         return { decision: "allow" };
-      }, orig.match);
+      }, orig.match, 0, orig.params);
 
       await evaluatePolicies("PreToolUse", { tool_name: "Bash", tool_input: { command: "ls" } }, undefined, { enabledPolicies: ["block-sudo"] });
 
       expect(capturedParams).toBeDefined();
       expect((capturedParams as Record<string, unknown>).allowPatterns).toEqual([]);
+    });
+
+    it("gives a policy that declares NO schema the user's configured params", async () => {
+      // Previously every schema-less policy — every custom hook, every cloud
+      // assignment, and every pack policy — received `{}`, so a user who
+      // configured params for one had them silently discarded. Not just the
+      // defaults: what they had explicitly written.
+      let captured: unknown = null;
+      registerPolicy("failproofai/no-schema", "d", async (ctx) => {
+        captured = ctx.params;
+        return { decision: "allow" };
+      }, { events: ["PreToolUse"] });
+
+      await evaluatePolicies("PreToolUse", { tool_name: "Bash" }, undefined, {
+        enabledPolicies: [],
+        policyParams: { "no-schema": { threshold: 7 } },
+      } as never);
+
+      expect(captured).toEqual({ threshold: 7 });
+    });
+
+    it("still gives a schema-less policy {} when nothing is configured", async () => {
+      // The overwhelmingly common case must be unchanged.
+      let captured: unknown = null;
+      registerPolicy("failproofai/no-schema-2", "d", async (ctx) => {
+        captured = ctx.params;
+        return { decision: "allow" };
+      }, { events: ["PreToolUse"] });
+
+      await evaluatePolicies("PreToolUse", { tool_name: "Bash" }, undefined, { enabledPolicies: [] });
+      expect(captured).toEqual({});
     });
 
     it("overrides schema defaults with policyParams from config", async () => {

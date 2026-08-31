@@ -1,0 +1,120 @@
+---
+title: "接入你的智能体"
+sidebarTitle: "框架"
+description: "通过一次调用，将任意受支持的智能体框架连接到 Failproof AI。"
+icon: "plug"
+---
+
+你的智能体已经产生了所有值得记录的内容——模型调用、工具调用、节点边界、人工等待、失败信息。框架会将这些数据丢弃，而 SDK 会将其保留。
+
+<Columns cols={3}>
+  <Card title="自定义智能体" icon="wrench" href="/zh/start/quickstarts/custom-agents">
+    你自己编写的智能体，或此处未列出的智能体。
+  </Card>
+  <Card title="LangChain 和 LangGraph" icon="share-2" href="/zh/start/quickstarts/langchain">
+    图、节点、工具、检索器、模型。
+  </Card>
+  <Card title="CrewAI" icon="users" href="/zh/start/quickstarts/crewai">
+    团队、流程、按角色划分的智能体、工具。
+  </Card>
+  <Card title="LlamaIndex" icon="database" href="/zh/start/quickstarts/llamaindex">
+    工作流、步骤、函数智能体、检索器。
+  </Card>
+  <Card title="Pydantic AI" icon="badge-check" href="/zh/start/quickstarts/pydantic-ai">
+    类型化智能体、能力、工具、重试。
+  </Card>
+</Columns>
+
+## 三行代码，适用任意框架
+
+<CodeGroup>
+```bash LangGraph
+pip install 'failproofai-sdk[langgraph]'
+```
+
+```bash CrewAI
+pip install 'failproofai-sdk[crewai]'
+```
+
+```bash LlamaIndex
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+```bash Pydantic AI
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+```bash Custom agents
+pip install failproofai-sdk
+```
+</CodeGroup>
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # 自动检测你已导入的框架
+
+with failproofai_sdk.session():
+    ...                               # 你现有的智能体调用，无需任何修改
+```
+
+无需在函数上添加装饰器，无需向调用传递回调，也无需在代码中传递 ID。唯一的变化是将调用放在 session 内部：
+
+<Tabs>
+  <Tab title="LangGraph">
+    ```python
+    graph.invoke({"messages": [HumanMessage("...")]})
+    ```
+  </Tab>
+  <Tab title="CrewAI">
+    ```python
+    Crew(agents=[analyst, writer], tasks=[gather, summarise]).kickoff()
+    ```
+  </Tab>
+  <Tab title="LlamaIndex">
+    ```python
+    await agent.run("...")        # 在 `async with failproofai_sdk.session():` 下使用
+    ```
+  </Tab>
+  <Tab title="Pydantic AI">
+    ```python
+    agent.run_sync("...")
+    ```
+  </Tab>
+  <Tab title="Custom agents">
+    ```python
+    with failproofai_sdk.agent("planner"):
+        with failproofai_sdk.tool_call("search", input={"q": q}) as t:
+            t.output = search(q)
+    ```
+  </Tab>
+</Tabs>
+
+额外安装的是**框架**本身。所有适配器均已内置在基础包中，因此已安装框架的项目无需任何额外依赖。
+
+## 验证数据是否已到达
+
+运行一次已接入的会话，然后打开 **Observe → Sessions** 并选择你的环境。该运行将以重建的追踪形式显示。
+
+如果没有数据到达，请使用 `failproofai config --status` 确认机器已连接。请参阅[设置数据捕获](/zh/start/setup)。
+
+<Warning>
+  请勿通过查看缓冲目录来确认数据是否已送达。Failproof 守护进程会在毫秒内收集并删除每个批次，因此读取该目录时会与收集器产生竞争，显示的事件数将远少于实际发出的数量。
+</Warning>
+
+## 下一步
+
+上方每个快速入门均链接到完整指南——包括记录的内容、选项、流式处理、span 命名以及常见问题。这些内容位于 **Trace Agents → Plug in your agent** 下。
+
+<Columns cols={3}>
+  <Card title="工作原理" icon="workflow" href="/zh/start/integrations/custom-agents#going-deeper">
+    数据模型、ID、事件类型，以及事件如何上报至云端。
+  </Card>
+  <Card title="解读追踪" icon="route" href="/zh/sessions/read-a-trace">
+    通过因果关系串联整个会话，而非查看零散的日志。
+  </Card>
+  <Card title="发现首个故障" icon="scan-search" href="/zh/start/first-audit">
+    对刚刚捕获的会话进行审计。
+  </Card>
+</Columns>

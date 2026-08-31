@@ -149,7 +149,7 @@ export function runBackfillCommand(opts: BackfillOptions = {}): BackfillResult {
       exitCode: 1,
       lines: [
         "This machine is not connected, so there is nowhere to send history.",
-        "Connect first: `failproofai config --connect <url> --token <key>`.",
+        "Connect first: `failproofai config --token <key>`.",
       ],
     };
   }

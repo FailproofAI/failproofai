@@ -1,0 +1,110 @@
+---
+title: "ポリシーパック"
+description: "GitHubリリースとして公開されたポリシーセットをインストールし、適用内容を管理します。"
+icon: "package"
+---
+
+パックとは、GitHubリリースとして公開されたポリシーのセットです。コマンド1つでインストールでき、実行前にリリース自身のチェックサムが検証され、ダイジェストが記録されるため、インストール後にパックの内容が変わることはありません。
+
+## Failproof AI のポリシーをインストールする
+
+```bash
+failproofai pack add core
+```
+
+これにより、npmパッケージ内に同梱されたコピーから弊社公開のポリシーセットがインストールされます。ネットワーク不要で、プロキシ環境でも失敗しません。一部だけ取り込む場合は次のようにします。
+
+```bash
+failproofai pack add core --policy block-rm-rf         # 1つ、またはカンマ区切りで複数
+failproofai pack add core --category dangerous-commands # カテゴリ全体
+failproofai pack add core --all                         # パック内のすべて
+```
+
+`failproofai pack list` で、パックが提供するすべてのカテゴリを確認できます。
+
+## インストール前にパックの内容を確認する
+
+```bash
+failproofai pack list acme/support-agent
+```
+
+パックに含まれるすべてのポリシーをカテゴリ別にグループ化して一覧表示します。作者がデフォルトで有効にしているものと、オプトインのものが区別されます。**マニフェストのみ**を読み込むため、エントリーアーティファクトはダウンロードもインポートもされません。つまり、見知らぬパックを参照しても、見知らぬコードが実行されることはありません。マニフェストはリリースの`SHA256SUMS`と照合されるため、表示されている内容がそのままインストールされます。
+
+ソースを指定せずに`failproofai pack list`を実行すると、現在インストール済みのパックが一覧表示されます。
+
+## 他のユーザーのパックをインストールする
+
+```bash
+failproofai pack add acme/support-agent
+```
+
+以下の形式はいずれも使用できます。手元にあるものをそのまま貼り付けてください。
+
+| ソース | 結果 |
+| --- | --- |
+| `acme/support-agent` | 最新リリース、解決された正確なタグに**固定** |
+| `acme/support-agent@v2.1.0` | 指定のリリース |
+| `github:acme/support-agent@v2.1.0` | 同上（明示的な記法） |
+| `https://github.com/acme/support-agent/releases/tag/v2.1.0` | 同上（ブラウザからコピーした URL） |
+
+タグを指定しない場合、最新リリースをインストールして**固定**し、選択されたタグを通知します。記録される内容は常に特定のリリース1つを指すため、再インストール時にバージョンがずれることはありません。
+
+## パックの一部だけ取り込む
+
+デフォルトでは、パック内のすべてではなく、作者が無人実行しても安全とマークした**パック自身のデフォルト**ポリシーのみが適用されます。
+
+```bash
+failproofai pack add acme/support-agent --category billing,git
+failproofai pack add acme/support-agent --policy block-refunds
+failproofai pack add acme/support-agent --all
+```
+
+`--category`と`--policy`は和集合として組み合わせられます（`--only`は`--policy`の別名として使用できます）。新しいバージョンで再追加した場合、選択した内容は維持され、残りが有効化し直されることはありません。
+
+## 有効なポリシーを管理する
+
+```bash
+failproofai policies                    # パックを含むすべてのソースを一覧表示
+failproofai pack list                   # パックのみ、カテゴリ別にグループ化
+failproofai policies --uninstall block-refunds        # パックのポリシーを1つ無効化
+failproofai policies --install block-refunds          # 再び有効化
+failproofai pack remove acme/support-agent
+```
+
+名前だけを指定した場合、その名前の**組み込みポリシー**が存在すればそちらが対象になります。パックのコピーを明示的に指定する場合は次のようにします。
+
+```bash
+failproofai policies --uninstall acme/support-agent:block-refunds
+```
+
+<Note>
+パックが提供するポリシーの名前が**有効な組み込みポリシー**と重複している場合、組み込みポリシーが実行され、パックのコピーはスキップされます。これは、同じガードが2回評価されるのを防ぐためです。パックのコピーを使用したい場合は、組み込みポリシーを無効にしてください。
+</Note>
+
+## Failproof AI のポリシーの提供元
+
+`core`は、npmパッケージ内に同梱されたコピーを読み込みます。同じセットはGitHubリリースとしても公開されており、特定のバージョンが必要な場合はそちらからインストールできます。
+
+```bash
+failproofai pack add core                    # パッケージ内のコピーを使用、ネットワーク不要
+failproofai pack add FailproofAI/policies    # 同じセット、GitHubリリースから取得
+```
+
+## 整合性検証でできること・できないこと
+
+`SHA256SUMS`はアーティファクトと同じリリースに同梱されているため、**署名ではなく**、誰が公開したかを証明するものではありません。証明されるのは、バイト列がそのリリースで公開されたものと一致することです。パック追加時にダイジェストが記録され、インポートのたびに再検証されるため、インストール後にパックの内容が変わることはありません。リリースのタグを付け替えたりアセットを差し替えたりしたリポジトリは、別のコードを静かに実行する代わりに、読み込みに失敗します。
+
+インストール時には、パックが**一度インポートされ**、自身のマニフェストと照合されます。アーティファクトのパースに失敗したり、宣言内容と異なるものを登録しようとするパックは、アクティベーションされる前に拒否されます。インストールは成功したが次のツール呼び出しで失敗する、といった事態にはなりません。
+
+## パックが読み込まれない場合
+
+このマシンで適用するよう設定されているが実行できないパックが存在する場合、対象ポリシーが適用するはずだったイベントは、サイレントに許可されるのではなく**拒否**されます。詳しくは[Failure behavior](/ja/policies/failure-behavior)を参照してください。`failproofai pack list`はその状態のパックを表示し、ゼロ以外の終了コードで終了します。
+
+## オフライン環境とミラー
+
+| 変数 | 効果 |
+| --- | --- |
+| `FAILPROOFAI_NO_DOWNLOAD=1` | フェッチを拒否。インストール済みのパックは引き続き適用される |
+| `FAILPROOFAI_PACK_BASE_URL` | パックの取得先を`github.com`の代わりにミラーへ向ける |
+
+独自パックの公開方法については、[Publish a pack](/ja/policies/publish-a-pack)を参照してください。

@@ -1,0 +1,244 @@
+---
+title: "LangChain ו-LangGraph"
+sidebarTitle: "LangChain ו-LangGraph"
+description: "התקן גרפים, צמתים, כלים, retrievers וקריאות מודלים בקריאה אחת."
+icon: "/images/frameworks/langchain.svg"
+---
+
+מתאם אחד משרת את שניהם. LangGraph פועל על מנהל ה-callback של `langchain-core`, כך שהתקנת אחד משלושים מתקינה את השני.
+
+## התקנה
+
+```bash
+pip install 'failproofai-sdk[langgraph]'
+```
+
+עבור LangChain ללא LangGraph, השתמש ב-`failproofai-sdk[langchain]`.
+
+נתמך: `langchain-core` 1.4.7 עד 2.0, `langgraph` 1.2 עד 2.0. מחוץ לטווח זה, המתאם עדיין מותקן ומוציא אזהרה פעם אחת.
+
+## התקנה
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    graph.invoke({"messages": [HumanMessage("...")]})
+```
+
+`instrument()` רושם tracer דרך `langchain_core.tracers.context.register_configure_hook`. LangChain מזריק אותו לכל מנהל callback שהוא בונה, כך שגרפים, כלים ומודלים נתפסים ללא שינוי באתר הקריאה — כולל אלה בתוך ספריות שלא כתבת.
+
+## מה מתועד
+
+| LangChain או LangGraph | אירוע Failproof |
+| --- | --- |
+| ריצה שורש | `agent_start`, `agent_end` |
+| צומת LangGraph | `hook_triggered`, `hook_completed` |
+| תת-גרף מקומפל | `agent_start`, `agent_end` מקוננים |
+| ריצת כלי | `tool_use`, `tool_result` |
+| ריצת retriever | `tool_use`, `tool_result`, פלט מסוכם |
+| ריצת מודל צ'אט או LLM | `model_request`, `model_response`, עם שימוש בטוקנים |
+| טוקנים זורמים | מקופלים לתוך התגובה כספירת חתיכות וזמן לטוקן ראשון. ספירות טוקנים דורשות `ChatOpenAI(stream_usage=True)` — ראה להלן |
+| `interrupt()` | `human_wait`, `agent_pause` |
+| `Command(resume=...)` | `agent_resume`, `human_input`, בקורלציה על ה-`Interrupt.id` — כולל כאשר ה-resume מתרחש בתהליך אחר מול אותו checkpointer |
+| חריגה לא מטופלת | `error`, אחר כך `agent_end` עם תוצאה `failed` |
+
+**צומת הופך לכן, לא לסוכן מקונן.** `agent_id` הוא ההיבט הראשוני בכל משטח לוח מחוונים — קידום `retrieve`, `grade_documents` ו-`should_continue` לסוכנים יטביע אותו, ויתייג את ההפעלה לאחר איזה צומת שקרה להריץ תחילה.
+
+טווחי Hook משדרים באותו אופן ועדיין נותנים לך תצוגת חביון לכל צומת.
+
+<Note>
+  **שם את הצמתים שלך כל דבר שאתה אוהב.** ריצה של צומת מזוהה על ידי ה*צורה* שלה — ריצה שאינה עלה הנושאת את תג הצעד של LangGraph בעצמו — לעולם לא על ידי שמה.
+</Note>
+
+| אתה כותב | מה מתועד |
+| --- | --- |
+| `add_node("lookup_population", ToolNode([...]))` | הכלי |
+| `add_node("ChatOpenAI", ...)` | קריאת המודל |
+
+שם צומת אחרי הדבר שהוא מריץ היה גורם לאירועי הדבר הזה להיעלם. זה כבר לא קורה.
+
+### זרימה
+
+`.stream()` ו-.astream()` אינם פולטים אירועים לכל טוקן. הם משתקללים לתוך `model_response` הסגירה:
+
+| שדה | נושא |
+| --- | --- |
+| `fw_chunks` | כמה חתיכות הגיעו |
+| `fw_ttft_ms` | זמן לטוקן ראשון |
+
+### ספירות טוקנים בתגובה זורמת
+
+עניין נפרד, וקל להחמיץ: OpenAI שולח שימוש רק בתגובה זורמת **כאשר מבוקש**.
+
+```python
+ChatOpenAI(model="gpt-4o-mini", stream_usage=True)   # ללא זה, אין טוקנים
+```
+
+המתאם מתעד מה הכלי הנותן אותו. ללא הדגל הזה, אין כלום להתעד, ו-`model_response` מגיע ללא ספירות טוקנים.
+
+## דוגמה
+
+```python
+import failproofai_sdk
+from langchain_core.messages import HumanMessage
+from langchain_core.tools import tool
+from langchain_openai import ChatOpenAI
+from langgraph.prebuilt import ToolNode, create_react_agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+@tool
+def price_of(item: str) -> float:
+    """Return the unit price of an item in USD."""
+    return {"widget": 42.0, "gadget": 17.5}[item.lower().strip()]
+
+
+@tool
+def stock_of(item: str) -> int:
+    """Return the units of an item currently in stock."""
+    return {"widget": 120, "gadget": 0}[item.lower().strip()]
+
+
+tools = ToolNode([price_of, stock_of], handle_tool_errors=True)
+graph = create_react_agent(ChatOpenAI(model="gpt-4o-mini"), tools)
+
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("analyst", goal="price and stock report"):
+        result = graph.invoke({
+            "messages": [HumanMessage("Price and stock for widget and gadget?")]
+        })
+```
+
+## שם את הטווחים שלך
+
+כברירת מחדל, הטווח השורש לוקח את שם הגרף בעצמו. עטפו אותו כדי לקבל תווית שבחרת:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("analyst", goal="price and stock report"):
+        graph.invoke(...)
+```
+
+עבור הגדרות רבות סוכנים, קנן את ההיקפים. כל עובד הופך לטווח ילד הנושא `parent_id`:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("supervisor"):
+        with failproofai_sdk.agent("researcher"):
+            research_graph.invoke(...)
+        with failproofai_sdk.agent("writer"):
+            writer_graph.invoke(...)
+```
+
+שמור על `agent_id` בעלי קרדינליות נמוכה. השתמש בתפקיד או שם צומת, לעולם לא UUID או מחרוזת לכל ריצה.
+
+## שלוט בהפעלה
+
+מזהה ההפעלה מתפתר בסדר זה, התאמה ראשונה מנצחת:
+
+1. `instrument("langchain", session_id=...)`
+2. `config={"metadata": {"failproofai_sdk_session_id": ...}}`
+3. הטווח הסוגר `failproofai_sdk.session()`
+4. `metadata["session_id"]`, `metadata["conversation_id"]`, או `metadata["thread_id"]`
+5. מזהה הריצה של השורש
+
+הוא לעולם לא נוצר מאפס, כי מזהה סינתטי מפצל ריצה אחת על פני מספר הפעלות.
+
+```python
+graph.invoke(
+    {"messages": [...]},
+    config={"metadata": {"failproofai_sdk_session_id": f"chat-{user_id}"}},
+)
+```
+
+## אפשרויות
+
+```python
+failproofai_sdk.instrument(
+    "langchain",
+    session_id=None,          # pin every run to one session id
+    include_chains=set(),     # allowlist intermediate chains as hook pairs
+    capture_content=True,     # False drops prompts and completions from payloads
+    graph_callbacks=True,     # first-class interrupt and resume, needs langgraph 1.2+
+)
+```
+
+קבע `capture_content=False` עבור נתונים מוסדרים. מבנה, תזמוני, ספירות טוקנים, שמות כלים ותוצאות עדיין מתועדות; גופי הודעות אינם.
+
+`include_chains` חל על ריצות **מקוננות** בלבד. runnable שאתה משדר ברמה העליונה הוא השורש של ההפעלה, כך שהוא הופך לטווח הסוכן ולא לזוג כן, ושמה כאן אין השפעה.
+
+## בן אדם בלולאה
+
+`interrupt()` מייצר ארבעה אירועים, וגם זוג אינו עודף:
+
+```python
+from langgraph.types import Command, interrupt
+
+def approve(state):
+    decision = interrupt({"prompt": "Ship it?", "options": ["yes", "no"]})
+    return {"approved": decision == "yes"}
+
+with failproofai_sdk.session():
+    graph.invoke(state, config)                    # human_wait, agent_pause
+    graph.invoke(Command(resume="yes"), config)    # agent_resume, human_input
+```
+
+`human_wait` ל-`human_input` נושא את הנושא והתשובה (שניהם נשמטים תחת `capture_content=False`, יחד עם מקורות מסמכי retrieval — ספירת המסמכים שורדת). `agent_pause` ל-`agent_resume` הוא הזוג היחיד שמזין זמן מושהה, אז ללא זה מתן אדם בן עשר דקות מחויב כזמן סוכן פעיל. הטווח השורש נשאר פתוח על פני הפער, שומר על שתי הקריאות בהפעלה אחת.
+
+## בעיות נפוצות
+
+<AccordionGroup>
+  <Accordion title="כלי מעלה מבטל את כל הגרף">
+    `create_react_agent` מפיץ את החריגה. כדי לתת למודל לראות את הכישלון ולהמשיך, בנה את צומת הכלי במפורש:
+
+    ```python
+    from langgraph.prebuilt import ToolNode, create_react_agent
+
+    tools = ToolNode([price_of, stock_of], handle_tool_errors=True)
+    graph = create_react_agent(model, tools)
+    ```
+
+    הכישלון מתועד כ-`tool_result` הנושא שגיאה בכל מקרה. זה רק קובע אם הריצה שורדת אותה.
+  </Accordion>
+
+  <Accordion title="סוכן שנקרא על שם מחלקת המודל מופיע בעקבות">
+    `llm.invoke()` ישיר מחוץ לגרף כלשהו אין ריצת הורה, כך שהוא פותח טווח שורש ופולט זוג המודל שלו בתוכו. לוח המחוונים משדר עלים לסוכן פתוח, כך שהטווח הוא כוונתי. שם אותו:
+
+    ```python
+    with failproofai_sdk.agent("summariser"):
+        summary = ChatOpenAI(model="gpt-4o-mini").invoke([HumanMessage(text)])
+    ```
+  </Accordion>
+
+  <Accordion title="כל אירוע מופיע פעמיים">
+    עברת טוכן Failproof ב-`config={"callbacks": [...]}` וגם קראת `instrument()`. הסר אותו. ה-configure hook כבר מכסה כל מנהל callback בתהליך.
+  </Accordion>
+
+  <Accordion title="אישורים אנושיים מופיעים כשגיאות">
+    הם לא. LangGraph מעלה `GraphInterrupt` דרך אותה נתיב כמו חריגה אמיתית, כך שכל השהיה מגיעה לעוקב כקריאת שגיאה. כל תת-סוג `GraphBubbleUp` מטופל כזרימת בקרה במקום זאת, כך שאישור לא צובע שגיאה אדומה.
+  </Accordion>
+
+  <Accordion title="כלום לא מתועד">
+    בדוק בסדר זה: `instrument()` רץ לפני שהגרף הוצא; יש `with failproofai_sdk.session():` סביב הקריאה; `FAILPROOFAI_SDK_STRICT=1` קבוע, כך שכן שהוגדל מעלה במקום להיות ספוג.
+  </Accordion>
+</AccordionGroup>
+
+## הבא
+
+<Columns cols={3}>
+  <Card title="איך זה עובד" icon="workflow" href="/he/start/integrations/custom-agents#going-deeper">
+    זוגות, מזהים, מחזור חיי ההפעלה וההופעה.
+  </Card>
+  <Card title="קרא עקבה" icon="route" href="/he/sessions/read-a-trace">
+    עקוב את הסיבתיות דרך ההפעלה שרק תפסת.
+  </Card>
+  <Card title="מסגרות אחרות" icon="plug" href="/he/start/integrations">
+    CrewAI, LlamaIndex, Pydantic AI וסוכנים מותאמים אישית.
+  </Card>
+</Columns>

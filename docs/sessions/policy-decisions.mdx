@@ -1,27 +1,62 @@
 ---
 title: "Policy decisions"
-description: "See what policies evaluated, blocked, instructed, or allowed."
+description: "See what policies evaluated, guided, blocked, or observed."
 icon: "shield-check"
 ---
 
-Policy decisions explains what enforcement did. Use it to verify a rollout, measure block rate, and find unguarded activity.
+Policy decisions show what Failproof AI did during an agent run.
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Observe → policy** and choose the time range and optionally one machine.
-    2. Review evaluated actions, blocks, block rate, Cloud decisions, unguarded actions, and activity while paused.
-    3. Filter the policy mapping table and inspect deployed assignments.
-    4. Select a chart point to open the decisions and their sessions.
+    Go to **Observe → policy** to review decisions, block rate, machines, and deployed assignments.
 
     ![The Policy page showing decision totals, a machine filter, enforcement activity over time, and the policy mapping table.](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
     ```bash
-    fp events --event-type hook_completed --env production --since 24h
-    fp events --search "deny" --since 24h
+    fp guardrails summary --since 24h
+    fp guardrails timeline --since 24h
+    failproofai policies
     failproofai config --status
     ```
 
-    Use `failproofai` for the machine's local enforcement state and `fp` for Cloud event investigation.
+    `--since` takes `1h`, `6h`, `24h`, or `7d`. Add `--machine <id>` to focus on one machine.
   </Tab>
 </Tabs>
+
+## Read an observe rollout
+
+Observe mode runs the real policy and records any `deny` or `instruct` decision. The agent is still allowed to continue.
+
+```bash
+fp fleet deploy <machine> --add <policy>:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add <policy>:enforce
+```
+
+<Warning>
+  A bare `--add <policy>` enforces immediately when the policy has no existing deployment. Add `:observe` for a shadow rollout.
+</Warning>
+
+Only non-allow observed decisions are recorded. A timeout records as an allow, because that is also what happens in enforce mode.
+
+A recorded deny is not proof that the harness stopped the action. Tool-call denies are verified across all 12 supported harnesses; other events vary. See [enforcement capability](/reference/harnesses#enforcement-capability).
+
+## Investigate an unexpected result
+
+| What you see | Check |
+| --- | --- |
+| No decisions | `failproofai config --status` and whether the session is paused |
+| Many denials with no policy name | [Policy failure behavior](/policies/failure-behavior) |
+| Every protected action denied | Whether the `failproofaid` service is healthy |
+| A deny you cannot disable | `block-failproofai-commands` is always on |
+| No data for `--env production` | New machines use environment `local` |
+
+<CardGroup cols={2}>
+  <Card title="Fleet deployments" icon="server-cog" href="/policies/fleet">
+    Compare intended and applied policies.
+  </Card>
+  <Card title="Failure behavior" icon="triangle-alert" href="/policies/failure-behavior">
+    Understand fail-closed decisions.
+  </Card>
+</CardGroup>

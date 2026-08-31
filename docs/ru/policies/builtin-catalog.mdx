@@ -1,98 +1,98 @@
 ---
-title: "Каталог встроенных политик"
-description: "Просмотрите каждую встроенную политику Failproof AI, её триггер, рекомендуемое состояние и настраиваемые параметры."
+title: "Встроенный каталог политик"
+description: "Посмотрите каждую встроенную политику Failproof AI, её триггер, рекомендуемое состояние и настраиваемые параметры."
 icon: "list-checks"
 ---
 
-Установленный пакет является источником истины для доступности политик. Запустите `failproofai policies` после каждого обновления, так как записи каталога и поведение могут измениться в зависимости от версии пакета.
+Установленный пакет — источник истины для доступности политик. Запустите `failproofai policies` после каждого обновления, так как записи в каталоге и поведение могут измениться в зависимости от версии пакета.
 
 ## Рекомендуемая базовая конфигурация
 
-Рекомендуемый выбор в настройке включает очистители секретов, защиту окружения, самозащиту, защиту от опасных команд и безопасность защищённых веток:
+Рекомендуемый выбор в интерактивной установке в настоящее время включает дезинфекторы секретов, защиту окружения, самозащиту, охрану от опасных команд и защиту защищённых веток:
 
 ```text
 sanitize-jwt                 sanitize-api-keys
 sanitize-connection-strings sanitize-private-key-content
 sanitize-bearer-tokens       protect-env-vars
 block-env-files              block-secrets-write
-block-self-pause             block-failproofai-commands
-block-sudo                   block-curl-pipe-sh
-block-rm-rf                  block-push-master
-block-force-push
+block-failproofai-commands   block-sudo
+block-curl-pipe-sh           block-rm-rf
+block-push-master            block-force-push
 ```
 
-«Рекомендуемое» намеренно уже, чем **Всё**. Политики инфраструктуры и рабочего процесса могут прерывать допустимые операции и должны быть включены для репозиториев и машин, которым они требуются.
+`block-failproofai-commands` **всегда включена**. Она указана выше для полноты, но регистрируется при каждой оценке независимо от того, указана ли в вашем наборе включённых политик, и не может быть отключена или приостановлена — охрана, которую агент может отключить, не является охраной.
+
+Рекомендуемый набор намеренно уже, чем **Всё**. Инфраструктурные и рабочие политики могут помешать допустимым операциям и должны быть включены только для репозиториев и машин, в которых они необходимы.
 
 ## Секреты и окружение
 
 | Политика | Триггер | Результат |
 | --- | --- | --- |
-| `sanitize-jwt` | `PostToolUse` | Скрывает JWT-токены из вывода инструмента, прежде чем модель их увидит. |
-| `sanitize-api-keys` | `PostToolUse` | Скрывает общие ключи OpenAI, Anthropic, GitHub, AWS, Stripe и Google. |
-| `sanitize-connection-strings` | `PostToolUse` | Скрывает строки подключения к базе данных, содержащие учётные данные. |
-| `sanitize-private-key-content` | `PostToolUse` | Скрывает содержимое тел приватных ключей PEM. |
-| `sanitize-bearer-tokens` | `PostToolUse` | Скрывает токены авторизации bearer. |
-| `protect-env-vars` | `PreToolUse` на инструментах shell | Блокирует команды, которые выводят переменные окружения. |
-| `block-env-files` | `PreToolUse` | Блокирует чтение и запись файлов `.env`. |
-| `block-read-outside-cwd` | `PreToolUse` на инструментах read, glob, grep или shell | Ограничивает чтение рабочей директорией сеанса. |
-| `block-secrets-write` | `PreToolUse` на инструментах write | Блокирует запись в файлы с именами секретных ключей и учётных данных. |
+| `sanitize-jwt` | `PostToolUse` | Скрывать JWT из вывода инструмента перед отправкой модели. |
+| `sanitize-api-keys` | `PostToolUse` | Скрывать общие ключи OpenAI, Anthropic, GitHub, AWS, Stripe и Google. |
+| `sanitize-connection-strings` | `PostToolUse` | Скрывать строки подключения к БД с учётными данными. |
+| `sanitize-private-key-content` | `PostToolUse` | Скрывать тело PEM приватных ключей. |
+| `sanitize-bearer-tokens` | `PostToolUse` | Скрывать маркеры авторизации bearer. |
+| `protect-env-vars` | `PreToolUse` на shell-инструментах | Блокировать команды, выводящие переменные окружения. |
+| `block-env-files` | `PreToolUse` | Блокировать чтение и запись файлов `.env`. |
+| `block-read-outside-cwd` | `PreToolUse` на инструментах чтения, glob, grep или shell | Ограничивать чтение текущей директорией сессии. |
+| `block-secrets-write` | `PreToolUse` на инструментах записи | Блокировать запись в общие файлы ключей и учётных данных. |
 
 ## Опасные команды и инфраструктура
 
 | Политика | Триггер | Результат |
 | --- | --- | --- |
-| `block-self-pause` | `PreToolUse`, `PermissionRequest` | Предотвращает агенту паузировать собственное принудительное исполнение. |
-| `block-sudo` | `PreToolUse`, `PermissionRequest` | Блокирует `sudo`, если не совпадает шаблон разрешения. |
-| `block-curl-pipe-sh` | `PreToolUse` | Блокирует загруженные скрипты, переданные напрямую в shell. |
-| `block-rm-rf` | `PreToolUse` | Блокирует катастрофические рекурсивные шаблоны удаления. |
-| `block-failproofai-commands` | `PreToolUse` | Предотвращает агентам изменение или удаление Failproof AI. |
-| `block-kubectl` | `PreToolUse` | Ограничивает команды Kubernetes. |
-| `block-terraform` | `PreToolUse` | Ограничивает команды Terraform и OpenTofu. |
-| `block-aws-cli` | `PreToolUse` | Ограничивает команды AWS CLI. |
-| `block-gcloud` | `PreToolUse` | Ограничивает команды Google Cloud CLI. |
-| `block-az-cli` | `PreToolUse` | Ограничивает команды Azure CLI. |
-| `block-helm` | `PreToolUse` | Ограничивает команды Helm. |
-| `block-gh-pipeline` | `PreToolUse` | Ограничивает изменяющие операции GitHub CLI: рабочие процессы, запуски, слияния, релизы, кэш и секреты. |
+| `block-sudo` | `PreToolUse`, `PermissionRequest` | Блокировать `sudo` если не совпадает с разрешающим паттерном. |
+| `block-curl-pipe-sh` | `PreToolUse` | Блокировать скрипты, загруженные и передаваемые напрямую в shell. |
+| `block-rm-rf` | `PreToolUse` | Блокировать опасные паттерны рекурсивного удаления. |
+| `block-failproofai-commands` | `PreToolUse`, `PermissionRequest` | **Всегда включена, не может быть отключена.** Блокировать каждый вызов CLI Failproof AI, самопаузу и удаление пакета. |
+| `block-kubectl` | `PreToolUse` | Ограничивать команды Kubernetes. |
+| `block-terraform` | `PreToolUse` | Ограничивать команды Terraform и OpenTofu. |
+| `block-aws-cli` | `PreToolUse` | Ограничивать команды AWS CLI. |
+| `block-gcloud` | `PreToolUse` | Ограничивать команды Google Cloud CLI. |
+| `block-az-cli` | `PreToolUse` | Ограничивать команды Azure CLI. |
+| `block-helm` | `PreToolUse` | Ограничивать команды Helm. |
+| `block-gh-pipeline` | `PreToolUse` | Ограничивать изменяющие операции GitHub CLI с рабочими процессами, запусками, слияниями, релизами, кэшем и секретами. |
 
-## Безопасность Git и базы данных
+## Безопасность Git и БД
 
 | Политика | Триггер | Результат |
 | --- | --- | --- |
-| `block-push-master` | `PreToolUse` | Блокирует прямые отправки на настроенные защищённые ветки. |
-| `block-force-push` | `PreToolUse` | Блокирует force-push; `--force-with-lease` остаётся разрешённым в текущей реализации. |
-| `block-work-on-main` | `PreToolUse` | Блокирует коммиты и слияния на защищённых ветках. |
-| `warn-git-amend` | `PreToolUse` | Предупреждает перед переписыванием коммита с `--amend`. |
-| `warn-git-stash-drop` | `PreToolUse` | Предупреждает перед постоянным удалением или очисткой stash. |
-| `warn-all-files-staged` | `PreToolUse` | Предупреждает при широком `git add -A`, `git add .` или `git add --all`. |
-| `warn-destructive-sql` | `PreToolUse` | Предупреждает при `DROP`, `TRUNCATE` и `DELETE` без `WHERE` через известные клиенты базы данных. |
-| `warn-schema-alteration` | `PreToolUse` | Предупреждает при известных операциях `ALTER TABLE` над столбцами и переименовании. |
+| `block-push-master` | `PreToolUse` | Блокировать прямые отправки на настроенные защищённые ветки. |
+| `block-force-push` | `PreToolUse` | Блокировать force-push; `--force-with-lease` остаётся допустимым при текущей реализации. |
+| `block-work-on-main` | `PreToolUse` | Блокировать коммиты и слияния на защищённых ветках. |
+| `warn-git-amend` | `PreToolUse` | Предупреждать перед переписанием коммита с `--amend`. |
+| `warn-git-stash-drop` | `PreToolUse` | Предупреждать перед окончательным удалением или очисткой stash. |
+| `warn-all-files-staged` | `PreToolUse` | Предупреждать на широком `git add -A`, `git add .` или `git add --all`. |
+| `warn-destructive-sql` | `PreToolUse` | Предупреждать на `DROP`, `TRUNCATE` и `DELETE` без `WHERE` через известные клиенты БД. |
+| `warn-schema-alteration` | `PreToolUse` | Предупреждать на известные операции `ALTER TABLE` с колонками и переименованиями. |
 
 ## Пакеты, поведение системы и циклы агента
 
 | Политика | Триггер | Результат |
 | --- | --- | --- |
-| `warn-package-publish` | `PreToolUse` | Предупреждает перед публикацией в реестры пакетов. |
-| `warn-global-package-install` | `PreToolUse` | Предупреждает перед глобальной установкой пакетов. |
-| `prefer-package-manager` | `PreToolUse` | Инструктирует агента использовать разрешённый менеджер пакетов. |
-| `warn-large-file-write` | `PreToolUse` на инструментах write | Предупреждает выше настроенного порога размера файла. |
-| `warn-background-process` | `PreToolUse` | Предупреждает при отсоединённых или долгоживущих фоновых процессах. |
-| `warn-repeated-tool-calls` | `PreToolUse` | Предупреждает после трёх или более идентичных вызовов инструмента. |
+| `warn-package-publish` | `PreToolUse` | Предупреждать перед публикацией в реестры пакетов. |
+| `warn-global-package-install` | `PreToolUse` | Предупреждать перед глобальной установкой пакета. |
+| `prefer-package-manager` | `PreToolUse` | Инструктировать агента использовать допустимый менеджер пакетов. |
+| `warn-large-file-write` | `PreToolUse` на инструментах записи | Предупреждать при превышении настроенного порога размера файла. |
+| `warn-background-process` | `PreToolUse` | Предупреждать на отсоединённые или долгоживущие паттерны фоновых процессов. |
+| `warn-repeated-tool-calls` | `PreToolUse` | Предупреждать после трёх или более одинаковых вызовов инструмента. |
 
 ## Рабочий процесс завершения задачи
 
-Эти политики требуют обработчика, который выдаёт совместимое событие `Stop`.
+Эти политики требуют harness, отправляющий совместимое событие `Stop`.
 
 | Политика | Результат |
 | --- | --- |
-| `require-commit-before-stop` | Отказывает завершение, пока отслеживаемая работа остаётся незакоммичена. |
-| `require-push-before-stop` | Отказывает завершение, пока коммиты остаются только локальными. |
-| `require-pr-before-stop` | Требует pull request для текущей ветки. |
-| `require-no-conflicts-before-stop` | Требует чистого слияния с настроенной базовой веткой. |
-| `require-ci-green-before-stop` | Требует успешного завершения проверок CI для текущего HEAD. |
+| `require-commit-before-stop` | Отказать в завершении при наличии неподтверждённых отслеживаемых изменений. |
+| `require-push-before-stop` | Отказать в завершении при наличии локальных коммитов. |
+| `require-pr-before-stop` | Требовать pull request для текущей ветки. |
+| `require-no-conflicts-before-stop` | Требовать чистое слияние с настроенной базовой веткой. |
+| `require-ci-green-before-stop` | Требовать успешное завершение проверок CI для текущей HEAD. |
 
 ## Справочник параметров
 
-Настраивайте параметры в объекте `policyParams` выбранной области видимости. Типы проверяются каждой политикой.
+Настраивайте параметры в объекте `policyParams` выбранной области. Типы проверяются каждой политикой.
 
 | Политика | Параметр | Тип и значение по умолчанию |
 | --- | --- | --- |
@@ -100,7 +100,7 @@ block-force-push
 | `block-read-outside-cwd` | `allowPaths` | `string[]`, `[]` |
 | `block-sudo` | `allowPatterns` | `string[]`, `[]` |
 | `block-rm-rf` | `allowPaths` | `string[]`, `[]` |
-| Блокаторы инфраструктуры | `allowPatterns` | `string[]`, `[]` |
+| Инфраструктурные блокировщики | `allowPatterns` | `string[]`, `[]` |
 | `block-secrets-write` | `additionalPatterns` | `string[]`, `[]` |
 | `block-push-master` | `protectedBranches` | `string[]`, `["main", "master"]` |
 | `block-work-on-main` | `protectedBranches` | `string[]`, `["main", "master"]` |
@@ -125,5 +125,5 @@ block-force-push
 ```
 
 <Warning>
-  Шаблон разрешения расширяет возможности агента. Протестируйте точную токенизацию и варианты команд на целевом обработчике перед развёртыванием на всем парке.
+  Разрешающий паттерн расширяет возможности агента. Протестируйте точную токенизацию и варианты команд на целевом harness перед развёртыванием на множестве машин.
 </Warning>

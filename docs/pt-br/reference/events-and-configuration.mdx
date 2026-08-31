@@ -6,14 +6,14 @@ icon: "list-tree"
 
 ## Famílias de eventos
 
-- Início, fim, pausa e retomada de agente
+- Início, fim, pausa e retomada do agente
 - Requisição e resposta do modelo
 - Uso de ferramenta e resultado
 - Hook acionado e concluído
 - Espera humana, entrada, pausa e interrupção
 - Erros explícitos
 
-Todo evento carrega um timestamp, ID de sessão, ID de agente, tipo de evento e ambiente. Campos específicos do evento contêm dados de modelo, ferramenta, correlação, resultado, conteúdo, duração ou erro.
+Cada evento carrega um timestamp, ID de sessão, ID do agente, tipo de evento e ambiente. Os campos específicos do evento contêm dados de modelo, ferramenta, correlação, resultado, conteúdo, duração ou erro.
 
 ## Inspecionar um contrato de evento
 
@@ -21,21 +21,21 @@ Todo evento carrega um timestamp, ID de sessão, ID de agente, tipo de evento e 
   <Tab title="Dashboard">
     1. Abra **Observe → Events**.
     2. Defina uma janela de tempo curta e filtre por ambiente, agente e tipo de evento.
-    3. Selecione um evento para inspecionar seus campos normalizados e payload bruto, depois abra sua sessão para ver o contexto de execução.
-    4. Se uma duração pareada estiver ausente, verifique se os eventos de início e conclusão usam o mesmo correlation ID.
+    3. Selecione um evento para inspecionar seus campos normalizados e o payload bruto, depois abra sua sessão para ver o contexto de execução.
+    4. Se uma duração pareada estiver ausente, verifique se os eventos de início e conclusão usam o mesmo ID de correlação.
 
-    Use o stream de Events para restringir os dados a uma execução de agente e inspecione os campos de evento normalizados.
+    Use o stream de Events para restringir os dados a uma execução de agente e inspecionar os campos de evento normalizados.
 
     ![O stream de Events ao vivo com filtros para ambiente, agente, sessão e tipo de evento.](/images/dashboard/events-stream.png)
 
-    Em seguida, siga o evento até sua sessão. O trace mostra o que aconteceu imediatamente antes e depois dele, o que é necessário quando o payload sozinho é ambíguo.
+    Em seguida, siga o evento até sua sessão. O trace mostra o que aconteceu imediatamente antes e depois dele, o que é necessário quando o payload por si só é ambíguo.
 
     ![O trace de sessão vinculado usado para inspecionar o evento no contexto de execução.](/images/dashboard/session-detail.png)
 
-    Compare os correlation IDs e timestamps em ambas as visualizações quando um evento pareado ou duração estiver ausente.
+    Compare os IDs de correlação e timestamps nas duas visualizações quando um evento pareado ou duração estiver ausente.
   </Tab>
   <Tab title="CLI">
-    Descubra os valores de filtro válidos e busque os payloads completos dos eventos de uma sessão:
+    Descubra valores de filtro válidos e depois busque payloads completos de eventos para uma sessão:
 
     ```bash
     fp list event_types
@@ -53,13 +53,13 @@ Todo evento carrega um timestamp, ID de sessão, ID de agente, tipo de evento e 
 
 ## Campos reservados do SDK
 
-Não use `timestamp`, `session_id`, `agent_id`, `type` ou `environment` como campos personalizados do Python SDK. Durações de eventos pareados, como a duração do resultado de ferramenta, são calculadas pelo SDK e não podem ser fornecidas manualmente.
+Não use `timestamp`, `session_id`, `agent_id`, `type` ou `environment` como campos personalizados do SDK Python. As durações de eventos pareados, como a duração do resultado de ferramenta, são calculadas pelo SDK e não podem ser fornecidas manualmente.
 
 ## Limites locais
 
-- O estado do Failproof AI fica em `~/.failproofai`, a menos que configurado explicitamente de outra forma.
-- O `failproofai-sdk` usa `AGENTEYE_HOME` para substituir o diretório base legado.
-- Os rótulos de ambiente podem ser definidos por meio da configuração do SDK ou com `AGENTEYE_ENVIRONMENT`.
+- O estado do Failproof AI fica em `~/.failproofai`, salvo configuração explícita em contrário.
+- O `failproofai-sdk` sempre cria o spool em `~/.failproofai/custom-agents`. A variável `FAILPROOFAI_HOME` realoca esse diretório home; o segmento `custom-agents` é sempre acrescentado, portanto o spool não pode ser colocado fora dele. Apenas o próprio `configure(base_dir=...)` do SDK grava em outro local. A variável `AGENTEYE_HOME` é lida pelo `agenteye-collector` mais antigo para escolher o que monitorar, e não afeta mais onde o SDK escreve.
+- Os rótulos de ambiente podem ser definidos por meio da configuração do SDK ou via `AGENTEYE_ENVIRONMENT`.
 - As credenciais do daemon são armazenadas separadamente das configurações não secretas.
 
 Use nomes de ambiente estáveis e de baixa cardinalidade. Vírgulas não são suportadas nos rótulos de ambiente do daemon.
@@ -68,7 +68,7 @@ Use nomes de ambiente estáveis e de baixa cardinalidade. Vírgulas não são su
 
 <Tabs>
   <Tab title="Dashboard">
-    Os rótulos de ambiente são atribuídos pelo SDK emissor ou pelo daemon Failproof. Após alterar um, abra **Observe → Sessions** e use o filtro de ambiente para confirmar que as novas sessões carregam o novo valor. As sessões existentes mantêm seu ambiente original.
+    Os rótulos de ambiente são atribuídos pelo SDK emissor ou pelo daemon do Failproof. Após alterar um rótulo, abra **Observe → Sessions** e use o filtro de ambiente para confirmar que as novas sessões carregam o novo valor. As sessões existentes mantêm seu ambiente original.
 
   </Tab>
   <Tab title="CLI">

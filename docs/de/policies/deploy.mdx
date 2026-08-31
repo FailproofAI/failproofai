@@ -1,47 +1,51 @@
 ---
-title: "Richtlinien deployen"
-description: "Eine geprüfte Richtlinienversion auf die vorgesehenen Maschinen ausrollen."
+title: "Richtlinien bereitstellen"
+description: "Eine geprüfte Richtlinienversion auf den vorgesehenen Maschinen ausrollen."
 icon: "cloud-upload"
 ---
 
-Ein Deployment verbindet eine oder mehrere Richtlinienversionen mit einer Zielgruppe eingetragener Maschinen.
+Eine Bereitstellung verbindet eine oder mehrere Richtlinienversionen mit einer Zielgruppe eingetragener Maschinen.
 
-## Ein Deployment anwenden
+## Eine Bereitstellung anwenden
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehe zu **Admin → Durchsetzung**, suche die Maschine und klappe ihre Zeile auf.
+    1. Gehe zu **Admin → Durchsetzung**, finde die Maschine und klappe ihre Zeile aus.
     2. Wähle **Bearbeiten**, füge die geprüfte Richtlinienversion hinzu und wähle **Beobachten** oder den durchsetzenden Effekt.
-    3. Wende die Änderung an, warte dann auf das nächste Check-in der Maschine und bestätige ihren Deployment- und Coverage-Status.
-    4. Gehe zu **Beobachten → Richtlinie**, um Live-Entscheidungen einzusehen.
+    3. Wende die Änderung an, warte dann auf den nächsten Check-in der Maschine und bestätige ihren Bereitstellungs- und Abdeckungsstatus.
+    4. Gehe zu **Beobachten → Richtlinie**, um Live-Entscheidungen zu prüfen.
 
-    ![Der Maschinen-Deployment-Editor mit Richtlinienversionen, Durchsetzungs- und Beobachtungseffekten sowie der Aktion zum Anwenden des Deployments.](/images/dashboard/enforcement-editor.png)
+    ![Der Maschinen-Bereitstellungseditor mit Richtlinienversionen, Durchsetzen- und Beobachten-Effekten sowie der Aktion zur Anwendung der Bereitstellung.](/images/dashboard/enforcement-editor.png)
   </Tab>
   <Tab title="CLI">
-    Cloud-Deployment-Endpunkte sind bewusst nicht als gewöhnliche `fp`-Befehle verfügbar. Überprüfe die Maschine lokal und deploye dann über das Dashboard:
+    Bereitstellen über die CLI mit `fp fleet`. Überprüfe die resultierende Konfiguration, bevor du sie anwendest – `deploy` gibt den vollständigen Plan aus und fragt **nur in einem interaktiven Terminal ohne `--json`** nach. Mit `--json`, mit `--yes` oder bei umgeleitetem stdin (ein CI-Schritt, ein Skript, ein Agent) wird die Konfiguration sofort ohne Plan und ohne Bestätigung angewendet – führe daher zuerst `fp fleet show <machine>` aus, wenn du prüfen möchtest:
 
     ```bash
-    failproofai config --status
+    fp fleet list
+    fp fleet show <machine-id>
+    fp fleet deploy <machine-id> --add no-force-push
     ```
 
-    Verwende nach dem Deployment `fp sessions --env production --since 24h` und `fp events --event-type hook_completed`, um zu überprüfen, ob Aktivität die Cloud erreicht.
+    `fp fleet diff <machine-id>` zeigt Soll-/Ist-Zustand (eine Maschine gilt als `behind`, bis sie das nächste Mal abfragt), `fp fleet history <machine-id>` listet die Generationen auf, und `fp fleet rollback <machine-id> <generation>` stellt eine davon wieder her – dies schlägt fehl, wenn die betreffende Generation eine inzwischen deaktivierte oder gelöschte Richtlinie referenziert.
+
+    Überprüfe die Maschine selbst mit `failproofai config --status` und nutze nach der Bereitstellung `fp sessions --env production --since 24h` sowie `fp events --event-type hook_completed`, um sicherzustellen, dass Aktivitäten die Cloud erreichen.
   </Tab>
 </Tabs>
 
 <Steps>
-  <Step title="Version und Ziele auswählen">
-    Deploye eine geprüfte Version – keinen veränderbaren Entwurf – und beginne mit einer Nicht-Produktionsmaschine oder einer kleinen Gruppe, deren Sitzungen du einsehen kannst.
+  <Step title="Version und Zielmaschinen wählen">
+    Stelle eine geprüfte Version bereit, keinen veränderlichen Entwurf. Beginne mit einer Maschine außerhalb der Produktion oder einer kleinen Gruppe, deren Sitzungen du einsehen kannst.
   </Step>
   <Step title="Entscheidungen beobachten">
-    Überprüfe Treffer, Begründungen, betroffene Tools und Falsch-Positive, ohne die Arbeit zu blockieren.
+    Prüfe Treffer, Begründungen, betroffene Tools und Fehlerkennungen, ohne die Arbeit zu blockieren.
   </Step>
-  <Step title="Durchsetzung aktivieren und Coverage prüfen">
-    Stufe hoch, sobald beobachtete Treffer unsichere Aktionen von gültigen trennen, und bestätige dann, dass jede vorgesehene Maschine das Deployment abgerufen hat und Entscheidungen meldet.
+  <Step title="Durchsetzen und Abdeckung prüfen">
+    Stufe die Richtlinie hoch, nachdem beobachtete Treffer unsichere Aktionen von gültigen getrennt haben. Bestätige dann, dass jede vorgesehene Maschine die Bereitstellung abgerufen hat und Entscheidungen meldet.
   </Step>
 </Steps>
 
-Maschinen benötigen die Berechtigung `policies:pull`. Das Ereignis-Reporting wird separat durch `events:add` gesteuert; überprüfe beides, wenn du Cloud-Analyse und Durchsetzung erwartest.
+Maschinen benötigen die Berechtigung `policies:pull`. Die Ereignisberichterstattung wird separat durch `events:add` gesteuert; überprüfe beides, wenn du Cloud-Analyse und -Durchsetzung erwartest.
 
 <Warning>
-  Die Verwaltung der Durchsetzung ist ein administrativer Cloud-Workflow. Behandle Root-Only-Durchsetzungsrouten nicht als gewöhnliche Kunden-Endpunkte unter `/v1`.
+  Das Enforcement-Management ist ein administrativer Cloud-Workflow. Behandle rein administrative Durchsetzungsrouten nicht wie gewöhnliche Kunden-Endpunkte unter `/v1`.
 </Warning>

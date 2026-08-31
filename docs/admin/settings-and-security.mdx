@@ -1,68 +1,37 @@
 ---
 title: "Settings and security"
-description: "Configure operational settings and make deliberate choices about agent data."
-icon: "lock-keyhole"
+description: "Control organization defaults, data handling, and machine credentials."
+icon: "shield"
 ---
 
-Use Settings for deployment-specific operational values and model context-window overrides. Inspect the settings schema before changing a value through the API or CLI.
+Organization settings affect everyone in that Cloud organization. Change them from **Admin → settings** or with `fp settings`.
 
-## Change an organization setting
+```bash
+fp settings list
+fp settings set <key> <value>
+```
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. Go to **Administration → Settings**, find the setting group, and read its description and current source.
-    2. Change the value and save it.
-    3. For model context windows, add or update the model override and confirm the effective limit.
-    4. Recheck sessions and metrics that depend on the changed value.
+## Data handling
 
-    ![The Settings page showing organization authentication and operational settings.](/images/dashboard/settings.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp settings list
-    fp settings schema
-    fp settings set <key> --value <scalar>
-    fp settings set alerts.email_default_recipients \
-      --json-value '["oncall@example.com"]'
-    ```
+A connected machine sends policy decisions and full session transcripts by default. To send decisions only, set `collector.sessions` to `false` in the machine's `~/.failproofai/config.json` after connecting. The current `--no-transcripts` setup flag does not apply that setting.
 
-    Run `fp settings set --help` for the value type and confirmation flags used by the installed CLI.
-  </Tab>
-</Tabs>
+Credentials are scrubbed on the machine before upload, but redaction is a safety floor, not a substitute for access control.
 
-## Data handling choices
+Local-only use needs no account. Session history and audits stay on the machine, except scheduled local audits send machine identity and a limited digest after you opt in. Anonymous CLI telemetry can be disabled with `FAILPROOFAI_TELEMETRY_DISABLED=1`.
 
-Connecting the Failproof AI CLI sends transcripts by default because traces and audits depend on their content. Use `--no-transcripts` when prompts, file contents, or terminal input must remain local; hook activity and policy decisions can still be reported.
+## Credentials
 
-Local ingest credentials are stored separately from non-secret daemon settings and written with restrictive permissions. API keys should still be managed as production secrets.
+Machine tokens are stored under `~/.failproofai/` with owner-only permissions. They are not written into the service definition.
 
-## Organization setting reference
+Use separate keys for people, automation, and machines. Give each only the permissions it needs, rotate it when ownership changes, and revoke it when the machine or workflow is retired.
 
-All dashboard-editable settings are organization-scoped. Deployment-wide behavior remains server environment configuration.
+## Checklist
 
-| Key | Default | Purpose |
-| --- | --- | --- |
-| `allowed_sign_ins` | `[]` | Restrict existing members to exact emails or `*@domain`; an empty list means no additional restriction. |
-| `session_ttl_secs` | `86400` | Dashboard session lifetime; accepted range is 60 seconds to 30 days. |
-| `otp_ttl_secs` | `600` | OTP and magic-link lifetime; accepted range is 60–1800 seconds. |
-| `alerts.email_default_recipients` | `[]` | Default recipients when an alert email channel does not override them. |
-| `alerts.slack_default_webhook` | empty | Default Slack incoming-webhook URL. |
-| `alerts.webhook_default_url` | empty | Default generic JSON webhook URL. |
-| `alerts.webhook_signing_secret` | empty | HMAC-SHA256 key used for the `X-AgentEye-Signature` header; reads are masked. |
-| `alerts.enabled_channels` | email, Slack, webhook | Organization-wide channel kinds that alert rules may dispatch. |
-| `default_user_permissions` | `standard` | Named permission set preselected for new invitations. |
+- Require the narrowest useful permissions.
+- Set `collector.sessions` to `false` where full content is unnecessary.
+- Review who can deploy enforcing policies.
+- Test policies in observe mode before enforcement.
+- Keep machine labels clear and machine IDs stable.
+- Run `failproofai config --status` after changing connection settings.
 
-`allowed_sign_ins` is a filter, not a grant: a person must already be an organization member. Use an empty list to allow every member; the bare value `*` is rejected. Alert URLs must use HTTPS except for loopback development addresses.
-
-## Security checklist
-
-- Use HTTPS for Cloud connections.
-- Scope keys to the smallest permission set.
-- Separate production and non-production environments.
-- Review transcript and redaction settings before rollout.
-- Audit user, key, and organization changes.
-- Test backup, retention, and incident response requirements for your deployment.
-
-<Warning>
-  Turning transcript capture off changes what audits and investigations can prove. Record the decision and its expected limitations.
-</Warning>
+See [keys and permissions](/admin/keys-and-permissions) for the permission catalog.

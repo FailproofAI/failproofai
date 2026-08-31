@@ -20,10 +20,10 @@ Use a custom policy when the behavior depends on your tools, paths, commands, en
     ![The policy editor used to author and publish a custom policy.](/images/dashboard/policy-editor.png)
   </Tab>
   <Tab title="CLI">
-    1. Create `.failproofai/policies/checkout-policies.ts`. The filename must end in `policies.js`, `policies.mjs`, or `policies.ts`.
+    1. Write a starter policy with `failproofai publish --init`, or create `.failproofai/policies/checkout-policies.ts` by hand. A convention filename must end in `policies.js`, `policies.mjs`, or `policies.ts`.
     2. Register one or more policies with `customPolicies.add()`.
-    3. Validate and install the file with `failproofai policies --install --custom ./.failproofai/policies/checkout-policies.ts --scope project`.
-    4. Trigger one matching action and one safe action. Run `failproofai policies`, then inspect the attributed decisions under **Observe → policy**.
+    3. Enforce the file on this machine right now: `failproofai policies -i -c ./.failproofai/policies/checkout-policies.ts`.
+    4. Trigger one matching action and one safe action. Run `failproofai policies`, then open **Policies → Activity** on the [local dashboard](/reference/local-dashboard) and filter by source to see which policy decided.
   </Tab>
 </Tabs>
 
@@ -62,13 +62,26 @@ Good policies are narrow enough to explain in one sentence. Match the observable
 | Helper | Result | Use it when |
 | --- | --- | --- |
 | `allow(reason?)` | The operation continues. | The policy does not apply or the action is safe. |
-| `instruct(reason)` | The operation continues with guidance where the harness supports it. | You want to steer the agent toward a better approach without enforcing an invariant. |
-| `deny(reason)` | The operation is blocked when the event and harness support blocking. | The action must not proceed. |
+| `instruct(reason)` | The operation continues, and the reason is delivered to the agent on the harnesses that have a channel for it. | You want to steer the agent toward a better approach without enforcing an invariant. |
+| `deny(reason)` | The operation is blocked on the harness and event pairs verified to consume a blocking verdict. | The action must not proceed. |
 
 Write the reason for the agent that must recover. Explain what was detected and what it should do instead.
 
+### Where `instruct()` actually arrives
+
+`instruct()` needs an additional-context channel in the harness. Six harnesses have none on some or all events; there the operation is allowed and the message is written to stderr, where the agent never reads it.
+
+| Harness | Events that deliver the instruction |
+| --- | --- |
+| Claude, Codex, Copilot, Cursor, Devin, OpenCode | `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, and `PermissionRequest` carry it as additional context. `Stop` and `SubagentStop` carry it through the retry channel instead. Every other event emits a message the harness ignores. |
+| Antigravity | `UserPromptSubmit` and `Stop` only. |
+| Factory, Pi, OpenClaw | `Stop` only. |
+| Hermes, Goose | None. Always allow plus a stderr note. |
+
+No harness fires all 29 canonical events, so the first row is bounded by what each one installs — an instruction only arrives on an event that harness actually fires. Check the installed event set per harness in [Agent harnesses](/reference/harnesses) before relying on one.
+
 <Warning>
-  Do not use `instruct()` for a safety boundary. Guidance delivery varies by agent harness. Use `deny()` when the action must be prevented.
+  Do not use `instruct()` for a safety boundary. On Hermes and Goose it never reaches the agent at all, and on Antigravity, Factory, Pi, and OpenClaw it does not reach it on tool events. Use `deny()` when the action must be prevented.
 </Warning>
 
 ## Policy object
@@ -91,6 +104,8 @@ customPolicies.add({
 
 Filter tools inside `fn`. `match.toolNames` is not part of the public custom-policy type.
 
+A policy published inside a pack may carry two more fields, `category` and `defaultEnabled`. See [From a file to a pack](#from-a-file-to-a-pack).
+
 ## Policy context
 
 Every policy receives a `PolicyContext`.
@@ -103,7 +118,7 @@ Every policy receives a `PolicyContext`.
 | `payload` | `Record<string, unknown>` | Complete normalized event payload. |
 | `session` | `SessionMetadata \| undefined` | Session ID, working directory, transcript path, permission mode, and harness metadata when available. |
 | `cli` | `string \| undefined` | Source agent harness, such as `claude`, `codex`, or `cursor`. |
-| `params` | `Record<string, unknown>` | Built-in policy parameters. Custom policies currently receive an empty object. |
+| `params` | `Record<string, unknown>` | Parameters for this policy. A builtin or a pack policy declares a schema, and the values the user configured are merged over its defaults. A policy in a custom file declares no schema, so it receives whatever the user configured under its name, and `{}` when nothing is configured. |
 
 Treat every optional value as genuinely optional. Agent versions and event types do not all provide the same fields.
 
@@ -130,18 +145,18 @@ const filePath = String(ctx.toolInput?.file_path ?? "");
 
 | Event | When it runs | Typical use |
 | --- | --- | --- |
-| `PreToolUse` | Before a tool executes. | Block or guide commands, writes, reads, and external actions. |
-| `PostToolUse` | After a tool returns. | Inspect results before they reach the agent. A deny blocks the whole result; it does not redact selected fields. |
+| `PreToolUse` | Before a tool executes. | Block or guide commands, writes, reads, and external actions. This is the guard. |
+| `PostToolUse` | After the tool has already executed. | Inspect or replace the result the model reads. It cannot undo the side effect—the write or the command already happened—and on ten of the twelve harnesses the verdict cannot stop anything. Only Codex and Copilot consume it, and even there it replaces the result the model reads rather than preventing the call. Never use it as a guard. |
 | `PermissionRequest` | When the agent requests permission. | Apply organization-specific permission rules. |
 | `UserPromptSubmit` | Before a submitted prompt continues. | Reject prohibited instructions or add workflow guidance. |
 | `Stop` | When the agent attempts to finish. | Require a reachable completion condition, such as a local verification step. |
 | `SubagentStop` | When a subagent attempts to finish. | Gate delegated work before it returns to the parent. |
 | `SessionStart` / `SessionEnd` | At session boundaries. | Record or check session-level state. |
 
-Event availability and blocking behavior depend on the agent harness. See [Agent harnesses](/reference/harnesses) before relying on an event across a mixed fleet.
+Event availability and blocking behavior depend on the agent harness, and the differences are large: Failproof AI installs no `Stop` hook for Goose or Hermes, so a stop gate never fires on either. See [Agent harnesses](/reference/harnesses) before relying on an event across a mixed fleet.
 
 <Accordion title="All policy event names">
-  `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PermissionDenied`, `PostToolUse`, `PostToolUseFailure`, `Notification`, `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `Stop`, `StopFailure`, `TeammateIdle`, `InstructionsLoaded`, `ConfigChange`, `CwdChanged`, `FileChanged`, `WorktreeCreate`, `WorktreeRemove`, `PreCompact`, `PostCompact`, `Elicitation`, `ElicitationResult`, `UserPromptExpansion`, `PostToolBatch`, and `Setup`.
+  `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PermissionDenied`, `PostToolUse`, `PostToolUseFailure`, `Notification`, `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `Stop`, `StopFailure`, `TeammateIdle`, `InstructionsLoaded`, `ConfigChange`, `CwdChanged`, `FileChanged`, `WorktreeCreate`, `WorktreeRemove`, `PreCompact`, `PostCompact`, `Elicitation`, `ElicitationResult`, `UserPromptExpansion`, `PostToolBatch`, and `Setup`. That is the full set of 29 canonical event names every harness's own event vocabulary is normalized into.
 </Accordion>
 
 ## Author common policy patterns
@@ -236,6 +251,23 @@ Convention files load automatically:
 - Relative imports from local modules are supported.
 - Project policies can be committed so the same rules follow the repository.
 
+<Warning>
+  A file in the directory whose name does not end in `policies.{js,mjs,ts}` is skipped. It looks installed and enforces nothing. The loader lists every skipped file with the name to rename it to; read that warning rather than assuming a policy is live. This repository shipped `block-version-bumps.mjs` that way, and the guard written after a bad version bump had never once run.
+</Warning>
+
+`~/.failproofai/policies/` also holds two subdirectories you did not put there: `cloud-policies/` for fleet-managed deployments and `packs/` for installed packs. The loader never descends into either, so nothing in them is picked up as an unverified convention policy.
+
+### Turn a discovered policy off
+
+Two keys in `policies-config.json` switch off convention policies without deleting or renaming the file:
+
+| Key | Effect |
+| --- | --- |
+| `disabledCustomPolicies` | An array of source-qualified policy IDs that are not registered. |
+| `customPoliciesEnabled` | Set to `false` to stop loading `.failproofai/policies/` entirely. Absent means enabled. |
+
+The **Policies → Configure** tab of the [local dashboard](/reference/local-dashboard) writes `disabledCustomPolicies` for you. `customPoliciesEnabled` is written by `failproofai config`, or by hand.
+
 ### Explicit files
 
 Use explicit paths when validation or configuration should name the entry file directly:
@@ -251,16 +283,16 @@ Explicit files load first, followed by project convention files and then user co
 
 ## Validate and test
 
-Validation executes the module through the production loader and confirms that it registers at least one policy.
+`-c` is the short form of `--custom`, and `-i` of `--install`. It enforces the file right now, at any path and under any filename:
 
 ```bash
-failproofai policies --install \
-  --custom ./.failproofai/policies/checkout-policies.ts \
-  --scope project
+failproofai policies -i -c ./checkout-policies.ts
 failproofai policies
 ```
 
-Validation catches missing files, syntax errors, unresolved imports, top-level exceptions, and module-load timeouts. It does not prove that your match logic is correct.
+Ask your agent to do the thing you blocked and watch it get refused. Nothing is published and no other machine is affected.
+
+Validation executes the module through the production loader and confirms that it registers at least one policy. It catches missing files, syntax errors, unresolved imports, top-level exceptions, and module-load timeouts. It does not prove that your match logic is correct.
 
 Test at least these cases:
 
@@ -270,20 +302,52 @@ Test at least these cases:
 - Alternate command syntax, paths, quoting, casing, and whitespace.
 - An unavailable subprocess or network dependency.
 
-Attribute the result to your custom policy under **Observe → policy**. A blocked test is not sufficient if a different built-in policy made the decision.
+Attribute the result to your custom policy under **Policies → Activity** on the local dashboard. A blocked test is not sufficient if a different built-in policy made the decision.
 
 ## Runtime behavior
 
 - Built-in policies evaluate before custom policies.
 - The first `deny` stops further policy evaluation.
 - Multiple `instruct` results can be combined when no policy denies the event.
-- A policy function has a 10-second execution deadline.
+- A policy function has a 10-second execution deadline. Top-level module loading has the same deadline.
 - A thrown exception or timeout is logged and treated as `allow()`.
 - A convention file that fails to load is skipped; other custom files and built-in policies continue.
-- Top-level module loading also has a 10-second deadline.
-- Cloud observe mode runs the policy but records a non-allow decision without enforcing it.
+- Observe mode runs the policy for real and records any non-allow verdict without enforcing it. Two layers set it: `failproofai publish --effect observe` on a pack you publish, and `fp fleet deploy <machine> --add <id>:observe` on a Cloud deployment. Either way the policy is evaluated under the same 10-second deadline as an enforcing one, so a policy that times out records as an allow.
+
+### Where the loader fails closed instead
+
+The fail-open rule above covers a file you dropped in yourself. Two paths deliberately do the opposite, because both mean this machine was told it had enforcement it does not have.
+
+| Situation | Result |
+| --- | --- |
+| A selected pack cannot be loaded, or its pinned digest does not match | Every event in the scope that pack declared is denied, attributed to `pack/failproofai-pack-unavailable`. `UserPromptSubmit` instructs instead of denying, so you are never locked out of the agent you need in order to fix it. Unreadable pack metadata widens the denied scope rather than narrowing it. |
+| The `failproofaid` daemon cannot be reached on a machine that completed setup | Every event is denied. No config is read and no custom policy runs, because a daemon that could not be reached could not have run them either. A protocol-version mismatch denies too, with a message naming `failproofai config`. |
+
+On a machine that completed setup, `failproofaid` is the only evaluator, so your `fn` runs inside the daemon's warm worker rather than in the hook process. The hook client allows 150 ms to connect and 30 seconds for the answer, comfortably above the fixed 10-second deadline each policy function gets.
 
 Keep policy modules deterministic and quick. Avoid top-level network calls or server startup. Bound work inside `fn`, catch dependency failures, and choose deliberately whether that failure should allow or deny the operation.
+
+## From a file to a pack
+
+A pack is how a policy file becomes something other machines can install. Two commands take you from nothing to a published pack:
+
+```bash
+failproofai publish --init
+failproofai publish
+```
+
+`--init` asks what the pack is called, writes `<name>.mjs`, and stops. The file is not a template with blanks—it is one policy that already blocks `git push --force`, so the first thing you edit is something that works. Prove it locally with `failproofai policies -i -c ./<name>.mjs`, then run `failproofai publish` from inside the git repository holding it.
+
+Two fields matter once a policy ships in a pack:
+
+| Field | What it does |
+| --- | --- |
+| `category` | What `failproofai policies add <owner>/<repo> --category git,database` selects on. |
+| `defaultEnabled` | Whether a bare `failproofai policies add <owner>/<repo>` switches this policy on. Defaults to `false`. |
+
+`--effect` is set per pack rather than per policy: `failproofai publish --effect observe` publishes a pack that records what its policies would have decided and blocks nothing. The default is `enforce`. This is observe mode on a single machine with no Cloud connection — read the recorded verdicts back under **Policies → Activity** on the local dashboard.
+
+The pack's version is the 12-character short commit sha it was built from, so `publish` refuses outside a git checkout and on a dirty tree. See [Publish a pack](/policies/publish-a-pack) for the full flow, and [Policy packs](/policies/packs) for how installs resolve a version.
 
 ## API exports
 
@@ -298,6 +362,11 @@ Keep policy modules deterministic and quick. Avoid top-level network calls or se
 
 TypeScript exports `PolicyContext`, `PolicyResult`, `CustomHook`, `PolicyDecision`, and `PolicyFunction`.
 
-<Card title="Deploy custom policies" icon="server-cog" href="/policies/deploy">
-  Publish a version, deploy it in observe mode, verify decisions, and move to enforcement.
-</Card>
+<Columns cols={2}>
+  <Card title="Publish a pack" icon="package" href="/policies/publish-a-pack">
+    Ship your policies as a pack anyone can install from a public GitHub release.
+  </Card>
+  <Card title="Deploy custom policies" icon="server-cog" href="/policies/deploy">
+    Publish a version, deploy it in observe mode, verify decisions, and move to enforcement.
+  </Card>
+</Columns>

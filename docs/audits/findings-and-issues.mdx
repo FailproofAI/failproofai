@@ -6,13 +6,22 @@ icon: "clipboard-check"
 
 A finding is the audit's evidence-backed statement about a failure. An issue is the durable workflow for responding to it.
 
+The two objects use different vocabularies, and they sit next to each other, so it is worth fixing them in mind first:
+
+| | Finding | Issue |
+| --- | --- | --- |
+| States | `open`, `recurring`, `resolved`, `dismissed`, `muted` | `firing`, `acknowledged`, `resolved` |
+| Filter flag | `--status` | `--state` |
+| Handle | Finding id | Issue id |
+| Default listing | The live set: open plus recurring | Newest opened first |
+
 ## Triage and assign the work
 
 <Tabs>
   <Tab title="Dashboard">
     1. Open **Analyze → Audits**, choose a completed run, and select a finding to inspect its analysis, recommendation, sessions, and evidence queries.
     2. Acknowledge, assign, dismiss, mute, resolve, or reopen the finding after checking its evidence.
-    3. Go to **Analyze → Issues** and filter the durable inbox by status, severity, or assignee.
+    3. Go to **Analyze → Issues** and filter the durable inbox by state, severity, or assignee.
     4. Open the issue to assign it, add comments or subscribers, and resolve it after the fix is verified.
 
     Start with the finding summary. Confirm that the failure description, recommended response, severity, and ranking agree with the sessions you expected the audit to examine.
@@ -37,15 +46,24 @@ A finding is the audit's evidence-backed statement about a failure. An issue is 
     fp audits finding <finding-id>
     fp audits ack <finding-id> --reason "owner assigned"
     fp audits assign <finding-id> --to engineer@example.com
+    fp audits mute <finding-id> --reason "expected in staging" --yes
+    fp audits dismiss <finding-id> --reason "false positive" --yes
+    fp audits resolve <finding-id> --yes
+    fp audits reopen <finding-id>
 
-    fp issues list
+    fp issues list --state firing
     fp issues show <issue-id>
+    fp issues ack <issue-id>
     fp issues assign <issue-id> --assignee engineer@example.com
     fp issues comment-add <issue-id> --body "policy is in observe mode"
     fp issues resolve <issue-id> --yes
     ```
 
-    Use `fp issues subscribe <issue-id>`, `fp issues unsubscribe <issue-id>`, and `fp issues subscribers <issue-id>` to manage watchers.
+    `mute`, `dismiss` and `resolve` suppress or close a finding, so each confirms first — pass `--yes` in scripts. `ack`, `reopen` and `assign` are reversible bookkeeping and act immediately. `ack`, `mute` and `dismiss` take `--reason`, and it is worth passing: it is kept as durable feedback on the finding, not written to a log and forgotten. `resolve`, `reopen` and `assign` take no reason.
+
+    Assignment works differently on each object. `fp audits assign` requires `--to <email>` and sets one owner; re-running it reassigns. `fp issues assign` takes a repeatable `--assignee` and **replaces** the whole list, so omitting it clears every assignee.
+
+    Use `fp issues comment-list <issue-id>`, `fp issues count --state firing`, and `fp issues subscribe`/`unsubscribe`/`subscribers <issue-id>` for the rest of the issue surface.
 
     See the [Cloud CLI audit and issue reference](/reference/cloud-cli#audits) for audit findings and [`fp issues`](/reference/cloud-cli#issues) for issue management.
   </Tab>
@@ -53,7 +71,20 @@ A finding is the audit's evidence-backed statement about a failure. An issue is 
 
 ## Review a finding
 
-Confirm that it contains:
+Two fields decide what to do with it before anything else does.
+
+**`kind`** separates a `failure` (something went wrong) from a `policy` violation (a rule that was broken) and an `improvement` (the work could be done better). It is rendered as a badge on the finding. A `policy` finding is the one a policy can close; the other two usually need a workflow change, an alert, or a human.
+
+**`priority`** is a 0–1 score, recomputed per run, and it is the order the finding queue is sorted in. The finding page breaks it down under **why it ranks here**, as value × weight:
+
+| Factor | Weight |
+| --- | --- |
+| Coverage | 0.30 |
+| Severity | 0.25 |
+| Magnitude | 0.25 |
+| Recency | 0.20 |
+
+Then confirm the finding contains:
 
 - A stable failure mode, not only a one-off title
 - Severity and operational impact
@@ -61,9 +92,13 @@ Confirm that it contains:
 - Enough context to reproduce the behavior
 - A proposed response that matches the evidence
 
+To reproduce a finding, pull it whole: `fp --json audits finding <id>` returns the full record with its `evidence`, `evidence_queries` and `scope` untouched, which is what the analysis actually ran. `--json` is a global option, so it goes before the command.
+
 ## Use an issue to manage the response
 
-Create or link an issue when the finding needs assignment, discussion, status changes, comments, or subscribers. Issues can also represent alert incidents and manually reported problems, which is why they live under audit response rather than in the primary navigation.
+Create or link an issue when the finding needs assignment, discussion, status changes, comments, or subscribers. An issue's `source` records where it came from — `audit`, `alert`, or `manual` — which is why the dashboard gives issues their own **Issues** view rather than nesting them under an audit.
+
+Subscription is partly automatic. People are subscribed when they acknowledge an issue, comment on it, are assigned to it, or open it — `fp issues subscribers` lists active subscribers only, so it is not just the list of manual subscribes. A comment emails every active subscriber, and commenting needs only `issues:read`, so a read-only reviewer is never a silent observer.
 
 Resolve the issue when remediation is deployed and verified. Resolve the finding when the failure mode has been addressed for the audit population. Those moments may differ.
 
@@ -83,11 +118,19 @@ Resolve the issue when remediation is deployed and verified. Resolve the finding
 
     ```bash
     fp issues show <issue-id>
-    fp audits finding <finding-id>
+    fp --json audits finding <finding-id>
     fp events --session-id <session-id> --full --all
     ```
 
-    Policy candidacy, Cloud publication, and fleet deployment are dashboard workflows. Use `failproofai policies --install --custom <file>` when you want to validate equivalent policy source locally first.
+    The dashboard is one lane; the CLI is the other. `fp policies compose "<what it should do>"` drafts a policy, `fp policies publish <id> ./policy.mjs` mints a version (publishing deploys nothing), and `fp fleet deploy <machine> --add <id>:observe` puts it on a machine in shadow. The `:observe` suffix is required — a bare `--add <id>` enforces immediately. Read what it would have done with `fp guardrails summary --since 24h`, then promote with `--add <id>:enforce`.
+
+    To try equivalent policy source on your own machine first, point the local CLI at the file:
+
+    ```bash
+    failproofai policies -i -c ./checkout-policies.js
+    ```
+
+    A file whose name ends in `policies.js`, `policies.mjs` or `policies.ts`, dropped into `.failproofai/policies/` in the project or under `~/`, is loaded on every hook event with no flags at all.
   </Tab>
 </Tabs>
 

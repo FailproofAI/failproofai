@@ -29,8 +29,9 @@ import {
 import { findProjectConfigDir } from "./hooks-config";
 import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId } from "../../lib/telemetry-id";
-import type { CustomHook } from "./policy-types";
+import type { CustomHook, PolicyCatalogEntry } from "./policy-types";
 import type { CloudManagedPolicyArtifact } from "./cloud-managed-policies";
+import type { ResolvedPack } from "./pack-manifest";
 import { customPoliciesDir, shimsDir } from "./fp-home";
 
 const LOADING_KEY = "__FAILPROOFAI_LOADING_HOOKS__";
@@ -172,6 +173,11 @@ async function importWithDeadline(fileUrl: string): Promise<void> {
  * Load a single policy file into the globalThis custom hooks registry.
  * Does NOT clear the registry — caller is responsible for that.
  */
+export interface PolicyLoadFailure {
+  type: "module_not_found" | "syntax_error" | "load_timeout" | "runtime_error" | "path_missing";
+  reason: string;
+}
+
 async function loadSingleFile(
   absPath: string,
   opts?: {
@@ -180,7 +186,7 @@ async function loadSingleFile(
     /** Cloud-managed policies pass their pinned digest for load-time re-verification. */
     verifyEntrySha?: string;
   },
-): Promise<void> {
+): Promise<PolicyLoadFailure | null> {
   const g = globalThis as Record<string, unknown>;
   g[LOADING_KEY] = true;
 
@@ -208,7 +214,7 @@ async function loadSingleFile(
     const cached = policyModuleCache.get(absPath);
     if (cached?.fingerprint === fingerprint) {
       for (const hook of cached.hooks) customPolicies.add({ ...hook });
-      return;
+      return null;
     }
 
     const entryTmp = absPath + tmpSuffix;
@@ -222,6 +228,7 @@ async function loadSingleFile(
         .slice(hooksBefore)
         .map((hook) => ({ ...hook })),
     });
+    return null;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const errorType = /Cannot find module|MODULE_NOT_FOUND|ENOENT/i.test(msg)
@@ -239,6 +246,7 @@ async function loadSingleFile(
     });
     if (opts?.strict) throw new Error(`Failed to load custom hooks from ${absPath}: ${msg}`);
     hookLogError(`failed to load custom hooks from ${absPath}: ${msg}`);
+    return { type: errorType, reason: msg };
   } finally {
     g[LOADING_KEY] = false;
     await cleanupTmpFiles(tmpFiles);
@@ -293,6 +301,20 @@ export interface ConventionSource {
 export interface LoadAllResult {
   hooks: CustomHook[];
   conventionSources: ConventionSource[];
+  /** Import failures keyed by pack id, including artifacts that registered no hooks. */
+  packFailures: Map<string, PolicyLoadFailure>;
+  /**
+   * Every pack id that shares one artifact, keyed by the id the collapse kept.
+   *
+   * Packs with identical entry bytes load once, and every hook that comes back
+   * carries only the surviving record's id — so a registration recorded under
+   * it says nothing about the other pack. `missingGuards` skips a pack that
+   * appears in neither the failure map nor the registered map, which means an
+   * artifact that imports FINE but omits a policy only the non-winning record
+   * selected produced no guard at all: not registered, and not denied either.
+   * Only present for a path more than one pack resolved to.
+   */
+  packAliases: Map<string, string[]>;
 }
 
 export function customPolicyId(file: string, name: string): string {
@@ -330,17 +352,53 @@ function warnSkippedPolicyFiles(dir: string, scope: "project" | "user"): void {
   );
 }
 
+/**
+ * A pack's manifest declares what it contains; its artifact decides what runs.
+ * Nothing binds the two, so they can disagree — and the disagreement is silent
+ * in both directions and worse in one.
+ *
+ * A policy the artifact registers but the manifest omits is enforcement that no
+ * `failproofai policies` listing will ever show. A policy the manifest declares
+ * but the artifact never registers is the dangerous one: the listing says the
+ * machine is protected against something nothing is checking.
+ *
+ * Both are announced rather than corrected. The artifact is digest-pinned, so
+ * what it registers IS what the publisher shipped and dropping any of it would
+ * be inventing a third answer; the manifest is what needs fixing, upstream.
+ */
+function reconcilePackManifest(pack: ResolvedPack | undefined, loaded: CustomHook[]): void {
+  if (!pack || pack.policies.length === 0) return;
+  const declared = new Set(pack.policies.map((p) => p.name));
+  const registered = new Set(loaded.map((h) => h.name));
+  const missing = [...declared].filter((n) => !registered.has(n));
+  const extra = [...registered].filter((n) => !declared.has(n));
+  if (missing.length > 0) {
+    hookLogWarn(
+      `pack ${pack.id}@${pack.version} declares ${missing.join(", ")} but its artifact does not ` +
+        `register ${missing.length === 1 ? "it" : "them"} — listed as protection that never runs`,
+    );
+  }
+  if (extra.length > 0) {
+    hookLogWarn(
+      `pack ${pack.id}@${pack.version} registers undeclared ${extra.join(", ")} — ` +
+        `${extra.length === 1 ? "it enforces" : "they enforce"} but will not appear in listings`,
+    );
+  }
+}
+
 export async function loadAllCustomHooks(
   customPoliciesPaths: string | string[] | undefined,
   opts?: {
     sessionCwd?: string;
     customPoliciesEnabled?: boolean;
     cloudManagedPolicies?: CloudManagedPolicyArtifact[];
+    packs?: ResolvedPack[];
   },
 ): Promise<LoadAllResult> {
   clearCustomHooks();
 
   const conventionSources: ConventionSource[] = [];
+  const packFailures = new Map<string, PolicyLoadFailure>();
 
   const projectRoot = findProjectConfigDir(opts?.sessionCwd ?? process.cwd());
 
@@ -395,6 +453,96 @@ export async function loadAllCustomHooks(
     }
   }
 
+  // Installed packs, keyed by artifact path — the same content-addressing, and
+  // therefore the same collision, as the cloud map above: two packs whose entry
+  // file is byte-identical resolve to ONE artifact, `loadedPaths` imports it
+  // once, and the loser would vanish silently with its effect deciding nothing.
+  // Resolved the same way and for the same reason — toward ENFORCEMENT, because
+  // over-enforcing is visible to whoever hits it and under-enforcing is the
+  // silent failure — and announced, so an operator can act on it.
+  /** `null` means "all of it" on both `enabled` and `clis`, so it absorbs any
+   *  list. Two lists become their union — never their intersection, which is
+   *  what dropping one of them amounted to. */
+  const unionSelection = (a: string[] | null, b: string[] | null): string[] | null =>
+    a === null || b === null ? null : [...new Set([...a, ...b])];
+
+  /**
+   * The CATALOGS have to merge for the same reason the selections do, and the
+   * union of `enabled` is what made it load-bearing: it lets the loser's policy
+   * run, and the catalog is where a pack declares that policy's PARAMS SCHEMA.
+   * `registerPolicy` reads the schema off `pack.policies` by name, so a policy
+   * present only in the loser's catalog registered with none — and a policy with
+   * no schema gets no defaults, so every value its publisher declared silently
+   * arrived as `undefined` in `ctx.params`. Enforcement running on the wrong
+   * numbers is the same silent-wrong as enforcement not running.
+   *
+   * Two packs sharing bytes is most likely a fork or a re-publish, and a fork
+   * that only re-declares a default changes no source at all — so differing
+   * catalogs behind one artifact is the EXPECTED shape here, not a corner.
+   *
+   * Winner precedence on a name both declare, because the merged record carries
+   * the winner's id and version and there is no merging two different defaults.
+   */
+  const unionCatalog = (
+    winner: PolicyCatalogEntry[],
+    other: PolicyCatalogEntry[],
+  ): PolicyCatalogEntry[] => [
+    ...winner,
+    ...other.filter((p) => !winner.some((w) => w.name === p.name)),
+  ];
+
+  const packByPath = new Map<string, ResolvedPack>();
+  /**
+   * Every pack id behind each artifact path, not just the one that survived
+   * the collapse.
+   *
+   * A failure is recorded per PACK ID, and the collapse leaves one id holding
+   * the merged record — so an artifact with a syntax error marked the winner
+   * failed and said nothing about the other. `missingGuards` skips a pack that
+   * appears in neither the failure map nor the registered map, so the second
+   * pack's selected policies were absent, unguarded, and unreported: the exact
+   * silent under-enforcement the selection union was written to stop, arriving
+   * through the failure path instead.
+   */
+  const packIdsByPath = new Map<string, string[]>();
+  for (const pack of opts?.packs ?? []) {
+    const key = resolve(pack.path);
+    packIdsByPath.set(key, [...(packIdsByPath.get(key) ?? []), pack.id]);
+    const existing = packByPath.get(key);
+    if (!existing) {
+      packByPath.set(key, pack);
+      continue;
+    }
+    hookLogWarn(
+      `packs ${existing.id} and ${pack.id} have identical source, so they share one artifact ` +
+        `and load as one pack; enforcing it if either asks to enforce, and taking ` +
+        `the union of what each has enabled and of the agents each guards`,
+    );
+    // The EFFECT was resolved toward enforcement here and the SELECTIONS were
+    // not, which made the collapse silently subtractive.
+    //
+    // Only the winner's `enabled` reached the tag, and `handler.ts` gates every
+    // hook on that one list — so two packs sharing bytes, one having taken
+    // `foo` and the other `bar`, registered whichever list won and dropped the
+    // other's policy entirely. `pack-failclosed.ts` ignores a pack absent from
+    // the registered map, so nothing reported it: a policy the user had
+    // installed and enabled simply never ran. `clis` had the same shape — a
+    // pack scoped to one agent decided the scope for both.
+    //
+    // Unioned, for the reason the effect is resolved toward enforcement: over-
+    // enforcing is visible to whoever hits it, under-enforcing is silent. `null`
+    // means "everything" on both fields, so it absorbs any list rather than
+    // being intersected away.
+    const winner = existing.effect !== "enforce" && pack.effect === "enforce" ? pack : existing;
+    const other = winner === existing ? pack : existing;
+    packByPath.set(key, {
+      ...winner,
+      policies: unionCatalog(winner.policies, other.policies),
+      enabled: unionSelection(winner.enabled, other.enabled),
+      clis: unionSelection(winner.clis, other.clis),
+    });
+  }
+
   // 1. Explicit custom policy paths. Accept a string for callers/configs using
   // the legacy singular form.
   for (const customPoliciesPath of typeof customPoliciesPaths === "string"
@@ -403,31 +551,51 @@ export async function loadAllCustomHooks(
     // resolve() also normalizes absolute paths, so aliases containing `.` or
     // `..` share a dedup key with convention-discovered canonical paths.
     const absPath = resolve(projectRoot, customPoliciesPath);
+    const cloudManaged = cloudManagedByPath.get(absPath);
+    const pack = packByPath.get(absPath);
     if (existsSync(absPath)) {
       if (!loadedPaths.has(absPath)) {
         loadedPaths.add(absPath);
         const hooksBefore = getCustomHooks().length;
         // A cloud-managed policy re-verifies its pinned digest at load, binding
         // the imported bytes to what desired-state promised.
-        await loadSingleFile(absPath, {
-          verifyEntrySha: cloudManagedByPath.get(absPath)?.sha256,
+        // A pack re-verifies its pinned digest at load for the same reason a
+        // cloud policy does: the manifest read and the import are two moments,
+        // and only this one binds the bytes actually executed to what was
+        // promised.
+        const failure = await loadSingleFile(absPath, {
+          verifyEntrySha:
+            cloudManaged?.sha256 ?? pack?.sha256,
         });
+        // Every id behind these bytes. One artifact, one import, one failure —
+        // but as many fail-closed guards as there are packs depending on it.
+        if (failure && pack) {
+          for (const id of packIdsByPath.get(absPath) ?? [pack.id]) packFailures.set(id, failure);
+        }
         for (const hook of getCustomHooks().slice(hooksBefore)) {
-          const cloudManaged = cloudManagedByPath.get(absPath);
           const tagged = hook as CustomHook & {
             __policyId?: string;
             __cloudManaged?: CloudManagedPolicyArtifact;
+            __pack?: ResolvedPack;
           };
           if (cloudManaged) {
             tagged.__cloudManaged = cloudManaged;
             tagged.__policyId = `cloud:${cloudManaged.id}@${cloudManaged.version}:${hook.name}`;
+          } else if (pack) {
+            tagged.__pack = pack;
+            tagged.__policyId = `pack:${pack.id}@${pack.version}:${hook.name}`;
           } else {
             tagged.__policyId = customPolicyId(absPath, hook.name);
           }
         }
+        reconcilePackManifest(pack, getCustomHooks().slice(hooksBefore));
       }
     } else {
       hookLogWarn(`custom policy path not found: ${absPath}`);
+      if (pack) {
+        const missing = { type: "path_missing", reason: `path missing: ${absPath}` } as const;
+        for (const id of packIdsByPath.get(absPath) ?? [pack.id]) packFailures.set(id, missing);
+      }
     }
   }
 
@@ -569,5 +737,10 @@ export async function loadAllCustomHooks(
     }
   }
 
-  return { hooks: allHooks, conventionSources };
+  const packAliases = new Map<string, string[]>();
+  for (const [path, ids] of packIdsByPath) {
+    const winner = packByPath.get(path);
+    if (winner && ids.length > 1) packAliases.set(winner.id, ids);
+  }
+  return { hooks: allHooks, conventionSources, packFailures, packAliases };
 }

@@ -1,0 +1,37 @@
+---
+title: "CrewAI"
+description: "इंस्टॉल करें, इंस्ट्रूमेंट करें, और अपना पहला ट्रेस देखें।"
+icon: "/images/frameworks/crewai.svg"
+---
+
+आपके पहले CrewAI ट्रेस के लिए तीन चरण। प्रत्येक इवेंट क्या ले जाता है, फ्लो कैसे होता है, और समस्या निवारण के लिए, [पूरी गाइड](/hi/start/integrations/crewai) देखें।
+
+## इंस्टॉल करें
+
+```bash
+pip install 'failproofai-sdk[crewai]'
+```
+
+## इंस्ट्रूमेंट करें
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    Crew(agents=[analyst, writer], tasks=[gather, summarise]).kickoff()
+```
+
+आपके crew, agents, tasks, या tools में कुछ नहीं बदलता है। `instrument()` CrewAI के मॉड्यूल-स्तर की इवेंट बस को सब्सक्राइब करता है।
+
+## जांचें कि यह पहुंचा या नहीं
+
+इसे एक बार चलाएं, फिर **Observe → Sessions** खोलें और अपना environment चुनें। आपका रन एक पुनर्निर्मित ट्रेस के रूप में दिखाई देता है।
+
+अगर कुछ नहीं आता है, तो `failproofai config --status` से पुष्टि करें कि मशीन कनेक्ट है।
+
+<Card title="पूर्ण CrewAI गाइड" icon="arrow-right" href="/hi/start/integrations/crewai">
+  क्या रिकॉर्ड होता है, फ्लो कैसे होता है, टोकन उपयोग, स्पैन नामकरण, विकल्प, और सामान्य समस्याएं।
+</Card>

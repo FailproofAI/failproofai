@@ -1,0 +1,244 @@
+---
+title: "LangChain ve LangGraph"
+sidebarTitle: "LangChain ve LangGraph"
+description: "Grafları, düğümleri, araçları, alıcıları ve model çağrılarını tek bir çağrı ile izleyin."
+icon: "/images/frameworks/langchain.svg"
+---
+
+Bir adaptör her ikisine de hizmet verir. LangGraph, `langchain-core`'ün geri çağrı yöneticisinde çalışır, bu nedenle birini izlemek diğerini de izler.
+
+## Kurulum
+
+```bash
+pip install 'failproofai-sdk[langgraph]'
+```
+
+LangGraph olmadan LangChain için `failproofai-sdk[langchain]` kullanın.
+
+Desteklenen sürümler: `langchain-core` 1.4.7 ile 2.0, `langgraph` 1.2 ile 2.0 arası. Bu aralık dışında adaptör yine de kurulur ve bir kez uyarı verir.
+
+## İzleme Yapılandırması
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    graph.invoke({"messages": [HumanMessage("...")]})
+```
+
+`instrument()` bir izleyiciyi `langchain_core.tracers.context.register_configure_hook` aracılığıyla kaydeder. LangChain bunu inşa ettiği her geri çağrı yöneticisine enjekte eder, bu nedenle grafikler, araçlar ve modeller bir çağrı sitesini değiştirmeden yakalanır — yazmadığınız kütüphanelerin içindekiler de dahil olmak üzere.
+
+## Kaydedilen Veriler
+
+| LangChain veya LangGraph | Failproof olayı |
+| --- | --- |
+| Kök çalıştırma | `agent_start`, `agent_end` |
+| LangGraph düğümü | `hook_triggered`, `hook_completed` |
+| Derlenmiş alt grafik | İç içe `agent_start`, `agent_end` |
+| Araç çalıştırması | `tool_use`, `tool_result` |
+| Alıcı çalıştırması | `tool_use`, `tool_result`, özet çıktı |
+| Chat modeli veya LLM çalıştırması | `model_request`, `model_response`, token kullanımı ile |
+| Akışlı jetonlar | Yanıta chunk sayısı ve ilk jetonun zamanı olarak katlanır. Token sayıları `ChatOpenAI(stream_usage=True)` gerektirir — aşağıyı görebilir |
+| `interrupt()` | `human_wait`, `agent_pause` |
+| `Command(resume=...)` | `agent_resume`, `human_input`, `Interrupt.id` üzerinde bağlantılı — resume aynı kontrol noktası üzerinde farklı bir işlemde gerçekleştiğinde bile |
+| İşlenmemiş istisna | `error`, ardından sonuç `failed` olan `agent_end` |
+
+**Bir düğüm, iç içe bir ajan değil, bir hook haline gelir.** `agent_id` her pano yüzeyindeki birincil yöntemdir — `retrieve`, `grade_documents` ve `should_continue` ajanlarına yükseltmek bunu boğar ve oturumu hangi düğümün ilk çalıştığına göre etiketlerdi.
+
+Hook aralıkları aynı şekilde görünür ve yine de size düğüm başına gecikme görünümü sağlar.
+
+<Note>
+  **Düğümlerinizi istediğiniz gibi adlandırın.** Bir düğümün çalıştırması, adı tarafından değil, *şekli* tarafından tanımlanır — LangGraph'ın kendi adım etiketini taşıyan yaprak olmayan bir çalıştırma.
+</Note>
+
+| Yazdığınız | Kaydedilen |
+| --- | --- |
+| `add_node("lookup_population", ToolNode([...]))` | Araç |
+| `add_node("ChatOpenAI", ...)` | Model çağrısı |
+
+Bir düğümü çalıştırdığı şeyin adını verdikten sonra o şeyin olaylarının kaybolması. Artık bu şekilde değil.
+
+### Akış
+
+`.stream()` ve `.astream()` jetonbaşı olay yayınlamaz. Bunlar kapanış `model_response` içine katlanır:
+
+| Alan | İçeriği |
+| --- | --- |
+| `fw_chunks` | Kaç chunk geldi |
+| `fw_ttft_ms` | İlk jetona kadar zaman |
+
+### Akışlı yanıttaki token sayıları
+
+Ayrı bir konu ve kaçırması kolay: OpenAI akışlı yanıtta kullanımı **sadece istendiğinde** gönderir.
+
+```python
+ChatOpenAI(model="gpt-4o-mini", stream_usage=True)   # bunu olmadan, token yok
+```
+
+Adaptör çerçevenin verdiğini kaydeder. Bu bayrak olmadan kaydedilecek bir şey yoktur ve `model_response` token sayıları olmadan gelir.
+
+## Örnek
+
+```python
+import failproofai_sdk
+from langchain_core.messages import HumanMessage
+from langchain_core.tools import tool
+from langchain_openai import ChatOpenAI
+from langgraph.prebuilt import ToolNode, create_react_agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+@tool
+def price_of(item: str) -> float:
+    """Bir öğenin birim fiyatını USD cinsinden döndürün."""
+    return {"widget": 42.0, "gadget": 17.5}[item.lower().strip()]
+
+
+@tool
+def stock_of(item: str) -> int:
+    """Şu anda stokta olan bir öğenin birimlerini döndürün."""
+    return {"widget": 120, "gadget": 0}[item.lower().strip()]
+
+
+tools = ToolNode([price_of, stock_of], handle_tool_errors=True)
+graph = create_react_agent(ChatOpenAI(model="gpt-4o-mini"), tools)
+
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("analyst", goal="price and stock report"):
+        result = graph.invoke({
+            "messages": [HumanMessage("Price and stock for widget and gadget?")]
+        })
+```
+
+## Aralıklarınızı Adlandırın
+
+Varsayılan olarak kök aralık grafiğin kendi adını alır. Seçtiğiniz bir etiketi almak için sarın:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("analyst", goal="price and stock report"):
+        graph.invoke(...)
+```
+
+Çok ajanla kurulumlar için kapsamları iç içe geçirin. Her çalışan `parent_id` taşıyan bir alt aralık haline gelir:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("supervisor"):
+        with failproofai_sdk.agent("researcher"):
+            research_graph.invoke(...)
+        with failproofai_sdk.agent("writer"):
+            writer_graph.invoke(...)
+```
+
+`agent_id` kardinalitesini düşük tutun. Bir rol veya düğüm adı kullanın, asla UUID veya çalıştırma başına bir dize kullanmayın.
+
+## Oturumu Kontrol Edin
+
+Oturum kimliği bu sırayla çözümlenir, ilk eşleşme kazanır:
+
+1. `instrument("langchain", session_id=...)`
+2. `config={"metadata": {"failproofai_sdk_session_id": ...}}`
+3. Kapsayan `failproofai_sdk.session()` kapsamı
+4. `metadata["session_id"]`, `metadata["conversation_id"]` veya `metadata["thread_id"]`
+5. Kök çalıştırma kimliği
+
+Hiçbir zaman sıfırdan oluşturulmaz, çünkü sentezlenmiş bir kimlik bir çalıştırmayı birkaç oturum arasında böler.
+
+```python
+graph.invoke(
+    {"messages": [...]},
+    config={"metadata": {"failproofai_sdk_session_id": f"chat-{user_id}"}},
+)
+```
+
+## Seçenekler
+
+```python
+failproofai_sdk.instrument(
+    "langchain",
+    session_id=None,          # her çalıştırmayı bir oturum kimliğine sabitle
+    include_chains=set(),     # ara zincirlerine hook çiftleri olarak izin ver
+    capture_content=True,     # False yönergeleri ve tamamlamaları yüklerden bırakır
+    graph_callbacks=True,     # birinci sınıf kesme ve devam, langgraph 1.2+ gerektirir
+)
+```
+
+Düzenlenmiş veriler için `capture_content=False` ayarlayın. Yapı, zamanlamalar, token sayıları, araç adları ve sonuçlar hala kaydedilir; mesaj gövdeleri değil.
+
+`include_chains` **sadece iç içe** çalıştırmalara uygulanır. Üst düzeyde çağırdığınız bir runnable oturumun köküdür, bu nedenle hook çiftine değil ajan aralığına dönüşür ve adını buraya vermek hiçbir etkisi olmaz.
+
+## İnsanın Döngüde Olması
+
+`interrupt()` dört olay üretir ve hiçbir çift gereksiz değildir:
+
+```python
+from langgraph.types import Command, interrupt
+
+def approve(state):
+    decision = interrupt({"prompt": "Ship it?", "options": ["yes", "no"]})
+    return {"approved": decision == "yes"}
+
+with failproofai_sdk.session():
+    graph.invoke(state, config)                    # human_wait, agent_pause
+    graph.invoke(Command(resume="yes"), config)    # agent_resume, human_input
+```
+
+`human_wait` ile `human_input` arasında istem ve cevap taşınır (her ikisi de `capture_content=False` altında, alıcı belge kaynakları ile birlikte bırakılır — belge sayısı kalır). `agent_pause` ile `agent_resume` duraklatılan zamanı besleyen tek çifttir, bu nedenle onsuz on dakikalık bir insan bekleme etkin ajan süresi olarak faturalandırılır. Kök aralık boşluk arasında açık kalır ve her iki çağrıyı da bir oturumda tutar.
+
+## Yaygın Sorunlar
+
+<AccordionGroup>
+  <Accordion title="Yükseltilen bir araç tüm grafiği iptal eder">
+    `create_react_agent` istisnayı yayınlar. Modelin hatayı görmesine ve devam etmesine izin vermek için araç düğümünü açıkça oluşturun:
+
+    ```python
+    from langgraph.prebuilt import ToolNode, create_react_agent
+
+    tools = ToolNode([price_of, stock_of], handle_tool_errors=True)
+    graph = create_react_agent(model, tools)
+    ```
+
+    Hata her iki durumda da bir hata içeren `tool_result` olarak kaydedilir. Bu sadece çalıştırmanın bundan kurtulup kurtulamayacağını belirler.
+  </Accordion>
+
+  <Accordion title="Model sınıfının adını taşıyan bir ajan izde görünür">
+    Herhangi bir grafik dışında doğrudan `llm.invoke()` üst çalıştırmaya sahip değildir, bu nedenle kök aralığı açar ve model çiftini içine yayınlar. Pano yapraklarını açık bir ajana ebeveynle alır, bu nedenle aralık kasıtlıdır. Adlandırın:
+
+    ```python
+    with failproofai_sdk.agent("summariser"):
+        summary = ChatOpenAI(model="gpt-4o-mini").invoke([HumanMessage(text)])
+    ```
+  </Accordion>
+
+  <Accordion title="Her olay iki kez görünür">
+    `config={"callbacks": [...]}` içinde bir Failproof işleyicisi geçtiniz ve aynı zamanda `instrument()` çağırdınız. Bunu kaldırın. Configure hook zaten işlemdeki her geri çağrı yöneticisini kapsar.
+  </Accordion>
+
+  <Accordion title="İnsan onayları hata olarak gösterilir">
+    Değil. LangGraph `GraphInterrupt` oluşturur gerçek bir istisna ile aynı yol üzerinden, bu nedenle her duraklama izleyiciye bir hata geri çağrısı olarak ulaşır. `GraphBubbleUp` alt sınıfından herhangi biri kontrol akışı yerine işlem yapılır, bu nedenle bir onay kırmızı bir hata boyaması yapmaz.
+  </Accordion>
+
+  <Accordion title="Hiçbir şey kaydedilmez">
+    Bu sırayla kontrol edin: `instrument()` grafik yürütülmeden önce çalıştı; çağrının çevresinde bir `with failproofai_sdk.session():` vardır; `FAILPROOFAI_SDK_STRICT=1` ayarlı, bu nedenle bozulmuş bir hook yutulmak yerine yükseltilir.
+  </Accordion>
+</AccordionGroup>
+
+## Sonraki
+
+<Columns cols={3}>
+  <Card title="Nasıl çalışır" icon="workflow" href="/tr/start/integrations/custom-agents#going-deeper">
+    Çiftler, kimlikler, oturum yaşam döngüsü ve teslimat.
+  </Card>
+  <Card title="İzi oku" icon="route" href="/tr/sessions/read-a-trace">
+    Az önce yakaladığınız oturum aracılığıyla nedenselliği takip edin.
+  </Card>
+  <Card title="Diğer çerçeveler" icon="plug" href="/tr/start/integrations">
+    CrewAI, LlamaIndex, Pydantic AI ve özel ajanlar.
+  </Card>
+</Columns>

@@ -4,6 +4,17 @@ description: "Reference the event model, environments, local storage, and config
 icon: "list-tree"
 ---
 
+## Two event vocabularies
+
+Failproof AI carries two different kinds of event, and they never share a name.
+
+| Vocabulary | Produced by | Names look like | Reference |
+| --- | --- | --- | --- |
+| Telemetry events | `failproofai-sdk`, from inside your agent | `tool_use`, `tool_result`, `hook_triggered`, `model_response` | [Python SDK](/reference/custom-agents) |
+| Hook events | The agent harness, normalized by failproofai | `PreToolUse`, `PostToolUse`, `Stop`, `UserPromptSubmit` | [Custom policies](/reference/policy-sdk#choose-the-event) |
+
+The hook side normalizes every harness's own event names into 29 canonical types. The telemetry side has 15 methods and its own field contract. `hook_triggered` and `PreToolUse` are not two spellings of one thing.
+
 ## Event families
 
 - Agent start, end, pause, and resume
@@ -53,32 +64,103 @@ Every event carries a timestamp, session ID, agent ID, event type, and environme
 
 ## Reserved SDK fields
 
-Do not use `timestamp`, `session_id`, `agent_id`, `type`, or `environment` as custom Python SDK fields. Paired event durations such as tool result duration are calculated by the SDK and cannot be supplied manually.
+Five names are refused outright as custom fields, because the SDK sets them on every event:
+
+`timestamp`, `session_id`, `agent_id`, `type`, `environment`.
+
+Eleven more are accepted but type-checked, because the ingest endpoint lifts them out of the payload into typed columns and silently stores `NULL` for anything of the wrong type. The SDK raises instead, at the call site where you can still see what produced the value.
+
+| Names | Required type |
+| --- | --- |
+| `duration_ms`, `input_tokens`, `output_tokens` | `int`, within the unsigned 32-bit range. A float or a bool raises. |
+| `tool_name`, `tool_call_id`, `hook_name`, `hook_id`, `input_id`, `pause_id`, `error_type`, `model` | `str`. `None` raises, because the row would arrive at 200 OK and be invisible to every filter on that field. |
+
+### Durations
+
+The SDK measures the gap between four paired events and refuses a `duration_ms` you pass yourself: `tool_use` → `tool_result`, `hook_triggered` → `hook_completed`, `agent_pause` → `agent_resume`, and `human_wait` → `human_input`.
+
+`model_response` is the exception. The SDK never times model calls, so you supply `duration_ms` yourself, as a whole number of milliseconds. See [correlation rules](/reference/custom-agents) for how a pair is matched.
 
 ## Local boundaries
 
 - Failproof AI state lives under `~/.failproofai` unless explicitly configured otherwise.
 - `failproofai-sdk` always spools under `~/.failproofai/custom-agents`. `FAILPROOFAI_HOME` relocates that home; the `custom-agents` segment is always appended, so the spool cannot be placed outside it. Only the SDK's own `configure(base_dir=...)` writes elsewhere. `AGENTEYE_HOME` is read by the older `agenteye-collector` to choose what to watch, and no longer affects where the SDK writes.
-- Environment labels can be set through SDK configuration or `AGENTEYE_ENVIRONMENT`.
-- Daemon credentials are stored separately from non-secret settings.
+- Credentials live in `~/.failproofai/credentials.json`, written `0600`. They are deliberately not in `config.json`, which is written with a plain write and inherits the umask, so it lands readable by every local user on the box.
 
-Use stable, low-cardinality environment names. Commas are not supported in daemon environment labels.
+Use stable, low-cardinality environment names. A comma is rejected on both writers: the daemon refuses one in `collector.environment`, and the SDK raises on `configure(environment=...)`. The reason is the same on both sides—the ingest endpoint splits this field on commas and skips the whole line, answering `200 OK` while storing nothing.
+
+## Machine configuration
+
+The daemon's non-secret settings are `~/.failproofai/config.json`. `hooks_verbosity`, `redact` and `environment` have no CLI flag — edit the file directly. `sessions`, `hooks` and `machine_id` are written by `failproofai config` when it connects this machine to Cloud.
+
+| Key | Values | Default | What it controls |
+| --- | --- | --- | --- |
+| `collector.sessions` | `true` / `false` | `false`, and `true` once you connect to Cloud | Ship agent session transcripts. A transcript carries prompts, file contents, and whatever was pasted into a terminal. |
+| `collector.hooks` | `true` / `false` | `true` | Ship hook activity. Carries decisions and tool names, never file contents. |
+| `collector.hooks_verbosity` | `all` / `decisions` / `off` | `decisions` | `decisions` keeps every deny and instruct exact and aggregates the roughly 99% that allow. |
+| `collector.redact` | `minimal` / `off` | `minimal` | Redaction applied before anything leaves the machine. |
+| `collector.environment` | any string without a comma | `local` | The label stamped on every event this machine sends. |
+| `collector.machine_id` | any string | an id already on disk, else a fresh random UUID | Which machine the dashboard groups this data under. Written by `--machine-id`. It is never derived from the hostname. |
+
+<Note>
+  `failproofai backfill --help` names `~/.failproofai/config.toml`. That is a stale path from an earlier home layout; no current build writes it. The file is `config.json`.
+</Note>
+
+Connecting to Cloud sends both policy decisions and full session transcripts.
+
+<Warning>
+  `--no-transcripts` does not turn transcripts off on the setup path. `failproofai config --token <key> --no-transcripts` parses the flag and then never reads it, and the wizard connects with sessions on regardless, so transcripts keep shipping while you believe you opted out.
+
+  To send decisions only, set `collector.sessions` to `false` in `~/.failproofai/config.json` after connecting:
+
+  ```json
+  {
+    "collector": {
+      "sessions": false
+    }
+  }
+  ```
+</Warning>
+
+A backfill follows the same collector settings, so it never sends something your configuration says you do not want. Re-sending is safe: redaction is deterministic, so a re-sent event hashes identically to its first send and collapses into the row already there.
 
 ## Change an environment label
 
-<Tabs>
-  <Tab title="Dashboard">
-    Environment labels are assigned by the emitting SDK or Failproof daemon. After changing one, open **Observe → Sessions** and use the environment filter to confirm new sessions carry the new value. Existing sessions retain their original environment.
+The SDK and the daemon each stamp their own label, and they are set in different places.
 
-  </Tab>
-  <Tab title="CLI">
-    For `failproofai-sdk`, configure the environment in code or with its legacy environment variable. Rerun daemon configuration when changing machine-level settings.
+<Tabs>
+  <Tab title="Python SDK">
+    Set it in code, or in the environment of the process that emits the events. The default is `dev`.
+
+    ```python
+    import failproofai_sdk
+
+    failproofai_sdk.configure(environment="production-us-east")
+    ```
 
     ```bash
     export AGENTEYE_ENVIRONMENT=production-us-east
-    failproofai config
+    ```
+
+    `AGENTEYE_ENVIRONMENT` is read only by `failproofai-sdk`. Neither the CLI nor the daemon reads it, so exporting it changes nothing about the machine.
+  </Tab>
+  <Tab title="Daemon">
+    Edit `collector.environment` in `~/.failproofai/config.json`. The default is `local` and no CLI flag sets it.
+
+    ```json
+    {
+      "collector": {
+        "environment": "production-us-east"
+      }
+    }
+    ```
+
+    ```bash
     failproofai config --status
     fp sessions --since 1h --env production-us-east
     ```
+  </Tab>
+  <Tab title="Dashboard">
+    Environment labels are assigned by the emitting SDK or Failproof daemon, so there is nothing to change here. After changing one at its source, open **Observe → Sessions** and use the environment filter to confirm new sessions carry the new value. Existing sessions retain their original environment.
   </Tab>
 </Tabs>

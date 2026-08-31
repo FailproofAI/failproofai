@@ -1,102 +1,102 @@
 ---
 title: "Yerleşik politika kataloğu"
-description: "Her Failproof AI yerleşik politikasını, tetikleyicisini, önerilen durumunu ve yapılandırılabilir parametrelerini inceleyin."
+description: "Her bir Failproof AI yerleşik politikasını, tetikleme koşullarını, önerilen durumunu ve yapılandırılabilir parametrelerini inceleyin."
 icon: "list-checks"
 ---
 
-Kurulan paket, politika kullanılabilirliğinin tek kaynağıdır. Her yükseltmeden sonra `failproofai policies` komutunu çalıştırın, çünkü katalog girişleri ve davranış paket sürümüyle değişebilir.
+Yüklü paket, politika mevcudiyetinin kaynağıdır. Her yükseltmeden sonra `failproofai policies` komutunu çalıştırın çünkü katalog girdileri ve davranış paket sürümüyle değişebilir.
 
-## Önerilen temel yapılandırma
+## Önerilen temel ayarlar
 
-Kılavuzlu kurulumun önerilen seçimi şu anda gizli sanitizerleri, ortam korumalarını, kendi kendine korumayı, felaket komutu korumasını ve korunan dal güvenliğini etkinleştirir:
+Rehberli kurulumun önerilen seçimi şu anda sır temizleyicileri, ortam korumalarını, kendi kendini korumayı, felaket komutları korumasını ve korumalı dal güvenliğini etkinleştirmektedir:
 
 ```text
 sanitize-jwt                 sanitize-api-keys
 sanitize-connection-strings sanitize-private-key-content
 sanitize-bearer-tokens       protect-env-vars
 block-env-files              block-secrets-write
-block-self-pause             block-failproofai-commands
-block-sudo                   block-curl-pipe-sh
-block-rm-rf                  block-push-master
-block-force-push
+block-failproofai-commands   block-sudo
+block-curl-pipe-sh           block-rm-rf
+block-push-master            block-force-push
 ```
 
-Önerilen, **Her Şey** seçeneğinden kasıtlı olarak daha dar kapsamlıdır. Altyapı ve iş akışı politikaları geçerli işleri kesintiye uğratabilir ve bunlara ihtiyaç duyan depolar ve makinelerde etkinleştirilmelidir.
+`block-failproofai-commands` **her zaman açıktır**. Bütünlük açısından yukarıda listelenmiştir, ancak etkinleştirilen ayarında yer alıp almadığına bakılmaksızın her değerlendirmede kaydolur ve devre dışı bırakılamaz veya duraklatılamaz — aracının zorlama mekanizmasını kapatabilmesine karşı bir koruma kendisi değer taşımaz.
 
-## Gizli anahtarlar ve ortam
+Önerilen, **Her şey** seçeneğinden kasıtlı olarak daha darıttır. Altyapı ve iş akışı politikaları geçerli işi kesintiye uğratabilir ve bunların etkinleştirilmesi gerekli olan depolar ve makineler için seçilmelidir.
+
+## Sırlar ve ortam
 
 | Politika | Tetikleyici | Sonuç |
 | --- | --- | --- |
-| `sanitize-jwt` | `PostToolUse` | Model bunları görmeden önce araç çıktısından JWT'leri temizleyin. |
-| `sanitize-api-keys` | `PostToolUse` | Ortak OpenAI, Anthropic, GitHub, AWS, Stripe ve Google anahtarlarını temizleyin. |
-| `sanitize-connection-strings` | `PostToolUse` | Kimlik bilgileri içeren veritabanı bağlantı dizelerini temizleyin. |
-| `sanitize-private-key-content` | `PostToolUse` | PEM özel anahtar gövdelerini temizleyin. |
-| `sanitize-bearer-tokens` | `PostToolUse` | Yetkilendirme taşıyıcı jetonlarını temizleyin. |
-| `protect-env-vars` | `PreToolUse` (kabuk araçlarında) | Ortam değişkenlerini döküm yapan komutları engelle. |
-| `block-env-files` | `PreToolUse` | `.env` dosyalarının okunması ve yazılmasını engelle. |
-| `block-read-outside-cwd` | `PreToolUse` (okuma, glob, grep veya kabuk araçlarında) | Okumaları oturum çalışma dizini içinde tut. |
-| `block-secrets-write` | `PreToolUse` (yazma araçlarında) | Yaygın gizli anahtar ve kimlik bilgisi dosya adlarına yazılmasını engelle. |
+| `sanitize-jwt` | `PostToolUse` | Araç çıktısından JWT'leri modelin görmesinden önce redakte edin. |
+| `sanitize-api-keys` | `PostToolUse` | Yaygın OpenAI, Anthropic, GitHub, AWS, Stripe ve Google anahtarlarını redakte edin. |
+| `sanitize-connection-strings` | `PostToolUse` | Kimlik bilgilerini içeren veritabanı bağlantı dizelerini redakte edin. |
+| `sanitize-private-key-content` | `PostToolUse` | PEM özel anahtar gövdelerini redakte edin. |
+| `sanitize-bearer-tokens` | `PostToolUse` | Yetkilendirme taşıyıcı jetonlarını redakte edin. |
+| `protect-env-vars` | Shell araçlarında `PreToolUse` | Ortam değişkenlerini döken komutları engelleyin. |
+| `block-env-files` | `PreToolUse` | `.env` dosyalarının okumalarını ve yazışlarını engelleyin. |
+| `block-read-outside-cwd` | Okuma, glob, grep veya shell araçlarında `PreToolUse` | Okumaları oturum çalışma dizini içinde tutun. |
+| `block-secrets-write` | Yazma araçlarında `PreToolUse` | Yaygın sır anahtarı ve kimlik bilgisi dosya adlarına yazmaları engelleyin. |
 
 ## Tehlikeli komutlar ve altyapı
 
 | Politika | Tetikleyici | Sonuç |
 | --- | --- | --- |
-| `block-self-pause` | `PreToolUse`, `PermissionRequest` | Bir aracının kendi zorlama mekanizmasını duraklatmasını engelle. |
-| `block-sudo` | `PreToolUse`, `PermissionRequest` | İzin deseni eşleşmedikçe `sudo` komutunu engelle. |
-| `block-curl-pipe-sh` | `PreToolUse` | İndirilen betiklerin doğrudan kabuğa aktarılmasını engelle. |
-| `block-rm-rf` | `PreToolUse` | Felaket niteliğinde yinelemeli silme desenlerini engelle. |
-| `block-failproofai-commands` | `PreToolUse` | Aracıların Failproof AI'ı değiştirmesini veya kaldırmasını engelle. |
-| `block-kubectl` | `PreToolUse` | Kubernetes komutlarını kısıtla. |
-| `block-terraform` | `PreToolUse` | Terraform ve OpenTofu komutlarını kısıtla. |
-| `block-aws-cli` | `PreToolUse` | AWS CLI komutlarını kısıtla. |
-| `block-gcloud` | `PreToolUse` | Google Cloud CLI komutlarını kısıtla. |
-| `block-az-cli` | `PreToolUse` | Azure CLI komutlarını kısıtla. |
-| `block-helm` | `PreToolUse` | Helm komutlarını kısıtla. |
-| `block-gh-pipeline` | `PreToolUse` | GitHub CLI iş akışı, çalıştırma, birleştirme, yayın, önbellek ve gizli işlemleri değiştiren komutları kısıtla. |
+| `block-sudo` | `PreToolUse`, `PermissionRequest` | İzin deseni eşleşmediği sürece `sudo`'yu engelleyin. |
+| `block-curl-pipe-sh` | `PreToolUse` | İndirilen betikleri doğrudan bir kabuğa yönlendirmeyi engelleyin. |
+| `block-rm-rf` | `PreToolUse` | Felaket düzeyinde özyinelemeli silme desenleri engelleyin. |
+| `block-failproofai-commands` | `PreToolUse`, `PermissionRequest` | **Her zaman açıktır, devre dışı bırakılamaz.** Her Failproof AI CLI çağrısını, kendi kendini duraklatmayı ve paket yöneticisi kaldırmalarını engelleyin. |
+| `block-kubectl` | `PreToolUse` | Kubernetes komutlarını kısıtlayın. |
+| `block-terraform` | `PreToolUse` | Terraform ve OpenTofu komutlarını kısıtlayın. |
+| `block-aws-cli` | `PreToolUse` | AWS CLI komutlarını kısıtlayın. |
+| `block-gcloud` | `PreToolUse` | Google Cloud CLI komutlarını kısıtlayın. |
+| `block-az-cli` | `PreToolUse` | Azure CLI komutlarını kısıtlayın. |
+| `block-helm` | `PreToolUse` | Helm komutlarını kısıtlayın. |
+| `block-gh-pipeline` | `PreToolUse` | Değiştiren GitHub CLI iş akışı, çalıştırma, birleştirme, yayın, önbellek ve sır işlemlerini kısıtlayın. |
 
 ## Git ve veritabanı güvenliği
 
 | Politika | Tetikleyici | Sonuç |
 | --- | --- | --- |
-| `block-push-master` | `PreToolUse` | Yapılandırılmış korunan dallara doğrudan göndermeyi engelle. |
-| `block-force-push` | `PreToolUse` | Zorlamaya dayalı göndermeyi engelle; `--force-with-lease` mevcut uygulama tarafından izin verilir. |
-| `block-work-on-main` | `PreToolUse` | Korunan dallarda işlemler ve birleştirmeleri engelle. |
-| `warn-git-amend` | `PreToolUse` | `--amend` ile bir işlemi yeniden yazmadan önce uyar. |
-| `warn-git-stash-drop` | `PreToolUse` | Stasları kalıcı olarak bırakmadan veya temizlemeden önce uyar. |
-| `warn-all-files-staged` | `PreToolUse` | Geniş `git add -A`, `git add .` veya `git add --all` konusunda uyar. |
-| `warn-destructive-sql` | `PreToolUse` | Tanınan veritabanı istemcileri aracılığıyla `WHERE` olmayan `DROP`, `TRUNCATE` ve `DELETE` konusunda uyar. |
-| `warn-schema-alteration` | `PreToolUse` | Tanınan `ALTER TABLE` sütun ve yeniden adlandırma işlemleri konusunda uyar. |
+| `block-push-master` | `PreToolUse` | Yapılandırılmış korumalı dallara doğrudan gönderileri engelleyin. |
+| `block-force-push` | `PreToolUse` | Zorla gönderileri engelleyin; `--force-with-lease` mevcut uygulamada izin verilen olarak kalır. |
+| `block-work-on-main` | `PreToolUse` | Korumalı dallarda işlemeleri ve birleştirmeleri engelleyin. |
+| `warn-git-amend` | `PreToolUse` | `--amend` ile bir işlemeyi yeniden yazarken uyarı verin. |
+| `warn-git-stash-drop` | `PreToolUse` | Hazırlamaları kalıcı olarak bırakmadan veya temizlemeden önce uyarı verin. |
+| `warn-all-files-staged` | `PreToolUse` | Geniş `git add -A`, `git add .` veya `git add --all` sırasında uyarı verin. |
+| `warn-destructive-sql` | `PreToolUse` | Tanınan veritabanı istemcileri aracılığıyla `WHERE` olmayan `DROP`, `TRUNCATE` ve `DELETE` sırasında uyarı verin. |
+| `warn-schema-alteration` | `PreToolUse` | Tanınan `ALTER TABLE` sütun ve yeniden adlandırma işlemleri sırasında uyarı verin. |
 
-## Paketler, sistem davranışı ve ajan döngüleri
+## Paketler, sistem davranışı ve aracı döngüleri
 
 | Politika | Tetikleyici | Sonuç |
 | --- | --- | --- |
-| `warn-package-publish` | `PreToolUse` | Paket kayıtlarına yayınlamadan önce uyar. |
-| `warn-global-package-install` | `PreToolUse` | Genel paket kurulumundan önce uyar. |
-| `prefer-package-manager` | `PreToolUse` | Aracıya izin verilen paket yöneticisini kullanmasını öner. |
-| `warn-large-file-write` | `PreToolUse` (yazma araçlarında) | Yapılandırılmış dosya boyutu eşiğinin üstünde uyar. |
-| `warn-background-process` | `PreToolUse` | Ayrılmış veya uzun süreli arka plan süreci desenleri konusunda uyar. |
-| `warn-repeated-tool-calls` | `PreToolUse` | Üç veya daha fazla özdeş araç çağrısından sonra uyar. |
+| `warn-package-publish` | `PreToolUse` | Paket kayıtlarına yayınlamadan önce uyarı verin. |
+| `warn-global-package-install` | `PreToolUse` | Genel paket kurulumundan önce uyarı verin. |
+| `prefer-package-manager` | `PreToolUse` | Aracıya izin verilen bir paket yöneticisini kullanmasını öğütleyin. |
+| `warn-large-file-write` | Yazma araçlarında `PreToolUse` | Yapılandırılmış dosya boyutu eşiğinin üzerinde uyarı verin. |
+| `warn-background-process` | `PreToolUse` | Ayrılmış veya uzun süreli arka plan işlem desenlerinde uyarı verin. |
+| `warn-repeated-tool-calls` | `PreToolUse` | Üç veya daha fazla özdeş araç çağrısından sonra uyarı verin. |
 
 ## Görev sonu iş akışı
 
-Bu politikalar uyumlu bir `Stop` olayı yayan bir harness gerektirir.
+Bu politikalar uyumlu bir `Stop` olayı yayan bir sistem gerektirmektedir.
 
 | Politika | Sonuç |
 | --- | --- |
-| `require-commit-before-stop` | İzlenen işler taahhüt edilmeden tamamlanmayı reddet. |
-| `require-push-before-stop` | Taahhütler yerel kalırken tamamlanmayı reddet. |
-| `require-pr-before-stop` | Mevcut dal için çekme isteği gerektir. |
-| `require-no-conflicts-before-stop` | Yapılandırılmış temel dal karşısında temiz birleştirme gerektir. |
-| `require-ci-green-before-stop` | Geçerli-HEAD CI denetimlerinin başarıyla tamamlanmasını gerektir. |
+| `require-commit-before-stop` | İzlenen işler işlenmemişken tamamlamayı reddedin. |
+| `require-push-before-stop` | İşlemeler yalnızca yerel olarak kalırken tamamlamayı reddedin. |
+| `require-pr-before-stop` | Geçerli dal için bir çekme isteği gerektirin. |
+| `require-no-conflicts-before-stop` | Yapılandırılmış temel dala karşı temiz bir birleştirme gerektirin. |
+| `require-ci-green-before-stop` | Geçerli-HEAD CI denetimlerinin başarıyla tamamlanmasını gerektirin. |
 
 ## Parametre referansı
 
-Seçilen kapsamın `policyParams` nesnesi altında parametreleri yapılandırın. Türler her politika tarafından doğrulanır.
+Seçilen kapsamın `policyParams` nesnesi altında parametreleri yapılandırın. Türler her politika tarafından doğrulanmaktadır.
 
 | Politika | Parametre | Tür ve varsayılan |
 | --- | --- | --- |
-| `sanitize-api-keys` | `additionalPatterns` | `pattern[]`, `[]`; girişler `regex` ve `label` içerir |
+| `sanitize-api-keys` | `additionalPatterns` | `pattern[]`, `[]`; girdiler `regex` ve `label` içerir |
 | `block-read-outside-cwd` | `allowPaths` | `string[]`, `[]` |
 | `block-sudo` | `allowPatterns` | `string[]`, `[]` |
 | `block-rm-rf` | `allowPaths` | `string[]`, `[]` |
@@ -125,5 +125,5 @@ Seçilen kapsamın `policyParams` nesnesi altında parametreleri yapılandırın
 ```
 
 <Warning>
-  İzin deseni, bir aracının yapabileceği işlemleri genişletir. Bunu bir filo genelinde dağıtmadan önce tam jetonlaştırma ve komut varyasyonlarını hedef harness üzerinde test edin.
+  İzin deseni, bir aracının yapabileceği işleri genişletir. Hedef sistem üzerinde tam tokenleşmeyi ve komut varyantlarını test edin ve bunu bir filoyu karşısında dağıtmadan önce doğrulayın.
 </Warning>

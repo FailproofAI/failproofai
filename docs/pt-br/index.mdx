@@ -1,19 +1,19 @@
 ---
 title: "Torne seu agente à prova de falhas"
-description: "Observabilidade e aplicação de regras para cada ambiente em que seus agentes rodam — CLIs de codificação, gateways de chat, assistentes auto-hospedados e seus próprios agentes instrumentados."
+description: "Observabilidade e controle para cada harness em que seus agentes rodam — CLIs de codificação, gateways de chat, assistentes self-hosted e seus próprios agentes instrumentados."
 icon: "shield-check"
 ---
 
 O Failproof AI ajuda equipes a entender o que os agentes fizeram, identificar onde falharam e implantar salvaguardas antes que o mesmo comportamento se repita.
 
-Um **harness** é o ambiente no qual seu agente efetivamente roda. O Failproof AI se integra a 12 deles — CLIs de codificação como Claude Code e Codex, gateways de chat como Hermes, assistentes auto-hospedados como OpenClaw — e os mesmos eventos, as mesmas políticas e o mesmo histórico de sessões se aplicam a todos. Agentes sem harness se reportam por meio do [Python SDK](/pt-br/reference/custom-agents), que os rastreia e audita; para aplicar uma política nesses casos, é necessário um hook no seu próprio runtime.
+Um **harness** é o ambiente em que seu agente realmente executa. O Failproof AI se conecta a 12 deles — CLIs de codificação como Claude Code e Codex, gateways de chat como Hermes, assistentes self-hosted como OpenClaw — e os mesmos eventos, as mesmas políticas e o mesmo histórico de sessões se aplicam a todos. Agentes sem harness se reportam por meio do [SDK Python](/pt-br/reference/custom-agents), que os rastreia e audita; aplicar uma política nesse caso exige um hook no seu próprio runtime.
 
 <Columns cols={2}>
   <Card title="Configure o Failproof" icon="wand-sparkles" href="/pt-br/start/quickstart">
-    Use a skill para instrumentar seu projeto, conectá-lo e verificar que os logs do agente estão chegando.
+    Use a skill para instrumentar seu projeto, conectá-lo e verificar se os logs do agente estão chegando.
   </Card>
-  <Card title="Consulte o Assistente Failproof" icon="message-square-text" href="/pt-br/sessions/assistant">
-    Analise, consulte, crie dashboards e execute auditorias em linguagem natural sobre os logs do seu agente.
+  <Card title="Pergunte ao Assistente Failproof" icon="message-square-text" href="/pt-br/sessions/assistant">
+    Analise, consulte, crie dashboards e execute auditorias em linguagem natural nos logs do seu agente.
   </Card>
 </Columns>
 
@@ -37,5 +37,5 @@ Um **harness** é o ambiente no qual seu agente efetivamente roda. O Failproof A
 Se você está implantando seu primeiro agente instrumentado, comece pelo [quickstart](/pt-br/start/quickstart). Se os dados já estão chegando, abra [Sessions](/pt-br/sessions/overview) e inspecione uma execução real antes de configurar auditorias ou políticas.
 
 <Card title="Encontre e previna uma falha" icon="arrow-right" href="/pt-br/start/quickstart">
-  Complete o fluxo de trabalho completo, da captura até a implantação segura de uma política.
+  Complete o fluxo de trabalho de ponta a ponta, desde a captura até uma política implantada com segurança.
 </Card>

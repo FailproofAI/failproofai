@@ -1,57 +1,66 @@
 ---
 title: "Sessions"
-description: "Start with the complete record of one agent run."
-icon: "workflow"
+description: "Follow one agent run from its goal through tools, decisions, and outcome."
+icon: "route"
 ---
 
-A session is the best starting point when an agent behaves unexpectedly. It joins the model requests, responses, tool calls, human interactions, errors, evaluations, and policy decisions that belong to one run.
+A session is one agent run. It connects the prompt, model calls, tools, errors, human input, policy decisions, and final result.
 
-Sessions look the same whichever harness produced them. A Claude Code run rewriting a repository, a Hermes agent answering a customer in Slack, and a Python service instrumented with the SDK all land in the same trace format, so one view covers the fleet.
-
-<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with Failproof AI" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
-</div>
-
-Follow one agent run from its goal through model calls, tools, and final response.
-
-## Find a session
+## Where sessions live
 
 <Tabs>
-  <Tab title="Dashboard">
-    1. In the Cloud sidebar, go to **Observe → Sessions**.
-    2. Set the time window, then filter by environment, status, agent, or session ID.
-    3. Add score or metric ranges when you need a quality, cost, token, or latency slice.
-    4. Select a row to open its trace. Use the copy control beside the session ID when sharing it.
-
-    ![The Sessions list showing one row per run with environment, agent, status, and evaluation score filters.](/images/dashboard/sessions-list.png)
+  <Tab title="Local">
+    Run `failproofai` to open the dashboard at `http://localhost:8020`. Session history stays on this machine.
   </Tab>
-  <Tab title="CLI">
+  <Tab title="Cloud">
+    Connect the machine, then open **Observe → Sessions**:
+
     ```bash
-    fp sessions --env production --since 24h
-    fp sessions --status error,timeout --agent-id checkout-agent
-    fp --json sessions --session-id <session-id>
+    export FAILPROOFAI_CLOUD_TOKEN="<key>"
+    failproofai config
     ```
 
-    Add `--agents` to expand multi-agent runs, `--all` to paginate, or `--fields` to choose output columns.
+    Cloud receives full transcripts by default. To send policy decisions only, connect first, then set `collector.sessions` to `false` in `~/.failproofai/config.json`. The current `--no-transcripts` setup flag does not apply that setting.
   </Tab>
 </Tabs>
 
-## What you can do
+Sessions arrive from the 12 supported [agent harnesses](/reference/harnesses) and from agents instrumented with the [Python SDK](/reference/custom-agents).
 
-- Find a run by agent, environment, time, model, event type, or error state.
-- Follow the exact sequence that produced an outcome.
-- Compare successful and failed runs.
-- Open the evidence used by an audit finding or alert incident.
-- Export a session when you need an offline record.
+## Find a session
 
-## A reliable investigation order
+In Cloud, filter by time, environment, status, agent, or session ID. From the CLI:
 
-1. Confirm the session goal and environment.
-2. Find the first error or unexpected decision—not only the final failure.
+```bash
+fp sessions --since 24h
+fp sessions --status error,timeout --agent-id checkout-agent
+fp --json sessions --session-id <session-id>
+```
+
+Use `fp errors --since 24h` for failures that were never evaluated. `fp sessions --status` uses the latest evaluation outcome, so an unevaluated session has no status.
+
+## Read a run
+
+1. Confirm the agent's goal and environment.
+2. Find the first error or unexpected decision.
 3. Inspect the model context and tool input immediately before it.
 4. Check retries, latency, and human interruptions.
-5. Review evaluation scores and policy decisions.
+5. Review evaluations and policy decisions.
 
-<Card title="Read a trace" icon="route" href="/sessions/read-a-trace">
-  Learn how to move from the session summary to the event that caused the outcome.
-</Card>
+## If a session is missing
+
+```bash
+failproofai flush --wait
+failproofai config --status
+failproofai backfill --since 30d --dry-run
+```
+
+Use `failproofai harness add-path <harness> [<label>=]<path>` when sessions live outside the harness's usual location, such as another profile, container home, or mounted team directory.
+
+<CardGroup cols={2}>
+  <Card title="Read a trace" icon="route" href="/sessions/read-a-trace">
+    Find the event that caused the outcome.
+  </Card>
+  <Card title="Policy decisions" icon="shield-check" href="/sessions/policy-decisions">
+    See what enforcement allowed, guided, or blocked.
+  </Card>
+</CardGroup>

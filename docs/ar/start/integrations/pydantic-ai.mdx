@@ -1,0 +1,208 @@
+---
+title: "Pydantic AI"
+sidebarTitle: "Pydantic AI"
+description: "أدوات تجسيد العملاء المكتوبة والأدوات واستدعاءات النموذج والمحاولات المتكررة."
+icon: "/images/frameworks/pydantic-ai.svg"
+---
+
+## التثبيت
+
+```bash
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+مدعوم: `pydantic-ai-slim` 2.0 إلى 3.0. أزال الإصدار 2.0 `Agent(instrument=...)` وأدخل بروتوكول الإمكانيات الذي يُبنى عليه هذا المحول، لذلك لا يمكن تجسيد 1.x بهذه الطريقة.
+
+## التجسيد
+
+```python
+import failproofai_sdk
+from pydantic_ai import Agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # قبل بناء أي Agent
+
+agent = Agent("openai:gpt-4o-mini", system_prompt="Be terse.")
+
+with failproofai_sdk.session():
+    result = agent.run_sync("...")
+```
+
+<Warning>
+  يجب أن يتم تشغيل `instrument()` قبل بناء `Agent`. تُضاف الإمكانية عند البناء، لذا فإن وكيل مبني مسبقاً لا يحمل أي إمكانية ولا يسجل شيئاً، بدون خطأ لأنه لم يحدث شيء خاطئ. هذا هو السبب الأكثر شيوعاً للحصول على تتبع فارغ مع هذا المحول.
+</Warning>
+
+الوكلاء في نطاق الوحدة هم حيث يحدث المشكلة:
+
+```python
+# agents.py
+agent = Agent("openai:gpt-4o-mini")   # مبني في وقت الاستيراد
+
+# main.py
+import failproofai_sdk
+failproofai_sdk.instrument()          # شغل هذا أولاً
+import agents                         # الآن يحصل الوكيل على الإمكانية
+```
+
+تأكد من أنه نجح:
+
+```python
+print([type(c).__name__ for c in agent.root_capability.capabilities])
+# ['FailproofAI', 'ToolSearch', 'PendingMessageDrainCapability']
+```
+
+يدمج Pydantic AI القائمة التي تمررها في `root_capability` واحد، لذا لا توجد خاصية `agent.capabilities` للقراءة.
+
+الوكلاء المبنيون أثناء التجسيد يحافظون على الإمكانية، لذا يمكنك `uninstrument()` وإعادة التجسيد دون إعادة بناء.
+
+## ما يتم تسجيله
+
+| Pydantic AI | حدث Failproof |
+| --- | --- |
+| تشغيل الوكيل | `agent_start`, `agent_end` |
+| طلب النموذج | `model_request`, `model_response`، مع استخدام الرموز |
+| استدعاء الأداة | `tool_use`, `tool_result`، مع المعاملات التي أرسلها النموذج |
+| `ModelRetry` من أداة | `tool_result` يحمل خطأ |
+| استثناء غير معالج | `error`، ثم `agent_end` بنتيجة `failed` |
+
+لا توجد زوج خطاف ولا زوج موارد بشرية هنا. Pydantic AI لا يحتوي على حد عقدة أو خطوة ليتم وضع قوس حوله ولا توقف بشري مدمج، لذا لا يوجد شيء للتعيين. إذا بنيت أياً منهما، أطلق الأحداث بنفسك — انظر [Custom agents](/ar/reference/custom-agents).
+
+`output_type` لا يختلف عن التتبع. تشغيل مكتوب وتشغيل سلسلة ينتجان نفس الأحداث.
+
+## مثال
+
+```python
+import failproofai_sdk
+from pydantic import BaseModel
+from pydantic_ai import Agent, ModelRetry
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+PRICE = {"widget": 42.0, "gadget": 17.5}
+STOCK = {"widget": 120, "gadget": 0}
+
+
+class Report(BaseModel):
+    headline: str
+    out_of_stock: list[str]
+
+
+agent = Agent(
+    "openai:gpt-4o-mini",
+    output_type=Report,
+    system_prompt="Use the tools for every number. If a tool fails, note it and continue.",
+)
+
+
+@agent.tool_plain
+def price_of(item: str) -> float:
+    """Unit price of an item. Valid: widget, gadget."""
+    return PRICE[item.lower().strip()]
+
+
+@agent.tool_plain
+def stock_of(item: str) -> int:
+    """Units in stock. Valid: widget, gadget."""
+    return STOCK[item.lower().strip()]
+
+
+@agent.tool_plain
+def restock_eta(item: str) -> str:
+    """Restock ETA. Not available."""
+    raise ModelRetry(f"no restock schedule for {item!r} — answer without it")
+
+
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("inventory", goal="stock report"):
+        result = agent.run_sync(
+            "For widget and gadget, get price and stock. "
+            "For anything out of stock, try the restock ETA. Then produce the report."
+        )
+```
+
+في التتبع، تظهر `restock_eta` كـ `tool_result` تحمل خطأ، متبوعة باستدعاء نموذج آخر حيث يعمل الوكيل حوله، والتشغيل ينتهي بـ `success`. يتم الاحتفاظ بالحقائق.
+
+## الأخطاء والمحاولات المتكررة والتحكم في التدفق
+
+يرفع Pydantic AI استثناءات لثلاثة أشياء مختلفة، والمحول يفصل بينها:
+
+| الاستثناء | يُعتبر | النتيجة |
+| --- | --- | --- |
+| `ModelRetry`, `ToolRetryError`, `ToolFailedError` | فشل أداة حقيقي | `tool_result` مع خطأ؛ التشغيل قد ينتهي بـ `success` |
+| `SkipToolExecution`, `SkipToolValidation`, `SkipModelRequest`, `CallDeferred`, `ApprovalRequired` | تحكم في التدفق | ليس خطأ؛ يتم توجيه التشغيل |
+| أي شيء آخر | فشل | `error`، ثم `agent_end` بنتيجة `failed` |
+
+`ModelRetry` في المجموعة الأولى عن قصد. يعني أن محاولة فشلت بحقيقة وطُلب من النموذج المحاولة مجدداً، وهذا هو المقصود من حقل خطأ نطاق الأداة. تصنيفها كتحكم في التدفق سيخفي أخطاء الأداة الحقيقية خلف تشغيل أخضر.
+
+## سمّ امتدادات الأحداث الخاصة بك
+
+امتداد التشغيل الخاص بـ Pydantic AI نفسه باسم `agent`. قم بالتفاف الاستدعاء لإعطاؤه تسمية اخترتها:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("inventory", goal="stock report"):
+        agent.run_sync("...")
+```
+
+امتداد الإطار ثم يتداخل تحت `inventory`، وهذا هو المكان الذي يتعلق به أحداث النموذج والأداة.
+
+احتفظ بـ `agent_id` بتنوع منخفض. إنه الجانب الأساسي على كل سطح لوحة معلومات، لذا استخدم اسم دور، لا تستخدم UUID أو سلسلة لكل تشغيل.
+
+## التحكم في الجلسة
+
+تم حلها بهذا الترتيب، أولى المطابقات تفوز:
+
+1. `instrument("pydantic_ai", session_id=...)`
+2. نطاق `failproofai_sdk.session()` المضمن
+3. `conversation_id` للتشغيل، ثم `run_id` الخاص به
+4. معرف UUID مولّد `uuid4().hex`
+
+```python
+with failproofai_sdk.session(f"chat-{user_id}"):
+    agent.run_sync("...")
+```
+
+## الخيارات
+
+```python
+failproofai_sdk.instrument(
+    "pydantic_ai",
+    session_id=None,          # ثبّت كل تشغيل على معرف جلسة واحد
+    capture_content=True,     # False يسقط المطالبات والإكمالات من الحمولات
+)
+```
+
+## المشاكل الشائعة
+
+<AccordionGroup>
+  <Accordion title="التشغيل يعمل ولكن لا تظهر أحداث">
+    تم بناء `Agent` قبل تشغيل `instrument()`. انظر التحذير أعلاه، وتحقق من `agent.root_capability.capabilities`.
+  </Accordion>
+
+  <Accordion title="استثناء عادي في أداة يقتل التشغيل">
+    تنتشر `raise` العارية؛ هذا هو تصميم Pydantic AI. للسماح للنموذج بالعمل حوله، ارفع `ModelRetry` برسالة يمكنه التصرف بناءً عليها. يتم تسجيل الفشل بأي حال.
+  </Accordion>
+
+  <Accordion title="هناك امتداد وكيل متداخل لم أنشئه">
+    هذا الطفل هو امتداد التشغيل الخاص بـ Pydantic AI، وهذا هو المكان الذي يتعلق به أحداث النموذج والأداة. أسقط نطاقك الخاص إذا كنت تريد امتداداً واحداً، على حساب الاسم المخصص.
+  </Accordion>
+
+  <Accordion title="Tracebacks تبدأ برمز اختزال">
+    رسم بياني غير المتزامن من Pydantic AI أطول من حد حقل الحمولة، والسطر الأخير من التتبع هو الاستثناء نفسه. يتم قص هذا الحقل من الأمام وليس من الخلف، لذا يبقى السطر الذي تحتاجه.
+  </Accordion>
+</AccordionGroup>
+
+## التالي
+
+<Columns cols={3}>
+  <Card title="كيف يعمل" icon="workflow" href="/ar/start/integrations/custom-agents#going-deeper">
+    الأزواج والمعرفات ودورة حياة الجلسة والتسليم.
+  </Card>
+  <Card title="قراءة تتبع" icon="route" href="/ar/sessions/read-a-trace">
+    اتبع السببية من خلال الجلسة التي التقطتها للتو.
+  </Card>
+  <Card title="أطر عمل أخرى" icon="plug" href="/ar/start/integrations">
+    LangGraph و CrewAI و LlamaIndex والوكلاء المخصصين.
+  </Card>
+</Columns>

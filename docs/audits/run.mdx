@@ -25,22 +25,57 @@ Run an audit after its goal and population are specific enough that another oper
     fp audits findings --audit checkout-reliability
     ```
 
+    `fp audits run` queues the audit; it does not wait for it. Follow it with `fp audits runs <name>` and read the findings once a run has finished. `--limit` never returns more than the 50 most recent runs, whatever you ask for.
+
+    Triage acts on a finding id, not on the audit:
+
+    ```bash
+    fp audits finding <finding-id>
+    fp audits ack <finding-id> --reason "owner assigned"
+    fp audits assign <finding-id> --to engineer@example.com
+    fp audits mute <finding-id> --reason "expected in staging" --yes
+    fp audits dismiss <finding-id> --reason "false positive" --yes
+    fp audits resolve <finding-id> --yes
+    fp audits reopen <finding-id>
+    ```
+
+    `mute`, `dismiss`, and `resolve` confirm before acting, so pass `--yes` in scripts. `ack`, `assign`, and `reopen` act immediately.
+
     See the [`fp audits` reference](/reference/cloud-cli#audits) for run history, findings, and triage commands.
   </Tab>
 </Tabs>
+
+**run now** can be refused. A run already in progress and a disabled audit both answer `409`, with the reason in the response's `error` field; an audit that does not exist, or that belongs to another organization, answers `404`.
+
+| Refusal | What it means | What to do |
+| --- | --- | --- |
+| Unknown audit | The audit does not exist, or it belongs to another organization. | Confirm the name with `fp audits list`. |
+| The audit is disabled | A disabled audit has no queue row, so there is nothing to make due. A paused audit still renders a **run now** control. | Resume it first, or `fp audits edit <name> --enabled --yes`. |
+| A run is already in progress | One run per audit at a time; the current one must finish before another is queued. | Check it with `fp audits runs <name>`. |
 
 ## Before you run
 
 - Confirm sessions exist in the selected time window.
 - Verify the environment and agent filters.
-- Check that reference context is current.
+- Check that reference context is current. Every run re-reads the audit's pages and falls back to the stored copy when one cannot be reached, so a page that has been moved or taken down keeps serving stale text until you fix the URL.
 - Make sure the goal describes a failure mode, not a desired conclusion.
 
 ## Review the run
 
-Start with run status, session coverage, and whether model analysis ran. Then inspect each finding's severity, description, evidence sessions, supporting queries, and suggested prevention path.
+The audit detail page opens with five tiles: **open findings** awaiting triage, **last run**, **next run**, **window** (how far back each run reads), and **sensitivity** (how eagerly a run flags a pattern: `low`, `medium`, `high`). The at-most-N-findings-per-run cap is a separate setting, findings per run (`--top-k`, default 50). Those five answer the coverage question faster than opening a run does.
 
-Use finding status to acknowledge, mute, dismiss, resolve, reopen, or assign work. Preserve the evidence even when the finding is dismissed; it explains why the decision was made.
+Then inspect each finding's severity, description, evidence sessions, supporting queries, and suggested prevention path. Findings are ordered by a **priority** score between 0 and 1, ranked per run, and each finding shows the four weighted factors behind it:
+
+| Ranking factor | Weight |
+| --- | --- |
+| Coverage | 0.30 |
+| Magnitude | 0.25 |
+| Severity | 0.25 |
+| Recency | 0.20 |
+
+A finding is in exactly one of five statuses: `open`, `recurring`, `resolved`, `dismissed`, or `muted`. A `findings` query with no status filter returns the live set — `open` plus `recurring`. A finding you mute, dismiss, or resolve leaves that set; `ack` and `assign` leave the status alone, so the finding stays in the queue — deprioritized or owned, not gone. Ask for a status explicitly to see the ones that left.
+
+Use finding status to acknowledge, mute, dismiss, resolve, reopen, or assign work. Preserve the evidence even when the finding is dismissed; it explains why the decision was made. [Findings and issues](/audits/findings-and-issues) covers what each verb does to future runs.
 
 ## Interpret an empty or delayed run
 
@@ -52,9 +87,13 @@ Use finding status to acknowledge, mute, dismiss, resolve, reopen, or assign wor
 | No analysis capacity is immediately available | The audit remains queued and retries instead of skipping the population. | Wait for capacity or spread audit anchors. Self-hosted operators should scale the audit-agent replicas and matching dispatcher capacity. |
 | Capacity remains unavailable for the retry window | The run gives up with zero findings and sends a failure notification when email delivery is available. | Check whether the audit fleet is saturated or repeatedly restarting. |
 
+The last three rows describe behavior of the Cloud API server and its dispatcher. On managed Cloud they are Failproof AI's to fix; on a self-hosted deployment they are yours.
+
 When analysis does not run, `since_last` audits keep that unanalysed window open for the next successful run. Existing findings are not retired because a skipped analysis is not evidence that the failure disappeared.
 
-## Understand failure notifications
+## Understand notifications
+
+A successful run notifies only when it finds something **new**. Silence from a healthy audit is the normal case, not a sign that nothing ran — check **last run** on the audit page, or `fp audits runs <name>`, to see that it did. An audit with no channels selected files its findings and notifies nobody.
 
 A failed run or failed model-analysis step uses the audit's email recipients. If the audit has no email channel, Failproof AI falls back to the organization's `alerts.email_default_recipients` setting so a silently broken audit still has an escalation path.
 

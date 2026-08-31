@@ -20,8 +20,8 @@
 
 **Çeviriler:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
-**Aracılarınızın çalıştığı her ortam için gözlenebilirlik ve zorlama.**
-Aracılarınız nerede çalışırsa çalışsın, biz görebiliriz — ve hayır diyebiliriz. Failproof, 12 aracı ortamına bağlanır — Claude Code ve Codex gibi kodlama CLI'leri, Hermes gibi sohbet ağ geçitleri, OpenClaw gibi kendi kendine barındırılan asistanlar — her çalıştırmayı yakalar ve tehlikeli araç çağrılarını yürütülmeden önce engeller. 40 yerleşik ilke. Sıfır gecikme. Yerel olarak çalışır.
+**Aracılarınızın çalıştığı her ortam için gözlemlenebilirlik ve zorlama.**
+Aracılarınız nereye koşarsa koşsun, biz bunu görüyoruz — ve hayır diyebiliriz. Failproof, 12 aracı ortamına bağlanıyor — Claude Code ve Codex gibi kodlama CLIleri, Hermes gibi sohbet ağ geçitleri, OpenClaw gibi kendi kendine barındırılan asistanlar — her çalıştırmayı yakalayarak ve tehlikeli araç çağrılarını yürütülmeden önce engellemeyi sağlıyor. 39 yerleşik politika. Sıfır gecikme. Yerel olarak çalışıyor.
 
 </div>
 
@@ -33,9 +33,9 @@ Aracılarınız nerede çalışırsa çalışsın, biz görebiliriz — ve hayı
 
 ## Desteklenen ortamlar
 
-İki sınıfta on iki ortam — on kodlama CLI'si ve iki sohbet ve asistan ağ geçidi (Hermes, OpenClaw). Aynı olaylar, aynı ilkeler, aynı oturum geçmişi, aracınız hangisinde çalışırsa çalışsın.
+İki sınıfta on iki ortam — on kodlama CLIsi ve iki sohbet ile asistan ağ geçidi (Hermes, OpenClaw). Aynı olaylar, aynı politikalar, aynı oturum geçmişi, aracınız nerede çalışırsa çalışsın.
 
-Bunlardan hiçbirinde çalışmayan aracılar [Python SDK](https://docs.befailproof.ai/reference/python-sdk) aracılığıyla rapor verir; bu size izleme, oturumlar ve denetim sağlar. Orada zorlama, kendi çalışma zamanınızda bir kancaya ihtiyaç duyar — [bizimle iletişime geçin](mailto:support@befailproof.ai) ve biz bunu eşleştireceğiz.
+Bunlardan hiçbirinde çalışmayan aracılar, [Python SDK](https://docs.befailproof.ai/reference/custom-agents) aracılığıyla rapor verir. Burada izleme, oturumlar ve denetimler alabilirsiniz. Zorlama burada kendi çalışma zamanınızda bir kanca gerektirir — [bizimle iletişime geçin](mailto:support@befailproof.ai) ve onu harita çizeriz.
 
 {/* A 6-column table instead of inline <img> runs: table columns never re-wrap,
      so the grid stays 2×6 at any window width (scrolling on very narrow screens
@@ -131,41 +131,41 @@ Bunlardan hiçbirinde çalışmayan aracılar [Python SDK](https://docs.befailpr
   </tr>
 </table>
 
-## Yükle
+## Yükleme
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # veya sadece `failproofai` çalıştırın ve ilk çalıştırma istemini kabul edin
+failproofai policies --install   # veya sadece `failproofai` çalıştırın ve ilk çalışma istemine katılın
 failproofai
 ```
 
-40 yerleşik ilke hemen etkinleşir. Pano `localhost:8020` adresinde. İlk çalıştırma istemini `FAILPROOFAI_NO_FIRST_RUN=1` ile devre dışı bırakın.
+39 yerleşik politika hemen etkinleştirilir. Kontrol paneli `localhost:8020` adresinde mevcuttur. İlk çalışma istemini `FAILPROOFAI_NO_FIRST_RUN=1` ile devre dışı bırakın.
 
 ---
 
-## Neyi engeller
+## Engellediği neler
 
-| İlke | Neyi engeller |
+| Politika | Engellediği |
 |---|---|
 | `sanitize-api-keys` | API anahtarlarının aracının bağlamına sızması |
 | `block-env-files` | `.env` ve diğer gizli dosyaların okunması |
 | `warn-repeated-tool-calls` | Aracının aynı çağrıda döngüye girmesi |
 | `block-sudo` | Ayrıcalık yükseltme |
-| `warn-destructive-sql` | `DROP`, `TRUNCATE`, sınırsız `DELETE` |
-| `block-terraform` / `block-kubectl` | Gözden geçirilmemiş canlı altyapı değişiklikleri |
+| `warn-destructive-sql` | `DROP`, `TRUNCATE`, sınırlandırılmamış `DELETE` |
+| `block-terraform` / `block-kubectl` | İncelenmemiş canlı altyapı değişiklikleri |
 | `block-rm-rf` | Özyinelemeli dosya silme |
-| `block-force-push` / `block-push-master` | `git push --force`, `main` ağacına doğrudan gönderim |
+| `block-force-push` / `block-push-master` | `git push --force`, `main` adresine doğrudan itme |
 
-İlk beş, araç çağırabilen herhangi bir aracı için geçerlidir. Son üç, geliştirici favorileridir — kodlama CLI'leri, en derin kapsama sahip ortam sınıfıdır.
+İlk beşi bir araç çağırabilen herhangi bir aracıya uygulanır. Son üçü geliştirici favorileridir — kodlama CLIleri, en derin kapsadığımız ortam sınıfıdır.
 
-→ [Tüm 40 yerleşik ilke](https://docs.befailproof.ai/policies/builtin)
+→ [Tüm 39 yerleşik politika](https://docs.befailproof.ai/policies/builtin)
 
 ---
 
-## Kendi ilkeleriniz
+## Kendi politikalarınız
 
-`.failproofai/policies/` dosyasına bir dosya bırakın — otomatik olarak yüklenir, hiçbir bayrak gerekmez.
-Bunu taahhüt edin ve tüm takım sonraki çekişte bunu alır.
+`.failproofai/policies/` klasörüne bir dosya bırakın — otomatik olarak yüklenir, hiçbir bayrak gerekmez.
+Bunu commitleyin ve tüm takım sonraki pull'da alır.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -175,82 +175,83 @@ customPolicies.add({
   match: { events: ["PreToolUse"] },
   fn: async (ctx) => {
     if (ctx.toolInput?.file_path?.includes("production"))
-      return deny("Writes to production paths are blocked.");
+      return deny("Writings to production paths are blocked.");
     return allow();
   },
 });
 ```
 
-Her ilkeye açık olan üç karar vardır:
+Her politikaya açık üç karar:
 
 | Karar | Etki |
 |---|---|
 | `allow()` | İşleme izin ver |
-| `deny(message)` | Engelle — mesaj aracıya geri dönüşür |
-| `instruct(message)` | İzin ver, ancak bağlam aracının sonraki istemiyle ekle |
+| `deny(message)` | Engelle — mesaj aracıya geri gider |
+| `instruct(message)` | İzin ver, ancak aracının sonraki istemine bağlam ekle |
 
-→ [Özel ilkeler rehberi](https://docs.befailproof.ai/policies/custom)
+→ [Özel politikalar rehberi](https://docs.befailproof.ai/policies/custom)
 
 ---
 
-## Gözlenebilirlik
+## Gözlemlenebilirlik
 
-Zorlama bir yarısı. Diğer yarısı, aracının gerçekten ne yaptığını görmektir.
+Zorlama yarısı. Diğer yarısı aracının gerçekten ne yaptığını görmektir.
 
-`failproofai` komutunu hiçbir argüman olmadan çalıştırın ve `localhost:8020` adresinde makinenizde zaten bulunan çalıştırma geçmişini okuyan bir pano sunar — hesap yok, kaydolma yok, kutu dışına hiçbir şey çıkmaz. Oturum listesini, her çalıştırma içindeki model çağrılarının sırasını, araç çağrılarını ve kanca kararlarını, engellenenleri ve ilkenin aracıya söylediklerini, ve risky desenler için geçmişinizi tarayacak ve onları durdurmak için ilkeler önerecek çevrimdışı bir denetimi (`failproofai audit`) alırsınız.
+`failproofai`'yi hiçbir argüman olmadan çalıştırın ve `localhost:8020` adresinde zaten makinenizde bulunan çalışma geçmişini okuyan bir kontrol paneli sunar — hesap yok, kaydolma yok, kutunun dışına çıkan hiçbir şey yok. Oturum listesini, her çalıştırma içindeki model çağrılarının, araç çağrılarının ve kanca kararlarının sırasını, bloke edilen şeyi ve politikanın aracıya söylediğini alırsınız ve geçmişinizi taraması ve önlemek için politikalar önermesi gereken çevrimdışı bir denetim (`failproofai audit`) alırsınız.
 
-→ [Yerel pano](https://docs.befailproof.ai/reference/local-dashboard) ·
-[İzleme oku](https://docs.befailproof.ai/sessions/read-a-trace) ·
+→ [Yerel kontrol paneli](https://docs.befailproof.ai/reference/local-dashboard) ·
+[İzleme okuyun](https://docs.befailproof.ai/sessions/read-a-trace) ·
 [Yerel denetim](https://docs.befailproof.ai/audits/local-audit)
 
-**Failproof AI Gözlenebilirlik**, aynı veri modelinin barındırılan tarafıdır ve bir filo genelinde aracı çalıştıran takımlar içindir: her ortamdan her çalıştırma bir yerde, paralel alt-aracıların kendi şeritlerinde bulunduğu bir yürütme grafiği, modeller, araçlar ve kancalar için p50/p95/p99 gecikme, model başına maliyet ve bağlam penceresinin izlenmesi, hata izleme, kendi izlemenizin üzerinde SQL paylaşılabilir panolarla, kendi hizmetiniz tarafından puanlanan değerlendirmeler, periyodik hataları kanıta dayalı bulgulara dönüştüren planlanan denetimler ve Slack, e-posta veya imzalı webhook'a yönlendirilen uyarılar. Kendi kümenizde kendi kendine barındırma Enterprise planında mevcuttur.
+**Failproof AI Gözlemlenebilirlik**, aynı veri modelinin barındırılan tarafıdır, bir filo genelinde aracılar çalıştıran ekipler için: her ortamdan her çalıştırma tek bir yerde, kendi şeritlerinde paralel alt aracıları olan bir yürütme grafiği, modeller, araçlar ve kancalar için p50/p95/p99 gecikme süresi, model başına maliyet ve bağlam penceresi izlemesi, hata izlemesi, kendi izlemeleriniz üzerinde SQL ve paylaşılabilir kontrol panelleri, kendi hizmetiniz tarafından puanlanan değerlendirmeler, tekrarlayan hataları kanıta dayalı bulgulara dönüştüren planlanan denetimler ve Slack, e-posta veya imzalı bir webhook'a yönlendirilen uyarılar. Kendi kümenizde kendi kendine barındırma, Kurumsal planda mevcuttur.
 
 → [Oturumlar](https://docs.befailproof.ai/sessions/overview) ·
 [Denetimler](https://docs.befailproof.ai/audits/overview) ·
-[Demo rezervasyonu yap](https://befailproof.ai/get-a-demo)
+[Demo ayırtın](https://befailproof.ai/get-a-demo)
 
 ---
 
-## Belgeler
+## Dokümantasyon
 
 | Başlayın | |
 |---|---|
-| [Hızlı başlangıç](https://docs.befailproof.ai/start/quickstart) | Yükle, bir ortamı bağla, ilk çalıştırmayı gör |
+| [Hızlı başlangıç](https://docs.befailproof.ai/start/quickstart) | Yükleme, bir ortam bağlama, ilk çalıştırmayı görme |
 | [Kavramlar](https://docs.befailproof.ai/start/concepts) | Kanca sistemi nasıl çalışır |
-| [Desteklenen ortamlar](https://docs.befailproof.ai/reference/harnesses) | Tüm 12'si ve her birinin ne uygulayabileceği |
+| [Desteklenen ortamlar](https://docs.befailproof.ai/reference/harnesses) | Tüm 12'si ve her birinin zorlayabileceği şey |
 
 | Gözlemle | |
 |---|---|
 | [Oturumlar](https://docs.befailproof.ai/sessions/overview) | Bir çalıştırmayı takip et: modeller, araçlar, hatalar, gecikme |
-| [İzleme oku](https://docs.befailproof.ai/sessions/read-a-trace) | Yürütme grafiği sana ne söylüyor |
-| [Denetimler](https://docs.befailproof.ai/audits/overview) | Birçok oturum arasında hata desenlerini bul |
-| [Yerel pano](https://docs.befailproof.ai/reference/local-dashboard) | `localhost:8020`, hesap gerekmez |
+| [İzleme okuyun](https://docs.befailproof.ai/sessions/read-a-trace) | Yürütme grafiği size ne söylüyor |
+| [Denetimler](https://docs.befailproof.ai/audits/overview) | Birçok oturumda hata desenlerini bulun |
+| [Yerel kontrol paneli](https://docs.befailproof.ai/reference/local-dashboard) | `localhost:8020`, hesap gerekli değil |
 
 | Zorla | |
 |---|---|
-| [Yerleşik ilkeler](https://docs.befailproof.ai/policies/builtin) | Tüm 40 ilke parametrelerle |
-| [Özel ilkeler](https://docs.befailproof.ai/policies/custom) | Kendi ilkelerini yaz |
+| [Yerleşik politikalar](https://docs.befailproof.ai/policies/builtin) | Tüm 39 politika parametrelerle |
+| [Özel politikalar](https://docs.befailproof.ai/policies/custom) | Kendi yazınızı yazın |
 | [Yapılandırma](https://docs.befailproof.ai/policies/local-configuration) | Yapılandırma kapsamları ve birleştirme kuralları |
 
-| Kendi aracını enstrüman et | |
+| Kendi aracınızı enstrüman edin | |
 |---|---|
-| [Python SDK](https://docs.befailproof.ai/reference/python-sdk) | Ortamı olmayan bir aracıdan çalıştırmaları rapor et |
-| [İlke SDK](https://docs.befailproof.ai/reference/policy-sdk) | `allow` / `deny` / `instruct` referansı |
+| [Python SDK](https://docs.befailproof.ai/reference/custom-agents) | Ortamı olmayan bir aracıdan çalıştırmaları rapor edin |
+| [Politika SDK](https://docs.befailproof.ai/reference/policy-sdk) | `allow` / `deny` / `instruct` başvurusu |
 
 ---
 
 ## Lisans
 
-[Commons Clause](https://commonsclause.com/) ile MIT — iç ve kişisel kullanım için ücretsiz; failproofai'nin kendisinin ticari yeniden satışı ayrı bir anlaşma gerektirir. Tam metin için [LICENSE](../../LICENSE) dosyasına bakın.
+[Commons Clause](https://commonsclause.com/) ile MIT — dahili ve kişisel kullanım için ücretsiz; failproofai'nın kendisinin ticari olarak yeniden satılması ayrı bir anlaşma gerektirir. Tam metin için [LICENSE](../../LICENSE) adresine bakın.
 
 ---
 
-## Katkıda bulunun
+## Katkıda bulunma
 
-[CONTRIBUTING.md](../../CONTRIBUTING.md) dosyasına bakın. Yeni ilkeler, uç durumlar ve çeviriler hepsi hoş geldiniz.
+Bkz. [CONTRIBUTING.md](../../CONTRIBUTING.md). Yeni politikalar, kenar durumları ve çeviriler hoş geldiniz.
 
-> **Başlamadan önce derle.** Önce `bun install && bun run build` komutunu çalıştırın. Bu depo, failproofai'nin kendi kancalarını kendisi üzerinde çalıştırır ve `failproofai` içeri aktarımını derlenmiş `dist/` paketine göre çözerler — bir derleme olmadan, `Cannot find package 'failproofai'` kanca hatalarıyla karşılaşırsınız. `src/` değiştirdikten sonra yeniden derleyin. [Repo içi geliştirme kancaları çalışması için önce derleyin](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work) dosyasına bakın.
+> **Başlamadan önce inşa edin.** Öncelikle `bun install && bun run build` çalıştırın. Bu depo failproofai'nın kendi kancalarını kendisinde çalıştırır ve bunlar `failproofai` ithalatını derlenmiş `dist/` paketi ile karşılaştırırlar — inşa olmadan `Cannot find package 'failproofai'` kanca hatalarına çarparsınız. `src/` değiştirildikten sonra yeniden inşa edin. Bkz.
+> [İn-repo dev kancaları çalışması için inşa edin](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 
-Sevgiyle [befailproof.ai](https://befailproof.ai) tarafından SF ve Bengaluru'da yapılmıştır.
+❤️ ile [befailproof.ai](https://befailproof.ai) tarafından SF ve Bengaluru'da inşa edildi.

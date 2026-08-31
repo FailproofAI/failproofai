@@ -6,36 +6,36 @@ icon: "list-tree"
 
 ## Familles d'événements
 
-- Démarrage, fin, pause et reprise d'un agent
+- Démarrage, fin, pause et reprise d'agent
 - Requête et réponse du modèle
-- Utilisation d'outil et résultat
-- Déclenchement et complétion d'un hook
+- Utilisation et résultat d'outil
+- Déclenchement et achèvement de hook
 - Attente humaine, saisie, pause et interruption
 - Erreurs explicites
 
-Chaque événement comporte un horodatage, un ID de session, un ID d'agent, un type d'événement et un environnement. Les champs spécifiques à l'événement contiennent des données relatives au modèle, à l'outil, à la corrélation, au résultat, au contenu, à la durée ou à l'erreur.
+Chaque événement porte un horodatage, un identifiant de session, un identifiant d'agent, un type d'événement et un environnement. Les champs spécifiques à l'événement contiennent des données de modèle, d'outil, de corrélation, de résultat, de contenu, de durée ou d'erreur.
 
 ## Inspecter un contrat d'événement
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Ouvrez **Observer → Événements**.
-    2. Définissez une fenêtre temporelle courte et filtrez par environnement, agent et type d'événement.
-    3. Sélectionnez un événement pour inspecter ses champs normalisés et sa charge utile brute, puis ouvrez sa session pour visualiser le contexte d'exécution.
-    4. Si une durée associée est manquante, vérifiez que les événements de début et de fin utilisent le même ID de corrélation.
+    1. Ouvrez **Observe → Events**.
+    2. Définissez une courte fenêtre temporelle et filtrez par environnement, agent et type d'événement.
+    3. Sélectionnez un événement pour inspecter ses champs normalisés et sa charge utile brute, puis ouvrez sa session pour voir le contexte d'exécution.
+    4. Si une durée appariée est manquante, vérifiez que les événements de début et de fin utilisent le même identifiant de corrélation.
 
-    Utilisez le flux d'événements pour restreindre les données à une seule exécution d'agent et inspecter les champs d'événement normalisés.
+    Utilisez le flux Events pour restreindre les données à une seule exécution d'agent et inspecter les champs d'événement normalisés.
 
-    ![Le flux d'événements en direct avec des filtres pour l'environnement, l'agent, la session et le type d'événement.](/images/dashboard/events-stream.png)
+    ![Le flux Events en direct avec des filtres pour l'environnement, l'agent, la session et le type d'événement.](/images/dashboard/events-stream.png)
 
-    Suivez ensuite l'événement dans sa session. La trace indique ce qui s'est passé immédiatement avant et après, ce qui est indispensable lorsque la charge utile seule est ambiguë.
+    Suivez ensuite l'événement dans sa session. La trace montre ce qui s'est passé juste avant et après, ce qui est nécessaire lorsque la charge utile seule est ambiguë.
 
     ![La trace de session liée utilisée pour inspecter l'événement dans son contexte d'exécution.](/images/dashboard/session-detail.png)
 
-    Comparez les ID de corrélation et les horodatages dans les deux vues lorsqu'un événement associé ou une durée est manquant.
+    Comparez les identifiants de corrélation et les horodatages dans les deux vues lorsqu'un événement apparié ou une durée est manquant.
   </Tab>
   <Tab title="CLI">
-    Découvrez les valeurs de filtre valides, puis récupérez les charges utiles complètes d'une session :
+    Découvrez les valeurs de filtre valides, puis récupérez les charges utiles complètes des événements pour une session :
 
     ```bash
     fp list event_types
@@ -53,22 +53,22 @@ Chaque événement comporte un horodatage, un ID de session, un ID d'agent, un t
 
 ## Champs réservés du SDK
 
-N'utilisez pas `timestamp`, `session_id`, `agent_id`, `type` ou `environment` comme champs personnalisés du SDK Python. Les durées d'événements associés, telles que la durée du résultat d'outil, sont calculées par le SDK et ne peuvent pas être fournies manuellement.
+N'utilisez pas `timestamp`, `session_id`, `agent_id`, `type` ou `environment` comme champs Python SDK personnalisés. Les durées d'événements appariés, telles que la durée du résultat d'outil, sont calculées par le SDK et ne peuvent pas être fournies manuellement.
 
 ## Limites locales
 
-- L'état de Failproof AI réside sous `~/.failproofai`, sauf configuration explicite contraire.
-- `failproofai-sdk` utilise `AGENTEYE_HOME` pour son remplacement hérité du répertoire de base.
-- Les étiquettes d'environnement peuvent être définies via la configuration du SDK ou `AGENTEYE_ENVIRONMENT`.
-- Les identifiants du daemon sont stockés séparément des paramètres non confidentiels.
+- L'état de Failproof AI réside sous `~/.failproofai` sauf configuration explicite contraire.
+- `failproofai-sdk` spooule toujours sous `~/.failproofai/custom-agents`. `FAILPROOFAI_HOME` déplace ce répertoire home ; le segment `custom-agents` est toujours ajouté, de sorte que le spool ne peut pas être placé en dehors de celui-ci. Seul le propre `configure(base_dir=...)` du SDK écrit ailleurs. `AGENTEYE_HOME` est lu par l'ancien `agenteye-collector` pour choisir ce qu'il surveille, et n'affecte plus l'endroit où le SDK écrit.
+- Les labels d'environnement peuvent être définis via la configuration du SDK ou `AGENTEYE_ENVIRONMENT`.
+- Les identifiants du daemon sont stockés séparément des paramètres non secrets.
 
-Utilisez des noms d'environnement stables à faible cardinalité. Les virgules ne sont pas prises en charge dans les étiquettes d'environnement du daemon.
+Utilisez des noms d'environnement stables et à faible cardinalité. Les virgules ne sont pas prises en charge dans les labels d'environnement du daemon.
 
-## Modifier une étiquette d'environnement
+## Modifier un label d'environnement
 
 <Tabs>
   <Tab title="Tableau de bord">
-    Les étiquettes d'environnement sont assignées par le SDK émetteur ou le daemon Failproof. Après en avoir modifié une, ouvrez **Observer → Sessions** et utilisez le filtre d'environnement pour confirmer que les nouvelles sessions portent bien la nouvelle valeur. Les sessions existantes conservent leur environnement d'origine.
+    Les labels d'environnement sont assignés par le SDK émetteur ou le daemon Failproof. Après en avoir modifié un, ouvrez **Observe → Sessions** et utilisez le filtre d'environnement pour confirmer que les nouvelles sessions portent la nouvelle valeur. Les sessions existantes conservent leur environnement d'origine.
 
   </Tab>
   <Tab title="CLI">

@@ -1,57 +1,100 @@
 ---
 title: "Builtin policies"
-description: "Enable maintained guardrails for common agent failure modes."
+description: "Take the maintained guardrails for common agent failure modes, and turn on the ones you want."
 icon: "library"
 ---
 
-Builtin policies cover secret handling, environment files, destructive shell commands, protected branches, cloud and infrastructure tools, package publishing, repeated calls, and end-of-task workflow checks.
+The builtins are 39 maintained policies covering nine categories of agent failure. All but one are **delivered as a pack**, `FailproofAI/policies`, the same way anybody else's policies are delivered. The package ships no pack of its own, so a fresh install enforces nothing until you take it:
 
-## Enable and verify a builtin policy
+```bash
+failproofai policies add FailproofAI/policies
+```
+
+That switches on the pack's own defaults — 10 of the 38 policies the pack carries. The 39th is `block-failproofai-commands`, which is on regardless: it ships compiled into the package, registers on every evaluation, and cannot be disabled or paused. A pack may not declare `alwaysOn`, which is why that one guard does not travel the pack lane.
+
+## What the nine categories cover
+
+| Category | `--category` slug | Policies |
+| --- | --- | --- |
+| Sanitize | `sanitize` | 5 |
+| Environment | `environment` | 3 |
+| Dangerous Commands | `dangerous-commands` | 5 |
+| Infra Commands | `infra-commands` | 7 |
+| Git | `git` | 6 |
+| Database | `database` | 2 |
+| Packages & System | `packages-system` | 5 |
+| AI Behavior | `ai-behavior` | 1 |
+| Workflow | `workflow` | 5 |
+
+Those are the compiled catalog's counts, and they total 39. The pack carries 38 of them, because `block-failproofai-commands` is `alwaysOn` and never travels the pack lane — so `--category dangerous-commands` selects the other four.
+
+Take a slice instead of the defaults:
+
+```bash
+failproofai policies add FailproofAI/policies --category git,database
+failproofai policies add FailproofAI/policies --policy block-rm-rf
+failproofai policies add FailproofAI/policies --all
+```
+
+## Read the catalog before you take it
 
 <Tabs>
+  <Tab title="CLI">
+    ```bash
+    failproofai policies show FailproofAI/policies
+    failproofai policies
+    ```
+
+    `policies show` reads the published manifest — every policy, grouped by category, marked default or opt-in — without downloading or importing the pack's code. `failproofai policies` lists what is enabled on this machine: custom files, convention files, installed packs and Cloud assignments. It has no builtin section, so it answers "what is on here", never "what exists".
+  </Tab>
+  <Tab title="Policy Hub">
+    Browse the same catalog in a browser, without the CLI, at [befailproof.ai/policy-hub](https://befailproof.ai/policy-hub/). Each pack has a page at `/policy-hub/<owner>/<pack>/` and each policy a page at `/policy-hub/<owner>/<pack>/<policy-name>/`.
+  </Tab>
   <Tab title="Dashboard">
     1. Install the policy on a connected machine with the local CLI.
     2. Run a safe test action in the instrumented agent.
     3. Go to **Observe → policy** and filter by the policy name, machine environment, or decision.
     4. Open the linked session to confirm the matched tool input and returned reason.
-
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai policies
-    failproofai policy add block-rm-rf --cli claude --scope project
-    failproofai config --status
-    ```
-
-    Remove it with `failproofai policy remove block-rm-rf --cli claude --scope project`.
   </Tab>
 </Tabs>
 
-List the policies available in your installed version:
+## Turn one on or off
 
 ```bash
-failproofai policies
+failproofai policies add block-rm-rf --cli claude --scope project
+failproofai policies remove block-rm-rf --cli claude --scope project
 ```
 
-Enable one policy for a project:
-
-```bash
-failproofai policy add block-rm-rf --scope project
-```
-
-Enable several policies for selected harnesses:
+`policies add` and `policies remove` take exactly **one** policy name. Run them with no name at all and you get a picker, with what is already on ticked. For several names at once, use the install form:
 
 ```bash
 failproofai policies --install block-sudo block-force-push \
   --cli claude codex --scope project
 ```
 
-Some policies accept parameters or are marked beta. Review the description, match scope, and default behavior before rollout. A policy that protects one workflow may block valid operations in another.
+<Note>
+  On a machine with no pack installed, `failproofai policies add <builtin-name>` fetches `FailproofAI/policies` from its GitHub release to satisfy the name — so that first command needs the network.
+</Note>
+
+## Not every policy enforces on every harness
+
+A policy only changes behavior where the harness consumes the verdict for its event. Two cases are worth checking before you rely on a builtin:
+
+| Event | Where a deny is verified to change behavior |
+| --- | --- |
+| `PreToolUse` | All 12 harnesses |
+| `Stop` | claude, codex, copilot, cursor, openclaw, factory, devin, antigravity. No `Stop` hook is installed on goose or hermes, pi carries the reason into the next turn instead, and opencode is not verified |
+
+So the five `require-*-before-stop` policies in the Workflow category can be enabled on a machine and still never fire, depending on which agent runs there. Cursor Cloud Agent VMs run no stop hooks at all.
+
+The `warn-*` and `prefer-*` policies return `instruct` rather than `deny`. On Hermes and Goose, and outside the `Stop` channel on Pi, OpenClaw, Factory and Antigravity, `instruct` degrades to allow plus a note on stderr: the operator sees it in the logs, the agent does not.
+
+Some policies accept parameters. Review the description, match scope and default before rollout — a policy that protects one workflow may block valid operations in another.
 
 <Card title="Browse the complete builtin catalog" icon="list-checks" href="/policies/builtin-catalog">
-  Review all 40 current policies, their triggers, recommended baseline, and parameters.
+  All 39 builtin policies, by category, with their triggers, defaults and parameters.
 </Card>
 
 <Tip>
-  Prefer project scope for repository-specific expectations and user scope for machine-wide safety requirements.
+  `failproofai config` wires every supported agent at user scope and chooses no policies — it has no `--scope` flag. Pass `--scope project` to `failproofai policies add` or `failproofai policies --install` only when the expectation genuinely belongs to one repository.
 </Tip>

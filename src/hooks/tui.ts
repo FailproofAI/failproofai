@@ -14,8 +14,8 @@
  * repaint) and, on resolve, collapses that region to a one-line summary that
  * stays on screen — so the next prompt simply appends below, building the log.
  * No external dependencies. Honors NO_COLOR and non-TTY (returns the default
- * without drawing), and uses 24-bit color where COLORTERM advertises it,
- * falling back to the nearest basic ANSI hue otherwise.
+ * without drawing), and paints at the deepest tier the terminal admits to —
+ * 24-bit, the xterm-256 cube, or the 16 basic ANSI hues.
  */
 import * as readline from "node:readline";
 
@@ -108,7 +108,9 @@ const RADIO_OFF = "○";
 export const CHECK_ON = "◼";
 export const CHECK_OFF = "◻";
 export const CARET = "❯";
-const FLOWER = "❋";
+/** The return key, as the multi-select hints already spell it. */
+export const CARET_RETURN = "↵";
+const MARK = "\u25AE\u25AE"; // ▮▮ — the brand mark, per the design system
 
 // ── color ─────────────────────────────────────────────────────────────────
 // The single source of truth for the brand palette — exported (via `paint`)
@@ -116,13 +118,32 @@ const FLOWER = "❋";
 // re-deriving their own copies.
 interface Hue {
   rgb: [number, number, number];
+  /**
+   * xterm-256 index for the middle tier, verified as the nearest cube entry by
+   * Euclidean distance rather than eyeballed.
+   *
+   * Optional because `dim` has no honest answer: its `basic` is SGR 2, an
+   * ATTRIBUTE that steps down whatever foreground the user's theme is already
+   * using, and the cube's nearest grey (243, #767676) is a fixed colour that
+   * fights every theme that is not ours. So dim keeps the attribute at all
+   * three tiers and this stays undefined.
+   */
+  c256?: number;
   basic: string;
 }
+/**
+ * TWO accent hues and no third — the brand system states that as a rule, and
+ * this table used to break it: `pink` was #ff2e88, a hot pink that appears in
+ * no brand token, sitting beside `logoPink` #e4587d which was the real one. The
+ * mark and the prompts were therefore two different pinks, and neither surface
+ * could be recoloured without the other drifting. There is now one pink.
+ * Everything past the two accents is a state — amber for warn, an attribute for
+ * dim — never identity.
+ */
 const HUES = {
-  guide: { rgb: [102, 209, 181], basic: "36" }, // teal — the policy flower / step spine
-  pink: { rgb: [255, 46, 136], basic: "95" }, // hot pink — selection, enabled, the brand
-  logoPink: { rgb: [228, 88, 124], basic: "95" }, // the softer artwork pink of the logomark
-  warn: { rgb: [227, 179, 65], basic: "33" },
+  guide: { rgb: [102, 209, 181], c256: 79, basic: "36" }, // #66d1b5 mint — the policy flower / step spine
+  pink: { rgb: [228, 88, 125], c256: 168, basic: "95" }, // #e4587d — selection, enabled, the mark, the brand
+  warn: { rgb: [227, 179, 65], c256: 179, basic: "33" },
   dim: { rgb: [107, 118, 132], basic: "2" },
 } satisfies Record<string, Hue>;
 
@@ -137,32 +158,68 @@ export function colorsEnabled(out: TTYOut): boolean {
  * blue that appear nowhere in the brand — so `audit` looked like a different
  * product from `config`. Routing it here
  * keeps HUES the single source of truth: change a hue once and every surface
- * follows. Emits truecolor where the terminal advertises it, basic ANSI
- * otherwise; the caller still decides *whether* to colour at all.
+ * follows. Paints at the deepest tier the terminal admits to; the caller still
+ * decides *whether* to colour at all.
  */
 export function brandAnsi(role: keyof typeof HUES): string {
-  const h = HUES[role];
-  const code = truecolorEnabled() ? `38;2;${h.rgb.join(";")}` : h.basic;
-  return `${ESC}[${code}m`;
+  return `${ESC}[${fg(HUES[role], colorTier())}m`;
 }
 
 export const ANSI_RESET = `${ESC}[0m`;
 export const ANSI_BOLD = `${ESC}[1m`;
 export const ANSI_DIM = `${ESC}[2m`;
-function truecolorEnabled(): boolean {
-  return /truecolor|24bit/i.test(process.env.COLORTERM || "");
+
+/** How much colour this terminal will actually render. */
+type ColorTier = "truecolor" | "ansi256" | "basic";
+
+/**
+ * Three tiers, because the two-way gate skipped the one most terminals are in.
+ *
+ * COLORTERM-or-nothing sent every terminal that renders 256 colours but does
+ * not advertise 24-bit — tmux and screen, ssh into a stock xterm, most CI
+ * runners — all the way down to the 16 basic hues, where the brand pink lands
+ * on generic bright magenta and the mint on generic cyan. TERM naming its own
+ * depth is the signal those terminals do set, and it costs one regex.
+ *
+ * Deliberately no `FORCE_COLOR` / `-256color`-less allowlist: over-claiming a
+ * depth prints raw escape bytes into the user's scrollback, which is worse than
+ * an approximate hue. Under-claiming only costs fidelity.
+ */
+function colorTier(): ColorTier {
+  if (/truecolor|24bit/i.test(process.env.COLORTERM || "")) return "truecolor";
+  if (/256color/i.test(process.env.TERM || "")) return "ansi256";
+  return "basic";
 }
 
-/** Brand painter: role-named color functions, truecolor where advertised,
- * basic-ANSI fallback otherwise, identity when `on` is false. */
+/** SGR foreground parameters for a hue at a tier. The ONE place a hue turns
+ *  into bytes, so a new tier is added here and nowhere else. */
+function fg(h: Hue, tier: ColorTier): string {
+  if (tier === "truecolor") return `38;2;${h.rgb[0]};${h.rgb[1]};${h.rgb[2]}`;
+  if (tier === "ansi256" && h.c256 !== undefined) return `38;5;${h.c256}`;
+  return h.basic;
+}
+
+/** The same as a background — only the logomark needs one, for a half-block
+ *  cell whose two pixels are different hues. The current grid has no such cell
+ *  (the flower and the cross never share a column), so this is here for the
+ *  next grid edit, which the rules above LOGO_GRID actively invite. Never
+ *  called at the basic tier: the mark draws monochrome there rather than
+ *  approximate two brand hues with ANSI 5 and 6. */
+function bg(h: Hue, tier: ColorTier): string {
+  return tier === "ansi256" && h.c256 !== undefined
+    ? `48;5;${h.c256}`
+    : `48;2;${h.rgb[0]};${h.rgb[1]};${h.rgb[2]}`;
+}
+
+/** Brand painter: role-named color functions at the terminal's best tier,
+ * identity when `on` is false. */
 export function paint(on: boolean) {
-  const tc = on && truecolorEnabled();
+  const tier: ColorTier = on ? colorTier() : "basic";
   const mk =
     (h: Hue, bold = false) =>
     (s: string): string => {
       if (!on) return s;
-      const code = tc ? `38;2;${h.rgb[0]};${h.rgb[1]};${h.rgb[2]}` : h.basic;
-      return `${ESC}[${bold ? "1;" : ""}${code}m${s}${ESC}[0m`;
+      return `${ESC}[${bold ? "1;" : ""}${fg(h, tier)}m${s}${ESC}[0m`;
     };
   return {
     bold: (s: string) => (on ? `${ESC}[1m${s}${ESC}[0m` : s),
@@ -170,7 +227,11 @@ export function paint(on: boolean) {
     guide: mk(HUES.guide),
     pink: mk(HUES.pink),
     pinkBold: mk(HUES.pink, true),
-    softPink: mk(HUES.logoPink),
+    // An ALIAS of `pink`, not a hue. The logomark's softer artwork tint
+    // collapsed into the one brand pink, so this name survives only for its
+    // single caller — install-prompt.ts's "beta" pill — and should be renamed
+    // to `pink` there, at which point it is deleted.
+    softPink: mk(HUES.pink),
     warn: mk(HUES.warn),
   };
 }
@@ -224,37 +285,40 @@ const LOGO_GRID = [
   "..ppppppppppp",
   "..ppppppppppp",
 ];
-// Derived from the shared HUES table so a palette tweak needs one edit.
-const LOGO_TEAL: [number, number, number] = HUES.guide.rgb;
-const LOGO_PINK: [number, number, number] = HUES.logoPink.rgb;
+// Derived from the shared HUES table so a palette tweak needs one edit. The
+// mark is painted from the SAME two accents as the prompts — it used to carry
+// its own pink, which is how the two drifted apart.
+const LOGO_TEAL: Hue = HUES.guide;
+const LOGO_PINK: Hue = HUES.pink;
 
-/** Render the logomark as half-block art. When `colorize` is false (no truecolor
- * / NO_COLOR) the shape still prints, just monochrome. */
-function renderLogo(colorize: boolean): string[] {
+/** Render the logomark as half-block art. At the `basic` tier (16 colours, or
+ * NO_COLOR) the shape still prints, just monochrome — approximating two brand
+ * hues with generic magenta and cyan reads as a different mark, and the shape
+ * alone already carries it. */
+function renderLogo(tier: ColorTier): string[] {
   const pad = ".".repeat(LOGO_GRID[0]?.length ?? 0);
-  const rgb = (ch: string): [number, number, number] | null =>
-    ch === "t" ? LOGO_TEAL : ch === "p" ? LOGO_PINK : null;
+  const hue = (ch: string): Hue | null => (ch === "t" ? LOGO_TEAL : ch === "p" ? LOGO_PINK : null);
   const lines: string[] = [];
   for (let r = 0; r < LOGO_GRID.length; r += 2) {
     const top = LOGO_GRID[r];
     const bot = LOGO_GRID[r + 1] ?? pad;
     let line = "";
     for (let x = 0; x < top.length; x++) {
-      const t = rgb(top[x]);
-      const b = rgb(bot[x]);
+      const t = hue(top[x]);
+      const b = hue(bot[x]);
       if (!t && !b) {
         line += " ";
-      } else if (!colorize) {
+      } else if (tier === "basic") {
         line += t && b ? "█" : t ? "▀" : "▄";
       } else if (t && b) {
         line +=
           t === b
-            ? `${ESC}[38;2;${t.join(";")}m█${ESC}[0m`
-            : `${ESC}[38;2;${t.join(";")};48;2;${b.join(";")}m▀${ESC}[0m`;
+            ? `${ESC}[${fg(t, tier)}m█${ESC}[0m`
+            : `${ESC}[${fg(t, tier)};${bg(b, tier)}m▀${ESC}[0m`;
       } else if (t) {
-        line += `${ESC}[38;2;${t.join(";")}m▀${ESC}[0m`;
+        line += `${ESC}[${fg(t, tier)}m▀${ESC}[0m`;
       } else {
-        line += `${ESC}[38;2;${b!.join(";")}m▄${ESC}[0m`;
+        line += `${ESC}[${fg(b!, tier)}m▄${ESC}[0m`;
       }
     }
     lines.push(line);
@@ -318,10 +382,12 @@ export function renderBrandLogo(stdout: TTYOut = process.stdout): string[] {
   const c = paint(colorsEnabled(stdout));
   const cols = stdout.columns || 80;
   if (cols < LOGO_MIN_COLS) {
-    return [`${c.guide(FLOWER)} fa${c.pink("il")}proof ai  ${c.dim("· " + TAGLINE)}`];
+    return [`${c.pink(MARK)} fa${c.pink("il")}proof ai  ${c.dim("· " + TAGLINE)}`];
   }
-  const tc = colorsEnabled(stdout) && truecolorEnabled();
-  const lines = renderLogo(tc).map((l) => `  ${l}`);
+  // NO_COLOR / non-TTY forces `basic`, which renderLogo draws monochrome — so
+  // the mark never emits an escape byte on a stream that asked for none.
+  const tier: ColorTier = colorsEnabled(stdout) ? colorTier() : "basic";
+  const lines = renderLogo(tier).map((l) => `  ${l}`);
   lines.push("");
   lines.push(`  fa${c.pink("il")}proof ai`);
   lines.push(`  ${c.dim(TAGLINE)}`);
@@ -427,9 +493,25 @@ type Region = { lastCount: number };
 
 const WINDOW = 8; // visible rows before the checklist scrolls
 
+/**
+ * Redraw the region as ONE atomic frame.
+ *
+ * Two things make it atomic, and both are needed. The cursor-up-and-clear used
+ * to be its own `write()`, so a terminal could render the CLEARED state before
+ * the new lines arrived — a blank flash on every keystroke, invisible locally
+ * and obvious over SSH or inside tmux, where the two writes cross a network or
+ * a multiplexer between frames. They are one string now.
+ *
+ * And that string is wrapped in synchronized output (DECSET 2026), which tells
+ * the terminal to hold what it has until the reset rather than painting each
+ * chunk as it lands. Terminals that do not implement it ignore an unknown
+ * private mode, so it costs nothing where it does not help.
+ */
 function repaint(out: TTYOut, region: Region, lines: string[]): void {
-  if (region.lastCount > 0) out.write(`${ESC}[${region.lastCount}A${ESC}[J`);
-  writeLines(out, lines);
+  const cols = out.columns || 80;
+  const body = lines.map((l) => (l === "" ? l : truncate(l, cols))).join("\n") + "\n";
+  const clear = region.lastCount > 0 ? `${ESC}[${region.lastCount}A${ESC}[J` : "";
+  out.write(`${ESC}[?2026h${clear}${body}${ESC}[?2026l`);
   region.lastCount = lines.length;
 }
 
@@ -443,6 +525,24 @@ function showCursor(out: TTYOut): void {
 /** Shared width for the label column so hints align into a second column. */
 function nameWidth(labels: string[]): number {
   return Math.min(24, Math.max(6, ...labels.map((l) => l.length)));
+}
+
+/**
+ * The hint budget for one row, after a label that outgrew its column.
+ *
+ * `nameWidth` caps the name column at 24 so that one long name cannot squeeze
+ * every description on screen — but `padEnd` pads, it does not TRUNCATE, so a
+ * longer name renders at its true width while the description was sized against
+ * the cap. The row then overruns the terminal by the difference and the
+ * description is cut by the terminal instead of by `ellipsize`, with no `…` to
+ * show it happened.
+ *
+ * Names are deliberately not truncated: a policy name is the thing you type
+ * next, and half of one is useless. The description gives up the space, because
+ * it is prose and shortening prose costs nothing.
+ */
+function hintBudget(label: string, nameCol: number, budget: number): number {
+  return Math.max(6, budget - Math.max(0, label.length - nameCol));
 }
 
 type DisplayRow = { kind: "header"; text: string } | { kind: "item"; index: number };
@@ -651,7 +751,9 @@ export function selectOne<T>(opts: SelectOneOptions<T>): Promise<T | Back | null
       const dot = active ? c.pink(RADIO_ON) : c.dim(RADIO_OFF);
       const rawLabel = choice.label.padEnd(nameCol);
       const label = active ? c.pinkBold(rawLabel) : rawLabel;
-      const hint = choice.hint ? `  ${c.dim(ellipsize(choice.hint, budget))}` : "";
+      const hint = choice.hint
+        ? `  ${c.dim(ellipsize(choice.hint, hintBudget(choice.label, nameCol, budget)))}`
+        : "";
       return `${dot} ${label}${hint}`;
     },
     allowBack: opts.allowBack,
@@ -709,7 +811,9 @@ export function multiSelect<T>(opts: MultiSelectOptions<T>): Promise<T[] | null 
           : c.dim(CHECK_OFF);
       const rawLabel = choice.label.padEnd(nameCol);
       const label = active ? c.pinkBold(rawLabel) : checked[index] ? rawLabel : c.dim(rawLabel);
-      const hint = choice.hint ? `  ${c.dim(ellipsize(choice.hint, budget))}` : "";
+      const hint = choice.hint
+        ? `  ${c.dim(ellipsize(choice.hint, hintBudget(choice.label, nameCol, budget)))}`
+        : "";
       return `${caret} ${box} ${label}${hint}`;
     },
     warnLine: () => (warn ? c.warn(`Select at least ${minSelected}.`) : null),
@@ -831,6 +935,24 @@ export function promptText(opts: PromptTextOptions): Promise<string | null> {
     });
   }
 
+  // A default nobody can see is a default nobody uses.
+  //
+  // `defaultValue` is applied on an empty submit and is otherwise INVISIBLE, so
+  // every prompt carrying one had to remember to spell it into its own hint —
+  // and the one where it mattered most, "Where should this publish?", spelled
+  // out the value while never saying that return was the key that took it.
+  // Somebody looking at a prefilled-looking placeholder types the whole thing
+  // out again. Owned here so a prompt cannot be added without it.
+  //
+  // Never for a masked prompt: those hold credentials, and the entire reason
+  // the characters are hidden is that the screen is being shared or recorded.
+  const hintText = [
+    opts.defaultValue && !opts.mask ? `${CARET_RETURN} ${opts.defaultValue}` : "",
+    opts.hint ?? "",
+  ]
+    .filter(Boolean)
+    .join("  ·  ");
+
   return new Promise((resolve) => {
     let value = "";
     const draw = (error?: string) => {
@@ -840,7 +962,7 @@ export function promptText(opts: PromptTextOptions): Promise<string | null> {
       // steps aside as soon as there is a real answer to look at. Keeping both
       // on one line put the example and the input side by side, which is the
       // arrangement most likely to make somebody wonder which one is theirs.
-      const hint = opts.hint && value.length === 0 ? `  ${c.dim(opts.hint)}` : "";
+      const hint = hintText && value.length === 0 ? `  ${c.dim(hintText)}` : "";
       // Truncate to ONE physical row. `\r\x1b[2K` erases the row the cursor is
       // on and nothing above it — so a line wider than the terminal wraps, the
       // erase reaches only its last row, and every keystroke leaves the earlier
@@ -901,4 +1023,707 @@ export function promptText(opts: PromptTextOptions): Promise<string | null> {
 
     stdin.on("keypress", onKey);
   });
+}
+
+// ── the kit ──────────────────────────────────────────────────────────────────
+/**
+ * The block builders every PRINTED surface is assembled from.
+ *
+ * The prompts above dress the wizard. Everything else the CLI prints grew its
+ * own dialect instead: `policies` renders a table with `── rules ──` and colored
+ * chips, `pack list` and `harness list` print a bare sentence plus an indented
+ * example, `config --status` opens with a prose line and then label/value rows at
+ * label width 9, `audit --status` indents by three and misaligns its own value
+ * column (col 21 on the first row, 18 on the rest, plus a whitespace-only line),
+ * and `uninstall` prints `•` bullets with no header and no color at all. Six
+ * answers to "how does this product state a fact".
+ *
+ * These are the one answer. Every builder is pure — `(spec, opts) => string[]` —
+ * so a surface can be asserted at any width, with color on or off, without a pty;
+ * that is the same shape `renderBrandLogo`, `reviewLines` and `buildSummary`
+ * already have, and the reason they are the only rendering we can currently test.
+ *
+ * Callers pass `optsFor(stdout)` and print with `printBlock`, which owns the
+ * outer margins so no surface has to remember them.
+ */
+
+/** Every printed line starts here. Two spaces, never three. */
+export const INDENT = "  ";
+
+export interface RenderOpts {
+  /** Terminal width. Defaults to 80 so a piped or asserted render is deterministic. */
+  cols?: number;
+  /** Whether to emit ANSI at all. Defaults to OFF — colour is opt-in via `optsFor`. */
+  color?: boolean;
+}
+
+function ctx(opts?: RenderOpts): { cols: number; c: ReturnType<typeof paint> } {
+  return { cols: Math.max(20, opts?.cols ?? 80), c: paint(opts?.color ?? false) };
+}
+
+/** Derive render options from a real stream, honouring NO_COLOR and non-TTY. */
+export function optsFor(stdout: TTYOut = process.stdout): Required<RenderOpts> {
+  return { cols: stdout.columns || 80, color: colorsEnabled(stdout) };
+}
+
+/** Visible width of a line, skipping ANSI CSI sequences — the counterpart to
+ *  `truncate`, needed wherever a column has to line up under coloured content. */
+export function visibleWidth(line: string): number {
+  let width = 0;
+  let i = 0;
+  while (i < line.length) {
+    if (line[i] === ESC && line[i + 1] === "[") {
+      let j = i + 2;
+      while (j < line.length && !/[A-Za-z]/.test(line[j])) j++;
+      i = j + 1;
+    } else {
+      width++;
+      i++;
+    }
+  }
+  return width;
+}
+
+/** Wrap PLAIN text to `width`. A single word longer than the budget (a path, a
+ *  URL) overflows its own line rather than being broken — a split path is worse
+ *  than a long one, because it cannot be copied. */
+export function wrap(text: string, width: number): string[] {
+  if (width <= 0) return [text];
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [];
+  const out: string[] = [];
+  let line = "";
+  for (const word of words) {
+    if (!line) line = word;
+    else if (line.length + 1 + word.length <= width) line += ` ${word}`;
+    else {
+      out.push(line);
+      line = word;
+    }
+  }
+  if (line) out.push(line);
+  return out;
+}
+
+/** One visible character plus whatever SGR codes are in effect at it. */
+interface AnsiCell {
+  ch: string;
+  active: string;
+}
+
+function toAnsiCells(text: string): AnsiCell[] {
+  const cells: AnsiCell[] = [];
+  let active = "";
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === ESC && text[i + 1] === "[") {
+      let j = i + 2;
+      while (j < text.length && !/[A-Za-z]/.test(text[j])) j++;
+      const code = text.slice(i, j + 1);
+      // A reset clears everything; anything else stacks on top.
+      active = /\[0?m$/.test(code) ? "" : active + code;
+      i = j + 1;
+    } else {
+      cells.push({ ch: text[i], active });
+      i++;
+    }
+  }
+  return cells;
+}
+
+function renderAnsiCells(line: AnsiCell[]): string {
+  let out = "";
+  let active = "";
+  for (const cell of line) {
+    if (cell.active !== active) {
+      if (active) out += ANSI_RESET;
+      out += cell.active;
+      active = cell.active;
+    }
+    out += cell.ch;
+  }
+  // Every produced line closes what it opened. A line that ends mid-SGR bleeds
+  // its colour into everything printed after it.
+  return active ? out + ANSI_RESET : out;
+}
+
+/**
+ * Wrap text that carries colour, on visible width.
+ *
+ * `wrap` counts escape bytes as characters, so a coloured value used to be
+ * handed back unwrapped — and then `writeLines` cut it at the terminal edge with
+ * `truncate`, which stops at the first plain character past the limit. That lost
+ * the tail of the sentence with no ellipsis to say so, AND dropped the closing
+ * reset, so the colour ran on into every line that followed. Both were
+ * reproduced on `audit --status` at 80 columns.
+ */
+export function wrapAnsi(text: string, width: number): string[] {
+  if (width <= 0) return [text];
+  if (!text.includes(ESC)) return wrap(text, width);
+  const words: AnsiCell[][] = [];
+  let word: AnsiCell[] = [];
+  for (const cell of toAnsiCells(text)) {
+    if (/\s/.test(cell.ch)) {
+      if (word.length > 0) words.push(word);
+      word = [];
+    } else {
+      word.push(cell);
+    }
+  }
+  if (word.length > 0) words.push(word);
+
+  const lines: string[] = [];
+  let line: AnsiCell[] = [];
+  for (const next of words) {
+    if (line.length > 0 && line.length + 1 + next.length > width) {
+      lines.push(renderAnsiCells(line));
+      line = [...next];
+      continue;
+    }
+    if (line.length > 0) line.push({ ch: " ", active: line[line.length - 1].active });
+    line.push(...next);
+  }
+  if (line.length > 0) lines.push(renderAnsiCells(line));
+  return lines;
+}
+
+/** Close any SGR a hard cut left open, for the same reason. */
+function closeSgr(text: string): string {
+  const cells = toAnsiCells(text);
+  const last = cells[cells.length - 1];
+  return last && last.active ? text + ANSI_RESET : text;
+}
+
+/** Fit one cell to `width`: ANSI-safe hard cut when it carries colour, a proper
+ *  single-ellipsis cut when it is plain. */
+function fit(cell: string, width: number): string {
+  if (visibleWidth(cell) <= width) return cell;
+  return cell.includes(ESC) ? closeSgr(truncate(cell, width)) : ellipsize(cell, width);
+}
+
+/** Pad a possibly-coloured cell to `width` visible columns. */
+function pad(cell: string, width: number, align: "left" | "right" = "left"): string {
+  const gap = Math.max(0, width - visibleWidth(cell));
+  return align === "right" ? " ".repeat(gap) + cell : cell + " ".repeat(gap);
+}
+
+/**
+ * Join blocks with exactly one blank line between them.
+ *
+ * This is blank-line discipline as code rather than as a rule people remember:
+ * whitespace-only lines normalise to empty, two blanks never survive next to
+ * each other, and a block cannot open with one. `audit --status` prints a line
+ * containing a single space today; assembled through here it cannot.
+ */
+export function stack(...groups: Array<string[] | null | undefined>): string[] {
+  const out: string[] = [];
+  for (const group of groups) {
+    if (!group || group.length === 0) continue;
+    const body: string[] = [];
+    for (const line of group) {
+      const normalised = line.trim() === "" ? "" : line;
+      if (normalised === "" && (body.length === 0 || body[body.length - 1] === "")) continue;
+      body.push(normalised);
+    }
+    while (body.length > 0 && body[body.length - 1] === "") body.pop();
+    if (body.length === 0) continue;
+    if (out.length > 0) out.push("");
+    out.push(...body);
+  }
+  return out;
+}
+
+/**
+ * Print an assembled block with its outer margins. One place decides them.
+ *
+ * Deliberately NOT `writeLines`, which truncates each line to the terminal
+ * width. Every builder above already fits its content, so the only lines that
+ * can exceed the width are ones holding a token that cannot be broken — a path,
+ * a URL, a session id. Cutting those loses characters silently and with no
+ * ellipsis to admit it; letting the terminal wrap keeps them copyable, which is
+ * the entire reason they are printed.
+ */
+export function printBlock(stdout: TTYOut, lines: string[]): void {
+  if (lines.length === 0) return;
+  stdout.write(["", ...lines.map(closeSgr), ""].join("\n") + "\n");
+}
+
+/**
+ * The heading every surface opens with: what you are looking at, and the state
+ * it describes, right-aligned and dim.
+ *
+ * Six of our printed surfaces open with nothing at all, so output arrives with
+ * no statement of what it is — which is survivable on a screen you asked for and
+ * confusing in scrollback next to five other commands.
+ */
+export function title(name: string, meta?: string, opts?: RenderOpts): string[] {
+  const { cols, c } = ctx(opts);
+  const left = `${INDENT}${c.bold(name)}`;
+  if (!meta) return [left];
+  const right = c.dim(meta);
+  const gap = cols - visibleWidth(left) - visibleWidth(right) - INDENT.length;
+  // Too narrow to sit on one line: drop it under rather than let it wrap into
+  // the middle of the heading, where it reads as a second, broken title.
+  if (gap < 2) return [left, `${INDENT}${c.dim(meta)}`];
+  return [left + " ".repeat(gap) + right];
+}
+
+/** A section divider — the `── Convention Policies ──────` shape `policies`
+ *  already uses, available to every surface instead of one. */
+export function rule(label?: string, opts?: RenderOpts): string[] {
+  const { cols, c } = ctx(opts);
+  const width = Math.max(4, cols - INDENT.length * 2);
+  if (!label) return [`${INDENT}${c.dim("─".repeat(width))}`];
+  const tail = Math.max(3, width - `━━ ${label} `.length);
+  // The one accent every sectioned surface carries: a pink lead into a bold
+  // label. Decoration only — the glyphs and the spacing are identical without
+  // colour, so a piped render and a painted one are the same width and say the
+  // same thing. Changing it here moves `policies`, `harness`, `pack list`,
+  // every `table` section and all twelve help screens together, which is the
+  // reason they share this function instead of each drawing their own line.
+  return [`${INDENT}${c.pink("━━")} ${c.bold(label)} ${c.dim("━".repeat(tail))}`];
+}
+
+export interface Row {
+  label: string;
+  value: string;
+}
+
+/**
+ * Label/value rows on ONE computed column.
+ *
+ * The column is derived from the widest label in the block and never hardcoded,
+ * which is the entire fix for `audit --status` printing its first row's value at
+ * column 21 and the rest at 18 — two hand-counted paddings in one block, in the
+ * same file.
+ */
+export function rows(items: Array<Row | [string, string]>, opts?: RenderOpts): string[] {
+  const { cols, c } = ctx(opts);
+  const pairs = items.map((item) =>
+    Array.isArray(item) ? { label: item[0], value: item[1] } : item,
+  );
+  if (pairs.length === 0) return [];
+  // The column grows to the widest label and the label is NEVER cut. It used to
+  // be capped at 24 and ellipsized, which quietly ate the pause session id —
+  // the one string `--resume --session <id>` needs, printed nowhere else. Half
+  // an id is not a shorter fact, it is an unusable one; a label past the cap
+  // takes its own line instead, so the value column survives.
+  const widest = Math.max(...pairs.map((p) => visibleWidth(p.label)));
+  const labelWidth = Math.min(widest, Math.max(12, Math.floor((cols - INDENT.length * 2) / 2)));
+  const valueBudget = Math.max(8, cols - INDENT.length * 2 - labelWidth - 2);
+  const out: string[] = [];
+  for (const { label, value } of pairs) {
+    if (visibleWidth(label) > labelWidth) {
+      out.push(`${INDENT}${c.dim(label)}`);
+      for (const extra of wrapAnsi(value, valueBudget)) {
+        out.push(" ".repeat(INDENT.length + labelWidth + 2) + extra);
+      }
+      continue;
+    }
+    const gutter = `${INDENT}${pad(c.dim(label), labelWidth)}  `;
+    const hang = " ".repeat(visibleWidth(gutter));
+    // Wrapped with a hanging indent rather than cut. Cutting looks tidier and is
+    // worse: these values are URLs, machine ids and paths, and half of one is
+    // not a shorter fact, it is an unusable one. Neither `wrap` nor `wrapAnsi`
+    // splits a single token, so a long URL survives whole on its own line — the
+    // only case that can still pass the right edge, and the right trade.
+    const wrapped = wrapAnsi(value, valueBudget);
+    if (wrapped.length === 0) {
+      out.push(gutter.trimEnd());
+      continue;
+    }
+    out.push(gutter + wrapped[0]);
+    for (const extra of wrapped.slice(1)) out.push(hang + extra);
+  }
+  return out;
+}
+
+/** A row, optionally with dim continuation lines under it — configured params,
+ *  a policy hint, the reason a file would not load. */
+export interface TableRow {
+  cells: string[];
+  notes?: string[];
+}
+
+/** A heading between rows. Widths are computed across the WHOLE table, so the
+ *  columns line up through every section instead of jumping at each one — which
+ *  is what a table-per-section does, along with repeating the column labels. */
+export interface TableSection {
+  section: string;
+}
+
+export interface TableSpec {
+  head: string[];
+  rows: Array<string[] | TableRow | TableSection>;
+  /** Per-column alignment. Numbers read right, everything else left. */
+  align?: Array<"left" | "right">;
+  /** Which column absorbs the leftover width (default: the last). */
+  flex?: number;
+  /**
+   * Columns the shrink pass may not touch. The second pass takes width from the
+   * WIDEST column, which in a path table is the path — cutting the one value the
+   * listing exists to hand back to the user.
+   */
+  protect?: number[];
+}
+
+/** The `policies` table, available to every surface that lists things. */
+export function table(spec: TableSpec, opts?: RenderOpts): string[] {
+  const { cols, c } = ctx(opts);
+  const count = spec.head.length;
+  if (count === 0) return [];
+  const flex = spec.flex ?? count - 1;
+  const body: Array<TableRow | TableSection> = spec.rows.map((r) =>
+    Array.isArray(r) ? { cells: r } : r,
+  );
+  const dataRows = body.filter((r): r is TableRow => "cells" in r);
+  const natural = spec.head.map((h, i) =>
+    Math.max(visibleWidth(h), ...dataRows.map((r) => visibleWidth(r.cells[i] ?? ""))),
+  );
+  const budget = cols - INDENT.length * 2 - (count - 1) * 2;
+  // The flex column gives way first, and only when it has nothing left to give
+  // do the others shrink — widest first, so a narrow terminal costs the column
+  // that can most afford it. Without the second pass a single long cell (a path,
+  // a description) pushed the whole row past the terminal edge, which is the
+  // overrun this kit exists to end.
+  let overflow = natural.reduce((a, b) => a + b, 0) - budget;
+  if (overflow > 0) {
+    const give = Math.min(overflow, Math.max(0, natural[flex] - 8));
+    natural[flex] -= give;
+    overflow -= give;
+  }
+  const protectedCols = new Set(spec.protect ?? []);
+  while (overflow > 0) {
+    let widest = -1;
+    for (let i = 0; i < natural.length; i += 1) {
+      if (protectedCols.has(i) || natural[i] <= 4) continue;
+      if (widest === -1 || natural[i] > natural[widest]) widest = i;
+    }
+    // Everything left is protected or already at its floor: leave the row long
+    // and let the terminal wrap it rather than cut a protected value.
+    if (widest === -1) break;
+    natural[widest] -= 1;
+    overflow -= 1;
+  }
+  const line = (cells: string[]) =>
+    INDENT +
+    cells
+      .map((cell, i) => pad(fit(cell, natural[i]), natural[i], spec.align?.[i] ?? "left"))
+      .join("  ")
+      .trimEnd();
+  // Notes hang under the row's LAST fixed column — i.e. where the name starts —
+  // so a hint reads as belonging to its row rather than to the table.
+  const noteIndent =
+    INDENT.length + natural.slice(0, Math.max(0, flex - 1)).reduce((a, b) => a + b + 2, 0);
+  // All-empty headings mean a table that does not want a header row: repeating
+  // column labels above every section is chrome, not content.
+  const wantsHead = spec.head.some((h) => h.length > 0);
+  const out = wantsHead ? [line(spec.head.map((h) => c.dim(h))), ...rule(undefined, opts)] : [];
+  for (const row of body) {
+    if ("section" in row) {
+      if (out.length > 0) out.push("");
+      out.push(...rule(row.section, opts));
+      continue;
+    }
+    out.push(line(row.cells));
+    for (const n of row.notes ?? []) {
+      for (const wrapped of wrap(n, Math.max(8, cols - noteIndent - INDENT.length))) {
+        out.push(" ".repeat(noteIndent) + c.dim(wrapped));
+      }
+    }
+  }
+  return out;
+}
+
+/** Every state a listed thing can be in. Symbol AND colour, never colour alone,
+ *  so the list still reads under NO_COLOR and for a red/green-blind reader. */
+export type ChipState =
+  | "on"
+  | "off"
+  | "mixed"
+  | "locked"
+  | "cloud"
+  | "pack"
+  | "failed"
+  | "observe";
+
+const CHIP_LABELS: Record<ChipState, string> = {
+  on: "✓ ON",
+  off: "· OFF",
+  // A convention FILE holds several hooks and some of them can be disabled
+  // individually, so "on" and "off" cannot describe it between them.
+  mixed: "◐ MIXED",
+  locked: "✓ LOCK",
+  cloud: "✓ CLOUD",
+  pack: "✓ PACK",
+  failed: "\u25B2 FAIL",
+  observe: "◉ OBS",
+};
+
+/** Width of the widest chip, so a column of them lines up without the caller
+ *  knowing which states it happens to contain. */
+export const CHIP_WIDTH = Math.max(...Object.values(CHIP_LABELS).map((l) => l.length));
+
+export function chip(state: ChipState, opts?: RenderOpts): string {
+  const { c } = ctx(opts);
+  const label = CHIP_LABELS[state];
+  const painted =
+    state === "on" || state === "pack"
+      ? c.pink(label)
+      : state === "failed" || state === "mixed"
+        ? c.warn(label)
+        : state === "cloud" || state === "observe"
+          ? c.guide(label)
+          : c.dim(label);
+  return pad(painted, CHIP_WIDTH);
+}
+
+/** A bulleted list, wrapped, with continuation lines aligned under the text —
+ *  `uninstall` prints 200-column bullets today that wrap into column 0. */
+export function bullets(items: string[], opts?: RenderOpts): string[] {
+  const { cols, c } = ctx(opts);
+  const budget = Math.max(8, cols - INDENT.length - 4);
+  const out: string[] = [];
+  for (const item of items) {
+    const [first, ...rest] = wrap(item, budget);
+    if (first === undefined) continue;
+    out.push(`${INDENT}${c.pink("•")} ${first}`);
+    for (const line of rest) out.push(`${INDENT}  ${line}`);
+  }
+  return out;
+}
+
+/** A dim aside under a block. */
+export function note(text: string, opts?: RenderOpts): string[] {
+  const { cols, c } = ctx(opts);
+  return wrap(text, Math.max(8, cols - INDENT.length * 2)).map((l) => `${INDENT}${c.dim(l)}`);
+}
+
+/**
+ * "Here is the command to run next" — the single most repeated shape in the CLI
+ * and, today, invented separately by `policies`, `pack list` and `harness list`.
+ */
+export function nextStep(cmd: string, why?: string, opts?: RenderOpts): string[] {
+  const { c } = ctx(opts);
+  const out: string[] = [];
+  if (why) out.push(...note(why, opts));
+  out.push(`${INDENT}${INDENT}${c.pink(cmd)}`);
+  return out;
+}
+
+function gutterBlock(symbol: string, lines: string[], opts?: RenderOpts): string[] {
+  const { cols } = ctx(opts);
+  const budget = Math.max(8, cols - INDENT.length - 3);
+  const out: string[] = [];
+  for (const line of lines) {
+    for (const wrapped of wrap(line, budget)) {
+      out.push(out.length === 0 ? `${INDENT}${symbol}  ${wrapped}` : `${INDENT}   ${wrapped}`);
+    }
+  }
+  return out;
+}
+
+/** Amber gutter. One shape for every warning, whether it is two lines about
+ *  scopes or six about the daemon. */
+export function warning(lines: string[], opts?: RenderOpts): string[] {
+  const { c } = ctx(opts);
+  return gutterBlock(c.warn("\u25B2"), lines, opts);
+}
+
+/** The same, for the ones that destroy something. */
+export function danger(lines: string[], opts?: RenderOpts): string[] {
+  const { c } = ctx(opts);
+  return gutterBlock(c.pink("!"), lines, opts);
+}
+
+/** Nothing to show, said the same way everywhere: what is empty, then the one
+ *  command that changes that. */
+export function emptyState(
+  spec: { what: string; hint?: string; cmd?: string },
+  opts?: RenderOpts,
+): string[] {
+  return stack(note(spec.what, opts), spec.cmd ? nextStep(spec.cmd, spec.hint, opts) : null);
+}
+
+export interface HelpSpec {
+  usage: Array<[string, string?]>;
+  options?: Array<[string, string]>;
+  examples?: string[];
+  /** Free lines above the first section. */
+  lead?: string[];
+}
+
+/**
+ * The description column for one block of entries, derived from its widest
+ * described name and capped.
+ *
+ * Its own step because the callers differ on the SCOPE they compute it over —
+ * {@link helpBlock} across usage and options together, {@link helpScreen} per
+ * section — and neither should be restating the cap or the floor.
+ */
+export function helpColumn(entries: Array<[string, string?]>): number {
+  // Only DESCRIBED entries set the column. A bare usage line — `failproofai
+  // flush [--wait] [--timeout <secs>]`, which describes itself — is 44
+  // characters and has nothing in the second column, so letting it vote pushed
+  // every real description on the screen out to column 38.
+  const named = entries.filter(([, d]) => d).map(([n]) => visibleWidth(n));
+  return Math.min(34, Math.max(12, ...named));
+}
+
+/** `<name>  <description>` at a column the caller fixed. */
+export function helpEntries(
+  items: Array<[string, string?]>,
+  nameWidth: number,
+  opts?: RenderOpts,
+): string[] {
+  const { cols, c } = ctx(opts);
+  const out: string[] = [];
+  for (const [raw, description] of items) {
+    // Pink is what you TYPE, dim is what it means, bold is the section it sits
+    // in. Three tones, the same three on every screen, so a flag looks like a
+    // flag whether you found it on `publish --help` or on the index. Decoration
+    // only: the column already separates the two halves, so the screen reads
+    // the same piped to a file or under NO_COLOR.
+    const name = c.pink(raw);
+    if (!description) {
+      out.push(`${INDENT}${name}`);
+      continue;
+    }
+    const budget = Math.max(12, cols - INDENT.length * 2 - nameWidth - 2);
+    const [first, ...rest] = wrap(description, budget);
+    // A name wider than the column takes its own line rather than shoving the
+    // description out — the top-level help has several of these today.
+    if (visibleWidth(raw) > nameWidth) {
+      out.push(`${INDENT}${name}`);
+      for (const line of [first, ...rest]) {
+        if (line !== undefined) out.push(`${INDENT}${" ".repeat(nameWidth)}  ${c.dim(line)}`);
+      }
+      continue;
+    }
+    // Padded on the VISIBLE width, so a painted name still lands the column
+    // where an unpainted one does.
+    const gap = nameWidth - visibleWidth(raw);
+    out.push(`${INDENT}${name}${" ".repeat(gap)}  ${c.dim(first ?? "")}`);
+    for (const line of rest) out.push(`${INDENT}${" ".repeat(nameWidth)}  ${c.dim(line)}`);
+  }
+  return out;
+}
+
+/**
+ * A usage/options/examples block, on one column across all three.
+ *
+ * The plain shape, for a surface with nothing else to say. A screen with prose
+ * sections, a heading, or a footer wants {@link helpScreen}, which is what the
+ * twelve `--help` screens use.
+ */
+export function helpBlock(spec: HelpSpec, opts?: RenderOpts): string[] {
+  const nameWidth = helpColumn([...spec.usage, ...(spec.options ?? [])]);
+  const section = (label: string, body: string[]): string[] =>
+    body.length === 0 ? [] : [...rule(label, opts), ...body];
+  return stack(
+    spec.lead ? spec.lead.map((l) => `${INDENT}${l}`) : null,
+    section("usage", helpEntries(spec.usage, nameWidth, opts)),
+    section("options", helpEntries(spec.options ?? [], nameWidth, opts)),
+    section("examples", (spec.examples ?? []).map((e) => `${INDENT}${e}`)),
+  );
+}
+
+/**
+ * Help is the one family of screens read at every width that belongs to no
+ * terminal in particular. Capped at 80 so `publish --help` is the same shape in
+ * a maximised window as in a tmux pane — and never wider than the terminal it
+ * is actually in, so the cap can only ever narrow.
+ */
+export const HELP_COLS = 80;
+
+/** {@link optsFor}, capped to {@link HELP_COLS}. Every help screen uses this. */
+export function helpOptsFor(stdout: TTYOut = process.stdout): Required<RenderOpts> {
+  const base = optsFor(stdout);
+  return { cols: Math.min(base.cols, HELP_COLS), color: base.color };
+}
+
+export interface HelpHeading {
+  /** The command being documented. Omitted for the top-level index. */
+  command?: string;
+  version: string;
+  /** One line: what this command is for. */
+  tagline: string;
+}
+
+/**
+ * The two lines every help screen opens with.
+ *
+ * The wordmark carries the same pink on `il` that {@link renderBrandLogo} tints,
+ * so a help screen and the wizard are visibly one product rather than two that
+ * happen to ship together. The version sits right-aligned and dim because it is
+ * the fact you want when a help screen and its binary disagree, and the fact you
+ * never want in the way otherwise.
+ */
+export function helpHeading(spec: HelpHeading, opts?: RenderOpts): string[] {
+  const { cols, c } = ctx(opts);
+  const mark = `${c.bold("fa")}${c.pink("il")}${c.bold("proofai")}`;
+  const left = `${INDENT}${mark}${spec.command ? ` ${c.bold(spec.command)}` : ""}`;
+  const right = c.dim(`v${spec.version}`);
+  const gap = cols - visibleWidth(left) - visibleWidth(right) - INDENT.length;
+  // Too narrow for both: the version goes under rather than wrapping into the
+  // middle of the name, where it reads as part of the command.
+  const head = gap < 2 ? [left, `${INDENT}${right}`] : [left + " ".repeat(gap) + right];
+  return [...head, ...note(spec.tagline, opts)];
+}
+
+/**
+ * A section of a help screen: a table of names, a paragraph, or lines that are
+ * already laid out. Every one of them gets the same `rule` heading, which is
+ * what makes twelve screens one screen.
+ */
+export type HelpSection =
+  /** A table of names. `after` is a paragraph under it, in the same section —
+   *  the alternative was a second heading over three lines of caveat, or an
+   *  unlabelled `rule` that read as the screen having lost its place. */
+  | { label: string; entries: Array<[string, string?]>; after?: string[] }
+  | { label: string; prose: string }
+  | { label: string; lines: string[] };
+
+export interface HelpScreenSpec extends HelpHeading {
+  sections: HelpSection[];
+  /** Dim closing lines — where to read more. */
+  footer?: string[];
+}
+
+/**
+ * A whole `--help`, assembled the same way twelve times.
+ *
+ * Before this, every screen was its own template literal: `USAGE` here and
+ * `Usage:` there, a description column hand-counted per file, no version on the
+ * page, and no colour on any of them while the index it was reached from had
+ * all three. The screens still say exactly what their authors wrote — this owns
+ * only the shape.
+ */
+export function helpScreen(spec: HelpScreenSpec, opts?: RenderOpts): string[] {
+  const { cols, c } = ctx(opts);
+  const width = Math.max(12, cols - INDENT.length * 2);
+  const groups: Array<string[] | null> = [helpHeading(spec, opts)];
+  for (const section of spec.sections) {
+    // Per SECTION, not per screen. One column across the whole page is what a
+    // screen of like-shaped entries wants, and it is exactly wrong on a screen
+    // that has both: `failproofai policies show <owner>/<repo>` is 40 columns
+    // and `--all` is 5, so a shared column left every flag description hanging
+    // 34 columns out with nothing under it. What made two screens read as two
+    // products was the INDENT and the heading, and those are shared here.
+    const body =
+      "entries" in section
+        ? [
+            ...helpEntries(section.entries, helpColumn(section.entries), opts),
+            ...(section.after?.length
+              ? ["", ...section.after.map((l) => (l.trim() === "" ? "" : `${INDENT}${l}`))]
+              : []),
+          ]
+        : "prose" in section
+          ? wrap(section.prose, width).map((l) => `${INDENT}${l}`)
+          : section.lines.map((l) => (l.trim() === "" ? "" : `${INDENT}${l}`));
+    if (body.length === 0) continue;
+    groups.push([...rule(section.label, opts), ...body]);
+  }
+  if (spec.footer?.length) groups.push(spec.footer.map((l) => `${INDENT}${c.dim(l)}`));
+  return stack(...groups);
 }

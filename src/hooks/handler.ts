@@ -43,6 +43,8 @@ import { getInstanceId } from "../../lib/telemetry-id";
 import { hookLogInfo, hookLogWarn } from "./hook-logger";
 import { readStdinPayload } from "./read-stdin";
 import { readActiveCloudManagedPolicies, type CloudManagedPolicyArtifact } from "./cloud-managed-policies";
+import { hasInstalledPacks, readInstalledPacks, type PackError, type ResolvedPack } from "./pack-manifest";
+import { missingGuards, packFailureReason, combinedGuardMatch, guardsCover } from "./pack-failclosed";
 import { readActivePause, type ActivePause } from "./session-pause";
 import { layoutWarningForHook } from "./fp-reset";
 
@@ -255,13 +257,23 @@ export async function evaluateHookEvent(
     /** Registered policy name → where it came from. See the set() below. */
     const policyAttribution = new Map<
       string,
-      { source: "custom" | "convention" | "cloud"; cloudPolicyId?: string; cloudVersion?: number }
+      {
+        source: "custom" | "convention" | "cloud" | "pack";
+        cloudPolicyId?: string;
+        cloudVersion?: number;
+        packId?: string;
+        packVersion?: string;
+      }
     >();
     let cloudDeployment: number | undefined;
+    /** Policy names each pack actually got registered, for the fail-closed check. */
+    const registeredByPack = new Map<string, Set<string>>();
+    let packErrors: PackError[] = [];
     /** What observe-mode policies WOULD have done, had they been enforcing. */
     const observedResults: Array<{
       policyId: string;
-      version: number;
+      /** A cloud deployment counts; a pack carries a version STRING. */
+      version: string | number;
       decision: "deny" | "instruct";
       reason: string | null;
     }> = [];
@@ -290,7 +302,34 @@ export async function evaluateHookEvent(
       // already exempts them: a locally-issued command that could switch off a
       // centrally assigned policy would make cloud enforcement decorative.
       activePause = readActivePause(session.sessionId);
-      registerBuiltinPolicies(activePause ? [] : config.enabledPolicies);
+      // Enforcement comes from PACKS now. What still registers from this build is
+      // the always-on self-protection guard, and nothing else: a pack may not
+      // declare `alwaysOn` — a downloaded file that no local command can switch
+      // off is the thing that guard exists to prevent — so it cannot travel the
+      // pack lane and has to ship compiled in.
+      //
+      // The second argument is the migration shim, not a feature. A machine that
+      // upgraded into this build has `enabledPolicies` and no pack installed
+      // yet, and it must not lose enforcement in the gap before `failproofai
+      // update` runs. It disappears for that machine the moment a pack is
+      // installed, and never fires for a machine set up by this version.
+      const packsInstalledHere = hasInstalledPacks();
+      const legacyNames =
+        activePause || packsInstalledHere ? [] : config.enabledPolicies;
+      // `alwaysOn` policies bypass the enabled set inside `registerBuiltinPolicies`,
+      // so an empty list still registers the guard — which is exactly what this
+      // build should contribute once packs carry everything else.
+      registerBuiltinPolicies(activePause ? [] : legacyNames);
+      if (legacyNames.length > 0) {
+        hookLogWarn(
+          `enforcing ${legacyNames.length} policies from this build because no pack is installed — ` +
+            `run \`failproofai policies add FailproofAI/policies\` to move them into a real pack`,
+        );
+      }
+      // What actually registered, for the pack-duplicate check below. A paused
+      // session registers none, and then a pack twin is not a duplicate of
+      // anything — but a pause already skips every local policy, pack included.
+      const enabledBuiltinNames = new Set(legacyNames);
 
       // Cloud-managed policies are daemon-reconciled artifacts, but they use
       // the same public JS policy API as local custom policies. Verify and add
@@ -334,13 +373,31 @@ export async function evaluateHookEvent(
       // separate question from "what decided", and only the former can tell a
       // rollout that changed nothing from one that never reached the machine.
       cloudDeployment = cloudManagedPolicies[0]?.deployment;
+      // Installed packs. `readInstalledPacks` never throws: a bad manifest or a
+      // tampered artifact yields zero packs and a recorded reason, which is
+      // sound ONLY because the builtins still ship compiled in and keep
+      // enforcing underneath. See the fail-open note in pack-manifest.ts — the
+      // day builtins become a fetched pack this posture has to change with them.
+      let installedPacks: ResolvedPack[] = [];
+      try {
+        const packResult = readInstalledPacks();
+        installedPacks = packResult.packs;
+        packErrors = packResult.errors;
+        for (const err of packResult.errors) {
+          hookLogWarn(`pack ${err.id ?? "(unnamed)"} not loaded: ${err.reason}`);
+        }
+      } catch (err) {
+        hookLogWarn(`pack manifest unreadable: ${err instanceof Error ? err.message : String(err)}`);
+      }
+
       const configuredCustomPaths = config.customPoliciesPaths ?? config.customPoliciesPath;
       const allExplicitPaths =
-        cloudManagedPolicies.length === 0
+        cloudManagedPolicies.length === 0 && installedPacks.length === 0
           ? configuredCustomPaths
           : [
               ...(typeof configuredCustomPaths === "string" ? [configuredCustomPaths] : configuredCustomPaths ?? []),
               ...cloudManagedPolicies.map((policy) => policy.path),
+              ...installedPacks.map((pack) => pack.path),
             ];
 
       // Load and register custom hooks (layer 2, after builtins)
@@ -348,6 +405,7 @@ export async function evaluateHookEvent(
         sessionCwd: session.cwd,
         customPoliciesEnabled: config.customPoliciesEnabled,
         ...(cloudManagedPolicies.length > 0 ? { cloudManagedPolicies } : {}),
+        ...(installedPacks.length > 0 ? { packs: installedPacks } : {}),
       });
       customHooksList = loadResult.hooks;
       const disabledCustomPolicies = new Set(config.disabledCustomPolicies ?? []);
@@ -357,34 +415,94 @@ export async function evaluateHookEvent(
         const taggedHook = hook as CustomHook & {
           __policyId?: string;
           __cloudManaged?: CloudManagedPolicyArtifact;
+          __pack?: ResolvedPack;
         };
         const policyId = taggedHook.__policyId;
         const cloudManaged = taggedHook.__cloudManaged;
+        const pack = taggedHook.__pack;
         // Local config cannot disable a centrally assigned policy merely by
         // copying its generated ID into disabledCustomPolicies.
         if (!cloudManaged && policyId && disabledCustomPolicies.has(policyId)) continue;
         // Same rule for a session pause — it suspends local policy, never cloud.
         if (!cloudManaged && activePause) continue;
+        // A pack narrowed to particular agents does not fire on the others.
+        // Setup wires hooks into every supported CLI — hooks alone enforce
+        // nothing — so the choice of which agents a pack guards is made when the
+        // pack is installed, and this is where it takes effect. `clis: null`
+        // means every agent, which is what an install with no narrowing writes
+        // and what every pack installed before this field existed reads as.
+        if (pack?.clis && !pack.clis.includes(cli)) continue;
+        // A pack's artifact registers everything it contains; the user may have
+        // taken only some of it. `enabled: null` means the whole pack, which is
+        // what `policies add` writes when no selection was made.
+        if (pack?.enabled && !pack.enabled.includes(hook.name)) continue;
+        // A pack policy whose name is an ENABLED BUILTIN is the same guard
+        // twice. The two register under different keys — `failproofai/block-sudo`
+        // and `pack/<id>@<version>/block-sudo` — so nothing deduped them, and
+        // the core pack carries the builtins under exactly these names.
+        //
+        // A deny hides it (the first verdict short-circuits) but an INSTRUCT does
+        // not: instructions accumulate and are joined, so the agent received the
+        // identical paragraph twice. Every duplicate also ran its policy function
+        // a second time, inside its own 10s timeout race, against a 150ms daemon
+        // budget.
+        //
+        // The builtin wins, because a bare name means the builtin everywhere else
+        // — `policies --uninstall block-sudo` disables the compiled one, and a
+        // machine that wants the pack's copy instead turns the builtin off.
+        // A pack policy whose name matches one the MIGRATION SHIM registered.
+        // Only reachable on a machine that has not migrated yet and somehow has
+        // a pack too; once the shim stops, nothing else registers by name.
+        if (pack && enabledBuiltinNames.has(hook.name)) continue;
+        if (pack) {
+          // Recorded against EVERY pack behind these bytes, not just the id the
+          // collapse kept. A shared artifact loads once and every hook carries
+          // the surviving record's id, so registering under it alone left the
+          // other pack in neither map — and `missingGuards` skips a pack in
+          // neither map, so an artifact that imported fine while omitting a
+          // policy only that pack had selected produced no guard: not
+          // registered, and not denied either.
+          for (const id of loadResult.packAliases?.get(pack.id) ?? [pack.id]) {
+            const seen = registeredByPack.get(id) ?? new Set<string>();
+            seen.add(hook.name);
+            registeredByPack.set(id, seen);
+          }
+        }
         const hookName = hook.name;
         const conventionScope = (hook as CustomHook & { __conventionScope?: string }).__conventionScope;
         const isConvention = !!conventionScope;
+        // A pack's prefix carries its id and version, and it always contains a
+        // `/` — which is what keeps a pack policy structurally unable to
+        // normalize into the `failproofai/` namespace and REPLACE a builtin.
+        // pack-manifest.ts refuses a `/` in the declared name for the same
+        // reason; this is the second half of that guard.
         const prefix = cloudManaged
           ? `cloud/${cloudManaged.id}@${cloudManaged.version}`
-          : isConvention
-            ? `.failproofai-${conventionScope}`
-            : "custom";
+          : pack
+            ? `pack/${pack.id}@${pack.version}`
+            : isConvention
+              ? `.failproofai-${conventionScope}`
+              : "custom";
         // Observe mode: run it for real, record what it decided, then hand back
         // an allow. Evaluating and discarding is the whole point — a rollout is
         // measured against real traffic before it can break anyone's work, and
         // a policy that did not actually run would measure nothing.
-        const observeOnly = cloudManaged?.effect === "observe";
+        const observeOnly = cloudManaged?.effect === "observe" || pack?.effect === "observe";
         const fn: PolicyFunction = async (ctx): Promise<PolicyResult> => {
           if (observeOnly) {
             const shadow = await runObserved(hook, ctx, hookName, eventType, cli);
             if (shadow.decision !== "allow") {
+              // Sourced from whichever layer asked to observe. This read
+              // `cloudManaged!.id` — a non-null assertion that is simply false
+              // for a pack, so an observe-mode PACK threw on its first non-allow
+              // verdict. The throw escapes before the wrapper's own try below,
+              // so policy-evaluator swallowed it and `continue`d: nothing was
+              // recorded, the row read as a clean allow, and the rollout being
+              // trialled measured nothing while reporting healthy.
+              const observer = cloudManaged ?? pack;
               observedResults.push({
-                policyId: cloudManaged!.id,
-                version: cloudManaged!.version,
+                policyId: observer!.id,
+                version: observer!.version,
                 decision: shadow.decision,
                 reason: shadow.reason ?? null,
               });
@@ -419,8 +537,14 @@ export async function evaluateHookEvent(
         // question cloud attribution has to answer, "which rollout produced
         // this decision", could only be answered by re-parsing our own label.
         policyAttribution.set(registeredName, {
-          source: cloudManaged ? "cloud" : isConvention ? "convention" : "custom",
+          // `pack` was in scope here and simply not consulted, so every pack
+          // decision was filed as "custom" — which is also what a user's own
+          // local .mjs gets, making the two indistinguishable without
+          // re-parsing the `pack/` prefix off the display name. That re-parsing
+          // is exactly the practice these fields exist to replace.
+          source: cloudManaged ? "cloud" : pack ? "pack" : isConvention ? "convention" : "custom",
           ...(cloudManaged ? { cloudPolicyId: cloudManaged.id, cloudVersion: cloudManaged.version } : {}),
+          ...(pack ? { packId: pack.id, packVersion: pack.version } : {}),
         });
         registerPolicy(
           registeredName,
@@ -428,7 +552,70 @@ export async function evaluateHookEvent(
           fn,
           hook.match ?? {},
           -1, // Custom hooks run after builtins (priority 0)
+          // A pack declares its policies' params in its manifest, so they work
+          // exactly like a builtin's — defaults merged under whatever the user
+          // configured. Matched by the pack's own name for the policy, which is
+          // the name before the `pack/<id>@<version>/` prefix is applied.
+          pack?.policies.find((p) => p.name === hook.name)?.params,
         );
+      }
+
+      // Fail closed on enforcement this machine was told it had and does not.
+      //
+      // Additive, and deliberately NOT a clearPolicies() the way the
+      // daemon-unreachable branch is: `registerBuiltinPolicies` registers the
+      // alwaysOn self-protection guard unconditionally, and clearing here would
+      // let a corrupt third-party download switch off the one policy nothing may
+      // disable.
+      //
+      // Skipped entirely under a session pause. A pause suspends local policy for
+      // a bounded, deliberate window; a check derived from registrations would
+      // fire for every pack on every paused event and convert that into a
+      // machine-wide deny — the exact inversion of what a pause is for.
+      if (!activePause) {
+        const guards = missingGuards({
+          errors: packErrors,
+          packs: installedPacks,
+          registered: registeredByPack,
+          failed: loadResult.packFailures,
+          disabled: disabledCustomPolicies,
+          cli,
+        });
+        if (guards.length > 0) {
+          const reason = packFailureReason(guards);
+          const match = combinedGuardMatch(guards);
+          const name = "pack/failproofai-pack-unavailable";
+          policyAttribution.set(name, {
+            source: "pack",
+            packId: guards[0].packId,
+            ...(guards[0].packVersion ? { packVersion: guards[0].packVersion } : {}),
+          });
+          registerPolicy(
+            name,
+            "A policy pack this machine enforces could not be loaded",
+            async (ctx): Promise<PolicyResult> => {
+              // The matcher is a union of both axes and the registry ANDs them,
+              // so being CALLED is not proof any guard covered this pair. Two
+              // packs scoped to (PreToolUse, Bash) and (PostToolUse, Write)
+              // produce a matcher that also catches (PreToolUse, Write) —
+              // neither pack's business. The pairing is decided here, where the
+              // real event and tool are known.
+              if (!guardsCover(guards, canonicalEventType, ctx.toolName)) return { decision: "allow" };
+              // UserPromptSubmit instructs rather than denies, whatever the
+              // missing policies declared: a deny there locks the user out of
+              // their own agent, which is the one thing that stops them fixing it.
+              return canonicalEventType === "UserPromptSubmit"
+                ? { decision: "instruct", reason }
+                : { decision: "deny", reason };
+            },
+            match,
+            // Above builtins (0) and custom (-1), so the short-circuit attributes
+            // the deny to the missing pack rather than to whichever surviving
+            // policy happened to fire first.
+            1,
+          );
+          hookLogWarn(reason);
+        }
       }
 
       // Fire telemetry once per invocation for custom hook loads
@@ -501,6 +688,8 @@ export async function evaluateHookEvent(
               ...(attribution?.cloudVersion !== undefined
                 ? { cloudVersion: attribution.cloudVersion }
                 : {}),
+              ...(attribution?.packId ? { packId: attribution.packId } : {}),
+              ...(attribution?.packVersion ? { packVersion: attribution.packVersion } : {}),
             };
           })()
         : {}),
@@ -607,6 +796,18 @@ export async function handleHookEvent(eventType: string, cli: IntegrationType = 
       event_type: eventType,
       cli,
       error_type: "oversized",
+    });
+  }
+  if (stdinRead.timedOut) {
+    // Reported distinctly from a read error because the remedy is different and
+    // the cause is upstream: the agent spawned the hook and did not close its
+    // stdin. Before this was bounded it was not reported at all — the process
+    // simply never returned, and the tool call it was gating never resolved.
+    hookLogWarn(`stdin never closed for ${eventType}; evaluated nothing`);
+    void trackHookEvent(getInstanceId(), "hook_stdin_error", {
+      event_type: eventType,
+      cli,
+      error_type: "timeout",
     });
   }
 

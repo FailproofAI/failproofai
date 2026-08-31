@@ -6,12 +6,12 @@ icon: "plug-zap"
 
 Ein Harness ist die Umgebung, in der Ihr Agent tatsächlich ausgeführt wird. Failproof AI unterstützt zwölf davon, in zwei Klassen:
 
-- **Coding-CLIs** (10) — Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Factory Droid, Devin CLI, Antigravity CLI, Goose
-- **Chat- und Assistant-Gateways** (2) — Hermes (Slack, Telegram, Cron), OpenClaw (selbst gehosteter Assistent)
+- **Coding CLIs** (10) — Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Factory Droid, Devin CLI, Antigravity CLI, Goose
+- **Chat- und Assistent-Gateways** (2) — Hermes (Slack, Telegram, Cron), OpenClaw (selbstgehosteter Assistent)
 
-Dieselben Richtlinien und dieselbe Sitzungshistorie gelten unabhängig davon, in welchem Harness ein Agent ausgeführt wird. Eine Adapterschicht bildet die nativen Ereignisnamen, Tool-Namen und Tool-Eingabefelder jedes Harnesses auf 29 kanonische Ereignisse ab, bevor eine Richtlinie ausgeführt wird.
+Dieselben Richtlinien und dieselbe Sitzungshistorie gelten unabhängig davon, in welchem Harness ein Agent läuft. Eine Adapter-Schicht überführt die nativen Ereignisnamen, Tool-Namen und Tool-Eingabefelder jedes Harness in 29 kanonische Ereignisse, bevor eine Richtlinie ausgeführt wird.
 
-Ein Agent, der in **keinem** der zwölf Harnesses läuft, wird direkt mit dem [Python SDK](/de/reference/custom-agents) instrumentiert. Das ist ein anderer Vertrag, und es lohnt sich, dies klar zu benennen: Das SDK liefert Tracing, Sitzungen, Evaluierungen und Audits — **es setzt Richtlinien nicht eigenständig durch.** Um eine unsichere Aktion zu blockieren, bevor sie ausgeführt wird, ist ein Enforcement-Hook an der Tool-Grenze Ihrer Laufzeitumgebung erforderlich. [Kontaktieren Sie uns](mailto:support@befailproof.ai), und wir werden die Zuordnung vornehmen.
+Ein Agent, der in **keinem** der zwölf Harnesses läuft, wird direkt über das [Python SDK](/de/reference/custom-agents) instrumentiert. Das ist ein anderer Vertrag, und er sollte klar benannt werden: Das SDK liefert Tracing, Sitzungen, Evaluierungen und Audits — **es setzt Richtlinien jedoch nicht eigenständig durch.** Das Blockieren einer unsicheren Aktion, bevor sie ausgeführt wird, erfordert einen Durchsetzungs-Hook an der Tool-Grenze Ihrer Laufzeitumgebung; [kontaktieren Sie uns](mailto:support@befailproof.ai) und wir werden es einrichten.
 
 | Harness | Unterstützte Hook-Scopes |
 | --- | --- |
@@ -20,49 +20,49 @@ Ein Agent, der in **keinem** der zwölf Harnesses läuft, wird direkt mit dem [P
 | Factory Droid, Devin CLI, Antigravity CLI, Goose | User, project |
 | Hermes, OpenClaw | User |
 
-Jede Integration normalisiert ihre nativen Hook-Ereignisnamen, Tool-Namen und Tool-Eingabefelder, bevor Richtlinien ausgeführt werden. Eine Richtlinie kann nur auf Ereignisse reagieren, die der Harness bereitstellt. Testen Sie das Verhalten am Ende eines Turns und das Verhalten bei Anweisungen auf dem genauen Harness und der genauen Version, die Sie einsetzen.
+Jede Integration normalisiert ihre nativen Hook-Ereignisnamen, Tool-Namen und Tool-Eingabefelder, bevor Richtlinien ausgeführt werden. Eine Richtlinie kann nur auf Ereignisse reagieren, die der Harness exponiert; testen Sie das End-of-Turn- und Instruction-Verhalten auf dem genauen Harness und der Version, die Sie deployen.
 
-## Durchsetzungsfähigkeit
+## Durchsetzungsfähigkeiten
 
-„Blockieren" bedeutet, dass das vom aktuellen Adapter zurückgegebene Urteil vom genannten Harness verarbeitet wird. Post-Tool-Blockierung kann das dem Modell angezeigte Ergebnis ersetzen, aber keine Tool-Nebenwirkung rückgängig machen, die bereits eingetreten ist.
+„Blockieren" bedeutet, dass das zurückgegebene Urteil des aktuellen Adapters vom angegebenen Harness verarbeitet wird. Post-Tool-Blocking kann das dem Modell angezeigte Ergebnis ersetzen, aber einen bereits eingetretenen Tool-Nebeneffekt nicht rückgängig machen.
 
-| Harness | Verifizierte Blockierungsereignisse | Nur-Beobachtungs- oder nicht-blockierende Hinweise |
+| Harness | Verifizierte Blockierungsereignisse | Nur-Beobachtungs- oder Nicht-Blockierungs-Hinweise |
 | --- | --- | --- |
-| Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact` und mehrere Task-/Konfigurationsereignisse | `PostToolUse`, Sitzungslebenszyklus, Benachrichtigungen und Post-Fehler-Ereignisse sind beobachtend. |
-| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | Post-Tool-Blockierung ersetzt das Ergebnis nach der Ausführung; Sitzungsstart- und Compact-Ereignisse sind im aktuellen Adapter beobachtend. |
-| GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | Post-Tool-Blockierung ersetzt das Ergebnis nach der Ausführung; Sitzungs- und Benachrichtigungsereignisse sind beobachtend. |
-| Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` und Sitzungsereignisse sind beobachtend. |
-| OpenCode | `PreToolUse` | Post-Tool- und Lebenszyklusereignisse sind beobachtend; die aktuelle Stop-Behandlung ist eine Empfehlung für einen späteren Turn, kein verifiziertes Gate. |
-| Pi | `PreToolUse`, `UserPromptSubmit` | Post-Tool- und Lebenszyklusereignisse sind beobachtend; Stop-Empfehlungen gelten für einen späteren Turn. |
+| Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact` sowie mehrere Task-/Konfigurationsereignisse | `PostToolUse`, Sitzungslebenszyklus, Benachrichtigungen und Post-Failure-Ereignisse sind nur beobachtend. |
+| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | Post-Tool-Blocking ersetzt das Ergebnis nach der Ausführung; Sitzungsstart- und Compact-Ereignisse sind im aktuellen Adapter nur beobachtend. |
+| GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | Post-Tool-Blocking ersetzt das Ergebnis nach der Ausführung; Sitzungs- und Benachrichtigungsereignisse sind nur beobachtend. |
+| Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` und Sitzungsereignisse sind nur beobachtend. |
+| OpenCode | `PreToolUse` | Post-Tool- und Lifecycle-Ereignisse sind nur beobachtend; die aktuelle Stop-Behandlung ist eine Anleitung für einen späteren Turn, kein verifiziertes Gate. |
+| Pi | `PreToolUse`, `UserPromptSubmit` | Post-Tool- und Lifecycle-Ereignisse sind nur beobachtend; Stop-Anleitung gilt für einen späteren Turn. |
 | Hermes | `PreToolUse` | Post-Tool-, Sitzungs- und Subagent-Stop-Urteile sind keine Gates. |
-| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | Post-Tool-, Sitzungs-, Subagent-Stop- und Compaction-Ereignisse sind beobachtend. |
-| Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | Post-Tool- und Subagent-Stop-Urteile sind beobachtend. |
-| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, bedingtes `PermissionRequest` | Permission-Hooks laufen nicht in jedem Permission-Modus; Post-Tool- und Sitzungsereignisse sind beobachtend. |
-| Antigravity CLI | `PreToolUse`, `Stop` | User-Prompt- und Post-Tool-Urteile sind beobachtend; Prompt-Anweisungen können weiterhin injiziert werden. |
-| Goose | `PreToolUse` | User-Prompt-, Post-Tool- und Sitzungsereignisse sind beobachtend. Ein nativer blockierender Stop-Hook existiert im Upstream, wird aber vom aktuellen Adapter nicht installiert. |
+| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | Post-Tool-, Sitzungs-, Subagent-Stop- und Kompaktierungsereignisse sind nur beobachtend. |
+| Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | Post-Tool- und Subagent-Stop-Urteile sind nur beobachtend. |
+| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, bedingtes `PermissionRequest` | Permission-Hooks laufen nicht in jedem Permission-Modus; Post-Tool- und Sitzungsereignisse sind nur beobachtend. |
+| Antigravity CLI | `PreToolUse`, `Stop` | User-Prompt- und Post-Tool-Urteile sind nur beobachtend; Prompt-Anweisungen können trotzdem injiziert werden. |
+| Goose | `PreToolUse` | User-Prompt-, Post-Tool- und Sitzungsereignisse sind nur beobachtend. Ein nativer blockierender Stop-Hook existiert vorgelagert, wird aber vom aktuellen Adapter nicht installiert. |
 
-Die Fähigkeiten sind versionsabhängig. Führen Sie nach dem Upgrade einer Agent-CLI erneut Tests durch, insbesondere wenn eine Richtlinie auf Prompt-, Stop-, Permission- oder Post-Tool-Verhalten statt auf das übliche Pre-Tool-Gate angewiesen ist.
+Die Fähigkeiten sind versionsabhängig. Führen Sie nach einem Upgrade eines Agent-CLI erneute Tests durch, insbesondere wenn eine Richtlinie auf Prompt-, Stop-, Permission- oder Post-Tool-Verhalten anstatt auf das übliche Pre-Tool-Gate angewiesen ist.
 
 ## Capture- und Policy-Hooks installieren
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Öffnen Sie **Verwaltung → Schlüssel** und erstellen Sie einen Schlüssel mit `events:add` und `policies:pull`, benannt nach der Maschine oder Umgebung.
+    1. Öffnen Sie **Administration → Keys** und erstellen Sie einen Schlüssel mit `events:add` und `policies:pull`, benannt nach der Maschine oder Umgebung.
     2. Verbinden Sie auf der Zielmaschine die lokale CLI mit dem angezeigten Schlüssel und installieren Sie die Harness-Hooks.
-    3. Starten Sie eine neue Agent-Sitzung und bestätigen Sie deren Hook- und Sitzungsereignisse unter **Beobachten → Ereignisse**.
-    4. Öffnen Sie **Beobachten → Richtlinie** für dasselbe Zeitfenster und bestätigen Sie, dass eine Richtlinienentscheidung der Maschine zugeordnet wird.
+    3. Starten Sie eine neue Agent-Sitzung und bestätigen Sie dann deren Hook- und Sitzungsereignisse unter **Observe → Events**.
+    4. Öffnen Sie **Observe → policy** für dasselbe Zeitfenster und bestätigen Sie, dass eine Richtlinienentscheidung der Maschine zugeordnet ist.
 
-    Die Verbindung beginnt mit einem Maschinenschlüssel. Vergewissern Sie sich, dass er sowohl Ingestion- als auch Policy-Delivery-Berechtigungen enthält, bevor Sie sein Secret kopieren.
+    Die Verbindung beginnt mit einem Maschinenschlüssel. Stellen Sie sicher, dass er sowohl Ingestion- als auch Policy-Delivery-Berechtigungen enthält, bevor Sie das Secret kopieren.
 
-    ![Die Schublade für neue API-Schlüssel zum Erteilen von Ereigniserfassungs- und Richtlinienlieferberechtigungen.](/images/dashboard/key-create.png)
+    ![Die Drawer-Ansicht für neue API-Schlüssel zum Erteilen von Ereignisaufnahme- und Richtlinienlieferungsberechtigungen.](/images/dashboard/key-create.png)
 
     Nach der Installation der Hooks sollte der Ereignis-Stream neue Ereignisse von der verbundenen Maschine und Umgebung anzeigen.
 
-    ![Der Live-Ereignis-Stream zur Bestätigung, dass ein neu installierter Harness meldet.](/images/dashboard/events-stream.png)
+    ![Der Live-Ereignis-Stream zum Bestätigen, dass ein neu installierter Harness Berichte sendet.](/images/dashboard/events-stream.png)
 
     Überprüfen Sie abschließend, ob Richtlinienentscheidungen derselben Maschine zugeordnet werden. Dies bestätigt, dass der Harness sowohl Richtlinienaktivitäten als auch Trace-Ereignisse meldet.
 
-    ![Die Richtlinienseite zur Überprüfung von Richtlinienentscheidungen eines neu verbundenen Harnesses.](/images/dashboard/policy-observe.png)
+    ![Die Policy-Seite zum Überprüfen von Richtlinienentscheidungen eines neu verbundenen Harness.](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
     Hooks für alle erkannten Harnesses installieren:
@@ -74,7 +74,7 @@ Die Fähigkeiten sind versionsabhängig. Führen Sie nach dem Upgrade einer Agen
     failproofai policies --install
     ```
 
-    Oder gezielt benannte Harnesses und einen Konfigurationsscope angeben:
+    Oder gezielt benannte Harnesses und einen Konfigurationsscope ansprechen:
 
     ```bash
     failproofai policies --install \
@@ -82,9 +82,9 @@ Die Fähigkeiten sind versionsabhängig. Führen Sie nach dem Upgrade einer Agen
       --scope user
     ```
 
-    Der Project-Scope hält die Hook-Konfiguration bei einem Repository. Der User-Scope deckt die Arbeit über mehrere Repositories hinweg ab. Claude Code unterstützt zusätzlich den Local-Scope; die Unterstützung variiert je nach Harness, und die CLI lehnt nicht unterstützte Kombinationen ab.
+    Der Project-Scope hält die Hook-Konfiguration bei einem Repository. Der User-Scope deckt die Arbeit über Repositories hinweg ab. Claude Code unterstützt außerdem den Local-Scope; die Unterstützung variiert je nach Harness, und die CLI lehnt nicht unterstützte Kombinationen ab.
 
-    Maschine und ihre Ereignisse überprüfen:
+    Die Maschine und ihre Ereignisse überprüfen:
 
     ```bash
     failproofai config --status
@@ -94,16 +94,16 @@ Die Fähigkeiten sind versionsabhängig. Führen Sie nach dem Upgrade einer Agen
   </Tab>
 </Tabs>
 
-## Einen nicht standardmäßigen Sitzungspfad hinzufügen
+## Einen nicht-standardmäßigen Sitzungspfad hinzufügen
 
 <Tabs>
   <Tab title="Dashboard">
-    Zusätzliche Pfade werden auf der Maschine registriert, nicht in der Cloud. Nachdem Sie einen hinzugefügt haben, öffnen Sie **Beobachten → Sitzungen**, filtern Sie nach der Umgebung der Maschine und bestätigen Sie, dass Sitzungen aus dem neuen Pfad erscheinen. Öffnen Sie eine Sitzung und überprüfen Sie Agent, Harness und Ereigniszeitstempel, bevor Sie ihn in einem Audit verwenden.
+    Zusätzliche Pfade werden auf der Maschine registriert, nicht in der Cloud. Nach dem Hinzufügen öffnen Sie **Observe → Sessions**, filtern Sie nach der Umgebung der Maschine und bestätigen Sie, dass Sitzungen aus dem neuen Pfad erscheinen. Öffnen Sie eine Sitzung und überprüfen Sie Agent, Harness und Ereignis-Timestamps, bevor Sie sie in einem Audit verwenden.
 
-    ![Die Sitzungsliste, gefiltert nach der Umgebung, die Daten aus dem zusätzlichen Capture-Pfad empfängt.](/images/dashboard/sessions-list.png)
+    ![Die Sitzungsliste gefiltert nach der Umgebung, die Daten aus dem zusätzlichen Capture-Pfad empfängt.](/images/dashboard/sessions-list.png)
   </Tab>
   <Tab title="CLI">
-    Einen Pfad mit optionalem Label hinzufügen und die konfigurierten Pfade anzeigen:
+    Einen Pfad mit optionalem Label hinzufügen und dann die konfigurierten Pfade prüfen:
 
     ```bash
     failproofai harness add-path claude checkout=/srv/checkout/.claude
@@ -117,5 +117,5 @@ Die Fähigkeiten sind versionsabhängig. Führen Sie nach dem Upgrade einer Agen
 </Tabs>
 
 <Tip>
-  Führen Sie nach der Installation eine neue Sitzung aus. Überprüfen Sie sowohl den Live-Ereignis-Stream als auch eine tatsächliche Richtlinienentscheidung, bevor Sie den Rollout ausweiten.
+  Führen Sie nach der Installation eine neue Sitzung durch. Überprüfen Sie sowohl den Live-Ereignis-Stream als auch eine tatsächliche Richtlinienentscheidung, bevor Sie den Rollout ausweiten.
 </Tip>

@@ -10,12 +10,15 @@ The quality of an audit starts with its scope. A broad request such as “find p
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Analyze → Audits → New audit** and enter the name and description.
-    2. Set the cadence, time window, agent/environment scope, ignored errors, sensitivity, and maximum findings.
-    3. In **agents**, add or review agent context, then add the operator brief and any public HTTPS reference URLs.
-    4. Choose notification channels and select **create audit**. The first run queues immediately.
+    1. Go to **Analyze → Audits → New audit** and enter the name and description. The name is unique per organization; the description records what you expect this audit to catch.
+    2. In **when it runs**, set the cadence and the window. In **what it reads**, narrow the population with environments, agents, and the error types to ignore — an empty field includes everything. In **how it judges**, set sensitivity and findings per run.
+    3. In **what it knows**, write the operator brief and add the pages the audit reads. The brief is background the model reads before it looks at a single event: it is added to what this audit already looks for, never a replacement, and never evidence for a finding.
+    4. Open the **agents** drawer to add or review each agent's context. It saves independently of the audit, and its header counts how many of your agents already have one. See [agent context](/audits/agent-contracts).
+    5. Choose notification channels and select **create audit**. A new audit starts enabled, and its first run queues immediately.
 
     ![The new audit form with name, description, cadence, window, environment and agent scope, ignored errors, analysis settings, brief, reference pages, and notification channels.](/images/dashboard/audit-new.png)
+
+    **agents** in the **what it reads** card is a scope filter — it decides which sessions each run sweeps. What an agent is *for* lives in the separate agents drawer.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -29,16 +32,44 @@ The quality of an audit starts with its scope. A broad request such as “find p
       --url https://runbooks.example.com/checkout
     ```
 
-    The first run queues immediately. Include the brief and reference URLs during creation so that run receives them.
+    Every field except the name has a server default, so a bare `fp audits create nightly` is already a valid daily audit. A name that is taken is rejected up front, before anything is created. New audits start enabled unless you pass `--disabled`, and the first run of an enabled audit queues immediately.
+
+    Base a definition on saved JSON with `--file audit.json` and layer flags on top of it. That is the reproducible path when audit definitions are reviewed or kept in version control.
 
     See the complete [`fp audits create` reference](/reference/cloud-cli#audits).
   </Tab>
 </Tabs>
+
+## Ranges and defaults
+
+The numeric settings are validated on both sides, so an out-of-range value is a usage error rather than a rejected request.
+
+| Setting | CLI flag | Accepted values | Default |
+| --- | --- | --- | --- |
+| Cadence | `--schedule-interval-secs` | 3600–604800 (1 hour to 7 days) | 86400 (daily) |
+| Schedule anchor | `--schedule-anchor` | ISO 8601 UTC; an anchor more than 365 days out is rejected | The next 09:00 UTC |
+| Window | `--window-mode` | `fixed`, `since_last` | `since_last` |
+| Lookback | `--lookback-window-secs` | 3600–7776000 (1 hour to 90 days) | 604800 (7 days) |
+| Sensitivity | `--sensitivity` | `low`, `medium`, `high` | `medium` |
+| Findings per run | `--top-k` | 1 or more | 50 |
+
+The anchor fixes the phase of the schedule: runs land on `anchor + N * interval`, so a slow run or a manual **run now** cannot drift the cadence. The first run is queued immediately on create regardless of the anchor.
+
+## Brief and reference pages
+
+The form shows both limits as counters, and the CLI enforces the same two:
+
+- The brief is capped at 8,192 characters (`--text`, or `--text-file` to read it from a file — pass one or the other, not both).
+- An audit references at most five pages, public `https://` only (`--url`, repeated).
+
+Reference URLs are validated as you save. Private, loopback, and cloud-metadata addresses are refused, and a refused URL fails the whole create — no half-made audit is left behind. Accepted pages are fetched in the background, so a slow site never blocks the save. Every run re-reads them and falls back to the stored snapshot when one cannot be reached, and snapshots refresh on their own weekly. Use `fp audits context-refresh <name>` when you know a page changed and want it picked up before the next run.
+
+Send the brief and the URLs with the create request rather than in a second call. A new enabled audit is due the instant its row commits, so context written afterwards can be overtaken by the dispatcher and miss the first run — the run you are watching. Change it later with `fp audits context-set <name>`, which replaces whichever half you name and leaves the other alone.
 
 <Tip>
   Start with a known failed session and several normal sessions. This gives the audit both a positive example and a comparison set.
 </Tip>
 
 <Info>
-  Audit context is stored as its own resource so editing an audit does not accidentally remove the reference material.
+  Audit context is stored as its own resource. The definition endpoint refuses to write it on update, so an ordinary unrelated edit to the audit can never overwrite the brief or the reference pages.
 </Info>

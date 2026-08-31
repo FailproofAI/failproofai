@@ -11,7 +11,7 @@ import type { IntegrationType } from "../../hooks/types";
 import type { NormalizedToolEvent, TranscriptMetadata } from "../types";
 import type { ListOpts } from "./claude";
 
-import { listClaudeTranscriptMetadata, streamClaudeEvents } from "./claude";
+import { listClaudeTranscriptMetadata, streamClaudeEvents, streamClaudeEventsFrom } from "./claude";
 import { listCodexTranscriptMetadata, streamCodexEvents } from "./codex";
 import { listCopilotTranscriptMetadata, streamCopilotEvents } from "./copilot";
 import { listCursorTranscriptMetadata, streamCursorEvents } from "./cursor";
@@ -26,10 +26,39 @@ import { listGooseTranscriptMetadata, streamGooseEvents } from "./goose";
 
 export type { ListOpts };
 
+/** What an append-only source can hand back when asked to resume. */
+export interface IncrementalEvents {
+  events: NormalizedToolEvent[];
+  /**
+   * How far into the file `events` accounts for, at a LINE boundary — which is
+   * NOT the file size when a transcript is being appended to as it is read. The
+   * trailing partial line is left unparsed and uncounted so the next run picks
+   * it up whole; recording the file size instead would skip it permanently.
+   */
+  bytesConsumed: number;
+  /** The session cwd, when the resumed region carried one. */
+  cwd?: string;
+}
+
 export interface CliAdapter {
   cli: IntegrationType;
   listTranscripts: (opts?: ListOpts) => Promise<TranscriptMetadata[]>;
   streamEvents: (meta: TranscriptMetadata) => Promise<NormalizedToolEvent[]>;
+  /**
+   * Read only the events after `fromByte`, for sources whose transcripts are
+   * append-only files.
+   *
+   * OPTIONAL, and deliberately a separate method rather than a parameter on
+   * `streamEvents`. A parameter an adapter ignored would return the WHOLE
+   * transcript to a caller that is about to merge it into an existing partial
+   * result — every event counted twice, quietly, on exactly the sources that
+   * had not been updated. Absence of this method is what tells the caller it
+   * cannot resume, and there is no way to be wrong about that by omission.
+   */
+  streamEventsFrom?: (
+    meta: TranscriptMetadata,
+    fromByte: number,
+  ) => Promise<IncrementalEvents | null>;
 }
 
 export const ADAPTERS: Record<IntegrationType, CliAdapter> = {
@@ -37,6 +66,7 @@ export const ADAPTERS: Record<IntegrationType, CliAdapter> = {
     cli: "claude",
     listTranscripts: listClaudeTranscriptMetadata,
     streamEvents: streamClaudeEvents,
+    streamEventsFrom: streamClaudeEventsFrom,
   },
   codex: {
     cli: "codex",

@@ -1,47 +1,69 @@
 ---
-title: "정책으로 첫 번째 실패 예방하기"
-description: "정책 버전을 작성하고, 관찰 모드로 배포한 다음, 실제로 적용합니다."
+title: "첫 번째 실패를 방지하세요"
+description: "검토된 정책을 활성화하거나 직접 만든 정책을 테스트해 보세요."
 icon: "shield-check"
 ---
 
-안전하지 않은 동작과 반드시 허용되어야 하는 정상적인 동작을 명확히 설명할 수 있을 때에만 정책을 사용하세요.
+먼저 차단하고 싶은 동작과 계속 허용되어야 하는 정상적인 작업을 파악하세요.
 
-<Tabs>
-  <Tab title="대시보드">
-    <Steps>
-      <Step title="정책 작성">
-        **Admin → policy editor**로 이동합니다. 데모 정책으로 시작하여 소스를 검토하거나 편집한 후 **publish version**을 선택합니다. 게시하면 변경 불가능한 버전이 생성되며, 이 버전을 머신에 배포할 수 있습니다.
+## 검토된 정책으로 시작하기
 
-        ![게시 준비가 된 데모 정책이 표시된 Policy editor 작성 화면.](/images/dashboard/policy-editor.png)
-      </Step>
-      <Step title="머신에 배포">
-        **Admin → enforcement**로 이동하여 대상 머신을 펼치고 **edit this machine**을 선택합니다. 게시된 데모 정책을 추가하고, 버전을 고정한 후 **observe**를 선택하고 배포를 적용합니다.
+```bash
+failproofai policies
+failproofai policies add block-rm-rf
+```
 
-        ![배포 적용 전에 observe 모드로 게시된 정책 버전이 선택된 머신 배포 편집기 화면.](/images/dashboard/enforcement-editor.png)
-      </Step>
-      <Step title="정책 검증">
-        해당 머신에서 새 에이전트 세션을 실행한 후 **Observe → policy**를 엽니다. 머신을 선택하고 데모 정책이 정책 매핑 및 결정 타임라인에 표시되는지 확인합니다. Observe 모드는 실제로 동작을 차단하지 않고, 정책이 어떻게 작동할지를 기록합니다.
+Failproof AI에는 39개의 검토된 정책이 포함되어 있습니다. 새로 작성하기 전에 [카탈로그](/ko/policies/builtin-catalog)를 먼저 확인하세요.
 
-        ![결정 합계, 시간별 실행 활동, 로컬 및 클라우드 관리 정책 매핑이 표시된 Policy 페이지.](/images/dashboard/policy-observe.png)
-      </Step>
-    </Steps>
-  </Tab>
-  <Tab title="CLI">
-    클라우드 정책 작성 및 플릿 배포는 관리자 워크플로우입니다. 로컬 CLI를 사용하여 게시하기 전에 동일한 정책을 검증하세요:
+## 직접 작성하고 테스트하기
 
+<Steps>
+  <Step title="작동하는 정책 만들기">
     ```bash
-    failproofai policies --install --custom ./payment-retry.policies.ts \
-      --cli claude --scope project
-    failproofai config --status
+    failproofai publish --init guards.mjs
     ```
 
-    `fp`를 사용하여 클라우드에서 확인 가능한 정책 결정을 검사합니다:
-
+    이 명령은 `git push --force`를 차단하는 정책을 생성합니다. 원하는 규칙에 맞게 수정하세요.
+  </Step>
+  <Step title="이 머신에 적용하기">
     ```bash
-    fp events --event-type hook_completed --env production --since 24h
-    fp sessions --env production --since 24h
+    failproofai policies -i -c ./guards.mjs
     ```
 
-    두 단계 모두 CLI에서도 사용할 수 있습니다. `fp policies publish <id> <file>`로 버전을 생성하고, `fp fleet deploy <machine-id> --add <id>`로 머신에 배포합니다. 대시보드에서는 **Admin → policy editor**와 **Admin → enforcement**를 통해 동일한 작업을 수행할 수 있습니다.
-  </Tab>
-</Tabs>
+    에이전트에게 차단된 작업을 수행하도록 요청한 후, 로컬 대시보드의 **Policies → Activity**에서 결과를 확인하세요.
+  </Step>
+  <Step title="유지하거나 제거하기">
+    `.failproofai/policies/` 디렉터리 아래에 `*policies.mjs` 파일을 두면 자동으로 로드됩니다.
+
+    명시적으로 추가한 커스텀 파일은 다음 명령으로 제거할 수 있습니다:
+
+    ```bash
+    failproofai policies -u -c
+    ```
+  </Step>
+</Steps>
+
+## 공유하기
+
+공개 팩을 게시하세요:
+
+```bash
+failproofai publish
+```
+
+그러면 누구든 `failproofai policies add <owner>/<repo>`로 설치할 수 있습니다. [Policy Hub](https://befailproof.ai/policy-hub/)에서 인덱싱될 수 있도록 GitHub 토픽 `failproofai-policies`를 직접 추가하세요.
+
+Cloud 배포를 위한 절차:
+
+```bash
+fp policies publish checkout-guard ./guards.mjs
+fp fleet deploy <machine> --add checkout-guard:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add checkout-guard:enforce
+```
+
+<Warning>
+  `--add checkout-guard`만 단독으로 사용하면 즉시 적용됩니다. `:observe`를 추가하면 에이전트를 차단하지 않고 정책이 수행할 동작을 기록만 합니다.
+</Warning>
+
+전체 워크플로우는 [팩 게시하기](/ko/policies/publish-a-pack) 또는 [정책 배포하기](/ko/policies/deploy)를 참고하세요.

@@ -1,26 +1,51 @@
 ---
-title: "Conceptos principales"
-description: "El pequeño conjunto de conceptos utilizados en todo Failproof AI."
+title: "Conceptos fundamentales"
+description: "Los términos utilizados para observar, auditar y proteger agentes."
 icon: "boxes"
 ---
 
-| Concepto | Qué significa | Qué puedes lograr |
-| --- | --- | --- |
-| Session | Una tarea o ejecución de agente | Reconstruir un resultado individual |
-| Event | Una acción registrada en una sesión | Inspeccionar una llamada al modelo, uso de herramienta, error, acción humana o decisión de política |
-| Trace | La vista ordenada y anidada de la sesión | Entender la causalidad en lugar de leer registros desconectados |
-| Evaluation | Una puntuación o juicio sobre una sesión | Rastrear calidad, cumplimiento, costo o latencia de forma continua |
-| Audit | Una revisión de una población de sesiones seleccionada | Buscar patrones de fallo con un objetivo y cadencia definidos |
-| Finding | Un fallo con respaldo de evidencia descubierto por una auditoría | Ver el modo de fallo, la gravedad y las sesiones afectadas |
-| Issue | Un registro de respuesta duradero | Asignar, discutir y resolver un hallazgo o incidente de alerta |
-| Alert | Una regla que detecta recurrencias | Notificar a los responsables cuando una condición conocida vuelve a aparecer |
-| Policy | Una regla evaluada durante la actividad del agente | Observar, bloquear o redirigir comportamiento riesgoso |
-| Deployment | Un despliegue de política versionado a máquinas | Controlar dónde se ejecuta una política y revertirla de forma segura |
+Failproof AI registra lo que hacen los agentes y decide qué pueden hacer.
 
-## El ciclo de confiabilidad
+## Observar
 
-Comienza desde la evidencia. Una sesión muestra lo que ocurrió. Una auditoría determina si es un error aislado o un patrón. Un hallazgo identifica el modo de fallo; un issue gestiona la respuesta. Una política previene el mismo comportamiento, mientras que las alertas te informan si la condición vuelve a aparecer.
+| Término | Significado |
+| --- | --- |
+| Session | Una ejecución de agente |
+| Event | Una acción dentro de una sesión |
+| Trace | La vista ordenada de una sesión |
+| Evaluation | Una puntuación o valoración |
+| Audit | Una revisión de múltiples sesiones |
+| Finding | Evidencia de un patrón de fallo |
+| Issue | La respuesta de la que alguien es responsable |
+| Alert | Una regla que detecta recurrencia |
+
+## Aplicar
+
+| Término | Significado |
+| --- | --- |
+| Harness | El entorno donde se ejecuta un agente |
+| Hook | Un punto donde el harness solicita una decisión |
+| Policy | Una regla que permite, orienta o bloquea |
+| Policy pack | Un conjunto de políticas versionado que cualquiera puede instalar |
+| Daemon | El servicio local que evalúa las políticas |
+| Deployment | Políticas asignadas a una máquina |
+
+## El flujo de trabajo
+
+```text
+Session → Audit → Finding → Issue → Policy
+```
+
+Empieza con evidencia. Identifica el fallo recurrente, asigna la respuesta y luego prevenlo.
+
+Una política devuelve `allow`, `instruct` o `deny`. La orientación mediante `instruct` depende del harness; usa `deny` cuando la acción deba detenerse.
+
+El modo de observación es independiente de la decisión. Ejecuta la política real y registra lo que haría, mientras permite que el agente continúe.
 
 <Warning>
-  Un `failproofai audit` local analiza el historial de agentes locales. Una auditoría recurrente en la nube revisa las sesiones almacenadas en Failproof AI Cloud. Son flujos de trabajo separados con distinto alcance y programación.
+  Un simple `fp fleet deploy <machine> --add <policy>` aplica la política de inmediato. Añade `:observe` para un despliegue en modo sombra.
 </Warning>
+
+La configuración inicial no elige ningún policy pack. Antes de añadir uno, solo se ejecuta `block-failproofai-commands`. El catálogo compilado contiene 39 políticas en 9 categorías.
+
+Consulta los [harnesses compatibles](/es/reference/harnesses#enforcement-capability) antes de asumir que un evento puede bloquear en cualquier entorno de agente.

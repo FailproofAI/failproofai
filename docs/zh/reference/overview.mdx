@@ -1,80 +1,97 @@
 ---
 title: "集成与参考"
-description: "连接支持的 Agent 框架、SDK、CLI 及 HTTP API。"
+description: "连接支持的 agent 运行环境、SDK、CLI 和 HTTP API。"
 icon: "braces"
 ---
 
-选择最适合您当前 Agent 运行环境的集成方式。
+选择最接近您当前 agent 运行环境的集成方式。
+
+本节介绍两个命令行工具，它们各司其职：`failproofai` 运行在 agent 所在的机器上，在 agent 循环内部执行策略；`fp` 与 Failproof AI Cloud 通信，读取该循环的运行记录。机器配置仅支持 Linux 和 macOS——`failproofai config` 在其他系统上会直接拒绝执行，不会写入任何内容，以免留下半配置状态的机器。
 
 <Columns cols={2}>
-  <Card title="Agent 框架" icon="plug-zap" href="/zh/reference/harnesses">
-    为支持的编码和自主 Agent CLI 安装 hook。
+  <Card title="Agent 运行环境" icon="plug-zap" href="/zh/reference/harnesses">
+    为支持的编码和自主 agent CLI 安装 hooks。
   </Card>
   <Card title="Agent 框架与 SDK" icon="plug" href="/zh/start/integrations">
-    接入 LangGraph、CrewAI、LlamaIndex、Pydantic AI 或自定义 Agent。
+    接入 LangGraph、CrewAI、LlamaIndex、Pydantic AI 或自定义 agent。
   </Card>
   <Card title="Python SDK 参考" icon="python" href="/zh/reference/custom-agents">
-    配置项、事件目录、关联规则及数据投递。
+    配置说明、事件目录、关联规则与数据投递。
+  </Card>
+  <Card title="事件与配置" icon="list-tree" href="/zh/reference/events-and-configuration">
+    两种事件词汇表、保留字段以及机器本地的配置文件。
   </Card>
   <Card title="本地仪表板" icon="monitor-cog" href="/zh/reference/local-dashboard">
-    查看本地项目、会话、策略活动及离线审计。
+    查看本地项目、会话、策略活动及离线审计记录。
   </Card>
   <Card title="Failproof AI CLI" icon="terminal" href="/zh/reference/failproof-cli">
-    配置本地采集、hook、策略、审计、数据投递及机器状态。
+    配置本地采集、hooks、策略、审计、数据投递及机器状态。
   </Card>
   <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/zh/reference/cloud-cli#cli-commands">
-    查询和管理云端会话、审计、问题、告警、密钥、用户及设置。
+    查询和管理 Cloud 会话、审计、问题、告警、密钥、用户及设置。
   </Card>
-  <Card title="评估器 SDK" icon="gauge" href="/zh/reference/evaluator-sdk">
+  <Card title="Evaluator SDK" icon="gauge" href="/zh/reference/evaluator-sdk">
     使用 FastAPI 服务对已完成或非活跃会话进行评分。
   </Card>
   <Card title="自定义策略" icon="shield-plus" href="/zh/reference/policy-sdk">
     编写并测试针对特定工作流的 allow、instruct 和 deny 决策。
   </Card>
+  <Card title="HTTP API" icon="code" href="/zh/reference/http-api">
+    公开 `/v1` 接口的自动生成参考文档。
+  </Card>
+  <Card title="故障排查" icon="circle-help" href="/zh/reference/troubleshooting">
+    诊断 hooks 未触发、事件未到达以及意外拦截等问题。
+  </Card>
   <Card title="自托管" icon="cloud-cog" href="/zh/reference/self-hosting">
-    在客户自管理的 Kubernetes 集群上部署云端控制面。
+    在客户自管的 Kubernetes 集群上部署 Cloud 控制平面。
   </Card>
 </Columns>
 
-自动生成的 [HTTP API 参考](/zh/reference/http-api) 涵盖公开的 `/v1` 接口。手写文档页面则说明跨多个端点的工作流，或涉及该公开接口之外的管理界面的操作。
+自动生成的 HTTP API 页面涵盖公开的 `/v1` 接口。手动编写的页面则解释跨多个端点的工作流，或使用该公开接口之外的管理界面。
 
-## 连接 Agent 并验证数据
+## 连接 agent 并验证数据
 
 <Tabs>
   <Tab title="仪表板">
-    1. 打开 **Administration → Keys**，创建一个具有 `events:add` 和 `policies:pull` 权限的密钥，并复制密钥内容。
-    2. 按照上方对应页面完成集成配置。
-    3. 打开 **Observe → Events** 确认事件已到达，再打开 **Observe → Sessions** 确认事件已汇聚为完整的运行记录。
-    4. 按集成环境进行过滤，并检查某个会话，核实审计所需的模型、工具、错误和策略字段是否齐全。
+    1. 打开 **Administration → Keys**，创建一个具有 `events:add` 和 `policies:pull` 权限的密钥，并复制 secret。
+    2. 使用上方对应页面完成集成配置。
+    3. 打开 **Observe → Events** 确认事件已到达，再打开 **Observe → Sessions** 确认事件已组合成完整的运行记录。
+    4. 按集成环境筛选，并检查某个会话中审计所需的模型、工具、错误和策略字段。
 
-    从密钥抽屉开始操作。所选权限决定了该机器是否可以发送事件并接收云端管理的策略。
+    从密钥抽屉开始。所选权限决定了机器能否发送事件和接收云端管理的策略。
 
-    ![用于授予事件摄取和策略下发权限的新建 API 密钥抽屉。](/images/dashboard/key-create.png)
+    ![用于授予事件摄取和策略投递权限的新建 API 密钥抽屉。](/images/dashboard/key-create.png)
 
-    完成集成配置后，使用会话列表确认相关事件已在预期环境中被归组为完整的运行记录。
+    连接集成后，使用会话列表确认其事件已在预期环境中被归组为完整的运行记录。
 
-    ![用于验证新连接集成是否正常上报完整 Agent 运行记录的会话列表。](/images/dashboard/sessions-list.png)
+    ![用于验证新连接的集成是否正常上报完整 agent 运行记录的会话列表。](/images/dashboard/sessions-list.png)
 
-    在确认集成完成之前，请打开其中一个会话进行检查；追踪记录中应包含审计所需的模型、工具、错误和策略等证据。
+    在确认集成完成之前，请打开其中一个会话；追踪记录中应包含审计所需的模型、工具、错误和策略信息。
   </Tab>
   <Tab title="CLI">
-    创建机器密钥，连接 Failproof 守护进程，并验证首个会话。
+    创建机器密钥、配置并连接本机、选择策略，然后验证第一个会话。
 
     ```bash
     fp keys create agent-production \
       --add events:add \
       --add policies:pull
 
-    failproofai config \
-      --connect https://app.befailproof.ai \
-      --token <machine-key>
+    failproofai config --token <machine-key>
+
+    failproofai policies add FailproofAI/policies
 
     failproofai flush --wait
-    fp sessions --since 1h --env production
-    fp events --since 1h --env production --limit 20
+    fp sessions --since 1h
+    fp events --since 1h --limit 20
     ```
 
-    当其他工具需要消费输出结果时，请使用 `fp --json sessions ...`。`--json`、`--org`、`--base-url` 等全局标志必须置于命令之前。
+    两个验证命令都不按环境过滤，因为新配置的机器会将每个事件标记为 `local`。只有在设置 `collector.environment` 之后，才需要加上 `--env production`——详见[更改环境标签](/zh/reference/events-and-configuration#change-an-environment-label)。
+
+    传入 token 即表示请求连接，因此 `failproofai config --token <machine-key>` 一条命令即可完成所有操作。建议优先使用环境变量：以参数形式传入时，机器上的所有用户都可以通过 `ps` 读取，且会留存在 shell 历史记录和 CI 日志中。
+
+    策略步骤不可省略。`failproofai config` 会安装守护进程并接入所有受支持的 agent CLI，但不会主动选择任何策略，因此新配置的机器在您添加策略包之前不会执行任何拦截。
+
+    当其他工具需要消费输出结果时，请使用 `fp --json sessions ...`。`--json`、`--org`、`--base-url` 等全局标志必须放在命令之前。
 
     本地命令请参阅 [Failproof AI CLI 参考](/zh/reference/failproof-cli)，`fp` 命令请参阅 [Failproof Cloud CLI 参考](/zh/reference/cloud-cli#cli-commands)。
   </Tab>

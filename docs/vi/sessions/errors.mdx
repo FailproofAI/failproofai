@@ -1,44 +1,63 @@
 ---
----
 title: "Lỗi"
-description: "Nhóm các lỗi lặp lại và mở các phiên đó."
+description: "Lọc các lỗi lặp lại và mở các phiên làm việc phía sau chúng."
 icon: "circle-alert"
 ---
 
-Errors cho bạn một cái nhìn ưu tiên hỗn loạn trên các phiên. Nhóm theo loại lỗi, agent, môi trường, mô hình, công cụ hoặc cửa sổ thời gian để tìm các vấn đề hoạt động lặp lại.
+Errors cung cấp cho bạn một cái nhìn ưu tiên lỗi trên toàn bộ các phiên làm việc. Lọc theo môi trường, loại sự kiện, loại lỗi, agent hoặc phiên, và điều chỉnh cửa sổ thời gian để tìm các vấn đề hoạt động lặp lại.
 
 ## Điều tra lỗi
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Truy cập **Observe → Errors**.
+    1. Đi tới **Observe → Errors**.
     2. Lọc theo môi trường, loại sự kiện, loại lỗi, agent, ID phiên hoặc văn bản tìm kiếm.
-    3. Mở rộng một lỗi được nhóm để xem các lần xuất hiện. Chọn một hàng để mở sự kiện chính xác trong phiên của nó.
-    4. Chọn điều khiển chuông trên một lỗi đại diện để bắt đầu đặt cảnh báo cho các lỗi tương tự.
+    3. Chọn một hàng để mở sự kiện chính xác trong phiên của nó.
+    4. Chọn **alert** trên một hàng đại diện để bắt đầu cảnh báo cho các lỗi tương tự.
 
-    ![Trang Errors hiển thị biểu đồ lỗi, các lỗi được nhóm và điều khiển tạo cảnh báo.](/images/dashboard/errors.png)
+    ![Trang Errors hiển thị biểu đồ lỗi, danh sách các sự kiện có lỗi được lọc, và điều khiển cảnh báo trên mỗi hàng.](/images/dashboard/errors.png)
   </Tab>
   <Tab title="CLI">
     ```bash
-    fp errors --env production --since 24h
+    fp errors --since 24h
     fp errors --error-type TimeoutError --agent-id checkout-agent
-    fp errors --aggregate --env production --since 7d
+    fp errors --event-type tool_result --since 24h
+    fp errors --aggregate --env local --since 7d
     ```
 
-    Sử dụng `fp events --full --session-id <id>` khi bạn cần tải trọng thô đằng sau một bản tóm tắt lỗi.
+    Một lỗi công cụ được hỗ trợ như một sự kiện `tool_result` có lỗi thay vì một sự kiện `error` đơn thuần, vì vậy `--event-type tool_result` là cách bạn phân biệt các lỗi công cụ với các lỗi mô hình và thời gian chạy. `is_error` và `error_type` là các cột được tính toán bởi máy chủ trên mỗi hàng, vì vậy cả hai chế độ đều không phân tích các tải.
+
+    Khám phá các giá trị bộ lọc hợp lệ thay vì đoán: `fp list error_types`, `fp list agents`, `fp list envs`, và `fp list event_types`.
+
+    **Năm bộ lọc `fp errors` này chỉ nhận chính xác một giá trị mỗi** — `--env`, `--error-type`, `--event-type`, `--agent-id`, `--session-id`. (`--search` là ngoại lệ và có thể lặp lại.) Các tên cờ tương tự trên `fp events` và `fp sessions` chấp nhận các giá trị lặp lại hoặc được phân tách bằng dấu phẩy, vì vậy `--env prod,staging` hoạt động ở đó và ở đây chỉ khớp với chuỗi ký tự `prod,staging`. Điều đó trả về một kết quả trống thay vì một lỗi, được đọc là "không có lỗi".
+
+    Daemon gắn thẻ sự kiện `local` cho đến khi bạn thay đổi nó, vì vậy `--env production` không khớp với bất cứ thứ gì trên cài đặt chuẩn. Xem [Thay đổi nhãn môi trường](/vi/reference/events-and-configuration#change-an-environment-label).
+
+    `--all` tự động phân trang chỉ lên đến `--limit`, mặc định là 50 — viết `--all --limit 500` khi bạn muốn nhiều hơn thế. Các cờ chế độ danh sách khác là `--order asc|desc`, `--cursor`, `--page-size` (tối đa 200), `--fields`, và `--full-ids`. `--search` có thể lặp lại và áp dụng cho cả hai chế độ — một hàng khớp nếu nó chứa bất kỳ thuật ngữ nào.
+
+    `fp errors` cần `events:read`. Dưới `--json`, chế độ danh sách trả về `{"errors": [...], "next_cursor": ...}` và `--aggregate` trả về `{total, sessions, agents, last_ts, bins}`. Sử dụng `fp events --full --session-id <id>` khi bạn cần tải trọng thô phía sau tóm tắt lỗi.
   </Tab>
 </Tabs>
 
 ## Sử dụng Errors khi bạn cần
 
-- Tìm lớp lỗi phổ biến nhất trong production.
-- Xác định xem một công cụ hoặc mô hình có gây ra làn sóng hay không.
-- Nhảy từ số lượng tổng hợp đến các phiên đại diện.
-- Tạo cảnh báo cho sự lặp lại.
-- Đưa dân số bị ảnh hưởng vào một cuộc kiểm toán.
+- Tìm lớp lỗi phổ biến nhất trong sản xuất.
+- Xác định xem một công cụ hoặc mô hình nào gây ra sự gia tăng.
+- Nhảy từ một đếm tổng hợp đến các phiên đại diện.
+- Tạo một cảnh báo cho sự lặp lại.
+- Bao gồm dân số bị ảnh hưởng trong một cuộc kiểm toán.
 
-Một lỗi là một sự kiện được quan sát. Một đánh giá thất bại là một phán xét chất lượng, và một phát hiện kiểm toán là một mô hình hỗn loạn được điều tra. Giữ các phân biệt đó khi quyết định quy trình phản ứng nào sẽ sử dụng.
+Lỗi là một sự kiện được quan sát. Một đánh giá thất bại là một phán xét về chất lượng, và một phát hiện kiểm toán là một mẫu lỗi đã được điều tra. Giữ các phân biệt đó khi quyết định quy trình phản hồi nào sẽ sử dụng.
 
-<Card title="Tạo cảnh báo" icon="bell-ring" href="/vi/audits/alerts">
-  Thông báo cho những người phản ứng khi một lỗi hoặc điều kiện chất lượng vượt quá ngưỡng.
-</Card>
+## Không có tài khoản Cloud
+
+Errors là một bề mặt Cloud. Trên một máy chưa kết nối, `failproofai audit` quét lịch sử phiên đã có trên đĩa để tìm các mẫu rủi ro và lãng phí và mở `http://localhost:8020/audit`. Thêm `--schedule [days]` để quét lại theo bộ đếm thời gian và gửi email các phát hiện (mặc định 7 ngày, khoảng 1 đến 90), `--status` để kiểm tra xem lên lịch có bật hay không, và `--no-schedule` để dừng nó. Mọi thứ chạy trên máy, với hai ngoại lệ. Một quét lên lịch đăng ID, nhãn, nền tảng của máy này và cửa sổ nó bao phủ trên mỗi lần chạy, bao gồm một lần làm sạch — những gì một quét sạch không tiết lộ là tóm tắt, không phải yêu cầu. Và telemetry CLI ẩn danh được gửi trên mỗi kiểm toán trừ khi bạn đặt `FAILPROOFAI_TELEMETRY_DISABLED=1`.
+
+<CardGroup cols={2}>
+  <Card title="Tạo một cảnh báo" icon="bell-ring" href="/vi/audits/alerts">
+    Thông báo cho những người phản hồi khi một lỗi hoặc điều kiện chất lượng vượt quá ngưỡng.
+  </Card>
+  <Card title="Phát hiện và vấn đề" icon="clipboard-list" href="/vi/audits/findings-and-issues">
+    Biến một lỗi lặp lại thành một mẫu được điều tra với một chủ sở hữu.
+  </Card>
+</CardGroup>

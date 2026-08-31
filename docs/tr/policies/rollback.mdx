@@ -1,41 +1,68 @@
 ---
 title: "Geri Alma"
-description: "Bir dağıtım geçerli aracı çalışmasını kesintiye uğrattığında bilinen bir ilke dağıtımını geri yükleyin."
+description: "Geçerli aracı çalışmasını bozan bir dağıtım sırasında bilinen bir ilke dağıtımını geri yükleyin."
 icon: "rotate-ccw"
 ---
 
 Geri alma, dağıtılan sürümü değiştirir veya bir ilke atamasını kaldırır; olayı açıklayan karar geçmişini silmez.
 
-## Bir makineyi geri alın
+## Makinede geri alma
 
 <Tabs>
-  <Tab title="Dashboard">
-    1. **Admin → enforcement** sayfasına gidin, etkilenen makineyi genişletin ve son bilinen iyi ilke setini belirleyin.
-    2. **edit** seçeneğini seçin, bu sürümleri ve etkileri geri yükleyin ve yeni dağıtımı uygulayın.
-    3. Makine check-in'ini bekleyin, ardından raporlanan dağıtımı doğrulayın.
-    4. **Observe → policy** açın ve etkilenen oturumları açarak geçerli çalışmanın artık engellenip engellenmediğini doğrulayın.
+  <Tab title="Kontrol Paneli">
+    1. **Yönetici → enforcement** bölümüne gidin, etkilenen makineyi genişletin ve son bilinen iyi ilke setini belirleyin.
+    2. **düzenle**'yi seçin, bu sürümleri ve efektleri geri yükleyin ve yeni dağıtımı uygulayın.
+    3. Makine iade alışverişi için bekleyin, ardından bildirilen dağıtımı doğrulayın.
+    4. **Gözlemle → ilke** bölümünü açın ve geçerli çalışmanın artık engellenmediğini doğrulamak için etkilenen oturumları açın.
 
   </Tab>
   <Tab title="CLI">
-    Bulut dağıtımı geri alma işlemi bir dashboard iş akışıdır. Düzeltilen dağıtımın makineye ulaştığını doğrulamak için yerel durumu kullanın:
+    Dönmek istediğiniz jenerasyonu bulun, onu yeniden kurun ve iniş aldığını doğrulayın:
 
     ```bash
+    fp fleet history ci-runner-01
+    fp fleet rollback ci-runner-01 3
+    fp fleet diff ci-runner-01
     failproofai config --status
     ```
 
-    `failproofai config --pause` yerleşik, özel ve kural ilkelerini bir yerel oturum için duraklatır. Bulut tarafından yönetilen ilkeleri duraklatmaz, bu nedenle kötü bir Bulut dağıtımı için bir çözüm değildir.
+    `fp fleet rollback`, sayacı geri almak yerine eski seti taşıyan **yeni** bir jenerasyon oluşturur, böylece geçmiş yalnızca ek olur. Söz konusu jenerasyon o zamandan beri devre dışı bırakılan veya silinen bir ilkeyi adlandırıyorsa reddeder — sunucu, teslim edilemeyen bir seti yeniden kurmak yerine bunu söyler.
+
+    `fp fleet diff`, niyet ile teslimatı gösterir. Bir makine, bir sonraki yoklama yapana kadar kayması okur, bu nedenle geri almanın işe yaramadığı sonucuna varmadan önce farkı kontrol edin. `failproofai config --status` bunu makinenin kendisinde doğrular.
   </Tab>
 </Tabs>
+
+## Duraklatma, geri alma değildir
+
+Bir duraklatma, **bir oturum** için her yerel olarak yüklenmiş ilkeyi askıya alır ve her zaman kendi başına sona erer — paketler, özel dosyalar, kural dosyaları ve yerleşik ilkeler. Yalnızca Cloud tarafından yönetilen ilkeler ve her zaman açık olan `block-failproofai-commands` koruma yürürlükte kalır. Bu nedenle, duraklatma kötü bir Cloud dağıtımına karşı bir geçici çözüm değildir ve göründüğünden daha geniş bir etki alanına sahiptir: paket, temelde tüm yerel yürütmenin bulunduğu yerdir ve paket başarısız kapalı koruma da bu süre boyunca atlanır.
+
+| Komut | Etki |
+|---|---|
+| `failproofai config --pause` | Bu dizinin en yeni aracı oturumu, 30 dakika boyunca |
+| `failproofai config --pause 10m` | Belirli bir zaman. Maksimum 8 saat; `s`/`m`/`h` ekleri, boş bir sayı dakika anlamına gelir |
+| `failproofai config --pause --session <id>` | Belirli bir oturumu hedefleyin |
+| `failproofai config --resume` | Duraklatmayı erken sonlandırın |
+| `failproofai config --resume --all` | Her aktif duraklatmayı sonlandırın |
+| `failproofai config --status` | Neyin duraklatıldığı ve ne zaman kalkacağı |
 
 ## Geri alma zamanı
 
 - Bir ilke beklenen bir üretim eylemini engeller.
-- Eşleşme hacmi, gözlenen dağıtımın tahmin ettiğinden önemli ölçüde daha yüksektir.
-- Bir ilke, bir entegrasyonun sağlamadığı alanlara bağlıdır.
-- Yeni bir sürüm, davranışı amaçlanan hata modunun dışında değiştirir.
+- Eşleştirme hacmi gözlemlenen dağıtımdan materyal olarak daha yüksektir.
+- Bir ilke, bir entegrasyonun sağlamadığı alanları içerir.
+- Yeni bir sürüm hedeflenen hata modunun dışında davranış değiştirir.
 
-Geri alma işleminden sonra, etkilenen oturumları açın ve yanlış pozitiflere neden olan koşulu belirleyin. Yeni bir sürüm oluşturun, hem güvensiz hem de yasal kullanım durumlarını test edin, ardından gözlem aşamasını tekrarlayın.
+Geri almadan sonra, etkilenen oturumları açın ve yanlış pozitife neden olan koşulu belirleyin. Yeni bir sürüm oluşturun, hem güvensiz hem de meşru durumu yerel olarak test edin, ardından yeniden yürütmeden önce gözlemin içinde tekrar gidin:
+
+```bash
+fp policies test ./policy.mjs --tool Bash --command '<the legitimate case>' --expect allow
+fp policies publish my-policy ./policy.mjs
+fp fleet deploy ci-runner-01 --add my-policy:observe
+fp guardrails summary --since 24h --machine ci-runner-01
+```
+
+`:observe`, bunu gölge dağıtımı yapan şeydir. Çıplak `fp fleet deploy ... --add my-policy` **hemen yürürlüğe girer** — atlanmış bir etki zaten dağıtılan etkiye çözülür, ardından `enforce` — geri aldığınız bir ilke üzerinde olayı yeniden kurmak anlamına gelir. Gözlem modu ilkeyi yine gerçekten değerlendirir ve her izin vermeyen kararı kaydeder; yalnızca yürütme tutulur, bu nedenle `fp guardrails summary` yeni sürümü eski sürümü bozan aynı trafiğe karşı ölçer. Sayılar bunu söylediğinde `--add my-policy:enforce` ile yükseltin.
 
 <Warning>
-  Bir olayın ortasında uygulama duraklatılması uygun olabilir, ancak bu, o kapsam içindeki her etkin ilke için riskin genişlemesine neden olur. Mümkün olduğunda belirli ilke sürümünü geri almayı tercih edin.
+  Uygulamayı askıya almak bir olayda uygun olabilir, ancak söz konusu kapsamdaki her aktif ilke için maruziyeti genişletir. Mümkün olduğunda belirli ilke sürümünü geri almayı tercih edin.
 </Warning>

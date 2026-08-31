@@ -1,74 +1,124 @@
 ---
-title: "HTTP API"
-description: "Autenticati all'API pubblica Failproof AI Cloud `/v1` e utilizza il riferimento dell'endpoint generato."
+title: "API HTTP"
+description: "Autenticati all'API pubblica Failproof AI Cloud `/v1` e utilizza il riferimento endpoint generato."
 icon: "braces"
 ---
 
-L'API pubblica è servita sotto `/v1` sull'origine del tuo dashboard Failproof AI.
+L'API pubblica è servita sotto `/v1` sull'origine della tua dashboard Failproof AI. Su Failproof AI Cloud questa origine è `https://app.befailproof.ai`, quindi il percorso base è `https://app.befailproof.ai/v1`. Su un'installazione self-hosted è il tuo host dashboard seguito da `/v1`; passa l'host a `fp` con `--base-url <url>` oppure `FP_DASHBOARD_URL`.
 
-## Crea una chiave e fai una richiesta
+## Crea una chiave e effettua una richiesta
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Apri **Administration → Keys**, seleziona **Create key**, e scegli il preset di permessi più restrittivo che copra l'integrazione.
-    2. Aggiungi singole autorizzazioni solo quando necessario, crea la chiave, e copia il suo segreto monouso.
-    3. Fai una richiesta di test a `/v1/sessions` e conferma che la chiave rimane attiva nella pagina Keys.
-    4. Ruota o disabilita la chiave dal suo menu d'azione quando la proprietà dell'integrazione cambia.
+    1. Apri **Administration → Keys**, seleziona **new key** e scegli il preset di permessi più restrittivo che copra l'integrazione.
+    2. Aggiungi singoli grant solo se necessario, crea la chiave e copia il suo secret monouso.
+    3. Effettua una richiesta di test a `/v1/sessions` e conferma che la chiave rimane attiva nella pagina Keys.
+    4. Ruota o disabilita la chiave dal suo menu azioni quando la proprietà dell'integrazione cambia.
 
-    ![Il nuovo drawer della chiave API con preset di permessi e autorizzazioni individuali.](/images/dashboard/key-create.png)
+    ![Il cassetto della nuova chiave API con preset di permessi e grant individuali.](/images/dashboard/key-create.png)
 
-    Il drawer di creazione è mostrato sopra. Il segreto monouso appare solo dopo che selezioni **create**; copialo prima di chiudere quella conferma.
+    Il cassetto di creazione è mostrato sopra. Il secret monouso appare solo dopo la creazione della chiave; copialo prima di chiudere quella conferma.
   </Tab>
   <Tab title="CLI">
-    Crea una chiave di lettura e usala direttamente con `fp` o `curl`:
+    Crea una chiave di lettura e usala direttamente con `fp` o `curl`. `fp` legge la chiave da `--api-key` oppure da `FP_API_KEY`:
 
     ```bash
     fp keys create reliability-reader \
       --permission-set read-only
 
-    fp --api-key <key> sessions --since 24h
-    ```
-
-    ```bash
-    curl "https://app.befailproof.ai/v1/sessions?limit=20" \
-      -H "Authorization: Bearer $FAILPROOFAI_KEY"
-    ```
-  </Tab>
-</Tabs>
-
-Le chiavi sono limitate a un'organizzazione e un set di permessi. Una richiesta senza il permesso richiesto dall'endpoint restituisce `403` e identifica il permesso mancante.
-
-## Selezione dell'organizzazione
-
-Una chiave dell'organizzazione agisce sulla sua organizzazione automaticamente. Una chiave con scope dell'istanza può selezionare un'organizzazione per richiesta:
-
-<Tabs>
-  <Tab title="Dashboard">
-    Usa il selettore di organizzazione nell'intestazione del dashboard prima di aprire **Administration → Keys**. Le chiavi create lì appartengono all'organizzazione selezionata. Conferma lo slug dell'organizzazione nell'URL e nei dettagli della chiave prima di copiare le credenziali nell'automazione.
-
-  </Tab>
-  <Tab title="CLI">
-    Usa `--org` prima del comando, o invia l'intestazione dell'organizzazione per una chiave API con scope dell'istanza.
-
-    ```bash
-    fp orgs list
+    export FP_API_KEY="<one-time-secret>"
     fp --org reliability-team sessions --since 24h
     ```
 
     ```bash
-    curl "https://app.befailproof.ai/v1/usage" \
-      -H "Authorization: Bearer $FAILPROOFAI_KEY" \
+    curl "https://app.befailproof.ai/v1/sessions?limit=20" \
+      -H "Authorization: Bearer $FP_API_KEY" \
       -H "X-AgentEye-Org: reliability-team"
     ```
   </Tab>
 </Tabs>
 
-Utilizza le pagine degli endpoint generati in questa sezione per i percorsi attuali, i parametri, i requisiti di permesso, e i codici di stato. La specifica è generata dalle annotazioni delle rotte del server e controllata rispetto al router `/v1`.
+Le chiavi sono limitate a un'organizzazione e a una lista piatta di permessi. Un set di permessi semina solo quella lista al momento della creazione — la chiave memorizza i grant espansi, quindi cambiare il set in seguito non modifica la chiave. Una richiesta senza il permesso richiesto dall'endpoint restituisce `403` e identifica il permesso mancante.
 
-La specifica attuale ha copertura completa di rotta, metodo, parametro, permesso, e codice di stato. Alcuni corpi di risposta rimangono intenzionalmente non tipizzati perché il server li costruisce ancora come JSON dinamico. Ispeziona una risposta reale prima di generare un client fortemente tipizzato intorno a un endpoint senza uno schema di risposta.
+## Selezione dell'organizzazione
 
-Usa `Content-Type: application/json` per le scritture JSON. Tratta `401` come autenticazione mancante o non valida, `403` come un'identità valida senza il permesso richiesto, `404` come una risorsa mancante o inaccessibile dall'organizzazione, `409` come un conflitto di stato, e `422` come un valore di campo o permesso non valido. Le risposte di errore includono un messaggio leggibile; i fallimenti di permesso indicano anche l'autorizzazione richiesta.
+Una chiave di organizzazione agisce sulla sua organizzazione automaticamente. Una chiave con scope di istanza seleziona un'organizzazione per richiesta, e un tenant con più di un'organizzazione deve sempre nominarne una in modalità chiave — `fp` non invia mai un'organizzazione salvata quando si autentica con una chiave.
+
+| Chiamante | Come nomini l'organizzazione |
+| --- | --- |
+| `fp`, per singolo invocazione | `--org <slug>`, prima del sottocomando |
+| `fp`, dall'ambiente | `FP_ORG` |
+| HTTP raw | l'header della richiesta `X-AgentEye-Org: <slug>` |
+
+`X-AgentEye-Org` mantiene la sua ortografia originale nel protocollo. È l'header che la dashboard legge per risolvere l'organizzazione attiva, e rinominarlo in un client interrompe la richiesta.
+
+<Tabs>
+  <Tab title="Dashboard">
+    Usa il selettore di organizzazione nell'header della dashboard prima di aprire **Administration → Keys**. Le chiavi create lì appartengono all'organizzazione selezionata. Conferma lo slug dell'organizzazione nell'URL e nei dettagli della chiave prima di copiare le credenziali nell'automazione.
+
+  </Tab>
+  <Tab title="CLI">
+    Usa `--org` prima del comando, oppure invia l'header dell'organizzazione per una chiave API con scope di istanza. `fp orgs list` non scopre lo slug per te qui — rifiuta in modalità chiave; leggi invece lo slug dal selettore di organizzazione della dashboard.
+
+    ```bash
+    fp --org reliability-team sessions --since 24h
+    ```
+
+    ```bash
+    curl "https://app.befailproof.ai/v1/usage" \
+      -H "Authorization: Bearer $FP_API_KEY" \
+      -H "X-AgentEye-Org: reliability-team"
+    ```
+  </Tab>
+</Tabs>
+
+## Paginazione
+
+Gli endpoint di elenco utilizzano paginazione keyset, e lo stesso contratto si applica sia che li chiami tramite `fp` sia tramite `curl`.
+
+| Elemento | Significato |
+| --- | --- |
+| parametro di query `limit` | Righe richieste in questa chiamata. `fp` limita una singola richiesta a 200 righe su ogni endpoint. Una richiesta raw è vincolata dal limite per-endpoint del server. |
+| parametro di query `cursor` | Un token opaco che riprende il feed dopo una pagina precedente. |
+| campo della risposta `next_cursor` | Il token per la pagina successiva. `null` significa che il feed è esaurito. |
+
+Questi limiti differiscono per endpoint, e ogni pagina endpoint nomina il suo default e limite massimo:
+
+| Endpoint | Default | Limite massimo |
+| --- | --- | --- |
+| `/events`, `/events/summary` | 50 | 1000 |
+| `/issues`, `/alerts/{id}/issues` | 200 | 1000 |
+| `/evaluation-jobs` | 100 | 500 |
+| `/audits/findings` | 100 | 500 |
+| `/sessions`, `/evaluations` | 50 | 200 |
+| `/audits/{id}/runs` | 50 | 200 |
+
+Leggi un feed completo ri-inviando la stessa richiesta con `cursor` impostato al `next_cursor` della risposta precedente fino a quando `next_cursor` torna `null`. I flag equivalenti di `fp` — `--all`, `--cursor` e `--page-size` — sono documentati nel [riferimento Cloud CLI](/it/reference/cloud-cli).
+
+## Riferimento endpoint e gestione degli errori
+
+Usa le pagine di endpoint generate in questa sezione per i percorsi correnti, parametri, requisiti di permesso e codici di stato. La specifica è generata dalle annotazioni delle rotte del server e verificata rispetto al router `/v1`.
+
+La specifica attuale ha una copertura completa di rotta, metodo, parametro, permesso e codice di stato. I corpi delle richieste sono tipizzati; i corpi delle risposte non lo sono — la specifica oggi non contiene schemi di risposta, perché il server li costruisce ancora come JSON dinamico. Ispeziona una risposta reale prima di generare un client fortemente tipizzato.
+
+Usa `Content-Type: application/json` per le scritture JSON. Tratta `401` come autenticazione mancante o non valida, `403` come identità valida senza il permesso richiesto, `404` come risorsa mancante o inaccessibile all'organizzazione, `409` come conflitto di stato, `400` come parametro rifiutato — un valore di filtro sconosciuto, un parametro di query malformato, un'istruzione che non potrebbe eseguirsi — e `422` come campo o valore di permesso non valido in un corpo della richiesta. Le risposte di errore includono un messaggio leggibile da umani; i fallimenti di permesso nominano anche il grant richiesto.
+
+## Superfici che `/v1` non trasporta
+
+Le politiche gestite dal cloud, la flotta e il feed di decisioni dei guardrail sono superfici di operatore — letture e scritture allo stesso modo. Sono root-only sul server e deliberatamente assenti da `/v1`, che è rivolta verso internet. Pubblicare una versione di policy o distribuirla a una macchina, ad esempio, non è qualcosa che una chiave API possa fare, e leggere ciò che la flotta ha deciso è sulla stessa superficie.
+
+Una chiave API quindi riceve un rifiuto per design su quelle rotte, e `fp` rifiuta prima di aprire una connessione piuttosto che lasciare che la richiesta 404 senza spiegazione:
+
+| Comando | Comportamento con una chiave API |
+| --- | --- |
+| `fp policies` | Rifiuta con exit `2` e nomina le politiche gestite dal cloud come superficie di operatore |
+| `fp fleet` | Rifiuta con exit `2` e nomina la flotta come superficie di operatore |
+| `fp guardrails` | Rifiuta con exit `2` e nomina il feed di guardrail come superficie di operatore |
+| `fp agent` | Rifiuta con exit `2`; l'assistente è implementato dalla dashboard, non dall'API |
+| `fp orgs` | Rifiuta con exit `2`; l'appartenenza all'organizzazione appartiene a un utente autenticato, e una chiave agisce già per un'organizzazione |
+
+Esegui questi comandi con una sessione utente autenticato (`fp login`) oppure usa la dashboard. Le famiglie di lettura e amministrazione — sessioni, eventi, valutazioni, audit, problemi, avvisi, chiavi, set di permessi, utenti, impostazioni, query e utilizzo — hanno ciascuna una rotta `/v1` e funzionano con una chiave. L'unico gap è `fp keys update`: richiede `keys:update`, un permesso che nessuna chiave API può avere, quindi una chiave può creare e disabilitare chiavi ma non modificare mai i suoi permessi. `fp login` e `fp logout` rifiutano anche in modalità chiave, per un motivo diverso: una chiave è già la credenziale, e non viene mai salvata su disco.
 
 <Warning>
-  L'implementazione dell'enforcement delle policy è intenzionalmente gestita al di fuori della superficie pubblica `/v1` ordinaria. Utilizza il flusso di deployment Cloud supportato.
+  La distribuzione dell'enforcement della policy è intenzionalmente gestita al di fuori della superficie `/v1` pubblica ordinaria. Usa il workflow di distribuzione Cloud supportato descritto in [Deploy policies](/it/policies/deploy).
 </Warning>

@@ -1,35 +1,35 @@
 ---
 title: "自定义策略"
-description: "为 Agent 的特定故障模式编写、测试和部署 JavaScript 或 TypeScript 策略。"
+description: "为您的 Agent 特有的故障编写、测试并部署 JavaScript 或 TypeScript 策略。"
 icon: "shield-plus"
 ---
 
-自定义策略将来自追踪记录或审计中发现的故障模式，转化为 Agent 运行期间实时生效的决策。策略可以允许某个操作、向 Agent 提供指导，或在操作引发新的问题之前将其拒绝。
+自定义策略将您在追踪或审计中发现的故障模式转化为 Agent 运行时执行的决策。策略可以允许某个操作、向 Agent 提供指导，或在操作引发新的事故之前将其拒绝。
 
-当行为取决于你的工具、路径、命令、环境或运营规则时，请使用自定义策略。在动手编写之前，请先查阅[内置策略目录](/zh/policies/builtin-catalog)，避免重复实现已有的控制逻辑。
+当行为取决于您的工具、路径、命令、环境或操作规则时，请使用自定义策略。在此之前，建议先查阅[内置策略目录](/zh/policies/builtin-catalog)，避免重复创建已有的控制项。
 
 ## 编写自定义策略
 
 <Tabs>
   <Tab title="控制台">
-    1. 前往 **Admin → policy editor**，选择 **New policy**，并描述你想要防止的故障。
-    2. 添加策略源码，然后在编辑器中测试预期匹配项和安全的非匹配项。解决所有验证错误。
-    3. 保存草稿，并选择 **Publish version** 创建不可变版本。
-    4. 前往 **Admin → enforcement**，以 **observe** 模式将版本部署到测试机器，并在 **Observe → policy** 下验证其决策，然后再正式执行。
+    1. 前往 **Admin → policy editor**，选择 **New policy**，描述您希望防止的故障。
+    2. 添加策略源代码，在编辑器中测试预期匹配项和安全非匹配项。解决所有验证错误。
+    3. 保存草稿，选择 **Publish version** 创建不可变版本。
+    4. 前往 **Admin → enforcement**，在 **observe** 模式下将版本部署到测试机器，并在 **Observe → policy** 下验证其决策，然后再执行强制操作。
 
     ![用于编写和发布自定义策略的策略编辑器。](/images/dashboard/policy-editor.png)
   </Tab>
   <Tab title="CLI">
-    1. 创建 `.failproofai/policies/checkout-policies.ts`。文件名必须以 `policies.js`、`policies.mjs` 或 `policies.ts` 结尾。
+    1. 使用 `failproofai publish --init` 生成初始策略文件，或手动创建 `.failproofai/policies/checkout-policies.ts`。约定文件名必须以 `policies.js`、`policies.mjs` 或 `policies.ts` 结尾。
     2. 使用 `customPolicies.add()` 注册一个或多个策略。
-    3. 使用 `failproofai policies --install --custom ./.failproofai/policies/checkout-policies.ts --scope project` 验证并安装该文件。
-    4. 触发一个匹配的操作和一个安全的操作。运行 `failproofai policies`，然后在 **Observe → policy** 下检查归因决策。
+    3. 立即在当前机器上强制执行该文件：`failproofai policies -i -c ./.failproofai/policies/checkout-policies.ts`。
+    4. 触发一个匹配操作和一个安全操作。运行 `failproofai policies`，然后在[本地控制台](/zh/reference/local-dashboard)的 **Policies → Activity** 中按来源过滤，查看哪个策略做出了决策。
   </Tab>
 </Tabs>
 
-## 从精确的规则开始
+## 从精确规则开始
 
-以下策略仅在命令目标为生产环境时，才会阻止破坏性的 Kubernetes 命令。不在该故障模式范围内的情况一律返回 `allow()`。
+以下策略仅在命令针对生产环境时才阻止破坏性的 Kubernetes 命令。不属于该故障模式的所有内容均返回 `allow()`。
 
 ```ts
 import { customPolicies, allow, deny } from "failproofai";
@@ -55,20 +55,33 @@ customPolicies.add({
 });
 ```
 
-好的策略应该精确到能用一句话解释清楚。匹配可观察到的操作——而非你推测 Agent 的意图——并在规则不适用时尽早返回 `allow()`。
+好的策略应当精确到可以用一句话来解释。匹配可观察到的操作——而非您期望 Agent 具有的意图——并在规则不适用时立即返回 `allow()`。
 
 ## 选择决策类型
 
-| 函数 | 结果 | 适用场景 |
+| 辅助函数 | 结果 | 使用场景 |
 | --- | --- | --- |
-| `allow(reason?)` | 操作继续执行。 | 策略不适用，或该操作是安全的。 |
-| `instruct(reason)` | 操作继续执行，并在支持的 harness 中向 Agent 提供指导。 | 希望引导 Agent 采取更好的方式，而不强制执行约束条件。 |
-| `deny(reason)` | 在事件和 harness 支持阻断的情况下，操作被阻止。 | 该操作不得执行。 |
+| `allow(reason?)` | 操作继续执行。 | 策略不适用或操作是安全的。 |
+| `instruct(reason)` | 操作继续执行，并将原因通过具有相应通道的运行框架传递给 Agent。 | 您希望引导 Agent 采用更好的方式，而不强制执行约束条件。 |
+| `deny(reason)` | 在已验证能接受阻断裁决的运行框架和事件组合上，操作被阻止。 | 操作不应继续进行。 |
 
-编写原因时，面向需要进行恢复的 Agent。说明检测到了什么，以及它应该怎么做。
+原因应面向需要恢复操作的 Agent 编写。说明检测到了什么，以及 Agent 应该改做什么。
+
+### `instruct()` 实际送达的位置
+
+`instruct()` 需要运行框架中存在额外上下文通道。有六个运行框架在部分或所有事件上不提供此通道；在这些情况下，操作被允许，消息被写入 stderr，Agent 永远不会读取它。
+
+| 运行框架 | 能传递指令的事件 |
+| --- | --- |
+| Claude, Codex, Copilot, Cursor, Devin, OpenCode | `PreToolUse`、`PostToolUse`、`UserPromptSubmit` 和 `PermissionRequest` 以额外上下文形式传递。`Stop` 和 `SubagentStop` 通过重试通道传递。其他所有事件产生的消息会被运行框架忽略。 |
+| Antigravity | 仅 `UserPromptSubmit` 和 `Stop`。 |
+| Factory, Pi, OpenClaw | 仅 `Stop`。 |
+| Hermes, Goose | 无。始终允许并附加一条 stderr 说明。 |
+
+没有任何运行框架会触发全部 29 个规范事件，因此第一行的范围受限于每个框架实际安装的事件——指令只会在该框架实际触发的事件上送达。在依赖某一事件之前，请在 [Agent 运行框架](/zh/reference/harnesses)中查看每个框架已安装的事件集合。
 
 <Warning>
-  不要将 `instruct()` 用于安全边界。指导的传递方式因 Agent harness 而异。当操作必须被阻止时，请使用 `deny()`。
+  不要将 `instruct()` 用于安全边界。在 Hermes 和 Goose 上，它根本无法到达 Agent；在 Antigravity、Factory、Pi 和 OpenClaw 上，它在工具事件上也无法到达 Agent。当必须阻止某个操作时，请使用 `deny()`。
 </Warning>
 
 ## 策略对象
@@ -82,14 +95,16 @@ customPolicies.add({
 });
 ```
 
-| 字段 | 是否必填 | 说明 |
+| 字段 | 是否必填 | 描述 |
 | --- | --- | --- |
-| `name` | 是 | 策略的稳定标识符。跨文件保持名称唯一。 |
-| `description` | 否 | 可读的用途说明，显示在策略列表和决策记录中。 |
-| `match.events` | 否 | 触发该策略的事件类型。省略 `match` 则对所有可用事件生效。 |
+| `name` | 是 | 策略的稳定标识符。确保跨文件唯一。 |
+| `description` | 否 | 人类可读的用途说明，显示在策略列表和决策记录中。 |
+| `match.events` | 否 | 调用该策略的事件类型。省略 `match` 则对所有可用事件调用。 |
 | `fn` | 是 | 同步或异步函数，返回 `allow`、`instruct` 或 `deny` 结果。 |
 
 在 `fn` 内部过滤工具。`match.toolNames` 不属于公开的自定义策略类型。
+
+在包中发布的策略可以携带两个额外字段：`category` 和 `defaultEnabled`。请参阅[从文件到包](#from-a-file-to-a-pack)。
 
 ## 策略上下文
 
@@ -97,19 +112,19 @@ customPolicies.add({
 
 | 字段 | 类型 | 内容 |
 | --- | --- | --- |
-| `eventType` | `HookEventType` | 当前正在评估的规范化事件类型。 |
-| `toolName` | `string \| undefined` | 规范化工具名称，例如 `Bash`、`Read`、`Write` 或 `Edit`。 |
+| `eventType` | `HookEventType` | 当前正在评估的规范化事件。 |
+| `toolName` | `string \| undefined` | 规范工具名称，例如 `Bash`、`Read`、`Write` 或 `Edit`。 |
 | `toolInput` | `Record<string, unknown> \| undefined` | 当前工具调用的规范化输入。 |
-| `payload` | `Record<string, unknown>` | 完整的规范化事件负载。 |
-| `session` | `SessionMetadata \| undefined` | 会话 ID、工作目录、记录路径、权限模式，以及可用时的 harness 元数据。 |
-| `cli` | `string \| undefined` | 来源 Agent harness，例如 `claude`、`codex` 或 `cursor`。 |
-| `params` | `Record<string, unknown>` | 内置策略参数。自定义策略当前接收空对象。 |
+| `payload` | `Record<string, unknown>` | 完整的规范化事件载荷。 |
+| `session` | `SessionMetadata \| undefined` | 会话 ID、工作目录、记录路径、权限模式，以及可用时的运行框架元数据。 |
+| `cli` | `string \| undefined` | 来源 Agent 运行框架，例如 `claude`、`codex` 或 `cursor`。 |
+| `params` | `Record<string, unknown>` | 该策略的参数。内置策略或包策略会声明 schema，用户配置的值会与默认值合并。自定义文件中的策略不声明 schema，因此接收用户在其名称下配置的任何内容，未配置时为 `{}`。 |
 
-将所有可选值视为真正可选的。不同的 Agent 版本和事件类型并不都提供相同的字段。
+将所有可选值都视为真正可选的。不同 Agent 版本和事件类型提供的字段并不完全相同。
 
 ### 常见工具输入
 
-Failproof AI 对支持的 harness 中的常用工具进行了规范化处理，因此策略通常可以使用统一的输入结构。
+Failproof AI 会对支持的运行框架中的常见工具进行规范化，因此策略通常可以使用统一的输入结构。
 
 | 工具 | 常见字段 |
 | --- | --- |
@@ -119,34 +134,34 @@ Failproof AI 对支持的 harness 中的常用工具进行了规范化处理，�
 | `Edit` | `file_path`, `old_string`, `new_string` |
 | `Grep` | `pattern`, `path` |
 
-由于工具输入值的类型为 `unknown`，请使用防御性类型转换：
+由于工具输入值的类型为 `unknown`，请使用防御性强制转换：
 
 ```ts
 const command = String(ctx.toolInput?.command ?? "");
 const filePath = String(ctx.toolInput?.file_path ?? "");
 ```
 
-## 选择事件类型
+## 选择事件
 
 | 事件 | 触发时机 | 典型用途 |
 | --- | --- | --- |
-| `PreToolUse` | 工具执行前。 | 阻断或引导命令、写入、读取和外部操作。 |
-| `PostToolUse` | 工具返回后。 | 在结果传递给 Agent 之前进行检查。deny 会阻断整个结果，而不是脱敏特定字段。 |
-| `PermissionRequest` | Agent 请求权限时。 | 应用组织级别的权限规则。 |
-| `UserPromptSubmit` | 提交的提示词继续执行前。 | 拒绝禁止的指令或添加工作流指导。 |
-| `Stop` | Agent 尝试结束时。 | 要求满足可达的完成条件，例如本地验证步骤。 |
-| `SubagentStop` | 子 Agent 尝试结束时。 | 在委托工作返回父 Agent 之前进行审查。 |
-| `SessionStart` / `SessionEnd` | 会话边界处。 | 记录或检查会话级别的状态。 |
+| `PreToolUse` | 工具执行之前。 | 阻止或引导命令、写入、读取及外部操作。这是守卫点。 |
+| `PostToolUse` | 工具已执行之后。 | 检查或替换模型读取的结果。无法撤销副作用——写入或命令已经发生——并且在十二个运行框架中的十个上，裁决无法阻止任何事情。只有 Codex 和 Copilot 会消费它，即便如此，也是替换模型读取的结果而非阻止调用。永远不要将其用作守卫。 |
+| `PermissionRequest` | Agent 请求权限时。 | 应用组织特定的权限规则。 |
+| `UserPromptSubmit` | 提交的提示继续处理之前。 | 拒绝禁止的指令或添加工作流指导。 |
+| `Stop` | Agent 尝试完成时。 | 要求满足可达的完成条件，例如本地验证步骤。 |
+| `SubagentStop` | 子 Agent 尝试完成时。 | 在委托工作返回父级之前进行把关。 |
+| `SessionStart` / `SessionEnd` | 会话边界处。 | 记录或检查会话级状态。 |
 
-事件的可用性和阻断行为取决于 Agent harness。在混合部署环境中依赖某个事件前，请先参阅 [Agent harnesses](/zh/reference/harnesses)。
+事件可用性和阻断行为取决于 Agent 运行框架，差异很大：Failproof AI 不会为 Goose 或 Hermes 安装 `Stop` 钩子，因此停止守卫在这两者上永远不会触发。在跨混合机队依赖某一事件之前，请参阅 [Agent 运行框架](/zh/reference/harnesses)。
 
 <Accordion title="所有策略事件名称">
-  `SessionStart`、`SessionEnd`、`UserPromptSubmit`、`PreToolUse`、`PermissionRequest`、`PermissionDenied`、`PostToolUse`、`PostToolUseFailure`、`Notification`、`SubagentStart`、`SubagentStop`、`TaskCreated`、`TaskCompleted`、`Stop`、`StopFailure`、`TeammateIdle`、`InstructionsLoaded`、`ConfigChange`、`CwdChanged`、`FileChanged`、`WorktreeCreate`、`WorktreeRemove`、`PreCompact`、`PostCompact`、`Elicitation`、`ElicitationResult`、`UserPromptExpansion`、`PostToolBatch` 和 `Setup`。
+  `SessionStart`、`SessionEnd`、`UserPromptSubmit`、`PreToolUse`、`PermissionRequest`、`PermissionDenied`、`PostToolUse`、`PostToolUseFailure`、`Notification`、`SubagentStart`、`SubagentStop`、`TaskCreated`、`TaskCompleted`、`Stop`、`StopFailure`、`TeammateIdle`、`InstructionsLoaded`、`ConfigChange`、`CwdChanged`、`FileChanged`、`WorktreeCreate`、`WorktreeRemove`、`PreCompact`、`PostCompact`、`Elicitation`、`ElicitationResult`、`UserPromptExpansion`、`PostToolBatch` 和 `Setup`。这是所有运行框架自身事件词汇被规范化后的完整 29 个规范事件名称集合。
 </Accordion>
 
-## 常见策略模式编写示例
+## 编写常见策略模式
 
-### 阻止对受保护路径的写入
+### 阻止向受保护路径写入
 
 ```ts
 import { customPolicies, allow, deny } from "failproofai";
@@ -166,7 +181,7 @@ customPolicies.add({
 });
 ```
 
-### 提供非阻断性指导
+### 提供非阻断式指导
 
 ```ts
 import { customPolicies, allow, instruct } from "failproofai";
@@ -186,7 +201,7 @@ customPolicies.add({
 });
 ```
 
-### 限制会话完成条件
+### 把关会话完成
 
 ```ts
 import { execFileSync } from "node:child_process";
@@ -215,7 +230,7 @@ customPolicies.add({
 ```
 
 <Warning>
-  被拒绝的 `Stop` 事件可能导致 Agent 重试。只在 Agent 在当前环境中能够满足的条件上设置门控，并为每个子进程或网络调用设置超时限制。
+  被拒绝的 `Stop` 事件可能导致 Agent 重试。只在 Agent 能在当前环境中满足的条件上设置把关，并为每个子进程或网络调用设置超时限制。
 </Warning>
 
 ## 加载策略文件
@@ -229,12 +244,29 @@ customPolicies.add({
 ~/.failproofai/policies/personal-policies.mjs
 ```
 
-- 项目和用户策略目录均会被加载。
-- 同一目录内的文件按字母顺序加载。
-- 文件必须以 `policies.js`、`policies.mjs` 或 `policies.ts` 结尾。
+- 项目和用户策略目录都会被加载。
+- 文件在各自目录内按字母顺序加载。
+- 文件名必须以 `policies.js`、`policies.mjs` 或 `policies.ts` 结尾。
 - 一个文件中支持多次调用 `customPolicies.add()`。
-- 支持从本地模块进行相对路径导入。
-- 项目策略可以提交到版本库，使相同的规则随仓库一起传播。
+- 支持从本地模块的相对导入。
+- 项目策略可以提交到版本控制，使相同规则随仓库一起流转。
+
+<Warning>
+  目录中文件名不以 `policies.{js,mjs,ts}` 结尾的文件会被跳过。它看起来已安装，但实际不执行任何策略。加载器会列出每个被跳过的文件及其应重命名的名称；请仔细阅读该警告，而不是想当然地认为策略已生效。本仓库曾以这种方式提交了 `block-version-bumps.mjs`，而在一次错误版本提升后编写的守卫从未执行过哪怕一次。
+</Warning>
+
+`~/.failproofai/policies/` 还包含两个您未手动创建的子目录：`cloud-policies/` 用于机队托管部署，`packs/` 用于已安装的包。加载器不会进入这两个目录，因此其中的内容不会被当作未经验证的约定策略加载。
+
+### 关闭已发现的策略
+
+`policies-config.json` 中的两个键可以在不删除或重命名文件的情况下关闭约定策略：
+
+| 键 | 效果 |
+| --- | --- |
+| `disabledCustomPolicies` | 一个由来源限定的策略 ID 组成的数组，这些策略不会被注册。 |
+| `customPoliciesEnabled` | 设置为 `false` 可完全停止加载 `.failproofai/policies/`。缺省表示已启用。 |
+
+[本地控制台](/zh/reference/local-dashboard)的 **Policies → Configure** 选项卡会自动写入 `disabledCustomPolicies`。`customPoliciesEnabled` 由 `failproofai config` 写入，或手动编辑。
 
 ### 显式文件
 
@@ -247,43 +279,75 @@ failproofai policies --install \
   --scope project
 ```
 
-显式文件优先加载，其次是项目约定文件，最后是用户约定文件。通过两种路径都发现的文件只会加载一次。
+显式文件优先加载，其次是项目约定文件，最后是用户约定文件。通过两种方式都发现的文件只加载一次。
 
 ## 验证与测试
 
-验证过程通过生产加载器执行该模块，并确认它至少注册了一个策略。
+`-c` 是 `--custom` 的缩写，`-i` 是 `--install` 的缩写。它会立即在任意路径、任意文件名下强制执行该文件：
 
 ```bash
-failproofai policies --install \
-  --custom ./.failproofai/policies/checkout-policies.ts \
-  --scope project
+failproofai policies -i -c ./checkout-policies.ts
 failproofai policies
 ```
 
-验证可以发现文件缺失、语法错误、未解析的导入、顶层异常和模块加载超时等问题。但它无法证明你的匹配逻辑是否正确。
+让您的 Agent 执行您所阻止的操作，观察它被拒绝。没有任何内容被发布，其他机器也不受影响。
 
-至少测试以下场景：
+验证会通过生产加载器执行模块，并确认它至少注册了一个策略。它能捕获文件缺失、语法错误、未解析的导入、顶层异常以及模块加载超时。但它无法证明您的匹配逻辑是否正确。
+
+至少测试以下情况：
 
 - 一个必须匹配并产生预期策略原因的操作。
-- 一个相近但安全、必须返回 `allow()` 的操作。
+- 一个邻近但安全、必须返回 `allow()` 的操作。
 - 缺失或格式错误的工具字段。
-- 不同的命令语法、路径、引号、大小写和空白字符。
-- 子进程或网络依赖不可用的情况。
+- 替代命令语法、路径、引号、大小写和空白字符。
+- 不可用的子进程或网络依赖项。
 
-在 **Observe → policy** 下将结果归因到你的自定义策略。如果是其他内置策略做出了决策，则仅有阻断测试通过并不足以说明问题。
+在本地控制台的 **Policies → Activity** 中将结果归因到您的自定义策略。如果是其他内置策略做出了决策，仅有阻断测试是不够的。
 
 ## 运行时行为
 
 - 内置策略在自定义策略之前评估。
 - 第一个 `deny` 会停止后续策略的评估。
-- 在没有策略拒绝事件的情况下，多个 `instruct` 结果可以合并。
-- 策略函数有 10 秒的执行时限。
-- 抛出的异常或超时会被记录日志，并视为 `allow()`。
-- 加载失败的约定文件会被跳过；其他自定义文件和内置策略继续运行。
-- 顶层模块加载同样有 10 秒的时限。
-- 云端观察模式下，策略会运行，但会记录非允许决策而不实际执行。
+- 当没有策略拒绝事件时，多个 `instruct` 结果可以合并。
+- 策略函数有 10 秒的执行截止时间。顶层模块加载也有相同的截止时间。
+- 抛出的异常或超时会被记录，并被视为 `allow()`。
+- 加载失败的约定文件会被跳过；其他自定义文件和内置策略继续执行。
+- 观察模式会真实运行策略，记录所有非 allow 裁决但不强制执行。有两种方式设置：在您发布的包上使用 `failproofai publish --effect observe`，或在 Cloud 部署上使用 `fp fleet deploy <machine> --add <id>:observe`。无论哪种方式，策略都在与强制执行模式相同的 10 秒截止时间下评估，因此超时的策略会被记录为 allow。
 
-保持策略模块的确定性和高效性。避免顶层网络调用或服务器启动。在 `fn` 内部限制工作范围，捕获依赖故障，并有意识地决定故障时应允许还是拒绝该操作。
+### 加载器执行封闭失败的情况
+
+上述失败开放规则适用于您自行添加的文件。以下两种情况故意采用相反的行为，因为两者都意味着该机器被告知具有它实际上并不具备的强制执行能力。
+
+| 情况 | 结果 |
+| --- | --- |
+| 选定的包无法加载，或其固定摘要不匹配 | 该包声明的范围内的每个事件都被拒绝，归因于 `pack/failproofai-pack-unavailable`。`UserPromptSubmit` 使用 instruct 而非 deny，因此您永远不会被锁定在需要用来修复问题的 Agent 之外。不可读的包元数据会扩大被拒绝的范围，而不是缩小它。 |
+| 已完成设置的机器上 `failproofaid` 守护进程无法访问 | 所有事件都被拒绝。不读取任何配置，也不运行自定义策略，因为无法访问的守护进程也无法运行它们。协议版本不匹配也会拒绝，并附带一条指向 `failproofai config` 的消息。 |
+
+在已完成设置的机器上，`failproofaid` 是唯一的评估器，因此您的 `fn` 在守护进程的热工作进程中运行，而非在钩子进程中。钩子客户端允许 150 毫秒来连接，30 秒等待响应，远高于每个策略函数固定的 10 秒截止时间。
+
+保持策略模块的确定性和高效性。避免顶层网络调用或服务器启动。限制 `fn` 内部的工作量，捕获依赖项失败，并有意识地选择该失败应该允许还是拒绝操作。
+
+## 从文件到包
+
+包是将策略文件变为其他机器可以安装的内容的方式。两个命令可以让您从零开始发布一个包：
+
+```bash
+failproofai publish --init
+failproofai publish
+```
+
+`--init` 会询问包的名称，写入 `<name>.mjs`，然后停止。该文件不是带有空白的模板——它是一个已经可以阻止 `git push --force` 的策略，所以您编辑的第一件事就是一个可以工作的内容。用 `failproofai policies -i -c ./<name>.mjs` 在本地验证，然后在包含该文件的 git 仓库内运行 `failproofai publish`。
+
+当策略在包中发布后，有两个字段很重要：
+
+| 字段 | 作用 |
+| --- | --- |
+| `category` | `failproofai policies add <owner>/<repo> --category git,database` 按此字段筛选。 |
+| `defaultEnabled` | 裸命令 `failproofai policies add <owner>/<repo>` 是否开启此策略。默认为 `false`。 |
+
+`--effect` 按包而非按策略设置：`failproofai publish --effect observe` 发布一个记录策略本应做出的决策但不阻止任何内容的包。默认值为 `enforce`。这是单机无 Cloud 连接的观察模式——在本地控制台的 **Policies → Activity** 下读取记录的裁决。
+
+包的版本是构建时所用的 12 字符短提交 sha，因此 `publish` 在 git checkout 之外或在脏工作树上会拒绝执行。完整流程请参阅[发布包](/zh/policies/publish-a-pack)，版本解析方式请参阅[策略包](/zh/policies/packs)。
 
 ## API 导出
 
@@ -291,13 +355,18 @@ failproofai policies
 | --- | --- |
 | `customPolicies.add(policy)` | 在模块加载时注册自定义策略。 |
 | `allow(reason?)` | 允许操作。 |
-| `instruct(reason)` | 允许操作，并在支持的环境中提供指导。 |
-| `deny(reason)` | 在支持的环境中阻断操作。 |
-| `getCustomHooks()` | 返回当前在模块注册表中已注册的策略。 |
+| `instruct(reason)` | 允许操作并在支持的地方提供指导。 |
+| `deny(reason)` | 在支持的地方阻止操作。 |
+| `getCustomHooks()` | 返回当前在模块注册表中注册的策略。 |
 | `clearCustomHooks()` | 清除该注册表，主要用于测试和加载器。 |
 
 TypeScript 导出 `PolicyContext`、`PolicyResult`、`CustomHook`、`PolicyDecision` 和 `PolicyFunction`。
 
-<Card title="部署自定义策略" icon="server-cog" href="/zh/policies/deploy">
-  发布版本、以观察模式部署、验证决策，并推进到正式执行阶段。
-</Card>
+<Columns cols={2}>
+  <Card title="发布包" icon="package" href="/zh/policies/publish-a-pack">
+    将您的策略作为包发布，任何人都可以从公共 GitHub Release 安装。
+  </Card>
+  <Card title="部署自定义策略" icon="server-cog" href="/zh/policies/deploy">
+    发布版本，在观察模式下部署，验证决策，然后切换到强制执行。
+  </Card>
+</Columns>

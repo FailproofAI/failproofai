@@ -1,57 +1,66 @@
 ---
 title: "セッション"
-description: "エージェントの1回の実行記録全体を起点に調査を始める。"
-icon: "workflow"
+description: "エージェントの実行をゴールからツール、意思決定、結果まで追跡します。"
+icon: "route"
 ---
 
-セッションは、エージェントが予期しない動作をした際の最良の出発点です。1回の実行に属するモデルへのリクエスト、レスポンス、ツール呼び出し、人間との対話、エラー、評価、ポリシー決定を一か所に集約します。
+セッションとは、エージェントの1回の実行を指します。プロンプト、モデル呼び出し、ツール、エラー、人間の入力、ポリシーの決定、そして最終的な結果を一連でつなぎます。
 
-セッションの表示形式は、どのハーネスが生成したかに関わらず統一されています。リポジトリを書き換える Claude Code の実行、Slack で顧客対応する Hermes エージェント、SDK でインストルメントされた Python サービス——いずれも同じトレース形式に格納されるため、1つのビューでフリート全体を把握できます。
-
-<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with Failproof AI" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
-</div>
-
-エージェントの1回の実行を、目標設定からモデル呼び出し、ツール利用、最終レスポンスまで追跡します。
-
-## セッションを見つける
+## セッションの保存場所
 
 <Tabs>
-  <Tab title="ダッシュボード">
-    1. Cloud サイドバーで **Observe → Sessions** に移動します。
-    2. 時間ウィンドウを設定し、環境・ステータス・エージェント・セッション ID でフィルタリングします。
-    3. 品質・コスト・トークン・レイテンシで絞り込む場合は、スコアやメトリクスの範囲を追加します。
-    4. 行を選択してトレースを開きます。セッション ID の横にあるコピーコントロールを使って共有できます。
-
-    ![環境・エージェント・ステータス・評価スコアのフィルターとともに、1行1実行で表示されたセッション一覧。](/images/dashboard/sessions-list.png)
+  <Tab title="ローカル">
+    `failproofai` を実行すると、`http://localhost:8020` でダッシュボードが開きます。セッション履歴はこのマシン上に保存されます。
   </Tab>
-  <Tab title="CLI">
+  <Tab title="クラウド">
+    マシンを接続してから、**Observe → Sessions** を開きます。
+
     ```bash
-    fp sessions --env production --since 24h
-    fp sessions --status error,timeout --agent-id checkout-agent
-    fp --json sessions --session-id <session-id>
+    export FAILPROOFAI_CLOUD_TOKEN="<key>"
+    failproofai config
     ```
 
-    `--agents` でマルチエージェント実行を展開、`--all` でページネーション、`--fields` で出力カラムを選択できます。
+    クラウドはデフォルトで完全なトランスクリプトを受信します。ポリシーの決定のみを送信するには、まず接続してから `~/.failproofai/config.json` の `collector.sessions` を `false` に設定してください。現在の `--no-transcripts` セットアップフラグでは、この設定は適用されません。
   </Tab>
 </Tabs>
 
-## できること
+セッションは、12のサポート対象[エージェントハーネス](/ja/reference/harnesses)と[Python SDK](/ja/reference/custom-agents)でインストゥルメント化されたエージェントから取得されます。
 
-- エージェント・環境・時間・モデル・イベント種別・エラー状態でセッションを検索する。
-- ある結果を生んだ正確な処理シーケンスを追跡する。
-- 成功した実行と失敗した実行を比較する。
-- 監査の発見事項やアラートインシデントで使用された証拠を開く。
-- オフライン記録が必要な場合にセッションをエクスポートする。
+## セッションを検索する
 
-## 信頼できる調査の順序
+クラウドでは、時刻、環境、ステータス、エージェント、またはセッションIDでフィルタリングできます。CLIからの場合：
 
-1. セッションの目標と環境を確認する。
-2. 最終的な失敗だけでなく、最初のエラーや予期しない判断を見つける。
-3. その直前のモデルコンテキストとツール入力を調べる。
-4. リトライ・レイテンシ・人間による割り込みを確認する。
-5. 評価スコアとポリシー決定をレビューする。
+```bash
+fp sessions --since 24h
+fp sessions --status error,timeout --agent-id checkout-agent
+fp --json sessions --session-id <session-id>
+```
 
-<Card title="トレースを読む" icon="route" href="/ja/sessions/read-a-trace">
-  セッションのサマリーから、結果を引き起こしたイベントへと辿る方法を学びます。
-</Card>
+評価されなかった失敗には `fp errors --since 24h` を使用してください。`fp sessions --status` は最新の評価結果を使用するため、未評価のセッションにはステータスがありません。
+
+## 実行内容を読む
+
+1. エージェントのゴールと環境を確認します。
+2. 最初のエラーまたは予期しない決定を見つけます。
+3. その直前のモデルコンテキストとツールの入力を調べます。
+4. リトライ、レイテンシ、人間による中断を確認します。
+5. 評価とポリシーの決定をレビューします。
+
+## セッションが見つからない場合
+
+```bash
+failproofai flush --wait
+failproofai config --status
+failproofai backfill --since 30d --dry-run
+```
+
+別のプロファイル、コンテナのホーム、またはマウントされたチームディレクトリなど、セッションがハーネスの通常の場所以外に存在する場合は、`failproofai harness add-path <harness> [<label>=]<path>` を使用してください。
+
+<CardGroup cols={2}>
+  <Card title="トレースを読む" icon="route" href="/ja/sessions/read-a-trace">
+    結果を引き起こしたイベントを見つけます。
+  </Card>
+  <Card title="ポリシーの決定" icon="shield-check" href="/ja/sessions/policy-decisions">
+    何が許可、誘導、またはブロックされたかを確認します。
+  </Card>
+</CardGroup>

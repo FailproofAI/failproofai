@@ -1,57 +1,66 @@
 ---
 title: "会话"
-description: "从一次 Agent 运行的完整记录开始。"
-icon: "workflow"
+description: "追踪一次智能体运行的完整过程：从目标设定到工具调用、决策过程，直至最终结果。"
+icon: "route"
 ---
 
-当 Agent 行为异常时，会话是最佳的排查起点。它将属于同一次运行的模型请求、响应、工具调用、人工交互、错误、评估以及策略决策汇聚在一起。
+会话代表一次完整的智能体运行。它将提示词、模型调用、工具使用、错误信息、人工输入、策略决策和最终结果串联在一起。
 
-无论由哪种运行框架产生，会话的格式都保持一致。在 Claude Code 中重写代码仓库的运行、在 Slack 中回复客户的 Hermes Agent，以及通过 SDK 埋点的 Python 服务，都会落入相同的追踪格式，因此一个视图即可覆盖整个 Agent 群。
-
-<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with Failproof AI" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
-</div>
-
-跟踪一次 Agent 运行，从目标出发，经历模型调用、工具使用，直至最终响应。
-
-## 查找会话
+## 会话存储位置
 
 <Tabs>
-  <Tab title="控制台">
-    1. 在 Cloud 侧边栏中，前往 **Observe → Sessions**。
-    2. 设置时间范围，然后按环境、状态、Agent 或会话 ID 进行筛选。
-    3. 当需要按质量、成本、Token 或延迟切片时，添加分数或指标范围。
-    4. 选择某一行以打开其追踪。分享时可使用会话 ID 旁边的复制按钮。
-
-    ![会话列表，每次运行显示一行，包含环境、Agent、状态和评估分数筛选器。](/images/dashboard/sessions-list.png)
+  <Tab title="本地">
+    运行 `failproofai` 即可在 `http://localhost:8020` 打开控制台。会话历史记录保存在本机。
   </Tab>
-  <Tab title="CLI">
+  <Tab title="云端">
+    连接机器后，打开 **Observe → Sessions**：
+
     ```bash
-    fp sessions --env production --since 24h
-    fp sessions --status error,timeout --agent-id checkout-agent
-    fp --json sessions --session-id <session-id>
+    export FAILPROOFAI_CLOUD_TOKEN="<key>"
+    failproofai config
     ```
 
-    添加 `--agents` 可展开多 Agent 运行，`--all` 可翻页，`--fields` 可选择输出列。
+    默认情况下，云端会接收完整的会话记录。如果只想上传策略决策数据，请先完成连接，然后在 `~/.failproofai/config.json` 中将 `collector.sessions` 设置为 `false`。当前的 `--no-transcripts` 配置标志不会应用该设置。
   </Tab>
 </Tabs>
 
-## 你可以做什么
+会话数据来自 12 种受支持的[智能体运行环境](/zh/reference/harnesses)，以及通过 [Python SDK](/zh/reference/custom-agents) 接入的自定义智能体。
 
-- 按 Agent、环境、时间、模型、事件类型或错误状态查找运行记录。
-- 追踪产生某一结果的精确执行序列。
-- 对比成功与失败的运行。
-- 打开审计发现或告警事件所依据的原始证据。
-- 在需要离线记录时导出会话。
+## 查找会话
 
-## 可靠的排查顺序
+在云端，可按时间、环境、状态、智能体或会话 ID 进行筛选。通过命令行操作：
 
-1. 确认会话目标和运行环境。
-2. 找到第一个错误或意外决策——而不仅仅是最终的失败点。
-3. 检查错误发生之前的模型上下文和工具输入。
-4. 检查重试次数、延迟和人工中断情况。
-5. 查看评估分数和策略决策。
+```bash
+fp sessions --since 24h
+fp sessions --status error,timeout --agent-id checkout-agent
+fp --json sessions --session-id <session-id>
+```
 
-<Card title="读取追踪" icon="route" href="/zh/sessions/read-a-trace">
-  了解如何从会话摘要定位到导致结果的具体事件。
-</Card>
+使用 `fp errors --since 24h` 可查看从未经过评估的失败记录。`fp sessions --status` 基于最新的评估结果进行过滤，因此未经评估的会话不会显示状态。
+
+## 分析一次运行
+
+1. 确认智能体的目标和运行环境。
+2. 找到第一个错误或异常决策。
+3. 检查该事件发生前的模型上下文和工具输入。
+4. 查看重试次数、延迟情况和人工中断记录。
+5. 审查评估结果和策略决策。
+
+## 会话缺失时的处理方法
+
+```bash
+failproofai flush --wait
+failproofai config --status
+failproofai backfill --since 30d --dry-run
+```
+
+当会话文件不在运行环境的默认路径下（例如存储在其他用户配置目录、容器 home 目录或团队共享挂载目录中）时，请使用 `failproofai harness add-path <harness> [<label>=]<path>` 手动指定路径。
+
+<CardGroup cols={2}>
+  <Card title="读取追踪记录" icon="route" href="/zh/sessions/read-a-trace">
+    找出导致当前结果的关键事件。
+  </Card>
+  <Card title="策略决策" icon="shield-check" href="/zh/sessions/policy-decisions">
+    查看执行机制允许、引导或拦截了哪些操作。
+  </Card>
+</CardGroup>

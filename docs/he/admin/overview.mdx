@@ -1,40 +1,74 @@
 ---
 title: "ניהול"
-description: "נהל גישה, שימוש, ארגונים וביטחון ללא ערבוב שלהם לתוך זרימת העבודה של האמינות."
+description: "נהל גישת Cloud, חברות, הגדרות וצריכה ללא ערבוב שלהם לתוך זרימת עבודת האמינות."
 icon: "settings-2"
 ---
 
-ניהול מכיל את הפקדים הנדרשים להפעיל את Failproof AI בצוות. רוב הקוראים יכולים להישאר ב-Sessions, Audits ו-Policies; מנהלי מערכת משתמשים בחלק זה כדי לנהל גישה וגבולות הפעלה.
+ניהול הוא החלק של Cloud ב-Failproof AI. ארגונים, חברים, מפתחות API, הגדרות ארגון וצריכה מדודה כולם דורשים חיבור Cloud.
+
+<Note>
+  Failproof AI פועל גם ללא חשבון כלל. מכונה מקומית אוכפת מדיניות, שומרת את היסטוריית ההפעלות שלה בדיסק, משרתת את [לוח המחוונים המקומי](/he/reference/local-dashboard) על `localhost:8020`, ומריצה `failproofai audit` ללא שליחת משהו לשום מקום. ראה [תצורת מכונה](/he/reference/events-and-configuration#machine-configuration) עבור מפתחות `collector` מקומיים. דלג על שאר הסעיף הזה אם אתה לא משתמש בـ Cloud.
+</Note>
+
+## היכן נמצאים הפקדים
 
 <Tabs>
   <Tab title="Dashboard">
-    השתמש בסעיף **Admin** של סרגל הצד של Cloud עבור **policy editor**, **enforcement**, **usage**, **keys**, **users** ו-**settings**. פריט נעול מציין שלחשבון שלך חסרה הרשאת קריאה.
+    **קבוצת admin** בסרגל הצד של Cloud מחזיקה **עורך מדיניות**, **אכיפה**, **שימוש**, **מפתחות**, **משתמשים**, ו**הגדרות**.
 
-    ![סעיף Admin של סרגל הצד של Cloud עם policy editor, enforcement, usage, keys, users ו-settings.](/images/dashboard/admin-navigation.png)
+    ![קבוצת admin של סרגל הצד של Cloud עם עורך מדיניות, אכיפה, שימוש, מפתחות, משתמשים והגדרות.](/images/dashboard/admin-navigation.png)
   </Tab>
   <Tab title="CLI">
+    התקן את Cloud CLI ככלי מבודד, ואז היכנס:
+
     ```bash
+    uv tool install fp-cloud-cli
+    fp login
     fp whoami
-    fp orgs current
-    fp orgs perms
     fp usage
     ```
 
-    הצב אפשרויות גלובליות לפני הפקודה, לדוגמה `fp --org reliability-team --json usage`.
+    שים אפשרויות גלובליות לפני הפקודה, לדוגמה `fp --org reliability-team --json usage`.
   </Tab>
 </Tabs>
 
+## אדם שנכנס, או מפתח API
+
+`fp` פועל באחד משני מצבי הנמקה, והחלוקה קובעת אילו פקודות פועלות. פקודה שמפתח API אינו יכול לבצע מסרבת לפני שהוא פותח חיבור וממנה את הסיבה, במקום להשאיר 401 או 403 לעמוד במקומו.
+
+| פקודה | מפתח API | הרשאה |
+| --- | --- | --- |
+| `fp whoami` | כן | אף אחד |
+| `fp usage` | כן | `usage:read` |
+| `fp keys list` / `show` | כן | `keys:read` |
+| `fp keys create` | כן | `keys:create` |
+| `fp keys disable` | כן | `keys:disable` |
+| `fp keys regenerate` | כן | `keys:regenerate` |
+| `fp keys update` | לא | `keys:update`, שאף מפתח לא יכול להחזיק |
+| `fp users list` / `show` | כן | `users:read` |
+| `fp users create` | כן | `users:create` |
+| `fp users update` | כן | `users:update` |
+| `fp users disable` / `enable` | כן | `users:delete` |
+| `fp settings list` / `schema` | כן | `settings:read` |
+| `fp settings set` | כן | `settings:write` |
+| `fp orgs list` / `switch` / `current` / `perms` | לא | הפעלה שנכנסה בלבד |
+
+`fp usage` היא הפקודה שניתן להעביר לסקריפט דיווח: היא פועלת ללא השגחה תחת מפתח ודורשת רק `usage:read`.
+
 <Columns cols={2}>
-  <Card title="שימוש" icon="chart-no-axes-combined" href="/he/admin/usage">
-    בדוק חלונות חיוב וצריכת ארגון.
-  </Card>
   <Card title="מפתחות והרשאות" icon="key-round" href="/he/admin/keys-and-permissions">
-    תן למכונות ואוטומציה רק את ההרשאות שהן דורשות.
+    צור את אישור המכונה, והעניק לכל עומס עבודה רק את ההענקות שהוא צריך.
   </Card>
   <Card title="משתמשים וארגונים" icon="users" href="/he/admin/users-and-organizations">
-    נהל חברות, ברירות מחדל וגבולות ארגוניים.
+    נהל חברות, ושמור על מתחם נתונים וביצוע של כל ארגון.
   </Card>
-  <Card title="הגדרות וביטחון" icon="lock-keyhole" href="/he/admin/settings-and-security">
-    קבע הגדרות הפעלה, טיפול בנתונים וביטחון פריסה.
+  <Card title="הגדרות ובטיחות" icon="lock-keyhole" href="/he/admin/settings-and-security">
+    קבע ערכי כניסה וזינוק, והחליט אילו נתוני סוכן עוזבים מכונה.
+  </Card>
+  <Card title="שימוש" icon="chart-no-axes-combined" href="/he/admin/usage">
+    קרא מה הארגון מדד במהלך חלון ה-30 יום הנוכחי שלו.
+  </Card>
+  <Card title="כיסוי צי" icon="network" href="/he/policies/fleet">
+    ראה אילו מכונות רשומות, כיצד הן מזוהות, ומה הן אוכפות.
   </Card>
 </Columns>

@@ -1,84 +1,103 @@
 ---
 title: "البدء السريع"
-description: "التقط جلسة وكيل، ابحث عن عطل، وابدأ في منعه."
+description: "قم بإعداد جهاز واحد واختر السياسات وانظر إلى ما يفعله وكلاؤك."
 icon: "zap"
 ---
 
-يوضح هذا البدء السريع كيفية جعل جهاز واحد يرسل الجلسات، وتشغيل تدقيق، ونشر سياسة. استخدم المهارة لإعداد Failproof AI، أو اتبع الخطوات اليدوية.
+قم بإعداد Failproof AI على جهاز واحد، ثم ابقَ محليًا أو تواصل مع Cloud.
 
-**أي مسار هو مسارك؟** إذا كان وكيلك يعمل في أحد [الأطر](/ar/reference/harnesses) الـ 12 المدعومة — واجهة سطر أوامر لكتابة الأكواد، أو بوابة مثل Hermes أو OpenClaw — اتبع الخطوات أدناه؛ تحتاج Node.js 20.9 أو إصدار أحدث. إذا كان وكيلك لا يحتوي على إطار، فقم بتجهيزه باستخدام [Python SDK](/ar/reference/custom-agents) للتتبع والتدقيقات، ثم عد إلى [تشغيل فحص الفشل الأول الخاص بك](/ar/start/first-audit)؛ الإنفاذ في هذا المسار يتطلب خطاف في وقت التشغيل الخاص بك.
+إذا كان وكيلك يعمل في [harness مدعوم](/ar/reference/harnesses)، اتبع هذه الخطوات. بالنسبة للوكلاء المبنيين باستخدام LangChain أو CrewAI أو LlamaIndex أو Pydantic AI أو بيئة التشغيل الخاصة بك، ابدأ بـ [instrument your agent](/ar/start/integrations).
 
-<Tabs>
-  <Tab title="استخدام المهارة">
-    <Steps>
-      <Step title="تثبيت مهارات Failproof AI">
-        ```bash
-        npx skills add FailproofAI/skills
-        ```
-      </Step>
-      <Step title="اطلب من وكيلك إعداد كل شيء">
-        ```text
-        Set up Failproof AI for this project, connect this machine, install the right hooks and policies, and verify that a session arrives.
-        ```
+## دع وكيلك يوجه الإعداد
 
-        يقوم وكيلك بفحص المشروع، واختيار التكامل ذي الصلة، وتنفيذ الإعداد، والتحقق منه. راجع [مستودع مهارات FailproofAI](https://github.com/FailproofAI/skills) للحصول على المهارات الفردية وخيارات التثبيت المتقدمة.
-      </Step>
-    </Steps>
-  </Tab>
-  <Tab title="الإعداد اليدوي">
-    ## قبل أن تبدأ
-
-1. افتح [لوحة تحكم Failproof AI](https://app.befailproof.ai) وأنشئ حسابًا أو سجل الدخول باستخدام بريدك الإلكتروني للعمل.
-2. انتقل إلى **Administration → Keys** وأنشئ مفتاحًا باستخدام `events:add` و `policies:pull`.
-3. انسخ السر لمرة واحدة وخزنه على الجهاز الهدف:
+قم بتثبيت مهارة Failproof AI الشاملة في وكيل متوافق:
 
 ```bash
-export FAILPROOFAI_KEY="<one-time-secret>"
+npx skills add FailproofAI/skills
 ```
 
-    ## التثبيت
+يقوم هذا بتثبيت المهارة الشاملة ومهارات الأخصائيين الخاصة بها. استخدم `--skill failproofai` إذا كنت تريد المهارة الشاملة فقط. إنها تفهم الإعداد المحلي و Cloud وصحة daemon والجلسات والتدقيق والسياسات وحل المشاكل. فهي توجه العمل وتوجه المهام المتخصصة إلى مهارة Failproof AI الصحيحة؛ وهي لا تحل محل تثبيت CLI أدناه.
+
+## إعداد الجهاز
 
 <Steps>
-  <Step title="تثبيت Failproof AI والاتصال به">
+  <Step title="قم بتثبيت وتكوين Failproof AI">
     ```bash
     npm install -g failproofai
-    failproofai config --connect https://app.befailproof.ai --token "$FAILPROOFAI_KEY"
+    failproofai config
     ```
 
-    يتم إرسال نسخ جلسات العمل بشكل افتراضي. أضف `--no-transcripts` للإبلاغ عن نشاط الخطاف وقرارات السياسة دون محتوى النسخة.
+    يقوم الإعداد بتثبيت خدمة الخلفية وربط كل وكيل مدعوم يجده. قد يطلب وصول المسؤول مرة واحدة. يدعم Linux و macOS.
+  </Step>
 
-    إذا كان لديك هذا الجهاز بالفعل سجل وكيل، فقم بمعاينة واستيراد آخر سبعة أيام، ثم انتظر انتهاء التسليم. تخطَّ هذه الخطوة على جهاز جديد.
+  <Step title="اختر السياسات">
+    الإعداد لا يختار أي مجموعة سياسات. أضف مجموعة Failproof AI:
 
     ```bash
-    failproofai backfill --since 7d --dry-run
-    failproofai backfill --since 7d
-    failproofai flush --wait
+    failproofai policies add FailproofAI/policies
+    failproofai policies
     ```
 
-    افتح **Sessions** في Failproof AI واختر جلسة تم استيرادها.
+    الأمر الثاني يعرض كل سياسة على هذا الجهاز وما إذا كانت مفعلة. حتى تضيف مجموعة، فقط `block-failproofai-commands` يعمل.
   </Step>
-  <Step title="تثبيت خطافات الوكيل والسياسات">
-    يرفق هذا Failproof AI بإطارك ويثبت السياسات المدمجة الـ 39. استخدمها لمشاهدة قرارات السياسة المحلية وتجربة الإنفاذ قبل أن يدقق Failproof AI جلساتك وينشئ سياسات لوكلائك.
 
-    دع المثبت يكتشف إطارك، أو سمِّ واحدًا بشكل صريح. كل واحد من الـ 12 هو قيمة `--cli` صحيحة — `claude`، `codex`، `copilot`، `cursor`، `opencode`، `pi`، `hermes`، `openclaw`، `factory`، `devin`، `antigravity`، `goose`.
-
+  <Step title="تحقق من الجهاز">
     ```bash
-    failproofai policies --install --cli claude --scope user     # a coding CLI
-    failproofai policies --install --cli hermes --scope user     # a Slack/Telegram gateway
+    failproofai config --status
     ```
 
-    يتم التحقق من حجب استدعاء أداة قبل تشغيله على الـ 12 جميعًا. يتم التحقق من بوابات نهاية الدور على 8 — راجع [إمكانية الإنفاذ](/ar/reference/harnesses#enforcement-capability) للحصول على مصفوفة كل إطار.
-  </Step>
-  <Step title="تدقيق السلوك">
-    اتبع [تشغيل فحص الفشل الأول الخاص بك](/ar/start/first-audit). استخدم هدفًا محددًا مثل البحث عن الجلسات التي أعاد فيها الوكيل محاولة أداة فاشلة دون تغيير نهجه.
-  </Step>
-  <Step title="منع الفشل">
-    اتبع [منع الفشل الأول الخاص بك باستخدام سياسة](/ar/start/first-policy). ابدأ في وضع المراقبة، افحص المطابقات، ثم أنفذ النسخة المراجعة.
+    يقدم هذا تقريرًا عن الخدمة واتصال Cloud وحالة الإيقاف المؤقت.
   </Step>
 </Steps>
 
-<Check>
-  شغّل `failproofai config --status`. يرسل الإعداد السليم الاتصال بالسحابة وحالة المراقب وما إذا كان الإنفاذ موقوفًا.
-</Check>
+## اختر محلي أو Cloud
+
+<Tabs>
+  <Tab title="ابقَ محليًا">
+    لا يلزم حساب.
+
+    ```bash
+    failproofai
+    failproofai audit
+    ```
+
+    يفتح الأمر الأول لوحة التحكم المحلية في `http://localhost:8020`. يقوم الأمر الثاني بفحص سجل الوكيل الموجود بالفعل على هذا الجهاز.
+  </Tab>
+
+  <Tab title="اتصل بـ Cloud">
+    أنشئ مفتاح جهاز في Failproof AI Cloud، ثم قم بتشغيل:
+
+    ```bash
+    failproofai config --token <machine-key>
+    failproofai config --status
+    ```
+
+    يتلقى Cloud قرارات السياسة وكتابات جلسات العمل. لإرسال القرارات فقط، قم بالاتصال أولاً، ثم اضبط `collector.sessions` على `false` في `~/.failproofai/config.json`؛ علم الإعداد الحالي `--no-transcripts` لا ينطبق على هذا الإعداد. بالنسبة للأوامر المشتركة و CI، استخدم `FAILPROOFAI_CLOUD_TOKEN` بدلاً من وضع المفتاح في سجل الأوامر.
   </Tab>
 </Tabs>
+
+## تحقق منه
+
+قم بتشغيل أحد وكلائك واطلب منه تنفيذ مهمة عادية. ثم:
+
+يتم التحقق من رفض استدعاء الأداة على جميع harnesses المدعومة الـ 12. يتم التحقق من إنفاذ نهاية الدور على 8؛ قد تكون أزواج أحداث harness الأخرى قابلة للملاحظة فقط أو غير مؤكدة.
+
+- افتح **Policies → Activity** في لوحة التحكم المحلية لرؤية قرارات السياسة.
+- افتح **Observe → Sessions** في Cloud لرؤية التشغيل الكامل.
+- قم بتشغيل `failproofai audit` للبحث عن أنماط محفوفة بالمخاطر أو مهدرة.
+
+<Warning>
+  بعد الإعداد، تكون خدمة `failproofaid` هي المقيّم. إذا لم تتمكن من الإجابة، يتم رفض الإجراءات المحمية. قم بتشغيل `failproofai config --status` عندما يتوقف الوكيل بشكل غير متوقع.
+</Warning>
+
+<CardGroup cols={3}>
+  <Card title="افهم المفاهيم" icon="book-open" href="/ar/start/concepts">
+    تعلم سير العمل من الجلسة إلى السياسة.
+  </Card>
+  <Card title="قم بتشغيل أول تدقيق لك" icon="scan-search" href="/ar/start/first-audit">
+    ابحث عن فشل واحد يستحق الإصلاح.
+  </Card>
+  <Card title="أضف أول سياسة لك" icon="shield-check" href="/ar/start/first-policy">
+    لاحظ الحماية قبل فرضها.
+  </Card>
+</CardGroup>

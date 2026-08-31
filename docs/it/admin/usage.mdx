@@ -1,21 +1,24 @@
 ---
 title: "Utilizzo"
-description: "Ispeziona il consumo dell'organizzazione e la finestra di fatturazione attiva."
+description: "Ispeziona il consumo dell'organizzazione per la finestra di misurazione attuale di 30 giorni."
 icon: "chart-no-axes-combined"
 ---
 
-Utilizzo mostra il consumo per l'organizzazione corrente e le relative finestre di fatturazione. Usalo per comprendere come l'implementazione in produzione, il volume di trascrizioni, le valutazioni e la cadenza di audit influiscono sul tuo piano.
+Utilizzo mostra ciò che l'organizzazione attuale ha misurato durante la sua finestra attuale di 30 giorni. La finestra è fissa e ancorata per organizzazione, e l'utilizzo è in sola lettura: non applica né visualizza limiti, quote o soglie di piano. Entrambe le interfacce lo indicano — il pannello CLI stampa "utilizzo in sola lettura, nessun limite applicato".
 
-## Rivedi utilizzo
+## Esaminare l'utilizzo
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vai a **Administration → Usage**.
-    2. Conferma l'organizzazione e la finestra di misurazione.
-    3. Rivedi acquisizione, sessioni, valutazioni, metriche, audit, risultati, avvisi, utenti e chiavi.
-    4. Confronta il lavoro di audit iniziato e completato quando l'utilizzo di audit sembra inaspettato.
+    1. Vai a **admin → usage**.
+    2. Conferma l'organizzazione e la finestra di misurazione — l'intestazione mostra l'inizio e la fine della finestra, il giorno al suo interno e quanto tempo è trascorso.
+    3. Leggi il blocco principale: eventi acquisiti, sessioni, agenti e ambienti.
+    4. Leggi le due pipeline: valutazioni (con punteggi e metriche) e audit (con problemi e avvisi), ognuna mostrando esecuzioni completate rispetto a esecuzioni avviate.
+    5. Leggi i blocchi workspace e accesso: query salvate, dashboard, avvisi, problemi univoci, membri e chiavi API.
 
-    ![La pagina Usage che mostra la finestra di misurazione, gli eventi acquisiti, le pipeline di valutazione e audit, le risorse dell'area di lavoro, i membri e le chiavi API.](/images/dashboard/usage-overview.png)
+    I dati sono memorizzati in cache, non in tempo reale. Utilizza il controllo di aggiornamento in alto a destra dopo una modifica che ti aspetti di vedere.
+
+    ![La pagina di utilizzo che mostra la finestra di misurazione, gli eventi acquisiti, le pipeline di valutazione e audit, le risorse del workspace, i membri e le chiavi API.](/images/dashboard/usage-overview.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -23,15 +26,52 @@ Utilizzo mostra il consumo per l'organizzazione corrente e le relative finestre 
     fp --json usage
     fp --org reliability-team --json usage
     ```
+
+    `fp usage` richiede `usage:read` e viene eseguito con una chiave API, il che lo rende il comando giusto per un cron di reporting.
+
+    Con `--json` restituisce la risposta del dashboard invariata: `org_id`, `billing_anchor`, `window`, `usage`, `calculated_at` e `stale_after`. `calculated_at` e `stale_after` indicano quanto sono vecchi i dati.
+
+    `fp usage` non accetta flag propri — solo i flag globali `--json` e `--org`. Riporta la finestra attuale e nulla prima di essa, quindi conserva la tua cronologia eseguendolo secondo una pianificazione e archiviando il payload `--json` invece di aspettarti di interrogare una finestra precedente in seguito.
+
+    ```bash
+    fp --json usage | jq '.usage.events_ingested'
+    ```
   </Tab>
 </Tabs>
 
-## Indaga una modifica
+### Chiavi metriche
 
-1. Conferma l'organizzazione e la finestra attive.
-2. Confronta l'aumento con il volume di sessioni per ambiente.
-3. Verifica se una nuova integrazione ha iniziato a inviare trascrizioni.
-4. Rivedi le modifiche alla cadenza di valutatore e audit.
-5. Confronta rispetto ai limiti del piano tariffario corrente.
+Tutto sotto `usage` nel payload JSON, così uno script può denominare un campo invece di analizzare un pannello.
 
-La CLI restituisce lo stesso riepilogo per gli script.
+| Gruppo | Chiavi |
+| --- | --- |
+| Telemetria | `events_ingested`, `sessions`, `agents`, `environments` |
+| Valutazioni | `evaluation_runs`, `evaluation_finishes`, `evaluations`, `metrics` |
+| Audit | `audit_runs`, `audit_finishes`, `issues_created`, `alerts_created` |
+| Workspace | `queries_created`, `dashboards_created` |
+| Accesso | `users_active`, `users_created`, `keys_active`, `keys_created` |
+
+Ogni pipeline riporta i conteggi di avviate e completate separatamente, quindi un divario tra `audit_runs` e `audit_finishes` significa lavoro che è iniziato e non è stato completato — vale la pena controllare prima di trarre conclusioni dai conteggi dei problemi sottostanti.
+
+## Investigare una modifica
+
+Il volume di acquisizione è deciso per macchina, non centralmente. Inizia dall'organizzazione e dalla finestra, quindi esamina cosa è cambiato sulle macchine che vi inviano dati.
+
+| Causa | Dove controllare | Cosa cambiare |
+| --- | --- | --- |
+| Una macchina sta inviando trascritti di sessione | `collector.sessions` nel file `~/.failproofai/config.json` di quella macchina | Impostalo su `false` per inviare solo decisioni |
+| L'attività di hook viene inviata per intero | `collector.hooks_verbosity` nello stesso file | `decisions` consente di aggregare per minuto; `off` interrompe completamente gli eventi di hook |
+| Una nuova posizione di acquisizione è stata aggiunta | `failproofai harness list` | Rimuovila con `failproofai harness remove-path <harness> <path or label>` |
+| La cronologia è stata ri-inviata | Le esecuzioni di `failproofai backfill` della macchina | Gli ri-invii si deduplicano su un hash del contenuto e si comprimono nelle righe già presenti, quindi non vengono conteggiati due volte |
+| Una nuova integrazione ha iniziato a segnalare | I conteggi di `agents` e `environments` e l'elenco di sessioni | Limitare le impostazioni del collector della nuova macchina prima del rilascio |
+
+L'utilizzo non confronta nulla con un piano. Fallo al di fuori del prodotto.
+
+<Columns cols={2}>
+  <Card title="Impostazioni e sicurezza" icon="lock-keyhole" href="/it/admin/settings-and-security">
+    Le impostazioni di gestione dei dati per macchina dietro questi numeri.
+  </Card>
+  <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/it/reference/cloud-cli">
+    L'intera superficie `fp`, inclusa installazione e accesso.
+  </Card>
+</Columns>

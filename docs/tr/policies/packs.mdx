@@ -1,110 +1,62 @@
 ---
 title: "Policy paketleri"
-description: "GitHub sürümü olarak yayınlanan bir politika setini kurun ve uygulamayı yönetin."
+description: "GitHub aracılığıyla yayınlanan sürümlü politika setlerini inceleyin ve yükleyin."
 icon: "package"
 ---
 
-Paket, GitHub sürümü olarak yayınlanan bir politika setidir. Tek bir komut ile kurulur, sürümün kendi sağlama toplamları çalıştırılmadan önce doğrulanır ve paket makininizin altında değişemeyecek şekilde özet kaydedilir.
-
-## Failproof AI politikalarını kurun
+Bir politika paketi, genel bir GitHub sürümü olarak yayınlanan sürümlü bir politika setidir. Paket kendi başına hiçbir paket içermez; başka herhangi biri gibi bizimkini yükleyin:
 
 ```bash
-failproofai pack add core
+failproofai policies show FailproofAI/policies
+failproofai policies add FailproofAI/policies
 ```
 
-Bu, pakete dahil edilen kopya'dan yayınladığımız seti kurar — bu nedenle ağ gerektirmez ve proxy arkasında başarısız olamaz. Bir kısmını alın:
+`show` manifestoyu paketin kodunu çalıştırmadan okur.
+
+## Yüklenecekleri seçin
 
 ```bash
-failproofai pack add core --policy block-rm-rf         # bir, veya virgülle ayrılmış birkaç tane
-failproofai pack add core --category dangerous-commands # bir bütün kategori
-failproofai pack add core --all                         # içindeki her şey
+failproofai policies add owner/repo --policy block-refunds
+failproofai policies add owner/repo --category billing,git
+failproofai policies add owner/repo --all
 ```
 
-`failproofai pack list` paketin sunduğu her kategoriyi adlandırır.
+Seçim yapılmadığında, paket yayıncının varsayılanlarını kullanır. Daha yeni bir sürümü yeniden eklemek mevcut seçiminizi koruyan.
 
-## Kurulmadan önce bir paketin içini görün
+Eğik çizgi içeren herhangi bir şey bir paket kaynağıdır. Eğik çizgi olmayan herhangi bir şey bir politika adıdır.
 
-```bash
-failproofai pack list acme/support-agent
-```
-
-Paketin taşıdığı her politikayı, kategoriye göre gruplandırarak listeler ve yazarının varsayılan olarak hangileri açtığını ve hangilerin isteğe bağlı olduğunu işaretler. **Yalnızca manifesto'yu okur** — giriş yapıtı hiçbir zaman indirilmez ve hiçbir zaman içe aktarılmaz, bu nedenle bir yabancının paketine bakmak bir yabancının kodunu çalıştıramaz. Manifest hâlâ sürümün kendi `SHA256SUMS` karşısında kontrol edilir, bu nedenle okuduğunuz şey kurulacak olan şeydir.
-
-Hiçbir kaynak olmadan `failproofai pack list` zaten burada kurulan paketleri listeler.
-
-## Başka birinin paketini kurun
-
-```bash
-failproofai pack add acme/support-agent
-```
-
-Bunların herhangi biri çalışır — elinizde olanı yapıştırın:
+## Bir sürümü sabitleyin
 
 | Kaynak | Sonuç |
 | --- | --- |
-| `acme/support-agent` | En yeni sürüm, **çözdüğü tam etikete sabitlenir** |
-| `acme/support-agent@v2.1.0` | O sürüm |
-| `github:acme/support-agent@v2.1.0` | Aynısı, açıkça yazılmış |
-| `https://github.com/acme/support-agent/releases/tag/v2.1.0` | Aynısı, tarayıcıdan kopyalanmış |
+| `owner/repo` | En yeni sürüm, çözümlendikten sonra sabitlenir |
+| `owner/repo@a1b2c3d4e5f6` | Tam commit tabanlı sürüm |
+| `owner/repo@v2.1.0` | Tam adlandırılmış sürüm |
+| GitHub sürümü URL'si | O URL'deki sürüm |
 
-Etiket belirtmemek en yeni sürümü kurar **ve sabitleri**, ardından hangi etiketi seçtiğini size söyler. Kaydedilen her şey her zaman tam olarak bir sürümü adlandırır, bu nedenle yeniden kurulum sapamaz.
+Bir paket normalde oluşturulduğu 12 karakterli commit SHA'sını kullanır. Sürüm sırasını görmek için `failproofai policies show owner/repo --releases` komutunu kullanın.
 
-## Bir paketin bir kısmını alın
-
-Varsayılan olarak paketin **kendi** varsayılanlarını alırsınız — yazarının gözetimsiz açmaya emniyetli olarak işaretlediği politikalar — içerdiği her şey değil.
+## Yüklü paketleri yönetin
 
 ```bash
-failproofai pack add acme/support-agent --category billing,git
-failproofai pack add acme/support-agent --policy block-refunds
-failproofai pack add acme/support-agent --all
+failproofai policies
+failproofai policies remove block-refunds
+failproofai policies add block-refunds
+failproofai policies remove owner/repo
 ```
 
-`--category` ve `--policy` birleşim olarak birleşir (`--only` , `--policy` için eş anlamlı olarak kabul edilir). Daha yeni bir sürümde yeniden eklemek, seçtiğiniz şeyi tutar ve geri kalanı yeniden açmaz.
+Yüklü iki paket aynı politika adını içeriyorsa, CLI belirsiz basit adı reddeder. Politikayı bir paket aracılığıyla seçin veya diğer paketi kaldırın.
 
-## Açık olanları yönetin
+## Güvenlik ve kullanılabilirlik
 
-```bash
-failproofai policies                    # bir listede her kaynak, paketler dahil
-failproofai pack list                   # yalnızca paketler, kategoriye göre gruplandırılmış
-failproofai policies --uninstall block-refunds        # bir paket politikasını kapat
-failproofai policies --install block-refunds          # ve tekrar aç
-failproofai pack remove acme/support-agent
-```
+Her sürüm bir manifestoyu, paketlenmiş politika kodunu ve sağlama toplamlarını içerir. Failproof AI, yüklemeden önce kaydedilen özeti doğrular. Sağlama toplamları baytların sürümle eşleştiğini kanıtlar; bunlar kimin yayınladığını kanıtlamaz.
 
-Düz bir ad, **bir tane varsa o ad için yerleşik** anlamına gelir. Gerektiğinde paketin kopyasını açıkça adlandırın:
-
-```bash
-failproofai policies --uninstall acme/support-agent:block-refunds
-```
-
-<Note>
-Bir paket, adı aynı zamanda **etkinleştirilmiş yerleşik** olan bir politika gönderirse, yerleşik çalışır ve paketin kopyası atlanır — aynı güvenlik başka türlü iki kez değerlendirilirdi. Paketin kopyasını kullanmak için yerleşikti kapatın.
-</Note>
-
-## Failproof AI politikaları nereden geliyor
-
-`core` npm paketine satılan kopya'yı okur. Aynı set GitHub sürümü olarak yayınlanır, belirli bir sürüm istiyorsanız kurduğunuz şeydir:
-
-```bash
-failproofai pack add core                    # bu paketten, ağ yok
-failproofai pack add FailproofAI/policies    # aynı set, GitHub sürümünden
-```
-
-## Bütünlük neler yapar ve yapmaz
-
-`SHA256SUMS` yapıtla aynı sürümde gönderilir, bu nedenle **imza değildir** ve onu kim yayınladığı hakkında hiçbir şey kanıtlamaz. Kanıtladığı şey, baytların o sürümün yayınladığı olanlar olduğudur — ve özet, paketi eklediğinizde kaydedilir ve her içe aktarımdan önce yeniden doğrulanır, makininizin altında bir paket değişemez. Etiketi yeniden etiketleyen veya bir varlığı değiştiren bir depo sessizce başka bir şey çalıştırmak yerine yüklenmesini durdurur.
-
-Kurulum zamanında paket de **bir kez içe aktarılır** ve kendi manifestosu karşısında kontrol edilir. Yapıtı ayrıştırılmayan veya bildirdiğinden başka bir şeyi kaydeden bir paket, herhangi bir şey etkinleştirilmeden önce reddedilir — temiz bir şekilde kurulu ve sonraki araç çağrısında başarısız olmak yerine.
-
-## Bir paket ne zaman yüklenmeyecek
-
-Bu makineye uygulanması söylenmiş ve çalıştırılamayan bir paket, sessizce izin vermek yerine eksik politikalarının kapsadığı olayları **reddeder**. Bkz. [Failure behavior](/tr/policies/failure-behavior). `failproofai pack list` o durumda herhangi bir paketi adlandırır ve sıfır dışı çıkar.
-
-## Çevrimdışı ve aynalar
+Yüklenemeyen seçili bir paket, bildirdiği olaylar için kapatılmış başarısız olur. Bkz. [politika başarısızlık davranışı](/tr/policies/failure-behavior).
 
 | Değişken | Etki |
 | --- | --- |
-| `FAILPROOFAI_NO_DOWNLOAD=1` | Getirmeyi reddeder; zaten kurulan paketler uygulamaya devam eder |
-| `FAILPROOFAI_PACK_BASE_URL` | Paket getirmeyi `github.com` yerine bir aynanın işaret etmesine yönlendirir |
+| `FAILPROOFAI_NO_DOWNLOAD=1` | Yeni indirmeleri reddedin; yüklü paketler çalışmaya devam eder |
+| `FAILPROOFAI_PACK_BASE_URL` | Bir ayna kullanın |
+| `FAILPROOFAI_PACK_DIR` | Paket deposunu taşıyın |
 
-Kendi paketinizi yayınlamak: [Publish a pack](/tr/policies/publish-a-pack) bölümüne bakın.
+[Policy Hub](https://befailproof.ai/policy-hub/) içinde paketlere göz atın veya [kendi paketinizi yayınlayın](/tr/policies/publish-a-pack).

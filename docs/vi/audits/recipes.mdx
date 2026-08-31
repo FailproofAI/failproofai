@@ -1,54 +1,93 @@
 ---
-title: "Các công thức kiểm tra"
-description: "Các mục tiêu khởi đầu cho các cuộc điều tra sự cố agent phổ biến."
+title: "Các công thức kiểm toán"
+description: "Các mục tiêu khởi đầu cho các cuộc điều tra thông thường về lỗi agent."
 icon: "book-open-check"
 ---
 
-Sử dụng những công thức này làm mục tiêu khởi đầu, sau đó thêm agent, môi trường và quy trình công việc dự kiến của bạn.
+Sử dụng những công thức này làm mục tiêu khởi đầu, sau đó thêm agent, môi trường và quy trình làm việc mong đợi của bạn.
 
 <Tabs>
   <Tab title="Dashboard">
-    Đi tới **Analyze → Audits → New audit**, sao chép một công thức vào phần mô tả hoặc tóm tắt, sau đó thêm môi trường, agent, khoảng thời gian xem lại và URL tham chiếu liên quan. Tạo kiểm tra và kiểm tra lần chạy đầu tiên trước khi lên lịch.
+    Đi tới **Analyze → Audits → New audit**. Một dòng công thức từ trang này là **description** — những gì bạn mong đợi cuộc kiểm toán này bắt được. Các quy tắc quy trình làm việc làm cho mục tiêu có thể đánh giá được sẽ đi vào **your brief**, trong thẻ **what it knows**: bối cảnh mà mô hình đọc trước khi nó xem xét bất kỳ sự kiện nào, giới hạn ở 8.192 ký tự, được thêm vào những gì cuộc kiểm toán đã tìm kiếm. Một brief không bao giờ thay thế cho mục tiêu và không bao giờ là bằng chứng cho kết quả phát hiện.
 
-    Biểu mẫu kiểm tra mới chuyển một công thức thành một bài kiểm tra sự cố có thể thực thi bằng cách thêm phạm vi, ngữ cảnh, tần suất và thông báo.
+    Sau đó đặt phạm vi trong **what it reads**, bởi vì nửa số công thức này là nhiễu nếu không có nó. Các môi trường và agent thu hẹp dân số; **errors to ignore** liệt kê các loại lỗi bạn mong đợi và xử lý theo thiết kế, vì vậy chúng không còn được tính là lỗi. Nó chỉ lấy tên loại lỗi, và đó là những gì giữ công thức vòng lặp thử lại khỏi bị ngập.
 
-    ![Biểu mẫu kiểm tra mới được định cấu hình với mục tiêu tập trung, lịch trình, phạm vi agent và môi trường, ngữ cảnh và các kênh thông báo.](/images/dashboard/audit-new.png)
+    Biểu mẫu kiểm toán mới chuyển một công thức thành kiểm tra lỗi có thể thực hiện được bằng cách thêm phạm vi, bối cảnh, tần suất và thông báo.
 
-    Sau khi tạo, xác nhận rằng kiểm tra xuất hiện trong danh sách có trạng thái và lịch trình dự kiến trước khi dựa vào các lần chạy định kỳ.
+    ![Biểu mẫu kiểm toán mới được cấu hình với mục tiêu tập trung, lịch biểu, phạm vi agent và môi trường, bối cảnh và các kênh thông báo.](/images/dashboard/audit-new.png)
 
-    ![Trang Audits nơi một công thức kiểm tra dành riêng cho quy trình công việc xuất hiện sau khi tạo.](/images/dashboard/audits.png)
+    Sau khi tạo, hãy xác nhận rằng cuộc kiểm toán xuất hiện trong danh sách với trạng thái và lịch biểu dự kiến trước khi dựa vào các lần chạy định kỳ.
 
-    Mở lần chạy đầu tiên và tinh chỉnh công thức nếu các phát hiện của nó rộng hơn hoặc hẹp hơn chế độ sự cố dự định.
+    Mở lần chạy đầu tiên và tinh chỉnh công thức nếu các kết quả phát hiện của nó rộng hơn hoặc hẹp hơn chế độ lỗi dự định.
   </Tab>
   <Tab title="CLI">
-    Lưu một công thức dưới dạng tệp văn bản và đính kèm nó trong khi tạo:
+    Lưu một công thức dưới dạng tệp văn bản và đính kèm nó trong quá trình tạo:
 
     ```bash
     fp audits create retry-loop-review \
+      --description "Find agents that repeat a failing tool call without changing anything" \
       --scope '{"environments":["production"]}' \
+      --ignore-error-type RateLimitRetried \
       --text-file ./retry-loop-audit.txt \
       --schedule-interval-secs 86400
     ```
+
+    `--text` và `--text-file` là hai cách để gửi cùng một brief; chuyển một cái, không phải cả hai. Thêm trang tham khảo với `--url`, tối đa năm trang, `https://` công khai chỉ. Gửi tất cả nó với yêu cầu tạo: một cuộc kiểm toán được bật mới phải được thực hiện ngay lập tức, vì vậy bối cảnh được viết trong lời gọi thứ hai có thể bỏ lỡ lần chạy đầu tiên.
   </Tab>
 </Tabs>
 
+## Đánh giá công thức, không chỉ là từ ngữ
+
+Hai cài đặt di chuyển kết quả nhiều hơn cách diễn đạt. **Sensitivity** (`low`, `medium`, `high`, mặc định `medium`) quyết định mức độ háo hức mà một lần chạy đánh dấu một mẫu; **findings per run** (`--top-k`, mặc định 50) giới hạn bao nhiêu nó giữ lại. Tăng độ nhạy đối với một câu hỏi trong đó việc bỏ lỡ tốn kém hơn một báo động giả, và hạ thấp nó đối với mẫu khối lượng mà nếu không thì sẽ lấp đầy hàng đợi. Mỗi công thức bên dưới đặt tên cho một điểm khởi đầu — thay đổi nó sau khi đọc lần chạy đầu tiên, không phải trước.
+
+Việc bỏ dỡ nhiệm vụ và việc phát hiện bỏ lỡ độ leo thang con người là những phán xét chống lại những gì một agent được cho là phải làm, không phải chống lại lỗi mà nó đã phát sinh. Viết [agent context](/vi/audits/agent-contracts) của agent đó trước, hoặc phân tích không có tiêu chuẩn để đánh giá.
+
 <AccordionGroup>
-  <Accordion title="Vòng lặp thử lại lặp lại">
-    Tìm các phiên làm việc nơi agent lặp lại cùng một lệnh gọi công cụ không thành công mà không thay đổi đầu vào, chọn một công cụ thay thế hoặc chuyển giao cho con người.
+  <Accordion title="Các vòng lặp thử lại lặp lại">
+    Tìm các phiên trong đó agent lặp lại cùng một lệnh công cụ không thành công mà không thay đổi đầu vào, chọn một công cụ thay thế hoặc leo thang lên con người.
+
+    Bắt đầu ở `medium`, và liệt kê các loại lỗi bạn thử lại có chủ đích dưới **errors to ignore**.
   </Accordion>
   <Accordion title="Sử dụng công cụ không chính xác">
-    Tìm các phiên làm việc nơi công cụ được chọn không khớp với nhiệm vụ được nêu rõ, hoặc nơi đầu vào công cụ vi phạm các điều kiện tiên quyết bắt buộc của quy trình công việc.
+    Tìm các phiên trong đó công cụ được chọn không khớp với nhiệm vụ được nêu, hoặc trong đó đầu vào công cụ vi phạm các điều kiện tiên quyết bắt buộc của quy trình làm việc.
+
+    Bắt đầu ở `medium`. Đặt các điều kiện tiên quyết chính nó trong brief; không có chúng, phân tích không có quy tắc để kiểm tra.
   </Accordion>
   <Accordion title="Truy cập dữ liệu không an toàn">
-    Tìm các phiên làm việc đọc, ghi hoặc truyền dữ liệu nhạy cảm bên ngoài các đường dẫn và dịch vụ được phê duyệt cho agent này.
+    Tìm các phiên đọc, ghi hoặc truyền dữ liệu nhạy cảm bên ngoài các đường dẫn và dịch vụ được phê duyệt cho agent này.
+
+    Bắt đầu ở `high`. Việc bỏ lỡ một lỗi tốn kém hơn một báo động giả mà bạn bỏ qua một lần.
   </Accordion>
   <Accordion title="Từ bỏ nhiệm vụ">
-    Tìm các phiên làm việc kết thúc mà không có kết quả được yêu cầu, lỗi rõ ràng hoặc chuyển giao rõ ràng cho con người.
+    Tìm các phiên kết thúc mà không có kết quả yêu cầu, lỗi rõ ràng hoặc bàn giao rõ ràng cho con người.
+
+    Bắt đầu ở `medium`, và viết phần **Done when** của agent trước — công thức này là một phán xét chống lại nó.
   </Accordion>
-  <Accordion title="Suy thoái chi phí hoặc độ trễ">
-    Tìm các phiên làm việc mà thời lượng mô hình, công cụ hoặc tổng thời gian vượt quá ngân sách dự kiến và xác định mẫu sự kiện chịu trách nhiệm.
+  <Accordion title="Chi phí hoặc hồi quy độ trễ">
+    Tìm các phiên có mô hình, công cụ hoặc tổng thời lượng vượt quá ngân sách dự kiến và xác định mẫu sự kiện chịu trách nhiệm.
+
+    Bắt đầu ở `low` và tăng nó lên nếu lần chạy đầu tiên không đáng kể. Ngân sách thuộc về brief, và bất kỳ loại lỗi nào mà một con đường chậm tăng lên theo thiết kế đều thuộc **errors to ignore**.
   </Accordion>
-  <Accordion title="Bỏ lỡ việc chuyển giao cho con người">
-    Tìm các phiên làm việc nơi độ tin cậy, sự cố lặp lại hoặc hướng dẫn chính sách yêu cầu quyết định từ con người nhưng agent vẫn tiếp tục tự trị.
+  <Accordion title="Độ leo thang con người bị bỏ lỡ">
+    Tìm các phiên trong đó sự tự tin, thất bại lặp đi lặp lại hoặc hướng dẫn chính sách yêu cầu quyết định của con người nhưng agent vẫn tiếp tục hoạt động tự trị.
+
+    Bắt đầu ở `high`, và nêu rõ quy tắc leo thang trong phần **Must not** của agent để phân tích xếp loại nó.
   </Accordion>
 </AccordionGroup>
+
+## Nhận được câu trả lời đầu tiên trước khi bạn tạo bất cứ điều gì
+
+Một số mẫu này đã có các bộ phát hiện ngoại tuyến trong cuộc kiểm toán địa phương, đọc lịch sử agent trên máy của riêng bạn và không cần tài khoản:
+
+| Detector | Mẫu nó đếm |
+| --- | --- |
+| `sleep-polling-loop` | Một `sleep` dài, hoặc một vòng lặp thăm dò `while … sleep … done` |
+| `reread-after-edit` | Đọc một tệp mà agent vừa chỉnh sửa hoặc viết |
+| `find-from-root` | `find` chống lại `/` hoặc một thư mục cấp cao khác |
+| `redundant-cd-cwd` | `cd` vào thư mục mà shell đã ở trong đó |
+| `prefer-edit-over-read-cat` | `cat`, `head`, `tail`, `less` hoặc `more` trên một tệp nguồn duy nhất |
+| `prefer-edit-over-sed-awk` | Chỉnh sửa tại chỗ qua `sed -i` hoặc `awk … > file` |
+| `prefer-write-over-heredoc` | Nội dung đa dòng được viết qua heredoc hoặc `echo > file` |
+| `git-commit-no-verify` | `git commit --no-verify`, bỏ qua hooks |
+
+Các bộ phát hiện này đếm; họ không chặn, và không ai trong số họ đo lường chi phí hoặc độ trễ. Chạy `failproofai audit` để xem những mẫu shell lãng phí và rủi ro nào mà các agent của bạn đã tạo ra trước khi bạn trả tiền cho cuộc kiểm toán Cloud của cùng một lĩnh vực — xem [Audit local agent history](/vi/audits/local-audit).

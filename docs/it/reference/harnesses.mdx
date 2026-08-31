@@ -1,80 +1,164 @@
 ---
-title: "Harness per agenti"
-description: "Cattura sessioni e applica politiche su tutti i 12 harness di agenti supportati."
+---
+title: "Impianti per agent"
+description: "Cattura sessioni e applica politiche su tutti e 12 gli impianti supportati."
 icon: "plug-zap"
 ---
 
-Un harness è l'ambiente in cui il tuo agente effettivamente viene eseguito. Failproof AI supporta dodici di loro, divisi in due classi:
+Un impianto è ciò in cui il tuo agent effettivamente viene eseguito. Failproof AI ne supporta dodici, in due classi:
 
-- **CLI di codifica** (10) — Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Factory Droid, Devin CLI, Antigravity CLI, Goose
-- **Gateway di chat e assistenti** (2) — Hermes (Slack, Telegram, cron), OpenClaw (assistente auto-ospitato)
+- **CLI di coding** (10) — Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Factory Droid, Devin CLI, Antigravity CLI, Goose
+- **Gateway di chat e assistenti** (2) — Hermes (Slack, Telegram, cron), OpenClaw (assistente self-hosted)
 
-Le stesse politiche e la stessa cronologia delle sessioni si applicano indipendentemente da quale harness esegue l'agente. Un livello di adattatore mappa i nomi di eventi nativi di ogni harness, i nomi degli strumenti e i campi di input degli strumenti su 29 eventi canonici prima che qualsiasi politica venga eseguita.
+Le stesse politiche e la stessa cronologia delle sessioni si applicano indipendentemente dall'impianto in cui viene eseguito un agent. Un livello adapter mappa i nomi di eventi nativi di ogni impianto, i nomi degli strumenti e i campi di input degli strumenti su 29 eventi canonici prima che qualsiasi politica venga eseguita.
 
-Un agente che non viene eseguito in **nessuno** dei dodici è strumentato direttamente con l'[SDK Python](/it/reference/custom-agents). Si tratta di un contratto diverso, e vale la pena affermarlo chiaramente: l'SDK fornisce tracciamento, sessioni, valutazioni e audit — **non applica le politiche da solo.** Bloccare un'azione non sicura prima della sua esecuzione richiede un hook di imposizione al confine degli strumenti del tuo runtime; [contattaci](mailto:support@befailproof.ai) e lo mapperemo.
+Un agent che viene eseguito in **nessuno** dei dodici viene strumentato direttamente con l'[SDK Python](/it/reference/custom-agents). Si tratta di un contratto diverso, ed è importante affermarlo chiaramente: l'SDK fornisce tracciamento, sessioni, valutazioni e audit — **non applica politiche di per sé.** Bloccare un'azione non sicura prima che venga eseguita richiede un hook di imposizione al confine dello strumento del tuo runtime; [contattaci](mailto:support@befailproof.ai) e mapperemo il tutto.
 
-| Harness | Ambiti di hook supportati |
+## Ambiti di hook
+
+| Impianto | Ambiti di hook supportati |
 | --- | --- |
 | Claude Code | Utente, progetto, locale |
 | Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi | Utente, progetto |
 | Factory Droid, Devin CLI, Antigravity CLI, Goose | Utente, progetto |
 | Hermes, OpenClaw | Utente |
 
-Ogni integrazione normalizza i nomi degli eventi hook nativi, i nomi degli strumenti e i campi di input degli strumenti prima che le politiche vengano eseguite. Una politica può agire solo su eventi che l'harness espone; testa il comportamento di fine turno e le istruzioni sull'harness esatto e la versione che distribuisci.
+Claude Code è l'unico impianto con un ambito **locale**. Hermes e OpenClaw non hanno alcuna configurazione di progetto — sono solo ambito utente, e il CLI rifiuta `--scope project` per loro.
+
+Ogni integrazione normalizza i nomi di evento hook nativi, i nomi degli strumenti e i campi di input degli strumenti prima che le politiche vengono eseguite. Una politica può agire solo su eventi esposti dall'impianto; testa il comportamento di fine turno e istruzioni sull'impianto e versione esatti che distribuisci.
+
+## Dove arriva la configurazione dell'hook
+
+| Impianto | Ambito utente | Ambito progetto |
+| --- | --- | --- |
+| Claude Code | `~/.claude/settings.json` | `.claude/settings.json` (locale: `.claude/settings.local.json`) |
+| Codex | `~/.codex/hooks.json` | `.codex/hooks.json` |
+| GitHub Copilot CLI | `~/.copilot/hooks/failproofai.json` | `.github/hooks/failproofai.json` |
+| Cursor | `~/.cursor/hooks.json` | `.cursor/hooks.json` |
+| OpenCode | `~/.config/opencode/opencode.json` | `.opencode/opencode.json` |
+| Pi | `~/.pi/agent/settings.json` | `.pi/settings.json` |
+| Hermes | `~/.hermes/config.yaml` | — |
+| OpenClaw | `~/.openclaw/openclaw.json` | — |
+| Factory Droid | `~/.factory/hooks.json` | `.factory/hooks.json` |
+| Devin CLI | `~/.config/devin/config.json` | `.devin/config.json` |
+| Antigravity CLI | `~/.gemini/config/hooks.json` | `.agents/hooks.json` |
+| Goose | `~/.agents/plugins/failproofai/hooks/hooks.json` | `.agents/plugins/failproofai/hooks/hooks.json` |
+
+OpenCode, Pi e OpenClaw sono integrazioni di plugin piuttosto che integrazioni di shell-hook: il file sopra registra un pacchetto plugin o estensione, che chiama il binario failproofai e traduce il suo verdetto.
 
 ## Capacità di imposizione
 
-"Bloccare" significa che il verdetto restituito dall'adattatore corrente viene consumato dall'harness indicato. Il blocco post-strumento può sostituire il risultato mostrato al modello ma non può annullare un effetto collaterale dello strumento che si è già verificato.
+Bloccare significa che il verdetto restituito dall'adapter attuale viene utilizzato dall'impianto denominato. Il blocco post-strumento può sostituire il risultato visualizzato al modello ma non può annullare un effetto collaterale dello strumento che è già accaduto.
 
-| Harness | Eventi di blocco verificati | Avvertenze di sola osservazione o non bloccanti |
+| Impianto | Eventi di blocco verificati | Avvertenze osservative o non bloccanti |
 | --- | --- | --- |
-| Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact` e vari eventi di attività/configurazione | `PostToolUse`, ciclo di vita della sessione, notifiche e eventi post-errore sono osservativi. |
-| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | Il blocco post-strumento sostituisce il risultato dopo l'esecuzione; gli eventi di avvio della sessione e compattamento sono osservativi nell'adattatore corrente. |
+| Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact` e diversi eventi di attività/configurazione | `PostToolUse`, ciclo di vita della sessione, notifiche ed eventi post-errore sono osservativi. |
+| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | Il blocco post-strumento sostituisce il risultato dopo l'esecuzione; gli eventi di inizio sessione e compattazione sono osservativi nell'adapter attuale. |
 | GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | Il blocco post-strumento sostituisce il risultato dopo l'esecuzione; gli eventi di sessione e notifica sono osservativi. |
 | Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` e gli eventi di sessione sono osservativi. |
-| OpenCode | `PreToolUse` | Gli eventi post-strumento e del ciclo di vita sono osservativi; la gestione dello stop corrente è una guida per un turno successivo piuttosto che un gate verificato. |
+| OpenCode | `PreToolUse` | Gli eventi post-strumento e del ciclo di vita sono osservativi; la gestione dello stop attuale è una guida per un turno successivo piuttosto che un gate verificato. `PermissionRequest` non viene mai eseguito. |
 | Pi | `PreToolUse`, `UserPromptSubmit` | Gli eventi post-strumento e del ciclo di vita sono osservativi; la guida di stop si applica a un turno successivo. |
-| Hermes | `PreToolUse` | I verdetti post-strumento, sessione e subagent-stop non sono gate. |
-| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | Gli eventi post-strumento, sessione, subagent-stop e compattamento sono osservativi. |
+| Hermes | `PreToolUse` | I verdetti post-strumento, sessione e subagent-stop non sono gate. Nessun evento `Stop` è installato. |
+| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | Gli eventi post-strumento, sessione, subagent-stop e compattazione sono osservativi. |
 | Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | I verdetti post-strumento e subagent-stop sono osservativi. |
-| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PermissionRequest` condizionato | Gli hook di autorizzazione non vengono eseguiti in ogni modalità di autorizzazione; gli eventi post-strumento e di sessione sono osservativi. |
+| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PermissionRequest` condizionale | Gli hook di permesso non vengono eseguiti in ogni modalità di permesso; gli eventi post-strumento e sessione sono osservativi. |
 | Antigravity CLI | `PreToolUse`, `Stop` | I verdetti di prompt utente e post-strumento sono osservativi; le istruzioni di prompt possono comunque essere iniettate. |
-| Goose | `PreToolUse` | Gli eventi di prompt utente, post-strumento e sessione sono osservativi. Esiste un hook di stop di blocco nativo a monte ma non viene installato dall'adattatore corrente. |
+| Goose | `PreToolUse` | Gli eventi di prompt utente, post-strumento e sessione sono osservativi. Esiste un hook di stop di blocco nativo a monte ma non è installato dall'adapter attuale. |
 
-Le capacità sono sensibili alla versione. Ritesta dopo l'aggiornamento di un CLI di agente, specialmente quando una politica si basa su prompt, stop, autorizzazione o comportamento post-strumento piuttosto che sul gate pre-strumento comune.
+Un evento assente da entrambe le colonne **non è verificato** — trattalo come sconosciuto, mai come bloccante.
+
+### Condizioni su un gate elencato
+
+Diverse righe sopra sono gate reali che sono comunque limitati o condizionali. Una politica che dipende da uno di questi ha bisogno della condizione tanto quanto della riga.
+
+| Impianto | Evento | Condizione |
+| --- | --- | --- |
+| Claude Code | `Stop`, `SubagentStop` | Limitato da `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`, predefinito 8. Scartato su percorsi di fine turno |
+| Cursor | `Stop` | Limitato da `loop_limit`, predefinito 5, e consumato solo quando il turno si completa — un'interruzione da parte dell'utente o un errore di turno lo scarta |
+| Cursor | `Stop` | **Le VM di Cursor Cloud Agent non eseguono alcun hook `stop` o `subagentStop`.** Il gate copre solo sessioni locali |
+| Codex | `SubagentStop` | Solo i subagent ThreadSpawn lo inviano; ogni altra fonte di subagent non esegue mai l'hook |
+| GitHub Copilot CLI | `SubagentStop` | Completamente saltato per subagent `isSidekick` |
+| Devin CLI | `PermissionRequest` | Mai si innesca in `--permission-mode dangerous`, e mai per strumenti di sola lettura approvati automaticamente |
+| OpenCode | `PermissionRequest` | Un hook morto: `permission.ask` è dichiarato e documentato a monte ma mai richiamato, quindi la politica non viene nemmeno eseguita |
+| Hermes | `Stop` | Nessun evento `Stop` è installato, per scelta. I cinque builtin `require-*-before-stop` non sono applicabili su Hermes |
+| Goose | `Stop` | Stesso risultato: nessun `Stop` è installato, quindi i cinque builtin `require-*-before-stop` non sono applicabili |
+
+### Dove `instruct()` si degrada
+
+Un `deny` non è l'unico verdetto che una politica restituisce. `instruct()` passa al agent una direttiva e lascia che l'azione proceda — ma non tutti gli impianti hanno un canale per trasportarla. Dove non ce n'è uno, failproofai consente l'azione e scrive l'istruzione su stderr per i log dell'operatore; il modello non la vede mai.
+
+| Impianto | Eventi dove `instruct()` si degrada a una nota stderr |
+| --- | --- |
+| Hermes | Ogni evento |
+| Goose | Ogni evento |
+| Pi | Ogni evento eccetto `Stop` |
+| OpenClaw | Ogni evento eccetto `Stop` |
+| Factory Droid | Ogni evento eccetto `Stop` |
+| Antigravity CLI | Ogni evento eccetto `Stop` e `UserPromptSubmit` |
+
+Altrove, l'istruzione viene restituita attraverso il canale di contesto aggiuntivo dell'impianto.
+
+### Versioni contro cui queste affermazioni sono state controllate
+
+Una versione fa parte dell'affermazione, non una nota a piè di pagina. Ri-testa dopo l'aggiornamento di un CLI agent, specialmente quando una politica si basa su prompt, stop, permesso o comportamento post-strumento piuttosto che sul gate pre-strumento comune.
+
+| Impianto | Versione controllata |
+| --- | --- |
+| Claude Code | 2.1.220 |
+| Codex | `fe01054a`, con `PostToolUse` ri-controllato in diretta a 0.147.0 |
+| GitHub Copilot CLI | 1.0.71, alcuni siti di chiamata ri-letti in 1.0.68 e 1.0.78 |
+| Cursor | cursor-agent 2026.07.16-899851b |
+| OpenCode | 1.18.9, ri-verificato a 1.14.33 |
+| Pi | 0.80.10 |
+| Hermes | hermes-agent `5771a6e` |
+| OpenClaw | v2026.7.2 |
+| Factory Droid | droid 0.175.1 |
+| Devin CLI | 3000.2.17 |
+| Antigravity CLI | agy 1.1.8 |
+| Goose | 1.43.0 |
+
+<Warning>
+  Diverse righe di Codex citano percorsi di origine che sono stati ristrutturati dopo `fe01054a` e non esistono più a 0.147.0. Non sono noti come errati, ma non sono verificati rispetto a nessun Codex in distribuzione e sono dovuti per un ri-controllo. Solo la riga `PostToolUse` di Codex è stata ri-controllata in diretta.
+</Warning>
+
+## Modalità agent di VS Code
+
+La modalità agent di Copilot Chat integrata di VS Code **non è una tredicesima integrazione**. Scopre la configurazione dell'hook da `.github/hooks/*.json`, `~/.copilot/hooks/*.json` e `~/.claude/settings.json` — esattamente i percorsi che le installazioni `copilot` e `claude` già scrivono — e utilizza lo stesso contratto di deny di forma Claude. Installare uno di loro già applica l'imposizione all'interno delle sessioni in modalità agent di VS Code.
+
+La funzionalità è un'anteprima e richiede un abbonamento attivo a GitHub Copilot più la modalità agent.
 
 ## Installa hook di cattura e politica
 
 <Tabs>
   <Tab title="Dashboard">
     1. Apri **Administration → Keys** e crea una chiave con `events:add` e `policies:pull`, denominata per la macchina o l'ambiente.
-    2. Sulla macchina di destinazione, connetti la CLI locale con la chiave visualizzata e installa gli hook dell'harness.
-    3. Avvia una nuova sessione di agente, quindi conferma gli eventi hook e sessione in **Observe → Events**.
+    2. Sulla macchina di destinazione, connetti il CLI locale con la chiave visualizzata.
+    3. Avvia una nuova sessione agent, quindi conferma i suoi evento di hook e sessione in **Observe → Events**.
     4. Apri **Observe → policy** per la stessa finestra temporale e conferma che una decisione di politica è attribuita alla macchina.
 
-    La connessione inizia con una chiave di macchina. Conferma che includa sia le autorizzazioni di ingestione che di consegna delle politiche prima di copiare il suo segreto.
+    La connessione inizia con una chiave di macchina. Conferma che include sia i permessi di ingestione che di distribuzione di politica prima di copiarne il segreto.
 
-    ![Il cassetto della nuova chiave API utilizzato per concedere autorizzazioni di ingestione degli eventi e consegna delle politiche.](/images/dashboard/key-create.png)
+    ![Il nuovo cassetto della chiave API utilizzato per concedere autorizzazioni di ingestione degli eventi e di distribuzione delle politiche.](/images/dashboard/key-create.png)
 
-    Dopo aver installato gli hook, il flusso Events dovrebbe mostrare nuovi eventi dalla macchina e dall'ambiente che hai connesso.
+    Dopo aver installato gli hook, il flusso di eventi dovrebbe mostrare nuovi eventi dalla macchina e dall'ambiente che hai connesso.
 
-    ![Il flusso Events dal vivo utilizzato per confermare che un harness appena installato sta segnalando.](/images/dashboard/events-stream.png)
+    ![Il flusso di eventi in diretta utilizzato per confermare che un impianto appena installato sta segnalando.](/images/dashboard/events-stream.png)
 
-    Infine, verifica che le decisioni di politica siano attribuite alla stessa macchina. Questo conferma che l'harness sta segnalando l'attività delle politiche così come gli eventi di traccia.
+    Infine, verifica che le decisioni di politica siano attribuite alla stessa macchina. Questo conferma che l'impianto sta segnalando sia l'attività di politica che gli eventi di traccia.
 
-    ![La pagina Policy utilizzata per verificare le decisioni di politica da un harness appena connesso.](/images/dashboard/policy-observe.png)
+    ![La pagina Politica utilizzata per verificare le decisioni di politica da un impianto appena connesso.](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
-    Installa gli hook per ogni harness rilevato:
+    `failproofai config` collega gli hook a ogni CLI agent supportato che trova, installa il daemon e connette Cloud quando è presente una chiave:
 
     ```bash
-    failproofai config \
-      --connect https://app.befailproof.ai \
-      --token <machine-key>
-    failproofai policies --install
+    failproofai config --token <machine-key>
+    failproofai policies add FailproofAI/policies
     ```
 
-    Oppure scegli harness specifici e un ambito di configurazione:
+    La configurazione non sceglie alcuna politica, motivo per cui c'è il secondo comando.
+
+    Per collegare un impianto manualmente — con `--cli` omesso, `--install` rileva cosa è installato e chiede:
 
     ```bash
     failproofai policies --install \
@@ -82,7 +166,7 @@ Le capacità sono sensibili alla versione. Ritesta dopo l'aggiornamento di un CL
       --scope user
     ```
 
-    L'ambito di progetto mantiene la configurazione dell'hook con un repository. L'ambito di utente copre il lavoro tra i repository. Claude Code supporta anche l'ambito locale; il supporto varia in base all'harness e la CLI rifiuta le combinazioni non supportate.
+    L'ambito del progetto mantiene la configurazione dell'hook con un repository. L'ambito utente copre il lavoro tra repository. Controlla la tabella di ambito sopra prima di combinare `--cli` e `--scope`; il CLI rifiuta una coppia non supportata.
 
     Verifica la macchina e i suoi eventi:
 
@@ -94,16 +178,20 @@ Le capacità sono sensibili alla versione. Ritesta dopo l'aggiornamento di un CL
   </Tab>
 </Tabs>
 
+<Warning>
+  Nelle esecuzioni headless `copilot -p` avviate da una directory fresca, il file `.github/hooks/failproofai.json` di ambito progetto **non** è stato caricato. Tratta l'ambito utente come il punto di imposizione affidabile per Copilot in CI finché ciò non è verificato diversamente.
+</Warning>
+
 ## Aggiungi un percorso di sessione non predefinito
 
 <Tabs>
   <Tab title="Dashboard">
-    I percorsi aggiuntivi vengono registrati sulla macchina, non nel Cloud. Dopo averne aggiunto uno, apri **Observe → Sessions**, filtra per l'ambiente della macchina e conferma che le sessioni dal nuovo percorso appaiano. Apri una sessione e verifica l'agente, l'harness e i timestamp degli eventi prima di affidarti ad essa in un audit.
+    I percorsi aggiuntivi sono registrati sulla macchina, non in Cloud. Dopo aver aggiunto uno, apri **Observe → Sessions**, filtra all'ambiente della macchina e conferma che le sessioni dal nuovo percorso appaiono. Apri una sessione e verifica l'agent, l'impianto e i timestamp degli eventi prima di affidarvi in un audit.
 
-    ![L'elenco Sessioni filtrato per l'ambiente che riceve dati dal percorso di cattura aggiuntivo.](/images/dashboard/sessions-list.png)
+    ![L'elenco delle sessioni filtrato all'ambiente che riceve dati dal percorso di cattura aggiuntivo.](/images/dashboard/sessions-list.png)
   </Tab>
   <Tab title="CLI">
-    Aggiungi un percorso con un'etichetta opzionale, quindi ispeziona i percorsi configurati:
+    Aggiungi un percorso con un'etichetta facoltativa, quindi ispeziona i percorsi configurati:
 
     ```bash
     failproofai harness add-path claude checkout=/srv/checkout/.claude
@@ -113,9 +201,11 @@ Le capacità sono sensibili alla versione. Ritesta dopo l'aggiornamento di un CL
     ```
 
     Rimuovi un percorso con `failproofai harness remove-path claude checkout`.
+
+    L'etichetta namespace gli id agent derivati. Due posizioni che contengono copie dello stesso progetto derivano lo stesso id dalla trascrizione, quindi senza un'etichetta si fondono in un agent. Le radici sovrapposte e le etichette duplicate sono rifiutate — consulta il [riferimento CLI](/it/reference/failproof-cli) per capire perché ogni rifiuto esiste.
   </Tab>
 </Tabs>
 
 <Tip>
-  Esegui una nuova sessione dopo l'installazione. Verifica sia il flusso di eventi dal vivo che una decisione di politica effettiva prima di espandere il rollout.
+  Esegui una nuova sessione dopo l'installazione. Verifica sia il flusso di eventi in diretta che una decisione di politica effettiva prima di espandere il rollout.
 </Tip>

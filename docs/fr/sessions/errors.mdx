@@ -1,43 +1,63 @@
 ---
 title: "Erreurs"
-description: "Regroupez les erreurs répétées et ouvrez les sessions associées."
+description: "Filtrez les erreurs récurrentes et ouvrez les sessions associées."
 icon: "circle-alert"
 ---
 
-Erreurs vous offre une vue centrée sur les échecs à travers toutes les sessions. Regroupez par type d'erreur, agent, environnement, modèle, outil ou fenêtre temporelle pour identifier les problèmes opérationnels récurrents.
+Erreurs vous offre une vue centrée sur les échecs à travers toutes les sessions. Filtrez par environnement, type d'événement, type d'erreur, agent ou session, et ajustez la fenêtre temporelle pour identifier les problèmes opérationnels récurrents.
 
 ## Analyser les erreurs
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Accédez à **Observe → Errors**.
-    2. Filtrez par environnement, type d'événement, type d'erreur, agent, ID de session ou texte de recherche.
-    3. Développez une erreur groupée pour voir ses occurrences. Sélectionnez une ligne pour ouvrir l'événement exact dans sa session.
-    4. Sélectionnez la commande de cloche sur une erreur représentative pour créer une alerte pour les erreurs similaires.
+    1. Accédez à **Observer → Erreurs**.
+    2. Filtrez par environnement, type d'événement, type d'erreur, agent, identifiant de session ou texte de recherche.
+    3. Sélectionnez une ligne pour ouvrir l'événement exact dans sa session.
+    4. Sélectionnez **alerte** sur une ligne représentative pour créer une alerte pour les erreurs similaires.
 
-    ![La page Errors affichant un histogramme des échecs, les erreurs groupées et la commande de création d'alerte.](/images/dashboard/errors.png)
+    ![La page Erreurs affichant un histogramme des échecs, une liste filtrée d'événements en erreur et le contrôle d'alerte par ligne.](/images/dashboard/errors.png)
   </Tab>
   <Tab title="CLI">
     ```bash
-    fp errors --env production --since 24h
+    fp errors --since 24h
     fp errors --error-type TimeoutError --agent-id checkout-agent
-    fp errors --aggregate --env production --since 7d
+    fp errors --event-type tool_result --since 24h
+    fp errors --aggregate --env local --since 7d
     ```
 
-    Utilisez `fp events --full --session-id <id>` lorsque vous avez besoin du contenu brut derrière un résumé d'erreur.
+    Un échec d'outil arrive sous forme d'événement `tool_result` en erreur plutôt que comme un simple événement `error`. Ainsi, `--event-type tool_result` est la façon de distinguer les échecs d'outils des échecs de modèle et d'exécution. `is_error` et `error_type` sont des colonnes calculées côté serveur sur chaque ligne, donc aucun des deux modes n'analyse les charges utiles.
+
+    Découvrez les valeurs de filtre valides plutôt que de les deviner : `fp list error_types`, `fp list agents`, `fp list envs` et `fp list event_types`.
+
+    **Ces cinq filtres de `fp errors` n'acceptent chacun qu'une seule valeur** — `--env`, `--error-type`, `--event-type`, `--agent-id`, `--session-id`. (`--search` est l'exception et peut être répété.) Les mêmes noms de drapeaux sur `fp events` et `fp sessions` acceptent des valeurs répétées ou séparées par des virgules, donc `--env prod,staging` fonctionne là-bas mais ici ne correspond qu'à la chaîne littérale `prod,staging`. Cela renvoie un résultat vide plutôt qu'une erreur, ce qui se lit comme « aucune erreur ».
+
+    Le daemon étiquette les événements `local` jusqu'à ce que vous le changiez, donc `--env production` ne correspond à rien sur une installation standard. Voir [Modifier un libellé d'environnement](/fr/reference/events-and-configuration#change-an-environment-label).
+
+    `--all` pagine automatiquement uniquement jusqu'à `--limit`, dont la valeur par défaut est 50 — écrivez `--all --limit 500` si vous en voulez davantage. Les autres drapeaux du mode liste sont `--order asc|desc`, `--cursor`, `--page-size` (max 200), `--fields` et `--full-ids`. `--search` est répétable et s'applique aux deux modes — une ligne correspond si elle contient l'un des termes.
+
+    `fp errors` nécessite `events:read`. Sous `--json`, le mode liste renvoie `{"errors": [...], "next_cursor": ...}` et `--aggregate` renvoie `{total, sessions, agents, last_ts, bins}`. Utilisez `fp events --full --session-id <id>` lorsque vous avez besoin de la charge utile brute derrière un résumé d'erreur.
   </Tab>
 </Tabs>
 
-## Utilisez Erreurs lorsque vous devez
+## Utilisez Erreurs lorsque vous avez besoin de
 
 - Trouver la classe d'erreur la plus fréquente en production.
-- Déterminer si un outil ou un modèle est à l'origine d'un pic.
-- Passer d'un comptage agrégé à des sessions représentatives.
-- Créer une alerte pour les récurrences.
+- Déterminer si un outil ou un modèle est responsable d'un pic.
+- Passer d'un comptage agrégé aux sessions représentatives.
+- Créer une alerte en cas de récurrence.
 - Inclure la population affectée dans un audit.
 
-Une erreur est un événement observé. Un échec d'évaluation est un jugement de qualité, et un constat d'audit est un motif d'échec investigué. Gardez ces distinctions à l'esprit au moment de choisir le processus de réponse approprié.
+Une erreur est un événement observé. Un échec d'évaluation est un jugement qualitatif, et un constat d'audit est un pattern d'échec investigué. Gardez ces distinctions à l'esprit au moment de choisir quel workflow de réponse utiliser.
 
-<Card title="Créer une alerte" icon="bell-ring" href="/fr/audits/alerts">
-  Notifiez les intervenants lorsqu'une erreur ou une condition de qualité dépasse un seuil.
-</Card>
+## Sans compte Cloud
+
+Erreurs est une fonctionnalité Cloud. Sur une machine non connectée, `failproofai audit` analyse l'historique de session déjà enregistré sur le disque à la recherche de patterns risqués ou inefficaces, puis ouvre `http://localhost:8020/audit`. Ajoutez `--schedule [days]` pour relancer l'analyse selon un timer et envoyer les résultats par e-mail (par défaut 7 jours, plage de 1 à 90), `--status` pour vérifier si la planification est active, et `--no-schedule` pour l'arrêter. Tout s'exécute sur la machine, à deux exceptions près. Une analyse planifiée publie l'identifiant, le libellé, la plateforme de cette machine ainsi que la fenêtre couverte à chaque exécution, y compris une analyse sans résultat — ce qu'une analyse propre ne transmet pas, c'est le résumé, pas la requête. Et la télémétrie CLI anonyme est envoyée à chaque audit, sauf si vous définissez `FAILPROOFAI_TELEMETRY_DISABLED=1`.
+
+<CardGroup cols={2}>
+  <Card title="Créer une alerte" icon="bell-ring" href="/fr/audits/alerts">
+    Notifiez les responsables lorsqu'une erreur ou une condition de qualité dépasse un seuil.
+  </Card>
+  <Card title="Constats et problèmes" icon="clipboard-list" href="/fr/audits/findings-and-issues">
+    Transformez une erreur récurrente en pattern investigué avec un responsable attitré.
+  </Card>
+</CardGroup>

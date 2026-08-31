@@ -4,18 +4,21 @@ description: "Auditzielsetzung, Sitzungspopulation und Evidenzkontext definieren
 icon: "sliders-horizontal"
 ---
 
-Die Qualität eines Audits hängt von seinem Umfang ab. Eine allgemeine Anfrage wie „Probleme finden" liefert weniger nützliche Ergebnisse als eine konkrete Fehlerfrage.
+Die Qualität eines Audits hängt von seinem Umfang ab. Eine allgemeine Anfrage wie „Finde Probleme" liefert weniger nützliche Ergebnisse als eine konkrete Fehlerfrage.
 
-## Das Audit konfigurieren
+## Audit konfigurieren
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehe zu **Analyze → Audits → New audit** und gib Name und Beschreibung ein.
-    2. Lege Takt, Zeitfenster, Agent-/Umgebungsbereich, ignorierte Fehler, Sensitivität und maximale Befunde fest.
-    3. Füge unter **agents** Agentenkontext hinzu oder überprüfe ihn, und ergänze den Operator-Brief sowie öffentliche HTTPS-Referenz-URLs.
-    4. Wähle Benachrichtigungskanäle aus und klicke auf **create audit**. Der erste Durchlauf wird sofort in die Warteschlange gestellt.
+    1. Gehen Sie zu **Analyze → Audits → New audit** und geben Sie Name und Beschreibung ein. Der Name ist pro Organisation eindeutig; die Beschreibung hält fest, was dieses Audit erfassen soll.
+    2. Legen Sie unter **when it runs** den Zeitplan und das Fenster fest. Unter **what it reads** grenzen Sie die Population mit Umgebungen, Agents und zu ignorierenden Fehlertypen ein — ein leeres Feld schließt alles ein. Unter **how it judges** stellen Sie die Sensitivität und die Befunde pro Durchlauf ein.
+    3. Verfassen Sie unter **what it knows** das Operator-Briefing und fügen Sie die Seiten hinzu, die das Audit liest. Das Briefing ist Hintergrundinformation, die das Modell liest, bevor es ein einziges Ereignis betrachtet: Es ergänzt das, wonach dieses Audit bereits sucht, ersetzt es nie und dient nie als Beleg für einen Befund.
+    4. Öffnen Sie die **agents**-Seitenleiste, um den Kontext der einzelnen Agents hinzuzufügen oder zu überprüfen. Er wird unabhängig vom Audit gespeichert, und die Kopfzeile zeigt, wie viele Ihrer Agents bereits einen Kontext haben. Siehe [Agent-Kontext](/de/audits/agent-contracts).
+    5. Wählen Sie Benachrichtigungskanäle und klicken Sie auf **create audit**. Ein neues Audit startet aktiviert, und sein erster Durchlauf wird sofort in die Warteschlange gestellt.
 
-    ![Das Formular für ein neues Audit mit Name, Beschreibung, Takt, Zeitfenster, Umgebungs- und Agentenbereich, ignorierten Fehlern, Analyseeinstellungen, Brief, Referenzseiten und Benachrichtigungskanälen.](/images/dashboard/audit-new.png)
+    ![Das Formular für neue Audits mit Name, Beschreibung, Zeitplan, Fenster, Umgebungs- und Agent-Scope, ignorierten Fehlern, Analyseeinstellungen, Briefing, Referenzseiten und Benachrichtigungskanälen.](/images/dashboard/audit-new.png)
+
+    **agents** in der **what it reads**-Karte ist ein Scope-Filter — er legt fest, welche Sitzungen jeder Durchlauf erfasst. Was ein Agent *leisten soll*, befindet sich in der separaten Agents-Seitenleiste.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -29,16 +32,44 @@ Die Qualität eines Audits hängt von seinem Umfang ab. Eine allgemeine Anfrage 
       --url https://runbooks.example.com/checkout
     ```
 
-    Der erste Durchlauf wird sofort in die Warteschlange gestellt. Füge den Brief und die Referenz-URLs bereits bei der Erstellung hinzu, damit dieser Durchlauf sie erhält.
+    Jedes Feld außer dem Namen hat einen Serverstandardwert, sodass ein bloßes `fp audits create nightly` bereits ein gültiges tägliches Audit ergibt. Ein bereits vergebener Name wird sofort abgelehnt, bevor etwas erstellt wird. Neue Audits starten aktiviert, es sei denn, Sie übergeben `--disabled`, und der erste Durchlauf eines aktivierten Audits wird sofort in die Warteschlange gestellt.
+
+    Basieren Sie eine Definition auf gespeichertem JSON mit `--file audit.json` und ergänzen Sie sie durch Flags. Das ist der reproduzierbare Weg, wenn Audit-Definitionen überprüft oder in der Versionsverwaltung abgelegt werden.
 
     Siehe die vollständige [`fp audits create`-Referenz](/de/reference/cloud-cli#audits).
   </Tab>
 </Tabs>
 
+## Wertebereiche und Standardwerte
+
+Die numerischen Einstellungen werden auf beiden Seiten validiert, sodass ein Wert außerhalb des zulässigen Bereichs ein Verwendungsfehler ist und keine abgelehnte Anfrage.
+
+| Einstellung | CLI-Flag | Akzeptierte Werte | Standard |
+| --- | --- | --- | --- |
+| Zeitplan | `--schedule-interval-secs` | 3600–604800 (1 Stunde bis 7 Tage) | 86400 (täglich) |
+| Zeitplan-Anker | `--schedule-anchor` | ISO 8601 UTC; ein Anker mehr als 365 Tage in der Zukunft wird abgelehnt | Das nächste 09:00 UTC |
+| Fenster | `--window-mode` | `fixed`, `since_last` | `since_last` |
+| Rückblickzeitraum | `--lookback-window-secs` | 3600–7776000 (1 Stunde bis 90 Tage) | 604800 (7 Tage) |
+| Sensitivität | `--sensitivity` | `low`, `medium`, `high` | `medium` |
+| Befunde pro Durchlauf | `--top-k` | 1 oder mehr | 50 |
+
+Der Anker legt die Phase des Zeitplans fest: Durchläufe finden zu `anchor + N * interval` statt, sodass ein langsamer Durchlauf oder ein manuelles **run now** den Zeitplan nicht verschieben kann. Der erste Durchlauf wird beim Erstellen unabhängig vom Anker sofort in die Warteschlange gestellt.
+
+## Briefing und Referenzseiten
+
+Das Formular zeigt beide Limits als Zähler an, und die CLI setzt dieselben zwei durch:
+
+- Das Briefing ist auf 8.192 Zeichen begrenzt (`--text` oder `--text-file` zum Einlesen aus einer Datei — geben Sie eines der beiden an, nicht beide).
+- Ein Audit referenziert höchstens fünf Seiten, ausschließlich öffentliche `https://`-Adressen (`--url`, wiederholt).
+
+Referenz-URLs werden beim Speichern validiert. Private, Loopback- und Cloud-Metadata-Adressen werden abgelehnt, und eine abgelehnte URL lässt den gesamten Erstellungsvorgang fehlschlagen — es bleibt kein halbfertiges Audit zurück. Akzeptierte Seiten werden im Hintergrund abgerufen, sodass eine langsame Website das Speichern nie blockiert. Jeder Durchlauf liest sie erneut und greift auf den gespeicherten Snapshot zurück, wenn eine Seite nicht erreichbar ist. Snapshots werden wöchentlich automatisch aktualisiert. Verwenden Sie `fp audits context-refresh <name>`, wenn Sie wissen, dass sich eine Seite geändert hat und diese vor dem nächsten Durchlauf aktualisiert werden soll.
+
+Senden Sie das Briefing und die URLs mit der Erstellungsanfrage und nicht in einem zweiten Aufruf. Ein neues aktiviertes Audit ist fällig, sobald seine Zeile gespeichert wird, sodass nachträglich geschriebener Kontext vom Dispatcher überholt werden und den ersten Durchlauf verpassen kann — genau den Durchlauf, den Sie beobachten. Ändern Sie es später mit `fp audits context-set <name>`, was nur den angegebenen Teil ersetzt und den anderen unberührt lässt.
+
 <Tip>
-  Beginne mit einer bekannten fehlgeschlagenen Sitzung und mehreren normalen Sitzungen. So erhält das Audit sowohl ein positives Beispiel als auch einen Vergleichssatz.
+  Beginnen Sie mit einer bekannten fehlgeschlagenen Sitzung und mehreren normalen Sitzungen. So erhält das Audit sowohl ein positives Beispiel als auch eine Vergleichsmenge.
 </Tip>
 
 <Info>
-  Auditkontext wird als eigenständige Ressource gespeichert, sodass das Bearbeiten eines Audits das Referenzmaterial nicht versehentlich entfernt.
+  Audit-Kontext wird als eigenständige Ressource gespeichert. Der Definitions-Endpunkt verweigert das Schreiben beim Aktualisieren, sodass eine gewöhnliche, unzusammenhängende Bearbeitung des Audits das Briefing oder die Referenzseiten nie überschreiben kann.
 </Info>

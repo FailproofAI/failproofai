@@ -1,19 +1,23 @@
 ---
 title: "Failproof Cloud CLI"
-description: "使用 fp 查询和管理 Failproof AI Cloud 的完整参考文档。"
+description: "使用 fp 查询和管理 Failproof AI Cloud 的完整参考手册。"
 icon: "cloud-cog"
 ---
 
-使用 `fp` 检查 Cloud 遥测数据、管理云端执行策略（策略、机群部署、护栏决策），以及管理审计、发现项、问题、告警、密钥、用户、查询和设置。使用 [`failproofai`](/zh/reference/failproof-cli) 处理本地钩子、策略、捕获和机器注册。
+使用 `fp` 检查 Cloud 遥测数据、管理云端托管的执行规则（策略、机队部署、防护栏决策），以及管理审计、发现项、问题、告警、密钥、用户、查询和设置。本地钩子、策略、采集和机器注册请使用 [`failproofai`](/zh/reference/failproof-cli)。
 
-以独立工具方式安装已发布的 Cloud CLI：
+以隔离工具的方式安装已发布的 Cloud CLI，需要 Python 3.10 或更高版本。
 
 ```bash
 uv tool install fp-cloud-cli
 fp version
 ```
 
+发行包名为 `fp-cloud-cli`，安装后的命令为 `fp`——两者不同是因为 `fp` 在 PyPI 上已被占用。
+
 ## 登录
+
+`fp login` 会向您发送一个六位数验证码并保存会话。若仪表板使用自签名证书，请在登录时添加 `--insecure`。
 
 ```bash
 fp login
@@ -26,13 +30,13 @@ fp whoami
 fp [GLOBAL_OPTIONS] COMMAND [SUBCOMMAND] [ARGUMENTS] [OPTIONS]
 ```
 
-全局选项必须放在命令之前：
+全局选项必须置于命令之前：
 
 ```bash
 fp --json sessions --since 24h
 ```
 
-运行 `fp COMMAND --help` 或 `fp COMMAND SUBCOMMAND --help` 查看终端帮助。
+执行 `fp COMMAND --help` 或 `fp COMMAND SUBCOMMAND --help` 可在终端查看帮助。
 
 ## CLI 命令
 
@@ -40,9 +44,9 @@ fp --json sessions --since 24h
 
 | 命令 | 用途 | 选项 |
 | --- | --- | --- |
-| `fp login` | 通过邮件一次性验证码登录并选择组织。 | `--email`, `-e`; `--org`; `--force` |
+| `fp login` | 通过邮件接收一次性验证码登录并选择组织。 | `--email`, `-e`；`--org`；`--force` |
 | `fp logout` | 吊销并删除已保存的用户会话。 | — |
-| `fp whoami` | 显示当前身份、认证模式、组织及权限。 | — |
+| `fp whoami` | 显示当前身份、认证模式、组织和权限。 | — |
 | `fp version` | 显示已安装的 CLI 版本。 | — |
 | `fp help` | 显示顶级命令帮助。 | — |
 
@@ -57,24 +61,24 @@ fp whoami
 fp events [OPTIONS]
 ```
 
-列出单个 Agent 事件。默认轻量数据流不包含原始载荷；仅在有限范围的调查中使用 `--full`。
+列出各个代理事件。默认的轻量数据流不包含原始载荷；仅在有明确调查范围时使用 `--full`。
 
-| 选项 | 描述 |
+| 选项 | 说明 |
 | --- | --- |
 | `--limit`, `-n <n>` | 最大总行数。默认值：`50`。 |
 | `--since <window>` | `all`、`15m`、`1h`、`6h`、`24h` 或 `7d`。 |
 | `--from <timestamp>` / `--to <timestamp>` | ISO 8601 UTC 时间范围；覆盖 `--since`。 |
-| `--env <value>` | 环境过滤器；可重复或以逗号分隔多个值。 |
-| `--event-type <value>` | 事件类型过滤器；可重复或以逗号分隔多个值。 |
-| `--agent-id <value>` | Agent 过滤器；可重复或以逗号分隔多个值。 |
-| `--session-id <value>` | 会话过滤器；可重复或以逗号分隔多个值。 |
-| `--search <text>` | 载荷文本搜索；可重复，任意词条匹配即可。 |
-| `--order asc\|desc` | 时间排序。默认：最新优先。 |
-| `--all` | 自动分页，最多获取 `--limit` 条数据。 |
-| `--cursor <token>` | 从不透明游标处继续。 |
+| `--env <value>` | 环境过滤器；可重复使用或以逗号分隔。 |
+| `--event-type <value>` | 事件类型过滤器；可重复使用或以逗号分隔。 |
+| `--agent-id <value>` | 代理过滤器；可重复使用或以逗号分隔。 |
+| `--session-id <value>` | 会话过滤器；可重复使用或以逗号分隔。 |
+| `--search <text>` | 载荷文本搜索；可重复使用，任意词项匹配即可。 |
+| `--order asc\|desc` | 时间排序。默认：最新在前。 |
+| `--all` | 自动分页至 `--limit` 上限。 |
+| `--cursor <token>` | 从不透明游标处续传。 |
 | `--page-size <n>` | 使用 `--all` 时每次请求的行数；最大 `200`。 |
-| `--full` | 通过较重的事件端点包含原始载荷。 |
-| `--fields <csv>` | 仅返回选定字段；请求 `payload` 时启用完整模式。 |
+| `--full` | 通过较重的事件端点获取原始载荷。 |
+| `--fields <csv>` | 仅返回指定字段；请求 `payload` 将启用完整模式。 |
 
 ```bash
 fp events --session-id <session-id> --order asc --all --limit 10000
@@ -82,7 +86,7 @@ fp --json events --full --session-id <session-id> --all --limit 10000
 ```
 
 <Note>
-  `--all` 分页获取的数据**最多不超过 `--limit`**，该值默认为 **50** — 因此单独使用 `--all` 会在 50 行时停止。提前停止时，响应中会携带 `next_cursor` 以供继续获取；`"next_cursor": null` 表示数据流已真正耗尽。
+  `--all` 会分页至 **`--limit` 上限**，而该上限默认为 **50**——因此单独使用 `--all` 时会在 50 行处停止。提前停止时，响应中会携带 `next_cursor` 供续传；`"next_cursor": null` 表示数据流已真正耗尽。
 </Note>
 
 ### 会话
@@ -91,21 +95,21 @@ fp --json events --full --session-id <session-id> --all --limit 10000
 fp sessions [OPTIONS]
 ```
 
-| 选项 | 描述 |
+| 选项 | 说明 |
 | --- | --- |
 | `--limit`, `-n <n>` | 最大总行数。默认值：`50`。 |
 | `--since <window>` | `all`、`15m`、`1h`、`6h`、`24h` 或 `7d`。 |
 | `--from <timestamp>` / `--to <timestamp>` | ISO 8601 UTC 时间范围；覆盖 `--since`。 |
-| `--env <value>` | 环境过滤器；可重复或以逗号分隔多个值。 |
-| `--status <value>` | `done`、`error` 或 `timeout`；可重复或以逗号分隔多个值。 |
-| `--agent-id <value>` | 匹配涉及所选 Agent 的会话。 |
-| `--session-id <value>` | 会话过滤器；可重复或以逗号分隔多个值。 |
-| `--all` | 自动分页，最多获取 `--limit` 条数据。 |
-| `--cursor <token>` | 从不透明游标处继续。 |
+| `--env <value>` | 环境过滤器；可重复使用或以逗号分隔。 |
+| `--status <value>` | `done`、`error` 或 `timeout`；可重复使用或以逗号分隔。 |
+| `--agent-id <value>` | 匹配涉及任意所选代理的会话。 |
+| `--session-id <value>` | 会话过滤器；可重复使用或以逗号分隔。 |
+| `--all` | 自动分页至 `--limit` 上限。 |
+| `--cursor <token>` | 从不透明游标处续传。 |
 | `--page-size <n>` | 使用 `--all` 时每次请求的行数；最大 `200`。 |
-| `--fields <csv>` | 仅返回选定字段。 |
+| `--fields <csv>` | 仅返回指定字段。 |
 | `--full-ids` | 在终端输出中不缩短会话 ID。 |
-| `--agents` | 展开多 Agent 会话的 Agent 列表。 |
+| `--agents` | 展开多代理会话的代理列表。 |
 
 ### 评估
 
@@ -113,15 +117,15 @@ fp sessions [OPTIONS]
 fp evals [OPTIONS]
 ```
 
-| 选项 | 描述 |
+| 选项 | 说明 |
 | --- | --- |
-| `--aggregate` | 显示总计和每项评分统计，而非单个评估记录。 |
+| `--aggregate` | 显示汇总数据和各评分统计，而非单条评估记录。 |
 | `--limit`, `-n <n>` | 最大列表行数。默认值：`50`。 |
 | `--since`, `--from`, `--to` | 选择时间范围。 |
-| `--env`, `--status`, `--agent-id`, `--session-id` | 每个过滤器限定为一个精确值。 |
-| `--score KEY:MIN..MAX` | 评分范围；可重复，且所有范围必须同时满足。 |
+| `--env`, `--status`, `--agent-id`, `--session-id` | 每个过滤器精确匹配一个值。 |
+| `--score KEY:MIN..MAX` | 评分范围；可重复使用，所有范围均须满足。 |
 | `--all`, `--cursor`, `--page-size` | 控制列表分页。 |
-| `--fields <csv>` | 仅返回选定字段。 |
+| `--fields <csv>` | 仅返回指定字段。 |
 | `--full-ids` | 显示完整会话 ID。 |
 | `--scores-full` | 在终端输出中显示所有评分。 |
 
@@ -131,25 +135,25 @@ fp evals [OPTIONS]
 fp errors [OPTIONS]
 ```
 
-| 选项 | 描述 |
+| 选项 | 说明 |
 | --- | --- |
-| `--aggregate` | 汇总匹配的错误，而非列出各行。 |
+| `--aggregate` | 对匹配的错误进行汇总，而非逐行列出。 |
 | `--limit`, `-n <n>` | 最大列表行数。默认值：`50`。 |
 | `--since`, `--from`, `--to` | 选择时间范围。 |
 | `--env`, `--error-type`, `--event-type`, `--agent-id`, `--session-id` | 缩小错误范围。 |
-| `--search <text>` | 搜索载荷文本；可重复。 |
+| `--search <text>` | 搜索载荷文本；可重复使用。 |
 | `--order asc\|desc` | 时间排序。 |
 | `--all`, `--cursor`, `--page-size` | 控制列表分页。 |
-| `--fields <csv>` | 仅返回选定字段。 |
+| `--fields <csv>` | 仅返回指定字段。 |
 | `--full-ids` | 显示完整会话 ID。 |
 
-### 用量与过滤值
+### 用量与过滤器值
 
 | 命令 | 用途 |
 | --- | --- |
-| `fp usage` | 显示当前计量周期的用量。 |
-| `fp list envs` | 列出已观察到的环境。 |
-| `fp list agents` | 列出已观察到的 Agent ID。 |
+| `fp usage` | 显示当前计量窗口的用量。 |
+| `fp list envs` | 列出已观测到的环境。 |
+| `fp list agents` | 列出已观测到的代理 ID。 |
 | `fp list event_types` | 列出事件类型。 |
 | `fp list score_filters` | 列出评估评分键。 |
 | `fp list models` | 列出模型名称。 |
@@ -162,7 +166,7 @@ fp errors [OPTIONS]
 | 命令 | 用途 |
 | --- | --- |
 | `fp orgs list` | 列出可访问的组织。 |
-| `fp orgs switch [SLUG]` | 保存当前活跃组织；省略时显示提示。 |
+| `fp orgs switch [SLUG]` | 保存活跃组织；省略时会提示选择。 |
 | `fp orgs current` | 显示当前活跃组织。 |
 | `fp orgs perms` | 显示您在当前活跃组织中的权限。 |
 
@@ -170,35 +174,35 @@ fp errors [OPTIONS]
 
 | 命令 | 用途 | 选项 |
 | --- | --- | --- |
-| `fp keys list` | 列出组织密钥。 | `--show-id`; `--fields <csv>` |
-| `fp keys show NAME` | 显示一个密钥及其授权。 | — |
-| `fp keys create NAME` | 创建密钥并一次性显示其密文。 | `--permission-set`; `--add`; `--remove` |
-| `fp keys update NAME` | 替换权限集或调整授权。 | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
-| `fp keys regenerate NAME` | 轮换密文并一次性显示替换后的新密文。 | `--yes`, `-y` |
-| `fp keys disable NAME` | 永久吊销密钥。 | `--yes`, `-y` |
+| `fp keys list` | 列出组织密钥。 | `--show-id`；`--fields <csv>` |
+| `fp keys show NAME` | 显示某个密钥及其授权。 | — |
+| `fp keys create NAME` | 创建密钥并一次性显示其 secret。 | `--permission-set`；`--add`；`--remove` |
+| `fp keys update NAME` | 替换权限集或调整授权。 | `--permission-set`；`--add`；`--remove`；`--yes`, `-y` |
+| `fp keys regenerate NAME` | 轮换 secret 并一次性显示替换后的值。 | `--yes`, `-y` |
+| `fp keys disable NAME` | 永久吊销某个密钥。 | `--yes`, `-y` |
 
-权限令牌使用 `resource:action` 格式，例如 `events:add`。可重复使用 `--add`、以逗号分隔多个令牌，或使用点号格式如 `events:read.add`。
+权限令牌使用 `resource:action` 格式，例如 `events:add`。可重复使用 `--add`、以逗号分隔令牌，或使用点分隔的操作，如 `events:read.add`。
 
 ### 查询
 
 | 命令 | 用途 | 选项 |
 | --- | --- | --- |
-| `fp query list` | 列出已保存的查询。 | `--show-id`; `--fields <csv>` |
-| `fp query show NAME` | 显示一个查询。 | — |
-| `fp query create NAME` | 保存查询。 | `--sql <text\|@file>`; `--description` |
-| `fp query update NAME` | 更新或重命名查询。 | `--name`; `--sql`; `--description`; `--yes`, `-y` |
+| `fp query list` | 列出已保存的查询。 | `--show-id`；`--fields <csv>` |
+| `fp query show NAME` | 显示某个查询。 | — |
+| `fp query create NAME` | 保存一个查询。 | `--sql <text\|@file>`；`--description` |
+| `fp query update NAME` | 更新或重命名查询。 | `--name`；`--sql`；`--description`；`--yes`, `-y` |
 | `fp query delete NAME` | 删除已保存的查询。 | `--yes`, `-y` |
-| `fp query run [NAME]` | 运行已保存的查询或即席 SQL。 | `--sql`; `--limit`; `--all`; `--arg`, `--param` |
-| `fp query schema [TABLE]` | 列出可查询的表或查看某个表的结构。 | — |
+| `fp query run [NAME]` | 运行已保存的查询或临时 SQL。`--limit` 仅限制**表格**视图，默认为 50；`--json` 始终返回所有行。 | `--sql`；`--limit`；`--all`；`--arg`, `--param` |
+| `fp query schema [TABLE]` | 列出可查询的表，或查看某张表的结构。 | — |
 
 ### 用户
 
 | 命令 | 用途 | 选项 |
 | --- | --- | --- |
-| `fp users list` | 列出组织成员。 | `--active-only`; `--show-id` |
-| `fp users show EMAIL` | 显示成员及其授权。 | — |
-| `fp users create EMAIL` | 添加成员。 | `--permission-set`; `--add`; `--remove` |
-| `fp users update EMAIL` | 修改成员的授权。 | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
+| `fp users list` | 列出组织成员。 | `--active-only`；`--show-id` |
+| `fp users show EMAIL` | 显示某个成员及其授权。 | — |
+| `fp users create EMAIL` | 添加成员。 | `--permission-set`；`--add`；`--remove` |
+| `fp users update EMAIL` | 修改成员的授权。 | `--permission-set`；`--add`；`--remove`；`--yes`, `-y` |
 | `fp users disable EMAIL` | 禁用登录。 | `--yes`, `-y` |
 | `fp users enable EMAIL` | 重新启用登录。 | `--yes`, `-y` |
 
@@ -207,19 +211,19 @@ fp errors [OPTIONS]
 | 命令 | 用途 | 选项 |
 | --- | --- | --- |
 | `fp settings list` | 列出组织设置及当前值。 | — |
-| `fp settings schema` | 显示可接受的值和描述。 | — |
-| `fp settings set KEY` | 修改现有设置。 | `--value`、`--json-value`、`--file` 三者之一；可选 `--yes`, `-y` |
+| `fp settings schema` | 显示可接受的值和说明。 | — |
+| `fp settings set KEY` | 修改某个现有设置。 | `--value`、`--json-value`、`--file` 三选一；可选 `--yes`, `-y` |
 
 ### 告警
 
 | 命令 | 用途 | 选项 |
 | --- | --- | --- |
 | `fp alerts list` | 列出告警规则。 | `--show-id` |
-| `fp alerts show NAME` | 显示一个告警。 | — |
-| `fp alerts create NAME` | 创建告警。 | `--file`; `--description`; `--severity`; `--trigger-kind`; `--trigger-spec`; `--channels`; `--eval-interval-secs`; `--min-breaches`; `--eval-window` |
-| `fp alerts update NAME` | 更新或重命名告警。 | create 选项加 `--name`; `--yes`, `-y` |
+| `fp alerts show NAME` | 显示某个告警。 | — |
+| `fp alerts create NAME` | 创建告警。 | `--file`；`--description`；`--severity`；`--trigger-kind`；`--trigger-spec`；`--channels`；`--eval-interval-secs`；`--min-breaches`；`--eval-window` |
+| `fp alerts update NAME` | 更新或重命名告警。 | 创建选项加上 `--name`；`--yes`, `-y` |
 | `fp alerts delete NAME` | 删除告警。 | `--yes`, `-y` |
-| `fp alerts test NAME` | 发送测试通知。 | `--channels`; `--yes`, `-y` |
+| `fp alerts test NAME` | 发送测试通知。 | `--channels`；`--yes`, `-y` |
 
 告警严重级别为 `info`、`warning` 和 `critical`。触发类型为 `metric_threshold`、`custom_sql`、`evaluation_score`、`eval_compound` 和 `per_event`。评估间隔必须在 30 到 86,400 秒之间。
 
@@ -227,24 +231,24 @@ fp errors [OPTIONS]
 
 | 命令 | 用途 | 选项 |
 | --- | --- | --- |
-| `fp audits list` | 列出审计。 | `--enabled-only`; `--show-id` |
-| `fp audits show NAME` | 显示一个审计定义及其状态。 | — |
+| `fp audits list` | 列出审计。 | `--enabled-only`；`--show-id` |
+| `fp audits show NAME` | 显示某个审计定义及其状态。 | — |
 | `fp audits create NAME` | 创建审计并立即将其首次运行加入队列。 | 参见[创建选项](#audit-create-options)。 |
-| `fp audits edit NAME` | 替换审计设置，保留未指定的值。 | 创建定义选项；`--name`; `--yes`, `-y` |
-| `fp audits delete NAME` | 删除审计、其发现项及运行历史。 | `--yes`, `-y` |
-| `fp audits run NAME` | 将手动运行加入队列。 | — |
-| `fp audits runs NAME` | 列出运行历史。 | `--limit`, `-n`; `--show-id` |
+| `fp audits edit NAME` | 在保留未指定值的情况下替换审计设置。 | 创建定义选项；`--name`；`--yes`, `-y` |
+| `fp audits delete NAME` | 删除审计及其发现项和运行历史。 | `--yes`, `-y` |
+| `fp audits run NAME` | 手动将一次运行加入队列。 | — |
+| `fp audits runs NAME` | 列出运行历史。 | `--limit`, `-n`；`--show-id` |
 | `fp audits context-show NAME` | 显示简报和参考 URL 获取状态。 | — |
-| `fp audits context-set NAME` | 修改简报或参考 URL。 | `--text`; `--text-file`; `--url`; `--clear-urls` |
+| `fp audits context-set NAME` | 修改简报或参考 URL。 | `--text`；`--text-file`；`--url`；`--clear-urls` |
 | `fp audits context-refresh NAME` | 重新获取参考 URL。 | — |
-| `fp audits findings` | 列出发现项。 | `--audit`; `--run-id`; `--status`; `--limit`, `-n`; `--offset`; `--show-id` |
-| `fp audits finding FINDING_ID` | 显示一个发现项及其证据。 | — |
-| `fp audits ack FINDING_ID` | 确认发现项。 | `--reason` |
-| `fp audits mute FINDING_ID` | 抑制重复出现的模式。 | `--reason`; `--yes`, `-y` |
-| `fp audits dismiss FINDING_ID` | 将某模式标记为不可操作并抑制它。 | `--reason`; `--yes`, `-y` |
-| `fp audits resolve FINDING_ID` | 将发现项标记为已修复，不进行未来抑制。 | `--yes`, `-y` |
-| `fp audits reopen FINDING_ID` | 将发现项返回实时队列并清除抑制。 | — |
-| `fp audits assign FINDING_ID` | 设置发现项负责人。 | 必填 `--to <email>` |
+| `fp audits findings` | 列出发现项。此处 `--limit` 默认为 100（而非其他地方的 50），服务端上限为 500。 | `--audit`；`--run-id`；`--status`；`--limit`, `-n`；`--offset`；`--show-id` |
+| `fp audits finding FINDING_ID` | 显示某个发现项及其证据。 | — |
+| `fp audits ack FINDING_ID` | 确认某个发现项。 | `--reason` |
+| `fp audits mute FINDING_ID` | 抑制某个重复出现的模式。 | `--reason`；`--yes`, `-y` |
+| `fp audits dismiss FINDING_ID` | 将某个模式标记为不可操作并抑制它。 | `--reason`；`--yes`, `-y` |
+| `fp audits resolve FINDING_ID` | 将发现项标记为已修复，不做后续抑制。 | `--yes`, `-y` |
+| `fp audits reopen FINDING_ID` | 将发现项返回活跃队列并清除抑制。 | — |
+| `fp audits assign FINDING_ID` | 设置发现项的负责人。 | 必需 `--to <email>` |
 
 #### 审计创建选项
 
@@ -259,122 +263,192 @@ fp audits create checkout-reliability \
   --url https://runbooks.example.com/checkout
 ```
 
-| 选项 | 描述 |
+| 选项 | 说明 |
 | --- | --- |
-| `--file <path>` | 基于 JSON 定义，或使用 `-` 从 stdin 读取。显式标志覆盖文件中的值。 |
-| `--description <text>` | 说明故障问题或目的。 |
-| `--enabled` / `--disabled` | 启动时开启或关闭调度。默认：启用。 |
+| `--file <path>` | 基于 JSON 文件定义，或使用 `-` 从 stdin 读取。显式标志会覆盖文件中的值。 |
+| `--description <text>` | 说明要排查的故障问题或目的。 |
+| `--enabled` / `--disabled` | 启动时是否开启调度。默认：启用。 |
 | `--schedule-interval-secs <n>` | `3600`–`604800`。默认值：`86400`。 |
-| `--schedule-anchor <timestamp>` | ISO 8601 格式的固定 UTC 相位。默认：下一个 09:00 UTC。 |
-| `--window-mode since_last\|fixed` | 从上次完整分析窗口后继续，或反复检查滚动窗口。默认：`since_last`。 |
+| `--schedule-anchor <timestamp>` | ISO 8601 格式的固定 UTC 时间相位。默认：下一个 09:00 UTC。 |
+| `--window-mode since_last\|fixed` | 从上次完整分析窗口之后继续，或反复检查一个滚动窗口。默认：`since_last`。 |
 | `--lookback-window-secs <n>` | `3600`–`7776000`。默认值：`604800`。 |
-| `--scope '<json>'` | 按 `environments`、`agent_ids` 或其他支持的范围字段过滤。 |
-| `--ignore-error-type <type>` | 排除错误类型；可重复或以逗号分隔。 |
-| `--llm` / `--no-llm` | 启用或禁用 Agentic 分析。默认：启用。 |
+| `--scope '<json>'` | 按 `environments`、`agent_ids` 或其他支持的 scope 字段过滤。 |
+| `--ignore-error-type <type>` | 排除错误类型；可重复使用或以逗号分隔。 |
+| `--llm` / `--no-llm` | 启用或禁用智能体分析。默认：启用。 |
 | `--top-k <n>` | 保留 `1`–`500` 条发现项。默认值：`50`。 |
-| `--sensitivity low\|medium\|high` | 设置报告敏感度。默认：`medium`。 |
+| `--sensitivity low\|medium\|high` | 设置报告灵敏度。默认：`medium`。 |
 | `--channels '<json>'` | 通知渠道数组。 |
 | `--text <brief>` | 内联简报，最多 8,192 个字符。 |
 | `--text-file <path>` | 从文件读取简报；与 `--text` 互斥。 |
-| `--url <https-url>` | 添加公开 HTTPS 参考链接；最多重复五次。 |
+| `--url <https-url>` | 添加公共 HTTPS 参考链接；最多重复五次。 |
 
-首次运行需要上下文时，请在创建时一并提供。创建操作会在排队运行开始前将定义和上下文一起提交。
+如果首次运行需要上下文，请在创建时一并提供。创建操作会在排队运行开始前将定义和上下文一起提交。
 
 <Note>
-  `fp audits run` 是异步操作。在读取发现项之前，请轮询 `fp audits runs NAME`，直到最新一次运行成功或失败。
+  `fp audits run` 是异步的。在读取发现项之前，请轮询 `fp audits runs NAME` 直至最新一次运行成功或失败。
 </Note>
 
 ### 问题
 
 | 命令 | 用途 | 选项 |
 | --- | --- | --- |
-| `fp issues list` | 列出问题。 | `--state`; `--alert-id`; `--limit`, `-n`; `--show-id` |
-| `fp issues count` | 统计开放或选定状态的问题数量。 | `--state` |
+| `fp issues list` | 列出问题。 | `--state`；`--alert-id`；`--limit`, `-n`；`--show-id` |
+| `fp issues count` | 统计开启中或特定状态的问题数量。 | `--state` |
 | `fp issues show INCIDENT_ID` | 显示问题详情、评论、订阅者和活动记录。 | — |
-| `fp issues open` | 打开手动或与告警关联的问题。 | 必填 `--summary`；可选 `--title`、`--alert-id`、`--severity` |
-| `fp issues ack INCIDENT_ID` | 确认问题。 | — |
-| `fp issues assign INCIDENT_ID` | 替换负责人；省略该选项则清空负责人。 | 可重复 `--assignee` |
-| `fp issues resolve INCIDENT_ID` | 解决问题。 | `--yes`, `-y` |
+| `fp issues open` | 开启一个手动或与告警关联的问题。 | 必需 `--summary`；可选 `--title`、`--alert-id`、`--severity` |
+| `fp issues ack INCIDENT_ID` | 确认某个问题。 | — |
+| `fp issues assign INCIDENT_ID` | 替换负责人；省略选项则清空负责人。 | 可重复 `--assignee` |
+| `fp issues resolve INCIDENT_ID` | 解决某个问题。 | `--yes`, `-y` |
 | `fp issues comment-list INCIDENT_ID` | 列出评论。 | — |
-| `fp issues comment-add INCIDENT_ID` | 添加评论。 | `--body`、`--file` 二者之一 |
+| `fp issues comment-add INCIDENT_ID` | 添加评论。 | `--body`、`--file` 二选一 |
 | `fp issues comment-delete INCIDENT_ID COMMENT_ID` | 删除评论。 | `--yes`, `-y` |
 | `fp issues subscribers INCIDENT_ID` | 列出订阅者。 | — |
 | `fp issues subscribe INCIDENT_ID` | 订阅自己或其他操作员。 | `--email` |
 | `fp issues unsubscribe INCIDENT_ID` | 取消订阅。 | `--email` |
 
-有效的问题状态为 `firing`、`acknowledged` 和 `resolved`。独立问题的严重级别为 `info`、`warning` 和 `critical`。
+有效的问题状态为 `firing`、`acknowledged` 和 `resolved`。独立问题严重级别为 `info`、`warning` 和 `critical`。
 
-### 云端助手
+### Cloud 助手
 
 | 命令 | 用途 | 选项 |
 | --- | --- | --- |
-| `fp agent health` | 检查助手可用性和配置。 | — |
+| `fp agent health` | 检查助手的可用性和配置。 | — |
 | `fp agent models` | 列出可用的助手模型。 | — |
 | `fp agent chats` | 列出已保存的对话。 | — |
-| `fp agent ask [MESSAGE]` | 开始或继续对话；省略消息时从 stdin 读取。 | `--chat`; `--model`; `--page-context` |
-| `fp agent show CHAT_ID` | 显示已保存的对话。 | — |
-| `fp agent rename CHAT_ID` | 重命名对话。 | 必填 `--title` |
+| `fp agent ask [MESSAGE]` | 开始或继续对话；省略消息时从 stdin 读取。 | `--chat`；`--model`；`--page-context` |
+| `fp agent show CHAT_ID` | 显示已保存的对话内容。 | — |
+| `fp agent rename CHAT_ID` | 重命名对话。 | 必需 `--title` |
 | `fp agent delete CHAT_ID` | 删除对话。 | `--yes`, `-y` |
 
 ### 策略
 
-云端管理的策略版本。**仅限会话** — 此处每个命令在 API 密钥下都会在发起任何请求之前以退出码 `2` 退出，因为这些是根专属写入路由，故意不在 `/v1` 中暴露。
+云端托管的策略版本。**仅限会话模式**——除 `fp policies test` 外，此处所有命令在 API 密钥下均会在发起任何请求之前以退出码 `2` 退出，因为这些是刻意从 `/v1` 中排除的仅 root 写入路由。`fp policies test` 是刻意设置的例外：它完全在本地针对 `node` 运行，不与任何服务器通信，因此既无认证要求，也无密钥模式拒绝，在未登录和使用 API 密钥时均可正常使用。
 
 | 命令 | 用途 | 选项 |
 | --- | --- | --- |
-| `fp policies list` | 列出策略版本。 | `--json` |
-| `fp policies show POLICY_ID` | 显示一个策略及其源代码。 | — |
-| `fp policies publish NAME PATH` | 从本地 `.mjs` 文件铸造一个版本。 | `--description`; `--no-verify` |
-| `fp policies enable POLICY_ID` | 将其重新添加到所有已移除它的部署中，每次都铸造新的生成版本。 | `--yes`, `-y` |
-| `fp policies disable POLICY_ID` | 从所有携带它的部署中移除，每次都铸造新的生成版本。 | `--yes`, `-y` |
-| `fp policies delete POLICY_ID` | 删除策略版本。 | `--yes`, `-y` |
-| `fp policies test PATH` | 针对合成上下文在本地运行策略。应用每个策略的 `match` 过滤器，因此不覆盖给定事件/工具的策略将报告为 `skipped` 而非运行。 | `--event`; `--tool`; `--command`; `--file-path`; `--expect` |
-| `fp policies compose PROMPT` | 使用助手草拟策略。需要 `policies:write` 权限。 | — |
+| `fp policies list` | 列出策略版本，每个策略的最新版本排在最前。 | — |
+| `fp policies show POLICY_ID` | 显示某个策略及其源码。 | — |
+| `fp policies publish POLICY_ID [SOURCE]` | 生成新版本；永远不会原地编辑现有版本。`SOURCE` 为路径、`@path` 或 `-`（从 stdin 读取）——省略则进入粘贴模式。 | `--description`；`--no-verify` |
+| `fp policies enable POLICY_ID` | 将其重新添加到所有曾移除它的部署中，并在每个部署上生成新一代。 | `--yes`, `-y` |
+| `fp policies disable POLICY_ID` | 从所有携带它的部署中移除，并在每个部署上生成新一代。 | `--yes`, `-y` |
+| `fp policies delete POLICY_ID` | 删除某个策略版本。 | `--yes`, `-y` |
+| `fp policies test [SOURCE]` | 在本地针对合成上下文运行策略。会应用每个策略的 `match` 过滤器，若某策略不覆盖给定的事件/工具，则报告为 `skipped` 而非执行。需要 PATH 中有 `node`。 | `--event`；`--tool`；`--command`；`--file`；`--expect` |
+| `fp policies compose PROMPT` | 使用助手起草策略。默认情况下仅打印草稿，不执行其他操作。需要 `policies:write` 权限。 | `--out <path>`；`--publish <policy-id>` |
 
-### 机群
+### 机队
 
-哪些机器运行哪些策略。**仅限会话**，原因同上。
-
-| 命令 | 用途 | 选项 |
-| --- | --- | --- |
-| `fp fleet list` | 列出已注册的机器及其部署生成版本。 | — |
-| `fp fleet show MACHINE_ID` | 机器当前运行的策略集。 | — |
-| `fp fleet deploy MACHINE_ID` | **替换机器的整个策略集。** 打印计划，在没有 `--json` 的交互式终端中才会询问确认。 | `--add`; `--remove`; `--set`; `--create`; `--yes`, `-y` |
-| `fp fleet diff MACHINE_ID` | 将机器与另一个部署进行比较。 | — |
-| `fp fleet history MACHINE_ID` | 机器的历史部署记录。 | — |
-| `fp fleet rollback MACHINE_ID` | 恢复上一个部署。 | `--yes`, `-y` |
-| `fp fleet rename MACHINE_ID` | 为机器指定一个易读的名称。 | 必填 `--name` |
-
-### 护栏
-
-执行策略实际执行的情况。**仅限会话**，原因同上。
+管理哪些机器运行哪些策略。**仅限会话模式**——此处所有命令，无一例外，在 API 密钥下均会以退出码 `2` 退出。
 
 | 命令 | 用途 | 选项 |
 | --- | --- | --- |
-| `fp guardrails summary` | 覆盖率、已拦截/已评估总计、拒绝迷你图及每项策略表格。 | `--since`（`1h`、`6h`、`24h`、`7d`）; `--machine` |
-| `fp guardrails timeline` | 按窗口分桶的决策，汇总所有策略来源。 | `--since`（`1h`、`6h`、`24h`、`7d`）; `--machine` |
+| `fp fleet list` | 列出已注册的机器及其部署代次。 | — |
+| `fp fleet show MACHINE_ID` | 显示某台机器当前运行的策略集。 | — |
+| `fp fleet deploy MACHINE_ID` | 更改某台机器执行的内容。会先打印完整的最终策略集，仅在非 `--json` 的交互式终端下才会询问确认。 | `--add`；`--remove`；`--set`；`--create`；`--yes`, `-y` |
+| `fp fleet diff [MACHINE_ID]` | 意图与实际——机器被告知运行的策略与其最后一次拉取的策略之间的差异。省略 id 则检查整个机队。 | — |
+| `fp fleet history MACHINE_ID` | 显示某台机器的所有代次，最新在前。 | — |
+| `fp fleet rollback MACHINE_ID GENERATION` | 恢复某个历史代次的策略集。代次编号来自 `fp fleet history MACHINE_ID`。 | `--yes`, `-y` |
+| `fp fleet rename MACHINE_ID LABEL` | 为机器设置一个可读标签。机器 id 本身不会改变。 | — |
+
+```bash
+fp fleet history ci-runner-01
+fp fleet rollback ci-runner-01 3
+fp fleet rename ci-runner-01 "CI runner (eu-west)"
+```
+
+#### 策略引用
+
+`--add` 和 `--set` 接受策略引用，而非裸 id：
+
+| 格式 | 含义 |
+| --- | --- |
+| `id` | 当前版本，当前效果 |
+| `id@3` | 第 3 版，当前效果 |
+| `id:observe` | 当前版本，仅记录不执行 |
+| `id@3:observe` | 第 3 版，仅记录不执行 |
+
+效果为 `enforce`（执行）或 `observe`（观察）。解析规则：显式指定的效果优先；其次使用该策略在部署中已有的效果；否则默认为 `enforce`。
+
+<Warning>
+  裸 `--add` 会**立即执行**。`fp fleet deploy ci-runner-01 --add checkout-guard` 会在该机器下次拉取时立即开始阻断。`:observe` 才是实现影子发布的方式：
+
+  ```bash
+  fp fleet deploy ci-runner-01 --add checkout-guard:observe   # 仅记录
+  fp fleet deploy ci-runner-01 --add checkout-guard           # 立即执行
+  ```
+
+  observe 不等于关闭。策略会被真实评估，采用与执行模式相同的 10 秒超时和错误处理机制，所有非 allow 的判决都会被记录——只是不会真正执行。正因如此，这种测量才有参考价值。
+</Warning>
+
+#### 差量更新、替换与竞争条件
+
+`--add` 和 `--remove` 会读取机器的当前策略集并应用差量，因此未提及的策略不会受到影响。对机器已运行的策略执行裸 `--add` 会保留其已固定的版本，而不会静默升级；如需移动版本，请传入 `id@version`。
+
+`--set` 会替换全部策略，也是唯一能删除未命名策略的方式。它不能与 `--add` 或 `--remove` 组合使用。三者均不传入是使用错误，而非无操作。
+
+```bash
+fp fleet deploy ci-runner-01 --add prod-guard@1:observe --remove old-rule
+fp fleet deploy ci-runner-01 --set no-force-push --set no-secret-echo
+```
+
+由于端点接收整个策略集，写操作本质上是对每条路径的完全替换。服务端没有锁，因此 CLI 会记录读取时的代次，若结果不恰好比当前代次高一，则拒绝操作——这意味着期间有其他人进行了部署，而替换操作不会合并。请使用 `fp fleet show` 重新读取后再次部署。
+
+`--create` 用于预先部署到尚未签到的机器 id，以便提前准备。不使用此标志时，服务器不认识的 id 会被拒绝，否则一个拼写错误就可能生成一台无人所有、无人收集策略的机器。
+
+### 防护栏
+
+执行规则实际产生的效果。**仅限会话模式**，原因同上。
+
+| 命令 | 用途 | 选项 |
+| --- | --- | --- |
+| `fp guardrails summary` | 覆盖率、拦截/评估总数、拒绝迷你图以及按策略汇总的表格。 | `--since`（`1h`、`6h`、`24h`、`7d`）；`--machine` |
+| `fp guardrails timeline` | 在时间窗口内按桶聚合的决策，跨所有策略来源求和。 | `--since`（`1h`、`6h`、`24h`、`7d`）；`--machine` |
+
+汇总表中出现 `(no policy)` 行是正常现象，而非数据缺口：大多数评估结果都是无任何策略反对的 allow，该行的作用是将分母保持在屏幕上。
+
+### 不影响任何人的策略发布流程
+
+以上三组命令构成一个完整序列：本地决策、发布、影子部署、度量，然后执行。
+
+```bash
+fp policies test ./checkout.policy.mjs --tool Bash --command "git push --force" --expect deny
+fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
+fp fleet deploy ci-runner-01 --add checkout-guard:observe
+fp guardrails summary --since 24h --machine ci-runner-01
+fp fleet deploy ci-runner-01 --add checkout-guard:enforce
+```
+
+| 步骤 | 原因 |
+| --- | --- |
+| `fp policies test` | 无需服务器，无需认证。针对您描述的上下文运行真实文件，并为每个注册策略打印 allow、deny 或 instruct。`--expect` 可将其转为 CI 断言。 |
+| `fp policies publish` | 生成新的不可变版本；永远不会原地编辑现有版本。 |
+| `fp fleet deploy --add <id>:observe` | 影子发布。**此处 `:observe` 不可省略**——裸 `--add` 会在机器下次拉取时立即执行。 |
+| `fp guardrails summary` | 将不安全的匹配与策略本会误拦截的合法操作区分开来。 |
+| `fp fleet deploy --add <id>:enforce` | 在已记录的判决符合预期后进行提升。 |
+| `fp fleet rollback <machine> <generation>` | 执行出现问题时的回退路径。 |
+
+不涉及 Cloud 的单机等效方案，是使用 `failproofai publish --effect observe` 发布策略包，并在[本地仪表板](/zh/reference/local-dashboard)上查看已记录的判决。
 
 ## 全局标志
 
-| 标志 | 描述 |
+| 标志 | 说明 |
 | --- | --- |
 | `--json` | 输出机器可读的 JSON。 |
-| `--base-url <url>` | 使用自托管或开发仪表板。 |
+| `--base-url <url>` | 使用自托管或开发环境仪表板。 |
 | `--org <slug>` | 为本次调用选择组织。 |
 | `--token <token>` | 覆盖已保存的用户会话令牌。 |
-| `--api-key <key>` | 使用 API 密钥对自动化进行身份验证；不会被保存。 |
-| `--timeout <seconds>` | HTTP 超时；必须为正数。默认值：`30`。 |
-| `--quiet`, `-q` | 抑制 stderr 的状态输出。 |
+| `--api-key <key>` | 使用 API 密钥进行自动化认证；不会被保存。 |
+| `--timeout <seconds>` | HTTP 超时时间；必须为正数。默认值：`30`。 |
+| `--quiet`, `-q` | 抑制 stderr 上的状态输出。 |
 | `--no-color` | 禁用彩色输出。 |
 | `--insecure` / `--secure` | 禁用或恢复 TLS 证书验证。 |
-| `--version` | 打印版本信息并退出。 |
+| `--version` | 打印版本号并退出。 |
 | `--help`, `-h` | 显示帮助。 |
 
 `--api-key` 用于自动化场景。登录、切换组织和助手命令需要用户会话。
 
 ## 环境变量
 
-| 变量 | 等效选项或用途 |
+| 变量 | 对应标志或用途 |
 | --- | --- |
 | `FP_DASHBOARD_URL` | `--base-url` |
 | `FP_ORG` | `--org` |
@@ -382,18 +456,20 @@ fp audits create checkout-reliability \
 | `FP_API_KEY` | `--api-key` |
 | `FP_JSON` | `--json` |
 | `FP_INSECURE` | `--insecure` |
-| `FP_HOME` | 重定位 CLI 配置目录（默认 `~/.failproofai/fpcli`）。 |
+| `FP_HOME` | 重新定位 CLI 配置目录（默认为 `~/.failproofai/fpcli`）。 |
 | `FP_ANALYTICS_DISABLED` 或 `DO_NOT_TRACK` | 禁用匿名 CLI 分析。 |
 | `NO_COLOR` | 禁用彩色输出。 |
 
-显式标志优先于环境变量，环境变量优先于已保存的配置。在 API 密钥模式下，请使用 `--org` 或 `FP_ORG` 显式选择租户。
+显式标志会覆盖环境变量，环境变量会覆盖已保存的配置。
+
+在 API 密钥模式下，由人工 `fp login` 保存的组织会被**忽略**，而非仅被覆盖——只有显式的 `--org` 或 `FP_ORG` 才会被发送。不会从已保存的登录中继承任何内容，因此当密钥可以操作多个组织时，请务必传入 `--org`。省略它不会报错：一个未指定 `--org` 的实例范围密钥会在服务端解析为**默认**组织并返回该组织的数据，全程无任何报错。建议先运行 `fp whoami` 确认密钥实际连接到了哪个租户。
 
 <Warning>
-  这些变量的 `AGENTEYE_*` 写法**不会被 `fp` 读取**，从来如此 — CLI 声明的是 `FP_*`（`fp_cli/app.py`），未知变量不会报错。设置 `AGENTEYE_DASHBOARD_URL` 不会重定向 CLI；它会被忽略，命令将静默地对已保存的仪表板执行。
+  这些变量的 `AGENTEYE_*` 写法**不会被 `fp` 读取**，也从未被读取过——CLI 声明的是 `FP_*`（`fp_cli/app.py`），未知变量不会报错。设置 `AGENTEYE_DASHBOARD_URL` 不会重定向 CLI；它会被忽略，命令将静默地针对已保存的仪表板运行。
 
-  `AGENTEYE_HOME` 和 `AGENTEYE_ENVIRONMENT` 确实仍然存在，但它们属于**收集器和遥测 SDK**，而非本 CLI。
+  `AGENTEYE_HOME` 和 `AGENTEYE_ENVIRONMENT` 确实存在，但它们属于**采集器和遥测 SDK**，而非本 CLI。
 </Warning>
 
 <Warning>
-  删除、吊销、抑制、解决或替换配置的命令默认会提示确认。请在验证当前活跃组织和目标后再使用 `--yes`。
+  执行删除、吊销、抑制、解决或替换配置的命令默认会提示确认。仅在验证活跃组织和目标无误后再使用 `--yes`。
 </Warning>

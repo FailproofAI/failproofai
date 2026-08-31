@@ -1,26 +1,51 @@
 ---
 title: "Temel kavramlar"
-description: "Failproof AI genelinde kullanılan küçük bir kavram seti."
+description: "Ajanları gözlemlemek, denetlemek ve korumak için kullanılan terimler."
 icon: "boxes"
 ---
 
-| Kavram | Anlamı | Elde edebileceğiniz |
-| --- | --- | --- |
-| Session | Bir aracı görevi veya çalıştırma | Bireysel bir sonucu yeniden oluşturun |
-| Event | Bir oturumda kaydedilen bir işlem | Bir model çağrısını, araç kullanımını, hatayı, insan işlemini veya ilke kararını inceleyin |
-| Trace | Sıralı ve iç içe oturum görünümü | Bağlantısız günlükleri okumak yerine nedenselliği anlayın |
-| Evaluation | Bir oturumdaki bir puan veya yargı | Kalite, uyum, maliyet veya gecikmeyi sürekli takip edin |
-| Audit | Seçili bir oturum popülasyonunun incelenmesi | Belirtilen bir hedef ve hızla hata desenlerini arayın |
-| Finding | Bir denetim tarafından keşfedilen kanıtla desteklenen hata | Hata modunu, önem derecesini ve etkilenen oturumları görün |
-| Issue | Kalıcı bir yanıt kaydı | Bir bulguyu veya uyarı olayını atayın, tartışın ve çözün |
-| Alert | Yinelemeyi algılayan bir kural | Bilinen bir koşul geri döndüğünde yanıt verenleri bilgilendirin |
-| Policy | Aracı etkinliği sırasında değerlendirilen bir kural | Riskli davranışı gözlemleyin, engelleyin veya yönlendirin |
-| Deployment | Makinelere sürümü belirlenmiş bir ilke kullanıma alınması | İlkenin nerede çalışacağını kontrol edin ve güvenle geri alın |
+Failproof AI ajanların ne yaptığını kaydeder ve ne yapabileceklerini belirler.
 
-## Güvenilirlik döngüsü
+## Gözlemle
 
-Kanıttan başlayın. Bir oturum ne olduğunu gösterir. Bir denetim bunun izole bir hata mı yoksa bir model mi olduğunu belirler. Bir bulgu hata modunu tanımlar; bir sorun yanıtın sahibidir. Bir ilke aynı davranışı önlerken, uyarılar koşul geri döndüğünde sizi bilgilendiriyor.
+| Terim | Anlamı |
+| --- | --- |
+| Session | Bir ajan çalıştırması |
+| Event | Bir session içindeki bir işlem |
+| Trace | Bir sessionun sıralanmış görünümü |
+| Evaluation | Bir puan veya yargı |
+| Audit | Birçok sessionun incelenmesi |
+| Finding | Bir başarısızlık deseninin kanıtı |
+| Issue | Birinin sorumlu olduğu yanıt |
+| Alert | Tekrarlanmayı tespit eden kural |
+
+## Uygula
+
+| Terim | Anlamı |
+| --- | --- |
+| Harness | Ajanın çalıştığı ortam |
+| Hook | Harnessin karar için sorduğu nokta |
+| Policy | İzin veren, rehberlik eden veya engelleyen kural |
+| Policy pack | Herkesin yükleyebileceği versiyonlu politika seti |
+| Daemon | Politikaları değerlendiren yerel hizmet |
+| Deployment | Bir makineye atanan politikalar |
+
+## İş akışı
+
+```text
+Session → Audit → Finding → Issue → Policy
+```
+
+Kanıtla başlayın. Tekrarlanan başarısızlığı bulun, yanıtı atayın, sonra bunu önleyin.
+
+Bir policy `allow`, `instruct` veya `deny` döndürür. `instruct` aracılığıyla rehberlik harnesse bağlıdır; işlem durdurulmalıysa `deny` kullanın.
+
+Gözlemle modu karardan ayrıdır. Gerçek politikayı çalıştırır ve ne yapacağını kaydederken ajanın devam etmesine izin verir.
 
 <Warning>
-  Yerel bir `failproofai audit` yerel aracı geçmişini tarar. Yinelenen bir Bulut denetimi, Failproof AI Cloud'da depolanan oturumları gözden geçirir. Bunlar farklı kapsam ve zamanlama ile ayrı iş akışlarıdır.
+  Basit bir `fp fleet deploy <machine> --add <policy>` hemen uygulanır. Gölge bir dağıtım için `:observe` ekleyin.
 </Warning>
+
+Kurulum hiçbir politika pack seçmez. Bir tane eklemeden önce, yalnızca `block-failproofai-commands` çalışır. Derlenmiş katalog 9 kategoride 39 politika içerir.
+
+Her ajan ortamında bir olayın engelleyebileceğini varsaymadan önce [desteklenen harnessler](/tr/reference/harnesses#enforcement-capability) bölümüne bakın.

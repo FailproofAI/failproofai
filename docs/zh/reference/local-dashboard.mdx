@@ -1,34 +1,36 @@
 ---
 title: "本地仪表板"
-description: "查看本地项目、会话、策略活动、配置、审计和计划扫描。"
+description: "查看本地项目、会话、策略活动、配置、审计及定时扫描。"
 icon: "monitor-cog"
 ---
 
-不带参数运行 `failproofai` 即可在 `http://localhost:8020` 启动内置仪表板。它直接从本机读取本地代理历史记录、策略配置、审计结果和钩子活动。
+不带任何参数运行 `failproofai`，即可在 `http://localhost:8020` 启动内置仪表板。它直接从本机读取本地智能体历史记录、策略配置、审计结果和钩子活动。
 
-本地仪表板与 Failproof AI Cloud 相互独立。无需 Cloud 账户即可使用，且无法证明事件已传递至您的组织。
+在尚未完成设置的机器上，直接运行该命令会先执行首次运行向导，再打开仪表板。此行为仅在交互式终端下触发：通过管道传输或在 CI 环境中运行时，会打印一条提示信息并直接打开仪表板，因为无人响应的向导绝不应该阻塞你输入的命令。设置 `FAILPROOFAI_NO_FIRST_RUN=1` 可完全跳过重定向，直接进入仪表板。
 
-## 仪表板区域
+本地仪表板与 Failproof AI Cloud 相互独立，无需 Cloud 账户即可使用，也不能证明事件已投递至你的组织。在已完成设置的机器上，仪表板所显示的决策由 `failproofaid` 守护进程作出，该进程是唯一的评估者；在尚未完成设置的机器上，钩子在进程内评估。
 
-| 区域 | 可执行的操作 |
+## 仪表板功能区
+
+| 功能区 | 可执行操作 |
 | --- | --- |
-| Policies → Activity | 检查本地 allow、instruct 和 deny 决策；按决策、事件、CLI、工具、来源、策略和会话进行筛选。 |
-| Policies → Configure | 启用内置策略、编辑支持的参数、切换已发现的自定义策略，以及选择目标测试环境。 |
-| Projects | 浏览所有受支持代理历史记录中已发现的项目，并比较其最近的会话。 |
-| Project sessions | 打开一个本地转录文件，查看原始有序条目和子代理，下载文件，并关联策略活动。 |
-| Audit | 查看最近一次离线扫描结果、风险模式、优势、受影响项目以及建议的内置策略。 |
-| Settings | 在守护进程/平台支持的情况下，配置计划本地扫描和通过电子邮件发送审计报告。 |
+| Policies → Activity | 查看本地 allow、instruct 和 deny 决策；可按决策类型、事件、CLI、来源、策略和会话进行筛选。 |
+| Policies → Configure | 从已安装的策略包中启用策略、编辑支持的参数、切换已发现的自定义策略和约定策略，以及选择目标执行环境。 |
+| Projects | 浏览各支持的智能体历史记录中发现的项目，并比较其最近的会话。 |
+| Project sessions | 打开某条本地会话记录，查看原始有序条目和子智能体，下载记录，以及关联策略活动。 |
+| Audit | 查看最近一次离线扫描的结果、风险模式、优势、受影响的项目及建议的内置策略。 |
+| Settings | 在守护进程/平台支持的情况下，配置定时本地扫描和审计报告的邮件发送。 |
 
 ## 查看策略活动
 
 <Tabs>
-  <Tab title="Dashboard">
-    1. 打开 **Policies → Activity**，设置决策和来源筛选条件。
-    2. 按事件、测试环境、工具或策略名称进一步缩小范围。
-    3. 展开某一行以检查其原因、匹配的策略、来源、执行模式和持续时间。
-    4. 点击会话链接，在转录上下文中查看该决策的位置。
+  <Tab title="仪表板">
+    1. 打开 **Policies → Activity**，设置决策类型和来源筛选条件。
+    2. 可按事件、执行环境、策略名称或会话进一步缩小范围。
+    3. 每行显示决策类型、事件、执行环境、工具、策略、权限模式和持续时长。展开该行可查看完整原因、所有匹配策略、最终决策来源、云端部署信息，以及会话的工作目录和记录路径。工具名称显示在行中，但不作为筛选条件。
+    4. 点击会话链接，可在会话记录上下文中定位该决策。
 
-    对于不支持阻断裁决的测试环境/事件对，看起来被拒绝的行仍可能只是观察性的。详情视图会标注已验证的强制执行能力。
+    某条看似拒绝的记录，在不消费阻断判决的执行环境/事件组合下，仍可能仅为观测性记录。详情视图会标注已验证的强制执行能力。
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -37,41 +39,44 @@ icon: "monitor-cog"
     failproofai
     ```
 
-    本地活动存储在 `~/.failproofai/hook-activity` 目录下。请使用仪表板，而非直接编辑这些文件。
+    本地活动存储在 `~/.failproofai/hook-activity` 下。请使用仪表板，而非直接编辑这些文件。
   </Tab>
 </Tabs>
 
 ## 本地配置策略
 
 <Tabs>
-  <Tab title="Dashboard">
-    1. 打开 **Policies → Configure**，选择测试环境和配置范围。
-    2. 启用内置策略或已发现的自定义策略。
-    3. 对于带参数的内置策略，打开其配置控件并保存支持的值。
-    4. 返回 Activity，执行匹配和不匹配的操作。
+  <Tab title="仪表板">
+    1. 打开 **Policies → Configure**，选择执行环境和配置范围。该标签页可直接通过 `http://localhost:8020/policies?tab=policies` 访问。
+    2. 从已安装的策略包中启用某条策略，或启用已发现的自定义策略或约定策略。
+    3. 对于参数化策略，打开其配置控件并保存支持的参数值。
+    4. 返回 Activity，执行匹配和不匹配的操作进行验证。
 
-    约定策略会显示其项目或用户来源。显式自定义路径的更改可能需要重新运行 CLI 配置，以便记录所选路径。
+    在安装策略包之前，列表为空——此构建版本本身不内置任何策略，请先运行 `failproofai policies add FailproofAI/policies`。约定策略会显示其项目或用户来源。显式的自定义路径修改可能需要重新运行 CLI 配置，以确保所选路径被正确记录。
   </Tab>
   <Tab title="CLI">
     ```bash
-    failproofai policy add block-sudo --scope project
+    failproofai policies show FailproofAI/policies
+    failproofai policies add block-sudo --scope project
     failproofai policies --install --custom ./security.policies.ts --scope project
     failproofai policies
     ```
+
+    `policies show <owner>/<repo>` 可在安装前预览策略包的内容。`--scope` 接受 `user`、`project` 或 `local`；其中 `local` 仅 Claude Code 支持，Hermes 和 OpenClaw 仅支持 `user`。
   </Tab>
 </Tabs>
 
-## 浏览项目和会话
+## 浏览项目与会话
 
-Projects 页面整合了所有受支持的本地历史存储。选择一个项目以列出其会话，然后打开某个会话，即可使用原始日志查看器、子代理分段、下载操作以及会话范围的策略活动功能。
+Projects 页面汇聚了所有受支持的本地历史记录存储。选择一个项目可列出其所有会话，再打开某个会话即可使用原始日志查看器、子智能体片段、下载功能以及会话范围内的策略活动。
 
-如果某个项目或会话缺失，请确认该测试环境使用的是其默认历史记录位置，或使用 `failproofai harness add-path` 注册额外的根目录。
+如果某个项目或会话缺失，请确认该执行环境使用了默认的历史记录存储位置，或通过 `failproofai harness add-path <harness> [<label>=]<path>` 注册额外的根路径。
 
-## 计划离线审计
+## 定时离线审计
 
 <Tabs>
-  <Tab title="Dashboard">
-    打开 **Settings**，启用计划扫描，选择支持的时间间隔，并在可用时配置报告投递方式。该页面会显示下次运行时间、上次运行时间、退出代码，以及当前平台是否支持后台守护进程。
+  <Tab title="仪表板">
+    打开 **Settings**，启用定时扫描，选择支持的扫描间隔，并在可用时配置报告的发送方式。该页面会显示下次运行时间、上次运行时间、退出代码，以及当前平台是否支持后台守护进程。
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -79,10 +84,16 @@ Projects 页面整合了所有受支持的本地历史存储。选择一个项�
     failproofai audit --status
     ```
 
-    修改天数可设置不同的时间间隔（1–90 天）。使用 `failproofai audit --no-schedule` 可禁用定期扫描；运行 `failproofai audit` 可立即执行交互式扫描。
+    修改天数即可设置不同的扫描间隔（1–90 天）。使用 `failproofai audit --no-schedule` 可停用定时扫描，该命令会停止计时器并保持登录状态；运行 `failproofai audit` 可立即执行交互式扫描。
+
+    定时扫描会在首次使用时要求登录，因为扫描结果将通过邮件发送。使用 `--email <address>` 可预先提供邮件地址，跳过登录提示。
   </Tab>
 </Tabs>
 
+<Note>
+  分析结果和发现内容保留在本机。默认情况下会发送匿名 CLI 遥测数据，除非你设置了 `FAILPROOFAI_TELEMETRY_DISABLED=1`。定时扫描还会发送机器元数据，并在你选择加入后可能发送有限的发现摘要。
+</Note>
+
 <Warning>
-  本地仪表板可能会显示来自本地代理历史记录的提示词、工具输入、文件内容和终端输出。请仅将其绑定到受信任的接口，并在审查完成后停止该进程。
+  本地仪表板可能显示来自本地智能体历史记录的提示词、工具输入、文件内容和终端输出。请仅将其绑定到可信网络接口，并在查看完成后关闭该进程。
 </Warning>

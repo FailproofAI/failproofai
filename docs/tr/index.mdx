@@ -1,42 +1,59 @@
 ---
 ---
-title: "Aracınızı hatasız hale getirin"
-description: "Aracılarınızın çalıştığı her ortam için gözlemlenebilirlik ve uygulama — kodlama CLI'ları, sohbet ağ geçitleri, kendi barındırılan yardımcılar ve kendi enstrümente edilmiş aracılarınız."
+title: "Aracınızı başarısız olmaz hale getirin"
+description: "Aracılarınızın ne yaptığını görün, başarısızlıkları bulun ve bunların yeniden olmasını engelleyin."
 icon: "shield-check"
 ---
 
-Failproof AI, ekiplerin aracıların ne yaptığını anlamasına, nerede başarısız olduklarını bulmasına ve aynı davranışın tekrar olmasından önce koruyucu önlemler almalarına yardımcı olur.
+Failproof AI, aracıları çalıştıran herkese ne olduğunu anlamalarına, başarısızlıkları bulmalarına ve bunların tekrarlanmasını önlemelerine yardımcı olur.
 
-Bir **harness**, aracınızın gerçekten çalıştığı ortamdır. Failproof AI bunlardan 12 tanesine bağlanır — Claude Code ve Codex gibi kodlama CLI'ları, Hermes gibi sohbet ağ geçitleri, OpenClaw gibi kendi barındırılan yardımcılar — ve aynı olaylar, aynı politikalar ve aynı oturum geçmişi her birinde geçerlidir. Harness'i olmayan aracılar [Python SDK](/tr/reference/custom-agents) aracılığıyla rapor verir; bu da onları izler ve denetler; orada bir politika uygulamak kendi runtime'ınızda bir bağlantı gerektirir.
+Claude Code, Codex, Hermes, OpenClaw ve Goose dahil 12 ortak ajan ortamıyla çalışır. LangChain, CrewAI, LlamaIndex, Pydantic AI ile oluşturulan aracılar veya kendi çalışma zamanınız [Python SDK](/tr/reference/custom-agents) aracılığıyla rapor verebilir.
 
 <Columns cols={2}>
-  <Card title="Failproof'u kurun" icon="wand-sparkles" href="/tr/start/quickstart">
-    Projenizi enstrümente etmek, bağlamak ve aracı günlüklerinin geldiğini doğrulamak için skill'i kullanın.
+  <Card title="Bu makineyi ayarla" icon="wand-sparkles" href="/tr/start/quickstart">
+    Failproof AI'ı kurun, aracılarınızı bağlayın ve ne uygulayacağınızı seçin.
   </Card>
-  <Card title="Failproof Asistanına sorun" icon="message-square-text" href="/tr/sessions/assistant">
-    Aracı günlükleriniz üzerinde doğal dilde analiz yapın, sorgulayın, panolar oluşturun ve denetimler çalıştırın.
+  <Card title="Aracılarınız hakkında soru sorun" icon="message-square-text" href="/tr/sessions/assistant">
+    Oturumları sorgulayın, başarısızlıkları araştırın ve doğal dilde gösterge panelleri oluşturun.
   </Card>
 </Columns>
+
+## Yerel olarak başlayın veya Cloud'a bağlanın
+
+<Columns cols={2}>
+  <Card title="Yerel, hesap yok" icon="laptop" href="/tr/audits/local-audit">
+    Gösterge panelini `localhost:8020` adresinde açın ve `failproofai audit` komutunu çalıştırın. Ajan geçmişiniz bu makinede kalır.
+  </Card>
+  <Card title="Failproof AI Cloud" icon="cloud" href="/tr/start/setup">
+    Makineler arasında oturumları görün ve takımınız için politikaları yönetin.
+  </Card>
+</Columns>
+
+Kurulum, bilinçli olarak hiçbir politika paketi seçmez. Kuruluştan sonra bizimkini ekleyin:
+
+```bash
+failproofai policies add FailproofAI/policies
+```
+
+Buna kadar, yalnızca `block-failproofai-commands` çalışır. Bu, bir aracının Failproof AI'ı devre dışı bırakmasını engeller.
+
+## Neler yapabilirsiniz
 
 <Columns cols={3}>
-  <Card title="Aracının ne yaptığını görün" icon="route" href="/tr/sessions/overview">
-    Model çağrılarını, araçları, hataları, insan girişini, gecikmeyi ve politika kararlarını bir oturumda izleyin.
+  <Card title="Ne olduğunu görün" icon="route" href="/tr/sessions/overview">
+    Bir ajan çalıştırmasını model çağrıları, araçlar, hatalar ve politika kararlarından takip edin.
   </Card>
-  <Card title="Hataları sistematik olarak bulun" icon="scan-search" href="/tr/audits/overview">
-    Tanımlanmış bir oturum setini denetleyin, kanıta dayalı bulguları gözden geçirin ve çözümü sorun olarak izleyin.
+  <Card title="Başarısızlıkları bulun" icon="scan-search" href="/tr/audits/overview">
+    Bir çalıştırma veya birçok çalıştırma genelinde kanıtları gözden geçirin.
   </Card>
-  <Card title="Tekrarlanmasını önleyin" icon="shield-check" href="/tr/policies/overview">
-    Bilinen bir hata modunu politikaya dönüştürün, etkisini gözlemleyin ve bunu tüm filosunda dağıtın.
+  <Card title="Yeniden olmasını önleyin" icon="shield-check" href="/tr/policies/overview">
+    Gerçek aktivitede bir koruma gözlemleyin, sonra hazır olduğunuzda uygulayın.
   </Card>
 </Columns>
 
-> **Oturum → Denetim → Bulgu → Sorun → Politika**<br />
-> Ne olduğunu izleyin, hatayı bulun, yanıtı yönetin, ardından gelecekteki çalıştırmalarda aynı davranışı önleyin.
+> **Oturum → Denetim → Bulgu → Sorun → Politika**
+> Ne olduğunu görün, başarısızlığı bulun, cevaptan sorumlu olun, sonra onu engelleyin.
 
-## Buradan başlayın
-
-İlk enstrümente edilmiş aracınızı dağıtıyorsanız, [hızlı başlangıç](/tr/start/quickstart) ile başlayın. Veriler zaten geliyorsa, [Oturumlar](/tr/sessions/overview)'ı açın ve denetimleri veya politikaları yapılandırmadan önce gerçek bir çalıştırmayı inceleyin.
-
-<Card title="Bir hatayı bulun ve önleyin" icon="arrow-right" href="/tr/start/quickstart">
-  Yakalama işleminden güvenli bir şekilde dağıtılan bir politikaya kadar uçtan uca iş akışını tamamlayın.
-</Card>
+<Note>
+  Kurulum Linux ve macOS'u destekler. Her ajan ortamının neleri gözlemleyebileceği veya engelleyebileceği için [desteklenen araçları](/tr/reference/harnesses) bkz.
+</Note>

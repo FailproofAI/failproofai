@@ -1,52 +1,61 @@
 ---
-title: "Triển khai chính sách trên các máy"
-description: "Biết máy nào được đăng ký, hiện tại và thực thi các phiên bản chính sách dự định."
+title: "Phạm vi bao phủ fleet"
+description: "Xem những máy nào đã nhận và áp dụng các chính sách dự định."
 icon: "network"
 ---
 
-Phạm vi bao phủ của đội ngũ trả lời câu hỏi liệu chính sách có tồn tại tại nơi rủi ro tồn tại. Theo dõi các máy bằng ID ổn định và nhãn có thể đọc được của con người, sau đó so sánh trạng thái triển khai được gán và báo cáo của chúng.
+Phạm vi bao phủ fleet so sánh những gì Cloud gán với những gì mỗi máy đã áp dụng lần cuối.
 
-## Kiểm tra phạm vi bao phủ
-
-<Tabs>
-  <Tab title="Dashboard">
-    1. Đi tới **Admin → enforcement** và xem xét tổng số thực thi và quan sát.
-    2. Tìm kiếm máy theo ID hoặc nhãn, hoặc lọc các máy thiếu chính sách.
-    3. Mở rộng một hàng để so sánh các chính sách được gán, triển khai được báo cáo, lần kiểm tra cuối cùng và lịch sử.
-    4. Làm mới sau khoảng thời gian thăm dò của máy khi triển khai được áp dụng vẫn còn chờ xử lý.
-
-    ![Bộ thực thi đội ngũ hiển thị phạm vi bao phủ chính sách, trạng thái triển khai máy và các gán quan sát và thực thi.](/images/dashboard/enforcement-fleet.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai config --status
-    failproofai config --machine-label checkout-runner-03
-    failproofai flush --wait
-    ```
-
-    Sử dụng `fp events --agent-id <agent-id> --since 24h` để xác nhận hoạt động tác nhân của máy đạt tới Cloud.
-  </Tab>
-</Tabs>
-
-Sử dụng các chế độ xem phạm vi bao phủ để tìm:
-
-- Các máy chưa bao giờ kéo triển khai mới nhất
-- Các máy được đăng ký đã dừng báo cáo hoạt động
-- Chính sách được gán cho môi trường hoặc nhóm sai
-- Dịch chuyển phiên bản sau khi cập nhật bị gián đoạn
-
-Đổi tên máy mà không cần kết nối lại:
-
-```bash
-failproofai config --machine-label checkout-runner-03
-```
-
-Kiểm tra trạng thái cục bộ:
+## Kiểm tra một máy
 
 ```bash
 failproofai config --status
+failproofai flush --wait --timeout 120
 ```
 
-<Tip>
-  Sử dụng nhãn xác định khối lượng công việc và môi trường. Tên máy chủ một mình thường không đủ sau khi tự động mở rộng quy mô hoặc thay thế máy.
-</Tip>
+Từ Cloud:
+
+```bash
+fp fleet list
+fp fleet diff
+fp fleet show <machine-id>
+```
+
+`fp fleet` yêu cầu một phiên đăng nhập, không phải một API key.
+
+| Lệnh | Công dụng |
+| --- | --- |
+| `fp fleet list` | Liệt kê các máy và trạng thái triển khai |
+| `fp fleet show <machine>` | Hiển thị tập chính sách của một máy |
+| `fp fleet deploy <machine> --add <ref>` | Thêm hoặc cập nhật một chính sách |
+| `fp fleet deploy <machine> --remove <id>` | Xóa một chính sách |
+| `fp fleet deploy <machine> --set <ref>...` | Thay thế toàn bộ tập hợp |
+| `fp fleet diff [machine]` | So sánh các phiên bản dự định và được áp dụng |
+| `fp fleet history <machine>` | Liệt kê các thế hệ triển khai |
+| `fp fleet rollback <machine> <generation>` | Khôi phục một thế hệ |
+| `fp fleet rename <machine> "<label>"` | Thay đổi nhãn Cloud |
+
+<Warning>
+  `--set` thay thế toàn bộ tập chính sách. Một `--add <id>` đơn thuần sẽ thực thi một chính sách mới ngay lập tức. Sử dụng `--add <id>:observe` cho một triển khai shadow.
+</Warning>
+
+## Quan sát, rồi thực thi
+
+```bash
+fp fleet deploy ci-runner-01 --add prod-guard:observe
+fp guardrails summary --since 24h --machine ci-runner-01
+fp fleet deploy ci-runner-01 --add prod-guard:enforce
+```
+
+Chế độ quan sát đánh giá chính sách thực tế và ghi lại các quyết định không phải allow mà không chặn agent.
+
+## Danh tính máy
+
+ID máy là ổn định và xác định máy. Nhãn chỉ để hiển thị và có thể thay đổi:
+
+```bash
+failproofai config --machine-label checkout-runner-03
+fp fleet rename <machine-id> "Checkout runner 03"
+```
+
+Thay đổi nhãn không kết nối lại hoặc tạo lại khóa cho máy.

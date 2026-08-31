@@ -1,57 +1,100 @@
 ---
-title: "Yerleşik ilkeler"
-description: "Yaygın aracı arıza modları için bakımı yapılan koruyucu mekanizmaları etkinleştirin."
+title: "Yerleşik politikalar"
+description: "Yaygın aracı arızası modları için sürdürülen korkulukları alın ve istediğiniz olanları açın."
 icon: "library"
 ---
 
-Yerleşik ilkeler gizli dizi işleme, ortam dosyaları, yıkıcı kabuk komutları, korumalı dallar, bulut ve altyapı araçları, paket yayınlama, tekrarlanan çağrılar ve görev sonu iş akışı kontrollerini kapsar.
+Yerleşik politikalar, aracı arızasının dokuz kategorisini kapsayan 39 adet sürdürülen politikadır. Biri hariç tümü **bir paket olarak sunulur**, `FailproofAI/policies`, başka herkesin politikaları tıpkı bu şekilde sunulur. Paket kendi başına bir pakete sahip değildir, bu nedenle yeni bir kurulum siz onu alana kadar hiçbir şeyi uygulamamaz:
 
-## Yerleşik bir ilkeyi etkinleştirin ve doğrulayın
+```bash
+failproofai policies add FailproofAI/policies
+```
+
+Bu, paketin kendi varsayılanlarını etkinleştirir — paketin taşıdığı 38 politikadan 10'u. 39. olan `block-failproofai-commands`, hangi koşulda olursa olsun açıktır: pakette derlenmiş olarak gönderilir, her değerlendirmede kaydedilir ve devre dışı bırakılamaz veya duraklatılamaz. Bir paket `alwaysOn` bildirmeyebilir, bu nedenle o koruma paketi kanalında dolaşmaz.
+
+## Dokuz kategorinin kapsamı
+
+| Kategori | `--category` slug | Politikalar |
+| --- | --- | --- |
+| Sanitize | `sanitize` | 5 |
+| Environment | `environment` | 3 |
+| Dangerous Commands | `dangerous-commands` | 5 |
+| Infra Commands | `infra-commands` | 7 |
+| Git | `git` | 6 |
+| Database | `database` | 2 |
+| Packages & System | `packages-system` | 5 |
+| AI Behavior | `ai-behavior` | 1 |
+| Workflow | `workflow` | 5 |
+
+Bunlar derlenmiş katalog sayılarıdır ve toplam 39'dur. Paket bunların 38'ini taşır, çünkü `block-failproofai-commands` `alwaysOn` olup paket kanalında hiçbir zaman dolaşmaz — bu nedenle `--category dangerous-commands` diğer dördünü seçer.
+
+Varsayılanların yerine bir dilim alın:
+
+```bash
+failproofai policies add FailproofAI/policies --category git,database
+failproofai policies add FailproofAI/policies --policy block-rm-rf
+failproofai policies add FailproofAI/policies --all
+```
+
+## Almadan önce kataloğu okuyun
 
 <Tabs>
-  <Tab title="Pano">
-    1. İlkeyi yerel CLI ile bağlı bir makineye yükleyin.
-    2. İzlenen aracıda güvenli bir test işlemi çalıştırın.
-    3. **Observe → policy** sayfasına gidin ve ilke adı, makine ortamı veya karar ile filtreleyin.
-    4. Eşleşen araç girdisini ve döndürülen nedeni doğrulamak için bağlı oturumu açın.
-
-  </Tab>
   <Tab title="CLI">
     ```bash
+    failproofai policies show FailproofAI/policies
     failproofai policies
-    failproofai policy add block-rm-rf --cli claude --scope project
-    failproofai config --status
     ```
 
-    `failproofai policy remove block-rm-rf --cli claude --scope project` ile kaldırın.
+    `policies show`, yayınlanan manifesti okur — her politika, kategoriye göre gruplandırılmış, varsayılan veya seçime bağlı olarak işaretlenmiş — paketin kodunu indirmeden veya içe aktarmadan. `failproofai policies`, bu makinede etkin olanları listeler: özel dosyalar, kural dosyaları, kurulu paketler ve Bulut atamaları. Yerleşik bir bölümü yok, bu nedenle "burada ne açık", asla "ne vardır" sorusuna yanıt verir.
+  </Tab>
+  <Tab title="Policy Hub">
+    CLI'yi kullanmadan aynı kataloğu tarayıcıda [befailproof.ai/policy-hub](https://befailproof.ai/policy-hub/) adresinde göz atın. Her paketin `/policy-hub/<owner>/<pack>/` adresinde bir sayfası vardır ve her politikanın `/policy-hub/<owner>/<pack>/<policy-name>/` adresinde bir sayfası vardır.
+  </Tab>
+  <Tab title="Dashboard">
+    1. Politikayı yerel CLI ile bağlı bir makineye kurun.
+    2. İşaretlenen aracıda güvenli bir test eylemi çalıştırın.
+    3. **Observe → policy** adresine gidin ve politika adı, makine ortamı veya karar'a göre filtreleyin.
+    4. Eşleşen araç girişini ve döndürülen nedeni onaylamak için bağlı oturumu açın.
   </Tab>
 </Tabs>
 
-Yüklü sürümünüzde kullanılabilir ilkeleri listeleyin:
+## Birini açın veya kapatın
 
 ```bash
-failproofai policies
+failproofai policies add block-rm-rf --cli claude --scope project
+failproofai policies remove block-rm-rf --cli claude --scope project
 ```
 
-Bir proje için bir ilkeyi etkinleştirin:
-
-```bash
-failproofai policy add block-rm-rf --scope project
-```
-
-Seçili araçlar için birkaç ilkeyi etkinleştirin:
+`policies add` ve `policies remove`, tam olarak **bir** politika adı alır. Adı olmadan çalıştırırsanız, zaten açık olanlar işaretli bir seçici alırsınız. Birden fazla ad için install formunu kullanın:
 
 ```bash
 failproofai policies --install block-sudo block-force-push \
   --cli claude codex --scope project
 ```
 
-Bazı ilkeler parametreleri kabul eder veya beta olarak işaretlenmiş olabilir. Dağıtımdan önce açıklamayı, eşleştirme kapsamını ve varsayılan davranışı gözden geçirin. Bir iş akışını koruyan bir ilke, başka bir iş akışında geçerli işlemleri engelleyebilir.
+<Note>
+  Kurulan paket olmayan bir makinede, `failproofai policies add <builtin-name>` adını karşılamak için `FailproofAI/policies`'i GitHub sürümünden getirir — bu nedenle ilk komut ağa ihtiyaç duyar.
+</Note>
+
+## Her politika her araç seti üzerinde zorlamaz
+
+Bir politika, yalnızca araç seti olayının kararını tükettiğinde davranışı değiştirir. Yerleşik bir politikaya güvenmeden önce kontrol etmeye değer iki durum vardır:
+
+| Event | Reddedişin davranışı değiştirdiğinin doğrulandığı yer |
+| --- | --- |
+| `PreToolUse` | Tüm 12 araç seti |
+| `Stop` | claude, codex, copilot, cursor, openclaw, factory, devin, antigravity. Hiçbir `Stop` hook goose veya hermes üzerine kurulmaz, pi sebebi bir sonraki dönüşe taşır ve opencode doğrulanmaz |
+
+Bu nedenle Workflow kategorisindeki beş `require-*-before-stop` politikası bir makineye etkinleştirilebilir ve yine de hangi aracının orada çalıştığına bağlı olarak hiç harekete geçmeyebilir. Cursor Cloud Agent VM'leri hiç stop hook çalıştırmaz.
+
+`warn-*` ve `prefer-*` politikaları `deny` yerine `instruct` döndürür. Hermes ve Goose üzerinde ve Pi, OpenClaw, Factory ve Antigravity'nin `Stop` kanalı dışında, `instruct` izin ve stderr'de bir nota düşer: operatör bunu günlüklerde görür, aracı görmez.
+
+Bazı politikalar parametreleri kabul eder. Tanımlamayı, kapsam ve varsayılanı eşleştirin dağıtımdan önce — bir iş akışını koruyan bir politika, başka bir işlem akışında geçerli işlemleri engelleyebilir.
 
 <Card title="Tam yerleşik kataloğa göz atın" icon="list-checks" href="/tr/policies/builtin-catalog">
-  Mevcut 40 ilkenin tümünü, tetikleme mekanizmalarını, önerilen temel düzeyi ve parametrelerini gözden geçirin.
+  Tüm 39 yerleşik politika, kategoriye göre, tetikleyicileri, varsayılanları ve parametreleriyle.
 </Card>
 
 <Tip>
-  Depoya özgü beklentiler için proje kapsamını, makine çapında güvenlik gereksinimleri için kullanıcı kapsamını tercih edin.
+  `failproofai config`, desteklenen her aracı kullanıcı kapsamında kablolar ve hiçbir politika seçmez — `--scope` bayrağı yok. `failproofai policies add` veya `failproofai policies --install` değerine `--scope project` geçirin, yalnızca beklenti gerçekten bir depoya ait olduğunda.
 </Tip>

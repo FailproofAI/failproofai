@@ -1,29 +1,42 @@
 ---
 title: "Instrumentez votre agent"
 sidebarTitle: "Frameworks"
-description: "Connectez n'importe quel framework d'agent supporté à Failproof AI en un seul appel."
+description: "Connectez n'importe quel framework d'agent compatible à Failproof AI en un seul appel."
 icon: "plug"
 ---
 
-Votre agent produit déjà tout ce qui mérite d'être enregistré — appels de modèle, appels d'outils, limites de nœuds, attentes humaines, échecs. Le framework les jette. Le SDK les conserve.
+Votre agent produit déjà tout ce qui mérite d'être enregistré — appels de modèle, appels d'outils, frontières de nœuds, attentes humaines, échecs. Le framework jette tout ça. Le SDK le conserve.
 
 <Columns cols={3}>
   <Card title="Agents personnalisés" icon="wrench" href="/fr/start/quickstarts/custom-agents">
-    Un agent que vous avez écrit vous-même, ou un agent qui ne figure pas dans cette liste.
+    Un agent que vous avez écrit vous-même, ou qui ne figure pas dans cette liste.
   </Card>
   <Card title="LangChain et LangGraph" icon="share-2" href="/fr/start/quickstarts/langchain">
     Graphes, nœuds, outils, retrievers, modèles.
   </Card>
   <Card title="CrewAI" icon="users" href="/fr/start/quickstarts/crewai">
-    Crews, flows, agents par rôle, outils.
+    Équipes, flux, agents par rôle, outils.
   </Card>
   <Card title="LlamaIndex" icon="database" href="/fr/start/quickstarts/llamaindex">
-    Workflows, étapes, agents de fonction, retrievers.
+    Workflows, étapes, agents fonctionnels, retrievers.
   </Card>
   <Card title="Pydantic AI" icon="badge-check" href="/fr/start/quickstarts/pydantic-ai">
-    Agents typés, capacités, outils, tentatives.
+    Agents typés, capacités, outils, nouvelles tentatives.
   </Card>
 </Columns>
+
+## Avant de commencer
+
+Cette approche suppose deux choses, qu'aucun des codes ci-dessous ne fait pour vous :
+
+| Prérequis | Pourquoi |
+| --- | --- |
+| Python 3.10 ou version plus récente | Le minimum requis par le SDK. |
+| Une machine configurée avec `failproofai config` | Cette commande installe le démon failproofaid, et ce démon est le seul à transmettre ce que le SDK écrit. Sans lui, les lots s'accumulent dans le répertoire de file d'attente et ne sont jamais envoyés. |
+
+<Note>
+  **Cette approche enregistre ; elle n'applique pas de règles.** Le SDK capture ce que votre agent a fait. Les politiques se déclenchent depuis un hook dans une CLI d'agent — appliquer des règles sur un agent de framework signifie donc placer un hook dans votre propre runtime. Voir [Policies](/fr/policies/overview).
+</Note>
 
 ## Trois lignes, quel que soit le framework
 
@@ -59,7 +72,7 @@ with failproofai_sdk.session():
     ...                               # votre appel d'agent existant, inchangé
 ```
 
-Pas de décorateurs sur vos fonctions, pas de callback passé à vos appels, pas d'identifiants propagés dans votre code. Seul l'appel à l'intérieur de la session diffère :
+Pas de décorateurs sur vos fonctions, pas de callback passé à vos appels, pas d'identifiants à faire circuler dans votre code. Seul l'appel à l'intérieur de la session diffère :
 
 <Tabs>
   <Tab title="LangGraph">
@@ -91,28 +104,42 @@ Pas de décorateurs sur vos fonctions, pas de callback passé à vos appels, pas
   </Tab>
 </Tabs>
 
-L'installation supplémentaire ajoute le **framework**. Chaque adaptateur est inclus dans le wheel de base, donc un projet qui dispose déjà de son framework n'a besoin d'aucune installation supplémentaire.
+L'installation supplémentaire correspond au **framework**. Chaque adaptateur est inclus dans le package de base, donc un projet qui dispose déjà de son framework n'a besoin d'aucun supplément.
 
-## Vérifier que les données sont bien reçues
+## Vérifier que les données sont arrivées
 
-Exécutez une session instrumentée, puis ouvrez **Observe → Sessions** et sélectionnez votre environnement. L'exécution apparaît sous forme de trace reconstruite.
+Lancez une session instrumentée, puis ouvrez **Observe → Sessions** et sélectionnez votre environnement. L'exécution apparaît sous forme de trace reconstruite.
 
-Si rien n'arrive, vérifiez que la machine est connectée avec `failproofai config --status`. Consultez [Configurer la capture](/fr/start/setup).
+Si rien n'arrive, vérifiez que la machine est configurée et connectée avec `failproofai config --status`. Si ce n'est pas le cas, exécutez `failproofai config`. Voir [Choose your setup](/fr/start/setup).
 
 <Warning>
-  Ne vérifiez pas le répertoire spool pour confirmer la livraison. Le daemon Failproof collecte et supprime chaque lot en quelques millisecondes, donc lire ce répertoire entre en compétition avec le collecteur et affiche bien moins d'événements que ce qui a été émis.
+  Ne vérifiez pas le répertoire de file d'attente pour confirmer la livraison. Le démon Failproof collecte et supprime chaque lot en quelques millisecondes — le lire entre en compétition avec le collecteur et affiche bien moins d'événements que ceux qui ont été émis.
 </Warning>
 
-## Étape suivante
+Pour s'assurer que le SDK écrit bien, arrêtez d'abord le démon, lancez votre session, puis inspectez `~/.failproofai/custom-agents/events/`. Lorsque le démon tourne, un répertoire vide est l'état normal attendu.
 
-Chaque démarrage rapide ci-dessus renvoie à son guide complet — ce qui est enregistré, les options, le streaming, le nommage des spans, et les problèmes que les gens rencontrent réellement. Ils se trouvent sous **Trace Agents → Plug in your agent**.
+<CodeGroup>
+```bash Linux
+sudo systemctl stop failproofaid@$USER
+```
+
+```bash macOS
+sudo launchctl bootout system/ai.failproof.failproofaid.$USER
+```
+</CodeGroup>
+
+Exécutez `failproofai config` ensuite pour le relancer. Pendant l'arrêt du démon, les événements de hook sur cette machine n'ont pas d'évaluateur et sont refusés — ne l'arrêtez donc que le temps nécessaire à la vérification.
+
+## Étapes suivantes
+
+Chaque démarrage rapide ci-dessus renvoie vers son guide complet — ce qui est enregistré, les options, le streaming, le nommage des spans, et les problèmes réellement rencontrés. Ils se trouvent sous **Trace Agents → Plug in your agent**.
 
 <Columns cols={3}>
   <Card title="Comment ça fonctionne" icon="workflow" href="/fr/start/integrations/custom-agents#going-deeper">
     Le modèle de données, les identifiants, les types d'événements, et comment les événements atteignent le Cloud.
   </Card>
   <Card title="Lire une trace" icon="route" href="/fr/sessions/read-a-trace">
-    Suivez la causalité à travers une session plutôt que des logs déconnectés.
+    Suivre la causalité à travers une session plutôt que des logs déconnectés.
   </Card>
   <Card title="Trouver votre premier échec" icon="scan-search" href="/fr/start/first-audit">
     Auditez les sessions que vous venez de capturer.

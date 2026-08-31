@@ -1,47 +1,69 @@
 ---
-title: "Предотвратите первый отказ с помощью политики"
-description: "Создайте версию политики, разверните её в режиме наблюдения, а затем включите её проверку."
+title: "Предотвратьте вашу первую ошибку"
+description: "Включите проверенную политику или протестируйте собственную."
 icon: "shield-check"
 ---
 
-Используйте политику только после того, как сможете описать небезопасное действие и законные действия, которые должны остаться разрешёнными.
+Начните с поведения, которое вы хотите остановить, и легитимного действия, которое должно продолжать работать.
 
-<Tabs>
-  <Tab title="Dashboard">
-    <Steps>
-      <Step title="Создайте политику">
-        Перейдите в **Admin → policy editor**. Начните с демо-политики, проверьте или отредактируйте её исходный код, затем выберите **publish version**. Публикация создаёт неизменяемую версию, которую можно развернуть на машинах.
+## Сначала попробуйте проверенную политику
 
-        ![Представление редактора политик с демо-политикой, готовой к публикации в виде неизменяемой версии.](/images/dashboard/policy-editor.png)
-      </Step>
-      <Step title="Разверните её на машине">
-        Перейдите в **Admin → enforcement**, раскройте целевую машину и выберите **edit this machine**. Добавьте опубликованную демо-политику, зафиксируйте её версию, выберите **observe** и примените развёртывание.
+```bash
+failproofai policies
+failproofai policies add block-rm-rf
+```
 
-        ![Редактор развёртывания машины с выбранной опубликованной версией политики в режиме наблюдения перед применением развёртывания.](/images/dashboard/enforcement-editor.png)
-      </Step>
-      <Step title="Проверьте политику">
-        Запустите новый сеанс агента на этой машине, затем откройте **Observe → policy**. Выберите машину и подтвердите, что демо-политика отображается в сопоставлении политик и временной шкале решений. Режим наблюдения записывает, что политика делала бы, не блокируя действие.
+Failproof AI включает 39 проверенных политик. Перед написанием новой проверьте [каталог](/ru/policies/builtin-catalog).
 
-        ![Страница Policy, показывающая итоги решений, активность применения политики во времени, локальные и управляемые облаком сопоставления политик.](/images/dashboard/policy-observe.png)
-      </Step>
-    </Steps>
-  </Tab>
-  <Tab title="CLI">
-    Создание облачных политик и развёртывание парка — это административные рабочие процессы. Используйте локальный CLI для проверки той же политики перед её публикацией:
+## Напишите и протестируйте свою
 
+<Steps>
+  <Step title="Создайте рабочую политику">
     ```bash
-    failproofai policies --install --custom ./payment-retry.policies.ts \
-      --cli claude --scope project
-    failproofai config --status
+    failproofai publish --init guards.mjs
     ```
 
-    Используйте `fp` для проверки видимых облаком решений политики:
-
+    Это создает политику, которая блокирует `git push --force`. Отредактируйте её для вашего правила.
+  </Step>
+  <Step title="Включите её на этом компьютере">
     ```bash
-    fp events --event-type hook_completed --env production --since 24h
-    fp sessions --env production --since 24h
+    failproofai policies -i -c ./guards.mjs
     ```
 
-    Оба шага доступны и через CLI: `fp policies publish <id> <file>` создаёт версию, а `fp fleet deploy <machine-id> --add <id>` размещает её на машине. Эквивалентные действия в dashboard — **Admin → policy editor** и **Admin → enforcement**.
-  </Tab>
-</Tabs>
+    Попросите вашего агента выполнить заблокированное действие, затем проверьте **Policies → Activity** в локальной панели управления.
+  </Step>
+  <Step title="Сохраните или удалите её">
+    Поместите файл `*policies.mjs` в папку `.failproofai/policies/`, чтобы он загружался автоматически.
+
+    Удалите явные пользовательские файлы с помощью:
+
+    ```bash
+    failproofai policies -u -c
+    ```
+  </Step>
+</Steps>
+
+## Поделитесь ею
+
+Опубликуйте публичный пакет:
+
+```bash
+failproofai publish
+```
+
+Затем любой может установить его с помощью `failproofai policies add <owner>/<repo>`. Добавьте тему GitHub `failproofai-policies` самостоятельно, чтобы [Policy Hub](https://befailproof.ai/policy-hub/) смог её индексировать.
+
+Для развертывания в Cloud:
+
+```bash
+fp policies publish checkout-guard ./guards.mjs
+fp fleet deploy <machine> --add checkout-guard:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add checkout-guard:enforce
+```
+
+<Warning>
+  Простая команда `--add checkout-guard` включает политику немедленно. Добавьте `:observe`, чтобы записывать, что политика будет делать, не блокируя агента.
+</Warning>
+
+Полный рабочий процесс см. в разделах [опубликовать пакет](/ru/policies/publish-a-pack) или [развернуть политики](/ru/policies/deploy).

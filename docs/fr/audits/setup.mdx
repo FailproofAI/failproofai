@@ -1,21 +1,24 @@
 ---
 title: "Configurer un audit"
-description: "Définissez un objectif d'audit, une population de sessions et un contexte de preuves."
+description: "Définir l'objectif d'un audit, la population de sessions et le contexte des preuves."
 icon: "sliders-horizontal"
 ---
 
-La qualité d'un audit dépend avant tout de son périmètre. Une demande vague comme « trouver des problèmes » produit des résultats moins utiles qu'une question de défaillance concrète.
+La qualité d'un audit commence par la définition de son périmètre. Une demande vague comme « trouver des problèmes » produit des résultats moins utiles qu'une question précise sur un scénario d'échec.
 
 ## Configurer l'audit
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Accédez à **Analyser → Audits → Nouvel audit** et saisissez le nom et la description.
-    2. Définissez la cadence, la fenêtre temporelle, le périmètre agent/environnement, les erreurs ignorées, la sensibilité et le nombre maximum de résultats.
-    3. Dans **agents**, ajoutez ou révisez le contexte de l'agent, puis ajoutez le brief opérateur et les éventuelles URLs de référence HTTPS publiques.
-    4. Choisissez les canaux de notification et sélectionnez **créer l'audit**. La première exécution est mise en file d'attente immédiatement.
+    1. Accédez à **Analyze → Audits → New audit**, puis saisissez le nom et la description. Le nom est unique par organisation ; la description documente ce que vous attendez de cet audit.
+    2. Dans **when it runs**, définissez la cadence et la fenêtre temporelle. Dans **what it reads**, affinez la population avec les environnements, les agents et les types d'erreurs à ignorer — un champ vide inclut tout. Dans **how it judges**, définissez la sensibilité et le nombre de résultats par exécution.
+    3. Dans **what it knows**, rédigez le brief opérateur et ajoutez les pages que l'audit consulte. Le brief est un contexte de fond que le modèle lit avant d'examiner le moindre événement : il s'ajoute à ce que cet audit recherche déjà, sans jamais le remplacer ni servir de preuve pour un résultat.
+    4. Ouvrez le volet **agents** pour ajouter ou consulter le contexte de chaque agent. Il s'enregistre indépendamment de l'audit, et son en-tête indique combien de vos agents en disposent déjà. Voir [contexte agent](/fr/audits/agent-contracts).
+    5. Choisissez les canaux de notification et sélectionnez **create audit**. Un nouvel audit démarre activé, et sa première exécution est mise en file d'attente immédiatement.
 
-    ![Le formulaire de nouvel audit avec le nom, la description, la cadence, la fenêtre, le périmètre environnement et agent, les erreurs ignorées, les paramètres d'analyse, le brief, les pages de référence et les canaux de notification.](/images/dashboard/audit-new.png)
+    ![Le formulaire de création d'audit avec le nom, la description, la cadence, la fenêtre, le périmètre d'environnement et d'agent, les erreurs ignorées, les paramètres d'analyse, le brief, les pages de référence et les canaux de notification.](/images/dashboard/audit-new.png)
+
+    Le champ **agents** dans la carte **what it reads** est un filtre de périmètre — il détermine quelles sessions chaque exécution balaye. La finalité d'un agent se définit dans le volet agents distinct.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -29,16 +32,44 @@ La qualité d'un audit dépend avant tout de son périmètre. Une demande vague 
       --url https://runbooks.example.com/checkout
     ```
 
-    La première exécution est mise en file d'attente immédiatement. Incluez le brief et les URLs de référence lors de la création afin que cette exécution les reçoive.
+    Tous les champs à l'exception du nom ont une valeur par défaut côté serveur, donc un simple `fp audits create nightly` constitue déjà un audit quotidien valide. Un nom déjà utilisé est rejeté dès le départ, avant toute création. Les nouveaux audits démarrent activés sauf si vous passez `--disabled`, et la première exécution d'un audit activé est mise en file d'attente immédiatement.
 
-    Consultez la référence complète [`fp audits create`](/fr/reference/cloud-cli#audits).
+    Basez une définition sur du JSON sauvegardé avec `--file audit.json` et superposez des flags par-dessus. C'est la méthode reproductible lorsque les définitions d'audit sont révisées ou gérées en contrôle de version.
+
+    Consultez la référence complète de [`fp audits create`](/fr/reference/cloud-cli#audits).
   </Tab>
 </Tabs>
 
+## Plages et valeurs par défaut
+
+Les paramètres numériques sont validés des deux côtés, donc une valeur hors plage constitue une erreur d'utilisation plutôt qu'une requête rejetée.
+
+| Paramètre | Flag CLI | Valeurs acceptées | Défaut |
+| --- | --- | --- | --- |
+| Cadence | `--schedule-interval-secs` | 3600–604800 (1 heure à 7 jours) | 86400 (quotidien) |
+| Ancre de planification | `--schedule-anchor` | ISO 8601 UTC ; une ancre à plus de 365 jours est rejetée | Le prochain 09:00 UTC |
+| Fenêtre | `--window-mode` | `fixed`, `since_last` | `since_last` |
+| Lookback | `--lookback-window-secs` | 3600–7776000 (1 heure à 90 jours) | 604800 (7 jours) |
+| Sensibilité | `--sensitivity` | `low`, `medium`, `high` | `medium` |
+| Résultats par exécution | `--top-k` | 1 ou plus | 50 |
+
+L'ancre fixe la phase de la planification : les exécutions tombent sur `anchor + N * interval`, de sorte qu'une exécution lente ou un **run now** manuel ne peut pas décaler la cadence. La première exécution est mise en file d'attente immédiatement à la création, quelle que soit l'ancre.
+
+## Brief et pages de référence
+
+Le formulaire affiche les deux limites sous forme de compteurs, et la CLI applique les mêmes deux :
+
+- Le brief est limité à 8 192 caractères (`--text`, ou `--text-file` pour le lire depuis un fichier — passez l'un ou l'autre, pas les deux).
+- Un audit référence au maximum cinq pages, en `https://` public uniquement (`--url`, à répéter).
+
+Les URL de référence sont validées à l'enregistrement. Les adresses privées, de loopback et de métadonnées cloud sont refusées, et une URL refusée fait échouer l'intégralité de la création — aucun audit partiellement créé n'est laissé en suspens. Les pages acceptées sont récupérées en arrière-plan, donc un site lent ne bloque jamais l'enregistrement. Chaque exécution les relit et revient à la copie instantanée stockée si l'une d'elles est inaccessible ; les copies se rafraîchissent automatiquement chaque semaine. Utilisez `fp audits context-refresh <name>` si vous savez qu'une page a changé et souhaitez qu'elle soit prise en compte avant la prochaine exécution.
+
+Envoyez le brief et les URL avec la requête de création plutôt que dans un second appel. Un nouvel audit activé est dû à l'instant où sa ligne est validée, donc un contexte écrit après coup peut être devancé par le dispatcher et manquer la première exécution — celle que vous observez. Modifiez-le ultérieurement avec `fp audits context-set <name>`, qui remplace la partie que vous nommez et laisse l'autre intacte.
+
 <Tip>
-  Commencez avec une session ayant échoué de manière connue et plusieurs sessions normales. Cela fournit à l'audit à la fois un exemple positif et un ensemble de comparaison.
+  Commencez avec une session en échec connue et plusieurs sessions normales. Cela donne à l'audit à la fois un exemple positif et un ensemble de comparaison.
 </Tip>
 
 <Info>
-  Le contexte d'audit est stocké en tant que ressource propre, de sorte que la modification d'un audit ne supprime pas accidentellement le matériel de référence.
+  Le contexte d'audit est stocké comme sa propre ressource. L'endpoint de définition refuse de l'écraser lors d'une mise à jour, donc une modification ordinaire sans rapport avec l'audit ne peut jamais écraser le brief ni les pages de référence.
 </Info>

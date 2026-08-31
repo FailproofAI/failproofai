@@ -1,22 +1,22 @@
 ---
 title: "Recettes d'audit"
-description: "Points de départ pour les investigations courantes sur les défaillances d'agents."
+description: "Objectifs de départ pour les investigations courantes sur les défaillances d'agents."
 icon: "book-open-check"
 ---
 
-Utilisez ces éléments comme points de départ, puis ajoutez votre agent, votre environnement et le flux de travail attendu.
+Utilisez ces éléments comme objectifs de départ, puis ajoutez votre agent, votre environnement et le workflow attendu.
 
 <Tabs>
-  <Tab title="Tableau de bord">
-    Accédez à **Analyser → Audits → Nouvel audit**, copiez une recette dans la description ou le résumé, puis ajoutez l'environnement, l'agent, la période de référence et les URL pertinents. Créez l'audit et inspectez la première exécution avant de le planifier.
+  <Tab title="Dashboard">
+    Accédez à **Analyser → Audits → Nouvel audit**. Une ligne de recette issue de cette page correspond à la **description** — ce que vous attendez de cet audit. Les règles de workflow qui rendent l'objectif évaluable figurent dans **votre brief**, dans la carte **ce qu'il sait** : le contexte que le modèle lit avant d'examiner le moindre événement, limité à 8 192 caractères, ajouté à ce que l'audit recherche déjà. Un brief ne remplace jamais l'objectif et ne constitue jamais une preuve pour un résultat.
 
-    Le formulaire de création d'audit transforme une recette en vérification exécutable des défaillances en y ajoutant une portée, un contexte, une cadence et des notifications.
+    Définissez ensuite la portée dans **ce qu'il lit**, car la moitié de ces recettes génèrent du bruit sans cela. Les environnements et les agents réduisent la population ; **les erreurs à ignorer** liste les types d'erreurs que vous attendez et gérez par conception, de sorte qu'elles cessent d'être comptabilisées comme des échecs. Ce champ accepte uniquement des noms de types d'erreurs, et c'est ce qui empêche la recette de boucle de retry de provoquer une inondation.
+
+    Le formulaire de nouvel audit transforme une recette en vérification exécutable des défaillances en ajoutant la portée, le contexte, la cadence et les notifications.
 
     ![Le formulaire de nouvel audit configuré avec un objectif ciblé, un calendrier, une portée d'agent et d'environnement, un contexte et des canaux de notification.](/images/dashboard/audit-new.png)
 
     Après la création, confirmez que l'audit apparaît dans la liste avec le statut et le calendrier attendus avant de vous fier aux exécutions récurrentes.
-
-    ![La page Audits où une recette d'audit spécifique à un flux de travail apparaît après la création.](/images/dashboard/audits.png)
 
     Ouvrez la première exécution et affinez la recette si ses résultats sont plus larges ou plus étroits que le mode de défaillance visé.
   </Tab>
@@ -25,30 +25,69 @@ Utilisez ces éléments comme points de départ, puis ajoutez votre agent, votre
 
     ```bash
     fp audits create retry-loop-review \
+      --description "Find agents that repeat a failing tool call without changing anything" \
       --scope '{"environments":["production"]}' \
+      --ignore-error-type RateLimitRetried \
       --text-file ./retry-loop-audit.txt \
       --schedule-interval-secs 86400
     ```
+
+    `--text` et `--text-file` sont deux façons d'envoyer le même brief ; passez l'un ou l'autre, pas les deux. Ajoutez des pages de référence avec `--url`, jusqu'à cinq, uniquement des URL `https://` publiques. Envoyez le tout avec la requête de création : un nouvel audit activé est dû immédiatement, donc un contexte écrit lors d'un second appel peut manquer la première exécution.
   </Tab>
 </Tabs>
 
+## Évaluer la recette, pas seulement la formulation
+
+Deux paramètres influencent davantage le résultat que la formulation. La **sensibilité** (`low`, `medium`, `high`, par défaut `medium`) détermine avec quelle agressivité une exécution signale un motif ; les **résultats par exécution** (`--top-k`, par défaut 50) limite le nombre conservé. Augmentez la sensibilité pour une question où un manqué coûte plus qu'un faux positif, et réduisez-la pour un motif de volume qui remplirait autrement la file d'attente. Chaque recette ci-dessous indique un point de départ — modifiez-le après avoir lu la première exécution, pas avant.
+
+L'abandon de tâche et l'escalade humaine manquée sont des jugements portés sur ce qu'un agent était censé faire, et non sur une erreur qu'il a soulevée. Rédigez d'abord le [contexte de l'agent](/fr/audits/agent-contracts) de cet agent, sinon l'analyse n'a aucun standard sur lequel se baser.
+
 <AccordionGroup>
-  <Accordion title="Boucles de réessai répétées">
-    Trouvez les sessions où l'agent répète le même appel d'outil en échec sans modifier les paramètres d'entrée, sélectionner un outil alternatif ou escalader vers un humain.
+  <Accordion title="Boucles de retry répétées">
+    Trouvez les sessions où l'agent répète le même appel d'outil défaillant sans modifier l'entrée, sélectionner un outil alternatif ou escalader vers un humain.
+
+    Commencez à `medium` et listez les types d'erreurs sur lesquels vous faites des retries intentionnels sous **erreurs à ignorer**.
   </Accordion>
-  <Accordion title="Utilisation incorrecte d'un outil">
-    Trouvez les sessions où l'outil choisi ne correspond pas à la tâche déclarée, ou où les paramètres d'entrée de l'outil ne respectent pas les préconditions requises par le flux de travail.
+  <Accordion title="Utilisation incorrecte des outils">
+    Trouvez les sessions où l'outil choisi ne correspond pas à la tâche déclarée, ou où l'entrée de l'outil viole les préconditions requises par le workflow.
+
+    Commencez à `medium`. Placez les préconditions elles-mêmes dans le brief ; sans elles, l'analyse n'a aucune règle à vérifier.
   </Accordion>
-  <Accordion title="Accès non autorisé aux données">
+  <Accordion title="Accès non sécurisé aux données">
     Trouvez les sessions qui lisent, écrivent ou transmettent des données sensibles en dehors des chemins et services approuvés pour cet agent.
+
+    Commencez à `high`. Une exposition manquée coûte plus qu'un faux positif que vous rejetez une fois.
   </Accordion>
   <Accordion title="Abandon de tâche">
-    Trouvez les sessions qui se terminent sans le résultat demandé, sans erreur claire ni transfert explicite à un humain.
+    Trouvez les sessions qui se terminent sans le résultat demandé, une erreur claire ou un transfert explicite à un humain.
+
+    Commencez à `medium` et rédigez d'abord la section **Terminé quand** de l'agent — cette recette est un jugement porté contre elle.
   </Accordion>
   <Accordion title="Régression de coût ou de latence">
-    Trouvez les sessions dont la durée du modèle, des outils ou la durée totale dépasse le budget prévu, et identifiez le schéma d'événements responsable.
+    Trouvez les sessions dont la durée du modèle, de l'outil ou totale dépasse le budget prévu, et identifiez le motif d'événements responsable.
+
+    Commencez à `low` et augmentez si la première exécution est peu fournie. Les budgets appartiennent au brief, et tout type d'erreur qu'un chemin lent génère par conception appartient aux **erreurs à ignorer**.
   </Accordion>
   <Accordion title="Escalade humaine manquée">
-    Trouvez les sessions où le niveau de confiance, les échecs répétés ou les directives de politique nécessitaient une décision humaine, mais où l'agent a continué de manière autonome.
+    Trouvez les sessions où la confiance, l'échec répété ou les directives de politique nécessitaient une décision humaine mais où l'agent a continué de manière autonome.
+
+    Commencez à `high` et indiquez la règle d'escalade dans la section **Ne doit pas** de l'agent afin que l'analyse la prenne comme référence.
   </Accordion>
 </AccordionGroup>
+
+## Obtenez une première réponse avant de créer quoi que ce soit
+
+Plusieurs de ces motifs disposent déjà de détecteurs hors ligne dans l'audit local, qui lit les historiques d'agents sur votre propre machine et ne nécessite aucun compte :
+
+| Détecteur | Motif comptabilisé |
+| --- | --- |
+| `sleep-polling-loop` | Un long `sleep`, ou une boucle de polling `while … sleep … done` |
+| `reread-after-edit` | Une lecture d'un fichier que l'agent vient de modifier ou d'écrire |
+| `find-from-root` | `find` ciblant `/` ou un autre répertoire de haut niveau |
+| `redundant-cd-cwd` | `cd` dans le répertoire où se trouve déjà le shell |
+| `prefer-edit-over-read-cat` | `cat`, `head`, `tail`, `less`, ou `more` sur un seul fichier source |
+| `prefer-edit-over-sed-awk` | Modifications en place via `sed -i` ou `awk … > file` |
+| `prefer-write-over-heredoc` | Contenu multiligne écrit via un heredoc ou `echo > file` |
+| `git-commit-no-verify` | `git commit --no-verify`, ignorant les hooks |
+
+Ces détecteurs comptabilisent ; ils ne bloquent pas, et aucun d'entre eux ne mesure le coût ou la latence. Exécutez `failproofai audit` pour voir quels motifs shell inutiles et risqués vos agents produisent déjà avant de payer pour un audit Cloud sur le même périmètre — voir [Auditer l'historique local des agents](/fr/audits/local-audit).

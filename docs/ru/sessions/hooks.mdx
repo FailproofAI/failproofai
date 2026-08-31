@@ -1,25 +1,34 @@
 ---
 title: "Hooks"
-description: "Измеряйте активность hook, триггеры и задержку отдельно от результатов политик."
+description: "Посмотрите, когда Failproof AI обрабатывал событие агента и какое решение принял."
 icon: "webhook"
 ---
 
-Hooks показывает, когда запускаются hook жизненного цикла агента и как долго они выполняются. Решения политик отображаются отдельно.
+Hook — это точка, где агент запрашивает у Failproof AI решение. Запись активности hook содержит событие, политику, результат и время оценки.
+
+## Исследуйте активность hook
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Перейдите в **Observe → Hooks**.
-    2. Фильтруйте по окружению, названию hook, событию триггера, агенту или ID сеанса.
-    3. Просмотрите задержку hook и распределение.
-    4. Выберите точку на графике или сегмент hook, чтобы открыть основные события.
+    Перейдите в **Observe → Hooks**. Отфильтруйте по окружению, событию, агенту или сеансу.
 
-    ![Страница Hooks с задержкой, сгруппированной по названию hook и событию триггера.](/images/dashboard/hooks.png)
+    ![Страница Hooks, показывающая задержку, сгруппированную по имени hook и событию триггера.](/images/dashboard/hooks.png)
   </Tab>
   <Tab title="CLI">
     ```bash
+    fp guardrails summary --since 24h
+    fp --json events --full --event-type hook_completed --session-id <session-id> --all --limit 500
     fp list hooks
-    fp events --event-type hook_triggered,hook_completed --env production --since 24h
-    fp events --search "PreToolUse" --since 24h
     ```
   </Tab>
 </Tabs>
+
+По умолчанию каждое решение `deny` и `instruct` отправляется полностью. Повторяющиеся разрешения группируются для сокращения шума. Установите `collector.hooks_verbosity` в `~/.failproofai/config.json` на значение `all`, `decisions` или `off`.
+
+<Warning>
+  Активность hook доказывает, что оценка выполнялась, но не гарантирует, что инструмент смог заблокировать это событие. См. [capability enforcement](/ru/reference/harnesses#enforcement-capability). Неперечисленная пара harness-event не проверена.
+</Warning>
+
+<Card title="Решения политики" icon="shield-check" href="/ru/sessions/policy-decisions">
+  Прочитайте ту же активность, отсортированную по результатам и политикам.
+</Card>

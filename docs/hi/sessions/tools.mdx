@@ -1,25 +1,39 @@
 ---
+---
 title: "Tools"
-description: "एजेंट सेशन के पार धीमे, विफल, या अत्यधिक उपयोग किए जाने वाले टूल्स खोजें।"
+description: "Agent runs में धीमे, विफल या अत्यधिक उपयोग किए जाने वाले tools खोजें।"
 icon: "wrench"
 ---
 
-Tools सेशन के पार टूल कॉल को समूहीकृत करता है ताकि आप लेटेंसी और कॉल वितरण की तुलना कर सकें।
+Tools दिखाता है कि agents क्या कॉल करते हैं, कितनी बार कॉल विफल होती हैं, और कौन से sessions इससे प्रभावित होते हैं।
+
+Tool के नाम प्रत्येक agent harness से आते हैं, इसलिए एक ही capability के अलग-अलग नाम हो सकते हैं। उदाहरण के लिए, shell कॉल `Bash`, `exec`, `Shell`, `terminal`, या `run_command` के रूप में दिखाई दे सकती है। फ़िल्टर बनाने से पहले `fp list tools` चलाएं।
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Observe → Tools** पर जाएं।
-    2. पर्यावरण, टूल नाम, एजेंट, या सेशन ID के आधार पर फ़िल्टर करें।
-    3. लेटेंसी और टूल वितरण की समीक्षा करें।
-    4. मेलिंग इवेंट्स और सेशन खोलने के लिए चार्ट पॉइंट या टूल सेगमेंट चुनें।
+    **Observe → Tools** पर जाएं। Environment, tool, agent, या session के अनुसार फ़िल्टर करें।
 
-    ![लेटेंसी, सफलता और विफलता ब्रेकडाउन, और टूल-कॉल वितरण दिखाने वाला Tools पेज।](/images/dashboard/tools.png)
+    ![Tools पृष्ठ जो latency, success और failure breakdowns, और tool-call distribution को दर्शाता है।](/images/dashboard/tools.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp list tools
-    fp events --event-type tool_use,tool_result --env production --since 24h
-    fp --json events --full --session-id <session-id> --all
+    fp events --event-type tool_use,tool_result --since 24h
+    fp errors --event-type tool_result --since 24h
+    fp --json events --full --event-type tool_use,tool_result --session-id <session-id> --all --limit 2000
     ```
+
+    जब आपको per-call duration जैसे payload fields की आवश्यकता हो तो `--full` का उपयोग करें।
   </Tab>
 </Tabs>
+
+इस पृष्ठ का उपयोग दोहराए गए विफलताओं को खोजने, काम करने और विफल runs की तुलना करने, या यह पुष्टि करने के लिए करें कि policy-targeted tool वास्तव में उपयोग किया जा रहा है।
+
+<CardGroup cols={2}>
+  <Card title="Errors" icon="circle-alert" href="/hi/sessions/errors">
+    Tool विफलताओं के पीछे के sessions खोलें।
+  </Card>
+  <Card title="Hooks" icon="webhook" href="/hi/sessions/hooks">
+    Canonical tool names और policy decisions देखें।
+  </Card>
+</CardGroup>

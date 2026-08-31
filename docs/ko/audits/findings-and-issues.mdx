@@ -1,33 +1,42 @@
 ---
-title: "발견사항 및 이슈"
-description: "감사 증거를 책임자가 지정된 추적 가능한 개선 작업으로 전환합니다."
+title: "발견 사항 및 이슈"
+description: "감사 증거를 책임자가 있는, 추적 가능한 개선 작업으로 전환합니다."
 icon: "clipboard-check"
 ---
 
-발견사항은 실패에 대한 감사의 증거 기반 진술입니다. 이슈는 이에 대응하기 위한 지속적인 워크플로입니다.
+발견 사항(finding)은 감사에서 실패를 증거 기반으로 서술한 내용입니다. 이슈(issue)는 그에 대응하기 위한 지속적인 워크플로우입니다.
+
+두 객체는 서로 다른 용어를 사용하며 나란히 존재하므로, 먼저 명확히 구분해 두는 것이 좋습니다.
+
+| | 발견 사항(Finding) | 이슈(Issue) |
+| --- | --- | --- |
+| 상태 | `open`, `recurring`, `resolved`, `dismissed`, `muted` | `firing`, `acknowledged`, `resolved` |
+| 필터 플래그 | `--status` | `--state` |
+| 식별자 | Finding id | Issue id |
+| 기본 목록 표시 | 활성 목록: open 및 recurring | 최신 등록 순 |
 
 ## 작업 분류 및 할당
 
 <Tabs>
   <Tab title="대시보드">
-    1. **분석 → 감사**를 열고 완료된 실행을 선택한 후, 발견사항을 선택하여 분석, 권고사항, 세션, 증거 쿼리를 검토합니다.
-    2. 증거를 확인한 후 발견사항을 확인, 할당, 기각, 음소거, 해결 또는 재개합니다.
-    3. **분석 → 이슈**로 이동하여 상태, 심각도 또는 담당자별로 지속적인 수신함을 필터링합니다.
-    4. 이슈를 열어 담당자를 지정하고, 댓글이나 구독자를 추가하고, 수정 사항이 검증된 후 해결합니다.
+    1. **Analyze → Audits**를 열고, 완료된 실행을 선택한 후 발견 사항을 클릭하여 분석 내용, 권고 사항, 세션, 증거 쿼리를 확인합니다.
+    2. 증거를 검토한 후 발견 사항을 승인(acknowledge), 할당(assign), 기각(dismiss), 음소거(mute), 해결(resolve), 또는 재개(reopen)합니다.
+    3. **Analyze → Issues**로 이동하여 상태, 심각도, 담당자 기준으로 지속적인 수신함을 필터링합니다.
+    4. 이슈를 열어 담당자를 지정하고, 댓글이나 구독자를 추가하며, 수정 사항이 검증된 후 이슈를 해결합니다.
 
-    발견사항 요약부터 시작하세요. 오류 설명, 권고 대응, 심각도, 순위가 감사가 검토할 것으로 예상한 세션과 일치하는지 확인합니다.
+    발견 사항 요약부터 시작하세요. 오류 설명, 권고 응답, 심각도, 순위가 감사에서 검토하리라 예상했던 세션과 일치하는지 확인합니다.
 
-    ![심각도, 발생 횟수, 근본 원인 분석, 권고 조치, 순위 요소, 증거가 포함된 감사 발견사항.](/images/dashboard/audit-finding.png)
+    ![심각도, 발생 횟수, 근본 원인 분석, 권고 조치, 순위 요인, 증거가 포함된 감사 발견 사항.](/images/dashboard/audit-finding.png)
 
-    다음으로, 요약만으로 판단하지 말고 영향을 받은 세션을 직접 열어보세요. 연결된 추적은 발견사항을 뒷받침하는 정확한 이벤트와 페이로드를 보여줘야 합니다.
+    요약만으로 판단하지 말고, 영향을 받은 세션을 직접 열어보세요. 연결된 추적(trace)에는 발견 사항을 뒷받침하는 정확한 이벤트와 페이로드가 표시됩니다.
 
-    ![관련 오류와 이벤트 메타데이터 및 원시 페이로드가 표시된, 감사 발견사항에서 연결된 세션.](/images/dashboard/audit-linked-session.png)
+    ![감사 발견 사항에서 연결된 세션이 관련 오류, 이벤트 메타데이터, 원시 페이로드와 함께 열린 화면.](/images/dashboard/audit-linked-session.png)
 
-    증거를 검증한 후 이슈를 사용하여 대응에 담당자를 지정하고, 향후 감사 실행과 독립적으로 추적합니다.
+    증거를 확인한 후에는 Issues를 사용하여 응답에 담당자를 지정하고, 향후 감사 실행과 독립적으로 추적합니다.
 
-    ![심각도 및 소유권과 함께 발생 중, 확인됨, 해결됨 작업을 보여주는 이슈 수신함.](/images/dashboard/incidents.png)
+    ![심각도와 소유권이 표시된 firing, acknowledged, resolved 작업의 Issues 수신함.](/images/dashboard/incidents.png)
 
-    이슈를 열어 조사 메모를 기록하고, 구독자에게 알림을 보내고, 대응 이력을 보존합니다. 개선 사항이 배포되고 검증된 후에만 해결합니다.
+    이슈를 열어 조사 노트를 기록하고, 구독자에게 알림을 보내며, 대응 이력을 보존합니다. 개선 조치가 배포되고 검증된 후에만 해결 처리합니다.
 
     ![출처, 위반 증거, 담당자, 구독자, 타임라인, 댓글이 포함된 이슈 상세 보기.](/images/dashboard/incident-detail.png)
   </Tab>
@@ -37,57 +46,91 @@ icon: "clipboard-check"
     fp audits finding <finding-id>
     fp audits ack <finding-id> --reason "owner assigned"
     fp audits assign <finding-id> --to engineer@example.com
+    fp audits mute <finding-id> --reason "expected in staging" --yes
+    fp audits dismiss <finding-id> --reason "false positive" --yes
+    fp audits resolve <finding-id> --yes
+    fp audits reopen <finding-id>
 
-    fp issues list
+    fp issues list --state firing
     fp issues show <issue-id>
+    fp issues ack <issue-id>
     fp issues assign <issue-id> --assignee engineer@example.com
     fp issues comment-add <issue-id> --body "policy is in observe mode"
     fp issues resolve <issue-id> --yes
     ```
 
-    `fp issues subscribe <issue-id>`, `fp issues unsubscribe <issue-id>`, `fp issues subscribers <issue-id>`를 사용하여 감시자를 관리합니다.
+    `mute`, `dismiss`, `resolve`는 발견 사항을 억제하거나 종료하므로, 각 명령은 먼저 확인을 요청합니다. 스크립트에서는 `--yes`를 전달하세요. `ack`, `reopen`, `assign`은 되돌릴 수 있는 관리 작업으로 즉시 실행됩니다. `ack`, `mute`, `dismiss`는 `--reason`을 받으며, 전달하는 것이 좋습니다. 이유는 로그에만 기록되고 잊히는 것이 아니라, 발견 사항의 지속적인 피드백으로 보존됩니다. `resolve`, `reopen`, `assign`은 이유를 받지 않습니다.
 
-    감사 발견사항은 [Cloud CLI 감사 및 이슈 참조](/ko/reference/cloud-cli#audits)를, 이슈 관리는 [`fp issues`](/ko/reference/cloud-cli#issues)를 참조하세요.
+    할당 방식은 객체마다 다릅니다. `fp audits assign`은 `--to <email>`이 필요하며 담당자를 한 명으로 설정합니다. 다시 실행하면 재할당됩니다. `fp issues assign`은 반복 사용 가능한 `--assignee`를 받으며 전체 목록을 **교체**하므로, 생략하면 모든 담당자가 삭제됩니다.
+
+    이슈의 나머지 기능은 `fp issues comment-list <issue-id>`, `fp issues count --state firing`, `fp issues subscribe`/`unsubscribe`/`subscribers <issue-id>`를 사용하세요.
+
+    감사 발견 사항은 [Cloud CLI 감사 및 이슈 참조](/ko/reference/cloud-cli#audits)를, 이슈 관리는 [`fp issues`](/ko/reference/cloud-cli#issues)를 참고하세요.
   </Tab>
 </Tabs>
 
-## 발견사항 검토
+## 발견 사항 검토
 
-다음 항목이 포함되어 있는지 확인합니다:
+다른 어떤 것보다 먼저 처리 방향을 결정하는 두 가지 필드가 있습니다.
 
-- 일회성 제목이 아닌 안정적인 실패 패턴
+**`kind`**는 `failure`(무언가 잘못된 것), `policy` 위반(규칙이 깨진 것), `improvement`(더 잘 할 수 있는 작업)를 구분합니다. 발견 사항에 배지로 표시됩니다. `policy` 발견 사항은 정책으로 종료할 수 있는 것이며, 나머지 두 가지는 보통 워크플로우 변경, 알림, 또는 사람의 판단이 필요합니다.
+
+**`priority`**는 0~1 사이의 점수로, 실행마다 재계산되며 발견 사항 큐의 정렬 순서를 결정합니다. 발견 사항 페이지에서 **why it ranks here** 항목 아래에 값 × 가중치 형태로 분석됩니다.
+
+| 요인 | 가중치 |
+| --- | --- |
+| Coverage | 0.30 |
+| Severity | 0.25 |
+| Magnitude | 0.25 |
+| Recency | 0.20 |
+
+그런 다음 발견 사항에 다음이 포함되어 있는지 확인합니다.
+
+- 일회성 제목이 아닌, 안정적인 실패 패턴
 - 심각도 및 운영상의 영향
 - 영향을 받은 세션 ID 또는 지원 쿼리
 - 동작을 재현하기에 충분한 컨텍스트
 - 증거와 일치하는 제안된 대응 방안
 
+발견 사항을 재현하려면 전체를 가져오세요. `fp --json audits finding <id>`는 `evidence`, `evidence_queries`, `scope`가 손상되지 않은 전체 레코드를 반환하며, 이것이 분석이 실제로 실행된 데이터입니다. `--json`은 전역 옵션이므로 명령 앞에 위치합니다.
+
 ## 이슈를 사용하여 대응 관리
 
-발견사항에 할당, 논의, 상태 변경, 댓글 또는 구독자가 필요한 경우 이슈를 생성하거나 연결합니다. 이슈는 알림 인시던트와 수동으로 보고된 문제도 나타낼 수 있으므로, 기본 탐색 메뉴가 아닌 감사 대응 아래에 위치합니다.
+발견 사항에 할당, 논의, 상태 변경, 댓글, 구독자가 필요한 경우 이슈를 생성하거나 연결합니다. 이슈의 `source`는 출처(`audit`, `alert`, `manual`)를 기록하며, 이것이 대시보드에서 이슈를 감사 아래에 중첩하지 않고 별도의 **Issues** 뷰로 제공하는 이유입니다.
 
-개선 사항이 배포되고 검증되면 이슈를 해결합니다. 감사 대상 모집단에서 실패 패턴이 해결되면 발견사항을 해결합니다. 두 시점이 다를 수 있습니다.
+구독은 부분적으로 자동화되어 있습니다. 이슈를 승인하거나, 댓글을 달거나, 할당받거나, 이슈를 연 경우 구독자로 등록됩니다. `fp issues subscribers`는 활성 구독자만 나열하므로, 단순히 수동으로 구독한 목록이 아닙니다. 댓글을 달면 모든 활성 구독자에게 이메일이 전송되며, 댓글 작성에는 `issues:read`만 필요하므로 읽기 전용 검토자도 조용한 관찰자로 남지 않습니다.
+
+개선 조치가 배포되고 검증되면 이슈를 해결합니다. 감사 대상 집단에서 실패 패턴이 해결되면 발견 사항을 해결합니다. 두 시점이 다를 수 있습니다.
 
 ## 이슈를 정책 초안으로 전환
 
 <Tabs>
   <Tab title="대시보드">
-    1. 이슈를 열어 발견사항, 인용된 세션, 근본 원인, 권고사항을 확인합니다.
-    2. **정책 생성**을 선택하고 후보 결과와 제안된 시행 의도를 검토합니다. **정책 없음** 결과는 해당 동작이 알림, 워크플로 변경 또는 사람의 대응이 필요할 수 있음을 의미합니다.
-    3. **이 정책 작성**을 선택한 후, **관리자 → 정책 편집기**에서 생성된 소스를 검토하고 테스트한 다음 **버전 게시**를 선택합니다. 후보 검사에 동의하지 않을 경우 **어쨌든 편집기 열기**를 사용합니다.
-    4. **관리자 → 시행**으로 이동하여 **관찰** 모드로 버전을 배포하고, 시행하기 전에 **관찰 → 정책**에서 결정 사항을 확인합니다.
+    1. 이슈를 열고 발견 사항, 인용된 세션, 근본 원인, 권고 사항을 확인합니다.
+    2. **generate policy**를 선택하고 적합성 결과와 제안된 적용 의도를 검토합니다. **no policy** 결과는 해당 동작이 알림, 워크플로우 변경, 또는 사람의 대응이 필요할 수 있음을 의미합니다.
+    3. **write this policy**를 선택한 후 **Admin → policy editor**에서 생성된 소스를 검토하고 테스트한 다음 **publish version**을 선택합니다. 적합성 검사에 동의하지 않는 경우 **open the editor anyway**를 사용합니다.
+    4. **Admin → enforcement**로 이동하여 **observe** 모드로 버전을 배포하고, 적용하기 전에 **Observe → policy**에서 결정 사항을 확인합니다.
 
-    이슈 제목, 발견사항 설명, 근본 원인, 권고사항, 후보 의도가 초안 작성에 도움이 됩니다. 어떤 것도 자동으로 게시되거나 배포되지 않습니다.
+    이슈 제목, 발견 사항 설명, 근본 원인, 권고 사항, 적합성 의도가 초안 작성에 활용됩니다. 자동으로 게시되거나 배포되는 것은 없습니다.
   </Tab>
   <Tab title="CLI">
-    대시보드에서 이슈를 열기 전에 CLI를 사용하여 증거를 검토합니다:
+    대시보드에서 이슈를 열기 전에 CLI를 사용하여 증거를 검사합니다.
 
     ```bash
     fp issues show <issue-id>
-    fp audits finding <finding-id>
+    fp --json audits finding <finding-id>
     fp events --session-id <session-id> --full --all
     ```
 
-    정책 후보 선정, Cloud 게시, 플릿 배포는 대시보드 워크플로입니다. 동등한 정책 소스를 먼저 로컬에서 검증하려면 `failproofai policies --install --custom <file>`을 사용합니다.
+    대시보드는 하나의 경로이고, CLI는 다른 경로입니다. `fp policies compose "<what it should do>"`로 정책을 초안하고, `fp policies publish <id> ./policy.mjs`로 버전을 발행하며(발행이 배포를 의미하지는 않음), `fp fleet deploy <machine> --add <id>:observe`로 섀도 모드로 머신에 배치합니다. `:observe` 접미사는 필수입니다. `--add <id>`만 사용하면 즉시 적용됩니다. `fp guardrails summary --since 24h`로 어떤 결과가 나왔을지 확인한 후 `--add <id>:enforce`로 승격합니다.
+
+    먼저 자신의 머신에서 동일한 정책 소스를 시험해보려면, 로컬 CLI가 파일을 가리키도록 합니다.
+
+    ```bash
+    failproofai policies -i -c ./checkout-policies.js
+    ```
+
+    이름이 `policies.js`, `policies.mjs` 또는 `policies.ts`로 끝나는 파일을 프로젝트의 `.failproofai/policies/` 또는 `~/` 아래에 두면, 플래그 없이도 모든 훅 이벤트마다 로드됩니다.
   </Tab>
 </Tabs>
 

@@ -2,11 +2,11 @@
 ---
 title: "Strumenta il tuo agente"
 sidebarTitle: "Framework"
-description: "Collega qualsiasi framework di agenti supportato a Failproof AI con una sola chiamata."
+description: "Connetti qualsiasi framework di agenti supportato a Failproof AI con una sola chiamata."
 icon: "plug"
 ---
 
-Il tuo agente produce già tutto ciò che vale la pena registrare — chiamate di modello, chiamate di strumenti, limiti dei nodi, attese umane, errori. Il framework lo butta via. L'SDK lo conserva.
+Il tuo agente produce già tutto ciò che vale la pena registrare — chiamate a modelli, chiamate a strumenti, confini tra nodi, attese umane, errori. Il framework lo scarta. L'SDK lo conserva.
 
 <Columns cols={3}>
   <Card title="Agenti personalizzati" icon="wrench" href="/it/start/quickstarts/custom-agents">
@@ -19,14 +19,27 @@ Il tuo agente produce già tutto ciò che vale la pena registrare — chiamate d
     Crew, flussi, agenti per ruolo, strumenti.
   </Card>
   <Card title="LlamaIndex" icon="database" href="/it/start/quickstarts/llamaindex">
-    Workflow, step, agenti di funzione, retriever.
+    Flussi di lavoro, step, agenti funzione, retriever.
   </Card>
   <Card title="Pydantic AI" icon="badge-check" href="/it/start/quickstarts/pydantic-ai">
-    Agenti tipizzati, capacità, strumenti, nuovi tentativi.
+    Agenti tipizzati, capacità, strumenti, tentativi.
   </Card>
 </Columns>
 
-## Tre righe, qualsiasi framework
+## Prima di iniziare
+
+Due cose che questo percorso presuppone, nessuna delle quali il codice qui sotto fa per te:
+
+| Requisito | Motivo |
+| --- | --- |
+| Python 3.10 o più recente | È il minimo dichiarato dall'SDK. |
+| Una macchina configurata con `failproofai config` | Quel comando installa il daemon failproofaid, e il daemon è l'unica cosa che spedisce ciò che l'SDK scrive. Senza di esso i batch si accumulano nella directory dello spool e non escono mai. |
+
+<Note>
+  **Questo percorso registra; non applica.** L'SDK cattura ciò che il tuo agente ha fatto. Le politiche si attivano da un hook all'interno di un CLI agente, quindi applicare su un agente framework significa mettere un hook nel tuo runtime — vedi [Politiche](/it/policies/overview).
+</Note>
+
+## Tre righe, qualunque framework
 
 <CodeGroup>
 ```bash LangGraph
@@ -57,10 +70,10 @@ failproofai_sdk.configure(environment="production")
 failproofai_sdk.instrument()          # rileva i framework che hai importato
 
 with failproofai_sdk.session():
-    ...                               # la tua chiamata di agente esistente, invariata
+    ...                               # la tua chiamata agente esistente, invariata
 ```
 
-Nessun decoratore sulle tue funzioni, nessun callback passato alle tue chiamate, nessun id thread nel tuo codice. Solo la chiamata all'interno della sessione differisce:
+Niente decoratori sulle tue funzioni, nessun callback passato alle tue chiamate, nessun id fatto passare attraverso il tuo codice. Solo la chiamata all'interno della sessione è diversa:
 
 <Tabs>
   <Tab title="LangGraph">
@@ -75,7 +88,7 @@ Nessun decoratore sulle tue funzioni, nessun callback passato alle tue chiamate,
   </Tab>
   <Tab title="LlamaIndex">
     ```python
-    await agent.run("...")        # under `async with failproofai_sdk.session():`
+    await agent.run("...")        # sotto `async with failproofai_sdk.session():`
     ```
   </Tab>
   <Tab title="Pydantic AI">
@@ -92,25 +105,39 @@ Nessun decoratore sulle tue funzioni, nessun callback passato alle tue chiamate,
   </Tab>
 </Tabs>
 
-L'extra installa il **framework**. Ogni adapter è incluso nella wheel di base, quindi un progetto che ha già il suo framework non necessita di extra.
+L'installazione extra riguarda il **framework**. Ogni adattatore è incluso nella wheel base, quindi un progetto che ha già il suo framework non ha bisogno di nulla di extra.
 
 ## Verifica l'arrivo
 
 Esegui una sessione strumentata, quindi apri **Observe → Sessions** e seleziona il tuo ambiente. L'esecuzione appare come una traccia ricostruita.
 
-Se nulla arriva, conferma che la macchina è connessa con `failproofai config --status`. Vedi [Configura la cattura](/it/start/setup).
+Se non arriva nulla, conferma che la macchina è configurata e collegata con `failproofai config --status`. Se non lo è, esegui `failproofai config`. Vedi [Scegli la tua configurazione](/it/start/setup).
 
 <Warning>
-  Non controllare la directory di spool per confermare la consegna. Il daemon Failproof raccoglie ed elimina ogni batch entro millisecondi, quindi leggerlo gara con il collettore e mostra molti meno eventi di quelli emessi.
+  Non controllare la directory dello spool per confermare la consegna. Il daemon Failproof raccoglie ed elimina ogni batch entro millisecondi, quindi leggerlo corre il rischio di mostrare molti meno eventi di quelli effettivamente emessi.
 </Warning>
+
+Per provare che l'SDK sta scrivendo, ferma prima il daemon, quindi esegui la tua sessione e guarda in `~/.failproofai/custom-agents/events/`. Con il daemon in esecuzione, una directory vuota è lo stato sano.
+
+<CodeGroup>
+```bash Linux
+sudo systemctl stop failproofaid@$USER
+```
+
+```bash macOS
+sudo launchctl bootout system/ai.failproof.failproofaid.$USER
+```
+</CodeGroup>
+
+Esegui `failproofai config` dopo per riportarlo in funzione. Mentre il daemon è fermo, gli eventi hook su questa macchina non hanno un valutatore e vengono negati, quindi fermalo solo per il tempo che richiede il controllo.
 
 ## Prossimo
 
-Ogni quickstart sopra rimanda alla sua guida completa — cosa viene registrato, opzioni, streaming, denominazione span e i problemi che le persone effettivamente riscontrano. Vivono sotto **Trace Agents → Plug in your agent**.
+Ogni quickstart sopra è collegato alla sua guida completa — ciò che viene registrato, opzioni, streaming, denominazione degli span e i problemi che le persone effettivamente incontrano. Si trovano sotto **Trace Agents → Plug in your agent**.
 
 <Columns cols={3}>
   <Card title="Come funziona" icon="workflow" href="/it/start/integrations/custom-agents#going-deeper">
-    Il modello di dati, gli id, i tipi di evento e come gli eventi raggiungono Cloud.
+    Il modello di dati, gli id, i tipi di evento, e come gli eventi raggiungono Cloud.
   </Card>
   <Card title="Leggi una traccia" icon="route" href="/it/sessions/read-a-trace">
     Segui la causalità attraverso una sessione invece di log disconnessi.

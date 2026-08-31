@@ -4,77 +4,160 @@ description: "サポートされている12のエージェントハーネス全�
 icon: "plug-zap"
 ---
 
-ハーネスとは、エージェントが実際に動作する環境のことです。Failproof AI は12種類のハーネスをサポートしており、2つのクラスに分類されます。
+ハーネスとは、エージェントが実際に動作する実行環境のことです。Failproof AI は12種類をサポートしており、2つのクラスに分類されます。
 
-- **コーディングCLI**（10種類）— Claude Code、Codex、GitHub Copilot CLI、Cursor、OpenCode、Pi、Factory Droid、Devin CLI、Antigravity CLI、Goose
-- **チャット・アシスタントゲートウェイ**（2種類）— Hermes（Slack、Telegram、cron）、OpenClaw（セルフホスト型アシスタント）
+- **コーディングCLI**（10種）— Claude Code、Codex、GitHub Copilot CLI、Cursor、OpenCode、Pi、Factory Droid、Devin CLI、Antigravity CLI、Goose
+- **チャット・アシスタントゲートウェイ**（2種）— Hermes（Slack、Telegram、cron）、OpenClaw（セルフホスト型アシスタント）
 
-エージェントがどのハーネスで動作していても、同じポリシーと同じセッション履歴が適用されます。アダプター層が各ハーネスのネイティブイベント名、ツール名、ツール入力フィールドを29の標準イベントにマッピングしてから、ポリシーが実行されます。
+どのハーネスでエージェントを実行しても、同じポリシーと同じセッション履歴が適用されます。アダプター層がそれぞれのハーネスのネイティブイベント名、ツール名、ツール入力フィールドを29の標準イベントにマッピングしてから、ポリシーが実行されます。
 
-12種類のいずれにも該当しないハーネスでエージェントを実行する場合は、[Python SDK](/ja/reference/custom-agents) を使って直接インストルメントしてください。これは別契約であることを明確にしておく必要があります。SDK はトレーシング、セッション、評価、監査を提供しますが、**単独ではポリシーを適用しません。** 実行前に安全でないアクションをブロックするには、ランタイムのツール境界に適用フックが必要です。[お問い合わせ](mailto:support@befailproof.ai)いただければ、マッピング対応いたします。
+12種のいずれにも該当しないエージェントは、[Python SDK](/ja/reference/custom-agents) を使って直接インストルメントします。これは異なる契約であり、明確に述べておく価値があります。SDK はトレーシング、セッション、評価、監査を提供しますが、**それ自体ではポリシーを適用しません。** 実行前に安全でないアクションをブロックするには、ランタイムのツール境界にエンフォースメントフックが必要です。[お問い合わせください](mailto:support@befailproof.ai)。適切にマッピングします。
 
-| ハーネス | サポートされているフックスコープ |
+## フックスコープ
+
+| ハーネス | サポートされるフックスコープ |
 | --- | --- |
-| Claude Code | User、project、local |
-| Codex、GitHub Copilot CLI、Cursor、OpenCode、Pi | User、project |
-| Factory Droid、Devin CLI、Antigravity CLI、Goose | User、project |
-| Hermes、OpenClaw | User |
+| Claude Code | ユーザー、プロジェクト、ローカル |
+| Codex、GitHub Copilot CLI、Cursor、OpenCode、Pi | ユーザー、プロジェクト |
+| Factory Droid、Devin CLI、Antigravity CLI、Goose | ユーザー、プロジェクト |
+| Hermes、OpenClaw | ユーザー |
 
-各インテグレーションは、ポリシーが実行される前に、ネイティブのフックイベント名、ツール名、ツール入力フィールドを正規化します。ポリシーはハーネスが公開しているイベントにのみ作用できます。ターン終了時および命令動作のテストは、実際にデプロイするハーネスとバージョンで行ってください。
+**ローカル** スコープを持つハーネスは Claude Code のみです。Hermes と OpenClaw にはプロジェクト設定がまったくなく、ユーザースコープのみで、これらに対して `--scope project` を指定すると CLI がエラーを返します。
 
-## 適用機能
+各インテグレーションは、ポリシーが実行される前にネイティブのフックイベント名、ツール名、ツール入力フィールドを正規化します。ポリシーはそのハーネスが公開するイベントにのみ作用します。ターン終了や命令の動作は、デプロイする正確なハーネスとバージョンでテストしてください。
 
-「ブロック」とは、現在のアダプターが返した判定が指定のハーネスで消費されることを意味します。ポストツールのブロックは、モデルに表示される結果を置き換えることはできますが、すでに発生したツールの副作用を元に戻すことはできません。
+## フック設定の保存場所
 
-| ハーネス | 検証済みのブロックイベント | 観察専用または非ブロックの注意事項 |
+| ハーネス | ユーザースコープ | プロジェクトスコープ |
 | --- | --- | --- |
-| Claude Code | `PreToolUse`、`UserPromptSubmit`、`PermissionRequest`、`Stop`、`SubagentStop`、`PreCompact`、その他複数のタスク/設定イベント | `PostToolUse`、セッションライフサイクル、通知、失敗後のイベントは観察専用です。 |
-| Codex | `PreToolUse`、`PermissionRequest`、`UserPromptSubmit`、`Stop`、`SubagentStop`、`PostToolUse` | ポストツールのブロックは実行後に結果を置き換えます。セッション開始とコンパクトイベントは現在のアダプターでは観察専用です。 |
-| GitHub Copilot CLI | `PreToolUse`、`UserPromptSubmit`、`PermissionRequest`、`Stop`、`SubagentStop`、`PostToolUse` | ポストツールのブロックは実行後に結果を置き換えます。セッションおよび通知イベントは観察専用です。 |
-| Cursor | `PreToolUse`、`UserPromptSubmit`、`Stop` | `PostToolUse` およびセッションイベントは観察専用です。 |
-| OpenCode | `PreToolUse` | ポストツールおよびライフサイクルイベントは観察専用です。現在のストップ処理は検証済みのゲートではなく、後続ターンへのガイダンスです。 |
-| Pi | `PreToolUse`、`UserPromptSubmit` | ポストツールおよびライフサイクルイベントは観察専用です。ストップガイダンスは後続ターンに適用されます。 |
-| Hermes | `PreToolUse` | ポストツール、セッション、サブエージェントストップの判定はゲートとして機能しません。 |
-| OpenClaw | `PreToolUse`、`UserPromptSubmit`、`Stop` | ポストツール、セッション、サブエージェントストップ、コンパクションイベントは観察専用です。 |
-| Factory Droid | `PreToolUse`、`UserPromptSubmit`、`Stop`、`PreCompact` | ポストツールおよびサブエージェントストップの判定は観察専用です。 |
-| Devin CLI | `PreToolUse`、`UserPromptSubmit`、`Stop`、条件付き `PermissionRequest` | パーミッションフックはすべてのパーミッションモードで実行されるわけではありません。ポストツールおよびセッションイベントは観察専用です。 |
-| Antigravity CLI | `PreToolUse`、`Stop` | ユーザープロンプトおよびポストツールの判定は観察専用です。プロンプト命令の注入は引き続き可能です。 |
-| Goose | `PreToolUse` | ユーザープロンプト、ポストツール、セッションイベントは観察専用です。ネイティブのブロック用ストップフックが上流に存在しますが、現在のアダプターではインストールされていません。 |
+| Claude Code | `~/.claude/settings.json` | `.claude/settings.json`（ローカル: `.claude/settings.local.json`） |
+| Codex | `~/.codex/hooks.json` | `.codex/hooks.json` |
+| GitHub Copilot CLI | `~/.copilot/hooks/failproofai.json` | `.github/hooks/failproofai.json` |
+| Cursor | `~/.cursor/hooks.json` | `.cursor/hooks.json` |
+| OpenCode | `~/.config/opencode/opencode.json` | `.opencode/opencode.json` |
+| Pi | `~/.pi/agent/settings.json` | `.pi/settings.json` |
+| Hermes | `~/.hermes/config.yaml` | — |
+| OpenClaw | `~/.openclaw/openclaw.json` | — |
+| Factory Droid | `~/.factory/hooks.json` | `.factory/hooks.json` |
+| Devin CLI | `~/.config/devin/config.json` | `.devin/config.json` |
+| Antigravity CLI | `~/.gemini/config/hooks.json` | `.agents/hooks.json` |
+| Goose | `~/.agents/plugins/failproofai/hooks/hooks.json` | `.agents/plugins/failproofai/hooks/hooks.json` |
 
-機能はバージョンに依存します。エージェントCLIをアップグレードした後は、特にポリシーが共通のプリツールゲートではなく、プロンプト、ストップ、パーミッション、またはポストツールの動作に依存している場合は、必ず再テストしてください。
+OpenCode、Pi、OpenClaw はシェルフックではなくプラグインインテグレーションです。上記のファイルはプラグインまたは拡張パッケージを登録し、failproofai バイナリを呼び出してその判定結果を変換します。
+
+## エンフォースメント機能
+
+「ブロック」とは、現在のアダプターが返した判定が指定のハーネスによって消費されることを意味します。ツール実行後のブロックはモデルに表示される結果を置き換えることはできますが、すでに発生したツールの副作用を取り消すことはできません。
+
+| ハーネス | 確認済みブロックイベント | 観察のみまたは非ブロックに関する注意 |
+| --- | --- | --- |
+| Claude Code | `PreToolUse`、`UserPromptSubmit`、`PermissionRequest`、`Stop`、`SubagentStop`、`PreCompact`、およびいくつかのタスク/設定イベント | `PostToolUse`、セッションライフサイクル、通知、障害後イベントは観察のみ。 |
+| Codex | `PreToolUse`、`PermissionRequest`、`UserPromptSubmit`、`Stop`、`SubagentStop`、`PostToolUse` | ツール後のブロックは実行後に結果を置き換えます。セッション開始とコンパクトイベントは現在のアダプターでは観察のみです。 |
+| GitHub Copilot CLI | `PreToolUse`、`UserPromptSubmit`、`PermissionRequest`、`Stop`、`SubagentStop`、`PostToolUse` | ツール後のブロックは実行後に結果を置き換えます。セッションと通知イベントは観察のみです。 |
+| Cursor | `PreToolUse`、`UserPromptSubmit`、`Stop` | `PostToolUse` とセッションイベントは観察のみです。 |
+| OpenCode | `PreToolUse` | ツール後とライフサイクルイベントは観察のみです。現在のストップ処理は確認済みゲートではなく後のターンへのガイダンスです。`PermissionRequest` はまったく実行されません。 |
+| Pi | `PreToolUse`、`UserPromptSubmit` | ツール後とライフサイクルイベントは観察のみです。ストップガイダンスは後のターンに適用されます。 |
+| Hermes | `PreToolUse` | ツール後、セッション、サブエージェントストップの判定はゲートではありません。`Stop` イベントはインストールされていません。 |
+| OpenClaw | `PreToolUse`、`UserPromptSubmit`、`Stop` | ツール後、セッション、サブエージェントストップ、コンパクションイベントは観察のみです。 |
+| Factory Droid | `PreToolUse`、`UserPromptSubmit`、`Stop`、`PreCompact` | ツール後とサブエージェントストップの判定は観察のみです。 |
+| Devin CLI | `PreToolUse`、`UserPromptSubmit`、`Stop`、条件付き `PermissionRequest` | パーミッションフックはすべてのパーミッションモードで実行されるわけではありません。ツール後とセッションイベントは観察のみです。 |
+| Antigravity CLI | `PreToolUse`、`Stop` | ユーザープロンプトとツール後の判定は観察のみです。プロンプト命令の注入は引き続き可能です。 |
+| Goose | `PreToolUse` | ユーザープロンプト、ツール後、セッションイベントは観察のみです。ネイティブのブロッキングストップフックが上流に存在しますが、現在のアダプターではインストールされていません。 |
+
+どちらの列にも存在しないイベントは**未確認**です。ブロック済みではなく不明として扱ってください。
+
+### 記載されたゲートの条件
+
+上記の行のいくつかは実際のゲートですが、条件付きまたは制限があります。これらのいずれかに依存するポリシーは、行と同様に条件も必要です。
+
+| ハーネス | イベント | 条件 |
+| --- | --- | --- |
+| Claude Code | `Stop`、`SubagentStop` | `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` によってデフォルト8に制限。ターン終了パスでは破棄されます |
+| Cursor | `Stop` | `loop_limit`（デフォルト5）によって制限され、ターンが完了したときのみ消費されます。ユーザーによる中断またはターンエラーでは破棄されます |
+| Cursor | `Stop` | **Cursor Cloud Agent VM では `stop` または `subagentStop` フックがまったく実行されません。** このゲートはローカルセッションのみ対象です |
+| Codex | `SubagentStop` | ThreadSpawn サブエージェントのみがディスパッチします。他のすべてのサブエージェントソースではフックが実行されません |
+| GitHub Copilot CLI | `SubagentStop` | `isSidekick` サブエージェントに対しては完全にスキップされます |
+| Devin CLI | `PermissionRequest` | `--permission-mode dangerous` では発火しません。また、自動承認された読み取り専用ツールに対しても発火しません |
+| OpenCode | `PermissionRequest` | 無効なフック：`permission.ask` は上流で宣言・ドキュメント化されていますが、実際には呼び出されないため、ポリシーが実行されません |
+| Hermes | `Stop` | 意図的に `Stop` イベントをインストールしていません。5つの `require-*-before-stop` 組み込みポリシーは Hermes では適用されません |
+| Goose | `Stop` | 同様に `Stop` がインストールされていないため、5つの `require-*-before-stop` 組み込みポリシーは適用されません |
+
+### `instruct()` が機能低下する場合
+
+ポリシーが返す判定は deny だけではありません。`instruct()` はエージェントに指示を渡してアクションを続行させますが、すべてのハーネスにそれを伝えるチャネルがあるわけではありません。チャネルがない場合、failproofai はアクションを許可し、オペレーターのログのために命令を stderr に書き込みます。モデルには届きません。
+
+| ハーネス | `instruct()` が stderr への記録に機能低下するイベント |
+| --- | --- |
+| Hermes | すべてのイベント |
+| Goose | すべてのイベント |
+| Pi | `Stop` 以外のすべてのイベント |
+| OpenClaw | `Stop` 以外のすべてのイベント |
+| Factory Droid | `Stop` 以外のすべてのイベント |
+| Antigravity CLI | `Stop` および `UserPromptSubmit` 以外のすべてのイベント |
+
+それ以外の場合、命令はハーネス独自の追加コンテキストチャネルを通じて返されます。
+
+### 検証に使用したバージョン
+
+バージョンは主張の一部であり、単なる脚注ではありません。エージェントCLIをアップグレードした後は再テストを行ってください。特に、共通のツール実行前ゲートではなく、プロンプト、ストップ、パーミッション、ツール実行後の動作に依存するポリシーの場合は注意が必要です。
+
+| ハーネス | 検証済みバージョン |
+| --- | --- |
+| Claude Code | 2.1.220 |
+| Codex | `fe01054a`、`PostToolUse` は 0.147.0 でライブ再検証 |
+| GitHub Copilot CLI | 1.0.71、一部のコールサイトは 1.0.68 および 1.0.78 で再確認 |
+| Cursor | cursor-agent 2026.07.16-899851b |
+| OpenCode | 1.18.9、1.14.33 で再確認 |
+| Pi | 0.80.10 |
+| Hermes | hermes-agent `5771a6e` |
+| OpenClaw | v2026.7.2 |
+| Factory Droid | droid 0.175.1 |
+| Devin CLI | 3000.2.17 |
+| Antigravity CLI | agy 1.1.8 |
+| Goose | 1.43.0 |
+
+<Warning>
+  Codex の一部の行は `fe01054a` 以降に再構成され、0.147.0 では存在しなくなったソースパスを参照しています。誤りとは確認されていませんが、リリース版の Codex に対して未検証であり、再検証が必要です。Codex の `PostToolUse` 行のみライブ再検証済みです。
+</Warning>
+
+## VS Code エージェントモード
+
+VS Code の組み込み Copilot Chat エージェントモードは**13番目のインテグレーションではありません**。`.github/hooks/*.json`、`~/.copilot/hooks/*.json`、`~/.claude/settings.json` からフック設定を検出します。これらは `copilot` と `claude` のインストールがすでに書き込んでいるパスと同じです。また、Claude と同じ deny コントラクトを使用します。どちらかをインストールするだけで、VS Code エージェントモードセッション内でもポリシーが適用されます。
+
+この機能はプレビューであり、有効な GitHub Copilot サブスクリプションとエージェントモードが必要です。
 
 ## キャプチャとポリシーフックのインストール
 
 <Tabs>
   <Tab title="ダッシュボード">
-    1. **Administration → Keys** を開き、マシンまたは環境名を付けた `events:add` および `policies:pull` の権限を持つキーを作成します。
-    2. 対象マシンで、表示されたキーを使ってローカルCLIを接続し、ハーネスフックをインストールします。
+    1. **Administration → Keys** を開き、マシンまたは環境の名前をつけた `events:add` と `policies:pull` 権限を持つキーを作成します。
+    2. 対象マシンで、表示されたキーを使ってローカルCLIを接続します。
     3. 新しいエージェントセッションを開始し、**Observe → Events** でフックとセッションイベントを確認します。
-    4. 同じ時間帯で **Observe → policy** を開き、そのマシンにポリシー決定が紐付いていることを確認します。
+    4. 同じ時間ウィンドウで **Observe → policy** を開き、そのマシンにポリシー決定が帰属していることを確認します。
 
     接続はマシンキーから始まります。シークレットをコピーする前に、インジェストとポリシー配信の両方の権限が含まれていることを確認してください。
 
-    ![イベントインジェストとポリシー配信の権限を付与するための新規APIキードロワー。](/images/dashboard/key-create.png)
+    ![イベントインジェストとポリシー配信権限を付与するための新しいAPIキードロワー。](/images/dashboard/key-create.png)
 
-    フックをインストールした後、Eventsストリームに接続したマシンと環境からの新しいイベントが表示されるはずです。
+    フックをインストールした後、Events ストリームには接続したマシンと環境からの新しいイベントが表示されるはずです。
 
     ![新しくインストールされたハーネスが報告していることを確認するためのライブEventsストリーム。](/images/dashboard/events-stream.png)
 
-    最後に、ポリシー決定が同じマシンに紐付いていることを確認します。これにより、ハーネスがトレースイベントだけでなくポリシーアクティビティも報告していることが確認できます。
+    最後に、ポリシー決定が同じマシンに帰属していることを確認します。これにより、ハーネスがトレースイベントだけでなくポリシーアクティビティも報告していることが確認できます。
 
     ![新しく接続されたハーネスからのポリシー決定を確認するためのPolicyページ。](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
-    検出されたすべてのハーネスにフックをインストールします。
+    `failproofai config` は見つかったすべてのサポート済みエージェントCLIにフックを接続し、デーモンをインストールし、キーが存在する場合はCloudに接続します。
 
     ```bash
-    failproofai config \
-      --connect https://app.befailproof.ai \
-      --token <machine-key>
-    failproofai policies --install
+    failproofai config --token <machine-key>
+    failproofai policies add FailproofAI/policies
     ```
 
-    または、特定のハーネスと設定スコープを指定します。
+    セットアップではポリシーが選択されないため、2番目のコマンドが必要です。
+
+    `--cli` を省略して1つのハーネスを手動で接続する場合、`--install` はインストール済みのものを検出してプロンプトを表示します。
 
     ```bash
     failproofai policies --install \
@@ -82,7 +165,7 @@ icon: "plug-zap"
       --scope user
     ```
 
-    プロジェクトスコープはリポジトリと共にフック設定を保持します。ユーザースコープはリポジトリをまたいだ作業をカバーします。Claude Code はローカルスコープもサポートしていますが、サポート状況はハーネスによって異なり、サポートされていない組み合わせはCLIが拒否します。
+    プロジェクトスコープはフック設定をリポジトリとともに保持します。ユーザースコープはリポジトリをまたいだ作業をカバーします。`--cli` と `--scope` を組み合わせる前に上記のスコープテーブルを確認してください。サポートされていない組み合わせはCLIが拒否します。
 
     マシンとそのイベントを確認します。
 
@@ -94,16 +177,20 @@ icon: "plug-zap"
   </Tab>
 </Tabs>
 
+<Warning>
+  新しいディレクトリから開始されたヘッドレスの `copilot -p` 実行では、プロジェクトスコープの `.github/hooks/failproofai.json` が**読み込まれませんでした**。別途確認が取れるまで、CI での Copilot においてはユーザースコープを信頼性の高いエンフォースメントポイントとして扱ってください。
+</Warning>
+
 ## デフォルト以外のセッションパスを追加する
 
 <Tabs>
   <Tab title="ダッシュボード">
-    追加パスはクラウドではなくマシン上に登録されます。追加後は **Observe → Sessions** を開き、マシンの環境でフィルタリングして、新しいパスからのセッションが表示されることを確認します。セッションを開いて、監査に使用する前にエージェント、ハーネス、イベントのタイムスタンプを確認してください。
+    追加パスはCloudではなくマシン上で登録されます。追加後、**Observe → Sessions** を開き、マシンの環境でフィルタリングして、新しいパスからのセッションが表示されることを確認します。監査で使用する前に、セッションを開いてエージェント、ハーネス、イベントのタイムスタンプを確認してください。
 
-    ![追加キャプチャパスからのデータを受信している環境でフィルタリングされたセッションリスト。](/images/dashboard/sessions-list.png)
+    ![追加キャプチャパスからデータを受信している環境にフィルタリングされたSessionsリスト。](/images/dashboard/sessions-list.png)
   </Tab>
   <Tab title="CLI">
-    オプションのラベルを付けてパスを追加し、設定されたパスを確認します。
+    オプションのラベルを指定してパスを追加し、設定済みパスを確認します。
 
     ```bash
     failproofai harness add-path claude checkout=/srv/checkout/.claude
@@ -112,7 +199,9 @@ icon: "plug-zap"
     failproofai backfill --since 7d
     ```
 
-    `failproofai harness remove-path claude checkout` でパスを削除できます。
+    `failproofai harness remove-path claude checkout` でパスを削除します。
+
+    ラベルは派生するエージェントIDの名前空間を分けます。同じプロジェクトのコピーを保持する2つの場所は、トランスクリプトから同じIDを生成するため、ラベルがなければ1つのエージェントにマージされます。ルートの重複やラベルの重複は拒否されます。各拒否の理由については [CLIリファレンス](/ja/reference/failproof-cli) を参照してください。
   </Tab>
 </Tabs>
 

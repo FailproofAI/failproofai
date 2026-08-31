@@ -1,27 +1,54 @@
 ---
 title: "Modelle"
-description: "Vergleiche Modell-Latenz, Token, Kontextnutzung und Traffic-Verteilung."
+description: "Vergleich von Modell-Latenz, Tokens, Kontextnutzung und Traffic-Verteilung."
 icon: "cpu"
 ---
 
-Verwende Modelle, um zu sehen, ob sich Zuverlässigkeit oder Kosten mit einem Modell, Agenten, einer Umgebung oder einem Zeitraum verändert haben.
+Verwende „Modelle", um zu sehen, ob sich Zuverlässigkeit oder Kosten mit einem Modell, Agenten, einer Umgebung oder einem Zeitraum verändert haben.
 
 <Tabs>
   <Tab title="Dashboard">
     1. Gehe zu **Observe → Models**.
     2. Lege den Zeitraum fest und filtere nach Umgebung, Modell, Agent oder Session-ID.
     3. Überprüfe Latenz, Token-Verbrauch, Kontextfensternutzung und Modellverteilung.
-    4. Wähle einen Diagrammpunkt oder ein Verteilungssegment aus, um die passenden Ereignisse zu öffnen.
+    4. Wähle einen Chartpunkt oder ein Verteilungssegment aus, um die zugehörigen Events zu öffnen.
 
     ![Die Models-Seite mit Ansichten für Latenz, Perzentile, Token, Kosten, Kontextfenster und Modellverteilung.](/images/dashboard/models.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp list models
-    fp events --event-type model_request,model_response --env production --since 24h
-    fp --json events --fields ts,agent_id,session_id,event_type,output_tokens,context_fill
+    fp events --event-type model_request,model_response --since 24h
+    fp --json events --event-type model_response --since 24h --all --limit 500 --fields ts,agent_id,session_id,output_tokens,context_window,context_fill
     ```
 
-    Verwende eine gespeicherte Abfrage für Aggregate auf Modellebene, die nicht als dedizierter CLI-Befehl verfügbar sind.
+    Alle drei benötigen `events:read`.
+
+    `--fields` projiziert Spalten; es filtert keine Zeilen. Kombiniere es mit `--event-type` und einem Zeitfenster, sonst erhältst du die neuesten 50 Events jedes Typs, bei denen `output_tokens` und `context_fill` bei allen Nicht-Modell-Events `null` sind. `--all` stoppt bei `--limit`, das standardmäßig 50 beträgt.
+
+    Lies `context_fill` zusammen mit `context_window`: Ein Füllwert bedeutet nichts ohne das Fenster, gegen das er gemessen wird.
+
+    Der Daemon versieht jedes Event mit der Umgebung `local`, sofern du das nicht änderst. Daher liefert `--env production` bei einer Standardinstallation keine Treffer. Siehe [Change an environment label](/de/reference/events-and-configuration#change-an-environment-label).
   </Tab>
 </Tabs>
+
+## Was die CLI anzeigen kann und was nicht
+
+Der Standard-Event-Feed ist ohne Payload. Er enthält `output_tokens`, `context_window` und `context_fill` als hochgestufte Spalten – und sonst nichts über einen Modellaufruf:
+
+| Wert | Wo er gespeichert ist |
+| --- | --- |
+| Output-Tokens, Kontextfenster, Kontextfüllung | Light-Feed-Spalten – direkt über `fp events` verfügbar. |
+| Modellname | Payload – verwende `fp events --full`, begrenzt auf eine Session. |
+| Input-Tokens | Payload – das SDK erfasst beide Hälften, aber nur die Output-Hälfte wird hochgestuft. |
+| Latenz pro Aufruf | Keine `duration_ms`-Spalte im Light Feed, und `model_response` des SDK enthält ebenfalls keine. Berechne sie, indem du den Request mit der zugehörigen Response zusammenführst. |
+
+`model_request` und `model_response` werden über `request_id` verknüpft. Dieses Feld existiert genau dafür, damit ein Request seiner Antwort zugeordnet werden kann – und es ist der einzige Weg, die Latenz pro Aufruf aus Rohdaten zu berechnen:
+
+```bash
+fp --json events --full --event-type model_request,model_response --session-id <session-id> --all --limit 500
+```
+
+Modellnamen werden unverändert aus dem Transkript des jeweiligen Harness übernommen. Nichts im Erfassungspfad normalisiert sie, sodass ein und dasselbe Modell im Verteilungsdiagramm unter mehreren anbieterspezifischen IDs erscheinen kann. Führe `fp list models` aus, um die tatsächlich verwendeten Schreibweisen eines Deployments zu sehen.
+
+Verwende eine gespeicherte Abfrage für Aggregate auf Modellebene, die nicht als dedizierter CLI-Befehl verfügbar sind.

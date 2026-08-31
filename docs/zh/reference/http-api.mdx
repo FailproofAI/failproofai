@@ -4,71 +4,121 @@ description: "向 Failproof AI Cloud 公共 `/v1` API 进行身份验证，并�
 icon: "braces"
 ---
 
-公共 API 托管在您的 Failproof AI 控制台域名的 `/v1` 路径下。
+公共 API 在您的 Failproof AI 控制台域名下的 `/v1` 路径提供服务。在 Failproof AI Cloud 上，该域名为 `https://app.befailproof.ai`，因此基础路径为 `https://app.befailproof.ai/v1`。在自托管部署中，域名为您自己的控制台主机，后接 `/v1`；通过 `--base-url <url>` 或 `FP_DASHBOARD_URL` 将该主机传递给 `fp`。
 
 ## 创建密钥并发起请求
 
 <Tabs>
   <Tab title="控制台">
-    1. 打开**管理 → 密钥**，选择**创建密钥**，并选择能覆盖该集成所需的最小权限预设。
-    2. 仅在必要时添加单独授权，创建密钥后复制其一次性密码。
-    3. 向 `/v1/sessions` 发送测试请求，并在密钥页面确认该密钥仍处于活跃状态。
+    1. 打开 **Administration → Keys**，选择 **new key**，并选择涵盖该集成所需的最小权限预设。
+    2. 仅在必要时添加单独授权，创建密钥后复制其一次性密钥值。
+    3. 向 `/v1/sessions` 发送测试请求，并在 Keys 页面确认密钥仍处于活跃状态。
     4. 当集成更换所有者时，通过其操作菜单轮换或禁用该密钥。
 
-    ![新 API 密钥抽屉，显示权限预设和单独授权选项。](/images/dashboard/key-create.png)
+    ![新 API 密钥侧边栏，包含权限预设和单独授权选项。](/images/dashboard/key-create.png)
 
-    创建抽屉如上图所示。一次性密码仅在您点击**创建**后显示；请在关闭确认弹窗前复制。
+    上图为创建侧边栏。一次性密钥值仅在密钥创建后显示；请在关闭确认弹窗前复制。
   </Tab>
   <Tab title="CLI">
-    创建一个只读密钥，并直接通过 `fp` 或 `curl` 使用：
+    创建只读密钥，并直接通过 `fp` 或 `curl` 使用。`fp` 从 `--api-key` 或 `FP_API_KEY` 读取密钥：
 
     ```bash
     fp keys create reliability-reader \
       --permission-set read-only
 
-    fp --api-key <key> sessions --since 24h
-    ```
-
-    ```bash
-    curl "https://app.befailproof.ai/v1/sessions?limit=20" \
-      -H "Authorization: Bearer $FAILPROOFAI_KEY"
-    ```
-  </Tab>
-</Tabs>
-
-密钥的作用范围限定于某个组织及其权限集。若请求缺少端点所需权限，将返回 `403` 并说明缺失的权限。
-
-## 选择组织
-
-组织密钥会自动作用于其所属组织。实例级密钥可以在每次请求时指定组织：
-
-<Tabs>
-  <Tab title="控制台">
-    在打开**管理 → 密钥**之前，先使用控制台顶部的组织切换器。在此处创建的密钥属于当前选定的组织。在将凭证复制到自动化流程之前，请通过 URL 和密钥详情确认组织的 slug。
-
-  </Tab>
-  <Tab title="CLI">
-    在命令前使用 `--org`，或为实例级 API 密钥在请求中发送组织标头。
-
-    ```bash
-    fp orgs list
+    export FP_API_KEY="<one-time-secret>"
     fp --org reliability-team sessions --since 24h
     ```
 
     ```bash
-    curl "https://app.befailproof.ai/v1/usage" \
-      -H "Authorization: Bearer $FAILPROOFAI_KEY" \
+    curl "https://app.befailproof.ai/v1/sessions?limit=20" \
+      -H "Authorization: Bearer $FP_API_KEY" \
       -H "X-AgentEye-Org: reliability-team"
     ```
   </Tab>
 </Tabs>
 
-请参阅本节中生成的端点页面，了解当前路径、参数、权限要求及状态码。该规范由服务器路由注解生成，并已对照 `/v1` 路由器进行校验。
+密钥的作用范围限定于某个组织及一个扁平的权限列表。权限集仅在创建时作为该列表的初始值——密钥存储的是展开后的授权，因此之后修改权限集不会影响已有密钥。若请求缺少端点所需权限，将返回 `403` 并指明缺少的权限。
 
-当前规范已完整覆盖路由、方法、参数、权限和状态码。部分响应体有意保持未类型化，因为服务器仍以动态 JSON 方式构建它们。在针对没有响应模式的端点生成强类型客户端之前，请先检查真实响应。
+## 组织选择
 
-JSON 写入请使用 `Content-Type: application/json`。`401` 表示身份验证缺失或无效，`403` 表示身份有效但缺少所需权限，`404` 表示资源不存在或无法在当前组织内访问，`409` 表示状态冲突，`422` 表示字段或权限值无效。错误响应包含可读的描述信息；权限失败时还会说明所需的授权项。
+组织密钥会自动作用于其所属组织。实例范围密钥需在每次请求时指定组织，拥有多个组织的租户在密钥模式下必须始终明确指定一个组织——`fp` 在使用密钥进行身份验证时不会发送已保存的组织信息。
+
+| 调用方 | 指定组织的方式 |
+| --- | --- |
+| `fp`，每次调用 | `--org <slug>`，放在子命令之前 |
+| `fp`，从环境变量读取 | `FP_ORG` |
+| 原始 HTTP 请求 | 请求头 `X-AgentEye-Org: <slug>` |
+
+`X-AgentEye-Org` 在网络传输中保持原始拼写。控制台通过该请求头来解析当前活跃组织，在客户端中修改其名称会导致请求失败。
+
+<Tabs>
+  <Tab title="控制台">
+    在打开 **Administration → Keys** 前，先使用控制台顶部的组织切换器选择目标组织。在此创建的密钥归属于当前选中的组织。在将凭证复制到自动化流程之前，请通过 URL 和密钥详情确认组织 slug。
+
+  </Tab>
+  <Tab title="CLI">
+    在命令前使用 `--org`，或为实例范围 API 密钥发送组织请求头。`fp orgs list` 在此场景下无法帮您发现 slug——它在密钥模式下会拒绝执行；请改为从控制台的组织切换器中读取 slug。
+
+    ```bash
+    fp --org reliability-team sessions --since 24h
+    ```
+
+    ```bash
+    curl "https://app.befailproof.ai/v1/usage" \
+      -H "Authorization: Bearer $FP_API_KEY" \
+      -H "X-AgentEye-Org: reliability-team"
+    ```
+  </Tab>
+</Tabs>
+
+## 分页
+
+列表端点使用键集分页，无论通过 `fp` 还是 `curl` 调用，分页规则相同。
+
+| 元素 | 含义 |
+| --- | --- |
+| `limit` 查询参数 | 本次请求的行数。`fp` 在所有端点上将单次请求限制为 200 行。原始请求则受服务器各端点自身上限的约束。 |
+| `cursor` 查询参数 | 一个不透明的令牌，用于从上一页继续获取数据。 |
+| `next_cursor` 响应字段 | 下一页的令牌。`null` 表示数据已全部获取。 |
+
+各端点的上限不同，每个端点页面均标注了其默认值和上限：
+
+| 端点 | 默认值 | 上限 |
+| --- | --- | --- |
+| `/events`、`/events/summary` | 50 | 1000 |
+| `/issues`、`/alerts/{id}/issues` | 200 | 1000 |
+| `/evaluation-jobs` | 100 | 500 |
+| `/audits/findings` | 100 | 500 |
+| `/sessions`、`/evaluations` | 50 | 200 |
+| `/audits/{id}/runs` | 50 | 200 |
+
+要读取完整数据，可重复发起相同请求，每次将 `cursor` 设置为上次响应的 `next_cursor`，直到 `next_cursor` 返回 `null` 为止。等效的 `fp` 标志——`--all`、`--cursor` 和 `--page-size`——已在 [Cloud CLI 参考文档](/zh/reference/cloud-cli)中说明。
+
+## 端点参考与错误处理
+
+本节中生成的端点页面提供当前路径、参数、权限要求和状态码的详细信息。该规范由服务器路由注解生成，并经过 `/v1` 路由器验证。
+
+当前规范涵盖了完整的路由、方法、参数、权限和状态码信息。请求体已定义类型；响应体暂未定义——由于服务器目前仍以动态 JSON 方式构建响应，规范中不包含响应 schema。在生成强类型客户端之前，请先检查真实的响应结构。
+
+JSON 写入请求请使用 `Content-Type: application/json`。错误码含义如下：`401` 表示身份验证缺失或无效；`403` 表示身份有效但缺少所需权限；`404` 表示资源不存在或在当前组织下无法访问；`409` 表示状态冲突；`400` 表示参数被拒绝——包括未知的过滤器值、格式错误的查询参数、无法执行的语句；`422` 表示请求体中存在无效的字段或权限值。错误响应均包含可读的提示信息；权限失败时还会指明所需的授权。
+
+## `/v1` 未涵盖的功能面
+
+云端管理的策略、机群（fleet）以及护栏（guardrail）决策数据流属于运营商级功能面——无论读写操作均如此。这些功能在服务器上仅限 root 访问，并被刻意排除在面向互联网的 `/v1` 之外。例如，发布策略版本或将其部署到某台机器，不是 API 密钥能够完成的操作；读取机群的决策记录也属于同一功能面。
+
+因此，API 密钥在这些路由上会被按设计拒绝，`fp` 会在建立连接前就拒绝执行，而非让请求以无提示的 404 结束：
+
+| 命令 | 在 API 密钥模式下的行为 |
+| --- | --- |
+| `fp policies` | 以退出码 `2` 拒绝，并说明云端管理策略属于运营商功能面 |
+| `fp fleet` | 以退出码 `2` 拒绝，并说明机群属于运营商功能面 |
+| `fp guardrails` | 以退出码 `2` 拒绝，并说明护栏数据流属于运营商功能面 |
+| `fp agent` | 以退出码 `2` 拒绝；助手由控制台实现，而非 API |
+| `fp orgs` | 以退出码 `2` 拒绝；组织成员资格归属于已登录用户，且密钥本身已代表一个组织运作 |
+
+对于上述操作，请改用已登录用户会话（`fp login`）执行，或直接使用控制台。读取和管理类功能——会话、事件、评估、审计、问题、告警、密钥、权限集、用户、设置、查询和用量——均有对应的 `/v1` 路由，支持密钥访问。唯一的例外是 `fp keys update`：它需要 `keys:update` 权限，而任何 API 密钥都无法持有该权限，因此密钥可以创建和禁用密钥，但无法编辑密钥的权限。`fp login` 和 `fp logout` 在密钥模式下同样会拒绝执行，原因有所不同：密钥本身即为凭证，且永远不会保存到磁盘。
 
 <Warning>
-  策略执行部署有意管理在普通公共 `/v1` 接口之外。请使用受支持的 Cloud 部署工作流。
+  策略执行的部署有意在公共 `/v1` 接口之外进行管理。请使用 [Deploy policies](/zh/policies/deploy) 中描述的官方 Cloud 部署工作流。
 </Warning>

@@ -1,63 +1,103 @@
 ---
----
 title: "Avvisi"
-description: "Rileva ricorrenze e indirizza un incidente ai responder appropriati."
+description: "Rileva ricorrenze e indirizza un problema ai responder giusti."
 icon: "bell-ring"
 ---
 
-Gli avvisi controllano una condizione misurabile e creano un incidente quando si attiva. Usali quando un errore deve generare una risposta tempestiva, indipendentemente dal fatto che una policy possa bloccarlo.
+Un avviso monitora una condizione misurabile e apre un problema quando si attiva. Usalo quando un guasto dovrebbe produrre una risposta tempestiva, indipendentemente dal fatto che una policy possa bloccarlo.
 
 ## Creare e testare un avviso
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vai su **Analyze → Alerts** e seleziona **new alert**. Puoi anche iniziare dalla campana su un errore rappresentativo.
-    2. Inserisci il nome, la gravità, il tipo di trigger, la condizione, l'intervallo di valutazione, il conteggio delle violazioni, la finestra e i canali.
+    1. Vai a **Analyze → Alerts** e seleziona **new alert**. Puoi anche iniziare dalla campana su un errore rappresentativo.
+    2. Inserisci il nome, la severità, il tipo di trigger, la condizione, l'intervallo di valutazione, il numero di violazioni, la finestra e i canali.
     3. Salva l'avviso, apri la sua pagina di dettaglio ed esegui **test**.
-    4. Vai su **Analyze → Issues** per riconoscere, assegnare, discutere, iscriverti e risolvere gli incidenti creati dall'avviso.
+    4. Vai a **Analyze → Issues** per riconoscere, assegnare, discutere, sottoscrivere e risolvere i problemi che l'avviso apre.
 
     La prima parte del modulo identifica l'avviso e il segnale che dovrebbe attivarlo.
 
-    ![La prima parte del modulo new-alert con nome, descrizione, stato abilitato e tipo di trigger.](/images/dashboard/alert-new-trigger.png)
+    ![La prima parte del modulo new-alert con il suo nome, descrizione, stato abilitato e tipo di trigger.](/images/dashboard/alert-new-trigger.png)
 
-    La seconda parte controlla per quanto tempo la condizione deve persistere, con quale frequenza viene valutata e dove vengono inviate le notifiche.
+    La seconda parte controlla per quanto tempo la condizione deve persistere, con che frequenza viene valutata e dove vengono inviate le notifiche.
 
-    ![La seconda parte del modulo new-alert con logica di violazione, pianificazione, gravità, canali di consegna e azione di creazione.](/images/dashboard/alert-new-routing.png)
+    ![La seconda parte del modulo new-alert con logica di violazione, pianificazione, severità, canali di consegna e azione di creazione.](/images/dashboard/alert-new-routing.png)
 
-    Dopo il salvataggio, utilizza l'elenco degli Avvisi per confermare che la regola è abilitata e che il suo trigger, la finestra, la gravità e i canali corrispondono a quanto previsto.
+    Dopo il salvataggio, usa l'elenco Alerts per confermare che la regola è abilitata e che il suo trigger, finestra, severità e canali corrispondono a quanto intendevi. Una scheda con problemi aperti mostra il conteggio; una scheda senza nessuno omette la riga intera, quindi la sua assenza non ti dice nulla. Per leggere la cifra per ogni regola inclusi gli zeri, usa `fp alerts show <name>`, che la stampa sempre.
 
-    ![La pagina Alerts che mostra le regole di avviso con trigger, finestre di valutazione, canali e gravità.](/images/dashboard/alerts.png)
-
-    Testa l'avviso prima di dipendere da esso per la risposta in produzione.
+    ![La pagina Alerts che mostra le regole di avviso con i loro trigger, finestre di valutazione, canali e severità.](/images/dashboard/alerts.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp alerts create high-errors \
       --trigger-kind metric_threshold \
       --severity warning \
-      --trigger-spec '{"metric":"error_count","op":">","value":50,"window_secs":900}'
+      --trigger-spec '{"metric":"error_count","op":">","value":50,"window_secs":900}' \
+      --eval-interval-secs 300 \
+      --min-breaches 2 \
+      --eval-window 3
 
     fp alerts show high-errors
     fp alerts test high-errors
     fp alerts update high-errors --severity critical --yes
     ```
 
-    Usa `fp alerts list` per rivedere le regole e `fp alerts delete <name>` per rimuoverne una.
+    I nuovi avvisi iniziano **abilitati**, e una collisione di nomi viene rifiutata prima che venga creato qualsiasi cosa.
 
-    Consulta il [riferimento `fp alerts`](/it/reference/cloud-cli#alerts) per l'insieme completo di comandi di avviso.
+    `fp alerts update` sostituisce l'intera definizione lato server, quindi la CLI rilegge l'avviso e sovrappone i tuoi flag in cima — un aggiornamento solo flag richiede `alerts:read` **oltre a** `alerts:write`, e conferma a meno che tu non passi `--yes`.
+
+    Usa `fp alerts list` per rivedere le regole e `fp alerts delete <name>` per rimuoverne una. Delete visualizza l'anteprima della regola — incluso il numero di problemi aperti — e conferma prima di agire, perché non può essere annullato.
+
+    Delete non è il modo per silenziare una regola rumorosa. `DELETE /alerts/{id}` a cascata: ogni problema che l'avviso ha mai aperto lo accompagna, portando i suoi commenti, sottoscrittori e cronologia attività. La casella di conferma della CLI lo esprime come problemi aperti che vengono "orfani"; il contratto API è una cancellazione a cascata, quindi tratta la cronologia come eliminata. Per impedire a una regola di attivarsi e mantenere ciò che ha registrato, disattivala invece — il modulo di avviso del dashboard ha l'interruttore abilitato, e né `fp alerts create` né `fp alerts update` espongono un flag `--enabled`, quindi il percorso CLI è `fp alerts update <name> --file` con una definizione completa che riporta `enabled: false`.
+
+    Vedi il riferimento [`fp alerts`](/it/reference/cloud-cli#alerts) per l'insieme completo di comandi di avviso.
   </Tab>
 </Tabs>
 
-Le condizioni di avviso possono essere basate su errori, punteggi di valutazione, combinazioni di valutazioni o SQL personalizzato. Aggiungi destinatari, testa la regola e apri l'incidente risultante per riconoscerlo, assegnarlo, commentarlo, iscriverti e risolverlo.
+<Warning>
+  **test** invia notifiche reali. Invia ai canali email, Slack e webhook reali dell'avviso e apre un problema sintetico, quindi può avvisare chiunque sia in servizio. Conferma per primo su un terminale interattivo; `--yes`, `--json` e uno stdin reindirizzato saltano tutti quel prompt. Il server segnala anche il successo non appena esegue l'invio, quindi un test verde prove che il messaggio è partito, non che è arrivato.
+</Warning>
 
-## Buon design degli avvisi
+## Definisci il trigger
+
+Ci sono cinque tipi di trigger:
+
+| `--trigger-kind` | Si attiva quando |
+| --- | --- |
+| `metric_threshold` | Una metrica supera una soglia — errori, latenza, costo o qualsiasi altro elemento misurabile. |
+| `per_event` | Arriva un singolo evento corrispondente. |
+| `evaluation_score` | Il punteggio di un valutatore supera una soglia. |
+| `eval_compound` | Diverse condizioni di punteggio si combinano, ad esempio due su tre punteggi che falliscono. |
+| `custom_sql` | Una query che scrivi restituisce una violazione. |
+
+La condizione stessa va in `--trigger-spec`, configurata per il tipo che hai scelto.
+
+## Imposta i numeri di valutazione
+
+Il modulo dashboard e la CLI richiedono gli stessi quattro valori.
+
+| Impostazione | Flag | Valori accettati |
+| --- | --- | --- |
+| Severità | `--severity` | `info`, `warning`, `critical` |
+| Intervallo di valutazione | `--eval-interval-secs` | 30–86.400 secondi |
+| Numero di violazioni | `--min-breaches` | Almeno 1, e mai più della finestra |
+| Finestra di valutazione | `--eval-window` | Almeno 1, conteggiato in **intervalli**, non secondi |
+
+Quindi `--eval-interval-secs 300 --min-breaches 2 --eval-window 3` significa "valuta ogni cinque minuti e attiva quando due delle ultime tre valutazioni hanno violato".
+
+## Buon design di avviso
 
 - Nomina la condizione e il flusso di lavoro interessato.
-- Specifica esplicitamente l'ambiente.
+- Definisci esplicitamente l'ambito dell'ambiente.
 - Imposta una finestra e una soglia che evitino di reagire a un singolo evento innocuo.
-- Includi un collegamento o una query che conduca i responder alle sessioni.
+- Includi un link o una query che guidi i responder verso le sessioni.
 - Assegna un proprietario prima di abilitare la regola.
+- Controlla `fp alerts show <name>` per il numero di problemi aperti prima di aggiungere un'altra regola per lo stesso sintomo. La scheda dashboard stampa quella riga solo quando il conteggio è diverso da zero.
 
 <Tip>
-  Dopo aver risolto un risultato di audit, aggiungi un avviso quando lo stesso errore potrebbe ripetersi al di fuori della copertura della policy.
+  Dopo aver risolto un rilievo di audit, aggiungi un avviso quando lo stesso guasto potrebbe ripetersi al di fuori della copertura della policy.
 </Tip>
+
+<Card title="Lavora sui problemi che un avviso apre" icon="clipboard-check" href="/it/audits/findings-and-issues">
+  Riconosci, assegna, commenta, sottoscrivi e risolvi — il flusso di lavoro in cui atterra ogni avviso attivato.
+</Card>

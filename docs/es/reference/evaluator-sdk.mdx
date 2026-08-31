@@ -1,28 +1,52 @@
 ---
-title: "SDK de Evaluador"
+title: "Evaluator SDK"
 description: "Construye un servicio que puntúe sesiones de Failproof AI de forma síncrona o asíncrona."
 icon: "gauge"
 ---
 
-Un evaluador recibe una sesión de agente completada y devuelve las señales de calidad que te interesan: puntuaciones numéricas, una explicación para cada puntuación y un resumen opcional. Failproof AI almacena estos resultados junto al rastro y los representa gráficamente a lo largo de agentes y entornos.
+Un evaluador recibe una sesión de agente completada y devuelve las señales de calidad que te importan: puntuaciones numéricas, una explicación para cada puntuación y un resumen opcional. Failproof AI almacena estos resultados junto al trace y los representa gráficamente a lo largo de agentes y entornos.
+
+El paquete es `agenteye-evaluator`, importado como `agenteye_evaluator`. Requiere Python 3.10 o superior y depende de `fastapi`, `pydantic>=2` y `structlog`.
+
+<Warning>
+  **`pip install agenteye-evaluator` desde PyPI público no es la ruta de instalación correcta.** El paquete se publica únicamente como artefacto de versión privada, y el nombre no está registrado en PyPI público — una instalación sin cualificación podría incorporar el paquete de un tercero al servicio que lee tus transcripciones de producción. Usa la escalera indicada a continuación.
+</Warning>
 
 ## Configurar un evaluador
 
 <Steps>
-  <Step title="Instalar el SDK del evaluador">
-    Instala el SDK y el servidor necesario para ejecutarlo.
+  <Step title="Instalar el SDK">
+    Recorre esta escalera en orden y detente en el primer peldaño que aplique.
+
+    Dentro del monorepo, donde existe un directorio `evaluator-sdk/`:
 
     ```bash
-    pip install failproofai-sdk uvicorn
+    pip install ./evaluator-sdk
+    ```
+
+    En caso contrario, desde la versión privada. Las wheels están adjuntas a GitHub Releases en `agenteye-enterprise/releases`, etiquetadas como `evaluator-sdk/v<version>`, y necesitas `gh auth login` más acceso a ese repositorio:
+
+    ```bash
+    gh release download evaluator-sdk/v<version> \
+      --repo agenteye-enterprise/releases --pattern '*.whl'
+    pip install ./agenteye_evaluator-*.whl
+    ```
+
+    Si ninguna de las opciones funciona, pide la wheel a tu contacto de Failproof AI en lugar de improvisar una instalación.
+
+    `uvicorn` no es una dependencia de forma deliberada, así que instala el servidor por separado:
+
+    ```bash
+    pip install 'uvicorn[standard]'
     ```
   </Step>
 
   <Step title="Definir qué puntuar">
-    Crea `evaluator.py`. Este ejemplo comprueba si una sesión contiene alguna llamada a herramienta fallida.
+    Crea `evaluator.py`. Este ejemplo comprueba si una sesión contiene llamadas a herramientas fallidas.
 
     ```python
     import os
-    from failproofai.evaluator import Evaluator, EvalResponse
+    from agenteye_evaluator import Evaluator, EvalResponse
 
     app = Evaluator(token=os.environ.get("EVALUATOR_TOKEN"))
 
@@ -41,10 +65,16 @@ Un evaluador recibe una sesión de agente completada y devuelve las señales de 
             reasoning={"tool_reliability": f"{tool_errors} tool errors"},
         )
     ```
+
+    El constructor completo es `Evaluator(token: str | None = None, *, title: str = "AgentEye Evaluator")`. El token se compara con `hmac.compare_digest`; `title` es el título de la aplicación FastAPI y es meramente cosmético.
+
+    <Warning>
+      `token=None` desactiva la autenticación por completo. Eso está bien en un ordenador local, pero es una brecha en producción, donde el endpoint recibe transcripciones completas de sesiones.
+    </Warning>
   </Step>
 
-  <Step title="Ejecutarlo y probarlo localmente">
-    Establece un token compartido, inicia el evaluador y confirma que su endpoint de salud responde.
+  <Step title="Ejecutarlo y probarlo en local">
+    Define un token compartido, arranca el evaluador y confirma que su endpoint de salud responde.
 
     ```bash
     export EVALUATOR_TOKEN=<shared-token>
@@ -56,30 +86,32 @@ Un evaluador recibe una sesión de agente completada y devuelve las señales de 
     ```bash
     curl http://127.0.0.1:8080/health
     ```
+
+    Cada decorador devuelve la función sin modificarla, por lo que `evaluate(req)` sigue siendo invocable directamente. Eso es lo que hace que las pruebas unitarias sean sencillas — construye un `EvalRequest` y llama al handler, sin necesidad de HTTP.
   </Step>
 </Steps>
 
 ## Conectar el evaluador a Failproof AI
 
 1. Despliega el evaluador en una URL HTTPS accesible por Failproof AI Cloud.
-2. Configura `EVALUATOR_ENDPOINT` con esa URL y establece `EVALUATOR_TOKEN` con el mismo token utilizado por el evaluador. Para Cloud gestionado, contacta con [support@befailproof.ai](mailto:support@befailproof.ai) para configurar la conexión.
+2. Configura `EVALUATOR_ENDPOINT` con esa URL y establece `EVALUATOR_TOKEN` con el mismo token que usa el evaluador. Para el Cloud gestionado, contacta con [support@befailproof.ai](mailto:support@befailproof.ai) para configurar la conexión.
 3. Ejecuta una evaluación y confirma que sus puntuaciones aparecen en Failproof AI.
 
 <Tabs>
-  <Tab title="Panel de control">
+  <Tab title="Dashboard">
     Abre una sesión completada en **Observe → Sessions** y selecciona **Run evaluation** si no se evaluó automáticamente. Revisa el estado, las puntuaciones, el razonamiento y el resumen en el panel **Evaluation** de la sesión.
 
-    Usa **Observe → Evaluations** para comparar puntuaciones entre agentes o entornos. Usa **Observe → Metrics** para mediciones de latencia, coste, tokens y otros valores numéricos.
+    Usa **Observe → Evaluations** para comparar puntuaciones entre agentes o entornos. Usa **Observe → Metrics** para medir latencia, coste, tokens y otras métricas numéricas.
 
-    Comienza con una sola sesión para confirmar que el evaluador devolvió las claves de puntuación esperadas y un razonamiento útil para esa ejecución específica.
+    Comienza con una sesión para confirmar que el evaluador devolvió las claves de puntuación esperadas y un razonamiento útil para esa ejecución específica.
 
-    ![Vista detallada de una sesión que muestra las puntuaciones de evaluación y el razonamiento junto a su rastro.](/images/dashboard/session-detail.png)
+    ![Vista de detalle de una sesión mostrando puntuaciones de evaluación y razonamiento junto a su trace.](/images/dashboard/session-detail.png)
 
-    Una vez que los resultados individuales parezcan correctos, usa el panel de evaluación para comparar esas puntuaciones a lo largo del tiempo y entre agentes o entornos.
+    Una vez que los resultados individuales se vean correctos, usa el dashboard de evaluación para comparar esas puntuaciones a lo largo del tiempo y entre agentes o entornos.
 
-    ![Panel de calidad con las puntuaciones del evaluador representadas a lo largo del tiempo.](/images/dashboard/dashboard-quality.png)
+    ![Dashboard de calidad con gráficas de puntuaciones del evaluador a lo largo del tiempo.](/images/dashboard/dashboard-quality.png)
 
-    Un gráfico saludable debe usar nombres de puntuación estables; cambiar una clave crea una serie separada.
+    Un gráfico saludable debería usar nombres de puntuación estables; cambiar una clave crea una serie separada.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -89,11 +121,32 @@ Un evaluador recibe una sesión de agente completada y devuelve las señales de 
   </Tab>
 </Tabs>
 
-Para una instancia de Cloud autohospedada, la evaluación automática está deshabilitada hasta que se establezca `EVALUATOR_ENDPOINT` en el proceso del servidor. Reinicia el servidor después de cambiar las variables de entorno del evaluador.
+Para una instancia de Cloud autohospedada, la evaluación automática está desactivada hasta que se establezca `EVALUATOR_ENDPOINT` en el proceso del servidor. Reinicia el servidor tras cambiar las variables de entorno del evaluador.
 
-El servicio expone `GET /health`, `GET /config`, `POST /evaluate` y opcionalmente `GET /evaluate/{job_id}`. Devuelve `JobPending` para trabajo asíncrono y registra `@app.job_lookup` para que Failproof AI pueda consultarlo periódicamente.
+## Decoradores y rutas
 
-Cuando hay un token configurado, todas las rutas excepto health requieren el mismo token bearer que Failproof AI envía como `EVALUATOR_TOKEN`.
+| Decorador | Ruta | Obligatorio |
+| --- | --- | --- |
+| `@app.evaluator` | `POST /evaluate` | Sí. |
+| `@app.job_lookup` | `GET /evaluate/{job_id}` | Solo si en algún momento devuelves `JobPending`. Sin él, los sondeos reciben un 404. |
+| `@app.config` | `GET /config` | No, pero obligatorio para cualquier sesión que nunca emita `agent_end` — ver más abajo. |
+
+Cada decorador acepta una función síncrona o asíncrona, la devuelve sin modificarla y lanza `ValueError` si la registras dos veces.
+
+| Ruta | Autenticación |
+| --- | --- |
+| `GET /health` | Abierta incluso cuando se ha configurado un token. |
+| `POST /evaluate` | Bearer. |
+| `GET /evaluate/{job_id}` | Bearer. |
+| `GET /config` | Bearer. |
+
+La coincidencia del esquema bearer no distingue mayúsculas de minúsculas. `GET /config` sin `@app.config` registrado sigue devolviendo `{"default_poll_interval_secs": 10}`, por lo que el SDK siempre anuncia una cadencia.
+
+El SDK limita el cuerpo de las solicitudes de evaluación a 25 MiB, comprobado contra `Content-Length` antes de leer el cuerpo. Superar el límite devuelve un 413, que es un 4xx y por tanto es terminal. Los campos de solicitud desconocidos se ignoran para que los servicios sigan siendo compatibles a medida que el contrato de eventos crece.
+
+<Warning>
+  Registrar `@app.config` con `inactivity_timeout_secs` es lo que habilita el escáner de respaldo. Sin él, una sesión que nunca emitió `agent_end` — cualquier sesión abandonada, que haya fallado o que siga inactiva — nunca se encola para evaluación. Los valores de cero o menores se descartan.
+</Warning>
 
 ## Tipos del SDK
 
@@ -105,22 +158,55 @@ Cuando hay un token configurado, todas las rutas excepto health requieren el mis
 | `JobPending` | `job_id`, `next_poll_secs` |
 | `EvaluatorConfig` | `inactivity_timeout_secs`, `default_poll_interval_secs` |
 
-## Decoradores y rutas
+## Campos de solicitud y respuesta
 
-| Decorador | Ruta | Obligatorio |
+| Campo | Tipo | Notas |
 | --- | --- | --- |
-| `@app.evaluator` | `POST /evaluate` | Sí |
-| `@app.job_lookup` | `GET /evaluate/{job_id}` | Al devolver `JobPending` |
-| `@app.config` | `GET /config` | No |
+| `EvalRequest.schema_version` | `str` | Actualmente `"1"`. |
+| `session_id`, `agent_id`, `environment` | `str` | Identidad de la sesión y entorno. |
+| `started_at` | `datetime` | Marca de tiempo del primer evento. |
+| `ended_at` | `datetime \| None` | La marca de tiempo del evento `agent_end`, no «cuándo se detuvo la sesión». Las sesiones encoladas por el escáner de inactividad nunca tuvieron un `agent_end` y llegan como `None`. |
+| `events` | `list[AgentEvent]` | Flujo completo de eventos ordenados. |
+| `AgentEvent.id` | `int` | Identificador de fila del evento en el backend. |
+| `AgentEvent.ts` | `datetime` | Marca de tiempo del evento. |
+| `AgentEvent.event_type` | `str` | Familia del evento, como `tool_use`. |
+| `AgentEvent.payload` | `dict[str, Any]` | El JSON completo del evento aplanado, de modo que los campos específicos del evento se sitúan en el nivel superior y `payload["type"]` duplica `event_type`. |
+| `EvalResponse.scores` | `dict[str, float] \| None` | Dimensiones numéricas representadas en las evaluaciones. |
+| `EvalResponse.reasoning` | `dict[str, str] \| None` | Explicaciones por puntuación; las claves deben reflejar `scores`. |
+| `EvalResponse.summary` | `str \| None` | Narrativa general de la evaluación. Truncada en 8192 bytes en el servidor; `last_error` en 2048. |
 
-El SDK limita el cuerpo de las solicitudes de evaluación a 25 MiB. Los campos desconocidos de la solicitud se ignoran, de modo que los servicios permanecen compatibles a medida que el contrato de eventos evoluciona.
+La serialización usa `exclude_none`, por lo que los campos no establecidos se omiten en lugar de enviarse como `null`.
+
+<Warning>
+  Derivar una duración de `ended_at` falla con datos reales. Cada sesión que el escáner de inactividad encola llega con `ended_at` establecido como `None`. Compruébalo antes de hacer la resta.
+</Warning>
+
+## Formas de retorno
+
+Tu handler puede devolver exactamente una de tres cosas. Cualquier otra cosa es un `TypeError`, que se manifiesta como un 500.
+
+| Retorno | `status` en el cable | Terminal |
+| --- | --- | --- |
+| `EvalResponse(...)` | `done` | Sí — puntuaciones almacenadas. |
+| `JobPending(job_id=...)` | `pending` | No — el servidor sondea. |
+| Un `dict` con `status` en `done`, `pending` o `error` | El indicado | `error` es terminal. |
+
+El estado `error` no tiene un modelo tipado. Para fallar de forma terminal debes devolver un dict, y `error` debe ser un `str` no vacío:
+
+```python
+return {"status": "error", "error": "model service unavailable"}
+```
+
+<Warning>
+  **Lanzar una excepción no es reportar un error.** Una excepción se convierte en un 500 genérico cuyo cuerpo es `"evaluator raised an internal error"` — el texto de tu excepción nunca llega al servidor, y el servidor trata cada 5xx como transitorio y lo reintenta. Devuelve el dict de `error` cuando quieras que el fallo quede registrado.
+</Warning>
 
 ## Devolver trabajo asíncrono
 
-Usa `JobPending` cuando la evaluación no puede completarse dentro de una sola solicitud. El ID de trabajo es opaco para Failproof AI y debe permanecer resoluble por tu servicio hasta que el resultado sea recogido o expire el tiempo de espera del servidor.
+Usa `JobPending` cuando la evaluación no pueda completarse dentro de una sola solicitud. El ID de trabajo es opaco para Failproof AI y debe permanecer resoluble por tu servicio hasta que se recoja el resultado o expire el tiempo límite del servidor.
 
 ```python
-from failproofai.evaluator import EvalRequest, EvalResponse, Evaluator, JobPending
+from agenteye_evaluator import EvalRequest, EvalResponse, Evaluator, JobPending
 
 app = Evaluator(token="shared-secret")
 
@@ -141,50 +227,38 @@ def lookup(job_id: str):
     )
 ```
 
-La cadencia de consulta se selecciona en este orden: `JobPending.next_poll_secs`, `EvaluatorConfig.default_poll_interval_secs` y luego el `EVALUATOR_POLLING_INTERVAL_SECS` del servidor. Los valores se limitan entre 1 segundo y 1 hora. El límite de tiempo de consulta por reloj del servidor es de una hora por defecto.
+La cadencia de sondeo se selecciona en este orden: `JobPending.next_poll_secs`, `EvaluatorConfig.default_poll_interval_secs` y luego el `EVALUATOR_POLLING_INTERVAL_SECS` del servidor. Los valores se limitan entre 1 segundo y 1 hora. El límite de tiempo de sondeo por reloj del servidor es de una hora por defecto, tras la cual el resultado se registra como `timeout`.
 
-## Campos de solicitud y respuesta
+## Configuración para operadores del servidor
 
-| Campo | Tipo | Notas |
-| --- | --- | --- |
-| `EvalRequest.schema_version` | `str` | Actualmente `"1"`. |
-| `session_id`, `agent_id`, `environment` | `str` | Identidad de sesión y entorno. |
-| `started_at` | `datetime` | Marca de tiempo del primer evento. |
-| `ended_at` | `datetime \| None` | Presente cuando la sesión emitió un evento de fin. |
-| `events` | `list[AgentEvent]` | Flujo de eventos completo y ordenado. |
-| `AgentEvent.id` | `int` | Identificador de fila del evento en el backend. |
-| `AgentEvent.ts` | `datetime` | Marca de tiempo del evento. |
-| `AgentEvent.event_type` | `str` | Familia del evento, como `tool_use`. |
-| `AgentEvent.payload` | `dict[str, Any]` | Carga útil completa del evento. |
-| `EvalResponse.scores` | `dict[str, float] \| None` | Dimensiones numéricas representadas en las evaluaciones. |
-| `EvalResponse.reasoning` | `dict[str, str] \| None` | Explicaciones por puntuación; las claves deben coincidir con `scores`. |
-| `EvalResponse.summary` | `str \| None` | Narrativa general de la evaluación. |
+La evaluación automática se aplica a todo el despliegue y permanece desactivada cuando `EVALUATOR_ENDPOINT` no está definido.
 
-## Configuración para el operador del servidor
-
-La evaluación automática afecta a todo el despliegue y permanece deshabilitada cuando `EVALUATOR_ENDPOINT` no está definido.
-
-| Variable | Valor por defecto | Propósito |
+| Variable | Valor predeterminado | Propósito |
 | --- | --- | --- |
 | `EVALUATOR_ENDPOINT` | no definido | URL base del servicio evaluador. |
 | `EVALUATOR_TOKEN` | no definido | Token bearer compartido con `Evaluator(token=...)`. |
-| `EVALUATOR_WORKERS` | `2` | Trabajadores del despachador concurrentes. |
+| `EVALUATOR_WORKERS` | `2` | Workers del despachador concurrentes. |
 | `EVALUATOR_CLAIM_BATCH` | `4` | Sesiones reclamadas por pasada del despachador. |
-| `EVALUATOR_POLLING_INTERVAL_SECS` | `10` | Cadencia de consulta asíncrona de reserva. |
-| `EVALUATOR_REQUEST_TIMEOUT_MS` | `30000` | Tiempo de espera del evaluador por solicitud. |
-| `EVALUATOR_MAX_ATTEMPTS` | `5` | Intentos de entrega antes de fallo terminal. |
+| `EVALUATOR_POLLING_INTERVAL_SECS` | `10` | Cadencia de sondeo asíncrono de respaldo. |
+| `EVALUATOR_REQUEST_TIMEOUT_MS` | `30000` | Tiempo límite por solicitud al evaluador, aplicado al POST y a cada sondeo. |
+| `EVALUATOR_MAX_ATTEMPTS` | `5` | Intentos de entrega antes del fallo terminal. |
 | `EVALUATOR_CONFIG_REFRESH_SECS` | `300` | Cadencia de actualización para `/config`. |
-| `EVALUATOR_MAX_POLL_DURATION_SECS` | `3600` | Tiempo máximo de consulta asíncrona por reloj. |
+| `EVALUATOR_MAX_POLL_DURATION_SECS` | `3600` | Tiempo máximo de sondeo asíncrono por reloj. |
 
-El servidor también puede restringir qué organizaciones usan el evaluador global del despliegue. Trata los cambios en el endpoint, el token, los reintentos y las restricciones por organización como configuración del operador, y reinicia o rota el servidor tras modificarlos.
+Dos consecuencias de esa tabla merecen señalarse explícitamente:
+
+- **Workers multiplicado por claim batch es tu concurrencia.** Con los valores predeterminados, eso son 8 llamadas concurrentes a tu endpoint en todo el despliegue. Dimensiona el servicio para ese número, no para uno solo.
+- **4xx es terminal y 5xx, 429 o un fallo de transporte se reintenta** con backoff hasta `EVALUATOR_MAX_ATTEMPTS`. Un token incorrecto devuelve un 401, por lo que falla de inmediato en lugar de reintentar — eso es lo primero que hay que comprobar cuando no llega nada.
+
+El servidor también puede restringir qué organizaciones utilizan el evaluador global del despliegue. Trata los cambios de endpoint, token, reintentos y filtro de organizaciones como configuración de operador, y reinicia o rota el servidor tras modificarlos.
 
 ## Seguridad y operaciones
 
-- Coloca el evaluador detrás de HTTPS cuando el tráfico cruce un límite de red de confianza.
-- Configura un token bearer no vacío y mantenlo idéntico en ambos servicios.
-- No registres en logs el token ni los prompts sensibles completos de las cargas útiles de las solicitudes.
-- Haz que los manejadores síncronos sean idempotentes; los reintentos pueden repetir una solicitud.
-- Persiste el estado de los trabajos asíncronos fuera de la memoria del proceso en producción.
-- Devuelve claves de puntuación estables. Renombrar una clave crea una nueva serie en el gráfico en lugar de modificar la anterior.
+- Pon el evaluador detrás de HTTPS cuando el tráfico cruce un límite de red de confianza.
+- Configura un token bearer no vacío y mantenlo idéntico en ambos servicios. `token=None` acepta cualquier llamante.
+- No registres en logs el token ni los prompts sensibles completos de los payloads de solicitud. El SDK no lo hace: los fallos de validación devuelven 422 sin hacer eco del payload, los 500 nunca hacen eco del texto de excepción, y el token no aparece en ningún campo de log.
+- Haz que los handlers síncronos sean idempotentes; los reintentos pueden repetir una solicitud.
+- Persiste el estado de trabajos asíncronos fuera de la memoria del proceso en producción.
+- Devuelve claves de puntuación estables. Renombrar una clave crea una nueva serie en el gráfico en lugar de modificar la antigua.
 
-El SDK emite logs de ciclo de vida estructurados como `eval received`, `eval responded`, `job lookup`, `config returned`, `auth rejected` y excepciones de manejadores. No configura manejadores de logging; utiliza la configuración de logging de la aplicación anfitriona.
+El SDK emite logs de ciclo de vida estructurados como `eval received`, `eval responded`, `job lookup`, `config returned`, `auth rejected` y excepciones del handler. Las respuestas de `/config` etiquetan `source="user"` frente a `source="default"`, para que puedas saber si tu `@app.config` fue detectado. No configura handlers de logging; usa la configuración de logging de la aplicación anfitriona.

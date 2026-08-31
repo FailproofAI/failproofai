@@ -1,21 +1,16 @@
 ---
 title: "Utilisateurs et organisations"
-description: "Gérez les membres et assurez que les données et actions de chaque organisation restent bien isolées."
+description: "Gérez les membres et maintenez les données et actions de chaque organisation dans leur périmètre."
 icon: "users"
 ---
 
-Les organisations isolent les sessions, évaluations, audits, problèmes, alertes, requêtes, tableaux de bord, utilisateurs et clés. Vérifiez l'organisation active avant de modifier des ressources administratives.
+Les organisations isolent les sessions, évaluations, audits, incidents, alertes, requêtes, tableaux de bord, utilisateurs et clés. Vérifiez l'organisation active avant de modifier toute ressource administrative.
 
-## Gérer les membres et les organisations
+## Choisir l'organisation
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Utilisez le sélecteur d'organisation en haut de la barre latérale Cloud pour changer d'organisation.
-    2. Accédez à **Administration → Utilisateurs** pour rechercher des membres ou filtrer par état actif et rôle.
-    3. Sélectionnez **nouvel utilisateur**, saisissez l'adresse e-mail, choisissez un ensemble de permissions et ajustez les remplacements si nécessaire.
-    4. Ouvrez un utilisateur ultérieurement pour mettre à jour les droits, désactiver la connexion ou réactiver le compte.
-
-    ![La page Utilisateurs affichant les adresses e-mail des membres, les ensembles de permissions ainsi que les contrôles de modification et de désactivation.](/images/dashboard/users.png)
+    Utilisez le sélecteur d'organisation en haut de la barre latérale Cloud. Tout ce qui s'y trouve en dessous — y compris chaque page dans **admin** — lit et écrit dans cette organisation.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -23,22 +18,62 @@ Les organisations isolent les sessions, évaluations, audits, problèmes, alerte
     fp orgs switch reliability-team
     fp orgs current
     fp orgs perms
+    ```
 
+    `fp orgs switch` sans slug ouvre un sélecteur à touches directionnelles démarrant sur votre organisation actuelle ; en mode non interactif, il bascule sur une invite numérotée, et avec `--json` un slug est obligatoire. Le choix est conservé dans `~/.failproofai/fpcli/cli-auth.json`, de sorte que les commandes ultérieures l'envoient comme tenant actif. Surchargez-le pour une commande avec `--org <slug>` ou `FP_ORG`.
+  </Tab>
+</Tabs>
+
+<Note>
+  Chaque commande `fp orgs` nécessite un utilisateur humain connecté et est refusée sous une clé API, car l'appartenance à une organisation est liée à une personne et une clé agit déjà pour une seule organisation. Les commandes `fp users` ci-dessous fonctionnent dans les deux cas.
+</Note>
+
+## Gérer les membres
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    1. Allez dans **admin → users** et recherchez des membres par e-mail, ou affinez la liste avec les filtres `protected`, `admin`, `standard` et `read-only`.
+    2. Sélectionnez **new user**, saisissez l'adresse e-mail, choisissez un ensemble de permissions et ajustez les remplacements par membre si nécessaire.
+    3. Ouvrez un membre ultérieurement pour modifier ses droits, désactiver la connexion ou réactiver le compte.
+
+    ![La page des utilisateurs avec le champ de recherche par e-mail, les filtres et une carte de membre affichant ses droits regroupés par ressource.](/images/dashboard/users.png)
+
+    Les puces de droits dans ce cadre sont antérieures au renommage de `incidents:*` en `issues:*` ; la liste des [permissions communes](/fr/admin/keys-and-permissions#common-permissions) est à jour.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp users list
+    fp users list --active-only
     fp users create engineer@example.com --permission-set standard
     fp users show engineer@example.com
     fp users update engineer@example.com --add audits:write
     fp users disable engineer@example.com
     fp users enable engineer@example.com
     ```
+
+    Les membres sont identifiés par e-mail et résolus sans distinction de casse, donc `fp users show Alice.Chen@Example.com` et `fp users create alice.chen@example.com` font référence à la même personne.
   </Tab>
 </Tabs>
 
-Les administrateurs peuvent créer, mettre à jour, désactiver et réactiver des utilisateurs, puis leur attribuer l'ensemble de permissions adapté à leur rôle. L'API utilise une opération de suppression pour la désactivation, mais elle ne supprime ni le compte ni son enregistrement d'appartenance.
+### Droits et permissions requises par action
+
+Les droits des membres utilisent le même calcul que les clés : les droits effectifs sont `(ensemble ∪ ajoutés) − supprimés`, et `--add` / `--remove` acceptent des tokens compacts `slug:action.action` où les actions pointées se développent. Voir [clés et permissions](/fr/admin/keys-and-permissions).
+
+| Action | Permission | Notes |
+| --- | --- | --- |
+| `fp users list` / `show` | `users:read` | `--active-only` masque les membres désactivés. |
+| `fp users create` | `users:create` | `--permission-set` initialise le rôle ; `--add` / `--remove` appliquent des remplacements par-dessus. |
+| `fp users update` | `users:update` | `--permission-set` **remplace** les remplacements par membre ; `--add` / `--remove` seuls sont incrémentaux par rapport aux droits actuels. |
+| `fp users disable` / `enable` | `users:delete` | Les deux, y compris enable — accordez-le délibérément. |
+
+La désactivation refuse deux cas sans détour, sous forme d'erreur Forbidden plutôt que de message de validation : un membre **protected** ne peut pas être désactivé, et vous ne pouvez pas désactiver votre propre compte. Désactiver un membre déjà désactivé, ou activer un membre déjà actif, est une opération silencieuse sans effet. L'API utilise une opération de suppression pour la désactivation, mais elle ne supprime ni le compte ni son enregistrement d'appartenance.
+
+Deux paramètres d'organisation régissent l'appartenance : `default_user_permissions` présélectionne l'ensemble de permissions pour une nouvelle invitation, et `allowed_sign_ins` contrôle quelles adresses peuvent recevoir un code de connexion. Gérez-les depuis la [page des paramètres](/fr/admin/settings-and-security).
 
 <Warning>
-  La désactivation d'un utilisateur l'empêche de se connecter à toutes les organisations, et pas seulement à l'organisation actuellement sélectionnée. La réactivation restaure la connexion globale ainsi que les permissions du membre dans cette organisation.
+  La désactivation d'un utilisateur bloque cette identité pour se connecter à toutes les organisations, pas seulement à l'organisation actuellement sélectionnée. La réactivation restaure la connexion globale et les permissions du membre dans cette organisation.
 </Warning>
 
 <Tip>
-  Donnez aux comptes de service des noms descriptifs liés à une charge de travail et à un propriétaire. Évitez de partager des clés entre organisations ou entre personnes et machines.
+  Donnez aux comptes de service des noms descriptifs liés à une charge de travail et à un propriétaire. Ne partagez pas une clé entre plusieurs organisations, ni entre une personne et une machine.
 </Tip>

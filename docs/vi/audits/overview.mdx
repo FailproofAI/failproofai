@@ -1,56 +1,64 @@
 ---
-title: "Kiểm toán"
-description: "Xem xét một tập hợp các phiên được xác định để tìm các lỗi mà các dấu vết riêng lẻ không thể phát hiện được."
+title: "Kiểm Toán"
+description: "Tìm kiếm các lần chạy agent lặp lại thất bại, hành vi rủi ro và nỗ lực lãng phí."
 icon: "scan-search"
 ---
 
-Một kiểm toán tìm kiếm trong một tập hợp các phiên được chọn để đạt được một mục tiêu lỗi được xác định. Nó kết hợp bằng chứng từ dấu vết, kết quả đánh giá, các chính sách được kích hoạt và bối cảnh tham chiếu để tạo ra những phát hiện mà bạn có thể hành động.
+Một cuộc kiểm toán xem xét nhiều lần chạy agent so với một mục tiêu và trả về những phát hiện có bằng chứng hỗ trợ.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Find agent failures automatically with Failproof AI audits" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-Xem cách một kiểm toán chuyển từ một lần chạy được lên lịch đến các lỗi được hỗ trợ bằng bằng chứng mà bạn có thể sửa chữa.
+## Cục bộ hoặc Cloud
 
-## Mở các kiểm toán
+| | Kiểm toán cục bộ | Kiểm toán Cloud |
+| --- | --- | --- |
+| Lệnh | `failproofai audit` | `fp audits` |
+| Đọc | Lịch sử agent trên máy này | Phiên làm việc trong tổ chức Cloud của bạn |
+| Tạo ra | Kết quả cục bộ tại `localhost:8020/audit` | Những phát hiện, vấn đề và cảnh báo được chia sẻ |
+| Yêu cầu | Không cần tài khoản | Kết nối Cloud và API key |
 
-<Tabs>
-  <Tab title="Dashboard">
-    Đi tới **Analyze → Audits**. Trang hiển thị trạng thái được lên lịch, những phát hiện đang mở, lần chạy cuối cùng, lần chạy tiếp theo, tần suất và liệu kiểm toán có trang tóm tắt hoặc tham chiếu hay không. Chọn một thẻ để xem cài đặt và lịch sử chạy; chọn **new audit** để tạo một cái mới.
+Sử dụng kiểm toán cục bộ để xem xét nhanh một máy. Sử dụng Cloud khi một nhóm cần kiểm toán định kỳ trên các agent và máy.
 
-    ![Trang Audits hiển thị các kiểm toán định kỳ với lịch trình, độ nhạy và trạng thái chạy của chúng.](/images/dashboard/audits.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp audits list
-    fp audits list --enabled-only --show-id
-    fp audits show <audit-name>
-    fp audits findings --status open --limit 20
-    ```
-  </Tab>
-</Tabs>
+## Những câu hỏi mà một cuộc kiểm toán có thể trả lời
 
-Sử dụng một kiểm toán khi bạn cần trả lời một câu hỏi ở cấp độ dân số như:
+- Agent dừng ở đâu mà không thực hiện escalation?
+- Những lỗi tool nào dẫn đến các lần thử lại không hiệu quả?
+- Các agent có đang truy cập dữ liệu bên ngoài quy trình làm việc dự định không?
+- Điều gì đã thay đổi sau khi cập nhật model, prompt hoặc tool?
 
-- Các agent bỏ rơi các nhiệm vụ ở đâu mà không leo thang?
-- Những lỗi công cụ nào dẫn đến các lần thử lại không hiệu quả?
-- Các agent có truy cập dữ liệu ngoài quy trình dự kiến không?
-- Điều gì đã thay đổi sau khi phát hành mô hình, lời nhắc hoặc công cụ?
+## Mở kiểm toán Cloud
 
-## Luồng phản hồi kiểm toán
+Đi tới **Analyze → Audits**, hoặc sử dụng:
+
+```bash
+fp audits list
+fp audits show <audit-name>
+fp audits findings --status open --limit 20
+```
+
+Các lệnh kiểm toán sử dụng tên kiểm toán hoặc ID đầy đủ. Những phát hiện được tham chiếu bằng ID của chính chúng.
+
+## Từ phát hiện đến phòng ngừa
 
 ```text
 Session → Audit → Finding → Issue → Policy
-                         ↘ Alert for recurrence
+                         ↘ Alert
 ```
 
-Một phát hiện nên đặt tên cho chế độ lỗi và chỉ ra bằng chứng. Một vấn đề sở hữu việc khắc phục. Một chính sách ngăn chặn một mẫu hành động đã biết; một cảnh báo phát hiện sự tái phát khi ngăn chặn không thể thực hiện hoặc cần theo dõi.
+Một phát hiện chỉ ra bằng chứng. Một vấn đề sở hữu phản hồi. Một policy ngăn chặn một mẫu hành động đã biết; một cảnh báo theo dõi tái phát hiện.
 
-<Columns cols={2}>
-  <Card title="Thiết lập một kiểm toán" icon="sliders-horizontal" href="/vi/audits/setup">
-    Xác định mục tiêu, dân số và bối cảnh tham chiếu trước lần chạy đầu tiên.
+Không phải mọi phát hiện đều nên trở thành một policy. Một phát hiện `policy` mô tả một quy tắc có thể thực thi được. Một `failure` hoặc `improvement` có thể cần một thay đổi quy trình làm việc, prompt, model hoặc tool.
+
+<CardGroup cols={3}>
+  <Card title="Kiểm toán máy này" icon="laptop-minimal-check" href="/vi/audits/local-audit">
+    Quét lịch sử cục bộ mà không cần tài khoản.
   </Card>
-  <Card title="Thêm bối cảnh agent" icon="bot" href="/vi/audits/agent-contracts">
-    Nêu rõ những gì mà mỗi agent phải tạo ra và những gì nó không bao giờ được phép làm.
+  <Card title="Thiết lập kiểm toán Cloud" icon="sliders-horizontal" href="/vi/audits/setup">
+    Chọn mục tiêu, phiên làm việc và lịch trình.
   </Card>
-</Columns>
+  <Card title="Xem xét các phát hiện" icon="list-checks" href="/vi/audits/findings-and-issues">
+    Phân loại bằng chứng và gán một phản hồi.
+  </Card>
+</CardGroup>

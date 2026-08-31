@@ -1,57 +1,101 @@
 ---
+---
 title: "מדיניות מובנות"
-description: "הפעל הגנות מתוחזקות למצבי כישלון נפוצים של סוכנים."
+description: "קח את ההגנות המתוחזקות לנושאי כישלון סוכן נפוצים, והפעל את אלו שאתה רוצה."
 icon: "library"
 ---
 
-מדיניות מובנות מכסות טיפול בסודות, קבצי סביבה, פקודות shell הרסניות, ענפים מוגנים, כלים בעננן ותשתית, הוצאת חבילות, קריאות חוזרות, ובדיקות זרימת עבודה בסיום המשימה.
+ההגנות המובנות הן 39 מדיניות מתוחזקת המכסות תשע קטגוריות של כישלונות סוכן. כולן מלבד אחת **מסופקות כחבילה**, `FailproofAI/policies`, באותו אופן שבו כל אחד מסספק מדיניות. החבילה לא משנה חבילה משלה, לכן התקנה טרייה לא אוכפת דבר עד שתקחת אותה:
 
-## הפעלה ואימות של מדיניות מובנית
+```bash
+failproofai policies add FailproofAI/policies
+```
+
+זה מפעיל את ברירות המחדל של החבילה — 10 מתוך 38 המדיניות שהחבילה מכילה. ה-39 היא `block-failproofai-commands`, שהיא פעילה ללא תלות: היא משלוחת מורכבת בחבילה, נרשמת בכל הערכה, ולא ניתן להשבית אותה או להשהות אותה. חבילה אינה עשויה להכריז על `alwaysOn`, לכן ההגנה ההיא לא נוסעת בנתיב החבילה.
+
+## מה שתשע הקטגוריות מכסות
+
+| קטגוריה | `--category` slug | מדיניות |
+| --- | --- | --- |
+| Sanitize | `sanitize` | 5 |
+| Environment | `environment` | 3 |
+| Dangerous Commands | `dangerous-commands` | 5 |
+| Infra Commands | `infra-commands` | 7 |
+| Git | `git` | 6 |
+| Database | `database` | 2 |
+| Packages & System | `packages-system` | 5 |
+| AI Behavior | `ai-behavior` | 1 |
+| Workflow | `workflow` | 5 |
+
+אלו הספירות של הקטלוג המורכב, והן מסתכמות ל-39. החבילה מכילה 38 מהן, כי `block-failproofai-commands` היא `alwaysOn` ולא נוסעת בנתיב החבילה — לכן `--category dangerous-commands` בוחר בארבע האחרות.
+
+קח פרוסה במקום ברירות המחדל:
+
+```bash
+failproofai policies add FailproofAI/policies --category git,database
+failproofai policies add FailproofAI/policies --policy block-rm-rf
+failproofai policies add FailproofAI/policies --all
+```
+
+## קרא את הקטלוג לפני שתקח אותו
 
 <Tabs>
-  <Tab title="Dashboard">
-    1. התקן את המדיניות על מכונה מחוברת באמצעות CLI המקומי.
-    2. הפעל פעולת בדיקה בטוחה בסוכן עם כלים.
-    3. עבור ל **Observe → policy** וסנן לפי שם המדיניות, סביבת המכונה, או החלטה.
-    4. פתח את ההפעלה המקושרת כדי לאשר את קלט הכלי התואם והסיבה המוחזרת.
-
-  </Tab>
   <Tab title="CLI">
     ```bash
+    failproofai policies show FailproofAI/policies
     failproofai policies
-    failproofai policy add block-rm-rf --cli claude --scope project
-    failproofai config --status
     ```
 
-    הסר אותו עם `failproofai policy remove block-rm-rf --cli claude --scope project`.
+    `policies show` קורא את המניפסט המפורסם — כל מדיניות, מקובצת לפי קטגוריה, מסומנת ברירת מחדל או בחירה אופציונלית — ללא הורדה או ייבוא קוד החבילה. `failproofai policies` מפרט מה מופעל על מכונה זו: קבצים מותאמים, קבצי קונבנציה, חבילות מותקנות והקצאות Cloud. אין לו סעיף מובנה, לכן הוא עונה על שאלה "מה קיים כאן", לעולם לא "מה קיים".
+  </Tab>
+  <Tab title="Policy Hub">
+    עיין באותו קטלוג בדפדפן, ללא CLI, בכתובת [befailproof.ai/policy-hub](https://befailproof.ai/policy-hub/). לכל חבילה יש דף ב-`/policy-hub/<owner>/<pack>/` ולכל מדיניות דף ב-`/policy-hub/<owner>/<pack>/<policy-name>/`.
+  </Tab>
+  <Tab title="Dashboard">
+    1. התקן את המדיניות על מכונה מחוברת עם ה-CLI המקומי.
+    2. הפעל פעולת בדיקה בטוחה בסוכן המכוול.
+    3. עבור ל-**Observe → policy** וסנן לפי שם המדיניות, סביבת המכונה או ההחלטה.
+    4. פתח את ההפעלה המקושרת כדי לאשר את הקלט לכלי התואם והסיבה שהוחזרה.
   </Tab>
 </Tabs>
 
-הצג רשימה של המדיניות הזמינות בגרסה המותקנת שלך:
+## הפעל אחת או כבה אחת
 
 ```bash
-failproofai policies
+failproofai policies add block-rm-rf --cli claude --scope project
+failproofai policies remove block-rm-rf --cli claude --scope project
 ```
 
-הפעל מדיניות אחת עבור פרויקט:
-
-```bash
-failproofai policy add block-rm-rf --scope project
-```
-
-הפעל מספר מדיניות עבור רתמות נבחרות:
+`policies add` ו-`policies remove` לוקחים בדיוק **שם מדיניות אחד**. הרץ אותם ללא שם כלל ותקבל בוחר, כשמה שכבר קיים בתיבה. לכמה שמות בו זמנית, השתמש בטופס ההתקנה:
 
 ```bash
 failproofai policies --install block-sudo block-force-push \
   --cli claude codex --scope project
 ```
 
-חלק מהמדיניות מקבלות פרמטרים או מסומנות כגרסה beta. בדוק את התיאור, טווח התאמה, והתנהגות ברירת המחדל לפני הרמת רשת. מדיניות שמגנה על זרימת עבודה אחת עלולה לחסום פעולות תקפות בזרימה אחרת.
+<Note>
+  על מכונה ללא חבילה מותקנת, `failproofai policies add <builtin-name>` משיג `FailproofAI/policies` משחרור GitHub שלה כדי לעמוד בשם — לכן הפקודה הראשונה הזו זקוקה לרשת.
+</Note>
+
+## לא כל מדיניות אוכפת על כל הרתק
+
+מדיניות משנה התנהגות רק כאשר הרתק צורך את ההחלטה לאירוע שלו. שני מקרים כדאי לבדוק לפני שאתה מסתמך על מובנה:
+
+| אירוע | איפה דחייה מאומתת לשינוי התנהגות |
+| --- | --- |
+| `PreToolUse` | כל 12 הרתקים |
+| `Stop` | claude, codex, copilot, cursor, openclaw, factory, devin, antigravity. אין hook `Stop` מותקן על goose או hermes, pi מוביל את הסיבה לתור הבא במקום זאת, ו-opencode לא מאומת |
+
+אז חמש מדיניות `require-*-before-stop` בקטגוריית Workflow יכולות להיות מופעלות על מכונה ועדיין לא להיריות אף פעם, בהתאם לאיזה סוכן פועל שם. Cursor Cloud Agent VMs לא מפעילות כלל hook עצירה.
+
+מדיניות `warn-*` ו-`prefer-*` מחזירות `instruct` ולא `deny`. ב-Hermes ו-Goose, וחוץ מערוץ `Stop` ב-Pi, OpenClaw, Factory ו-Antigravity, `instruct` משתנה ל-allow בתוספת הערה ב-stderr: המפעיל רואה אותה בתיקיות היומן, הסוכן לא.
+
+חלק מהמדיניות מקבלות פרמטרים. סקור את התיאור, תאם היקף וברירת מחדל לפני הגרסה — מדיניות המגנה על זרימת עבודה אחת עשויה לחסום פעולות חוקיות באחרת.
 
 <Card title="עיין בקטלוג המובנה המלא" icon="list-checks" href="/he/policies/builtin-catalog">
-  סקור את כל 40 המדיניות הנוכחיות, הטריגרים שלהן, קו בסיס מומלץ, ופרמטרים.
+  כל 39 המדיניות המובנות, לפי קטגוריה, עם ההפעלות שלהן, ברירות המחדל והפרמטרים.
 </Card>
 
 <Tip>
-  בחר טווח פרויקט לציפיות ספציפיות למחסן ותחום משתמש לדרישות בטיחות בקנה מידה של מכונה.
+  `failproofai config` מחווט כל סוכן נתמך בהיקף משתמש ובוחר ללא מדיניות — אין לו דגל `--scope`. עבור `--scope project` ל-`failproofai policies add` או `failproofai policies --install` רק כאשר הציפייה שייכת באמת למאגר אחד.
 </Tip>

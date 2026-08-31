@@ -1,45 +1,41 @@
 ---
-title: "लाइव इवेंट्स"
-description: "सेशन चलते हुए एजेंट की गतिविधि को देखें।"
+title: "लाइव ईवेंट्स"
+description: "Failproof AI Cloud में एजेंट गतिविधि को देखें।"
 icon: "radio"
 ---
 
-लाइव इवेंट्स आपको instrumentation की पुष्टि करने और सेशन समाप्त होने की प्रतीक्षा किए बिना एक जोखिम भरे रन को देखने में मदद करते हैं।
+लाइव ईवेंट्स एजेंट्स के चलने के समय गतिविधि दिखाता है: मॉडल कॉल, टूल्स, त्रुटियां, मानव इनपुट, हुक्स, और पॉलिसी निर्णय।
 
 ## गतिविधि देखें
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. **Observe → Events** पर जाएं।
-    2. वर्तमान समय विंडो से शुरू करें और डेटा आने की पुष्टि करने के लिए कोई फ़िल्टर न लागू करें।
-    3. वातावरण, इवेंट प्रकार, एजेंट, या सेशन के आधार पर फ़िल्टर करें। पेलोड टेक्स्ट के लिए सर्च का उपयोग करें।
-    4. किसी इवेंट को चुनकर इसका सारांश और विवरण देखें। पूर्ण ट्रेस के लिए इसके सेशन लिंक का अनुसरण करें।
+**Observe → Live events** पर जाएं, या यह चलाएं:
 
-    ![लाइव Events स्ट्रीम जो Hermes chat gateway से आने वाली ट्रैफ़िक और coding-CLI रन को दिखाती है, समय, वातावरण, इवेंट प्रकार, एजेंट, मॉडल, संदर्भ और सेशन के आधार पर फ़िल्टर की गई है।](/images/dashboard/events-stream-current.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp events --env production --event-type tool_use,error --limit 100
-    fp events --session-id <session-id> --order asc --all
-    fp --json events --full --session-id <session-id> --all
-    ```
+```bash
+fp events --since 1h
+fp events --event-type tool_use,tool_result --since 1h
+fp --json events --full --session-id <session-id> --all --limit 2000
+```
 
-    डिफ़ॉल्ट फीड raw पेलोड्स को छोड़ता है। `--full` का उपयोग केवल एक सीमित सेशन की जांच के लिए करें।
-  </Tab>
-</Tabs>
+जब आपको पेलोड कंटेंट्स की आवश्यकता हो तो `--full` का उपयोग करें। लाइट फीड तेजी से है और अधिकांश फ़िल्टरिंग के लिए पर्याप्त है।
 
-इवेंट स्ट्रीम का उपयोग करके तीन तत्काल सवालों के जवाब दें:
+सामान्य ईवेंट प्रकारों में शामिल हैं:
 
-- क्या अपेक्षित एजेंट सही वातावरण को रिपोर्ट कर रहा है?
-- क्या मॉडल कॉल, टूल कॉल और नीति निर्णय क्रम में आ रहे हैं?
-- क्या सेशन ने प्रगति करना बंद कर दिया है या किसी क्रिया को दोहराना शुरू कर दिया है?
+- `session_start` और `session_end`
+- `model_request` और `model_response`
+- `tool_use` और `tool_result`
+- `hook_triggered` और `hook_completed`
+- `error`
+- `human_wait` और `human_input`
+- `agent_pause` और `agent_resume`
 
-इवेंट प्रकारों में एजेंट लाइफसाइकल इवेंट्स, मॉडल अनुरोध और प्रतिक्रियाएं, टूल का उपयोग और परिणाम, हुक निष्पादन, मानव प्रतीक्षा और बाधाएं, और स्पष्ट त्रुटियां शामिल हैं। Correlation ID को एक टूल कॉल और इसके परिणाम जैसी युग्मित इवेंट्स को जोड़ता है।
+## यदि ईवेंट्स दिखाई नहीं देते
 
-<Tip>
-  नए integration की पुष्टि करते समय लाइव दृश्य को व्यापक रखें। पहली इवेंट दिखने के बाद ही फ़िल्टर जोड़ें; एक गलत फ़िल्टर विफल ingestion की तरह दिख सकता है।
-</Tip>
+```bash
+failproofai flush --wait
+failproofai config --status
+failproofai backfill --since 30d --dry-run
+```
 
-यदि कोई इवेंट्स दिखाई न दें, तो `failproofai config --status` चलाएं, फिर [ingestion troubleshoot करें](/hi/reference/troubleshooting)।
+डिफ़ॉल्ट पर्यावरण `local` है। `production` के लिए एक फ़िल्टर तब तक कुछ नहीं लौटाता जब तक आप पर्यावरण लेबल को बदलते नहीं हैं।
 
-एजेंट जो समर्थित 12 [harnesses](/hi/reference/harnesses) में से किसी में भी चलते नहीं हैं, [Python SDK](/hi/reference/custom-agents) के माध्यम से समान इवेंट प्रकार की रिपोर्ट करते हैं, जिसमें मानव-इन-द-लूप इवेंट्स (`human_wait`, `human_input`, `human_interrupt`) शामिल हैं जो gateway और production एजेंट पर निर्भर हैं।
+एक समर्थित हार्नेस के बाहर एजेंट के लिए, [Python SDK](/hi/reference/custom-agents) का उपयोग करें।

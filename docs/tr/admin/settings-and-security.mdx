@@ -1,68 +1,37 @@
 ---
 title: "Ayarlar ve güvenlik"
-description: "Operasyonel ayarları yapılandırın ve agent verileri hakkında bilinçli seçimler yapın."
-icon: "lock-keyhole"
+description: "Kuruluş varsayılanlarını, veri işlemeyi ve makine kimlik bilgilerini kontrol edin."
+icon: "shield"
 ---
 
-Ayarları dağıtıma özgü operasyonel değerler ve model bağlam penceresi geçersiz kılmaları için kullanın. API veya CLI aracılığıyla bir değer değiştirmeden önce ayarlar şemasını inceleyin.
+Kuruluş ayarları, Cloud kuruluşundaki herkesin ayarlarını etkiler. Bunları **Admin → settings** bölümünden veya `fp settings` komutuyla değiştirebilirsiniz.
 
-## Bir kuruluş ayarını değiştirme
+```bash
+fp settings list
+fp settings set <key> <value>
+```
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. **Yönetim → Ayarlar** bölümüne gidin, ayar grubunu bulun ve açıklamasını ile mevcut kaynağını okuyun.
-    2. Değeri değiştirin ve kaydedin.
-    3. Model bağlam pencereleri için, model geçersiz kılmasını ekleyin veya güncelleyin ve etkili sınırı onaylayın.
-    4. Değiştirilmiş değere bağlı oturumları ve metrikleri yeniden kontrol edin.
+## Veri işleme
 
-    ![Kuruluş kimlik doğrulaması ve operasyonel ayarları gösteren Ayarlar sayfası.](/images/dashboard/settings.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp settings list
-    fp settings schema
-    fp settings set <key> --value <scalar>
-    fp settings set alerts.email_default_recipients \
-      --json-value '["oncall@example.com"]'
-    ```
+Bağlı bir makine varsayılan olarak politika kararlarını ve tam oturum transkriptlerini gönderir. Yalnızca kararları göndermek için, makineye bağlandıktan sonra `~/.failproofai/config.json` dosyasında `collector.sessions` değerini `false` olarak ayarlayın. Mevcut `--no-transcripts` kurulum bayrağı bu ayarı uygulamaz.
 
-    Yüklü CLI tarafından kullanılan değer türü ve onay bayrakları için `fp settings set --help` komutunu çalıştırın.
-  </Tab>
-</Tabs>
+Kimlik bilgileri yüklenmeden önce makinede temizlenir, ancak redaksiyon bir güvenlik tabanıdır, erişim kontrolünün yerini almaz.
 
-## Veri işleme seçimleri
+Yalnızca yerel kullanım için hesap gerekmez. Oturum geçmişi ve denetimler makinede kalır; ancak zamanlanmış yerel denetimler, siz kabul ettikten sonra makine kimliğini ve sınırlı bir özeti gönderir. Anonim CLI telemetrisi `FAILPROOFAI_TELEMETRY_DISABLED=1` ile devre dışı bırakılabilir.
 
-Failproof AI CLI bağlantısı, izler ve denetimler içeriklerine bağlı olduğu için varsayılan olarak transkriptleri gönderir. İstemlerin, dosya içeriklerinin veya terminal girdisinin yerel kalması gerekiyorsa `--no-transcripts` kullanın; hook etkinliği ve politika kararları yine de bildirilebilir.
+## Kimlik bilgileri
 
-Yerel alım kimlik bilgileri, gizli olmayan daemon ayarlarından ayrı olarak depolanır ve kısıtlayıcı izinlerle yazılır. API anahtarları yine de üretim sırları olarak yönetilmelidir.
+Makine jetonları `~/.failproofai/` altında yalnızca sahip izinleriyle depolanır. Hizmet tanımına yazılmaz.
 
-## Kuruluş ayarı referansı
+İnsanlar, otomasyon ve makineler için ayrı anahtarlar kullanın. Her birine yalnızca ihtiyaç duyduğu izinleri verin, mülkiyet değiştiğinde döndürün ve makine veya iş akışı emekli olduğunda iptal edin.
 
-Tüm dashboard tarafından düzenlenebilir ayarlar kuruluş kapsamındadır. Dağıtım genelindeki davranış sunucu ortamı yapılandırmasında kalır.
+## Kontrol listesi
 
-| Anahtar | Varsayılan | Amaç |
-| --- | --- | --- |
-| `allowed_sign_ins` | `[]` | Mevcut üyeleri tam e-postalar veya `*@domain` ile sınırlayın; boş bir liste ek sınırlama olmadığı anlamına gelir. |
-| `session_ttl_secs` | `86400` | Dashboard oturumu ömrü; kabul edilen aralık 60 saniye ile 30 gün arasıdır. |
-| `otp_ttl_secs` | `600` | OTP ve magic-link ömrü; kabul edilen aralık 60–1800 saniyedir. |
-| `alerts.email_default_recipients` | `[]` | Bir uyarı e-posta kanalı bunları geçersiz kılmadığında varsayılan alıcılar. |
-| `alerts.slack_default_webhook` | boş | Varsayılan Slack gelen webhook URL'si. |
-| `alerts.webhook_default_url` | boş | Varsayılan genel JSON webhook URL'si. |
-| `alerts.webhook_signing_secret` | boş | `X-AgentEye-Signature` başlığı için kullanılan HMAC-SHA256 anahtarı; okumalar maskelenir. |
-| `alerts.enabled_channels` | email, Slack, webhook | Uyarı kurallarının gönderebileceği kuruluş genelindeki kanal türleri. |
-| `default_user_permissions` | `standard` | Yeni davetler için önceden seçilen adlandırılmış izin seti. |
+- En dar kullanışlı izinleri gerekli kılın.
+- Tam içeriğin gereksiz olduğu yerlerde `collector.sessions` değerini `false` olarak ayarlayın.
+- Politika uygulamayı kimler dağıtabileceğini gözden geçirin.
+- Politikaları uygulamadan önce gözlem modunda test edin.
+- Makine etiketlerini açık tutun ve makine kimliklerini sabit tutun.
+- Bağlantı ayarlarını değiştirdikten sonra `failproofai config --status` komutunu çalıştırın.
 
-`allowed_sign_ins` bir izin değil, bir filtredir: bir kişi zaten kuruluş üyesi olmalıdır. Her üyeye izin vermek için boş bir liste kullanın; basit `*` değeri reddedilir. Uyarı URL'leri loopback geliştirme adresleri hariç HTTPS kullanmalıdır.
-
-## Güvenlik kontrol listesi
-
-- Cloud bağlantıları için HTTPS kullanın.
-- Anahtarları en küçük izin setine kapsamlandırın.
-- Üretim ve üretim dışı ortamları ayırın.
-- Dağıtılmadan önce transkript ve redaksiyon ayarlarını gözden geçirin.
-- Kullanıcı, anahtar ve kuruluş değişikliklerini denetleyin.
-- Dağıtımınız için yedekleme, saklama ve olay yanıtlama gereksinimlerini test edin.
-
-<Warning>
-  Transkript yakalamayı kapatmak, denetimlerin ve araştırmaların kanıtlayabileceği şeyleri değiştirir. Kararı ve beklenen sınırlamalarını kaydedin.
-</Warning>
+İzin kataloğu için [keys and permissions](/tr/admin/keys-and-permissions) sayfasına bakın.

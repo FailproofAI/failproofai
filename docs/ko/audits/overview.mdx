@@ -1,56 +1,64 @@
 ---
-title: "감사(Audits)"
-description: "트레이스만으로는 발견하기 어려운 장애를 파악하기 위해 정의된 세션 집합을 검토합니다."
+title: "감사"
+description: "반복적인 실패, 위험한 동작, 낭비된 노력을 찾아내기 위해 에이전트 실행 기록을 검색합니다."
 icon: "scan-search"
 ---
 
-감사(audit)는 선택한 세션 집합에서 명시된 장애 목표를 탐색합니다. 트레이스 증거, 평가 결과, 정책 적중 사항, 참조 컨텍스트를 결합하여 실행 가능한 결과를 도출합니다.
+감사는 목표에 대해 여러 에이전트 실행을 검토하고 증거 기반의 발견 사항을 반환합니다.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Find agent failures automatically with Failproof AI audits" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Failproof AI 감사로 에이전트 실패를 자동으로 발견하기" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-감사가 예약 실행에서 증거 기반의 수정 가능한 장애로 이어지는 과정을 확인해 보세요.
+## 로컬 또는 클라우드
 
-## 감사 열기
+| | 로컬 감사 | 클라우드 감사 |
+| --- | --- | --- |
+| 명령어 | `failproofai audit` | `fp audits` |
+| 읽기 | 이 머신의 에이전트 기록 | 클라우드 조직의 세션 |
+| 결과 | `localhost:8020/audit`의 로컬 결과 | 공유 발견 사항, 이슈, 알림 |
+| 요구 사항 | 계정 불필요 | 클라우드 연결 및 API 키 |
 
-<Tabs>
-  <Tab title="대시보드">
-    **Analyze → Audits**로 이동합니다. 페이지에는 예약 상태, 열린 결과, 마지막 실행, 다음 실행, 주기, 그리고 감사에 브리프 또는 참조 페이지가 있는지 여부가 표시됩니다. 카드를 선택하면 설정 및 실행 기록을 확인할 수 있으며, **new audit**을 선택하여 새 감사를 생성합니다.
+한 머신을 빠르게 검토할 때는 로컬 감사를 사용하세요. 팀이 에이전트와 머신 전반에 걸쳐 반복적인 감사를 수행해야 할 때는 클라우드를 사용하세요.
 
-    ![예약 일정, 민감도, 실행 상태가 표시된 반복 감사 목록 페이지.](/images/dashboard/audits.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp audits list
-    fp audits list --enabled-only --show-id
-    fp audits show <audit-name>
-    fp audits findings --status open --limit 20
-    ```
-  </Tab>
-</Tabs>
+## 감사로 답할 수 있는 질문
 
-다음과 같은 집단 수준의 질문에 답해야 할 때 감사를 사용하세요.
+- 에이전트가 에스컬레이션 없이 멈추는 지점은 어디인가?
+- 어떤 도구 실패가 비효율적인 재시도로 이어지는가?
+- 에이전트가 의도한 워크플로우 외부의 데이터에 접근하고 있는가?
+- 모델, 프롬프트, 또는 도구 업데이트 이후 무엇이 변경되었는가?
 
-- 에이전트가 에스컬레이션 없이 작업을 포기하는 지점은 어디인가?
-- 어떤 도구 장애가 비효율적인 재시도로 이어지는가?
-- 에이전트가 의도된 워크플로 외부의 데이터에 접근하고 있는가?
-- 모델, 프롬프트, 또는 도구 릴리스 이후 무엇이 변경되었는가?
+## 클라우드 감사 열기
 
-## 감사 응답 흐름
+**Analyze → Audits**로 이동하거나 다음 명령어를 사용하세요:
+
+```bash
+fp audits list
+fp audits show <audit-name>
+fp audits findings --status open --limit 20
+```
+
+감사 명령어는 감사 이름 또는 전체 ID를 사용합니다. 발견 사항은 고유 ID로 참조됩니다.
+
+## 발견 사항에서 예방으로
 
 ```text
 Session → Audit → Finding → Issue → Policy
-                         ↘ Alert for recurrence
+                         ↘ Alert
 ```
 
-결과(finding)는 장애 유형을 명시하고 증거를 가리켜야 합니다. 이슈(issue)는 수정 사항을 담당합니다. 정책(policy)은 알려진 동작 패턴을 방지하고, 알림(alert)은 방지가 불가능하거나 모니터링이 필요한 경우 재발을 감지합니다.
+발견 사항은 증거를 가리킵니다. 이슈는 대응 방안을 담당합니다. 정책은 알려진 행동 패턴을 방지하고, 알림은 재발을 감시합니다.
 
-<Columns cols={2}>
-  <Card title="감사 설정하기" icon="sliders-horizontal" href="/ko/audits/setup">
-    첫 번째 실행 전에 목표, 대상 집합, 참조 컨텍스트를 정의합니다.
+모든 발견 사항이 정책이 될 필요는 없습니다. `policy` 발견 사항은 시행 가능한 규칙을 설명합니다. `failure` 또는 `improvement`는 대신 워크플로우, 프롬프트, 모델, 또는 도구 변경이 필요할 수 있습니다.
+
+<CardGroup cols={3}>
+  <Card title="이 머신 감사하기" icon="laptop-minimal-check" href="/ko/audits/local-audit">
+    계정 없이 로컬 기록을 스캔합니다.
   </Card>
-  <Card title="에이전트 컨텍스트 추가하기" icon="bot" href="/ko/audits/agent-contracts">
-    각 에이전트가 반드시 생성해야 하는 것과 절대 해서는 안 되는 것을 명시합니다.
+  <Card title="클라우드 감사 설정하기" icon="sliders-horizontal" href="/ko/audits/setup">
+    목표, 세션, 일정을 선택합니다.
   </Card>
-</Columns>
+  <Card title="발견 사항 검토하기" icon="list-checks" href="/ko/audits/findings-and-issues">
+    증거를 분류하고 대응 방안을 지정합니다.
+  </Card>
+</CardGroup>

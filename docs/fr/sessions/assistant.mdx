@@ -1,10 +1,10 @@
 ---
-title: "Assistant Failproof"
-description: "Analysez et exploitez Failproof AI en langage naturel, des questions et requêtes aux tableaux de bord et audits."
+title: "Assistant cloud"
+description: "Analysez et pilotez Failproof AI en langage naturel, des questions et requêtes aux tableaux de bord et audits."
 icon: "message-square-text"
 ---
 
-Demandez à l'Assistant Failproof d'effectuer n'importe quelle action dans Failproof AI en langage naturel. Il peut analyser des sessions et des échecs, exécuter des requêtes, créer des tableaux de bord, examiner des évaluations et des alertes, et aider à concevoir et lancer des audits sans vous obliger à traduire la tâche en écrans produit ou en commandes CLI.
+L'assistant cloud Failproof AI répond à vos questions sur votre flotte en langage naturel. Il peut analyser des sessions et des échecs, exécuter des requêtes, créer des tableaux de bord, examiner des évaluations et des alertes, et aider à concevoir et lancer des audits — sans vous obliger à traduire la tâche en écrans produit ou en commandes CLI. Dans le tableau de bord, le contrôle s'intitule **Open agent chat** ; sur le [`fp` CLI](/fr/reference/cloud-cli), il correspond au groupe de commandes `fp agent`.
 
 ```text
 Why did production checkout agents regress this week?
@@ -13,41 +13,77 @@ Create an audit that finds agents retrying the same failed action without changi
 Show me the sessions behind the most common audit finding.
 ```
 
-L'assistant fonctionne avec les données et les permissions disponibles dans l'organisation active. Examinez ses éléments de preuve et les modifications proposées avant d'appliquer des actions qui affectent d'autres utilisateurs ou agents.
+L'assistant travaille avec les données et les permissions disponibles dans l'organisation active. Vérifiez ses preuves et les modifications proposées avant d'appliquer des actions qui affectent d'autres utilisateurs ou agents.
+
+<Note>
+  L'assistant s'exécute dans le tableau de bord et ses conversations appartiennent à une personne : il n'existe donc pas de route API derrière lui qu'une clé pourrait appeler. Chaque sous-commande `fp agent` nécessite une session connectée (`fp login`) et la permission `agent:use`, et se termine avec le code 2 sous `--api-key` ou `FP_API_KEY`. Une clé API ne peut jamais l'atteindre, ce qui signifie qu'une tâche planifiée doit transporter un token de session connecté via `--token` ou `FP_TOKEN`. Cela fonctionne — `fp agent ask` lit la question depuis stdin lorsqu'il n'y a pas de TTY — mais un token de session expire environ 24 heures après `fp login`, ce qui fait de l'assistant un mauvais choix pour l'automatisation sans surveillance, même s'il s'exécute.
+</Note>
 
 ## Interroger l'assistant
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Sélectionnez **Open agent chat** et décrivez ce que vous souhaitez comprendre, créer ou gérer.
-    2. Examinez les appels d'outils, les tableaux et les résultats de requêtes de l'assistant pendant son traitement.
-    3. Ouvrez la session, l'alerte ou la requête citée pour vérifier le résultat par rapport aux données source.
-    4. Démarrez une nouvelle conversation pour une investigation différente, ou utilisez l'historique de chat pour poursuivre la même analyse.
+    1. Sélectionnez **Open agent chat** et décrivez ce que vous souhaitez comprendre, créer ou piloter.
+    2. Consultez les appels d'outils, les tableaux et les résultats de requêtes de l'assistant pendant son traitement.
+    3. Ouvrez la session, l'alerte ou la requête citée pour vérifier le résultat par rapport aux données sources.
+    4. Commencez une nouvelle conversation pour une investigation différente, ou utilisez l'historique des conversations pour poursuivre la même ligne d'analyse.
 
-    ![L'assistant Cloud répondant à une question d'observabilité avec une analyse et des requêtes de support.](/images/dashboard/assistant.png)
+    ![L'assistant cloud répondant à une question d'observabilité avec une analyse et des requêtes à l'appui.](/images/dashboard/assistant.png)
   </Tab>
   <Tab title="CLI">
+    Commencez par `health`. Il indique si l'assistant est activé pour ce déploiement et si un LLM est configuré pour lui. Lorsqu'aucun LLM n'est configuré, `ask` échoue et `models` ne retourne rien — `chats`, `show`, `rename` et `delete` ne consultent jamais `health` et continuent de fonctionner.
+
     ```bash
     fp agent health
     fp agent models
     fp agent ask "Which production checkout agents had the most tool errors in the last 24 hours?"
+    ```
+
+    `fp agent models` liste les modèles autorisés par ce déploiement et celui qui est utilisé par défaut. Passez-en un à `ask --model <name>`. Ancrez une réponse dans un texte que vous possédez déjà avec `--page-context <text>`, et redirigez la question via stdin plutôt que de la passer en argument lorsqu'elle provient d'un fichier ou d'une commande précédente :
+
+    ```bash
+    cat incident-notes.md | fp agent ask --model <model>
+    ```
+
+    Chaque question est enregistrée dans une conversation. Sans `--chat`, une nouvelle conversation est créée et son identifiant court est affiché ; avec `--chat`, la conversation continue sur ce fil.
+
+    ```bash
     fp agent chats
     fp agent show <chat-id>
     fp agent ask "Open representative sessions" --chat <chat-id>
+    fp agent rename <chat-id> --title "checkout regression"
+    fp agent delete <chat-id> --yes
     ```
 
-    Utilisez `fp agent rename <chat-id> --title <title>` pour garder une investigation facilement identifiable et `fp agent delete <chat-id>` pour la supprimer.
+    `fp agent chats` liste vos conversations de la plus récente à la plus ancienne sous la forme `chat-id · title · messages · updated`, où `updated` correspond à l'ancienneté de la dernière activité de la conversation. Le `chat-id` affiché est le format court — les 8 premiers caractères — et `show`, `rename`, `delete` et `ask --chat` résolvent tous ce préfixe. Un identifiant qui ne correspond à rien se termine avec le code 6 et un encadré `chat not found` ; un identifiant qui correspond à plusieurs résultats demande un préfixe plus long.
+
+    `fp agent delete` demande une confirmation au préalable. `--yes` ignore la confirmation, tout comme toute invocation non interactive : sous `--json`, ou avec stdin redirigé, la commande s'exécute sans demander.
   </Tab>
 </Tabs>
 
-## Utiliser efficacement l'assistant
+## Travailler efficacement avec l'assistant
 
-- Donnez-lui d'abord un objectif ; ajoutez un environnement, un workflow ou une plage horaire lorsque ces contraintes sont importantes.
+- Commencez par lui donner un objectif ; ajoutez un environnement, un workflow ou une plage de temps lorsque ces limites sont importantes.
 - Traitez le SQL généré et les résumés comme une aide à l'investigation, et non comme des preuves définitives.
 - Ouvrez des sessions représentatives avant de créer un audit, un problème, une alerte ou une politique.
-- Gardez les filtres d'organisation, d'environnement et de temps explicites.
-- Enregistrez le SQL utile sous forme de requête afin qu'un autre opérateur puisse reproduire le résultat.
+- Précisez explicitement les filtres d'organisation, d'environnement et de temps.
+- Enregistrez le SQL utile en tant que requête afin qu'un autre opérateur puisse reproduire le résultat.
 
 <Warning>
-  L'assistant ne peut lire que ce à quoi votre utilisateur actuel a accès. N'élargissez pas les permissions pour qu'une question fonctionne ; demandez plutôt à un opérateur autorisé de mener l'investigation.
+  Deux niveaux de permissions s'appliquent, et ils échouent différemment. `agent:use` contrôle l'accès à la fonctionnalité elle-même : sans elle, `fp agent` et le chat du tableau de bord sont indisponibles. Les réponses sont ensuite limitées par les permissions sur les données de l'utilisateur connecté — `events:read`, `evaluations:read`, `queries:run`, `policies:read` — si bien qu'un utilisateur ayant accès à l'assistant peut tout de même obtenir une réponse vide pour des données qu'il ne peut pas lire. N'élargissez pas les permissions pour faire fonctionner une question ; demandez plutôt à un opérateur autorisé d'effectuer l'investigation. Voir [Clés et permissions](/fr/admin/keys-and-permissions).
 </Warning>
+
+<CardGroup cols={2}>
+  <Card title="Requêtes" icon="database" href="/fr/sessions/queries">
+    Enregistrez le SQL écrit par l'assistant pour qu'un autre opérateur puisse le réexécuter.
+  </Card>
+  <Card title="Tableaux de bord" icon="layout-dashboard" href="/fr/sessions/dashboards">
+    Transformez une requête enregistrée en graphique suivi par l'équipe.
+  </Card>
+  <Card title="Audits" icon="scan-search" href="/fr/audits/overview">
+    Investiguez un schéma d'échec sur une population de sessions.
+  </Card>
+  <Card title="Politiques" icon="shield-check" href="/fr/policies/overview">
+    Empêchez une action récurrente plutôt que de la redécouvrir la semaine suivante.
+  </Card>
+</CardGroup>

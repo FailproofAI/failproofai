@@ -1,30 +1,64 @@
 ---
-title: "Lancer votre premier contrôle d'échec"
-description: "Créez un audit depuis le tableau de bord Cloud ou le CLI fp et examinez ses premiers résultats."
+title: "Lancez votre première vérification d'échec"
+description: "Analysez l'historique des agents de cette machine avec failproofai audit, ou créez un audit récurrent sur les sessions stockées dans Failproof AI Cloud."
 icon: "scan-search"
 ---
 
-Un audit transforme un ensemble de sessions en constats d'échec classés et étayés par des preuves. Commencez par une question d'échec ciblée.
+Un audit transforme un ensemble de sessions en résultats d'échec classés et étayés par des preuves. Commencez par une seule question d'échec ciblée.
+
+Il existe deux types d'audits. Ils lisent des données différentes et répondent à des outils différents :
+
+| Audit | Lit | Nécessite un compte | Les résultats apparaissent dans |
+| --- | --- | --- | --- |
+| Local — `failproofai audit` | L'historique des agents déjà présent sur cette machine | Non | `http://localhost:8020/audit` |
+| Cloud — **Analyser → Audits**, ou le CLI `fp` | Les sessions stockées dans Failproof AI Cloud | Oui | Le tableau de bord Cloud |
+
+Lancez d'abord l'audit local. Il ne nécessite que le CLI. Les résultats restent en local, tandis que la télémétrie CLI anonyme est envoyée par défaut sauf si vous définissez `FAILPROOFAI_TELEMETRY_DISABLED=1`.
 
 <Tabs>
-  <Tab title="Tableau de bord">
+  <Tab title="Local">
+    ```bash
+    failproofai audit
+    ```
+
+    Cette commande analyse tout l'historique des agents compatibles trouvé sur cette machine, rejoue l'activité des outils à travers le catalogue de politiques intégré, puis ouvre **http://localhost:8020/audit**. Laissez le processus actif pendant que vous lisez les résultats ; appuyez sur <kbd>Ctrl</kbd>+<kbd>C</kbd> lorsque vous avez terminé.
+
+    L'analyse et les résultats restent sur cette machine. La télémétrie CLI anonyme est envoyée par défaut sauf si elle est désactivée. Une fois la planification activée, chaque analyse envoie également des métadonnées machine et peut envoyer un résumé limité des résultats.
+
+    | Option | Ce qu'elle fait |
+    | --- | --- |
+    | `--schedule [days]` | Lance l'analyse selon un minuteur et envoie les résultats par e-mail. Par défaut 7 jours, plage 1–90. Vous connecte la première fois. |
+    | `--email <address>` | Avec `--schedule`, fournit l'adresse du rapport au lieu de la demander. |
+    | `--no-schedule` | Arrête le minuteur. Vous laisse connecté. |
+    | `--status` | Indique si la planification est active, où les rapports sont envoyés, l'état du démon et la date de la prochaine analyse. |
+
+    ```bash
+    failproofai audit --schedule 7 --email reliability@example.com
+    failproofai audit --status
+    ```
+
+    Consultez [Auditer l'historique local des agents](/fr/audits/local-audit) pour savoir quels historiques chaque adaptateur lit et comment l'analyse planifiée s'exécute.
+  </Tab>
+  <Tab title="Tableau de bord Cloud">
     <Steps>
-      <Step title="Ouvrir les audits">
+      <Step title="Ouvrir les Audits">
         Dans la barre latérale Cloud, accédez à **Analyser → Audits**. Sélectionnez **nouvel audit**.
       </Step>
       <Step title="Configurer l'audit">
-        Saisissez un nom et un objectif d'échec précis, par exemple « trouver les sessions de production qui relancent le même appel de paiement échoué sans modifier les paramètres ni escalader ». Sélectionnez l'agent, l'environnement, la fenêtre temporelle et la planification. Ajoutez une brève description et des URL de référence lorsque l'auditeur a besoin de vos règles de workflow.
+        Saisissez un nom et un objectif d'échec précis, par exemple : « trouver les sessions de production qui réessaient le même appel de paiement échoué sans modifier les paramètres ni escalader. » Sélectionnez l'agent, l'environnement, la fenêtre temporelle et le calendrier. Ajoutez une brève description et des URLs de référence lorsque l'auditeur a besoin de connaître vos règles de flux de travail.
       </Step>
       <Step title="Créer l'audit et attendre l'exécution">
-        Sélectionnez **créer l'audit**. La première exécution est mise en file d'attente immédiatement. Ouvrez la carte d'audit pour suivre sa progression : en attente, en cours d'exécution, puis terminé.
+        Sélectionnez **créer l'audit**. La première exécution est mise en file d'attente immédiatement. Ouvrez la carte d'audit pour suivre sa progression : en attente → en cours → terminé.
       </Step>
     </Steps>
 
-    Une fois l'exécution terminée, ouvrez un constat et examinez les preuves de session associées. Vous pouvez ensuite l'acquitter, l'assigner, le rejeter, le mettre en sourdine ou le résoudre.
+    Une fois l'exécution terminée, ouvrez un résultat et examinez les preuves de session associées. Vous pouvez ensuite l'accuser réception, l'assigner, le rejeter, le mettre en sourdine ou le résoudre.
 
-    ![Un constat d'audit terminé affichant sa description d'échec, l'action recommandée, les preuves à l'appui et les sessions concernées.](/images/dashboard/audit-finding.png)
+    ![Un résultat d'audit complété affichant sa description d'échec, l'action recommandée, les preuves à l'appui et les sessions concernées.](/images/dashboard/audit-finding.png)
   </Tab>
-  <Tab title="CLI">
+  <Tab title="CLI Cloud">
+    `fp` est le CLI de Failproof AI Cloud. Il relit ce que Cloud a stocké ; c'est un programme différent de `failproofai`, qui applique les politiques sur cette machine.
+
     ```bash
     fp audits create payment-retry-failures \
       --description "Find production sessions that retry a failed payment call without changing input or escalating" \
@@ -45,8 +79,8 @@ Un audit transforme un ensemble de sessions en constats d'échec classés et ét
     fp audits run payment-retry-failures
     ```
 
-    Utilisez `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>` ou `fp audits reopen <finding-id>` pour faire progresser un constat dans le processus de triage.
+    Utilisez `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>`, ou `fp audits reopen <finding-id>` pour faire avancer un résultat dans le processus de triage.
   </Tab>
 </Tabs>
 
-Ensuite, [prévenez votre premier échec avec une policy](/fr/start/first-policy) pour une action répétable confirmée.
+Ensuite, [prévenez votre premier échec avec une politique](/fr/start/first-policy) pour une action répétable confirmée.

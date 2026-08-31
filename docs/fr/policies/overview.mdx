@@ -1,63 +1,76 @@
 ---
 title: "Politiques"
-description: "Observez, guidez ou bloquez les actions des agents avant qu'une défaillance connue ne se reproduise."
+description: "Guidez ou bloquez un agent avant qu'une défaillance connue ne se reproduise."
 icon: "shield-check"
 ---
 
-Une politique évalue un événement de hook d'agent et retourne l'une des trois décisions suivantes :
+Une politique surveille une action d'agent et retourne l'une des trois décisions suivantes :
 
-- `allow` laisse l'action se poursuivre.
-- `instruct` fournit des conseils correctifs à l'agent.
-- `deny` bloque l'action avec une raison.
+- `allow` continue.
+- `instruct` fournit des instructions à l'agent lorsque son environnement le prend en charge.
+- `deny` bloque l'action.
 
-## Utiliser les trois surfaces de politique
+Utilisez les politiques pour des comportements connus et répétitifs : suppression de fichiers protégés, exposition de secrets, push sur la mauvaise branche, ou modification d'une infrastructure de production.
 
-<Tabs>
-  <Tab title="Tableau de bord">
-    1. Allez dans **Observe → politique** pour filtrer et inspecter les décisions de politique issues des sessions.
-    2. Allez dans **Admin → éditeur de politique** pour composer, valider, publier, désactiver ou inspecter des versions immuables.
-    3. Allez dans **Admin → application** pour assigner des versions et des effets aux machines.
+## Ajouter des politiques sur cette machine
 
-    Utilisez la page Politique pour comprendre ce qui correspond déjà avant de créer ou de modifier l'application.
+La configuration initiale ne sélectionne aucun pack de politiques. Ajoutez le pack Failproof AI après l'installation :
 
-    ![La page Politique affichant les totaux de décisions et les mappages de politiques locales et gérées dans le Cloud.](/images/dashboard/policy-observe.png)
+```bash
+failproofai config
+failproofai policies add FailproofAI/policies
+failproofai policies
+```
 
-    L'éditeur est l'endroit où vous transformez une condition d'échec en source, la validez et publiez une version immuable.
+Le package ne contient pas de pack intégré privilégié. Le nôtre s'installe de la même manière que celui de n'importe qui d'autre.
 
-    ![L'éditeur de politique utilisé pour composer et publier une version de politique immuable.](/images/dashboard/policy-editor.png)
+Les politiques peuvent également provenir d'un fichier local, d'un pack publié ou d'une assignation Cloud :
 
-    L'application assigne ensuite cette version publiée et son effet d'observation ou d'application aux machines.
+| Source | Comment l'ajouter |
+| --- | --- |
+| Fichier local | Placez `*policies.{js,mjs,ts}` dans `.failproofai/policies/` |
+| Chemin de fichier quelconque | `failproofai policies -i -c <path>` |
+| Pack publié | `failproofai policies add <owner>/<repo>` |
+| Cloud | Assignez-le depuis le tableau de bord ou avec `fp fleet deploy` |
 
-    ![La flotte d'application affichant la couverture des machines et les versions de politique assignées.](/images/dashboard/enforcement-fleet.png)
+`block-failproofai-commands` s'exécute toujours et ne peut pas être désactivé. Il empêche un agent de désactiver sa propre application des règles.
 
-    Vérifiez les décisions sur la page Politique après le déploiement afin que les vues de création et de flotte soient liées à l'activité réelle des agents.
-  </Tab>
-  <Tab title="CLI">
-    Utilisez `failproofai` pour l'installation et la validation de politiques locales :
+## Observer avant d'appliquer
 
-    ```bash
-    failproofai policies
-    failproofai policy add block-rm-rf --scope project
-    failproofai config --status
-    ```
+Le mode observation exécute la politique réelle et enregistre ce qu'elle aurait fait, sans bloquer l'agent.
 
-    Utilisez `fp` pour trouver les sessions et événements Cloud contenant des décisions de politique. La création de politiques dans le Cloud et le déploiement sur la flotte restent des workflows du tableau de bord.
-  </Tab>
-</Tabs>
+```bash
+fp policies test ./checkout.policy.mjs --tool Bash --command "git push --force" --expect deny
+fp fleet deploy ci-runner-01 --add checkout-guard:observe
+fp guardrails summary --since 24h --machine ci-runner-01
+fp fleet deploy ci-runner-01 --add checkout-guard:enforce
+```
 
-Les politiques disposent de trois surfaces distinctes dans Failproof AI :
+<Warning>
+  Un simple `fp fleet deploy <machine> --add <id>` applique la politique immédiatement. Ajoutez `:observe` pour un déploiement en mode miroir.
+</Warning>
 
-1. **Analyser les décisions** dans les sessions, les tableaux de bord et les audits.
-2. **Créer des versions** avec des règles intégrées, du code ou l'éditeur de politique.
-3. **Déployer et appliquer** des versions sur les machines sélectionnées.
+Une politique qui expire en mode observation enregistre un allow, car c'est ce qui se passerait lors de l'application. Seules les décisions observées différentes de allow sont enregistrées.
 
-Commencez par un mode de défaillance confirmé. Définissez la correspondance d'événement et d'outil la plus restreinte qui l'identifie, testez des exemples légitimes et non sécurisés, puis observez avant d'appliquer.
+Pour un pack utilisé sans Cloud, publiez-le avec `failproofai publish --effect observe`.
 
-<Columns cols={2}>
-  <Card title="Utiliser une politique intégrée" icon="library" href="/fr/policies/builtin">
-    Activez une règle vérifiée pour les risques courants liés aux secrets, au shell, à Git, au cloud et aux workflows.
+## Choisir la bonne approche
+
+<CardGroup cols={2}>
+  <Card title="Utiliser une politique vérifiée" icon="library" href="/fr/policies/builtin">
+    Choisissez parmi 39 politiques couvrant les secrets, les fichiers, Git, l'infrastructure et les workflows.
   </Card>
-  <Card title="Écrire une politique personnalisée" icon="code-2" href="/fr/policies/custom">
-    Exprimez une décision spécifique à un workflow en JavaScript ou TypeScript.
+  <Card title="Installer un pack" icon="package" href="/fr/policies/packs">
+    Ajoutez un ensemble de politiques publié depuis GitHub ou le Policy Hub.
   </Card>
-</Columns>
+  <Card title="Écrire une politique" icon="code-2" href="/fr/policies/custom">
+    Définissez une règle pour votre propre agent ou workflow.
+  </Card>
+  <Card title="Déployer sur plusieurs machines" icon="server" href="/fr/policies/deploy">
+    Observez, promouvez et annulez le déploiement d'une politique Cloud.
+  </Card>
+</CardGroup>
+
+<Note>
+  La prise en charge de l'application varie selon l'environnement. Un refus d'appel d'outil est vérifié sur les 12 environnements pris en charge ; les autres événements varient. Consultez [les environnements pris en charge](/fr/reference/harnesses#enforcement-capability).
+</Note>

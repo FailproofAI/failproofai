@@ -1,84 +1,50 @@
 ---
-title: "Configuração local"
-description: "Controle o escopo de políticas, parâmetros, arquivos personalizados e configurações do Failproof AI no nível da máquina."
-icon: "file-cog"
+title: "Configuração de políticas locais"
+description: "Escolha onde as políticas se aplicam e defina seus parâmetros."
+icon: "sliders-horizontal"
 ---
 
-O Failproof AI separa a seleção de políticas das configurações de máquina e do daemon. Isso mantém as escolhas de políticas do repositório revisáveis, enquanto as credenciais e o estado do daemon permanecem fora do repositório.
+Use o escopo para decidir quem recebe uma política local:
 
-## Escolha um escopo de política
-
-<Tabs>
-  <Tab title="Dashboard">
-    Execute `failproofai` sem argumentos para abrir o dashboard de políticas local. Escolha o escopo de usuário, projeto ou local antes de ativar uma política, para que a alteração seja gravada no arquivo de configuração correto.
-
-    - **Usuário** se aplica a todos os projetos desta máquina.
-    - **Projeto** pertence ao repositório e pode ser commitado.
-    - **Local** substitui um projeto para um único usuário e deve permanecer no gitignore.
-
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai policy add block-rm-rf --scope user
-    failproofai policy add block-force-push --scope project
-    failproofai policy add warn-large-file-write --scope local
-    failproofai policies
-    ```
-
-    Nem todo harness suporta o escopo local. A CLI rejeita um escopo que o harness selecionado não consegue representar.
-  </Tab>
-</Tabs>
-
-| Escopo | Arquivo de configuração de políticas |
+| Escopo | Aplica-se a |
 | --- | --- |
-| Projeto | `<project>/.failproofai/policies-config.json` |
-| Local | `<project>/.failproofai/policies-config.local.json` |
-| Usuário | `~/.failproofai/policies-config.json` |
+| `user` | Seus agentes compatíveis nesta máquina |
+| `project` | Agentes em execução neste projeto |
+| `local` | Claude apenas, nas configurações locais do projeto |
+| `all` | Somente desinstalação |
 
-As políticas ativadas são mescladas como uma união. Os parâmetros de política utilizam o primeiro escopo que define parâmetros para aquela política, na ordem projeto → local → usuário. Caminhos personalizados explícitos utilizam o primeiro escopo que os define.
+```bash
+failproofai policies add block-sudo --scope user
+failproofai policies add block-rm-rf --scope project
+```
 
-## Configure os parâmetros de política
+Hermes e OpenClaw suportam apenas o escopo de usuário. A maioria dos outros harnesses suporta os escopos de usuário e projeto. Claude também suporta o escopo local. Consulte [Harnesses](/pt-br/reference/harnesses).
 
-<Tabs>
-  <Tab title="Dashboard">
-    Abra a política no dashboard local, edite os parâmetros suportados e salve no escopo selecionado. Execute uma ação do agente que corresponda e outra que não corresponda, depois inspecione a decisão em **Observe → policy**.
+## Parâmetros de política
 
-  </Tab>
-  <Tab title="CLI">
-    Edite o `policies-config.json` do escopo selecionado e execute `failproofai policies` para identificar nomes de políticas ou chaves de parâmetros desconhecidos.
+As configurações de política ficam em `policies-config.json` no escopo correspondente. Use a visualização **Policies → Configure** do painel local sempre que possível.
 
-    ```json
-    {
-      "enabledPolicies": ["block-rm-rf", "block-force-push"],
-      "policyParams": {
-        "block-rm-rf": {
-          "allowPaths": ["/tmp/build-output"]
-        }
-      }
-    }
-    ```
+Um parâmetro pertence a uma política e altera a forma como essa política decide. Por exemplo, uma lista de permissões pode fazer uma política de bloqueio aceitar comandos ou caminhos conhecidos como seguros.
 
-    ```bash
-    failproofai policies
-    ```
-  </Tab>
-</Tabs>
+Arquivos de política personalizados podem ser carregados automaticamente a partir de `.failproofai/policies/`, ou explicitamente:
 
-## Entenda os arquivos da máquina
+```bash
+failproofai policies -i -c ./guards.mjs --scope project
+```
 
-`~/.failproofai` contém arquivos separados para diferentes fronteiras de confiança:
+Remova caminhos explícitos com:
 
-| Caminho | Finalidade |
+```bash
+failproofai policies -u -c
+```
+
+## Arquivos
+
+| Arquivo | Finalidade |
 | --- | --- |
-| `config.json` | Configurações de daemon, auditoria e telemetria não secretas |
-| `credentials.json` | Credenciais de nuvem; armazenadas com permissões exclusivas do proprietário |
-| `policies-config.json` | Seleção de builtins, parâmetros e caminhos personalizados explícitos no escopo do usuário |
-| `policies/` | Políticas de convenção do usuário e artefatos de política gerenciados pela nuvem |
-| `hook-activity/` | Log de decisões de políticas local |
-| `state/` | Spool do daemon, saúde, pausa e estado de execução |
+| `~/.failproofai/config.json` | Configurações de máquina e coletor |
+| `policies-config.json` | Políticas habilitadas e parâmetros para um escopo |
+| `.failproofai/policies/*policies.mjs` | Políticas carregadas por convenção |
+| `~/.failproofai/policies/packs/installed.json` | Pacotes instalados e seleções |
 
-Use `FAILPROOFAI_HOME` para realocar o layout completo da máquina para um container ou teste isolado. Não realoque diretórios de estado individuais de forma independente.
-
-<Warning>
-  Nunca faça commit de `credentials.json`. Faça commit da configuração de políticas do projeto e das políticas de convenção do projeto somente após revisá-las como código de enforcement.
-</Warning>
+Não edite diretamente os artefatos de pacotes instalados. Reinstale ou publique uma versão corrigida.

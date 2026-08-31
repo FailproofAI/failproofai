@@ -1,51 +1,54 @@
 ---
 title: "Déployer des politiques"
-description: "Déployez une version de politique révisée sur les machines cibles."
+description: "Observez une politique sur l'activité réelle d'un agent, puis appliquez-la ou annulez-la."
 icon: "cloud-upload"
 ---
 
-Un déploiement associe une ou plusieurs versions de politique à un ensemble de machines enrôlées cibles.
+Déployez une politique révisée sur une machine à la fois. Commencez en mode observation.
 
-## Appliquer un déploiement
+## Déploiement depuis la CLI
 
-<Tabs>
-  <Tab title="Tableau de bord">
-    1. Accédez à **Admin → application**, trouvez la machine et développez sa ligne.
-    2. Sélectionnez **modifier**, ajoutez la version de politique révisée, puis choisissez l'effet **observer** ou un effet d'application.
-    3. Appliquez la modification, attendez le prochain enregistrement de la machine et confirmez son état de déploiement et de couverture.
-    4. Accédez à **Observer → politique** pour inspecter les décisions en temps réel.
+```bash
+fp policies test ./rule.mjs --tool Bash --command "git push --force" --expect deny
+fp policies publish no-force-push ./rule.mjs
+fp fleet deploy <machine> --add no-force-push:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add no-force-push:enforce
+```
 
-    ![L'éditeur de déploiement de machine avec les versions de politique, les effets d'application et d'observation, et l'action d'application du déploiement.](/images/dashboard/enforcement-editor.png)
-  </Tab>
-  <Tab title="CLI">
-    Déployez depuis la CLI avec `fp fleet`. Vérifiez l'ensemble résultant avant de l'appliquer — `deploy` affiche le plan complet et demande une confirmation **uniquement sur un terminal interactif sans `--json`**. Avec `--json`, `--yes`, ou avec stdin redirigé (une étape CI, un script, un agent exécutant un shell), l'application est immédiate, sans plan ni invite — exécutez donc `fp fleet show <machine>` au préalable si vous souhaitez réviser :
-
-    ```bash
-    fp fleet list
-    fp fleet show <machine-id>
-    fp fleet deploy <machine-id> --add no-force-push
-    ```
-
-    `fp fleet diff <machine-id>` affiche l'écart entre l'intention et la livraison (une machine apparaît comme `behind` jusqu'à son prochain polling), `fp fleet history <machine-id>` liste les générations, et `fp fleet rollback <machine-id> <generation>` en restaure une — la commande échoue si cette génération référence une politique depuis désactivée ou supprimée.
-
-    Vérifiez la machine elle-même avec `failproofai config --status`, et utilisez `fp sessions --env production --since 24h` ainsi que `fp events --event-type hook_completed` après le déploiement pour confirmer que l'activité remonte bien vers Cloud.
-  </Tab>
-</Tabs>
-
-<Steps>
-  <Step title="Choisir la version et les cibles">
-    Déployez une version révisée, et non un brouillon modifiable, en commençant par une machine hors production ou un petit groupe dont vous pouvez inspecter les sessions.
-  </Step>
-  <Step title="Observer les décisions">
-    Examinez les correspondances, les motifs, les outils concernés et les faux positifs sans bloquer le travail.
-  </Step>
-  <Step title="Appliquer et vérifier la couverture">
-    Passez en mode application une fois que les correspondances observées permettent de distinguer les actions non sécurisées des actions valides, puis confirmez que chaque machine cible a bien récupéré le déploiement et signale ses décisions.
-  </Step>
-</Steps>
-
-Les machines ont besoin de la capacité `policies:pull`. Le reporting des événements est contrôlé séparément par `events:add` ; vérifiez les deux lorsque vous attendez une analyse et une application Cloud.
+Le mode observation évalue la politique réelle et enregistre les décisions autres que allow, mais ne bloque pas l'agent.
 
 <Warning>
-  La gestion de l'application est un flux de travail Cloud administratif. Ne traitez pas les routes d'application réservées à root comme des endpoints API `/v1` ordinaires destinés aux clients.
+  Un `--add no-force-push` sans suffixe applique l'enforcement immédiatement. Ajoutez `:observe` pour un déploiement en mode shadow.
 </Warning>
+
+Si l'application pose des problèmes :
+
+```bash
+fp fleet history <machine>
+fp fleet rollback <machine> <generation>
+```
+
+## Déploiement depuis le tableau de bord
+
+1. Allez dans **Admin → enforcement**.
+2. Ouvrez la machine cible.
+3. Ajoutez la version de la politique avec l'effet **observe**.
+4. Appliquez le déploiement.
+5. Consultez les résultats sous **Observe → policy**.
+6. Faites passer la même version en **enforce** lorsque les correspondances sont correctes.
+
+![L'éditeur de déploiement de machine avec les versions de politiques, les effets enforce et observe, et l'action d'application du déploiement.](/images/dashboard/enforcement-editor.png)
+
+## Remplacer ou pré-configurer un ensemble
+
+- `--remove <id>` supprime une politique.
+- `--set <ref>...` remplace l'ensemble complet de politiques.
+- `--create` prépare un déploiement avant qu'une machine se connecte pour la première fois.
+- `fp fleet diff <machine>` compare l'état prévu et l'état appliqué.
+
+<Note>
+  Sans Cloud, publiez un pack avec `failproofai publish --effect observe` et inspectez les décisions dans le tableau de bord local.
+</Note>
+
+Les machines ont besoin de `policies:pull` pour recevoir les déploiements et de `events:add` pour signaler les décisions.

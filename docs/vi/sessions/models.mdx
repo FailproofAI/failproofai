@@ -1,27 +1,54 @@
 ---
-title: "Models"
-description: "So sánh độ trễ, tokens, sử dụng ngữ cảnh và phân phối lưu lượng của các mô hình."
+title: "Các Mô Hình"
+description: "So sánh độ trễ, tokens, sử dụng ngữ cảnh và phân bố lưu lượng của mô hình."
 icon: "cpu"
 ---
 
-Sử dụng Models để xem liệu độ tin cậy hoặc chi phí có thay đổi theo mô hình, agent, môi trường hoặc khoảng thời gian.
+Sử dụng Các Mô Hình để xem liệu độ tin cậy hoặc chi phí có thay đổi theo mô hình, agent, môi trường hay khoảng thời gian.
 
 <Tabs>
   <Tab title="Dashboard">
     1. Đi đến **Observe → Models**.
-    2. Đặt khoảng thời gian, sau đó lọc theo môi trường, mô hình, agent hoặc session ID.
-    3. Xem xét độ trễ, tiêu thụ token, sử dụng context-window và phân phối mô hình.
-    4. Chọn một điểm biểu đồ hoặc phân đoạn phân phối để mở các sự kiện phù hợp.
+    2. Đặt khoảng thời gian, sau đó lọc theo môi trường, mô hình, agent hoặc ID phiên.
+    3. Xem xét độ trễ, lượng tiêu thụ token, sử dụng cửa sổ ngữ cảnh và phân bố mô hình.
+    4. Chọn một điểm biểu đồ hoặc phân đoạn phân bố để mở các sự kiện phù hợp.
 
-    ![Trang Models hiển thị các chế độ xem về độ trễ, phần trăm, token, chi phí, context-window và phân phối mô hình.](/images/dashboard/models.png)
+    ![Trang Models hiển thị các chế độ xem độ trễ, phần trăm, token, chi phí, cửa sổ ngữ cảnh và phân bố mô hình.](/images/dashboard/models.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp list models
-    fp events --event-type model_request,model_response --env production --since 24h
-    fp --json events --fields ts,agent_id,session_id,event_type,output_tokens,context_fill
+    fp events --event-type model_request,model_response --since 24h
+    fp --json events --event-type model_response --since 24h --all --limit 500 --fields ts,agent_id,session_id,output_tokens,context_window,context_fill
     ```
 
-    Sử dụng một truy vấn đã lưu cho các tổng hợp ở cấp độ mô hình không được hiển thị như một lệnh CLI chuyên dụng.
+    Cả ba đều cần `events:read`.
+
+    `--fields` chiếu các cột; nó không lọc các hàng. Kết hợp nó với `--event-type` và một cửa sổ thời gian, hoặc bạn sẽ nhận được 50 sự kiện mới nhất của mỗi loại với `output_tokens` và `context_fill` là null trên tất cả những sự kiện không phải mô hình. `--all` dừng lại ở `--limit`, mặc định là 50.
+
+    Đọc `context_fill` bên cạnh `context_window`: con số điền vào không có ý nghĩa gì nếu không có cửa sổ nó được đo lường.
+
+    Daemon đặt dấu mọi sự kiện với môi trường `local` trừ khi bạn thay đổi nó, vì vậy `--env production` không khớp gì trên một cài đặt tiêu chuẩn. Xem [Thay đổi nhãn môi trường](/vi/reference/events-and-configuration#change-an-environment-label).
   </Tab>
 </Tabs>
+
+## CLI có thể và không thể hiển thị gì
+
+Luồng sự kiện mặc định không có payload. Nó mang `output_tokens`, `context_window` và `context_fill` dưới dạng các cột được quảng bá, và không có gì khác về lệnh gọi mô hình:
+
+| Giá trị | Nơi nó nằm |
+| --- | --- |
+| Tokens đầu ra, cửa sổ ngữ cảnh, phần điền ngữ cảnh | Cột luồng nhẹ — có sẵn trực tiếp từ `fp events`. |
+| Tên mô hình | Payload — sử dụng `fp events --full`, được giới hạn trong một phiên. |
+| Tokens đầu vào | Payload — SDK ghi lại cả hai phần, chỉ phần đầu ra được quảng bá. |
+| Độ trễ trên mỗi cuộc gọi | Không có cột `duration_ms` trên luồng nhẹ, và `model_response` của SDK cũng không có. Tính toán nó bằng cách kết hợp yêu cầu với phản hồi của nó. |
+
+`model_request` và `model_response` ghép lại trên `request_id`. Trường đó tồn tại chính xác để một yêu cầu có thể được so khớp với câu trả lời của nó, và đó là cách duy nhất để tính độ trễ trên mỗi cuộc gọi từ các sự kiện thô:
+
+```bash
+fp --json events --full --event-type model_request,model_response --session-id <session-id> --all --limit 500
+```
+
+Tên mô hình đến từ bảng điểm của mỗi điểm kết nối một cách trực tiếp. Không có gì trong đường dẫn chụp chuẩn hóa chúng, vì vậy một mô hình cơ bản có thể xuất hiện dưới một số ID dành riêng cho nhà cung cấp trong biểu đồ phân bố. Chạy `fp list models` để xem cách chính tả mà triển khai thực tế có.
+
+Sử dụng truy vấn đã lưu cho các tổng hợp cấp mô hình không được hiển thị dưới dạng lệnh CLI chuyên dụng.

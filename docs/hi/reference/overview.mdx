@@ -1,81 +1,98 @@
 ---
 title: "एकीकरण और संदर्भ"
-description: "समर्थित एजेंट harnesses, SDKs, CLIs, और HTTP API को कनेक्ट करें।"
+description: "समर्थित एजेंट हार्नेस, SDK, CLI, और HTTP API को जोड़ें।"
 icon: "braces"
 ---
 
-वह एकीकरण चुनें जो आपके एजेंट के चलने वाले स्थान के सबसे करीब हो।
+अपने एजेंट के चलने की जगह के सबसे करीब एकीकरण चुनें।
+
+यह अनुभाग दो कमांड-लाइन टूल को कवर करता है जिनके अलग-अलग काम हैं। `failproofai` उस मशीन पर चलता है जहां आपका एजेंट चलता है और एजेंट लूप के अंदर नीति को लागू करता है; `fp` Failproof AI Cloud से बात करता है और पढ़ता है कि वह लूप क्या करता है। मशीन सेटअप केवल Linux और macOS पर समर्थित है — `failproofai config` अन्य किसी भी चीज पर अस्वीकार करता है और कुछ नहीं लिखता, बजाय आधे-अधूरे कॉन्फ़िगर की गई मशीन के पीछे छोड़ने के।
 
 <Columns cols={2}>
-  <Card title="Agent harnesses" icon="plug-zap" href="/hi/reference/harnesses">
-    समर्थित कोडिंग और autonomous agent CLIs के लिए hooks इंस्टॉल करें।
+  <Card title="एजेंट हार्नेस" icon="plug-zap" href="/hi/reference/harnesses">
+    समर्थित कोडिंग और स्वायत्त एजेंट CLI के लिए हुक स्थापित करें।
   </Card>
-  <Card title="Agent frameworks और SDKs" icon="plug" href="/hi/start/integrations">
-    LangGraph, CrewAI, LlamaIndex, Pydantic AI, या कस्टम एजेंट को इंस्ट्रूमेंट करें।
+  <Card title="एजेंट फ्रेमवर्क और SDK" icon="plug" href="/hi/start/integrations">
+    LangGraph, CrewAI, LlamaIndex, Pydantic AI, या कस्टम एजेंट को साधन से सुसज्जित करें।
   </Card>
   <Card title="Python SDK संदर्भ" icon="python" href="/hi/reference/custom-agents">
-    कॉन्फ़िगरेशन, event catalog, correlation rules, और delivery।
+    कॉन्फ़िगरेशन, इवेंट कैटलॉग, सहसंबंध नियम, और वितरण।
   </Card>
-  <Card title="स्थानीय dashboard" icon="monitor-cog" href="/hi/reference/local-dashboard">
-    स्थानीय projects, sessions, policy activity, और offline audits की समीक्षा करें।
+  <Card title="इवेंट और कॉन्फ़िगरेशन" icon="list-tree" href="/hi/reference/events-and-configuration">
+    दो इवेंट शब्दावली, आरक्षित फील्ड, और मशीन की अपनी सेटिंग फ़ाइल।
+  </Card>
+  <Card title="लोकल डैशबोर्ड" icon="monitor-cog" href="/hi/reference/local-dashboard">
+    लोकल प्रोजेक्ट, सेशन, नीति गतिविधि, और ऑफलाइन ऑडिट की समीक्षा करें।
   </Card>
   <Card title="Failproof AI CLI" icon="terminal" href="/hi/reference/failproof-cli">
-    स्थानीय capture, hooks, policies, audits, delivery, और machine state को कॉन्फ़िगर करें।
+    लोकल कैप्चर, हुक, नीति, ऑडिट, वितरण, और मशीन स्थिति को कॉन्फ़िगर करें।
   </Card>
   <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/hi/reference/cloud-cli#cli-commands">
-    Cloud sessions, audits, issues, alerts, keys, users, और settings को क्वेरी और प्रशासित करें।
+    Cloud सेशन, ऑडिट, समस्या, सतर्कता, कुंजी, उपयोगकर्ता, और सेटिंग को क्वेरी और प्रबंधित करें।
   </Card>
   <Card title="Evaluator SDK" icon="gauge" href="/hi/reference/evaluator-sdk">
-    FastAPI service के साथ complete या inactive sessions को score करें।
+    FastAPI सेवा के साथ पूर्ण या निष्क्रिय सेशन को स्कोर करें।
   </Card>
-  <Card title="कस्टम policies" icon="shield-plus" href="/hi/reference/policy-sdk">
-    workflow-specific allow, instruct, और deny निर्णय लिखें और परीक्षण करें।
+  <Card title="कस्टम नीति" icon="shield-plus" href="/hi/reference/policy-sdk">
+    वर्कफ़्लो-विशिष्ट allow, instruct, और deny निर्णय लिखें और परीक्षण करें।
   </Card>
-  <Card title="Self-hosting" icon="cloud-cog" href="/hi/reference/self-hosting">
-    Cloud control plane को customer-managed Kubernetes cluster पर deploy करें।
+  <Card title="HTTP API" icon="code" href="/hi/reference/http-api">
+    सार्वजनिक `/v1` सतह के लिए जनित संदर्भ।
+  </Card>
+  <Card title="समस्या निवारण" icon="circle-help" href="/hi/reference/troubleshooting">
+    हुक जो फायर नहीं करते, इवेंट जो आते नहीं, और इनकार जो आप नहीं चाहते थे, का निदान करें।
+  </Card>
+  <Card title="स्व-होस्टिंग" icon="cloud-cog" href="/hi/reference/self-hosting">
+    Cloud नियंत्रण तल को ग्राहक-प्रबंधित Kubernetes क्लस्टर पर तैनात करें।
   </Card>
 </Columns>
 
-जेनरेट किया गया [HTTP API संदर्भ](/hi/reference/http-api) सार्वजनिक `/v1` surface को कवर करता है। हाथ से लिखे गए पृष्ठ ऐसे workflows की व्याख्या करते हैं जो कई endpoints को span करते हैं या उस सार्वजनिक surface के बाहर प्रशासनिक इंटरफेस का उपयोग करते हैं।
+जनित HTTP API पृष्ठ सार्वजनिक `/v1` सतह को कवर करते हैं। हाथ से लिखे गए पृष्ठ वर्कफ़्लो को समझाते हैं जो कई एंडपॉइंट को फैलाते हैं या उस सार्वजनिक सतह के बाहर प्रशासनिक इंटरफेस का उपयोग करते हैं।
 
-## एजेंट को कनेक्ट करें और डेटा को सत्यापित करें
+## एजेंट को जोड़ें और डेटा सत्यापित करें
 
 <Tabs>
-  <Tab title="Dashboard">
-    1. **Administration → Keys** खोलें, `events:add` और `policies:pull` के साथ एक key बनाएं, और secret को कॉपी करें।
-    2. ऊपर दिए गए मिलते-जुलते पृष्ठ का उपयोग करके एकीकरण को कॉन्फ़िगर करें।
-    3. **Observe → Events** खोलें ताकि confirm करें कि events आ रहे हैं, फिर **Observe → Sessions** खोलें ताकि confirm करें कि वे complete runs बनाते हैं।
-    4. एकीकरण के environment को फ़िल्टर करें और model, tool, error, और policy fields के लिए one session का निरीक्षण करें जो audits द्वारा आवश्यक हैं।
+  <Tab title="डैशबोर्ड">
+    1. **Administration → Keys** खोलें, `events:add` और `policies:pull` के साथ एक कुंजी बनाएं, और गोपनीय की को कॉपी करें।
+    2. ऊपर दिए गए मेल खाने वाले पृष्ठ का उपयोग करके एकीकरण को कॉन्फ़िगर करें।
+    3. **Observe → Events** खोलें इवेंट के आने की पुष्टि करने के लिए, फिर **Observe → Sessions** को खोलें पूर्ण रन बनाने की पुष्टि करने के लिए।
+    4. एकीकरण के वातावरण पर फ़िल्टर करें और ऑडिट के लिए आवश्यक मॉडल, टूल, त्रुटि, और नीति फील्ड के लिए एक सेशन का निरीक्षण करें।
 
-    key drawer से शुरू करें। चयनित grants यह निर्धारित करते हैं कि क्या मशीन events भेज सकती है और Cloud-managed policies प्राप्त कर सकती है।
+    कुंजी ड्रॉअर से शुरू करें। चयनित अनुदान निर्धारित करते हैं कि क्या मशीन इवेंट भेज सकती है और Cloud-प्रबंधित नीतियां प्राप्त कर सकती है।
 
-    ![नया API key drawer जो event ingestion और policy delivery permissions प्रदान करने के लिए उपयोग किया जाता है।](/images/dashboard/key-create.png)
+    ![नई API कुंजी ड्रॉअर का उपयोग इवेंट इंजेशन और नीति वितरण अनुमतियां प्रदान करने के लिए।](/images/dashboard/key-create.png)
 
-    एकीकरण को कनेक्ट करने के बाद, Sessions list का उपयोग करके confirm करें कि इसके events को expected environment में complete runs में group किया जा रहा है।
+    एकीकरण को जोड़ने के बाद, सेशन सूची का उपयोग करें यह पुष्टि करने के लिए कि इसके इवेंट अपेक्षित वातावरण में पूर्ण रन में समूहीकृत हो रहे हैं।
 
-    ![Sessions list जो verify करने के लिए उपयोग किया जाता है कि एक नया-कनेक्ट किया गया एकीकरण complete agent runs की रिपोर्ट कर रहा है।](/images/dashboard/sessions-list.png)
+    ![सेशन सूची का उपयोग यह सत्यापित करने के लिए कि नया-जुड़ा एकीकरण पूर्ण एजेंट रन की रिपोर्ट कर रहा है।](/images/dashboard/sessions-list.png)
 
-    एकीकरण को complete मानने से पहले इनमें से एक session को खोलें; trace में model, tool, error, और policy evidence होना चाहिए जो आपके audits को चाहिए।
+    एकीकरण को पूर्ण मानने से पहले इनमें से एक सेशन खोलें; ट्रेस में आपके ऑडिट के लिए आवश्यक मॉडल, टूल, त्रुटि, और नीति साक्ष्य शामिल होने चाहिए।
   </Tab>
   <Tab title="CLI">
-    एक machine key बनाएं, Failproof daemon को कनेक्ट करें, और पहले session को verify करें।
+    एक मशीन कुंजी बनाएं, इस मशीन को सेटअप और जोड़ें, नीति चुनें, फिर पहले सेशन को सत्यापित करें।
 
     ```bash
     fp keys create agent-production \
       --add events:add \
       --add policies:pull
 
-    failproofai config \
-      --connect https://app.befailproof.ai \
-      --token <machine-key>
+    failproofai config --token <machine-key>
+
+    failproofai policies add FailproofAI/policies
 
     failproofai flush --wait
-    fp sessions --since 1h --env production
-    fp events --since 1h --env production --limit 20
+    fp sessions --since 1h
+    fp events --since 1h --limit 20
     ```
 
-    जब कोई अन्य tool परिणाम का उपभोग करेगा तो `fp --json sessions ...` का उपयोग करें। Global flags जैसे `--json`, `--org`, और `--base-url` को command से पहले आना चाहिए।
+    न तो सत्यापन आदेश किसी वातावरण पर फ़िल्टर करता है, क्योंकि नई-कॉन्फ़िगर की गई मशीन हर इवेंट को `local` के रूप में स्टैम्प करती है। केवल `--env production` जोड़ें जब आप `collector.environment` सेट करें — देखें [वातावरण लेबल बदलें](/hi/reference/events-and-configuration#change-an-environment-label)।
 
-    स्थानीय commands के लिए [Failproof AI CLI संदर्भ](/hi/reference/failproof-cli) और `fp` commands के लिए [Failproof Cloud CLI संदर्भ](/hi/reference/cloud-cli#cli-commands) देखें।
+    एक टोकन पास करना कनेक्ट करने का अनुरोध है, इसलिए `failproofai config --token <machine-key>` एक कमांड में वही करता है। वातावरण चर को प्राथमिकता दें: एक तर्क `ps` से बॉक्स पर हर उपयोगकर्ता द्वारा पठनीय है, और यह शेल इतिहास और CI लॉग में उतरता है।
+
+    नीति चरण वैकल्पिक नहीं है। `failproofai config` डेमन को स्थापित करता है और हर समर्थित एजेंट CLI को वायर करता है, लेकिन यह जानबूझकर कोई नीति नहीं चुनता है, इसलिए नई-कॉन्फ़िगर की गई मशीन कुछ भी लागू नहीं करती जब तक आप एक पैक नहीं जोड़ते।
+
+    जब दूसरा टूल परिणाम का उपभोग करेगा तो `fp --json sessions ...` का उपयोग करें। `--json`, `--org`, और `--base-url` जैसे वैश्विक फ़्लैग कमांड से पहले आने चाहिए।
+
+    लोकल कमांड के लिए [Failproof AI CLI संदर्भ](/hi/reference/failproof-cli) देखें और `fp` कमांड के लिए [Failproof Cloud CLI संदर्भ](/hi/reference/cloud-cli#cli-commands) देखें।
   </Tab>
 </Tabs>

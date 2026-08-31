@@ -1,63 +1,76 @@
 ---
 title: "Policies"
-description: "Beobachten, steuern oder blockieren Sie Agentenaktionen, bevor ein bekannter Fehler sich wiederholt."
+description: "Einen Agenten anleiten oder blockieren, bevor ein bekannter Fehler erneut auftritt."
 icon: "shield-check"
 ---
 
-Eine Policy wertet ein Agenten-Hook-Ereignis aus und gibt eine von drei Entscheidungen zurück:
+Eine Policy beobachtet eine Agentenaktion und gibt eine von drei Entscheidungen zurück:
 
-- `allow` lässt die Aktion fortsetzen.
-- `instruct` gibt dem Agenten korrigierende Hinweise.
-- `deny` blockiert die Aktion mit einer Begründung.
+- `allow` lässt die Aktion fortlaufen.
+- `instruct` gibt dem Agenten eine Anweisung, sofern sein Harness dies unterstützt.
+- `deny` blockiert die Aktion.
 
-## Die drei Policy-Oberflächen nutzen
+Verwende Policies für bekanntes, wiederkehrendes Verhalten: das Löschen geschützter Dateien, das Preisgeben von Secrets, das Pushen in den falschen Branch oder Änderungen an der Produktionsinfrastruktur.
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. Gehen Sie zu **Observe → policy**, um Policy-Entscheidungen aus Sitzungen zu filtern und zu überprüfen.
-    2. Gehen Sie zu **Admin → policy editor**, um Policies zu erstellen, zu validieren, zu veröffentlichen, zu deaktivieren oder unveränderliche Versionen einzusehen.
-    3. Gehen Sie zu **Admin → enforcement**, um Versionen und Effekte Maschinen zuzuweisen.
+## Policies zu diesem Rechner hinzufügen
 
-    Nutzen Sie die Policy-Seite, um zu verstehen, was bereits zutrifft, bevor Sie Enforcement erstellen oder ändern.
+Beim Setup wird kein Policy-Pack ausgewählt. Füge das Failproof AI Pack nach dem Setup hinzu:
 
-    ![Die Policy-Seite zeigt Entscheidungssummen sowie lokale und Cloud-verwaltete Policy-Zuordnungen.](/images/dashboard/policy-observe.png)
+```bash
+failproofai config
+failproofai policies add FailproofAI/policies
+failproofai policies
+```
 
-    Der Editor ist der Ort, an dem Sie eine Fehlerbedingung in Quellcode umwandeln, validieren und eine unveränderliche Version veröffentlichen.
+Das Paket enthält kein privilegiertes eingebautes Pack. Unseres wird auf dieselbe Weise installiert wie jedes andere.
 
-    ![Der Policy-Editor zum Erstellen und Veröffentlichen einer unveränderlichen Policy-Version.](/images/dashboard/policy-editor.png)
+Policies können auch aus einer lokalen Datei, einem veröffentlichten Pack oder einer Cloud-Zuweisung stammen:
 
-    Enforcement weist dann diese veröffentlichte Version und ihren Observe- oder Enforce-Effekt den Maschinen zu.
+| Quelle | Hinzufügen |
+| --- | --- |
+| Lokale Datei | `*policies.{js,mjs,ts}` unter `.failproofai/policies/` ablegen |
+| Beliebiger Dateipfad | `failproofai policies -i -c <path>` |
+| Veröffentlichtes Pack | `failproofai policies add <owner>/<repo>` |
+| Cloud | Im Dashboard oder mit `fp fleet deploy` zuweisen |
 
-    ![Die Enforcement-Flotte zeigt Maschinenabdeckung und zugewiesene Policy-Versionen.](/images/dashboard/enforcement-fleet.png)
+`block-failproofai-commands` wird immer ausgeführt und kann nicht deaktiviert werden. Es verhindert, dass ein Agent seine eigene Durchsetzung deaktiviert.
 
-    Überprüfen Sie die Entscheidungen nach der Bereitstellung erneut auf der Policy-Seite, damit die Authoring- und Flottenansichten mit der tatsächlichen Agentenaktivität verknüpft sind.
-  </Tab>
-  <Tab title="CLI">
-    Verwenden Sie `failproofai` für die lokale Policy-Installation und -Validierung:
+## Beobachten vor der Durchsetzung
 
-    ```bash
-    failproofai policies
-    failproofai policy add block-rm-rf --scope project
-    failproofai config --status
-    ```
+Der Observe-Modus führt die eigentliche Policy aus und zeichnet auf, was sie getan hätte, blockiert den Agenten jedoch nicht.
 
-    Verwenden Sie `fp`, um Cloud-Sitzungen und -Ereignisse zu finden, die Policy-Entscheidungen enthalten. Das Cloud-Authoring und die Flottenbereitstellung bleiben Dashboard-Workflows.
-  </Tab>
-</Tabs>
+```bash
+fp policies test ./checkout.policy.mjs --tool Bash --command "git push --force" --expect deny
+fp fleet deploy ci-runner-01 --add checkout-guard:observe
+fp guardrails summary --since 24h --machine ci-runner-01
+fp fleet deploy ci-runner-01 --add checkout-guard:enforce
+```
 
-Policies haben drei eigenständige Oberflächen in Failproof AI:
+<Warning>
+  Ein einfaches `fp fleet deploy <machine> --add <id>` setzt sofort durch. Füge `:observe` für einen Shadow-Rollout hinzu.
+</Warning>
 
-1. **Entscheidungen analysieren** in Sitzungen, Dashboards und Audits.
-2. **Versionen erstellen** mit integrierten Regeln, Code oder dem Policy-Editor.
-3. **Versionen bereitstellen und durchsetzen** auf ausgewählten Maschinen.
+Eine Policy, die im Observe-Modus einen Timeout hat, zeichnet ein allow auf, da dies auch bei der Durchsetzung passieren würde. Es werden nur Nicht-allow-Entscheidungen aufgezeichnet.
 
-Beginnen Sie mit einem bestätigten Fehlermodus. Definieren Sie das kleinstmögliche Ereignis und Tool-Match, das ihn identifiziert, testen Sie legitime und unsichere Beispiele, und beobachten Sie, bevor Sie durchsetzen.
+Für ein Pack, das ohne Cloud verwendet wird, veröffentliche es mit `failproofai publish --effect observe`.
 
-<Columns cols={2}>
-  <Card title="Eine integrierte Policy verwenden" icon="library" href="/de/policies/builtin">
-    Aktivieren Sie eine geprüfte Regel für häufige Risiken bei Secrets, Shell, Git, Cloud und Workflows.
+## Den richtigen Weg wählen
+
+<CardGroup cols={2}>
+  <Card title="Geprüfte Policy verwenden" icon="library" href="/de/policies/builtin">
+    Wähle aus 39 Policies für Secrets, Dateien, Git, Infrastruktur und Workflows.
   </Card>
-  <Card title="Eine benutzerdefinierte Policy schreiben" icon="code-2" href="/de/policies/custom">
-    Formulieren Sie eine workflow-spezifische Entscheidung in JavaScript oder TypeScript.
+  <Card title="Pack installieren" icon="package" href="/de/policies/packs">
+    Füge ein veröffentlichtes Policy-Set von GitHub oder dem Policy Hub hinzu.
   </Card>
-</Columns>
+  <Card title="Policy schreiben" icon="code-2" href="/de/policies/custom">
+    Definiere eine Regel für deinen eigenen Agenten oder Workflow.
+  </Card>
+  <Card title="Auf mehreren Rechnern deployen" icon="server" href="/de/policies/deploy">
+    Eine Cloud-Policy beobachten, promoten und zurückrollen.
+  </Card>
+</CardGroup>
+
+<Note>
+  Die Unterstützung der Durchsetzung variiert je nach Harness. Ein Tool-Call-deny wird auf allen 12 unterstützten Harnesses verifiziert; andere Ereignisse variieren. Siehe [unterstützte Harnesses](/de/reference/harnesses#enforcement-capability).
+</Note>

@@ -1,45 +1,41 @@
 ---
 title: "实时事件"
-description: "在会话运行时查看 Agent 活动的实时流。"
+description: "在 Failproof AI Cloud 中实时查看 Agent 活动。"
 icon: "radio"
 ---
 
-实时事件帮助你确认埋点是否正常，并在不等待会话结束的情况下监控高风险运行过程。
+实时事件会在 Agent 运行时显示其活动：模型调用、工具调用、错误、人工输入、hooks 以及策略决策。
 
 ## 查看活动
 
-<Tabs>
-  <Tab title="控制台">
-    1. 前往 **Observe → Events**。
-    2. 从当前时间窗口开始，不添加任何过滤条件，确认数据是否正在到达。
-    3. 按环境、事件类型、Agent 或会话进行过滤，也可通过搜索查找 payload 文本。
-    4. 选择某个事件以查看其摘要和详情，点击会话链接查看完整追踪。
+前往 **Observe → Live events**，或执行以下命令：
 
-    ![实时事件流，显示来自 Hermes 聊天网关的流量以及编码 CLI 运行的记录，可按时间、环境、事件类型、Agent、模型、上下文和会话进行过滤。](/images/dashboard/events-stream-current.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp events --env production --event-type tool_use,error --limit 100
-    fp events --session-id <session-id> --order asc --all
-    fp --json events --full --session-id <session-id> --all
-    ```
+```bash
+fp events --since 1h
+fp events --event-type tool_use,tool_result --since 1h
+fp --json events --full --session-id <session-id> --all --limit 2000
+```
 
-    默认的事件流不包含原始 payload。`--full` 仅建议在对有限范围的会话进行调查时使用。
-  </Tab>
-</Tabs>
+需要查看负载内容时，请使用 `--full` 参数。轻量数据流速度更快，对于大多数过滤场景已经足够。
 
-使用事件流可以快速回答以下三个问题：
+常见事件类型包括：
 
-- 预期的 Agent 是否在向正确的环境上报数据？
-- 模型调用、工具调用和策略决策是否按顺序到达？
-- 会话是否已停止推进，或开始重复执行某个操作？
+- `session_start` 和 `session_end`
+- `model_request` 和 `model_response`
+- `tool_use` 和 `tool_result`
+- `hook_triggered` 和 `hook_completed`
+- `error`
+- `human_wait` 和 `human_input`
+- `agent_pause` 和 `agent_resume`
 
-事件类型包括：Agent 生命周期事件、模型请求与响应、工具调用及结果、Hook 执行、人工等待与中断，以及显式错误。关联 ID 用于将成对的事件（例如工具调用与其结果）关联在一起。
+## 如果事件未显示
 
-<Tip>
-  在验证新集成时，建议保持实时视图为宽泛模式。等看到第一个事件后再添加过滤条件——过早设置错误的过滤条件可能会让你误以为数据采集失败。
-</Tip>
+```bash
+failproofai flush --wait
+failproofai config --status
+failproofai backfill --since 30d --dry-run
+```
 
-如果没有事件出现，请运行 `failproofai config --status`，然后参阅[采集问题排查](/zh/reference/troubleshooting)。
+默认环境为 `local`。若筛选器设置为 `production`，在修改环境标签之前将不会返回任何结果。
 
-未在 12 个受支持的 [harnesses](/zh/reference/harnesses) 中运行的 Agent，同样可以通过 [Python SDK](/zh/reference/custom-agents) 上报相同类型的事件，包括网关和生产环境 Agent 所依赖的人机交互事件（`human_wait`、`human_input`、`human_interrupt`）。
+对于不在受支持运行框架内的 Agent，请使用 [Python SDK](/zh/reference/custom-agents)。

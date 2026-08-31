@@ -1,48 +1,58 @@
 ---
 title: "Lire une trace"
-description: "Trouvez l'événement qui a modifié le déroulement d'une session d'agent."
+description: "Trouvez l'événement qui a modifié le déroulement d'une exécution d'agent."
 icon: "route"
 ---
 
-Une trace transforme un flux d'événements plat en récit causal de l'exécution. Lisez-la à partir du premier point de divergence, et non à rebours depuis la dernière erreur.
-
-## Ouvrir la trace
+Une trace est la chronologie d'une exécution d'agent. Commencez par le premier événement inattendu, pas par l'erreur finale.
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Accédez à **Observer → Sessions** et ouvrez une session.
-    2. Utilisez le résumé de profil pour vérifier le résultat, le timing, les erreurs et les scores d'évaluation.
-    3. Parcourez la chronologie et la minicarte. Filtrez les types d'événements ou la période lorsque la session est volumineuse.
-    4. Sélectionnez un événement pour l'inspecter. Utilisez **exporter** pour obtenir le JSON de l'évaluateur, ou copiez l'URL de la page pour partager un lien direct vers la preuve sélectionnée.
+    1. Ouvrez **Observer → Sessions**.
+    2. Choisissez une session.
+    3. Repérez la première erreur, l'appel d'outil inhabituel, la longue attente ou la décision de politique.
+    4. Ouvrez l'événement et examinez la requête, la réponse, l'entrée et la sortie.
 
-    ![Vue détaillée d'une session avec son graphe d'exécution, sa chronologie d'événements, son panneau d'évaluation et la répartition des outils, modèles et hooks.](/images/dashboard/session-detail.png)
+    ![Une vue détaillée de session avec son graphe d'exécution, sa chronologie d'événements, son panneau d'évaluation, et le récapitulatif des outils, modèles et hooks.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp --json sessions --session-id <session-id>
-    fp events --session-id <session-id> --order asc --all
-    fp --json events --full --session-id <session-id> --all
+    fp events --session-id <session-id> --order asc --all --limit 5000
+    fp --json events --full --session-id <session-id> --all --limit 2000
     ```
 
-    Commencez par le flux d'événements allégé. Ne demandez les charges utiles complètes que lorsque les résumés d'événements ne contiennent pas suffisamment d'informations probantes.
+    Utilisez `--full` uniquement lorsque le résumé de l'événement ne contient pas suffisamment d'éléments probants. Un `next_cursor` non nul signifie que la limite a été atteinte avant la fin.
   </Tab>
 </Tabs>
 
-<Steps>
-  <Step title="S'orienter">
-    Confirmez l'agent, l'environnement, le timing, le résultat et la durée, puis recherchez les erreurs, les spans longs, les outils répétés, les attentes humaines et les décisions de politique refusées.
-  </Step>
-  <Step title="Développer le premier événement suspect">
-    Inspectez sa requête, sa réponse, l'entrée et la sortie de l'outil, ainsi que l'identifiant de corrélation. Le contenu sensible n'est visible que lorsque la capture de transcription est activée et que vos permissions le permettent.
-  </Step>
-  <Step title="Examiner le contexte précédent">
-    La cause se trouve souvent un événement plus tôt : une réponse incorrecte du modèle, un résultat d'outil manquant ou une hypothèse obsolète.
-  </Step>
-  <Step title="Transformer les preuves en actions">
-    Ajoutez la session à un périmètre d'audit, liez-la à un problème ou utilisez le mode de défaillance pour rédiger une politique.
-  </Step>
-</Steps>
+## Suivre les preuves
+
+1. Confirmez l'agent, l'objectif, l'environnement et le résultat.
+2. Trouvez la première erreur ou décision inattendue.
+3. Examinez l'événement qui la précède immédiatement.
+4. Suivez les identifiants correspondants entre les paires requête et réponse.
+5. Transformez les preuves en audit, en ticket ou en politique.
+
+| Paire | Champ correspondant |
+| --- | --- |
+| Requête et réponse du modèle | `request_id` |
+| Appel d'outil et résultat | `tool_call_id` |
+| Démarrage et achèvement du hook | `hook_id` |
+| Pause et reprise de l'agent | `pause_id` |
+| Attente humaine et saisie | `input_id` |
+
+Une décision apparaît sur `hook_completed`. La ligne indique le résultat et la source de la politique. Une décision en mode observation apparaît comme allow avec le verdict hypothétique dans `failproofai_observed`.
 
 <Warning>
-  Une durée longue ne signifie pas toujours une latence du modèle. Dissociez le temps du modèle, des outils, des hooks et des attentes humaines avant de décider quoi corriger.
+  Une longue durée de session n'est pas toujours due à la latence du modèle. Distinguez le temps passé sur le modèle, les outils, les hooks et l'attente humaine avant de décider quoi corriger.
 </Warning>
+
+<CardGroup cols={2}>
+  <Card title="Décisions de politique" icon="shield-check" href="/fr/sessions/policy-decisions">
+    Voyez ce que l'application a autorisé, guidé ou bloqué.
+  </Card>
+  <Card title="Événements en direct" icon="radio" href="/fr/sessions/live-events">
+    Comprenez les types d'événements et leur diffusion.
+  </Card>
+</CardGroup>

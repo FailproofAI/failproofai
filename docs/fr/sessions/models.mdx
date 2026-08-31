@@ -4,24 +4,51 @@ description: "Comparez la latence, les tokens, l'utilisation du contexte et la d
 icon: "cpu"
 ---
 
-Utilisez la vue Modèles pour déterminer si la fiabilité ou le coût a évolué en fonction d'un modèle, d'un agent, d'un environnement ou d'une plage temporelle.
+Utilisez la vue Modèles pour déterminer si la fiabilité ou le coût ont évolué en fonction du modèle, de l'agent, de l'environnement ou de la plage temporelle.
 
 <Tabs>
   <Tab title="Tableau de bord">
     1. Accédez à **Observer → Modèles**.
-    2. Définissez la plage temporelle, puis filtrez par environnement, modèle, agent ou identifiant de session.
+    2. Définissez la plage temporelle, puis filtrez par environnement, modèle, agent ou ID de session.
     3. Examinez la latence, la consommation de tokens, l'utilisation de la fenêtre de contexte et la distribution des modèles.
-    4. Sélectionnez un point du graphique ou un segment de distribution pour afficher les événements correspondants.
+    4. Sélectionnez un point sur un graphique ou un segment de distribution pour ouvrir les événements correspondants.
 
     ![La page Modèles affichant les vues de latence, percentile, tokens, coût, fenêtre de contexte et distribution des modèles.](/images/dashboard/models.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp list models
-    fp events --event-type model_request,model_response --env production --since 24h
-    fp --json events --fields ts,agent_id,session_id,event_type,output_tokens,context_fill
+    fp events --event-type model_request,model_response --since 24h
+    fp --json events --event-type model_response --since 24h --all --limit 500 --fields ts,agent_id,session_id,output_tokens,context_window,context_fill
     ```
 
-    Utilisez une requête sauvegardée pour les agrégats au niveau du modèle qui ne sont pas exposés en tant que commande CLI dédiée.
+    Ces trois commandes nécessitent `events:read`.
+
+    `--fields` projette des colonnes ; il ne filtre pas les lignes. Associez-le à `--event-type` et à une fenêtre temporelle, sans quoi vous obtiendrez les 50 événements les plus récents de chaque type, avec `output_tokens` et `context_fill` à null pour tous les événements non liés à un modèle. `--all` s'arrête à `--limit`, dont la valeur par défaut est 50.
+
+    Lisez `context_fill` conjointement avec `context_window` : un taux de remplissage ne signifie rien sans la fenêtre sur laquelle il est mesuré.
+
+    Le daemon associe l'environnement `local` à chaque événement par défaut ; ainsi, `--env production` ne correspond à rien sur une installation standard. Consultez [Modifier un label d'environnement](/fr/reference/events-and-configuration#change-an-environment-label).
   </Tab>
 </Tabs>
+
+## Ce que la CLI peut et ne peut pas afficher
+
+Le flux d'événements par défaut ne contient pas les payloads. Il expose `output_tokens`, `context_window` et `context_fill` en tant que colonnes promues, et rien d'autre concernant un appel de modèle :
+
+| Valeur | Emplacement |
+| --- | --- |
+| Tokens de sortie, fenêtre de contexte, remplissage du contexte | Colonnes du flux allégé — disponibles directement via `fp events`. |
+| Nom du modèle | Payload — utilisez `fp events --full`, limité à une session. |
+| Tokens d'entrée | Payload — le SDK enregistre les deux moitiés, mais seule la moitié sortante est promue. |
+| Latence par appel | Aucune colonne `duration_ms` dans le flux allégé, et le `model_response` du SDK n'en contient pas non plus. Calculez-la en associant la requête à sa réponse. |
+
+`model_request` et `model_response` sont associés via `request_id`. Ce champ existe précisément pour permettre d'associer une requête à sa réponse ; c'est la seule façon de calculer la latence par appel à partir des événements bruts :
+
+```bash
+fp --json events --full --event-type model_request,model_response --session-id <session-id> --all --limit 500
+```
+
+Les noms de modèles sont transmis tels quels depuis la transcription de chaque environnement d'exécution. Rien dans le pipeline de capture ne les normalise ; un même modèle sous-jacent peut donc apparaître sous plusieurs identifiants propres à chaque fournisseur dans le graphique de distribution. Exécutez `fp list models` pour voir les noms exacts utilisés dans un déploiement donné.
+
+Utilisez une requête sauvegardée pour les agrégats au niveau des modèles qui ne sont pas exposés en tant que commande CLI dédiée.

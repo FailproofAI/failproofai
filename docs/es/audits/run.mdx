@@ -9,13 +9,13 @@ Ejecuta una auditoría cuando su objetivo y población sean lo suficientemente e
 ## Ejecutar e inspeccionar
 
 <Tabs>
-  <Tab title="Panel de control">
+  <Tab title="Dashboard">
     1. Ve a **Analyze → Audits**, abre la auditoría y selecciona **run now**. Una respuesta en cola significa que el despachador la iniciará en breve.
-    2. Abre la nueva ejecución para revisar su estado, ventana de tiempo, duración, conteo de hallazgos e informe.
-    3. Selecciona una sesión de evidencia para abrir el rastro exacto.
-    4. Vuelve a la página de la auditoría para editar la configuración, deshabilitar el programa o inspeccionar ejecuciones anteriores.
+    2. Abre la nueva ejecución para revisar su estado, ventana, duración, recuentos de hallazgos e informe.
+    3. Selecciona una sesión de evidencia para abrir la traza exacta.
+    4. Regresa a la página de auditoría para editar la configuración, deshabilitar el calendario o inspeccionar ejecuciones anteriores.
 
-    ![Una página de detalle de auditoría con hallazgos abiertos, estado de la última y próxima ejecución, ventana de barrido, contexto, control de ejecución inmediata y hallazgos clasificados.](/images/dashboard/audit-detail.png)
+    ![Página de detalle de una auditoría con hallazgos abiertos, estado de la última y próxima ejecución, ventana de barrido, contexto, control de ejecución inmediata y hallazgos clasificados.](/images/dashboard/audit-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -25,43 +25,82 @@ Ejecuta una auditoría cuando su objetivo y población sean lo suficientemente e
     fp audits findings --audit checkout-reliability
     ```
 
-    Consulta la [referencia de `fp audits`](/es/reference/cloud-cli#audits) para ver el historial de ejecuciones, hallazgos y comandos de clasificación.
+    `fp audits run` pone la auditoría en cola; no espera a que finalice. Síguela con `fp audits runs <name>` y lee los hallazgos una vez que la ejecución haya terminado. `--limit` nunca devuelve más de las 50 ejecuciones más recientes, independientemente de lo que solicites.
+
+    El triaje actúa sobre el id de un hallazgo, no sobre la auditoría:
+
+    ```bash
+    fp audits finding <finding-id>
+    fp audits ack <finding-id> --reason "owner assigned"
+    fp audits assign <finding-id> --to engineer@example.com
+    fp audits mute <finding-id> --reason "expected in staging" --yes
+    fp audits dismiss <finding-id> --reason "false positive" --yes
+    fp audits resolve <finding-id> --yes
+    fp audits reopen <finding-id>
+    ```
+
+    `mute`, `dismiss` y `resolve` solicitan confirmación antes de actuar, por lo que debes pasar `--yes` en scripts. `ack`, `assign` y `reopen` actúan de inmediato.
+
+    Consulta la [referencia de `fp audits`](/es/reference/cloud-cli#audits) para ver el historial de ejecuciones, hallazgos y comandos de triaje.
   </Tab>
 </Tabs>
+
+**run now** puede ser rechazado. Una ejecución ya en curso y una auditoría deshabilitada responden ambas con `409`, con el motivo en el campo `error` de la respuesta; una auditoría que no existe, o que pertenece a otra organización, responde con `404`.
+
+| Rechazo | Qué significa | Qué hacer |
+| --- | --- | --- |
+| Auditoría desconocida | La auditoría no existe o pertenece a otra organización. | Confirma el nombre con `fp audits list`. |
+| La auditoría está deshabilitada | Una auditoría deshabilitada no tiene fila en la cola, por lo que no hay nada que programar. Una auditoría pausada sigue mostrando el control **run now**. | Reanúdala primero, o usa `fp audits edit <name> --enabled --yes`. |
+| Ya hay una ejecución en curso | Solo se permite una ejecución por auditoría a la vez; la actual debe finalizar antes de que se ponga otra en cola. | Compruébalo con `fp audits runs <name>`. |
 
 ## Antes de ejecutar
 
 - Confirma que existen sesiones en la ventana de tiempo seleccionada.
 - Verifica los filtros de entorno y agente.
-- Comprueba que el contexto de referencia esté actualizado.
+- Comprueba que el contexto de referencia esté actualizado. Cada ejecución vuelve a leer las páginas de la auditoría y recurre a la copia almacenada cuando no puede acceder a alguna, por lo que una página que se haya movido o eliminado seguirá sirviendo texto obsoleto hasta que corrijas la URL.
 - Asegúrate de que el objetivo describe un modo de fallo, no una conclusión deseada.
 
 ## Revisar la ejecución
 
-Comienza con el estado de la ejecución, la cobertura de sesiones y si se ejecutó el análisis del modelo. Luego inspecciona la severidad de cada hallazgo, su descripción, las sesiones de evidencia, las consultas de soporte y la ruta de prevención sugerida.
+La página de detalle de la auditoría se abre con cinco bloques: **open findings** (hallazgos pendientes de triaje), **last run**, **next run**, **window** (cuánto tiempo hacia atrás lee cada ejecución) y **sensitivity** (con qué agresividad marca una ejecución un patrón: `low`, `medium`, `high`). El límite máximo de hallazgos por ejecución es una configuración separada, hallazgos por ejecución (`--top-k`, predeterminado 50). Esos cinco bloques responden la pregunta de cobertura más rápido que abrir una ejecución.
 
-Usa el estado del hallazgo para reconocer, silenciar, descartar, resolver, reabrir o asignar trabajo. Preserva la evidencia incluso cuando el hallazgo sea descartado; explica por qué se tomó la decisión.
+Luego inspecciona la severidad, descripción, sesiones de evidencia, consultas de respaldo y la ruta de prevención sugerida de cada hallazgo. Los hallazgos están ordenados por una puntuación de **priority** entre 0 y 1, clasificada por ejecución, y cada hallazgo muestra los cuatro factores ponderados que la determinan:
+
+| Factor de clasificación | Peso |
+| --- | --- |
+| Coverage | 0.30 |
+| Magnitude | 0.25 |
+| Severity | 0.25 |
+| Recency | 0.20 |
+
+Un hallazgo se encuentra en exactamente uno de cinco estados: `open`, `recurring`, `resolved`, `dismissed` o `muted`. Una consulta de `findings` sin filtro de estado devuelve el conjunto activo — `open` más `recurring`. Un hallazgo que silencias, descartas o resuelves sale de ese conjunto; `ack` y `assign` no modifican el estado, por lo que el hallazgo permanece en la cola — sin prioridad o asignado, pero no eliminado. Especifica un estado explícitamente para ver los que ya salieron.
+
+Usa el estado del hallazgo para reconocerlo, silenciarlo, descartarlo, resolverlo, reabrirlo o asignar trabajo. Conserva la evidencia incluso cuando el hallazgo se descarte; explica por qué se tomó la decisión. [Findings and issues](/es/audits/findings-and-issues) describe qué hace cada verbo en ejecuciones futuras.
 
 ## Interpretar una ejecución vacía o retrasada
 
-| Condición de ejecución | Qué significa | Qué hacer |
+| Condición de la ejecución | Qué significa | Qué hacer |
 | --- | --- | --- |
-| El análisis se ejecutó y produjo cero hallazgos | La evidencia seleccionada no fue suficiente para generar un hallazgo con la sensibilidad configurada. | Confirma que el alcance contiene sesiones representativas y trata el resultado como saludable, a menos que el objetivo o el contexto hayan sido demasiado vagos. |
-| El análisis del modelo fue omitido o falló | La ejecución se completa con cero hallazgos, pero no realizó la investigación agéntica. El análisis determinístico de credenciales y PII sigue reportando conteos de coincidencias en las estadísticas de ejecución, pero no crea hallazgos. | Corrige el servicio de análisis o la configuración y vuelve a ejecutar. No interpretes el resultado vacío como evidencia de que la población está saludable. |
-| El análisis del modelo está deshabilitado | La ejecución se completa con cero hallazgos. El análisis determinístico no reemplaza al análisis del modelo ni abre hallazgos. | Habilita el análisis del modelo o deshabilita la auditoría en lugar de depender de una que no puede producir hallazgos. |
-| No hay capacidad de análisis disponible de inmediato | La auditoría permanece en cola y reintenta en lugar de omitir la población. | Espera a que haya capacidad o distribuye los anclajes de auditoría. Los operadores autoalojados deben escalar las réplicas del agente de auditoría y la capacidad del despachador correspondiente. |
-| La capacidad sigue no disponible durante la ventana de reintentos | La ejecución abandona con cero hallazgos y envía una notificación de fallo cuando la entrega por correo electrónico está disponible. | Verifica si la flota de auditorías está saturada o reiniciándose repetidamente. |
+| El análisis se ejecutó y produjo cero hallazgos | La evidencia seleccionada no respaldó ningún hallazgo con la sensibilidad configurada. | Confirma que el alcance contiene sesiones representativas, luego trata el resultado como saludable a menos que el objetivo o el contexto hayan sido demasiado vagos. |
+| El análisis del modelo fue omitido o falló | La ejecución finaliza con cero hallazgos, pero no realizó la investigación agéntica. El análisis determinístico de credenciales y PII sigue reportando recuentos de coincidencias en las estadísticas de la ejecución, pero no crea hallazgos. | Corrige el servicio de análisis o la configuración y vuelve a ejecutar. No interpretes el resultado vacío como evidencia de que la población está saludable. |
+| El análisis del modelo está deshabilitado | La ejecución finaliza con éxito y cero hallazgos. El análisis determinístico no reemplaza al análisis del modelo ni abre hallazgos. | Habilita el análisis del modelo o deshabilita la auditoría en lugar de depender de una que no puede producir hallazgos. |
+| No hay capacidad de análisis disponible de inmediato | La auditoría permanece en cola y reintenta en lugar de omitir la población. | Espera a que haya capacidad o distribuye los anclajes de auditoría. Los operadores autohospedados deben escalar las réplicas del agente de auditoría y la capacidad del despachador correspondiente. |
+| La capacidad sigue no disponible durante la ventana de reintento | La ejecución se abandona con cero hallazgos y envía una notificación de fallo cuando la entrega por correo electrónico está disponible. | Comprueba si la flota de auditorías está saturada o reiniciándose repetidamente. |
+
+Las últimas tres filas describen el comportamiento del servidor de la API Cloud y su despachador. En Cloud gestionado, corresponde a Failproof AI resolverlos; en un despliegue autohospedado, te corresponde a ti.
 
 Cuando el análisis no se ejecuta, las auditorías `since_last` mantienen esa ventana sin analizar abierta para la próxima ejecución exitosa. Los hallazgos existentes no se retiran porque un análisis omitido no es evidencia de que el fallo haya desaparecido.
 
-## Comprender las notificaciones de fallo
+## Comprender las notificaciones
 
-Una ejecución fallida o un paso de análisis del modelo fallido utiliza los destinatarios de correo electrónico de la auditoría. Si la auditoría no tiene un canal de correo electrónico, Failproof AI recurre a la configuración `alerts.email_default_recipients` de la organización, de modo que una auditoría silenciosamente rota siga teniendo una ruta de escalación.
+Una ejecución exitosa notifica solo cuando encuentra algo **nuevo**. El silencio de una auditoría saludable es el caso normal, no una señal de que nada se ejecutó — consulta **last run** en la página de auditoría, o `fp audits runs <name>`, para verificar que sí lo hizo. Una auditoría sin canales seleccionados registra sus hallazgos y no notifica a nadie.
 
-El correo electrónico debe estar habilitado para la organización y SMTP debe estar configurado. De lo contrario, el fallo se registra pero no se puede entregar ningún correo. Los fallos de ejecución no mueven el anclaje de programación fija de la auditoría.
+Una ejecución fallida o un paso de análisis del modelo fallido utiliza los destinatarios de correo electrónico de la auditoría. Si la auditoría no tiene canal de correo electrónico, Failproof AI recurre a la configuración `alerts.email_default_recipients` de la organización, de modo que una auditoría silenciosamente rota aún tenga una ruta de escalado.
 
-Cada ejecución también almacena el [contexto del agente](/es/audits/agent-contracts) exacto utilizado para cada agente como una instantánea de contrato. Las ediciones posteriores no modifican el estándar de evidencia registrado con una ejecución anterior.
+El correo electrónico debe estar habilitado para la organización y SMTP debe estar configurado. De lo contrario, el fallo se registra pero no se puede entregar ningún correo. Los fallos de ejecución no desplazan el anclaje de calendario fijo de la auditoría.
+
+Cada ejecución también almacena el [contexto del agente](/es/audits/agent-contracts) exacto utilizado para cada agente como una instantánea del contrato. Las ediciones posteriores no cambian el estándar de evidencia registrado en una ejecución anterior.
 
 <Warning>
-  No implementes una política de bloqueo directamente a partir de un hallazgo no verificado. Abre los rastros citados y confirma que la regla separa el comportamiento inseguro del trabajo legítimo.
+  No despliegues una política de bloqueo directamente a partir de un hallazgo no verificado. Abre las trazas citadas y confirma que la regla distingue el comportamiento inseguro del trabajo legítimo.
 </Warning>

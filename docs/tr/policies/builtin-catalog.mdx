@@ -1,106 +1,147 @@
 ---
+---
 title: "Yerleşik politika kataloğu"
-description: "Her bir Failproof AI yerleşik politikasını, tetikleme koşullarını, önerilen durumunu ve yapılandırılabilir parametrelerini inceleyin."
+description: "Her bir Failproof AI yerleşik politikasını, tetikleyicisini, varsayılan durumunu ve yapılandırılabilir parametrelerini inceleyin."
 icon: "list-checks"
 ---
 
-Yüklü paket, politika mevcudiyetinin kaynağıdır. Her yükseltmeden sonra `failproofai policies` komutunu çalıştırın çünkü katalog girdileri ve davranış paket sürümüyle değişebilir.
+39 yerleşik politikanın 38'si `FailproofAI/policies` paketi olarak sunulur; `block-failproofai-commands` paket içine derlenmiş olarak gönderilir çünkü bir paket `alwaysOn` bildiremez. Kurulan paket, bu makinenin ne zorlayabileceğinin gerçek kaynağıdır:
 
-## Önerilen temel ayarlar
-
-Rehberli kurulumun önerilen seçimi şu anda sır temizleyicileri, ortam korumalarını, kendi kendini korumayı, felaket komutları korumasını ve korumalı dal güvenliğini etkinleştirmektedir:
-
-```text
-sanitize-jwt                 sanitize-api-keys
-sanitize-connection-strings sanitize-private-key-content
-sanitize-bearer-tokens       protect-env-vars
-block-env-files              block-secrets-write
-block-failproofai-commands   block-sudo
-block-curl-pipe-sh           block-rm-rf
-block-push-master            block-force-push
+```bash
+failproofai policies show FailproofAI/policies   # yayınlanan kataloğu
+failproofai policies                             # burada etkin olanlar
 ```
 
-`block-failproofai-commands` **her zaman açıktır**. Bütünlük açısından yukarıda listelenmiştir, ancak etkinleştirilen ayarında yer alıp almadığına bakılmaksızın her değerlendirmede kaydolur ve devre dışı bırakılamaz veya duraklatılamaz — aracının zorlama mekanizmasını kapatabilmesine karşı bir koruma kendisi değer taşımaz.
+`failproofai policies` özel dosyaları, kural dosyalarını, kurulan paketleri ve Bulut atamalarını listeler. Yerleşik bir bölümü olmadığı için "hangi yerleşik politikalar var" sorusuna cevap veremez — `policies show` ve [Policy Hub](https://befailproof.ai/policy-hub/FailproofAI/policies/) bu sorunun cevaplandığı yerlerdir.
 
-Önerilen, **Her şey** seçeneğinden kasıtlı olarak daha darıttır. Altyapı ve iş akışı politikaları geçerli işi kesintiye uğratabilir ve bunların etkinleştirilmesi gerekli olan depolar ve makineler için seçilmelidir.
+## Varsayılanlar ve seçim yapma
 
-## Sırlar ve ortam
+Boş bir `failproofai policies add FailproofAI/policies` paketin kendi varsayılanlarını etkinleştirir — aşağıda **açık** olarak işaretlenen 10 satır. `block-failproofai-commands` bağımsız olarak açıktır ve bu seçimin parçası değildir. `--all` her şeyi alır; `--category <slug>` ve `--policy <name>` bir dilim alır. Her başlık yanındaki slug, `--category` tarafından eşleştirilene karşılık gelir:
 
-| Politika | Tetikleyici | Sonuç |
+```bash
+failproofai policies add FailproofAI/policies --category git,database
+```
+
+`block-failproofai-commands` **her zaman açıktır**. Seçiminizde görünüp görünmediğine bakılmaksızın her değerlendirmede kaydedilir ve devre dışı bırakılamaz veya duraklatılamaz — aracının devre dışı bırakabileceği bir korumanın devre dışı bırakılması bir koruma değildir. Bir paket `alwaysOn` bildiremeyeceğinden, bu politika pakette değil paket içine derlenmiş olarak gönderilir.
+
+## Temizle — `sanitize`
+
+Bunlar `PostToolUse` tetikleyicisinde çalışır, araç zaten çalıştıktan sonra. Araç sonucunu **algılar ve reddeder**; bir alt dizgiyi değiştirmez ve geri kalanını döndürmez.
+
+Buradaki reddetme yalnızca `PostToolUse` kararını kullanan harness'lere ulaşır — **codex** ve **copilot**, neden tüm araç sonucunun yerini alır. Claude, cursor, opencode, pi, hermes, openclaw, factory, devin, antigravity ve goose üzerinde `PostToolUse` yalnızca gözlemedir: algılama kaydedilir ve çıktı yine de modele ulaşır.
+
+| Politika | Tetikleyici | Varsayılan | Sonuç |
+| --- | --- | --- | --- |
+| `sanitize-jwt` | `PostToolUse` | açık | JWT içeren bir araç sonucunu reddet. |
+| `sanitize-api-keys` | `PostToolUse` | açık | OpenAI, Anthropic, GitHub, AWS, Stripe veya Google anahtarı içeren bir araç sonucunu reddet. |
+| `sanitize-connection-strings` | `PostToolUse` | açık | Gömülü kimlik bilgileri içeren veritabanı bağlantı dizesi içeren bir araç sonucunu reddet. |
+| `sanitize-private-key-content` | `PostToolUse` | açık | PEM özel anahtar içeriği içeren bir araç sonucunu reddet. |
+| `sanitize-bearer-tokens` | `PostToolUse` | açık | `Authorization: Bearer` belirteci içeren bir araç sonucunu reddet. |
+
+## Ortam — `environment`
+
+| Politika | Tetikleyici | Varsayılan | Sonuç |
+| --- | --- | --- | --- |
+| `protect-env-vars` | `PreToolUse` on `Bash` | açık | Ortam değişkenlerini okuyan komutları engelle. |
+| `block-env-files` | `PreToolUse` | açık | `.env` dosyalarının okunmasını ve yazılmasını engelle. |
+| `block-read-outside-cwd` | `PreToolUse` on `Read`, `Glob`, `Grep`, `Bash` | kapalı | Dosya okumalarını oturum çalışma dizini içinde tut. |
+
+## Tehlikeli komutlar — `dangerous-commands`
+
+| Politika | Tetikleyici | Varsayılan | Sonuç |
+| --- | --- | --- | --- |
+| `block-sudo` | `PreToolUse`, `PermissionRequest` on `Bash` | açık | `sudo` komutunu engelle, izin deseni eşleşmediği sürece. |
+| `block-curl-pipe-sh` | `PreToolUse` on `Bash` | açık | İndirilen betiklerin doğrudan bir shell'e yönlendirilmesini engelle. |
+| `block-failproofai-commands` | `PreToolUse`, `PermissionRequest` on `Bash`, `Write`, `Edit`, `NotebookEdit` | **her zaman açık** | Her Failproof AI CLI çağrısını, kendi kendini duraklatmayı ve kaldırılmasını engelle. |
+| `block-rm-rf` | `PreToolUse` on `Bash` | kapalı | Felaket niteliğinde özyinelemeli silme kalıplarını engelle. |
+| `block-secrets-write` | `PreToolUse` on `Write` | kapalı | Ortak gizli anahtar ve kimlik bilgisi dosya adlarına yazmaları engelle. |
+
+## Altyapı komutları — `infra-commands`
+
+Yedisinin tamamı varsayılan olarak kapalıdır: meşru çalışmaların sürekli kullandığı araçları kontrol ederler, bu nedenle bunlara ihtiyaç duyan depolar ve makinelere aittirler.
+
+| Politika | Tetikleyici | Varsayılan | Sonuç |
+| --- | --- | --- | --- |
+| `block-kubectl` | `PreToolUse` on `Bash` | kapalı | `kubectl` küme mutasyonlarını kontrol et. |
+| `block-terraform` | `PreToolUse` on `Bash` | kapalı | `terraform` ve `tofu` komutlarını kontrol et. |
+| `block-aws-cli` | `PreToolUse` on `Bash` | kapalı | `aws` CLI komutlarını kontrol et. |
+| `block-gcloud` | `PreToolUse` on `Bash` | kapalı | `gcloud` komutlarını kontrol et. |
+| `block-az-cli` | `PreToolUse` on `Bash` | kapalı | `az` komutlarını kontrol et. |
+| `block-helm` | `PreToolUse` on `Bash` | kapalı | `helm` komutlarını kontrol et. |
+| `block-gh-pipeline` | `PreToolUse` on `Bash` | kapalı | Mutasyona uğrayan `gh` işlemlerini kontrol et: iş akışı çalıştır, çalıştır yeniden ve iptal et, pr birleştir, sürüm oluştur ve sil, önbellek sil, gizli dizi ayarla ve sil. `gh pr view` gibi salt okunur alt komutlar eşleştirilmez. |
+
+## Git — `git`
+
+| Politika | Tetikleyici | Varsayılan | Sonuç |
+| --- | --- | --- | --- |
+| `block-push-master` | `PreToolUse` on `Bash` | açık | Yapılandırılmış korumalı dallara doğrudan itmeleri engelle. |
+| `block-force-push` | `PreToolUse` on `Bash` | kapalı | Zorla itmeleri engelle. `--force-with-lease` ve `--force-if-includes` izin verilmiş olarak kalır. |
+| `block-work-on-main` | `PreToolUse` on `Bash` | kapalı | Korumalı dallardaki işleri ve birleştirmeleri engelle. |
+| `warn-git-amend` | `PreToolUse` on `Bash` | kapalı | `--amend` ile bir işlemi yeniden yazmadan önce uyar. |
+| `warn-git-stash-drop` | `PreToolUse` on `Bash` | kapalı | Depolanan işleri kalıcı olarak bırakmadan veya temizlemeden önce uyar. |
+| `warn-all-files-staged` | `PreToolUse` on `Bash` | kapalı | Geniş `git add -A`, `git add .` veya `git add --all` komutlarında uyar. |
+
+## Veritabanı — `database`
+
+| Politika | Tetikleyici | Varsayılan | Sonuç |
+| --- | --- | --- | --- |
+| `warn-destructive-sql` | `PreToolUse` on `Bash` | kapalı | Tanınan veritabanı istemcileri aracılığıyla `WHERE` olmayan `DROP`, `TRUNCATE` ve `DELETE` komutlarında uyar. |
+| `warn-schema-alteration` | `PreToolUse` on `Bash` | kapalı | Tanınan `ALTER TABLE` sütun ve yeniden adlandırma işlemlerinde uyar. |
+
+## Paketler ve sistem — `packages-system`
+
+| Politika | Tetikleyici | Varsayılan | Sonuç |
+| --- | --- | --- | --- |
+| `warn-package-publish` | `PreToolUse` on `Bash` | kapalı | npm, PyPI, crates.io, RubyGems ve benzeri kayıtlara yayınlamadan önce uyar. |
+| `warn-global-package-install` | `PreToolUse` on `Bash` | kapalı | Global paket kurulumundan önce uyar. |
+| `prefer-package-manager` | `PreToolUse` on `Bash` | kapalı | Tercih edilmeyen bir paket yöneticisini engelle ve aracıya izin verilen bir paket yöneticisi kullanmasını söyle. |
+| `warn-large-file-write` | `PreToolUse` on `Write` | kapalı | Yapılandırılmış dosya boyutu eşiğinin üzerinde uyar. |
+| `warn-background-process` | `PreToolUse` on `Bash` | kapalı | Ayrılmış veya arka plan süreci kalıplarında uyar. |
+
+## AI davranışı — `ai-behavior`
+
+| Politika | Tetikleyici | Varsayılan | Sonuç |
+| --- | --- | --- | --- |
+| `warn-repeated-tool-calls` | `PreToolUse` | kapalı | Aynı araç aynı parametrelerle üç veya daha fazla kez çağrıldığında uyar. |
+
+## İş akışı — `workflow`
+
+Beşinin tamamı `Stop` tetikleyicisinde çalışır ve varsayılan olarak kapalıdır.
+
+| Politika | Varsayılan | Sonuç |
 | --- | --- | --- |
-| `sanitize-jwt` | `PostToolUse` | Araç çıktısından JWT'leri modelin görmesinden önce redakte edin. |
-| `sanitize-api-keys` | `PostToolUse` | Yaygın OpenAI, Anthropic, GitHub, AWS, Stripe ve Google anahtarlarını redakte edin. |
-| `sanitize-connection-strings` | `PostToolUse` | Kimlik bilgilerini içeren veritabanı bağlantı dizelerini redakte edin. |
-| `sanitize-private-key-content` | `PostToolUse` | PEM özel anahtar gövdelerini redakte edin. |
-| `sanitize-bearer-tokens` | `PostToolUse` | Yetkilendirme taşıyıcı jetonlarını redakte edin. |
-| `protect-env-vars` | Shell araçlarında `PreToolUse` | Ortam değişkenlerini döken komutları engelleyin. |
-| `block-env-files` | `PreToolUse` | `.env` dosyalarının okumalarını ve yazışlarını engelleyin. |
-| `block-read-outside-cwd` | Okuma, glob, grep veya shell araçlarında `PreToolUse` | Okumaları oturum çalışma dizini içinde tutun. |
-| `block-secrets-write` | Yazma araçlarında `PreToolUse` | Yaygın sır anahtarı ve kimlik bilgisi dosya adlarına yazmaları engelleyin. |
+| `require-commit-before-stop` | kapalı | İzlenen işler işlenmemiş olduğu sürece tamamlamayı reddet. |
+| `require-push-before-stop` | kapalı | İşler yalnızca yerel olduğu sürece tamamlamayı reddet. |
+| `require-pr-before-stop` | kapalı | Geçerli dal için çekme isteği iste. |
+| `require-no-conflicts-before-stop` | kapalı | Yapılandırılmış temel dal ile temiz birleştirme iste. |
+| `require-ci-green-before-stop` | kapalı | Geçerli HEAD işlemi üzerindeki CI kontrolleri geçsin, önceki işlemler üzerindeki eski çalıştırmaları yoksay. |
 
-## Tehlikeli komutlar ve altyapı
+Bunlara `Stop` kararının tüketildiği bir harness gerekir. Bu her harness değildir:
 
-| Politika | Tetikleyici | Sonuç |
-| --- | --- | --- |
-| `block-sudo` | `PreToolUse`, `PermissionRequest` | İzin deseni eşleşmediği sürece `sudo`'yu engelleyin. |
-| `block-curl-pipe-sh` | `PreToolUse` | İndirilen betikleri doğrudan bir kabuğa yönlendirmeyi engelleyin. |
-| `block-rm-rf` | `PreToolUse` | Felaket düzeyinde özyinelemeli silme desenleri engelleyin. |
-| `block-failproofai-commands` | `PreToolUse`, `PermissionRequest` | **Her zaman açıktır, devre dışı bırakılamaz.** Her Failproof AI CLI çağrısını, kendi kendini duraklatmayı ve paket yöneticisi kaldırmalarını engelleyin. |
-| `block-kubectl` | `PreToolUse` | Kubernetes komutlarını kısıtlayın. |
-| `block-terraform` | `PreToolUse` | Terraform ve OpenTofu komutlarını kısıtlayın. |
-| `block-aws-cli` | `PreToolUse` | AWS CLI komutlarını kısıtlayın. |
-| `block-gcloud` | `PreToolUse` | Google Cloud CLI komutlarını kısıtlayın. |
-| `block-az-cli` | `PreToolUse` | Azure CLI komutlarını kısıtlayın. |
-| `block-helm` | `PreToolUse` | Helm komutlarını kısıtlayın. |
-| `block-gh-pipeline` | `PreToolUse` | Değiştiren GitHub CLI iş akışı, çalıştırma, birleştirme, yayın, önbellek ve sır işlemlerini kısıtlayın. |
-
-## Git ve veritabanı güvenliği
-
-| Politika | Tetikleyici | Sonuç |
-| --- | --- | --- |
-| `block-push-master` | `PreToolUse` | Yapılandırılmış korumalı dallara doğrudan gönderileri engelleyin. |
-| `block-force-push` | `PreToolUse` | Zorla gönderileri engelleyin; `--force-with-lease` mevcut uygulamada izin verilen olarak kalır. |
-| `block-work-on-main` | `PreToolUse` | Korumalı dallarda işlemeleri ve birleştirmeleri engelleyin. |
-| `warn-git-amend` | `PreToolUse` | `--amend` ile bir işlemeyi yeniden yazarken uyarı verin. |
-| `warn-git-stash-drop` | `PreToolUse` | Hazırlamaları kalıcı olarak bırakmadan veya temizlemeden önce uyarı verin. |
-| `warn-all-files-staged` | `PreToolUse` | Geniş `git add -A`, `git add .` veya `git add --all` sırasında uyarı verin. |
-| `warn-destructive-sql` | `PreToolUse` | Tanınan veritabanı istemcileri aracılığıyla `WHERE` olmayan `DROP`, `TRUNCATE` ve `DELETE` sırasında uyarı verin. |
-| `warn-schema-alteration` | `PreToolUse` | Tanınan `ALTER TABLE` sütun ve yeniden adlandırma işlemleri sırasında uyarı verin. |
-
-## Paketler, sistem davranışı ve aracı döngüleri
-
-| Politika | Tetikleyici | Sonuç |
-| --- | --- | --- |
-| `warn-package-publish` | `PreToolUse` | Paket kayıtlarına yayınlamadan önce uyarı verin. |
-| `warn-global-package-install` | `PreToolUse` | Genel paket kurulumundan önce uyarı verin. |
-| `prefer-package-manager` | `PreToolUse` | Aracıya izin verilen bir paket yöneticisini kullanmasını öğütleyin. |
-| `warn-large-file-write` | Yazma araçlarında `PreToolUse` | Yapılandırılmış dosya boyutu eşiğinin üzerinde uyarı verin. |
-| `warn-background-process` | `PreToolUse` | Ayrılmış veya uzun süreli arka plan işlem desenlerinde uyarı verin. |
-| `warn-repeated-tool-calls` | `PreToolUse` | Üç veya daha fazla özdeş araç çağrısından sonra uyarı verin. |
-
-## Görev sonu iş akışı
-
-Bu politikalar uyumlu bir `Stop` olayı yayan bir sistem gerektirmektedir.
-
-| Politika | Sonuç |
+| Harness | `Stop` |
 | --- | --- |
-| `require-commit-before-stop` | İzlenen işler işlenmemişken tamamlamayı reddedin. |
-| `require-push-before-stop` | İşlemeler yalnızca yerel olarak kalırken tamamlamayı reddedin. |
-| `require-pr-before-stop` | Geçerli dal için bir çekme isteği gerektirin. |
-| `require-no-conflicts-before-stop` | Yapılandırılmış temel dala karşı temiz bir birleştirme gerektirin. |
-| `require-ci-green-before-stop` | Geçerli-HEAD CI denetimlerinin başarıyla tamamlanmasını gerektirin. |
+| claude, codex, copilot, cursor, openclaw, factory, devin, antigravity | Engellediği doğrulandı: reddetme başka bir turu zorlar |
+| pi | Gözleyin. Neden sonraki turu bir talimata olarak taşınır, kapı değil |
+| goose, hermes | Hiçbir `Stop` kancası yüklenmediğinden, bu beş hiçbir zaman tetiklenmez |
+| opencode | Doğrulanmamıştır. `Stop` opencode'un kararını aldığı olaylar arasında değildir |
 
-## Parametre referansı
+Cursor Cloud Agent VM'leri hiç durma kancası çalıştırmaz, bu nedenle yerel Cursor olmasa da orada bir Cursor oturumu kapsanmamıştır.
 
-Seçilen kapsamın `policyParams` nesnesi altında parametreleri yapılandırın. Türler her politika tarafından doğrulanmaktadır.
+<Note>
+  `warn-*` politikaları `deny` değil `instruct` döndürür. (`prefer-package-manager` non-`block-*` adları arasında istisnadır: `deny` döndürür, bu nedenle `PreToolUse` kararını tüketen her harness'te engeller — bu on ikisinin tamamı). Hermes ve Goose üzerinde, Pi, OpenClaw ve Factory üzerinde `Stop` kanalı dışında ve Antigravity üzerinde `Stop` ve `UserPromptSubmit` dışında, `instruct` izin artı stderr üzerinde bir nota yaşanır — aracı bildirilmez. Antigravity'nin `UserPromptSubmit` gerçek bir ikinci kanal: talimata model çalıştırılmadan önce geçici bir ileti olarak enjekte edilir.
+</Note>
+
+## Parametre başvurusu
+
+Seçili kapsamın `policyParams` nesnesi altında parametreleri yapılandırın. Tipler her politika tarafından doğrulanır.
 
 | Politika | Parametre | Tür ve varsayılan |
 | --- | --- | --- |
-| `sanitize-api-keys` | `additionalPatterns` | `pattern[]`, `[]`; girdiler `regex` ve `label` içerir |
+| `sanitize-api-keys` | `additionalPatterns` | `pattern[]`, `[]`; girişler `regex` ve `label` içerir |
 | `block-read-outside-cwd` | `allowPaths` | `string[]`, `[]` |
 | `block-sudo` | `allowPatterns` | `string[]`, `[]` |
 | `block-rm-rf` | `allowPaths` | `string[]`, `[]` |
-| Altyapı engelleyicileri | `allowPatterns` | `string[]`, `[]` |
+| Altyapı engelleri | `allowPatterns` | `string[]`, `[]` |
 | `block-secrets-write` | `additionalPatterns` | `string[]`, `[]` |
 | `block-push-master` | `protectedBranches` | `string[]`, `["main", "master"]` |
 | `block-work-on-main` | `protectedBranches` | `string[]`, `["main", "master"]` |
@@ -112,7 +153,6 @@ Seçilen kapsamın `policyParams` nesnesi altında parametreleri yapılandırın
 
 ```json
 {
-  "enabledPolicies": ["block-sudo", "block-push-master"],
   "policyParams": {
     "block-sudo": {
       "allowPatterns": ["sudo systemctl status"]
@@ -124,6 +164,10 @@ Seçilen kapsamın `policyParams` nesnesi altında parametreleri yapılandırın
 }
 ```
 
+<Note>
+  Bare politika adı `policyParams` anahtarı olarak yalnızca `FailproofAI/policies` için onurlandırılır. Başka herhangi bir paket için anahtar `pack/<owner>/<repo>/<policy>` — aynı politika adını bildiren bir yabancı paketin şema varsayılanlarınızı değil, parametrelerinizi alır.
+</Note>
+
 <Warning>
-  İzin deseni, bir aracının yapabileceği işleri genişletir. Hedef sistem üzerinde tam tokenleşmeyi ve komut varyantlarını test edin ve bunu bir filoyu karşısında dağıtmadan önce doğrulayın.
+  İzin deseni bir aracının yapabileceğini genişletir. Hedef harness üzerinde tam tokenleştirmeyi ve komut çeşitlemelerini test edin, bunu bir filoye dağıtmadan önce.
 </Warning>

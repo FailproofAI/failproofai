@@ -1,21 +1,16 @@
 ---
 title: "用户与组织"
-description: "管理成员资格，并将每个组织的数据与操作限定在各自范围内。"
+description: "管理成员资格，并将每个组织的数据和操作限定在各自的作用域内。"
 icon: "users"
 ---
 
-组织将会话、评估、审计、问题、告警、查询、仪表板、用户和密钥相互隔离。在修改管理资源之前，请确认当前活动的组织。
+组织对会话、评估、审计、问题、告警、查询、仪表盘、用户和密钥进行隔离。在更改任何管理资源之前，请确认当前所在的组织。
 
-## 管理成员与组织
+## 选择组织
 
 <Tabs>
-  <Tab title="仪表板">
-    1. 使用 Cloud 侧边栏顶部的组织切换器来切换组织。
-    2. 前往 **Administration → Users**，搜索成员，或按活动状态和角色进行筛选。
-    3. 选择 **new user**，输入邮箱地址，选择权限集，并根据需要调整覆盖项。
-    4. 稍后打开某个用户，可更新授权、禁用登录或重新启用该账户。
-
-    ![用户页面，显示成员邮箱地址、权限集以及编辑和禁用控件。](/images/dashboard/users.png)
+  <Tab title="控制台">
+    使用 Cloud 侧边栏顶部的组织切换器。切换后，其下方的所有内容——包括 **admin** 中的每个页面——都将读取和写入该组织的数据。
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -23,22 +18,62 @@ icon: "users"
     fp orgs switch reliability-team
     fp orgs current
     fp orgs perms
+    ```
 
+    不带 slug 的 `fp orgs switch` 会打开一个箭头键选择器，默认定位到当前组织；非交互式运行时会回退到数字编号提示，在 `--json` 模式下则必须提供 slug。所做的选择会持久化到 `~/.failproofai/fpcli/cli-auth.json`，后续命令将以此作为活跃租户发送请求。可通过 `--org <slug>` 或 `FP_ORG` 对单条命令进行覆盖。
+  </Tab>
+</Tabs>
+
+<Note>
+  所有 `fp orgs` 命令都需要已登录的真实用户，不支持 API 密钥，因为组织成员资格属于个人，而密钥本身已绑定到某一个组织。下方的 `fp users` 命令则两种方式均可使用。
+</Note>
+
+## 管理成员
+
+<Tabs>
+  <Tab title="控制台">
+    1. 前往 **admin → users**，通过邮箱搜索成员，或使用 `protected`、`admin`、`standard`、`read-only` 筛选标签缩小列表范围。
+    2. 选择 **new user**，输入邮箱，选择权限集，并根据需要调整单个成员的覆盖权限。
+    3. 之后可以打开某个成员的详情，修改授权、禁用登录或重新启用账户。
+
+    ![The users page with the email search box, the filter chips, and a member card showing its grants grouped by resource.](/images/dashboard/users.png)
+
+    此界面中的授权标签创建于 `incidents:*` 重命名为 `issues:*` 之前；[常用权限](/zh/admin/keys-and-permissions#common-permissions)列表为最新版本。
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp users list
+    fp users list --active-only
     fp users create engineer@example.com --permission-set standard
     fp users show engineer@example.com
     fp users update engineer@example.com --add audits:write
     fp users disable engineer@example.com
     fp users enable engineer@example.com
     ```
+
+    成员通过邮箱进行标识，匹配时不区分大小写，因此 `fp users show Alice.Chen@Example.com` 与 `fp users create alice.chen@example.com` 指向同一个人。
   </Tab>
 </Tabs>
 
-管理员可以创建、更新、禁用和重新启用用户，并为其分配与角色相适应的权限集。API 使用删除操作来禁用用户，但不会移除账户本身或其成员记录。
+### 授权及各操作所需权限
+
+成员授权与密钥使用相同的计算逻辑：有效授权为 `(集合 ∪ 新增) − 移除`，`--add` / `--remove` 接受紧凑格式的 `slug:action.action` 令牌，其中以点号分隔的操作会自动展开。详见[密钥与权限](/zh/admin/keys-and-permissions)。
+
+| 操作 | 所需权限 | 说明 |
+| --- | --- | --- |
+| `fp users list` / `show` | `users:read` | `--active-only` 会隐藏已禁用的成员。 |
+| `fp users create` | `users:create` | `--permission-set` 用于设置初始角色；`--add` / `--remove` 可在此基础上添加覆盖权限。 |
+| `fp users update` | `users:update` | `--permission-set` 会**替换**该成员的所有单独覆盖权限；单独使用 `--add` / `--remove` 则是在其现有授权基础上进行增量变更。 |
+| `fp users disable` / `enable` | `users:delete` | 两者均需此权限，包括启用操作——请谨慎授予。 |
+
+禁用操作在以下两种情况下会直接返回 Forbidden 错误而非校验提示：**受保护**的成员无法被禁用，以及不能禁用自己的账户。对已禁用的成员执行禁用，或对已激活的成员执行启用，均为静默的空操作。API 使用删除操作来执行禁用，但不会删除账户本身或其成员记录。
+
+组织有两项设置与成员管理相关：`default_user_permissions` 用于预设新邀请的权限集，`allowed_sign_ins` 用于控制哪些地址可以接收登录验证码。可从[设置页面](/zh/admin/settings-and-security)进行管理。
 
 <Warning>
-  禁用某个用户会阻止该身份登录所有组织，而不仅限于当前选定的组织。重新启用后，将恢复该用户的全局登录权限以及其在本组织中的成员权限。
+  禁用用户会阻止该身份登录**所有**组织，而不仅仅是当前选中的组织。重新启用后将恢复全局登录权限以及该成员在本组织中的权限。
 </Warning>
 
 <Tip>
-  为服务账户使用与工作负载和负责人相关联的描述性名称。避免在组织之间或在人员与机器之间共享密钥。
+  为服务账户取一个与工作负载和负责人相关联的描述性名称。不要在多个组织之间共享密钥，也不要让个人和机器共用同一个密钥。
 </Tip>

@@ -1,74 +1,124 @@
 ---
 title: "HTTP API"
-description: "Failproof AI Cloud `/v1` API'sine kimlik doğrulaması yapın ve oluşturulan uç nokta referansını kullanın."
+description: "Failproof AI Cloud `/v1` API'sine kimlik doğrulaması yapın ve oluşturulan endpoint referansını kullanın."
 icon: "braces"
 ---
 
-Genel API, Failproof AI panonuzu üzerinde `/v1` altında sunulur.
+Genel API, Failproof AI panonunuzun kaynağında `/v1` altında sunulur. Failproof AI Cloud'da bu kaynak `https://app.befailproof.ai` olduğundan, temel yol `https://app.befailproof.ai/v1` dir. Kendi kendine barındırılan bir dağıtımda bu, panonuz ana bilgisayarı ve ardından `/v1` dir; bu ana bilgisayarı `--base-url <url>` veya `FP_DASHBOARD_URL` ile `fp` ye iletin.
 
 ## Anahtar oluşturun ve istek yapın
 
 <Tabs>
-  <Tab title="Dashboard">
-    1. **Yönetim → Anahtarlar** kısmını açın, **Anahtar oluştur** seçeneğini seçin ve entegrasyonunuzu kapsayan en dar izin ön ayarını seçin.
-    2. Gerekli olduğunda yalnızca bireysel izinler ekleyin, anahtarı oluşturun ve tek seferlik sırrını kopyalayın.
-    3. `/v1/sessions` adresine test isteği yapın ve anahtarın Anahtarlar sayfasında etkin kalıp kalmadığını onaylayın.
-    4. Entegrasyon sahipliği değiştiğinde, anahtarı eylem menüsünden döndürün veya devre dışı bırakın.
+  <Tab title="Pano">
+    1. **Administration → Keys** açın, **new key** seçin ve entegrasyonu kapsayan en dar izin ön ayarını seçin.
+    2. Gerekli olduğunda yalnızca bireysel hibe ekleyin, anahtarı oluşturun ve tek seferlik sırrını kopyalayın.
+    3. `/v1/sessions` için bir test isteği yapın ve anahtarın Keys sayfasında etkin kalmasını onaylayın.
+    4. Entegrasyon sahipliği değiştiğinde anahtarı rotasyonla değiştirin veya devre dışı bırakın.
 
-    ![İzin ön ayarları ve bireysel izinlerle yeni API anahtarı çekmeçesi.](/images/dashboard/key-create.png)
+    ![Yeni API anahtarı çekmeçesi izin ön ayarları ve bireysel hibeler ile.](/images/dashboard/key-create.png)
 
-    Yukarıda oluşturma çekmeçesi gösterilmektedir. Tek seferlik sırrı yalnızca **oluştur** seçeneğini seçtikten sonra gösterilir; bu onayı kapatmadan önce kopyalayın.
+    Oluşturma çekmeçesi yukarıda gösterilmiştir. Tek seferlik sır yalnızca anahtar oluşturulduktan sonra görünür; bu onayı kapatmadan önce kopyalayın.
   </Tab>
   <Tab title="CLI">
-    Okuma anahtarı oluşturun ve bunu `fp` veya `curl` ile doğrudan kullanın:
+    Bir okuma anahtarı oluşturun ve bunu `fp` veya `curl` ile doğrudan kullanın. `fp`, anahtarı `--api-key` veya `FP_API_KEY` den okur:
 
     ```bash
     fp keys create reliability-reader \
       --permission-set read-only
 
-    fp --api-key <key> sessions --since 24h
-    ```
-
-    ```bash
-    curl "https://app.befailproof.ai/v1/sessions?limit=20" \
-      -H "Authorization: Bearer $FAILPROOFAI_KEY"
-    ```
-  </Tab>
-</Tabs>
-
-Anahtarlar bir kuruluş ve izin seti kapsamındadır. Uç noktanın gerekli iznine sahip olmayan bir istek `403` döndürür ve eksik olan izni tanımlar.
-
-## Kuruluş seçimi
-
-Bir kuruluş anahtarı, kuruluşuna otomatik olarak etki eder. Bir örnek kapsamlı anahtar, istek başına bir kuruluş seçebilir:
-
-<Tabs>
-  <Tab title="Dashboard">
-    Pano başlığındaki kuruluş değiştiricisini kullanın ve ardından **Yönetim → Anahtarlar** kısmını açın. Orada oluşturulan anahtarlar, seçilen kuruluşa aittir. URL'deki ve anahtar ayrıntısındaki kuruluş slug'ını onaylayın ve kimlik bilgisini otomasyon içine kopyalamadan önce doğrulayın.
-
-  </Tab>
-  <Tab title="CLI">
-    Komuttan önce `--org` kullanın veya bir örnek kapsamlı API anahtarı için kuruluş başlığı gönderin.
-
-    ```bash
-    fp orgs list
+    export FP_API_KEY="<one-time-secret>"
     fp --org reliability-team sessions --since 24h
     ```
 
     ```bash
-    curl "https://app.befailproof.ai/v1/usage" \
-      -H "Authorization: Bearer $FAILPROOFAI_KEY" \
+    curl "https://app.befailproof.ai/v1/sessions?limit=20" \
+      -H "Authorization: Bearer $FP_API_KEY" \
       -H "X-AgentEye-Org: reliability-team"
     ```
   </Tab>
 </Tabs>
 
-Bu bölümdeki oluşturulan uç nokta sayfalarını geçerli yollar, parametreler, izin gereksinimleri ve durum kodları için kullanın. Belirtim, sunucu rota ek açıklamalarından oluşturulur ve `/v1` yönlendiricisine karşı kontrol edilir.
+Anahtarlar bir kuruluşa ve düz bir izin listesine kapsamlandırılır. Bir izin seti, oluşturma zamanında yalnızca bu listeyi tohumlar — anahtar genişletilmiş hibeleri depolar, bu nedenle daha sonra seti değiştirmek anahtarı değiştirmez. Uç noktanın gerekli izni olmayan bir istek `403` döndürür ve eksik izni belirtir.
 
-Geçerli belirtim, tam rota, yöntem, parametre, izin ve durum kodu kapsamına sahiptir. Sunucu hala bazı yanıt gövdelerini dinamik JSON olarak oluşturduğu için, bazı yanıt gövdeleri kasıtlı olarak yazılmamış durumdadır. Yanıt şeması olmayan bir uç nokta etrafında kesin olarak yazılmış bir istemci oluşturmadan önce gerçek bir yanıtı inceleyin.
+## Kuruluş seçimi
 
-JSON yazmaları için `Content-Type: application/json` kullanın. `401` öğesini eksik veya geçersiz kimlik doğrulama olarak, `403` öğesini gerekli izne sahip olmayan geçerli bir kimlik olarak, `404` öğesini eksik veya kuruluşun erişemediği kaynak olarak, `409` öğesini durum çakışması olarak ve `422` öğesini geçersiz alan veya izin değeri olarak değerlendirin. Hata yanıtları, insan tarafından okunabilir bir mesaj içerir; izin hataları ayrıca gerekli izni adlandırır.
+Bir kuruluş anahtarı otomatik olarak kendi kuruluşu üzerinde hareket eder. Bir örnek kapsamlı anahtar, istek başına bir kuruluş seçer ve birden fazla kuruluşu olan bir kiracı her zaman anahtar modunda birini adlandırmalıdır — `fp` bir anahtar ile kimlik doğrulaması yaparken kaydedilmiş bir kuruluşu asla göndermez.
+
+| Arayanlar | Kuruluşu nasıl adlandırırsınız |
+| --- | --- |
+| `fp`, çağrı başına | `--org <slug>`, alt komuttan önce |
+| `fp`, ortamdan | `FP_ORG` |
+| Ham HTTP | `X-AgentEye-Org: <slug>` istek başlığı |
+
+`X-AgentEye-Org` kablo üzerinde orijinal yazımını korur. Bu, panonun etkin kuruluşu çözmek için okuduğu başlıktır ve bir istemcide yeniden adlandırılması isteği bozar.
+
+<Tabs>
+  <Tab title="Pano">
+    **Administration → Keys** açmadan önce pano başlığındaki kuruluş değiştiricisini kullanın. Orada oluşturulan anahtarlar seçilen kuruluşa aittir. URL ve anahtar ayrıntısında kuruluş slug'ını onaylayın ve kimlik bilgisini otomasyona kopyalamadan önce.
+
+  </Tab>
+  <Tab title="CLI">
+    Komuttan önce `--org` kullanın veya örnek kapsamlı bir API anahtarı için kuruluş başlığını gönderin. `fp orgs list` burada slug'u sizin için keşfetmez — anahtar modunda reddeder; bunun yerine panonun kuruluş değiştiricisinden slug'u okuyun.
+
+    ```bash
+    fp --org reliability-team sessions --since 24h
+    ```
+
+    ```bash
+    curl "https://app.befailproof.ai/v1/usage" \
+      -H "Authorization: Bearer $FP_API_KEY" \
+      -H "X-AgentEye-Org: reliability-team"
+    ```
+  </Tab>
+</Tabs>
+
+## Sayfalandırma
+
+Liste uç noktaları keyset-sayfalandırılır ve `fp` veya `curl` üzerinden çağırsanız da aynı sözleşme geçerlidir.
+
+| Öğe | Anlamı |
+| --- | --- |
+| `limit` sorgu parametresi | Bu çağrıda istenen satırlar. `fp`, her uç noktada tek bir isteği 200 satırla sınırlar. Ham bir istek bunun yerine sunucunun kendi uç noktaya özgü tavanı tarafından sınırlanır. |
+| `cursor` sorgu parametresi | Önceki sayfadan sonra besleyi devam ettiren opak bir belirteç. |
+| `next_cursor` yanıt alanı | Sonraki sayfa için belirteç. `null` beslenin tükendiği anlamına gelir. |
+
+Bu tavanlar uç noktaya göre değişir ve her uç nokta sayfası kendi varsayılan ve sınırını belirtir:
+
+| Uç nokta | Varsayılan | Sınır |
+| --- | --- | --- |
+| `/events`, `/events/summary` | 50 | 1000 |
+| `/issues`, `/alerts/{id}/issues` | 200 | 1000 |
+| `/evaluation-jobs` | 100 | 500 |
+| `/audits/findings` | 100 | 500 |
+| `/sessions`, `/evaluations` | 50 | 200 |
+| `/audits/{id}/runs` | 50 | 200 |
+
+Bir tam besleyi, `next_cursor` null geri gelene kadar `cursor` önceki yanıtın `next_cursor` değerine ayarlanmış şekilde aynı isteği yeniden göndererek okuyun. Eşdeğer `fp` bayrakları — `--all`, `--cursor` ve `--page-size` — [Cloud CLI referansında](/tr/reference/cloud-cli) belgelenmiştir.
+
+## Uç nokta referansı ve hata işleme
+
+Güncel yollar, parametreler, izin gereksinimleri ve durum kodları için bu bölümdeki oluşturulan uç nokta sayfalarını kullanın. Spesifikasyon, sunucu rotası ek açıklamalarından oluşturulur ve `/v1` yönlendirici ile kontrol edilir.
+
+Mevcut spesifikasyon, tam rota, yöntem, parametre, izin ve durum kodu kapsamına sahiptir. İstek gövdeleri yazılırken; yanıt gövdeleri değildir — spec bugün yanıt şemalarını taşımaz, çünkü sunucu yine de onları dinamik JSON olarak oluşturur. Güçlü bir şekilde yazılmış bir istemci oluşturmadan önce gerçek bir yanıtı inceleyin.
+
+JSON yazmaları için `Content-Type: application/json` kullanın. `401` i eksik veya geçersiz kimlik doğrulaması olarak, `403` gerekli izni olmayan geçerli bir kimlik olarak, `404` eksik veya kuruluşa erişilemeyen bir kaynak olarak, `409` durum çatışması olarak, `400` reddedilen parametre — bilinmeyen filtre değeri, yanlış biçimlendirilmiş sorgu parametresi, çalışmayan bir ifade — ve `422` istek gövdesinde geçersiz alan veya izin değeri olarak değerlendirin. Hata yanıtları insan tarafından okunabilir bir ileti içerir; izin başarısızlıkları ayrıca gerekli hibe adını belirtir.
+
+## `/v1` in taşımadığı yüzeyler
+
+Bulut tarafından yönetilen ilkeler, filo ve korkuluk kararı beslemesi operatör yüzeyleridir — okuma ve yazma aynı şekilde. Sunucuda yalnızca kök ve kasıtlı olarak internet'e açık olan `/v1` den geçerlidir. Örneğin bir ilke sürümü yayınlamak veya onu bir makineye dağıtmak, bir API anahtarın yapabileceği bir şey değildir ve filo ne kararlaştırdığını geri okumak aynı yüzey üzerindedir.
+
+Bir API anahtarı bu nedenle bu rotalar üzerinde tasarım gereği bir reddi alır ve `fp` bağlantı açmak yerine bir anahtarla redder ve istek açıklamadan 404 olmak yerine:
+
+| Komut | Bir API anahtarı altında davranış |
+| --- | --- |
+| `fp policies` | Çıkış `2` ile reddeder ve bulut tarafından yönetilen ilkeleri operatör yüzeyi olarak adlandırır |
+| `fp fleet` | Çıkış `2` ile reddeder ve filo adını operatör yüzeyi olarak adlandırır |
+| `fp guardrails` | Çıkış `2` ile reddeder ve korkuluk beslemesini operatör yüzeyi olarak adlandırır |
+| `fp agent` | Çıkış `2` ile reddeder; asistan pano tarafından değil API tarafından uygulanır |
+| `fp orgs` | Çıkış `2` ile reddeder; kuruluş üyeliği oturum açan bir kullanıcıya aittir ve anahtar zaten bir kuruluş için hareket eder |
+
+Bunları oturum açan bir kullanıcı oturumu (`fp login`) altında veya panoyu kullanarak çalıştırın. Okuma ve yönetim aileleri — oturumlar, etkinlikler, değerlendirmeler, denetimler, sorunlar, uyarılar, anahtarlar, izin setleri, kullanıcılar, ayarlar, sorgular ve kullanım — her birinin bir `/v1` rotası vardır ve anahtarla çalışır. Tek boşluk `fp keys update` dir: `keys:update` gerektirir, hiçbir API anahtarın tutamayacağı bir izin, bu nedenle anahtar anahtarları yetiştirip devre dışı bırakabilir ancak birinin izinlerini asla düzenleyemez. `fp login` ve `fp logout` ayrıca anahtar modunda reddeder, farklı bir nedenden: bir anahtar zaten kimlik bilgisidir ve diske asla kaydedilmez.
 
 <Warning>
-  İlke uygulama dağıtımı, kasıtlı olarak sıradan genel `/v1` yüzeyinin dışında yönetilir. Desteklenen Cloud dağıtım iş akışını kullanın.
+  İlke zorlama dağıtımı kasıtlı olarak sıradan genel `/v1` yüzeyinin dışında yönetilir. [Politikaları Dağıtmada](/tr/policies/deploy) açıklanan desteklenen Cloud dağıtım iş akışını kullanın.
 </Warning>

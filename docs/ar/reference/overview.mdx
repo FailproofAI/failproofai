@@ -1,82 +1,99 @@
 ---
 ---
 title: "التكاملات والمراجع"
-description: "توصيل أجهزة عمل الوكلاء المدعومة و SDK و CLI و HTTP API."
+description: "قم بربط حوامل الوكلاء المدعومة وأدوات SDK والواجهات السطرية والواجهة البرمجية HTTP."
 icon: "braces"
 ---
 
 اختر التكامل الأقرب إلى المكان الذي يعمل فيه وكيلك بالفعل.
 
+يغطي هذا القسم أداتي سطر أوامر بوظائف مختلفة. يعمل `failproofai` على الجهاز الذي يعمل عليه وكيلك وينفذ السياسة داخل حلقة الوكيل؛ `fp` يتصل بـ Failproof AI Cloud ويقرأ ما فعله ذلك الحلقة. تم دعم إعداد الجهاز على Linux و macOS فقط — `failproofai config` يرفضها على أي شيء آخر ولا يكتب أي شيء، بدلاً من ترك جهاز نصف مُعد خلفه.
+
 <Columns cols={2}>
-  <Card title="أجهزة عمل الوكلاء" icon="plug-zap" href="/ar/reference/harnesses">
-    ثبّت الخطافات لأدوات سطر أوامر وكلاء الترميز والوكلاء المستقلين المدعومة.
+  <Card title="حوامل الوكلاء" icon="plug-zap" href="/ar/reference/harnesses">
+    قم بتثبيت الخطافات للواجهات السطرية للوكلاء المستقلة والترميز المدعومة.
   </Card>
-  <Card title="أطر عمل الوكلاء و SDK" icon="plug" href="/ar/start/integrations">
-    أداة LangGraph و CrewAI و LlamaIndex و Pydantic AI أو وكيل مخصص.
+  <Card title="أطر عمل الوكلاء وأدوات SDK" icon="plug" href="/ar/start/integrations">
+    قم بأداة LangGraph و CrewAI و LlamaIndex و Pydantic AI أو وكيل مخصص.
   </Card>
   <Card title="مرجع Python SDK" icon="python" href="/ar/reference/custom-agents">
-    التكوين وكتالوج الأحداث وقواعد الارتباط والتسليم.
+    التكوين وقائمة الأحداث وقواعد الارتباط والتسليم.
   </Card>
-  <Card title="لوحة التحكم المحلية" icon="monitor-cog" href="/ar/reference/local-dashboard">
-    راجع المشاريع المحلية والجلسات ونشاط السياسة والتدقيق غير المتصل.
+  <Card title="الأحداث والتكوين" icon="list-tree" href="/ar/reference/events-and-configuration">
+    مفردات الأحداث الاثنتان والحقول المحفوظة وملف الإعدادات الخاص بالجهاز.
   </Card>
-  <Card title="Failproof AI CLI" icon="terminal" href="/ar/reference/failproof-cli">
-    كوّن الالتقاط المحلي والخطافات والسياسات والتدقيق والتسليم وحالة الجهاز.
+  <Card title="لوحة المعلومات المحلية" icon="monitor-cog" href="/ar/reference/local-dashboard">
+    راجع المشاريع المحلية والجلسات والنشاط السياسي والتدقيقات غير المتصلة.
   </Card>
-  <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/ar/reference/cloud-cli#cli-commands">
-    الاستعلام عن جلسات Cloud والتدقيق والمشاكل والتنبيهات والمفاتيح والمستخدمين والإعدادات والإدارة.
+  <Card title="واجهة Failproof AI السطرية" icon="terminal" href="/ar/reference/failproof-cli">
+    قم بتكوين المراقبة المحلية والخطافات والسياسات والتدقيقات والتسليم وحالة الجهاز.
+  </Card>
+  <Card title="واجهة Failproof Cloud السطرية" icon="cloud-cog" href="/ar/reference/cloud-cli#cli-commands">
+    استعلم عن جلسات Cloud والتدقيقات والمشاكل والتنبيهات والمفاتيح والمستخدمين والإعدادات وقم بإدارتها.
   </Card>
   <Card title="Evaluator SDK" icon="gauge" href="/ar/reference/evaluator-sdk">
-    تقدير الجلسات المكتملة أو غير النشطة باستخدام خدمة FastAPI.
+    قم بتقييم الجلسات الكاملة أو غير النشطة باستخدام خدمة FastAPI.
   </Card>
   <Card title="السياسات المخصصة" icon="shield-plus" href="/ar/reference/policy-sdk">
-    قم بتأليف واختبار قرارات allow و instruct و deny خاصة بسير عمل محدد.
+    قم بتأليف واختبار قرارات allow و instruct و deny الخاصة بسير العمل.
+  </Card>
+  <Card title="HTTP API" icon="code" href="/ar/reference/http-api">
+    المرجع المُنشأ لسطح `/v1` العام.
+  </Card>
+  <Card title="استكشاف الأخطاء والإصلاح" icon="circle-help" href="/ar/reference/troubleshooting">
+    قم بتشخيص الخطافات التي لا تعمل والأحداث التي لا تصل والرفضات غير المتوقعة.
   </Card>
   <Card title="الاستضافة الذاتية" icon="cloud-cog" href="/ar/reference/self-hosting">
-    انشر مستوى التحكم في Cloud على مجموعة Kubernetes مدارة من قبل العميل.
+    قم بنشر لوحة التحكم السحابية على مجموعة Kubernetes التي يديرها العميل.
   </Card>
 </Columns>
 
-يغطي مرجع [HTTP API](/ar/reference/http-api) المُنتج سطح `/v1` العام. تشرح الصفحات المكتوبة يدويًا سير العمل الذي يمتد عبر عدة نقاط نهاية أو يستخدم واجهات إدارية خارج هذا السطح العام.
+تغطي صفحات HTTP API المُنشأة السطح العام `/v1`. تشرح الصفحات المكتوبة يدويًا سير العمل الذي يمتد على عدة نقاط نهاية أو يستخدم واجهات إدارية خارج ذلك السطح العام.
 
-## توصيل وكيل والتحقق من البيانات
+## قم بربط وكيل والتحقق من البيانات
 
 <Tabs>
-  <Tab title="لوحة التحكم">
+  <Tab title="لوحة المعلومات">
     1. افتح **الإدارة → المفاتيح**، أنشئ مفتاحًا باستخدام `events:add` و `policies:pull`، وانسخ السر.
-    2. كوّن التكامل باستخدام الصفحة المطابقة أعلاه.
-    3. افتح **المراقبة → الأحداث** للتأكد من وصول الأحداث، ثم **المراقبة → الجلسات** للتأكد من تكوينها لتشغيلات كاملة.
-    4. صفّي حسب بيئة التكامل وفحّص جلسة واحدة للحصول على حقول النموذج والأداة والخطأ والسياسة اللازمة للتدقيق.
+    2. قم بتكوين التكامل باستخدام الصفحة المطابقة أعلاه.
+    3. افتح **المراقبة → الأحداث** للتأكد من وصول الأحداث، ثم **المراقبة → الجلسات** للتأكد من تشكيلها عمليات تشغيل كاملة.
+    4. قم بالتصفية على بيئة التكامل وافحص جلسة واحدة للنموذج وحقول الأداة والخطأ والسياسة المطلوبة من قبل التدقيقات.
 
-    ابدأ برج المفاتيح. تحدد المنح المحددة ما إذا كان بإمكان الجهاز إرسال الأحداث واستقبال السياسات المدارة من قبل Cloud.
+    ابدأ برسم المفتاح. تحدد الأذونات المختارة ما إذا كان الجهاز يمكنه إرسال الأحداث واستقبال السياسات التي تديرها السحابة.
 
-    ![درج مفتاح API الجديد المستخدم لمنح أذونات البتول الأحداث وتسليم السياسة.](/images/dashboard/key-create.png)
+    ![رسم مفتاح واجهة البرمجية الجديد المستخدم لمنح أذونات الامتصاص والتسليم السياسي للأحداث.](/images/dashboard/key-create.png)
 
     بعد توصيل التكامل، استخدم قائمة الجلسات للتأكد من أن أحداثها يتم تجميعها في عمليات تشغيل كاملة في البيئة المتوقعة.
 
-    ![قائمة الجلسات المستخدمة للتحقق من أن التكامل المتصل حديثًا يبلغ عن عمليات تشغيل وكيل كاملة.](/images/dashboard/sessions-list.png)
+    ![قائمة الجلسات المستخدمة للتحقق من أن التكامل المتصل حديثًا يبلغ عن عمليات تشغيل الوكيل الكاملة.](/images/dashboard/sessions-list.png)
 
-    افتح إحدى هذه الجلسات قبل اعتبار التكامل مكتملاً؛ يجب أن يحتوي التتبع على دليل النموذج والأداة والخطأ والسياسة الذي يحتاجه التدقيق.
+    افتح إحدى هذه الجلسات قبل اعتبار التكامل كاملاً؛ يجب أن يحتوي التتبع على دليل النموذج والأداة والخطأ والسياسة الذي تحتاجه التدقيقات.
   </Tab>
-  <Tab title="CLI">
-    أنشئ مفتاح جهاز، وصّل Failproof daemon، والتحقق من الجلسة الأولى.
+  <Tab title="الواجهة السطرية">
+    أنشئ مفتاح جهاز وقم بإعداد هذا الجهاز وقم بربطه واختر السياسات ثم تحقق من الجلسة الأولى.
 
     ```bash
     fp keys create agent-production \
       --add events:add \
       --add policies:pull
 
-    failproofai config \
-      --connect https://app.befailproof.ai \
-      --token <machine-key>
+    failproofai config --token <machine-key>
+
+    failproofai policies add FailproofAI/policies
 
     failproofai flush --wait
-    fp sessions --since 1h --env production
-    fp events --since 1h --env production --limit 20
+    fp sessions --since 1h
+    fp events --since 1h --limit 20
     ```
 
-    استخدم `fp --json sessions ...` عندما تستهلك أداة أخرى النتيجة. يجب أن تأتي الأعلام العامة مثل `--json` و `--org` و `--base-url` قبل الأمر.
+    لا يقوم أي أمر تحقق بالتصفية على بيئة، لأن جهازًا تم إعداده حديثًا يختم كل حدث `local`. أضف `--env production` فقط بعد ضبط `collector.environment` — انظر [تغيير تسمية البيئة](/ar/reference/events-and-configuration#change-an-environment-label).
 
-    اطّلع على [مرجع Failproof AI CLI](/ar/reference/failproof-cli) للأوامر المحلية و [مرجع Failproof Cloud CLI](/ar/reference/cloud-cli#cli-commands) لأوامر `fp`.
+    تمرير رمز هو طلب الاتصال، لذا يفعل `failproofai config --token <machine-key>` نفس الشيء في أمر واحد. فضّل متغير البيئة: يمكن قراءة حجة من `ps` بواسطة كل مستخدم على الصندوق، وينتقل إلى سجل الأوامر وسجلات CI.
+
+    خطوة السياسة ليست اختيارية. يقوم `failproofai config` بتثبيت الخدمة وتوصيل كل واجهة سطرية لوكيل مدعومة، لكنه يختار بشكل متعمد عدم وجود سياسات، لذا فإن الجهاز الذي تم إعداده حديثًا لا ينفذ أي شيء حتى تضيف حزمة.
+
+    استخدم `fp --json sessions ...` عندما تستهلك أداة أخرى النتيجة. يجب أن تأتي العلامات العامة مثل `--json` و `--org` و `--base-url` قبل الأمر.
+
+    انظر [مرجع واجهة Failproof AI السطرية](/ar/reference/failproof-cli) لأوامر محلية و [مرجع واجهة Failproof Cloud السطرية](/ar/reference/cloud-cli#cli-commands) لأوامر `fp`.
   </Tab>
 </Tabs>

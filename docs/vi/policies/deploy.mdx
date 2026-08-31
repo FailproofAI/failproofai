@@ -1,51 +1,54 @@
 ---
 title: "Triển khai chính sách"
-description: "Triển khai một phiên bản chính sách đã xem xét tới các máy tính dự kiến."
+description: "Quan sát một chính sách trên hoạt động agent thực tế, sau đó thực thi hoặc khôi phục."
 icon: "cloud-upload"
 ---
 
-Một triển khai kết nối một hoặc nhiều phiên bản chính sách với một tập hợp các máy tính đã đăng ký.
+Triển khai một chính sách đã được xem xét tới từng máy một lần. Bắt đầu ở chế độ quan sát.
 
-## Áp dụng một triển khai
+## Triển khai từ CLI
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. Đi tới **Admin → enforcement**, tìm máy tính và mở rộng dòng của nó.
-    2. Chọn **edit**, thêm phiên bản chính sách đã xem xét, và chọn **observe** hoặc hiệu ứng thực thi của nó.
-    3. Áp dụng thay đổi, sau đó chờ lần check-in tiếp theo của máy tính và xác nhận trạng thái triển khai và phạm vi bảo phủ của nó.
-    4. Đi tới **Observe → policy** để kiểm tra các quyết định trực tiếp.
+```bash
+fp policies test ./rule.mjs --tool Bash --command "git push --force" --expect deny
+fp policies publish no-force-push ./rule.mjs
+fp fleet deploy <machine> --add no-force-push:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add no-force-push:enforce
+```
 
-    ![Trình chỉnh sửa triển khai máy tính với các phiên bản chính sách, các hiệu ứng enforce và observe, và hành động áp dụng triển khai.](/images/dashboard/enforcement-editor.png)
-  </Tab>
-  <Tab title="CLI">
-    Triển khai từ CLI bằng `fp fleet`. Xem xét tập hợp kết quả trước khi áp dụng nó — `deploy` in ra toàn bộ kế hoạch và chỉ hỏi **trên một thiết bị đầu cuối tương tác mà không có `--json`**. Dưới `--json`, với `--yes`, hoặc với stdin được chuyển hướng (một bước CI, một kịch bản, một agent shell out) nó sẽ áp dụng ngay lập tức mà không có kế hoạch và không có lời nhắc — vì vậy hãy chạy `fp fleet show <machine>` trước nếu bạn muốn xem xét:
-
-    ```bash
-    fp fleet list
-    fp fleet show <machine-id>
-    fp fleet deploy <machine-id> --add no-force-push
-    ```
-
-    `fp fleet diff <machine-id>` hiển thị ý định so với giao hàng (một máy tính được đọc là `behind` cho đến khi nó tiếp theo khảo sát), `fp fleet history <machine-id>` liệt kê các thế hệ, và `fp fleet rollback <machine-id> <generation>` khôi phục một thế hệ — nó từ chối nếu thế hệ đó đặt tên cho một chính sách kể từ khi bị vô hiệu hóa hoặc xóa.
-
-    Kiểm tra chính máy tính bằng `failproofai config --status`, và sử dụng `fp sessions --env production --since 24h` và `fp events --event-type hook_completed` sau triển khai để xác minh rằng hoạt động đến đám mây.
-  </Tab>
-</Tabs>
-
-<Steps>
-  <Step title="Chọn phiên bản và mục tiêu">
-    Triển khai một phiên bản đã xem xét, không phải bản nháp có thể thay đổi, bắt đầu với một máy tính không phải sản xuất hoặc nhóm nhỏ mà bạn có thể kiểm tra các phiên làm việc.
-  </Step>
-  <Step title="Quan sát các quyết định">
-    Xem xét các trận đấu, lý do, các công cụ bị ảnh hưởng, và những tích cực giả mà không chặn công việc.
-  </Step>
-  <Step title="Thực thi và xác minh phạm vi bảo phủ">
-    Thúc đẩy sau khi các trận đấu được quan sát tách các hành động không an toàn khỏi các hành động hợp lệ, sau đó xác nhận rằng mọi máy tính dự kiến đã kéo triển khai và báo cáo các quyết định.
-  </Step>
-</Steps>
-
-Máy tính cần khả năng `policies:pull`. Báo cáo sự kiện được kiểm soát riêng biệt bởi `events:add`; xác minh cả hai khi bạn dự kiến phân tích và thực thi Cloud.
+Chế độ quan sát đánh giá chính sách thực tế và ghi lại các quyết định không phải allow, nhưng không chặn agent.
 
 <Warning>
-  Quản lý thực thi là một quy trình làm việc Cloud hành chính. Không coi các tuyến thực thi chỉ dành cho root là các điểm cuối API `/v1` của khách hàng thông thường.
+  Một `--add no-force-push` thuần túy thực thi ngay lập tức. Thêm `:observe` để triển khai shadow.
 </Warning>
+
+Nếu thực thi gây ra vấn đề:
+
+```bash
+fp fleet history <machine>
+fp fleet rollback <machine> <generation>
+```
+
+## Triển khai từ bảng điều khiển
+
+1. Đi tới **Admin → enforcement**.
+2. Mở máy đích.
+3. Thêm phiên bản chính sách có hiệu lực **observe**.
+4. Áp dụng triển khai.
+5. Xem xét kết quả dưới **Observe → policy**.
+6. Nâng cấp phiên bản tương tự lên **enforce** khi các kết quả khớp là chính xác.
+
+![Trình chỉnh sửa triển khai máy với phiên bản chính sách, hiệu lực enforce và observe, cùng hành động áp dụng triển khai.](/images/dashboard/enforcement-editor.png)
+
+## Thay thế hoặc chuẩn bị trước một bộ
+
+- `--remove <id>` loại bỏ một chính sách.
+- `--set <ref>...` thay thế bộ chính sách hoàn chỉnh.
+- `--create` chuẩn bị triển khai trước khi máy đầu tiên kiểm tra vào.
+- `fp fleet diff <machine>` so sánh trạng thái dự định và áp dụng.
+
+<Note>
+  Không có Cloud, hãy xuất bản một gói với `failproofai publish --effect observe` và kiểm tra các quyết định trong bảng điều khiển cục bộ.
+</Note>
+
+Máy cần `policies:pull` để nhận triển khai và `events:add` để báo cáo quyết định.

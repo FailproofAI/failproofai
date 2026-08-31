@@ -1,84 +1,104 @@
 ---
+---
 title: "Hızlı Başlangıç"
-description: "Bir agent oturumunu yakalayın, bir hatayı bulun ve onu önlemeye başlayın."
+description: "Bir makineyi ayarlayın, politikaları seçin ve aracılarınızın ne yaptığını görün."
 icon: "zap"
 ---
 
-Bu hızlı başlangıç, bir makinenin oturumları raporlamasını sağlar, bir denetim çalıştırır ve bir politika dağıtır. Failproof AI'ı kurmak için beceriyi kullanın veya manuel adımları izleyin.
+Failproof AI'ı bir makinede ayarlayın, ardından yerel kalın veya Cloud'a bağlanın.
 
-**Sizin yolunuz hangisi?** Agent'ınız desteklenen 12 [harness'ten](/tr/reference/harnesses) birinde çalışıyorsa — bir kodlama CLI'si veya Hermes ya da OpenClaw gibi bir ağ geçidi — aşağıdaki adımları izleyin; Node.js 20.9 veya sonrası gereklidir. Agent'ınızın harness'i yoksa, izleme ve denetim için [Python SDK](/tr/reference/custom-agents) ile enstrüman edin, ardından [İlk hatanızı kontrol etmeyi çalıştırın](/tr/start/first-audit) bölümüne dönün; bu yoldaki zorlama, çalışma zamanınızda bir hook gerektirir.
+Aracınız [desteklenen bir ortamda](/tr/reference/harnesses) çalışıyorsa, bu adımları izleyin. LangChain, CrewAI, LlamaIndex, Pydantic AI ile inşa edilen aracılar veya kendi çalışma zamanınız için, [aracınızı enstrüman etme](/tr/start/integrations) bölümünden başlayın.
 
-<Tabs>
-  <Tab title="Beceriyi kullanın">
-    <Steps>
-      <Step title="Failproof AI becerilerini yükleyin">
-        ```bash
-        npx skills add FailproofAI/skills
-        ```
-      </Step>
-      <Step title="Agent'ınızdan her şeyi ayarlamasını isteyin">
-        ```text
-        Set up Failproof AI for this project, connect this machine, install the right hooks and policies, and verify that a session arrives.
-        ```
+## Aracınızın kurulum rehberliği yapmasına izin verin
 
-        Agent'ınız projeyi inceler, ilgili entegrasyonu seçer, kurulumu gerçekleştirir ve doğrular. Bireysel beceriler ve gelişmiş kurulum seçenekleri için [FailproofAI beceri deposu](https://github.com/FailproofAI/skills) bölümüne bakın.
-      </Step>
-    </Steps>
-  </Tab>
-  <Tab title="Manuel kurulum">
-    ## Başlamadan önce
-
-1. [Failproof AI panosunu](https://app.befailproof.ai) açın ve bir hesap oluşturun veya iş e-postanızla oturum açın.
-2. **Yönetim → Anahtarlar** bölümüne gidin ve `events:add` ve `policies:pull` izinleriyle bir anahtar oluşturun.
-3. Bir kerelik sırrı kopyalayın ve hedef makinede saklayın:
+Failproof AI şemsiye becerisini uyumlu bir aracıya yükleyin:
 
 ```bash
-export FAILPROOFAI_KEY="<one-time-secret>"
+npx skills add FailproofAI/skills
 ```
 
-    ## Yükleme
+Bu, şemsiye becerisini ve onun uzman kardeşlerini yükler. Yalnızca şemsiyeyi istiyorsanız `--skill failproofai` kullanın. Yerel ve Cloud kurulumunu, daemon durumunu, oturumları, denetimleri, politikaları ve sorun gidermeyi anlar. İşi yönlendirir ve uzman görevleri doğru Failproof AI becerisine yönlendirir; aşağıdaki CLI kurulumun yerini almaz.
+
+## Makineyı ayarlayın
 
 <Steps>
-  <Step title="Failproof AI'ı yükleyin ve bağlayın">
+  <Step title="Failproof AI'ı yükleyin ve yapılandırın">
     ```bash
     npm install -g failproofai
-    failproofai config --connect https://app.befailproof.ai --token "$FAILPROOFAI_KEY"
+    failproofai config
     ```
 
-    Oturum transkriptleri varsayılan olarak gönderilir. Transkript içeriği olmadan hook etkinliğini ve politika kararlarını raporlamak için `--no-transcripts` ekleyin.
+    Kurulum, arka plan hizmetini yükler ve bulduğu her desteklenen aracıyı bağlar. Bir kez yönetici erişimi isteyebilir. Linux ve macOS'ı destekler.
+  </Step>
 
-    Bu makinenin zaten agent geçmişi varsa, son yedi günü önizleyin ve içeri aktarın, ardından teslimin bitmesini bekleyin. Yeni bir makinede bu adımı atlayın.
+  <Step title="Politikaları seçin">
+    Kurulum herhangi bir politika paketi seçmez. Failproof AI paketini ekleyin:
 
     ```bash
-    failproofai backfill --since 7d --dry-run
-    failproofai backfill --since 7d
-    failproofai flush --wait
+    failproofai policies add FailproofAI/policies
+    failproofai policies
     ```
 
-    Failproof AI'da **Oturumlar** bölümünü açın ve içeri aktarılan bir oturum seçin.
+    İkinci komut bu makinedeki her politikayı ve açık olup olmadığını gösterir. Bir paket ekleyene kadar yalnızca `block-failproofai-commands` çalışır.
   </Step>
-  <Step title="Agent hook'larını ve politikalarını yükleyin">
-    Bu, Failproof AI'ı harness'ize bağlar ve 39 yerleşik politikayı yükler. Yerel politika kararlarını görmek ve Failproof AI oturumlarınızı denetlemeden ve agent'larınız için politikalar yazmadan önce zorlama denemek için bunları kullanın.
 
-    Kurulucunun harness'inizi algılamasına izin verin veya açıkça adını belirtin. 12'nin her biri geçerli bir `--cli` değeridir — `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity`, `goose`.
-
+  <Step title="Makineyı kontrol edin">
     ```bash
-    failproofai policies --install --cli claude --scope user     # bir kodlama CLI'si
-    failproofai policies --install --cli hermes --scope user     # bir Slack/Telegram ağ geçidi
+    failproofai config --status
     ```
 
-    Bir tool çağrısını çalışmadan önce engelleme tüm 12'de doğrulanır. Tur sonu kapıları 8'de doğrulanır — her harness için matris için [zorlama yeteneği](/tr/reference/harnesses#enforcement-capability) bölümüne bakın.
-  </Step>
-  <Step title="Davranışı denetleyin">
-    [İlk hatanızı kontrol etmeyi çalıştırın](/tr/start/first-audit) bölümünü izleyin. "Agent'ın yaklaşımını değiştirmeden başarısız bir tool'u tekrar denediği oturumları bulun" gibi somut bir hedef kullanın.
-  </Step>
-  <Step title="Hatayı önleyin">
-    [İlk hatanızı bir politikayla önleyin](/tr/start/first-policy) bölümünü izleyin. Gözlem modunda başlayın, eşleşmeleri inceleyin, ardından incelenen sürümü uygulayın.
+    Bu, hizmeti, Cloud bağlantısını ve duraklatma durumunu bildirir.
   </Step>
 </Steps>
 
-<Check>
-  `failproofai config --status` komutunu çalıştırın. Sağlıklı bir kurulum bulut bağlantısını, daemon durumunu ve zorlama duraklatılıp duraklatılmadığını raportar.
-</Check>
+## Yerel veya Cloud'u seçin
+
+<Tabs>
+  <Tab title="Yerel kalın">
+    Hesap gerekmez.
+
+    ```bash
+    failproofai
+    failproofai audit
+    ```
+
+    İlk komut yerel panoyu `http://localhost:8020` adresinde açar. İkincisi zaten bu makinede bulunan aracı geçmişini tarar.
+  </Tab>
+
+  <Tab title="Cloud'a bağlanın">
+    Failproof AI Cloud'da bir makine anahtarı oluşturun, ardından çalıştırın:
+
+    ```bash
+    failproofai config --token <machine-key>
+    failproofai config --status
+    ```
+
+    Cloud politika kararlarını ve oturum transkriptlerini alır. Yalnızca kararlar göndermek için önce bağlanın, ardından `~/.failproofai/config.json` dosyasında `collector.sessions` öğesini `false` olarak ayarlayın; mevcut `--no-transcripts` kurulum bayrağı bu ayarı uygulamaz. Paylaşılan kabuklar ve CI için, anahtarı komut geçmişine koymak yerine `FAILPROOFAI_CLOUD_TOKEN` kullanın.
   </Tab>
 </Tabs>
+
+## Doğrulayın
+
+Aracılarınızdan birini çalıştırın ve normal bir görev gerçekleştirmesini isteyin. Ardından:
+
+Bir araç çağrısı reddi tüm 12 desteklenen ortamda doğrulanır. Tur sonu uygulaması 8'de doğrulanır; diğer ortam-olay çiftleri yalnızca gözlem amaçlı veya doğrulanmamış olabilir.
+
+- Politika kararlarını görmek için yerel panoda **Politikalar → Etkinlik** açın.
+- Tam çalıştırımı görmek için Cloud'da **Gözle → Oturumlar** açın.
+- Riskli veya savurgan desenleri aramak için `failproofai audit` çalıştırın.
+
+<Warning>
+  Kurulumdan sonra, `failproofaid` hizmeti değerlendiricidir. Yanıt veremezse, korunan eylemler reddedilir. Bir aracı beklenmedik şekilde durduğunda `failproofai config --status` çalıştırın.
+</Warning>
+
+<CardGroup cols={3}>
+  <Card title="Kavramları anlayın" icon="book-open" href="/tr/start/concepts">
+    Oturum-politika iş akışını öğrenin.
+  </Card>
+  <Card title="İlk denetimi çalıştırın" icon="scan-search" href="/tr/start/first-audit">
+    Düzeltmeye değer bir başarısızlık bulun.
+  </Card>
+  <Card title="İlk politikanızı ekleyin" icon="shield-check" href="/tr/start/first-policy">
+    Uygulamadan önce bir korumayı gözlemleyin.
+  </Card>
+</CardGroup>

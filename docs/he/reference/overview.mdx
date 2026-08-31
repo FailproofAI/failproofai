@@ -1,81 +1,98 @@
 ---
-title: "אינטגרציות והפניות"
-description: "חבר מכונות תמיכה בסוכנים, SDKs, CLIs, וה-HTTP API."
+title: "שילובים והפניות"
+description: "חבר תושבות סוכנים נתמכות, SDKs, CLIs, ו-HTTP API."
 icon: "braces"
 ---
 
-בחר באינטגרציה הקרובה ביותר למקום בו הסוכן שלך כבר פועל.
+בחר את השילוב הקרוב ביותר למקום שבו הסוכן שלך כבר פועל.
+
+קטע זה מכסה שני כלי שורת פקודה עם משימות שונות. `failproofai` פועל על המכונה שעליה פועל הסוכן שלך ואוכף מדיניות בתוך לולאת הסוכן; `fp` משוחח עם Failproof AI Cloud וקורא בחזרה מה שלולאה זו עשתה. הגדרת מכונה נתמכת רק ב-Linux וב-macOS — `failproofai config` מסרב בכל דבר אחר ולא כותב שום דבר, במקום להשאיר מכונה חצי-מוגדרת מאחור.
 
 <Columns cols={2}>
-  <Card title="מכונות סוכנים" icon="plug-zap" href="/he/reference/harnesses">
-    התקן hooks עבור CLIs של סוכנים קודים וחכמים נתמכים.
+  <Card title="תושבות סוכנים" icon="plug-zap" href="/he/reference/harnesses">
+    התקן hook עבור CLIs סוכנים אוטונומיים וקידוד נתמכים.
   </Card>
-  <Card title="מסגרות סוכנים ו-SDKs" icon="plug" href="/he/start/integrations">
-    שלב את LangGraph, CrewAI, LlamaIndex, Pydantic AI, או סוכן מותאם אישית.
+  <Card title="סוכנים SDK ומסגרות" icon="plug" href="/he/start/integrations">
+    הכנס LangGraph, CrewAI, LlamaIndex, Pydantic AI, או סוכן מותאם אישית.
   </Card>
-  <Card title="הפניית Python SDK" icon="python" href="/he/reference/custom-agents">
-    תצורה, קטלוג האירועים, כללי קורלציה והעברה.
+  <Card title="הפניות Python SDK" icon="python" href="/he/reference/custom-agents">
+    תצורה, קטלוג האירועים, כללי קורלציה, והעברה.
+  </Card>
+  <Card title="אירועים וקונפיגורציה" icon="list-tree" href="/he/reference/events-and-configuration">
+    שתי אוצרות מילים של אירועים, שדות שמורים, והקובץ ההגדרות של המכונה עצמה.
   </Card>
   <Card title="לוח בקרה מקומי" icon="monitor-cog" href="/he/reference/local-dashboard">
-    בדוק פרויקטים מקומיים, הפעלות, פעילות מדיניות וביקורות במצב לא מקוון.
+    בדוק פרויקטים מקומיים, מושבים, פעילות מדיניות, והדקות לא מקוונות.
   </Card>
   <Card title="Failproof AI CLI" icon="terminal" href="/he/reference/failproof-cli">
-    הגדר לכידה מקומית, hooks, מדיניות, ביקורות, העברה וזיכרון מכונה.
+    הגדר יצירת מקומית, hook, מדיניות, הדקות, העברה, ומצב מכונה.
   </Card>
   <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/he/reference/cloud-cli#cli-commands">
-    שאל וניהול Cloud sessions, ביקורות, בעיות, התראות, מפתחות, משתמשים והגדרות.
+    שאל ונהל מושבים Cloud, הדקות, ישויות, התרעות, מפתחות, משתמשים והגדרות.
   </Card>
   <Card title="Evaluator SDK" icon="gauge" href="/he/reference/evaluator-sdk">
-    דרג sessions שלמות או לא פעילות עם שירות FastAPI.
+    דרג מושבים שלמים או לא פעילים עם שירות FastAPI.
   </Card>
-  <Card title="מדיניות מותאמת" icon="shield-plus" href="/he/reference/policy-sdk">
+  <Card title="מדיניות מותאמת אישית" icon="shield-plus" href="/he/reference/policy-sdk">
     כתוב ובדוק החלטות allow, instruct ו-deny ספציפיות לזרימת עבודה.
   </Card>
-  <Card title="אירוח עצמי" icon="cloud-cog" href="/he/reference/self-hosting">
-    פרוס את מישור הבקרה של Cloud על אשכול Kubernetes המנוהל על ידי הלקוח.
+  <Card title="HTTP API" icon="code" href="/he/reference/http-api">
+    ההפניה שנוצרה עבור משטח `/v1` הציבורי.
+  </Card>
+  <Card title="פתרון בעיות" icon="circle-help" href="/he/reference/troubleshooting">
+    אבחן hook שלא משתנים, אירועים שלא מגיעים, והכחשות שלא צפיתה להן.
+  </Card>
+  <Card title="호스트עצמי" icon="cloud-cog" href="/he/reference/self-hosting">
+    פרוס את מישור הבקרה של Cloud על קלסטר Kubernetes שמנוהל על ידי לקוח.
   </Card>
 </Columns>
 
-ה-[HTTP API reference](/he/reference/http-api) שנוצר מכסה את פני השטח הציבוריים `/v1`. עמודים כתובים ביד מסבירים זרימות עבודה המשתרעות על פני מספר endpoints או משתמשים בממשקי ניהול מחוץ לפני השטח הציבוריים הללו.
+עמודי HTTP API שנוצרו מכסים את משטח `/v1` הציבורי. עמודים שנכתבו ביד מסבירים זרימות עבודה המשתרעות על מספר נקודות קצה או משתמשים בממשקי אדמיניסטרציה מחוץ למשטח הציבורי הזה.
 
-## חבר סוכן ואמת נתונים
+## חבר סוכן ואימות נתונים
 
 <Tabs>
   <Tab title="לוח בקרה">
     1. פתח **Administration → Keys**, צור מפתח עם `events:add` ו-`policies:pull`, והעתק את הסוד.
-    2. הגדר את האינטגרציה באמצעות העמוד התואם למעלה.
-    3. פתח **Observe → Events** כדי לאשר שאירועים מגיעים, ואז **Observe → Sessions** כדי לאשר שהם יוצרים הפעלות שלמות.
-    4. סנן לסביבה של האינטגרציה ובדוק session אחד עבור שדות המודל, הכלי, השגיאה והמדיניות הנחוצים לביקורות.
+    2. הגדר את השילוב באמצעות הדף המתאים למעלה.
+    3. פתח **Observe → Events** כדי לאשר שאירועים מגיעים, ואז **Observe → Sessions** כדי לאשר שהם יוצרים הרצות שלמות.
+    4. סנן לסביבת השילוב ובדוק מושב אחד עבור שדות הדוגמן, הכלי, השגיאה והמדיניות הנחוצים להדקות.
 
-    התחל עם מגירת המפתחות. ההנחות שנבחרו קובעות האם המכונה יכולה לשלוח אירועים ולקבל מדיניות המנוהלת על ידי Cloud.
+    התחל במגירת המפתחות. ההקצאות שנבחרו קובעות אם המכונה יכולה לשלוח אירועים ולקבל מדיניות מנוהלת Cloud.
 
-    ![מגירת המפתח הציבוריים החדשה המשמשת להנחת הרשאות ספיגת אירועים והעברת מדיניות.](/images/dashboard/key-create.png)
+    ![מגירת המפתח API החדשה המשמשת להעניית הרשאות לספיגת אירועים והעברת מדיניות.](/images/dashboard/key-create.png)
 
-    לאחר חיבור האינטגרציה, השתמש ברשימת Sessions כדי לאשר שהאירועים שלה מקובצים לתוך הפעלות שלמות בסביבה הצפויה.
+    לאחר חיבור השילוב, השתמש ברשימת המושבים כדי לאשר שהאירועים שלו מקובצים להרצות שלמות בסביבה הצפויה.
 
-    ![רשימת Sessions המשמשת לאימות שאינטגרציה המחוברת לאחרונה מדווחת על הפעלות סוכן שלמות.](/images/dashboard/sessions-list.png)
+    ![רשימת המושבים המשמשת לאימות שהשילוב החדש המחובר דיווח על הרצות סוכנים שלמות.](/images/dashboard/sessions-list.png)
 
-    פתח את אחת מההפעלות הללו לפני שתשקול שהאינטגרציה שלמה; העקבה צריכה להכיל את המודל, הכלי, השגיאה והראיות המדיניות שהביקורות שלך זקוקות להן.
+    פתח את אחד מהמושבים הללו לפני שתשקול את השילוב הושלם; הטrace צריך להכיל את הדוגמן, הכלי, השגיאה, וראיות המדיניות שההדקות שלך זקוקות להן.
   </Tab>
   <Tab title="CLI">
-    צור מפתח מכונה, חבר את daemon ה-Failproof, ואמת את ה-session הראשון.
+    צור מפתח מכונה, הגדר מכונה זו וחבר אותה, בחר מדיניות, ואז אמת את המושב הראשון.
 
     ```bash
     fp keys create agent-production \
       --add events:add \
       --add policies:pull
 
-    failproofai config \
-      --connect https://app.befailproof.ai \
-      --token <machine-key>
+    failproofai config --token <machine-key>
+
+    failproofai policies add FailproofAI/policies
 
     failproofai flush --wait
-    fp sessions --since 1h --env production
-    fp events --since 1h --env production --limit 20
+    fp sessions --since 1h
+    fp events --since 1h --limit 20
     ```
 
-    השתמש ב-`fp --json sessions ...` כשכלי אחר תצרוך את התוצאה. דגלים גלובליים כגון `--json`, `--org`, ו-`--base-url` חייבים לבוא לפני הפקודה.
+    אף אחת מפקודות האימות אינה מסננת בסביבה, מכיוון שמכונה שזה עתה הוגדרה חותמת כל אירוע `local`. הוסף `--env production` רק לאחר שהגדרת את `collector.environment` — ראה [שנה תווית סביבה](/he/reference/events-and-configuration#change-an-environment-label).
 
-    ראה את [הפניית Failproof AI CLI](/he/reference/failproof-cli) עבור פקודות מקומיות ו-[הפניית Failproof Cloud CLI](/he/reference/cloud-cli#cli-commands) עבור פקודות `fp`.
+    העברת token היא הבקשה לחיבור, כך ש-`failproofai config --token <machine-key>` עושה את אותו הדבר בפקודה אחת. העדף את משתנה הסביבה: ארגומנט קריא מ-`ps` על ידי כל משתמש בתיבה, וזה נוחת בהיסטוריית הקליפה וביומנים של CI.
+
+    שלב המדיניות אינו אופציונלי. `failproofai config` מתקין את daemon וחוט כל CLI סוכנים נתמך, אך הוא בחירה מכוונת שום מדיניות, כך שמכונה שזה עתה הוגדרה לא אוכפת שום דבר עד שתוסיף חבילה.
+
+    השתמש ב-`fp --json sessions ...` כאשר כלי אחר יצרוך את התוצאה. דגלים גלובליים כמו `--json`, `--org`, ו-`--base-url` חייבים להגיע לפני הפקודה.
+
+    ראה את [הפניית Failproof AI CLI](/he/reference/failproof-cli) לפקודות מקומיות והפניית [Failproof Cloud CLI](/he/reference/cloud-cli#cli-commands) עבור פקודות `fp`.
   </Tab>
 </Tabs>

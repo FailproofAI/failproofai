@@ -1,10 +1,10 @@
 ---
-title: "Failproof Assistant"
-description: "自然言語でFailproof AIの分析と操作を行います。質問やクエリからダッシュボード、監査まで対応しています。"
+title: "クラウドアシスタント"
+description: "Failproof AI を自然言語で分析・操作できます。質問やクエリからダッシュボード、監査まで対応しています。"
 icon: "message-square-text"
 ---
 
-Failproof Assistantに自然言語で何でも依頼できます。セッションや障害の分析、クエリの実行、ダッシュボードの作成、評価やアラートの調査、監査の作成と実行まで対応しており、タスクを製品画面やCLIコマンドに変換する必要はありません。
+Failproof AI クラウドアシスタントは、フリートに関する質問に自然言語で回答します。セッションや障害の分析、クエリの実行、ダッシュボードの構築、評価やアラートの調査、監査の作成・実行を、製品画面や CLI コマンドに翻訳することなく行えます。ダッシュボードではこのコントロールは **Open agent chat** と表示され、[`fp` CLI](/ja/reference/cloud-cli) では `fp agent` コマンドグループとして提供されます。
 
 ```text
 Why did production checkout agents regress this week?
@@ -13,41 +13,77 @@ Create an audit that finds agents retrying the same failed action without changi
 Show me the sessions behind the most common audit finding.
 ```
 
-アシスタントは、アクティブな組織で利用可能なデータと権限を使用して動作します。他のユーザーやエージェントに影響するアクションを適用する前に、証拠と提案された変更内容を必ず確認してください。
+アシスタントは、アクティブな組織で利用可能なデータと権限の範囲内で動作します。他のユーザーやエージェントに影響するアクションを適用する前に、提示された根拠と変更案を必ず確認してください。
 
-## アシスタントに依頼する
+<Note>
+  アシスタントはダッシュボード上で動作し、チャットはユーザー個人に紐づくため、キーから呼び出せる API ルートは存在しません。すべての `fp agent` サブコマンドはサインイン済みのセッション（`fp login`）と `agent:use` 権限が必要で、`--api-key` または `FP_API_KEY` を使用した場合は終了コード 2 で終了します。API キーからは決してアクセスできないため、スケジュールジョブは `--token` または `FP_TOKEN` にサインイン済みのセッショントークンを渡す必要があります。これは機能します — TTY がない場合、`fp agent ask` は stdin から質問を読み取ります — ただし、セッショントークンは `fp login` から約 24 時間で失効するため、アシスタントは無人の自動化には不向きです（動作はします）。
+</Note>
+
+## アシスタントに質問する
 
 <Tabs>
   <Tab title="ダッシュボード">
     1. **Open agent chat** を選択し、理解・作成・操作したい内容を説明します。
-    2. アシスタントが作業を進める間、ツール呼び出し、テーブル、クエリ結果を確認します。
-    3. 引用されたセッション、アラート、またはクエリを開き、ソースデータと照合して結果を検証します。
-    4. 別の調査には新しいチャットを開始するか、チャット履歴を使用して同じ分析の流れを継続します。
+    2. アシスタントが処理している間、ツールの呼び出し、テーブル、クエリ結果を確認します。
+    3. 引用されたセッション、アラート、またはクエリを開いて、ソースデータに対して結果を検証します。
+    4. 別の調査では新しいチャットを開始するか、チャット履歴を使って同じ分析の流れを継続します。
 
-    ![オブザーバビリティに関する質問に対して、分析とクエリを添えて回答するクラウドアシスタント。](/images/dashboard/assistant.png)
+    ![The Cloud assistant answering an observability question with supporting analysis and queries.](/images/dashboard/assistant.png)
   </Tab>
   <Tab title="CLI">
+    まず `health` から始めましょう。このデプロイメントでアシスタントが有効かどうか、および LLM が設定されているかどうかを報告します。LLM が設定されていない場合、`ask` は失敗し、`models` は何も返しません — `chats`、`show`、`rename`、`delete` は health を参照せず、引き続き動作します。
+
     ```bash
     fp agent health
     fp agent models
     fp agent ask "Which production checkout agents had the most tool errors in the last 24 hours?"
+    ```
+
+    `fp agent models` は、このデプロイメントで使用できるモデルとデフォルトのモデルを一覧表示します。`ask --model <name>` に渡すモデルを指定できます。`--page-context <text>` で既存のテキストを回答の根拠として提供したり、ファイルや前のコマンドから質問が来る場合は引数として渡す代わりに stdin にパイプすることもできます。
+
+    ```bash
+    cat incident-notes.md | fp agent ask --model <model>
+    ```
+
+    すべての質問はチャットに保存されます。`--chat` を指定しない場合は新しいチャットが開始され、その短い ID が表示されます。`--chat` を指定するとそのスレッドが継続されます。
+
+    ```bash
     fp agent chats
     fp agent show <chat-id>
     fp agent ask "Open representative sessions" --chat <chat-id>
+    fp agent rename <chat-id> --title "checkout regression"
+    fp agent delete <chat-id> --yes
     ```
 
-    `fp agent rename <chat-id> --title <title>` を使用して調査を識別しやすい名前にし、`fp agent delete <chat-id>` で削除できます。
+    `fp agent chats` は、チャットを `chat-id · title · messages · updated` の形式で新しい順に一覧表示します。`updated` はチャットの最終アクティビティからの経過時間です。表示される `chat-id` は短縮形（最初の 8 文字）で、`show`、`rename`、`delete`、`ask --chat` はすべてそのプレフィックスを解決します。何にも一致しない ID は終了コード 6 と `chat not found` ボックスで終了し、複数に一致する場合はより長いプレフィックスの入力を求めます。
+
+    `fp agent delete` は最初に確認を求めます。`--yes` を指定するとプロンプトをスキップできます。非インタラクティブな呼び出し（`--json` を使用した場合、または stdin がリダイレクトされている場合）も確認なしに処理が進みます。
   </Tab>
 </Tabs>
 
 ## アシスタントを効果的に活用する
 
-- まずゴールを伝え、境界が重要な場合は環境、ワークフロー、または時間範囲を追加します。
-- 生成されたSQLやサマリーは最終的な証拠としてではなく、調査の補助として扱います。
-- 監査、Issue、アラート、またはポリシーを作成する前に、代表的なセッションを開いて確認します。
-- 組織、環境、時間フィルターは明示的に指定します。
-- 他のオペレーターが結果を再現できるよう、有用なSQLはクエリとして保存します。
+- まずゴールを伝え、その境界が重要な場合は環境・ワークフロー・時間範囲を追加してください。
+- 生成された SQL やサマリーは調査の補助として扱い、最終的な証拠としては扱わないでください。
+- 監査、Issue、アラート、またはポリシーを作成する前に、代表的なセッションを開いて確認してください。
+- 組織、環境、時間フィルターは明示的に指定してください。
+- 有用な SQL はクエリとして保存し、他のオペレーターが結果を再現できるようにしてください。
 
 <Warning>
-  アシスタントが読み取れるのは、現在のユーザーがアクセスできるデータのみです。質問に対応するために権限を拡張しないでください。代わりに、権限を持つオペレーターに調査を依頼してください。
+  2 つの権限レイヤーが適用され、それぞれ異なる方法で失敗します。`agent:use` は機能自体へのアクセスを制御します。これがない場合、`fp agent` とダッシュボードチャットは利用できません。回答はサインイン済みユーザーのデータ権限（`events:read`、`evaluations:read`、`queries:run`、`policies:read`）によって制限されるため、アシスタントを開けるユーザーでも、読み取り権限のないデータについては空の回答が返ることがあります。質問を機能させるために権限を広げないでください。代わりに、権限を持つオペレーターに調査を依頼してください。詳細は[キーと権限](/ja/admin/keys-and-permissions)を参照してください。
 </Warning>
+
+<CardGroup cols={2}>
+  <Card title="クエリ" icon="database" href="/ja/sessions/queries">
+    アシスタントが生成した SQL を保存して、他のオペレーターが再実行できるようにします。
+  </Card>
+  <Card title="ダッシュボード" icon="layout-dashboard" href="/ja/sessions/dashboards">
+    保存したクエリをチームが監視するチャートに変換します。
+  </Card>
+  <Card title="監査" icon="scan-search" href="/ja/audits/overview">
+    セッション全体にわたる障害パターンを調査します。
+  </Card>
+  <Card title="ポリシー" icon="shield-check" href="/ja/policies/overview">
+    繰り返し発生するアクションを、翌週また発見する前に防止します。
+  </Card>
+</CardGroup>

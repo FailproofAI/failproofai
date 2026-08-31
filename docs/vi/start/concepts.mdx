@@ -1,27 +1,51 @@
 ---
----
-title: "Các khái niệm cơ bản"
-description: "Tập hợp các khái niệm nhỏ được sử dụng trong Failproof AI."
+title: "Các khái niệm cốt lõi"
+description: "Các thuật ngữ được sử dụng để quan sát, kiểm toàn và bảo vệ agents."
 icon: "boxes"
 ---
 
-| Khái niệm | Ý nghĩa | Những gì bạn có thể đạt được |
-| --- | --- | --- |
-| Session | Một tác vụ hoặc lần chạy của agent | Tái thiết lập một kết quả riêng lẻ |
-| Event | Một hành động được ghi lại trong một session | Kiểm tra một cuộc gọi mô hình, sử dụng công cụ, lỗi, hành động con người hoặc quyết định chính sách |
-| Trace | Chế độ xem session có thứ tự và lồng nhau | Hiểu rõ nhân quả thay vì đọc các bản ghi disconnected |
-| Evaluation | Một điểm số hoặc đánh giá trên một session | Theo dõi chất lượng, tuân thủ, chi phí hoặc độ trễ một cách liên tục |
-| Audit | Một đánh giá của một nhóm session được chọn | Tìm kiếm các mẫu lỗi với một mục tiêu và chu kỳ được nêu rõ |
-| Finding | Một lỗi được phát hiện bằng bằng chứng thông qua kiểm toán | Xem chế độ lỗi, mức độ nghiêm trọng và các session bị ảnh hưởng |
-| Issue | Một bản ghi phản hồi bền vững | Gán, thảo luận và giải quyết một finding hoặc sự cố cảnh báo |
-| Alert | Một quy tắc phát hiện sự lặp lại | Thông báo cho những người phản ứng khi một điều kiện đã biết quay trở lại |
-| Policy | Một quy tắc được đánh giá trong quá trình hoạt động của agent | Quan sát, chặn hoặc chuyển hướng hành vi rủi ro |
-| Deployment | Triển khai chính sách được phiên bản cho các máy | Kiểm soát nơi chính sách chạy và quay lại một cách an toàn |
+Failproof AI ghi lại những gì agents làm và quyết định những gì họ có thể làm.
 
-## Vòng lặp độ tin cậy
+## Quan sát
 
-Bắt đầu từ bằng chứng. Một session cho thấy những gì đã xảy ra. Một audit xác định xem đó là một sai lầm cô lập hay một mẫu. Một finding xác định chế độ lỗi; một issue sở hữu phản hồi. Một policy ngăn chặn hành vi tương tự, trong khi các alert cho bạn biết nếu điều kiện quay trở lại.
+| Thuật ngữ | Ý nghĩa |
+| --- | --- |
+| Session | Một lần chạy agent |
+| Event | Một hành động trong một session |
+| Trace | Chế độ xem có thứ tự của một session |
+| Evaluation | Một điểm số hoặc đánh giá |
+| Audit | Một đánh giá của nhiều sessions |
+| Finding | Bằng chứng của một mô hình lỗi |
+| Issue | Câu trả lời mà ai đó sở hữu |
+| Alert | Một quy tắc phát hiện sự tái diễn |
+
+## Thực thi
+
+| Thuật ngữ | Ý nghĩa |
+| --- | --- |
+| Harness | Môi trường nơi agent chạy |
+| Hook | Một điểm nơi harness yêu cầu một quyết định |
+| Policy | Một quy tắc cho phép, hướng dẫn hoặc chặn |
+| Policy pack | Một tập hợp chính sách được phiên bản mà bất kỳ ai cũng có thể cài đặt |
+| Daemon | Dịch vụ cục bộ đánh giá các chính sách |
+| Deployment | Các chính sách được gán cho một máy |
+
+## Quy trình làm việc
+
+```text
+Session → Audit → Finding → Issue → Policy
+```
+
+Bắt đầu với bằng chứng. Tìm thấy lỗi lặp lại, gán câu trả lời, sau đó ngăn chặn nó.
+
+Một policy trả về `allow`, `instruct` hoặc `deny`. Hướng dẫn thông qua `instruct` phụ thuộc vào harness; sử dụng `deny` khi hành động phải dừng lại.
+
+Chế độ quan sát được tách biệt với quyết định. Nó chạy chính sách thực và ghi lại những gì nó sẽ làm trong khi cho phép agent tiếp tục.
 
 <Warning>
-  Một `failproofai audit` cục bộ quét lịch sử agent cục bộ. Một audit Cloud định kỳ xem xét các session được lưu trữ trong Failproof AI Cloud. Chúng là những quy trình công việc riêng biệt với phạm vi và lịch trình khác nhau.
+  Một `fp fleet deploy <machine> --add <policy>` đơn giản sẽ thực thi ngay lập tức. Thêm `:observe` để thực hiện tung hô bóng.
 </Warning>
+
+Thiết lập không chọn bất kỳ policy pack nào. Trước khi bạn thêm cái nào, chỉ có `block-failproofai-commands` chạy. Danh mục biên dịch chứa 39 chính sách trên 9 danh mục.
+
+Xem [supported harnesses](/vi/reference/harnesses#enforcement-capability) trước khi giả định rằng một event có thể chặn trên mọi môi trường agent.

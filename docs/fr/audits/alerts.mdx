@@ -1,62 +1,103 @@
 ---
 title: "Alertes"
-description: "Détectez les récurrences et acheminez un incident vers les bonnes personnes."
+description: "Détectez les récurrences et acheminez un problème vers les bons intervenants."
 icon: "bell-ring"
 ---
 
-Les alertes surveillent une condition mesurable et créent un incident lorsqu'elle se déclenche. Utilisez-les quand une défaillance doit produire une réponse rapide, qu'une politique puisse ou non la bloquer.
+Une alerte surveille une condition mesurable et ouvre un problème lorsqu'elle se déclenche. Utilisez-en une lorsqu'une défaillance nécessite une réponse rapide, qu'une politique puisse la bloquer ou non.
 
 ## Créer et tester une alerte
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Accédez à **Analyser → Alertes** et sélectionnez **nouvelle alerte**. Vous pouvez également partir de la cloche sur une erreur représentative.
-    2. Saisissez le nom, la sévérité, le type de déclencheur, la condition, l'intervalle d'évaluation, le nombre de dépassements, la fenêtre et les canaux.
-    3. Enregistrez l'alerte, ouvrez sa page de détail et exécutez **test**.
-    4. Accédez à **Analyser → Problèmes** pour acquitter, assigner, discuter, s'abonner et résoudre les incidents créés par l'alerte.
+    1. Accédez à **Analyser → Alertes** et sélectionnez **nouvelle alerte**. Vous pouvez également partir depuis la cloche sur une erreur représentative.
+    2. Saisissez le nom, la gravité, le type de déclencheur, la condition, l'intervalle d'évaluation, le nombre de dépassements, la fenêtre et les canaux.
+    3. Sauvegardez l'alerte, ouvrez sa page de détail et exécutez **test**.
+    4. Accédez à **Analyser → Problèmes** pour acquitter, assigner, discuter, s'abonner et résoudre les problèmes ouverts par l'alerte.
 
     La première partie du formulaire identifie l'alerte et le signal qui doit la déclencher.
 
     ![La première partie du formulaire de nouvelle alerte avec son nom, sa description, son état d'activation et son type de déclencheur.](/images/dashboard/alert-new-trigger.png)
 
-    La seconde partie contrôle la durée pendant laquelle la condition doit persister, la fréquence d'évaluation et l'endroit où les notifications sont envoyées.
+    La seconde partie contrôle la durée pendant laquelle la condition doit persister, la fréquence d'évaluation et où les notifications sont envoyées.
 
-    ![La seconde partie du formulaire de nouvelle alerte avec la logique de dépassement, le calendrier, la sévérité, les canaux de livraison et l'action de création.](/images/dashboard/alert-new-routing.png)
+    ![La seconde partie du formulaire de nouvelle alerte avec la logique de dépassement, la planification, la gravité, les canaux de diffusion et l'action de création.](/images/dashboard/alert-new-routing.png)
 
-    Après l'enregistrement, utilisez la liste des alertes pour confirmer que la règle est activée et que son déclencheur, sa fenêtre, sa sévérité et ses canaux correspondent à ce que vous aviez prévu.
+    Après l'enregistrement, utilisez la liste des alertes pour confirmer que la règle est activée et que son déclencheur, sa fenêtre, sa gravité et ses canaux correspondent à ce que vous souhaitiez. Une carte qui a des problèmes ouverts affiche le nombre ; une carte sans problème omet entièrement cette ligne, donc son absence ne vous apprend rien. Pour lire le chiffre pour chaque règle, y compris les zéros, utilisez `fp alerts show <name>`, qui l'affiche toujours.
 
-    ![La page Alertes affichant les règles d'alerte avec leurs déclencheurs, fenêtres d'évaluation, canaux et sévérité.](/images/dashboard/alerts.png)
-
-    Testez l'alerte avant de vous y fier en production.
+    ![La page des alertes affichant les règles d'alerte avec leurs déclencheurs, fenêtres d'évaluation, canaux et gravité.](/images/dashboard/alerts.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp alerts create high-errors \
       --trigger-kind metric_threshold \
       --severity warning \
-      --trigger-spec '{"metric":"error_count","op":">","value":50,"window_secs":900}'
+      --trigger-spec '{"metric":"error_count","op":">","value":50,"window_secs":900}' \
+      --eval-interval-secs 300 \
+      --min-breaches 2 \
+      --eval-window 3
 
     fp alerts show high-errors
     fp alerts test high-errors
     fp alerts update high-errors --severity critical --yes
     ```
 
-    Utilisez `fp alerts list` pour consulter les règles et `fp alerts delete <name>` pour en supprimer une.
+    Les nouvelles alertes démarrent **activées**, et une collision de noms est rejetée avant que quoi que ce soit ne soit créé.
+
+    `fp alerts update` remplace l'intégralité de la définition côté serveur, donc la CLI relit l'alerte et applique vos indicateurs par-dessus — une mise à jour par indicateurs seuls nécessite `alerts:read` **ainsi que** `alerts:write`, et elle demande confirmation à moins que vous ne passiez `--yes`.
+
+    Utilisez `fp alerts list` pour examiner les règles et `fp alerts delete <name>` pour en supprimer une. La suppression affiche un aperçu de la règle — y compris le nombre de problèmes ouverts — et demande confirmation avant d'agir, car elle est irréversible.
+
+    La suppression n'est pas le moyen de faire taire une règle trop bruyante. `DELETE /alerts/{id}` est en cascade : tous les problèmes que l'alerte a jamais ouverts sont supprimés avec elle, emportant leurs commentaires, abonnés et historique d'activité. La boîte de confirmation de la CLI décrit cela comme les problèmes ouverts étant « orphelins » ; le contrat de l'API est une suppression en cascade, donc considérez l'historique comme perdu. Pour arrêter le déclenchement d'une règle tout en conservant ce qu'elle a enregistré, désactivez-la plutôt — le formulaire d'alerte du tableau de bord dispose du bouton d'activation, et ni `fp alerts create` ni `fp alerts update` n'expose un indicateur `--enabled`, donc la voie CLI est `fp alerts update <name> --file` avec une définition complète portant `enabled: false`.
 
     Consultez la [référence `fp alerts`](/fr/reference/cloud-cli#alerts) pour l'ensemble complet des commandes d'alerte.
   </Tab>
 </Tabs>
 
-Les conditions d'alerte peuvent être basées sur des erreurs, des scores d'évaluation, des combinaisons d'évaluations ou du SQL personnalisé. Ajoutez des destinataires, testez la règle et ouvrez l'incident résultant pour l'acquitter, l'assigner, le commenter, vous y abonner et le résoudre.
+<Warning>
+  **test** envoie de vraies notifications. Il envoie aux vrais canaux e-mail, Slack et webhook de l'alerte et ouvre un problème synthétique, ce qui peut alerter la personne d'astreinte. Il demande confirmation sur un terminal interactif ; `--yes`, `--json` et un stdin redirigé ignorent tous cette invite. Le serveur signale également le succès dès qu'il envoie, donc un test réussi prouve que le message est parti, pas qu'il est arrivé.
+</Warning>
 
-## Bonnes pratiques de conception des alertes
+## Définir le déclencheur
 
-- Nommez la condition et le workflow concerné.
-- Définissez explicitement l'environnement concerné.
-- Définissez une fenêtre et un seuil permettant d'éviter de réagir à un événement isolé et sans conséquence.
-- Incluez un lien ou une requête qui mène les intervenants vers les sessions.
-- Désignez un responsable avant d'activer la règle.
+Il existe cinq types de déclencheurs :
+
+| `--trigger-kind` | Se déclenche quand |
+| --- | --- |
+| `metric_threshold` | Une métrique franchit un seuil — erreurs, latence, coût, ou tout ce que vous pouvez mesurer. |
+| `per_event` | Un seul événement correspondant arrive. |
+| `evaluation_score` | Le score d'un évaluateur franchit un seuil. |
+| `eval_compound` | Plusieurs conditions de score se combinent, par exemple deux scores sur trois échouent. |
+| `custom_sql` | Une requête que vous écrivez retourne un dépassement. |
+
+La condition elle-même est définie dans `--trigger-spec`, selon la forme adaptée au type choisi.
+
+## Définir les paramètres d'évaluation
+
+Le formulaire du tableau de bord et la CLI demandent les mêmes quatre valeurs.
+
+| Paramètre | Indicateur | Valeurs acceptées |
+| --- | --- | --- |
+| Gravité | `--severity` | `info`, `warning`, `critical` |
+| Intervalle d'évaluation | `--eval-interval-secs` | 30–86 400 secondes |
+| Nombre de dépassements | `--min-breaches` | Au moins 1, et jamais plus que la fenêtre |
+| Fenêtre d'évaluation | `--eval-window` | Au moins 1, compté en **intervalles**, pas en secondes |
+
+Ainsi, `--eval-interval-secs 300 --min-breaches 2 --eval-window 3` signifie « évaluer toutes les cinq minutes, et déclencher lorsque deux des trois dernières évaluations ont dépassé le seuil ».
+
+## Bonnes pratiques pour la conception des alertes
+
+- Nommez la condition et le flux de travail concerné.
+- Délimitez l'environnement explicitement.
+- Définissez une fenêtre et un seuil qui évitent de réagir à un seul événement anodin.
+- Incluez un lien ou une requête qui guide les intervenants vers les sessions.
+- Assignez un propriétaire avant d'activer la règle.
+- Vérifiez `fp alerts show <name>` pour le nombre de problèmes ouverts avant d'ajouter une autre règle pour le même symptôme. La carte du tableau de bord n'affiche cette ligne que lorsque le nombre est non nul.
 
 <Tip>
-  Après avoir résolu un constat d'audit, ajoutez une alerte pour le cas où la même défaillance pourrait se reproduire en dehors de la couverture de la politique.
+  Après avoir résolu un constat d'audit, ajoutez une alerte si la même défaillance pourrait se reproduire en dehors de la couverture de la politique.
 </Tip>
+
+<Card title="Traiter les problèmes ouverts par une alerte" icon="clipboard-check" href="/fr/audits/findings-and-issues">
+  Acquitter, assigner, commenter, s'abonner et résoudre — le flux de travail dans lequel atterrit chaque déclenchement d'alerte.
+</Card>

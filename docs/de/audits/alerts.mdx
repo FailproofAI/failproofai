@@ -1,62 +1,103 @@
 ---
-title: "Benachrichtigungen"
-description: "Wiederkehrende Vorfälle erkennen und an die richtigen Verantwortlichen weiterleiten."
+title: "Alerts"
+description: "Wiederkehrendes Auftreten erkennen und ein Problem an die richtigen Verantwortlichen weiterleiten."
 icon: "bell-ring"
 ---
 
-Benachrichtigungen überwachen eine messbare Bedingung und erstellen einen Vorfall, wenn diese ausgelöst wird. Verwenden Sie sie, wenn ein Fehler eine zeitnahe Reaktion erfordert – unabhängig davon, ob eine Richtlinie ihn blockieren kann.
+Ein Alert überwacht eine messbare Bedingung und öffnet ein Issue, wenn er ausgelöst wird. Verwende ihn, wenn ein Fehler eine zeitnahe Reaktion erfordert – unabhängig davon, ob eine Policy ihn blockieren kann.
 
-## Benachrichtigung erstellen und testen
+## Alert erstellen und testen
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Navigieren Sie zu **Analysieren → Benachrichtigungen** und wählen Sie **Neue Benachrichtigung**. Sie können auch über die Glocke bei einem repräsentativen Fehler beginnen.
-    2. Geben Sie Name, Schweregrad, Auslösertyp, Bedingung, Auswertungsintervall, Überschreitungsanzahl, Zeitfenster und Kanäle ein.
-    3. Speichern Sie die Benachrichtigung, öffnen Sie die Detailseite und führen Sie **Test** aus.
-    4. Navigieren Sie zu **Analysieren → Vorfälle**, um durch die Benachrichtigung erstellte Vorfälle zu bestätigen, zuzuweisen, zu kommentieren, zu abonnieren und zu lösen.
+    1. Gehe zu **Analyze → Alerts** und wähle **new alert**. Du kannst auch über die Glocke bei einem repräsentativen Fehler beginnen.
+    2. Gib Name, Schweregrad, Trigger-Typ, Bedingung, Auswertungsintervall, Breach-Anzahl, Fenster und Kanäle ein.
+    3. Speichere den Alert, öffne seine Detailseite und führe **test** aus.
+    4. Gehe zu **Analyze → Issues**, um die vom Alert geöffneten Issues zu bestätigen, zuzuweisen, zu diskutieren, zu abonnieren und zu schließen.
 
-    Der erste Teil des Formulars identifiziert die Benachrichtigung und das Signal, das sie auslösen soll.
+    Der erste Teil des Formulars identifiziert den Alert und das Signal, das ihn auslösen soll.
 
-    ![Der erste Teil des Formulars für neue Benachrichtigungen mit Name, Beschreibung, Aktivierungsstatus und Auslösertyp.](/images/dashboard/alert-new-trigger.png)
+    ![Der erste Teil des new-alert-Formulars mit Name, Beschreibung, Aktivierungsstatus und Trigger-Typ.](/images/dashboard/alert-new-trigger.png)
 
-    Der zweite Teil steuert, wie lange die Bedingung anhalten muss, wie oft sie ausgewertet wird und wohin Benachrichtigungen gesendet werden.
+    Der zweite Teil steuert, wie lange die Bedingung andauern muss, wie häufig sie ausgewertet wird und wohin Benachrichtigungen gesendet werden.
 
-    ![Der zweite Teil des Formulars für neue Benachrichtigungen mit Überschreitungslogik, Zeitplan, Schweregrad, Zustellkanälen und Erstellungsaktion.](/images/dashboard/alert-new-routing.png)
+    ![Der zweite Teil des new-alert-Formulars mit Breach-Logik, Zeitplan, Schweregrad, Zustellkanälen und der Aktion zum Erstellen.](/images/dashboard/alert-new-routing.png)
 
-    Überprüfen Sie nach dem Speichern in der Benachrichtigungsliste, ob die Regel aktiviert ist und ob Auslöser, Zeitfenster, Schweregrad und Kanäle Ihren Vorgaben entsprechen.
+    Überprüfe nach dem Speichern in der Alerts-Liste, ob die Regel aktiviert ist und ob Trigger, Fenster, Schweregrad und Kanäle deinen Erwartungen entsprechen. Eine Karte mit offenen Issues zeigt deren Anzahl an; eine Karte ohne offene Issues lässt diese Zeile vollständig weg – ihr Fehlen sagt also nichts aus. Um den Wert für jede Regel einschließlich der Nullen zu lesen, verwende `fp alerts show <name>`, das ihn immer ausgibt.
 
-    ![Die Benachrichtigungsseite mit Benachrichtigungsregeln, deren Auslösern, Auswertungszeitfenstern, Kanälen und Schweregrad.](/images/dashboard/alerts.png)
-
-    Testen Sie die Benachrichtigung, bevor Sie sich im Produktivbetrieb auf sie verlassen.
+    ![Die Alerts-Seite zeigt Alert-Regeln mit ihren Triggern, Auswertungsfenstern, Kanälen und Schweregraden.](/images/dashboard/alerts.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp alerts create high-errors \
       --trigger-kind metric_threshold \
       --severity warning \
-      --trigger-spec '{"metric":"error_count","op":">","value":50,"window_secs":900}'
+      --trigger-spec '{"metric":"error_count","op":">","value":50,"window_secs":900}' \
+      --eval-interval-secs 300 \
+      --min-breaches 2 \
+      --eval-window 3
 
     fp alerts show high-errors
     fp alerts test high-errors
     fp alerts update high-errors --severity critical --yes
     ```
 
-    Verwenden Sie `fp alerts list`, um Regeln zu überprüfen, und `fp alerts delete <name>`, um eine zu entfernen.
+    Neue Alerts starten **aktiviert**, und ein Namenskonflikt wird abgelehnt, bevor etwas erstellt wird.
 
-    Die vollständige Liste der Befehle finden Sie in der [`fp alerts`-Referenz](/de/reference/cloud-cli#alerts).
+    `fp alerts update` ersetzt die gesamte Definition serverseitig, daher liest die CLI den Alert neu ein und legt deine Flags darüber – ein reines Flag-Update benötigt `alerts:read` **sowie** `alerts:write` und fordert zur Bestätigung auf, es sei denn, du übergibst `--yes`.
+
+    Verwende `fp alerts list`, um Regeln zu überprüfen, und `fp alerts delete <name>`, um eine zu entfernen. Delete zeigt eine Vorschau der Regel – einschließlich der Anzahl offener Issues – und bestätigt vor der Ausführung, da die Aktion nicht rückgängig gemacht werden kann.
+
+    Delete ist nicht der richtige Weg, um eine störende Regel zu deaktivieren. `DELETE /alerts/{id}` führt eine kaskadierte Löschung durch: Alle Issues, die der Alert je geöffnet hat, werden damit entfernt – zusammen mit Kommentaren, Abonnenten und dem Aktivitätsverlauf. Die Bestätigungsbox der CLI beschreibt dies als das „Verwaisen" der offenen Issues; der API-Vertrag ist eine kaskadierte Löschung, behandle den Verlauf also als unwiderruflich gelöscht. Um das Auslösen einer Regel zu stoppen und die aufgezeichneten Daten zu behalten, deaktiviere die Regel stattdessen – das Alert-Formular im Dashboard hat den Aktivierungsschalter. Da weder `fp alerts create` noch `fp alerts update` ein `--enabled`-Flag bieten, ist der CLI-Weg `fp alerts update <name> --file` mit einer vollständigen Definition, die `enabled: false` enthält.
+
+    Den vollständigen Befehlssatz findest du in der [`fp alerts`-Referenz](/de/reference/cloud-cli#alerts).
   </Tab>
 </Tabs>
 
-Benachrichtigungsbedingungen können auf Fehlern, Auswertungsbewertungen, Auswertungskombinationen oder benutzerdefiniertem SQL basieren. Fügen Sie Empfänger hinzu, testen Sie die Regel und öffnen Sie den resultierenden Vorfall, um ihn zu bestätigen, zuzuweisen, zu kommentieren, zu abonnieren und zu lösen.
+<Warning>
+  **test** sendet echte Benachrichtigungen. Es sendet an die tatsächlichen E-Mail-, Slack- und Webhook-Kanäle des Alerts und öffnet ein synthetisches Issue – es kann also die Person anpingen, die gerade Bereitschaft hat. Auf einem interaktiven Terminal erfolgt zuerst eine Bestätigung; `--yes`, `--json` und ein umgeleitetes stdin überspringen diese Aufforderung. Der Server meldet außerdem Erfolg, sobald er die Nachricht absendet – ein grüner Test beweist, dass die Nachricht abgeschickt wurde, nicht dass sie angekommen ist.
+</Warning>
 
-## Gutes Benachrichtigungsdesign
+## Trigger definieren
 
-- Benennen Sie die Bedingung und den betroffenen Workflow.
-- Legen Sie die Umgebung explizit fest.
-- Setzen Sie ein Zeitfenster und einen Schwellenwert, um nicht auf einzelne harmlose Ereignisse zu reagieren.
-- Fügen Sie einen Link oder eine Abfrage ein, die Verantwortliche zu den betreffenden Sitzungen führt.
-- Weisen Sie einen Eigentümer zu, bevor Sie die Regel aktivieren.
+Es gibt fünf Trigger-Typen:
+
+| `--trigger-kind` | Löst aus, wenn |
+| --- | --- |
+| `metric_threshold` | Eine Metrik einen Schwellenwert überschreitet – Fehler, Latenz, Kosten oder alles andere Messbare. |
+| `per_event` | Ein einzelnes passendes Ereignis eintrifft. |
+| `evaluation_score` | Der Score eines Evaluators einen Schwellenwert überschreitet. |
+| `eval_compound` | Mehrere Score-Bedingungen kombiniert werden, z. B. wenn zwei von drei Scores fehlschlagen. |
+| `custom_sql` | Eine selbst geschriebene Abfrage einen Breach zurückgibt. |
+
+Die Bedingung selbst wird in `--trigger-spec` angegeben, passend zum gewählten Typ.
+
+## Auswertungswerte festlegen
+
+Das Dashboard-Formular und die CLI fragen nach denselben vier Werten.
+
+| Einstellung | Flag | Zulässige Werte |
+| --- | --- | --- |
+| Schweregrad | `--severity` | `info`, `warning`, `critical` |
+| Auswertungsintervall | `--eval-interval-secs` | 30–86.400 Sekunden |
+| Breach-Anzahl | `--min-breaches` | Mindestens 1 und nie mehr als das Fenster |
+| Auswertungsfenster | `--eval-window` | Mindestens 1, gezählt in **Intervallen**, nicht in Sekunden |
+
+`--eval-interval-secs 300 --min-breaches 2 --eval-window 3` bedeutet also: „alle fünf Minuten auswerten und auslösen, wenn zwei der letzten drei Auswertungen einen Breach hatten".
+
+## Gutes Alert-Design
+
+- Benenne die Bedingung und den betroffenen Workflow.
+- Schränke die Umgebung explizit ein.
+- Lege ein Fenster und einen Schwellenwert fest, die eine Reaktion auf ein einzelnes harmloses Ereignis vermeiden.
+- Füge einen Link oder eine Abfrage ein, die Verantwortliche zu den Sessions führt.
+- Weise einen Eigentümer zu, bevor du die Regel aktivierst.
+- Prüfe mit `fp alerts show <name>` die Anzahl offener Issues, bevor du eine weitere Regel für dasselbe Symptom hinzufügst. Die Dashboard-Karte zeigt diese Zeile nur an, wenn die Anzahl ungleich null ist.
 
 <Tip>
-  Fügen Sie nach der Behebung eines Audit-Befundes eine Benachrichtigung hinzu, wenn derselbe Fehler außerhalb des Abdeckungsbereichs der Richtlinie erneut auftreten könnte.
+  Füge nach der Behebung eines Audit-Befunds einen Alert hinzu, wenn derselbe Fehler außerhalb des Geltungsbereichs der Policy erneut auftreten könnte.
 </Tip>
+
+<Card title="Die von einem Alert geöffneten Issues bearbeiten" icon="clipboard-check" href="/de/audits/findings-and-issues">
+  Bestätigen, zuweisen, kommentieren, abonnieren und schließen – der Workflow, in den jeder ausgelöste Alert mündet.
+</Card>

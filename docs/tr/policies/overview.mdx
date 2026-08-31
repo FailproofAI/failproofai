@@ -1,63 +1,76 @@
 ---
 title: "İlkeler"
-description: "Agent eylemlerini gözlemleyin, yönlendirin veya bilinen bir hata tekrarlanmadan önce engelleyin."
+description: "Bir aracıyı bilinen bir hata tekrarlanmadan önce yönlendirin veya engelleyin."
 icon: "shield-check"
 ---
 
-Bir ilke, bir agent hook olayını değerlendirir ve üç karardan birini döndürür:
+Bir ilke, bir aracı eylemini izler ve üç karardan birini döndürür:
 
-- `allow` eylemin devam etmesini sağlar.
-- `instruct` agent'a düzeltici rehberlik verir.
-- `deny` eylemi bir nedenle engeller.
+- `allow` devam eder.
+- `instruct` aracının koşulu desteklediğinde rehberlik sağlar.
+- `deny` eylemi engeller.
 
-## Üç ilke yüzeyini kullanın
+İlkeleri bilinen, tekrarlanabilir davranışlar için kullanın: korumalı dosyaları silme, sırları açığa çıkarma, yanlış dalına itme veya üretim altyapısını değiştirme.
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. **Observe → policy** sayfasına giderek oturumlardan ilke kararlarını filtreleyip inceleyin.
-    2. **Admin → policy editor** sayfasına giderek bir ilke oluşturun, doğrulayın, yayınlayın, devre dışı bırakın veya değişmez sürümleri inceleyin.
-    3. **Admin → enforcement** sayfasına giderek sürümleri ve efektleri makinelere atayın.
+## Bu makineye ilkeler ekleyin
 
-    Yazarlık yapmadan veya zorlama ayarlarını değiştirmeden önce zaten nelerin eşleştiğini anlamak için İlke sayfasını kullanın.
+Setup hiçbir ilke paketi seçmez. Kurulumdan sonra Failproof AI paketini ekleyin:
 
-    ![Karar toplamlarını ve yerel ile Bulut tarafından yönetilen ilke eşlemelerini gösteren İlke sayfası.](/images/dashboard/policy-observe.png)
+```bash
+failproofai config
+failproofai policies add FailproofAI/policies
+failproofai policies
+```
 
-    Editör, bir hata koşulunu kaynağa dönüştürdüğünüz, doğruladığınız ve değişmez bir sürümü yayınladığınız yerdir.
+Paket ayrıcalıklı yerleşik bir paketi içermez. Bizimkiler, başka herhangi birinin yaptığı gibi kurulur.
 
-    ![Değişmez bir ilke sürümü oluşturmak ve yayınlamak için kullanılan İlke editörü.](/images/dashboard/policy-editor.png)
+İlkeler ayrıca yerel bir dosyadan, yayınlanan bir paketten veya Cloud atamasından gelebilir:
 
-    Zorlama daha sonra yayınlanan o sürümü ve onun gözlemle veya zorla efektini makinelere atar.
+| Kaynak | Ekleyin |
+| --- | --- |
+| Yerel dosya | `.failproofai/policies/` altına `*policies.{js,mjs,ts}` koyun |
+| Herhangi bir dosya yolu | `failproofai policies -i -c <path>` |
+| Yayınlanan paket | `failproofai policies add <owner>/<repo>` |
+| Cloud | Panodan veya `fp fleet deploy` ile atayın |
 
-    ![Makine kapsaması ve atanmış ilke sürümlerini gösteren Zorlama filosu.](/images/dashboard/enforcement-fleet.png)
+`block-failproofai-commands` her zaman çalışır ve kapatılamaz. Bir aracının kendi zorlamayı devre dışı bırakmasını engeller.
 
-    Dağıtımdan sonra kararları İlke sayfasında doğrulayın, böylece yazarlık ve filo görünümleri gerçek agent etkinliğine bağlı olur.
-  </Tab>
-  <Tab title="CLI">
-    Yerel ilke kurulumu ve doğrulaması için `failproofai` kullanın:
+## Zorlamadan önce gözlemleyin
 
-    ```bash
-    failproofai policies
-    failproofai policy add block-rm-rf --scope project
-    failproofai config --status
-    ```
+Gözlem modu gerçek ilkeyi çalıştırır ve ne yapacağını kaydeder, ancak aracıyı engellemez.
 
-    İlke kararlarını içeren Bulut oturumlarını ve olaylarını bulmak için `fp` kullanın. Bulut yazarlığı ve filo dağıtımı dashboard iş akışları olarak kalır.
-  </Tab>
-</Tabs>
+```bash
+fp policies test ./checkout.policy.mjs --tool Bash --command "git push --force" --expect deny
+fp fleet deploy ci-runner-01 --add checkout-guard:observe
+fp guardrails summary --since 24h --machine ci-runner-01
+fp fleet deploy ci-runner-01 --add checkout-guard:enforce
+```
 
-İlkeler Failproof AI'da üç farklı yüzeye sahiptir:
+<Warning>
+  Basit `fp fleet deploy <machine> --add <id>` hemen uygulamayı zorlar. Gölge bir dağıtım için `:observe` ekleyin.
+</Warning>
 
-1. **Kararları analiz edin** oturumlar, panolar ve denetimler içinde.
-2. **Sürümleri yazın** yerleşik kurallar, kod veya ilke editörü ile.
-3. **Sürümleri dağıtın ve uygulayın** seçili makinelerde.
+Gözlem modunda zaman aşımına uğrayan bir ilke, uygulanırken ne olacağı için izin kaydeder. Yalnızca gözlenen izin vermeyen kararlar kaydedilir.
 
-Doğrulanmış bir hata modundan başlayın. Bunu tanımlayan en küçük olay ve araç eşlemesini tanımlayın, meşru ve güvenli olmayan örnekleri test edin, ardından zorlama yapmadan önce gözlemleyin.
+Cloud olmadan kullanılan bir paket için bunu `failproofai publish --effect observe` ile yayınlayın.
 
-<Columns cols={2}>
-  <Card title="Yerleşik ilke kullanın" icon="library" href="/tr/policies/builtin">
-    Yaygın gizli, kabuk, Git, bulut ve iş akışı riskleri için incelenen bir kuralı etkinleştirin.
+## Doğru yolu seçin
+
+<CardGroup cols={2}>
+  <Card title="İncelenen bir ilke kullanın" icon="library" href="/tr/policies/builtin">
+    Sırlar, dosyalar, Git, altyapı ve iş akışları için 39 ilkeden seçin.
   </Card>
-  <Card title="Özel ilke yazın" icon="code-2" href="/tr/policies/custom">
-    İş akışına özgü bir kararı JavaScript veya TypeScript'te ifade edin.
+  <Card title="Bir paket yükleyin" icon="package" href="/tr/policies/packs">
+    GitHub veya Policy Hub'dan yayınlanan bir ilke setini ekleyin.
   </Card>
-</Columns>
+  <Card title="Bir ilke yazın" icon="code-2" href="/tr/policies/custom">
+    Kendi aracınız veya iş akışınız için bir kural tanımlayın.
+  </Card>
+  <Card title="Makineler arasında dağıtın" icon="server" href="/tr/policies/deploy">
+    Cloud ilkesini gözlemleyin, yükseltin ve geri alın.
+  </Card>
+</CardGroup>
+
+<Note>
+  Uygulama desteği koşula göre değişir. Bir tool-call deny tüm 12 desteklenen koşulda doğrulanır; diğer olaylar farklılık gösterir. [Desteklenen koşullar](/tr/reference/harnesses#enforcement-capability) bölümüne bakın.
+</Note>

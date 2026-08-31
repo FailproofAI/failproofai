@@ -1,27 +1,29 @@
 ---
-title: "Tần suất kiểm toán"
-description: "Chọn khi nào kiểm toán định kỳ chạy và bao nhiêu dữ liệu chúng xem xét."
+title: "Tần suất kiểm tra"
+description: "Chọn khi nào các kiểm tra định kỳ chạy và lượng dữ liệu mà chúng xem xét."
 icon: "calendar-clock"
 ---
 
-Sử dụng kiểm toán định kỳ cho các chế độ lỗi có thể tái xuất hiện khi agents, prompts, tools và models thay đổi.
+Sử dụng kiểm tra định kỳ cho các chế độ lỗi có thể tái diễn khi agents, prompts, tools và models thay đổi.
 
 ## Thay đổi lịch trình
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Đi tới **Analyze → Audits** và mở kiểm toán.
-    2. Mở cài đặt của nó và thay đổi trạng thái bật/tắt, khoảng thời gian, neo UTC, chế độ cửa sổ hoặc lookback.
-    3. Lưu kiểm toán và xác nhận thời gian chạy tiếp theo trên thẻ kiểm toán.
-    4. Sử dụng **run now** một lần sau khi thay đổi phạm vi hoặc bối cảnh lớn.
+    1. Đi tới **Analyze → Audits** và mở kiểm tra.
+    2. Chọn **edit settings** và thay đổi tần suất, cửa sổ, độ nhạy hoặc kết quả phát hiện trên mỗi lần chạy.
+    3. Lưu kiểm tra và xác nhận thời gian chạy tiếp theo trong tiêu đề kiểm tra.
+    4. Tạm dừng và tiếp tục lịch trình từ tiêu đề tương tự, bên cạnh **run now**.
+    5. Sử dụng **run now** một lần sau khi có thay đổi lớn về phạm vi hoặc bối cảnh.
 
-    ![Trình chỉnh sửa kiểm toán hiển thị tần suất, cửa sổ quét, phạm vi, cài đặt phân tích, bối cảnh và kênh thông báo.](/images/dashboard/audit-edit.png)
+    ![Tiêu đề kiểm tra hiển thị trạng thái tạm dừng, các kết quả phát hiện mở, lần chạy cuối cùng, lần chạy tiếp theo, cửa sổ quét và độ nhạy, với các điều khiển run now, edit settings và resume.](/images/dashboard/audit-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp audits edit checkout-reliability \
       --schedule-interval-secs 86400 \
       --schedule-anchor 2026-08-15T09:00:00Z \
+      --window-mode since_last \
       --lookback-window-secs 86400 \
       --yes
 
@@ -29,21 +31,50 @@ Sử dụng kiểm toán định kỳ cho các chế độ lỗi có thể tái 
     fp audits edit checkout-reliability --enabled --yes
     ```
 
-    Xem [tham chiếu `fp audits`](/vi/reference/cloud-cli#audits) để biết giới hạn lịch trình, hành vi cửa sổ và tất cả các lệnh kiểm toán.
+    `fp audits edit` xác nhận trước khi thay đổi bất cứ điều gì, đó là lý do tại sao mỗi ví dụ ở đây truyền `--yes`. Máy chủ thay thế toàn bộ định nghĩa trên mỗi lần chỉnh sửa, vì vậy CLI gửi lại kiểm tra hiện tại với các thay đổi của bạn được áp dụng — chỉnh sửa chỉ có cờ cần `audits:read` **cũng như** `audits:write`. Phạm vi một khóa CI cho cả hai.
+
+    Xem [tham chiếu `fp audits`](/vi/reference/cloud-cli#audits) để biết các giới hạn lịch trình, hành vi cửa sổ và tất cả các lệnh kiểm tra.
   </Tab>
 </Tabs>
 
-Chọn tần suất từ tốc độ và chi phí của rủi ro:
+## Hai giới hạn lịch trình
+
+Mỗi khuyến nghị bên dưới phải vừa trong các giới hạn này. Các phạm vi là của máy chủ, và `fp` phản chiếu chúng ở phía máy khách, vì vậy một giá trị nằm ngoài một phạm vi thoát 2 cục bộ thay vì tốn một vòng 422.
+
+| Trường | Cờ | Phạm vi | Mặc định |
+| --- | --- | --- | --- |
+| Khoảng thời gian lịch trình | `--schedule-interval-secs` | 3.600–604.800 giây (1 giờ đến 7 ngày) | 86.400 (hàng ngày) |
+| Cửa sổ nhìn lại | `--lookback-window-secs` | 3.600–7.776.000 giây (1 giờ đến 90 ngày) | 604.800 (7 ngày) |
+
+Bảy ngày là giới hạn tối đa về tần suất. Không có kiểm tra Cloud hàng tháng.
+
+## Chọn tần suất
+
+Chọn từ tốc độ và chi phí của rủi ro:
 
 | Mô hình rủi ro | Tần suất bắt đầu |
 | --- | --- |
-| Hành động sản xuất có tác động cao | Hàng ngày |
-| Hồi quy quy trình công việc hoặc mô hình | Hàng tuần |
-| Xem xét quản lý hoặc truy cập | Hàng tháng |
-| Điều tra phát hành một lần | Chạy một lần |
+| Hành động sản xuất có tác động cao | Hàng ngày, hoặc hàng giờ trong khi thay đổi rủi ro đang diễn ra |
+| Hồi quy quy trình làm việc hoặc mô hình | Hàng tuần |
+| Xem xét quản trị hoặc quyền truy cập | Hàng tuần — khoảng thời gian dài nhất có sẵn |
 
-Sắp xếp cửa sổ lookback theo tần suất để các lần chạy không bỏ sót khoảng trống cũng như không kiểm tra lại một nhóm quá lớn một cách không cần thiết. Sau khi thay đổi mục tiêu hoặc bối cảnh của kiểm toán, hãy chạy thủ công một lần trước khi dựa vào kết quả được lên lịch tiếp theo.
+Căn chỉnh cửa sổ nhìn lại với tần suất để các lần chạy không để lại khoảng trống cũng như không kiểm tra lại một quần thể không cần thiết lớn.
+
+Không có kiểm tra một lần; mọi kiểm tra đều có khoảng thời gian lịch trình. Để điều tra phát hành, tạo nó ở trạng thái bật, để lần chạy đầu tiên phát hành — lần chạy đầu tiên xếp hàng ngay lập tức khi tạo, bất kể neo — sau đó tạm dừng nó bằng `fp audits edit <name> --disabled --yes`. Bật lại trước khi sử dụng **run now**: một kiểm tra bị vô hiệu hóa không có hàng đợi, và một lần chạy thủ công đối với nó bị từ chối với 409.
+
+## Chế độ cửa sổ và neo
+
+`--window-mode` quyết định cửa sổ nào mà mỗi lần chạy quét:
+
+| Chế độ | Hành vi |
+| --- | --- |
+| `since_last` | Tiếp tục từ cuối cửa sổ được phân tích đầy đủ cuối cùng, vì vậy một lần chạy bị bỏ qua không để lại khoảng trống. |
+| `fixed` | Kiểm tra lại `lookback_window_secs` cuộn trên mỗi lần chạy, dù lần chạy cuối cùng đã bao gồm những gì. |
+
+`--schedule-anchor` khóa pha thay vì tần suất: các lần chạy hạ cánh trên `anchor + N × interval`. Bỏ qua nó và neo mặc định cho 09:00 UTC tiếp theo; một neo cách đây hơn 365 ngày bị từ chối. Thay đổi khoảng thời gian hoặc neo có hiệu lực tại lần lập lịch tiếp theo, không phải trên lần chạy đã xếp hàng, và một lần chạy không thành công không di chuyển neo.
+
+Sau khi thay đổi mục tiêu hoặc bối cảnh của kiểm tra, hãy chạy nó thủ công một lần trước khi dựa vào kết quả lập lịch tiếp theo.
 
 <Note>
-  Kiểm toán được lên lịch cục bộ được cấu hình trên máy và quét lịch sử agent cục bộ. Lịch trình kiểm toán Cloud hoạt động trên các phiên Cloud. Coi kết quả và quyền sở hữu của chúng một cách riêng biệt.
+  Trang này về lịch trình kiểm tra Cloud, hoạt động trên các phiên Cloud. Kiểm tra cục bộ có bộ hẹn giờ riêng của nó: `failproofai audit --schedule [days]` nhận 1–90 ngày và mặc định là 7, quét lịch sử agent trên máy đó và là bề mặt duy nhất có tùy chọn hàng tháng. Các kết quả và quyền sở hữu của nó là riêng biệt từ bất cứ điều gì ở đây — xem [Audit local agent history](/vi/audits/local-audit).
 </Note>

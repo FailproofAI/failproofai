@@ -1,22 +1,30 @@
 ---
 title: "Administration"
-description: "Gérez les accès, l'utilisation, les organisations et la sécurité sans les mêler au workflow de fiabilité."
+description: "Gérez l'accès Cloud, les membres, les paramètres et la consommation sans les mêler au workflow de fiabilité."
 icon: "settings-2"
 ---
 
-L'administration regroupe les contrôles nécessaires pour faire fonctionner Failproof AI au sein d'une équipe. La plupart des utilisateurs peuvent rester dans Sessions, Audits et Politiques ; les administrateurs utilisent cette section pour gérer les accès et les périmètres opérationnels.
+L'administration est la partie Cloud de Failproof AI. Les organisations, membres, clés API, paramètres d'organisation et la consommation mesurée nécessitent tous une connexion Cloud.
+
+<Note>
+  Failproof AI fonctionne également sans aucun compte. Une machine locale applique les politiques, conserve l'historique de session sur disque, sert le [tableau de bord local](/fr/reference/local-dashboard) sur `localhost:8020`, et exécute `failproofai audit` sans rien envoyer nulle part. Consultez la [configuration machine](/fr/reference/events-and-configuration#machine-configuration) pour les clés `collector` locales. Ignorez le reste de cette section si vous n'utilisez pas Cloud.
+</Note>
+
+## Où se trouvent les contrôles
 
 <Tabs>
-  <Tab title="Dashboard">
-    Utilisez la section **Admin** de la barre latérale Cloud pour accéder à l'**éditeur de politiques**, à l'**application des règles**, à l'**utilisation**, aux **clés**, aux **utilisateurs** et aux **paramètres**. Un élément verrouillé indique que votre compte ne dispose pas de l'autorisation de lecture correspondante.
+  <Tab title="Tableau de bord">
+    Le groupe **admin** de la barre latérale Cloud regroupe l'**éditeur de politiques**, l'**application**, l'**utilisation**, les **clés**, les **utilisateurs** et les **paramètres**.
 
-    ![La section Admin de la barre latérale Cloud avec l'éditeur de politiques, l'application des règles, l'utilisation, les clés, les utilisateurs et les paramètres.](/images/dashboard/admin-navigation.png)
+    ![Le groupe admin de la barre latérale Cloud avec l'éditeur de politiques, l'application, l'utilisation, les clés, les utilisateurs et les paramètres.](/images/dashboard/admin-navigation.png)
   </Tab>
   <Tab title="CLI">
+    Installez le CLI Cloud en tant qu'outil isolé, puis connectez-vous :
+
     ```bash
+    uv tool install fp-cloud-cli
+    fp login
     fp whoami
-    fp orgs current
-    fp orgs perms
     fp usage
     ```
 
@@ -24,17 +32,43 @@ L'administration regroupe les contrôles nécessaires pour faire fonctionner Fai
   </Tab>
 </Tabs>
 
+## Utilisateur connecté ou clé API
+
+`fp` fonctionne selon l'un des deux modes d'authentification, et ce choix détermine quelles commandes sont disponibles. Une commande qu'une clé API ne peut pas exécuter est refusée avant l'ouverture d'une connexion, avec indication du motif, plutôt que de laisser une erreur 401 ou 403 parler à sa place.
+
+| Commande | Clé API | Permission |
+| --- | --- | --- |
+| `fp whoami` | Oui | aucune |
+| `fp usage` | Oui | `usage:read` |
+| `fp keys list` / `show` | Oui | `keys:read` |
+| `fp keys create` | Oui | `keys:create` |
+| `fp keys disable` | Oui | `keys:disable` |
+| `fp keys regenerate` | Oui | `keys:regenerate` |
+| `fp keys update` | Non | `keys:update`, qu'aucune clé ne peut détenir |
+| `fp users list` / `show` | Oui | `users:read` |
+| `fp users create` | Oui | `users:create` |
+| `fp users update` | Oui | `users:update` |
+| `fp users disable` / `enable` | Oui | `users:delete` |
+| `fp settings list` / `schema` | Oui | `settings:read` |
+| `fp settings set` | Oui | `settings:write` |
+| `fp orgs list` / `switch` / `current` / `perms` | Non | session connectée uniquement |
+
+`fp usage` est la commande à confier à un script de reporting : elle s'exécute sans surveillance sous une clé et ne nécessite que `usage:read`.
+
 <Columns cols={2}>
-  <Card title="Utilisation" icon="chart-no-axes-combined" href="/fr/admin/usage">
-    Consultez les fenêtres de facturation et la consommation de l'organisation.
-  </Card>
   <Card title="Clés et permissions" icon="key-round" href="/fr/admin/keys-and-permissions">
-    Accordez aux machines et à l'automatisation uniquement les permissions dont elles ont besoin.
+    Créez les identifiants machine et accordez à chaque workload uniquement les droits dont il a besoin.
   </Card>
   <Card title="Utilisateurs et organisations" icon="users" href="/fr/admin/users-and-organizations">
-    Gérez les membres, les paramètres par défaut et les périmètres d'organisation.
+    Gérez les membres et maintenez les données et actions de chaque organisation dans leur périmètre.
   </Card>
   <Card title="Paramètres et sécurité" icon="lock-keyhole" href="/fr/admin/settings-and-security">
-    Configurez les paramètres opérationnels, la gestion des données et la sécurité du déploiement.
+    Configurez les valeurs de connexion et d'alerte, et définissez quelles données d'agent quittent une machine.
+  </Card>
+  <Card title="Utilisation" icon="chart-no-axes-combined" href="/fr/admin/usage">
+    Consultez ce que l'organisation a consommé durant sa fenêtre courante de 30 jours.
+  </Card>
+  <Card title="Couverture de flotte" icon="network" href="/fr/policies/fleet">
+    Visualisez les machines inscrites, leur mode d'identification et les politiques qu'elles appliquent.
   </Card>
 </Columns>

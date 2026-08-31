@@ -1,54 +1,93 @@
 ---
-title: "审计方案"
-description: "常见 Agent 故障排查的起始目标。"
+title: "审计配方"
+description: "常见 Agent 故障排查的初始目标。"
 icon: "book-open-check"
 ---
 
-将这些内容作为起始目标，然后添加您的 Agent、环境和预期工作流。
+将这些作为初始目标，然后添加你的 Agent、环境和预期工作流。
 
 <Tabs>
   <Tab title="控制台">
-    前往 **分析 → 审计 → 新建审计**，将某个方案复制到描述或简报中，然后添加相关的环境、Agent、回溯时间和参考 URL。创建审计并在安排定期运行之前检查第一次运行结果。
+    前往 **Analyze → Audits → New audit**。本页面的配方描述即为 **description**——你希望此次审计捕捉到的内容。使目标可判断的工作流规则写在 **your brief** 中的 **what it knows** 卡片里：这是模型在查看任何事件之前读取的背景信息，上限为 8,192 个字符，并附加到审计本身已有的检查项上。brief 永远不能替代目标，也不能作为发现的证据。
 
-    新建审计表单通过添加范围、上下文、频次和通知，将方案转换为可执行的故障检查。
+    然后在 **what it reads** 中设置范围，因为这些配方中有一半在没有范围的情况下会产生大量噪音。环境和 Agent 可以缩小检查范围；**errors to ignore** 列出你预期并通过设计加以处理的错误类型，使其不再被计为失败。该字段仅接受错误类型名称，正是它防止了重试循环配方的泛滥。
 
-    ![新建审计表单，已配置明确目标、计划、Agent 和环境范围、上下文及通知渠道。](/images/dashboard/audit-new.png)
+    新审计表单通过添加范围、上下文、节奏和通知，将配方转化为可执行的故障检查。
 
-    创建后，在依赖定期运行之前，请确认审计已出现在列表中并具有预期的状态和计划。
+    ![配置了聚焦目标、计划、Agent 和环境范围、上下文及通知渠道的新审计表单。](/images/dashboard/audit-new.png)
 
-    ![审计页面，创建后显示特定工作流的审计方案。](/images/dashboard/audits.png)
+    创建后，在依赖定期运行之前，请确认审计已出现在列表中，并具有预期的状态和计划。
 
-    打开第一次运行结果，若其发现内容比预期的故障模式范围更广或更窄，请对方案进行优化。
+    打开第一次运行，如果发现结果比预期的故障模式更宽泛或更狭窄，则对配方进行调整。
   </Tab>
   <Tab title="CLI">
-    将方案保存为文本文件，并在创建时附加：
+    将配方保存为文本文件，并在创建时附加：
 
     ```bash
     fp audits create retry-loop-review \
+      --description "Find agents that repeat a failing tool call without changing anything" \
       --scope '{"environments":["production"]}' \
+      --ignore-error-type RateLimitRetried \
       --text-file ./retry-loop-audit.txt \
       --schedule-interval-secs 86400
     ```
+
+    `--text` 和 `--text-file` 是发送同一 brief 的两种方式；选其一，不要同时使用。通过 `--url` 添加参考页面，最多五个，仅限公开的 `https://` 地址。在创建请求中一次性发送所有内容：新启用的审计会立即开始执行，因此在第二次调用中写入的上下文可能会错过第一次运行。
   </Tab>
 </Tabs>
 
+## 评判配方本身，而不仅仅是措辞
+
+有两个设置对结果的影响比措辞更大。**Sensitivity**（`low`、`medium`、`high`，默认 `medium`）决定一次运行标记某个模式的积极程度；**findings per run**（`--top-k`，默认 50）限制保留的发现数量。对于漏判代价高于误报的问题，提高灵敏度；对于否则会填满队列的大量模式，降低灵敏度。以下每个配方都给出了起始值——在读完第一次运行结果后再调整，而不是之前。
+
+任务放弃和遗漏人工升级是针对 Agent 本应完成的任务的判断，而非针对它抛出的错误。请先编写该 Agent 的 [Agent 上下文](/zh/audits/agent-contracts)，否则分析将没有评判标准。
+
 <AccordionGroup>
   <Accordion title="重复重试循环">
-    查找 Agent 在不更改输入、不选择备用工具、也不升级至人工处理的情况下，重复调用同一个失败工具的会话。
+    查找 Agent 在不更改输入、不选择备用工具、也不升级至人工的情况下重复同一失败工具调用的会话。
+
+    从 `medium` 开始，并在 **errors to ignore** 下列出你有意重试的错误类型。
   </Accordion>
   <Accordion title="工具使用不当">
-    查找所选工具与声明任务不匹配，或工具输入违反工作流所需前置条件的会话。
+    查找所选工具与既定任务不匹配，或工具输入违反工作流所需前置条件的会话。
+
+    从 `medium` 开始。将前置条件本身写入 brief；没有它们，分析将没有规则可循。
   </Accordion>
   <Accordion title="不安全的数据访问">
-    查找在该 Agent 批准的路径和服务范围之外读取、写入或传输敏感数据的会话。
+    查找在该 Agent 已批准的路径和服务之外读取、写入或传输敏感数据的会话。
+
+    从 `high` 开始。一次遗漏的泄露所付出的代价，远高于一次你可以直接驳回的误报。
   </Accordion>
-  <Accordion title="任务中断放弃">
-    查找在未完成请求结果、未给出明确错误，也未显式移交给人工的情况下结束的会话。
+  <Accordion title="任务放弃">
+    查找在未获得预期结果、明确错误或显式移交给人工的情况下结束的会话。
+
+    从 `medium` 开始，并首先编写 Agent 的 **Done when** 部分——此配方是针对该部分的判断。
   </Accordion>
   <Accordion title="成本或延迟回归">
-    查找模型、工具或总耗时超出预期预算的会话，并识别造成该问题的事件模式。
+    查找模型、工具或总持续时间超出预期预算的会话，并识别负责任的事件模式。
+
+    从 `low` 开始，如果第一次运行结果较少则提高灵敏度。预算应写入 brief，而慢路径按设计抛出的错误类型应写入 **errors to ignore**。
   </Accordion>
   <Accordion title="遗漏人工升级">
-    查找因置信度低、反复失败或策略指引需要人工决策，但 Agent 仍自主继续执行的会话。
+    查找置信度不足、反复失败或策略指引需要人工决策，但 Agent 仍自主继续的会话。
+
+    从 `high` 开始，并在 Agent 的 **Must not** 部分说明升级规则，以便分析据此评判。
   </Accordion>
 </AccordionGroup>
+
+## 在创建任何内容之前先获得初步答案
+
+其中几种模式在本地审计中已有离线检测器，它会读取你本机上的 Agent 历史记录，无需账号：
+
+| 检测器 | 所计数的模式 |
+| --- | --- |
+| `sleep-polling-loop` | 较长的 `sleep`，或 `while … sleep … done` 轮询循环 |
+| `reread-after-edit` | 读取 Agent 刚刚编辑或写入的文件 |
+| `find-from-root` | 在 `/` 或其他高层目录上执行 `find` |
+| `redundant-cd-cwd` | `cd` 进入 shell 当前已在的目录 |
+| `prefer-edit-over-read-cat` | 对单个源文件使用 `cat`、`head`、`tail`、`less` 或 `more` |
+| `prefer-edit-over-sed-awk` | 通过 `sed -i` 或 `awk … > file` 进行原地编辑 |
+| `prefer-write-over-heredoc` | 通过 heredoc 或 `echo > file` 写入多行内容 |
+| `git-commit-no-verify` | `git commit --no-verify`，跳过钩子 |
+
+这些检测器只做计数，不会阻止，也没有任何一个能衡量成本或延迟。在为同一范围付费进行云端审计之前，运行 `failproofai audit` 查看你的 Agent 已经产生了哪些低效和高风险的 shell 模式——参见 [审计本地 Agent 历史记录](/zh/audits/local-audit)。

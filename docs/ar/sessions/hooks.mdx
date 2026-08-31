@@ -1,25 +1,35 @@
 ---
-title: "الخطافات"
-description: "قياس نشاط الخطافات والمحفزات والزمن الكامن بشكل منفصل عن نتائج السياسات."
+---
+title: "Hooks"
+description: "شاهد متى قيّم Failproof AI حدث الوكيل وما الذي قرره."
 icon: "webhook"
 ---
 
-تعرض الخطافات وقت تشغيل خطافات دورة حياة الوكيل ومدة استغراقها. قرارات السياسات لها طريقة عرض منفصلة.
+Hook هو نقطة يطلب فيها الوكيل من Failproof AI قرارًا. سجل نشاط Hook يسجل الحدث والسياسة والنتيجة ووقت التقييم.
+
+## التحقيق في نشاط Hook
 
 <Tabs>
   <Tab title="لوحة التحكم">
-    1. انتقل إلى **Observe → Hooks**.
-    2. قم بالتصفية حسب البيئة أو اسم الخطاف أو حدث المحفز أو الوكيل أو معرف الجلسة.
-    3. استعرض زمن الانتظار والتوزيع الخاص بالخطاف.
-    4. حدد نقطة على الرسم البياني أو قطاع خطاف لفتح الأحداث الأساسية.
+    انتقل إلى **Observe → Hooks**. قم بالتصفية حسب البيئة أو الحدث أو الوكيل أو الجلسة.
 
-    ![صفحة الخطافات تعرض زمن الانتظار مجمعاً حسب اسم الخطاف وحدث المحفز.](/images/dashboard/hooks.png)
+    ![صفحة Hooks تعرض زمن الاستجابة مجمعًا حسب اسم hook ونوع الحدث.](/images/dashboard/hooks.png)
   </Tab>
-  <Tab title="واجهة سطر الأوامر">
+  <Tab title="CLI">
     ```bash
+    fp guardrails summary --since 24h
+    fp --json events --full --event-type hook_completed --session-id <session-id> --all --limit 500
     fp list hooks
-    fp events --event-type hook_triggered,hook_completed --env production --since 24h
-    fp events --search "PreToolUse" --since 24h
     ```
   </Tab>
 </Tabs>
+
+بشكل افتراضي، يتم إرسال كل قرار `deny` و`instruct` بالكامل. يتم تجميع الأوامر المكررة لتقليل الضوضاء. عيّن `collector.hooks_verbosity` في `~/.failproofai/config.json` إلى `all` أو `decisions` أو `off`.
+
+<Warning>
+  نشاط Hook يثبت أن التقييم تم تشغيله، وليس أن الحزام كان يمكنه حظر هذا الحدث. انظر إلى [القدرة على الفرض](/ar/reference/harnesses#enforcement-capability). زوج harness-event غير مدرج لم يتم التحقق منه.
+</Warning>
+
+<Card title="قرارات السياسة" icon="shield-check" href="/ar/sessions/policy-decisions">
+  اقرأ نفس النشاط حسب النتيجة والسياسة.
+</Card>

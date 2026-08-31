@@ -1,41 +1,58 @@
 ---
 title: "Torne seu agente à prova de falhas"
-description: "Observabilidade e controle para cada harness em que seus agentes rodam — CLIs de codificação, gateways de chat, assistentes self-hosted e seus próprios agentes instrumentados."
+description: "Veja o que seus agentes fazem, encontre falhas e evite que elas se repitam."
 icon: "shield-check"
 ---
 
-O Failproof AI ajuda equipes a entender o que os agentes fizeram, identificar onde falharam e implantar salvaguardas antes que o mesmo comportamento se repita.
+Failproof AI ajuda qualquer pessoa que execute agentes a entender o que aconteceu, encontrar falhas e impedir que elas se repitam.
 
-Um **harness** é o ambiente em que seu agente realmente executa. O Failproof AI se conecta a 12 deles — CLIs de codificação como Claude Code e Codex, gateways de chat como Hermes, assistentes self-hosted como OpenClaw — e os mesmos eventos, as mesmas políticas e o mesmo histórico de sessões se aplicam a todos. Agentes sem harness se reportam por meio do [SDK Python](/pt-br/reference/custom-agents), que os rastreia e audita; aplicar uma política nesse caso exige um hook no seu próprio runtime.
+Funciona com 12 ambientes de agentes comuns, incluindo Claude Code, Codex, Hermes, OpenClaw e Goose. Agentes criados com LangChain, CrewAI, LlamaIndex, Pydantic AI ou seu próprio runtime podem reportar através do [Python SDK](/pt-br/reference/custom-agents).
 
 <Columns cols={2}>
-  <Card title="Configure o Failproof" icon="wand-sparkles" href="/pt-br/start/quickstart">
-    Use a skill para instrumentar seu projeto, conectá-lo e verificar se os logs do agente estão chegando.
+  <Card title="Configurar esta máquina" icon="wand-sparkles" href="/pt-br/start/quickstart">
+    Instale o Failproof AI, conecte seus agentes e escolha o que aplicar.
   </Card>
-  <Card title="Pergunte ao Assistente Failproof" icon="message-square-text" href="/pt-br/sessions/assistant">
-    Analise, consulte, crie dashboards e execute auditorias em linguagem natural nos logs do seu agente.
+  <Card title="Consulte seus agentes" icon="message-square-text" href="/pt-br/sessions/assistant">
+    Consulte sessões, investigue falhas e crie dashboards em linguagem natural.
   </Card>
 </Columns>
+
+## Comece localmente ou conecte à nuvem
+
+<Columns cols={2}>
+  <Card title="Local, sem conta" icon="laptop" href="/pt-br/audits/local-audit">
+    Abra o dashboard em `localhost:8020` e execute `failproofai audit`. O histórico do seu agente permanece nesta máquina.
+  </Card>
+  <Card title="Failproof AI Cloud" icon="cloud" href="/pt-br/start/setup">
+    Veja sessões em várias máquinas e gerencie políticas para sua equipe.
+  </Card>
+</Columns>
+
+A configuração intencionalmente não escolhe nenhum pacote de políticas. Adicione o nosso após a configuração:
+
+```bash
+failproofai policies add FailproofAI/policies
+```
+
+Até lá, apenas `block-failproofai-commands` está em execução. Ele impede que um agente desabilite o Failproof AI.
+
+## O que você pode fazer
 
 <Columns cols={3}>
-  <Card title="Veja o que o agente fez" icon="route" href="/pt-br/sessions/overview">
-    Acompanhe chamadas de modelo, ferramentas, erros, entradas humanas, latência e decisões de política em uma única sessão.
+  <Card title="Veja o que aconteceu" icon="route" href="/pt-br/sessions/overview">
+    Acompanhe a execução de um agente por chamadas de modelo, ferramentas, erros e decisões de política.
   </Card>
-  <Card title="Encontre falhas sistematicamente" icon="scan-search" href="/pt-br/audits/overview">
-    Audite um conjunto definido de sessões, revise descobertas embasadas em evidências e acompanhe a remediação como issues.
+  <Card title="Encontre falhas" icon="scan-search" href="/pt-br/audits/overview">
+    Revise evidências em uma ou várias execuções.
   </Card>
   <Card title="Previna recorrências" icon="shield-check" href="/pt-br/policies/overview">
-    Transforme um modo de falha conhecido em uma política, observe seu impacto e implante-a em toda a sua frota.
+    Observe uma proteção em atividade real e aplique-a quando estiver pronto.
   </Card>
 </Columns>
 
-> **Sessão → Auditoria → Descoberta → Issue → Política**<br />
-> Rastreie o que aconteceu, encontre a falha, gerencie a resposta e previna o mesmo comportamento em execuções futuras.
+> **Sessão → Auditoria → Descoberta → Problema → Política**
+> Veja o que aconteceu, encontre a falha, assuma a resposta e depois previna-a.
 
-## Comece por aqui
-
-Se você está implantando seu primeiro agente instrumentado, comece pelo [quickstart](/pt-br/start/quickstart). Se os dados já estão chegando, abra [Sessions](/pt-br/sessions/overview) e inspecione uma execução real antes de configurar auditorias ou políticas.
-
-<Card title="Encontre e previna uma falha" icon="arrow-right" href="/pt-br/start/quickstart">
-  Complete o fluxo de trabalho de ponta a ponta, desde a captura até uma política implantada com segurança.
-</Card>
+<Note>
+  A configuração é compatível com Linux e macOS. Consulte [ambientes suportados](/pt-br/reference/harnesses) para saber o que cada ambiente de agente pode observar ou bloquear.
+</Note>

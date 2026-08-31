@@ -1,17 +1,19 @@
 ---
-title: "Harnesses de agente"
-description: "Capture sessões e aplique políticas em todos os 12 harnesses de agente suportados."
+title: "Harnesses de agentes"
+description: "Capture sessões e aplique políticas em todos os 12 harnesses de agentes suportados."
 icon: "plug-zap"
 ---
 
-Um harness é o ambiente em que seu agente realmente executa. O Failproof AI suporta doze deles, em duas classes:
+Um harness é o ambiente em que seu agente realmente executa. Failproof AI suporta doze deles, em duas classes:
 
 - **CLIs de codificação** (10) — Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Factory Droid, Devin CLI, Antigravity CLI, Goose
 - **Gateways de chat e assistente** (2) — Hermes (Slack, Telegram, cron), OpenClaw (assistente auto-hospedado)
 
-As mesmas políticas e o mesmo histórico de sessões se aplicam independentemente do harness em que um agente executa. Uma camada de adaptador mapeia os nomes de eventos nativos, nomes de ferramentas e campos de entrada de ferramentas de cada harness para 29 eventos canônicos antes que qualquer política seja executada.
+As mesmas políticas e o mesmo histórico de sessões se aplicam independentemente de qual harness o agente utiliza. Uma camada de adaptador mapeia os nomes de eventos nativos, nomes de ferramentas e campos de entrada de ferramentas de cada harness para 29 eventos canônicos antes que qualquer política seja executada.
 
-Um agente que não executa em **nenhum** dos doze é instrumentado diretamente com o [Python SDK](/pt-br/reference/custom-agents). Esse é um contrato diferente, e vale deixar claro: o SDK fornece rastreamento, sessões, avaliações e auditorias — **ele não aplica políticas por conta própria.** Bloquear uma ação insegura antes que ela seja executada requer um hook de aplicação no limite de ferramenta do seu runtime; [entre em contato conosco](mailto:support@befailproof.ai) e faremos o mapeamento.
+Um agente que não roda em **nenhum** dos doze é instrumentado diretamente com o [Python SDK](/pt-br/reference/custom-agents). Esse é um contrato diferente, e vale deixar claro: o SDK oferece rastreamento, sessões, avaliações e auditorias — **ele não aplica políticas por conta própria.** Bloquear uma ação insegura antes de sua execução requer um hook de enforcement no limite de ferramentas do seu runtime; [entre em contato](mailto:support@befailproof.ai) e nós faremos o mapeamento.
+
+## Escopos de hook
 
 | Harness | Escopos de hook suportados |
 | --- | --- |
@@ -20,61 +22,142 @@ Um agente que não executa em **nenhum** dos doze é instrumentado diretamente c
 | Factory Droid, Devin CLI, Antigravity CLI, Goose | Usuário, projeto |
 | Hermes, OpenClaw | Usuário |
 
-Cada integração normaliza seus nomes de eventos de hook nativos, nomes de ferramentas e campos de entrada de ferramentas antes que as políticas sejam executadas. Uma política só pode agir sobre eventos que o harness expõe; teste o comportamento de fim de turno e de instrução no harness e na versão exatos que você implanta.
+Claude Code é o único harness com escopo **local**. Hermes e OpenClaw não têm nenhuma configuração de projeto — eles são somente de escopo de usuário, e a CLI recusa `--scope project` para eles.
 
-## Capacidade de aplicação
+Cada integração normaliza os nomes de eventos de hook nativos, nomes de ferramentas e campos de entrada de ferramentas antes que as políticas sejam executadas. Uma política só pode atuar sobre eventos que o harness expõe; teste o comportamento de fim de turno e de instrução no harness e versão exatos que você implanta.
+
+## Onde a configuração de hook é gravada
+
+| Harness | Escopo de usuário | Escopo de projeto |
+| --- | --- | --- |
+| Claude Code | `~/.claude/settings.json` | `.claude/settings.json` (local: `.claude/settings.local.json`) |
+| Codex | `~/.codex/hooks.json` | `.codex/hooks.json` |
+| GitHub Copilot CLI | `~/.copilot/hooks/failproofai.json` | `.github/hooks/failproofai.json` |
+| Cursor | `~/.cursor/hooks.json` | `.cursor/hooks.json` |
+| OpenCode | `~/.config/opencode/opencode.json` | `.opencode/opencode.json` |
+| Pi | `~/.pi/agent/settings.json` | `.pi/settings.json` |
+| Hermes | `~/.hermes/config.yaml` | — |
+| OpenClaw | `~/.openclaw/openclaw.json` | — |
+| Factory Droid | `~/.factory/hooks.json` | `.factory/hooks.json` |
+| Devin CLI | `~/.config/devin/config.json` | `.devin/config.json` |
+| Antigravity CLI | `~/.gemini/config/hooks.json` | `.agents/hooks.json` |
+| Goose | `~/.agents/plugins/failproofai/hooks/hooks.json` | `.agents/plugins/failproofai/hooks/hooks.json` |
+
+OpenCode, Pi e OpenClaw são integrações por plugin em vez de integrações por shell-hook: o arquivo acima registra um pacote de plugin ou extensão, que chama o binário failproofai e traduz seu veredicto.
+
+## Capacidade de enforcement
 
 "Bloquear" significa que o veredicto retornado pelo adaptador atual é consumido pelo harness indicado. O bloqueio pós-ferramenta pode substituir o resultado exibido ao modelo, mas não pode desfazer um efeito colateral de ferramenta que já ocorreu.
 
-| Harness | Eventos de bloqueio verificados | Ressalvas de observação apenas ou sem bloqueio |
+| Harness | Eventos de bloqueio verificados | Ressalvas de observação ou não bloqueio |
 | --- | --- | --- |
 | Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact` e vários eventos de tarefa/configuração | `PostToolUse`, ciclo de vida de sessão, notificações e eventos pós-falha são observacionais. |
 | Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | O bloqueio pós-ferramenta substitui o resultado após a execução; eventos de início de sessão e compactação são observacionais no adaptador atual. |
 | GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | O bloqueio pós-ferramenta substitui o resultado após a execução; eventos de sessão e notificação são observacionais. |
 | Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` e eventos de sessão são observacionais. |
-| OpenCode | `PreToolUse` | Eventos pós-ferramenta e de ciclo de vida são observacionais; o tratamento de stop atual é orientação para um turno posterior, não uma barreira verificada. |
+| OpenCode | `PreToolUse` | Eventos pós-ferramenta e de ciclo de vida são observacionais; o tratamento de stop atual é orientação para um turno posterior, não um gate verificado. `PermissionRequest` nunca é executado. |
 | Pi | `PreToolUse`, `UserPromptSubmit` | Eventos pós-ferramenta e de ciclo de vida são observacionais; a orientação de stop se aplica a um turno posterior. |
-| Hermes | `PreToolUse` | Veredictos pós-ferramenta, de sessão e de subagent-stop não são barreiras. |
-| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | Eventos pós-ferramenta, de sessão, subagent-stop e de compactação são observacionais. |
-| Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | Veredictos pós-ferramenta e de subagent-stop são observacionais. |
-| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PermissionRequest` condicional | Hooks de permissão não são executados em todos os modos de permissão; eventos pós-ferramenta e de sessão são observacionais. |
-| Antigravity CLI | `PreToolUse`, `Stop` | Veredictos de prompt do usuário e pós-ferramenta são observacionais; instruções de prompt ainda podem ser injetadas. |
-| Goose | `PreToolUse` | Eventos de prompt do usuário, pós-ferramenta e de sessão são observacionais. Um hook de stop nativo com bloqueio existe upstream, mas não é instalado pelo adaptador atual. |
+| Hermes | `PreToolUse` | Veredictos de pós-ferramenta, sessão e subagent-stop não são gates. Nenhum evento `Stop` é instalado. |
+| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | Eventos de pós-ferramenta, sessão, subagent-stop e compactação são observacionais. |
+| Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | Veredictos de pós-ferramenta e subagent-stop são observacionais. |
+| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PermissionRequest` condicional | Hooks de permissão não são executados em todos os modos de permissão; eventos de pós-ferramenta e sessão são observacionais. |
+| Antigravity CLI | `PreToolUse`, `Stop` | Veredictos de user-prompt e pós-ferramenta são observacionais; instruções de prompt ainda podem ser injetadas. |
+| Goose | `PreToolUse` | Eventos de user-prompt, pós-ferramenta e sessão são observacionais. Um hook de stop nativo de bloqueio existe no upstream, mas não é instalado pelo adaptador atual. |
 
-As capacidades dependem da versão. Realize testes novamente após atualizar um CLI de agente, especialmente quando uma política depende de comportamento de prompt, stop, permissão ou pós-ferramenta, em vez da barreira pré-ferramenta comum.
+Um evento ausente em ambas as colunas **não foi verificado** — trate-o como desconhecido, nunca como bloqueante.
 
-## Instalar hooks de captura e política
+### Condições em um gate listado
+
+Várias linhas acima são gates reais que, ainda assim, têm limites ou condições. Uma política que depende de um desses precisa da condição tanto quanto da linha.
+
+| Harness | Evento | Condição |
+| --- | --- | --- |
+| Claude Code | `Stop`, `SubagentStop` | Limitado por `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`, padrão 8. Descartado em caminhos de fim de turno |
+| Cursor | `Stop` | Limitado por `loop_limit`, padrão 5, e consumido apenas quando o turno é concluído — um abort do usuário ou erro de turno o descarta |
+| Cursor | `Stop` | **As VMs do Cursor Cloud Agent não executam nenhum hook `stop` ou `subagentStop`.** O gate cobre apenas sessões locais |
+| Codex | `SubagentStop` | Apenas subagentes ThreadSpawn o disparam; toda outra origem de subagente nunca executa o hook |
+| GitHub Copilot CLI | `SubagentStop` | Ignorado inteiramente para subagentes `isSidekick` |
+| Devin CLI | `PermissionRequest` | Nunca dispara sob `--permission-mode dangerous`, e nunca para ferramentas somente leitura com aprovação automática |
+| OpenCode | `PermissionRequest` | Um hook morto: `permission.ask` é declarado e documentado no upstream, mas nunca é invocado, então a política nem chega a ser executada |
+| Hermes | `Stop` | Nenhum evento `Stop` é instalado, por escolha. Os cinco builtins `require-*-before-stop` não se aplicam no Hermes |
+| Goose | `Stop` | Mesmo resultado: nenhum `Stop` é instalado, então os cinco builtins `require-*-before-stop` não se aplicam |
+
+### Onde `instruct()` degrada
+
+Um `deny` não é o único veredicto que uma política retorna. `instruct()` fornece ao agente uma diretiva e permite que a ação prossiga — mas nem todo harness tem um canal para transmiti-la. Onde não há canal, failproofai permite a ação e escreve a instrução no stderr para os logs do operador; o modelo nunca a vê.
+
+| Harness | Eventos onde `instruct()` degrada para uma nota no stderr |
+| --- | --- |
+| Hermes | Todos os eventos |
+| Goose | Todos os eventos |
+| Pi | Todos os eventos exceto `Stop` |
+| OpenClaw | Todos os eventos exceto `Stop` |
+| Factory Droid | Todos os eventos exceto `Stop` |
+| Antigravity CLI | Todos os eventos exceto `Stop` e `UserPromptSubmit` |
+
+Em todo o resto, a instrução é retornada pelo canal de contexto adicional do próprio harness.
+
+### Versões contra as quais essas afirmações foram verificadas
+
+A versão faz parte da afirmação, não é uma nota de rodapé. Refaça os testes após atualizar uma CLI de agente, especialmente quando uma política depende de comportamento de prompt, stop, permissão ou pós-ferramenta em vez do gate pré-ferramenta comum.
+
+| Harness | Versão verificada |
+| --- | --- |
+| Claude Code | 2.1.220 |
+| Codex | `fe01054a`, com `PostToolUse` reverificado ao vivo na 0.147.0 |
+| GitHub Copilot CLI | 1.0.71, alguns call sites relidos na 1.0.68 e 1.0.78 |
+| Cursor | cursor-agent 2026.07.16-899851b |
+| OpenCode | 1.18.9, verificado novamente na 1.14.33 |
+| Pi | 0.80.10 |
+| Hermes | hermes-agent `5771a6e` |
+| OpenClaw | v2026.7.2 |
+| Factory Droid | droid 0.175.1 |
+| Devin CLI | 3000.2.17 |
+| Antigravity CLI | agy 1.1.8 |
+| Goose | 1.43.0 |
+
+<Warning>
+  Várias linhas do Codex citam caminhos de código-fonte que foram reestruturados após `fe01054a` e não existem mais na 0.147.0. Eles não são conhecidamente incorretos, mas não foram verificados contra nenhum Codex em produção e precisam de uma nova verificação. Apenas a linha `PostToolUse` do Codex foi reverificada ao vivo.
+</Warning>
+
+## Modo de agente do VS Code
+
+O modo de agente Copilot Chat integrado ao VS Code **não é uma décima terceira integração**. Ele descobre a configuração de hook em `.github/hooks/*.json`, `~/.copilot/hooks/*.json` e `~/.claude/settings.json` — exatamente os caminhos que as instalações `copilot` e `claude` já gravam — e usa o mesmo contrato de deny no formato Claude. Instalar qualquer um deles já aplica enforcement dentro de sessões de modo de agente do VS Code.
+
+O recurso está em preview e requer uma assinatura ativa do GitHub Copilot mais o modo de agente habilitado.
+
+## Instalar captura e hooks de política
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Abra **Administração → Chaves** e crie uma chave com `events:add` e `policies:pull`, com nome referente à máquina ou ambiente.
-    2. Na máquina de destino, conecte o CLI local com a chave exibida e instale os hooks do harness.
-    3. Inicie uma nova sessão de agente e confirme seus eventos de hook e sessão em **Observar → Eventos**.
-    4. Abra **Observar → política** para o mesmo intervalo de tempo e confirme que uma decisão de política está atribuída à máquina.
+    1. Abra **Administration → Keys** e crie uma chave com `events:add` e `policies:pull`, nomeada para a máquina ou ambiente.
+    2. Na máquina de destino, conecte a CLI local com a chave exibida.
+    3. Inicie uma nova sessão de agente e confirme seus eventos de hook e sessão em **Observe → Events**.
+    4. Abra **Observe → policy** para a mesma janela de tempo e confirme que uma decisão de política está atribuída à máquina.
 
-    A conexão começa com uma chave de máquina. Confirme que ela inclui permissões de ingestão e entrega de políticas antes de copiar o segredo.
+    A conexão começa com uma chave de máquina. Confirme que ela inclui permissões de ingestão e entrega de políticas antes de copiar seu segredo.
 
-    ![O drawer de nova chave de API usado para conceder permissões de ingestão de eventos e entrega de políticas.](/images/dashboard/key-create.png)
+    ![O drawer de criação de nova chave de API usado para conceder permissões de ingestão de eventos e entrega de políticas.](/images/dashboard/key-create.png)
 
-    Após instalar os hooks, o stream de Eventos deve exibir novos eventos da máquina e do ambiente que você conectou.
+    Após instalar os hooks, o stream de Events deve exibir novos eventos da máquina e do ambiente que você conectou.
 
-    ![O stream de Eventos ao vivo usado para confirmar que um harness recém-instalado está reportando.](/images/dashboard/events-stream.png)
+    ![O stream de Events ao vivo usado para confirmar que um harness recém-instalado está reportando.](/images/dashboard/events-stream.png)
 
-    Por fim, verifique se as decisões de política estão atribuídas à mesma máquina. Isso confirma que o harness está reportando atividade de política, além de eventos de rastreamento.
+    Por fim, verifique se as decisões de política estão atribuídas à mesma máquina. Isso confirma que o harness está reportando atividade de política além de eventos de rastreamento.
 
-    ![A página de Política usada para verificar decisões de política de um harness recém-conectado.](/images/dashboard/policy-observe.png)
+    ![A página de Policy usada para verificar decisões de política de um harness recém-conectado.](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
-    Instale hooks para todos os harnesses detectados:
+    `failproofai config` conecta hooks em todas as CLIs de agente suportadas que encontrar, instala o daemon e conecta ao Cloud quando uma chave está presente:
 
     ```bash
-    failproofai config \
-      --connect https://app.befailproof.ai \
-      --token <machine-key>
-    failproofai policies --install
+    failproofai config --token <machine-key>
+    failproofai policies add FailproofAI/policies
     ```
 
-    Ou direcione harnesses específicos e um escopo de configuração:
+    A configuração não escolhe nenhuma política por padrão, por isso o segundo comando existe.
+
+    Para conectar um harness manualmente — com `--cli` omitido, `--install` detecta o que está instalado e solicita confirmação:
 
     ```bash
     failproofai policies --install \
@@ -82,7 +165,7 @@ As capacidades dependem da versão. Realize testes novamente após atualizar um 
       --scope user
     ```
 
-    O escopo de projeto mantém a configuração de hooks com um repositório. O escopo de usuário cobre o trabalho entre repositórios. Claude Code também suporta escopo local; o suporte varia por harness e o CLI rejeita combinações não suportadas.
+    O escopo de projeto mantém a configuração de hook junto ao repositório. O escopo de usuário cobre o trabalho entre repositórios. Verifique a tabela de escopos acima antes de combinar `--cli` e `--scope`; a CLI rejeita pares não suportados.
 
     Verifique a máquina e seus eventos:
 
@@ -94,13 +177,17 @@ As capacidades dependem da versão. Realize testes novamente após atualizar um 
   </Tab>
 </Tabs>
 
+<Warning>
+  Em execuções headless `copilot -p` iniciadas a partir de um diretório novo, o `.github/hooks/failproofai.json` de escopo de projeto **não** foi carregado. Trate o escopo de usuário como o ponto de enforcement confiável para o Copilot em CI até que isso seja verificado de outra forma.
+</Warning>
+
 ## Adicionar um caminho de sessão não padrão
 
 <Tabs>
   <Tab title="Dashboard">
-    Caminhos extras são registrados na máquina, não na nuvem. Após adicionar um, abra **Observar → Sessões**, filtre pelo ambiente da máquina e confirme que as sessões do novo caminho aparecem. Abra uma sessão e verifique o agente, o harness e os timestamps dos eventos antes de utilizá-la em uma auditoria.
+    Caminhos extras são registrados na máquina, não no Cloud. Após adicionar um, abra **Observe → Sessions**, filtre para o ambiente da máquina e confirme que as sessões do novo caminho aparecem. Abra uma sessão e verifique o agente, o harness e os timestamps de eventos antes de confiar nela em uma auditoria.
 
-    ![A lista de Sessões filtrada para o ambiente que recebe dados do caminho de captura adicional.](/images/dashboard/sessions-list.png)
+    ![A lista de Sessions filtrada para o ambiente que recebe dados do caminho de captura adicional.](/images/dashboard/sessions-list.png)
   </Tab>
   <Tab title="CLI">
     Adicione um caminho com um rótulo opcional e inspecione os caminhos configurados:
@@ -113,9 +200,11 @@ As capacidades dependem da versão. Realize testes novamente após atualizar um 
     ```
 
     Remova um caminho com `failproofai harness remove-path claude checkout`.
+
+    O rótulo cria um namespace para os IDs de agentes derivados. Dois locais com cópias do mesmo projeto derivam o mesmo ID a partir do transcript, então sem um rótulo eles se fundem em um único agente. Raízes sobrepostas e rótulos duplicados são recusados — consulte [a referência da CLI](/pt-br/reference/failproof-cli) para entender por que cada rejeição existe.
   </Tab>
 </Tabs>
 
 <Tip>
-  Execute uma nova sessão após a instalação. Verifique tanto o stream de eventos ao vivo quanto uma decisão de política real antes de expandir a implantação.
+  Execute uma nova sessão após a instalação. Verifique tanto o stream de eventos ao vivo quanto uma decisão de política real antes de expandir o rollout.
 </Tip>

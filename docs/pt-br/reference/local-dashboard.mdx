@@ -1,34 +1,36 @@
 ---
 title: "Painel local"
-description: "Revise projetos locais, sessões, atividade de políticas, configurações, auditorias e varreduras agendadas."
+description: "Revise projetos locais, sessões, atividade de políticas, configuração, auditorias e varreduras agendadas."
 icon: "monitor-cog"
 ---
 
-Execute `failproofai` sem argumentos para iniciar o painel integrado em `http://localhost:8020`. Ele lê históricos locais de agentes, configuração de políticas, resultados de auditoria e atividade de hooks diretamente da máquina.
+Execute `failproofai` sem argumentos para iniciar o painel integrado em `http://localhost:8020`. Ele lê históricos de agentes locais, configuração de políticas, resultados de auditoria e atividade de hooks diretamente da máquina.
 
-O painel local é separado do Failproof AI Cloud. Ele funciona sem uma conta Cloud e não comprova que os eventos foram entregues à sua organização.
+Em uma máquina que ainda não foi configurada, o comando sem argumentos executa a configuração inicial antes de abrir o painel. Isso só ocorre em um terminal interativo: em pipelines ou ambientes de CI, o comando exibe uma dica de uma linha e abre o painel diretamente, pois um assistente que ninguém pode responder jamais deve bloquear o comando digitado. Defina `FAILPROOFAI_NO_FIRST_RUN=1` para ignorar o redirecionamento completamente e ir direto ao painel.
+
+O painel local é separado do Failproof AI Cloud. Ele funciona sem uma conta na nuvem e não comprova que os eventos foram entregues à sua organização. Em uma máquina com a configuração concluída, as decisões exibidas foram tomadas pelo daemon `failproofaid`, que é o único avaliador; em uma máquina sem configuração, os hooks avaliam em processo.
 
 ## Áreas do painel
 
 | Área | O que você pode fazer |
 | --- | --- |
-| Políticas → Atividade | Inspecione decisões locais de allow, instruct e deny; filtre por decisão, evento, CLI, ferramenta, origem, política e sessão. |
-| Políticas → Configurar | Ative builtins, edite parâmetros suportados, alterne políticas customizadas descobertas e selecione harnesses de destino. |
-| Projetos | Navegue pelos projetos descobertos nos históricos de agentes suportados e compare suas sessões mais recentes. |
-| Sessões de projeto | Abra uma transcrição local, revise entradas ordenadas brutas e subagentes, faça o download e correlacione a atividade de políticas. |
-| Auditoria | Revise a última varredura offline, padrões de risco, pontos fortes, projetos afetados e políticas builtins sugeridas. |
-| Configurações | Configure varreduras locais agendadas e relatórios de auditoria por e-mail quando o daemon/plataforma oferecer suporte. |
+| Policies → Activity | Inspecionar decisões locais de allow, instruct e deny; filtrar por decisão, evento, CLI, origem, política e sessão. |
+| Policies → Configure | Ativar políticas de um pacote instalado, editar parâmetros suportados, alternar políticas customizadas e de convenção descobertas, e selecionar harnesses alvo. |
+| Projects | Navegar pelos projetos descobertos nos históricos de agentes suportados e comparar suas sessões mais recentes. |
+| Project sessions | Abrir uma transcrição local, revisar entradas ordenadas brutas e subagentes, baixá-la e correlacionar a atividade de políticas. |
+| Audit | Revisar a última varredura offline, padrões arriscados, pontos fortes, projetos afetados e políticas integradas sugeridas. |
+| Settings | Configurar varreduras locais agendadas e relatórios de auditoria por e-mail quando o daemon/plataforma oferecer suporte. |
 
 ## Revisar atividade de políticas
 
 <Tabs>
-  <Tab title="Painel">
-    1. Abra **Políticas → Atividade** e defina os filtros de decisão e origem.
-    2. Refine por evento, harness, ferramenta ou nome de política.
-    3. Expanda uma linha para inspecionar o motivo, políticas correspondidas, origem, modo de execução e duração.
+  <Tab title="Dashboard">
+    1. Abra **Policies → Activity** e defina os filtros de decisão e origem.
+    2. Refine por evento, harness, nome da política ou sessão.
+    3. A linha exibe a decisão, evento, harness, ferramenta, política, modo de permissão e duração. Expanda-a para ver o motivo completo, todas as políticas correspondidas, a origem decisora, o deploy na nuvem, e o diretório de trabalho e caminho da transcrição da sessão. O nome da ferramenta é exibido na linha, mas não é um filtro.
     4. Siga o link da sessão para contextualizar a decisão na transcrição.
 
-    Uma linha com aparência de negada ainda pode ser observacional em um par harness/evento que não consome veredictos de bloqueio. A visualização de detalhes indica a capacidade de aplicação verificada.
+    Uma linha com aparência de negação pode ainda ser observacional em um par harness/evento que não consome veredictos de bloqueio. A visualização detalhada indica a capacidade de imposição verificada.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -44,34 +46,37 @@ O painel local é separado do Failproof AI Cloud. Ele funciona sem uma conta Clo
 ## Configurar políticas localmente
 
 <Tabs>
-  <Tab title="Painel">
-    1. Abra **Políticas → Configurar** e escolha os harnesses e o escopo de configuração.
-    2. Ative uma política builtin ou customizada descoberta.
-    3. Para uma builtin parametrizada, abra seu controle de configuração e salve os valores suportados.
-    4. Volte para Atividade e execute ações correspondentes e não correspondentes.
+  <Tab title="Dashboard">
+    1. Abra **Policies → Configure** e escolha os harnesses e o escopo de configuração. A aba pode ser acessada diretamente em `http://localhost:8020/policies?tab=policies`.
+    2. Ative uma política de um pacote instalado, ou uma política customizada ou de convenção descoberta.
+    3. Para uma política parametrizada, abra seu controle de configuração e salve os valores suportados.
+    4. Volte para Activity e execute ações correspondentes e não correspondentes.
 
-    As políticas de convenção exibem sua origem de projeto ou usuário. Alterações explícitas de caminho customizado podem exigir a reexecução da configuração via CLI para que o caminho selecionado seja registrado.
+    A lista fica vazia até que um pacote seja instalado — esta build não compila políticas próprias, portanto execute `failproofai policies add FailproofAI/policies` primeiro. As políticas de convenção exibem sua origem de projeto ou usuário. Alterações explícitas em caminhos customizados podem exigir a reexecução da configuração via CLI para que o caminho selecionado seja registrado.
   </Tab>
   <Tab title="CLI">
     ```bash
-    failproofai policy add block-sudo --scope project
+    failproofai policies show FailproofAI/policies
+    failproofai policies add block-sudo --scope project
     failproofai policies --install --custom ./security.policies.ts --scope project
     failproofai policies
     ```
+
+    `policies show <owner>/<repo>` lê o conteúdo de um pacote antes de instalá-lo. `--scope` aceita `user`, `project` ou `local`; apenas Claude Code suporta `local`, e Hermes e OpenClaw aceitam apenas `user`.
   </Tab>
 </Tabs>
 
 ## Navegar por projetos e sessões
 
-A página de Projetos combina os repositórios de histórico local suportados. Selecione um projeto para listar suas sessões, depois abra uma sessão para acessar o visualizador de log bruto, segmentos de subagente, ação de download e atividade de políticas com escopo de sessão.
+A página Projects combina os armazenamentos de histórico local suportados. Selecione um projeto para listar suas sessões e, em seguida, abra uma sessão para acessar o visualizador de log bruto, segmentos de subagentes, ação de download e atividade de políticas com escopo de sessão.
 
-Se um projeto ou sessão estiver ausente, confirme se o harness usa seu local de histórico padrão ou registre uma raiz adicional com `failproofai harness add-path`.
+Se um projeto ou sessão estiver ausente, confirme se o harness usa seu local de histórico padrão ou registre uma raiz adicional com `failproofai harness add-path <harness> [<label>=]<path>`.
 
 ## Agendar auditorias offline
 
 <Tabs>
-  <Tab title="Painel">
-    Abra **Configurações**, ative a varredura agendada, escolha o intervalo suportado e configure a entrega de relatórios quando disponível. A página exibe a próxima execução, a última execução, o código de saída e se o daemon em segundo plano é suportado na plataforma.
+  <Tab title="Dashboard">
+    Abra **Settings**, ative a varredura agendada, escolha o intervalo suportado e configure a entrega de relatórios quando disponível. A página exibe a próxima execução, a última execução, o código de saída e se o daemon em segundo plano é suportado na plataforma.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -79,10 +84,16 @@ Se um projeto ou sessão estiver ausente, confirme se o harness usa seu local de
     failproofai audit --status
     ```
 
-    Altere o número de dias para definir um intervalo diferente entre 1 e 90 dias. Desative as varreduras recorrentes com `failproofai audit --no-schedule`; execute `failproofai audit` para uma varredura interativa imediata.
+    Altere o número de dias para definir um intervalo diferente de 1 a 90 dias. Desative varreduras recorrentes com `failproofai audit --no-schedule`, que para o temporizador e mantém você autenticado; execute `failproofai audit` para uma varredura interativa imediata.
+
+    O agendamento faz login na primeira vez, pois os resultados são enviados por e-mail. `--email <address>` fornece o endereço antecipadamente e ignora o prompt de login.
   </Tab>
 </Tabs>
 
+<Note>
+  A análise e os resultados permanecem nesta máquina. A telemetria anônima da CLI é enviada por padrão, a menos que você defina `FAILPROOFAI_TELEMETRY_DISABLED=1`. As varreduras agendadas também enviam metadados da máquina e podem enviar um resumo limitado dos resultados após você optar por participar.
+</Note>
+
 <Warning>
-  O painel local pode exibir prompts, entradas de ferramentas, conteúdo de arquivos e saídas de terminal dos históricos locais de agentes. Vincule-o apenas a interfaces confiáveis e encerre o processo quando a revisão estiver concluída.
+  O painel local pode exibir prompts, entradas de ferramentas, conteúdo de arquivos e saída de terminal dos históricos de agentes locais. Vincule-o apenas a interfaces confiáveis e encerre o processo quando a revisão estiver concluída.
 </Warning>

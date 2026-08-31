@@ -1,48 +1,70 @@
 ---
 ---
-title: "منع فشلك الأول باستخدام سياسة"
-description: "قم بتأليف نسخة من السياسة، ونشرها في وضع المراقبة، ثم فرضها."
+title: "منع فشلك الأول"
+description: "فعّل سياسة تمت مراجعتها أو اختبر سياسة خاصة بك."
 icon: "shield-check"
 ---
 
-استخدم السياسة فقط بعد أن تتمكن من وصف الإجراء غير الآمن والإجراءات المشروعة التي يجب أن تبقى مسموحة.
+ابدأ بسلوك تريد إيقافه وإجراء شرعي يجب أن يستمر في العمل.
 
-<Tabs>
-  <Tab title="Dashboard">
-    <Steps>
-      <Step title="قم بتأليف السياسة">
-        انتقل إلى **Admin → policy editor**. ابدأ بسياسة العرض التوضيحي، وراجع أو عدّل المصدر الخاص بها، ثم حدد **publish version**. ينشئ النشر النسخة غير القابلة للتغيير التي يمكنك نشرها على الأجهزة.
+## جرب سياسة معروضة أولاً
 
-        ![عرض محرر السياسة مع سياسة عرض توضيحي جاهزة للنشر كنسخة غير قابلة للتغيير.](/images/dashboard/policy-editor.png)
-      </Step>
-      <Step title="نشرها على جهاز">
-        انتقل إلى **Admin → enforcement**، وقم بتوسيع الجهاز المستهدف، وحدد **edit this machine**. أضف سياسة العرض التوضيحي المنشورة، وثبّت نسختها، واختر **observe**، ثم طبّق النشر.
+```bash
+failproofai policies
+failproofai policies add block-rm-rf
+```
 
-        ![محرر نشر الجهاز مع نسخة سياسة منشورة محددة في وضع المراقبة قبل تطبيق النشر.](/images/dashboard/enforcement-editor.png)
-      </Step>
-      <Step title="تحقق من السياسة">
-        قم بتشغيل جلسة وكيل جديدة على هذا الجهاز، ثم افتح **Observe → policy**. حدد الجهاز وتأكد من ظهور سياسة العرض التوضيحي في تعيين السياسة وجدول أحداث القرار. يسجل وضع المراقبة ما ستفعله السياسة دون حجب الإجراء.
+يتضمن Failproof AI 39 سياسة معروضة. تحقق من [الكتالوج](/ar/policies/builtin-catalog) قبل كتابة سياسة جديدة.
 
-        ![صفحة السياسة التي تعرض إجمالي القرارات وأنشطة الفرض بمرور الوقت وتعيينات السياسات المحلية والمدارة من السحابة.](/images/dashboard/policy-observe.png)
-      </Step>
-    </Steps>
-  </Tab>
-  <Tab title="CLI">
-    تأليف سياسات السحابة ونشر الأسطول هي سير عمل إدارية. استخدم واجهة سطر الأوامر المحلية للتحقق من نفس السياسة قبل نشرها:
+## اكتب واختبر سياستك الخاصة
 
+<Steps>
+  <Step title="إنشاء سياسة عاملة">
     ```bash
-    failproofai policies --install --custom ./payment-retry.policies.ts \
-      --cli claude --scope project
-    failproofai config --status
+    failproofai publish --init guards.mjs
     ```
 
-    استخدم `fp` للتحقق من قرارات السياسة المرئية من السحابة:
-
+    هذا ينشئ سياسة تحظر `git push --force`. عدّلها لقاعدتك.
+  </Step>
+  <Step title="فرضها على هذا الجهاز">
     ```bash
-    fp events --event-type hook_completed --env production --since 24h
-    fp sessions --env production --since 24h
+    failproofai policies -i -c ./guards.mjs
     ```
 
-    كلتا الخطوتين متاحتان أيضًا من واجهة سطر الأوامر: `fp policies publish <id> <file>` تنشئ نسخة و `fp fleet deploy <machine-id> --add <id>` توضعها على جهاز. المعادلات على لوحة التحكم هي **Admin → policy editor** و **Admin → enforcement**.
-  </Tab>
-</Tabs>
+    اطلب من الوكيل تنفيذ الإجراء المحظور، ثم تحقق من **Policies → Activity** في لوحة المعلومات المحلية.
+  </Step>
+  <Step title="احتفظ بها أو أزلها">
+    ضع ملف `*policies.mjs` ضمن `.failproofai/policies/` لتحميله تلقائياً.
+
+    أزل الملفات المخصصة الصريحة باستخدام:
+
+    ```bash
+    failproofai policies -u -c
+    ```
+  </Step>
+</Steps>
+
+## شاركها
+
+انشر حزمة عامة:
+
+```bash
+failproofai publish
+```
+
+يمكن لأي شخص تثبيتها باستخدام `failproofai policies add <owner>/<repo>`. أضف موضوع GitHub `failproofai-policies` بنفسك حتى يتمكن [Policy Hub](https://befailproof.ai/policy-hub/) من فهرستها.
+
+للنشر على Cloud:
+
+```bash
+fp policies publish checkout-guard ./guards.mjs
+fp fleet deploy <machine> --add checkout-guard:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add checkout-guard:enforce
+```
+
+<Warning>
+  أمر `--add checkout-guard` بدون بادئة يفرض فوراً. أضف `:observe` لتسجيل ما ستفعله السياسة دون حظر الوكيل.
+</Warning>
+
+انظر إلى [نشر حزمة](/ar/policies/publish-a-pack) أو [نشر السياسات](/ar/policies/deploy) للعملية الكاملة.

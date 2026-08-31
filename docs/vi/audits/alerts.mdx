@@ -1,62 +1,103 @@
 ---
 title: "Cảnh báo"
-description: "Phát hiện sự lặp lại và định tuyến sự cố đến những người phản hồi thích hợp."
+description: "Phát hiện các sự kiện tái diễn và chuyển vấn đề tới những người phản hồi phù hợp."
 icon: "bell-ring"
 ---
 
-Cảnh báo giám sát một điều kiện có thể đo lường được và tạo một sự cố khi nó được kích hoạt. Sử dụng chúng khi một lỗi phải tạo ra phản hồi kịp thời, cho dù liệu một chính sách có thể chặn nó hay không.
+Một cảnh báo giám sát một điều kiện có thể đo lường được và mở một vấn đề khi nó kích hoạt. Hãy sử dụng nó khi một sự cố nên tạo ra phản hồi kịp thời, cho dù chính sách có thể chặn nó hay không.
 
-## Tạo và kiểm tra cảnh báo
+## Tạo và kiểm thử một cảnh báo
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Chuyển đến **Analyze → Alerts** và chọn **new alert**. Bạn cũng có thể bắt đầu từ biểu tượng chuông trên một lỗi tiêu biểu.
-    2. Nhập tên, mức độ nghiêm trọng, loại kích hoạt, điều kiện, khoảng thời gian đánh giá, số lần vi phạm, cửa sổ và các kênh.
-    3. Lưu cảnh báo, mở trang chi tiết của nó và chạy **test**.
-    4. Chuyển đến **Analyze → Issues** để xác nhận, gán, thảo luận, đăng ký và giải quyết các sự cố được tạo bởi cảnh báo.
+    1. Đi tới **Analyze → Alerts** và chọn **new alert**. Bạn cũng có thể bắt đầu từ biểu tượng chuông trên một lỗi tiêu biểu.
+    2. Nhập tên, mức độ nghiêm trọng, loại kích hoạt, điều kiện, khoảng đánh giá, số vi phạm, cửa sổ và các kênh.
+    3. Lưu cảnh báo, mở trang chi tiết và chạy **test**.
+    4. Đi tới **Analyze → Issues** để xác nhận, gán, thảo luận, đăng ký và giải quyết các vấn đề mà cảnh báo mở ra.
 
     Phần đầu tiên của biểu mẫu xác định cảnh báo và tín hiệu sẽ kích hoạt nó.
 
     ![Phần đầu tiên của biểu mẫu new-alert với tên, mô tả, trạng thái bật và loại kích hoạt.](/images/dashboard/alert-new-trigger.png)
 
-    Phần thứ hai kiểm soát thời gian điều kiện phải kéo dài, tần suất đánh giá và nơi gửi thông báo.
+    Phần thứ hai kiểm soát khoảng thời gian điều kiện phải tồn tại, tần suất đánh giá và nơi gửi thông báo.
 
-    ![Phần thứ hai của biểu mẫu new-alert với logic vi phạm, lịch trình, mức độ nghiêm trọng, kênh phân phối và hành động tạo.](/images/dashboard/alert-new-routing.png)
+    ![Phần thứ hai của biểu mẫu new-alert với logic vi phạm, lịch trình, mức độ nghiêm trọng, kênh phân phối và tác vụ tạo.](/images/dashboard/alert-new-routing.png)
 
-    Sau khi lưu, sử dụng danh sách Cảnh báo để xác nhận rằng quy tắc được bật và các kích hoạt, cửa sổ, mức độ nghiêm trọng và kênh của nó phù hợp với ý định của bạn.
+    Sau khi lưu, sử dụng danh sách Alerts để xác nhận quy tắc được bật và kích hoạt, cửa sổ, mức độ nghiêm trọng cũng như kênh của nó khớp với ý định của bạn. Một thẻ có các vấn đề mở sẽ hiển thị số lượng; một thẻ không có vấn đề sẽ bỏ qua dòng này hoàn toàn, vì vậy sự vắng mặt của nó không cho biết gì. Để đọc con số cho mọi quy tắc bao gồm các số không, hãy sử dụng `fp alerts show <name>`, nó luôn in ra con số đó.
 
-    ![Trang Alerts hiển thị các quy tắc cảnh báo với các kích hoạt, cửa sổ đánh giá, kênh và mức độ nghiêm trọng của chúng.](/images/dashboard/alerts.png)
-
-    Kiểm tra cảnh báo trước khi dựa vào nó để phản hồi sản xuất.
+    ![Trang Alerts hiển thị các quy tắc cảnh báo với kích hoạt, cửa sổ đánh giá, kênh và mức độ nghiêm trọng của chúng.](/images/dashboard/alerts.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp alerts create high-errors \
       --trigger-kind metric_threshold \
       --severity warning \
-      --trigger-spec '{"metric":"error_count","op":">","value":50,"window_secs":900}'
+      --trigger-spec '{"metric":"error_count","op":">","value":50,"window_secs":900}' \
+      --eval-interval-secs 300 \
+      --min-breaches 2 \
+      --eval-window 3
 
     fp alerts show high-errors
     fp alerts test high-errors
     fp alerts update high-errors --severity critical --yes
     ```
 
-    Sử dụng `fp alerts list` để xem lại các quy tắc và `fp alerts delete <name>` để xóa một quy tắc.
+    Các cảnh báo mới bắt đầu ở trạng thái **enabled**, và sự va chạm tên sẽ bị từ chối trước khi bất cứ điều gì được tạo.
 
-    Xem [tham chiếu `fp alerts`](/vi/reference/cloud-cli#alerts) để có bộ lệnh cảnh báo đầy đủ.
+    `fp alerts update` thay thế toàn bộ định nghĩa trên máy chủ, vì vậy CLI sẽ đọc lại cảnh báo và xếp chồng các cờ của bạn lên trên — một bản cập nhật chỉ cờ cần `alerts:read` **cũng như** `alerts:write`, và nó xác nhận trừ khi bạn truyền `--yes`.
+
+    Sử dụng `fp alerts list` để xem lại các quy tắc và `fp alerts delete <name>` để xóa một quy tắc. Delete xem trước quy tắc — bao gồm số lượng vấn đề mở — và xác nhận trước khi thực hiện, vì điều đó không thể được hoàn tác.
+
+    Delete không phải là cách để làm im lặng một quy tắc ồn ào. `DELETE /alerts/{id}` tạo ra sự xếp tầng: mọi vấn đề mà cảnh báo từng mở sẽ theo nó, lấy theo các bình luận, người đăng ký và lịch sử hoạt động. Hộp xác nhận của CLI diễn tả điều này là các vấn đề mở đang bị "mồ côi"; hợp đồng API là một xóa tầng, vì vậy hãy coi lịch sử đã biến mất. Để dừng một quy tắc kích hoạt và giữ lại những gì nó ghi lại, hãy tắt nó thay thế — biểu mẫu cảnh báo của dashboard có công tắc enabled, và cả `fp alerts create` lẫn `fp alerts update` đều không công khai cờ `--enabled`, vì vậy tuyến đường CLI là `fp alerts update <name> --file` với một định nghĩa đầy đủ có `enabled: false`.
+
+    Xem [tham chiếu `fp alerts`](/vi/reference/cloud-cli#alerts) cho bộ lệnh cảnh báo hoàn chỉnh.
   </Tab>
 </Tabs>
 
-Các điều kiện cảnh báo có thể dựa trên lỗi, điểm đánh giá, kết hợp đánh giá hoặc SQL tùy chỉnh. Thêm người nhận, kiểm tra quy tắc và mở sự cố kết quả để xác nhận, gán, bình luận, đăng ký và giải quyết nó.
+<Warning>
+  **test** cung cấp thông báo thực. Nó gửi tới email thực, Slack và các kênh webhook của cảnh báo và mở một vấn đề tổng hợp, vì vậy nó có thể trang ai đó trong cuộc gọi. Nó xác nhận trước trên một thiết bị đầu cuối tương tác; `--yes`, `--json` và một stdin được chuyển hướng đều bỏ qua dấu nhắc đó. Máy chủ cũng báo cáo thành công ngay khi nó gửi đi, vì vậy một bài kiểm tra xanh chứng minh rằng tin nhắn đã rời khỏi, không phải nó đã tới.
+</Warning>
+
+## Xác định kích hoạt
+
+Có năm loại kích hoạt:
+
+| `--trigger-kind` | Kích hoạt khi |
+| --- | --- |
+| `metric_threshold` | Một số liệu vượt qua ngưỡng — lỗi, độ trễ, chi phí hoặc bất cứ điều gì bạn có thể đo lường. |
+| `per_event` | Một sự kiện khớp duy nhất tới. |
+| `evaluation_score` | Điểm số của một trình đánh giá vượt qua ngưỡng. |
+| `eval_compound` | Một số điều kiện điểm kết hợp, chẳng hạn như hai trong ba điểm thất bại. |
+| `custom_sql` | Một truy vấn bạn viết trả về một vi phạm. |
+
+Chính điều kiện đó đi vào `--trigger-spec`, được định hình cho loại bạn chọn.
+
+## Đặt các số đánh giá
+
+Biểu mẫu dashboard và CLI yêu cầu cùng bốn giá trị.
+
+| Cài đặt | Cờ | Giá trị được chấp nhận |
+| --- | --- | --- |
+| Mức độ nghiêm trọng | `--severity` | `info`, `warning`, `critical` |
+| Khoảng đánh giá | `--eval-interval-secs` | 30–86.400 giây |
+| Số vi phạm | `--min-breaches` | Ít nhất 1 và không bao giờ nhiều hơn cửa sổ |
+| Cửa sổ đánh giá | `--eval-window` | Ít nhất 1, được tính theo **khoảng**, không phải giây |
+
+Vì vậy `--eval-interval-secs 300 --min-breaches 2 --eval-window 3` có nghĩa là "đánh giá mỗi năm phút và kích hoạt khi hai trong ba đánh giá gần đây vi phạm".
 
 ## Thiết kế cảnh báo tốt
 
-- Đặt tên cho điều kiện và quy trình công việc bị ảnh hưởng.
-- Xác định phạm vi môi trường một cách rõ ràng.
-- Đặt một cửa sổ và ngưỡng tránh phản ứng với một sự kiện vô hại.
-- Bao gồm một liên kết hoặc truy vấn dẫn những người phản hồi đến các phiên làm việc.
+- Đặt tên cho điều kiện và quy trình làm việc bị ảnh hưởng.
+- Khai báo phạm vi môi trường một cách rõ ràng.
+- Đặt cửa sổ và ngưỡng tránh phản ứng với một sự kiện vô hại.
+- Bao gồm một liên kết hoặc truy vấn dẫn những người phản hồi tới các phiên.
 - Gán một chủ sở hữu trước khi bật quy tắc.
+- Kiểm tra `fp alerts show <name>` để biết số lượng vấn đề mở trước khi thêm quy tắc khác cho cùng một triệu chứng. Thẻ dashboard chỉ in dòng đó khi số lượng khác không.
 
 <Tip>
-  Sau khi giải quyết một phát hiện kiểm toán, hãy thêm một cảnh báo khi cùng một lỗi có thể xảy ra lại bên ngoài phạm vi bảo hiểm của chính sách.
+  Sau khi giải quyết phát hiện kiểm toán, hãy thêm cảnh báo khi cùng một lỗi có thể tái diễn ngoài phạm vi của chính sách.
 </Tip>
+
+<Card title="Xử lý các vấn đề mà cảnh báo mở ra" icon="clipboard-check" href="/vi/audits/findings-and-issues">
+  Xác nhận, gán, bình luận, đăng ký và giải quyết — quy trình làm việc mà mỗi cảnh báo kích hoạt sẽ đi vào.
+</Card>

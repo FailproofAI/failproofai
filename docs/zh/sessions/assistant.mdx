@@ -1,10 +1,10 @@
 ---
-title: "Failproof Assistant"
+title: "云端助手"
 description: "用自然语言分析和操作 Failproof AI，涵盖问题查询、仪表板和审计等功能。"
 icon: "message-square-text"
 ---
 
-通过 Failproof Assistant，你可以用自然语言完成 Failproof AI 中的任何操作。它能分析会话和故障、执行查询、构建仪表板、排查评估和告警，以及帮助创建和运行审计——无需将任务手动转换为产品界面操作或 CLI 命令。
+Failproof AI 云端助手可以用自然语言回答有关您的 Agent 集群的问题。它能够分析会话和故障、执行查询、构建仪表板、调查评估和告警，以及帮助创建和运行审计——无需您将任务翻译成产品界面操作或 CLI 命令。在仪表板中，该控件标记为 **Open agent chat**；在 [`fp` CLI](/zh/reference/cloud-cli) 中，对应的是 `fp agent` 命令组。
 
 ```text
 Why did production checkout agents regress this week?
@@ -13,41 +13,77 @@ Create an audit that finds agents retrying the same failed action without changi
 Show me the sessions behind the most common audit finding.
 ```
 
-Assistant 在当前组织的数据和权限范围内运行。在执行会影响其他用户或 Agent 的操作之前，请先审阅其提供的依据和建议的变更。
+该助手使用当前组织内可用的数据和权限进行工作。在应用会影响其他用户或 Agent 的操作之前，请仔细审查其依据和建议的变更。
 
-## 向 Assistant 提问
+<Note>
+  该助手在仪表板中运行，其对话归属于具体用户，因此没有可供 API 密钥调用的 API 路由。每个 `fp agent` 子命令都需要已登录的会话（`fp login`）和 `agent:use` 权限，并且在使用 `--api-key` 或 `FP_API_KEY` 时会以退出码 2 退出。API 密钥永远无法访问该助手，因此定时任务必须通过 `--token` 或 `FP_TOKEN` 携带已登录的会话令牌。这是可行的——当没有 TTY 时，`fp agent ask` 会从 stdin 读取问题——但会话令牌在 `fp login` 后约 24 小时过期，这使得该助手不适合用于无人值守的自动化场景，即便它可以运行。
+</Note>
+
+## 向助手提问
 
 <Tabs>
   <Tab title="仪表板">
-    1. 选择 **Open agent chat**，描述你想了解、创建或操作的内容。
-    2. 在 Assistant 工作期间，查看其调用的工具、表格和查询结果。
+    1. 点击 **Open agent chat**，描述您想了解、创建或操作的内容。
+    2. 在助手工作时，查看其工具调用、数据表格和查询结果。
     3. 打开引用的会话、告警或查询，对照源数据验证结果。
-    4. 针对不同的调查开启新对话，或通过对话历史继续同一条分析线索。
+    4. 针对不同的调查启动新对话，或利用历史记录继续同一条分析线索。
 
-    ![Cloud assistant 回答可观测性问题，并附有支撑分析和查询结果。](/images/dashboard/assistant.png)
+    ![The Cloud assistant answering an observability question with supporting analysis and queries.](/images/dashboard/assistant.png)
   </Tab>
   <Tab title="CLI">
+    从 `health` 命令开始。它会报告该部署是否启用了助手，以及是否为其配置了 LLM。若没有配置 LLM，`ask` 会失败，`models` 不会返回任何结果——而 `chats`、`show`、`rename` 和 `delete` 完全不依赖 health 检查，始终可以正常工作。
+
     ```bash
     fp agent health
     fp agent models
     fp agent ask "Which production checkout agents had the most tool errors in the last 24 hours?"
+    ```
+
+    `fp agent models` 列出该部署允许使用的模型及默认模型。通过 `ask --model <name>` 指定模型。使用 `--page-context <text>` 为回答提供已有的文本背景，当问题来自文件或上一条命令时，可通过 stdin 管道传入，而不必作为参数传递：
+
+    ```bash
+    cat incident-notes.md | fp agent ask --model <model>
+    ```
+
+    每次提问都会保存到一个对话中。不带 `--chat` 时会新建对话并打印其短 ID；带 `--chat` 时会继续该对话线程。
+
+    ```bash
     fp agent chats
     fp agent show <chat-id>
     fp agent ask "Open representative sessions" --chat <chat-id>
+    fp agent rename <chat-id> --title "checkout regression"
+    fp agent delete <chat-id> --yes
     ```
 
-    使用 `fp agent rename <chat-id> --title <title>` 为调查任务取一个便于识别的名称，使用 `fp agent delete <chat-id>` 将其删除。
+    `fp agent chats` 以 `chat-id · title · messages · updated` 的格式按最新优先列出您的对话，其中 `updated` 表示对话最后活跃的时间。显示的 `chat-id` 是短格式——即前 8 个字符——`show`、`rename`、`delete` 和 `ask --chat` 均支持该前缀匹配。若 ID 未匹配到任何内容，则以退出码 6 退出并显示 `chat not found` 提示；若匹配到多个，则提示输入更长的前缀。
+
+    `fp agent delete` 默认会先确认。`--yes` 可跳过确认提示，非交互式调用时同样会跳过：在 `--json` 模式下，或当 stdin 被重定向时，命令会直接执行而不询问。
   </Tab>
 </Tabs>
 
-## 高效使用 Assistant
+## 高效使用助手
 
-- 优先描述目标；在边界条件重要时，再补充环境、工作流或时间范围。
+- 先给出目标；当环境、工作流或时间范围有限定意义时，再添加这些约束条件。
 - 将生成的 SQL 和摘要作为调查辅助工具，而非最终证据。
-- 在创建审计、问题、告警或策略之前，先打开具有代表性的会话。
+- 在创建审计、问题单、告警或策略之前，先打开有代表性的会话查看。
 - 明确指定组织、环境和时间过滤条件。
-- 将有用的 SQL 保存为查询，以便其他运维人员复现结果。
+- 将有用的 SQL 保存为查询，以便其他操作员复现结果。
 
 <Warning>
-  Assistant 只能读取当前用户有权访问的内容。请勿为了让某个问题能够运行而扩大权限；应请有授权的运维人员代为执行调查。
+  权限控制分为两层，且失败方式不同。`agent:use` 控制功能本身的访问：没有该权限，`fp agent` 和仪表板对话将不可用。在此之上，回答内容还受到已登录用户的数据权限约束——包括 `events:read`、`evaluations:read`、`queries:run`、`policies:read`——因此即使用户能打开助手，对于无权读取的数据仍可能获得空回答。请勿为了让某个问题可用而扩大权限；应让有权限的操作员来执行相关调查。参见[密钥与权限](/zh/admin/keys-and-permissions)。
 </Warning>
+
+<CardGroup cols={2}>
+  <Card title="查询" icon="database" href="/zh/sessions/queries">
+    保存助手生成的 SQL，供其他操作员复现执行。
+  </Card>
+  <Card title="仪表板" icon="layout-dashboard" href="/zh/sessions/dashboards">
+    将已保存的查询转化为团队可持续监控的图表。
+  </Card>
+  <Card title="审计" icon="scan-search" href="/zh/audits/overview">
+    在大量会话中调查某一故障模式。
+  </Card>
+  <Card title="策略" icon="shield-check" href="/zh/policies/overview">
+    主动阻止可重复出现的问题，而不是等到下周再次发现它。
+  </Card>
+</CardGroup>

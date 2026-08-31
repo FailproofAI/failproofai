@@ -4,40 +4,70 @@ description: "Traccia i segnali di affidabilità che contano per un agente o un 
 icon: "layout-dashboard"
 ---
 
-I dashboard combinano query salvate in una visualizzazione operativa. Costruiscine uno intorno a una decisione che ti aspetti che qualcuno prenda, non intorno a ogni metrica disponibile.
+I dashboard combinano query salvate in una vista operativa. Costruiscine uno attorno a una decisione che ti aspetti che qualcuno prenda—non attorno a ogni metrica disponibile.
 
-## Crea un dashboard
+I dashboard sono una superficie Cloud. Il dashboard locale su `localhost:8020` copre l'attività delle policy, i progetti, le sessioni e i risultati dell'audit, ma non ha query salvate e nessun riquadro — quindi una macchina che non si è connessa non ha nulla da costruire qui. Vedi [Dashboard locale](/it/reference/local-dashboard).
+
+## Costruisci un dashboard
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vai su **Analyze → Queries**, crea o apri una query salvata e convalida il risultato.
-    2. Seleziona **add to dashboard**, quindi scegli un dashboard esistente o creane uno sotto **Analyze → Dashboards**.
-    3. Apri il dashboard, accedi alla modalità di modifica, disponi le tessere e salva il layout.
-    4. Ritorna alla query quando hai bisogno di cambiare i dati o i filtri dietro una tessera.
+    1. Vai su **Analyze → Queries**, crea o apri una query salvata e convalida il suo risultato.
+    2. Seleziona **add to dashboard**, quindi scegli un dashboard esistente o creane uno in **Analyze → Dashboards**.
+    3. Apri il dashboard, attiva la modalità modifica, arrangia i riquadri e salva il layout.
+    4. Torna alla query quando hai bisogno di cambiare i dati o i filtri dietro un riquadro.
 
-    ![Un dashboard composto da query salvate per volume di eventi, errori, latenza e utilizzo dei token del modello.](/images/dashboard/dashboard-fleet.png)
+    ![Un dashboard composto da query salvate per il volume degli eventi, gli errori, la latenza e l'uso dei token del modello.](/images/dashboard/dashboard-fleet.png)
   </Tab>
   <Tab title="CLI">
-    Le operazioni CRUD del dashboard non sono esposte dalla CLI Cloud attuale. Usa la CLI per costruire e verificare la query salvata, quindi aggiungila a un dashboard nell'interfaccia utente.
+    Il CRUD del dashboard non è esposto dalla CLI Cloud attuale. Usa la CLI per scrivere e verificare la query salvata, quindi aggiungila a un dashboard nell'interfaccia utente.
 
     ```bash
     fp query schema
-    fp query create "production error rate" --sql "SELECT ..."
-    fp query run <query-id>
+    fp query run --sql "select count(*) from analytics.events"
+    fp query create "event volume" --sql "select count(*) from analytics.events"
+    fp query run "event volume"
     ```
+
+    Esegui prima l'SQL con `--sql`: viene eseguito rispetto allo stesso pool di analisi di sola lettura senza salvare nulla, così trovi un nome di colonna errato prima che lo faccia un riquadro. `--sql @file.sql` legge l'istruzione da un file. `fp query schema` elenca le tabelle interrogabili e le loro colonne; passa un nome di tabella per limitarlo a una.
+
+    Le query salvate sono indirizzate per **name**, non per id — `fp query run "event volume"` — perché `fp query list` nasconde l'id grezzo a meno che tu non passi `--show-id`. È accettato anche un id a forma di UUID.
+
+    Per un riquadro parametrizzato, associa ogni `$1..$N` posizionale con `--arg`, che è ripetibile e associa in ordine: `fp query run <name> --arg checkout-agent`.
+
+    `--limit` e `--all` regolano solo il limite di anteprima della tabella; `--json` restituisce sempre ogni riga, come `{columns: [{name, type}], rows: [[...]], truncated, elapsed_ms}`.
+
+    | Sottocomando | Permesso |
+    | --- | --- |
+    | `query list`, `query show`, `query schema` | `queries:read` |
+    | `query create`, `query update` | `queries:write` |
+    | `query run` | `queries:run` |
+    | `query delete` | `queries:delete` |
+
+    Ogni sottocomando che accetta un **name** di query lo risolve elencando prima le query dell'organizzazione, quindi `query create`, `query update`, `query delete` e `query run <name>` necessitano di `queries:read` oltre al permesso sopra. Solo `fp query run --sql` e `fp query schema` non lo fanno.
+
+    Nessuno di `fp query` è bloccato in modalità chiave API, quindi le query di un dashboard possono essere create e verificate da CI.
   </Tab>
 </Tabs>
 
 I gruppi di dashboard utili includono:
 
-- **Models:** volume, latenza, utilizzo dei token, tasso di errore e punteggi di valutazione.
-- **Evaluations:** tasso di successo e tendenze dei punteggi per agente o ambiente.
+- **Models:** volume, latenza, uso dei token, tasso di errore e punteggi di valutazione.
+- **Evaluations:** tasso di successo e andamento dei punteggi per agente o ambiente.
 - **Tools:** volume di chiamate, tasso di errore, durata e chiamate ripetute.
-- **Hooks and policies:** decisioni, rifiuti e tasso di corrispondenza delle policy.
-- **Custom workflow metrics:** risultati dai tuoi campi di evento personalizzati e SQL.
+- **Hooks e policy:** decisioni, negazioni e tasso di corrispondenza delle policy.
+- **Metriche di flusso di lavoro personalizzate:** risultati dai tuoi campi evento personalizzati e SQL.
 
-Inizia con una query salvata, convalida il risultato, quindi aggiungila come tessera. Mantieni i filtri di produzione e sviluppo espliciti in modo che il traffico di test non nasconda una regressione.
+Inizia con una query salvata, convalida il suo risultato, quindi aggiungilo come riquadro. Mantieni i filtri di produzione e sviluppo espliciti in modo che il traffico di test non nasconda una regressione.
+
+<Warning>
+  Un riquadro hook che conta le righe riporta il denominatore sbagliato. Al livello di verbosità predefinito dell'hook, ogni deny e instruct viene emesso come una coppia `hook_triggered` / `hook_completed`, così come ogni allow in modalità observe; i plain allow vengono aggregati per sessione, evento, strumento e attribuzione della policy al minuto in un singolo `hook_completed` che trasporta `failproofai_allow_count`. Somma invece quel campo, oppure una flotta che ha valutato decine di migliaia di chiamate sembrerà che abbia valutato poche centinaia. Vedi [Policy decisions](/it/sessions/policy-decisions) e [Hooks](/it/sessions/hooks).
+</Warning>
 
 <Tip>
-  Assegna a ogni dashboard un proprietario e una domanda di risposta, come ad esempio "L'affidabilità di checkout-agent è peggiore rispetto a la settimana scorsa?"
+  Assegna a ogni dashboard un proprietario e una domanda di risposta, ad esempio "L'affidabilità di checkout-agent è peggiore rispetto alla scorsa settimana?"
 </Tip>
+
+<Card title="Queries" icon="database" href="/it/sessions/queries">
+  Scrivi, salva e condividi l'SQL che ogni riquadro su un dashboard legge da.
+</Card>

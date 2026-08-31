@@ -1,21 +1,21 @@
 ---
 title: "커스텀 에이전트"
-description: "failproofai-sdk의 설정, 이벤트 카탈로그, 상관 관계 규칙 및 전달 방식."
+description: "failproofai-sdk의 설정, 이벤트 카탈로그, 상관관계 규칙 및 전달 방법."
 icon: "python"
 ---
 
-모든 설정, 메서드, 필드가 무엇을 하는지 설명합니다. 처음 계측을 시작하는 경우라면 가이드부터 시작하세요 — 이 페이지는 참조용입니다.
+모든 설정, 메서드, 필드가 무엇을 하는지 설명합니다. 처음 계측하는 경우라면 가이드부터 시작하세요 — 이 페이지는 참고용입니다.
 
 <Columns cols={2}>
   <Card title="커스텀 에이전트 가이드" icon="code" href="/ko/start/integrations/custom-agents">
-    설치, 계측, 이벤트 메서드, 실제 예제, 그리고 자주 발생하는 문제들.
+    설치, 계측, 이벤트 메서드, 실제 예제, 그리고 흔한 문제들.
   </Card>
-  <Card title="프레임워크를 사용 중인가요?" icon="plug" href="/ko/start/integrations">
-    LangChain, CrewAI, LlamaIndex, Pydantic AI는 한 번의 호출로 스스로 계측합니다.
+  <Card title="프레임워크를 사용하시나요?" icon="plug" href="/ko/start/integrations">
+    LangChain, CrewAI, LlamaIndex, Pydantic AI는 한 번의 호출로 자동 계측됩니다.
   </Card>
 </Columns>
 
-Python 3.10 이상. 런타임 의존성 없음.
+Python 3.10 이상이 필요하며, **런타임 의존성이 전혀 없습니다** — 이는 우연이 아닌 정책입니다. SDK는 다른 사람들의 에이전트 프로세스에 설치되므로, 의존성을 선언하면 그것이 모두 상속됩니다. 테스트는 핵심 모듈을 스캔하고 새 인터프리터를 실행하여 어떤 프레임워크도 `sys.modules`에 들어오지 않음을 검증합니다.
 
 ## 설치
 
@@ -23,26 +23,27 @@ Python 3.10 이상. 런타임 의존성 없음.
 pip install failproofai-sdk
 ```
 
-패키지는 `failproofai-sdk`로 설치되며 Python에서 `failproofai_sdk`로 임포트합니다. `failproofai-sdk[langgraph]` 같은 프레임워크 extras는 해당 프레임워크 자체를 함께 설치하지만, 어댑터는 항상 기본 wheel에 포함되어 있습니다.
+패키지는 `failproofai-sdk`로 설치되며 Python에서는 `failproofai_sdk`로 임포트합니다. `failproofai-sdk[langgraph]`와 같은 프레임워크 extras는 해당 프레임워크 자체를 설치하며, 어댑터는 항상 기본 wheel에 포함되어 있습니다.
 
 ## Failproof 데몬 연결
 
 <Tabs>
   <Tab title="대시보드">
-    1. **Admin → Keys**로 이동해 `events:add` 권한으로 키를 생성합니다.
-    2. 에이전트 머신에서 [Failproof 데몬을 Cloud에 연결](/ko/start/setup#connect-a-machine-to-cloud)합니다.
-    3. 계측된 세션을 한 번 실행한 뒤, **Observe → Events**에서 정확한 ID를 확인합니다.
-    4. **Observe → Sessions**로 이동해 동일한 환경을 선택하고, 재구성된 트레이스를 엽니다.
+    1. **Administration → Keys**로 이동하여 `events:add` 권한이 있는 키를 생성합니다.
+    2. 에이전트 머신에서 [Failproof 데몬을 Cloud에 연결](/ko/start/setup#connect-failproof-ai-cloud)합니다.
+    3. 계측된 세션을 한 번 실행한 후, **Observe → Events**에서 정확한 ID를 찾습니다.
+    4. **Observe → Sessions**로 이동하여 동일한 환경을 선택하고 재구성된 트레이스를 엽니다.
 
-    ![커스텀 Python 에이전트 세션이 실행 그래프와 순서가 있는 이벤트 트레이스로 재구성된 모습.](/images/dashboard/session-detail.png)
+    ![실행 그래프와 정렬된 이벤트 트레이스로 재구성된 커스텀 Python 에이전트 세션.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
-    failproofai config \
-      --connect https://app.befailproof.ai \
-      --token <events-add-key>
+    export FAILPROOFAI_CLOUD_TOKEN=<events-add-key>
+    failproofai config
     failproofai config --status
     ```
+
+    `--token` 대신 환경 변수를 사용하세요. 커맨드라인 인수는 머신의 모든 사용자가 `ps`로 읽을 수 있고, 셸 히스토리와 CI 로그에도 남습니다.
   </Tab>
 </Tabs>
 
@@ -58,32 +59,67 @@ failproofai_sdk.configure(
 )
 ```
 
-| 인자 | 역할 |
+| 인수 | 동작 |
 | --- | --- |
 | `environment` | 모든 이벤트에 붙는 레이블 — `production`, `staging`, `prod-eu`. 기본값은 `dev`. |
 | `flush_interval` | 백그라운드 스레드가 디스크에 쓰는 주기(초). 기본값은 `0.5`. |
-| `base_dir` | 쓰기 경로. 기본값은 데몬의 스풀 디렉터리로, 특별한 이유가 없는 한 이 값을 그대로 사용하면 됩니다. |
+| `base_dir` | 쓰기 경로. 기본값은 `$FAILPROOFAI_HOME/custom-agents`, 없으면 `~/.failproofai/custom-agents` — 데몬이 감시하는 스풀 디렉터리이며, 특별한 이유가 없는 한 이 값을 사용하세요. |
 
-환경 변수로 대신 설정할 수도 있습니다:
+`configure()`는 **키워드 전용**입니다 — `configure(None, 0.5, "prod")`는 `TypeError`를 발생시킵니다. 또한 인수를 적용하기 전에 모두 검증하며, `flush_interval`이 0보다 큰 유한한 숫자가 아닌 경우 `ValueError`를 발생시킵니다. 따라서 거부된 호출은 SDK를 절반만 변경하지 않고 그대로 유지합니다.
 
-| 변수 | 역할 |
+환경 변수로 설정하는 방법:
+
+| 변수 | 동작 |
 | --- | --- |
-| `AGENTEYE_ENVIRONMENT` | 코드 변경 없이 `environment`를 설정합니다. 레이블이 앱이 아닌 배포 환경에 속할 때 유용합니다. `configure()` 인자가 이 값보다 우선합니다. |
-| `FAILPROOFAI_HOME` | 스풀을 보관하는 Failproof AI 루트 디렉터리를 변경합니다. |
+| `AGENTEYE_ENVIRONMENT` | 코드 변경 없이 `environment`를 설정합니다. 레이블이 앱이 아닌 배포 환경에 속할 때 유용합니다. `configure()` 인수가 우선합니다. |
+| `FAILPROOFAI_HOME` | 스풀을 포함하는 Failproof AI 루트 디렉터리를 변경합니다. |
 | `FAILPROOFAI_SDK_STRICT` | `1`로 설정하면 계측 오류가 로깅 대신 예외를 발생시킵니다. |
 | `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | `1`로 설정하면 프레임워크 호환성 문제가 경고 후 계속 진행하는 대신 예외를 발생시킵니다. |
 
 <Warning>
-  **`environment`에 쉼표를 사용하지 마세요.** 수집기는 해당 필드를 쉼표 기준으로 분할하여 필터를 구성하며, 레이블에 쉼표가 포함된 이벤트는 모두 건너뜁니다 — 즉, 실행 전체가 조용히 사라질 수 있습니다. `prod,eu`가 아닌 `prod-eu`로 작성하세요.
+  **`environment`에 쉼표를 사용하지 마세요.** 수집 단계에서 해당 필드를 쉼표로 분리하여 필터를 구성하며, 레이블에 쉼표가 포함된 이벤트는 건너뜁니다 — 전체 실행이 조용히 사라집니다. `prod,eu`가 아닌 `prod-eu`로 작성하세요.
 
-  `configure(environment="prod,eu")`는 즉시 예외를 발생시켜 바로 알 수 있습니다. `AGENTEYE_ENVIRONMENT`는 예외를 발생시킬 수 없으므로 — 호출자가 없기 때문에 — 한 번 경고를 출력하고 `dev`로 폴백합니다.
+  `configure(environment="prod,eu")`는 즉시 발견할 수 있도록 예외를 발생시킵니다. `AGENTEYE_ENVIRONMENT`는 예외를 발생시킬 수 없습니다 — 호출자가 없으므로 — 한 번만 경고하고 `dev`로 폴백합니다.
 </Warning>
 
-이벤트는 메모리에 큐잉되고 `flush_interval`초마다 백그라운드에서 기록되며, 인터프리터 종료 시 최종 flush가 실행됩니다. 프로세스가 강제 종료되면 아직 기록되지 않은 이벤트는 손실됩니다.
+이벤트는 메모리에 큐잉되어 `flush_interval` 초마다 백그라운드에서 기록되며, 인터프리터 종료 시 최종 플러시가 수행됩니다. 프로세스가 강제로 종료되면 아직 기록되지 않은 이벤트는 손실됩니다.
 
-## 식별자
+## 스코프
 
-모든 이벤트는 세션과 에이전트에 속합니다. **스코프가 둘 다 자동으로 채워주므로** 직접 전달할 일은 거의 없습니다:
+`with`와 `async with` 모두 사용 가능한 세 가지 컨텍스트 매니저:
+
+| 스코프 | 바인딩 | 이벤트 발행 |
+| --- | --- | --- |
+| `session()` | 세션 ID. 이를 yield함 | 없음 — 식별용으로만 사용 |
+| `agent(name)` | 에이전트 ID, 그리고 감싸는 에이전트에서 추론된 `parent_id` | 진입 시 `agent_start`, 종료 시 `agent_end` |
+| `tool_call(name)` | 새로운 것 없음 — 감싸는 컨텍스트의 식별 정보를 상속 | 진입 시 `tool_use`, 종료 시 `tool_result` |
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("planner"):
+        with failproofai_sdk.tool_call("web_search", input={"q": q}) as t:
+            t.output = search(q)
+```
+
+`tool_call()`은 `tool_call_id`의 기본값으로 새 `uuid4().hex`를 사용하며, 진입 시 한 번만 식별 정보를 확정합니다. 따라서 내부에서 자체 스코프를 push하는 툴이 있어도 닫힘 `tool_result`가 다른 에이전트에 속하게 될 수 없습니다. 실패 시에는 `tool_result(error="TypeName: msg")`를 발행하며 **`error` 이벤트는 발행하지 않습니다** — 루프가 캐치하는 툴 실패는 실행 수준의 오류가 아니고, 전파되는 오류는 감싸는 `agent()`에 의해 정확히 한 번 보고됩니다. 취소 시에는 오류 문자열 없이 리프를 닫습니다.
+
+## 어댑터
+
+`instrument()`는 지원되는 프레임워크를 위의 스코프에 연결합니다. 인수 없이 호출하면 현재 프로세스에 이미 임포트된 프레임워크를 자동으로 감지하며, 이름을 전달하면 해당 프레임워크만 설치합니다.
+
+```python
+failproofai_sdk.instrument()              # 이미 임포트된 모든 것
+failproofai_sdk.instrument("crewai")      # 정확히 하나
+failproofai_sdk.uninstrument("crewai")    # 원래 속성 복원
+```
+
+네 가지 이름은 `"langchain"` (LangGraph는 langchain-core의 콜백 매니저 위에서 실행되므로 포함됨), `"crewai"`, `"llama_index"`, `"pydantic_ai"`입니다. 프레임워크 임포트는 호출 내부에서 발생하므로, `import failproofai_sdk`가 의존성 없는 상태를 유지할 수 있습니다.
+
+각 프레임워크별 페이지: [LangChain](/ko/start/integrations/langchain), [CrewAI](/ko/start/integrations/crewai), [LlamaIndex](/ko/start/integrations/llamaindex), [Pydantic AI](/ko/start/integrations/pydantic-ai).
+
+## 식별 정보
+
+모든 이벤트는 세션과 에이전트에 속합니다. **스코프가 두 가지 모두를 채워주므로** 직접 전달할 필요가 거의 없습니다:
 
 ```python
 with failproofai_sdk.session():
@@ -91,30 +127,41 @@ with failproofai_sdk.session():
         failproofai_sdk.event.tool_use(tool_name="search", tool_call_id="c1")
 ```
 
-`session_id`나 `agent_id`를 명시적으로 전달하는 방식도 여전히 유효하며, 이 경우 해당 값이 우선합니다. 스코프에도 바인딩되지 않고 직접 전달하지도 않으면, Cloud가 조용히 버릴 이벤트를 내보내는 대신 `TypeError`가 발생합니다.
+`session_id`나 `agent_id`를 명시적으로 전달해도 동작하며, 이 경우 명시적 값이 우선합니다.
+
+두 가지는 아무것도 바인딩되지 않았을 때 **대칭적이지 않습니다**:
+
+| 생략됨 | 아무것도 바인딩되지 않은 경우 |
+| --- | --- |
+| `session_id` | Cloud가 조용히 버릴 이벤트를 발행하는 대신 `TypeError` 발생 |
+| `agent_id` | `main`으로 폴백하므로, `agent()` 없이 `session()` 내에서 발행된 이벤트는 모두 `main`이라는 에이전트 아래에 모임 |
+
+세션 ID를 임의로 생성하면 하나의 실행이 발행 지점 수만큼 많은 세션으로 분산될 수 있으므로, `session_id`만 예외를 발생시킵니다.
+
+`session_id`와 `agent_id`는 빈 값 여부를 검사하는 유일한 두 이름이기도 합니다: 문자열이 아닌 값은 `TypeError`를 발생시키고, 빈 문자열이나 공백만 있는 ID는 `ValueError`를 발생시킵니다. 서버는 빈 ID를 *수락*하므로, 이 검사가 없으면 빈 ID로 전송된 모든 이벤트가 단일 빈 ID 아래 그룹화되어 존재하는 것처럼 보이면서 조용히 병합됩니다.
 
 <Note>
-  식별자는 컨텍스트 변수를 통해 전달됩니다. `asyncio` 태스크는 자동으로 따라가지만, **새 스레드는 그렇지 않습니다** — 워커를 `failproofai_sdk.propagate()`로 감싸지 않으면 해당 이벤트가 연결되지 않은 상태로 기록됩니다.
+  식별 정보는 컨텍스트 변수를 통해 전달됩니다. `asyncio` 태스크에는 자동으로 따라가지만, **새 스레드에는 그렇지 않습니다** — 워커를 `failproofai_sdk.propagate()`로 감싸지 않으면 이벤트가 연결되지 않은 상태로 전송됩니다.
 </Note>
 
 ## 이벤트 카탈로그
 
-총 15개의 메서드. 대부분 **쌍으로** 구성되어 있으며 — 시작 메서드를 호출한 뒤 종료 메서드를 호출하면, SDK가 그 간격을 측정합니다.
+15개의 메서드. 대부분은 **쌍**으로 구성됩니다 — 시작과 종료.
 
-| | 시작 | 종료 |
-| --- | --- | --- |
-| **에이전트** | `agent_start` | `agent_end` |
-| | `agent_pause` | `agent_resume` |
-| **모델** | `model_request` | `model_response` |
-| **툴** | `tool_use` | `tool_result` |
-| **훅** | `hook_triggered` | `hook_completed` |
-| **사람** | `human_wait` | `human_input` |
+| | 시작 | 종료 | SDK가 시간 측정 |
+| --- | --- | --- | --- |
+| **에이전트** | `agent_start` | `agent_end` | 아니오 |
+| | `agent_pause` | `agent_resume` | 예 |
+| **모델** | `model_request` | `model_response` | 아니오 — Cloud에서 상관관계 분석 |
+| **툴** | `tool_use` | `tool_result` | 예 |
+| **훅** | `hook_triggered` | `hook_completed` | 예 |
+| **사람** | `human_wait` | `human_input` | 예 |
 
-단독으로 사용하는 세 가지: `error`, `human_pause`, `human_interrupt`.
+세 가지는 독립적입니다: `error`, `human_pause`, `human_interrupt`.
 
-<Accordion title="메서드별 전체 필드" icon="table">
+<Accordion title="메서드별 모든 필드" icon="table">
 
-모든 메서드는 `session_id`와 `agent_id`도 받으며, 스코프가 자동으로 채워줍니다. `None`으로 남겨진 값은 JSON `null`로 전송되지 않고 제외되며, 모든 메서드는 `None`을 반환합니다.
+모든 메서드는 `session_id`와 `agent_id`도 받으며, 스코프가 이를 채워줍니다. `None`으로 남겨진 값은 JSON `null`로 전송되지 않고 제거되며, 모든 메서드는 `None`을 반환합니다.
 
 | 메서드 | 필수 | 선택 |
 | --- | --- | --- |
@@ -137,61 +184,85 @@ with failproofai_sdk.session():
 </Accordion>
 
 <Warning>
-  실행을 실패로 표시하려면 `outcome`이 반드시 `failed`, `error`, `timeout`, `rejected` 중 하나여야 합니다. 비슷해 보이는 `"failure"`를 포함하여 그 외의 값은 모두 성공으로 처리됩니다.
+  실행을 실패로 표시하려면 `outcome`이 `failed`, `error`, `timeout`, `rejected` 중 하나여야 합니다. 이것 외의 모든 값 — `"failure"`처럼 비슷하게 보이는 것도 포함 — 은 성공으로 간주됩니다.
 </Warning>
 
 ## 쌍 매칭과 시간 측정
 
-**규칙은 하나: 종료 이벤트에 시작 이벤트와 동일한 id를 전달하세요.** 이것이 둘을 연결하고 SDK가 간격을 측정하는 기준입니다.
+**한 가지 규칙: 종료 이벤트에 시작 이벤트와 동일한 ID를 전달하세요.** 이것이 둘을 연결하는 방식이며, SDK가 간격을 측정할 수 있게 합니다.
 
-| 쌍 | 매칭 기준 |
-| --- | --- |
-| `tool_use` → `tool_result` | `tool_call_id` |
-| `hook_triggered` → `hook_completed` | `hook_id` |
-| `agent_pause` → `agent_resume` | `pause_id` |
-| `human_wait` → `human_input` | `input_id` |
-| `model_request` → `model_response` | `request_id` |
+| 쌍 | 매칭 기준 | 추적 키 |
+| --- | --- | --- |
+| `tool_use` → `tool_result` | `tool_call_id` | `tool:{session_id}:{tool_call_id}` |
+| `hook_triggered` → `hook_completed` | `hook_id` | `hook:{session_id}:{hook_id}` |
+| `agent_pause` → `agent_resume` | `pause_id` | `pause:{session_id}:{pause_id}` |
+| `human_wait` → `human_input` | `input_id` | `human:{session_id}:{input_id}` |
 
-**`duration_ms`를 직접 전달하지 마세요.** SDK가 측정하며, 직접 전달하면 `ValueError`가 발생합니다.
+키는 세션별로 네임스페이스가 지정되어 있으며, 이것이 아래의 두 엣지 케이스를 모두 참으로 만듭니다.
 
-유일한 예외는 `model_response`로, 실제 공급자 지연 시간을 오직 여러분만 알 수 있습니다. 정수 밀리초 값을 전달하세요 — float는 예외가 발생합니다. 해당 컬럼은 32비트 정수이므로 float를 전달하면 값이 비어 있는 채로 저장됩니다.
+위의 네 가지 종료 이벤트에 **`duration_ms`를 직접 전달하지 마세요**. SDK가 이를 측정하며, 전달하면 `ValueError`가 발생합니다.
+
+<Note>
+  `model_request`와 `model_response`는 Cloud가 `request_id`로 상관관계를 분석하는 쌍입니다. SDK는 이를 추적하지 않으며 로컬에서 아무것도 측정하지 않으므로, `model_response`는 `duration_ms`를 직접 받는 유일한 이벤트입니다. 밀리초 단위의 정수를 전달하세요 — 컬럼이 32비트 정수이므로 float은 예외를 발생시키고, 그렇지 않으면 빈 값으로 저장됩니다.
+</Note>
 
 <Accordion title="엣지 케이스" icon="circle-help">
 
-- **Id는 종류별, 세션별로만 고유하면 됩니다.** 툴 호출과 훅이 같은 id를 공유해도 되며, 동시에 실행 중인 두 세션이 같은 id를 재사용해도 충돌하지 않습니다.
-- **에이전트에 스코프가 지정되지 않습니다.** 한 에이전트에서 시작하고 다른 에이전트에서 종료된 쌍도 정상적으로 매칭됩니다 — 멀티 에이전트 코드에서 일반적인 경우입니다.
-- **`request_id`는 선택 사항이지만 권장합니다.** 없으면 모델 이벤트가 도착 순서대로 쌍을 이루므로, 동일한 에이전트에서 두 개의 동시 호출이 잘못 매칭될 수 있습니다.
-- **프로세스를 넘나드는 쌍**은 Cloud에서 여전히 매칭되지만, SDK는 시간을 측정할 수 없습니다 — 어느 프로세스도 양쪽을 모두 보지 못했기 때문입니다.
-- **최대 10,000개의 시작 이벤트가 종료를 기다릴 수 있습니다.** 이를 초과하면 가장 오래된 것이 제거되므로, 누수가 무한히 증가하지는 않습니다.
+- **ID는 종류별, 세션별로만 고유하면 됩니다.** 툴 호출과 훅이 같은 ID를 공유할 수 있으며, 동시에 실행 중인 두 세션도 같은 ID를 재사용해도 충돌하지 않습니다.
+- **에이전트 범위로 한정되지 않습니다.** 한 에이전트에서 시작하고 다른 에이전트에서 닫힌 쌍도 매칭됩니다 — 이는 멀티 에이전트 코드에서 일반적인 경우입니다.
+- **`request_id`는 선택 사항이지만 권장됩니다.** 없으면 모델 이벤트가 도착 순서대로 쌍을 이루므로, 동일한 에이전트 내에서 두 개의 동시 호출이 잘못 쌍을 이룰 수 있습니다.
+- **프로세스에 걸쳐 분리된 쌍**은 Cloud에서 여전히 매칭되지만, SDK는 시간을 측정할 수 없습니다 — 어느 프로세스도 양쪽 절반을 모두 보지 못했기 때문입니다.
+- **최대 10,000개의 시작 이벤트가 종료 이벤트를 기다릴 수 있습니다.** 이를 초과하면 가장 오래된 것이 드롭되므로, 누수가 있어도 무한정 증가하지 않습니다.
 
 </Accordion>
 
 ## 커스텀 필드
 
-추가로 전달한 키워드는 이벤트와 함께 저장됩니다:
+전달하는 추가 키워드는 이벤트와 함께 저장됩니다:
 
 ```python
 failproofai_sdk.event.tool_use(
     tool_name="search", tool_call_id="c1",
-    fw_tenant="acme", fw_region="eu-west-1",     # your own
+    fw_tenant="acme", fw_region="eu-west-1",     # 커스텀 필드
 )
 ```
 
-나중에 쿼리하려면 JSON 타입을 사용하는 것이 좋습니다. UUID, datetime, `Decimal`, set, bytes, 모델 객체 등 그 외의 값은 문자열로 저장됩니다.
+나중에 쿼리하려면 JSON 타입을 사용하세요. 그 외 값 — UUID, datetime, `Decimal`, set, bytes, 모델 객체 — 은 문자열로 저장됩니다.
 
 <Warning>
-  **필드 이름에 접두사를 붙이세요.** extras는 마지막에 적용되므로, `model`, `tool_name`, `outcome` 같은 이름의 필드는 실제 값을 조용히 덮어씁니다. 프레임워크 어댑터는 `fw_`를 사용합니다. 같은 방식을 따르면 충돌이 발생하지 않습니다.
+  **11개의 이름은 예외이며, 문자열로 변환하는 대신 예외를 발생시킵니다.** 수집 단계에서 각각을 타입이 있는 컬럼으로 올리며, 그 외 값은 `200 OK`와 함께 `NULL`로 조용히 저장됩니다 — 따라서 SDK는 호출 지점에서 이를 거부합니다.
 
-  이것이 잘못 입력한 선택 필드가 오류를 발생시키지 않는 이유이기도 합니다 — 단순히 새 커스텀 필드가 됩니다. Cloud에서 표준 필드가 보이지 않는다면 먼저 철자를 확인하세요.
+  | 이름 | 반드시 |
+  | --- | --- |
+  | `duration_ms`, `input_tokens`, `output_tokens` | 부호 없는 32비트 범위의 `int` |
+  | `tool_name`, `tool_call_id`, `hook_name`, `hook_id`, `input_id`, `pause_id`, `error_type`, `model` | 문자열 — `None`은 `ValueError`, 문자열이 아닌 값은 `TypeError` 발생 |
+
+  이는 값이 명명된 매개변수로 전달되든 커스텀 extras 중 하나로 전달되든 동일하게 적용됩니다. `model_response`도 같은 이유로 `input_tokens`와 `output_tokens`를 받을 때 검증합니다 — 프로바이더의 usage 객체에서 바로 채울 가능성이 가장 높기 때문입니다.
 </Warning>
 
-다음 다섯 가지 이름은 예약되어 있으며 사용이 거부됩니다: `timestamp`, `session_id`, `agent_id`, `type`, `environment`.
+<Warning>
+  **필드 이름에 접두사를 사용하세요.** extras는 마지막에 적용되므로, `model`, `tool_name`, `outcome` 같은 이름의 필드는 실제 값을 조용히 덮어씁니다. 프레임워크 어댑터는 `fw_`를 사용합니다; 동일하게 사용하면 충돌이 발생하지 않습니다.
 
-## 전달 및 확인
+  이것이 철자가 틀린 선택적 필드가 오류를 발생시키지 않는 이유이기도 합니다 — 그냥 새로운 커스텀 필드가 됩니다. Cloud에서 표준 필드가 없다면 먼저 철자를 확인하세요.
+</Warning>
+
+다음 다섯 가지 이름은 예약되어 있으며 완전히 거부됩니다: `timestamp`, `session_id`, `agent_id`, `type`, `environment`.
+
+## 기타 익스포트
+
+| 익스포트 | 설명 |
+| --- | --- |
+| `current()` | 현재 바인딩된 식별 정보를 `Identity`로 반환. `current().session_id is None`이면 아무것도 바인딩되지 않은 것 |
+| `Identity` | `session_id`, `agent_id`, `parent_id`, `depth`. 자체는 절대 `None`이 아님 — 필드를 확인하세요 |
+| `propagate(fn)` | 래핑 시점에 바인딩된 식별 정보와 함께 `fn`이 실행되도록 래핑. `Thread`, `pool.submit`, `pool.map`, `run_in_executor`에 필요 |
+| `_writer.flush_now()` | 버퍼링된 항목을 즉시 비우고 기록. 테스트나 종료 전 강제 플러시에 사용 |
+| `__version__` | 설치된 SDK 버전 |
+
+## 전달 및 검증
 
 <Tabs>
   <Tab title="대시보드">
-    **Observe → Events**에서 `agent_start`가 첫 번째로, `agent_end`가 마지막으로 존재하는지 확인합니다. 그런 다음 **Observe → Sessions**를 열어 모델, 툴, 사람, 훅, 오류 이벤트가 의도한 순서대로 나타나는지 확인합니다. 세션 ID를 기본 트러블슈팅 키로 활용하세요.
+    **Observe → Events**에서 `agent_start`가 첫 번째로, `agent_end`가 마지막으로 존재하는지 확인하세요. 그런 다음 **Observe → Sessions**를 열어 모델, 툴, 사람, 훅, 오류 이벤트가 의도한 순서대로 나타나는지 확인하세요. 세션 ID를 기본 트러블슈팅 키로 사용하세요.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -203,14 +274,14 @@ failproofai_sdk.event.tool_use(
   </Tab>
 </Tabs>
 
-Cloud가 비어 있다면 `$FAILPROOFAI_HOME/custom-agents/events`를, 그렇지 않으면 `~/.failproofai/custom-agents/events`를 확인하세요. JSONL 파일이 있으면 SDK가 이벤트를 내보냈음을 증명합니다. 스풀이 계속 증가하면 데몬 설정이나 전달 문제를, 스풀이 비어 있으면 계측 또는 프로세스 수명 문제를 의심하세요.
+Cloud가 비어 있다면 `$FAILPROOFAI_HOME/custom-agents/events`를, 없으면 `~/.failproofai/custom-agents/events`를 확인하세요. JSONL 파일은 SDK 발행을 증명하며, 스풀이 계속 증가한다면 데몬 설정이나 전달 문제를, 스풀이 비어 있다면 계측이나 프로세스 수명 문제를 나타냅니다.
 
 <Note>
-  데몬이 중지되었을 때만 스풀을 검사하세요. 실행 중에는 밀리초 단위로 각 배치를 수집하고 삭제하므로, 디렉터리 목록이 실제로 내보낸 이벤트 수보다 훨씬 적게 보일 수 있습니다.
+  데몬이 중지되었을 때만 스풀을 확인하세요. 실행 중에는 각 배치를 밀리초 단위로 수집하고 삭제하므로, 디렉터리 목록을 조회하면 실제로 발행된 이벤트보다 훨씬 적게 보입니다.
 </Note>
 
-## 커스텀 런타임에서 장애 방지
+## 커스텀 런타임에서 실패 방지
 
-감사 결과와 연결된 트레이스를 활용해 안전하지 않은 액션, 필요한 증거, 의도된 응답을 정의하세요. 커스텀 적용 통합은 실행 전에 액션을 노출하고, 구조화된 입력을 정책 엔진에 전달한 뒤, 결과로 나온 allow, instruct, deny 결정을 적용해야 합니다.
+감사 결과와 연결된 트레이스를 사용하여 안전하지 않은 동작, 필요한 증거, 의도한 대응을 정의하세요. 커스텀 집행 통합은 실행 전에 동작을 노출하고, 구조화된 입력을 정책 엔진에 전달하며, 결과로 나온 allow, instruct, deny 결정을 적용해야 합니다.
 
-[Failproof AI에 문의](mailto:support@befailproof.ai)하시면 런타임의 모델, 툴, 라이프사이클 경계를 정책 훅에 매핑하고 통합을 함께 검증해 드립니다.
+[Failproof AI에 문의](mailto:support@befailproof.ai)하시면 런타임의 모델, 툴, 라이프사이클 경계를 정책 훅에 매핑하고 통합을 함께 검증하는 데 도움을 드리겠습니다.

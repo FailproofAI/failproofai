@@ -1,25 +1,34 @@
 ---
 title: "Hooks"
-description: "Mesurez l'activité des hooks, les déclencheurs et la latence indépendamment des résultats de politique."
+description: "Voir quand Failproof AI a évalué un événement d'agent et quelle décision a été prise."
 icon: "webhook"
 ---
 
-Hooks affiche le moment où les hooks du cycle de vie des agents s'exécutent et le temps qu'ils prennent. Les décisions de politique sont une vue distincte.
+Un hook est un point où un agent interroge Failproof AI pour obtenir une décision. L'activité des hooks enregistre l'événement, la politique, le résultat et le temps d'évaluation.
+
+## Analyser l'activité des hooks
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Accédez à **Observer → Hooks**.
-    2. Filtrez par environnement, nom de hook, événement déclencheur, agent ou ID de session.
-    3. Examinez la latence des hooks et leur distribution.
-    4. Sélectionnez un point du graphique ou un segment de hook pour ouvrir les événements sous-jacents.
+    Accédez à **Observe → Hooks**. Filtrez par environnement, événement, agent ou session.
 
     ![La page Hooks affichant la latence regroupée par nom de hook et événement déclencheur.](/images/dashboard/hooks.png)
   </Tab>
   <Tab title="CLI">
     ```bash
+    fp guardrails summary --since 24h
+    fp --json events --full --event-type hook_completed --session-id <session-id> --all --limit 500
     fp list hooks
-    fp events --event-type hook_triggered,hook_completed --env production --since 24h
-    fp events --search "PreToolUse" --since 24h
     ```
   </Tab>
 </Tabs>
+
+Par défaut, chaque décision `deny` et `instruct` est transmise intégralement. Les autorisations répétées sont regroupées pour réduire le bruit. Définissez `collector.hooks_verbosity` dans `~/.failproofai/config.json` sur `all`, `decisions` ou `off`.
+
+<Warning>
+  L'activité des hooks prouve que l'évaluation a été exécutée, et non que le harnais était en mesure de bloquer cet événement. Consultez [la capacité d'application](/fr/reference/harnesses#enforcement-capability). Toute paire harnais-événement non répertoriée est non vérifiée.
+</Warning>
+
+<Card title="Décisions de politique" icon="shield-check" href="/fr/sessions/policy-decisions">
+  Consultez la même activité par résultat et par politique.
+</Card>

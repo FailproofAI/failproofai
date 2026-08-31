@@ -1,16 +1,16 @@
 ---
 title: "Modelos"
-description: "Compare latência, tokens, uso de contexto e distribuição de tráfego entre modelos."
+description: "Compare latência, tokens, uso de contexto e distribuição de tráfego por modelo."
 icon: "cpu"
 ---
 
-Use Modelos para verificar se a confiabilidade ou o custo mudou com um modelo, agente, ambiente ou intervalo de tempo.
+Use Modelos para verificar se a confiabilidade ou o custo mudou em função de um modelo, agente, ambiente ou intervalo de tempo.
 
 <Tabs>
   <Tab title="Dashboard">
     1. Acesse **Observe → Models**.
     2. Defina o intervalo de tempo e filtre por ambiente, modelo, agente ou ID de sessão.
-    3. Analise latência, consumo de tokens, uso da janela de contexto e distribuição de modelos.
+    3. Analise a latência, o consumo de tokens, o uso da janela de contexto e a distribuição de modelos.
     4. Selecione um ponto no gráfico ou um segmento de distribuição para abrir os eventos correspondentes.
 
     ![A página Models exibindo visualizações de latência, percentil, tokens, custo, janela de contexto e distribuição de modelos.](/images/dashboard/models.png)
@@ -18,10 +18,37 @@ Use Modelos para verificar se a confiabilidade ou o custo mudou com um modelo, a
   <Tab title="CLI">
     ```bash
     fp list models
-    fp events --event-type model_request,model_response --env production --since 24h
-    fp --json events --fields ts,agent_id,session_id,event_type,output_tokens,context_fill
+    fp events --event-type model_request,model_response --since 24h
+    fp --json events --event-type model_response --since 24h --all --limit 500 --fields ts,agent_id,session_id,output_tokens,context_window,context_fill
     ```
 
-    Use uma consulta salva para agregações no nível de modelo que não estão disponíveis como um comando dedicado na CLI.
+    Os três comandos requerem `events:read`.
+
+    `--fields` projeta colunas; não filtra linhas. Use-o em conjunto com `--event-type` e uma janela de tempo; caso contrário, você obterá os 50 eventos mais recentes de cada tipo, com `output_tokens` e `context_fill` nulos nos eventos que não são de modelo. `--all` para em `--limit`, cujo padrão é 50.
+
+    Leia `context_fill` junto com `context_window`: um valor de preenchimento não tem significado sem a janela em relação à qual foi medido.
+
+    O daemon marca todos os eventos com o ambiente `local` por padrão, a menos que você o altere. Portanto, `--env production` não corresponde a nada em uma instalação padrão. Consulte [Alterar um rótulo de ambiente](/pt-br/reference/events-and-configuration#change-an-environment-label).
   </Tab>
 </Tabs>
+
+## O que a CLI pode e não pode exibir
+
+O feed de eventos padrão não contém payload. Ele carrega `output_tokens`, `context_window` e `context_fill` como colunas promovidas, e nada mais sobre uma chamada de modelo:
+
+| Valor | Onde está disponível |
+| --- | --- |
+| Tokens de saída, janela de contexto, preenchimento de contexto | Colunas do feed leve — disponíveis diretamente via `fp events`. |
+| Nome do modelo | Payload — use `fp events --full`, limitado a uma sessão. |
+| Tokens de entrada | Payload — o SDK registra ambas as metades, mas apenas a metade de saída é promovida. |
+| Latência por chamada | Não há coluna `duration_ms` no feed leve, e o `model_response` do SDK também não a inclui. Derive-a combinando a requisição com a resposta correspondente. |
+
+`model_request` e `model_response` são pareados por `request_id`. Esse campo existe exatamente para que uma requisição possa ser associada à sua resposta, e é a única forma de calcular a latência por chamada a partir dos eventos brutos:
+
+```bash
+fp --json events --full --event-type model_request,model_response --session-id <session-id> --all --limit 500
+```
+
+Os nomes dos modelos chegam exatamente como constam no transcript de cada harness. Nada no caminho de captura os normaliza, portanto um mesmo modelo pode aparecer sob vários IDs específicos de provedor no gráfico de distribuição. Execute `fp list models` para ver as grafias que um deployment realmente utiliza.
+
+Use uma consulta salva para agregações no nível de modelo que não estão expostas como um comando dedicado da CLI.

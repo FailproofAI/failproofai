@@ -1,80 +1,163 @@
 ---
-title: "Agent harnesses"
-description: "Capture sessions và enforce policies across all 12 supported agent harnesses."
+title: "Các harness agent"
+description: "Ghi lại các phiên làm việc và áp dụng chính sách trên tất cả 12 harness agent được hỗ trợ."
 icon: "plug-zap"
 ---
 
-A harness là bất cứ điều gì mà agent của bạn thực sự chạy bên trong. Failproof AI hỗ trợ mười hai harness, được chia thành hai loại:
+Một harness là bất cứ thứ gì agent của bạn thực sự chạy bên trong. Failproof AI hỗ trợ mười hai cái, được chia thành hai lớp:
 
-- **Coding CLIs** (10) — Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Factory Droid, Devin CLI, Antigravity CLI, Goose
-- **Chat and assistant gateways** (2) — Hermes (Slack, Telegram, cron), OpenClaw (self-hosted assistant)
+- **CLIs lập trình** (10) — Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Factory Droid, Devin CLI, Antigravity CLI, Goose
+- **Cổng trò chuyện và trợ lý** (2) — Hermes (Slack, Telegram, cron), OpenClaw (trợ lý tự host)
 
-Những policies và session history giống nhau áp dụng cho bất kỳ harness nào mà agent chạy trong đó. Một adapter layer ánh xạ các event names, tool names, và tool-input fields riêng của mỗi harness onto 29 canonical events trước khi bất kỳ policy nào chạy.
+Những chính sách tương tự và lịch sử phiên làm việc tương tự được áp dụng bất kể agent chạy trong cái nào trong số đó. Một lớp bộ chuyển đổi ánh xạ tên sự kiện gốc, tên công cụ và trường đầu vào công cụ của mỗi harness thành 29 sự kiện chính tắc trước khi bất kỳ chính sách nào chạy.
 
-Một agent chạy trong **none** của mười hai harness này được instrument trực tiếp với [Python SDK](/vi/reference/custom-agents). Đó là một contract khác, và điều đáng lưu ý rõ ràng: SDK cung cấp tracing, sessions, evaluations và audits — **nó không enforce policies riêng lẻ.** Blocking một action không an toàn trước khi nó thực thi cần một enforcement hook tại tool boundary của runtime của bạn; [contact us](mailto:support@befailproof.ai) và chúng tôi sẽ ánh xạ nó.
+Một agent chạy trong **không có** harness nào trong mười hai cái được sử dụng công cụ trực tiếp với [SDK Python](/vi/reference/custom-agents). Đó là một hợp đồng khác, và đáng để nêu ra rõ ràng: SDK cung cấp tracing, phiên làm việc, đánh giá và kiểm toán — **nó không tự thực thi chính sách.** Chặn một hành động không an toàn trước khi nó thực thi cần một hook thực thi tại ranh giới công cụ của runtime của bạn; [liên hệ với chúng tôi](mailto:support@befailproof.ai) và chúng tôi sẽ ánh xạ nó.
 
-| Harness | Supported hook scopes |
+## Phạm vi hook
+
+| Harness | Phạm vi hook được hỗ trợ |
 | --- | --- |
 | Claude Code | User, project, local |
 | Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi | User, project |
 | Factory Droid, Devin CLI, Antigravity CLI, Goose | User, project |
 | Hermes, OpenClaw | User |
 
-Mỗi integration normalize các native hook event names, tool names, và tool-input fields của nó trước khi policies chạy. Một policy chỉ có thể tác động lên các events mà harness expose; test end-of-turn và instruction behavior trên chính xác harness và version mà bạn deploy.
+Claude Code là harness duy nhất có phạm vi **local**. Hermes và OpenClaw không có cấu hình dự án nào cả — chúng chỉ ở phạm vi user, và CLI từ chối `--scope project` đối với chúng.
 
-## Enforcement capability
+Mỗi tích hợp chuẩn hóa tên sự kiện hook gốc, tên công cụ và trường đầu vào công cụ trước khi chính sách chạy. Một chính sách chỉ có thể hoạt động trên các sự kiện mà harness phơi bày; hãy kiểm tra hành vi cuối lượt và hướng dẫn trên harness và phiên bản chính xác mà bạn triển khai.
 
-"Block" có nghĩa là verdict được trả về của adapter hiện tại được consumed bởi harness được đặt tên. Post-tool blocking có thể thay thế result được hiển thị cho model nhưng không thể undo một tool side effect đã xảy ra.
+## Nơi cấu hình hook được đặt
 
-| Harness | Verified blocking events | Observe-only or non-blocking caveats |
+| Harness | Phạm vi User | Phạm vi Project |
 | --- | --- | --- |
-| Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact`, và một vài task/config events | `PostToolUse`, session lifecycle, notifications, và post-failure events là observational. |
-| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | Post-tool blocking thay thế result sau khi execution; session-start và compact events là observational trong adapter hiện tại. |
-| GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | Post-tool blocking thay thế result sau khi execution; session và notification events là observational. |
-| Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` và session events là observational. |
-| OpenCode | `PreToolUse` | Post-tool và lifecycle events là observational; current stop handling là guidance cho một turn sau hơn là một verified gate. |
-| Pi | `PreToolUse`, `UserPromptSubmit` | Post-tool và lifecycle events là observational; stop guidance áp dụng cho một turn sau. |
-| Hermes | `PreToolUse` | Post-tool, session, và subagent-stop verdicts không phải là gates. |
-| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | Post-tool, session, subagent-stop, và compaction events là observational. |
-| Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | Post-tool và subagent-stop verdicts là observational. |
-| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, conditional `PermissionRequest` | Permission hooks không chạy trong mọi permission mode; post-tool và session events là observational. |
-| Antigravity CLI | `PreToolUse`, `Stop` | User-prompt và post-tool verdicts là observational; prompt instructions vẫn có thể được injected. |
-| Goose | `PreToolUse` | User-prompt, post-tool, và session events là observational. Một native blocking stop hook tồn tại upstream nhưng không được installed bởi adapter hiện tại. |
+| Claude Code | `~/.claude/settings.json` | `.claude/settings.json` (local: `.claude/settings.local.json`) |
+| Codex | `~/.codex/hooks.json` | `.codex/hooks.json` |
+| GitHub Copilot CLI | `~/.copilot/hooks/failproofai.json` | `.github/hooks/failproofai.json` |
+| Cursor | `~/.cursor/hooks.json` | `.cursor/hooks.json` |
+| OpenCode | `~/.config/opencode/opencode.json` | `.opencode/opencode.json` |
+| Pi | `~/.pi/agent/settings.json` | `.pi/settings.json` |
+| Hermes | `~/.hermes/config.yaml` | — |
+| OpenClaw | `~/.openclaw/openclaw.json` | — |
+| Factory Droid | `~/.factory/hooks.json` | `.factory/hooks.json` |
+| Devin CLI | `~/.config/devin/config.json` | `.devin/config.json` |
+| Antigravity CLI | `~/.gemini/config/hooks.json` | `.agents/hooks.json` |
+| Goose | `~/.agents/plugins/failproofai/hooks/hooks.json` | `.agents/plugins/failproofai/hooks/hooks.json` |
 
-Capabilities phụ thuộc vào version. Re-test sau khi upgrade một agent CLI, đặc biệt là khi một policy dựa trên prompt, stop, permission, hoặc post-tool behavior thay vì common pre-tool gate.
+OpenCode, Pi và OpenClaw là những tích hợp plugin hơn là tích hợp shell-hook: tệp trên cùng đăng ký một gói plugin hoặc extension, nó gọi nhị phân failproofai và dịch quyết định của nó.
 
-## Install capture and policy hooks
+## Khả năng thực thi
+
+"Block" có nghĩa là quyết định được trả về của bộ chuyển đổi hiện tại được tiêu thụ bởi harness được đặt tên. Chặn sau công cụ có thể thay thế kết quả được hiển thị cho mô hình nhưng không thể hoàn tác một tác dụng phụ công cụ đã xảy ra.
+
+| Harness | Sự kiện chặn được xác minh | Cảnh báo quan sát hoặc chặn không được |
+| --- | --- | --- |
+| Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact` và một số sự kiện tác vụ/cấu hình khác | `PostToolUse`, vòng đời phiên, thông báo và các sự kiện hậu lỗi là quan sát. |
+| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | Chặn sau công cụ thay thế kết quả sau khi thực thi; các sự kiện khởi động phiên và compact là quan sát trong bộ chuyển đổi hiện tại. |
+| GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | Chặn sau công cụ thay thế kết quả sau khi thực thi; các sự kiện phiên và thông báo là quan sát. |
+| Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` và các sự kiện phiên là quan sát. |
+| OpenCode | `PreToolUse` | Sự kiện sau công cụ và vòng đời là quan sát; xử lý dừng hiện tại là hướng dẫn cho một lượt sau hơn là một cổng xác minh. `PermissionRequest` không bao giờ chạy cả. |
+| Pi | `PreToolUse`, `UserPromptSubmit` | Sự kiện sau công cụ và vòng đời là quan sát; hướng dẫn dừng áp dụng cho một lượt sau. |
+| Hermes | `PreToolUse` | Quyết định sau công cụ, phiên và subagent-stop không phải là cổng. Không có sự kiện `Stop` được cài đặt. |
+| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | Sự kiện sau công cụ, phiên, subagent-stop và nén là quan sát. |
+| Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | Quyết định sau công cụ và subagent-stop là quan sát. |
+| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PermissionRequest` có điều kiện | Hook quyền không chạy trong mọi chế độ quyền; các sự kiện sau công cụ và phiên là quan sát. |
+| Antigravity CLI | `PreToolUse`, `Stop` | Quyết định nhắc người dùng và sau công cụ là quan sát; hướng dẫn nhắc vẫn có thể được tiêm. |
+| Goose | `PreToolUse` | Sự kiện nhắc người dùng, sau công cụ và phiên là quan sát. Một hook dừng chặn gốc tồn tại ngược dòng nhưng không được cài đặt bởi bộ chuyển đổi hiện tại. |
+
+Một sự kiện không có ở cả hai cột **không được xác minh** — hãy xử lý nó như không rõ, không bao giờ là chặn.
+
+### Điều kiện trên một cổng được liệt kê
+
+Một số hàng trên là những cổng thực tế nhưng vẫn bị giới hạn hoặc có điều kiện. Một chính sách phụ thuộc vào một chính sách này cần điều kiện cũng như hàng.
+
+| Harness | Sự kiện | Điều kiện |
+| --- | --- | --- |
+| Claude Code | `Stop`, `SubagentStop` | Bị giới hạn bởi `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`, mặc định 8. Bị loại bỏ trên các đường dẫn cuối lượt |
+| Cursor | `Stop` | Bị giới hạn bởi `loop_limit`, mặc định 5, và được tiêu thụ chỉ khi lượt hoàn thành — hủy bỏ người dùng hoặc lỗi lượt loại bỏ nó |
+| Cursor | `Stop` | **Cursor Cloud Agent VMs không chạy hook `stop` hoặc `subagentStop` nào cả.** Cổng chỉ bao gồm các phiên cục bộ |
+| Codex | `SubagentStop` | Chỉ subagent ThreadSpawn gửi đi nó; mọi nguồn subagent khác không bao giờ chạy hook |
+| GitHub Copilot CLI | `SubagentStop` | Bỏ qua hoàn toàn đối với subagent `isSidekick` |
+| Devin CLI | `PermissionRequest` | Không bao giờ kích hoạt dưới `--permission-mode dangerous`, và không bao giờ dành cho công cụ chỉ đọc được phê duyệt tự động |
+| OpenCode | `PermissionRequest` | Một hook chết: `permission.ask` được khai báo và ghi chép ngược dòng nhưng không bao giờ được gọi, do đó chính sách không chạy cả |
+| Hermes | `Stop` | Không có sự kiện `Stop` được cài đặt, theo sự lựa chọn. Năm builtins `require-*-before-stop` không áp dụng được trên Hermes |
+| Goose | `Stop` | Kết quả tương tự: không có `Stop` được cài đặt, do đó năm builtins `require-*-before-stop` không áp dụng được |
+
+### Nơi `instruct()` suy giảm
+
+`deny` không phải là quyết định duy nhất mà chính sách trả về. `instruct()` trao cho agent một chỉ thị và cho phép hành động tiếp tục — nhưng không phải mọi harness đều có một kênh để mang nó. Khi không có, failproofai cho phép hành động và ghi hướng dẫn vào stderr cho nhật ký của người vận hành; mô hình không bao giờ nhìn thấy nó.
+
+| Harness | Sự kiện mà `instruct()` suy giảm thành ghi chú stderr |
+| --- | --- |
+| Hermes | Mọi sự kiện |
+| Goose | Mọi sự kiện |
+| Pi | Mọi sự kiện ngoại trừ `Stop` |
+| OpenClaw | Mọi sự kiện ngoại trừ `Stop` |
+| Factory Droid | Mọi sự kiện ngoại trừ `Stop` |
+| Antigravity CLI | Mọi sự kiện ngoại trừ `Stop` và `UserPromptSubmit` |
+
+Ở mọi nơi khác, hướng dẫn được trả về thông qua kênh ngữ cảnh bổ sung của harness.
+
+### Phiên bản những yêu cầu này được kiểm tra chống lại
+
+Một phiên bản là một phần của yêu cầu, không phải là một chú thích. Kiểm tra lại sau khi nâng cấp một agent CLI, đặc biệt là khi một chính sách dựa vào hành vi nhắc, dừng, quyền hoặc sau công cụ thay vì cổng trước công cụ chung.
+
+| Harness | Phiên bản được kiểm tra |
+| --- | --- |
+| Claude Code | 2.1.220 |
+| Codex | `fe01054a`, với `PostToolUse` được kiểm tra lại trực tiếp ở 0.147.0 |
+| GitHub Copilot CLI | 1.0.71, một số vị trí gọi được đọc lại trong 1.0.68 và 1.0.78 |
+| Cursor | cursor-agent 2026.07.16-899851b |
+| OpenCode | 1.18.9, được kiểm tra lại ở 1.14.33 |
+| Pi | 0.80.10 |
+| Hermes | hermes-agent `5771a6e` |
+| OpenClaw | v2026.7.2 |
+| Factory Droid | droid 0.175.1 |
+| Devin CLI | 3000.2.17 |
+| Antigravity CLI | agy 1.1.8 |
+| Goose | 1.43.0 |
+
+<Warning>
+  Một số hàng Codex trích dẫn các đường dẫn nguồn đã được cấu trúc lại sau `fe01054a` và không còn tồn tại ở 0.147.0. Chúng không được biết là sai, nhưng chúng chưa được xác minh chống lại bất kỳ Codex nào được gửi và cần một lần kiểm tra lại. Chỉ hàng Codex `PostToolUse` được kiểm tra lại trực tiếp.
+</Warning>
+
+## Chế độ agent VS Code
+
+Chế độ agent Copilot Chat tích hợp của VS Code **không phải là một tích hợp thứ mười ba**. Nó phát hiện cấu hình hook từ `.github/hooks/*.json`, `~/.copilot/hooks/*.json` và `~/.claude/settings.json` — chính xác những đường dẫn mà cài đặt `copilot` và `claude` đã ghi — và sử dụng hợp đồng deny hình dạng Claude tương tự. Cài đặt một cái bất kỳ đã thực thi bên trong các phiên chế độ agent VS Code.
+
+Tính năng này là bản xem trước và cần một đăng ký GitHub Copilot hoạt động cộng với chế độ agent.
+
+## Cài đặt capture và hook chính sách
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Mở **Administration → Keys** và create một key với `events:add` và `policies:pull`, được đặt tên cho machine hoặc environment.
-    2. Trên target machine, connect local CLI với key được hiển thị và install các harness hooks.
-    3. Start một new agent session, sau đó confirm hook và session events của nó dưới **Observe → Events**.
-    4. Mở **Observe → policy** cho cùng time window và confirm một policy decision được attributed tới machine.
+    1. Mở **Administration → Keys** và tạo một khóa có `events:add` và `policies:pull`, được đặt tên cho máy hoặc môi trường.
+    2. Trên máy đích, kết nối CLI cục bộ với khóa được hiển thị.
+    3. Bắt đầu một phiên agent mới, sau đó xác nhận hook và sự kiện phiên của nó dưới **Observe → Events**.
+    4. Mở **Observe → policy** cho cùng một cửa sổ thời gian và xác nhận quyết định chính sách được gán cho máy.
 
-    Kết nối bắt đầu với một machine key. Confirm rằng nó bao gồm cả ingestion và policy-delivery permissions trước khi copy secret của nó.
+    Kết nối bắt đầu bằng khóa máy. Xác nhận rằng nó bao gồm cả quyền nhập liệu và cung cấp chính sách trước khi sao chép bí mật của nó.
 
-    ![The new API key drawer used to grant event ingestion and policy delivery permissions.](/images/dashboard/key-create.png)
+    ![Ngăn kéo khóa API mới được sử dụng để cấp quyền nhập liệu sự kiện và cung cấp chính sách.](/images/dashboard/key-create.png)
 
-    Sau khi install các hooks, Events stream sẽ hiển thị new events từ machine và environment mà bạn connected.
+    Sau khi cài đặt hook, luồng Events sẽ hiển thị các sự kiện mới từ máy và môi trường bạn đã kết nối.
 
-    ![The live Events stream used to confirm a newly installed harness is reporting.](/images/dashboard/events-stream.png)
+    ![Luồng Events trực tiếp được sử dụng để xác nhận một harness mới được cài đặt đang báo cáo.](/images/dashboard/events-stream.png)
 
-    Cuối cùng, verify rằng policy decisions được attributed tới cùng machine. Điều này confirm rằng harness đang reporting policy activity cũng như trace events.
+    Cuối cùng, xác minh rằng quyết định chính sách được gán cho cùng một máy. Điều này xác nhận rằng harness đang báo cáo hoạt động chính sách cũng như các sự kiện tracing.
 
-    ![The Policy page used to verify policy decisions from a newly connected harness.](/images/dashboard/policy-observe.png)
+    ![Trang Policy được sử dụng để xác minh quyết định chính sách từ một harness mới được kết nối.](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
-    Install hooks cho mọi detected harness:
+    `failproofai config` kết nối hook vào mọi CLI agent được hỗ trợ mà nó tìm thấy, cài đặt daemon và kết nối Cloud khi có một khóa:
 
     ```bash
-    failproofai config \
-      --connect https://app.befailproof.ai \
-      --token <machine-key>
-    failproofai policies --install
+    failproofai config --token <machine-key>
+    failproofai policies add FailproofAI/policies
     ```
 
-    Hoặc target named harnesses và một configuration scope:
+    Setup chọn không có chính sách, đó là lý do tại sao lệnh thứ hai ở đó.
+
+    Để kết nối một harness theo cách thủ công — với `--cli` bị bỏ qua, `--install` phát hiện những gì được cài đặt và nhắc:
 
     ```bash
     failproofai policies --install \
@@ -82,9 +165,9 @@ Capabilities phụ thuộc vào version. Re-test sau khi upgrade một agent CLI
       --scope user
     ```
 
-    Project scope giữ hook configuration với một repository. User scope cover work trên repositories. Claude Code cũng hỗ trợ local scope; support varies theo harness và CLI reject unsupported combinations.
+    Phạm vi dự án giữ cấu hình hook với một kho lưu trữ. Phạm vi user bao gồm công việc trên các kho lưu trữ. Kiểm tra bảng phạm vi trên trước khi kết hợp `--cli` và `--scope`; CLI từ chối một cặp không được hỗ trợ.
 
-    Verify machine và events của nó:
+    Xác minh máy và sự kiện của nó:
 
     ```bash
     failproofai config --status
@@ -94,16 +177,20 @@ Capabilities phụ thuộc vào version. Re-test sau khi upgrade một agent CLI
   </Tab>
 </Tabs>
 
-## Add a non-default session path
+<Warning>
+  Trong các lần chạy `copilot -p` không có giao diện được bắt đầu từ một thư mục mới, phạm vi dự án `.github/hooks/failproofai.json` **không** được tải. Coi phạm vi user là điểm thực thi đáng tin cậy cho Copilot trong CI cho đến khi được xác minh ngược lại.
+</Warning>
+
+## Thêm đường dẫn phiên không phải mặc định
 
 <Tabs>
   <Tab title="Dashboard">
-    Extra paths được registered trên machine, không trong Cloud. Sau khi thêm một, mở **Observe → Sessions**, filter tới environment của machine, và confirm sessions từ new path xuất hiện. Mở một session và check agent, harness, và event timestamps trước khi dùng nó trong một audit.
+    Các đường dẫn bổ sung được đăng ký trên máy, không phải trong Cloud. Sau khi thêm một, mở **Observe → Sessions**, lọc theo môi trường của máy và xác nhận các phiên từ đường dẫn mới xuất hiện. Mở một phiên và kiểm tra agent, harness và dấu thời gian sự kiện trước khi dựa vào nó trong một kiểm toán.
 
-    ![The Sessions list filtered to the environment receiving data from the additional capture path.](/images/dashboard/sessions-list.png)
+    ![Danh sách Sessions được lọc theo môi trường nhận dữ liệu từ đường dẫn capture bổ sung.](/images/dashboard/sessions-list.png)
   </Tab>
   <Tab title="CLI">
-    Thêm một path với một optional label, sau đó inspect các configured paths:
+    Thêm một đường dẫn với một nhãn tùy chọn, sau đó kiểm tra các đường dẫn được cấu hình:
 
     ```bash
     failproofai harness add-path claude checkout=/srv/checkout/.claude
@@ -112,10 +199,12 @@ Capabilities phụ thuộc vào version. Re-test sau khi upgrade một agent CLI
     failproofai backfill --since 7d
     ```
 
-    Xoá một path với `failproofai harness remove-path claude checkout`.
+    Loại bỏ một đường dẫn với `failproofai harness remove-path claude checkout`.
+
+    Nhãn không gian tên các agent id được dẫn xuất. Hai vị trí giữ các bản sao của cùng một dự án dẫn xuất cùng một id từ bản ghi nội dung, do đó mà không có một nhãn chúng hợp nhất thành một agent. Các gốc trùng nhau và nhãn trùng lặp bị từ chối — xem [tham chiếu CLI](/vi/reference/failproof-cli) để biết lý do tại sao mỗi từ chối tồn tại.
   </Tab>
 </Tabs>
 
 <Tip>
-  Run một new session sau installation. Verify cả live event stream và một actual policy decision trước khi expand rollout.
+  Chạy một phiên mới sau khi cài đặt. Xác minh cả luồng sự kiện trực tiếp và một quyết định chính sách thực tế trước khi mở rộng việc triển khai.
 </Tip>

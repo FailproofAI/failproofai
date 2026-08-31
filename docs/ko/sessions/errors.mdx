@@ -1,10 +1,10 @@
 ---
 title: "오류"
-description: "반복되는 오류를 그룹화하고 관련 세션을 열어봅니다."
+description: "반복되는 오류를 필터링하고 해당 세션을 열어 확인합니다."
 icon: "circle-alert"
 ---
 
-오류 페이지는 세션 전반에 걸쳐 실패를 중심으로 보여주는 뷰입니다. 오류 유형, 에이전트, 환경, 모델, 도구, 또는 시간 범위별로 그룹화하여 반복적인 운영 문제를 파악할 수 있습니다.
+오류(Errors) 페이지는 세션 전반에 걸쳐 실패를 중심으로 한 뷰를 제공합니다. 환경, 이벤트 유형, 오류 유형, 에이전트, 세션별로 필터링하고 시간 범위를 좁혀 반복적으로 발생하는 운영 문제를 찾아볼 수 있습니다.
 
 ## 오류 조사하기
 
@@ -12,32 +12,52 @@ icon: "circle-alert"
   <Tab title="대시보드">
     1. **Observe → Errors**로 이동합니다.
     2. 환경, 이벤트 유형, 오류 유형, 에이전트, 세션 ID, 또는 검색어로 필터링합니다.
-    3. 그룹화된 오류를 펼쳐 발생 내역을 확인합니다. 행을 선택하면 해당 세션에서 정확한 이벤트를 열 수 있습니다.
-    4. 대표 오류의 벨 컨트롤을 선택하면 유사한 오류에 대한 알림을 설정할 수 있습니다.
+    3. 행을 선택하면 해당 이벤트가 속한 세션에서 정확한 위치를 확인할 수 있습니다.
+    4. 대표 행에서 **alert**을 선택하면 유사한 오류에 대한 알림을 설정할 수 있습니다.
 
-    ![실패 히스토그램, 그룹화된 오류, 알림 생성 컨트롤이 표시된 Errors 페이지.](/images/dashboard/errors.png)
+    ![실패 히스토그램, 필터링된 오류 이벤트 목록, 행별 알림 컨트롤이 표시된 Errors 페이지.](/images/dashboard/errors.png)
   </Tab>
   <Tab title="CLI">
     ```bash
-    fp errors --env production --since 24h
+    fp errors --since 24h
     fp errors --error-type TimeoutError --agent-id checkout-agent
-    fp errors --aggregate --env production --since 7d
+    fp errors --event-type tool_result --since 24h
+    fp errors --aggregate --env local --since 7d
     ```
 
-    오류 요약 뒤의 원시 페이로드가 필요한 경우 `fp events --full --session-id <id>`를 사용하세요.
+    도구 실패는 단순 `error` 이벤트가 아닌 오류 상태의 `tool_result` 이벤트로 전달됩니다. 따라서 `--event-type tool_result`를 사용하면 도구 실패와 모델·런타임 실패를 구분할 수 있습니다. `is_error`와 `error_type`은 모든 행에 서버에서 계산되어 제공되는 컬럼이므로 어느 모드에서도 페이로드를 직접 파싱하지 않습니다.
+
+    필터 값을 추측하는 대신 유효한 값을 직접 확인하세요: `fp list error_types`, `fp list agents`, `fp list envs`, `fp list event_types`.
+
+    **`fp errors`의 다섯 가지 필터는 각각 하나의 값만 받습니다** — `--env`, `--error-type`, `--event-type`, `--agent-id`, `--session-id`. (`--search`는 예외이며 반복 사용이 가능합니다.) `fp events` 및 `fp sessions`에서 동일한 플래그명은 반복 입력이나 쉼표로 구분된 값을 허용하므로 `--env prod,staging`이 해당 명령어에서는 작동하지만, 여기서는 리터럴 문자열 `prod,staging`에만 일치합니다. 이 경우 오류 없이 빈 결과가 반환되며 "오류 없음"으로 표시됩니다.
+
+    데몬은 설정을 변경하기 전까지 이벤트에 `local` 태그를 붙이므로, 기본 설치 상태에서 `--env production`은 아무것도 반환하지 않습니다. [환경 레이블 변경](/ko/reference/events-and-configuration#change-an-environment-label)을 참고하세요.
+
+    `--all`은 `--limit`까지만 자동 페이지네이션을 수행하며, 기본값은 50입니다. 더 많은 결과가 필요하면 `--all --limit 500`처럼 작성하세요. 그 외 목록 모드 플래그로는 `--order asc|desc`, `--cursor`, `--page-size`(최대 200), `--fields`, `--full-ids`가 있습니다. `--search`는 반복 사용이 가능하며 두 모드 모두에 적용됩니다 — 지정한 검색어 중 하나라도 포함된 행이 결과에 표시됩니다.
+
+    `fp errors`를 사용하려면 `events:read` 권한이 필요합니다. `--json` 옵션 사용 시, 목록 모드는 `{"errors": [...], "next_cursor": ...}`를 반환하고 `--aggregate`는 `{total, sessions, agents, last_ts, bins}`를 반환합니다. 오류 요약 뒤에 있는 원시 페이로드가 필요할 때는 `fp events --full --session-id <id>`를 사용하세요.
   </Tab>
 </Tabs>
 
-## 오류 페이지가 필요한 경우
+## Errors를 활용해야 하는 경우
 
-- 프로덕션에서 가장 빈번하게 발생하는 오류 클래스를 파악할 때.
+- 프로덕션에서 가장 빈번하게 발생하는 오류 유형을 파악할 때.
 - 특정 도구나 모델이 급증의 원인인지 확인할 때.
 - 집계 수치에서 대표 세션으로 바로 이동할 때.
-- 재발에 대한 알림을 생성할 때.
-- 영향을 받은 범위를 감사에 포함시킬 때.
+- 재발에 대한 알림을 설정할 때.
+- 영향받은 대상 집합을 감사에 포함할 때.
 
-오류는 관찰된 이벤트입니다. 평가 실패는 품질에 대한 판단이며, 감사 결과는 조사된 실패 패턴입니다. 어떤 대응 워크플로를 사용할지 결정할 때 이 구분을 명확히 유지하세요.
+오류는 관찰된 이벤트입니다. 평가 실패는 품질 판단이며, 감사 결과는 조사된 실패 패턴입니다. 어떤 대응 워크플로우를 사용할지 결정할 때 이 구분을 염두에 두세요.
 
-<Card title="알림 생성" icon="bell-ring" href="/ko/audits/alerts">
-  오류 또는 품질 조건이 임계값을 초과할 때 담당자에게 알림을 보냅니다.
-</Card>
+## Cloud 계정 없이 사용하기
+
+Errors는 Cloud 기능입니다. 연결되지 않은 머신에서는 `failproofai audit`이 디스크에 저장된 세션 기록을 스캔하여 위험하거나 비효율적인 패턴을 찾고 `http://localhost:8020/audit`을 열어줍니다. `--schedule [days]`를 추가하면 일정 주기로 재스캔하고 결과를 이메일로 전송합니다(기본 7일, 1~90일 범위). `--status`로 스케줄링 활성화 여부를 확인하고, `--no-schedule`로 중지할 수 있습니다. 모든 처리는 해당 머신에서 이루어지지만, 두 가지 예외가 있습니다. 스케줄링된 스캔은 클린 스캔 포함 매 실행마다 이 머신의 ID, 레이블, 플랫폼, 스캔 시간 범위를 전송합니다 — 클린 스캔에서 전송하지 않는 것은 다이제스트이지, 요청 자체가 아닙니다. 그리고 `FAILPROOFAI_TELEMETRY_DISABLED=1`을 설정하지 않으면 모든 감사 실행 시 익명 CLI 텔레메트리가 전송됩니다.
+
+<CardGroup cols={2}>
+  <Card title="알림 만들기" icon="bell-ring" href="/ko/audits/alerts">
+    오류 또는 품질 조건이 임계값을 초과할 때 담당자에게 알립니다.
+  </Card>
+  <Card title="결과 및 이슈" icon="clipboard-list" href="/ko/audits/findings-and-issues">
+    반복되는 오류를 담당자가 있는 조사된 패턴으로 전환합니다.
+  </Card>
+</CardGroup>

@@ -1,57 +1,66 @@
 ---
 title: "Sessions"
-description: "Bắt đầu với bản ghi hoàn chỉnh của một lần chạy agent."
-icon: "workflow"
+description: "Theo dõi một lần chạy agent từ mục tiêu của nó qua các công cụ, quyết định và kết quả."
+icon: "route"
 ---
 
-Một session là điểm khởi đầu tốt nhất khi một agent hoạt động không như mong đợi. Nó kết hợp các yêu cầu mô hình, phản hồi, lệnh gọi tool, tương tác con người, lỗi, đánh giá và quyết định chính sách thuộc về một lần chạy.
+Session là một lần chạy agent. Nó kết nối prompt, các lời gọi mô hình, công cụ, lỗi, đầu vào của con người, quyết định chính sách và kết quả cuối cùng.
 
-Sessions trông giống nhau bất kể harness nào tạo ra chúng. Một lần chạy Claude Code viết lại một repository, một agent Hermes trả lời khách hàng trong Slack, và một dịch vụ Python được hỗ trợ bởi SDK đều được ghi vào cùng một định dạng trace, vì vậy một view bao phủ toàn bộ fleet.
-
-<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with Failproof AI" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
-</div>
-
-Theo dõi một lần chạy agent từ mục tiêu của nó qua các lệnh gọi mô hình, tools, và phản hồi cuối cùng.
-
-## Tìm một session
+## Nơi sessions tồn tại
 
 <Tabs>
-  <Tab title="Dashboard">
-    1. Trong thanh bên Cloud, đi đến **Observe → Sessions**.
-    2. Đặt cửa sổ thời gian, sau đó lọc theo môi trường, trạng thái, agent hoặc ID session.
-    3. Thêm các khoảng điểm số hoặc metric khi bạn cần một slice về chất lượng, chi phí, token hoặc latency.
-    4. Chọn một hàng để mở trace của nó. Sử dụng control copy bên cạnh ID session khi chia sẻ nó.
-
-    ![Danh sách Sessions hiển thị một hàng cho mỗi lần chạy với các bộ lọc môi trường, agent, trạng thái và điểm đánh giá.](/images/dashboard/sessions-list.png)
+  <Tab title="Local">
+    Chạy `failproofai` để mở dashboard tại `http://localhost:8020`. Lịch sử session được lưu trên máy này.
   </Tab>
-  <Tab title="CLI">
+  <Tab title="Cloud">
+    Kết nối máy, sau đó mở **Observe → Sessions**:
+
     ```bash
-    fp sessions --env production --since 24h
-    fp sessions --status error,timeout --agent-id checkout-agent
-    fp --json sessions --session-id <session-id>
+    export FAILPROOFAI_CLOUD_TOKEN="<key>"
+    failproofai config
     ```
 
-    Thêm `--agents` để mở rộng các lần chạy multi-agent, `--all` để phân trang, hoặc `--fields` để chọn các cột output.
+    Cloud nhận toàn bộ bản ghi lại theo mặc định. Để chỉ gửi các quyết định chính sách, kết nối trước, sau đó đặt `collector.sessions` thành `false` trong `~/.failproofai/config.json`. Cờ thiết lập `--no-transcripts` hiện tại không áp dụng cài đặt đó.
   </Tab>
 </Tabs>
 
-## Những gì bạn có thể làm
+Sessions đến từ 12 [agent harnesses](/vi/reference/harnesses) được hỗ trợ và từ các agent được sử dụng công cụ với [Python SDK](/vi/reference/custom-agents).
 
-- Tìm một lần chạy theo agent, môi trường, thời gian, mô hình, loại sự kiện hoặc trạng thái lỗi.
-- Theo dõi chuỗi chính xác tạo ra một kết quả.
-- So sánh các lần chạy thành công và thất bại.
-- Mở bằng chứng được sử dụng bởi một phát hiện kiểm tra hoặc sự cố cảnh báo.
-- Xuất một session khi bạn cần một bản ghi ngoại tuyến.
+## Tìm một session
 
-## Một thứ tự điều tra đáng tin cậy
+Trong Cloud, lọc theo thời gian, môi trường, trạng thái, agent hoặc session ID. Từ CLI:
 
-1. Xác nhận mục tiêu session và môi trường.
-2. Tìm lỗi đầu tiên hoặc quyết định không mong đợi—không chỉ là lỗi cuối cùng.
-3. Kiểm tra ngữ cảnh mô hình và input tool ngay trước nó.
-4. Kiểm tra các lần thử lại, latency và can thiệp con người.
-5. Xem xét các điểm đánh giá và quyết định chính sách.
+```bash
+fp sessions --since 24h
+fp sessions --status error,timeout --agent-id checkout-agent
+fp --json sessions --session-id <session-id>
+```
 
-<Card title="Đọc một trace" icon="route" href="/vi/sessions/read-a-trace">
-  Tìm hiểu cách chuyển từ tóm tắt session đến sự kiện tạo ra kết quả.
-</Card>
+Sử dụng `fp errors --since 24h` cho các lỗi không bao giờ được đánh giá. `fp sessions --status` sử dụng kết quả đánh giá mới nhất, vì vậy một session chưa được đánh giá sẽ không có trạng thái.
+
+## Đọc một lần chạy
+
+1. Xác nhận mục tiêu và môi trường của agent.
+2. Tìm lỗi đầu tiên hoặc quyết định không mong đợi.
+3. Kiểm tra ngữ cảnh mô hình và đầu vào công cụ ngay trước nó.
+4. Kiểm tra các lần thử lại, độ trễ và các ngắt quãng của con người.
+5. Xem xét các đánh giá và quyết định chính sách.
+
+## Nếu một session bị mất
+
+```bash
+failproofai flush --wait
+failproofai config --status
+failproofai backfill --since 30d --dry-run
+```
+
+Sử dụng `failproofai harness add-path <harness> [<label>=]<path>` khi các session tồn tại ngoài vị trí thông thường của harness, chẳng hạn như một hồ sơ khác, thư mục chủ của container hoặc thư mục nhóm được gắn kết.
+
+<CardGroup cols={2}>
+  <Card title="Đọc một trace" icon="route" href="/vi/sessions/read-a-trace">
+    Tìm sự kiện đã gây ra kết quả.
+  </Card>
+  <Card title="Policy decisions" icon="shield-check" href="/vi/sessions/policy-decisions">
+    Xem những gì enforcement cho phép, hướng dẫn hoặc chặn.
+  </Card>
+</CardGroup>

@@ -1,41 +1,58 @@
 ---
-title: "エージェントを failproof にする"
-description: "あらゆるハーネスで動作するエージェントの可観測性と制御 — コーディング CLI、チャットゲートウェイ、セルフホスト型アシスタント、独自にインストルメント化されたエージェントに対応。"
+title: "エージェントをフェイルプルーフにする"
+description: "エージェントの動作を可視化し、障害を発見して再発を防ぎます。"
 icon: "shield-check"
 ---
 
-Failproof AI は、エージェントが何をしたかを把握し、失敗箇所を特定し、同じ挙動が再発する前にセーフガードを展開するためのツールです。
+Failproof AI は、エージェントを運用するすべての人が「何が起きたか」を把握し、障害を発見して繰り返しを防ぐためのツールです。
 
-**ハーネス**とは、エージェントが実際に動作する環境のことです。Failproof AI は 12 種類のハーネスに対応しています。Claude Code や Codex などのコーディング CLI、Hermes などのチャットゲートウェイ、OpenClaw などのセルフホスト型アシスタントが含まれており、すべてに同じイベント・ポリシー・セッション履歴が適用されます。ハーネスを持たないエージェントは [Python SDK](/ja/reference/custom-agents) 経由でレポートを送信し、トレースと監査が行われます。その場合のポリシー適用には、独自ランタイム内でのフックが必要です。
+Claude Code、Codex、Hermes、OpenClaw、Goose を含む 12 の主要なエージェント環境に対応しています。LangChain、CrewAI、LlamaIndex、Pydantic AI、または独自のランタイムで構築されたエージェントは、[Python SDK](/ja/reference/custom-agents) 経由でレポートを送信できます。
 
 <Columns cols={2}>
-  <Card title="Failproof を設定する" icon="wand-sparkles" href="/ja/start/quickstart">
-    スキルを使ってプロジェクトをインストルメント化し、接続して、エージェントのログが届いていることを確認します。
+  <Card title="このマシンをセットアップする" icon="wand-sparkles" href="/ja/start/quickstart">
+    Failproof AI をインストールし、エージェントを接続して、適用するポリシーを選択します。
   </Card>
-  <Card title="Failproof アシスタントに質問する" icon="message-square-text" href="/ja/sessions/assistant">
-    エージェントログに対して自然言語で分析・クエリ・ダッシュボード構築・監査を実行します。
+  <Card title="エージェントについて質問する" icon="message-square-text" href="/ja/sessions/assistant">
+    セッションの照会、障害の調査、ダッシュボードの構築を自然言語で行えます。
   </Card>
 </Columns>
+
+## ローカルで始めるか、クラウドに接続するか
+
+<Columns cols={2}>
+  <Card title="ローカル（アカウント不要）" icon="laptop" href="/ja/audits/local-audit">
+    `localhost:8020` でダッシュボードを開き、`failproofai audit` を実行します。エージェントの履歴はこのマシン上にのみ保存されます。
+  </Card>
+  <Card title="Failproof AI Cloud" icon="cloud" href="/ja/start/setup">
+    複数マシン間のセッションを確認し、チームのポリシーを一元管理します。
+  </Card>
+</Columns>
+
+セットアップでは意図的にポリシーパックを選択しない設計になっています。セットアップ後に以下のコマンドで追加できます:
+
+```bash
+failproofai policies add FailproofAI/policies
+```
+
+それまでの間は、`block-failproofai-commands` のみが実行されます。これはエージェントが Failproof AI を無効化するのを防ぎます。
+
+## できること
 
 <Columns cols={3}>
-  <Card title="エージェントの行動を確認する" icon="route" href="/ja/sessions/overview">
-    モデルの呼び出し、ツール、エラー、人間の入力、レイテンシ、ポリシーの判定を 1 つのセッションで追跡します。
+  <Card title="何が起きたかを把握する" icon="route" href="/ja/sessions/overview">
+    モデルの呼び出し、ツール、エラー、ポリシーの決定を通じてエージェントの実行を追跡します。
   </Card>
-  <Card title="失敗を体系的に発見する" icon="scan-search" href="/ja/audits/overview">
-    定義されたセッション群を監査し、証拠に基づく知見をレビューし、問題として修正状況を追跡します。
+  <Card title="障害を発見する" icon="scan-search" href="/ja/audits/overview">
+    1 回または複数回の実行にわたってエビデンスを確認します。
   </Card>
   <Card title="再発を防ぐ" icon="shield-check" href="/ja/policies/overview">
-    既知の障害パターンをポリシーに変換し、影響を観察してフリート全体に展開します。
+    実際の活動でセーフガードを観察し、準備ができたら適用します。
   </Card>
 </Columns>
 
-> **セッション → 監査 → 知見 → 問題 → ポリシー**<br />
-> 何が起きたかをトレースし、失敗を発見し、対応を管理して、同じ挙動を将来の実行で防止します。
+> **セッション → 監査 → 発見 → 課題 → ポリシー**
+> 何が起きたかを把握し、障害を発見し、対応を決め、そして再発を防ぎます。
 
-## まずここから
-
-初めてインストルメント化されたエージェントをデプロイする場合は、[クイックスタート](/ja/start/quickstart) から始めてください。すでにデータが届いている場合は、[セッション](/ja/sessions/overview) を開き、監査やポリシーを設定する前に実際の実行内容を確認してください。
-
-<Card title="1 つの失敗を発見して防ぐ" icon="arrow-right" href="/ja/start/quickstart">
-  キャプチャから安全にデプロイされたポリシーまで、エンドツーエンドのワークフローを完了します。
-</Card>
+<Note>
+  セットアップは Linux と macOS に対応しています。各エージェント環境で観察またはブロックできる内容については、[サポートされているハーネス](/ja/reference/harnesses)を参照してください。
+</Note>

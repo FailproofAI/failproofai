@@ -1,58 +1,100 @@
 ---
----
 title: "السياسات المدمجة"
-description: "تفعيل الحماية المحتفظ بها للأخطاء الشائعة في وكلاء الذكاء الاصطناعي."
+description: "استخدم الحماية الموثوقة للحالات الشائعة لفشل الوكلاء، وفعّل ما تريده منها."
 icon: "library"
 ---
 
-تغطي السياسات المدمجة معالجة الأسرار والملفات البيئية وأوامر shell التدميرية والفروع المحمية وأدوات السحابة والبنية التحتية ونشر الحزم والاستدعاءات المتكررة وفحوصات سير عمل نهاية المهمة.
+المدمجات هي 39 سياسة موثوقة تغطي تسع فئات من حالات فشل الوكلاء. جميعها ما عدا واحدة **تُسلّم كحزمة**، `FailproofAI/policies`، بنفس الطريقة التي يتم بها تسليم سياسات أي شخص آخر. الحزمة لا تشحن حزمتها الخاصة، لذا التثبيت الجديد لا ينفذ شيئاً إلى أن تختاره:
 
-## تفعيل والتحقق من سياسة مدمجة
+```bash
+failproofai policies add FailproofAI/policies
+```
+
+يفعّل هذا الإعدادات الافتراضية للحزمة — 10 من 38 سياسة التي تحملها الحزمة. الـ 39 سياسة هي `block-failproofai-commands`، وهي مفعّلة بغض النظر: يتم شحنها مجمّعة في الحزمة، وتسجيل في كل تقييم، ولا يمكن تعطيلها أو إيقافها. لا يمكن لحزمة أن تعلن `alwaysOn`، ولهذا السبب هذا الحماية لا تسير في مسار الحزمة.
+
+## ما تغطيه الفئات التسع
+
+| الفئة | `--category` slug | السياسات |
+| --- | --- | --- |
+| تنقية البيانات | `sanitize` | 5 |
+| البيئة | `environment` | 3 |
+| الأوامر الخطرة | `dangerous-commands` | 5 |
+| أوامر الهياكل الأساسية | `infra-commands` | 7 |
+| Git | `git` | 6 |
+| قاعدة البيانات | `database` | 2 |
+| الحزم والنظام | `packages-system` | 5 |
+| سلوك الذكاء الاصطناعي | `ai-behavior` | 1 |
+| سير العمل | `workflow` | 5 |
+
+هذه هي أعداد الفهرس المجمّع، وتصل إلى 39. الحزمة تحمل 38 منها، لأن `block-failproofai-commands` هي `alwaysOn` ولا تسير في مسار الحزمة — لذا `--category dangerous-commands` تختار الأربع الأخرى.
+
+خذ جزء بدلاً من الإعدادات الافتراضية:
+
+```bash
+failproofai policies add FailproofAI/policies --category git,database
+failproofai policies add FailproofAI/policies --policy block-rm-rf
+failproofai policies add FailproofAI/policies --all
+```
+
+## اقرأ الفهرس قبل أن تختاره
 
 <Tabs>
-  <Tab title="لوحة التحكم">
-    1. قم بتثبيت السياسة على جهاز متصل باستخدام واجهة سطر الأوامر المحلية.
-    2. قم بتشغيل إجراء اختبار آمن في الوكيل المقيس.
-    3. انتقل إلى **Observe → policy** وقم بالتصفية حسب اسم السياسة أو بيئة الجهاز أو القرار.
-    4. افتح الجلسة المرتبطة لتأكيد إدخال الأداة المطابق والسبب المُرجع.
-
-  </Tab>
   <Tab title="CLI">
     ```bash
+    failproofai policies show FailproofAI/policies
     failproofai policies
-    failproofai policy add block-rm-rf --cli claude --scope project
-    failproofai config --status
     ```
 
-    أزلها باستخدام `failproofai policy remove block-rm-rf --cli claude --scope project`.
+    `policies show` يقرأ البيان المنشور — كل سياسة، مجمّعة حسب الفئة، موضحة كافتراضية أو اختيارية — دون تنزيل أو استيراد كود الحزمة. `failproofai policies` يسرد ما هو مفعّل على هذه الآلة: الملفات المخصصة، ملفات الاتفاقية، الحزم المثبتة والتعيينات السحابية. لا يحتوي على قسم مدمج، لذا يجيب على "ما هو مفعّل هنا"، وليس أبداً "ما هو موجود".
+  </Tab>
+  <Tab title="Policy Hub">
+    تصفح نفس الفهرس في متصفح، بدون CLI، في [befailproof.ai/policy-hub](https://befailproof.ai/policy-hub/). كل حزمة لها صفحة في `/policy-hub/<owner>/<pack>/` وكل سياسة لها صفحة في `/policy-hub/<owner>/<pack>/<policy-name>/`.
+  </Tab>
+  <Tab title="Dashboard">
+    1. ثبّت السياسة على آلة متصلة باستخدام CLI المحلي.
+    2. شغّل إجراء اختبار آمن في الوكيل المجهز بأداة.
+    3. اذهب إلى **Observe → policy** وصفّ حسب اسم السياسة أو بيئة الآلة أو القرار.
+    4. افتح الجلسة المرتبطة للتأكد من مطابقة إدخال الأداة والسبب المُرجع.
   </Tab>
 </Tabs>
 
-اعرض قائمة بالسياسات المتاحة في النسخة المثبتة لديك:
+## فعّل واحدة أو أطفئها
 
 ```bash
-failproofai policies
+failproofai policies add block-rm-rf --cli claude --scope project
+failproofai policies remove block-rm-rf --cli claude --scope project
 ```
 
-قم بتفعيل سياسة واحدة لمشروع:
-
-```bash
-failproofai policy add block-rm-rf --scope project
-```
-
-قم بتفعيل عدة سياسات لأجهزة اختبار معينة:
+`policies add` و `policies remove` تأخذ بالضبط **واحدة** اسم سياسة. قم بتشغيلها بدون اسم على الإطلاق وستحصل على منتقي، مع ما هو مفعّل بالفعل محدد. للعديد من الأسماء في نفس الوقت، استخدم نموذج التثبيت:
 
 ```bash
 failproofai policies --install block-sudo block-force-push \
   --cli claude codex --scope project
 ```
 
-بعض السياسات تقبل معاملات أو تحمل علامة beta. راجع الوصف ونطاق المطابقة والسلوك الافتراضي قبل الطرح. قد تحمي سياسة ما سير عمل واحد وتحظر العمليات الصحيحة في آخر.
+<Note>
+  على آلة بدون حزمة مثبتة، `failproofai policies add <builtin-name>` يجلب `FailproofAI/policies` من إصدارها على GitHub لتلبية الاسم — لذا هذا الأمر الأول يحتاج الشبكة.
+</Note>
 
-<Card title="استعرض كتالوج السياسات المدمجة الكامل" icon="list-checks" href="/ar/policies/builtin-catalog">
-  راجع جميع السياسات الحالية البالغ عددها 40، ومحفزاتها والأساس الموصى به والمعاملات.
+## ليس كل سياسة تفرض على كل جهاز
+
+السياسة تغيير السلوك فقط حيث يستهلك الجهاز الحكم للحدث الخاص به. حالتان تستحقان التحقق قبل أن تعتمد على مدمج:
+
+| الحدث | حيث يتم التحقق من أن الرفض يغيير السلوك |
+| --- | --- |
+| `PreToolUse` | جميع 12 أجهزة |
+| `Stop` | claude, codex, copilot, cursor, openclaw, factory, devin, antigravity. لا يتم تثبيت `Stop` hook على goose أو hermes، pi ينقل السبب إلى الدور التالي بدلاً من ذلك، و opencode لم يتم التحقق منه |
+
+لذا السياسات الخمس `require-*-before-stop` في فئة سير العمل يمكن تفعيلها على آلة وتظل لا تُطلق أبداً، اعتماداً على الوكيل الذي يعمل هناك. VMs Cursor Cloud Agent لا تشغل أي stop hooks على الإطلاق.
+
+سياسات `warn-*` و `prefer-*` تُرجع `instruct` بدلاً من `deny`. على Hermes و Goose، وخارج قناة `Stop` على Pi و OpenClaw و Factory و Antigravity، يتدهور `instruct` إلى allow بالإضافة إلى ملاحظة على stderr: المشغل يراها في السجلات، الوكيل لا.
+
+بعض السياسات تقبل معاملات. راجع الوصف، طابق النطاق والافتراضي قبل النشر — سياسة تحمي سير عمل واحد قد تحجب عمليات صحيحة في آخر.
+
+<Card title="تصفح فهرس السياسات المدمجة الكامل" icon="list-checks" href="/ar/policies/builtin-catalog">
+  جميع 39 سياسة مدمجة، حسب الفئة، مع مشغلاتها والإعدادات الافتراضية والمعاملات.
 </Card>
 
 <Tip>
-  يُفضل نطاق المشروع للتوقعات المحددة للمستودع ونطاق المستخدم لمتطلبات الأمان على مستوى الجهاز.
+  `failproofai config` يسلك كل وكيل مدعوم في نطاق المستخدم ولا يختار أي سياسات — لا يحتوي على علم `--scope`. مرر `--scope project` إلى `failproofai policies add` أو `failproofai policies --install` فقط عندما تنتمي التوقعات حقاً إلى مستودع واحد.
 </Tip>

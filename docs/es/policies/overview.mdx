@@ -1,63 +1,76 @@
 ---
-title: "Policies"
-description: "Observa, guía o bloquea acciones del agente antes de que un fallo conocido se repita."
+title: "Políticas"
+description: "Guía o bloquea a un agente antes de que un fallo conocido se repita."
 icon: "shield-check"
 ---
 
-Una policy evalúa un evento de hook del agente y devuelve una de tres decisiones:
+Una política observa la acción de un agente y devuelve una de tres decisiones:
 
-- `allow` permite que la acción continúe.
-- `instruct` proporciona orientación correctiva al agente.
-- `deny` bloquea la acción con una razón.
+- `allow` continúa.
+- `instruct` proporciona orientación al agente cuando su entorno de ejecución lo soporta.
+- `deny` bloquea la acción.
 
-## Usa las tres superficies de policy
+Usa políticas para comportamientos conocidos y repetibles: eliminar archivos protegidos, exponer secretos, hacer push a la rama incorrecta o modificar infraestructura de producción.
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. Ve a **Observe → policy** para filtrar e inspeccionar decisiones de policy de las sesiones.
-    2. Ve a **Admin → policy editor** para redactar, validar, publicar, deshabilitar o inspeccionar versiones inmutables.
-    3. Ve a **Admin → enforcement** para asignar versiones y efectos a máquinas.
+## Añadir políticas a esta máquina
 
-    Usa la página de Policy para entender qué ya está coincidiendo antes de crear o cambiar la aplicación.
+La configuración inicial no incluye ningún paquete de políticas. Añade el paquete de Failproof AI después de la configuración:
 
-    ![La página de Policy mostrando totales de decisiones y mappings de policy locales y gestionados en la nube.](/images/dashboard/policy-observe.png)
+```bash
+failproofai config
+failproofai policies add FailproofAI/policies
+failproofai policies
+```
 
-    El editor es donde conviertes una condición de fallo en código fuente, la validas y publicas una versión inmutable.
+El paquete no contiene un pack integrado con privilegios especiales. El nuestro se instala de la misma manera que el de cualquier otro.
 
-    ![El editor de Policy usado para redactar y publicar una versión inmutable de policy.](/images/dashboard/policy-editor.png)
+Las políticas también pueden provenir de un archivo local, un paquete publicado o una asignación en la nube:
 
-    Enforcement luego asigna esa versión publicada y su efecto de observación o aplicación a las máquinas.
+| Origen | Cómo añadirlo |
+| --- | --- |
+| Archivo local | Coloca `*policies.{js,mjs,ts}` en `.failproofai/policies/` |
+| Cualquier ruta de archivo | `failproofai policies -i -c <path>` |
+| Paquete publicado | `failproofai policies add <owner>/<repo>` |
+| Nube | Asígnalo desde el panel de control o con `fp fleet deploy` |
 
-    ![La flota de Enforcement mostrando cobertura de máquinas y versiones de policy asignadas.](/images/dashboard/enforcement-fleet.png)
+`block-failproofai-commands` siempre se ejecuta y no puede desactivarse. Impide que un agente deshabilite su propio sistema de cumplimiento.
 
-    Verifica las decisiones de vuelta en la página de Policy después del despliegue para que las vistas de autoría y de flota estén vinculadas a la actividad real del agente.
-  </Tab>
-  <Tab title="CLI">
-    Usa `failproofai` para la instalación y validación local de policies:
+## Observar antes de aplicar
 
-    ```bash
-    failproofai policies
-    failproofai policy add block-rm-rf --scope project
-    failproofai config --status
-    ```
+El modo observación ejecuta la política real y registra lo que habría hecho, pero no bloquea al agente.
 
-    Usa `fp` para encontrar las sesiones y eventos de la nube que contienen decisiones de policy. La autoría en la nube y el despliegue en flota siguen siendo flujos de trabajo del dashboard.
-  </Tab>
-</Tabs>
+```bash
+fp policies test ./checkout.policy.mjs --tool Bash --command "git push --force" --expect deny
+fp fleet deploy ci-runner-01 --add checkout-guard:observe
+fp guardrails summary --since 24h --machine ci-runner-01
+fp fleet deploy ci-runner-01 --add checkout-guard:enforce
+```
 
-Las policies tienen tres superficies distintas en Failproof AI:
+<Warning>
+  Un `fp fleet deploy <machine> --add <id>` sin modificadores aplica la política de inmediato. Añade `:observe` para un despliegue en modo sombra.
+</Warning>
 
-1. **Analizar decisiones** en sesiones, dashboards y auditorías.
-2. **Crear versiones** con reglas integradas, código o el editor de policy.
-3. **Desplegar y aplicar** versiones en las máquinas seleccionadas.
+Una política que supera el tiempo de espera en modo observación registra un allow, ya que eso es lo que ocurriría durante la aplicación. Solo las decisiones observadas que no sean allow se registran.
 
-Comienza desde un modo de fallo confirmado. Define la coincidencia de evento y herramienta más pequeña que lo identifique, prueba ejemplos legítimos e inseguros, luego observa antes de aplicar.
+Para un paquete utilizado sin la nube, publícalo con `failproofai publish --effect observe`.
 
-<Columns cols={2}>
-  <Card title="Usar una policy integrada" icon="library" href="/es/policies/builtin">
-    Habilita una regla revisada para riesgos comunes de secretos, shell, Git, nube y flujos de trabajo.
+## Elige el camino correcto
+
+<CardGroup cols={2}>
+  <Card title="Usar una política revisada" icon="library" href="/es/policies/builtin">
+    Elige entre 39 políticas para secretos, archivos, Git, infraestructura y flujos de trabajo.
   </Card>
-  <Card title="Escribir una policy personalizada" icon="code-2" href="/es/policies/custom">
-    Expresa una decisión específica del flujo de trabajo en JavaScript o TypeScript.
+  <Card title="Instalar un paquete" icon="package" href="/es/policies/packs">
+    Añade un conjunto de políticas publicado desde GitHub o el Policy Hub.
   </Card>
-</Columns>
+  <Card title="Escribir una política" icon="code-2" href="/es/policies/custom">
+    Define una regla para tu propio agente o flujo de trabajo.
+  </Card>
+  <Card title="Desplegar en múltiples máquinas" icon="server" href="/es/policies/deploy">
+    Observa, promueve y revierte una política en la nube.
+  </Card>
+</CardGroup>
+
+<Note>
+  La compatibilidad con el cumplimiento varía según el entorno de ejecución. Un deny de llamada a herramienta está verificado en los 12 entornos de ejecución soportados; otros eventos pueden variar. Consulta [entornos de ejecución soportados](/es/reference/harnesses#enforcement-capability).
+</Note>

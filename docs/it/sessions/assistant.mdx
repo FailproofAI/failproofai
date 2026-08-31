@@ -1,10 +1,10 @@
 ---
-title: "Failproof Assistant"
+title: "Assistente cloud"
 description: "Analizza e gestisci Failproof AI in linguaggio naturale, da domande e query a dashboard e audit."
 icon: "message-square-text"
 ---
 
-Chiedi a Failproof Assistant di fare qualsiasi cosa in Failproof AI in linguaggio naturale. Può analizzare sessioni e errori, eseguire query, costruire dashboard, indagare valutazioni e avvisi, e aiutarti a creare ed eseguire audit senza dover tradurre l'attività in schermate del prodotto o comandi CLI.
+L'assistente cloud Failproof AI risponde a domande sulla tua flotta in linguaggio naturale. Può analizzare sessioni e errori, eseguire query, creare dashboard, investigare valutazioni e avvisi, e aiutarti a creare ed eseguire audit senza costringerti a tradurre l'attività in schermate di prodotto o comandi CLI. Nel dashboard il controllo è etichettato **Open agent chat**; sulla [`fp` CLI](/it/reference/cloud-cli) è il gruppo di comandi `fp agent`.
 
 ```text
 Why did production checkout agents regress this week?
@@ -13,41 +13,77 @@ Create an audit that finds agents retrying the same failed action without changi
 Show me the sessions behind the most common audit finding.
 ```
 
-L'assistente funziona con i dati e le autorizzazioni disponibili nell'organizzazione attiva. Rivedi le prove e le modifiche proposte prima di applicare azioni che interessano altri utenti o agenti.
+L'assistente funziona con i dati e i permessi disponibili nell'organizzazione attiva. Rivedi le prove e i cambiamenti proposti prima di applicare azioni che influiscono su altri utenti o agenti.
 
-## Chiedi all'assistente
+<Note>
+  L'assistente funziona nel dashboard e le sue chat appartengono a una persona, quindi non c'è una rotta API dietro di esso per una chiave da chiamare. Ogni sottocomando `fp agent` richiede una sessione autenticata (`fp login`) e il permesso `agent:use`, e esce con codice 2 in caso di `--api-key` o `FP_API_KEY`. Una chiave API non può mai raggiungerla, quindi un job programmato deve portare un token di sessione autenticato in `--token` o `FP_TOKEN`. Funziona — `fp agent ask` legge la domanda da stdin quando non c'è TTY — ma un token di sessione scade circa 24 ore dopo `fp login`, il che rende l'assistente poco adatto all'automazione incustodita anche se funziona.
+</Note>
+
+## Interroga l'assistente
 
 <Tabs>
   <Tab title="Dashboard">
     1. Seleziona **Open agent chat** e descrivi cosa vuoi comprendere, creare o gestire.
-    2. Rivedi le chiamate ai tool, le tabelle e i risultati delle query dell'assistente mentre lavora.
-    3. Apri la sessione, l'avviso o la query citata per verificare il risultato rispetto ai dati di origine.
-    4. Avvia una nuova chat per un'indagine diversa, o utilizza la cronologia della chat per continuare la stessa linea di analisi.
+    2. Rivedi le chiamate agli strumenti, le tabelle e i risultati delle query dell'assistente mentre funziona.
+    3. Apri la sessione, l'avviso o la query citati per verificare il risultato rispetto ai dati di origine.
+    4. Avvia una nuova chat per un'investigazione diversa, o usa la cronologia chat per continuare la stessa linea di analisi.
 
-    ![The Cloud assistant answering an observability question with supporting analysis and queries.](/images/dashboard/assistant.png)
+    ![L'assistente cloud che risponde a una domanda di osservabilità con analisi e query di supporto.](/images/dashboard/assistant.png)
   </Tab>
   <Tab title="CLI">
+    Inizia con `health`. Segnala se l'assistente è abilitato per questo deployment e se un LLM è configurato per esso. Dove nessun LLM è presente, `ask` fallisce e `models` non ne segnala nessuno — `chats`, `show`, `rename` e `delete` non consultano mai lo stato di salute e continuano a funzionare.
+
     ```bash
     fp agent health
     fp agent models
     fp agent ask "Which production checkout agents had the most tool errors in the last 24 hours?"
+    ```
+
+    `fp agent models` elenca i modelli che questo deployment consente e quale è il default. Passane uno ad `ask --model <name>`. Motiva una risposta con testo che già hai con `--page-context <text>`, e pipe la domanda su stdin invece di passarla come argomento quando proviene da un file o da un comando precedente:
+
+    ```bash
+    cat incident-notes.md | fp agent ask --model <model>
+    ```
+
+    Ogni domanda viene salvata in una chat. Senza `--chat` ne inizia una nuova e stampa il suo id breve; con `--chat` continua quel thread.
+
+    ```bash
     fp agent chats
     fp agent show <chat-id>
     fp agent ask "Open representative sessions" --chat <chat-id>
+    fp agent rename <chat-id> --title "checkout regression"
+    fp agent delete <chat-id> --yes
     ```
 
-    Usa `fp agent rename <chat-id> --title <title>` per mantenere un'indagine riconoscibile e `fp agent delete <chat-id>` per rimuoverla.
+    `fp agent chats` elenca le tue chat più recenti per prime come `chat-id · title · messages · updated`, dove `updated` è l'età dell'ultima attività della chat. Il `chat-id` mostrato è quello breve — i primi 8 caratteri — e `show`, `rename`, `delete` e `ask --chat` risolvono tutti quel prefisso. Un id che non corrisponde a nulla esce 6 con una scatola `chat not found`; uno che corrisponde a vari chiede un prefisso più lungo.
+
+    `fp agent delete` prima conferma. `--yes` salta il prompt, così come qualsiasi invocazione non interattiva: in `--json`, o con stdin reindirizzato, procede senza chiedere.
   </Tab>
 </Tabs>
 
 ## Lavora efficacemente con l'assistente
 
-- Dagli prima un obiettivo; aggiungi un ambiente, un workflow o un intervallo temporale quando questi confini sono importanti.
-- Considera SQL generato e riepiloghi come ausilio per l'indagine, non come prova finale.
+- Dagli prima un obiettivo; aggiungi un ambiente, un workflow o un intervallo di tempo quando questi confini sono importanti.
+- Tratta SQL generato e riepiloghi come un aiuto nell'investigazione, non come prova finale.
 - Apri sessioni rappresentative prima di creare un audit, un problema, un avviso o una policy.
 - Mantieni espliciti i filtri di organizzazione, ambiente e tempo.
 - Salva SQL utile come query in modo che un altro operatore possa riprodurre il risultato.
 
 <Warning>
-  L'assistente può leggere solo ciò che l'utente corrente può accedere. Non ampliare le autorizzazioni per risolvere una domanda; chiedi invece a un operatore autorizzato di eseguire l'indagine.
+  Si applicano due livelli di permessi e falliscono diversamente. `agent:use` controlla la funzione stessa: senza di esso, `fp agent` e la chat del dashboard non sono disponibili. Le risposte sono quindi limitate dai permessi di dati dell'utente autenticato — `events:read`, `evaluations:read`, `queries:run`, `policies:read` — quindi un utente che può aprire l'assistente potrebbe comunque ricevere una risposta vuota per i dati che non può leggere. Non ampliare i permessi per far funzionare una domanda; invece chiedi a un operatore autorizzato di eseguire l'investigazione. Vedi [Keys and permissions](/it/admin/keys-and-permissions).
 </Warning>
+
+<CardGroup cols={2}>
+  <Card title="Queries" icon="database" href="/it/sessions/queries">
+    Salva l'SQL che l'assistente ha scritto in modo che un altro operatore possa rieseguirlo.
+  </Card>
+  <Card title="Dashboards" icon="layout-dashboard" href="/it/sessions/dashboards">
+    Trasforma una query salvata in un grafico che il team osserva.
+  </Card>
+  <Card title="Audits" icon="scan-search" href="/it/audits/overview">
+    Investiga un modello di errore in una popolazione di sessioni.
+  </Card>
+  <Card title="Policies" icon="shield-check" href="/it/policies/overview">
+    Previeni un'azione ripetibile invece di trovarla di nuovo la prossima settimana.
+  </Card>
+</CardGroup>

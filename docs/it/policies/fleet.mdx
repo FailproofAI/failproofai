@@ -1,52 +1,61 @@
 ---
-title: "Distribuisci le policy sulle macchine"
-description: "Scopri quali macchine sono registrate, aggiornate e applicano le versioni di policy previste."
+title: "Copertura della flotta"
+description: "Vedi quali macchine hanno ricevuto e applicato le politiche previste."
 icon: "network"
 ---
 
-La copertura della flotta risponde alla domanda se una policy esiste dove esiste il rischio. Traccia le macchine tramite ID stabile ed etichetta leggibile, quindi confronta lo stato di distribuzione assegnato e segnalato.
+La copertura della flotta confronta ciò che Cloud ha assegnato con ciò che ogni macchina ha applicato più di recente.
 
-## Verificare la copertura
-
-<Tabs>
-  <Tab title="Dashboard">
-    1. Vai a **Admin → enforcement** e rivedi i totali di applicazione e osservazione.
-    2. Cerca una macchina per ID o etichetta, oppure filtra le macchine a cui manca una policy.
-    3. Espandi una riga per confrontare le policy assegnate, la distribuzione segnalata, l'ultimo check-in e la cronologia.
-    4. Aggiorna dopo l'intervallo di polling della macchina quando una distribuzione applicata rimane in sospeso.
-
-    ![La flotta Enforcement che mostra la copertura delle policy, lo stato di distribuzione della macchina e gli assegnamenti di osservazione e applicazione.](/images/dashboard/enforcement-fleet.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai config --status
-    failproofai config --machine-label checkout-runner-03
-    failproofai flush --wait
-    ```
-
-    Usa `fp events --agent-id <agent-id> --since 24h` per confermare che l'attività dell'agente della macchina raggiunge Cloud.
-  </Tab>
-</Tabs>
-
-Usa le visualizzazioni di copertura per trovare:
-
-- Macchine che non hanno mai scaricato l'ultima distribuzione
-- Macchine registrate che hanno smesso di segnalare attività
-- Una policy assegnata all'ambiente o alla coorte sbagliata
-- Variazione di versione dopo un aggiornamento interrotto
-
-Rinomina una macchina senza riconnetterla:
-
-```bash
-failproofai config --machine-label checkout-runner-03
-```
-
-Verifica lo stato locale:
+## Controllare una macchina
 
 ```bash
 failproofai config --status
+failproofai flush --wait --timeout 120
 ```
 
-<Tip>
-  Usa etichette che identifichino il carico di lavoro e l'ambiente. I soli nomi host sono spesso insufficienti dopo l'autoscaling o la sostituzione della macchina.
-</Tip>
+Da Cloud:
+
+```bash
+fp fleet list
+fp fleet diff
+fp fleet show <machine-id>
+```
+
+`fp fleet` richiede una sessione autenticata, non una chiave API.
+
+| Comando | Cosa fa |
+| --- | --- |
+| `fp fleet list` | Elenca le macchine e lo stato di distribuzione |
+| `fp fleet show <machine>` | Mostra l'insieme di politiche di una macchina |
+| `fp fleet deploy <machine> --add <ref>` | Aggiungi o aggiorna una politica |
+| `fp fleet deploy <machine> --remove <id>` | Rimuovi una politica |
+| `fp fleet deploy <machine> --set <ref>...` | Sostituisci l'intero insieme |
+| `fp fleet diff [machine]` | Confronta le versioni previste e applicate |
+| `fp fleet history <machine>` | Elenca le generazioni di distribuzione |
+| `fp fleet rollback <machine> <generation>` | Ripristina una generazione |
+| `fp fleet rename <machine> "<label>"` | Cambia l'etichetta Cloud |
+
+<Warning>
+  `--set` sostituisce l'intero insieme di politiche. Un semplice `--add <id>` applica una nuova politica immediatamente. Usa `--add <id>:observe` per un rollout in modalità shadow.
+</Warning>
+
+## Osserva, poi applica
+
+```bash
+fp fleet deploy ci-runner-01 --add prod-guard:observe
+fp guardrails summary --since 24h --machine ci-runner-01
+fp fleet deploy ci-runner-01 --add prod-guard:enforce
+```
+
+La modalità osservazione valuta la politica reale e registra le decisioni che non consentono il passaggio senza bloccare l'agente.
+
+## Identità della macchina
+
+L'ID della macchina è stabile e identifica la macchina. L'etichetta è solo per la visualizzazione e può cambiare:
+
+```bash
+failproofai config --machine-label checkout-runner-03
+fp fleet rename <machine-id> "Checkout runner 03"
+```
+
+Cambiare l'etichetta non ricollega o rigenera le chiavi della macchina.

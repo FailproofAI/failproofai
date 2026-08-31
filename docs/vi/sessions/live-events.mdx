@@ -1,45 +1,41 @@
 ---
 title: "Sự kiện trực tiếp"
-description: "Theo dõi hoạt động của agent khi phiên làm việc đang chạy."
+description: "Xem hoạt động của agent trong Failproof AI Cloud."
 icon: "radio"
 ---
 
-Sự kiện trực tiếp giúp bạn xác nhận việc thiết lập công cụ và theo dõi các lần chạy có rủi ro mà không cần chờ phiên làm việc kết thúc.
+Sự kiện trực tiếp hiển thị hoạt động khi các agent chạy: các lệnh gọi mô hình, công cụ, lỗi, đầu vào của con người, hook và quyết định chính sách.
 
 ## Theo dõi hoạt động
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. Đi tới **Observe → Events**.
-    2. Bắt đầu với cửa sổ thời gian hiện tại và không có bộ lọc để xác nhận dữ liệu đang đến.
-    3. Lọc theo môi trường, loại sự kiện, agent, hoặc phiên. Sử dụng tìm kiếm cho văn bản tải trọng.
-    4. Chọn một sự kiện để kiểm tra tóm tắt và chi tiết của nó. Làm theo liên kết phiên của nó để xem toàn bộ dấu vết.
+Đi tới **Observe → Live events**, hoặc chạy:
 
-    ![Dòng Events trực tiếp cho thấy lưu lượng từ cổng Hermes chat cùng với các lần chạy coding-CLI, được lọc theo thời gian, môi trường, loại sự kiện, agent, mô hình, ngữ cảnh và phiên.](/images/dashboard/events-stream-current.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp events --env production --event-type tool_use,error --limit 100
-    fp events --session-id <session-id> --order asc --all
-    fp --json events --full --session-id <session-id> --all
-    ```
+```bash
+fp events --since 1h
+fp events --event-type tool_use,tool_result --since 1h
+fp --json events --full --session-id <session-id> --all --limit 2000
+```
 
-    Nguồn cấp mặc định bỏ qua các tải trọng thô. Chỉ sử dụng `--full` để điều tra phiên bị ràng buộc.
-  </Tab>
-</Tabs>
+Sử dụng `--full` khi bạn cần nội dung payload. Luồng nhẹ nhanh hơn và đủ cho hầu hết các bộ lọc.
 
-Sử dụng dòng sự kiện để trả lời ba câu hỏi ngay lập tức:
+Các loại sự kiện phổ biến bao gồm:
 
-- Agent mong đợi có đang báo cáo tới môi trường chính xác không?
-- Các lệnh gọi mô hình, lệnh gọi công cụ và quyết định chính sách có đến theo thứ tự không?
-- Phiên có dừng tiến hành hoặc bắt đầu lặp lại một hành động không?
+- `session_start` và `session_end`
+- `model_request` và `model_response`
+- `tool_use` và `tool_result`
+- `hook_triggered` và `hook_completed`
+- `error`
+- `human_wait` và `human_input`
+- `agent_pause` và `agent_resume`
 
-Các loại sự kiện bao gồm sự kiện vòng đời của agent, yêu cầu và phản hồi mô hình, sử dụng công cụ và kết quả, thực thi hook, chờ đợi và ngắt của con người, và các lỗi rõ ràng. ID tương quan kết nối các sự kiện được ghép nối như lệnh gọi công cụ và kết quả của nó.
+## Nếu sự kiện không xuất hiện
 
-<Tip>
-  Giữ chế độ xem trực tiếp rộng khi xác minh một tích hợp mới. Chỉ thêm bộ lọc sau khi bạn thấy sự kiện đầu tiên; bộ lọc không chính xác có thể trông giống như việc tiếp nhận dữ liệu không thành công.
-</Tip>
+```bash
+failproofai flush --wait
+failproofai config --status
+failproofai backfill --since 30d --dry-run
+```
 
-Nếu không có sự kiện nào xuất hiện, hãy chạy `failproofai config --status`, sau đó [khắc phục sự cố tiếp nhận dữ liệu](/vi/reference/troubleshooting).
+Môi trường mặc định là `local`. Một bộ lọc cho `production` sẽ không trả về kết quả cho đến khi bạn thay đổi nhãn môi trường.
 
-Các agent không chạy trong một trong 12 [harnesses](/vi/reference/harnesses) được hỗ trợ báo cáo các loại sự kiện giống nhau thông qua [Python SDK](/vi/reference/custom-agents), bao gồm các sự kiện con người trong vòng lặp (`human_wait`, `human_input`, `human_interrupt`) mà các agent gateway và sản xuất phụ thuộc vào.
+Đối với một agent ngoài harness được hỗ trợ, sử dụng [Python SDK](/vi/reference/custom-agents).

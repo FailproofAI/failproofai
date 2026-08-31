@@ -1,51 +1,54 @@
 ---
 title: "Implantar políticas"
-description: "Publique uma versão de política revisada nas máquinas de destino."
+description: "Observe uma política em atividade real do agente, depois aplique ou reverta."
 icon: "cloud-upload"
 ---
 
-Uma implantação conecta uma ou mais versões de política a um conjunto alvo de máquinas cadastradas.
+Implante uma política revisada em uma máquina por vez. Comece no modo de observação.
 
-## Aplicar uma implantação
+## Publicar pelo CLI
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. Acesse **Admin → enforcement**, localize a máquina e expanda sua linha.
-    2. Selecione **edit**, adicione a versão de política revisada e escolha o efeito **observe** ou de imposição.
-    3. Aplique a alteração, aguarde o próximo check-in da máquina e confirme o estado de implantação e cobertura.
-    4. Acesse **Observe → policy** para inspecionar as decisões em tempo real.
+```bash
+fp policies test ./rule.mjs --tool Bash --command "git push --force" --expect deny
+fp policies publish no-force-push ./rule.mjs
+fp fleet deploy <machine> --add no-force-push:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add no-force-push:enforce
+```
 
-    ![O editor de implantação de máquina com versões de política, efeitos enforce e observe, e a ação de aplicar implantação.](/images/dashboard/enforcement-editor.png)
-  </Tab>
-  <Tab title="CLI">
-    Implante pela CLI com `fp fleet`. Revise o conjunto resultante antes de aplicar — `deploy` exibe o plano completo e solicita confirmação **apenas em um terminal interativo sem `--json`**. Com `--json`, com `--yes` ou com stdin redirecionado (uma etapa de CI, um script ou um agente executando comandos), a aplicação ocorre imediatamente sem plano nem prompt — portanto, execute `fp fleet show <machine>` primeiro se desejar revisar:
-
-    ```bash
-    fp fleet list
-    fp fleet show <machine-id>
-    fp fleet deploy <machine-id> --add no-force-push
-    ```
-
-    `fp fleet diff <machine-id>` mostra a intenção versus a entrega (uma máquina aparece como `behind` até sua próxima consulta), `fp fleet history <machine-id>` lista as gerações e `fp fleet rollback <machine-id> <generation>` restaura uma delas — a operação é recusada se a geração referenciada nomear uma política que foi desativada ou excluída.
-
-    Verifique a própria máquina com `failproofai config --status` e use `fp sessions --env production --since 24h` e `fp events --event-type hook_completed` após a implantação para confirmar que a atividade está chegando ao Cloud.
-  </Tab>
-</Tabs>
-
-<Steps>
-  <Step title="Escolha a versão e os alvos">
-    Implante uma versão revisada, não um rascunho mutável, começando por uma máquina fora de produção ou um grupo pequeno cujas sessões você possa inspecionar.
-  </Step>
-  <Step title="Observe as decisões">
-    Analise correspondências, razões, ferramentas afetadas e falsos positivos sem bloquear o trabalho.
-  </Step>
-  <Step title="Imponha e verifique a cobertura">
-    Promova após as correspondências observadas separarem ações inseguras das válidas e confirme que cada máquina prevista recebeu a implantação e está reportando decisões.
-  </Step>
-</Steps>
-
-As máquinas precisam da capacidade `policies:pull`. O reporte de eventos é controlado separadamente por `events:add`; verifique ambos quando você esperar análise e imposição pelo Cloud.
+O modo de observação avalia a política real e registra decisões que não sejam allow, mas não bloqueia o agente.
 
 <Warning>
-  O gerenciamento de imposição é um fluxo administrativo do Cloud. Não trate as rotas de imposição exclusivas de root como endpoints comuns da API `/v1` para clientes.
+  Usar `--add no-force-push` sem sufixo aplica a política imediatamente. Adicione `:observe` para uma implantação em modo shadow.
 </Warning>
+
+Se a aplicação causar problemas:
+
+```bash
+fp fleet history <machine>
+fp fleet rollback <machine> <generation>
+```
+
+## Implantar pelo dashboard
+
+1. Acesse **Admin → enforcement**.
+2. Abra a máquina de destino.
+3. Adicione a versão da política com efeito **observe**.
+4. Aplique a implantação.
+5. Revise os resultados em **Observe → policy**.
+6. Promova a mesma versão para **enforce** quando as correspondências estiverem corretas.
+
+![O editor de implantação da máquina com versões de políticas, efeitos enforce e observe, e a ação de aplicar implantação.](/images/dashboard/enforcement-editor.png)
+
+## Substituir ou pré-configurar um conjunto
+
+- `--remove <id>` remove uma política.
+- `--set <ref>...` substitui o conjunto completo de políticas.
+- `--create` prepara uma implantação antes de a máquina fazer o primeiro check-in.
+- `fp fleet diff <machine>` compara o estado pretendido com o estado aplicado.
+
+<Note>
+  Sem o Cloud, publique um pacote com `failproofai publish --effect observe` e inspecione as decisões no dashboard local.
+</Note>
+
+As máquinas precisam de `policies:pull` para receber implantações e de `events:add` para reportar decisões.

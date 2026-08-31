@@ -1,45 +1,41 @@
 ---
 title: "Événements en direct"
-description: "Observez l'activité de l'agent en temps réel pendant qu'une session est en cours."
+description: "Observez l'activité des agents en temps réel dans Failproof AI Cloud."
 icon: "radio"
 ---
 
-Les événements en direct vous permettent de confirmer l'instrumentation et de surveiller une exécution à risque sans attendre la fin de la session.
+Les événements en direct affichent l'activité au fur et à mesure que les agents s'exécutent : appels de modèle, outils, erreurs, saisies humaines, hooks et décisions de politique.
 
 ## Surveiller l'activité
 
-<Tabs>
-  <Tab title="Tableau de bord">
-    1. Accédez à **Observe → Events**.
-    2. Commencez avec la fenêtre temporelle actuelle sans filtres pour confirmer que les données arrivent.
-    3. Filtrez par environnement, type d'événement, agent ou session. Utilisez la recherche pour le texte des charges utiles.
-    4. Sélectionnez un événement pour en inspecter le résumé et les détails. Suivez le lien de sa session pour accéder à la trace complète.
+Accédez à **Observer → Événements en direct**, ou exécutez :
 
-    ![Le flux d'événements en direct affichant le trafic d'une passerelle de chat Hermes aux côtés d'exécutions de l'interface CLI de codage, filtré par heure, environnement, type d'événement, agent, modèle, contexte et session.](/images/dashboard/events-stream-current.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp events --env production --event-type tool_use,error --limit 100
-    fp events --session-id <session-id> --order asc --all
-    fp --json events --full --session-id <session-id> --all
-    ```
+```bash
+fp events --since 1h
+fp events --event-type tool_use,tool_result --since 1h
+fp --json events --full --session-id <session-id> --all --limit 2000
+```
 
-    Le flux par défaut omet les charges utiles brutes. N'utilisez `--full` que pour une investigation ciblée sur une session délimitée.
-  </Tab>
-</Tabs>
+Utilisez `--full` lorsque vous avez besoin du contenu des charges utiles. Le flux allégé est plus rapide et suffisant pour la plupart des filtrages.
 
-Utilisez le flux d'événements pour répondre à trois questions immédiates :
+Les types d'événements courants comprennent :
 
-- L'agent attendu envoie-t-il ses données au bon environnement ?
-- Les appels de modèle, les appels d'outil et les décisions de politique arrivent-ils dans l'ordre ?
-- La session a-t-elle cessé de progresser ou a-t-elle commencé à répéter une action ?
+- `session_start` et `session_end`
+- `model_request` et `model_response`
+- `tool_use` et `tool_result`
+- `hook_triggered` et `hook_completed`
+- `error`
+- `human_wait` et `human_input`
+- `agent_pause` et `agent_resume`
 
-Les types d'événements incluent les événements du cycle de vie de l'agent, les requêtes et réponses du modèle, l'utilisation des outils et leurs résultats, l'exécution des hooks, les attentes et interruptions humaines, ainsi que les erreurs explicites. Les identifiants de corrélation relient les événements associés, comme un appel d'outil et son résultat.
+## Si les événements n'apparaissent pas
 
-<Tip>
-  Gardez la vue en direct large lors de la vérification d'une nouvelle intégration. N'ajoutez des filtres qu'après avoir vu le premier événement ; un filtre incorrect peut ressembler à un échec d'ingestion.
-</Tip>
+```bash
+failproofai flush --wait
+failproofai config --status
+failproofai backfill --since 30d --dry-run
+```
 
-Si aucun événement n'apparaît, exécutez `failproofai config --status`, puis [résolvez les problèmes d'ingestion](/fr/reference/troubleshooting).
+L'environnement par défaut est `local`. Un filtre appliqué à `production` ne retourne aucun résultat tant que vous ne modifiez pas le libellé de l'environnement.
 
-Les agents qui ne s'exécutent pas dans l'un des 12 [harnais](/fr/reference/harnesses) pris en charge rapportent les mêmes types d'événements via le [SDK Python](/fr/reference/custom-agents), y compris les événements human-in-the-loop (`human_wait`, `human_input`, `human_interrupt`) dont dépendent les agents de passerelle et de production.
+Pour un agent en dehors d'un environnement d'exécution supporté, utilisez le [SDK Python](/fr/reference/custom-agents).

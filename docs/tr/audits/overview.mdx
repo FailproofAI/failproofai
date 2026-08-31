@@ -1,56 +1,64 @@
 ---
 title: "Denetimler"
-description: "İzlerin tek başına ortaya koymayacağı başarısızlıkları bulmak için tanımlanmış bir oturum kümesini gözden geçirin."
+description: "Aracı çalıştırmalarında tekrarlanan hatalar, riskli davranışlar ve boşa harcanan çabaları arayın."
 icon: "scan-search"
 ---
 
-Bir denetim, seçilen oturum kümesinde belirtilen bir başarısızlık hedefini arar. İz kanıtlarını, değerlendirme sonuçlarını, politika eşleşmelerini ve referans bağlamını birleştirerek harekete geçebileceğiniz bulgular üretir.
+Bir denetim, birçok aracı çalıştırmasını bir hedef doğrultusunda inceler ve kanıtla desteklenmiş bulguları döndürür.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Find agent failures automatically with Failproof AI audits" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-Bir denetimin planlanan çalıştırmadan kanıtlanmış başarısızlıklara nasıl ilerlediğini görün.
+## Yerel veya Bulut
 
-## Denetimleri aç
+| | Yerel denetim | Bulut denetimi |
+| --- | --- | --- |
+| Komut | `failproofai audit` | `fp audits` |
+| Okuduğu | Bu makinedeki aracı geçmişi | Bulut kuruluşunuzdaki oturumlar |
+| Ürettiği | `localhost:8020/audit` konumundaki yerel sonuçlar | Paylaşılan bulgular, sorunlar ve uyarılar |
+| Gereksinimleri | Hesap gerekli değil | Bulut bağlantısı ve API anahtarı |
 
-<Tabs>
-  <Tab title="Gösterge Paneli">
-    **Analiz → Denetimler**'e gidin. Sayfa planlanan durumu, açık bulguları, son çalıştırmayı, sonraki çalıştırmayı, kadansı ve denetimin bir özet veya referans sayfasına sahip olup olmadığını gösterir. Ayarlar ve çalıştırma geçmişi için bir kartı seçin; yeni bir tane oluşturmak için **yeni denetim**'i seçin.
+Tek bir makinenin hızlı incelemesi için yerel denetim kullanın. Bir ekibin birden fazla aracı ve makine arasında yinelenen denetim yapması gerektiğinde Bulut'u kullanın.
 
-    ![Denetimleri planlama, hassasiyet ve çalıştırma durumları ile gösteren Denetimler sayfası.](/images/dashboard/audits.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp audits list
-    fp audits list --enabled-only --show-id
-    fp audits show <audit-name>
-    fp audits findings --status open --limit 20
-    ```
-  </Tab>
-</Tabs>
+## Bir denetimin cevaplayabileceği sorular
 
-Aşağıdaki gibi popülasyon düzeyinde sorulara yanıt vermeniz gerektiğinde bir denetim kullanın:
+- Aracılar nerede yükseltme yapmadan duruyor?
+- Hangi araç arızaları etkisiz yeniden denemelerine yol açıyor?
+- Aracılar amaçlanan iş akışı dışında verilere erişiyor mu?
+- Model, istem veya araç güncellemesinden sonra ne değişti?
 
-- Aracılar görevleri nerede yükseltmeden terk ediyor?
-- Hangi araç başarısızlıkları etkisiz yeniden denemelere yol açıyor?
-- Aracılar amaçlanan iş akışının dışında verilere erişiyor mu?
-- Bir model, istem veya araç sürümünden sonra ne değişti?
+## Bulut denetimlerini açın
 
-## Denetim yanıt akışı
+**Analiz → Denetimler** seçeneğine gidin veya aşağıdaki komutu kullanın:
 
-```text
-Oturum → Denetim → Bulgu → Sorun → Politika
-                         ↘ Tekrar için uyarı
+```bash
+fp audits list
+fp audits show <audit-name>
+fp audits findings --status open --limit 20
 ```
 
-Bir bulgu, başarısızlık türünü adlandırmalı ve kanıta işaret etmelidir. Bir sorun, düzeltmeye sahiptir. Bir politika bilinen bir işlem deseni önler; bir uyarı, önlemenin mümkün olmadığı veya izlenmenin gerekli olduğu durumlarda tekrarlanmayı algılar.
+Denetim komutları denetim adını veya tam kimliğini kullanır. Bulgular kendi kimliğiyle referans alınır.
 
-<Columns cols={2}>
-  <Card title="Bir denetim kurun" icon="sliders-horizontal" href="/tr/audits/setup">
-    İlk çalıştırmadan önce hedefi, popülasyonu ve referans bağlamı tanımlayın.
+## Bulgulardan önlemeye
+
+```text
+Oturum → Denetim → Bulgu → Sorun → İlke
+                         ↘ Uyarı
+```
+
+Bir bulgu kanıtları işaret eder. Bir sorun yanıtın sahibidir. Bir ilke bilinen bir işlem düzenini engeller; bir uyarı tekrarlanmasını izler.
+
+Her bulgu bir ilkeye dönüşmemelidir. Bir `policy` bulgular uygulanabilir bir kuralı tanımlar. Bir `failure` veya `improvement` bunun yerine iş akışı, istem, model veya araç değişikliği gerektirebilir.
+
+<CardGroup cols={3}>
+  <Card title="Bu makineyi denetle" icon="laptop-minimal-check" href="/tr/audits/local-audit">
+    Hesapsız yerel geçmişi tarayın.
   </Card>
-  <Card title="Aracı bağlamı ekleyin" icon="bot" href="/tr/audits/agent-contracts">
-    Her aracının ne üretmesi gerektiğini ve asla ne yapmaması gerektiğini belirtin.
+  <Card title="Bulut denetimi ayarla" icon="sliders-horizontal" href="/tr/audits/setup">
+    Hedefi, oturumları ve zamanlamayı seçin.
   </Card>
-</Columns>
+  <Card title="Bulguları incele" icon="list-checks" href="/tr/audits/findings-and-issues">
+    Kanıtları sınıflandırın ve bir yanıt atayın.
+  </Card>
+</CardGroup>

@@ -1,57 +1,100 @@
 ---
 title: "Politiques intégrées"
-description: "Activez des garde-fous maintenus pour les modes d'échec courants des agents."
+description: "Activez les garde-fous maintenus pour les modes d'échec courants des agents selon vos besoins."
 icon: "library"
 ---
 
-Les politiques intégrées couvrent la gestion des secrets, les fichiers d'environnement, les commandes shell destructives, les branches protégées, les outils cloud et d'infrastructure, la publication de paquets, les appels répétés et les vérifications de workflow en fin de tâche.
+Les politiques intégrées regroupent 39 politiques maintenues couvrant neuf catégories de défaillances d'agents. À une exception près, elles sont **livrées en pack**, `FailproofAI/policies`, de la même manière que les politiques de n'importe quel autre éditeur. Le package ne contient pas de pack par défaut, donc une installation fraîche n'applique rien tant que vous ne l'activez pas :
 
-## Activer et vérifier une politique intégrée
+```bash
+failproofai policies add FailproofAI/policies
+```
+
+Cela active les valeurs par défaut du pack — 10 des 38 politiques qu'il contient. La 39e est `block-failproofai-commands`, qui est toujours active : elle est compilée dans le package, s'enregistre à chaque évaluation et ne peut pas être désactivée ni mise en pause. Un pack ne peut pas déclarer `alwaysOn`, c'est pourquoi cette garde ne transite pas par le canal pack.
+
+## Ce que couvrent les neuf catégories
+
+| Catégorie | Slug `--category` | Politiques |
+| --- | --- | --- |
+| Sanitize | `sanitize` | 5 |
+| Environment | `environment` | 3 |
+| Dangerous Commands | `dangerous-commands` | 5 |
+| Infra Commands | `infra-commands` | 7 |
+| Git | `git` | 6 |
+| Database | `database` | 2 |
+| Packages & System | `packages-system` | 5 |
+| AI Behavior | `ai-behavior` | 1 |
+| Workflow | `workflow` | 5 |
+
+Ce sont les effectifs du catalogue compilé, soit 39 au total. Le pack en contient 38, car `block-failproofai-commands` est `alwaysOn` et ne transite jamais par le canal pack — ainsi `--category dangerous-commands` sélectionne les quatre autres.
+
+Prenez une sélection plutôt que les valeurs par défaut :
+
+```bash
+failproofai policies add FailproofAI/policies --category git,database
+failproofai policies add FailproofAI/policies --policy block-rm-rf
+failproofai policies add FailproofAI/policies --all
+```
+
+## Consultez le catalogue avant de l'adopter
 
 <Tabs>
-  <Tab title="Tableau de bord">
-    1. Installez la politique sur une machine connectée avec l'interface en ligne de commande locale.
-    2. Exécutez une action de test sûre dans l'agent instrumenté.
-    3. Accédez à **Observer → politique** et filtrez par nom de politique, environnement machine ou décision.
-    4. Ouvrez la session liée pour confirmer l'entrée d'outil correspondante et la raison retournée.
-
-  </Tab>
   <Tab title="CLI">
     ```bash
+    failproofai policies show FailproofAI/policies
     failproofai policies
-    failproofai policy add block-rm-rf --cli claude --scope project
-    failproofai config --status
     ```
 
-    Supprimez-la avec `failproofai policy remove block-rm-rf --cli claude --scope project`.
+    `policies show` lit le manifeste publié — toutes les politiques, regroupées par catégorie, marquées par défaut ou en opt-in — sans télécharger ni importer le code du pack. `failproofai policies` liste ce qui est activé sur cette machine : fichiers personnalisés, fichiers de convention, packs installés et assignations Cloud. Il ne comporte pas de section intégrée, il répond donc à « qu'est-ce qui est actif ici », jamais à « qu'est-ce qui existe ».
+  </Tab>
+  <Tab title="Policy Hub">
+    Parcourez le même catalogue dans un navigateur, sans le CLI, sur [befailproof.ai/policy-hub](https://befailproof.ai/policy-hub/). Chaque pack dispose d'une page à l'adresse `/policy-hub/<owner>/<pack>/` et chaque politique d'une page à `/policy-hub/<owner>/<pack>/<policy-name>/`.
+  </Tab>
+  <Tab title="Dashboard">
+    1. Installez la politique sur une machine connectée via le CLI local.
+    2. Exécutez une action de test sans risque dans l'agent instrumenté.
+    3. Accédez à **Observe → policy** et filtrez par nom de politique, environnement de machine ou décision.
+    4. Ouvrez la session liée pour confirmer l'entrée d'outil correspondante et la raison retournée.
   </Tab>
 </Tabs>
 
-Listez les politiques disponibles dans votre version installée :
+## Activer ou désactiver une politique
 
 ```bash
-failproofai policies
+failproofai policies add block-rm-rf --cli claude --scope project
+failproofai policies remove block-rm-rf --cli claude --scope project
 ```
 
-Activez une politique pour un projet :
-
-```bash
-failproofai policy add block-rm-rf --scope project
-```
-
-Activez plusieurs politiques pour des harnais sélectionnés :
+`policies add` et `policies remove` acceptent exactement **un** nom de politique. Exécutez-les sans nom et vous obtenez un sélecteur, avec ce qui est déjà actif coché. Pour plusieurs noms à la fois, utilisez le formulaire d'installation :
 
 ```bash
 failproofai policies --install block-sudo block-force-push \
   --cli claude codex --scope project
 ```
 
-Certaines politiques acceptent des paramètres ou sont marquées comme bêta. Examinez la description, la portée de correspondance et le comportement par défaut avant le déploiement. Une politique qui protège un workflow peut bloquer des opérations valides dans un autre.
+<Note>
+  Sur une machine sans pack installé, `failproofai policies add <builtin-name>` télécharge `FailproofAI/policies` depuis sa release GitHub pour résoudre le nom — cette première commande nécessite donc une connexion réseau.
+</Note>
+
+## Toutes les politiques ne s'appliquent pas à tous les harnais
+
+Une politique ne modifie le comportement que là où le harnais consomme le verdict pour son événement. Deux cas méritent d'être vérifiés avant de s'appuyer sur une politique intégrée :
+
+| Événement | Là où un deny est vérifié comme modifiant le comportement |
+| --- | --- |
+| `PreToolUse` | Les 12 harnais |
+| `Stop` | claude, codex, copilot, cursor, openclaw, factory, devin, antigravity. Aucun hook `Stop` n'est installé sur goose ou hermes, pi intègre la raison dans le tour suivant, et opencode n'est pas vérifié |
+
+Ainsi, les cinq politiques `require-*-before-stop` de la catégorie Workflow peuvent être activées sur une machine et ne jamais se déclencher, selon l'agent qui s'y exécute. Les machines virtuelles Cursor Cloud Agent n'exécutent aucun hook stop.
+
+Les politiques `warn-*` et `prefer-*` retournent `instruct` plutôt que `deny`. Sur Hermes et Goose, et en dehors du canal `Stop` sur Pi, OpenClaw, Factory et Antigravity, `instruct` se dégrade en allow avec une note sur stderr : l'opérateur la voit dans les logs, l'agent non.
+
+Certaines politiques acceptent des paramètres. Examinez la description, la portée et les valeurs par défaut avant le déploiement — une politique qui protège un workflow peut bloquer des opérations valides dans un autre.
 
 <Card title="Parcourir le catalogue complet des politiques intégrées" icon="list-checks" href="/fr/policies/builtin-catalog">
-  Consultez les 40 politiques actuelles, leurs déclencheurs, la configuration de base recommandée et leurs paramètres.
+  Les 39 politiques intégrées, par catégorie, avec leurs déclencheurs, valeurs par défaut et paramètres.
 </Card>
 
 <Tip>
-  Privilégiez la portée projet pour les exigences spécifiques à un dépôt, et la portée utilisateur pour les exigences de sécurité à l'échelle de la machine.
+  `failproofai config` connecte tous les agents pris en charge à la portée utilisateur et ne choisit aucune politique — il ne possède pas de flag `--scope`. Passez `--scope project` à `failproofai policies add` ou `failproofai policies --install` uniquement lorsque l'attente appartient véritablement à un seul dépôt.
 </Tip>

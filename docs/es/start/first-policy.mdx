@@ -1,47 +1,69 @@
 ---
-title: "Previene tu primer fallo con una política"
-description: "Crea una versión de política, despliégala en modo observación y luego aplícala."
+title: "Previene tu primer fallo"
+description: "Activa una política revisada o prueba una propia."
 icon: "shield-check"
 ---
 
-Usa una política solo cuando puedas describir la acción insegura y las acciones legítimas que deben seguir permitidas.
+Empieza con un comportamiento que quieras detener y una acción legítima que deba seguir funcionando.
 
-<Tabs>
-  <Tab title="Panel de control">
-    <Steps>
-      <Step title="Crea la política">
-        Ve a **Admin → editor de políticas**. Empieza con la política de demostración, revisa o edita su código fuente y luego selecciona **publicar versión**. Al publicar se crea la versión inmutable que podrás desplegar en las máquinas.
+## Prueba primero una política revisada
 
-        ![Vista de composición del editor de políticas con una política de demostración lista para publicarse como versión inmutable.](/images/dashboard/policy-editor.png)
-      </Step>
-      <Step title="Despliégala en una máquina">
-        Ve a **Admin → enforcement**, expande la máquina de destino y selecciona **editar esta máquina**. Añade la política de demostración publicada, fija su versión, elige **observe** y aplica el despliegue.
+```bash
+failproofai policies
+failproofai policies add block-rm-rf
+```
 
-        ![El editor de despliegue de máquinas con una versión de política publicada seleccionada en modo observación antes de aplicar el despliegue.](/images/dashboard/enforcement-editor.png)
-      </Step>
-      <Step title="Verifica la política">
-        Ejecuta una nueva sesión de agente en esa máquina y luego abre **Observe → policy**. Selecciona la máquina y confirma que la política de demostración aparece en el mapeo de políticas y en la línea de tiempo de decisiones. El modo observación registra lo que haría la política sin bloquear la acción.
+Failproof AI incluye 39 políticas revisadas. Consulta el [catálogo](/es/policies/builtin-catalog) antes de escribir una nueva.
 
-        ![La página de política mostrando los totales de decisiones, la actividad de enforcement a lo largo del tiempo y los mapeos de políticas locales y gestionadas en la nube.](/images/dashboard/policy-observe.png)
-      </Step>
-    </Steps>
-  </Tab>
-  <Tab title="CLI">
-    La creación de políticas en la nube y el despliegue en flota son flujos de trabajo administrativos. Usa la CLI local para validar la misma política antes de publicarla:
+## Escribe y prueba la tuya propia
 
+<Steps>
+  <Step title="Crea una política funcional">
     ```bash
-    failproofai policies --install --custom ./payment-retry.policies.ts \
-      --cli claude --scope project
-    failproofai config --status
+    failproofai publish --init guards.mjs
     ```
 
-    Usa `fp` para inspeccionar las decisiones de política visibles en la nube:
-
+    Esto escribe una política que bloquea `git push --force`. Edítala para tu regla.
+  </Step>
+  <Step title="Aplícala en esta máquina">
     ```bash
-    fp events --event-type hook_completed --env production --since 24h
-    fp sessions --env production --since 24h
+    failproofai policies -i -c ./guards.mjs
     ```
 
-    Ambos pasos también están disponibles desde la CLI: `fp policies publish <id> <file>` genera una versión y `fp fleet deploy <machine-id> --add <id>` la instala en una máquina. Los equivalentes en el panel de control son **Admin → editor de políticas** y **Admin → enforcement**.
-  </Tab>
-</Tabs>
+    Pídele a tu agente que realice la acción bloqueada y luego revisa **Policies → Activity** en el panel local.
+  </Step>
+  <Step title="Consérvala o elimínala">
+    Coloca un archivo `*policies.mjs` dentro de `.failproofai/policies/` para cargarlo automáticamente.
+
+    Elimina los archivos personalizados explícitos con:
+
+    ```bash
+    failproofai policies -u -c
+    ```
+  </Step>
+</Steps>
+
+## Compártela
+
+Publica un pack público:
+
+```bash
+failproofai publish
+```
+
+Cualquiera podrá instalarlo con `failproofai policies add <owner>/<repo>`. Añade el tema de GitHub `failproofai-policies` tú mismo para que el [Policy Hub](https://befailproof.ai/policy-hub/) pueda indexarlo.
+
+Para un despliegue en Cloud:
+
+```bash
+fp policies publish checkout-guard ./guards.mjs
+fp fleet deploy <machine> --add checkout-guard:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add checkout-guard:enforce
+```
+
+<Warning>
+  Un `--add checkout-guard` sin modificadores aplica el bloqueo de inmediato. Añade `:observe` para registrar lo que haría la política sin bloquear al agente.
+</Warning>
+
+Consulta [publicar un pack](/es/policies/publish-a-pack) o [desplegar políticas](/es/policies/deploy) para ver el flujo de trabajo completo.

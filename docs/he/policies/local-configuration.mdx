@@ -1,84 +1,50 @@
 ---
-title: "תצורה מקומית"
-description: "שלוט בסקופ המדיניות, בפרמטרים, בקבצים מותאמים אישית, והגדרות Failproof AI ברמת המכונה."
-icon: "file-cog"
+title: "הגדרת מדיניות מקומית"
+description: "בחר היכן מדיניויות חלות וקבע את הפרמטרים שלהן."
+icon: "sliders-horizontal"
 ---
 
-Failproof AI מפריד בין בחירת מדיניות לבין הגדרות מכונה ותהליך רקע. זה שומר על בחירות מדיניות של מאגר כדי להיות ניתנות לבדיקה בעוד שתעודות אישור וסטטוס התהליך נשארים מחוץ למאגר.
+השתמש בـ scope כדי להחליט מי מקבל מדיניות מקומית:
 
-## בחר סקופ מדיניות
-
-<Tabs>
-  <Tab title="Dashboard">
-    הרץ `failproofai` ללא ארגומנטים כדי לפתוח את לוח הבקרה של המדיניות המקומית. בחר סקופ של משתמש, פרויקט או מקומי לפני הפעלת מדיניות כך שהשינוי יכתב לקובץ התצורה המיועד.
-
-    - **User** חל על פני פרויקטים במכונה זו.
-    - **Project** שייך למאגר ויכול להיות מחויב.
-    - **Local** מחליף פרויקט אחד עבור משתמש אחד ויש להישאר ב-gitignore.
-
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai policy add block-rm-rf --scope user
-    failproofai policy add block-force-push --scope project
-    failproofai policy add warn-large-file-write --scope local
-    failproofai policies
-    ```
-
-    לא כל התקנה תומכת בסקופ מקומי. ה-CLI דוחה סקופ שהתקנה נבחרת לא יכולה לייצג.
-  </Tab>
-</Tabs>
-
-| סקופ | קובץ תצורת מדיניות |
+| Scope | חל על |
 | --- | --- |
-| Project | `<project>/.failproofai/policies-config.json` |
-| Local | `<project>/.failproofai/policies-config.local.json` |
-| User | `~/.failproofai/policies-config.json` |
+| `user` | הסוכנים הנתמכים שלך במכונה זו |
+| `project` | סוכנים הפועלים בפרויקט זה |
+| `local` | Claude בלבד, בהגדרות הפרויקט המקומי |
+| `all` | הסרה בלבד |
 
-מדיניויות מופעלות מתמזגות כאיחוד. פרמטרי מדיניות משתמשים בסקופ הראשון המגדיר פרמטרים עבור אותה מדיניות, בסדר project → local → user. נתיבי מדיניות מותאמים אישית מפורשים משתמשים בסקופ הראשון המגדיר אותם.
+```bash
+failproofai policies add block-sudo --scope user
+failproofai policies add block-rm-rf --scope project
+```
 
-## הגדר פרמטרי מדיניות
+Hermes ו-OpenClaw תומכים בـ user scope בלבד. רוב ההרנסים האחרים תומכים ב-user וב-project. Claude תומך גם ב-local scope. ראה [Harnesses](/he/reference/harnesses).
 
-<Tabs>
-  <Tab title="Dashboard">
-    פתח את המדיניות בלוח הבקרה המקומי, ערוך את הפרמטרים הנתמכים שלה, והשמר בסקופ הנבחר. הרץ פעולת סוכן תואמת ולא תואמת, ואז בדוק את ההחלטה ב-**Observe → policy**.
+## פרמטרי מדיניות
 
-  </Tab>
-  <Tab title="CLI">
-    ערוך את `policies-config.json` של הסקופ הנבחר, ואז הרץ `failproofai policies` כדי להציג שמות מדיניות או מפתחות פרמטרים לא ידועים.
+הגדרות המדיניות נמצאות בـ `policies-config.json` בـ scope התואם. השתמש בתצוגת **Policies → Configure** של לוח הבקרה המקומי כאשר זה אפשרי.
 
-    ```json
-    {
-      "enabledPolicies": ["block-rm-rf", "block-force-push"],
-      "policyParams": {
-        "block-rm-rf": {
-          "allowPaths": ["/tmp/build-output"]
-        }
-      }
-    }
-    ```
+פרמטר שייך למדיניות אחת ומשנה כיצד מדיניות זו מחליטה. לדוגמה, רשימת מתן הרשאה יכולה להפוך מדיניות חוסמת לקבל פקודות או נתיבים בטוחים ידועים.
 
-    ```bash
-    failproofai policies
-    ```
-  </Tab>
-</Tabs>
+קבצי מדיניות מותאמים אישית יכולים להיטען באופן אוטומטי מ-`.failproofai/policies/`, או בעקיפין:
 
-## הבן את קובצי המכונה
+```bash
+failproofai policies -i -c ./guards.mjs --scope project
+```
 
-`~/.failproofai` מכיל קבצים נפרדים עבור גבולות אמון נפרדים:
+הסר נתיבים מפורשים עם:
 
-| נתיב | מטרה |
+```bash
+failproofai policies -u -c
+```
+
+## קבצים
+
+| קובץ | מטרה |
 | --- | --- |
-| `config.json` | הגדרות תהליך רקע, ביקורת וטלמטריה שאינן סודיות |
-| `credentials.json` | תעודות אישור בענן; מאוחסנות עם הרשאות בעלים בלבד |
-| `policies-config.json` | בחירת בנייה בסקופ משתמש, פרמטרים ונתיבים מותאמים אישית מפורשים |
-| `policies/` | מדיניויות קונוונציה משתמש ותיקיות מדיניות מנוהלות בענן |
-| `hook-activity/` | יומן החלטות מדיניות מקומי |
-| `state/` | תהליך רקע, בריאות, השהייה וסטטוס ריצה |
+| `~/.failproofai/config.json` | הגדרות מכונה ואספן |
+| `policies-config.json` | מדיניויות מאופשרות ופרמטרים עבור scope |
+| `.failproofai/policies/*policies.mjs` | מדיניויות שנטענו לפי קונבנציה |
+| `~/.failproofai/policies/packs/installed.json` | חבילות מותקנות וברירות |
 
-השתמש ב-`FAILPROOFAI_HOME` כדי להעביר את פריסת המכונה המלאה עבור קונטיינר או בדיקה מבודדת. אל תעביר ספריות מצב בודדות באופן עצמאי.
-
-<Warning>
-  לעולם אל תחייב `credentials.json`. חייב תצורת מדיניות של פרויקט ומדיניויות קונוונציה של פרויקט רק לאחר סקירתם כקוד אכיפה.
-</Warning>
+אל תערוך חפצי חבילה מותקנות באופן ישיר. התקן מחדש או פרסם גרסה מתוקנת.

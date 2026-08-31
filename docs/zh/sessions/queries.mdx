@@ -4,50 +4,100 @@ description: "使用可复用的 SQL 探索会话、事件和评估数据。"
 icon: "database"
 ---
 
-查询是仪表板、审计和调查之下的灵活层。使用即席 SQL 验证想法，一旦该查询成为周期性工作流的一部分，即可将其保存。
+查询是仪表板、审计和调查之下的灵活层。使用临时 SQL 验证想法，当其成为周期性工作流的一部分时，再将其保存。
 
 ## 创建并运行查询
 
 <Tabs>
   <Tab title="仪表板">
-    1. 前往 **Analyze → Queries**，选择 **new query**。
+    1. 进入 **Analyze → Queries**，选择 **new query**。
     2. 打开 Schema 浏览器，从事件、会话或评估数据中选择字段。
     3. 编写 SQL，按需添加参数，然后运行查询。
-    4. 使用清晰的名称和描述保存查询，若需要监控结果，可使用 **add to dashboard**。
+    4. 以清晰的名称和描述保存，若需要监控结果，可使用 **add to dashboard**。
 
-    查询编辑器将事件 Schema、SQL、参数和结果预览整合在一起，方便你在保存之前验证问题。
+    查询编辑器将事件 Schema、SQL、参数和结果预览整合在一起，方便你在保存前验证查询是否正确。
 
     ![带有 Schema 浏览器和实时结果网格的 SQL 查询编辑器。](/images/dashboard/query-lab.png)
 
-    保存后的查询会出现在共享库中，团队成员可以重新运行，也可以将结果添加到仪表板。
+    保存后的查询将出现在共享库中，团队成员可以重新运行，或将其结果添加到仪表板。
 
-    ![包含可复用内置查询和自定义查询的已保存 Queries 库。](/images/dashboard/queries.png)
+    ![包含可复用内置查询和自定义查询的已保存查询库。](/images/dashboard/queries.png)
 
-    使用清晰的名称和描述，确保无需重新打开 SQL 也能理解结果含义。
+    使用清晰的名称和描述，确保无需重新打开 SQL 也能理解结果的含义。
   </Tab>
   <Tab title="CLI">
+    按照 SQL 本身的逻辑顺序操作：先查看 Schema，然后临时运行语句，确定后再保存并命名。
+
     ```bash
     fp query schema
-    fp query create "retry loops" --sql "SELECT ..."
-    fp query run <query-id>
-    fp query show <query-id>
-    fp query update <query-id> --sql "SELECT ..."
+    fp query schema events
+
+    fp query run --sql "SELECT agent_id, count() FROM analytics.events GROUP BY agent_id"
+    fp query run --sql @retry-loops.sql
+
+    fp query create "retry loops" --sql @retry-loops.sql --description "repeated tool calls per session"
     ```
 
-    使用 `fp query list` 查找 ID，使用 `fp query delete <query-id>` 删除已保存的查询。
+    后续操作均使用查询的**名称**，而非 id：
+
+    ```bash
+    fp query list
+    fp query run "retry loops"
+    fp query show "retry loops"
+    fp query update "retry loops" --sql @retry-loops-v2.sql --yes
+    fp query delete "retry loops" --yes
+    ```
+
+    名称在组织内唯一，这也是它能作为安全句柄的原因。任何接受名称的地方也可以使用 UUID 形式的 id，但 `fp query list` 不打印 id——其列为 `name`、`description`、`created by` 和 `created`（查询的创建时间，而非最后编辑时间）。添加 `--show-id` 可显示短 id 列，或读取 `--json` 输出，其中始终包含完整 id。
+
+    使用 `--arg`（别名 `--param`）为已保存查询的位置参数绑定值，按 `$1..$N` 的顺序，每个参数重复一次：
+
+    ```bash
+    fp query run <query-name> --arg agent-codegen --arg 0.5
+    ```
+
+    | 子命令 | 权限 | 说明 |
+    | --- | --- | --- |
+    | `fp query schema [TABLE]` | `queries:read` | 传入表名可过滤到其列。 |
+    | `fp query list` | `queries:read` | `--show-id` 显示 id；`--fields` 投影原始字段。 |
+    | `fp query show <name>` | `queries:read` | 元数据卡片及完整 SQL。 |
+    | `fp query create <name> --sql ...` | `queries:write` | 名称冲突时提前拒绝。 |
+    | `fp query update <name>` | `queries:write` | 至少传入 `--name`、`--sql`、`--description` 之一。操作前确认；无变更则退出不保存。 |
+    | `fp query delete <name>` | `queries:delete` | 操作前确认，并预览将删除的内容。 |
+    | `fp query run <name>` 或 `--sql ...` | `queries:run` | 二者只能选其一。`--limit` 和 `--all` 调整表格预览。 |
+
+    `update` 和 `delete` 仅在交互式终端下提示确认。在 `--json` 模式下，或 stdin 被重定向时，将直接执行而不询问——因此 `--yes` 适用于终端交互场景，而非脚本场景。
+
+    查询运行于只读分析池。`--sql @file.sql` 从文件读取语句，这是值得纳入版本控制的形式。
   </Tab>
 </Tabs>
+
+## 脚本化查询
+
+`fp --json query run` 返回所有行，不受表格预览上限限制，格式为 `{columns: [{name, type}], rows: [[...]], truncated, elapsed_ms}`：
+
+```bash
+fp --json query run "retry loops" | jq '.rows | length'
+```
+
+`fp --json query schema` 返回 `{schema, columns: [{table, column, type, nullable}]}`，即 Schema 浏览器的机器可读形式。
+
+有两类错误值得通过退出码而非解析文本来处理：未匹配到名称时输出 `✗ no query named "…"` 并以退出码 6 退出；SQL 或执行错误时输出 `✗ query failed — …` 并附带服务器的详细信息。
 
 ## 常见用途
 
 - 查找对同一工具重复调用的会话。
-- 跨模型或环境比较评估分数。
+- 比较不同模型或环境下的评估分数。
 - 测量人工等待与恢复之间的时间间隔。
 - 识别策略拒绝后紧随成功替代方案的情况。
-- 为审计构建一个用户群组。
+- 为审计构建一个样本集合。
 
-在对不熟悉的字段编写查询之前，请先打开 **Queries → Schema**。建议使用明确的时间和环境过滤器，并在探索阶段保持结果数量限制。
+在对不熟悉的字段进行查询之前，请先打开 Schema——在仪表板中进入 **Analyze → Queries**，或运行 `fp query schema`。建议使用明确的时间和环境过滤条件，并在探索阶段保持结果数量限制。
 
 <Warning>
-  查询可以识别出可疑模式，但其本身并不能确定失败模式。在将结果转化为策略之前，请先打开具有代表性的追踪记录或运行审计。
+  查询可以识别可疑模式，但其本身无法确定故障模式。在将结果转化为策略之前，请先查看有代表性的追踪记录或运行审计。
 </Warning>
+
+<Card title="仪表板" icon="layout-dashboard" href="/zh/sessions/dashboards">
+  当结果值得持续监控时，将已保存的查询添加到共享看板。
+</Card>

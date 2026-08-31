@@ -1,21 +1,24 @@
 ---
 title: "Kullanım"
-description: "Organizasyon tüketimini ve aktif faturalama dönemini inceleyiniz."
+description: "Mevcut 30 günlük ölçüm penceresinde kuruluş tüketimini inceleyin."
 icon: "chart-no-axes-combined"
 ---
 
-Kullanım, mevcut organizasyon ve faturalama dönemleri için tüketimi gösterir. Üretim dağıtımı, transkript hacmi, değerlendirmeler ve denetim sıklığının planınızı nasıl etkilediğini anlamak için kullanınız.
+Kullanım, mevcut kuruluşun mevcut 30 günlük penceresi içinde ölçülen tüketimi gösterir. Pencere, kuruluş başına sabitlenir ve tutturulur; kullanım salt okunurdur: herhangi bir sınır, kota veya plan eşiği uygulamaz ve görüntülemez. Her iki arayüz de bunu belirtir — CLI paneli "salt okunur kullanım, sınır uygulanmadı" yazdırır.
 
-## Kullanımı gözden geçirin
+## Kullanımı İnceleyin
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Yönetim → Kullanım**'a gidiniz.
-    2. Organizasyonu ve ölçüm penceresini onaylayınız.
-    3. Alım, oturumlar, değerlendirmeler, metrikler, denetimler, bulgular, uyarılar, kullanıcılar ve anahtarları gözden geçiriniz.
-    4. Denetim kullanımı beklenmedik görüldüğünde başlatılan ve tamamlanan denetim işini karşılaştırınız.
+    1. **admin → usage** adresine gidin.
+    2. Kuruluş ve ölçüm penceresini onaylayın — başlık pencerenin başlangıç ve bitişini, içinde olduğu günü ve geçen süreyi gösterir.
+    3. Hero bloğu okuyun: alınan etkinlikler, oturumlar, ajanlar ve ortamlar.
+    4. İki işlem hattını okuyun: değerlendirmeler (puanlar ve metriklerle) ve denetimler (sorunlar ve uyarılarla), her biri başlanan çalışmalara karşı tamamlanan çalışmaları gösterir.
+    5. Çalışma alanı ve erişim bloklarını okuyun: kaydedilen sorgular, panolar, uyarılar, benzersiz sorunlar, üyeler ve API anahtarları.
 
-    ![Ölçüm penceresini, yakalanan olayları, değerlendirme ve denetim ardışık düzenlerini, çalışma alanı kaynaklarını, üyeleri ve API anahtarlarını gösteren Kullanım sayfası.](/images/dashboard/usage-overview.png)
+    Rakamlar önbelleğe alınmıştır, canlı değildir. Görmek beklediğiniz bir değişiklikten sonra sağ üstteki yenileme denetimini kullanın.
+
+    ![Ölçüm penceresini, yakalanan etkinlikleri, değerlendirme ve denetim işlem hatlarını, çalışma alanı kaynaklarını, üyeleri ve API anahtarlarını gösteren kullanım sayfası.](/images/dashboard/usage-overview.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -23,15 +26,52 @@ Kullanım, mevcut organizasyon ve faturalama dönemleri için tüketimi gösteri
     fp --json usage
     fp --org reliability-team --json usage
     ```
+
+    `fp usage` komutunun `usage:read` izni gereklidir ve bir API anahtarı altında çalışır; bu da raporlama cron işi için doğru komut yapar.
+
+    `--json` ile dashboard yanıtını değiştirilmemiş şekilde döndürür: `org_id`, `billing_anchor`, `window`, `usage`, `calculated_at` ve `stale_after`. `calculated_at` ve `stale_after` bir rakamın ne kadar eski olduğunu belirlemenin yolları.
+
+    `fp usage`, kendi bayraklarını almaz — sadece genel `--json` ve `--org` bayraklarını alır. Mevcut pencereyi raporlar ve bundan önceki hiçbir şey raporlamaz; bu nedenle bir zamanlamaya göre çalıştırarak ve `--json` yükünü depolayarak kendi geçmişinizi tutun; daha sonra önceki bir pencereyi sorgulamak beklemeyin.
+
+    ```bash
+    fp --json usage | jq '.usage.events_ingested'
+    ```
   </Tab>
 </Tabs>
 
-## Bir değişikliği araştırınız
+### Metrik anahtarları
 
-1. Etkin organizasyonu ve pencereyi onaylayınız.
-2. Artışı ortama göre oturum hacmi ile karşılaştırınız.
-3. Yeni bir entegrasyonun transkript göndermeye başladığını kontrol ediniz.
-4. Değerlendirici ve denetim sıklığı değişikliklerini gözden geçiriniz.
-5. Mevcut fiyatlandırma planındaki limitlerle karşılaştırınız.
+JSON yükünde `usage` altında her şey; böylece bir komut dosyası bir paneli ayrıştırmak yerine bir alanı adlandırabilir.
 
-CLI, komut dosyaları için aynı özeti döndürür.
+| Grup | Anahtarlar |
+| --- | --- |
+| Telemetri | `events_ingested`, `sessions`, `agents`, `environments` |
+| Değerlendirmeler | `evaluation_runs`, `evaluation_finishes`, `evaluations`, `metrics` |
+| Denetimler | `audit_runs`, `audit_finishes`, `issues_created`, `alerts_created` |
+| Çalışma Alanı | `queries_created`, `dashboards_created` |
+| Erişim | `users_active`, `users_created`, `keys_active`, `keys_created` |
+
+Her işlem hattı başlanan ve bitiş sayımlarını ayrı olarak raporlar; bu nedenle `audit_runs` ile `audit_finishes` arasında bir boşluk, başlayan ancak tamamlanmayan işleri — altındaki sorun sayılarından önce kontrol etmeye değer anlamına gelir.
+
+## Bir Değişikliği İnceleyin
+
+Alım hacmi merkezi olarak değil, makine başına kararlaştırılır. Kuruluş ve pencereden başlayın, ardından ona rapor veren makinelerde neyin değiştiğini çalışın.
+
+| Neden | Nereyi Kontrol Edin | Ne Değiştirin |
+| --- | --- | --- |
+| Bir makine oturum transkriptlerini gönderiyor | O makinenin `~/.failproofai/config.json` dosyasında `collector.sessions` | Yalnızca kararları göndermek için `false` olarak ayarlayın |
+| Kancı aktivitesi tamamen gönderiyor | Aynı dosyada `collector.hooks_verbosity` | `decisions` ayarı dakikada bir toplamaya izin verir; `off` kancı etkinliklerini tamamen durdurur |
+| Yeni bir yakalama konumu eklendi | `failproofai harness list` | `failproofai harness remove-path <harness> <path or label>` ile kaldırın |
+| Geçmiş yeniden gönderildi | Makinenin `failproofai backfill` çalıştırmaları | Yeniden gönderme işlemi içerik karmasında çoğaltılır ve zaten orada olan satırlara daraltılır; bu nedenle çift sayılmaz |
+| Yeni bir entegrasyon raporlamaya başladı | `agents` ve `environments` sayımları ve oturumlar listesi | Yeni makinenin toplayıcı ayarlarını kullanıma sunmadan önce kapsamlandırın |
+
+Kullanım, plan ile hiçbir şeyi karşılaştırmaz. Bunu ürün dışında yapın.
+
+<Columns cols={2}>
+  <Card title="Ayarlar ve güvenlik" icon="lock-keyhole" href="/tr/admin/settings-and-security">
+    Bu rakamların arkasında ki makine başına veri işleme ayarları.
+  </Card>
+  <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/tr/reference/cloud-cli">
+    Yükleme ve oturum açma dahil olmak üzere tam `fp` yüzeyi.
+  </Card>
+</Columns>

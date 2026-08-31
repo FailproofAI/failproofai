@@ -1,52 +1,61 @@
 ---
-title: "Déployer des politiques sur les machines"
-description: "Savoir quelles machines sont inscrites, à jour et appliquent les versions de politiques prévues."
+title: "Couverture de la flotte"
+description: "Voyez quelles machines ont reçu et appliqué les politiques prévues."
 icon: "network"
 ---
 
-La couverture de flotte permet de vérifier si une politique existe là où le risque existe. Suivez les machines par identifiant stable et par libellé lisible, puis comparez leur état de déploiement assigné et rapporté.
+La couverture de la flotte compare ce que Cloud a assigné avec ce que chaque machine a dernièrement appliqué.
 
-## Vérifier la couverture
-
-<Tabs>
-  <Tab title="Tableau de bord">
-    1. Accédez à **Admin → application** et consultez les totaux en mode application et observation.
-    2. Recherchez une machine par identifiant ou libellé, ou filtrez les machines sans politique.
-    3. Développez une ligne pour comparer les politiques assignées, le déploiement rapporté, le dernier enregistrement et l'historique.
-    4. Actualisez après l'intervalle d'interrogation de la machine lorsqu'un déploiement appliqué reste en attente.
-
-    ![La flotte d'application affichant la couverture des politiques, l'état de déploiement des machines, et les assignations en observation et en application.](/images/dashboard/enforcement-fleet.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai config --status
-    failproofai config --machine-label checkout-runner-03
-    failproofai flush --wait
-    ```
-
-    Utilisez `fp events --agent-id <agent-id> --since 24h` pour confirmer que l'activité de l'agent de la machine atteint le Cloud.
-  </Tab>
-</Tabs>
-
-Utilisez les vues de couverture pour identifier :
-
-- Les machines qui n'ont jamais récupéré le dernier déploiement
-- Les machines inscrites qui ont cessé de remonter de l'activité
-- Une politique assignée au mauvais environnement ou cohorte
-- La dérive de version après une mise à jour interrompue
-
-Renommez une machine sans la reconnecter :
-
-```bash
-failproofai config --machine-label checkout-runner-03
-```
-
-Vérifiez l'état local :
+## Vérifier une machine
 
 ```bash
 failproofai config --status
+failproofai flush --wait --timeout 120
 ```
 
-<Tip>
-  Utilisez des libellés qui identifient la charge de travail et l'environnement. Les noms d'hôtes seuls sont souvent insuffisants après une mise à l'échelle automatique ou un remplacement de machine.
-</Tip>
+Depuis Cloud :
+
+```bash
+fp fleet list
+fp fleet diff
+fp fleet show <machine-id>
+```
+
+`fp fleet` nécessite une session authentifiée, et non une clé API.
+
+| Commande | Effet |
+| --- | --- |
+| `fp fleet list` | Lister les machines et leur état de déploiement |
+| `fp fleet show <machine>` | Afficher le jeu de politiques d'une machine |
+| `fp fleet deploy <machine> --add <ref>` | Ajouter ou mettre à jour une politique |
+| `fp fleet deploy <machine> --remove <id>` | Supprimer une politique |
+| `fp fleet deploy <machine> --set <ref>...` | Remplacer l'intégralité du jeu |
+| `fp fleet diff [machine]` | Comparer les versions prévues et appliquées |
+| `fp fleet history <machine>` | Lister les générations de déploiement |
+| `fp fleet rollback <machine> <generation>` | Restaurer une génération |
+| `fp fleet rename <machine> "<label>"` | Modifier le label Cloud |
+
+<Warning>
+  `--set` remplace l'intégralité du jeu de politiques. Un simple `--add <id>` applique immédiatement une nouvelle politique. Utilisez `--add <id>:observe` pour un déploiement en mode fantôme.
+</Warning>
+
+## Observer, puis appliquer
+
+```bash
+fp fleet deploy ci-runner-01 --add prod-guard:observe
+fp guardrails summary --since 24h --machine ci-runner-01
+fp fleet deploy ci-runner-01 --add prod-guard:enforce
+```
+
+Le mode observation évalue la politique réelle et enregistre les décisions non-allow sans bloquer l'agent.
+
+## Identité de la machine
+
+L'identifiant de la machine est stable et l'identifie de façon unique. Le label est uniquement affiché et peut être modifié :
+
+```bash
+failproofai config --machine-label checkout-runner-03
+fp fleet rename <machine-id> "Checkout runner 03"
+```
+
+Modifier le label ne reconnecte pas la machine et ne renouvelle pas ses clés.

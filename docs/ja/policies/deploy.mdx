@@ -1,51 +1,54 @@
 ---
-title: "ポリシーのデプロイ"
-description: "レビュー済みのポリシーバージョンを対象マシンに展開します。"
+title: "ポリシーをデプロイする"
+description: "実際のエージェント活動でポリシーを観測し、適用またはロールバックします。"
 icon: "cloud-upload"
 ---
 
-デプロイメントは、1つ以上のポリシーバージョンを登録済みマシンのターゲットセットに紐付けます。
+レビュー済みのポリシーを1台ずつマシンにデプロイします。まずはオブザーブモードから始めましょう。
 
-## デプロイメントの適用
+## CLIからのロールアウト
 
-<Tabs>
-  <Tab title="ダッシュボード">
-    1. **Admin → enforcement** に移動し、対象マシンを見つけて行を展開します。
-    2. **edit** を選択し、レビュー済みのポリシーバージョンを追加して、**observe** または適用する効果を選択します。
-    3. 変更を適用し、マシンの次回チェックインを待ってデプロイメントとカバレッジの状態を確認します。
-    4. **Observe → policy** に移動してリアルタイムの判断内容を確認します。
+```bash
+fp policies test ./rule.mjs --tool Bash --command "git push --force" --expect deny
+fp policies publish no-force-push ./rule.mjs
+fp fleet deploy <machine> --add no-force-push:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add no-force-push:enforce
+```
 
-    ![ポリシーバージョン、enforce・observe の効果、デプロイメント適用アクションを備えたマシンデプロイメントエディタ。](/images/dashboard/enforcement-editor.png)
-  </Tab>
-  <Tab title="CLI">
-    `fp fleet` を使用して CLI からデプロイします。適用前に結果セットを確認してください — `deploy` は全プランを出力し、**`--json` なしのインタラクティブなターミナルでのみ**確認を求めます。`--json` 指定時、`--yes` 指定時、または stdin がリダイレクトされている場合（CI ステップ、スクリプト、エージェントからのシェル呼び出しなど）は、プランや確認プロンプトなしに即座に適用されます。レビューを行いたい場合は、事前に `fp fleet show <machine>` を実行してください：
-
-    ```bash
-    fp fleet list
-    fp fleet show <machine-id>
-    fp fleet deploy <machine-id> --add no-force-push
-    ```
-
-    `fp fleet diff <machine-id>` は意図と実際の配信状況の差分を表示します（マシンは次回ポーリングまで `behind` と表示されます）。`fp fleet history <machine-id>` は世代の一覧を表示し、`fp fleet rollback <machine-id> <generation>` で特定の世代に戻すことができます — ただし、その世代が無効化または削除済みのポリシーを参照している場合は拒否されます。
-
-    マシン自体の状態は `failproofai config --status` で確認し、デプロイ後は `fp sessions --env production --since 24h` および `fp events --event-type hook_completed` を使用してアクティビティが Cloud に届いているかを検証してください。
-  </Tab>
-</Tabs>
-
-<Steps>
-  <Step title="バージョンとターゲットの選択">
-    変更可能なドラフトではなく、レビュー済みのバージョンをデプロイします。最初は本番環境以外のマシン、またはセッションを確認できる小規模なグループから始めてください。
-  </Step>
-  <Step title="判断内容の観察">
-    作業をブロックせずに、マッチ結果・理由・影響を受けるツール・誤検知を確認します。
-  </Step>
-  <Step title="適用とカバレッジの検証">
-    観察されたマッチが安全でないアクションと正当なアクションを区別できるようになってから昇格させ、意図した全マシンがデプロイメントを取得して判断内容を報告していることを確認します。
-  </Step>
-</Steps>
-
-マシンには `policies:pull` 機能が必要です。イベントレポートは `events:add` によって個別に制御されます。Cloud による分析と適用を期待する場合は、両方を確認してください。
+オブザーブモードは実際のポリシーを評価し、allow以外の判断を記録しますが、エージェントをブロックしません。
 
 <Warning>
-  エンフォースメント管理は管理者向けの Cloud ワークフローです。root 専用のエンフォースメントルートを一般的なカスタマー向け `/v1` API エンドポイントとして扱わないでください。
+  `--add no-force-push` を単独で使用すると即座に適用されます。シャドウロールアウトには `:observe` を付けてください。
 </Warning>
+
+適用によって問題が発生した場合:
+
+```bash
+fp fleet history <machine>
+fp fleet rollback <machine> <generation>
+```
+
+## ダッシュボードからのデプロイ
+
+1. **Admin → enforcement** に移動します。
+2. 対象のマシンを開きます。
+3. エフェクトを **observe** に設定してポリシーバージョンを追加します。
+4. デプロイメントを適用します。
+5. **Observe → policy** で結果を確認します。
+6. マッチ内容が正しければ、同じバージョンを **enforce** に昇格させます。
+
+![ポリシーバージョン、enforceおよびobserveエフェクト、デプロイメント適用アクションを備えたマシンデプロイメントエディタ。](/images/dashboard/enforcement-editor.png)
+
+## セットの置き換えまたは事前ステージング
+
+- `--remove <id>` は1つのポリシーを削除します。
+- `--set <ref>...` はポリシーセット全体を置き換えます。
+- `--create` はマシンが最初にチェックインする前にデプロイメントを準備します。
+- `fp fleet diff <machine>` は意図した状態と適用済みの状態を比較します。
+
+<Note>
+  Cloudなしで使用する場合は、`failproofai publish --effect observe` でパックを公開し、ローカルダッシュボードで判断内容を確認してください。
+</Note>
+
+マシンがデプロイメントを受け取るには `policies:pull` 権限が、判断を報告するには `events:add` 権限が必要です。

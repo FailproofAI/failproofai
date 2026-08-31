@@ -1,21 +1,24 @@
 ---
 title: "사용량"
-description: "조직의 소비 현황과 활성 청구 기간을 확인합니다."
+description: "현재 30일 미터링 기간 동안의 조직 소비량을 확인합니다."
 icon: "chart-no-axes-combined"
 ---
 
-사용량 페이지는 현재 조직의 소비 현황과 청구 기간을 보여줍니다. 프로덕션 롤아웃, 트랜스크립트 볼륨, 평가, 감사 주기가 플랜에 어떤 영향을 미치는지 파악하는 데 활용하세요.
+사용량은 현재 조직의 30일 기간 내 미터링된 데이터를 보여줍니다. 기간은 조직별로 고정되어 있으며, 사용량은 읽기 전용입니다. 제한, 할당량, 또는 플랜 임계값은 적용되거나 표시되지 않습니다. CLI 패널에도 "읽기 전용 사용량, 제한 없음"이라고 명시되어 있습니다.
 
 ## 사용량 확인
 
 <Tabs>
   <Tab title="대시보드">
-    1. **관리 → 사용량**으로 이동합니다.
-    2. 조직과 측정 기간을 확인합니다.
-    3. 인제스트, 세션, 평가, 메트릭, 감사, 발견 사항, 알림, 사용자, 키를 검토합니다.
-    4. 감사 사용량이 예상과 다를 경우, 시작된 감사와 완료된 감사 작업을 비교합니다.
+    1. **admin → usage**로 이동합니다.
+    2. 조직과 미터링 기간을 확인합니다. 헤더에는 기간의 시작일과 종료일, 현재 경과 일수, 진행률이 표시됩니다.
+    3. 히어로 블록을 확인합니다: 수집된 이벤트, 세션, 에이전트, 환경.
+    4. 두 파이프라인을 확인합니다: 평가(점수 및 메트릭 포함)와 감사(이슈 및 알림 포함). 각각 시작된 실행 대비 완료된 실행 수를 보여줍니다.
+    5. 워크스페이스 및 액세스 블록을 확인합니다: 저장된 쿼리, 대시보드, 알림, 고유 이슈, 멤버, API 키.
 
-    ![측정 기간, 캡처된 이벤트, 평가 및 감사 파이프라인, 워크스페이스 리소스, 멤버, API 키를 보여주는 사용량 페이지.](/images/dashboard/usage-overview.png)
+    수치는 실시간이 아닌 캐시된 데이터입니다. 변경 사항이 반영되길 기대한다면 우측 상단의 새로고침 버튼을 사용하세요.
+
+    ![미터링 기간, 수집된 이벤트, 평가 및 감사 파이프라인, 워크스페이스 리소스, 멤버, API 키가 표시된 사용량 페이지.](/images/dashboard/usage-overview.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -23,15 +26,52 @@ icon: "chart-no-axes-combined"
     fp --json usage
     fp --org reliability-team --json usage
     ```
+
+    `fp usage`는 `usage:read` 권한이 필요하며 API 키로 실행되므로, 리포팅 크론 작업에 적합한 명령어입니다.
+
+    `--json` 옵션을 사용하면 대시보드 응답을 그대로 반환합니다: `org_id`, `billing_anchor`, `window`, `usage`, `calculated_at`, `stale_after`. `calculated_at`과 `stale_after`를 통해 데이터의 최신성을 확인할 수 있습니다.
+
+    `fp usage`는 자체 플래그가 없으며 전역 옵션인 `--json`과 `--org`만 사용합니다. 현재 기간의 데이터만 보고하므로, 이전 기간을 나중에 조회하려 하기보다는 스케줄에 따라 실행하고 `--json` 페이로드를 저장하여 직접 기록을 유지하세요.
+
+    ```bash
+    fp --json usage | jq '.usage.events_ingested'
+    ```
   </Tab>
 </Tabs>
 
-## 변화 원인 파악
+### 메트릭 키
 
-1. 활성 조직과 기간을 확인합니다.
-2. 환경별 세션 볼륨과 증가 추이를 비교합니다.
-3. 새로운 인테그레이션이 트랜스크립트를 전송하기 시작했는지 확인합니다.
-4. 평가자 및 감사 주기 변경 사항을 검토합니다.
-5. 현재 요금제의 한도와 비교합니다.
+JSON 페이로드의 `usage` 하위 항목 전체 목록으로, 패널을 파싱하지 않고 스크립트에서 필드를 직접 참조할 수 있습니다.
 
-CLI는 스크립트에서도 동일한 요약 정보를 반환합니다.
+| 그룹 | 키 |
+| --- | --- |
+| 텔레메트리 | `events_ingested`, `sessions`, `agents`, `environments` |
+| 평가 | `evaluation_runs`, `evaluation_finishes`, `evaluations`, `metrics` |
+| 감사 | `audit_runs`, `audit_finishes`, `issues_created`, `alerts_created` |
+| 워크스페이스 | `queries_created`, `dashboards_created` |
+| 액세스 | `users_active`, `users_created`, `keys_active`, `keys_created` |
+
+각 파이프라인은 시작 수와 완료 수를 별도로 보고합니다. `audit_runs`와 `audit_finishes` 사이에 차이가 있다면 시작했지만 완료되지 않은 작업이 있다는 의미이므로, 하위 이슈 수치를 해석하기 전에 확인해 볼 필요가 있습니다.
+
+## 변경 사항 조사
+
+수집 볼륨은 중앙에서가 아닌 각 머신 단위로 결정됩니다. 조직과 기간을 시작점으로, 해당 조직에 데이터를 전송하는 머신에서 무엇이 변경됐는지 추적하세요.
+
+| 원인 | 확인 위치 | 변경 방법 |
+| --- | --- | --- |
+| 머신이 세션 트랜스크립트를 전송 중 | 해당 머신의 `~/.failproofai/config.json`에서 `collector.sessions` | `false`로 설정하면 결정 데이터만 전송 |
+| 훅 활동이 전체로 전송 중 | 동일 파일의 `collector.hooks_verbosity` | `decisions`는 분당 허용 건수를 집계하고, `off`는 훅 이벤트 전송을 완전히 중단 |
+| 새 캡처 위치가 추가됨 | `failproofai harness list` | `failproofai harness remove-path <harness> <path or label>`로 제거 |
+| 기록이 재전송됨 | 해당 머신의 `failproofai backfill` 실행 이력 | 재전송 시 콘텐츠 해시로 중복 제거되어 기존 행에 통합되므로 이중 집계 없음 |
+| 새 통합이 보고를 시작함 | `agents`와 `environments` 수치 및 세션 목록 | 신규 머신 배포 전 콜렉터 설정 범위를 지정 |
+
+사용량은 플랜과 비교하지 않습니다. 그런 비교는 제품 외부에서 수행하세요.
+
+<Columns cols={2}>
+  <Card title="설정 및 보안" icon="lock-keyhole" href="/ko/admin/settings-and-security">
+    이 수치들의 배경이 되는 머신별 데이터 처리 설정입니다.
+  </Card>
+  <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/ko/reference/cloud-cli">
+    설치 및 로그인을 포함한 전체 `fp` 인터페이스입니다.
+  </Card>
+</Columns>

@@ -1,21 +1,24 @@
 ---
-title: "使用量"
-description: "查看组织的消耗情况及当前计费周期。"
+title: "用量"
+description: "查看当前 30 天计量窗口内的组织消耗情况。"
 icon: "chart-no-axes-combined"
 ---
 
-使用量页面展示当前组织及其计费周期的消耗情况。通过它可以了解生产环境的推广规模、转录记录量、评估次数以及审计频率对套餐的影响。
+用量页面显示当前组织在其当前 30 天窗口内的计量数据。该窗口固定并按组织锚定，用量为只读：不应用也不显示任何限制、配额或套餐阈值。两个界面均有明确说明——CLI 面板会打印"只读用量，未应用任何限制"。
 
-## 查看使用量
+## 查看用量
 
 <Tabs>
-  <Tab title="控制台">
-    1. 进入 **Administration → Usage**。
-    2. 确认组织和计量周期。
-    3. 查看摄取量、会话数、评估次数、指标、审计、发现项、告警、用户数及密钥数。
-    4. 当审计使用量出现异常时，比较已启动和已完成的审计工作量。
+  <Tab title="仪表板">
+    1. 前往 **admin → usage**。
+    2. 确认组织和计量窗口——页眉显示窗口的开始和结束时间、当前处于窗口内的第几天，以及已消耗的时间比例。
+    3. 查看核心数据块：已摄取事件数、会话数、Agent 数和环境数。
+    4. 查看两条流水线：评估流水线（含评分和指标）和审计流水线（含问题和告警），各自显示已完成运行数与已启动运行数。
+    5. 查看工作区和访问数据块：已保存查询数、仪表板数、告警数、唯一问题数、成员数和 API 密钥数。
 
-    ![使用量页面，展示计量周期、已捕获事件、评估与审计流水线、工作区资源、成员及 API 密钥。](/images/dashboard/usage-overview.png)
+    数据为缓存值，非实时。如果预期有变更，请使用右上角的刷新按钮更新数据。
+
+    ![用量页面，显示计量窗口、已捕获事件数、评估和审计流水线、工作区资源、成员及 API 密钥。](/images/dashboard/usage-overview.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -23,15 +26,52 @@ icon: "chart-no-axes-combined"
     fp --json usage
     fp --org reliability-team --json usage
     ```
+
+    `fp usage` 需要 `usage:read` 权限，在 API 密钥下运行，因此非常适合用于定时上报的 cron 任务。
+
+    使用 `--json` 时，它将原样返回仪表板响应，包含以下字段：`org_id`、`billing_anchor`、`window`、`usage`、`calculated_at` 和 `stale_after`。`calculated_at` 和 `stale_after` 用于判断数据的新鲜程度。
+
+    `fp usage` 不接受自身的专属标志——仅支持全局标志 `--json` 和 `--org`。它只报告当前窗口的数据，不支持查询历史窗口，因此建议通过定时任务周期性运行并保存 `--json` 输出，而不是期望日后能查询更早的窗口数据。
+
+    ```bash
+    fp --json usage | jq '.usage.events_ingested'
+    ```
   </Tab>
 </Tabs>
 
-## 排查使用量变化
+### 指标字段
 
-1. 确认当前活跃的组织和计费周期。
-2. 按环境对比会话量的增长情况。
-3. 检查是否有新集成开始发送转录记录。
-4. 查看评估器和审计频率是否发生变更。
-5. 与当前定价套餐的限制进行对比。
+以下为 JSON 响应中 `usage` 对象下的所有字段，供脚本按字段名引用，无需解析面板内容。
 
-CLI 会返回相同的汇总信息，便于在脚本中使用。
+| 分组 | 字段 |
+| --- | --- |
+| 遥测 | `events_ingested`、`sessions`、`agents`、`environments` |
+| 评估 | `evaluation_runs`、`evaluation_finishes`、`evaluations`、`metrics` |
+| 审计 | `audit_runs`、`audit_finishes`、`issues_created`、`alerts_created` |
+| 工作区 | `queries_created`、`dashboards_created` |
+| 访问 | `users_active`、`users_created`、`keys_active`、`keys_created` |
+
+每条流水线分别报告已启动数和已完成数，因此若 `audit_runs` 与 `audit_finishes` 之间存在差距，说明有任务已启动但未完成——在解读下方问题计数之前值得先排查这一情况。
+
+## 排查用量变化
+
+摄取量由各机器自行决定，而非集中控制。从组织和窗口入手，再逐一排查向其上报的各机器发生了哪些变化。
+
+| 原因 | 检查位置 | 处理方式 |
+| --- | --- | --- |
+| 某机器正在发送会话记录 | 该机器 `~/.failproofai/config.json` 中的 `collector.sessions` | 设为 `false` 以仅发送决策数据 |
+| Hook 活动正在完整发送 | 同一文件中的 `collector.hooks_verbosity` | `decisions` 模式按分钟聚合允许次数；`off` 则完全停止 Hook 事件上报 |
+| 新增了捕获路径 | `failproofai harness list` | 使用 `failproofai harness remove-path <harness> <path or label>` 移除 |
+| 历史数据被重新发送 | 该机器的 `failproofai backfill` 运行记录 | 重新发送时会基于内容哈希进行去重并合并到已有行，不会重复计数 |
+| 新集成开始上报 | `agents` 和 `environments` 计数，以及会话列表 | 在推广新机器前先配置好其采集器设置 |
+
+用量不会与任何套餐进行比较，该功能需在产品外自行实现。
+
+<Columns cols={2}>
+  <Card title="设置与安全" icon="lock-keyhole" href="/zh/admin/settings-and-security">
+    这些数字背后的各机器数据处理设置。
+  </Card>
+  <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/zh/reference/cloud-cli">
+    完整的 `fp` 命令面，包括安装和登录说明。
+  </Card>
+</Columns>

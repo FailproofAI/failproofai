@@ -1,25 +1,34 @@
 ---
-title: "フック"
-description: "フックのアクティビティ、トリガー、レイテンシをポリシーの結果とは別に計測します。"
+title: "Hooks"
+description: "Failproof AI がエージェントイベントを評価し、どのような判断を下したかを確認できます。"
 icon: "webhook"
 ---
 
-フックでは、エージェントのライフサイクルフックがいつ実行されたか、またその所要時間を確認できます。ポリシーの判定結果は別のビューで確認します。
+フックとは、エージェントが Failproof AI に判断を求めるポイントです。フックアクティビティには、イベント、ポリシー、結果、および評価時間が記録されます。
+
+## フックアクティビティを調査する
 
 <Tabs>
   <Tab title="ダッシュボード">
-    1. **Observe → Hooks** に移動します。
-    2. 環境、フック名、トリガーイベント、エージェント、またはセッション ID でフィルタリングします。
-    3. フックのレイテンシと分布を確認します。
-    4. グラフ上の点またはフックのセグメントを選択して、対応するイベントを開きます。
+    **Observe → Hooks** に移動します。環境、イベント、エージェント、またはセッションでフィルタリングできます。
 
-    ![フック名とトリガーイベント別にレイテンシがグループ化されたフックページ。](/images/dashboard/hooks.png)
+    ![フック名とトリガーイベントでグループ化されたレイテンシを表示するHooksページ。](/images/dashboard/hooks.png)
   </Tab>
   <Tab title="CLI">
     ```bash
+    fp guardrails summary --since 24h
+    fp --json events --full --event-type hook_completed --session-id <session-id> --all --limit 500
     fp list hooks
-    fp events --event-type hook_triggered,hook_completed --env production --since 24h
-    fp events --search "PreToolUse" --since 24h
     ```
   </Tab>
 </Tabs>
+
+デフォルトでは、すべての `deny` および `instruct` の判断は完全な形で送信されます。繰り返される allow はノイズを減らすためにグループ化されます。`~/.failproofai/config.json` の `collector.hooks_verbosity` を `all`、`decisions`、または `off` に設定してください。
+
+<Warning>
+  フックアクティビティは評価が実行されたことを証明するものであり、ハーネスがそのイベントをブロックできることを保証するものではありません。[エンフォースメント機能](/ja/reference/harnesses#enforcement-capability) を参照してください。リストにないハーネスとイベントのペアは未検証です。
+</Warning>
+
+<Card title="ポリシーの判断" icon="shield-check" href="/ja/sessions/policy-decisions">
+  結果とポリシーで同じアクティビティを確認できます。
+</Card>

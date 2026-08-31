@@ -1,27 +1,54 @@
 ---
 title: "モデル"
-description: "モデルのレイテンシー、トークン数、コンテキスト使用量、トラフィック分布を比較します。"
+description: "モデルのレイテンシー、トークン、コンテキスト使用量、トラフィック分布を比較します。"
 icon: "cpu"
 ---
 
-モデルページを使用して、モデル、エージェント、環境、または時間範囲の変更に伴う信頼性やコストの変化を確認します。
+モデルを使用して、モデル、エージェント、環境、または時間範囲によって信頼性やコストがどのように変化したかを確認します。
 
 <Tabs>
   <Tab title="ダッシュボード">
     1. **Observe → Models** に移動します。
     2. 時間範囲を設定し、環境、モデル、エージェント、またはセッション ID でフィルタリングします。
     3. レイテンシー、トークン消費量、コンテキストウィンドウ使用量、モデル分布を確認します。
-    4. グラフ上の点または分布のセグメントを選択して、対応するイベントを開きます。
+    4. グラフのポイントまたは分布セグメントを選択すると、対応するイベントが表示されます。
 
     ![レイテンシー、パーセンタイル、トークン、コスト、コンテキストウィンドウ、モデル分布のビューを表示するモデルページ。](/images/dashboard/models.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp list models
-    fp events --event-type model_request,model_response --env production --since 24h
-    fp --json events --fields ts,agent_id,session_id,event_type,output_tokens,context_fill
+    fp events --event-type model_request,model_response --since 24h
+    fp --json events --event-type model_response --since 24h --all --limit 500 --fields ts,agent_id,session_id,output_tokens,context_window,context_fill
     ```
 
-    専用の CLI コマンドとして公開されていないモデルレベルの集計には、保存済みクエリを使用してください。
+    3つすべてに `events:read` が必要です。
+
+    `--fields` はカラムを射影するものであり、行のフィルタリングは行いません。`--event-type` および時間ウィンドウと組み合わせて使用してください。そうしないと、すべての種類のイベントの最新50件が取得され、モデル以外のイベントでは `output_tokens` と `context_fill` がすべて null になります。`--all` は `--limit`（デフォルトは50）に達した時点で停止します。
+
+    `context_fill` は `context_window` と並べて読んでください。フィルの数値は、それが測定されるウィンドウがなければ意味をなしません。
+
+    デーモンは設定を変更しない限り、すべてのイベントに環境 `local` を付与します。そのため、`--env production` はデフォルトのインストールでは何も一致しません。詳しくは[環境ラベルの変更](/ja/reference/events-and-configuration#change-an-environment-label)を参照してください。
   </Tab>
 </Tabs>
+
+## CLI で表示できること・できないこと
+
+デフォルトのイベントフィードはペイロードなしです。`output_tokens`、`context_window`、`context_fill` が昇格カラムとして含まれており、モデル呼び出しに関してそれ以外の情報は含まれていません。
+
+| 値 | 格納場所 |
+| --- | --- |
+| 出力トークン、コンテキストウィンドウ、コンテキストフィル | ライトフィードのカラム — `fp events` から直接取得可能。 |
+| モデル名 | ペイロード — `fp events --full` を使用し、1つのセッションに限定。 |
+| 入力トークン | ペイロード — SDK は両方の半分を記録しますが、昇格されるのは出力側のみ。 |
+| 呼び出しごとのレイテンシー | ライトフィードには `duration_ms` カラムがなく、SDK の `model_response` にも含まれていません。リクエストとレスポンスを対応付けることで導出してください。 |
+
+`model_request` と `model_response` は `request_id` でペアリングされます。このフィールドはリクエストとその応答を照合するために存在しており、生のイベントから呼び出しごとのレイテンシーを計算する唯一の方法です。
+
+```bash
+fp --json events --full --event-type model_request,model_response --session-id <session-id> --all --limit 500
+```
+
+モデル名は各ハーネスのトランスクリプトからそのまま取得されます。キャプチャパスにはモデル名を正規化する処理がないため、1つの基盤モデルが分布グラフ上で複数のプロバイダー固有の ID として表示されることがあります。デプロイメントで実際に使われているモデル名の表記を確認するには、`fp list models` を実行してください。
+
+専用の CLI コマンドとして公開されていないモデルレベルの集計には、保存済みクエリを使用してください。

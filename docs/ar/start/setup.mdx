@@ -1,69 +1,68 @@
 ---
----
 title: "اختر إعدادك"
-description: "اختر بين الفرض المحلي أو Failproof AI Cloud أو نشر المؤسسة."
-icon: "waypoints"
+description: "قم بتشغيل Failproof AI محليًا أو قم بتوصيل الجهاز بـ Failproof AI Cloud."
+icon: "settings"
 ---
 
-<CardGroup cols={3}>
-  <Card title="الفرض المحلي" icon="laptop">
-    ثبّت الخطافات والسياسات على جهاز. استخدم هذا عندما تحتاج إلى حماية فورية دون إرسال بيانات الجلسة إلى Cloud.
+يمكن لـ Failproof AI أن يعمل بالكامل على جهاز واحد أو الاتصال بـ Cloud للجلسات المشتركة وإدارة السياسات.
+
+## محلي، بدون حساب
+
+```bash
+npm install -g failproofai
+failproofai config
+failproofai policies add FailproofAI/policies
+failproofai
+```
+
+يقوم هذا بتثبيت الخدمة، وتوصيل الوكلاء المدعومين، وإضافة مجموعة سياسات، وفتح لوحة التحكم على `http://localhost:8020`.
+
+قم بتشغيل `failproofai audit` لمسح سجل الوكيل الموجود بالفعل على الجهاز.
+
+## توصيل Failproof AI Cloud
+
+أنشئ مفتاح جهاز في Cloud، ثم قم بتشغيل:
+
+```bash
+failproofai config --token <machine-key>
+failproofai config --machine-label checkout-runner-01
+failproofai policies add FailproofAI/policies
+failproofai config --status
+```
+
+أو قم بتصدير `FAILPROOFAI_CLOUD_TOKEN=<machine-key>` وقم بتشغيل `failproofai config` العادي. فضّل متغير البيئة على الأجهزة المشتركة وفي CI بحيث لا تصل المفتاح إلى سجل shell أو قوائم العمليات.
+
+يستخدم Cloud اتصالاً واحدًا لوظيفتين منفصلتين:
+
+- سحب السياسات المعينة لهذا الجهاز.
+- إرسال قرارات السياسة ونصوص الجلسات.
+
+لإرسال القرارات فقط، قم بالاتصال أولاً، ثم عيّن `collector.sessions` إلى `false` في `~/.failproofai/config.json`. لا تعتمد على `--no-transcripts`: مسار الإعداد الحالي يحلل العلم لكنه لا يطبقه. انظر [الأحداث والإعدادات](/ar/reference/events-and-configuration#machine-configuration).
+
+<Note>
+  `--machine-label` يعيد تسمية جهاز متصل بالفعل. قم بتشغيله بعد أمر الإعداد، وليس كجزء من الاتصال الأول.
+</Note>
+
+## إعداد غير مراقب
+
+`failproofai config` لا يتطلب علم خاص غير تفاعلي. في CI أو حاوية، فإنه يطبق الإعداد المطلوب دون طلب تأكيد.
+
+```bash
+export FAILPROOFAI_CLOUD_TOKEN="<key>"
+failproofai config
+```
+
+هناك حاجة لصلاحية المسؤول مرة واحدة لتثبيت خدمة الخلفية. لا يفتح الإعداد أبدًا موجه كلمة مرور تفاعلي `sudo`: فإما ينجح بدونها أو يطبع الأوامر التي يجب على المسؤول تشغيلها.
+
+## دعم المنصات
+
+يدعم الإعداد Linux و macOS. على منصة أخرى يخرج بدون كتابة hooks أو حالة إعداد جزئية.
+
+<CardGroup cols={2}>
+  <Card title="تحقق من التسليم" icon="activity" href="/ar/reference/troubleshooting">
+    تشخيص جلسة مفقودة أو تعيين سياسة.
   </Card>
-  <Card title="Failproof AI Cloud" icon="cloud">
-    أضف جلسات مركزية وتدقيقات وتقييمات عبر الإنترنت ولوحات معلومات وتنبيهات ونشر سياسة الأسطول.
-  </Card>
-  <Card title="نشر المؤسسة" icon="building-2">
-    استخدم عناصر تحكم المؤسسة والمفاتيح المحدودة والبنية التحتية الخاصة ومتطلبات الأمان الخاصة بالنشر.
+  <Card title="الوكلاء المدعومون" icon="bot" href="/ar/reference/harnesses">
+    انظر الأنطقة ودعم الإنفاذ لكل harness.
   </Card>
 </CardGroup>
-
-## مسار الإنتاج الموصى به
-
-1. قم بتوصيل جهاز غير متعلق بالإنتاج مع تفعيل التقاط النص.
-2. تحقق من الجلسات والتقييمات في Cloud.
-3. أنشئ تدقيقًا لحالة فشل معروفة.
-4. نشّر السياسة الأولى في وضع المراقبة.
-5. توسّع إلى الإنتاج بعد مراجعة المطابقات والإيجابيات الكاذبة.
-
-## قم بتوصيل جهاز بـ Cloud
-
-<Tabs>
-  <Tab title="لوحة المعلومات">
-    1. انتقل إلى **Administration → Keys** وأنشئ مفتاحًا باستخدام `events:add` و `policies:pull`.
-    2. انسخ السر لمرة واحدة إلى الجهاز الهدف.
-    3. بعد تشغيل أمر اتصال CLI، انتقل إلى **Admin → enforcement** وتأكد من ظهور الجهاز.
-    4. انتقل إلى **Observe → Events** وتأكد من وصول حدثه الأول.
-
-    درج المفتاح يعرض المنحتين المطلوبين للجهاز المتصل: تناول الأحداث وتسليم السياسة.
-
-    ![درج مفتاح API الجديد المستخدم لمنح أذونات تناول الأحداث وتسليم السياسة.](/images/dashboard/key-create.png)
-
-    بعد الاتصال، يجب أن يظهر الجهاز في الفرض مع حالة السياسة المطلوبة والمبلغ عنها.
-
-    ![أسطول Enforcement مع جهاز مسجل موسّع لعرض حالة السياسة المطلوبة وحالة النشر.](/images/dashboard/enforcement-fleet.png)
-
-    يؤكد الحدث الأول الذي يصل أن المراقب يمكنه تسليم البيانات إلى Cloud، بشكل مستقل عن نشر السياسة.
-
-    ![دفق الأحداث الحية يعرض أحداث الوكيل والنموذج والأداة الحديثة.](/images/dashboard/events-stream-current.png)
-
-    تابع فقط بعد رؤية الجهاز وحدثه الأول.
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai config --connect https://app.befailproof.ai \
-      --token "$FAILPROOFAI_KEY" \
-      --machine-label checkout-runner-01
-
-    failproofai policies --install --cli claude --scope user
-    failproofai config --status
-    ```
-
-    أضف `--no-transcripts` عندما يجب أن يبقى محتوى النص محليًا.
-  </Tab>
-</Tabs>
-
-يتحقق الاتصال بـ Cloud من تناول الأحداث وتسليم السياسة بشكل مستقل. قد يكون المفتاح صحيحًا إذن لكن يفتقد إلى إحدى الأذونات المطلوبة. استخدم `failproofai config --status` لرؤية الإمكانية المُعدة.
-
-<Info>
-  يكتب إعداد Cloud بيانات الاعتماد المحلية فقط بعد نجاح الإمكانية ذات الصلة. التحقق الفاشل لا يترك الجهاز يبدو متصلًا عندما لا يكون كذلك.
-</Info>

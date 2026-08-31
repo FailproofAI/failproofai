@@ -1,41 +1,58 @@
 ---
-title: "让你的 agent 万无一失"
-description: "针对每种 agent 运行环境的可观测性与执行保障——编码 CLI、聊天网关、自托管助手以及你自己的插桩 agent。"
+title: "让你的 Agent 无懈可击"
+description: "了解你的 Agent 在做什么，发现故障，并阻止其再次发生。"
 icon: "shield-check"
 ---
 
-Failproof AI 帮助团队了解 agent 的行为、找出失败原因，并在同样的问题再次发生之前部署防护措施。
+Failproof AI 帮助所有运行 Agent 的人了解发生了什么、发现故障，并防止其重复出现。
 
-**运行环境（harness）** 是指 agent 实际运行所在的容器或框架。Failproof AI 支持接入其中 12 种——包括 Claude Code、Codex 等编码 CLI，Hermes 等聊天网关，OpenClaw 等自托管助手——所有环境共享相同的事件、策略和会话历史。没有运行环境的 agent 可通过 [Python SDK](/zh/reference/custom-agents) 接入，该 SDK 提供追踪与审计功能；若要在该环境中执行策略，则需要在你自己的运行时中添加 hook。
+它支持 12 种常见的 Agent 环境，包括 Claude Code、Codex、Hermes、OpenClaw 和 Goose。基于 LangChain、CrewAI、LlamaIndex、Pydantic AI 或你自己的运行时构建的 Agent，可以通过 [Python SDK](/zh/reference/custom-agents) 接入上报。
 
 <Columns cols={2}>
-  <Card title="配置 Failproof" icon="wand-sparkles" href="/zh/start/quickstart">
-    使用技能为你的项目添加插桩、完成连接，并验证 agent 日志是否正常上报。
+  <Card title="在此机器上进行设置" icon="wand-sparkles" href="/zh/start/quickstart">
+    安装 Failproof AI，连接你的 Agent，并选择要执行的策略。
   </Card>
-  <Card title="使用 Failproof 助手" icon="message-square-text" href="/zh/sessions/assistant">
-    通过自然语言分析、查询 agent 日志，构建仪表盘并执行审计。
+  <Card title="查询你的 Agent" icon="message-square-text" href="/zh/sessions/assistant">
+    用自然语言查询会话、排查故障、构建仪表盘。
   </Card>
 </Columns>
+
+## 本地启动或连接云端
+
+<Columns cols={2}>
+  <Card title="本地模式，无需账号" icon="laptop" href="/zh/audits/local-audit">
+    在 `localhost:8020` 打开仪表盘，运行 `failproofai audit`。你的 Agent 历史记录保留在本机。
+  </Card>
+  <Card title="Failproof AI Cloud" icon="cloud" href="/zh/start/setup">
+    跨机器查看会话，并为你的团队管理策略。
+  </Card>
+</Columns>
+
+默认设置不会选择任何策略包。完成设置后可添加我们的策略包：
+
+```bash
+failproofai policies add FailproofAI/policies
+```
+
+在此之前，只有 `block-failproofai-commands` 处于运行状态，它会阻止 Agent 禁用 Failproof AI。
+
+## 你可以做什么
 
 <Columns cols={3}>
-  <Card title="查看 agent 的行为记录" icon="route" href="/zh/sessions/overview">
-    在一个会话中追踪模型调用、工具使用、错误、人工输入、延迟及策略决策。
+  <Card title="了解发生了什么" icon="route" href="/zh/sessions/overview">
+    跟踪 Agent 运行过程，查看模型调用、工具使用、错误信息及策略决策。
   </Card>
-  <Card title="系统性地发现故障" icon="scan-search" href="/zh/audits/overview">
-    对特定会话集合进行审计，审阅有证据支撑的发现，并将问题作为 issue 跟踪处理。
+  <Card title="发现故障" icon="scan-search" href="/zh/audits/overview">
+    对单次或多次运行的证据进行审查。
   </Card>
-  <Card title="防止问题复发" icon="shield-check" href="/zh/policies/overview">
-    将已知的失败模式转化为策略，观察其效果，并在你的整个 agent 集群中部署。
+  <Card title="防止故障重现" icon="shield-check" href="/zh/policies/overview">
+    先在真实活动中观察某项安全措施的效果，待时机成熟后再强制执行。
   </Card>
 </Columns>
 
-> **会话 → 审计 → 发现 → Issue → 策略**<br />
-> 追踪发生了什么，找出失败原因，管理应对措施，然后防止相同行为在后续运行中重现。
+> **会话 → 审计 → 发现 → 问题 → 策略**
+> 了解发生了什么，找到故障所在，主动响应，然后防患于未然。
 
-## 从这里开始
-
-如果你正在部署第一个插桩 agent，请从[快速入门](/zh/start/quickstart)开始。如果数据已经在上报，请打开[会话（Sessions）](/zh/sessions/overview)页面，先检查一次真实的运行记录，再配置审计或策略。
-
-<Card title="发现并预防一个故障" icon="arrow-right" href="/zh/start/quickstart">
-  完成从日志采集到安全部署策略的端到端完整工作流。
-</Card>
+<Note>
+  安装程序支持 Linux 和 macOS。请参阅[支持的 harness](/zh/reference/harnesses)，了解每种 Agent 环境可以观察或拦截的内容。
+</Note>

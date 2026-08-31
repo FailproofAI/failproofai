@@ -1,30 +1,64 @@
 ---
 title: "最初の障害チェックを実行する"
-description: "Cloud ダッシュボードまたは fp CLI からオーディットを作成し、最初の検出結果を確認します。"
+description: "failproofai audit でこのマシンのエージェント履歴をスキャンするか、Failproof AI Cloud に保存されたセッションに対して定期監査を作成します。"
 icon: "scan-search"
 ---
 
-オーディットは一連のセッションを、根拠付きの障害検出結果としてランク付けしてまとめます。まずは1つの絞り込んだ障害の問いからはじめましょう。
+監査は、一連のセッションをランク付けされた証拠付きの障害検知結果に変換します。まず、一つの具体的な障害に関する問いから始めましょう。
+
+監査には2種類あります。それぞれ異なるデータを読み取り、異なるツールに対応します。
+
+| 監査 | 読み取り対象 | アカウント | 結果の表示場所 |
+| --- | --- | --- | --- |
+| ローカル — `failproofai audit` | このマシン上のエージェント履歴 | 不要 | `http://localhost:8020/audit` |
+| クラウド — **Analyze → Audits**、または `fp` CLI | Failproof AI Cloud に保存されたセッション | 必要 | クラウドダッシュボード |
+
+まずローカル監査を実行してください。CLI 以外は何も必要ありません。結果はローカルに保存され、`FAILPROOFAI_TELEMETRY_DISABLED=1` を設定しない限り、匿名の CLI テレメトリがデフォルトで送信されます。
 
 <Tabs>
-  <Tab title="ダッシュボード">
+  <Tab title="ローカル">
+    ```bash
+    failproofai audit
+    ```
+
+    このマシン上で見つかったすべてのサポート対象エージェント履歴をスキャンし、組み込みポリシーカタログを通じてツールアクティビティを再生してから、**http://localhost:8020/audit** を開きます。結果を確認している間はプロセスを実行したままにしておき、完了したら <kbd>Ctrl</kbd>+<kbd>C</kbd> を押して終了してください。
+
+    分析結果と検知内容はこのマシン上に保存されます。無効化しない限り、匿名の CLI テレメトリがデフォルトで送信されます。スケジュールを設定すると、各スキャン時にマシンのメタデータも送信され、限定的な検知ダイジェストが送信される場合があります。
+
+    | フラグ | 動作 |
+    | --- | --- |
+    | `--schedule [days]` | タイマーでスキャンし、結果をメールで送信します。デフォルトは7日、範囲は1〜90日です。初回実行時にサインインします。 |
+    | `--email <address>` | `--schedule` と組み合わせて、プロンプトの代わりにレポートの送信先アドレスを指定します。 |
+    | `--no-schedule` | タイマーを停止します。サインイン状態は維持されます。 |
+    | `--status` | スケジュールの有効状態、レポートの送信先、デーモンの状態、次回スキャン予定時刻を表示します。 |
+
+    ```bash
+    failproofai audit --schedule 7 --email reliability@example.com
+    failproofai audit --status
+    ```
+
+    各アダプターが読み取る履歴の種類やスケジュールスキャンの動作については、[ローカルエージェント履歴の監査](/ja/audits/local-audit)を参照してください。
+  </Tab>
+  <Tab title="クラウドダッシュボード">
     <Steps>
-      <Step title="オーディットを開く">
-        Cloud のサイドバーで **Analyze → Audits** に移動し、**new audit** を選択します。
+      <Step title="Audits を開く">
+        クラウドのサイドバーで **Analyze → Audits** に移動し、**new audit** を選択します。
       </Step>
-      <Step title="オーディットを設定する">
-        名前と具体的な障害ゴールを入力します（例：「入力を変えず、エスカレーションもしないまま同じ決済呼び出しを再試行している本番セッションを見つける」）。エージェント、環境、対象期間、スケジュールを選択します。ワークフローのルールが審査担当に必要な場合は、簡潔な説明と参照 URL を追加してください。
+      <Step title="監査を設定する">
+        名前と具体的な障害目標を入力します（例：「入力を変更せずまたはエスカレーションもなしに、同じ失敗した決済呼び出しをリトライした本番セッションを特定する」）。エージェント、環境、時間ウィンドウ、スケジュールを選択してください。監査担当者がワークフロールールを把握できるよう、簡単な説明と参照 URL を追加してください。
       </Step>
       <Step title="作成して実行完了を待つ">
-        **create audit** を選択します。最初の実行はすぐにキューに登録されます。オーディットカードを開いて、queued → running → complete と進む状態を確認しましょう。
+        **create audit** を選択します。最初の実行はすぐにキューに追加されます。監査カードを開いて、キュー → 実行中 → 完了へと進む状態を確認してください。
       </Step>
     </Steps>
 
-    実行が完了したら、検出結果を開いてセッションの根拠を確認します。確認済みにする、担当者を割り当てる、却下する、ミュートする、解決済みにするといった操作が可能です。
+    実行が完了したら、検知結果を開いてセッションの証拠を確認します。その後、確認 (acknowledge)、割り当て (assign)、却下 (dismiss)、ミュート (mute)、または解決済み (resolve) としてマークできます。
 
-    ![障害の説明、推奨アクション、根拠となる証拠、影響を受けたセッションが表示された完了済みオーディット検出結果。](/images/dashboard/audit-finding.png)
+    ![完了した監査結果。障害の説明、推奨アクション、裏付けとなる証拠、および影響を受けたセッションが表示されています。](/images/dashboard/audit-finding.png)
   </Tab>
-  <Tab title="CLI">
+  <Tab title="クラウド CLI">
+    `fp` は Failproof AI Cloud の CLI です。Cloud に保存された内容を読み取るもので、このマシン上でポリシーを適用する `failproofai` とは別のプログラムです。
+
     ```bash
     fp audits create payment-retry-failures \
       --description "Find production sessions that retry a failed payment call without changing input or escalating" \
@@ -37,7 +71,7 @@ icon: "scan-search"
     fp audits finding <finding-id>
     ```
 
-    参照コンテキストを追加し、ソースが変更されたときはリフレッシュします。
+    参照コンテキストを追加し、ソースが変更されたときに更新します。
 
     ```bash
     fp audits context-set payment-retry-failures --url https://example.com/payment-runbook
@@ -45,8 +79,8 @@ icon: "scan-search"
     fp audits run payment-retry-failures
     ```
 
-    `fp audits ack <finding-id>`、`fp audits assign <finding-id> --to <email>`、`fp audits dismiss <finding-id>`、`fp audits mute <finding-id>`、`fp audits resolve <finding-id>`、または `fp audits reopen <finding-id>` を使って、トリアージの各ステップを進めましょう。
+    `fp audits ack <finding-id>`、`fp audits assign <finding-id> --to <email>`、`fp audits dismiss <finding-id>`、`fp audits mute <finding-id>`、`fp audits resolve <finding-id>`、または `fp audits reopen <finding-id>` を使用して、検知結果のトリアージを進めます。
   </Tab>
 </Tabs>
 
-次は、確認済みの再現可能なアクションに対して[最初のポリシーで障害を防ぐ](/ja/start/first-policy)ステップに進みましょう。
+次は、[ポリシーで最初の障害を防ぐ](/ja/start/first-policy)へ進み、繰り返し確認された問題のあるアクションに対処しましょう。

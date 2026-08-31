@@ -4,38 +4,49 @@ description: "事件模型、运行环境、本地存储及配置边界参考。
 icon: "list-tree"
 ---
 
-## 事件类型
+## 两套事件词汇
+
+Failproof AI 使用两种不同类型的事件，它们的名称互不重叠。
+
+| 词汇 | 生产方 | 名称示例 | 参考文档 |
+| --- | --- | --- | --- |
+| 遥测事件 | `failproofai-sdk`，来自 Agent 内部 | `tool_use`、`tool_result`、`hook_triggered`、`model_response` | [Python SDK](/zh/reference/custom-agents) |
+| Hook 事件 | Agent 运行时，由 failproofai 规范化 | `PreToolUse`、`PostToolUse`、`Stop`、`UserPromptSubmit` | [自定义策略](/zh/reference/policy-sdk#choose-the-event) |
+
+Hook 一侧将各运行时自身的事件名称规范化为 29 种标准类型；遥测一侧则有 15 个方法及其专属字段协议。`hook_triggered` 与 `PreToolUse` 并非同一事物的两种写法。
+
+## 事件分类
 
 - Agent 启动、结束、暂停与恢复
 - 模型请求与响应
 - 工具调用与结果
 - Hook 触发与完成
-- 人工等待、输入、暂停与中断
+- 等待人工输入、人工输入、暂停与中断
 - 显式错误
 
-每个事件均包含时间戳、会话 ID、Agent ID、事件类型及运行环境。事件特定字段包含模型、工具、关联、结果、内容、耗时或错误数据。
+每个事件都包含时间戳、会话 ID、Agent ID、事件类型和运行环境。事件专属字段包含模型、工具、关联、结果、内容、持续时长或错误数据。
 
-## 检查事件契约
+## 检查事件协议
 
 <Tabs>
-  <Tab title="控制台">
+  <Tab title="仪表板">
     1. 打开 **Observe → Events**。
-    2. 设置较短的时间窗口，并按环境、Agent 和事件类型进行筛选。
-    3. 选择一个事件，查看其规范化字段和原始载荷，然后进入其会话以查看执行上下文。
-    4. 如果缺少配对时长，请确认启动事件和完成事件使用了相同的关联 ID。
+    2. 设置较短的时间窗口，并按环境、Agent 和事件类型进行过滤。
+    3. 选择某个事件，查看其规范化字段和原始载荷，然后打开对应会话以查看执行上下文。
+    4. 若配对的持续时长缺失，请确认起始事件和完成事件使用了相同的关联 ID。
 
-    使用事件流将数据范围缩小至单个 Agent 运行，并检查规范化事件字段。
+    使用事件流将数据范围缩小到单次 Agent 运行，并检查规范化事件字段。
 
-    ![带有环境、Agent、会话和事件类型筛选器的实时事件流。](/images/dashboard/events-stream.png)
+    ![带有环境、Agent、会话和事件类型过滤器的实时事件流。](/images/dashboard/events-stream.png)
 
-    然后从事件跳转至其会话。执行轨迹会显示该事件前后发生的情况，这在仅凭载荷无法判断时尤为必要。
+    然后跟随事件进入其会话。执行追踪展示了该事件前后发生的内容，当单靠载荷难以判断时，这一步不可或缺。
 
-    ![用于在执行上下文中检查事件的关联会话轨迹。](/images/dashboard/session-detail.png)
+    ![用于在执行上下文中检查事件的关联会话追踪。](/images/dashboard/session-detail.png)
 
-    当配对事件或时长缺失时，可在两个视图中对比关联 ID 和时间戳。
+    当配对事件或持续时长缺失时，请在两个视图中对比关联 ID 和时间戳。
   </Tab>
   <Tab title="CLI">
-    先获取有效的筛选值，再拉取指定会话的完整事件载荷：
+    先获取有效的过滤条件，再拉取单个会话的完整事件载荷：
 
     ```bash
     fp list event_types
@@ -51,34 +62,105 @@ icon: "list-tree"
   </Tab>
 </Tabs>
 
-## 保留的 SDK 字段
+## SDK 保留字段
 
-请勿将 `timestamp`、`session_id`、`agent_id`、`type` 或 `environment` 用作自定义 Python SDK 字段。工具结果耗时等配对事件时长由 SDK 自动计算，不可手动传入。
+以下五个名称作为自定义字段会被直接拒绝，因为 SDK 会在每个事件上自动设置它们：
 
-## 本地边界
+`timestamp`、`session_id`、`agent_id`、`type`、`environment`。
 
-- Failproof AI 的状态默认存储于 `~/.failproofai`，除非显式配置为其他路径。
-- `failproofai-sdk` 始终将数据写入 `~/.failproofai/custom-agents`。`FAILPROOFAI_HOME` 可重定位主目录，但 `custom-agents` 段始终会追加在后，因此写入路径不能位于该目录之外。只有 SDK 自身的 `configure(base_dir=...)` 可将数据写到其他位置。旧版 `agenteye-collector` 会读取 `AGENTEYE_HOME` 以决定监听范围，但该变量不再影响 SDK 的写入位置。
-- 环境标签可通过 SDK 配置或 `AGENTEYE_ENVIRONMENT` 进行设置。
-- 守护进程凭据与非敏感设置分开存储。
+另有十一个字段虽然可以接受，但会进行类型检查——因为摄取端点会将它们从载荷中提取到有类型的列中，类型不匹配时会静默存储 `NULL`。SDK 会在调用处直接报错，方便你定位产生该值的代码。
 
-请使用稳定、低基数的环境名称。守护进程的环境标签不支持逗号。
+| 字段名 | 要求类型 |
+| --- | --- |
+| `duration_ms`、`input_tokens`、`output_tokens` | `int`，且在无符号 32 位范围内。传入浮点数或布尔值会报错。 |
+| `tool_name`、`tool_call_id`、`hook_name`、`hook_id`、`input_id`、`pause_id`、`error_type`、`model` | `str`。传入 `None` 会报错，因为该行虽能以 200 OK 到达，但在该字段的所有过滤器中都会不可见。 |
+
+### 持续时长
+
+SDK 会自动测量以下四对事件之间的间隔，并拒绝接受你手动传入的 `duration_ms`：`tool_use` → `tool_result`、`hook_triggered` → `hook_completed`、`agent_pause` → `agent_resume`，以及 `human_wait` → `human_input`。
+
+`model_response` 是例外情况。SDK 不会计时模型调用，因此需要你自行传入 `duration_ms`，单位为整数毫秒。有关配对匹配规则，请参阅[关联规则](/zh/reference/custom-agents)。
+
+## 本地存储边界
+
+- Failproof AI 的状态默认存储在 `~/.failproofai` 下，除非显式配置为其他路径。
+- `failproofai-sdk` 始终将数据写入 `~/.failproofai/custom-agents`。`FAILPROOFAI_HOME` 可用于迁移该主目录，但 `custom-agents` 部分始终会被追加，因此写入位置无法脱离该目录。只有 SDK 自身的 `configure(base_dir=...)` 才能写入其他位置。`AGENTEYE_HOME` 供旧版 `agenteye-collector` 读取以确定监控目标，不再影响 SDK 的写入路径。
+- 凭证存储在 `~/.failproofai/credentials.json`，权限为 `0600`。该文件刻意与 `config.json` 分离——后者以普通写入方式生成，继承 umask，因此本机所有本地用户均可读取。
+
+环境名称请使用稳定、低基数的字符串。逗号在两种写入方式中均被拒绝：守护进程会拒绝 `collector.environment` 中包含逗号的值，SDK 也会在 `configure(environment=...)` 时报错。原因在于，摄取端点会按逗号分割该字段，并跳过整行，返回 `200 OK` 但不存储任何内容。
+
+## 机器配置
+
+守护进程的非敏感配置位于 `~/.failproofai/config.json`。`hooks_verbosity`、`redact` 和 `environment` 没有对应的 CLI 参数——请直接编辑该文件。`sessions`、`hooks` 和 `machine_id` 由 `failproofai config` 在将本机连接到 Cloud 时写入。
+
+| 键 | 取值 | 默认值 | 控制内容 |
+| --- | --- | --- | --- |
+| `collector.sessions` | `true` / `false` | `false`；连接到 Cloud 后变为 `true` | 上传 Agent 会话记录。记录包含提示词、文件内容及终端粘贴的内容。 |
+| `collector.hooks` | `true` / `false` | `true` | 上传 hook 活动。包含决策和工具名称，不含文件内容。 |
+| `collector.hooks_verbosity` | `all` / `decisions` / `off` | `decisions` | `decisions` 模式会完整保留每一条 deny 和 instruct，并对约占 99% 的 allow 进行聚合。 |
+| `collector.redact` | `minimal` / `off` | `minimal` | 在数据离开本机前执行的脱敏处理。 |
+| `collector.environment` | 不含逗号的任意字符串 | `local` | 本机发送的所有事件上附加的标签。 |
+| `collector.machine_id` | 任意字符串 | 磁盘上已有的 ID，否则生成新的随机 UUID | 仪表板将该数据归属的机器标识。由 `--machine-id` 写入，不从主机名派生。 |
+
+<Note>
+  `failproofai backfill --help` 中提到了 `~/.failproofai/config.toml`，这是早期目录结构遗留的过时路径，当前版本不会写入该文件。正确的文件路径是 `config.json`。
+</Note>
+
+连接到 Cloud 后，策略决策和完整会话记录都会被上传。
+
+<Warning>
+  `--no-transcripts` 在设置流程中不会关闭会话记录上传。`failproofai config --token <key> --no-transcripts` 会解析该参数，但随后从不读取它，向导始终以 sessions 开启的状态完成连接，因此即使你认为已选择退出，会话记录仍会持续上传。
+
+  如需仅发送决策数据，请在连接后将 `~/.failproofai/config.json` 中的 `collector.sessions` 设置为 `false`：
+
+  ```json
+  {
+    "collector": {
+      "sessions": false
+    }
+  }
+  ```
+</Warning>
+
+回填操作遵循相同的采集器设置，因此不会发送配置中禁止发送的内容。重复发送是安全的：脱敏处理具有确定性，重复发送的事件哈希值与首次发送完全相同，会合并到已有的行中。
 
 ## 修改环境标签
 
-<Tabs>
-  <Tab title="控制台">
-    环境标签由发送方 SDK 或 Failproof 守护进程指定。修改后，请打开 **Observe → Sessions**，使用环境筛选器确认新会话已使用新标签。已有会话将保留原有的环境标签。
+SDK 和守护进程各自附加自己的标签，两者的设置方式不同。
 
-  </Tab>
-  <Tab title="CLI">
-    对于 `failproofai-sdk`，可在代码中配置环境，或使用其旧版环境变量进行设置。修改机器级别的配置后，请重新运行守护进程配置。
+<Tabs>
+  <Tab title="Python SDK">
+    在代码中设置，或通过发出事件的进程的环境变量设置。默认值为 `dev`。
+
+    ```python
+    import failproofai_sdk
+
+    failproofai_sdk.configure(environment="production-us-east")
+    ```
 
     ```bash
     export AGENTEYE_ENVIRONMENT=production-us-east
-    failproofai config
+    ```
+
+    `AGENTEYE_ENVIRONMENT` 仅由 `failproofai-sdk` 读取。CLI 和守护进程均不读取该变量，因此导出它不会影响机器的任何配置。
+  </Tab>
+  <Tab title="守护进程">
+    编辑 `~/.failproofai/config.json` 中的 `collector.environment`。默认值为 `local`，且没有对应的 CLI 参数。
+
+    ```json
+    {
+      "collector": {
+        "environment": "production-us-east"
+      }
+    }
+    ```
+
+    ```bash
     failproofai config --status
     fp sessions --since 1h --env production-us-east
     ```
+  </Tab>
+  <Tab title="仪表板">
+    环境标签由发出事件的 SDK 或 Failproof 守护进程指定，因此这里无需进行任何更改。在源头修改后，打开 **Observe → Sessions**，使用环境过滤器确认新会话是否携带了新值。已有会话将保留其原始环境标签。
   </Tab>
 </Tabs>

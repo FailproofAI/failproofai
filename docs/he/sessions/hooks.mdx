@@ -1,26 +1,34 @@
 ---
----
 title: "Hooks"
-description: "מדוד פעילות hook, טריגרים, וזמן השהיה בנפרד מתוצאות המדיניות."
+description: "ראו מתי Failproof AI הערך אירוע agent וממה החליט."
 icon: "webhook"
 ---
 
-Hooks מראה מתי hooks של מחזור חיים של agent רצים וכמה זמן הם לוקחים. החלטות מדיניות הן תצוגה נפרדת.
+hook הוא נקודה שבה agent מבקש מ-Failproof AI החלטה. רישום פעילות hook מתעד את האירוע, את ה-policy, את התוצאה ואת זמן ההערכה.
+
+## חקרו פעילות hook
 
 <Tabs>
   <Tab title="Dashboard">
-    1. עבור אל **Observe → Hooks**.
-    2. סנן לפי סביבה, שם hook, אירוע טריגר, agent, או session ID.
-    3. בדוק את זמן השהיה וההתפלגות של hook.
-    4. בחר נקודת תרשים או קטע hook כדי לפתוח את האירועים הבסיסיים.
+    עברו אל **Observe → Hooks**. סננו לפי environment, event, agent או session.
 
-    ![דף ה-Hooks המציג זמן השהיה מקובץ לפי שם hook ואירוע טריגר.](/images/dashboard/hooks.png)
+    ![דף Hooks המציג latency מקובצת לפי שם hook ואירוע trigger.](/images/dashboard/hooks.png)
   </Tab>
   <Tab title="CLI">
     ```bash
+    fp guardrails summary --since 24h
+    fp --json events --full --event-type hook_completed --session-id <session-id> --all --limit 500
     fp list hooks
-    fp events --event-type hook_triggered,hook_completed --env production --since 24h
-    fp events --search "PreToolUse" --since 24h
     ```
   </Tab>
 </Tabs>
+
+כברירת מחדל, כל החלטה `deny` ו-`instruct` נשלחת במלואה. אפשרויות חוזרות מקובצות כדי להפחית רעש. הגדירו `collector.hooks_verbosity` ב-`~/.failproofai/config.json` ל-`all`, `decisions` או `off`.
+
+<Warning>
+  פעילות hook מוכיחה שהערכה רצה, לא שה-harness יכול היה לחסום את האירוע הזה. ראו [יכולת כפייה](/he/reference/harnesses#enforcement-capability). זוג harness-event שאינו מופיע אינו מאומת.
+</Warning>
+
+<Card title="החלטות policy" icon="shield-check" href="/he/sessions/policy-decisions">
+  קראו את אותה פעילות לפי תוצאה ו-policy.
+</Card>

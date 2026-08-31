@@ -1,28 +1,52 @@
 ---
 title: "Evaluator SDK"
-description: "Xây dựng một dịch vụ đánh giá các phiên làm việc của Failproof AI một cách đồng bộ hoặc không đồng bộ."
+description: "Xây dựng một dịch vụ đánh giá các phiên Failproof AI một cách đồng bộ hoặc không đồng bộ."
 icon: "gauge"
 ---
 
-Một bộ đánh giá nhận một phiên làm việc của agent đã hoàn thành và trả về các tín hiệu chất lượng mà bạn quan tâm: điểm số, giải thích cho mỗi điểm số và tóm tắt tùy chọn. Failproof AI lưu trữ những kết quả này cùng với trace và biểu đồ hóa chúng trên các agent và môi trường.
+Một bộ đánh giá nhận một phiên agent đã hoàn thành và trả về các tín hiệu chất lượng bạn quan tâm: điểm số, giải thích cho mỗi điểm số và một bản tóm tắt tùy chọn. Failproof AI lưu trữ các kết quả này cùng với dấu vết và biểu đồ chúng trên các agent và môi trường.
+
+Gói là `agenteye-evaluator`, được nhập dưới dạng `agenteye_evaluator`. Nó yêu cầu Python 3.10 hoặc mới hơn và phụ thuộc vào `fastapi`, `pydantic>=2` và `structlog`.
+
+<Warning>
+  **`pip install agenteye-evaluator` từ PyPI công khai không phải là đường dẫn cài đặt.** Gói chỉ được phát hành dưới dạng tạo phẩm phát hành riêng, và tên này không được yêu cầu trên PyPI công khai — một lệnh cài đặt không xác định có thể kéo gói của một người lạ vào dịch vụ đọc các bản ghi sản xuất của bạn. Sử dụng bảng dưới đây.
+</Warning>
 
 ## Thiết lập một bộ đánh giá
 
 <Steps>
-  <Step title="Cài đặt Evaluator SDK">
-    Cài đặt SDK và máy chủ được sử dụng để chạy nó.
+  <Step title="Cài đặt SDK">
+    Thực hiện tuần tự và dừng ở bước đầu tiên phù hợp.
+
+    Trong monorepo, nơi có thư mục `evaluator-sdk/`:
 
     ```bash
-    pip install failproofai-sdk uvicorn
+    pip install ./evaluator-sdk
+    ```
+
+    Nếu không, từ phiên bản phát hành riêng. Các wheel được đính kèm vào GitHub Releases trên `agenteye-enterprise/releases`, được gắn thẻ `evaluator-sdk/v<version>`, và bạn cần `gh auth login` cộng với quyền truy cập vào kho lưu trữ đó:
+
+    ```bash
+    gh release download evaluator-sdk/v<version> \
+      --repo agenteye-enterprise/releases --pattern '*.whl'
+    pip install ./agenteye_evaluator-*.whl
+    ```
+
+    Nếu cách nào cũng không hoạt động, hãy yêu cầu liên hệ Failproof AI của bạn cung cấp wheel thay vì tự ý cài đặt.
+
+    `uvicorn` cố tình không phải là một phụ thuộc, vì vậy cài đặt máy chủ riêng biệt:
+
+    ```bash
+    pip install 'uvicorn[standard]'
     ```
   </Step>
 
   <Step title="Xác định những gì cần đánh giá">
-    Tạo `evaluator.py`. Ví dụ này kiểm tra xem phiên có chứa bất kỳ lệnh gọi công cụ nào bị lỗi hay không.
+    Tạo `evaluator.py`. Ví dụ này kiểm tra xem phiên có chứa bất kỳ lệnh gọi công cụ nào không thành công không.
 
     ```python
     import os
-    from failproofai.evaluator import Evaluator, EvalResponse
+    from agenteye_evaluator import Evaluator, EvalResponse
 
     app = Evaluator(token=os.environ.get("EVALUATOR_TOKEN"))
 
@@ -41,10 +65,16 @@ Một bộ đánh giá nhận một phiên làm việc của agent đã hoàn th
             reasoning={"tool_reliability": f"{tool_errors} tool errors"},
         )
     ```
+
+    Hàm tạo đầy đủ là `Evaluator(token: str | None = None, *, title: str = "AgentEye Evaluator")`. Token được so sánh với `hmac.compare_digest`; `title` là tiêu đề ứng dụng FastAPI và chỉ có tác dụng thẩm mỹ.
+
+    <Warning>
+      `token=None` vô hiệu hóa toàn bộ xác thực. Điều đó không sao trên máy tính xách tay nhưng là lỗ hổng trong sản xuất, nơi điểm cuối nhận toàn bộ bản ghi phiên.
+    </Warning>
   </Step>
 
-  <Step title="Chạy và kiểm tra cục bộ">
-    Đặt một mã thông báo được chia sẻ, khởi động bộ đánh giá và xác nhận endpoint kiểm tra sức khỏe của nó phản hồi.
+  <Step title="Chạy và kiểm tra nó cục bộ">
+    Đặt token chung, khởi động bộ đánh giá và xác nhận điểm cuối sức khỏe của nó phản hồi.
 
     ```bash
     export EVALUATOR_TOKEN=<shared-token>
@@ -56,30 +86,32 @@ Một bộ đánh giá nhận một phiên làm việc của agent đã hoàn th
     ```bash
     curl http://127.0.0.1:8080/health
     ```
+
+    Mỗi bộ trang trí trả về chức năng không thay đổi, vì vậy `evaluate(req)` vẫn có thể được gọi trực tiếp. Đó là lý do tại sao các bài kiểm tra đơn vị rẻ tiền — xây dựng một `EvalRequest` và gọi trình xử lý, không có HTTP liên quan.
   </Step>
 </Steps>
 
 ## Kết nối bộ đánh giá với Failproof AI
 
-1. Triển khai bộ đánh giá tại một URL HTTPS có thể được Failproof AI Cloud truy cập.
-2. Cấu hình `EVALUATOR_ENDPOINT` với URL đó và đặt `EVALUATOR_TOKEN` thành mã thông báo giống như được sử dụng bởi bộ đánh giá. Đối với Cloud được quản lý, hãy liên hệ [support@befailproof.ai](mailto:support@befailproof.ai) để cấu hình kết nối.
-3. Chạy một đánh giá và xác nhận rằng điểm số của nó xuất hiện trong Failproof AI.
+1. Triển khai bộ đánh giá tại một URL HTTPS có thể truy cập được bởi Failproof AI Cloud.
+2. Cấu hình `EVALUATOR_ENDPOINT` với URL đó và đặt `EVALUATOR_TOKEN` thành token tương tự được sử dụng bởi bộ đánh giá. Để quản lý Cloud, hãy liên hệ [support@befailproof.ai](mailto:support@befailproof.ai) để cấu hình kết nối.
+3. Chạy một đánh giá và xác nhận các điểm số của nó xuất hiện trong Failproof AI.
 
 <Tabs>
-  <Tab title="Dashboard">
-    Mở một phiên đã hoàn thành trong **Observe → Sessions** và chọn **Run evaluation** nếu nó chưa được đánh giá tự động. Xem trạng thái, điểm số, lý do và tóm tắt trong bảng **Evaluation** của phiên.
+  <Tab title="Bảng điều khiển">
+    Mở một phiên đã hoàn thành dưới **Observe → Sessions** và chọn **Run evaluation** nếu nó chưa được đánh giá tự động. Xem lại trạng thái, điểm số, lý do và tóm tắt trong bảng **Evaluation** của phiên.
 
-    Sử dụng **Observe → Evaluations** để so sánh điểm số trên các agent hoặc môi trường. Sử dụng **Observe → Metrics** để xem độ trễ, chi phí, token và các phép đo số khác.
+    Sử dụng **Observe → Evaluations** để so sánh điểm số trên các agent hoặc môi trường. Sử dụng **Observe → Metrics** để có độ trễ, chi phí, token và các phép đo số khác.
 
     Bắt đầu với một phiên để xác nhận rằng bộ đánh giá đã trả về các khóa điểm số dự kiến và lý do hữu ích cho lần chạy cụ thể đó.
 
-    ![Chế độ xem chi tiết phiên hiển thị điểm số đánh giá và lý do bên cạnh trace của nó.](/images/dashboard/session-detail.png)
+    ![Một chế độ xem chi tiết phiên hiển thị điểm đánh giá và lý do bên cạnh dấu vết của nó.](/images/dashboard/session-detail.png)
 
-    Khi kết quả riêng lẻ trông đúng, hãy sử dụng bảng điều khiển đánh giá để so sánh những điểm số đó theo thời gian và trên các agent hoặc môi trường.
+    Khi các kết quả riêng lẻ trông chính xác, hãy sử dụng bảng điều khiển đánh giá để so sánh các điểm số đó theo thời gian và trên các agent hoặc môi trường.
 
-    ![Bảng điều khiển chất lượng biểu đồ điểm số bộ đánh giá theo thời gian.](/images/dashboard/dashboard-quality.png)
+    ![Bảng điều khiển chất lượng biểu đồ điểm đánh giá theo thời gian.](/images/dashboard/dashboard-quality.png)
 
-    Một biểu đồ lành mạnh sẽ sử dụng tên điểm số ổn định; thay đổi khóa sẽ tạo một chuỗi riêng biệt.
+    Một biểu đồ lành mạnh nên sử dụng tên điểm số ổn định; thay đổi khóa sẽ tạo một chuỗi riêng biệt.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -89,15 +121,36 @@ Một bộ đánh giá nhận một phiên làm việc của agent đã hoàn th
   </Tab>
 </Tabs>
 
-Đối với một instance Cloud tự lưu trữ, đánh giá tự động bị tắt cho đến khi `EVALUATOR_ENDPOINT` được đặt trên quy trình máy chủ. Khởi động lại máy chủ sau khi thay đổi các biến môi trường của bộ đánh giá.
+Đối với một phiên Cloud được tự lưu trữ, đánh giá tự động bị vô hiệu hóa cho đến khi `EVALUATOR_ENDPOINT` được đặt trên quy trình máy chủ. Khởi động lại máy chủ sau khi thay đổi các biến môi trường bộ đánh giá.
 
-Dịch vụ này cung cấp `GET /health`, `GET /config`, `POST /evaluate` và tùy chọn `GET /evaluate/{job_id}`. Trả về `JobPending` để thực hiện công việc không đồng bộ và đăng ký `@app.job_lookup` để Failproof AI có thể thăm dò nó.
+## Bộ trang trí và tuyến
 
-Khi một mã thông báo được cấu hình, tất cả các route ngoại trừ health yêu cầu cùng mã thông báo bearer mà Failproof AI gửi như `EVALUATOR_TOKEN`.
+| Bộ trang trí | Tuyến | Bắt buộc |
+| --- | --- | --- |
+| `@app.evaluator` | `POST /evaluate` | Có. |
+| `@app.job_lookup` | `GET /evaluate/{job_id}` | Chỉ nếu bạn từng trả về `JobPending`. Nếu không, các bình chọn sẽ nhận được 404. |
+| `@app.config` | `GET /config` | Không, nhưng bắt buộc đối với bất kỳ phiên nào không bao giờ phát ra `agent_end` — xem dưới đây. |
+
+Mỗi bộ trang trí chấp nhận một chức năng đồng bộ hoặc không đồng bộ, trả nó không thay đổi và tăng `ValueError` nếu bạn đăng ký nó hai lần.
+
+| Tuyến | Xác thực |
+| --- | --- |
+| `GET /health` | Mở ngay cả khi đặt token. |
+| `POST /evaluate` | Bearer. |
+| `GET /evaluate/{job_id}` | Bearer. |
+| `GET /config` | Bearer. |
+
+Khớp lược đồ người mang không phân biệt chữ hoa chữ thường. `GET /config` mà không có `@app.config` được đăng ký vẫn trả về `{"default_poll_interval_secs": 10}`, vì vậy SDK luôn quảng cáo một nhịp độ.
+
+SDK giới hạn các phần thân yêu cầu đánh giá ở 25 MiB, được kiểm tra dựa trên `Content-Length` trước khi phần thân được đọc. Vượt quá giới hạn là 413, đó là 4xx và do đó là đầu cuối. Các trường yêu cầu không xác định bị bỏ qua để các dịch vụ vẫn tương thích khi hợp đồng sự kiện phát triển.
+
+<Warning>
+  Đăng ký `@app.config` với `inactivity_timeout_secs` là những gì cho phép trình quét fallback. Nếu không, một phiên không bao giờ phát ra `agent_end` — bất cứ điều gì bị từ bỏ, bị sự cố hoặc vẫn đang nhàn rỗi — sẽ không bao giờ được xếp hàng để đánh giá. Giá trị bằng không hoặc nhỏ hơn sẽ bị loại bỏ.
+</Warning>
 
 ## Các loại SDK
 
-| Loại | Các trường |
+| Loại | Trường |
 | --- | --- |
 | `AgentEvent` | `id`, `ts`, `event_type`, `payload` |
 | `EvalRequest` | `schema_version`, `session_id`, `agent_id`, `environment`, `started_at`, `ended_at`, `events` |
@@ -105,22 +158,55 @@ Khi một mã thông báo được cấu hình, tất cả các route ngoại tr
 | `JobPending` | `job_id`, `next_poll_secs` |
 | `EvaluatorConfig` | `inactivity_timeout_secs`, `default_poll_interval_secs` |
 
-## Các decorator và route
+## Các trường yêu cầu và phản hồi
 
-| Decorator | Route | Bắt buộc |
+| Trường | Loại | Ghi chú |
 | --- | --- | --- |
-| `@app.evaluator` | `POST /evaluate` | Có |
-| `@app.job_lookup` | `GET /evaluate/{job_id}` | Khi trả về `JobPending` |
-| `@app.config` | `GET /config` | Không |
+| `EvalRequest.schema_version` | `str` | Hiện tại `"1"`. |
+| `session_id`, `agent_id`, `environment` | `str` | Nhận dạng phiên và môi trường. |
+| `started_at` | `datetime` | Dấu thời gian của sự kiện đầu tiên. |
+| `ended_at` | `datetime \| None` | Dấu thời gian của sự kiện `agent_end`, không phải "khi phiên dừng lại". Các phiên được xếp hàng bởi trình quét không hoạt động không bao giờ có `agent_end` và đến `None`. |
+| `events` | `list[AgentEvent]` | Luồng sự kiện được sắp xếp đầy đủ. |
+| `AgentEvent.id` | `int` | Định danh hàng sự kiện phụ trợ. |
+| `AgentEvent.ts` | `datetime` | Dấu thời gian sự kiện. |
+| `AgentEvent.event_type` | `str` | Họ sự kiện chẳng hạn như `tool_use`. |
+| `AgentEvent.payload` | `dict[str, Any]` | Toàn bộ JSON sự kiện được làm phẳng, vì vậy các trường dành riêng cho sự kiện nằm ở cấp độ cao nhất và `payload["type"]` trùng lặp `event_type`. |
+| `EvalResponse.scores` | `dict[str, float] \| None` | Các kích thước số được biểu đồ trong các đánh giá. |
+| `EvalResponse.reasoning` | `dict[str, str] \| None` | Giải thích cho mỗi điểm số; các khóa phải phản ánh `scores`. |
+| `EvalResponse.summary` | `str \| None` | Tường thuật đánh giá tổng thể. Bị cắt ở 8192 byte ở phía máy chủ; `last_error` ở 2048. |
 
-SDK giới hạn phần thân yêu cầu đánh giá ở mức 25 MiB. Các trường yêu cầu không xác định sẽ bị bỏ qua để các dịch vụ vẫn tương thích khi hợp đồng sự kiện phát triển.
+Tuần tự hóa sử dụng `exclude_none`, vì vậy các trường không được đặt bị bỏ qua thay vì được gửi dưới dạng `null`.
+
+<Warning>
+  Dẫn xuất một khoảng thời gian từ `ended_at` sẽ gặp sự cố với dữ liệu thực. Mỗi phiên mà trình quét không hoạt động xếp hàng đều đến với `ended_at` được đặt thành `None`. Kiểm tra trước khi trừ.
+</Warning>
+
+## Các hình dạng trả về
+
+Trình xử lý của bạn có thể trả về chính xác một trong ba điều. Bất cứ điều gì khác là `TypeError`, bề mặt dưới dạng 500.
+
+| Trả về | Wire `status` | Đầu cuối |
+| --- | --- | --- |
+| `EvalResponse(...)` | `done` | Có — điểm số được lưu trữ. |
+| `JobPending(job_id=...)` | `pending` | Không — máy chủ bình chọn. |
+| Một `dict` thô với `status` trong `done`, `pending` hoặc `error` | Như đã cho | `error` là đầu cuối. |
+
+Trạng thái `error` không có mô hình được nhập. Để thất bại cuối cùng bạn phải trả về một dict thô, và `error` phải là `str` không trống:
+
+```python
+return {"status": "error", "error": "model service unavailable"}
+```
+
+<Warning>
+  **Tăng không phải là báo cáo.** Một ngoại lệ trở thành 500 chung có phần thân `"evaluator raised an internal error"` — văn bản ngoại lệ của bạn không bao giờ đến máy chủ, và máy chủ coi mọi 5xx là tạm thời và thử lại. Trả về `error` dict khi bạn muốn ghi lại lỗi.
+</Warning>
 
 ## Trả về công việc không đồng bộ
 
-Sử dụng `JobPending` khi đánh giá không thể hoàn thành trong một yêu cầu. ID công việc không rõ ràng đối với Failproof AI và phải vẫn có thể giải quyết được bởi dịch vụ của bạn cho đến khi kết quả được thu thập hoặc timeout của máy chủ hết hạn.
+Sử dụng `JobPending` khi đánh giá không thể kết thúc trong một yêu cầu. ID công việc là không rõ ràng đối với Failproof AI và phải vẫn có thể được giải quyết bởi dịch vụ của bạn cho đến khi kết quả được thu thập hoặc hết thời gian chờ máy chủ.
 
 ```python
-from failproofai.evaluator import EvalRequest, EvalResponse, Evaluator, JobPending
+from agenteye_evaluator import EvalRequest, EvalResponse, Evaluator, JobPending
 
 app = Evaluator(token="shared-secret")
 
@@ -141,50 +227,38 @@ def lookup(job_id: str):
     )
 ```
 
-Tần suất thăm dò được chọn theo thứ tự này: `JobPending.next_poll_secs`, `EvaluatorConfig.default_poll_interval_secs`, sau đó là `EVALUATOR_POLLING_INTERVAL_SECS` của máy chủ. Các giá trị được cố định giữa 1 giây và 1 giờ. Giới hạn thăm dò theo đồng hồ treo tường mặc định của máy chủ là một giờ.
+Nhịp độ bình chọn được chọn theo thứ tự này: `JobPending.next_poll_secs`, `EvaluatorConfig.default_poll_interval_secs`, sau đó là `EVALUATOR_POLLING_INTERVAL_SECS` của máy chủ. Các giá trị được kẹp giữa 1 giây và 1 giờ. Giới hạn bình chọn thời gian treo theo mặc định của máy chủ là một giờ, sau đó kết quả sẽ được ghi lại dưới dạng `timeout`.
 
-## Các trường yêu cầu và phản hồi
+## Cài đặt người vận hành máy chủ
 
-| Trường | Loại | Ghi chú |
-| --- | --- | --- |
-| `EvalRequest.schema_version` | `str` | Hiện tại là "1". |
-| `session_id`, `agent_id`, `environment` | `str` | Danh tính phiên và môi trường. |
-| `started_at` | `datetime` | Dấu thời gian của sự kiện đầu tiên. |
-| `ended_at` | `datetime \| None` | Xuất hiện khi phiên phát ra sự kiện kết thúc. |
-| `events` | `list[AgentEvent]` | Alluận dòng sự kiện đầy đủ được sắp xếp. |
-| `AgentEvent.id` | `int` | Định danh hàng sự kiện backend. |
-| `AgentEvent.ts` | `datetime` | Dấu thời gian sự kiện. |
-| `AgentEvent.event_type` | `str` | Gia đình sự kiện như `tool_use`. |
-| `AgentEvent.payload` | `dict[str, Any]` | Tải trọng sự kiện hoàn chỉnh. |
-| `EvalResponse.scores` | `dict[str, float] \| None` | Các chiều số được biểu đồ hóa trong các đánh giá. |
-| `EvalResponse.reasoning` | `dict[str, str] \| None` | Giải thích từng điểm; các khóa nên phản chiếu `scores`. |
-| `EvalResponse.summary` | `str \| None` | Tường thuật đánh giá tổng thể. |
-
-## Cài đặt của nhà khai thác máy chủ
-
-Đánh giá tự động là toàn bộ triển khai và vẫn bị tắt khi `EVALUATOR_ENDPOINT` vắng mặt.
+Đánh giá tự động ở mức triển khai và vẫn bị vô hiệu hóa khi `EVALUATOR_ENDPOINT` không có.
 
 | Biến | Mặc định | Mục đích |
 | --- | --- | --- |
-| `EVALUATOR_ENDPOINT` | không được đặt | URL cơ sở của dịch vụ bộ đánh giá. |
-| `EVALUATOR_TOKEN` | không được đặt | Mã thông báo bearer được chia sẻ với `Evaluator(token=...)`. |
-| `EVALUATOR_WORKERS` | `2` | Công nhân dispatcher đồng thời. |
-| `EVALUATOR_CLAIM_BATCH` | `4` | Phiên được yêu cầu trên mỗi lần vượt qua dispatcher. |
-| `EVALUATOR_POLLING_INTERVAL_SECS` | `10` | Tần suất thăm dò không đồng bộ dự phòng. |
-| `EVALUATOR_REQUEST_TIMEOUT_MS` | `30000` | Timeout bộ đánh giá trên mỗi yêu cầu. |
-| `EVALUATOR_MAX_ATTEMPTS` | `5` | Nỗ lực gửi trước lỗi cuối cùng. |
-| `EVALUATOR_CONFIG_REFRESH_SECS` | `300` | Tần suất làm mới cho `/config`. |
-| `EVALUATOR_MAX_POLL_DURATION_SECS` | `3600` | Thời gian thăm dò không đồng bộ tối đa theo đồng hồ treo tường. |
+| `EVALUATOR_ENDPOINT` | chưa đặt | URL cơ sở của dịch vụ bộ đánh giá. |
+| `EVALUATOR_TOKEN` | chưa đặt | Mã thông báo người mang được chia sẻ với `Evaluator(token=...)`. |
+| `EVALUATOR_WORKERS` | `2` | Các công nhân bộ phát điều độc lập. |
+| `EVALUATOR_CLAIM_BATCH` | `4` | Phiên được yêu cầu cho mỗi lần vượt qua bộ phát điều. |
+| `EVALUATOR_POLLING_INTERVAL_SECS` | `10` | Nhịp độ bình chọn không đồng bộ dự phòng. |
+| `EVALUATOR_REQUEST_TIMEOUT_MS` | `30000` | Hết thời gian chờ bộ đánh giá cho mỗi yêu cầu, được áp dụng cho POST và cho mỗi bình chọn. |
+| `EVALUATOR_MAX_ATTEMPTS` | `5` | Nỗ lực gửi trước khi thất bại cuối cùng. |
+| `EVALUATOR_CONFIG_REFRESH_SECS` | `300` | Nhịp độ làm mới cho `/config`. |
+| `EVALUATOR_MAX_POLL_DURATION_SECS` | `3600` | Thời gian bình chọn không đồng bộ tối đa theo thời gian treo. |
 
-Máy chủ cũng có thể hạn chế những tổ chức nào sử dụng bộ đánh giá toàn bộ triển khai. Coi các thay đổi endpoint, token, retry và organization-gate là cấu hình của nhà khai thác và khởi động lại hoặc triển khai máy chủ sau khi thay đổi chúng.
+Hai hệ quả của bảng đó đáng được nêu rõ ràng:
 
-## Bảo mật và vận hành
+- **Các công nhân lần nhóm yêu cầu là đồng thời của bạn.** Theo mặc định là 8 cuộc gọi đồng thời chống lại điểm cuối của bạn, trên toàn bộ triển khai. Hạn chế dịch vụ cho con số đó, không chỉ cho một.
+- **4xx là đầu cuối và 5xx, 429 hoặc lỗi vận chuyển sẽ được thử lại** với backoff lên tới `EVALUATOR_MAX_ATTEMPTS`. Một không khớp token là 401, vì vậy nó thất bại ngay lập tức thay vì thử lại — đó là những gì cần kiểm tra trước tiên khi không có gì đến.
 
-- Đặt bộ đánh giá đằng sau HTTPS khi lưu lượng truy cập vượt qua ranh giới mạng đáng tin cậy.
-- Cấu hình một mã thông báo bearer không trống và giữ nó giống nhau trên cả hai dịch vụ.
-- Không ghi nhật ký mã thông báo hoặc các lời nhắc nhạy cảm đầy đủ từ tải trọng yêu cầu.
-- Làm cho các trình xử lý đồng bộ là idempotent; lần thử lại có thể lặp lại một yêu cầu.
+Máy chủ cũng có thể giới hạn các tổ chức nào sử dụng bộ đánh giá toàn cầu triển khai. Coi các thay đổi điểm cuối, mã thông báo, thử lại và tổ chức như cấu hình nhà khai thác và khởi động lại hoặc triển khai máy chủ sau khi thay đổi chúng.
+
+## Bảo mật và hoạt động
+
+- Đặt bộ đánh giá đằng sau HTTPS khi lưu lượng truy cập vượt qua giới hạn mạng đáng tin cậy.
+- Cấu hình một mã thông báo người mang không trống và giữ nó giống hệt trên cả hai dịch vụ. `token=None` chấp nhận mọi người gọi.
+- Không ghi nhật ký mã thông báo hoặc các lời nhắc nhạy cảm đầy đủ từ các tải trọng yêu cầu. SDK không: các lỗi xác thực trả về 422 mà không lặp lại tải trọng, 500s không bao giờ lặp lại văn bản ngoại lệ, và mã thông báo không xuất hiện trong trường nhật ký nào.
+- Làm cho các trình xử lý đồng bộ thành lũy đẳng; các lần thử lại có thể lặp lại một yêu cầu.
 - Duy trì trạng thái công việc không đồng bộ bên ngoài bộ nhớ quy trình trong sản xuất.
-- Trả về các khóa điểm số ổn định. Đổi tên khóa sẽ tạo một chuỗi biểu đồ mới thay vì thay đổi chuỗi cũ.
+- Trả về các khóa điểm số ổn định. Đổi tên khóa sẽ tạo một chuỗi biểu đồ mới thay vì thay đổi cái cũ.
 
-SDK phát ra các nhật ký vòng đời có cấu trúc như `eval received`, `eval responded`, `job lookup`, `config returned`, `auth rejected` và ngoại lệ trình xử lý. Nó không cấu hình các trình xử lý ghi nhật ký; hãy sử dụng cấu hình ghi nhật ký của ứng dụng chủ.
+SDK phát ra các nhật ký vòng đời có cấu trúc chẳng hạn như `eval received`, `eval responded`, `job lookup`, `config returned`, `auth rejected` và các ngoại lệ trình xử lý. Phản hồi `/config` gắn thẻ `source="user"` dựa trên `source="default"`, vì vậy bạn có thể biết liệu `@app.config` của bạn đã được chọn. Nó không cấu hình các trình xử lý ghi nhật ký; sử dụng cấu hình ghi nhật ký của ứng dụng chủ.

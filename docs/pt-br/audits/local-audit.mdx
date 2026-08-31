@@ -1,74 +1,56 @@
 ---
 title: "Auditar histórico local do agente"
-description: "Escaneie históricos de CLIs de agentes suportados offline e revise comportamentos arriscados ou dispendiosos localmente."
+description: "Analise o histórico do agente nesta máquina em busca de comportamentos arriscados ou ineficientes."
 icon: "laptop-minimal-check"
 ---
 
-Use uma auditoria local para uma revisão imediata e privada antes de conectar uma máquina ao Failproof AI Cloud. Ela escaneia os históricos de agentes já armazenados na sua máquina, reproduz a atividade de ferramentas por meio de políticas integradas e abre um painel de resultados local.
+Uma auditoria local lê o histórico do agente já presente nesta máquina e abre os resultados em `http://localhost:8020/audit`. Não requer conta.
 
-## Executar uma auditoria interativa
+```bash
+failproofai audit
+```
 
-<Tabs>
-  <Tab title="Dashboard">
-    A auditoria local é iniciada pela CLI, pois ela precisa descobrir os históricos na máquina atual. Execute `failproofai audit`; após o escaneamento, o Failproof AI inicia o painel integrado e abre **http://localhost:8020/audit**.
+A varredura cobre o histórico de todos os harnesses suportados que forem encontrados. Ela reproduz o catálogo de 39 políticas integrado a esta versão; pacotes instalados e políticas personalizadas não são incluídos.
 
-    Na visualização de auditoria, revise o número de sessões, chamadas de ferramentas, projetos e ocorrências de políticas. Comece pelas descobertas mais frequentes e, em seguida, inspecione o projeto afetado e o histórico do agente antes de habilitar a aplicação de políticas.
+## Interpretar o resultado
 
-    <Info>O painel de auditoria local é separado de **Analyze → Audits** no Failproof AI Cloud. As auditorias locais permanecem na máquina e não exigem conta ou conexão de rede.</Info>
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    npm install -g failproofai
-    failproofai audit
-    ```
+Comece pelas ocorrências mais frequentes e, em seguida, abra a sessão afetada antes de ativar a aplicação das regras.
 
-    O comando realiza um escaneamento completo de todos os históricos suportados encontrados. O comando atual não aceita filtros como `--since`, `--cli`, `--project`, `--port` ou `--no-open`.
+Três limitações são importantes:
 
-    Mantenha o processo em execução enquanto usar o painel local. Pressione <kbd>Ctrl</kbd>+<kbd>C</kbd> quando terminar.
-  </Tab>
-</Tabs>
+- A auditoria reconstrói eventos de ferramentas, não eventos `Stop`, portanto políticas do tipo `require-*-before-stop` não aparecem.
+- Oito verificações "somente auditoria" identificam padrões ineficientes sem uma política de correspondência exata.
+- `warn-repeated-tool-calls` é ignorado porque reproduzi-lo modificaria o estado do lado do transcript.
 
-Os adaptadores de auditoria atuais conseguem ler históricos do Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory, Devin, Antigravity e Goose. Apenas os históricos disponíveis localmente são escaneados.
+Para uma ocorrência que pode ser aplicada como regra, utilize o comando de política exibido no resultado. Verifique o [suporte de aplicação do harness](/pt-br/reference/harnesses#enforcement-capability) antes de depender dele.
 
-## Agendar auditorias locais recorrentes
+O resultado em cache fica em `~/.failproofai/audit/dashboard.json` e expira após sete dias.
 
-<Tabs>
-  <Tab title="Dashboard">
-    Abra **Settings** no painel local, habilite as auditorias agendadas, escolha o intervalo e defina o endereço de e-mail que deve receber os resultados. O painel e a CLI atualizam a mesma configuração da máquina.
-  </Tab>
-  <Tab title="CLI">
-    Habilite uma auditoria semanal e envie os resultados para o endereço indicado:
+## Agendar varreduras
 
-    ```bash
-    failproofai audit --schedule 7 --email reliability@example.com
-    failproofai audit --status
-    ```
+```bash
+failproofai audit --schedule 7
+failproofai audit --status
+failproofai audit --no-schedule
+```
 
-    O intervalo aceita de 1 a 90 dias e o padrão é 7 quando omitido. A primeira configuração realiza o login quando necessário; `--email` fornece o endereço do relatório sem solicitar confirmação.
+O intervalo aceita de 1 a 90 dias e o padrão é 7. O agendamento pela primeira vez requer autenticação interativa. O serviço em segundo plano deve estar em execução.
 
-    Interrompa o agendamento sem excluir o histórico de auditorias locais:
+### O que sai da máquina
 
-    ```bash
-    failproofai audit --no-schedule
-    ```
-  </Tab>
-</Tabs>
+Uma auditoria interativa não envia nenhuma ocorrência. A telemetria anônima da CLI está habilitada por padrão; desative-a com `FAILPROOFAI_TELEMETRY_DISABLED=1`.
 
-O daemon executa escaneamentos agendados em segundo plano, atualiza o resultado em cache usado pelo painel local e envia o relatório configurado por e-mail. Use `failproofai audit` quando quiser executar um escaneamento interativo imediatamente.
-
-## Migrar de evidências locais para operações no Cloud
-
-Uma auditoria local é uma linha de base rápida. Conecte a máquina ao Failproof AI Cloud quando precisar de rastreamentos compartilhados, auditorias populacionais recorrentes, descobertas e problemas, alertas, implantação de políticas em toda a organização ou monitoramento de saúde da frota.
-
-<CardGroup cols={2}>
-  <Card title="Criar uma auditoria no Cloud" icon="scan-search" href="/pt-br/audits/setup">
-    Defina um objetivo recorrente, população, janela de evidências e canais de resposta.
-  </Card>
-  <Card title="Habilitar uma política" icon="shield-check" href="/pt-br/start/first-policy">
-    Valide localmente, publique com critério e implante primeiro em um grupo restrito de máquinas.
-  </Card>
-</CardGroup>
+Após optar pelo agendamento, cada varredura agendada envia o ID da máquina, o rótulo, a plataforma e a janela de varredura. Se padrões prejudiciais forem encontrados, também é enviado um resumo limitado com contagens, timestamps e até três exemplos redigidos. Varreduras sem ocorrências não enviam nenhum dado e nenhum e-mail.
 
 <Warning>
-  O resultado de uma auditoria é uma evidência para revisão, não uma prova de que toda ação sinalizada é insegura. Confirme o contexto antes de transformar uma descoberta em aplicação bloqueante.
+  Os resultados de auditoria são evidências para revisão, não prova de que toda ação sinalizada é insegura. Verifique a sessão antes de transformar uma ocorrência em aplicação de bloqueio.
 </Warning>
+
+<CardGroup cols={2}>
+  <Card title="Auditorias na nuvem" icon="scan-search" href="/pt-br/audits/setup">
+    Execute auditorias compartilhadas e recorrentes entre agentes e máquinas.
+  </Card>
+  <Card title="Instalar um pacote de políticas" icon="package" href="/pt-br/policies/packs">
+    Adicione políticas revisadas após confirmar uma ocorrência.
+  </Card>
+</CardGroup>

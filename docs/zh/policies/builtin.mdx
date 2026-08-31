@@ -1,57 +1,100 @@
 ---
 title: "内置策略"
-description: "为常见智能体故障模式启用经过维护的防护栏。"
+description: "启用针对常见 Agent 故障模式的维护护栏，按需开启。"
 icon: "library"
 ---
 
-内置策略涵盖密钥处理、环境文件、破坏性 Shell 命令、受保护分支、云与基础设施工具、包发布、重复调用以及任务结束工作流检查。
+内置策略共 39 条，涵盖九类 Agent 故障场景。除一条外，其余均以**包的形式交付**，即 `FailproofAI/policies`，与其他任何人的策略包交付方式相同。该软件包本身不附带任何默认启用的包，因此全新安装后不会执行任何策略，直到你主动添加：
 
-## 启用并验证内置策略
+```bash
+failproofai policies add FailproofAI/policies
+```
+
+执行后将启用该包的默认设置——即包中 38 条策略中的 10 条。第 39 条是 `block-failproofai-commands`，无论如何都会启用：它已编译进软件包，在每次评估时都会注册，且无法禁用或暂停。由于包不能声明 `alwaysOn`，该守卫因此不走包通道。
+
+## 九个类别涵盖的内容
+
+| 类别 | `--category` 标识 | 策略数量 |
+| --- | --- | --- |
+| 净化 | `sanitize` | 5 |
+| 环境 | `environment` | 3 |
+| 危险命令 | `dangerous-commands` | 5 |
+| 基础设施命令 | `infra-commands` | 7 |
+| Git | `git` | 6 |
+| 数据库 | `database` | 2 |
+| 包与系统 | `packages-system` | 5 |
+| AI 行为 | `ai-behavior` | 1 |
+| 工作流 | `workflow` | 5 |
+
+以上为编译目录的统计数量，合计 39 条。包中包含其中 38 条，因为 `block-failproofai-commands` 为 `alwaysOn` 且不走包通道——因此 `--category dangerous-commands` 只会选中其余四条。
+
+你也可以按需选取部分策略，而非使用默认配置：
+
+```bash
+failproofai policies add FailproofAI/policies --category git,database
+failproofai policies add FailproofAI/policies --policy block-rm-rf
+failproofai policies add FailproofAI/policies --all
+```
+
+## 在启用之前先阅读目录
 
 <Tabs>
-  <Tab title="控制台">
-    1. 使用本地 CLI 在已连接的机器上安装策略。
-    2. 在已接入的智能体中运行一个安全的测试操作。
-    3. 前往 **Observe → policy**，按策略名称、机器环境或决策进行筛选。
-    4. 打开关联的会话，确认匹配的工具输入和返回的原因。
-
-  </Tab>
   <Tab title="CLI">
     ```bash
+    failproofai policies show FailproofAI/policies
     failproofai policies
-    failproofai policy add block-rm-rf --cli claude --scope project
-    failproofai config --status
     ```
 
-    使用 `failproofai policy remove block-rm-rf --cli claude --scope project` 将其移除。
+    `policies show` 读取已发布的清单——所有策略按类别分组，并标注默认启用或可选启用——无需下载或导入包的代码。`failproofai policies` 列出当前机器上已启用的内容：自定义文件、约定文件、已安装的包以及 Cloud 分配。它没有内置策略部分，因此只回答"此处启用了什么"，而非"存在什么"。
+  </Tab>
+  <Tab title="Policy Hub">
+    无需 CLI，直接在浏览器中浏览相同目录，访问 [befailproof.ai/policy-hub](https://befailproof.ai/policy-hub/)。每个包有对应页面，路径为 `/policy-hub/<owner>/<pack>/`，每条策略的页面路径为 `/policy-hub/<owner>/<pack>/<policy-name>/`。
+  </Tab>
+  <Tab title="仪表板">
+    1. 使用本地 CLI 在已连接的机器上安装策略。
+    2. 在已接入的 Agent 中执行一个安全的测试操作。
+    3. 前往 **Observe → policy**，按策略名称、机器环境或决策进行筛选。
+    4. 打开关联的会话，确认匹配的工具输入和返回原因。
   </Tab>
 </Tabs>
 
-列出已安装版本中可用的策略：
+## 启用或禁用某条策略
 
 ```bash
-failproofai policies
+failproofai policies add block-rm-rf --cli claude --scope project
+failproofai policies remove block-rm-rf --cli claude --scope project
 ```
 
-为项目启用单条策略：
-
-```bash
-failproofai policy add block-rm-rf --scope project
-```
-
-为指定的 harness 启用多条策略：
+`policies add` 和 `policies remove` 每次只接受**一个**策略名称。不带名称运行时会显示一个选择器，已启用的策略会被勾选。若需同时处理多个名称，请使用安装形式：
 
 ```bash
 failproofai policies --install block-sudo block-force-push \
   --cli claude codex --scope project
 ```
 
-部分策略支持参数配置或标记为 beta 版本。在正式推出前，请仔细查阅其说明、匹配范围及默认行为。保护某一工作流的策略，可能会阻断另一工作流中的合法操作。
+<Note>
+  在未安装任何包的机器上，`failproofai policies add <builtin-name>` 会从其 GitHub release 拉取 `FailproofAI/policies` 以满足该名称——因此首次执行此命令需要网络连接。
+</Note>
+
+## 并非每条策略都在所有运行环境中生效
+
+策略只在运行环境针对其事件消费裁决结果时才会改变行为。以下两种情况在依赖内置策略前值得确认：
+
+| 事件 | 已验证 deny 能改变行为的环境 |
+| --- | --- |
+| `PreToolUse` | 全部 12 个运行环境 |
+| `Stop` | claude、codex、copilot、cursor、openclaw、factory、devin、antigravity。goose 和 hermes 未安装 `Stop` 钩子，pi 会将原因带入下一轮而非中止，opencode 未经验证 |
+
+因此，Workflow 类别中的五条 `require-*-before-stop` 策略即使在机器上启用，也可能从不触发，取决于运行的是哪个 Agent。Cursor Cloud Agent 虚拟机完全不运行 stop 钩子。
+
+`warn-*` 和 `prefer-*` 策略返回 `instruct` 而非 `deny`。在 Hermes 和 Goose 上，以及 Pi、OpenClaw、Factory 和 Antigravity 的非 `Stop` 通道中，`instruct` 会降级为 allow 并在 stderr 输出一条提示：运维人员可在日志中看到，Agent 则不会感知。
+
+部分策略支持参数。在推广前，请仔细阅读描述，并核对适用范围与默认值——保护某一工作流的策略，可能会阻断另一工作流中的合法操作。
 
 <Card title="浏览完整的内置策略目录" icon="list-checks" href="/zh/policies/builtin-catalog">
-  查看当前全部 40 条策略，包括其触发条件、推荐基线配置及参数说明。
+  全部 39 条内置策略，按类别列出，包含触发条件、默认值和参数说明。
 </Card>
 
 <Tip>
-  建议对特定仓库的预期行为使用项目范围，对全机器安全要求使用用户范围。
+  `failproofai config` 在用户范围内配置所有支持的 Agent，且不选择任何策略——它没有 `--scope` 标志。仅当某项预期真正属于单个仓库时，才向 `failproofai policies add` 或 `failproofai policies --install` 传入 `--scope project`。
 </Tip>

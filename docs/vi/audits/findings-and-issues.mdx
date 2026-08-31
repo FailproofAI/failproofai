@@ -1,35 +1,44 @@
 ---
 title: "Phát hiện và vấn đề"
-description: "Chuyển đổi bằng chứng kiểm toán thành công việc khắc phục được sở hữu và có thể theo dõi."
+description: "Chuyển đổi bằng chứng kiểm toán thành công việc khắc phục có chủ sở hữu, có thể theo dõi."
 icon: "clipboard-check"
 ---
 
-Một phát hiện là một tuyên bố được hỗ trợ bằng bằng chứng về một lỗi từ kiểm toán. Một vấn đề là quy trình durable để phản ứng với nó.
+Phát hiện là tuyên bố có bằng chứng hỗ trợ của kiểm toán về một lỗi. Vấn đề là quy trình làm việc bền vững để ứng phó với nó.
+
+Hai đối tượng sử dụng từ vựng khác nhau, và chúng nằm cạnh nhau, vì vậy cần làm rõ chúng trước:
+
+| | Phát hiện | Vấn đề |
+| --- | --- | --- |
+| Trạng thái | `open`, `recurring`, `resolved`, `dismissed`, `muted` | `firing`, `acknowledged`, `resolved` |
+| Cờ lọc | `--status` | `--state` |
+| Xử lý | ID phát hiện | ID vấn đề |
+| Danh sách mặc định | Bộ trực tiếp: mở và lặp lại | Mới nhất mở trước |
 
 ## Phân loại và gán công việc
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Mở **Analyze → Audits**, chọn một lần chạy đã hoàn thành và chọn một phát hiện để kiểm tra phân tích, khuyến nghị, phiên và truy vấn bằng chứng của nó.
-    2. Xác nhận, gán, bác bỏ, tắt tiếng, giải quyết hoặc mở lại phát hiện sau khi kiểm tra bằng chứng của nó.
-    3. Đi tới **Analyze → Issues** và lọc hộp thư thoại durable theo trạng thái, mức độ nghiêm trọng hoặc người được gán.
-    4. Mở vấn đề để gán nó, thêm nhận xét hoặc người theo dõi, và giải quyết nó sau khi sửa chữa được xác minh.
+    1. Mở **Analyze → Audits**, chọn một lần chạy đã hoàn thành, và chọn một phát hiện để kiểm tra phân tích, khuyến nghị, phiên và truy vấn bằng chứng của nó.
+    2. Xác nhận, gán, loại bỏ, tắt tiếng, giải quyết hoặc mở lại phát hiện sau khi kiểm tra bằng chứng của nó.
+    3. Đi tới **Analyze → Issues** và lọc hộp thư bền vững theo trạng thái, mức độ nghiêm trọng hoặc người được gán.
+    4. Mở vấn đề để gán nó, thêm bình luận hoặc người theo dõi, và giải quyết nó sau khi xác minh bản sửa lỗi.
 
-    Bắt đầu với tóm tắt phát hiện. Xác nhận rằng mô tả lỗi, phản ứng được đề xuất, mức độ nghiêm trọng và xếp hạng phù hợp với các phiên mà bạn dự kiến kiểm toán sẽ kiểm tra.
+    Bắt đầu với bản tóm tắt phát hiện. Xác nhận rằng mô tả lỗi, phản ứng được đề xuất, mức độ nghiêm trọng và xếp hạng phù hợp với các phiên bạn dự kiến kiểm toán sẽ kiểm tra.
 
-    ![Một phát hiện kiểm toán với mức độ nghiêm trọng, số lần xảy ra, phân tích nguyên nhân gốc rễ, hành động được đề xuất, các yếu tố xếp hạng và bằng chứng.](/images/dashboard/audit-finding.png)
+    ![Một phát hiện kiểm toán với mức độ nghiêm trọng, số lần xảy ra, phân tích nguyên nhân gốc, hành động được đề xuất, các yếu tố xếp hạng và bằng chứng.](/images/dashboard/audit-finding.png)
 
-    Tiếp theo, mở một phiên bị ảnh hưởng thay vì chỉ quyết định từ tóm tắt. Dấu vết liên kết sẽ hiển thị sự kiện chính xác và tải trọng hỗ trợ phát hiện.
+    Tiếp theo, mở một phiên bị ảnh hưởng thay vì quyết định từ tóm tắt một mình. Dấu vết được liên kết sẽ hiển thị sự kiện chính xác và tải trọng hỗ trợ phát hiện.
 
-    ![Một phiên được liên kết từ một phát hiện kiểm toán, được mở tại lỗi liên quan với siêu dữ liệu sự kiện và tải trọng thô.](/images/dashboard/audit-linked-session.png)
+    ![Một phiên được liên kết từ phát hiện kiểm toán, mở ở lỗi có liên quan với siêu dữ liệu sự kiện và tải trọng thô.](/images/dashboard/audit-linked-session.png)
 
-    Sau khi xác minh bằng chứng, sử dụng Issues để gán người sở hữu cho phản ứng và theo dõi nó độc lập với các lần chạy kiểm toán trong tương lai.
+    Sau khi xác minh bằng chứng, sử dụng Issues để cung cấp cho phản ứng một chủ sở hữu và theo dõi nó độc lập so với các lần chạy kiểm toán trong tương lai.
 
-    ![Hộp thư Issues hiển thị công việc đang hoạt động, được xác nhận và đã giải quyết với mức độ nghiêm trọng và quyền sở hữu.](/images/dashboard/incidents.png)
+    ![Hộp thư Issues hiển thị công việc đang chạy, được xác nhận và đã giải quyết với mức độ nghiêm trọng và quyền sở hữu.](/images/dashboard/incidents.png)
 
-    Mở vấn đề để ghi lại ghi chú điều tra, thông báo cho những người theo dõi và bảo tồn lịch sử phản ứng. Chỉ giải quyết nó sau khi khắc phục được triển khai và xác minh.
+    Mở vấn đề để ghi chép ghi chú điều tra, thông báo cho những người theo dõi và bảo lưu lịch sử phản ứng. Chỉ giải quyết nó sau khi khắc phục được triển khai và xác minh.
 
-    ![Dạng xem chi tiết vấn đề với nguồn, bằng chứng vi phạm, người được gán, những người theo dõi, dòng thời gian và nhận xét của nó.](/images/dashboard/incident-detail.png)
+    ![Chế độ xem chi tiết vấn đề với nguồn, bằng chứng vi phạm, những người được gán, những người theo dõi, dòng thời gian và bình luận của nó.](/images/dashboard/incident-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -37,23 +46,45 @@ Một phát hiện là một tuyên bố được hỗ trợ bằng bằng chứ
     fp audits finding <finding-id>
     fp audits ack <finding-id> --reason "owner assigned"
     fp audits assign <finding-id> --to engineer@example.com
+    fp audits mute <finding-id> --reason "expected in staging" --yes
+    fp audits dismiss <finding-id> --reason "false positive" --yes
+    fp audits resolve <finding-id> --yes
+    fp audits reopen <finding-id>
 
-    fp issues list
+    fp issues list --state firing
     fp issues show <issue-id>
+    fp issues ack <issue-id>
     fp issues assign <issue-id> --assignee engineer@example.com
     fp issues comment-add <issue-id> --body "policy is in observe mode"
     fp issues resolve <issue-id> --yes
     ```
 
-    Sử dụng `fp issues subscribe <issue-id>`, `fp issues unsubscribe <issue-id>` và `fp issues subscribers <issue-id>` để quản lý những người theo dõi.
+    `mute`, `dismiss` và `resolve` loại bỏ hoặc đóng một phát hiện, vì vậy mỗi lệnh xác nhận trước — chuyển `--yes` trong tập lệnh. `ack`, `reopen` và `assign` là công việc kế toán có thể đảo ngược và hoạt động ngay lập tức. `ack`, `mute` và `dismiss` lấy `--reason`, và thật đáng để chuyển: nó được giữ lại như là phản hồi bền vững trên phát hiện, không được ghi vào nhật ký và quên. `resolve`, `reopen` và `assign` không lấy lý do.
 
-    Xem [tham chiếu Cloud CLI kiểm toán và vấn đề](/vi/reference/cloud-cli#audits) để tìm các phát hiện kiểm toán và [`fp issues`](/vi/reference/cloud-cli#issues) để quản lý vấn đề.
+    Gán công việc hoạt động khác nhau trên mỗi đối tượng. `fp audits assign` yêu cầu `--to <email>` và đặt một chủ sở hữu; chạy lại nó sẽ gán lại. `fp issues assign` lấy một `--assignee` có thể lặp lại và **thay thế** toàn bộ danh sách, vì vậy bỏ qua nó sẽ xóa mọi người được gán.
+
+    Sử dụng `fp issues comment-list <issue-id>`, `fp issues count --state firing`, và `fp issues subscribe`/`unsubscribe`/`subscribers <issue-id>` cho phần còn lại của bề mặt vấn đề.
+
+    Xem [tham chiếu audit và issue của Cloud CLI](/vi/reference/cloud-cli#audits) cho các phát hiện kiểm toán và [`fp issues`](/vi/reference/cloud-cli#issues) để quản lý vấn đề.
   </Tab>
 </Tabs>
 
 ## Xem xét một phát hiện
 
-Xác nhận rằng nó chứa:
+Hai trường quyết định những gì cần làm với nó trước khi bất cứ điều gì khác làm được.
+
+**`kind`** phân biệt một `failure` (điều gì đó đã sai) từ một `policy` vi phạm (một quy tắc bị phá vỡ) và một `improvement` (công việc có thể được thực hiện tốt hơn). Nó được hiển thị dưới dạng một huy hiệu trên phát hiện. Một phát hiện `policy` là một mà chính sách có thể đóng; hai cái khác thường cần thay đổi quy trình làm việc, cảnh báo hoặc con người.
+
+**`priority`** là điểm từ 0 đến 1, được tính toán lại mỗi lần chạy, và nó là thứ tự hàng đợi phát hiện được sắp xếp. Trang phát hiện chia nhỏ nó dưới **lý do nó xếp hạng ở đây**, như giá trị × trọng lượng:
+
+| Yếu tố | Trọng lượng |
+| --- | --- |
+| Phạm vi bảo hiểm | 0,30 |
+| Mức độ nghiêm trọng | 0,25 |
+| Độ lớn | 0,25 |
+| Tính gần đây | 0,20 |
+
+Sau đó xác nhận phát hiện chứa:
 
 - Một chế độ lỗi ổn định, không chỉ là một tiêu đề một lần
 - Mức độ nghiêm trọng và tác động hoạt động
@@ -61,36 +92,48 @@ Xác nhận rằng nó chứa:
 - Đủ bối cảnh để tái tạo hành vi
 - Một phản ứng được đề xuất phù hợp với bằng chứng
 
+Để tái tạo một phát hiện, kéo nó toàn bộ: `fp --json audits finding <id>` trả về bản ghi đầy đủ với `evidence`, `evidence_queries` và `scope` của nó không bị chạm vào, đó là những gì phân tích thực sự chạy. `--json` là một tùy chọn toàn cục, vì vậy nó đi trước lệnh.
+
 ## Sử dụng một vấn đề để quản lý phản ứng
 
-Tạo hoặc liên kết một vấn đề khi phát hiện cần gán, thảo luận, thay đổi trạng thái, nhận xét hoặc những người theo dõi. Các vấn đề cũng có thể đại diện cho các sự cố cảnh báo và các vấn đề được báo cáo thủ công, đó là lý do tại sao chúng nằm trong phản ứng kiểm toán thay vì ở trong điều hướng chính.
+Tạo hoặc liên kết một vấn đề khi phát hiện cần gán, thảo luận, thay đổi trạng thái, bình luận hoặc người theo dõi. `source` của vấn đề ghi lại nơi nó đến — `audit`, `alert` hoặc `manual` — đó là lý do tại sao bảng điều khiển cung cấp cho các vấn đề chế độ xem **Issues** của riêng họ thay vì lồng chúng dưới một kiểm toán.
 
-Giải quyết vấn đề khi khắc phục được triển khai và xác minh. Giải quyết phát hiện khi chế độ lỗi đã được giải quyết cho dân số kiểm toán. Những lúc đó có thể khác nhau.
+Đăng ký là một phần tự động. Mọi người được đăng ký khi họ xác nhận một vấn đề, bình luận về nó, được gán cho nó hoặc mở nó — `fp issues subscribers` chỉ liệt kê những người đăng ký hoạt động, vì vậy nó không chỉ là danh sách các đăng ký thủ công. Một bình luận gửi email cho mọi người đăng ký hoạt động, và bình luận chỉ cần `issues:read`, vì vậy một người xem xét chỉ đọc không bao giờ là một người quan sát im lặng.
 
-## Chuyển một vấn đề thành bản nháp chính sách
+Giải quyết vấn đề khi khắc phục được triển khai và xác minh. Giải quyết phát hiện khi chế độ lỗi đã được giải quyết cho dân số kiểm toán. Những khoảnh khắc đó có thể khác nhau.
+
+## Biến một vấn đề thành bản nháp chính sách
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Mở vấn đề và xác minh phát hiện, phiên được trích dẫn, nguyên nhân gốc rễ và khuyến nghị của nó.
-    2. Chọn **generate policy** và xem xét kết quả ứng cử và ý định thực thi được đề xuất. Kết quả **no policy** có nghĩa là hành vi có thể yêu cầu cảnh báo, thay đổi quy trình làm việc hoặc phản ứng của con người thay thế.
-    3. Chọn **write this policy**, sau đó xem xét và kiểm tra mã nguồn được tạo trong **Admin → policy editor** trước khi chọn **publish version**. Sử dụng **open the editor anyway** khi bạn không đồng ý với kiểm tra ứng cử.
-    4. Đi tới **Admin → enforcement**, triển khai phiên bản ở chế độ **observe** và xác minh các quyết định của nó dưới **Observe → policy** trước khi thực thi nó.
+    1. Mở vấn đề và xác minh phát hiện, các phiên được trích dẫn, nguyên nhân gốc và khuyến nghị của nó.
+    2. Chọn **generate policy** và xem xét kết quả ứng cử viên và ý định thực thi được đề xuất. Kết quả **no policy** có nghĩa là hành vi có thể yêu cầu cảnh báo, thay đổi quy trình làm việc hoặc phản ứng của con người thay thế.
+    3. Chọn **write this policy**, sau đó xem xét và kiểm tra nguồn được tạo trong **Admin → policy editor** trước khi chọn **publish version**. Sử dụng **open the editor anyway** khi bạn không đồng ý với kiểm tra ứng cử viên.
+    4. Đi tới **Admin → enforcement**, triển khai phiên bản ở chế độ **observe**, và xác minh các quyết định của nó dưới **Observe → policy** trước khi thực thi nó.
 
-    Tiêu đề vấn đề, mô tả phát hiện, nguyên nhân gốc rễ, khuyến nghị và ý định ứng cử giúp soạn thảo. Không có gì được xuất bản hoặc triển khai tự động.
+    Tiêu đề vấn đề, mô tả phát hiện, nguyên nhân gốc, khuyến nghị và ý định ứng cử viên giúp soạn bản nháp. Không có gì được xuất bản hoặc triển khai tự động.
   </Tab>
   <Tab title="CLI">
-    Sử dụng CLI để kiểm tra bằng chứng trước khi mở vấn đề trong bảng điều khiển:
+    Sử dụng CLI để kiểm tra bằng chứng trước khi mở vấn đề trên bảng điều khiển:
 
     ```bash
     fp issues show <issue-id>
-    fp audits finding <finding-id>
+    fp --json audits finding <finding-id>
     fp events --session-id <session-id> --full --all
     ```
 
-    Ứng cử chính sách, xuất bản Cloud và triển khai bộ là các quy trình bảng điều khiển. Sử dụng `failproofai policies --install --custom <file>` khi bạn muốn xác thực mã nguồn chính sách tương đương cục bộ trước tiên.
+    Bảng điều khiển là một làn; CLI là cái kia. `fp policies compose "<what it should do>"` soạn bản nháp chính sách, `fp policies publish <id> ./policy.mjs` tạo một phiên bản (xuất bản không triển khai gì), và `fp fleet deploy <machine> --add <id>:observe` đặt nó trên một máy trong bóng. Hậu tố `:observe` là bắt buộc — một `--add <id>` trần thực thi ngay lập tức. Đọc những gì nó sẽ làm với `fp guardrails summary --since 24h`, sau đó nâng cấp bằng `--add <id>:enforce`.
+
+    Để thử nguồn chính sách tương đương trên máy của riêng bạn trước tiên, hãy chỉ CLI đến tệp:
+
+    ```bash
+    failproofai policies -i -c ./checkout-policies.js
+    ```
+
+    Một tệp có tên kết thúc bằng `policies.js`, `policies.mjs` hoặc `policies.ts`, được thả vào `.failproofai/policies/` trong dự án hoặc dưới `~/`, được tải trên mọi sự kiện hook mà không cần bất kỳ cờ nào cả.
   </Tab>
 </Tabs>
 
-<Card title="Tác giả của một chính sách" icon="shield-plus" href="/vi/policies/editor">
-  Chuyển đổi một mẫu hành động lặp lại được xác nhận thành một phiên bản chính sách.
+<Card title="Tác giả một chính sách" icon="shield-plus" href="/vi/policies/editor">
+  Chuyển đổi mô hình hành động được xác nhận, có thể lặp lại thành phiên bản chính sách.
 </Card>

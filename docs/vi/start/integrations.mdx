@@ -1,16 +1,16 @@
 ---
 ---
-title: "Công cụ hóa agent của bạn"
+title: "Trang bị cho agent của bạn"
 sidebarTitle: "Frameworks"
 description: "Kết nối bất kỳ framework agent được hỗ trợ nào với Failproof AI chỉ bằng một lệnh gọi."
 icon: "plug"
 ---
 
-Agent của bạn đã tạo ra mọi thứ đáng ghi lại — các lệnh gọi mô hình, lệnh gọi công cụ, ranh giới nút, chờ đợi con người, lỗi. Framework bỏ nó đi. SDK giữ lại nó.
+Agent của bạn đã tạo ra mọi thứ đáng ghi lại — các lệnh gọi mô hình, các lệnh gọi công cụ, biên giới nút, chờ đợi con người, lỗi. Framework sẽ loại bỏ nó. SDK giữ lại nó.
 
 <Columns cols={3}>
   <Card title="Custom agents" icon="wrench" href="/vi/start/quickstarts/custom-agents">
-    Một agent bạn viết riêng hoặc agent không được liệt kê ở đây.
+    Một agent bạn tự viết, hoặc một agent không được liệt kê ở đây.
   </Card>
   <Card title="LangChain and LangGraph" icon="share-2" href="/vi/start/quickstarts/langchain">
     Graphs, nodes, tools, retrievers, models.
@@ -25,6 +25,19 @@ Agent của bạn đã tạo ra mọi thứ đáng ghi lại — các lệnh g�
     Typed agents, capabilities, tools, retries.
   </Card>
 </Columns>
+
+## Trước khi bạn bắt đầu
+
+Hai điều mà hướng dẫn này giả định, và mã dưới đây không thực hiện cho bạn:
+
+| Yêu cầu | Lý do |
+| --- | --- |
+| Python 3.10 trở lên | Mức tối thiểu mà SDK khai báo. |
+| Một máy được thiết lập với `failproofai config` | Lệnh đó cài đặt daemon failproofaid, và daemon là điều duy nhất vận chuyển những gì SDK ghi. Nếu không có nó, các batch sẽ tích tụ trong thư mục spool và không bao giờ rời đi. |
+
+<Note>
+  **Đường dẫn này ghi lại; nó không thực thi.** SDK ghi lại những gì agent của bạn đã làm. Policies kích hoạt từ một hook bên trong agent CLI, vì vậy thực thi trên framework agent có nghĩa là đặt một hook trong runtime của riêng bạn — xem [Policies](/vi/policies/overview).
+</Note>
 
 ## Ba dòng, bất kỳ framework nào
 
@@ -60,7 +73,7 @@ with failproofai_sdk.session():
     ...                               # your existing agent call, unchanged
 ```
 
-Không có decorator trên các hàm của bạn, không có callback được truyền đến các lệnh gọi của bạn, không có id được luồng qua mã của bạn. Chỉ lệnh gọi bên trong phiên là khác:
+Không có decorator trên các hàm của bạn, không có callback được truyền vào các lệnh gọi của bạn, không có id được luồng qua mã của bạn. Chỉ lệnh gọi bên trong session khác:
 
 <Tabs>
   <Tab title="LangGraph">
@@ -92,30 +105,44 @@ Không có decorator trên các hàm của bạn, không có callback được t
   </Tab>
 </Tabs>
 
-Bộ cài đặt thêm **framework**. Mỗi adapter được gửi trong wheel cơ sở, vì vậy dự án đã có framework của nó không cần thêm gì cả.
+Cài đặt thêm là **framework**. Mọi adapter được vận chuyển trong base wheel, vì vậy một dự án đã có framework của nó không cần bất cứ thứ gì thêm nào cả.
 
-## Xác nhận nó đã tới
+## Kiểm tra nó đã tới
 
-Chạy một phiên công cụ hóa, sau đó mở **Observe → Sessions** và chọn môi trường của bạn. Lần chạy xuất hiện dưới dạng một trace được tái tạo.
+Chạy một session được trang bị một lần, sau đó mở **Observe → Sessions** và chọn môi trường của bạn. Lần chạy xuất hiện dưới dạng một trace được tái tạo.
 
-Nếu không có gì tới, hãy xác nhận máy được kết nối bằng `failproofai config --status`. Xem [Set up capture](/vi/start/setup).
+Nếu không có gì tới, hãy xác nhận rằng máy được thiết lập và kết nối với `failproofai config --status`. Nếu không phải, hãy chạy `failproofai config`. Xem [Choose your setup](/vi/start/setup).
 
 <Warning>
-  Không kiểm tra thư mục spool để xác nhận giao hàng. Daemon Failproof thu thập và xóa từng lô trong vòng milliseconds, vì vậy đọc nó sẽ cạnh tranh với collector và hiển thị ít sự kiện hơn nhiều so với những gì đã phát ra.
+  Không kiểm tra thư mục spool để xác nhận việc gửi. Daemon Failproof thu thập và xóa mỗi batch trong vòng vài millisecond, vì vậy đọc nó sẽ cạnh tranh với bộ sưu tập và hiển thị ít hơn nhiều sự kiện so với những gì được phát ra.
 </Warning>
+
+Để chứng minh SDK đang ghi dữ liệu, hãy dừng daemon trước, sau đó chạy session của bạn và nhìn vào `~/.failproofai/custom-agents/events/`. Với daemon chạy, thư mục trống là trạng thái lành mạnh.
+
+<CodeGroup>
+```bash Linux
+sudo systemctl stop failproofaid@$USER
+```
+
+```bash macOS
+sudo launchctl bootout system/ai.failproof.failproofaid.$USER
+```
+</CodeGroup>
+
+Chạy `failproofai config` sau đó để đặt nó trở lại. Khi daemon bị dừng, các sự kiện hook trên máy này không có evaluator và bị từ chối, vì vậy hãy dừng nó chỉ trong thời gian kiểm tra.
 
 ## Tiếp theo
 
-Mỗi quickstart ở trên liên kết đến hướng dẫn đầy đủ của nó — những gì được ghi lại, tùy chọn, streaming, đặt tên span và những vấn đề mà mọi người thực sự gặp phải. Chúng nằm dưới **Trace Agents → Plug in your agent**.
+Mỗi quickstart ở trên liên kết đến hướng dẫn đầy đủ của nó — những gì được ghi lại, các tùy chọn, streaming, đặt tên span và các vấn đề mà mọi người thực sự gặp phải. Chúng nằm dưới **Trace Agents → Plug in your agent**.
 
 <Columns cols={3}>
-  <Card title="Cách hoạt động" icon="workflow" href="/vi/start/integrations/custom-agents#going-deeper">
+  <Card title="How it works" icon="workflow" href="/vi/start/integrations/custom-agents#going-deeper">
     Mô hình dữ liệu, các id, các loại sự kiện và cách các sự kiện đến Cloud.
   </Card>
-  <Card title="Đọc một trace" icon="route" href="/vi/sessions/read-a-trace">
-    Theo dõi nhân quả qua một phiên thay vì các bản ghi bị ngắt kết nối.
+  <Card title="Read a trace" icon="route" href="/vi/sessions/read-a-trace">
+    Theo dõi quan hệ nhân quả thông qua một session thay vì các bản ghi bị ngắt kết nối.
   </Card>
-  <Card title="Tìm lỗi đầu tiên của bạn" icon="scan-search" href="/vi/start/first-audit">
-    Kiểm tra các phiên bạn vừa thu thập.
+  <Card title="Find your first failure" icon="scan-search" href="/vi/start/first-audit">
+    Kiểm toán các session bạn vừa nắm bắt.
   </Card>
 </Columns>

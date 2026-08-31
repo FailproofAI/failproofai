@@ -1,45 +1,41 @@
 ---
 title: "Eventos en vivo"
-description: "Observa la actividad del agente en tiempo real mientras una sesión está en ejecución."
+description: "Observa la actividad de los agentes en tiempo real en Failproof AI Cloud."
 icon: "radio"
 ---
 
-Los eventos en vivo te ayudan a confirmar la instrumentación y supervisar una ejecución de riesgo sin esperar a que la sesión finalice.
+Eventos en vivo muestra la actividad mientras los agentes se ejecutan: llamadas al modelo, herramientas, errores, entrada humana, hooks y decisiones de políticas.
 
 ## Ver actividad
 
-<Tabs>
-  <Tab title="Panel de control">
-    1. Ve a **Observe → Events**.
-    2. Comienza con la ventana de tiempo actual y sin filtros para confirmar que los datos están llegando.
-    3. Filtra por entorno, tipo de evento, agente o sesión. Usa la búsqueda para texto en el payload.
-    4. Selecciona un evento para inspeccionar su resumen y detalles. Sigue el enlace de su sesión para ver el seguimiento completo.
+Ve a **Observe → Live events**, o ejecuta:
 
-    ![El flujo de eventos en vivo mostrando tráfico desde una pasarela de chat Hermes junto con ejecuciones de la CLI de codificación, filtrado por tiempo, entorno, tipo de evento, agente, modelo, contexto y sesión.](/images/dashboard/events-stream-current.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp events --env production --event-type tool_use,error --limit 100
-    fp events --session-id <session-id> --order asc --all
-    fp --json events --full --session-id <session-id> --all
-    ```
+```bash
+fp events --since 1h
+fp events --event-type tool_use,tool_result --since 1h
+fp --json events --full --session-id <session-id> --all --limit 2000
+```
 
-    El feed por defecto omite los payloads sin procesar. Usa `--full` únicamente para una investigación de sesión acotada.
-  </Tab>
-</Tabs>
+Usa `--full` cuando necesites el contenido del payload. El feed ligero es más rápido y suficiente para la mayoría de los filtros.
 
-Usa el flujo de eventos para responder tres preguntas inmediatas:
+Los tipos de eventos más comunes incluyen:
 
-- ¿El agente esperado está reportando al entorno correcto?
-- ¿Las llamadas al modelo, las llamadas a herramientas y las decisiones de política están llegando en orden?
-- ¿La sesión ha dejado de avanzar o ha comenzado a repetir una acción?
+- `session_start` y `session_end`
+- `model_request` y `model_response`
+- `tool_use` y `tool_result`
+- `hook_triggered` y `hook_completed`
+- `error`
+- `human_wait` y `human_input`
+- `agent_pause` y `agent_resume`
 
-Los tipos de eventos incluyen eventos del ciclo de vida del agente, solicitudes y respuestas del modelo, uso de herramientas y sus resultados, ejecución de hooks, esperas e interrupciones humanas, y errores explícitos. Los IDs de correlación vinculan eventos emparejados, como una llamada a herramienta y su resultado.
+## Si los eventos no aparecen
 
-<Tip>
-  Mantén la vista en vivo amplia mientras verificas una nueva integración. Añade filtros solo después de ver el primer evento; un filtro incorrecto puede parecer un fallo de ingesta.
-</Tip>
+```bash
+failproofai flush --wait
+failproofai config --status
+failproofai backfill --since 30d --dry-run
+```
 
-Si no aparece ningún evento, ejecuta `failproofai config --status` y luego [soluciona problemas de ingesta](/es/reference/troubleshooting).
+El entorno predeterminado es `local`. Un filtro para `production` no devolverá resultados hasta que cambies la etiqueta del entorno.
 
-Los agentes que no se ejecutan en uno de los 12 [harnesses](/es/reference/harnesses) compatibles reportan los mismos tipos de eventos a través del [SDK de Python](/es/reference/custom-agents), incluidos los eventos de human-in-the-loop (`human_wait`, `human_input`, `human_interrupt`) de los que dependen los agentes de pasarela y producción.
+Para un agente fuera de un harness compatible, usa el [SDK de Python](/es/reference/custom-agents).

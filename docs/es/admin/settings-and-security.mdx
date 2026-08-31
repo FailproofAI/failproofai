@@ -1,68 +1,37 @@
 ---
 title: "Configuración y seguridad"
-description: "Configura los ajustes operativos y toma decisiones deliberadas sobre los datos del agente."
-icon: "lock-keyhole"
+description: "Controla los valores predeterminados de la organización, el manejo de datos y las credenciales de máquina."
+icon: "shield"
 ---
 
-Utiliza la configuración para valores operativos específicos del despliegue y anulaciones de la ventana de contexto del modelo. Inspecciona el esquema de configuración antes de cambiar un valor a través de la API o la CLI.
+La configuración de la organización afecta a todos los miembros de esa organización en la nube. Puedes modificarla desde **Admin → settings** o con `fp settings`.
 
-## Cambiar un ajuste de organización
+```bash
+fp settings list
+fp settings set <key> <value>
+```
 
-<Tabs>
-  <Tab title="Panel de control">
-    1. Ve a **Administración → Configuración**, busca el grupo de ajustes y lee su descripción y fuente actual.
-    2. Cambia el valor y guárdalo.
-    3. Para las ventanas de contexto del modelo, añade o actualiza la anulación del modelo y confirma el límite efectivo.
-    4. Vuelve a revisar las sesiones y métricas que dependan del valor modificado.
+## Manejo de datos
 
-    ![La página de Configuración mostrando la autenticación de la organización y los ajustes operativos.](/images/dashboard/settings.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp settings list
-    fp settings schema
-    fp settings set <key> --value <scalar>
-    fp settings set alerts.email_default_recipients \
-      --json-value '["oncall@example.com"]'
-    ```
+De forma predeterminada, una máquina conectada envía las decisiones de política y las transcripciones completas de sesión. Para enviar únicamente las decisiones, establece `collector.sessions` en `false` en el archivo `~/.failproofai/config.json` de la máquina después de conectarla. El indicador de configuración `--no-transcripts` no aplica ese ajuste actualmente.
 
-    Ejecuta `fp settings set --help` para ver el tipo de valor y los indicadores de confirmación utilizados por la CLI instalada.
-  </Tab>
-</Tabs>
+Las credenciales se depuran en la máquina antes de la subida, pero la redacción es una protección mínima, no un sustituto del control de acceso.
 
-## Opciones de manejo de datos
+El uso solo local no requiere cuenta. El historial de sesiones y las auditorías permanecen en la máquina, excepto que las auditorías locales programadas envían la identidad de la máquina y un resumen limitado después de que el usuario opt-in. La telemetría anónima de la CLI puede deshabilitarse con `FAILPROOFAI_TELEMETRY_DISABLED=1`.
 
-Conectar la CLI de Failproof AI envía transcripciones de forma predeterminada porque los registros de seguimiento y las auditorías dependen de su contenido. Usa `--no-transcripts` cuando las instrucciones, el contenido de archivos o la entrada de terminal deban permanecer en local; la actividad de hooks y las decisiones de políticas aún pueden reportarse.
+## Credenciales
 
-Las credenciales de ingestión local se almacenan de forma independiente a los ajustes no confidenciales del daemon y se escriben con permisos restrictivos. Las claves API deben seguir gestionándose como secretos de producción.
+Los tokens de máquina se almacenan en `~/.failproofai/` con permisos exclusivos para el propietario. No se escriben en la definición del servicio.
 
-## Referencia de ajustes de organización
+Utiliza claves separadas para personas, automatización y máquinas. Otorga a cada una solo los permisos que necesita, rótalas cuando cambie la titularidad y revócalas cuando la máquina o el flujo de trabajo queden fuera de uso.
 
-Todos los ajustes editables desde el panel de control tienen alcance de organización. El comportamiento a nivel de despliegue permanece como configuración del entorno del servidor.
+## Lista de verificación
 
-| Clave | Valor predeterminado | Propósito |
-| --- | --- | --- |
-| `allowed_sign_ins` | `[]` | Restringe los miembros existentes a correos exactos o `*@dominio`; una lista vacía significa que no hay restricción adicional. |
-| `session_ttl_secs` | `86400` | Duración de la sesión en el panel de control; el rango aceptado es de 60 segundos a 30 días. |
-| `otp_ttl_secs` | `600` | Duración del OTP y el enlace mágico; el rango aceptado es de 60 a 1800 segundos. |
-| `alerts.email_default_recipients` | `[]` | Destinatarios predeterminados cuando un canal de alertas por correo no los sobreescribe. |
-| `alerts.slack_default_webhook` | vacío | URL predeterminada del webhook entrante de Slack. |
-| `alerts.webhook_default_url` | vacío | URL predeterminada del webhook JSON genérico. |
-| `alerts.webhook_signing_secret` | vacío | Clave HMAC-SHA256 usada en el encabezado `X-AgentEye-Signature`; las lecturas están enmascaradas. |
-| `alerts.enabled_channels` | email, Slack, webhook | Tipos de canales a nivel de organización que las reglas de alerta pueden utilizar. |
-| `default_user_permissions` | `standard` | Conjunto de permisos predefinido preseleccionado para nuevas invitaciones. |
+- Exige los permisos mínimos necesarios.
+- Establece `collector.sessions` en `false` donde el contenido completo no sea necesario.
+- Revisa quién puede desplegar políticas de aplicación.
+- Prueba las políticas en modo de observación antes de activar la aplicación.
+- Mantén las etiquetas de máquina claras y los IDs de máquina estables.
+- Ejecuta `failproofai config --status` después de cambiar la configuración de conexión.
 
-`allowed_sign_ins` es un filtro, no una concesión: la persona ya debe ser miembro de la organización. Usa una lista vacía para permitir el acceso a todos los miembros; el valor `*` a secas es rechazado. Las URLs de alertas deben usar HTTPS, excepto para direcciones de desarrollo en loopback.
-
-## Lista de verificación de seguridad
-
-- Usa HTTPS para las conexiones en la nube.
-- Limita las claves al conjunto de permisos mínimo necesario.
-- Separa los entornos de producción y los que no son de producción.
-- Revisa la configuración de transcripciones y redacción antes del despliegue.
-- Audita los cambios de usuarios, claves y organización.
-- Comprueba los requisitos de copia de seguridad, retención y respuesta a incidentes para tu despliegue.
-
-<Warning>
-  Desactivar la captura de transcripciones cambia lo que las auditorías e investigaciones pueden demostrar. Registra la decisión y sus limitaciones previstas.
-</Warning>
+Consulta [claves y permisos](/es/admin/keys-and-permissions) para ver el catálogo de permisos.

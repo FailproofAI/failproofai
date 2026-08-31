@@ -1,68 +1,37 @@
 ---
 title: "Einstellungen und Sicherheit"
-description: "Konfigurieren Sie betriebliche Einstellungen und treffen Sie bewusste Entscheidungen über Agent-Daten."
-icon: "lock-keyhole"
+description: "Organisationsstandards, Datenverarbeitung und Maschinenzugangsdaten verwalten."
+icon: "shield"
 ---
 
-Nutzen Sie die Einstellungen für deployment-spezifische Betriebswerte und Überschreibungen des Modell-Kontextfensters. Prüfen Sie das Einstellungsschema, bevor Sie einen Wert über die API oder CLI ändern.
+Organisationseinstellungen gelten für alle Mitglieder der Cloud-Organisation. Änderungen können über **Admin → settings** oder mit `fp settings` vorgenommen werden.
 
-## Organisationseinstellung ändern
+```bash
+fp settings list
+fp settings set <key> <value>
+```
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. Gehen Sie zu **Administration → Einstellungen**, suchen Sie die Einstellungsgruppe und lesen Sie deren Beschreibung und aktuelle Quelle.
-    2. Ändern Sie den Wert und speichern Sie ihn.
-    3. Fügen Sie bei Modell-Kontextfenstern die Modellüberschreibung hinzu oder aktualisieren Sie sie und bestätigen Sie das effektive Limit.
-    4. Überprüfen Sie Sitzungen und Metriken, die vom geänderten Wert abhängen.
+## Datenverarbeitung
 
-    ![Die Einstellungsseite mit Organisations-Authentifizierungs- und Betriebseinstellungen.](/images/dashboard/settings.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp settings list
-    fp settings schema
-    fp settings set <key> --value <scalar>
-    fp settings set alerts.email_default_recipients \
-      --json-value '["oncall@example.com"]'
-    ```
+Eine verbundene Maschine sendet standardmäßig Policy-Entscheidungen und vollständige Sitzungstranskripte. Um nur Entscheidungen zu senden, setze `collector.sessions` in der Datei `~/.failproofai/config.json` der Maschine nach dem Verbinden auf `false`. Das aktuell verfügbare Setup-Flag `--no-transcripts` wendet diese Einstellung nicht an.
 
-    Führen Sie `fp settings set --help` aus, um den Werttyp und die Bestätigungs-Flags der installierten CLI zu erhalten.
-  </Tab>
-</Tabs>
+Zugangsdaten werden auf der Maschine vor dem Hochladen bereinigt. Die Schwärzung ist jedoch nur eine Sicherheitsgrundlage und kein Ersatz für eine echte Zugriffskontrolle.
 
-## Datenverarbeitungsentscheidungen
+Bei rein lokalem Betrieb ist kein Konto erforderlich. Sitzungsverlauf und Audits verbleiben auf der Maschine – mit einer Ausnahme: Geplante lokale Audits senden nach der Einwilligung die Maschinenidentität und einen eingeschränkten Digest. Anonyme CLI-Telemetrie kann mit `FAILPROOFAI_TELEMETRY_DISABLED=1` deaktiviert werden.
 
-Die Verbindung der Failproof AI CLI sendet standardmäßig Transkripte, da Traces und Audits auf deren Inhalt angewiesen sind. Verwenden Sie `--no-transcripts`, wenn Eingabeaufforderungen, Dateiinhalte oder Terminalvorgaben lokal verbleiben müssen; Hook-Aktivität und Policy-Entscheidungen können weiterhin gemeldet werden.
+## Zugangsdaten
 
-Lokale Ingest-Anmeldedaten werden getrennt von nicht-geheimen Daemon-Einstellungen gespeichert und mit restriktiven Berechtigungen geschrieben. API-Schlüssel sollten dennoch als Produktionsgeheimnisse verwaltet werden.
+Maschinen-Tokens werden unter `~/.failproofai/` mit ausschließlich für den Eigentümer zugänglichen Berechtigungen gespeichert. Sie werden nicht in die Service-Definition geschrieben.
 
-## Referenz der Organisationseinstellungen
+Verwende separate Schlüssel für Personen, Automatisierungen und Maschinen. Weise jedem nur die benötigten Berechtigungen zu, rotiere den Schlüssel bei einem Eigentümerwechsel und widerrufe ihn, wenn die Maschine oder der Workflow außer Betrieb genommen wird.
 
-Alle über das Dashboard bearbeitbaren Einstellungen sind auf die Organisation beschränkt. Das deployment-weite Verhalten bleibt Server-Umgebungskonfiguration.
+## Checkliste
 
-| Schlüssel | Standard | Zweck |
-| --- | --- | --- |
-| `allowed_sign_ins` | `[]` | Beschränkt bestehende Mitglieder auf exakte E-Mail-Adressen oder `*@domain`; eine leere Liste bedeutet keine zusätzliche Einschränkung. |
-| `session_ttl_secs` | `86400` | Lebensdauer der Dashboard-Sitzung; akzeptierter Bereich ist 60 Sekunden bis 30 Tage. |
-| `otp_ttl_secs` | `600` | Lebensdauer von OTP und Magic-Link; akzeptierter Bereich ist 60–1800 Sekunden. |
-| `alerts.email_default_recipients` | `[]` | Standard-Empfänger, wenn ein Alert-E-Mail-Kanal diese nicht überschreibt. |
-| `alerts.slack_default_webhook` | leer | Standard-Slack-Incoming-Webhook-URL. |
-| `alerts.webhook_default_url` | leer | Standard-generische JSON-Webhook-URL. |
-| `alerts.webhook_signing_secret` | leer | HMAC-SHA256-Schlüssel für den `X-AgentEye-Signature`-Header; Lesezugriffe werden maskiert. |
-| `alerts.enabled_channels` | E-Mail, Slack, Webhook | Organisationsweite Kanaltypen, die Alert-Regeln verwenden dürfen. |
-| `default_user_permissions` | `standard` | Benanntes Berechtigungsset, das für neue Einladungen vorausgewählt wird. |
+- Nur die minimal notwendigen Berechtigungen vergeben.
+- `collector.sessions` auf `false` setzen, wenn vollständige Inhalte nicht benötigt werden.
+- Prüfen, wer durchsetzende Policies deployen darf.
+- Policies vor der Durchsetzung im Beobachtungsmodus testen.
+- Maschinenbeschriftungen klar und Maschinen-IDs stabil halten.
+- `failproofai config --status` nach dem Ändern von Verbindungseinstellungen ausführen.
 
-`allowed_sign_ins` ist ein Filter, keine Berechtigung: Eine Person muss bereits Mitglied der Organisation sein. Verwenden Sie eine leere Liste, um allen Mitgliedern Zugang zu gewähren; der bloße Wert `*` wird abgelehnt. Alert-URLs müssen HTTPS verwenden, außer für Loopback-Entwicklungsadressen.
-
-## Sicherheits-Checkliste
-
-- Verwenden Sie HTTPS für Cloud-Verbindungen.
-- Beschränken Sie Schlüssel auf den kleinstmöglichen Berechtigungsumfang.
-- Trennen Sie Produktions- und Nicht-Produktionsumgebungen.
-- Überprüfen Sie Transkript- und Redaktionseinstellungen vor dem Rollout.
-- Prüfen Sie Änderungen an Benutzern, Schlüsseln und Organisationen regelmäßig.
-- Testen Sie Backup-, Aufbewahrungs- und Incident-Response-Anforderungen für Ihr Deployment.
-
-<Warning>
-  Das Deaktivieren der Transkripterfassung ändert, was Audits und Untersuchungen nachweisen können. Dokumentieren Sie die Entscheidung und ihre erwarteten Einschränkungen.
-</Warning>
+Siehe [Schlüssel und Berechtigungen](/de/admin/keys-and-permissions) für den Berechtigungskatalog.

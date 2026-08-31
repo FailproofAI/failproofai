@@ -1,62 +1,103 @@
 ---
 title: "告警"
-description: "检测问题复发并将事件路由至正确的响应人员。"
+description: "检测重复出现的问题，并将其路由给合适的响应人员。"
 icon: "bell-ring"
 ---
 
-告警监控可测量的条件，并在触发时创建事件。当某个故障需要及时响应时，无论策略是否能拦截，都应使用告警。
+告警会监测一个可量化的条件，并在触发时创建一个问题单。当某个故障需要及时响应时，无论策略能否拦截，都应使用告警。
 
 ## 创建并测试告警
 
 <Tabs>
   <Tab title="控制台">
-    1. 前往 **Analyze → Alerts**，点击 **new alert**。也可以从某个典型错误的铃铛图标直接创建。
+    1. 前往 **Analyze → Alerts**，选择 **new alert**。也可以从代表性错误上的铃铛图标开始创建。
     2. 填写名称、严重级别、触发类型、条件、评估间隔、触发次数、时间窗口和通知渠道。
-    3. 保存告警后，打开其详情页并运行 **test**。
-    4. 前往 **Analyze → Issues**，对告警创建的事件执行确认、分配、讨论、订阅和解决操作。
+    3. 保存告警，打开其详情页，运行 **test**。
+    4. 前往 **Analyze → Issues**，对告警创建的问题单进行确认、分配、讨论、订阅和关闭操作。
 
     表单的第一部分用于标识告警及应触发它的信号。
 
     ![新建告警表单的第一部分，包含名称、描述、启用状态和触发类型。](/images/dashboard/alert-new-trigger.png)
 
-    第二部分控制条件需持续多长时间、评估频率以及通知发送的目标。
+    第二部分控制条件需持续多长时间、评估频率以及通知发送位置。
 
     ![新建告警表单的第二部分，包含触发逻辑、计划、严重级别、投递渠道和创建操作。](/images/dashboard/alert-new-routing.png)
 
-    保存后，在告警列表中确认规则已启用，并核对其触发条件、时间窗口、严重级别和渠道是否符合预期。
+    保存后，使用告警列表确认规则已启用，且其触发条件、时间窗口、严重级别和渠道均符合预期。有未处理问题单的卡片会显示数量；没有问题单的卡片则完全省略该行，因此缺失该行并不代表任何含义。若要查看每条规则的数字（包括零值），请使用 `fp alerts show <name>`，该命令始终会打印该数值。
 
-    ![告警页面，展示告警规则及其触发条件、评估窗口、渠道和严重级别。](/images/dashboard/alerts.png)
-
-    在将告警用于生产响应之前，请先对其进行测试。
+    ![告警页面，显示告警规则及其触发条件、评估窗口、渠道和严重级别。](/images/dashboard/alerts.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp alerts create high-errors \
       --trigger-kind metric_threshold \
       --severity warning \
-      --trigger-spec '{"metric":"error_count","op":">","value":50,"window_secs":900}'
+      --trigger-spec '{"metric":"error_count","op":">","value":50,"window_secs":900}' \
+      --eval-interval-secs 300 \
+      --min-breaches 2 \
+      --eval-window 3
 
     fp alerts show high-errors
     fp alerts test high-errors
     fp alerts update high-errors --severity critical --yes
     ```
 
-    使用 `fp alerts list` 查看规则，使用 `fp alerts delete <name>` 删除规则。
+    新建告警默认为**启用**状态，若名称冲突，将在创建前被拒绝。
+
+    `fp alerts update` 会在服务端替换整个定义，因此 CLI 会重新读取告警并将你的标志叠加其上——仅通过标志进行更新时，除了 `alerts:write` 权限外，还需要 `alerts:read` 权限，且在未传入 `--yes` 时会进行确认提示。
+
+    使用 `fp alerts list` 查看规则，使用 `fp alerts delete <name>` 删除规则。删除操作会预览规则（包括其未处理的问题单数量）并在执行前进行确认，因为该操作不可撤销。
+
+    删除并不是处理嘈杂规则的正确方式。`DELETE /alerts/{id}` 会级联删除：该告警曾创建的所有问题单都会随之删除，包括其评论、订阅者和活动历史记录。CLI 的确认提示将此描述为未处理问题单被"孤立"；API 的行为是级联删除，因此应将历史记录视为永久丢失。若要停止规则触发同时保留已记录的内容，应将其关闭——控制台的告警表单中有启用开关，而 `fp alerts create` 和 `fp alerts update` 均不提供 `--enabled` 标志，因此 CLI 的操作方式是使用 `fp alerts update <name> --file` 并传入包含 `enabled: false` 的完整定义。
 
     完整的告警命令集请参阅 [`fp alerts` 参考文档](/zh/reference/cloud-cli#alerts)。
   </Tab>
 </Tabs>
 
-告警条件可基于错误、评估分数、评估组合或自定义 SQL。添加接收人、测试规则，并打开生成的事件进行确认、分配、评论、订阅和解决。
+<Warning>
+  **test** 会发送真实通知。它会向告警配置的真实邮件、Slack 和 webhook 渠道发送消息，并创建一个合成问题单，因此可能会呼叫当前值班人员。在交互式终端中会先进行确认；传入 `--yes`、`--json` 或重定向 stdin 均会跳过该提示。服务端在发出消息后即报告成功，因此测试结果为绿色仅证明消息已发出，并不代表消息已送达。
+</Warning>
 
-## 良好的告警设计原则
+## 定义触发条件
 
-- 在名称中体现条件和受影响的工作流。
-- 明确限定环境范围。
+共有五种触发类型：
+
+| `--trigger-kind` | 触发时机 |
+| --- | --- |
+| `metric_threshold` | 指标超过阈值——错误数、延迟、成本或任何可量化的指标。 |
+| `per_event` | 单个匹配事件到达时。 |
+| `evaluation_score` | 评估器的评分超过阈值时。 |
+| `eval_compound` | 多个评分条件组合触发，例如三项中有两项评分未通过。 |
+| `custom_sql` | 你编写的查询返回触发结果时。 |
+
+条件本身通过 `--trigger-spec` 传入，格式取决于所选的触发类型。
+
+## 设置评估参数
+
+控制台表单和 CLI 需要相同的四个值。
+
+| 设置 | 标志 | 可接受的值 |
+| --- | --- | --- |
+| 严重级别 | `--severity` | `info`、`warning`、`critical` |
+| 评估间隔 | `--eval-interval-secs` | 30–86,400 秒 |
+| 触发次数 | `--min-breaches` | 至少为 1，且不超过窗口大小 |
+| 评估窗口 | `--eval-window` | 至少为 1，以**间隔数**计，而非秒数 |
+
+因此，`--eval-interval-secs 300 --min-breaches 2 --eval-window 3` 的含义是"每五分钟评估一次，当最近三次评估中有两次触发时发出告警"。
+
+## 告警设计最佳实践
+
+- 在名称中说明条件和受影响的工作流。
+- 明确指定环境范围。
 - 设置合理的时间窗口和阈值，避免对单次无害事件做出反应。
-- 附上能引导响应人员定位会话的链接或查询。
-- 在启用规则之前先指定负责人。
+- 包含能引导响应人员找到会话的链接或查询。
+- 在启用规则前指定负责人。
+- 在为同一症状添加新规则前，通过 `fp alerts show <name>` 检查未处理的问题单数量。控制台卡片仅在数量非零时显示该行。
 
 <Tip>
-  在解决审计发现的问题后，针对策略覆盖范围之外可能再次发生的相同故障添加告警。
+  在解决审计发现后，若同样的故障可能在策略覆盖范围之外再次发生，请添加相应告警。
 </Tip>
+
+<Card title="处理告警创建的问题单" icon="clipboard-check" href="/zh/audits/findings-and-issues">
+  确认、分配、评论、订阅和关闭——每次告警触发后进入的工作流程。
+</Card>

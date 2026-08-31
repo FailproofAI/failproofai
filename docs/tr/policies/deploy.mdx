@@ -1,51 +1,54 @@
 ---
-title: "İlkeleri dağıtın"
-description: "İncelenen bir ilke sürümünü hedeflenen makinelere aktarın."
+title: "Politikaları dağıt"
+description: "Gerçek aracı etkinliğinde bir politikayı gözlemleyin, ardından zorlayın veya geri alın."
 icon: "cloud-upload"
 ---
 
-Bir dağıtım, bir veya daha fazla ilke sürümünü kayıtlı makinelerin hedef kümesine bağlar.
+İncelenen bir politikayı bir seferde bir makineye dağıtın. Gözlem modunda başlayın.
 
-## Dağıtım uygulayın
+## CLI'dan dağıtım yapın
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. **Admin → enforcement** bölümüne gidin, makineyi bulun ve satırını genişletin.
-    2. **edit** seçeneğini tıklayın, incelenen ilke sürümünü ekleyin ve **observe** veya zorlayıcı etkisini seçin.
-    3. Değişikliği uygulayın, ardından makinenin sonraki kontrolünü bekleyin ve dağıtım ile kapsama durumunu doğrulayın.
-    4. Canlı kararları incelemek için **Observe → policy** bölümüne gidin.
+```bash
+fp policies test ./rule.mjs --tool Bash --command "git push --force" --expect deny
+fp policies publish no-force-push ./rule.mjs
+fp fleet deploy <machine> --add no-force-push:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add no-force-push:enforce
+```
 
-    ![İlke sürümleri, enforce ve observe efektleri ile dağıtım editörü ve dağıtım uygulaması aksiyonu.](/images/dashboard/enforcement-editor.png)
-  </Tab>
-  <Tab title="CLI">
-    CLI'dan `fp fleet` komutuyla dağıtım yapın. Uygulamadan önce ortaya çıkan kümesini gözden geçirin — `deploy` tam planı yazdırır ve **yalnızca `--json` olmayan etkileşimli terminalde** sorar. `--json` altında, `--yes` ile veya stdin yönlendirildiğinde (bir CI adımı, bir betik, bir aracı shell komutu) plan ve istem olmadan hemen uygulanır — bu nedenle gözden geçirmek istiyorsanız önce `fp fleet show <machine>` çalıştırın:
-
-    ```bash
-    fp fleet list
-    fp fleet show <machine-id>
-    fp fleet deploy <machine-id> --add no-force-push
-    ```
-
-    `fp fleet diff <machine-id>` amaç ile teslimatı gösterir (bir makine sonraki yoklamasına kadar `behind` olarak okunur), `fp fleet history <machine-id>` nesilleri listeler ve `fp fleet rollback <machine-id> <generation>` birini geri yükler — devre dışı bırakılan veya silinen bir ilkeyi adlandıran nesil varsa reddeder.
-
-    Makineyi `failproofai config --status` ile kontrol edin ve dağıtımdan sonra `fp sessions --env production --since 24h` ile `fp events --event-type hook_completed` kullanarak aktivitenin Cloud'a ulaştığını doğrulayın.
-  </Tab>
-</Tabs>
-
-<Steps>
-  <Step title="Sürümü ve hedefleri seçin">
-    Değişken bir taslak değil, incelenen bir sürümü dağıtın; oturumlarını inceleyebileceğiniz üretim dışı bir makine veya küçük bir grupla başlayın.
-  </Step>
-  <Step title="Kararları gözlemleyin">
-    Eşleşmeleri, nedenleri, etkilenen araçları ve yanlış pozitif sonuçları işi engellemeden gözden geçirin.
-  </Step>
-  <Step title="Zorlama ve kapsama doğrulayın">
-    Gözlenen eşleşmeler güvenli olmayan eylemleri geçerli olanlardan ayırdıktan sonra promosyon yapın, ardından her hedeflenen makinenin dağıtımı çektiğini ve kararları raporladığını doğrulayın.
-  </Step>
-</Steps>
-
-Makinelerin `policies:pull` yeteneğine ihtiyacı vardır. Olay raporlaması `events:add` tarafından ayrıca kontrol edilir; Cloud analizi ve zorlama beklediğinizde her ikisini de doğrulayın.
+Gözlem modu gerçek politikayı değerlendirir ve allow olmayan kararları kaydeder, ancak aracıyı engellemez.
 
 <Warning>
-  Zorlama yönetimi, idari bir Cloud iş akışıdır. Yalnızca root erişimli zorlama rotalarını sıradan müşteri `/v1` API uç noktaları olarak değerlendirmeyin.
+  Açık `--add no-force-push` hemen zorlama yapar. Gölge dağıtım için `:observe` ekleyin.
 </Warning>
+
+Zorlama sorunlara neden olursa:
+
+```bash
+fp fleet history <machine>
+fp fleet rollback <machine> <generation>
+```
+
+## Panodan dağıtım yapın
+
+1. **Admin → enforcement** adresine gidin.
+2. Hedef makineyi açın.
+3. Politika sürümünü **observe** etkisiyle ekleyin.
+4. Dağıtımı uygulayın.
+5. **Observe → policy** altında sonuçları gözden geçirin.
+6. Eşleşmeler doğru olduğunda aynı sürümü **enforce** olarak yükseltin.
+
+![Politika sürümleri, enforce ve observe etkileri ile uygulama dağıtımı eylemini gösteren makine dağıtımı düzenleyicisi.](/images/dashboard/enforcement-editor.png)
+
+## Bir seti değiştirin veya ön aşama yapın
+
+- `--remove <id>` bir politikayı kaldırır.
+- `--set <ref>...` tam politika setini değiştirir.
+- `--create` bir makine ilk kez kontrol etmeden önce dağıtımı hazırlar.
+- `fp fleet diff <machine>` amaçlanan ve uygulanan durumu karşılaştırır.
+
+<Note>
+  Cloud olmadan, `failproofai publish --effect observe` ile bir paket yayınlayın ve yerel panoda kararları inceleyin.
+</Note>
+
+Makinelerin dağıtımları almak için `policies:pull` ve kararları bildirmek için `events:add` izinlerine ihtiyacı vardır.

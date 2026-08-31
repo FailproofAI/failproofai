@@ -1,25 +1,38 @@
 ---
 title: "도구"
-description: "에이전트 세션에서 느리거나 실패하거나 과도하게 사용된 도구를 찾습니다."
+description: "에이전트 실행 전반에서 느리거나 실패하거나 과도하게 사용된 도구를 찾아보세요."
 icon: "wrench"
 ---
 
-도구 페이지는 세션 전반에 걸쳐 도구 호출을 그룹화하여 지연 시간과 호출 분포를 비교할 수 있게 해줍니다.
+도구 페이지에서는 에이전트가 호출하는 항목, 호출 실패 빈도, 그리고 영향을 받는 세션을 확인할 수 있습니다.
+
+도구 이름은 각 에이전트 하네스에서 가져오므로 동일한 기능이 서로 다른 이름으로 표시될 수 있습니다. 예를 들어, 셸 호출은 `Bash`, `exec`, `Shell`, `terminal`, 또는 `run_command`로 나타날 수 있습니다. 필터를 구성하기 전에 `fp list tools`를 실행하여 확인하세요.
 
 <Tabs>
   <Tab title="대시보드">
-    1. **Observe → Tools**로 이동합니다.
-    2. 환경, 도구 이름, 에이전트 또는 세션 ID로 필터링합니다.
-    3. 지연 시간과 도구 분포를 검토합니다.
-    4. 차트 포인트나 도구 세그먼트를 선택하면 관련 이벤트와 세션이 열립니다.
+    **Observe → Tools**로 이동합니다. 환경, 도구, 에이전트, 또는 세션으로 필터링할 수 있습니다.
 
-    ![지연 시간, 성공 및 실패 분류, 도구 호출 분포를 보여주는 도구 페이지.](/images/dashboard/tools.png)
+    ![지연 시간, 성공 및 실패 분석, 도구 호출 분포를 보여주는 도구 페이지.](/images/dashboard/tools.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp list tools
-    fp events --event-type tool_use,tool_result --env production --since 24h
-    fp --json events --full --session-id <session-id> --all
+    fp events --event-type tool_use,tool_result --since 24h
+    fp errors --event-type tool_result --since 24h
+    fp --json events --full --event-type tool_use,tool_result --session-id <session-id> --all --limit 2000
     ```
+
+    호출별 지속 시간과 같은 페이로드 필드가 필요할 때는 `--full`을 사용하세요.
   </Tab>
 </Tabs>
+
+이 페이지를 사용하여 반복적인 실패를 찾거나, 정상 실행과 실패 실행을 비교하거나, 정책 대상 도구가 실제로 사용되고 있는지 확인할 수 있습니다.
+
+<CardGroup cols={2}>
+  <Card title="오류" icon="circle-alert" href="/ko/sessions/errors">
+    도구 실패 뒤에 있는 세션을 확인합니다.
+  </Card>
+  <Card title="훅" icon="webhook" href="/ko/sessions/hooks">
+    표준 도구 이름과 정책 결정을 확인합니다.
+  </Card>
+</CardGroup>

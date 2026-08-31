@@ -1,74 +1,54 @@
 ---
 title: "Schlüssel und Berechtigungen"
-description: "Erstellen Sie bereichsbegrenzte API-Schlüssel für Maschinen, Automatisierung und Operatoren."
+description: "Zugangsdaten für Personen, Automatisierungen und Maschinen erstellen."
 icon: "key-round"
 ---
 
-API-Schlüssel gehören einer Organisation und tragen explizite Berechtigungen. Verwenden Sie separate Schlüssel für die Agent-Erfassung, Richtlinienübermittlung, Evaluatoren, CI-Automatisierung und administrative Skripte.
+Verwenden Sie für jede Person, Maschine oder Automatisierungsaufgabe einen separaten Schlüssel. Vergeben Sie nur die Berechtigungen, die tatsächlich benötigt werden.
 
 ## Schlüssel erstellen und rotieren
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. Gehen Sie zu **Verwaltung → Schlüssel**, wählen Sie **Neuer Schlüssel** und geben Sie einen Workload-Namen ein.
-    2. Wählen Sie einen Berechtigungssatz und passen Sie einzelne Berechtigungen nur an, wenn das Voreinstellung nicht ausreicht.
-    3. Erstellen Sie den Schlüssel und kopieren Sie sein einmalig angezeigtes Geheimnis sofort.
-    4. Öffnen Sie den Schlüssel später, um Berechtigungen zu aktualisieren, ihn zu deaktivieren oder das Geheimnis neu zu generieren.
+Verwenden Sie **Admin → Keys** oder die Cloud-CLI:
 
-    Im Erstellungsdialog wählen Sie die minimalen Berechtigungen, die der Workload benötigt.
+```bash
+fp keys list
+fp keys create "audit automation" --add audits:read
+fp keys disable "audit automation"
+```
 
-    ![Der neue API-Schlüssel-Dialog mit Berechtigungsvoreinstellungen und individuellen Grants.](/images/dashboard/key-create.png)
+Speichern Sie das Secret bei der Erstellung – es wird nicht erneut angezeigt. Zur Rotation erstellen Sie einen Ersatzschlüssel, aktualisieren den Verbraucher und deaktivieren anschließend den alten Schlüssel.
 
-    Nach der Erstellung zeigt die Schlüsselseite die dauerhaften Metadaten und Verwaltungsaktionen. Das einmalige Geheimnis wird nicht erneut angezeigt.
+## Maschinenschlüssel
 
-    ![Die API-Schlüssel-Seite mit Schlüsselberechtigungen, Erstellungszeit sowie Aktionen zum Neu-Generieren und Deaktivieren.](/images/dashboard/api-keys.png)
+Ein Maschinenschlüssel verbindet den lokalen Dienst mit Cloud:
 
-    Nutzen Sie diese Liste, um Berechtigungen regelmäßig zu überprüfen und Schlüssel zu deaktivieren, die keinem aktiven Workload mehr zugeordnet sind.
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp keys create production-agents \
-      --add events:add \
-      --add policies:pull
-    fp keys show production-agents
-    fp keys update production-agents --add events:read
-    fp keys regenerate production-agents --yes
-    fp keys disable production-agents
-    ```
+```bash
+export FAILPROOFAI_CLOUD_TOKEN="<key>"
+failproofai config
+```
 
-    Leiten Sie die Ausgabe von create/regenerate sicher um oder erfassen Sie sie; das Geheimnis wird nur einmal zurückgegeben.
-  </Tab>
-</Tabs>
+Eine verbundene Maschine benötigt möglicherweise zwei Fähigkeiten:
 
-Die beiden Berechtigungen, die eine verbundene Failproof AI-Maschine benötigt, sind unabhängig voneinander:
+- `policies:pull`, um Cloud-verwaltete Richtlinien zu empfangen.
+- `events:add`, um Entscheidungen und Sitzungen zu übermitteln.
 
-- `events:add` sendet Ereignisse und Sitzungsdaten.
-- `policies:pull` ruft zugewiesene Richtlinien-Deployments ab.
+Der Status zeigt diese getrennt an, da eine funktionieren kann, während die andere es nicht tut.
 
-Schlüsselgeheimnisse werden bei der Erstellung oder Neu-Generierung angezeigt. Speichern Sie sie in einem Secret-Manager und rotieren Sie sie, ohne die interaktiven Anmeldedaten eines Operators wiederzuverwenden.
+## Häufige Berechtigungen
 
-## Berechtigungskatalog
-
-| Bereich | Berechtigungen |
+| Berechtigung | Erlaubt |
 | --- | --- |
-| Ereignisse | `events:add`, `events:read` |
-| Schlüssel | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` ist nur für menschliche Sitzungen |
-| Benutzer | `users:create`, `users:read`, `users:update`, `users:delete` |
-| Evaluierungen | `evaluations:read`, `evaluations:trigger` |
-| Dashboards | `dashboards:read`, `dashboards:write`, `dashboards:delete` |
-| Abfragen | `queries:read`, `queries:write`, `queries:delete`, `queries:run` |
-| Assistent | `agent:use` |
-| Einstellungen | `settings:read`, `settings:write` |
-| Benachrichtigungen | `alerts:read`, `alerts:write` |
-| Probleme | `issues:read`, `issues:create`, `issues:close` |
-| Audits | `audits:read`, `audits:write` |
-| Richtlinien | `policies:read`, `policies:write`, `policies:pull` |
-| Nutzung | `usage:read` |
+| `events:add` | Events senden |
+| `events:read` | Events und Fehler lesen |
+| `evaluations:read` | Sitzungen und Auswertungen lesen |
+| `audits:read` / `audits:write` | Audits einsehen oder verwalten |
+| `policies:read` / `policies:write` | Richtlinien einsehen oder bereitstellen |
+| `policies:pull` | Maschinenrichtlinienzuweisungen abrufen |
+| `keys:create` / `keys:disable` | Schlüssel erstellen oder deaktivieren |
+| `orgs:admin` | Organisationsverwaltung auf Instanzebene; nicht an einen Organisationsschlüssel zuweisbar |
 
-`orgs:admin` ist dem Instanz-Operator vorbehalten und kann weder einem Organisations-Schlüssel noch einem gewöhnlichen Mitglied gewährt werden. Veraltete `incidents:*`- und `alerts:ack`-Token werden aus Kompatibilitätsgründen akzeptiert und auf aktuelle `issues:*`-Berechtigungen normalisiert.
-
-Eingebaute Berechtigungssätze sind `read-only`, `standard` und `admin`. `standard` ergänzt die Leseberechtigungen um das Auslösen von Evaluierungen, die Ausführung von Abfragen, das Bearbeiten von Problemen und die Nutzung des Assistenten. Bei der Schlüsselerstellung werden ausschließlich für Menschen gültige Berechtigungen entfernt, auch wenn ein Berechtigungssatz diese enthält.
+Einige administrative `fp fleet`- und `fp guardrails`-Befehle erfordern eine angemeldete Benutzersitzung statt eines API-Schlüssels. Der Hilfetext der jeweiligen Befehle weist darauf hin, bevor eine Anfrage gestellt wird.
 
 <Warning>
-  Instanz-bezogene Schlüssel können eine Organisation über den `X-AgentEye-Org`-Header auswählen. Setzen Sie diesen bei Multi-Organisations-Deployments explizit; wird er weggelassen, kann die Standardorganisation ausgewählt werden.
+  Verwenden Sie niemals Ingest-Zugangsdaten wie `AGENTEYE_KEY` oder `AGENTEYE_API_KEY` als `FP_API_KEY`. Sie dienen unterschiedlichen Systemen und haben unterschiedliche Berechtigungen.
 </Warning>

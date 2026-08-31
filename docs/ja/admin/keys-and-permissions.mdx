@@ -1,74 +1,54 @@
 ---
 title: "キーと権限"
-description: "マシン、自動化、オペレーター向けにスコープ付きAPIキーを作成する。"
+description: "人、自動化、マシン向けの認証情報を作成します。"
 icon: "key-round"
 ---
 
-APIキーは組織に属し、明示的な権限を持ちます。エージェントの取り込み、ポリシー配信、評価器、CI自動化、管理スクリプトにはそれぞれ専用のキーを使用してください。
+人、マシン、または自動化ジョブごとに個別のキーを使用してください。必要な権限のみを付与します。
 
 ## キーの作成とローテーション
 
-<Tabs>
-  <Tab title="ダッシュボード">
-    1. **管理 → キー** に移動し、**新規キー** を選択してワークロード名を入力します。
-    2. 権限セットを選択し、プリセットが不十分な場合のみ個別の権限を調整します。
-    3. キーを作成し、ワンタイムシークレットをすぐにコピーします。
-    4. 後でキーを開いて、付与内容の更新、無効化、またはシークレットの再生成を行います。
+**Admin → Keys** またはCloud CLIを使用します：
 
-    作成ドロワーでは、ワークロードに必要な最小限の権限を選択します。
+```bash
+fp keys list
+fp keys create "audit automation" --add audits:read
+fp keys disable "audit automation"
+```
 
-    ![権限プリセットと個別の付与設定が表示された新規APIキードロワー](/images/dashboard/key-create.png)
+シークレットはキー作成時に保存してください。作成後は再表示されません。ローテーションを行う場合は、新しいキーを作成し、利用者側を更新した後、古いキーを無効化します。
 
-    作成後、キーページには永続的なメタデータと管理アクションが表示されます。ワンタイムシークレットは再表示されません。
+## マシンキー
 
-    ![キーの権限、作成日時、再生成および無効化アクションが表示されたAPIキーページ](/images/dashboard/api-keys.png)
+マシンキーはローカルサービスとCloudを接続します：
 
-    このリストを使用して付与内容を定期的に確認し、有効なワークロードに対応しなくなったキーを無効化してください。
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp keys create production-agents \
-      --add events:add \
-      --add policies:pull
-    fp keys show production-agents
-    fp keys update production-agents --add events:read
-    fp keys regenerate production-agents --yes
-    fp keys disable production-agents
-    ```
+```bash
+export FAILPROOFAI_CLOUD_TOKEN="<key>"
+failproofai config
+```
 
-    作成・再生成時の出力は安全にリダイレクトまたはキャプチャしてください。シークレットは一度だけ返されます。
-  </Tab>
-</Tabs>
+接続されたマシンには、次の2つのケイパビリティが必要になる場合があります：
 
-接続された Failproof AI マシンに必要な2つの権限は独立しています。
+- `policies:pull`：Cloudで管理されたポリシーを受信する。
+- `events:add`：判定結果とセッションを送信する。
 
-- `events:add` はイベントとセッションデータを送信します。
-- `policies:pull` は割り当てられたポリシーデプロイメントを取得します。
+一方が機能しながらもう一方が機能しない場合があるため、Statusではこれらを別々に報告します。
 
-キーシークレットは作成時または再生成時に表示されます。シークレットマネージャーに保存し、オペレーターのインタラクティブな認証情報を再利用せずにローテーションしてください。
+## 主な権限一覧
 
-## 権限カタログ
-
-| エリア | 権限 |
+| 権限 | 許可される操作 |
 | --- | --- |
-| イベント | `events:add`、`events:read` |
-| キー | `keys:create`、`keys:read`、`keys:disable`、`keys:regenerate`；`keys:update` はヒューマンセッション専用 |
-| ユーザー | `users:create`、`users:read`、`users:update`、`users:delete` |
-| 評価 | `evaluations:read`、`evaluations:trigger` |
-| ダッシュボード | `dashboards:read`、`dashboards:write`、`dashboards:delete` |
-| クエリ | `queries:read`、`queries:write`、`queries:delete`、`queries:run` |
-| アシスタント | `agent:use` |
-| 設定 | `settings:read`、`settings:write` |
-| アラート | `alerts:read`、`alerts:write` |
-| 課題 | `issues:read`、`issues:create`、`issues:close` |
-| 監査 | `audits:read`、`audits:write` |
-| ポリシー | `policies:read`、`policies:write`、`policies:pull` |
-| 使用状況 | `usage:read` |
+| `events:add` | イベントの送信 |
+| `events:read` | イベントとエラーの読み取り |
+| `evaluations:read` | セッションと評価の読み取り |
+| `audits:read` / `audits:write` | 監査の確認または管理 |
+| `policies:read` / `policies:write` | ポリシーの確認またはデプロイ |
+| `policies:pull` | マシンへのポリシー割り当ての取得 |
+| `keys:create` / `keys:disable` | キーの作成または無効化 |
+| `orgs:admin` | インスタンスレベルの組織管理。組織キーには割り当て不可 |
 
-`orgs:admin` はインスタンスオペレーター専用に予約されており、組織キーや一般メンバーには付与できません。廃止された `incidents:*` および `alerts:ack` トークンは互換性のために受け入れられ、現在の `issues:*` 権限に正規化されます。
-
-組み込みの権限セットは `read-only`、`standard`、`admin` です。`standard` は読み取り権限に加えて、評価のトリガー、クエリの実行、課題への対応、アシスタントの使用が追加されます。キー作成時に権限セットにヒューマン専用の付与が含まれていても、それらは除外されます。
+一部の管理用 `fp fleet` および `fp guardrails` コマンドは、APIキーではなくサインイン済みユーザーセッションを必要とします。リクエストを行う前に、ヘルプテキストにその旨が記載されています。
 
 <Warning>
-  インスタンススコープのキーは `X-AgentEye-Org` ヘッダーで組織を選択できます。マルチ組織デプロイメントでは明示的に設定してください。省略した場合、デフォルトの組織が選択される可能性があります。
+  `AGENTEYE_KEY` や `AGENTEYE_API_KEY` などのインジェスト認証情報を `FP_API_KEY` として再利用しないでください。これらは異なるシステムと権限を対象としています。
 </Warning>

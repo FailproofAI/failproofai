@@ -1,68 +1,48 @@
 ---
----
-title: "Comportamento in caso di errore"
-description: "Comprendi cosa accade quando la valutazione delle policy o il daemon locale non è disponibile."
+title: "Comportamento in caso di errore di policy"
+description: "Comprendi perché Failproof AI nega quando la valutazione non può essere eseguita."
 icon: "shield-alert"
 ---
 
-Failproof AI è progettato affinché un errore di enforcement sia visibile piuttosto che consentire silenziosamente lavori rischiosi.
+Dopo la configurazione, il servizio locale `failproofaid` è l'unico valutatore. Se non riesce a rispondere, le azioni protette vengono negate anziché essere silenziosamente consentite.
 
-## Diagnosticare un blocco failure-closed
-
-<Tabs>
-  <Tab title="Dashboard">
-    1. Vai a **Admin → enforcement** e apri la macchina.
-    2. Controlla il suo ultimo check-in, il deployment assegnato e il deployment segnalato.
-    3. Vai a **Observe → policy** e apri la sessione della decisione negata.
-    4. Conferma se il motivo segnala raggiungibilità del daemon, version skew o la policy stessa.
-
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai config --status
-    npm install -g failproofai@latest
-    failproofai config
-    ```
-
-    Rieseguire `failproofai config` aggiorna e riavvia il daemon dopo un upgrade del pacchetto.
-  </Tab>
-</Tabs>
-
-Su una macchina configurata per usare `failproofaid`, il daemon è l'unico valutatore. Se non è raggiungibile o la sua versione del protocollo non corrisponde alla CLI, la valutazione dell'hook fallisce in modo chiuso. L'azione viene negata con un motivo che indirizza l'operatore a controllare o aggiornare il daemon.
-
-Prima della configurazione del daemon, gli hook valutano le policy in process. Una volta registrata la configurazione del daemon, Failproof AI non torna silenziosamente a un secondo valutatore quando il daemon fallisce.
-
-## Rispondere a una decisione failure-closed
-
-1. Esegui `failproofai config --status`.
-2. Se le versioni differiscono, riesegui `failproofai config` dopo aver aggiornato il pacchetto.
-3. Se il daemon non è raggiungibile, ispeziona lo stato del suo servizio e i log locali.
-4. Riprendi il lavoro dell'agent solo dopo aver verificato che un percorso di valutazione della policy noto è sano.
-
-<Warning>
-  Non ritentare ripetutamente l'azione bloccata. Una risposta failure-closed significa che il sistema non ha potuto stabilire che l'azione era sicura.
-</Warning>
-
-## Un pack non si caricherà
-
-Una macchina a cui è stato ordinato di applicare un pack, e che non può eseguirlo, nega piuttosto che continuare silenziosamente. Il trigger è un'**aspettativa registrata**, mai una vuota: una macchina senza pack installati è silenziosa, mentre un pack che è dichiarato e non si risolverà — o che registra meno di quanto dichiara il suo manifest — nega.
-
-La negazione è **ristretta**, a differenza di un daemon non raggiungibile. Un daemon che non può essere raggiunto significa che nessuna valutazione è avvenuta affatto, quindi nulla può essere conosciuto come sicuro. Un pack che non si carica ha un insieme enumerabile di guardie mancanti, perché ogni policy dichiarata porta il suo `match` — quindi nega solo gli eventi e i tool coperti da quelle policy, e tutto il resto procede.
-
-Non si attiva per:
-
-- un pack `observe`, che valuta e scarta per costruzione
-- policy che non hai mai preso, o che hai esplicitamente disattivato
-- un pack che il loader non ha mai ricevuto, dove "nessuna registrazione" non può essere distinta da un salto deliberato
-- una pausa di sessione attiva
-- un timeout di caricamento, che è transitorio — un momento di disco lento non deve negare fino a quando un umano interviene
-
-`UserPromptSubmit` **istruisce** invece di negare, indipendentemente da cosa dichiarava la policy mancante. Una negazione generale la porterebbe con sé e ti bloccherebbe fuori dall'agent che potrebbe risolvere il problema.
-
-### Cosa fare
+## Diagnosticare un blocco a livello di macchina
 
 ```bash
-failproofai pack list
+failproofai config --status
+systemctl status failproofaid@$USER        # Linux
+sudo launchctl print system/ai.failproof.failproofaid.$USER  # macOS
 ```
 
-Elenca qualsiasi pack installato che non si carica, spiega il motivo, ed esce con codice non-zero. Poi o reinstallalo (`failproofai pack add <source>`) o rimuovilo (`failproofai pack remove <publisher/name>`) — rimuoverlo ritira l'aspettativa, e la negazione si ferma con essa.
+Esegui `failproofai config` per riparare il servizio o installare la versione corrispondente.
+
+Due errori possono sembrare simili:
+
+| Errore | Significato |
+| --- | --- |
+| Servizio non raggiungibile | Il socket non ha alcun valutatore funzionante dietro di esso |
+| Mancata corrispondenza di versione | La CLI e il servizio non sono d'accordo sul protocollo |
+
+Entrambi negano, ma i report di stato li segnalano separatamente.
+
+## Un pack non si carica
+
+Un pack selezionato che è mancante, modificato o non valido nega gli eventi coperti dalle sue policy selezionate. Ciò impedisce che un pack rotto scompaia mentre la macchina appare protetta.
+
+`failproofai policies` nomina il pack e l'errore di caricamento.
+
+```bash
+failproofai policies
+failproofai policies remove owner/repo
+failproofai policies add owner/repo@<release>
+```
+
+I metadati illeggibili ampliano la negazione sicura anziché restringerla dai dati che non potevano essere considerati affidabili.
+
+## Cosa rimane disponibile
+
+La dashboard locale e i comandi di stato continuano a funzionare mentre la valutazione della policy sta fallendo. Usali per identificare il servizio, il pack o la versione che necessita riparazione.
+
+<Warning>
+  Non aggirare una decisione di negazione per errore eliminando i file del servizio o del pack. Ripara il servizio, reinstalla il pack o rimuovi l'assegnazione tramite la CLI in modo che la macchina torni a uno stato noto.
+</Warning>

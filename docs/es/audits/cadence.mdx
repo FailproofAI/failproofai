@@ -1,27 +1,29 @@
 ---
-title: "Cadencia de auditoría"
-description: "Elige cuándo se ejecutan las auditorías recurrentes y cuántos datos revisan."
+title: "Cadencia de auditorías"
+description: "Elige cuándo se ejecutan las auditorías periódicas y qué cantidad de datos revisan."
 icon: "calendar-clock"
 ---
 
-Usa auditorías recurrentes para patrones de fallos que pueden reaparecer a medida que cambian los agentes, prompts, herramientas y modelos.
+Usa las auditorías periódicas para detectar modos de fallo que pueden reaparecer a medida que cambian los agentes, prompts, herramientas y modelos.
 
-## Cambiar el horario
+## Cambiar el calendario
 
 <Tabs>
   <Tab title="Dashboard">
     1. Ve a **Analyze → Audits** y abre la auditoría.
-    2. Abre su configuración y cambia el estado de activación, el intervalo, el ancla UTC, el modo de ventana o el lookback.
-    3. Guarda la auditoría y confirma la próxima ejecución en la tarjeta de auditoría.
-    4. Usa **run now** una vez después de un cambio mayor en el alcance o el contexto.
+    2. Selecciona **edit settings** y cambia la cadencia, la ventana, la sensibilidad o los hallazgos por ejecución.
+    3. Guarda la auditoría y confirma la hora de la próxima ejecución en la cabecera de la auditoría.
+    4. Pausa y reanuda el calendario desde esa misma cabecera, junto al botón **run now**.
+    5. Usa **run now** una vez después de un cambio significativo de alcance o contexto.
 
-    ![El editor de auditoría mostrando la cadencia, la ventana de análisis, el alcance, la configuración de análisis, el contexto y los canales de notificación.](/images/dashboard/audit-edit.png)
+    ![Una cabecera de auditoría que muestra su estado pausado, hallazgos abiertos, última ejecución, próxima ejecución, ventana de exploración y sensibilidad, con los controles run now, edit settings y resume.](/images/dashboard/audit-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp audits edit checkout-reliability \
       --schedule-interval-secs 86400 \
       --schedule-anchor 2026-08-15T09:00:00Z \
+      --window-mode since_last \
       --lookback-window-secs 86400 \
       --yes
 
@@ -29,21 +31,50 @@ Usa auditorías recurrentes para patrones de fallos que pueden reaparecer a medi
     fp audits edit checkout-reliability --enabled --yes
     ```
 
-    Consulta la [referencia de `fp audits`](/es/reference/cloud-cli#audits) para conocer los límites de horario, el comportamiento de las ventanas y todos los comandos de auditoría.
+    `fp audits edit` solicita confirmación antes de aplicar cualquier cambio, por eso todos los ejemplos aquí incluyen `--yes`. El servidor reemplaza la definición completa en cada edición, por lo que la CLI reenvía la auditoría actual con tus cambios aplicados — una edición solo con flags requiere `audits:read` **además de** `audits:write`. Configura una clave de CI con ambos permisos.
+
+    Consulta la [referencia de `fp audits`](/es/reference/cloud-cli#audits) para conocer los límites del calendario, el comportamiento de las ventanas y todos los comandos de auditoría.
   </Tab>
 </Tabs>
 
-Elige la cadencia según la velocidad y el costo del riesgo:
+## Los dos límites del calendario
+
+Cada recomendación que aparece a continuación debe ajustarse a estos límites. Los rangos son los del servidor, y `fp` los refleja en el lado del cliente, de modo que un valor fuera de rango falla con código 2 localmente en lugar de consumir un viaje de ida y vuelta con un error 422.
+
+| Campo | Flag | Rango | Valor predeterminado |
+| --- | --- | --- | --- |
+| Intervalo del calendario | `--schedule-interval-secs` | 3.600–604.800 segundos (1 hora a 7 días) | 86.400 (diario) |
+| Ventana de retrospección | `--lookback-window-secs` | 3.600–7.776.000 segundos (1 hora a 90 días) | 604.800 (7 días) |
+
+Siete días es el límite máximo de cadencia. No existe una auditoría mensual en Cloud.
+
+## Elegir una cadencia
+
+Elige según la velocidad y el coste del riesgo:
 
 | Patrón de riesgo | Cadencia inicial |
 | --- | --- |
-| Acción de producción de alto impacto | Diaria |
-| Regresión de flujo de trabajo o modelo | Semanal |
-| Revisión de gobernanza o acceso | Mensual |
-| Investigación de lanzamiento único | Ejecutar una vez |
+| Acción de producción de alto impacto | Diaria, o por horas mientras se despliega un cambio arriesgado |
+| Regresión en flujos de trabajo o modelos | Semanal |
+| Revisión de gobernanza o acceso | Semanal — el intervalo más largo disponible |
 
-Alinea la ventana de lookback con la cadencia para que las ejecuciones no dejen vacíos ni examinen repetidamente una población innecesariamente grande. Después de cambiar el objetivo o el contexto de una auditoría, ejecútala manualmente una vez antes de confiar en el próximo resultado programado.
+Alinea la ventana de retrospección con la cadencia para que las ejecuciones no dejen huecos ni examinen repetidamente una población innecesariamente grande.
+
+No existe una auditoría de ejecución única; toda auditoría lleva asociado un intervalo de calendario. Para una investigación de lanzamiento, créala habilitada, deja que se dispare la primera ejecución — la primera ejecución se encola inmediatamente al crearla, independientemente del ancla — y luego pausala con `fp audits edit <name> --disabled --yes`. Vuelve a habilitarla antes de usar **run now**: una auditoría deshabilitada no tiene fila en la cola, y una ejecución manual contra ella se rechaza con un error 409.
+
+## Modo de ventana y ancla
+
+`--window-mode` determina qué ventana explora cada ejecución:
+
+| Modo | Comportamiento |
+| --- | --- |
+| `since_last` | Continúa desde el final de la última ventana completamente analizada, de modo que una ejecución omitida no deja huecos. |
+| `fixed` | Reinspecciona una ventana móvil de `lookback_window_secs` en cada ejecución, independientemente de lo que cubrió la última. |
+
+`--schedule-anchor` fija la fase en lugar de la frecuencia: las ejecuciones se producen en `anchor + N × interval`. Si se omite, el ancla toma por defecto el siguiente 09:00 UTC; un ancla con más de 365 días de antelación es rechazada. Cambiar el intervalo o el ancla surte efecto en el siguiente reprogramado, no en la ejecución ya encolada, y una ejecución fallida no mueve el ancla.
+
+Después de cambiar el objetivo o el contexto de una auditoría, ejecútala manualmente una vez antes de confiar en el siguiente resultado programado.
 
 <Note>
-  Las auditorías programadas locales se configuran en la máquina y analizan el historial de agentes local. Los horarios de auditorías en la nube operan sobre sesiones en la nube. Trata sus resultados y su propiedad por separado.
+  Esta página trata sobre los calendarios de auditoría de Cloud, que operan sobre sesiones de Cloud. La auditoría local tiene su propio temporizador: `failproofai audit --schedule [days]` acepta entre 1 y 90 días y tiene un valor predeterminado de 7, analiza el historial del agente en esa máquina concreta y es la única superficie con opción mensual. Sus resultados y titularidad son independientes de todo lo que se describe aquí — consulta [Auditar el historial local del agente](/es/audits/local-audit).
 </Note>

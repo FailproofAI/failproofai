@@ -1,54 +1,93 @@
 ---
 title: "Receitas de auditoria"
-description: "Objetivos iniciais para investigações de falhas comuns em agentes."
+description: "Objetivos iniciais para investigações de falhas comuns de agentes."
 icon: "book-open-check"
 ---
 
-Use estes como objetivos iniciais e, em seguida, adicione seu agente, ambiente e fluxo de trabalho esperado.
+Use estes como pontos de partida, depois adicione seu agente, ambiente e fluxo de trabalho esperado.
 
 <Tabs>
   <Tab title="Dashboard">
-    Acesse **Analyze → Audits → New audit**, copie uma receita na descrição ou briefing e adicione o ambiente, agente, período de análise e URLs de referência relevantes. Crie a auditoria e inspecione a primeira execução antes de agendá-la.
+    Acesse **Analyze → Audits → New audit**. Uma linha de receita desta página é a **description** — o que você espera que essa auditoria detecte. As regras de fluxo de trabalho que tornam o objetivo avaliável ficam em **your brief**, no card **what it knows**: contexto que o modelo lê antes de analisar um único evento, limitado a 8.192 caracteres, adicionado ao que a auditoria já busca. Um brief nunca substitui o objetivo e nunca serve como evidência para uma descoberta.
+
+    Em seguida, defina o escopo em **what it reads**, porque metade dessas receitas gera ruído sem isso. Ambientes e agentes restringem a população; **errors to ignore** lista os tipos de erro que você espera e trata por design, para que parem de ser contados como falhas. Aceita apenas nomes de tipos de erro e é o que impede que a receita de retry em loop inunde os resultados.
 
     O formulário de nova auditoria transforma uma receita em uma verificação de falha executável ao adicionar escopo, contexto, cadência e notificações.
 
     ![O formulário de nova auditoria configurado com um objetivo focado, agendamento, escopo de agente e ambiente, contexto e canais de notificação.](/images/dashboard/audit-new.png)
 
-    Após a criação, confirme que a auditoria aparece na lista com o status e agendamento esperados antes de depender das execuções recorrentes.
+    Após a criação, confirme que a auditoria aparece na lista com o status e o agendamento esperados antes de depender das execuções recorrentes.
 
-    ![A página de Auditorias onde uma receita de auditoria específica do fluxo de trabalho aparece após a criação.](/images/dashboard/audits.png)
-
-    Abra a primeira execução e refine a receita se os resultados encontrados forem mais amplos ou mais restritos do que o modo de falha pretendido.
+    Abra a primeira execução e refine a receita se as descobertas forem mais amplas ou mais restritas do que o modo de falha pretendido.
   </Tab>
   <Tab title="CLI">
-    Salve uma receita como arquivo de texto e anexe-a durante a criação:
+    Salve uma receita como arquivo de texto e anexe durante a criação:
 
     ```bash
     fp audits create retry-loop-review \
+      --description "Find agents that repeat a failing tool call without changing anything" \
       --scope '{"environments":["production"]}' \
+      --ignore-error-type RateLimitRetried \
       --text-file ./retry-loop-audit.txt \
       --schedule-interval-secs 86400
     ```
+
+    `--text` e `--text-file` são duas formas de enviar o mesmo brief; passe apenas uma, não as duas. Adicione páginas de referência com `--url`, até cinco, apenas URLs públicas `https://`. Envie tudo com a requisição de criação: uma nova auditoria habilitada vence imediatamente, então contexto escrito em uma segunda chamada pode não aparecer na primeira execução.
   </Tab>
 </Tabs>
 
+## Avalie a receita, não apenas o enunciado
+
+Duas configurações influenciam o resultado mais do que o enunciado. **Sensitivity** (`low`, `medium`, `high`, padrão `medium`) define com que frequência uma execução sinaliza um padrão; **findings per run** (`--top-k`, padrão 50) limita quantos são mantidos. Aumente a sensibilidade para uma pergunta onde uma falha custa mais do que um falso positivo, e diminua para um padrão de volume que, caso contrário, encheria a fila. Cada receita abaixo indica um ponto de partida — altere-o após ler a primeira execução, não antes.
+
+Abandono de tarefa e escalação humana perdida são julgamentos sobre o que um agente deveria ter feito, não sobre um erro que ele levantou. Escreva o [contexto do agente](/pt-br/audits/agent-contracts) primeiro, ou a análise não terá nenhum padrão para avaliar.
+
 <AccordionGroup>
-  <Accordion title="Loops de tentativa repetida">
-    Encontre sessões em que o agente repete a mesma chamada de ferramenta com falha sem alterar a entrada, selecionar uma ferramenta alternativa ou escalar para um humano.
+  <Accordion title="Loops de retry repetidos">
+    Encontre sessões onde o agente repete a mesma chamada de ferramenta com falha sem alterar a entrada, selecionar uma ferramenta alternativa ou escalar para um humano.
+
+    Comece com `medium` e liste os tipos de erro em que você faz retry intencionalmente em **errors to ignore**.
   </Accordion>
-  <Accordion title="Uso incorreto de ferramentas">
-    Encontre sessões em que a ferramenta escolhida não corresponde à tarefa declarada, ou em que a entrada da ferramenta viola as pré-condições exigidas pelo fluxo de trabalho.
+  <Accordion title="Uso incorreto de ferramenta">
+    Encontre sessões onde a ferramenta escolhida não corresponde à tarefa declarada, ou onde a entrada da ferramenta viola as pré-condições exigidas pelo fluxo de trabalho.
+
+    Comece com `medium`. Coloque as próprias pré-condições no brief; sem elas, a análise não tem regra para verificar.
   </Accordion>
   <Accordion title="Acesso inseguro a dados">
-    Encontre sessões que leem, escrevem ou transmitem dados sensíveis fora dos caminhos e serviços aprovados para este agente.
+    Encontre sessões que leram, gravaram ou transmitiram dados sensíveis fora dos caminhos e serviços aprovados para este agente.
+
+    Comece com `high`. Uma exposição não detectada custa mais do que um falso positivo que você descarta uma vez.
   </Accordion>
   <Accordion title="Abandono de tarefa">
-    Encontre sessões que encerram sem o resultado solicitado, um erro claro ou uma transferência explícita para um humano.
+    Encontre sessões que terminam sem o resultado solicitado, um erro claro ou uma transferência explícita para um humano.
+
+    Comece com `medium` e escreva a seção **Done when** do agente primeiro — esta receita é um julgamento contra ela.
   </Accordion>
   <Accordion title="Regressão de custo ou latência">
-    Encontre sessões cujo modelo, ferramenta ou duração total excede o orçamento esperado, e identifique o padrão de eventos responsável.
+    Encontre sessões cujo modelo, ferramenta ou duração total excede o orçamento esperado, e identifique o padrão de evento responsável.
+
+    Comece com `low` e aumente se a primeira execução tiver poucos resultados. Orçamentos pertencem ao brief, e qualquer tipo de erro que um caminho lento gera por design pertence a **errors to ignore**.
   </Accordion>
   <Accordion title="Escalação humana perdida">
-    Encontre sessões em que a confiança, falhas repetidas ou orientações de política exigiam uma decisão humana, mas o agente continuou de forma autônoma.
+    Encontre sessões onde confiança, falha repetida ou orientação de política exigiram uma decisão humana, mas o agente continuou de forma autônoma.
+
+    Comece com `high` e declare a regra de escalação na seção **Must not** do agente para que a análise seja avaliada contra ela.
   </Accordion>
 </AccordionGroup>
+
+## Obtenha uma primeira resposta antes de criar qualquer coisa
+
+Vários desses padrões já possuem detectores offline na auditoria local, que lê os históricos do agente na sua própria máquina e não requer conta:
+
+| Detector | Padrão que conta |
+| --- | --- |
+| `sleep-polling-loop` | Um `sleep` longo, ou um loop de polling `while … sleep … done` |
+| `reread-after-edit` | Uma leitura de um arquivo que o agente acabou de editar ou escrever |
+| `find-from-root` | `find` contra `/` ou outro diretório de alto nível |
+| `redundant-cd-cwd` | `cd` para o diretório em que o shell já está |
+| `prefer-edit-over-read-cat` | `cat`, `head`, `tail`, `less` ou `more` em um único arquivo fonte |
+| `prefer-edit-over-sed-awk` | Edições in-place via `sed -i` ou `awk … > file` |
+| `prefer-write-over-heredoc` | Conteúdo multilinha escrito via heredoc ou `echo > file` |
+| `git-commit-no-verify` | `git commit --no-verify`, ignorando hooks |
+
+Esses detectores contam; eles não bloqueiam, e nenhum deles mede custo ou latência. Execute `failproofai audit` para ver quais padrões de shell dispendiosos e arriscados seus agentes já produzem antes de pagar por uma auditoria Cloud do mesmo terreno — veja [Auditar histórico local de agentes](/pt-br/audits/local-audit).

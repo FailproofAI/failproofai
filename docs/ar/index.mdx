@@ -1,42 +1,58 @@
 ---
----
-title: "اجعل وكيلك آمنًا تماماً"
-description: "قابلية الملاحظة والتطبيق لكل بيئة تشغيل يعمل فيها وكيلك — واجهات سطر الأوامر للترميز، بوابات الدردشة، المساعدات المستضافة ذاتياً، والوكلاء المزودين بأدوات المراقبة الخاصة بك."
+title: "اجعل وكيلك failproof"
+description: "شاهد ما يفعله وكلاؤك، وجد الأخطاء، ووقفها من الحدوث مرة أخرى."
 icon: "shield-check"
 ---
 
-Failproof AI يساعد الفرق على فهم ما فعله الوكلاء، والعثور على أماكن فشلهم، ونشر الحماية قبل حدوث نفس السلوك مرة أخرى.
+Failproof AI يساعد أي شخص يقوم بتشغيل الوكلاء على فهم ما حدث، والعثور على الأخطاء، ومنع تكرارها.
 
-**البيئة التشغيلية** هي أي شيء يعمل فيه وكيلك بالفعل. Failproof AI يربط 12 منها — واجهات سطر أوامر للترميز مثل Claude Code و Codex، وبوابات دردشة مثل Hermes، ومساعدات مستضافة ذاتياً مثل OpenClaw — وتنطبق نفس الأحداث والسياسات وسجل الجلسات على كل واحدة منها. الوكلاء الذين ليس لديهم بيئة تشغيلية يقدمون تقارير من خلال [Python SDK](/ar/reference/custom-agents)، الذي يتتبعهم ويقومون بتدقيقهم؛ تطبيق سياسة هناك يتطلب خطاف في وقت التشغيل الخاص بك.
+يعمل مع 12 بيئة وكيل شائعة، بما في ذلك Claude Code و Codex و Hermes و OpenClaw و Goose. يمكن للوكلاء المبنيين باستخدام LangChain أو CrewAI أو LlamaIndex أو Pydantic AI أو وقتك الخاص الإبلاغ من خلال [Python SDK](/ar/reference/custom-agents).
 
 <Columns cols={2}>
-  <Card title="قم بإعداد Failproof" icon="wand-sparkles" href="/ar/start/quickstart">
-    استخدم المهارة لأتمتة مشروعك وتوصيله والتحقق من وصول سجلات الوكيل.
+  <Card title="قم بإعداد هذه الآلة" icon="wand-sparkles" href="/ar/start/quickstart">
+    ثبّت Failproof AI، وصل وكلاءك، واختر ما تريد فرضه.
   </Card>
-  <Card title="اسأل مساعد Failproof" icon="message-square-text" href="/ar/sessions/assistant">
-    حلل واستعلم وقم ببناء لوحات معلومات وتشغيل عمليات التدقيق باللغة الطبيعية على سجلات وكيلك.
+  <Card title="اسأل عن وكلاءك" icon="message-square-text" href="/ar/sessions/assistant">
+    ابحث عن الجلسات، وحقق في الأخطاء، وابنِ لوحات معلومات باللغة الطبيعية.
   </Card>
 </Columns>
+
+## ابدأ محليًا أو اتصل بـ Cloud
+
+<Columns cols={2}>
+  <Card title="محلي، بدون حساب" icon="laptop" href="/ar/audits/local-audit">
+    افتح لوحة المعلومات على `localhost:8020` وقم بتشغيل `failproofai audit`. يبقى سجل وكيلك على هذه الآلة.
+  </Card>
+  <Card title="Failproof AI Cloud" icon="cloud" href="/ar/start/setup">
+    شاهد الجلسات عبر الآلات وأدر السياسات لفريقك.
+  </Card>
+</Columns>
+
+يختار الإعداد عن قصد عدم وجود حزمة سياسة. أضف حزمتنا بعد الإعداد:
+
+```bash
+failproofai policies add FailproofAI/policies
+```
+
+حتى ذلك الحين، فقط `block-failproofai-commands` يعمل. إنه يوقف الوكيل من تعطيل Failproof AI.
+
+## ما الذي يمكنك فعله
 
 <Columns cols={3}>
-  <Card title="شاهد ما فعله الوكيل" icon="route" href="/ar/sessions/overview">
-    تابع استدعاءات النموذج والأدوات والأخطاء والمدخلات البشرية والكمون وقرارات السياسة في جلسة واحدة.
+  <Card title="شاهد ما حدث" icon="route" href="/ar/sessions/overview">
+    تابع تشغيل الوكيل من خلال استدعاءات النموذج والأدوات والأخطاء وقرارات السياسة.
   </Card>
-  <Card title="ابحث عن الأعطال بشكل منهجي" icon="scan-search" href="/ar/audits/overview">
-    قم بتدقيق مجموعة محددة من الجلسات وراجع النتائج المدعومة بالأدلة وتابع الإصلاح كمشاكل.
+  <Card title="ابحث عن الأخطاء" icon="scan-search" href="/ar/audits/overview">
+    راجع الأدلة عبر تشغيل واحد أو أكثر.
   </Card>
   <Card title="منع التكرار" icon="shield-check" href="/ar/policies/overview">
-    حول وضع فشل معروف إلى سياسة وراقب تأثيره ونشره عبر أسطولك.
+    لاحظ حماية على النشاط الفعلي، ثم فرضها عندما تكون جاهزًا.
   </Card>
 </Columns>
 
-> **جلسة → تدقيق → نتيجة → مشكلة → سياسة**<br />
-> تتبع ما حدث، أوجد الفشل، أدر الاستجابة، ثم منع نفس السلوك في التشغيلات المستقبلية.
+> **Session → Audit → Finding → Issue → Policy**
+> شاهد ما حدث، وجد الخطأ، وتحمل المسؤولية عن الرد، ثم منعه.
 
-## ابدأ من هنا
-
-إذا كنت تنشر وكيلك المزود بأدوات المراقبة للمرة الأولى، فابدأ بـ [البدء السريع](/ar/start/quickstart). إذا كانت البيانات تصل بالفعل، فافتح [الجلسات](/ar/sessions/overview) وتفحص تشغيلاً حقيقياً قبل تكوين عمليات التدقيق أو السياسات.
-
-<Card title="ابحث عن عطل واحد وحده منع" icon="arrow-right" href="/ar/start/quickstart">
-  أكمل سير العمل من الطرف إلى الطرف الآخر من المراقبة إلى سياسة آمنة ومنشورة.
-</Card>
+<Note>
+  الإعداد يدعم Linux و macOS. راجع [harnesses المدعومة](/ar/reference/harnesses) لمعرفة ما يمكن لكل بيئة وكيل مراقبته أو حظره.
+</Note>

@@ -1,10 +1,10 @@
 ---
 title: "Errori"
-description: "Raggruppa gli errori ripetuti e apri le sessioni correlate."
+description: "Filtra gli errori ripetuti e apri le sessioni sottostanti."
 icon: "circle-alert"
 ---
 
-Errors ti offre una visualizzazione focalizzata sui fallimenti tra le sessioni. Raggruppa per tipo di errore, agente, ambiente, modello, strumento o intervallo di tempo per trovare i problemi operativi ricorrenti.
+Errori ti offre una vista incentrata sui guasti tra le sessioni. Filtra per ambiente, tipo di evento, tipo di errore, agente o sessione, e delimita l'intervallo di tempo per trovare i problemi operativi ricorrenti.
 
 ## Investigare gli errori
 
@@ -12,32 +12,52 @@ Errors ti offre una visualizzazione focalizzata sui fallimenti tra le sessioni. 
   <Tab title="Dashboard">
     1. Vai a **Observe → Errors**.
     2. Filtra per ambiente, tipo di evento, tipo di errore, agente, ID sessione o testo di ricerca.
-    3. Espandi un errore raggruppato per vedere gli eventi. Seleziona una riga per aprire l'evento esatto nella sua sessione.
-    4. Seleziona il controllo della campana su un errore rappresentativo per iniziare un avviso per errori simili.
+    3. Seleziona una riga per aprire l'evento esatto nella sua sessione.
+    4. Seleziona **alert** su una riga rappresentativa per avviare un avviso per errori simili.
 
-    ![La pagina Errors che mostra un istogramma dei fallimenti, errori raggruppati e il controllo per la creazione di un avviso.](/images/dashboard/errors.png)
+    ![La pagina Errors che mostra un istogramma dei guasti, un elenco filtrato di eventi con errore e il controllo di avviso per riga.](/images/dashboard/errors.png)
   </Tab>
   <Tab title="CLI">
     ```bash
-    fp errors --env production --since 24h
+    fp errors --since 24h
     fp errors --error-type TimeoutError --agent-id checkout-agent
-    fp errors --aggregate --env production --since 7d
+    fp errors --event-type tool_result --since 24h
+    fp errors --aggregate --env local --since 7d
     ```
 
-    Usa `fp events --full --session-id <id>` quando hai bisogno del payload grezzo dietro un riepilogo degli errori.
+    Un errore dello strumento arriva come evento `tool_result` con errore anziché come evento `error` semplice, quindi `--event-type tool_result` è il modo per distinguere i guasti dello strumento dai guasti del modello e del runtime. `is_error` e `error_type` sono colonne calcolate dal server su ogni riga, quindi nessuna modalità analizza i payload.
+
+    Scopri i valori di filtro validi invece di indovinarli: `fp list error_types`, `fp list agents`, `fp list envs`, e `fp list event_types`.
+
+    **Questi cinque filtri di `fp errors` accettano esattamente un valore ciascuno** — `--env`, `--error-type`, `--event-type`, `--agent-id`, `--session-id`. (`--search` è l'eccezione ed è ripetibile.) I nomi di flag identici su `fp events` e `fp sessions` accettano valori ripetuti o separati da virgole, quindi `--env prod,staging` funziona lì e qui corrisponde solo alla stringa letterale `prod,staging`. Questo restituisce un risultato vuoto anziché un errore, che si legge come "nessun errore".
+
+    Il daemon etichetta gli eventi con `local` finché non lo modifichi, quindi `--env production` non corrisponde a nulla in un'installazione predefinita. Vedi [Cambia un'etichetta di ambiente](/it/reference/events-and-configuration#change-an-environment-label).
+
+    `--all` auto-impagina solo fino a `--limit`, che ha il valore predefinito di 50 — scrivi `--all --limit 500` quando vuoi più di quello. Altri flag in modalità elenco sono `--order asc|desc`, `--cursor`, `--page-size` (max 200), `--fields`, e `--full-ids`. `--search` è ripetibile e si applica a entrambe le modalità — una riga corrisponde se contiene uno qualsiasi dei termini.
+
+    `fp errors` richiede `events:read`. Con `--json`, la modalità elenco restituisce `{"errors": [...], "next_cursor": ...}` e `--aggregate` restituisce `{total, sessions, agents, last_ts, bins}`. Usa `fp events --full --session-id <id>` quando hai bisogno del payload non elaborato dietro un riepilogo degli errori.
   </Tab>
 </Tabs>
 
-## Usa Errors quando devi
+## Usa Errori quando hai bisogno di
 
 - Trovare la classe di errore più frequente in produzione.
 - Determinare se uno strumento o un modello causa un picco.
-- Passare da un conteggio aggregato a sessioni rappresentative.
+- Saltare da un conteggio aggregato a sessioni rappresentative.
 - Creare un avviso per la ricorrenza.
 - Includere la popolazione interessata in un audit.
 
-Un errore è un evento osservato. Una valutazione non riuscita è un giudizio di qualità, e un risultato di audit è un modello di fallimento investigato. Mantieni queste distinzioni quando decidi quale workflow di risposta utilizzare.
+Un errore è un evento osservato. Una valutazione fallita è un giudizio di qualità e un risultato di audit è un pattern di guasto investigato. Mantieni queste distinzioni quando decidi quale flusso di lavoro di risposta utilizzare.
 
-<Card title="Crea un avviso" icon="bell-ring" href="/it/audits/alerts">
-  Notifica ai responsabili quando un errore o una condizione di qualità supera una soglia.
-</Card>
+## Senza un account Cloud
+
+Errors è una superficie Cloud. Su una macchina che non si è connessa, `failproofai audit` analizza la cronologia delle sessioni già su disco per individuare pattern rischiosi e dispendiosi e apre `http://localhost:8020/audit`. Aggiungi `--schedule [days]` per analizzare di nuovo secondo un timer e inviare i risultati via email (default 7 giorni, intervallo da 1 a 90), `--status` per verificare se la pianificazione è attiva, e `--no-schedule` per fermarla. Tutto viene eseguito sulla macchina, con due eccezioni. Una scansione pianificata invia l'ID di questa macchina, l'etichetta, la piattaforma e la finestra che ha coperto ad ogni esecuzione, inclusa una pulita — quello che una scansione pulita trattiene è il digest, non la richiesta. E la telemetria CLI anonima viene inviata ad ogni audit a meno che tu non imposti `FAILPROOFAI_TELEMETRY_DISABLED=1`.
+
+<CardGroup cols={2}>
+  <Card title="Crea un avviso" icon="bell-ring" href="/it/audits/alerts">
+    Notifica i responder quando una condizione di errore o qualità supera una soglia.
+  </Card>
+  <Card title="Risultati e problemi" icon="clipboard-list" href="/it/audits/findings-and-issues">
+    Trasforma un errore ripetuto in un pattern investigato con un proprietario.
+  </Card>
+</CardGroup>

@@ -1,84 +1,51 @@
 ---
-title: "स्थानीय कॉन्फ़िगरेशन"
-description: "नीति के दायरे, पैरामीटर, कस्टम फ़ाइलें, और मशीन-स्तर की Failproof AI सेटिंग्स को नियंत्रित करें।"
-icon: "file-cog"
+---
+title: "स्थानीय नीति कॉन्फ़िगरेशन"
+description: "तय करें कि नीतियां कहां लागू होती हैं और उनके पैरामीटर सेट करें।"
+icon: "sliders-horizontal"
 ---
 
-Failproof AI नीति चयन को मशीन और डेमन सेटिंग्स से अलग करता है। यह रिपोजिटरी नीति विकल्पों को समीक्षा योग्य रखता है जबकि क्रेडेंशियल्स और डेमन स्थिति रिपोजिटरी के बाहर रहती है।
+scope का उपयोग करके तय करें कि कौन स्थानीय नीति प्राप्त करता है:
 
-## एक नीति दायरा चुनें
-
-<Tabs>
-  <Tab title="Dashboard">
-    स्थानीय नीति डैशबोर्ड खोलने के लिए बिना किसी आर्गुमेंट के `failproofai` चलाएं। एक नीति को सक्षम करने से पहले उपयोगकर्ता, प्रोजेक्ट, या स्थानीय दायरा चुनें ताकि परिवर्तन इच्छित कॉन्फ़िगरेशन फ़ाइल में लिखा जाए।
-
-    - **User** इस मशीन पर सभी प्रोजेक्ट्स में लागू होता है।
-    - **Project** रिपोजिटरी से संबंधित है और इसे कमिट किया जा सकता है।
-    - **Local** एक प्रोजेक्ट के लिए एक उपयोगकर्ता को ओवरराइड करता है और gitignored रहना चाहिए।
-
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai policy add block-rm-rf --scope user
-    failproofai policy add block-force-push --scope project
-    failproofai policy add warn-large-file-write --scope local
-    failproofai policies
-    ```
-
-    हर हार्नेस स्थानीय दायरे का समर्थन नहीं करता। CLI एक ऐसे दायरे को अस्वीकार करता है जो चयनित हार्नेस प्रतिनिधित्व नहीं कर सकता।
-  </Tab>
-</Tabs>
-
-| दायरा | नीति कॉन्फ़िगरेशन फ़ाइल |
+| Scope | लागू होता है |
 | --- | --- |
-| Project | `<project>/.failproofai/policies-config.json` |
-| Local | `<project>/.failproofai/policies-config.local.json` |
-| User | `~/.failproofai/policies-config.json` |
+| `user` | इस मशीन पर आपके समर्थित agents |
+| `project` | इस project में चल रहे agents |
+| `local` | केवल Claude, स्थानीय project सेटिंग्स में |
+| `all` | केवल अनइंस्टॉल |
 
-सक्षम नीतियों को एक संघ के रूप में मर्ज किया जाता है। नीति पैरामीटर उस नीति के लिए पैरामीटर को परिभाषित करने वाले पहले दायरे का उपयोग करते हैं, project → local → user क्रम में। स्पष्ट कस्टम नीति पाथ उन्हें परिभाषित करने वाले पहले दायरे का उपयोग करते हैं।
+```bash
+failproofai policies add block-sudo --scope user
+failproofai policies add block-rm-rf --scope project
+```
 
-## नीति पैरामीटर कॉन्फ़िगर करें
+Hermes और OpenClaw केवल user scope का समर्थन करते हैं। अधिकांश अन्य harnesses user और project को समर्थन करते हैं। Claude स्थानीय scope को भी समर्थन करता है। [Harnesses](/hi/reference/harnesses) देखें।
 
-<Tabs>
-  <Tab title="Dashboard">
-    स्थानीय डैशबोर्ड में नीति खोलें, इसके समर्थित पैरामीटर को संपादित करें, और चयनित दायरे में सहेजें। एक मेल खाने वाली और गैर-मेल खाने वाली एजेंट कार्रवाई चलाएं, फिर **Observe → policy** में निर्णय का निरीक्षण करें।
+## नीति पैरामीटर
 
-  </Tab>
-  <Tab title="CLI">
-    चयनित दायरे की `policies-config.json` संपादित करें, फिर अज्ञात नीति नामों या पैरामीटर कुंजियों को सतह पर लाने के लिए `failproofai policies` चलाएं।
+नीति सेटिंग्स मिलने वाले scope पर `policies-config.json` में रहती हैं। जब संभव हो, स्थानीय dashboard के **Policies → Configure** दृश्य का उपयोग करें।
 
-    ```json
-    {
-      "enabledPolicies": ["block-rm-rf", "block-force-push"],
-      "policyParams": {
-        "block-rm-rf": {
-          "allowPaths": ["/tmp/build-output"]
-        }
-      }
-    }
-    ```
+एक पैरामीटर एक नीति से संबंधित है और यह तय करता है कि वह नीति कैसे निर्णय लेती है। उदाहरण के लिए, एक allow-list एक blocking नीति को ज्ञात-सुरक्षित commands या paths को स्वीकार करने के लिए बना सकता है।
 
-    ```bash
-    failproofai policies
-    ```
-  </Tab>
-</Tabs>
+कस्टम नीति फ़ाइलें `.failproofai/policies/` से स्वचालित रूप से, या स्पष्ट रूप से लोड की जा सकती हैं:
 
-## मशीन फ़ाइलों को समझें
+```bash
+failproofai policies -i -c ./guards.mjs --scope project
+```
 
-`~/.failproofai` अलग-अलग विश्वास सीमाओं के लिए अलग-अलग फ़ाइलें रखता है:
+स्पष्ट पथों को हटाएं:
 
-| पाथ | उद्देश्य |
+```bash
+failproofai policies -u -c
+```
+
+## फ़ाइलें
+
+| फ़ाइल | उद्देश्य |
 | --- | --- |
-| `config.json` | गैर-गोपनीय डेमन, ऑडिट, और टेलीमेट्री सेटिंग्स |
-| `credentials.json` | क्लाउड क्रेडेंशियल्स; केवल मालिक अनुमतियों के साथ संग्रहीत |
-| `policies-config.json` | उपयोगकर्ता-दायरे की बिल्ट-इन चयन, पैरामीटर, और स्पष्ट कस्टम पाथ |
-| `policies/` | उपयोगकर्ता परंपरा नीतियां और क्लाउड-प्रबंधित नीति कलाकृतियां |
-| `hook-activity/` | स्थानीय नीति निर्णय लॉग |
-| `state/` | डेमन स्पूल, स्वास्थ्य, विराम, और रनटाइम स्थिति |
+| `~/.failproofai/config.json` | मशीन और collector सेटिंग्स |
+| `policies-config.json` | scope के लिए सक्षम नीतियां और पैरामीटर |
+| `.failproofai/policies/*policies.mjs` | Convention-loaded नीतियां |
+| `~/.failproofai/policies/packs/installed.json` | स्थापित packs और चयन |
 
-एक कंटेनर या अलग-थलग परीक्षण के लिए पूरे मशीन लेआउट को स्थानांतरित करने के लिए `FAILPROOFAI_HOME` का उपयोग करें। अलग-अलग स्थिति निर्देशिकाओं को स्वतंत्र रूप से स्थानांतरित न करें।
-
-<Warning>
-  कभी भी `credentials.json` को कमिट न करें। प्रोजेक्ट नीति कॉन्फ़िगरेशन और प्रोजेक्ट परंपरा नीतियों को केवल प्रवर्तन कोड के रूप में समीक्षा के बाद ही कमिट करें।
-</Warning>
+स्थापित pack artifacts को सीधे संपादित न करें। पुनः स्थापित करें या सही किया गया release प्रकाशित करें।

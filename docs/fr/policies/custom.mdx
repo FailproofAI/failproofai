@@ -1,72 +1,51 @@
 ---
 title: "Politiques personnalisées"
-description: "Créez une politique pour un mode de défaillance propre à votre workflow d'agent."
-icon: "shield-plus"
+description: "Écrivez une règle adaptée au comportement spécifique de votre agent ou workflow."
+icon: "code-2"
 ---
 
-Créez un fichier se terminant par `policies.js`, `policies.mjs` ou `policies.ts` dans `.failproofai/policies/`. Les fichiers de convention se chargent automatiquement aux portées projet et utilisateur.
+Consultez le [catalogue intégré](/fr/policies/builtin-catalog) avant d'écrire une politique. Une règle déjà vérifiée est généralement plus sûre qu'une nouvelle.
 
-## Tester la politique avant la publication dans le Cloud
+## Partir d'une politique fonctionnelle
 
-<Tabs>
-  <Tab title="Tableau de bord">
-    1. Installez la politique personnalisée sur une machine de test et déclenchez à la fois une action correspondante et une non-correspondance légitime.
-    2. Accédez à **Observer → politique** et comparez les deux décisions.
-    3. Ouvrez chaque session liée et vérifiez que le payload de l'événement contient suffisamment de preuves pour la règle.
-    4. Lorsque le comportement est correct, déplacez la source vérifiée dans **Admin → éditeur de politiques** et publiez une version.
+```bash
+failproofai publish --init guards.mjs
+failproofai policies -i -c ./guards.mjs
+```
 
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai policies --install --custom ./security.policies.ts \
-      --cli claude --scope project
-    failproofai policies
-    ```
+Le modèle de départ bloque `git push --force`. Modifiez-le, demandez à votre agent d'essayer l'action bloquée, puis inspectez **Politiques → Activité**.
 
-    Les fichiers de convention dans `.failproofai/policies/` se chargent sans `--custom`. Conservez une commande d'installation explicite en CI lorsque la validation doit échouer sur un module défaillant.
-  </Tab>
-</Tabs>
-
-```ts
+```js
 import { customPolicies, allow, deny } from "failproofai";
 
 customPolicies.add({
-  name: "protect-production-paths",
-  description: "Block writes to production configuration",
-  match: { events: ["PreToolUse"] },
-  fn: async (ctx) => {
-    if (ctx.toolName !== "Write" && ctx.toolName !== "Edit") return allow();
-    const path = String(ctx.toolInput?.file_path ?? "").replaceAll("\\", "/");
-    if (path.split("/").includes("production")) {
-      return deny("Writes to production configuration require approval.");
-    }
-    return allow();
-  },
+  name: "protect-production",
+  description: "Production changes need a human",
+  match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+  fn: async (ctx) =>
+    String(ctx.toolInput?.command ?? "").includes("production")
+      ? deny("Ask a human before changing production.")
+      : allow(),
 });
 ```
 
-Cela correspond à `production/config.yml`, `/srv/production/config.yml`, `/srv/production` et `C:\\production\\config.yml` pour `Write` et `Edit`. Cela ne correspond pas aux noms tels que `production-backup` car `production` doit constituer un segment de chemin complet.
+Une politique retourne `allow()`, `deny(message)` ou `instruct(message)`. Utilisez `deny` lorsque l'action doit être stoppée ; tous les environnements d'exécution ne sont pas en mesure de transmettre une instruction à l'agent.
 
-Validez et installez un fichier explicite :
+## Chargement automatique
+
+Placez les fichiers nommés `*policies.js`, `*policies.mjs` ou `*policies.ts` dans :
+
+- `.failproofai/policies/` pour un seul projet.
+- `~/.failproofai/policies/` pour votre compte utilisateur.
+
+## Tester les cas d'échec
+
+Testez à la fois l'action non sécurisée et les opérations légitimes qui lui ressemblent. Vérifiez que la décision provient bien de votre politique et non d'une autre règle.
+
+Supprimez les fichiers de test explicites avec :
 
 ```bash
-failproofai policies --install --custom ./security.policies.ts
+failproofai policies -u -c
 ```
 
-Le contexte de la politique inclut le type d'événement, le payload normalisé, le nom et l'entrée de l'outil, les métadonnées de session, les paramètres et le CLI source lorsqu'il est disponible.
-
-## Tester les chemins d'échec
-
-Exécutez la validation après avoir modifié le fichier d'entrée ou tout module local qu'il importe :
-
-```bash
-failproofai policies --install --custom ./security.policies.ts --scope project
-```
-
-Le chemin CLI strict échoue pour les fichiers manquants, les erreurs de syntaxe, les imports non résolus, les exceptions de niveau supérieur et les délais d'attente de chargement de module. Lors de l'application, un fichier personnalisé défaillant est journalisé et ignoré afin que les politiques intégrées puissent continuer. Traitez tout avertissement de chargement comme une perte d'application attendue et signalez-le dans les journaux de production.
-
-Utilisez des noms globalement uniques pour les politiques explicites, de convention et gérées par le Cloud. Gardez les fonctions de politique déterministes, limitez les appels externes par des délais d'attente courts, et retournez un `allow`, `instruct` ou `deny` intentionnel sur chaque chemin.
-
-<Warning>
-  Une politique personnalisée est du code d'application. Testez les champs manquants, les noms d'outils alternatifs et les entrées malformées — pas seulement la correspondance attendue.
-</Warning>
+Lorsque la politique est prête, [publiez un pack](/fr/policies/publish-a-pack) ou [déployez-la via Cloud](/fr/policies/deploy).

@@ -1,45 +1,41 @@
 ---
 title: "ライブイベント"
-description: "セッション実行中にエージェントのアクティビティをリアルタイムで確認できます。"
+description: "Failproof AI Cloud でエージェントのアクティビティをリアルタイムで確認できます。"
 icon: "radio"
 ---
 
-ライブイベントを使うと、インストルメンテーションの動作確認や、リスクの高い実行をセッション完了を待たずに監視できます。
+ライブイベントでは、エージェントの実行中にモデル呼び出し、ツール、エラー、ヒューマンインプット、フック、ポリシー決定などのアクティビティをリアルタイムで表示します。
 
-## アクティビティの監視
+## アクティビティを監視する
 
-<Tabs>
-  <Tab title="ダッシュボード">
-    1. **Observe → Events** に移動します。
-    2. まず現在の時間ウィンドウでフィルターなしの状態から始め、データが届いていることを確認します。
-    3. 環境、イベントタイプ、エージェント、またはセッションでフィルタリングします。ペイロードのテキスト検索も利用できます。
-    4. イベントを選択すると、サマリーと詳細を確認できます。セッションリンクをたどると全トレースが表示されます。
+**Observe → Live events** に移動するか、以下のコマンドを実行してください：
 
-    ![Hermes チャットゲートウェイとコーディング CLI 実行からのトラフィックを表示するライブイベントストリーム。時間、環境、イベントタイプ、エージェント、モデル、コンテキスト、セッションでフィルタリングされています。](/images/dashboard/events-stream-current.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp events --env production --event-type tool_use,error --limit 100
-    fp events --session-id <session-id> --order asc --all
-    fp --json events --full --session-id <session-id> --all
-    ```
+```bash
+fp events --since 1h
+fp events --event-type tool_use,tool_result --since 1h
+fp --json events --full --session-id <session-id> --all --limit 2000
+```
 
-    デフォルトのフィードでは生のペイロードは省略されます。`--full` は範囲が限定されたセッションの調査時のみ使用してください。
-  </Tab>
-</Tabs>
+ペイロードの内容が必要な場合は `--full` を使用してください。軽量フィードの方が高速で、ほとんどのフィルタリング用途には十分です。
 
-イベントストリームを使って、次の3つの疑問にすぐ答えられます。
+主なイベントタイプは以下のとおりです：
 
-- 期待するエージェントが正しい環境に報告しているか？
-- モデル呼び出し、ツール呼び出し、ポリシー判定が順番に届いているか？
-- セッションが進行を停止したり、同じアクションを繰り返したりしていないか？
+- `session_start` と `session_end`
+- `model_request` と `model_response`
+- `tool_use` と `tool_result`
+- `hook_triggered` と `hook_completed`
+- `error`
+- `human_wait` と `human_input`
+- `agent_pause` と `agent_resume`
 
-イベントタイプには、エージェントライフサイクルイベント、モデルのリクエストとレスポンス、ツールの使用と結果、フック実行、ヒューマンウェイトと割り込み、明示的なエラーが含まれます。ツール呼び出しとその結果など、対になるイベントはコリレーション ID で紐付けられます。
+## イベントが表示されない場合
 
-<Tip>
-  新しいインテグレーションを確認する際は、ライブビューを広い範囲で表示したままにしてください。最初のイベントを確認してからフィルターを追加しましょう。誤ったフィルターを設定すると、インジェストに失敗しているように見えてしまいます。
-</Tip>
+```bash
+failproofai flush --wait
+failproofai config --status
+failproofai backfill --since 30d --dry-run
+```
 
-イベントが表示されない場合は、`failproofai config --status` を実行してから、[インジェストのトラブルシューティング](/ja/reference/troubleshooting)を参照してください。
+デフォルトの環境は `local` です。`production` 向けのフィルターは、環境ラベルを変更するまで何も返しません。
 
-サポートされている12種類の[ハーネス](/ja/reference/harnesses)のいずれかで実行されないエージェントも、[Python SDK](/ja/reference/custom-agents) を通じて同じイベントタイプを報告します。ゲートウェイや本番環境のエージェントが依存するヒューマンインザループイベント（`human_wait`、`human_input`、`human_interrupt`）も含まれます。
+サポートされているハーネス外のエージェントを使用している場合は、[Python SDK](/ja/reference/custom-agents) をご利用ください。

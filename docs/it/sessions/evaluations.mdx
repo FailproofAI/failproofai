@@ -1,52 +1,80 @@
 ---
-title: "Valutazioni online"
-description: "Valuta sessioni live e completate per qualità, conformità, costi e latenza."
+title: "Valutazioni"
+description: "Valuta le sessioni completate per qualità, conformità, costo e latenza."
 icon: "gauge"
 ---
 
-Le valutazioni online applicano giudizi coerenti alle sessioni dell'agente. Utilizzale per segnali che devono essere misurati continuamente piuttosto che indagati solo durante un audit.
+Le valutazioni applicano giudizi coerenti alle sessioni degli agenti. Utilizzale per segnali che devono essere misurati continuamente anziché indagati solo durante un audit.
 
-## Verifica la qualità della valutazione
+Un valutatore riceve una sessione terminata, il che significa una di due cose: la sessione ha emesso un evento di fine oppure ha smesso di emettere per più tempo del `inactivity_timeout_secs` del valutatore. Non viene eseguita alcuna valutazione di un'esecuzione ancora in corso.
+
+<Note>
+  La valutazione automatica è a livello di distribuzione e rimane disattivata finché un operatore non imposta `EVALUATOR_ENDPOINT`. Fino ad allora questa visualizzazione è vuota, `fp evals` non restituisce nulla e `fp sessions` mostra uno stato vuoto per ogni riga — il che solitamente significa che nessun valutatore è configurato, non che nulla abbia ottenuto un punteggio basso. Vedi [Evaluator SDK](/it/reference/evaluator-sdk).
+</Note>
+
+## Rivedi la qualità della valutazione
 
 <Tabs>
   <Tab title="Dashboard">
     1. Vai a **Observe → Evaluations**.
     2. Aggiungi una serie e scegli l'agente, l'ambiente, il punteggio di valutazione, la statistica e la curva.
     3. Aggiungi serie per confrontare ambienti, agenti o chiavi di punteggio.
-    4. Seleziona un risultato per aprire le sessioni corrispondenti o condividere la vista filtrata. Usa **Observe → Metrics** per latenza, token, costi e altri valori di grandezza.
+    4. Seleziona un risultato per aprire le sessioni corrispondenti o condividi la visualizzazione filtrata. Usa **Observe → Metrics** per latenza, token, costo e altri valori di grandezza.
 
-    ![Una dashboard di qualità che mostra i punteggi di valutazione medi e i trend nel tempo.](/images/dashboard/dashboard-quality.png)
+    ![Una dashboard di qualità che mostra i punteggi medi di valutazione e i trend nel tempo.](/images/dashboard/dashboard-quality.png)
 
-    Apri una sessione dal drill-down per ispezionare il ragionamento per ogni punteggio:
+    Apri una sessione dalla ricerca dettagliata per ispezionare il suo ragionamento per punteggio:
 
-    ![Una vista di dettaglio della sessione che mostra i punteggi di valutazione e il ragionamento accanto alla traccia completa.](/images/dashboard/session-detail.png)
+    ![Una visualizzazione dei dettagli della sessione che mostra i punteggi di valutazione e il ragionamento accanto alla traccia completa.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
+    fp list score_filters
     fp evals --agent-id checkout-agent --aggregate
-    fp evals --aggregate --env production --status error
-    fp evals --score helpfulness:0.8.. --since 7d
+    fp evals --aggregate --status error --since 7d
+    fp evals --score helpfulness:0.5..0.8 --score tool_efficiency:..0.3 --since 7d
+    fp evals --scores-full --since 24h
     ```
 
-    Aggiungi l'opzione globale `--json` prima di `evals` per l'automazione, ad esempio `fp --json evals --aggregate --env production`.
+    Tutto qui richiede `evaluations:read` — incluso `fp sessions`, che legge lo stesso risultato della valutazione più recente. Questo è il motivo per cui una chiave con ambito `events:read` vede le tracce ma non i punteggi.
+
+    Inizia con `fp list score_filters`: restituisce le chiavi di punteggio che questa distribuzione effettivamente produce, il che rende un filtro `--score` verificabile piuttosto che una supposizione.
+
+    `--score KEY:MIN..MAX` ha ogni limite facoltativo ed è ripetibile, con tutti gli intervalli richiesti insieme: `helpfulness:0.5..0.8`, `tool_efficiency:..0.3`, `factuality:0.9..`. Un valore malformato viene rifiutato prima della richiesta anziché ignorato silenziosamente. `--status` accetta esattamente uno di `done`, `error` o `timeout`. `--scores-full` stampa ogni coppia di punteggio anziché i primi risultati più un `+N`. `--all` si ferma a `--limit`, che per impostazione predefinita è 50.
+
+    Le opzioni globali vengono prima del comando, quindi l'automazione legge `fp --json evals --aggregate`.
+
+    Il daemon contrassegna ogni evento con l'ambiente `local` a meno che non lo modifichi, quindi `--env production` non corrisponde a nulla su un'installazione standard. Vedi [Cambia un'etichetta di ambiente](/it/reference/events-and-configuration#change-an-environment-label).
   </Tab>
 </Tabs>
 
-Un valutatore riceve l'identità della sessione, l'ambiente, i timestamp e gli eventi ordinati. Può restituire chiavi di punteggio numeriche con ragionamento opzionale e un riepilogo. I valutatori a lunga esecuzione possono restituire un lavoro in sospeso e essere interrogati successivamente.
+## Cosa scambia un valutatore
+
+| Messaggio | Campi |
+| --- | --- |
+| `EvalRequest` (in) | `schema_version` (attualmente `"1"`), `session_id`, `agent_id`, `environment`, `started_at`, `ended_at` e `events` — il flusso ordinato completo, ogni evento che porta il suo carico utile completo. |
+| `EvalResponse` (out) | `scores` come chiavi numeriche, `reasoning` con chiavi speculari e un `summary`. |
+| `JobPending` (out) | `job_id` e `next_poll_secs`, per lavori che non possono completarsi in una sola richiesta. |
+
+`ended_at` è presente solo quando la sessione ha emesso un evento di fine, quindi una sessione inviata per inattività arriva senza uno. La cadenza di polling segue `next_poll_secs`, poi il `default_poll_interval_secs` del valutatore, poi il `EVALUATOR_POLLING_INTERVAL_SECS` del server, limitato tra un secondo e un'ora con un limite a orologio da parete di un'ora.
+
+Poiché la richiesta contiene i payload completi degli eventi, un valutatore vede il contenuto completo della trascrizione. Tratta la consegna del valutatore come la consegna della trascrizione quando decidi quali dati la macchina può inviare.
 
 ## Buoni target di valutazione
 
-- Completamento dell'attività o correttezza
+- Completamento o correttezza dell'attività
 - Fondatezza e rischio di allucinazione
 - Selezione dello strumento ed efficienza dello strumento
-- Conformità a politiche o processi
-- Budget di costi e latenza
+- Conformità alle politiche o ai processi
+- Budget di costo e latenza
 - Escalation umana richiesta
+
+Le chiavi di punteggio sono identificatori stabili. Rinominarne uno avvia una nuova serie di grafici piuttosto che cambiare quella vecchia, il che interrompe silenziosamente un trend — scegli il nome prima di tracciarlo.
 
 ## Dal punteggio alla risposta
 
-Mostra i punteggi nelle dashboard per tracciare i trend. Crea avvisi per soglie o condizioni composte. Quando un punteggio diminuisce in una popolazione, esegui un audit per indagare il motivo; quando la causa è un'azione ripetibile, distribuisci una politica.
+Mostra i punteggi nei dashboard per tracciare i trend. Crea avvisi per soglie o condizioni composte. Quando un punteggio diminuisce in una popolazione, esegui un audit per indagare il motivo; quando la causa è un'azione ripetibile, distribuisci una politica.
 
-<Card title="Crea un valutatore" icon="code-2" href="/it/reference/evaluator-sdk">
-  Implementa una valutazione sincrona o asincrona con l'SDK del valutatore Python.
+<Card title="Costruisci un valutatore" icon="code-2" href="/it/reference/evaluator-sdk">
+  Implementa la valutazione sincrona o asincrona con Evaluator SDK di Python.
 </Card>

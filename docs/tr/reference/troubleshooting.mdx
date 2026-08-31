@@ -1,167 +1,100 @@
 ---
 title: "Sorun Giderme"
-description: "Eksik oturumları, eksik politikaları, başarısız teslimatları ve engellenen ajan eylemlerini tanılayın."
+description: "Kurulum, teslimat, politika ve oturum sorunlarını tanılayın."
 icon: "wrench"
 ---
 
-<AccordionGroup>
-  <Accordion title="Cloud'da oturum görünmüyor">
-    <Tabs>
-      <Tab title="Dashboard">
-        **Administration → Keys** açın ve makine anahtarının etkin olduğunu ve `events:add` izinlerine sahip olduğunu doğrulayın. Ardından **Observe → Events** açın, zaman aralığını genişletin ve ortam ile ajan filtrelerini temizleyin. Olaylar varsa, oturum ID'sini arayın ve ardından gruplama için **Observe → Sessions** kontrol edin. Olay yoksa, CLI'den Failproof daemon'ını tanılayın.
+Şu komutlarla başlayın:
 
-        ![Canlı Events akışı birincil filtreleri ve yakın zamanda gelen ajan olayları göstermektedir.](/images/dashboard/events-stream-current.png)
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai flush --wait --timeout 60
-        fp list envs
-        fp events --since 24h --limit 20
-        fp sessions --since 24h --limit 20
-        ```
+```bash
+failproofai config --status
+failproofai policies
+```
 
-        Kaydın etkin olduğunu, yapılandırılan anahtarın `events:add` izinlerine sahip olduğunu ve dashboard filtresinin yayılan ortamla eşleştiğini doğrulayın.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="Python SDK olayları diskte kalıyor">
-    <Tabs>
-      <Tab title="Dashboard">
-        **Observe → Events** içindeki filtreleri temizleyin ve tam SDK oturum ID'sini arayın. Hiçbir şey görünmezse, kaynak makinedeki SDK spool ve Failproof daemon'ını inceleyin.
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai flush --wait
-        ```
+## Bir ajan bağlı değil
 
-        Bir daemon'ın çalıştığını ve bağlandığını doğrulayın — SDK, daemon olup olmadığına bakılmaksızın spool yapar. Spool dizini önceden var olması **gerekmez** (yazıcı onu oluşturur) ve hiçbir ortam değişkeni onu seçmez: `$FAILPROOFAI_HOME/custom-agents`, aksi takdirde `~/.failproofai/custom-agents` tek kök dizinidir ve `configure(base_dir=...)` tek geçersiz kılma yoludur. İşlem `SIGKILL` veya OOM tarafından öldürülmüşse, sırada kalan her şey kaybedilir — sınırlamak için `SIGTERM` işleyin.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="Makine politika almıyor">
-    <Tabs>
-      <Tab title="Dashboard">
-        **Admin → enforcement** açın, makinenin seçili versiyonları ve raporlanan versiyonlarını karşılaştırın. Dağıtım kapsamının makineyi içerdiğini ve anahtarın `policies:pull` izinlerine sahip olduğunu doğrulayın. Alım, politika teslimatı çalışmadığında bile çalışabilir.
+Kurulumu tekrar çalıştırın:
 
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai update
-        failproofai config --status
-        ```
+```bash
+failproofai config
+```
 
-        Makine ID'si ve etiketi dashboard hedefiyle eşleştiğini doğrulayın. Mevcut kimlik bilgisi yalnızca etkinlik alımı sağlıyorsa, politika yetkili bir anahtarla yeniden bağlanın.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="Daemon kullanılamadığı için bir eylem reddediliyor">
-    <Tabs>
-      <Tab title="Dashboard">
-        **Admin → enforcement** açın ve makinenin son görülme saati ile raporlanan versiyonunu inceleyin. Makine eskiyse, bunu yerel daemon sorunu olarak değerlendirin. Kullanılamayan bir daemon'ı atlamak için dağıtılan politikayı zayıflatmayın.
+Kurulum Linux ve macOS'u destekler. Hizmeti yüklemek için bir kez yönetici erişimine ihtiyaç duyar, ancak asla sudo şifresi istemez.
 
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai update
-        failproofai config
-        failproofai config --status
-        ```
+[Harnesses](/tr/reference/harnesses) bölümünde harness yollarını ve kapsamlarını kontrol edin.
 
-        `failproofaid` yeniden başlatın veya güncelleyin; CLI ve daemon protokol versiyonları farklıysa yapılandırma yeniden çalıştırın. Yapılandırılan daemon yolu tasarım gereği kapalı başarısız olur.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="Özel politika yüklenmiyor">
-    <Tabs>
-      <Tab title="Dashboard">
-        Cloud tarafından yazılan bir politika için **Admin → policy editor** açın, taslağı seçin ve yayımlamadan önce doğrulama hatalarını gözden geçirin. Yerel politika için CLI ile doğrulayın, ardından test eyleminden sonra kararların geldiğini doğrulamak için **Observe → policy** açın.
+## Bir oturum eksik
 
-      </Tab>
-      <Tab title="CLI">
-        Dosya adının `policies.js`, `policies.mjs` veya `policies.ts` ile bittiğini, modülün `customPolicies.add(...)` çağırdığını ve impoların politika dosyasından çözümlendiğini doğrulayın.
+```bash
+failproofai flush --wait
+failproofai backfill --since 30d --dry-run
+failproofai harness list
+```
 
-        ```bash
-        failproofai policies --install --custom ./checkout.policies.ts
-        failproofai policies
-        ```
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="Denetim sonuç bulmuyor">
-    <Tabs>
-      <Tab title="Dashboard">
-        **Analyze → audits** açın, çalıştırmayı seçin ve model analizinin çalışıp çalışmadığını kontrol edin. Ardından kapsamını ve penceresini **Observe → sessions** ile karşılaştırın ve bu popülasyondan temsili izlemeleri açın.
+Eski geçmişi yeniden göndermek için `--dry-run` öğesini kaldırın. Başka bir transkript konumu eklemek için:
 
-        Sıfır sonuç yalnızca analiz başarıyla çalıştığında anlamlıdır. Analiz atlanırsa veya başarısız olursa, çalıştırma hiçbir sonuç üretmez ve analiz edilmeyen pencereyi gelecek başarılı bir çalıştırma için açık tutar. Model analizi devre dışıysa, denetim de sonuç üretmez çünkü belirleyici kimlik bilgisi ve PII taraması istatistik kaydeder ama artık sonuç yükseltmez.
+```bash
+failproofai harness add-path <harness> [label=]<path>
+```
 
-        ![Ortam, ajan, kadans ve tarama penceresini tanımlayan denetim formunun gösterimi.](/images/dashboard/audit-new.png)
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        fp audits show <audit-name>
-        fp audits runs <audit-name>
-        fp sessions --since 24h --env production
-        fp audits context-show <audit-name>
-        fp audits run <audit-name>
-        fp audits findings --audit <audit-name>
-        ```
+İki konum aynı projenin kopyalarını içeriyorsa etiket kullanın.
 
-        Çalıştırma sırada kalırsa, denetim-ajan kapasitesini bekleyin veya dağıtım operatörünün denetim filosunu incelemesini isteyin. Sırada bekleyen bir denetim yeniden denenir; hemen atlanmaz.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="Çevrimiçi değerlendirmeler otomatik olarak çalışmıyor">
-    <Tabs>
-      <Tab title="Dashboard">
-        Tamamlanmış bir oturumu açın ve manuel değerlendirmenin başarılı olup olmadığını kontrol edin. Barındırılan Cloud şu anda dashboard'ta değerlendirici uç noktası kontrolü bulunmamaktadır; sunucu operatörü bunu yapılandırmalıdır.
-      </Tab>
-      <Tab title="CLI">
-        Değerlendiriciyi doğrulayın, ardından son değerlendirme durumlarını inceleyin:
+## Her korunan işlem reddediliyor
 
-        ```bash
-        curl https://evaluator.example.com/health
-        fp evals --since 1h
-        ```
+Yapılandırılmış bir makinede, `failproofaid` tek değerlendiricisidir. Cevap veremezse, korunan işlemler kapalı halde başarısız olur.
 
-        Kendi kendine barındırılan Cloud'da, sunucuda `EVALUATOR_ENDPOINT` bulunduğunu ve `EVALUATOR_TOKEN` ile eşleştiğini doğrulayın. Uç nokta olmadığında otomatik değerlendirme devre dışıdır.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="Cloud CLI kimlik doğrulaması yanlış kuruluşu hedefliye">
-    <Tabs>
-      <Tab title="Dashboard">
-        Kuruluş değiştiricisini kullanın ve CLI ile sonuçları karşılaştırmadan önce beklenen slug ve izinleri doğrulayın.
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        fp whoami
-        fp orgs current
-        fp orgs perms
-        ```
+```bash
+failproofai config --status
+systemctl status failproofaid@$USER        # Linux
+sudo launchctl print system/ai.failproof.failproofaid.$USER  # macOS
+```
 
-        API anahtarı modunda, `fp --org <slug> --api-key <key> ...` belirtin veya `AGENTEYE_ORG` ayarlayın. Kaydedilen insan-oturum kuruluş durumu API anahtarı istekleri için kasıtlı olarak yoksayılır.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="Politika geçerli işi engelliye">
-    <Tabs>
-      <Tab title="Dashboard">
-        **Observe → policy** açın, kararı ve bağlantılı oturumu koruyun ve yanlış pozitif koşulu belirleyin. Ardından **Admin → enforcement** açın ve etkilenen makineleri önceki sürüme geri alın. **Policy editor** içinde daha dar bir sürüm oluşturun, küçük kapsamda test edin ve geçerli işlem başarılı olduktan sonra yalnızca genişletin.
+Hizmeti onarmak veya yeniden yüklemek için `failproofai config` komutunu çalıştırın.
 
-      </Tab>
-      <Tab title="CLI">
-        Cloud dağıtım geri alma yalnızca dashboard'dadır. Yerel oturum duraklatması Cloud tarafından yönetilen politikaları devre dışı bırakmaz. Dashboard kullanılamıyorsa, makine ve dağıtım durumunu yakalayın ve engellenen eylemi tekrar tekrar denemeyin yerine dashboard erişimini geri yükleyin.
+## Bir paket reddediyor
 
-        ```bash
-        failproofai config --status
-        ```
-      </Tab>
-    </Tabs>
-  </Accordion>
-</AccordionGroup>
+`failproofai policies` yüklenemeyen paketleri listeler. Seçilen bir paket kaybolan yerine kapalı halde başarısız olur.
 
-Destek ekibiyle iletişim kurarken, CLI sürümü, çerçeve, ortam, ilgili oturum veya dağıtım ID'si ve gizli bilgiler kaldırılan `failproofai config --status` çıktısını ekleyin.
+Yaygın nedenler:
+
+- Yapı yüklemeden sonra değişti.
+- Manifest ve paketlenmiş politikalar uyuşmuyor.
+- Dosya eksik veya içe aktarılamıyor.
+- Paket desteklenmeyen bir olay, araç veya politika şekli kullanıyor.
+
+Paketi kaldırın veya düzeltilmiş bir sürümü yükleyin:
+
+```bash
+failproofai policies remove owner/repo
+failproofai policies add owner/repo@<release>
+```
+
+## Bulut bağlantısı kesildi
+
+Anahtar için ortam değişkenini tercih edin:
+
+```bash
+export FAILPROOFAI_CLOUD_TOKEN="<key>"
+failproofai config
+failproofai config --status
+```
+
+Bir makine, politikaları bağımsız olarak çekebilir ve etkinlik gönderebilir. Durum her ikisini de raporlar.
+
+## Bir politika engellemedu
+
+Üç şeyi kontrol edin:
+
+1. Politika açık: `failproofai policies`.
+2. Olayı ve aracı işlemle eşleşiyor.
+3. O harness olayı uygulayabiliyor.
+
+Araç çağrısı reddi tüm 12 desteklenen harness üzerinde doğrulanır. Diğer olaylar farklılık gösterir. [Uygulama yeteneğine](/tr/reference/harnesses#enforcement-capability) bakın.
+
+## İndirmeler engellendi
+
+- `FAILPROOFAI_NO_DOWNLOAD=1` ağ indirmelerini reddeder.
+- `FAILPROOFAI_DAEMON_BASE_URL` hizmet indirmelerini bir aynaya yönlendirir.
+- `FAILPROOFAI_PACK_BASE_URL` paket indirmelerini bir aynaya yönlendirir.
+
+Yüklü paketler, indirmeler devre dışı bırakıldığında uygulamaya devam eder.

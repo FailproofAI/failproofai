@@ -1,74 +1,124 @@
 ---
 title: "HTTP API"
-description: "Failproof AI Cloud `/v1` API के लिए प्रमाणीकरण करें और जेनरेट किए गए endpoint संदर्भ का उपयोग करें।"
+description: "Failproof AI Cloud `/v1` API के साथ प्रमाणित करें और जेनरेट किए गए एंडपॉइंट संदर्भ का उपयोग करें।"
 icon: "braces"
 ---
 
-सार्वजनिक API आपके Failproof AI डैशबोर्ड origin पर `/v1` के तहत उपलब्ध है।
+सार्वजनिक API आपके Failproof AI डैशबोर्ड ऑरिजिन पर `/v1` के अंतर्गत परोसा जाता है। Failproof AI Cloud पर वह ऑरिजिन `https://app.befailproof.ai` है, इसलिए आधार पथ `https://app.befailproof.ai/v1` है। स्व-होस्ट किए गए डिप्लॉयमेंट पर यह आपका अपना डैशबोर्ड होस्ट है जिसके बाद `/v1` है; `--base-url <url>` के साथ `fp` को वह होस्ट पास करें या `FP_DASHBOARD_URL` का उपयोग करें।
 
-## कुंजी बनाएं और अनुरोध करें
+## एक कुंजी बनाएं और एक अनुरोध करें
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Administration → Keys** खोलें, **Create key** चुनें, और वह सबसे संकीर्ण अनुमति प्रीसेट चुनें जो आपके integration को कवर करे।
-    2. केवल आवश्यकता होने पर ही अलग-अलग grants जोड़ें, कुंजी बनाएं, और इसका एकबारी secret कॉपी करें।
-    3. `/v1/sessions` के लिए एक परीक्षण अनुरोध करें और Keys पृष्ठ पर पुष्टि करें कि कुंजी सक्रिय रहती है।
-    4. जब integration की स्वामित्व बदले, तो इसके action मेनू से कुंजी को rotate या disable करें।
+    1. **Administration → Keys** खोलें, **new key** चुनें, और सबसे संकीर्ण अनुमति प्रीसेट चुनें जो एकीकरण को कवर करता है।
+    2. आवश्यकता पड़ने पर ही व्यक्तिगत अनुदान जोड़ें, कुंजी बनाएं, और इसका एकबारी रहस्य कॉपी करें।
+    3. `/v1/sessions` के लिए एक परीक्षण अनुरोध करें और पुष्टि करें कि कुंजी Keys पृष्ठ पर सक्रिय रहती है।
+    4. जब एकीकरण स्वामित्व बदले तो इसकी कार्य मेनू से कुंजी को घुमाएं या अक्षम करें।
 
-    ![अनुमति presets और अलग-अलग grants के साथ नई API कुंजी drawer।](/images/dashboard/key-create.png)
+    ![अनुमति प्रीसेट और व्यक्तिगत अनुदान के साथ नई API कुंजी ड्रॉअर।](/images/dashboard/key-create.png)
 
-    ऊपर दिखाई गई creation drawer है। एकबारी secret केवल तभी दिखाई देता है जब आप **create** चुनते हैं; उस पुष्टि को बंद करने से पहले इसे कॉपी करें।
+    ऊपर दिखाई गई ड्रॉअर है। एकबारी रहस्य केवल कुंजी बनने के बाद दिखाई देता है; पुष्टिकरण बंद करने से पहले इसे कॉपी करें।
   </Tab>
   <Tab title="CLI">
-    एक read कुंजी बनाएं और इसे `fp` या `curl` के साथ सीधे उपयोग करें:
+    एक read कुंजी बनाएं और इसे `fp` या `curl` के साथ सीधे उपयोग करें। `fp` कुंजी को `--api-key` से या `FP_API_KEY` से पढ़ता है:
 
     ```bash
     fp keys create reliability-reader \
       --permission-set read-only
 
-    fp --api-key <key> sessions --since 24h
-    ```
-
-    ```bash
-    curl "https://app.befailproof.ai/v1/sessions?limit=20" \
-      -H "Authorization: Bearer $FAILPROOFAI_KEY"
-    ```
-  </Tab>
-</Tabs>
-
-कुंजियां एक organization और permission set के लिए scoped हैं। endpoint की आवश्यक अनुमति के बिना एक अनुरोध `403` लौटाता है और missing अनुमति की पहचान करता है।
-
-## Organization selection
-
-एक organization कुंजी अपने organization पर स्वचालित रूप से कार्य करती है। एक instance-scoped कुंजी प्रति अनुरोध एक organization चुन सकती है:
-
-<Tabs>
-  <Tab title="Dashboard">
-    **Administration → Keys** खोलने से पहले डैशबोर्ड header में organization switcher का उपयोग करें। वहां बनाई गई कुंजियां चयनित organization से संबंधित हैं। URL और कुंजी विवरण में organization slug की पुष्टि करें, फिर credential को automation में कॉपी करें।
-
-  </Tab>
-  <Tab title="CLI">
-    command से पहले `--org` का उपयोग करें, या एक instance-scoped API कुंजी के लिए organization header भेजें।
-
-    ```bash
-    fp orgs list
+    export FP_API_KEY="<one-time-secret>"
     fp --org reliability-team sessions --since 24h
     ```
 
     ```bash
-    curl "https://app.befailproof.ai/v1/usage" \
-      -H "Authorization: Bearer $FAILPROOFAI_KEY" \
+    curl "https://app.befailproof.ai/v1/sessions?limit=20" \
+      -H "Authorization: Bearer $FP_API_KEY" \
       -H "X-AgentEye-Org: reliability-team"
     ```
   </Tab>
 </Tabs>
 
-इस section में जेनरेट किए गए endpoint पृष्ठों का उपयोग करें वर्तमान paths, parameters, permission आवश्यकताओं, और status codes के लिए। विशिष्टता server route annotations से जेनरेट की गई है और `/v1` router के विरुद्ध जांची गई है।
+कुंजियां एक संगठन और अनुमतियों की सपाट सूची के लिए स्कोप की जाती हैं। एक अनुमति सेट केवल निर्माण के समय उस सूची को seed करता है — कुंजी विस्तारित अनुदान संग्रहीत करती है, इसलिए बाद में सेट को बदलने से कुंजी नहीं बदलती है। एक अनुरोध जिसमें एंडपॉइंट की आवश्यक अनुमति नहीं है `403` लौटाता है और अनुपलब्ध अनुमति की पहचान करता है।
 
-वर्तमान विशिष्टता में पूर्ण route, method, parameter, permission, और status-code कवरेज है। कुछ response bodies जानबूझकर untyped हैं क्योंकि server अभी भी उन्हें dynamic JSON के रूप में बनाता है। किसी endpoint के चारों ओर एक strongly typed client जेनरेट करने से पहले एक वास्तविक response की जांच करें जिसके पास response schema नहीं है।
+## संगठन का चयन
 
-JSON writes के लिए `Content-Type: application/json` का उपयोग करें। `401` को missing या invalid authentication के रूप में, `403` को required permission के बिना एक valid identity के रूप में, `404` को missing या organization-inaccessible resource के रूप में, `409` को एक state conflict के रूप में, और `422` को एक invalid field या permission value के रूप में मानें। Error responses में एक human-readable message शामिल होता है; permission failures required grant का नाम भी देती हैं।
+एक संगठन कुंजी स्वचालित रूप से अपने संगठन पर कार्य करती है। एक उदाहरण-स्कोप्ड कुंजी प्रति अनुरोध एक संगठन का चयन करती है, और एक से अधिक संगठन वाले टेनेंट को हमेशा कुंजी मोड में एक का नाम देना चाहिए — `fp` कभी भी सहेजे गए संगठन को नहीं भेजता है जब वह कुंजी के साथ प्रमाणित हो रहा हो।
+
+| कॉलर | आप संगठन का नाम कैसे देते हैं |
+| --- | --- |
+| `fp`, प्रति आह्वान | `--org <slug>`, सबकमांड से पहले |
+| `fp`, पर्यावरण से | `FP_ORG` |
+| Raw HTTP | `X-AgentEye-Org: <slug>` अनुरोध हेडर |
+
+`X-AgentEye-Org` वायर पर अपना मूल वर्तनी रखता है। यह वह हेडर है जो डैशबोर्ड सक्रिय संगठन को हल करने के लिए पढ़ता है, और इसे क्लाइंट में नाम बदलने से अनुरोध टूट जाता है।
+
+<Tabs>
+  <Tab title="Dashboard">
+    **Administration → Keys** खोलने से पहले डैशबोर्ड हेडर में संगठन स्विचर का उपयोग करें। वहां बनाई गई कुंजियां चयनित संगठन की हैं। URL और कुंजी विवरण में संगठन slug की पुष्टि करें फिर क्रेडेंशियल को स्वचालन में कॉपी करें।
+
+  </Tab>
+  <Tab title="CLI">
+    कमांड से पहले `--org` का उपयोग करें, या एक उदाहरण-स्कोप्ड API कुंजी के लिए संगठन हेडर भेजें। `fp orgs list` यहां आपके लिए slug की खोज नहीं करता है — यह कुंजी मोड में इनकार करता है; इसके बजाय डैशबोर्ड के संगठन स्विचर से slug पढ़ें।
+
+    ```bash
+    fp --org reliability-team sessions --since 24h
+    ```
+
+    ```bash
+    curl "https://app.befailproof.ai/v1/usage" \
+      -H "Authorization: Bearer $FP_API_KEY" \
+      -H "X-AgentEye-Org: reliability-team"
+    ```
+  </Tab>
+</Tabs>
+
+## पृष्ठांकन
+
+सूची एंडपॉइंट keyset-पेजिनेटेड हैं, और `fp` या `curl` के माध्यम से उन्हें कॉल करने पर एक ही अनुबंध लागू होता है।
+
+| तत्व | अर्थ |
+| --- | --- |
+| `limit` क्वेरी पैरामीटर | इस कॉल में अनुरोधित पंक्तियां। `fp` एक ही अनुरोध को हर एंडपॉइंट पर 200 पंक्तियों तक सीमित करता है। एक raw अनुरोध सर्वर की अपनी प्रति-एंडपॉइंट सीमा से बंधा होता है। |
+| `cursor` क्वेरी पैरामीटर | एक अपारदर्शी टोकन जो पिछले पृष्ठ के बाद फीड को फिर से शुरू करता है। |
+| `next_cursor` प्रतिक्रिया फील्ड | अगले पृष्ठ के लिए टोकन। `null` का अर्थ है फीड समाप्त हो गया है। |
+
+ये सीमाएं एंडपॉइंट द्वारा भिन्न होती हैं, और प्रत्येक एंडपॉइंट पृष्ठ अपना स्वयं का डिफ़ॉल्ट और cap नाम देता है:
+
+| एंडपॉइंट | डिफ़ॉल्ट | Cap |
+| --- | --- | --- |
+| `/events`, `/events/summary` | 50 | 1000 |
+| `/issues`, `/alerts/{id}/issues` | 200 | 1000 |
+| `/evaluation-jobs` | 100 | 500 |
+| `/audits/findings` | 100 | 500 |
+| `/sessions`, `/evaluations` | 50 | 200 |
+| `/audits/{id}/runs` | 50 | 200 |
+
+`cursor` को पिछली प्रतिक्रिया के `next_cursor` पर सेट करके एक पूरी फीड पढ़ें जब तक `next_cursor` `null` न आए। समतुल्य `fp` flags — `--all`, `--cursor` और `--page-size` — [Cloud CLI संदर्भ](/hi/reference/cloud-cli) में दस्तावेज़ित हैं।
+
+## एंडपॉइंट संदर्भ और त्रुटि प्रबंधन
+
+वर्तमान पथों, पैरामीटर, अनुमति आवश्यकताओं, और स्थिति कोड के लिए इस अनुभाग में जेनरेट किए गए एंडपॉइंट पृष्ठ का उपयोग करें। विनिर्देश सर्वर रूट एनोटेशन से जेनरेट किया जाता है और `/v1` राउटर के विरुद्ध जांचा जाता है।
+
+वर्तमान विनिर्देश में पूर्ण रूट, विधि, पैरामीटर, अनुमति और स्थिति-कोड कवरेज है। अनुरोध निकाय टाइप किए गए हैं; प्रतिक्रिया निकाय नहीं हैं — spec आज कोई प्रतिक्रिया स्कीमा नहीं देता है, क्योंकि सर्वर अभी भी उन्हें गतिशील JSON के रूप में बनाता है। एक strongly typed क्लाइंट जेनरेट करने से पहले एक real प्रतिक्रिया का निरीक्षण करें।
+
+JSON लिखने के लिए `Content-Type: application/json` का उपयोग करें। `401` को missing या invalid प्रमाणीकरण के रूप में मानें, `403` को वैध पहचान लेकिन आवश्यक अनुमति के बिना मानें, `404` को missing या organization-inaccessible संसाधन के रूप में मानें, `409` को state conflict के रूप में मानें, `400` को rejected पैरामीटर के रूप में मानें — एक unknown फिल्टर मान, एक malformed क्वेरी पैरामीटर, एक statement जो नहीं चलेगा — और `422` को एक अनुरोध निकाय में invalid फील्ड या अनुमति मान के रूप में मानें। त्रुटि प्रतिक्रिया में एक human-readable संदेश शामिल है; अनुमति विफलताएं आवश्यक grant का नाम भी देती हैं।
+
+## Surfaces जो `/v1` नहीं लेता है
+
+Cloud-managed नीतियां, fleet और guardrail निर्णय फीड ऑपरेटर surfaces हैं — reads और writes दोनों। वे सर्वर पर root-only हैं और जानबूझकर `/v1` से अनुपस्थित हैं, जो internet-facing है। उदाहरण के लिए, एक नीति संस्करण प्रकाशित करना या इसे एक machine पर deploy करना कुछ ऐसा नहीं है जो एक API कुंजी कर सकती है, और फीड को वापस पढ़ना कि fleet ने क्या निर्णय लिया एक ही surface पर है।
+
+एक API कुंजी इसलिए उन routes पर डिज़ाइन के आधार पर इनकार पाती है, और `fp` इनकार करता है कनेक्शन खोलने से पहले बजाय इसके कि अनुरोध को 404 के बिना कोई व्याख्या दिए:
+
+| कमांड | एक API कुंजी के अंतर्गत व्यवहार |
+| --- | --- |
+| `fp policies` | exit `2` के साथ इनकार करता है और cloud-managed नीतियों को एक ऑपरेटर surface के रूप में नाम देता है |
+| `fp fleet` | exit `2` के साथ इनकार करता है और fleet को एक ऑपरेटर surface के रूप में नाम देता है |
+| `fp guardrails` | exit `2` के साथ इनकार करता है और guardrail फीड को एक ऑपरेटर surface के रूप में नाम देता है |
+| `fp agent` | exit `2` के साथ इनकार करता है; असिस्टेंट डैशबोर्ड द्वारा कार्यान्वित है, API द्वारा नहीं |
+| `fp orgs` | exit `2` के साथ इनकार करता है; org membership एक signed-in user के लिए है, और एक कुंजी पहले से एक org के लिए कार्य करती है |
+
+इन्हें एक signed-in user सेशन के अंतर्गत चलाएं (`fp login`) या डैशबोर्ड का उपयोग करें। read और administration families — sessions, events, evaluations, audits, issues, alerts, keys, permission sets, users, settings, queries और usage — प्रत्येक के पास एक `/v1` route है और एक कुंजी के साथ काम करता है। एक gap `fp keys update` है: इसे `keys:update` की जरूरत है, एक अनुमति जो कोई API कुंजी नहीं रख सकती है, इसलिए एक कुंजी कुंजियों को mint और disable कर सकती है लेकिन एक की अनुमतियों को कभी edit नहीं कर सकती है। `fp login` और `fp logout` भी कुंजी मोड में इनकार करते हैं, एक अलग कारण के लिए: एक कुंजी पहले से ही क्रेडेंशियल है, और यह कभी disk में save नहीं होती है।
 
 <Warning>
-  Policy enforcement deployment को जानबूझकर सामान्य सार्वजनिक `/v1` surface के बाहर प्रबंधित किया जाता है। समर्थित Cloud deployment workflow का उपयोग करें।
+  नीति enforcement deployment जानबूझकर सामान्य सार्वजनिक `/v1` surface के बाहर प्रबंधित किया जाता है। [Deploy policies](/hi/policies/deploy) में वर्णित समर्थित Cloud deployment workflow का उपयोग करें।
 </Warning>

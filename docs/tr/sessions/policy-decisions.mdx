@@ -1,27 +1,62 @@
 ---
 title: "İlke kararları"
-description: "Hangi ilkelerin değerlendirildiğini, engellendiğini, talimat verdiğini veya izin verdiğini görün."
+description: "Hangi ilkelerin değerlendirildiğini, yönlendirildiğini, engellendiğini veya gözlemlendiğini görün."
 icon: "shield-check"
 ---
 
-İlke kararları, zorunlu kılınan şeyleri açıklar. Bunu bir dağıtımı doğrulamak, engelleme oranını ölçmek ve korunmayan aktiviteleri bulmak için kullanın.
+İlke kararları, bir ajan çalıştırması sırasında Failproof AI'ın ne yaptığını gösterir.
 
 <Tabs>
   <Tab title="Kontrol Paneli">
-    1. **Gözlemle → ilke** bölümüne gidin ve zaman aralığını ve isteğe bağlı olarak bir makineyi seçin.
-    2. Değerlendirilen işlemleri, engellenen işlemleri, engelleme oranını, Bulut kararlarını, korunmayan işlemleri ve duraklatılmış olduğu sıradaki aktiviteyi gözden geçirin.
-    3. İlke eşleme tablosunu filtreleyin ve dağıtılan atamalarını inceleyin.
-    4. Kararları ve oturumlarını açmak için bir grafik noktasını seçin.
+    Kararları, engelleme oranını, makineleri ve dağıtılan atamalarını gözden geçirmek için **Observe → policy** sayfasına gidin.
 
-    ![İlke kaydı, karar toplamlarını, bir makine filtresini, zaman içindeki zorlama aktivitesini ve ilke eşleme tablosunu gösteren sayfa.](/images/dashboard/policy-observe.png)
+    ![İlke kararlarını, makine filtresini, zaman içindeki uygulama aktivitesini ve ilke eşleme tablosunu gösteren İlke sayfası.](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
     ```bash
-    fp events --event-type hook_completed --env production --since 24h
-    fp events --search "deny" --since 24h
+    fp guardrails summary --since 24h
+    fp guardrails timeline --since 24h
+    failproofai policies
     failproofai config --status
     ```
 
-    Makinenin yerel zorlama durumu için `failproofai` kullanın ve Bulut olayı araştırması için `fp` kullanın.
+    `--since` değeri `1h`, `6h`, `24h` veya `7d` olabilir. Tek bir makineye odaklanmak için `--machine <id>` ekleyin.
   </Tab>
 </Tabs>
+
+## Gözlemlenmiş bir dağıtımı okuyun
+
+Gözlemlenmiş mod gerçek ilkeyi çalıştırır ve herhangi bir `deny` veya `instruct` kararını kaydeder. Ajan yine de devam etmesine izin verilir.
+
+```bash
+fp fleet deploy <machine> --add <policy>:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add <policy>:enforce
+```
+
+<Warning>
+  Basit `--add <policy>` komutu, ilkenin mevcut bir dağıtımı olmadığında hemen uygulamaya başlar. Gölge dağıtım için `:observe` ekleyin.
+</Warning>
+
+Yalnızca izin verilmeyen gözlemlenmiş kararlar kaydedilir. Bir zaman aşımı izin verilmiş olarak kaydedilir, çünkü bu, uygulama modunda da gerçekleşen durumdur.
+
+Kaydedilen bir engelleme, kıstasın eylemi durdurduğunun kanıtı değildir. Araç çağrısı engelleme işlemleri tüm 12 desteklenen kıstasda doğrulanır; diğer olaylar değişiklik gösterir. Bkz. [uygulama yeteneği](/tr/reference/harnesses#enforcement-capability).
+
+## Beklenmedik bir sonucu araştırın
+
+| Gördüğünüz | Kontrol edin |
+| --- | --- |
+| Karar yok | `failproofai config --status` ve oturumun duraklatılıp duraklatılmadığı |
+| İlke adı olmayan birçok engelleme | [İlke hata davranışı](/tr/policies/failure-behavior) |
+| Korunan her eylem engellendi | `failproofaid` hizmetinin sağlıklı olup olmadığı |
+| Devre dışı bırakamadığınız bir engelleme | `block-failproofai-commands` her zaman açıktır |
+| `--env production` için veri yok | Yeni makineler `local` ortamını kullanır |
+
+<CardGroup cols={2}>
+  <Card title="Filo dağıtımları" icon="server-cog" href="/tr/policies/fleet">
+    Amaçlanan ve uygulanan ilkeleri karşılaştırın.
+  </Card>
+  <Card title="Hata davranışı" icon="triangle-alert" href="/tr/policies/failure-behavior">
+    Hata kapalı kararlarını anlayın.
+  </Card>
+</CardGroup>

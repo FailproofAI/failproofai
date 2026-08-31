@@ -1,33 +1,42 @@
 ---
-title: "Findings und Issues"
-description: "Verwandle Audit-Belege in zugewiesene, nachverfolgbare Behebungsaufgaben."
+title: "Befunde und Issues"
+description: "Audit-Belege in zugeordnete, nachverfolgbare Behebungsaufgaben umwandeln."
 icon: "clipboard-check"
 ---
 
-Ein Finding ist die beleggestützte Aussage des Audits über einen Fehler. Ein Issue ist der dauerhaft bestehende Workflow, um darauf zu reagieren.
+Ein Befund ist die beleggestützte Aussage des Audits über einen Fehler. Ein Issue ist der dauerhafter Workflow zur Reaktion darauf.
 
-## Arbeit triagieren und zuweisen
+Die beiden Objekte verwenden unterschiedliche Begriffe und liegen nebeneinander – es lohnt sich daher, sie zunächst klar voneinander abzugrenzen:
+
+| | Befund | Issue |
+| --- | --- | --- |
+| Zustände | `open`, `recurring`, `resolved`, `dismissed`, `muted` | `firing`, `acknowledged`, `resolved` |
+| Filter-Flag | `--status` | `--state` |
+| Bezeichner | Finding-ID | Issue-ID |
+| Standardansicht | Aktive Menge: offen und wiederkehrend | Neueste zuerst |
+
+## Triage und Zuweisung der Arbeit
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Öffne **Analyze → Audits**, wähle einen abgeschlossenen Lauf und selektiere ein Finding, um dessen Analyse, Empfehlung, Sessions und Evidenzabfragen einzusehen.
-    2. Bestätige, weise zu, verwerfe, stumme, löse auf oder öffne das Finding erneut, nachdem du seine Belege geprüft hast.
-    3. Gehe zu **Analyze → Issues** und filtere den dauerhaften Eingang nach Status, Schweregrad oder Verantwortlichem.
-    4. Öffne das Issue, um es zuzuweisen, Kommentare oder Abonnenten hinzuzufügen und es nach verifizierter Behebung aufzulösen.
+    1. Öffnen Sie **Analyze → Audits**, wählen Sie einen abgeschlossenen Lauf und klicken Sie auf einen Befund, um seine Analyse, Empfehlung, Sitzungen und Beleganfragen einzusehen.
+    2. Bestätigen, zuweisen, verwerfen, stummschalten, auflösen oder wieder öffnen Sie den Befund nach Prüfung der Belege.
+    3. Wechseln Sie zu **Analyze → Issues** und filtern Sie den dauerhaften Posteingang nach Zustand, Schweregrad oder Verantwortlichem.
+    4. Öffnen Sie das Issue, um es zuzuweisen, Kommentare oder Abonnenten hinzuzufügen und es nach der Verifikation der Behebung aufzulösen.
 
-    Beginne mit der Finding-Zusammenfassung. Überprüfe, ob die Fehlerbeschreibung, die empfohlene Reaktion, der Schweregrad und die Einordnung mit den Sessions übereinstimmen, die du vom Audit erwartet hast.
+    Beginnen Sie mit der Befundübersicht. Prüfen Sie, ob die Fehlerbeschreibung, die empfohlene Maßnahme, der Schweregrad und das Ranking mit den Sitzungen übereinstimmen, die das Audit untersuchen sollte.
 
-    ![Ein Audit-Finding mit Schweregrad, Vorkommenszahl, Ursachenanalyse, empfohlener Maßnahme, Rankingfaktoren und Belegen.](/images/dashboard/audit-finding.png)
+    ![Ein Audit-Befund mit Schweregrad, Häufigkeit, Ursachenanalyse, empfohlener Maßnahme, Ranking-Faktoren und Belegen.](/images/dashboard/audit-finding.png)
 
-    Öffne anschließend eine betroffene Session, anstatt allein auf Basis der Zusammenfassung zu entscheiden. Der verknüpfte Trace sollte das genaue Ereignis und den Payload zeigen, die das Finding unterstützen.
+    Öffnen Sie anschließend eine betroffene Sitzung, anstatt allein auf Basis der Übersicht zu entscheiden. Der verknüpfte Trace sollte das genaue Ereignis und die Nutzlast zeigen, die den Befund belegen.
 
-    ![Eine von einem Audit-Finding verknüpfte Session, geöffnet am relevanten Fehler mit seinen Ereignis-Metadaten und dem rohen Payload.](/images/dashboard/audit-linked-session.png)
+    ![Eine aus einem Audit-Befund verknüpfte Sitzung, geöffnet am relevanten Fehler mit dessen Ereignismetadaten und roher Nutzlast.](/images/dashboard/audit-linked-session.png)
 
-    Verwende nach der Überprüfung der Belege Issues, um der Reaktion einen Eigentümer zu geben und sie unabhängig von künftigen Audit-Läufen zu verfolgen.
+    Nutzen Sie nach der Belegprüfung Issues, um der Reaktion einen Verantwortlichen zu geben und sie unabhängig von zukünftigen Audit-Läufen nachzuverfolgen.
 
-    ![Der Issues-Eingang mit aktiven, bestätigten und aufgelösten Aufgaben inklusive Schweregrad und Eigentümerschaft.](/images/dashboard/incidents.png)
+    ![Der Issues-Posteingang mit aktiven, bestätigten und aufgelösten Aufgaben samt Schweregrad und Verantwortlichkeit.](/images/dashboard/incidents.png)
 
-    Öffne das Issue, um Untersuchungsnotizen zu erfassen, Abonnenten zu benachrichtigen und den Reaktionsverlauf festzuhalten. Löse es erst auf, nachdem die Behebung deployed und verifiziert wurde.
+    Öffnen Sie das Issue, um Untersuchungsnotizen festzuhalten, Abonnenten zu benachrichtigen und die Reaktionshistorie zu bewahren. Lösen Sie es erst auf, nachdem die Behebung ausgerollt und verifiziert wurde.
 
     ![Eine Issue-Detailansicht mit Quelle, Verstoßbelegen, Verantwortlichen, Abonnenten, Zeitverlauf und Kommentaren.](/images/dashboard/incident-detail.png)
   </Tab>
@@ -37,60 +46,94 @@ Ein Finding ist die beleggestützte Aussage des Audits über einen Fehler. Ein I
     fp audits finding <finding-id>
     fp audits ack <finding-id> --reason "owner assigned"
     fp audits assign <finding-id> --to engineer@example.com
+    fp audits mute <finding-id> --reason "expected in staging" --yes
+    fp audits dismiss <finding-id> --reason "false positive" --yes
+    fp audits resolve <finding-id> --yes
+    fp audits reopen <finding-id>
 
-    fp issues list
+    fp issues list --state firing
     fp issues show <issue-id>
+    fp issues ack <issue-id>
     fp issues assign <issue-id> --assignee engineer@example.com
     fp issues comment-add <issue-id> --body "policy is in observe mode"
     fp issues resolve <issue-id> --yes
     ```
 
-    Verwende `fp issues subscribe <issue-id>`, `fp issues unsubscribe <issue-id>` und `fp issues subscribers <issue-id>`, um Beobachter zu verwalten.
+    `mute`, `dismiss` und `resolve` unterdrücken oder schließen einen Befund, daher wird jeweils eine Bestätigung angefordert – übergeben Sie `--yes` in Skripten. `ack`, `reopen` und `assign` sind umkehrbare Verwaltungsaktionen und wirken sofort. `ack`, `mute` und `dismiss` akzeptieren `--reason`, und es lohnt sich, diesen anzugeben: Er wird als dauerhaftes Feedback zum Befund gespeichert und nicht bloß in ein Log geschrieben und vergessen. `resolve`, `reopen` und `assign` akzeptieren keinen Grund.
 
-    Siehe die [Cloud-CLI-Audit- und Issue-Referenz](/de/reference/cloud-cli#audits) für Audit-Findings und [`fp issues`](/de/reference/cloud-cli#issues) für die Issue-Verwaltung.
+    Die Zuweisung funktioniert bei beiden Objekten unterschiedlich. `fp audits assign` erfordert `--to <email>` und setzt einen Verantwortlichen; erneutes Ausführen ersetzt die Zuweisung. `fp issues assign` nimmt ein wiederholbares `--assignee` und **ersetzt** die gesamte Liste – das Weglassen löscht also alle Verantwortlichen.
+
+    Verwenden Sie `fp issues comment-list <issue-id>`, `fp issues count --state firing` sowie `fp issues subscribe`/`unsubscribe`/`subscribers <issue-id>` für den restlichen Issue-Funktionsumfang.
+
+    Siehe die [Cloud-CLI-Referenz für Audits und Issues](/de/reference/cloud-cli#audits) für Audit-Befunde und [`fp issues`](/de/reference/cloud-cli#issues) für das Issue-Management.
   </Tab>
 </Tabs>
 
-## Ein Finding überprüfen
+## Einen Befund prüfen
 
-Stelle sicher, dass es folgendes enthält:
+Zwei Felder bestimmen den weiteren Umgang, bevor alles andere greift.
 
-- Ein stabiles Fehlermuster, nicht nur einen einmaligen Titel
-- Schweregrad und betriebliche Auswirkung
-- Betroffene Session-IDs oder unterstützende Abfragen
+**`kind`** unterscheidet einen `failure` (etwas ist schiefgelaufen) von einem `policy`-Verstoß (eine Regel wurde verletzt) und einer `improvement` (die Arbeit könnte besser erledigt werden). Es wird als Badge am Befund angezeigt. Ein `policy`-Befund ist der einzige, den eine Policy schließen kann; die anderen beiden erfordern in der Regel eine Workflow-Änderung, einen Alert oder einen menschlichen Eingriff.
+
+**`priority`** ist ein Wert zwischen 0 und 1, der pro Lauf neu berechnet wird, und bestimmt die Sortierreihenfolge der Befundwarteschlange. Die Befundseite schlüsselt ihn unter **why it ranks here** als Wert × Gewichtung auf:
+
+| Faktor | Gewichtung |
+| --- | --- |
+| Coverage | 0,30 |
+| Severity | 0,25 |
+| Magnitude | 0,25 |
+| Recency | 0,20 |
+
+Prüfen Sie anschließend, ob der Befund enthält:
+
+- Eine stabile Fehlerform, nicht nur einen einmaligen Titel
+- Schweregrad und operativen Auswirkungen
+- Betroffene Sitzungs-IDs oder unterstützende Abfragen
 - Ausreichend Kontext, um das Verhalten zu reproduzieren
 - Eine vorgeschlagene Reaktion, die mit den Belegen übereinstimmt
 
-## Ein Issue zur Verwaltung der Reaktion verwenden
+Um einen Befund zu reproduzieren, rufen Sie ihn vollständig ab: `fp --json audits finding <id>` gibt den vollständigen Datensatz mit unveränderten `evidence`-, `evidence_queries`- und `scope`-Feldern zurück – genau das, womit die Analyse tatsächlich gearbeitet hat. `--json` ist eine globale Option und muss daher vor dem Befehl stehen.
 
-Erstelle oder verknüpfe ein Issue, wenn das Finding Zuweisung, Diskussion, Statusänderungen, Kommentare oder Abonnenten benötigt. Issues können auch Alert-Incidents und manuell gemeldete Probleme repräsentieren – deshalb sind sie unter „Audit-Reaktion" und nicht in der primären Navigation angesiedelt.
+## Ein Issue zur Steuerung der Reaktion nutzen
 
-Löse das Issue auf, wenn die Behebung deployed und verifiziert ist. Löse das Finding auf, wenn das Fehlermuster für die Audit-Population adressiert wurde. Diese Zeitpunkte können sich unterscheiden.
+Erstellen oder verknüpfen Sie ein Issue, wenn der Befund Zuweisung, Diskussion, Statusänderungen, Kommentare oder Abonnenten erfordert. Das Feld `source` eines Issues protokolliert seine Herkunft – `audit`, `alert` oder `manual` –, weshalb das Dashboard Issues eine eigene **Issues**-Ansicht gibt, anstatt sie unter einem Audit zu verschachteln.
+
+Das Abonnieren erfolgt teilweise automatisch. Personen werden abonniert, wenn sie ein Issue bestätigen, kommentieren, ihm zugewiesen werden oder es öffnen – `fp issues subscribers` listet nur aktive Abonnenten auf und entspricht damit nicht bloß der Liste manueller Abonnements. Ein Kommentar sendet eine E-Mail an alle aktiven Abonnenten, und zum Kommentieren wird nur `issues:read` benötigt – ein Prüfer mit Lesezugriff ist also niemals ein stiller Beobachter.
+
+Lösen Sie das Issue auf, wenn die Behebung ausgerollt und verifiziert wurde. Lösen Sie den Befund auf, wenn die Fehlerform für die Audit-Population behoben wurde. Diese Momente können auseinanderliegen.
 
 ## Ein Issue in einen Policy-Entwurf umwandeln
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Öffne das Issue und überprüfe sein Finding, die zitierten Sessions, die Ursache und die Empfehlung.
-    2. Wähle **generate policy** und überprüfe das Eignungsergebnis sowie den vorgeschlagenen Durchsetzungsintent. Ein **no policy**-Ergebnis bedeutet, dass das Verhalten stattdessen einen Alert, eine Workflow-Änderung oder eine menschliche Reaktion erfordern könnte.
-    3. Wähle **write this policy**, überprüfe und teste den generierten Quellcode dann im **Admin → policy editor**, bevor du **publish version** auswählst. Verwende **open the editor anyway**, wenn du dem Eignungscheck nicht zustimmst.
-    4. Gehe zu **Admin → enforcement**, deploye die Version im **observe**-Modus und überprüfe ihre Entscheidungen unter **Observe → policy**, bevor du sie durchsetzt.
+    1. Öffnen Sie das Issue und verifizieren Sie seinen Befund, die zitierten Sitzungen, die Ursache und die Empfehlung.
+    2. Wählen Sie **generate policy** und prüfen Sie das Eignungsergebnis sowie die vorgeschlagene Durchsetzungsabsicht. Ein Ergebnis **no policy** bedeutet, dass das Verhalten stattdessen einen Alert, eine Workflow-Änderung oder einen menschlichen Eingriff erfordert.
+    3. Wählen Sie **write this policy**, prüfen und testen Sie dann den generierten Quellcode im **Admin → policy editor**, bevor Sie **publish version** auswählen. Verwenden Sie **open the editor anyway**, wenn Sie mit dem Eignungscheck nicht einverstanden sind.
+    4. Wechseln Sie zu **Admin → enforcement**, stellen Sie die Version im **observe**-Modus bereit und überprüfen Sie ihre Entscheidungen unter **Observe → policy**, bevor Sie sie durchsetzen.
 
-    Der Issue-Titel, die Finding-Beschreibung, die Ursache, die Empfehlung und der Eignungsintent helfen beim Verfassen des Entwurfs. Es wird nichts automatisch veröffentlicht oder deployed.
+    Titel des Issues, Befundbeschreibung, Ursache, Empfehlung und Eignungsabsicht helfen beim Verfassen des Entwurfs. Es wird nichts automatisch veröffentlicht oder bereitgestellt.
   </Tab>
   <Tab title="CLI">
-    Verwende die CLI, um die Belege zu prüfen, bevor du das Issue im Dashboard öffnest:
+    Verwenden Sie die CLI, um die Belege zu prüfen, bevor Sie das Issue im Dashboard öffnen:
 
     ```bash
     fp issues show <issue-id>
-    fp audits finding <finding-id>
+    fp --json audits finding <finding-id>
     fp events --session-id <session-id> --full --all
     ```
 
-    Policy-Eignung, Cloud-Veröffentlichung und Fleet-Deployment sind Dashboard-Workflows. Verwende `failproofai policies --install --custom <file>`, wenn du den entsprechenden Policy-Quellcode zuerst lokal validieren möchtest.
+    Das Dashboard ist ein Weg; die CLI ist der andere. `fp policies compose "<what it should do>"` erstellt einen Policy-Entwurf, `fp policies publish <id> ./policy.mjs` erzeugt eine Version (Veröffentlichen stellt nichts bereit), und `fp fleet deploy <machine> --add <id>:observe` bringt sie im Schattenmodus auf eine Maschine. Das Suffix `:observe` ist erforderlich – ein bloßes `--add <id>` setzt sofort durch. Lesen Sie mit `fp guardrails summary --since 24h`, was sie getan hätte, und befördern Sie dann mit `--add <id>:enforce`.
+
+    Um äquivalenten Policy-Quellcode zunächst auf Ihrer eigenen Maschine auszuprobieren, verweisen Sie die lokale CLI auf die Datei:
+
+    ```bash
+    failproofai policies -i -c ./checkout-policies.js
+    ```
+
+    Eine Datei, deren Name auf `policies.js`, `policies.mjs` oder `policies.ts` endet und in `.failproofai/policies/` im Projekt oder unter `~/` abgelegt wird, wird bei jedem Hook-Ereignis ohne weitere Flags geladen.
   </Tab>
 </Tabs>
 
-<Card title="Eine Policy verfassen" icon="shield-plus" href="/de/policies/editor">
-  Wandle ein bestätigtes, wiederholbares Aktionsmuster in eine Policy-Version um.
+<Card title="Eine Policy erstellen" icon="shield-plus" href="/de/policies/editor">
+  Ein bestätigtes, wiederholbares Aktionsmuster in eine Policy-Version umwandeln.
 </Card>

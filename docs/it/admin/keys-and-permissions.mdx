@@ -1,74 +1,54 @@
 ---
 title: "Chiavi e autorizzazioni"
-description: "Crea chiavi API con ambito definito per macchine, automazione e operatori."
+description: "Crea credenziali per persone, automazione e macchine."
 icon: "key-round"
 ---
 
-Le chiavi API appartengono a un'organizzazione e portano autorizzazioni esplicite. Usa chiavi separate per l'ingestion degli agent, la distribuzione delle policy, i valutatori, l'automazione CI e gli script amministrativi.
+Usa una chiave separata per ogni persona, macchina o job di automazione. Concedi solo le autorizzazioni di cui ha bisogno.
 
-## Creare e ruotare una chiave
+## Crea e ruota una chiave
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. Vai a **Administration → Keys**, seleziona **new key** e inserisci un nome del carico di lavoro.
-    2. Scegli un set di autorizzazioni e regola le autorizzazioni individuali solo quando il preset non è sufficiente.
-    3. Crea la chiave e copia immediatamente il suo segreto monouso.
-    4. Apri la chiave in seguito per aggiornare i grant, disabilitarla o rigenerare il segreto.
+Usa **Admin → Keys**, oppure la Cloud CLI:
 
-    Il cassetto di creazione è dove scegli i grant più restrittivi richiesti dal carico di lavoro.
+```bash
+fp keys list
+fp keys create "audit automation" --add audits:read
+fp keys disable "audit automation"
+```
 
-    ![Il cassetto della nuova chiave API con preset di autorizzazioni e grant individuali.](/images/dashboard/key-create.png)
+Memorizza il segreto quando viene creato; non verrà più visualizzato. Ruota creando una sostituzione, aggiornando il consumer, quindi disabilitando la vecchia chiave.
 
-    Dopo la creazione, la pagina Keys mostra i metadati persistenti e le azioni di gestione. Il segreto monouso non viene più visualizzato.
+## Chiavi macchina
 
-    ![La pagina API Keys che mostra i permessi della chiave, l'ora di creazione e le azioni di rigenerazione e disabilitazione.](/images/dashboard/api-keys.png)
+Una chiave macchina connette il servizio locale a Cloud:
 
-    Usa questo elenco per rivedere regolarmente i grant e disabilitare le chiavi che non corrispondono più a un carico di lavoro attivo.
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp keys create production-agents \
-      --add events:add \
-      --add policies:pull
-    fp keys show production-agents
-    fp keys update production-agents --add events:read
-    fp keys regenerate production-agents --yes
-    fp keys disable production-agents
-    ```
+```bash
+export FAILPROOFAI_CLOUD_TOKEN="<key>"
+failproofai config
+```
 
-    Reindirizza o cattura l'output di create/regenerate in modo sicuro; il segreto viene restituito una volta sola.
-  </Tab>
-</Tabs>
+Una macchina connessa potrebbe aver bisogno di due capacità:
 
-Le due autorizzazioni richieste da una macchina Failproof AI collegata sono indipendenti:
+- `policies:pull` per ricevere le policy gestite da Cloud.
+- `events:add` per inviare decisioni e sessioni.
 
-- `events:add` invia eventi e dati di sessione.
-- `policies:pull` recupera i deployment delle policy assegnate.
+Lo stato riporta questi separatamente perché uno potrebbe funzionare mentre l'altro no.
 
-I segreti delle chiavi vengono visualizzati quando creati o rigenerati. Archiviali in un gestore di segreti e ruotali senza riutilizzare le credenziali interattive di un operatore.
+## Autorizzazioni comuni
 
-## Catalogo delle autorizzazioni
-
-| Area | Autorizzazioni |
+| Autorizzazione | Consente |
 | --- | --- |
-| Events | `events:add`, `events:read` |
-| Keys | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` è solo per sessione umana |
-| Users | `users:create`, `users:read`, `users:update`, `users:delete` |
-| Evaluations | `evaluations:read`, `evaluations:trigger` |
-| Dashboards | `dashboards:read`, `dashboards:write`, `dashboards:delete` |
-| Queries | `queries:read`, `queries:write`, `queries:delete`, `queries:run` |
-| Assistant | `agent:use` |
-| Settings | `settings:read`, `settings:write` |
-| Alerts | `alerts:read`, `alerts:write` |
-| Issues | `issues:read`, `issues:create`, `issues:close` |
-| Audits | `audits:read`, `audits:write` |
-| Policies | `policies:read`, `policies:write`, `policies:pull` |
-| Usage | `usage:read` |
+| `events:add` | Inviare eventi |
+| `events:read` | Leggere eventi e errori |
+| `evaluations:read` | Leggere sessioni e valutazioni |
+| `audits:read` / `audits:write` | Rivedere o gestire audit |
+| `policies:read` / `policies:write` | Rivedere o distribuire policy |
+| `policies:pull` | Richiamare assegnazioni policy per la macchina |
+| `keys:create` / `keys:disable` | Creare o disabilitare chiavi |
+| `orgs:admin` | Amministrazione organizzazione a livello di istanza; non assegnabile a una chiave organizzativa |
 
-`orgs:admin` è riservato all'operatore dell'istanza e non può essere concesso a una chiave di organizzazione o a un membro ordinario. I token ritirati `incidents:*` e `alerts:ack` sono accettati per compatibilità e si normalizzano alle attuali autorizzazioni `issues:*`.
-
-I set di autorizzazioni integrati sono `read-only`, `standard` e `admin`. `standard` aggiunge il triggering di valutazioni, l'esecuzione di query, la risposta ai problemi e l'uso dell'assistente alle autorizzazioni di lettura. La creazione di una chiave rimuove i grant solo umani anche quando un set di autorizzazioni li contiene.
+Alcuni comandi amministrativi `fp fleet` e `fp guardrails` richiedono una sessione utente autenticata anziché una chiave API. Il loro testo di aiuto lo indica prima di effettuare una richiesta.
 
 <Warning>
-  Le chiavi con ambito istanza possono selezionare un'organizzazione con l'intestazione `X-AgentEye-Org`. Impostala esplicitamente nelle distribuzioni multi-organizzazione; l'omissione può selezionare l'organizzazione predefinita.
+  Non riutilizzare mai credenziali di acquisizione come `AGENTEYE_KEY` o `AGENTEYE_API_KEY` come `FP_API_KEY`. Servono sistemi e autorizzazioni diversi.
 </Warning>

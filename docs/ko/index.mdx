@@ -1,41 +1,58 @@
 ---
-title: "에이전트를 failproof하게 만들기"
-description: "에이전트가 실행되는 모든 환경에 대한 관찰 가능성 및 정책 집행 — 코딩 CLI, 채팅 게이트웨이, 자체 호스팅 어시스턴트, 그리고 직접 구성한 에이전트까지."
+title: "에이전트를 안전하게 만드세요"
+description: "에이전트가 무엇을 하는지 확인하고, 실패를 찾아내고, 반복되지 않도록 방지하세요."
 icon: "shield-check"
 ---
 
-Failproof AI는 팀이 에이전트의 행동을 이해하고, 실패 지점을 파악하며, 동일한 문제가 재발하기 전에 안전장치를 배포할 수 있도록 돕습니다.
+Failproof AI는 에이전트를 실행하는 누구든지 무슨 일이 일어났는지 파악하고, 실패를 발견하며, 재발을 방지할 수 있도록 도와줍니다.
 
-**harness**는 에이전트가 실제로 실행되는 환경을 의미합니다. Failproof AI는 12가지 환경을 지원합니다 — Claude Code, Codex 같은 코딩 CLI, Hermes 같은 채팅 게이트웨이, OpenClaw 같은 자체 호스팅 어시스턴트 — 그리고 동일한 이벤트, 동일한 정책, 동일한 세션 기록이 모든 환경에 적용됩니다. harness 없이 동작하는 에이전트는 [Python SDK](/ko/reference/custom-agents)를 통해 보고하며, 추적 및 감사가 이루어집니다. 해당 환경에서 정책을 적용하려면 자체 런타임에 훅을 추가해야 합니다.
+Claude Code, Codex, Hermes, OpenClaw, Goose를 포함한 12가지 일반적인 에이전트 환경과 호환됩니다. LangChain, CrewAI, LlamaIndex, Pydantic AI 또는 자체 런타임으로 구축된 에이전트는 [Python SDK](/ko/reference/custom-agents)를 통해 보고할 수 있습니다.
 
 <Columns cols={2}>
-  <Card title="Failproof 설정하기" icon="wand-sparkles" href="/ko/start/quickstart">
-    스킬을 사용해 프로젝트를 구성하고 연결한 후, 에이전트 로그가 정상적으로 수신되는지 확인하세요.
+  <Card title="이 머신 설정하기" icon="wand-sparkles" href="/ko/start/quickstart">
+    Failproof AI를 설치하고, 에이전트를 연결하고, 적용할 정책을 선택하세요.
   </Card>
-  <Card title="Failproof 어시스턴트에게 질문하기" icon="message-square-text" href="/ko/sessions/assistant">
-    에이전트 로그를 자연어로 분석, 쿼리, 대시보드 구성, 감사 실행까지 수행하세요.
+  <Card title="에이전트에 대해 질문하기" icon="message-square-text" href="/ko/sessions/assistant">
+    자연어로 세션을 조회하고, 실패를 분석하고, 대시보드를 만드세요.
   </Card>
 </Columns>
+
+## 로컬에서 시작하거나 클라우드에 연결하세요
+
+<Columns cols={2}>
+  <Card title="로컬, 계정 불필요" icon="laptop" href="/ko/audits/local-audit">
+    `localhost:8020`에서 대시보드를 열고 `failproofai audit`을 실행하세요. 에이전트 기록은 이 머신에 저장됩니다.
+  </Card>
+  <Card title="Failproof AI Cloud" icon="cloud" href="/ko/start/setup">
+    여러 머신에 걸쳐 세션을 확인하고 팀의 정책을 관리하세요.
+  </Card>
+</Columns>
+
+설정 과정에서는 의도적으로 정책 팩을 선택하지 않습니다. 설정 후 아래 명령으로 추가하세요:
+
+```bash
+failproofai policies add FailproofAI/policies
+```
+
+그 전까지는 `block-failproofai-commands`만 실행됩니다. 이 정책은 에이전트가 Failproof AI를 비활성화하는 것을 막아줍니다.
+
+## 할 수 있는 것들
 
 <Columns cols={3}>
-  <Card title="에이전트 행동 확인하기" icon="route" href="/ko/sessions/overview">
-    하나의 세션에서 모델 호출, 도구, 오류, 사용자 입력, 지연 시간, 정책 결정을 한눈에 확인하세요.
+  <Card title="무슨 일이 있었는지 확인" icon="route" href="/ko/sessions/overview">
+    모델 호출, 도구 사용, 오류, 정책 결정을 통해 에이전트 실행 과정을 추적하세요.
   </Card>
-  <Card title="체계적으로 실패 찾기" icon="scan-search" href="/ko/audits/overview">
-    정해진 세션 집합을 감사하고, 근거 기반 발견 사항을 검토하며, 이슈로 관리하세요.
+  <Card title="실패 찾기" icon="scan-search" href="/ko/audits/overview">
+    하나 또는 여러 실행의 증거를 검토하세요.
   </Card>
-  <Card title="재발 방지하기" icon="shield-check" href="/ko/policies/overview">
-    알려진 실패 패턴을 정책으로 전환하고, 영향을 관찰한 후 전체 플릿에 배포하세요.
+  <Card title="재발 방지" icon="shield-check" href="/ko/policies/overview">
+    실제 활동에서 안전장치를 관찰한 뒤, 준비가 되면 적용하세요.
   </Card>
 </Columns>
 
-> **세션 → 감사 → 발견 → 이슈 → 정책**<br />
-> 발생한 일을 추적하고, 실패를 찾고, 대응을 관리한 후, 향후 실행에서 동일한 동작을 방지하세요.
+> **세션 → 감사 → 발견 → 이슈 → 정책**
+> 무슨 일이 있었는지 파악하고, 실패를 찾아내고, 대응을 정하고, 재발을 방지하세요.
 
-## 시작하기
-
-처음으로 구성된 에이전트를 배포하는 경우, [퀵스타트](/ko/start/quickstart)부터 시작하세요. 데이터가 이미 수신되고 있다면, [Sessions](/ko/sessions/overview)를 열어 감사나 정책을 설정하기 전에 실제 실행 기록을 먼저 살펴보세요.
-
-<Card title="실패 하나를 찾아 방지하기" icon="arrow-right" href="/ko/start/quickstart">
-  캡처부터 안전하게 배포된 정책까지, 전체 워크플로를 완료하세요.
-</Card>
+<Note>
+  설정은 Linux와 macOS를 지원합니다. 각 에이전트 환경에서 관찰하거나 차단할 수 있는 항목은 [지원되는 하네스](/ko/reference/harnesses)를 참조하세요.
+</Note>

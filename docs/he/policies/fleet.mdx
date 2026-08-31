@@ -1,53 +1,61 @@
 ---
----
-title: "פריסת מדיניות למכונות"
-description: "דע אילו מכונות רשומות, עדכניות ובאכיפה של גרסאות המדיניות המיועדות."
+title: "כיסוי פלוטה"
+description: "ראה אילו מכונות קיבלו והחילו את המדיניויות המיועדות."
 icon: "network"
 ---
 
-כיסוי הצי עונה על השאלה האם קיימת מדיניות במקום שבו הסיכון קיים. עקוב אחר מכונות לפי מזהה יציב ותווית קריאה לאדם, ואז השווה את מצב הפריסה המוקצה והדווח שלהן.
+כיסוי פלוטה משווה בין מה שCloud הקצה לבין מה שכל מכונה החילה לאחרונה.
 
-## בדוק כיסוי
-
-<Tabs>
-  <Tab title="Dashboard">
-    1. עבור לעמוד **Admin → enforcement** וסקור את סכומי האכיפה והתצפית.
-    2. חפש מכונה לפי מזהה או תווית, או סנן עבור מכונות חסרות מדיניות.
-    3. הרחב שורה כדי להשוות בין מדיניות מוקצאות, פריסה דווחת, בדיקת כניסה אחרונה והיסטוריה.
-    4. רענן לאחר מרווח הסקר של המכונה כאשר פריסה מיושמת נשארת בהמתנה.
-
-    ![הצי Enforcement המציג כיסוי מדיניות, מצב פריסת מכונה, והקצאות צפייה ואכיפה.](/images/dashboard/enforcement-fleet.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai config --status
-    failproofai config --machine-label checkout-runner-03
-    failproofai flush --wait
-    ```
-
-    השתמש ב-`fp events --agent-id <agent-id> --since 24h` כדי לאשר שפעילות הסוכן של המכונה מגיעה ל-Cloud.
-  </Tab>
-</Tabs>
-
-השתמש בתצוגות כיסוי כדי למצוא:
-
-- מכונות שמעולם לא משכו את הפריסה העדכנית
-- מכונות רשומות שהפסיקו לדווח על פעילות
-- מדיניות שהוקצתה לסביבה או קוהורט שגויים
-- סחיפה גרסה לאחר עדכון שהופרע
-
-שנה שם של מכונה ללא חיבור מחדש:
-
-```bash
-failproofai config --machine-label checkout-runner-03
-```
-
-בדוק מצב מקומי:
+## בדיקת מכונה
 
 ```bash
 failproofai config --status
+failproofai flush --wait --timeout 120
 ```
 
-<Tip>
-  השתמש בתוויות המזהות עומס עבודה וסביבה. שמות מארחים לבדם לעתים קרובות אינם מספקים לאחר auto-scaling או החלפת מכונה.
-</Tip>
+מ-Cloud:
+
+```bash
+fp fleet list
+fp fleet diff
+fp fleet show <machine-id>
+```
+
+`fp fleet` דורש הפעלה עם חשבון משתמש, לא מפתח API.
+
+| פקודה | מה היא עושה |
+| --- | --- |
+| `fp fleet list` | רשום מכונות וסטטוס פריסה |
+| `fp fleet show <machine>` | הצג את קבוצת המדיניויות של מכונה אחת |
+| `fp fleet deploy <machine> --add <ref>` | הוסף או עדכן מדיניות אחת |
+| `fp fleet deploy <machine> --remove <id>` | הסר מדיניות אחת |
+| `fp fleet deploy <machine> --set <ref>...` | החלף את הקבוצה כולה |
+| `fp fleet diff [machine]` | השווה גרסאות מיועדות ומיושמות |
+| `fp fleet history <machine>` | רשום דורות פריסה |
+| `fp fleet rollback <machine> <generation>` | שחזר דור |
+| `fp fleet rename <machine> "<label>"` | שנה את התווית ב-Cloud |
+
+<Warning>
+  `--set` מחליף את קבוצת המדיניויות השלמה. `--add <id>` בלבד אוכף מדיניות חדשה מיד. השתמש ב-`--add <id>:observe` לפריסה צללית.
+</Warning>
+
+## צפייה, ואז הטלה
+
+```bash
+fp fleet deploy ci-runner-01 --add prod-guard:observe
+fp guardrails summary --since 24h --machine ci-runner-01
+fp fleet deploy ci-runner-01 --add prod-guard:enforce
+```
+
+מצב צפייה מעריך את המדיניות האמיתית ורושם החלטות שאינן allow ללא חסימת הסוכן.
+
+## זהות מכונה
+
+מזהה המכונה יציב ומזהה את המכונה. התווית היא למטרות תצוגה בלבד ויכולה להשתנות:
+
+```bash
+failproofai config --machine-label checkout-runner-03
+fp fleet rename <machine-id> "Checkout runner 03"
+```
+
+שינוי התווית אינו מתחבר מחדש או מחליק מחדש את המכונה.

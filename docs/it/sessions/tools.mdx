@@ -1,25 +1,38 @@
 ---
-title: "Tools"
-description: "Trova tool lenti, in errore o sovraccarichi nelle sessioni agente."
+title: "Strumenti"
+description: "Trova strumenti lenti, falliti o sovrauti tra le esecuzioni degli agenti."
 icon: "wrench"
 ---
 
-Tools raggruppa le chiamate ai tool tra le sessioni, così puoi confrontare la latenza e la distribuzione delle chiamate.
+Strumenti mostra cosa chiamano gli agenti, quanto spesso le chiamate falliscono e quali sessioni interessano.
+
+I nomi degli strumenti provengono da ogni harness dell'agente, quindi la stessa funzionalità può avere nomi diversi. Ad esempio, una chiamata shell può apparire come `Bash`, `exec`, `Shell`, `terminal`, o `run_command`. Esegui `fp list tools` prima di costruire un filtro.
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vai a **Observe → Tools**.
-    2. Filtra per ambiente, nome del tool, agente o ID sessione.
-    3. Rivedi la latenza e la distribuzione dei tool.
-    4. Seleziona un punto del grafico o un segmento di tool per aprire gli eventi e le sessioni corrispondenti.
+    Vai a **Observe → Tools**. Filtra per ambiente, strumento, agente o sessione.
 
-    ![La pagina Tools che mostra latenza, scomposizione dei successi e degli errori, e distribuzione delle chiamate ai tool.](/images/dashboard/tools.png)
+    ![La pagina Tools che mostra latenza, suddivisione successi e errori, e distribuzione delle chiamate agli strumenti.](/images/dashboard/tools.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp list tools
-    fp events --event-type tool_use,tool_result --env production --since 24h
-    fp --json events --full --session-id <session-id> --all
+    fp events --event-type tool_use,tool_result --since 24h
+    fp errors --event-type tool_result --since 24h
+    fp --json events --full --event-type tool_use,tool_result --session-id <session-id> --all --limit 2000
     ```
+
+    Usa `--full` quando hai bisogno di campi di payload come la durata per chiamata.
   </Tab>
 </Tabs>
+
+Usa questa pagina per trovare fallimenti ripetuti, confrontare esecuzioni funzionanti e fallite, o confermare che uno strumento mirato da una policy è effettivamente utilizzato.
+
+<CardGroup cols={2}>
+  <Card title="Errori" icon="circle-alert" href="/it/sessions/errors">
+    Apri le sessioni dietro i fallimenti degli strumenti.
+  </Card>
+  <Card title="Hooks" icon="webhook" href="/it/sessions/hooks">
+    Visualizza i nomi canonici degli strumenti e le decisioni delle policy.
+  </Card>
+</CardGroup>

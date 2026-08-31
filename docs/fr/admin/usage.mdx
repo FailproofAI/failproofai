@@ -1,21 +1,24 @@
 ---
 title: "Utilisation"
-description: "Consultez la consommation de l'organisation et la fenêtre de facturation active."
+description: "Consultez la consommation de l'organisation pour la fenêtre de mesure actuelle de 30 jours."
 icon: "chart-no-axes-combined"
 ---
 
-La page Utilisation affiche la consommation de l'organisation actuelle et ses fenêtres de facturation. Elle permet de comprendre l'impact du déploiement en production, du volume de transcriptions, des évaluations et de la cadence des audits sur votre abonnement.
+La section Utilisation affiche ce que l'organisation actuelle a mesuré durant sa fenêtre de 30 jours en cours. Cette fenêtre est fixe et ancrée par organisation, et les données d'utilisation sont en lecture seule : aucune limite, quota ou seuil de plan n'est appliqué ni affiché. Les deux interfaces l'indiquent clairement — le panneau CLI affiche « read-only usage, no limits applied ».
 
 ## Consulter l'utilisation
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Accédez à **Administration → Utilisation**.
-    2. Vérifiez l'organisation et la fenêtre de mesure.
-    3. Examinez l'ingestion, les sessions, les évaluations, les métriques, les audits, les résultats, les alertes, les utilisateurs et les clés.
-    4. Comparez les audits démarrés et terminés lorsque l'utilisation des audits semble anormale.
+    1. Accédez à **admin → usage**.
+    2. Confirmez l'organisation et la fenêtre de mesure — l'en-tête affiche le début et la fin de la fenêtre, le jour en cours dans celle-ci, ainsi que le temps écoulé.
+    3. Lisez le bloc principal : événements ingérés, sessions, agents et environnements.
+    4. Lisez les deux pipelines : évaluations (avec scores et métriques) et audits (avec problèmes et alertes), chacun affichant les exécutions terminées par rapport aux exécutions démarrées.
+    5. Lisez les blocs espace de travail et accès : requêtes enregistrées, tableaux de bord, alertes, problèmes uniques, membres et clés API.
 
-    ![La page Utilisation affichant la fenêtre de mesure, les événements capturés, les pipelines d'évaluation et d'audit, les ressources de l'espace de travail, les membres et les clés API.](/images/dashboard/usage-overview.png)
+    Les chiffres sont mis en cache, pas en temps réel. Utilisez le contrôle d'actualisation en haut à droite après une modification que vous souhaitez voir apparaître.
+
+    ![La page d'utilisation affichant la fenêtre de mesure, les événements capturés, les pipelines d'évaluation et d'audit, les ressources de l'espace de travail, les membres et les clés API.](/images/dashboard/usage-overview.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -23,15 +26,52 @@ La page Utilisation affiche la consommation de l'organisation actuelle et ses fe
     fp --json usage
     fp --org reliability-team --json usage
     ```
+
+    `fp usage` nécessite `usage:read` et s'exécute sous une clé API, ce qui en fait la commande idéale pour un cron de reporting.
+
+    Avec `--json`, il retourne la réponse du tableau de bord telle quelle : `org_id`, `billing_anchor`, `window`, `usage`, `calculated_at` et `stale_after`. `calculated_at` et `stale_after` permettent de déterminer l'ancienneté d'une valeur.
+
+    `fp usage` n'accepte aucun indicateur qui lui est propre — uniquement les options globales `--json` et `--org`. Il rapporte uniquement la fenêtre en cours et rien d'antérieur, donc conservez votre propre historique en l'exécutant selon un calendrier et en stockant le contenu `--json` plutôt que d'espérer interroger une fenêtre antérieure ultérieurement.
+
+    ```bash
+    fp --json usage | jq '.usage.events_ingested'
+    ```
   </Tab>
 </Tabs>
 
-## Analyser une variation
+### Clés de métriques
 
-1. Vérifiez l'organisation active et la fenêtre en cours.
-2. Comparez l'augmentation avec le volume de sessions par environnement.
-3. Vérifiez si une nouvelle intégration a commencé à envoyer des transcriptions.
-4. Examinez les modifications de la cadence des évaluateurs et des audits.
-5. Comparez avec les limites du plan tarifaire actuel.
+Tout ce qui se trouve sous `usage` dans le contenu JSON, pour qu'un script puisse désigner un champ par son nom plutôt qu'en analysant un panneau.
 
-La CLI renvoie le même résumé pour les scripts.
+| Groupe | Clés |
+| --- | --- |
+| Télémétrie | `events_ingested`, `sessions`, `agents`, `environments` |
+| Évaluations | `evaluation_runs`, `evaluation_finishes`, `evaluations`, `metrics` |
+| Audits | `audit_runs`, `audit_finishes`, `issues_created`, `alerts_created` |
+| Espace de travail | `queries_created`, `dashboards_created` |
+| Accès | `users_active`, `users_created`, `keys_active`, `keys_created` |
+
+Chaque pipeline rapporte séparément les comptages démarrés et terminés ; un écart entre `audit_runs` et `audit_finishes` signifie des tâches commencées mais non terminées — vaut la peine d'être vérifié avant de tirer des conclusions des comptages de problèmes en dessous.
+
+## Investiguer un changement
+
+Le volume d'ingestion est décidé par machine, pas de manière centralisée. Commencez par l'organisation et la fenêtre, puis examinez ce qui a changé sur les machines qui y rapportent.
+
+| Cause | Où vérifier | Quoi modifier |
+| --- | --- | --- |
+| Une machine envoie des transcriptions de session | `collector.sessions` dans le fichier `~/.failproofai/config.json` de cette machine | Réglez-le sur `false` pour n'envoyer que les décisions |
+| L'activité des hooks est envoyée en intégralité | `collector.hooks_verbosity` dans le même fichier | `decisions` agrège les autorisations par minute ; `off` arrête complètement les événements de hook |
+| Un nouvel emplacement de capture a été ajouté | `failproofai harness list` | Supprimez-le avec `failproofai harness remove-path <harness> <path or label>` |
+| L'historique a été renvoyé | Les exécutions `failproofai backfill` de la machine | Les renvois se dédupliquent sur un hash de contenu et fusionnent dans les lignes existantes, sans double comptage |
+| Une nouvelle intégration a commencé à rapporter | Les comptages `agents` et `environments`, ainsi que la liste des sessions | Configurez les paramètres du collecteur de la nouvelle machine avant de la déployer |
+
+L'utilisation ne compare rien par rapport à un plan. Faites-le en dehors du produit.
+
+<Columns cols={2}>
+  <Card title="Paramètres et sécurité" icon="lock-keyhole" href="/fr/admin/settings-and-security">
+    Les paramètres de gestion des données par machine qui se cachent derrière ces chiffres.
+  </Card>
+  <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/fr/reference/cloud-cli">
+    La surface complète de `fp`, y compris l'installation et la connexion.
+  </Card>
+</Columns>

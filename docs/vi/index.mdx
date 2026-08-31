@@ -1,42 +1,58 @@
 ---
----
-title: "Làm cho agent của bạn không bị lỗi"
-description: "Khả năng quan sát và thực thi cho mọi harness mà agent của bạn chạy trên đó — coding CLIs, chat gateways, self-hosted assistants và các agent được instrumented của riêng bạn."
+title: "Làm cho agent của bạn không thể chịu lỗi"
+description: "Xem agent của bạn làm gì, tìm các lỗi và ngăn chặn chúng xảy ra lại."
 icon: "shield-check"
 ---
 
-Failproof AI giúp các team hiểu được agent đã thực hiện những gì, tìm ra nơi nó thất bại, và triển khai các biện pháp bảo vệ trước khi cùng một hành vi xảy ra lại.
+Failproof AI giúp bất kỳ ai chạy agent hiểu những gì đã xảy ra, tìm các lỗi và ngăn chặn chúng lặp lại.
 
-Một **harness** là bất kỳ thứ gì mà agent của bạn thực sự chạy bên trong. Failproof AI hook 12 trong số chúng — coding CLIs như Claude Code và Codex, chat gateways như Hermes, self-hosted assistants như OpenClaw — và các sự kiện giống nhau, các chính sách giống nhau, cũng như lịch sử phiên làm việc giống nhau áp dụng cho mỗi một. Các Agent không có harness báo cáo thông qua [Python SDK](/vi/reference/custom-agents), cái mà trace và audit chúng; thực thi một chính sách ở đó cần một hook trong runtime của riêng bạn.
+Nó hoạt động với 12 môi trường agent phổ biến, bao gồm Claude Code, Codex, Hermes, OpenClaw và Goose. Các agent được xây dựng bằng LangChain, CrewAI, LlamaIndex, Pydantic AI hoặc runtime của riêng bạn có thể báo cáo thông qua [Python SDK](/vi/reference/custom-agents).
 
 <Columns cols={2}>
-  <Card title="Thiết lập Failproof" icon="wand-sparkles" href="/vi/start/quickstart">
-    Sử dụng skill để instrumented dự án của bạn, kết nối nó, và xác minh rằng agent logs đã đến.
+  <Card title="Thiết lập máy này" icon="wand-sparkles" href="/vi/start/quickstart">
+    Cài đặt Failproof AI, kết nối các agent của bạn và chọn những gì cần thực thi.
   </Card>
-  <Card title="Hỏi Failproof Assistant" icon="message-square-text" href="/vi/sessions/assistant">
-    Phân tích, truy vấn, xây dựng dashboard, và chạy audit bằng ngôn ngữ tự nhiên trên agent logs của bạn.
+  <Card title="Hỏi về các agent của bạn" icon="message-square-text" href="/vi/sessions/assistant">
+    Truy vấn phiên, điều tra các lỗi và xây dựng bảng điều khiển bằng ngôn ngữ tự nhiên.
   </Card>
 </Columns>
+
+## Bắt đầu cục bộ hoặc kết nối Cloud
+
+<Columns cols={2}>
+  <Card title="Cục bộ, không cần tài khoản" icon="laptop" href="/vi/audits/local-audit">
+    Mở bảng điều khiển tại `localhost:8020` và chạy `failproofai audit`. Lịch sử agent của bạn ở lại trên máy này.
+  </Card>
+  <Card title="Failproof AI Cloud" icon="cloud" href="/vi/start/setup">
+    Xem các phiên trên nhiều máy và quản lý chính sách cho nhóm của bạn.
+  </Card>
+</Columns>
+
+Thiết lập cố tình không chọn gói chính sách nào. Thêm gói của chúng tôi sau khi thiết lập:
+
+```bash
+failproofai policies add FailproofAI/policies
+```
+
+Cho đến lúc đó, chỉ `block-failproofai-commands` chạy. Nó ngăn chặn agent vô hiệu hóa Failproof AI.
+
+## Những gì bạn có thể làm
 
 <Columns cols={3}>
-  <Card title="Xem agent đã làm gì" icon="route" href="/vi/sessions/overview">
-    Theo dõi model calls, tools, errors, human input, latency, và policy decisions trong một phiên làm việc.
+  <Card title="Xem những gì đã xảy ra" icon="route" href="/vi/sessions/overview">
+    Theo dõi một lần chạy agent thông qua các lệnh gọi mô hình, công cụ, lỗi và quyết định chính sách.
   </Card>
-  <Card title="Tìm lỗi một cách hệ thống" icon="scan-search" href="/vi/audits/overview">
-    Audit một tập hợp định nghĩa các phiên làm việc, xem xét các findings được hỗ trợ bằng chứng cứ, và theo dõi remediation như các issue.
+  <Card title="Tìm các lỗi" icon="scan-search" href="/vi/audits/overview">
+    Xem xét bằng chứng trong một lần chạy hoặc nhiều lần.
   </Card>
   <Card title="Ngăn chặn tái diễn" icon="shield-check" href="/vi/policies/overview">
-    Chuyển một failure mode đã biết thành một chính sách, quan sát tác động của nó, và triển khai nó trên toàn fleet của bạn.
+    Quan sát một biện pháp bảo vệ trên hoạt động thực tế, sau đó thực thi nó khi đã sẵn sàng.
   </Card>
 </Columns>
 
-> **Session → Audit → Finding → Issue → Policy**<br />
-> Trace những gì đã xảy ra, tìm lỗi, quản lý phản hồi, sau đó ngăn chặn cùng một hành vi trong các lần chạy trong tương lai.
+> **Phiên → Kiểm toán → Phát hiện → Vấn đề → Chính sách**
+> Xem những gì đã xảy ra, tìm ra lỗi, chịu trách nhiệm về phản hồi, sau đó ngăn chặn nó.
 
-## Bắt đầu ở đây
-
-Nếu bạn đang triển khai agent được instrumented lần đầu tiên, hãy bắt đầu với [quickstart](/vi/start/quickstart). Nếu dữ liệu đã đến, hãy mở [Sessions](/vi/sessions/overview) và kiểm tra một lần chạy thực tế trước khi cấu hình audit hoặc chính sách.
-
-<Card title="Tìm và ngăn chặn một lỗi" icon="arrow-right" href="/vi/start/quickstart">
-  Hoàn thành quy trình end-to-end từ capture đến một chính sách được triển khai một cách an toàn.
-</Card>
+<Note>
+  Thiết lập hỗ trợ Linux và macOS. Xem [các harness được hỗ trợ](/vi/reference/harnesses) để biết mỗi môi trường agent có thể quan sát hoặc chặn điều gì.
+</Note>

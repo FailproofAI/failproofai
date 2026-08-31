@@ -1,62 +1,103 @@
 ---
 title: "Alertas"
-description: "Detecta recurrencias y dirige un incidente a los responsables adecuados."
+description: "Detecta recurrencias y dirige un problema a los responsables adecuados."
 icon: "bell-ring"
 ---
 
-Las alertas supervisan una condición medible y crean un incidente cuando se activa. Úsalas cuando un fallo deba generar una respuesta oportuna, independientemente de si una política puede bloquearlo.
+Una alerta supervisa una condición medible y abre un problema cuando se activa. Úsala cuando un fallo deba generar una respuesta oportuna, independientemente de si una política puede bloquearlo.
 
 ## Crear y probar una alerta
 
 <Tabs>
-  <Tab title="Dashboard">
-    1. Ve a **Analyze → Alerts** y selecciona **new alert**. También puedes comenzar desde el ícono de campana en un error representativo.
-    2. Introduce el nombre, la severidad, el tipo de disparador, la condición, el intervalo de evaluación, el conteo de infracciones, la ventana y los canales.
+  <Tab title="Panel de control">
+    1. Ve a **Analyze → Alerts** y selecciona **new alert**. También puedes empezar desde el icono de campana en un error representativo.
+    2. Introduce el nombre, la gravedad, el tipo de disparador, la condición, el intervalo de evaluación, el número de infracciones, la ventana y los canales.
     3. Guarda la alerta, abre su página de detalle y ejecuta **test**.
-    4. Ve a **Analyze → Issues** para reconocer, asignar, comentar, suscribirte y resolver los incidentes creados por la alerta.
+    4. Ve a **Analyze → Issues** para confirmar, asignar, comentar, suscribirte y resolver los problemas que abre la alerta.
 
     La primera parte del formulario identifica la alerta y la señal que debe activarla.
 
-    ![La primera parte del formulario de nueva alerta con su nombre, descripción, estado habilitado y tipo de disparador.](/images/dashboard/alert-new-trigger.png)
+    ![La primera parte del formulario de nueva alerta, con su nombre, descripción, estado habilitado y tipo de disparador.](/images/dashboard/alert-new-trigger.png)
 
-    La segunda parte controla cuánto tiempo debe persistir la condición, con qué frecuencia se evalúa y dónde se envían las notificaciones.
+    La segunda parte controla cuánto tiempo debe persistir la condición, con qué frecuencia se evalúa y adónde se envían las notificaciones.
 
-    ![La segunda parte del formulario de nueva alerta con la lógica de infracciones, programación, severidad, canales de entrega y acción de creación.](/images/dashboard/alert-new-routing.png)
+    ![La segunda parte del formulario de nueva alerta, con la lógica de infracciones, la programación, la gravedad, los canales de entrega y la acción de creación.](/images/dashboard/alert-new-routing.png)
 
-    Después de guardar, usa la lista de Alerts para confirmar que la regla está habilitada y que su disparador, ventana, severidad y canales coinciden con lo que estableciste.
+    Tras guardar, usa la lista de Alertas para confirmar que la regla está habilitada y que su disparador, ventana, gravedad y canales coinciden con lo que pretendías. Una tarjeta con problemas abiertos muestra el recuento; una tarjeta sin ninguno omite la línea por completo, así que su ausencia no te dice nada. Para ver la cifra de cada regla, incluidos los ceros, usa `fp alerts show <name>`, que siempre la imprime.
 
-    ![La página de Alerts mostrando reglas de alerta con sus disparadores, ventanas de evaluación, canales y severidad.](/images/dashboard/alerts.png)
-
-    Prueba la alerta antes de depender de ella para la respuesta en producción.
+    ![La página de Alertas, que muestra las reglas de alerta con sus disparadores, ventanas de evaluación, canales y gravedad.](/images/dashboard/alerts.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp alerts create high-errors \
       --trigger-kind metric_threshold \
       --severity warning \
-      --trigger-spec '{"metric":"error_count","op":">","value":50,"window_secs":900}'
+      --trigger-spec '{"metric":"error_count","op":">","value":50,"window_secs":900}' \
+      --eval-interval-secs 300 \
+      --min-breaches 2 \
+      --eval-window 3
 
     fp alerts show high-errors
     fp alerts test high-errors
     fp alerts update high-errors --severity critical --yes
     ```
 
-    Usa `fp alerts list` para revisar las reglas y `fp alerts delete <name>` para eliminar una.
+    Las nuevas alertas comienzan **habilitadas**, y una colisión de nombres se rechaza antes de que se cree nada.
+
+    `fp alerts update` reemplaza toda la definición en el servidor, por lo que la CLI vuelve a leer la alerta y aplica tus indicadores por encima — una actualización solo con indicadores necesita `alerts:read` **además de** `alerts:write`, y solicita confirmación a menos que pases `--yes`.
+
+    Usa `fp alerts list` para revisar las reglas y `fp alerts delete <name>` para eliminar una. Delete muestra una vista previa de la regla — incluido el recuento de problemas abiertos — y confirma antes de actuar, porque no se puede deshacer.
+
+    Eliminar no es la forma de silenciar una regla ruidosa. `DELETE /alerts/{id}` aplica cascada: cada problema que la alerta haya abierto se elimina junto con ella, llevándose sus comentarios, suscriptores e historial de actividad. El cuadro de confirmación de la CLI describe los problemas abiertos como «huérfanos»; el contrato de la API es una eliminación en cascada, así que considera el historial como perdido. Para detener el disparo de una regla y conservar lo que registró, desactívala en su lugar — el formulario de alertas del panel de control tiene el interruptor de habilitado, y ni `fp alerts create` ni `fp alerts update` exponen un indicador `--enabled`, por lo que la ruta desde la CLI es `fp alerts update <name> --file` con una definición completa que incluya `enabled: false`.
 
     Consulta la [referencia de `fp alerts`](/es/reference/cloud-cli#alerts) para el conjunto completo de comandos de alerta.
   </Tab>
 </Tabs>
 
-Las condiciones de alerta pueden basarse en errores, puntuaciones de evaluación, combinaciones de evaluación o SQL personalizado. Agrega destinatarios, prueba la regla y abre el incidente resultante para reconocerlo, asignarlo, comentar, suscribirte y resolverlo.
+<Warning>
+  **test** envía notificaciones reales. Envía a los canales reales de correo electrónico, Slack y webhook de la alerta, y abre un problema sintético, por lo que puede alertar a quien esté de guardia. Solicita confirmación en una terminal interactiva; `--yes`, `--json` y un stdin redirigido omiten ese aviso. El servidor también informa el éxito en cuanto despacha el mensaje, así que una prueba exitosa confirma que el mensaje salió, no que llegó.
+</Warning>
 
-## Buenas prácticas para el diseño de alertas
+## Definir el disparador
+
+Existen cinco tipos de disparadores:
+
+| `--trigger-kind` | Se activa cuando |
+| --- | --- |
+| `metric_threshold` | Una métrica supera un umbral — errores, latencia, coste o cualquier otra cosa que puedas medir. |
+| `per_event` | Llega un único evento coincidente. |
+| `evaluation_score` | La puntuación de un evaluador supera un umbral. |
+| `eval_compound` | Varias condiciones de puntuación se combinan, como que fallen dos de tres puntuaciones. |
+| `custom_sql` | Una consulta que escribes devuelve una infracción. |
+
+La condición en sí va en `--trigger-spec`, con el formato adecuado para el tipo elegido.
+
+## Configurar los números de evaluación
+
+El formulario del panel de control y la CLI solicitan los mismos cuatro valores.
+
+| Ajuste | Indicador | Valores aceptados |
+| --- | --- | --- |
+| Gravedad | `--severity` | `info`, `warning`, `critical` |
+| Intervalo de evaluación | `--eval-interval-secs` | 30–86 400 segundos |
+| Número de infracciones | `--min-breaches` | Al menos 1, y nunca más que la ventana |
+| Ventana de evaluación | `--eval-window` | Al menos 1, contado en **intervalos**, no en segundos |
+
+Así, `--eval-interval-secs 300 --min-breaches 2 --eval-window 3` significa «evaluar cada cinco minutos y disparar cuando dos de las últimas tres evaluaciones hayan infringido».
+
+## Buen diseño de alertas
 
 - Nombra la condición y el flujo de trabajo afectado.
 - Define el entorno de forma explícita.
-- Establece una ventana y un umbral que eviten reaccionar ante un único evento inofensivo.
-- Incluye un enlace o consulta que lleve a los responsables a las sesiones correspondientes.
+- Establece una ventana y un umbral que eviten reaccionar a un único evento inofensivo.
+- Incluye un enlace o consulta que lleve a los responsables a las sesiones.
 - Asigna un propietario antes de habilitar la regla.
+- Comprueba `fp alerts show <name>` para ver el recuento de problemas abiertos antes de añadir otra regla para el mismo síntoma. La tarjeta del panel de control solo muestra esa línea cuando el recuento es distinto de cero.
 
 <Tip>
-  Después de resolver un hallazgo de auditoría, agrega una alerta para cuando el mismo fallo pueda repetirse fuera del alcance de la política.
+  Tras resolver un hallazgo de auditoría, añade una alerta para cuando el mismo fallo pueda repetirse fuera de la cobertura de la política.
 </Tip>
+
+<Card title="Gestionar los problemas que abre una alerta" icon="clipboard-check" href="/es/audits/findings-and-issues">
+  Confirma, asigna, comenta, suscríbete y resuelve — el flujo de trabajo en el que aterriza cada disparo de alerta.
+</Card>

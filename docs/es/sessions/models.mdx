@@ -4,24 +4,51 @@ description: "Compara latencia, tokens, uso de contexto y distribución de tráf
 icon: "cpu"
 ---
 
-Usa Modelos para ver si la fiabilidad o el coste cambiaron con un modelo, agente, entorno o rango de tiempo.
+Usa Modelos para ver si la fiabilidad o el costo cambiaron según el modelo, agente, entorno o rango de tiempo.
 
 <Tabs>
   <Tab title="Panel de control">
     1. Ve a **Observe → Models**.
-    2. Establece el rango de tiempo y luego filtra por entorno, modelo, agente o ID de sesión.
+    2. Establece el rango de tiempo y filtra por entorno, modelo, agente o ID de sesión.
     3. Revisa la latencia, el consumo de tokens, el uso de la ventana de contexto y la distribución de modelos.
-    4. Selecciona un punto del gráfico o un segmento de distribución para abrir los eventos correspondientes.
+    4. Selecciona un punto del gráfico o un segmento de la distribución para abrir los eventos correspondientes.
 
-    ![La página de Modelos que muestra vistas de latencia, percentiles, tokens, coste, ventana de contexto y distribución de modelos.](/images/dashboard/models.png)
+    ![La página de Modelos mostrando vistas de latencia, percentil, tokens, costo, ventana de contexto y distribución de modelos.](/images/dashboard/models.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp list models
-    fp events --event-type model_request,model_response --env production --since 24h
-    fp --json events --fields ts,agent_id,session_id,event_type,output_tokens,context_fill
+    fp events --event-type model_request,model_response --since 24h
+    fp --json events --event-type model_response --since 24h --all --limit 500 --fields ts,agent_id,session_id,output_tokens,context_window,context_fill
     ```
 
-    Usa una consulta guardada para agregados a nivel de modelo que no están disponibles como comando CLI dedicado.
+    Los tres requieren `events:read`.
+
+    `--fields` proyecta columnas; no filtra filas. Combínalo con `--event-type` y una ventana de tiempo, o de lo contrario obtendrás los 50 eventos más recientes de cada tipo con `output_tokens` y `context_fill` en null en todos los que no son de modelo. `--all` se detiene en `--limit`, cuyo valor predeterminado es 50.
+
+    Lee `context_fill` junto a `context_window`: un valor de relleno no significa nada sin la ventana contra la que se mide.
+
+    El daemon marca cada evento con el entorno `local` a menos que lo cambies, por lo que `--env production` no coincide con nada en una instalación estándar. Consulta [Cambiar una etiqueta de entorno](/es/reference/events-and-configuration#change-an-environment-label).
   </Tab>
 </Tabs>
+
+## Qué puede y qué no puede mostrar la CLI
+
+El feed de eventos predeterminado no incluye payload. Contiene `output_tokens`, `context_window` y `context_fill` como columnas promocionadas, y nada más sobre una llamada a un modelo:
+
+| Valor | Dónde se encuentra |
+| --- | --- |
+| Tokens de salida, ventana de contexto, relleno de contexto | Columnas del feed ligero — disponibles directamente desde `fp events`. |
+| Nombre del modelo | Payload — usa `fp events --full`, acotado a una sesión. |
+| Tokens de entrada | Payload — el SDK registra ambas mitades, pero solo la mitad de salida está promocionada. |
+| Latencia por llamada | No hay columna `duration_ms` en el feed ligero, y el `model_response` del SDK tampoco la incluye. Derívala emparejando la solicitud con su respuesta. |
+
+`model_request` y `model_response` se emparejan mediante `request_id`. Ese campo existe precisamente para poder asociar una solicitud con su respuesta, y es la única forma de calcular la latencia por llamada a partir de eventos sin procesar:
+
+```bash
+fp --json events --full --event-type model_request,model_response --session-id <session-id> --all --limit 500
+```
+
+Los nombres de los modelos llegan tal cual desde la transcripción de cada harness. Nada en la ruta de captura los normaliza, por lo que un mismo modelo subyacente puede aparecer con varios identificadores específicos del proveedor en el gráfico de distribución. Ejecuta `fp list models` para ver las denominaciones que tiene realmente un despliegue.
+
+Usa una consulta guardada para agregados a nivel de modelo que no están expuestos como un comando CLI dedicado.

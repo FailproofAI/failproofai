@@ -1,48 +1,58 @@
 ---
-title: "Einen Trace lesen"
-description: "Das Ereignis finden, das den Verlauf einer Agent-Sitzung verändert hat."
+title: "Eine Ablaufverfolgung lesen"
+description: "Das Ereignis finden, das den Verlauf eines Agentenlaufs verändert hat."
 icon: "route"
 ---
 
-Ein Trace verwandelt einen flachen Ereignisstrom in die kausale Geschichte eines Durchlaufs. Lesen Sie ihn ab der ersten Abweichung – nicht rückwärts vom letzten Fehler.
-
-## Den Trace öffnen
+Eine Ablaufverfolgung ist die Zeitleiste eines einzelnen Agentenlaufs. Beginne beim ersten unerwarteten Ereignis, nicht beim letzten Fehler.
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehen Sie zu **Observe → Sessions** und öffnen Sie eine Sitzung.
-    2. Nutzen Sie die Profilzusammenfassung, um Ergebnis, Timing, Fehler und Evaluierungswerte zu prüfen.
-    3. Scannen Sie die Timeline und die Minimap. Filtern Sie Ereignistypen oder den Zeitraum, wenn die Sitzung umfangreich ist.
-    4. Wählen Sie ein Ereignis aus, um es zu untersuchen. Verwenden Sie **Export** für Evaluator-JSON oder kopieren Sie die Seiten-URL, um einen Deep-Link zum ausgewählten Beweismittel zu teilen.
+    1. Öffne **Observe → Sessions**.
+    2. Wähle eine Session aus.
+    3. Suche nach dem ersten Fehler, einem ungewöhnlichen Tool-Aufruf, einer langen Wartezeit oder einer Policy-Entscheidung.
+    4. Öffne das Ereignis und prüfe Request, Response, Input und Output.
 
-    ![Eine Sitzungsdetailansicht mit Ausführungsgraph, Ereignis-Timeline, Evaluierungspanel sowie Tool-, Modell- und Hook-Übersicht.](/images/dashboard/session-detail.png)
+    ![Eine Session-Detailansicht mit Ausführungsgraph, Ereigniszeitlinie, Auswertungsbereich sowie einer Aufschlüsselung von Tools, Modellen und Hooks.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp --json sessions --session-id <session-id>
-    fp events --session-id <session-id> --order asc --all
-    fp --json events --full --session-id <session-id> --all
+    fp events --session-id <session-id> --order asc --all --limit 5000
+    fp --json events --full --session-id <session-id> --all --limit 2000
     ```
 
-    Verwenden Sie zuerst den kompakten Ereignis-Feed. Fordern Sie vollständige Payloads nur an, wenn die Ereigniszusammenfassungen nicht genügend Beweise enthalten.
+    Verwende `--full` nur, wenn die Ereigniszusammenfassung nicht genug Informationen liefert. Ein nicht-null `next_cursor` bedeutet, dass das Limit vor dem Ende erreicht wurde.
   </Tab>
 </Tabs>
 
-<Steps>
-  <Step title="Orientierung verschaffen">
-    Bestätigen Sie Agent, Umgebung, Timing, Ergebnis und Dauer, und suchen Sie dann nach Fehlern, langen Spans, wiederholten Tools, menschlichen Wartezeiten und abgelehnten Policy-Entscheidungen.
-  </Step>
-  <Step title="Das erste verdächtige Ereignis aufklappen">
-    Untersuchen Sie dessen Request, Response, Tool-Input, Output und Correlation-ID. Sensible Inhalte sind nur sichtbar, wenn die Transkripterfassung aktiviert ist und Ihre Berechtigungen dies erlauben.
-  </Step>
-  <Step title="Den vorherigen Kontext prüfen">
-    Die Ursache liegt oft ein Ereignis früher: eine fehlerhafte Modellantwort, ein fehlendes Tool-Ergebnis oder eine veraltete Annahme.
-  </Step>
-  <Step title="Die Erkenntnisse in Maßnahmen umsetzen">
-    Fügen Sie die Sitzung einem Audit-Scope hinzu, verknüpfen Sie sie mit einem Issue oder nutzen Sie den Fehlermodus, um eine Policy zu erstellen.
-  </Step>
-</Steps>
+## Den Spuren folgen
+
+1. Bestätige Agent, Ziel, Umgebung und Ergebnis.
+2. Finde den ersten Fehler oder die erste unerwartete Entscheidung.
+3. Prüfe das Ereignis unmittelbar davor.
+4. Verfolge übereinstimmende IDs über Request- und Response-Paare hinweg.
+5. Wandle die Erkenntnisse in ein Audit, ein Issue oder eine Policy um.
+
+| Paar | Übereinstimmendes Feld |
+| --- | --- |
+| Model-Request und -Response | `request_id` |
+| Tool-Aufruf und Ergebnis | `tool_call_id` |
+| Hook-Start und -Abschluss | `hook_id` |
+| Agent-Pause und -Fortsetzung | `pause_id` |
+| Menschliches Warten und Eingabe | `input_id` |
+
+Eine Entscheidung erscheint unter `hook_completed`. Die Zeile gibt das Ergebnis und die Policy-Quelle an. Eine Entscheidung im Beobachtungsmodus erscheint als allow mit dem hypothetischen Urteil in `failproofai_observed`.
 
 <Warning>
-  Lange Laufzeiten bedeuten nicht zwangsläufig Model-Latenz. Trennen Sie Model-, Tool-, Hook- und Human-Wait-Zeiten, bevor Sie entscheiden, was behoben werden soll.
+  Eine lange Session-Dauer ist nicht immer auf Model-Latenz zurückzuführen. Trenne Model-, Tool-, Hook- und Wartezeiten für menschliche Eingaben, bevor du entscheidest, was behoben werden soll.
 </Warning>
+
+<CardGroup cols={2}>
+  <Card title="Policy-Entscheidungen" icon="shield-check" href="/de/sessions/policy-decisions">
+    Sieh, was die Durchsetzung erlaubt, geleitet oder blockiert hat.
+  </Card>
+  <Card title="Live-Ereignisse" icon="radio" href="/de/sessions/live-events">
+    Ereignistypen und -übermittlung verstehen.
+  </Card>
+</CardGroup>

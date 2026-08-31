@@ -1,91 +1,89 @@
 ---
-title: "发布 Pack"
-description: "将您自己的策略作为 GitHub Release 发布，任何人都可以安装。"
+title: "发布策略"
+description: "将您的策略作为公开的 GitHub Release 发布，供任何人安装。"
 icon: "upload"
 ---
 
-一个 pack 由附加到 GitHub Release 上的三个文件组成。`failproofai pack build` 会从您已有的策略文件中生成这三个文件。
+创建可用的策略，在本地测试，然后将其发布为一个策略包。
 
-## 1. 编写策略
+## 创建与测试
 
-只需一个文件，使用与自定义策略相同的 API。Pack 有两个额外的字段需要关注：
+```bash
+failproofai publish --init guards.mjs
+failproofai policies -i -c ./guards.mjs
+```
+
+`--init` 会生成一个已经阻止 `git push --force` 的策略文件。编辑它，让您的智能体尝试执行被阻止的操作，然后在本地控制台的 **Policies → Activity** 中查看结果。
+
+策略包可以包含以下内容：
 
 ```js
-import { customPolicies, deny, allow } from "failproofai";
+import { customPolicies, allow, deny } from "failproofai";
 
 customPolicies.add({
   name: "block-refunds",
-  description: "Refunds above the approved limit need a human",
-  category: "Billing",        // groups it, and is what --category selects on
-  defaultEnabled: true,       // switched on by a plain `pack add`
-  match: { events: ["PreToolUse"], tools: ["Bash"] },
-  fn: async (ctx) =>
-    String(ctx.toolInput?.command ?? "").includes("refund")
-      ? deny("Refunds need a human. Ask before running this.")
-      : allow(),
+  description: "Refunds above the limit need a human",
+  category: "Billing",
+  defaultEnabled: true,
+  match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+  fn: async (ctx) => {
+    // return allow(), instruct(), or deny()
+  },
 });
 ```
 
-省略 `defaultEnabled` 时，其默认值为 **false**。普通的 `failproofai pack add` 只会启用您标记了的策略——是否不加甄别地安装陌生人的所有策略，不应该由安装器替用户做决定。
+`defaultEnabled` 的默认值为 `false`。
+
+## 发布
+
+提交您的文件，然后运行：
+
+```bash
+failproofai publish
+```
+
+发布命令会找到策略文件，使用与安装时相同的加载器对其进行验证，并将策略包资源上传到 GitHub Release。它会使用 `GITHUB_TOKEN`、`GH_TOKEN` 或 `gh auth login` 进行身份验证。
+
+仓库必须是公开的，因为安装过程使用匿名 HTTPS。
+
+默认版本号为当前提交的 12 位 SHA。如果工作区存在未提交的更改，或者当前目录不在 Git 仓库中，发布命令将拒绝执行，除非您提供 `--version`。若 `HEAD` 上存在标签，则标签优先于 SHA。
+
+用户可通过以下命令安装：
+
+```bash
+failproofai policies add owner/repo
+```
+
+## 以观察模式发布
+
+```bash
+failproofai publish --effect observe
+```
+
+观察模式会执行真实的策略逻辑并记录非 allow 的决策结果，但允许智能体继续运行。超时情况会被记录为 allow。
+
+当观察到的匹配结果符合预期后，再次使用 `--effect enforce` 发布。
+
+## 常用选项
+
+| 参数 | 说明 |
+| --- | --- |
+| `--init [file]` | 生成一个策略模板文件 |
+| `--repo <owner>/<repo>` | 选择或创建目标仓库 |
+| `--version <version>` | 覆盖基于提交生成的版本号 |
+| `--effect enforce|observe` | 选择策略包是否实际阻止操作 |
+| `--dry-run` | 仅构建和验证，不执行发布 |
+| `--allow-private` | 允许私有发布，但需知晓 `policies add` 无法安装私有包 |
+
+```bash
+failproofai publish --dry-run
+failproofai publish ./guards.mjs --repo me/guards --version 2.0.0
+```
+
+<Note>
+  发布后，请为 GitHub 仓库添加话题标签 `failproofai-policies`，以便 [Policy Hub](https://befailproof.ai/policy-hub/) 能够索引该策略包。CLI 不会自动为您设置此标签。
+</Note>
 
 <Warning>
-入口文件必须是**一个自包含的文件**。只有入口文件会被 digest 固定，因此一个导入本地文件的 pack 无法真实地声明 digest 涵盖了实际运行的内容。请先打包（使用 `esbuild`、`bun build` 或 `rollup`），再从打包产物构建 pack——`pack build` 会拒绝包含本地导入的文件，而不是发出一个无法兑现的承诺。
+  重命名策略对现有配置而言是破坏性变更。请在各版本之间保持策略名称的稳定性。
 </Warning>
-
-## 2. 构建 Release 资产
-
-```bash
-failproofai pack build ./policies.mjs \
-  --id acme/support-agent \
-  --version 1.0.0 \
-  --out ./dist-pack
-```
-
-该命令会生成三个文件，并首先使用**加载器自身的规则**验证每条策略——这样一个无法安装的 pack 会在此处报错，您可以就地修复：
-
-| 文件 | 说明 |
-| --- | --- |
-| `failproofai-pack.json` | 清单文件：id、版本、effect，以及每条策略的条目 |
-| `failproofai-pack.mjs` | 您的入口文件，原样保留 |
-| `SHA256SUMS` | 另外两个文件的 `<sha256>  <filename>` |
-
-以下情况会在构建时被拒绝：id 不符合 `publisher/name` 格式、策略名称包含 `/`、策略声明了 `alwaysOn`、缺少 `description`、`category` 或 `match`、入口文件未注册任何策略，以及入口文件导入了本地文件。
-
-## 3. 将文件附加到 Release
-
-使用与构建时相同的版本号为 Release 打标签，并将三个文件作为 Release 资产附上：
-
-```bash
-gh release create 1.0.0 \
-  ./dist-pack/failproofai-pack.json \
-  ./dist-pack/failproofai-pack.mjs \
-  ./dist-pack/SHA256SUMS
-```
-
-任何人现在都可以安装它：
-
-```bash
-failproofai pack add acme/support-agent
-```
-
-资产文件名是固定的——CLI 在构建 URL 时直接使用这些文件名，无需任何 API 调用或服务发现。
-
-## 发布新版本
-
-使用新的 `--version` 构建，为新 Release 打标签，再次附上三个资产文件。用户运行相同的 `pack add` 即可升级，并保留他们已选择的策略子集；他们曾关闭的策略在升级后依然保持关闭状态。
-
-修改策略的**名称**是一个破坏性变更：曾将其关闭的机器现在关闭的是一个已不存在的名称，而新名称会按照 `defaultEnabled` 的设置生效。
-
-## 用户信任的内容
-
-`SHA256SUMS` 与产物文件存放在同一个 Release 中，因此它能证明这些字节是您发布的内容——但无法证明您的身份。任何对仓库有写权限的人都可以同时修改这两个文件。用户的保障在于：digest 在安装时被固定，因此您发布的内容事后无法在他们不知情的情况下被篡改。
-
-请从您能控制写入权限的仓库发布，并像对待发布软件包一样对待 pack 的发布。
-
-## 先观察，再执行
-
-清单文件可以声明 `"effect": "observe"`。这些策略会运行，但其判决结果**仅被记录，然后丢弃**——不会阻断任何操作。这是在新规则正式拦截任何人的工作之前，先针对真实流量进行评估的方式。
-
-```json
-{ "id": "acme/support-agent", "version": "1.1.0", "effect": "observe", "policies": [ ... ] }
-```

@@ -1,74 +1,56 @@
 ---
-title: "審査ローカルエージェント履歴"
-description: "サポートされているエージェント CLI 履歴をオフラインでスキャンし、リスクのある、または無駄な動作をローカルで確認します。"
+title: "审核本地代理历史"
+description: "扫描此机器上的代理历史，查找危险或浪费的行为。"
 icon: "laptop-minimal-check"
 ---
 
-Failproof AI クラウドにマシンを接続する前に、ローカル監査を使用して即座にプライベートなレビューを実行します。マシンに既に保存されているエージェント履歴をスキャンし、組み込みポリシーを通じてツールアクティビティを再生し、ローカル結果ダッシュボードを開きます。
+本地审核读取已在此机器上的代理历史，并在 `http://localhost:8020/audit` 上打开结果。它不需要帐户。
 
-## インタラクティブ監査を実行する
+```bash
+failproofai audit
+```
 
-<Tabs>
-  <Tab title="ダッシュボード">
-    ローカル監査は、現在のマシン上の履歴を発見する必要があるため、CLI から開始します。`failproofai audit` を実行します。スキャン後、Failproof AI がバンドルされたダッシュボードを起動し、**http://localhost:8020/audit** を開きます。
+扫描涵盖它找到的所有支持的工具的历史。它重放此版本中内置的 39 项政策目录；不包括已安装的包和自定义政策。
 
-    監査ビューでは、セッション数、ツール呼び出し、プロジェクト、およびポリシーヒット数を確認します。頻繁な検出から開始し、その後、適用を有効にする前に影響を受けたプロジェクトとエージェント履歴を検査します。
+## 读取结果
 
-    <Info>ローカル監査ダッシュボードは、Failproof AI クラウドの **Analyze → Audits** とは別です。ローカル監査はマシンに残り、アカウントやネットワーク接続は必要ありません。</Info>
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    npm install -g failproofai
-    failproofai audit
-    ```
+从最常见的发现开始，然后在启用强制执行前打开受影响的会话。
 
-    コマンドは、見つかるすべてのサポートされている履歴の完全スキャンを実行します。現在のコマンドは、`--since`、`--cli`、`--project`、`--port`、または `--no-open` などのフィルターを受け入れません。
+三个限制很重要：
 
-    ローカルダッシュボードを使用する間、プロセスを実行したままにしておきます。完了したら <kbd>Ctrl</kbd>+<kbd>C</kbd> を押します。
-  </Tab>
-</Tabs>
+- 审核重建工具事件，而不是 `Stop`，所以 `require-*-before-stop` 政策不会出现。
+- 八项"仅审核"检查可识别浪费模式，而无需完全匹配的政策。
+- `warn-repeated-tool-calls` 被跳过，因为重放它会修改记录端的状态。
 
-現在の監査アダプターは、Claude Code、Codex、GitHub Copilot CLI、Cursor、OpenCode、Pi、Hermes、OpenClaw、Factory、Devin、Antigravity、および Goose から履歴を読み取ることができます。ローカルで利用可能な履歴のみがスキャンされます。
+对于可强制执行的发现，使用结果中显示的政策命令。在依赖它之前，检查[工具强制执行支持](/he/reference/harnesses#enforcement-capability)。
 
-## 定期的なローカル監査をスケジュール設定する
+缓存的结果位于 `~/.failproofai/audit/dashboard.json`，七天后过期。
 
-<Tabs>
-  <Tab title="ダッシュボード">
-    ローカルダッシュボードで **Settings** を開き、スケジュール設定された監査を有効にし、間隔を選択し、検出結果を受け取るメールアドレスを設定します。ダッシュボードと CLI は同じマシン設定を更新します。
-  </Tab>
-  <Tab title="CLI">
-    週間監査を有効にし、指定されたアドレスに検出結果を送信します。
+## 安排扫描
 
-    ```bash
-    failproofai audit --schedule 7 --email reliability@example.com
-    failproofai audit --status
-    ```
+```bash
+failproofai audit --schedule 7
+failproofai audit --status
+failproofai audit --no-schedule
+```
 
-    間隔は 1～90 日を受け入れ、省略された場合はデフォルトで 7 になります。最初のセットアップは必要に応じてサインインします。`--email` はプロンプトなしでレポートアドレスを指定します。
+间隔接受 1–90 天，默认为 7。首次安排需要交互式登录。后台服务必须运行。
 
-    ローカル監査履歴を削除せずにスケジュールを停止します。
+### 什么会离开机器
 
-    ```bash
-    failproofai audit --no-schedule
-    ```
-  </Tab>
-</Tabs>
+交互式审核不发送任何发现。默认启用匿名 CLI 遥测；使用 `FAILPROOFAI_TELEMETRY_DISABLED=1` 禁用它。
 
-デーモンはバックグラウンドでスケジュール設定されたスキャンを実行し、ローカルダッシュボードで使用されるキャッシュ結果を更新し、設定されたレポートをメール送信します。インタラクティブスキャンをすぐに実行したい場合は、`failproofai audit` を使用します。
-
-## ローカルエビデンスからクラウド操作へ移動する
-
-ローカル監査は高速なベースラインです。共有トレース、定期的な母集団監査、検出結果と問題、アラート、組織全体のポリシー展開、またはフリートヘルスが必要な場合は、マシンを Failproof AI クラウドに接続します。
-
-<CardGroup cols={2}>
-  <Card title="クラウド監査を作成する" icon="scan-search" href="/he/audits/setup">
-    定期的な目標、母集団、エビデンスウィンドウ、およびレスポンスチャネルを定義します。
-  </Card>
-  <Card title="ポリシーを有効にする" icon="shield-check" href="/he/start/first-policy">
-    ローカルで検証し、慎重に公開し、まず狭いマシングループに展開します。
-  </Card>
-</CardGroup>
+选择调度后，每次计划扫描都会发送机器 ID、标签、平台和扫描窗口。如果发现有害模式，它还会发送包含计数、时间戳和最多三个已编辑示例的有限摘要。清洁扫描不发送任何发现和电子邮件。
 
 <Warning>
-  監査出力は、フラグが付いたすべてのアクションが安全でないことの証拠であり、証明ではありません。検出を適用の強制に変える前に、コンテキストを確認してください。
+  审核结果是供审查的证据，不是证明每个标记的操作都不安全。在将发现转换为阻止强制执行之前，检查会话。
 </Warning>
+
+<CardGroup cols={2}>
+  <Card title="云审核" icon="scan-search" href="/he/audits/setup">
+    跨代理和机器运行共享的定期审核。
+  </Card>
+  <Card title="安装政策包" icon="package" href="/he/policies/packs">
+    确认发现后添加已审查的政策。
+  </Card>
+</CardGroup>

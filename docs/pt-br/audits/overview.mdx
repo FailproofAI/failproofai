@@ -1,56 +1,64 @@
 ---
 title: "Auditorias"
-description: "Revise uma população definida de sessões em busca de falhas que os traces por si só não revelam."
+description: "Pesquise execuções de agentes em busca de falhas recorrentes, comportamentos arriscados e esforço desperdiçado."
 icon: "scan-search"
 ---
 
-Uma auditoria pesquisa um conjunto selecionado de sessões em busca de um objetivo de falha declarado. Ela combina evidências de traces, resultados de avaliações, hits de políticas e contexto de referência para produzir descobertas sobre as quais você pode agir.
+Uma auditoria analisa diversas execuções de agentes em relação a um objetivo e retorna conclusões embasadas em evidências.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Find agent failures automatically with Failproof AI audits" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Encontre falhas de agentes automaticamente com auditorias do Failproof AI" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-Veja como uma auditoria avança de uma execução agendada até falhas respaldadas por evidências que você pode corrigir.
+## Local ou na Nuvem
 
-## Abrir auditorias
+| | Auditoria local | Auditoria na nuvem |
+| --- | --- | --- |
+| Comando | `failproofai audit` | `fp audits` |
+| Lê | Histórico de agentes nesta máquina | Sessões na sua organização na nuvem |
+| Produz | Resultados locais em `localhost:8020/audit` | Conclusões, problemas e alertas compartilhados |
+| Requer | Nenhuma conta | Conexão com a nuvem e chave de API |
 
-<Tabs>
-  <Tab title="Dashboard">
-    Acesse **Analyze → Audits**. A página exibe o estado agendado, descobertas abertas, última execução, próxima execução, cadência e se a auditoria possui um resumo ou páginas de referência. Selecione um card para ver as configurações e o histórico de execuções; selecione **new audit** para criar uma nova.
+Use uma auditoria local para uma revisão rápida de uma única máquina. Use a nuvem quando uma equipe precisar de auditorias recorrentes em múltiplos agentes e máquinas.
 
-    ![A página de Auditorias exibindo auditorias recorrentes com seus agendamentos, sensibilidade e estado de execução.](/images/dashboard/audits.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp audits list
-    fp audits list --enabled-only --show-id
-    fp audits show <audit-name>
-    fp audits findings --status open --limit 20
-    ```
-  </Tab>
-</Tabs>
+## Perguntas que uma auditoria pode responder
 
-Use uma auditoria quando precisar responder a uma pergunta no nível de população, como:
-
-- Em quais momentos os agentes abandonam tarefas sem escalar?
-- Quais falhas de ferramentas levam a tentativas de retry ineficazes?
+- Em quais pontos os agentes param sem escalar o problema?
+- Quais falhas de ferramentas levam a novas tentativas ineficazes?
 - Os agentes estão acessando dados fora do fluxo de trabalho pretendido?
 - O que mudou após uma atualização de modelo, prompt ou ferramenta?
 
-## Fluxo de resposta de auditoria
+## Abrir auditorias na nuvem
+
+Acesse **Analyze → Audits** ou use:
+
+```bash
+fp audits list
+fp audits show <audit-name>
+fp audits findings --status open --limit 20
+```
+
+Os comandos de auditoria utilizam o nome ou o ID completo da auditoria. As conclusões são referenciadas pelo seu próprio ID.
+
+## Da conclusão à prevenção
 
 ```text
 Session → Audit → Finding → Issue → Policy
-                         ↘ Alert for recurrence
+                         ↘ Alert
 ```
 
-Uma descoberta deve nomear o modo de falha e apontar para evidências. Uma issue gerencia a remediação. Uma política previne um padrão de ação conhecido; um alerta detecta recorrência quando a prevenção não é possível ou necessita de monitoramento.
+Uma conclusão aponta para evidências. Um problema define a resposta. Uma política previne um padrão de ação conhecido; um alerta monitora recorrências.
 
-<Columns cols={2}>
-  <Card title="Configurar uma auditoria" icon="sliders-horizontal" href="/pt-br/audits/setup">
-    Defina o objetivo, a população e o contexto de referência antes da primeira execução.
+Nem toda conclusão precisa se tornar uma política. Uma conclusão do tipo `policy` descreve uma regra que pode ser aplicada. Uma conclusão do tipo `failure` ou `improvement` pode exigir uma mudança no fluxo de trabalho, no prompt, no modelo ou na ferramenta.
+
+<CardGroup cols={3}>
+  <Card title="Auditar esta máquina" icon="laptop-minimal-check" href="/pt-br/audits/local-audit">
+    Analise o histórico local sem precisar de uma conta.
   </Card>
-  <Card title="Adicionar contexto de agente" icon="bot" href="/pt-br/audits/agent-contracts">
-    Declare o que cada agente deve produzir e o que ele jamais deve fazer.
+  <Card title="Configurar uma auditoria na nuvem" icon="sliders-horizontal" href="/pt-br/audits/setup">
+    Escolha o objetivo, as sessões e o agendamento.
   </Card>
-</Columns>
+  <Card title="Revisar conclusões" icon="list-checks" href="/pt-br/audits/findings-and-issues">
+    Analise evidências e defina uma resposta.
+  </Card>
+</CardGroup>

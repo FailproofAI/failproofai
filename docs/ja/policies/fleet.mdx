@@ -1,52 +1,61 @@
 ---
-title: "ポリシーをマシンにデプロイする"
-description: "どのマシンが登録済みで、最新の状態にあり、意図したポリシーバージョンを適用しているかを把握します。"
+title: "フリートカバレッジ"
+description: "各マシンに意図したポリシーが配信・適用されているかを確認します。"
 icon: "network"
 ---
 
-フリートカバレッジは、リスクが存在する場所にポリシーが存在するかどうかを確認するものです。安定したIDと人間が読めるラベルでマシンを追跡し、割り当てられたデプロイ状態と報告されたデプロイ状態を比較します。
+フリートカバレッジは、Cloudが割り当てた内容と各マシンが最後に適用した内容を比較します。
 
-## カバレッジを確認する
-
-<Tabs>
-  <Tab title="ダッシュボード">
-    1. **Admin → enforcement** に移動し、enforcing と observing の合計を確認します。
-    2. IDまたはラベルでマシンを検索するか、ポリシーが割り当てられていないマシンをフィルタリングします。
-    3. 行を展開して、割り当てられたポリシー、報告されたデプロイ状態、最終チェックイン、および履歴を比較します。
-    4. 適用されたデプロイが保留中のままの場合、マシンのポーリング間隔が経過した後に更新します。
-
-    ![ポリシーカバレッジ、マシンのデプロイ状態、observe および enforce の割り当てを表示している Enforcement フリート。](/images/dashboard/enforcement-fleet.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai config --status
-    failproofai config --machine-label checkout-runner-03
-    failproofai flush --wait
-    ```
-
-    `fp events --agent-id <agent-id> --since 24h` を使用して、マシンのエージェントアクティビティが Cloud に到達していることを確認します。
-  </Tab>
-</Tabs>
-
-カバレッジビューを使用して以下を検出します:
-
-- 最新のデプロイを一度も取得していないマシン
-- アクティビティの報告を停止した登録済みマシン
-- 誤った環境またはコホートに割り当てられたポリシー
-- 更新が中断された後のバージョンのずれ
-
-マシンを再接続せずに名前を変更する:
-
-```bash
-failproofai config --machine-label checkout-runner-03
-```
-
-ローカル状態を確認する:
+## マシンを確認する
 
 ```bash
 failproofai config --status
+failproofai flush --wait --timeout 120
 ```
 
-<Tip>
-  ワークロードと環境を識別するラベルを使用してください。ホスト名だけでは、オートスケーリングやマシンの交換後に不十分なことがよくあります。
-</Tip>
+Cloudから実行する場合:
+
+```bash
+fp fleet list
+fp fleet diff
+fp fleet show <machine-id>
+```
+
+`fp fleet` は APIキーではなく、サインイン済みのセッションが必要です。
+
+| コマンド | 説明 |
+| --- | --- |
+| `fp fleet list` | マシンとデプロイ状態の一覧を表示 |
+| `fp fleet show <machine>` | 特定のマシンのポリシーセットを表示 |
+| `fp fleet deploy <machine> --add <ref>` | ポリシーを追加または更新 |
+| `fp fleet deploy <machine> --remove <id>` | ポリシーを削除 |
+| `fp fleet deploy <machine> --set <ref>...` | ポリシーセット全体を置き換え |
+| `fp fleet diff [machine]` | 意図したバージョンと適用済みバージョンを比較 |
+| `fp fleet history <machine>` | デプロイ世代の履歴を表示 |
+| `fp fleet rollback <machine> <generation>` | 特定の世代に戻す |
+| `fp fleet rename <machine> "<label>"` | Cloudのラベルを変更 |
+
+<Warning>
+  `--set` はポリシーセット全体を置き換えます。単独の `--add <id>` は新しいポリシーを即座に適用します。シャドウロールアウトには `--add <id>:observe` を使用してください。
+</Warning>
+
+## オブザーブから適用へ
+
+```bash
+fp fleet deploy ci-runner-01 --add prod-guard:observe
+fp guardrails summary --since 24h --machine ci-runner-01
+fp fleet deploy ci-runner-01 --add prod-guard:enforce
+```
+
+オブザーブモードはポリシーを実際に評価し、エージェントをブロックすることなく allow 以外の判断を記録します。
+
+## マシンID
+
+マシンIDは不変であり、マシンを一意に識別します。ラベルは表示用であり、変更可能です:
+
+```bash
+failproofai config --machine-label checkout-runner-03
+fp fleet rename <machine-id> "Checkout runner 03"
+```
+
+ラベルを変更しても、マシンの再接続や鍵の再生成は行われません。

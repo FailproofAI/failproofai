@@ -1,21 +1,21 @@
 ---
-title: "Lancer et examiner un audit"
-description: "Lancez un audit, vérifiez sa couverture et inspectez les résultats obtenus."
+title: "Lancer et consulter un audit"
+description: "Lancer un audit, vérifier sa couverture et examiner les résultats obtenus."
 icon: "play"
 ---
 
-Lancez un audit lorsque son objectif et sa population sont suffisamment précis pour qu'un autre opérateur sache à quoi ressemble un résultat valide.
+Lancez un audit une fois que son objectif et sa population sont suffisamment précis pour qu'un autre opérateur sache à quoi ressemble un résultat valide.
 
-## Lancer et inspecter l'audit
+## Lancer et inspecter un audit
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Accédez à **Analyze → Audits**, ouvrez l'audit et sélectionnez **run now**. Une réponse en file d'attente signifie que le dispatcher le démarrera sous peu.
-    2. Ouvrez la nouvelle exécution pour consulter son statut, sa fenêtre temporelle, sa durée, le nombre de résultats et le rapport.
-    3. Sélectionnez une session d'évidences pour ouvrir la trace exacte.
+    1. Allez dans **Analyze → Audits**, ouvrez l'audit et sélectionnez **run now**. Une réponse en file d'attente signifie que le dispatcher le démarrera sous peu.
+    2. Ouvrez la nouvelle exécution pour consulter son statut, sa fenêtre, sa durée, le nombre de résultats et le rapport.
+    3. Sélectionnez une session d'evidence pour ouvrir la trace exacte.
     4. Revenez à la page de l'audit pour modifier les paramètres, désactiver la planification ou inspecter les exécutions précédentes.
 
-    ![Page de détail d'un audit avec les résultats ouverts, l'état de la dernière et prochaine exécution, la fenêtre de balayage, le contexte, le contrôle d'exécution immédiate et les résultats classés.](/images/dashboard/audit-detail.png)
+    ![Page de détail d'un audit avec les résultats ouverts, l'état de la dernière et prochaine exécution, la fenêtre de balayage, le contexte, le contrôle run-now et les résultats classés.](/images/dashboard/audit-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -25,43 +25,82 @@ Lancez un audit lorsque son objectif et sa population sont suffisamment précis 
     fp audits findings --audit checkout-reliability
     ```
 
+    `fp audits run` met l'audit en file d'attente ; il n'attend pas sa complétion. Faites-le suivre de `fp audits runs <name>` et consultez les résultats une fois qu'une exécution est terminée. `--limit` ne retourne jamais plus de 50 exécutions récentes, quelle que soit la valeur demandée.
+
+    Le triage agit sur un identifiant de résultat, et non sur l'audit :
+
+    ```bash
+    fp audits finding <finding-id>
+    fp audits ack <finding-id> --reason "owner assigned"
+    fp audits assign <finding-id> --to engineer@example.com
+    fp audits mute <finding-id> --reason "expected in staging" --yes
+    fp audits dismiss <finding-id> --reason "false positive" --yes
+    fp audits resolve <finding-id> --yes
+    fp audits reopen <finding-id>
+    ```
+
+    `mute`, `dismiss` et `resolve` demandent une confirmation avant d'agir ; passez donc `--yes` dans les scripts. `ack`, `assign` et `reopen` agissent immédiatement.
+
     Consultez la [référence `fp audits`](/fr/reference/cloud-cli#audits) pour l'historique des exécutions, les résultats et les commandes de triage.
   </Tab>
 </Tabs>
 
-## Avant de lancer l'audit
+**run now** peut être refusé. Une exécution déjà en cours et un audit désactivé renvoient tous deux `409`, avec la raison dans le champ `error` de la réponse ; un audit inexistant ou appartenant à une autre organisation renvoie `404`.
+
+| Refus | Ce que cela signifie | Que faire |
+| --- | --- | --- |
+| Audit inconnu | L'audit n'existe pas ou appartient à une autre organisation. | Confirmez le nom avec `fp audits list`. |
+| L'audit est désactivé | Un audit désactivé n'a pas de ligne en file d'attente, il n'y a donc rien à déclencher. Un audit en pause affiche quand même un contrôle **run now**. | Reprenez-le d'abord, ou utilisez `fp audits edit <name> --enabled --yes`. |
+| Une exécution est déjà en cours | Une seule exécution par audit à la fois ; l'exécution en cours doit se terminer avant qu'une nouvelle puisse être mise en file d'attente. | Vérifiez-la avec `fp audits runs <name>`. |
+
+## Avant de lancer
 
 - Confirmez que des sessions existent dans la fenêtre temporelle sélectionnée.
 - Vérifiez les filtres d'environnement et d'agent.
-- Assurez-vous que le contexte de référence est à jour.
-- Vérifiez que l'objectif décrit un mode de défaillance et non une conclusion souhaitée.
+- Assurez-vous que le contexte de référence est à jour. Chaque exécution relit les pages de l'audit et utilise la copie stockée si l'une d'elles est inaccessible ; une page déplacée ou supprimée continuera donc à servir un texte obsolète jusqu'à ce que vous corrigiez l'URL.
+- Vérifiez que l'objectif décrit un mode de défaillance, et non une conclusion souhaitée.
 
-## Examiner l'exécution
+## Consulter l'exécution
 
-Commencez par le statut de l'exécution, la couverture des sessions et si l'analyse par le modèle s'est bien déroulée. Inspectez ensuite la sévérité, la description, les sessions d'évidences, les requêtes associées et le chemin de prévention suggéré pour chaque résultat.
+La page de détail de l'audit s'ouvre avec cinq tuiles : **open findings** (résultats en attente de triage), **last run**, **next run**, **window** (durée de la fenêtre de lecture de chaque exécution) et **sensitivity** (degré de réactivité avec lequel une exécution signale un motif : `low`, `medium`, `high`). Le plafond de N résultats maximum par exécution est un paramètre distinct, findings per run (`--top-k`, valeur par défaut 50). Ces cinq tuiles répondent plus rapidement à la question de couverture que l'ouverture d'une exécution.
 
-Utilisez le statut des résultats pour les accuser de réception, les ignorer, les rejeter, les résoudre, les rouvrir ou les attribuer. Conservez les évidences même lorsqu'un résultat est rejeté ; elles expliquent pourquoi la décision a été prise.
+Inspectez ensuite la sévérité, la description, les sessions d'evidence, les requêtes associées et la piste de prévention suggérée pour chaque résultat. Les résultats sont ordonnés par un score de **priorité** compris entre 0 et 1, classés par exécution, et chaque résultat affiche les quatre facteurs pondérés qui le déterminent :
+
+| Facteur de classement | Poids |
+| --- | --- |
+| Coverage | 0,30 |
+| Magnitude | 0,25 |
+| Severity | 0,25 |
+| Recency | 0,20 |
+
+Un résultat se trouve dans exactement l'un des cinq statuts suivants : `open`, `recurring`, `resolved`, `dismissed` ou `muted`. Une requête `findings` sans filtre de statut retourne l'ensemble actif — `open` et `recurring`. Un résultat que vous mettez en sourdine, rejetez ou résolvez quitte cet ensemble ; `ack` et `assign` ne modifient pas le statut, donc le résultat reste dans la file — déprioritisé ou attribué, mais pas supprimé. Demandez explicitement un statut pour voir ceux qui en sont sortis.
+
+Utilisez le statut des résultats pour accuser réception, mettre en sourdine, rejeter, résoudre, rouvrir ou attribuer des tâches. Conservez l'evidence même lorsque le résultat est rejeté ; elle explique pourquoi la décision a été prise. [Findings and issues](/fr/audits/findings-and-issues) détaille ce que chaque action implique pour les exécutions futures.
 
 ## Interpréter une exécution vide ou retardée
 
-| Condition d'exécution | Ce que cela signifie | Que faire |
+| État de l'exécution | Ce que cela signifie | Que faire |
 | --- | --- | --- |
-| L'analyse s'est exécutée et n'a produit aucun résultat | Les évidences sélectionnées ne justifiaient pas un résultat à la sensibilité configurée. | Confirmez que le périmètre contient des sessions représentatives, puis considérez le résultat comme sain, sauf si l'objectif ou le contexte était trop vague. |
-| L'analyse par le modèle a été ignorée ou a échoué | L'exécution se termine sans résultat, mais l'investigation agentique n'a pas eu lieu. Le scan déterministe des identifiants et des données personnelles rapporte toujours les correspondances dans les statistiques d'exécution, mais ne crée pas de résultats. | Corrigez le service d'analyse ou la configuration, puis relancez. N'interprétez pas le résultat vide comme une preuve que la population est saine. |
-| L'analyse par le modèle est désactivée | L'exécution réussit sans résultat. Le scan déterministe ne remplace pas l'analyse par le modèle et ne génère pas de résultats. | Activez l'analyse par le modèle ou désactivez l'audit plutôt que de vous fier à un audit incapable de produire des résultats. |
-| Aucune capacité d'analyse n'est immédiatement disponible | L'audit reste en file d'attente et tente à nouveau au lieu de sauter la population. | Attendez que de la capacité soit disponible ou répartissez les ancres d'audit. Les opérateurs auto-hébergés doivent faire évoluer les réplicas d'audit-agent et la capacité du dispatcher correspondante. |
-| La capacité reste indisponible pendant toute la fenêtre de nouvelle tentative | L'exécution abandonne sans résultat et envoie une notification d'échec lorsque la remise par e-mail est disponible. | Vérifiez si la flotte d'audits est saturée ou redémarre de manière répétée. |
+| L'analyse a produit zéro résultat | L'evidence sélectionnée n'a pas permis d'établir un résultat à la sensibilité configurée. | Confirmez que le périmètre contient des sessions représentatives, puis traitez le résultat comme sain, sauf si l'objectif ou le contexte était trop vague. |
+| L'analyse du modèle a été ignorée ou a échoué | L'exécution se termine avec zéro résultat, mais elle n'a pas effectué l'investigation agentique. Le scan déterministe des credentials et des PII indique quand même les compteurs de correspondances dans les statistiques d'exécution, mais ne crée pas de résultats. | Corrigez le service d'analyse ou la configuration et relancez. N'interprétez pas le résultat vide comme une preuve que la population est saine. |
+| L'analyse du modèle est désactivée | L'exécution réussit avec zéro résultat. Le scan déterministe ne remplace pas l'analyse du modèle et n'ouvre pas de résultats. | Activez l'analyse du modèle ou désactivez l'audit plutôt que de vous fier à un audit incapable de produire des résultats. |
+| Aucune capacité d'analyse n'est immédiatement disponible | L'audit reste en file d'attente et réessaie au lieu de sauter la population. | Attendez que de la capacité soit disponible ou répartissez les ancres d'audit. Les opérateurs auto-hébergés doivent faire évoluer les réplicas de l'audit-agent et la capacité du dispatcher correspondante. |
+| La capacité reste indisponible pendant toute la fenêtre de réessai | L'exécution abandonne avec zéro résultat et envoie une notification d'échec si la distribution par e-mail est disponible. | Vérifiez si le parc d'audits est saturé ou redémarre en boucle. |
 
-Lorsque l'analyse ne s'exécute pas, les audits `since_last` conservent cette fenêtre non analysée pour la prochaine exécution réussie. Les résultats existants ne sont pas clôturés, car une analyse ignorée ne prouve pas que la défaillance a disparu.
+Les trois dernières lignes décrivent le comportement du serveur Cloud API et de son dispatcher. Sur le Cloud géré, c'est à Failproof AI de les corriger ; sur un déploiement auto-hébergé, c'est à vous.
 
-## Comprendre les notifications d'échec
+Quand l'analyse ne s'exécute pas, les audits `since_last` conservent cette fenêtre non analysée pour la prochaine exécution réussie. Les résultats existants ne sont pas archivés, car une analyse ignorée n'est pas une preuve que la défaillance a disparu.
 
-Une exécution ayant échoué ou une étape d'analyse par le modèle ayant échoué utilise les destinataires e-mail de l'audit. Si l'audit n'a pas de canal e-mail, Failproof AI utilise en repli le paramètre `alerts.email_default_recipients` de l'organisation, afin qu'un audit silencieusement défaillant dispose tout de même d'un chemin d'escalade.
+## Comprendre les notifications
 
-L'e-mail doit être activé pour l'organisation et le SMTP doit être configuré. Sans cela, l'échec est consigné mais aucun e-mail ne peut être envoyé. Les échecs d'exécution ne modifient pas l'ancre de planification fixe de l'audit.
+Une exécution réussie ne notifie que lorsqu'elle trouve quelque chose de **nouveau**. Le silence d'un audit sain est le cas normal, et non un signe que rien ne s'est exécuté — vérifiez **last run** sur la page de l'audit, ou `fp audits runs <name>`, pour confirmer que c'est bien le cas. Un audit sans canal sélectionné enregistre ses résultats sans notifier personne.
 
-Chaque exécution enregistre également le [contexte d'agent](/fr/audits/agent-contracts) exact utilisé pour chaque agent sous forme d'instantané de contrat. Les modifications ultérieures ne changent pas le standard d'évidences enregistré avec une exécution antérieure.
+Une exécution ayant échoué ou une étape d'analyse du modèle ayant échoué utilise les destinataires e-mail de l'audit. Si l'audit n'a pas de canal e-mail, Failproof AI se rabat sur le paramètre `alerts.email_default_recipients` de l'organisation, de sorte qu'un audit silencieusement défaillant dispose toujours d'un chemin d'escalade.
+
+L'e-mail doit être activé pour l'organisation et le SMTP doit être configuré. Sinon, l'échec est journalisé mais aucun e-mail ne peut être distribué. Les échecs d'exécution ne déplacent pas l'ancre de planification fixe de l'audit.
+
+Chaque exécution stocke également le [contexte d'agent](/fr/audits/agent-contracts) exact utilisé pour chaque agent sous forme de snapshot de contrat. Les modifications ultérieures ne changent pas le standard d'evidence enregistré avec une exécution antérieure.
 
 <Warning>
-  Ne déployez pas de politique bloquante directement à partir d'un résultat non vérifié. Ouvrez les traces citées et confirmez que la règle distingue bien les comportements non sécurisés des usages légitimes.
+  Ne déployez pas une politique bloquante directement à partir d'un résultat non vérifié. Ouvrez les traces citées et confirmez que la règle sépare les comportements non sûrs des usages légitimes.
 </Warning>

@@ -4,32 +4,41 @@ description: "Denetim kanıtlarını sahip olunan, izlenebilir düzeltme çalı�
 icon: "clipboard-check"
 ---
 
-Bulgu, denetimin bir hataya ilişkin kanıta dayalı ifadesidir. Sorun, buna yanıt vermenin kalıcı iş akışıdır.
+Bulgu, denetimin bir hataya ilişkin kanıt tarafından desteklenen açıklamasıdır. Sorun, buna yanıt verme için dayanıklı iş akışıdır.
 
-## Çalışmaları sınıflandırın ve atayın
+İki nesne farklı kelime dağarcıkları kullanır ve yan yana konumlandırılır, bu nedenle bunları önce aklınızda düzeltmek değerlidir:
+
+| | Bulgu | Sorun |
+| --- | --- | --- |
+| Durumlar | `open`, `recurring`, `resolved`, `dismissed`, `muted` | `firing`, `acknowledged`, `resolved` |
+| Filtre bayrağı | `--status` | `--state` |
+| İşleyici | Bulgu kimliği | Sorun kimliği |
+| Varsayılan listeleme | Canlı küme: açık ve yinelenen | En yeni açılanlar önce |
+
+## Çalışmayı sınıflandırın ve atayın
 
 <Tabs>
-  <Tab title="Kontrol Paneli">
-    1. **Analiz → Denetimler** sayfasını açın, tamamlanan bir çalıştırmayı seçin ve bir bulguyu seçerek analizi, tavsiyeyi, oturumları ve kanıt sorgularını inceleyebilirsiniz.
-    2. Bulgunun kanıtını kontrol ettikten sonra kabul edin, atayın, reddedin, susturun, çözün veya yeniden açın.
-    3. **Analiz → Sorunlar** sayfasına gidin ve kalıcı gelen kutusu filtresini durum, önem derecesi veya sorumlu kişiye göre uygulayın.
-    4. Sorunu açın, atayın, yorum ekleyin veya abone olun ve düzeltme doğrulandıktan sonra çözün.
+  <Tab title="Gösterge Paneli">
+    1. **Analiz → Denetimler** seçeneğini açın, tamamlanan bir çalıştırmayı seçin ve analizini, önerisini, oturumlarını ve kanıt sorgularını incelemek için bir bulgular seçin.
+    2. Kanıtlarını kontrol ettikten sonra, bulgular hakkında onay verin, atayın, reddedin, susturun, çözün veya yeniden açın.
+    3. **Analiz → Sorunlar** seçeneğine gidin ve dayanıklı gelen kutusunu duruma, önem derecesine veya atanana göre filtreleyin.
+    4. Sorunu açın, atayın, yorumlar veya abone olanları ekleyin ve düzeltme doğrulandıktan sonra çözün.
 
-    Bulgu özetinden başlayın. Hata açıklaması, önerilen yanıt, önem derecesi ve sıralamanın denetimin incelemesi gereken oturumlarla uyumlu olduğunu doğrulayın.
+    Bulgu özetinden başlayın. Hata açıklaması, önerilen yanıt, önem derecesi ve sıralamanın denetimin incelemesini beklediğiniz oturumlarla uyuştuğundan emin olun.
 
-    ![Önem derecesi, oluşum sayısı, temel neden analizi, önerilen eylem, sıralama faktörleri ve kanıt içeren denetim bulgusu.](/images/dashboard/audit-finding.png)
+    ![Önem derecesi, oluşum sayısı, kök nedenin analizi, önerilen eylem, sıralama faktörleri ve kanıtları gösteren bir denetim bulgusunun ekran görüntüsü.](/images/dashboard/audit-finding.png)
 
-    Ardından, yalnızca özetten karar vermek yerine etkilenen bir oturumu açın. Bağlı izleme, bulguyu destekleyen tam olayı ve yükü göstermelidir.
+    Sonra, özetten karar vermek yerine etkilenen bir oturumu açın. Bağlantılı izleme, bulguyu destekleyen tam olayı ve yükü göstermelidir.
 
-    ![Denetim bulgusu ile bağlantılı olan ve ilgili hata ve olay meta verileri ile ham yükü gösteren bir oturum.](/images/dashboard/audit-linked-session.png)
+    ![Bir denetim bulgusuyla bağlantılı bir oturum, ilgili hata ve olay meta verileri ve ham yük ile açılır.](/images/dashboard/audit-linked-session.png)
 
-    Kanıtı doğruladıktan sonra, yanıta bir sahip vermek ve gelecekteki denetim çalıştırmalarından bağımsız olarak izlemek için Sorunlar'ı kullanın.
+    Kanıtları doğruladıktan sonra, yanıta bir sahip vermek ve gelecekteki denetim çalışmalarından bağımsız olarak izlemek için Sorunları kullanın.
 
-    ![Önem derecesi ve sahipliği ile birlikte etkin, kabul edilmiş ve çözümlenen çalışmaları gösteren Sorunlar gelen kutusu.](/images/dashboard/incidents.png)
+    ![Sorun gelen kutusu, önem ve sahiplikle birlikte çalışan, onaylanan ve çözülen işleri gösterir.](/images/dashboard/incidents.png)
 
-    Araştırma notlarını kaydetmek, abone olanlara bildirmek ve yanıt geçmişini korumak için sorunu açın. Yalnızca düzeltme dağıtılıp doğrulandıktan sonra çözün.
+    Sorunu açarak araştırma notlarını kaydedin, abone olanları bilgilendirin ve yanıt geçmişini koruyun. Yalnızca düzeltme dağıtıldıktan ve doğrulandıktan sonra çözün.
 
-    ![Kaynağı, ihlal kanıtı, atanmış kişiler, abone olanlar, zaman çizelgesi ve yorumları gösteren sorun ayrıntı görünümü.](/images/dashboard/incident-detail.png)
+    ![Kaynağı, ihlal kanıtı, atanları, abone olanları, zaman çizelgesi ve yorumlarını gösteren bir sorun ayrıntı görünümü.](/images/dashboard/incident-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -37,60 +46,94 @@ Bulgu, denetimin bir hataya ilişkin kanıta dayalı ifadesidir. Sorun, buna yan
     fp audits finding <finding-id>
     fp audits ack <finding-id> --reason "owner assigned"
     fp audits assign <finding-id> --to engineer@example.com
+    fp audits mute <finding-id> --reason "expected in staging" --yes
+    fp audits dismiss <finding-id> --reason "false positive" --yes
+    fp audits resolve <finding-id> --yes
+    fp audits reopen <finding-id>
 
-    fp issues list
+    fp issues list --state firing
     fp issues show <issue-id>
+    fp issues ack <issue-id>
     fp issues assign <issue-id> --assignee engineer@example.com
     fp issues comment-add <issue-id> --body "policy is in observe mode"
     fp issues resolve <issue-id> --yes
     ```
 
-    İzleyicileri yönetmek için `fp issues subscribe <issue-id>`, `fp issues unsubscribe <issue-id>` ve `fp issues subscribers <issue-id>` komutlarını kullanın.
+    `mute`, `dismiss` ve `resolve` bir bulgusunun bastırılması veya kapatılması için, her biri önce onaylar — komut dosyalarında `--yes` geçin. `ack`, `reopen` ve `assign` tersine çevrilebilir muhasebe ve hemen hareket ederler. `ack`, `mute` ve `dismiss` `--reason` alır ve geçirmek değerlidir: bulgu üzerinde dayanıklı geri bildirim olarak tutulur, bir günlüğe yazılmaz ve unutulmaz. `resolve`, `reopen` ve `assign` başka neden almaz.
 
-    Denetim bulguları için [Cloud CLI denetim ve sorun başvurusuna](/tr/reference/cloud-cli#audits) ve sorun yönetimi için [`fp issues`](/tr/reference/cloud-cli#issues) bölümüne bakın.
+    Atama her nesne üzerinde farklı şekilde çalışır. `fp audits assign` `--to <email>` gerektirir ve bir sahip ayarlar; yeniden çalıştırmak yeniden atar. `fp issues assign` tekrarlanabilir `--assignee` alır ve **tüm listeyi değiştirir**, bu nedenle onu atlayıp her atananı temizler.
+
+    İşlemin geri kalanı için `fp issues comment-list <issue-id>`, `fp issues count --state firing` ve `fp issues subscribe`/`unsubscribe`/`subscribers <issue-id>` kullanın.
+
+    Denetim bulguları için [Cloud CLI denetim ve sorun başvurusu](/tr/reference/cloud-cli#audits) ve sorun yönetimi için [`fp issues`](/tr/reference/cloud-cli#issues) bölümüne bakın.
   </Tab>
 </Tabs>
 
-## Bir bulguyu gözden geçirin
+## Bir bulgayu incelemek
 
-Bulgunun şunları içerdiğini doğrulayın:
+İki alan başka bir şey yapmadan önce bununla ne yapılacağına karar verir.
 
-- Sadece bir kerelik bir başlık değil, kararlı bir hata modu
-- Önem derecesi ve operasyonel etki
+**`kind`**, bir `failure` (bir şey ters gitti) ile `policy` ihlalini (kırılan bir kural) ve `improvement` (iş daha iyi yapılabilir) ayırır. Bulguda bir rozet olarak işlenir. Bir `policy` bulgusunun bir ilkesi kapatabilir; diğer ikisi genellikle bir iş akışı değişikliği, bir uyarı veya bir insanı gerektirir.
+
+**`priority`**, 0–1 puanı, çalıştırma başına yeniden hesaplanır ve bulgu kuyruğunun sıralandığı düzendir. Bulgu sayfası, **neden burada sıralanır** başlığı altında değer × ağırlığa göre ayırır:
+
+| Faktör | Ağırlık |
+| --- | --- |
+| Kapsam | 0.30 |
+| Önem | 0.25 |
+| Büyüklük | 0.25 |
+| Yakınlık | 0.20 |
+
+Daha sonra bulgunun aşağıdakileri içerdiğini doğrulayın:
+
+- Sabit bir hata modu, yalnızca tek seferlik bir başlık değil
+- Önem ve işletimsel etki
 - Etkilenen oturum kimlikleri veya destekleyici sorgular
 - Davranışı yeniden üretmek için yeterli bağlam
-- Kanıtla eşleşen önerilen yanıt
+- Kanıtlarla eşleşen önerilen bir yanıt
 
-## Yanıta yönetmek için bir sorun kullanın
+Bir bulgayu yeniden üretmek için tamamen çekin: `fp --json audits finding <id>`, tam kaydı `evidence`, `evidence_queries` ve `scope` ile değiştirilmeden döndürür, bu da analiz gerçekten çalıştırdığı şeydir. `--json` genel bir seçenektir, bu nedenle komuttan önce gelir.
 
-Bulgunun atanması, tartışılması, durum değiştirilmesi, yorum eklenmesi veya abone olunması gerektiğinde bir sorun oluşturun veya bağlayın. Sorunlar ayrıca uyarı olaylarını ve manuel olarak bildirilen sorunları temsil edebilir. Bu nedenle birincil navigasyon altında değil, denetim yanıtı altında yer alırlar.
+## Yanıtı yönetmek için bir sorunu kullanın
 
-Düzeltme dağıtılıp doğrulandığında sorunu çözün. Hata modu denetim popülasyonu için ele alındığında bulguyu çözün. Bu anlar farklı olabilir.
+Bulgu atama, tartışma, durum değişiklikleri, yorumlar veya abone olanlar gerektirdiğinde bir sorunu oluşturun veya bağlayın. Bir sorunun `source` nereden geldiğini kaydeder — `audit`, `alert` veya `manual` — bu nedenle gösterge paneli sorunlara bir denetimin altında iç içe geçirmek yerine kendi **Sorunlar** görünümünü verir.
 
-## Bir sorunu ilke taslağına dönüştürün
+Abonelik kısmen otomatiktir. İnsanlar bir sorunu onayladıklarında, üzerine yorum yaptıklarında, atandıklarında veya açtıklarında abone olurlar — `fp issues subscribers` yalnızca etkin abone olanları listeler, bu nedenle manuel abone olanların listesi değildir. Bir yorum her etkin abonesine e-posta gönderir ve yorum yapmak yalnızca `issues:read` gerektirir, bu nedenle salt okunur bir gözlemci asla sessiz bir gözlemci değildir.
+
+Düzeltme dağıtıldığında ve doğrulandığında sorunu çözün. Hata modu denetim popülasyonu için ele alındığında bulgayu çözün. Bu anlar farklı olabilir.
+
+## Bir sorunu bir ilke taslağına dönüştürün
 
 <Tabs>
-  <Tab title="Kontrol Paneli">
-    1. Sorunu açın ve bulgusu, alıntı yapılan oturumları, temel nedeni ve tavsiyesini doğrulayın.
-    2. **İlke oluştur**'u seçin ve aday olmayı sonuçlandırın ve önerilen zorlama amacını gözden geçirin. **İlke yok** sonucu, davranışın bunun yerine uyarı, iş akışı değişikliği veya insan yanıtı gerektirebileceği anlamına gelir.
-    3. **Bu ilkeyi yaz**'ı seçin, ardından **Admin → ilke editörü** sayfasında oluşturulan kaynağı gözden geçirin ve test edin ve **yayın sürümü** seçmeden önce. Aday kontrol noktasıyla anlaşmadığınız zaman **editörü yine de aç**ı kullanın.
-    4. **Admin → zorlama** sayfasına gidin, sürümü **gözlemle** modunda dağıtın ve **Gözlemle → ilke** sayfasında kararlarını doğruladıktan sonra zorlayın.
+  <Tab title="Gösterge Paneli">
+    1. Sorunu açın ve bulgasını, alıntı yapılan oturumlarını, kök nedenini ve önerisini doğrulayın.
+    2. **İlke oluştur** seçeneğini belirleyin ve aday sonucu ve önerilen uygulama amacını gözden geçirin. Bir **hiçbir ilke** sonucu, davranışın bunun yerine bir uyarı, iş akışı değişikliği veya insan yanıtı gerektirebileceği anlamına gelir.
+    3. **Bu ilkeyi yaz** seçeneğini belirleyin, **Admin → ilke düzenleyici** içinde oluşturulan kaynağı gözden geçirin ve test edin ve **yayımla sürüm** seçeneğini belirleyin. Aday kontrolleriyle anlaşmazlığınız olduğunda **yine de düzenleyiciyi aç** seçeneğini kullanın.
+    4. **Admin → uygulama** bölümüne gidin, sürümü **gözlemle** modunda dağıtın ve **Gözlemle → ilke** altında kararlarını doğruladıktan sonra uygulamaya başlayın.
 
-    Sorun başlığı, bulgu açıklaması, temel neden, tavsiye ve aday amacı taslağın oluşturulmasına yardımcı olur. Hiçbir şey otomatik olarak yayımlanmaz veya dağıtılmaz.
+    Sorun başlığı, bulgu açıklaması, kök neden, öneri ve aday amacı, taslağı oluşturmaya yardımcı olur. Hiçbir şey otomatik olarak yayımlanmaz veya dağıtılmaz.
   </Tab>
   <Tab title="CLI">
-    Sorunu kontrol panelinde açmadan önce kanıtı incelemek için CLI'yi kullanın:
+    Sorunu gösterge panelinde açmadan önce kanıtları incelemek için CLI kullanın:
 
     ```bash
     fp issues show <issue-id>
-    fp audits finding <finding-id>
+    fp --json audits finding <finding-id>
     fp events --session-id <session-id> --full --all
     ```
 
-    İlke adaylığı, Cloud yayını ve filo dağıtımı kontrol paneli iş akışlarıdır. Önce eşdeğer ilke kaynağını yerel olarak doğrulamak istediğiniz zaman `failproofai policies --install --custom <file>` komutunu kullanın.
+    Gösterge paneli bir şerit; CLI diğeridir. `fp policies compose "<what it should do>"` bir ilkeyi tasarlar, `fp policies publish <id> ./policy.mjs` bir sürümü basılır (yayımlama hiçbir şey dağıtmaz) ve `fp fleet deploy <machine> --add <id>:observe` onu gölgede bir makineye koyar. `:observe` soneki gereklidir — `--add <id>` hemen uygulamaya başlar. `fp guardrails summary --since 24h` ile ne yapacağını okuyun, sonra `--add <id>:enforce` ile yükseltin.
+
+    Eşdeğer ilke kaynağını önce kendi makinenizde denemek için yerel CLI'yi dosyaya işaret edin:
+
+    ```bash
+    failproofai policies -i -c ./checkout-policies.js
+    ```
+
+    Adı `policies.js`, `policies.mjs` veya `policies.ts` ile biten ve projedeki `.failproofai/policies/` veya `~/` altına bırakılan bir dosya, bayrak olmaksızın her kanca olayı ile yüklenir.
   </Tab>
 </Tabs>
 
-<Card title="İlke yazın" icon="shield-plus" href="/tr/policies/editor">
-  Doğrulanmış, tekrarlanabilir bir eylem modelini bir ilke sürümüne dönüştürün.
+<Card title="Bir ilke yaz" icon="shield-plus" href="/tr/policies/editor">
+  Doğrulanmış, tekrarlanabilir bir eylem desenini ilke sürümüne dönüştürün.
 </Card>

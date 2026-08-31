@@ -1,25 +1,34 @@
 ---
 title: "Hooks"
-description: "Meça a atividade de hooks, gatilhos e latência separadamente dos resultados de políticas."
+description: "Veja quando o Failproof AI avaliou um evento de agente e qual foi a decisão tomada."
 icon: "webhook"
 ---
 
-Hooks mostra quando os hooks do ciclo de vida do agente são executados e quanto tempo levam. As decisões de política são uma visualização separada.
+Um hook é um ponto em que um agente solicita ao Failproof AI uma decisão. O registro de atividade do hook captura o evento, a política, o resultado e o tempo de avaliação.
+
+## Investigar atividade de hooks
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Acesse **Observe → Hooks**.
-    2. Filtre por ambiente, nome do hook, evento de gatilho, agente ou ID de sessão.
-    3. Revise a latência e a distribuição dos hooks.
-    4. Selecione um ponto do gráfico ou segmento de hook para abrir os eventos subjacentes.
+    Acesse **Observe → Hooks**. Filtre por ambiente, evento, agente ou sessão.
 
-    ![A página Hooks exibindo a latência agrupada por nome de hook e evento de gatilho.](/images/dashboard/hooks.png)
+    ![A página de Hooks exibindo a latência agrupada por nome do hook e evento de disparo.](/images/dashboard/hooks.png)
   </Tab>
   <Tab title="CLI">
     ```bash
+    fp guardrails summary --since 24h
+    fp --json events --full --event-type hook_completed --session-id <session-id> --all --limit 500
     fp list hooks
-    fp events --event-type hook_triggered,hook_completed --env production --since 24h
-    fp events --search "PreToolUse" --since 24h
     ```
   </Tab>
 </Tabs>
+
+Por padrão, toda decisão `deny` e `instruct` é enviada na íntegra. Permissões repetidas são agrupadas para reduzir o ruído. Defina `collector.hooks_verbosity` em `~/.failproofai/config.json` como `all`, `decisions` ou `off`.
+
+<Warning>
+  A atividade de hook comprova que a avaliação foi executada, não que o harness foi capaz de bloquear aquele evento. Consulte [capacidade de enforcement](/pt-br/reference/harnesses#enforcement-capability). Um par harness-evento não listado não está verificado.
+</Warning>
+
+<Card title="Decisões de política" icon="shield-check" href="/pt-br/sessions/policy-decisions">
+  Leia a mesma atividade por resultado e política.
+</Card>

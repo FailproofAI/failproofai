@@ -4,7 +4,9 @@ description: "Monitorea las señales de confiabilidad que importan para un agent
 icon: "layout-dashboard"
 ---
 
-Los dashboards combinan consultas guardadas en una vista operativa. Construye uno en torno a una decisión que alguien deba tomar, no en torno a todas las métricas disponibles.
+Los dashboards combinan consultas guardadas en una vista operacional. Construye uno en torno a una decisión que esperas que alguien tome, no en torno a cada métrica disponible.
+
+Los dashboards son una funcionalidad de Cloud. El dashboard local en `localhost:8020` cubre la actividad de políticas, proyectos, sesiones y resultados de auditoría, pero no tiene consultas guardadas ni tiles; por lo tanto, una máquina que no se ha conectado no tiene nada que construir aquí. Consulta [Local dashboard](/es/reference/local-dashboard).
 
 ## Crear un dashboard
 
@@ -13,22 +15,42 @@ Los dashboards combinan consultas guardadas en una vista operativa. Construye un
     1. Ve a **Analyze → Queries**, crea o abre una consulta guardada y valida su resultado.
     2. Selecciona **add to dashboard**, luego elige un dashboard existente o crea uno en **Analyze → Dashboards**.
     3. Abre el dashboard, entra en modo de edición, organiza los tiles y guarda el diseño.
-    4. Vuelve a la consulta cuando necesites modificar los datos o los filtros detrás de un tile.
+    4. Regresa a la consulta cuando necesites cambiar los datos o los filtros detrás de un tile.
 
     ![Un dashboard compuesto por consultas guardadas para volumen de eventos, errores, latencia y uso de tokens del modelo.](/images/dashboard/dashboard-fleet.png)
   </Tab>
   <Tab title="CLI">
-    El CRUD de dashboards no está disponible en el Cloud CLI actual. Usa el CLI para crear y verificar la consulta guardada, luego agrégala a un dashboard desde la interfaz.
+    Las operaciones CRUD de dashboards no están disponibles en el CLI de Cloud actual. Usa el CLI para escribir y verificar la consulta guardada, luego agrégala a un dashboard desde la interfaz.
 
     ```bash
     fp query schema
-    fp query create "production error rate" --sql "SELECT ..."
-    fp query run <query-id>
+    fp query run --sql "select count(*) from analytics.events"
+    fp query create "event volume" --sql "select count(*) from analytics.events"
+    fp query run "event volume"
     ```
+
+    Ejecuta el SQL con `--sql` primero: se ejecuta contra el mismo grupo de análisis de solo lectura sin guardar nada, así identificas un nombre de columna incorrecto antes de que lo haga un tile. `--sql @file.sql` lee la instrucción desde un archivo. `fp query schema` lista las tablas consultables y sus columnas; pasa el nombre de una tabla para reducirlo a una sola.
+
+    Las consultas guardadas se referencian por **nombre**, no por id — `fp query run "event volume"` — porque `fp query list` oculta el id sin procesar a menos que pases `--show-id`. También se acepta un id con formato UUID.
+
+    Para un tile parametrizado, vincula cada `$1..$N` posicional con `--arg`, que es repetible y se vincula en orden: `fp query run <name> --arg checkout-agent`.
+
+    `--limit` y `--all` solo ajustan el límite de la vista previa de la tabla; `--json` siempre devuelve todas las filas, como `{columns: [{name, type}], rows: [[...]], truncated, elapsed_ms}`.
+
+    | Subcomando | Permiso |
+    | --- | --- |
+    | `query list`, `query show`, `query schema` | `queries:read` |
+    | `query create`, `query update` | `queries:write` |
+    | `query run` | `queries:run` |
+    | `query delete` | `queries:delete` |
+
+    Cada subcomando que acepta un **nombre** de consulta lo resuelve listando primero las consultas de la organización, por lo que `query create`, `query update`, `query delete` y `query run <name>` necesitan `queries:read` además del permiso indicado arriba. Solo `fp query run --sql` y `fp query schema` no lo requieren.
+
+    Ninguno de los comandos de `fp query` está bloqueado en modo de clave de API, por lo que las consultas de un dashboard pueden crearse y verificarse desde CI.
   </Tab>
 </Tabs>
 
-Algunos grupos de dashboards útiles incluyen:
+Grupos de dashboards útiles incluyen:
 
 - **Modelos:** volumen, latencia, uso de tokens, tasa de errores y puntuaciones de evaluación.
 - **Evaluaciones:** tasa de éxito y tendencias de puntuación por agente o entorno.
@@ -38,6 +60,14 @@ Algunos grupos de dashboards útiles incluyen:
 
 Comienza con una consulta guardada, valida su resultado y luego agrégala como tile. Mantén los filtros de producción y desarrollo explícitos para que el tráfico de pruebas no oculte una regresión.
 
+<Warning>
+  Un tile de hook que cuenta filas reporta el denominador incorrecto. Con la verbosidad de hook predeterminada, cada deny e instruct se emite como un par `hook_triggered` / `hook_completed`, y lo mismo ocurre con cada allow en modo observación; los allows simples se agrupan por sesión, evento, herramienta y atribución de política por minuto en un único `hook_completed` que contiene `failproofai_allow_count`. Suma ese campo en lugar de contar filas, o una flota que evaluó decenas de miles de llamadas parecerá haber evaluado solo unos cientos. Consulta [Policy decisions](/es/sessions/policy-decisions) y [Hooks](/es/sessions/hooks).
+</Warning>
+
 <Tip>
-  Asigna a cada dashboard un responsable y una pregunta de respuesta, como "¿La confiabilidad de checkout-agent es peor que la semana pasada?"
+  Asigna a cada dashboard un responsable y una pregunta de respuesta, como "¿La confiabilidad del checkout-agent es peor que la semana pasada?"
 </Tip>
+
+<Card title="Queries" icon="database" href="/es/sessions/queries">
+  Escribe, guarda y comparte el SQL que lee cada tile de un dashboard.
+</Card>

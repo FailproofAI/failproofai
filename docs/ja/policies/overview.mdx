@@ -1,63 +1,76 @@
 ---
 title: "ポリシー"
-description: "既知の障害が繰り返される前に、エージェントのアクションを監視・誘導・ブロックします。"
+description: "既知の失敗が繰り返される前に、エージェントを誘導またはブロックします。"
 icon: "shield-check"
 ---
 
-ポリシーはエージェントのフックイベントを評価し、次の3つの判定のいずれかを返します。
+ポリシーはエージェントのアクションを監視し、次の3つのいずれかの判断を返します。
 
-- `allow` はアクションを続行させます。
-- `instruct` はエージェントに修正ガイダンスを提供します。
-- `deny` は理由を付けてアクションをブロックします。
+- `allow` — 処理を続行します。
+- `instruct` — ハーネスが対応している場合、エージェントにガイダンスを提供します。
+- `deny` — アクションをブロックします。
 
-## 3つのポリシーサーフェスを使用する
+保護されたファイルの削除、シークレットの露出、誤ったブランチへのプッシュ、本番インフラの変更など、既知の再現可能な動作にポリシーを使用してください。
 
-<Tabs>
-  <Tab title="ダッシュボード">
-    1. **Observe → policy** に移動して、セッションからのポリシー判定をフィルタリングおよび検査します。
-    2. **Admin → policy editor** に移動して、ポリシーの作成・検証・公開・無効化、またはイミュータブルバージョンの確認を行います。
-    3. **Admin → enforcement** に移動して、マシンにバージョンと効果を割り当てます。
+## このマシンにポリシーを追加する
 
-    ポリシーページを使用して、ルールの作成や適用変更を行う前に、すでに一致しているものを把握してください。
+セットアップではポリシーパックは選択されません。セットアップ後に Failproof AI パックを追加します。
 
-    ![判定の合計とローカルおよびクラウド管理ポリシーのマッピングを表示するポリシーページ。](/images/dashboard/policy-observe.png)
+```bash
+failproofai config
+failproofai policies add FailproofAI/policies
+failproofai policies
+```
 
-    エディタは、障害条件をソースに変換し、検証してイミュータブルバージョンを公開する場所です。
+このパッケージには特権的な組み込みパックは含まれていません。当社のパックも他のパックと同じ方法でインストールされます。
 
-    ![イミュータブルなポリシーバージョンの作成と公開に使用するポリシーエディタ。](/images/dashboard/policy-editor.png)
+ポリシーはローカルファイル、公開済みパック、またはクラウドの割り当てからも取得できます。
 
-    その後、Enforcementで公開済みのバージョンとその監視または適用効果をマシンに割り当てます。
+| ソース | 追加方法 |
+| --- | --- |
+| ローカルファイル | `.failproofai/policies/` に `*policies.{js,mjs,ts}` を配置する |
+| 任意のファイルパス | `failproofai policies -i -c <path>` |
+| 公開済みパック | `failproofai policies add <owner>/<repo>` |
+| クラウド | ダッシュボードまたは `fp fleet deploy` で割り当てる |
 
-    ![マシンのカバレッジと割り当て済みポリシーバージョンを表示するEnforcementフリート画面。](/images/dashboard/enforcement-fleet.png)
+`block-failproofai-commands` は常に実行され、無効にすることはできません。これにより、エージェントが自身の実行制御を無効化することを防ぎます。
 
-    デプロイ後は、ポリシーページに戻って判定を確認し、作成ビューとフリートビューが実際のエージェントアクティビティと連携していることを確かめてください。
-  </Tab>
-  <Tab title="CLI">
-    ローカルポリシーのインストールと検証には `failproofai` を使用します。
+## 適用前に観察する
 
-    ```bash
-    failproofai policies
-    failproofai policy add block-rm-rf --scope project
-    failproofai config --status
-    ```
+オブザーブモードでは、実際のポリシーを実行してその結果を記録しますが、エージェントをブロックしません。
 
-    `fp` を使用して、ポリシー判定を含むクラウドセッションとイベントを検索します。クラウドでの作成とフリートのデプロイは、引き続きダッシュボードのワークフローで行います。
-  </Tab>
-</Tabs>
+```bash
+fp policies test ./checkout.policy.mjs --tool Bash --command "git push --force" --expect deny
+fp fleet deploy ci-runner-01 --add checkout-guard:observe
+fp guardrails summary --since 24h --machine ci-runner-01
+fp fleet deploy ci-runner-01 --add checkout-guard:enforce
+```
 
-Failproof AI におけるポリシーには、3つの明確なサーフェスがあります。
+<Warning>
+  `fp fleet deploy <machine> --add <id>` のみを実行すると、即座に適用されます。シャドウロールアウトを行う場合は `:observe` を追加してください。
+</Warning>
 
-1. **判定の分析** — セッション、ダッシュボード、監査ログで確認します。
-2. **バージョンの作成** — 組み込みルール、コード、またはポリシーエディタを使用します。
-3. **デプロイと適用** — 選択したマシン全体にバージョンを展開します。
+オブザーブモードでタイムアウトしたポリシーは allow として記録されます。これは適用中に実際に起こる動作と同じだからです。allow 以外のオブザーブ結果のみが記録されます。
 
-確認済みの障害モードから始めてください。それを特定するための最小限のイベントとツールの一致条件を定義し、正常なケースと危険なケースでテストを行ってから、適用する前に監視を行います。
+クラウドを使用せずにパックを利用する場合は、`failproofai publish --effect observe` で公開してください。
 
-<Columns cols={2}>
-  <Card title="組み込みポリシーを使用する" icon="library" href="/ja/policies/builtin">
-    シークレット、シェル、Git、クラウド、ワークフローに関する一般的なリスクに対応した、レビュー済みのルールを有効化します。
+## 適切な方法を選ぶ
+
+<CardGroup cols={2}>
+  <Card title="レビュー済みポリシーを使用する" icon="library" href="/ja/policies/builtin">
+    シークレット、ファイル、Git、インフラ、ワークフロー向けの39種類のポリシーから選択できます。
   </Card>
-  <Card title="カスタムポリシーを作成する" icon="code-2" href="/ja/policies/custom">
-    ワークフロー固有の判定を JavaScript または TypeScript で表現します。
+  <Card title="パックをインストールする" icon="package" href="/ja/policies/packs">
+    GitHub または Policy Hub から公開済みポリシーセットを追加します。
   </Card>
-</Columns>
+  <Card title="ポリシーを作成する" icon="code-2" href="/ja/policies/custom">
+    独自のエージェントやワークフロー向けのルールを定義します。
+  </Card>
+  <Card title="複数マシンにデプロイする" icon="server" href="/ja/policies/deploy">
+    クラウドポリシーの観察、昇格、ロールバックを行います。
+  </Card>
+</CardGroup>
+
+<Note>
+  適用のサポート状況はハーネスによって異なります。ツールコールの deny はサポートされている全12ハーネスで検証済みです。その他のイベントは異なります。詳細は[サポートされているハーネス](/ja/reference/harnesses#enforcement-capability)を参照してください。
+</Note>

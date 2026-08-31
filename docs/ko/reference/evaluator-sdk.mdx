@@ -1,28 +1,52 @@
 ---
 title: "Evaluator SDK"
-description: "Failproof AI 세션을 동기 또는 비동기로 평가하는 서비스를 구축합니다."
+description: "Failproof AI 세션을 동기 또는 비동기 방식으로 평가하는 서비스를 구축하세요."
 icon: "gauge"
 ---
 
-평가자(evaluator)는 완료된 에이전트 세션을 받아 품질 신호를 반환합니다. 여기에는 숫자 점수, 각 점수에 대한 설명, 그리고 선택적인 요약이 포함됩니다. Failproof AI는 이 결과를 트레이스 옆에 저장하고 에이전트 및 환경 전반에 걸쳐 차트로 시각화합니다.
+evaluator는 완료된 에이전트 세션을 수신하고 원하는 품질 신호를 반환합니다: 숫자 점수, 각 점수에 대한 설명, 그리고 선택적 요약. Failproof AI는 이 결과를 트레이스 옆에 저장하고 에이전트 및 환경 전반에 걸쳐 차트로 표시합니다.
 
-## 평가자 설정
+패키지 이름은 `agenteye-evaluator`이며, `agenteye_evaluator`로 임포트됩니다. Python 3.10 이상이 필요하며 `fastapi`, `pydantic>=2`, `structlog`에 의존합니다.
+
+<Warning>
+  **`pip install agenteye-evaluator`를 공개 PyPI에서 실행하는 것은 올바른 설치 방법이 아닙니다.** 이 패키지는 비공개 릴리스 아티팩트로만 배포되며, 공개 PyPI에서는 해당 이름이 점유되어 있지 않습니다. 즉, 일반적인 설치 명령을 실행하면 알 수 없는 제3자의 패키지가 프로덕션 트랜스크립트를 읽는 서비스에 설치될 수 있습니다. 아래의 단계를 따르세요.
+</Warning>
+
+## evaluator 설정
 
 <Steps>
-  <Step title="평가자 SDK 설치">
-    SDK와 실행에 필요한 서버를 설치합니다.
+  <Step title="SDK 설치">
+    아래 단계를 순서대로 확인하고, 해당하는 첫 번째 방법을 사용하세요.
+
+    `evaluator-sdk/` 디렉터리가 존재하는 모노레포 내부에서:
 
     ```bash
-    pip install failproofai-sdk uvicorn
+    pip install ./evaluator-sdk
+    ```
+
+    그렇지 않은 경우, 비공개 릴리스에서 설치하세요. 휠 파일은 `agenteye-enterprise/releases`의 GitHub Releases에 `evaluator-sdk/v<version>` 태그로 첨부되어 있으며, 해당 저장소에 대한 접근 권한과 `gh auth login`이 필요합니다:
+
+    ```bash
+    gh release download evaluator-sdk/v<version> \
+      --repo agenteye-enterprise/releases --pattern '*.whl'
+    pip install ./agenteye_evaluator-*.whl
+    ```
+
+    두 방법 모두 작동하지 않는다면, 임의로 설치를 시도하지 말고 Failproof AI 담당자에게 휠 파일을 요청하세요.
+
+    `uvicorn`은 의도적으로 의존성에서 제외되어 있으므로, 서버를 별도로 설치해야 합니다:
+
+    ```bash
+    pip install 'uvicorn[standard]'
     ```
   </Step>
 
   <Step title="평가 항목 정의">
-    `evaluator.py`를 생성합니다. 이 예시에서는 세션에 실패한 도구 호출이 있는지 확인합니다.
+    `evaluator.py`를 생성하세요. 이 예시는 세션에 실패한 툴 호출이 있는지 확인합니다.
 
     ```python
     import os
-    from failproofai.evaluator import Evaluator, EvalResponse
+    from agenteye_evaluator import Evaluator, EvalResponse
 
     app = Evaluator(token=os.environ.get("EVALUATOR_TOKEN"))
 
@@ -41,10 +65,16 @@ icon: "gauge"
             reasoning={"tool_reliability": f"{tool_errors} tool errors"},
         )
     ```
+
+    전체 생성자는 `Evaluator(token: str | None = None, *, title: str = "AgentEye Evaluator")`입니다. 토큰은 `hmac.compare_digest`로 비교되며, `title`은 FastAPI 앱의 제목으로 표시용입니다.
+
+    <Warning>
+      `token=None`으로 설정하면 인증이 완전히 비활성화됩니다. 로컬 개발 환경에서는 문제없지만, 전체 세션 트랜스크립트를 수신하는 프로덕션 엔드포인트에서는 심각한 보안 취약점이 됩니다.
+    </Warning>
   </Step>
 
   <Step title="로컬에서 실행 및 테스트">
-    공유 토큰을 설정하고 평가자를 시작한 뒤, 헬스 엔드포인트가 응답하는지 확인합니다.
+    공유 토큰을 설정하고, evaluator를 시작한 후 헬스 엔드포인트가 응답하는지 확인하세요.
 
     ```bash
     export EVALUATOR_TOKEN=<shared-token>
@@ -56,30 +86,32 @@ icon: "gauge"
     ```bash
     curl http://127.0.0.1:8080/health
     ```
+
+    각 데코레이터는 함수를 그대로 반환하므로 `evaluate(req)`는 직접 호출 가능한 상태로 유지됩니다. 덕분에 유닛 테스트가 간편해집니다. `EvalRequest`를 생성하고 핸들러를 직접 호출하면 HTTP 없이도 테스트할 수 있습니다.
   </Step>
 </Steps>
 
-## Failproof AI에 평가자 연결
+## evaluator를 Failproof AI에 연결
 
-1. Failproof AI Cloud에서 접근 가능한 HTTPS URL에 평가자를 배포합니다.
-2. 해당 URL로 `EVALUATOR_ENDPOINT`를 설정하고, `EVALUATOR_TOKEN`을 평가자에서 사용하는 것과 동일한 토큰으로 설정합니다. 관리형 Cloud의 경우 [support@befailproof.ai](mailto:support@befailproof.ai)로 연락하여 연결을 설정합니다.
-3. 평가를 실행하고 점수가 Failproof AI에 표시되는지 확인합니다.
+1. Failproof AI Cloud에서 접근 가능한 HTTPS URL로 evaluator를 배포하세요.
+2. 해당 URL로 `EVALUATOR_ENDPOINT`를 설정하고, evaluator에서 사용하는 것과 동일한 토큰으로 `EVALUATOR_TOKEN`을 설정하세요. 관리형 Cloud의 경우 [support@befailproof.ai](mailto:support@befailproof.ai)로 문의하여 연결을 설정하세요.
+3. 평가를 실행하고 점수가 Failproof AI에 표시되는지 확인하세요.
 
 <Tabs>
   <Tab title="대시보드">
-    **Observe → Sessions**에서 완료된 세션을 열고, 자동으로 평가되지 않은 경우 **Run evaluation**을 선택합니다. 세션의 **Evaluation** 패널에서 상태, 점수, 추론, 요약을 확인합니다.
+    **Observe → Sessions**에서 완료된 세션을 열고, 자동으로 평가되지 않은 경우 **Run evaluation**을 선택하세요. 세션의 **Evaluation** 패널에서 상태, 점수, 추론 근거, 요약을 확인하세요.
 
-    **Observe → Evaluations**를 사용하여 에이전트 또는 환경 전반에 걸쳐 점수를 비교합니다. **Observe → Metrics**에서는 지연 시간, 비용, 토큰 수 및 기타 숫자 측정값을 확인할 수 있습니다.
+    **Observe → Evaluations**를 사용하면 에이전트 또는 환경별로 점수를 비교할 수 있습니다. **Observe → Metrics**는 지연 시간, 비용, 토큰 및 기타 수치 측정값에 사용하세요.
 
-    먼저 하나의 세션으로 시작하여 평가자가 해당 특정 실행에 대해 예상한 점수 키와 유용한 추론을 반환했는지 확인하세요.
+    먼저 단일 세션으로 시작하여 evaluator가 해당 실행에 대한 올바른 점수 키와 유용한 추론 근거를 반환했는지 확인하세요.
 
-    ![트레이스 옆에 평가 점수와 추론이 표시된 세션 상세 화면.](/images/dashboard/session-detail.png)
+    ![세션 트레이스 옆에 평가 점수와 추론 근거가 표시된 세션 상세 뷰.](/images/dashboard/session-detail.png)
 
-    개별 결과가 올바르게 보이면, 평가 대시보드를 사용하여 시간 경과에 따른 점수와 에이전트 또는 환경별 점수를 비교합니다.
+    개별 결과가 올바르게 표시되면, 평가 대시보드를 사용하여 시간 경과 및 에이전트·환경별로 점수를 비교하세요.
 
-    ![시간 경과에 따른 평가자 점수를 차트로 보여주는 품질 대시보드.](/images/dashboard/dashboard-quality.png)
+    ![시간 경과에 따른 evaluator 점수를 차트로 보여주는 품질 대시보드.](/images/dashboard/dashboard-quality.png)
 
-    정상적인 차트는 안정적인 점수 이름을 사용합니다. 키를 변경하면 별도의 계열이 생성됩니다.
+    차트를 안정적으로 유지하려면 점수 이름을 일관되게 사용하세요. 키를 변경하면 별도의 시리즈가 생성됩니다.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -89,11 +121,32 @@ icon: "gauge"
   </Tab>
 </Tabs>
 
-자체 호스팅 Cloud 인스턴스의 경우, 서버 프로세스에 `EVALUATOR_ENDPOINT`가 설정되기 전까지 자동 평가가 비활성화됩니다. 평가자 환경 변수를 변경한 후에는 서버를 재시작하세요.
+자체 호스팅 Cloud 인스턴스의 경우, 서버 프로세스에 `EVALUATOR_ENDPOINT`가 설정되기 전까지는 자동 평가가 비활성화됩니다. evaluator 환경 변수를 변경한 후에는 서버를 재시작하세요.
 
-이 서비스는 `GET /health`, `GET /config`, `POST /evaluate`, 그리고 선택적으로 `GET /evaluate/{job_id}`를 노출합니다. 비동기 작업에는 `JobPending`을 반환하고 Failproof AI가 폴링할 수 있도록 `@app.job_lookup`을 등록하세요.
+## 데코레이터와 라우트
 
-토큰이 설정된 경우, 헬스 라우트를 제외한 모든 라우트에서 Failproof AI가 `EVALUATOR_TOKEN`으로 전송하는 동일한 베어러 토큰이 필요합니다.
+| 데코레이터 | 라우트 | 필수 여부 |
+| --- | --- | --- |
+| `@app.evaluator` | `POST /evaluate` | 필수. |
+| `@app.job_lookup` | `GET /evaluate/{job_id}` | `JobPending`을 반환하는 경우에만 필요. 등록하지 않으면 폴링 시 404가 반환됩니다. |
+| `@app.config` | `GET /config` | 선택 사항이지만, `agent_end`를 발생시키지 않는 세션에는 필수입니다. 아래 참조. |
+
+각 데코레이터는 동기 또는 비동기 함수를 모두 허용하며, 함수를 그대로 반환합니다. 동일한 데코레이터를 두 번 등록하면 `ValueError`가 발생합니다.
+
+| 라우트 | 인증 |
+| --- | --- |
+| `GET /health` | 토큰이 설정되어 있어도 공개 접근 가능. |
+| `POST /evaluate` | Bearer 인증 필요. |
+| `GET /evaluate/{job_id}` | Bearer 인증 필요. |
+| `GET /config` | Bearer 인증 필요. |
+
+Bearer 체계 매칭은 대소문자를 구분하지 않습니다. `@app.config`가 등록되지 않은 상태에서 `GET /config`를 호출하면 `{"default_poll_interval_secs": 10}`이 반환되므로, SDK는 항상 폴링 주기를 제공합니다.
+
+SDK는 평가 요청 본문을 25 MiB로 제한하며, 본문을 읽기 전에 `Content-Length`를 확인합니다. 제한을 초과하면 413이 반환되며, 이는 4xx이므로 최종 오류로 처리됩니다. 알 수 없는 요청 필드는 무시되므로, 이벤트 계약이 확장되어도 서비스는 호환성을 유지합니다.
+
+<Warning>
+  `inactivity_timeout_secs`를 포함하여 `@app.config`를 등록하는 것이 폴백 스캐너를 활성화하는 방법입니다. 등록하지 않으면 `agent_end`를 발생시키지 않은 세션, 즉 중단되거나 충돌하거나 여전히 유휴 상태인 세션은 평가 대기열에 추가되지 않습니다. 0 이하의 값은 무시됩니다.
+</Warning>
 
 ## SDK 타입
 
@@ -105,22 +158,55 @@ icon: "gauge"
 | `JobPending` | `job_id`, `next_poll_secs` |
 | `EvaluatorConfig` | `inactivity_timeout_secs`, `default_poll_interval_secs` |
 
-## 데코레이터 및 라우트
+## 요청 및 응답 필드
 
-| 데코레이터 | 라우트 | 필수 여부 |
+| 필드 | 타입 | 설명 |
 | --- | --- | --- |
-| `@app.evaluator` | `POST /evaluate` | 예 |
-| `@app.job_lookup` | `GET /evaluate/{job_id}` | `JobPending` 반환 시 |
-| `@app.config` | `GET /config` | 아니오 |
+| `EvalRequest.schema_version` | `str` | 현재 `"1"`. |
+| `session_id`, `agent_id`, `environment` | `str` | 세션 식별자 및 환경. |
+| `started_at` | `datetime` | 첫 번째 이벤트의 타임스탬프. |
+| `ended_at` | `datetime \| None` | `agent_end` 이벤트의 타임스탬프로, "세션이 중단된 시점"이 아닙니다. 비활성 스캐너에 의해 대기열에 추가된 세션은 `agent_end`가 없었으므로 `None`으로 도착합니다. |
+| `events` | `list[AgentEvent]` | 순서가 유지된 전체 이벤트 스트림. |
+| `AgentEvent.id` | `int` | 백엔드 이벤트 행 식별자. |
+| `AgentEvent.ts` | `datetime` | 이벤트 타임스탬프. |
+| `AgentEvent.event_type` | `str` | `tool_use`와 같은 이벤트 종류. |
+| `AgentEvent.payload` | `dict[str, Any]` | 플래튼된 전체 이벤트 JSON으로, 이벤트 전용 필드가 최상위에 위치하며 `payload["type"]`은 `event_type`과 중복됩니다. |
+| `EvalResponse.scores` | `dict[str, float] \| None` | 평가에서 차트로 표시되는 수치 차원. |
+| `EvalResponse.reasoning` | `dict[str, str] \| None` | 점수별 설명. 키는 `scores`와 일치해야 합니다. |
+| `EvalResponse.summary` | `str \| None` | 전반적인 평가 내러티브. 서버 측에서 8192바이트로 잘리며, `last_error`는 2048바이트로 제한됩니다. |
 
-SDK는 평가 요청 본문을 25 MiB로 제한합니다. 알 수 없는 요청 필드는 무시되므로 이벤트 계약이 확장되더라도 서비스 호환성이 유지됩니다.
+직렬화는 `exclude_none`을 사용하므로, 설정되지 않은 필드는 `null`로 전송되지 않고 생략됩니다.
+
+<Warning>
+  `ended_at`로 지속 시간을 계산하면 실제 데이터에서 오류가 발생합니다. 비활성 스캐너가 대기열에 추가하는 모든 세션은 `ended_at`이 `None`으로 도착합니다. 빼기 연산을 수행하기 전에 반드시 확인하세요.
+</Warning>
+
+## 반환 형태
+
+핸들러는 다음 세 가지 중 정확히 하나를 반환해야 합니다. 그 외의 값을 반환하면 `TypeError`가 발생하며 500으로 노출됩니다.
+
+| 반환값 | 와이어 `status` | 최종 처리 여부 |
+| --- | --- | --- |
+| `EvalResponse(...)` | `done` | 예 — 점수가 저장됩니다. |
+| `JobPending(job_id=...)` | `pending` | 아니오 — 서버가 폴링합니다. |
+| `status`가 `done`, `pending`, 또는 `error`인 원시 `dict` | 지정한 값 | `error`는 최종 처리됩니다. |
+
+`error` 상태에는 타입 모델이 없습니다. 최종 실패를 처리하려면 원시 dict를 반환해야 하며, `error`는 비어 있지 않은 `str`이어야 합니다:
+
+```python
+return {"status": "error", "error": "model service unavailable"}
+```
+
+<Warning>
+  **예외를 발생시키는 것은 오류를 보고하는 것이 아닙니다.** 예외는 본문이 `"evaluator raised an internal error"`인 일반 500으로 처리됩니다. 예외 텍스트는 서버에 전달되지 않으며, 서버는 모든 5xx를 일시적인 오류로 간주하여 재시도합니다. 실패를 기록하려면 `error` dict를 반환하세요.
+</Warning>
 
 ## 비동기 작업 반환
 
-평가를 단일 요청 내에서 완료할 수 없는 경우 `JobPending`을 사용합니다. 작업 ID는 Failproof AI에 대해 불투명(opaque)하며, 결과가 수집되거나 서버 타임아웃이 만료될 때까지 서비스에서 해결 가능한 상태로 유지되어야 합니다.
+평가가 단일 요청 내에서 완료될 수 없는 경우 `JobPending`을 사용하세요. job ID는 Failproof AI에게 불투명하며, 결과가 수집되거나 서버 타임아웃이 만료될 때까지 서비스에서 확인 가능한 상태로 유지되어야 합니다.
 
 ```python
-from failproofai.evaluator import EvalRequest, EvalResponse, Evaluator, JobPending
+from agenteye_evaluator import EvalRequest, EvalResponse, Evaluator, JobPending
 
 app = Evaluator(token="shared-secret")
 
@@ -141,50 +227,38 @@ def lookup(job_id: str):
     )
 ```
 
-폴링 주기는 다음 순서로 결정됩니다: `JobPending.next_poll_secs`, `EvaluatorConfig.default_poll_interval_secs`, 그 다음 서버의 `EVALUATOR_POLLING_INTERVAL_SECS`. 값은 1초에서 1시간 사이로 제한됩니다. 서버의 기본 실제 시간(wall-clock) 폴링 상한은 1시간입니다.
-
-## 요청 및 응답 필드
-
-| 필드 | 타입 | 비고 |
-| --- | --- | --- |
-| `EvalRequest.schema_version` | `str` | 현재 `"1"`. |
-| `session_id`, `agent_id`, `environment` | `str` | 세션 식별자 및 환경. |
-| `started_at` | `datetime` | 첫 번째 이벤트의 타임스탬프. |
-| `ended_at` | `datetime \| None` | 세션이 종료 이벤트를 방출한 경우 존재. |
-| `events` | `list[AgentEvent]` | 완전한 순서가 있는 이벤트 스트림. |
-| `AgentEvent.id` | `int` | 백엔드 이벤트 행 식별자. |
-| `AgentEvent.ts` | `datetime` | 이벤트 타임스탬프. |
-| `AgentEvent.event_type` | `str` | `tool_use`와 같은 이벤트 계열. |
-| `AgentEvent.payload` | `dict[str, Any]` | 완전한 이벤트 페이로드. |
-| `EvalResponse.scores` | `dict[str, float] \| None` | 평가에서 차트로 표시되는 숫자 차원. |
-| `EvalResponse.reasoning` | `dict[str, str] \| None` | 점수별 설명; 키는 `scores`와 일치해야 합니다. |
-| `EvalResponse.summary` | `str \| None` | 전체 평가 서술. |
+폴링 주기는 다음 순서로 결정됩니다: `JobPending.next_poll_secs`, `EvaluatorConfig.default_poll_interval_secs`, 그 다음 서버의 `EVALUATOR_POLLING_INTERVAL_SECS`. 값은 1초에서 1시간 사이로 제한됩니다. 서버의 기본 벽시계 폴링 상한은 1시간이며, 그 이후 결과는 `timeout`으로 기록됩니다.
 
 ## 서버 운영자 설정
 
-자동 평가는 배포 전체에 적용되며 `EVALUATOR_ENDPOINT`가 없으면 비활성화됩니다.
+자동 평가는 배포 전체에 적용되며, `EVALUATOR_ENDPOINT`가 없으면 비활성화 상태로 유지됩니다.
 
 | 변수 | 기본값 | 용도 |
 | --- | --- | --- |
-| `EVALUATOR_ENDPOINT` | 미설정 | 평가자 서비스의 기본 URL. |
-| `EVALUATOR_TOKEN` | 미설정 | `Evaluator(token=...)`와 공유하는 베어러 토큰. |
+| `EVALUATOR_ENDPOINT` | 미설정 | evaluator 서비스의 기본 URL. |
+| `EVALUATOR_TOKEN` | 미설정 | `Evaluator(token=...)`과 공유하는 Bearer 토큰. |
 | `EVALUATOR_WORKERS` | `2` | 동시 디스패처 워커 수. |
 | `EVALUATOR_CLAIM_BATCH` | `4` | 디스패처 패스당 처리하는 세션 수. |
-| `EVALUATOR_POLLING_INTERVAL_SECS` | `10` | 비동기 폴링 기본 주기. |
-| `EVALUATOR_REQUEST_TIMEOUT_MS` | `30000` | 요청별 평가자 타임아웃. |
-| `EVALUATOR_MAX_ATTEMPTS` | `5` | 최종 실패 전 전달 시도 횟수. |
+| `EVALUATOR_POLLING_INTERVAL_SECS` | `10` | 폴백 비동기 폴링 주기. |
+| `EVALUATOR_REQUEST_TIMEOUT_MS` | `30000` | 요청당 evaluator 타임아웃. POST 및 각 폴에 적용됩니다. |
+| `EVALUATOR_MAX_ATTEMPTS` | `5` | 최종 실패 전 전송 시도 횟수. |
 | `EVALUATOR_CONFIG_REFRESH_SECS` | `300` | `/config` 갱신 주기. |
-| `EVALUATOR_MAX_POLL_DURATION_SECS` | `3600` | 비동기 폴링 최대 실제 시간(wall-clock). |
+| `EVALUATOR_MAX_POLL_DURATION_SECS` | `3600` | 최대 벽시계 비동기 폴링 시간. |
 
-서버는 배포 전역 평가자를 사용하는 조직을 제한할 수도 있습니다. 엔드포인트, 토큰, 재시도, 조직 게이트 변경은 운영자 구성으로 처리하고 변경 후 서버를 재시작하거나 롤링 재시작하세요.
+이 표에서 특별히 주목할 사항이 두 가지 있습니다:
+
+- **워커 수 × 클레임 배치 = 동시성.** 기본값 기준으로 배포 전체에서 엔드포인트에 대해 8개의 동시 호출이 발생합니다. 1개가 아닌 이 숫자를 기준으로 서비스 용량을 계획하세요.
+- **4xx는 최종 오류이며, 5xx, 429 또는 전송 실패는 `EVALUATOR_MAX_ATTEMPTS`까지 백오프를 적용하여 재시도됩니다.** 토큰 불일치는 401이므로, 재시도 없이 즉시 실패합니다. 아무것도 도착하지 않을 때 가장 먼저 확인해야 할 사항입니다.
+
+서버는 배포 전역 evaluator를 사용하는 조직을 제한할 수도 있습니다. 엔드포인트, 토큰, 재시도, 조직 게이트 변경은 운영자 설정으로 처리하고, 변경 후 서버를 재시작하거나 롤링 업데이트하세요.
 
 ## 보안 및 운영
 
-- 트래픽이 신뢰할 수 없는 네트워크 경계를 통과하는 경우 평가자를 HTTPS 뒤에 배치합니다.
-- 비어 있지 않은 베어러 토큰을 구성하고 두 서비스에서 동일하게 유지합니다.
-- 토큰이나 요청 페이로드에서 민감한 전체 프롬프트를 로그에 남기지 않습니다.
-- 동기 핸들러는 멱등성(idempotent)을 유지합니다. 재시도 시 요청이 반복될 수 있습니다.
-- 프로덕션에서는 비동기 작업 상태를 프로세스 메모리 외부에 저장합니다.
-- 안정적인 점수 키를 반환합니다. 키 이름을 변경하면 기존 계열을 변경하는 것이 아니라 새 차트 계열이 생성됩니다.
+- 트래픽이 신뢰 네트워크 경계를 넘는 경우 evaluator를 HTTPS 뒤에 배치하세요.
+- 비어 있지 않은 Bearer 토큰을 설정하고 두 서비스에서 동일하게 유지하세요. `token=None`은 모든 호출자를 허용합니다.
+- 토큰이나 요청 페이로드에서 민감한 프롬프트 전체를 로깅하지 마세요. SDK는 이를 수행하지 않습니다. 검증 실패는 페이로드를 에코하지 않고 422를 반환하고, 500은 예외 텍스트를 에코하지 않으며, 토큰은 어떤 로그 필드에도 나타나지 않습니다.
+- 동기 핸들러는 멱등성을 갖도록 구현하세요. 재시도로 인해 요청이 반복될 수 있습니다.
+- 프로덕션에서는 비동기 job 상태를 프로세스 메모리 외부에 영속화하세요.
+- 점수 키를 안정적으로 유지하세요. 키 이름을 변경하면 기존 시리즈를 변경하는 것이 아니라 새로운 차트 시리즈가 생성됩니다.
 
-SDK는 `eval received`, `eval responded`, `job lookup`, `config returned`, `auth rejected`, 핸들러 예외 등의 구조화된 라이프사이클 로그를 방출합니다. 로깅 핸들러는 직접 구성하지 않으므로 호스트 애플리케이션의 로깅 구성을 사용하세요.
+SDK는 `eval received`, `eval responded`, `job lookup`, `config returned`, `auth rejected`, 핸들러 예외 등 구조화된 라이프사이클 로그를 출력합니다. `/config` 응답은 `source="user"` 대 `source="default"`를 태깅하므로, `@app.config`가 실제로 반영되었는지 확인할 수 있습니다. SDK는 로깅 핸들러를 설정하지 않으므로, 호스트 애플리케이션의 로깅 설정을 사용하세요.

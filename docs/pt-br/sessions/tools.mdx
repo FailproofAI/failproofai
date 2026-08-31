@@ -1,25 +1,38 @@
 ---
 title: "Ferramentas"
-description: "Encontre ferramentas lentas, com falhas ou usadas em excesso entre sessões de agentes."
+description: "Encontre ferramentas lentas, com falhas ou usadas em excesso nas execuções dos agentes."
 icon: "wrench"
 ---
 
-Ferramentas agrupa chamadas de ferramentas entre sessões para que você possa comparar latência e distribuição de chamadas.
+Ferramentas mostra o que os agentes chamam, com que frequência as chamadas falham e quais sessões são afetadas.
+
+Os nomes das ferramentas vêm de cada harness de agente, então a mesma funcionalidade pode ter nomes diferentes. Por exemplo, uma chamada de shell pode aparecer como `Bash`, `exec`, `Shell`, `terminal` ou `run_command`. Execute `fp list tools` antes de criar um filtro.
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Acesse **Observe → Tools**.
-    2. Filtre por ambiente, nome da ferramenta, agente ou ID de sessão.
-    3. Revise a latência e a distribuição de ferramentas.
-    4. Selecione um ponto no gráfico ou um segmento de ferramenta para abrir os eventos e sessões correspondentes.
+    Acesse **Observe → Tools**. Filtre por ambiente, ferramenta, agente ou sessão.
 
-    ![A página Tools exibindo latência, detalhamentos de sucesso e falha, e distribuição de chamadas de ferramentas.](/images/dashboard/tools.png)
+    ![A página Tools exibindo latência, detalhamento de sucessos e falhas, e distribuição de chamadas de ferramentas.](/images/dashboard/tools.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp list tools
-    fp events --event-type tool_use,tool_result --env production --since 24h
-    fp --json events --full --session-id <session-id> --all
+    fp events --event-type tool_use,tool_result --since 24h
+    fp errors --event-type tool_result --since 24h
+    fp --json events --full --event-type tool_use,tool_result --session-id <session-id> --all --limit 2000
     ```
+
+    Use `--full` quando precisar de campos do payload, como a duração por chamada.
   </Tab>
 </Tabs>
+
+Use esta página para encontrar falhas recorrentes, comparar execuções com e sem falhas, ou confirmar que uma ferramenta alvo de uma política está realmente sendo utilizada.
+
+<CardGroup cols={2}>
+  <Card title="Erros" icon="circle-alert" href="/pt-br/sessions/errors">
+    Abra as sessões relacionadas a falhas de ferramentas.
+  </Card>
+  <Card title="Hooks" icon="webhook" href="/pt-br/sessions/hooks">
+    Veja os nomes canônicos das ferramentas e as decisões de política.
+  </Card>
+</CardGroup>

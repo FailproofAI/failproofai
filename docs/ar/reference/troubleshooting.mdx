@@ -1,167 +1,101 @@
 ---
+---
 title: "استكشاف الأخطاء"
-description: "تشخيص الجلسات المفقودة والسياسات المفقودة والتسليم الفاشل والإجراءات المحجوبة للوكيل."
+description: "تشخيص مشاكل الإعداد والتسليم والسياسات والجلسات."
 icon: "wrench"
 ---
 
-<AccordionGroup>
-  <Accordion title="لا تظهر جلسات في Cloud">
-    <Tabs>
-      <Tab title="لوحة التحكم">
-        افتح **Administration → Keys** وتأكد من أن مفتاح الجهاز نشط وله صلاحية `events:add`. ثم افتح **Observe → Events**، وسّع نطاق الوقت، وامسح عوامل تصفية البيئة والوكيل. إذا كانت هناك أحداث، ابحث عن معرّف الجلسة ثم تحقق من **Observe → Sessions** لتجميع البيانات. إذا لم تكن هناك أحداث، قم بتشخيص مستقبِل Failproof من سطر الأوامر.
+ابدأ بـ:
 
-        ![تدفق الأحداث المباشر مع عوامل التصفية الأساسية الخاصة به وأحداث الوكيل الأخيرة التي تصل.](/images/dashboard/events-stream-current.png)
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai flush --wait --timeout 60
-        fp list envs
-        fp events --since 24h --limit 20
-        fp sessions --since 24h --limit 20
-        ```
+```bash
+failproofai config --status
+failproofai policies
+```
 
-        تأكد من تفعيل الالتقاط، وأن المفتاح المكوَّن له صلاحية `events:add`، وأن عامل تصفية لوحة التحكم يطابق البيئة المُرسلة.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="أحداث Python SDK تبقى على القرص">
-    <Tabs>
-      <Tab title="لوحة التحكم">
-        امسح عوامل التصفية في **Observe → Events** وابحث عن معرّف جلسة SDK الدقيق. إذا لم يظهر شيء، افحص ملف الطبقة والمستقبِل Failproof على الجهاز المصدر.
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai flush --wait
-        ```
+## وكيل غير متصل
 
-        تأكد من أن المستقبِل يعمل ومتصل — يقوم SDK بتخزين البيانات سواء كان متصلاً أم لا. لا يلزم أن يكون دليل الطبقة موجوداً مسبقاً (الكاتب ينشئه)، ولا يوجد متغير بيئة يختاره: `$FAILPROOFAI_HOME/custom-agents`، وإلا فهو `~/.failproofai/custom-agents`، هو الجذر الوحيد، و`configure(base_dir=...)` هو التجاوز الوحيد. إذا تم إيقاف العملية قسراً بـ `SIGKILL` أو قتلها بسبب نقص الذاكرة، فقد فُقد كل ما كان مصطفاً — تعامل مع `SIGTERM` لتحديد ذلك.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="الجهاز لا يستقبل السياسات">
-    <Tabs>
-      <Tab title="لوحة التحكم">
-        افتح **Admin → enforcement**، حدّد الجهاز، وقارن بين إصداراته المخصصة والمُبلغ عنها والسابقة. تأكد من أن نطاق النشر يتضمن الجهاز وأن مفتاحه له صلاحية `policies:pull`. يمكن أن يعمل الاستيعاب حتى عندما لا يعمل تسليم السياسة.
+أعد تشغيل الإعداد:
 
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai update
-        failproofai config --status
-        ```
+```bash
+failproofai config
+```
 
-        تأكد من أن معرّف الجهاز والعلامة يطابقان هدف لوحة التحكم. أعد الاتصال باستخدام مفتاح قادر على السياسة إذا كانت بيانات الاعتماد الموجودة تمنح فقط استيعاب الأحداث.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="تم رفض الإجراء لأن المستقبِل غير متاح">
-    <Tabs>
-      <Tab title="لوحة التحكم">
-        افتح **Admin → enforcement** وافحص آخر وقت رآه الجهاز والإصدار المُبلغ عنه. إذا كان الجهاز قديماً، تعامل مع هذا باعتباره مشكلة مستقبِل محلية. لا تُضعّف السياسة المنشورة فقط لتجاوز مستقبِل غير متاح.
+يدعم الإعداد Linux و macOS. يتطلب وصول مسؤول مرة واحدة لتثبيت الخدمة، لكنه لا يطلب كلمة مرور sudo.
 
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai update
-        failproofai config
-        failproofai config --status
-        ```
+تحقق من مسارات الأجهزة والنطاقات في [Harnesses](/ar/reference/harnesses).
 
-        أعد تشغيل أو حدّث `failproofaid`؛ أعد تشغيل التكوين عندما تختلف إصدارات بروتوكول CLI والمستقبِل. مسار المستقبِل المُكوَّن يفشل بالتصميم بشكل آمن.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="سياسة مخصصة لا تُحمّل">
-    <Tabs>
-      <Tab title="لوحة التحكم">
-        بالنسبة إلى السياسة المُنشأة في Cloud، افتح **Admin → policy editor**، حدّد المسودة، واستعرض أخطاء التحقق قبل النشر. بالنسبة إلى السياسة المحلية، استخدم CLI للتحقق منها، ثم افتح **Observe → policy** بعد إجراء اختبار لتأكيد وصول القرارات.
+## جلسة مفقودة
 
-      </Tab>
-      <Tab title="CLI">
-        تأكد من أن اسم الملف ينتهي بـ `policies.js` أو `policies.mjs` أو `policies.ts`، وأن الوحدة تستدعي `customPolicies.add(...)`، وأن الاستيرادات تُحل من ملف السياسة.
+```bash
+failproofai flush --wait
+failproofai backfill --since 30d --dry-run
+failproofai harness list
+```
 
-        ```bash
-        failproofai policies --install --custom ./checkout.policies.ts
-        failproofai policies
-        ```
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="التدقيق لا يُرجع نتائج">
-    <Tabs>
-      <Tab title="لوحة التحكم">
-        افتح **Analyze → audits**، حدّد المسار، وتحقق مما إذا كان تحليل النموذج قد تم تشغيله. ثم قارن نطاقه والنافذة الزمنية مع **Observe → sessions** وافتح الآثار الممثلة من تلك المجموعة.
+أزل `--dry-run` لإعادة إرسال السجل القديم. أضف موقع نسخة أخرى بـ:
 
-        النتيجة الصفرية لها معنى فقط عندما يتم تشغيل التحليل بنجاح. إذا تم تخطي التحليل أو فشل، ينتج المسار بدون نتائج ويُبقي النافذة التي لم يتم تحليلها مفتوحة لمسار ناجح في المستقبل. إذا تم تعطيل تحليل النموذج، ينتج التدقيق أيضاً بدون نتائج لأن مسح بيانات الاعتماد والمعلومات الشخصية المحدد يسجل الإحصائيات ولم يعد يرفع نتائج.
+```bash
+failproofai harness add-path <harness> [label=]<path>
+```
 
-        ![نموذج التدقيق حيث تحدد البيئة والوكيل والتكرار ونافذة المسح مجموعة الجلسات.](/images/dashboard/audit-new.png)
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        fp audits show <audit-name>
-        fp audits runs <audit-name>
-        fp sessions --since 24h --env production
-        fp audits context-show <audit-name>
-        fp audits run <audit-name>
-        fp audits findings --audit <audit-name>
-        ```
+استخدم تسمية عندما يحتوي موقعان على نسخ من نفس المشروع.
 
-        إذا بقي المسار في الانتظار، انتظر سعة وكيل التدقيق أو اطلب من مشغّل النشر فحص أسطول التدقيق. يُعيد محاولة التدقيق المصطف؛ لا يتم تخطيه على الفور.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="التقييمات الموصولة لا تعمل تلقائياً">
-    <Tabs>
-      <Tab title="لوحة التحكم">
-        افتح جلسة مكتملة وتحقق مما إذا كان التقييم اليدوي ناجحاً. الـ Cloud الموجه حالياً لا يحتوي على تحكم نقطة نهاية المُقيّم في لوحة التحكم؛ يجب على مشغّل الخادم تكوينها.
-      </Tab>
-      <Tab title="CLI">
-        تحقق من المُقيّم نفسه، ثم افحص حالات التقييم الأخيرة:
+## كل إجراء محمي مرفوض
 
-        ```bash
-        curl https://evaluator.example.com/health
-        fp evals --since 1h
-        ```
+على جهاز مُعد، `failproofaid` هو المقيّم الوحيد. إذا لم يتمكن من الإجابة، تفشل الإجراءات المحمية بأمان.
 
-        على Cloud ذاتي الاستضافة، تأكد من وجود `EVALUATOR_ENDPOINT` على الخادم وتطابق `EVALUATOR_TOKEN` للمُقيّم. يتم تعطيل التقييم التلقائي عندما تكون النقطة النهائية غائبة.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="مصادقة Cloud CLI تستهدف المنظمة الخاطئة">
-    <Tabs>
-      <Tab title="لوحة التحكم">
-        استخدم محول المنظمة وأكد على الاسم المختصر والصلاحيات المتوقعة قبل مقارنة النتائج مع CLI.
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        fp whoami
-        fp orgs current
-        fp orgs perms
-        ```
+```bash
+failproofai config --status
+systemctl status failproofaid@$USER        # Linux
+sudo launchctl print system/ai.failproof.failproofaid.$USER  # macOS
+```
 
-        في وضع مفتاح API، حدّد `fp --org <slug> --api-key <key> ...` أو اضبط `AGENTEYE_ORG`. حالة منظمة جلسة الإنسان المحفوظة يتم تجاهلها عن قصد لطلبات مفتاح API.
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="السياسة تحجب العمل الصحيح">
-    <Tabs>
-      <Tab title="لوحة التحكم">
-        افتح **Observe → policy**، احفظ القرار والجلسة المرتبطة، وحدّد شرط الإيجابية الكاذبة. ثم افتح **Admin → enforcement** وأرجع الأجهزة المتأثرة إلى الإصدار السابق. أنشئ نسخة أكثر دقة في **Policy editor**، اختبرها على نطاق صغير، وسّع فقط بعد نجاح العمل الصحيح.
+شغّل `failproofai config` لإصلاح أو إعادة تثبيت الخدمة.
 
-      </Tab>
-      <Tab title="CLI">
-        استرجاع نشر Cloud متاح فقط من لوحة التحكم. إيقاف جلسة محلية لا يعطّل السياسات المُدارة من Cloud. إذا كانت لوحة التحكم غير متاحة، احفظ حالة الجهاز والنشر وأعِد الوصول إلى لوحة التحكم بدلاً من إعادة محاولة الإجراء المحجوب بشكل متكرر.
+## حزمة واحدة ترفض
 
-        ```bash
-        failproofai config --status
-        ```
-      </Tab>
-    </Tabs>
-  </Accordion>
-</AccordionGroup>
+`failproofai policies` تسمي الحزم التي لا يمكن تحميلها. تفشل حزمة محددة بأمان بدلاً من الاختفاء.
 
-عند الاتصال بالدعم، أدرج إصدار CLI والأداة والبيئة ومعرّف الجلسة أو النشر ذي الصلة وناتج `failproofai config --status` مع إزالة الأسرار.
+الأسباب الشائعة:
+
+- تغير الملف بعد التثبيت.
+- البيان والسياسات المرفقة غير متطابقة.
+- الملف مفقود أو لا يمكن استيراده.
+- تستخدم الحزمة حدثاً أو أداة أو شكل سياسة غير مدعوم.
+
+أزل الحزمة أو ثبّت إصدار معدّل:
+
+```bash
+failproofai policies remove owner/repo
+failproofai policies add owner/repo@<release>
+```
+
+## السحابة غير متصلة
+
+فضّل متغير البيئة للمفتاح:
+
+```bash
+export FAILPROOFAI_CLOUD_TOKEN="<key>"
+failproofai config
+failproofai config --status
+```
+
+يمكن لجهاز سحب السياسات وإرسال النشاط بشكل مستقل. تقرير الحالة يعرض كليهما.
+
+## سياسة لم تحجب
+
+تحقق من ثلاثة أشياء:
+
+1. السياسة قيد التشغيل: `failproofai policies`.
+2. حدثها وأداتها تطابق الإجراء.
+3. يمكن لذلك الجهاز تطبيق الحدث.
+
+يتم التحقق من رفض استدعاء الأداة على جميع الأجهزة الـ 12 المدعومة. تتنوع الأحداث الأخرى. انظر [قدرة التطبيق](/ar/reference/harnesses#enforcement-capability).
+
+## التنزيلات محظورة
+
+- `FAILPROOFAI_NO_DOWNLOAD=1` يرفض التنزيلات الشبكية.
+- `FAILPROOFAI_DAEMON_BASE_URL` يوجه تنزيلات الخدمة إلى مرآة.
+- `FAILPROOFAI_PACK_BASE_URL` يوجه تنزيلات الحزم إلى مرآة.
+
+تحتفظ الحزم المثبتة بفرض السياسات عند تعطيل التنزيلات.

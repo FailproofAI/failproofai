@@ -1,22 +1,30 @@
 ---
 title: "الإدارة"
-description: "تشغيل الوصول والاستخدام والمنظمات والأمان دون دمجها في سير عمل الموثوقية."
+description: "تشغيل وصول Cloud والعضوية والإعدادات والاستهلاك دون دمجها في سير عمل الموثوقية."
 icon: "settings-2"
 ---
 
-تحتوي الإدارة على عناصر التحكم اللازمة لتشغيل Failproof AI عبر فريق. يمكن لمعظم المستخدمين البقاء في الجلسات والتدقيق والسياسات؛ يستخدم المسؤولون هذا القسم لإدارة الوصول وحدود التشغيل.
+الإدارة هي نصف Failproof AI في Cloud. المؤسسات والأعضاء ومفاتيح API وإعدادات المؤسسة والاستهلاك المقاس — كل هذا يتطلب اتصال Cloud.
+
+<Note>
+  يعمل Failproof AI أيضاً بدون حساب على الإطلاق. آلة محلية تفرض السياسة، وتحتفظ بسجل الجلسة على القرص، وتخدم لوحة المعلومات المحلية على `localhost:8020`، وتشغل `failproofai audit` دون إرسال أي شيء في أي مكان. اطلع على تكوين الآلة في [machine configuration](/ar/reference/events-and-configuration#machine-configuration) لمفاتيح `collector` المحلية. تخطَّ بقية هذا القسم إذا لم تكن تستخدم Cloud.
+</Note>
+
+## حيث تقع الأدوات
 
 <Tabs>
-  <Tab title="لوحة التحكم">
-    استخدم قسم **Admin** في الشريط الجانبي للسحابة للوصول إلى **محرر السياسات** و**الإنفاذ** و**الاستخدام** و**المفاتيح** و**المستخدمين** و**الإعدادات**. يشير العنصر المقفل إلى أن حسابك يفتقد إلى صلاحية القراءة.
+  <Tab title="لوحة المعلومات">
+    مجموعة **admin** في شريط الجانب Cloud تحتوي على **محرر السياسة** و**الإنفاذ** و**الاستخدام** و**المفاتيح** و**المستخدمون** و**الإعدادات**.
 
-    ![قسم الإدارة في الشريط الجانبي للسحابة يعرض محرر السياسات والإنفاذ والاستخدام والمفاتيح والمستخدمين والإعدادات.](/images/dashboard/admin-navigation.png)
+    ![مجموعة admin في شريط جانب Cloud يحتوي على محرر السياسة والإنفاذ والاستخدام والمفاتيح والمستخدمين والإعدادات.](/images/dashboard/admin-navigation.png)
   </Tab>
-  <Tab title="واجهة سطر الأوامر">
+  <Tab title="CLI">
+    ثبّت Cloud CLI كأداة منفصلة، ثم قم بتسجيل الدخول:
+
     ```bash
+    uv tool install fp-cloud-cli
+    fp login
     fp whoami
-    fp orgs current
-    fp orgs perms
     fp usage
     ```
 
@@ -24,17 +32,43 @@ icon: "settings-2"
   </Tab>
 </Tabs>
 
+## إنسان مسجل دخول أو مفتاح API
+
+يعمل `fp` في أحد وضعي المصادقة، والفاصل يحدد الأوامر التي تعمل. الأمر الذي لا يمكن لمفتاح API تنفيذه يرفض قبل فتح الاتصال ويسمي السبب، بدلاً من ترك 401 أو 403 يحل محله.
+
+| الأمر | مفتاح API | الإذن |
+| --- | --- | --- |
+| `fp whoami` | نعم | لا شيء |
+| `fp usage` | نعم | `usage:read` |
+| `fp keys list` / `show` | نعم | `keys:read` |
+| `fp keys create` | نعم | `keys:create` |
+| `fp keys disable` | نعم | `keys:disable` |
+| `fp keys regenerate` | نعم | `keys:regenerate` |
+| `fp keys update` | لا | `keys:update`، الذي لا يمكن لأي مفتاح أن يحتفظ به |
+| `fp users list` / `show` | نعم | `users:read` |
+| `fp users create` | نعم | `users:create` |
+| `fp users update` | نعم | `users:update` |
+| `fp users disable` / `enable` | نعم | `users:delete` |
+| `fp settings list` / `schema` | نعم | `settings:read` |
+| `fp settings set` | نعم | `settings:write` |
+| `fp orgs list` / `switch` / `current` / `perms` | لا | جلسة مسجلة دخول فقط |
+
+`fp usage` هو الأمر الذي يجب إعطاؤه لسكريبت إعداد التقارير: يعمل دون مراقبة تحت مفتاح ويحتاج فقط `usage:read`.
+
 <Columns cols={2}>
-  <Card title="الاستخدام" icon="chart-no-axes-combined" href="/ar/admin/usage">
-    فحص نوافذ الفوترة واستهلاك المنظمة.
+  <Card title="المفاتيح والأذونات" icon="key-round" href="/ar/admin/keys-and-permissions">
+    أنشئ بيانات اعتماد الآلة، وامنح كل عملية فقط الأذونات التي تحتاجها.
   </Card>
-  <Card title="المفاتيح والصلاحيات" icon="key-round" href="/ar/admin/keys-and-permissions">
-    منح الآلات والأتمتة الصلاحيات المطلوبة فقط.
-  </Card>
-  <Card title="المستخدمون والمنظمات" icon="users" href="/ar/admin/users-and-organizations">
-    إدارة العضوية والإعدادات الافتراضية وحدود المنظمة.
+  <Card title="المستخدمون والمؤسسات" icon="users" href="/ar/admin/users-and-organizations">
+    أدِر العضوية، واحتفظ بنطاق بيانات كل مؤسسة وإجراءاتها.
   </Card>
   <Card title="الإعدادات والأمان" icon="lock-keyhole" href="/ar/admin/settings-and-security">
-    تكوين إعدادات التشغيل ومعالجة البيانات وأمان النشر.
+    عيّن قيم تسجيل الدخول والتنبيهات، وحدد بيانات الوكيل التي تغادر الآلة.
+  </Card>
+  <Card title="الاستخدام" icon="chart-no-axes-combined" href="/ar/admin/usage">
+    اقرأ ما قاست المؤسسة خلال نافذتها الحالية من 30 يوماً.
+  </Card>
+  <Card title="تغطية الأسطول" icon="network" href="/ar/policies/fleet">
+    انظر الآلات المسجلة والكيفية التي تُحدَّد بها وما تفرضه.
   </Card>
 </Columns>

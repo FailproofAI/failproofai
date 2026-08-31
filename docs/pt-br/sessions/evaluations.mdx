@@ -1,52 +1,80 @@
 ---
-title: "Avaliações online"
-description: "Avalie sessões ao vivo e concluídas quanto a qualidade, conformidade, custo e latência."
+title: "Avaliações"
+description: "Pontue sessões concluídas por qualidade, conformidade, custo e latência."
 icon: "gauge"
 ---
 
-As avaliações online aplicam julgamentos consistentes às sessões do agente. Use-as para sinais que devem ser medidos continuamente, em vez de investigados apenas durante uma auditoria.
+As avaliações aplicam julgamentos consistentes às sessões de agentes. Use-as para sinais que devem ser medidos continuamente, e não apenas investigados durante uma auditoria.
+
+Um avaliador recebe uma sessão que foi finalizada, o que significa uma de duas coisas: a sessão emitiu um evento de encerramento, ou parou de emitir por mais tempo do que o `inactivity_timeout_secs` do avaliador. Não há pontuação para execuções ainda em andamento.
+
+<Note>
+  A avaliação automática é aplicada a todo o deployment e permanece desativada até que um operador defina `EVALUATOR_ENDPOINT`. Até lá, esta visualização fica vazia, `fp evals` não retorna nada e `fp sessions` exibe um status em branco para cada linha — o que geralmente indica que nenhum avaliador está configurado, e não que nada foi mal avaliado. Consulte o [SDK de Avaliador](/pt-br/reference/evaluator-sdk).
+</Note>
 
 ## Revisar a qualidade das avaliações
 
 <Tabs>
   <Tab title="Dashboard">
     1. Acesse **Observe → Evaluations**.
-    2. Adicione uma série e escolha o agente, o ambiente, a pontuação da avaliação, a estatística e a curva.
+    2. Adicione uma série e escolha o agente, ambiente, pontuação de avaliação, estatística e curva.
     3. Adicione séries para comparar ambientes, agentes ou chaves de pontuação.
     4. Selecione um resultado para abrir as sessões correspondentes ou compartilhar a visualização filtrada. Use **Observe → Metrics** para latência, tokens, custo e outros valores de magnitude.
 
     ![Um dashboard de qualidade exibindo pontuações médias de avaliação e tendências ao longo do tempo.](/images/dashboard/dashboard-quality.png)
 
-    Abra uma sessão no drill-down para inspecionar o raciocínio por pontuação:
+    Abra uma sessão a partir do drill-down para inspecionar o raciocínio por pontuação:
 
     ![Uma visualização detalhada de sessão exibindo pontuações de avaliação e raciocínio ao lado do trace completo.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
+    fp list score_filters
     fp evals --agent-id checkout-agent --aggregate
-    fp evals --aggregate --env production --status error
-    fp evals --score helpfulness:0.8.. --since 7d
+    fp evals --aggregate --status error --since 7d
+    fp evals --score helpfulness:0.5..0.8 --score tool_efficiency:..0.3 --since 7d
+    fp evals --scores-full --since 24h
     ```
 
-    Adicione `--json` globalmente antes de `evals` para automação, por exemplo `fp --json evals --aggregate --env production`.
+    Tudo aqui requer `evaluations:read` — incluindo `fp sessions`, que lê o mesmo resultado da avaliação mais recente. É por isso que uma chave com escopo em `events:read` vê traces, mas não pontuações.
+
+    Comece com `fp list score_filters`: ele retorna as chaves de pontuação que este deployment realmente produz, tornando um filtro `--score` verificável em vez de um chute.
+
+    `--score KEY:MIN..MAX` tem cada limite opcional e é repetível, com todos os intervalos obrigatórios em conjunto: `helpfulness:0.5..0.8`, `tool_efficiency:..0.3`, `factuality:0.9..`. Um valor malformado é rejeitado antes da requisição, em vez de ser silenciosamente ignorado. `--status` aceita exatamente um entre `done`, `error` ou `timeout`. `--scores-full` imprime todos os pares de pontuação em vez dos primeiros com um `+N`. `--all` para em `--limit`, cujo padrão é 50.
+
+    As opções globais vêm antes do comando, portanto, automações leem `fp --json evals --aggregate`.
+
+    O daemon registra cada evento com o ambiente `local` por padrão, a menos que você o altere, então `--env production` não corresponde a nada em uma instalação padrão. Consulte [Alterar um rótulo de ambiente](/pt-br/reference/events-and-configuration#change-an-environment-label).
   </Tab>
 </Tabs>
 
-Um avaliador recebe a identidade da sessão, o ambiente, os timestamps e os eventos ordenados. Ele pode retornar chaves de pontuação numéricas com raciocínio opcional e um resumo. Avaliadores de longa duração podem retornar um job pendente e ser consultados posteriormente.
+## O que um avaliador troca
+
+| Mensagem | Campos |
+| --- | --- |
+| `EvalRequest` (entrada) | `schema_version` (atualmente `"1"`), `session_id`, `agent_id`, `environment`, `started_at`, `ended_at` e `events` — o fluxo completo ordenado, com cada evento carregando seu payload completo. |
+| `EvalResponse` (saída) | `scores` como chaves numéricas, `reasoning` espelhando-as e um `summary`. |
+| `JobPending` (saída) | `job_id` e `next_poll_secs`, para trabalhos que não podem ser concluídos em uma única requisição. |
+
+`ended_at` só está presente quando a sessão emitiu um evento de encerramento; portanto, uma sessão despachada por inatividade chega sem ele. A cadência de polling segue `next_poll_secs`, depois o `default_poll_interval_secs` do avaliador, depois o `EVALUATOR_POLLING_INTERVAL_SECS` do servidor, limitado entre um segundo e uma hora, com um teto de uma hora no tempo de parede.
+
+Como a requisição carrega os payloads completos dos eventos, um avaliador vê o conteúdo integral da transcrição. Trate a entrega ao avaliador como entrega da transcrição ao decidir quais dados a máquina pode enviar.
 
 ## Bons alvos de avaliação
 
-- Conclusão de tarefas ou precisão
+- Conclusão ou correção de tarefas
 - Fundamentação e risco de alucinação
 - Seleção e eficiência de ferramentas
 - Conformidade com políticas ou processos
 - Orçamentos de custo e latência
-- Escalada humana obrigatória
+- Escalação humana obrigatória
+
+As chaves de pontuação são identificadores estáveis. Renomear uma inicia uma nova série no gráfico em vez de alterar a anterior, o que quebra uma tendência silenciosamente — escolha o nome antes de criar o gráfico.
 
 ## Da pontuação à resposta
 
-Exiba pontuações em dashboards para acompanhar tendências. Crie alertas para limites ou condições compostas. Quando uma pontuação declina em uma população, execute uma auditoria para investigar o motivo; quando a causa for uma ação repetível, implante uma política.
+Exiba pontuações em dashboards para acompanhar tendências. Crie alertas para limites ou condições compostas. Quando uma pontuação cai em uma população, execute uma auditoria para investigar o motivo; quando a causa for uma ação repetível, implante uma política.
 
-<Card title="Construir um avaliador" icon="code-2" href="/pt-br/reference/evaluator-sdk">
-  Implemente avaliações síncronas ou assíncronas com o SDK Python para avaliadores.
+<Card title="Criar um avaliador" icon="code-2" href="/pt-br/reference/evaluator-sdk">
+  Implemente avaliação síncrona ou assíncrona com o SDK de avaliador em Python.
 </Card>

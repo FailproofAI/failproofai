@@ -1,26 +1,38 @@
 ---
----
 title: "כלים"
-description: "חפש כלים איטיים, כושלים או שמשמשים יותר מדי בהפעלות של סוכנים."
+description: "מצא כלים איטיים, כושלים או שמשומשים בעודף בהרצות של סוכנים."
 icon: "wrench"
 ---
 
-כלים מקבצים קריאות כלים בין הפעלות כדי שתוכל להשוות בין זמן התגובה והפצת הקריאות.
+כלים מציג מה סוכנים קוראים, כמה פעמים קריאות נכשלות, ואילו הפעלות הם משפיעים.
+
+שמות הכלים מגיעים מכל יחידת סוכן, כך שאותה יכולת עשויה להיות בעלת שמות שונים. לדוגמה, קריאת shell יכולה להופיע כ-`Bash`, `exec`, `Shell`, `terminal`, או `run_command`. הרץ `fp list tools` לפני בניית פילטר.
 
 <Tabs>
   <Tab title="Dashboard">
-    1. עבור אל **Observe → Tools**.
-    2. סנן לפי סביבה, שם כלי, סוכן או מזהה הפעלה.
-    3. בדוק את זמן התגובה והפצת הכלים.
-    4. בחר נקודה בתרשים או קטע כלי כדי לפתוח אירועים והפעלות תואמות.
+    עבור אל **Observe → Tools**. סנן לפי סביבה, כלי, סוכן, או הפעלה.
 
-    ![דף הכלים המציג פירוקי זמן תגובה, הצלחה וכישלון, והפצת קריאות כלים.](/images/dashboard/tools.png)
+    ![דף הכלים מציג פירוקים של זמן השהיה, הצלחה וכישלון, וחלוקת קריאות כלים.](/images/dashboard/tools.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp list tools
-    fp events --event-type tool_use,tool_result --env production --since 24h
-    fp --json events --full --session-id <session-id> --all
+    fp events --event-type tool_use,tool_result --since 24h
+    fp errors --event-type tool_result --since 24h
+    fp --json events --full --event-type tool_use,tool_result --session-id <session-id> --all --limit 2000
     ```
+
+    השתמש ב-`--full` כשאתה צריך שדות payload כמו משך זמן לכל קריאה.
   </Tab>
 </Tabs>
+
+השתמש בדף זה כדי למצוא כשלים חוזרים, השוואה בין הרצות עובדות וכושלות, או אישור שכלי ממוקד במדיניות משמש בפועל.
+
+<CardGroup cols={2}>
+  <Card title="שגיאות" icon="circle-alert" href="/he/sessions/errors">
+    פתח את ההפעלות מאחורי כשלי כלים.
+  </Card>
+  <Card title="Hooks" icon="webhook" href="/he/sessions/hooks">
+    ראה שמות כלים קנוניים והחלטות מדיניות.
+  </Card>
+</CardGroup>

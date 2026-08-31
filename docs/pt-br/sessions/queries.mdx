@@ -1,42 +1,88 @@
 ---
-title: "Queries"
-description: "Explore dados de sessão, evento e avaliação com SQL reutilizável."
+title: "Consultas"
+description: "Explore dados de sessões, eventos e avaliações com SQL reutilizável."
 icon: "database"
 ---
 
-Queries são a camada flexível por baixo de dashboards, auditorias e investigações. Use SQL ad-hoc para testar uma ideia e, quando ela se tornar parte de um fluxo recorrente, salve a query.
+Consultas são a camada flexível que sustenta dashboards, auditorias e investigações. Use SQL ad-hoc para testar uma ideia e, quando ela se tornar parte de um fluxo de trabalho recorrente, salve a consulta.
 
-## Criar e executar uma query
+## Criar e executar uma consulta
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Acesse **Analyze → Queries** e selecione **new query**.
-    2. Abra o navegador de schema e escolha campos dos dados de evento, sessão ou avaliação.
-    3. Escreva o SQL, adicione parâmetros quando necessário e execute a query.
+    1. Vá em **Analyze → Queries** e selecione **new query**.
+    2. Abra o navegador de esquema e escolha campos dos dados de eventos, sessões ou avaliações.
+    3. Escreva o SQL, adicione parâmetros quando necessário e execute a consulta.
     4. Salve com um nome e descrição claros e use **add to dashboard** quando o resultado precisar ser monitorado.
 
-    O editor de queries combina o schema de eventos, SQL, parâmetros e uma prévia dos resultados para que você possa validar a questão antes de salvá-la.
+    O editor de consultas combina o esquema de eventos, SQL, parâmetros e uma prévia dos resultados para que você possa validar a pergunta antes de salvá-la.
 
-    ![O editor de queries SQL com navegador de schema e grid de resultados em tempo real.](/images/dashboard/query-lab.png)
+    ![O editor de consultas SQL com um navegador de esquema e uma grade de resultados ao vivo.](/images/dashboard/query-lab.png)
 
-    As queries salvas aparecem na biblioteca compartilhada, onde os membros da equipe podem reexecutá-las ou adicionar seus resultados a dashboards.
+    As consultas salvas aparecem na biblioteca compartilhada, onde os membros da equipe podem reexecutá-las ou adicionar seus resultados a dashboards.
 
-    ![A biblioteca de Queries salvas contendo queries nativas e personalizadas reutilizáveis.](/images/dashboard/queries.png)
+    ![A biblioteca de consultas salvas contendo consultas integradas e personalizadas reutilizáveis.](/images/dashboard/queries.png)
 
-    Use um nome e descrição claros para que o resultado continue compreensível sem precisar reabrir o SQL.
+    Use um nome e uma descrição claros para que o resultado continue compreensível sem precisar reabrir o SQL.
   </Tab>
   <Tab title="CLI">
+    Trabalhe na ordem em que o próprio SQL funciona: veja o esquema, execute a instrução ad-hoc e, quando ela merecer um nome, salve-a.
+
     ```bash
     fp query schema
-    fp query create "retry loops" --sql "SELECT ..."
-    fp query run <query-id>
-    fp query show <query-id>
-    fp query update <query-id> --sql "SELECT ..."
+    fp query schema events
+
+    fp query run --sql "SELECT agent_id, count() FROM analytics.events GROUP BY agent_id"
+    fp query run --sql @retry-loops.sql
+
+    fp query create "retry loops" --sql @retry-loops.sql --description "repeated tool calls per session"
     ```
 
-    Use `fp query list` para encontrar IDs e `fp query delete <query-id>` para remover uma query salva.
+    Tudo a partir daí usa o **nome** da consulta, não um id:
+
+    ```bash
+    fp query list
+    fp query run "retry loops"
+    fp query show "retry loops"
+    fp query update "retry loops" --sql @retry-loops-v2.sql --yes
+    fp query delete "retry loops" --yes
+    ```
+
+    Os nomes são únicos por organização, o que os torna uma referência segura. Um id no formato UUID é aceito em qualquer lugar que aceite um nome, mas `fp query list` não exibe um — suas colunas são `name`, `description`, `created by` e `created` (quando a consulta foi criada, não quando foi editada pela última vez). Adicione `--show-id` para uma coluna de id resumido, ou use `--json`, que sempre inclui o id completo.
+
+    Vincule os parâmetros posicionais de uma consulta salva com `--arg` (alias `--param`), repetido uma vez por `$1..$N` em ordem:
+
+    ```bash
+    fp query run <query-name> --arg agent-codegen --arg 0.5
+    ```
+
+    | Subcomando | Permissão | Observações |
+    | --- | --- | --- |
+    | `fp query schema [TABLE]` | `queries:read` | Passe o nome de uma tabela para filtrar por suas colunas. |
+    | `fp query list` | `queries:read` | `--show-id` exibe ids; `--fields` projeta campos brutos. |
+    | `fp query show <name>` | `queries:read` | Cartão de metadados mais o SQL completo. |
+    | `fp query create <name> --sql ...` | `queries:write` | Uma colisão de nome é rejeitada imediatamente. |
+    | `fp query update <name>` | `queries:write` | Passe pelo menos um de `--name`, `--sql`, `--description`. Solicita confirmação antes; uma operação sem efeito sai sem salvar. |
+    | `fp query delete <name>` | `queries:delete` | Solicita confirmação antes, com uma prévia do que será removido. |
+    | `fp query run <name>` ou `--sql ...` | `queries:run` | Exatamente um dos dois. `--limit` e `--all` ajustam a prévia da tabela. |
+
+    `update` e `delete` solicitam confirmação apenas em um terminal interativo. Com `--json` ou com stdin redirecionado, eles prosseguem sem perguntar — portanto, `--yes` é para o caso de terminal, não para scripts.
+
+    As consultas são executadas em um pool de análise somente leitura. `--sql @file.sql` lê a instrução de um arquivo, que é a forma recomendada para manter no controle de versão.
   </Tab>
 </Tabs>
+
+## Automatizando uma consulta
+
+`fp --json query run` retorna todas as linhas independentemente do limite da prévia da tabela, no formato `{columns: [{name, type}], rows: [[...]], truncated, elapsed_ms}`:
+
+```bash
+fp --json query run "retry loops" | jq '.rows | length'
+```
+
+`fp --json query schema` retorna `{schema, columns: [{table, column, type, nullable}]}`, que é a forma legível por máquina do navegador de esquema.
+
+Duas falhas vale tratar pelo código de saída em vez de analisar o texto: um nome que não corresponde a nada exibe `✗ no query named "…"` e sai com código 6; um erro de SQL ou de execução exibe `✗ query failed — …` com o detalhe do servidor incluído.
 
 ## Usos comuns
 
@@ -44,10 +90,14 @@ Queries são a camada flexível por baixo de dashboards, auditorias e investiga�
 - Comparar pontuações de avaliação entre modelos ou ambientes.
 - Medir o tempo entre uma espera humana e a retomada.
 - Identificar negações de política seguidas de uma alternativa bem-sucedida.
-- Construir uma coorte para auditoria.
+- Construir um coorte para uma auditoria.
 
-Abra **Queries → Schema** antes de escrever consultas contra campos desconhecidos. Prefira filtros explícitos de tempo e ambiente, e mantenha limites de resultados durante a exploração.
+Abra o esquema — **Analyze → Queries** no dashboard ou `fp query schema` — antes de escrever consultas contra campos desconhecidos. Prefira filtros explícitos de tempo e ambiente, e mantenha limites de resultados durante a exploração.
 
 <Warning>
-  Uma query pode identificar um padrão suspeito, mas não estabelece o modo de falha por si só. Abra traces representativos ou execute uma auditoria antes de transformar o resultado em uma política.
+  Uma consulta pode identificar um padrão suspeito, mas não estabelece o modo de falha por si só. Abra traces representativos ou execute uma auditoria antes de transformar o resultado em uma política.
 </Warning>
+
+<Card title="Dashboards" icon="layout-dashboard" href="/pt-br/sessions/dashboards">
+  Adicione uma consulta salva a um painel compartilhado quando o resultado merecer monitoramento contínuo.
+</Card>

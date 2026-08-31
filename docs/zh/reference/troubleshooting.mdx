@@ -1,163 +1,100 @@
 ---
 title: "故障排除"
-description: "诊断会话缺失、策略缺失、投递失败及 Agent 操作被阻止等问题。"
+description: "诊断设置、交付、策略和会话问题。"
 icon: "wrench"
 ---
 
-<AccordionGroup>
-  <Accordion title="Cloud 中未显示任何会话">
-    <Tabs>
-      <Tab title="仪表板">
-        打开 **Administration → Keys**，确认机器密钥处于活跃状态且具备 `events:add` 权限。然后打开 **Observe → Events**，扩大时间范围，并清除环境和 Agent 过滤器。如果存在事件，搜索会话 ID，然后在 **Observe → Sessions** 中检查分组情况。如果不存在任何事件，请从 CLI 诊断 Failproof 守护进程。
+从以下命令开始：
 
-        ![显示主要过滤器及最新 Agent 事件的实时事件流。](/images/dashboard/events-stream-current.png)
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai flush --wait --timeout 60
-        fp list envs
-        fp events --since 24h --limit 20
-        fp sessions --since 24h --limit 20
-        ```
+```bash
+failproofai config --status
+failproofai policies
+```
 
-        确认已启用数据采集、配置的密钥具备 `events:add` 权限，以及仪表板过滤器与发出的环境相匹配。
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="Python SDK 事件保留在磁盘上">
-    <Tabs>
-      <Tab title="仪表板">
-        清除 **Observe → Events** 中的过滤器，并搜索确切的 SDK 会话 ID。如果没有结果，请在源机器上检查 SDK 后台队列和 Failproof 守护进程。
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai flush --wait
-        ```
+## 代理未连接
 
-        确认守护进程正在运行并已连接——无论守护进程是否存在，SDK 都会将数据写入队列。队列目录**无需**预先创建（写入器会自动创建），也没有环境变量可用于选择该目录：`$FAILPROOFAI_HOME/custom-agents`，否则为 `~/.failproofai/custom-agents`，这是唯一的根路径，`configure(base_dir=...)` 是唯一的覆盖方式。如果进程因 `SIGKILL` 或 OOM 被终止，队列中尚未处理的数据将会丢失——请处理 `SIGTERM` 信号以限制损失范围。
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="机器未收到策略">
-    <Tabs>
-      <Tab title="仪表板">
-        打开 **Admin → enforcement**，选择该机器，并比较其已分配版本、已上报版本和先前版本。确认部署范围包含该机器，且其密钥具备 `policies:pull` 权限。即使策略投递失败，事件采集仍可正常工作。
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai update
-        failproofai config --status
-        ```
+重新运行设置：
 
-        确认机器 ID 和标签与仪表板目标匹配。如果现有凭据仅授予事件采集权限，请使用具备策略能力的密钥重新连接。
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="因守护进程不可用导致操作被拒绝">
-    <Tabs>
-      <Tab title="仪表板">
-        打开 **Admin → enforcement**，检查机器的最后在线时间和已上报版本。如果机器状态过期，应将其视为本地守护进程问题。不要仅为绕过不可用的守护进程而削弱已部署的策略。
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        failproofai config --status
-        failproofai update
-        failproofai config
-        failproofai config --status
-        ```
+```bash
+failproofai config
+```
 
-        重启或更新 `failproofaid`；当 CLI 与守护进程协议版本不一致时，重新运行配置。已配置的守护进程路径在设计上采用失败关闭（fail-closed）策略。
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="自定义策略未能加载">
-    <Tabs>
-      <Tab title="仪表板">
-        对于在 Cloud 中编写的策略，打开 **Admin → policy editor**，选择草稿，在发布前查看验证错误。对于本地策略，使用 CLI 验证后，触发一次测试操作，然后在 **Observe → policy** 中确认决策是否到达。
-      </Tab>
-      <Tab title="CLI">
-        确认文件名以 `policies.js`、`policies.mjs` 或 `policies.ts` 结尾，模块中调用了 `customPolicies.add(...)`，且策略文件中的导入路径均可正确解析。
+设置支持 Linux 和 macOS。安装服务时需要一次管理员权限，但不会提示输入 sudo 密码。
 
-        ```bash
-        failproofai policies --install --custom ./checkout.policies.ts
-        failproofai policies
-        ```
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="审计未返回任何发现">
-    <Tabs>
-      <Tab title="仪表板">
-        打开 **Analyze → audits**，选择对应的运行，检查模型分析是否已执行。然后将其范围和时间窗口与 **Observe → sessions** 进行比对，并打开该群体中的代表性追踪记录。
+请在[执行环境](/zh/reference/harnesses)中查看执行路径和作用域。
 
-        只有在分析成功执行的情况下，零结果才具有实际意义。如果分析被跳过或失败，该次运行将不产生任何发现，且未分析的时间窗口会保持开放，等待未来一次成功的运行。如果模型分析被禁用，审计同样不会产生任何发现，因为确定性凭据和 PII 扫描仅记录统计数据，不再触发发现。
+## 会话丢失
 
-        ![审计表单，通过环境、Agent、频率和扫描窗口定义会话群体。](/images/dashboard/audit-new.png)
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        fp audits show <audit-name>
-        fp audits runs <audit-name>
-        fp sessions --since 24h --env production
-        fp audits context-show <audit-name>
-        fp audits run <audit-name>
-        fp audits findings --audit <audit-name>
-        ```
+```bash
+failproofai flush --wait
+failproofai backfill --since 30d --dry-run
+failproofai harness list
+```
 
-        如果运行停留在排队状态，请等待审计 Agent 容量释放，或联系部署运维人员检查审计集群。排队中的审计会自动重试，不会被立即跳过。
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="在线评估未自动运行">
-    <Tabs>
-      <Tab title="仪表板">
-        打开一个已完成的会话，检查手动评估是否能成功执行。托管 Cloud 目前在仪表板中没有评估器端点控制；服务器运维人员需自行配置。
-      </Tab>
-      <Tab title="CLI">
-        验证评估器本身，然后检查最近的评估状态：
+去掉 `--dry-run` 可重新发送历史记录。使用以下命令添加新的记录文件位置：
 
-        ```bash
-        curl https://evaluator.example.com/health
-        fp evals --since 1h
-        ```
+```bash
+failproofai harness add-path <harness> [label=]<path>
+```
 
-        在自托管 Cloud 环境中，确认服务器上已设置 `EVALUATOR_ENDPOINT`，且 `EVALUATOR_TOKEN` 与评估器匹配。当端点缺失时，自动评估将被禁用。
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="Cloud CLI 认证指向了错误的组织">
-    <Tabs>
-      <Tab title="仪表板">
-        使用组织切换器，确认预期的 slug 和权限，然后再与 CLI 的结果进行比对。
-      </Tab>
-      <Tab title="CLI">
-        ```bash
-        fp whoami
-        fp orgs current
-        fp orgs perms
-        ```
+当两个位置包含同一项目的副本时，请使用标签加以区分。
 
-        在 API 密钥模式下，通过 `fp --org <slug> --api-key <key> ...` 指定组织，或设置 `AGENTEYE_ORG` 环境变量。对于 API 密钥请求，已保存的人工会话组织状态会被有意忽略。
-      </Tab>
-    </Tabs>
-  </Accordion>
-  <Accordion title="策略阻止了合法操作">
-    <Tabs>
-      <Tab title="仪表板">
-        打开 **Observe → policy**，保留该决策及关联的会话，并识别误报条件。然后打开 **Admin → enforcement**，将受影响的机器回滚至先前版本。在 **Policy editor** 中创建一个范围更窄的新版本，在小范围内测试，待合法操作成功后再扩大范围。
-      </Tab>
-      <Tab title="CLI">
-        Cloud 部署回滚仅支持通过仪表板操作。本地暂停会话不会禁用 Cloud 管理的策略。如果仪表板不可用，请记录机器和部署状态，优先恢复仪表板访问，而不是反复重试被阻止的操作。
+## 所有受保护操作均被拒绝
 
-        ```bash
-        failproofai config --status
-        ```
-      </Tab>
-    </Tabs>
-  </Accordion>
-</AccordionGroup>
+在已配置的机器上，`failproofaid` 是唯一的评估器。如果它无法响应，受保护的操作将以拒绝方式关闭。
 
-联系支持时，请提供 CLI 版本、运行框架、环境、相关会话或部署 ID，以及移除机密信息后的 `failproofai config --status` 输出。
+```bash
+failproofai config --status
+systemctl status failproofaid@$USER        # Linux
+sudo launchctl print system/ai.failproof.failproofaid.$USER  # macOS
+```
+
+运行 `failproofai config` 来修复或重新安装服务。
+
+## 某个策略包在拒绝请求
+
+`failproofai policies` 会列出无法加载的策略包。已选择的策略包在无法加载时会以拒绝方式关闭，而不是直接消失。
+
+常见原因：
+
+- 构件在安装后被修改。
+- 清单与捆绑的策略不一致。
+- 文件丢失或无法导入。
+- 该策略包使用了不支持的事件、工具或策略形式。
+
+移除该策略包，或安装修正后的版本：
+
+```bash
+failproofai policies remove owner/repo
+failproofai policies add owner/repo@<release>
+```
+
+## 云端连接断开
+
+建议通过环境变量设置密钥：
+
+```bash
+export FAILPROOFAI_CLOUD_TOKEN="<key>"
+failproofai config
+failproofai config --status
+```
+
+机器可以独立地拉取策略和发送活动记录。状态命令会分别报告两者的状态。
+
+## 某条策略未能拦截
+
+请检查以下三点：
+
+1. 该策略已启用：运行 `failproofai policies` 确认。
+2. 其事件和工具与该操作相匹配。
+3. 该执行环境能够执行此事件。
+
+工具调用拒绝已在全部 12 个支持的执行环境上得到验证。其他事件因环境而异。请参阅[执行能力](/zh/reference/harnesses#enforcement-capability)。
+
+## 下载被阻止
+
+- `FAILPROOFAI_NO_DOWNLOAD=1` 会拒绝网络下载。
+- `FAILPROOFAI_DAEMON_BASE_URL` 将服务下载指向镜像地址。
+- `FAILPROOFAI_PACK_BASE_URL` 将策略包下载指向镜像地址。
+
+下载被禁用时，已安装的策略包仍会继续执行。

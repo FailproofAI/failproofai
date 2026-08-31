@@ -1,21 +1,24 @@
 ---
 title: "Nutzung"
-description: "Organisationsverbrauch und das aktive Abrechnungsfenster einsehen."
+description: "Organisationsverbrauch für das aktuelle 30-tägige Messfenster einsehen."
 icon: "chart-no-axes-combined"
 ---
 
-Unter „Nutzung" wird der Verbrauch der aktuellen Organisation sowie die zugehörigen Abrechnungsfenster angezeigt. Nutzen Sie diese Ansicht, um zu verstehen, wie produktiver Rollout, Transkriptvolumen, Evaluierungen und Audit-Kadenz Ihren Plan beeinflussen.
+Die Nutzungsansicht zeigt, was die aktuelle Organisation während ihres aktuellen 30-tägigen Fensters gemessen hat. Das Fenster ist fest und pro Organisation verankert; die Nutzung ist schreibgeschützt: Es werden keine Limits, Kontingente oder Planschwellenwerte angewendet oder angezeigt. Beide Oberflächen weisen darauf hin — das CLI-Panel gibt „read-only usage, no limits applied" aus.
 
-## Nutzung überprüfen
+## Nutzung prüfen
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehen Sie zu **Administration → Nutzung**.
-    2. Bestätigen Sie die Organisation und das Messfenster.
-    3. Überprüfen Sie Erfassung, Sitzungen, Evaluierungen, Metriken, Audits, Befunde, Warnmeldungen, Benutzer und Schlüssel.
-    4. Vergleichen Sie gestartete und abgeschlossene Audit-Arbeiten, wenn die Audit-Nutzung unerwartet erscheint.
+    1. Gehe zu **Admin → Nutzung**.
+    2. Bestätige die Organisation und das Messfenster — die Kopfzeile zeigt Start und Ende des Fensters, den aktuellen Tag darin und den bisherigen Verlauf.
+    3. Lies den Hero-Block: erfasste Events, Sessions, Agents und Environments.
+    4. Lies die beiden Pipelines: Auswertungen (mit Scores und Metriken) und Audits (mit Issues und Alerts), jeweils mit abgeschlossenen Läufen im Verhältnis zu gestarteten Läufen.
+    5. Lies die Workspace- und Zugriffsblöcke: gespeicherte Abfragen, Dashboards, Alerts, eindeutige Issues, Mitglieder und API-Schlüssel.
 
-    ![Die Nutzungsseite mit dem Messfenster, erfassten Ereignissen, Evaluierungs- und Audit-Pipelines, Workspace-Ressourcen, Mitgliedern und API-Schlüsseln.](/images/dashboard/usage-overview.png)
+    Die Werte sind zwischengespeichert, nicht live. Verwende die Aktualisierungsschaltfläche oben rechts, nachdem eine Änderung sichtbar sein sollte.
+
+    ![Die Nutzungsseite zeigt das Messfenster, erfasste Events, die Auswertungs- und Audit-Pipelines, Workspace-Ressourcen, Mitglieder und API-Schlüssel.](/images/dashboard/usage-overview.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -23,15 +26,52 @@ Unter „Nutzung" wird der Verbrauch der aktuellen Organisation sowie die zugeh�
     fp --json usage
     fp --org reliability-team --json usage
     ```
+
+    `fp usage` benötigt `usage:read` und läuft unter einem API-Schlüssel — damit ist es der richtige Befehl für einen Reporting-Cronjob.
+
+    Mit `--json` gibt er die Dashboard-Antwort unverändert zurück: `org_id`, `billing_anchor`, `window`, `usage`, `calculated_at` und `stale_after`. Anhand von `calculated_at` und `stale_after` lässt sich erkennen, wie alt ein Wert ist.
+
+    `fp usage` hat keine eigenen Flags — nur die globalen `--json` und `--org`. Er meldet ausschließlich das aktuelle Fenster, nicht frühere. Führe daher eigene Historien, indem du den Befehl regelmäßig ausführst und die `--json`-Ausgabe speicherst, anstatt zu erwarten, später ein früheres Fenster abfragen zu können.
+
+    ```bash
+    fp --json usage | jq '.usage.events_ingested'
+    ```
   </Tab>
 </Tabs>
 
+### Metrik-Schlüssel
+
+Alles unter `usage` im JSON-Payload, damit ein Skript ein Feld direkt benennen kann, anstatt ein Panel zu parsen.
+
+| Gruppe | Schlüssel |
+| --- | --- |
+| Telemetrie | `events_ingested`, `sessions`, `agents`, `environments` |
+| Auswertungen | `evaluation_runs`, `evaluation_finishes`, `evaluations`, `metrics` |
+| Audits | `audit_runs`, `audit_finishes`, `issues_created`, `alerts_created` |
+| Workspace | `queries_created`, `dashboards_created` |
+| Zugriff | `users_active`, `users_created`, `keys_active`, `keys_created` |
+
+Jede Pipeline meldet gestartete und abgeschlossene Läufe separat. Eine Lücke zwischen `audit_runs` und `audit_finishes` bedeutet, dass Arbeit begonnen wurde, die nicht abgeschlossen wurde — das sollte geprüft werden, bevor die darunter liegenden Issue-Zahlen interpretiert werden.
+
 ## Eine Änderung untersuchen
 
-1. Bestätigen Sie die aktive Organisation und das aktive Fenster.
-2. Vergleichen Sie den Anstieg mit dem Sitzungsvolumen nach Umgebung.
-3. Prüfen Sie, ob eine neue Integration begonnen hat, Transkripte zu senden.
-4. Überprüfen Sie Änderungen an der Evaluierungs- und Audit-Kadenz.
-5. Vergleichen Sie die Werte mit den Limits des aktuellen Preisplans.
+Das Ingest-Volumen wird pro Maschine entschieden, nicht zentral. Beginne bei der Organisation und dem Fenster, und gehe dann durch, was sich auf den Maschinen geändert hat, die Daten dorthin senden.
 
-Die CLI gibt dieselbe Zusammenfassung für Skripte zurück.
+| Ursache | Wo prüfen | Was ändern |
+| --- | --- | --- |
+| Eine Maschine sendet Session-Transkripte | `collector.sessions` in der `~/.failproofai/config.json` dieser Maschine | Auf `false` setzen, um nur Entscheidungen zu senden |
+| Hook-Aktivität wird vollständig gesendet | `collector.hooks_verbosity` in derselben Datei | `decisions` aggregiert Freigaben pro Minute; `off` stoppt Hook-Events vollständig |
+| Ein neuer Erfassungsort wurde hinzugefügt | `failproofai harness list` | Mit `failproofai harness remove-path <harness> <path or label>` entfernen |
+| Verlauf wurde erneut gesendet | Die `failproofai backfill`-Läufe der Maschine | Erneut gesendete Daten werden anhand eines Content-Hashes dedupliziert und in bereits vorhandene Zeilen zusammengeführt, sodass keine Doppelzählung entsteht |
+| Eine neue Integration hat begonnen zu melden | Die `agents`- und `environments`-Zähler sowie die Session-Liste | Collector-Einstellungen der neuen Maschine anpassen, bevor sie ausgerollt wird |
+
+Die Nutzungsansicht vergleicht nichts mit einem Plan. Das muss außerhalb des Produkts erfolgen.
+
+<Columns cols={2}>
+  <Card title="Einstellungen und Sicherheit" icon="lock-keyhole" href="/de/admin/settings-and-security">
+    Die maschinenspezifischen Datenverarbeitungseinstellungen hinter diesen Zahlen.
+  </Card>
+  <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/de/reference/cloud-cli">
+    Die vollständige `fp`-Oberfläche, einschließlich Installation und Anmeldung.
+  </Card>
+</Columns>

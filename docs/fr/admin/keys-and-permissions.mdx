@@ -1,74 +1,54 @@
 ---
 title: "Clés et permissions"
-description: "Créez des clés API à périmètre restreint pour les machines, l'automatisation et les opérateurs."
+description: "Créez des identifiants pour les personnes, l'automatisation et les machines."
 icon: "key-round"
 ---
 
-Les clés API appartiennent à une organisation et portent des permissions explicites. Utilisez des clés distinctes pour l'ingestion d'agents, la distribution de politiques, les évaluateurs, l'automatisation CI et les scripts d'administration.
+Utilisez une clé distincte pour chaque personne, machine ou tâche d'automatisation. N'accordez que les permissions nécessaires.
 
 ## Créer et faire tourner une clé
 
-<Tabs>
-  <Tab title="Tableau de bord">
-    1. Accédez à **Administration → Clés**, sélectionnez **nouvelle clé** et saisissez un nom de charge de travail.
-    2. Choisissez un ensemble de permissions et ajustez les permissions individuelles uniquement si le préréglage est insuffisant.
-    3. Créez la clé et copiez immédiatement son secret à usage unique.
-    4. Ouvrez la clé ultérieurement pour mettre à jour les autorisations, la désactiver ou régénérer le secret.
+Utilisez **Admin → Keys**, ou le Cloud CLI :
 
-    Le panneau de création est l'endroit où vous choisissez les autorisations les plus restreintes requises par la charge de travail.
+```bash
+fp keys list
+fp keys create "audit automation" --add audits:read
+fp keys disable "audit automation"
+```
 
-    ![Le panneau de création de clé API avec les préréglages de permissions et les autorisations individuelles.](/images/dashboard/key-create.png)
+Enregistrez le secret au moment de sa création ; il ne sera plus affiché ensuite. Pour faire tourner une clé, créez un remplaçant, mettez à jour le consommateur, puis désactivez l'ancienne clé.
 
-    Après la création, la page Clés affiche les métadonnées persistantes et les actions de gestion. Le secret à usage unique n'est plus affiché.
+## Clés machine
 
-    ![La page Clés API affichant les permissions des clés, la date de création, ainsi que les actions de régénération et de désactivation.](/images/dashboard/api-keys.png)
+Une clé machine connecte le service local au Cloud :
 
-    Utilisez cette liste pour examiner régulièrement les autorisations et désactiver les clés qui ne correspondent plus à une charge de travail active.
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp keys create production-agents \
-      --add events:add \
-      --add policies:pull
-    fp keys show production-agents
-    fp keys update production-agents --add events:read
-    fp keys regenerate production-agents --yes
-    fp keys disable production-agents
-    ```
+```bash
+export FAILPROOFAI_CLOUD_TOKEN="<key>"
+failproofai config
+```
 
-    Redirigez ou capturez de manière sécurisée la sortie des commandes create/regenerate ; le secret n'est retourné qu'une seule fois.
-  </Tab>
-</Tabs>
+Une machine connectée peut nécessiter deux capacités :
 
-Les deux permissions requises par une machine Failproof AI connectée sont indépendantes :
+- `policies:pull` pour recevoir les politiques gérées par le Cloud.
+- `events:add` pour envoyer des décisions et des sessions.
 
-- `events:add` envoie des événements et des données de session.
-- `policies:pull` récupère les déploiements de politiques assignés.
+Le statut les signale séparément, car l'une peut fonctionner sans l'autre.
 
-Les secrets de clés sont affichés lors de leur création ou régénération. Stockez-les dans un gestionnaire de secrets et faites-les tourner sans réutiliser les identifiants interactifs d'un opérateur.
+## Permissions courantes
 
-## Catalogue des permissions
-
-| Domaine | Permissions |
+| Permission | Autorise |
 | --- | --- |
-| Événements | `events:add`, `events:read` |
-| Clés | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate` ; `keys:update` est réservé aux sessions humaines |
-| Utilisateurs | `users:create`, `users:read`, `users:update`, `users:delete` |
-| Évaluations | `evaluations:read`, `evaluations:trigger` |
-| Tableaux de bord | `dashboards:read`, `dashboards:write`, `dashboards:delete` |
-| Requêtes | `queries:read`, `queries:write`, `queries:delete`, `queries:run` |
-| Assistant | `agent:use` |
-| Paramètres | `settings:read`, `settings:write` |
-| Alertes | `alerts:read`, `alerts:write` |
-| Incidents | `issues:read`, `issues:create`, `issues:close` |
-| Audits | `audits:read`, `audits:write` |
-| Politiques | `policies:read`, `policies:write`, `policies:pull` |
-| Utilisation | `usage:read` |
+| `events:add` | Envoyer des événements |
+| `events:read` | Lire les événements et les erreurs |
+| `evaluations:read` | Lire les sessions et les évaluations |
+| `audits:read` / `audits:write` | Consulter ou gérer les audits |
+| `policies:read` / `policies:write` | Consulter ou déployer des politiques |
+| `policies:pull` | Récupérer les affectations de politiques machine |
+| `keys:create` / `keys:disable` | Créer ou désactiver des clés |
+| `orgs:admin` | Administration d'organisation au niveau de l'instance ; non assignable à une clé d'organisation |
 
-`orgs:admin` est réservé à l'opérateur de l'instance et ne peut pas être accordé à une clé d'organisation ni à un membre ordinaire. Les tokens `incidents:*` et `alerts:ack` retirés sont acceptés pour des raisons de compatibilité et sont normalisés vers les permissions `issues:*` actuelles.
-
-Les ensembles de permissions intégrés sont `read-only`, `standard` et `admin`. `standard` ajoute le déclenchement d'évaluations, l'exécution de requêtes, la gestion des incidents et l'utilisation de l'assistant aux permissions de lecture. La création de clés supprime les autorisations réservées aux humains, même lorsqu'un ensemble de permissions en contient.
+Certaines commandes administratives `fp fleet` et `fp guardrails` nécessitent une session utilisateur connectée plutôt qu'une clé API. Leur texte d'aide l'indique avant d'effectuer une requête.
 
 <Warning>
-  Les clés à périmètre instance peuvent sélectionner une organisation via l'en-tête `X-AgentEye-Org`. Définissez-le explicitement sur les déploiements multi-organisations ; son omission peut entraîner la sélection de l'organisation par défaut.
+  Ne réutilisez jamais des identifiants d'ingestion tels que `AGENTEYE_KEY` ou `AGENTEYE_API_KEY` en tant que `FP_API_KEY`. Ils appartiennent à des systèmes et des permissions différents.
 </Warning>

@@ -1,43 +1,63 @@
 ---
 title: "Fehler"
-description: "Wiederholte Fehler gruppieren und die dahinterliegenden Sitzungen öffnen."
+description: "Wiederholte Fehler filtern und die dahinterliegenden Sitzungen öffnen."
 icon: "circle-alert"
 ---
 
-Fehler bietet dir eine fehlerorientierte Übersicht über alle Sitzungen. Gruppiere nach Fehlertyp, Agent, Umgebung, Modell, Tool oder Zeitfenster, um wiederkehrende Betriebsprobleme zu identifizieren.
+Errors bietet eine fehlerorientierte Ansicht über alle Sitzungen hinweg. Filtern Sie nach Umgebung, Ereignistyp, Fehlertyp, Agent oder Sitzung und schränken Sie das Zeitfenster ein, um wiederkehrende Betriebsprobleme zu finden.
 
 ## Fehler untersuchen
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehe zu **Observe → Errors**.
-    2. Filtere nach Umgebung, Ereignistyp, Fehlertyp, Agent, Sitzungs-ID oder Suchtext.
-    3. Klappe einen gruppierten Fehler auf, um die einzelnen Vorkommen zu sehen. Wähle eine Zeile aus, um das genaue Ereignis in der zugehörigen Sitzung zu öffnen.
-    4. Wähle das Glockensymbol bei einem repräsentativen Fehler aus, um einen Alert für ähnliche Fehler einzurichten.
+    1. Gehen Sie zu **Observe → Errors**.
+    2. Filtern Sie nach Umgebung, Ereignistyp, Fehlertyp, Agent, Sitzungs-ID oder Suchtext.
+    3. Wählen Sie eine Zeile aus, um das genaue Ereignis in seiner Sitzung zu öffnen.
+    4. Wählen Sie **alert** in einer repräsentativen Zeile aus, um einen Alert für ähnliche Fehler zu erstellen.
 
-    ![Die Fehlerseite mit einem Fehler-Histogramm, gruppierten Fehlern und der Schaltfläche zum Erstellen eines Alerts.](/images/dashboard/errors.png)
+    ![Die Errors-Seite mit einem Fehlerhistogramm, einer gefilterten Liste fehlerhafter Ereignisse und der zeilenweisen Alert-Steuerung.](/images/dashboard/errors.png)
   </Tab>
   <Tab title="CLI">
     ```bash
-    fp errors --env production --since 24h
+    fp errors --since 24h
     fp errors --error-type TimeoutError --agent-id checkout-agent
-    fp errors --aggregate --env production --since 7d
+    fp errors --event-type tool_result --since 24h
+    fp errors --aggregate --env local --since 7d
     ```
 
-    Verwende `fp events --full --session-id <id>`, wenn du die rohen Nutzdaten hinter einer Fehlerzusammenfassung benötigst.
+    Ein Tool-Fehler wird als fehlerhaftes `tool_result`-Ereignis übermittelt, nicht als einfaches `error`-Ereignis. Daher ist `--event-type tool_result` der richtige Weg, um Tool-Fehler von Modell- und Laufzeitfehlern zu trennen. `is_error` und `error_type` sind serverseitig berechnete Spalten in jeder Zeile, sodass in keinem Modus Payloads geparst werden.
+
+    Entdecken Sie gültige Filterwerte, anstatt sie zu raten: `fp list error_types`, `fp list agents`, `fp list envs` und `fp list event_types`.
+
+    **Diese fünf `fp errors`-Filter akzeptieren jeweils genau einen Wert** — `--env`, `--error-type`, `--event-type`, `--agent-id`, `--session-id`. (`--search` ist die Ausnahme und kann wiederholt werden.) Dieselben Flag-Namen bei `fp events` und `fp sessions` akzeptieren mehrfache oder kommagetrennte Werte, sodass `--env prod,staging` dort funktioniert, hier aber nur mit dem Literal-String `prod,staging` übereinstimmt. Das liefert ein leeres Ergebnis statt eines Fehlers, was als „keine Fehler" gelesen wird.
+
+    Der Daemon kennzeichnet Ereignisse mit `local`, bis Sie dies ändern — daher trifft `--env production` bei einer Standardinstallation auf nichts zu. Siehe [Umgebungsbezeichnung ändern](/de/reference/events-and-configuration#change-an-environment-label).
+
+    `--all` paginiert automatisch nur bis zu `--limit`, das standardmäßig auf 50 gesetzt ist — schreiben Sie `--all --limit 500`, wenn Sie mehr als das möchten. Weitere Flags im Listenmodus sind `--order asc|desc`, `--cursor`, `--page-size` (max. 200), `--fields` und `--full-ids`. `--search` ist wiederholbar und gilt für beide Modi — eine Zeile stimmt überein, wenn sie einen der Suchbegriffe enthält.
+
+    `fp errors` benötigt `events:read`. Unter `--json` gibt der Listenmodus `{"errors": [...], "next_cursor": ...}` zurück und `--aggregate` gibt `{total, sessions, agents, last_ts, bins}` zurück. Verwenden Sie `fp events --full --session-id <id>`, wenn Sie den rohen Payload hinter einer Fehlerzusammenfassung benötigen.
   </Tab>
 </Tabs>
 
-## Fehler verwenden, wenn du Folgendes benötigst
+## Wann Sie Errors verwenden sollten
 
-- Die häufigste Fehlerklasse in der Produktionsumgebung ermitteln.
-- Herausfinden, ob ein bestimmtes Tool oder Modell einen Anstieg verursacht.
+- Die häufigste Fehlerklasse in der Produktion finden.
+- Ermitteln, ob ein bestimmtes Tool oder Modell einen Anstieg verursacht.
 - Von einer aggregierten Anzahl zu repräsentativen Sitzungen springen.
 - Einen Alert für das Wiederauftreten erstellen.
 - Die betroffene Population in ein Audit einbeziehen.
 
-Ein Fehler ist ein beobachtetes Ereignis. Eine fehlgeschlagene Evaluierung ist ein Qualitätsurteil, und ein Audit-Befund ist ein untersuchtes Fehlermuster. Behalte diese Unterscheidungen im Blick, wenn du entscheidest, welchen Reaktions-Workflow du verwenden möchtest.
+Ein Fehler ist ein beobachtetes Ereignis. Eine fehlgeschlagene Auswertung ist ein Qualitätsurteil, und ein Audit-Befund ist ein untersuchtes Fehlermuster. Behalten Sie diese Unterscheidungen im Blick, wenn Sie entscheiden, welchen Reaktions-Workflow Sie verwenden.
 
-<Card title="Alert erstellen" icon="bell-ring" href="/de/audits/alerts">
-  Benachrichtige Verantwortliche, wenn ein Fehler oder eine Qualitätsbedingung einen Schwellenwert überschreitet.
-</Card>
+## Ohne Cloud-Konto
+
+Errors ist eine Cloud-Oberfläche. Auf einem Rechner, der nicht verbunden ist, durchsucht `failproofai audit` den bereits auf dem Datenträger gespeicherten Sitzungsverlauf nach riskanten und verschwenderischen Mustern und öffnet `http://localhost:8020/audit`. Fügen Sie `--schedule [days]` hinzu, um den Scan nach einem Zeitplan zu wiederholen und die Ergebnisse per E-Mail zu senden (Standard 7 Tage, Bereich 1 bis 90), `--status` um zu prüfen, ob die Planung aktiv ist, und `--no-schedule` um sie zu stoppen. Alles läuft auf dem lokalen Rechner, mit zwei Ausnahmen. Ein geplanter Scan übermittelt bei jedem Durchlauf — einschließlich eines fehlerfreien — die ID, Bezeichnung, Plattform und den abgedeckten Zeitraum dieses Rechners. Was ein sauberer Scan zurückhält, ist der Digest, nicht die Anfrage. Außerdem wird bei jedem Audit anonyme CLI-Telemetrie gesendet, sofern Sie nicht `FAILPROOFAI_TELEMETRY_DISABLED=1` setzen.
+
+<CardGroup cols={2}>
+  <Card title="Alert erstellen" icon="bell-ring" href="/de/audits/alerts">
+    Benachrichtigen Sie Verantwortliche, wenn ein Fehler oder eine Qualitätsbedingung einen Schwellenwert überschreitet.
+  </Card>
+  <Card title="Befunde und Probleme" icon="clipboard-list" href="/de/audits/findings-and-issues">
+    Einen wiederkehrenden Fehler in ein untersuchtes Muster mit einem Verantwortlichen umwandeln.
+  </Card>
+</CardGroup>

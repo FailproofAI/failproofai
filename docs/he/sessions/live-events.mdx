@@ -1,46 +1,41 @@
 ---
----
 title: "אירועים בזמן אמת"
-description: "צפה בפעילות הסוכן כשמושב פעיל."
+description: "צפו בפעילות סוכנים ב-Failproof AI Cloud."
 icon: "radio"
 ---
 
-אירועים בזמן אמת עוזרים לך לאשר כי הגדרת הקצה עובדת וצפה בהרצה בסיכון גבוה ללא צורך להמתין לסיום המושב.
+Live events מציג פעילות תוך כדי הרצת סוכנים: קריאות מודל, כלים, שגיאות, קלט אנושי, hooks והחלטות מדיניות.
 
-## צפיה בפעילות
+## צפייה בפעילות
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. עבור אל **Observe → Events**.
-    2. התחל עם חלון הזמן הנוכחי וללא מסננים כדי לאשר שנתונים מגיעים.
-    3. סנן לפי סביבה, סוג אירוע, סוכן או מושב. השתמש בחיפוש לטקסט בעומס השליטה.
-    4. בחר באירוע כדי לבדוק את הסיכום והפרטים שלו. עקוב אחר קישור המושב שלו כדי לראות את העקיבה המלאה.
+עברו אל **Observe → Live events**, או הריצו:
 
-    ![זרם אירועים חי המציג תעבורה משער שיחה Hermes לצד הרצות coding-CLI, מסונן לפי זמן, סביבה, סוג אירוע, סוכן, מודל, הקשר ומושב.](/images/dashboard/events-stream-current.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp events --env production --event-type tool_use,error --limit 100
-    fp events --session-id <session-id> --order asc --all
-    fp --json events --full --session-id <session-id> --all
-    ```
+```bash
+fp events --since 1h
+fp events --event-type tool_use,tool_result --since 1h
+fp --json events --full --session-id <session-id> --all --limit 2000
+```
 
-    הזרם הדברתי מוגדר כברירת מחדל להשמיט עומסים גולמיים. השתמש ב-`--full` רק לחקירת מושב מוגבל.
-  </Tab>
-</Tabs>
+השתמשו ב-`--full` כאשר אתם צריכים את תוכן ה-payload. ה-feed הקל מהיר יותר ומספיק לרוב המסננים.
 
-השתמש בזרם האירועים כדי לענות על שלוש שאלות מיידיות:
+סוגי אירועים נפוצים כוללים:
 
-- האם הסוכן הצפוי מדווח לסביבה הנכונה?
-- האם קריאות מודל, קריאות כלים והחלטות מדיניות מגיעות בסדר?
-- האם המושב הפסיק להתקדם או התחיל לחזור על אותה פעולה?
+- `session_start` ו-`session_end`
+- `model_request` ו-`model_response`
+- `tool_use` ו-`tool_result`
+- `hook_triggered` ו-`hook_completed`
+- `error`
+- `human_wait` ו-`human_input`
+- `agent_pause` ו-`agent_resume`
 
-סוגי אירועים כוללים אירועי מחזור חיים של סוכנים, בקשות ותגובות של מודל, שימוש בכלים והתוצאות שלהם, ביצוע hook, המתנה אנושית והפסקות, וטעויות מפורשות. מזהי מתאם מחברים אירועים מזווגים כמו קריאת כלי והתוצאה שלה.
+## אם אירועים לא מופיעים
 
-<Tip>
-  שמור על התצוגה החיה כללית בעת אימות שילוב חדש. הוסף מסננים רק לאחר שאתה רואה את האירוע הראשון; מסנן שגוי יכול להיראות כאל כישלון בערגון.
-</Tip>
+```bash
+failproofai flush --wait
+failproofai config --status
+failproofai backfill --since 30d --dry-run
+```
 
-אם לא מופיעים אירועים, הרץ `failproofai config --status`, ואז [פתור בעיות בערגון](/he/reference/troubleshooting).
+הסביבה ברירת המחדל היא `local`. סינון עבור `production` מחזיר שום דבר עד שתשנו את תווית הסביבה.
 
-סוכנים שלא פועלים באחד מ-12 [harnesses](/he/reference/harnesses) הנתמכים מדווחים על אותם סוגי אירועים דרך [Python SDK](/he/reference/custom-agents), כולל אירועי הלולאה האנושית (`human_wait`, `human_input`, `human_interrupt`) שסערי שער וסוכנים ייצור תלויים בהם.
+לסוכן מחוץ לתמיכה harness, השתמשו ב-[Python SDK](/he/reference/custom-agents).

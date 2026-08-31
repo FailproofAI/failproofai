@@ -1,21 +1,16 @@
 ---
 title: "Người dùng và tổ chức"
-description: "Kiểm soát thành viên và giữ dữ liệu cũng như hành động của mỗi tổ chức trong phạm vi riêng biệt."
+description: "Kiểm soát thành viên và giữ dữ liệu cũng như hành động của mỗi tổ chức được phân định rõ ràng."
 icon: "users"
 ---
 
-Các tổ chức cách ly các phiên, đánh giá, kiểm toán, vấn đề, cảnh báo, truy vấn, bảng điều khiển, người dùng và khóa. Xác nhận tổ chức hoạt động trước khi thay đổi các tài nguyên quản trị.
+Các tổ chức cách ly các phiên làm việc, đánh giá, kiểm toán, sự cố, cảnh báo, truy vấn, bảng điều khiển, người dùng và khóa. Xác nhận tổ chức hiện hoạt trước khi bạn thay đổi bất kỳ tài nguyên hành chính nào.
 
-## Quản lý thành viên và tổ chức
+## Chọn tổ chức
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Sử dụng công cụ chuyển đổi tổ chức ở đầu thanh bên Cloud để thay đổi tổ chức.
-    2. Đi tới **Administration → Users** để tìm kiếm thành viên hoặc lọc theo trạng thái hoạt động và vai trò.
-    3. Chọn **new user**, nhập email, chọn bộ quyền hạn và điều chỉnh ghi đè nếu cần.
-    4. Mở một người dùng sau này để cập nhật quyền cấp, vô hiệu hóa đăng nhập hoặc kích hoạt lại tài khoản.
-
-    ![Trang Users hiển thị địa chỉ email thành viên, bộ quyền hạn, và các điều khiển chỉnh sửa và vô hiệu hóa.](/images/dashboard/users.png)
+    Sử dụng trình chuyển đổi tổ chức ở đầu thanh bên Cloud. Mọi thứ bên dưới nó — bao gồm mọi trang trong **admin** — sẽ đọc và ghi cho tổ chức đó.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -23,22 +18,62 @@ Các tổ chức cách ly các phiên, đánh giá, kiểm toán, vấn đề, c
     fp orgs switch reliability-team
     fp orgs current
     fp orgs perms
+    ```
 
+    `fp orgs switch` không có slug sẽ mở trình chọn bàn phím mũi tên bắt đầu từ tổ chức hiện tại của bạn; quá trình chạy không tương tác sẽ quay lại lời nhắc có số, và dưới `--json` slug là bắt buộc. Lựa chọn được lưu giữ trong `~/.failproofai/fpcli/cli-auth.json`, do đó các lệnh sau sẽ gửi nó như tenant hoạt động. Ghi đè nó cho một lệnh bằng `--org <slug>` hoặc `FP_ORG`.
+  </Tab>
+</Tabs>
+
+<Note>
+  Mỗi lệnh `fp orgs` cần một người đã đăng nhập và từ chối dưới khóa API, vì thành viên tổ chức thuộc về một người và khóa đã hoạt động cho một tổ chức. Các lệnh `fp users` bên dưới hoạt động theo cách nào đó.
+</Note>
+
+## Quản lý thành viên
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Đi tới **admin → users** và tìm kiếm thành viên theo email, hoặc thu hẹp danh sách bằng các chip lọc `protected`, `admin`, `standard` và `read-only`.
+    2. Chọn **new user**, nhập email, chọn bộ quyền và điều chỉnh ghi đè cho mỗi thành viên nếu cần.
+    3. Mở thành viên sau này để thay đổi quyền cấp, vô hiệu hóa đăng nhập hoặc kích hoạt lại tài khoản.
+
+    ![Trang người dùng với hộp tìm kiếm email, các chip lọc và thẻ thành viên hiển thị các quyền cấp được nhóm theo tài nguyên.](/images/dashboard/users.png)
+
+    Các chip quyền cấp trong khung này trước khi đổi tên từ `incidents:*` thành `issues:*`; danh sách [quyền hạn phổ biến](/vi/admin/keys-and-permissions#common-permissions) là hiện tại.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp users list
+    fp users list --active-only
     fp users create engineer@example.com --permission-set standard
     fp users show engineer@example.com
     fp users update engineer@example.com --add audits:write
     fp users disable engineer@example.com
     fp users enable engineer@example.com
     ```
+
+    Thành viên được định địa chỉ theo email và được giải quyết không phân biệt chữ hoa chữ thường, do đó `fp users show Alice.Chen@Example.com` và `fp users create alice.chen@example.com` liên quan đến cùng một người.
   </Tab>
 </Tabs>
 
-Những người quản trị viên có thể tạo, cập nhật, vô hiệu hóa và kích hoạt lại người dùng, sau đó gán bộ quyền hạn phù hợp với vai trò của họ. API sử dụng một thao tác xóa để vô hiệu hóa, nhưng nó không loại bỏ tài khoản hoặc hồ sơ thành viên của nó.
+### Quyền cấp và những gì mỗi động từ cần
+
+Quyền cấp thành viên sử dụng số học giống như khóa: quyền cấp có hiệu lực là `(set ∪ added) − removed`, và `--add` / `--remove` lấy các token `slug:action.action` nhỏ gọn trong đó các hành động được phân tách bằng dấu chấm được mở rộng. Xem [khóa và quyền hạn](/vi/admin/keys-and-permissions).
+
+| Động từ | Quyền hạn | Ghi chú |
+| --- | --- | --- |
+| `fp users list` / `show` | `users:read` | `--active-only` ẩn thành viên bị vô hiệu hóa. |
+| `fp users create` | `users:create` | `--permission-set` tạo hạt giống cho vai trò; `--add` / `--remove` lớp ghi đè. |
+| `fp users update` | `users:update` | `--permission-set` **thay thế** ghi đè cho mỗi thành viên của thành viên; `--add` / `--remove` riêng lẻ được tăng dần theo quyền cấp hiện tại của họ. |
+| `fp users disable` / `enable` | `users:delete` | Cả hai, bao gồm enable — cấp nó một cách cố ý. |
+
+Vô hiệu hóa từ chối hai trường hợp hoàn toàn, như lỗi Forbidden thay vì thông báo xác thực: thành viên **protected** không thể bị vô hiệu hóa, và bạn không thể vô hiệu hóa tài khoản của riêng mình. Vô hiệu hóa thành viên đã bị vô hiệu hóa hoặc kích hoạt lại thành viên đã hoạt động là một no-op yên tĩnh. API sử dụng hoạt động xóa để vô hiệu hóa, nhưng nó không xóa tài khoản cũng như hồ sơ thành viên của nó.
+
+Hai cài đặt tổ chức điều chỉnh thành viên: `default_user_permissions` tính trước bộ quyền cho lời mời mới và `allowed_sign_ins` cơ sở nào địa chỉ có thể nhận mã đăng nhập. Quản lý chúng từ [trang cài đặt](/vi/admin/settings-and-security).
 
 <Warning>
-  Vô hiệu hóa một người dùng sẽ chặn danh tính đó khỏi việc đăng nhập vào mọi tổ chức, không chỉ tổ chức hiện được chọn. Kích hoạt lại sẽ khôi phục đăng nhập toàn cầu và quyền của thành viên trong tổ chức này.
+  Vô hiệu hóa người dùng chặn danh tính đó khỏi đăng nhập vào mọi tổ chức, không chỉ tổ chức hiện được chọn. Kích hoạt lại sẽ khôi phục đăng nhập toàn cầu và quyền của thành viên trong tổ chức này.
 </Warning>
 
 <Tip>
-  Cấp cho các tài khoản dịch vụ những tên mô tả được liên kết với một khối lượng công việc và chủ sở hữu. Tránh chia sẻ khóa giữa các tổ chức hoặc giữa con người và máy.
+  Đặt tên tài khoản dịch vụ mô tả được liên kết với khối lượng công việc và chủ sở hữu. Không chia sẻ khóa giữa các tổ chức hoặc giữa một người và một máy.
 </Tip>

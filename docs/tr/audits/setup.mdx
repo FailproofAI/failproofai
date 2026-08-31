@@ -1,21 +1,24 @@
 ---
-title: "Bir denetimi ayarla"
+title: "Denetim kurulumu"
 description: "Denetim hedefini, oturum popülasyonunu ve kanıt bağlamını tanımlayın."
 icon: "sliders-horizontal"
 ---
 
-Bir denetimin kalitesi, kapsamı ile başlar. "Sorunları bul" gibi geniş bir istek, somut bir başarısızlık sorusundan daha az faydalı sonuçlar üretir.
+Denetimin kalitesi, kapsamı ile başlar. "Sorunları bul" gibi geniş bir istek, somut bir başarısızlık sorusundan daha az yararlı sonuçlar üretir.
 
-## Denetimi yapılandır
+## Denetimi yapılandırın
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Analyze → Audits → New audit** bölümüne gidin ve adı ile açıklamayı girin.
-    2. Sıklığı, zaman penceresini, ajan/ortam kapsamını, göz ardı edilen hataları, hassasiyeti ve maksimum bulguları ayarlayın.
-    3. **agents** bölümünde ajan bağlamını ekleyin veya gözden geçirin, ardından operatör brifinizi ve halka açık HTTPS referans URL'lerini ekleyin.
-    4. Bildirim kanallarını seçin ve **create audit** seçeneğini tıklayın. İlk çalıştırma hemen sıraya alınır.
+    1. **Analyze → Audits → New audit** bölümüne gidin ve ad ile açıklamayı girin. Ad, kuruluş başına benzersizdir; açıklama, bu denetimin ne yakalamayı beklediğinizi kaydeder.
+    2. **when it runs** bölümünde, cadence ve pencereyi ayarlayın. **what it reads** bölümünde, ortamlar, ajanlar ve yoksayılacak hata türleriyle popülasyonu daraltın — boş alan her şeyi içerir. **how it judges** bölümünde, duyarlılık ve çalışma başına bulguları ayarlayın.
+    3. **what it knows** bölümünde, operatör özeti yazın ve denetimin okuduğu sayfaları ekleyin. Özet, model tek bir olayı incelemeden önce okuduğu arka plandır: bu denetimin zaten aradığı şeylere eklenir, asla değiştirmez ve bulgu için asla kanıt değildir.
+    4. **agents** çekmecesini açarak her ajanın bağlamını ekleyin veya gözden geçirin. Denetimden bağımsız olarak kaydedilir ve başlığı kaç ajanınızın zaten birine sahip olduğunu gösterir. Bkz. [ajan bağlamı](/tr/audits/agent-contracts).
+    5. Bildirim kanallarını seçin ve **create audit** öğesini seçin. Yeni bir denetim etkinleştirilmiş olarak başlar ve ilk çalıştırması hemen sıraya alınır.
 
-    ![Ad, açıklama, sıklık, pencere, ortam ve ajan kapsamı, göz ardı edilen hatalar, analiz ayarları, brief, referans sayfaları ve bildirim kanallarını içeren yeni denetim formu.](/images/dashboard/audit-new.png)
+    ![Ad, açıklama, cadence, pencere, ortam ve ajan kapsamı, yoksayılan hatalar, analiz ayarları, özet, referans sayfaları ve bildirim kanallarını gösteren yeni denetim formu.](/images/dashboard/audit-new.png)
+
+    **what it reads** kartındaki **agents**, bir kapsam filtresidir — her çalıştırmanın hangi oturumları taradığını belirler. Ajanın *ne için* olduğu, ayrı ajanlar çekmecesinde yaşar.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -29,16 +32,44 @@ Bir denetimin kalitesi, kapsamı ile başlar. "Sorunları bul" gibi geniş bir i
       --url https://runbooks.example.com/checkout
     ```
 
-    İlk çalıştırma hemen sıraya alınır. Oluşturma sırasında brief ve referans URL'lerini ekleyin, böylece bu çalıştırma onları alır.
+    Addan başka her alan bir sunucu varsayılanına sahiptir, bu nedenle basit bir `fp audits create nightly` zaten geçerli bir günlük denetimdir. Alınan bir ad, herhangi bir şey oluşturulmadan önce hemen reddedilir. Yeni denetimler `--disabled` iletmediğiniz sürece etkinleştirilmiş olarak başlar ve etkinleştirilmiş bir denetimin ilk çalıştırması hemen sıraya alınır.
 
-    Tam [`fp audits create` referansını](/tr/reference/cloud-cli#audits) görmek için bağlantıyı izleyin.
+    Kaydedilen JSON ile `--file audit.json` kullanarak bir tanımı temel alın ve üstüne bayrakları katman olarak ekleyin. Denetim tanımları gözden geçirildiğinde veya sürüm kontrolünde tutulduğunda bu, tekrarlanabilir yoldur.
+
+    Tam [`fp audits create` referansı](/tr/reference/cloud-cli#audits) bölümüne bakın.
   </Tab>
 </Tabs>
 
+## Aralıklar ve varsayılanlar
+
+Sayısal ayarlar her iki tarafta da doğrulanır, bu nedenle aralığın dışında bir değer, reddedilen bir istek yerine bir kullanım hatasıdır.
+
+| Ayar | CLI bayrağı | Kabul edilen değerler | Varsayılan |
+| --- | --- | --- | --- |
+| Cadence | `--schedule-interval-secs` | 3600–604800 (1 saat - 7 gün) | 86400 (günlük) |
+| Zamanlama çıkış noktası | `--schedule-anchor` | ISO 8601 UTC; 365 günden daha fazla ileriye alınmış bir çıkış noktası reddedilir | Sonraki 09:00 UTC |
+| Pencere | `--window-mode` | `fixed`, `since_last` | `since_last` |
+| Geriye bakış | `--lookback-window-secs` | 3600–7776000 (1 saat - 90 gün) | 604800 (7 gün) |
+| Duyarlılık | `--sensitivity` | `low`, `medium`, `high` | `medium` |
+| Çalışma başına bulgular | `--top-k` | 1 veya daha fazla | 50 |
+
+Çıkış noktası, zamanlamanın fazını düzeltir: çalıştırmalar `anchor + N * interval` üzerine iner, bu nedenle yavaş bir çalıştırma veya manuel **run now** cadenceyi değiştiremez. İlk çalıştırma, çıkış noktasından bağımsız olarak oluşturulduktan sonra hemen sıraya alınır.
+
+## Özet ve referans sayfaları
+
+Form, her iki limiti de sayaçlar olarak gösterir ve CLI aynı ikisini uygular:
+
+- Özet, 8.192 karakterle sınırlıdır (`--text` veya dosyadan okumak için `--text-file` — birini iletir, her ikisini değil).
+- Bir denetim en fazla beş sayfa, yalnızca genel `https://` (`--url`, tekrarlanan) referans alır.
+
+Referans URL'leri, kaydettiğiniz şekilde doğrulanır. Özel, loopback ve bulut meta veri adresleri reddedilir ve reddedilen bir URL, tüm oluşturmayı başarısız kılar — hiçbir yarı yapılmış denetim geride kalmaz. Kabul edilen sayfalar arka planda getirilir, bu nedenle yavaş bir site kaydetmeyi hiçbir zaman engellemez. Her çalıştırma bunları yeniden okur ve bir sayfaya ulaşılamadığında depolanan anlık görüntüye geri döner ve anlık görüntüler kendi başlarına haftada bir yenilenir. Bir sayfanın değiştiğini bildiğinizde ve sonraki çalıştırmadan önce alınmasını istediğinizde `fp audits context-refresh <name>` kullanın.
+
+Özet ve URL'leri, ikinci bir çağrıda değil, oluşturma isteğiyle gönderin. Yeni etkinleştirilmiş bir denetim, satırı kaydedilir etmez oluşturulur, bu nedenle daha sonra yazılan bağlam, gönderici tarafından geçilebilir ve ilk çalıştırmayı kaçırabilir — izlediğiniz çalıştırma. Bunu daha sonra `fp audits context-set <name>` ile değiştirin, bu, adlandırdığınız yarıyı değiştirir ve diğeri yalnız bırakır.
+
 <Tip>
-  Bilinen başarısız bir oturumla başlayın ve birkaç normal oturuma sahip olun. Bu, denetim sistemine hem pozitif bir örnek hem de karşılaştırma seti sağlar.
+  Bilinen başarısız bir oturumla ve birkaç normal oturumla başlayın. Bu, denetime hem pozitif bir örnek hem de karşılaştırma kümesi verir.
 </Tip>
 
 <Info>
-  Denetim bağlamı kendi kaynağı olarak depolanır, bu nedenle bir denetimi düzenlemek referans materyalini yanlışlıkla kaldırmaz.
+  Denetim bağlamı, kendi kaynağı olarak depolanır. Tanım uç noktası, güncellemede yazılmasını reddeder, bu nedenle denetimle ilgisiz sıradan bir düzenleme hiçbir zaman özeti veya referans sayfalarını üzerine yazamaz.
 </Info>

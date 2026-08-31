@@ -6,29 +6,31 @@ icon: "monitor-cog"
 
 Chạy `failproofai` mà không có đối số để khởi động bảng điều khiển đi kèm tại `http://localhost:8020`. Nó đọc lịch sử tác nhân cục bộ, cấu hình chính sách, kết quả kiểm toán và hoạt động hook trực tiếp từ máy.
 
-Bảng điều khiển cục bộ là riêng biệt với Failproof AI Cloud. Nó hoạt động mà không cần tài khoản Cloud và không chứng minh rằng các sự kiện đã được gửi đến tổ chức của bạn.
+Trên một máy chưa được thiết lập, lệnh bare sẽ chạy thiết lập lần đầu tiên trước khi nó mở bảng điều khiển. Nó chỉ làm điều đó trên một terminal tương tác: nếu được piped hoặc trong CI, nó sẽ in một gợi ý một dòng và mở bảng điều khiển, vì một trình hướng dẫn mà không ai có thể trả lời không bao giờ được phép chặn lệnh bạn đã gõ. Đặt `FAILPROOFAI_NO_FIRST_RUN=1` để bỏ qua chuyển hướng hoàn toàn và đi thẳng đến bảng điều khiển.
 
-## Các khu vực bảng điều khiển
+Bảng điều khiển cục bộ là riêng biệt với Failproof AI Cloud. Nó hoạt động mà không cần tài khoản Cloud và không chứng minh rằng các sự kiện đã được gửi đến tổ chức của bạn. Trên một máy đã hoàn thành thiết lập, các quyết định nó hiển thị được đưa ra bởi daemon `failproofaid`, là đánh giá viên duy nhất ở đó; trên một máy chưa được thiết lập, các hook đánh giá trong quá trình.
+
+## Các khu vực của bảng điều khiển
 
 | Khu vực | Những gì bạn có thể thực hiện |
 | --- | --- |
-| Policies → Activity | Kiểm tra các quyết định allow, instruct và deny cục bộ; lọc theo quyết định, sự kiện, CLI, công cụ, nguồn, chính sách và phiên. |
-| Policies → Configure | Bật các tính năng tích sẵn, chỉnh sửa các tham số được hỗ trợ, chuyển đổi các chính sách tùy chỉnh được phát hiện và chọn các điểm kết thúc đích. |
-| Projects | Duyệt các dự án được phát hiện trên các lịch sử tác nhân được hỗ trợ và so sánh các phiên gần nhất của chúng. |
-| Project sessions | Mở một bản ghi không ghi chép cục bộ, xem lại các mục được sắp xếp thô và các tác nhân phụ, tải xuống và liên kết hoạt động chính sách. |
-| Audit | Xem lại lần quét ngoại tuyến cuối cùng, các mẫu rủi ro, điểm mạnh, các dự án bị ảnh hưởng và các chính sách tích sẵn được đề xuất. |
-| Settings | Cấu hình các lần quét cục bộ theo lịch và báo cáo kiểm toán được gửi qua email khi daemon/nền tảng hỗ trợ. |
+| Policies → Activity | Kiểm tra các quyết định allow, instruct và deny cục bộ; lọc theo quyết định, sự kiện, CLI, nguồn, chính sách và phiên. |
+| Policies → Configure | Bật các chính sách từ một gói đã cài đặt, chỉnh sửa các tham số được hỗ trợ, chuyển đổi các chính sách tùy chỉnh và quy ước được phát hiện, và chọn các harness mục tiêu. |
+| Projects | Duyệt các dự án được phát hiện trên các kho lịch sử tác nhân được hỗ trợ và so sánh các phiên gần đây nhất của chúng. |
+| Project sessions | Mở một bản ghi ghi cục bộ, xem lại các mục được đặt hàng theo thứ tự và các tác nhân phụ, tải nó xuống và tương quan hoạt động chính sách. |
+| Audit | Xem lại lần quét ngoại tuyến cuối cùng, các mẫu rủi ro, điểm mạnh, các dự án bị ảnh hưởng và các chính sách tích hợp được đề xuất. |
+| Settings | Cấu hình các quét cục bộ theo lịch và báo cáo kiểm toán được gửi qua email khi daemon/nền tảng hỗ trợ. |
 
 ## Xem lại hoạt động chính sách
 
 <Tabs>
   <Tab title="Dashboard">
     1. Mở **Policies → Activity** và đặt các bộ lọc quyết định và nguồn.
-    2. Thu hẹp theo sự kiện, điểm kết thúc, công cụ hoặc tên chính sách.
-    3. Mở rộng một hàng để kiểm tra lý do, các chính sách được khớp, nguồn, chế độ thực thi và khoảng thời gian.
+    2. Thu hẹp theo sự kiện, harness, tên chính sách hoặc phiên.
+    3. Hàng mang theo quyết định, sự kiện, harness, tool, chính sách, chế độ quyền và thời lượng. Mở rộng nó để xem lý do đầy đủ, mọi chính sách phù hợp, nguồn quyết định, triển khai cloud và thư mục làm việc và đường dẫn bản ghi của phiên. Tên công cụ được hiển thị trên hàng nhưng không phải là bộ lọc.
     4. Theo dõi liên kết phiên để đặt quyết định trong bối cảnh bản ghi.
 
-    Một hàng trông như bị từ chối vẫn có thể là quan sát trên một cặp điểm kết thúc/sự kiện không tiêu thụ các phán quyết chặn. Chế độ xem chi tiết sẽ chỉ ra khả năng thực thi được xác minh.
+    Một hàng trông như bị từ chối vẫn có thể là quan sát trên một cặp harness/sự kiện không tiêu thụ các phán quyết chặn. Chế độ xem chi tiết gọi ra khả năng thực thi đã được xác minh.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -45,33 +47,36 @@ Bảng điều khiển cục bộ là riêng biệt với Failproof AI Cloud. N�
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Mở **Policies → Configure** và chọn các điểm kết thúc và phạm vi cấu hình.
-    2. Bật một chính sách tích sẵn hoặc chính sách tùy chỉnh được phát hiện.
-    3. Đối với một tính năng tích sẵn có tham số, mở kiểm soát cấu hình của nó và lưu các giá trị được hỗ trợ.
-    4. Quay lại Activity và chạy các hành động khớp và không khớp.
+    1. Mở **Policies → Configure** và chọn các harness và phạm vi cấu hình. Tab có thể được địa chỉ trực tiếp tại `http://localhost:8020/policies?tab=policies`.
+    2. Bật một chính sách từ một gói đã cài đặt hoặc một chính sách tùy chỉnh hoặc quy ước được phát hiện.
+    3. Đối với một chính sách có tham số, hãy mở kiểm soát cấu hình của nó và lưu các giá trị được hỗ trợ.
+    4. Quay lại Activity và chạy các hành động phù hợp và không phù hợp.
 
-    Các chính sách quy ước hiển thị nguồn dự án hoặc người dùng của chúng. Các thay đổi đường dẫn tùy chỉnh rõ ràng có thể yêu cầu chạy lại cấu hình CLI để đường dẫn được chọn được ghi lại.
+    Danh sách trống cho đến khi một gói được cài đặt — bản dựng này không biên dịch bất kỳ chính sách nào của riêng nó, vì vậy trước tiên hãy chạy `failproofai policies add FailproofAI/policies`. Các chính sách quy ước hiển thị nguồn dự án hoặc người dùng của chúng. Các thay đổi đường dẫn tùy chỉnh rõ ràng có thể yêu cầu chạy lại cấu hình CLI để đường dẫn được chọn được ghi lại.
   </Tab>
   <Tab title="CLI">
     ```bash
-    failproofai policy add block-sudo --scope project
+    failproofai policies show FailproofAI/policies
+    failproofai policies add block-sudo --scope project
     failproofai policies --install --custom ./security.policies.ts --scope project
     failproofai policies
     ```
+
+    `policies show <owner>/<repo>` đọc nội dung của một gói trước khi bạn cài đặt nó. `--scope` nhận `user`, `project` hoặc `local`; chỉ Claude Code hỗ trợ `local`, và Hermes và OpenClaw chỉ nhận `user`.
   </Tab>
 </Tabs>
 
-## Duyệt dự án và phiên
+## Duyệt các dự án và phiên
 
-Trang Projects kết hợp các kho lịch sử cục bộ được hỗ trợ. Chọn một dự án để liệt kê các phiên của nó, sau đó mở một phiên để xem nhật ký thô, các phân đoạn tác nhân phụ, hành động tải xuống và hoạt động chính sách trong phạm vi phiên.
+Trang Projects kết hợp các kho lịch sử cục bộ được hỗ trợ. Chọn một dự án để liệt kê các phiên của nó, sau đó mở một phiên cho trình xem nhật ký thô, các đoạn tác nhân phụ, hành động tải xuống và hoạt động chính sách có phạm vi phiên.
 
-Nếu một dự án hoặc phiên bị thiếu, hãy xác nhận rằng điểm kết thúc sử dụng vị trí lịch sử mặc định của nó hoặc đăng ký một gốc bổ sung với `failproofai harness add-path`.
+Nếu một dự án hoặc phiên bị thiếu, hãy xác nhận harness sử dụng vị trí lịch sử mặc định của nó hoặc đăng ký thêm gốc bằng `failproofai harness add-path <harness> [<label>=]<path>`.
 
-## Lập lịch kiểm toán ngoại tuyến
+## Lên lịch kiểm toán ngoại tuyến
 
 <Tabs>
   <Tab title="Dashboard">
-    Mở **Settings**, bật quét theo lịch, chọn khoảng thời gian được hỗ trợ của nó và cấu hình giao hàng báo cáo khi có sẵn. Trang báo cáo lần chạy tiếp theo, lần chạy cuối cùng, mã thoát và liệu nền tảng có hỗ trợ daemon nền hay không.
+    Mở **Settings**, bật quét theo lịch, chọn khoảng thời gian được hỗ trợ của nó và cấu hình giao hàng báo cáo khi có sẵn. Trang báo cáo lần chạy tiếp theo, lần chạy cuối cùng, mã thoát và liệu nền tảng daemon nền có được hỗ trợ trên nền tảng hay không.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -79,10 +84,16 @@ Nếu một dự án hoặc phiên bị thiếu, hãy xác nhận rằng điểm
     failproofai audit --status
     ```
 
-    Thay đổi số ngày để đặt một khoảng thời gian 1–90 ngày khác. Vô hiệu hóa các lần quét định kỳ với `failproofai audit --no-schedule`; chạy `failproofai audit` để quét tương tác ngay lập tức.
+    Thay đổi số ngày để đặt một khoảng thời gian khác từ 1–90 ngày. Tắt quét định kỳ bằng `failproofai audit --no-schedule`, dừng bộ đếm thời gian và để bạn đăng nhập; chạy `failproofai audit` để quét tương tác ngay lập tức.
+
+    Lên lịch ký bạn vào lần đầu tiên, vì các kết quả được gửi qua email. `--email <address>` cung cấp địa chỉ phía trước và bỏ qua lời nhắc đăng nhập.
   </Tab>
 </Tabs>
 
+<Note>
+  Phân tích và kết quả luôn ở trên máy này. Dữ liệu theo dõi CLI ẩn danh được gửi theo mặc định trừ khi bạn đặt `FAILPROOFAI_TELEMETRY_DISABLED=1`. Các quét theo lịch cũng gửi siêu dữ liệu máy và có thể gửi một bản tóm tắt kết quả hạn chế sau khi bạn đồng ý.
+</Note>
+
 <Warning>
-  Bảng điều khiển cục bộ có thể hiển thị các lời nhắc, đầu vào công cụ, nội dung tệp và đầu ra đầu cuối từ lịch sử tác nhân cục bộ. Chỉ liên kết nó với các giao diện đáng tin cậy và dừng quy trình khi hoàn thành xem lại.
+  Bảng điều khiển cục bộ có thể hiển thị lời nhắc, đầu vào công cụ, nội dung tệp và đầu ra terminal từ lịch sử tác nhân cục bộ. Chỉ liên kết nó với các giao diện đáng tin cậy và dừng quá trình khi hoàn thành xem lại.
 </Warning>

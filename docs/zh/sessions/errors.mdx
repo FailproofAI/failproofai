@@ -1,43 +1,63 @@
 ---
 title: "错误"
-description: "对重复出现的错误进行分组，并查看其背后的会话。"
+description: "筛选重复出现的错误，并打开其背后的会话。"
 icon: "circle-alert"
 ---
 
-错误页面为您提供跨会话的故障优先视图。按错误类型、代理、环境、模型、工具或时间窗口进行分组，以发现反复出现的运营问题。
+错误视图为您提供跨会话的故障优先视角。可按环境、事件类型、错误类型、代理或会话进行筛选，并设置时间范围，以发现反复出现的运行问题。
 
-## 排查错误
+## 调查错误
 
 <Tabs>
-  <Tab title="Dashboard">
+  <Tab title="控制台">
     1. 前往 **Observe → Errors**。
     2. 按环境、事件类型、错误类型、代理、会话 ID 或搜索文本进行筛选。
-    3. 展开已分组的错误以查看具体发生记录。选择某一行可在其所属会话中打开对应的精确事件。
-    4. 选择代表性错误上的铃铛控件，为类似错误创建告警。
+    3. 选择某一行，即可在其所属会话中打开该精确事件。
+    4. 在某个代表性行上选择 **alert**，为类似错误创建告警。
 
-    ![错误页面，显示故障直方图、已分组的错误以及创建告警的控件。](/images/dashboard/errors.png)
+    ![错误页面，显示故障直方图、已筛选的错误事件列表以及每行的告警控件。](/images/dashboard/errors.png)
   </Tab>
   <Tab title="CLI">
     ```bash
-    fp errors --env production --since 24h
+    fp errors --since 24h
     fp errors --error-type TimeoutError --agent-id checkout-agent
-    fp errors --aggregate --env production --since 7d
+    fp errors --event-type tool_result --since 24h
+    fp errors --aggregate --env local --since 7d
     ```
 
-    当您需要查看错误摘要背后的原始数据时，请使用 `fp events --full --session-id <id>`。
+    工具失败以带错误标记的 `tool_result` 事件形式呈现，而非裸 `error` 事件，因此 `--event-type tool_result` 是区分工具失败与模型及运行时失败的方式。`is_error` 和 `error_type` 是服务端在每行上计算的字段，两种模式都不解析原始载荷。
+
+    无需猜测有效的筛选值，可通过以下命令发现：`fp list error_types`、`fp list agents`、`fp list envs` 以及 `fp list event_types`。
+
+    **`fp errors` 的以下五个筛选器每个只接受一个值** — `--env`、`--error-type`、`--event-type`、`--agent-id`、`--session-id`。（`--search` 是例外，可重复使用。）`fp events` 和 `fp sessions` 上的同名参数接受重复或逗号分隔的值，因此 `--env prod,staging` 在那些命令中有效，而在此处仅匹配字面字符串 `prod,staging`。这会返回空结果而非报错，读起来像是"无错误"。
+
+    守护进程在您更改之前会将事件标记为 `local`，因此 `--env production` 在默认安装中不匹配任何内容。请参阅[更改环境标签](/zh/reference/events-and-configuration#change-an-environment-label)。
+
+    `--all` 仅自动分页至 `--limit` 指定的数量，默认值为 50 — 若需要更多，请写 `--all --limit 500`。其他列表模式参数包括 `--order asc|desc`、`--cursor`、`--page-size`（最大 200）、`--fields` 和 `--full-ids`。`--search` 可重复使用，适用于两种模式 — 只要行中包含任意一个词即可匹配。
+
+    `fp errors` 需要 `events:read` 权限。在 `--json` 模式下，列表模式返回 `{"errors": [...], "next_cursor": ...}`，`--aggregate` 返回 `{total, sessions, agents, last_ts, bins}`。若需要错误摘要背后的原始载荷，请使用 `fp events --full --session-id <id>`。
   </Tab>
 </Tabs>
 
 ## 适用场景
 
-- 找出生产环境中最频繁出现的错误类别。
-- 判断是否某个工具或模型导致了错误峰值。
-- 从聚合计数跳转至代表性会话。
+- 查找生产环境中最频繁出现的错误类型。
+- 判断是否某个工具或模型导致了异常峰值。
+- 从聚合计数跳转到代表性会话。
 - 为重复出现的错误创建告警。
-- 在审计中纳入受影响的用户群体。
+- 将受影响的对象纳入审计范围。
 
-错误是一个被观测到的事件，评估失败是一种质量判断，而审计发现则是一种经过调查的故障模式。在决定使用哪种响应工作流时，请注意区分这三者。
+错误是一个已观测到的事件。评估失败是质量判断，而审计发现是经过调查的失败模式。在决定使用哪种响应工作流时，请注意区分这些概念。
 
-<Card title="创建告警" icon="bell-ring" href="/zh/audits/alerts">
-  当错误或质量条件超过阈值时，通知相关响应人员。
-</Card>
+## 未连接云账户时
+
+错误视图是 Cloud 功能。在尚未连接的机器上，`failproofai audit` 会扫描磁盘上已有的会话历史，查找存在风险或低效的模式，并打开 `http://localhost:8020/audit`。添加 `--schedule [days]` 可按计时器重新扫描并通过邮件发送结果（默认 7 天，范围 1 到 90 天），`--status` 可检查调度是否已启用，`--no-schedule` 可停止调度。除两种情况外，所有操作均在本机运行：首先，计划扫描在每次运行时（包括无问题的运行）都会上报本机的 ID、标签、平台及所覆盖的时间窗口 — 无问题扫描隐藏的是摘要内容，而非请求本身；其次，除非您设置了 `FAILPROOFAI_TELEMETRY_DISABLED=1`，否则每次审计都会发送匿名 CLI 遥测数据。
+
+<CardGroup cols={2}>
+  <Card title="创建告警" icon="bell-ring" href="/zh/audits/alerts">
+    当错误或质量条件超过阈值时，通知相关处理人员。
+  </Card>
+  <Card title="发现与问题" icon="clipboard-list" href="/zh/audits/findings-and-issues">
+    将重复出现的错误转化为有负责人跟进的调查模式。
+  </Card>
+</CardGroup>

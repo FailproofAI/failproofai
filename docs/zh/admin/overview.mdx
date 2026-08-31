@@ -1,40 +1,74 @@
 ---
 title: "管理"
-description: "管理访问权限、使用情况、组织及安全设置，而不干扰可靠性工作流程。"
+description: "在不干扰可靠性工作流的前提下，管理 Cloud 的访问权限、成员、设置和用量。"
 icon: "settings-2"
 ---
 
-管理模块包含在团队中运行 Failproof AI 所需的各项控制功能。大多数用户可以留在会话、审计和策略页面；管理员使用本模块来管理访问权限和操作边界。
+管理功能是 Failproof AI 的 Cloud 端。组织、成员、API 密钥、组织设置和计量用量均需要 Cloud 连接。
+
+<Note>
+  Failproof AI 也可以在完全没有账户的情况下运行。本地机器可以执行策略、将会话历史保存在磁盘上、在 `localhost:8020` 上提供[本地仪表板](/zh/reference/local-dashboard)，并运行 `failproofai audit` 而不向任何地方发送任何内容。请参阅[机器配置](/zh/reference/events-and-configuration#machine-configuration)了解本地 `collector` 键。如果您不使用 Cloud，请跳过本节的其余内容。
+</Note>
+
+## 控制项所在位置
 
 <Tabs>
   <Tab title="仪表板">
-    使用云端侧边栏的 **Admin** 区域访问**策略编辑器**、**执行**、**使用情况**、**密钥**、**用户**和**设置**。若某项显示为锁定状态，表示您的账户缺少相应的读取权限。
+    Cloud 侧边栏的 **admin** 分组包含 **policy editor**、**enforcement**、**usage**、**keys**、**users** 和 **settings**。
 
-    ![云端侧边栏的 Admin 区域，包含策略编辑器、执行、使用情况、密钥、用户和设置。](/images/dashboard/admin-navigation.png)
+    ![Cloud 侧边栏的 admin 分组，包含 policy editor、enforcement、usage、keys、users 和 settings。](/images/dashboard/admin-navigation.png)
   </Tab>
   <Tab title="CLI">
+    将 Cloud CLI 作为独立工具安装，然后登录：
+
     ```bash
+    uv tool install fp-cloud-cli
+    fp login
     fp whoami
-    fp orgs current
-    fp orgs perms
     fp usage
     ```
 
-    全局选项需放在命令之前，例如 `fp --org reliability-team --json usage`。
+    将全局选项放在命令之前，例如 `fp --org reliability-team --json usage`。
   </Tab>
 </Tabs>
 
+## 已登录用户或 API 密钥
+
+`fp` 以两种身份验证模式之一运行，这一划分决定了哪些命令可用。API 密钥无法执行的命令会在建立连接之前拒绝执行，并明确说明原因，而不是让 401 或 403 错误代替解释。
+
+| 命令 | API 密钥 | 权限 |
+| --- | --- | --- |
+| `fp whoami` | 是 | 无 |
+| `fp usage` | 是 | `usage:read` |
+| `fp keys list` / `show` | 是 | `keys:read` |
+| `fp keys create` | 是 | `keys:create` |
+| `fp keys disable` | 是 | `keys:disable` |
+| `fp keys regenerate` | 是 | `keys:regenerate` |
+| `fp keys update` | 否 | `keys:update`（任何密钥均不可持有此权限） |
+| `fp users list` / `show` | 是 | `users:read` |
+| `fp users create` | 是 | `users:create` |
+| `fp users update` | 是 | `users:update` |
+| `fp users disable` / `enable` | 是 | `users:delete` |
+| `fp settings list` / `schema` | 是 | `settings:read` |
+| `fp settings set` | 是 | `settings:write` |
+| `fp orgs list` / `switch` / `current` / `perms` | 否 | 仅限已登录会话 |
+
+`fp usage` 是供报告脚本使用的命令：它可在密钥下无人值守地运行，仅需 `usage:read` 权限。
+
 <Columns cols={2}>
-  <Card title="使用情况" icon="chart-no-axes-combined" href="/zh/admin/usage">
-    查看计费周期和组织资源消耗。
-  </Card>
   <Card title="密钥与权限" icon="key-round" href="/zh/admin/keys-and-permissions">
-    为机器和自动化流程仅授予所需的最小权限。
+    创建机器凭据，并为每个工作负载仅授予其所需的权限。
   </Card>
   <Card title="用户与组织" icon="users" href="/zh/admin/users-and-organizations">
-    管理成员资格、默认设置及组织边界。
+    管理成员关系，并将每个组织的数据和操作限定在其范围内。
   </Card>
   <Card title="设置与安全" icon="lock-keyhole" href="/zh/admin/settings-and-security">
-    配置操作设置、数据处理及部署安全策略。
+    配置登录和告警值，并决定哪些 Agent 数据可以离开机器。
+  </Card>
+  <Card title="用量" icon="chart-no-axes-combined" href="/zh/admin/usage">
+    查看组织在当前 30 天周期内的计量用量。
+  </Card>
+  <Card title="机群覆盖" icon="network" href="/zh/policies/fleet">
+    查看哪些机器已加入、如何识别它们，以及它们执行哪些策略。
   </Card>
 </Columns>

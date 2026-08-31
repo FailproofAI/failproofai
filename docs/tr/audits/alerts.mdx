@@ -1,62 +1,103 @@
 ---
 title: "Uyarılar"
-description: "Yinelenen sorunları tespit edin ve olayı doğru yanıt vericilere yönlendirin."
+description: "Tekrarlanma durumlarını algılayın ve sorunu uygun yanıt verenlerine yönlendirin."
 icon: "bell-ring"
 ---
 
-Uyarılar, ölçülebilir bir koşulu izler ve koşul tetiklendiğinde bir olay oluşturur. Bir arıza zamanında bir yanıt üretmesi gerektiğinde (bir politika bunu engelleyebilse bile) bunları kullanın.
+Uyarı, ölçülebilir bir koşulu izler ve tetiklendiğinde bir sorun açar. Bir başarısızlık zamanında bir yanıt gerektirdiğinde kullanın; bir politika bunu engelleyebilse de engelleyemese de.
 
 ## Uyarı oluşturma ve test etme
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Analyze → Alerts** bölümüne gidin ve **new alert** seçeneğini tıklayın. Ayrıca temsili bir hatadaki zili tıklayarak da başlayabilirsiniz.
-    2. Ad, önem derecesi, tetikleme türü, koşul, değerlendirme aralığı, ihlal sayısı, zaman penceresi ve kanalları girin.
+    1. **Analiz → Uyarılar** bölümüne gidin ve **yeni uyarı**'yı seçin. Ayrıca temsili bir hatadaki zile tıklayarak başlayabilirsiniz.
+    2. Ad, önem derecesi, tetik türü, koşul, değerlendirme aralığı, ihlal sayısı, pencere ve kanalları girin.
     3. Uyarıyı kaydedin, detay sayfasını açın ve **test** çalıştırın.
-    4. **Analyze → Issues** bölümüne gidin ve uyarı tarafından oluşturulan olayları onaylayın, atayın, tartışın, abone olun ve çözün.
+    4. **Analiz → Sorunlar** bölümüne gidin ve uyarının açtığı sorunları onaylayın, atayın, tartışın, abone olun ve çözün.
 
-    Formun ilk bölümü uyarıyı ve bunu tetiklemesi gereken sinyali tanımlar.
+    Formun ilk kısmı uyarıyı ve onu tetiklemesi gereken sinyali tanımlar.
 
-    ![Adı, açıklaması, etkinleştirilmiş durumu ve tetikleme türünü gösteren yeni-uyarı formunun ilk bölümü.](/images/dashboard/alert-new-trigger.png)
+    ![Yeni uyarı formunun ilk kısmı, adı, açıklaması, etkinleştirilme durumu ve tetik türü görünüyor.](/images/dashboard/alert-new-trigger.png)
 
-    İkinci bölüm, koşulun ne kadar süre devam etmesi gerektiğini, ne sıklıkta değerlendirildiğini ve bildirimlerin nereye gönderileceğini kontrol eder.
+    Formun ikinci kısmı, koşulun ne kadar süre devam etmesi gerektiğini, ne sıklıkla değerlendirildiğini ve bildirimlerin nereye gönderileceğini kontrol eder.
 
-    ![İhlal mantığı, zamanlama, önem derecesi, dağıtım kanalları ve oluşturma eylemini gösteren yeni-uyarı formunun ikinci bölümü.](/images/dashboard/alert-new-routing.png)
+    ![Yeni uyarı formunun ikinci kısmı, ihlal mantığı, çizelge, önem derecesi, teslimat kanalları ve oluştur işlemi gösteriliyor.](/images/dashboard/alert-new-routing.png)
 
-    Kaydettikten sonra, kural etkinleştirildiğini ve tetikleme, zaman penceresi, önem derecesi ve kanallarının niyetinizle eşleştiğini doğrulamak için Uyarılar listesini kullanın.
+    Kaydettikten sonra, kuralın etkinleştirildiğini ve tetik, pencere, önem derecesi ve kanallarının niyetinize uygun olduğunu doğrulamak için Uyarılar listesini kullanın. Açık sorunları olan bir kart sayısı gösterir; hiç sorunu olmayan bir kart bu satırı tamamen atlayar, bu nedenle yokluğu hiçbir şey söylemez. Sıfırlar da dahil olmak üzere her kural için şekli okumak için `fp alerts show <name>` komutunu kullanın, bu her zaman yazdırır.
 
-    ![Tetikleme, değerlendirme pencereleri, kanalları ve önem derecesini gösteren Uyarılar sayfası.](/images/dashboard/alerts.png)
-
-    Üretim yanıtı için buna bağlı olmadan önce uyarıyı test edin.
+    ![Uyarılar sayfası, uyarı kurallarını tetikleriyle, değerlendirme pencereleriyle, kanalları ve önem derecesiyle gösteriyor.](/images/dashboard/alerts.png)
   </Tab>
   <Tab title="CLI">
     ```bash
     fp alerts create high-errors \
       --trigger-kind metric_threshold \
       --severity warning \
-      --trigger-spec '{"metric":"error_count","op":">","value":50,"window_secs":900}'
+      --trigger-spec '{"metric":"error_count","op":">","value":50,"window_secs":900}' \
+      --eval-interval-secs 300 \
+      --min-breaches 2 \
+      --eval-window 3
 
     fp alerts show high-errors
     fp alerts test high-errors
     fp alerts update high-errors --severity critical --yes
     ```
 
-    Kuralları incelemek için `fp alerts list` kullanın ve bir kuralı kaldırmak için `fp alerts delete <name>` kullanın.
+    Yeni uyarılar **etkinleştirilmiş** durumda başlar ve bir ad çakışması herhangi bir şey oluşturulmadan önce reddedilir.
 
-    Tam uyarı komut seti için [`fp alerts` referansına](/tr/reference/cloud-cli#alerts) bakın.
+    `fp alerts update` tüm tanımı sunucu tarafında değiştirir, bu nedenle CLI uyarıyı yeniden okur ve bayraklarınızı üstüne yatırır — yalnızca bayrak güncellemesi `alerts:read` **ve ayrıca** `alerts:write` gerektirir ve `--yes` iletmediğiniz sürece onay ister.
+
+    Kuralları gözden geçirmek için `fp alerts list` komutunu ve bir kural kaldırmak için `fp alerts delete <name>` komutunu kullanın. Delete, kuralı önizler — açık sorun sayısı dahil olmak üzere — ve yapılamayacağı için geri alınamayacağını düşünerek işlemi yapıyor onay ister.
+
+    Delete, gürültülü bir kuralı susturmanın yolu değildir. `DELETE /alerts/{id}` basamaklandırılır: uyarının açtığı her sorun onunla beraber gider, yorumlarını, abone olanlarını ve aktivite geçmişini alarak. CLI'nin onay kutusu bunu açık sorunların "yetim" bırakıldığı şekilde ifade eder; API sözleşmesi basamaklandırılmış silme işlemidir, bu nedenle geçmişi gitmiş olarak düşünün. Bir kuralın ateşlemesini durdurarak kayıt ettiklerini tutmak için, bunun yerine kapatın — panodaki uyarı formu etkinleştirilmiş değişken anahtarına sahiptir ve ne `fp alerts create` ne de `fp alerts update` bir `--enabled` bayrağını kullanıma sunmaz, bu nedenle CLI rotası `fp alerts update <name> --file` olup, `enabled: false` taşıyan tam bir tanım ile.
+
+    Tüm uyarı komut seti için [`fp alerts` referansı](/tr/reference/cloud-cli#alerts) bölümüne bakın.
   </Tab>
 </Tabs>
 
-Uyarı koşulları hatalara, değerlendirme puanlarına, değerlendirme kombinasyonlarına veya özel SQL'e dayalı olabilir. Alıcıları ekleyin, kuralı test edin ve ortaya çıkan olayı açarak bunu onaylayın, atayın, yorum yapın, abone olun ve çözün.
+<Warning>
+  **test** gerçek bildirimler gönderir. Uyarının gerçek e-posta, Slack ve webhook kanallarına gönderir ve sentetik bir sorun açar, bu nedenle hizmet görevlisi olan kişiye sayfa açabilir. İnteraktif bir terminalde ilk olarak onay ister; `--yes`, `--json` ve yeniden yönlendirilen stdin hepsi bu istemi atlar. Sunucu ayrıca gönderme amacıyla başarıyı bildiriyor, bu nedenle yeşil test mesajın ayrıldığını kanıtlar, ancak varışını kanıtlamaz.
+</Warning>
+
+## Tetikleyiciyi tanımlama
+
+Beş tetik türü vardır:
+
+| `--trigger-kind` | Ne zaman tetiklenir |
+| --- | --- |
+| `metric_threshold` | Metrik bir eşiği aşar — hatalar, gecikme süresi, maliyet veya ölçebileceğiniz başka bir şey. |
+| `per_event` | Eşleşen tek bir etkinlik ulaşır. |
+| `evaluation_score` | Bir değerlendirici'nin puanı bir eşiği aşar. |
+| `eval_compound` | Birkaç puan koşulu birleşir, örneğin üçten iki puanın başarısız olması. |
+| `custom_sql` | Yazacağınız bir sorgu ihlal döndürür. |
+
+Koşulun kendisi `--trigger-spec` bölümüne gider, seçtiğiniz türe uygun şekilde.
+
+## Değerlendirme numaralarını ayarlama
+
+Pano formu ve CLI aynı dört değeri sorar.
+
+| Ayar | Bayrak | Kabul edilen değerler |
+| --- | --- | --- |
+| Önem derecesi | `--severity` | `info`, `warning`, `critical` |
+| Değerlendirme aralığı | `--eval-interval-secs` | 30–86.400 saniye |
+| İhlal sayısı | `--min-breaches` | En az 1 ve asla pencereden fazla |
+| Değerlendirme penceresi | `--eval-window` | En az 1, **aralıklar** cinsinden sayılır, saniye değil |
+
+Yani `--eval-interval-secs 300 --min-breaches 2 --eval-window 3` şu anlama gelir: "Her beş dakikada bir değerlendir ve son üç değerlendirmeden ikisinin ihlal edildiğinde tetikle".
 
 ## İyi uyarı tasarımı
 
 - Koşulu ve etkilenen iş akışını adlandırın.
-- Ortamı açıkça belirleyin.
-- Tek bir zararsız olaya tepki vermekten kaçınacak şekilde bir zaman penceresi ve eşik belirleyin.
-- Yanıt verenleri oturumlara yönlendiren bir bağlantı veya sorgu ekleyin.
+- Ortamın kapsamını açıkça belirtin.
+- Tek bir zararsız olayına tepki vermekten kaçınacak bir pencere ve eşik ayarlayın.
+- Yanıt verenileri oturumlara yönlendirecek bir bağlantı veya sorgu ekleyin.
 - Kuralı etkinleştirmeden önce bir sahip atayın.
+- Aynı semptom için başka bir kural eklemeden önce `fp alerts show <name>` bölümünde açık sorun sayısını kontrol edin. Pano kartı bu satırı yalnızca sayı sıfır olmadığında yazdırır.
 
 <Tip>
-  Bir denetim bulgusu çözdükten sonra, aynı hatanın politikanın kapsamı dışında yeniden meydana gelebileceği zaman bir uyarı ekleyin.
+  Bir denetim bulgusu çözdükten sonra, aynı başarısızlık politikanın kapsamı dışında yeniden oluşabiliyorsa bir uyarı ekleyin.
 </Tip>
+
+<Card title="Bir uyarının açtığı sorunlar üzerinde çalışın" icon="clipboard-check" href="/tr/audits/findings-and-issues">
+  Onaylayın, atayın, yorum yapın, abone olun ve çözün — tetiklenen her uyarının iniş yaptığı iş akışı.
+</Card>

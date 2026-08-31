@@ -6,6 +6,8 @@ icon: "layout-dashboard"
 
 Dashboards combinam consultas salvas em uma visão operacional. Construa um em torno de uma decisão que você espera que alguém tome — não em torno de todas as métricas disponíveis.
 
+Dashboards são um recurso Cloud. O dashboard local em `localhost:8020` cobre atividade de políticas, projetos, sessões e resultados de auditoria, mas não possui consultas salvas nem tiles — portanto, uma máquina que não se conectou não tem nada para construir aqui. Consulte [Dashboard local](/pt-br/reference/local-dashboard).
+
 ## Criar um dashboard
 
 <Tabs>
@@ -13,18 +15,38 @@ Dashboards combinam consultas salvas em uma visão operacional. Construa um em t
     1. Acesse **Analyze → Queries**, crie ou abra uma consulta salva e valide seu resultado.
     2. Selecione **add to dashboard**, depois escolha um dashboard existente ou crie um em **Analyze → Dashboards**.
     3. Abra o dashboard, entre no modo de edição, organize os tiles e salve o layout.
-    4. Retorne à consulta quando precisar alterar os dados ou filtros por trás de um tile.
+    4. Volte à consulta quando precisar alterar os dados ou filtros por trás de um tile.
 
-    ![Um dashboard composto de consultas salvas para volume de eventos, erros, latência e uso de tokens do modelo.](/images/dashboard/dashboard-fleet.png)
+    ![Um dashboard composto por consultas salvas para volume de eventos, erros, latência e uso de tokens do modelo.](/images/dashboard/dashboard-fleet.png)
   </Tab>
   <Tab title="CLI">
-    O CRUD de dashboards não está disponível na CLI Cloud atual. Use a CLI para criar e verificar a consulta salva, depois adicione-a a um dashboard na interface.
+    O CRUD de dashboards não é exposto pela CLI Cloud atual. Use a CLI para escrever e verificar a consulta salva, depois adicione-a a um dashboard na interface.
 
     ```bash
     fp query schema
-    fp query create "production error rate" --sql "SELECT ..."
-    fp query run <query-id>
+    fp query run --sql "select count(*) from analytics.events"
+    fp query create "event volume" --sql "select count(*) from analytics.events"
+    fp query run "event volume"
     ```
+
+    Execute o SQL com `--sql` primeiro: ele é executado no mesmo pool de análise somente leitura sem salvar nada, então você encontra um nome de coluna incorreto antes que um tile o faça. `--sql @file.sql` lê a instrução de um arquivo. `fp query schema` lista as tabelas consultáveis e suas colunas; passe o nome de uma tabela para restringir a ela.
+
+    Consultas salvas são endereçadas por **nome**, não por id — `fp query run "event volume"` — porque `fp query list` oculta o id bruto a menos que você passe `--show-id`. Um id no formato UUID também é aceito.
+
+    Para um tile com parâmetros, vincule cada `$1..$N` posicional com `--arg`, que é repetível e vincula em ordem: `fp query run <name> --arg checkout-agent`.
+
+    `--limit` e `--all` ajustam apenas o limite de prévia da tabela; `--json` sempre retorna todas as linhas, como `{columns: [{name, type}], rows: [[...]], truncated, elapsed_ms}`.
+
+    | Subcomando | Permissão |
+    | --- | --- |
+    | `query list`, `query show`, `query schema` | `queries:read` |
+    | `query create`, `query update` | `queries:write` |
+    | `query run` | `queries:run` |
+    | `query delete` | `queries:delete` |
+
+    Todo subcomando que recebe um **nome** de consulta o resolve listando primeiro as consultas da organização, então `query create`, `query update`, `query delete` e `query run <name>` precisam de `queries:read` além da permissão acima. Apenas `fp query run --sql` e `fp query schema` não precisam.
+
+    Nenhum comando de `fp query` é bloqueado no modo de chave de API, então as consultas de um dashboard podem ser criadas e verificadas a partir de CI.
   </Tab>
 </Tabs>
 
@@ -32,12 +54,20 @@ Grupos de dashboard úteis incluem:
 
 - **Modelos:** volume, latência, uso de tokens, taxa de erros e pontuações de avaliação.
 - **Avaliações:** taxa de sucesso e tendências de pontuação por agente ou ambiente.
-- **Ferramentas:** volume de chamadas, taxa de falha, duração e chamadas repetidas.
+- **Ferramentas:** volume de chamadas, taxa de falhas, duração e chamadas repetidas.
 - **Hooks e políticas:** decisões, negações e taxa de correspondência de políticas.
 - **Métricas de fluxo de trabalho personalizadas:** resultados dos seus próprios campos de eventos e SQL.
 
-Comece com uma consulta salva, valide seu resultado e depois adicione-a como um tile. Mantenha os filtros de produção e desenvolvimento explícitos para que o tráfego de testes não oculte uma regressão.
+Comece com uma consulta salva, valide seu resultado e depois adicione-a como um tile. Mantenha os filtros de produção e desenvolvimento explícitos para que o tráfego de teste não oculte uma regressão.
+
+<Warning>
+  Um tile de hook que conta linhas reporta o denominador incorreto. Na verbosidade padrão de hook, cada deny e instruct é emitido como um par `hook_triggered` / `hook_completed`, assim como cada allow em modo de observação; allows simples são agregados por sessão, evento, ferramenta e atribuição de política por minuto em um único `hook_completed` carregando `failproofai_allow_count`. Some esse campo em vez de contar linhas, ou uma frota que avaliou dezenas de milhares de chamadas parecerá ter avaliado apenas algumas centenas. Consulte [Decisões de política](/pt-br/sessions/policy-decisions) e [Hooks](/pt-br/sessions/hooks).
+</Warning>
 
 <Tip>
-  Dê a cada dashboard um responsável e uma pergunta de referência, como "A confiabilidade do checkout-agent está pior do que na semana passada?"
+  Atribua a cada dashboard um responsável e uma pergunta de resposta, como "A confiabilidade do checkout-agent piorou em relação à semana passada?"
 </Tip>
+
+<Card title="Queries" icon="database" href="/pt-br/sessions/queries">
+  Escreva, salve e compartilhe o SQL que cada tile de um dashboard lê.
+</Card>

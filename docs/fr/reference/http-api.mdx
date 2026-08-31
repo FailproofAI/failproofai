@@ -1,74 +1,124 @@
 ---
-title: "API HTTP"
-description: "Authentifiez-vous à l'API publique Failproof AI Cloud `/v1` et utilisez la référence des endpoints générée."
+title: "HTTP API"
+description: "Authentifiez-vous à l'API publique Failproof AI Cloud `/v1` et utilisez la référence des points de terminaison générés."
 icon: "braces"
 ---
 
-L'API publique est exposée sous `/v1` sur l'origine de votre tableau de bord Failproof AI.
+L'API publique est exposée sous `/v1` sur l'origine de votre tableau de bord Failproof AI. Sur Failproof AI Cloud, cette origine est `https://app.befailproof.ai`, donc le chemin de base est `https://app.befailproof.ai/v1`. Sur un déploiement auto-hébergé, il s'agit de votre propre hôte de tableau de bord suivi de `/v1` ; transmettez cet hôte à `fp` avec `--base-url <url>` ou `FP_DASHBOARD_URL`.
 
 ## Créer une clé et effectuer une requête
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Ouvrez **Administration → Clés**, sélectionnez **Créer une clé** et choisissez le profil de permissions le plus restrictif couvrant l'intégration.
-    2. Ajoutez des autorisations individuelles uniquement si nécessaire, créez la clé et copiez son secret à usage unique.
-    3. Effectuez une requête de test vers `/v1/sessions` et confirmez que la clé reste active sur la page Clés.
-    4. Faites pivoter ou désactivez la clé depuis son menu d'actions en cas de changement de propriétaire de l'intégration.
+    1. Ouvrez **Administration → Clés**, sélectionnez **nouvelle clé** et choisissez le profil de permissions le plus restreint qui couvre l'intégration.
+    2. Ajoutez des droits individuels uniquement si nécessaire, créez la clé et copiez son secret à usage unique.
+    3. Effectuez une requête de test vers `/v1/sessions` et confirmez que la clé reste active dans la page Clés.
+    4. Faites pivoter ou désactivez la clé depuis son menu d'actions lorsque l'intégration change de propriétaire.
 
-    ![Le panneau de création de clé API avec les profils de permissions et les autorisations individuelles.](/images/dashboard/key-create.png)
+    ![Le panneau de création de clé API avec les profils de permissions et les droits individuels.](/images/dashboard/key-create.png)
 
-    Le panneau de création est illustré ci-dessus. Le secret à usage unique n'apparaît qu'après avoir sélectionné **créer** ; copiez-le avant de fermer cette confirmation.
+    Le panneau de création est affiché ci-dessus. Le secret à usage unique n'apparaît qu'après la création de la clé ; copiez-le avant de fermer cette confirmation.
   </Tab>
   <Tab title="CLI">
-    Créez une clé de lecture et utilisez-la directement avec `fp` ou `curl` :
+    Créez une clé de lecture et utilisez-la directement avec `fp` ou `curl`. `fp` lit la clé depuis `--api-key` ou depuis `FP_API_KEY` :
 
     ```bash
     fp keys create reliability-reader \
       --permission-set read-only
 
-    fp --api-key <key> sessions --since 24h
-    ```
-
-    ```bash
-    curl "https://app.befailproof.ai/v1/sessions?limit=20" \
-      -H "Authorization: Bearer $FAILPROOFAI_KEY"
-    ```
-  </Tab>
-</Tabs>
-
-Les clés sont limitées à une organisation et à un profil de permissions. Une requête sans la permission requise par l'endpoint retourne `403` et identifie la permission manquante.
-
-## Sélection de l'organisation
-
-Une clé d'organisation agit automatiquement sur son organisation. Une clé à portée d'instance peut sélectionner une organisation par requête :
-
-<Tabs>
-  <Tab title="Tableau de bord">
-    Utilisez le sélecteur d'organisation dans l'en-tête du tableau de bord avant d'ouvrir **Administration → Clés**. Les clés créées à cet endroit appartiennent à l'organisation sélectionnée. Confirmez le slug de l'organisation dans l'URL et les détails de la clé avant de copier l'identifiant dans vos automatisations.
-
-  </Tab>
-  <Tab title="CLI">
-    Utilisez `--org` avant la commande, ou envoyez l'en-tête d'organisation pour une clé API à portée d'instance.
-
-    ```bash
-    fp orgs list
+    export FP_API_KEY="<one-time-secret>"
     fp --org reliability-team sessions --since 24h
     ```
 
     ```bash
-    curl "https://app.befailproof.ai/v1/usage" \
-      -H "Authorization: Bearer $FAILPROOFAI_KEY" \
+    curl "https://app.befailproof.ai/v1/sessions?limit=20" \
+      -H "Authorization: Bearer $FP_API_KEY" \
       -H "X-AgentEye-Org: reliability-team"
     ```
   </Tab>
 </Tabs>
 
-Consultez les pages d'endpoints générées dans cette section pour les chemins actuels, les paramètres, les exigences de permission et les codes de statut. La spécification est générée à partir des annotations des routes serveur et vérifiée par rapport au routeur `/v1`.
+Les clés sont limitées à une organisation et à une liste plate de permissions. Un profil de permissions ne fait qu'initialiser cette liste à la création — la clé stocke les droits développés, donc modifier le profil par la suite ne modifie pas la clé. Une requête sans la permission requise par le point de terminaison renvoie `403` et identifie la permission manquante.
 
-La spécification actuelle offre une couverture complète des routes, méthodes, paramètres, permissions et codes de statut. Certains corps de réponse restent intentionnellement non typés car le serveur les construit encore sous forme de JSON dynamique. Inspectez une vraie réponse avant de générer un client fortement typé autour d'un endpoint sans schéma de réponse.
+## Sélection de l'organisation
 
-Utilisez `Content-Type: application/json` pour les écritures JSON. Traitez `401` comme une authentification absente ou invalide, `403` comme une identité valide sans la permission requise, `404` comme une ressource inexistante ou inaccessible à l'organisation, `409` comme un conflit d'état, et `422` comme un champ ou une valeur de permission invalide. Les réponses d'erreur incluent un message lisible par un humain ; les échecs de permission mentionnent également l'autorisation requise.
+Une clé d'organisation agit automatiquement sur son organisation. Une clé à portée d'instance sélectionne une organisation par requête, et un locataire disposant de plus d'une organisation doit toujours en nommer une en mode clé — `fp` n'envoie jamais d'organisation sauvegardée lorsqu'il s'authentifie avec une clé.
+
+| Appelant | Comment nommer l'organisation |
+| --- | --- |
+| `fp`, par invocation | `--org <slug>`, avant la sous-commande |
+| `fp`, depuis l'environnement | `FP_ORG` |
+| HTTP brut | l'en-tête de requête `X-AgentEye-Org: <slug>` |
+
+`X-AgentEye-Org` conserve son orthographe d'origine dans les échanges réseau. C'est l'en-tête que le tableau de bord lit pour résoudre l'organisation active ; le renommer dans un client invalide la requête.
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    Utilisez le sélecteur d'organisation dans l'en-tête du tableau de bord avant d'ouvrir **Administration → Clés**. Les clés créées là appartiennent à l'organisation sélectionnée. Vérifiez le slug de l'organisation dans l'URL et les détails de la clé avant de copier le justificatif d'identité dans une automatisation.
+
+  </Tab>
+  <Tab title="CLI">
+    Utilisez `--org` avant la commande, ou envoyez l'en-tête d'organisation pour une clé API à portée d'instance. `fp orgs list` ne découvre pas le slug pour vous ici — il refuse en mode clé ; lisez plutôt le slug depuis le sélecteur d'organisation du tableau de bord.
+
+    ```bash
+    fp --org reliability-team sessions --since 24h
+    ```
+
+    ```bash
+    curl "https://app.befailproof.ai/v1/usage" \
+      -H "Authorization: Bearer $FP_API_KEY" \
+      -H "X-AgentEye-Org: reliability-team"
+    ```
+  </Tab>
+</Tabs>
+
+## Pagination
+
+Les points de terminaison de liste utilisent une pagination par jeu de clés, et le même contrat s'applique que vous les appeliez via `fp` ou via `curl`.
+
+| Élément | Signification |
+| --- | --- |
+| Paramètre de requête `limit` | Lignes demandées dans cet appel. `fp` limite une seule requête à 200 lignes sur chaque point de terminaison. Une requête brute est bornée par le plafond propre au point de terminaison côté serveur. |
+| Paramètre de requête `cursor` | Un jeton opaque qui reprend le flux après une page précédente. |
+| Champ de réponse `next_cursor` | Le jeton pour la page suivante. `null` signifie que le flux est épuisé. |
+
+Ces plafonds varient selon les points de terminaison, et chaque page de point de terminaison indique sa propre valeur par défaut et son plafond :
+
+| Point de terminaison | Par défaut | Plafond |
+| --- | --- | --- |
+| `/events`, `/events/summary` | 50 | 1000 |
+| `/issues`, `/alerts/{id}/issues` | 200 | 1000 |
+| `/evaluation-jobs` | 100 | 500 |
+| `/audits/findings` | 100 | 500 |
+| `/sessions`, `/evaluations` | 50 | 200 |
+| `/audits/{id}/runs` | 50 | 200 |
+
+Lisez un flux complet en réémettant la même requête avec `cursor` défini sur le `next_cursor` de la réponse précédente, jusqu'à ce que `next_cursor` retourne `null`. Les indicateurs `fp` équivalents — `--all`, `--cursor` et `--page-size` — sont documentés dans la [référence Cloud CLI](/fr/reference/cloud-cli).
+
+## Référence des points de terminaison et gestion des erreurs
+
+Utilisez les pages de points de terminaison générées dans cette section pour les chemins actuels, les paramètres, les exigences de permission et les codes de statut. La spécification est générée à partir des annotations de routes du serveur et vérifiée par rapport au routeur `/v1`.
+
+La spécification actuelle couvre intégralement les routes, méthodes, paramètres, permissions et codes de statut. Les corps de requêtes sont typés ; les corps de réponses ne le sont pas — la spécification ne contient aucun schéma de réponse aujourd'hui, car le serveur les construit encore sous forme de JSON dynamique. Inspectez une vraie réponse avant de générer un client fortement typé.
+
+Utilisez `Content-Type: application/json` pour les écritures JSON. Traitez `401` comme une authentification manquante ou invalide, `403` comme une identité valide sans la permission requise, `404` comme une ressource manquante ou inaccessible pour l'organisation, `409` comme un conflit d'état, `400` comme un paramètre rejeté — une valeur de filtre inconnue, un paramètre de requête mal formé, une instruction qui ne s'exécuterait pas — et `422` comme un champ ou une valeur de permission invalide dans un corps de requête. Les réponses d'erreur incluent un message lisible par l'humain ; les échecs de permission mentionnent également le droit requis.
+
+## Surfaces que `/v1` ne prend pas en charge
+
+Les politiques gérées par le Cloud, la flotte et le flux de décisions des protections sont des surfaces opérateur — tant en lecture qu'en écriture. Elles sont réservées à la racine sur le serveur et délibérément absentes de `/v1`, qui est exposé sur Internet. Publier une version de politique ou la déployer sur une machine, par exemple, n'est pas quelque chose qu'une clé API peut faire, et la lecture de ce que la flotte a décidé relève de la même surface.
+
+Une clé API reçoit donc un refus par conception sur ces routes, et `fp` refuse avant même d'ouvrir une connexion plutôt que de laisser la requête renvoyer une 404 sans explication :
+
+| Commande | Comportement avec une clé API |
+| --- | --- |
+| `fp policies` | Refuse avec sortie `2` et indique que les politiques gérées par le Cloud sont une surface opérateur |
+| `fp fleet` | Refuse avec sortie `2` et indique que la flotte est une surface opérateur |
+| `fp guardrails` | Refuse avec sortie `2` et indique que le flux de protections est une surface opérateur |
+| `fp agent` | Refuse avec sortie `2` ; l'assistant est implémenté par le tableau de bord, pas par l'API |
+| `fp orgs` | Refuse avec sortie `2` ; l'appartenance à une organisation relève d'un utilisateur connecté, et une clé agit déjà pour une organisation |
+
+Exécutez ces commandes sous une session utilisateur connectée (`fp login`) à la place, ou utilisez le tableau de bord. Les familles de lecture et d'administration — sessions, événements, évaluations, audits, problèmes, alertes, clés, profils de permissions, utilisateurs, paramètres, requêtes et utilisation — possèdent chacune une route `/v1` et fonctionnent avec une clé. La seule exception est `fp keys update` : il nécessite `keys:update`, une permission qu'aucune clé API ne peut détenir, donc une clé peut créer et désactiver des clés mais jamais modifier les permissions de l'une d'elles. `fp login` et `fp logout` refusent également en mode clé, pour une raison différente : une clé est déjà le justificatif d'identité, et elle n'est jamais sauvegardée sur le disque.
 
 <Warning>
-  Le déploiement de l'application des politiques est intentionnellement géré en dehors de la surface publique ordinaire `/v1`. Utilisez le workflow de déploiement Cloud supporté.
+  Le déploiement de l'application des politiques est intentionnellement géré en dehors de la surface publique ordinaire `/v1`. Utilisez le workflow de déploiement Cloud pris en charge décrit dans [Déployer des politiques](/fr/policies/deploy).
 </Warning>

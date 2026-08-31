@@ -1,30 +1,64 @@
 ---
-title: "Esegui il tuo primo controllo di guasti"
-description: "Crea un audit dalla dashboard Cloud o tramite il CLI fp e rivedi i suoi primi risultati."
+title: "Esegui il tuo primo controllo di errori"
+description: "Scansiona la cronologia dell'agente di questa macchina con failproofai audit, oppure crea un controllo ricorrente sulle sessioni archiviate in Failproof AI Cloud."
 icon: "scan-search"
 ---
 
-Un audit trasforma un insieme di sessioni in risultati di guasto classificati e supportati da prove. Inizia con una singola domanda di guasto specifica.
+Un audit trasforma un set di sessioni in risultati di errori classificati e supportati da prove. Inizia con una sola domanda di errore specifica.
+
+Ci sono due audit. Leggono dati diversi e rispondono a strumenti diversi:
+
+| Audit | Legge | Richiede un account | I risultati appaiono in |
+| --- | --- | --- | --- |
+| Locale — `failproofai audit` | La cronologia dell'agente già presente su questa macchina | No | `http://localhost:8020/audit` |
+| Cloud — **Analyze → Audits**, oppure la CLI `fp` | Le sessioni archiviate in Failproof AI Cloud | Sì | Il dashboard di Cloud |
+
+Esegui prima quello locale. Non ha bisogno di nient'altro che la CLI. I risultati rimangono locali, mentre la telemetria anonima della CLI viene inviata per impostazione predefinita a meno che non imposti `FAILPROOFAI_TELEMETRY_DISABLED=1`.
 
 <Tabs>
-  <Tab title="Dashboard">
+  <Tab title="Locale">
+    ```bash
+    failproofai audit
+    ```
+
+    Scansiona ogni cronologia di agente supportata trovata su questa macchina, riproduce l'attività dello strumento attraverso il catalogo di policy integrato, quindi apre **http://localhost:8020/audit**. Mantieni il processo in esecuzione mentre leggi i risultati; premi <kbd>Ctrl</kbd>+<kbd>C</kbd> quando hai finito.
+
+    L'analisi e i risultati rimangono su questa macchina. La telemetria anonima della CLI viene inviata per impostazione predefinita a meno che non sia disabilitata. Dopo aver acconsentito alla programmazione, ogni scansione invia anche i metadati della macchina e può inviare un digest limitato dei risultati.
+
+    | Flag | Cosa fa |
+    | --- | --- |
+    | `--schedule [days]` | Scansiona con un timer e invia i risultati via email. Impostazione predefinita 7 giorni, intervallo 1–90. Effettua l'accesso la prima volta. |
+    | `--email <address>` | Con `--schedule`, fornisce l'indirizzo del report invece di chiedere. |
+    | `--no-schedule` | Ferma il timer. Ti lascia collegato. |
+    | `--status` | Se la programmazione è attiva, dove vanno i report, lo stato del daemon e quando è prevista la prossima scansione. |
+
+    ```bash
+    failproofai audit --schedule 7 --email reliability@example.com
+    failproofai audit --status
+    ```
+
+    Vedi [Audit della cronologia dell'agente locale](/it/audits/local-audit) per sapere quali cronologie legge ogni adapter e come viene eseguita la scansione programmata.
+  </Tab>
+  <Tab title="Dashboard di Cloud">
     <Steps>
       <Step title="Apri Audits">
-        Nella barra laterale Cloud, vai a **Analyze → Audits**. Seleziona **new audit**.
+        Nella barra laterale di Cloud, vai a **Analyze → Audits**. Seleziona **new audit**.
       </Step>
       <Step title="Configura l'audit">
-        Inserisci un nome e un obiettivo di guasto diretto, ad esempio "trova le sessioni di produzione che ritentano la stessa chiamata di pagamento non riuscita senza cambiare l'input o escalare". Seleziona l'agente, l'ambiente, la finestra temporale e la pianificazione. Aggiungi una breve descrizione e URL di riferimento quando l'auditor ha bisogno delle tue regole di workflow.
+        Inserisci un nome e un obiettivo di errore diretto, ad esempio «trova le sessioni di produzione che riprovano la stessa chiamata di pagamento non riuscita senza modificare l'input o escalare». Seleziona l'agente, l'ambiente, la finestra temporale e la pianificazione. Aggiungi un breve briefing e URL di riferimento quando l'auditor ha bisogno delle regole del tuo flusso di lavoro.
       </Step>
       <Step title="Crea e attendi l'esecuzione">
-        Seleziona **create audit**. La prima esecuzione viene messa in coda immediatamente. Apri la scheda dell'audit per vederla passare dallo stato in coda a in esecuzione a completato.
+        Seleziona **create audit**. La prima esecuzione viene messa in coda immediatamente. Apri la scheda dell'audit per vederla passare da in coda a in esecuzione a completato.
       </Step>
     </Steps>
 
-    Dopo il completamento dell'esecuzione, apri un risultato e rivedi le sue prove di sessione. Puoi quindi riconoscerlo, assegnarlo, ignorarlo, silenziarlo o risolverlo.
+    Dopo il completamento dell'esecuzione, apri un risultato e rivedi le prove della sua sessione. Puoi quindi riconoscerlo, assegnarlo, eliminarlo, silenziarlo o risolverlo.
 
-    ![Un risultato di audit completato che mostra la descrizione del guasto, l'azione consigliata, le prove di supporto e le sessioni interessate.](/images/dashboard/audit-finding.png)
+    ![Un risultato dell'audit completato che mostra la descrizione dell'errore, l'azione consigliata, le prove di supporto e le sessioni interessate.](/images/dashboard/audit-finding.png)
   </Tab>
-  <Tab title="CLI">
+  <Tab title="CLI di Cloud">
+    `fp` è la CLI di Failproof AI Cloud. Legge ciò che Cloud ha archiviato; è un programma diverso da `failproofai`, che applica le regole su questa macchina.
+
     ```bash
     fp audits create payment-retry-failures \
       --description "Find production sessions that retry a failed payment call without changing input or escalating" \
@@ -45,8 +79,8 @@ Un audit trasforma un insieme di sessioni in risultati di guasto classificati e 
     fp audits run payment-retry-failures
     ```
 
-    Usa `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>`, o `fp audits reopen <finding-id>` per far avanzare un risultato attraverso il triage.
+    Usa `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>`, o `fp audits reopen <finding-id>` per gestire un risultato nella triage.
   </Tab>
 </Tabs>
 
-Successivamente, [previeni il tuo primo guasto con una policy](/it/start/first-policy) per un'azione confermata e ripetibile.
+Successivamente, [previeni il tuo primo errore con una policy](/it/start/first-policy) per un'azione confermata e ripetibile.

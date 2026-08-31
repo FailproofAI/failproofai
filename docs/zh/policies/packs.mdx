@@ -1,110 +1,62 @@
 ---
 title: "策略包"
-description: "安装以 GitHub 发布版本形式发布的策略集，并管理其执行内容。"
+description: "检查并安装通过 GitHub 发布的版本化策略集。"
 icon: "package"
 ---
 
-策略包是以 GitHub 发布版本形式发布的一组策略。一条命令即可完成安装，运行前会验证发布版本自带的校验和，同时记录摘要，确保策略包在安装后不会在你的机器上被篡改。
-
-## 安装 Failproof AI 策略
+策略包是以公开 GitHub Release 形式发布的版本化策略集合。该软件包本身不附带任何策略包；你可以像安装其他包一样安装我们的策略包：
 
 ```bash
-failproofai pack add core
+failproofai policies show FailproofAI/policies
+failproofai policies add FailproofAI/policies
 ```
 
-该命令从 npm 包内置的副本安装我们发布的策略集——无需网络连接，也不会因代理服务器而失败。你也可以只安装其中的一部分：
+`show` 命令会读取清单文件，但不会执行包中的代码。
+
+## 选择要安装的内容
 
 ```bash
-failproofai pack add core --policy block-rm-rf         # 单个策略，或以逗号分隔的多个策略
-failproofai pack add core --category dangerous-commands # 某个完整分类
-failproofai pack add core --all                         # 包含所有内容
+failproofai policies add owner/repo --policy block-refunds
+failproofai policies add owner/repo --category billing,git
+failproofai policies add owner/repo --all
 ```
 
-`failproofai pack list` 会列出该策略包提供的所有分类。
+若未指定选项，将使用发布者的默认配置。重新添加较新版本时，会保留你当前的选择。
 
-## 在安装前查看策略包内容
+包含斜杠的内容视为包来源，不含斜杠的内容视为策略名称。
 
-```bash
-failproofai pack list acme/support-agent
-```
-
-该命令会按分类列出策略包中的所有策略，标注哪些是作者默认启用的，哪些是可选启用的。它**只读取清单文件**——入口构件既不会被下载，也不会被导入，因此查看陌生人的策略包不会执行任何陌生代码。清单文件仍会与发布版本自带的 `SHA256SUMS` 进行校验，确保你所看到的内容与实际安装内容完全一致。
-
-不带参数运行 `failproofai pack list` 会列出当前已安装的所有策略包。
-
-## 安装他人发布的策略包
-
-```bash
-failproofai pack add acme/support-agent
-```
-
-以下格式均可使用——直接粘贴你手头有的即可：
+## 锁定版本
 
 | 来源 | 结果 |
 | --- | --- |
-| `acme/support-agent` | 最新发布版本，**固定**到其解析到的确切标签 |
-| `acme/support-agent@v2.1.0` | 指定发布版本 |
-| `github:acme/support-agent@v2.1.0` | 同上，明确指定来源 |
-| `https://github.com/acme/support-agent/releases/tag/v2.1.0` | 同上，从浏览器复制的链接 |
+| `owner/repo` | 最新 Release，解析后锁定 |
+| `owner/repo@a1b2c3d4e5f6` | 基于精确 commit 的 Release |
+| `owner/repo@v2.1.0` | 精确命名的 Release |
+| GitHub Release URL | 该 URL 对应的 Release |
 
-不指定标签时，会安装最新发布版本**并固定到该版本**，同时告知你所选定的标签。记录的内容始终精确指向某一个发布版本，因此重新安装不会产生版本漂移。
+策略包通常使用构建时的 12 位 commit SHA 标识。使用 `failproofai policies show owner/repo --releases` 可查看 Release 顺序。
 
-## 只安装策略包的部分内容
-
-默认情况下，你只会获得策略包**自身的**默认配置——即作者标记为可无人值守启用的策略——而非全部内容。
+## 管理已安装的包
 
 ```bash
-failproofai pack add acme/support-agent --category billing,git
-failproofai pack add acme/support-agent --policy block-refunds
-failproofai pack add acme/support-agent --all
+failproofai policies
+failproofai policies remove block-refunds
+failproofai policies add block-refunds
+failproofai policies remove owner/repo
 ```
 
-`--category` 与 `--policy` 取并集（`--only` 是 `--policy` 的同义选项）。以更新版本重新添加时，会保留你之前的选择，而不会重新启用其余策略。
+若两个已安装的策略包包含同名策略，CLI 将拒绝使用该模糊的裸名称。请通过指定包名来选择策略，或卸载其中一个包。
 
-## 管理已启用的策略
+## 安全性与可用性
 
-```bash
-failproofai policies                    # 以统一列表显示所有来源，包含策略包
-failproofai pack list                   # 仅显示策略包，按分类分组
-failproofai policies --uninstall block-refunds        # 关闭某个策略包中的策略
-failproofai policies --install block-refunds          # 重新开启
-failproofai pack remove acme/support-agent
-```
+每个 Release 包含清单文件、打包后的策略代码以及校验和。Failproof AI 在加载前会验证记录的摘要。校验和证明字节内容与 Release 一致，但不证明发布者身份。
 
-裸名称指代同名的**内置策略**（如果存在）。需要时可通过以下方式明确指定策略包中的策略：
-
-```bash
-failproofai policies --uninstall acme/support-agent:block-refunds
-```
-
-<Note>
-如果策略包中某个策略的名称与某个**已启用的内置策略**相同，则内置策略会运行，策略包中的副本会被跳过——否则同一检查会被执行两次。若要使用策略包中的版本，请先关闭对应的内置策略。
-</Note>
-
-## Failproof AI 策略的来源
-
-`core` 读取 npm 包中内置的副本。同一组策略也以 GitHub 发布版本的形式发布，如需安装特定版本可使用以下方式：
-
-```bash
-failproofai pack add core                    # 来自当前包，无需网络
-failproofai pack add FailproofAI/policies    # 同一组策略，来自 GitHub 发布版本
-```
-
-## 完整性验证的保障范围
-
-`SHA256SUMS` 与构件在同一个发布版本中发布，因此它**不是**签名，无法证明发布者身份。它所能证明的是：这些字节与该发布版本所发布的内容完全一致——由于摘要在添加策略包时记录，并在每次导入前重新验证，策略包在安装后无法在你的机器上被悄然篡改。若某个仓库重新打标签或替换了发布资产，该策略包将无法加载，而不是静默地运行其他内容。
-
-安装时，策略包还会被**导入一次**，并与其自身的清单进行核对。若构件无法解析，或注册的内容与声明不符，则在激活任何内容之前就会拒绝该策略包——而不是安装成功后在下一次工具调用时才报错。
-
-## 策略包无法加载时的行为
-
-若本机被要求执行某个策略包但该包无法运行，**拒绝**该缺失策略所涵盖的事件，而不是静默放行。详见[故障行为](/zh/policies/failure-behavior)。`failproofai pack list` 会标注处于该状态的策略包并以非零状态码退出。
-
-## 离线使用与镜像
+若已选中的策略包无法加载，则对其声明的事件采取关闭失败策略。详见[策略失败行为](/zh/policies/failure-behavior)。
 
 | 变量 | 作用 |
 | --- | --- |
-| `FAILPROOFAI_NO_DOWNLOAD=1` | 拒绝任何网络请求；已安装的策略包继续正常执行 |
-| `FAILPROOFAI_PACK_BASE_URL` | 将策略包拉取请求重定向到镜像，而非 `github.com` |
+| `FAILPROOFAI_NO_DOWNLOAD=1` | 拒绝新的下载；已安装的包继续运行 |
+| `FAILPROOFAI_PACK_BASE_URL` | 使用镜像源 |
+| `FAILPROOFAI_PACK_DIR` | 更改包存储目录 |
 
-如需发布自己的策略包，请参阅[发布策略包](/zh/policies/publish-a-pack)。
+在 [Policy Hub](https://befailproof.ai/policy-hub/) 中浏览策略包，或[发布你自己的策略包](/zh/policies/publish-a-pack)。

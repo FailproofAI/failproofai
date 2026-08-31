@@ -1,56 +1,64 @@
 ---
 title: "审计"
-description: "对指定会话群体进行审查，发现仅凭 trace 无法揭示的故障。"
+description: "在 Agent 运行记录中搜索重复失败、风险行为和无效操作。"
 icon: "scan-search"
 ---
 
-审计会在选定的会话集合中搜索指定的故障目标，综合 trace 证据、评估结果、策略命中记录和参考上下文，生成可付诸行动的调查结论。
+审计会针对某个目标审查多次 Agent 运行，并返回有据可查的发现结果。
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Find agent failures automatically with Failproof AI audits" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="使用 Failproof AI 审计自动发现 Agent 故障" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-了解审计如何从定时运行推进到有证据支撑的可修复故障。
+## 本地审计与云端审计
 
-## 打开审计
+| | 本地审计 | 云端审计 |
+| --- | --- | --- |
+| 命令 | `failproofai audit` | `fp audits` |
+| 读取范围 | 本机上的 Agent 历史记录 | 云端组织中的会话 |
+| 输出结果 | 本地结果，访问地址为 `localhost:8020/audit` | 共享的发现、问题和告警 |
+| 所需条件 | 无需账号 | 需要云端连接和 API 密钥 |
 
-<Tabs>
-  <Tab title="控制台">
-    前往 **Analyze → Audits**。页面展示定时状态、未解决的调查结论、上次运行时间、下次运行时间、执行频率，以及审计是否包含简介或参考页面。选择某张卡片可查看设置和运行历史；选择 **new audit** 可新建审计。
+如需快速审查单台机器，使用本地审计即可。如果团队需要跨 Agent 和多台机器进行定期审计，则使用云端审计。
 
-    ![审计页面，展示周期性审计及其计划、灵敏度和运行状态。](/images/dashboard/audits.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp audits list
-    fp audits list --enabled-only --show-id
-    fp audits show <audit-name>
-    fp audits findings --status open --limit 20
-    ```
-  </Tab>
-</Tabs>
+## 审计可以回答的问题
 
-当你需要回答群体层面的问题时，可使用审计，例如：
+- Agent 在哪些地方停止运行而未进行上报？
+- 哪些工具失败导致了低效的重试？
+- Agent 是否访问了预定工作流程之外的数据？
+- 模型、提示词或工具更新后发生了哪些变化？
 
-- Agent 在哪些环节放弃任务却未进行上报？
-- 哪些工具故障导致了无效的重试？
-- Agent 是否访问了预期工作流之外的数据？
-- 模型、提示词或工具发布后发生了哪些变化？
+## 查看云端审计
 
-## 审计响应流程
+进入 **分析 → 审计**，或使用以下命令：
 
-```text
-Session → Audit → Finding → Issue → Policy
-                         ↘ Alert for recurrence
+```bash
+fp audits list
+fp audits show <audit-name>
+fp audits findings --status open --limit 20
 ```
 
-调查结论应明确指出故障模式并指向相关证据。Issue 负责跟踪修复工作。Policy 用于阻止已知的问题行为模式；当无法预防或需要持续监控时，则通过 Alert 检测问题是否复发。
+审计命令使用审计名称或完整 ID。发现结果通过其自身 ID 引用。
 
-<Columns cols={2}>
-  <Card title="配置审计" icon="sliders-horizontal" href="/zh/audits/setup">
-    在首次运行前确定目标、会话范围和参考上下文。
+## 从发现到预防
+
+```text
+会话 → 审计 → 发现 → 问题 → 策略
+                   ↘ 告警
+```
+
+发现结果指向具体证据，问题负责跟踪响应措施。策略用于防止已知的操作模式再次发生；告警则用于监控是否复现。
+
+并非每条发现都需要转化为策略。`policy` 类发现描述的是可强制执行的规则；`failure` 或 `improvement` 类发现则可能需要对工作流程、提示词、模型或工具进行调整。
+
+<CardGroup cols={3}>
+  <Card title="审计本机" icon="laptop-minimal-check" href="/zh/audits/local-audit">
+    无需账号，直接扫描本地历史记录。
   </Card>
-  <Card title="添加 Agent 上下文" icon="bot" href="/zh/audits/agent-contracts">
-    声明每个 Agent 必须产出什么，以及绝对不能执行哪些操作。
+  <Card title="设置云端审计" icon="sliders-horizontal" href="/zh/audits/setup">
+    选择目标、会话和计划。
   </Card>
-</Columns>
+  <Card title="查看发现结果" icon="list-checks" href="/zh/audits/findings-and-issues">
+    对证据进行分类并指定响应措施。
+  </Card>
+</CardGroup>

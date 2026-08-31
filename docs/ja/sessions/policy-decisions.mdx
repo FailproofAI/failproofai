@@ -1,27 +1,62 @@
 ---
-title: "ポリシーの判定"
-description: "ポリシーが評価、ブロック、指示、または許可した内容を確認します。"
+title: "ポリシー決定"
+description: "評価、ガイド、ブロック、または観察されたポリシーを確認します。"
 icon: "shield-check"
 ---
 
-ポリシーの判定では、エンフォースメントが実行した内容を説明します。ロールアウトの検証、ブロック率の計測、保護されていないアクティビティの発見に活用してください。
+ポリシー決定は、エージェント実行中に Failproof AI が行った動作を示します。
 
 <Tabs>
   <Tab title="ダッシュボード">
-    1. **Observe → policy** に移動し、時間範囲とオプションで対象マシンを選択します。
-    2. 評価されたアクション、ブロック、ブロック率、Cloud の判定、保護されていないアクション、および一時停止中のアクティビティを確認します。
-    3. ポリシーマッピングテーブルをフィルタリングし、デプロイ済みの割り当てを確認します。
-    4. チャートのポイントを選択すると、判定とそのセッションが表示されます。
+    **Observe → policy** に移動して、決定内容、ブロック率、マシン、デプロイ済みの割り当てを確認します。
 
-    ![ポリシーページに判定の合計、マシンフィルター、時系列のエンフォースメントアクティビティ、およびポリシーマッピングテーブルが表示されている画面。](/images/dashboard/policy-observe.png)
+    ![決定の合計、マシンフィルター、経時的な適用アクティビティ、ポリシーマッピングテーブルを表示するポリシーページ。](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
     ```bash
-    fp events --event-type hook_completed --env production --since 24h
-    fp events --search "deny" --since 24h
+    fp guardrails summary --since 24h
+    fp guardrails timeline --since 24h
+    failproofai policies
     failproofai config --status
     ```
 
-    マシンのローカルエンフォースメント状態には `failproofai` を、Cloud イベントの調査には `fp` を使用してください。
+    `--since` には `1h`、`6h`、`24h`、または `7d` を指定します。特定のマシンに絞り込む場合は `--machine <id>` を追加します。
   </Tab>
 </Tabs>
+
+## オブザーブロールアウトの読み方
+
+オブザーブモードは実際のポリシーを実行し、`deny` または `instruct` の決定をすべて記録します。エージェントは引き続き処理を続行できます。
+
+```bash
+fp fleet deploy <machine> --add <policy>:observe
+fp guardrails summary --since 24h --machine <machine>
+fp fleet deploy <machine> --add <policy>:enforce
+```
+
+<Warning>
+  ポリシーに既存のデプロイがない場合、`--add <policy>` のみを指定すると即座に適用されます。シャドウロールアウトを行う場合は `:observe` を追加してください。
+</Warning>
+
+記録されるのは、allow 以外のオブザーブ決定のみです。タイムアウトは allow として記録されます。これは、enforceモードでも同様の動作になるためです。
+
+記録された deny は、ハーネスがそのアクションを停止したことを保証するものではありません。ツールコールの deny はサポートされている全 12 ハーネスで検証されていますが、その他のイベントは異なります。詳細は [適用機能](/ja/reference/harnesses#enforcement-capability) を参照してください。
+
+## 予期しない結果の調査
+
+| 表示内容 | 確認項目 |
+| --- | --- |
+| 決定が表示されない | `failproofai config --status` およびセッションが一時停止していないか |
+| ポリシー名のない多数の拒否 | [ポリシー失敗時の動作](/ja/policies/failure-behavior) |
+| 保護されたすべてのアクションが拒否される | `failproofaid` サービスが正常かどうか |
+| 無効化できない deny | `block-failproofai-commands` は常時有効 |
+| `--env production` のデータがない | 新しいマシンは環境 `local` を使用 |
+
+<CardGroup cols={2}>
+  <Card title="フリートデプロイメント" icon="server-cog" href="/ja/policies/fleet">
+    意図したポリシーと適用されたポリシーを比較します。
+  </Card>
+  <Card title="失敗時の動作" icon="triangle-alert" href="/ja/policies/failure-behavior">
+    フェイルクローズ決定について理解します。
+  </Card>
+</CardGroup>

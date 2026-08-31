@@ -1,40 +1,74 @@
 ---
 title: "प्रशासन"
-description: "एक्सेस, उपयोग, संगठन, और सुरक्षा को संचालित करें बिना उन्हें विश्वसनीयता वर्कफ़्लो में मिलाए।"
+description: "विश्वसनीयता वर्कफ़्लो में मिलाए बिना Cloud एक्सेस, सदस्यता, सेटिंग्स और खपत को संचालित करें।"
 icon: "settings-2"
 ---
 
-प्रशासन में एक टीम के पार Failproof AI को चलाने के लिए आवश्यक नियंत्रण शामिल हैं। अधिकांश पाठक Sessions, Audits, और Policies में रह सकते हैं; प्रशासक इस अनुभाग का उपयोग एक्सेस और ऑपरेटिंग सीमाओं को प्रबंधित करने के लिए करते हैं।
+प्रशासन Failproof AI का Cloud भाग है। संगठन, सदस्य, API कुंजियाँ, org सेटिंग्स, और मीटर की गई खपत को सभी को Cloud कनेक्शन की आवश्यकता है।
+
+<Note>
+  Failproof AI बिना किसी खाते के भी चलता है। एक स्थानीय मशीन नीति को लागू करती है, अपना सत्र इतिहास डिस्क पर रखती है, [स्थानीय डैशबोर्ड](/hi/reference/local-dashboard) को `localhost:8020` पर परोसती है, और `failproofai audit` को बिना कहीं कुछ भेजे चलाती है। स्थानीय `collector` कुंजियों के लिए [मशीन कॉन्फ़िगरेशन](/hi/reference/events-and-configuration#machine-configuration) देखें। यदि आप Cloud का उपयोग नहीं कर रहे हैं तो इस अनुभाग के बाकी भाग को छोड़ें।
+</Note>
+
+## नियंत्रण कहाँ रहते हैं
 
 <Tabs>
   <Tab title="Dashboard">
-    Cloud साइडबार के **Admin** अनुभाग का उपयोग करें **policy editor**, **enforcement**, **usage**, **keys**, **users**, और **settings** के लिए। एक लॉक किया गया आइटम दिखाता है कि आपके खाते को इसकी read permission नहीं है।
+    Cloud साइडबार का **admin** समूह **policy editor**, **enforcement**, **usage**, **keys**, **users**, और **settings** रखता है।
 
-    ![Cloud साइडबार के Admin अनुभाग में policy editor, enforcement, usage, keys, users, और settings।](/images/dashboard/admin-navigation.png)
+    ![Cloud साइडबार का admin समूह policy editor, enforcement, usage, keys, users, और settings के साथ।](/images/dashboard/admin-navigation.png)
   </Tab>
   <Tab title="CLI">
+    Cloud CLI को एक अलग टूल के रूप में इंस्टॉल करें, फिर साइन इन करें:
+
     ```bash
+    uv tool install fp-cloud-cli
+    fp login
     fp whoami
-    fp orgs current
-    fp orgs perms
     fp usage
     ```
 
-    कमांड से पहले वैश्विक विकल्प रखें, उदाहरण के लिए `fp --org reliability-team --json usage`।
+    वैश्विक विकल्प कमांड से पहले रखें, उदाहरण के लिए `fp --org reliability-team --json usage`।
   </Tab>
 </Tabs>
 
+## हस्ताक्षरित मानव, या API कुंजी
+
+`fp` दो प्रमाणीकरण मोड में से एक में चलता है, और विभाजन यह तय करता है कि कौन से कमांड काम करते हैं। एक कमांड जो API कुंजी नहीं कर सकती, कनेक्शन खोलने से पहले इनकार करती है और कारण नाम देती है, बजाय 401 या 403 को खड़ा रहने देने के।
+
+| कमांड | API कुंजी | अनुमति |
+| --- | --- | --- |
+| `fp whoami` | हाँ | कोई नहीं |
+| `fp usage` | हाँ | `usage:read` |
+| `fp keys list` / `show` | हाँ | `keys:read` |
+| `fp keys create` | हाँ | `keys:create` |
+| `fp keys disable` | हाँ | `keys:disable` |
+| `fp keys regenerate` | हाँ | `keys:regenerate` |
+| `fp keys update` | नहीं | `keys:update`, जो कोई कुंजी नहीं रख सकती |
+| `fp users list` / `show` | हाँ | `users:read` |
+| `fp users create` | हाँ | `users:create` |
+| `fp users update` | हाँ | `users:update` |
+| `fp users disable` / `enable` | हाँ | `users:delete` |
+| `fp settings list` / `schema` | हाँ | `settings:read` |
+| `fp settings set` | हाँ | `settings:write` |
+| `fp orgs list` / `switch` / `current` / `perms` | नहीं | केवल हस्ताक्षरित सत्र |
+
+`fp usage` एक रिपोर्टिंग स्क्रिप्ट को देने के लिए कमांड है: यह एक कुंजी के तहत बिना निरीक्षण के चलता है और केवल `usage:read` की आवश्यकता है।
+
 <Columns cols={2}>
-  <Card title="उपयोग" icon="chart-no-axes-combined" href="/hi/admin/usage">
-    बिलिंग विंडो और संगठन खपत का निरीक्षण करें।
-  </Card>
   <Card title="कुंजियाँ और अनुमतियाँ" icon="key-round" href="/hi/admin/keys-and-permissions">
-    मशीनों और स्वचालन को केवल आवश्यक अनुमतियाँ दें।
+    मशीन क्रेडेंशियल बनाएँ, और हर वर्कलोड को केवल वही अनुदान दें जिसकी उसे आवश्यकता है।
   </Card>
   <Card title="उपयोगकर्ता और संगठन" icon="users" href="/hi/admin/users-and-organizations">
-    सदस्यता, डिफ़ॉल्ट, और संगठन सीमाओं को प्रबंधित करें।
+    सदस्यता प्रबंधित करें, और प्रत्येक संगठन के डेटा और कार्यों को स्कोप करें।
   </Card>
   <Card title="सेटिंग्स और सुरक्षा" icon="lock-keyhole" href="/hi/admin/settings-and-security">
-    परिचालन सेटिंग्स, डेटा हैंडलिंग, और तैनाती सुरक्षा कॉन्फ़िगर करें।
+    साइन-इन और अलर्टिंग मान सेट करें, और तय करें कि एजेंट डेटा मशीन से क्या छोड़ता है।
+  </Card>
+  <Card title="उपयोग" icon="chart-no-axes-combined" href="/hi/admin/usage">
+    देखें कि संगठन ने अपनी वर्तमान 30-दिन की खिड़की के दौरान क्या मीटर किया।
+  </Card>
+  <Card title="फ्लीट कवरेज" icon="network" href="/hi/policies/fleet">
+    देखें कि कौन सी मशीनें पंजीकृत हैं, उन्हें कैसे पहचाना जाता है, और वे क्या लागू करते हैं।
   </Card>
 </Columns>

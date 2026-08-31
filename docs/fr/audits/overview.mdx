@@ -1,56 +1,64 @@
 ---
 title: "Audits"
-description: "Examinez une population définie de sessions pour détecter les défaillances que les traces seules ne révèlent pas."
+description: "Analysez les exécutions d'agents pour détecter les échecs répétés, les comportements risqués et les efforts inutiles."
 icon: "scan-search"
 ---
 
-Un audit recherche dans un ensemble sélectionné de sessions un objectif de défaillance défini. Il combine les preuves de traces, les résultats d'évaluation, les correspondances de politiques et le contexte de référence pour produire des conclusions sur lesquelles vous pouvez agir.
+Un audit examine de nombreuses exécutions d'agents par rapport à un objectif et retourne des résultats étayés par des preuves.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Find agent failures automatically with Failproof AI audits" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Détectez automatiquement les échecs d'agents avec les audits Failproof AI" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-Découvrez comment un audit passe d'une exécution planifiée à des défaillances documentées par des preuves que vous pouvez corriger.
+## Local ou Cloud
 
-## Ouvrir les audits
+| | Audit local | Audit Cloud |
+| --- | --- | --- |
+| Commande | `failproofai audit` | `fp audits` |
+| Lit | L'historique des agents sur cette machine | Les sessions de votre organisation Cloud |
+| Produit | Résultats locaux sur `localhost:8020/audit` | Résultats, problèmes et alertes partagés |
+| Nécessite | Aucun compte | Connexion Cloud et clé API |
 
-<Tabs>
-  <Tab title="Tableau de bord">
-    Accédez à **Analyser → Audits**. La page affiche l'état planifié, les conclusions ouvertes, la dernière exécution, la prochaine exécution, la cadence et si l'audit dispose d'un résumé ou de pages de référence. Sélectionnez une carte pour accéder aux paramètres et à l'historique des exécutions ; sélectionnez **nouvel audit** pour en créer un.
+Utilisez un audit local pour une vérification rapide sur une seule machine. Utilisez le Cloud lorsqu'une équipe a besoin d'un audit récurrent sur plusieurs agents et machines.
 
-    ![La page Audits affichant les audits récurrents avec leur calendrier, leur sensibilité et leur état d'exécution.](/images/dashboard/audits.png)
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp audits list
-    fp audits list --enabled-only --show-id
-    fp audits show <audit-name>
-    fp audits findings --status open --limit 20
-    ```
-  </Tab>
-</Tabs>
+## Questions auxquelles un audit peut répondre
 
-Utilisez un audit lorsque vous devez répondre à une question au niveau de la population, par exemple :
+- À quel endroit les agents s'arrêtent-ils sans escalader ?
+- Quels échecs d'outils entraînent des nouvelles tentatives inefficaces ?
+- Les agents accèdent-ils à des données en dehors du workflow prévu ?
+- Qu'est-ce qui a changé après une mise à jour du modèle, du prompt ou d'un outil ?
 
-- À quel endroit les agents abandonnent-ils des tâches sans les escalader ?
-- Quels échecs d'outils mènent à des nouvelles tentatives inefficaces ?
-- Les agents accèdent-ils à des données en dehors du flux de travail prévu ?
-- Qu'est-ce qui a changé après la mise à jour d'un modèle, d'un prompt ou d'un outil ?
+## Ouvrir les audits Cloud
 
-## Flux de réponse d'un audit
+Accédez à **Analyser → Audits**, ou utilisez :
+
+```bash
+fp audits list
+fp audits show <audit-name>
+fp audits findings --status open --limit 20
+```
+
+Les commandes d'audit utilisent le nom de l'audit ou son ID complet. Les résultats sont référencés par leur propre ID.
+
+## Du résultat à la prévention
 
 ```text
 Session → Audit → Finding → Issue → Policy
-                         ↘ Alert for recurrence
+                         ↘ Alert
 ```
 
-Une conclusion doit nommer le mode de défaillance et pointer vers les preuves. Un problème prend en charge la remédiation. Une politique empêche un schéma d'action connu ; une alerte détecte la récurrence lorsque la prévention n'est pas possible ou nécessite une surveillance.
+Un résultat pointe vers des preuves. Un problème détermine la réponse à apporter. Une policy empêche un schéma d'action connu ; une alerte surveille les récurrences.
 
-<Columns cols={2}>
-  <Card title="Configurer un audit" icon="sliders-horizontal" href="/fr/audits/setup">
-    Définissez l'objectif, la population et le contexte de référence avant la première exécution.
+Chaque résultat ne devrait pas nécessairement devenir une policy. Un résultat de type `policy` décrit une règle applicable. Un résultat de type `failure` ou `improvement` peut nécessiter à la place une modification du workflow, du prompt, du modèle ou d'un outil.
+
+<CardGroup cols={3}>
+  <Card title="Auditer cette machine" icon="laptop-minimal-check" href="/fr/audits/local-audit">
+    Analysez l'historique local sans compte.
   </Card>
-  <Card title="Ajouter le contexte des agents" icon="bot" href="/fr/audits/agent-contracts">
-    Indiquez ce que chaque agent doit produire et ce qu'il ne doit jamais faire.
+  <Card title="Configurer un audit Cloud" icon="sliders-horizontal" href="/fr/audits/setup">
+    Choisissez l'objectif, les sessions et la planification.
   </Card>
-</Columns>
+  <Card title="Examiner les résultats" icon="list-checks" href="/fr/audits/findings-and-issues">
+    Triez les preuves et assignez une réponse.
+  </Card>
+</CardGroup>

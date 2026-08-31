@@ -1,21 +1,24 @@
 ---
 title: "שימוש"
-description: "בדוק את צריכת הארגון והחלון חיובי פעיל."
+description: "בדוק את צריכת הארגון בחלון המדידה הנוכחי של 30 יום."
 icon: "chart-no-axes-combined"
 ---
 
-שימוש מציג את הצריכה של הארגון הנוכחי וחלונות החיובי שלו. השתמש בו כדי להבין כיצד השקת הייצור, נפח תמליל, הערכות וקצב ביקורת משפיעים על התוכנית שלך.
+Usage מציג את מה שהארגון הנוכחי מדד במהלך חלון ה-30 יום שלו. החלון קבוע ועוגן לכל ארגון, והשימוש הוא קריאה בלבד: הוא לא חל ולא מציג מגבלות, מכסות או סף תוכנית. שני המשטחים אומרים זאת — פנל ה-CLI מדפיס "read-only usage, no limits applied".
 
-## בדוק שימוש
+## סקור שימוש
 
 <Tabs>
   <Tab title="Dashboard">
-    1. עבור אל **Administration → Usage**.
-    2. אשר את הארגון וחלון המדידה.
-    3. בדוק הזנה, הפעלות, הערכות, מטריקות, ביקורות, ממצאים, התראות, משתמשים ומפתחות.
-    4. השווה עבודת ביקורת שהתחילה והשלימה כאשר שימוש ביקורת נראה בלתי צפוי.
+    1. עבור אל **admin → usage**.
+    2. אשר את הארגון וחלון המדידה — הכותרת מציגה את תחילת וסוף החלון, את היום בתוכו, וכמה זמן עבר.
+    3. קרא את בלוק ה-hero: events ingested, sessions, agents, ו-environments.
+    4. קרא את שני ה-pipelines: evaluations (עם scores ו-metrics) ו-audits (עם issues ו-alerts), כל אחד מציג completed runs מול started runs.
+    5. קרא את בלוקי workspace ו-access: saved queries, dashboards, alerts, unique issues, members, ו-API keys.
 
-    ![דף השימוש המציג את חלון המדידה, אירועים שנתפסו, צינורות הערכה וביקורת, משאבי סביבת עבודה, חברים ומפתחות API.](/images/dashboard/usage-overview.png)
+    הנתונים במטמון, לא חיים. השתמש בבקרת ההרענון בפינה הימנית העליונה לאחר שינוי שאתה מצפה לראות.
+
+    ![עמוד השימוש המציג את חלון המדידה, events שנתפסו, ה-pipelines של הערכה וביקורת, משאבי workspace, members, ו-API keys.](/images/dashboard/usage-overview.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -23,15 +26,52 @@ icon: "chart-no-axes-combined"
     fp --json usage
     fp --org reliability-team --json usage
     ```
+
+    `fp usage` צריך `usage:read` ורץ תחת API key, מה שהופך אותו לפקודה הנכונה עבור cron דיווחים.
+
+    עם `--json` הוא מחזיר את תגובת ה-dashboard ללא שינוי: `org_id`, `billing_anchor`, `window`, `usage`, `calculated_at`, ו-`stale_after`. `calculated_at` ו-`stale_after` הם איך אתה יודע כמה עתיק נתון.
+
+    `fp usage` לא לוקח דגלים משלו — רק את ה-global `--json` ו-`--org`. הוא דיווחים על החלון הנוכחי ולא כלום לפניו, אז שמור את ההיסטוריה שלך בעצמך בהפעלתו בלוח זמנים ושמירת ה-`--json` payload במקום לצפות לשאילתה של חלון קודם מאוחר יותר.
+
+    ```bash
+    fp --json usage | jq '.usage.events_ingested'
+    ```
   </Tab>
 </Tabs>
 
+### מפתחות מטריקה
+
+הכל תחת `usage` ב-JSON payload, כך שסקריפט יכול לנקוב בשדה במקום לפרוס פנל.
+
+| קבוצה | מפתחות |
+| --- | --- |
+| טלמטריה | `events_ingested`, `sessions`, `agents`, `environments` |
+| הערכות | `evaluation_runs`, `evaluation_finishes`, `evaluations`, `metrics` |
+| ביקורות | `audit_runs`, `audit_finishes`, `issues_created`, `alerts_created` |
+| Workspace | `queries_created`, `dashboards_created` |
+| גישה | `users_active`, `users_created`, `keys_active`, `keys_created` |
+
+כל pipeline דיווחים על started ו-finished counts בנפרד, כך שפער בין `audit_runs` ו-`audit_finishes` פירושו עבודה שהתחילה ולא הסתיימה — כדאי לבדוק לפני שאתה קורא משהו לתוך ספירת ה-issues תחתיה.
+
 ## חקור שינוי
 
-1. אשר את הארגון וחלון פעיל.
-2. השווה את הגדילה עם נפח הפעלות לפי סביבה.
-3. בדוק אם שילוב חדש התחיל לשלוח תמלילים.
-4. בדוק שינויים בקצב מעריך וביקורת.
-5. השווה עם ההגבלות בתוכנית התמחור הנוכחית.
+עוצמת צריכה מוחלטת על ידי מכונה, לא מרכזית. התחל מהארגון וחלון, ואז עבוד דרך מה שהשתנה במכונות המדווחות אליו.
 
-ה-CLI מחזיר את אותה סיכום עבור סקריפטים.
+| סיבה | איפה לבדוק | מה לשנות |
+| --- | --- | --- |
+| מכונה שולחת session transcripts | `collector.sessions` ב-`~/.failproofai/config.json` של המכונה | הגדר ל-`false` לשליחת החלטות בלבד |
+| פעילות Hook נשלחת בצורה מלאה | `collector.hooks_verbosity` באותו קובץ | `decisions` aggregates מאפשר לכל דקה; `off` עוצר hook events לחלוטין |
+| מיקום לכידה חדש הוסף | `failproofai harness list` | הסר אותו עם `failproofai harness remove-path <harness> <path or label>` |
+| היסטוריה נשלחה מחדש | `failproofai backfill` רץ של המכונה | Re-sends משוכפלים על hash תוכן והתמוטטות לתוך שורות שכבר שם, כך שהם לא כפולים |
+| אינטגרציה חדשה התחילה לדווח | ספירות `agents` ו-`environments`, וה-sessions list | Scope את הגדרות ה-collector של המכונה החדשה לפני שאתה מגיל אותה |
+
+Usage לא משווה כלום מול תוכנית. עשה זאת מחוץ לתוצר.
+
+<Columns cols={2}>
+  <Card title="הגדרות ואבטחה" icon="lock-keyhole" href="/he/admin/settings-and-security">
+    הגדרות ה-data-handling לכל מכונה מאחורי המספרים האלה.
+  </Card>
+  <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/he/reference/cloud-cli">
+    המשטח `fp` המלא, כולל התקנה וכניסה.
+  </Card>
+</Columns>

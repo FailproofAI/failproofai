@@ -1,54 +1,94 @@
 ---
-title: "Denetim tarifeleri"
-description: "Yaygın aracı hatası araştırmaları için başlangıç hedefleri."
+---
+title: "Denetim tarifleri"
+description: "Yaygın agent başarısızlık soruşturmaları için başlangıç hedefleri."
 icon: "book-open-check"
 ---
 
-Bunları başlangıç hedefleri olarak kullanın, ardından aracınızı, ortamınızı ve beklenen iş akışınızı ekleyin.
+Bunları başlangıç hedefleri olarak kullanın, ardından agent'ınızı, ortamınızı ve beklenen iş akışını ekleyin.
 
 <Tabs>
   <Tab title="Dashboard">
-    **Analyze → Audits → New audit** seçeneğine gidin, bir tarifenin açıklamasını veya özetini kopyalayın, ardından ilgili ortamı, aracıyı, geriye doğru bakış aralığını ve referans URL'lerini ekleyin. Denetimi oluşturun ve zamanlamadan önce ilk çalıştırmayı inceleyin.
+    **Analyze → Audits → New audit** bölümüne gidin. Bu sayfadaki bir tarif satırı **description** — bu denetimin yakalamasını beklediğiniz şeydir. Hedefi yargılanabilir kılan iş akışı kuralları **your brief** bölümünde, **what it knows** kartında yer alır: model tek bir olayı incelemeden önce okuduğu arka plan, 8.192 karakter sınırı ile, denetimin zaten aradığı şeylere eklenir. Bir brief asla hedefin yerini almaz ve asla bir bulgunun kanıtı değildir.
 
-    Yeni denetim formu, kapsam, bağlam, sıklık ve bildirimler ekleyerek bir tarifenin yürütülebilir bir hata kontrolüne dönüştürülmesini sağlar.
+    Ardından **what it reads** bölümünde kapsamı ayarlayın, çünkü bu tariflerin yarısı kapsamı belirlemeden gürültüdür. Ortamlar ve agent'lar popülasyonu daraltır; **errors to ignore** tasarım gereği beklediğiniz ve işlediğiniz hata türlerini listeler, böylece başarısızlık olarak sayılmayı durdururlar. Yalnızca hata türü adlarını alır ve retry-loop tarifini seli boğmasından uzak tutabilir.
 
-    ![Odaklanmış bir hedef, zamanlama, aracı ve ortam kapsamı, bağlam ve bildirim kanalları ile yapılandırılan yeni denetim formu.](/images/dashboard/audit-new.png)
+    Yeni denetim formu, kapsam, bağlam, sıklık ve bildirimler ekleyerek bir tarifi yürütülebilir bir başarısızlık kontrolüne dönüştürür.
 
-    Oluşturulduktan sonra, denetimin listede beklenen durum ve programla birlikte görünüp görünmediğini onaylayın.
+    ![Odaklanmış hedef, zamanlama, agent ve ortam kapsamı, bağlam ve bildirim kanalları ile yapılandırılmış yeni denetim formu.](/images/dashboard/audit-new.png)
 
-    ![Oluşturulduktan sonra iş akışına özgü bir denetim tarifesinin göründüğü Denetimler sayfası.](/images/dashboard/audits.png)
+    Oluşturulduktan sonra, denetimin beklenen durum ve zamanlama ile listede göründüğünü doğrulayın ve tekrarlanan çalışmalara güvenmeden önce bunu onaylayın.
 
-    İlk çalıştırmayı açın ve bulguları amaçlanan hata modundan daha geniş veya daha dar ise tarifesini iyileştirin.
+    İlk çalışmayı açın ve tarifi, bulguları amaçlanan başarısızlık modundan daha geniş veya daha dar ise iyileştirin.
   </Tab>
   <Tab title="CLI">
-    Bir tarifesini metin dosyası olarak kaydedin ve oluşturma sırasında ekleyin:
+    Bir tarifi metin dosyası olarak kaydedin ve oluşturma sırasında ekleyin:
 
     ```bash
     fp audits create retry-loop-review \
+      --description "Find agents that repeat a failing tool call without changing anything" \
       --scope '{"environments":["production"]}' \
+      --ignore-error-type RateLimitRetried \
       --text-file ./retry-loop-audit.txt \
       --schedule-interval-secs 86400
     ```
+
+    `--text` ve `--text-file`, aynı briefe göndermenin iki yoludur; birini geçin, ikisini değil. `--url` ile referans sayfaları ekleyin, en fazla beş tane, yalnızca genel `https://`. Tümünü oluştur isteği ile gönderin: yeni bir etkinleştirilmiş denetim hemen işlemeye alınır, bu nedenle ikinci bir çağrıda yazılan bağlam ilk çalışmayı kaçırabilir.
   </Tab>
 </Tabs>
 
+## Yalnızca sözcük tercihini değil, tarifi değerlendirin
+
+İki ayar, ifadeden daha fazla sonucu değiştirir. **Sensitivity** (`low`, `medium`, `high`, varsayılan `medium`) bir çalışmanın bir deseni ne kadar istekle işaretlediğini belirler; **findings per run** (`--top-k`, varsayılan 50) kaç tanesini tutacağını sınırlandırır. Bir kaçırmanın yanlış pozitifte fiyat yasından daha pahalıya malolduğu bir soru için duyarlılığı artırın ve aksi takdirde sırayı dolduracak bir hacim deseni için bunu düşürün. Aşağıdaki her tarif bir başlangıç noktası adlandırır — ilk çalışmayı okuduktan sonra, değil önce değiştirin.
+
+Görev terki ve kaçırılan insan yükseltmesi, bir agent'ın ne yapması gerektiğine karşı yargılanmadır, bir hata yükseltti değildir. O agent'ın [agent context](/tr/audits/agent-contracts) dosyasını önce yazın, aksi takdirde analizin karşı kıyas yapacağı bir standarda sahip olmaz.
+
 <AccordionGroup>
   <Accordion title="Tekrarlanan yeniden deneme döngüleri">
-    Aracının girdisini değiştirmeden, alternatif bir araç seçmeden veya bir insana yükseltmeden aynı başarısız araç çağrısını tekrarladığı oturumları bulun.
+    Agent'ın girdiyi değiştirmeden, alternatif bir araç seçmeden veya bir insana aktarıp aktarmadan aynı başarısız araç çağrısını tekrarladığı oturumları bulun.
+
+    `medium` ile başlayın ve amacıyla yeniden denediğiniz hata türlerini **errors to ignore** altında listeleyin.
   </Accordion>
   <Accordion title="Hatalı araç kullanımı">
-    Seçilen aracının belirtilen görevle eşleşmediği veya araç girişinin iş akışının gerekli ön koşullarını ihlal ettiği oturumları bulun.
+    Seçilen aracın belirtilen görevle eşleşmediği veya araç girdisinin iş akışının gerekli ön koşullarını ihlal ettiği oturumları bulun.
+
+    `medium` ile başlayın. Ön koşulların kendisini briefe yazın; bunlar olmadan analizin kontrol etmeye bir kuralı yoktur.
   </Accordion>
-  <Accordion title="Güvenli olmayan veri erişimi">
-    Bu aracı için onaylanan yollar ve hizmetlerin dışında hassas verileri okuyan, yazan veya ileten oturumları bulun.
+  <Accordion title="Güvensiz veri erişimi">
+    Bu agent için onaylanmış yollar ve hizmetler dışında hassas verileri okuyan, yazan veya ileten oturumları bulun.
+
+    `high` ile başlayın. Kaçırılan bir pozlama, bir kez göz ardı ettiğiniz yanlış pozitiften daha pahalıya malolur.
   </Accordion>
-  <Accordion title="Görev terk edilmesi">
-    İstenen sonuç olmadan, açık bir hata olmadan veya bir insana açık bir devredilme olmadan sonlanan oturumları bulun.
+  <Accordion title="Görev terki">
+    İstenen sonuç, açık bir hata veya bir insana açık bir devir olmadan sona eren oturumları bulun.
+
+    `medium` ile başlayın ve agent'ın **Done when** bölümünü önce yazın — bu tarif buna karşı bir yargıdır.
   </Accordion>
-  <Accordion title="Maliyet veya gecikme gerillemesi">
-    Model, araç veya toplam süresi beklenen bütçeyi aşan oturumları bulun ve sorumlu olan olay desenini belirleyin.
+  <Accordion title="Maliyet veya gecikme regresyonu">
+    Model, araç veya toplam sürenin beklenen bütçeyi aşan oturumları bulun ve bundan sorumlu olan olay desenini belirleyin.
+
+    `low` ile başlayın ve ilk çalışma zayıfsa artırın. Bütçeler briefe aittir ve yavaş bir yolun tasarım gereği yükselttiği herhangi bir hata türü **errors to ignore** içinde yer almalıdır.
   </Accordion>
   <Accordion title="Kaçırılan insan yükseltmesi">
-    Güven, tekrarlanan başarısızlık veya politika rehberliğinin insan kararı gerektirdiği ancak aracının otonom olarak devam ettiği oturumları bulun.
+    Güven, tekrarlanan başarısızlık veya politika rehberliği bir insan kararı gerektirdiğinde ancak agent'ın özerk olarak devam ettiği oturumları bulun.
+
+    `high` ile başlayın ve analiz buna karşı not tutabilmesi için escalation kuralını agent'ın **Must not** bölümünde belirtin.
   </Accordion>
 </AccordionGroup>
+
+## Herhangi bir şey oluşturmadan önce ilk bir yanıt alın
+
+Bu desenlerin birçoğu, agent geçmişlerini kendi makinenizde okuyan ve hesaba ihtiyaç duymayan yerel denetimde zaten çevrimdışı dedektörlere sahiptir:
+
+| Dedektör | Saydığı Desen |
+| --- | --- |
+| `sleep-polling-loop` | Uzun bir `sleep` veya `while … sleep … done` yoklama döngüsü |
+| `reread-after-edit` | Agent'ın az önce düzenledği veya yazdığı bir dosyanın okunması |
+| `find-from-root` | `/` veya başka bir üst düzey dizine karşı `find` |
+| `redundant-cd-cwd` | Kabuğun zaten bulunduğu dizine `cd` |
+| `prefer-edit-over-read-cat` | Tek bir kaynak dosyada `cat`, `head`, `tail`, `less` veya `more` |
+| `prefer-edit-over-sed-awk` | `sed -i` veya `awk … > file` aracılığıyla yerinde düzenleme |
+| `prefer-write-over-heredoc` | Heredoc veya `echo > file` aracılığıyla yazılan çok satırlı içerik |
+| `git-commit-no-verify` | Kancaları atlayan `git commit --no-verify` |
+
+Bu dedektörler sayılır; engelleme yapmaz ve hiçbiri maliyet veya gecikmeyi ölçmez. Agent'larınızın aynı alan için bir Cloud denetimini ödemeden önce zaten hangi savurgan ve riskli shell desenlerini ürettiğini görmek için `failproofai audit` dosyasını çalıştırın — bkz. [Audit local agent history](/tr/audits/local-audit).

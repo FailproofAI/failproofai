@@ -152,6 +152,20 @@ describe("policies: list (default)", () => {
     expect(result.stdout).toContain("failproofai policies");
   });
 
+  it("accepts --no-color after the subcommand", () => {
+    const result = runCli("policies", "--no-color");
+    assertSuccess(result);
+    expect(result.stdout).toContain("failproofai policies");
+    expect(result.stdout).not.toMatch(/\x1B\[/);
+  });
+
+  it("accepts --no-color before the subcommand", () => {
+    const result = runCli("--no-color", "policies");
+    assertSuccess(result);
+    expect(result.stdout).toContain("failproofai policies");
+    expect(result.stdout).not.toMatch(/\x1B\[/);
+  });
+
   it("rejects unexpected positional argument", () => {
     const result = runCli("policies", "hi");
     assertCleanError(result, "Unexpected argument: hi");

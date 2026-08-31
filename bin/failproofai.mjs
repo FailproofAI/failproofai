@@ -6,6 +6,7 @@
  *   --hook <event>        Hook event from Claude Code (minimal startup latency)
  *   --version / -v        Print version and exit
  *   --help / -h           Show usage and exit
+ *   --no-color            Suppress ANSI color output
  *   policies              Manage policies (list / install / uninstall)
  *   (default)             Launch production dashboard
  */
@@ -33,6 +34,15 @@ if (!process.env.FAILPROOFAI_DIST_PATH) {
 }
 
 const args = process.argv.slice(2);
+
+// Global presentation flag: consume it before aliases, help routing, and
+// subcommand validation so it works in any position.
+if (args.includes("--no-color")) {
+  process.env.NO_COLOR = "1";
+  for (let i = args.length - 1; i >= 0; i--) {
+    if (args[i] === "--no-color") args.splice(i, 1);
+  }
+}
 
 // ── one noun for policies ──────────────────────────────────────────────────
 // `policies`, `policy` and `pack` were three commands for one idea, two of them
@@ -495,7 +505,7 @@ async function runCli() {
       ],
       footer: [
         "failproofai <command> [options]     failproofai help <command> for detail",
-        "docs.befailproof.ai   discord.befailproof.ai   -h this screen   -v version",
+        "docs.befailproof.ai   discord.befailproof.ai   --no-color plain output   -h help   -v version",
       ],
     });
     process.exit(0);
@@ -1808,6 +1818,7 @@ async function runCli() {
               ["--scope <scope>", "user, project or local. Default: user. --uninstall also takes all."],
               ["--beta", "Include beta policies. On --uninstall, only those."],
               ["--custom, -c <path>", "Custom policy file; repeat for several. Bare on --uninstall, clears every explicit path."],
+              ["--no-color", "Suppress ANSI color output; the same as NO_COLOR=1."],
             ],
           },
           {

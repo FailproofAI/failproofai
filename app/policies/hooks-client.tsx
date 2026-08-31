@@ -814,11 +814,20 @@ function ActivityTab({
                         } ${isExpanded ? "bg-muted/20" : ""}`}
                       >
                         <td className="px-4 py-2">
-                          <ChevronDown
-                            className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-150 ${
-                              isExpanded ? "rotate-0" : "-rotate-90"
-                            }`}
-                          />
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); toggleRow(i); }}
+                            aria-expanded={isExpanded}
+                            aria-label={`${isExpanded ? "Collapse" : "Expand"} hook event details`}
+                            className="focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
+                          >
+                            <ChevronDown
+                              className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-150 ${
+                                isExpanded ? "rotate-0" : "-rotate-90"
+                              }`}
+                              aria-hidden="true"
+                            />
+                          </button>
                         </td>
                         <td
                           className="px-3 py-2 text-muted-foreground whitespace-nowrap"

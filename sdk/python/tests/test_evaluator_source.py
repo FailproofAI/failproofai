@@ -7,6 +7,7 @@ from failproofai_sdk.evaluator.source import (
     MAX_AST_NODES,
     MAX_EVALUATOR_SOURCE_BYTES,
     MAX_POW_EXPONENT,
+    EvaluationSandboxUnavailable,
     EvaluationTimeout,
     UnsafeEvaluatorSource,
     compile_condition,
@@ -239,3 +240,16 @@ def test_normal_managed_eval_survives_the_fork_boundary():
     assert isinstance(result, EvalResult)
     assert result.score.value == 1.0
     assert result.reasoning == "3"
+
+
+def test_managed_sandbox_fails_closed_when_fork_is_unavailable(monkeypatch):
+    # On a platform without os.fork there is no killable boundary, so managed
+    # source must be REFUSED, never run unsandboxed (SEC-001). Simulate by
+    # removing os.fork for the duration of the call.
+    import os as _os
+
+    monkeypatch.delattr(_os, "fork", raising=False)
+    with pytest.raises(EvaluationSandboxUnavailable):
+        compile_evaluator("EvalResult(score=Score(1.0))")(Session())
+    with pytest.raises(EvaluationSandboxUnavailable):
+        compile_condition("session.event_count > 0")(Session())

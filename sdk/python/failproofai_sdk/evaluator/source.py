@@ -63,6 +63,14 @@ class EvaluationTimeout(Exception):
     """
 
 
+class EvaluationSandboxUnavailable(Exception):
+    """The killable-process sandbox cannot be established on this platform.
+
+    Raised instead of running server-authored source unsandboxed — without fork
+    there is no way to bound or terminate it, so we fail closed (SEC-001).
+    """
+
+
 def _run_killable(
     fn: Callable[[Any], Any],
     session: Any,
@@ -81,10 +89,15 @@ def _run_killable(
     result crosses back, over a pipe, as a small pickle.
     """
     if not hasattr(os, "fork"):
-        # Non-POSIX (Windows) has no fork. The managed worker only ships on Linux
-        # containers, so this branch never runs in production; it keeps the SDK
-        # importable/testable elsewhere by degrading to a direct call.
-        return fn(session)
+        # Fail CLOSED. Without fork there is no way to bound or kill server-authored
+        # source, so refuse to run it rather than execute it unsandboxed — an
+        # allowed-but-expensive expression (`sum(range(10**20))`) would otherwise
+        # get NO CPU/memory/wall-clock enforcement. The managed worker only ships on
+        # Linux (fork present), so this never trips in production (SEC-001).
+        raise EvaluationSandboxUnavailable(
+            "managed evaluation requires a fork-based sandbox, "
+            "unavailable on this platform"
+        )
 
     read_fd, write_fd = os.pipe()
     with warnings.catch_warnings():

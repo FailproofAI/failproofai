@@ -36,17 +36,24 @@ it ships.
   dead-letters as one bounded `failed`/`eval_error` run instead of crashing the
   assignment task and forcing it to be reclaimed until its attempt budget runs
   out.
-- Run managed (server-authored) evaluations in a **killable forked process** with
-  hard `RLIMIT_CPU` + `RLIMIT_AS` + wall-clock limits, killed on timeout — so a
-  compute/memory bomb in a hosted definition (`sum(range(10**20))`) can no longer
-  exhaust the worker (SEC-001). Cancelling an in-process thread does not stop it;
-  a forked process the kernel bounds and the parent can `SIGKILL` does. Managed
-  conditions, which previously ran with no timeout at all, are sandboxed the same
-  way. Defense in depth at compile time: reject `**` with a large/non-constant
-  exponent and cap total AST size. A managed condition the sandbox rejects now
-  dead-letters as `condition_error` instead of raising out of the plan loop and
-  stranding the assignment. Only server-authored source is isolated this way;
-  customer evaluators still run in-process (their own trusted code).
+- Run managed (server-authored) evaluations in a **killable fork+exec'd
+  subprocess** with hard `RLIMIT_CPU` + `RLIMIT_AS` + a parent wall-clock kill —
+  so a compute/memory bomb in a hosted definition (`sum(range(10**20))`) can no
+  longer exhaust the worker (SEC-001). Cancelling an in-process thread does not
+  stop it; a fresh subprocess the kernel bounds and the parent terminates does. A
+  plain `os.fork()` would deadlock — the worker is multi-threaded (asyncio loop,
+  executor, writer) and forking one hangs the child on an inherited lock — so the
+  sandbox execs a fresh `python -m ..._sandbox_runner` that sets its own limits;
+  the transcript crosses in via `to_wire`, only the result crosses back. The
+  effective budget is **clamped to a hard ceiling** (`MAX_SANDBOX_TIMEOUT_SECONDS`,
+  60s) so a large server-provided `timeout_seconds` cannot remove the bound.
+  Managed conditions, which previously ran with no timeout at all, are sandboxed
+  the same way. Fails **closed** (`EvaluationSandboxUnavailable`) if the sandbox
+  cannot be spawned or the transcript cannot be serialized. Defense in depth at
+  compile time: reject `**` with a large/non-constant exponent and cap total AST
+  size. A managed condition the sandbox rejects now dead-letters as
+  `condition_error` instead of stranding the assignment. Only server-authored
+  source is isolated this way; customer evaluators still run in-process.
 - Require `execution_mode` on the wire instead of coercing a falsy/missing value
   to `local` — a malformed value silently ran a `python` definition down the
   customer path (or vice-versa); it is now a hard protocol error.

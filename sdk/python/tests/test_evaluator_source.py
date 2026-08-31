@@ -3,21 +3,46 @@ from __future__ import annotations
 import pytest
 
 from failproofai_sdk.evaluator import EvalResult, Score
+from failproofai_sdk.evaluator.protocol import SessionTranscript, TranscriptEvent
 from failproofai_sdk.evaluator.source import (
     MAX_AST_NODES,
     MAX_EVALUATOR_SOURCE_BYTES,
     MAX_POW_EXPONENT,
+    MAX_SANDBOX_TIMEOUT_SECONDS,
     EvaluationSandboxUnavailable,
     EvaluationTimeout,
     UnsafeEvaluatorSource,
+    _clamp_budget,
     compile_condition,
     compile_evaluator,
     source_checksum,
 )
 
 
-class Session:
-    event_count = 3
+def Session(event_count: int = 3) -> SessionTranscript:
+    """A real, serializable transcript — managed evals now run in a subprocess and
+    the transcript crosses the boundary via `to_wire`, so a dummy object won't do.
+    Each event carries a dict payload (so `events[0].payload.get` is reachable)."""
+    events = tuple(
+        TranscriptEvent(
+            id=f"e{i}",
+            ts="2026-08-28T12:00:00.000000Z",
+            event_type="tool_use",
+            payload={"k": "v", "tool_name": "search"},
+        )
+        for i in range(event_count)
+    )
+    return SessionTranscript(
+        assignment_id="a",
+        session_id="s",
+        session_revision_id="r",
+        agent_id="agent",
+        environment="test",
+        started_at="2026-08-28T12:00:00.000000Z",
+        ended_at="2026-08-28T12:00:01.000000Z",
+        event_count=event_count,
+        events=events,
+    )
 
 
 def test_restricted_expressions_can_evaluate_conditions_and_results():
@@ -126,12 +151,6 @@ def test_no_reachable_construct_leaks_a_heap_pointer_repr():
     ],
 )
 def test_object_repr_pointer_disclosure_is_rejected_at_the_output(inner):
-    class Sess:
-        class _E:
-            payload = {"k": "v"}
-
-        events = (_E(),)
-
     for field in (
         f'EvalResult(score=Score(1.0), reasoning=str({inner}))',
         f'EvalResult(score=Score(1.0), summary=str({inner}))',
@@ -140,7 +159,7 @@ def test_object_repr_pointer_disclosure_is_rejected_at_the_output(inner):
     ):
         evaluate = compile_evaluator(field)
         with pytest.raises(UnsafeEvaluatorSource, match="object repr"):
-            evaluate(Sess())
+            evaluate(Session())
 
 
 def test_each_evaluation_gets_isolated_globals_so_it_cannot_poison_the_next():
@@ -242,14 +261,19 @@ def test_normal_managed_eval_survives_the_fork_boundary():
     assert result.reasoning == "3"
 
 
-def test_managed_sandbox_fails_closed_when_fork_is_unavailable(monkeypatch):
-    # On a platform without os.fork there is no killable boundary, so managed
-    # source must be REFUSED, never run unsandboxed (SEC-001). Simulate by
-    # removing os.fork for the duration of the call.
-    import os as _os
+def test_sandbox_fails_closed_without_a_serializable_transcript():
+    # The transcript crosses into the subprocess via `to_wire`. A session that
+    # can't be serialized cannot be sandboxed, so refuse rather than run unbounded.
+    class NotATranscript:
+        event_count = 1
 
-    monkeypatch.delattr(_os, "fork", raising=False)
     with pytest.raises(EvaluationSandboxUnavailable):
-        compile_evaluator("EvalResult(score=Score(1.0))")(Session())
-    with pytest.raises(EvaluationSandboxUnavailable):
-        compile_condition("session.event_count > 0")(Session())
+        compile_evaluator("EvalResult(score=Score(1.0))")(NotATranscript())
+
+
+def test_server_timeout_cannot_exceed_the_hard_ceiling():
+    # SEC-001: a large server-provided timeout must not remove the execution bound.
+    assert _clamp_budget(10**9) == float(MAX_SANDBOX_TIMEOUT_SECONDS)
+    assert _clamp_budget(0) == 30.0
+    assert _clamp_budget(None) == 30.0
+    assert _clamp_budget(5) == 5.0

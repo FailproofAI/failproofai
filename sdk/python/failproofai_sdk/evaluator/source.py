@@ -11,20 +11,14 @@ from __future__ import annotations
 import ast
 import builtins
 import hashlib
-import os
 import pickle
 import re
-import select
-import signal
-import time
-import warnings
+import subprocess
+import sys
 from collections.abc import Callable
 from typing import Any
 
 try:
-    # Imported at MODULE level, never inside the forked child: acquiring the import
-    # lock in a child forked from a multi-threaded process is a classic fork
-    # deadlock. Absent on non-POSIX, where `_run_killable` degrades to a direct call.
     import resource as _resource
 except ImportError:  # pragma: no cover - non-POSIX
     _resource = None  # type: ignore[assignment]
@@ -47,12 +41,25 @@ MAX_EVALUATOR_SOURCE_BYTES = 128 * 1024
 MAX_AST_NODES = 5_000
 MAX_POW_EXPONENT = 64
 
-# Hard ceilings for ONE sandboxed evaluation, enforced by the kernel in a forked
-# child (see `_run_killable`). CPU-seconds and wall-clock both bound compute
-# bombs; RLIMIT_AS is the memory backstop for a giant-int / huge-allocation bomb.
+# Hard ceilings for ONE sandboxed evaluation, enforced by the kernel in a
+# fork+exec'd subprocess (see `_run_sandboxed`). RLIMIT_CPU + the parent's
+# wall-clock kill both bound compute bombs; RLIMIT_AS is the memory backstop for a
+# giant-int / huge-allocation bomb.
 DEFAULT_SANDBOX_TIMEOUT_SECONDS = 30
+# The effective budget is CLAMPED to this ceiling regardless of the (server-set)
+# per-definition timeout, so a large `timeout_seconds` can never remove the
+# execution bound (SEC-001). Wall-clock and CPU are both capped here.
+MAX_SANDBOX_TIMEOUT_SECONDS = 60
 SANDBOX_MEMORY_BYTES = 2 * 1024 * 1024 * 1024  # 2 GiB address space
-SANDBOX_MAX_RESULT_BYTES = 4 * 1024 * 1024      # cap the pickled result read back
+
+
+def _clamp_budget(timeout_seconds: float | None) -> float:
+    """The wall-clock/CPU budget for one evaluation: a positive value no larger
+    than MAX_SANDBOX_TIMEOUT_SECONDS. Server-provided timeouts cannot exceed it."""
+    requested = float(timeout_seconds or DEFAULT_SANDBOX_TIMEOUT_SECONDS)
+    if requested <= 0:
+        requested = DEFAULT_SANDBOX_TIMEOUT_SECONDS
+    return min(requested, float(MAX_SANDBOX_TIMEOUT_SECONDS))
 
 
 class EvaluationTimeout(Exception):
@@ -64,121 +71,80 @@ class EvaluationTimeout(Exception):
 
 
 class EvaluationSandboxUnavailable(Exception):
-    """The killable-process sandbox cannot be established on this platform.
+    """The killable-process sandbox could not be established.
 
-    Raised instead of running server-authored source unsandboxed — without fork
-    there is no way to bound or terminate it, so we fail closed (SEC-001).
+    Raised instead of running server-authored source unsandboxed — if the sandbox
+    subprocess cannot be started, or the transcript cannot be serialized into it,
+    there is no way to bound or terminate the evaluation, so we fail closed
+    (SEC-001).
     """
 
 
-def _run_killable(
-    fn: Callable[[Any], Any],
+def _install_limits(cpu_seconds: float, mem_bytes: int) -> None:
+    """Install hard CPU + address-space limits on the CURRENT process.
+
+    Called by the sandbox subprocess on itself, right before it evaluates.
+    """
+    if _resource is None:  # pragma: no cover - non-POSIX
+        return
+    cpu = max(1, int(cpu_seconds))
+    _resource.setrlimit(_resource.RLIMIT_CPU, (cpu, cpu))
+    _resource.setrlimit(_resource.RLIMIT_AS, (mem_bytes, mem_bytes))
+
+
+def _run_sandboxed(
+    kind: str,
+    source: str,
     session: Any,
     *,
     wall_timeout: float,
     cpu_seconds: float,
     mem_bytes: int,
 ) -> Any:
-    """Run ``fn(session)`` in a forked child that CANNOT outlive its budget.
+    """Evaluate server-authored ``source`` against ``session`` in a fork+exec'd
+    subprocess that CANNOT outlive its budget.
 
-    The child installs hard ``RLIMIT_CPU`` + ``RLIMIT_AS`` and evaluates; the
-    parent waits at most ``wall_timeout`` and ``SIGKILL``s otherwise. This is the
-    one thing an in-process thread cannot do: cancelling a Python thread running
-    ``sum(range(10**20))`` leaves it burning CPU, but the kernel enforces these
-    limits on a separate process and the parent can kill it outright. Only the
-    result crosses back, over a pipe, as a small pickle.
+    A FRESH ``python -m ..._sandbox_runner`` process — never a fork of this
+    multi-threaded worker (forking one deadlocks the child on a lock some other
+    thread holds) — installs hard RLIMIT_CPU + RLIMIT_AS on itself and evaluates;
+    this parent kills it after ``wall_timeout``. So an in-process thread running
+    ``sum(range(10**20))`` that cannot be cancelled becomes a separate process the
+    kernel bounds and the parent terminates outright. The transcript crosses in as
+    its wire dict; only the result crosses back, as a small pickle.
     """
-    if not hasattr(os, "fork"):
-        # Fail CLOSED. Without fork there is no way to bound or kill server-authored
-        # source, so refuse to run it rather than execute it unsandboxed — an
-        # allowed-but-expensive expression (`sum(range(10**20))`) would otherwise
-        # get NO CPU/memory/wall-clock enforcement. The managed worker only ships on
-        # Linux (fork present), so this never trips in production (SEC-001).
-        raise EvaluationSandboxUnavailable(
-            "managed evaluation requires a fork-based sandbox, "
-            "unavailable on this platform"
-        )
-
-    read_fd, write_fd = os.pipe()
-    with warnings.catch_warnings():
-        # The child is deliberately fork-safe — it acquires no lock any other
-        # thread holds (resource is imported at module level, pickle/os.write take
-        # no Python-level lock), then os._exit. Python 3.12's blanket
-        # "fork() in a multi-threaded process" DeprecationWarning does not apply.
-        warnings.simplefilter("ignore", DeprecationWarning)
-        pid = os.fork()
-    if pid == 0:  # ---- child ----
-        try:
-            os.close(read_fd)
-            try:
-                if _resource is not None:
-                    cpu = max(1, int(cpu_seconds))
-                    _resource.setrlimit(_resource.RLIMIT_CPU, (cpu, cpu))
-                    _resource.setrlimit(_resource.RLIMIT_AS, (mem_bytes, mem_bytes))
-            except Exception:  # noqa: BLE001 - if limits can't be set, wall-clock still bounds it
-                pass
-            try:
-                payload = pickle.dumps(("ok", fn(session)))
-            except BaseException as error:  # noqa: BLE001 - relay type+msg, never raise across the fork
-                payload = pickle.dumps(
-                    ("err", type(error).__name__, str(error)[:500])
-                )
-            while payload:
-                written = os.write(write_fd, payload)
-                payload = payload[written:]
-        finally:
-            os._exit(0)  # never run atexit / flush the parent's shared buffers
-
-    # ---- parent ----
-    os.close(write_fd)
-    chunks: list[bytes] = []
-    timed_out = False
-    total = 0
-    deadline = time.monotonic() + wall_timeout
     try:
-        while True:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                timed_out = True
-                break
-            ready, _, _ = select.select([read_fd], [], [], remaining)
-            if not ready:
-                timed_out = True
-                break
-            chunk = os.read(read_fd, 65536)
-            if not chunk:
-                break
-            chunks.append(chunk)
-            total += len(chunk)
-            if total > SANDBOX_MAX_RESULT_BYTES:
-                timed_out = True  # runaway output — treat as over-budget
-                break
-    finally:
-        os.close(read_fd)
-        if timed_out:
-            try:
-                os.kill(pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-        try:
-            os.waitpid(pid, 0)
-        except ChildProcessError:
-            pass
-
-    if timed_out:
-        raise EvaluationTimeout("evaluation exceeded its CPU/memory/time budget")
-    data = b"".join(chunks)
-    if not data:
-        # Killed by RLIMIT_CPU/RLIMIT_AS before it could write a result.
+        session_wire = session.to_wire()
+    except AttributeError as error:
+        raise EvaluationSandboxUnavailable(
+            "sandboxed evaluation requires a serializable transcript"
+        ) from error
+    payload = pickle.dumps((kind, source, session_wire, cpu_seconds, mem_bytes))
+    try:
+        completed = subprocess.run(  # noqa: S603 - fixed argv, no shell
+            [sys.executable, "-m", "failproofai_sdk.evaluator._sandbox_runner"],
+            input=payload,
+            capture_output=True,
+            timeout=wall_timeout,
+        )
+    except subprocess.TimeoutExpired as error:
+        # subprocess.run has already SIGKILLed the process on the way out.
+        raise EvaluationTimeout("evaluation exceeded its wall-clock budget") from error
+    except OSError as error:
+        # Could not even spawn the sandbox — fail closed rather than run unbounded.
+        raise EvaluationSandboxUnavailable(
+            f"could not start the evaluation sandbox: {error}"
+        ) from error
+    if completed.returncode != 0 or not completed.stdout:
+        # Killed by RLIMIT_CPU/RLIMIT_AS (or otherwise died) before it could write.
         raise EvaluationTimeout("evaluation was terminated before producing a result")
-    outcome = pickle.loads(data)
+    outcome = pickle.loads(completed.stdout)
     if outcome[0] == "ok":
         return outcome[1]
-    # Re-raise with the child's original exception SEMANTICS preserved: an eval's
-    # `NameError`/`TypeError`/`ZeroDivisionError`/… and the sandbox's own
-    # `UnsafeEvaluatorSource` must read the same across the fork as they did
-    # in-process. Reconstruct any builtin exception by name; anything else
-    # collapses to a generic error — still caught as a failed run upstream.
+    # Preserve the child's original exception SEMANTICS: an eval's
+    # NameError/TypeError/ZeroDivisionError/... and the sandbox's own
+    # UnsafeEvaluatorSource must read the same as they did in-process. Reconstruct
+    # any builtin exception by name; anything else collapses to a generic error —
+    # still caught as a failed run upstream.
     _, name, message = outcome
     if name == UnsafeEvaluatorSource.__name__:
         raise UnsafeEvaluatorSource(message)
@@ -452,29 +418,56 @@ def _forbid_object_reprs(field_name: str, value: Any) -> Any:
     return value
 
 
+def _raw_eval(source: str, kind: str) -> Callable[[Any], Any]:
+    """Compile server-authored source and return a function that evaluates it and
+    validates the result.
+
+    Runs INSIDE the sandbox subprocess (see `_sandbox_runner`) — there is no
+    isolation here. `compile_condition`/`compile_evaluator` have already validated
+    the AST in the parent; this recompiles as defense in depth so a subprocess
+    can never eval source the parent has not vetted.
+    """
+    if kind == "condition":
+        code = _compile(
+            source, field_name="condition_source", maximum=MAX_CONDITION_SOURCE_BYTES
+        )
+
+        def run(session: Any) -> Any:
+            value = eval(code, _fresh_globals(), {"session": session})  # noqa: S307
+            if not isinstance(value, (bool, ConditionResult)):
+                raise TypeError("condition_source must return bool or ConditionResult")
+            return _forbid_object_reprs("condition_source", value)
+
+    else:
+        code = _compile(
+            source, field_name="evaluator_source", maximum=MAX_EVALUATOR_SOURCE_BYTES
+        )
+
+        def run(session: Any) -> Any:
+            value = eval(code, _fresh_globals(), {"session": session})  # noqa: S307
+            if not isinstance(value, EvalResult):
+                raise TypeError("evaluator_source must return EvalResult")
+            return _forbid_object_reprs("evaluator_source", value)
+
+    return run
+
+
 def compile_condition(
     source: str,
     *,
     timeout_seconds: float | None = DEFAULT_SANDBOX_TIMEOUT_SECONDS,
 ) -> Callable[[Any], bool | ConditionResult]:
-    code = _compile(
-        source,
-        field_name="condition_source",
-        maximum=MAX_CONDITION_SOURCE_BYTES,
-    )
-    budget = float(timeout_seconds or DEFAULT_SANDBOX_TIMEOUT_SECONDS)
-
-    def _eval(session: Any) -> bool | ConditionResult:
-        value = eval(code, _fresh_globals(), {"session": session})  # noqa: S307
-        if not isinstance(value, (bool, ConditionResult)):
-            raise TypeError("condition_source must return bool or ConditionResult")
-        return _forbid_object_reprs("condition_source", value)
+    # Validate the AST in THIS (parent) process so unsafe/malformed source is
+    # rejected up front, before any subprocess is spawned.
+    _compile(source, field_name="condition_source", maximum=MAX_CONDITION_SOURCE_BYTES)
+    budget = _clamp_budget(timeout_seconds)
 
     def condition(session: Any) -> bool | ConditionResult:
         # Managed conditions are sandboxed like evaluators — `sum(range(10**10)) > 0`
         # in a condition would otherwise block the worker with NO timeout at all.
-        return _run_killable(
-            _eval,
+        return _run_sandboxed(
+            "condition",
+            source,
             session,
             wall_timeout=budget,
             cpu_seconds=budget,
@@ -489,25 +482,16 @@ def compile_evaluator(
     *,
     timeout_seconds: float | None = DEFAULT_SANDBOX_TIMEOUT_SECONDS,
 ) -> Callable[[Any], EvalResult]:
-    code = _compile(
-        source,
-        field_name="evaluator_source",
-        maximum=MAX_EVALUATOR_SOURCE_BYTES,
-    )
-    budget = float(timeout_seconds or DEFAULT_SANDBOX_TIMEOUT_SECONDS)
-
-    def _eval(session: Any) -> EvalResult:
-        value = eval(code, _fresh_globals(), {"session": session})  # noqa: S307
-        if not isinstance(value, EvalResult):
-            raise TypeError("evaluator_source must return EvalResult")
-        return _forbid_object_reprs("evaluator_source", value)
+    _compile(source, field_name="evaluator_source", maximum=MAX_EVALUATOR_SOURCE_BYTES)
+    budget = _clamp_budget(timeout_seconds)
 
     def evaluate(session: Any) -> EvalResult:
-        # The kernel-enforced boundary: this runs in a forked child with hard
-        # CPU/memory/wall-clock limits and is killed if it exceeds them, so a
+        # The kernel-enforced boundary: this runs in a fork+exec'd subprocess with
+        # hard CPU/memory/wall-clock limits, killed if it exceeds them, so a
         # server-authored compute bomb cannot exhaust the worker (SEC-001).
-        return _run_killable(
-            _eval,
+        return _run_sandboxed(
+            "evaluator",
+            source,
             session,
             wall_timeout=budget,
             cpu_seconds=budget,

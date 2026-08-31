@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.3-beta.0 — 2026-08-31
+## 1.0.3 — 2026-08-31
 
 One user-facing fix, and the three suite fixes that were needed to see it.
 

@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.0.3 — 2026-08-31
+
+One user-facing fix, and the three suite fixes that were needed to see it.
+
+**If you installed 1.0.2 and added a second agent CLI, check it.**
+`failproofai policies --install <policy> --cli <x>` stopped writing hook config
+after the first time it ran on a machine — exit 0, a reassuring `Enabled … from
+pack` line, and no enforcement for that CLI. The first install always worked,
+which is why it survived testing; only the second one was dead.
+`failproofai policies` shows which CLIs are actually wired.
+
+The rest is the integration suite, which had been reporting the vendors as
+broken while the fault was here — and, once corrected, reported two of its own
+detectors as broken too. Nothing in that half changes what the package enforces.
+
+### Fixes
+
+- `policies --install <name> --cli <x>` installs hooks again after the first time. Every builtin is also declared by the bundled `FailproofAI/policies` pack, and the first install is what puts that pack on the machine — so from the second install onward an ordinary `--install block-sudo --cli codex` resolved as "the user named only pack policies", took the short-circuit meant for a third-party name, and returned before writing a settings file. Exit 0, an `Enabled … from pack` line where `Failproof AI hooks installed for OpenAI Codex` belonged, and `--cli`, `--scope` and `--custom` all discarded. The first install per machine worked, which is why it survived manual testing; adding a second agent CLI later got silence and no enforcement. A name only a third-party pack declares still short-circuits, because there the switch really is the whole request (#760)
+
+- openclaw enforces in the integration suite for the first time, after weeks of `NO HOOK LOG — not one hook fired for this probe` against a config that looked correct. Five separate defects, each silent: openclaw refuses a plugin it does not own (`suspicious ownership … expected uid=1001 or root`) and the probe bind-mounts the host checkout, so the plugin was blocked outright; the plugin's `import … from "openclaw/plugin-sdk/plugin-entry"` cannot resolve from a standalone directory (`ERR_MODULE_NOT_FOUND`) while openclaw still lists it as loaded from its manifest; the shim spawns `node <FAILPROOFAI_BINARY_OVERRIDE>` and the canary's override is a `/bin/sh` wrapper, so every hook failed open (the same trap `pi` documents); openclaw runs tools in its own workspace rather than the probe cwd, so probe B could never find the marker; and above all `agent --local` **never dispatches plugin hooks at all** — they run on a global hook runner the GATEWAY installs, so `hasHooks()` answers false and the tool executes with our handler registered and never called. Proven by instrumenting the plugin: `--local` printed REGISTER and nothing more, the gateway printed `HANDLER FIRED tool="exec"`. The probe now copies the plugin into HOME, makes the bare import resolvable, points the override at a node-runnable path inside the repo, uses the probe dir as the workspace, and drives every turn through a per-probe gateway. Verified on a clean volume in daemon mode: `bash=PASS read=PASS` (#760)
+
+- The canary's drift detector stops crying drift over a payload that mapped perfectly. `canary-guard` reports NORMALIZATION-DRIFT-SUSPECT when a shell or path tool's canonical field "arrived empty", but the test asked something weaker — whether the canary token appears in it — so any call carrying the token in some OTHER field was flagged even though `command` had normalized exactly right. Antigravity is where it bit: `run_command` carries `toolAction` and `toolSummary` beside `CommandLine`, free text the model writes about what it is doing, so an `ls` issued while hunting for the marker mapped fine and was still scored as the copilot-1.0.70 silent-allow class. Verified live with a recorder hook against agy 1.1.22: `run_command` still delivers `CommandLine`/`Cwd`, and `view_file` delivers `AbsolutePath`, both of which the maps already handle. The condition now tests what its own message claims — both canonical fields empty — which is what real drift looks like when the keys stop mapping (#760)
+
+- The integration suite stops reporting a working CLI as broken enforcement. Probe B scores a leaked sentinel FAIL unless the agent was denied on a route the probe does not target, and that exception recognised only `canary-read-shell` — the shell. An agent denied on the read tool that reaches for some OTHER tool trips `canary-guard` instead, so antigravity scored red for days with 69 hook events and `canary-bash`, `canary-read` and `canary-guard` all denying correctly: every deny issued and honoured, reported as a silent-allow. Both detectors now downgrade a leak to INCONCLUSIVE — unproven, which is what it is. The narrowness is kept: a leak with NEITHER stays FAIL, because that is what a CLI ignoring the deny looks like. Drift is now decided FIRST, ahead of the leak branch, because `canary-guard` denies for two opposite reasons under one name and `NORMALIZATION-DRIFT-SUSPECT` must never be excused by the widened exception (#760)
+
 ## 1.0.2 — 2026-08-27
 
 The stable cut of the `1.0.2-beta.*` line, which stays documented in its own

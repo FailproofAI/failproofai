@@ -224,3 +224,23 @@ def test_session_helpers_use_the_protocol_event_vocabulary():
     session = SessionTranscript.from_wire(_contract()["samples"]["transcript_response"])
     assert session.count("tool_use") == 1
     assert session.events_of_type("agent_end")[0].payload["summary"] == "Done"
+
+
+def test_falsy_or_missing_execution_mode_is_rejected_not_defaulted():
+    # F2: a falsy/absent execution_mode was silently coerced to 'local', which
+    # could run a server-authored ('python') definition down the customer path.
+    # It must now be a hard protocol error, not a default.
+    samples = _contract()["samples"]
+    for bad in ("", None):
+        defs = json.loads(json.dumps(samples["definitions_response"]))
+        defs["definitions"][0]["execution_mode"] = bad
+        with pytest.raises(ProtocolError, match="execution_mode"):
+            DefinitionsResponse.from_wire(defs)
+        plan = json.loads(json.dumps(samples["plan_response"]))
+        plan["runs"][0]["execution_mode"] = bad
+        with pytest.raises(ProtocolError, match="execution_mode"):
+            PlanResponse.from_wire(plan)
+    absent = json.loads(json.dumps(samples["definitions_response"]))
+    del absent["definitions"][0]["execution_mode"]
+    with pytest.raises(ProtocolError, match="execution_mode"):
+        DefinitionsResponse.from_wire(absent)

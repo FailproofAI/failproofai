@@ -4,7 +4,10 @@ import pytest
 
 from failproofai_sdk.evaluator import EvalResult, Score
 from failproofai_sdk.evaluator.source import (
+    MAX_AST_NODES,
     MAX_EVALUATOR_SOURCE_BYTES,
+    MAX_POW_EXPONENT,
+    EvaluationTimeout,
     UnsafeEvaluatorSource,
     compile_condition,
     compile_evaluator,
@@ -183,3 +186,56 @@ def test_source_checksum_covers_condition_and_evaluator_together():
     assert base == source_checksum(None, "EvalResult()")
     assert base != source_checksum("True", "EvalResult()")
     assert base != source_checksum(None, "EvalResult(summary='changed')")
+
+
+# --- SEC-001: managed source cannot exhaust the worker (killable-fork sandbox) ---
+
+
+def test_compute_bomb_is_killed_within_its_budget():
+    # `sum(range(10**9))` would burn CPU for ~20s in-process, uncancellable — a
+    # CPU-bound loop (not a big allocation) so the wall-clock/CPU budget is what
+    # stops it, deterministically, rather than the memory ceiling. The forked
+    # sandbox kills it at its budget.
+    import time as _time
+
+    evaluate = compile_evaluator(
+        "EvalResult(score=Score(1.0), reasoning=str(sum(range(10**9))))",
+        timeout_seconds=1,
+    )
+    started = _time.monotonic()
+    with pytest.raises(EvaluationTimeout):
+        evaluate(Session())
+    assert _time.monotonic() - started < 5  # bounded by the ~1s budget, not ~20s
+
+
+def test_condition_compute_bomb_is_also_bounded():
+    condition = compile_condition("sum(range(10**8)) > 0", timeout_seconds=1)
+    with pytest.raises(EvaluationTimeout):
+        condition(Session())
+
+
+def test_literal_pow_exponent_bomb_is_rejected_at_compile():
+    with pytest.raises(UnsafeEvaluatorSource, match="exponent"):
+        compile_evaluator(f"EvalResult(score=Score(10 ** {MAX_POW_EXPONENT + 1}))")
+    # A small constant exponent stays allowed.
+    result = compile_evaluator(
+        "EvalResult(score=Score(1.0), reasoning=str(2 ** 3))"
+    )(Session())
+    assert result.reasoning == "8"
+
+
+def test_oversized_expression_is_rejected_at_compile():
+    huge = "[" + ",".join("1" for _ in range(MAX_AST_NODES)) + "]"
+    with pytest.raises(UnsafeEvaluatorSource, match="too large"):
+        compile_evaluator(f"EvalResult(score=Score(len({huge}) / len({huge})))")
+
+
+def test_normal_managed_eval_survives_the_fork_boundary():
+    # A session-dependent result must round-trip out of the forked child intact.
+    result = compile_evaluator(
+        "EvalResult(score=Score(1.0 if session.event_count > 0 else 0.0), "
+        "reasoning=str(session.event_count))"
+    )(Session())
+    assert isinstance(result, EvalResult)
+    assert result.score.value == 1.0
+    assert result.reasoning == "3"

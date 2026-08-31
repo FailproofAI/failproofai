@@ -222,7 +222,13 @@ def _handler_for(state: ProtocolState):
                     if run["submission_id"] is None:
                         run["worker_id"] = body["worker_id"]
                         run["lease_generation"] = body["lease_generation"]
-                    runs.append({"evaluation_run_id": run_id, **selected})
+                    runs.append(
+                        {
+                            "evaluation_run_id": run_id,
+                            "execution_mode": "local",
+                            **selected,
+                        }
+                    )
                 item["status"] = "planned" if runs else "skipped"
             self._json(
                 200,

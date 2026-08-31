@@ -36,6 +36,20 @@ it ships.
   dead-letters as one bounded `failed`/`eval_error` run instead of crashing the
   assignment task and forcing it to be reclaimed until its attempt budget runs
   out.
+- Run managed (server-authored) evaluations in a **killable forked process** with
+  hard `RLIMIT_CPU` + `RLIMIT_AS` + wall-clock limits, killed on timeout — so a
+  compute/memory bomb in a hosted definition (`sum(range(10**20))`) can no longer
+  exhaust the worker (SEC-001). Cancelling an in-process thread does not stop it;
+  a forked process the kernel bounds and the parent can `SIGKILL` does. Managed
+  conditions, which previously ran with no timeout at all, are sandboxed the same
+  way. Defense in depth at compile time: reject `**` with a large/non-constant
+  exponent and cap total AST size. A managed condition the sandbox rejects now
+  dead-letters as `condition_error` instead of raising out of the plan loop and
+  stranding the assignment. Only server-authored source is isolated this way;
+  customer evaluators still run in-process (their own trusted code).
+- Require `execution_mode` on the wire instead of coercing a falsy/missing value
+  to `local` — a malformed value silently ran a `python` definition down the
+  customer path (or vice-versa); it is now a hard protocol error.
 - Switch the worker from long-polling to **normal (short) polling**, matching the
   cadence of our other cloud surfaces. `claim` no longer sends `wait_seconds` and
   the server returns immediately; when a claim comes back empty the worker sleeps

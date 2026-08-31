@@ -41,6 +41,7 @@ from failproofai_sdk.evaluator.protocol import (
     TerminalRunStatus,
 )
 from failproofai_sdk.evaluator.source import (
+    EvaluationTimeout,
     compile_condition,
     compile_evaluator,
     source_checksum,
@@ -57,7 +58,7 @@ def _utc_now() -> str:
     )
 
 
-def _deferred_managed_eval(source: str):
+def _deferred_managed_eval(source: str, timeout_seconds: int | None):
     """Compile server-authored source lazily, at invocation time.
 
     Compilation can reject unsafe or malformed source (``UnsafeEvaluatorSource``).
@@ -70,7 +71,7 @@ def _deferred_managed_eval(source: str):
     """
 
     def evaluate(session: Any) -> Any:
-        return compile_evaluator(source)(session)
+        return compile_evaluator(source, timeout_seconds=timeout_seconds)(session)
 
     return evaluate
 
@@ -331,19 +332,26 @@ class WorkerRuntime:
                 skipped.append(self._skipped_descriptor(descriptor, "disabled_by_server"))
                 self._increment("conditions_skipped")
                 continue
-            condition_function = (
-                local.condition
-                if local is not None
-                else (
-                    compile_condition(descriptor.condition_source)
-                    if descriptor.condition_source
-                    else None
-                )
-            )
-            if condition_function is None:
-                selected.append((descriptor, local))
-                continue
             try:
+                # Compile INSIDE the try: a managed condition the sandbox rejects
+                # (unsafe/malformed source) must dead-letter as `condition_error`,
+                # not raise out of the plan loop and strand the whole assignment
+                # until its retry budget is exhausted.
+                condition_function = (
+                    local.condition
+                    if local is not None
+                    else (
+                        compile_condition(
+                            descriptor.condition_source,
+                            timeout_seconds=descriptor.timeout_seconds,
+                        )
+                        if descriptor.condition_source
+                        else None
+                    )
+                )
+                if condition_function is None:
+                    selected.append((descriptor, local))
+                    continue
                 condition = await self._invoke(condition_function, session)
                 if isinstance(condition, ConditionResult):
                     applicable = condition.applicable
@@ -429,7 +437,10 @@ class WorkerRuntime:
                     eval_version=descriptor.eval_version,
                     result_kind=descriptor.result_kind,
                     labels=descriptor.labels,
-                    function=_deferred_managed_eval(run.evaluator_source),
+                    function=_deferred_managed_eval(
+                        run.evaluator_source,
+                        run.timeout_seconds or descriptor.timeout_seconds,
+                    ),
                     condition=None,
                     on_cancel=None,
                     timeout_seconds=run.timeout_seconds or descriptor.timeout_seconds,
@@ -495,7 +506,10 @@ class WorkerRuntime:
             summary = result.summary
             error_code = None
             error_message = None
-        except asyncio.TimeoutError:
+        except (asyncio.TimeoutError, EvaluationTimeout):
+            # asyncio.TimeoutError: the awaiter hit the wall-clock. EvaluationTimeout:
+            # the forked managed sandbox was killed by its CPU/memory/time budget —
+            # the real, thread-uncancellable case. Both are a timed-out run.
             await self._cancel_hook(definition, session)
             items = ()
             status = TerminalRunStatus.TIMED_OUT

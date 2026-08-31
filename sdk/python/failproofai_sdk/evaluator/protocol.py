@@ -342,11 +342,11 @@ class AssignmentDefinition(WireModel):
             eval_version=_string(data, "eval_version"),
             result_kind=_enum(ResultKind, data, "result_kind"),
             labels=_string_list(data, "labels"),
-            execution_mode=_enum(
-                ExecutionMode,
-                {"execution_mode": data.get("execution_mode") or "local"},
-                "execution_mode",
-            ),
+            # Require execution_mode explicitly. Coercing a falsy/missing value to
+            # 'local' silently ran a server-authored ('python') definition down the
+            # customer-local path (or vice-versa); a malformed wire value is a
+            # protocol error, not a default (F2).
+            execution_mode=_enum(ExecutionMode, data, "execution_mode"),
             condition_source=_optional_string(data, "condition_source"),
             source_checksum=_optional_string(data, "source_checksum"),
             timeout_seconds=timeout,
@@ -524,11 +524,11 @@ class PlannedRun(WireModel):
             evaluation_run_id=_string(data, "evaluation_run_id"),
             eval_key=_string(data, "eval_key"),
             eval_version=_string(data, "eval_version"),
-            execution_mode=_enum(
-                ExecutionMode,
-                {"execution_mode": data.get("execution_mode") or "local"},
-                "execution_mode",
-            ),
+            # Require execution_mode explicitly. Coercing a falsy/missing value to
+            # 'local' silently ran a server-authored ('python') definition down the
+            # customer-local path (or vice-versa); a malformed wire value is a
+            # protocol error, not a default (F2).
+            execution_mode=_enum(ExecutionMode, data, "execution_mode"),
             evaluator_source=_optional_string(data, "evaluator_source"),
             source_checksum=_optional_string(data, "source_checksum"),
             timeout_seconds=timeout,

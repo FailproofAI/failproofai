@@ -18,6 +18,7 @@ import select
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from collections.abc import Callable
 from typing import Any
@@ -54,7 +55,17 @@ DEFAULT_SANDBOX_TIMEOUT_SECONDS = 30
 # per-definition timeout, so a large `timeout_seconds` can never remove the
 # execution bound (SEC-001). Wall-clock and CPU are both capped here.
 MAX_SANDBOX_TIMEOUT_SECONDS = 60
-SANDBOX_MEMORY_BYTES = 2 * 1024 * 1024 * 1024  # 2 GiB address space
+# Per-sandbox address-space cap. A managed eval works over a transcript (<=25 MiB)
+# and returns a small result, so this is generous; it also rejects an allocation
+# bomb (`[0] * 200000000` is ~1.6 GiB > this) before it returns a valid result.
+SANDBOX_MEMORY_BYTES = 512 * 1024 * 1024  # 512 MiB
+# ...but a per-process cap alone does not bound the HOST: a worker with
+# max_concurrency=32 could run 32 sandboxes at once. Cap the number of concurrent
+# sandbox processes so the AGGREGATE (MAX_CONCURRENT_SANDBOXES * SANDBOX_MEMORY_BYTES,
+# ~2 GiB) is bounded independent of the worker's claim concurrency; extra evals
+# queue on the semaphore rather than pile up memory.
+MAX_CONCURRENT_SANDBOXES = 4
+_SANDBOX_SLOTS = threading.Semaphore(MAX_CONCURRENT_SANDBOXES)
 # The result crossing back is bounded on BOTH sides: the child refuses to serialize
 # a result larger than this, and the parent stops reading (and kills the child)
 # past it — so a permitted expression that builds a huge result
@@ -141,46 +152,50 @@ def _run_sandboxed(
     try:
         with os.fdopen(handle, "wb") as tmp:
             tmp.write(payload)
-        try:
-            proc = subprocess.Popen(  # noqa: S603 - fixed argv, no shell
-                [sys.executable, "-m", "failproofai_sdk.evaluator._sandbox_runner", path],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-            )
-        except OSError as error:
-            raise EvaluationSandboxUnavailable(
-                f"could not start the evaluation sandbox: {error}"
-            ) from error
         chunks: list[bytes] = []
         total = 0
         timed_out = False
         too_large = False
-        deadline = time.monotonic() + wall_timeout
-        out_fd = proc.stdout.fileno()
-        try:
-            while True:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    timed_out = True
-                    break
-                ready, _, _ = select.select([out_fd], [], [], remaining)
-                if not ready:
-                    timed_out = True
-                    break
-                chunk = os.read(out_fd, 65536)
-                if not chunk:
-                    break
-                total += len(chunk)
-                if total > SANDBOX_MAX_RESULT_BYTES:
-                    too_large = True
-                    break
-                chunks.append(chunk)
-        finally:
-            proc.stdout.close()
-            if proc.poll() is None:
-                proc.kill()
-            proc.wait()
+        # Hold a slot for the whole subprocess lifetime so no more than
+        # MAX_CONCURRENT_SANDBOXES run at once — bounds the aggregate memory the
+        # sandboxes can consume regardless of the worker's claim concurrency.
+        with _SANDBOX_SLOTS:
+            try:
+                proc = subprocess.Popen(  # noqa: S603 - fixed argv, no shell
+                    [sys.executable, "-m", "failproofai_sdk.evaluator._sandbox_runner", path],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                )
+            except OSError as error:
+                raise EvaluationSandboxUnavailable(
+                    f"could not start the evaluation sandbox: {error}"
+                ) from error
+            deadline = time.monotonic() + wall_timeout
+            out_fd = proc.stdout.fileno()
+            try:
+                while True:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        timed_out = True
+                        break
+                    ready, _, _ = select.select([out_fd], [], [], remaining)
+                    if not ready:
+                        timed_out = True
+                        break
+                    chunk = os.read(out_fd, 65536)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > SANDBOX_MAX_RESULT_BYTES:
+                        too_large = True
+                        break
+                    chunks.append(chunk)
+            finally:
+                proc.stdout.close()
+                if proc.poll() is None:
+                    proc.kill()
+                proc.wait()
     finally:
         try:
             os.unlink(path)

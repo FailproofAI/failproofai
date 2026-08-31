@@ -52,7 +52,7 @@ it ships.
   validates it (`result_items`, the 25-result limit) and refuses to serialize
   anything over 1 MiB, and the parent reads at most that before killing the child
   — so an oversized result (`metrics={str(x): 1 for x in range(100000)}`) cannot
-  OOM the worker either. Fails **closed** (`EvaluationSandboxUnavailable`) if the
+  OOM the worker either. The per-sandbox address space is capped (512 MiB) and the number of concurrent sandbox processes is bounded (a semaphore), so the AGGREGATE memory is bounded independent of the worker's `max_concurrency` — a fleet of concurrent runs can't OOM the host. Fails **closed** (`EvaluationSandboxUnavailable`) if the
   sandbox cannot be spawned or the transcript cannot be serialized. Defense in depth at
   compile time: reject `**` with a large/non-constant exponent and cap total AST
   size. A managed condition the sandbox rejects now dead-letters as

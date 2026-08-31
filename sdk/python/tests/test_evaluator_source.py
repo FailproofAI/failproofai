@@ -289,3 +289,12 @@ def test_oversized_result_is_rejected_before_it_crosses_back():
     )
     with pytest.raises(ValueError, match="at most"):
         compile_evaluator(src, eval_key="q")(Session())
+
+
+def test_allocation_bomb_is_bounded_by_the_per_sandbox_memory_limit():
+    # A ~1.6 GiB allocation exceeds the per-sandbox RLIMIT_AS and is killed, so it
+    # cannot exhaust the worker even wrapped in an otherwise-valid result. With the
+    # concurrent-sandbox cap this also bounds the aggregate across concurrent runs.
+    src = "EvalResult(score=Score(1.0 if len([0] * 200000000) >= 0 else 0.0))"
+    with pytest.raises((EvaluationTimeout, MemoryError)):
+        compile_evaluator(src, timeout_seconds=5)(Session())

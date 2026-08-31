@@ -140,6 +140,14 @@ fi
 bun -e 'const m=await import("/repo/src/hooks/fp-config.ts");m.updateConfig({daemon:{configured:false}})' 2>/dev/null || true
 
 BASE="$HOME/probe-$CLI"
+# openclaw runs every tool inside its OWN workspace, not the cwd it is invoked
+# from: `[tools] read failed: File not found:
+# /home/canary/.openclaw/workspace/CANARY_MARKER.txt`. So probe B could never
+# find the marker and probe A's side effect landed where the verdict never
+# looked. Symlinking the workspace at the probe dir is rejected ("workspace path
+# alias points to a different current target"), so the probe dir IS the
+# workspace — one assignment, and every marker/oracle path below follows.
+[ "$CLI" = openclaw ] && BASE="$HOME/.openclaw/workspace"
 # DEFINITE probes: BENIGN actions (echo/touch a token, read a plain file) the
 # model never refuses → a tool call is guaranteed, so no INCONCLUSIVE from
 # self-censorship. A custom canary policy denies exactly those benign markers,
@@ -210,9 +218,86 @@ YAML
                 -c "$CUSTOM_POLICIES" >/dev/null 2>&1
               # open exec approval (both layers) so the agent issues tool calls headlessly
               node -e 'const fs=require("fs"),p=process.env.HOME+"/.openclaw/openclaw.json";const c=JSON.parse(fs.readFileSync(p,"utf8"));c.tools=c.tools||{};c.tools.exec=Object.assign({},c.tools.exec,{security:"full",ask:"off",host:"gateway"});fs.writeFileSync(p,JSON.stringify(c,null,2));'
-              unset FAILPROOFAI_BINARY_OVERRIDE ;;  # plugin does `node <override>`; unset → self-resolves to main HEAD
+              # ── four things openclaw needs that no other CLI does ──────────
+              # Each was live-diagnosed after openclaw spent weeks reporting
+              # `NO HOOK LOG — not one hook fired` while its config looked right.
+              #
+              # 1. OWNERSHIP. openclaw refuses a plugin it does not own:
+              #    `blocked plugin candidate: suspicious ownership
+              #    (/repo/openclaw-plugin, uid=1000, expected uid=1001 or root)`.
+              #    /repo is the HOST checkout bind-mounted in, so its uid is the
+              #    host user's and never this container's. Copy it into HOME.
+              #    A real install is unaffected — the plugin ships inside the
+              #    user's own npm package.
+              mkdir -p "$BASE"   # the attested workspace must exist before onboard
+              mkdir -p "$HOME/oc-plugin"
+              cp -r /repo/openclaw-plugin/. "$HOME/oc-plugin/"
+              # 2. BARE IMPORT. index.js does `import … from
+              #    "openclaw/plugin-sdk/plugin-entry"`, and from a standalone dir
+              #    node answers ERR_MODULE_NOT_FOUND — openclaw is installed
+              #    under ~/.npm-global, which is on no parent node_modules path.
+              #    openclaw still LISTS the plugin (from its manifest) and
+              #    reports it loaded, so the failure is completely silent.
+              mkdir -p "$HOME/node_modules"
+              ln -sfn "$HOME/.npm-global/lib/node_modules/openclaw" "$HOME/node_modules/openclaw"
+              node -e 'const fs=require("fs"),p=process.env.HOME+"/.openclaw/openclaw.json";const c=JSON.parse(fs.readFileSync(p,"utf8"));c.plugins=c.plugins||{};c.plugins.load=c.plugins.load||{};c.plugins.load.paths=[process.env.HOME+"/oc-plugin"];fs.writeFileSync(p,JSON.stringify(c,null,2));'
+              # 3. THE BINARY THE SHIM SPAWNS. It runs `node <override>`, and the
+              #    canary's override is a /bin/sh wrapper — `node …/bin/failproofai`
+              #    is a syntax error (the same trap pi hits, see its branch). The
+              #    old fix was to unset it, but that made the shim self-resolve to
+              #    `../dist/cli.mjs` relative to ITSELF, which after (1) is a copy
+              #    in HOME whose bundle cannot resolve its own imports. Point it at
+              #    the real one instead: node-runnable AND still inside /repo, so
+              #    it resolves and stays main HEAD. The shim fails OPEN on a spawn
+              #    error, so every one of these lands as a silent allow.
+              export FAILPROOFAI_BINARY_OVERRIDE=/repo/dist/cli.mjs
+              # (4. workspace — handled by BASE at the top; openclaw rejects a
+              #  symlinked workspace with "workspace path alias points to a
+              #  different current target", so the probe dir IS the workspace.)
+              : ;;
   esac
 }
+
+# The gateway openclaw's plugin hooks live in. Restarted per probe for the same
+# reason the daemon is: the gateway hosts the plugin, so it must inherit THIS
+# probe's FAILPROOFAI_HOOK_LOG_FILE or the oracle lands in the wrong dir.
+OPENCLAW_GW_PID=""
+openclaw_gateway_stop() {
+  [ -n "$OPENCLAW_GW_PID" ] || return 0
+  kill "$OPENCLAW_GW_PID" 2>/dev/null; wait "$OPENCLAW_GW_PID" 2>/dev/null
+  OPENCLAW_GW_PID=""
+}
+OPENCLAW_GW_LOG=""
+openclaw_gateway_up() {
+  # Already serving THIS probe's oracle? Reuse it — drive() is called once per
+  # retry attempt, and a gateway per attempt would leave three of them bound.
+  if [ -n "$OPENCLAW_GW_PID" ] && kill -0 "$OPENCLAW_GW_PID" 2>/dev/null \
+     && [ "$OPENCLAW_GW_LOG" = "${FAILPROOFAI_HOOK_LOG_FILE:-}" ]; then return 0; fi
+  openclaw_gateway_stop
+  OPENCLAW_GW_LOG="${FAILPROOFAI_HOOK_LOG_FILE:-}"
+  # `gateway run`, and TRUNCATE the log: readiness is a grep for the bound line,
+  # and openclaw's probe dir persists (it is the attested workspace), so an
+  # appended log let a PREVIOUS run's line satisfy readiness instantly — the
+  # turn then went out before the socket existed and got ECONNREFUSED.
+  # A gateway from a previous probe or a previous RUN still owns the state dir
+  # ("Another gateway (pid N) already owns this state directory") — the lock
+  # lives in the persistent volume, so ours never reports ready. Ask openclaw to
+  # release it; harmless when there is nothing to stop.
+  openclaw gateway stop >/dev/null 2>&1 || true
+  : > "$BASE/gateway.log"
+  openclaw gateway run --allow-unconfigured >> "$BASE/gateway.log" 2>&1 &
+  OPENCLAW_GW_PID=$!
+  for _ in $(seq 1 60); do   # readiness = the line it prints once bound, not a sleep
+    grep -q "http server listening" "$BASE/gateway.log" 2>/dev/null && return 0
+    kill -0 "$OPENCLAW_GW_PID" 2>/dev/null || break
+    sleep 1
+  done
+  echo "✗ openclaw gateway did not come up — gateway.log tail:" >&2
+  tail -5 "$BASE/gateway.log" >&2
+  return 1
+}
+
+trap openclaw_gateway_stop EXIT
 
 drive() { # $1 = prompt ; run ONE prompt headless, executing tools without approval
   case "$CLI" in
@@ -230,12 +315,30 @@ drive() { # $1 = prompt ; run ONE prompt headless, executing tools without appro
     devin)    ( cd "$BASE" && devin -p "$1" --permission-mode dangerous --respect-workspace-trust false 2>&1 ) ;;
     antigravity) ( cd "$BASE" && agy -p "$1" --model "${CANARY_ANTIGRAVITY_MODEL:-Gemini 3.5 Flash (Low)}" --dangerously-skip-permissions 2>&1 ) ;;  # lightest model → least account-quota use
     factory)  ( cd "$BASE" && droid exec --auto high -m "custom:gw-haiku-0" "$1" 2>&1 ) ;;
-    openclaw) ( cd "$BASE" && timeout 150 openclaw agent --local --session-key "canary-$RANDOM$RANDOM" --model "gw/$CANARY_LLM_MODEL" -m "$1" 2>&1 ) ;;
+    # THROUGH THE GATEWAY, never `--local`. openclaw's plugin hooks are
+    # dispatched by a global hook runner the GATEWAY installs — `hasHooks()`
+    # answers `?? false` when there is none — so `agent --local` runs the tool
+    # with our handler registered and never called. Proven by instrumenting the
+    # plugin itself: `--local` printed REGISTER and nothing else, the gateway
+    # printed `HANDLER FIRED tool="exec"`. `openclaw agent --help` says as much
+    # in one line ("Run an agent turn via the Gateway (use --local for …)") and
+    # the whole integration was probed the other way for weeks.
+    openclaw) openclaw_gateway_up
+              ( cd "$BASE" && timeout 150 openclaw agent --session-key "canary-$RANDOM$RANDOM" --model "gw/$CANARY_LLM_MODEL" -m "$1" 2>&1 ) ;;
     *) echo "drive: $CLI not implemented" >&2; return 3 ;;
   esac
 }
 
-rm -rf "$BASE"; mkdir -p "$BASE"
+# openclaw ATTESTS its workspace and refuses to run once it disappears
+# ("OpenClaw workspace appears to have disappeared after a recent
+# initialization … WORKSPACE_VANISHED"), so its probe dir — which IS that
+# workspace, see above — is cleared of the probe's own artifacts rather than
+# removed. Every other CLI gets the clean slate it always had.
+if [ "$CLI" = openclaw ]; then
+  mkdir -p "$BASE"; rm -f "$BASE"/CANARY_* 2>/dev/null
+else
+  rm -rf "$BASE"; mkdir -p "$BASE"
+fi
 [ "$CLI" = hermes ] && rm -f "$HOME/.hermes/config.yaml"   # fresh config each run (append idempotency)
 
 # The benign marker file the read-probe asks the agent to read. Its content is a

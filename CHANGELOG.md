@@ -2,6 +2,19 @@
 
 ## 1.0.3-beta.0 — 2026-08-31
 
+One user-facing fix, and the three suite fixes that were needed to see it.
+
+**If you installed 1.0.2 and added a second agent CLI, check it.**
+`failproofai policies --install <policy> --cli <x>` stopped writing hook config
+after the first time it ran on a machine — exit 0, a reassuring `Enabled … from
+pack` line, and no enforcement for that CLI. The first install always worked,
+which is why it survived testing; only the second one was dead.
+`failproofai policies` shows which CLIs are actually wired.
+
+The rest is the integration suite, which had been reporting the vendors as
+broken while the fault was here — and, once corrected, reported two of its own
+detectors as broken too. Nothing in that half changes what the package enforces.
+
 ### Fixes
 
 - `policies --install <name> --cli <x>` installs hooks again after the first time. Every builtin is also declared by the bundled `FailproofAI/policies` pack, and the first install is what puts that pack on the machine — so from the second install onward an ordinary `--install block-sudo --cli codex` resolved as "the user named only pack policies", took the short-circuit meant for a third-party name, and returned before writing a settings file. Exit 0, an `Enabled … from pack` line where `Failproof AI hooks installed for OpenAI Codex` belonged, and `--cli`, `--scope` and `--custom` all discarded. The first install per machine worked, which is why it survived manual testing; adding a second agent CLI later got silence and no enforcement. A name only a third-party pack declares still short-circuits, because there the switch really is the whole request (#760)

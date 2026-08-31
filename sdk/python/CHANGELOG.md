@@ -61,6 +61,17 @@ it ships.
 - Require `execution_mode` on the wire instead of coercing a falsy/missing value
   to `local` — a malformed value silently ran a `python` definition down the
   customer path (or vice-versa); it is now a hard protocol error.
+- Count the sandbox-slot wait against the execution timeout (SEC-001). `_run_sandboxed`
+  acquired the `MAX_CONCURRENT_SANDBOXES` slot with an UNBOUNDED wait and only started
+  its wall-clock deadline afterward — so a run queued behind busy slots could, after the
+  runtime's `asyncio.wait_for` already reported it timed out (that cancels only the
+  awaiter, not the executor thread), still acquire a slot and launch a sandbox; 28
+  threads could pile up behind 4 long sandboxes and starve the worker (conditions have
+  no runtime-level wait at all). One wall-clock deadline now covers BOTH the slot wait
+  and execution: the slot is acquired with the remaining budget, and on timeout the run
+  raises `EvaluationTimeout` **without spawning a child**. Regression test: more
+  concurrent compute bombs than slots all resolve within ~one budget, not N serialized
+  budgets.
 - A managed (`python`) definition's applicability is now governed by the SERVER's
   `condition_source`, never a colliding local condition (COR-001). `process_assignment`
   keyed the local-definition lookup on `(eval_key, eval_version)` alone and selected

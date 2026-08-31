@@ -156,10 +156,25 @@ def _run_sandboxed(
         total = 0
         timed_out = False
         too_large = False
-        # Hold a slot for the whole subprocess lifetime so no more than
-        # MAX_CONCURRENT_SANDBOXES run at once — bounds the aggregate memory the
-        # sandboxes can consume regardless of the worker's claim concurrency.
-        with _SANDBOX_SLOTS:
+        # A slot is held for the whole subprocess lifetime so no more than
+        # MAX_CONCURRENT_SANDBOXES run at once — bounding aggregate memory across
+        # concurrent sandboxes. But acquiring it must COUNT AGAINST the wall-clock
+        # budget: the runtime runs this in a thread and `asyncio.wait_for` only
+        # cancels the awaiter, so a thread that blocked here UNBOUNDED past its
+        # deadline would still go on to launch a sandbox after its run was already
+        # reported timed out — 28 such threads could queue behind 4 long sandboxes
+        # and starve the worker (conditions have no runtime-level wait at all). One
+        # deadline therefore covers BOTH the slot wait and execution: we acquire the
+        # slot with the remaining budget and, on failure, time out WITHOUT spawning.
+        deadline = time.monotonic() + wall_timeout
+        acquire_timeout = deadline - time.monotonic()
+        if acquire_timeout <= 0 or not _SANDBOX_SLOTS.acquire(timeout=acquire_timeout):
+            raise EvaluationTimeout("evaluation timed out waiting for a sandbox slot")
+        try:
+            if deadline - time.monotonic() <= 0:
+                # Slot acquired exactly at the deadline: a child launched now could
+                # only be killed immediately, so do not spawn one at all.
+                raise EvaluationTimeout("evaluation timed out waiting for a sandbox slot")
             try:
                 proc = subprocess.Popen(  # noqa: S603 - fixed argv, no shell
                     [sys.executable, "-m", "failproofai_sdk.evaluator._sandbox_runner", path],
@@ -171,7 +186,6 @@ def _run_sandboxed(
                 raise EvaluationSandboxUnavailable(
                     f"could not start the evaluation sandbox: {error}"
                 ) from error
-            deadline = time.monotonic() + wall_timeout
             out_fd = proc.stdout.fileno()
             try:
                 while True:
@@ -196,6 +210,8 @@ def _run_sandboxed(
                 if proc.poll() is None:
                     proc.kill()
                 proc.wait()
+        finally:
+            _SANDBOX_SLOTS.release()
     finally:
         try:
             os.unlink(path)

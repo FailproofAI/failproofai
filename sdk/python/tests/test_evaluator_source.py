@@ -331,6 +331,48 @@ def test_oversized_result_is_rejected_before_it_crosses_back():
         compile_evaluator(src, eval_key="q")(Session())
 
 
+def test_sandbox_slot_wait_counts_against_the_timeout(monkeypatch):
+    # SEC-001: acquiring a concurrency slot must count against the wall-clock budget.
+    # `asyncio.wait_for` only cancels the awaiter, so a run that blocked UNBOUNDED on
+    # a busy slot would still launch a sandbox after its caller was reported timed
+    # out — 28 threads could queue behind 4 long sandboxes and starve the worker.
+    # With one slot and three 1s compute bombs, all three must resolve within ~one
+    # budget (the holder is killed at ~1s; the two queued behind it exhaust their
+    # budget waiting and time out WITHOUT ever spawning a child), not three serialized
+    # budgets (~3s).
+    import threading
+    import time as _time
+
+    from failproofai_sdk.evaluator import source as _source
+
+    monkeypatch.setattr(_source, "_SANDBOX_SLOTS", threading.Semaphore(1))
+    bomb = compile_evaluator(
+        "EvalResult(score=Score(1.0), reasoning=str(sum(range(10**9))))",
+        timeout_seconds=1,
+    )
+    session = Session()
+    errors: list[str] = []
+
+    def run():
+        try:
+            bomb(session)
+        except Exception as error:  # noqa: BLE001
+            errors.append(type(error).__name__)
+
+    threads = [threading.Thread(target=run) for _ in range(3)]
+    started = _time.monotonic()
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=15)
+    elapsed = _time.monotonic() - started
+
+    assert errors == ["EvaluationTimeout"] * 3, errors
+    # Bounded by ~one budget, NOT three serialized ones — proving the queued runs
+    # timed out on slot acquisition instead of each waiting then running in turn.
+    assert elapsed < 2.5, f"queued sandboxes were not bounded by the timeout: {elapsed:.2f}s"
+
+
 def test_allocation_bomb_is_bounded_by_the_per_sandbox_memory_limit():
     # A ~1.6 GiB allocation exceeds the per-sandbox RLIMIT_AS and is killed, so it
     # cannot exhaust the worker even wrapped in an otherwise-valid result. With the

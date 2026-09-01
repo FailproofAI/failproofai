@@ -167,6 +167,16 @@ def _run_sandboxed(
     nor an oversized result (``metrics={str(x):1 for x in range(100000)}``) can
     exhaust the worker.
     """
+    # SEC-001: without the stdlib ``resource`` module (e.g. Windows) the sandbox
+    # child cannot install RLIMIT_CPU / RLIMIT_AS on itself (``_install_limits``
+    # no-ops), so a permitted expression could allocate unbounded memory before
+    # the parent's wall-clock kill lands. Refuse BEFORE spawning any child rather
+    # than run server-authored source without the advertised limits.
+    if _resource is None:  # pragma: no cover - non-POSIX
+        raise EvaluationSandboxUnavailable(
+            "kernel resource limits (RLIMIT_CPU/RLIMIT_AS) are unavailable on this "
+            "platform; managed evaluation cannot be bounded, refusing to run"
+        )
     try:
         session_wire = session.to_wire()
     except AttributeError as error:

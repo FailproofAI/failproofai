@@ -395,3 +395,20 @@ def test_allocation_bomb_is_bounded_by_the_per_sandbox_memory_limit():
     src = "EvalResult(score=Score(1.0 if len([0] * 200000000) >= 0 else 0.0))"
     with pytest.raises((EvaluationTimeout, MemoryError)):
         compile_evaluator(src, timeout_seconds=5)(Session())
+
+
+def test_sandbox_fails_closed_when_kernel_resource_limits_are_unavailable(monkeypatch):
+    # SEC-001: on a platform without the stdlib ``resource`` module (e.g. Windows),
+    # the sandbox child cannot install RLIMIT_CPU / RLIMIT_AS on itself, so managed
+    # source must be refused BEFORE any child is spawned rather than run unbounded.
+    import failproofai_sdk.evaluator.source as source
+
+    monkeypatch.setattr(source, "_resource", None)
+
+    def _no_spawn(*args, **kwargs):
+        raise AssertionError("a sandbox child must not be started when limits are unavailable")
+
+    monkeypatch.setattr(source.subprocess, "Popen", _no_spawn)
+
+    with pytest.raises(EvaluationSandboxUnavailable):
+        source.compile_evaluator("EvalResult(score=Score(1.0))")(Session())

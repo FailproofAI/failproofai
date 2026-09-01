@@ -74,6 +74,37 @@ _SANDBOX_SLOTS = threading.Semaphore(MAX_CONCURRENT_SANDBOXES)
 # items, bounded fields) is far under this.
 SANDBOX_MAX_RESULT_BYTES = 1 * 1024 * 1024  # 1 MiB
 
+# The sandbox child is scrubbed of the worker's environment.
+#
+# `subprocess.Popen` inherits `os.environ` by default, which on a worker means
+# FAILPROOFAI_EVALUATOR_TOKEN — and on the FailproofAI-managed pod that token is
+# the CROSS-TENANT credential the whole fleet authenticates with. The AST and
+# empty-builtins restrictions already stop a managed expression from reading
+# `os.environ`, so this is defence in depth rather than a fix for a live escape:
+# it means a future gap in those restrictions cannot be escalated into credential
+# theft. Only the variables the interpreter itself needs are forwarded — notably
+# PYTHONPATH, without which the child cannot import the sandbox runner at all.
+_SANDBOX_ENV_PASSTHROUGH = (
+    "PATH",
+    "PYTHONPATH",
+    "PYTHONHOME",
+    "PYTHONDONTWRITEBYTECODE",
+    "PYTHONUNBUFFERED",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "TMPDIR",
+    "SYSTEMROOT",  # Windows: CPython fails to start without it
+)
+
+
+def _sandbox_env() -> dict[str, str]:
+    return {
+        name: os.environ[name]
+        for name in _SANDBOX_ENV_PASSTHROUGH
+        if os.environ.get(name)
+    }
+
 
 def _clamp_budget(timeout_seconds: float | None) -> float:
     """The wall-clock/CPU budget for one evaluation: a positive value no larger
@@ -181,6 +212,7 @@ def _run_sandboxed(
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.DEVNULL,
+                    env=_sandbox_env(),
                 )
             except OSError as error:
                 raise EvaluationSandboxUnavailable(

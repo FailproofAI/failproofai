@@ -26,6 +26,7 @@ from failproofai_sdk.evaluator.client import EvaluatorAPIError, EvaluatorClient
 from failproofai_sdk.evaluator.protocol import (
     DEFAULT_POLL_INTERVAL_SECONDS,
     MAX_CLAIM_CAPACITY,
+    MAX_ERROR_MESSAGE_BYTES,
     MAX_WORKER_ID_BYTES,
     Assignment,
     AssignmentDefinition,
@@ -42,6 +43,7 @@ from failproofai_sdk.evaluator.protocol import (
 )
 from failproofai_sdk.evaluator.source import (
     EvaluationTimeout,
+    UnsafeEvaluatorSource,
     compile_condition,
     compile_evaluator,
     source_checksum,
@@ -528,7 +530,40 @@ class WorkerRuntime:
         except asyncio.CancelledError:
             await self._cancel_hook(definition, session)
             raise
+        except UnsafeEvaluatorSource as error:
+            # Surface the REASON for a rejected server-authored definition.
+            #
+            # This is deliberately narrower than the generic handler below.
+            # UnsafeEvaluatorSource is raised by our own validator before any
+            # customer source executes, and its message is SDK-authored text
+            # about the source's shape ("evaluator_source must be one
+            # expression", "contains disallowed syntax: Assign") — it embeds no
+            # transcript content, so it is safe to send back over the wire.
+            #
+            # Without this the author saw only "evaluation raised
+            # UnsafeEvaluatorSource" on every session, with no way to learn what
+            # was wrong: the server accepts any source that passes its size and
+            # key checks, so a definition that can never run is published
+            # successfully and then fails silently and permanently.
+            items = ()
+            status = TerminalRunStatus.FAILED
+            summary = None
+            error_code = "eval_error"
+            detail = str(error).strip()
+            error_message = (
+                f"evaluator source rejected: {detail}"
+                if detail
+                else "evaluator source rejected by the sandbox validator"
+            )
+            encoded = error_message.encode("utf-8")
+            if len(encoded) > MAX_ERROR_MESSAGE_BYTES:
+                error_message = encoded[:MAX_ERROR_MESSAGE_BYTES].decode(
+                    "utf-8", "ignore"
+                )
         except Exception as error:  # noqa: BLE001 - converts customer eval failures
+            # Type name ONLY. A customer eval's exception text can quote the
+            # transcript it was reading, and this field is persisted and shown
+            # in the dashboard, so the message itself is not repeated here.
             items = ()
             status = TerminalRunStatus.FAILED
             summary = None

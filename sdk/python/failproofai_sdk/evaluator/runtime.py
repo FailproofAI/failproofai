@@ -51,6 +51,25 @@ from failproofai_sdk.evaluator.source import (
 
 logger = logging.getLogger("failproofai_sdk.evaluator")
 
+# A synchronous evaluator (or condition) that overruns its timeout cannot be
+# cancelled: the executor thread runs the customer function to completion no
+# matter what `asyncio.wait_for` does, because CPython cannot interrupt a running
+# thread. To stop one such orphaned thread from starving live capacity, the eval
+# executor is sized with headroom OVER the concurrency limit — the semaphore, not
+# the thread pool, stays the real bound on how many evaluations run at once. This
+# is a finite cushion, not a cure: a permanently-blocked synchronous evaluator
+# invoked once per session leaks one thread per session, and no fixed pool
+# survives that. `sync_evaluations_orphaned` and a warning make the offending
+# evaluator findable; prefer `async def` evaluators (cooperatively cancellable) or
+# managed PYTHON evaluators (subprocess-isolated, hard-killed) for long or
+# untrusted work.
+_EVAL_EXECUTOR_ORPHAN_HEADROOM = 8
+
+# Reserved out of the lease for the plan request (and network jitter) so the
+# pre-plan condition phase always leaves time to submit the plan before the lease
+# expires. See `WorkerRuntime._condition_phase_deadline`.
+_CONDITION_PHASE_SAFETY_MARGIN_SECONDS = 5.0
+
 
 def _utc_now() -> str:
     return (
@@ -180,8 +199,12 @@ class WorkerRuntime:
         self._lease_duration = 120
         self._disabled_definitions: set[str] = set()
         self._eval_semaphore = asyncio.Semaphore(config.max_concurrency)
+        # Headroom over the semaphore so a timed-out-but-still-running synchronous
+        # evaluator (an unkillable orphaned thread) does not immediately starve
+        # live capacity — the semaphore remains the true concurrency bound. See
+        # `_EVAL_EXECUTOR_ORPHAN_HEADROOM`.
         self._eval_executor = concurrent.futures.ThreadPoolExecutor(
-            max_workers=config.max_concurrency,
+            max_workers=config.max_concurrency + _EVAL_EXECUTOR_ORPHAN_HEADROOM,
             thread_name_prefix="failproof-eval",
         )
         self._registered = False
@@ -326,6 +349,12 @@ class WorkerRuntime:
             (item.eval_key, item.eval_version): item
             for item in self.evaluator.definitions
         }
+        # The assignment lease is fixed at claim time and cannot be renewed until
+        # the plan is submitted (the server only extends a lease for a *planned*
+        # assignment with running runs). A slow condition phase can therefore burn
+        # the whole lease and get the plan fenced as lease_lost, so every
+        # condition is bounded by the lease it must leave time to plan within.
+        condition_deadline = self._condition_phase_deadline(assignment)
         for descriptor in descriptors:
             local = local_definitions.get(
                 (descriptor.eval_key, descriptor.eval_version)
@@ -350,19 +379,42 @@ class WorkerRuntime:
                 # (unsafe/malformed source) must dead-letter as `condition_error`,
                 # not raise out of the plan loop and strand the whole assignment
                 # until its retry budget is exhausted.
+                managed_condition_source: str | None = None
                 if descriptor.execution_mode is ExecutionMode.LOCAL:
                     condition_function = local.condition if local is not None else None
                 elif descriptor.condition_source:
-                    condition_function = compile_condition(
-                        descriptor.condition_source,
-                        timeout_seconds=descriptor.timeout_seconds,
-                    )
+                    # Compiled below, once the lease budget is known, so the
+                    # sandbox subprocess is bounded by whatever lease remains.
+                    managed_condition_source = descriptor.condition_source
+                    condition_function = None
                 else:
                     condition_function = None
-                if condition_function is None:
+                if condition_function is None and managed_condition_source is None:
+                    # No condition to run — applicable by default, no lease spent.
                     selected.append((descriptor, local))
                     continue
-                condition = await self._invoke(condition_function, session)
+                budget = self._condition_budget(
+                    condition_deadline, descriptor.timeout_seconds
+                )
+                if budget <= 0.0:
+                    # Not enough lease left to evaluate this condition and still
+                    # submit the plan in time; skip it (and, as the loop proceeds,
+                    # every later condition) rather than do work the server will
+                    # fence as lease_lost and reclaim in a loop.
+                    skipped.append(
+                        self._skipped_descriptor(descriptor, "lease_exhausted")
+                    )
+                    self._increment("conditions_skipped")
+                    self._increment("conditions_lease_exhausted")
+                    continue
+                if managed_condition_source is not None:
+                    condition_function = compile_condition(
+                        managed_condition_source,
+                        timeout_seconds=budget,
+                    )
+                condition = await asyncio.wait_for(
+                    self._invoke(condition_function, session), timeout=budget
+                )
                 if isinstance(condition, ConditionResult):
                     applicable = condition.applicable
                     reason_code = condition.reason_code
@@ -495,6 +547,9 @@ class WorkerRuntime:
     ) -> None:
         started_at = _utc_now()
         started = time.monotonic()
+        # A synchronous evaluator runs in the executor thread; if it overruns the
+        # wall-clock timeout below, the thread cannot be cancelled and is orphaned.
+        sync_function = not inspect.iscoroutinefunction(definition.function)
         try:
             invocation = self._invoke(definition.function, session)
             result = (
@@ -517,11 +572,27 @@ class WorkerRuntime:
             summary = result.summary
             error_code = None
             error_message = None
-        except (asyncio.TimeoutError, EvaluationTimeout):
+        except (asyncio.TimeoutError, EvaluationTimeout) as timeout_error:
             # asyncio.TimeoutError: the awaiter hit the wall-clock. EvaluationTimeout:
             # the forked managed sandbox was killed by its CPU/memory/time budget —
             # the real, thread-uncancellable case. Both are a timed-out run.
             await self._cancel_hook(definition, session)
+            if isinstance(timeout_error, asyncio.TimeoutError) and sync_function:
+                # The awaiter gave up while a SYNCHRONOUS evaluator was still
+                # running in the executor. CPython cannot interrupt that thread,
+                # so it is now orphaned — it runs to completion (or forever)
+                # holding a worker thread. Count it and name the evaluator so a
+                # hung one is findable; the executor's headroom keeps this one
+                # orphan from immediately starving live capacity.
+                self._increment("sync_evaluations_orphaned")
+                logger.warning(
+                    "synchronous evaluation exceeded its timeout and cannot be "
+                    "cancelled; its worker thread is orphaned until it returns",
+                    extra={
+                        "assignment_id": assignment.assignment_id,
+                        "eval_key": definition.eval_key,
+                    },
+                )
             items = ()
             status = TerminalRunStatus.TIMED_OUT
             summary = None
@@ -647,6 +718,38 @@ class WorkerRuntime:
                     },
                 )
                 self._increment("heartbeat_failures")
+
+    def _condition_phase_deadline(self, assignment: Assignment) -> float:
+        """Monotonic-clock reading by which the pre-plan condition phase must end.
+
+        The real `lease_expires_at` is used when it is in the future (production);
+        a past or unparseable value (clock skew, or a replayed transcript in a
+        test) falls back to the negotiated lease duration measured from now, so
+        the bound never fires spuriously on a stale deadline.
+        """
+        remaining = float(self._lease_duration)
+        try:
+            expires = datetime.fromisoformat(
+                assignment.lease_expires_at.replace("Z", "+00:00")
+            )
+            parsed = (expires - datetime.now(timezone.utc)).total_seconds()
+            if parsed > 0:
+                remaining = parsed
+        except (ValueError, AttributeError):
+            pass
+        return time.monotonic() + remaining
+
+    def _condition_budget(
+        self, deadline: float, timeout_seconds: int | None
+    ) -> float:
+        """Seconds a single condition may run: the lease left before the
+        plan-submission margin, capped by the definition's own timeout."""
+        remaining = (
+            deadline - time.monotonic() - _CONDITION_PHASE_SAFETY_MARGIN_SECONDS
+        )
+        if timeout_seconds is not None:
+            remaining = min(remaining, float(timeout_seconds))
+        return remaining
 
     async def _invoke(self, function, session):
         if inspect.iscoroutinefunction(function):

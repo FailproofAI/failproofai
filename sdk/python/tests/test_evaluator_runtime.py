@@ -1016,3 +1016,88 @@ def test_eval_execution_respects_process_concurrency():
     assert peak == 1
     DefinitionsResponse,
     ExecutionMode,
+
+
+def test_synchronous_evaluation_timeout_is_counted_as_orphaned():
+    # A synchronous evaluator that overruns its timeout cannot be cancelled: the
+    # runtime submits a terminal timed_out result and records the orphaned thread
+    # so a hung evaluator is findable. The executor is sized with headroom over
+    # the concurrency limit so this orphan does not starve live capacity.
+    evaluator = Evaluator(name="test", version="1")
+
+    @evaluator.eval("slow", version="1", timeout_seconds=0.05)
+    def slow(session):
+        time.sleep(0.5)
+        return EvalResult(score=Score(1))
+
+    client = FakeClient()
+    runtime = _runtime(evaluator, client)
+    try:
+        asyncio.run(runtime.process_assignment(client.assignment))
+        request = client.submissions[0][1]
+        assert request.status.value == "timed_out"
+        assert request.error_code == "eval_timeout"
+        assert runtime.metrics().get("sync_evaluations_orphaned") == 1
+        assert runtime._eval_executor._max_workers > runtime.config.max_concurrency
+    finally:
+        runtime._eval_executor.shutdown(wait=True)
+
+
+def test_conditions_are_skipped_when_the_lease_is_exhausted():
+    # With no lease time left before the plan must be submitted, the worker skips
+    # the condition (without running it) instead of burning the lease and getting
+    # the plan fenced as lease_lost.
+    evaluator = Evaluator(name="test", version="1")
+    ran = []
+
+    def gate(session):
+        ran.append(True)
+        return True
+
+    @evaluator.eval("slow", version="1", when=gate)
+    def slow(session):
+        return EvalResult(score=Score(1))
+
+    client = FakeClient()
+    runtime = _runtime(evaluator, client)
+    # Force an already-exhausted condition-phase deadline.
+    runtime._condition_phase_deadline = lambda assignment: time.monotonic()
+    asyncio.run(runtime.process_assignment(client.assignment))
+
+    assert ran == [], "the condition must not run once the lease is exhausted"
+    assert client.plans, "a plan must still be submitted"
+    plan_request = client.plans[-1]
+    assert not plan_request.selected
+    reasons = {(s.eval_key, s.reason_code) for s in plan_request.skipped}
+    assert ("slow", "lease_exhausted") in reasons
+    assert runtime.metrics().get("conditions_lease_exhausted") == 1
+    assert client.submissions == []
+
+
+def test_condition_phase_deadline_and_budget_are_lease_bounded():
+    from datetime import datetime, timedelta, timezone
+
+    evaluator = Evaluator(name="test", version="1")
+    client = FakeClient()
+    runtime = _runtime(evaluator, client)
+    runtime._lease_duration = 120
+
+    # A stale (past) lease_expires_at falls back to the negotiated lease duration,
+    # so the bound never fires spuriously under clock skew or a replayed fixture.
+    stale = replace(client.assignment, lease_expires_at="2000-01-01T00:00:00.000000Z")
+    fallback = runtime._condition_phase_deadline(stale) - time.monotonic()
+    assert 110 <= fallback <= 125
+
+    # A future lease is honored.
+    future_ts = (datetime.now(timezone.utc) + timedelta(seconds=300)).strftime(
+        "%Y-%m-%dT%H:%M:%S.%f"
+    ) + "Z"
+    future = replace(client.assignment, lease_expires_at=future_ts)
+    ahead = runtime._condition_phase_deadline(future) - time.monotonic()
+    assert 250 <= ahead <= 305
+
+    # Budget is capped by both the remaining lease and the per-definition timeout.
+    deadline = time.monotonic() + 100
+    assert runtime._condition_budget(deadline, None) == pytest.approx(95, abs=2)
+    assert runtime._condition_budget(deadline, 10) == pytest.approx(10, abs=0.05)
+    assert runtime._condition_budget(time.monotonic(), None) < 0

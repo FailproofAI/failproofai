@@ -131,6 +131,30 @@ it ships.
   25 s. Removes the `claim_wait_seconds` config knob and the
   `request_timeout_seconds > claim_wait_seconds` constraint; the poll cadence is
   now tuned centrally by the server, not per worker.
+- Bound the pre-plan condition phase by the assignment lease (hermes advisory).
+  Conditions were evaluated serially with no lease awareness before the plan was
+  created, and a managed condition could run its full sandbox budget — so a few
+  near-budget conditions could burn the whole lease before the plan request and
+  the server would fence the plan as `lease_lost`, reclaiming the assignment in a
+  loop instead of submitting a result. Each condition is now capped to the lease
+  time remaining before a plan-submission margin (using `lease_expires_at` when it
+  is in the future, else the negotiated lease duration), and once that budget is
+  gone the remaining conditions are skipped as `lease_exhausted` rather than run.
+  Local conditions, which previously had no timeout at all, are bounded the same
+  way. The complete fix — renewing the lease *during* the condition phase — needs
+  a server-side pre-plan heartbeat and is tracked separately.
+- Make a timed-out **synchronous** evaluator observable and stop it starving the
+  worker (hermes advisory). A synchronous evaluator that overruns its timeout runs
+  in the executor thread and cannot be cancelled (CPython cannot interrupt a
+  running thread), so its thread was permanently lost; with the pool sized to the
+  concurrency limit, one such orphan on a single-slot worker silently stopped all
+  further local evaluation. The eval executor now carries headroom over the
+  semaphore so an orphaned thread does not immediately starve live capacity — the
+  semaphore stays the real concurrency bound — and each orphan increments
+  `sync_evaluations_orphaned` and logs a warning naming the evaluator, so a hung
+  one is findable. This is a finite cushion, not a cure for a permanently-blocked
+  evaluator; prefer `async def` evaluators (cooperatively cancellable) or managed
+  `python` evaluators (subprocess-isolated, hard-killed) for long or untrusted work.
 
 ## 0.0.1b1 — 2026-08-24
 

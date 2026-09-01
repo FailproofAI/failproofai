@@ -26,6 +26,7 @@ ALL_PERMISSIONS: List[str] = [
     "users:delete",
     "evaluations:read",
     "evaluations:trigger",
+    "evaluations:run",
     "dashboards:read",
     "dashboards:write",
     "dashboards:delete",

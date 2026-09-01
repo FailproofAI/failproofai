@@ -19,7 +19,7 @@
 export const HOOK_SCOPES = ["user", "project", "local"] as const;
 export type HookScope = (typeof HOOK_SCOPES)[number];
 
-export const INTEGRATION_TYPES = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose", "grok", "qwen", "ori"] as const;
+export const INTEGRATION_TYPES = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose", "grok", "qwen", "ori", "cline"] as const;
 export type IntegrationType = (typeof INTEGRATION_TYPES)[number];
 
 export const CODEX_HOOK_SCOPES = ["user", "project"] as const;
@@ -1418,6 +1418,118 @@ export const ORI_STATIC_APPROVAL_POLICY = {
   rules: [] as const,
 } as const;
 
+
+// ── Cline (cline CLI) ───────────────────────────────────────────────────────
+//
+// Cline is the only integration whose config is a DIRECTORY OF EVENT-NAMED
+// FILES rather than a settings file. There is no JSON to merge and no array to
+// append to: the install drops one launcher script per event, named exactly for
+// the event it subscribes to. Verified live against cline v3.0.60.
+//
+// Three rules from that contract govern everything below:
+//
+//   1. **THE FILENAME IS THE EVENT**, case-insensitively, and only ten names
+//      exist. A typo is not an error — it is silence. This is what made an
+//      earlier probe conclude, wrongly, that cline had no reachable hook
+//      surface: the files were in the right directory under the wrong names,
+//      and cline skipped them without a log line.
+//   2. **The EXTENSION must be in the allowlist** — `"" .sh .bash .zsh .js .mjs
+//      .cjs .ts .mts .cts .py .ps1` — or the file is skipped, also silently. A
+//      `hooks.json` is invisible twice over. The file need NOT be executable;
+//      the interpreter comes from the shebang, else the extension.
+//   3. **THE EXIT CODE IS IGNORED** on every event. The verdict is the single
+//      JSON object on stdout, so the launcher must ALWAYS print exactly one
+//      object — `{}` when failproofai produced nothing. Unparseable stdout makes
+//      cline skip the hook and run the tool.
+//
+// Hook directories, in cline's own search order:
+//   ~/Documents/Cline/Hooks
+//   $CLINE_DIR/hooks              (default ~/.cline/hooks)   ← user scope
+//   <workspace>/.clinerules/hooks                            ← project scope
+//   <workspace>/.cline/hooks
+// **`--hooks-dir` IS A DEAD FLAG** in v3.0.60: it writes `CLINE_HOOKS_DIR`,
+// which appears exactly once in the shipped binary — that write — and is read by
+// nothing. Never emit it.
+//
+// Deny shape: `{"cancel": true, "errorMessage": "…"}`. Cline's verdict schema is
+// `{contextModification?, cancel?, review?, errorMessage?, context?,
+// overrideInput?}` — there is NO `decision` / `block` / `permissionDecision`
+// field, so every generic branch in policy-evaluator.ts is inert for it.
+// `overrideInput` is a real MUTATE channel and `context` a real
+// additional-context channel; neither is wired yet.
+//
+// **FAIL-OPEN, with no way to opt out.** A timeout (120s default), a parse
+// failure or a spawn error makes cline skip the hook and run the tool. Unlike
+// ori there is no `failureBehavior:"deny"` to inherit, so a failproofai fault on
+// cline is a silent allow — which is why the generated launcher prints `{}` on
+// any error rather than partial output that might parse as something else.
+//
+// **THE PRODUCT CAVEAT:** `cancel:true` becomes `{stop:true}` and is applied by
+// `applyStopControl`, which THROWS `ControlledStopError` — it ABORTS THE WHOLE
+// RUN (observed live as `[abort] aborted by another client`), not just the one
+// tool call. It is a STRONGER action than a per-tool deny, not a weaker one.
+//
+// PreToolUse payload, captured live:
+//   {"hookName":"tool_call","iteration":1,"taskId":"conv_…","userId":"…",
+//    "workspaceRoots":["/abs/path"],"workspaceInfo":{"rootPath":"…","hint":"…"},
+//    "agent_id":"…","parent_agent_id":null,"sessionContext":{"rootSessionId":"…"},
+//    "tool_call":{"id":"call_…","name":"run_commands","input":{"commands":["echo hi"]}},
+//    "preToolUse":{"toolName":"run_commands","parameters":{"commands":"[\"echo hi\"]"}}}
+// `tool_call.input` is the source of truth; `preToolUse.parameters`
+// JSON-STRINGIFIES every array value, so reading it would hand the batch
+// expander a string and silently drop the entire fan-out.
+export const CLINE_HOOK_SCOPES = ["user", "project"] as const;
+export type ClineHookScope = (typeof CLINE_HOOK_SCOPES)[number];
+
+// The nine we install. `PreCompact` is one of cline's ten names but is
+// DELIBERATELY EXCLUDED: it maps to undefined upstream and is skipped at
+// dispatch, so a file for it costs a subprocess per compaction and buys nothing.
+export const CLINE_HOOK_EVENT_TYPES = [
+  "TaskStart",
+  "TaskResume",
+  "TaskCancel",
+  "TaskComplete",
+  "TaskError",
+  "PreToolUse",
+  "PostToolUse",
+  "UserPromptSubmit",
+  "SessionShutdown",
+] as const;
+export type ClineHookEventType = (typeof CLINE_HOOK_EVENT_TYPES)[number];
+
+// These nine strings are simultaneously the `--hook` argument, the installed
+// file's basename, and the key here.
+export const CLINE_EVENT_MAP: Record<ClineHookEventType, HookEventType> = {
+  TaskStart: "SessionStart",
+  TaskResume: "SessionStart", // a resumed task is the same session continuing
+  TaskCancel: "SessionEnd",
+  TaskComplete: "Stop",
+  TaskError: "StopFailure",
+  PreToolUse: "PreToolUse",
+  PostToolUse: "PostToolUse",
+  UserPromptSubmit: "UserPromptSubmit",
+  SessionShutdown: "SessionEnd",
+};
+
+// Every entry observed LIVE on cline v3.0.60's PreToolUse payload. Unknown tools
+// pass through unchanged so they still reach the audit, just unmatched by
+// name-keyed builtins.
+export const CLINE_TOOL_MAP: Record<string, string> = {
+  run_commands: "Bash",
+  read_files: "Read",
+  search_codebase: "Grep",
+  apply_patch: "Edit",
+};
+
+// **There is deliberately NO CLINE_TOOL_INPUT_MAP.** Do not "fix" the omission
+// by adding an empty one. Every cline tool is batch- or blob-shaped, so there is
+// no key to RENAME — the whole job is a value-SHAPE transform, and it lives in
+// batch-expand.ts:
+//   run_commands    {commands:[…]}  → one element per entry, {command}
+//   read_files      {files:[{path}]}→ one element per entry, {file_path}
+//   search_codebase {queries:[…]}   → one element per entry, {pattern}
+//   apply_patch     {input:"blob"}  → one element per patched file
+
 export const HOOK_EVENT_TYPES = [
   "SessionStart",
   "SessionEnd",
@@ -1512,7 +1624,7 @@ export interface SessionMetadata {
    *  Use this for round-tripping the agent-side event name in response shapes
    *  when stdin doesn't include `hook_event_name`. */
   rawHookEventName?: string;
-  /** Which agent CLI fired this hook (claude | codex | copilot | cursor | opencode | pi | hermes | openclaw | factory | devin | antigravity | goose | ori). Set by handler.ts from --cli. */
+  /** Which agent CLI fired this hook (claude | codex | copilot | cursor | opencode | pi | hermes | openclaw | factory | devin | antigravity | goose | ori | cline). Set by handler.ts from --cli. */
   cli?: IntegrationType;
 }
 

@@ -135,4 +135,53 @@ export function normalizeCliPayload(cli: IntegrationType, parsed: Record<string,
       parsed.hook_event_name = parsed.event;
     }
   }
+
+  // Cline pipes its own payload verbatim — its hooks are event-NAMED scripts,
+  // not a generated shim that could pre-shape stdin — so without this every
+  // field the handler reads (tool_name, tool_input, session_id, cwd) is
+  // undefined and resolveCwd / block-read-outside-cwd see nothing. Verified live
+  // against cline v3.0.60 with a recorder hook on PreToolUse.
+  //
+  // `tool_call.input` is the source, NOT `preToolUse.parameters`: the latter
+  // JSON-STRINGIFIES every array value (`commands` arrives as the literal string
+  // `["echo hi"]`), so reading it would hand the batch expander a string and
+  // silently drop the entire fan-out. `preToolUse` is used only as a fallback
+  // for a payload carrying no `tool_call` at all.
+  //
+  // `hookName` is deliberately NOT mapped onto hook_event_name: its value is
+  // cline's INTERNAL name ("tool_call"), not the filename event, and the --hook
+  // argument already carries the canonical one. Same reasoning as grok's
+  // hookEventName.
+  if (cli === "cline") {
+    const tc = parsed.tool_call;
+    if (tc && typeof tc === "object" && !Array.isArray(tc)) {
+      const t = tc as Record<string, unknown>;
+      if (typeof t.name === "string") parsed.tool_name = t.name;
+      if (t.input !== undefined) parsed.tool_input = t.input;
+    }
+    const pre = parsed.preToolUse;
+    if (pre && typeof pre === "object" && !Array.isArray(pre)) {
+      const pp = pre as Record<string, unknown>;
+      if (parsed.tool_name === undefined && typeof pp.toolName === "string") {
+        parsed.tool_name = pp.toolName;
+      }
+      if (parsed.tool_input === undefined && pp.parameters !== undefined) {
+        parsed.tool_input = pp.parameters;
+      }
+    }
+    // taskId is the conversation ("conv_…"). sessionContext.rootSessionId and
+    // agent_id / parent_agent_id stay raw for custom policies correlating a
+    // subagent back to its root.
+    if (typeof parsed.taskId === "string") parsed.session_id = parsed.taskId;
+    const roots = parsed.workspaceRoots;
+    if (Array.isArray(roots) && typeof roots[0] === "string" && roots[0].length > 0) {
+      parsed.cwd = roots[0];
+    } else {
+      const wi = parsed.workspaceInfo;
+      if (wi && typeof wi === "object" && !Array.isArray(wi)) {
+        const rp = (wi as Record<string, unknown>).rootPath;
+        if (typeof rp === "string" && rp.length > 0) parsed.cwd = rp;
+      }
+    }
+  }
 }

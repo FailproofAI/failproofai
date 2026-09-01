@@ -30,7 +30,9 @@ import {
   QWEN_TOOL_MAP,
   ORI_TOOL_MAP,
   ORI_TOOL_INPUT_MAP,
+  CLINE_TOOL_MAP,
 } from "./types";
+import { canonicalizeClineToolInput, applyPatchFilePaths } from "./batch-expand";
 
 /**
  * Canonicalize a per-CLI tool name to the Claude PascalCase form that builtin
@@ -70,6 +72,9 @@ export function canonicalizeToolName(
   // Ori: tool ids arrive lowercase (bash/read/write/edit/glob/grep) — all six
   // captured at the live approval gate on ori 0.12.0+68f9a36.
   if (cli === "ori") return ORI_TOOL_MAP[raw] ?? raw;
+  // Cline: run_commands/read_files/search_codebase/apply_patch — all four
+  // observed live on cline v3.0.60's PreToolUse payload.
+  if (cli === "cline") return CLINE_TOOL_MAP[raw] ?? raw;
   return raw;
 }
 
@@ -121,6 +126,14 @@ export function canonicalizeToolInput(
     if (toolName === "Edit") return canonicalizeOriEditInput(rawInput as Record<string, unknown>);
     perToolMap = ORI_TOOL_INPUT_MAP[toolName];
   }
+  // Cline has NO key-rename map: every tool is batch- or blob-shaped, so this
+  // is a value-SHAPE transform. It is the SAFETY NET for the paths that do not
+  // fan out (PostToolUse, audit replay, fail-closed shaping); PreToolUse
+  // enforces through expandBatchToolInput instead, because a collapse cannot
+  // make an anchored regex match every element.
+  else if (cli === "cline") {
+    return canonicalizeClineToolInput(toolName, rawInput as Record<string, unknown>);
+  }
   if (!perToolMap) return rawInput;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(rawInput as Record<string, unknown>)) {
@@ -130,43 +143,22 @@ export function canonicalizeToolInput(
 }
 
 /**
- * Recover the file path(s) from an ori `edit` patch blob.
+ * Recover the file path(s) from an OpenAI apply_patch blob.
  *
- * ori's edit tool carries the entire change as ONE `patch` string in OpenAI
- * apply_patch format and passes no path argument at all, so `file_path` — which
- * `block-env-files`, `block-secrets-write` and every other path builtin reads —
- * would simply be absent and those builtins would never fire on an edit.
- * Captured live off ori 0.12.0+68f9a36:
+ * Kept as the ori-facing NAME so existing callers and
+ * __tests__/hooks/ori-canonicalize.test.ts keep working, but the implementation
+ * now lives in batch-expand.ts and is shared: ori's `edit` and cline's
+ * `apply_patch` carry byte-identical blobs, and one implementation is what
+ * stops a third CLI adding a third regex.
  *
- *   *** Begin Patch
- *   *** Update File: data.txt
- *   @@
- *   -alpha
- *   +omega
- *   *** End Patch
- *
- * Returns every path the patch touches, in file order.
+ * NOTE for a follow-up: `splitApplyPatch` (same module) now returns per-file
+ * old/new text as well, which closes ori's documented multi-file KNOWN GAP —
+ * and a worse one the gap comment understates, that ori's Edit sets NO
+ * old_string/new_string at all, so block-secrets-write can never fire on it.
+ * Deliberately NOT changed here: ori's behaviour stays as shipped in this PR.
  */
-export function oriPatchFilePaths(patch: string): string[] {
-  const re = /^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$/gm;
-  const out: string[] = [];
-  for (const m of patch.matchAll(re)) {
-    const path = m[1]?.trim();
-    if (path) out.push(path);
-  }
-  return out;
-}
+export const oriPatchFilePaths = applyPatchFilePaths;
 
-/**
- * ori `edit` → canonical input. Adds `file_path` (the FIRST path the patch
- * touches) so path builtins fire, and `ori_patch_files` (all of them) so a
- * custom policy can see the rest. `patch` is preserved verbatim.
- *
- * KNOWN GAP: `file_path` holds one path, so on a multi-file patch a builtin
- * that would have denied on a later file does not fire. Documented in types.ts
- * and asserted by __tests__/hooks/ori-canonicalize.test.ts so it cannot rot
- * into a silent surprise.
- */
 function canonicalizeOriEditInput(input: Record<string, unknown>): Record<string, unknown> {
   const patch = input.patch;
   if (typeof patch !== "string") return input;

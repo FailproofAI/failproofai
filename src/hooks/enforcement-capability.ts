@@ -330,6 +330,26 @@ export const ENFORCEMENT_CAPABILITY: Record<
     //   2. There is no Stop event at all, so the 5 require-*-before-stop
     //      builtins are INAPPLICABLE on ori, exactly as on Hermes and Goose.
   },
+
+  // ── cline ─────────────────────────────────────────────────────────────────
+  // cline v3.0.60. Its hooks are event-NAMED scripts under a hooks directory,
+  // and THE EXIT CODE IS IGNORED on every event — so every row here is a claim
+  // about a stdout SHAPE, never about exit 2. cline's verdict schema has no
+  // `decision` / `block` / `permissionDecision` field at all, which is why every
+  // generic branch in policy-evaluator.ts is inert for it.
+  cline: {
+    PreToolUse: "block",  // LIVE: {"cancel":true,"errorMessage":…} on stdout stopped a real run_commands call and the side effect never happened. CAVEAT, and it is a product decision rather than a footnote: `cancel` becomes {stop:true} -> applyStopControl THROWS ControlledStopError, ABORTING THE WHOLE RUN ("[abort] aborted by another client"), not just this tool call. A STRONGER action than a per-tool deny, not a weaker one
+    Stop: "observe",      // TaskComplete maps here, and `cancel` is NOT a force-retry channel: the task has already completed, so a cancel kills a finished run rather than re-entering the loop. The 5 require-*-before-stop builtins are INAPPLICABLE on cline, exactly as on Hermes, Goose and ori
+    // DELIBERATELY NO OTHER ROWS. PostToolUse, UserPromptSubmit, TaskStart,
+    // TaskResume, TaskCancel, TaskError and SessionShutdown ARE installed — for
+    // the audit trail and for observe-mode custom policies — but nothing has
+    // been probed showing a verdict on any of them changes what the agent does,
+    // and ABSENT MEANS UNKNOWN in this file.
+    //
+    // FAIL-OPEN across the whole surface, and unlike ori there is no
+    // failureBehavior:"deny" to inherit: a timeout (120s default), a parse
+    // failure or a spawn error makes cline SKIP the hook and run the tool.
+  },
 };
 
 /**

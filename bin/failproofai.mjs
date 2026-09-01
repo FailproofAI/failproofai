@@ -86,7 +86,7 @@ let lastPolicyAction = null;
  * passed. __tests__/hooks/integrations.test.ts asserts this equals
  * INTEGRATION_TYPES so the next CLI cannot repeat it.
  */
-const INSTALLABLE_CLIS = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose", "grok", "qwen", "ori"];
+const INSTALLABLE_CLIS = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose", "grok", "qwen", "ori", "cline"];
 const VALID_CLIS_USAGE = `Missing value(s) for --cli. Usage: --cli ${INSTALLABLE_CLIS.join(" ")} (or any subset)`;
 
 async function track(name, props) {
@@ -134,7 +134,7 @@ const hookIdx = args.indexOf("--hook");
 if (hookIdx >= 0) {
   if (!args[hookIdx + 1]) {
     console.error("Error: Missing event type after --hook");
-    console.error("Usage: failproofai --hook <event> [--cli <claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose|grok|qwen|ori>]");
+    console.error("Usage: failproofai --hook <event> [--cli <claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose|grok|qwen|ori|cline>]");
     process.exit(1);
   }
   const eventType = args[hookIdx + 1];
@@ -159,6 +159,7 @@ if (hookIdx >= 0) {
       || cliArg === "grok"
       || cliArg === "qwen"
       || cliArg === "ori"
+      || cliArg === "cline"
     )
       ? cliArg
       : "claude";

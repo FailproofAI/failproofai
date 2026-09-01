@@ -59,13 +59,13 @@ describe("copy counts match source", () => {
     // Fails loudly if someone adds a harness or a policy without re-reading the
     // copy. Update this block ONLY together with every string it guards.
     expect(TRUTH).toEqual({
-      harnesses: 15,
+      harnesses: 16,
       // 39, not 40: `block-self-pause` and `block-failproofai-commands` are one
       // alwaysOn guard now — an agent that can disable either can disable
       // enforcement, so they were never two decisions.
       policies: 39,
       events: 29,
-      preToolUseBlocks: 15,
+      preToolUseBlocks: 16,
       stopBlocks: 10,
     });
   });
@@ -155,6 +155,7 @@ describe("copy counts match source", () => {
       grok: "grok CLI",
       qwen: "Qwen Code",
       ori: "Ori",
+      cline: "Cline",
     };
     // Adding an integration without documenting it is the drift this catches.
     expect(Object.keys(NAMES).sort()).toEqual([...INTEGRATION_TYPES].sort());
@@ -166,8 +167,8 @@ describe("copy counts match source", () => {
     // defensible because enforcement-capability.ts carries the probed version on
     // every row. If a re-probe moves a row, the prose has to move with it.
     const quickstart = read("docs/start/quickstart.mdx");
-    expect(quickstart).toContain("verified on all 15");
-    expect(TRUTH.preToolUseBlocks).toBe(15);
+    expect(quickstart).toContain("verified on all 16");
+    expect(TRUTH.preToolUseBlocks).toBe(16);
     expect(quickstart).toMatch(/verified on 10\b/);
     expect(TRUTH.stopBlocks).toBe(10);
   });

@@ -73,6 +73,8 @@ your own runtime — [talk to us](mailto:support@befailproof.ai) and we'll map i
         </picture>
       </a>
     </td>
+  </tr>
+  <tr>
     <td align="center" width="96">
       <a href="https://opencode.ai/" title="OpenCode">
         <picture>
@@ -81,8 +83,6 @@ your own runtime — [talk to us](mailto:support@befailproof.ai) and we'll map i
         </picture>
       </a>
     </td>
-  </tr>
-  <tr>
     <td align="center" width="96">
       <a href="https://pi.dev/" title="Pi (pi-coding-agent)">
         <picture>
@@ -107,6 +107,8 @@ your own runtime — [talk to us](mailto:support@befailproof.ai) and we'll map i
         </picture>
       </a>
     </td>
+  </tr>
+  <tr>
     <td align="center" width="96">
       <a href="https://openclaw.ai/" title="OpenClaw (openclaw gateway)">
         <img src="assets/logos/openclaw.svg" alt="OpenClaw" width="56" height="56" />
@@ -120,8 +122,6 @@ your own runtime — [talk to us](mailto:support@befailproof.ai) and we'll map i
         </picture>
       </a>
     </td>
-  </tr>
-  <tr>
     <td align="center" width="96">
       <a href="https://devin.ai" title="Devin CLI (Cognition)">
         <img src="assets/logos/devin.svg" alt="Devin CLI" width="56" height="56" />
@@ -132,6 +132,8 @@ your own runtime — [talk to us](mailto:support@befailproof.ai) and we'll map i
         <img src="assets/logos/antigravity.svg" alt="Antigravity CLI" width="56" height="56" />
       </a>
     </td>
+  </tr>
+  <tr>
     <td align="center" width="96">
       <a href="https://goose-docs.ai/" title="Goose (codename goose)">
         <picture>
@@ -151,6 +153,11 @@ your own runtime — [talk to us](mailto:support@befailproof.ai) and we'll map i
           <source media="(prefers-color-scheme: dark)" srcset="assets/logos/ori-dark.svg" />
           <img src="assets/logos/ori-light.svg" alt="Ori" width="56" height="56" />
         </picture>
+      </a>
+    </td>
+    <td align="center" width="96">
+      <a href="https://github.com/cline/cline" title="Cline">
+        <img src="assets/logos/cline.png" alt="Cline" width="56" height="56" />
       </a>
     </td>
   </tr>
@@ -300,7 +307,7 @@ own cluster is available on the Enterprise plan.
 |---|---|
 | [Quickstart](https://docs.befailproof.ai/start/quickstart) | Install, connect a harness, see the first run |
 | [Concepts](https://docs.befailproof.ai/start/concepts) | How the hook system works |
-| [Supported harnesses](https://docs.befailproof.ai/reference/harnesses) | All 15, and what each one can enforce |
+| [Supported harnesses](https://docs.befailproof.ai/reference/harnesses) | All 16, and what each one can enforce |
 
 | Observe | |
 |---|---|

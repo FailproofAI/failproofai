@@ -1029,6 +1029,131 @@ For production users the recommended Qwen install is:
 failproofai policies --install --cli qwen --scope project
 ```
 
+### Cline hooks (`~/.cline/hooks/` / `.clinerules/hooks/`)
+
+Cline is a **dual-pillar** integration (live hooks + audit), **user + project** scope. It is
+the only integration whose config is a **directory of event-named files** rather than a
+settings file. The whole contract below was **verified live against cline v3.0.60**.
+
+**Three rules, and all three fail SILENTLY when broken:**
+
+1. **The FILENAME is the event**, case-insensitively. Only ten names exist: `TaskStart`,
+   `TaskResume`, `TaskCancel`, `TaskComplete`, `TaskError`, `PreToolUse`, `PostToolUse`,
+   `UserPromptSubmit`, `PreCompact`, `SessionShutdown`. A typo is not an error — cline
+   skips the file without a log line. This is exactly how an early probe concluded, wrongly,
+   that cline had no reachable hook surface: right directory, wrong names.
+2. **The EXTENSION must be in the allowlist** — `"" .sh .bash .zsh .js .mjs .cjs .ts .mts
+   .cts .py .ps1` — or the file is skipped, also silently. A `hooks.json` is invisible twice
+   over. The file need **not** be executable; the interpreter comes from the shebang, else
+   the extension.
+3. **The EXIT CODE IS IGNORED** on every event. The verdict is the single JSON object on
+   stdout, so the generated launcher must always print exactly one object and print `{}`
+   when failproofai produced nothing — unparseable stdout makes cline skip the hook and run
+   the tool.
+
+Hook directories, in cline's own search order:
+
+| Path | Scope |
+|------|-------|
+| `~/Documents/Cline/Hooks` | (read, not written) |
+| `$CLINE_DIR/hooks` (default `~/.cline/hooks`) | **user** |
+| `<workspace>/.clinerules/hooks` | **project** |
+| `<workspace>/.cline/hooks` | (read, not written) |
+
+**`--hooks-dir` IS A DEAD FLAG** in v3.0.60: it writes `CLINE_HOOKS_DIR`, which appears
+exactly once in the shipped binary — that write — and is read by nothing. Never emit it.
+
+**Deny contract:** `{"cancel": true, "errorMessage": "…"}` on stdout at exit 0. Cline's
+verdict schema is `{contextModification?, cancel?, review?, errorMessage?, context?,
+overrideInput?}` — there is **no** `decision` / `block` / `permissionDecision` field, so
+every generic branch in `policy-evaluator.ts` is inert for it and the `cli === "cline"`
+branch must come first. `context` is a real additional-context channel (so `instruct()` does
+**not** degrade to stderr-only here, unlike Goose/Hermes/ori), and `overrideInput` is a real
+MUTATE channel — not yet wired, but it is the thing that would make the `sanitize-*` builtins
+actually sanitize.
+
+**Two caveats that are product decisions, not footnotes:**
+
+- **`cancel:true` ABORTS THE WHOLE RUN.** It becomes `{stop:true}` → `applyStopControl`
+  throws `ControlledStopError`. Observed live as `[abort] aborted by another client`. It is a
+  *stronger* action than a per-tool deny, not a weaker one — every other integration denies
+  one call and lets the agent adapt.
+- **FAIL-OPEN, with no way to opt out.** A timeout (120s default), a parse failure or a spawn
+  error makes cline skip the hook and run the tool. Unlike ori there is no
+  `failureBehavior:"deny"` to inherit, so a failproofai fault on cline is a silent allow.
+
+`Stop`/`StopFailure` deliberately do **not** emit a cancel: `TaskComplete` fires after the
+task has finished, so a cancel would kill a completed run rather than force a retry. We emit
+`{"context": …}` there instead, and `ENFORCEMENT_CAPABILITY` records `Stop: "observe"`. The 5
+`require-*-before-stop` builtins are **inapplicable** on cline, as on Hermes, Goose and ori.
+`PreCompact` is one of cline's ten names but is excluded from `CLINE_HOOK_EVENT_TYPES`: it
+maps to `undefined` upstream and is skipped at dispatch.
+
+**EVERY CLINE TOOL IS BATCH-SHAPED, and this is the whole integration.** Captured live:
+
+| cline tool | input | canonical |
+|------------|-------|-----------|
+| `run_commands` | `{commands: ["cd '<d>' && ls -la", …]}` | `Bash` |
+| `read_files` | `{files: [{path, start_line, …}, …]}` | `Read` |
+| `search_codebase` | `{queries: ["alpha", …]}` | `Grep` |
+| `apply_patch` | `{input: "*** Begin Patch\n*** Update File: <p>…"}` | `Edit` |
+
+failproofai's builtins read SCALARS (`tool_input.command`, `.file_path`, `.pattern`), so a
+key rename leaves every one of them reading `undefined` and **allowing silently** — the
+inert-hook failure this repo has shipped twice. There is therefore **no
+`CLINE_TOOL_INPUT_MAP`**; do not "fix" the omission by adding an empty one. Instead
+`src/hooks/batch-expand.ts` expands one call into N canonical scalar inputs and
+`src/hooks/batch-fanout.ts` runs the policy set once per element, **lowest offending index
+wins**, short-circuiting the rest.
+
+**Why not just join the array?** Because `SECRET_FILE_RE` is `/\.(?:pem|key)$/`. Under any
+join only the LAST element can match, so a `.pem` at `files[0]` rides straight through.
+`__tests__/hooks/cline-batch-bypass.test.ts` asserts that with the real builtins, and also
+asserts the join *would* have missed it — so a later "simplification" fails loudly instead of
+going quietly green while enforcement disappears.
+
+A collapse still happens on the paths that cannot fan out (PostToolUse, audit replay,
+fail-closed shaping): `canonicalizeClineToolInput` derives the best single scalar and keeps
+the arrays under `cline_*`. Two details there are derived, not chosen — commands join with
+`" &&\n"` (a bare `"\n"` silently disables `READ_LIKE_CMDS`, whose boundary alternation has
+no newline; a bare `" && "` manufactures false denies across a boundary), and paths collapse
+via `pickRiskiestPath`, not `paths[0]`.
+
+`apply_patch` carries the **same OpenAI apply_patch format as ori's `edit`**, so
+`splitApplyPatch` in `batch-expand.ts` serves both and `oriPatchFilePaths` is now an alias
+for it. It also returns per-file old/new text, which closes ori's documented multi-file
+KNOWN GAP — and a worse one the gap comment understates, that ori's Edit sets no
+`old_string`/`new_string` at all, so `block-secrets-write` can never fire on it. Deliberately
+NOT changed for ori in this PR; it is a five-line follow-up now rather than a re-derivation.
+
+**Payload normalization** (`normalize-cli-payload.ts`): cline pipes its own payload verbatim
+— its hooks are event-named scripts, not a generated shim that could pre-shape stdin — so
+without a branch every field the handler reads is `undefined`. Read `tool_call.input`, **not**
+`preToolUse.parameters`: the latter JSON-**stringifies** every array value, so reading it
+would hand the batch expander a string and silently drop the whole fan-out. `taskId` →
+`session_id`; `workspaceRoots[0]` (else `workspaceInfo.rootPath`) → `cwd`.
+
+**Audit pillar** — the thinnest adapter we have, because cline already stores **Claude's own
+content blocks**. Per-session directories at `~/.cline/data/sessions/<epochMs>_<suffix>/`
+hold `<id>.json` (metadata: `session_id`, `source`, `status`, `provider`, `model`, **`cwd`**,
+`workspace_root`, `prompt`, `started_at`/`ended_at`) and `<id>.messages.json`
+(`{version, updated_at, agent, sessionId, origin, system_prompt, messages}`) whose blocks are
+`{type:"thinking"|"text"|"tool_use"|"tool_result"}`. `lib/cline-sessions.ts` pairs
+`tool_result` onto `tool_use` by id and — importantly — does **not** emit a user turn for the
+`role:"user"` message that merely carries results, or every tool call produces a phantom turn.
+Cline stores **no per-message timestamp**, so every entry carries the session's own time.
+`CLINE_HOME` / `CLINE_DIR` override the home for tests.
+
+**Uninstall must delete FILES, never the directory.** Unlike ori's feature directory, cline's
+hooks directory is shared with the user's own hooks; `removeHooksFromFile` removes only files
+carrying the failproofai marker, and `writeHookEntries` refuses to clobber a file that lacks
+it.
+
+For production users the recommended Cline install is:
+```bash
+failproofai policies --install --cli cline --scope project
+```
+
 ### Dogfood configs for Factory / Devin / Antigravity / Goose / grok / Qwen
 ### Ori hooks (`~/.ori/global/features/failproofai/`)
 

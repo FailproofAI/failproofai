@@ -155,6 +155,14 @@ it ships.
   one is findable. This is a finite cushion, not a cure for a permanently-blocked
   evaluator; prefer `async def` evaluators (cooperatively cancellable) or managed
   `python` evaluators (subprocess-isolated, hard-killed) for long or untrusted work.
+- Let a managed source's list/set/dict comprehension read `session` on CPython
+  3.10/3.11 (hermes COR-001). The sandbox eval put `session` in the eval *locals*,
+  but a comprehension runs in its own scope and resolves a free name like
+  `session` from *globals* — so on 3.10 (a supported version) an allowed source
+  such as `all([session.event_count > 0 for i in range(1)])` raised `NameError`.
+  `session` now goes in a fresh per-call globals mapping and both eval paths use
+  empty locals, which keeps isolation and works across 3.10–3.14. Regression test
+  runs on the whole version matrix.
 
 ## 0.0.1b1 — 2026-08-24
 

@@ -597,7 +597,13 @@ def _raw_eval(source: str, kind: str) -> Callable[[Any], Any]:
         )
 
         def run(session: Any) -> Any:
-            value = eval(code, _fresh_globals(), {"session": session})  # noqa: S307
+            # `session` goes in the (fresh, per-call) GLOBALS, not locals: on
+            # CPython 3.10 a list/set/dict comprehension resolves a free name like
+            # `session` from globals, so an allowed source such as
+            # `all([session.event_count > 0 for _ in range(1)])` raises NameError
+            # if `session` is only a local. Globals stay fresh per call for
+            # isolation (see `_fresh_globals`); locals are empty.
+            value = eval(code, {**_fresh_globals(), "session": session}, {})  # noqa: S307
             if not isinstance(value, (bool, ConditionResult)):
                 raise TypeError("condition_source must return bool or ConditionResult")
             return _forbid_object_reprs("condition_source", value)
@@ -608,7 +614,13 @@ def _raw_eval(source: str, kind: str) -> Callable[[Any], Any]:
         )
 
         def run(session: Any) -> Any:
-            value = eval(code, _fresh_globals(), {"session": session})  # noqa: S307
+            # `session` goes in the (fresh, per-call) GLOBALS, not locals: on
+            # CPython 3.10 a list/set/dict comprehension resolves a free name like
+            # `session` from globals, so an allowed source such as
+            # `all([session.event_count > 0 for _ in range(1)])` raises NameError
+            # if `session` is only a local. Globals stay fresh per call for
+            # isolation (see `_fresh_globals`); locals are empty.
+            value = eval(code, {**_fresh_globals(), "session": session}, {})  # noqa: S307
             if not isinstance(value, EvalResult):
                 raise TypeError("evaluator_source must return EvalResult")
             return _forbid_object_reprs("evaluator_source", value)

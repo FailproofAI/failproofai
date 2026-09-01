@@ -2386,14 +2386,42 @@ function callPolicy(request) {
     child.on("error", (err) => {
       FAIL_OPEN ? finish(done, { permission: "allow" }) : finish(fail, err);
     });
-    child.on("close", () => {
+    child.on("close", (code, signal) => {
+      // A non-zero exit or a signal means failproofai produced NO verdict — a
+      // missing bundle, a crashed evaluator, an OOM kill. Resolving that to
+      // "allow" is exactly the silent non-enforcement ori's
+      // failureBehavior deny exists to prevent, and it could never fire,
+      // because resolving is what tells ori the provider succeeded. Only a
+      // REJECT reaches that guarantee.
+      if (signal || (typeof code === "number" && code !== 0)) {
+        const err = new Error(
+          "failproofai produced no verdict (" +
+            (signal ? "killed by " + signal : "exit code " + code) +
+            ")",
+        );
+        FAIL_OPEN ? finish(done, { permission: "allow" }) : finish(fail, err);
+        return;
+      }
       const stdout = out.trim();
+      // Exit 0 with empty stdout IS the evaluator's clean-allow shape — the one
+      // case where no output is a real verdict rather than a failure.
       if (!stdout) { finish(done, { permission: "allow" }); return; }
+      let verdict;
       try {
-        finish(done, JSON.parse(stdout));
+        verdict = JSON.parse(stdout);
       } catch (err) {
         FAIL_OPEN ? finish(done, { permission: "allow" }) : finish(fail, err);
+        return;
       }
+      // Anything that is not an explicit allow/deny is an unrecognised answer,
+      // not an allow. decide() maps every non-"deny" to allow, so an
+      // unvalidated object would silently become one.
+      if (!verdict || (verdict.permission !== "allow" && verdict.permission !== "deny")) {
+        const err = new Error("failproofai returned an unrecognised verdict: " + stdout.slice(0, 200));
+        FAIL_OPEN ? finish(done, { permission: "allow" }) : finish(fail, err);
+        return;
+      }
+      finish(done, verdict);
     });
     try {
       child.stdin.end(JSON.stringify({

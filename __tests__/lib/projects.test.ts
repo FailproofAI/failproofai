@@ -58,6 +58,12 @@ vi.mock("@/lib/grok-projects", () => ({
 vi.mock("@/lib/qwen-projects", () => ({
   getQwenProjects: vi.fn().mockResolvedValue([]),
 }));
+vi.mock("@/lib/ori-projects", () => ({
+  getOriProjects: vi.fn().mockResolvedValue([]),
+}));
+vi.mock("@/lib/cline-projects", () => ({
+  getClineProjects: vi.fn().mockResolvedValue([]),
+}));
 vi.mock("@/lib/antigravity-projects", () => ({
   getAntigravityProjects: vi.fn(async () => []),
 }));

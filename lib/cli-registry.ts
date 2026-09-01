@@ -27,7 +27,7 @@
 import type { IntegrationType } from "@/src/hooks/types";
 
 /** Canonical CLI ids the registry knows about. Mirrors `INTEGRATION_TYPES`. */
-export const KNOWN_CLI_IDS = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose", "grok", "qwen"] as const satisfies readonly IntegrationType[];
+export const KNOWN_CLI_IDS = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose", "grok", "qwen", "ori", "cline"] as const satisfies readonly IntegrationType[];
 export type CliId = (typeof KNOWN_CLI_IDS)[number];
 
 /** Per-CLI metadata consumed by the dashboard. */
@@ -115,6 +115,21 @@ const CLI_ENTRIES: Record<CliId, CliEntry> = {
     // Magenta — the opposite pole from grok's neutral, and outside the
     // status set (success/amber/orange/error) so it reads as identity.
     badgeClasses: "bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/20",
+  },
+  ori: {
+    id: "ori",
+    label: "Ori",
+    // Sky — the badge set must be UNIQUE per CLI (a test asserts it), and
+    // violet/teal were already taken. Still outside the status set
+    // (success/amber/orange/error) so it reads as identity, not state.
+    badgeClasses: "bg-sky-500/10 text-sky-400 border-sky-500/20",
+  },
+  cline: {
+    id: "cline",
+    label: "Cline",
+    // Stone — the remaining neutral that is not zinc (grok's) and not a status
+    // colour.
+    badgeClasses: "bg-stone-500/10 text-stone-300 border-stone-500/20",
   },
 };
 

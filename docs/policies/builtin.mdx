@@ -82,7 +82,7 @@ A policy only changes behavior where the harness consumes the verdict for its ev
 
 | Event | Where a deny is verified to change behavior |
 | --- | --- |
-| `PreToolUse` | All 12 harnesses |
+| `PreToolUse` | All 16 harnesses |
 | `Stop` | claude, codex, copilot, cursor, openclaw, factory, devin, antigravity. No `Stop` hook is installed on goose or hermes, pi carries the reason into the next turn instead, and opencode is not verified |
 
 So the five `require-*-before-stop` policies in the Workflow category can be enabled on a machine and still never fire, depending on which agent runs there. Cursor Cloud Agent VMs run no stop hooks at all.

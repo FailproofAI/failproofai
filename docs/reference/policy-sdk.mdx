@@ -146,7 +146,7 @@ const filePath = String(ctx.toolInput?.file_path ?? "");
 | Event | When it runs | Typical use |
 | --- | --- | --- |
 | `PreToolUse` | Before a tool executes. | Block or guide commands, writes, reads, and external actions. This is the guard. |
-| `PostToolUse` | After the tool has already executed. | Inspect or replace the result the model reads. It cannot undo the side effect—the write or the command already happened—and on ten of the twelve harnesses the verdict cannot stop anything. Only Codex and Copilot consume it, and even there it replaces the result the model reads rather than preventing the call. Never use it as a guard. |
+| `PostToolUse` | After the tool has already executed. | Inspect or replace the result the model reads. It cannot undo the side effect—the write or the command already happened—and on fourteen of the sixteen harnesses the verdict cannot stop anything. Only Codex and Copilot consume it, and even there it replaces the result the model reads rather than preventing the call. Never use it as a guard. |
 | `PermissionRequest` | When the agent requests permission. | Apply organization-specific permission rules. |
 | `UserPromptSubmit` | Before a submitted prompt continues. | Reject prohibited instructions or add workflow guidance. |
 | `Stop` | When the agent attempts to finish. | Require a reachable completion condition, such as a local verification step. |

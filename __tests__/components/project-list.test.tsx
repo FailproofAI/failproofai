@@ -265,6 +265,8 @@ describe("ProjectList", () => {
       "Goose",
       "grok CLI",
       "Qwen Code",
+      "Ori",
+      "Cline",
     ]);
   });
 

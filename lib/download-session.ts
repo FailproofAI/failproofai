@@ -167,6 +167,28 @@ export async function resolveDownloadSource(
     return { kind: "synthesized", body, contentType: "application/x-ndjson", extension: "jsonl" };
   }
 
+  if (cli === "ori") {
+    // Ori keeps the whole conversation in one SQLite column
+    // (ori_agent_loop_history.prompt). Synthesize a JSONL export from the
+    // parsed entries — there is no per-session file to stream.
+    const { getOriSessionLog } = await import("./ori-sessions");
+    const result = await getOriSessionLog(sessionId);
+    if (!result) return null;
+    const body = result.entries.map((e) => JSON.stringify(e)).join("\n") + "\n";
+    return { kind: "synthesized", body, contentType: "application/x-ndjson", extension: "jsonl" };
+  }
+
+  if (cli === "cline") {
+    // Cline stores a real per-session messages file, but it is a single JSON
+    // document rather than JSONL, so stream the parsed entries as JSONL for
+    // consistency with every other synthesized export.
+    const { getClineSessionLog } = await import("./cline-sessions");
+    const result = await getClineSessionLog(sessionId);
+    if (!result) return null;
+    const body = result.entries.map((e) => JSON.stringify(e)).join("\n") + "\n";
+    return { kind: "synthesized", body, contentType: "application/x-ndjson", extension: "jsonl" };
+  }
+
   // Exhaustive — but TypeScript can't always see CliId is exhausted across the
   // if-chain above, so guard with a runtime fallback.
   const _exhaustive: never = cli;

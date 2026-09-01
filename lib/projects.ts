@@ -173,6 +173,8 @@ export async function getProjectFolders(): Promise<ProjectFolder[]> {
     { getGooseProjects },
     { getGrokProjects },
     { getQwenProjects },
+    { getOriProjects },
+    { getClineProjects },
   ] = await Promise.all([
     import("./codex-projects"),
     import("./copilot-projects"),
@@ -187,8 +189,10 @@ export async function getProjectFolders(): Promise<ProjectFolder[]> {
     import("./goose-projects"),
     import("./grok-projects"),
     import("./qwen-projects"),
+    import("./ori-projects"),
+    import("./cline-projects"),
   ]);
-  const [claude, codex, copilot, cursor, opencode, pi, hermes, openclaw, factory, devin, antigravity, goose, grok, qwen] = await Promise.all([
+  const [claude, codex, copilot, cursor, opencode, pi, hermes, openclaw, factory, devin, antigravity, goose, grok, qwen, ori, cline] = await Promise.all([
     getClaudeProjectFolders(),
     getCodexProjects().catch((error) => {
       logError("Error reading Codex projects:", error);
@@ -242,8 +246,16 @@ export async function getProjectFolders(): Promise<ProjectFolder[]> {
       logError("Error reading Qwen projects:", error);
       return [] as ProjectFolder[];
     }),
+    getOriProjects().catch((error) => {
+      logError("Error reading Ori projects:", error);
+      return [] as ProjectFolder[];
+    }),
+    getClineProjects().catch((error) => {
+      logError("Error reading Cline projects:", error);
+      return [] as ProjectFolder[];
+    }),
   ]);
-  return mergeProjectFolders(claude, codex, copilot, cursor, opencode, pi, hermes, openclaw, factory, devin, antigravity, goose, grok, qwen);
+  return mergeProjectFolders(claude, codex, copilot, cursor, opencode, pi, hermes, openclaw, factory, devin, antigravity, goose, grok, qwen, ori, cline);
 }
 
 /**

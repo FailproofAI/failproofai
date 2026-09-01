@@ -123,14 +123,20 @@ describe("copy counts match source", () => {
   });
 
   it("README names every shipped harness, in the class it belongs to", () => {
-    // The twelve are TWO classes: ten coding CLIs and two gateways. The Python
-    // SDK is a separate door, not a third class of the twelve — and it reports
-    // events rather than sitting in the tool-call path, so it observes without
-    // enforcing. Copy that folds it in overstates what it does, which is the
-    // single easiest way for a reader to catch us out.
+    // The sixteen are TWO classes: fourteen coding CLIs and two gateways. The
+    // Python SDK is a separate door, not a third class of the sixteen — and it
+    // reports events rather than sitting in the tool-call path, so it observes
+    // without enforcing. Copy that folds it in overstates what it does, which is
+    // the single easiest way for a reader to catch us out.
+    //
+    // These two words are spelled out rather than derived from
+    // INTEGRATION_TYPES.length on purpose: the point is that a HUMAN re-read the
+    // opening paragraph, which is the first support statement anyone sees. A
+    // computed count would keep this green while the surrounding prose rotted —
+    // which is exactly what happened between the 12th and 16th integrations.
     const text = read("README.md");
-    expect(text).toMatch(/Twelve harnesses in two classes/);
-    expect(text).toMatch(/ten coding CLIs/);
+    expect(text).toMatch(/Sixteen harnesses in two classes/);
+    expect(text).toMatch(/fourteen coding CLIs/);
     expect(text).toMatch(/Hermes, OpenClaw/);
     // The SDK must never be described as carrying policies.
     const sdkClaim = /Python SDK[^.]*same polic/i;

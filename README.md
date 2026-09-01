@@ -30,7 +30,7 @@ before they execute.
 
 ## Supported harnesses
 
-Twelve harnesses in two classes are supported: ten coding CLIs, plus two
+Sixteen harnesses in two classes are supported: fourteen coding CLIs, plus two
 gateways: Hermes, OpenClaw. The policy API and session history are shared; which
 events can block varies by harness.
 

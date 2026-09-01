@@ -1750,9 +1750,17 @@ Each entry should be a single line: a short description followed by the PR numbe
 
 ## Version bumps
 
-When bumping the version, update **only** `package.json` (root). The CI version-consistency
-check compares `packages/*/package.json` against root — that directory does not currently
-exist, so no other files need updating.
+When bumping the version, four files move together — this used to say "only
+`package.json`", which was true before the Rust workspace existed and is now a red CI:
+
+| File | Why |
+|------|-----|
+| `package.json` (root) | the source of truth |
+| `Cargo.toml` | `ci.yml`'s quality job compares the workspace version against root `package.json` and fails on a mismatch |
+| `Cargo.lock` | pins all three workspace crates; regenerate with `cargo metadata --offline` rather than hand-editing |
+| `CHANGELOG.md` heading | the `## <version> — <date>` section must name the new version |
+
+`packages/*/package.json` is also compared, but that directory still does not exist.
 
 That is the **npm** version, and it governs the CLI, the daemon and the Cargo workspace.
 The two Python packages version **independently of it and of each other** — `fp-cloud-cli` and

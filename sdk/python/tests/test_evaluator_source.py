@@ -269,7 +269,22 @@ def test_compute_bomb_is_killed_within_its_budget():
 
 
 def test_condition_compute_bomb_is_also_bounded():
-    condition = compile_condition("sum(range(10**8)) > 0", timeout_seconds=1)
+    # `10**9`, matching the evaluator bomb above, NOT `10**8`.
+    #
+    # The property under test is "a CPU bomb in a condition is stopped by the
+    # sandbox budget", and the bomb has to be big enough that it cannot finish
+    # inside that budget on ANY machine the suite runs on. At 10**8 it was only
+    # ~1.35 CPU-seconds against a 1-second budget — a 1.35x margin — so on a fast
+    # runner the sum simply completed and nothing timed out. It failed exactly
+    # that way on CI under Python 3.14, which is faster here than 3.13 (1.35s vs
+    # 1.44s measured), while passing locally: a machine-speed coin flip, not a
+    # real signal about the sandbox.
+    #
+    # 10**9 restores the ~13x margin the evaluator twin already had. It costs no
+    # extra wall-clock: the sandbox kills the child at its budget either way, so
+    # a bigger bomb only widens the gap between "killed" and "could have
+    # finished". Do not shrink it back.
+    condition = compile_condition("sum(range(10**9)) > 0", timeout_seconds=1)
     with pytest.raises(EvaluationTimeout):
         condition(Session())
 

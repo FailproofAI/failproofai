@@ -31,6 +31,26 @@ it ships.
   any bound method's repr) is rejected at the output boundary. `enumerate` and
   bare generator expressions are no longer permitted — both were gratuitous
   pointer-repr sources; use `range(len(...))` and list/set/dict comprehensions.
+- Report **why** a server-authored definition was rejected. Every failure
+  collapsed to `evaluation raised <TypeName>`, so a hosted definition that can
+  never run reported only `evaluation raised UnsafeEvaluatorSource` — on every
+  session, forever, with nothing telling the author what was wrong. It matters
+  because the server accepts any source passing its size and key checks and does
+  not validate the sandbox's single-expression grammar, so a structurally
+  unrunnable definition is published successfully and then fails silently.
+  `UnsafeEvaluatorSource` now carries its detail (`evaluator_source must be one
+  expression`), bounded to `MAX_ERROR_MESSAGE_BYTES`. Deliberately narrower than
+  the generic handler, which still reports the type name only: this exception is
+  raised by our own validator before any customer source executes and describes
+  the source's shape, so it embeds no transcript content.
+- Scrub the sandbox child's environment. `subprocess.Popen` inherited
+  `os.environ`, so the process executing untrusted server-authored source ran
+  with `FAILPROOFAI_EVALUATOR_TOKEN` in its environment — on the managed pod,
+  the cross-tenant credential. Defence in depth rather than a live escape (the
+  AST allowlist and empty `__builtins__` already stop a managed expression
+  reaching `os.environ`): a future gap there can no longer be escalated into
+  credential theft. Only what the interpreter needs is forwarded, `PYTHONPATH`
+  included.
 - Contain a poison managed definition to its own run: source is now compiled
   lazily inside the per-run executor, so a definition the sandbox rejects
   dead-letters as one bounded `failed`/`eval_error` run instead of crashing the

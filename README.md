@@ -81,6 +81,8 @@ your own runtime — [talk to us](mailto:support@befailproof.ai) and we'll map i
         </picture>
       </a>
     </td>
+  </tr>
+  <tr>
     <td align="center" width="96">
       <a href="https://pi.dev/" title="Pi (pi-coding-agent)">
         <picture>
@@ -97,8 +99,6 @@ your own runtime — [talk to us](mailto:support@befailproof.ai) and we'll map i
         </picture>
       </a>
     </td>
-  </tr>
-  <tr>
     <td align="center" width="96">
       <a href="https://hermes-agent.nousresearch.com/" title="Hermes (hermes-agent)">
         <picture>
@@ -120,6 +120,8 @@ your own runtime — [talk to us](mailto:support@befailproof.ai) and we'll map i
         </picture>
       </a>
     </td>
+  </tr>
+  <tr>
     <td align="center" width="96">
       <a href="https://devin.ai" title="Devin CLI (Cognition)">
         <img src="assets/logos/devin.svg" alt="Devin CLI" width="56" height="56" />
@@ -141,6 +143,9 @@ your own runtime — [talk to us](mailto:support@befailproof.ai) and we'll map i
     <td align="center" width="96">
       <a href="https://github.com/QwenLM/qwen-code" title="Qwen Code (qwen)">
         <img src="assets/logos/qwen.svg" alt="Qwen Code" width="56" height="56" />
+      </a>
+    </td>
+    <td align="center" width="96">
       <a href="https://openrouter.ai/docs/guides/ori/harness" title="Ori (OpenRouter)">
         <picture>
           <source media="(prefers-color-scheme: dark)" srcset="assets/logos/ori-dark.svg" />

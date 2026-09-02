@@ -263,6 +263,10 @@ describe("ProjectList", () => {
       "Devin CLI",
       "Antigravity CLI",
       "Goose",
+      "grok CLI",
+      "Qwen Code",
+      "Ori",
+      "Cline",
     ]);
   });
 

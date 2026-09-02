@@ -166,12 +166,16 @@ describe("the fail-closed verdict is enforcing on every supported CLI", () => {
   const CLIS = [
     "claude", "codex", "copilot", "cursor", "opencode", "pi",
     "hermes", "openclaw", "factory", "devin", "antigravity", "goose",
+    "grok", "qwen",
   ] as const;
 
   // The CLIs that read their verdict from stdout JSON and IGNORE the exit code.
   // For these, an empty stdout is not a weak deny — it is an allow.
   const STDOUT_DRIVEN = [
     "cursor", "pi", "hermes", "openclaw", "devin", "antigravity", "goose",
+    // grok reads {decision:"deny"} off stdout and ignores the exit code; qwen
+    // reads Claude's hookSpecificOutput shape there. Both verified live.
+    "grok", "qwen",
   ] as const;
 
   it.each(CLIS)("%s receives a verdict that actually enforces", async (cli) => {

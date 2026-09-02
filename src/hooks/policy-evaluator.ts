@@ -27,7 +27,45 @@ function appendHint(baseReason: string, hint: unknown): string {
   return `${base}. ${normalizedHint}`;
 }
 
+/** Which element of a batch this evaluation is for. Absent for every non-batch
+ *  call — which is every other CLI, and every cline event that is not a
+ *  fan-out tool. */
+export interface BatchContext {
+  index: number;
+  count: number;
+  label: string;
+  degraded: boolean;
+  /** Every element's canonical input, so a batch-aware policy sees the set. */
+  all: Array<Record<string, unknown>>;
+  /** The un-expanded original tool input. */
+  raw: Record<string, unknown>;
+}
+
+export interface EvaluateOptions {
+  /** Per-INVOCATION telemetry dedupe set, shared across every element of a
+   *  batch fan-out. Without it a 12-element batch fires 12 copies of the same
+   *  policy_evaluation_error for one real tool call. */
+  dedupe?: Set<string>;
+  /** Set when this call is one element of an expanded batch. */
+  batch?: BatchContext;
+  /** Return the raw instruct/allow entries instead of shaping them; the batch
+   *  combiner shapes ONCE at the end. A DENY is unaffected — it short-circuits
+   *  and is returned fully shaped, because it is the answer. */
+  collectEntries?: boolean;
+  /** Skip the policy loop entirely and shape THESE entries. This is why no
+   *  shaping code had to move: the existing per-CLI instruct/allow tails run in
+   *  place, with the real eventType, session and payload. */
+  preEvaluated?: {
+    instructEntries: Array<{ policyName: string; reason: string }>;
+    allowEntries: Array<{ policyName: string; reason: string }>;
+  };
+}
+
 export interface EvaluationResult {
+  /** Raw instruct entries, returned ONLY when opts.collectEntries is set. */
+  instructEntries?: Array<{ policyName: string; reason: string }>;
+  /** Raw allow-note entries, returned ONLY when opts.collectEntries is set. */
+  allowEntries?: Array<{ policyName: string; reason: string }>;
   exitCode: number;
   stdout: string;
   stderr: string;
@@ -130,6 +168,7 @@ export async function evaluatePolicies(
   payload: Record<string, unknown>,
   session?: SessionMetadata,
   config?: HooksConfig,
+  opts?: EvaluateOptions,
 ): Promise<EvaluationResult> {
   const toolName = payload.tool_name as string | undefined;
   const toolInput = payload.tool_input as Record<string, unknown> | undefined;
@@ -138,7 +177,7 @@ export async function evaluatePolicies(
 
   hookLogInfo(`evaluating ${policies.length} policies for ${eventType}`);
 
-  if (policies.length === 0) {
+  if (policies.length === 0 && !opts?.preEvaluated) {
     return { exitCode: 0, stdout: "", stderr: "", policyName: null, reason: null, decision: "allow" };
   }
 
@@ -151,13 +190,18 @@ export async function evaluatePolicies(
     cli: session?.cli,
   };
 
-  // Track all instruct results (accumulated, does not short-circuit)
-  const instructEntries: Array<{ policyName: string; reason: string }> = [];
+  // Track all instruct results (accumulated, does not short-circuit).
+  // Seeded from opts.preEvaluated on the batch combiner's final shaping call.
+  const instructEntries: Array<{ policyName: string; reason: string }> = [
+    ...(opts?.preEvaluated?.instructEntries ?? []),
+  ];
 
   // Track informational messages from allow decisions (with policy attribution)
-  const allowEntries: Array<{ policyName: string; reason: string }> = [];
+  const allowEntries: Array<{ policyName: string; reason: string }> = [
+    ...(opts?.preEvaluated?.allowEntries ?? []),
+  ];
 
-  for (const policy of policies) {
+  for (const policy of opts?.preEvaluated ? [] : policies) {
     // Inject params: merge policyParams[policy.name] over schema defaults.
     // policy.name is canonical (e.g. "failproofai/block-force-push"); user
     // config keys may be flat or canonical — getConfigParamsFor accepts both.
@@ -235,7 +279,17 @@ export async function evaluatePolicies(
       } else {
         displayTool = "operation";
       }
-      const blockedMessage = `Blocked ${displayTool} by failproofai because: ${reason}, as per the policy configured by the user`;
+      // One locator, built once, at the single site every CLI's deny shape
+      // interpolates — so cline's {cancel,errorMessage} names the offending
+      // element for free and nothing else needs to know a batch happened.
+      const batchLocator = opts?.batch
+        ? ` [batch ${opts.batch.index + 1}/${opts.batch.count}: ${
+            opts.batch.label.length > 120
+              ? `${opts.batch.label.slice(0, 117)}…`
+              : opts.batch.label
+          }]`
+        : "";
+      const blockedMessage = `Blocked ${displayTool}${batchLocator} by failproofai because: ${reason}, as per the policy configured by the user`;
 
       // Cursor's hook protocol expects a flat `{permission, user_message,
       // agent_message}` shape for any blocking decision, regardless of which
@@ -378,6 +432,58 @@ export async function evaluatePolicies(
         };
       }
 
+      // Ori: the generated ori feature parses a flat {permission, reason} and
+      // returns ori's own {outcome:"allow"|"deny"} to the approval extension
+      // point. There is exactly one event (PreToolUse) — ori exposes no Stop,
+      // prompt, post-tool or session gate — so unlike Pi/OpenClaw there is no
+      // Stop special case to write. The reason is carried for the operator's
+      // logs only: ori's verdict shape has no reason field, so a denial reaches
+      // the model as a bare tool failure.
+      if (session?.cli === "ori") {
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ permission: "deny", reason: blockedMessage }),
+          stderr: "",
+          policyName: policy.name,
+          reason,
+          decision: "deny",
+        };
+      }
+
+      // Cline: the installed launcher relays this object verbatim on stdout, and
+      // cline IGNORES THE EXIT CODE — the JSON is the entire verdict. The only
+      // blocking shape its schema accepts is {cancel, errorMessage}; there is no
+      // decision/block/permissionDecision field, so every generic branch below
+      // is inert for cline and this one must come first.
+      //
+      // Stop / StopFailure are deliberately NOT a cancel: `cancel:true` becomes
+      // {stop:true} -> ControlledStopError -> the whole run aborts, and at
+      // TaskComplete the task has ALREADY finished, so that kills a completed
+      // run instead of re-entering the loop. Destructive and useless, hence the
+      // context channel there and `Stop: "observe"` in enforcement-capability.
+      if (session?.cli === "cline") {
+        if (eventType === "Stop" || eventType === "StopFailure") {
+          return {
+            exitCode: 0,
+            stdout: JSON.stringify({
+              context: `MANDATORY ACTION REQUIRED from failproofai (policy: ${policy.name}): ${reason}`,
+            }),
+            stderr: `[failproofai] ${policy.name}: ${reason}\n`,
+            policyName: policy.name,
+            reason,
+            decision: "deny",
+          };
+        }
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ cancel: true, errorMessage: blockedMessage }),
+          stderr: "",
+          policyName: policy.name,
+          reason,
+          decision: "deny",
+        };
+      }
+
       // OpenCode: `session.idle` is a notification-only bus event — by the
       // time the plugin handler fires, OpenCode has already gone idle and
       // throwing from the handler does not force-retry. The only working
@@ -498,6 +604,91 @@ export async function evaluatePolicies(
         return {
           exitCode: 0,
           stdout: JSON.stringify({ decision: "block", reason: blockedMessage }),
+          stderr: "",
+          policyName: policy.name,
+          reason,
+          decision: "deny",
+        };
+      }
+
+      // grok: deny is `{decision:"deny", reason}` on stdout at exit 0 — verified
+      // live against grok 1.0.3, and it beat `--yolo` (bypassPermissions). grok
+      // does NOT read Claude's hookSpecificOutput shape: the same hook emitting
+      // Claude's shape let the command run, emitting this one blocked it.
+      //
+      // Stop takes `{decision:"block", reason}` instead (Claude's turn-end
+      // vocabulary, which grok shares) — but ONLY on a real turn end. grok fires
+      // Stop a second time at session shutdown (`reason: "shutdown"`) and
+      // explicitly discards that decision, so blocking there would record
+      // enforcement that cannot happen. Falling through to allow is correct:
+      // the turn is already over. grok caps continuations at 8 per turn.
+      if (session?.cli === "grok") {
+        if (eventType === "Stop" || eventType === "SubagentStop") {
+          const grokStopReason = typeof payload.reason === "string" ? payload.reason : undefined;
+          if (eventType === "Stop" && grokStopReason && grokStopReason !== "end_turn") {
+            return {
+              exitCode: 0,
+              stdout: "",
+              stderr: "",
+              policyName: policy.name,
+              reason,
+              decision: "allow",
+            };
+          }
+          const reasonText = `MANDATORY ACTION REQUIRED from failproofai (policy: ${policy.name}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`;
+          return {
+            exitCode: 0,
+            stdout: JSON.stringify({ decision: "block", reason: reasonText }),
+            stderr: "",
+            policyName: policy.name,
+            reason,
+            decision: "deny",
+          };
+        }
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ decision: "deny", reason: blockedMessage }),
+          stderr: "",
+          policyName: policy.name,
+          reason,
+          decision: "deny",
+        };
+      }
+
+      // qwen: PreToolUse honors Claude's own
+      // `hookSpecificOutput.permissionDecision` shape (verified live — it beat
+      // `-y`), so that event deliberately falls through to the generic Claude
+      // branch below rather than being duplicated here. Stop is the divergence:
+      // it reads the top-level `{decision:"block", reason}` instead, which is
+      // what forces another turn (verified live — the agent ran the required
+      // command and only then finished). Unlike grok there is no session-end
+      // Stop fire to filter out.
+      // qwen's todo hooks (canonical TaskCreated / TaskCompleted) are the only
+      // events in the widened set that can actually veto. They read the
+      // top-level `{decision:"block", reason}` — NOT Claude's permissionDecision
+      // — and only during their `validation` phase; in `postWrite` the todo is
+      // already persisted and upstream ignores the block. Emitting it
+      // unconditionally is right: it enforces where it can and is inert where it
+      // cannot, and the phase is upstream's to decide, not ours to guess.
+      if (
+        session?.cli === "qwen" &&
+        (eventType === "TaskCreated" || eventType === "TaskCompleted")
+      ) {
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ decision: "block", reason: blockedMessage }),
+          stderr: "",
+          policyName: policy.name,
+          reason,
+          decision: "deny",
+        };
+      }
+
+      if (session?.cli === "qwen" && (eventType === "Stop" || eventType === "SubagentStop")) {
+        const reasonText = `MANDATORY ACTION REQUIRED from failproofai (policy: ${policy.name}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`;
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ decision: "block", reason: reasonText }),
           stderr: "",
           policyName: policy.name,
           reason,
@@ -691,6 +882,21 @@ export async function evaluatePolicies(
     if (result.decision === "allow" && result.reason) {
       allowEntries.push({ policyName: policy.name, reason: result.reason });
     }
+  }
+
+  // The batch combiner asked for RAW entries; it dedupes the union across all
+  // elements and shapes it once, through these same tails, on a final call.
+  if (opts?.collectEntries) {
+    return {
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      policyName: null,
+      reason: null,
+      decision: "allow",
+      instructEntries,
+      allowEntries,
+    };
   }
 
   // No deny — check if we accumulated any instructs
@@ -980,6 +1186,44 @@ export async function evaluatePolicies(
       };
     }
 
+    // Ori: the approval extension points return {outcome:"allow"|"deny"} and
+    // nothing else — there is no additional-context channel to carry a
+    // directive, and no Stop event to convert one into a retry. So instruct()
+    // allows the action and writes the directive to stderr for the operator's
+    // logs; the model never sees it. Same degradation as Goose and Hermes.
+    if (session?.cli === "ori") {
+      const stderrMsg = instructEntries
+        .map((e) => `[failproofai] ${e.policyName}: ${e.reason}`)
+        .join("\n");
+      return {
+        exitCode: 0,
+        stdout: "",
+        stderr: stderrMsg + "\n",
+        policyName: policyNames[0],
+        policyNames,
+        reason: combined,
+        decision: "instruct",
+      };
+    }
+
+    // Cline HAS a real additional-context channel — `context` is in its verdict
+    // schema and parseHookControl reads it — so unlike Goose/Hermes/ori this
+    // does not have to degrade to a stderr note. It is mirrored to stderr as
+    // well: the field is verified-PARSED by cline, but that the model actually
+    // sees it is unprobed, and the operator's log should not depend on that.
+    if (session?.cli === "cline") {
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({ context: `Instruction from failproofai: ${combined}` }),
+        stderr:
+          instructEntries.map((e) => `[failproofai] ${e.policyName}: ${e.reason}`).join("\n") + "\n",
+        policyName: policyNames[0],
+        policyNames,
+        reason: combined,
+        decision: "instruct",
+      };
+    }
+
     if (eventType === "Stop" || eventType === "SubagentStop") {
       // Stop/SubagentStop instruct: exitCode 2 + stderr forces Claude to retry
       // the agent (or subagent) loop with the reason as context. Same widening
@@ -1094,6 +1338,53 @@ export async function evaluatePolicies(
           permission: "allow",
           reason: `Note from failproofai: ${combined}`,
         }),
+        stderr: stderrMsg + "\n",
+        policyName: policyNames[0],
+        policyNames,
+        reason: combined,
+        decision: "allow",
+      };
+    }
+
+    // grok: instruct has a channel only at the turn boundary. On Stop we reuse
+    // the verified `{decision:"block", reason}` force-retry shape so the
+    // instruction actually reaches the model (grok also documents a softer
+    // `hookSpecificOutput.additionalContext` for Stop, but that path is not
+    // verified and "block" is). The `end_turn` guard is the same one the deny
+    // branch uses — the session-shutdown fire has no turn left to instruct.
+    // On every other event grok has no additional-context channel, so instruct
+    // degrades to allow + a stderr note (like Hermes/Goose/Factory); emitting
+    // Claude's hookSpecificOutput there would be a shape grok discards.
+    //
+    // qwen deliberately has NO branch here: it honors Claude's
+    // `hookSpecificOutput.additionalContext` on PreToolUse/PostToolUse/
+    // UserPromptSubmit (wrapping it in a `<qwen:user-prompt-submit-context>`
+    // provenance tag), so the generic path below is already correct for it.
+    if (session?.cli === "grok") {
+      const stderrMsg = allowEntries
+        .map((e) => `[failproofai] ${e.policyName}: ${e.reason}`)
+        .join("\n");
+      const grokStopReason = typeof payload.reason === "string" ? payload.reason : undefined;
+      const atRealTurnEnd =
+        eventType === "SubagentStop" ||
+        (eventType === "Stop" && (!grokStopReason || grokStopReason === "end_turn"));
+      if (atRealTurnEnd) {
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({
+            decision: "block",
+            reason: `Instruction from failproofai: ${combined}`,
+          }),
+          stderr: stderrMsg + "\n",
+          policyName: policyNames[0],
+          policyNames,
+          reason: combined,
+          decision: "instruct",
+        };
+      }
+      return {
+        exitCode: 0,
+        stdout: "",
         stderr: stderrMsg + "\n",
         policyName: policyNames[0],
         policyNames,

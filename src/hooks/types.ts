@@ -19,7 +19,7 @@
 export const HOOK_SCOPES = ["user", "project", "local"] as const;
 export type HookScope = (typeof HOOK_SCOPES)[number];
 
-export const INTEGRATION_TYPES = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose"] as const;
+export const INTEGRATION_TYPES = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose", "grok", "qwen", "ori", "cline"] as const;
 export type IntegrationType = (typeof INTEGRATION_TYPES)[number];
 
 export const CODEX_HOOK_SCOPES = ["user", "project"] as const;
@@ -999,6 +999,537 @@ export const GOOSE_TOOL_INPUT_MAP: Record<string, Record<string, string>> = {
   LS: { path: "file_path" },
 };
 
+// ---------------------------------------------------------------------------
+// grok (xAI's `grok` CLI) — 13th integration. Dual-pillar (live hooks + audit),
+// user + project scope, Claude/Codex-style external shell hooks. The entire
+// contract below was VERIFIED LIVE against grok 1.0.3 (1a29d5bc12) with a
+// recorder hook on all 14 events plus deny / stop-gate probes.
+//
+//   1. **The envelope is camelCase**, so — like Antigravity — normalizeCliPayload
+//      has a `grok` branch. `toolName`/`toolInput`/`sessionId`/`transcriptPath`
+//      → snake_case, `workspaceRoot` → `cwd`, `toolResult` → `tool_response`
+//      (grok does NOT use Claude's `tool_response`), `stopHookActive` →
+//      `stop_hook_active`. NOTE `hookEventName`'s *value* is snake_case
+//      ("pre_tool_use") while the `--hook` arg is PascalCase, so the arg is the
+//      canonical source and there is NO GROK_EVENT_MAP.
+//
+//   2. **Deny = `{"decision":"deny","reason"}` on stdout at exit 0.** VERIFIED
+//      live, and it beat `--yolo` (permissionMode `bypassPermissions`). grok
+//      does NOT read Claude's `hookSpecificOutput.permissionDecision` shape —
+//      also verified live, by A/B: the identical hook emitting Claude's shape
+//      let `echo` run, emitting grok's shape blocked it. This is why
+//      isGrokEnvelope() exists (see normalize-cli-payload.ts).
+//
+//   3. **Stop fires TWICE per session** — once per real turn end
+//      (`reason: "end_turn"`) and once at shutdown (`reason: "shutdown"`),
+//      whose decision grok parses and then IGNORES (no turn is left to
+//      continue). So the Stop branch in policy-evaluator.ts gates on
+//      `reason === "end_turn"`; blocking on the shutdown fire would emit a deny
+//      that is counted as enforcement and can never be acted on. Captured
+//      sequence, one turn: end_turn/stopHookActive=false (we blocked) → the
+//      agent ran the required command → end_turn/stopHookActive=true (allowed)
+//      → shutdown. Cap: 8 continuations per turn, then grok forces the stop.
+//
+//   4. **Project hooks require a GIT REPO** — undocumented, verified live: in a
+//      *trusted* non-git directory holding a valid `.grok/hooks/*.json`, grok
+//      logs `project_sources=0` and the hook never fires; after `git init` in
+//      the same directory it logs `project_sources=4` and fires. A project-scope
+//      install into a non-git dir is a silent no-op, so the installer warns.
+//      Project scope additionally requires folder trust (`--trust` /
+//      `/hooks-trust`); user scope (`~/.grok/hooks/`) is always trusted.
+//
+// Settings paths (VERIFIED):
+//   user    → ~/.grok/hooks/failproofai.json      (always trusted)
+//   project → <repo>/.grok/hooks/failproofai.json (needs git + folder trust)
+//
+// `timeout` is in SECONDS (grok's default is 5; 600 for Stop/SubagentStop).
+// Env injected on every hook: GROK_HOOK_EVENT, GROK_HOOK_NAME, GROK_SESSION_ID,
+// GROK_WORKSPACE_ROOT, and CLAUDE_PROJECT_DIR (a Claude-compatible alias) — so
+// the dogfood config can use $CLAUDE_PROJECT_DIR like .claude/settings.json.
+//
+// Audit pillar: `~/.grok/sessions/<percent-encoded-cwd>/<sessionId>/` —
+// PERCENT encoding (`%2Fhome%2Fyou%2Frepo`), not Claude's dash style. Each
+// session dir holds chat_history.jsonl + events.jsonl + summary.json (the last
+// carries `info.cwd`, `session_summary`, `num_messages`, `current_model_id`).
+// See lib/grok-sessions.ts. `GROK_HOME` overrides the home dir for tests.
+export const GROK_HOOK_SCOPES = ["user", "project"] as const;
+export type GrokHookScope = (typeof GROK_HOOK_SCOPES)[number];
+
+// All 14 of grok's events, which is its entire surface. Every name here was
+// accepted by a live grok 1.0.3 (`hooks: loaded from global source … count=14`,
+// `loaded hooks hook_count=14`, no unknown-key warning) — grok silently SKIPS
+// unrecognized event keys, so acceptance is the thing to verify, and it was.
+// `Notification` and `StopFailure` were additionally observed firing.
+//
+// The six beyond the original eight are all OBSERVATION — grok's own ACP
+// handshake advertises `blockingEvents: ["pre_tool_use","stop","subagent_stop"]`
+// and that is the complete list, so nothing added here can ever deny. They are
+// installed for custom-policy surface and audit signal, and because the cost of
+// an event that never fires is zero.
+export const GROK_HOOK_EVENT_TYPES = [
+  "SessionStart",
+  "UserPromptSubmit",
+  "PreToolUse",
+  "PostToolUse",
+  "PostToolUseFailure",
+  "PermissionDenied",
+  "Stop",
+  "StopFailure",
+  "Notification",
+  "SubagentStart",
+  "SubagentStop",
+  "PreCompact",
+  "PostCompact",
+  "SessionEnd",
+] as const;
+export type GrokHookEventType = (typeof GROK_HOOK_EVENT_TYPES)[number];
+
+/**
+ * grok's tool ids → Claude PascalCase canonical names so existing builtins
+ * (which match `toolName === "Bash"`) fire unchanged. Every entry below was
+ * observed on the wire, not read from a doc — which matters here, because
+ * grok's own docs disagree with themselves: the hooks doc calls the shell tool
+ * `run_terminal_command` and the headless doc calls it `run_terminal_cmd`. The
+ * wire says `run_terminal_command`; the alias is kept so a matcher written
+ * against either name still canonicalizes. Unknown tools pass through via the
+ * `?? raw` fallback in handler.ts:canonicalizeToolName.
+ */
+export const GROK_TOOL_MAP: Record<string, string> = {
+  run_terminal_command: "Bash",
+  run_terminal_cmd: "Bash",
+  write: "Write",
+  read_file: "Read",
+  search_replace: "Edit",
+  grep: "Grep",
+  list_dir: "LS",
+  web_search: "WebSearch",
+  web_fetch: "WebFetch",
+  spawn_subagent: "Task",
+};
+
+/**
+ * Per-tool input-key translation, keyed by the *canonical* tool name. Only two
+ * of grok's tools deviate, and both were found by capture rather than by
+ * reading: `read_file` delivers the path as `target_file` and `list_dir` as
+ * `target_directory`. The `read_file` entry is the load-bearing one — without
+ * it a live `.env` read sails past block-env-files / block-read-outside-cwd,
+ * the exact bug COPILOT_TOOL_INPUT_MAP was added to fix. Everything else is
+ * already canonical: Bash `command`, Write `file_path`/`content`, Edit
+ * `file_path`/`old_string`/`new_string`, Grep `pattern`/`path`.
+ */
+export const GROK_TOOL_INPUT_MAP: Record<string, Record<string, string>> = {
+  Read: { target_file: "file_path" },
+  LS: { target_directory: "path" },
+};
+
+// ---------------------------------------------------------------------------
+// qwen (Alibaba's Qwen Code, `qwen`) — 14th integration. Dual-pillar, user +
+// project scope. The CHEAPEST integration in the codebase: qwen is a near-pure
+// Claude clone on the wire, so it needs NO event map, NO payload normalization,
+// and NO tool-input map. Verified live against @qwen-code/qwen-code 0.21.12.
+//
+//   1. **Payload is pure Claude snake_case** — `hook_event_name` (PascalCase
+//      *value*, unlike grok), `session_id`, `transcript_path`, `cwd`,
+//      `permission_mode`, `tool_name`, `tool_input`, `tool_response`,
+//      `stop_hook_active`. Nothing to normalize.
+//
+//   2. **Deny = `hookSpecificOutput.permissionDecision`** ("allow" | "deny" |
+//      "ask"), which is Claude's own PreToolUse shape — so the generic Claude
+//      branch in policy-evaluator.ts already emits the right thing and qwen
+//      needs no PreToolUse special-case. VERIFIED live: it beat `-y` (yolo) and
+//      the reason reached the model verbatim. ("ask" degrades to deny in
+//      headless and in background subagents.) Stop takes the top-level
+//      `{decision:"block",reason}` shape instead, which is why the qwen branch
+//      below exists at all.
+//
+//   3. **`stop_hook_active` is TRUE on the FIRST Stop fire**, before anything
+//      has blocked — verified live. It is therefore NOT a usable "already
+//      retrying" signal on qwen, and no failproofai loop guard may depend on
+//      it. (Unlike grok, qwen fires no session-end Stop: both fires are real.)
+//
+//   4. **`UserPromptSubmit` fires per MODEL INVOCATION, not per user prompt** —
+//      one user turn produced FOUR of them (initial query + one per tool-result
+//      continuation). qwen's own docs confirm it covers UserQuery/ToolResult/
+//      Hook sends and warn that `prompt` is not necessarily user input. Any
+//      UserPromptSubmit policy fires N× per turn here; `submitted_prompt` is
+//      present only for interactive-TUI submissions (absent in headless, ACP,
+//      serve, SDK).
+//
+// Settings paths (VERIFIED): the `hooks` key inside qwen's normal settings.
+//   user    → ~/.qwen/settings.json
+//   project → <cwd>/.qwen/settings.json
+//
+// `timeout` is in MILLISECONDS (default 60000) — qwen is the ONLY integration
+// that is not seconds-based, so buildHookEntry must not be "simplified" to
+// share the others' value. `disableAllHooks: true` (top level) and `--safe-mode`
+// both disable every hook.
+//
+// Audit pillar: `~/.qwen/projects/<dash-encoded-cwd>/chats/<sessionId>.jsonl` —
+// Claude-style encoded-cwd folders, one JSONL per session, lines carrying
+// `{sessionId, timestamp, type: user|assistant|system|tool_result, cwd}`. A real
+// cwd per line means audit groups by project like Claude/Devin/Goose. See
+// lib/qwen-sessions.ts. `QWEN_HOME` overrides the home dir for tests.
+export const QWEN_HOOK_SCOPES = ["user", "project"] as const;
+export type QwenHookScope = (typeof QWEN_HOOK_SCOPES)[number];
+
+// Every event below has a real `executeHooks("<Event>")` dispatch site in the
+// shipped qwen bundle (verified by reading it, not the docs — which is also how
+// `InstructionsLoaded`, `UserPromptExpansion` and `PostToolBatch` turned up:
+// all three are dispatched but absent from qwen's documented event table).
+// TodoCreated/TodoCompleted/PostToolBatch/InstructionsLoaded/Notification were
+// additionally observed firing in a live 0.21.12 session.
+//
+// Deliberately NOT subscribed:
+//   • `MessageDisplay` — fires per streaming chunk, i.e. a hook process per
+//     chunk. The one entry here that could make hooks feel slow.
+//   • `PostToolBatch` — fired 6× in the same task PostToolUse fired 5×, and
+//     carries the same tool calls in batch form. Measured at +76% hook
+//     invocations for a task, against no builtin that reads it. One line to add
+//     later if a custom policy ever wants batch granularity.
+//   • `SessionDelete` — no canonical equivalent, and little to enforce on.
+export const QWEN_HOOK_EVENT_TYPES = [
+  "SessionStart",
+  "UserPromptSubmit",
+  "PreToolUse",
+  "PostToolUse",
+  "PostToolUseFailure",
+  "PermissionRequest",
+  "PermissionDenied",
+  "Stop",
+  "StopFailure",
+  "SubagentStart",
+  "SubagentStop",
+  "PreCompact",
+  "PostCompact",
+  "Notification",
+  "InstructionsLoaded",
+  "UserPromptExpansion",
+  "TodoCreated",
+  "TodoCompleted",
+  "SessionEnd",
+] as const;
+export type QwenHookEventType = (typeof QWEN_HOOK_EVENT_TYPES)[number];
+
+/**
+ * qwen event name → canonical HookEventType.
+ *
+ * Seventeen of nineteen are already canonical and map to themselves; this map
+ * exists for the two that are not. qwen calls its task list "todos", so
+ * `TodoCreated`/`TodoCompleted` are the same concept failproofai and Claude
+ * call `TaskCreated`/`TaskCompleted`, and mapping them lets a policy written
+ * once fire on both.
+ *
+ * These two are also the only ADDED events on either CLI that can actually
+ * block. qwen runs todo hooks in two phases and the payload says which:
+ * during `phase: "validation"` a `{decision:"block"|"deny", reason}` prevents
+ * the write and the reason goes back to the model; during `phase: "postWrite"`
+ * the todo is already persisted and a block is ignored. Both phases were
+ * observed live (`phase: "validation"` on every capture).
+ *
+ * Exhaustive `Record<QwenHookEventType, HookEventType>` so tsc fails the build
+ * if an event is added here without deciding what it canonicalizes to.
+ */
+export const QWEN_EVENT_MAP: Record<QwenHookEventType, HookEventType> = {
+  SessionStart: "SessionStart",
+  UserPromptSubmit: "UserPromptSubmit",
+  PreToolUse: "PreToolUse",
+  PostToolUse: "PostToolUse",
+  PostToolUseFailure: "PostToolUseFailure",
+  PermissionRequest: "PermissionRequest",
+  PermissionDenied: "PermissionDenied",
+  Stop: "Stop",
+  StopFailure: "StopFailure",
+  SubagentStart: "SubagentStart",
+  SubagentStop: "SubagentStop",
+  PreCompact: "PreCompact",
+  PostCompact: "PostCompact",
+  Notification: "Notification",
+  InstructionsLoaded: "InstructionsLoaded",
+  UserPromptExpansion: "UserPromptExpansion",
+  TodoCreated: "TaskCreated",
+  TodoCompleted: "TaskCompleted",
+  SessionEnd: "SessionEnd",
+};
+
+/**
+ * qwen's runtime tool ids → Claude PascalCase canonical names. All six were
+ * observed live. qwen also accepts its own display names (`WriteFile`,
+ * `ReadFile`) as matcher aliases, so those are mapped too for configs written
+ * against the older names. Unknown tools pass through via the `?? raw`
+ * fallback.
+ *
+ * There is deliberately NO QWEN_TOOL_INPUT_MAP: every tool already delivers
+ * canonical keys — `run_shell_command` `{command}`, `read_file` `{file_path}`,
+ * `write_file` `{file_path, content}`, `edit` `{file_path, old_string,
+ * new_string}`, `grep_search` `{pattern, path}`, `list_directory` `{path}`.
+ */
+export const QWEN_TOOL_MAP: Record<string, string> = {
+  run_shell_command: "Bash",
+  read_file: "Read",
+  ReadFile: "Read",
+  read_many_files: "Read",
+  write_file: "Write",
+  WriteFile: "Write",
+  edit: "Edit",
+  replace: "Edit",
+  grep_search: "Grep",
+  search_file_content: "Grep",
+  glob: "Glob",
+  list_directory: "LS",
+  web_fetch: "WebFetch",
+  google_web_search: "WebSearch",
+  task: "Task",
+  todo_write: "TodoWrite",
+};
+
+
+// ── Ori (OpenRouter's ori) ──────────────────────────────────────────────────
+//
+// `ori` is two products behind one binary, and only the second is this
+// integration:
+//
+//   1. A LAUNCHER for other agent CLIs (`ori claude`, `ori codex`, `ori grok`,
+//      `ori opencode`, `ori hermes`, `ori omp`, `ori prime-agent`, `ori kilo`,
+//      `ori dsh`) that runs the real third-party binary under OpenRouter
+//      credentials. It injects credentials and NOTHING else — verified live
+//      against ori 0.12.0+68f9a36: `ori claude` passes `--settings '<json>'`
+//      carrying only `apiKeyHelper` + `env`; `ori codex` passes `-c
+//      model_provider=…` key overrides (which override `config.toml` keys, a
+//      different file from `hooks.json`); `ori grok` and `ori opencode` set env
+//      vars only; and NONE of them redirect HOME or a config dir. Claude's
+//      `--settings` MERGES (proven: a project SessionStart hook fired
+//      identically with and without ori's exact blob) and opencode's
+//      `OPENCODE_CONFIG_CONTENT` merges too (proven against `opencode debug
+//      config`: the `plugin` array survived intact and `openrouter` was added
+//      beside the pre-existing provider). So failproofai's EXISTING per-CLI
+//      hooks keep enforcing under `ori <agent>`, and this integration
+//      deliberately does nothing for that path.
+//
+//   2. ori's OWN agent — bare `ori` / `ori code`, the built-in
+//      `@ori-runloop/agent-loop` harness. THAT is what this integration gates.
+//
+// Enforcement is via ori's PUBLISHED EXTENSION POINTS, supplied by a feature: a
+// workspace package under the global workspace's `features/`, AUTO-DISCOVERED
+// with no config file to register it in (like Goose's dropped plugin dir, and
+// unlike OpenCode, which must be named in `opencode.json`). failproofai
+// generates that feature at `~/.ori/global/features/failproofai/`. USER scope
+// only — bare `ori` boots the GLOBAL workspace rather than the project's, so
+// one install covers every project and there is no project-scope equivalent.
+//
+// Three points, each `policy: "unique"` (exactly one provider apiece, so a
+// competing feature claiming one displaces us):
+//
+//   approval-policy       static {defaultAction, rules[]} — consulted in BOTH modes
+//   approval-asker        dynamic per-call callback       — MANUAL mode only
+//   unattended-approvals  dynamic per-call callback       — unattended runs
+//
+// **The mode caveat is the whole story for coverage** (verified live). ori's
+// approval mode defaults to `self-drive`, which "approves every command without
+// prompting", and in that mode the DYNAMIC points are NEVER CALLED. Proven
+// three ways: no callback fired under self-drive; still none after adding
+// `approval-policy` with `defaultAction:"ask"` (so `ask` degrades to
+// auto-approve); but `defaultAction:"reject"` DID block every tool call — which
+// proves the static point is wired and that it is specifically the dynamic
+// asker self-drive skips. So failproofai's per-argument policies enforce on ori
+// only under `--approvals manual` (or `/approvals` → manual in the TUI). There
+// is no config key or env var to change that default: searched `config.json`,
+// `ori.md` frontmatter, the `ORI_*` env surface and the shipped selfdev docs.
+// `ORI_STATIC_APPROVAL_POLICY` below is what we can still enforce in the
+// default mode, and it is deliberately `ask` (a no-op there) rather than
+// `reject`, because claiming the point with a blanket reject would brick every
+// self-drive session the moment failproofai is installed.
+//
+// The one thing ori does BETTER than every other integration: both dynamic
+// points declare `failureBehavior: "deny"` — "a throwing, rejecting, or
+// malformed provider denies the request". **ori fails closed natively**, so a
+// failproofai fault blocks the call instead of waving it through. Goose and
+// OpenClaw fail open today; everywhere else we built fail-closed ourselves.
+//
+// The verdict shape is `{outcome: "allow" | "deny"}` — binary, and NO reason
+// string reaches the model, so a denial arrives as a bare tool failure.
+// `instruct()` therefore degrades to allow + a stderr note. There is no Stop
+// event at all, so the 5 `require-*-before-stop` builtins are INAPPLICABLE on
+// ori, exactly as on Hermes and Goose.
+//
+// Gate payload, captured live off real tool calls (ori 0.12.0+68f9a36 driving
+// nvidia/nemotron-3.5-lightning:free):
+//   {tool:"bash",  arguments:[{name:"command"}],                capabilities:["execute","read","write"]}
+//   {tool:"read",  arguments:[{name:"path"}],                   capabilities:["read"]}
+//   {tool:"write", arguments:[{name:"path"},{name:"content"}],  capabilities:["write"]}
+//   {tool:"glob",  arguments:[{name:"pattern"}],                capabilities:["read"]}
+//   {tool:"grep",  arguments:[{name:"pattern"},{name:"path"}],  capabilities:["read"]}
+//   {tool:"edit",  arguments:[{name:"patch"}],                  capabilities:["read","write"]}
+//
+// Two properties that bite:
+//   • `arguments` is a flat name/value STRING array — every value arrives
+//     stringified, so a policy expecting a structured tool input sees text.
+//   • The gate fires TWICE per tool call: once with `escalated:false`, then
+//     again with `escalated:true` plus a synthetic `{name:"escalated",
+//     value:"true"}` argument. A policy must be idempotent across that ladder.
+//
+// `edit` is the awkward one: it carries the entire change as a single `patch`
+// string in OpenAI apply_patch format (`*** Begin Patch` / `*** Update File:
+// <path>` / `*** End Patch`) with NO separate path argument — so `file_path`,
+// which `block-env-files`, `block-secrets-write` and every other path builtin
+// reads, is simply absent and those builtins would never fire on an edit.
+// `oriPatchFilePaths()` in tool-name-canonicalize.ts recovers it from the patch
+// header. KNOWN GAP: a multi-file patch yields several paths and `file_path`
+// holds only one, so builtins see the FIRST and a policy that would have denied
+// on a later file does not fire; the full list is exposed as `ori_patch_files`
+// for custom policies to read.
+export const ORI_HOOK_SCOPES = ["user"] as const;
+export type OriHookScope = (typeof ORI_HOOK_SCOPES)[number];
+
+// Only PreToolUse: all three approval points gate a tool call and nothing else.
+// ori has no prompt-submit, post-tool, session or stop hook we can subscribe to
+// (its feature-to-feature `hooks` export is documented upstream as "consumer
+// wiring and dispatch land in #1068" — i.e. not wired yet).
+export const ORI_HOOK_EVENT_TYPES = ["PreToolUse"] as const;
+export type OriHookEventType = (typeof ORI_HOOK_EVENT_TYPES)[number];
+
+// ori tool ids arrive lowercase. All six below were observed at the live
+// approval gate; unknown tools pass through unchanged so they still reach the
+// audit, just unmatched by name-keyed builtins.
+export const ORI_TOOL_MAP: Record<string, string> = {
+  bash: "Bash",
+  read: "Read",
+  write: "Write",
+  edit: "Edit",
+  glob: "Glob",
+  grep: "Grep",
+};
+
+// Keyed by the CANONICAL tool name (the handler canonicalizes the name first).
+// `bash`'s `command`, `glob`/`grep`'s `pattern` and `grep`'s `path` are already
+// the keys Claude builtins read, so they need no entry; `read`/`write` deliver
+// the path as `path`. `Edit` is absent on purpose — its path is inside the
+// patch blob, not a key, and is derived instead.
+export const ORI_TOOL_INPUT_MAP: Record<string, Record<string, string>> = {
+  Read: { path: "file_path" },
+  Write: { path: "file_path" },
+};
+
+// Claimed so `approval-policy` is ours (it is `unique`, so leaving it unclaimed
+// invites another feature to take it), but deliberately inert: `ask` is what
+// self-drive already does. See the mode caveat above for why this is not
+// `reject`.
+export const ORI_STATIC_APPROVAL_POLICY = {
+  defaultAction: "ask",
+  rules: [] as const,
+} as const;
+
+
+// ── Cline (cline CLI) ───────────────────────────────────────────────────────
+//
+// Cline is the only integration whose config is a DIRECTORY OF EVENT-NAMED
+// FILES rather than a settings file. There is no JSON to merge and no array to
+// append to: the install drops one launcher script per event, named exactly for
+// the event it subscribes to. Verified live against cline v3.0.60.
+//
+// Three rules from that contract govern everything below:
+//
+//   1. **THE FILENAME IS THE EVENT**, case-insensitively, and only ten names
+//      exist. A typo is not an error — it is silence. This is what made an
+//      earlier probe conclude, wrongly, that cline had no reachable hook
+//      surface: the files were in the right directory under the wrong names,
+//      and cline skipped them without a log line.
+//   2. **The EXTENSION must be in the allowlist** — `"" .sh .bash .zsh .js .mjs
+//      .cjs .ts .mts .cts .py .ps1` — or the file is skipped, also silently. A
+//      `hooks.json` is invisible twice over. The file need NOT be executable;
+//      the interpreter comes from the shebang, else the extension.
+//   3. **THE EXIT CODE IS IGNORED** on every event. The verdict is the single
+//      JSON object on stdout, so the launcher must ALWAYS print exactly one
+//      object — `{}` when failproofai produced nothing. Unparseable stdout makes
+//      cline skip the hook and run the tool.
+//
+// Hook directories, in cline's own search order:
+//   ~/Documents/Cline/Hooks
+//   $CLINE_DIR/hooks              (default ~/.cline/hooks)   ← user scope
+//   <workspace>/.clinerules/hooks                            ← project scope
+//   <workspace>/.cline/hooks
+// **`--hooks-dir` IS A DEAD FLAG** in v3.0.60: it writes `CLINE_HOOKS_DIR`,
+// which appears exactly once in the shipped binary — that write — and is read by
+// nothing. Never emit it.
+//
+// Deny shape: `{"cancel": true, "errorMessage": "…"}`. Cline's verdict schema is
+// `{contextModification?, cancel?, review?, errorMessage?, context?,
+// overrideInput?}` — there is NO `decision` / `block` / `permissionDecision`
+// field, so every generic branch in policy-evaluator.ts is inert for it.
+// `overrideInput` is a real MUTATE channel and `context` a real
+// additional-context channel; neither is wired yet.
+//
+// **FAIL-OPEN, with no way to opt out.** A timeout (120s default), a parse
+// failure or a spawn error makes cline skip the hook and run the tool. Unlike
+// ori there is no `failureBehavior:"deny"` to inherit, so a failproofai fault on
+// cline is a silent allow — which is why the generated launcher prints `{}` on
+// any error rather than partial output that might parse as something else.
+//
+// **THE PRODUCT CAVEAT:** `cancel:true` becomes `{stop:true}` and is applied by
+// `applyStopControl`, which THROWS `ControlledStopError` — it ABORTS THE WHOLE
+// RUN (observed live as `[abort] aborted by another client`), not just the one
+// tool call. It is a STRONGER action than a per-tool deny, not a weaker one.
+//
+// PreToolUse payload, captured live:
+//   {"hookName":"tool_call","iteration":1,"taskId":"conv_…","userId":"…",
+//    "workspaceRoots":["/abs/path"],"workspaceInfo":{"rootPath":"…","hint":"…"},
+//    "agent_id":"…","parent_agent_id":null,"sessionContext":{"rootSessionId":"…"},
+//    "tool_call":{"id":"call_…","name":"run_commands","input":{"commands":["echo hi"]}},
+//    "preToolUse":{"toolName":"run_commands","parameters":{"commands":"[\"echo hi\"]"}}}
+// `tool_call.input` is the source of truth; `preToolUse.parameters`
+// JSON-STRINGIFIES every array value, so reading it would hand the batch
+// expander a string and silently drop the entire fan-out.
+export const CLINE_HOOK_SCOPES = ["user", "project"] as const;
+export type ClineHookScope = (typeof CLINE_HOOK_SCOPES)[number];
+
+// The nine we install. `PreCompact` is one of cline's ten names but is
+// DELIBERATELY EXCLUDED: it maps to undefined upstream and is skipped at
+// dispatch, so a file for it costs a subprocess per compaction and buys nothing.
+export const CLINE_HOOK_EVENT_TYPES = [
+  "TaskStart",
+  "TaskResume",
+  "TaskCancel",
+  "TaskComplete",
+  "TaskError",
+  "PreToolUse",
+  "PostToolUse",
+  "UserPromptSubmit",
+  "SessionShutdown",
+] as const;
+export type ClineHookEventType = (typeof CLINE_HOOK_EVENT_TYPES)[number];
+
+// These nine strings are simultaneously the `--hook` argument, the installed
+// file's basename, and the key here.
+export const CLINE_EVENT_MAP: Record<ClineHookEventType, HookEventType> = {
+  TaskStart: "SessionStart",
+  TaskResume: "SessionStart", // a resumed task is the same session continuing
+  TaskCancel: "SessionEnd",
+  TaskComplete: "Stop",
+  TaskError: "StopFailure",
+  PreToolUse: "PreToolUse",
+  PostToolUse: "PostToolUse",
+  UserPromptSubmit: "UserPromptSubmit",
+  SessionShutdown: "SessionEnd",
+};
+
+// Every entry observed LIVE on cline v3.0.60's PreToolUse payload. Unknown tools
+// pass through unchanged so they still reach the audit, just unmatched by
+// name-keyed builtins.
+export const CLINE_TOOL_MAP: Record<string, string> = {
+  run_commands: "Bash",
+  read_files: "Read",
+  search_codebase: "Grep",
+  apply_patch: "Edit",
+};
+
+// **There is deliberately NO CLINE_TOOL_INPUT_MAP.** Do not "fix" the omission
+// by adding an empty one. Every cline tool is batch- or blob-shaped, so there is
+// no key to RENAME — the whole job is a value-SHAPE transform, and it lives in
+// batch-expand.ts:
+//   run_commands    {commands:[…]}  → one element per entry, {command}
+//   read_files      {files:[{path}]}→ one element per entry, {file_path}
+//   search_codebase {queries:[…]}   → one element per entry, {pattern}
+//   apply_patch     {input:"blob"}  → one element per patched file
+
 export const HOOK_EVENT_TYPES = [
   "SessionStart",
   "SessionEnd",
@@ -1093,7 +1624,7 @@ export interface SessionMetadata {
    *  Use this for round-tripping the agent-side event name in response shapes
    *  when stdin doesn't include `hook_event_name`. */
   rawHookEventName?: string;
-  /** Which agent CLI fired this hook (claude | codex | copilot | cursor | opencode | pi | hermes | openclaw | factory | devin | antigravity | goose). Set by handler.ts from --cli. */
+  /** Which agent CLI fired this hook (claude | codex | copilot | cursor | opencode | pi | hermes | openclaw | factory | devin | antigravity | goose | ori | cline). Set by handler.ts from --cli. */
   cli?: IntegrationType;
 }
 

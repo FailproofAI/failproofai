@@ -16,7 +16,7 @@ import { formatDate } from "./format-date";
 export const UUID_RE = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 export const PATH_TRAVERSAL_RE = /(^|[\\/])\.\.($|[\\/])/;
 
-export type ProjectCli = "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "hermes" | "openclaw" | "factory" | "devin" | "antigravity" | "goose";
+export type ProjectCli = "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "hermes" | "openclaw" | "factory" | "devin" | "antigravity" | "goose" | "grok" | "qwen" | "ori" | "cline";
 
 export interface ProjectFolder {
   name: string;
@@ -171,6 +171,10 @@ export async function getProjectFolders(): Promise<ProjectFolder[]> {
     { getDevinProjects },
     { getAntigravityProjects },
     { getGooseProjects },
+    { getGrokProjects },
+    { getQwenProjects },
+    { getOriProjects },
+    { getClineProjects },
   ] = await Promise.all([
     import("./codex-projects"),
     import("./copilot-projects"),
@@ -183,8 +187,12 @@ export async function getProjectFolders(): Promise<ProjectFolder[]> {
     import("./devin-projects"),
     import("./antigravity-projects"),
     import("./goose-projects"),
+    import("./grok-projects"),
+    import("./qwen-projects"),
+    import("./ori-projects"),
+    import("./cline-projects"),
   ]);
-  const [claude, codex, copilot, cursor, opencode, pi, hermes, openclaw, factory, devin, antigravity, goose] = await Promise.all([
+  const [claude, codex, copilot, cursor, opencode, pi, hermes, openclaw, factory, devin, antigravity, goose, grok, qwen, ori, cline] = await Promise.all([
     getClaudeProjectFolders(),
     getCodexProjects().catch((error) => {
       logError("Error reading Codex projects:", error);
@@ -230,8 +238,24 @@ export async function getProjectFolders(): Promise<ProjectFolder[]> {
       logError("Error reading Goose projects:", error);
       return [] as ProjectFolder[];
     }),
+    getGrokProjects().catch((error) => {
+      logError("Error reading grok projects:", error);
+      return [] as ProjectFolder[];
+    }),
+    getQwenProjects().catch((error) => {
+      logError("Error reading Qwen projects:", error);
+      return [] as ProjectFolder[];
+    }),
+    getOriProjects().catch((error) => {
+      logError("Error reading Ori projects:", error);
+      return [] as ProjectFolder[];
+    }),
+    getClineProjects().catch((error) => {
+      logError("Error reading Cline projects:", error);
+      return [] as ProjectFolder[];
+    }),
   ]);
-  return mergeProjectFolders(claude, codex, copilot, cursor, opencode, pi, hermes, openclaw, factory, devin, antigravity, goose);
+  return mergeProjectFolders(claude, codex, copilot, cursor, opencode, pi, hermes, openclaw, factory, devin, antigravity, goose, grok, qwen, ori, cline);
 }
 
 /**

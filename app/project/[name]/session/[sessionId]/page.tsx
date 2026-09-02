@@ -3,17 +3,7 @@ import Link from "next/link";
 import { ArrowLeft, Download } from "lucide-react";
 import { notFound } from "next/navigation";
 import { getCachedSessionLog, type LogEntry } from "@/lib/log-entries";
-import { getCachedCodexSessionLog } from "@/lib/codex-sessions";
-import { getCachedCopilotSessionLog } from "@/lib/copilot-sessions";
-import { getCachedCursorSessionLog } from "@/lib/cursor-sessions";
-import { getCachedOpenCodeSessionLog } from "@/lib/opencode-sessions";
-import { getCachedPiSessionLog } from "@/lib/pi-sessions";
-import { getCachedHermesSessionLog } from "@/lib/hermes-sessions";
-import { getCachedOpenClawSessionLog } from "@/lib/openclaw-sessions";
-import { getCachedFactorySessionLog } from "@/lib/factory-sessions";
-import { getCachedDevinSessionLog } from "@/lib/devin-sessions";
-import { getCachedAntigravitySessionLog } from "@/lib/antigravity-sessions";
-import { getCachedGooseSessionLog } from "@/lib/goose-sessions";
+import { EXTERNAL_SESSION_STORES, type SessionCli } from "@/lib/session-stores";
 import { decodeFolderName } from "@/lib/paths";
 import { baseSessionId } from "@/lib/utils/session-id";
 import { resolveProjectPath, UUID_RE } from "@/lib/projects";
@@ -57,8 +47,9 @@ export default async function SessionPage({ params }: SessionPageProps) {
   let entries: LogEntry[] | null = null;
   let rawLines: Record<string, unknown>[] | null = null;
   let error: string | null = null;
-  let cli: "claude" | "codex" | "copilot" | "cursor" | "opencode" | "pi" | "hermes" | "openclaw" | "factory" | "devin" | "antigravity" | "goose" = "claude";
+  let cli: SessionCli = "claude";
   let externalCwd: string | undefined;
+  let cliLabel: string | undefined;
 
   try {
     // Use raw folder name for file operations — decodedName is for display only
@@ -68,98 +59,19 @@ export default async function SessionPage({ params }: SessionPageProps) {
   } catch (e) {
     const isNotFound = (e as NodeJS.ErrnoException).code === "ENOENT";
     if (isNotFound) {
-      // Fall back through external stores in order: Codex → Copilot → Cursor → OpenCode → Pi.
-      // Each store keys by sessionId rather than the project slug, so the
-      // [name] segment is irrelevant on these branches.
-      const codex = await getCachedCodexSessionLog(decodedSessionId);
-      if (codex) {
-        entries = codex.entries;
-        rawLines = codex.rawLines;
-        externalCwd = codex.cwd;
-        cli = "codex";
-      } else {
-        const copilot = await getCachedCopilotSessionLog(decodedSessionId);
-        if (copilot) {
-          entries = copilot.entries;
-          rawLines = copilot.rawLines;
-          externalCwd = copilot.cwd;
-          cli = "copilot";
-        } else {
-          const cursor = await getCachedCursorSessionLog(decodedSessionId);
-          if (cursor) {
-            entries = cursor.entries;
-            rawLines = cursor.rawLines;
-            externalCwd = cursor.cwd;
-            cli = "cursor";
-          } else {
-            const opencode = await getCachedOpenCodeSessionLog(decodedSessionId);
-            if (opencode) {
-              entries = opencode.entries;
-              rawLines = opencode.rawLines;
-              externalCwd = opencode.cwd;
-              cli = "opencode";
-            } else {
-              const pi = await getCachedPiSessionLog(decodedSessionId);
-              if (pi) {
-                entries = pi.entries;
-                rawLines = pi.rawLines;
-                externalCwd = pi.cwd;
-                cli = "pi";
-              } else {
-                const hermes = await getCachedHermesSessionLog(decodedSessionId);
-                if (hermes) {
-                  entries = hermes.entries;
-                  rawLines = hermes.rawLines;
-                  externalCwd = hermes.cwd;
-                  cli = "hermes";
-                } else {
-                  const openclaw = await getCachedOpenClawSessionLog(decodedSessionId);
-                  if (openclaw) {
-                    entries = openclaw.entries;
-                    rawLines = openclaw.rawLines;
-                    externalCwd = openclaw.cwd;
-                    cli = "openclaw";
-                  } else {
-                    const factory = await getCachedFactorySessionLog(decodedSessionId);
-                    if (factory) {
-                      entries = factory.entries;
-                      rawLines = factory.rawLines;
-                      externalCwd = factory.cwd;
-                      cli = "factory";
-                    } else {
-                      const devin = await getCachedDevinSessionLog(decodedSessionId);
-                      if (devin) {
-                        entries = devin.entries;
-                        rawLines = devin.rawLines;
-                        externalCwd = devin.cwd;
-                        cli = "devin";
-                      } else {
-                        const antigravity = await getCachedAntigravitySessionLog(decodedSessionId);
-                        if (antigravity) {
-                          entries = antigravity.entries;
-                          rawLines = antigravity.rawLines;
-                          externalCwd = antigravity.cwd;
-                          cli = "antigravity";
-                        } else {
-                          const goose = await getCachedGooseSessionLog(decodedSessionId);
-                          if (goose) {
-                            entries = goose.entries;
-                            rawLines = goose.rawLines;
-                            externalCwd = goose.cwd;
-                            cli = "goose";
-                          } else {
-                            error = "Session log file not found.";
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
+      // Not a Claude session — walk the external stores. Each keys by sessionId
+      // rather than the project slug, so the [name] segment is irrelevant here.
+      for (const store of EXTERNAL_SESSION_STORES) {
+        const found = await store.load(decodedSessionId);
+        if (!found) continue;
+        entries = found.entries;
+        rawLines = found.rawLines ?? null;
+        externalCwd = found.cwd;
+        cli = store.cli;
+        cliLabel = store.label;
+        break;
       }
+      if (!entries) error = "Session log file not found.";
     } else {
       error = "Failed to read session log.";
     }
@@ -167,30 +79,9 @@ export default async function SessionPage({ params }: SessionPageProps) {
 
   const isExternal = cli !== "claude";
   const headerLabel = isExternal ? "CLI" : "Project";
-  const headerValue =
-    cli === "codex"
-      ? `OpenAI Codex${externalCwd ? ` · ${externalCwd}` : ""}`
-      : cli === "copilot"
-        ? `GitHub Copilot${externalCwd ? ` · ${externalCwd}` : ""}`
-        : cli === "cursor"
-          ? `Cursor Agent${externalCwd ? ` · ${externalCwd}` : ""}`
-          : cli === "opencode"
-            ? `OpenCode${externalCwd ? ` · ${externalCwd}` : ""}`
-            : cli === "pi"
-              ? `Pi${externalCwd ? ` · ${externalCwd}` : ""}`
-              : cli === "hermes"
-                ? `Hermes${externalCwd ? ` · ${externalCwd}` : ""}`
-                : cli === "openclaw"
-                  ? `OpenClaw${externalCwd ? ` · ${externalCwd}` : ""}`
-                  : cli === "factory"
-                    ? `Factory Droid${externalCwd ? ` · ${externalCwd}` : ""}`
-                    : cli === "devin"
-                      ? `Devin CLI${externalCwd ? ` · ${externalCwd}` : ""}`
-                      : cli === "antigravity"
-                        ? `Antigravity CLI${externalCwd ? ` · ${externalCwd}` : ""}`
-                        : cli === "goose"
-                          ? `Goose${externalCwd ? ` · ${externalCwd}` : ""}`
-                          : decodedName;
+  const headerValue = cliLabel
+    ? `${cliLabel}${externalCwd ? ` · ${externalCwd}` : ""}`
+    : decodedName;
 
   return (
     <main className="min-h-screen bg-background">

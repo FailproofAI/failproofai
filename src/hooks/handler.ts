@@ -15,6 +15,7 @@ import type {
   HermesHookEventType,
   OpenClawHookEventType,
   AntigravityHookEventType,
+  QwenHookEventType,
 } from "./types";
 import {
   CODEX_EVENT_MAP,
@@ -23,9 +24,12 @@ import {
   HERMES_EVENT_MAP,
   OPENCLAW_EVENT_MAP,
   ANTIGRAVITY_EVENT_MAP,
+  QWEN_EVENT_MAP,
 } from "./types";
 import { canonicalizeToolName, canonicalizeToolInput } from "./tool-name-canonicalize";
-import { normalizeCliPayload } from "./normalize-cli-payload";
+import { expandBatchToolInput } from "./batch-expand";
+import { evaluateExpandedBatch } from "./batch-fanout";
+import { normalizeCliPayload, resolveEffectiveCli } from "./normalize-cli-payload";
 import type { PolicyFunction, PolicyResult, HooksConfig } from "./policy-types";
 import { readMergedHooksConfig } from "./hooks-config";
 import { registerBuiltinPolicies } from "./builtin-policies";
@@ -91,6 +95,13 @@ export function canonicalizeEventType(raw: string, cli: IntegrationType): HookEv
     // Antigravity's --hook args are PreToolUse|PostToolUse|PreInvocation|Stop.
     // PreInvocation (before-model) → UserPromptSubmit. Verified agy v1.1.2.
     const mapped = ANTIGRAVITY_EVENT_MAP[raw as AntigravityHookEventType];
+    if (mapped) return mapped;
+  }
+  if (cli === "qwen") {
+    // Seventeen of qwen's nineteen events are already canonical; this maps the
+    // two that are not — TodoCreated/TodoCompleted, which are qwen's spelling
+    // of TaskCreated/TaskCompleted. Verified live against qwen-code 0.21.12.
+    const mapped = QWEN_EVENT_MAP[raw as QwenHookEventType];
     if (mapped) return mapped;
   }
   // claude / copilot / unknown — already PascalCase, pass through.
@@ -181,7 +192,7 @@ async function runObserved(
  */
 export async function evaluateHookEvent(
   eventType: string,
-  cli: IntegrationType = "claude",
+  declaredCli: IntegrationType = "claude",
   stdinPayload: string,
   opts?: EvaluateHookEventOptions,
 ): Promise<HookEventOutcome> {
@@ -202,10 +213,26 @@ export async function evaluateHookEvent(
         hookLogWarn(`payload parse failed for ${eventType} (${stdinPayload.length} bytes)`);
         void trackHookEvent(getInstanceId(), "hook_payload_parse_error", {
           event_type: eventType,
-          cli,
+          cli: declaredCli,
           payload_size: stdinPayload.length,
         });
       }
+    }
+
+    // grok executes other CLIs' hook configs — including the
+    // `<cwd>/.claude/settings.json` our own claude install writes — passing
+    // `--cli claude` while piping ITS camelCase payload. Resolve the CLI whose
+    // contract actually governs this event BEFORE anything reads `cli`, so both
+    // halves land on grok's path: the tool maps (without which every builtin
+    // reads undefined) and the response shape (grok ignores Claude's
+    // hookSpecificOutput deny — verified by A/B against a live session).
+    // No-op for every other CLI. See normalize-cli-payload.ts:isGrokEnvelope.
+    const cli = resolveEffectiveCli(declaredCli, parsed);
+    if (cli !== declaredCli) {
+      hookLogWarn(
+        `payload for ${eventType} is a ${cli} envelope but --cli says ${declaredCli}; ` +
+          `evaluating with the ${cli} contract`,
+      );
     }
 
     normalizeCliPayload(cli, parsed);
@@ -229,6 +256,11 @@ export async function evaluateHookEvent(
     // passes are idempotent because the camelCase keys won't match a
     // snake_case input.
     const rawInput = parsed.tool_input;
+    // Read the RAW batch BEFORE canonicalization collapses it. The expander
+    // emits canonical scalars directly, so there is no ambiguity about whether
+    // canonicalization ran once, twice, or on the wrong shape. Returns null for
+    // every CLI except cline, so the other 15 take the unchanged path below.
+    const batchExpansion = expandBatchToolInput(cli, canonicalToolName, rawInput);
     const canonicalInput = canonicalizeToolInput(canonicalToolName, rawInput, cli);
     if (canonicalInput !== rawInput) {
       parsed.tool_input = canonicalInput;
@@ -645,8 +677,32 @@ export async function evaluateHookEvent(
       );
     }
 
-    // Evaluate policies (use canonical PascalCase event type)
-    const result = await evaluatePolicies(canonicalEventType, parsed, session, config);
+    // Telemetry keys already emitted in THIS invocation. Threaded into the
+    // evaluator so a batch fan-out reports one event per real fault rather than
+    // one per element. A null set (every non-batch call) changes nothing.
+    const telemetryDedupe = new Set<string>();
+
+    // Evaluate policies (use canonical PascalCase event type).
+    //
+    // Fan out only on PreToolUse: it is the only cline payload shape captured
+    // live, and the only event where a per-element verdict changes anything.
+    // forceDecision is excluded — its synthetic policy denies unconditionally,
+    // so N elements would produce N identical denies and a meaningless locator.
+    const result =
+      batchExpansion && canonicalEventType === "PreToolUse" && !opts?.forceDecision
+        ? await evaluateExpandedBatch(
+            canonicalEventType,
+            parsed,
+            session,
+            config,
+            batchExpansion,
+            telemetryDedupe,
+          )
+        // Deliberately NOT passed the dedupe set: it exists only to collapse
+        // per-element telemetry inside a fan-out, and a single-shot call has
+        // exactly one element. Passing it would change this call's shape for
+        // all 16 CLIs to no effect.
+        : await evaluatePolicies(canonicalEventType, parsed, session, config);
     const durationMs = Math.round(performance.now() - startTime);
     hookLogInfo(`result=${result.decision} policy=${result.policyName ?? "none"} duration=${durationMs}ms`);
 

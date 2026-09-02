@@ -60,7 +60,7 @@ import {
  * the two lists are identical by reading the Rust source, because nothing else
  * connects them.
  *
- * Twelve keys, thirteen sources: `claude` covers both the main and the subagent
+ * Fourteen keys, fifteen sources: `claude` covers both the main and the subagent
  * transcript formats, which share a root — an extra path holding Claude
  * transcripts holds their subagents too.
  */
@@ -77,6 +77,8 @@ export const HARNESS_KEYS = [
   "opencode",
   "devin",
   "hermes",
+  "grok",
+  "qwen",
 ] as const;
 
 export type HarnessKey = (typeof HARNESS_KEYS)[number];

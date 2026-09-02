@@ -27,7 +27,7 @@
 import type { IntegrationType } from "@/src/hooks/types";
 
 /** Canonical CLI ids the registry knows about. Mirrors `INTEGRATION_TYPES`. */
-export const KNOWN_CLI_IDS = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose"] as const satisfies readonly IntegrationType[];
+export const KNOWN_CLI_IDS = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose", "grok", "qwen", "ori", "cline"] as const satisfies readonly IntegrationType[];
 export type CliId = (typeof KNOWN_CLI_IDS)[number];
 
 /** Per-CLI metadata consumed by the dashboard. */
@@ -98,6 +98,38 @@ const CLI_ENTRIES: Record<CliId, CliEntry> = {
     id: "goose",
     label: "Goose",
     badgeClasses: "bg-lime-500/10 text-lime-400 border-lime-500/20",
+  },
+  grok: {
+    id: "grok",
+    label: "grok CLI",
+    // Neutral zinc, matching the design system's `--color-default`. Deliberately
+    // NOT a status hue: green/amber/red carry health meaning in this dashboard
+    // and must never be spent on identity. Neutral also happens to suit xAI's
+    // monochrome brand, and it is maximally far from qwen's magenta — the two
+    // were previously indistinguishable.
+    badgeClasses: "bg-zinc-500/10 text-zinc-200 border-zinc-500/20",
+  },
+  qwen: {
+    id: "qwen",
+    label: "Qwen Code",
+    // Magenta — the opposite pole from grok's neutral, and outside the
+    // status set (success/amber/orange/error) so it reads as identity.
+    badgeClasses: "bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/20",
+  },
+  ori: {
+    id: "ori",
+    label: "Ori",
+    // Sky — the badge set must be UNIQUE per CLI (a test asserts it), and
+    // violet/teal were already taken. Still outside the status set
+    // (success/amber/orange/error) so it reads as identity, not state.
+    badgeClasses: "bg-sky-500/10 text-sky-400 border-sky-500/20",
+  },
+  cline: {
+    id: "cline",
+    label: "Cline",
+    // Stone — the remaining neutral that is not zinc (grok's) and not a status
+    // colour.
+    badgeClasses: "bg-stone-500/10 text-stone-300 border-stone-500/20",
   },
 };
 

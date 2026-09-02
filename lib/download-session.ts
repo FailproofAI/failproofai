@@ -125,6 +125,21 @@ export async function resolveDownloadSource(
     return path ? { kind: "file", path } : null;
   }
 
+  if (cli === "grok") {
+    // grok writes a real chat_history.jsonl per session directory — stream it
+    // verbatim (no synthesis, like Factory).
+    const { findGrokTranscript } = await import("./grok-sessions");
+    const path = findGrokTranscript(sessionId);
+    return path ? { kind: "file", path } : null;
+  }
+
+  if (cli === "qwen") {
+    // qwen writes a real JSONL transcript per session — stream it verbatim.
+    const { findQwenTranscript } = await import("./qwen-sessions");
+    const path = findQwenTranscript(sessionId);
+    return path ? { kind: "file", path } : null;
+  }
+
   if (cli === "devin") {
     // Devin keeps sessions in SQLite (~/.local/share/devin/cli/sessions.db).
     // Synthesize a JSONL export of the session's raw chat_message rows.
@@ -149,6 +164,28 @@ export async function resolveDownloadSource(
     const result = await getGooseSessionLog(sessionId);
     if (!result) return null;
     const body = result.rawLines.map((r) => JSON.stringify(r)).join("\n") + "\n";
+    return { kind: "synthesized", body, contentType: "application/x-ndjson", extension: "jsonl" };
+  }
+
+  if (cli === "ori") {
+    // Ori keeps the whole conversation in one SQLite column
+    // (ori_agent_loop_history.prompt). Synthesize a JSONL export from the
+    // parsed entries — there is no per-session file to stream.
+    const { getOriSessionLog } = await import("./ori-sessions");
+    const result = await getOriSessionLog(sessionId);
+    if (!result) return null;
+    const body = result.entries.map((e) => JSON.stringify(e)).join("\n") + "\n";
+    return { kind: "synthesized", body, contentType: "application/x-ndjson", extension: "jsonl" };
+  }
+
+  if (cli === "cline") {
+    // Cline stores a real per-session messages file, but it is a single JSON
+    // document rather than JSONL, so stream the parsed entries as JSONL for
+    // consistency with every other synthesized export.
+    const { getClineSessionLog } = await import("./cline-sessions");
+    const result = await getClineSessionLog(sessionId);
+    if (!result) return null;
+    const body = result.entries.map((e) => JSON.stringify(e)).join("\n") + "\n";
     return { kind: "synthesized", body, contentType: "application/x-ndjson", extension: "jsonl" };
   }
 

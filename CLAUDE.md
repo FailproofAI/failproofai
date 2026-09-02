@@ -819,10 +819,468 @@ For production users the recommended Goose install is:
 failproofai policies --install --cli goose --scope project
 ```
 
+### grok hooks (`~/.grok/hooks/failproofai.json` / `.grok/hooks/failproofai.json`)
+
+xAI's **grok** CLI is the 13th integration — **dual-pillar** (live hooks + audit),
+**user + project** scope, Claude/Codex-style external shell hooks. The whole contract
+below was **verified live against grok 1.0.3 (1a29d5bc12)** with a recorder hook on all
+14 events plus deny and stop-gate probes. Binary probe: `grok`.
+
+**Schema is Claude's nested form**, in its own directory — grok loads every `*.json`
+under `~/.grok/hooks/` (user, always trusted) or `<repo>/.grok/hooks/` (project). We own
+one file, `failproofai.json`, so install never merges with the user's other hook files
+(same arrangement as Copilot's `.github/hooks/failproofai.json`). `timeout` is in
+**seconds** (grok's default 5; 600 for Stop/SubagentStop). The matcher is **omitted** —
+grok treats it as a regex, and an omitted matcher matches every tool.
+
+**`grok` READS OTHER CLIS' HOOK CONFIGS — this is the most important fact here.**
+Discovery scans, by default (`[compat.claude] hooks = true`):
+
+```
+global : ~/.grok/hooks/  ~/.claude/settings.json  ~/.claude/settings.local.json  ~/.cursor/hooks.json
+project: <cwd>/.claude/settings.json  <cwd>/.claude/settings.local.json  <cwd>/.grok/hooks/  <cwd>/.cursor/hooks.json
+```
+
+`<cwd>/.claude/settings.json` is exactly what `policies --install --cli claude --scope
+project` writes, so **grok executes our Claude hooks**, passing `--cli claude` while
+piping its own camelCase payload. That made every such hook **inert**: `tool_name` and
+`tool_input` arrived `undefined`, so every content/path builtin allowed — and a deny
+would not have landed anyway, since grok ignores Claude's `hookSpecificOutput` shape
+(A/B verified on one live hook). `resolveEffectiveCli()` in `normalize-cli-payload.ts`
+detects grok's envelope **from the payload shape only** (`hookEventName` +
+`workspaceRoot`, no `hook_event_name` — a shape Claude never sends; never an env var,
+which could misread a real Claude event) and re-routes onto grok's contract. Note the
+mirror case is **not** true: a Cursor-schema `~/.cursor/hooks.json` loads `count=0` —
+grok accepts Cursor's event *names* but expects the nested Claude *structure*.
+
+Consequence worth knowing: in a repo carrying **both** `.claude/settings.json` and
+`.grok/hooks/failproofai.json` (this repo does), a grok session fires **both**, so every
+tool call is evaluated twice. Harmless — identical verdicts, deny wins — but it doubles
+hook latency.
+
+**Two undocumented project-scope conditions, each a silent no-op:**
+
+| Condition | Symptom |
+|---|---|
+| The directory must be a **git repo** | A *trusted* non-git dir with a valid `.grok/hooks/*.json` logs `project_sources=0`; the hook never fires |
+| The folder must be **trusted** | `grok --trust` or `/hooks-trust`; until then project hooks are silently skipped |
+
+Neither is in grok's hooks doc. Verified by A/B: the only change between
+`project_sources=0` and `project_sources=4` was `git init`. User scope
+(`~/.grok/hooks/`) needs neither.
+
+**Wire format — camelCase envelope, snake_case event *value*.** `hookEventName`
+(`"pre_tool_use"`), `sessionId`, `cwd`, `workspaceRoot`, `transcriptPath`,
+`permissionMode`, `toolName`, `toolInput`, `toolUseId`. `normalizeCliPayload`'s `grok`
+branch maps these to snake_case, including `toolResult` → `tool_response` (grok does
+**not** use Claude's key) and `workspaceRoot` → `cwd`. `hookEventName` is deliberately
+**not** mapped — its value is snake_case while the canonical set is PascalCase, and the
+`--hook` arg already carries the right name, so there is **no `GROK_EVENT_MAP`**.
+
+**Tool surface** (`GROK_TOOL_MAP`, every entry observed on the wire):
+`run_terminal_command→Bash`, `write→Write`, `read_file→Read`, `search_replace→Edit`,
+`grep→Grep`, `list_dir→LS`. grok's own docs disagree on the shell tool —
+the hooks doc says `run_terminal_command` (what the wire sends), the headless doc says
+`run_terminal_cmd`; both are mapped. **`GROK_TOOL_INPUT_MAP` has exactly two entries**:
+`read_file` delivers the path as **`target_file`** and `list_dir` as
+**`target_directory`**. The first is load-bearing — without it a live `.env` read passes
+`block-env-files`, the identical bug `COPILOT_TOOL_INPUT_MAP` was added to fix.
+
+**Event surface: all 14, which is grok's entire surface.** `GROK_HOOK_EVENT_TYPES`
+covers `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`,
+`PostToolUseFailure`, `PermissionDenied`, `Stop`, `StopFailure`, `Notification`,
+`SubagentStart`, `SubagentStop`, `PreCompact`, `PostCompact`, `SessionEnd`. A live grok
+accepted every key (`hooks: loaded from global source … count=14`, `loaded hooks
+hook_count=14`, no unknown-key warning) — worth checking rather than assuming, because
+**grok silently SKIPS event keys it does not recognize**, so a typo costs coverage with no
+error anywhere. `Notification` (type `agent_error` — a type grok's own docs omit) and
+`StopFailure` (`{error:"rate_limit", errorDetails, lastAssistantMessage}`) were both
+observed firing. Everything beyond `PreToolUse`/`Stop`/`SubagentStop` is **observation by
+construction, not by caution** — the ACP handshake above is the complete blocking list.
+
+**Response shapes** (`policy-evaluator.ts`, `cli === "grok"`):
+
+| Case | Shape (exit 0) |
+|------|----------------|
+| Deny on tool/prompt events | `{decision:"deny", reason}` — VERIFIED, beat `--yolo` |
+| Deny on `Stop`/`SubagentStop` | `{decision:"block", reason: <MANDATORY ACTION text>}` — VERIFIED force-retry |
+| Instruct on `Stop` | the same block shape (grok also documents `hookSpecificOutput.additionalContext` there; unverified, so we use the proven one) |
+| Instruct on other events | stderr note only (degrade like Hermes/Goose) |
+
+**`Stop` fires TWICE per session** and only the first is actionable: once per real turn
+end (`reason: "end_turn"`) and once at shutdown (`reason: "shutdown"`), whose decision
+grok parses and then **discards**. The Stop branch gates on `reason === "end_turn"`;
+blocking on the shutdown fire would log and count a deny that can never be acted on. An
+unlabelled Stop is treated as real, so the failure mode leans toward enforcement.
+Captured sequence for one turn: `end_turn`/`stopHookActive=false` (we blocked) → the
+agent ran the required command → `end_turn`/`stopHookActive=true` (allowed) →
+`shutdown`. grok caps continuations at **8 per turn**.
+
+Env injected on every hook: `GROK_HOOK_EVENT`, `GROK_HOOK_NAME`, `GROK_SESSION_ID`,
+`GROK_WORKSPACE_ROOT`, and **`CLAUDE_PROJECT_DIR`** (a Claude-compatible alias).
+
+**Audit pillar.** `~/.grok/sessions/<percent-encoded-cwd>/<sessionId>/` — **percent**
+encoding (`%2Fhome%2Fyou%2Frepo`), NOT the dash style Claude/Factory/Qwen use, so
+`lib/grok-sessions.ts` decodes with `decodeURIComponent` and grok project folders do not
+merge with Claude's by slug (cwd filtering still works). Each session dir holds
+`chat_history.jsonl` (the turns), `events.jsonl`, and `summary.json` (`info.cwd`,
+`session_summary`, `created_at`, `num_messages`). Two parser consequences:
+`chat_history.jsonl` carries **no timestamps**, so `grokLinesToLogEntries` takes an
+explicit `startMs` (summary.json's `created_at`) and lays turns 1ms apart — ordering
+exact, per-turn wall-clock honestly synthesized; and `tool_calls[].arguments` is a JSON
+**string**, parsed on the way in. Only `user` lines carrying `prompt_index` are real
+operator turns (grok also writes its environment preamble and `synthetic_reason`
+reminders as `user` lines). `GROK_HOME` overrides the home dir for tests.
+
+For production users the recommended grok install is:
+```bash
+failproofai policies --install --cli grok --scope project
+```
+
+### Qwen Code hooks (`~/.qwen/settings.json` / `.qwen/settings.json`)
+
+**Qwen Code** (`qwen`, Alibaba) is the 14th integration — **dual-pillar**, **user +
+project** scope, and the **cheapest integration in the codebase**: it is a near-pure
+Claude clone on the wire, so it needs **no event map, no payload normalization, and no
+tool-input map**. Verified live against **@qwen-code/qwen-code 0.21.12**.
+
+Hooks live under a Claude-style `"hooks"` key inside qwen's normal settings file, which
+also holds `model`, `modelProviders` and auth — so reads/writes go through the
+merge-preserving `readJsonFile`/`writeJsonFile` helpers, never a whole-file replace.
+
+| Scope   | Path                        |
+|---------|-----------------------------|
+| user    | `~/.qwen/settings.json`     |
+| project | `<cwd>/.qwen/settings.json` |
+
+**`timeout` is in MILLISECONDS** (qwen's default 60000) — the only integration that is
+not seconds-based. Do not unify it with the others: `30` would mean 30ms and every hook
+would time out. `disableAllHooks: true` and `--safe-mode` each disable every hook.
+
+**Wire format is pure Claude snake_case**: `hook_event_name` (PascalCase *value*, unlike
+grok), `session_id`, `transcript_path`, `cwd`, `permission_mode`, `tool_name`,
+`tool_input`, `tool_response`, `stop_hook_active`.
+
+**Tool surface** (`QWEN_TOOL_MAP`): `run_shell_command→Bash`, `read_file→Read`,
+`write_file→Write`, `edit→Edit`, `grep_search→Grep`, `list_directory→LS` (plus qwen's
+legacy `ReadFile`/`WriteFile` matcher aliases). There is deliberately **no
+`QWEN_TOOL_INPUT_MAP`** — all six deliver canonical keys already.
+
+**Response shapes.** PreToolUse honours Claude's own
+`hookSpecificOutput.permissionDecision` (`allow`/`deny`/`ask`), VERIFIED live beating
+`-y`, so it falls through to the generic Claude branch rather than being duplicated;
+`"ask"` degrades to deny in headless runs and background subagents. Only **`Stop`**
+diverges — it reads the top-level `{decision:"block", reason}`, VERIFIED forcing another
+turn — which is all the `cli === "qwen"` branch in `policy-evaluator.ts` handles.
+**Instruct is a real channel** here (`hookSpecificOutput.additionalContext` on
+PreToolUse/PostToolUse/UserPromptSubmit, wrapped in a
+`<qwen:user-prompt-submit-context>` provenance tag), putting qwen ahead of
+Hermes/Goose/Factory, which all degrade instruct to a stderr note.
+
+**Event surface: 19 subscribed.** Every event failproofai installs has a real
+`executeHooks("<Event>")` dispatch site in the shipped bundle — checked by reading it,
+which is also how `InstructionsLoaded`, `UserPromptExpansion` and `PostToolBatch` turned
+up: all three are dispatched and **absent from qwen's documented event table**.
+`QWEN_EVENT_MAP` exists for exactly two of the nineteen: qwen calls its task list "todos",
+so `TodoCreated`/`TodoCompleted` canonicalize onto `TaskCreated`/`TaskCompleted`.
+
+**qwen's todo hooks are a real veto point, not observation.** They run in two phases and
+the payload says which: during `phase: "validation"` a top-level `{decision:"block",
+reason}` prevents the write and the reason goes back to the model; during `postWrite` the
+todo is already persisted and the block is ignored. `policy-evaluator.ts` emits that shape
+unconditionally for `TaskCreated`/`TaskCompleted` — it enforces where it can and is inert
+where it cannot, and the phase is upstream's to decide. Verified live: a policy denying a
+todo that planned to skip the tests blocked the `todo_write` outright. Note the block
+prevents the **whole write**, not the single offending item.
+
+**Three events are deliberately NOT subscribed:** `MessageDisplay` fires per streaming
+chunk (a hook process per chunk), `PostToolBatch` fired 6× in a task where `PostToolUse`
+fired 5 while carrying the same tool calls in batch form (+76% hook invocations, no
+builtin reads it), and `SessionDelete` has no canonical equivalent. Each is one line to
+add if a custom policy ever needs it.
+
+**Two behaviours that will bite a policy author:**
+
+- **`stop_hook_active` is `true` on the FIRST Stop fire**, before anything has blocked
+  (verified live). It is NOT a usable "already retrying" signal on qwen, and no
+  failproofai loop guard may depend on it. Unlike grok there is no session-end Stop fire.
+- **`UserPromptSubmit` fires per MODEL INVOCATION, not per user prompt** — one observed
+  turn produced **four**, one per tool-result continuation. qwen's docs confirm it covers
+  UserQuery/ToolResult/Hook sends and warn that `prompt` is not necessarily user input.
+  `submitted_prompt` is present only for interactive-TUI submissions (absent in headless,
+  ACP, `serve`, SDK), so it identifies real submissions but cannot be a general filter.
+
+**Audit pillar.** `~/.qwen/projects/<dash-encoded-cwd>/chats/<sessionId>.jsonl` —
+Claude-style encoded-cwd folders, but note the extra `chats/` level. Every line carries
+`{uuid, parentUuid, sessionId, cwd, timestamp, type}`, and a real per-line `cwd` means
+audit groups by project like Claude/Devin/Goose. The message body is **Gemini-shaped,
+not Claude-shaped**: `message.parts[]` of `{text}` / `{functionCall:{id,name,args}}` /
+`{functionResponse:{id,name,response}}`, with the assistant role spelled `"model"` — so
+`lib/qwen-sessions.ts` is NOT a clone of `factory-sessions.ts` despite the similar
+layout. A `toolCallResult` sidecar carries the rendered `resultDisplay`, preferred over
+the raw response blob. `QWEN_HOME` overrides the home dir for tests.
+
+**Not failproofai's bug, but worth knowing:** qwen exports the provider API key from its
+settings `env` block into **every hook process's environment**, so any hook a user
+installs can read it.
+
+For production users the recommended Qwen install is:
+```bash
+failproofai policies --install --cli qwen --scope project
+```
+
+### Cline hooks (`~/.cline/hooks/` / `.clinerules/hooks/`)
+
+Cline is a **dual-pillar** integration (live hooks + audit), **user + project** scope. It is
+the only integration whose config is a **directory of event-named files** rather than a
+settings file. The whole contract below was **verified live against cline v3.0.60**.
+
+**Three rules, and all three fail SILENTLY when broken:**
+
+1. **The FILENAME is the event**, case-insensitively. Only ten names exist: `TaskStart`,
+   `TaskResume`, `TaskCancel`, `TaskComplete`, `TaskError`, `PreToolUse`, `PostToolUse`,
+   `UserPromptSubmit`, `PreCompact`, `SessionShutdown`. A typo is not an error — cline
+   skips the file without a log line. This is exactly how an early probe concluded, wrongly,
+   that cline had no reachable hook surface: right directory, wrong names.
+2. **The EXTENSION must be in the allowlist** — `"" .sh .bash .zsh .js .mjs .cjs .ts .mts
+   .cts .py .ps1` — or the file is skipped, also silently. A `hooks.json` is invisible twice
+   over. The file need **not** be executable; the interpreter comes from the shebang, else
+   the extension.
+3. **The EXIT CODE IS IGNORED** on every event. The verdict is the single JSON object on
+   stdout, so the generated launcher must always print exactly one object and print `{}`
+   when failproofai produced nothing — unparseable stdout makes cline skip the hook and run
+   the tool.
+
+Hook directories, in cline's own search order:
+
+| Path | Scope |
+|------|-------|
+| `~/Documents/Cline/Hooks` | (read, not written) |
+| `$CLINE_DIR/hooks` (default `~/.cline/hooks`) | **user** |
+| `<workspace>/.clinerules/hooks` | **project** |
+| `<workspace>/.cline/hooks` | (read, not written) |
+
+**`--hooks-dir` IS A DEAD FLAG** in v3.0.60: it writes `CLINE_HOOKS_DIR`, which appears
+exactly once in the shipped binary — that write — and is read by nothing. Never emit it.
+
+**Deny contract:** `{"cancel": true, "errorMessage": "…"}` on stdout at exit 0. Cline's
+verdict schema is `{contextModification?, cancel?, review?, errorMessage?, context?,
+overrideInput?}` — there is **no** `decision` / `block` / `permissionDecision` field, so
+every generic branch in `policy-evaluator.ts` is inert for it and the `cli === "cline"`
+branch must come first. `context` is a real additional-context channel (so `instruct()` does
+**not** degrade to stderr-only here, unlike Goose/Hermes/ori), and `overrideInput` is a real
+MUTATE channel — not yet wired, but it is the thing that would make the `sanitize-*` builtins
+actually sanitize.
+
+**Two caveats that are product decisions, not footnotes:**
+
+- **`cancel:true` ABORTS THE WHOLE RUN.** It becomes `{stop:true}` → `applyStopControl`
+  throws `ControlledStopError`. Observed live as `[abort] aborted by another client`. It is a
+  *stronger* action than a per-tool deny, not a weaker one — every other integration denies
+  one call and lets the agent adapt.
+- **FAIL-OPEN, with no way to opt out.** A timeout (120s default), a parse failure or a spawn
+  error makes cline skip the hook and run the tool. Unlike ori there is no
+  `failureBehavior:"deny"` to inherit, so a failproofai fault on cline is a silent allow.
+
+`Stop`/`StopFailure` deliberately do **not** emit a cancel: `TaskComplete` fires after the
+task has finished, so a cancel would kill a completed run rather than force a retry. We emit
+`{"context": …}` there instead, and `ENFORCEMENT_CAPABILITY` records `Stop: "observe"`. The 5
+`require-*-before-stop` builtins are **inapplicable** on cline, as on Hermes, Goose and ori.
+`PreCompact` is one of cline's ten names but is excluded from `CLINE_HOOK_EVENT_TYPES`: it
+maps to `undefined` upstream and is skipped at dispatch.
+
+**EVERY CLINE TOOL IS BATCH-SHAPED, and this is the whole integration.** Captured live:
+
+| cline tool | input | canonical |
+|------------|-------|-----------|
+| `run_commands` | `{commands: ["cd '<d>' && ls -la", …]}` | `Bash` |
+| `read_files` | `{files: [{path, start_line, …}, …]}` | `Read` |
+| `search_codebase` | `{queries: ["alpha", …]}` | `Grep` |
+| `apply_patch` | `{input: "*** Begin Patch\n*** Update File: <p>…"}` | `Edit` |
+
+failproofai's builtins read SCALARS (`tool_input.command`, `.file_path`, `.pattern`), so a
+key rename leaves every one of them reading `undefined` and **allowing silently** — the
+inert-hook failure this repo has shipped twice. There is therefore **no
+`CLINE_TOOL_INPUT_MAP`**; do not "fix" the omission by adding an empty one. Instead
+`src/hooks/batch-expand.ts` expands one call into N canonical scalar inputs and
+`src/hooks/batch-fanout.ts` runs the policy set once per element, **lowest offending index
+wins**, short-circuiting the rest.
+
+**Why not just join the array?** Because `SECRET_FILE_RE` is `/\.(?:pem|key)$/`. Under any
+join only the LAST element can match, so a `.pem` at `files[0]` rides straight through.
+`__tests__/hooks/cline-batch-bypass.test.ts` asserts that with the real builtins, and also
+asserts the join *would* have missed it — so a later "simplification" fails loudly instead of
+going quietly green while enforcement disappears.
+
+A collapse still happens on the paths that cannot fan out (PostToolUse, audit replay,
+fail-closed shaping): `canonicalizeClineToolInput` derives the best single scalar and keeps
+the arrays under `cline_*`. Two details there are derived, not chosen — commands join with
+`" &&\n"` (a bare `"\n"` silently disables `READ_LIKE_CMDS`, whose boundary alternation has
+no newline; a bare `" && "` manufactures false denies across a boundary), and paths collapse
+via `pickRiskiestPath`, not `paths[0]`.
+
+`apply_patch` carries the **same OpenAI apply_patch format as ori's `edit`**, so
+`splitApplyPatch` in `batch-expand.ts` serves both and `oriPatchFilePaths` is now an alias
+for it. It also returns per-file old/new text, which closes ori's documented multi-file
+KNOWN GAP — and a worse one the gap comment understates, that ori's Edit sets no
+`old_string`/`new_string` at all, so `block-secrets-write` can never fire on it. Deliberately
+NOT changed for ori in this PR; it is a five-line follow-up now rather than a re-derivation.
+
+**Payload normalization** (`normalize-cli-payload.ts`): cline pipes its own payload verbatim
+— its hooks are event-named scripts, not a generated shim that could pre-shape stdin — so
+without a branch every field the handler reads is `undefined`. Read `tool_call.input`, **not**
+`preToolUse.parameters`: the latter JSON-**stringifies** every array value, so reading it
+would hand the batch expander a string and silently drop the whole fan-out. `taskId` →
+`session_id`; `workspaceRoots[0]` (else `workspaceInfo.rootPath`) → `cwd`.
+
+**Audit pillar** — the thinnest adapter we have, because cline already stores **Claude's own
+content blocks**. Per-session directories at `~/.cline/data/sessions/<epochMs>_<suffix>/`
+hold `<id>.json` (metadata: `session_id`, `source`, `status`, `provider`, `model`, **`cwd`**,
+`workspace_root`, `prompt`, `started_at`/`ended_at`) and `<id>.messages.json`
+(`{version, updated_at, agent, sessionId, origin, system_prompt, messages}`) whose blocks are
+`{type:"thinking"|"text"|"tool_use"|"tool_result"}`. `lib/cline-sessions.ts` pairs
+`tool_result` onto `tool_use` by id and — importantly — does **not** emit a user turn for the
+`role:"user"` message that merely carries results, or every tool call produces a phantom turn.
+Cline stores **no per-message timestamp**, so every entry carries the session's own time.
+`CLINE_HOME` / `CLINE_DIR` override the home for tests.
+
+**Uninstall must delete FILES, never the directory.** Unlike ori's feature directory, cline's
+hooks directory is shared with the user's own hooks; `removeHooksFromFile` removes only files
+carrying the failproofai marker, and `writeHookEntries` refuses to clobber a file that lacks
+it.
+
+For production users the recommended Cline install is:
+```bash
+failproofai policies --install --cli cline --scope project
+```
+
+### Dogfood configs for Factory / Devin / Antigravity / Goose / grok / Qwen
+### Ori hooks (`~/.ori/global/features/failproofai/`)
+
+Like Hermes and OpenClaw, this repo ships **no dogfood ori config** — ori is user-scope
+only, so an install here would rewire the contributor's whole machine rather than just
+this repo. Ori is a **dual-pillar** integration (live hooks + audit). Everything below was
+**verified live against ori 0.12.0+68f9a36** driving `nvidia/nemotron-3.5-lightning:free`;
+almost none of it is derivable from ori's shipped `.d.ts`.
+
+**`ori` is two products behind one binary, and only the second one is this integration.**
+
+1. **A launcher** — `ori claude`, `ori codex`, `ori grok`, `ori opencode`, `ori hermes`,
+   `ori omp`, `ori prime-agent`, `ori kilo`, `ori dsh` — which runs the real third-party
+   binary under OpenRouter credentials. It injects credentials and **nothing else**, and
+   critically it does **not** redirect `HOME` or any config dir:
+
+   | Launcher | What ori injects |
+   |----------|------------------|
+   | `ori claude` | `--settings '<json>'` carrying only `apiKeyHelper` + `env` |
+   | `ori codex` | `-c model_provider=…` key overrides (against `config.toml`, a *different file* from `hooks.json`) |
+   | `ori grok` | env only (`GROK_MODELS_BASE_URL`, `GROK_XAI_API_BASE_URL`, `XAI_API_KEY`, telemetry off) |
+   | `ori opencode` | `OPENCODE_CONFIG_CONTENT` inline JSON |
+
+   Both injections **merge** rather than replace, and that was proven rather than assumed:
+   a project `SessionStart` hook fired identically with and without ori's exact
+   `--settings` blob, and against `opencode debug config` the `plugin` array survived
+   `OPENCODE_CONFIG_CONTENT` intact with `openrouter` added *beside* the pre-existing
+   provider. **So failproofai's existing per-CLI hooks keep enforcing under `ori <agent>`
+   and we deliberately ship nothing for that path.** (`ori hermes` is unverified — hermes
+   was not installed on the probe box.) This matters because it is the exact bug class
+   from the grok integration, where our Claude hooks ran *inert* inside another CLI.
+
+2. **ori's own agent** — bare `ori` / `ori code`, the built-in `@ori-runloop/agent-loop`
+   harness. That is what this integration gates.
+
+**Enforcement is via published EXTENSION POINTS, not hook events.** A feature is a
+workspace package under the global workspace's `features/`, **auto-discovered with no
+config file to register it in** (like Goose's dropped plugin dir, unlike OpenCode which
+must be named in `opencode.json`). `failproofai policies --install --cli ori` generates
+`~/.ori/global/features/failproofai/{feature.ts,package.json}` plus a `failproofai.json`
+that exists only to give the `Integration` interface a settings path — ori ignores it.
+**User scope only:** bare `ori` boots the **global** workspace rather than the project's,
+so one install covers every project and a project-scope install would never load.
+
+Three points, each `policy: "unique"` (one provider apiece — a competing feature displaces
+us):
+
+| Point | Fires | On provider failure |
+|-------|-------|---------------------|
+| `approval-policy` | both modes — static `{defaultAction, rules[]}` | ignore-malformed |
+| `approval-asker` | **manual mode only** — dynamic per-call callback | **deny** |
+| `unattended-approvals` | unattended runs — dynamic per-call callback | **deny** |
+
+**The mode caveat is the whole story for coverage.** ori's approval mode defaults to
+`self-drive`, which "approves every command without prompting", and in that mode the
+**dynamic points are never called**. Isolated three ways: no callback fired under
+self-drive; still none after claiming `approval-policy` with `defaultAction:"ask"` (so
+`ask` degrades to auto-approve); but `defaultAction:"reject"` **did** block every tool
+call — which proves the static point is wired and that self-drive skips specifically the
+dynamic asker. So failproofai's per-argument policies enforce on ori only under
+`--approvals manual` (or `/approvals` in the TUI). **There is no config key or env var to
+change that default** — searched `config.json`, `ori.md` frontmatter, the `ORI_*` env
+surface and the shipped selfdev docs. We claim `approval-policy` with an inert `ask`
+rather than a blanket `reject` on purpose: claiming it with `reject` would brick every
+self-drive session the moment failproofai is installed.
+
+**ori is the only integration that fails closed for free.** Both dynamic points declare
+`failureBehavior: "deny"` — *"a throwing, rejecting, or malformed provider denies the
+request"* — so the generated shim lets errors propagate instead of swallowing them, and a
+failproofai fault blocks the call. Goose and OpenClaw fail **open** today.
+`FAILPROOFAI_ORI_FAIL_OPEN=1` opts out.
+
+**Gate payload** (captured off real tool calls; `ORI_TOOL_MAP` / `ORI_TOOL_INPUT_MAP` in
+`types.ts` are the canonicalization):
+
+| ori tool | arguments | capabilities | → canonical |
+|----------|-----------|--------------|-------------|
+| `bash` | `command` | execute, read, write | `Bash` (already canonical) |
+| `read` | `path` | read | `Read` (`path`→`file_path`) |
+| `write` | `path`, `content` | write | `Write` (`path`→`file_path`) |
+| `glob` | `pattern` | read | `Glob` (already canonical) |
+| `grep` | `pattern`, `path` | read | `Grep` (already canonical) |
+| `edit` | `patch` | read, write | `Edit` — **see below** |
+
+Two properties that bite. The gate **fires twice per tool call** — `escalated:false`, then
+`escalated:true` with a synthetic `{name:"escalated",value:"true"}` argument the shim
+drops from the tool input, so policies must be idempotent across the ladder. And
+`arguments` is a flat name/value **string** array, so every value arrives stringified.
+
+**`edit` is the sharp edge.** It carries the entire change as one `patch` string in OpenAI
+apply_patch format (`*** Begin Patch` / `*** Update File: <path>` / `*** End Patch`) with
+**no path argument at all** — so `file_path`, which `block-env-files`,
+`block-secrets-write` and every other path builtin reads, was simply absent and those
+builtins would have silently no-opped on every edit. `oriPatchFilePaths()` in
+`tool-name-canonicalize.ts` recovers it from the header and also exposes
+`ori_patch_files`. **KNOWN GAP:** a multi-file patch yields several paths and `file_path`
+holds one, so a builtin that would have denied on a later file does not fire; asserted in
+`__tests__/hooks/ori-canonicalize.test.ts` so it cannot rot into a silent surprise.
+
+The verdict shape is `{outcome:"allow"|"deny"}` — **no reason string reaches the model**,
+so a denial arrives as a bare tool failure, `instruct()` degrades to allow + a stderr note
+(as on Goose and Hermes), and **there is no `Stop` event at all**, leaving the 5
+`require-*-before-stop` builtins **inapplicable** on ori.
+
+**Audit pillar.** The transcript is SQLite at `~/.ori/global/.ori/state.sqlite`:
+`ori_agent_loop_sessions` (session_id, title, **cwd**, model, turns, cost_usd, archived,
+first_prompt, parent_session_id) and `ori_agent_loop_history`, whose **misnamed `prompt`
+column holds the entire serialized conversation** — `{"content":[{role,content},…]}` with
+Claude-style typed blocks (`{type:"reasoning"|"text"}`, `{type:"tool-call",id,name,params}`)
+and results in `role:"tool"` messages, paired by `call-<uuid>` id. Three plausible stores
+are dead ends, recorded so nobody re-derives them: the session dir's `metadata.json` is a
+summary with **no messages** even for a successful tool-using run; `code-*.jsonl` is
+lifecycle logging with **zero** tool records; and the rich `AgentRuntimeEvent` stream
+exists only transiently on `ori code --output jsonl` stdout. `lib/ori-sessions.ts` (pure
+parser) + `lib/ori-projects.ts`; `ORI_HOME` / `ORI_DB_PATH` override for tests.
+**Inherent limitation:** ori stores no per-message timestamp, so every entry carries the
+session's `updated_at` and per-message timing is unrecoverable.
+
+For production users the recommended Ori install is:
+```bash
+failproofai policies --install --cli ori --scope user
+```
+
 ### Dogfood configs for Factory / Devin / Antigravity / Goose
 
 Like the Codex / Cursor / OpenCode / Pi setups above, this repo ships
-**project-scope dogfood configs** for the four newest CLIs so failproofai
+**project-scope dogfood configs** for the six newest CLIs so failproofai
 enforces on itself when you drive this repo with them. Each uses the dev
 `node scripts/dev-hook.mjs --hook <event> --cli <cli>` command (never the `npx`
 production form — same self-reference caveat as the others):
@@ -833,6 +1291,8 @@ production form — same self-reference caveat as the others):
 | Devin | `.devin/config.json` | Claude `"hooks"` wrapper |
 | Antigravity (`agy`) | `.agents/hooks.json` | named-hook schema under the `failproofai` key |
 | Goose | `.agents/plugins/failproofai/hooks/hooks.json` | Open Plugins (auto-discovered; matcher omitted — a bare `*` matches nothing) |
+| grok | `.grok/hooks/failproofai.json` | Claude nested schema, seconds timeout, all 14 events (matcher omitted; needs `grok --trust` once, and only works because this repo is a git repo) |
+| Qwen (`qwen`) | `.qwen/settings.json` | Claude `"hooks"` wrapper, **milliseconds** timeout, 19 events |
 
 These were generated from each integration's own `writeHookEntries`, so they
 track the live schema. See each CLI's architecture section above for the full
@@ -1290,9 +1750,17 @@ Each entry should be a single line: a short description followed by the PR numbe
 
 ## Version bumps
 
-When bumping the version, update **only** `package.json` (root). The CI version-consistency
-check compares `packages/*/package.json` against root — that directory does not currently
-exist, so no other files need updating.
+When bumping the version, four files move together — this used to say "only
+`package.json`", which was true before the Rust workspace existed and is now a red CI:
+
+| File | Why |
+|------|-----|
+| `package.json` (root) | the source of truth |
+| `Cargo.toml` | `ci.yml`'s quality job compares the workspace version against root `package.json` and fails on a mismatch |
+| `Cargo.lock` | pins all three workspace crates; regenerate with `cargo metadata --offline` rather than hand-editing |
+| `CHANGELOG.md` heading | the `## <version> — <date>` section must name the new version |
+
+`packages/*/package.json` is also compared, but that directory still does not exist.
 
 That is the **npm** version, and it governs the CLI, the daemon and the Cargo workspace.
 The two Python packages version **independently of it and of each other** — `fp-cloud-cli` and

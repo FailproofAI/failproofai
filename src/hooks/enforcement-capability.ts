@@ -253,6 +253,103 @@ export const ENFORCEMENT_CAPABILITY: Record<
     // the policy-evaluator comment both claim "Goose has NO Stop event"; that is
     // false at v1.43.0 (agent.rs:1956, :2840 emit_stop_hook_blocking).
   },
+
+  // grok 1.0.3 (1a29d5bc12). Every "block" row below was proven by a live
+  // probe, not read from grok's hooks doc — which is also where two of the
+  // three surprises came from (see types.ts): the doc's own tool name for the
+  // shell tool disagrees with the wire, and nothing documents that project
+  // hooks need a git repo. grok's capability advertisement corroborates the
+  // blocking set: its ACP initialize response carries
+  //   x.ai/hooks: {blockingEvents:["pre_tool_use","stop","subagent_stop"],
+  //                decisions:["deny","block"], stopSignals:[…]}
+  // — exactly the three rows marked "block" here.
+  grok: {
+    PreToolUse: "block",           // VERIFIED live: {decision:"deny",reason} blocked `echo` and beat --yolo (permissionMode bypassPermissions); Claude's hookSpecificOutput shape did NOT block (A/B on the same hook)
+    Stop: "block",                 // VERIFIED live: {decision:"block",reason} forced another turn — the agent ran the required command, then stopped. ONLY on reason==="end_turn"; the session-shutdown fire is parsed and discarded upstream. Cap: 8 continuations/turn
+    SubagentStop: "block",         // advertised in x.ai/hooks blockingEvents; not exercised by a probe
+    UserPromptSubmit: "observe",   // fired live; not in blockingEvents
+    PostToolUse: "observe",        // fired live; post-hoc, and not in blockingEvents
+    PostToolUseFailure: "observe",
+    SessionStart: "observe",       // fired live
+    SessionEnd: "observe",         // fired live
+    // The six below are the widened set. All OBSERVE by construction, not by
+    // caution: blockingEvents lists exactly three events, so grok cannot honour
+    // a deny on any of these no matter what we send.
+    StopFailure: "observe",        // VERIFIED firing (a 429 turn): {error:"rate_limit", errorDetails, lastAssistantMessage}
+    Notification: "observe",       // VERIFIED firing: notificationType "agent_error" — a type grok's own docs do not list
+    PermissionDenied: "observe",   // config key accepted (count=14); firing not exercised — needs a real permission denial
+    SubagentStart: "observe",      // config key accepted; firing not exercised — needs a subagent
+    PreCompact: "observe",         // config key accepted; firing not exercised — needs compaction
+    PostCompact: "observe",        // config key accepted; firing not exercised — needs compaction
+  },
+
+  // qwen-code 0.21.12. A near-pure Claude clone on the wire, so most rows
+  // inherit Claude's semantics — but only the two proven ones are "block".
+  qwen: {
+    PreToolUse: "block",           // VERIFIED live: hookSpecificOutput.permissionDecision:"deny" blocked run_shell_command and beat -y (yolo); reason reached the model verbatim. ("ask" degrades to deny in headless and background subagents)
+    Stop: "block",                 // VERIFIED live: top-level {decision:"block",reason} forced another turn. NOTE stop_hook_active is true on the FIRST fire, so it is not a usable loop guard here
+    UserPromptSubmit: "observe",   // docs accept a decision, unverified — and it fires per MODEL INVOCATION (4× in one observed turn), so treat as observation until probed
+    PostToolUse: "observe",        // docs accept `decision`, unverified; post-hoc regardless
+    PostToolUseFailure: "observe",
+    PermissionRequest: "observe",
+    PermissionDenied: "observe",
+    SubagentStart: "observe",
+    SubagentStop: "observe",       // sibling of Stop upstream, but not probed — left honest rather than assumed
+    PreCompact: "observe",
+    SessionStart: "observe",       // fired live
+    SessionEnd: "observe",
+    // Widened set. Every one has a real executeHooks() dispatch site in the
+    // shipped bundle; the three marked VERIFIED were also observed firing.
+    TaskCreated: "block",          // qwen's TodoCreated. VERIFIED firing ×4 with phase:"validation", where upstream docs state a {decision:"block"} PREVENTS the write and returns the reason to the model
+    TaskCompleted: "block",        // qwen's TodoCompleted. VERIFIED firing ×4, same validation-phase contract
+    InstructionsLoaded: "observe", // VERIFIED firing: {file_path, memory_type, load_reason}
+    Notification: "observe",       // VERIFIED firing: notification_type "auth_success"
+    StopFailure: "observe",        // upstream documents it fire-and-forget — output and exit code ignored
+    PostCompact: "observe",
+    UserPromptExpansion: "observe",
+  },
+
+  // ── ori ───────────────────────────────────────────────────────────────────
+  // ori 0.12.0+68f9a36, probed LIVE against the built-in `@ori-runloop/
+  // agent-loop` harness driving nvidia/nemotron-3.5-lightning:free. Enforcement
+  // is the `approval-asker` / `unattended-approvals` extension points rather
+  // than a hook-event stream, so PreToolUse is the only row there can be: ori
+  // exposes no prompt-submit, post-tool, session or stop gate to subscribe to.
+  ori: {
+    PreToolUse: "block",           // LIVE: {outcome:"deny"} from our approval-asker provision turned 3 tool.started into 3 tool.failed with ZERO tool.succeeded, and ori held the deny across the model's retries. MODE-GATED — read the note below before quoting this row
+    // DELIBERATELY NO OTHER ROWS. Two things this table cannot express, both
+    // verified live and both load-bearing:
+    //   1. ori's approval mode defaults to `self-drive`, and in that mode the
+    //      DYNAMIC points are never called — so no deny is ever PRODUCED, and
+    //      the row above never gets a chance to apply. Isolated three ways: no
+    //      callback under self-drive; still none after claiming approval-policy
+    //      with defaultAction:"ask"; but defaultAction:"reject" DID block every
+    //      call, which proves the static point is wired and that self-drive
+    //      skips specifically the dynamic asker. Coverage therefore requires
+    //      `--approvals manual` (or /approvals in the TUI).
+    //   2. There is no Stop event at all, so the 5 require-*-before-stop
+    //      builtins are INAPPLICABLE on ori, exactly as on Hermes and Goose.
+  },
+
+  // ── cline ─────────────────────────────────────────────────────────────────
+  // cline v3.0.60. Its hooks are event-NAMED scripts under a hooks directory,
+  // and THE EXIT CODE IS IGNORED on every event — so every row here is a claim
+  // about a stdout SHAPE, never about exit 2. cline's verdict schema has no
+  // `decision` / `block` / `permissionDecision` field at all, which is why every
+  // generic branch in policy-evaluator.ts is inert for it.
+  cline: {
+    PreToolUse: "block",  // LIVE: {"cancel":true,"errorMessage":…} on stdout stopped a real run_commands call and the side effect never happened. CAVEAT, and it is a product decision rather than a footnote: `cancel` becomes {stop:true} -> applyStopControl THROWS ControlledStopError, ABORTING THE WHOLE RUN ("[abort] aborted by another client"), not just this tool call. A STRONGER action than a per-tool deny, not a weaker one
+    Stop: "observe",      // TaskComplete maps here, and `cancel` is NOT a force-retry channel: the task has already completed, so a cancel kills a finished run rather than re-entering the loop. The 5 require-*-before-stop builtins are INAPPLICABLE on cline, exactly as on Hermes, Goose and ori
+    // DELIBERATELY NO OTHER ROWS. PostToolUse, UserPromptSubmit, TaskStart,
+    // TaskResume, TaskCancel, TaskError and SessionShutdown ARE installed — for
+    // the audit trail and for observe-mode custom policies — but nothing has
+    // been probed showing a verdict on any of them changes what the agent does,
+    // and ABSENT MEANS UNKNOWN in this file.
+    //
+    // FAIL-OPEN across the whole surface, and unlike ori there is no
+    // failureBehavior:"deny" to inherit: a timeout (120s default), a parse
+    // failure or a spawn error makes cline SKIP the hook and run the tool.
+  },
 };
 
 /**

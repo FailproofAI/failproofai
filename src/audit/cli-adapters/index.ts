@@ -23,6 +23,10 @@ import { listFactoryTranscriptMetadata, streamFactoryEvents } from "./factory";
 import { listAntigravityTranscriptMetadata, streamAntigravityEvents } from "./antigravity";
 import { listDevinTranscriptMetadata, streamDevinEvents } from "./devin";
 import { listGooseTranscriptMetadata, streamGooseEvents } from "./goose";
+import { listGrokTranscriptMetadata, streamGrokEvents } from "./grok";
+import { listQwenTranscriptMetadata, streamQwenEvents } from "./qwen";
+import { listOriTranscriptMetadata, streamOriEvents } from "./ori";
+import { listClineTranscriptMetadata, streamClineEvents } from "./cline";
 
 export type { ListOpts };
 
@@ -122,6 +126,26 @@ export const ADAPTERS: Record<IntegrationType, CliAdapter> = {
     cli: "goose",
     listTranscripts: listGooseTranscriptMetadata,
     streamEvents: streamGooseEvents,
+  },
+  grok: {
+    cli: "grok",
+    listTranscripts: listGrokTranscriptMetadata,
+    streamEvents: streamGrokEvents,
+  },
+  qwen: {
+    cli: "qwen",
+    listTranscripts: listQwenTranscriptMetadata,
+    streamEvents: streamQwenEvents,
+  },
+  ori: {
+    cli: "ori",
+    listTranscripts: listOriTranscriptMetadata,
+    streamEvents: streamOriEvents,
+  },
+  cline: {
+    cli: "cline",
+    listTranscripts: listClineTranscriptMetadata,
+    streamEvents: streamClineEvents,
   },
 };
 

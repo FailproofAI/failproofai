@@ -46,6 +46,7 @@ import {
   FACTORY_HOOK_EVENT_TYPES,
   DEVIN_HOOK_EVENT_TYPES,
   ANTIGRAVITY_HOOK_EVENT_TYPES,
+  INTEGRATION_TYPES,
   GOOSE_HOOK_EVENT_TYPES,
   HOOK_EVENT_TYPES,
   CLAUDE_INSTALL_EVENT_TYPES,
@@ -82,7 +83,7 @@ afterEach(() => {
 describe("integrations registry", () => {
   it("listIntegrations returns claude, codex, copilot, cursor, opencode, pi, hermes, and openclaw in declared order", () => {
     const ids = listIntegrations().map((i) => i.id);
-    expect(ids).toEqual(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose"]);
+    expect(ids).toEqual(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose", "grok", "qwen", "ori", "cline"]);
   });
 
   it("getIntegration('claude') returns claudeCode", () => {
@@ -1799,3 +1800,18 @@ describe("claudeCode — WorktreeCreate is never registered", () => {
   });
 });
 
+
+describe("bin/failproofai.mjs --cli validation", () => {
+  it("accepts exactly the CLIs in INTEGRATION_TYPES", () => {
+    // This list lived as THREE hardcoded copies inside bin/failproofai.mjs and
+    // drifted: grok and qwen reached INTEGRATION_TYPES and the `--hook --cli`
+    // validation, but not the install parser, so `policies --install --cli grok`
+    // failed outright while the whole unit suite stayed green. It is one list
+    // now; this asserts it cannot drift again.
+    const src = readFileSync(resolve(process.cwd(), "bin/failproofai.mjs"), "utf8");
+    const m = /const INSTALLABLE_CLIS = \[([^\]]+)\]/.exec(src);
+    expect(m, "INSTALLABLE_CLIS not found in bin/failproofai.mjs").toBeTruthy();
+    const declared = m![1].split(",").map((s) => s.trim().replace(/^"|"$/g, "")).filter(Boolean);
+    expect(declared.sort()).toEqual([...INTEGRATION_TYPES].sort());
+  });
+});

@@ -16,6 +16,12 @@ import { POLICY_CATALOG } from "./policy-catalog";
 import { allow, deny, instruct } from "./policy-helpers";
 import { normalizePolicyName, registerPolicy } from "./policy-registry";
 import { hookLogWarn } from "./hook-logger";
+import {
+  ENV_FILE_PATH_RE,
+  SECRET_FILE_RE,
+  SECRET_FILE_ID_RSA_RE,
+  SECRET_FILE_CREDENTIALS_RE,
+} from "./risk-patterns";
 
 /**
  * Whether `resolved` lives under an agent CLI's home directory
@@ -192,7 +198,6 @@ const DOTNET_GETENV_RE = /\[Environment\]::GetEnvironment/i;
 const CMD_ECHO_ENV_RE = /echo\s+%[A-Za-z_]/i;
 
 // blockEnvFiles
-const ENV_FILE_PATH_RE = /(?:^|[\\/])\.env(?:\.|$)/;
 const ENV_CMD_RE = /\.env(?:\b|\s|$|\.)/;
 
 // blockSudo
@@ -444,9 +449,6 @@ const SHORT_FLAG_BUNDLE_RE = /^-[a-zA-Z]*f[a-zA-Z]*$/;
 const SAFE_FORCE_PREFIXES = ["--force-with-lease", "--force-if-includes"] as const;
 
 // blockSecretsWrite
-const SECRET_FILE_RE = /\.(?:pem|key)$/;
-const SECRET_FILE_ID_RSA_RE = /id_rsa/;
-const SECRET_FILE_CREDENTIALS_RE = /credentials/;
 
 // blockWorkOnMain
 const GIT_COMMIT_MERGE_RE = /git\s+(commit|merge|rebase|cherry-pick)\b/;

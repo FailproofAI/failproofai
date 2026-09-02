@@ -30,7 +30,7 @@ before they execute.
 
 ## Supported harnesses
 
-Twelve harnesses in two classes are supported: ten coding CLIs, plus two
+Sixteen harnesses in two classes are supported: fourteen coding CLIs, plus two
 gateways: Hermes, OpenClaw. The policy API and session history are shared; which
 events can block varies by harness.
 
@@ -38,9 +38,10 @@ Agents that run in none of them report through the [Python SDK](https://docs.bef
 which gives you tracing, sessions and audits. Enforcement there needs a hook in
 your own runtime — [talk to us](mailto:support@befailproof.ai) and we'll map it.
 
-<!-- A 6-column table instead of inline <img> runs: table columns never re-wrap,
-     so the grid stays 2×6 at any window width (scrolling on very narrow screens
-     instead of collapsing into ragged orphan rows). -->
+<!-- A 7-column table instead of inline <img> runs: table columns never re-wrap,
+     so the grid stays 2×7 at any window width (scrolling on very narrow screens
+     instead of collapsing into ragged orphan rows). Kept at exactly two full
+     rows — 14 CLIs is 7×2, where 6 columns would leave a two-cell orphan row. -->
 <table align="center">
   <tr>
     <td align="center" width="96">
@@ -72,6 +73,8 @@ your own runtime — [talk to us](mailto:support@befailproof.ai) and we'll map i
         </picture>
       </a>
     </td>
+  </tr>
+  <tr>
     <td align="center" width="96">
       <a href="https://opencode.ai/" title="OpenCode">
         <picture>
@@ -88,8 +91,14 @@ your own runtime — [talk to us](mailto:support@befailproof.ai) and we'll map i
         </picture>
       </a>
     </td>
-  </tr>
-  <tr>
+    <td align="center" width="96">
+      <a href="https://grok.com" title="grok CLI (xAI)">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/grok-dark.svg" />
+          <img src="assets/logos/grok-light.svg" alt="grok CLI" width="56" height="56" />
+        </picture>
+      </a>
+    </td>
     <td align="center" width="96">
       <a href="https://hermes-agent.nousresearch.com/" title="Hermes (hermes-agent)">
         <picture>
@@ -98,6 +107,8 @@ your own runtime — [talk to us](mailto:support@befailproof.ai) and we'll map i
         </picture>
       </a>
     </td>
+  </tr>
+  <tr>
     <td align="center" width="96">
       <a href="https://openclaw.ai/" title="OpenClaw (openclaw gateway)">
         <img src="assets/logos/openclaw.svg" alt="OpenClaw" width="56" height="56" />
@@ -121,12 +132,32 @@ your own runtime — [talk to us](mailto:support@befailproof.ai) and we'll map i
         <img src="assets/logos/antigravity.svg" alt="Antigravity CLI" width="56" height="56" />
       </a>
     </td>
+  </tr>
+  <tr>
     <td align="center" width="96">
       <a href="https://goose-docs.ai/" title="Goose (codename goose)">
         <picture>
           <source media="(prefers-color-scheme: dark)" srcset="assets/logos/goose-dark.svg" />
           <img src="assets/logos/goose-light.svg" alt="Goose" width="56" height="56" />
         </picture>
+      </a>
+    </td>
+    <td align="center" width="96">
+      <a href="https://github.com/QwenLM/qwen-code" title="Qwen Code (qwen)">
+        <img src="assets/logos/qwen.svg" alt="Qwen Code" width="56" height="56" />
+      </a>
+    </td>
+    <td align="center" width="96">
+      <a href="https://openrouter.ai/docs/guides/ori/harness" title="Ori (OpenRouter)">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/ori-dark.svg" />
+          <img src="assets/logos/ori-light.svg" alt="Ori" width="56" height="56" />
+        </picture>
+      </a>
+    </td>
+    <td align="center" width="96">
+      <a href="https://github.com/cline/cline" title="Cline">
+        <img src="assets/logos/cline.png" alt="Cline" width="56" height="56" />
       </a>
     </td>
   </tr>
@@ -276,7 +307,7 @@ own cluster is available on the Enterprise plan.
 |---|---|
 | [Quickstart](https://docs.befailproof.ai/start/quickstart) | Install, connect a harness, see the first run |
 | [Concepts](https://docs.befailproof.ai/start/concepts) | How the hook system works |
-| [Supported harnesses](https://docs.befailproof.ai/reference/harnesses) | All 12, and what each one can enforce |
+| [Supported harnesses](https://docs.befailproof.ai/reference/harnesses) | All 16, and what each one can enforce |
 
 | Observe | |
 |---|---|

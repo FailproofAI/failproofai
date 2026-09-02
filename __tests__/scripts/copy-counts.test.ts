@@ -59,14 +59,14 @@ describe("copy counts match source", () => {
     // Fails loudly if someone adds a harness or a policy without re-reading the
     // copy. Update this block ONLY together with every string it guards.
     expect(TRUTH).toEqual({
-      harnesses: 12,
+      harnesses: 16,
       // 39, not 40: `block-self-pause` and `block-failproofai-commands` are one
       // alwaysOn guard now — an agent that can disable either can disable
       // enforcement, so they were never two decisions.
       policies: 39,
       events: 29,
-      preToolUseBlocks: 12,
-      stopBlocks: 8,
+      preToolUseBlocks: 16,
+      stopBlocks: 10,
     });
   });
 
@@ -123,14 +123,20 @@ describe("copy counts match source", () => {
   });
 
   it("README names every shipped harness, in the class it belongs to", () => {
-    // The twelve are TWO classes: ten coding CLIs and two gateways. The Python
-    // SDK is a separate door, not a third class of the twelve — and it reports
-    // events rather than sitting in the tool-call path, so it observes without
-    // enforcing. Copy that folds it in overstates what it does, which is the
-    // single easiest way for a reader to catch us out.
+    // The sixteen are TWO classes: fourteen coding CLIs and two gateways. The
+    // Python SDK is a separate door, not a third class of the sixteen — and it
+    // reports events rather than sitting in the tool-call path, so it observes
+    // without enforcing. Copy that folds it in overstates what it does, which is
+    // the single easiest way for a reader to catch us out.
+    //
+    // These two words are spelled out rather than derived from
+    // INTEGRATION_TYPES.length on purpose: the point is that a HUMAN re-read the
+    // opening paragraph, which is the first support statement anyone sees. A
+    // computed count would keep this green while the surrounding prose rotted —
+    // which is exactly what happened between the 12th and 16th integrations.
     const text = read("README.md");
-    expect(text).toMatch(/Twelve harnesses in two classes/);
-    expect(text).toMatch(/ten coding CLIs/);
+    expect(text).toMatch(/Sixteen harnesses in two classes/);
+    expect(text).toMatch(/fourteen coding CLIs/);
     expect(text).toMatch(/Hermes, OpenClaw/);
     // The SDK must never be described as carrying policies.
     const sdkClaim = /Python SDK[^.]*same polic/i;
@@ -152,6 +158,10 @@ describe("copy counts match source", () => {
       devin: "Devin CLI",
       antigravity: "Antigravity CLI",
       goose: "Goose",
+      grok: "grok CLI",
+      qwen: "Qwen Code",
+      ori: "Ori",
+      cline: "Cline",
     };
     // Adding an integration without documenting it is the drift this catches.
     expect(Object.keys(NAMES).sort()).toEqual([...INTEGRATION_TYPES].sort());
@@ -163,9 +173,9 @@ describe("copy counts match source", () => {
     // defensible because enforcement-capability.ts carries the probed version on
     // every row. If a re-probe moves a row, the prose has to move with it.
     const quickstart = read("docs/start/quickstart.mdx");
-    expect(quickstart).toContain("verified on all 12");
-    expect(TRUTH.preToolUseBlocks).toBe(12);
-    expect(quickstart).toMatch(/verified on 8\b/);
-    expect(TRUTH.stopBlocks).toBe(8);
+    expect(quickstart).toContain("verified on all 16");
+    expect(TRUTH.preToolUseBlocks).toBe(16);
+    expect(quickstart).toMatch(/verified on 10\b/);
+    expect(TRUTH.stopBlocks).toBe(10);
   });
 });

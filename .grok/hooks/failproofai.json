@@ -1,0 +1,172 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook SessionStart --cli grok",
+            "timeout": 30,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook UserPromptSubmit --cli grok",
+            "timeout": 30,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook PreToolUse --cli grok",
+            "timeout": 30,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook PostToolUse --cli grok",
+            "timeout": 30,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook PostToolUseFailure --cli grok",
+            "timeout": 30,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ],
+    "PermissionDenied": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook PermissionDenied --cli grok",
+            "timeout": 30,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 1; }; node scripts/dev-hook.mjs --hook Stop --cli grok",
+            "timeout": 30,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 1; }; node scripts/dev-hook.mjs --hook StopFailure --cli grok",
+            "timeout": 30,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook Notification --cli grok",
+            "timeout": 30,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook SubagentStart --cli grok",
+            "timeout": 30,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 1; }; node scripts/dev-hook.mjs --hook SubagentStop --cli grok",
+            "timeout": 30,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook PreCompact --cli grok",
+            "timeout": 30,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook PostCompact --cli grok",
+            "timeout": 30,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook SessionEnd --cli grok",
+            "timeout": 30,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ]
+  }
+}

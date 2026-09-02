@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.4-beta.0 — 2026-09-02
+
+### Fixes
+
+- `fp-cloud-cli`'s Click shim survives typer 0.27.2, which moved `Abort` out of its vendored Click. `_click_compat` wrapped all six vendored imports in one `try: … except ImportError: from click import …`, so that single missing name rebound **every** symbol to pip Click — the exact silent failure the module exists to prevent. Typer catches only its own Click's exceptions, so every typed error escaped uncaught: `fp alerts show ghost` exited 1 with an empty stderr instead of 6 with a message, and the same for exits 2, 3, 4 and 5. 105 tests went red on the dependabot bump that first installed 0.27.2. The Click is now chosen once — on whether `typer._click` exists at all — and each symbol imported from that choice, so a name that goes missing raises at import (a CLI that will not start) rather than silently downgrading every error to exit 1. `Abort` alone is resolved from `typer.Abort`, which tracks the move by construction: pip Click's before typer 0.26, the vendored class through 0.27.1, `typer.exceptions.Abort` from 0.27.2 (#771)
+
+### Dependencies
+
+- `fp-cloud-cli`: typer 0.27.1 → 0.27.2, click 8.4.2 → 8.5.0, posthog 7.42.0 → 7.44.2 (#771)
+
+- browserslist pinned to 4.28.8 in `overrides`, closing GHSA-73wf-gq98-2v4g and GHSA-c83g-rgw3-j3cx (both 7.5, both fixed in 4.28.7). They turned `main` red on its own scheduled Supply Chain run rather than on any PR's change — disclosed after this branch's first CI run, the same surface-late mechanism `osv-scanner.toml` documents for chromadb. browserslist is transitive-only (via `@babel/helper-compilation-targets`'s `^4.24.0`), so this is an override pin, not a dependency bump — and not `bun update browserslist`, which adds it to `dependencies` as a direct dep it is not and leaves 4.28.2 nested under `@babel/helper-compilation-targets`, keeping the gate red (#771)
+
 ## 1.0.3 — 2026-08-31
 
 One user-facing fix, and the three suite fixes that were needed to see it.

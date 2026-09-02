@@ -117,6 +117,7 @@
     "vite": "8.0.16",
     "undici": "7.29.0",
     "brace-expansion": "5.0.9",
-    "sharp": "0.35.0"
+    "sharp": "0.35.0",
+    "browserslist": "4.28.8"
   }
 }

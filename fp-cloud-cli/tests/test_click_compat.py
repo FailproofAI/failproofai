@@ -11,6 +11,7 @@ from __future__ import annotations
 import ast
 import pathlib
 
+import pytest
 import typer
 from typer.testing import CliRunner
 
@@ -93,6 +94,59 @@ def test_error_exit_codes_are_distinct_per_class():
     # Through the shim, not pip Click: bind it to the wrong Click and every key-mode
     # refusal escapes uncaught as exit 1 with an empty stderr.
     assert issubclass(KeyModeUnsupportedError, _click_compat.ClickException)
+
+
+def test_every_symbol_comes_from_the_click_typer_runs():
+    """No symbol may quietly come from pip Click while Typer is running its own.
+
+    This is the alarm for a *partial* miss. `_click_compat` used to wrap the whole
+    vendored import in one `try: … except ImportError: from click import …`, so a single
+    name disappearing from `typer._click` rebound **all six** symbols to pip Click — and
+    that is not hypothetical: typer 0.27.2 moved `Abort` out of
+    `typer._click.exceptions`, and the fallback fired, and 105 tests went red at once
+    with typed errors collapsing to exit 1. Assert the provenance of each symbol
+    separately, so the next move is one failure naming one symbol.
+    """
+    typer_click = pytest.importorskip(
+        "typer._click", reason="typer < 0.26 has no vendored Click; pip click IS the right one"
+    )
+    wrong = {
+        name: obj.__module__
+        for name in ("ClickException", "UsageError", "BadParameter", "Command", "Parameter")
+        if not (obj := getattr(_click_compat, name)).__module__.startswith(typer_click.__name__)
+    }
+    assert not wrong, f"these came from pip Click, not the Click Typer runs: {wrong}"
+
+
+def test_abort_is_the_one_typer_raises():
+    """`Abort` is the exception NOT to pin to a Click — pin it to Typer.
+
+    It is `click.Abort` before typer 0.26, the vendored class through 0.27.1, and a
+    plain `typer.exceptions.Abort(RuntimeError)` from 0.27.2 on. `typer.Abort` is the
+    class `typer.prompt` raises and typer's own `_main` catches on every one of those,
+    which is the only thing `select.py`'s `except click.Abort` needs to be true.
+    """
+    assert _click_compat.Abort is typer.Abort
+
+
+def test_hand_raised_usage_errors_reach_typers_handler():
+    """The other half of the contract: `UsageError`/`BadParameter` we raise ourselves.
+
+    `test_typed_errors_reach_typers_handler` covers the `ClickException` subclasses in
+    `errors.py`; these two are raised directly through the shim (`raise
+    click.UsageError(...)`) from a dozen call sites, and bound to the wrong Click they
+    escape uncaught the same way — exit 1, empty stderr, instead of a clean exit 2.
+    """
+    for exc_class in (_click_compat.UsageError, _click_compat.BadParameter):
+        app = typer.Typer()
+
+        @app.command()
+        def boom() -> None:
+            raise exc_class("bad input")
+
+        result = CliRunner().invoke(app, [])
+        assert result.exit_code == 2, (exc_class, result.output)
+        assert "bad input" in result.output
 
 
 def test_is_option_recognises_typer_options():

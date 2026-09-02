@@ -3,9 +3,32 @@
 ## 0.0.1b2 — 2026-08-25
 
 Open for the next release. `0.0.1b1` published on 2026-08-24 and the `bump` job
-moved the version here automatically; nothing has landed against `0.0.1b2` yet.
-Add entries as changes merge — this section becomes the GitHub Release body when
-it ships.
+moved the version here automatically. Add entries as changes merge — this section
+becomes the GitHub Release body when it ships.
+
+### Fixes
+
+- **Typed errors keep their exit codes under typer 0.27.2.** That release moved
+  `Abort` out of its vendored `typer._click.exceptions`, and `_click_compat`
+  imported all six of its symbols under a single
+  `try: … except ImportError: from click import …`. One missing name was enough
+  to send the whole block to the fallback, binding `ClickException`,
+  `UsageError`, `BadParameter`, `Command` and `Parameter` to the pip `click`
+  distribution — which is *not* the Click Typer runs, and Typer catches only its
+  own. So every typed error escaped its handler: `fp alerts show ghost` exited
+  **1 with an empty stderr** instead of **6** with `no alert named "ghost"`, and
+  likewise for exits 2, 3, 4 and 5. Nothing warned; the CLI imported and every
+  happy path passed. The Click is now decided **once**, on whether `typer._click`
+  exists at all, and every symbol imported from that decision, so a future move
+  fails at import — a CLI that refuses to start — instead of silently flattening
+  the exit-code contract. `Abort` is resolved from `typer.Abort`, which is by
+  construction the class `typer.prompt` raises and typer's own `_main` catches on
+  every version in range. Suite verified green against typer 0.25.1, 0.27.0,
+  0.27.1 and 0.27.2 (#771)
+
+### Dependencies
+
+- typer 0.27.1 → 0.27.2, click 8.4.2 → 8.5.0, posthog 7.42.0 → 7.44.2 (#771)
 
 ## 0.0.1b1 — 2026-08-24
 

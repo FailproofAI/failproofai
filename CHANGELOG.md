@@ -10,6 +10,8 @@
 
 - `fp-cloud-cli`: typer 0.27.1 → 0.27.2, click 8.4.2 → 8.5.0, posthog 7.42.0 → 7.44.2 (#771)
 
+- browserslist pinned to 4.28.8 in `overrides`, closing GHSA-73wf-gq98-2v4g and GHSA-c83g-rgw3-j3cx (both 7.5, both fixed in 4.28.7). They turned `main` red on its own scheduled Supply Chain run rather than on any PR's change — disclosed after this branch's first CI run, the same surface-late mechanism `osv-scanner.toml` documents for chromadb. browserslist is transitive-only (via `@babel/helper-compilation-targets`'s `^4.24.0`), so this is an override pin, not a dependency bump — and not `bun update browserslist`, which adds it to `dependencies` as a direct dep it is not and leaves 4.28.2 nested under `@babel/helper-compilation-targets`, keeping the gate red (#771)
+
 ## 1.0.3 — 2026-08-31
 
 One user-facing fix, and the three suite fixes that were needed to see it.

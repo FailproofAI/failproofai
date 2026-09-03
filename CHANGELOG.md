@@ -10,6 +10,8 @@
 
 - `fp-cloud-cli`: typer 0.27.1 → 0.27.2, click 8.4.2 → 8.5.0, posthog 7.42.0 → 7.44.2 (#771)
 
+- `osv-scanner.toml` ignores GHSA-8mgp-746c-j5xp (nltk 3.10.3, CVSS 8.3) until 2026-11-20. Surfaced 2026-09-03 against an already-approved PR — nothing on the branch introduced it and nothing on the branch can resolve it, which is the case the allow-list exists for. nltk is transitive via `llama-index-core` and appears only in `sdk/python/uv.lock`, the dev/test lockfile that pins every extra so CI can exercise the adapters; the SDK's own runtime dependency list is empty and the `llamaindex` extra is imported lazily, so it reaches no shipped code path. OSV reports "0 vulnerabilities can be fixed" and an empty FIXED VERSION, so the only alternative is dropping the extra and its adapter tests. Dated to match the chromadb entries so the list is revisited in one pass
+
 - browserslist pinned to 4.28.8 in `overrides`, closing GHSA-73wf-gq98-2v4g and GHSA-c83g-rgw3-j3cx (both 7.5, both fixed in 4.28.7). They turned `main` red on its own scheduled Supply Chain run rather than on any PR's change — disclosed after this branch's first CI run, the same surface-late mechanism `osv-scanner.toml` documents for chromadb. browserslist is transitive-only (via `@babel/helper-compilation-targets`'s `^4.24.0`), so this is an override pin, not a dependency bump — and not `bun update browserslist`, which adds it to `dependencies` as a direct dep it is not and leaves 4.28.2 nested under `@babel/helper-compilation-targets`, keeping the gate red (#771)
 
 ## 1.0.3 — 2026-08-31

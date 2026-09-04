@@ -70,6 +70,15 @@ _EVAL_EXECUTOR_ORPHAN_HEADROOM = 8
 # expires. See `WorkerRuntime._condition_phase_deadline`.
 _CONDITION_PHASE_SAFETY_MARGIN_SECONDS = 5.0
 
+# Fallback wall-clock bound for an evaluation whose definition declares no
+# `timeout_seconds`. A LOCAL (customer-authored) eval is a plain coroutine/thread
+# with no sandbox backstop, so without this an eval that hangs — a wedged
+# `await`, an unbounded judge HTTP call — runs forever, permanently wedging its
+# worker slot and holding the assignment lease. Matches the storage contract's
+# 5-minute per-eval default. (Managed evals are additionally hard-capped inside
+# the fork sandbox, so this is only their outer bound.)
+DEFAULT_EVAL_TIMEOUT_SECONDS = 300.0
+
 
 def _utc_now() -> str:
     return (
@@ -552,11 +561,16 @@ class WorkerRuntime:
         sync_function = not inspect.iscoroutinefunction(definition.function)
         try:
             invocation = self._invoke(definition.function, session)
-            result = (
-                await asyncio.wait_for(invocation, timeout=definition.timeout_seconds)
+            # Always bound the evaluation. A definition with no declared
+            # timeout_seconds falls back to DEFAULT_EVAL_TIMEOUT_SECONDS rather
+            # than awaiting unbounded — an unbounded local eval that hangs would
+            # wedge its worker slot and hold the lease forever.
+            eval_timeout = (
+                definition.timeout_seconds
                 if definition.timeout_seconds is not None
-                else await invocation
+                else DEFAULT_EVAL_TIMEOUT_SECONDS
             )
+            result = await asyncio.wait_for(invocation, timeout=eval_timeout)
             if not isinstance(result, EvalResult):
                 raise TypeError("evaluation must return EvalResult")
             items = result.result_items(definition.eval_key)
@@ -632,9 +646,20 @@ class WorkerRuntime:
                     "utf-8", "ignore"
                 )
         except Exception as error:  # noqa: BLE001 - converts customer eval failures
-            # Type name ONLY. A customer eval's exception text can quote the
-            # transcript it was reading, and this field is persisted and shown
-            # in the dashboard, so the message itself is not repeated here.
+            # Type name ONLY on the wire. A customer eval's exception text can
+            # quote the transcript it was reading, and this field is persisted
+            # and shown in the dashboard, so the message itself is not repeated
+            # there. But log the FULL traceback LOCALLY: this runs on the
+            # customer's own pod over their own data, and without it an author
+            # whose eval raises sees only "evaluation raised HTTPError" in the
+            # dashboard and nothing at all in their pod logs — no way to debug
+            # their own eval.
+            logger.warning(
+                "evaluation %r raised %s; reported to the server as a failed run",
+                definition.eval_key,
+                type(error).__name__,
+                exc_info=True,
+            )
             items = ()
             status = TerminalRunStatus.FAILED
             summary = None

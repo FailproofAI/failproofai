@@ -46,6 +46,25 @@ def _bounded(value: str, *, field_name: str, maximum: int) -> str:
     size = len(value.encode("utf-8"))
     if size > maximum:
         raise ValueError(f"{field_name} is {size} bytes; maximum is {maximum}")
+    # Reject C0 control characters and DEL, matching the server's `check_bounded`
+    # (server/src/evaluator/protocol.rs). Without this the SDK accepts a string —
+    # e.g. reasoning/summary quoting transcript text that contains an ANSI escape
+    # or NUL — that the server then rejects with a NON-RETRYABLE 422, so a
+    # successful evaluation is silently lost and its assignment dead-letters.
+    # TAB, LF and CR are kept because real multi-line reasoning uses them.
+    bad = next(
+        (
+            ch
+            for ch in value
+            if (ord(ch) < 0x20 and ch not in "\t\n\r") or ord(ch) == 0x7F
+        ),
+        None,
+    )
+    if bad is not None:
+        raise ValueError(
+            f"{field_name} must not contain control characters "
+            f"(found U+{ord(bad):04X})"
+        )
     return value
 
 
@@ -194,6 +213,10 @@ class EvalResult:
                     unit=metric.unit,
                     display_value=metric.display_value,
                     description=metric.description,
+                    # A metric-kind eval's primary result IS the metric whose
+                    # key equals eval_key; attach the eval's reasoning there so
+                    # it is not silently dropped for non-score evals.
+                    reasoning=self.reasoning if key == eval_key else None,
                     labels=self.labels,
                 )
             )
@@ -210,6 +233,10 @@ class EvalResult:
                     result_kind=ResultKind.ASSERTION,
                     bool_value=assertion.passed,
                     description=assertion.description,
+                    # An assertion-kind eval's primary result is the assertion
+                    # whose key equals eval_key; carry the eval's reasoning there
+                    # so a non-score eval does not lose it.
+                    reasoning=self.reasoning if key == eval_key else None,
                     labels=self.labels,
                 )
             )

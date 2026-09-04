@@ -568,10 +568,13 @@ def _compile(source: str, *, field_name: str, maximum: int) -> Any:
 # are all frozen, pointer-free dataclasses) can no longer be referenced as a value
 # (`_METHOD_ATTRS` must be called), so no reachable value carries a pointer repr to
 # begin with. This output-boundary scan is DEFENSE IN DEPTH. It matches the "... at
-# 0xADDR" tail every default repr shares, plus a bare `0x`+hex run — deliberately
-# WITHOUT the leading `<`, so reshaping the wrapper (e.g. `str(x).replace("<","")`,
-# the way the compile-time hole was originally bypassed) cannot strip the match.
-_OBJECT_REPR = re.compile(r" at 0x[0-9a-fA-F]+|0x[0-9a-fA-F]{6,}")
+# 0xADDR" tail every default object repr shares — which survives even a reshaped
+# wrapper such as `str(x).replace("<","")`, since stripping the leading `<` leaves
+# the " at 0x..." tail intact. A bare `0x`+hex run is deliberately NOT matched: it
+# false-rejects legitimate result text (a hex colour like `0xFFFFFF`, a git-style
+# digest, or an address the agent itself logged and the eval quotes), marking a
+# correct evaluation as failed for embedding an ordinary hex literal.
+_OBJECT_REPR = re.compile(r" at 0x[0-9a-fA-F]+")
 
 
 def _forbid_object_reprs(field_name: str, value: Any) -> Any:

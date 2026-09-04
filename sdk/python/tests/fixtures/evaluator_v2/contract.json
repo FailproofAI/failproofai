@@ -44,6 +44,7 @@
   "errors": {
     "invalid_credentials": {"http_status": 401, "retryable": false},
     "instance_disabled": {"http_status": 403, "retryable": false},
+    "insufficient_permissions": {"http_status": 403, "retryable": false},
     "assignment_not_found": {"http_status": 404, "retryable": false},
     "run_not_found": {"http_status": 404, "retryable": false},
     "catalog_mismatch": {"http_status": 409, "retryable": false},

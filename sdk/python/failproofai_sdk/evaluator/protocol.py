@@ -51,6 +51,7 @@ MAX_ERROR_MESSAGE_BYTES = 4 * 1024
 ERROR_SPECS = {
     "invalid_credentials": {"http_status": 401, "retryable": False},
     "instance_disabled": {"http_status": 403, "retryable": False},
+    "insufficient_permissions": {"http_status": 403, "retryable": False},
     "assignment_not_found": {"http_status": 404, "retryable": False},
     "run_not_found": {"http_status": 404, "retryable": False},
     "catalog_mismatch": {"http_status": 409, "retryable": False},

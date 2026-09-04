@@ -343,15 +343,37 @@ class WorkerRuntime:
         self._active.clear()
 
     async def process_assignment(self, assignment: Assignment) -> None:
-        session = await self._call_client(
-            self.client.transcript,
-            assignment,
-            worker_id=self.config.worker_id,
-        )
+        try:
+            session = await self._call_client(
+                self.client.transcript,
+                assignment,
+                worker_id=self.config.worker_id,
+            )
+        except EvaluatorAPIError as error:
+            if error.code == "transcript_too_large":
+                # The session transcript exceeds the hard ceiling. No runs are
+                # planned yet, so there is nothing to submit a per-run result for,
+                # and the error is non-retryable — re-raising would only wedge the
+                # poll loop and burn the assignment's whole retry budget against a
+                # transcript that can never shrink. Log and return; the server
+                # terminalizes the assignment as `too_large`.
+                logger.warning(
+                    "assignment %s transcript is too large to evaluate; skipping",
+                    assignment.assignment_id,
+                )
+                self._increment("transcripts_too_large")
+                return
+            raise
         if session.session_revision_id != assignment.session_revision_id:
             raise RuntimeError("transcript session revision does not match assignment")
 
         descriptors = await self._assignment_definitions(assignment)
+        # Every descriptor the assignment carries, keyed for reconstruction: on an
+        # idempotent replay the server re-serves the first attempt's run set, which
+        # may include a run this attempt's re-derived plan would have skipped.
+        descriptor_by_key = {
+            (item.eval_key, item.eval_version): item for item in descriptors
+        }
         selected: list[tuple[AssignmentDefinition, EvalDefinition | None]] = []
         skipped: list[SkippedEval] = []
         local_definitions = {
@@ -465,9 +487,13 @@ class WorkerRuntime:
         )
         if plan.assignment_id != assignment.assignment_id:
             raise RuntimeError("server returned a plan for a different assignment")
-        expected_status = "planned" if selected else "skipped"
-        if plan.assignment_status != expected_status:
-            raise RuntimeError("server returned an inconsistent assignment status")
+        # On an idempotent replay the server's status is authoritative: this
+        # attempt may have selected a different set than the first, so a mismatch
+        # against our own `selected` is expected, not an error.
+        if not plan.idempotent_replay:
+            expected_status = "planned" if selected else "skipped"
+            if plan.assignment_status != expected_status:
+                raise RuntimeError("server returned an inconsistent assignment status")
 
         definitions = {
             (item.eval_key, item.eval_version): (item, local)
@@ -479,11 +505,24 @@ class WorkerRuntime:
             if run.evaluation_run_id in run_ids:
                 raise RuntimeError("server returned a duplicate evaluation run id")
             run_ids.add(run.evaluation_run_id)
-            selected_definition = definitions.pop(
-                (run.eval_key, run.eval_version), None
-            )
+            run_key = (run.eval_key, run.eval_version)
+            selected_definition = definitions.pop(run_key, None)
             if selected_definition is None:
-                raise RuntimeError("server returned an unrequested evaluation run")
+                # On an idempotent replay the server's run set is AUTHORITATIVE —
+                # it re-serves the first attempt's runs even for a definition this
+                # attempt's condition phase would have skipped. Reconstruct the
+                # definition from the assignment's descriptors rather than raising
+                # and dead-lettering an assignment that could otherwise never
+                # converge (the divergence-abort bug).
+                if plan.idempotent_replay:
+                    replay_descriptor = descriptor_by_key.get(run_key)
+                    if replay_descriptor is not None:
+                        selected_definition = (
+                            replay_descriptor,
+                            local_definitions.get(run_key),
+                        )
+                if selected_definition is None:
+                    raise RuntimeError("server returned an unrequested evaluation run")
             descriptor, local = selected_definition
             if run.execution_mode is not descriptor.execution_mode:
                 raise RuntimeError("server changed the evaluation execution mode")
@@ -698,8 +737,17 @@ class WorkerRuntime:
         assignment: Assignment,
         tasks: dict[str, asyncio.Task[None]],
     ) -> None:
+        # Beat IMMEDIATELY, before the first sleep. The pre-plan condition phase
+        # may have consumed most of the claim-time lease, and the server only
+        # renews a planned assignment's lease on heartbeat — so sleeping a full
+        # interval here can let the lease expire before the first renewal, after
+        # the runs have already started, cancelling every one of them. The first
+        # beat renews the lease the moment the runs are live.
+        first = True
         while True:
-            await asyncio.sleep(self._heartbeat_interval)
+            if not first:
+                await asyncio.sleep(self._heartbeat_interval)
+            first = False
             active = tuple(
                 HeartbeatRun(evaluation_run_id=run_id, state="running")
                 for run_id, task in tasks.items()

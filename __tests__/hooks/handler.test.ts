@@ -443,6 +443,8 @@ describe("hooks/handler", () => {
         ["rg", "Grep"],
         ["ls", "LS"],
         ["web_fetch", "WebFetch"],
+        ["task", "Task"],
+        ["web_search", "WebSearch"],
       ];
       for (const [raw, canonical] of cases) {
         vi.mocked(evaluatePolicies).mockResolvedValueOnce({

@@ -4,8 +4,14 @@
  * Claude stores transcripts at:
  *   <CLAUDE_PROJECTS_PATH>/<encoded-cwd>/<sessionId>.jsonl
  *
- * Subagent transcripts (when a session spawned subagents) live alongside:
+ * Subagent transcripts (when a session spawned subagents) live alongside, in two
+ * shapes — a direct child, and one nested per workflow run:
  *   <CLAUDE_PROJECTS_PATH>/<encoded-cwd>/<sessionId>/subagents/<agentId>.jsonl
+ *   <CLAUDE_PROJECTS_PATH>/<encoded-cwd>/<sessionId>/subagents/workflows/<runId>/<agentId>.jsonl
+ *
+ * Everything below `subagents/` is walked to a bounded depth rather than one
+ * level, because the second shape arrived after this module was written and the
+ * miss was most of the corpus. See `collectSubagentTranscripts`.
  *
  * The parser for these files lives in `lib/log-entries.ts` (`parseLogContent`,
  * `parseSessionLog`). This module exposes discovery only — the audit pipeline
@@ -70,6 +76,99 @@ export function listClaudeProjects(): ClaudeProjectFolder[] {
 /** Lists every JSONL transcript under one Claude project folder, including
  *  subagent transcripts under `<sessionId>/subagents/`. Returns [] on missing
  *  or unreadable paths. */
+/**
+ * Depth of nesting allowed below `subagents/`.
+ *
+ * The two shapes that exist today need 0 and 2 (`<agent>.jsonl` and
+ * `workflows/<runId>/<agent>.jsonl`). The cap is here so an unexpected layout —
+ * or a symlink cycle a future Claude build introduces — costs a bounded walk
+ * rather than an audit that never returns, and it is deliberately loose enough
+ * that a third shape lands inside it without another release.
+ */
+const MAX_SUBAGENT_DEPTH = 5;
+
+/**
+ * Collect every `.jsonl` beneath a session's `subagents/` directory.
+ *
+ * This used to read only the DIRECT children of `subagents/`, which was correct
+ * for the layout Claude shipped when it was written and silently wrong the day
+ * workflow runs started nesting their agents one level further down. On a
+ * machine that uses them the miss is most of the corpus: 1,839 transcripts on
+ * disk, 1,741 under `subagents/`, and 1,679 of those inside
+ * `subagents/workflows/<runId>/` — so the audit was walking 160 files, 8.7% of
+ * the evidence, and reporting the result as though it had read everything.
+ *
+ * ## Session ids come from the relative path, not the basename
+ *
+ * Every workflow run writes a `journal.jsonl` beside its agents, so basenames
+ * are NOT unique below this directory — 1,741 files share 1,613 distinct names
+ * on the machine this was found on. A basename id would collide those 128 files
+ * onto ~one row each, and `sessionId` is what the cache, the per-session
+ * detector state and the example attribution are keyed by, so the collision
+ * would silently merge unrelated sessions rather than fail.
+ *
+ * Nor is the path below `subagents/` unique on its own. A workflow run id is
+ * reused when its session is resumed, so `wf_3d609e92-a38/journal.jsonl` exists
+ * under two different parent sessions in the same project — found by asserting
+ * uniqueness over the real corpus, not by reasoning about it.
+ *
+ * The id is therefore the PARENT SESSION id followed by the path relative to
+ * `subagents/`, minus the extension, joined with `__`:
+ * `<parentUuid>__workflows__wf_123__agent-abc`. That is a filesystem path
+ * within the project, so it is unique by construction rather than by argument,
+ * and it names the session the subagent belongs to. `__` is safe as the joiner
+ * because no id Claude generates contains one — verified against 1,741 real
+ * files, zero hits. Top-level session ids are untouched.
+ *
+ * Symlinks are not followed. Nothing in the layout uses them, and following one
+ * is how a directory walk turns into an infinite loop.
+ */
+function collectSubagentTranscripts(
+  dir: string,
+  relPrefix: string,
+  project: ClaudeProjectFolder,
+  out: ClaudeTranscriptFile[],
+  depth: number,
+): void {
+  if (depth > MAX_SUBAGENT_DEPTH) return;
+  let entries: import("node:fs").Dirent[];
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (entry.isSymbolicLink()) continue;
+    if (entry.isDirectory()) {
+      collectSubagentTranscripts(
+        join(dir, entry.name),
+        relPrefix ? `${relPrefix}__${entry.name}` : entry.name,
+        project,
+        out,
+        depth + 1,
+      );
+      continue;
+    }
+    if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
+    const stem = entry.name.slice(0, -".jsonl".length);
+    const transcriptPath = join(dir, entry.name);
+    try {
+      const s = statSync(transcriptPath);
+      out.push({
+        projectName: project.name,
+        cwd: project.cwd,
+        sessionId: relPrefix ? `${relPrefix}__${stem}` : stem,
+        transcriptPath,
+        mtimeMs: s.mtimeMs,
+        sizeBytes: s.size,
+        isSubagent: true,
+      });
+    } catch {
+      // unreadable — skip
+    }
+  }
+}
+
 export function listClaudeTranscripts(project: ClaudeProjectFolder): ClaudeTranscriptFile[] {
   const out: ClaudeTranscriptFile[] = [];
   let entries: import("node:fs").Dirent[];
@@ -99,34 +198,9 @@ export function listClaudeTranscripts(project: ClaudeProjectFolder): ClaudeTrans
         // unreadable — skip
       }
     } else if (entry.isDirectory() && UUID_RE.test(entry.name)) {
-      // Subagent transcripts at <sessionId>/subagents/<agentId>.jsonl
       const subDir = join(project.path, entry.name, "subagents");
       if (!existsSync(subDir)) continue;
-      let subEntries: import("node:fs").Dirent[];
-      try {
-        subEntries = readdirSync(subDir, { withFileTypes: true });
-      } catch {
-        continue;
-      }
-      for (const sub of subEntries) {
-        if (!sub.isFile() || !sub.name.endsWith(".jsonl")) continue;
-        const agentId = sub.name.slice(0, -".jsonl".length);
-        const transcriptPath = join(subDir, sub.name);
-        try {
-          const s = statSync(transcriptPath);
-          out.push({
-            projectName: project.name,
-            cwd: project.cwd,
-            sessionId: agentId,
-            transcriptPath,
-            mtimeMs: s.mtimeMs,
-            sizeBytes: s.size,
-            isSubagent: true,
-          });
-        } catch {
-          // unreadable — skip
-        }
-      }
+      collectSubagentTranscripts(subDir, entry.name, project, out, 0);
     }
   }
 

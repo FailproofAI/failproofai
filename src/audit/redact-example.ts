@@ -42,6 +42,8 @@
  */
 import { homedir } from "node:os";
 
+import type { AuditResult } from "./types";
+
 import { SECRET_PATTERNS } from "../hooks/builtin-policies";
 
 /** Longest example we let through, after redaction. */
@@ -298,15 +300,73 @@ export function shortenPaths(input: string, home = homedir()): string {
  * digest as one row, and a raw newline there breaks the plain-text layout while
  * saying nothing the single line does not.
  */
+/**
+ * Mask every secret, and nothing else.
+ *
+ * The three masking passes of `redactExample` without the path shortening, the
+ * whitespace collapse or the length cap. This is what a LOCAL renderer wants:
+ * on your own machine your own paths are the useful half of an example, and
+ * `~/…/db.ts` costs readability for no gain — nobody is protected from their own
+ * directory names. A credential on screen is the other half of that trade: it is
+ * one screenshot, one pasted issue or one screen-share away from being published,
+ * and unlike the path it can never be un-leaked.
+ *
+ * So the split is deliberate: everything that LEAVES the machine goes through
+ * `redactExample`; the terminal gets this.
+ */
+export function maskSecretsOnly(input: string): string {
+  return maskAssignedSecrets(maskTruncatedSecret(maskSecrets(input)));
+}
+
 export function redactExample(input: string, home = homedir()): string {
   // Assignment masking runs LAST of the three, so the two pattern-based passes
   // get first refusal on anything they can name precisely. A vendor prefix
   // yields "[REDACTED: Anthropic API key]"; falling through to this one would
   // have said only "assigned secret", which is true but less useful to read.
-  const masked = maskAssignedSecrets(maskTruncatedSecret(maskSecrets(input)));
+  const masked = maskSecretsOnly(input);
   const shortened = shortenPaths(masked, home);
   const collapsed = shortened.replace(/\s+/g, " ").trim();
   return collapsed.length > REDACTED_EXAMPLE_MAX_CHARS
     ? `${collapsed.slice(0, REDACTED_EXAMPLE_MAX_CHARS - 1)}…`
     : collapsed;
+}
+
+/**
+ * Redact every free-text field of an `AuditResult` that could carry a secret or
+ * name someone's disk.
+ *
+ * The counts, titles, timestamps and policy names are the substance of a report
+ * and none of them come from user data. What DOES come from user data is the
+ * example strings (slices of real commands), the per-example `cwd`, and the
+ * project lists — which are the same three things `redactExample` was written
+ * for, applied to the whole structure instead of one row.
+ *
+ * Used by every renderer that produces an artifact which can travel:
+ * `formatMarkdown` (the file the CLI calls a "Shareable report") and
+ * `formatJson` (whatever the caller pipes it into). The emailed digest reaches
+ * the same guarantee by a different route — `harm-report.ts` redacts each
+ * example as it selects it, because it also has to apply the reporting window.
+ *
+ * Returns a NEW object. The caller's result is left alone, so the dashboard and
+ * the cache keep the unredacted values they need to render a local view.
+ */
+export function redactAuditResult(result: AuditResult, home = homedir()): AuditResult {
+  return {
+    ...result,
+    scope: {
+      ...result.scope,
+      projects: result.scope.projects === "all"
+        ? "all"
+        : result.scope.projects.map((p) => shortenPaths(p, home)),
+    },
+    results: result.results.map((row) => ({
+      ...row,
+      examples: row.examples.map((e) => ({
+        ...e,
+        example: redactExample(e.example, home),
+        cwd: shortenPaths(e.cwd, home),
+      })),
+    })),
+    projectsScanned: result.projectsScanned.map((p) => shortenPaths(p, home)),
+  };
 }

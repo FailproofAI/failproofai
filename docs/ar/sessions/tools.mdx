@@ -1,38 +1,26 @@
 ---
+---
 title: "الأدوات"
-description: "ابحث عن الأدوات البطيئة أو الفاشلة أو المستخدمة بكثرة عبر تشغيلات الوكلاء."
+description: "ابحث عن الأدوات البطيئة أو الفاشلة أو المستخدمة بكثرة عبر جلسات الوكيل."
 icon: "wrench"
 ---
 
-تعرض صفحة الأدوات ما يستدعيه الوكلاء، وعدد مرات فشل الاستدعاءات، والجلسات التي تتأثر بها.
-
-تأتي أسماء الأدوات من كل جهاز وكيل، لذلك قد تظهر نفس الإمكانية بأسماء مختلفة. على سبيل المثال، قد يظهر استدعاء shell كـ `Bash` أو `exec` أو `Shell` أو `terminal` أو `run_command`. شغّل `fp list tools` قبل بناء مرشح.
+تجمع الأدوات استدعاءات الأدوات عبر الجلسات حتى تتمكن من مقارنة زمن الاستجابة توزيع الاستدعاءات.
 
 <Tabs>
-  <Tab title="لوحة المعلومات">
-    اذهب إلى **Observe → Tools**. قم بالتصفية حسب البيئة أو الأداة أو الوكيل أو الجلسة.
+  <Tab title="لوحة التحكم">
+    1. انتقل إلى **Observe → Tools**.
+    2. قم بالتصفية حسب البيئة أو اسم الأداة أو الوكيل أو معرّف الجلسة.
+    3. راجع زمن الاستجابة وتوزيع الأدوات.
+    4. حدد نقطة على الرسم البياني أو قطاع أداة لفتح الأحداث والجلسات المطابقة.
 
     ![صفحة الأدوات تعرض زمن الاستجابة وتفاصيل النجاح والفشل وتوزيع استدعاءات الأدوات.](/images/dashboard/tools.png)
   </Tab>
-  <Tab title="CLI">
+  <Tab title="واجهة سطر الأوامر">
     ```bash
     fp list tools
-    fp events --event-type tool_use,tool_result --since 24h
-    fp errors --event-type tool_result --since 24h
-    fp --json events --full --event-type tool_use,tool_result --session-id <session-id> --all --limit 2000
+    fp events --event-type tool_use,tool_result --env production --since 24h
+    fp --json events --full --session-id <session-id> --all
     ```
-
-    استخدم `--full` عندما تحتاج إلى حقول الحمولة مثل مدة كل استدعاء.
   </Tab>
 </Tabs>
-
-استخدم هذه الصفحة للعثور على الأخطاء المتكررة، أو مقارنة التشغيلات الناجحة والفاشلة، أو التأكد من أن الأداة المستهدفة بسياسة ما تُستخدم فعلاً.
-
-<CardGroup cols={2}>
-  <Card title="الأخطاء" icon="circle-alert" href="/ar/sessions/errors">
-    افتح الجلسات خلف أخطاء الأدوات.
-  </Card>
-  <Card title="Hooks" icon="webhook" href="/ar/sessions/hooks">
-    اطّلع على أسماء الأدوات الأساسية وقرارات السياسة.
-  </Card>
-</CardGroup>

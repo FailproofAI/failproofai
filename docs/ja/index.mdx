@@ -6,8 +6,6 @@ icon: "shield-check"
 
 Failproof AI は、エージェントが何をしたかを把握し、失敗箇所を特定し、同じ挙動が再発する前にセーフガードを展開するためのツールです。
 
-**ハーネス**とは、エージェントが実際に動作する環境のことです。Failproof AI は 12 種類のハーネスに対応しています。Claude Code や Codex などのコーディング CLI、Hermes などのチャットゲートウェイ、OpenClaw などのセルフホスト型アシスタントが含まれており、すべてに同じイベント・ポリシー・セッション履歴が適用されます。ハーネスを持たないエージェントは [Python SDK](/ja/reference/custom-agents) 経由でレポートを送信し、トレースと監査が行われます。その場合のポリシー適用には、独自ランタイム内でのフックが必要です。
-
 <Columns cols={2}>
   <Card title="Failproof を設定する" icon="wand-sparkles" href="/ja/start/quickstart">
     スキルを使ってプロジェクトをインストルメント化し、接続して、エージェントのログが届いていることを確認します。

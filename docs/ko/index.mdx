@@ -6,8 +6,6 @@ icon: "shield-check"
 
 Failproof AI는 팀이 에이전트의 행동을 이해하고, 실패 지점을 파악하며, 동일한 문제가 재발하기 전에 안전장치를 배포할 수 있도록 돕습니다.
 
-**harness**는 에이전트가 실제로 실행되는 환경을 의미합니다. Failproof AI는 12가지 환경을 지원합니다 — Claude Code, Codex 같은 코딩 CLI, Hermes 같은 채팅 게이트웨이, OpenClaw 같은 자체 호스팅 어시스턴트 — 그리고 동일한 이벤트, 동일한 정책, 동일한 세션 기록이 모든 환경에 적용됩니다. harness 없이 동작하는 에이전트는 [Python SDK](/ko/reference/custom-agents)를 통해 보고하며, 추적 및 감사가 이루어집니다. 해당 환경에서 정책을 적용하려면 자체 런타임에 훅을 추가해야 합니다.
-
 <Columns cols={2}>
   <Card title="Failproof 설정하기" icon="wand-sparkles" href="/ko/start/quickstart">
     스킬을 사용해 프로젝트를 구성하고 연결한 후, 에이전트 로그가 정상적으로 수신되는지 확인하세요.

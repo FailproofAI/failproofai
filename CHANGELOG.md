@@ -9,6 +9,7 @@
 ### Docs
 
 - The 1.0.2 documentation overhaul is reverted: `docs/` and `README.md` go back byte-for-byte to the commit #756 merged onto, along with the 14 generated locales and 14 translated READMEs #759 regenerated from those English sources. The release half of #756 stays — `package.json` and the Cargo workspace are untouched, since they have moved on to 1.0.4-beta.0 and the release tag the CLI builds its daemon download URL from is that npm version. Under `## 1.0.2` the heading and its release narrative stay, because 1.0.2 did ship; the `### Docs` entries underneath described the overhaul and go with it. Leaving the locales in place was the alternative considered and rejected: the nightly translate job is content-hash cached, so pages whose pre-overhaul English hashes it had already seen would have been skipped rather than repaired, stranding every non-English reader on a translation of text that no longer exists (#773)
+- The landing page no longer opens with the harness paragraph claiming that "the same events, the same policies, and the same session history apply to every one" of the twelve. Removed from `docs/index.mdx` and all 14 locales (#773)
 
 ### Dependencies
 

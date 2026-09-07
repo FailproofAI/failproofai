@@ -7,8 +7,6 @@ icon: "shield-check"
 
 Failproof AI עוזר לצוותים להבין מה עשו ה-agents, למצוא היכן הם נכשלו, והיישם safeguards לפני שאותו ההתנהגות תקרה שוב.
 
-**harness** הוא בעצם מה שה-agent שלך רץ בפנים. Failproof AI חוקר 12 מהם — CLIs קידוד כמו Claude Code ו-Codex, chat gateways כמו Hermes, עוזרים self-hosted כמו OpenClaw — וכל האירועים, אותן policies, וההיסטוריית ההפעלה זהה עבור כל אחד. Agents ללא harness דיווחים דרך ה-[Python SDK](/he/reference/custom-agents), שעוקבים אחריהם ומבצעים ביקורת; הטמעת policy שם דורשת hook בה-runtime שלך.
-
 <Columns cols={2}>
   <Card title="הגדר את Failproof" icon="wand-sparkles" href="/he/start/quickstart">
     השתמש בכישור כדי לבצע instrumentation בפרויקט שלך, התחבר, וודא שלוגים של agents הגיעו.

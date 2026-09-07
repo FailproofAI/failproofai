@@ -6,6 +6,10 @@
 
 - `fp-cloud-cli`'s Click shim survives typer 0.27.2, which moved `Abort` out of its vendored Click. `_click_compat` wrapped all six vendored imports in one `try: … except ImportError: from click import …`, so that single missing name rebound **every** symbol to pip Click — the exact silent failure the module exists to prevent. Typer catches only its own Click's exceptions, so every typed error escaped uncaught: `fp alerts show ghost` exited 1 with an empty stderr instead of 6 with a message, and the same for exits 2, 3, 4 and 5. 105 tests went red on the dependabot bump that first installed 0.27.2. The Click is now chosen once — on whether `typer._click` exists at all — and each symbol imported from that choice, so a name that goes missing raises at import (a CLI that will not start) rather than silently downgrading every error to exit 1. `Abort` alone is resolved from `typer.Abort`, which tracks the move by construction: pip Click's before typer 0.26, the vendored class through 0.27.1, `typer.exceptions.Abort` from 0.27.2 (#771)
 
+### Docs
+
+- The 1.0.2 documentation overhaul is reverted: `docs/` and `README.md` go back byte-for-byte to the commit #756 merged onto, along with the 14 generated locales and 14 translated READMEs #759 regenerated from those English sources. The release half of #756 stays — `package.json` and the Cargo workspace are untouched, since they have moved on to 1.0.4-beta.0 and the release tag the CLI builds its daemon download URL from is that npm version. Under `## 1.0.2` the heading and its release narrative stay, because 1.0.2 did ship; the `### Docs` entries underneath described the overhaul and go with it. Leaving the locales in place was the alternative considered and rejected: the nightly translate job is content-hash cached, so pages whose pre-overhaul English hashes it had already seen would have been skipped rather than repaired, stranding every non-English reader on a translation of text that no longer exists (#773)
+
 ### Dependencies
 
 - `fp-cloud-cli`: typer 0.27.1 → 0.27.2, click 8.4.2 → 8.5.0, posthog 7.42.0 → 7.44.2 (#771)

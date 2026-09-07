@@ -82,3 +82,27 @@ reason = "chromadb 1.1.1 (published 2026-06-12, surfaced 2026-08-24). No fixed v
 id = "GHSA-xph7-9rjv-w5fr"
 ignoreUntil = 2026-11-20
 reason = "chromadb 1.1.1 (published 2026-06-12, surfaced 2026-08-24). No fixed version. Transitive via crewai, dev/test lockfile only; see the shared justification above. Re-review by 2026-11-20."
+
+# ---------------------------------------------------------------------------
+# nltk 3.10.3 — one advisory, no fixed version.
+#
+# Surfaced 2026-09-03 against an already-approved PR, which is the case this
+# file exists for: nothing on the branch introduced it, and nothing on the
+# branch can resolve it.
+#
+# nltk is transitive via llama-index-core and appears only in
+# sdk/python/uv.lock, the dev/test lockfile that pins every extra so CI can
+# exercise the adapters. The SDK's own runtime dependency list is empty — the
+# `llamaindex` extra is opt-in and the integration module imports it lazily —
+# so nltk reaches no shipped code path. OSV reports "0 vulnerabilities can be
+# fixed" and an empty FIXED VERSION, so there is nothing to bump to; the only
+# alternative is dropping the llamaindex extra and the adapter tests with it.
+#
+# Same re-review date as the chromadb entries above, so the whole list is
+# revisited in one pass.
+# ---------------------------------------------------------------------------
+
+[[IgnoredVulns]]
+id = "GHSA-8mgp-746c-j5xp"
+ignoreUntil = 2026-11-20
+reason = "nltk 3.10.3 (surfaced 2026-09-03, CVSS 8.3). No fixed version. Transitive via llama-index-core, dev/test lockfile only; the SDK ships zero runtime dependencies. Re-review by 2026-11-20."

@@ -300,6 +300,23 @@ def test_importing_the_package_loads_no_framework():
     )
 
 
+def test_importing_the_package_does_not_load_the_evaluator_runtime():
+    """Telemetry-only users do not pay for the separate worker surface."""
+    import json
+    import subprocess
+
+    probe = (
+        "import json, sys; import failproofai_sdk; "
+        "print(json.dumps(sorted(m for m in sys.modules "
+        "if m.startswith('failproofai_sdk.evaluator'))))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True, cwd=str(ROOT), timeout=60
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout.strip()) == []
+
+
 def test_the_adapter_registry_holds_strings_not_modules():
     """`_REGISTRY` maps a name to a dotted path; importing it here would defeat it."""
     from failproofai_sdk.integrations import _REGISTRY

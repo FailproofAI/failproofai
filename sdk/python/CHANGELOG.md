@@ -16,6 +16,154 @@ moved the version here automatically; nothing has landed against `0.0.1b2` yet.
 Add entries as changes merge — this section becomes the GitHub Release body when
 it ships.
 
+- Retire the old inbound evaluator boundary and add evaluator authoring plus the
+  outbound-only v2 worker runtime under the lazy `failproofai_sdk.evaluator`
+  namespace.
+- Harden the managed-evaluator source sandbox against a class of escapes an
+  adversarial review found: `str.format`/`format_map` C-level field traversal,
+  generator/frame introspection (`gi_frame.f_globals`) that reached the eval
+  globals and could poison a process-shared namespace across evaluations, and
+  `type.mro()` type-object reach. Attribute access is now **default-deny** (an
+  allowlist of the transcript data surface plus pure string/collection methods,
+  so every current and future introspection attribute is rejected), each eval
+  runs with **fresh per-call globals**, and a result whose text embeds a runtime
+  object repr (`<... at 0x...>`, a heap-pointer/ASLR disclosure that falls out of
+  any bound method's repr) is rejected at the output boundary. `enumerate` and
+  bare generator expressions are no longer permitted — both were gratuitous
+  pointer-repr sources; use `range(len(...))` and list/set/dict comprehensions.
+- Report **why** a server-authored definition was rejected. Every failure
+  collapsed to `evaluation raised <TypeName>`, so a hosted definition that can
+  never run reported only `evaluation raised UnsafeEvaluatorSource` — on every
+  session, forever, with nothing telling the author what was wrong. It matters
+  because the server accepts any source passing its size and key checks and does
+  not validate the sandbox's single-expression grammar, so a structurally
+  unrunnable definition is published successfully and then fails silently.
+  `UnsafeEvaluatorSource` now carries its detail (`evaluator_source must be one
+  expression`), bounded to `MAX_ERROR_MESSAGE_BYTES`. Deliberately narrower than
+  the generic handler, which still reports the type name only: this exception is
+  raised by our own validator before any customer source executes and describes
+  the source's shape, so it embeds no transcript content.
+- Scrub the sandbox child's environment. `subprocess.Popen` inherited
+  `os.environ`, so the process executing untrusted server-authored source ran
+  with `FAILPROOFAI_EVALUATOR_TOKEN` in its environment — on the managed pod,
+  the cross-tenant credential. Defence in depth rather than a live escape (the
+  AST allowlist and empty `__builtins__` already stop a managed expression
+  reaching `os.environ`): a future gap there can no longer be escalated into
+  credential theft. Only what the interpreter needs is forwarded, `PYTHONPATH`
+  included.
+- Contain a poison managed definition to its own run: source is now compiled
+  lazily inside the per-run executor, so a definition the sandbox rejects
+  dead-letters as one bounded `failed`/`eval_error` run instead of crashing the
+  assignment task and forcing it to be reclaimed until its attempt budget runs
+  out.
+- Run managed (server-authored) evaluations in a **killable fork+exec'd
+  subprocess** with hard `RLIMIT_CPU` + `RLIMIT_AS` + a parent wall-clock kill —
+  so a compute/memory bomb in a hosted definition (`sum(range(10**20))`) can no
+  longer exhaust the worker (SEC-001). Cancelling an in-process thread does not
+  stop it; a fresh subprocess the kernel bounds and the parent terminates does. A
+  plain `os.fork()` would deadlock — the worker is multi-threaded (asyncio loop,
+  executor, writer) and forking one hangs the child on an inherited lock — so the
+  sandbox execs a fresh `python -m ..._sandbox_runner` that sets its own limits;
+  the transcript crosses in via `to_wire`, only the result crosses back. The
+  effective budget is **clamped to a hard ceiling** (`MAX_SANDBOX_TIMEOUT_SECONDS`,
+  60s) so a large server-provided `timeout_seconds` cannot remove the bound.
+  Managed conditions, which previously ran with no timeout at all, are sandboxed
+  the same way. The result crossing back is **bounded on both sides** — the child
+  validates it (`result_items`, the 25-result limit) and refuses to serialize
+  anything over 1 MiB, and the parent reads at most that before killing the child
+  — so an oversized result (`metrics={str(x): 1 for x in range(100000)}`) cannot
+  OOM the worker either. The per-sandbox address space is capped (512 MiB) and the number of concurrent sandbox processes is bounded (a semaphore), so the AGGREGATE memory is bounded independent of the worker's `max_concurrency` — a fleet of concurrent runs can't OOM the host. Fails **closed** (`EvaluationSandboxUnavailable`) if the
+  sandbox cannot be spawned or the transcript cannot be serialized. Defense in depth at
+  compile time: reject `**` with a large/non-constant exponent and cap total AST
+  size. A managed condition the sandbox rejects now dead-letters as
+  `condition_error` instead of stranding the assignment. Only server-authored
+  source is isolated this way; customer evaluators still run in-process.
+- Require `execution_mode` on the wire instead of coercing a falsy/missing value
+  to `local` — a malformed value silently ran a `python` definition down the
+  customer path (or vice-versa); it is now a hard protocol error.
+- Count the sandbox-slot wait against the execution timeout (SEC-001). `_run_sandboxed`
+  acquired the `MAX_CONCURRENT_SANDBOXES` slot with an UNBOUNDED wait and only started
+  its wall-clock deadline afterward — so a run queued behind busy slots could, after the
+  runtime's `asyncio.wait_for` already reported it timed out (that cancels only the
+  awaiter, not the executor thread), still acquire a slot and launch a sandbox; 28
+  threads could pile up behind 4 long sandboxes and starve the worker (conditions have
+  no runtime-level wait at all). One wall-clock deadline now covers BOTH the slot wait
+  and execution: the slot is acquired with the remaining budget, and on timeout the run
+  raises `EvaluationTimeout` **without spawning a child**. Regression test: more
+  concurrent compute bombs than slots all resolve within ~one budget, not N serialized
+  budgets.
+- A managed (`python`) definition's applicability is now governed by the SERVER's
+  `condition_source`, never a colliding local condition (COR-001). `process_assignment`
+  keyed the local-definition lookup on `(eval_key, eval_version)` alone and selected
+  `local.condition` whenever a local definition with that key existed — so a managed
+  definition whose server condition was false could be forced to run anyway if the
+  worker had also registered a local definition under the same key whose condition was
+  true, executing server-managed source against the operator's intent. Condition
+  selection now branches on `execution_mode`, mirroring the evaluator branch: `LOCAL`
+  uses `local.condition`, `PYTHON` compiles and runs the server's `condition_source`
+  regardless of any key collision. Regression test: identical local+managed keys, local
+  condition true and managed false, asserts the definition is skipped and no managed run
+  is submitted.
+- Recognize the server's `incomplete_plan` terminal error (API-001). The server rejects a
+  plan that fails to cover every snapshotted definition with `422 incomplete_plan`; that
+  code is now in the SDK's `ERROR_SPECS` mirror and the shared `contract.json` fixture
+  (byte-identical with the server's), so a worker no longer treats a valid server-defined
+  failure as an unrecognized error. The fixture-equality test covers it.
+- Close a heap-address disclosure bypass in the managed-source sandbox
+  (adversarial-audit SEC). The output-boundary guard that rejects a `<obj at 0xADDR>`
+  repr in a result field was anchored on the literal `<`, so an allow-listed
+  `str(payload.get).replace("<", "")` — or an f-string / `%`-format of a bare bound
+  method — kept the live heap address while stripping the match, leaking an
+  ASLR/memory-layout primitive of the sandbox process into a persisted result. The fix
+  moves the defense to compile time: a bound method (the only reachable value with a
+  pointer repr — the transcript and result types are all frozen, pointer-free
+  dataclasses) may now only be **called**, never referenced as a bare value, so no
+  reachable value can carry a pointer repr through `str()`, an f-string, or `%`. The
+  output-boundary scan is kept and broadened (no longer requires the leading `<`) as
+  defense in depth. Legitimate evaluations — which call methods and read data
+  attributes — are unaffected; regression tests cover the `.replace("<","")`, f-string,
+  and `%` bypasses and confirm called-method/data-attribute stringification still works.
+- Switch the worker from long-polling to **normal (short) polling**, matching the
+  cadence of our other cloud surfaces. `claim` no longer sends `wait_seconds` and
+  the server returns immediately; when a claim comes back empty the worker sleeps
+  the server-advertised `poll_interval_seconds` (from the register response,
+  default 10 s) before polling again, instead of holding a request open for up to
+  25 s. Removes the `claim_wait_seconds` config knob and the
+  `request_timeout_seconds > claim_wait_seconds` constraint; the poll cadence is
+  now tuned centrally by the server, not per worker.
+- Bound the pre-plan condition phase by the assignment lease (hermes advisory).
+  Conditions were evaluated serially with no lease awareness before the plan was
+  created, and a managed condition could run its full sandbox budget — so a few
+  near-budget conditions could burn the whole lease before the plan request and
+  the server would fence the plan as `lease_lost`, reclaiming the assignment in a
+  loop instead of submitting a result. Each condition is now capped to the lease
+  time remaining before a plan-submission margin (using `lease_expires_at` when it
+  is in the future, else the negotiated lease duration), and once that budget is
+  gone the remaining conditions are skipped as `lease_exhausted` rather than run.
+  Local conditions, which previously had no timeout at all, are bounded the same
+  way. The complete fix — renewing the lease *during* the condition phase — needs
+  a server-side pre-plan heartbeat and is tracked separately.
+- Make a timed-out **synchronous** evaluator observable and stop it starving the
+  worker (hermes advisory). A synchronous evaluator that overruns its timeout runs
+  in the executor thread and cannot be cancelled (CPython cannot interrupt a
+  running thread), so its thread was permanently lost; with the pool sized to the
+  concurrency limit, one such orphan on a single-slot worker silently stopped all
+  further local evaluation. The eval executor now carries headroom over the
+  semaphore so an orphaned thread does not immediately starve live capacity — the
+  semaphore stays the real concurrency bound — and each orphan increments
+  `sync_evaluations_orphaned` and logs a warning naming the evaluator, so a hung
+  one is findable. This is a finite cushion, not a cure for a permanently-blocked
+  evaluator; prefer `async def` evaluators (cooperatively cancellable) or managed
+  `python` evaluators (subprocess-isolated, hard-killed) for long or untrusted work.
+- Let a managed source's list/set/dict comprehension read `session` on CPython
+  3.10/3.11 (hermes COR-001). The sandbox eval put `session` in the eval *locals*,
+  but a comprehension runs in its own scope and resolves a free name like
+  `session` from *globals* — so on 3.10 (a supported version) an allowed source
+  such as `all([session.event_count > 0 for i in range(1)])` raised `NameError`.
+  `session` now goes in a fresh per-call globals mapping and both eval paths use
+  empty locals, which keeps isolation and works across 3.10–3.14. Regression test
+  runs on the whole version matrix.
+
 ## 0.0.1b1 — 2026-08-24
 
 The first release under this name. Everything below describes the package as it

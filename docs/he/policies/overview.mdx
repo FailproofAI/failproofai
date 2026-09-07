@@ -1,76 +1,63 @@
 ---
-title: "מדיניויות"
-description: "הנחה או חסימה של סוכן לפני שכשל ידוע חוזר על עצמו."
+title: "מדיניות"
+description: "צפו בפעולות סוכן, הנחו אותן או חסמו אותן לפני שכשל ידוע חוזר על עצמו."
 icon: "shield-check"
 ---
 
-מדיניות מراقבת פעולת סוכן והחזרת אחד משלוש החלטות:
+מדיניות מעריכה אירוע hook של סוכן ומחזירה אחת משלוש החלטות:
 
-- `allow` ממשיך.
-- `instruct` נותן הדרכה לסוכן כאשר ההרמס שלו תומך בה.
-- `deny` חוסם את הפעולה.
+- `allow` מאפשרת את המשך הפעולה.
+- `instruct` נותנת הנחיה תיקון לסוכן.
+- `deny` חוסמת את הפעולה עם סיבה.
 
-השתמש במדיניויות לתנהגות ידועה וחוזרת: מחיקת קבצים מוגנים, חשיפת סודות, דחיפה לענף הלא נכון, או שינוי תשתית ייצור.
+## השתמשו בשלוש פני המדיניות
 
-## הוסף מדיניויות למכונה זו
+<Tabs>
+  <Tab title="Dashboard">
+    1. עברו ל-**Observe → policy** כדי לסנן ולבדוק החלטות מדיניות מהפעילויות.
+    2. עברו ל-**Admin → policy editor** כדי לחבר, לאמת, לפרסם, להשבית או לבדוק גרסאות ללא שינוי.
+    3. עברו ל-**Admin → enforcement** כדי להקצות גרסאות והשפעות למכונות.
 
-ההגדרה לא בוחרת חבילת מדיניות. הוסף את חבילת Failproof AI לאחר ההגדרה:
+    השתמשו בעמוד Policy כדי להבין מה כבר תואם לפני שאתם חוברים או משנים אכיפה.
 
-```bash
-failproofai config
-failproofai policies add FailproofAI/policies
-failproofai policies
-```
+    ![עמוד Policy המציג סה"כ החלטות ותאימות מדיניות מנוהלות בקומה ובענן.](/images/dashboard/policy-observe.png)
 
-החבילה אינה מכילה חבילה משובצת בעלת הרשאות. שלנו מותקנת באותו אופן כמו של כל אחד אחר.
+    העורך הוא המקום שבו אתם הופכים תנאי כשל לקוד, מאמתים אותו ופורסמים גרסה ללא שינוי.
 
-מדיניויות יכולות גם לבוא מקובץ מקומי, חבילה פורסומת, או השמה בענן:
+    ![עורך Policy המשמש לעריכה ופרסום גרסת מדיניות ללא שינוי.](/images/dashboard/policy-editor.png)
 
-| מקור | הוסף אותה |
-| --- | --- |
-| קובץ מקומי | הצב `*policies.{js,mjs,ts}` תחת `.failproofai/policies/` |
-| כל נתיב קובץ | `failproofai policies -i -c <path>` |
-| חבילה פורסומת | `failproofai policies add <owner>/<repo>` |
-| ענן | הקצה זאת בלוח המחוונים או עם `fp fleet deploy` |
+    Enforcement לאחר מכן מקצה את הגרסה שפורסמה וההשפעה שלה (observe או enforce) למכונות.
 
-`block-failproofai-commands` תמיד פועל ולא ניתן להשבית אותו. הוא עוצר סוכן מהשבתת האכיפה שלו.
+    ![צי Enforcement המציג כיסוי מכונות וגרסאות מדיניות שהוקצו.](/images/dashboard/enforcement-fleet.png)
 
-## התבוננות לפני אכיפה
+    אמתו החלטות חזרה בעמוד Policy לאחר הפריסה כדי שההצגות של הערעור והצי יהיו קשורות לפעילות סוכן אמיתית.
+  </Tab>
+  <Tab title="CLI">
+    השתמשו ב-`failproofai` להתקנה ואימות מדיניות מקומיות:
 
-מצב התבוננות מריץ את המדיניות האמיתית ורושם מה היא הייתה עושה, אך אינו חוסם את הסוכן.
+    ```bash
+    failproofai policies
+    failproofai policy add block-rm-rf --scope project
+    failproofai config --status
+    ```
 
-```bash
-fp policies test ./checkout.policy.mjs --tool Bash --command "git push --force" --expect deny
-fp fleet deploy ci-runner-01 --add checkout-guard:observe
-fp guardrails summary --since 24h --machine ci-runner-01
-fp fleet deploy ci-runner-01 --add checkout-guard:enforce
-```
+    השתמשו ב-`fp` כדי למצוא את הפעילויות בענן ואת האירועים המכילים החלטות מדיניות. יצירת ענן והפריסה של צי נשארות זרימות עבודה של dashboard.
+  </Tab>
+</Tabs>
 
-<Warning>
-  `fp fleet deploy <machine> --add <id>` חוסר קוד מכפה מיד. הוסף `:observe` לגלגול צל.
-</Warning>
+למדיניות שלוש משטחים ברורים ב-Failproof AI:
 
-מדיניות שחוקה בתוך מצב התבוננות רושמת התרה, מכיוון זה מה שיקרה בעת אכיפה. רק החלטות בתבוננות שאינן התרה מתועדות.
+1. **נתח החלטות** בפעילויות, בדשבורדים ובביקורות.
+2. **חבור גרסאות** עם כללים מובנים, קוד או עורך המדיניות.
+3. **פרוס וכפה** גרסאות על מכונות שנבחרו.
 
-לחבילה המשמשת ללא ענן, פרסם אותה עם `failproofai publish --effect observe`.
+התחל מטבית כשל מאומתת. הגדר את האירוע והתאמת כלים הקטנות ביותר המזהות אותה, בדוק דוגמאות לגיטימיות ובלתי בטוחות, לאחר מכן צפה לפני שאתה כופה.
 
-## בחר בנתיב הנכון
-
-<CardGroup cols={2}>
-  <Card title="השתמש במדיניות שנבדקה" icon="library" href="/he/policies/builtin">
-    בחר מ-39 מדיניויות לסודות, קבצים, Git, תשתית וזרימות עבודה.
+<Columns cols={2}>
+  <Card title="השתמש במדיניות מובנית" icon="library" href="/he/policies/builtin">
+    הפוך כלל שנבדק לסיכוני סוד, shell, Git, ענן וזרימת עבודה נפוצים.
   </Card>
-  <Card title="התקן חבילה" icon="package" href="/he/policies/packs">
-    הוסף מערכת מדיניות פורסומת מ-GitHub או מ-Policy Hub.
+  <Card title="כתוב מדיניות מותאמת אישית" icon="code-2" href="/he/policies/custom">
+    הבע החלטה ספציפית לזרימת עבודה ב-JavaScript או TypeScript.
   </Card>
-  <Card title="כתוב מדיניות" icon="code-2" href="/he/policies/custom">
-    הגדר כלל לסוכן או זרימת עבודה משלך.
-  </Card>
-  <Card title="פרוס על פני מכונות" icon="server" href="/he/policies/deploy">
-    התבוננות, קידום והחזרת מדיניות בענן.
-  </Card>
-</CardGroup>
-
-<Note>
-  תמיכת אכיפה משתנה לפי הרמס. שלילת קריאת כלי מאומתת בכל 12 הרמסים הנתמכים; אירועים אחרים משתנים. ראה [הרמסים נתמכים](/he/reference/harnesses#enforcement-capability).
-</Note>
+</Columns>

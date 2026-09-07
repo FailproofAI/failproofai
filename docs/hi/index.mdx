@@ -1,40 +1,39 @@
 ---
----
-title: "अपने एजेंट को फेलप्रूफ बनाएं"
-description: "प्रत्येक हार्नेस के लिए अवलोकनीयता और प्रवर्तन जिसमें आपके एजेंट चलते हैं — कोडिंग CLIs, चैट गेटवे, स्व-होस्ट किए गए सहायक, और आपके स्वयं के इंस्ट्रूमेंटेड एजेंट।"
+title: "अपने agent को failproof बनाएं"
+description: "हर harness के लिए observability और enforcement जो आपके agents चलाते हैं — coding CLIs, chat gateways, self-hosted assistants, और आपके स्वयं के instrumented agents।"
 icon: "shield-check"
 ---
 
-Failproof AI टीमों को यह समझने में मदद करता है कि एजेंट ने क्या किया, वह कहां विफल हुए, और एक ही व्यवहार दोबारा होने से पहले सुरक्षा उपाय तैनात करें।
+Failproof AI टीमों को यह समझने में मदद करता है कि agents ने क्या किया, वे कहाँ विफल हुए, और समान behavior दोबारा होने से पहले safeguards को deploy करें।
 
 <Columns cols={2}>
-  <Card title="Failproof को सेट अप करें" icon="wand-sparkles" href="/hi/start/quickstart">
-    अपनी परियोजना को इंस्ट्रूमेंट करने, इसे कनेक्ट करने और एजेंट लॉग आने की पुष्टि करने के लिए कौशल का उपयोग करें।
+  <Card title="Failproof को सेटअप करें" icon="wand-sparkles" href="/hi/start/quickstart">
+    अपने प्रोजेक्ट को instrument करने, इसे connect करने, और agent logs के आने को verify करने के लिए skill का उपयोग करें।
   </Card>
-  <Card title="Failproof सहायक से पूछें" icon="message-square-text" href="/hi/sessions/assistant">
-    प्राकृतिक भाषा में अपने एजेंट लॉग पर विश्लेषण करें, प्रश्न पूछें, डैशबोर्ड बनाएं, और ऑडिट चलाएं।
+  <Card title="Failproof Assistant से पूछें" icon="message-square-text" href="/hi/sessions/assistant">
+    अपने agent logs पर natural language में analyze करें, query करें, dashboards बनाएं, और audits चलाएं।
   </Card>
 </Columns>
 
 <Columns cols={3}>
-  <Card title="देखें कि एजेंट ने क्या किया" icon="route" href="/hi/sessions/overview">
-    मॉडल कॉल, उपकरण, त्रुटियां, मानव इनपुट, विलंबता, और नीति निर्णयों को एक सत्र में अनुसरण करें।
+  <Card title="देखें कि agent ने क्या किया" icon="route" href="/hi/sessions/overview">
+    एक session में model calls, tools, errors, human input, latency, और policy decisions को follow करें।
   </Card>
-  <Card title="विफलताओं को व्यवस्थित रूप से खोजें" icon="scan-search" href="/hi/audits/overview">
-    सत्रों के एक परिभाषित सेट का ऑडिट करें, साक्ष्य-समर्थित निष्कर्षों की समीक्षा करें, और उपचार को मुद्दों के रूप में ट्रैक करें।
+  <Card title="Failures को systematically खोजें" icon="scan-search" href="/hi/audits/overview">
+    sessions के एक defined set को audit करें, evidence-backed findings की समीक्षा करें, और remediation को issues के रूप में track करें।
   </Card>
-  <Card title="पुनरावृत्ति को रोकें" icon="shield-check" href="/hi/policies/overview">
-    एक ज्ञात विफलता मोड को एक नीति में बदलें, इसके प्रभाव का अवलोकन करें, और इसे अपने पूरे बेड़े में तैनात करें।
+  <Card title="Recurrence को रोकें" icon="shield-check" href="/hi/policies/overview">
+    एक ज्ञात failure mode को policy में बदलें, इसके impact को observe करें, और इसे अपने पूरे fleet में deploy करें।
   </Card>
 </Columns>
 
-> **सत्र → ऑडिट → निष्कर्ष → मुद्दा → नीति**<br />
-> ट्रेस करें कि क्या हुआ, विफलता खोजें, प्रतिक्रिया का प्रबंधन करें, फिर भविष्य के रन में समान व्यवहार को रोकें।
+> **Session → Audit → Finding → Issue → Policy**<br />
+> क्या हुआ यह trace करें, failure को खोजें, response को manage करें, फिर भविष्य के runs में समान behavior को रोकें।
 
 ## यहाँ से शुरू करें
 
-यदि आप अपना पहला इंस्ट्रूमेंटेड एजेंट तैनात कर रहे हैं, तो [quickstart](/hi/start/quickstart) से शुरू करें। यदि डेटा पहले से आ रहा है, तो [Sessions](/hi/sessions/overview) खोलें और ऑडिट या नीतियों को कॉन्फ़िगर करने से पहले एक वास्तविक रन का निरीक्षण करें।
+यदि आप अपना पहला instrumented agent deploy कर रहे हैं, तो [quickstart](/hi/start/quickstart) से शुरू करें। यदि data पहले से आ रहा है, तो [Sessions](/hi/sessions/overview) खोलें और audits या policies को configure करने से पहले एक real run को inspect करें।
 
-<Card title="एक विफलता को खोजें और रोकें" icon="arrow-right" href="/hi/start/quickstart">
-  कैप्चर से सुरक्षित रूप से तैनात नीति तक संपूर्ण अंत-से-अंत वर्कफ़्लो को पूरा करें।
+<Card title="एक failure को खोजें और रोकें" icon="arrow-right" href="/hi/start/quickstart">
+  capture से safely deployed policy तक end-to-end workflow को पूरा करें।
 </Card>

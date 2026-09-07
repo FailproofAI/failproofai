@@ -1,21 +1,21 @@
 ---
-title: "Triển khai chính sách trên các máy"
-description: "Biết máy nào được đăng ký, hiện tại và thực thi các phiên bản chính sách dự định."
+title: "Triển khai chính sách tới các máy"
+description: "Biết những máy nào đã đăng ký, hiện tại và thực thi các phiên bản chính sách dự định."
 icon: "network"
 ---
 
-Phạm vi bao phủ của đội ngũ trả lời câu hỏi liệu chính sách có tồn tại tại nơi rủi ro tồn tại. Theo dõi các máy bằng ID ổn định và nhãn có thể đọc được của con người, sau đó so sánh trạng thái triển khai được gán và báo cáo của chúng.
+Phạm vi bao phủ của nhóm máy trả lời câu hỏi liệu một chính sách có tồn tại ở nơi rủi ro tồn tại hay không. Theo dõi các máy bằng ID ổn định và nhãn dễ đọc, sau đó so sánh trạng thái triển khai được gán và được báo cáo của chúng.
 
 ## Kiểm tra phạm vi bao phủ
 
 <Tabs>
   <Tab title="Dashboard">
     1. Đi tới **Admin → enforcement** và xem xét tổng số thực thi và quan sát.
-    2. Tìm kiếm máy theo ID hoặc nhãn, hoặc lọc các máy thiếu chính sách.
+    2. Tìm kiếm một máy theo ID hoặc nhãn, hoặc lọc các máy thiếu chính sách.
     3. Mở rộng một hàng để so sánh các chính sách được gán, triển khai được báo cáo, lần kiểm tra cuối cùng và lịch sử.
-    4. Làm mới sau khoảng thời gian thăm dò của máy khi triển khai được áp dụng vẫn còn chờ xử lý.
+    4. Làm mới sau khoảng thời gian bỏ phiếu của máy khi triển khai được áp dụng vẫn đang chờ xử lý.
 
-    ![Bộ thực thi đội ngũ hiển thị phạm vi bao phủ chính sách, trạng thái triển khai máy và các gán quan sát và thực thi.](/images/dashboard/enforcement-fleet.png)
+    ![Bảng điều khiển Fleet Enforcement hiển thị phạm vi bao phủ chính sách, trạng thái triển khai máy và các bài tập quan sát và thực thi.](/images/dashboard/enforcement-fleet.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -30,12 +30,12 @@ Phạm vi bao phủ của đội ngũ trả lời câu hỏi liệu chính sách
 
 Sử dụng các chế độ xem phạm vi bao phủ để tìm:
 
-- Các máy chưa bao giờ kéo triển khai mới nhất
-- Các máy được đăng ký đã dừng báo cáo hoạt động
-- Chính sách được gán cho môi trường hoặc nhóm sai
-- Dịch chuyển phiên bản sau khi cập nhật bị gián đoạn
+- Các máy chưa bao giờ lấy triển khai mới nhất
+- Các máy đã đăng ký không còn báo cáo hoạt động
+- Một chính sách được gán cho môi trường hoặc cohort sai
+- Phiên bản không khớp sau khi cập nhật bị gián đoạn
 
-Đổi tên máy mà không cần kết nối lại:
+Đổi tên một máy mà không cần kết nối lại:
 
 ```bash
 failproofai config --machine-label checkout-runner-03
@@ -48,5 +48,5 @@ failproofai config --status
 ```
 
 <Tip>
-  Sử dụng nhãn xác định khối lượng công việc và môi trường. Tên máy chủ một mình thường không đủ sau khi tự động mở rộng quy mô hoặc thay thế máy.
+  Sử dụng các nhãn xác định khối lượng công việc và môi trường. Chỉ tên máy chủ thôi thường là không đủ sau khi tự động mở rộng hoặc thay thế máy.
 </Tip>

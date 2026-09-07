@@ -1,16 +1,16 @@
 ---
 title: "Yönetim"
-description: "Erişim, kullanım, kuruluşlar ve güvenliği güvenilirlik iş akışıyla karıştırmadan yönetin."
+description: "Erişim, kullanım, kuruluşlar ve güvenliği güvenilirlik iş akışıyla karıştırmadan çalıştırın."
 icon: "settings-2"
 ---
 
-Yönetim, Failproof AI'ı bir ekip genelinde çalıştırmak için gereken denetimleri içerir. Çoğu kullanıcı Oturumlar, Denetimler ve İlkeler bölümünde kalabilir; yöneticiler bu bölümü erişimi ve işletim sınırlarını yönetmek için kullanır.
+Yönetim, Failproof AI'ı bir ekip genelinde çalıştırmak için gereken kontrolleri içerir. Çoğu kullanıcı Oturumlar, Denetimler ve İlkeler bölümlerinde kalabilir; yöneticiler bu bölümü erişim ve işletme sınırlarını yönetmek için kullanır.
 
 <Tabs>
-  <Tab title="Pano">
-    Cloud kenar çubuğunun **Yönetici** bölümünde **politika editörü**, **zorlama**, **kullanım**, **anahtarlar**, **kullanıcılar** ve **ayarlar** seçeneklerini kullanın. Kilitli bir öğe, hesabınızda okuma izni eksik olduğunu gösterir.
+  <Tab title="Dashboard">
+    Cloud kenar çubuğunun **Admin** bölümünü **policy editor**, **enforcement**, **usage**, **keys**, **users** ve **settings** için kullanın. Kilitli bir öğe, hesabınızın okuma izni olmadığını gösterir.
 
-    ![Cloud kenar çubuğunun Yönetici bölümü, politika editörü, zorlama, kullanım, anahtarlar, kullanıcılar ve ayarlar seçenekleriyle.](/images/dashboard/admin-navigation.png)
+    ![Cloud kenar çubuğunun Admin bölümü policy editor, enforcement, usage, keys, users ve settings ile.](/images/dashboard/admin-navigation.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -20,21 +20,21 @@ Yönetim, Failproof AI'ı bir ekip genelinde çalıştırmak için gereken denet
     fp usage
     ```
 
-    Global seçenekleri komutun önüne koyun, örneğin `fp --org reliability-team --json usage`.
+    Global seçenekleri komutu çalıştırmadan önce yazın, örneğin `fp --org reliability-team --json usage`.
   </Tab>
 </Tabs>
 
 <Columns cols={2}>
   <Card title="Kullanım" icon="chart-no-axes-combined" href="/tr/admin/usage">
-    Faturalandırma pencerelerini ve kuruluş tüketimini inceleyin.
+    Fatura pencerelerini ve kuruluş tüketimini inceleyin.
   </Card>
   <Card title="Anahtarlar ve izinler" icon="key-round" href="/tr/admin/keys-and-permissions">
-    Makinelere ve otomasyon sistemlerine yalnızca gerekli izinleri verin.
+    Makinelere ve otomasyonlara yalnızca ihtiyaç duydukları izinleri verin.
   </Card>
   <Card title="Kullanıcılar ve kuruluşlar" icon="users" href="/tr/admin/users-and-organizations">
-    Üyeliği, varsayılanları ve kuruluş sınırlarını yönetin.
+    Üyelik, varsayılanlar ve kuruluş sınırlarını yönetin.
   </Card>
   <Card title="Ayarlar ve güvenlik" icon="lock-keyhole" href="/tr/admin/settings-and-security">
-    İşletim ayarlarını, veri işlemesini ve dağıtım güvenliğini yapılandırın.
+    İşletme ayarlarını, veri işlemesini ve dağıtım güvenliğini yapılandırın.
   </Card>
 </Columns>

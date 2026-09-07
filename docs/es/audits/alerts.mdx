@@ -4,14 +4,14 @@ description: "Detecta recurrencias y dirige un incidente a los responsables adec
 icon: "bell-ring"
 ---
 
-Las alertas supervisan una condición medible y crean un incidente cuando se activa. Úsalas cuando un fallo deba generar una respuesta oportuna, independientemente de si una política puede bloquearlo.
+Las alertas monitorizan una condición medible y crean un incidente cuando se activa. Úsalas cuando un fallo deba generar una respuesta oportuna, independientemente de si una política puede bloquearlo.
 
 ## Crear y probar una alerta
 
 <Tabs>
-  <Tab title="Dashboard">
-    1. Ve a **Analyze → Alerts** y selecciona **new alert**. También puedes comenzar desde el ícono de campana en un error representativo.
-    2. Introduce el nombre, la severidad, el tipo de disparador, la condición, el intervalo de evaluación, el conteo de infracciones, la ventana y los canales.
+  <Tab title="Panel de control">
+    1. Ve a **Analyze → Alerts** y selecciona **new alert**. También puedes iniciar desde el ícono de campana en un error representativo.
+    2. Introduce el nombre, la gravedad, el tipo de disparador, la condición, el intervalo de evaluación, el conteo de infracciones, la ventana y los canales.
     3. Guarda la alerta, abre su página de detalle y ejecuta **test**.
     4. Ve a **Analyze → Issues** para reconocer, asignar, comentar, suscribirte y resolver los incidentes creados por la alerta.
 
@@ -19,13 +19,13 @@ Las alertas supervisan una condición medible y crean un incidente cuando se act
 
     ![La primera parte del formulario de nueva alerta con su nombre, descripción, estado habilitado y tipo de disparador.](/images/dashboard/alert-new-trigger.png)
 
-    La segunda parte controla cuánto tiempo debe persistir la condición, con qué frecuencia se evalúa y dónde se envían las notificaciones.
+    La segunda parte controla cuánto tiempo debe persistir la condición, con qué frecuencia se evalúa y a dónde se envían las notificaciones.
 
-    ![La segunda parte del formulario de nueva alerta con la lógica de infracciones, programación, severidad, canales de entrega y acción de creación.](/images/dashboard/alert-new-routing.png)
+    ![La segunda parte del formulario de nueva alerta con la lógica de infracción, el calendario, la gravedad, los canales de entrega y la acción de creación.](/images/dashboard/alert-new-routing.png)
 
-    Después de guardar, usa la lista de Alerts para confirmar que la regla está habilitada y que su disparador, ventana, severidad y canales coinciden con lo que estableciste.
+    Después de guardar, usa la lista de alertas para confirmar que la regla está habilitada y que su disparador, ventana, gravedad y canales coinciden con lo que tenías previsto.
 
-    ![La página de Alerts mostrando reglas de alerta con sus disparadores, ventanas de evaluación, canales y severidad.](/images/dashboard/alerts.png)
+    ![La página de Alerts que muestra las reglas de alerta con sus disparadores, ventanas de evaluación, canales y gravedad.](/images/dashboard/alerts.png)
 
     Prueba la alerta antes de depender de ella para la respuesta en producción.
   </Tab>
@@ -43,20 +43,20 @@ Las alertas supervisan una condición medible y crean un incidente cuando se act
 
     Usa `fp alerts list` para revisar las reglas y `fp alerts delete <name>` para eliminar una.
 
-    Consulta la [referencia de `fp alerts`](/es/reference/cloud-cli#alerts) para el conjunto completo de comandos de alerta.
+    Consulta la [referencia de `fp alerts`](/es/reference/cloud-cli#alerts) para el conjunto completo de comandos de alertas.
   </Tab>
 </Tabs>
 
-Las condiciones de alerta pueden basarse en errores, puntuaciones de evaluación, combinaciones de evaluación o SQL personalizado. Agrega destinatarios, prueba la regla y abre el incidente resultante para reconocerlo, asignarlo, comentar, suscribirte y resolverlo.
+Las condiciones de las alertas pueden basarse en errores, puntuaciones de evaluación, combinaciones de evaluación o SQL personalizado. Agrega destinatarios, prueba la regla y abre el incidente resultante para reconocerlo, asignarlo, comentar, suscribirte y resolverlo.
 
 ## Buenas prácticas para el diseño de alertas
 
 - Nombra la condición y el flujo de trabajo afectado.
 - Define el entorno de forma explícita.
-- Establece una ventana y un umbral que eviten reaccionar ante un único evento inofensivo.
-- Incluye un enlace o consulta que lleve a los responsables a las sesiones correspondientes.
+- Establece una ventana y un umbral que eviten reaccionar ante un evento puntual e inofensivo.
+- Incluye un enlace o consulta que guíe a los responsables hacia las sesiones.
 - Asigna un propietario antes de habilitar la regla.
 
 <Tip>
-  Después de resolver un hallazgo de auditoría, agrega una alerta para cuando el mismo fallo pueda repetirse fuera del alcance de la política.
+  Después de resolver un hallazgo de auditoría, añade una alerta para cuando el mismo fallo pueda repetirse fuera de la cobertura de la política.
 </Tip>

@@ -1,33 +1,33 @@
 ---
-title: "Benachrichtigungen"
-description: "Wiederkehrende Vorfälle erkennen und an die richtigen Verantwortlichen weiterleiten."
+title: "Alerts"
+description: "Wiederkehrende Ereignisse erkennen und Vorfälle an die richtigen Verantwortlichen weiterleiten."
 icon: "bell-ring"
 ---
 
-Benachrichtigungen überwachen eine messbare Bedingung und erstellen einen Vorfall, wenn diese ausgelöst wird. Verwenden Sie sie, wenn ein Fehler eine zeitnahe Reaktion erfordert – unabhängig davon, ob eine Richtlinie ihn blockieren kann.
+Alerts überwachen eine messbare Bedingung und erstellen einen Vorfall, wenn diese ausgelöst wird. Verwende sie, wenn ein Fehler eine zeitnahe Reaktion erfordert – unabhängig davon, ob eine Policy ihn blockieren kann.
 
-## Benachrichtigung erstellen und testen
+## Alert erstellen und testen
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Navigieren Sie zu **Analysieren → Benachrichtigungen** und wählen Sie **Neue Benachrichtigung**. Sie können auch über die Glocke bei einem repräsentativen Fehler beginnen.
-    2. Geben Sie Name, Schweregrad, Auslösertyp, Bedingung, Auswertungsintervall, Überschreitungsanzahl, Zeitfenster und Kanäle ein.
-    3. Speichern Sie die Benachrichtigung, öffnen Sie die Detailseite und führen Sie **Test** aus.
-    4. Navigieren Sie zu **Analysieren → Vorfälle**, um durch die Benachrichtigung erstellte Vorfälle zu bestätigen, zuzuweisen, zu kommentieren, zu abonnieren und zu lösen.
+    1. Gehe zu **Analyze → Alerts** und wähle **new alert**. Du kannst auch über die Glocke bei einem repräsentativen Fehler starten.
+    2. Gib Name, Schweregrad, Trigger-Typ, Bedingung, Auswertungsintervall, Überschreitungsanzahl, Zeitfenster und Kanäle ein.
+    3. Speichere den Alert, öffne seine Detailseite und führe **test** aus.
+    4. Gehe zu **Analyze → Issues**, um durch den Alert erstellte Vorfälle zu bestätigen, zuzuweisen, zu kommentieren, zu abonnieren und aufzulösen.
 
-    Der erste Teil des Formulars identifiziert die Benachrichtigung und das Signal, das sie auslösen soll.
+    Der erste Teil des Formulars identifiziert den Alert und das Signal, das ihn auslösen soll.
 
-    ![Der erste Teil des Formulars für neue Benachrichtigungen mit Name, Beschreibung, Aktivierungsstatus und Auslösertyp.](/images/dashboard/alert-new-trigger.png)
+    ![Der erste Teil des new-alert-Formulars mit Name, Beschreibung, aktiviertem Zustand und Trigger-Typ.](/images/dashboard/alert-new-trigger.png)
 
-    Der zweite Teil steuert, wie lange die Bedingung anhalten muss, wie oft sie ausgewertet wird und wohin Benachrichtigungen gesendet werden.
+    Der zweite Teil steuert, wie lange die Bedingung bestehen muss, wie oft sie ausgewertet wird und wohin Benachrichtigungen gesendet werden.
 
-    ![Der zweite Teil des Formulars für neue Benachrichtigungen mit Überschreitungslogik, Zeitplan, Schweregrad, Zustellkanälen und Erstellungsaktion.](/images/dashboard/alert-new-routing.png)
+    ![Der zweite Teil des new-alert-Formulars mit Überschreitungslogik, Zeitplan, Schweregrad, Zustellkanälen und Erstell-Aktion.](/images/dashboard/alert-new-routing.png)
 
-    Überprüfen Sie nach dem Speichern in der Benachrichtigungsliste, ob die Regel aktiviert ist und ob Auslöser, Zeitfenster, Schweregrad und Kanäle Ihren Vorgaben entsprechen.
+    Verwende nach dem Speichern die Alerts-Liste, um zu bestätigen, dass die Regel aktiviert ist und dass Trigger, Zeitfenster, Schweregrad und Kanäle deinen Absichten entsprechen.
 
-    ![Die Benachrichtigungsseite mit Benachrichtigungsregeln, deren Auslösern, Auswertungszeitfenstern, Kanälen und Schweregrad.](/images/dashboard/alerts.png)
+    ![Die Alerts-Seite mit Alert-Regeln und ihren Triggern, Auswertungszeiträumen, Kanälen und Schweregraden.](/images/dashboard/alerts.png)
 
-    Testen Sie die Benachrichtigung, bevor Sie sich im Produktivbetrieb auf sie verlassen.
+    Teste den Alert, bevor du ihn für die Produktionsreaktion einsetzt.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -41,22 +41,22 @@ Benachrichtigungen überwachen eine messbare Bedingung und erstellen einen Vorfa
     fp alerts update high-errors --severity critical --yes
     ```
 
-    Verwenden Sie `fp alerts list`, um Regeln zu überprüfen, und `fp alerts delete <name>`, um eine zu entfernen.
+    Verwende `fp alerts list`, um Regeln zu überprüfen, und `fp alerts delete <name>`, um eine zu entfernen.
 
-    Die vollständige Liste der Befehle finden Sie in der [`fp alerts`-Referenz](/de/reference/cloud-cli#alerts).
+    Siehe die [`fp alerts`-Referenz](/de/reference/cloud-cli#alerts) für den vollständigen Befehlssatz.
   </Tab>
 </Tabs>
 
-Benachrichtigungsbedingungen können auf Fehlern, Auswertungsbewertungen, Auswertungskombinationen oder benutzerdefiniertem SQL basieren. Fügen Sie Empfänger hinzu, testen Sie die Regel und öffnen Sie den resultierenden Vorfall, um ihn zu bestätigen, zuzuweisen, zu kommentieren, zu abonnieren und zu lösen.
+Alert-Bedingungen können auf Fehlern, Auswertungswerten, Auswertungskombinationen oder benutzerdefiniertem SQL basieren. Füge Empfänger hinzu, teste die Regel und öffne den resultierenden Vorfall, um ihn zu bestätigen, zuzuweisen, zu kommentieren, zu abonnieren und aufzulösen.
 
-## Gutes Benachrichtigungsdesign
+## Gutes Alert-Design
 
-- Benennen Sie die Bedingung und den betroffenen Workflow.
-- Legen Sie die Umgebung explizit fest.
-- Setzen Sie ein Zeitfenster und einen Schwellenwert, um nicht auf einzelne harmlose Ereignisse zu reagieren.
-- Fügen Sie einen Link oder eine Abfrage ein, die Verantwortliche zu den betreffenden Sitzungen führt.
-- Weisen Sie einen Eigentümer zu, bevor Sie die Regel aktivieren.
+- Nenne die Bedingung und den betroffenen Workflow.
+- Lege die Umgebung explizit fest.
+- Setze ein Zeitfenster und einen Schwellenwert, der verhindert, auf ein einzelnes harmloses Ereignis zu reagieren.
+- Füge einen Link oder eine Abfrage hinzu, der Verantwortliche zu den betreffenden Sitzungen führt.
+- Weise vor der Aktivierung der Regel einen Verantwortlichen zu.
 
 <Tip>
-  Fügen Sie nach der Behebung eines Audit-Befundes eine Benachrichtigung hinzu, wenn derselbe Fehler außerhalb des Abdeckungsbereichs der Richtlinie erneut auftreten könnte.
+  Füge nach der Behebung eines Audit-Befunds einen Alert hinzu, wenn derselbe Fehler außerhalb des Geltungsbereichs der Policy erneut auftreten könnte.
 </Tip>

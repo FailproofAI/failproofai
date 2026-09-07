@@ -1,21 +1,21 @@
 ---
 title: "Leggere una traccia"
-description: "Trova l'evento che ha cambiato il corso di una sessione dell'agente."
+description: "Trova l'evento che ha cambiato il corso di una sessione agente."
 icon: "route"
 ---
 
-Una traccia trasforma un flusso di eventi lineare nella storia causale dell'esecuzione. Leggila dal primo punto di divergenza, non all'indietro dall'ultimo errore.
+Una traccia trasforma un flusso di eventi piatto nella storia causale dell'esecuzione. Leggila dal primo divergenza, non all'indietro dall'ultimo errore.
 
-## Aprire la traccia
+## Apri la traccia
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vai a **Observe → Sessions** e apri una sessione.
-    2. Usa il riepilogo del profilo per verificare risultato, timing, errori e punteggi di valutazione.
-    3. Scansiona la timeline e la minimappa. Filtra i tipi di evento o il tempo quando la sessione è grande.
-    4. Seleziona un evento per ispezionarlo. Usa **export** per il JSON dell'evaluator, o copia l'URL della pagina per condividere un deep link alle prove selezionate.
+    1. Vai su **Observe → Sessions** e apri una sessione.
+    2. Usa il riepilogo del profilo per controllare risultato, tempistica, errori e punteggi di valutazione.
+    3. Esamina la sequenza temporale e la minimappa. Filtra i tipi di evento o l'ora quando la sessione è grande.
+    4. Seleziona un evento per ispezionarlo. Usa **export** per JSON dell'evaluator, o copia l'URL della pagina per condividere un deep link alle prove selezionate.
 
-    ![Una visualizzazione dettagliata della sessione con il suo grafo di esecuzione, timeline degli eventi, pannello di valutazione e suddivisione di strumenti, modello e hook.](/images/dashboard/session-detail.png)
+    ![Una vista dettagli sessione con il suo grafico di esecuzione, sequenza temporale degli eventi, pannello di valutazione e suddivisione di strumenti, modello e hook.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -24,25 +24,25 @@ Una traccia trasforma un flusso di eventi lineare nella storia causale dell'esec
     fp --json events --full --session-id <session-id> --all
     ```
 
-    Usa prima il feed di eventi leggero. Richiedi i payload completi solo quando i riepiloghi degli eventi non contengono prove sufficienti.
+    Usa prima il feed di eventi leggero. Richiedi payload completi solo quando i riepiloghi degli eventi non contengono prove sufficienti.
   </Tab>
 </Tabs>
 
 <Steps>
   <Step title="Orienta te stesso">
-    Conferma l'agente, l'ambiente, il timing, il risultato e la durata, quindi scansiona per errori, intervalli lunghi, strumenti ripetuti, attese umane e decisioni di policy negate.
+    Conferma l'agente, l'ambiente, la tempistica, il risultato e la durata, quindi esamina errori, intervalli lunghi, strumenti ripetuti, attese umane e decisioni politiche negate.
   </Step>
   <Step title="Espandi il primo evento sospetto">
-    Ispeziona la sua richiesta, risposta, input dello strumento, output e ID di correlazione. Il contenuto sensibile è visibile solo quando l'acquisizione della trascrizione è abilitata e le tue autorizzazioni lo consentono.
+    Ispeziona la sua richiesta, risposta, input dello strumento, output e ID di correlazione. Il contenuto sensibile è visibile solo quando è abilitata l'acquisizione della trascrizione e le tue autorizzazioni lo consentono.
   </Step>
   <Step title="Ispeziona il contesto precedente">
     La causa spesso si trova un evento prima: una risposta del modello non corretta, un risultato dello strumento mancante o un'assunzione obsoleta.
   </Step>
   <Step title="Trasforma le prove in azione">
-    Aggiungi la sessione a un ambito di audit, collegala a un problema, o usa la modalità di errore per creare una policy.
+    Aggiungi la sessione a un ambito di audit, collegala a un problema, o usa la modalità di errore per creare una politica.
   </Step>
 </Steps>
 
 <Warning>
-  Una lunga durata non sempre significa latenza del modello. Separa il tempo di modello, strumento, hook e attesa umana prima di decidere cosa correggere.
+  La lunga durata non sempre significa latenza del modello. Separa il tempo del modello, dello strumento, dell'hook e dell'attesa umana prima di decidere cosa correggere.
 </Warning>

@@ -1,27 +1,28 @@
 ---
+---
 title: "Query"
-description: "Esplora i dati di sessione, eventi e valutazioni con SQL riutilizzabile."
+description: "Esplora i dati di sessione, evento e valutazione con SQL riutilizzabile."
 icon: "database"
 ---
 
-Le query sono il livello flessibile sottostante ai dashboard, agli audit e alle indagini. Usa SQL ad hoc per testare un'idea, quindi salva la query quando diventa parte di un workflow ricorrente.
+Le query sono il livello flessibile che sottende i dashboard, gli audit e le investigazioni. Usa SQL ad-hoc per testare un'idea, quindi salva la query quando diventa parte di un flusso di lavoro ricorrente.
 
-## Creare ed eseguire una query
+## Crea ed esegui una query
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vai su **Analyze → Queries** e seleziona **new query**.
-    2. Apri il browser dello schema e scegli i campi dai dati di eventi, sessioni o valutazioni.
-    3. Scrivi SQL, aggiungi parametri se necessario ed esegui la query.
+    1. Vai a **Analyze → Queries** e seleziona **new query**.
+    2. Apri il browser dello schema e scegli i campi dai dati di evento, sessione o valutazione.
+    3. Scrivi SQL, aggiungi parametri se necessario, ed esegui la query.
     4. Salvala con un nome e una descrizione chiari, quindi usa **add to dashboard** quando il risultato deve essere monitorato.
 
-    L'editor di query combina lo schema degli eventi, SQL, parametri e un'anteprima dei risultati in modo da poter convalidare la domanda prima di salvarla.
+    L'editor di query combina lo schema dell'evento, SQL, parametri e un'anteprima dei risultati in modo da poter convalidare la domanda prima di salvarla.
 
-    ![L'editor di query SQL con un browser dello schema e una griglia di risultati in tempo reale.](/images/dashboard/query-lab.png)
+    ![L'editor di query SQL con un browser dello schema e una griglia dei risultati in tempo reale.](/images/dashboard/query-lab.png)
 
-    Le query salvate appaiono quindi nella libreria condivisa, dove i tuoi colleghi possono rieseguirle o aggiungere i loro risultati ai dashboard.
+    Le query salvate vengono quindi visualizzate nella libreria condivisa, dove i colleghi possono rieseguirle o aggiungere i loro risultati ai dashboard.
 
-    ![La libreria Queries salvate contenente query riutilizzabili integrate e personalizzate.](/images/dashboard/queries.png)
+    ![La libreria Queries salvata contenente query integrate e personalizzate riutilizzabili.](/images/dashboard/queries.png)
 
     Usa un nome e una descrizione chiari in modo che il risultato rimanga comprensibile senza riaprire il suo SQL.
   </Tab>
@@ -40,13 +41,13 @@ Le query sono il livello flessibile sottostante ai dashboard, agli audit e alle 
 
 ## Usi comuni
 
-- Trova sessioni con chiamate ripetute allo stesso strumento.
-- Confronta i punteggi di valutazione tra modelli o ambienti.
-- Misura il tempo tra un'attesa umana e la ripresa.
-- Identifica negazioni di policy seguite da un'alternativa riuscita.
-- Costruisci una coorte per un audit.
+- Trovare sessioni con chiamate ripetute allo stesso strumento.
+- Confrontare i punteggi di valutazione tra modelli o ambienti.
+- Misurare il tempo tra un'attesa umana e la ripresa.
+- Identificare i rifiuti delle policy seguiti da un'alternativa riuscita.
+- Costruire una coorte per un audit.
 
-Apri **Queries → Schema** prima di scrivere query su campi non familiari. Preferisci filtri di tempo e ambiente espliciti e mantieni limiti di risultati durante l'esplorazione.
+Apri **Queries → Schema** prima di scrivere su campi non familiari. Preferisci filtri espliciti di tempo e ambiente, e mantieni limiti di risultati durante l'esplorazione.
 
 <Warning>
   Una query può identificare un modello sospetto, ma non stabilisce da sola la modalità di errore. Apri tracce rappresentative o esegui un audit prima di trasformare il risultato in una policy.

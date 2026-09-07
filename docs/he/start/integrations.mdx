@@ -1,31 +1,32 @@
 ---
-title: "כלי-עזר לאגנט שלך"
+---
+title: "הוספת כלים לסוכן שלך"
 sidebarTitle: "Frameworks"
-description: "חבר כל framework אגנט נתמך ל-Failproof AI עם קריאה אחת."
+description: "חבר כל framework סוכן נתמך ל-Failproof AI בקריאה אחת."
 icon: "plug"
 ---
 
-האגנט שלך כבר מייצר הכל שכדאי להקליט — קריאות למודל, קריאות לכלים, גבולות צמתים, חיכויים לאדם, כשלים. ה-framework זורק את זה. ה-SDK שומר על זה.
+הסוכן שלך כבר מייצר הכל שכדאי להקליט — קריאות מודל, קריאות כלים, גבולות צמתים, המתנות לאדם, כשלים. ה-framework זורק את זה. ה-SDK שומר את זה.
 
 <Columns cols={3}>
-  <Card title="אגנטים מותאמים" icon="wrench" href="/he/start/quickstarts/custom-agents">
-    אגנט שכתבת בעצמך, או אחד שלא רשום כאן.
+  <Card title="סוכנים מותאמים" icon="wrench" href="/he/start/quickstarts/custom-agents">
+    סוכן שכתבת בעצמך, או אחד שלא רשום כאן.
   </Card>
   <Card title="LangChain ו-LangGraph" icon="share-2" href="/he/start/quickstarts/langchain">
-    גרפים, צמתים, כלים, retriever-ים, מודלים.
+    גרפים, צמתים, כלים, retrievers, מודלים.
   </Card>
   <Card title="CrewAI" icon="users" href="/he/start/quickstarts/crewai">
-    צוותים, זרימות, אגנטים לפי תפקיד, כלים.
+    צוותים, זרימות, סוכנים לפי תפקיד, כלים.
   </Card>
   <Card title="LlamaIndex" icon="database" href="/he/start/quickstarts/llamaindex">
-    סדרי עבודה, שלבים, function agents, retriever-ים.
+    זרימות עבודה, שלבים, סוכני פונקציה, retrievers.
   </Card>
   <Card title="Pydantic AI" icon="badge-check" href="/he/start/quickstarts/pydantic-ai">
-    אגנטים מטיפוסים, יכולות, כלים, ניסיונות חוזרים.
+    סוכנים מטופלים, יכולות, כלים, ניסיונות חוזרים.
   </Card>
 </Columns>
 
-## שלוש שורות, איזה framework שלא יהיה
+## שלוש שורות, כל framework
 
 <CodeGroup>
 ```bash LangGraph
@@ -53,13 +54,13 @@ pip install failproofai-sdk
 import failproofai_sdk
 
 failproofai_sdk.configure(environment="production")
-failproofai_sdk.instrument()          # detects the frameworks you imported
+failproofai_sdk.instrument()          # מזהה את ה-frameworks שיבאת
 
 with failproofai_sdk.session():
-    ...                               # your existing agent call, unchanged
+    ...                               # קריאת הסוכן הקיימת שלך, ללא שינוי
 ```
 
-אין דקורטורים על הפונקציות שלך, אין callback שעוברת לקריאות שלך, אין ids המשודרים בקוד שלך. רק הקריאה בתוך ה-session שונה:
+אין דקורטורים על הפונקציות שלך, אין callback מועבר לקריאות שלך, אין ids מועבים דרך הקוד שלך. רק הקריאה בתוך ה-session שונה:
 
 <Tabs>
   <Tab title="LangGraph">
@@ -74,7 +75,7 @@ with failproofai_sdk.session():
   </Tab>
   <Tab title="LlamaIndex">
     ```python
-    await agent.run("...")        # under `async with failproofai_sdk.session():`
+    await agent.run("...")        # תחת `async with failproofai_sdk.session():`
     ```
   </Tab>
   <Tab title="Pydantic AI">
@@ -91,30 +92,30 @@ with failproofai_sdk.session():
   </Tab>
 </Tabs>
 
-ההתקנה הנוספת היא ל-**framework**. כל adapter משודר בגלגל הבסיס, כך שפרויקט שכבר יש לו את ה-framework שלו לא צריך שום דבר נוסף בכלל.
+ההתקנה הנוספת משדרגת את ה-**framework**. כל אדפטר נספק בחבילה הבסיסית, כך שפרויקט שכבר יש לו את ה-framework שלו לא צריך שום דבר נוסף בכלל.
 
 ## בדוק שהגיע
 
-הפעל session אחד עם כלי-עזר, ואז פתח **Observe → Sessions** ובחר את ה-environment שלך. ה-run מופיע כ-trace שנבנה מחדש.
+הפעל סשן אחד עם כלים, ואז פתח **Observe → Sessions** בחר את הסביבה שלך. ההפעלה תופיע כעקבות שנבנו מחדש.
 
-אם לא הגיע כלום, אשר שהמכונה מחוברת עם `failproofai config --status`. ראה [Set up capture](/he/start/setup).
+אם כלום לא הגיע, אשר שהמכונה מחוברת עם `failproofai config --status`. ראה [Set up capture](/he/start/setup).
 
 <Warning>
-  אל תבדוק את ספיריית ה-spool כדי לאשר משלוח. ה-Failproof daemon אוגר ומוחק כל batch תוך אלפיות שנייה, כך שקריאתו מהיר מהאוסף ומראה הרבה פחות אירועים מאלה שנקלטו.
+  אל תבדוק את ספירת הספרייה כדי לאשר משלוח. ה-daemon של Failproof אוספת ומוחקות כל אצווה תוך מילישניות, כך שקריאה שלה מתחרות בעם האספן ומראה הרבה פחות אירועים מאלה שפעלו.
 </Warning>
 
 ## הבא
 
-כל quickstart למעלה מקשר להנחיה המלאה שלו — מה מתרשם, אפשרויות, streaming, קביעת שם span, והבעיות שאנשים באמת פוגשים. הם יושבים תחת **Trace Agents → Plug in your agent**.
+כל quickstart למעלה מקשר להנחיה המלאה שלו — מה מקליטים, אפשרויות, זרימה, שמות span, והבעיות שאנשים באמת פוגעים בהן. הם חיים תחת **Trace Agents → Plug in your agent**.
 
 <Columns cols={3}>
   <Card title="איך זה עובד" icon="workflow" href="/he/start/integrations/custom-agents#going-deeper">
-    מודל הנתונים, ה-ids, סוגי האירועים, וכיצד אירועים מגיעים ל-Cloud.
+    מודל הנתונים, ה-ids, סוגי האירועים, וכיצד אירועים מגיעים לעננים.
   </Card>
-  <Card title="קרא trace" icon="route" href="/he/sessions/read-a-trace">
-    עקוב אחר סיבתיות דרך session במקום יומנים מנותקים.
+  <Card title="קרא עקבות" icon="route" href="/he/sessions/read-a-trace">
+    עקוב אחר סיבתיות דרך סשן במקום רישומים מנותקים.
   </Card>
   <Card title="מצא את הכשל הראשון שלך" icon="scan-search" href="/he/start/first-audit">
-    בדוק את ה-sessions שזה עתה תפסת.
+    ביקורת בסשנים שזה עתה תפסת.
   </Card>
 </Columns>

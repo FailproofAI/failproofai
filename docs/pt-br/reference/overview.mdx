@@ -1,6 +1,6 @@
 ---
 title: "Integrações e referência"
-description: "Conecte harnesses de agentes, SDKs, CLIs e a API HTTP suportados."
+description: "Conecte harnesses de agentes, SDKs, CLIs e a API HTTP compatíveis."
 icon: "braces"
 ---
 
@@ -8,7 +8,7 @@ Escolha a integração mais próxima de onde seu agente já está em execução.
 
 <Columns cols={2}>
   <Card title="Harnesses de agentes" icon="plug-zap" href="/pt-br/reference/harnesses">
-    Instale hooks para CLIs de codificação e agentes autônomos suportados.
+    Instale hooks para CLIs de codificação e agentes autônomos compatíveis.
   </Card>
   <Card title="Frameworks de agentes e SDKs" icon="plug" href="/pt-br/start/integrations">
     Instrumente LangGraph, CrewAI, LlamaIndex, Pydantic AI ou um agente personalizado.
@@ -36,26 +36,26 @@ Escolha a integração mais próxima de onde seu agente já está em execução.
   </Card>
 </Columns>
 
-A [referência da API HTTP](/pt-br/reference/http-api) gerada cobre a superfície pública `/v1`. Páginas escritas manualmente explicam fluxos de trabalho que abrangem múltiplos endpoints ou utilizam interfaces administrativas fora dessa superfície pública.
+A [referência da API HTTP](/pt-br/reference/http-api) gerada cobre a superfície pública `/v1`. As páginas escritas manualmente explicam fluxos de trabalho que abrangem múltiplos endpoints ou utilizam interfaces administrativas fora dessa superfície pública.
 
 ## Conectar um agente e verificar os dados
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Abra **Administration → Keys**, crie uma chave com `events:add` e `policies:pull`, e copie o segredo.
+    1. Abra **Administração → Chaves**, crie uma chave com `events:add` e `policies:pull`, e copie o segredo.
     2. Configure a integração usando a página correspondente acima.
-    3. Abra **Observe → Events** para confirmar que os eventos chegam, depois **Observe → Sessions** para confirmar que eles formam execuções completas.
+    3. Abra **Observar → Eventos** para confirmar que os eventos estão chegando, depois **Observar → Sessões** para confirmar que eles formam execuções completas.
     4. Filtre pelo ambiente da integração e inspecione uma sessão para verificar os campos de modelo, ferramenta, erro e política necessários para as auditorias.
 
-    Comece pelo drawer de chave. As permissões selecionadas determinam se a máquina pode enviar eventos e receber políticas gerenciadas pelo Cloud.
+    Comece pelo painel de chaves. As permissões selecionadas determinam se a máquina pode enviar eventos e receber políticas gerenciadas pelo Cloud.
 
-    ![O drawer de criação de chave de API usado para conceder permissões de ingestão de eventos e entrega de políticas.](/images/dashboard/key-create.png)
+    ![O painel de criação de chave de API usado para conceder permissões de ingestão de eventos e entrega de políticas.](/images/dashboard/key-create.png)
 
-    Após conectar a integração, use a lista de Sessions para confirmar que seus eventos estão sendo agrupados em execuções completas no ambiente esperado.
+    Após conectar a integração, use a lista de Sessões para confirmar que seus eventos estão sendo agrupados em execuções completas no ambiente esperado.
 
-    ![A lista de Sessions usada para verificar que uma integração recém-conectada está reportando execuções completas de agentes.](/images/dashboard/sessions-list.png)
+    ![A lista de Sessões usada para verificar que uma integração recém-conectada está reportando execuções completas de agentes.](/images/dashboard/sessions-list.png)
 
-    Abra uma dessas sessões antes de considerar a integração concluída; o trace deve conter o modelo, a ferramenta, o erro e as evidências de política que suas auditorias precisam.
+    Abra uma dessas sessões antes de considerar a integração concluída; o rastreamento deve conter o modelo, a ferramenta, o erro e as evidências de política que suas auditorias precisam.
   </Tab>
   <Tab title="CLI">
     Crie uma chave de máquina, conecte o daemon do Failproof e verifique a primeira sessão.
@@ -74,8 +74,8 @@ A [referência da API HTTP](/pt-br/reference/http-api) gerada cobre a superfíci
     fp events --since 1h --env production --limit 20
     ```
 
-    Use `fp --json sessions ...` quando outra ferramenta precisar consumir o resultado. Flags globais como `--json`, `--org` e `--base-url` devem vir antes do comando.
+    Use `fp --json sessions ...` quando outro tool consumir o resultado. Flags globais como `--json`, `--org` e `--base-url` devem vir antes do comando.
 
-    Consulte a [referência da CLI do Failproof AI](/pt-br/reference/failproof-cli) para comandos locais e a [referência da CLI do Failproof Cloud](/pt-br/reference/cloud-cli#cli-commands) para comandos `fp`.
+    Consulte a [referência do CLI do Failproof AI](/pt-br/reference/failproof-cli) para comandos locais e a [referência do CLI do Failproof Cloud](/pt-br/reference/cloud-cli#cli-commands) para comandos `fp`.
   </Tab>
 </Tabs>

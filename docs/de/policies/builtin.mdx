@@ -1,12 +1,12 @@
 ---
-title: "Integrierte Richtlinien"
-description: "Aktiviere gepflegte Schutzmaßnahmen für häufige Fehlerarten von Agenten."
+title: "Eingebaute Richtlinien"
+description: "Aktiviere gepflegte Schutzmaßnahmen für häufige Agent-Fehlerszenarien."
 icon: "library"
 ---
 
-Integrierte Richtlinien decken die Behandlung von Geheimnissen, Umgebungsdateien, destruktive Shell-Befehle, geschützte Branches, Cloud- und Infrastrukturwerkzeuge, die Veröffentlichung von Paketen, wiederholte Aufrufe sowie Workflow-Prüfungen am Ende von Aufgaben ab.
+Eingebaute Richtlinien decken die Behandlung von Geheimnissen, Umgebungsdateien, destruktive Shell-Befehle, geschützte Branches, Cloud- und Infrastruktur-Tools, Paketveröffentlichungen, wiederholte Aufrufe sowie Workflow-Prüfungen am Aufgabenende ab.
 
-## Eine integrierte Richtlinie aktivieren und überprüfen
+## Eine eingebaute Richtlinie aktivieren und überprüfen
 
 <Tabs>
   <Tab title="Dashboard">
@@ -27,29 +27,29 @@ Integrierte Richtlinien decken die Behandlung von Geheimnissen, Umgebungsdateien
   </Tab>
 </Tabs>
 
-Liste die in deiner installierten Version verfügbaren Richtlinien auf:
+Alle in der installierten Version verfügbaren Richtlinien auflisten:
 
 ```bash
 failproofai policies
 ```
 
-Aktiviere eine Richtlinie für ein Projekt:
+Eine Richtlinie für ein Projekt aktivieren:
 
 ```bash
 failproofai policy add block-rm-rf --scope project
 ```
 
-Aktiviere mehrere Richtlinien für ausgewählte Harnesses:
+Mehrere Richtlinien für ausgewählte Harnesses aktivieren:
 
 ```bash
 failproofai policies --install block-sudo block-force-push \
   --cli claude codex --scope project
 ```
 
-Einige Richtlinien akzeptieren Parameter oder sind als Beta gekennzeichnet. Überprüfe Beschreibung, Geltungsbereich und Standardverhalten vor dem Rollout. Eine Richtlinie, die einen Workflow schützt, kann in einem anderen gültige Vorgänge blockieren.
+Einige Richtlinien akzeptieren Parameter oder sind als Beta markiert. Überprüfe Beschreibung, Geltungsbereich und Standardverhalten vor dem Rollout. Eine Richtlinie, die einen Workflow schützt, kann in einem anderen gültige Operationen blockieren.
 
-<Card title="Den vollständigen integrierten Katalog durchsuchen" icon="list-checks" href="/de/policies/builtin-catalog">
-  Alle 40 aktuellen Richtlinien, ihre Auslöser, die empfohlene Baseline und Parameter einsehen.
+<Card title="Den vollständigen eingebauten Katalog durchsuchen" icon="list-checks" href="/de/policies/builtin-catalog">
+  Alle 40 aktuellen Richtlinien, ihre Auslöser, die empfohlene Grundkonfiguration und Parameter einsehen.
 </Card>
 
 <Tip>

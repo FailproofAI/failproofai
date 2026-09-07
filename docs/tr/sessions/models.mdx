@@ -1,19 +1,19 @@
 ---
 title: "Modeller"
-description: "Model latensisini, token sayısını, bağlam kullanımını ve trafik dağılımını karşılaştırın."
+description: "Model gecikmesini, token'ları, bağlam kullanımını ve trafik dağılımını karşılaştırın."
 icon: "cpu"
 ---
 
-Modeller aracılığıyla bir model, agent, ortam veya zaman aralığı ile güvenilirlik ya da maliyetin değişip değişmediğini görebilirsiniz.
+Modeller kullanarak bir model, agent, ortam veya zaman aralığı ile güvenilirliğin veya maliyetin değişip değişmediğini görebilirsiniz.
 
 <Tabs>
-  <Tab title="Dashboard">
-    1. **Observe → Models** bölümüne gidin.
-    2. Zaman aralığını ayarlayın, ardından ortam, model, agent veya session ID'ye göre filtreleyin.
-    3. Latens, token tüketimi, bağlam-penceresi kullanımı ve model dağılımını inceleyin.
+  <Tab title="Gösterge Paneli">
+    1. **Observe → Models** sayfasına gidin.
+    2. Zaman aralığını ayarlayın, ardından ortam, model, agent veya oturum kimliğine göre filtreleyin.
+    3. Gecikme süresi, token tüketimi, bağlam penceresi kullanımı ve model dağılımını inceleyin.
     4. Eşleşen olayları açmak için bir grafik noktası veya dağılım segmentini seçin.
 
-    ![Latens, yüzdelik dilim, token, maliyet, bağlam-penceresi ve model-dağılımı görünümlerini gösteren Models sayfası.](/images/dashboard/models.png)
+    ![Modeller sayfası, gecikme süresi, yüzdelik, token, maliyet, bağlam penceresi ve model dağılımı görünümlerini göstermektedir.](/images/dashboard/models.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -22,6 +22,6 @@ Modeller aracılığıyla bir model, agent, ortam veya zaman aralığı ile güv
     fp --json events --fields ts,agent_id,session_id,event_type,output_tokens,context_fill
     ```
 
-    Özel bir CLI komutu olarak sunulmayan model düzeyinde toplamalar için kaydedilmiş bir sorgu kullanın.
+    Özel bir CLI komutu olarak sunulmayan model düzeyindeki toplamaları için kaydedilmiş bir sorgu kullanın.
   </Tab>
 </Tabs>

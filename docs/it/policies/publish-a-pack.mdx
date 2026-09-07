@@ -1,14 +1,14 @@
 ---
-title: "Pubblicare un pack"
-description: "Distribuisci le tue policy come release GitHub che chiunque può installare."
+title: "Pubblica un pack"
+description: "Distribuisci le tue policy come rilascio GitHub che chiunque può installare."
 icon: "upload"
 ---
 
-Un pack è costituito da tre file allegati a una release GitHub. `failproofai pack build` scrive tutti e tre a partire da un file di policy che hai già.
+Un pack è costituito da tre file allegati a un rilascio GitHub. `failproofai pack build` scrive tutti e tre partendo da un file di policy che hai già.
 
 ## 1. Scrivi le policy
 
-Un file, usando la stessa API di qualsiasi policy personalizzata. Due campi extra sono importanti per un pack:
+Un file, utilizzando la stessa API di qualsiasi custom policy. Due campi extra sono importanti per un pack:
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -26,13 +26,13 @@ customPolicies.add({
 });
 ```
 
-`defaultEnabled` ha il valore predefinito **false** quando lo ometti. Un semplice `failproofai pack add` attiva solo quello che hai contrassegnato — installare ogni policy di uno sconosciuto senza controllo non è una decisione che l'installatore dovrebbe prendere per l'utente.
+`defaultEnabled` di default è **false** quando lo ometti. Un semplice `failproofai pack add` attiva solo quello che hai contrassegnato — installare senza controllo ogni policy di uno sconosciuto non è una decisione che l'installer dovrebbe prendere per l'utente.
 
 <Warning>
-La voce deve essere **un file autonomo e autocontenuto**. Solo la voce è protetta dal digest, quindi un pack che importa file locali non potrebbe onestamente affermare che il digest copre ciò che viene eseguito. Raggruppa prima (`esbuild`, `bun build`, `rollup`) e costruisci il pack dal bundle — `pack build` rifiuta un'importazione locale piuttosto che distribuire una promessa che non può mantenere.
+La voce deve essere **un singolo file autocontenuto**. Solo la voce è fissata con digest, quindi un pack che importa file locali non potrebbe onestamente affermare che il digest copre ciò che viene eseguito. Raggruppa prima (`esbuild`, `bun build`, `rollup`) e costruisci il pack dal bundle — `pack build` rifiuta un import locale piuttosto che distribuire una promessa che non può mantenere.
 </Warning>
 
-## 2. Costruisci gli asset della release
+## 2. Costruisci gli asset del rilascio
 
 ```bash
 failproofai pack build ./policies.mjs \
@@ -41,19 +41,19 @@ failproofai pack build ./policies.mjs \
   --out ./dist-pack
 ```
 
-Scrive tre file e convalida ogni policy con **le regole proprie del loader** prima — quindi un pack che non potrebbe mai essere installato fallisce qui, dove puoi correggerlo:
+Scrive tre file e convalida ogni policy con le **proprie regole del loader** prima — quindi un pack che non potrebbe mai essere installato fallisce qui, dove puoi correggerlo:
 
-| File | Cosa è |
+| File | Cos'è |
 | --- | --- |
-| `failproofai-pack.json` | Il manifest: id, version, effect, e una voce per policy |
-| `failproofai-pack.mjs` | La tua voce, esattamente come è |
+| `failproofai-pack.json` | Il manifest: id, version, effect e una voce per ogni policy |
+| `failproofai-pack.mjs` | La tua voce, testualmente |
 | `SHA256SUMS` | `<sha256>  <filename>` per gli altri due |
 
-Rifiutato al momento della costruzione: un id che non è `publisher/name`, un nome di policy contenente `/`, una policy che dichiara `alwaysOn`, una `description`, `category` o `match` mancante, una voce che non registra nulla, e una voce che importa file locali.
+Rifiutati al momento della costruzione: un id che non è `publisher/name`, un nome di policy contenente `/`, una policy che dichiara `alwaysOn`, una `description`, `category` o `match` mancante, una voce che non registra nulla e una voce che importa file locali.
 
-## 3. Allegali a una release
+## 3. Allegali a un rilascio
 
-Etichetta la release con la stessa versione che hai costruito, e allega tutti e tre i file come asset di release:
+Etichetta il rilascio con la stessa versione che hai costruito e allega tutti e tre i file come asset di rilascio:
 
 ```bash
 gh release create 1.0.0 \
@@ -62,29 +62,29 @@ gh release create 1.0.0 \
   ./dist-pack/SHA256SUMS
 ```
 
-Ora chiunque può installarlo:
+Chiunque può ora installarlo:
 
 ```bash
 failproofai pack add acme/support-agent
 ```
 
-I nomi degli asset sono fissi — sono quelli da cui il CLI del consumer costruisce i suoi URL, senza chiamate API e senza discovery.
+I nomi degli asset sono fissi — sono quelli da cui la CLI di un consumer costruisce i suoi URL, senza chiamata API e senza discovery.
 
 ## Distribuire una nuova versione
 
-Costruisci con il nuovo `--version`, etichetta una nuova release, allega di nuovo i tre asset. I consumer eseguono lo stesso `pack add` e mantengono qualsiasi sottoinsieme avevano scelto; una policy che avevano disattivato rimane disattivata durante l'aggiornamento.
+Costruisci con il nuovo `--version`, etichetta un nuovo rilascio, allega di nuovo i tre asset. I consumer eseguono lo stesso `pack add` e mantengono qualsiasi sottoinsieme avevano scelto; una policy che hanno disattivato rimane disattivata durante l'aggiornamento.
 
-Cambiare il **name** di una policy è un breaking change: una macchina che l'aveva disattivata sta disattivando un nome che non esiste più, e il nuovo nome arriva con qualsiasi `defaultEnabled` dica.
+Cambiare il **name** di una policy è una breaking change: una macchina che l'aveva disattivata sta disattivando un nome che non esiste più e il nuovo nome arriva con quello che `defaultEnabled` dice.
 
-## Su cosa i tuoi utenti si stanno fidando
+## Cosa i tuoi utenti stanno affidandoti
 
-`SHA256SUMS` si trova nella stessa release dell'artefatto, quindi dimostra che i byte sono quelli che hai pubblicato — non chi sei. Chiunque possa scrivere nel repository può scrivere entrambi i file. La protezione dei tuoi utenti è che il digest è bloccato quando installano, quindi quello che hai distribuito non può cambiare sotto di loro successivamente.
+`SHA256SUMS` risiede nello stesso rilascio dell'artefatto, quindi prova che i byte sono quelli che hai pubblicato — non chi sei tu. Chiunque possa scrivere nel repository può scrivere entrambi i file. La protezione dei tuoi utenti è che il digest è fissato quando installano, quindi quello che hai distribuito non può cambiare sotto di loro dopo.
 
-Pubblica da un repository il cui accesso in scrittura controlli, e tratta una release pack come se stessi pubblicando un pacchetto.
+Pubblica da un repository il cui accesso in scrittura controlli e tratta un rilascio di pack come se stessi pubblicando un package.
 
-## Osserva prima di forzare
+## Osserva prima di applicare
 
-Un manifest può dichiarare `"effect": "observe"`. Quelle policy vengono eseguite e i loro verdetti sono **registrati e scartati** — nulla viene bloccato. È il modo per misurare una nuova regola contro il traffico reale prima che possa interrompere il lavoro di chiunque.
+Un manifest può dichiarare `"effect": "observe"`. Quelle policy vengono eseguite e i loro verdetti sono **registrati e scartati** — nulla è bloccato. È il modo per misurare una nuova regola rispetto al traffico reale prima che possa interrompere il lavoro di chiunque.
 
 ```json
 { "id": "acme/support-agent", "version": "1.1.0", "effect": "observe", "policies": [ ... ] }

@@ -1,25 +1,25 @@
 ---
 title: "Avaliações online"
-description: "Avalie sessões ao vivo e concluídas quanto a qualidade, conformidade, custo e latência."
+description: "Pontue sessões ativas e concluídas em relação à qualidade, conformidade, custo e latência."
 icon: "gauge"
 ---
 
-As avaliações online aplicam julgamentos consistentes às sessões do agente. Use-as para sinais que devem ser medidos continuamente, em vez de investigados apenas durante uma auditoria.
+As avaliações online aplicam julgamentos consistentes às sessões de agentes. Utilize-as para sinais que devem ser medidos continuamente, e não apenas investigados durante uma auditoria.
 
-## Revisar a qualidade das avaliações
+## Revise a qualidade das avaliações
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Acesse **Observe → Evaluations**.
-    2. Adicione uma série e escolha o agente, o ambiente, a pontuação da avaliação, a estatística e a curva.
+    1. Vá para **Observe → Evaluations**.
+    2. Adicione uma série e escolha o agente, o ambiente, a pontuação de avaliação, a estatística e a curva.
     3. Adicione séries para comparar ambientes, agentes ou chaves de pontuação.
     4. Selecione um resultado para abrir as sessões correspondentes ou compartilhar a visualização filtrada. Use **Observe → Metrics** para latência, tokens, custo e outros valores de magnitude.
 
     ![Um dashboard de qualidade exibindo pontuações médias de avaliação e tendências ao longo do tempo.](/images/dashboard/dashboard-quality.png)
 
-    Abra uma sessão no drill-down para inspecionar o raciocínio por pontuação:
+    Abra uma sessão a partir do detalhamento para inspecionar o raciocínio por pontuação:
 
-    ![Uma visualização detalhada de sessão exibindo pontuações de avaliação e raciocínio ao lado do trace completo.](/images/dashboard/session-detail.png)
+    ![Uma visualização de detalhes de sessão mostrando pontuações de avaliação e raciocínio ao lado do trace completo.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -28,7 +28,7 @@ As avaliações online aplicam julgamentos consistentes às sessões do agente. 
     fp evals --score helpfulness:0.8.. --since 7d
     ```
 
-    Adicione `--json` globalmente antes de `evals` para automação, por exemplo `fp --json evals --aggregate --env production`.
+    Adicione o parâmetro global `--json` antes de `evals` para automação, por exemplo `fp --json evals --aggregate --env production`.
   </Tab>
 </Tabs>
 
@@ -36,17 +36,17 @@ Um avaliador recebe a identidade da sessão, o ambiente, os timestamps e os even
 
 ## Bons alvos de avaliação
 
-- Conclusão de tarefas ou precisão
+- Conclusão de tarefas ou correção
 - Fundamentação e risco de alucinação
-- Seleção e eficiência de ferramentas
+- Seleção de ferramentas e eficiência no uso de ferramentas
 - Conformidade com políticas ou processos
 - Orçamentos de custo e latência
-- Escalada humana obrigatória
+- Escalação humana necessária
 
 ## Da pontuação à resposta
 
-Exiba pontuações em dashboards para acompanhar tendências. Crie alertas para limites ou condições compostas. Quando uma pontuação declina em uma população, execute uma auditoria para investigar o motivo; quando a causa for uma ação repetível, implante uma política.
+Exiba as pontuações em dashboards para acompanhar tendências. Crie alertas para limites ou condições compostas. Quando uma pontuação cai em uma população, execute uma auditoria para investigar o motivo; quando a causa é uma ação repetível, implante uma política.
 
-<Card title="Construir um avaliador" icon="code-2" href="/pt-br/reference/evaluator-sdk">
-  Implemente avaliações síncronas ou assíncronas com o SDK Python para avaliadores.
+<Card title="Crie um avaliador" icon="code-2" href="/pt-br/reference/evaluator-sdk">
+  Implemente avaliações síncronas ou assíncronas com o SDK de avaliadores em Python.
 </Card>

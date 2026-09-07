@@ -1,12 +1,12 @@
 ---
 title: "Evaluator SDK"
-description: "Xây dựng một dịch vụ đánh giá các phiên làm việc của Failproof AI một cách đồng bộ hoặc không đồng bộ."
+description: "Xây dựng một dịch vụ để đánh giá các phiên làm việc của Failproof AI một cách đồng bộ hoặc không đồng bộ."
 icon: "gauge"
 ---
 
-Một bộ đánh giá nhận một phiên làm việc của agent đã hoàn thành và trả về các tín hiệu chất lượng mà bạn quan tâm: điểm số, giải thích cho mỗi điểm số và tóm tắt tùy chọn. Failproof AI lưu trữ những kết quả này cùng với trace và biểu đồ hóa chúng trên các agent và môi trường.
+Một evaluator nhận một phiên agent đã hoàn thành và trả về các tín hiệu chất lượng mà bạn quan tâm: điểm số, lời giải thích cho từng điểm số và tóm tắt tùy chọn. Failproof AI lưu trữ các kết quả này bên cạnh trace và hiển thị biểu đồ chúng trên các agent và môi trường.
 
-## Thiết lập một bộ đánh giá
+## Thiết lập một evaluator
 
 <Steps>
   <Step title="Cài đặt Evaluator SDK">
@@ -18,7 +18,7 @@ Một bộ đánh giá nhận một phiên làm việc của agent đã hoàn th
   </Step>
 
   <Step title="Xác định những gì cần đánh giá">
-    Tạo `evaluator.py`. Ví dụ này kiểm tra xem phiên có chứa bất kỳ lệnh gọi công cụ nào bị lỗi hay không.
+    Tạo `evaluator.py`. Ví dụ này kiểm tra xem một phiên có chứa bất kỳ lỗi gọi công cụ nào không.
 
     ```python
     import os
@@ -43,8 +43,8 @@ Một bộ đánh giá nhận một phiên làm việc của agent đã hoàn th
     ```
   </Step>
 
-  <Step title="Chạy và kiểm tra cục bộ">
-    Đặt một mã thông báo được chia sẻ, khởi động bộ đánh giá và xác nhận endpoint kiểm tra sức khỏe của nó phản hồi.
+  <Step title="Chạy và kiểm tra nó cục bộ">
+    Đặt một token được chia sẻ, khởi động evaluator và xác nhận rằng điểm cuối health của nó phản hồi.
 
     ```bash
     export EVALUATOR_TOKEN=<shared-token>
@@ -59,27 +59,27 @@ Một bộ đánh giá nhận một phiên làm việc của agent đã hoàn th
   </Step>
 </Steps>
 
-## Kết nối bộ đánh giá với Failproof AI
+## Kết nối evaluator với Failproof AI
 
-1. Triển khai bộ đánh giá tại một URL HTTPS có thể được Failproof AI Cloud truy cập.
-2. Cấu hình `EVALUATOR_ENDPOINT` với URL đó và đặt `EVALUATOR_TOKEN` thành mã thông báo giống như được sử dụng bởi bộ đánh giá. Đối với Cloud được quản lý, hãy liên hệ [support@befailproof.ai](mailto:support@befailproof.ai) để cấu hình kết nối.
-3. Chạy một đánh giá và xác nhận rằng điểm số của nó xuất hiện trong Failproof AI.
+1. Triển khai evaluator tại một URL HTTPS có thể truy cập được bởi Failproof AI Cloud.
+2. Cấu hình `EVALUATOR_ENDPOINT` với URL đó và đặt `EVALUATOR_TOKEN` thành token giống nhau được sử dụng bởi evaluator. Để sử dụng Cloud được quản lý, liên hệ [support@befailproof.ai](mailto:support@befailproof.ai) để cấu hình kết nối.
+3. Chạy một đánh giá và xác nhận rằng các điểm số của nó xuất hiện trong Failproof AI.
 
 <Tabs>
   <Tab title="Dashboard">
-    Mở một phiên đã hoàn thành trong **Observe → Sessions** và chọn **Run evaluation** nếu nó chưa được đánh giá tự động. Xem trạng thái, điểm số, lý do và tóm tắt trong bảng **Evaluation** của phiên.
+    Mở một phiên đã hoàn thành trong **Observe → Sessions** và chọn **Run evaluation** nếu nó chưa được đánh giá tự động. Xem lại trạng thái, điểm số, lý do đưa ra và tóm tắt trong bảng **Evaluation** của phiên.
 
-    Sử dụng **Observe → Evaluations** để so sánh điểm số trên các agent hoặc môi trường. Sử dụng **Observe → Metrics** để xem độ trễ, chi phí, token và các phép đo số khác.
+    Sử dụng **Observe → Evaluations** để so sánh điểm số trên các agent hoặc môi trường. Sử dụng **Observe → Metrics** để đo lường độ trễ, chi phí, token và các phép đo số khác.
 
-    Bắt đầu với một phiên để xác nhận rằng bộ đánh giá đã trả về các khóa điểm số dự kiến và lý do hữu ích cho lần chạy cụ thể đó.
+    Bắt đầu với một phiên để xác nhận rằng evaluator đã trả về các khóa điểm số dự kiến và lý do hữu ích cho lần chạy cụ thể đó.
 
-    ![Chế độ xem chi tiết phiên hiển thị điểm số đánh giá và lý do bên cạnh trace của nó.](/images/dashboard/session-detail.png)
+    ![Chế độ xem chi tiết phiên hiển thị các điểm số đánh giá và lý do bên cạnh trace của nó.](/images/dashboard/session-detail.png)
 
-    Khi kết quả riêng lẻ trông đúng, hãy sử dụng bảng điều khiển đánh giá để so sánh những điểm số đó theo thời gian và trên các agent hoặc môi trường.
+    Khi các kết quả riêng lẻ trông chính xác, sử dụng bảng điều khiển đánh giá để so sánh các điểm số đó theo thời gian và trên các agent hoặc môi trường.
 
-    ![Bảng điều khiển chất lượng biểu đồ điểm số bộ đánh giá theo thời gian.](/images/dashboard/dashboard-quality.png)
+    ![Bảng điều khiển chất lượng hiển thị các điểm số evaluator theo thời gian.](/images/dashboard/dashboard-quality.png)
 
-    Một biểu đồ lành mạnh sẽ sử dụng tên điểm số ổn định; thay đổi khóa sẽ tạo một chuỗi riêng biệt.
+    Biểu đồ lành mạnh sẽ sử dụng tên điểm số ổn định; thay đổi khóa sẽ tạo một chuỗi riêng biệt.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -89,15 +89,15 @@ Một bộ đánh giá nhận một phiên làm việc của agent đã hoàn th
   </Tab>
 </Tabs>
 
-Đối với một instance Cloud tự lưu trữ, đánh giá tự động bị tắt cho đến khi `EVALUATOR_ENDPOINT` được đặt trên quy trình máy chủ. Khởi động lại máy chủ sau khi thay đổi các biến môi trường của bộ đánh giá.
+Đối với một instance Cloud tự lưu trữ, đánh giá tự động bị tắt cho đến khi `EVALUATOR_ENDPOINT` được đặt trên quy trình máy chủ. Khởi động lại máy chủ sau khi thay đổi các biến môi trường evaluator.
 
-Dịch vụ này cung cấp `GET /health`, `GET /config`, `POST /evaluate` và tùy chọn `GET /evaluate/{job_id}`. Trả về `JobPending` để thực hiện công việc không đồng bộ và đăng ký `@app.job_lookup` để Failproof AI có thể thăm dò nó.
+Dịch vụ này hiển thị `GET /health`, `GET /config`, `POST /evaluate` và tùy chọn `GET /evaluate/{job_id}`. Trả về `JobPending` cho công việc không đồng bộ và đăng ký `@app.job_lookup` để Failproof AI có thể thăm dò nó.
 
-Khi một mã thông báo được cấu hình, tất cả các route ngoại trừ health yêu cầu cùng mã thông báo bearer mà Failproof AI gửi như `EVALUATOR_TOKEN`.
+Khi một token được cấu hình, tất cả các tuyến đường ngoại trừ health yêu cầu token bearer giống nhau mà Failproof AI gửi là `EVALUATOR_TOKEN`.
 
 ## Các loại SDK
 
-| Loại | Các trường |
+| Type | Fields |
 | --- | --- |
 | `AgentEvent` | `id`, `ts`, `event_type`, `payload` |
 | `EvalRequest` | `schema_version`, `session_id`, `agent_id`, `environment`, `started_at`, `ended_at`, `events` |
@@ -105,19 +105,19 @@ Khi một mã thông báo được cấu hình, tất cả các route ngoại tr
 | `JobPending` | `job_id`, `next_poll_secs` |
 | `EvaluatorConfig` | `inactivity_timeout_secs`, `default_poll_interval_secs` |
 
-## Các decorator và route
+## Decorators và routes
 
-| Decorator | Route | Bắt buộc |
+| Decorator | Route | Required |
 | --- | --- | --- |
-| `@app.evaluator` | `POST /evaluate` | Có |
+| `@app.evaluator` | `POST /evaluate` | Yes |
 | `@app.job_lookup` | `GET /evaluate/{job_id}` | Khi trả về `JobPending` |
-| `@app.config` | `GET /config` | Không |
+| `@app.config` | `GET /config` | No |
 
-SDK giới hạn phần thân yêu cầu đánh giá ở mức 25 MiB. Các trường yêu cầu không xác định sẽ bị bỏ qua để các dịch vụ vẫn tương thích khi hợp đồng sự kiện phát triển.
+SDK giới hạn các phần thân yêu cầu đánh giá ở 25 MiB. Các trường yêu cầu không xác định sẽ bị bỏ qua để các dịch vụ vẫn tương thích khi hợp đồng sự kiện phát triển.
 
 ## Trả về công việc không đồng bộ
 
-Sử dụng `JobPending` khi đánh giá không thể hoàn thành trong một yêu cầu. ID công việc không rõ ràng đối với Failproof AI và phải vẫn có thể giải quyết được bởi dịch vụ của bạn cho đến khi kết quả được thu thập hoặc timeout của máy chủ hết hạn.
+Sử dụng `JobPending` khi đánh giá không thể hoàn thành trong một yêu cầu. ID công việc là opaque đối với Failproof AI và phải vẫn có thể được giải quyết bởi dịch vụ của bạn cho đến khi kết quả được thu thập hoặc hết thời gian chờ máy chủ.
 
 ```python
 from failproofai.evaluator import EvalRequest, EvalResponse, Evaluator, JobPending
@@ -141,50 +141,50 @@ def lookup(job_id: str):
     )
 ```
 
-Tần suất thăm dò được chọn theo thứ tự này: `JobPending.next_poll_secs`, `EvaluatorConfig.default_poll_interval_secs`, sau đó là `EVALUATOR_POLLING_INTERVAL_SECS` của máy chủ. Các giá trị được cố định giữa 1 giây và 1 giờ. Giới hạn thăm dò theo đồng hồ treo tường mặc định của máy chủ là một giờ.
+Tần suất thăm dò được chọn theo thứ tự này: `JobPending.next_poll_secs`, `EvaluatorConfig.default_poll_interval_secs`, sau đó là `EVALUATOR_POLLING_INTERVAL_SECS` của máy chủ. Các giá trị được giới hạn từ 1 giây đến 1 giờ. Giới hạn thăm dò wall-clock mặc định của máy chủ là một giờ.
 
 ## Các trường yêu cầu và phản hồi
 
-| Trường | Loại | Ghi chú |
+| Field | Type | Notes |
 | --- | --- | --- |
-| `EvalRequest.schema_version` | `str` | Hiện tại là "1". |
-| `session_id`, `agent_id`, `environment` | `str` | Danh tính phiên và môi trường. |
+| `EvalRequest.schema_version` | `str` | Hiện tại là `"1"`. |
+| `session_id`, `agent_id`, `environment` | `str` | Nhận dạng phiên và môi trường. |
 | `started_at` | `datetime` | Dấu thời gian của sự kiện đầu tiên. |
-| `ended_at` | `datetime \| None` | Xuất hiện khi phiên phát ra sự kiện kết thúc. |
-| `events` | `list[AgentEvent]` | Alluận dòng sự kiện đầy đủ được sắp xếp. |
+| `ended_at` | `datetime \| None` | Có mặt khi phiên phát ra sự kiện kết thúc. |
+| `events` | `list[AgentEvent]` | Luồng sự kiện được sắp xếp đầy đủ. |
 | `AgentEvent.id` | `int` | Định danh hàng sự kiện backend. |
 | `AgentEvent.ts` | `datetime` | Dấu thời gian sự kiện. |
-| `AgentEvent.event_type` | `str` | Gia đình sự kiện như `tool_use`. |
+| `AgentEvent.event_type` | `str` | Họ sự kiện như `tool_use`. |
 | `AgentEvent.payload` | `dict[str, Any]` | Tải trọng sự kiện hoàn chỉnh. |
-| `EvalResponse.scores` | `dict[str, float] \| None` | Các chiều số được biểu đồ hóa trong các đánh giá. |
-| `EvalResponse.reasoning` | `dict[str, str] \| None` | Giải thích từng điểm; các khóa nên phản chiếu `scores`. |
+| `EvalResponse.scores` | `dict[str, float] \| None` | Các chiều số được hiển thị trong đánh giá. |
+| `EvalResponse.reasoning` | `dict[str, str] \| None` | Giải thích cho từng điểm; các khóa phải phản ánh `scores`. |
 | `EvalResponse.summary` | `str \| None` | Tường thuật đánh giá tổng thể. |
 
-## Cài đặt của nhà khai thác máy chủ
+## Cài đặt của người vận hành máy chủ
 
 Đánh giá tự động là toàn bộ triển khai và vẫn bị tắt khi `EVALUATOR_ENDPOINT` vắng mặt.
 
-| Biến | Mặc định | Mục đích |
+| Variable | Default | Purpose |
 | --- | --- | --- |
-| `EVALUATOR_ENDPOINT` | không được đặt | URL cơ sở của dịch vụ bộ đánh giá. |
-| `EVALUATOR_TOKEN` | không được đặt | Mã thông báo bearer được chia sẻ với `Evaluator(token=...)`. |
-| `EVALUATOR_WORKERS` | `2` | Công nhân dispatcher đồng thời. |
-| `EVALUATOR_CLAIM_BATCH` | `4` | Phiên được yêu cầu trên mỗi lần vượt qua dispatcher. |
+| `EVALUATOR_ENDPOINT` | unset | URL cơ sở của dịch vụ evaluator. |
+| `EVALUATOR_TOKEN` | unset | Token bearer được chia sẻ với `Evaluator(token=...)`. |
+| `EVALUATOR_WORKERS` | `2` | Công nhân trình phân phối đồng thời. |
+| `EVALUATOR_CLAIM_BATCH` | `4` | Phiên được yêu cầu trên mỗi lần chuyển trình phân phối. |
 | `EVALUATOR_POLLING_INTERVAL_SECS` | `10` | Tần suất thăm dò không đồng bộ dự phòng. |
-| `EVALUATOR_REQUEST_TIMEOUT_MS` | `30000` | Timeout bộ đánh giá trên mỗi yêu cầu. |
-| `EVALUATOR_MAX_ATTEMPTS` | `5` | Nỗ lực gửi trước lỗi cuối cùng. |
+| `EVALUATOR_REQUEST_TIMEOUT_MS` | `30000` | Thời gian chờ evaluator cho mỗi yêu cầu. |
+| `EVALUATOR_MAX_ATTEMPTS` | `5` | Nỗ lực cung cấp trước lỗi terminal. |
 | `EVALUATOR_CONFIG_REFRESH_SECS` | `300` | Tần suất làm mới cho `/config`. |
-| `EVALUATOR_MAX_POLL_DURATION_SECS` | `3600` | Thời gian thăm dò không đồng bộ tối đa theo đồng hồ treo tường. |
+| `EVALUATOR_MAX_POLL_DURATION_SECS` | `3600` | Thời gian thăm dò không đồng bộ wall-clock tối đa. |
 
-Máy chủ cũng có thể hạn chế những tổ chức nào sử dụng bộ đánh giá toàn bộ triển khai. Coi các thay đổi endpoint, token, retry và organization-gate là cấu hình của nhà khai thác và khởi động lại hoặc triển khai máy chủ sau khi thay đổi chúng.
+Máy chủ cũng có thể hạn chế những tổ chức nào sử dụng evaluator toàn cầu triển khai. Xử lý điểm cuối, token, thử lại và thay đổi cổng tổ chức như cấu hình người vận hành và khởi động lại hoặc cuộn máy chủ sau khi thay đổi chúng.
 
-## Bảo mật và vận hành
+## Bảo mật và hoạt động
 
-- Đặt bộ đánh giá đằng sau HTTPS khi lưu lượng truy cập vượt qua ranh giới mạng đáng tin cậy.
-- Cấu hình một mã thông báo bearer không trống và giữ nó giống nhau trên cả hai dịch vụ.
-- Không ghi nhật ký mã thông báo hoặc các lời nhắc nhạy cảm đầy đủ từ tải trọng yêu cầu.
-- Làm cho các trình xử lý đồng bộ là idempotent; lần thử lại có thể lặp lại một yêu cầu.
-- Duy trì trạng thái công việc không đồng bộ bên ngoài bộ nhớ quy trình trong sản xuất.
-- Trả về các khóa điểm số ổn định. Đổi tên khóa sẽ tạo một chuỗi biểu đồ mới thay vì thay đổi chuỗi cũ.
+- Đặt evaluator đằng sau HTTPS khi traffic vượt qua ranh giới mạng đáng tin cậy.
+- Cấu hình token bearer không rỗng và giữ nó giống nhau trên cả hai dịch vụ.
+- Không ghi log token hoặc toàn bộ prompts nhạy cảm từ tải trọng yêu cầu.
+- Làm cho các trình xử lý đồng bộ idempotent; các lần thử lại có thể lặp lại một yêu cầu.
+- Duy trì trạng thái công việc không đồng bộ bên ngoài bộ nhớ quy trình trong production.
+- Trả về các khóa điểm số ổn định. Đổi tên khóa sẽ tạo một chuỗi biểu đồ mới thay vì thay đổi khóa cũ.
 
-SDK phát ra các nhật ký vòng đời có cấu trúc như `eval received`, `eval responded`, `job lookup`, `config returned`, `auth rejected` và ngoại lệ trình xử lý. Nó không cấu hình các trình xử lý ghi nhật ký; hãy sử dụng cấu hình ghi nhật ký của ứng dụng chủ.
+SDK phát hành các log lifecycle có cấu trúc như `eval received`, `eval responded`, `job lookup`, `config returned`, `auth rejected` và ngoại lệ trình xử lý. Nó không cấu hình các trình xử lý logging; sử dụng cấu hình logging của ứng dụng chủ.

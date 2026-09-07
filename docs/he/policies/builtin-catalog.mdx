@@ -1,14 +1,14 @@
 ---
-title: "קטלוג המדיניויות המובנות"
-description: "סקור כל מדיניות Failproof AI מובנית, את הטריגר שלה, המצב המומלץ והפרמטרים הניתנים להגדרה."
+title: "קטלוג מדיניויות מובנה"
+description: "עיין בכל מדיניות Failproof AI מובנה, בטריגר שלה, במצב מומלץ ובפרמטרים הניתנים להגדרה."
 icon: "list-checks"
 ---
 
-החבילה המותקנת היא מקור האמת לזמינות המדיניויות. הרץ את `failproofai policies` אחרי כל שדרוג כי ערכי הקטלוג וההתנהגות עלולים להשתנות עם גרסת החבילה.
+החבילה המותקנת היא מקור האמת לזמינות מדיניויות. הרץ `failproofai policies` לאחר כל שדרוג כי ערכי הקטלוג וההתנהגות עשויים להשתנות עם גרסת החבילה.
 
 ## קו בסיס מומלץ
 
-הבחירה המומלצת של ההתקנה המודרכת מאפשרת כרגע מטהרי סודות, הגנות סביבה, הגנה עצמית, שומרי פקודות קטסטרופליות והגנת ענפים מוגנים:
+הבחירה המומלצת של ההתקנה המודרכת מפעילה כרגע מטהרי סודות, הגנות סביבתיות, הגנה עצמית, שומרי פקודות קטסטרופליות והגנת ענפים מוגנים:
 
 ```text
 sanitize-jwt                 sanitize-api-keys
@@ -20,75 +20,75 @@ block-curl-pipe-sh           block-rm-rf
 block-push-master            block-force-push
 ```
 
-`block-failproofai-commands` **תמיד פעילה**. היא רשומה למעלה לצורך שלמות, אך היא נרשמת בכל הערכה בין אם היא מופיעה בסט המופעל שלך ובין אם לא, ולא ניתן להשבית או להשהות אותה — זוהי הגנה נגד הסוכן שמסיר את האכיפה שהסוכן יכול להסיר אינה הגנה.
+`block-failproofai-commands` **תמיד פועל**. הוא מופיע למעלה למטרות השלמות, אך הוא נרשם בכל הערכה בין אם הוא מופיע בערכה המופעלת שלך או לא, ולא ניתן להשבית אותו או להשהות — הגנה כנגד סוכן המכבה את האכיפה שהסוכן יכול להכבות אינה הגנה.
 
-המומלץ הוא בכוונה צר יותר מ**הכל**. מדיניויות תשתית וזרימת עבודה יכולות להפריע לעבודה תקינה וצריך להיות מופעלות עבור המאגרים והמכונות הזקוקות להן.
+המומלץ הוא בכוונה צר יותר מ**הכל**. מדיניויות תשתית וזרימת עבודה יכולות להפריע לעבודה תקינה ויש להפעילן במאגרים ובמכונות הזקוקות להן.
 
 ## סודות וסביבה
 
 | מדיניות | טריגר | תוצאה |
 | --- | --- | --- |
-| `sanitize-jwt` | `PostToolUse` | הסר JWTs מפלט הכלי לפני שהמודל רואה אותם. |
-| `sanitize-api-keys` | `PostToolUse` | הסר מפתחות נפוצים של OpenAI, Anthropic, GitHub, AWS, Stripe ו-Google. |
-| `sanitize-connection-strings` | `PostToolUse` | הסר מחרוזות חיבור לבסיס נתונים המכילות אישורים. |
+| `sanitize-jwt` | `PostToolUse` | הסר JWTs מפלט כלי לפני שהמודל רואה אותם. |
+| `sanitize-api-keys` | `PostToolUse` | הסר מפתחות OpenAI, Anthropic, GitHub, AWS, Stripe ו-Google נפוצים. |
+| `sanitize-connection-strings` | `PostToolUse` | הסר מחרוזות חיבור מסד נתונים המכילות אישורים. |
 | `sanitize-private-key-content` | `PostToolUse` | הסר גופי מפתח פרטי PEM. |
-| `sanitize-bearer-tokens` | `PostToolUse` | הסר אסימוני הרשאה. |
-| `protect-env-vars` | `PreToolUse` בכלים של shell | חסום פקודות שמזלזלות משתנות סביבה. |
+| `sanitize-bearer-tokens` | `PostToolUse` | הסר אסימוני הרשאה של מנשאים. |
+| `protect-env-vars` | `PreToolUse` בכלי מעטפת | חסום פקודות שמשחקות משתני סביבה. |
 | `block-env-files` | `PreToolUse` | חסום קריאה וכתיבה של קבצי `.env`. |
-| `block-read-outside-cwd` | `PreToolUse` בכלים של read, glob, grep או shell | השאר קריאות בתוך תיקיית העבודה של ההפעלה. |
-| `block-secrets-write` | `PreToolUse` בכלים של write | חסום כתיבה לשמות קבצים של מפתח סודי ואישורים נפוצים. |
+| `block-read-outside-cwd` | `PreToolUse` בקריאה, glob, grep או כלי מעטפת | שמור קריאות בתוך ספריית העבודה של ההפעלה. |
+| `block-secrets-write` | `PreToolUse` בכלי כתיבה | חסום כתיבות לשמות קבצים וסכמות אישור של מפתחות סודיים נפוצות. |
 
 ## פקודות מסוכנות ותשתית
 
 | מדיניות | טריגר | תוצאה |
 | --- | --- | --- |
-| `block-sudo` | `PreToolUse`, `PermissionRequest` | חסום `sudo` אלא אם דפוס allow תואם. |
-| `block-curl-pipe-sh` | `PreToolUse` | חסום סקריפטים מורידים המועברים ישירות לשל. |
+| `block-sudo` | `PreToolUse`, `PermissionRequest` | חסום `sudo` אלא אם דפוס הרשאה תואם. |
+| `block-curl-pipe-sh` | `PreToolUse` | חסום סקריפטים שהורדו בצינור ישירות למעטפת. |
 | `block-rm-rf` | `PreToolUse` | חסום דפוסי מחיקה רקורסיבית קטסטרופליים. |
-| `block-failproofai-commands` | `PreToolUse`, `PermissionRequest` | **תמיד פעילה, לא ניתן להשבית.** חסום כל הפעלה של Failproof AI CLI, השהיית עצמית וביטול התקנת מנהל חבילות. |
+| `block-failproofai-commands` | `PreToolUse`, `PermissionRequest` | **תמיד פועל, לא ניתן להשבית.** חסום כל הפעלה של CLI של Failproof AI, השהייה עצמית והסרת מנהל חבילות. |
 | `block-kubectl` | `PreToolUse` | שער פקודות Kubernetes. |
 | `block-terraform` | `PreToolUse` | שער פקודות Terraform ו-OpenTofu. |
 | `block-aws-cli` | `PreToolUse` | שער פקודות AWS CLI. |
 | `block-gcloud` | `PreToolUse` | שער פקודות Google Cloud CLI. |
 | `block-az-cli` | `PreToolUse` | שער פקודות Azure CLI. |
 | `block-helm` | `PreToolUse` | שער פקודות Helm. |
-| `block-gh-pipeline` | `PreToolUse` | שער פעולות GitHub CLI המשנות של זרימת עבודה, הפעלה, מיזוג, שחרור, מטמון וסודות. |
+| `block-gh-pipeline` | `PreToolUse` | שער פעולות זיהום GitHub CLI של זרימת עבודה, הרצה, מיזוג, שחרור, cache וסוד. |
 
-## בטיחות Git ובסיס נתונים
-
-| מדיניות | טריגר | תוצאה |
-| --- | --- | --- |
-| `block-push-master` | `PreToolUse` | חסום דחיפות ישירות לענפים מוגנים שהוגדרו. |
-| `block-force-push` | `PreToolUse` | חסום כפיית דחיפות; `--force-with-lease` נשאר מותר בהטמעה הנוכחית. |
-| `block-work-on-main` | `PreToolUse` | חסום commits וmergים בענפים מוגנים. |
-| `warn-git-amend` | `PreToolUse` | הזהר לפני שכתוב מחדש commit עם `--amend`. |
-| `warn-git-stash-drop` | `PreToolUse` | הזהר לפני הטלה קבועה או ניקוי של stashes. |
-| `warn-all-files-staged` | `PreToolUse` | הזהר על `git add -A`, `git add .` או `git add --all` רחבים. |
-| `warn-destructive-sql` | `PreToolUse` | הזהר על `DROP`, `TRUNCATE` ו-`DELETE` ללא `WHERE` דרך לקוחות בסיס נתונים מוכרים. |
-| `warn-schema-alteration` | `PreToolUse` | הזהר על פעולות `ALTER TABLE` של עמודות ושינוי שמות מוכרים. |
-
-## חבילות, התנהגות מערכת וحلقות סוכן
+## בטיחות Git ומסד נתונים
 
 | מדיניות | טריגר | תוצאה |
 | --- | --- | --- |
-| `warn-package-publish` | `PreToolUse` | הזהר לפני פרסום למאגרי חבילות. |
-| `warn-global-package-install` | `PreToolUse` | הזהר לפני התקנה גלובלית של חבילות. |
+| `block-push-master` | `PreToolUse` | חסום דחיפות ישירות לענפים מוגנים מוגדרים. |
+| `block-force-push` | `PreToolUse` | חסום דחיפות כוח; `--force-with-lease` נשאר מותר ביישום הנוכחי. |
+| `block-work-on-main` | `PreToolUse` | חסום commits ומיזוגים בענפים מוגנים. |
+| `warn-git-amend` | `PreToolUse` | הזהר לפני כתיבה מחדש של commit עם `--amend`. |
+| `warn-git-stash-drop` | `PreToolUse` | הזהר לפני השלכה קבועה או ניקוי stashes. |
+| `warn-all-files-staged` | `PreToolUse` | הזהר בברור `git add -A`, `git add .` או `git add --all`. |
+| `warn-destructive-sql` | `PreToolUse` | הזהר בנוגע ל-`DROP`, `TRUNCATE` ו-`DELETE` ללא `WHERE` דרך לקוחות מסד נתונים מוכרים. |
+| `warn-schema-alteration` | `PreToolUse` | הזהר בנוגע ל-`ALTER TABLE` הכרה ופעולות שינוי שם. |
+
+## חבילות, התנהגות מערכת וולולים של סוכנים
+
+| מדיניות | טריגר | תוצאה |
+| --- | --- | --- |
+| `warn-package-publish` | `PreToolUse` | הזהר לפני פרסום לרושמי חבילות. |
+| `warn-global-package-install` | `PreToolUse` | הזהר לפני התקנת חבילה גלובלית. |
 | `prefer-package-manager` | `PreToolUse` | הנחה את הסוכן להשתמש במנהל חבילות מותר. |
-| `warn-large-file-write` | `PreToolUse` בכלים של write | הזהר מעל סף גודל קובץ שהוגדר. |
-| `warn-background-process` | `PreToolUse` | הזהר על דפוסי תהליכים רקע מנותקים או בעלי חיים ארוכים. |
-| `warn-repeated-tool-calls` | `PreToolUse` | הזהר אחרי שלוש או יותר קריאות כלי זהות. |
+| `warn-large-file-write` | `PreToolUse` בכלי כתיבה | הזהר מעל סף גודל הקובץ המוגדר. |
+| `warn-background-process` | `PreToolUse` | הזהר בדפוסי תהליכים רקע מופרדים או ארוכי חיים. |
+| `warn-repeated-tool-calls` | `PreToolUse` | הזהר לאחר שלוש או יותר קריאות כלי זהות. |
 
-## זרימת עבודה סוף משימה
+## זרימת עבודה של סיום משימה
 
-מדיניויות אלו דורשות הרתעה הפולטת אירוע `Stop` תואם.
+מדיניויות אלה דורשות כרוכה הפולטת אירוע `Stop` תואם.
 
 | מדיניות | תוצאה |
 | --- | --- |
-| `require-commit-before-stop` | דחה השלמה בזמן שעבודה מעקב נשארת לא committed. |
-| `require-push-before-stop` | דחה השלמה בזמן שcommits נשאר ברמה מקומית בלבד. |
-| `require-pr-before-stop` | דרוש pull request לענף הנוכחי. |
-| `require-no-conflicts-before-stop` | דרוש merge נקי מול ענף הבסיס שהוגדר. |
-| `require-ci-green-before-stop` | דרוש בדיקות CI של current-HEAD להשלים בהצלחה. |
+| `require-commit-before-stop` | סרב השלמה בעודם עבודה עקובה לא מחוייבת. |
+| `require-push-before-stop` | סרב השלמה בעוד commits נשארות מקומיות בלבד. |
+| `require-pr-before-stop` | דרוש בקשת משיכה לענף הנוכחי. |
+| `require-no-conflicts-before-stop` | דרוש מיזוג נקי כנגד ענף בסיס מוגדר. |
+| `require-ci-green-before-stop` | דרוש בדיקות CI של current-HEAD להשלמה בהצלחה. |
 
 ## ייחוס פרמטרים
 
@@ -125,5 +125,5 @@ block-push-master            block-force-push
 ```
 
 <Warning>
-  דפוס allow מרחיב את מה שסוכן עשוי לעשות. בדוק את הטוקניזציה המדויקת וגרסאות הפקודה בהרתעה היעד לפני פריסה בכל הצי.
+  דפוס הרשאה מרחיב את מה שסוכן עשוי לעשות. בדוק את הטוקניזציה המדויקת וגרסאות פקודות בכרוכה היעד לפני פריסה שלה על פני צי.
 </Warning>

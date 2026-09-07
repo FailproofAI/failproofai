@@ -1,57 +1,57 @@
 ---
-title: "Policy paketleri"
-description: "GitHub sürümü olarak yayınlanan bir politika setini kurun ve uygulamayı yönetin."
+title: "İlke paketleri"
+description: "GitHub sürümü olarak yayınlanan bir ilke setini yükleyin ve uyguladığı şeyleri yönetin."
 icon: "package"
 ---
 
-Paket, GitHub sürümü olarak yayınlanan bir politika setidir. Tek bir komut ile kurulur, sürümün kendi sağlama toplamları çalıştırılmadan önce doğrulanır ve paket makininizin altında değişemeyecek şekilde özet kaydedilir.
+Bir paket, GitHub sürümü olarak yayınlanan bir ilke setidir. Tek bir komut bunu yükler, sürümün kendi sağlama toplamları çalıştırılmadan önce doğrulanır ve paket makineniz altında değişemeyecek şekilde özeti kaydedilir.
 
-## Failproof AI politikalarını kurun
+## Failproof AI ilkelerini yükleyin
 
 ```bash
 failproofai pack add core
 ```
 
-Bu, pakete dahil edilen kopya'dan yayınladığımız seti kurar — bu nedenle ağ gerektirmez ve proxy arkasında başarısız olamaz. Bir kısmını alın:
+Bu, pakette bulunan kopya tarafından yayınlanan seti yükler — bu nedenle ağ gerektirmez ve bir proxy arkasında başarısız olamaz. Bir kısmını alın:
 
 ```bash
-failproofai pack add core --policy block-rm-rf         # bir, veya virgülle ayrılmış birkaç tane
-failproofai pack add core --category dangerous-commands # bir bütün kategori
+failproofai pack add core --policy block-rm-rf         # bir tane veya virgülle ayrılmış birkaç tane
+failproofai pack add core --category dangerous-commands # tüm bir kategori
 failproofai pack add core --all                         # içindeki her şey
 ```
 
 `failproofai pack list` paketin sunduğu her kategoriyi adlandırır.
 
-## Kurulmadan önce bir paketin içini görün
+## Bir paketi yüklemeden önce neler içerdiğini görmek
 
 ```bash
 failproofai pack list acme/support-agent
 ```
 
-Paketin taşıdığı her politikayı, kategoriye göre gruplandırarak listeler ve yazarının varsayılan olarak hangileri açtığını ve hangilerin isteğe bağlı olduğunu işaretler. **Yalnızca manifesto'yu okur** — giriş yapıtı hiçbir zaman indirilmez ve hiçbir zaman içe aktarılmaz, bu nedenle bir yabancının paketine bakmak bir yabancının kodunu çalıştıramaz. Manifest hâlâ sürümün kendi `SHA256SUMS` karşısında kontrol edilir, bu nedenle okuduğunuz şey kurulacak olan şeydir.
+Paketin taşıdığı her ilkeyi kategoriye göre gruplandırılmış şekilde listeler, yazarının varsayılan olarak hangileri açtığını ve hangilerinin isteğe bağlı olduğunu işaretler. **Yalnızca manifesto** okur — giriş yapısı asla indirilmez ve asla aktarılmaz, bu nedenle bir yabancının paketine bakmak yabancı kodun çalışmasına neden olamaz. Manifest yine de sürümün kendi `SHA256SUMS` öğelerine karşı kontrol edilir, bu nedenle okuduğunuz şey yüklenecek olan şeydir.
 
-Hiçbir kaynak olmadan `failproofai pack list` zaten burada kurulan paketleri listeler.
+`failproofai pack list` kaynak olmadan burada zaten yüklü olan paketleri listeler.
 
-## Başka birinin paketini kurun
+## Başka birinin paketini yükleyin
 
 ```bash
 failproofai pack add acme/support-agent
 ```
 
-Bunların herhangi biri çalışır — elinizde olanı yapıştırın:
+Bu seçeneklerden herhangi biri çalışır — hangisine sahipseniz yapıştırın:
 
 | Kaynak | Sonuç |
 | --- | --- |
-| `acme/support-agent` | En yeni sürüm, **çözdüğü tam etikete sabitlenir** |
+| `acme/support-agent` | En yeni sürüm, **çözdüğü tam etikete sabitlenmiş** |
 | `acme/support-agent@v2.1.0` | O sürüm |
 | `github:acme/support-agent@v2.1.0` | Aynısı, açıkça yazılmış |
 | `https://github.com/acme/support-agent/releases/tag/v2.1.0` | Aynısı, tarayıcıdan kopyalanmış |
 
-Etiket belirtmemek en yeni sürümü kurar **ve sabitleri**, ardından hangi etiketi seçtiğini size söyler. Kaydedilen her şey her zaman tam olarak bir sürümü adlandırır, bu nedenle yeniden kurulum sapamaz.
+Etiketi adlandırmaması en yeni sürümü yükler **ve sabitler**, sonra hangi etiketi seçtiğini söyler. Kaydedilen her şey tam olarak bir sürümü adlandırır, bu nedenle yeniden yükleme kayabilmez.
 
-## Bir paketin bir kısmını alın
+## Bir paketin bir parçasını alın
 
-Varsayılan olarak paketin **kendi** varsayılanlarını alırsınız — yazarının gözetimsiz açmaya emniyetli olarak işaretlediği politikalar — içerdiği her şey değil.
+Varsayılan olarak paketin **kendi** varsayılanlarını alırsınız — yazarının yanında çalıştırmak için güvenli olarak işaretlediği ilkeler — içerdiği her şeyi değil.
 
 ```bash
 failproofai pack add acme/support-agent --category billing,git
@@ -59,52 +59,52 @@ failproofai pack add acme/support-agent --policy block-refunds
 failproofai pack add acme/support-agent --all
 ```
 
-`--category` ve `--policy` birleşim olarak birleşir (`--only` , `--policy` için eş anlamlı olarak kabul edilir). Daha yeni bir sürümde yeniden eklemek, seçtiğiniz şeyi tutar ve geri kalanı yeniden açmaz.
+`--category` ve `--policy` birleşim olarak birleşir (`--only` `--policy` için eş anlamlı olarak kabul edilir). Daha yeni bir sürümde yeniden eklemek, kalan her şeyi geri açmak yerine seçtiğiniz şeyi tutar.
 
 ## Açık olanları yönetin
 
 ```bash
 failproofai policies                    # bir listede her kaynak, paketler dahil
 failproofai pack list                   # yalnızca paketler, kategoriye göre gruplandırılmış
-failproofai policies --uninstall block-refunds        # bir paket politikasını kapat
-failproofai policies --install block-refunds          # ve tekrar aç
+failproofai policies --uninstall block-refunds        # bir paket ilkesini kapatın
+failproofai policies --install block-refunds          # ve geri açın
 failproofai pack remove acme/support-agent
 ```
 
-Düz bir ad, **bir tane varsa o ad için yerleşik** anlamına gelir. Gerektiğinde paketin kopyasını açıkça adlandırın:
+Açık bir ad, o adla bir **yerleşik** anlamına gelir. İhtiyacınız olduğunda bir paketin kopyasını açıkça adlandırın:
 
 ```bash
 failproofai policies --uninstall acme/support-agent:block-refunds
 ```
 
 <Note>
-Bir paket, adı aynı zamanda **etkinleştirilmiş yerleşik** olan bir politika gönderirse, yerleşik çalışır ve paketin kopyası atlanır — aynı güvenlik başka türlü iki kez değerlendirilirdi. Paketin kopyasını kullanmak için yerleşikti kapatın.
+Bir paket, adı aynı zamanda etkinleştirilmiş bir **yerleşik** olan bir ilke gönderirse, yerleşik çalışır ve paketin kopyası atlanır — aynı koruma aksi takdirde iki kez değerlendirilirdi. Yerine paketin kopyasını kullanmak için yerleşik olanı kapatın.
 </Note>
 
-## Failproof AI politikaları nereden geliyor
+## Failproof AI ilkeleri nereden geliyor
 
-`core` npm paketine satılan kopya'yı okur. Aynı set GitHub sürümü olarak yayınlanır, belirli bir sürüm istiyorsanız kurduğunuz şeydir:
+`core` npm paketinde satılan kopyayı okur. Aynı set GitHub sürümü olarak yayınlanır, belirli bir sürüm istiyorsanız bunu yüklersiniz:
 
 ```bash
 failproofai pack add core                    # bu paketten, ağ yok
 failproofai pack add FailproofAI/policies    # aynı set, GitHub sürümünden
 ```
 
-## Bütünlük neler yapar ve yapmaz
+## Bütünlüğün ne satın aldığı ve satın almadığı
 
-`SHA256SUMS` yapıtla aynı sürümde gönderilir, bu nedenle **imza değildir** ve onu kim yayınladığı hakkında hiçbir şey kanıtlamaz. Kanıtladığı şey, baytların o sürümün yayınladığı olanlar olduğudur — ve özet, paketi eklediğinizde kaydedilir ve her içe aktarımdan önce yeniden doğrulanır, makininizin altında bir paket değişemez. Etiketi yeniden etiketleyen veya bir varlığı değiştiren bir depo sessizce başka bir şey çalıştırmak yerine yüklenmesini durdurur.
+`SHA256SUMS` yapı ile aynı sürümde gönderilir, bu nedenle **imza değildir** ve yayın yapanın kim olduğu konusunda hiçbir şey kanıtlamaz. Kanıtladığı şey, baytların o sürümün yayınladığı olanlar olmasıdır — ve paketin eklendiğinde özet kaydedildiğinden ve her aktarımdan önce yeniden doğrulanması nedeniyle, bir paket makineniz altında değişemez. Bir depoyu yeniden etiketleyen veya bir varlığı değiştiren, sessizce başka bir şey çalıştırmak yerine yüklenmez.
 
-Kurulum zamanında paket de **bir kez içe aktarılır** ve kendi manifestosu karşısında kontrol edilir. Yapıtı ayrıştırılmayan veya bildirdiğinden başka bir şeyi kaydeden bir paket, herhangi bir şey etkinleştirilmeden önce reddedilir — temiz bir şekilde kurulu ve sonraki araç çağrısında başarısız olmak yerine.
+Yükleme sırasında paket da **bir kez aktarılır** ve kendi manifestosuna karşı kontrol edilir. Yapısı ayrıştırılmayan veya bildirdiklerinden başka bir şey kaydeden bir paket, herhangi bir şey etkinleştirilmeden önce reddedilir — temiz bir şekilde yüklemek ve bir sonraki araç çağrısında başarısız olmak yerine.
 
 ## Bir paket ne zaman yüklenmeyecek
 
-Bu makineye uygulanması söylenmiş ve çalıştırılamayan bir paket, sessizce izin vermek yerine eksik politikalarının kapsadığı olayları **reddeder**. Bkz. [Failure behavior](/tr/policies/failure-behavior). `failproofai pack list` o durumda herhangi bir paketi adlandırır ve sıfır dışı çıkar.
+Bu makinenin uygulaması gerektiği ve çalıştıramadığı bir paket **eksik ilkelerinin kapsadığı olayları reddeder**, bunları sessizce izin vermek yerine. [Hata davranışı](/tr/policies/failure-behavior) bölümünü görün. `failproofai pack list` o durumdaki herhangi bir paketi adlandırır ve sıfırdan farklı bir değerle çıkılır.
 
 ## Çevrimdışı ve aynalar
 
 | Değişken | Etki |
 | --- | --- |
-| `FAILPROOFAI_NO_DOWNLOAD=1` | Getirmeyi reddeder; zaten kurulan paketler uygulamaya devam eder |
-| `FAILPROOFAI_PACK_BASE_URL` | Paket getirmeyi `github.com` yerine bir aynanın işaret etmesine yönlendirir |
+| `FAILPROOFAI_NO_DOWNLOAD=1` | Getirmeyi reddeder; zaten yüklü paketler uygulamaya devam eder |
+| `FAILPROOFAI_PACK_BASE_URL` | Paket getirme işlemini `github.com` yerine bir aynaya yönlendirir |
 
-Kendi paketinizi yayınlamak: [Publish a pack](/tr/policies/publish-a-pack) bölümüne bakın.
+Kendi paketin yayınlanması: [Bir paket yayınla](/tr/policies/publish-a-pack) bölümünü görün.

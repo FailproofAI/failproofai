@@ -4,18 +4,18 @@ description: "Ispeziona il consumo dell'organizzazione e la finestra di fatturaz
 icon: "chart-no-axes-combined"
 ---
 
-Utilizzo mostra il consumo per l'organizzazione corrente e le relative finestre di fatturazione. Usalo per comprendere come l'implementazione in produzione, il volume di trascrizioni, le valutazioni e la cadenza di audit influiscono sul tuo piano.
+Utilizzo mostra il consumo dell'organizzazione corrente e delle sue finestre di fatturazione. Usalo per capire come il rollout in produzione, il volume dei trascritti, le valutazioni e la cadenza di audit influenzano il tuo piano.
 
-## Rivedi utilizzo
+## Rivedi l'utilizzo
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vai a **Administration → Usage**.
+    1. Vai a **Amministrazione → Utilizzo**.
     2. Conferma l'organizzazione e la finestra di misurazione.
-    3. Rivedi acquisizione, sessioni, valutazioni, metriche, audit, risultati, avvisi, utenti e chiavi.
-    4. Confronta il lavoro di audit iniziato e completato quando l'utilizzo di audit sembra inaspettato.
+    3. Rivedi ingest, sessioni, valutazioni, metriche, audit, risultati, avvisi, utenti e chiavi.
+    4. Confronta il lavoro di audit avviato e completato quando l'utilizzo dell'audit sembra inaspettato.
 
-    ![La pagina Usage che mostra la finestra di misurazione, gli eventi acquisiti, le pipeline di valutazione e audit, le risorse dell'area di lavoro, i membri e le chiavi API.](/images/dashboard/usage-overview.png)
+    ![La pagina Utilizzo che mostra la finestra di misurazione, gli eventi catturati, le pipeline di valutazione e audit, le risorse dell'area di lavoro, i membri e le chiavi API.](/images/dashboard/usage-overview.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -26,12 +26,12 @@ Utilizzo mostra il consumo per l'organizzazione corrente e le relative finestre 
   </Tab>
 </Tabs>
 
-## Indaga una modifica
+## Investigare un cambio
 
 1. Conferma l'organizzazione e la finestra attive.
 2. Confronta l'aumento con il volume di sessioni per ambiente.
-3. Verifica se una nuova integrazione ha iniziato a inviare trascrizioni.
-4. Rivedi le modifiche alla cadenza di valutatore e audit.
-5. Confronta rispetto ai limiti del piano tariffario corrente.
+3. Verifica se una nuova integrazione ha iniziato a inviare trascritti.
+4. Rivedi i cambiamenti nella cadenza di valutatore e audit.
+5. Confronta con i limiti del tuo piano tariffario attuale.
 
-La CLI restituisce lo stesso riepilogo per gli script.
+La CLI restituisce il riepilogo per gli script.

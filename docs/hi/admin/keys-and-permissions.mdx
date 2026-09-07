@@ -1,29 +1,30 @@
 ---
+---
 title: "कुंजियाँ और अनुमतियाँ"
-description: "मशीनों, ऑटोमेशन और ऑपरेटरों के लिए स्कोप्ड API कुंजियाँ बनाएँ।"
+description: "मशीनों, स्वचालन और ऑपरेटरों के लिए स्कोप की गई API कुंजियाँ बनाएँ।"
 icon: "key-round"
 ---
 
-API कुंजियाँ एक संगठन से संबंधित होती हैं और स्पष्ट अनुमतियाँ रखती हैं। एजेंट इनजेशन, नीति वितरण, मूल्यांकनकर्ता, CI ऑटोमेशन और प्रशासनिक स्क्रिप्ट के लिए अलग-अलग कुंजियों का उपयोग करें।
+API कुंजियाँ एक संगठन से संबंधित होती हैं और स्पष्ट अनुमतियाँ रखती हैं। agent ingestion, policy delivery, evaluators, CI automation और प्रशासनिक स्क्रिप्ट के लिए अलग-अलग कुंजियों का उपयोग करें।
 
 ## कुंजी बनाएँ और घुमाएँ
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Administration → Keys** पर जाएँ, **new key** चुनें, और वर्कलोड नाम दर्ज करें।
-    2. एक अनुमति समूह चुनें और केवल तभी व्यक्तिगत अनुमतियों को समायोजित करें जब प्रीसेट पर्याप्त न हो।
-    3. कुंजी बनाएँ और इसके एकबारी रहस्य को तुरंत कॉपी करें।
-    4. बाद में कुंजी खोलें ताकि अनुदान अपडेट कर सकें, इसे अक्षम कर सकें, या रहस्य पुनः उत्पन्न कर सकें।
+    1. **Administration → Keys** पर जाएँ, **new key** चुनें, और एक workload का नाम दर्ज करें।
+    2. एक permission set चुनें और व्यक्तिगत अनुमतियों को केवल तब समायोजित करें जब preset अपर्याप्त हो।
+    3. कुंजी बनाएँ और तुरंत इसके one-time secret को कॉपी करें।
+    4. बाद में कुंजी खोलें ताकि grants को अपडेट करें, इसे अक्षम करें, या secret को पुनः उत्पन्न करें।
 
-    निर्माण ड्रॉअर वह जगह है जहाँ आप वर्कलोड द्वारा आवश्यक सबसे संकीर्ण अनुदान चुनते हैं।
+    Creation drawer वह जगह है जहाँ आप workload द्वारा आवश्यक सबसे संकीर्ण grants चुनते हैं।
 
-    ![अनुमति प्रीसेट और व्यक्तिगत अनुदान के साथ नई API कुंजी ड्रॉअर।](/images/dashboard/key-create.png)
+    ![नई API कुंजी drawer जिसमें permission presets और व्यक्तिगत grants हैं।](/images/dashboard/key-create.png)
 
-    निर्माण के बाद, Keys पृष्ठ स्थायी मेटाडेटा और प्रबंधन कार्य दिखाता है। एकबारी रहस्य फिर से नहीं दिखाया जाता है।
+    निर्माण के बाद, Keys page persistent metadata और management actions दिखाता है। one-time secret फिर से दिखाई नहीं देता।
 
-    ![API Keys पृष्ठ कुंजी अनुमतियों, निर्माण समय, और पुनः उत्पन्न और अक्षम करने की कार्रवाइयों को दिखाता है।](/images/dashboard/api-keys.png)
+    ![API Keys page जिसमें key permissions, creation time, और regenerate और disable actions हैं।](/images/dashboard/api-keys.png)
 
-    इस सूची का उपयोग करके अनुदानों की नियमित रूप से समीक्षा करें और ऐसी कुंजियों को अक्षम करें जो सक्रिय वर्कलोड से अब मैप नहीं करती हैं।
+    इस सूची का उपयोग करके regularly grants की समीक्षा करें और उन कुंजियों को अक्षम करें जो अब किसी सक्रिय workload से संबंधित नहीं हैं।
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -36,23 +37,23 @@ API कुंजियाँ एक संगठन से संबंधित
     fp keys disable production-agents
     ```
 
-    क्रिएट/रीजेनरेट आउटपुट को सुरक्षित रूप से रीडायरेक्ट या कैप्चर करें; रहस्य एक बार लौटाया जाता है।
+    Create/regenerate output को securely redirect या capture करें; secret एक बार लौटाया जाता है।
   </Tab>
 </Tabs>
 
-एक जुड़ी हुई Failproof AI मशीन के लिए आवश्यक दो अनुमतियाँ स्वतंत्र हैं:
+एक जुड़ी Failproof AI मशीन के लिए आवश्यक दो अनुमतियाँ स्वतंत्र हैं:
 
-- `events:add` इवेंट और सेशन डेटा भेजता है।
-- `policies:pull` असाइन की गई नीति तैनाती को पुनः प्राप्त करता है।
+- `events:add` events और session data भेजता है।
+- `policies:pull` assigned policy deployments को पुनः प्राप्त करता है।
 
-कुंजी के रहस्य बनाए जाने या पुनः उत्पन्न होने पर दिखाए जाते हैं। उन्हें एक रहस्य प्रबंधक में संग्रहीत करें और उन्हें ऑपरेटर के इंटरैक्टिव क्रेडेंशियल्स को पुनः उपयोग किए बिना घुमाएँ।
+Key secrets तब दिखाए जाते हैं जब create या regenerate किए जाते हैं। उन्हें एक secret manager में store करें और उन्हें एक operator की interactive credentials को पुनः उपयोग किए बिना rotate करें।
 
-## अनुमति सूची
+## अनुमति कैटलॉग
 
-| क्षेत्र | अनुमतियाँ |
+| Area | Permissions |
 | --- | --- |
 | Events | `events:add`, `events:read` |
-| Keys | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` केवल मानव-सेशन है |
+| Keys | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` केवल human-session है |
 | Users | `users:create`, `users:read`, `users:update`, `users:delete` |
 | Evaluations | `evaluations:read`, `evaluations:trigger` |
 | Dashboards | `dashboards:read`, `dashboards:write`, `dashboards:delete` |
@@ -65,10 +66,10 @@ API कुंजियाँ एक संगठन से संबंधित
 | Policies | `policies:read`, `policies:write`, `policies:pull` |
 | Usage | `usage:read` |
 
-`orgs:admin` इंस्टेंस ऑपरेटर के लिए आरक्षित है और संगठन कुंजी या सामान्य सदस्य को प्रदान नहीं किया जा सकता है। सेवानिवृत्त `incidents:*` और `alerts:ack` टोकन संगतता के लिए स्वीकार किए जाते हैं और वर्तमान `issues:*` अनुमतियों को सामान्य करते हैं।
+`orgs:admin` instance operator के लिए आरक्षित है और एक organization key या सामान्य सदस्य को दिया नहीं जा सकता। सेवानिवृत्त `incidents:*` और `alerts:ack` tokens compatibility के लिए स्वीकार किए जाते हैं और वर्तमान `issues:*` अनुमतियों में normalize होते हैं।
 
-निर्मित अनुमति समूह `read-only`, `standard`, और `admin` हैं। `standard` पढ़ने की अनुमतियों में मूल्यांकन ट्रिगरिंग, क्वेरी निष्पादन, समस्या प्रतिक्रिया, और सहायक उपयोग जोड़ता है। कुंजी निर्माण मानव-केवल अनुदानों को हटाता है भले ही अनुमति समूह उन्हें सम्मिलित करता हो।
+Builtin permission sets `read-only`, `standard`, और `admin` हैं। `standard` read permissions में evaluation triggering, query execution, issue response, और assistant use जोड़ता है। Key creation human-only grants को हटाता है भले ही एक permission set में उनके हों।
 
 <Warning>
-  इंस्टेंस-स्कोप्ड कुंजियाँ `X-AgentEye-Org` हेडर के साथ एक संगठन चुन सकती हैं। बहु-संगठन तैनाती पर इसे स्पष्ट रूप से सेट करें; चूक डिफ़ॉल्ट संगठन चुन सकती है।
+  Instance-scoped keys `X-AgentEye-Org` header के साथ एक organization चुन सकते हैं। multi-organization deployments पर इसे स्पष्ट रूप से सेट करें; चूक से default organization का चयन हो सकता है।
 </Warning>

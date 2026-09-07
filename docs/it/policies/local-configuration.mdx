@@ -1,20 +1,21 @@
 ---
+---
 title: "Configurazione locale"
 description: "Controlla l'ambito delle policy, i parametri, i file personalizzati e le impostazioni di Failproof AI a livello di macchina."
 icon: "file-cog"
 ---
 
-Failproof AI separa la selezione delle policy dalle impostazioni di macchina e daemon. Questo mantiene le scelte di policy del repository revisabili mentre le credenziali e lo stato del daemon rimangono al di fuori del repository.
+Failproof AI separa la selezione delle policy dalle impostazioni della macchina e del daemon. Questo mantiene le scelte delle policy del repository revisionabili mentre le credenziali e lo stato del daemon rimangono al di fuori del repository.
 
-## Scegli l'ambito di una policy
+## Scegli un ambito di policy
 
 <Tabs>
   <Tab title="Dashboard">
-    Esegui `failproofai` senza argomenti per aprire il dashboard locale delle policy. Scegli l'ambito utente, progetto o locale prima di abilitare una policy in modo che il cambiamento venga scritto nel file di configurazione desiderato.
+    Esegui `failproofai` senza argomenti per aprire il dashboard locale delle policy. Scegli l'ambito utente, progetto o locale prima di abilitare una policy in modo che la modifica venga scritta nel file di configurazione desiderato.
 
-    - **Utente** si applica a tutti i progetti su questa macchina.
-    - **Progetto** appartiene al repository e può essere sottoposto a commit.
-    - **Locale** sovrascrive un progetto per un utente e dovrebbe rimanere ignorato da git.
+    - **User** si applica in tutti i progetti su questa macchina.
+    - **Project** appartiene al repository e può essere committed.
+    - **Local** sostituisce un progetto per un utente e dovrebbe rimanere gitignored.
 
   </Tab>
   <Tab title="CLI">
@@ -25,27 +26,27 @@ Failproof AI separa la selezione delle policy dalle impostazioni di macchina e d
     failproofai policies
     ```
 
-    Non tutti gli harness supportano l'ambito locale. La CLI rifiuta un ambito che l'harness selezionato non può rappresentare.
+    Non tutti i harness supportano l'ambito locale. La CLI rifiuta un ambito che l'harness selezionato non può rappresentare.
   </Tab>
 </Tabs>
 
 | Ambito | File di configurazione della policy |
 | --- | --- |
-| Progetto | `<project>/.failproofai/policies-config.json` |
-| Locale | `<project>/.failproofai/policies-config.local.json` |
-| Utente | `~/.failproofai/policies-config.json` |
+| Project | `<project>/.failproofai/policies-config.json` |
+| Local | `<project>/.failproofai/policies-config.local.json` |
+| User | `~/.failproofai/policies-config.json` |
 
-Le policy abilitate vengono unite come un'unione. I parametri della policy utilizzano il primo ambito che definisce i parametri per quella policy, nell'ordine progetto → locale → utente. I percorsi di policy personalizzate espliciti utilizzano il primo ambito che li definisce.
+Le policy abilitate vengono unite come un'unione. I parametri della policy utilizzano il primo ambito che definisce i parametri per quella policy, nell'ordine project → local → user. I percorsi delle policy personalizzate espliciti utilizzano il primo ambito che li definisce.
 
 ## Configura i parametri della policy
 
 <Tabs>
   <Tab title="Dashboard">
-    Apri la policy nel dashboard locale, modifica i parametri supportati e salva nell'ambito selezionato. Esegui un'azione dell'agent corrispondente e una non corrispondente, quindi ispeziona la decisione in **Osserva → policy**.
+    Apri la policy nel dashboard locale, modifica i parametri supportati e salva nell'ambito selezionato. Esegui un'azione dell'agent corrispondente e una non corrispondente, quindi ispeziona la decisione in **Observe → policy**.
 
   </Tab>
   <Tab title="CLI">
-    Modifica il file `policies-config.json` dell'ambito selezionato, quindi esegui `failproofai policies` per evidenziare nomi di policy o chiavi di parametri sconosciuti.
+    Modifica il `policies-config.json` dell'ambito selezionato, quindi esegui `failproofai policies` per evidenziare i nomi delle policy o le chiavi dei parametri sconosciuti.
 
     ```json
     {
@@ -66,19 +67,19 @@ Le policy abilitate vengono unite come un'unione. I parametri della policy utili
 
 ## Comprendi i file della macchina
 
-`~/.failproofai` contiene file separati per limiti di fiducia distinti:
+`~/.failproofai` contiene file separati per confini di fiducia separati:
 
 | Percorso | Scopo |
 | --- | --- |
-| `config.json` | Impostazioni daemon, audit e telemetria non segrete |
-| `credentials.json` | Credenziali cloud; archiviate con permessi solo proprietario |
-| `policies-config.json` | Selezione di policy integrate nell'ambito utente, parametri e percorsi di policy personalizzate esplicite |
+| `config.json` | Impostazioni di daemon, audit e telemetria non segrete |
+| `credentials.json` | Credenziali cloud; archiviate con permessi solo del proprietario |
+| `policies-config.json` | Selezione builtin a livello di ambito utente, parametri e percorsi personalizzati espliciti |
 | `policies/` | Policy di convenzione utente e artefatti di policy gestiti dal cloud |
-| `hook-activity/` | Log locale delle decisioni di policy |
-| `state/` | Spool daemon, salute, pausa e stato di runtime |
+| `hook-activity/` | Log locale delle decisioni della policy |
+| `state/` | Spool del daemon, salute, pausa e stato di runtime |
 
-Usa `FAILPROOFAI_HOME` per spostare il layout completo della macchina per un container o test isolato. Non spostare directory di stato individuali indipendentemente.
+Usa `FAILPROOFAI_HOME` per riposizionare il layout completo della macchina per un contenitore o un test isolato. Non riposizionare le directory di stato individuali indipendentemente.
 
 <Warning>
-  Non sottoporre mai a commit `credentials.json`. Sottoponi a commit la configurazione di policy del progetto e le policy di convenzione del progetto solo dopo averle revisionate come codice di enforcement.
+  Non eseguire mai il commit di `credentials.json`. Esegui il commit della configurazione della policy del progetto e delle policy di convenzione del progetto solo dopo averle riviste come codice di applicazione.
 </Warning>

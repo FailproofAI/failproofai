@@ -1,19 +1,19 @@
 ---
 title: "Models"
-description: "So sánh độ trễ, tokens, sử dụng ngữ cảnh và phân phối lưu lượng của các mô hình."
+description: "So sánh độ trễ, token, sử dụng context, và phân bổ traffic của các mô hình."
 icon: "cpu"
 ---
 
-Sử dụng Models để xem liệu độ tin cậy hoặc chi phí có thay đổi theo mô hình, agent, môi trường hoặc khoảng thời gian.
+Sử dụng Models để xem liệu độ tin cậy hoặc chi phí có thay đổi theo mô hình, agent, môi trường, hay khoảng thời gian.
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Đi đến **Observe → Models**.
-    2. Đặt khoảng thời gian, sau đó lọc theo môi trường, mô hình, agent hoặc session ID.
-    3. Xem xét độ trễ, tiêu thụ token, sử dụng context-window và phân phối mô hình.
-    4. Chọn một điểm biểu đồ hoặc phân đoạn phân phối để mở các sự kiện phù hợp.
+    1. Đi tới **Observe → Models**.
+    2. Đặt khoảng thời gian, sau đó lọc theo môi trường, mô hình, agent, hoặc session ID.
+    3. Xem xét độ trễ, tiêu thụ token, sử dụng context-window, và phân bổ mô hình.
+    4. Chọn một điểm biểu đồ hoặc phân đoạn phân bổ để mở các sự kiện phù hợp.
 
-    ![Trang Models hiển thị các chế độ xem về độ trễ, phần trăm, token, chi phí, context-window và phân phối mô hình.](/images/dashboard/models.png)
+    ![Trang Models hiển thị các chế độ xem độ trễ, phần trăm, token, chi phí, context-window, và phân bổ mô hình.](/images/dashboard/models.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -22,6 +22,6 @@ Sử dụng Models để xem liệu độ tin cậy hoặc chi phí có thay đ�
     fp --json events --fields ts,agent_id,session_id,event_type,output_tokens,context_fill
     ```
 
-    Sử dụng một truy vấn đã lưu cho các tổng hợp ở cấp độ mô hình không được hiển thị như một lệnh CLI chuyên dụng.
+    Sử dụng một truy vấn đã lưu để có được các tổng hợp ở cấp độ mô hình không được công khai dưới dạng một lệnh CLI riêng biệt.
   </Tab>
 </Tabs>

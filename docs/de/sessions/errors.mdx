@@ -1,21 +1,21 @@
 ---
 title: "Fehler"
-description: "Wiederholte Fehler gruppieren und die dahinterliegenden Sitzungen öffnen."
+description: "Wiederkehrende Fehler gruppieren und die zugehörigen Sitzungen öffnen."
 icon: "circle-alert"
 ---
 
-Fehler bietet dir eine fehlerorientierte Übersicht über alle Sitzungen. Gruppiere nach Fehlertyp, Agent, Umgebung, Modell, Tool oder Zeitfenster, um wiederkehrende Betriebsprobleme zu identifizieren.
+„Fehler" bietet eine fehlerorientierte Übersicht über alle Sitzungen. Gruppieren Sie nach Fehlertyp, Agent, Umgebung, Modell, Tool oder Zeitfenster, um wiederkehrende Betriebsprobleme zu identifizieren.
 
 ## Fehler untersuchen
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehe zu **Observe → Errors**.
-    2. Filtere nach Umgebung, Ereignistyp, Fehlertyp, Agent, Sitzungs-ID oder Suchtext.
-    3. Klappe einen gruppierten Fehler auf, um die einzelnen Vorkommen zu sehen. Wähle eine Zeile aus, um das genaue Ereignis in der zugehörigen Sitzung zu öffnen.
-    4. Wähle das Glockensymbol bei einem repräsentativen Fehler aus, um einen Alert für ähnliche Fehler einzurichten.
+    1. Navigieren Sie zu **Beobachten → Fehler**.
+    2. Filtern Sie nach Umgebung, Ereignistyp, Fehlertyp, Agent, Sitzungs-ID oder Suchtext.
+    3. Erweitern Sie einen gruppierten Fehler, um die einzelnen Vorkommen anzuzeigen. Wählen Sie eine Zeile aus, um das genaue Ereignis in seiner Sitzung zu öffnen.
+    4. Wählen Sie das Glocken-Symbol bei einem repräsentativen Fehler aus, um einen Alert für ähnliche Fehler einzurichten.
 
-    ![Die Fehlerseite mit einem Fehler-Histogramm, gruppierten Fehlern und der Schaltfläche zum Erstellen eines Alerts.](/images/dashboard/errors.png)
+    ![Die Fehlerseite mit einem Fehler-Histogramm, gruppierten Fehlern und der Steuerung zum Erstellen eines Alerts.](/images/dashboard/errors.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -24,20 +24,20 @@ Fehler bietet dir eine fehlerorientierte Übersicht über alle Sitzungen. Gruppi
     fp errors --aggregate --env production --since 7d
     ```
 
-    Verwende `fp events --full --session-id <id>`, wenn du die rohen Nutzdaten hinter einer Fehlerzusammenfassung benötigst.
+    Verwenden Sie `fp events --full --session-id <id>`, wenn Sie die Rohdaten hinter einer Fehlerzusammenfassung benötigen.
   </Tab>
 </Tabs>
 
-## Fehler verwenden, wenn du Folgendes benötigst
+## Einsatzbereiche
 
-- Die häufigste Fehlerklasse in der Produktionsumgebung ermitteln.
-- Herausfinden, ob ein bestimmtes Tool oder Modell einen Anstieg verursacht.
+- Häufigste Fehlerklasse in der Produktionsumgebung ermitteln.
+- Feststellen, ob ein bestimmtes Tool oder Modell einen Anstieg verursacht.
 - Von einer aggregierten Anzahl zu repräsentativen Sitzungen springen.
-- Einen Alert für das Wiederauftreten erstellen.
+- Einen Alert für wiederkehrende Fehler einrichten.
 - Die betroffene Population in ein Audit einbeziehen.
 
-Ein Fehler ist ein beobachtetes Ereignis. Eine fehlgeschlagene Evaluierung ist ein Qualitätsurteil, und ein Audit-Befund ist ein untersuchtes Fehlermuster. Behalte diese Unterscheidungen im Blick, wenn du entscheidest, welchen Reaktions-Workflow du verwenden möchtest.
+Ein Fehler ist ein beobachtetes Ereignis. Eine fehlgeschlagene Evaluierung ist ein Qualitätsurteil, und ein Audit-Befund ist ein untersuchtes Fehlermuster. Beachten Sie diese Unterschiede, wenn Sie entscheiden, welchen Reaktionsworkflow Sie verwenden möchten.
 
 <Card title="Alert erstellen" icon="bell-ring" href="/de/audits/alerts">
-  Benachrichtige Verantwortliche, wenn ein Fehler oder eine Qualitätsbedingung einen Schwellenwert überschreitet.
+  Benachrichtigen Sie Verantwortliche, wenn ein Fehler oder eine Qualitätsbedingung einen Schwellenwert überschreitet.
 </Card>

@@ -15,24 +15,24 @@ icon: "list-tree"
 
 हर event के साथ एक timestamp, session ID, agent ID, event type, और environment होता है। Event-specific fields में model, tool, correlation, outcome, content, duration, या error data होता है।
 
-## Event contract को inspect करें
+## एक event contract को inspect करें
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Observe → Events** को open करें।
-    2. एक short time window सेट करें और environment, agent, और event type के आधार पर filter करें।
-    3. किसी event को select करें इसके normalized fields और raw payload को inspect करने के लिए, फिर execution context देखने के लिए इसके session को open करें।
-    4. अगर कोई paired duration missing है, तो verify करें कि start और completion events एक ही correlation ID use कर रहे हैं।
+    1. **Observe → Events** को खोलें।
+    2. एक छोटी time window सेट करें और environment, agent, और event type के आधार पर filter करें।
+    3. एक event को select करें इसके normalized fields और raw payload को inspect करने के लिए, फिर अपने session को खोलें execution context को देखने के लिए।
+    4. अगर एक paired duration missing है, तो verify करें कि start और completion events एक ही correlation ID का use कर रहे हैं।
 
-    Events stream को use करके data को एक agent run तक narrow करें और normalized event fields को inspect करें।
+    Events stream को use करें data को एक agent run तक narrow करने के लिए और normalized event fields को inspect करें।
 
-    ![Live Events stream जिसमें environment, agent, session, और event type के लिए filters हैं।](/images/dashboard/events-stream.png)
+    ![Environment, agent, session, और event type के लिए filters के साथ live Events stream।](/images/dashboard/events-stream.png)
 
-    फिर event को इसके session में follow करें। Trace दिखाता है कि इससे तुरंत पहले और बाद में क्या हुआ, जो तब आवश्यक है जब payload अकेले ambiguous हो।
+    फिर event को अपने session में follow करें। Trace दिखाता है कि इससे तुरंत पहले और बाद में क्या हुआ, जो जरूरी है जब payload अकेले ambiguous हो।
 
-    ![Event को execution context में inspect करने के लिए इस्तेमाल किया गया linked session trace।](/images/dashboard/session-detail.png)
+    ![Linked session trace जो execution context में event को inspect करने के लिए use होता है।](/images/dashboard/session-detail.png)
 
-    जब कोई paired event या duration missing है तो दोनों views में correlation IDs और timestamps की तुलना करें।
+    Correlation IDs और timestamps को दोनों views में compare करें जब एक paired event या duration missing हो।
   </Tab>
   <Tab title="CLI">
     Valid filter values को discover करें, फिर एक session के लिए full event payloads को fetch करें:
@@ -53,26 +53,26 @@ icon: "list-tree"
 
 ## Reserved SDK fields
 
-`timestamp`, `session_id`, `agent_id`, `type`, या `environment` को custom Python SDK fields के रूप में use न करें। Tool result duration जैसे paired event durations को SDK द्वारा calculate किया जाता है और manually supply नहीं किया जा सकता।
+`timestamp`, `session_id`, `agent_id`, `type`, या `environment` को custom Python SDK fields के रूप में use न करें। Paired event durations जैसे tool result duration को SDK द्वारा calculate किया जाता है और manually supply नहीं किए जा सकते।
 
 ## Local boundaries
 
-- Failproof AI state `~/.failproofai` के अंतर्गत रहता है जब तक कि स्पष्ट रूप से अन्यथा configured न किया जाए।
-- `failproofai-sdk` हमेशा `~/.failproofai/custom-agents` के अंतर्गत spool करता है। `FAILPROOFAI_HOME` उस home को relocate करता है; `custom-agents` segment हमेशा appended होता है, इसलिए spool को इसके बाहर place नहीं किया जा सकता। केवल SDK का अपना `configure(base_dir=...)` कहीं और लिखता है। `AGENTEYE_HOME` को पुराने `agenteye-collector` द्वारा पढ़ा जाता है यह चुनने के लिए कि क्या देखना है, और यह अब प्रभावित नहीं करता कि SDK कहां लिखता है।
-- Environment labels को SDK configuration या `AGENTEYE_ENVIRONMENT` के माध्यम से सेट किया जा सकता है।
-- Daemon credentials को non-secret settings से अलग से store किया जाता है।
+- Failproof AI state `~/.failproofai` के तहत रहता है जब तक explicitly अन्यथा configure न किया जाए।
+- `failproofai-sdk` हमेशा `~/.failproofai/custom-agents` के तहत spool करता है। `FAILPROOFAI_HOME` उस home को relocate करता है; `custom-agents` segment हमेशा appended होता है, इसलिए spool को इसके बाहर रखा नहीं जा सकता। केवल SDK का अपना `configure(base_dir=...)` कहीं और लिखता है। `AGENTEYE_HOME` को पुराने `agenteye-collector` द्वारा पढ़ा जाता है यह चुनने के लिए कि क्या देखना है, और अब यह प्रभावित नहीं करता है कि SDK कहां लिखता है।
+- Environment labels को SDK configuration या `AGENTEYE_ENVIRONMENT` के माध्यम से set किया जा सकता है।
+- Daemon credentials को non-secret settings से अलग store किया जाता है।
 
-Stable, low-cardinality environment names का use करें। Daemon environment labels में commas को support नहीं किया जाता है।
+Stable, low-cardinality environment names का use करें। Commas को daemon environment labels में support नहीं किया जाता है।
 
-## Environment label को change करें
+## एक environment label को change करें
 
 <Tabs>
   <Tab title="Dashboard">
-    Environment labels को emitting SDK या Failproof daemon द्वारा assign किया जाता है। एक को change करने के बाद, **Observe → Sessions** को open करें और environment filter को use करके confirm करें कि नए sessions नई value carry कर रहे हैं। Existing sessions अपने original environment को retain करते हैं।
+    Environment labels को emitting SDK या Failproof daemon द्वारा assign किया जाता है। एक को change करने के बाद, **Observe → Sessions** को खोलें और environment filter का use करें यह confirm करने के लिए कि नए sessions नया value carry करते हैं। Existing sessions अपना original environment retain करते हैं।
 
   </Tab>
   <Tab title="CLI">
-    `failproofai-sdk` के लिए, environment को code में या इसके legacy environment variable के साथ configure करें। Machine-level settings को change करते समय daemon configuration को rerun करें।
+    `failproofai-sdk` के लिए, code में environment को configure करें या इसके legacy environment variable के साथ। Machine-level settings को change करते समय daemon configuration को rerun करें।
 
     ```bash
     export AGENTEYE_ENVIRONMENT=production-us-east

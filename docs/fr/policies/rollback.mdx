@@ -1,6 +1,6 @@
 ---
 title: "Rollback"
-description: "Restaurez un déploiement de politique connu lorsqu'un déploiement perturbe le travail valide d'un agent."
+description: "Restaurer un déploiement de politique connu lorsqu'un rollout perturbe le travail valide des agents."
 icon: "rotate-ccw"
 ---
 
@@ -10,10 +10,10 @@ Le rollback modifie la version déployée ou supprime une affectation de politiq
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Accédez à **Admin → enforcement**, développez la machine concernée et identifiez son dernier ensemble de politiques en bon état connu.
+    1. Accédez à **Admin → enforcement**, développez la machine concernée et identifiez son dernier ensemble de politiques connu comme fonctionnel.
     2. Sélectionnez **edit**, restaurez ces versions et effets, puis appliquez le nouveau déploiement.
-    3. Attendez l'enregistrement de la machine, puis vérifiez le déploiement signalé.
-    4. Ouvrez **Observe → policy** et les sessions concernées pour confirmer que le travail valide n'est plus bloqué.
+    3. Attendez que la machine se reconnecte, puis vérifiez le déploiement signalé.
+    4. Ouvrez **Observe → policy** ainsi que les sessions concernées pour confirmer que le travail valide n'est plus bloqué.
 
   </Tab>
   <Tab title="CLI">
@@ -23,19 +23,19 @@ Le rollback modifie la version déployée ou supprime une affectation de politiq
     failproofai config --status
     ```
 
-    `failproofai config --pause` met en pause les politiques intégrées, personnalisées et de convention pour une session locale. Il ne met pas en pause les politiques gérées par le Cloud, ce n'est donc pas un contournement pour un mauvais déploiement Cloud.
+    `failproofai config --pause` suspend les politiques intégrées, personnalisées et de convention pour une session locale. Il ne suspend pas les politiques gérées par Cloud, il ne constitue donc pas une solution de contournement pour un mauvais déploiement Cloud.
   </Tab>
 </Tabs>
 
 ## Quand effectuer un rollback
 
 - Une politique bloque une action de production attendue.
-- Le volume de correspondances est sensiblement plus élevé que ce que le déploiement observé avait prévu.
+- Le volume de correspondances est significativement plus élevé que ce que le rollout observé avait prédit.
 - Une politique dépend de champs qu'une intégration ne fournit pas.
 - Une nouvelle version modifie le comportement en dehors du mode d'échec prévu.
 
-Après le rollback, ouvrez les sessions concernées et identifiez la condition qui a provoqué le faux positif. Créez une nouvelle version, testez les cas dangereux et légitimes, puis répétez la phase d'observation.
+Après le rollback, ouvrez les sessions concernées et identifiez la condition ayant provoqué le faux positif. Créez une nouvelle version, testez les cas non sécurisés et légitimes, puis recommencez la phase d'observation.
 
 <Warning>
-  Mettre en pause l'application des politiques peut être approprié lors d'un incident, mais cela élargit l'exposition pour toutes les politiques actives dans cette portée. Préférez effectuer un rollback sur la version spécifique de la politique dans la mesure du possible.
+  Suspendre l'application des politiques peut être approprié lors d'un incident, mais cela élargit l'exposition pour toutes les politiques actives dans ce périmètre. Privilégiez le rollback de la version spécifique de la politique lorsque c'est possible.
 </Warning>

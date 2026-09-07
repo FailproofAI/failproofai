@@ -1,26 +1,26 @@
 ---
 title: "HTTP API"
-description: "Xác thực với API Failproof AI Cloud `/v1` công khai và sử dụng tham chiếu điểm cuối được tạo."
+description: "Xác thực với API `/v1` công khai Failproof AI Cloud và sử dụng tham chiếu điểm cuối được tạo."
 icon: "braces"
 ---
 
-API công khai được cung cấp dưới `/v1` trên nguồn gốc bảng điều khiển Failproof AI của bạn.
+API công khai được phục vụ dưới `/v1` trên gốc bảng điều khiển Failproof AI của bạn.
 
-## Tạo khóa và thực hiện yêu cầu
+## Tạo khoá và thực hiện yêu cầu
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Mở **Administration → Keys**, chọn **Create key**, và chọn preset quyền hạn nhất có thể bao gồm tích hợp.
-    2. Chỉ thêm các cấp phép cá nhân khi cần thiết, tạo khóa, và sao chép bí mật một lần của nó.
-    3. Thực hiện yêu cầu kiểm tra đến `/v1/sessions` và xác nhận khóa vẫn hoạt động trong trang Keys.
-    4. Xoay hoặc vô hiệu hóa khóa từ menu hành động của nó khi quyền sở hữu tích hợp thay đổi.
+    1. Mở **Administration → Keys**, chọn **Create key**, và chọn cấp quyền hẹp nhất bao gồm tích hợp.
+    2. Thêm quyền riêng lẻ chỉ khi cần thiết, tạo khoá, và sao chép bí mật một lần duy nhất của nó.
+    3. Thực hiện yêu cầu kiểm tra đến `/v1/sessions` và xác nhận khoá vẫn hoạt động trong trang Keys.
+    4. Xoay hoặc vô hiệu hoá khoá từ menu hành động của nó khi quyền sở hữu tích hợp thay đổi.
 
-    ![Ngăn kéo khóa API mới với preset quyền hạn và cấp phép cá nhân.](/images/dashboard/key-create.png)
+    ![Ngăn tạo khoá API mới với cấp quyền và quyền riêng lẻ.](/images/dashboard/key-create.png)
 
-    Ngăn kéo tạo được hiển thị ở trên. Bí mật một lần chỉ xuất hiện sau khi bạn chọn **create**; sao chép nó trước khi đóng xác nhận đó.
+    Ngăn tạo được hiển thị ở trên. Bí mật một lần duy nhất chỉ xuất hiện sau khi bạn chọn **create**; sao chép nó trước khi đóng xác nhận đó.
   </Tab>
   <Tab title="CLI">
-    Tạo khóa đọc và sử dụng nó trực tiếp với `fp` hoặc `curl`:
+    Tạo khoá đọc và sử dụng nó trực tiếp với `fp` hoặc `curl`:
 
     ```bash
     fp keys create reliability-reader \
@@ -36,19 +36,19 @@ API công khai được cung cấp dưới `/v1` trên nguồn gốc bảng đi�
   </Tab>
 </Tabs>
 
-Các khóa được xác định phạm vi cho một tổ chức và bộ quyền hạn. Yêu cầu không có quyền hạn bắt buộc của điểm cuối trả về `403` và xác định quyền hạn bị thiếu.
+Khoá được phạm vi tới tổ chức và cấp quyền. Yêu cầu mà không có quyền cần thiết của điểm cuối trả về `403` và xác định quyền bị thiếu.
 
 ## Lựa chọn tổ chức
 
-Khóa tổ chức hoạt động trên tổ chức của nó một cách tự động. Khóa có phạm vi instance có thể chọn một tổ chức cho mỗi yêu cầu:
+Khoá tổ chức hoạt động trên tổ chức của nó một cách tự động. Khoá phạm vi instance có thể chọn tổ chức cho mỗi yêu cầu:
 
 <Tabs>
   <Tab title="Dashboard">
-    Sử dụng công tắc chuyển đổi tổ chức trong tiêu đề bảng điều khiển trước khi mở **Administration → Keys**. Các khóa được tạo ở đó thuộc về tổ chức được chọn. Xác nhận slug tổ chức trong URL và chi tiết khóa trước khi sao chép thông tin xác thực vào tự động hóa.
+    Sử dụng bộ chuyển đổi tổ chức trong tiêu đề bảng điều khiển trước khi mở **Administration → Keys**. Khoá được tạo ở đó thuộc tổ chức được chọn. Xác nhận slug tổ chức trong URL và chi tiết khoá trước khi sao chép thông tin xác thực vào tự động hoá.
 
   </Tab>
   <Tab title="CLI">
-    Sử dụng `--org` trước lệnh, hoặc gửi tiêu đề tổ chức cho khóa API có phạm vi instance.
+    Sử dụng `--org` trước lệnh, hoặc gửi tiêu đề tổ chức cho khoá API phạm vi instance.
 
     ```bash
     fp orgs list
@@ -63,12 +63,12 @@ Khóa tổ chức hoạt động trên tổ chức của nó một cách tự đ
   </Tab>
 </Tabs>
 
-Sử dụng các trang điểm cuối được tạo trong phần này cho các đường dẫn, tham số, yêu cầu quyền hạn và mã trạng thái hiện tại. Thông số kỹ thuật được tạo từ các chú thích tuyến đường máy chủ và được kiểm tra so với bộ định tuyến `/v1`.
+Sử dụng các trang điểm cuối được tạo trong phần này cho các đường dẫn hiện tại, tham số, yêu cầu quyền và mã trạng thái. Thông số kỹ thuật được tạo từ chú thích tuyến đường máy chủ và được kiểm tra dựa trên bộ định tuyến `/v1`.
 
-Thông số kỹ thuật hiện tại có phạm vi đầy đủ tuyến đường, phương thức, tham số, quyền hạn và mã trạng thái. Một số phần nội dung phản hồi vẫn được để không được nhập vào một cách cố ý vì máy chủ vẫn xây dựng chúng dưới dạng JSON động. Kiểm tra phản hồi thực tế trước khi tạo máy khách được nhập mạnh xung quanh điểm cuối mà không có lược đồ phản hồi.
+Thông số kỹ thuật hiện tại có bao gồm đầy đủ tuyến đường, phương pháp, tham số, quyền và mã trạng thái. Một số phần thân phản hồi vẫn còn ý định không được nhập vì máy chủ vẫn xây dựng chúng dưới dạng JSON động. Kiểm tra phản hồi thực tế trước khi tạo máy khách được nhập mạnh quanh điểm cuối mà không có lược đồ phản hồi.
 
-Sử dụng `Content-Type: application/json` cho ghi JSON. Coi `401` là xác thực bị thiếu hoặc không hợp lệ, `403` là danh tính hợp lệ mà không có quyền hạn bắt buộc, `404` là tài nguyên bị thiếu hoặc không thể truy cập tổ chức, `409` là xung đột trạng thái, và `422` là giá trị trường hoặc quyền hạn không hợp lệ. Phản hồi lỗi bao gồm thông báo có thể đọc được của con người; các lỗi quyền hạn cũng đặt tên cho cấp phép bắt buộc.
+Sử dụng `Content-Type: application/json` cho ghi JSON. Coi `401` là xác thực bị thiếu hoặc không hợp lệ, `403` là danh tính hợp lệ không có quyền cần thiết, `404` là tài nguyên bị thiếu hoặc không thể truy cập tổ chức, `409` là xung đột trạng thái, và `422` là giá trị trường hoặc quyền không hợp lệ. Phản hồi lỗi bao gồm thông báo có thể đọc được con người; các lỗi quyền cũng đặt tên cho khoản cấp cần thiết.
 
 <Warning>
-  Triển khai thực thi chính sách được quản lý cố ý bên ngoài bề mặt `/v1` công khai thông thường. Sử dụng quy trình triển khai Cloud được hỗ trợ.
+  Triển khai thực thi chính sách được quản lý có ý định bên ngoài bề mặt `/v1` công khai thông thường. Sử dụng quy trình triển khai Cloud được hỗ trợ.
 </Warning>

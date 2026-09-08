@@ -44,6 +44,7 @@ const PACKAGES = [
 ] as const;
 
 const SECTION = resolve(ROOT, "scripts/changelog-section.py");
+const OPEN = resolve(ROOT, "scripts/changelog-open.py");
 
 function section(changelog: string, version: string): { ok: boolean; out: string } {
   try {
@@ -208,7 +209,7 @@ function resolveFile(versionFile: string): Record<string, string> {
   return fields;
 }
 
-describe.each(PACKAGES)("$workflow — version management", ({ dist, workflow, versionFile }) => {
+describe.each(PACKAGES)("$workflow — version management", ({ dist, workflow, versionFile, changelog }) => {
   const source = readFileSync(resolve(ROOT, ".github/workflows", workflow), "utf8");
   const wf = parse(source) as Record<string, any>;
   const scripts = (job: Record<string, any>) =>
@@ -307,6 +308,19 @@ describe.each(PACKAGES)("$workflow — version management", ({ dist, workflow, v
 
   it("keeps the bump commit out of CI", () => {
     expect(scripts(wf.jobs.bump)).toContain("[skip ci]");
+  });
+
+  it("opens the changelog section in the same commit that moves the version", () => {
+    // The two halves must land together. `bump` carries a skip-ci marker, so a
+    // commit that moves the version alone goes red not on itself but on the next
+    // unrelated PR to run CI — which is how this recurred at two consecutive
+    // publishes before the opener existed.
+    const bump = scripts(wf.jobs.bump);
+    expect(bump).toContain(`python3 scripts/changelog-open.py ${changelog}`);
+    expect(bump).toContain(`git add ${versionFile} ${changelog}`);
+    // And the "nothing to push" shortcut must consider BOTH files, or a main
+    // whose version already moved but whose section is missing stays broken.
+    expect(bump).toContain(`git diff --quiet -- ${versionFile} ${changelog}`);
   });
 });
 
@@ -462,6 +476,75 @@ describe("release notes have somewhere to come from", () => {
     // version to what changed in it.
     const text = readFileSync(resolve(ROOT, pyproject), "utf8");
     expect(text).toMatch(/^Changelog = "https:\/\/github\.com\/FailproofAI\/failproofai\/blob\/main\/.*CHANGELOG\.md"$/m);
+  });
+
+  // The other half of the same contract: `changelog-section.py` refuses a version
+  // with no section, and `changelog-open.py` is what stops one from ever existing.
+  describe("scripts/changelog-open.py — the section the bump commit opens", () => {
+    const open = (file: string, version: string, published: string, date?: string) => {
+      try {
+        return {
+          ok: true,
+          out: execFileSync("python3", [OPEN, file, version, published, ...(date ? [date] : [])], {
+            encoding: "utf8",
+          }),
+        };
+      } catch (e: any) {
+        return { ok: false, out: `${e.stdout ?? ""}${e.stderr ?? ""}` };
+      }
+    };
+    const fixture = (name: string, body: string) => {
+      const file = join(dir, name);
+      writeFileSync(file, body);
+      return file;
+    };
+    const PREAMBLE = ["# Changelog", "", "Headings are `## <version> — <YYYY-MM-DD>`.", ""].join("\n");
+
+    it("opens a section the extractor can then release", () => {
+      // The two scripts are one contract: whatever `open` writes, `section` must
+      // accept — a stub that could not release would only move the failure.
+      const file = fixture("open-then-extract.md", `${PREAMBLE}\n## 0.0.1b1 — 2026-08-19\n\n- the first\n`);
+      expect(open(file, "0.0.1b2", "0.0.1b1", "2026-08-24").ok).toBe(true);
+      const notes = execFileSync("python3", [SECTION, file, "0.0.1b2"], { encoding: "utf8" });
+      expect(notes.trim().length).toBeGreaterThan(0);
+      expect(notes).toContain("0.0.1b1");
+      const text = readFileSync(file, "utf8");
+      // Newest first, and the preamble stays above every heading — the extractor
+      // reads the file top-down and CLAUDE.md's grammar is stated up there.
+      expect(text.indexOf("# Changelog")).toBeLessThan(text.indexOf("## 0.0.1b2"));
+      expect(text.indexOf("## 0.0.1b2")).toBeLessThan(text.indexOf("## 0.0.1b1"));
+      expect(text).toMatch(/^## 0\.0\.1b2 — 2026-08-24$/m);
+      expect(text).toContain("- the first");
+    });
+
+    it("is a no-op the second time, not a second heading", () => {
+      // A re-run of `bump` against a main that already carries the section. Two
+      // headings for one version would put only the FIRST one's body on the
+      // release, silently.
+      const file = fixture("idempotent.md", `${PREAMBLE}\n## 0.0.1b1 — 2026-08-19\n\n- the first\n`);
+      expect(open(file, "0.0.1b2", "0.0.1b1", "2026-08-24").ok).toBe(true);
+      const once = readFileSync(file, "utf8");
+      expect(open(file, "0.0.1b2", "0.0.1b1", "2026-08-25").ok).toBe(true);
+      expect(readFileSync(file, "utf8")).toBe(once);
+      expect(once.match(/^## 0\.0\.1b2\b/gm)).toHaveLength(1);
+    });
+
+    it("does not mistake 0.0.1b10's section for 0.0.1b1's", () => {
+      // The same trailing word boundary the extractor uses. Without it the first
+      // release after a counter passes nine would silently open nothing.
+      const file = fixture("boundary.md", `${PREAMBLE}\n## 0.0.1b10 — 2026-08-24\n\n- the tenth\n`);
+      expect(open(file, "0.0.1b1", "0.0.1b0", "2026-08-25").ok).toBe(true);
+      expect(readFileSync(file, "utf8")).toMatch(/^## 0\.0\.1b1 — 2026-08-25$/m);
+    });
+
+    it("refuses a date it was handed in the wrong shape", () => {
+      const file = fixture("bad-date.md", `${PREAMBLE}\n## 0.0.1b1 — 2026-08-19\n\n- the first\n`);
+      const before = readFileSync(file, "utf8");
+      const got = open(file, "0.0.1b2", "0.0.1b1", "24-08-2026");
+      expect(got.ok).toBe(false);
+      expect(got.out).toContain("not a YYYY-MM-DD date");
+      expect(readFileSync(file, "utf8")).toBe(before);
+    });
   });
 
   it.each(PACKAGES)("$dist verifies its notes in preflight, before anything is built", ({ workflow }) => {

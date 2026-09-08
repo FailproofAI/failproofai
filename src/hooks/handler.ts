@@ -127,7 +127,21 @@ function attachLeakNotice(
     // canDeliverNotice() above already proved cli is set; narrow for the call.
     if (!cli) return outcome;
     const canonical = canonicalizeEventType(eventType, cli);
-    if (canonical !== "Stop" && canonical !== "SessionStart") return outcome;
+    // STOP ONLY, and the narrowing is the fix for a measured failure rather
+    // than caution. `notice.ts` derived each host's channel from a live probe
+    // on **Stop**; SessionStart was allowed here on the assumption that a
+    // channel proven on one event works on another. It does not. On a real
+    // machine 499 findings were CLAIMED and the user saw nothing: SessionStart
+    // fires first in a session, consumed every claim, and the host dropped the
+    // field — Claude Code documents `hookSpecificOutput.additionalContext` for
+    // SessionStart, not `systemMessage`.
+    //
+    // That is the worst outcome this design has: a finding recorded as
+    // delivered that reached nobody, and never retried. Stop fires at the end
+    // of every assistant turn, so nothing is lost by waiting for it — the user
+    // is reading output at that moment anyway. Add SessionStart back only with
+    // a probe showing the notice actually rendered there.
+    if (canonical !== "Stop") return outcome;
 
     const pending = pendingLeakNotice();
     if (pending.count === 0) return outcome;

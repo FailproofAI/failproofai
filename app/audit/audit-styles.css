@@ -1270,3 +1270,21 @@
   .leak-dismiss { margin-left: 0; }
   .leak-foot { gap: 6px; flex-direction: column; }
 }
+
+/* The re-scan control in the scan header. Sits at the end of the eyebrow row so
+   it reads as an action on that section rather than a page-level nav item. */
+.scan-rerun {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: lowercase;
+  color: var(--ink-2);
+  background: none;
+  border: 1px solid var(--line-2);
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.scan-rerun:hover:not(:disabled) { color: var(--ink); border-color: var(--accent-pink); }
+.scan-rerun:disabled { opacity: 0.5; cursor: not-allowed; }
+.scan-rerun:focus-visible { outline: 2px solid var(--accent-pink); outline-offset: 2px; }

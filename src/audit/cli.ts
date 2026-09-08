@@ -38,6 +38,7 @@ import { describeOutcome, reportHarm } from "./report-harm";
 import { notifyDesktop } from "./desktop-notify";
 import { macNotifierInstalled, pruneMacNotifyQueue, queueMacNotification } from "./macos-notifier";
 import { markLeakNoticeDelivered } from "./leak-notice";
+import { activeFindings, readLeakRecord } from "./leak-store";
 import { readConfig } from "../hooks/fp-config";
 import { brandAnsi, ANSI_RESET, ANSI_BOLD, ANSI_DIM, helpScreen, helpOptsFor } from "../hooks/tui";
 import { version } from "../../package.json";
@@ -390,7 +391,15 @@ async function announceLeaksOrThrow(result: AuditResult): Promise<void> {
   const claimed = markLeakNoticeDelivered(ids, undefined, "desktop");
   if (claimed.length === 0) return;
 
-  const n = claimed.length === 1 ? "a credential" : `${claimed.length} credentials`;
+  // Report what SURVIVED into the record, not how many ids the scan minted.
+  // `writeLeakRecord` prunes to MAX_FINDINGS, so on a large history the two
+  // numbers diverge wildly — a real run announced "5703 credentials" while the
+  // dashboard it points at showed 500. A banner that disagrees with the page it
+  // sends you to is worse than no banner: it teaches you the number is noise.
+  const live = new Set(activeFindings(readLeakRecord()).map((f) => f.id));
+  const shown = claimed.filter((id) => live.has(id)).length || claimed.length;
+
+  const n = shown === 1 ? "a credential" : `${shown} credentials`;
   const title = "failproofai found a leaked credential";
   // Fixed text with a count interpolated — the same rule as the in-CLI notice,
   // for the same reason. A finding's own text comes from a repository this

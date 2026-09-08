@@ -96,6 +96,9 @@ function isNotACredential(value: string): boolean {
   if (/^(true|false|null|undefined|none)$/i.test(value)) return true;
   if (/^-?\d+(\.\d+)?$/.test(value)) return true;    // pure number
   if (/^\/|^~\/|^\.\.?\//.test(value)) return true;  // a path
+  // A UUID is an identifier, never a credential — and it is the dominant shape
+  // of the `session_id` / `request_id` values that the name layer used to flag.
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) return true;
   return false;
 }
 

@@ -140,14 +140,27 @@ export function LeakSection() {
                 {/* The 5W1H, as one sentence rather than a grid of labelled
                     cells — a person reading a leak wants the story, and the
                     grid version made every row look like a form to fill in. */}
+                {/* The date is FIRST seen, not last. "When did this key get
+                    into a transcript" is the question a leak raises; "when did
+                    I last run a scan that noticed" is not. They also looked
+                    identical in practice — the record keeps the 500 most
+                    recently seen findings, so everything surviving the cap
+                    reported the same recent `lastSeen` and every row read
+                    "today", which is true and useless. */}
                 <div className="leak-how">
                   <span className="leak-verb">{row.mechanism}</span>
                   {" in "}
                   <span className="leak-where">{row.project}</span>
                   {" via "}
                   <span className="leak-who">{row.cli}</span>
-                  {" · "}
-                  <span className="leak-when">{when(row.lastSeen)}</span>
+                  {" · leaked "}
+                  <span className="leak-when">{when(row.firstSeen)}</span>
+                  {when(row.firstSeen) !== when(row.lastSeen) ? (
+                    <>
+                      {" · last seen "}
+                      <span className="leak-when">{when(row.lastSeen)}</span>
+                    </>
+                  ) : null}
                 </div>
 
                 <div className="leak-foot">

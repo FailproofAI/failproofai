@@ -59,7 +59,9 @@ type Initial =
 /** Tag passed to the shared `startRerun()` handler so PostHog can tell
  *  whether the click came from the bottom return-section button or the
  *  empty-state CTA. */
-export type RerunSource = "return_section" | "empty_state";
+// `scan_header` is the button in section 01 — the only re-scan control the
+// page has now that the old report's sections are switched off.
+export type RerunSource = "return_section" | "empty_state" | "scan_header";
 
 interface Props {
   initial: Initial;
@@ -365,6 +367,8 @@ function MainReport({
             transcripts={result.transcripts.scanned}
             events={result.eventsScanned ?? 0}
             projects={result.projectsScanned.length}
+            isRunning={isRunning || rerunStatus.kind === "running"}
+            onRerun={() => onRerun("scan_header")}
           />
           {/* The rebuilt report. It reads the leak record rather than this
               scan's result, deliberately: a credential found last month and
@@ -417,7 +421,19 @@ function MainReport({
  * under construction" and "this product is broken".
  */
 function AuditReportPlaceholder(
-  { transcripts, events, projects }: { transcripts: number; events: number; projects: number },
+  {
+    transcripts,
+    events,
+    projects,
+    isRunning,
+    onRerun,
+  }: {
+    transcripts: number;
+    events: number;
+    projects: number;
+    isRunning: boolean;
+    onRerun: () => void;
+  },
 ) {
   const n = (x: number) => x.toLocaleString();
   return (
@@ -426,6 +442,17 @@ function AuditReportPlaceholder(
         <span className="audit-sec-eyebrow">
           <span className="ix">01</span>{"// scan"}
         </span>
+        {/* The re-scan control. It lived in the old report's sections and went
+            dormant when they were commented out, which left the page with no way
+            to run an audit again at all — you had to go back to the terminal. */}
+        <button
+          type="button"
+          className="scan-rerun"
+          onClick={onRerun}
+          disabled={isRunning}
+        >
+          {isRunning ? "scanning…" : "run again"}
+        </button>
       </div>
       <h2 className="audit-sec-title">scan complete</h2>
       <div className="audit-sec-sub">

@@ -147,14 +147,40 @@ const SECRET_NAME_SUBSTRINGS = [
   "APIKEY",
   "PRIVATEKEY",
 ];
-const SECRET_NAME_COMPONENTS = ["KEY", "PASS", "AUTH", "PAT", "SIG", "SIGNATURE", "SESSION", "COOKIE"];
+const SECRET_NAME_COMPONENTS = ["PASS", "AUTH", "PAT", "SIG", "SIGNATURE", "COOKIE"];
 
 /**
- * `PWD` names a credential only in a COMPOUND identifier. `MYSQL_PWD` is
- * MySQL's documented password variable; a bare `PWD` is the shell's working
- * directory, which is on every second line of a captured session.
+ * Names that mean "credential" only inside a COMPOUND identifier.
+ *
+ * Every entry here was measured as a dominant false positive on a real 2,664-
+ * transcript corpus, and the reason they are demotions rather than deletions is
+ * that the SHAPE layer already catches real vendor keys regardless of what they
+ * are called. The name layer exists for FIRST-PARTY secrets with no recognisable
+ * format — and those essentially always carry a qualified name
+ * (`COMPOSIO_API_KEY`, `DB_PASSWORD`), never a bare one. So requiring a compound
+ * costs almost nothing real and removes most of the noise.
+ *
+ *   PWD      `MYSQL_PWD` is MySQL's documented password variable; a bare `PWD`
+ *            is the shell's working directory, on every second line of a
+ *            captured session.
+ *   KEY      a bare `key=` is a React list prop, a map entry, a sort field.
+ *            80 findings on the measured corpus, none of them credentials.
+ *
+ * `SIG` was demoted here too and put back: a bare `sig=` in a URL query IS a
+ * request signature, and an existing test says so. It also never appeared in
+ * the measured noise, unlike the two above — the rule is that a demotion needs
+ * evidence, not a plausible story.
+ *
+ * `SESSION` is REMOVED from both lists rather than demoted, and the difference
+ * matters: demoting it would have changed nothing, because
+ * `DBUS_SESSION_BUS_ADDRESS` is already a compound. It was the single largest
+ * source of noise measured — 254 of 500 findings, every one of them
+ * `DBUS_SESSION_BUS_ADDRESS`, `XDG_SESSION_TYPE`, `SESSION_MANAGER`,
+ * `session_id` or `sessionUpdate`. A session IDENTIFIER is not a rotatable
+ * credential; a session SECRET still matches through `SECRET`, `TOKEN`, or
+ * `KEY` in `sessionKey`.
  */
-const COMPOUND_ONLY_COMPONENTS = ["PWD"];
+const COMPOUND_ONLY_COMPONENTS = ["PWD", "KEY"];
 
 /**
  * Split an identifier into its uppercased components, on `_`, `-`, `.` AND

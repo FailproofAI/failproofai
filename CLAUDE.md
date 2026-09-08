@@ -1314,10 +1314,14 @@ and it is permanent the moment it uploads.
 The same rule `publish.yml` applies to npm (`-beta.N`), spelled in PEP 440.
 
 **You normally edit nothing.** `preflight` resolves the version and refuses one PyPI has
-already taken; `bump` pushes the next one to `main` after a successful upload, so main is
-already sitting on the next beta when the previous release finishes. Hand-edit
-`<pkg>/_version.py` only to **leave** the current beta line — a stable cut (`0.0.1b4` →
-`0.0.1`), or a minor/major bump.
+already taken; `bump` pushes the next one to `main` after a successful upload — the version
+line *and* a stub `## <version> — <date>` section opened by `scripts/changelog-open.py` in
+the same commit — so main is already sitting on the next beta, with a section to write
+entries into, when the previous release finishes. Both halves land together on purpose: a
+version with no section is what `scripts/changelog-section.py` refuses at release time, and
+because bump commits carry a skip-ci marker that state used to go red on the next unrelated
+PR rather than on itself. Hand-edit `<pkg>/_version.py` only to **leave** the current beta
+line — a stable cut (`0.0.1b4` → `0.0.1`), or a minor/major bump.
 
 Two things that will bite:
 

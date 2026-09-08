@@ -80,7 +80,9 @@ export FAILPROOFAI_KEY="<one-time-secret>"
     failproofai policies add FailproofAI/policies
     ```
 
-    Ours is a pack like anyone else's: fetched from its GitHub release, checksum-verified, and pinned to the exact tag it resolved. It carries 38 policies and switches on the 10 its manifest marks as safe to enable unattended. Read one before taking it with `failproofai policies show <owner>/<repo>`, and see [policy packs](/policies/packs) for taking only part of one.
+    The pack is fetched from its GitHub release, checksum-verified, and pinned to the exact tag it resolved. It carries 38 policies and switches on the 10 its manifest marks as safe to enable unattended. Use them to see local policy decisions and try enforcement before Failproof AI audits your sessions and writes policies for your agents.
+
+    Read any pack before taking it with `failproofai policies show <owner>/<repo>`, and see [policy packs](/policies/packs) for taking only part of one.
 
     Until this runs, the only thing enforcing is `block-failproofai-commands` — the always-on guard that stops an agent switching Failproof AI off. `failproofai policies` lists what is on.
   </Step>

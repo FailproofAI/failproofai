@@ -12,7 +12,7 @@ A pack is a set of policies published as a GitHub release. One command installs 
 failproofai policies add FailproofAI/policies
 ```
 
-That installs the set we publish, fetched and pinned from its own GitHub release — ours is a pack like anyone else's, typed the same way, with no short name only we can use. It carries 38 policies and switches on the 10 its manifest marks as safe to enable unattended; the rest are listed for you to choose. Take part of it instead:
+That fetches the Failproof AI set from its GitHub release and pins it, the same way any other pack is installed. It carries 38 policies and switches on the 10 its manifest marks as safe to enable unattended; the rest are listed for you to choose. Take part of it instead:
 
 ```bash
 failproofai policies add FailproofAI/policies --policy block-rm-rf         # one, or a comma-separated few
@@ -87,7 +87,7 @@ If a pack ships a policy whose name is also an **enabled builtin**, the builtin 
 
 ## Where the Failproof AI policies come from
 
-The same place anyone else's do — a GitHub release, fetched and pinned like any other pack. The npm package carries no copy of them and there is no short name reserved for ours, so the set we publish is installed and versioned exactly the way yours would be:
+A GitHub release, fetched and pinned like any other pack. The npm package carries no copy of them, so naming a specific version works exactly as it does for anybody's pack:
 
 ```bash
 failproofai policies add FailproofAI/policies                # newest release, pinned
@@ -95,7 +95,7 @@ failproofai policies add FailproofAI/policies@a1b2c3d4e5f6   # a specific one
 failproofai policies show FailproofAI/policies --releases    # everything it has published
 ```
 
-The one policy that does ship compiled into the package is `block-failproofai-commands`, the always-on guard: a pack may not declare `alwaysOn`, because a downloaded file no local command can switch off is the thing that guard exists to prevent.
+One policy does ship compiled into the package: `block-failproofai-commands`, the always-on guard. A pack may not declare `alwaysOn`, precisely because a downloaded file that no local command can switch off is what that guard exists to prevent.
 
 ## What integrity does and does not buy
 

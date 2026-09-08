@@ -58,13 +58,13 @@ Any path, any filename. Ask your agent to do the thing you blocked and watch it 
 failproofai publish
 ```
 
-It asks **where** only when nothing tells it — no git remote to read — and works the rest out. In order, stopping before it touches GitHub if anything is wrong:
+It works out where to publish, what to bundle and what version to call it, and only asks when nothing in the repository tells it. In order, stopping before it touches GitHub if anything is wrong:
 
-1. Finds the policy files here by **content** (files that import `failproofai` and call `customPolicies.add`), not by filename. Not recursive: publishing a fixture is worse than being asked.
+1. Finds the policy files here by **content** — those that import `failproofai` and call `customPolicies.add` — rather than by filename, so it finds `guards.mjs` and ignores an unrelated `policies.mjs`. It does not descend into subdirectories, so a test fixture is never swept up by accident.
 2. Reads the repo from `git remote get-url origin`, in the **file's** directory rather than yours, and decides the version.
 3. Finds your credential: `GITHUB_TOKEN`, `GH_TOKEN`, or `gh auth login`. It needs release-write and nothing else, and is never printed.
 4. Creates the repository if it does not exist.
-5. Builds the three assets, validating with the **loader's own rules** — the code that decides what may install on a stranger's machine. A pack that could never install fails here, where you can fix it.
+5. Builds the three assets, validating them with the **loader's own rules** — the same code that decides what may install on a stranger's machine — so a pack that could never install fails here, where you can still fix it.
 6. Creates or reuses the release and uploads, replacing assets of the same name.
 
 | File | What it is |
@@ -81,13 +81,11 @@ Use `--dry-run` to build the assets and publish nothing; it needs no credential.
 
 ## How the version is decided
 
-The **commit you are publishing from** — its short sha, twelve characters: `a1b2c3d4e5f6`. Nothing to pick and nothing to count, and it names exactly where the bytes came from. Publish the same source twice and you get the same version, because there is nothing to increment.
+The version is the **commit you are publishing from** — its short sha, twelve characters: `a1b2c3d4e5f6`. There is nothing to pick and nothing to increment, and the version names exactly where the bytes came from, so publishing the same source twice gives the same version.
 
-Twelve characters rather than git's seven: seven collides in a repository with enough objects, and a version that stops being unique means two artifacts claiming one name. The full sha is recorded beside it.
+It is read from the tree in front of you, never from the repository's releases, so a fresh clone and an air-gapped machine compute the same answer without asking GitHub what happened before.
 
-It is read from the tree in front of you, never from the repository's releases, so a fresh clone and an air-gapped machine compute the same answer and neither has to ask GitHub what happened before.
-
-It **refuses rather than guessing** in two cases, because the version claims to name a commit and must not be minted where that is false:
+Because the version claims to name a commit, it **refuses rather than guessing** where that would be false:
 
 | Case | Why |
 | --- | --- |
@@ -96,7 +94,7 @@ It **refuses rather than guessing** in two cases, because the version claims to 
 
 `--version` overrides both, and a tag on `HEAD` wins over the sha — someone who tagged `v1.2.0` has said what this release is.
 
-A sha does not order. `failproofai policies show <owner>/<repo> --releases` is where you see which came first, newest at the top.
+A sha carries no ordering of its own, so use `failproofai policies show <owner>/<repo> --releases` to see which release came first — newest at the top.
 
 <Note>
   The release also records the commit you published from, in the manifest and in the release notes. That is **provenance, not verification** — the artifact digest is still the only thing that decides whether the bytes are the ones that were published. It answers the question a digest cannot: which source produced them.
@@ -136,3 +134,19 @@ failproofai policies show acme/support-agent --releases  # everything published
 ## Shipping a new version
 
 Commit the change and run `failproofai publish` again — the new commit is the new version. Consumers run the same `failproofai policies add` and keep whatever subset they had chosen; a policy they turned off stays off across the upgrade.
+
+Changing a policy's **name** is a breaking change: a machine that had turned it off is turning off a name that no longer exists, and the new name arrives at whatever `defaultEnabled` says.
+
+## What your users are trusting
+
+`SHA256SUMS` lives in the same release as the artifact, so it proves the bytes are the ones you published — not who you are. Whoever can write to the repository can write both files. Your users' protection is that the digest is pinned when they install, so what you shipped cannot change under them afterwards.
+
+Publish from a repository whose write access you control, and treat a pack release like publishing a package.
+
+## Observe before you enforce
+
+A manifest may declare `"effect": "observe"` — `failproofai publish --effect observe` is what sets it. Those policies run and their verdicts are **recorded and discarded** — nothing is blocked. It is the way to measure a new rule against real traffic before it can interrupt anyone's work.
+
+```json
+{ "id": "acme/support-agent", "version": "a1b2c3d4e5f6", "effect": "observe", "policies": [ ... ] }
+```

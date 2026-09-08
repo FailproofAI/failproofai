@@ -1,6 +1,6 @@
 ---
 title: "كتالوج السياسات المدمجة"
-description: "اطّلع على كل سياسة مدمجة من سياسات Failproof AI، وحافزها، والحالة الموصى بها، والمعاملات القابلة للتكوين."
+description: "راجع كل سياسة مدمجة في Failproof AI، ومحفزها، والحالة الموصى بها، والمعاملات القابلة للتكوين."
 icon: "list-checks"
 ---
 
@@ -8,7 +8,7 @@ icon: "list-checks"
 
 ## خط الأساس الموصى به
 
-يعمل الإعداد الموجه حالياً على تفعيل معقمات الأسرار، وحماية البيئة، الحماية الذاتية، حراس الأوامر الكارثية، وسلامة الفروع المحمية:
+يقوم الإعداد الموجه حالياً بتفعيل معقمات الأسرار وحماية البيئة والحماية الذاتية وحراس الأوامر الكارثية وسلامة الفرع المحمي:
 
 ```text
 sanitize-jwt                 sanitize-api-keys
@@ -20,95 +20,95 @@ block-curl-pipe-sh           block-rm-rf
 block-push-master            block-force-push
 ```
 
-`block-failproofai-commands` **مفعل دائماً**. تم إدراجه أعلاه لتوضيح المعلومات، لكنه يتسجل عند كل تقييم سواء ظهر في مجموعة السياسات المفعلة لديك أم لا، ولا يمكن تعطيله أو إيقافه مؤقتاً — فالحارس الذي يمكن للعامل إيقاف الإنفاذ عنه ليس حارساً.
+`block-failproofai-commands` **مفعّل دائماً**. يُدرج أعلاه للكمال فقط، لكنه يسجل عند كل تقييم بغض النظر عما إذا كان يظهر في مجموعة السياسات المفعلة لديك، ولا يمكن تعطيله أو إيقافه مؤقتاً — حيث أن الحماية التي يمكن للوكيل إيقافها ليست حماية حقيقية.
 
-الموصى به مقصود أن يكون أضيق من **الكل**. سياسات البنية التحتية وسير العمل يمكن أن تقاطع العمل الصحيح وينبغي تفعيلها للمستودعات والأجهزة التي تحتاجها.
+خط الأساس الموصى به أضيق عن قصد من **الكل**. قد تقاطع سياسات البنية التحتية وسير العمل العمل الصحيح ويجب تفعيلها للمستودعات والآلات التي تحتاجها.
 
 ## الأسرار والبيئة
 
-| السياسة | الحافز | النتيجة |
+| السياسة | المحفز | النتيجة |
 | --- | --- | --- |
-| `sanitize-jwt` | `PostToolUse` | إخفاء JWTs من مخرجات الأدوات قبل أن يراها النموذج. |
+| `sanitize-jwt` | `PostToolUse` | إخفاء JWTs من مخرجات الأداة قبل أن يراها النموذج. |
 | `sanitize-api-keys` | `PostToolUse` | إخفاء مفاتيح OpenAI و Anthropic و GitHub و AWS و Stripe و Google الشائعة. |
 | `sanitize-connection-strings` | `PostToolUse` | إخفاء سلاسل اتصال قواعد البيانات التي تحتوي على بيانات اعتماد. |
 | `sanitize-private-key-content` | `PostToolUse` | إخفاء أجسام مفاتيح PEM الخاصة. |
-| `sanitize-bearer-tokens` | `PostToolUse` | إخفاء رموز الترخيص. |
-| `protect-env-vars` | `PreToolUse` على أدوات الغلاف | منع الأوامر التي تفرغ متغيرات البيئة. |
-| `block-env-files` | `PreToolUse` | منع قراءة وكتابة ملفات `.env`. |
-| `block-read-outside-cwd` | `PreToolUse` على أدوات القراءة أو glob أو grep أو shell | إبقاء القراءة داخل دليل العمل للجلسة. |
-| `block-secrets-write` | `PreToolUse` على أدوات الكتابة | منع الكتابة إلى أسماء ملفات المفاتيح السرية والبيانات الاعتمادية الشائعة. |
+| `sanitize-bearer-tokens` | `PostToolUse` | إخفاء رموز التفويض bearer. |
+| `protect-env-vars` | `PreToolUse` على أدوات shell | حظر الأوامر التي تُفرغ متغيرات البيئة. |
+| `block-env-files` | `PreToolUse` | حظر قراءة وكتابة ملفات `.env`. |
+| `block-read-outside-cwd` | `PreToolUse` على أدوات read أو glob أو grep أو shell | الاحتفاظ بالقراءات داخل دليل عمل الجلسة. |
+| `block-secrets-write` | `PreToolUse` على أدوات الكتابة | حظر الكتابة إلى أسماء ملفات المفاتيح السرية وبيانات الاعتماد الشائعة. |
 
 ## الأوامر الخطيرة والبنية التحتية
 
-| السياسة | الحافز | النتيجة |
+| السياسة | المحفز | النتيجة |
 | --- | --- | --- |
-| `block-sudo` | `PreToolUse`, `PermissionRequest` | منع `sudo` إلا إذا تطابق نمط السماح. |
-| `block-curl-pipe-sh` | `PreToolUse` | منع النصوص البرمجية المحملة الموجهة مباشرة إلى الغلاف. |
-| `block-rm-rf` | `PreToolUse` | منع أنماط الحذف العودية الكارثية. |
-| `block-failproofai-commands` | `PreToolUse`, `PermissionRequest` | **مفعل دائماً، لا يمكن تعطيله.** منع كل استدعاء CLI من Failproof AI، والإيقاف الذاتي، وإلغاء تثبيت مدير الحزم. |
-| `block-kubectl` | `PreToolUse` | حماية أوامر Kubernetes. |
-| `block-terraform` | `PreToolUse` | حماية أوامر Terraform و OpenTofu. |
-| `block-aws-cli` | `PreToolUse` | حماية أوامر AWS CLI. |
-| `block-gcloud` | `PreToolUse` | حماية أوامر Google Cloud CLI. |
-| `block-az-cli` | `PreToolUse` | حماية أوامر Azure CLI. |
-| `block-helm` | `PreToolUse` | حماية أوامر Helm. |
-| `block-gh-pipeline` | `PreToolUse` | حماية عمليات GitHub CLI الطافرة لسير العمل والتشغيل والدمج والإصدار والذاكرة والعمليات السرية. |
+| `block-sudo` | `PreToolUse`، `PermissionRequest` | حظر `sudo` ما لم تطابق نمط السماح. |
+| `block-curl-pipe-sh` | `PreToolUse` | حظر البرامج النصية المحملة الموجهة مباشرة إلى shell. |
+| `block-rm-rf` | `PreToolUse` | حظر أنماط الحذف العودي الكارثية. |
+| `block-failproofai-commands` | `PreToolUse`، `PermissionRequest` | **مفعّل دائماً، لا يمكن تعطيله.** حظر كل استدعاء CLI لـ Failproof AI وإيقاف ذاتي وحذف مدير الحزم. |
+| `block-kubectl` | `PreToolUse` | التحكم في أوامر Kubernetes. |
+| `block-terraform` | `PreToolUse` | التحكم في أوامر Terraform و OpenTofu. |
+| `block-aws-cli` | `PreToolUse` | التحكم في أوامر AWS CLI. |
+| `block-gcloud` | `PreToolUse` | التحكم في أوامر Google Cloud CLI. |
+| `block-az-cli` | `PreToolUse` | التحكم في أوامر Azure CLI. |
+| `block-helm` | `PreToolUse` | التحكم في أوامر Helm. |
+| `block-gh-pipeline` | `PreToolUse` | التحكم في عمليات GitHub CLI التي تُحدث التغييرات المتعلقة بسير العمل والتشغيل والدمج والإصدار والذاكرة المؤقتة والأسرار. |
 
 ## سلامة Git وقاعدة البيانات
 
-| السياسة | الحافز | النتيجة |
+| السياسة | المحفز | النتيجة |
 | --- | --- | --- |
-| `block-push-master` | `PreToolUse` | منع الدفع المباشر إلى الفروع المحمية المُعدَّلة. |
-| `block-force-push` | `PreToolUse` | منع الدفع القسري؛ يبقى `--force-with-lease` مسموحاً بالتطبيق الحالي. |
-| `block-work-on-main` | `PreToolUse` | منع الالتزامات والدمج على الفروع المحمية. |
+| `block-push-master` | `PreToolUse` | حظر الدفع المباشر إلى الفروع المحمية المكونة. |
+| `block-force-push` | `PreToolUse` | حظر الدفع القسري؛ يبقى `--force-with-lease` مسموحاً بالتنفيذ الحالي. |
+| `block-work-on-main` | `PreToolUse` | حظر الالتزامات والدمج على الفروع المحمية. |
 | `warn-git-amend` | `PreToolUse` | تحذير قبل إعادة كتابة التزام باستخدام `--amend`. |
-| `warn-git-stash-drop` | `PreToolUse` | تحذير قبل حذف أو مسح المخزن المؤقت نهائياً. |
-| `warn-all-files-staged` | `PreToolUse` | تحذير على `git add -A` أو `git add .` أو `git add --all` الواسع. |
-| `warn-destructive-sql` | `PreToolUse` | تحذير على `DROP` و `TRUNCATE` و `DELETE` بدون `WHERE` من خلال عملاء قواعد البيانات المعروفة. |
-| `warn-schema-alteration` | `PreToolUse` | تحذير على عمليات `ALTER TABLE` المعروفة لأعمدة وإعادة تسمية. |
+| `warn-git-stash-drop` | `PreToolUse` | تحذير قبل حذف أو مسح المخزنات مؤقتاً بشكل دائم. |
+| `warn-all-files-staged` | `PreToolUse` | تحذير على `git add -A` أو `git add .` أو `git add --all` الواسعة. |
+| `warn-destructive-sql` | `PreToolUse` | تحذير على `DROP` و `TRUNCATE` و `DELETE` بدون `WHERE` عبر عملاء قواعد البيانات المعروفة. |
+| `warn-schema-alteration` | `PreToolUse` | تحذير على عمليات `ALTER TABLE` المعروفة الخاصة بالأعمدة وإعادة التسمية. |
 
-## الحزم وسلوك النظام وحلقات العامل
+## الحزم وسلوك النظام ودورات الوكيل
 
-| السياسة | الحافز | النتيجة |
+| السياسة | المحفز | النتيجة |
 | --- | --- | --- |
-| `warn-package-publish` | `PreToolUse` | تحذير قبل النشر إلى السجلات. |
-| `warn-global-package-install` | `PreToolUse` | تحذير قبل التثبيت العام للحزمة. |
-| `prefer-package-manager` | `PreToolUse` | إرشاد العامل لاستخدام مدير حزم مسموح. |
-| `warn-large-file-write` | `PreToolUse` على أدوات الكتابة | تحذير فوق حد حجم الملف المُعدَّل. |
-| `warn-background-process` | `PreToolUse` | تحذير على أنماط العمليات الخلفية المنفصلة أو طويلة العمر. |
-| `warn-repeated-tool-calls` | `PreToolUse` | تحذير بعد ثلاث مكالمات أدوات متطابقة أو أكثر. |
+| `warn-package-publish` | `PreToolUse` | تحذير قبل النشر إلى سجلات الحزم. |
+| `warn-global-package-install` | `PreToolUse` | تحذير قبل التثبيت العام للحزم. |
+| `prefer-package-manager` | `PreToolUse` | توجيه الوكيل لاستخدام مدير حزم مسموح. |
+| `warn-large-file-write` | `PreToolUse` على أدوات الكتابة | تحذير فوق حد حجم الملف المكون. |
+| `warn-background-process` | `PreToolUse` | تحذير على أنماط العمليات الخلفية المنفصلة أو طويلة الأجل. |
+| `warn-repeated-tool-calls` | `PreToolUse` | تحذير بعد ثلاث أو أكثر من استدعاءات الأداة المتطابقة. |
 
 ## سير عمل نهاية المهمة
 
-تتطلب هذه السياسات حزام يصدر حدث `Stop` متوافق.
+تتطلب هذه السياسات جهازاً يصدر حدث `Stop` متوافقاً.
 
 | السياسة | النتيجة |
 | --- | --- |
-| `require-commit-before-stop` | رفض الإنجاز بينما يبقى العمل المتتبع غير ملتزم. |
-| `require-push-before-stop` | رفض الإنجاز بينما تبقى الالتزامات محلية فقط. |
-| `require-pr-before-stop` | طلب طلب دمج للفرع الحالي. |
-| `require-no-conflicts-before-stop` | طلب دمج نظيف مقابل فرع القاعدة المُعدَّل. |
-| `require-ci-green-before-stop` | طلب اكتمال فحوصات CI في HEAD الحالي بنجاح. |
+| `require-commit-before-stop` | رفض الإكمال بينما يبقى عمل متتبع غير ملتزم. |
+| `require-push-before-stop` | رفض الإكمال بينما تبقى التزامات محلية فقط. |
+| `require-pr-before-stop` | تطلب طلب دمج للفرع الحالي. |
+| `require-no-conflicts-before-stop` | تطلب دمج نظيف ضد الفرع الأساسي المكون. |
+| `require-ci-green-before-stop` | تطلب اكتمال فحوصات CI الحالية بنجاح. |
 
 ## مرجع المعاملات
 
-قم بتكوين المعاملات تحت كائن `policyParams` للنطاق المحدد. يتم التحقق من الأنواع من قبل كل سياسة.
+كون المعاملات تحت كائن `policyParams` للنطاق المحدد. تتحقق الأنواع من قبل كل سياسة.
 
 | السياسة | المعامل | النوع والافتراضي |
 | --- | --- | --- |
-| `sanitize-api-keys` | `additionalPatterns` | `pattern[]`, `[]`؛ الإدخالات تحتوي على `regex` و `label` |
-| `block-read-outside-cwd` | `allowPaths` | `string[]`, `[]` |
-| `block-sudo` | `allowPatterns` | `string[]`, `[]` |
-| `block-rm-rf` | `allowPaths` | `string[]`, `[]` |
-| حاجبات البنية التحتية | `allowPatterns` | `string[]`, `[]` |
-| `block-secrets-write` | `additionalPatterns` | `string[]`, `[]` |
-| `block-push-master` | `protectedBranches` | `string[]`, `["main", "master"]` |
-| `block-work-on-main` | `protectedBranches` | `string[]`, `["main", "master"]` |
-| `prefer-package-manager` | `allowed`, `blocked` | `string[]`, `[]` |
-| `warn-large-file-write` | `thresholdKb` | `number`, `1024` |
-| `require-push-before-stop` | `remote`, `baseBranch` | `string`, `"origin"`؛ `string`, `"main"` |
-| `require-pr-before-stop` | `baseBranch` | `string`, `"main"` |
-| `require-no-conflicts-before-stop` | `baseBranch` | `string`, `"main"` |
+| `sanitize-api-keys` | `additionalPatterns` | `pattern[]`، `[]`؛ تحتوي الإدخالات على `regex` و `label` |
+| `block-read-outside-cwd` | `allowPaths` | `string[]`، `[]` |
+| `block-sudo` | `allowPatterns` | `string[]`، `[]` |
+| `block-rm-rf` | `allowPaths` | `string[]`، `[]` |
+| حاجبات البنية التحتية | `allowPatterns` | `string[]`، `[]` |
+| `block-secrets-write` | `additionalPatterns` | `string[]`، `[]` |
+| `block-push-master` | `protectedBranches` | `string[]`، `["main", "master"]` |
+| `block-work-on-main` | `protectedBranches` | `string[]`، `["main", "master"]` |
+| `prefer-package-manager` | `allowed`، `blocked` | `string[]`، `[]` |
+| `warn-large-file-write` | `thresholdKb` | `number`، `1024` |
+| `require-push-before-stop` | `remote`، `baseBranch` | `string`، `"origin"`؛ `string`، `"main"` |
+| `require-pr-before-stop` | `baseBranch` | `string`، `"main"` |
+| `require-no-conflicts-before-stop` | `baseBranch` | `string`، `"main"` |
 
 ```json
 {
@@ -125,5 +125,5 @@ block-push-master            block-force-push
 ```
 
 <Warning>
-  نمط السماح يوسّع ما قد يفعله العامل. اختبر الرمزنة الدقيقة وأنماط الأوامر على الحزام المستهدف قبل نشره عبر الأسطول.
+  نمط السماح يوسع ما قد يفعله الوكيل. اختبر التقسيم الدقيق ومتغيرات الأوامر على جهاز الاستهداف قبل نشره عبر الأسطول.
 </Warning>

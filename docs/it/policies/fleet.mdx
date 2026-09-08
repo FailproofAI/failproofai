@@ -1,21 +1,21 @@
 ---
-title: "Distribuisci le policy sulle macchine"
-description: "Scopri quali macchine sono registrate, aggiornate e applicano le versioni di policy previste."
+title: "Distribuisci politiche alle macchine"
+description: "Conosci quali macchine sono iscritte, aggiornate e applicano le versioni di politica previste."
 icon: "network"
 ---
 
-La copertura della flotta risponde alla domanda se una policy esiste dove esiste il rischio. Traccia le macchine tramite ID stabile ed etichetta leggibile, quindi confronta lo stato di distribuzione assegnato e segnalato.
+La copertura della flotta risponde alla domanda se esiste una politica dove esiste il rischio. Traccia le macchine tramite ID stabile e un'etichetta leggibile dall'uomo, quindi confronta lo stato di distribuzione assegnato e segnalato.
 
-## Verificare la copertura
+## Controlla la copertura
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vai a **Admin → enforcement** e rivedi i totali di applicazione e osservazione.
-    2. Cerca una macchina per ID o etichetta, oppure filtra le macchine a cui manca una policy.
-    3. Espandi una riga per confrontare le policy assegnate, la distribuzione segnalata, l'ultimo check-in e la cronologia.
+    1. Vai a **Admin → enforcement** e rivedi i totali in applicazione e osservazione.
+    2. Cerca una macchina per ID o etichetta, oppure filtra per le macchine a cui manca una politica.
+    3. Espandi una riga per confrontare le politiche assegnate, la distribuzione segnalata, l'ultimo check-in e la cronologia.
     4. Aggiorna dopo l'intervallo di polling della macchina quando una distribuzione applicata rimane in sospeso.
 
-    ![La flotta Enforcement che mostra la copertura delle policy, lo stato di distribuzione della macchina e gli assegnamenti di osservazione e applicazione.](/images/dashboard/enforcement-fleet.png)
+    ![La flotta Enforcement che mostra la copertura delle politiche, lo stato di distribuzione della macchina e gli assegnamenti di osservazione e applicazione.](/images/dashboard/enforcement-fleet.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -24,15 +24,15 @@ La copertura della flotta risponde alla domanda se una policy esiste dove esiste
     failproofai flush --wait
     ```
 
-    Usa `fp events --agent-id <agent-id> --since 24h` per confermare che l'attività dell'agente della macchina raggiunge Cloud.
+    Usa `fp events --agent-id <agent-id> --since 24h` per confermare che l'attività dell'agente della macchina raggiunge il Cloud.
   </Tab>
 </Tabs>
 
-Usa le visualizzazioni di copertura per trovare:
+Usa le viste di copertura per trovare:
 
-- Macchine che non hanno mai scaricato l'ultima distribuzione
-- Macchine registrate che hanno smesso di segnalare attività
-- Una policy assegnata all'ambiente o alla coorte sbagliata
+- Macchine che non hanno mai richiesto la distribuzione più recente
+- Macchine iscritte che hanno smesso di segnalare attività
+- Una politica assegnata all'ambiente o alla coorte sbagliati
 - Variazione di versione dopo un aggiornamento interrotto
 
 Rinomina una macchina senza riconnetterla:
@@ -41,12 +41,12 @@ Rinomina una macchina senza riconnetterla:
 failproofai config --machine-label checkout-runner-03
 ```
 
-Verifica lo stato locale:
+Controlla lo stato locale:
 
 ```bash
 failproofai config --status
 ```
 
 <Tip>
-  Usa etichette che identifichino il carico di lavoro e l'ambiente. I soli nomi host sono spesso insufficienti dopo l'autoscaling o la sostituzione della macchina.
+  Usa etichette che identifichino il carico di lavoro e l'ambiente. I nomi host da soli sono spesso insufficienti dopo il ridimensionamento automatico o la sostituzione della macchina.
 </Tip>

@@ -1,24 +1,24 @@
 ---
 title: "Desplegar políticas"
-description: "Distribuye una versión de política revisada a las máquinas previstas."
+description: "Distribuye una versión de política revisada a las máquinas de destino."
 icon: "cloud-upload"
 ---
 
-Un despliegue conecta una o más versiones de política a un conjunto de máquinas enroladas.
+Un despliegue conecta una o más versiones de política con un conjunto de máquinas inscritas como objetivo.
 
 ## Aplicar un despliegue
 
 <Tabs>
   <Tab title="Panel de control">
-    1. Ve a **Admin → enforcement**, busca la máquina y expande su fila.
-    2. Selecciona **edit**, añade la versión de política revisada y elige el efecto **observe** o de aplicación forzada.
-    3. Aplica el cambio, luego espera al próximo check-in de la máquina y confirma su estado de despliegue y cobertura.
+    1. Ve a **Admin → enforcement**, encuentra la máquina y expande su fila.
+    2. Selecciona **edit**, añade la versión de política revisada y elige el efecto **observe** o su efecto de aplicación.
+    3. Aplica el cambio, luego espera el próximo registro de la máquina y confirma el estado de despliegue y cobertura.
     4. Ve a **Observe → policy** para inspeccionar las decisiones en tiempo real.
 
-    ![El editor de despliegue de máquina con versiones de política, efectos enforce y observe, y la acción de aplicar despliegue.](/images/dashboard/enforcement-editor.png)
+    ![El editor de despliegue de máquinas con versiones de política, efectos enforce y observe, y la acción de aplicar despliegue.](/images/dashboard/enforcement-editor.png)
   </Tab>
   <Tab title="CLI">
-    Despliega desde la CLI con `fp fleet`. Revisa el conjunto resultante antes de aplicarlo — `deploy` imprime el plan completo y solicita confirmación **únicamente en una terminal interactiva sin `--json`**. Con `--json`, con `--yes`, o con stdin redirigido (un paso de CI, un script, un agente que ejecuta comandos) se aplica de inmediato sin plan ni confirmación, por lo que ejecuta `fp fleet show <machine>` primero si deseas revisarlo:
+    Despliega desde la CLI con `fp fleet`. Revisa el conjunto resultante antes de aplicarlo — `deploy` imprime el plan completo y pregunta **solo en una terminal interactiva sin `--json`**. Con `--json`, con `--yes`, o con stdin redirigido (un paso de CI, un script, un agente ejecutando comandos de shell) se aplica de inmediato sin plan ni confirmación — así que ejecuta `fp fleet show <machine>` primero si deseas revisar:
 
     ```bash
     fp fleet list
@@ -26,9 +26,9 @@ Un despliegue conecta una o más versiones de política a un conjunto de máquin
     fp fleet deploy <machine-id> --add no-force-push
     ```
 
-    `fp fleet diff <machine-id>` muestra la intención frente a la entrega (una máquina aparece como `behind` hasta su próximo sondeo), `fp fleet history <machine-id>` lista las generaciones, y `fp fleet rollback <machine-id> <generation>` restaura una de ellas — rechaza la operación si esa generación hace referencia a una política que ha sido deshabilitada o eliminada.
+    `fp fleet diff <machine-id>` muestra la intención vs. la entrega (una máquina aparece como `behind` hasta su próximo sondeo), `fp fleet history <machine-id>` lista las generaciones, y `fp fleet rollback <machine-id> <generation>` restablece una — se rechaza si esa generación nombra una política que ha sido desactivada o eliminada.
 
-    Comprueba la propia máquina con `failproofai config --status`, y usa `fp sessions --env production --since 24h` y `fp events --event-type hook_completed` tras el despliegue para verificar que la actividad llega a Cloud.
+    Verifica la máquina con `failproofai config --status`, y usa `fp sessions --env production --since 24h` y `fp events --event-type hook_completed` tras el despliegue para confirmar que la actividad llega a Cloud.
   </Tab>
 </Tabs>
 
@@ -37,15 +37,15 @@ Un despliegue conecta una o más versiones de política a un conjunto de máquin
     Despliega una versión revisada, no un borrador mutable, comenzando con una máquina fuera de producción o un grupo pequeño cuyas sesiones puedas inspeccionar.
   </Step>
   <Step title="Observa las decisiones">
-    Revisa coincidencias, motivos, herramientas afectadas y falsos positivos sin bloquear el trabajo.
+    Revisa coincidencias, razones, herramientas afectadas y falsos positivos sin bloquear el trabajo.
   </Step>
   <Step title="Aplica y verifica la cobertura">
-    Promueve tras confirmar que las coincidencias observadas distinguen acciones inseguras de las válidas; luego verifica que cada máquina prevista ha obtenido el despliegue y está reportando decisiones.
+    Promueve tras verificar que las coincidencias observadas separan las acciones no seguras de las válidas, luego confirma que cada máquina prevista ha obtenido el despliegue y está reportando decisiones.
   </Step>
 </Steps>
 
-Las máquinas necesitan la capacidad `policies:pull`. El reporte de eventos está controlado por separado mediante `events:add`; verifica ambos cuando esperes análisis y aplicación forzada en Cloud.
+Las máquinas necesitan la capacidad `policies:pull`. El reporte de eventos está controlado de forma independiente por `events:add`; verifica ambos cuando esperes análisis y aplicación en Cloud.
 
 <Warning>
-  La gestión de enforcement es un flujo de trabajo administrativo de Cloud. No trates las rutas de enforcement exclusivas de root como endpoints de API `/v1` ordinarios para clientes.
+  La gestión de aplicación es un flujo de trabajo administrativo de Cloud. No trates las rutas de aplicación exclusivas para root como endpoints ordinarios de la API `/v1` para clientes.
 </Warning>

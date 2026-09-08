@@ -1,29 +1,29 @@
 ---
 title: "Chiavi e autorizzazioni"
-description: "Crea chiavi API con ambito definito per macchine, automazione e operatori."
+description: "Crea chiavi API con ambito limitato per macchine, automazione e operatori."
 icon: "key-round"
 ---
 
-Le chiavi API appartengono a un'organizzazione e portano autorizzazioni esplicite. Usa chiavi separate per l'ingestion degli agent, la distribuzione delle policy, i valutatori, l'automazione CI e gli script amministrativi.
+Le chiavi API appartengono a un'organizzazione e hanno autorizzazioni esplicite. Usa chiavi separate per l'ingestion degli agenti, la distribuzione delle politiche, i valutatori, l'automazione CI e gli script amministrativi.
 
 ## Creare e ruotare una chiave
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vai a **Administration → Keys**, seleziona **new key** e inserisci un nome del carico di lavoro.
+    1. Vai a **Amministrazione → Chiavi**, seleziona **nuova chiave** e inserisci un nome del carico di lavoro.
     2. Scegli un set di autorizzazioni e regola le autorizzazioni individuali solo quando il preset non è sufficiente.
-    3. Crea la chiave e copia immediatamente il suo segreto monouso.
-    4. Apri la chiave in seguito per aggiornare i grant, disabilitarla o rigenerare il segreto.
+    3. Crea la chiave e copia il suo segreto monouso immediatamente.
+    4. Apri la chiave in seguito per aggiornare le autorizzazioni, disabilitarla o rigenerare il segreto.
 
-    Il cassetto di creazione è dove scegli i grant più restrittivi richiesti dal carico di lavoro.
+    Il drawer di creazione è dove scegli le autorizzazioni più ristrette richieste dal carico di lavoro.
 
-    ![Il cassetto della nuova chiave API con preset di autorizzazioni e grant individuali.](/images/dashboard/key-create.png)
+    ![Il drawer della nuova chiave API con i preset di autorizzazioni e le autorizzazioni individuali.](/images/dashboard/key-create.png)
 
-    Dopo la creazione, la pagina Keys mostra i metadati persistenti e le azioni di gestione. Il segreto monouso non viene più visualizzato.
+    Dopo la creazione, la pagina Chiavi mostra i metadati persistenti e le azioni di gestione. Il segreto monouso non viene più mostrato.
 
-    ![La pagina API Keys che mostra i permessi della chiave, l'ora di creazione e le azioni di rigenerazione e disabilitazione.](/images/dashboard/api-keys.png)
+    ![La pagina Chiavi API che mostra le autorizzazioni della chiave, l'ora di creazione e le azioni di rigenerazione e disabilitazione.](/images/dashboard/api-keys.png)
 
-    Usa questo elenco per rivedere regolarmente i grant e disabilitare le chiavi che non corrispondono più a un carico di lavoro attivo.
+    Usa questo elenco per rivedere regolarmente le autorizzazioni e disabilitare le chiavi che non corrispondono più a un carico di lavoro attivo.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -36,39 +36,39 @@ Le chiavi API appartengono a un'organizzazione e portano autorizzazioni esplicit
     fp keys disable production-agents
     ```
 
-    Reindirizza o cattura l'output di create/regenerate in modo sicuro; il segreto viene restituito una volta sola.
+    Reindirizza o cattura l'output di creazione/rigenerazione in modo sicuro; il segreto viene restituito una sola volta.
   </Tab>
 </Tabs>
 
-Le due autorizzazioni richieste da una macchina Failproof AI collegata sono indipendenti:
+Le due autorizzazioni richieste da una macchina Failproof AI connessa sono indipendenti:
 
 - `events:add` invia eventi e dati di sessione.
-- `policies:pull` recupera i deployment delle policy assegnate.
+- `policies:pull` recupera le distribuzioni di politiche assegnate.
 
-I segreti delle chiavi vengono visualizzati quando creati o rigenerati. Archiviali in un gestore di segreti e ruotali senza riutilizzare le credenziali interattive di un operatore.
+I segreti delle chiavi vengono mostrati quando creati o rigenerati. Archiviali in un gestore di segreti e ruotali senza riutilizzare le credenziali interattive di un operatore.
 
 ## Catalogo delle autorizzazioni
 
 | Area | Autorizzazioni |
 | --- | --- |
-| Events | `events:add`, `events:read` |
-| Keys | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` è solo per sessione umana |
-| Users | `users:create`, `users:read`, `users:update`, `users:delete` |
-| Evaluations | `evaluations:read`, `evaluations:trigger` |
-| Dashboards | `dashboards:read`, `dashboards:write`, `dashboards:delete` |
-| Queries | `queries:read`, `queries:write`, `queries:delete`, `queries:run` |
-| Assistant | `agent:use` |
-| Settings | `settings:read`, `settings:write` |
-| Alerts | `alerts:read`, `alerts:write` |
-| Issues | `issues:read`, `issues:create`, `issues:close` |
-| Audits | `audits:read`, `audits:write` |
-| Policies | `policies:read`, `policies:write`, `policies:pull` |
-| Usage | `usage:read` |
+| Eventi | `events:add`, `events:read` |
+| Chiavi | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` è solo per sessioni umane |
+| Utenti | `users:create`, `users:read`, `users:update`, `users:delete` |
+| Valutazioni | `evaluations:read`, `evaluations:trigger` |
+| Dashboard | `dashboards:read`, `dashboards:write`, `dashboards:delete` |
+| Query | `queries:read`, `queries:write`, `queries:delete`, `queries:run` |
+| Assistente | `agent:use` |
+| Impostazioni | `settings:read`, `settings:write` |
+| Avvisi | `alerts:read`, `alerts:write` |
+| Problemi | `issues:read`, `issues:create`, `issues:close` |
+| Audit | `audits:read`, `audits:write` |
+| Politiche | `policies:read`, `policies:write`, `policies:pull` |
+| Utilizzo | `usage:read` |
 
-`orgs:admin` è riservato all'operatore dell'istanza e non può essere concesso a una chiave di organizzazione o a un membro ordinario. I token ritirati `incidents:*` e `alerts:ack` sono accettati per compatibilità e si normalizzano alle attuali autorizzazioni `issues:*`.
+`orgs:admin` è riservato all'operatore dell'istanza e non può essere concesso a una chiave dell'organizzazione o a un membro ordinario. I token obsoleti `incidents:*` e `alerts:ack` sono accettati per compatibilità e si normalizzano alle autorizzazioni `issues:*` attuali.
 
-I set di autorizzazioni integrati sono `read-only`, `standard` e `admin`. `standard` aggiunge il triggering di valutazioni, l'esecuzione di query, la risposta ai problemi e l'uso dell'assistente alle autorizzazioni di lettura. La creazione di una chiave rimuove i grant solo umani anche quando un set di autorizzazioni li contiene.
+I set di autorizzazioni incorporati sono `read-only`, `standard` e `admin`. `standard` aggiunge attivazione di valutazioni, esecuzione di query, risposta ai problemi e uso dell'assistente alle autorizzazioni di lettura. La creazione di chiavi rimuove le autorizzazioni solo per umani anche quando un set di autorizzazioni le contiene.
 
 <Warning>
-  Le chiavi con ambito istanza possono selezionare un'organizzazione con l'intestazione `X-AgentEye-Org`. Impostala esplicitamente nelle distribuzioni multi-organizzazione; l'omissione può selezionare l'organizzazione predefinita.
+  Le chiavi con ambito dell'istanza possono selezionare un'organizzazione con l'intestazione `X-AgentEye-Org`. Impostala esplicitamente nelle distribuzioni multi-organizzazione; l'omissione potrebbe selezionare l'organizzazione predefinita.
 </Warning>

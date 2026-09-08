@@ -1,20 +1,19 @@
 ---
----
 title: "Özel politikalar"
-description: "Agent iş akışınıza özgü bir hata modu için bir politika yazın."
+description: "Agent iş akışınıza özgü bir hata moduna yönelik bir politika yazın."
 icon: "shield-plus"
 ---
 
-`.failproofai/policies/` dizini altında `policies.js`, `policies.mjs` veya `policies.ts` ile biten bir dosya oluşturun. Kural dosyaları proje ve kullanıcı kapsamında otomatik olarak yüklenir.
+`.failproofai/policies/` altında `policies.js`, `policies.mjs` veya `policies.ts` ile biten bir dosya oluşturun. Kural dosyaları proje ve kullanıcı kapsamında otomatik olarak yüklenir.
 
-## Politikayı Cloud yayınından önce test edin
+## Politikayı Cloud yayını öncesinde test edin
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Özel politikayı bir test makinesine yükleyin ve hem eşleşen bir işlemi hem de meşru bir eşleşmeyen işlemi tetikleyin.
-    2. **Observe → policy** bölümüne gidin ve iki kararı karşılaştırın.
-    3. Her bağlantılı oturumu açın ve olay yükünün kural için yeterli kanıt içerip içermediğini doğrulayın.
-    4. Davranış doğru olduğunda, incelenen kaynağı **Admin → policy editor** bölümüne taşıyın ve bir sürüm yayınlayın.
+    1. Özel politikayı bir test makinesine yükleyin ve hem eşleşen bir işlemi hem de geçerli bir eşleşmeyen işlemi tetikleyin.
+    2. **Observe → policy** öğesine gidin ve iki kararı karşılaştırın.
+    3. Her bağlantılı oturumu açın ve olay yükünün kural için yeterli kanıt içerdiğini doğrulayın.
+    4. Davranış doğru olduğunda, gözden geçirilen kaynağı **Admin → policy editor** öğesine taşıyın ve bir sürüm yayımlayın.
 
   </Tab>
   <Tab title="CLI">
@@ -24,7 +23,7 @@ icon: "shield-plus"
     failproofai policies
     ```
 
-    `.failproofai/policies/` altındaki kural dosyaları `--custom` olmadan yüklenir. Doğrulama bozuk bir modülde başarısız olması gerektiğinde CI'de açık bir yükleme komutu tutun.
+    `.failproofai/policies/` altındaki kural dosyaları `--custom` olmadan yüklenir. Doğrulama bozuk bir modülde başarısız olmalıysa CI'da açık bir yükleme komutu tutun.
   </Tab>
 </Tabs>
 
@@ -46,7 +45,7 @@ customPolicies.add({
 });
 ```
 
-Bu, `production/config.yml`, `/srv/production/config.yml`, `/srv/production` ve `C:\\production\\config.yml` ile `Write` ve `Edit` için eşleşir. `production-backup` gibi adlarla eşleşmez çünkü `production` tam bir yol segmenti olmalıdır.
+Bu, hem `Write` hem de `Edit` için `production/config.yml`, `/srv/production/config.yml`, `/srv/production` ve `C:\\production\\config.yml` ile eşleşir. `production-backup` gibi isimlerle eşleşmez çünkü `production` tam bir yol segmenti olmalıdır.
 
 Açık bir dosyayı doğrulayın ve yükleyin:
 
@@ -54,9 +53,9 @@ Açık bir dosyayı doğrulayın ve yükleyin:
 failproofai policies --install --custom ./security.policies.ts
 ```
 
-Politika bağlamı olay türünü, normalleştirilmiş yükü, araç adını ve girdisini, oturum meta verilerini, parametreleri ve mevcut olduğunda kaynak CLI'yi içerir.
+Politika bağlamı olay türünü, normalleştirilmiş yükü, araç adını ve girdisini, oturum meta verilerini, parametreleri ve kullanılabilir olduğunda kaynak CLI'yi içerir.
 
-## Hata yollarını test edin
+## Başarısızlık yollarını test edin
 
 Giriş dosyasını veya içeri aktardığı herhangi bir yerel modülü değiştirdikten sonra doğrulamayı çalıştırın:
 
@@ -64,10 +63,10 @@ Giriş dosyasını veya içeri aktardığı herhangi bir yerel modülü değişt
 failproofai policies --install --custom ./security.policies.ts --scope project
 ```
 
-Katı CLI yolu eksik dosyalar, sözdizimi hataları, çözülmeyen içeri aktarmalar, üst düzey istisnalar ve modül yükleme zaman aşımları için başarısız olur. Zorlama sırasında, bozuk bir özel dosya günlüğe kaydedilir ve atlanır, böylece yerleşik politikalar devam edebilir. Herhangi bir yükleme uyarısını beklenen zorlama kaybı olarak kabul edin ve üretim günlüklerinde bunu uyarın.
+Katı CLI yolu eksik dosyalar, söz dizimi hataları, çözülmemiş içeri aktarmalar, üst düzey istisnalar ve modül yükleme zaman aşımları için başarısız olur. Zorlama sırasında, bozuk bir özel dosya günlüğe kaydedilir ve atlanır, böylece yerleşik politikalar devam edebilir. Herhangi bir yükleme uyarısını beklenen zorlama kaybı olarak değerlendirin ve bunu üretim günlüklerinde uyarı olarak ayarlayın.
 
-Açık, kural ve Cloud tarafından yönetilen politikalar arasında genel olarak benzersiz adlar kullanın. Politika işlevlerini deterministik tutun, dış çağrıları kısa zaman aşımları ile sınırlayın ve her yolda kasten `allow`, `instruct` veya `deny` döndürün.
+Açık, kural ve Cloud tarafından yönetilen politikalar arasında küresel olarak benzersiz adlar kullanın. Politika işlevlerini deterministic tutun, harici çağrıları kısa zaman aşımlarıyla sınırlayın ve her yolda ıchraç bir `allow`, `instruct` veya `deny` döndürün.
 
 <Warning>
-  Özel politika zorlama kodudur. Eksik alanları, alternatif araç adlarını ve kötü biçimlendirilmiş girdileri test edin—yalnızca beklenen eşleşmeyi değil.
+  Özel bir politika, zorlama kodudur. Eksik alanları, alternatif araç adlarını ve hatalı girdiyi test edin — yalnızca beklenen eşleşmeyi değil.
 </Warning>

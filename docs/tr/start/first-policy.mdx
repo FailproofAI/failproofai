@@ -1,33 +1,33 @@
 ---
-title: "İlk başarısızlığınızı bir ilke ile önleyin"
-description: "Bir ilke sürümü yazın, gözlem modunda dağıtın ve ardından zorunlu kılın."
+title: "İlk hatanızı bir politika ile önleyin"
+description: "Bir politika versiyonu yazın, gözlem modunda dağıtın ve ardından uygulayın."
 icon: "shield-check"
 ---
 
-Bir ilkeyi yalnızca güvensiz eylemi ve izin verilmesi gereken yasal eylemleri tanımlayabildikten sonra kullanın.
+Bir politikayı yalnızca güvensiz eylemi ve izin verilmesi gereken yasal eylemleri açıklayabilecek duruma geldikten sonra kullanın.
 
 <Tabs>
   <Tab title="Dashboard">
     <Steps>
-      <Step title="İlkeyi yazın">
-        **Admin → policy editor** adresine gidin. Demo ilkesiyle başlayın, kaynağını gözden geçirin veya düzenleyin, ardından **publish version** seçeneğini tıklayın. Yayınlama, makinelere dağıtabileceğiniz değişmez sürümü oluşturur.
+      <Step title="Politikayı yazın">
+        **Admin → policy editor** sayfasına gidin. Demo politikasından başlayın, kaynağını gözden geçirin veya düzenleyin, ardından **publish version** seçeneğini seçin. Yayınlama, makinelere dağıtabileceğiniz değişmez versiyonu oluşturur.
 
-        ![Demo ilkesi değişmez bir sürüm olarak yayınlanmaya hazır olan İlke editörü oluşturma görünümü.](/images/dashboard/policy-editor.png)
+        ![Yayınlanmaya hazır bir demo politikasıyla Policy editor compose görünümü.](/images/dashboard/policy-editor.png)
       </Step>
       <Step title="Bir makineye dağıtın">
-        **Admin → enforcement** adresine gidin, hedef makineyi genişletin ve **edit this machine** seçeneğini tıklayın. Yayınlanan demo ilkesini ekleyin, sürümünü sabitleyin, **observe** seçeneğini seçin ve dağıtımı uygulayın.
+        **Admin → enforcement** sayfasına gidin, hedef makineyi genişletin ve **edit this machine** seçeneğini seçin. Yayınlanan demo politikasını ekleyin, versiyonunu sabitleyin, **observe** seçeneğini seçin ve dağıtımı uygulayın.
 
-        ![Yayınlanan bir ilke sürümü seçili olan makine dağıtım editörü, dağıtımı uygulamadan önce gözlem modunda.](/images/dashboard/enforcement-editor.png)
+        ![Gözlem modunda seçili yayınlanmış bir politika versiyonuyla makine dağıtım editörü.](/images/dashboard/enforcement-editor.png)
       </Step>
-      <Step title="İlkeyi doğrulayın">
-        O makinede yeni bir agent oturumu çalıştırın, ardından **Observe → policy** açın. Makineyi seçin ve demo ilkesinin ilke eşlemesinde ve karar zaman çizelgesinde görüntülendiğini doğrulayın. Gözlem modu, ilkenin eylemi bloke etmeden ne yapacağını kaydeder.
+      <Step title="Politikayı doğrulayın">
+        O makinede yeni bir aracı oturumu çalıştırın, ardından **Observe → policy** sayfasını açın. Makineyi seçin ve demo politikasının politika eşlemesinde ve karar zaman çizelgesinde göründüğünü doğrulayın. Gözlem modu, politikanın eylemi engellemeden ne yapacağını kaydeder.
 
-        ![Karar toplamlarını, zaman içinde zorlama etkinliğini ve yerel ve Bulut tarafından yönetilen ilke eşlemelerini gösteren İlke sayfası.](/images/dashboard/policy-observe.png)
+        ![Karar toplamları, zaman içindeki uygulama etkinliği ve yerel ve Bulut tarafından yönetilen politika eşlemelerini gösteren Policy sayfası.](/images/dashboard/policy-observe.png)
       </Step>
     </Steps>
   </Tab>
   <Tab title="CLI">
-    Bulut ilkesi yazımı ve filo dağıtımı yönetimsel iş akışlarıdır. Yayınlamadan önce aynı ilkeyi doğrulamak için yerel CLI'yi kullanın:
+    Bulut politikası yazma ve filo dağıtımı yönetimsel iş akışlarıdır. Yayınlamadan önce aynı politikayı doğrulamak için yerel CLI'yi kullanın:
 
     ```bash
     failproofai policies --install --custom ./payment-retry.policies.ts \
@@ -35,13 +35,13 @@ Bir ilkeyi yalnızca güvensiz eylemi ve izin verilmesi gereken yasal eylemleri 
     failproofai config --status
     ```
 
-    Bulut tarafından görünen ilke kararlarını incelemek için `fp` kullanın:
+    Bulut tarafından görülebilen politika kararlarını incelemek için `fp` kullanın:
 
     ```bash
     fp events --event-type hook_completed --env production --since 24h
     fp sessions --env production --since 24h
     ```
 
-    Her iki adım da CLI'den kullanılabilir: `fp policies publish <id> <file>` bir sürüm oluşturur ve `fp fleet deploy <machine-id> --add <id>` bunu bir makineye yerleştirir. Dashboard eşdeğerleri **Admin → policy editor** ve **Admin → enforcement** adreslerdir.
+    Her iki adım da CLI'de mevcuttur: `fp policies publish <id> <file>` bir versiyonu oluşturur ve `fp fleet deploy <machine-id> --add <id>` bunu bir makineye koyar. Dashboard eşdeğerleri **Admin → policy editor** ve **Admin → enforcement** sayfalarıdır.
   </Tab>
 </Tabs>

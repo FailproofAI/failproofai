@@ -1,10 +1,10 @@
 ---
 title: "Failproof Assistant"
-description: "自然言語でFailproof AIの分析と操作を行います。質問やクエリからダッシュボード、監査まで対応しています。"
+description: "Failproof AI を自然言語で分析・操作できます。質問やクエリからダッシュボード、監査まで幅広く対応します。"
 icon: "message-square-text"
 ---
 
-Failproof Assistantに自然言語で何でも依頼できます。セッションや障害の分析、クエリの実行、ダッシュボードの作成、評価やアラートの調査、監査の作成と実行まで対応しており、タスクを製品画面やCLIコマンドに変換する必要はありません。
+Failproof Assistant に対して、Failproof AI で行いたいことを自然言語で何でも依頼できます。セッションや障害の分析、クエリの実行、ダッシュボードの構築、評価やアラートの調査、そして監査の作成・実行まで、製品の画面や CLI コマンドに翻訳する手間なく対応します。
 
 ```text
 Why did production checkout agents regress this week?
@@ -13,18 +13,18 @@ Create an audit that finds agents retrying the same failed action without changi
 Show me the sessions behind the most common audit finding.
 ```
 
-アシスタントは、アクティブな組織で利用可能なデータと権限を使用して動作します。他のユーザーやエージェントに影響するアクションを適用する前に、証拠と提案された変更内容を必ず確認してください。
+アシスタントは、アクティブな組織で利用可能なデータと権限に基づいて動作します。他のユーザーやエージェントに影響を与えるアクションを適用する前に、提示された根拠と変更案を必ず確認してください。
 
-## アシスタントに依頼する
+## アシスタントに質問する
 
 <Tabs>
   <Tab title="ダッシュボード">
     1. **Open agent chat** を選択し、理解・作成・操作したい内容を説明します。
-    2. アシスタントが作業を進める間、ツール呼び出し、テーブル、クエリ結果を確認します。
-    3. 引用されたセッション、アラート、またはクエリを開き、ソースデータと照合して結果を検証します。
-    4. 別の調査には新しいチャットを開始するか、チャット履歴を使用して同じ分析の流れを継続します。
+    2. アシスタントが作業を進める間、ツールの呼び出し、テーブル、クエリ結果を確認します。
+    3. 引用されたセッション、アラート、またはクエリを開いて、ソースデータと結果を照合します。
+    4. 別の調査には新しいチャットを開始し、同じ分析を続ける場合はチャット履歴を活用します。
 
-    ![オブザーバビリティに関する質問に対して、分析とクエリを添えて回答するクラウドアシスタント。](/images/dashboard/assistant.png)
+    ![The Cloud assistant answering an observability question with supporting analysis and queries.](/images/dashboard/assistant.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -36,18 +36,18 @@ Show me the sessions behind the most common audit finding.
     fp agent ask "Open representative sessions" --chat <chat-id>
     ```
 
-    `fp agent rename <chat-id> --title <title>` を使用して調査を識別しやすい名前にし、`fp agent delete <chat-id>` で削除できます。
+    `fp agent rename <chat-id> --title <title>` を使って調査を識別しやすい名前に変更し、`fp agent delete <chat-id>` で削除できます。
   </Tab>
 </Tabs>
 
 ## アシスタントを効果的に活用する
 
-- まずゴールを伝え、境界が重要な場合は環境、ワークフロー、または時間範囲を追加します。
-- 生成されたSQLやサマリーは最終的な証拠としてではなく、調査の補助として扱います。
+- まず目標を伝え、必要に応じて環境、ワークフロー、または時間範囲を指定します。
+- 生成された SQL やサマリーは調査の補助ツールとして扱い、最終的な根拠としないでください。
 - 監査、Issue、アラート、またはポリシーを作成する前に、代表的なセッションを開いて確認します。
-- 組織、環境、時間フィルターは明示的に指定します。
-- 他のオペレーターが結果を再現できるよう、有用なSQLはクエリとして保存します。
+- 組織、環境、時間フィルターは明示的に指定してください。
+- 有用な SQL はクエリとして保存し、他のオペレーターが結果を再現できるようにしてください。
 
 <Warning>
-  アシスタントが読み取れるのは、現在のユーザーがアクセスできるデータのみです。質問に対応するために権限を拡張しないでください。代わりに、権限を持つオペレーターに調査を依頼してください。
+  アシスタントが読み取れるのは、現在のユーザーがアクセスできる情報のみです。質問を成立させるために権限を拡大しないでください。代わりに、権限を持つオペレーターに調査を依頼してください。
 </Warning>

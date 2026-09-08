@@ -1,12 +1,12 @@
 ---
 title: "Failproof Cloud CLI"
-description: "Vollständige Referenz zur Abfrage und Verwaltung von Failproof AI Cloud mit fp."
+description: "Vollständige Referenz für Abfragen und Verwaltung von Failproof AI Cloud mit fp."
 icon: "cloud-cog"
 ---
 
-Verwende `fp`, um Cloud-Telemetrie einzusehen, cloudseitig verwaltete Durchsetzung (Richtlinien, Fleet-Deployments, Guardrail-Entscheidungen) zu verwalten sowie Audits, Befunde, Issues, Alerts, Schlüssel, Benutzer, Abfragen und Einstellungen zu administrieren. Nutze [`failproofai`](/de/reference/failproof-cli) für lokale Hooks, Richtlinien, Aufzeichnung und Machine-Enrollment.
+Verwende `fp`, um Cloud-Telemetrie einzusehen, cloud-verwaltete Durchsetzung (Richtlinien, Fleet-Deployments, Guardrail-Entscheidungen) zu verwalten sowie Audits, Befunde, Issues, Warnungen, Schlüssel, Benutzer, Abfragen und Einstellungen zu administrieren. Verwende [`failproofai`](/de/reference/failproof-cli) für lokale Hooks, Richtlinien, Erfassung und Machine-Enrollment.
 
-Installiere das veröffentlichte Cloud CLI als isoliertes Tool:
+Installiere die veröffentlichte Cloud CLI als isoliertes Werkzeug:
 
 ```bash
 uv tool install fp-cloud-cli
@@ -26,13 +26,13 @@ fp whoami
 fp [GLOBAL_OPTIONS] COMMAND [SUBCOMMAND] [ARGUMENTS] [OPTIONS]
 ```
 
-Globale Optionen müssen vor dem Befehl angegeben werden:
+Globale Optionen müssen vor dem Befehl stehen:
 
 ```bash
 fp --json sessions --since 24h
 ```
 
-Führe `fp COMMAND --help` oder `fp COMMAND SUBCOMMAND --help` aus, um die Terminalhi­lfe anzuzeigen.
+Führe `fp COMMAND --help` oder `fp COMMAND SUBCOMMAND --help` für Hilfe im Terminal aus.
 
 ## CLI-Befehle
 
@@ -44,37 +44,37 @@ Führe `fp COMMAND --help` oder `fp COMMAND SUBCOMMAND --help` aus, um die Termi
 | `fp logout` | Gespeicherte Benutzersitzung widerrufen und entfernen. | — |
 | `fp whoami` | Aktuelle Identität, Authentifizierungsmodus, Organisation und Berechtigungen anzeigen. | — |
 | `fp version` | Installierte CLI-Version anzeigen. | — |
-| `fp help` | Hilfe zu Befehlen auf oberster Ebene anzeigen. | — |
+| `fp help` | Hilfe zu Befehlen der obersten Ebene anzeigen. | — |
 
 ```bash
 fp login --email you@example.com --org reliability-team
 fp whoami
 ```
 
-### Ereignisse
+### Events
 
 ```text
 fp events [OPTIONS]
 ```
 
-Listet einzelne Agent-Ereignisse auf. Der standardmäßige einfache Feed schließt Raw-Payloads aus; verwende `--full` nur für eine begrenzte Untersuchung.
+Listet einzelne Agent-Events auf. Der standardmäßige Light-Feed schließt rohe Payloads aus; verwende `--full` nur für eine eingegrenzte Untersuchung.
 
 | Option | Beschreibung |
 | --- | --- |
-| `--limit`, `-n <n>` | Maximale Gesamtzahl der Zeilen. Standard: `50`. |
+| `--limit`, `-n <n>` | Maximale Gesamtzahl an Zeilen. Standard: `50`. |
 | `--since <window>` | `all`, `15m`, `1h`, `6h`, `24h` oder `7d`. |
 | `--from <timestamp>` / `--to <timestamp>` | ISO 8601 UTC-Bereich; überschreibt `--since`. |
-| `--env <value>` | Umgebungsfilter; wiederholbar oder kommagetrennte Werte. |
-| `--event-type <value>` | Ereignistypfilter; wiederholbar oder kommagetrennte Werte. |
-| `--agent-id <value>` | Agent-Filter; wiederholbar oder kommagetrennte Werte. |
-| `--session-id <value>` | Sitzungsfilter; wiederholbar oder kommagetrennte Werte. |
-| `--search <text>` | Volltextsuche im Payload; wiederholbar, ein beliebiger Begriff reicht. |
+| `--env <value>` | Umgebungsfilter; Werte wiederholen oder kommagetrennt angeben. |
+| `--event-type <value>` | Event-Typ-Filter; Werte wiederholen oder kommagetrennt angeben. |
+| `--agent-id <value>` | Agent-Filter; Werte wiederholen oder kommagetrennt angeben. |
+| `--session-id <value>` | Sitzungsfilter; Werte wiederholen oder kommagetrennt angeben. |
+| `--search <text>` | Volltextsuche in Payloads; wiederholbar, ein beliebiger Begriff muss übereinstimmen. |
 | `--order asc\|desc` | Zeitreihenfolge. Standard: neueste zuerst. |
-| `--all` | Automatische Paginierung bis zu `--limit`. |
-| `--cursor <token>` | Fortsetzen ab einem undurchsichtigen Cursor. |
+| `--all` | Automatisch bis zu `--limit` paginieren. |
+| `--cursor <token>` | Von einem undurchsichtigen Cursor fortsetzen. |
 | `--page-size <n>` | Zeilen pro Anfrage bei `--all`; maximal `200`. |
-| `--full` | Raw-Payloads über den umfangreicheren Ereignis-Endpunkt einschließen. |
-| `--fields <csv>` | Nur ausgewählte Felder zurückgeben; durch Angabe von `payload` wird der Full-Modus aktiviert. |
+| `--full` | Rohe Payloads über den schwereren Event-Endpunkt einschließen. |
+| `--fields <csv>` | Nur ausgewählte Felder zurückgeben; bei Anforderung von `payload` wird der Full-Modus aktiviert. |
 
 ```bash
 fp events --session-id <session-id> --order asc --all --limit 10000
@@ -82,10 +82,10 @@ fp --json events --full --session-id <session-id> --all --limit 10000
 ```
 
 <Note>
-  `--all` paginiert **bis zu `--limit`**, was standardmäßig **50** ist — daher stoppt `--all` allein bei 50 Zeilen. Wenn es vorzeitig stoppt, enthält die Antwort einen `next_cursor` zum Fortsetzen; `"next_cursor": null` bedeutet, dass der Feed tatsächlich erschöpft ist.
+  `--all` paginiert **bis zu `--limit`**, was standardmäßig **50** beträgt — `--all` allein stoppt also bei 50 Zeilen. Wenn es vorzeitig stoppt, enthält die Antwort einen `next_cursor` zum Fortsetzen; `"next_cursor": null` bedeutet, dass der Feed tatsächlich erschöpft war.
 </Note>
 
-### Sitzungen
+### Sessions
 
 ```text
 fp sessions [OPTIONS]
@@ -93,21 +93,21 @@ fp sessions [OPTIONS]
 
 | Option | Beschreibung |
 | --- | --- |
-| `--limit`, `-n <n>` | Maximale Gesamtzahl der Zeilen. Standard: `50`. |
+| `--limit`, `-n <n>` | Maximale Gesamtzahl an Zeilen. Standard: `50`. |
 | `--since <window>` | `all`, `15m`, `1h`, `6h`, `24h` oder `7d`. |
 | `--from <timestamp>` / `--to <timestamp>` | ISO 8601 UTC-Bereich; überschreibt `--since`. |
-| `--env <value>` | Umgebungsfilter; wiederholbar oder kommagetrennte Werte. |
-| `--status <value>` | `done`, `error` oder `timeout`; wiederholbar oder kommagetrennte Werte. |
-| `--agent-id <value>` | Sitzungen einschließen, an denen ein ausgewählter Agent beteiligt ist. |
-| `--session-id <value>` | Sitzungsfilter; wiederholbar oder kommagetrennte Werte. |
-| `--all` | Automatische Paginierung bis zu `--limit`. |
-| `--cursor <token>` | Fortsetzen ab einem undurchsichtigen Cursor. |
+| `--env <value>` | Umgebungsfilter; Werte wiederholen oder kommagetrennt angeben. |
+| `--status <value>` | `done`, `error` oder `timeout`; Werte wiederholen oder kommagetrennt angeben. |
+| `--agent-id <value>` | Sitzungen mit einem der ausgewählten Agenten abgleichen. |
+| `--session-id <value>` | Sitzungsfilter; Werte wiederholen oder kommagetrennt angeben. |
+| `--all` | Automatisch bis zu `--limit` paginieren. |
+| `--cursor <token>` | Von einem undurchsichtigen Cursor fortsetzen. |
 | `--page-size <n>` | Zeilen pro Anfrage bei `--all`; maximal `200`. |
 | `--fields <csv>` | Nur ausgewählte Felder zurückgeben. |
 | `--full-ids` | Sitzungs-IDs in der Terminalausgabe nicht kürzen. |
-| `--agents` | Die Agent-Liste für Multi-Agent-Sitzungen aufklappen. |
+| `--agents` | Agentenliste für Multi-Agenten-Sitzungen erweitern. |
 
-### Auswertungen
+### Evaluierungen
 
 ```text
 fp evals [OPTIONS]
@@ -115,10 +115,10 @@ fp evals [OPTIONS]
 
 | Option | Beschreibung |
 | --- | --- |
-| `--aggregate` | Gesamtwerte und Statistiken pro Score anstelle einzelner Auswertungen anzeigen. |
+| `--aggregate` | Gesamtwerte und Statistiken pro Score anstelle einzelner Evaluierungen anzeigen. |
 | `--limit`, `-n <n>` | Maximale Listenzeilen. Standard: `50`. |
 | `--since`, `--from`, `--to` | Zeitbereich auswählen. |
-| `--env`, `--status`, `--agent-id`, `--session-id` | Auf einen exakten Wert pro Filter einschränken. |
+| `--env`, `--status`, `--agent-id`, `--session-id` | Auf genau einen Wert pro Filter einschränken. |
 | `--score KEY:MIN..MAX` | Score-Bereich; wiederholbar, alle Bereiche müssen übereinstimmen. |
 | `--all`, `--cursor`, `--page-size` | Listenpaginierung steuern. |
 | `--fields <csv>` | Nur ausgewählte Felder zurückgeben. |
@@ -133,10 +133,10 @@ fp errors [OPTIONS]
 
 | Option | Beschreibung |
 | --- | --- |
-| `--aggregate` | Übereinstimmende Fehler zusammenfassen anstatt Zeilen aufzulisten. |
+| `--aggregate` | Übereinstimmende Fehler zusammenfassen statt Zeilen aufzulisten. |
 | `--limit`, `-n <n>` | Maximale Listenzeilen. Standard: `50`. |
 | `--since`, `--from`, `--to` | Zeitbereich auswählen. |
-| `--env`, `--error-type`, `--event-type`, `--agent-id`, `--session-id` | Fehlerpopulation einschränken. |
+| `--env`, `--error-type`, `--event-type`, `--agent-id`, `--session-id` | Fehlermenge einschränken. |
 | `--search <text>` | Payload-Text durchsuchen; wiederholbar. |
 | `--order asc\|desc` | Zeitreihenfolge. |
 | `--all`, `--cursor`, `--page-size` | Listenpaginierung steuern. |
@@ -148,10 +148,10 @@ fp errors [OPTIONS]
 | Befehl | Zweck |
 | --- | --- |
 | `fp usage` | Nutzung für das aktuelle Abrechnungsfenster anzeigen. |
-| `fp list envs` | Erkannte Umgebungen auflisten. |
-| `fp list agents` | Erkannte Agent-IDs auflisten. |
-| `fp list event_types` | Ereignistypen auflisten. |
-| `fp list score_filters` | Score-Schlüssel für Auswertungen auflisten. |
+| `fp list envs` | Beobachtete Umgebungen auflisten. |
+| `fp list agents` | Beobachtete Agent-IDs auflisten. |
+| `fp list event_types` | Event-Typen auflisten. |
+| `fp list score_filters` | Evaluierungsscore-Schlüssel auflisten. |
 | `fp list models` | Modellnamen auflisten. |
 | `fp list hooks` | Hook-Namen auflisten. |
 | `fp list tools` | Tool-Namen auflisten. |
@@ -162,7 +162,7 @@ fp errors [OPTIONS]
 | Befehl | Zweck |
 | --- | --- |
 | `fp orgs list` | Zugängliche Organisationen auflisten. |
-| `fp orgs switch [SLUG]` | Eine aktive Organisation speichern; bei Auslassung wird nachgefragt. |
+| `fp orgs switch [SLUG]` | Aktive Organisation speichern; bei Auslassung wird nachgefragt. |
 | `fp orgs current` | Aktive Organisation anzeigen. |
 | `fp orgs perms` | Eigene Berechtigungen in der aktiven Organisation anzeigen. |
 
@@ -173,11 +173,11 @@ fp errors [OPTIONS]
 | `fp keys list` | Organisationsschlüssel auflisten. | `--show-id`; `--fields <csv>` |
 | `fp keys show NAME` | Einen Schlüssel und seine Berechtigungen anzeigen. | — |
 | `fp keys create NAME` | Einen Schlüssel erstellen und sein Geheimnis einmalig anzeigen. | `--permission-set`; `--add`; `--remove` |
-| `fp keys update NAME` | Den Berechtigungssatz ersetzen oder Berechtigungen anpassen. | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
+| `fp keys update NAME` | Das Berechtigungs-Set ersetzen oder Berechtigungen anpassen. | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
 | `fp keys regenerate NAME` | Das Geheimnis rotieren und den Ersatz einmalig anzeigen. | `--yes`, `-y` |
 | `fp keys disable NAME` | Einen Schlüssel dauerhaft widerrufen. | `--yes`, `-y` |
 
-Berechtigungs-Tokens verwenden das Format `resource:action`, z. B. `events:add`. `--add` kann wiederholt, Tokens kommagetrennt oder mit gepunkteten Aktionen wie `events:read.add` angegeben werden.
+Berechtigungs-Tokens verwenden `resource:action`, z. B. `events:add`. Wiederhole `--add`, trenne Tokens durch Kommas oder verwende gepunktete Aktionen wie `events:read.add`.
 
 ### Abfragen
 
@@ -189,7 +189,7 @@ Berechtigungs-Tokens verwenden das Format `resource:action`, z. B. `events:add`.
 | `fp query update NAME` | Eine Abfrage aktualisieren oder umbenennen. | `--name`; `--sql`; `--description`; `--yes`, `-y` |
 | `fp query delete NAME` | Eine gespeicherte Abfrage löschen. | `--yes`, `-y` |
 | `fp query run [NAME]` | Eine gespeicherte Abfrage oder Ad-hoc-SQL ausführen. | `--sql`; `--limit`; `--all`; `--arg`, `--param` |
-| `fp query schema [TABLE]` | Abfragbare Tabellen auflisten oder eine Tabelle inspizieren. | — |
+| `fp query schema [TABLE]` | Abfragbare Tabellen auflisten oder eine Tabelle untersuchen. | — |
 
 ### Benutzer
 
@@ -198,7 +198,7 @@ Berechtigungs-Tokens verwenden das Format `resource:action`, z. B. `events:add`.
 | `fp users list` | Organisationsmitglieder auflisten. | `--active-only`; `--show-id` |
 | `fp users show EMAIL` | Ein Mitglied und seine Berechtigungen anzeigen. | — |
 | `fp users create EMAIL` | Ein Mitglied hinzufügen. | `--permission-set`; `--add`; `--remove` |
-| `fp users update EMAIL` | Berechtigungen eines Mitglieds ändern. | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
+| `fp users update EMAIL` | Die Berechtigungen eines Mitglieds ändern. | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
 | `fp users disable EMAIL` | Anmeldung deaktivieren. | `--yes`, `-y` |
 | `fp users enable EMAIL` | Anmeldung wieder aktivieren. | `--yes`, `-y` |
 
@@ -207,21 +207,21 @@ Berechtigungs-Tokens verwenden das Format `resource:action`, z. B. `events:add`.
 | Befehl | Zweck | Optionen |
 | --- | --- | --- |
 | `fp settings list` | Organisationseinstellungen und aktuelle Werte auflisten. | — |
-| `fp settings schema` | Zulässige Werte und Beschreibungen anzeigen. | — |
-| `fp settings set KEY` | Eine bestehende Einstellung ändern. | genau eines von `--value`, `--json-value`, `--file`; optional `--yes`, `-y` |
+| `fp settings schema` | Akzeptierte Werte und Beschreibungen anzeigen. | — |
+| `fp settings set KEY` | Eine vorhandene Einstellung ändern. | genau eine von `--value`, `--json-value`, `--file`; optional `--yes`, `-y` |
 
-### Alerts
+### Warnungen
 
 | Befehl | Zweck | Optionen |
 | --- | --- | --- |
-| `fp alerts list` | Alert-Regeln auflisten. | `--show-id` |
-| `fp alerts show NAME` | Einen Alert anzeigen. | — |
-| `fp alerts create NAME` | Einen Alert erstellen. | `--file`; `--description`; `--severity`; `--trigger-kind`; `--trigger-spec`; `--channels`; `--eval-interval-secs`; `--min-breaches`; `--eval-window` |
-| `fp alerts update NAME` | Einen Alert aktualisieren oder umbenennen. | Create-Optionen plus `--name`; `--yes`, `-y` |
-| `fp alerts delete NAME` | Einen Alert löschen. | `--yes`, `-y` |
+| `fp alerts list` | Warnungsregeln auflisten. | `--show-id` |
+| `fp alerts show NAME` | Eine Warnung anzeigen. | — |
+| `fp alerts create NAME` | Eine Warnung erstellen. | `--file`; `--description`; `--severity`; `--trigger-kind`; `--trigger-spec`; `--channels`; `--eval-interval-secs`; `--min-breaches`; `--eval-window` |
+| `fp alerts update NAME` | Eine Warnung aktualisieren oder umbenennen. | Erstellungsoptionen plus `--name`; `--yes`, `-y` |
+| `fp alerts delete NAME` | Eine Warnung löschen. | `--yes`, `-y` |
 | `fp alerts test NAME` | Eine Testbenachrichtigung senden. | `--channels`; `--yes`, `-y` |
 
-Alert-Schweregrade sind `info`, `warning` und `critical`. Trigger-Arten sind `metric_threshold`, `custom_sql`, `evaluation_score`, `eval_compound` und `per_event`. Auswertungsintervalle müssen zwischen 30 und 86.400 Sekunden liegen.
+Warnungsschweregrade sind `info`, `warning` und `critical`. Trigger-Arten sind `metric_threshold`, `custom_sql`, `evaluation_score`, `eval_compound` und `per_event`. Evaluierungsintervalle müssen zwischen 30 und 86.400 Sekunden liegen.
 
 ### Audits
 
@@ -229,24 +229,24 @@ Alert-Schweregrade sind `info`, `warning` und `critical`. Trigger-Arten sind `me
 | --- | --- | --- |
 | `fp audits list` | Audits auflisten. | `--enabled-only`; `--show-id` |
 | `fp audits show NAME` | Eine Audit-Definition und ihren Zustand anzeigen. | — |
-| `fp audits create NAME` | Ein Audit erstellen und sofort den ersten Durchlauf in die Warteschlange stellen. | Siehe [Create-Optionen](#audit-create-options). |
-| `fp audits edit NAME` | Audit-Einstellungen ersetzen, ohne nicht angegebene Werte zu verändern. | Definitions-Optionen für Create; `--name`; `--yes`, `-y` |
+| `fp audits create NAME` | Ein Audit erstellen und sofort dessen ersten Lauf in die Warteschlange stellen. | Siehe [Erstellungsoptionen](#audit-create-options). |
+| `fp audits edit NAME` | Audit-Einstellungen ersetzen, wobei nicht angegebene Werte beibehalten werden. | Definitionsoptionen zur Erstellung; `--name`; `--yes`, `-y` |
 | `fp audits delete NAME` | Ein Audit, seine Befunde und den Ausführungsverlauf löschen. | `--yes`, `-y` |
-| `fp audits run NAME` | Einen manuellen Durchlauf in die Warteschlange stellen. | — |
+| `fp audits run NAME` | Einen manuellen Lauf in die Warteschlange stellen. | — |
 | `fp audits runs NAME` | Ausführungsverlauf auflisten. | `--limit`, `-n`; `--show-id` |
-| `fp audits context-show NAME` | Das Briefing und den Abrufstatus der Referenz-URLs anzeigen. | — |
-| `fp audits context-set NAME` | Das Briefing oder Referenz-URLs ändern. | `--text`; `--text-file`; `--url`; `--clear-urls` |
+| `fp audits context-show NAME` | Den Kurztext und den URL-Abrufstatus der Referenz anzeigen. | — |
+| `fp audits context-set NAME` | Den Kurztext oder die Referenz-URLs ändern. | `--text`; `--text-file`; `--url`; `--clear-urls` |
 | `fp audits context-refresh NAME` | Referenz-URLs erneut abrufen. | — |
 | `fp audits findings` | Befunde auflisten. | `--audit`; `--run-id`; `--status`; `--limit`, `-n`; `--offset`; `--show-id` |
-| `fp audits finding FINDING_ID` | Einen Befund und seine Beweise anzeigen. | — |
+| `fp audits finding FINDING_ID` | Einen Befund und seine Belege anzeigen. | — |
 | `fp audits ack FINDING_ID` | Einen Befund bestätigen. | `--reason` |
 | `fp audits mute FINDING_ID` | Ein wiederkehrendes Muster unterdrücken. | `--reason`; `--yes`, `-y` |
 | `fp audits dismiss FINDING_ID` | Ein Muster als nicht handlungsrelevant markieren und unterdrücken. | `--reason`; `--yes`, `-y` |
-| `fp audits resolve FINDING_ID` | Einen Befund als behoben markieren, ohne zukünftige Unterdrückung. | `--yes`, `-y` |
-| `fp audits reopen FINDING_ID` | Einen Befund in die aktive Warteschlange zurückführen und Unterdrückung aufheben. | — |
-| `fp audits assign FINDING_ID` | Den Verantwortlichen für einen Befund festlegen. | Pflichtangabe `--to <email>` |
+| `fp audits resolve FINDING_ID` | Einen Befund als behoben markieren, ohne künftige Unterdrückung. | `--yes`, `-y` |
+| `fp audits reopen FINDING_ID` | Einen Befund in die aktive Warteschlange zurückgeben und die Unterdrückung aufheben. | — |
+| `fp audits assign FINDING_ID` | Den Eigentümer eines Befunds festlegen. | erforderlich: `--to <email>` |
 
-#### Audit-Create-Optionen
+#### Audit-Erstellungsoptionen
 
 ```bash
 fp audits create checkout-reliability \
@@ -261,27 +261,27 @@ fp audits create checkout-reliability \
 
 | Option | Beschreibung |
 | --- | --- |
-| `--file <path>` | Definition auf JSON basieren, oder `-` für stdin verwenden. Explizite Flags überschreiben Dateiwerte. |
+| `--file <path>` | Definition auf JSON basieren oder `-` für stdin verwenden. Explizite Flags überschreiben Dateiwerte. |
 | `--description <text>` | Die Fehlerfrage oder den Zweck beschreiben. |
-| `--enabled` / `--disabled` | Zeitplanung aktivieren oder deaktivieren. Standard: aktiviert. |
+| `--enabled` / `--disabled` | Planung ein- oder ausschalten. Standard: aktiviert. |
 | `--schedule-interval-secs <n>` | `3600`–`604800`. Standard: `86400`. |
-| `--schedule-anchor <timestamp>` | Feste UTC-Phase im ISO 8601-Format. Standard: nächste 09:00 UTC. |
-| `--window-mode since_last\|fixed` | Nach dem letzten vollständig analysierten Fenster fortfahren oder ein rollendes Fenster wiederholt untersuchen. Standard: `since_last`. |
+| `--schedule-anchor <timestamp>` | Fester UTC-Zeitpunkt im ISO 8601-Format. Standard: nächste 09:00 UTC. |
+| `--window-mode since_last\|fixed` | Nach dem letzten vollständig analysierten Fenster fortfahren oder ein rollierendes Fenster wiederholt untersuchen. Standard: `since_last`. |
 | `--lookback-window-secs <n>` | `3600`–`7776000`. Standard: `604800`. |
 | `--scope '<json>'` | Nach `environments`, `agent_ids` oder anderen unterstützten Scope-Feldern filtern. |
-| `--ignore-error-type <type>` | Fehlertypen ausschließen; wiederholbar oder kommagetrennt. |
+| `--ignore-error-type <type>` | Fehlertypen ausschließen; wiederholen oder kommagetrennt angeben. |
 | `--llm` / `--no-llm` | Agentische Analyse aktivieren oder deaktivieren. Standard: aktiviert. |
-| `--top-k <n>` | `1`–`500` Befunde behalten. Standard: `50`. |
+| `--top-k <n>` | `1`–`500` Befunde beibehalten. Standard: `50`. |
 | `--sensitivity low\|medium\|high` | Berichtssensitivität festlegen. Standard: `medium`. |
-| `--channels '<json>'` | Array der Benachrichtigungskanäle. |
-| `--text <brief>` | Inlines Briefing, maximal 8.192 Zeichen. |
-| `--text-file <path>` | Briefing aus einer Datei lesen; schließt sich gegenseitig mit `--text` aus. |
+| `--channels '<json>'` | Benachrichtigungskanal-Array. |
+| `--text <brief>` | Inline-Kurztext, maximal 8.192 Zeichen. |
+| `--text-file <path>` | Kurztext aus einer Datei lesen; schließt sich gegenseitig mit `--text` aus. |
 | `--url <https-url>` | Eine öffentliche HTTPS-Referenz hinzufügen; bis zu fünfmal wiederholbar. |
 
-Füge Kontext während der Erstellung hinzu, wenn der erste Durchlauf ihn benötigt. Die Erstellung schreibt die Definition und den Kontext gemeinsam fest, bevor der eingereihte Durchlauf beginnt.
+Kontext während der Erstellung einschließen, wenn der erste Lauf ihn benötigt. Die Erstellung schreibt Definition und Kontext gemeinsam fest, bevor der geplante Lauf beginnt.
 
 <Note>
-  `fp audits run` ist asynchron. Warte mit `fp audits runs NAME`, bis der letzte Durchlauf erfolgreich abgeschlossen ist oder fehlschlägt, bevor du die Befunde liest.
+  `fp audits run` ist asynchron. Rufe `fp audits runs NAME` so lange ab, bis der letzte Lauf erfolgreich abgeschlossen ist oder fehlschlägt, bevor du seine Befunde liest.
 </Note>
 
 ### Issues
@@ -291,15 +291,15 @@ Füge Kontext während der Erstellung hinzu, wenn der erste Durchlauf ihn benöt
 | `fp issues list` | Issues auflisten. | `--state`; `--alert-id`; `--limit`, `-n`; `--show-id` |
 | `fp issues count` | Offene oder ausgewählte Issue-Zustände zählen. | `--state` |
 | `fp issues show INCIDENT_ID` | Issue-Details, Kommentare, Abonnenten und Aktivitäten anzeigen. | — |
-| `fp issues open` | Ein manuelles oder alert-verknüpftes Issue öffnen. | Pflichtangabe `--summary`; optional `--title`, `--alert-id`, `--severity` |
+| `fp issues open` | Ein manuelles oder warnungsverknüpftes Issue öffnen. | erforderlich: `--summary`; optional: `--title`, `--alert-id`, `--severity` |
 | `fp issues ack INCIDENT_ID` | Ein Issue bestätigen. | — |
-| `fp issues assign INCIDENT_ID` | Zugewiesene Personen ersetzen; Option weglassen, um sie zu entfernen. | wiederholbares `--assignee` |
+| `fp issues assign INCIDENT_ID` | Zugewiesene Personen ersetzen; Option weglassen, um sie zu entfernen. | wiederholbar: `--assignee` |
 | `fp issues resolve INCIDENT_ID` | Ein Issue auflösen. | `--yes`, `-y` |
 | `fp issues comment-list INCIDENT_ID` | Kommentare auflisten. | — |
-| `fp issues comment-add INCIDENT_ID` | Einen Kommentar hinzufügen. | genau eines von `--body`, `--file` |
+| `fp issues comment-add INCIDENT_ID` | Einen Kommentar hinzufügen. | genau eine von `--body`, `--file` |
 | `fp issues comment-delete INCIDENT_ID COMMENT_ID` | Einen Kommentar löschen. | `--yes`, `-y` |
 | `fp issues subscribers INCIDENT_ID` | Abonnenten auflisten. | — |
-| `fp issues subscribe INCIDENT_ID` | Dich selbst oder einen anderen Operator abonnieren. | `--email` |
+| `fp issues subscribe INCIDENT_ID` | Sich selbst oder einen anderen Operator abonnieren. | `--email` |
 | `fp issues unsubscribe INCIDENT_ID` | Ein Abonnement entfernen. | `--email` |
 
 Gültige Issue-Zustände sind `firing`, `acknowledged` und `resolved`. Schweregrade für eigenständige Issues sind `info`, `warning` und `critical`.
@@ -312,47 +312,47 @@ Gültige Issue-Zustände sind `firing`, `acknowledged` und `resolved`. Schweregr
 | `fp agent models` | Verfügbare Assistentenmodelle auflisten. | — |
 | `fp agent chats` | Gespeicherte Chats auflisten. | — |
 | `fp agent ask [MESSAGE]` | Einen Chat starten oder fortsetzen; liest stdin, wenn die Nachricht weggelassen wird. | `--chat`; `--model`; `--page-context` |
-| `fp agent show CHAT_ID` | Ein gespeichertes Gespräch anzeigen. | — |
-| `fp agent rename CHAT_ID` | Ein Gespräch umbenennen. | Pflichtangabe `--title` |
-| `fp agent delete CHAT_ID` | Ein Gespräch löschen. | `--yes`, `-y` |
+| `fp agent show CHAT_ID` | Eine gespeicherte Unterhaltung anzeigen. | — |
+| `fp agent rename CHAT_ID` | Eine Unterhaltung umbenennen. | erforderlich: `--title` |
+| `fp agent delete CHAT_ID` | Eine Unterhaltung löschen. | `--yes`, `-y` |
 
 ### Policies
 
-Cloudseitig verwaltete Richtlinienversionen. **Nur für Sitzungen** — jeder Befehl hier beendet sich mit `2` unter einem API-Schlüssel, noch vor jeder Anfrage, da es sich um reine Root-Schreibrouten handelt, die absichtlich nicht in `/v1` vorhanden sind.
+Cloud-verwaltete Richtlinienversionen. **Nur für Sitzungen** — jeder Befehl hier gibt `2` zurück, wenn ein API-Schlüssel verwendet wird, noch vor jeder Anfrage, da es sich um Root-only-Schreibrouten handelt, die absichtlich nicht unter `/v1` verfügbar sind.
 
 | Befehl | Zweck | Optionen |
 | --- | --- | --- |
 | `fp policies list` | Richtlinienversionen auflisten. | `--json` |
-| `fp policies show POLICY_ID` | Eine Richtlinie mit ihrem Quellcode anzeigen. | — |
+| `fp policies show POLICY_ID` | Eine Richtlinie mit ihrer Quelle anzeigen. | — |
 | `fp policies publish NAME PATH` | Eine Version aus einer lokalen `.mjs`-Datei erstellen. | `--description`; `--no-verify` |
-| `fp policies enable POLICY_ID` | Sie jedem Deployment hinzufügen, aus dem sie entfernt wurde, und dabei in jedem eine neue Generation prägen. | `--yes`, `-y` |
-| `fp policies disable POLICY_ID` | Sie aus jedem Deployment entfernen, das sie enthält, und dabei in jedem eine neue Generation prägen. | `--yes`, `-y` |
+| `fp policies enable POLICY_ID` | Sie zu jedem Deployment wieder hinzufügen, aus dem sie entfernt wurde, wobei auf jedem eine neue Generation erstellt wird. | `--yes`, `-y` |
+| `fp policies disable POLICY_ID` | Sie aus jedem Deployment entfernen, das sie enthält, wobei auf jedem eine neue Generation erstellt wird. | `--yes`, `-y` |
 | `fp policies delete POLICY_ID` | Eine Richtlinienversion löschen. | `--yes`, `-y` |
-| `fp policies test PATH` | Eine Richtlinie lokal gegen einen synthetischen Kontext testen. Wendet den `match`-Filter jeder Richtlinie an; eine Richtlinie, die das gegebene Ereignis/Tool nicht abdeckt, wird als `skipped` gemeldet statt ausgeführt. | `--event`; `--tool`; `--command`; `--file-path`; `--expect` |
+| `fp policies test PATH` | Eine Richtlinie lokal gegen einen synthetischen Kontext ausführen. Wendet den `match`-Filter jeder Richtlinie an, sodass eine Richtlinie, die das angegebene Event/Tool nicht abdeckt, als `skipped` gemeldet wird, anstatt ausgeführt zu werden. | `--event`; `--tool`; `--command`; `--file-path`; `--expect` |
 | `fp policies compose PROMPT` | Eine Richtlinie mit dem Assistenten entwerfen. Benötigt `policies:write`. | — |
 
 ### Fleet
 
-Welche Machines welche Richtlinien ausführen. **Nur für Sitzungen**, aus demselben Grund wie oben.
+Welche Maschinen welche Richtlinien ausführen. **Nur für Sitzungen**, aus dem gleichen Grund wie oben.
 
 | Befehl | Zweck | Optionen |
 | --- | --- | --- |
-| `fp fleet list` | Eingeschriebene Machines und ihre Deployment-Generation auflisten. | — |
-| `fp fleet show MACHINE_ID` | Den aktuell von einer Machine ausgeführten Richtliniensatz anzeigen. | — |
-| `fp fleet deploy MACHINE_ID` | **Ersetzt den gesamten Richtliniensatz der Machine.** Gibt den Plan aus und fragt nur auf einem interaktiven Terminal ohne `--json` nach. | `--add`; `--remove`; `--set`; `--create`; `--yes`, `-y` |
-| `fp fleet diff MACHINE_ID` | Eine Machine mit einem anderen Deployment vergleichen. | — |
-| `fp fleet history MACHINE_ID` | Vergangene Deployments für eine Machine anzeigen. | — |
+| `fp fleet list` | Eingetragene Maschinen und ihre Deployment-Generation auflisten. | — |
+| `fp fleet show MACHINE_ID` | Den Richtliniensatz anzeigen, den eine Maschine aktuell ausführt. | — |
+| `fp fleet deploy MACHINE_ID` | **Ersetzt den gesamten Richtliniensatz der Maschine.** Gibt den Plan aus und fragt nur auf einem interaktiven Terminal ohne `--json` nach. | `--add`; `--remove`; `--set`; `--create`; `--yes`, `-y` |
+| `fp fleet diff MACHINE_ID` | Eine Maschine mit einem anderen Deployment vergleichen. | — |
+| `fp fleet history MACHINE_ID` | Vergangene Deployments für eine Maschine anzeigen. | — |
 | `fp fleet rollback MACHINE_ID` | Ein vorheriges Deployment wiederherstellen. | `--yes`, `-y` |
-| `fp fleet rename MACHINE_ID` | Einer Machine einen lesbaren Namen geben. | Pflichtangabe `--name` |
+| `fp fleet rename MACHINE_ID` | Einer Maschine einen lesbaren Namen geben. | erforderlich: `--name` |
 
 ### Guardrails
 
-Was die Durchsetzung tatsächlich getan hat. **Nur für Sitzungen**, aus demselben Grund wie oben.
+Was die Durchsetzung tatsächlich getan hat. **Nur für Sitzungen**, aus dem gleichen Grund wie oben.
 
 | Befehl | Zweck | Optionen |
 | --- | --- | --- |
-| `fp guardrails summary` | Abdeckung, blockierte/ausgewertete Gesamtwerte, eine Deny-Sparkline und die Tabelle pro Richtlinie. | `--since` (`1h`, `6h`, `24h`, `7d`); `--machine` |
-| `fp guardrails timeline` | Entscheidungen im Zeitfenster zusammengefasst, summiert über alle Richtlinienquellen. | `--since` (`1h`, `6h`, `24h`, `7d`); `--machine` |
+| `fp guardrails summary` | Abdeckung, gesperrte/ausgewertete Gesamtwerte, eine Deny-Sparkline und die Tabelle pro Richtlinienquelle. | `--since` (`1h`, `6h`, `24h`, `7d`); `--machine` |
+| `fp guardrails timeline` | Entscheidungen im Zeitfenster zusammengefasst, über alle Richtlinienquellen summiert. | `--since` (`1h`, `6h`, `24h`, `7d`); `--machine` |
 
 ## Globale Flags
 
@@ -361,16 +361,16 @@ Was die Durchsetzung tatsächlich getan hat. **Nur für Sitzungen**, aus demselb
 | `--json` | Maschinenlesbares JSON ausgeben. |
 | `--base-url <url>` | Ein selbst gehostetes oder Entwicklungs-Dashboard verwenden. |
 | `--org <slug>` | Eine Organisation für diesen Aufruf auswählen. |
-| `--token <token>` | Das gespeicherte Benutzersitzungstoken überschreiben. |
+| `--token <token>` | Das gespeicherte Benutzersitzungs-Token überschreiben. |
 | `--api-key <key>` | Automatisierung mit einem API-Schlüssel authentifizieren; wird nie gespeichert. |
 | `--timeout <seconds>` | HTTP-Timeout; muss positiv sein. Standard: `30`. |
 | `--quiet`, `-q` | Statusausgabe auf stderr unterdrücken. |
 | `--no-color` | Farbige Ausgabe deaktivieren. |
 | `--insecure` / `--secure` | TLS-Zertifikatsprüfung deaktivieren oder wiederherstellen. |
-| `--version` | Die Version ausgeben und beenden. |
+| `--version` | Version ausgeben und beenden. |
 | `--help`, `-h` | Hilfe anzeigen. |
 
-`--api-key` ist für die Automatisierung vorgesehen. Anmeldung, Organisationswechsel und Assistentenbefehle erfordern eine Benutzersitzung.
+`--api-key` ist für Automatisierung gedacht. Anmeldung, Organisationswechsel und Assistentenbefehle erfordern eine Benutzersitzung.
 
 ## Umgebungsvariablen
 
@@ -382,16 +382,16 @@ Was die Durchsetzung tatsächlich getan hat. **Nur für Sitzungen**, aus demselb
 | `FP_API_KEY` | `--api-key` |
 | `FP_JSON` | `--json` |
 | `FP_INSECURE` | `--insecure` |
-| `FP_HOME` | Konfigurationsverzeichnis des CLI verschieben (Standard: `~/.failproofai/fpcli`). |
+| `FP_HOME` | CLI-Konfigurationsverzeichnis verschieben (Standard: `~/.failproofai/fpcli`). |
 | `FP_ANALYTICS_DISABLED` oder `DO_NOT_TRACK` | Anonyme CLI-Analysen deaktivieren. |
 | `NO_COLOR` | Farbige Ausgabe deaktivieren. |
 
 Explizite Flags überschreiben Umgebungsvariablen, die wiederum die gespeicherte Konfiguration überschreiben. Im API-Schlüssel-Modus den Mandanten explizit mit `--org` oder `FP_ORG` auswählen.
 
 <Warning>
-  Die `AGENTEYE_*`-Schreibweisen dieser Variablen werden von `fp` **nicht gelesen** und wurden es nie — das CLI deklariert `FP_*` (`fp_cli/app.py`), und eine unbekannte Variable ist kein Fehler. Das Setzen von `AGENTEYE_DASHBOARD_URL` richtet das CLI nicht neu aus; es wird ignoriert und der Befehl läuft stillschweigend gegen das gespeicherte Dashboard.
+  Die `AGENTEYE_*`-Schreibweisen dieser Variablen werden von `fp` **nicht gelesen** und wurden es auch nie — die CLI deklariert `FP_*` (`fp_cli/app.py`), und eine unbekannte Variable ist kein Fehler. Das Setzen von `AGENTEYE_DASHBOARD_URL` leitet die CLI nicht um; es wird ignoriert, und der Befehl läuft stillschweigend gegen das gespeicherte Dashboard.
 
-  `AGENTEYE_HOME` und `AGENTEYE_ENVIRONMENT` existieren weiterhin, gehören aber zum **Collector und dem Telemetrie-SDK**, nicht zu diesem CLI.
+  `AGENTEYE_HOME` und `AGENTEYE_ENVIRONMENT` existieren noch, gehören jedoch zum **Collector und dem Telemetrie-SDK**, nicht zu dieser CLI.
 </Warning>
 
 <Warning>

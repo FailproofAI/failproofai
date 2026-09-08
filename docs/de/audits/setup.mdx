@@ -1,21 +1,21 @@
 ---
 title: "Audit einrichten"
-description: "Auditzielsetzung, Sitzungspopulation und Evidenzkontext definieren."
+description: "Audit-Ziel, Sitzungspopulation und Evidenzkontext definieren."
 icon: "sliders-horizontal"
 ---
 
-Die Qualität eines Audits hängt von seinem Umfang ab. Eine allgemeine Anfrage wie „Probleme finden" liefert weniger nützliche Ergebnisse als eine konkrete Fehlerfrage.
+Die Qualität eines Audits beginnt mit seinem Umfang. Eine breite Anfrage wie „Probleme finden" liefert weniger nützliche Ergebnisse als eine konkrete Fehlerfrage.
 
 ## Das Audit konfigurieren
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehe zu **Analyze → Audits → New audit** und gib Name und Beschreibung ein.
-    2. Lege Takt, Zeitfenster, Agent-/Umgebungsbereich, ignorierte Fehler, Sensitivität und maximale Befunde fest.
-    3. Füge unter **agents** Agentenkontext hinzu oder überprüfe ihn, und ergänze den Operator-Brief sowie öffentliche HTTPS-Referenz-URLs.
-    4. Wähle Benachrichtigungskanäle aus und klicke auf **create audit**. Der erste Durchlauf wird sofort in die Warteschlange gestellt.
+    1. Gehen Sie zu **Analyze → Audits → New audit** und geben Sie Name und Beschreibung ein.
+    2. Legen Sie den Rhythmus, das Zeitfenster, den Agent-/Umgebungsbereich, ignorierte Fehler, die Empfindlichkeit und die maximale Anzahl von Findings fest.
+    3. Fügen Sie unter **agents** den Agentenkontext hinzu oder überprüfen Sie ihn, dann fügen Sie das Operator-Brief und beliebige öffentliche HTTPS-Referenz-URLs hinzu.
+    4. Wählen Sie Benachrichtigungskanäle aus und klicken Sie auf **create audit**. Der erste Durchlauf wird sofort in die Warteschlange gestellt.
 
-    ![Das Formular für ein neues Audit mit Name, Beschreibung, Takt, Zeitfenster, Umgebungs- und Agentenbereich, ignorierten Fehlern, Analyseeinstellungen, Brief, Referenzseiten und Benachrichtigungskanälen.](/images/dashboard/audit-new.png)
+    ![Das neue Audit-Formular mit Name, Beschreibung, Rhythmus, Zeitfenster, Umgebungs- und Agentenbereich, ignorierten Fehlern, Analyseeinstellungen, Brief, Referenzseiten und Benachrichtigungskanälen.](/images/dashboard/audit-new.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -29,16 +29,16 @@ Die Qualität eines Audits hängt von seinem Umfang ab. Eine allgemeine Anfrage 
       --url https://runbooks.example.com/checkout
     ```
 
-    Der erste Durchlauf wird sofort in die Warteschlange gestellt. Füge den Brief und die Referenz-URLs bereits bei der Erstellung hinzu, damit dieser Durchlauf sie erhält.
+    Der erste Durchlauf wird sofort in die Warteschlange gestellt. Fügen Sie Brief und Referenz-URLs bereits bei der Erstellung hinzu, damit der erste Durchlauf diese erhält.
 
     Siehe die vollständige [`fp audits create`-Referenz](/de/reference/cloud-cli#audits).
   </Tab>
 </Tabs>
 
 <Tip>
-  Beginne mit einer bekannten fehlgeschlagenen Sitzung und mehreren normalen Sitzungen. So erhält das Audit sowohl ein positives Beispiel als auch einen Vergleichssatz.
+  Beginnen Sie mit einer bekannten fehlgeschlagenen Sitzung und mehreren normalen Sitzungen. So erhält das Audit sowohl ein positives Beispiel als auch einen Vergleichssatz.
 </Tip>
 
 <Info>
-  Auditkontext wird als eigenständige Ressource gespeichert, sodass das Bearbeiten eines Audits das Referenzmaterial nicht versehentlich entfernt.
+  Der Audit-Kontext wird als eigene Ressource gespeichert, sodass das Bearbeiten eines Audits das Referenzmaterial nicht versehentlich entfernt.
 </Info>

@@ -4,7 +4,7 @@ description: "Agrupe erros repetidos e acesse as sessões por trás deles."
 icon: "circle-alert"
 ---
 
-Erros oferece uma visão focada em falhas entre todas as sessões. Agrupe por tipo de erro, agente, ambiente, modelo, ferramenta ou janela de tempo para identificar problemas operacionais recorrentes.
+Erros oferece uma visão orientada a falhas em todas as sessões. Agrupe por tipo de erro, agente, ambiente, modelo, ferramenta ou janela de tempo para encontrar problemas operacionais recorrentes.
 
 ## Investigar erros
 
@@ -15,7 +15,7 @@ Erros oferece uma visão focada em falhas entre todas as sessões. Agrupe por ti
     3. Expanda um erro agrupado para ver as ocorrências. Selecione uma linha para abrir o evento exato em sua sessão.
     4. Selecione o controle de sino em um erro representativo para criar um alerta para erros semelhantes.
 
-    ![A página de Erros mostrando um histograma de falhas, erros agrupados e o controle para criar um alerta.](/images/dashboard/errors.png)
+    ![A página de Erros exibindo um histograma de falhas, erros agrupados e o controle para criar um alerta.](/images/dashboard/errors.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -31,12 +31,12 @@ Erros oferece uma visão focada em falhas entre todas as sessões. Agrupe por ti
 ## Use Erros quando precisar
 
 - Encontrar a classe de erro mais frequente em produção.
-- Determinar se uma ferramenta ou modelo específico causa um pico.
-- Navegar de uma contagem agregada para sessões representativas.
-- Criar um alerta para recorrências.
+- Determinar se uma ferramenta ou modelo está causando um pico.
+- Ir de uma contagem agregada para sessões representativas.
+- Criar um alerta para recorrência.
 - Incluir a população afetada em uma auditoria.
 
-Um erro é um evento observado. Uma avaliação com falha é um julgamento de qualidade, e um achado de auditoria é um padrão de falha investigado. Mantenha essas distinções ao decidir qual fluxo de resposta utilizar.
+Um erro é um evento observado. Uma avaliação com falha é um julgamento de qualidade, e uma descoberta de auditoria é um padrão de falha investigado. Mantenha essas distinções ao decidir qual fluxo de trabalho de resposta utilizar.
 
 <Card title="Criar um alerta" icon="bell-ring" href="/pt-br/audits/alerts">
   Notifique os responsáveis quando um erro ou condição de qualidade ultrapassar um limite.

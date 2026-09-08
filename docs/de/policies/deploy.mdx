@@ -1,24 +1,24 @@
 ---
-title: "Richtlinien bereitstellen"
+title: "Richtlinien deployen"
 description: "Eine geprüfte Richtlinienversion auf den vorgesehenen Maschinen ausrollen."
 icon: "cloud-upload"
 ---
 
-Eine Bereitstellung verbindet eine oder mehrere Richtlinienversionen mit einer Zielgruppe eingetragener Maschinen.
+Ein Deployment verbindet eine oder mehrere Richtlinienversionen mit einer Zielgruppe eingeschriebener Maschinen.
 
-## Eine Bereitstellung anwenden
+## Deployment anwenden
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehe zu **Admin → Durchsetzung**, finde die Maschine und klappe ihre Zeile aus.
-    2. Wähle **Bearbeiten**, füge die geprüfte Richtlinienversion hinzu und wähle **Beobachten** oder den durchsetzenden Effekt.
-    3. Wende die Änderung an, warte dann auf den nächsten Check-in der Maschine und bestätige ihren Bereitstellungs- und Abdeckungsstatus.
-    4. Gehe zu **Beobachten → Richtlinie**, um Live-Entscheidungen zu prüfen.
+    1. Gehe zu **Admin → Durchsetzung**, finde die Maschine und klappe ihre Zeile auf.
+    2. Wähle **Bearbeiten**, füge die geprüfte Richtlinienversion hinzu und wähle **Beobachten** oder eine durchsetzende Wirkung.
+    3. Wende die Änderung an, warte dann auf den nächsten Check-in der Maschine und bestätige deren Deployment- und Coverage-Status.
+    4. Gehe zu **Beobachten → Richtlinie**, um Live-Entscheidungen einzusehen.
 
-    ![Der Maschinen-Bereitstellungseditor mit Richtlinienversionen, Durchsetzen- und Beobachten-Effekten sowie der Aktion zur Anwendung der Bereitstellung.](/images/dashboard/enforcement-editor.png)
+    ![Der Maschinen-Deployment-Editor mit Richtlinienversionen, Durchsetzungs- und Beobachtungseffekten sowie der Aktion zum Anwenden des Deployments.](/images/dashboard/enforcement-editor.png)
   </Tab>
   <Tab title="CLI">
-    Bereitstellen über die CLI mit `fp fleet`. Überprüfe die resultierende Konfiguration, bevor du sie anwendest – `deploy` gibt den vollständigen Plan aus und fragt **nur in einem interaktiven Terminal ohne `--json`** nach. Mit `--json`, mit `--yes` oder bei umgeleitetem stdin (ein CI-Schritt, ein Skript, ein Agent) wird die Konfiguration sofort ohne Plan und ohne Bestätigung angewendet – führe daher zuerst `fp fleet show <machine>` aus, wenn du prüfen möchtest:
+    Deploye über die CLI mit `fp fleet`. Überprüfe das resultierende Set, bevor du es anwendest — `deploy` gibt den vollständigen Plan aus und fragt **nur in einem interaktiven Terminal ohne `--json`**. Mit `--json`, mit `--yes` oder bei umgeleitetem stdin (ein CI-Schritt, ein Skript, ein Agent der eine Shell aufruft) wird der Plan sofort ohne Ausgabe und ohne Abfrage angewendet — führe daher zuerst `fp fleet show <machine>` aus, wenn du den Plan prüfen möchtest:
 
     ```bash
     fp fleet list
@@ -26,26 +26,26 @@ Eine Bereitstellung verbindet eine oder mehrere Richtlinienversionen mit einer Z
     fp fleet deploy <machine-id> --add no-force-push
     ```
 
-    `fp fleet diff <machine-id>` zeigt Soll-/Ist-Zustand (eine Maschine gilt als `behind`, bis sie das nächste Mal abfragt), `fp fleet history <machine-id>` listet die Generationen auf, und `fp fleet rollback <machine-id> <generation>` stellt eine davon wieder her – dies schlägt fehl, wenn die betreffende Generation eine inzwischen deaktivierte oder gelöschte Richtlinie referenziert.
+    `fp fleet diff <machine-id>` zeigt Absicht vs. Lieferung (eine Maschine wird als `behind` angezeigt, bis sie das nächste Mal abfragt), `fp fleet history <machine-id>` listet die Generationen auf und `fp fleet rollback <machine-id> <generation>` stellt eine davon wieder her — dies schlägt fehl, wenn diese Generation eine inzwischen deaktivierte oder gelöschte Richtlinie benennt.
 
-    Überprüfe die Maschine selbst mit `failproofai config --status` und nutze nach der Bereitstellung `fp sessions --env production --since 24h` sowie `fp events --event-type hook_completed`, um sicherzustellen, dass Aktivitäten die Cloud erreichen.
+    Überprüfe die Maschine selbst mit `failproofai config --status` und verwende nach dem Deployment `fp sessions --env production --since 24h` sowie `fp events --event-type hook_completed`, um zu verifizieren, dass Aktivität die Cloud erreicht.
   </Tab>
 </Tabs>
 
 <Steps>
-  <Step title="Version und Zielmaschinen wählen">
-    Stelle eine geprüfte Version bereit, keinen veränderlichen Entwurf. Beginne mit einer Maschine außerhalb der Produktion oder einer kleinen Gruppe, deren Sitzungen du einsehen kannst.
+  <Step title="Version und Ziele auswählen">
+    Deploye eine geprüfte Version, kein veränderliches Draft, beginnend mit einer Nicht-Produktionsmaschine oder einer kleinen Gruppe, deren Sessions du einsehen kannst.
   </Step>
   <Step title="Entscheidungen beobachten">
-    Prüfe Treffer, Begründungen, betroffene Tools und Fehlerkennungen, ohne die Arbeit zu blockieren.
+    Überprüfe Treffer, Begründungen, betroffene Tools und False Positives, ohne die Arbeit zu blockieren.
   </Step>
-  <Step title="Durchsetzen und Abdeckung prüfen">
-    Stufe die Richtlinie hoch, nachdem beobachtete Treffer unsichere Aktionen von gültigen getrennt haben. Bestätige dann, dass jede vorgesehene Maschine die Bereitstellung abgerufen hat und Entscheidungen meldet.
+  <Step title="Durchsetzen und Coverage verifizieren">
+    Stelle nach dem Deployment auf Durchsetzung um, wenn beobachtete Treffer unsichere Aktionen von gültigen trennen, und bestätige dann, dass jede vorgesehene Maschine das Deployment abgerufen hat und Entscheidungen meldet.
   </Step>
 </Steps>
 
-Maschinen benötigen die Berechtigung `policies:pull`. Die Ereignisberichterstattung wird separat durch `events:add` gesteuert; überprüfe beides, wenn du Cloud-Analyse und -Durchsetzung erwartest.
+Maschinen benötigen die Berechtigung `policies:pull`. Die Ereignismeldung wird separat über `events:add` gesteuert; überprüfe beides, wenn du Cloud-Analyse und Durchsetzung erwartest.
 
 <Warning>
-  Das Enforcement-Management ist ein administrativer Cloud-Workflow. Behandle rein administrative Durchsetzungsrouten nicht wie gewöhnliche Kunden-Endpunkte unter `/v1`.
+  Die Verwaltung der Durchsetzung ist ein administrativer Cloud-Workflow. Behandle rein root-basierte Durchsetzungsrouten nicht als gewöhnliche Kunden-`/v1`-API-Endpunkte.
 </Warning>

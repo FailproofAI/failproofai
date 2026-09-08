@@ -4,21 +4,21 @@ description: "Verfolge die Zuverlässigkeitssignale, die für einen Agenten oder
 icon: "layout-dashboard"
 ---
 
-Dashboards kombinieren gespeicherte Abfragen zu einer operativen Ansicht. Baue eines rund um eine Entscheidung auf, die jemand treffen soll – nicht rund um alle verfügbaren Metriken.
+Dashboards fassen gespeicherte Abfragen zu einer operativen Übersicht zusammen. Erstelle sie auf Basis einer Entscheidung, die jemand treffen soll – nicht auf Basis aller verfügbaren Metriken.
 
 ## Dashboard erstellen
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehe zu **Analyze → Queries**, erstelle oder öffne eine gespeicherte Abfrage und validiere ihr Ergebnis.
-    2. Wähle **add to dashboard**, dann wähle ein bestehendes Dashboard oder erstelle eines unter **Analyze → Dashboards**.
+    1. Gehe zu **Analyze → Queries**, erstelle oder öffne eine gespeicherte Abfrage und überprüfe ihr Ergebnis.
+    2. Wähle **add to dashboard** und wähle dann ein bestehendes Dashboard oder erstelle eines unter **Analyze → Dashboards**.
     3. Öffne das Dashboard, wechsle in den Bearbeitungsmodus, ordne die Kacheln an und speichere das Layout.
     4. Kehre zur Abfrage zurück, wenn du die Daten oder Filter hinter einer Kachel ändern möchtest.
 
-    ![Ein Dashboard, das aus gespeicherten Abfragen für Event-Volumen, Fehler, Latenz und Modell-Token-Nutzung zusammengestellt ist.](/images/dashboard/dashboard-fleet.png)
+    ![Ein Dashboard, das aus gespeicherten Abfragen für Ereignisvolumen, Fehler, Latenz und Modell-Token-Nutzung zusammengesetzt ist.](/images/dashboard/dashboard-fleet.png)
   </Tab>
   <Tab title="CLI">
-    Dashboard-CRUD ist im aktuellen Cloud CLI nicht verfügbar. Verwende die CLI, um die gespeicherte Abfrage zu erstellen und zu überprüfen, und füge sie anschließend über die Benutzeroberfläche einem Dashboard hinzu.
+    Dashboard-CRUD ist über die aktuelle Cloud-CLI nicht verfügbar. Verwende die CLI, um die gespeicherte Abfrage zu erstellen und zu überprüfen, und füge sie anschließend über die Benutzeroberfläche einem Dashboard hinzu.
 
     ```bash
     fp query schema
@@ -30,14 +30,14 @@ Dashboards kombinieren gespeicherte Abfragen zu einer operativen Ansicht. Baue e
 
 Nützliche Dashboard-Gruppen umfassen:
 
-- **Models:** Volumen, Latenz, Token-Nutzung, Fehlerrate und Evaluierungswerte.
-- **Evaluations:** Erfolgsrate und Score-Trends nach Agent oder Umgebung.
+- **Modelle:** Volumen, Latenz, Token-Nutzung, Fehlerrate und Evaluierungswerte.
+- **Evaluierungen:** Erfolgsrate und Score-Trends nach Agent oder Umgebung.
 - **Tools:** Aufrufvolumen, Fehlerrate, Dauer und wiederholte Aufrufe.
-- **Hooks and policies:** Entscheidungen, Ablehnungen und Policy-Trefferrate.
-- **Custom workflow metrics:** Ergebnisse aus eigenen Event-Feldern und SQL.
+- **Hooks und Richtlinien:** Entscheidungen, Ablehnungen und Richtlinien-Trefferrate.
+- **Benutzerdefinierte Workflow-Metriken:** Ergebnisse aus eigenen Ereignisfeldern und SQL.
 
-Beginne mit einer gespeicherten Abfrage, validiere ihr Ergebnis und füge sie dann als Kachel hinzu. Halte Produktions- und Entwicklungsfilter explizit, damit Test-Traffic keine Regression verdeckt.
+Beginne mit einer gespeicherten Abfrage, überprüfe ihr Ergebnis und füge sie dann als Kachel hinzu. Halte Produktions- und Entwicklungsfilter explizit, damit Testdatenverkehr keine Regression verbirgt.
 
 <Tip>
-  Weise jedem Dashboard einen Verantwortlichen und eine Leitfrage zu, z. B. „Ist die Zuverlässigkeit des checkout-agent schlechter als letzte Woche?"
+  Weise jedem Dashboard einen Verantwortlichen und eine Leitfrage zu, z. B. „Ist die Zuverlässigkeit des Checkout-Agenten schlechter als letzte Woche?"
 </Tip>

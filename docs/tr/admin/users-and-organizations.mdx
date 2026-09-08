@@ -1,21 +1,22 @@
 ---
-title: "Kullanıcılar ve organizasyonlar"
-description: "Üyeliği kontrol edin ve her organizasyonun verilerini ve işlemlerini sınırlandırın."
+---
+title: "Kullanıcılar ve kuruluşlar"
+description: "Üyelik kontrolü ve her kuruluşun verilerini ve işlemlerini kapsamlı tutun."
 icon: "users"
 ---
 
-Organizasyonlar oturumları, değerlendirmeleri, denetim günlüklerini, sorunları, uyarıları, sorguları, panoları, kullanıcıları ve anahtarları izole eder. İdari kaynakları değiştirmeden önce etkin organizasyonu doğrulayın.
+Kuruluşlar oturumları, değerlendirmeleri, denetimleri, sorunları, uyarıları, sorguları, panoları, kullanıcıları ve anahtarları izole eder. Yönetim kaynaklarını değiştirmeden önce etkin kuruluşu onaylayın.
 
-## Üyeleri ve organizasyonları yönetin
+## Üyeleri ve kuruluşları yönetin
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Cloud kenar çubuğunun üst kısmındaki organizasyon değiştiricisini kullanarak organizasyonları değiştirin.
-    2. Üyeleri aramak veya aktif duruma ve role göre filtrelemek için **Administration → Users** bölümüne gidin.
-    3. **new user** seçeneğini belirleyin, e-posta adresini girin, bir izin seti seçin ve gerekirse geçersiz kılmaları ayarlayın.
-    4. Bir kullanıcıyı daha sonra açarak yetkiyi güncelleyin, oturum açmayı devre dışı bırakın veya hesabı yeniden etkinleştirin.
+    1. Kuruluşlar arasında geçiş yapmak için Cloud kenar çubuğunun üstündeki kuruluş değiştiriciyi kullanın.
+    2. Üyeleri aramak veya etkin durum ve rol ile filtrelemek için **Administration → Users** bölümüne gidin.
+    3. **new user** seçeneğini seçin, e-posta adresini girin, bir izin kümesi seçin ve gerekirse geçersiz kılmaları ayarlayın.
+    4. Daha sonra bir kullanıcıyı açarak yetkilendirmeleri güncelleyin, oturum açmayı devre dışı bırakın veya hesabı yeniden etkinleştirin.
 
-    ![Üye e-posta adreslerini, izin setlerini ve düzenleme ve devre dışı bırakma kontrollerini gösteren Users sayfası.](/images/dashboard/users.png)
+    ![Üye e-posta adreslerini, izin kümelerini ve düzenleme ile devre dışı bırakma denetimlerini gösteren Kullanıcılar sayfası.](/images/dashboard/users.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -33,12 +34,12 @@ Organizasyonlar oturumları, değerlendirmeleri, denetim günlüklerini, sorunla
   </Tab>
 </Tabs>
 
-Yöneticiler kullanıcıları oluşturabilir, güncelleyebilir, devre dışı bırakabilir ve yeniden etkinleştirebilir, ardından rollerine uygun izin setini atayabilir. API devre dışı bırakma işlemi için bir silme işlemi kullanır, ancak hesabı veya üyelik kaydını kaldırmaz.
+Yöneticiler kullanıcı oluşturabilir, güncelleyebilir, devre dışı bırakabilir ve yeniden etkinleştirebilir, ardından rollerine uygun izin kümesini atayabilir. API, devre dışı bırakmak için bir silme işlemi kullanır, ancak hesabı veya üyelik kaydını kaldırmaz.
 
 <Warning>
-  Bir kullanıcıyı devre dışı bırakmak o kimliğin yalnızca seçili olan organizasyona değil, her organizasyonda oturum açmasını engeller. Yeniden etkinleştirmek genel oturum açmayı ve üyenin bu organizasyondaki izinlerini geri yükler.
+  Bir kullanıcıyı devre dışı bırakmak bu kimliği yalnızca seçili olan kuruluşta değil, her kuruluşta oturum açmaktan engeller. Yeniden etkinleştirme, bu kuruluştaki genel oturum açma ve üyenin izinlerini geri yükler.
 </Warning>
 
 <Tip>
-  Hizmet hesaplarına bir iş yüküne ve sahibine bağlı açıklayıcı adlar verin. Anahtarları organizasyonlar arasında veya kişiler ve makineler arasında paylaşmaktan kaçının.
+  Hizmet hesaplarına bir iş yüküne ve sahibine bağlı tanımlayıcı adlar verin. Kuruluşlar arasında veya insanlar ile makineler arasında anahtarları paylaşmaktan kaçının.
 </Tip>

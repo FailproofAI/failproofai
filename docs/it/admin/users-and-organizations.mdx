@@ -10,12 +10,12 @@ Le organizzazioni isolano sessioni, valutazioni, audit, problemi, avvisi, query,
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Utilizza il selettore dell'organizzazione in cima alla barra laterale Cloud per cambiare organizzazione.
-    2. Vai a **Amministrazione → Utenti** per cercare i membri o filtrare per stato attivo e ruolo.
-    3. Seleziona **nuovo utente**, inserisci l'email, scegli un set di permessi e regola gli override se necessario.
-    4. Apri un utente in seguito per aggiornare i grant, disabilitare l'accesso o abilitare di nuovo l'account.
+    1. Usa il selettore di organizzazione nella parte superiore della barra laterale Cloud per passare da un'organizzazione all'altra.
+    2. Vai a **Amministrazione → Utenti** per cercare membri o filtrare per stato attivo e ruolo.
+    3. Seleziona **nuovo utente**, inserisci l'email, scegli un set di autorizzazioni e regola gli override se necessario.
+    4. Apri un utente in seguito per aggiornare le autorizzazioni, disabilitare l'accesso o riabilitare l'account.
 
-    ![La pagina Utenti che mostra indirizzi email dei membri, set di permessi e controlli di modifica e disabilitazione.](/images/dashboard/users.png)
+    ![La pagina Utenti che mostra gli indirizzi email dei membri, i set di autorizzazioni e i controlli di modifica e disabilitazione.](/images/dashboard/users.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -33,10 +33,10 @@ Le organizzazioni isolano sessioni, valutazioni, audit, problemi, avvisi, query,
   </Tab>
 </Tabs>
 
-Gli amministratori possono creare, aggiornare, disabilitare e riabilitare gli utenti, quindi assegnare il set di permessi appropriato per il loro ruolo. L'API utilizza un'operazione di eliminazione per disabilitare, ma non rimuove l'account o il suo record di appartenenza.
+Gli amministratori possono creare, aggiornare, disabilitare e riabilitare gli utenti, quindi assegnare il set di autorizzazioni appropriato al loro ruolo. L'API utilizza un'operazione di eliminazione per la disabilitazione, ma non rimuove l'account o il suo record di appartenenza.
 
 <Warning>
-  La disabilitazione di un utente impedisce a quell'identità di accedere a ogni organizzazione, non solo all'organizzazione attualmente selezionata. La riabilitazione ripristina l'accesso globale e i permessi del membro in questa organizzazione.
+  La disabilitazione di un utente blocca l'identità dall'accesso a tutte le organizzazioni, non solo all'organizzazione attualmente selezionata. La riabilitazione ripristina l'accesso globale e le autorizzazioni del membro in questa organizzazione.
 </Warning>
 
 <Tip>

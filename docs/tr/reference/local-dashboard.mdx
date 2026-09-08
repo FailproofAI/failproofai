@@ -1,34 +1,34 @@
 ---
-title: "Yerel pano"
-description: "Yerel projeleri, oturumları, politika etkinliğini, yapılandırmayı, denetimleri ve planlanan taramaları gözden geçirin."
+title: "Yerel dashboard"
+description: "Yerel projeleri, oturumları, politika aktivitesini, konfigürasyonu, denetimleri ve planlanan taramaları gözden geçirin."
 icon: "monitor-cog"
 ---
 
-`failproofai` komutunu argüman olmadan çalıştırarak `http://localhost:8020` adresinde paketlenmiş panoyu başlatın. Yerel aracı geçmişlerini, politika yapılandırmasını, denetim sonuçlarını ve hook etkinliğini doğrudan makineden okur.
+Bundled dashboard'u `http://localhost:8020` adresinde başlatmak için `failproofai` komutunu argüman olmadan çalıştırın. Yerel ajan geçmişlerini, politika konfigürasyonunu, denetim sonuçlarını ve hook aktivitesini doğrudan makineden okur.
 
-Yerel pano, Failproof AI Cloud'dan ayrıdır. Cloud hesabı olmadan çalışır ve olayların kuruluşunuza teslim edildiğini kanıtlamaz.
+Yerel dashboard, Failproof AI Cloud'dan ayrıdır. Cloud hesabı olmadan çalışır ve olayların kuruluşunuza teslim edildiğini kanıtlamaz.
 
-## Pano alanları
+## Dashboard alanları
 
-| Alan | Neler yapabilirsiniz |
+| Alan | Yapabileceğiniz şeyler |
 | --- | --- |
-| Policies → Activity | Yerel allow, instruct ve deny kararlarını inceleyin; karar, olay, CLI, araç, kaynak, politika ve oturum tarafından filtreleyin. |
-| Policies → Configure | Yerleşikleri etkinleştirin, desteklenen parametreleri düzenleyin, keşfedilen özel politikaları açıp kapatın ve hedef harness'leri seçin. |
-| Projects | Desteklenen aracı geçmişlerinde keşfedilen projelere göz atın ve en son oturumlarını karşılaştırın. |
-| Project sessions | Bir yerel transkripti açın, sıralanmış girdileri ve alt aracıları gözden geçirin, indirin ve politika etkinliğini ilişkilendirin. |
-| Audit | Son çevrimdışı taramayı, riskli desenleri, güçlü yönleri, etkilenen projeleri ve önerilen yerleşik politikaları gözden geçirin. |
-| Settings | Daemon/platform bunları desteklediğinde planlanan yerel taramaları ve e-postayla gönderilen denetim raporlarını yapılandırın. |
+| Policies → Activity | Yerel allow, instruct ve deny kararlarını inceleyebilir; karar, olay, CLI, araç, kaynak, politika ve oturuma göre filtreleyebilirsiniz. |
+| Policies → Configure | Builtins'i etkinleştir, desteklenen parametreleri düzenle, keşfedilen özel politikaları aç/kapat ve hedef harness'leri seç. |
+| Projects | Desteklenen ajan geçmişleri arasında keşfedilen projelere göz at ve en son oturumlarını karşılaştır. |
+| Project sessions | Bir yerel transkripsiyonu aç, ham sıralanmış girdileri ve alt ajanları gözden geçir, indir ve politika aktivitesi ile ilişkilendir. |
+| Audit | Son çevrimdışı taramayı, riskli desenleri, güçlü yönleri, etkilenen projeleri ve önerilen builtin politikaları gözden geçir. |
+| Settings | Daemon/platform desteklediğinde planlanan yerel taramaları ve e-posta ile gönderilen denetim raporlarını yapılandır. |
 
-## Politika etkinliğini gözden geçirin
+## Politika aktivitesini gözden geçirme
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Policies → Activity** öğesini açın ve karar ile kaynak filtrelerini ayarlayın.
-    2. Olay, harness, araç veya politika adına göre daraltın.
-    3. Bir satırı genişleterek nedenini, eşleşen politikaları, kaynağını, yürütme modunu ve süresini inceleyin.
-    4. Kararı transkript bağlamına yerleştirmek için oturum bağlantısını izleyin.
+    1. **Policies → Activity** sayfasını aç ve karar ile kaynak filtrelerini ayarla.
+    2. Olay, harness, araç veya politika adına göre daralt.
+    3. Nedenini, eşleşen politikaları, kaynağını, yürütme modunu ve süresini incelemek için bir satırı genişlet.
+    4. Kararı transkripsiyonun içeriğine yerleştirmek için oturum bağlantısını takip et.
 
-    Reddedilmiş görünen bir satır, engelleme kararlarını kullanmayan bir harness/olay çiftinde hala gözlemsel olabilir. Ayrıntı görünümü doğrulanmış uygulama yeteneğini vurgular.
+    Reddedilmiş görünen bir satır, engelleme kararlarını tüketmeyen bir harness/olay çiftinde yine de gözlemsel olabilir. Ayrıntı görünümü doğrulanmış yaptırım yeteneğini vurgular.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -37,20 +37,20 @@ Yerel pano, Failproof AI Cloud'dan ayrıdır. Cloud hesabı olmadan çalışır 
     failproofai
     ```
 
-    Yerel etkinlik `~/.failproofai/hook-activity` altında depolanır. Bu dosyaları düzenlemek yerine panoyu kullanın.
+    Yerel aktivite `~/.failproofai/hook-activity` altında depolanır. Bu dosyaları düzenlemek yerine dashboard'u kullan.
   </Tab>
 </Tabs>
 
-## Politikaları yerel olarak yapılandırın
+## Politikaları yerel olarak yapılandırma
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Policies → Configure** öğesini açın ve harness'leri ile yapılandırma kapsamını seçin.
-    2. Bir yerleşik veya keşfedilen özel politikayı etkinleştirin.
-    3. Parametreli bir yerleşik için, yapılandırma denetimini açın ve desteklenen değerleri kaydedin.
-    4. Activity öğesine dönün ve eşleşen ve eşleşmeyen eylemleri çalıştırın.
+    1. **Policies → Configure** sayfasını aç ve harness'leri ile konfigürasyon kapsamını seç.
+    2. Bir builtin veya keşfedilen özel politikayı etkinleştir.
+    3. Parametreli bir builtin için konfigürasyon kontrolünü aç ve desteklenen değerleri kaydet.
+    4. Activity sayfasına dön ve eşleşen ve eşleşmeyen aksiyonları çalıştır.
 
-    Kural politikaları proje veya kullanıcı kaynağını gösterir. Açık özel yol değişiklikleri, seçili yolun kaydedilmesi için CLI yapılandırmasını yeniden çalıştırmayı gerektirebilir.
+    Convention politikaları proje veya kullanıcı kaynağını gösterir. Açık custom-path değişiklikleri, seçilen yolun kaydedilmesi için CLI konfigürasyonunun yeniden çalıştırılmasını gerektirebilir.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -61,17 +61,17 @@ Yerel pano, Failproof AI Cloud'dan ayrıdır. Cloud hesabı olmadan çalışır 
   </Tab>
 </Tabs>
 
-## Projelere ve oturumlara göz atın
+## Projeleri ve oturumları tarama
 
-Projeler sayfası, desteklenen yerel geçmiş depolarını birleştirir. Oturumlarını listelemek için bir proje seçin, sonra ham günlük görüntüleyici, alt aracı segmentleri, indirme eylemi ve oturum kapsamlı politika etkinliği için bir oturumu açın.
+Projects sayfası desteklenen yerel geçmiş depolarını birleştirir. Oturumlarını listelemek için bir proje seçin, ardından ham log görüntüleyici, alt ajan segmentleri, indirme aksiyon ve oturum kapsamlı politika aktivitesi için bir oturum açın.
 
-Bir proje veya oturum eksikse, harness'in varsayılan geçmiş konumunu kullandığını onaylayın veya `failproofai harness add-path` komutuyla ekstra bir kök kaydettirin.
+Bir proje veya oturum eksikse, harness'in varsayılan geçmiş konumunu kullandığını doğrula veya `failproofai harness add-path` ile ekstra bir kök kaydet.
 
-## Çevrimdışı denetimleri planlayın
+## Çevrimdışı denetimleri planlama
 
 <Tabs>
   <Tab title="Dashboard">
-    **Settings** öğesini açın, planlanan taramayı etkinleştirin, desteklenen aralığını seçin ve mevcut olduğunda rapor teslimatını yapılandırın. Sayfa sonraki çalıştırmayı, son çalıştırmayı, çıkış kodunu ve arka plan daemon'unun platformda desteklenip desteklenmediğini bildirir.
+    **Settings** sayfasını aç, planlanan taramayı etkinleştir, desteklenen aralığını seç ve kullanılabilir olduğunda rapor teslimini yapılandır. Sayfa sonraki çalışmayı, son çalışmayı, çıkış kodunu ve arka plan daemon'unun platformda desteklenip desteklenmediğini bildirir.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -79,10 +79,10 @@ Bir proje veya oturum eksikse, harness'in varsayılan geçmiş konumunu kulland�
     failproofai audit --status
     ```
 
-    Farklı bir 1–90 gün aralığı ayarlamak için gün sayısını değiştirin. `failproofai audit --no-schedule` komutuyla yinelenen taramaları devre dışı bırakın; hemen etkileşimli bir tarama için `failproofai audit` komutunu çalıştırın.
+    Farklı bir 1–90 gün aralığı belirlemek için gün sayısını değiştir. Yinelenen taramaları `failproofai audit --no-schedule` ile devre dışı bırak; anlık etkileşimli tarama için `failproofai audit` komutunu çalıştır.
   </Tab>
 </Tabs>
 
 <Warning>
-  Yerel pano, yerel aracı geçmişlerinden istekleri, araç girişini, dosya içeriğini ve terminal çıkışını gösterebilir. Bunu yalnızca güvenilen arabirimlere bağlayın ve gözden geçirme tamamlandığında işlemi durdurun.
+  Yerel dashboard, yerel ajan geçmişlerinden ipuçları, araç girdisini, dosya içeriğini ve terminal çıktısını görüntüleyebilir. Sadece güvenilen arayüzlere bağla ve inceleme tamamlandığında süreci durdur.
 </Warning>

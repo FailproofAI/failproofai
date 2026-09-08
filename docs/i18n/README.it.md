@@ -20,8 +20,8 @@
 
 **Traduzioni:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
-**Osservabilità e controllo per ogni harness in cui i tuoi agenti vengono eseguiti.**
-Ovunque i tuoi agenti vengono eseguiti, li vediamo — e possiamo dire no. Failproof aggancia 12 harness per agenti — CLI di coding come Claude Code e Codex, gateway di chat come Hermes, assistenti self-hosted come OpenClaw — catturando ogni esecuzione e bloccando le chiamate di strumento pericolose prima che vengano eseguite. 39 policy built-in. Zero latenza. Viene eseguito localmente.
+**Osservabilità e controllo per ogni ambiente di esecuzione dei tuoi agenti.**
+Dovunque i tuoi agenti vengono eseguiti, noi li vediamo — e possiamo dire di no. Failproof si integra con 12 ambienti di esecuzione — CLI di coding come Claude Code e Codex, gateway di chat come Hermes, assistenti self-hosted come OpenClaw — catturando ogni esecuzione e bloccando le chiamate agli strumenti pericolose prima che vengano eseguite. 39 politiche integrate. Latenza zero. Funziona localmente.
 
 </div>
 
@@ -31,11 +31,11 @@ Ovunque i tuoi agenti vengono eseguiti, li vediamo — e possiamo dire no. Failp
 
 ---
 
-## Harness supportati
+## Ambienti di esecuzione supportati
 
-Dodici harness in due classi — dieci CLI di coding e due gateway di chat e assistente (Hermes, OpenClaw). Gli stessi eventi, le stesse policy, lo stesso cronologia delle sessioni, indipendentemente da quale harness il tuo agente utilizza.
+Dodici ambienti in due classi — dieci CLI di coding e due gateway di chat e assistenti (Hermes, OpenClaw). Gli stessi eventi, le stesse politiche, lo stesso storico sessione, indipendentemente dall'ambiente in cui viene eseguito il tuo agente.
 
-Gli agenti che non vengono eseguiti in nessuno di questi riferiscono attraverso [Python SDK](https://docs.befailproof.ai/reference/custom-agents), che ti offre tracciamento, sessioni e audit. L'enforcement lì richiede un hook nel tuo runtime — [contattaci](mailto:support@befailproof.ai) e lo mapperemo.
+Gli agenti che non vengono eseguiti in nessuno di questi possono fare rapporto tramite [Python SDK](https://docs.befailproof.ai/reference/custom-agents), che ti fornisce tracciamento, sessioni e audit. L'enforcement lì richiede un hook nel tuo runtime — [contattaci](mailto:support@befailproof.ai) e lo mapperemo.
 
 {/* A 6-column table instead of inline <img> runs: table columns never re-wrap,
      so the grid stays 2×6 at any window width (scrolling on very narrow screens
@@ -135,37 +135,37 @@ Gli agenti che non vengono eseguiti in nessuno di questi riferiscono attraverso 
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # oppure esegui solo `failproofai` e accetta il prompt al primo utilizzo
+failproofai policies --install   # oppure esegui semplicemente `failproofai` e accetta il prompt di prima esecuzione
 failproofai
 ```
 
-39 policy built-in si attivano immediatamente. Dashboard su `localhost:8020`. Disabilita il prompt al primo utilizzo con `FAILPROOFAI_NO_FIRST_RUN=1`.
+39 politiche integrate si attivano immediatamente. Dashboard su `localhost:8020`. Disabilita il prompt di prima esecuzione con `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
 ## Cosa blocca
 
-| Policy | Cosa blocca |
+| Politica | Cosa blocca |
 |---|---|
-| `sanitize-api-keys` | Chiavi API che trapelano nel contesto dell'agente |
-| `block-env-files` | Letture di `.env` e altri file di segreti |
-| `warn-repeated-tool-calls` | L'agente in loop sulla stessa chiamata |
+| `sanitize-api-keys` | Perdita di chiavi API nel contesto dell'agente |
+| `block-env-files` | Letture di `.env` e altri file segreti |
+| `warn-repeated-tool-calls` | L'agente che si ripete sulla stessa chiamata |
 | `block-sudo` | Escalation dei privilegi |
-| `warn-destructive-sql` | `DROP`, `TRUNCATE`, `DELETE` senza limiti |
-| `block-terraform` / `block-kubectl` | Modifiche non revisionate all'infrastruttura live |
+| `warn-destructive-sql` | `DROP`, `TRUNCATE`, `DELETE` illimitati |
+| `block-terraform` / `block-kubectl` | Modifiche non verificate all'infrastruttura live |
 | `block-rm-rf` | Eliminazione ricorsiva di file |
-| `block-force-push` / `block-push-master` | `git push --force`, spinte dirette a `main` |
+| `block-force-push` / `block-push-master` | `git push --force`, push diretti a `main` |
 
-I primi cinque si applicano a qualsiasi agente che possa chiamare uno strumento. Gli ultimi tre sono i preferiti degli sviluppatori — i CLI di coding sono la classe di harness che copriamo più in profondità.
+I primi cinque si applicano a qualsiasi agente che possa chiamare uno strumento. Gli ultimi tre sono i preferiti dagli sviluppatori — i CLI di coding sono la classe di ambienti che copriamo più profondamente.
 
-→ [Tutte le 39 policy built-in](https://docs.befailproof.ai/policies/builtin)
+→ [Tutte le 39 politiche integrate](https://docs.befailproof.ai/policies/builtin)
 
 ---
 
-## Le tue policy
+## Le tue politiche personalizzate
 
-Copia un file in `.failproofai/policies/` — viene caricato automaticamente, non sono necessari flag.
-Eseguine il commit e il team intero lo otterrà al prossimo pull.
+Rilascia un file in `.failproofai/policies/` — carica automaticamente, senza flag necessari.
+Committalo e l'intero team lo avrà al prossimo pull.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -175,36 +175,35 @@ customPolicies.add({
   match: { events: ["PreToolUse"] },
   fn: async (ctx) => {
     if (ctx.toolInput?.file_path?.includes("production"))
-      return deny("Le scritture nei percorsi di produzione sono bloccate.");
+      return deny("Writes to production paths are blocked.");
     return allow();
   },
 });
 ```
 
-Tre decisioni disponibili per ogni policy:
+Tre decisioni disponibili per ogni politica:
 
 | Decisione | Effetto |
 |---|---|
 | `allow()` | Consenti l'operazione |
-| `deny(message)` | Bloccala — il messaggio torna all'agente |
-| `instruct(message)` | Lasciarla passare, ma aggiungi contesto al prossimo prompt dell'agente |
+| `deny(message)` | Blocca — il messaggio ritorna all'agente |
+| `instruct(message)` | Lascia passare, ma aggiungi contesto al prossimo prompt dell'agente |
 
-→ [Guida alle policy personalizzate](https://docs.befailproof.ai/policies/custom)
+→ [Guida alle politiche personalizzate](https://docs.befailproof.ai/policies/custom)
 
 ---
 
 ## Osservabilità
 
-L'enforcement è una metà. L'altra metà è vedere quello che l'agente ha effettivamente fatto.
+L'enforcement è una metà. L'altra metà è vedere cosa ha effettivamente fatto l'agente.
 
-Esegui `failproofai` senza argomenti e serve un dashboard su `localhost:8020`
-leggendo la cronologia delle esecuzioni già presente sulla tua macchina — nessun account, nessuna iscrizione, nulla che lascia il box. Ottieni l'elenco delle sessioni, la sequenza di chiamate del modello, chiamate di strumenti e decisioni di hook all'interno di ogni esecuzione, cosa è stato bloccato e cosa la policy ha detto all'agente, e un audit offline (`failproofai audit`) che scansiona la tua cronologia per pattern rischiosi e suggerisce policy per fermarli.
+Esegui `failproofai` senza argomenti e servirà un dashboard su `localhost:8020` leggendo lo storico di esecuzione già sulla tua macchina — nessun account, nessuna registrazione, nulla che esce dal box. Ottieni l'elenco sessioni, la sequenza di chiamate modello, chiamate strumento e decisioni di hook dentro ogni esecuzione, cosa è stato bloccato e cosa la politica ha detto all'agente, e un audit offline (`failproofai audit`) che scansiona il tuo storico alla ricerca di pattern rischiosi e suggerisce politiche per fermarli.
 
 → [Dashboard locale](https://docs.befailproof.ai/reference/local-dashboard) ·
 [Leggi una traccia](https://docs.befailproof.ai/sessions/read-a-trace) ·
 [Audit locale](https://docs.befailproof.ai/audits/local-audit)
 
-**Failproof AI Observability** è il lato ospitato dello stesso modello di dati, per i team che eseguono agenti su una flotta: ogni esecuzione da ogni harness in un unico posto, un grafico di esecuzione con sotto-agenti paralleli su loro corsie, latenza p50/p95/p99 per modelli, strumenti e hook, costo per modello e tracciamento della finestra di contesto, tracciamento degli errori, SQL sulle tue tracce con dashboard condivisibili, valutazioni puntate dal tuo servizio, audit programmati che trasformano i fallimenti ricorrenti in risultati supportati da prove, e avvisi indirizzati a Slack, email o webhook firmato. L'auto-hosting nel tuo cluster è disponibile nel piano Enterprise.
+**Failproof AI Observability** è il lato hosted dello stesso modello di dati, per team che eseguono agenti su una flotta: ogni esecuzione da ogni ambiente in un'unica posizione, un grafico di esecuzione con sub-agenti paralleli su le loro corsie, latenza p50/p95/p99 per modelli, strumenti e hook, costo per modello e tracciamento della finestra di contesto, tracciamento degli errori, SQL sul tuoi tracce con dashboard condivisibili, valutazioni puntate dal tuo servizio, audit pianificati che trasformano i fallimenti ricorrenti in risultati supportati da prove, e avvisi instradati a Slack, email o un webhook firmato. L'hosting autonomo nel tuo cluster è disponibile nel piano Enterprise.
 
 → [Sessioni](https://docs.befailproof.ai/sessions/overview) ·
 [Audit](https://docs.befailproof.ai/audits/overview) ·
@@ -216,26 +215,26 @@ leggendo la cronologia delle esecuzioni già presente sulla tua macchina — nes
 
 | Inizia | |
 |---|---|
-| [Guida rapida](https://docs.befailproof.ai/start/quickstart) | Installa, connetti un harness, vedi la prima esecuzione |
+| [Avvio rapido](https://docs.befailproof.ai/start/quickstart) | Installa, connetti un ambiente, vedi la prima esecuzione |
 | [Concetti](https://docs.befailproof.ai/start/concepts) | Come funziona il sistema di hook |
-| [Harness supportati](https://docs.befailproof.ai/reference/harnesses) | Tutti i 12, e cosa ciascuno può enforce |
+| [Ambienti di esecuzione supportati](https://docs.befailproof.ai/reference/harnesses) | Tutti i 12, e cosa può enforcement ciascuno |
 
 | Osserva | |
 |---|---|
 | [Sessioni](https://docs.befailproof.ai/sessions/overview) | Segui un'esecuzione: modelli, strumenti, errori, latenza |
 | [Leggi una traccia](https://docs.befailproof.ai/sessions/read-a-trace) | Cosa ti sta dicendo il grafico di esecuzione |
-| [Audit](https://docs.befailproof.ai/audits/overview) | Trova pattern di fallimento su molte sessioni |
+| [Audit](https://docs.befailproof.ai/audits/overview) | Trova pattern di fallimento tra molte sessioni |
 | [Dashboard locale](https://docs.befailproof.ai/reference/local-dashboard) | `localhost:8020`, nessun account necessario |
 
-| Applica | |
+| Enforcement | |
 |---|---|
-| [Policy built-in](https://docs.befailproof.ai/policies/builtin) | Tutte le 39 policy con parametri |
-| [Policy personalizzate](https://docs.befailproof.ai/policies/custom) | Scrivi le tue |
-| [Configurazione](https://docs.befailproof.ai/policies/local-configuration) | Ambiti di configurazione e regole di merge |
+| [Politiche integrate](https://docs.befailproof.ai/policies/builtin) | Tutte le 39 politiche con parametri |
+| [Politiche personalizzate](https://docs.befailproof.ai/policies/custom) | Scrivi la tua |
+| [Configurazione](https://docs.befailproof.ai/policies/local-configuration) | Scope di configurazione e regole di merge |
 
-| Strumenta il tuo agente | |
+| Strumenta il tuo agente personalizzato | |
 |---|---|
-| [Python SDK](https://docs.befailproof.ai/reference/custom-agents) | Riporta esecuzioni da un agente senza harness |
+| [Python SDK](https://docs.befailproof.ai/reference/custom-agents) | Fai rapporto di esecuzioni da un agente senza ambiente |
 | [Policy SDK](https://docs.befailproof.ai/reference/policy-sdk) | Riferimento `allow` / `deny` / `instruct` |
 
 ---
@@ -248,11 +247,10 @@ MIT con [Commons Clause](https://commonsclause.com/) — gratuito per uso intern
 
 ## Contribuire
 
-Vedi [CONTRIBUTING.md](../../CONTRIBUTING.md). Nuove policy, casi limite e traduzioni sono tutti benvenuti.
+Vedi [CONTRIBUTING.md](../../CONTRIBUTING.md). Nuove politiche, casi limite e traduzioni sono tutte benvenute.
 
-> **Costruisci prima di iniziare.** Esegui `bun install && bun run build` per primo. Questo repo esegue i propri hook di failproofai su se stesso, e risolvono l'import di `failproofai` rispetto al bundle compilato `dist/` — senza una compilazione ti troverai con errori di hook `Cannot find package 'failproofai'`. Ricompila dopo aver modificato `src/`. Vedi
-> [Costruisci prima che i dev hook in-repo funzionino](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+> **Costruisci prima di iniziare.** Esegui `bun install && bun run build` per primo. Questo repository esegue i propri hook di failproofai su se stesso, e risolvono l'import `failproofai` nel bundle compilato `dist/` — senza una build otterrai errori di hook `Cannot find package 'failproofai'`. Ricostruisci dopo aver modificato `src/`. Vedi [Build before the in-repo dev hooks will work](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 
-Realizzato con ❤️ da [befailproof.ai](https://befailproof.ai) a SF e Bengaluru.
+Costruito con ❤️ da [befailproof.ai](https://befailproof.ai) a SF e Bengaluru.

@@ -4,7 +4,7 @@ description: "Failproof AI in natürlicher Sprache analysieren und bedienen – 
 icon: "message-square-text"
 ---
 
-Weisen Sie den Failproof Assistant an, beliebige Aufgaben in Failproof AI in natürlicher Sprache auszuführen. Er kann Sitzungen und Fehler analysieren, Abfragen ausführen, Dashboards erstellen, Evaluierungen und Alarme untersuchen sowie Audits erstellen und durchführen – ohne dass Sie die Aufgabe in Produktbildschirme oder CLI-Befehle übersetzen müssen.
+Gib dem Failproof Assistant einen beliebigen Auftrag in Failproof AI – in natürlicher Sprache. Er kann Sitzungen und Fehler analysieren, Abfragen ausführen, Dashboards erstellen, Evaluierungen und Alerts untersuchen sowie beim Erstellen und Ausführen von Audits helfen, ohne dass du Aufgaben in Produktansichten oder CLI-Befehle übersetzen musst.
 
 ```text
 Why did production checkout agents regress this week?
@@ -13,16 +13,16 @@ Create an audit that finds agents retrying the same failed action without changi
 Show me the sessions behind the most common audit finding.
 ```
 
-Der Assistent arbeitet mit den Daten und Berechtigungen, die in der aktiven Organisation verfügbar sind. Prüfen Sie die Belege und vorgeschlagenen Änderungen, bevor Sie Aktionen anwenden, die andere Benutzer oder Agenten betreffen.
+Der Assistent arbeitet mit den Daten und Berechtigungen, die in der aktiven Organisation verfügbar sind. Überprüfe die Nachweise und vorgeschlagenen Änderungen, bevor du Aktionen anwendest, die andere Benutzer oder Agents betreffen.
 
 ## Den Assistenten verwenden
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Wählen Sie **Open agent chat** aus und beschreiben Sie, was Sie verstehen, erstellen oder bedienen möchten.
-    2. Beobachten Sie die Tool-Aufrufe, Tabellen und Abfrageergebnisse des Assistenten während der Bearbeitung.
-    3. Öffnen Sie die zitierte Sitzung, den Alarm oder die Abfrage, um das Ergebnis anhand der Quelldaten zu überprüfen.
-    4. Starten Sie einen neuen Chat für eine andere Untersuchung oder nutzen Sie den Chatverlauf, um dieselbe Analyse fortzuführen.
+    1. Wähle **Open agent chat** und beschreibe, was du verstehen, erstellen oder durchführen möchtest.
+    2. Verfolge die Tool-Aufrufe, Tabellen und Abfrageergebnisse des Assistenten während er arbeitet.
+    3. Öffne die referenzierte Sitzung, den Alert oder die Abfrage, um das Ergebnis gegen die Quelldaten zu prüfen.
+    4. Starte einen neuen Chat für eine andere Untersuchung oder nutze den Chat-Verlauf, um die gleiche Analyse fortzuführen.
 
     ![Der Cloud-Assistent beantwortet eine Observability-Frage mit unterstützender Analyse und Abfragen.](/images/dashboard/assistant.png)
   </Tab>
@@ -36,18 +36,18 @@ Der Assistent arbeitet mit den Daten und Berechtigungen, die in der aktiven Orga
     fp agent ask "Open representative sessions" --chat <chat-id>
     ```
 
-    Verwenden Sie `fp agent rename <chat-id> --title <title>`, um eine Untersuchung leicht wiederauffindbar zu halten, und `fp agent delete <chat-id>`, um sie zu entfernen.
+    Verwende `fp agent rename <chat-id> --title <title>`, um eine Untersuchung leicht erkennbar zu halten, und `fp agent delete <chat-id>`, um sie zu entfernen.
   </Tab>
 </Tabs>
 
 ## Effektiv mit dem Assistenten arbeiten
 
-- Geben Sie zuerst ein Ziel an; fügen Sie eine Umgebung, einen Workflow oder einen Zeitraum hinzu, wenn diese Grenzen relevant sind.
-- Betrachten Sie generierten SQL-Code und Zusammenfassungen als Hilfsmittel bei der Untersuchung, nicht als abschließenden Beweis.
-- Öffnen Sie repräsentative Sitzungen, bevor Sie ein Audit, ein Issue, einen Alarm oder eine Policy erstellen.
-- Halten Sie Filter für Organisation, Umgebung und Zeitraum explizit.
-- Speichern Sie nützlichen SQL-Code als Abfrage, damit andere Operatoren das Ergebnis reproduzieren können.
+- Gib zuerst ein Ziel vor; ergänze Umgebung, Workflow oder Zeitraum, wenn diese Grenzen relevant sind.
+- Behandle generiertes SQL und Zusammenfassungen als Hilfsmittel für die Untersuchung, nicht als abschließenden Beweis.
+- Öffne repräsentative Sitzungen, bevor du einen Audit, ein Issue, einen Alert oder eine Policy erstellst.
+- Halte Filter für Organisation, Umgebung und Zeitraum explizit.
+- Speichere nützliches SQL als Abfrage, damit ein anderer Operator das Ergebnis reproduzieren kann.
 
 <Warning>
-  Der Assistent kann nur das lesen, worauf Ihr aktueller Benutzer Zugriff hat. Erweitern Sie keine Berechtigungen, um eine Frage zu beantworten – bitten Sie stattdessen einen autorisierten Operator, die Untersuchung durchzuführen.
+  Der Assistent kann nur das lesen, worauf dein aktueller Benutzer Zugriff hat. Erweitere keine Berechtigungen, um eine Frage zu beantworten – bitte stattdessen einen autorisierten Operator, die Untersuchung durchzuführen.
 </Warning>

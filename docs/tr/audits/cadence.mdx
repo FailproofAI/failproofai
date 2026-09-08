@@ -1,21 +1,21 @@
 ---
 title: "Denetim sıklığı"
-description: "Yinelenen denetimlerin ne zaman çalışacağını ve ne kadar veriyi inceleyeceklerini seçin."
+description: "Yinelenen denetimlerin ne zaman çalışacağını ve ne kadar veri inceleyeceklerini seçin."
 icon: "calendar-clock"
 ---
 
-Aracılar, istemler, araçlar ve modeller değiştikçe geri dönebilecek hata modleri için yinelenen denetimleri kullanın.
+Aracılar, istemler, araçlar ve modeller değiştikçe geri dönebilecek hata modları için yinelenen denetimleri kullanın.
 
-## Zamanlamayı değiştirin
+## Zamanlamayı değiştirme
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Analyze → Audits** sayfasına gidin ve denetimi açın.
-    2. Ayarlarını açın ve etkin durumu, aralığı, UTC bağlantı noktasını, pencere modunu veya geriye dönüş süresini değiştirin.
-    3. Denetimi kaydedin ve denetim kartında sonraki çalışma saatini doğrulayın.
-    4. Büyük bir kapsam veya bağlam değişikliğinden sonra bir kez **run now** kullanın.
+    1. **Analyze → Audits** bölümüne gidin ve denetimi açın.
+    2. Ayarlarını açın ve etkin durumunu, aralığını, UTC sabitini, pencere modunu veya geriye bakış penceresini değiştirin.
+    3. Denetimi kaydedin ve denetim kartında sonraki çalışma saatini onaylayın.
+    4. Büyük bir kapsam veya bağlam değişikliğinden sonra **run now** komutunu bir kez kullanın.
 
-    ![Cadence, sweep window, scope, analysis settings, context ve notification channels gösterildiği denetim editörü.](/images/dashboard/audit-edit.png)
+    ![Denetim düzenleyicisi, cadence, sweep window, scope, analysis settings, context ve notification channels seçeneklerini gösterir.](/images/dashboard/audit-edit.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -33,17 +33,17 @@ Aracılar, istemler, araçlar ve modeller değiştikçe geri dönebilecek hata m
   </Tab>
 </Tabs>
 
-Risk hızı ve maliyetine göre sıklık seçin:
+Riski hızından ve maliyetinden hareketle sıklığı seçin:
 
 | Risk modeli | Başlangıç sıklığı |
 | --- | --- |
 | Yüksek etkili üretim işlemi | Günlük |
-| İş akışı veya model regresyonu | Haftalık |
-| Yönetim veya erişim incelemesi | Aylık |
+| İş akışı veya model gerileme | Haftalık |
+| Yönetişim veya erişim incelemesi | Aylık |
 | Tek seferlik yayın araştırması | Bir kez çalıştır |
 
-Geriye dönüş penceresini sıklıkla hizalandırın, böylece çalışmalar boşluk bırakmaz veya gereksiz yere büyük bir popülasyonu tekrar tekrar incelemez. Bir denetimin hedefini veya bağlamını değiştirdikten sonra, bir sonraki planlanmış sonuca güvenmeden önce bunu manuel olarak bir kez çalıştırın.
+Geriye bakış penceresini sıklıkla uyumlu hale getirin; böylece çalışmalar ne boşluk bırakır ne de gereksiz yere büyük bir popülasyonu tekrar tekrar inceler. Bir denetimin hedefini veya bağlamını değiştirdikten sonra, zamanlanan sonraki sonuca güvenmeden önce bunu manuel olarak bir kez çalıştırın.
 
 <Note>
-  Yerel planlanmış denetimler makinede yapılandırılır ve yerel aracı geçmişini tarar. Bulut denetim zamanlamaları Bulut oturumlarında çalışır. Sonuçlarını ve sahipliğini ayrı olarak ele alın.
+  Yerel zamanlanan denetimler makinede yapılandırılır ve yerel aracı geçmişini tarar. Bulut denetim zamanlamaları, Bulut oturumlarında çalışır. Sonuçlarını ve sahipliğini ayrı ayrı ele alın.
 </Note>

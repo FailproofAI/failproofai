@@ -1,12 +1,12 @@
 ---
 title: "Policies"
-description: "Beobachten, steuern oder blockieren Sie Agentenaktionen, bevor ein bekannter Fehler sich wiederholt."
+description: "Beobachte, steuere oder blockiere Agentenaktionen, bevor ein bekannter Fehler erneut auftritt."
 icon: "shield-check"
 ---
 
 Eine Policy wertet ein Agenten-Hook-Ereignis aus und gibt eine von drei Entscheidungen zurück:
 
-- `allow` lässt die Aktion fortsetzen.
+- `allow` lässt die Aktion fortfahren.
 - `instruct` gibt dem Agenten korrigierende Hinweise.
 - `deny` blockiert die Aktion mit einer Begründung.
 
@@ -14,26 +14,26 @@ Eine Policy wertet ein Agenten-Hook-Ereignis aus und gibt eine von drei Entschei
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehen Sie zu **Observe → policy**, um Policy-Entscheidungen aus Sitzungen zu filtern und zu überprüfen.
-    2. Gehen Sie zu **Admin → policy editor**, um Policies zu erstellen, zu validieren, zu veröffentlichen, zu deaktivieren oder unveränderliche Versionen einzusehen.
-    3. Gehen Sie zu **Admin → enforcement**, um Versionen und Effekte Maschinen zuzuweisen.
+    1. Gehe zu **Observe → policy**, um Policy-Entscheidungen aus Sitzungen zu filtern und zu untersuchen.
+    2. Gehe zu **Admin → policy editor**, um Policies zu erstellen, zu validieren, zu veröffentlichen, zu deaktivieren oder unveränderliche Versionen einzusehen.
+    3. Gehe zu **Admin → enforcement**, um Versionen und Effekte Maschinen zuzuweisen.
 
-    Nutzen Sie die Policy-Seite, um zu verstehen, was bereits zutrifft, bevor Sie Enforcement erstellen oder ändern.
+    Nutze die Policy-Seite, um zu verstehen, was bereits greift, bevor du Enforcement erstellst oder änderst.
 
-    ![Die Policy-Seite zeigt Entscheidungssummen sowie lokale und Cloud-verwaltete Policy-Zuordnungen.](/images/dashboard/policy-observe.png)
+    ![Die Policy-Seite mit Entscheidungszahlen und lokalen sowie Cloud-verwalteten Policy-Zuordnungen.](/images/dashboard/policy-observe.png)
 
-    Der Editor ist der Ort, an dem Sie eine Fehlerbedingung in Quellcode umwandeln, validieren und eine unveränderliche Version veröffentlichen.
+    Im Editor wandelst du eine Fehlerbedingung in Quellcode um, validierst ihn und veröffentlichst eine unveränderliche Version.
 
     ![Der Policy-Editor zum Erstellen und Veröffentlichen einer unveränderlichen Policy-Version.](/images/dashboard/policy-editor.png)
 
-    Enforcement weist dann diese veröffentlichte Version und ihren Observe- oder Enforce-Effekt den Maschinen zu.
+    Enforcement weist dann diese veröffentlichte Version und ihren Beobachtungs- oder Durchsetzungseffekt Maschinen zu.
 
-    ![Die Enforcement-Flotte zeigt Maschinenabdeckung und zugewiesene Policy-Versionen.](/images/dashboard/enforcement-fleet.png)
+    ![Die Enforcement-Flotte mit Maschinenabdeckung und zugewiesenen Policy-Versionen.](/images/dashboard/enforcement-fleet.png)
 
-    Überprüfen Sie die Entscheidungen nach der Bereitstellung erneut auf der Policy-Seite, damit die Authoring- und Flottenansichten mit der tatsächlichen Agentenaktivität verknüpft sind.
+    Überprüfe die Entscheidungen nach der Bereitstellung erneut auf der Policy-Seite, damit die Authoring- und Flottenansichten mit der tatsächlichen Agentenaktivität verknüpft sind.
   </Tab>
   <Tab title="CLI">
-    Verwenden Sie `failproofai` für die lokale Policy-Installation und -Validierung:
+    Verwende `failproofai` für lokale Policy-Installation und -Validierung:
 
     ```bash
     failproofai policies
@@ -41,23 +41,23 @@ Eine Policy wertet ein Agenten-Hook-Ereignis aus und gibt eine von drei Entschei
     failproofai config --status
     ```
 
-    Verwenden Sie `fp`, um Cloud-Sitzungen und -Ereignisse zu finden, die Policy-Entscheidungen enthalten. Das Cloud-Authoring und die Flottenbereitstellung bleiben Dashboard-Workflows.
+    Verwende `fp`, um Cloud-Sitzungen und -Ereignisse mit Policy-Entscheidungen zu finden. Das Erstellen von Policies in der Cloud und die Flottenbereitstellung bleiben Dashboard-Workflows.
   </Tab>
 </Tabs>
 
-Policies haben drei eigenständige Oberflächen in Failproof AI:
+Policies haben drei eigenständige Bereiche in Failproof AI:
 
 1. **Entscheidungen analysieren** in Sitzungen, Dashboards und Audits.
-2. **Versionen erstellen** mit integrierten Regeln, Code oder dem Policy-Editor.
+2. **Versionen erstellen** mit eingebauten Regeln, Code oder dem Policy-Editor.
 3. **Versionen bereitstellen und durchsetzen** auf ausgewählten Maschinen.
 
-Beginnen Sie mit einem bestätigten Fehlermodus. Definieren Sie das kleinstmögliche Ereignis und Tool-Match, das ihn identifiziert, testen Sie legitime und unsichere Beispiele, und beobachten Sie, bevor Sie durchsetzen.
+Beginne mit einem bestätigten Fehlermodus. Definiere die kleinstmögliche Ereignis- und Tool-Übereinstimmung, die ihn identifiziert, teste legitime und unsichere Beispiele, und beobachte zunächst, bevor du durchsetzt.
 
 <Columns cols={2}>
-  <Card title="Eine integrierte Policy verwenden" icon="library" href="/de/policies/builtin">
-    Aktivieren Sie eine geprüfte Regel für häufige Risiken bei Secrets, Shell, Git, Cloud und Workflows.
+  <Card title="Eine eingebaute Policy verwenden" icon="library" href="/de/policies/builtin">
+    Aktiviere eine geprüfte Regel für häufige Risiken bei Secrets, Shell, Git, Cloud und Workflows.
   </Card>
-  <Card title="Eine benutzerdefinierte Policy schreiben" icon="code-2" href="/de/policies/custom">
-    Formulieren Sie eine workflow-spezifische Entscheidung in JavaScript oder TypeScript.
+  <Card title="Eine eigene Policy schreiben" icon="code-2" href="/de/policies/custom">
+    Formuliere eine workflow-spezifische Entscheidung in JavaScript oder TypeScript.
   </Card>
 </Columns>

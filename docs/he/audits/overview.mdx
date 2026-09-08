@@ -1,24 +1,25 @@
 ---
-title: "审核"
-description: "Review a defined population of sessions for failures that traces alone will not reveal."
+---
+title: "ביקורות"
+description: "בדוק אוכלוסיית פגיעויות מוגדרת לכשלים שעקבות בלבד לא יגידו עליהם."
 icon: "scan-search"
 ---
 
-An audit searches a selected set of sessions for a stated failure goal. It combines trace evidence, evaluation results, policy hits, and reference context to produce findings you can act on.
+ביקורת חוקרת קבוצה נבחרת של הפעלות בחיפוש אחר מטרת כשל מסוימת. היא משלבת ראיות עקבות, תוצאות הערכה, פגיעות בנהלים והקשר התייחסות כדי לייצר ממצאים שעליהם תוכל לפעול.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Find agent failures automatically with Failproof AI audits" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-See how an audit moves from a scheduled run to evidence-backed failures you can fix.
+ראה כיצד ביקורת עוברת מריצה מתוזמנת לכשלים תמוכים בראיות שתוכל לתקן.
 
-## Open audits
+## פתח ביקורות
 
 <Tabs>
   <Tab title="Dashboard">
-    Go to **Analyze → Audits**. The page shows scheduled state, open findings, last run, next run, cadence, and whether the audit has a brief or reference pages. Select a card for settings and run history; select **new audit** to create one.
+    עבור אל **Analyze → Audits**. הדף מציג מצב מתוזמן, ממצאים פתוחים, ריצה אחרונה, ריצה הבאה, קדנציה, והאם לביקורת יש עמודי תיאור קצר או התייחסות. בחר בכרטיס להגדרות והיסטוריית ריצה; בחר **new audit** כדי ליצור אחד.
 
-    ![The Audits page showing recurring audits with their schedule, sensitivity, and run state.](/images/dashboard/audits.png)
+    ![עמוד הביקורות המציג ביקורות חוזרות עם לוח הזמנים, הרגישות ומצב הריצה שלהם.](/images/dashboard/audits.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -30,27 +31,27 @@ See how an audit moves from a scheduled run to evidence-backed failures you can 
   </Tab>
 </Tabs>
 
-Use an audit when you need to answer a population-level question such as:
+השתמש בביקורת כאשר עליך לענות על שאלה ברמת אוכלוסיה כגון:
 
-- Where do agents abandon tasks without escalating?
-- Which tool failures lead to ineffective retries?
-- Are agents accessing data outside the intended workflow?
-- What changed after a model, prompt, or tool release?
+- היכן סוכנים נטשים משימות ללא הסלמה?
+- אילו כשלי כלים מובילים לנסיונות חוזרים לא יעילים?
+- האם סוכנים ניגשים לנתונים מחוץ לזרימת העבודה המכוונת?
+- מה השתנה לאחר שחרור מודל, הנחיה או כלי?
 
-## Audit response flow
+## זרימת תגובה ביקורת
 
 ```text
 Session → Audit → Finding → Issue → Policy
                          ↘ Alert for recurrence
 ```
 
-A finding should name the failure mode and point to evidence. An issue owns the remediation. A policy prevents a known action pattern; an alert detects recurrence when prevention is not possible or needs monitoring.
+ממצא צריך לשמור את מצב הכשל ולהצביע על ראיות. בעיה תחזיק בתיקון. נהל למנע דפוס פעולה ידוע; התראה גוזרת הישנות כאשר מניעה אינה אפשרית או צריכה ניטור.
 
 <Columns cols={2}>
-  <Card title="Set up an audit" icon="sliders-horizontal" href="/he/audits/setup">
-    Define the goal, population, and reference context before the first run.
+  <Card title="הגדר ביקורת" icon="sliders-horizontal" href="/he/audits/setup">
+    הגדר את המטרה, האוכלוסיה והקשר התייחסות לפני הריצה הראשונה.
   </Card>
-  <Card title="Add agent context" icon="bot" href="/he/audits/agent-contracts">
-    State what each agent must produce and what it must never do.
+  <Card title="הוסף הקשר סוכן" icon="bot" href="/he/audits/agent-contracts">
+    ציין מה כל סוכן חייב לייצר ומה הוא לעולם לא עשוי לעשות.
   </Card>
 </Columns>

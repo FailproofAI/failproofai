@@ -38,6 +38,7 @@ vi.mock("../../src/audit/desktop-notify", () => ({ notifyDesktop: h.notifyDeskto
 vi.mock("../../lib/telemetry-id", () => ({ getInstanceId: () => "test-instance" }));
 
 import { runAuditCli, runScheduledAudit, EXIT_AUDIT_ALREADY_RUNNING } from "../../src/audit/cli";
+import { leakNoticeText } from "../../src/hooks/notice";
 
 function result(over: Partial<AuditResult> = {}): AuditResult {
   return {
@@ -393,6 +394,17 @@ describe("announcing a leak on the desktop", () => {
     expect(summary).toContain("failproofai");
     expect(body).toContain("2 credentials");
     expect(body).toContain("failproofai audit");
+    // The desktop banner carries the same offer as the in-CLI notice.
+    expect(body).toContain("--schedule");
+    expect(body).toContain("email");
+  });
+
+  it("offers the digest, because this banner is the only place most users are asked", () => {
+    // The scan is local and needs no account, so nothing else in the product
+    // has a reason to ask for an address — which is why the audit's findings
+    // have historically reached nobody. A banner someone is already reading,
+    // about a key of their own, is the one moment the offer is worth anything.
+    expect(leakNoticeText(2)).toContain("--schedule");
   });
 
   it("says nothing when the scan found nothing new", async () => {

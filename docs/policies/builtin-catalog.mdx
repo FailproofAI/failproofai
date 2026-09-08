@@ -8,38 +8,47 @@ The installed package is the source of truth for policy availability. Run `failp
 
 ## Recommended baseline
 
-The guided setup's recommended selection currently enables secret sanitizers, environment protections, self-protection, catastrophic-command guards, and protected-branch safety:
+Setting up a machine enables **no** policy. The baseline below is the Failproof AI pack's own default selection — the 10 its manifest marks as safe to switch on unattended, applied when you run `failproofai policies add FailproofAI/policies` with no flags:
 
 ```text
 sanitize-jwt                 sanitize-api-keys
-sanitize-connection-strings sanitize-private-key-content
+sanitize-connection-strings  sanitize-private-key-content
 sanitize-bearer-tokens       protect-env-vars
-block-env-files              block-secrets-write
-block-failproofai-commands   block-sudo
-block-curl-pipe-sh           block-rm-rf
-block-push-master            block-force-push
+block-env-files              block-sudo
+block-curl-pipe-sh           block-push-master
 ```
 
-`block-failproofai-commands` is **always on**. It is listed above for
-completeness, but it registers on every evaluation whether or not it appears in
-your enabled set, and it cannot be disabled or paused — a guard against the
-agent switching off enforcement that the agent can switch off is not a guard.
+`block-failproofai-commands` enforces alongside them without being one of them. It is **always on**: it registers on every evaluation whether or not it appears in your enabled set, and it cannot be disabled or paused — a guard against the agent switching off enforcement that the agent can switch off is not a guard.
 
-Recommended is deliberately narrower than **Everything**. Infrastructure and workflow policies can interrupt valid work and should be enabled for the repositories and machines that need them.
+<Warning>
+  `block-rm-rf`, `block-force-push` and `block-secrets-write` are **not** in the baseline. They are among the most-wanted guards and it is reasonable to assume otherwise, so enable them deliberately:
+
+  ```bash
+  failproofai policies add block-rm-rf
+  failproofai policies add block-force-push
+  failproofai policies add block-secrets-write
+  ```
+</Warning>
+
+The baseline is deliberately narrower than **Everything**. Destructive-command, infrastructure and workflow policies can interrupt valid work, so they are opt-in per repository and machine — `--all` takes the lot.
 
 ## Secrets and environment
 
 | Policy | Trigger | Outcome |
 | --- | --- | --- |
-| `sanitize-jwt` | `PostToolUse` | Redact JWTs from tool output before the model sees them. |
-| `sanitize-api-keys` | `PostToolUse` | Redact common OpenAI, Anthropic, GitHub, AWS, Stripe, and Google keys. |
-| `sanitize-connection-strings` | `PostToolUse` | Redact database connection strings containing credentials. |
-| `sanitize-private-key-content` | `PostToolUse` | Redact PEM private-key bodies. |
-| `sanitize-bearer-tokens` | `PostToolUse` | Redact authorization bearer tokens. |
+| `sanitize-jwt` | `PostToolUse` | Report JWTs found in tool output. |
+| `sanitize-api-keys` | `PostToolUse` | Report common OpenAI, Anthropic, GitHub, AWS, Stripe, and Google keys. |
+| `sanitize-connection-strings` | `PostToolUse` | Report database connection strings containing credentials. |
+| `sanitize-private-key-content` | `PostToolUse` | Report PEM private-key bodies. |
+| `sanitize-bearer-tokens` | `PostToolUse` | Report authorization bearer tokens. |
 | `protect-env-vars` | `PreToolUse` on shell tools | Block commands that dump environment variables. |
 | `block-env-files` | `PreToolUse` | Block reads and writes of `.env` files. |
 | `block-read-outside-cwd` | `PreToolUse` on read, glob, grep, or shell tools | Keep reads inside the session working directory. |
 | `block-secrets-write` | `PreToolUse` on write tools | Block writes to common secret-key and credential filenames. |
+
+<Note>
+  The five `sanitize-*` policies run on `PostToolUse`, which is **observation only**: the tool has already run and its output has already reached the model. They tell you a secret appeared in tool output — they do not keep it out of the context, and they are not a data-loss control. Use `block-env-files`, `protect-env-vars` and `block-secrets-write`, which gate on `PreToolUse`, to stop the read happening at all.
+</Note>
 
 ## Dangerous commands and infrastructure
 

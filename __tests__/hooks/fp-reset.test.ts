@@ -43,6 +43,7 @@ let home: string;
 let prev: string | undefined;
 
 let prevUnitDir: string | undefined;
+let prevDaemonBinary: string | undefined;
 
 beforeEach(() => {
   prev = process.env.FAILPROOFAI_HOME;
@@ -73,6 +74,16 @@ beforeEach(() => {
   prevUnitDir = process.env.FAILPROOFAI_SYSTEMD_DIR;
   process.env.FAILPROOFAI_SYSTEMD_DIR = resolve(home, "systemd");
   mkdirSync(resolve(home, "systemd"), { recursive: true });
+
+  // Defensive, and honestly labelled: `daemonVersionSkew()` returns null
+  // outright when this is set ("someone named a binary explicitly"), which
+  // would delete the hint the tests below assert. Removing this block and
+  // exporting the variable did NOT change the outcome here — the tests that
+  // care now pin `daemonServiceStatus` themselves — so this is isolation
+  // against a read that could matter, not a demonstrated fix. It costs nothing
+  // and removes one more way this file can depend on whose machine it runs on.
+  prevDaemonBinary = process.env.FAILPROOFAI_DAEMON_BINARY;
+  delete process.env.FAILPROOFAI_DAEMON_BINARY;
 });
 
 afterEach(() => {
@@ -80,6 +91,8 @@ afterEach(() => {
   else process.env.FAILPROOFAI_HOME = prev;
   if (prevUnitDir === undefined) delete process.env.FAILPROOFAI_SYSTEMD_DIR;
   else process.env.FAILPROOFAI_SYSTEMD_DIR = prevUnitDir;
+  if (prevDaemonBinary === undefined) delete process.env.FAILPROOFAI_DAEMON_BINARY;
+  else process.env.FAILPROOFAI_DAEMON_BINARY = prevDaemonBinary;
   rmSync(home, { recursive: true, force: true });
 });
 

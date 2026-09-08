@@ -12,13 +12,18 @@
  */
 import { useMemo, useState } from "react";
 import type { AuditResult } from "@/src/audit/types";
-import { type Grade, tierName } from "@/src/audit/scoring";
+// Score switched off — see `src/audit/scoring.ts`.
+// import { type Grade, tierName } from "@/src/audit/scoring";
+import type { Grade } from "@/src/audit/scoring";
 import { usePostHog } from "@/contexts/PostHogContext";
 
 interface Props {
   result: AuditResult;
-  projected: number;
-  projectedGrade: Grade;
+  /** The projection is switched off — see `src/audit/scoring.ts`. Optional
+   *  rather than removed so restoring it is un-commenting the two lines in
+   *  `audit-dashboard.tsx` and the sub-heading below. */
+  projected?: number;
+  projectedGrade?: Grade;
 }
 
 const DETECTOR_TO_PRIMARY_POLICY: Record<string, string> = {
@@ -99,7 +104,7 @@ function bulkInstall(fixes: FixRow[]): string {
   return `failproofai policies --install ${fixes.map((f) => f.name).join(" ")}`;
 }
 
-export function HowToImproveSection({ result, projected, projectedGrade }: Props) {
+export function HowToImproveSection({ result }: Props) {
   const { capture } = usePostHog();
   const fixes = useMemo(() => buildFixes(result), [result]);
   const installAllCmd = useMemo(() => bulkInstall(fixes), [fixes]);
@@ -136,9 +141,18 @@ export function HowToImproveSection({ result, projected, projectedGrade }: Props
         </button>
       </div>
       <h2 className="audit-sec-title">install or configure</h2>
-      <div className="audit-sec-sub">
+      {/* The projected-score clause is switched off. It was also the one place
+          the product promised a number it could not deliver: `deriveScore`
+          never read `enabledInConfig`, so taking this prescription and
+          re-running returned the SAME score with the projection gone. What
+          replaces it is the thing that was always true — one command, enforced
+          on every tool call. Original:
         enable all {fixes.length === 1 ? "one" : fixes.length} → projected{" "}
         <strong>{projected}</strong> · {tierName(projectedGrade).toLowerCase()}
+      */}
+      <div className="audit-sec-sub">
+        enable all {fixes.length === 1 ? "one" : fixes.length} → one command,
+        enforced on every tool call
       </div>
 
       <div className="fix-list">

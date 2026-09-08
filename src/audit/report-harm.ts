@@ -31,6 +31,7 @@ import { getValidAccessToken } from "../../lib/auth/auth-store";
 import { AuthApiError, submitAuditReport } from "../../lib/auth/api-server-client";
 import { readConfig } from "../hooks/fp-config";
 import { buildHarmReport } from "./harm-report";
+import { activeFindings, readLeakRecord } from "./leak-store";
 import {
   ensureMachineIdentity,
   machineLabel,
@@ -101,7 +102,16 @@ export async function reportHarm(result: AuditResult): Promise<HarmReportOutcome
     return { kind: "failed", error: err instanceof Error ? err.message : String(err) };
   }
 
-  const report = buildHarmReport(result, identity.last_reported_at, intervalDays);
+  // The leak record is read here rather than carried on the AuditResult: the
+  // digest wants every credential still live in this window, not only the ones
+  // this particular scan happened to re-encounter. A key that leaked last month
+  // and was not touched by today's transcripts is still a key to rotate.
+  const report = buildHarmReport(
+    result,
+    identity.last_reported_at,
+    intervalDays,
+    activeFindings(readLeakRecord()),
+  );
   const hits = report.harmful.reduce((n, p) => n + p.hits, 0);
 
   try {
@@ -112,6 +122,7 @@ export async function reportHarm(result: AuditResult): Promise<HarmReportOutcome
       window_from: report.window_from,
       window_to: report.window_to,
       harmful: report.harmful,
+      leaks: report.leaks,
     });
 
     // Persist whatever the server says the next window starts at, INCLUDING when

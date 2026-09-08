@@ -83,20 +83,43 @@ async function loadShim(opts: { scope: "user" | "project"; binaryPath: string; c
           .replace('FAILPROOFAI_BIN = ""', `FAILPROOFAI_BIN = ${JSON.stringify(opts.binaryPath)}`);
       })();
 
-  // Replace the spawnSync import with our stub. The shim imports it as
-  // `import { spawnSync } from "node:child_process"`. We rewrite that line
-  // to read from a global injected by this test.
+  // Replace the spawn import with our stub. The shim imports it as
+  // `import { spawn } from "node:child_process"` — it used to be spawnSync,
+  // but that blocked opencode's in-process TUI event loop for the whole
+  // subprocess duration. The verdicts are identical; only the wait changed
+  // from a blocked thread to a promise, so every assertion below is unchanged.
   const stubbed = shimSource.replace(
-    'import { spawnSync } from "node:child_process";',
-    `const spawnSync = globalThis.__fp_test_spawnSync;`,
+    'import { spawn } from "node:child_process";',
+    `const spawn = globalThis.__fp_test_spawn;`,
   );
 
-  // Pre-set the stub before importing.
-  (globalThis as unknown as Record<string, unknown>).__fp_test_spawnSync = (cmd: string, args: string[], optsArg: SpawnCall["opts"]): SpawnResult => {
-    opts.calls.push({ cmd, args, opts: optsArg });
-    const r = opts.responses.shift();
-    if (!r) return { status: 0, stdout: "", stderr: "" };
-    return r;
+  // Async child stub: records the call (payload arrives on stdin now, not as
+  // `opts.input`) and delivers the next canned response on a later tick, the
+  // way a real child does.
+  (globalThis as unknown as Record<string, unknown>).__fp_test_spawn = (cmd: string, args: string[], optsArg: SpawnCall["opts"]) => {
+    const dataHandlers: Record<string, ((d: string) => void)[]> = { stdout: [], stderr: [] };
+    const closeHandlers: ((code: number) => void)[] = [];
+    const mkStream = (which: "stdout" | "stderr") => ({
+      on: (ev: string, fn: (d: string) => void) => { if (ev === "data") dataHandlers[which].push(fn); },
+    });
+    return {
+      stdout: mkStream("stdout"),
+      stderr: mkStream("stderr"),
+      kill: () => {},
+      on: (ev: string, fn: (code: number) => void) => { if (ev === "close") closeHandlers.push(fn); },
+      stdin: {
+        on: () => {},
+        end: (payload?: string) => {
+          opts.calls.push({ cmd, args, opts: { ...optsArg, input: payload } as SpawnCall["opts"] });
+          const r = opts.responses.shift() ?? { status: 0, stdout: "", stderr: "" };
+          queueMicrotask(() => {
+            if (r.stdout) for (const fn of dataHandlers.stdout) fn(r.stdout);
+            if (r.stderr) for (const fn of dataHandlers.stderr) fn(r.stderr);
+            for (const fn of closeHandlers) fn(r.status ?? 0);
+          });
+        },
+      },
+    };
   };
 
   // Write a sibling .mjs we can dynamic-import without touching the original.
@@ -551,15 +574,20 @@ describe("OpenCode plugin shim — spawn options and registration", () => {
 
   afterEach(() => cleanup());
 
-  it("spawnSync includes timeout, encoding, and cwd", async () => {
+  // Was "spawnSync includes timeout, encoding, and cwd". The shim now uses the
+  // async `spawn`, which takes neither `encoding` (chunks are concatenated as
+  // they arrive) nor `timeout` (enforced by the shim's own 60s timer that
+  // SIGKILLs and fails open). `cwd` is still passed through, and the payload
+  // now arrives on stdin rather than as `opts.input` — both asserted here so a
+  // regression back to a blocking spawn is visible.
+  it("passes cwd and delivers the payload on stdin", async () => {
     responses.push({ status: 0, stdout: "", stderr: "" });
     const r = await loadShim({ scope: "project", binaryPath: "/abs/bin/failproofai", calls, responses });
     cleanup = r.cleanup;
     const hooks = await r.plugin({ client: fakeClient(), directory: "/some/cwd" });
     await hooks["tool.execute.before"]!({ tool: "bash", sessionID: "s", callID: "c" }, { args: {} });
-    expect(calls[0].opts.timeout).toBe(60_000);
-    expect(calls[0].opts.encoding).toBe("utf8");
     expect(calls[0].opts.cwd).toBe("/some/cwd");
+    expect(JSON.parse(String(calls[0].opts.input)).hook_event_name).toBe("PreToolUse");
   });
 
   it("registers exactly the expected hook keys", async () => {

@@ -299,6 +299,31 @@ export const auditSessionFile = (home?: string) => resolve(auditDir(home), "sess
  */
 export const auditMachineFile = (home?: string) => resolve(auditDir(home), "machine.json");
 
+/**
+ * The leak record: one entry per DISTINCT credential seen in a transcript.
+ *
+ * `derived` — every finding in it is reproducible by rescanning, so a reset
+ * costs a rescan and nothing else. What is NOT reproducible lives next door in
+ * `auditLeakIdentityFile`, because the two have opposite reset semantics and
+ * this directory's own header says to classify the children, never the parent.
+ */
+export const auditLeaksFile = (home?: string) => resolve(auditDir(home), "leaks.json");
+
+/**
+ * The two things about a leak that a rescan cannot recreate: the HMAC salt that
+ * gives each finding its stable id, and the ids the user has dismissed.
+ *
+ * `identity`, and both halves for the same reason. Regenerate the salt and every
+ * id changes, so every previously-seen credential reads as brand new and the
+ * machine re-alerts for all of them at once. Drop the dismissals and the
+ * findings a human already judged not-a-secret come back — which is worse than
+ * a missed alert, because it teaches them the tool does not listen.
+ *
+ * Small by construction: a 32-byte salt and a list of 16-char ids.
+ */
+export const auditLeakIdentityFile = (home?: string) =>
+  resolve(auditDir(home), "leak-identity.json");
+
 
 // ── fp-cloud-cli ───────────────────────────────────────────────────────────────────
 
@@ -628,6 +653,7 @@ export const HOME_CLASSES: readonly { path: (home?: string) => string; class: Da
   // history the user was already told about. Kept OUT of `auditSessionFile`
   // precisely so both survive a sign-out.
   { path: auditMachineFile, class: "identity" },
+  { path: auditLeakIdentityFile, class: "identity" },
 
   // ── May be dropped: rebuilt on demand ──
   // NOTE: `auditDir` itself is deliberately absent. Layout 4 made it MIXED — it
@@ -637,6 +663,7 @@ export const HOME_CLASSES: readonly { path: (home?: string) => string; class: Da
   // the delete list.
   { path: auditDashboardFile, class: "derived" },
   { path: auditCacheDir, class: "derived" },
+  { path: auditLeaksFile, class: "derived" },
   { path: auditScheduleFile, class: "derived" },
   { path: collectorHealthFile, class: "derived" },
   { path: codexSessionPathsFile, class: "derived" },

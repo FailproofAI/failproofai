@@ -48,6 +48,7 @@
  */
 import type { AuditCount, AuditResult } from "./types";
 import { redactExample } from "./redact-example";
+import type { LeakFinding } from "./leak-record";
 
 /** Severities that mean "the engine would have stopped this". */
 const HARMFUL_SEVERITIES = new Set(["deny", "sanitize"]);
@@ -72,10 +73,58 @@ export interface ReportedPolicy {
   examples: string[];
 }
 
+/**
+ * One leaked credential, as the digest carries it.
+ *
+ * **Nothing here can contain the secret**, and that is a structural property
+ * rather than a promise this function keeps. `LeakFinding` has no field holding
+ * the raw value — `recordLeaks` fingerprints at the moment of detection and
+ * stores only the mask — so there is no raw value on disk for this to leak even
+ * by accident. The most a bug here can send is a mask, a length and a label.
+ *
+ * The identifier NAME (`COMPOSIO_API_KEY`) is sent, and is not a secret: it is
+ * the left-hand side of an assignment, and for the first-party class — 230 of
+ * the 237 secret-named assignments the census measured, which no vendor console
+ * can revoke — it is the only actionable thing in the finding. Without it the
+ * digest can say a key leaked and not which one.
+ */
+export interface ReportedLeak {
+  /** The machine-local salted id, so a reader can act on the same row twice.
+   *  An HMAC under a salt that never leaves the machine — it names the finding
+   *  without describing it. */
+  id: string;
+  /** WHAT. `ghp_••••••••4f2a`, or `[13-char password]` when nothing was minted. */
+  display: string;
+  label: string;
+  length: number;
+  /** False means "we know it leaked, not who issued it" — which changes the
+   *  advice from "revoke at this console" to "find where this came from". */
+  attributed: boolean;
+  /** The identifier it was assigned to, when there was one. */
+  name: string | null;
+  confidence: string;
+  first_seen: string;
+  last_seen: string;
+  occurrences: number;
+  /** WHO — the harness whose transcript carried it. */
+  cli: string;
+  /** WHERE — home-shortened already, like every path in `examples`. */
+  project: string;
+  /** HOW — "read from ~/…/.env". */
+  mechanism: string;
+  /** Input means the agent SENT it (deniable at PreToolUse next time); result
+   *  means the agent RECEIVED it, which no gate can undo. */
+  direction: "input" | "result";
+}
+
 export interface HarmReport {
   window_from?: string;
   window_to: string;
   harmful: ReportedPolicy[];
+  /** Credentials seen in this window. Separate from `harmful` because it is a
+   *  different kind of claim: `harmful` counts policy activity, this names a
+   *  specific object that needs rotating. */
+  leaks: ReportedLeak[];
 }
 
 /** `failproofai/block-rm-rf` → `block-rm-rf`. */
@@ -226,10 +275,61 @@ export function selectHarmful(
  * lower bound", so a policy carrying no usable timestamps is reported once on a
  * new machine rather than silently dropped by the bound this now always sets.
  */
+/**
+ * The leaks worth putting in this window's digest.
+ *
+ * Windowed on `lastSeen`, not `firstSeen`: a key first seen months ago and used
+ * again yesterday is live, and reporting it only in the window it debuted would
+ * mean the digest goes quiet on exactly the credentials still in circulation.
+ *
+ * Dismissed findings never appear. A person who looked at a row and said "that
+ * is not a secret" has given the only judgement available that beats ours, and
+ * mailing it to them weekly afterwards is how a tool teaches people to filter
+ * it out of their inbox.
+ */
+export function selectLeaks(findings: LeakFinding[], from: Date, to: Date): ReportedLeak[] {
+  const lo = from.getTime();
+  const hi = to.getTime();
+  const out: ReportedLeak[] = [];
+  for (const f of findings) {
+    if (f.dismissedAt) continue;
+    const last = ts(f.lastSeen);
+    // No usable timestamp means it cannot be placed in a window. Included
+    // rather than dropped, for the same reason `includeUnplaceable` exists
+    // above: silence about a credential is the failure that costs something.
+    if (last !== null && (last < lo || last > hi)) continue;
+    // The most recent exposure is the one worth describing: it is where the key
+    // is now, not where it was first noticed.
+    // Defensive even though `readLeakRecord` already sanitises: this is
+    // exported and takes whatever a caller hands it.
+    const seen = f.sightings?.[f.sightings.length - 1];
+    out.push({
+      id: f.id,
+      display: f.fingerprint?.display ?? "[credential]",
+      label: f.fingerprint?.label ?? "secret",
+      length: f.fingerprint?.length ?? 0,
+      attributed: f.fingerprint?.attributed === true,
+      name: f.name,
+      confidence: f.confidence,
+      first_seen: f.firstSeen,
+      last_seen: f.lastSeen,
+      occurrences: f.occurrences,
+      cli: seen?.cli ?? "unknown",
+      project: seen?.cwd ?? "unknown",
+      mechanism: seen?.mechanism?.summary ?? "seen in a transcript",
+      direction: seen?.mechanism?.direction ?? "result",
+    });
+  }
+  // Most recently seen first: the digest's first row should be the one whose
+  // key is most likely still in use.
+  return out.sort((a, b) => (ts(b.last_seen) ?? 0) - (ts(a.last_seen) ?? 0));
+}
+
 export function buildHarmReport(
   result: AuditResult,
   lastReportedAt: string | undefined,
   intervalDays: number,
+  leakFindings: LeakFinding[] = [],
 ): HarmReport {
   const to = new Date(Date.parse(result.scannedAt));
   const windowTo = Number.isFinite(to.getTime()) ? to : new Date();
@@ -256,5 +356,6 @@ export function buildHarmReport(
     window_from: from.toISOString(),
     window_to: windowTo.toISOString(),
     harmful: selectHarmful(result, from, windowTo, { includeUnplaceable: isFirstReport }),
+    leaks: selectLeaks(leakFindings, from, windowTo),
   };
 }

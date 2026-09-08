@@ -21,7 +21,12 @@ import { AuthDialog, type AuthedUser } from "./auth-dialog";
 import { InviteDialog } from "./invite-dialog";
 
 interface Props {
-  /** Current audit score (0–100), forwarded into the invite email body. */
+  /** Current audit score (0–100), forwarded into the invite email body.
+   *
+   *  Always undefined while the score is switched off (see
+   *  `src/audit/scoring.ts`) — the dashboard no longer passes it. Nothing
+   *  breaks: `/api/audit/invite` already treats it as optional and simply
+   *  leaves it out of the email body when it is not a finite number. */
   score?: number;
 }
 

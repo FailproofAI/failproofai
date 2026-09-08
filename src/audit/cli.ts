@@ -35,6 +35,10 @@ import { getInstanceId } from "../../lib/telemetry-id";
 import { sanitizeErrorMessage } from "../../lib/telemetry-sanitize";
 import { openWhenReady } from "./open-browser";
 import { describeOutcome, reportHarm } from "./report-harm";
+import { notifyDesktop } from "./desktop-notify";
+import { macNotifierInstalled, pruneMacNotifyQueue, queueMacNotification } from "./macos-notifier";
+import { markLeakNoticeDelivered } from "./leak-notice";
+import { readConfig } from "../hooks/fp-config";
 import { brandAnsi, ANSI_RESET, ANSI_BOLD, ANSI_DIM, helpScreen, helpOptsFor } from "../hooks/tui";
 import { version } from "../../package.json";
 
@@ -106,6 +110,12 @@ export function helpText(): string {
             // is not a flag anybody can read or copy.
             ["--email <address>", "With --schedule, skips the sign-in prompt."],
             ["--no-schedule", "Stop the timer. Leaves you signed in."],
+            // Its own pair of flags rather than a clause on --schedule: whether
+            // this machine scans and whether it may interrupt you are separate
+            // decisions, and nobody silencing a banner should have to re-state
+            // their schedule to do it.
+            ["--notify", "Show a desktop notification when a scan finds a credential. On by default."],
+            ["--no-notify", "Stop those notifications. Scans and the digest are unaffected."],
             ["--status", "Whether scheduling is on, where reports go, the daemon's state, and when the next scan is due."],
             ["-h, --help", "Show this help."],
           ],
@@ -334,6 +344,100 @@ function heldByLine(held: AuditLockInfo | null): string {
   return `another audit is already running (pid ${held.pid}, started by ${held.source} ${ageS}s ago)`;
 }
 
+/**
+ * Raise a desktop banner for credentials this scan found and nothing has
+ * announced yet.
+ *
+ * Scheduled runs only, and the reason is the same one that keeps `reportHarm`
+ * here: an interactive `failproofai audit` prints its findings to a person who
+ * is already looking at them, so a banner on top is noise. The scheduled run is
+ * the one with nobody watching, which is exactly when a notification is the
+ * only thing that reaches anyone.
+ *
+ * Every failure is swallowed on purpose. This is an announcement about a
+ * completed scan, not part of the scan: a machine with no desktop, a locked
+ * session, a bus that hung — none of those make the audit itself a failure, and
+ * turning a good scan into exit 1 would make the scheduler back off from
+ * running the thing that actually matters.
+ */
+async function announceLeaksOnDesktop(result: AuditResult): Promise<void> {
+  try {
+    await announceLeaksOrThrow(result);
+  } catch (err) {
+    // The catch is not decoration. `notifyDesktop` documents that it never
+    // throws, but it is doing socket I/O, and so are the config read and the
+    // marker write beside it — depending on three modules' promises to keep a
+    // completed scan from reporting failure is a dependency this does not need
+    // to have.
+    process.stderr.write(
+      `failproofai: could not announce a leak on the desktop: ` +
+        `${err instanceof Error ? err.message : String(err)}\n`,
+    );
+  }
+}
+
+async function announceLeaksOrThrow(result: AuditResult): Promise<void> {
+  const ids = result.newLeakIds ?? [];
+  if (ids.length === 0) return;
+  // Read at fire time, not at scan time: the switch answers "should this
+  // interrupt me", and it is the user's most recent answer that counts.
+  if (!readConfig().audit.notify) return;
+
+  // Claimed BEFORE the call goes out, and in the desktop channel only. Before,
+  // because a process that dies mid-notify would otherwise re-announce the same
+  // finding on every scheduled run forever; desktop-only, because a banner the
+  // user may never have seen must not also silence the in-session notice.
+  const claimed = markLeakNoticeDelivered(ids, undefined, "desktop");
+  if (claimed.length === 0) return;
+
+  const n = claimed.length === 1 ? "a credential" : `${claimed.length} credentials`;
+  const title = "failproofai found a leaked credential";
+  // Fixed text with a count interpolated — the same rule as the in-CLI notice,
+  // for the same reason. A finding's own text comes from a repository this
+  // machine cloned, and notification bodies render markup on several Linux
+  // desktops.
+  const body = `${n} appeared in this machine's agent transcripts. Run failproofai audit for details.`;
+
+  // The two platforms need opposite things, and the split is not cosmetic. On
+  // Linux this process can reach the session bus itself. On macOS it cannot
+  // reach Notification Center at all — it is a child of a LaunchDaemon, outside
+  // the GUI session — so it hands the message to an agent that lives inside
+  // one. See `macos-notifier.ts` for why that agent exists.
+  if (process.platform === "darwin") {
+    pruneMacNotifyQueue();
+    if (!queueMacNotification(claimed[0], title, body)) {
+      process.stderr.write(`failproofai: found ${n} but could not queue a notification\n`);
+    } else if (!macNotifierInstalled()) {
+      // Queued, but nothing will collect it: setup either never ran or could
+      // not compile the applet. Worth a line, because the symptom otherwise is
+      // simply silence.
+      process.stderr.write(
+        `failproofai: found ${n}; the notifier is not installed, so nothing will show it ` +
+          `(run \`failproofai config\`)\n`,
+      );
+    }
+    return;
+  }
+
+  const outcome = await notifyDesktop(
+    title,
+    body,
+    // A stable id would let a repeat scan replace the previous bubble instead
+    // of stacking. We do not have one yet — the server assigns it and we would
+    // have to persist it — so a fresh notification is correct here, and it is
+    // bounded: at most one per distinct credential, ever.
+    0,
+  );
+  if (!outcome.ok) {
+    // stderr, so it lands in the journal beside the run it belongs to. Not a
+    // failure of the audit — but "we found a key and could not tell you" is
+    // exactly the sentence someone debugging this needs to find.
+    process.stderr.write(
+      `failproofai: found ${n} but could not raise a desktop notification (${outcome.reason})\n`,
+    );
+  }
+}
+
 // ── Headless (scheduled) audit ───────────────────────────────────────────────
 
 /**
@@ -403,6 +507,11 @@ export async function runScheduledAudit(): Promise<number> {
       `failproofai: audit complete — ${num(result.eventsScanned)} tool calls across ` +
         `${num(result.transcripts.scanned)} sessions, ${num(result.totals.hits)} hits\n`,
     );
+
+    // Tell whoever owns this machine, on the machine, before anything is sent
+    // anywhere. Local first: this is the channel that works with no account, no
+    // email and no network, which describes most users.
+    await announceLeaksOnDesktop(result);
 
     // Report harmful findings upstream, if the user switched emailed reports on.
     //
@@ -550,6 +659,16 @@ export async function runAuditCli(args: string[]): Promise<void> {
     const { runScheduleStatus } = await import("./schedule-cli");
     runScheduleStatus();
     process.exit(0);
+  }
+
+  for (const [flag, enable] of [["--notify", true], ["--no-notify", false]] as const) {
+    if (args.includes(flag)) {
+      const extra = args.find((a) => a !== flag);
+      if (extra) die(`\`audit ${flag}\` takes no other arguments (got: ${extra}).`);
+      const { runNotifyToggle } = await import("./schedule-cli");
+      runNotifyToggle(enable);
+      process.exit(0);
+    }
   }
 
   if (args.includes("--no-schedule")) {

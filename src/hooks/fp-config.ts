@@ -325,12 +325,53 @@ export interface FpConfig {
      * refresh token expiring must not silently switch off a background feature
      * somebody configured months ago.
      *
-     * OFF by default, and the asymmetry with `telemetry.enabled` above is
-     * deliberate: the audit reads the CONTENTS of every session transcript on
-     * disk — prompts, file contents, command output — so nothing scans on a
-     * timer until somebody asks for it.
+     * ON for a configured machine that has never stated an opinion, OFF for
+     * every machine we could not read an opinion from — which is not the same
+     * default twice, and the difference is the whole design.
+     *
+     * The scan reads the CONTENTS of every session transcript on disk, so the
+     * conservative instinct is to keep it off until asked. But the thing it
+     * looks for now is a leaked credential, and a credential nobody scans for
+     * is a credential nobody revokes: a switch that is off by default is a
+     * feature that, for most users, never runs. Setup is where the machine's
+     * owner is told what it does, so completing setup is the opinion.
+     *
+     * Hence the split. Once `config.json` exists AND carries an `audit` table,
+     * this is on unless it says exactly `false`. Absent file, unparseable JSON,
+     * or no `audit` table at all still read as OFF, because those are the three
+     * ways of not knowing, and "we could not tell" must never turn a transcript
+     * scan on. `crates/failproofaid/src/audit_lane.rs` makes the identical
+     * distinction over the identical bytes — the daemon and this reader must
+     * agree, or the settings page describes a machine that is doing something
+     * else.
+     *
+     * Turning it on sends NOTHING on its own: the digest is gated on
+     * `reportsConsentedAt` below, not on this switch, so a machine that flips
+     * on at upgrade scans locally and mails nobody.
      */
     auto: boolean;
+    /**
+     * Raise a desktop notification when a scan finds a credential.
+     *
+     * Separate from `auto` because they answer different questions: `auto` is
+     * whether the machine scans, this is whether it interrupts. Somebody who
+     * wants the scan and not the banner is a coherent person, and without this
+     * their only way to stop the banner is to stop the scan.
+     *
+     * ON by default, and the direction is the point: this fires at most once
+     * per distinct credential ever (`leak-notice.ts` claims each finding with
+     * an O_EXCL marker), so the volume it can reach is bounded by how many
+     * secrets are actually leaking. A silent default would make the common
+     * case — a user who never opens the dashboard and never gave an email —
+     * a machine that finds the key and tells nobody.
+     *
+     * It does NOT silence the in-CLI notice. That one appears inside a session
+     * the user is already driving, costs two lines, and is the only channel
+     * left when there is no desktop to notify — a headless box, a container, an
+     * SSH session. Turning off every channel at once is not an option this
+     * offers, because the resulting state is indistinguishable from broken.
+     */
+    notify: boolean;
     /**
      * When this machine's owner agreed that a scheduled scan may send what it
      * finds off the box, as epoch ms. Absent means they never did.
@@ -402,7 +443,9 @@ export const DEFAULT_CONFIG: FpConfig = {
     environment: "local",
   },
   telemetry: { enabled: true },
-  audit: { auto: false, intervalDays: DEFAULT_AUDIT_INTERVAL_DAYS },
+  // `auto: false` is the no-file case specifically — see the field's doc for
+  // why a machine that HAS a config reads the other way.
+  audit: { auto: false, notify: true, intervalDays: DEFAULT_AUDIT_INTERVAL_DAYS },
 };
 
 /**
@@ -495,7 +538,11 @@ export function projectConfig(parsed: Record<string, unknown>): FpConfig {
     const daemon = (parsed.daemon ?? {}) as Record<string, unknown>;
     const collector = (parsed.collector ?? {}) as Record<string, unknown>;
     const telemetry = (parsed.telemetry ?? {}) as Record<string, unknown>;
-    const audit = (parsed.audit ?? {}) as Record<string, unknown>;
+    // Presence, not just contents: `audit.auto` reads differently when the
+    // table is absent than when it is present-but-silent. See the field's doc.
+    const auditPresent =
+      !!parsed.audit && typeof parsed.audit === "object" && !Array.isArray(parsed.audit);
+    const audit = (auditPresent ? parsed.audit : {}) as Record<string, unknown>;
     return {
       // Anything unrecognised reads as `oss`. The failure direction matters: a
       // corrupt config must not be able to turn cloud reporting ON.
@@ -525,12 +572,20 @@ export function projectConfig(parsed: Record<string, unknown>): FpConfig {
       // reads as on — the shipped default, and what a config with no
       // [telemetry] block at all means.
       telemetry: { enabled: telemetry.enabled !== false },
-      // Mirror image of telemetry above: only an explicit `true` switches the
-      // scheduled scan on. Absent, misspelled, or `"yes"` all read as off,
-      // because the failure direction here is a machine that starts reading
-      // every transcript it can find on a timer nobody set.
+      // A configured machine with no stated opinion scans; a machine we could
+      // not read an opinion FROM does not. `auditPresent` is what separates
+      // them, and it is the reason this is not simply `!== false`: with no
+      // `audit` table there is no opinion to have been stated, only an absence,
+      // and an absence must not start reading every transcript on disk. Same
+      // three-way split as `audit_lane.rs`, over the same file.
       audit: {
-        auto: audit.auto === true,
+        auto: auditPresent && audit.auto !== false,
+        // Default ON, off only on an explicit `false` — a notification the user
+        // never sees is the same as no detection at all. Ungated on
+        // `auditPresent`, unlike `auto`: this is read at the moment a
+        // notification is about to fire, which means a scan already ran and the
+        // question is only whether to speak.
+        notify: audit.notify !== false,
         intervalDays: readIntervalDays(audit.interval_days),
         // A finite number or nothing. A garbage value reads as absent, which is
         // the direction that sends nothing.
@@ -584,6 +639,7 @@ const OWNED_CONFIG_KEYS: readonly (readonly string[])[] = [
   ["collector", "sources", "*", "extra_paths"],
   ["telemetry", "enabled"],
   ["audit", "auto"],
+  ["audit", "notify"],
   ["audit", "interval_days"],
   ["audit", "reports_consented_at"],
 ];
@@ -688,6 +744,10 @@ export function writeConfig(config: FpConfig, raw?: Record<string, unknown>): vo
     // total rather than conditional.
     audit: {
       auto: config.audit.auto,
+      // Emitted unconditionally, like `auto`. A switch that only appears in the
+      // file once you have used it is a switch nobody discovers, and this one
+      // exists to be found by somebody the banner annoyed.
+      notify: config.audit.notify,
       interval_days: config.audit.intervalDays,
       // Written only once there IS consent, so an untouched machine's config
       // does not grow a key implying it was asked. It is in

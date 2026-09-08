@@ -18,6 +18,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { formatText, formatMarkdown, formatJson } from "@/src/audit/report";
+import { redactAuditResult } from "@/src/audit/redact-example";
 import type { AuditCount, AuditResult } from "@/src/audit/types";
 
 const SECRET = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -60,19 +61,48 @@ function result(results: AuditCount[] = [count()]): AuditResult {
     projectsScanned: ["/home/testuser/clients/acme-bank"],
     eventsScanned: 10,
     enabledBuiltinNames: ["block-secrets-write"],
+    // OPTIONAL fields must be present here or the reflection guard below has
+    // no teeth: it walks a real object, and TypeScript will not complain about
+    // an optional field the redactor forgot. This fixture is the only thing
+    // standing between a new field and a silent passthrough.
+    newLeakIds: ["abc123"],
   };
 }
 
+describe("redactAuditResult — a whitelist, not a spread", () => {
+  // It used to be `{...result}` plus three named rewrites, so every field it
+  // did not name passed through byte-identical — including fields added later,
+  // with absolute home paths intact. The compiler catches a new REQUIRED field;
+  // it stays quiet about an optional one, and the leak record arrives as
+  // optional fields. So this reflects over a real result instead.
+  it("has consciously handled every key on the real object", async () => {
+    const { REDACTED_AUDIT_RESULT_KEYS } = await import("@/src/audit/redact-example");
+    const actual = Object.keys(result()).sort();
+    const handled = [...REDACTED_AUDIT_RESULT_KEYS].sort();
+    const unhandled = actual.filter((k) => !handled.includes(k as never));
+    expect(
+      unhandled,
+      `AuditResult grew ${unhandled.join(", ")} — decide in redactAuditResult whether it needs ` +
+        `redacting, then add it to REDACTED_AUDIT_RESULT_KEYS`,
+    ).toEqual([]);
+  });
+
+  it("leaves no absolute home path anywhere in the redacted object", () => {
+    const out = redactAuditResult(result(), "/home/testuser");
+    expect(JSON.stringify(out)).not.toContain("/home/testuser");
+  });
+});
+
 describe("formatMarkdown — the file the CLI calls a Shareable report", () => {
   it("never writes a credential into the report body", () => {
-    const md = formatMarkdown(result(), {});
+    const md = formatMarkdown(result());
     expect(md).toContain("Examples");
     expect(md).not.toContain(SECRET);
     expect(md).toContain("[REDACTED");
   });
 
   it("shortens the cwd so the report does not carry a map of someone's disk", () => {
-    const md = formatMarkdown(result(), {});
+    const md = formatMarkdown(result());
     expect(md).not.toContain("/home/testuser/clients/acme-bank");
   });
 });

@@ -219,6 +219,14 @@ export function runScheduleStatus(): void {
   // so it is a destination in name only. Showing the address for one would tell
   // somebody their digests are going somewhere they are not.
   const live = auth && auth.refresh_expires_at * 1000 > Date.now() ? auth : null;
+  // Beside the schedule, because they are the two halves of "what does this
+  // machine do on its own" — one decides whether it scans, the other whether it
+  // is allowed to interrupt you about what it found.
+  detail.push([
+    "leak notifications",
+    config.audit.notify ? green("on") : dim("off  (failproofai audit --notify)"),
+  ]);
+
   detail.push(["reports to", live ? live.user.email : dim("— signed out")]);
   if (on && !live) {
     // The state the reporter surfaces as "signed-out". Named here for the same
@@ -345,4 +353,33 @@ export function asScheduleError(err: unknown): never {
     throw new ScheduleCliError(err.message);
   }
   throw err;
+}
+
+/**
+ * Turn the desktop banner on or off.
+ *
+ * A separate command from `--schedule` rather than a flag on it, because they
+ * are separate decisions with different lifetimes: somebody who wants the
+ * weekly scan and not the banner should not have to re-state their schedule to
+ * say so, and somebody silencing the banner in an annoyed moment should not
+ * discover they also turned off the scan.
+ *
+ * Writes the same `audit.notify` key the dashboard toggle writes and the audit
+ * child reads, so the two surfaces cannot disagree.
+ */
+export function runNotifyToggle(enable: boolean): void {
+  try {
+    updateConfig({ audit: { notify: enable } });
+  } catch (err) {
+    process.stderr.write(
+      `Could not update the setting: ${err instanceof Error ? err.message : String(err)}\n`,
+    );
+    process.exit(1);
+  }
+  process.stdout.write(
+    enable
+      ? `\n${green("on")}  leak notifications — this machine will tell you when a scan finds a credential.\n\n`
+      : `\n${dim("off")} leak notifications — scans continue, and findings still appear in ` +
+          `\`failproofai audit\` and the emailed digest.\n\n`,
+  );
 }

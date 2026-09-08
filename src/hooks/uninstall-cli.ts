@@ -47,6 +47,7 @@ import {
 import { listInstallableIds, getIntegration } from "./integrations";
 import type { IntegrationType } from "./types";
 import { removeHooks } from "./manager";
+import { uninstallMacNotifier } from "../audit/macos-notifier";
 
 export interface UninstallOptions {
   /** Also delete ~/.failproofai (config, credentials, state, audit cache, daemon binary). */
@@ -344,6 +345,20 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
         failures.push(`daemon service: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
+  }
+
+  // The macOS notification agent, which is the one thing `--purge` alone cannot
+  // reach: its bundle lives inside `~/.failproofai` and goes with the home, but
+  // its LaunchAgent plist sits in `~/Library/LaunchAgents`, outside everything
+  // this command otherwise deletes. Left behind, launchd keeps trying to start
+  // an applet that is no longer on disk and logs the failure at every login —
+  // precisely the class of leftover an uninstall exists to prevent.
+  //
+  // No-ops on every other platform, and needs no elevation on macOS: a per-user
+  // agent is the user's own to load and unload. Tied to the daemon's removal
+  // because it exists only to deliver what the daemon's scheduled audit finds.
+  if (opts.purge || (found.serviceInstalled && (opts.purge || opts.yes))) {
+    uninstallMacNotifier();
   }
 
   if (opts.purge && found.homeExists) {

@@ -18,7 +18,7 @@
 //   • src/hooks/integrations.ts (buildOpenCodePluginShim production template)
 // When #337 landed, this dev shim drifted and `block-read-outside-cwd`
 // silently no-op'd on every opencode `read` call inside this repo.
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { resolveDevSpawn } from "../../scripts/dev-hook.mjs";
 
 const BUS_EVENT_MAP = {
@@ -70,34 +70,58 @@ function canonicalizeToolInput(canonicalToolName, args) {
   return out;
 }
 
-function runFailproofai(eventName, payload, directory) {
-  // Shared with the JSON configs' launcher: locates bun across PATH, ~/.bun/bin,
-  // $BUN_INSTALL, Homebrew and every nvm version dir. A bare spawnSync("bun")
-  // dies with ENOENT the moment bun is off the hook's PATH.
-  const spawn = resolveDevSpawn();
-  if (!spawn) {
+/**
+ * Run failproofai for one event WITHOUT blocking opencode's event loop.
+ *
+ * This was `spawnSync`, and opencode loads the plugin in-process in the TUI —
+ * so every hook froze rendering and input for the subprocess's full duration,
+ * with a 60s ceiling. The verdicts are unchanged: every caller already `await`s
+ * `applyDecision`, so the deny still lands before the tool runs. What changes
+ * is that the wait is now a promise rather than a blocked thread, and the TUI
+ * keeps painting while it happens.
+ *
+ * Fail-open on spawn error, and on the timeout — a policy that never ran must
+ * not read as a deny.
+ */
+async function runFailproofai(eventName, payload, directory) {
+  const resolved = resolveDevSpawn();
+  if (!resolved) {
     process.stderr.write(
       "[failproofai-dev] bun not found — opencode policies are NOT enforcing. " +
         "Install bun: curl -fsSL https://bun.sh/install | bash\n",
     );
     return { exitCode: 0, stdout: "", stderr: "" };
   }
-  const r = spawnSync(spawn.cmd, [...spawn.args, "--hook", eventName, "--cli", "opencode"], {
-    input: JSON.stringify(payload),
-    encoding: "utf8",
-    timeout: 60_000,
-    cwd: directory,
+  const cmd = resolved.cmd;
+  const args = [...resolved.args, "--hook", eventName, "--cli", "opencode"];
+  return await new Promise((resolveRun) => {
+    let child;
+    try {
+      child = spawn(cmd, args, { cwd: directory });
+    } catch {
+      resolveRun({ exitCode: 0, stdout: "", stderr: "" });
+      return;
+    }
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const finish = (exitCode) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolveRun({ exitCode, stdout, stderr });
+    };
+    const timer = setTimeout(() => {
+      try { child.kill("SIGKILL"); } catch { /* already gone */ }
+      finish(0);
+    }, 60_000);
+    child.stdout.on("data", (d) => { stdout += d; });
+    child.stderr.on("data", (d) => { stderr += d; });
+    child.on("error", () => finish(0));
+    child.on("close", (code) => finish(code ?? 0));
+    child.stdin.on("error", () => {});
+    child.stdin.end(JSON.stringify(payload));
   });
-  // `r.status` is null when the spawn never ran (ENOENT) or the child was
-  // killed. Coercing that to 0 reports "allowed" for a policy that never got
-  // to run, so say so on stderr rather than failing open in silence.
-  if (r.status === null) {
-    process.stderr.write(
-      `[failproofai-dev] ${eventName} hook did not run (${r.error?.code ?? r.signal ?? "unknown"}) — not enforcing\n`,
-    );
-    return { exitCode: 0, stdout: "", stderr: "" };
-  }
-  return { exitCode: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
 }
 
 async function applyDecision(result, ctx, eventName) {
@@ -150,7 +174,7 @@ export default async function failproofaiPlugin({ client, directory }) {
           }
         }
         if (!prompt) prompt = (info.text || info.content || props.text || "").toString();
-        const r = runFailproofai("UserPromptSubmit", {
+        const r = await runFailproofai("UserPromptSubmit", {
           session_id: sessionID, cwd: directory, hook_event_name: "UserPromptSubmit", prompt,
         }, directory);
         await applyDecision(r, { client, sessionID }, "UserPromptSubmit");
@@ -160,7 +184,7 @@ export default async function failproofaiPlugin({ client, directory }) {
       if (!claudeEvent) return;
       const props = event.properties || {};
       const sessionID = props.sessionID || (props.session && props.session.id) || props.id;
-      const r = runFailproofai(claudeEvent, {
+      const r = await runFailproofai(claudeEvent, {
         session_id: sessionID, cwd: directory, hook_event_name: claudeEvent,
       }, directory);
       await applyDecision(r, { client, sessionID }, claudeEvent);
@@ -168,7 +192,7 @@ export default async function failproofaiPlugin({ client, directory }) {
 
     "tool.execute.before": async (input, output) => {
       const canonicalTool = canonicalizeTool(input.tool);
-      const r = runFailproofai("PreToolUse", {
+      const r = await runFailproofai("PreToolUse", {
         session_id: input.sessionID,
         cwd: directory,
         tool_name: canonicalTool,
@@ -180,7 +204,7 @@ export default async function failproofaiPlugin({ client, directory }) {
 
     "tool.execute.after": async (input, output) => {
       const canonicalTool = canonicalizeTool(input.tool);
-      const r = runFailproofai("PostToolUse", {
+      const r = await runFailproofai("PostToolUse", {
         session_id: input.sessionID,
         cwd: directory,
         tool_name: canonicalTool,
@@ -193,7 +217,7 @@ export default async function failproofaiPlugin({ client, directory }) {
 
     "permission.ask": async (input, output) => {
       const canonicalTool = canonicalizeTool(input.tool);
-      const r = runFailproofai("PermissionRequest", {
+      const r = await runFailproofai("PermissionRequest", {
         session_id: input.sessionID,
         cwd: directory,
         tool_name: canonicalTool || input.command || "permission",

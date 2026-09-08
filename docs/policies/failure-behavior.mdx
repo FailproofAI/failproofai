@@ -61,7 +61,9 @@ It does not fire for:
 ### What to do
 
 ```bash
-failproofai pack list
+failproofai policies
 ```
 
-It names any installed pack that will not load, says why, and exits non-zero. Then either reinstall it (`failproofai pack add <source>`) or remove it (`failproofai pack remove <publisher/name>`) — removing it withdraws the expectation, and the deny stops with it.
+The listing names any installed pack that will not load and says why, alongside everything else enforcing here. Then either reinstall it (`failproofai policies add <source>`) or remove it (`failproofai policies remove <publisher/name>`) — removing it withdraws the expectation, and the deny stops with it.
+
+The deny itself is attributed to `pack/failproofai-pack-unavailable`, which outranks the policies that did load, so a blocked tool call names the missing pack rather than whichever surviving guard happened to fire first.

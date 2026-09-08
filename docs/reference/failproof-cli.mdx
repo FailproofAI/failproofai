@@ -6,37 +6,46 @@ icon: "terminal"
 
 Install the local CLI with `npm install -g failproofai`. Run it with no arguments to open the local policy dashboard.
 
-The package requires Node.js 20.9 or newer. Bun 1.3 or newer is supported for development and source installs. `failproofai configure` and `failproofai setup` are aliases for `failproofai config`; `failproofai p` is an alias for `failproofai policies`.
+The package requires Node.js 20.9 or newer. Bun 1.3 or newer is supported for development and source installs. `failproofai configure` and `failproofai setup` are aliases for `failproofai config`. `failproofai policy`, `failproofai pack` and `failproofai p` are all spellings of `failproofai policies` — packs and single policies were three commands for one idea and are now one. The older spellings still work, with two exceptions: `pack list <source>` is now `policies show <source>`, and `pack build` is now `publish`.
 
 ## Set up a machine
 
 ```bash
 npm install -g failproofai
-failproofai config \
-  --connect https://app.befailproof.ai \
-  --token <machine-key> \
-  --machine-label checkout-prod-01
-failproofai policies --install
+export FAILPROOFAI_CLOUD_TOKEN="<machine-key>"
+failproofai config                              # hooks, daemon, and Cloud in one pass
+failproofai policies add FailproofAI/policies   # choose what enforces
 failproofai config --status
 ```
+
+`failproofai config` is the whole of setup: it installs the `failproofaid` service (root once, via `sudo -n` — never an interactive password prompt), wires hooks into every agent CLI it finds, and connects to Cloud when a key is available. With no terminal — CI, a container, an agent driving it — it applies rather than asking, and exits 1 if anything it was asked to do did not happen.
+
+It chooses **no** policies. That is the second command's job, and without it a freshly configured machine enforces nothing but the always-on guard.
+
+Prefer the environment variable over `--token`: a command-line argument is readable from `ps` by every user on the box, and lands in shell history and CI logs.
+
+<Warning>
+  `--connect <url>` enrols a machine that is **already set up**. It returns as soon as enrolment succeeds — it does not install the daemon and does not wire any hooks. Use plain `failproofai config` (or `failproofai config --token <key>`) on a machine that has not been set up yet, or it will read as connected while collecting and enforcing nothing.
+</Warning>
 
 Run `failproofai` without arguments to open the local policy dashboard.
 
 | Command | Outcome |
 | --- | --- |
-| `failproofai config` | Run interactive machine setup |
-| `failproofai config --connect <url> --token <key>` | Connect Cloud ingestion and policy delivery |
+| `failproofai config` | Set the machine up: agents, daemon, and Cloud when a key is present |
+| `failproofai config --token <key>` | Set up and connect in one pass, asking nothing |
+| `failproofai config --connect <url>` | Enrol a machine that is **already** set up — no daemon, no hooks |
 | `failproofai config --status` | Show connection, daemon, delivery, and pause state |
 | `failproofai policies` | List builtin, custom, convention, pack, and Cloud-managed policies |
-| `failproofai policies --install` | Install hooks and enable policies |
-| `failproofai policy add <name>` | Enable one policy — a builtin, or `<pack-id>:<name>` from an installed pack |
-| `failproofai policy remove <name>` | Disable one policy, same naming |
+| `failproofai policies --install` | Wire hooks into your agent CLIs. Enables no policy on its own |
+| `failproofai policies add <name>` | Enable one policy — a builtin, or `<pack-id>:<name>` from an installed pack |
+| `failproofai policies remove <name>` | Disable one policy, same naming |
 | `failproofai policies --uninstall` | Disable policies or remove harness hooks |
-| `failproofai pack list` | List installed policy packs and every policy each one carries |
-| `failproofai pack add <source>` | Install a policy pack from a GitHub release; no tag takes the newest and pins it |
-| `failproofai pack add --bundled` | Install the builtin policies as a pack, from this package, with no network |
-| `failproofai pack build <entry.mjs>` | Build the three release assets for a pack of your own |
-| `failproofai pack remove <publisher/name>` | Deactivate an installed pack |
+| `failproofai policies show <owner>/<repo>` | What a pack carries, read from its manifest, before you take it |
+| `failproofai policies show <owner>/<repo> --releases` | Every version it has published, and which one is here |
+| `failproofai policies add <source>` | Install a policy pack from a GitHub release; no tag takes the newest and pins it |
+| `failproofai publish` | Ship your own policies as a pack; `--init` writes one to start from |
+| `failproofai policies remove <publisher/name>` | Uninstall a pack |
 | `failproofai audit` | Scan local agent history and open the local audit view |
 | `failproofai audit --schedule [days] --email <address>` | Schedule recurring local scans and email their findings |
 | `failproofai audit --status` | Show the report address, interval, and next scheduled scan |
@@ -56,9 +65,11 @@ Run `failproofai` without arguments to open the local policy dashboard.
 
 | Flag | Use |
 | --- | --- |
-| `--connect <url> --token <key>` | Connect non-interactively |
+| `--token <key>` | Set up and connect non-interactively; also read from `FAILPROOFAI_CLOUD_TOKEN` |
+| `--url <url>` | Connect somewhere other than `app.befailproof.ai`; also read from `FAILPROOFAI_CLOUD_URL` |
+| `--connect <url>` | Enrol only, on a machine already set up. Skips the daemon and every hook |
 | `--machine-id <id>` | Set the stable machine ID |
-| `--machine-label <name>` | Set or change the dashboard label |
+| `--machine-label <name>` | Rename a machine that is **already connected**. On its own it never runs setup, so give it after `failproofai config`, not during |
 | `--no-transcripts` | Send decisions without transcript content |
 | `--disconnect` | Stop Cloud policy pulls and event delivery |
 | `--status` | Show current machine state |
@@ -73,7 +84,7 @@ Local pauses suspend builtin, custom, convention, and pack policies for one sess
 
 | Flag | Use |
 | --- | --- |
-| `--install`, `-i` | Enable policies and install harness hooks |
+| `--install`, `-i` | Install harness hooks. Names after it enable those policies; with none, no policy changes |
 | `--uninstall`, `-u` | Disable policies or remove hooks |
 | `--cli <names...>` | Target one or more supported harnesses |
 | `--scope user\|project\|local\|all` | Choose the configuration scope; `all` is for uninstall |
@@ -116,6 +127,8 @@ Use configuration files for persistent machine behavior. Environment variables a
 
 | Variable | Use |
 | --- | --- |
+| `FAILPROOFAI_CLOUD_TOKEN` | The Cloud key, instead of `--token`. Prefer this: an argument is readable from `ps` and lands in shell history and CI logs |
+| `FAILPROOFAI_CLOUD_URL` | The Cloud URL, instead of `--url`. The same variable the daemon reads |
 | `FAILPROOFAI_HOME` | Relocate the complete `~/.failproofai` layout |
 | `FAILPROOFAI_LOG_LEVEL` | Set local logging verbosity |
 | `FAILPROOFAI_HOOK_LOG_FILE` | Write hook diagnostics to a selected file |

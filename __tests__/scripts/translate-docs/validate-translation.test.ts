@@ -23,6 +23,31 @@ describe("findTranslationError", () => {
     expect(error).toMatch(/does not parse/);
   });
 
+  it("flags a stray second opening delimiter", async () => {
+    // The exact shape that shipped to 102 published pages across seven locales.
+    // Every check that asks YAML calls this clean — YAML reads the leading
+    // `---` as a document-start marker and returns `{title, description}` — but
+    // Mintlify closes the block on line 2, so the keys render as body text and
+    // the page has no title at all. Only the second, Mintlify-shaped view sees
+    // it, which is the whole reason that view exists.
+    const rendered = `---\n---\ntitle: "Fähigkeit"\ndescription: "Eine Seite"\n---\n\n# Körper\n`;
+    const error = await findTranslationError(rendered, SOURCE);
+    expect(error).not.toBeNull();
+    expect(error).toContain("empty");
+    // Says what to do, not just what is wrong — the message is read by a model
+    // that has to produce a corrected page on the retry.
+    expect(error).toContain("exactly one opening `---`");
+  });
+
+  it("flags a stray second opening delimiter on a frontmatter-less source", async () => {
+    // Nothing about the defect depends on the source having frontmatter: the
+    // page is equally broken either way, so the check runs for every shape.
+    const rendered = `---\n---\ntitle: "Titel"\n---\n\nEtwas Prosa.\n`;
+    const error = await findTranslationError(rendered, README_SOURCE);
+    expect(error).not.toBeNull();
+    expect(error).toContain("empty");
+  });
+
   it("flags a frontmatter block the model dropped entirely", async () => {
     // A missing block is still valid YAML (mintlify tolerates it), so only the
     // key-parity check against the source catches it.

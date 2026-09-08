@@ -6,7 +6,7 @@ icon: "waypoints"
 
 <CardGroup cols={3}>
   <Card title="Local enforcement" icon="laptop">
-    Install hooks and policies on a machine. Use this when you need immediate guardrails without sending session data to Cloud.
+    Set a machine up and take a policy pack. Use this when you need immediate guardrails without sending session data to Cloud.
   </Card>
   <Card title="Failproof AI Cloud" icon="cloud">
     Add centralized sessions, audits, online evaluations, dashboards, alerts, and fleet policy deployment.
@@ -49,15 +49,23 @@ icon: "waypoints"
   </Tab>
   <Tab title="CLI">
     ```bash
-    failproofai config --connect https://app.befailproof.ai \
-      --token "$FAILPROOFAI_KEY" \
-      --machine-label checkout-runner-01
+    export FAILPROOFAI_CLOUD_TOKEN="$FAILPROOFAI_KEY"
+    failproofai config
 
-    failproofai policies --install --cli claude --scope user
+    failproofai policies add FailproofAI/policies
+    failproofai config --machine-label checkout-runner-01
     failproofai config --status
     ```
 
+    `failproofai config` does the whole setup — daemon, hooks for every agent CLI it finds, and the Cloud connection — then chooses no policies, which is what the second command is for.
+
+    The label comes **after** connecting, not during: `failproofai config --machine-label <name>` renames a machine that is already connected, and on one that is not it does nothing but say so.
+
     Add `--no-transcripts` when transcript content must remain local.
+
+    <Warning>
+      On a machine that is **already** set up, `failproofai config --connect <url>` enrols it and nothing else. Do not use that form for a first install: it returns before the daemon or any hook is in place, leaving a machine that shows up in Cloud but collects and enforces nothing.
+    </Warning>
   </Tab>
 </Tabs>
 

@@ -31,8 +31,11 @@ tool calls before they execute. 39 built-in policies. Zero latency. Runs locally
 ## Supported harnesses
 
 Twelve harnesses in two classes — ten coding CLIs, and two chat and assistant
-gateways (Hermes, OpenClaw). Same events, same policies, same session history,
-whichever one your agent runs in.
+gateways (Hermes, OpenClaw). One policy API and one session history across all
+of them. What a policy can *block* is per-harness: stopping a tool call before
+it runs is verified on all twelve, turn-end gates on eight. The
+[per-harness matrix](https://docs.befailproof.ai/reference/harnesses#enforcement-capability)
+lists the events each one honours.
 
 Agents that run in none of them report through the [Python SDK](https://docs.befailproof.ai/reference/custom-agents),
 which gives you tracing, sessions and audits. Enforcement there needs a hook in
@@ -136,11 +139,22 @@ your own runtime — [talk to us](mailto:support@befailproof.ai) and we'll map i
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # or just run `failproofai` and accept the first-run prompt
-failproofai
+failproofai config                             # wire up your agents and the daemon
+failproofai policies add FailproofAI/policies  # choose what to enforce
+failproofai                                    # dashboard on localhost:8020
 ```
 
-39 built-in policies activate immediately. Dashboard at `localhost:8020`. Disable the first-run prompt with `FAILPROOFAI_NO_FIRST_RUN=1`.
+Setup wires the hooks and picks **no** policies — that second command is what
+puts guardrails on the machine, and any pack is typed the same way
+(`failproofai policies add <owner>/<repo>`; `policies show <owner>/<repo>` reads
+one first). Run `failproofai config` with no terminal — CI, a container, an
+agent driving it — and it applies rather than asking. On a machine that has
+never been set up, any other command runs the same wizard first; disable that
+with `FAILPROOFAI_NO_FIRST_RUN=1`.
+
+Until a pack arrives, the only thing enforcing is `block-failproofai-commands`,
+which is always on and cannot be switched off or paused: an agent that can pause
+enforcement can switch off every other policy.
 
 ---
 
@@ -148,7 +162,6 @@ failproofai
 
 | Policy | What it blocks |
 |---|---|
-| `sanitize-api-keys` | API keys leaking into the agent's context |
 | `block-env-files` | Reads of `.env` and other secret files |
 | `warn-repeated-tool-calls` | The agent looping on the same call |
 | `block-sudo` | Privilege escalation |
@@ -157,8 +170,11 @@ failproofai
 | `block-rm-rf` | Recursive file deletion |
 | `block-force-push` / `block-push-master` | `git push --force`, direct pushes to `main` |
 
-The first five apply to any agent that can call a tool. The last three are the
-developer favourites — coding CLIs are the harness class we cover deepest.
+Every one of these gates the call *before* it runs, so they hold on all twelve
+harnesses. The first four apply to any agent that can call a tool; the last
+three are the developer favourites — coding CLIs are the harness class we cover
+deepest. The `sanitize-*` family is separate: it runs after a tool returns, so
+it reports a secret in tool output rather than keeping it out of the context.
 
 → [All 39 built-in policies](https://docs.befailproof.ai/policies/builtin)
 

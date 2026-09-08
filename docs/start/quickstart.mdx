@@ -42,10 +42,16 @@ export FAILPROOFAI_KEY="<one-time-secret>"
   <Step title="Install and connect Failproof AI">
     ```bash
     npm install -g failproofai
-    failproofai config --connect https://app.befailproof.ai --token "$FAILPROOFAI_KEY"
+    FAILPROOFAI_CLOUD_TOKEN="$FAILPROOFAI_KEY" failproofai config
     ```
 
+    That one command is the whole of setup: it installs the local daemon (root once), wires hooks into every agent CLI it finds, and connects this machine to Cloud. Passing the key through the environment rather than `--token` keeps it out of `ps`, shell history and CI logs.
+
     Session transcripts are sent by default. Add `--no-transcripts` to report hook activity and policy decisions without transcript content.
+
+    <Warning>
+      Do not reach for `failproofai config --connect <url>` here. That flag enrols a machine that is **already** set up and returns straight after — no daemon, no hooks — so the machine would appear in Cloud while collecting and enforcing nothing.
+    </Warning>
 
     If this machine already has agent history, preview and import the last seven days, then wait for delivery to finish. Skip this step on a new machine.
 
@@ -57,10 +63,8 @@ export FAILPROOFAI_KEY="<one-time-secret>"
 
     Open **Sessions** in Failproof AI and select an imported session.
   </Step>
-  <Step title="Install agent hooks and policies">
-    This attaches Failproof AI to your harness and installs the 39 built-in policies. Use them to see local policy decisions and try enforcement before Failproof AI audits your sessions and writes policies for your agents.
-
-    Let the installer detect your harness, or name one explicitly. Every one of the 12 is a valid `--cli` value — `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity`, `goose`.
+  <Step title="Attach Failproof AI to a harness">
+    The previous step already wired every agent CLI it detected. Re-run it for one harness explicitly when you need to, or to add a harness installed afterwards. Every one of the 12 is a valid `--cli` value — `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity`, `goose`.
 
     ```bash
     failproofai policies --install --cli claude --scope user     # a coding CLI
@@ -68,6 +72,17 @@ export FAILPROOFAI_KEY="<one-time-secret>"
     ```
 
     Blocking a tool call before it runs is verified on all 12. Turn-end gates are verified on 8 — see [enforcement capability](/reference/harnesses#enforcement-capability) for the per-harness matrix.
+  </Step>
+  <Step title="Choose what to enforce">
+    Wiring hooks enables no policy. Setup deliberately picks none — that decision is yours — so take a pack:
+
+    ```bash
+    failproofai policies add FailproofAI/policies
+    ```
+
+    Ours is a pack like anyone else's: fetched from its GitHub release, checksum-verified, and pinned to the exact tag it resolved. It carries 38 policies and switches on the 10 its manifest marks as safe to enable unattended. Read one before taking it with `failproofai policies show <owner>/<repo>`, and see [policy packs](/policies/packs) for taking only part of one.
+
+    Until this runs, the only thing enforcing is `block-failproofai-commands` — the always-on guard that stops an agent switching Failproof AI off. `failproofai policies` lists what is on.
   </Step>
   <Step title="Audit the behavior">
     Follow [Run your first failure check](/start/first-audit). Use a concrete goal such as “find sessions where the agent retried a failing tool without changing its approach.”

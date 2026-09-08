@@ -65,9 +65,7 @@ The generated [HTTP API reference](/reference/http-api) covers the public `/v1` 
       --add events:add \
       --add policies:pull
 
-    failproofai config \
-      --connect https://app.befailproof.ai \
-      --token <machine-key>
+    FAILPROOFAI_CLOUD_TOKEN=<machine-key> failproofai config
 
     failproofai flush --wait
     fp sessions --since 1h --env production

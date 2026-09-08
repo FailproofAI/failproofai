@@ -121,6 +121,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "start/integrations",
                   "start/integrations/custom-agents",
                   "start/integrations/langchain",
                   "start/integrations/crewai",
@@ -283,6 +284,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "zh/start/integrations",
                   "zh/start/integrations/custom-agents",
                   "zh/start/integrations/langchain",
                   "zh/start/integrations/crewai",
@@ -439,6 +441,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "ja/start/integrations",
                   "ja/start/integrations/custom-agents",
                   "ja/start/integrations/langchain",
                   "ja/start/integrations/crewai",
@@ -595,6 +598,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "ko/start/integrations",
                   "ko/start/integrations/custom-agents",
                   "ko/start/integrations/langchain",
                   "ko/start/integrations/crewai",
@@ -751,6 +755,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "es/start/integrations",
                   "es/start/integrations/custom-agents",
                   "es/start/integrations/langchain",
                   "es/start/integrations/crewai",
@@ -907,6 +912,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "pt-br/start/integrations",
                   "pt-br/start/integrations/custom-agents",
                   "pt-br/start/integrations/langchain",
                   "pt-br/start/integrations/crewai",
@@ -1063,6 +1069,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "de/start/integrations",
                   "de/start/integrations/custom-agents",
                   "de/start/integrations/langchain",
                   "de/start/integrations/crewai",
@@ -1219,6 +1226,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "fr/start/integrations",
                   "fr/start/integrations/custom-agents",
                   "fr/start/integrations/langchain",
                   "fr/start/integrations/crewai",
@@ -1375,6 +1383,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "ru/start/integrations",
                   "ru/start/integrations/custom-agents",
                   "ru/start/integrations/langchain",
                   "ru/start/integrations/crewai",
@@ -1531,6 +1540,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "hi/start/integrations",
                   "hi/start/integrations/custom-agents",
                   "hi/start/integrations/langchain",
                   "hi/start/integrations/crewai",
@@ -1687,6 +1697,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "tr/start/integrations",
                   "tr/start/integrations/custom-agents",
                   "tr/start/integrations/langchain",
                   "tr/start/integrations/crewai",
@@ -1843,6 +1854,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "vi/start/integrations",
                   "vi/start/integrations/custom-agents",
                   "vi/start/integrations/langchain",
                   "vi/start/integrations/crewai",
@@ -1999,6 +2011,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "it/start/integrations",
                   "it/start/integrations/custom-agents",
                   "it/start/integrations/langchain",
                   "it/start/integrations/crewai",
@@ -2155,6 +2168,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "ar/start/integrations",
                   "ar/start/integrations/custom-agents",
                   "ar/start/integrations/langchain",
                   "ar/start/integrations/crewai",
@@ -2311,6 +2325,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "he/start/integrations",
                   "he/start/integrations/custom-agents",
                   "he/start/integrations/langchain",
                   "he/start/integrations/crewai",

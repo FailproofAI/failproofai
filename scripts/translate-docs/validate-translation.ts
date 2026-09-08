@@ -11,6 +11,11 @@
  *  - Frontmatter YAML (class A): the model re-emits an inner `"` unescaped into
  *    a double-quoted `title:`/`description:` value, breaking the YAML. This is
  *    the class that failed run 29575781632; `findFrontmatterError` catches it.
+ *  - Empty block (class A2): the model emits a second opening `---`, so the
+ *    block Mintlify reads closes before any key is inside it and the whole
+ *    frontmatter renders as body text. YAML calls a leading `---` a
+ *    document-start marker and parses it clean, so class A is blind to this;
+ *    `mintlifyFrontmatterBlock` is the second view that is not.
  *  - Key parity (class B): the model drops the frontmatter block entirely, or
  *    renames a key. A dropped block is still *valid YAML* (mintlify tolerates
  *    it, deriving the title from the slug), so only comparing against the
@@ -53,6 +58,30 @@ function frontmatterKeys(page: string): string[] | null {
 }
 
 /**
+ * The frontmatter block as MINTLIFY reads it: opened by a leading `---` line,
+ * closed by the FIRST line after it that is exactly `---`. `null` when the page
+ * does not open with a delimiter at all.
+ *
+ * Deliberately NOT reusing `FRONTMATTER_RE`. That matcher exists to feed
+ * `YAML.parse`, and YAML reads a bare `---` as a document-START marker rather
+ * than as a terminator — so a page beginning `---\n---\ntitle: …` parses there
+ * as a perfectly clean `{title: …}` while Mintlify closes the block on line 2
+ * and renders every key as body text. The reader gets a literal `title: "…"` at
+ * the top of the page and no title on it.
+ *
+ * That is not hypothetical: 102 published pages across seven locales shipped
+ * exactly that way, invisible to every other check in this file, because both
+ * of them asked YAML. The two views have to be compared, never shared.
+ */
+function mintlifyFrontmatterBlock(page: string): string | null {
+  const lines = page.split(/\r?\n/);
+  if (lines[0]?.trim() !== "---") return null;
+  const close = lines.findIndex((line, i) => i > 0 && line.trim() === "---");
+  if (close < 0) return null;
+  return lines.slice(1, close).join("\n");
+}
+
+/**
  * A ±2-line window around `line` (1-based), the failing line prefixed `> ` and
  * its neighbours `  `. Empty string when `line` is undefined.
  */
@@ -90,6 +119,21 @@ export async function findTranslationError(
     return (
       "The YAML frontmatter (the `---` block at the top of the file) does " +
       `not parse:\n\n${fm.message}`
+    );
+  }
+
+  // Class A2: a block that is EMPTY as Mintlify delimits it. A stray opening
+  // delimiter (`---\n---\ntitle: …`) is the shape that does this, and it is
+  // invisible to everything above — see `mintlifyFrontmatterBlock`. Checked for
+  // every source shape, like the YAML above: the model adding this to a
+  // frontmatter-less page breaks that page just as thoroughly.
+  const mintlifyBlock = mintlifyFrontmatterBlock(rendered);
+  if (mintlifyBlock !== null && mintlifyBlock.trim() === "") {
+    return (
+      "The YAML frontmatter block is empty. The page opens with `---` and the " +
+      "very next line is `---` again, which closes the block before any key is " +
+      "in it — every `title:`/`description:`/`icon:` line below then renders as " +
+      "body text and the page has no title. Emit exactly one opening `---`."
     );
   }
 

@@ -1,11 +1,22 @@
 // @vitest-environment node
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { pendingLeakNotice, markLeakNoticeDelivered, pruneNoticeMarkers } from "@/src/audit/leak-notice";
-import { readLeakRecord, writeLeakRecord, dismissFinding } from "@/src/audit/leak-store";
+import {
+  pendingLeakNotice,
+  markLeakNoticeDelivered,
+  pruneNoticeMarkers,
+  sessionNoticePending,
+  markSessionNoticed,
+} from "@/src/audit/leak-notice";
+import {
+  readLeakRecord,
+  writeLeakRecord,
+  dismissFinding,
+  markLeakReportViewed,
+} from "@/src/audit/leak-store";
 import { upsertFinding, type LeakSighting } from "@/src/audit/leak-record";
 import { shapeNotice, canDeliverNotice, leakNoticeText } from "@/src/hooks/notice";
 
@@ -147,5 +158,97 @@ describe("the notice text", () => {
     expect(text).not.toContain("•");
     expect(text).not.toMatch(/[~/]\w/);
     expect(text).not.toContain("ghp_");
+  });
+});
+
+// ── The in-CLI notice's delivery model ───────────────────────────────────────
+//
+// The per-finding claim above is right for the desktop banner and WRONG for the
+// in-CLI notice, and the difference was learned the expensive way. "We emitted
+// it once" is not "it arrived": on a real machine 499 findings were marked
+// delivered and nothing was ever shown — once because the notice was attached
+// to an event whose channel the host ignores, and once because hooks were
+// disabled in the project under test. Neither is detectable from inside, and a
+// claimed finding is never retried.
+//
+// So this channel keys on the USER's action instead of ours.
+describe("the in-CLI notice keys on whether the user has looked", () => {
+  const seedOld = (id: string) => {
+    const r = readLeakRecord(home);
+    const past = new Date(Date.now() - 3 * 86_400_000).toISOString();
+    upsertFinding(r, {
+      id, fingerprint: FP, name: "GITHUB_TOKEN", rule: "sanitize-api-keys",
+      confidence: "doc-verified", sighting: { ...sighting, at: past },
+    });
+    writeLeakRecord(r, home);
+  };
+
+  it("tells one session once, not once per turn", () => {
+    seedOld("0000000000000a01");
+    expect(sessionNoticePending("sess-a", home).count).toBe(1);
+    expect(markSessionNoticed("sess-a", home)).toBe(true);
+    expect(sessionNoticePending("sess-a", home).count).toBe(0);
+  });
+
+  it("tells the NEXT session too, because the first one may never have shown it", () => {
+    // The whole point. A dropped notice costs one session's silence rather than
+    // the alert itself.
+    seedOld("0000000000000a01");
+    markSessionNoticed("sess-a", home);
+    expect(sessionNoticePending("sess-b", home).count).toBe(1);
+  });
+
+  it("goes quiet once the user opens the report", () => {
+    seedOld("0000000000000a01");
+    markLeakReportViewed(home);
+    expect(sessionNoticePending("sess-c", home).count).toBe(0);
+  });
+
+  it("speaks again when something NEW leaks after they looked", () => {
+    seedOld("0000000000000a01");
+    markLeakReportViewed(home);
+    // A credential first seen after the view is news; one they already reviewed
+    // is not, however recently the scan tripped over it again.
+    const r = readLeakRecord(home);
+    upsertFinding(r, {
+      id: "0000000000000b02", fingerprint: FP, name: "N", rule: "r",
+      confidence: "doc-verified",
+      sighting: { ...sighting, at: new Date(Date.now() + 1000).toISOString() },
+    });
+    writeLeakRecord(r, home);
+    expect(sessionNoticePending("sess-d", home).count).toBe(1);
+  });
+
+  it("stays silent when a finding is merely seen again", () => {
+    // lastSeen moving is not news — only firstSeen decides.
+    seedOld("0000000000000a01");
+    markLeakReportViewed(home);
+    const r = readLeakRecord(home);
+    upsertFinding(r, {
+      id: "0000000000000a01", fingerprint: FP, name: "GITHUB_TOKEN", rule: "r",
+      confidence: "doc-verified", sighting: { ...sighting, at: new Date().toISOString() },
+    });
+    writeLeakRecord(r, home);
+    expect(sessionNoticePending("sess-e", home).count).toBe(0);
+  });
+
+  it("says nothing at all when there are no findings", () => {
+    expect(sessionNoticePending("sess-f", home).count).toBe(0);
+  });
+
+  it("refuses a session id that could escape the marker directory", () => {
+    // Same rule as a finding id: it becomes a filename.
+    seedOld("0000000000000a01");
+    for (const bad of ["../../../../tmp/PWNED", "a/b", ""]) {
+      expect(markSessionNoticed(bad, home), bad).toBe(false);
+      expect(sessionNoticePending(bad, home).count, bad).toBe(0);
+    }
+    expect(existsSync("/tmp/PWNED")).toBe(false);
+  });
+
+  it("lets exactly one concurrent turn claim a session", () => {
+    seedOld("0000000000000a01");
+    const wins = Array.from({ length: 8 }, () => markSessionNoticed("sess-race", home));
+    expect(wins.filter(Boolean)).toHaveLength(1);
   });
 });

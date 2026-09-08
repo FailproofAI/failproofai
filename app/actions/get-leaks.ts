@@ -1,6 +1,11 @@
 "use server";
 
-import { activeFindings, dismissFinding, readLeakRecord } from "@/src/audit/leak-store";
+import {
+  activeFindings,
+  dismissFinding,
+  markLeakReportViewed,
+  readLeakRecord,
+} from "@/src/audit/leak-store";
 import { readConfig, updateConfig } from "@/src/hooks/fp-config";
 
 /**
@@ -49,6 +54,10 @@ export interface LeaksPayload {
 
 export async function getLeaksAction(): Promise<LeaksPayload> {
   const findings = activeFindings(readLeakRecord());
+  // Opening the report is the one signal worth silencing the in-CLI notice on.
+  // Recorded here rather than on a button, because reading it is the action —
+  // there is nothing further for the user to do to say "I have seen this".
+  markLeakReportViewed();
   const rows: LeakRow[] = findings.map((f) => {
     // The most recent sighting: where the key is now, not where it debuted.
     const seen = f.sightings?.[f.sightings.length - 1];

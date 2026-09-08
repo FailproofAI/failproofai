@@ -36,7 +36,7 @@ import type { CustomHook } from "./policy-types";
 import { persistHookActivity } from "./hook-activity-store";
 import { deliveryHealth, deliveryHealthLine } from "./delivery-health";
 import { shapeNotice, canDeliverNotice, leakNoticeText } from "./notice";
-import { pendingLeakNotice, markLeakNoticeDelivered } from "../audit/leak-notice";
+import { sessionNoticePending, markSessionNoticed } from "../audit/leak-notice";
 import { trackHookEvent, flushHookTelemetry } from "./hook-telemetry";
 import { resolveCwd } from "./resolve-cwd";
 import { resolvePermissionMode } from "./resolve-permission-mode";
@@ -121,6 +121,7 @@ function attachLeakNotice(
   eventType: string,
   cli: IntegrationType | undefined,
   outcome: HookEventOutcome,
+  sessionId: string | undefined,
 ): HookEventOutcome {
   try {
     if (!canDeliverNotice(cli)) return outcome;
@@ -143,7 +144,11 @@ function attachLeakNotice(
     // a probe showing the notice actually rendered there.
     if (canonical !== "Stop") return outcome;
 
-    const pending = pendingLeakNotice();
+    // Keyed on the SESSION and on whether the user has opened the report, not
+    // on a per-finding "we emitted this once" marker — see
+    // `sessionNoticePending` for the two ways that marker lost the alert
+    // permanently. A dropped notice now costs one session's silence instead.
+    const pending = sessionNoticePending(sessionId ?? "");
     if (pending.count === 0) return outcome;
 
     const shaped = shapeNotice(cli, leakNoticeText(pending.count), outcome.stdout);
@@ -151,7 +156,7 @@ function attachLeakNotice(
 
     // Claimed only once the notice is actually on the stream, so a crash
     // between the two re-notifies rather than silently swallowing the alert.
-    markLeakNoticeDelivered(pending.ids);
+    markSessionNoticed(sessionId ?? "");
     return {
       exitCode: outcome.exitCode,
       stdout: shaped.stdout,
@@ -824,11 +829,12 @@ export async function evaluateHookEvent(
     // the previous notice was dead code on every configured machine, and had
     // been since it shipped. Both paths return this object, so producing the
     // notice here reaches both with no change to either caller.
-    const withNotice = attachLeakNotice(eventType, cli, {
-      exitCode: result.exitCode,
-      stdout: result.stdout,
-      stderr: result.stderr,
-    });
+    const withNotice = attachLeakNotice(
+      eventType,
+      cli,
+      { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr },
+      sessionId,
+    );
     return withNotice;
   } finally {
     if (opts?.awaitTelemetryFlush ?? true) {

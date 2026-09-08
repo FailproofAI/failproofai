@@ -36,7 +36,7 @@ import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync, rmSync } f
 import { resolve } from "node:path";
 
 import { auditDir } from "../hooks/fp-home";
-import { readLeakRecord, activeFindings } from "./leak-store";
+import { readLeakRecord, activeFindings, readLeakIdentity } from "./leak-store";
 import { isFindingId } from "./leak-fingerprint";
 
 /**
@@ -154,6 +154,85 @@ export function pruneNoticeMarkers(home?: string, nowMs = Date.now()): void {
         }
         if (stale) rmSync(path, { force: true });
       }
+    }
+  } catch {
+    // Housekeeping only.
+  }
+}
+
+/**
+ * Should this session's agent tell the user about unviewed credentials?
+ *
+ * ## Why this is not the per-finding claim used for the desktop banner
+ *
+ * The per-finding marker answers "have we emitted this once?" — and emitting is
+ * not the same as arriving. Twice in one day it recorded every finding as
+ * delivered while the user saw nothing: once because the notice was attached to
+ * an event whose channel the host ignores (`SessionStart` takes
+ * `additionalContext`, not `systemMessage`), and once because hooks were
+ * disabled in the project under test. Neither is detectable from in here, and
+ * both were permanent — a claimed finding is never retried.
+ *
+ * So the in-CLI notice keys on the USER's action instead of on ours. It shows
+ * while findings exist that are newer than the last time the report was
+ * actually opened, and it stops when they open it. A dropped notice costs one
+ * session's silence rather than the alert; the only thing that silences it for
+ * good is the outcome we wanted anyway.
+ *
+ * Bounded by a per-SESSION marker so a long session gets one line, not one per
+ * turn. Sessions are cheap and few; findings are many and long-lived.
+ */
+export function sessionNoticePending(sessionId: string, home?: string): PendingNotice {
+  try {
+    if (!sessionId || !/^[\w.:-]{1,200}$/.test(sessionId)) return { ids: [], count: 0 };
+    const dir = resolve(auditDir(home), "notified-sessions");
+    if (existsSync(resolve(dir, sessionId))) return { ids: [], count: 0 };
+
+    const findings = activeFindings(readLeakRecord(home), home);
+    if (findings.length === 0) return { ids: [], count: 0 };
+
+    // Only what the user has not already looked at. `firstSeen`, not
+    // `lastSeen`: re-encountering a credential the user has already reviewed is
+    // not news, however recently the scan tripped over it again.
+    const viewedAt = readLeakIdentity(home).reportViewedAt ?? 0;
+    const unviewed = findings.filter((f) => {
+      const seen = Date.parse(f.firstSeen);
+      return !Number.isFinite(seen) || seen > viewedAt;
+    });
+    return { ids: unviewed.map((f) => f.id), count: unviewed.length };
+  } catch {
+    return { ids: [], count: 0 };
+  }
+}
+
+/**
+ * Claim this session, so the notice appears once rather than every turn.
+ *
+ * Returns whether this caller won. O_EXCL again, for the same reason as the
+ * per-finding markers: several agents run in one project at once.
+ */
+export function markSessionNoticed(sessionId: string, home?: string): boolean {
+  try {
+    if (!sessionId || !/^[\w.:-]{1,200}$/.test(sessionId)) return false;
+    const dir = resolve(auditDir(home), "notified-sessions");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(resolve(dir, sessionId), "", { flag: "wx", mode: 0o600 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Session markers outlive nothing useful — a session id never recurs. */
+export function pruneSessionMarkers(home?: string, nowMs = Date.now()): void {
+  try {
+    const dir = resolve(auditDir(home), "notified-sessions");
+    if (!existsSync(dir)) return;
+    for (const name of readdirSync(dir)) {
+      const path = resolve(dir, name);
+      try {
+        if (nowMs - statSync(path).mtimeMs > 30 * 86_400_000) rmSync(path, { force: true });
+      } catch { /* raced */ }
     }
   } catch {
     // Housekeeping only.

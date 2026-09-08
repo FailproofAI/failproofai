@@ -37,6 +37,64 @@ import {
 
 const TRANSCRIPT_CONCURRENCY = 8;
 
+/**
+ * Raw transcript bytes allowed in flight at once.
+ *
+ * The concurrency above counts FILES, which is the wrong unit. `streamEventsFrom`
+ * returns an array — despite the name it materialises every event of a
+ * transcript into JS objects — and a 57 MB JSONL becomes several hundred MB of
+ * them. On a real 1.15 GB corpus, 7 files hold 224 MB and the largest is
+ * 57.5 MB, so eight workers could put a quarter of the corpus in memory
+ * simultaneously. That machine printed `Aborted(OOM)` 22 times in one run.
+ *
+ * This is NOT what fixed those lines, and the distinction is worth keeping
+ * honest: they were measured at ~22 per run, appear within the first two
+ * seconds, are unchanged by this budget at 48 MB or at 16 MB, and do not fail
+ * the run — its counts come back correct. Their source is still unidentified.
+ * This bounds a real and separate failure mode (eight of the seven largest
+ * files in flight at once); it should not be read as having fixed the other.
+ *
+ * 48 MB of raw input is the budget because the expansion factor from JSONL to
+ * parsed objects is roughly 5-10x, which keeps the peak inside a default heap
+ * with room for the eight small-file workers this is meant not to slow down.
+ * Chosen to bound memory, not to be exactly right: the failure it prevents is a
+ * crash, and the cost of being conservative is that one very large file scans
+ * alone for a moment.
+ */
+const TRANSCRIPT_BYTE_BUDGET = 48 * 1024 * 1024;
+
+/**
+ * Admission control by weight, so a worker waits for MEMORY as well as a slot.
+ *
+ * A file bigger than the whole budget is admitted alone rather than refused —
+ * otherwise the largest transcript on the machine could never be scanned, which
+ * is precisely the one most likely to hold something.
+ */
+class ByteGate {
+  private inFlight = 0;
+  private waiting: Array<() => void> = [];
+
+  constructor(private readonly budget: number) {}
+
+  async acquire(bytes: number): Promise<void> {
+    const want = Math.max(0, bytes);
+    while (this.inFlight > 0 && this.inFlight + want > this.budget) {
+      await new Promise<void>((resolve) => this.waiting.push(resolve));
+    }
+    this.inFlight += want;
+  }
+
+  release(bytes: number): void {
+    this.inFlight -= Math.max(0, bytes);
+    if (this.inFlight < 0) this.inFlight = 0;
+    // Wake everyone and let each re-test its own weight: a small task behind a
+    // large one should not be held by a queue position it does not need.
+    const waiters = this.waiting;
+    this.waiting = [];
+    for (const wake of waiters) wake();
+  }
+}
+
 /** Canonicalize a policy name to its short, qualified form for display
  *  (`failproofai/foo` → `foo`). */
 function shortPolicyName(name: string): string {
@@ -558,7 +616,9 @@ async function runAuditInner(opts: RunAuditOptions, startedAt: number): Promise<
     allTranscripts.push(...list);
   }
 
-  // 2. Scan each transcript (cache-aware), 8 in parallel.
+  // 2. Scan each transcript (cache-aware), 8 at a time and within a memory
+  // budget — see TRANSCRIPT_BYTE_BUDGET for why a file count is the wrong unit.
+  const gate = new ByteGate(TRANSCRIPT_BYTE_BUDGET);
   let skipped = 0;
   let errors = 0;
   const tasks = allTranscripts.map((meta) => async (): Promise<TranscriptAuditResult> => {
@@ -572,6 +632,9 @@ async function runAuditInner(opts: RunAuditOptions, startedAt: number): Promise<
         : undefined;
       cachedPrefix = found?.kind === "resume" ? found.result : null;
     }
+    // Memory admission. Taken AFTER the cache check above, so a cache hit — the
+    // common case on a warm machine — never waits for a slot it does not use.
+    await gate.acquire(meta.sizeBytes);
     try {
       const scan = await scanOneTranscript(meta, resume);
       // A resumed scan produced hits for the TAIL only; the cached result holds
@@ -615,6 +678,11 @@ async function runAuditInner(opts: RunAuditOptions, startedAt: number): Promise<
         examplesByName: {},
         rangeByName: {},
       };
+    } finally {
+      // Released on every path, including the error one — a task that threw
+      // still freed its memory, and holding its weight would shrink the budget
+      // permanently over a long scan until nothing could be admitted at all.
+      gate.release(meta.sizeBytes);
     }
   });
 

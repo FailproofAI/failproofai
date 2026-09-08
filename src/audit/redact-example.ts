@@ -134,13 +134,15 @@ export function maskTruncatedSecret(input: string): string {
  * identifier, including the camelCase `_authToken` that `npm config set`
  * writes. `KEY`, `PASS`, `AUTH`, `PAT` and `SIG` are also fragments of ordinary
  * words — `MONKEY_COUNT`, `PASSENGERS`, `AUTHOR`, `PATH`, `SIGNAL` — so they
- * only count as a whole `_`-delimited component.
+ * only count as a whole component, where the components come from
+ * `identifierComponents` and include camelCase humps as well as `_`.
  */
 const SECRET_NAME_SUBSTRINGS = [
   "TOKEN",
   "SECRET",
   "PASSWORD",
   "PASSWD",
+  "PASSPHRASE",
   "CREDENTIAL",
   "APIKEY",
   "PRIVATEKEY",
@@ -148,25 +150,165 @@ const SECRET_NAME_SUBSTRINGS = [
 const SECRET_NAME_COMPONENTS = ["KEY", "PASS", "AUTH", "PAT", "SIG", "SIGNATURE", "SESSION", "COOKIE"];
 
 /**
+ * `PWD` names a credential only in a COMPOUND identifier. `MYSQL_PWD` is
+ * MySQL's documented password variable; a bare `PWD` is the shell's working
+ * directory, which is on every second line of a captured session.
+ */
+const COMPOUND_ONLY_COMPONENTS = ["PWD"];
+
+/**
+ * Split an identifier into its uppercased components, on `_`, `-`, `.` AND
+ * camelCase humps.
+ *
+ * The humps are the point. Splitting on `_` alone means `sessionKey`, `dbPass`,
+ * `basicAuth` and `authCookie` decompose to a single component that matches
+ * nothing, so their values shipped to the digest verbatim — 203 such names on
+ * this machine's corpus. They are not exotic: camelCase is what an identifier
+ * looks like everywhere except a shell environment, and the redactor is applied
+ * to transcripts full of TypeScript, JSON and Python.
+ *
+ * The second replace splits an acronym from the word that follows it, so
+ * `APIKey` yields `API` + `KEY` rather than one run of capitals that matches
+ * neither.
+ */
+function identifierComponents(name: string): string[] {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
+    .toUpperCase()
+    .split(/[_\-.]+/)
+    .filter(Boolean);
+}
+
+/**
  * `NAME=value`, with the value quoted or running to the next shell separator.
  *
  * The unquoted alternative excludes quotes as well as separators: a value that
  * runs to end-of-token inside an already-quoted string (`"…?sig=deadbeef"`)
  * would otherwise swallow the closing quote and leave the line unbalanced.
+ *
+ * Four shapes, because the first spelling of this pattern was `NAME=value` and
+ * only that — no whitespace around the `=`, no `:`, no quoted name — and the
+ * other three all reached the emailed digest UNREDACTED. `NAME = "value"` and
+ * `NAME: "value"` are what a config file, a YAML key and a JSON body look like,
+ * which is most of where credentials are actually written down; `"name": val`
+ * is the same line once an agent pretty-prints it. A value only survived that
+ * gap if it independently matched one of the vendor patterns in
+ * `SECRET_PATTERNS` — and 230 of 237 secret-named assignments measured across
+ * this machine's transcripts match none of them, so the assignment rule was the
+ * only thing standing between them and the digest.
+ *
+ * The separator is captured and re-emitted verbatim rather than normalised to
+ * `=`, so a redacted YAML line is still YAML and a redacted JSON line is still
+ * recognisable as the field it came from. Horizontal whitespace only: `\s`
+ * would let a `KEY:` at end-of-line swallow the newline and glue the next line
+ * onto the match.
+ *
+ * The `:` alternative refuses a `//` after it, because a URL scheme is the one
+ * `name:value` shape that is not an assignment. Without the guard `https` reads
+ * as the name and the rest of the URL as its value — and since a non-secret
+ * name returns the match UNCHANGED but still CONSUMES it, a `?token=…` sitting
+ * inside that URL was swallowed by the `https:` match and never examined. The
+ * failure mode is silent and inverted: adding a separator to catch more secrets
+ * stopped one already being caught.
  */
-const ASSIGNMENT_RE = /\b([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;|&"']+)/g;
+/**
+ * The identifier is BOUNDED, and the bound is load-bearing rather than tidy.
+ *
+ * Unbounded (`[A-Za-z0-9_]*`), this is quadratic on a long unbroken token: the
+ * engine starts at every one of n positions, consumes the whole run, then
+ * backtracks a character at a time looking for the `=` or `:` that never comes.
+ * Measured on a plain 300 KB base64 blob — `"A".repeat(300000)` — it ran for
+ * over 20 SECONDS on one string. That is not an exotic input: agent transcripts
+ * carry base64 images, minified bundles and whole file contents as single
+ * lines, and the audit reads every one of them. A scheduled scan hitting a few
+ * of these would stall for minutes with nobody watching.
+ *
+ * 128 characters is far past any real environment-variable or field name, so
+ * bounding it costs nothing that exists and makes the scan linear in n.
+ */
+const ASSIGNMENT_RE =
+  /(["']?)\b([A-Za-z_][A-Za-z0-9_]{0,127})\1([ \t]*(?::(?!\/\/)|=)[ \t]*)("[^"]*"|'[^']*'|[^\s;|&"']+)/g;
 
 /** Credentials inline in a URL, on ANY scheme — `https://user:pass@host`. */
-const URL_CREDENTIALS_RE = /([a-z][a-z0-9+.\-]*:\/\/)[^\s/:@]+:[^\s/@]+@/gi;
+// Every quantifier here is BOUNDED, for the same reason ASSIGNMENT_RE's is.
+// Unbounded, `[a-z0-9+.\-]*` is quadratic on any long lowercase run: at each of
+// n positions it consumes to the end hunting for a `://` that is not there,
+// then backtracks a character at a time. Measured at 18 SECONDS on 100 KB of a
+// single repeated letter — and this one runs over the WHOLE text, on every
+// example the audit redacts. A URI scheme is at most a few characters (RFC 3986
+// allows more, but nothing real uses it), and userinfo that runs past 256 bytes
+// is not a credential anyone typed.
+const URL_CREDENTIALS_RE = /([a-z][a-z0-9+.\-]{0,31}:\/\/)[^\s/:@]{1,256}:[^\s/@]{1,256}@/gi;
 
 /** `curl -u user:pass`, in both spellings and both separators. */
 const BASIC_AUTH_FLAG_RE = /((?:^|\s)(?:-u|--user)[\s=])\S+:\S+/g;
 
 /** True when an identifier's name says its value is a credential. */
+/**
+ * Prefixes whose values a build tool INLINES INTO THE BROWSER BUNDLE.
+ *
+ * These are not conventionally public, they are mechanically public: Next.js,
+ * Vite, CRA, Expo, SvelteKit, Astro, Nuxt and Gatsby each substitute the value
+ * into the JavaScript they ship to every visitor. A credential named this way
+ * has already been published by the framework, to everyone, before failproofai
+ * ever saw it.
+ */
+const CLIENT_BUNDLE_PREFIXES = [
+  "NEXT_PUBLIC",
+  "VITE",
+  "REACT_APP",
+  "EXPO_PUBLIC",
+  "NUXT_PUBLIC",
+  "GATSBY",
+  "STORYBOOK",
+  "PUBLIC",
+];
+
+/** Markers that name a key as the publishable half of a pair. */
+const PUBLISHED_MARKERS = /PUBLISHABLE|(^|_)PUBLIC_KEY$|(^|_)ANON_KEY$/;
+
+/**
+ * True when the identifier says the value is meant to be public.
+ *
+ * `isSecretName` matches any component in `KEY`/`PASS`/`AUTH`/… — and EVERY
+ * publishable key on earth is named `*_KEY`. Measured before this existed, it
+ * returned true for all twelve of `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`,
+ * `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `VAPID_PUBLIC_KEY`, `PUBLISHABLE_KEY` and
+ * friends — including the ones carrying the literal word PUBLIC.
+ *
+ * Over-redaction is usually cheap: masking something that might be secret costs
+ * readability. This case is different, because we can PROVE the value is not a
+ * secret — so masking it reports a credential exposure that did not happen, and
+ * a security tool crying wolf about a browser-bundled config value is not a
+ * cheap error. This repo's own committed PostHog `phc_` key, documented in
+ * source as "Write-only (safe to commit)", is masked as an "assigned secret" by
+ * the rule this vetoes.
+ *
+ * Deliberately narrow. The marker must be a PREFIX (so a mid-name `PUBLIC` in
+ * `MY_PUBLIC_FACING_SECRET` does not disarm it) or an explicit publishable
+ * suffix. Words like ANON, BROWSER and SITE are excluded on their own — only
+ * `ANON_KEY`, which is Supabase's documented browser key, qualifies.
+ */
+export function isPublishedByDesign(name: string): boolean {
+  const components = identifierComponents(name);
+  if (components.length === 0) return false;
+  const upper = components.join("_");
+  for (const prefix of CLIENT_BUNDLE_PREFIXES) {
+    if (upper === prefix || upper.startsWith(prefix + "_")) return true;
+  }
+  return PUBLISHED_MARKERS.test(upper);
+}
+
 export function isSecretName(name: string): boolean {
+  // Runs first and beats every other signal: a value the framework compiles
+  // into the browser bundle is public no matter what the rest of the name says.
+  if (isPublishedByDesign(name)) return false;
   const upper = name.toUpperCase();
   if (SECRET_NAME_SUBSTRINGS.some((word) => upper.includes(word))) return true;
-  return upper.split("_").some((part) => SECRET_NAME_COMPONENTS.includes(part));
+  const components = identifierComponents(name);
+  if (components.some((part) => SECRET_NAME_COMPONENTS.includes(part))) return true;
+  return components.length > 1 && components.some((part) => COMPOUND_ONLY_COMPONENTS.includes(part));
 }
 
 /**
@@ -195,15 +337,18 @@ export function isSecretName(name: string): boolean {
  * is the actionable half of the finding.
  */
 export function maskAssignedSecrets(input: string): string {
-  let out = input.replace(ASSIGNMENT_RE, (match, name: string, value: string) => {
-    if (!isSecretName(name)) return match;
-    // An earlier pass already named this one, and it named it better.
-    // `export ANTHROPIC_API_KEY=sk-ant-…` is masked by the vendor pattern as
-    // "Anthropic API key"; re-masking it here would downgrade that to the
-    // generic label and strip the marker's own tail as it went.
-    if (value.startsWith("[REDACTED")) return match;
-    return `${name}=[REDACTED: assigned secret]`;
-  });
+  let out = input.replace(
+    ASSIGNMENT_RE,
+    (match, quote: string, name: string, separator: string, value: string) => {
+      if (!isSecretName(name)) return match;
+      // An earlier pass already named this one, and it named it better.
+      // `export ANTHROPIC_API_KEY=sk-ant-…` is masked by the vendor pattern as
+      // "Anthropic API key"; re-masking it here would downgrade that to the
+      // generic label and strip the marker's own tail as it went.
+      if (value.startsWith("[REDACTED")) return match;
+      return `${quote}${name}${quote}${separator}[REDACTED: assigned secret]`;
+    },
+  );
   out = out.replace(URL_CREDENTIALS_RE, "$1[REDACTED: URL credentials]@");
   out = out.replace(BASIC_AUTH_FLAG_RE, "$1[REDACTED: basic auth]");
   return out;
@@ -351,10 +496,34 @@ export function redactExample(input: string, home = homedir()): string {
  * the cache keep the unredacted values they need to render a local view.
  */
 export function redactAuditResult(result: AuditResult, home = homedir()): AuditResult {
-  return {
-    ...result,
+  // Built field by field ON PURPOSE. This was `{...result}` plus three named
+  // rewrites, which meant it was a FIELD ALLOWLIST pretending to be a redactor:
+  // every field it did not name — including any field added later — passed
+  // through byte-identical, absolute home paths and all. It guards
+  // `formatJson`, i.e. an artifact the product invites the user to share.
+  //
+  // Enumerating every key means TypeScript rejects the build when `AuditResult`
+  // grows a field nobody decided about here, which is the only mechanism that
+  // survives a future contributor. `redactAuditResultKeys` in the tests reflects
+  // over the real object and fails if this list drifts, covering the case where
+  // a field is added as optional and the compiler stays quiet.
+  const redacted: AuditResult = {
+    // Scalars and counters: no paths, no user content, nothing to redact.
+    version: result.version,
+    scannedAt: result.scannedAt,
+    transcripts: result.transcripts,
+    totals: result.totals,
+    eventsScanned: result.eventsScanned,
+    enabledBuiltinNames: result.enabledBuiltinNames,
+    // Salted, machine-local ids. They carry no path and cannot be reversed to
+    // a credential, so they pass through — but the decision is recorded here
+    // rather than inherited from a spread.
+    newLeakIds: result.newLeakIds,
+
+    // Everything below carries a path or user content and is rewritten.
     scope: {
-      ...result.scope,
+      cli: result.scope.cli,
+      since: result.scope.since,
       projects: result.scope.projects === "all"
         ? "all"
         : result.scope.projects.map((p) => shortenPaths(p, home)),
@@ -369,4 +538,27 @@ export function redactAuditResult(result: AuditResult, home = homedir()): AuditR
     })),
     projectsScanned: result.projectsScanned.map((p) => shortenPaths(p, home)),
   };
+  return redacted;
 }
+
+/**
+ * Every top-level key `redactAuditResult` has consciously handled.
+ *
+ * The compiler catches a REQUIRED field added to `AuditResult`, because the
+ * object literal above would stop satisfying the type. It does not catch an
+ * OPTIONAL one — and the leak record is arriving as optional fields. So the
+ * test reflects over a real result and fails when a key appears here that is
+ * not in this list, which forces the decision to be made rather than defaulted.
+ */
+export const REDACTED_AUDIT_RESULT_KEYS: ReadonlyArray<keyof AuditResult> = [
+  "version",
+  "scannedAt",
+  "scope",
+  "transcripts",
+  "results",
+  "totals",
+  "projectsScanned",
+  "eventsScanned",
+  "enabledBuiltinNames",
+  "newLeakIds",
+];

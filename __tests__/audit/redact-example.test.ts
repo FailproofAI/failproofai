@@ -227,9 +227,13 @@ describe("maskAssignedSecrets — the shape the blocking patterns do not carry",
     ];
     for (const input of cases) {
       const out = redactExample(input, HOME);
-      expect(out, input).toContain("[REDACTED: assigned secret]");
-      // The secret itself must be gone; the NAME is kept on purpose, because
-      // "which credential" is the actionable half of the finding.
+      // Any label will do. A value carrying a vendor prefix is claimed by the
+      // earlier SECRET_PATTERNS pass, which names it BETTER — `[REDACTED: Slack
+      // token]` beats `[REDACTED: assigned secret]`, because the label is what
+      // tells the reader which console to open. The security property under
+      // test is that the value is gone.
+      expect(out, input).toContain("[REDACTED");
+      // The NAME is kept on purpose: "which credential" is the actionable half.
       const value = input.split("=")[1].split(" ")[0];
       expect(out, input).not.toContain(value);
     }
@@ -239,6 +243,143 @@ describe("maskAssignedSecrets — the shape the blocking patterns do not carry",
     expect(redactExample("export DATABASE_PASSWORD=hunter2", HOME)).toBe(
       "export DATABASE_PASSWORD=[REDACTED: assigned secret]",
     );
+  });
+
+  // The first spelling of ASSIGNMENT_RE was `NAME=value` and only that: no
+  // whitespace around the `=`, no `:`, no quoted name. Every other spelling
+  // reached the emailed digest with the value intact, and a value only survived
+  // that gap if it independently matched a vendor pattern in `SECRET_PATTERNS`
+  // — which 230 of 237 secret-named assignments measured on this machine do
+  // not. These are config, YAML and JSON, i.e. most of where credentials are
+  // actually written down.
+  it("masks assignments whatever the spacing, separator or name quoting", () => {
+    const cases = [
+      // spaced `=` — the shape a config file or a pretty-printer writes
+      ["MY_API_KEY = sk-synthetic0000111122223333", "sk-synthetic0000111122223333"],
+      ["PGPASSWORD =  letmein-prod", "letmein-prod"],
+      // `:` — YAML, and an HTTP-ish header line
+      ["db_password: letmein-prod", "letmein-prod"],
+      ['SLACK_BOT_TOKEN: "xoxb-synthetic-0000-1111"', "xoxb-synthetic-0000-1111"],
+      // quoted name — JSON
+      ['{"api_key": "abcdef0123456789abcdef"}', "abcdef0123456789abcdef"],
+      ["'client_secret': 'synthetic-secret-value'", "synthetic-secret-value"],
+    ] as const;
+    for (const [input, value] of cases) {
+      const out = redactExample(input, HOME);
+      // Any label will do — a value carrying a vendor prefix is claimed by the
+      // earlier `SECRET_PATTERNS` pass, which names it better than "assigned
+      // secret". The security property under test is that the value is gone.
+      expect(out, input).toContain("[REDACTED");
+      expect(out, input).not.toContain(value);
+    }
+  });
+
+  it("re-emits the separator verbatim, so a redacted YAML line is still YAML", () => {
+    // Normalising every separator to `=` would turn a config excerpt into
+    // something that no longer looks like the file it came from, and the point
+    // of keeping the name is that the reader recognises the finding.
+    expect(redactExample("db_password: letmein", HOME)).toBe(
+      "db_password: [REDACTED: assigned secret]",
+    );
+    expect(redactExample("MY_TOKEN = abcdef123456", HOME)).toBe(
+      "MY_TOKEN = [REDACTED: assigned secret]",
+    );
+  });
+
+  // The separator grammar above is one half. This is the other: a name whose
+  // secret word is a camelCase hump rather than an `_` component decomposed to
+  // a single token that matched nothing, so `sessionKey=…` shipped its value
+  // verbatim while `SESSION_KEY=…` was masked. camelCase is what an identifier
+  // looks like everywhere except a shell environment.
+  it("masks a credential name written in camelCase, not just SCREAMING_SNAKE", () => {
+    for (const name of [
+      "sessionKey",
+      "dbPass",
+      "basicAuth",
+      "authCookie",
+      "refreshToken",
+      "apiKeyValue",
+    ]) {
+      const out = redactExample(`${name}=synthetic0000111122223333`, HOME);
+      expect(out, name).toContain("[REDACTED: assigned secret]");
+      expect(out, name).not.toContain("synthetic0000111122223333");
+    }
+  });
+
+  it("knows the credential spellings of `passphrase` and `pwd`", () => {
+    for (const name of ["GPG_PASSPHRASE", "MYSQL_PWD", "ssh_passphrase"]) {
+      const out = redactExample(`${name}=synthetic0000111122223333`, HOME);
+      expect(out, name).toContain("[REDACTED: assigned secret]");
+    }
+  });
+
+  it("leaves a bare PWD alone, because that is the working directory", () => {
+    // `PWD` is only a credential in a compound name. A bare one is on every
+    // second line of a captured shell session.
+    expect(redactExample("PWD=/home/user/project", HOME)).not.toContain("[REDACTED: assigned");
+  });
+
+  it("does not let camelCase splitting invent new false positives", () => {
+    // The `_`-split negatives have to survive hump-splitting too: these are
+    // words that CONTAIN a secret component but are not compounds of one.
+    for (const input of [
+      "monkeyCount=12",
+      "passengerList=4",
+      "authorName=jane",
+      "pathPrefix=/usr/bin",
+      "signalHandler=onExit",
+    ]) {
+      expect(redactExample(input, HOME), input).not.toContain("[REDACTED");
+    }
+  });
+
+  // Every publishable key on earth is named `*_KEY`, and the component rule
+  // matched all of them — including names carrying the literal word PUBLIC.
+  // These are not conventionally public but MECHANICALLY public: the build tool
+  // inlines them into the browser bundle, so the framework published the value
+  // to every visitor before failproofai saw it. Reporting one as a credential
+  // exposure is a security tool crying wolf, which is not a cheap error the way
+  // ordinary over-redaction is.
+  it("does not mask a key the build tool ships to the browser", () => {
+    for (const name of [
+      "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+      "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+      "NEXT_PUBLIC_POSTHOG_KEY",
+      "VITE_API_KEY",
+      "REACT_APP_API_KEY",
+      "EXPO_PUBLIC_API_KEY",
+      "VAPID_PUBLIC_KEY",
+      "PUBLISHABLE_KEY",
+      "SUPABASE_ANON_KEY",
+    ]) {
+      const out = redactExample(`${name}=synthetic0000111122223333`, HOME);
+      expect(out, name).not.toContain("[REDACTED: assigned secret]");
+    }
+  });
+
+  it("keeps masking a real secret whose name merely contains `public`", () => {
+    // The marker has to be a PREFIX or an explicit publishable suffix. A
+    // mid-name `PUBLIC`, or a word that merely starts with the same letters,
+    // must not disarm the rule.
+    for (const name of [
+      "MY_PUBLIC_FACING_API_SECRET",
+      "PUBLISHER_API_KEY",
+      "REPUBLIC_TOKEN",
+      "STRIPE_SECRET_KEY",
+      "SUPABASE_SERVICE_ROLE_KEY",
+    ]) {
+      const out = redactExample(`${name}=synthetic0000111122223333`, HOME);
+      expect(out, name).toContain("[REDACTED");
+      expect(out, name).not.toContain("synthetic0000111122223333");
+    }
+  });
+
+  it("does not let a trailing `KEY:` swallow the next line", () => {
+    // `[ \t]*` rather than `\s*` around the separator: `\s` matches a newline,
+    // so a bare key at end-of-line would glue the following line into the match
+    // and redact it as though it were the value.
+    const out = redactExample("API_KEY:\nnpm run build", HOME);
+    expect(out).toContain("npm run build");
   });
 
   it("masks credentials inline in a URL, on schemes the block list omits", () => {

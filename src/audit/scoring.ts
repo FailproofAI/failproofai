@@ -1,6 +1,55 @@
 /**
  * Score derivation for the audit dashboard.
  *
+ * ## SWITCHED OFF — nothing in the product calls any of this (2026-09-07)
+ *
+ * Every function below is intact and still covered by
+ * `__tests__/audit/scoring.test.ts`, deliberately: the score is commented out at
+ * its call sites, not deleted, so restoring it is un-commenting rather than
+ * rewriting. The call sites, all commented and cross-referenced back to here:
+ * `audit-dashboard.tsx` (the four `useMemo`s, the poster/how-to-improve/
+ * come-back-better props, and the `score`/`grade` PostHog properties),
+ * `audit-poster.tsx` (the `.poster-score` block, the PNG filename, the share
+ * payload), `how-to-improve-section.tsx` (the projected sub-heading),
+ * `share-templates.ts` (19 of 20 templates interpolated the number).
+ *
+ * ### Why
+ *
+ * Two reasons, one product and one correctness.
+ *
+ * The product reason is the owner's: the audit tried to do too many things
+ * shallowly, and grading a machine 0-100 with a letter tier was not the half
+ * worth keeping.
+ *
+ * The correctness reason is worse and is the one to read before switching it
+ * back on. **`deriveScore` never reads `enabledInConfig`** — only
+ * `projectedScore` does, at the filter below. So the number the dashboard
+ * rendered as "enable all N → projected {score}" was undeliverable by
+ * construction: a user who took the prescription, enabled the policies and
+ * re-ran got the SAME score with the projection gone. Advertised up to +22,
+ * delivered 0. There is also no time window, so a hit denied today is counted
+ * against the machine forever.
+ *
+ * Two further things measured at the same time, neither of them the score's
+ * fault but both worth knowing if this comes back:
+ *
+ *  - `penaltyFor` consumes `row.hits`, i.e. OCCURRENCES. Occurrences amplify
+ *    against distinct values by 10.7x-41x and non-uniformly by class, so the
+ *    sum does not preserve rank order between classes. Fixing that needs a
+ *    per-distinct-value carrier, which `AuditCount` does not have.
+ *  - `syntheticRank`, `scoreToPercentile` and `COHORT_SIZE` had already lost
+ *    their last caller before this change — the cohort they describe does not
+ *    exist. They are dead either way.
+ *
+ * ### To restore
+ *
+ * Un-comment the call sites listed above (each carries its original inline) and
+ * put the score-bearing share copy back from the block at the bottom of
+ * `share-templates.ts`. Make `score`/`grade` required again in `ShareCtx` and in
+ * `audit-poster.tsx`'s `Props`, and the compiler will walk you through the rest.
+ * Fix the `enabledInConfig` defect first, or it will be advertising the same
+ * undeliverable number.
+ *
  * Score is on 0-100, mapped to letter grades that anchor the leaderboard
  * + tier prose. The thresholds match the reference design (assets/audit):
  *

@@ -471,7 +471,7 @@ describe("config.toml", () => {
         redact: "off" as const, environment: "prod", machineId: "box-1",
       },
       telemetry: { enabled: true },
-      audit: { auto: true, intervalDays: 14 },
+      audit: { auto: true, notify: true, intervalDays: 14 },
     };
     writeConfig(cfg);
     expect(readConfig()).toEqual(cfg);
@@ -506,29 +506,33 @@ describe("config.toml", () => {
     expect(readConfig().telemetry.enabled).toBe(false);
   });
 
-  it("the scheduled audit is OFF by default and says so in the file", () => {
-    // The opposite posture to telemetry directly above: off, and deliberately
-    // visible, because it is a switch the user is meant to find and flip. It is
-    // off because the scan reads the contents of every transcript on disk.
-    expect(DEFAULT_CONFIG.audit).toEqual({ auto: false, intervalDays: 7 });
+  it("falls back to OFF for a machine with no config at all", () => {
+    // DEFAULT_CONFIG is the NO-FILE answer specifically, and it is the one case
+    // that stays off: there is no opinion to read, and "we could not tell" must
+    // never start a scan that reads every transcript on disk. A machine that
+    // HAS a config reads the other way — the test below.
+    expect(DEFAULT_CONFIG.audit).toEqual({ auto: false, notify: true, intervalDays: 7 });
     writeConfig(DEFAULT_CONFIG);
-    // Both keys on disk, unconditionally. The layout-2 file made this visible
+    // Every key on disk, unconditionally. The layout-2 file made this visible
     // with a comment block; JSON cannot carry one, so what survives is the
     // weaker but still real guarantee: every field the struct holds is written,
     // so no later regeneration can silently drop one.
     const written = JSON.parse(readFileSync(H.configFile(), "utf8"));
-    expect(written.audit).toEqual({ auto: false, interval_days: 7 });
+    expect(written.audit).toEqual({ auto: false, notify: true, interval_days: 7 });
   });
 
   it("an enabled auto-audit SURVIVES a rewrite", () => {
     // writeConfig regenerates the whole file, so a key it does not emit is a key
     // it silently deletes — the failure that would turn somebody's weekly audit
     // off the next time any unrelated setting changed.
-    writeConfig({ ...DEFAULT_CONFIG, audit: { auto: true, intervalDays: 30 } });
-    expect(readConfig().audit).toEqual({ auto: true, intervalDays: 30 });
+    writeConfig({ ...DEFAULT_CONFIG, audit: { auto: true, notify: false, intervalDays: 30 } });
+    expect(readConfig().audit).toMatchObject({ auto: true, notify: false, intervalDays: 30 });
 
     writeConfig({ ...readConfig(), collector: { ...DEFAULT_CONFIG.collector, environment: "ci" } });
-    expect(readConfig().audit).toEqual({ auto: true, intervalDays: 30 });
+    // `notify: false` is the interesting half: a rewrite that dropped it would
+    // restore a banner the user explicitly turned off, which reads as the
+    // setting being ignored.
+    expect(readConfig().audit).toMatchObject({ auto: true, notify: false, intervalDays: 30 });
   });
 
   it("carries the consent stamp through an unrelated rewrite too", () => {
@@ -539,7 +543,7 @@ describe("config.toml", () => {
     // leave the user with a schedule that reads as on and mails nothing.
     writeConfig({
       ...DEFAULT_CONFIG,
-      audit: { auto: true, intervalDays: 30, reportsConsentedAt: 1_700_000_000_000 },
+      audit: { auto: true, notify: true, intervalDays: 30, reportsConsentedAt: 1_700_000_000_000 },
     });
 
     writeConfig({ ...readConfig(), collector: { ...DEFAULT_CONFIG.collector, environment: "ci" } });
@@ -550,7 +554,7 @@ describe("config.toml", () => {
   it("does not invent a consent stamp for a machine that never gave one", () => {
     // The other direction, and the one that matters more: a default-shaped
     // write must not put a key on disk implying somebody was asked.
-    writeConfig({ ...DEFAULT_CONFIG, audit: { auto: true, intervalDays: 30 } });
+    writeConfig({ ...DEFAULT_CONFIG, audit: { auto: true, notify: true, intervalDays: 30 } });
 
     expect(readConfig().audit.reportsConsentedAt).toBeUndefined();
     expect(JSON.parse(readFileSync(H.configFile(), "utf8")).audit).not.toHaveProperty(
@@ -558,11 +562,64 @@ describe("config.toml", () => {
     );
   });
 
-  it("only an explicit true switches the auto-audit on", () => {
-    writeFileSync(H.configFile(), JSON.stringify({ audit: { auto: "yes" } }));
+  // The three-way split, and the reason it is not a two-way one. A configured
+  // machine that never said anything scans; a machine we could not READ an
+  // opinion from does not. `crates/failproofaid/src/audit_lane.rs` makes the
+  // identical distinction over the identical bytes, and its own test mirrors
+  // this table — the daemon deciding to scan while the settings page says it is
+  // off (or the reverse) is the bug both tests exist to prevent.
+  it("scans unless the config says exactly false, but only once there IS a config", () => {
+    const cases: Array<[string, boolean]> = [
+      [JSON.stringify({ audit: { auto: true } }), true],
+      [JSON.stringify({ audit: { auto: false } }), false],
+      // Present but silent: setup ran, nobody objected. This is the case that
+      // flipped, and it is the common one.
+      [JSON.stringify({ audit: {} }), true],
+      [JSON.stringify({ audit: { interval_days: 14 } }), true],
+      // Not `false`, so not an objection. "yes" reading as ON is the reverse of
+      // what this test used to assert, and it follows from the flip rather than
+      // being a separate decision.
+      [JSON.stringify({ audit: { auto: "yes" } }), true],
+      // No audit table at all: a config written by something that predates the
+      // key, so nobody was ever shown the disclosure. Not an opinion — an
+      // absence.
+      [JSON.stringify({ collector: { hooks: true } }), false],
+      // Unparseable, and an array is not a config object either.
+      ["{ not json", false],
+      ["[]", false],
+      [JSON.stringify({ audit: [] }), false],
+    ];
+    for (const [body, expected] of cases) {
+      writeFileSync(H.configFile(), body);
+      expect(readConfig().audit.auto, body).toBe(expected);
+    }
+    rmSync(H.configFile());
     expect(readConfig().audit.auto).toBe(false);
-    writeFileSync(H.configFile(), JSON.stringify({ audit: { auto: true } }));
-    expect(readConfig().audit.auto).toBe(true);
+  });
+
+  it("notifies unless told not to, without needing an audit table to say so", () => {
+    // Ungated on the table's presence, unlike `auto`: this is read when a
+    // notification is about to fire, so a scan has already happened and the
+    // only question left is whether to speak.
+    for (const [body, expected] of [
+      [JSON.stringify({ audit: { notify: false } }), false],
+      [JSON.stringify({ audit: { notify: true } }), true],
+      [JSON.stringify({ audit: {} }), true],
+      [JSON.stringify({ audit: { notify: "off" } }), true],
+      [JSON.stringify({ collector: {} }), true],
+    ] as Array<[string, boolean]>) {
+      writeFileSync(H.configFile(), body);
+      expect(readConfig().audit.notify, body).toBe(expected);
+    }
+  });
+
+  it("keeps the two switches independent", () => {
+    // Somebody who wants the scan and not the banner is a coherent person, and
+    // the only alternative this offers them is turning the scan off.
+    writeFileSync(H.configFile(), JSON.stringify({ audit: { auto: true, notify: false } }));
+    expect(readConfig().audit).toMatchObject({ auto: true, notify: false });
+    writeFileSync(H.configFile(), JSON.stringify({ audit: { auto: false, notify: true } }));
+    expect(readConfig().audit).toMatchObject({ auto: false, notify: true });
   });
 
   it("resolves a nonsense interval to the default rather than to a daily scan", () => {
@@ -587,7 +644,7 @@ describe("config.toml", () => {
     writeConfig({ ...DEFAULT_CONFIG, telemetry: { enabled: false } });
     updateConfig({ audit: { auto: true } });
     const after = readConfig();
-    expect(after.audit).toEqual({ auto: true, intervalDays: 7 });
+    expect(after.audit).toMatchObject({ auto: true, notify: true, intervalDays: 7 });
     expect(after.telemetry.enabled).toBe(false); // untouched
   });
 
@@ -609,7 +666,7 @@ describe("config.toml", () => {
       mode: "cloud" as const,
       daemon: { configured: true },
       telemetry: { enabled: false },
-      audit: { auto: true, intervalDays: 30 },
+      audit: { auto: true, notify: true, intervalDays: 30 },
       collector: { ...DEFAULT_CONFIG.collector, environment: "ci", machineId: "m-1" },
     };
     writeConfig(config);

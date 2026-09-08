@@ -3,8 +3,8 @@
 /**
  * Top-level client wrapper for /audit.
  *
- * Composes the calm personality report: classify the agent into one of
- * 8 archetypes, derive a score, and render the 5-section flow:
+ * The old five-section personality report is SWITCHED OFF and being rebuilt
+ * bottom-up around leak detection. What it used to compose:
  *
  *   01 AuditPoster — single-screen shareable poster
  *   02 StrengthsSection — what it's great at
@@ -12,23 +12,36 @@
  *   04 HowToImproveSection — install / configure
  *   05 ComeBackBetterSection — spread the audit (invite)
  *
+ * Every one of those components, and the score / persona / strengths / findings
+ * modules behind them, is intact and still unit-tested — only the renders and
+ * the imports here are commented out, so restoring any of it is deleting a pair
+ * of comment markers. See the header of `src/audit/scoring.ts` for why.
+ *
+ * What this page renders now is `AuditReportPlaceholder`: the scan's own
+ * numbers. The scan, the 12-CLI transcript reader and the emailed digest all
+ * still run.
+ *
  * Empty / running states fall back to EmptyState and RunProgress.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getAuditResultAction } from "@/app/actions/get-audit-result";
 import type { AuditResult, RunAuditOptions } from "@/src/audit/types";
-import { classifyAgent } from "@/src/audit/archetypes";
-import { deriveScore, gradeFor, projectedScore } from "@/src/audit/scoring";
-import { deriveStrengths } from "@/src/audit/strengths";
-import { deriveFindings } from "@/src/audit/findings";
+// import { classifyAgent } from "@/src/audit/archetypes";
+// Score switched off — see the header of `src/audit/scoring.ts`.
+// import { deriveScore, gradeFor, projectedScore } from "@/src/audit/scoring";
+// import { deriveStrengths } from "@/src/audit/strengths";
+// import { deriveFindings } from "@/src/audit/findings";
 import { usePostHog } from "@/contexts/PostHogContext";
 
-import { AuditPoster } from "./audit-poster";
-import { StrengthsSection } from "./strengths-section";
-import { QuirksSection } from "./quirks-section";
-import { HowToImproveSection } from "./how-to-improve-section";
-import { ComeBackBetterSection } from "./come-back-better-section";
+// The old report's five sections — switched off, not deleted. Each component
+// file and its tests are untouched; only this render is commented out.
+// import { AuditPoster } from "./audit-poster";
+// import { StrengthsSection } from "./strengths-section";
+// import { QuirksSection } from "./quirks-section";
+// import { HowToImproveSection } from "./how-to-improve-section";
+// import { ComeBackBetterSection } from "./come-back-better-section";
 import { ReportFooter } from "./report-footer";
+import { LeakSection } from "./leak-section";
 import { EmptyState } from "./empty-state";
 import { RunProgress } from "./run-progress";
 import { AuditProgressStrip, type RerunStatus } from "./audit-progress-strip";
@@ -59,6 +72,9 @@ interface Props {
   totalCatalogSize: number;
 }
 
+/* Switched off with the persona layer — this named the project that seeded the
+   archetype classifier and the leaderboard row. Restore alongside
+   `classifyAgent` in this file.
 function inferProjectName(result: AuditResult, override?: string): string {
   if (override && override.trim()) return override;
   // Pick the cwd that appears in the most examples — proxy for "your
@@ -81,6 +97,7 @@ function inferProjectName(result: AuditResult, override?: string): string {
   if (segs.length >= 2) return `${segs[segs.length - 2]} / ${segs[segs.length - 1]}`;
   return segs[segs.length - 1] ?? "your agent";
 }
+*/
 
 export function AuditDashboard({ initial, projectFromUrl, totalCatalogSize }: Props) {
   const [cache, setCache] = useState<Initial>(initial);
@@ -279,16 +296,22 @@ function MainReport({
   onDismissRerun,
 }: MainReportProps) {
   const { capture } = usePostHog();
-  const project = useMemo(() => inferProjectName(result, projectFromUrl), [result, projectFromUrl]);
+  // Only fed the persona classifier, which is switched off with it.
+  // const project = useMemo(() => inferProjectName(result, projectFromUrl), [result, projectFromUrl]);
   // Seed classification with the project name so the behaviour fingerprint
   // (used for tie-breaks + copy variants) is stable per project.
-  const classification = useMemo(() => classifyAgent(result, project), [result, project]);
-  const score = useMemo(() => deriveScore(result), [result]);
-  const projected = useMemo(() => projectedScore(result, score), [result, score]);
-  const grade = gradeFor(score);
-  const projectedGrade = gradeFor(projected);
-  const strengths = useMemo(() => deriveStrengths(result), [result]);
-  const findings = useMemo(() => deriveFindings(result), [result]);
+  // Persona classification is switched off with the rest of the old report. Its
+  // last live use was two telemetry properties describing a persona the product
+  // no longer shows anyone.
+  // const classification = useMemo(() => classifyAgent(result, project), [result, project]);
+  // Score switched off — see the header of `src/audit/scoring.ts`. The four
+  // functions are intact and still unit-tested; nothing calls them.
+  // const score = useMemo(() => deriveScore(result), [result]);
+  // const projected = useMemo(() => projectedScore(result, score), [result, score]);
+  // const grade = gradeFor(score);
+  // const projectedGrade = gradeFor(projected);
+  // const strengths = useMemo(() => deriveStrengths(result), [result]);
+  // const findings = useMemo(() => deriveFindings(result), [result]);
 
   // One pass over result.results: detectors triggered + missing prescribed
   // policies. Both feed PostHog instrumentation; `missing` also feeds the
@@ -310,10 +333,13 @@ function MainReport({
     if (dashboardViewedRef.current) return;
     dashboardViewedRef.current = true;
     capture("audit_dashboard_viewed", {
-      score,
-      grade,
-      archetype: classification.archetype,
-      secondary: classification.secondary ?? null,
+      // Score switched off — see `src/audit/scoring.ts`. `missing` is the
+      // prescription's denominator and is unaffected, so the copy→install
+      // funnel keeps both of its ends.
+      // score,
+      // grade,
+      // archetype: classification.archetype,
+      // secondary: classification.secondary ?? null,
       missing,
       transcripts_scanned: result.transcripts.scanned,
       results_count: result.results.length,
@@ -321,10 +347,6 @@ function MainReport({
     });
   }, [
     capture,
-    score,
-    grade,
-    classification.archetype,
-    classification.secondary,
     missing,
     result.transcripts.scanned,
     result.results.length,
@@ -332,19 +354,41 @@ function MainReport({
   ]);
 
   /** Poster ref — captured to PNG by the poster's share buttons. */
-  const posterRef = useRef<HTMLDivElement>(null);
+  // const posterRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className="app">
       <AuditProgressStrip status={rerunStatus} onDismiss={onDismissRerun} />
       <div className="app-shell">
         <div className="report">
+          <AuditReportPlaceholder
+            transcripts={result.transcripts.scanned}
+            events={result.eventsScanned ?? 0}
+            projects={result.projectsScanned.length}
+          />
+          {/* The rebuilt report. It reads the leak record rather than this
+              scan's result, deliberately: a credential found last month and
+              not touched by today's transcripts is still a credential to
+              rotate, and a report that showed only the current scan's findings
+              would go quiet on exactly those. */}
+          <LeakSection />
+          {/* The whole old report is switched off — the persona poster, the
+              strengths and quirks sections, the punch-list with its install-all
+              funnel, and the invite section. It is being rebuilt bottom-up
+              around leak detection; see the header of `src/audit/scoring.ts`
+              for the reasoning and `~/Desktop/failproofai-leak-detection-
+              verdict-2026-09-07.md` for the measurements behind it.
+
+              Every component below is intact and still unit-tested — only the
+              render is commented — so restoring any one of them is deleting a
+              pair of comment markers.
+
           <AuditPoster
             ref={posterRef}
             archetypeKey={classification.archetype}
             seed={classification.variantSeed}
-            score={score}
-            grade={grade}
+            // score={score}
+            // grade={grade}
             missing={missing}
             auditedAt={cachedAt ?? new Date().toISOString()}
           />
@@ -352,14 +396,49 @@ function MainReport({
           <QuirksSection findings={findings} />
           <HowToImproveSection
             result={result}
-            projected={projected}
-            projectedGrade={projectedGrade}
+          // projected={projected}
+          // projectedGrade={projectedGrade}
           />
-          <ComeBackBetterSection score={score} />
+          <ComeBackBetterSection />
+          */}
         </div>
         <ReportFooter cachedAt={cachedAt} />
       </div>
     </div>
+  );
+}
+
+/**
+ * What `/audit` shows while the report is being rebuilt.
+ *
+ * Deliberately states the scan's own numbers rather than nothing at all: the
+ * scan still runs, still walks every transcript across all 12 CLIs, and still
+ * feeds the emailed digest. Saying so is the difference between "this page is
+ * under construction" and "this product is broken".
+ */
+function AuditReportPlaceholder(
+  { transcripts, events, projects }: { transcripts: number; events: number; projects: number },
+) {
+  const n = (x: number) => x.toLocaleString();
+  return (
+    <section className="audit-sec" data-screen-label="01 Scan">
+      <div className="audit-sec-head">
+        <span className="audit-sec-eyebrow">
+          <span className="ix">01</span>{"// scan"}
+        </span>
+      </div>
+      <h2 className="audit-sec-title">scan complete</h2>
+      <div className="audit-sec-sub">
+        {n(events)} tool call{events === 1 ? "" : "s"} across {n(transcripts)}{" "}
+        transcript{transcripts === 1 ? "" : "s"}
+        {projects > 0 ? ` · ${n(projects)} project${projects === 1 ? "" : "s"}` : ""}
+      </div>
+      <div className="audit-sec-sub">
+        {"// the report is being rebuilt around leak detection. the scan, the"}
+        <br />
+        {"// 12-CLI transcript reader and the emailed digest are unaffected."}
+      </div>
+    </section>
   );
 }
 

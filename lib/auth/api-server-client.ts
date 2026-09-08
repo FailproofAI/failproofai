@@ -253,6 +253,34 @@ export interface AuditReportBody {
     last_seen?: string;
     examples: string[];
   }[];
+  /**
+   * Credentials this machine found in its own transcripts.
+   *
+   * Optional on the wire, so a CLI newer than the api-server sends a field the
+   * server ignores rather than failing the whole digest — the harmful counts
+   * are the older half of the contract and must keep arriving either way.
+   *
+   * Every field here is a mask, a label, a length or a location. There is no
+   * shape of this object that carries a secret, because the record it is built
+   * from never stores one: `recordLeaks` fingerprints at detection time and
+   * keeps only the masked rendering.
+   */
+  leaks?: {
+    id: string;
+    display: string;
+    label: string;
+    length: number;
+    attributed: boolean;
+    name: string | null;
+    confidence: string;
+    first_seen: string;
+    last_seen: string;
+    occurrences: number;
+    cli: string;
+    project: string;
+    mechanism: string;
+    direction: "input" | "result";
+  }[];
 }
 
 export interface AuditReportResult {

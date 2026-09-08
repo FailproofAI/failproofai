@@ -74,6 +74,7 @@ import {
   probeDaemonEndToEnd,
   uninstallDaemonService,
 } from "./daemon-service";
+import { installMacNotifier } from "../audit/macos-notifier";
 import { hookLogWarn } from "./hook-logger";
 import {
   readCloudCredentials,
@@ -1442,6 +1443,25 @@ export async function runConfigureWizard(
     // longer referenced by anything. Keeps the previous version for an
     // offline rollback.
     pruneOldDaemonBinaries();
+
+    // The delivery path for what the scheduled audit finds. macOS only, and a
+    // no-op everywhere else: a Linux box's audit talks to the session bus
+    // itself, while on a Mac the daemon runs outside the GUI session and cannot
+    // reach Notification Center at all — see `audit/macos-notifier.ts`.
+    //
+    // Installed here, with the daemon, because it exists only to deliver what
+    // the daemon's scheduled scan produces, and removed alongside it by
+    // `uninstall`. Silent, and not a step in the wizard: it needs no password,
+    // asks nothing, and narrating it would be an apology for the delivery half
+    // of a feature the user just switched on. What they are actually asked —
+    // does this machine scan, and may it interrupt — are real settings, and
+    // both are theirs to change afterwards.
+    //
+    // Its failure is not the wizard's failure. A Mac where `osacompile` is
+    // missing or launchd refuses the job must still finish installing its
+    // daemon, its hooks and its policies, which are the parts that enforce
+    // anything; the notice in-CLI still reaches them either way.
+    installMacNotifier();
   }
 
   // Telemetry runs concurrently with the install (never rejects, 5s-bounded) so

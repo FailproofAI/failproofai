@@ -143,14 +143,18 @@ const PREFIX_RULES: &[PrefixRule] = &[
 /// widening it to anything like `NAME` or `ID` would redact most of a command
 /// line and make the capture useless.
 /// Names strong enough to redact on their own, even as a bare identifier.
-const STRONG_SECRET_NAMES: &[&str] = &["secret", "password", "passwd", "credential"];
+const STRONG_SECRET_NAMES: &[&str] = &["secret", "password", "passwd", "passphrase", "credential"];
 /// Names that are only convincing as part of a COMPOUND identifier.
 ///
 /// `key` and `token` are ordinary words in source code — measured against 40
 /// real transcripts, a bare `key=` matched React's `key` prop on every JSX
-/// list. Requiring a `_` or `-` keeps `API_KEY`, `api_key` and `--api-token`
-/// while dropping that entire class of false positive.
-const WEAK_SECRET_NAMES: &[&str] = &["key", "token"];
+/// list. Requiring a `_`, a `-` or a camelCase hump keeps `API_KEY`, `api_key`,
+/// `--api-token` and `sessionKey` while dropping that entire class of false
+/// positive.
+///
+/// `pwd` is here rather than in STRONG for the same reason: `MYSQL_PWD` is a
+/// documented password variable, and a bare `PWD` is the working directory.
+const WEAK_SECRET_NAMES: &[&str] = &["key", "token", "pwd"];
 
 /// Shortest assignment value worth redacting. Below this it is far more likely
 /// to be a placeholder or a flag than a credential.
@@ -297,6 +301,68 @@ fn match_bearer(rest: &str) -> Option<(usize, &'static str)> {
     (token_len >= 8).then_some((7 + token_len, "bearer-token"))
 }
 
+/// Prefixes whose values a build tool INLINES INTO THE BROWSER BUNDLE.
+///
+/// Not conventionally public — mechanically public. Next.js, Vite, CRA, Expo,
+/// Nuxt, Gatsby, SvelteKit and Astro each substitute the value into the
+/// JavaScript shipped to every visitor, so a key named this way was published
+/// by the framework before this collector ever saw it.
+const CLIENT_BUNDLE_PREFIXES: &[&str] = &[
+    "next_public",
+    "vite",
+    "react_app",
+    "expo_public",
+    "nuxt_public",
+    "gatsby",
+    "storybook",
+    "public",
+];
+
+/// True when the identifier says the value is meant to be public.
+///
+/// Every publishable key on earth is named `*_key`, and `WEAK_SECRET_NAMES`
+/// matches all of them — so `NEXT_PUBLIC_POSTHOG_KEY` and
+/// `NEXT_PUBLIC_SUPABASE_ANON_KEY` were scrubbed as credentials on their way to
+/// the spool. Redaction usually errs safe, but this is the case where the value
+/// is PROVABLY not a secret, and marking it as one reports an exposure that did
+/// not happen.
+///
+/// The marker must be a PREFIX, so a mid-name `public` in
+/// `my_public_facing_secret` does not disarm the rule, and `publisher_api_key`
+/// (which merely starts with the same letters) is unaffected.
+fn is_published_by_design(name: &str) -> bool {
+    for prefix in CLIENT_BUNDLE_PREFIXES {
+        if name == *prefix || name.starts_with(&format!("{prefix}_")) {
+            return true;
+        }
+    }
+    name.contains("publishable") || name.ends_with("public_key") || name.ends_with("anon_key")
+}
+
+/// Split the text before a value into `(name, separator)`.
+///
+/// Four spellings reach this collector and only the first used to match:
+/// `NAME=value`, `NAME = value`, `NAME: value` and `"name": value`. The other
+/// three are what a config file, a YAML key and a JSON body look like — most of
+/// where credentials are actually written down — and every one of them was
+/// leaving the machine in the spool, because this redactor required the `=` to
+/// sit immediately before the value.
+///
+/// Horizontal whitespace only. `char::is_whitespace` would step back over a
+/// newline and read the previous line's last word as this line's name.
+fn split_assignment(before: &str) -> Option<(&str, char)> {
+    let trimmed = before.trim_end_matches([' ', '\t']);
+    let separator = trimmed.chars().next_back()?;
+    if separator != '=' && separator != ':' {
+        return None;
+    }
+    let name = trimmed[..trimmed.len() - separator.len_utf8()].trim_end_matches([' ', '\t']);
+    // A JSON key carries its own closing quote (`"api_key": …`), which is not
+    // part of the identifier and would otherwise end the backwards name scan
+    // before it read a single character.
+    Some((name.strip_suffix(['"', '\'']).unwrap_or(name), separator))
+}
+
 /// The VALUE of a `SOMETHING_KEY=` / `--api-token=` assignment.
 ///
 /// Anchored at the start of the value rather than at the `=`, so the marker
@@ -324,18 +390,19 @@ fn match_assignment(s: &str, i: usize, rest: &str) -> Option<(usize, &'static st
     // nothing in the output to distinguish redaction from deletion. It also
     // meant the plain `KEY="value"` case ate both quotes, which the doc comment
     // above says it does not.
-    if before.ends_with('=') && rest.starts_with(['"', '\'']) {
+    if split_assignment(before).is_some() && rest.starts_with(['"', '\'']) {
         return None;
     }
-    // Step back over an opening quote, if any, then require the `=`.
+    // Step back over an opening quote, if any, then require the separator.
     let before = match before.chars().next_back() {
         Some('"') | Some('\'') => &before[..before.len() - 1],
         _ => before,
     };
-    if !before.ends_with('=') {
+    let (name_part, separator) = split_assignment(before)?;
+    // A URL scheme is the one `name:value` shape that is not an assignment.
+    if separator == ':' && rest.starts_with("//") {
         return None;
     }
-    let name_part = &before[..before.len() - 1];
     let name_len = name_part
         .chars()
         .rev()
@@ -344,9 +411,25 @@ fn match_assignment(s: &str, i: usize, rest: &str) -> Option<(usize, &'static st
     if name_len == 0 {
         return None;
     }
-    let raw = name_part[name_part.len() - name_len..].to_ascii_lowercase();
+    let original = &name_part[name_part.len() - name_len..];
+    let raw = original.to_ascii_lowercase();
     let name = raw.trim_matches('-');
-    let compound = name.contains('_') || name.contains('-');
+    // A camelCase hump makes an identifier compound just as much as a `_` does,
+    // and lowercasing first destroyed the only evidence of one — so `sessionKey`
+    // and `authCookie` failed the compound test that `session_key` passes, and
+    // shipped their values to the spool. Tested on the ORIGINAL casing for that
+    // reason. The bare-`key` protection is untouched: a lone `key=` has no hump,
+    // so it stays non-compound and JSX keeps its prop.
+    let has_hump = original
+        .as_bytes()
+        .windows(2)
+        .any(|w| (w[0].is_ascii_lowercase() || w[0].is_ascii_digit()) && w[1].is_ascii_uppercase());
+    let compound = name.contains('_') || name.contains('-') || has_hump;
+    // Beats every other signal: a value the framework compiles into the browser
+    // bundle is public no matter what the rest of the name says.
+    if is_published_by_design(name) {
+        return None;
+    }
     let convincing = STRONG_SECRET_NAMES.iter().any(|n| name.ends_with(n))
         || (compound && WEAK_SECRET_NAMES.iter().any(|n| name.ends_with(n)));
     if !convincing {
@@ -395,6 +478,39 @@ mod tests {
         scrub_str(s)
             .map(|(v, _)| v)
             .unwrap_or_else(|| s.to_string())
+    }
+
+    /// The TypeScript redactor had a catastrophic backtracking bug on exactly
+    /// these inputs: a 300 KB unbroken token took over 20 SECONDS, because an
+    /// unbounded `[A-Za-z0-9_]*` restarted and backtracked at every position.
+    /// This side is hand-rolled scanning with no regex engine, so it is
+    /// structurally immune — but "structurally immune" is a claim, and the two
+    /// engines are required to agree, so it is measured rather than asserted.
+    #[test]
+    fn pathological_input_stays_linear() {
+        let cases: Vec<String> = vec![
+            format!("A={}", "a".repeat(200_000)),
+            "A".repeat(300_000),
+            format!("https://{}?token=x", "a".repeat(50_000)),
+            "=".repeat(100_000),
+            ":".repeat(100_000),
+            "\"".repeat(50_000),
+            "/a".repeat(40_000),
+            (0..20_000)
+                .map(|i| format!("K{i}=v{i}"))
+                .collect::<Vec<_>>()
+                .join(" "),
+        ];
+        for case in &cases {
+            let started = std::time::Instant::now();
+            let _ = scrub(case);
+            let elapsed = started.elapsed();
+            assert!(
+                elapsed < std::time::Duration::from_secs(3),
+                "scrub took {elapsed:?} on a {}-byte input",
+                case.len()
+            );
+        }
     }
 
     #[test]
@@ -580,6 +696,118 @@ mod tests {
                 "text after the marker was dropped: {s:?} -> {out:?}"
             );
         }
+    }
+
+    // This redactor scrubs events on their way to the spool, so a shape it
+    // misses is a credential shipped off the machine. It required the `=` to
+    // sit immediately before the value, which meant a spaced assignment, a YAML
+    // key and a JSON body all went out intact — verified by probe before the
+    // fix, and these are that probe.
+    #[test]
+    fn an_assignment_is_redacted_whatever_the_separator_or_spacing() {
+        for s in [
+            "MY_API_KEY = synthetic0000111122223333",
+            "MY_API_KEY:  synthetic0000111122223333",
+            r#"my_api_key: "synthetic0000111122223333""#,
+            r#"{"api_key": "synthetic0000111122223333"}"#,
+            "  db_password:   synthetic0000111122223333",
+        ] {
+            assert!(
+                scrub(s).contains("secret-assignment"),
+                "leaked {s:?} -> {}",
+                scrub(s)
+            );
+            assert!(
+                !scrub(s).contains("synthetic0000111122223333"),
+                "value survived in {s:?} -> {}",
+                scrub(s)
+            );
+        }
+    }
+
+    #[test]
+    fn a_camelcase_name_is_compound_too() {
+        // The compound test ran on the LOWERCASED name, which had already
+        // destroyed the hump — so `session_key` was redacted and `sessionKey`
+        // was shipped to the spool verbatim.
+        for s in [
+            "sessionKey=synthetic0000111122223333",
+            "authToken=synthetic0000111122223333",
+            "apiKey=synthetic0000111122223333",
+            "MYSQL_PWD=synthetic0000111122223333",
+            "GPG_PASSPHRASE=synthetic0000111122223333",
+        ] {
+            assert!(
+                scrub(s).contains("[redacted:"),
+                "leaked {s:?} -> {}",
+                scrub(s)
+            );
+        }
+    }
+
+    #[test]
+    fn a_bare_weak_name_is_still_not_a_secret() {
+        // The whole point of the compound rule: a lone `key=` is React's prop
+        // on every JSX list, and a lone `PWD=` is the working directory.
+        for s in [
+            "key=synthetic0000111122223333",
+            "token=synthetic0000111122223333",
+            "PWD=/home/user/some/project/path",
+        ] {
+            assert!(
+                !scrub(s).contains("secret-assignment"),
+                "over-redacted {s:?} -> {}",
+                scrub(s)
+            );
+        }
+    }
+
+    #[test]
+    fn a_browser_bundled_key_is_not_a_secret() {
+        // The build tool ships these to every visitor; scrubbing one reports an
+        // exposure that did not happen.
+        for s in [
+            "NEXT_PUBLIC_POSTHOG_KEY=synthetic0000111122223333",
+            "NEXT_PUBLIC_SUPABASE_ANON_KEY=synthetic0000111122223333",
+            "VITE_API_KEY=synthetic0000111122223333",
+            "REACT_APP_API_KEY=synthetic0000111122223333",
+            "VAPID_PUBLIC_KEY=synthetic0000111122223333",
+        ] {
+            assert_eq!(scrub(s), s, "over-redacted {s:?}");
+        }
+    }
+
+    #[test]
+    fn a_name_that_merely_contains_public_is_still_a_secret() {
+        for s in [
+            "MY_PUBLIC_FACING_API_SECRET=synthetic0000111122223333",
+            "PUBLISHER_API_KEY=synthetic0000111122223333",
+            "REPUBLIC_TOKEN=synthetic0000111122223333",
+        ] {
+            assert!(
+                scrub(s).contains("[redacted:"),
+                "leaked {s:?} -> {}",
+                scrub(s)
+            );
+        }
+    }
+
+    #[test]
+    fn a_url_scheme_is_not_an_assignment() {
+        // `https://…` is the one `name:value` shape that is not one. The name
+        // is not convincing either, but the guard is what stops a scheme that
+        // happens to end in a secret word from being read as its own value.
+        let s = "curl https://api.example.com/v1/synthetic0000111122223333";
+        assert_eq!(scrub(s), s);
+    }
+
+    #[test]
+    fn a_separator_at_end_of_line_does_not_reach_the_next_line() {
+        // Horizontal whitespace only when stepping back: `is_whitespace` would
+        // cross the newline and read `API_KEY` as the name of the next line's
+        // first word.
+        let s = "API_KEY:\nsynthetic0000111122223333";
+        assert_eq!(scrub(s), s);
     }
 
     #[test]

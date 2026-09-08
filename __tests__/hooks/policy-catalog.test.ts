@@ -185,7 +185,10 @@ describe("policy catalog / implementation split", () => {
       // Its hand-written most-specific-first ORDER is load-bearing — a
       // Bearer-wrapped JWT reports as "JWT" today and as "bearer token" if two
       // entries swap.
-      expect(SECRET_PATTERNS).toHaveLength(13);
+      // 33 as of the pattern-census expansion (was 13). The count is pinned so
+      // an accidental deletion is loud; raise it deliberately when adding a
+      // vendor, and only with a doc-verified prefix behind it.
+      expect(SECRET_PATTERNS).toHaveLength(37);
       for (const [re] of SECRET_PATTERNS) expect(re).toBeInstanceOf(RegExp);
     });
   });

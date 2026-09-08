@@ -63,25 +63,35 @@ describe("runAudit() end-to-end on a fixture transcript", () => {
     rmSync(tmpRoot, { recursive: true, force: true });
   });
 
-  it("counts builtin + detector hits across the fixture transcript", async () => {
+  it("counts builtin policy hits across the fixture transcript", async () => {
     const result = await runAudit({ clis: ["claude"], noCache: true, noReport: true });
     expect(result.transcripts.scanned).toBeGreaterThanOrEqual(1);
 
     const names = result.results.map((r) => r.name);
     // Builtin policy hit.
     expect(names.some((n) => n.includes("protect-env-vars"))).toBe(true);
-    // Audit-only detector hits.
-    expect(names).toContain("redundant-cd-cwd");
-    expect(names).toContain("reread-after-edit");
+    // The 8 behavioural detectors are switched off with the rest of the old
+    // audit (see the header of `src/audit/scoring.ts`); the modules and their
+    // own unit tests in `detectors.test.ts` are untouched. Restore these two
+    // lines with the detector loop in `src/audit/index.ts`.
+    // expect(names).toContain("redundant-cd-cwd");
+    // expect(names).toContain("reread-after-edit");
+    expect(names.every((n) => n !== "redundant-cd-cwd")).toBe(true);
   });
 
   it("filters by --policy", async () => {
+    // Filtered on a BUILTIN rather than the detector this used to name, so the
+    // filter itself stays covered while the detectors are switched off. The
+    // original read `policies: ["redundant-cd-cwd"]` and expected that name
+    // back; restore it with the detector loop in `src/audit/index.ts`.
     const result = await runAudit({
       clis: ["claude"],
       noCache: true,
       noReport: true,
-      policies: ["redundant-cd-cwd"],
+      policies: ["protect-env-vars"],
     });
-    expect(result.results.map((r) => r.name)).toEqual(["redundant-cd-cwd"]);
+    const names = result.results.map((r) => r.name);
+    expect(names.length).toBe(1);
+    expect(names[0]).toContain("protect-env-vars");
   });
 });

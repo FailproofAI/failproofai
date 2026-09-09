@@ -97,19 +97,19 @@ export function helpText(): string {
     {
       command: "audit",
       version,
-      tagline: "review your agent CLIs for risky and wasteful patterns",
+      tagline: "find credentials your agents leaked into their own transcripts",
       sections: [
         {
           label: "usage",
           entries: [
-            ["(bare)", `Scan your session history, then open http://localhost:${DASHBOARD_PORT}/audit`],
-            ["--schedule [days]", "Scan on a timer and email the findings. Default 7 days, range 1-90. Signs you in the first time."],
+            ["(bare)", `Scan your session history for leaked keys, then open http://localhost:${DASHBOARD_PORT}/audit`],
+            ["--schedule [days]", "Scan on a timer, notify you on this machine, and email the findings. Default 7 days, range 1-90. Signs you in the first time."],
             // Its own row now, rather than a clause inside --schedule's. It
             // does not stand alone, which is why it used to be a clause — but
             // a clause wraps, and `--email <address>` landing with the flag at
             // the end of one line and its placeholder at the start of the next
             // is not a flag anybody can read or copy.
-            ["--email <address>", "With --schedule, skips the sign-in prompt."],
+            ["--email <address>", "With --schedule, fills in your address. A sign-in code is still emailed to you to paste."],
             ["--no-schedule", "Stop the timer. Leaves you signed in."],
             // Its own pair of flags rather than a clause on --schedule: whether
             // this machine scans and whether it may interrupt you are separate
@@ -122,7 +122,11 @@ export function helpText(): string {
           ],
         },
       ],
-      footer: ["Everything runs on this machine; only a scheduled digest ever leaves it."],
+      footer: [
+        "Everything runs on this machine. A scan tells you three ways: a desktop",
+        "notification, two lines in your agent session, and the emailed digest —",
+        "and only that digest ever leaves.",
+      ],
     },
     helpOptsFor(process.stdout),
   );

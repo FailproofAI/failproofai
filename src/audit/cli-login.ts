@@ -173,7 +173,10 @@ export async function ensureSignedIn(preset?: string): Promise<EnsureSignedIn> {
     throw new LoginError(
       "Signing in needs an interactive terminal, and this one is not.\n" +
         "Run `failproofai audit --schedule` from a shell you are sitting at,\n" +
-        "or sign in from the dashboard — both write the same session file.",
+        "or sign in from the dashboard — both write the same session file.\n" +
+        "\n" +
+        "`--email` does not avoid this: it fills in the address so you are not\n" +
+        "asked for it, but a one-time code is still sent there for you to paste.",
     );
   }
 

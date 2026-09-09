@@ -2,6 +2,10 @@
 
 ## 1.0.4-beta.3 — 2026-09-09
 
+### Docs
+
+- Add the repository-local policy-author skill and its reference material for maintaining failproofai enforcement policies (#789)
+
 ### Features
 
 - The desktop banner offers the emailed digest, not just the local command. It now reads "N credentials in your agent transcripts. Run failproofai audit to see them — or failproofai audit --schedule to get them by email", matching the in-CLI notice. This is the only place most users are ever asked for an address: the scan is local and needs no account, so nothing else in the product has a reason to ask — which is precisely why the audit's findings have historically reached nobody. A banner somebody is already reading, about a key of their own, is the one moment the offer is worth anything. No action buttons, deliberately: `Notify` supports them, but a server delivers the click back as an `ActionInvoked` signal to the sender, and the audit child exits as soon as the scan finishes — so the button would be dead. Two commands a user can copy beat one button that does nothing (#789)

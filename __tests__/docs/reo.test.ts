@@ -102,11 +102,13 @@ describe("docs/reo.js", () => {
   });
 
   it("does not block rendering on the beacon", () => {
-    // A dynamically inserted script is async by default, and the snippet sets
-    // `defer` on top. Either way the parser is never held up; asserting it here
-    // means a rewrite that drops to a synchronous document.write is caught.
-    const tag = run().injected()[0];
-    expect(tag.defer || tag.async).toBe(true);
+    // A script built with `createElement` and appended is async by default, so
+    // reading the property back proves nothing on its own — it is true whether
+    // the loader sets `async`, sets `defer`, or sets neither. The source
+    // assertion is what actually pins the flag; this one catches a rewrite that
+    // drops to a parser-blocking `document.write`.
+    expect(run().injected()[0].async).toBe(true);
+    expect(SCRIPT).toContain("n.async=!0");
   });
 
   it("runs at most once per page load", () => {
@@ -118,15 +120,21 @@ describe("docs/reo.js", () => {
     expect(r.injected()).toHaveLength(1);
   });
 
-  it("matches the snippet Reo issues for Mintlify", () => {
-    // Reo's install guide gives one minified loader line. Keeping it verbatim
+  it("matches the snippet Reo issues for Mintlify, character for character", () => {
+    // Reo's Mintlify guide gives one minified loader line. Keeping it verbatim
     // is what makes this file diffable against the vendor docs; a hand-edit
-    // that reshapes it should be a deliberate, reviewed change.
+    // that reshapes it should be a deliberate, reviewed change. Reo's *other*
+    // install pages ship the same loader with `defer` in place of `async` —
+    // functionally identical here, but this is installed from the Mintlify
+    // page, so that is the text it is held to.
     const loader = SCRIPT.split("\n").filter(
       (l) => !l.startsWith(" *") && !l.startsWith("/*") && l.trim() !== "",
     );
     expect(loader).toHaveLength(1);
-    expect(loader[0]).toContain("static.reo.dev");
-    expect(loader[0]).toContain("Reo.init");
+    expect(loader[0]).toBe(
+      `!function(){var e,t,n;e="${CLIENT_ID}",t=function(){Reo.init({clientID:"${CLIENT_ID}"})},` +
+        `(n=document.createElement("script")).src="https://static.reo.dev/"+e+"/reo.js",` +
+        `n.async=!0,n.onload=t,document.head.appendChild(n)}();`,
+    );
   });
 });

@@ -384,7 +384,7 @@ describe("announcing a leak on the desktop", () => {
     writeFileSync(resolve(home, "config.json"), JSON.stringify({ audit }));
   };
 
-  it("raises one banner for the credentials this run newly found", async () => {
+  it("raises one factual review banner when this run finds new matches", async () => {
     h.runAudit.mockResolvedValue(withLeaks(["1111111111111111", "2222222222222222"]));
 
     expect(await runScheduledAudit()).toBe(0);
@@ -392,19 +392,14 @@ describe("announcing a leak on the desktop", () => {
     expect(h.notifyDesktop).toHaveBeenCalledTimes(1);
     const [summary, body] = h.notifyDesktop.mock.calls[0] as unknown as [string, string];
     expect(summary).toContain("failproofai");
-    expect(body).toContain("2 credentials");
+    expect(body).toContain("Possible credential exposure");
     expect(body).toContain("failproofai audit");
-    // The desktop banner carries the same offer as the in-CLI notice.
-    expect(body).toContain("--schedule");
-    expect(body).toContain("email");
+    expect(body).not.toMatch(/email|schedule|2 credentials|leaked credential/i);
   });
 
-  it("offers the digest, because this banner is the only place most users are asked", () => {
-    // The scan is local and needs no account, so nothing else in the product
-    // has a reason to ask for an address — which is why the audit's findings
-    // have historically reached nobody. A banner someone is already reading,
-    // about a key of their own, is the one moment the offer is worth anything.
-    expect(leakNoticeText(2)).toContain("--schedule");
+  it("keeps the in-CLI notice focused on review rather than email setup", () => {
+    expect(leakNoticeText(2)).toContain("review the matches");
+    expect(leakNoticeText(2)).not.toMatch(/email|--schedule/);
   });
 
   it("says nothing when the scan found nothing new", async () => {
@@ -455,11 +450,17 @@ describe("announcing a leak on the desktop", () => {
     h.runAudit.mockResolvedValue(withLeaks(["1111111111111111"]));
 
     expect(await runScheduledAudit()).toBe(0);
+    expect(existsSync(resolve(home, "audit", "notified-desktop", "1111111111111111"))).toBe(false);
+    await runScheduledAudit();
+    expect(h.notifyDesktop).toHaveBeenCalledTimes(2);
   });
 
   it("survives a notifier that throws outright", async () => {
     h.notifyDesktop.mockRejectedValue(new Error("boom"));
     h.runAudit.mockResolvedValue(withLeaks(["1111111111111111"]));
     expect(await runScheduledAudit()).toBe(0);
+    expect(existsSync(resolve(home, "audit", "notified-desktop", "1111111111111111"))).toBe(false);
+    expect(await runScheduledAudit()).toBe(0);
+    expect(h.notifyDesktop).toHaveBeenCalledTimes(2);
   });
 });

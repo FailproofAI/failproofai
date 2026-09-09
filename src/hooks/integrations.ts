@@ -784,6 +784,7 @@ export const cursor: Integration = {
 //   • exit 2 OR `permissionDecision: "deny"` → `throw new Error(reason)`
 //     (which OpenCode surfaces as a tool-call failure to the agent)
 //   • `additionalContext` → `client.session.prompt(...)` (fire-and-forget)
+//   • `failproofaiNotice` → `client.tui.showToast(...)` (user-visible)
 //   • everything else → no-op (allow)
 //
 // Settings paths:
@@ -955,6 +956,19 @@ async function applyDecision(result, ctx, eventName) {
   // Codex-shape PermissionRequest deny: hookSpecificOutput.decision.behavior.
   if (out && out.decision && out.decision.behavior === "deny") {
     throw new Error((out.decision.message) || "Blocked by failproofai");
+  }
+  const notice = parsed.failproofaiNotice;
+  if (typeof notice === "string" && notice && ctx && ctx.client && ctx.client.tui) {
+    try {
+      await ctx.client.tui.showToast({
+        body: {
+          title: "failproofai audit",
+          message: notice,
+          variant: "warning",
+          duration: 12_000,
+        },
+      });
+    } catch { /* a courtesy notice must never break the host hook */ }
   }
   // Forward additional context as a prompt to the session. For Stop /
   // SubagentStop the prompt is the only force-retry channel (session.idle

@@ -28,16 +28,17 @@
  *   copilot  exit 0 + stderr        renders as a `!` session warning
  *   factory  plain stdout           renders under a `Hooks Stop` block
  *
- * opencode, pi and openclaw have real channels too, but they live inside the
- * plugin shims we ship rather than in a hook's stdout, so they are wired there.
- * cursor, devin, goose, antigravity and hermes have no channel that reaches a
- * human without an unsupported escape hatch — they get nothing here, and their
- * users get the finding from `failproofai audit` and the emailed digest.
+ * opencode and pi have real channels too, but they live inside the plugin shims
+ * we ship rather than in a hook's stdout, so a private JSON field is consumed
+ * there and handed to `showToast` / `ui.notify`. OpenClaw, cursor, devin, goose,
+ * antigravity and hermes have no verified channel that reaches a human without
+ * an unsupported escape hatch — they get nothing here, and their users get the
+ * finding from `failproofai audit` and the scheduled desktop notification.
  */
 import type { IntegrationType } from "./types";
 
 /** How a notice is delivered on one CLI. */
-type NoticeChannel = "systemMessage" | "stderr" | "stdout" | "none";
+type NoticeChannel = "systemMessage" | "stderr" | "stdout" | "shim" | "none";
 
 /**
  * Per-CLI channel, from live probes rather than documentation.
@@ -52,6 +53,8 @@ const NOTICE_CHANNEL: Partial<Record<IntegrationType, NoticeChannel>> = {
   codex: "systemMessage",
   copilot: "stderr",
   factory: "stdout",
+  opencode: "shim",
+  pi: "shim",
 };
 
 /**
@@ -123,6 +126,23 @@ export function shapeNotice(
       // verdict JSON is already on the stream.
       if (existingStdout.trim()) return empty;
       return { stdout: text + "\n", stderr: "" };
+    case "shim": {
+      // OpenCode and Pi are in-process plugin integrations. Their generated
+      // shims consume this private field and call the host's real user-facing
+      // notification API; putting the text in additionalContext would send it
+      // to the model instead.
+      if (existingStdout.trim().startsWith("{")) {
+        try {
+          const parsed = JSON.parse(existingStdout) as Record<string, unknown>;
+          parsed.failproofaiNotice = text;
+          return { stdout: JSON.stringify(parsed), stderr: "" };
+        } catch {
+          return empty;
+        }
+      }
+      if (existingStdout.trim()) return empty;
+      return { stdout: JSON.stringify({ failproofaiNotice: text }), stderr: "" };
+    }
     default:
       return empty;
   }
@@ -146,10 +166,26 @@ export function canDeliverNotice(cli: IntegrationType | undefined): boolean {
  * directly in the prompt. So nothing scanned ever reaches this template.
  */
 export function leakNoticeText(newFindings: number): string {
-  const n = newFindings === 1 ? "a credential" : `${newFindings} credentials`;
+  const n = newFindings === 1
+    ? "a possible credential exposure"
+    : `${newFindings} possible credential exposures`;
   return (
     `failproofai found ${n} in this project's agent transcripts.\n` +
-    "Run `failproofai audit` to see the details, " +
-    "or `failproofai audit --schedule` to get these by email."
+    "Run `failproofai audit` to review the matches and rotate anything real."
   );
+}
+
+/** Copy for the OS notification raised by an unattended scheduled scan.
+ *
+ * Deliberately omits the count. A burst of generated fixtures can hit the
+ * record cap, and a desktop banner saying "500 leaked credentials" states a
+ * conclusion the detector cannot support. The dashboard carries the evidence;
+ * the banner's job is only to ask for review. */
+export function desktopLeakNotice(): { title: string; body: string } {
+  return {
+    title: "failproofai audit needs review",
+    body:
+      "Possible credential exposure was found in your agent transcripts. " +
+      "Run failproofai audit to verify the matches and rotate anything real.",
+  };
 }

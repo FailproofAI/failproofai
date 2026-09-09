@@ -139,7 +139,10 @@ async function loadShim(opts: { scope: "user" | "project"; binaryPath: string; c
 }
 
 function fakeClient() {
-  return { session: { prompt: vi.fn().mockResolvedValue(undefined) } };
+  return {
+    session: { prompt: vi.fn().mockResolvedValue(undefined) },
+    tui: { showToast: vi.fn().mockResolvedValue(undefined) },
+  };
 }
 
 describe("OpenCode plugin shim — translation of plugin events to binary stdin", () => {
@@ -437,6 +440,42 @@ describe("OpenCode plugin shim — translation of binary response to plugin acti
     const callArg = client.session.prompt.mock.calls[0][0];
     expect(callArg.path.id).toBe("ses_1");
     expect(callArg.body.parts[0]).toEqual({ type: "text", text: "Note: hello" });
+  });
+
+  it("failproofaiNotice → uses OpenCode's visible TUI toast API", async () => {
+    responses.push({
+      status: 0,
+      stdout: JSON.stringify({ failproofaiNotice: "Review possible credential exposure" }),
+      stderr: "",
+    });
+    const client = fakeClient();
+    const { plugin } = await setup();
+    const hooks = await plugin({ client, directory: "/repo" });
+    await hooks.event!({ event: { type: "session.idle", properties: { sessionID: "ses_1" } } });
+    expect(client.tui.showToast).toHaveBeenCalledWith({
+      body: {
+        title: "failproofai audit",
+        message: "Review possible credential exposure",
+        variant: "warning",
+        duration: 12_000,
+      },
+    });
+    expect(client.session.prompt).not.toHaveBeenCalled();
+  });
+
+  it("swallows an OpenCode toast failure", async () => {
+    responses.push({
+      status: 0,
+      stdout: JSON.stringify({ failproofaiNotice: "Review possible credential exposure" }),
+      stderr: "",
+    });
+    const client = fakeClient();
+    client.tui.showToast.mockRejectedValue(new Error("TUI closed"));
+    const { plugin } = await setup();
+    const hooks = await plugin({ client, directory: "/repo" });
+    await expect(
+      hooks.event!({ event: { type: "session.idle", properties: { sessionID: "ses_1" } } }),
+    ).resolves.toBeUndefined();
   });
 
   it("SDK rejection on session.prompt is swallowed (fire-and-forget)", async () => {

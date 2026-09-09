@@ -18,8 +18,12 @@ interface CapturedCall {
   args: string[];
 }
 
+interface PiExtensionContext {
+  ui?: { notify(message: string, type?: "info" | "warning" | "error"): void };
+}
+
 interface PiExtensionApi {
-  on(event: string, handler: (event: unknown) => unknown): void;
+  on(event: string, handler: (event: unknown, ctx?: PiExtensionContext) => unknown): void;
 }
 
 const captured: CapturedCall[] = [];
@@ -76,7 +80,7 @@ function piEncodeCwd(cwd: string): string {
 }
 
 describe("pi-extension shim — sessionId resolution via on-disk discovery", () => {
-  let handlers: Record<string, (event: unknown) => unknown> = {};
+  let handlers: Record<string, (event: unknown, ctx?: PiExtensionContext) => unknown> = {};
   let bridge: (pi: PiExtensionApi) => void;
   let piRoot: string;
   let originalEnv: string | undefined;
@@ -314,7 +318,7 @@ describe("pi-extension shim — sessionId resolution via on-disk discovery", () 
  * suffix on the next `before_agent_start`. These tests cover that handoff.
  */
 describe("pi-extension shim — agent_end → before_agent_start stop-block handoff", () => {
-  let handlers: Record<string, (event: unknown) => unknown> = {};
+  let handlers: Record<string, (event: unknown, ctx?: PiExtensionContext) => unknown> = {};
   let piRoot: string;
   let originalEnv: string | undefined;
   const SID = "ffffffff-ffff-ffff-ffff-ffffffffffff";
@@ -357,6 +361,19 @@ describe("pi-extension shim — agent_end → before_agent_start stop-block hand
     expect(result?.systemPrompt).toBe(
       "BASE\n\nMANDATORY ACTION REQUIRED from failproofai (policy: require-commit-before-stop): commit now.",
     );
+  });
+
+  it("agent_end notice uses Pi's visible UI notification API", () => {
+    mockSpawnReplyByEvent["agent_end"] = JSON.stringify({
+      permission: "allow",
+      failproofaiNotice: "Review possible credential exposure",
+    });
+    const notify = vi.fn();
+    handlers.agent_end(
+      { type: "agent_end", cwd: "/proj" },
+      { ui: { notify } },
+    );
+    expect(notify).toHaveBeenCalledWith("Review possible credential exposure", "warning");
   });
 
   it("before_agent_start with no pending block returns undefined", () => {

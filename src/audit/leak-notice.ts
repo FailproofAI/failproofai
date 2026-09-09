@@ -135,6 +135,25 @@ export function markLeakNoticeDelivered(
   return won;
 }
 
+/** Release claims this process won when delivery failed, so the next scheduled
+ * run retries instead of turning a transient missing desktop into permanent
+ * silence. Only validated ids in the requested channel are touched. */
+export function releaseLeakNoticeClaims(
+  ids: string[],
+  home?: string,
+  channel: NoticeChannel = "cli",
+): void {
+  try {
+    const dir = NOTICE_DIR(home, channel);
+    for (const id of ids) {
+      if (!isFindingId(id)) continue;
+      rmSync(resolve(dir, id), { force: true });
+    }
+  } catch {
+    // Retry bookkeeping must never turn a completed audit into a failure.
+  }
+}
+
 /** Drop markers for findings that no longer exist, and very old ones. */
 export function pruneNoticeMarkers(home?: string, nowMs = Date.now()): void {
   try {

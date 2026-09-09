@@ -13,6 +13,7 @@ import {
 import { DEFAULT_AUDIT_INTERVAL_DAYS } from "../../src/hooks/fp-config";
 import type { TranscriptAuditResult } from "../../src/audit/types";
 import { auditCacheDir } from "../../src/hooks/fp-home";
+import { LEAK_SCAN_VERSION } from "../../src/audit/leak-scan";
 
 const TRANSCRIPT_PATH = "/tmp/fake-transcript.jsonl";
 const MTIME = 1_700_000_000_000;
@@ -74,6 +75,16 @@ describe("per-transcript audit cache", () => {
     expect(typeof entry.cachedAt).toBe("number");
     expect(entry.cachedAt).toBeGreaterThanOrEqual(before);
     expect(entry.cachedAt).toBeLessThanOrEqual(after);
+    expect(entry.leakScanVersion).toBe(LEAK_SCAN_VERSION);
+  });
+
+  it("rejects entries from an older leak scanner", () => {
+    writeCachedTranscriptResult(TRANSCRIPT_PATH, MTIME, SIZE, FAKE_RESULT);
+    const path = cachePathFor(TRANSCRIPT_PATH);
+    const entry = JSON.parse(readFileSync(path, "utf-8"));
+    entry.leakScanVersion = LEAK_SCAN_VERSION - 1;
+    writeFileSync(path, JSON.stringify(entry));
+    expect(readCachedTranscriptResult(TRANSCRIPT_PATH, MTIME, SIZE)).toBeNull();
   });
 
   it("skips zero-byte transcripts (OpenCode DB-backed sources)", () => {

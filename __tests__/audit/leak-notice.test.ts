@@ -7,6 +7,7 @@ import { join } from "node:path";
 import {
   pendingLeakNotice,
   markLeakNoticeDelivered,
+  releaseLeakNoticeClaims,
   pruneNoticeMarkers,
   sessionNoticePending,
   markSessionNoticed,
@@ -18,7 +19,7 @@ import {
   markLeakReportViewed,
 } from "@/src/audit/leak-store";
 import { upsertFinding, type LeakSighting } from "@/src/audit/leak-record";
-import { shapeNotice, canDeliverNotice, leakNoticeText } from "@/src/hooks/notice";
+import { shapeNotice, canDeliverNotice, leakNoticeText, desktopLeakNotice } from "@/src/hooks/notice";
 
 let home: string;
 beforeEach(() => { home = mkdtempSync(join(tmpdir(), "fp-notice-")); });
@@ -84,6 +85,14 @@ describe("concurrency", () => {
     markLeakNoticeDelivered(["0000000000000a01"], home);
     expect(markLeakNoticeDelivered(["0000000000000a01", "0000000000000b02"], home)).toEqual(["0000000000000b02"]);
   });
+
+  it("can release a failed delivery claim so the next attempt retries", () => {
+    seed("0000000000000a01");
+    const won = markLeakNoticeDelivered(["0000000000000a01"], home, "desktop");
+    expect(pendingLeakNotice(home, "desktop").count).toBe(0);
+    releaseLeakNoticeClaims(won, home, "desktop");
+    expect(pendingLeakNotice(home, "desktop").ids).toEqual(["0000000000000a01"]);
+  });
 });
 
 describe("marker housekeeping", () => {
@@ -104,10 +113,15 @@ describe("marker housekeeping", () => {
 describe("shaping the notice per CLI", () => {
   it("uses the channel each host was proven to render", () => {
     const text = leakNoticeText(2);
-    expect(JSON.parse(shapeNotice("claude", text).stdout).systemMessage).toContain("2 credentials");
-    expect(JSON.parse(shapeNotice("codex", text).stdout).systemMessage).toContain("2 credentials");
-    expect(shapeNotice("copilot", text).stderr).toContain("2 credentials");
-    expect(shapeNotice("factory", text).stdout).toContain("2 credentials");
+    expect(JSON.parse(shapeNotice("claude", text).stdout).systemMessage).toContain("2 possible credential exposures");
+    expect(JSON.parse(shapeNotice("codex", text).stdout).systemMessage).toContain("2 possible credential exposures");
+    expect(shapeNotice("copilot", text).stderr).toContain("2 possible credential exposures");
+    expect(shapeNotice("factory", text).stdout).toContain("2 possible credential exposures");
+    for (const cli of ["opencode", "pi"] as const) {
+      expect(canDeliverNotice(cli)).toBe(true);
+      expect(JSON.parse(shapeNotice(cli, text).stdout).failproofaiNotice)
+        .toContain("2 possible credential exposures");
+    }
   });
 
   // Guessing a channel is worse than having none: it produces output that looks
@@ -128,7 +142,7 @@ describe("shaping the notice per CLI", () => {
     const parsed = JSON.parse(out.stdout);
     expect(parsed.decision).toBe("block");
     expect(parsed.reason).toBe("CI is red");
-    expect(parsed.systemMessage).toContain("a credential");
+    expect(parsed.systemMessage).toContain("a possible credential exposure");
   });
 
   it("leaves a verdict alone rather than risk destroying it", () => {
@@ -148,9 +162,17 @@ describe("shaping the notice per CLI", () => {
 // does not sanitise because it masks secrets rather than instructions.
 describe("the notice text", () => {
   it("interpolates a count and nothing else", () => {
-    expect(leakNoticeText(1)).toContain("a credential");
-    expect(leakNoticeText(5)).toContain("5 credentials");
+    expect(leakNoticeText(1)).toContain("a possible credential exposure");
+    expect(leakNoticeText(5)).toContain("5 possible credential exposures");
     expect(leakNoticeText(1)).toContain("failproofai audit");
+  });
+
+  it("keeps the desktop banner factual and focused on the next action", () => {
+    const notice = desktopLeakNotice();
+    expect(notice.title).toBe("failproofai audit needs review");
+    expect(notice.body).toContain("Possible credential exposure");
+    expect(notice.body).toContain("failproofai audit");
+    expect(notice.body).not.toMatch(/email|schedule|500|leaked credential/i);
   });
 
   it("carries no fingerprint, path, project or command", () => {

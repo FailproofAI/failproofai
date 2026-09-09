@@ -45,6 +45,9 @@ export interface TranscriptMetadata {
   mtimeMs: number;
   /** Byte size of the transcript file. Used for cache invalidation. */
   sizeBytes: number;
+  /** Optional host-authored session purpose. Used only to distinguish
+   * deliberate credential-scanner research from evidence of a leak. */
+  sessionDescription?: string;
 }
 
 /** Per-session detector state. Detectors mutate this freely. */
@@ -172,6 +175,9 @@ export interface TranscriptAuditResult {
    * absent reads as "this transcript predates leak scanning", not "clean".
    */
   leaks?: TranscriptLeak[];
+  /** The session was explicitly generating/researching credential fixtures,
+   * so its matches are examples rather than evidence of user leakage. */
+  leakScanSuppressed?: "credential-research";
   /** First/last timestamp per name. */
   rangeByName: Record<string, { first: string; last: string }>;
 }

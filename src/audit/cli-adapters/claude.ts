@@ -6,6 +6,7 @@
  * parses each via lib/log-entries.ts.
  */
 import { readFile, open, type FileHandle } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import {
   listClaudeProjects,
   listClaudeTranscripts,
@@ -40,6 +41,17 @@ export async function listClaudeTranscriptMetadata(
     }
     for (const t of transcripts) {
       if (t.mtimeMs < sinceMs) continue;
+      let sessionDescription: string | undefined;
+      if (t.isSubagent) {
+        try {
+          const meta = JSON.parse(
+            readFileSync(t.transcriptPath.replace(/\.jsonl$/, ".meta.json"), "utf8"),
+          ) as { description?: unknown };
+          if (typeof meta.description === "string") sessionDescription = meta.description;
+        } catch {
+          // Sidecars are optional (journal transcripts do not have one).
+        }
+      }
       out.push({
         cli: "claude",
         projectName: project.name,
@@ -47,6 +59,7 @@ export async function listClaudeTranscriptMetadata(
         transcriptPath: t.transcriptPath,
         mtimeMs: t.mtimeMs,
         sizeBytes: t.sizeBytes,
+        sessionDescription,
       });
     }
   }

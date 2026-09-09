@@ -37,7 +37,8 @@ import { openWhenReady } from "./open-browser";
 import { describeOutcome, reportHarm } from "./report-harm";
 import { notifyDesktop } from "./desktop-notify";
 import { macNotifierInstalled, pruneMacNotifyQueue, queueMacNotification } from "./macos-notifier";
-import { markLeakNoticeDelivered } from "./leak-notice";
+import { markLeakNoticeDelivered, releaseLeakNoticeClaims } from "./leak-notice";
+import { desktopLeakNotice } from "../hooks/notice";
 import { activeFindings, readLeakRecord } from "./leak-store";
 import { readConfig } from "../hooks/fp-config";
 import { brandAnsi, ANSI_RESET, ANSI_BOLD, ANSI_DIM, helpScreen, helpOptsFor } from "../hooks/tui";
@@ -415,66 +416,65 @@ async function announceLeaksOrThrow(result: AuditResult): Promise<void> {
   const live = new Set(activeFindings(readLeakRecord()).map((f) => f.id));
   const shown = claimed.filter((id) => live.has(id)).length || claimed.length;
 
-  const n = shown === 1 ? "a credential" : `${shown} credentials`;
-  const title = "failproofai found a leaked credential";
-  // Fixed text with a count interpolated — the same rule as the in-CLI notice,
-  // for the same reason. A finding's own text comes from a repository this
-  // machine cloned, and notification bodies render markup on several Linux
-  // desktops.
-  //
-  // The second sentence is the only place most users are ever offered the
-  // digest. The scan is local and needs no account, so nothing else in the
-  // product has a reason to ask for an address — which is exactly why the
-  // audit's findings have historically reached nobody. A banner someone is
-  // already reading, about a key of their own, is the one moment the offer is
-  // worth anything.
+  const n = shown === 1 ? "a possible credential exposure" : `${shown} possible credential exposures`;
+  // Fixed text with no scanned content and no count. A finding's own text comes
+  // from a repository this machine cloned, and notification bodies render
+  // markup on several Linux desktops. The count is intentionally left to the
+  // report too: a banner must not turn detector candidates into a claim that
+  // the user leaked N real credentials.
   //
   // No action buttons, deliberately. `Notify` supports them, but a server
   // delivers the click back as an `ActionInvoked` signal to the sender — and
   // this process exits as soon as the scan finishes, so the button would be
-  // dead. Two plain commands the user can copy beat one button that does
-  // nothing.
-  const body =
-    `${n} in your agent transcripts. Run failproofai audit to see them — ` +
-    "or failproofai audit --schedule to get them by email.";
+  // dead. A plain command the user can copy beats a button that does nothing.
+  const { title, body } = desktopLeakNotice();
+  let delivered = false;
 
-  // The two platforms need opposite things, and the split is not cosmetic. On
-  // Linux this process can reach the session bus itself. On macOS it cannot
-  // reach Notification Center at all — it is a child of a LaunchDaemon, outside
-  // the GUI session — so it hands the message to an agent that lives inside
-  // one. See `macos-notifier.ts` for why that agent exists.
-  if (process.platform === "darwin") {
-    pruneMacNotifyQueue();
-    if (!queueMacNotification(claimed[0], title, body)) {
-      process.stderr.write(`failproofai: found ${n} but could not queue a notification\n`);
-    } else if (!macNotifierInstalled()) {
-      // Queued, but nothing will collect it: setup either never ran or could
-      // not compile the applet. Worth a line, because the symptom otherwise is
-      // simply silence.
+  try {
+    // The two platforms need opposite things, and the split is not cosmetic. On
+    // Linux this process can reach the session bus itself. On macOS it cannot
+    // reach Notification Center at all — it is a child of a LaunchDaemon, outside
+    // the GUI session — so it hands the message to an agent that lives inside
+    // one. See `macos-notifier.ts` for why that agent exists.
+    if (process.platform === "darwin") {
+      pruneMacNotifyQueue();
+      if (!queueMacNotification(claimed[0], title, body)) {
+        process.stderr.write(`failproofai: found ${n} but could not queue a notification\n`);
+      } else {
+        delivered = true; // the durable queue owns delivery from here
+      }
+      if (delivered && !macNotifierInstalled()) {
+        // Queued, but nothing currently collects it. Keep the claim because the
+        // payload is durable and will be consumed when the LaunchAgent returns.
+        // Worth a line, because the immediate symptom is otherwise silence.
+        process.stderr.write(
+          `failproofai: found ${n}; the notifier is not installed, so nothing will show it ` +
+            `(run \`failproofai config\`)\n`,
+        );
+      }
+      return;
+    }
+
+    const outcome = await notifyDesktop(
+      title,
+      body,
+      // A stable id would let a repeat scan replace the previous bubble instead
+      // of stacking. We do not have one yet — the server assigns it and we would
+      // have to persist it — so a fresh notification is correct here, and it is
+      // bounded: at most one per distinct credential, ever.
+      0,
+    );
+    delivered = outcome.ok;
+    if (!outcome.ok) {
+      // stderr, so it lands in the journal beside the run it belongs to. Not a
+      // failure of the audit — but "we found a key and could not tell you" is
+      // exactly the sentence someone debugging this needs to find.
       process.stderr.write(
-        `failproofai: found ${n}; the notifier is not installed, so nothing will show it ` +
-          `(run \`failproofai config\`)\n`,
+        `failproofai: found ${n} but could not raise a desktop notification (${outcome.reason})\n`,
       );
     }
-    return;
-  }
-
-  const outcome = await notifyDesktop(
-    title,
-    body,
-    // A stable id would let a repeat scan replace the previous bubble instead
-    // of stacking. We do not have one yet — the server assigns it and we would
-    // have to persist it — so a fresh notification is correct here, and it is
-    // bounded: at most one per distinct credential, ever.
-    0,
-  );
-  if (!outcome.ok) {
-    // stderr, so it lands in the journal beside the run it belongs to. Not a
-    // failure of the audit — but "we found a key and could not tell you" is
-    // exactly the sentence someone debugging this needs to find.
-    process.stderr.write(
-      `failproofai: found ${n} but could not raise a desktop notification (${outcome.reason})\n`,
-    );
+  } finally {
+    if (!delivered) releaseLeakNoticeClaims(claimed, undefined, "desktop");
   }
 }
 

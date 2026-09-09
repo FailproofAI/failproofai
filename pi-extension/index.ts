@@ -49,6 +49,7 @@ function resolveSpawn(): { cmd: string; args: string[] } {
 interface PolicyDecision {
   permission?: "allow" | "deny";
   reason?: string;
+  failproofaiNotice?: string;
 }
 
 /**
@@ -102,7 +103,7 @@ function forwardPolicy(eventName: string, payload: unknown): void {
   }
 }
 
-function callPolicy(eventName: string, payload: unknown): { block: boolean; reason: string } {
+function callPolicy(eventName: string, payload: unknown): { block: boolean; reason: string; notice?: string } {
   const { cmd, args } = resolveSpawn();
   debug(`callPolicy event=${eventName} cmd=${cmd}`);
   try {
@@ -121,8 +122,13 @@ function callPolicy(eventName: string, payload: unknown): { block: boolean; reas
     const parsed = JSON.parse(stdout) as PolicyDecision;
     if (parsed.permission === "deny") {
       debug(`DENY reason=${parsed.reason}`);
-      return { block: true, reason: parsed.reason ?? "Blocked by failproofai" };
+      return {
+        block: true,
+        reason: parsed.reason ?? "Blocked by failproofai",
+        notice: parsed.failproofaiNotice,
+      };
     }
+    return { block: false, reason: "", notice: parsed.failproofaiNotice };
   } catch (err) {
     debug(`EXCEPTION ${err instanceof Error ? err.message : String(err)}`);
     // Fail-open: never block tool execution because of an infra failure.
@@ -370,7 +376,13 @@ interface PiBeforeAgentStartEvent {
 }
 
 interface PiExtensionApi {
-  on(event: string, handler: (event: unknown) => unknown): void;
+  on(event: string, handler: (event: unknown, ctx?: PiExtensionContext) => unknown): void;
+}
+
+interface PiExtensionContext {
+  ui?: {
+    notify(message: string, type?: "info" | "warning" | "error"): void;
+  };
 }
 
 export default function failproofaiBridge(pi: PiExtensionApi) {
@@ -491,7 +503,7 @@ export default function failproofaiBridge(pi: PiExtensionApi) {
   // The 5 require-*-before-stop builtins thus enforce by gating the NEXT
   // user turn's system prompt rather than by retrying the same loop. If the
   // user kills Pi between turns, the gate is missed — same bound Claude has.
-  pi.on("agent_end", (event: unknown): unknown => {
+  pi.on("agent_end", (event: unknown, ctx?: PiExtensionContext): unknown => {
     const e = event as PiAgentEndEvent;
     const cwd = resolveCwd(e.cwd);
     const sessionId = resolveSessionId(e.sessionId, cwd);
@@ -503,6 +515,9 @@ export default function failproofaiBridge(pi: PiExtensionApi) {
     if (decision.block && decision.reason && sessionId) {
       pendingStopBlockBySession.set(sessionId, decision.reason);
       debug(`agent_end deny stored for session=${sessionId}`);
+    }
+    if (decision.notice) {
+      try { ctx?.ui?.notify(decision.notice, "warning"); } catch { /* fail-open */ }
     }
     return undefined;
   });

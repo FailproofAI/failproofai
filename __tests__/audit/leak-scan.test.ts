@@ -22,24 +22,14 @@ describe("findSecrets — vendor shapes", () => {
 });
 
 describe("findSecrets — named assignments", () => {
-  // The class the vendor patterns cannot see: 230 of 237 secret-named
-  // assignments in the corpus match none of the shipped patterns, because
-  // first-party keys have no minted prefix.
-  it("finds a first-party key by its name alone", () => {
-    const found = findSecrets(`COMPOSIO_API_KEY=${FIRST_PARTY}`);
-    expect(found).toHaveLength(1);
-    expect(found[0].name).toBe("COMPOSIO_API_KEY");
-    expect(found[0].shaped).toBe(false);
-  });
-
-  it("reads the same four spellings the redactor does", () => {
+  it("does not turn a secret-looking variable name into a finding", () => {
     for (const line of [
       `MY_API_KEY=${FIRST_PARTY}`,
       `MY_API_KEY = "${FIRST_PARTY}"`,
       `MY_API_KEY: "${FIRST_PARTY}"`,
       `{"my_api_key": "${FIRST_PARTY}"}`,
     ]) {
-      expect(findSecrets(line).map((f) => f.value), line).toContain(FIRST_PARTY);
+      expect(findSecrets(line), line).toEqual([]);
     }
   });
 
@@ -98,14 +88,11 @@ describe("findSecrets — what is structurally not a credential", () => {
 // it must never be wider. A value the report can NAME but the redactor cannot
 // MASK is a leak inside the leak report.
 describe("everything the detector finds, the redactor can mask", () => {
-  it("holds for every named assignment shape", () => {
+  it("holds for every recognized credential shape", () => {
     for (const line of [
-      `COMPOSIO_API_KEY=${FIRST_PARTY}`,
-      `MY_API_KEY = "${FIRST_PARTY}"`,
-      `db_password: ${FIRST_PARTY}`,
-      `{"client_secret": "${FIRST_PARTY}"}`,
-      `sessionKey=${FIRST_PARTY}`,
       `GITHUB_TOKEN=${GH}`,
+      `ANTHROPIC_API_KEY=sk-ant-api03-${"A".repeat(40)}`,
+      `AWS_ACCESS_KEY_ID=AKIA${"3QXZ7YTNBVCD2WLM"}`,
     ]) {
       const found = findSecrets(line);
       expect(found.length, line).toBeGreaterThan(0);
@@ -128,8 +115,8 @@ describe("flattenToolInput", () => {
     expect(findSecrets(flat).some((f) => f.value === GH)).toBe(true);
   });
 
-  it("keeps a key adjacent to its value so JSON still reads as an assignment", () => {
-    const flat = flattenToolInput({ api_key: FIRST_PARTY });
+  it("keeps a key adjacent to a shaped value so its name can be attached", () => {
+    const flat = flattenToolInput({ api_key: GH });
     expect(findSecrets(flat).map((f) => f.name)).toContain("api_key");
   });
 
@@ -196,7 +183,7 @@ describe("the literal prefilter", () => {
       [`AWS_ACCESS_KEY_ID=AKIA${"3QXZ7YTNBVCD2WLM"}`, true],
       [`SLACK=xoxb-${"1111111111-2222222222-abcdefghijklmnopqrstuvwx"}`, true],
       [`TELEGRAM_BOT_TOKEN=1234567890:${"A".repeat(35)}`, true],
-      [`COMPOSIO_API_KEY=${FIRST_PARTY}`, true],
+      [`COMPOSIO_API_KEY=${FIRST_PARTY}`, false],
       ["git commit -m 'nothing to see'", false],
       ["const x = 1; // ordinary source", false],
     ];
@@ -222,35 +209,17 @@ describe("the literal prefilter", () => {
   });
 });
 
-// ── The value gate on weak names ─────────────────────────────────────────────
-//
-// Measured on a real 2,664-transcript machine: the name layer produced 394
-// findings, 389 with no vendor prefix and 227 under 24 characters. The names
-// doing it were ordinary programming vocabulary holding ordinary programming
-// values — `keyType=primary`, `tokenLimitCancelled=false`,
-// `max_output_tokens=4096`, `resultKey=someCamelCaseField`.
-//
-// So the bar now depends on how much the NAME is claiming. A word that means
-// credential and nothing else still gets the benefit of the doubt; a word that
-// is also normal code has to be backed by a value that looks minted.
-describe("a weak name needs a value that looks like a secret", () => {
+// Name-only matching produced hundreds of ordinary code literals and synthetic
+// scanner fixtures on the measured machine. Names now annotate only values a
+// recognizable credential shape already established.
+describe("names never create findings", () => {
   const found = (text: string) => findSecrets(text).length > 0;
 
-  it("still takes a short value under an unambiguous name", () => {
-    // `hunter2secret` under PASSWORD is a leaked password. Length is no
-    // argument against it, because the name is not ambiguous.
-    expect(found("DB_PASSWORD=hunter2secret")).toBe(true);
-    expect(found("STRIPE_SECRET=sk_live_51HqRtYuIoPaSdFgHjKlZ")).toBe(true);
-    expect(found('apiKey: "Zk7Qw2Lm9Xr4Tp8Vb1Nc6Hs3"')).toBe(true);
-  });
-
-  it("takes a weak name when the value is actually minted", () => {
-    expect(found('authToken="Zq7Kp2Lm9Xr4Tv8Nb1Hc6Ws3Ee5"')).toBe(true);
-    expect(found('sessionKey="aB3xY9kL2mQ7pR4tW8zC1vN6"')).toBe(true);
-  });
-
-  it("drops the programming vocabulary that produced most of the noise", () => {
+  it("drops both explicit secret names and ambiguous programming vocabulary", () => {
     for (const text of [
+      "DB_PASSWORD=hunter2secret",
+      'apiKey: "Zk7Qw2Lm9Xr4Tp8Vb1Nc6Hs3"',
+      'authToken="Zq7Kp2Lm9Xr4Tv8Nb1Hc6Ws3Ee5"',
       "keyType=primary",
       "tokenLimitCancelled=false",
       "max_output_tokens=4096",
@@ -264,9 +233,7 @@ describe("a weak name needs a value that looks like a secret", () => {
     }
   });
 
-  it("never lets the value gate hide a real vendor key", () => {
-    // The shape layer matches on format, whatever the name is — so a weak name
-    // costs nothing when the value is a recognisable key.
+  it("still attaches a name to a recognizable vendor key", () => {
     expect(found("token=ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8")).toBe(true);
     expect(found("keyType=" + "sk-ant-api03-" + "Zq7".repeat(30))).toBe(true);
   });

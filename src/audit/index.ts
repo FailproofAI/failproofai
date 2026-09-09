@@ -19,7 +19,7 @@ import { severityForBuiltin } from "./features";
 import { findSecrets, flattenToolInput } from "./leak-scan";
 import { fingerprintSecret, fingerprintId } from "./leak-fingerprint";
 import { readLeakIdentity, readLeakRecord, writeLeakRecord } from "./leak-store";
-import { upsertFinding, describeMechanism } from "./leak-record";
+import { upsertFinding, describeMechanism, emptyRecord } from "./leak-record";
 import { shortenPaths } from "./redact-example";
 import { readCachedTranscript, writeCachedTranscriptResult } from "./cache";
 import { initReplay, replayEvent, restoreReplay } from "./replay";
@@ -176,6 +176,50 @@ interface ScanOutcome {
   resumed: boolean;
 }
 
+const CREDENTIAL_RESEARCH_MARKERS: ReadonlyArray<RegExp> = [
+  /\b(?:secret|credential)[-_ ](?:scanner|detection|detector|pattern|regex|corpus)\b/i,
+  /\b(?:trufflehog|trufflesecurity|gitleaks|detect-secrets|secret-detection-rules)\b/i,
+  /\b(?:SECRET_PATTERNS|findSecrets|isDocsLiteral|leak-scan)\b/,
+  /\b(?:fixture|placeholder|synthetic|sample) (?:api )?(?:key|token|secret|credential)s?\b/i,
+  /\b(?:grep|rg|ripgrep|scan|hunt|search)\b[^\n]{0,240}\b(?:secret|credential|token)s?\b/i,
+];
+
+const CREDENTIAL_RESEARCH_PURPOSE =
+  /\b(?:hunt|scan|search|research|test)(?:ing)?\b[^\n]{0,80}\b(?:secret|credential|token)s?\b|\b(?:secret|credential|token)s?\b[^\n]{0,80}\b(?:scanner|detector|detection|research|fixtures?|corpus)\b/i;
+
+/**
+ * Deliberate secret-detector research is full of realistic fake credentials.
+ * Reporting those as leaks is the feedback loop that made one measured session
+ * contribute 455 of the 500 rows in its own audit.
+ *
+ * Require independent signals across tool INPUTS. Results are excluded from
+ * classification: a normal command can print hostile text, while commands and
+ * URLs state what the agent intentionally set out to inspect. Two signals keep
+ * an ordinary discussion that happens to say "secret scanner" from silencing a
+ * session; dedicated detector/test work reliably carries several.
+ */
+export function isCredentialResearchSession(
+  events: NormalizedToolEvent[],
+  sessionDescription?: string,
+): boolean {
+  if (sessionDescription && CREDENTIAL_RESEARCH_PURPOSE.test(sessionDescription)) return true;
+  const matched = new Set<number>();
+  let evidenceEvents = 0;
+  for (const event of events) {
+    const intent = flattenToolInput(event.toolInput);
+    let eventMatched = false;
+    for (let i = 0; i < CREDENTIAL_RESEARCH_MARKERS.length; i++) {
+      if (CREDENTIAL_RESEARCH_MARKERS[i].test(intent)) {
+        matched.add(i);
+        eventMatched = true;
+      }
+    }
+    if (eventMatched) evidenceEvents++;
+    if (matched.size >= 2 || evidenceEvents >= 3) return true;
+  }
+  return false;
+}
+
 async function scanOneTranscript(
   meta: TranscriptMetadata,
   resume?: { fromByte: number; detectorState: DetectorSessionState },
@@ -244,6 +288,8 @@ async function scanOneTranscript(
   // Capture the session's cwd from the first event that carried one — every
   // event in a single transcript shares the same cwd by construction.
   result.cwd = result.cwd || events[0].cwd || "";
+  const suppressLeakScan = isCredentialResearchSession(events, meta.sessionDescription);
+  if (suppressLeakScan) result.leakScanSuppressed = "credential-research";
 
   for (const event of events) {
     // The 8 behavioural detectors are switched off with the rest of the old
@@ -284,7 +330,7 @@ async function scanOneTranscript(
     // decision per policy, never the text that matched. Scanned separately so
     // the leak report can name WHICH key, and so detection can be tuned for
     // precision without dragging the redactor's recall down with it.
-    recordLeaks(result, event);
+    if (!suppressLeakScan) recordLeaks(result, event);
   }
 
   return { result, bytesScanned, detectorState: sessionState, resumed };
@@ -358,10 +404,19 @@ function leakSalt(): string | null {
  * human about. Never throws: a scan that finds leaks it cannot write down has
  * still found them, and the caller reports on the in-memory result either way.
  */
-function persistLeaks(perTranscript: TranscriptAuditResult[]): string[] {
+export function persistLeaks(perTranscript: TranscriptAuditResult[], replaceExisting: boolean): string[] {
   const fresh: string[] = [];
   try {
-    const record = readLeakRecord();
+    const previous = readLeakRecord();
+    const previousIds = new Set(previous.findings.map((f) => f.id));
+    // A successful all-history scan is authoritative. Rebuilding is what lets
+    // detector precision fixes remove findings they now reject; merging made
+    // every false positive live for 90 days even after the code was fixed.
+    // Scoped or incomplete scans still merge because absence outside their
+    // coverage says nothing.
+    const record = replaceExisting
+      ? emptyRecord(previous.salt, new Date().toISOString())
+      : previous;
     for (const t of perTranscript) {
       for (const leak of t.leaks ?? []) {
         const { isNew } = upsertFinding(record, {
@@ -380,7 +435,10 @@ function persistLeaks(perTranscript: TranscriptAuditResult[]): string[] {
             mechanism: describeMechanism(leak.toolName, leak.direction, leak.path),
           },
         });
-        if (isNew) fresh.push(leak.id);
+        // During an authoritative rebuild every insertion is new to the empty
+        // record, but only ids absent from the previous record are new to the
+        // HUMAN and eligible for a notification.
+        if (isNew && !previousIds.has(leak.id)) fresh.push(leak.id);
       }
     }
     writeLeakRecord(record);
@@ -409,7 +467,7 @@ function formatPolicyExample(_policyName: string, event: NormalizedToolEvent): s
  * came from the FIRST event in the file and the tail's came from the first
  * event after the offset, so the older one wins.
  */
-function mergeIncremental(
+export function mergeIncremental(
   cached: TranscriptAuditResult,
   tail: TranscriptAuditResult,
 ): TranscriptAuditResult {
@@ -423,6 +481,12 @@ function mergeIncremental(
     examplesByName: {},
     rangeByName: { ...cached.rangeByName },
   };
+  if (cached.leakScanSuppressed || tail.leakScanSuppressed) {
+    out.leakScanSuppressed = "credential-research";
+    out.leaks = [];
+  } else {
+    out.leaks = [...(cached.leaks ?? []), ...(tail.leaks ?? [])];
+  }
   for (const [name, list] of Object.entries(cached.examplesByName)) {
     out.examplesByName[name] = [...list];
   }
@@ -605,12 +669,14 @@ async function runAuditInner(opts: RunAuditOptions, startedAt: number): Promise<
 
   // 1. Discover transcripts across all selected CLIs.
   const allTranscripts: TranscriptMetadata[] = [];
+  let discoveryErrors = 0;
   for (const cli of clis) {
     const adapter = ADAPTERS[cli];
     let list: TranscriptMetadata[];
     try {
       list = await adapter.listTranscripts({ projects: opts.projects, sinceMs });
     } catch {
+      discoveryErrors++;
       continue; // adapter failures shouldn't kill the whole audit
     }
     allTranscripts.push(...list);
@@ -720,7 +786,14 @@ async function runAuditInner(opts: RunAuditOptions, startedAt: number): Promise<
   // not alert again however many fresh sightings it accumulates, and a
   // credential seen for the first time must alert even though its rule has
   // fired a thousand times before.
-  const newFindingIds = persistLeaks(perTranscript);
+  const coversAllHistory =
+    opts.clis === undefined &&
+    opts.projects === undefined &&
+    opts.since === undefined &&
+    discoveryErrors === 0 &&
+    errors === 0 &&
+    skipped === 0;
+  const newFindingIds = persistLeaks(perTranscript, coversAllHistory);
 
   const auditResult: AuditResult = {
     version: 2,

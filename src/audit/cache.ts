@@ -14,6 +14,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, openSync
 import { join } from "node:path";
 import { BUILTIN_POLICIES } from "../hooks/builtin-policies";
 import { AUDIT_DETECTORS } from "./detectors";
+import { LEAK_SCAN_VERSION } from "./leak-scan";
 import type { TranscriptAuditResult, DetectorSessionState } from "./types";
 import { auditCacheDir } from "../hooks/fp-home";
 
@@ -162,6 +163,9 @@ interface CacheEntry {
   sizeBytes: number;
   engineVersion: string;
   detectorVersion: string;
+  /** Separate because leak detection is neither a builtin policy nor one of
+   * the behavioural AUDIT_DETECTORS hashed above. */
+  leakScanVersion: number;
   result: TranscriptAuditResult;
   /**
    * How far into the file the recorded result actually accounts for, at a LINE
@@ -269,6 +273,7 @@ export function readCachedTranscript(
     if (entry.schemaVersion !== CACHE_SCHEMA_VERSION) return null;
     if (entry.engineVersion !== getEngineVersion()) return null;
     if (entry.detectorVersion !== getDetectorVersion()) return null;
+    if (entry.leakScanVersion !== LEAK_SCAN_VERSION) return null;
     // Number.isFinite (not typeof) so a malformed JSON `Infinity` /
     // `NaN` is rejected — those would otherwise bypass the TTL check
     // and pin a stale entry as valid forever.
@@ -332,6 +337,7 @@ export function writeCachedTranscriptResult(
       sizeBytes,
       engineVersion: getEngineVersion(),
       detectorVersion: getDetectorVersion(),
+      leakScanVersion: LEAK_SCAN_VERSION,
       result,
     };
     if (resume && resume.bytesScanned > 0) {

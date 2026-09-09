@@ -24,18 +24,26 @@
  * them apart so the report can tell a user which of the two happened.
  */
 import { SECRET_PATTERNS } from "../hooks/builtin-policies";
-import { secretNameStrength } from "./redact-example";
+
+/**
+ * Cache key for the credential detector.
+ *
+ * The transcript cache used to key only on builtin policies and behavioural
+ * audit detectors. Changing THIS scanner therefore kept serving the old
+ * `result.leaks` forever, which made a precision fix appear to do nothing on a
+ * warm machine. Bump this whenever matching or suppression semantics change.
+ */
+export const LEAK_SCAN_VERSION = 5;
 
 /** One credential value found in one event. */
 export interface SecretMatch {
   /** The raw value. Held in memory only — the caller fingerprints it and must
    *  never persist or transmit this. */
   value: string;
-  /** The identifier it was assigned to, when it came from an assignment. For
-   *  the first-party class (230 of 237 secret-named assignments match no vendor
-   *  pattern) this is the only actionable label there is. */
+  /** The identifier it was assigned to, when a recognized shaped value also
+   *  appeared in an assignment. Used only as an actionable label. */
   name: string | null;
-  /** Which rule found it — a vendor label, or "assigned secret". */
+  /** Which recognizable credential shape found it. */
   rule: string;
   /** Whether the value carried a recognised vendor shape. Drives the record's
    *  confidence, and therefore whether an alert may name a console. */
@@ -68,86 +76,6 @@ export interface SecretMatch {
  */
 const ASSIGNMENT_RE =
   /(["']?)\b([A-Za-z_][A-Za-z0-9_]{0,127})\1([ \t]*(?::(?!\/\/)|=)[ \t]*)("[^"]*"|'[^']*'|[^\s;|&"']+)/g;
-
-/** Shortest value worth reporting. Below this it is a flag, a boolean or a
- *  placeholder far more often than a credential. */
-const MIN_VALUE_LEN = 8;
-
-/**
- * Values that are structurally incapable of being a leaked credential.
- *
- * Deliberately structural, never entropy: the corpus's one confirmed-live
- * password measures 3.19 bits per character while 1.3 million UUIDs in the same
- * corpus sit at 3.72, so any entropy threshold that catches the password also
- * catches every UUID. These tests are decisive instead — a `$VAR` reference
- * contains no secret by construction, and `process.env.X` is the CORRECT secure
- * form, which the redactor currently flags 7,870 times.
- */
-/**
- * Does this VALUE plausibly hold a credential, given how sure the NAME is?
- *
- * The name layer exists for first-party secrets with no recognisable format, so
- * it cannot lean on shape the way the vendor layer does. But leaning on the
- * name ALONE produced 394 findings on one real machine, of which 389 carried no
- * vendor prefix and 227 were under 24 characters — `keyType`,
- * `tokenLimitCancelled`, `max_output_tokens`, `resultKey`, `configDirKey`.
- * Ordinary programming vocabulary, holding ordinary programming values.
- *
- * So the bar depends on how much the name is really claiming:
- *
- *   strong — `DB_PASSWORD`, `STRIPE_SECRET`, `API_KEY`, `PRIVATE_KEY`. The word
- *            means credential and nothing else, so the value gets the benefit of
- *            the doubt: `hunter2` under `PASSWORD` is a leaked password and
- *            length is no argument against it.
- *   weak   — `key`, `token`, `auth`, `sig`, `cookie`. Also normal English and
- *            normal code. The value has to carry the claim instead.
- *
- * The weak bar is deliberately close to what real keys look like: at least 24
- * characters (the shortest common vendor key is 32; nothing at 8-15 is an API
- * key) and more than one character class, because a lone lowercase word —
- * `primary`, `cancelled`, `standard` — is a config value, not a secret.
- *
- * A real vendor key that happens to sit under a weak name is unaffected: the
- * SHAPE layer matches it on format, whatever it is called.
- */
-const WEAK_NAME_MIN_LEN = 24;
-
-function looksLikeSecretValue(value: string): boolean {
-  if (value.length < WEAK_NAME_MIN_LEN) return false;
-  const classes =
-    Number(/[a-z]/.test(value)) + Number(/[A-Z]/.test(value)) + Number(/[0-9]/.test(value));
-  // One class only — an all-lowercase or all-numeric run — reads as prose, an
-  // enum, or an id, not as something minted to be unguessable.
-  if (classes < 2) return false;
-  // A dotted or dashed sentence of words (`some-long-feature-flag-name`) has the
-  // length and can have mixed case, but no run of unbroken entropy anywhere.
-  const longestRun = Math.max(0, ...value.split(/[^A-Za-z0-9]+/).map((p) => p.length));
-  if (longestRun < 12) return false;
-  // camelCase clears "two character classes" and "one long run" on letters
-  // alone — `someLongCamelCaseFieldName` is 26 characters of it. Minted keys
-  // almost always carry digits; the ones that do not are long. Requiring one or
-  // the other is what separates an identifier from a secret.
-  return /[0-9]/.test(value) || value.length >= 32;
-}
-
-function isNotACredential(value: string): boolean {
-  if (value.length < MIN_VALUE_LEN) return true;
-  // Shell/template indirection: the value is a reference, not a secret.
-  if (/^[$<{(`%]/.test(value)) return true;
-  if (value.includes("${") || value.includes("{{") || value.includes("%(")) return true;
-  // A code expression — `process.env.DISCORD_TOKEN` is how you SHOULD do it.
-  if (/^[A-Za-z_$][\w$]*(\.[A-Za-z_$][\w$]*)+$/.test(value)) return true;
-  // Already masked, by us or by anyone else.
-  if (value.includes("[REDACTED") || /^[•*#.]+$/.test(value)) return true;
-  if (/(.)\1{5,}/.test(value)) return true;          // xxxxxxxx, 00000000
-  if (/^(true|false|null|undefined|none)$/i.test(value)) return true;
-  if (/^-?\d+(\.\d+)?$/.test(value)) return true;    // pure number
-  if (/^\/|^~\/|^\.\.?\//.test(value)) return true;  // a path
-  // A UUID is an identifier, never a credential — and it is the dominant shape
-  // of the `session_id` / `request_id` values that the name layer used to flag.
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) return true;
-  return false;
-}
 
 /** Strip one layer of surrounding quotes. */
 function unquote(v: string): string {
@@ -299,23 +227,17 @@ export function findSecrets(text: string): SecretMatch[] {
     }
   }
 
+  // Names annotate a value the shape layer already proved; they no longer
+  // create findings. Even after increasingly elaborate value heuristics, the
+  // name-only lane still produced hundreds of code literals and test fixtures
+  // on the measured machine. The product now deliberately prefers missing an
+  // unrecognisable first-party password over telling somebody they leaked 500
+  // credentials they do not have.
   for (const m of text.matchAll(ASSIGNMENT_RE)) {
     const name = m[2];
     const value = unquote(m[4]);
-    const strength = secretNameStrength(name);
-    if (strength === "none" || isNotACredential(value) || isDocsLiteral(value)) continue;
-    // A weak name has to be backed by a value that looks minted. See
-    // `looksLikeSecretValue` for what that buys and what it costs.
-    if (strength === "weak" && !looksLikeSecretValue(value)) continue;
     const existing = byValue.get(value);
-    if (existing) {
-      // A vendor-shaped value that also has a name: keep the vendor rule (it
-      // can name a console) and gain the name (it says which of the user's
-      // variables to change).
-      existing.name ??= name;
-      continue;
-    }
-    byValue.set(value, { value, name, rule: "assigned secret", shaped: false });
+    if (existing) existing.name ??= name;
   }
 
   return [...byValue.values()];

@@ -102,9 +102,9 @@ describe("the bounds did not cost a match", () => {
     }
   });
 
-  it("still finds an assigned secret with a normal-length name", () => {
-    const found = findSecrets('COMPOSIO_API_KEY="abcdefghijklmnopqrstuvwxyz012345"');
-    expect(found.map((f) => f.name)).toContain("COMPOSIO_API_KEY");
+  it("still annotates a recognized credential with a normal-length name", () => {
+    const found = findSecrets('GITHUB_TOKEN="ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"');
+    expect(found.map((f) => f.name)).toContain("GITHUB_TOKEN");
   });
 
   it("ignores an identifier longer than any real one", () => {

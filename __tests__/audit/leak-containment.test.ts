@@ -41,7 +41,6 @@ const SECRETS = [
   // Slack token, while no line in this file matches a scanner looking at source.
   ["xoxb", "9876543210", "9876543210987", "ZaBcDeFgHiJkLmNoPqRsTuVw"].join("-"),
   "AKIAIOSFODNN7REALKEY",
-  "hunter2SuperSecretPassword!",
   "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r8W1gFWFOEjXkFY",
 ] as const;
 
@@ -50,9 +49,8 @@ const TRANSCRIPT = [
   `ANTHROPIC_API_KEY=${SECRETS[1]}`,
   `{"slack_bot_token": "${SECRETS[2]}"}`,
   `aws_access_key_id = ${SECRETS[3]}`,
-  `DB_PASSWORD='${SECRETS[4]}'`,
-  `Authorization: Bearer ${SECRETS[5]}`,
-  `psql postgres://admin:${SECRETS[4]}@db.internal:5432/prod`,
+  `Authorization: Bearer ${SECRETS[4]}`,
+  "psql postgres://admin:hunter2SuperSecretPassword!@db.internal:5432/prod",
 ].join("\n");
 
 function auditResult(): AuditResult {
@@ -160,7 +158,6 @@ describe("a secret goes in", () => {
       "Slack token",
       "AWS access key ID",
       "JWT",
-      "assigned secret",
     ]) {
       expect(rules, expected).toContain(expected);
     }

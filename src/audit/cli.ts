@@ -214,6 +214,18 @@ function startProgress(): Progress {
     const lines = Array.from({ length: n }, (_, i) => lineFor(i));
     // Move the cursor back up over the previously-drawn block, then clear and
     // rewrite each line in place.
+    //
+    // INVARIANT: nothing else may write to the terminal while this is running.
+    // The cursor-up is a fixed count, so any stray line pushes the cursor down
+    // and the next redraw repaints the block lower — stranding the top of the
+    // old frame above it, which reads as the audit having run twice. That is
+    // not hypothetical: Node's "SQLite is an experimental feature" warning did
+    // exactly this on every first run, two lines of it, and it is why
+    // `lib/sqlite-reader.ts` now filters that one warning at the source.
+    //
+    // There is no defensive fix from inside here — erasing to end of screen
+    // still leaves the stranded lines ABOVE the cursor. Keep the terminal
+    // quiet instead.
     if (printed) process.stdout.write(`\x1b[${n}A`);
     process.stdout.write(lines.map((l) => `\x1b[2K${l}`).join("\n") + "\n");
     printed = true;

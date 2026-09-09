@@ -326,6 +326,35 @@ export function isPublishedByDesign(name: string): boolean {
   return PUBLISHED_MARKERS.test(upper);
 }
 
+/**
+ * How confidently the NAME alone says "credential".
+ *
+ * `strong` — the word means secret and nothing else: `DB_PASSWORD`,
+ * `STRIPE_SECRET`, `PRIVATE_KEY`. A short value here is still worth flagging;
+ * `hunter2` assigned to `PASSWORD` is a leaked password.
+ *
+ * `weak` — the word is ALSO ordinary programming vocabulary: `key`, `token`,
+ * `auth`, `sig`. Measured on a real 2,664-transcript machine these produced
+ * `keyType`, `tokenLimitCancelled`, `max_output_tokens`, `resultKey`,
+ * `configDirKey` — 394 findings from this layer, of which 389 had no vendor
+ * prefix and 227 were under 24 characters. Nothing that short is an API key.
+ * A weak name has to be backed by a value that actually looks like a secret.
+ */
+export type SecretNameStrength = "strong" | "weak" | "none";
+
+const STRONG_NAME_WORDS = ["SECRET", "PASSWORD", "PASSWD", "PASSPHRASE", "CREDENTIAL", "APIKEY", "PRIVATEKEY"];
+
+export function secretNameStrength(name: string): SecretNameStrength {
+  if (!isSecretName(name)) return "none";
+  const upper = name.toUpperCase();
+  if (STRONG_NAME_WORDS.some((w) => upper.includes(w))) return "strong";
+  // `API_KEY` / `apiKey` split into components rather than matching APIKEY as a
+  // substring, and they are as unambiguous as the substring form.
+  const parts = identifierComponents(name);
+  if (parts.includes("API") && parts.includes("KEY")) return "strong";
+  return "weak";
+}
+
 export function isSecretName(name: string): boolean {
   // Runs first and beats every other signal: a value the framework compiles
   // into the browser bundle is public no matter what the rest of the name says.

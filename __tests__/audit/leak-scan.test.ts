@@ -221,3 +221,53 @@ describe("the literal prefilter", () => {
     expect(Date.now() - started).toBeLessThan(200);
   });
 });
+
+// ── The value gate on weak names ─────────────────────────────────────────────
+//
+// Measured on a real 2,664-transcript machine: the name layer produced 394
+// findings, 389 with no vendor prefix and 227 under 24 characters. The names
+// doing it were ordinary programming vocabulary holding ordinary programming
+// values — `keyType=primary`, `tokenLimitCancelled=false`,
+// `max_output_tokens=4096`, `resultKey=someCamelCaseField`.
+//
+// So the bar now depends on how much the NAME is claiming. A word that means
+// credential and nothing else still gets the benefit of the doubt; a word that
+// is also normal code has to be backed by a value that looks minted.
+describe("a weak name needs a value that looks like a secret", () => {
+  const found = (text: string) => findSecrets(text).length > 0;
+
+  it("still takes a short value under an unambiguous name", () => {
+    // `hunter2secret` under PASSWORD is a leaked password. Length is no
+    // argument against it, because the name is not ambiguous.
+    expect(found("DB_PASSWORD=hunter2secret")).toBe(true);
+    expect(found("STRIPE_SECRET=sk_live_51HqRtYuIoPaSdFgHjKlZ")).toBe(true);
+    expect(found('apiKey: "Zk7Qw2Lm9Xr4Tp8Vb1Nc6Hs3"')).toBe(true);
+  });
+
+  it("takes a weak name when the value is actually minted", () => {
+    expect(found('authToken="Zq7Kp2Lm9Xr4Tv8Nb1Hc6Ws3Ee5"')).toBe(true);
+    expect(found('sessionKey="aB3xY9kL2mQ7pR4tW8zC1vN6"')).toBe(true);
+  });
+
+  it("drops the programming vocabulary that produced most of the noise", () => {
+    for (const text of [
+      "keyType=primary",
+      "tokenLimitCancelled=false",
+      "max_output_tokens=4096",
+      "resultKey=someLongCamelCaseFieldName",
+      "configDirKey=user-config-directory-path",
+      "sig=abcdefgh",
+      "tokens=1024",
+      "keyType=standardIssueValueHere",
+    ]) {
+      expect(found(text), text).toBe(false);
+    }
+  });
+
+  it("never lets the value gate hide a real vendor key", () => {
+    // The shape layer matches on format, whatever the name is — so a weak name
+    // costs nothing when the value is a recognisable key.
+    expect(found("token=ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8")).toBe(true);
+    expect(found("keyType=" + "sk-ant-api03-" + "Zq7".repeat(30))).toBe(true);
+  });
+});

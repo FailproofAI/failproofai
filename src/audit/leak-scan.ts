@@ -24,7 +24,7 @@
  * them apart so the report can tell a user which of the two happened.
  */
 import { SECRET_PATTERNS } from "../hooks/builtin-policies";
-import { isSecretName } from "./redact-example";
+import { secretNameStrength } from "./redact-example";
 
 /** One credential value found in one event. */
 export interface SecretMatch {
@@ -83,6 +83,53 @@ const MIN_VALUE_LEN = 8;
  * contains no secret by construction, and `process.env.X` is the CORRECT secure
  * form, which the redactor currently flags 7,870 times.
  */
+/**
+ * Does this VALUE plausibly hold a credential, given how sure the NAME is?
+ *
+ * The name layer exists for first-party secrets with no recognisable format, so
+ * it cannot lean on shape the way the vendor layer does. But leaning on the
+ * name ALONE produced 394 findings on one real machine, of which 389 carried no
+ * vendor prefix and 227 were under 24 characters — `keyType`,
+ * `tokenLimitCancelled`, `max_output_tokens`, `resultKey`, `configDirKey`.
+ * Ordinary programming vocabulary, holding ordinary programming values.
+ *
+ * So the bar depends on how much the name is really claiming:
+ *
+ *   strong — `DB_PASSWORD`, `STRIPE_SECRET`, `API_KEY`, `PRIVATE_KEY`. The word
+ *            means credential and nothing else, so the value gets the benefit of
+ *            the doubt: `hunter2` under `PASSWORD` is a leaked password and
+ *            length is no argument against it.
+ *   weak   — `key`, `token`, `auth`, `sig`, `cookie`. Also normal English and
+ *            normal code. The value has to carry the claim instead.
+ *
+ * The weak bar is deliberately close to what real keys look like: at least 24
+ * characters (the shortest common vendor key is 32; nothing at 8-15 is an API
+ * key) and more than one character class, because a lone lowercase word —
+ * `primary`, `cancelled`, `standard` — is a config value, not a secret.
+ *
+ * A real vendor key that happens to sit under a weak name is unaffected: the
+ * SHAPE layer matches it on format, whatever it is called.
+ */
+const WEAK_NAME_MIN_LEN = 24;
+
+function looksLikeSecretValue(value: string): boolean {
+  if (value.length < WEAK_NAME_MIN_LEN) return false;
+  const classes =
+    Number(/[a-z]/.test(value)) + Number(/[A-Z]/.test(value)) + Number(/[0-9]/.test(value));
+  // One class only — an all-lowercase or all-numeric run — reads as prose, an
+  // enum, or an id, not as something minted to be unguessable.
+  if (classes < 2) return false;
+  // A dotted or dashed sentence of words (`some-long-feature-flag-name`) has the
+  // length and can have mixed case, but no run of unbroken entropy anywhere.
+  const longestRun = Math.max(0, ...value.split(/[^A-Za-z0-9]+/).map((p) => p.length));
+  if (longestRun < 12) return false;
+  // camelCase clears "two character classes" and "one long run" on letters
+  // alone — `someLongCamelCaseFieldName` is 26 characters of it. Minted keys
+  // almost always carry digits; the ones that do not are long. Requiring one or
+  // the other is what separates an identifier from a secret.
+  return /[0-9]/.test(value) || value.length >= 32;
+}
+
 function isNotACredential(value: string): boolean {
   if (value.length < MIN_VALUE_LEN) return true;
   // Shell/template indirection: the value is a reference, not a secret.
@@ -255,7 +302,11 @@ export function findSecrets(text: string): SecretMatch[] {
   for (const m of text.matchAll(ASSIGNMENT_RE)) {
     const name = m[2];
     const value = unquote(m[4]);
-    if (!isSecretName(name) || isNotACredential(value) || isDocsLiteral(value)) continue;
+    const strength = secretNameStrength(name);
+    if (strength === "none" || isNotACredential(value) || isDocsLiteral(value)) continue;
+    // A weak name has to be backed by a value that looks minted. See
+    // `looksLikeSecretValue` for what that buys and what it costs.
+    if (strength === "weak" && !looksLikeSecretValue(value)) continue;
     const existing = byValue.get(value);
     if (existing) {
       // A vendor-shaped value that also has a name: keep the vendor rule (it

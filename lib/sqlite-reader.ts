@@ -39,8 +39,42 @@ interface NodeSqliteModule {
   DatabaseSync: new (path: string, options?: { readOnly?: boolean }) => NodeSqliteDb;
 }
 
+/**
+ * Swallow Node's "SQLite is an experimental feature" warning, once.
+ *
+ * It is not information the user can act on — we chose `node:sqlite`
+ * deliberately, and the alternative tier is a WASM build that leaks. But it is
+ * emitted on first use, which lands it in the MIDDLE of whatever is on screen,
+ * and the audit's progress display redraws itself by moving the cursor up a
+ * fixed number of lines. Two unexpected lines of stderr push the cursor down
+ * two rows, so the next redraw repaints the block two rows lower and strands
+ * the top of the previous frame above it. The user sees every stage twice and
+ * reasonably concludes the audit ran twice.
+ *
+ * Filtered by message rather than silenced wholesale: `process.emitWarning` is
+ * how deprecations and real problems surface too, and a blanket
+ * `NODE_NO_WARNINGS` in a tool that installs into other people's machines would
+ * hide those as well.
+ */
+let warningPatched = false;
+function silenceSqliteExperimentalWarning(): void {
+  if (warningPatched) return;
+  warningPatched = true;
+  const original = process.emitWarning.bind(process);
+  // The overloads differ across Node versions; the shape we care about is the
+  // first argument, and everything else is passed straight through.
+  process.emitWarning = ((warning: unknown, ...rest: unknown[]) => {
+    const text = typeof warning === "string" ? warning : String((warning as Error)?.message ?? "");
+    if (text.includes("SQLite is an experimental feature")) return;
+    return (original as (...a: unknown[]) => void)(warning, ...rest);
+  }) as typeof process.emitWarning;
+}
+
 async function tryNodeSqlite(dbPath: string): Promise<SqliteReader | null> {
   try {
+    // Before the import, not after: the warning fires on first use of the
+    // module, which is this line.
+    silenceSqliteExperimentalWarning();
     // Dynamic import: on Node < 22.5 this rejects and we fall through to sql.js.
     const mod = (await import("node:sqlite")) as unknown as NodeSqliteModule;
     const db = new mod.DatabaseSync(dbPath, { readOnly: true });

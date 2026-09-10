@@ -1524,8 +1524,8 @@ def test_capture_messages_off_records_no_payload_anywhere(
     answers, the arguments and the outputs did not.
 
     `docs/start/integrations/llamaindex.mdx` presents this as the control for
-    regulated data, and `collector.redact` explicitly does not apply to SDK
-    events, so there was no second line of defence behind it.
+    regulated data. Minimal credential redaction cannot replace it: arbitrary
+    prompts and completions do not necessarily look like credentials.
     """
     llm = StubLLM(script=[("add", {"a": 987654321, "b": 123456789})], final="SECRET-COMPLETION")
     run_agent(calculator(llm), "SECRET-PROMPT: add them")

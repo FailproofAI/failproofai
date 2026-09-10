@@ -622,6 +622,58 @@ def test_writer_multiple_events_in_one_file(tmp_path):
         resolver.set_base_dir(original)
 
 
+def test_writer_redacts_credentials_before_the_spool_reaches_disk(tmp_path):
+    import failproofai_sdk._resolver as resolver
+    original = resolver._base_dir
+    try:
+        resolver.set_base_dir(tmp_path)
+        writer = EventWriter(flush_interval=60)
+        writer.submit(
+            {
+                "timestamp": "t",
+                "session_id": "s1",
+                "agent_id": "a1",
+                "type": "tool_use",
+                "input": {"command": "API_KEY=abcdefghijklmnop"},
+            }
+        )
+        writer.flush_now()
+
+        raw = next((tmp_path / "events").glob("*.jsonl")).read_text()
+        assert "abcdefghijklmnop" not in raw
+        assert "API_KEY=[redacted:secret-assignment]" in raw
+    finally:
+        resolver.set_base_dir(original)
+
+
+def test_writer_honours_collector_redact_off(tmp_path):
+    import failproofai_sdk._resolver as resolver
+    original = resolver._base_dir
+    try:
+        base_dir = tmp_path / "custom-agents"
+        (tmp_path / "config.json").write_text(
+            json.dumps({"collector": {"redact": "off"}}), encoding="utf-8"
+        )
+        resolver.set_base_dir(base_dir)
+        writer = EventWriter(flush_interval=60)
+        writer.submit(
+            {
+                "timestamp": "t",
+                "session_id": "s1",
+                "agent_id": "a1",
+                "type": "tool_use",
+                "input": {"command": "API_KEY=abcdefghijklmnop"},
+            }
+        )
+        writer.flush_now()
+
+        raw = next((base_dir / "events").glob("*.jsonl")).read_text()
+        assert "API_KEY=abcdefghijklmnop" in raw
+        assert "[redacted:" not in raw
+    finally:
+        resolver.set_base_dir(original)
+
+
 def test_writer_coerces_unserializable_payload_values(tmp_path):
     import failproofai_sdk._resolver as resolver
     original = resolver._base_dir

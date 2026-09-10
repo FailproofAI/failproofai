@@ -11,10 +11,16 @@ see `scripts/changelog-section.py`.
 
 ## 0.0.1b3 — 2026-09-08
 
-Open for the next release. `0.0.1b2` published on 2026-09-08 and the `bump` job
-moved the version here automatically; nothing has landed against `0.0.1b3` yet.
-Add entries as changes merge — this section becomes the GitHub Release body when
-it ships.
+### Fixes
+
+- Redact common credential shapes before SDK events reach the on-disk spool.
+  The daemon already exposes `collector.redact`, but SDK-written batches could
+  contain raw API keys, bearer tokens, JWTs, or secret assignments at rest until
+  upload. The SDK now applies the same deterministic minimal rules before each
+  JSONL write, defaults safely to redaction when configuration is absent or
+  malformed, and honors `collector.redact: off` when verbatim capture is
+  explicitly required. The daemon repeats the pass before upload as defence in
+  depth for batches written by older SDK versions.
 
 ## 0.0.1b2 — 2026-08-25
 

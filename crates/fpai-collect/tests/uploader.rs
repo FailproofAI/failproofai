@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use fpai_collect::{UploadError, Uploader};
+use fpai_collect::{Redact, UploadError, Uploader};
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -83,6 +83,72 @@ async fn a_2xx_with_an_accepting_ack_deletes_the_batch() {
     assert!(parked(&failed).is_empty());
     assert_eq!(up.metrics().accepted_total.load(Ordering::Relaxed), 3);
     assert!(up.metrics().last_ok_ts.load(Ordering::Relaxed) > 0);
+
+    fs::remove_dir_all(&spool).ok();
+    fs::remove_dir_all(&failed).ok();
+}
+
+#[tokio::test]
+async fn sdk_batches_are_redacted_before_upload() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "accepted": 1, "skipped": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let spool = tmpdir("redact-spool");
+    let failed = tmpdir("redact-failed");
+    let batch = spool.join("event-s-1-0.jsonl");
+    fs::write(
+        &batch,
+        r#"{"type":"tool_use","input":{"command":"API_KEY=abcdefghijklmnop"}}
+"#,
+    )
+    .unwrap();
+
+    uploader(&server, &failed)
+        .upload_file(&batch)
+        .await
+        .unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let body = String::from_utf8(requests[0].body.clone()).unwrap();
+    assert!(
+        !body.contains("abcdefghijklmnop"),
+        "credential reached the wire"
+    );
+    assert!(body.contains("[redacted:secret-assignment]"));
+
+    fs::remove_dir_all(&spool).ok();
+    fs::remove_dir_all(&failed).ok();
+}
+
+#[tokio::test]
+async fn uploader_redaction_can_be_disabled() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "accepted": 1, "skipped": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let spool = tmpdir("redact-off-spool");
+    let failed = tmpdir("redact-off-failed");
+    let batch = spool.join("event-s-1-0.jsonl");
+    fs::write(&batch, "{\"output\":\"API_KEY=abcdefghijklmnop\"}\n").unwrap();
+
+    uploader(&server, &failed)
+        .with_redact(Redact::Off)
+        .upload_file(&batch)
+        .await
+        .unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let body = String::from_utf8(requests[0].body.clone()).unwrap();
+    assert!(body.contains("abcdefghijklmnop"));
 
     fs::remove_dir_all(&spool).ok();
     fs::remove_dir_all(&failed).ok();

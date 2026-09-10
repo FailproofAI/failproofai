@@ -178,10 +178,8 @@ export function fingerprintSecret(value: string, fallbackLabel = "secret"): Leak
 /**
  * Every id `fingerprintId` can produce, and nothing else.
  *
- * Ids become FILENAMES — one marker file per notified finding, one queue file
- * per pending macOS banner — so an id is a path component, and a path component
- * built from unvalidated input is a directory traversal. Measured: passing
- * `"../../../../tmp/PWNED"` to `markLeakNoticeDelivered` created that file.
+ * Ids become FILENAMES for pending macOS banners, so an id is a path component,
+ * and a path component built from unvalidated input is a directory traversal.
  *
  * Ids are HMAC hex today, so nothing in a normal run can carry a `/`. That is
  * not the same as safe: the record is JSON read off disk, and `leaks.json` is a

@@ -784,7 +784,6 @@ export const cursor: Integration = {
 //   • exit 2 OR `permissionDecision: "deny"` → `throw new Error(reason)`
 //     (which OpenCode surfaces as a tool-call failure to the agent)
 //   • `additionalContext` → `client.session.prompt(...)` (fire-and-forget)
-//   • `failproofaiNotice` → `client.tui.showToast(...)` (user-visible)
 //   • everything else → no-op (allow)
 //
 // Settings paths:
@@ -957,19 +956,6 @@ async function applyDecision(result, ctx, eventName) {
   if (out && out.decision && out.decision.behavior === "deny") {
     throw new Error((out.decision.message) || "Blocked by failproofai");
   }
-  const notice = parsed.failproofaiNotice;
-  if (typeof notice === "string" && notice && ctx && ctx.client && ctx.client.tui) {
-    try {
-      await ctx.client.tui.showToast({
-        body: {
-          title: "failproofai audit",
-          message: notice,
-          variant: "warning",
-          duration: 12_000,
-        },
-      });
-    } catch { /* a courtesy notice must never break the host hook */ }
-  }
   // Forward additional context as a prompt to the session. For Stop /
   // SubagentStop the prompt is the only force-retry channel (session.idle
   // already fired), so AWAIT to ensure the SDK round-trip completes before
@@ -1025,7 +1011,10 @@ export default async function failproofaiPlugin({ client, directory }) {
       const claudeEvent = BUS_EVENT_MAP[event.type];
       if (!claudeEvent) return;
       const props = event.properties || {};
-      const sessionID = props.sessionID || (props.session && props.session.id) || props.id;
+      const info = props.info || props.session || {};
+
+      const sessionID = info.id || info.sessionID || info.sessionId || info.session_id ||
+        props.sessionID || props.sessionId || props.session_id || props.id;
       const r = await runFailproofai(claudeEvent, {
         session_id: sessionID, cwd: directory, hook_event_name: claudeEvent,
       }, directory);

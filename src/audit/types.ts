@@ -217,6 +217,11 @@ export interface AuditResult {
    *  Lets the dashboard answer "is this policy already on?" for
    *  detector-mapped policies that may not have hit during this audit. */
   enabledBuiltinNames: string[];
+  /** Ids of credentials encountered by this scan, including ones already in
+   *  the persistent leak record. Scheduled desktop notifications key on this
+   *  list so every completed scan that still sees a leak can notify; the
+   *  narrower `newLeakIds` remains for first-seen-only surfaces. */
+  leakIds?: string[];
   /**
    * Ids of credentials seen for the FIRST time in this scan.
    *

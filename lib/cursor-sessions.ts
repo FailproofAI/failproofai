@@ -127,7 +127,15 @@ interface CursorRecord {
   /** Cursor 2026-04+ transcript shape: `{role, message: {content: [...]}}`. */
   role?: "user" | "assistant" | "system" | string;
   message?: {
-    content?: Array<{ type?: string; text?: string }>;
+    content?: Array<{
+      type?: string;
+      text?: string;
+      id?: string;
+      name?: string;
+      input?: Record<string, unknown>;
+      tool_use_id?: string;
+      content?: unknown;
+    }>;
   };
 }
 
@@ -183,11 +191,36 @@ export async function parseCursorLog(
     if (!raw.type && raw.role && raw.message?.content) {
       const synthDate = new Date(SYNTH_T0 + i);
       const synthTs = synthDate.toISOString();
-      const textParts = raw.message.content
+      const messageContent = raw.message.content;
+      const textParts = messageContent
         .filter((c) => c?.type === "text" && typeof c.text === "string")
         .map((c) => c.text!)
         .join("");
       if (raw.role === "user") {
+        // Some Cursor builds emit Claude-style tool_result blocks in the next
+        // user record. Pair them before treating any remaining text as a user
+        // turn so command output is available to the credential scanner.
+        let attachedResult = false;
+        for (const block of messageContent) {
+          if (block?.type !== "tool_result") continue;
+          const callId = typeof block.tool_use_id === "string" ? block.tool_use_id : undefined;
+          const toolUse = callId ? toolUseById.get(callId) : undefined;
+          if (!toolUse) continue;
+          const durationMs = Math.max(
+            0,
+            synthDate.getTime() - (toolUseStartMs.get(callId!) ?? synthDate.getTime()),
+          );
+          toolUse.result = {
+            timestamp: synthTs,
+            timestampFormatted: formatTimestamp(synthDate),
+            content: typeof block.content === "string"
+              ? block.content
+              : block.content == null ? "" : JSON.stringify(block.content),
+            durationMs,
+            durationFormatted: formatDuration(durationMs),
+          };
+          attachedResult = true;
+        }
         // Strip the synthesized `<timestamp>...</timestamp>\n<user_query>...\n</user_query>`
         // wrapper Cursor adds for context — keep just the user_query body.
         const queryMatch = /<user_query>\s*([\s\S]*?)\s*<\/user_query>/.exec(textParts);
@@ -198,13 +231,37 @@ export async function parseCursorLog(
             ...baseEntry(rawCopy, synthTs, synthDate, source),
             message: { role: "user", content: text },
           } satisfies UserEntry);
+        } else if (!attachedResult) {
+          entries.push({
+            type: "system",
+            ...baseEntry(rawCopy, synthTs, synthDate, source),
+            raw: rawCopy,
+          } satisfies GenericEntry);
         }
         continue;
       }
       if (raw.role === "assistant") {
-        const blocks: ContentBlock[] = textParts
-          ? [{ type: "text", text: textParts }]
-          : [];
+        const blocks: ContentBlock[] = [];
+        if (textParts) blocks.push({ type: "text", text: textParts });
+        for (let j = 0; j < messageContent.length; j++) {
+          const contentBlock = messageContent[j];
+          if (contentBlock?.type !== "tool_use") continue;
+          const name = typeof contentBlock.name === "string" ? contentBlock.name : "tool";
+          const id = typeof contentBlock.id === "string" && contentBlock.id
+            ? contentBlock.id
+            : `cursor-${i}-${name}-${j}`;
+          const toolUse: ToolUseBlock = {
+            type: "tool_use",
+            id,
+            name,
+            input: contentBlock.input && typeof contentBlock.input === "object"
+              ? contentBlock.input
+              : {},
+          };
+          blocks.push(toolUse);
+          toolUseById.set(id, toolUse);
+          toolUseStartMs.set(id, synthDate.getTime());
+        }
         if (blocks.length === 0) {
           entries.push({
             type: "system",

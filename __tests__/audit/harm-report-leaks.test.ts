@@ -151,4 +151,11 @@ describe("the report as a whole", () => {
     // valid report rather than throwing on an undefined list.
     expect(buildHarmReport(auditResult(), undefined, 7).leaks).toEqual([]);
   });
+
+  it("includes only the single most recent credential", () => {
+    const older = finding({ id: "older", lastSeen: "2026-09-03T00:00:00.000Z" });
+    const newest = finding({ id: "newest", lastSeen: "2026-09-07T00:00:00.000Z" });
+    expect(buildHarmReport(auditResult(), undefined, 7, [older, newest]).leaks.map((l) => l.id))
+      .toEqual(["newest"]);
+  });
 });

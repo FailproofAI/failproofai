@@ -255,8 +255,8 @@ export function queueMacNotification(
   body: string,
   home?: string,
 ): boolean {
-  // The id becomes a filename in a watched directory. Same guard, same reason
-  // as `markLeakNoticeDelivered` — see `isFindingId`.
+  // The id becomes a filename in a watched directory, so validate the path
+  // component before resolving it — see `isFindingId`.
   if (!isFindingId(id)) return false;
   const dir = macNotifyDir(home);
   const tmp = resolve(dir, "..", `notify-${id}.tmp`);

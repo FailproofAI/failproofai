@@ -7,8 +7,9 @@
  * This keeps the dashboard UI and the CLI consistent regardless of whether
  * the api-server is reachable.
  *
- * Reminders are gone: the machine now audits itself on a timer and mails a
- * digest when it finds harm, so there is nothing to nudge anyone about. The
+ * Reminders are gone: the machine now audits itself on a timer and can mail an
+ * alert when it finds a credential leak, so there is nothing to nudge anyone
+ * about. The
  * scheduled-scan state lives in `getScheduledAuditAction`, which reads it from
  * the config and the daemon rather than from here.
  */

@@ -12,8 +12,8 @@
  *      seconds. Base64 images, minified bundles and whole files arrive as single
  *      lines constantly; a scheduled scan hitting a few would stall for minutes
  *      with nobody watching.
- *   2. Ids becoming filenames. A finding id is used as a path component, and
- *      `"../../../../tmp/PWNED"` created that file.
+ *   2. Ids becoming filenames. macOS notification ids are used as path
+ *      components and must never escape their queue directory.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
@@ -23,7 +23,6 @@ import { join, resolve } from "node:path";
 import { findSecrets } from "@/src/audit/leak-scan";
 import { redactExample } from "@/src/audit/redact-example";
 import { isFindingId } from "@/src/audit/leak-fingerprint";
-import { markLeakNoticeDelivered, pendingLeakNotice } from "@/src/audit/leak-notice";
 import { queueMacNotification, macNotifyDir } from "@/src/audit/macos-notifier";
 
 // Generous on purpose. The point is to catch a return to catastrophic
@@ -146,13 +145,6 @@ describe("an id is never allowed to be a path", () => {
     expect(isFindingId("0123456789abcdef")).toBe(true);
   });
 
-  it("does not write a notice marker outside its directory", () => {
-    // The measured escape. Refusing also means NOT reporting the id as won, so
-    // a caller never records a notice it did not actually claim.
-    for (const id of HOSTILE) expect(markLeakNoticeDelivered([id]), id).toEqual([]);
-    expect(existsSync("/tmp/fp-should-not-exist")).toBe(false);
-  });
-
   it("does not queue a macOS banner outside its directory", () => {
     for (const id of HOSTILE) expect(queueMacNotification(id, "T", "B"), id).toBe(false);
     expect(existsSync("/tmp/fp-should-not-exist")).toBe(false);
@@ -168,8 +160,6 @@ describe("an id is never allowed to be a path", () => {
   });
 
   it("still accepts a real id", () => {
-    expect(markLeakNoticeDelivered(["0123456789abcdef"])).toEqual(["0123456789abcdef"]);
     expect(queueMacNotification("fedcba9876543210", "T", "B")).toBe(true);
-    expect(pendingLeakNotice().count).toBe(0);
   });
 });

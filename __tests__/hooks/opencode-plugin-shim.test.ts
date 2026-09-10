@@ -339,8 +339,42 @@ describe("OpenCode plugin shim — translation of plugin events to binary stdin"
     responses.push({ status: 0, stdout: "", stderr: "" });
     const { plugin } = await setup();
     const hooks = await plugin({ client: fakeClient(), directory: "/repo" });
-    await hooks.event!({ event: { type: "session.created", properties: { sessionID: "ses_1" } } });
+    await hooks.event!({ event: { type: "session.created", properties: { info: { id: "ses_1" } } } });
     expect(calls[0].args).toContain("SessionStart");
+    expect(JSON.parse(calls[0].opts.input!).session_id).toBe("ses_1");
+  });
+
+  it.each(["parentID", "parentId", "parent_id"])(
+    "still forwards child session.created carrying %s",
+    async (parentKey) => {
+      responses.push({ status: 0, stdout: "", stderr: "" });
+      const { plugin } = await setup();
+      const hooks = await plugin({ client: fakeClient(), directory: "/repo" });
+      await hooks.event!({
+        event: {
+          type: "session.created",
+          properties: { info: { id: "ses_child", [parentKey]: "ses_parent" } },
+        },
+      });
+      expect(calls).toHaveLength(1);
+      expect(calls[0].args).toContain("SessionStart");
+      expect(JSON.parse(calls[0].opts.input!).session_id).toBe("ses_child");
+    },
+  );
+
+  it("still forwards child session.created when the parent id is top-level", async () => {
+    responses.push({ status: 0, stdout: "", stderr: "" });
+    const { plugin } = await setup();
+    const hooks = await plugin({ client: fakeClient(), directory: "/repo" });
+    await hooks.event!({
+      event: {
+        type: "session.created",
+        properties: { id: "ses_child", parentID: "ses_parent" },
+      },
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].args).toContain("SessionStart");
+    expect(JSON.parse(calls[0].opts.input!).session_id).toBe("ses_child");
   });
 
   it("event session.deleted → SessionEnd", async () => {
@@ -442,7 +476,7 @@ describe("OpenCode plugin shim — translation of binary response to plugin acti
     expect(callArg.body.parts[0]).toEqual({ type: "text", text: "Note: hello" });
   });
 
-  it("failproofaiNotice → uses OpenCode's visible TUI toast API", async () => {
+  it("ignores legacy per-CLI notice output", async () => {
     responses.push({
       status: 0,
       stdout: JSON.stringify({ failproofaiNotice: "Review possible credential exposure" }),
@@ -451,31 +485,9 @@ describe("OpenCode plugin shim — translation of binary response to plugin acti
     const client = fakeClient();
     const { plugin } = await setup();
     const hooks = await plugin({ client, directory: "/repo" });
-    await hooks.event!({ event: { type: "session.idle", properties: { sessionID: "ses_1" } } });
-    expect(client.tui.showToast).toHaveBeenCalledWith({
-      body: {
-        title: "failproofai audit",
-        message: "Review possible credential exposure",
-        variant: "warning",
-        duration: 12_000,
-      },
-    });
+    await hooks.event!({ event: { type: "session.created", properties: { sessionID: "ses_1" } } });
+    expect(client.tui.showToast).not.toHaveBeenCalled();
     expect(client.session.prompt).not.toHaveBeenCalled();
-  });
-
-  it("swallows an OpenCode toast failure", async () => {
-    responses.push({
-      status: 0,
-      stdout: JSON.stringify({ failproofaiNotice: "Review possible credential exposure" }),
-      stderr: "",
-    });
-    const client = fakeClient();
-    client.tui.showToast.mockRejectedValue(new Error("TUI closed"));
-    const { plugin } = await setup();
-    const hooks = await plugin({ client, directory: "/repo" });
-    await expect(
-      hooks.event!({ event: { type: "session.idle", properties: { sessionID: "ses_1" } } }),
-    ).resolves.toBeUndefined();
   });
 
   it("SDK rejection on session.prompt is swallowed (fire-and-forget)", async () => {

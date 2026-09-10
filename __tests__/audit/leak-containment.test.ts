@@ -5,8 +5,8 @@
  *
  * Every other test here checks a component. This drives the real pipeline
  * end-to-end with real credential shapes and then reads back EVERY byte the run
- * wrote to disk, plus the digest that leaves the machine and the notice that
- * reaches the terminal, hunting for any fragment of the input.
+ * wrote to disk, plus the digest and desktop notification that leave the
+ * scanner, hunting for any fragment of the input.
  *
  * It is deliberately not a unit test. The claim being made to a user is about
  * the system, not about `fingerprintSecret`, and the ways a value escapes are
@@ -23,9 +23,8 @@ import { fingerprintSecret, fingerprintId, isFindingId } from "@/src/audit/leak-
 import { upsertFinding } from "@/src/audit/leak-record";
 import { readLeakRecord, writeLeakRecord, activeFindings } from "@/src/audit/leak-store";
 import { buildHarmReport } from "@/src/audit/harm-report";
-import { markLeakNoticeDelivered } from "@/src/audit/leak-notice";
 import { queueMacNotification } from "@/src/audit/macos-notifier";
-import { leakNoticeText, shapeNotice } from "@/src/hooks/notice";
+import { desktopLeakNotice } from "@/src/hooks/notice";
 import type { AuditResult } from "@/src/audit/types";
 
 // Real shapes, synthetic values. One per detection class the scanner claims.
@@ -137,15 +136,13 @@ function runPipeline() {
 
   const live = activeFindings(readLeakRecord(home), home);
   const ids = live.map((f) => f.id);
-  markLeakNoticeDelivered(ids, home);
-  markLeakNoticeDelivered(ids, home, "desktop");
   for (const id of ids) queueMacNotification(id, "failproofai", "a credential leaked", home);
 
   return {
     found,
     live,
     report: buildHarmReport(auditResult(), undefined, 7, live),
-    notice: shapeNotice("claude", leakNoticeText(found.length)),
+    notice: desktopLeakNotice("held"),
   };
 }
 
@@ -179,9 +176,9 @@ describe("and no part of one comes out", () => {
     assertNoSecret("harm report", JSON.stringify(report));
   });
 
-  it("is absent from the notice that reaches the terminal", () => {
+  it("is absent from the scheduled desktop notification", () => {
     const { notice } = runPipeline();
-    assertNoSecret("cli notice", JSON.stringify(notice));
+    assertNoSecret("desktop notice", JSON.stringify(notice));
   });
 
   it("is absent from the record every surface reads", () => {
@@ -191,9 +188,14 @@ describe("and no part of one comes out", () => {
 
   it("still says enough to act on", () => {
     // Containment is worthless if the row says nothing. Each one has to carry a
-    // recognisable mask, a class, a location and a mechanism.
-    const { report } = runPipeline();
-    const row = report.leaks.find((r) => r.label.includes("GitHub"));
+    // recognisable mask, a class, a location and a mechanism. The outbound
+    // report intentionally keeps only the newest leak, so isolate the GitHub
+    // finding rather than depending on a salted-id tie-break across equal times.
+    const { live } = runPipeline();
+    const github = live.find((f) => f.fingerprint.label.includes("GitHub"));
+    expect(github).toBeDefined();
+    const report = buildHarmReport(auditResult(), undefined, 7, [github!]);
+    const row = report.leaks[0];
     expect(row).toBeDefined();
     expect(row!.display).toContain("ghp_");
     expect(row!.display).toContain("•");

@@ -308,22 +308,15 @@ export interface FpConfig {
   };
   audit: {
     /**
-     * Scan this machine on a schedule, and mail a digest when a scan finds
-     * something harmful.
+     * Scan this machine on a schedule. Delivery is deliberately separate:
+     * desktop notifications are controlled by `notify`, while a verified local
+     * email identity adds email alerts without changing the timer.
      *
-     * ONE switch, not two. An earlier revision split this into `auto` (scan
-     * locally, no account) and `email_enabled` (mail me, sign in), and the two
-     * could only ever disagree — a machine scanning on a timer with nothing to
-     * report it to is a feature that looks on and does nothing visible. The
-     * reason to put a scan on a timer is to be TOLD, so scheduling and mailing
-     * are the same decision and take the same switch.
-     *
-     * A signed-out machine with this on is therefore a real, expected state
-     * rather than a contradiction: it keeps scanning and keeps its local
-     * dashboard current, and the UI says "signed out" until somebody signs back
-     * in. Auth gates SETTING it up, never the machine's ongoing work — a
-     * refresh token expiring must not silently switch off a background feature
-     * somebody configured months ago.
+     * A signed-out machine with this on is therefore the normal local-only
+     * state rather than a contradiction: it keeps scanning, keeps its local
+     * dashboard current, and raises desktop notifications for credential leaks.
+     * A refresh token expiring must not silently switch off a background
+     * security feature.
      *
      * ON for a configured machine that has never stated an opinion, OFF for
      * every machine we could not read an opinion from — which is not the same
@@ -345,9 +338,9 @@ export interface FpConfig {
      * agree, or the settings page describes a machine that is doing something
      * else.
      *
-     * Turning it on sends NOTHING on its own: the digest is gated on
-     * `reportsConsentedAt` below, not on this switch, so a machine that flips
-     * on at upgrade scans locally and mails nobody.
+     * Turning it on sends nothing remotely on its own. Email requires a valid
+     * identity in `audit/session.json`; without one, scans and notifications
+     * remain fully local.
      */
     auto: boolean;
     /**
@@ -358,40 +351,22 @@ export interface FpConfig {
      * wants the scan and not the banner is a coherent person, and without this
      * their only way to stop the banner is to stop the scan.
      *
-     * ON by default, and the direction is the point: this fires at most once
-     * per distinct credential ever (`leak-notice.ts` claims each finding with
-     * an O_EXCL marker), so the volume it can reach is bounded by how many
-     * secrets are actually leaking. A silent default would make the common
-     * case — a user who never opens the dashboard and never gave an email —
-     * a machine that finds the key and tells nobody.
+     * ON by default. Every scheduled scan that still sees a leak may notify,
+     * which keeps a credential that remains exposed from disappearing after
+     * its first alert. A silent default would make the common case — a user who
+     * never opens the dashboard and never gave an email — a machine that finds
+     * the key and tells nobody.
      *
-     * It does NOT silence the in-CLI notice. That one appears inside a session
-     * the user is already driving, costs two lines, and is the only channel
-     * left when there is no desktop to notify — a headless box, a container, an
-     * SSH session. Turning off every channel at once is not an option this
-     * offers, because the resulting state is indistinguishable from broken.
+     * On a headless box, container or SSH-only session there may be no desktop
+     * server to receive the banner. The scheduled scan still completes and
+     * records its result; notification failure never changes the scan outcome.
      */
     notify: boolean;
     /**
-     * When this machine's owner agreed that a scheduled scan may send what it
-     * finds off the box, as epoch ms. Absent means they never did.
-     *
-     * This does NOT reintroduce the second switch the comment above rejects,
-     * and it is never drawn as one. `auto` is what a person sets; this is a
-     * record of the disclosure they were shown when they set it. The two cannot
-     * drift, because every path that turns `auto` on stamps this in the same
-     * call and nothing stamps it alone.
-     *
-     * It exists because `auto` CHANGED MEANING. Through 1.0.0 it meant "scan
-     * this machine on a timer" and nothing more — no account, no network, and
-     * the toggle that wrote it said as much in as many words. Harm digests gave
-     * the same stored bit a second job: uploading redacted transcript excerpts
-     * to the api-server and mailing them. Without a separate record, every
-     * machine that opted into the old meaning would have started sending on
-     * upgrade, having agreed to nothing of the kind, with the only notice a
-     * line in the journal. Gating on the stamp rather than the switch is what
-     * keeps that upgrade silent in the safe direction: those machines keep
-     * scanning locally and send nothing until somebody opts in again.
+     * Legacy migration marker from the earlier harm-digest consent model.
+     * Retained when reading and writing old configs so upgrades are lossless,
+     * but it no longer gates scheduling or credential-alert email. A verified
+     * email identity is now the delivery opt-in.
      */
     reportsConsentedAt?: number;
     /** Days between scheduled runs. Wall clock, so it survives suspend. */
@@ -587,8 +562,8 @@ export function projectConfig(parsed: Record<string, unknown>): FpConfig {
         // question is only whether to speak.
         notify: audit.notify !== false,
         intervalDays: readIntervalDays(audit.interval_days),
-        // A finite number or nothing. A garbage value reads as absent, which is
-        // the direction that sends nothing.
+        // Preserve the legacy marker when it is valid; current behavior does
+        // not consult it.
         reportsConsentedAt:
           typeof audit.reports_consented_at === "number" &&
           Number.isFinite(audit.reports_consented_at)
@@ -738,7 +713,8 @@ export function writeConfig(config: FpConfig, raw?: Record<string, unknown>): vo
     ...(config.telemetry.enabled ? {} : { telemetry: { enabled: false } }),
     // Written ALWAYS, unlike telemetry directly above — the two are opposites
     // on purpose. Telemetry ships on and is deliberately not advertised;
-    // the scheduled audit ships off and is meant to be FOUND, and a switch
+    // the scheduled audit is configured during setup and is meant to be FOUND,
+    // and a switch
     // nobody can see is the same as a switch that does not exist. Emitting both
     // keys unconditionally also makes "a user's setting survives a rewrite"
     // total rather than conditional.
@@ -749,9 +725,8 @@ export function writeConfig(config: FpConfig, raw?: Record<string, unknown>): vo
       // exists to be found by somebody the banner annoyed.
       notify: config.audit.notify,
       interval_days: config.audit.intervalDays,
-      // Written only once there IS consent, so an untouched machine's config
-      // does not grow a key implying it was asked. It is in
-      // `OWNED_CONFIG_KEYS`, so omitting it here really removes it.
+      // Preserve the legacy consent marker when present. It is not used by the
+      // current local-schedule + optional-email model.
       ...(config.audit.reportsConsentedAt === undefined
         ? {}
         : { reports_consented_at: config.audit.reportsConsentedAt }),

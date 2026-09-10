@@ -794,9 +794,11 @@ async function runAuditInner(opts: RunAuditOptions, startedAt: number): Promise<
     errors === 0 &&
     skipped === 0;
   const newFindingIds = persistLeaks(perTranscript, coversAllHistory);
+  const leakIds = [...new Set(perTranscript.flatMap((t) => (t.leaks ?? []).map((leak) => leak.id)))];
 
   const auditResult: AuditResult = {
     version: 2,
+    leakIds,
     newLeakIds: newFindingIds,
     scannedAt: new Date(startedAt).toISOString(),
     scope: {

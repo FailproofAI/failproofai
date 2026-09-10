@@ -18,7 +18,6 @@
  */
 
 import { readConfig, updateConfig } from "@/src/hooks/fp-config";
-import { readAuth, whoAmI } from "@/lib/auth/auth-store";
 
 /**
  * The outcome of trying to turn scheduling on.
@@ -34,70 +33,19 @@ import { readAuth, whoAmI } from "@/lib/auth/auth-store";
  * A returned discriminant survives the boundary, so the caller can open the
  * sign-in dialog for the one failure that has an obvious next step.
  */
-export type SetAutoAuditResult =
-  | { ok: true; auto: boolean }
-  | { ok: false; reason: "signed-out" }
-  /**
-   * The session is intact locally and the api-server could not be reached.
-   *
-   * Separated from `signed-out` because `whoAmI()` collapses them: it returns
-   * null for a 401 AND for every transport failure, so an offline machine, a
-   * proxy that blocks the host, and a genuinely expired token were one answer.
-   * The user was told "that sign-in expired" and handed a code prompt that
-   * cannot succeed either — the failure it names is not the failure they have,
-   * and following its advice costs them a real, working session.
-   */
-  | { ok: false; reason: "unreachable" };
+export type SetAutoAuditResult = { ok: true; auto: boolean };
 
 /**
  * Turn the scheduled scan on or off.
  *
- * Turning it ON is refused without a session. Scheduling and mailing are ONE
- * decision — the reason to put a scan on a timer is to be told what it found —
- * so a machine with the timer set and nobody to tell is a switch that reads as
- * on and produces nothing, discoverable only by noticing that no digest ever
- * arrives. The caller signs the user in first and retries.
- *
- * `whoAmI()` asks the SERVER, so this refuses in a case the page cannot see: a
- * session file that exists locally but whose refresh token the api-server has
- * rejected. The local file is what the page reads to show "reports go to …", so
- * the two disagree exactly when a session has expired or was minted against a
- * different server — and that disagreement is the common case, not an edge one.
- *
- * Turning it OFF never checks. An expired session must not be able to trap
- * somebody into keeping a feature they are trying to disable.
- *
- * Note this gates SETTING UP the timer, not the machine's ongoing work: a
- * session that later expires leaves the timer running and the local scan
- * working, and only the digest stops. See `report-harm.ts`.
+ * Scheduling is local and independent of authentication. A signed-in identity
+ * adds email delivery; without one the scan and desktop notification continue.
  *
  * Returns the value actually stored (re-read), so an optimistic UI can confirm
  * against the source of truth rather than assume its own guess landed.
  */
 export async function setAutoAuditAction(enabled: boolean): Promise<SetAutoAuditResult> {
-  if (enabled) {
-    const who = await whoAmI();
-    if (!who) {
-      // `whoAmI()` deletes the session on a 401 and leaves it alone on a
-      // transport failure, so what is left ON DISK is the one thing that tells
-      // the two apart — no extra request, and nothing new that can fail.
-      const local = readAuth();
-      const stillWithinWindow = local && local.refresh_expires_at * 1000 > Date.now();
-      return { ok: false, reason: stillWithinWindow ? "unreachable" : "signed-out" };
-    }
-  }
-  // Enabling stamps consent in the same write, because the `whoAmI()` above is
-  // exactly what makes this a consent record rather than a guess: a person was
-  // present, signed in, and looking at the panel that enumerates what gets
-  // sent. `reportHarm` gates sending on the stamp, not on `auto`, so a machine
-  // that inherited `auto` from a release where it meant "scan locally on a
-  // timer" mails nothing until somebody passes through here or the CLI.
-  //
-  // Disabling leaves the stamp alone. It is a record of something that did
-  // happen, and it grants nothing on its own — sending needs `auto` too.
-  const next = updateConfig({
-    audit: enabled ? { auto: true, reportsConsentedAt: Date.now() } : { auto: false },
-  });
+  const next = updateConfig({ audit: { auto: enabled } });
   return { ok: true, auto: next.audit.auto };
 }
 

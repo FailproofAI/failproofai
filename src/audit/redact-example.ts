@@ -573,6 +573,7 @@ export function redactAuditResult(result: AuditResult, home = homedir()): AuditR
     // Salted, machine-local ids. They carry no path and cannot be reversed to
     // a credential, so they pass through — but the decision is recorded here
     // rather than inherited from a spread.
+    leakIds: result.leakIds,
     newLeakIds: result.newLeakIds,
 
     // Everything below carries a path or user content and is rewritten.
@@ -615,5 +616,6 @@ export const REDACTED_AUDIT_RESULT_KEYS: ReadonlyArray<keyof AuditResult> = [
   "projectsScanned",
   "eventsScanned",
   "enabledBuiltinNames",
+  "leakIds",
   "newLeakIds",
 ];

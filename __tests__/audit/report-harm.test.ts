@@ -28,6 +28,9 @@ vi.mock("../../lib/auth/api-server-client", async (orig) => ({
 
 import { reportHarm, describeOutcome } from "../../src/audit/report-harm";
 import { auditMachineFile } from "../../src/hooks/fp-home";
+import { readLeakRecord, writeLeakRecord } from "../../src/audit/leak-store";
+import { upsertFinding } from "../../src/audit/leak-record";
+import { fingerprintSecret } from "../../src/audit/leak-fingerprint";
 import type { AuditResult } from "../../src/audit/types";
 
 let home: string;
@@ -67,22 +70,29 @@ function result(): AuditResult {
   };
 }
 
-function enableEmail(on: boolean) {
-  // ONE switch — `auto` means "scan on a timer AND tell me" — plus the consent
-  // stamp that says the person who set it was shown what "tell me" sends. Both
-  // are written by the same call in every opt-in path, so a machine with `auto`
-  // and no stamp is specifically one that inherited the key from a release
-  // where it meant "scan locally", and `grandfatheredAuto()` below covers it.
+function enableSchedule(on: boolean) {
   readConfigMock.mockReturnValue({
-    audit: { auto: on, intervalDays: 7, reportsConsentedAt: on ? 1_700_000_000_000 : undefined },
+    audit: { auto: on, intervalDays: 7 },
   });
 }
 
-/** `auto` set under the OLD meaning: scheduled locally, never consented to send. */
-function grandfatheredAuto() {
-  readConfigMock.mockReturnValue({
-    audit: { auto: true, intervalDays: 7, reportsConsentedAt: undefined },
+function seedLeak(at = SCANNED_AT): void {
+  const record = readLeakRecord();
+  upsertFinding(record, {
+    id: "1111111111111111",
+    fingerprint: fingerprintSecret("ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"),
+    name: "GITHUB_TOKEN",
+    rule: "GitHub personal access token",
+    confidence: "doc-verified",
+    sighting: {
+      cli: "codex",
+      sessionId: "s-1",
+      cwd: "~/…/repo",
+      at,
+      mechanism: { summary: "read from ~/…/.env", toolName: "Read", direction: "result" },
+    },
   });
+  writeLeakRecord(record);
 }
 
 beforeEach(() => {
@@ -92,7 +102,8 @@ beforeEach(() => {
   readConfigMock.mockReset();
   getTokenMock.mockReset();
   submitMock.mockReset();
-  enableEmail(true);
+  enableSchedule(true);
+  seedLeak();
   getTokenMock.mockResolvedValue({ access_token: "at", user: { id: "u", email: "a@b.c" } });
   submitMock.mockResolvedValue({
     report_id: "r1",
@@ -111,7 +122,7 @@ afterEach(() => {
 describe("reportHarm — the opt-in", () => {
   it("does nothing at all when scheduled audits are off", async () => {
     // The majority case. No token read, no machine id minted, no request.
-    enableEmail(false);
+    enableSchedule(false);
     expect(await reportHarm(result())).toEqual({ kind: "disabled" });
     expect(getTokenMock).not.toHaveBeenCalled();
     expect(submitMock).not.toHaveBeenCalled();
@@ -126,31 +137,16 @@ describe("reportHarm — the opt-in", () => {
     expect(submitMock).not.toHaveBeenCalled();
   });
 
-  it("sends NOTHING for a machine that set `auto` before it meant sending", async () => {
-    // The upgrade case, and the whole reason the consent stamp exists. Through
-    // 1.0.0 `auto` meant "scan this machine locally on a timer": it needed no
-    // account, the server action that wrote it had no auth check, and the
-    // toggle's own copy said nothing leaves the machine. Reading that stored
-    // bit as consent to upload transcript excerpts would have mailed a digest
-    // from every such machine on its first scheduled run after the upgrade,
-    // with the only notice a line in the systemd journal.
-    grandfatheredAuto();
-    expect(await reportHarm(result())).toEqual({ kind: "consent-required" });
-    expect(submitMock).not.toHaveBeenCalled();
-    // Not even a token is read: the decision is made before anything touches
-    // the session, so this cannot depend on whether one happens to be present.
-    expect(getTokenMock).not.toHaveBeenCalled();
-    // And no machine identity is minted, so the machine stays unregistered.
-    expect(existsSync(auditMachineFile())).toBe(false);
-  });
-
-  it("sends once the same machine opts in again", async () => {
-    // The other half: consent-required is a pause, not a dead end. The CLI and
-    // the settings toggle both stamp `reportsConsentedAt` in the same write
-    // that sets `auto`, and that is all this needs to resume.
-    enableEmail(true);
+  it("uses the configured email identity without a second scheduling consent", async () => {
     expect((await reportHarm(result())).kind).toBe("sent");
     expect(submitMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not touch auth or the network when the scan has no leak", async () => {
+    writeLeakRecord({ ...readLeakRecord(), findings: [] });
+    expect(await reportHarm(result())).toEqual({ kind: "no-leak" });
+    expect(getTokenMock).not.toHaveBeenCalled();
+    expect(submitMock).not.toHaveBeenCalled();
   });
 
   it("reports signed-out rather than failing when there is no session", async () => {
@@ -170,6 +166,8 @@ describe("reportHarm — the request", () => {
     expect(body.machine_id).toMatch(/[0-9a-f-]{36}/);
     expect(body.window_to).toBe(SCANNED_AT);
     expect(body.harmful[0].policy).toBe("block-rm-rf");
+    expect(body.leaks).toHaveLength(1);
+    expect(body.leaks[0]).toMatchObject({ cli: "codex", last_seen: SCANNED_AT });
     // Redaction reached the wire.
     expect(body.harmful[0].examples[0]).toContain("/…/z");
     // The api-server takes the address from the token claims, so a report can
@@ -211,7 +209,7 @@ describe("reportHarm — the request", () => {
       next_window_from: "2026-08-01T00:00:00.000Z",
     });
     const outcome = await reportHarm(result());
-    expect(outcome).toEqual({ kind: "held", hits: 4, reason: "cooldown" });
+    expect(outcome).toEqual({ kind: "held", leaks: 1, reason: "cooldown" });
     expect(JSON.parse(readFileSync(auditMachineFile(), "utf8")).last_reported_at).toBe(
       "2026-08-01T00:00:00.000Z",
     );
@@ -238,50 +236,37 @@ describe("reportHarm — failure never escapes", () => {
 
   it("survives a machine file that cannot be written", async () => {
     // A read-only home, or a full disk. The scan still succeeded.
-    writeFileSync(resolve(home, "audit"), "not a directory");
+    mkdirSync(auditMachineFile(), { recursive: true });
     const outcome = await reportHarm(result());
     expect(outcome.kind).toBe("failed");
   });
 });
 
 describe("describeOutcome", () => {
-  it("says nothing to the majority who never opted in", () => {
+  it("says nothing when scheduling is disabled or no leak exists", () => {
     expect(describeOutcome({ kind: "disabled" })).toBeNull();
+    expect(describeOutcome({ kind: "no-leak" })).toBeNull();
   });
 
   it("tells a signed-out machine how to resume", () => {
     const line = describeOutcome({ kind: "signed-out" });
-    expect(line).toContain("signed out");
-    // Names the two surfaces that can actually fix it. It used to say "sign in
-    // from the audit page" — which stopped being true when this release moved
-    // that dialog behind "invite a friend".
+    expect(line).toContain("no email is configured");
     expect(line).toContain("--schedule");
-    expect(line).toContain("/settings");
-    expect(line).not.toContain("audit page");
-  });
-
-  it("tells a grandfathered machine how to turn digests on", () => {
-    // Must be actionable, not just a refusal: this machine's owner asked for
-    // scheduled scans and is still getting them, and the line is the only place
-    // that says why no email arrived.
-    const line = describeOutcome({ kind: "consent-required" });
-    expect(line).toContain("--schedule");
-    expect(line).toContain("/settings");
+    expect(line).toContain("--email");
   });
 
   it("does not call a held digest an error", () => {
     // A machine below the threshold, or inside its cooldown, is working exactly
     // as intended. Calling that a failure trains people to ignore the line.
-    const line = describeOutcome({ kind: "held", hits: 2, reason: "below_threshold" }) ?? "";
+    const line = describeOutcome({ kind: "held", leaks: 1, reason: "cooldown" }) ?? "";
     // Matched against the MESSAGE, not the whole line — the brand name itself
     // contains "fail", which a naive /fail/i would happily flag.
     const message = line.replace(/^failproofai:\s*/, "");
     expect(message).not.toMatch(/error|fail|could not/i);
-    expect(message).toContain("below_threshold");
+    expect(message).toContain("cooldown");
   });
 
-  it("pluralises findings", () => {
-    expect(describeOutcome({ kind: "sent", hits: 1 })).toContain("1 finding)");
-    expect(describeOutcome({ kind: "sent", hits: 3 })).toContain("3 findings)");
+  it("names the one leak alert that was emailed", () => {
+    expect(describeOutcome({ kind: "sent", leaks: 1 })).toContain("most recent credential exposure");
   });
 });

@@ -38,7 +38,6 @@ vi.mock("../../src/audit/desktop-notify", () => ({ notifyDesktop: h.notifyDeskto
 vi.mock("../../lib/telemetry-id", () => ({ getInstanceId: () => "test-instance" }));
 
 import { runAuditCli, runScheduledAudit, EXIT_AUDIT_ALREADY_RUNNING } from "../../src/audit/cli";
-import { leakNoticeText } from "../../src/hooks/notice";
 
 function result(over: Partial<AuditResult> = {}): AuditResult {
   return {
@@ -257,6 +256,18 @@ describe("the interactive `failproofai audit` shares the lock", () => {
     expect(existsSync(auditLockFile())).toBe(false);
   });
 
+  it("does not send a desktop notification for an interactive audit, even when it finds a leak", async () => {
+    h.runAudit.mockResolvedValue(result({
+      totals: { hits: 1, projectsWithHits: 1 },
+      leakIds: ["1111111111111111"],
+      newLeakIds: ["1111111111111111"],
+    }));
+
+    await runAuditCli([]);
+
+    expect(h.notifyDesktop).not.toHaveBeenCalled();
+  });
+
   it("takes the lock before any telemetry, so a refusal is never counted as a run", async () => {
     // The order matters: acquiring after cli_audit_started would report a scan
     // that never happened every time two audits collided.
@@ -377,7 +388,7 @@ describe("the binary-level scheduled entry point", () => {
 // watching the terminal it printed to.
 describe("announcing a leak on the desktop", () => {
   const withLeaks = (ids: string[]) =>
-    result({ totals: { hits: 1, projectsWithHits: 1 }, newLeakIds: ids });
+    result({ totals: { hits: 1, projectsWithHits: 1 }, leakIds: ids, newLeakIds: ids });
 
   const writeAuditConfig = (audit: Record<string, unknown>) => {
     mkdirSync(home, { recursive: true });
@@ -394,12 +405,8 @@ describe("announcing a leak on the desktop", () => {
     expect(summary).toContain("failproofai");
     expect(body).toContain("Possible credential exposure");
     expect(body).toContain("failproofai audit");
-    expect(body).not.toMatch(/email|schedule|2 credentials|leaked credential/i);
-  });
-
-  it("keeps the in-CLI notice focused on review rather than email setup", () => {
-    expect(leakNoticeText(2)).toContain("review the matches");
-    expect(leakNoticeText(2)).not.toMatch(/email|--schedule/);
+    expect(body).toContain("--email you@example.com");
+    expect(body).not.toMatch(/2 credentials|leaked credential/i);
   });
 
   it("says nothing when the scan found nothing new", async () => {
@@ -410,11 +417,11 @@ describe("announcing a leak on the desktop", () => {
     expect(h.notifyDesktop).not.toHaveBeenCalled();
   });
 
-  it("announces each finding at most once, across runs", async () => {
+  it("announces again on every scheduled scan while the leak is still present", async () => {
     h.runAudit.mockResolvedValue(withLeaks(["1111111111111111"]));
     await runScheduledAudit();
     await runScheduledAudit();
-    expect(h.notifyDesktop).toHaveBeenCalledTimes(1);
+    expect(h.notifyDesktop).toHaveBeenCalledTimes(2);
   });
 
   it("does not interrupt a user who turned the banner off", async () => {
@@ -431,15 +438,12 @@ describe("announcing a leak on the desktop", () => {
     expect(h.notifyDesktop).toHaveBeenCalledTimes(1);
   });
 
-  it("leaves the in-session notice to fire even after the banner succeeded", async () => {
-    // The two channels claim separately, because `Notify` returning an id does
-    // NOT mean a human saw anything — on a locked screen the shell accepts the
-    // call and shows nothing. Letting the banner claim the finding would
-    // suppress the one channel that does reach them.
+  it("does not create legacy per-CLI notification markers", async () => {
     h.runAudit.mockResolvedValue(withLeaks(["1111111111111111"]));
     await runScheduledAudit();
-    expect(existsSync(resolve(home, "audit", "notified-desktop", "1111111111111111"))).toBe(true);
+    expect(existsSync(resolve(home, "audit", "notified-desktop", "1111111111111111"))).toBe(false);
     expect(existsSync(resolve(home, "audit", "notified", "1111111111111111"))).toBe(false);
+    expect(existsSync(resolve(home, "audit", "notified-sessions"))).toBe(false);
   });
 
   it("stays a successful scan when there is no desktop to notify", async () => {

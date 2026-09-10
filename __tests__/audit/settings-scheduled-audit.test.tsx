@@ -4,8 +4,8 @@
  * These moved here with the controls. The properties worth pinning are the ones
  * that decide whether a person can tell what their machine is actually doing:
  * that "on" is distinguishable from "on but nothing will run", that a signed-out
- * machine says so instead of quietly not mailing, and that turning it on cannot
- * be done without somewhere to send the report.
+ * machine says so instead of quietly not mailing, and that the local schedule
+ * does not depend on an email identity.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
@@ -129,11 +129,11 @@ describe("daemon state", () => {
 });
 
 describe("the switch", () => {
-  it("asks for an email before turning on, because there must be somewhere to send", async () => {
+  it("turns on without asking for an email", async () => {
     renderSettings();
     fireEvent.click(await screen.findByRole("switch", { name: "turn on scheduled audits" }));
-    expect(await screen.findByText("where should the report go?")).toBeInTheDocument();
-    expect(setAutoMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(setAutoMock).toHaveBeenCalledWith(true));
+    expect(screen.queryByText("where should the report go?")).toBeNull();
   });
 
   it("turns on directly when already signed in", async () => {
@@ -143,29 +143,6 @@ describe("the switch", () => {
     fireEvent.click(await screen.findByRole("switch", { name: "turn on scheduled audits" }));
     await waitFor(() => expect(setAutoMock).toHaveBeenCalledWith(true));
     expect(screen.queryByText("where should the report go?")).toBeNull();
-  });
-
-  it("opens the sign-in dialog when the server rejects the stored session", async () => {
-    // The page reads "reports go to …" from the LOCAL session file, so it takes
-    // the signed-in path and calls the action directly. When the api-server has
-    // since rejected that session — expired, or minted against a different
-    // server — the click used to dead-end on "could not turn that on." with no
-    // way forward. The one failure with an obvious next step now offers it.
-    lastView = view({ signedInAs: { id: "u", email: "stale@exosphere.host" } });
-    getViewMock.mockResolvedValue(lastView);
-    setAutoMock.mockResolvedValue({ ok: false, reason: "signed-out" });
-
-    renderSettings();
-    fireEvent.click(await screen.findByRole("switch", { name: "turn on scheduled audits" }));
-
-    expect(await screen.findByText("where should the report go?")).toBeInTheDocument();
-    // And the switch does not sit there claiming to be on.
-    await waitFor(() =>
-      expect(screen.getByRole("switch", { name: "turn on scheduled audits" })).toHaveAttribute(
-        "aria-checked",
-        "false",
-      ),
-    );
   });
 
   it("turns OFF without asking anything", async () => {
@@ -203,14 +180,15 @@ describe("the switch", () => {
 });
 
 describe("signed-out with the timer on", () => {
-  it("names the state instead of quietly not mailing", async () => {
-    // The whole point of separating "auth gates setup" from "auth gates
-    // operation": the scans keep running, so the panel has to say why no
-    // digest is arriving.
+  it("names the local-only state and keeps desktop alerts explicit", async () => {
     lastView = view({ auto: true, signedInAs: null });
     getViewMock.mockResolvedValue(lastView);
     renderSettings();
-    expect(await screen.findByText(/signed out — scans continue, digests are paused/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        /signed out — scans and desktop notifications continue; email alerts are paused/,
+      ),
+    ).toBeInTheDocument();
   });
 
   it("shows the destination when signed in", async () => {
@@ -451,6 +429,7 @@ describe("how it works", () => {
     expect(screen.getByText("runs")).toBeInTheDocument();
     expect(screen.getByText("sends")).toBeInTheDocument();
     expect(screen.getByText(/never leave/)).toBeInTheDocument();
-    expect(screen.getByText(/redacted examples/)).toBeInTheDocument();
+    expect(screen.getByText(/newest masked credential exposure/)).toBeInTheDocument();
+    expect(screen.getByText(/only when email is configured/)).toBeInTheDocument();
   });
 });

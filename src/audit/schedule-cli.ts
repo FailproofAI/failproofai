@@ -68,13 +68,9 @@ const dim = (s: string) => wrap(ANSI_DIM, s);
 const bold = (s: string) => wrap(ANSI_BOLD, s);
 
 /**
- * Turn scheduled audits on, signing in first if needed.
- *
- * Scheduling and mailing are ONE decision — the reason to put a scan on a timer
- * is to be told what it found — so this requires a session, exactly as the
- * dashboard's `setAutoAuditAction` does. A timer set with nobody to tell is a
- * switch that reads as on and produces nothing, discoverable only by noticing
- * that no digest ever arrives.
+ * Turn scheduled audits on. Email is optional: `--email` signs in, while a
+ * plain `--schedule` enables the local scan and desktop notification without
+ * prompting for an account.
  *
  * The interval is written and then RE-READ, so what is printed is what the
  * config actually kept — `readIntervalDays` owns the 1..90 clamp and a second
@@ -108,17 +104,13 @@ export async function runScheduleOn(
     if (bad) throw new ScheduleCliError(bad);
   }
 
-  const { user, prompted } = await ensureSignedIn(emailArg);
+  const signedIn = emailArg === undefined
+    ? { user: readAuth()?.user ?? null, prompted: false }
+    : await ensureSignedIn(emailArg);
 
   const next = updateConfig({
-    // Stamped in the SAME call that sets `auto`, never separately: this records
-    // that a person completed a sign-in and read the disclosure printed below,
-    // and it is what `reportHarm` gates sending on. A machine that inherited
-    // `auto` from a release where it meant "scan locally" has no stamp and
-    // sends nothing until it comes through here.
     audit: {
       auto: true,
-      reportsConsentedAt: Date.now(),
       ...(days !== undefined ? { intervalDays: days } : {}),
     },
   });
@@ -134,12 +126,14 @@ export async function runScheduleOn(
   // The list is the real payload from `report-harm.ts`: machine id, hostname,
   // platform, the window bounds and the redacted examples.
   const summary = [
-    `every ${interval} day${interval === 1 ? "" : "s"} · reports to ${user.email}`,
-    "you only hear from it when a scan finds something harmful",
-    "each report sends: finding counts, redacted example commands, this machine's name",
+    `every ${interval} day${interval === 1 ? "" : "s"} · desktop notification on leaks`,
+    signedIn.user
+      ? `masked leak alerts also go to ${signedIn.user.email}`
+      : "email is optional · add it with --email you@example.com",
+    "email contains only the most recent masked credential exposure",
   ];
 
-  if (prompted) {
+  if (signedIn.prompted) {
     // A sign-in just drew the frame, so the result continues it and the `└`
     // closes both at once — rather than the frame ending and a loose line
     // appearing underneath.
@@ -158,7 +152,7 @@ export async function runScheduleOn(
   // exists to make visible.
   warnIfDaemonWontRun();
 
-  if (prompted) {
+  if (signedIn.prompted) {
     outro("failproofai audit --status  ·  when the next scan is due");
   } else {
     process.stdout.write(dim(`\n   failproofai audit --status   when the next scan is due\n\n`));
@@ -217,7 +211,7 @@ export function runScheduleStatus(): void {
 
   // A session whose refresh window has closed cannot mint another access token,
   // so it is a destination in name only. Showing the address for one would tell
-  // somebody their digests are going somewhere they are not.
+  // somebody their alerts are going somewhere they are not.
   const live = auth && auth.refresh_expires_at * 1000 > Date.now() ? auth : null;
   // Beside the schedule, because they are the two halves of "what does this
   // machine do on its own" — one decides whether it scans, the other whether it
@@ -230,19 +224,9 @@ export function runScheduleStatus(): void {
   detail.push(["reports to", live ? live.user.email : dim("— signed out")]);
   if (on && !live) {
     // The state the reporter surfaces as "signed-out". Named here for the same
-    // reason the settings panel names it: the scans keep running, so silence
-    // about the digests would look like the feature failing.
-    detail.push(["", pink("scans continue; digests are paused until you sign in")]);
-  } else if (on && config.audit.reportsConsentedAt === undefined) {
-    // Signed in, scheduled, and still not sending: this machine set `audit.auto`
-    // when it only meant "scan locally", so nothing has consented to the digest
-    // leaving the box. Without this row the status screen would show a healthy
-    // schedule and a live address and still mail nothing, with no explanation
-    // anywhere the user can see.
-    detail.push([
-      "",
-      pink("scans continue; digests need a fresh opt-in — run `--schedule` to turn them on"),
-    ]);
+    // reason the settings panel names it: the scans and desktop notifications
+    // keep running, so silence about email would look like the feature failing.
+    detail.push(["", pink("scans and desktop alerts continue; email alerts are paused")]);
   }
 
   detail.push(["daemon", describeDaemon(daemon)]);

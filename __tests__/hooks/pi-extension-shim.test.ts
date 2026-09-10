@@ -18,12 +18,8 @@ interface CapturedCall {
   args: string[];
 }
 
-interface PiExtensionContext {
-  ui?: { notify(message: string, type?: "info" | "warning" | "error"): void };
-}
-
 interface PiExtensionApi {
-  on(event: string, handler: (event: unknown, ctx?: PiExtensionContext) => unknown): void;
+  on(event: string, handler: (event: unknown) => unknown): void;
 }
 
 const captured: CapturedCall[] = [];
@@ -60,18 +56,37 @@ vi.mock("node:child_process", () => ({
   // `opts.input`.
   spawn: (_cmd: string, args: string[]) => {
     let stdinBuf = "";
-    return {
+    const childHandlers: Record<string, ((...args: unknown[]) => void)[]> = {};
+    const stdoutHandlers: Record<string, ((chunk: Buffer) => void)[]> = {};
+    const child = {
       unref: () => {},
-      on: () => {},
+      on: (name: string, fn: (...args: unknown[]) => void) => {
+        (childHandlers[name] ??= []).push(fn);
+        return child;
+      },
+      stdout: {
+        on: (name: string, fn: (chunk: Buffer) => void) => {
+          (stdoutHandlers[name] ??= []).push(fn);
+        },
+      },
       stdin: {
         on: () => {},
         end: (chunk?: string) => {
           stdinBuf += chunk ?? "";
           captured.push({ args: args ?? [], payload: JSON.parse(stdinBuf || "{}") });
-          spawnApiByEvent[eventNameFromArgs(args ?? []) ?? "?"] = "spawn";
+          const eventName = eventNameFromArgs(args ?? []);
+          spawnApiByEvent[eventName ?? "?"] = "spawn";
+          queueMicrotask(() => {
+            const stdout = (eventName && mockSpawnReplyByEvent[eventName]) ?? "";
+            if (stdout) {
+              for (const fn of stdoutHandlers.data ?? []) fn(Buffer.from(stdout));
+            }
+            for (const fn of childHandlers.close ?? []) fn(0);
+          });
         },
       },
     };
+    return child;
   },
 }));
 
@@ -80,7 +95,7 @@ function piEncodeCwd(cwd: string): string {
 }
 
 describe("pi-extension shim — sessionId resolution via on-disk discovery", () => {
-  let handlers: Record<string, (event: unknown, ctx?: PiExtensionContext) => unknown> = {};
+  let handlers: Record<string, (event: unknown) => unknown> = {};
   let bridge: (pi: PiExtensionApi) => void;
   let piRoot: string;
   let originalEnv: string | undefined;
@@ -318,7 +333,7 @@ describe("pi-extension shim — sessionId resolution via on-disk discovery", () 
  * suffix on the next `before_agent_start`. These tests cover that handoff.
  */
 describe("pi-extension shim — agent_end → before_agent_start stop-block handoff", () => {
-  let handlers: Record<string, (event: unknown, ctx?: PiExtensionContext) => unknown> = {};
+  let handlers: Record<string, (event: unknown) => unknown> = {};
   let piRoot: string;
   let originalEnv: string | undefined;
   const SID = "ffffffff-ffff-ffff-ffff-ffffffffffff";
@@ -363,17 +378,14 @@ describe("pi-extension shim — agent_end → before_agent_start stop-block hand
     );
   });
 
-  it("agent_end notice uses Pi's visible UI notification API", () => {
-    mockSpawnReplyByEvent["agent_end"] = JSON.stringify({
+  it("ignores legacy per-CLI notice output on session_start", async () => {
+    mockSpawnReplyByEvent.session_start = JSON.stringify({
       permission: "allow",
       failproofaiNotice: "Review possible credential exposure",
     });
-    const notify = vi.fn();
-    handlers.agent_end(
-      { type: "agent_end", cwd: "/proj" },
-      { ui: { notify } },
-    );
-    expect(notify).toHaveBeenCalledWith("Review possible credential exposure", "warning");
+    handlers.session_start({ type: "session_start", cwd: "/proj" });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(captured.at(-1)?.args).toContain("session_start");
   });
 
   it("before_agent_start with no pending block returns undefined", () => {

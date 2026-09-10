@@ -3,7 +3,7 @@
  * the dashboard to view it.
  *
  *   failproofai audit                Scan, then launch the dashboard at /audit.
- *   failproofai audit --schedule     Put scans on a timer and mail the findings.
+ *   failproofai audit --schedule     Put local scans and notifications on a timer.
  *   failproofai audit --no-schedule  Stop the timer.
  *   failproofai audit --status       What this machine is scheduled to do.
  *   failproofai audit -h, --help     Show usage.
@@ -37,10 +37,9 @@ import { openWhenReady } from "./open-browser";
 import { describeOutcome, reportHarm } from "./report-harm";
 import { notifyDesktop } from "./desktop-notify";
 import { macNotifierInstalled, pruneMacNotifyQueue, queueMacNotification } from "./macos-notifier";
-import { markLeakNoticeDelivered, releaseLeakNoticeClaims } from "./leak-notice";
-import { desktopLeakNotice } from "../hooks/notice";
-import { activeFindings, readLeakRecord } from "./leak-store";
+import { desktopLeakNotice, type DesktopLeakEmailState } from "../hooks/notice";
 import { readConfig } from "../hooks/fp-config";
+import { readAuth } from "../../lib/auth/auth-store";
 import { brandAnsi, ANSI_RESET, ANSI_BOLD, ANSI_DIM, helpScreen, helpOptsFor } from "../hooks/tui";
 import { version } from "../../package.json";
 
@@ -104,29 +103,29 @@ export function helpText(): string {
           label: "usage",
           entries: [
             ["(bare)", `Scan your session history for leaked keys, then open http://localhost:${DASHBOARD_PORT}/audit`],
-            ["--schedule [days]", "Scan on a timer, notify you on this machine, and email the findings. Default 7 days, range 1-90. Signs you in the first time."],
+            ["--schedule [days]", "Scan on a timer and notify you on this machine. Default 7 days, range 1-90. No account required."],
             // Its own row now, rather than a clause inside --schedule's. It
             // does not stand alone, which is why it used to be a clause — but
             // a clause wraps, and `--email <address>` landing with the flag at
             // the end of one line and its placeholder at the start of the next
             // is not a flag anybody can read or copy.
-            ["--email <address>", "With --schedule, fills in your address. A sign-in code is still emailed to you to paste."],
+            ["--email <address>", "With --schedule, add email alerts for the most recent masked credential leak. A sign-in code is emailed to you."],
             ["--no-schedule", "Stop the timer. Leaves you signed in."],
             // Its own pair of flags rather than a clause on --schedule: whether
             // this machine scans and whether it may interrupt you are separate
             // decisions, and nobody silencing a banner should have to re-state
             // their schedule to do it.
             ["--notify", "Show a desktop notification when a scan finds a credential. On by default."],
-            ["--no-notify", "Stop those notifications. Scans and the digest are unaffected."],
+            ["--no-notify", "Stop desktop notifications. Scheduled scans and optional email alerts are unaffected."],
             ["--status", "Whether scheduling is on, where reports go, the daemon's state, and when the next scan is due."],
             ["-h, --help", "Show this help."],
           ],
         },
       ],
       footer: [
-        "Everything runs on this machine. A scan tells you three ways: a desktop",
-        "notification, two lines in your agent session, and the emailed digest —",
-        "and only that digest ever leaves.",
+        "Every scan runs on this machine. Leak alerts appear on the desktop and",
+        "inside your agent session. If you add email, only the newest masked",
+        "credential exposure and its metadata leave the machine.",
       ],
     },
     helpOptsFor(process.stdout),
@@ -378,9 +377,12 @@ function heldByLine(held: AuditLockInfo | null): string {
  * turning a good scan into exit 1 would make the scheduler back off from
  * running the thing that actually matters.
  */
-async function announceLeaksOnDesktop(result: AuditResult): Promise<void> {
+async function announceLeaksOnDesktop(
+  result: AuditResult,
+  report: Awaited<ReturnType<typeof reportHarm>>,
+): Promise<void> {
   try {
-    await announceLeaksOrThrow(result);
+    await announceLeaksOrThrow(result, report);
   } catch (err) {
     // The catch is not decoration. `notifyDesktop` documents that it never
     // throws, but it is doing socket I/O, and so are the config read and the
@@ -394,29 +396,22 @@ async function announceLeaksOnDesktop(result: AuditResult): Promise<void> {
   }
 }
 
-async function announceLeaksOrThrow(result: AuditResult): Promise<void> {
-  const ids = result.newLeakIds ?? [];
+async function announceLeaksOrThrow(
+  result: AuditResult,
+  report: Awaited<ReturnType<typeof reportHarm>>,
+): Promise<void> {
+  // `leakIds` includes credentials this scan encountered before. A scheduled
+  // run is a fresh safety check, so it must raise a fresh system notification
+  // when the leak is still present; the old per-finding marker is why only the
+  // first test run ever produced a banner. Older cached results fall back to
+  // first-seen ids.
+  const ids = result.leakIds ?? result.newLeakIds ?? [];
   if (ids.length === 0) return;
   // Read at fire time, not at scan time: the switch answers "should this
   // interrupt me", and it is the user's most recent answer that counts.
   if (!readConfig().audit.notify) return;
 
-  // Claimed BEFORE the call goes out, and in the desktop channel only. Before,
-  // because a process that dies mid-notify would otherwise re-announce the same
-  // finding on every scheduled run forever; desktop-only, because a banner the
-  // user may never have seen must not also silence the in-session notice.
-  const claimed = markLeakNoticeDelivered(ids, undefined, "desktop");
-  if (claimed.length === 0) return;
-
-  // Report what SURVIVED into the record, not how many ids the scan minted.
-  // `writeLeakRecord` prunes to MAX_FINDINGS, so on a large history the two
-  // numbers diverge wildly — a real run announced "5703 credentials" while the
-  // dashboard it points at showed 500. A banner that disagrees with the page it
-  // sends you to is worse than no banner: it teaches you the number is noise.
-  const live = new Set(activeFindings(readLeakRecord()).map((f) => f.id));
-  const shown = claimed.filter((id) => live.has(id)).length || claimed.length;
-
-  const n = shown === 1 ? "a possible credential exposure" : `${shown} possible credential exposures`;
+  const n = ids.length === 1 ? "a possible credential exposure" : `${ids.length} possible credential exposures`;
   // Fixed text with no scanned content and no count. A finding's own text comes
   // from a repository this machine cloned, and notification bodies render
   // markup on several Linux desktops. The count is intentionally left to the
@@ -427,54 +422,52 @@ async function announceLeaksOrThrow(result: AuditResult): Promise<void> {
   // delivers the click back as an `ActionInvoked` signal to the sender — and
   // this process exits as soon as the scan finishes, so the button would be
   // dead. A plain command the user can copy beats a button that does nothing.
-  const { title, body } = desktopLeakNotice();
-  let delivered = false;
+  const emailState: DesktopLeakEmailState =
+    report.kind === "sent"
+      ? "sent"
+      : report.kind === "signed-out" || !readAuth()
+        ? "missing"
+        : report.kind === "failed"
+          ? "failed"
+          : "held";
+  const { title, body } = desktopLeakNotice(emailState);
 
-  try {
-    // The two platforms need opposite things, and the split is not cosmetic. On
-    // Linux this process can reach the session bus itself. On macOS it cannot
-    // reach Notification Center at all — it is a child of a LaunchDaemon, outside
-    // the GUI session — so it hands the message to an agent that lives inside
-    // one. See `macos-notifier.ts` for why that agent exists.
-    if (process.platform === "darwin") {
-      pruneMacNotifyQueue();
-      if (!queueMacNotification(claimed[0], title, body)) {
-        process.stderr.write(`failproofai: found ${n} but could not queue a notification\n`);
-      } else {
-        delivered = true; // the durable queue owns delivery from here
-      }
-      if (delivered && !macNotifierInstalled()) {
-        // Queued, but nothing currently collects it. Keep the claim because the
-        // payload is durable and will be consumed when the LaunchAgent returns.
-        // Worth a line, because the immediate symptom is otherwise silence.
-        process.stderr.write(
-          `failproofai: found ${n}; the notifier is not installed, so nothing will show it ` +
-            `(run \`failproofai config\`)\n`,
-        );
-      }
-      return;
-    }
-
-    const outcome = await notifyDesktop(
-      title,
-      body,
-      // A stable id would let a repeat scan replace the previous bubble instead
-      // of stacking. We do not have one yet — the server assigns it and we would
-      // have to persist it — so a fresh notification is correct here, and it is
-      // bounded: at most one per distinct credential, ever.
-      0,
-    );
-    delivered = outcome.ok;
-    if (!outcome.ok) {
-      // stderr, so it lands in the journal beside the run it belongs to. Not a
-      // failure of the audit — but "we found a key and could not tell you" is
-      // exactly the sentence someone debugging this needs to find.
+  // The two platforms need opposite things, and the split is not cosmetic. On
+  // Linux this process can reach the session bus itself. On macOS it cannot
+  // reach Notification Center at all — it is a child of a LaunchDaemon, outside
+  // the GUI session — so it hands the message to an agent that lives inside
+  // one. See `macos-notifier.ts` for why that agent exists.
+  if (process.platform === "darwin") {
+    pruneMacNotifyQueue();
+    if (!queueMacNotification(ids[0], title, body)) {
+      process.stderr.write(`failproofai: found ${n} but could not queue a notification\n`);
+    } else if (!macNotifierInstalled()) {
+      // Queued, but nothing currently collects it. The payload is durable and
+      // will be consumed when the LaunchAgent returns.
+      // Worth a line, because the immediate symptom is otherwise silence.
       process.stderr.write(
-        `failproofai: found ${n} but could not raise a desktop notification (${outcome.reason})\n`,
+        `failproofai: found ${n}; the notifier is not installed, so nothing will show it ` +
+          `(run \`failproofai config\`)\n`,
       );
     }
-  } finally {
-    if (!delivered) releaseLeakNoticeClaims(claimed, undefined, "desktop");
+    return;
+  }
+
+  const outcome = await notifyDesktop(
+    title,
+    body,
+    // `0` asks the notification server for a fresh id. Each scheduled scan that
+    // still sees a leak is a new reminder, rather than replacing or suppressing
+    // the first banner forever.
+    0,
+  );
+  if (!outcome.ok) {
+    // stderr, so it lands in the journal beside the run it belongs to. Not a
+    // failure of the audit — but "we found a key and could not tell you" is
+    // exactly the sentence someone debugging this needs to find.
+    process.stderr.write(
+      `failproofai: found ${n} but could not raise a desktop notification (${outcome.reason})\n`,
+    );
   }
 }
 
@@ -548,12 +541,9 @@ export async function runScheduledAudit(): Promise<number> {
         `${num(result.transcripts.scanned)} sessions, ${num(result.totals.hits)} hits\n`,
     );
 
-    // Tell whoever owns this machine, on the machine, before anything is sent
-    // anywhere. Local first: this is the channel that works with no account, no
-    // email and no network, which describes most users.
-    await announceLeaksOnDesktop(result);
-
-    // Report harmful findings upstream, if the user switched emailed reports on.
+    // Email is optional and never controls the local scan. Run it first only so
+    // the desktop notification can truthfully say whether this particular
+    // alert was also emailed; every failure remains a non-fatal outcome.
     //
     // AFTER the dashboard cache is written and AFTER the success line, because
     // the scan is the product and this is an optional extra on top of it.
@@ -567,6 +557,7 @@ export async function runScheduledAudit(): Promise<number> {
     // would also make the manual command do a network call that
     // `audit --help` promises it does not.
     const outcome = await reportHarm(result);
+    await announceLeaksOnDesktop(result, outcome);
     const line = describeOutcome(outcome);
     if (line) {
       // Anything other than a successful send goes to stderr: on a scheduled run

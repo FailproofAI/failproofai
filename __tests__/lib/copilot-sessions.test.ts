@@ -121,6 +121,60 @@ describe("lib/copilot-sessions: parseCopilotLog", () => {
     expect(block.result?.content).toBe("46\n<exited with exit code 0>");
   });
 
+  it("keeps the real PostToolUse output when the completion record is only a summary", async () => {
+    const content = [
+      line({
+        type: "tool.execution_start",
+        data: {
+          toolCallId: "call_secret",
+          toolName: "bash",
+          arguments: { command: "node generate.js" },
+        },
+        id: "ts1",
+        timestamp: "2026-09-09T00:00:00.000Z",
+        parentId: null,
+      }),
+      line({
+        type: "hook.start",
+        data: {
+          hookInvocationId: "hook1",
+          hookType: "postToolUse",
+          input: {
+            toolName: "bash",
+            toolArgs: { command: "node generate.js" },
+            toolResult: {
+              textResultForLlm: "ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8",
+              sessionLog: "same model-visible output",
+            },
+          },
+        },
+        id: "hs1",
+        timestamp: "2026-09-09T00:00:00.500Z",
+        parentId: null,
+      }),
+      line({
+        type: "tool.execution_complete",
+        data: {
+          toolCallId: "call_secret",
+          success: true,
+          result: { content: "Command completed", detailedContent: "Command completed successfully" },
+          toolTelemetry: { metrics: { commandTimeMs: 750 } },
+        },
+        id: "tc1",
+        timestamp: "2026-09-09T00:00:01.000Z",
+        parentId: null,
+      }),
+    ].join("\n");
+
+    const { entries } = await parseCopilotLog(content);
+    const assistant = entries.find((entry) => entry.type === "assistant");
+    if (!assistant || assistant.type !== "assistant") throw new Error("expected assistant");
+    const block = assistant.message.content[0];
+    if (block.type !== "tool_use") throw new Error("expected tool_use");
+    expect(block.result?.content).toContain("ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8");
+    expect(block.result?.durationMs).toBe(750);
+  });
+
   it("falls back to timestamp-diff durationMs when telemetry is absent", async () => {
     const content = [
       line({

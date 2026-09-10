@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.4-beta.5 — 2026-09-09
+
+### Features
+
+- Scheduled audits are enabled after setup by default, run every 7 days, and do not require an account. Linux and macOS desktop alerts remain active while signed out; adding `--email` enables inbox alerts without controlling the local schedule.
+
+- Credential email alerts are sent only when a scheduled scan contains a leak. Each email contains exactly the newest masked credential exposure with its originating CLI, timestamp, machine, project, and exposure mechanism, rendered in the failproof_ai transactional email style.
+
+### Fixes
+
+- Leak alerts no longer attempt to render inside individual agent CLIs. Those channels varied by host, could disappear inside full-screen interfaces, and could resemble enforcement output. Scheduled audits are now the sole trigger for leak notifications: when a scheduled scan finds a credential exposure, failproofai raises the Linux or macOS system notification and optionally sends the masked email alert.
+
+- Repeated scheduled scans now raise a fresh desktop notification while a credential remains exposed, instead of notifying only on the first detection. Notification copy states whether the matching email was sent, held, failed, or is unavailable because no email identity is configured.
+
+- Current Codex, Copilot, Cursor, and OpenCode transcript formats now preserve tool inputs and outputs for leak scanning, with a contract test covering all 12 supported CLIs and cache invalidation forcing stale zero-finding sessions to be rescanned.
+
 ## 1.0.4-beta.4 — 2026-09-09
 
 ### Docs

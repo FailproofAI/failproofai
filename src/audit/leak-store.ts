@@ -46,24 +46,6 @@ interface LeakIdentity {
   salt: string;
   /** Finding ids the user has said are not secrets. */
   dismissed: string[];
-  /**
-   * When the user last actually LOOKED at the leak report, as epoch ms.
-   *
-   * This is what stops the in-CLI notice, and it replaces a per-finding "we
-   * emitted it once" marker that silently lost the alert twice in one day: once
-   * because it was claimed on an event whose channel the host ignores, and once
-   * because hooks were disabled in the project being tested. Both marked every
-   * finding delivered and showed nothing, with no retry, ever.
-   *
-   * Keyed on the user's own action rather than on ours, the failure direction
-   * inverts: a dropped notice simply reappears next session, and the only thing
-   * that silences it is the user opening the report — which is the outcome the
-   * notice exists to produce.
-   *
-   * `identity`, alongside `dismissed`, for the same reason: losing it re-alerts
-   * about credentials somebody has already seen and judged.
-   */
-  reportViewedAt?: number;
 }
 
 /** Mode for both files. They carry no credential, but they do carry a machine
@@ -95,10 +77,6 @@ export function readLeakIdentity(home?: string): LeakIdentity {
     return {
       salt: existing.salt,
       dismissed: existing.dismissed ?? [],
-      reportViewedAt:
-        typeof existing.reportViewedAt === "number" && Number.isFinite(existing.reportViewedAt)
-          ? existing.reportViewedAt
-          : undefined,
     };
   }
   const minted: LeakIdentity = { salt: randomBytes(32).toString("hex"), dismissed: [] };
@@ -146,7 +124,7 @@ export function writeLeakIdentity(identity: LeakIdentity, home?: string): boolea
 function sanitizeFinding(raw: unknown): LeakFinding | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const f = raw as Record<string, unknown>;
-  // The id becomes a FILENAME (notice markers, the macOS queue), so anything
+  // The id becomes a filename in the macOS notification queue, so anything
   // that is not the exact minted shape disqualifies the whole entry.
   if (typeof f.id !== "string" || !isFindingId(f.id)) return null;
 
@@ -219,29 +197,6 @@ export function writeLeakRecord(record: LeakRecord, home?: string, nowMs = Date.
 }
 
 /** Mark a finding as not-a-secret. Survives a reset; see the module header. */
-/**
- * Record that the user has seen the leak report.
- *
- * Called from the dashboard when it reads the findings, and from the
- * interactive `failproofai audit`, which prints them. Both are the user
- * looking — which is the only signal worth silencing the notice on.
- *
- * Never throws: failing to record a view costs one extra notice, which is the
- * side this whole design errs on.
- */
-export function markLeakReportViewed(home?: string, nowMs = Date.now()): void {
-  try {
-    const identity = readLeakIdentity(home);
-    writeJsonAtomically(
-      auditLeakIdentityFile(home),
-      { ...identity, reportViewedAt: nowMs },
-      { mode: FILE_MODE },
-    );
-  } catch {
-    // See the doc comment: an unrecorded view re-notifies once.
-  }
-}
-
 export function dismissFinding(id: string, home?: string): boolean {
   const identity = readLeakIdentity(home);
   if (identity.dismissed.includes(id)) return true;

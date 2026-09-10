@@ -257,7 +257,7 @@ export interface AuditReportBody {
    * Credentials this machine found in its own transcripts.
    *
    * Optional on the wire, so a CLI newer than the api-server sends a field the
-   * server ignores rather than failing the whole digest — the harmful counts
+   * server ignores rather than failing the whole report — the harmful counts
    * are the older half of the contract and must keep arriving either way.
    *
    * Every field here is a mask, a label, a length or a location. There is no
@@ -287,15 +287,15 @@ export interface AuditReportResult {
   report_id: string;
   /** Whether this report produced an email. */
   emailed: boolean;
-  /** `below_threshold`, `cooldown`, `send_failed`, or null when mail went out. */
+  /** `no_leak`, `cooldown`, `send_failed`, or null when mail went out. */
   reason: string | null;
   /**
    * Where the next window starts, per the SERVER.
    *
    * Persisted verbatim rather than computed locally. The server anchors it on
-   * the last DELIVERED digest, so a report held by the cooldown — or one whose
+   * the last DELIVERED alert, so a report held by the cooldown — or one whose
    * send failed — correctly leaves the watermark where it was, and its findings
-   * turn up in the next digest instead of falling into a gap. A machine that
+   * turn up in the next alert instead of falling into a gap. A machine that
    * lost `machine.json` also resyncs here rather than re-reporting from the
    * beginning of time.
    */
@@ -303,11 +303,11 @@ export interface AuditReportResult {
 }
 
 /**
- * Submit one scheduled scan's harmful findings.
+ * Submit one scheduled scan's harmful findings and newest masked credential.
  *
  * Called only by the audit child, and only on `--scheduled`. The destination
  * address is never sent: the api-server takes it from the access-token claims,
- * so a report cannot name where its digest goes.
+ * so a report cannot name where its email alert goes.
  */
 export async function submitAuditReport(
   accessToken: string,

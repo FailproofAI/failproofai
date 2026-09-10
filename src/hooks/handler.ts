@@ -35,8 +35,6 @@ import { loadAllCustomHooks } from "./custom-hooks-loader";
 import type { CustomHook } from "./policy-types";
 import { persistHookActivity } from "./hook-activity-store";
 import { deliveryHealth, deliveryHealthLine } from "./delivery-health";
-import { shapeNotice, canDeliverNotice, leakNoticeText } from "./notice";
-import { sessionNoticePending, markSessionNoticed } from "../audit/leak-notice";
 import { trackHookEvent, flushHookTelemetry } from "./hook-telemetry";
 import { resolveCwd } from "./resolve-cwd";
 import { resolvePermissionMode } from "./resolve-permission-mode";
@@ -104,67 +102,6 @@ export interface HookEventOutcome {
   exitCode: number;
   stdout: string;
   stderr: string;
-}
-
-/**
- * Merge a pending leak notice into an outcome, once.
- *
- * Anchored on Stop wherever the host renders there, and SessionStart only where
- * it does not: Stop fires once per turn, AFTER the answer, so it never
- * interrupts what the user was reading — and at session open the background
- * scan may not have produced the finding yet.
- *
- * Every failure is swallowed. A courtesy message must never be the reason a
- * hook misbehaves, and the finding is on disk either way.
- */
-function attachLeakNotice(
-  eventType: string,
-  cli: IntegrationType | undefined,
-  outcome: HookEventOutcome,
-  sessionId: string | undefined,
-): HookEventOutcome {
-  try {
-    if (!canDeliverNotice(cli)) return outcome;
-    // canDeliverNotice() above already proved cli is set; narrow for the call.
-    if (!cli) return outcome;
-    const canonical = canonicalizeEventType(eventType, cli);
-    // STOP ONLY, and the narrowing is the fix for a measured failure rather
-    // than caution. `notice.ts` derived each host's channel from a live probe
-    // on **Stop**; SessionStart was allowed here on the assumption that a
-    // channel proven on one event works on another. It does not. On a real
-    // machine 499 findings were CLAIMED and the user saw nothing: SessionStart
-    // fires first in a session, consumed every claim, and the host dropped the
-    // field — Claude Code documents `hookSpecificOutput.additionalContext` for
-    // SessionStart, not `systemMessage`.
-    //
-    // That is the worst outcome this design has: a finding recorded as
-    // delivered that reached nobody, and never retried. Stop fires at the end
-    // of every assistant turn, so nothing is lost by waiting for it — the user
-    // is reading output at that moment anyway. Add SessionStart back only with
-    // a probe showing the notice actually rendered there.
-    if (canonical !== "Stop") return outcome;
-
-    // Keyed on the SESSION and on whether the user has opened the report, not
-    // on a per-finding "we emitted this once" marker — see
-    // `sessionNoticePending` for the two ways that marker lost the alert
-    // permanently. A dropped notice now costs one session's silence instead.
-    const pending = sessionNoticePending(sessionId ?? "");
-    if (pending.count === 0) return outcome;
-
-    const shaped = shapeNotice(cli, leakNoticeText(pending.count), outcome.stdout);
-    if (shaped.stdout === outcome.stdout && !shaped.stderr) return outcome;
-
-    // Claimed only once the notice is actually on the stream, so a crash
-    // between the two re-notifies rather than silently swallowing the alert.
-    markSessionNoticed(sessionId ?? "");
-    return {
-      exitCode: outcome.exitCode,
-      stdout: shaped.stdout,
-      stderr: outcome.stderr + shaped.stderr,
-    };
-  } catch {
-    return outcome;
-  }
 }
 
 export interface EvaluateHookEventOptions {
@@ -820,22 +757,7 @@ export async function evaluateHookEvent(
       }
     }
 
-    // Attach a pending leak notice, if this event is one that can carry it.
-    //
-    // Emitted HERE rather than in `handleHookEvent`, which is what fixes the
-    // bug this replaced: `bin/failproofai.mjs`'s `isDaemonConfigured()` branch
-    // writes `result.stdout`/`result.stderr` and EXITS INSIDE THAT BRANCH — it
-    // never falls through to `handleHookEvent`. Setup requires the daemon, so
-    // the previous notice was dead code on every configured machine, and had
-    // been since it shipped. Both paths return this object, so producing the
-    // notice here reaches both with no change to either caller.
-    const withNotice = attachLeakNotice(
-      eventType,
-      cli,
-      { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr },
-      sessionId,
-    );
-    return withNotice;
+    return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr };
   } finally {
     if (opts?.awaitTelemetryFlush ?? true) {
       // Await any un-awaited (`void trackHookEvent(...)`) events fired during

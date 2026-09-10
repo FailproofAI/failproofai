@@ -65,6 +65,19 @@ describe("upsertFinding — the unit is the distinct VALUE", () => {
     expect(r.findings[0].sightings.length).toBeLessThanOrEqual(MAX_SIGHTINGS);
   });
 
+  it("keeps the newest sighting after the evidence cap is reached", () => {
+    const r = emptyRecord("salt", "2026-09-01T00:00:00Z");
+    for (let i = 1; i <= MAX_SIGHTINGS + 2; i++) {
+      upsertFinding(r, {
+        ...base("a"),
+        sighting: sighting(`2026-09-${String(i).padStart(2, "0")}T00:00:00Z`, `s${i}`),
+      });
+    }
+    expect(r.findings[0].sightings).toHaveLength(MAX_SIGHTINGS);
+    expect(r.findings[0].sightings[0].at).toBe("2026-09-01T00:00:00Z");
+    expect(r.findings[0].sightings.at(-1)?.at).toBe("2026-09-07T00:00:00Z");
+  });
+
   it("tracks first and last seen across out-of-order sightings", () => {
     const r = emptyRecord("salt", "2026-09-01T00:00:00Z");
     upsertFinding(r, { ...base("a"), sighting: sighting("2026-09-05T00:00:00Z") });

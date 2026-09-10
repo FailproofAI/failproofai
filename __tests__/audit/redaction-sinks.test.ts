@@ -65,6 +65,7 @@ function result(results: AuditCount[] = [count()]): AuditResult {
     // no teeth: it walks a real object, and TypeScript will not complain about
     // an optional field the redactor forgot. This fixture is the only thing
     // standing between a new field and a silent passthrough.
+    leakIds: ["abc123"],
     newLeakIds: ["abc123"],
   };
 }

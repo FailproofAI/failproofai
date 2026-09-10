@@ -151,6 +151,11 @@ interface CopilotToolResult {
   detailedContent?: string;
 }
 
+interface CopilotHookToolResult {
+  textResultForLlm?: string;
+  sessionLog?: string;
+}
+
 interface CopilotToolTelemetry {
   metrics?: { commandTimeMs?: number; durationMs?: number };
   properties?: Record<string, unknown>;
@@ -171,6 +176,8 @@ export async function parseCopilotLog(
   // toolCallId → tool_use block, so we can attach tool.execution_complete back.
   const toolUseById = new Map<string, ToolUseBlock>();
   const toolUseStartMs = new Map<string, number>();
+  let mostRecentToolUse: ToolUseBlock | undefined;
+  let mostRecentToolUseStartMs = 0;
   let cwd: string | undefined;
   let seenSessionStart = false;
 
@@ -273,7 +280,30 @@ export async function parseCopilotLog(
         toolUseById.set(callId, toolUse);
         toolUseStartMs.set(callId, date.getTime());
       }
+      mostRecentToolUse = toolUse;
+      mostRecentToolUseStartMs = date.getTime();
       continue;
+    }
+
+    // Copilot CLI 1.0.39 can omit the command's real stdout from
+    // `tool.execution_complete` and expose it only to the PostToolUse hook as
+    // `input.toolResult.textResultForLlm`. That is the value the model saw and
+    // the value failproofai must audit. Keep it on the active tool block; the
+    // later completion record may still contribute timing, but must not replace
+    // this output with its shorter status-only summary.
+    if (recType === "hook.start" && data.hookType === "postToolUse" && mostRecentToolUse) {
+      const input = (data.input as Record<string, unknown> | undefined) ?? {};
+      const hookResult = (input.toolResult as CopilotHookToolResult | undefined) ?? {};
+      const hookContent = hookResult.textResultForLlm ?? hookResult.sessionLog;
+      if (typeof hookContent === "string" && hookContent.length > 0) {
+        mostRecentToolUse.result = {
+          timestamp,
+          timestampFormatted: formatTimestamp(date),
+          content: hookContent,
+          durationMs: Math.max(0, date.getTime() - mostRecentToolUseStartMs),
+          durationFormatted: formatDuration(Math.max(0, date.getTime() - mostRecentToolUseStartMs)),
+        };
+      }
     }
 
     if (recType === "tool.execution_complete") {
@@ -289,7 +319,8 @@ export async function parseCopilotLog(
           typeof reportedMs === "number" && reportedMs >= 0
             ? reportedMs
             : Math.max(0, date.getTime() - startMs);
-        const content = result.detailedContent ?? result.content ?? "";
+        const completionContent = result.detailedContent ?? result.content ?? "";
+        const content = block.result?.content || completionContent;
         block.result = {
           timestamp,
           timestampFormatted: formatTimestamp(date),

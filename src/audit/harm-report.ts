@@ -1,10 +1,11 @@
 /**
  * Turning an audit result into a harm report the api-server can act on.
  *
- * Runs only after a SCHEDULED scan (`failproofai audit --scheduled`), only when
- * the user has switched emailed reports on, and only ever from the audit child —
- * never the daemon, which holds no human credential precisely so that refresh
- * rotation stays inside the audit lock. See `crates/failproofaid/src/audit_lane.rs`.
+ * Runs only after a SCHEDULED scan (`failproofai audit --scheduled`) and only
+ * ever from the audit child — never the daemon, which holds no human credential
+ * precisely so that refresh rotation stays inside the audit lock. Without an
+ * email identity the scan and desktop notification still work; this module
+ * simply reports `signed-out` and sends nothing.
  *
  * ## What counts as harm
  *
@@ -302,7 +303,10 @@ export function selectLeaks(findings: LeakFinding[], from: Date, to: Date): Repo
     // is now, not where it was first noticed.
     // Defensive even though `readLeakRecord` already sanitises: this is
     // exported and takes whatever a caller hands it.
-    const seen = f.sightings?.[f.sightings.length - 1];
+    const seen = f.sightings?.reduce((latest, candidate) => {
+      if (!latest) return candidate;
+      return (ts(candidate.at) ?? 0) >= (ts(latest.at) ?? 0) ? candidate : latest;
+    }, undefined as LeakFinding["sightings"][number] | undefined);
     out.push({
       id: f.id,
       display: f.fingerprint?.display ?? "[credential]",
@@ -356,6 +360,8 @@ export function buildHarmReport(
     window_from: from.toISOString(),
     window_to: windowTo.toISOString(),
     harmful: selectHarmful(result, from, windowTo, { includeUnplaceable: isFirstReport }),
-    leaks: selectLeaks(leakFindings, from, windowTo),
+    // One email, one actionable credential. Sending every row turns a leak
+    // alert into a backlog digest and obscures the event that just happened.
+    leaks: selectLeaks(leakFindings, from, windowTo).slice(0, 1),
   };
 }

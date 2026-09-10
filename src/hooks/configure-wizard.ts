@@ -106,6 +106,7 @@ import {
   type RetryProbe,
 } from "./onboarding-attempt";
 import { acquireOnboardingLock } from "./onboarding-lock";
+import { readConfigRaw, updateConfig } from "./fp-config";
 
 export interface WizardIO {
   stdin?: TTYIn;
@@ -754,6 +755,19 @@ export async function runConfigureWizard(
   // stopping for is the sudo password, which is a CREDENTIAL rather than a
   // question, and no flag can supply it.
   const preAnswered = Boolean(answers.token);
+
+  // Capture the preference BEFORE the daemon setup writes config.json. A fresh
+  // machine reaches `setDaemonConfigured(true)` with no config file; that helper
+  // necessarily materialises the conservative no-file default (`auto: false`).
+  // Looking after that write cannot distinguish "the user switched it off"
+  // from "setup just wrote its fallback", which is how new installs ended up
+  // with a seven-day scheduler that was explicitly disabled.
+  const initialAudit = readConfigRaw().raw.audit;
+  const hadExplicitAuditAuto =
+    !!initialAudit &&
+    typeof initialAudit === "object" &&
+    !Array.isArray(initialAudit) &&
+    typeof (initialAudit as Record<string, unknown>).auto === "boolean";
 
 
   // Running the wizard itself under sudo configures the WRONG ACCOUNT, and
@@ -1439,6 +1453,20 @@ export async function runConfigureWizard(
   // binary filename are both derived from it.
   if (daemonInstalled) {
     setDaemonConfigured(true, cliVersion);
+    // A completed setup is the default opt-in to the LOCAL seven-day scan. It
+    // does not imply an email address or make a network request: reporting is
+    // independently gated by the signed-in audit identity. Reconfiguration
+    // preserves an explicit `auto: false`, so the user's off switch remains an
+    // off switch instead of being undone whenever they repair or upgrade the
+    // daemon.
+    if (!hadExplicitAuditAuto) {
+      try {
+        updateConfig({ audit: { auto: true } });
+      } catch {
+        // The daemon and hooks are already installed. Keep setup successful;
+        // the status screen will expose that scheduling could not be persisted.
+      }
+    }
     // Only now — the unit points at the new binary, so older ones are no
     // longer referenced by anything. Keeps the previous version for an
     // offline rollback.

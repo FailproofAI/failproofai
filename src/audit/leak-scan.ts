@@ -33,7 +33,7 @@ import { SECRET_PATTERNS } from "../hooks/builtin-policies";
  * `result.leaks` forever, which made a precision fix appear to do nothing on a
  * warm machine. Bump this whenever matching or suppression semantics change.
  */
-export const LEAK_SCAN_VERSION = 5;
+export const LEAK_SCAN_VERSION = 6;
 
 /** One credential value found in one event. */
 export interface SecretMatch {

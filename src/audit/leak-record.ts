@@ -156,15 +156,19 @@ export function upsertFinding(
   if (sighting.at > existing.lastSeen) existing.lastSeen = sighting.at;
   if (sighting.at < existing.firstSeen) existing.firstSeen = sighting.at;
 
-  // Keep the FIRST sightings rather than the most recent. The first exposure is
-  // the one that explains how the credential got into the transcript at all;
-  // later ones are usually the same value being replayed, and a checkpoint
-  // record replaying a prompt is not new information.
-  if (existing.sightings.length < MAX_SIGHTINGS) {
-    const seen = existing.sightings.some(
-      (s) => s.sessionId === sighting.sessionId && s.at === sighting.at,
-    );
-    if (!seen) existing.sightings.push(sighting);
+  // Keep the earliest sighting AND the most recent evidence. The report/email
+  // promises the CLI and timestamp of the latest exposure; keeping only the
+  // first five made those fields stale forever after a busy credential crossed
+  // the cap. Middle sightings are the expendable ones.
+  const seen = existing.sightings.some(
+    (s) => s.sessionId === sighting.sessionId && s.at === sighting.at,
+  );
+  if (!seen) {
+    existing.sightings.push(sighting);
+    existing.sightings.sort((a, b) => a.at.localeCompare(b.at));
+    if (existing.sightings.length > MAX_SIGHTINGS) {
+      existing.sightings.splice(1, existing.sightings.length - MAX_SIGHTINGS);
+    }
   }
   return { record, isNew: false };
 }

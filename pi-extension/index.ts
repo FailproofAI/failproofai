@@ -49,7 +49,6 @@ function resolveSpawn(): { cmd: string; args: string[] } {
 interface PolicyDecision {
   permission?: "allow" | "deny";
   reason?: string;
-  failproofaiNotice?: string;
 }
 
 /**
@@ -83,7 +82,10 @@ function debug(msg: string): void {
  * NOT used for `tool_call`, `user_bash`, `input` or `agent_end`: those four
  * consume the decision, and blocking is what enforcement means.
  */
-function forwardPolicy(eventName: string, payload: unknown): void {
+function forwardPolicy(
+  eventName: string,
+  payload: unknown,
+): void {
   const { cmd, args } = resolveSpawn();
   debug(`forwardPolicy (detached) event=${eventName} cmd=${cmd}`);
   try {
@@ -96,14 +98,14 @@ function forwardPolicy(eventName: string, payload: unknown): void {
     child.unref();
     // EPIPE if the child died before stdin was consumed — fail-open, silently.
     child.on("error", (err) => debug(`forward error ${err.message}`));
-    child.stdin.on("error", () => {});
-    child.stdin.end(JSON.stringify(payload));
+    child.stdin?.on("error", () => {});
+    child.stdin?.end(JSON.stringify(payload));
   } catch (err) {
     debug(`FORWARD EXCEPTION ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
-function callPolicy(eventName: string, payload: unknown): { block: boolean; reason: string; notice?: string } {
+function callPolicy(eventName: string, payload: unknown): { block: boolean; reason: string } {
   const { cmd, args } = resolveSpawn();
   debug(`callPolicy event=${eventName} cmd=${cmd}`);
   try {
@@ -125,10 +127,9 @@ function callPolicy(eventName: string, payload: unknown): { block: boolean; reas
       return {
         block: true,
         reason: parsed.reason ?? "Blocked by failproofai",
-        notice: parsed.failproofaiNotice,
       };
     }
-    return { block: false, reason: "", notice: parsed.failproofaiNotice };
+    return { block: false, reason: "" };
   } catch (err) {
     debug(`EXCEPTION ${err instanceof Error ? err.message : String(err)}`);
     // Fail-open: never block tool execution because of an infra failure.
@@ -376,13 +377,7 @@ interface PiBeforeAgentStartEvent {
 }
 
 interface PiExtensionApi {
-  on(event: string, handler: (event: unknown, ctx?: PiExtensionContext) => unknown): void;
-}
-
-interface PiExtensionContext {
-  ui?: {
-    notify(message: string, type?: "info" | "warning" | "error"): void;
-  };
+  on(event: string, handler: (event: unknown) => unknown): void;
 }
 
 export default function failproofaiBridge(pi: PiExtensionApi) {
@@ -503,7 +498,7 @@ export default function failproofaiBridge(pi: PiExtensionApi) {
   // The 5 require-*-before-stop builtins thus enforce by gating the NEXT
   // user turn's system prompt rather than by retrying the same loop. If the
   // user kills Pi between turns, the gate is missed — same bound Claude has.
-  pi.on("agent_end", (event: unknown, ctx?: PiExtensionContext): unknown => {
+  pi.on("agent_end", (event: unknown): unknown => {
     const e = event as PiAgentEndEvent;
     const cwd = resolveCwd(e.cwd);
     const sessionId = resolveSessionId(e.sessionId, cwd);
@@ -515,9 +510,6 @@ export default function failproofaiBridge(pi: PiExtensionApi) {
     if (decision.block && decision.reason && sessionId) {
       pendingStopBlockBySession.set(sessionId, decision.reason);
       debug(`agent_end deny stored for session=${sessionId}`);
-    }
-    if (decision.notice) {
-      try { ctx?.ui?.notify(decision.notice, "warning"); } catch { /* fail-open */ }
     }
     return undefined;
   });

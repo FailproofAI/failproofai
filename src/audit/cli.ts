@@ -123,9 +123,9 @@ export function helpText(): string {
         },
       ],
       footer: [
-        "Every scan runs on this machine. Leak alerts appear on the desktop and",
-        "inside your agent session. If you add email, only the newest masked",
-        "credential exposure and its metadata leave the machine.",
+        "Every scan runs on this machine. Leak alerts appear as desktop system",
+        "notifications, never inside agent sessions. If you add email, only the",
+        "newest masked credential exposure and its metadata leave the machine.",
       ],
     },
     helpOptsFor(process.stdout),

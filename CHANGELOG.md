@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.4-beta.6 — 2026-09-10
+
+### Fixes
+
+- Credential leak alerts now use scheduled-audit system notifications only. Each scheduled scan raises a fresh Linux or macOS notification while a leak remains present, without installing or emitting per-CLI session hooks.
+
 ## 1.0.4-beta.5 — 2026-09-09
 
 ### Features

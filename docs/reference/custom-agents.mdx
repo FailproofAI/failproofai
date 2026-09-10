@@ -37,8 +37,16 @@ The package is installed as `failproofai-sdk` and imported in Python as `failpro
     ![A custom Python agent session reconstructed as an execution graph and ordered event trace.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
+    Read the `events:add` key into the shell. `read -s` takes it at a prompt that does not echo, so it never appears in a command or in shell history:
+
     ```bash
-    FAILPROOFAI_CLOUD_TOKEN=<events-add-key> failproofai config
+    read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
+    ```
+
+    Then set the machine up and check that it connected:
+
+    ```bash
+    failproofai config
     failproofai config --status
     ```
   </Tab>

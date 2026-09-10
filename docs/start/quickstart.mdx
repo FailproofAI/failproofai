@@ -30,10 +30,10 @@ This quickstart gets one machine reporting sessions, runs an audit, and deploys 
 
 1. Open the [Failproof AI dashboard](https://app.befailproof.ai) and create an account or sign in with your work email.
 2. Go to **Administration → Keys** and create a key with `events:add` and `policies:pull`.
-3. Copy the one-time secret and store it on the target machine:
+3. Copy the one-time secret, then read it into a shell on the target machine. `read -s` takes it at a prompt that does not echo, so it never appears in a command:
 
 ```bash
-export FAILPROOFAI_KEY="<one-time-secret>"
+read -rs FAILPROOFAI_KEY && export FAILPROOFAI_KEY
 ```
 
     ## Install
@@ -45,7 +45,7 @@ export FAILPROOFAI_KEY="<one-time-secret>"
     FAILPROOFAI_CLOUD_TOKEN="$FAILPROOFAI_KEY" failproofai config
     ```
 
-    That one command is the whole of setup: it installs the local daemon (root once), wires hooks into every agent CLI it finds, and connects this machine to Cloud. Passing the key through the environment rather than `--token` keeps it out of `ps`, shell history and CI logs.
+    That one command is the whole of setup: it installs the local daemon (root once), wires hooks into every agent CLI it finds, and connects this machine to Cloud. Passing the key through the environment rather than `--token` keeps it out of `ps`, where every user on the machine can read a command's arguments. It does not keep it out of shell history — reading it with `read -s` is what does that. In CI, inject it as a masked secret and keep shell tracing (`set -x`) off, or the trace prints it.
 
     Session transcripts are sent by default. Add `--no-transcripts` to report hook activity and policy decisions without transcript content.
 

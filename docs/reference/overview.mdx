@@ -58,14 +58,19 @@ The generated [HTTP API reference](/reference/http-api) covers the public `/v1` 
     Open one of these sessions before considering the integration complete; the trace should contain the model, tool, error, and policy evidence your audits need.
   </Tab>
   <Tab title="CLI">
-    Create a machine key, connect the Failproof daemon, and verify the first session.
+    Create a machine key, then read the secret it prints into the shell. `read -s` takes it at a prompt that does not echo, so it never appears in a command or in shell history:
 
     ```bash
     fp keys create agent-production \
       --add events:add \
       --add policies:pull
+    read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
+    ```
 
-    FAILPROOFAI_CLOUD_TOKEN=<machine-key> failproofai config
+    Connect the Failproof daemon and verify the first session:
+
+    ```bash
+    failproofai config
 
     failproofai flush --wait
     fp sessions --since 1h --env production

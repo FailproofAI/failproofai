@@ -48,6 +48,27 @@ describe("findTranslationError", () => {
     expect(error).toContain("empty");
   });
 
+  it("still flags a stray delimiter that carries trailing whitespace", async () => {
+    // Mintlify closes the block on `--- ` just as it does on `---`, so the
+    // trailing space changes nothing about the defect.
+    const rendered = `---\n--- \ntitle: "Fähigkeit"\ndescription: "Eine Seite"\n---\n\n# Körper\n`;
+    const error = await findTranslationError(rendered, SOURCE);
+    expect(error).not.toBeNull();
+    expect(error).toContain("empty");
+  });
+
+  it("does not read an indented `---` as a delimiter", async () => {
+    // A delimiter starts its line. Comparing trimmed lines let an indented
+    // `---` open or close the block, so both of these were rejected for an
+    // empty frontmatter block they do not have — a retry burned on a defect
+    // that is not there.
+    const indentedAfterOpener = `---\n  ---\n  Titel\n---\n\n# Körper\n`;
+    expect(await findTranslationError(indentedAfterOpener, README_SOURCE)).toBeNull();
+
+    const indentedFirstLine = `  ---\n---\n\n# Körper\n`;
+    expect(await findTranslationError(indentedFirstLine, README_SOURCE)).toBeNull();
+  });
+
   it("flags a frontmatter block the model dropped entirely", async () => {
     // A missing block is still valid YAML (mintlify tolerates it), so only the
     // key-parity check against the source catches it.

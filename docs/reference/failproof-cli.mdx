@@ -10,9 +10,16 @@ The package requires Node.js 20.9 or newer. Bun 1.3 or newer is supported for de
 
 ## Set up a machine
 
+Install the CLI, then read the machine key into the shell. `read -s` takes it at a prompt that does not echo, so it never appears in a command:
+
 ```bash
 npm install -g failproofai
-export FAILPROOFAI_CLOUD_TOKEN="<machine-key>"
+read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
+```
+
+Then set the machine up and choose what it enforces:
+
+```bash
 failproofai config
 failproofai policies add FailproofAI/policies
 failproofai config --status
@@ -22,7 +29,7 @@ failproofai config --status
 
 It chooses **no** policies. That is the second command's job, and without it a freshly configured machine enforces nothing but the always-on guard.
 
-Prefer the environment variable over `--token`: a command-line argument is readable from `ps` by every user on the box, and lands in shell history and CI logs.
+Prefer the environment variable over `--token`: a command-line argument is readable from `ps` by every user on the box. That is all the variable protects against — a key typed into any command, `export` included, still lands in shell history, which is why it is read in with `read -s` above. In CI, set it from the secret store and keep shell tracing (`set -x`) off, or the trace prints it.
 
 <Warning>
   `--connect <url>` enrols a machine that is **already set up**. It returns as soon as enrolment succeeds — it does not install the daemon and does not wire any hooks. Use plain `failproofai config` (or `failproofai config --token <key>`) on a machine that has not been set up yet, or it will read as connected while collecting and enforcing nothing.
@@ -127,7 +134,7 @@ Use configuration files for persistent machine behavior. Environment variables a
 
 | Variable | Use |
 | --- | --- |
-| `FAILPROOFAI_CLOUD_TOKEN` | The Cloud key, instead of `--token`. Prefer this: an argument is readable from `ps` and lands in shell history and CI logs |
+| `FAILPROOFAI_CLOUD_TOKEN` | The Cloud key, instead of `--token`. Prefer this: an argument is readable from `ps` by every user. Set it with `read -s` or from a CI secret store, never by typing the key into a command, which lands in shell history either way |
 | `FAILPROOFAI_CLOUD_URL` | The Cloud URL, instead of `--url`. The same variable the daemon reads |
 | `FAILPROOFAI_HOME` | Relocate the complete `~/.failproofai` layout |
 | `FAILPROOFAI_LOG_LEVEL` | Set local logging verbosity |

@@ -65,10 +65,16 @@ Capabilities are version-sensitive. Re-test after upgrading an agent CLI, especi
     ![The Policy page used to verify policy decisions from a newly connected harness.](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
-    Set the machine up — this wires hooks for every detected harness, installs the daemon, and connects to Cloud:
+    Read the machine key into the shell. `read -s` takes it at a prompt that does not echo, so it never appears in a command or in shell history:
 
     ```bash
-    FAILPROOFAI_CLOUD_TOKEN=<machine-key> failproofai config
+    read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
+    ```
+
+    Then set the machine up — this wires hooks for every detected harness, installs the daemon, and connects to Cloud:
+
+    ```bash
+    failproofai config
     failproofai policies add FailproofAI/policies
     ```
 

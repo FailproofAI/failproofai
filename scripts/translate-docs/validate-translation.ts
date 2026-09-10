@@ -58,8 +58,10 @@ function frontmatterKeys(page: string): string[] | null {
 }
 
 /**
- * The frontmatter block as MINTLIFY reads it: opened by a leading `---` line,
- * closed by the FIRST line after it that is exactly `---`. `null` when the page
+ * The frontmatter block as MINTLIFY reads it: opened by a first line that is
+ * exactly `---`, closed by the FIRST line after it that is `---` — trailing
+ * spaces or tabs allowed, as `FRONTMATTER_RE` allows them, but never leading
+ * ones: an indented `---` is content, not a delimiter. `null` when the page
  * does not open with a delimiter at all.
  *
  * Deliberately NOT reusing `FRONTMATTER_RE`. That matcher exists to feed
@@ -75,8 +77,10 @@ function frontmatterKeys(page: string): string[] | null {
  */
 function mintlifyFrontmatterBlock(page: string): string | null {
   const lines = page.split(/\r?\n/);
-  if (lines[0]?.trim() !== "---") return null;
-  const close = lines.findIndex((line, i) => i > 0 && line.trim() === "---");
+  if (lines[0] !== "---") return null;
+  const close = lines.findIndex(
+    (line, i) => i > 0 && /^---[ \t]*$/.test(line),
+  );
   if (close < 0) return null;
   return lines.slice(1, close).join("\n");
 }

@@ -1,50 +1,93 @@
 ---
-title: "Deploy policies"
-description: "Roll out a reviewed policy version to the intended machines."
+title: "Deploy a policy"
+description: "Put a tested policy version on machines in observe mode, enforce it, and confirm every machine picked it up."
 icon: "cloud-upload"
 ---
 
-A deployment connects one or more policy versions to a target set of enrolled machines.
+A deployment puts published policy versions on a machine, each with one of two effects:
 
-## Apply a deployment
+- **Observe** records what the policy would have done, and blocks nothing.
+- **Enforce** acts on the decision: a `deny` blocks the call and an `instruct` steers the agent.
+
+## Add a machine
+
+A machine appears under **Admin → enforcement** once it is connected to Cloud. If the one you want is not there yet:
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Go to **Administration → Keys** and create a key with `policies:pull`, so the machine can receive deployments, and `events:add`, so its decisions reach Cloud.
+    2. Connect the machine with that key — [Connect a machine to Cloud](/start/setup#connect-a-machine-to-cloud) walks through it.
+    3. Confirm it shows up under **Admin → enforcement**.
+  </Tab>
+  <Tab title="CLI">
+    On the machine:
+
+    ```bash
+    npm install -g failproofai
+    failproofai config
+    failproofai config --status
+    ```
+
+    In a terminal, `failproofai config` asks whether to connect to Cloud and takes the key at a masked prompt. Then confirm the machine is enrolled, from anywhere, with `fp fleet list`.
+  </Tab>
+</Tabs>
+
+## Deploy in observe mode
 
 <Tabs>
   <Tab title="Dashboard">
     1. Go to **Admin → enforcement**, find the machine, and expand its row.
-    2. Select **edit**, add the reviewed policy version, and choose **observe** or its enforcing effect.
+    2. Select **edit**, add the tested policy version, and choose **observe**.
     3. Apply the change, then wait for the machine's next check-in and confirm its deployment and coverage state.
     4. Go to **Observe → policy** to inspect live decisions.
 
     ![The machine deployment editor with policy versions, enforce and observe effects, and the apply deployment action.](/images/dashboard/enforcement-editor.png)
   </Tab>
   <Tab title="CLI">
-    Deploy from the CLI with `fp fleet`. Review the resulting set before applying it — `deploy` prints the full plan and asks **only on an interactive terminal without `--json`**. Under `--json`, with `--yes`, or with stdin redirected (a CI step, a script, an agent shelling out) it applies immediately with no plan and no prompt — so run `fp fleet show <machine>` first if you want review:
-
     ```bash
     fp fleet list
     fp fleet show <machine-id>
-    fp fleet deploy <machine-id> --add no-force-push
+    fp fleet deploy <machine-id> --add no-force-push:observe
     ```
 
-    `fp fleet diff <machine-id>` shows intent vs delivery (a machine reads as `behind` until it next polls), `fp fleet history <machine-id>` lists the generations, and `fp fleet rollback <machine-id> <generation>` reinstates one — it refuses if that generation names a policy since disabled or deleted.
+    The `:observe` suffix is what makes it observe: a bare `--add no-force-push` keeps the effect the machine already has for that policy, and otherwise enforces. Switch it to enforce later with `--add no-force-push:enforce`.
 
-    Check the machine itself with `failproofai config --status`, and use `fp sessions --env production --since 24h` and `fp events --event-type hook_completed` after deployment to verify activity reaches Cloud.
+    `deploy` **replaces the machine's whole policy set** with the result. It prints the plan, then asks before applying — but only on an interactive terminal. With `--yes`, under `fp --json`, or with stdin redirected (a CI step, a script, an agent shelling out) it applies without asking; the plan is still printed, or returned as `plan` under `--json`.
+
+    On the machine, `failproofai policies` lists the Cloud-managed policies it is running and `failproofai config --status` shows its connection. Use `fp sessions --env production --since 24h` and `fp events --event-type hook_completed` to confirm its activity reaches Cloud.
   </Tab>
 </Tabs>
 
 <Steps>
-  <Step title="Choose the version and targets">
-    Deploy a reviewed version, not a mutable draft, starting with a non-production machine or small cohort whose sessions you can inspect.
+  <Step title="Choose the version and machines">
+    Pick the published version and the machines it should run on.
   </Step>
-  <Step title="Observe decisions">
-    Review matches, reasons, affected tools, and false positives without blocking work.
+  <Step title="Observe">
+    Review matches, reasons, affected tools, and false positives while nothing is blocked.
   </Step>
-  <Step title="Enforce and verify coverage">
-    Promote after observed matches separate unsafe actions from valid ones, then confirm every intended machine has pulled the deployment and is reporting decisions.
+  <Step title="Enforce">
+    Switch the effect to enforce once the observed matches separate unsafe actions from valid ones, then confirm every intended machine pulled the change and is reporting decisions.
   </Step>
 </Steps>
 
-Machines need the `policies:pull` capability. Event reporting is separately controlled by `events:add`; verify both when you expect Cloud analysis and enforcement.
+## Check coverage
+
+Coverage answers whether a policy is running where the risk is.
+
+1. Go to **Admin → enforcement** and review the enforcing and observing totals.
+2. Search for a machine by ID or label, or filter for machines missing a policy.
+3. Expand a row to compare assigned policies, reported deployment, last check-in, and history.
+4. Refresh after the machine's polling interval when an applied deployment is still pending.
+
+![The Enforcement fleet showing policy coverage, machine deployment state, and observe and enforce assignments.](/images/dashboard/enforcement-fleet.png)
+
+Look for machines that never pulled the latest deployment, enrolled machines that stopped reporting, a policy assigned to the wrong environment, and version drift after an interrupted update.
+
+Label machines by workload and environment — hostnames alone rarely survive autoscaling or replacement:
+
+```bash
+failproofai config --machine-label checkout-runner-03
+```
 
 <Warning>
   Enforcement management is an administrative Cloud workflow. Do not treat root-only enforcement routes as ordinary customer `/v1` API endpoints.

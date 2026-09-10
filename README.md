@@ -176,7 +176,7 @@ three are the developer favourites — coding CLIs are the harness class we cove
 deepest. The `sanitize-*` family is separate: it runs after a tool returns, so
 it reports a secret in tool output rather than keeping it out of the context.
 
-→ [All 39 built-in policies](https://docs.befailproof.ai/policies/builtin)
+→ [All 39 built-in policies](https://docs.befailproof.ai/policies/packs)
 
 ---
 
@@ -207,7 +207,7 @@ Three decisions available to every policy:
 | `deny(message)` | Block it — message goes back to the agent |
 | `instruct(message)` | Let it through, but add context to the agent's next prompt |
 
-→ [Custom policies guide](https://docs.befailproof.ai/policies/custom)
+→ [Write a policy](https://docs.befailproof.ai/policies/editor)
 
 ---
 
@@ -258,9 +258,9 @@ own cluster is available on the Enterprise plan.
 
 | Enforce | |
 |---|---|
-| [Built-in policies](https://docs.befailproof.ai/policies/builtin) | All 39 policies with parameters |
-| [Custom policies](https://docs.befailproof.ai/policies/custom) | Write your own |
-| [Configuration](https://docs.befailproof.ai/policies/local-configuration) | Config scopes and merge rules |
+| [Policy packs](https://docs.befailproof.ai/policies/packs) | The Failproof AI policies, and packs from the policy hub |
+| [Write a policy](https://docs.befailproof.ai/policies/editor) | From an audit, or in code |
+| [Configuration](https://docs.befailproof.ai/policies/local-configuration) | Config scopes, merge rules and policy parameters |
 
 | Instrument your own agent | |
 |---|---|

@@ -1,5 +1,5 @@
 ---
-title: "Publish a pack"
+title: "Publish a policy pack"
 description: "Ship your own policies as a GitHub release that anyone can install."
 icon: "upload"
 ---
@@ -50,7 +50,7 @@ Before anyone else can see it, enforce the file on this machine:
 failproofai policies -i -c ./<name>.mjs
 ```
 
-Any path, any filename. Ask your agent to do the thing you blocked and watch it get refused. Nothing is published and nobody else is affected.
+Any path, any filename. Ask your agent to do the thing you blocked and watch it get refused. Nothing is published and nobody else is affected. [Test a policy](/policies/test) covers the rest: the legitimate case it must allow, and the inputs that break it.
 
 ## 3. Publish it
 
@@ -58,12 +58,12 @@ Any path, any filename. Ask your agent to do the thing you blocked and watch it 
 failproofai publish
 ```
 
-It works out where to publish, what to bundle and what version to call it, and only asks when nothing in the repository tells it. In order, stopping before it touches GitHub if anything is wrong:
+It works out where to publish, what to bundle and what version to call it, and only asks when nothing in the repository tells it. In order, stopping before it creates a release if anything is wrong:
 
 1. Finds the policy files here by **content** — those that import `failproofai` and call `customPolicies.add` — rather than by filename, so it finds `guards.mjs` and ignores an unrelated `policies.mjs`. It does not descend into subdirectories, so a test fixture is never swept up by accident.
 2. Reads the repo from `git remote get-url origin`, in the **file's** directory rather than yours, and decides the version.
 3. Finds your credential: `GITHUB_TOKEN`, `GH_TOKEN`, or `gh auth login`. It needs release-write and nothing else, and is never printed.
-4. Creates the repository if it does not exist.
+4. Creates the repository if it does not exist. This happens before the build, so a pack refused in the next step can leave a new repository behind with no release in it.
 5. Builds the three assets, validating them with the **loader's own rules** — the same code that decides what may install on a stranger's machine — so a pack that could never install fails here, where you can still fix it.
 6. Creates or reuses the release and uploads, replacing assets of the same name.
 
@@ -87,9 +87,13 @@ failproofai publish \
   --dry-run
 ```
 
-`--id` sets the pack id when it should differ from the repo, `--tag` and `--notes` name the release, `--out` chooses where the assets are written (default `dist-pack`), and `--dry-run` builds them without publishing and needs no credential.
+`--id` sets the pack id when it should differ from the repo, `--tag` sets the release's tag, `--notes` replaces the generated release notes — which is where `policies show --releases` reads each release's counts and commit from — `--out` chooses where the assets are written (default `dist-pack`), and `--dry-run` builds them without publishing and needs no credential.
 
 Anyone can now install it with `failproofai policies add acme/support-agent`. See [policy packs](/policies/packs) for pinning a version and taking only part of one.
+
+### List it on the policy hub
+
+Add the `failproofai-policies` topic to the repository on GitHub. There is no submission form and no approval queue: the [policy hub](https://befailproof.ai/policy-hub/)'s crawler picks the repository up on its next pass. The topic only puts it up for consideration — what lists it is a release whose manifest verifies against its own `SHA256SUMS` and parses under the same rules the CLI uses, which is exactly what `failproofai publish` produces.
 
 ## How the version is decided
 
@@ -97,13 +101,13 @@ The version is the **commit you are publishing from** — its short sha, twelve 
 
 It is read from the tree in front of you, never from the repository's releases, so a fresh clone and an air-gapped machine compute the same answer without asking GitHub what happened before.
 
-Because the version claims to name a commit, it **refuses rather than guessing** where that would be false: outside a git checkout there is no commit to name, and with uncommitted changes those bytes are not in the commit it would name. `--version` overrides both, and a tag on `HEAD` wins over the sha — someone who tagged `v1.2.0` has said what this release is.
+Because the version names a commit, that commit has to exist. At a terminal, `publish` makes it for you: it initialises a repository when there is none, and commits changed policy files before it builds. It **refuses** instead — naming `--version` as the way out — when it runs without a terminal (a commit made on a CI runner would exist nowhere else), when files other than the policies are uncommitted, or in a checkout that has no commits yet. A tag on `HEAD` wins over the sha — someone who tagged `v1.2.0` has said what this release is.
 
 A sha carries no ordering of its own, so use `failproofai policies show <owner>/<repo> --releases` to see which release came first — newest at the top.
 
 ## Shipping a new version
 
-Commit the change and run `failproofai publish` again — the new commit is the new version. Consumers run the same `failproofai policies add` and keep whatever subset they had chosen; a policy they turned off stays off across the upgrade.
+Commit the change and run `failproofai publish` again — the new commit is the new version. Consumers run the same `failproofai policies add`. Without a terminal, or with a selection flag, they keep the subset they had chosen and a policy they turned off stays off; at a terminal with no flag, the picker opens pre-ticked with your defaults and their answer replaces their selection.
 
 Changing a policy's **name** is a breaking change: a machine that had turned it off is turning off a name that no longer exists, and the new name arrives at whatever `defaultEnabled` says.
 

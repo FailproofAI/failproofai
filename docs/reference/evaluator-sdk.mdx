@@ -1,190 +1,114 @@
 ---
 title: "Evaluator SDK"
-description: "Build a service that scores Failproof AI sessions synchronously or asynchronously."
+description: "Run your own evaluation worker, for LLM judges and anything else hosted Python cannot do."
 icon: "gauge"
 ---
 
-An evaluator receives a completed agent session and returns the quality signals you care about: numeric scores, an explanation for each score, and an optional summary. Failproof AI stores these results beside the trace and charts them across agents and environments.
+The Evaluator SDK runs evaluations on your own infrastructure. Your worker registers its evaluations with Failproof AI, claims sessions as they finish, scores them, and submits the results, all over outbound HTTPS: nothing connects in to it. Use it for what [hosted Python](/evaluations/write) cannot do — LLM judges, model calls, packages, secrets, and network access. Its results appear beside hosted ones on the [evaluations page](/sessions/evaluations), tagged **customer**.
 
-## Set up an evaluator
+It ships in `failproofai-sdk`, under `failproofai_sdk.evaluator`; importing the tracing SDK does not load it.
 
-<Steps>
-  <Step title="Install the evaluator SDK">
-    Install the SDK and the server used to run it.
-
-    ```bash
-    pip install failproofai-sdk uvicorn
-    ```
-  </Step>
-
-  <Step title="Define what to score">
-    Create `evaluator.py`. This example checks whether a session contains any failed tool calls.
-
-    ```python
-    import os
-    from failproofai.evaluator import Evaluator, EvalResponse
-
-    app = Evaluator(token=os.environ.get("EVALUATOR_TOKEN"))
-
-    @app.config
-    def config():
-        return {"inactivity_timeout_secs": 1800}
-
-    @app.evaluator
-    def evaluate(req):
-        tool_errors = sum(
-            1 for item in req.events
-            if item.event_type == "tool_result" and item.payload.get("error")
-        )
-        return EvalResponse(
-            scores={"tool_reliability": 1.0 if tool_errors == 0 else 0.0},
-            reasoning={"tool_reliability": f"{tool_errors} tool errors"},
-        )
-    ```
-  </Step>
-
-  <Step title="Run and test it locally">
-    Set a shared token, start the evaluator, and confirm its health endpoint responds.
-
-    ```bash
-    export EVALUATOR_TOKEN=<shared-token>
-    uvicorn evaluator:app --host 0.0.0.0 --port 8080
-    ```
-
-    In another terminal:
-
-    ```bash
-    curl http://127.0.0.1:8080/health
-    ```
-  </Step>
-</Steps>
-
-## Connect the evaluator to Failproof AI
-
-1. Deploy the evaluator at an HTTPS URL reachable by Failproof AI Cloud.
-2. Configure `EVALUATOR_ENDPOINT` with that URL and set `EVALUATOR_TOKEN` to the same token used by the evaluator. For managed Cloud, contact [support@befailproof.ai](mailto:support@befailproof.ai) to configure the connection.
-3. Run an evaluation and confirm its scores appear in Failproof AI.
-
-<Tabs>
-  <Tab title="Dashboard">
-    Open a completed session under **Observe → Sessions** and select **Run evaluation** if it was not evaluated automatically. Review the status, scores, reasoning, and summary in the session's **Evaluation** panel.
-
-    Use **Observe → Evaluations** to compare scores across agents or environments. Use **Observe → Metrics** for latency, cost, token, and other numeric measurements.
-
-    Start with one session to confirm that the evaluator returned the expected score keys and useful reasoning for that specific run.
-
-    ![A session detail view showing evaluation scores and reasoning beside its trace.](/images/dashboard/session-detail.png)
-
-    Once individual results look correct, use the evaluation dashboard to compare those scores over time and across agents or environments.
-
-    ![A quality dashboard charting evaluator scores over time.](/images/dashboard/dashboard-quality.png)
-
-    A healthy chart should use stable score names; changing a key creates a separate series.
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp evals --since 1h --score tool_reliability:0..1
-    fp evals --since 24h --aggregate
-    ```
-  </Tab>
-</Tabs>
-
-For a self-hosted Cloud instance, automatic evaluation is disabled until `EVALUATOR_ENDPOINT` is set on the server process. Restart the server after changing evaluator environment variables.
-
-The service exposes `GET /health`, `GET /config`, `POST /evaluate`, and optionally `GET /evaluate/{job_id}`. Return `JobPending` for asynchronous work and register `@app.job_lookup` so Failproof AI can poll it.
-
-When a token is configured, all routes except health require the same bearer token that Failproof AI sends as `EVALUATOR_TOKEN`.
-
-## SDK types
-
-| Type | Fields |
-| --- | --- |
-| `AgentEvent` | `id`, `ts`, `event_type`, `payload` |
-| `EvalRequest` | `schema_version`, `session_id`, `agent_id`, `environment`, `started_at`, `ended_at`, `events` |
-| `EvalResponse` | `scores`, `reasoning`, `summary` |
-| `JobPending` | `job_id`, `next_poll_secs` |
-| `EvaluatorConfig` | `inactivity_timeout_secs`, `default_poll_interval_secs` |
-
-## Decorators and routes
-
-| Decorator | Route | Required |
-| --- | --- | --- |
-| `@app.evaluator` | `POST /evaluate` | Yes |
-| `@app.job_lookup` | `GET /evaluate/{job_id}` | When returning `JobPending` |
-| `@app.config` | `GET /config` | No |
-
-The SDK caps evaluation request bodies at 25 MiB. Unknown request fields are ignored so services remain compatible as the event contract grows.
-
-## Return asynchronous work
-
-Use `JobPending` when evaluation cannot finish inside one request. The job ID is opaque to Failproof AI and must remain resolvable by your service until the result is collected or the server timeout expires.
-
-```python
-from failproofai.evaluator import EvalRequest, EvalResponse, Evaluator, JobPending
-
-app = Evaluator(token="shared-secret")
-
-@app.evaluator
-def start(req: EvalRequest) -> JobPending:
-    job_id = enqueue(req)
-    return JobPending(job_id=job_id, next_poll_secs=30)
-
-@app.job_lookup
-def lookup(job_id: str):
-    result = get_result(job_id)
-    if result is None:
-        return JobPending(job_id=job_id, next_poll_secs=30)
-    return EvalResponse(
-        scores=result.scores,
-        reasoning=result.reasoning,
-        summary=result.summary,
-    )
+```bash
+pip install failproofai-sdk
 ```
 
-Polling cadence is selected in this order: `JobPending.next_poll_secs`, `EvaluatorConfig.default_poll_interval_secs`, then the server's `EVALUATOR_POLLING_INTERVAL_SECS`. Values are clamped between 1 second and 1 hour. The server's default wall-clock polling cap is one hour.
+## Write evaluations
 
-## Request and response fields
+```python
+from failproofai_sdk.evaluator import ConditionResult, EvalResult, Evaluator, Metric, Score
 
-| Field | Type | Notes |
-| --- | --- | --- |
-| `EvalRequest.schema_version` | `str` | Currently `"1"`. |
-| `session_id`, `agent_id`, `environment` | `str` | Session identity and environment. |
-| `started_at` | `datetime` | Timestamp of the first event. |
-| `ended_at` | `datetime \| None` | Present when the session emitted an end event. |
-| `events` | `list[AgentEvent]` | Full ordered event stream. |
-| `AgentEvent.id` | `int` | Backend event row identifier. |
-| `AgentEvent.ts` | `datetime` | Event timestamp. |
-| `AgentEvent.event_type` | `str` | Event family such as `tool_use`. |
-| `AgentEvent.payload` | `dict[str, Any]` | Complete event payload. |
-| `EvalResponse.scores` | `dict[str, float] \| None` | Numeric dimensions charted in evaluations. |
-| `EvalResponse.reasoning` | `dict[str, str] \| None` | Per-score explanations; keys should mirror `scores`. |
-| `EvalResponse.summary` | `str \| None` | Overall evaluation narrative. |
+app = Evaluator(name="customer-production", version="2026.08.1")
 
-## Server operator settings
 
-Automatic evaluation is deployment-wide and remains disabled when `EVALUATOR_ENDPOINT` is absent.
+@app.eval(
+    "tool_efficiency",
+    version="1.0.0",
+    labels=["tools", "deterministic"],
+    when=lambda session: ConditionResult(session.count("tool_use") > 0, "no_tool_calls"),
+)
+def tool_efficiency(session):
+    calls = session.events_of_type("tool_use")
+    distinct = {e.payload.get("tool_name") for e in calls if e.payload.get("tool_name")}
+    value = len(distinct) / len(calls)
+    return EvalResult(
+        score=Score(value, passed=value >= 0.7),
+        metrics={"tool_call_count": Metric(len(calls), unit="events")},
+        reasoning=f"{len(distinct)} distinct tools across {len(calls)} calls",
+    )
+
+
+@app.eval(
+    "answer_relevance",
+    version="judge-v1",
+    labels=["llm_judge", "relevance"],
+    when=lambda session: ConditionResult(
+        session.count("human_input") > 0 and session.count("model_response") > 0,
+        "no_exchange",
+    ),
+    timeout_seconds=30,
+)
+async def answer_relevance(session):
+    question = session.events_of_type("human_input")[-1].payload.get("response")
+    answer = session.events_of_type("model_response")[-1].payload.get("content")
+    value, reasoning = await ask_judge(question, answer)  # your LLM call: a 0-1 score and why
+    return EvalResult(score=Score(value, passed=value >= 0.7), reasoning=reasoning)
+
+
+if __name__ == "__main__":
+    app.run_from_env()
+```
+
+- `@app.eval(key, version=...)` registers an evaluation. The key is what its results chart under; change the version whenever the logic changes, and each result keeps the version that produced it. One worker holds up to 100 evaluations.
+- `result_kind` is `"score"` unless you say otherwise. For a `"metric"` or `"assertion"` evaluation, name one `metrics` or `assertions` entry after the key: that entry is its result.
+- `when` decides whether a session applies. Return `ConditionResult(False, "<reason>")` to skip one, and the reason is recorded.
+- An evaluation can be a plain function or `async`, and `timeout_seconds` bounds it.
+- Payload keys — `tool_name`, `response`, and `content` above — are whatever your agents send, so read them off a real session.
+
+## Run the worker
+
+Put a key with the `evaluations:run` permission, created under **Administration → Keys**, in `FAILPROOFAI_EVALUATOR_TOKEN` — set it from your secret store rather than typing it into a command — and start the worker:
+
+```bash
+FAILPROOFAI_EVALUATOR_URL=https://app.befailproof.ai python evaluator.py
+```
+
+Without the `__main__` block, `python -m failproofai_sdk.evaluator evaluator:app` does the same.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `EVALUATOR_ENDPOINT` | unset | Base URL of the evaluator service. |
-| `EVALUATOR_TOKEN` | unset | Bearer token shared with `Evaluator(token=...)`. |
-| `EVALUATOR_WORKERS` | `2` | Concurrent dispatcher workers. |
-| `EVALUATOR_CLAIM_BATCH` | `4` | Sessions claimed per dispatcher pass. |
-| `EVALUATOR_POLLING_INTERVAL_SECS` | `10` | Fallback async polling cadence. |
-| `EVALUATOR_REQUEST_TIMEOUT_MS` | `30000` | Per-request evaluator timeout. |
-| `EVALUATOR_MAX_ATTEMPTS` | `5` | Delivery attempts before terminal failure. |
-| `EVALUATOR_CONFIG_REFRESH_SECS` | `300` | Refresh cadence for `/config`. |
-| `EVALUATOR_MAX_POLL_DURATION_SECS` | `3600` | Maximum wall-clock async polling time. |
+| `FAILPROOFAI_EVALUATOR_URL` | required | Where Failproof AI is: `https://app.befailproof.ai` for Cloud. HTTPS unless it points at loopback |
+| `FAILPROOFAI_EVALUATOR_TOKEN` | required | A key with `evaluations:run` |
+| `FAILPROOFAI_EVALUATOR_WORKER_ID` | `<hostname>-<pid>` | Names this worker |
+| `FAILPROOFAI_EVALUATOR_CONCURRENCY` | `1` | Sessions this worker scores at once |
+| `FAILPROOFAI_EVALUATOR_REQUEST_TIMEOUT_SECONDS` | `30` | Timeout for each request to Failproof AI |
+| `FAILPROOFAI_EVALUATOR_DRAIN_TIMEOUT_SECONDS` | `60` | How long a stopping worker waits for runs in flight |
+| `FAILPROOFAI_EVALUATOR_ALLOW_INSECURE_HTTP` | `false` | Allow plain HTTP to a URL that is not loopback |
+| `FAILPROOFAI_EVALUATOR_MODULE` | none | The `module:attribute` for `python -m failproofai_sdk.evaluator` |
 
-The server can also constrain which organizations use the deployment-global evaluator. Treat endpoint, token, retry, and organization-gate changes as operator configuration and restart or roll the server after changing them.
+## Result types
 
-## Security and operations
+| Type | Fields |
+| --- | --- |
+| `Score` | `value` (0 to 1), `passed`, `unit` (default `ratio`), `display_value`, `description` |
+| `Metric` | `value`, `unit`, `display_value`, `description` |
+| `Assertion` | `passed`, `description` |
+| `EvalResult` | `score`, `metrics`, `assertions`, `reasoning`, `summary`, `labels` |
+| `ConditionResult` | `applicable`, `reason_code` |
 
-- Put the evaluator behind HTTPS when traffic crosses a trusted network boundary.
-- Configure a non-empty bearer token and keep it identical on both services.
-- Do not log the token or full sensitive prompts from request payloads.
-- Make synchronous handlers idempotent; retries may repeat a request.
-- Persist asynchronous job state outside process memory in production.
-- Return stable score keys. Renaming a key creates a new chart series rather than changing the old one.
+An `EvalResult` carries at least one score, metric, or assertion, and at most 25, each under a unique key.
 
-The SDK emits structured lifecycle logs such as `eval received`, `eval responded`, `job lookup`, `config returned`, `auth rejected`, and handler exceptions. It does not configure logging handlers; use the host application's logging configuration.
+## The session
+
+| Field or method | Gives you |
+| --- | --- |
+| `session_id`, `agent_id`, `environment` | The session's identity |
+| `started_at`, `ended_at` | When it started and ended |
+| `event_count`, `events` | The full, ordered transcript |
+| `count(event_type)` | How many events of that type it holds |
+| `events_of_type(event_type)` | Those events, in order |
+
+Each event carries `id`, `ts`, `event_type`, and `payload`.
+
+## The legacy evaluator
+
+The earlier Evaluator SDK — an HTTP service Failproof AI called at `EVALUATOR_ENDPOINT`, answering `/evaluate` and polled through `JobPending` — is retired. Build new evaluators on this worker; operators of a self-hosted instance running a legacy service can keep it through the transition.

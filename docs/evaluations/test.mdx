@@ -1,0 +1,29 @@
+---
+title: "Test an evaluation"
+description: "Run an evaluation against your real sessions before deploying it. Nothing is stored."
+icon: "flask-conical"
+---
+
+**test this evaluation**, on the authoring page, runs the code against real sessions of yours on the evaluator fleet without deploying it. Nothing is stored: a failure here is a preview, and deploying is always allowed.
+
+<Steps>
+  <Step title="Check that it compiles">
+    Select **check** to compile the code and condition against the sandbox's rules without running them on any session.
+  </Step>
+  <Step title="Pick sessions">
+    Narrow the matching sessions by agent, environment, time, or session id, and tick up to 10. Include sessions the evaluation should fail as well as ones it should pass.
+  </Step>
+  <Step title="Run it">
+    Select **run against N sessions**, and read each row.
+  </Step>
+</Steps>
+
+| Row | What it means |
+| --- | --- |
+| **ok** | It ran. The row lists every score, metric, and assertion it returned, and how long it took. |
+| **skipped** | The condition returned `False`, so the evaluation did not run. That is a skip, not a failure. |
+| Failed | It raised, timed out, or used something the sandbox refuses. The row says which, and **Fix it** hands the error to the assistant when it can help. |
+
+![The test this evaluation panel: three sessions picked by agent, two ok and one skipped because its condition returned False.](/images/dashboard/eval-test.png)
+
+A result stops being current the moment you edit the code; it is dimmed rather than reused.

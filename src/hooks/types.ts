@@ -275,6 +275,12 @@ export const COPILOT_TOOL_MAP: Record<string, string> = {
   rg: "Grep",
   ls: "LS",
   web_fetch: "WebFetch",
+  // Documented Copilot tools that launch subagents / web search. Without these
+  // entries a policy matching `toolName === "Task"` (or `"WebSearch"`)
+  // silently never fires on Copilot — the worst failure mode for a guardrail.
+  // `ask_user` is intentionally unmapped: it has no filesystem or shell reach.
+  task: "Task",
+  web_search: "WebSearch",
 };
 
 /**

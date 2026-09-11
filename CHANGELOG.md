@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.4-beta.7 — 2026-09-11
+
+### Fixes
+
+- Deliver scheduled credential-leak notifications reliably through a per-user macOS LaunchAgent, and harden leak deduplication, timestamp handling, dashboard compatibility, and false-positive suppression (#789).
+
 ## 1.0.4-beta.6 — 2026-09-10
 
 ### Fixes

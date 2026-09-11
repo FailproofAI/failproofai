@@ -155,7 +155,7 @@ export function LeakSection() {
                   <span className="leak-who">{row.cli}</span>
                   {" · leaked "}
                   <span className="leak-when">{when(row.firstSeen)}</span>
-                  {when(row.firstSeen) !== when(row.lastSeen) ? (
+                  {row.firstSeen !== row.lastSeen ? (
                     <>
                       {" · last seen "}
                       <span className="leak-when">{when(row.lastSeen)}</span>

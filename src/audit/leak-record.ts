@@ -152,23 +152,30 @@ export function upsertFinding(
     return { record, isNew: true };
   }
 
-  existing.occurrences += 1;
-  if (sighting.at > existing.lastSeen) existing.lastSeen = sighting.at;
-  if (sighting.at < existing.firstSeen) existing.firstSeen = sighting.at;
-
   // Keep the earliest sighting AND the most recent evidence. The report/email
   // promises the CLI and timestamp of the latest exposure; keeping only the
   // first five made those fields stale forever after a busy credential crossed
   // the cap. Middle sightings are the expendable ones.
   const seen = existing.sightings.some(
-    (s) => s.sessionId === sighting.sessionId && s.at === sighting.at,
+    (s) =>
+      s.sessionId === sighting.sessionId &&
+      s.at === sighting.at &&
+      s.mechanism.direction === sighting.mechanism.direction &&
+      s.mechanism.summary === sighting.mechanism.summary,
   );
-  if (!seen) {
-    existing.sightings.push(sighting);
-    existing.sightings.sort((a, b) => a.at.localeCompare(b.at));
-    if (existing.sightings.length > MAX_SIGHTINGS) {
-      existing.sightings.splice(1, existing.sightings.length - MAX_SIGHTINGS);
-    }
+  // Cached transcript results are folded through this function again. An
+  // identical sighting is therefore not a new exposure and must not inflate
+  // the count each time the same cache entry is reused.
+  if (seen) return { record, isNew: false };
+
+  existing.occurrences += 1;
+  if (sighting.at > existing.lastSeen) existing.lastSeen = sighting.at;
+  if (sighting.at < existing.firstSeen) existing.firstSeen = sighting.at;
+
+  existing.sightings.push(sighting);
+  existing.sightings.sort((a, b) => a.at.localeCompare(b.at));
+  if (existing.sightings.length > MAX_SIGHTINGS) {
+    existing.sightings.splice(1, existing.sightings.length - MAX_SIGHTINGS);
   }
   return { record, isNew: false };
 }
@@ -181,7 +188,12 @@ export function upsertFinding(
  */
 export function pruneRecord(record: LeakRecord, nowMs: number): LeakRecord {
   const cutoff = new Date(nowMs - FINDING_TTL_DAYS * 86_400_000).toISOString();
-  const live = record.findings.filter((f) => f.lastSeen >= cutoff);
+  // A missing or malformed timestamp cannot be aged out safely. Keep it until
+  // the bounded-cap pass below rather than silently deleting a finding that the
+  // reporting path deliberately surfaces as having an unknown date.
+  const live = record.findings.filter(
+    (f) => !f.lastSeen || !Number.isFinite(Date.parse(f.lastSeen)) || f.lastSeen >= cutoff,
+  );
   live.sort((a, b) => (a.lastSeen < b.lastSeen ? 1 : a.lastSeen > b.lastSeen ? -1 : 0));
   record.findings = live.slice(0, MAX_FINDINGS);
   return record;

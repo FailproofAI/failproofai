@@ -138,10 +138,10 @@ const API_KEY_PATTERNS: Array<[RegExp, string]> = [
   // this rule's run would bridge the hyphen in `sk-proj-` and report every
   // project key a second time under the wrong label.
   [/sk-proj-[A-Za-z0-9\-_]{20,}/, "OpenAI project API key"],
-  [/sk-svcacct-[A-Za-z0-9\-_]{20,}/, "OpenAI service-account key"],
+  [/(?<!\w)sk-svcacct-[A-Za-z0-9\-_]{20,}/, "OpenAI service-account key"],
   // Highest blast radius in the family: it authenticates the organisation
   // admin surface, and lives at a DIFFERENT console from the other keys.
-  [/sk-admin-[A-Za-z0-9\-_]{20,}/, "OpenAI admin key"],
+  [/(?<!\w)sk-admin-[A-Za-z0-9\-_]{20,}/, "OpenAI admin key"],
 
   // ── OpenAI-compatible gateways ──
   [/sk-or-v1-[A-Za-z0-9\-_]{20,}/, "OpenRouter API key"],

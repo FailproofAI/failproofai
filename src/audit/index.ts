@@ -70,7 +70,7 @@ const TRANSCRIPT_BYTE_BUDGET = 48 * 1024 * 1024;
  * otherwise the largest transcript on the machine could never be scanned, which
  * is precisely the one most likely to hold something.
  */
-class ByteGate {
+export class ByteGate {
   private inFlight = 0;
   private waiting: Array<() => void> = [];
 

@@ -366,7 +366,7 @@ function MainReport({
           <AuditReportPlaceholder
             transcripts={result.transcripts.scanned}
             events={result.eventsScanned ?? 0}
-            projects={result.projectsScanned.length}
+            projects={result.projectsScanned?.length ?? 0}
             isRunning={isRunning || rerunStatus.kind === "running"}
             onRerun={() => onRerun("scan_header")}
           />

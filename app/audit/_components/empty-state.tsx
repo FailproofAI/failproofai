@@ -77,7 +77,7 @@ export function EmptyState({ mode, running, onStarted, onCompleted }: Props) {
             {/* Was "a tier, a score, and a punch-list" — the tier was never
                 rendered and the score is switched off, so this promised two
                 things the page did not show. */}
-            or risky action. you&apos;ll get your agent&apos;s archetype and a punch-list.
+            or risky action. you&apos;ll get a leak report and a scan summary.
           </p>
 
           <div className="empty-actions">

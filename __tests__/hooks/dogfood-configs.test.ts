@@ -221,7 +221,13 @@ describe("git must not be able to hide a gutted config", () => {
   it("has no dogfood config that is empty JSON", () => {
     // The state the bit was hiding. Cheap, and it catches the damage directly
     // rather than only the mechanism that concealed it.
-    for (const { file } of CONFIGS) {
+    const jsonConfigs = [
+      ...CONFIGS.map(({ file }) => file),
+      ".opencode/opencode.json",
+      ".pi/settings.json",
+      ".failproofai/policies-config.json",
+    ].filter((file) => existsSync(resolve(ROOT, file)));
+    for (const file of jsonConfigs) {
       const raw = readFileSync(resolve(ROOT, file), "utf8").trim();
       expect(raw.length, `${file} is empty`).toBeGreaterThan(20);
       expect(raw, `${file} has been gutted`).not.toBe("{}");

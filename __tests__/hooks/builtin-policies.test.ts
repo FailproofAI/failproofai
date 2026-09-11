@@ -125,6 +125,8 @@ describe("hooks/builtin-policies", () => {
     const cases: Array<[string, string]> = [
       ["sk-ant-api03-AAAAAAAAAAAAAAAAAAAA", "Anthropic API key"],
       ["sk-proj-AAAAAAAAAAAAAAAAAAAA", "OpenAI project API key"],
+      ["sk-svcacct-AAAAAAAAAAAAAAAAAAAA", "OpenAI service-account key"],
+      ["sk-admin-AAAAAAAAAAAAAAAAAAAA", "OpenAI admin key"],
       ["sk-AAAAAAAAAAAAAAAAAAAA", // A bare `sk-` cannot be attributed: LiteLLM's docs say its virtual keys
       // "must start with sk-", and DeepSeek and every OpenAI-compatible gateway
       // mint the same shape. Naming OpenAI here sent users to the wrong console.
@@ -164,6 +166,16 @@ describe("hooks/builtin-policies", () => {
       });
       const result = await policy.fn(ctx);
       expect(result.decision).toBe("allow");
+    });
+
+    it("does not match service or admin prefixes inside ordinary identifiers", async () => {
+      for (const output of [
+        "tasksk-svcacct-AAAAAAAAAAAAAAAAAAAA",
+        "risksk-admin-AAAAAAAAAAAAAAAAAAAA",
+      ]) {
+        const result = await policy.fn(makeCtx({ eventType: "PostToolUse", payload: { output } }));
+        expect(result.decision, output).toBe("allow");
+      }
     });
   });
 

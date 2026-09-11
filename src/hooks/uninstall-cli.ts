@@ -193,6 +193,7 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
   if (found.daemonConfigured) {
     plan.push(`  • stop requiring the daemon (policies go back to evaluating in-process)`);
   }
+  let removeDaemon = opts.purge === true;
   if (found.serviceInstalled) {
     plan.push(
       opts.purge || opts.yes
@@ -305,8 +306,7 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
     //
     // So the only case that keeps it is an INTERACTIVE run where the person said no
     // (or could not be asked).
-    const removeDaemon =
-      opts.purge || opts.yes ? true : ((await opts.confirmDaemon?.()) ?? false);
+    removeDaemon = opts.purge || opts.yes ? true : ((await opts.confirmDaemon?.()) ?? false);
 
     if (!removeDaemon) {
       lines.push(
@@ -357,7 +357,7 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
   // No-ops on every other platform, and needs no elevation on macOS: a per-user
   // agent is the user's own to load and unload. Tied to the daemon's removal
   // because it exists only to deliver what the daemon's scheduled audit finds.
-  if (opts.purge || (found.serviceInstalled && (opts.purge || opts.yes))) {
+  if (opts.purge || removeDaemon) {
     uninstallMacNotifier();
   }
 

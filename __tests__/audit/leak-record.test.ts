@@ -53,6 +53,27 @@ describe("upsertFinding — the unit is the distinct VALUE", () => {
     expect(r.findings[0].occurrences).toBe(21);
   });
 
+  it("does not count an identical cached sighting again", () => {
+    const r = emptyRecord("salt", "2026-09-01T00:00:00Z");
+    const same = sighting("2026-09-01T00:00:00Z");
+    upsertFinding(r, { ...base("a"), sighting: same });
+    upsertFinding(r, { ...base("a"), sighting: same });
+    expect(r.findings[0].occurrences).toBe(1);
+    expect(r.findings[0].sightings).toHaveLength(1);
+  });
+
+  it("keeps input and result exposures distinct at the same timestamp", () => {
+    const r = emptyRecord("salt", "2026-09-01T00:00:00Z");
+    const input = sighting("2026-09-01T00:00:00Z");
+    const result = {
+      ...input,
+      mechanism: describeMechanism("Read", "result", "~/…/.env"),
+    };
+    upsertFinding(r, { ...base("a"), sighting: input });
+    upsertFinding(r, { ...base("a"), sighting: result });
+    expect(r.findings[0].occurrences).toBe(2);
+  });
+
   it("counts every occurrence but stores only a bounded slice of evidence", () => {
     const r = emptyRecord("salt", "2026-09-01T00:00:00Z");
     for (let i = 0; i < 50; i++) {
@@ -112,6 +133,15 @@ describe("pruneRecord — the file cannot grow without bound", () => {
     upsertFinding(r, { ...base("new"), sighting: sighting("2026-09-08T00:00:00Z") });
     pruneRecord(r, now);
     expect(r.findings.map((f) => f.id)).toEqual(["new"]);
+  });
+
+  it("retains findings whose last-seen timestamp is unavailable", () => {
+    const now = Date.parse("2026-09-08T00:00:00Z");
+    const r = emptyRecord("salt", "2026-09-08T00:00:00Z");
+    upsertFinding(r, { ...base("unknown"), sighting: sighting("2026-09-08T00:00:00Z") });
+    r.findings[0].lastSeen = "";
+    pruneRecord(r, now);
+    expect(r.findings.map((f) => f.id)).toEqual(["unknown"]);
   });
 
   // Age out BEFORE capping: capping first would let a burst of stale findings

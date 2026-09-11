@@ -9,28 +9,7 @@
  * memory at once and the run printed `Aborted(OOM)` 22 times.
  */
 import { describe, it, expect } from "vitest";
-
-// The gate is internal, so it is exercised through the behaviour that matters:
-// a synthetic scheduler with the same shape, asserting the invariant.
-class ByteGate {
-  private inFlight = 0;
-  private waiting: Array<() => void> = [];
-  constructor(private readonly budget: number) {}
-  async acquire(bytes: number): Promise<void> {
-    const want = Math.max(0, bytes);
-    while (this.inFlight > 0 && this.inFlight + want > this.budget) {
-      await new Promise<void>((r) => this.waiting.push(r));
-    }
-    this.inFlight += want;
-  }
-  release(bytes: number): void {
-    this.inFlight -= Math.max(0, bytes);
-    if (this.inFlight < 0) this.inFlight = 0;
-    const w = this.waiting;
-    this.waiting = [];
-    for (const wake of w) wake();
-  }
-}
+import { ByteGate } from "@/src/audit/index";
 
 async function run(sizes: number[], budget: number, workers: number) {
   const gate = new ByteGate(budget);

@@ -73,6 +73,21 @@ describe("what a row shows", () => {
     expect(screen.getByText("yesterday")).toBeTruthy();
   });
 
+  it("shows distinct dates even when their short labels are identical", async () => {
+    h.getLeaksAction.mockResolvedValue({
+      rows: [
+        row({
+          firstSeen: "2024-09-08T12:00:00.000Z",
+          lastSeen: "2025-09-08T12:00:00.000Z",
+        }),
+      ],
+      notify: true,
+    });
+    render(<LeakSection />);
+    await screen.findByText("ghp_••••••••4f2a");
+    expect(screen.getAllByText("Sep 8")).toHaveLength(2);
+  });
+
   it("counts exposures without implying that many keys", async () => {
     // A key pasted into forty commands is one thing to rotate. Showing forty
     // rows would be true about sightings and wrong about the work.

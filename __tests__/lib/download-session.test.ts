@@ -22,7 +22,9 @@ describe("lib/download-session: isValidSessionId", () => {
   });
 
   it("accepts ses_* IDs for opencode and rejects UUIDs", () => {
-    expect(isValidSessionId("opencode", "ses_21ad60d14ffewMeRRKMLdS7vOI")).toBe(true);
+    expect(isValidSessionId("opencode", "ses_21ad60d14ffewMeRRKMLdS7vOI")).toBe(
+      true,
+    );
     expect(isValidSessionId("opencode", VALID_UUID)).toBe(false);
     expect(isValidSessionId("opencode", "ses_with-dash")).toBe(false);
   });
@@ -42,11 +44,17 @@ describe("lib/download-session: resolveDownloadSource", () => {
     vi.doUnmock("@/lib/cursor-sessions");
     vi.doUnmock("@/lib/pi-sessions");
     vi.doUnmock("@/lib/opencode-sessions");
+    vi.doUnmock("@/lib/openclaw-sessions");
+    vi.doUnmock("@/lib/openclaw-db");
   });
 
   it("throws RangeError on invalid session id", async () => {
-    await expect(resolveDownloadSource("codex", "proj", "garbage")).rejects.toBeInstanceOf(RangeError);
-    await expect(resolveDownloadSource("opencode", "proj", VALID_UUID)).rejects.toBeInstanceOf(RangeError);
+    await expect(
+      resolveDownloadSource("codex", "proj", "garbage"),
+    ).rejects.toBeInstanceOf(RangeError);
+    await expect(
+      resolveDownloadSource("opencode", "proj", VALID_UUID),
+    ).rejects.toBeInstanceOf(RangeError);
   });
 
   it("Claude: resolves under the projects root via resolveSessionFilePath", async () => {
@@ -72,7 +80,9 @@ describe("lib/download-session: resolveDownloadSource", () => {
     try {
       vi.resetModules();
       ({ resolveDownloadSource } = await import("@/lib/download-session"));
-      await expect(resolveDownloadSource("claude", "../etc", VALID_UUID)).rejects.toBeInstanceOf(RangeError);
+      await expect(
+        resolveDownloadSource("claude", "../etc", VALID_UUID),
+      ).rejects.toBeInstanceOf(RangeError);
     } finally {
       delete process.env.CLAUDE_PROJECTS_PATH;
       rmSync(root, { recursive: true, force: true });
@@ -89,7 +99,8 @@ describe("lib/download-session: resolveDownloadSource", () => {
     async (cli, modulePath, fnName) => {
       vi.doMock(modulePath, () => ({ [fnName]: () => "/tmp/fake.jsonl" }));
       vi.resetModules();
-      const { resolveDownloadSource: rds } = await import("@/lib/download-session");
+      const { resolveDownloadSource: rds } =
+        await import("@/lib/download-session");
       const result = await rds(cli, "proj", VALID_UUID);
       expect(result).toEqual({ kind: "file", path: "/tmp/fake.jsonl" });
     },
@@ -100,25 +111,55 @@ describe("lib/download-session: resolveDownloadSource", () => {
     ["copilot", "@/lib/copilot-sessions", "findCopilotTranscript"],
     ["cursor", "@/lib/cursor-sessions", "findCursorTranscript"],
     ["pi", "@/lib/pi-sessions", "findPiTranscript"],
-  ] as const)("%s: returns null when transcript is missing", async (cli, modulePath, fnName) => {
-    vi.doMock(modulePath, () => ({ [fnName]: () => null }));
-    vi.resetModules();
-    const { resolveDownloadSource: rds } = await import("@/lib/download-session");
-    const result = await rds(cli, "proj", VALID_UUID);
-    expect(result).toBeNull();
-  });
+  ] as const)(
+    "%s: returns null when transcript is missing",
+    async (cli, modulePath, fnName) => {
+      vi.doMock(modulePath, () => ({ [fnName]: () => null }));
+      vi.resetModules();
+      const { resolveDownloadSource: rds } =
+        await import("@/lib/download-session");
+      const result = await rds(cli, "proj", VALID_UUID);
+      expect(result).toBeNull();
+    },
+  );
 
   it("OpenCode: emits a JSON document mirroring the SQLite session/message/part structure", async () => {
     const exportPayload = {
-      session: { id: "ses_abc", project_id: "proj_1", slug: null, directory: "/tmp/p", title: "T", time_created: 1, time_updated: 2 },
-      messages: [{ id: "m1", session_id: "ses_abc", time_created: 1, time_updated: 1, data: { role: "user" } }],
-      parts: [{ id: "p1", message_id: "m1", session_id: "ses_abc", time_created: 1, time_updated: 1, data: { type: "text", text: "hi" } }],
+      session: {
+        id: "ses_abc",
+        project_id: "proj_1",
+        slug: null,
+        directory: "/tmp/p",
+        title: "T",
+        time_created: 1,
+        time_updated: 2,
+      },
+      messages: [
+        {
+          id: "m1",
+          session_id: "ses_abc",
+          time_created: 1,
+          time_updated: 1,
+          data: { role: "user" },
+        },
+      ],
+      parts: [
+        {
+          id: "p1",
+          message_id: "m1",
+          session_id: "ses_abc",
+          time_created: 1,
+          time_updated: 1,
+          data: { type: "text", text: "hi" },
+        },
+      ],
     };
     vi.doMock("@/lib/opencode-sessions", () => ({
       getOpenCodeSessionExport: async () => exportPayload,
     }));
     vi.resetModules();
-    const { resolveDownloadSource: rds } = await import("@/lib/download-session");
+    const { resolveDownloadSource: rds } =
+      await import("@/lib/download-session");
     const result = await rds("opencode", "proj", "ses_abc123");
     expect(result).toEqual({
       kind: "synthesized",
@@ -133,9 +174,50 @@ describe("lib/download-session: resolveDownloadSource", () => {
       getOpenCodeSessionExport: async () => null,
     }));
     vi.resetModules();
-    const { resolveDownloadSource: rds } = await import("@/lib/download-session");
+    const { resolveDownloadSource: rds } =
+      await import("@/lib/download-session");
     const result = await rds("opencode", "proj", "ses_missing");
     expect(result).toBeNull();
+  });
+
+  it("OpenClaw: synthesizes JSONL from SQLite event_json rows", async () => {
+    vi.doMock("@/lib/openclaw-sessions", () => ({
+      findOpenClawTranscript: () => "/tmp/archived.jsonl",
+      listOpenClawAgents: () => ["main"],
+      openclawHome: () => "/tmp/openclaw",
+    }));
+    vi.doMock("@/lib/openclaw-db", () => ({
+      readOpenClawSqliteTranscript: async () => ({
+        eventJsonLines: ['{"type":"session"}', '{"type":"message"}'],
+      }),
+    }));
+    vi.resetModules();
+    const { resolveDownloadSource: rds } =
+      await import("@/lib/download-session");
+    expect(await rds("openclaw", "ignored", VALID_UUID)).toEqual({
+      kind: "synthesized",
+      body: '{"type":"session"}\n{"type":"message"}\n',
+      contentType: "application/x-ndjson",
+      extension: "jsonl",
+    });
+  });
+
+  it("OpenClaw: falls back to an archived JSONL file", async () => {
+    vi.doMock("@/lib/openclaw-sessions", () => ({
+      findOpenClawTranscript: () => "/tmp/archived.jsonl",
+      listOpenClawAgents: () => ["main"],
+      openclawHome: () => "/tmp/openclaw",
+    }));
+    vi.doMock("@/lib/openclaw-db", () => ({
+      readOpenClawSqliteTranscript: async () => null,
+    }));
+    vi.resetModules();
+    const { resolveDownloadSource: rds } =
+      await import("@/lib/download-session");
+    expect(await rds("openclaw", "ignored", VALID_UUID)).toEqual({
+      kind: "file",
+      path: "/tmp/archived.jsonl",
+    });
   });
 });
 
@@ -170,10 +252,17 @@ describe("lib/download-session: end-to-end fixture (codex)", () => {
   it("locates a codex transcript on disk and returns its path", async () => {
     const dir = join(tmpHome, ".codex", "sessions", "2026", "05", "05");
     mkdirSync(dir, { recursive: true });
-    const filePath = join(dir, `rollout-2026-05-05T00-00-00-${VALID_UUID}.jsonl`);
-    writeFileSync(filePath, '{"timestamp":"2026-05-05T00:00:00.000Z","type":"session_meta","payload":{}}\n');
+    const filePath = join(
+      dir,
+      `rollout-2026-05-05T00-00-00-${VALID_UUID}.jsonl`,
+    );
+    writeFileSync(
+      filePath,
+      '{"timestamp":"2026-05-05T00:00:00.000Z","type":"session_meta","payload":{}}\n',
+    );
 
-    const { resolveDownloadSource: rds } = await import("@/lib/download-session");
+    const { resolveDownloadSource: rds } =
+      await import("@/lib/download-session");
     const result = await rds("codex", "ignored", VALID_UUID);
     expect(result).toEqual({ kind: "file", path: filePath });
   });

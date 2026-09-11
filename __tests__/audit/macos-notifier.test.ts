@@ -6,7 +6,7 @@
  * `osacompile`, `launchctl bootstrap`, whether a banner actually appears — are
  * exactly the parts no test here can reach. So this pins the half that IS
  * platform-independent and is also the half that silently rots: the plist's
- * shape, the AppleScript's structure, and the queue's on-disk contract. That is
+ * shape, the runner's structure, and the queue's on-disk contract. That is
  * the same split `launchdPlistContents` already makes for the daemon's own
  * plist.
  */
@@ -35,15 +35,17 @@ afterEach(() => {
 });
 
 describe("the LaunchAgent plist", () => {
-  const plist = () => notifierPlistContents("/Users/x/.failproofai/bin/N.app", "/Users/x/.failproofai/run/notify");
+  const plist = () => notifierPlistContents(
+    "/Users/x/.failproofai/bin/failproofai-notifier.zsh",
+    "/Users/x/.failproofai/run/notify",
+  );
 
-  it("runs the applet inside the bundle, not osascript", () => {
-    // A bare `osascript -e 'display notification'` is attributed to Script
-    // Editor: it inherits Script Editor's notification permission and shows up
-    // under Script Editor in System Settings. The bundle is what makes the
-    // banner say failproofai and gives the user something to turn off.
-    expect(plist()).toContain("<string>/Users/x/.failproofai/bin/N.app/Contents/MacOS/applet</string>");
-    expect(plist()).not.toContain("osascript");
+  it("runs the user-session notification script", () => {
+    // The LaunchAgent is the bridge into the GUI domain. The runner then uses
+    // the same osascript path that works from ordinary scheduled Mac jobs.
+    expect(plist()).toContain(
+      "<string>/Users/x/.failproofai/bin/failproofai-notifier.zsh</string>",
+    );
   });
 
   it("is woken by the queue rather than left running", () => {
@@ -75,7 +77,7 @@ describe("the LaunchAgent plist", () => {
   });
 });
 
-describe("the applet's script", () => {
+describe("the notifier runner", () => {
   it("deletes each payload BEFORE displaying it", () => {
     // WatchPaths fires on every change to the directory, so a file that cannot
     // be displayed and is not removed wakes this agent forever. At-most-once is
@@ -83,23 +85,39 @@ describe("the applet's script", () => {
     // dropped banner costs one silent finding and a wake loop costs the machine.
     const s = notifierScript();
     const rmAt = s.indexOf('rm -f');
-    const showAt = s.indexOf("display notification");
+    const showAt = s.indexOf("/usr/bin/osascript");
     expect(rmAt).toBeGreaterThan(-1);
     expect(showAt).toBeGreaterThan(-1);
     expect(rmAt).toBeLessThan(showAt);
   });
 
   it("points at this home's queue, quoted", () => {
-    // JSON.stringify is what makes an AppleScript string literal out of a path,
-    // and a home containing a quote is a home this must not mis-escape.
-    expect(notifierScript()).toContain(JSON.stringify(macNotifyDir() + "/"));
+    expect(notifierScript()).toContain(`drop_dir='${macNotifyDir()}'`);
   });
 
-  it("reads a title and a body, and shows nothing for a one-line file", () => {
-    // A truncated payload is a real state — the queue writer renames into place
-    // precisely to avoid it, and this is the backstop if that ever regresses.
+  it("passes title and body as argv instead of interpolating AppleScript", () => {
     const s = notifierScript();
-    expect(s).toContain("count of lines_) is greater than 1");
+    expect(s).toContain('/usr/bin/osascript - "$note_title" "$note_body"');
+    expect(s).toContain("display notification (item 2 of argv) with title (item 1 of argv)");
+  });
+
+  it("is an executable zsh script using absolute macOS tool paths", () => {
+    const s = notifierScript();
+    expect(s.startsWith("#!/bin/zsh\n")).toBe(true);
+    expect(s).toContain("setopt NULL_GLOB");
+    expect(s).toContain("/usr/bin/sed");
+    expect(s).toContain("/usr/bin/tr");
+    expect(s).toContain("/bin/rm");
+  });
+
+  it("removes malformed payloads instead of leaving a launchd wake loop", () => {
+    const s = notifierScript();
+    const readAt = s.indexOf("note_title=");
+    const rmAt = s.indexOf("/bin/rm -f");
+    const validateAt = s.indexOf('[ -n "$note_title" ]');
+    expect(readAt).toBeGreaterThan(-1);
+    expect(rmAt).toBeGreaterThan(readAt);
+    expect(validateAt).toBeGreaterThan(rmAt);
   });
 });
 
@@ -120,7 +138,7 @@ describe("the queue", () => {
     expect(existsSync(resolve(macNotifyDir(), "..", "notify-abc0000000000000.tmp"))).toBe(false);
   });
 
-  it("flattens newlines, because the applet reads the payload by line", () => {
+  it("flattens newlines, because the runner reads the payload by line", () => {
     queueMacNotification("00000000000000ff", "A\nB", "C\n\nD  E");
     expect(readFileSync(resolve(macNotifyDir(), "00000000000000ff"), "utf8")).toBe("A B\nC D E\n");
   });

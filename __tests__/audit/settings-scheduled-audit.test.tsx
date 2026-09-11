@@ -10,10 +10,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
 
-const { getViewMock, setAutoMock, setIntervalMock, triggerRunMock, toastMock, captureMock } =
+const { getViewMock, setAutoMock, setNotifyMock, setIntervalMock, triggerRunMock, toastMock, captureMock } =
   vi.hoisted(() => ({
     getViewMock: vi.fn(),
     setAutoMock: vi.fn(),
+    setNotifyMock: vi.fn(),
     setIntervalMock: vi.fn(),
     triggerRunMock: vi.fn(),
     toastMock: vi.fn(),
@@ -28,6 +29,7 @@ const { getViewMock, setAutoMock, setIntervalMock, triggerRunMock, toastMock, ca
 vi.mock("@/app/actions/get-scheduled-audit", () => ({ getScheduledAuditAction: getViewMock }));
 vi.mock("@/app/actions/update-scheduled-audit", () => ({
   setAutoAuditAction: setAutoMock,
+  setAuditNotifyAction: setNotifyMock,
   setAuditIntervalAction: setIntervalMock,
 }));
 vi.mock("@/app/audit/_components/rerun-button", () => ({
@@ -46,6 +48,7 @@ const DAY = 86_400_000;
 function view(over: Record<string, unknown> = {}) {
   return {
     auto: false,
+    notify: true,
     intervalDays: 7,
     signedInAs: null,
     daemon: "running",
@@ -64,7 +67,6 @@ function view(over: Record<string, unknown> = {}) {
  * first frame that no user ever sees.
  */
 function renderSettings(initial: ReturnType<typeof view> | null = null) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return render(<SettingsClient initial={(initial ?? lastView) as any} />);
 }
 
@@ -75,6 +77,7 @@ beforeEach(() => {
   lastView = view();
   getViewMock.mockReset().mockResolvedValue(view());
   setAutoMock.mockReset().mockResolvedValue({ ok: true, auto: true });
+  setNotifyMock.mockReset().mockImplementation(async (notify: boolean) => ({ notify }));
   setIntervalMock.mockReset().mockResolvedValue({ intervalDays: 7 });
   triggerRunMock.mockReset().mockResolvedValue(undefined);
   toastMock.mockReset();
@@ -179,14 +182,48 @@ describe("the switch", () => {
   });
 });
 
+describe("system notifications", () => {
+  it("can be turned off without disabling scheduled scans", async () => {
+    lastView = view({ auto: true, notify: true });
+    getViewMock.mockResolvedValue(lastView);
+    renderSettings();
+
+    fireEvent.click(await screen.findByRole("switch", { name: "turn off system notifications" }));
+
+    await waitFor(() => expect(setNotifyMock).toHaveBeenCalledWith(false));
+    expect(setAutoMock).not.toHaveBeenCalled();
+    expect(
+      await screen.findByRole("switch", { name: "turn on system notifications" }),
+    ).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByText("off. scheduled scans and email alerts continue.")).toBeInTheDocument();
+  });
+
+  it("keeps the stored setting when the write fails", async () => {
+    lastView = view({ notify: true });
+    getViewMock.mockResolvedValue(lastView);
+    setNotifyMock.mockRejectedValue(new Error("nope"));
+    renderSettings();
+
+    fireEvent.click(await screen.findByRole("switch", { name: "turn off system notifications" }));
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith("could not turn system notifications off."),
+    );
+    expect(screen.getByRole("switch", { name: "turn off system notifications" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+  });
+});
+
 describe("signed-out with the timer on", () => {
-  it("names the local-only state and keeps desktop alerts explicit", async () => {
+  it("names the local-only state", async () => {
     lastView = view({ auto: true, signedInAs: null });
     getViewMock.mockResolvedValue(lastView);
     renderSettings();
     expect(
       await screen.findByText(
-        /signed out — scans and desktop notifications continue; email alerts are paused/,
+        /signed out — scheduled scans continue; email alerts are paused/,
       ),
     ).toBeInTheDocument();
   });
@@ -281,7 +318,7 @@ describe("the schedule tape", () => {
       view({ auto: true, signedInAs: { id: "u", email: "a@b.c" }, schedule: null }),
     );
     const { container } = renderSettings();
-    await screen.findByRole("switch");
+    await screen.findByRole("switch", { name: "turn off scheduled audits" });
     expect(container.querySelector(".tape")).toBeNull();
   });
 
@@ -301,7 +338,7 @@ describe("the schedule tape", () => {
       }),
     );
     const { container } = renderSettings();
-    await screen.findByRole("switch");
+    await screen.findByRole("switch", { name: "turn off scheduled audits" });
     await waitFor(() => expect(container.querySelector(".tape")).not.toBeNull());
     // Asserted as a POSITION, not a string. The label is `next · {value}` —
     // two text nodes in one span, so a plain text matcher never sees it whole —

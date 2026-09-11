@@ -27,6 +27,9 @@ const h = vi.hoisted(() => ({
   openWhenReady: vi.fn(),
   launch: vi.fn(),
   notifyDesktop: vi.fn<(...a: unknown[]) => Promise<unknown>>(() => Promise.resolve({ ok: true, id: 1 })),
+  macNotifierInstalled: vi.fn(() => true),
+  queueMacNotification: vi.fn(() => true),
+  pruneMacNotifyQueue: vi.fn(),
 }));
 
 vi.mock("../../src/hooks/hook-telemetry", () => ({ trackHookEvent: h.trackHookEvent }));
@@ -35,6 +38,11 @@ vi.mock("../../src/audit/dashboard-cache", () => ({ writeDashboardCache: h.write
 vi.mock("../../src/audit/open-browser", () => ({ openWhenReady: h.openWhenReady }));
 vi.mock("../../scripts/launch", () => ({ launch: h.launch }));
 vi.mock("../../src/audit/desktop-notify", () => ({ notifyDesktop: h.notifyDesktop }));
+vi.mock("../../src/audit/macos-notifier", () => ({
+  macNotifierInstalled: h.macNotifierInstalled,
+  queueMacNotification: h.queueMacNotification,
+  pruneMacNotifyQueue: h.pruneMacNotifyQueue,
+}));
 vi.mock("../../lib/telemetry-id", () => ({ getInstanceId: () => "test-instance" }));
 
 import { runAuditCli, runScheduledAudit, EXIT_AUDIT_ALREADY_RUNNING } from "../../src/audit/cli";
@@ -63,6 +71,8 @@ beforeEach(() => {
   h.trackHookEvent.mockImplementation(() => Promise.resolve());
   h.writeDashboardCache.mockReturnValue(true);
   h.notifyDesktop.mockResolvedValue({ ok: true, id: 1 });
+  h.macNotifierInstalled.mockReturnValue(true);
+  h.queueMacNotification.mockReturnValue(true);
   prevHome = process.env.FAILPROOFAI_HOME;
   home = mkdtempSync(resolve(tmpdir(), "fpai-sched-"));
   process.env.FAILPROOFAI_HOME = home;

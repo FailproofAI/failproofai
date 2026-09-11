@@ -1489,7 +1489,14 @@ export async function runConfigureWizard(
     // missing or launchd refuses the job must still finish installing its
     // daemon, its hooks and its policies, which are the parts that enforce
     // anything; the notice in-CLI still reaches them either way.
-    installMacNotifier();
+    const notifier = installMacNotifier();
+    if (process.platform === "darwin" && !notifier.installed) {
+      hookLogWarn(`macOS notification helper was not installed: ${notifier.reason ?? "unknown error"}`);
+      stdout.write(
+        "\nSystem notifications could not be installed. Scheduled scans and email alerts\n" +
+          "still work; re-run `failproofai config` after checking the local LaunchAgent.\n\n",
+      );
+    }
   }
 
   // Telemetry runs concurrently with the install (never rejects, 5s-bounded) so

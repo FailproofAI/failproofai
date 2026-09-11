@@ -29,12 +29,8 @@
  * acts and for anything wrong, mint for the thing that is alive. No third hue,
  * no new webfont, one hard pixel shadow on the console. That is the budget.
  *
- * ## One switch, not two
- *
- * Scheduling and mailing are the same decision — the reason to put a scan on a
- * timer is to be told what it found. So there is one toggle, it requires a
- * sign-in, and "signed out with the timer on" is a real state the page names
- * rather than a contradiction it prevents.
+ * Scheduling and system notifications are separate machine settings. Turning
+ * notifications off must not silently stop the seven-day scan or email alerts.
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
@@ -44,6 +40,7 @@ import {
 } from "@/app/actions/get-scheduled-audit";
 import {
   setAutoAuditAction,
+  setAuditNotifyAction,
   setAuditIntervalAction,
 } from "@/app/actions/update-scheduled-audit";
 import { triggerRun, RerunError } from "@/app/audit/_components/rerun-button";
@@ -208,6 +205,7 @@ export default function SettingsClient({ initial }: { initial: ScheduledAuditVie
   // about whether scheduled audits are on. See the note in `page.tsx`.
   const [view, setView] = useState<ScheduledAuditView | null>(initial);
   const [auto, setAuto] = useState(initial?.auto ?? false);
+  const [notify, setNotify] = useState(initial?.notify ?? true);
   const [intervalDays, setIntervalDays] = useState(initial?.intervalDays ?? 7);
   const [busy, setBusy] = useState(false);
   const [running, setRunning] = useState(false);
@@ -251,6 +249,7 @@ export default function SettingsClient({ initial }: { initial: ScheduledAuditVie
       setView(next);
       hasView.current = true;
       setAuto(next.auto);
+      setNotify(next.notify);
       setIntervalDays(next.intervalDays);
       setNowMs(Date.now());
       setLoadError(false);
@@ -339,6 +338,21 @@ export default function SettingsClient({ initial }: { initial: ScheduledAuditVie
     }
     await enable();
   }, [auto, enable, reload]);
+
+  const onNotifyToggle = useCallback(async () => {
+    const requested = !notify;
+    setBusy(true);
+    try {
+      const res = await setAuditNotifyAction(requested);
+      setNotify(res.notify);
+      setView((v) => (v ? { ...v, notify: res.notify } : v));
+      toast(res.notify ? "system notifications on." : "system notifications off.");
+    } catch {
+      toast(`could not turn system notifications ${requested ? "on" : "off"}.`);
+    } finally {
+      setBusy(false);
+    }
+  }, [notify]);
 
   const commitInterval = useCallback(
     async (raw: number) => {
@@ -507,8 +521,8 @@ export default function SettingsClient({ initial }: { initial: ScheduledAuditVie
                     <span className="set-dim">
                       {auto
                         ? signedIn
-                          ? "system notification on leaks; the latest masked leak is also emailed."
-                          : "system notification on leaks. add an email below for masked alerts."
+                          ? "scheduled scans are active; the latest masked leak is emailed."
+                          : "scheduled scans are active. add an email below for masked alerts."
                         : "off. nothing runs and nothing is sent."}
                     </span>
                   </div>
@@ -540,6 +554,23 @@ export default function SettingsClient({ initial }: { initial: ScheduledAuditVie
                   </span>
                 </div>
 
+                <div className="set-row set-row-main">
+                  <Toggle
+                    enabled={notify}
+                    disabled={busy || view === null}
+                    onChange={() => void onNotifyToggle()}
+                    label={notify ? "turn off system notifications" : "turn on system notifications"}
+                  />
+                  <div className="set-row-copy">
+                    <span className="set-strong">system notifications.</span>
+                    <span className="set-dim">
+                      {notify
+                        ? "on when a scheduled scan finds credentials."
+                        : "off. scheduled scans and email alerts continue."}
+                    </span>
+                  </div>
+                </div>
+
                 <div className="set-rule" />
 
                 <div className="set-row set-row-identity">
@@ -567,7 +598,7 @@ export default function SettingsClient({ initial }: { initial: ScheduledAuditVie
                     // from it at all.
                     <>
                       <span className="set-warn">
-                        signed out — scans and desktop notifications continue; email alerts are paused.
+                        signed out — scheduled scans continue; email alerts are paused.
                       </span>
                       <button
                         type="button"
@@ -580,8 +611,8 @@ export default function SettingsClient({ initial }: { initial: ScheduledAuditVie
                     </>
                   ) : (
                     <span className="set-dim">
-                      scans and desktop notifications work without an account.
-                      add email later if you want leak alerts in your inbox.
+                      scans and system notifications work without an account.
+                      add email later if you want alerts in your inbox.
                     </span>
                   )}
                 </div>

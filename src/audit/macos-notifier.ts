@@ -24,13 +24,13 @@
  * would install for every account on the box, which is not what a per-user
  * notification is.
  *
- * **An app bundle, not a bare `osascript -e 'display notification'`.** A raw
- * osascript notification is attributed to whatever host ran it — in practice
- * "Script Editor" — so it inherits Script Editor's notification permission,
- * appears under Script Editor in System Settings, and is indistinguishable from
- * any other script on the machine. Compiling a tiny applet with `osacompile`
- * gives it its own bundle identifier, so the banner says failproofai, and the
- * user gets a real entry they can allow, silence or deny like any other app.
+ * **A user-session `osascript`, not an applet binary launched directly.** The
+ * compiled applet path looked attractive because it could carry a FailproofAI
+ * bundle identifier, but launching `Contents/MacOS/applet` directly from
+ * launchd is not a dependable Notification Center client on current macOS.
+ * `osascript` from a user LaunchAgent is the same mechanism ordinary scheduled
+ * jobs use successfully. Delivery matters more than owning the label shown by
+ * Notification Center, so the runner uses that proven path.
  *
  * **A watched drop directory, not a resident process.** The agent is not a
  * daemon: `WatchPaths` makes launchd start it only when a file appears, and it
@@ -45,23 +45,27 @@
  * the thing that lasts.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 
 import { runDir } from "../hooks/fp-home";
 import { isFindingId } from "./leak-fingerprint";
 
-/** The bundle identifier the banner is attributed to, and the agent's label. */
+/** Stable label used to load, inspect, and remove the per-user LaunchAgent. */
 export const MAC_NOTIFIER_LABEL = "ai.failproof.notifier";
 
 /** Where a queued notification waits for the agent to pick it up. */
 export const macNotifyDir = (home?: string) => resolve(runDir(home), "notify");
 
-/** The compiled applet. Under `~/.failproofai` rather than `/Applications`,
- *  because it is a delivery mechanism, not something to launch. */
+/** Legacy compiled applet path, retained so upgrades and uninstall remove it. */
 export function macNotifierAppPath(home?: string): string {
   return resolve(runDir(home), "..", "bin", "FailproofAI Notifier.app");
+}
+
+/** User-session runner invoked by launchd when a notification is queued. */
+export function macNotifierRunnerPath(home?: string): string {
+  return resolve(runDir(home), "..", "bin", "failproofai-notifier.zsh");
 }
 
 export function macNotifierPlistPath(): string {
@@ -73,11 +77,11 @@ function escapeXml(s: string): string {
 }
 
 /**
- * The AppleScript the applet runs: drain the directory, say each line, exit.
+ * The user-session runner: drain the directory, say each notification, exit.
  *
- * Payload format is two lines — title, then body — chosen over JSON because
- * AppleScript has no JSON parser and shelling out to one would put a second
- * interpreter in the path of a two-field message.
+ * Payload format is two lines — title, then body. Values are passed to
+ * AppleScript as argv, never interpolated into source, so notification text
+ * cannot become AppleScript code.
  *
  * The file is REMOVED BEFORE the notification is posted, and that order is
  * deliberate: `WatchPaths` fires on every change to the directory, so a file
@@ -88,32 +92,25 @@ function escapeXml(s: string): string {
  */
 export function notifierScript(home?: string): string {
   const dir = macNotifyDir(home);
-  return `on run
-	set dropDir to ${JSON.stringify(dir + "/")}
-	set listing to ""
-	try
-		set listing to do shell script "ls -1 " & quoted form of dropDir & " 2>/dev/null"
-	end try
-	repeat with entryName in paragraphs of listing
-		set entryPath to dropDir & (entryName as string)
-		if (entryName as string) is not "" then
-			try
-				set payload to do shell script "cat " & quoted form of entryPath & " 2>/dev/null"
-				do shell script "rm -f " & quoted form of entryPath
-				set lines_ to paragraphs of payload
-				if (count of lines_) is greater than 1 then
-					set noteTitle to item 1 of lines_
-					set noteBody to ""
-					repeat with i from 2 to (count of lines_)
-						if noteBody is not "" then set noteBody to noteBody & " "
-						set noteBody to noteBody & (item i of lines_)
-					end repeat
-					display notification noteBody with title noteTitle
-				end if
-			end try
-		end if
-	end repeat
+  const quotedDir = `'${dir.replace(/'/g, `'\\''`)}'`;
+  return `#!/bin/zsh
+set -u
+setopt NULL_GLOB
+
+drop_dir=${quotedDir}
+
+for entry_path in "$drop_dir"/*; do
+  [ -f "$entry_path" ] || continue
+  note_title=$(/usr/bin/sed -n '1p' "$entry_path")
+  note_body=$(/usr/bin/sed -n '2,$p' "$entry_path" | /usr/bin/tr '\\n' ' ')
+  /bin/rm -f "$entry_path"
+  [ -n "$note_title" ] || continue
+  /usr/bin/osascript - "$note_title" "$note_body" <<'APPLESCRIPT'
+on run argv
+  display notification (item 2 of argv) with title (item 1 of argv)
 end run
+APPLESCRIPT
+done
 `;
 }
 
@@ -122,7 +119,7 @@ end run
  * assert this file's shape from a Linux CI runner, which is every CI runner we
  * have.
  */
-export function notifierPlistContents(appPath: string, watchDir: string): string {
+export function notifierPlistContents(runnerPath: string, watchDir: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -131,7 +128,7 @@ export function notifierPlistContents(appPath: string, watchDir: string): string
     <string>${escapeXml(MAC_NOTIFIER_LABEL)}</string>
     <key>ProgramArguments</key>
     <array>
-        <string>${escapeXml(resolve(appPath, "Contents", "MacOS", "applet"))}</string>
+        <string>${escapeXml(runnerPath)}</string>
     </array>
     <!-- Started only when something is queued, and it exits when the queue is
          empty. RunAtLoad would fire it once at login with nothing to say. -->
@@ -173,36 +170,26 @@ function run(cmd: string, args: string[]): void {
  * machine scan, and may it interrupt), and both of those are real settings.
  *
  * Returns rather than throws. Notifications are one channel of several, and a
- * Mac that cannot compile an applet must still finish setting up its daemon,
- * its hooks and its policies — the parts that actually enforce anything.
+ * Mac that cannot load the user LaunchAgent must still finish setting up its
+ * daemon, hooks and policies — the parts that actually enforce anything.
  */
 export function installMacNotifier(home?: string): MacNotifierResult {
   if (process.platform !== "darwin") return { installed: false, reason: "not macOS" };
   try {
-    const app = macNotifierAppPath(home);
+    const runner = macNotifierRunnerPath(home);
     const watch = macNotifyDir(home);
     mkdirSync(watch, { recursive: true, mode: 0o700 });
-    mkdirSync(resolve(app, ".."), { recursive: true });
-
-    const scriptPath = resolve(watch, "..", "notifier.applescript");
-    writeFileSync(scriptPath, notifierScript(home), { mode: 0o600 });
-    // osacompile refuses to overwrite an existing bundle, so a reinstall (a
-    // second `failproofai config`, or an upgrade) has to clear it first.
-    rmSync(app, { recursive: true, force: true });
-    run("osacompile", ["-o", app, scriptPath]);
-    rmSync(scriptPath, { force: true });
-
-    // Give the bundle its own identity, so the banner is attributed to
-    // failproofai instead of to whatever compiled it, and so the user gets one
-    // entry in System Settings > Notifications they can turn off themselves.
-    const plist = resolve(app, "Contents", "Info.plist");
-    run("defaults", ["write", plist, "CFBundleIdentifier", MAC_NOTIFIER_LABEL]);
-    run("defaults", ["write", plist, "CFBundleName", "failproofai"]);
-    // `defaults write` leaves the file 0600 and owned by us but in binary
-    // format; launchd and LaunchServices both read either, so no conversion.
+    mkdirSync(resolve(runner, ".."), { recursive: true });
+    writeFileSync(runner, notifierScript(home), { mode: 0o700 });
+    // writeFileSync preserves an existing file's mode. Repair it explicitly on
+    // upgrades from a partially-created or hand-edited runner.
+    chmodSync(runner, 0o700);
+    // Remove the applet used by older builds. The LaunchAgent below no longer
+    // references it, and leaving it behind makes diagnosis ambiguous.
+    rmSync(macNotifierAppPath(home), { recursive: true, force: true });
 
     mkdirSync(resolve(macNotifierPlistPath(), ".."), { recursive: true });
-    writeFileSync(macNotifierPlistPath(), notifierPlistContents(app, watch), { mode: 0o644 });
+    writeFileSync(macNotifierPlistPath(), notifierPlistContents(runner, watch), { mode: 0o644 });
 
     const target = `gui/${process.getuid?.() ?? 0}`;
     // bootout first: bootstrap fails outright on an already-loaded label, and
@@ -220,7 +207,7 @@ export function installMacNotifier(home?: string): MacNotifierResult {
 }
 
 /**
- * Remove the agent and the bundle.
+ * Remove the agent and its runner, including the applet used by older builds.
  *
  * Called from `failproofai uninstall --purge`. Unconditional and quiet: an
  * agent left behind after an uninstall is a plist launchd keeps trying to start
@@ -236,6 +223,7 @@ export function uninstallMacNotifier(home?: string): void {
   }
   rmSync(macNotifierPlistPath(), { force: true });
   rmSync(macNotifierAppPath(home), { recursive: true, force: true });
+  rmSync(macNotifierRunnerPath(home), { force: true });
   rmSync(macNotifyDir(home), { recursive: true, force: true });
 }
 
@@ -281,7 +269,7 @@ export function queueMacNotification(
 
 /** True when an agent is installed and could pick a queued file up. */
 export function macNotifierInstalled(home?: string): boolean {
-  return existsSync(macNotifierPlistPath()) && existsSync(macNotifierAppPath(home));
+  return existsSync(macNotifierPlistPath()) && existsSync(macNotifierRunnerPath(home));
 }
 
 /**

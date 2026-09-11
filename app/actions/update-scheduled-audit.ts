@@ -8,9 +8,10 @@
  *
  * ## CLI ⟷ dashboard parity
  *   - `setAutoAuditAction(enabled)`  ⟷ `[audit] auto`
+ *   - `setAuditNotifyAction(enabled)` ⟷ `[audit] notify`
  *   - `setAuditIntervalAction(days)` ⟷ `[audit] interval_days`
  *
- * Both go through the same `updateConfig` the CLI uses — `failproofai audit
+ * All go through the same `updateConfig` the CLI uses — `failproofai audit
  * --schedule` / `--no-schedule` call it too — so a value set on either side is
  * byte-identical. That is the whole mechanism behind "the two
  * surfaces are always in sync": there is one file, one writer function, and no
@@ -47,6 +48,18 @@ export type SetAutoAuditResult = { ok: true; auto: boolean };
 export async function setAutoAuditAction(enabled: boolean): Promise<SetAutoAuditResult> {
   const next = updateConfig({ audit: { auto: enabled } });
   return { ok: true, auto: next.audit.auto };
+}
+
+/**
+ * Turn OS notifications for scheduled credential findings on or off.
+ *
+ * This does not change the timer or email delivery. It writes the same setting
+ * as `failproofai audit --notify` / `--no-notify` and returns the value re-read
+ * from the shared config so the dashboard never maintains a second truth.
+ */
+export async function setAuditNotifyAction(enabled: boolean): Promise<{ notify: boolean }> {
+  const next = updateConfig({ audit: { notify: enabled } });
+  return { notify: next.audit.notify };
 }
 
 /**

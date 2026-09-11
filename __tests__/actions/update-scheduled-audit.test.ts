@@ -22,6 +22,7 @@ import { configFile } from "../../src/hooks/fp-home";
 import { readConfig, writeConfig } from "../../src/hooks/fp-config";
 import {
   setAutoAuditAction,
+  setAuditNotifyAction,
   setAuditIntervalAction,
 } from "../../app/actions/update-scheduled-audit";
 
@@ -49,6 +50,14 @@ describe("scheduled-audit write actions", () => {
     expect(readConfig().audit.auto).toBe(true);
   });
 
+  it("setAuditNotifyAction toggles only OS notifications and reflects the stored value", async () => {
+    expect(readConfig().audit.notify).toBe(true);
+    const res = await setAuditNotifyAction(false);
+    expect(res).toEqual({ notify: false });
+    expect(readConfig().audit.notify).toBe(false);
+    expect(readConfig().audit.auto).toBe(false);
+  });
+
   it("setAuditIntervalAction lets the config own the 1..90 clamp and returns the stored value", async () => {
     // A hand-typed 3650 must come back as the 90 the config actually enforces —
     // the action re-reads rather than trusting its own input, so there is no
@@ -72,6 +81,7 @@ describe("scheduled-audit write actions", () => {
 
     // Now drive the dashboard's write paths.
     await setAutoAuditAction(true);
+    await setAuditNotifyAction(false);
     await setAuditIntervalAction(14);
 
     // Telemetry is still off, in memory and on disk. A dropped field would have
@@ -79,7 +89,7 @@ describe("scheduled-audit write actions", () => {
     expect(readConfig().telemetry.enabled).toBe(false);
     expect(JSON.parse(readFileSync(configFile(), "utf8")).telemetry).toEqual({ enabled: false });
     // And the audit write actually landed alongside it.
-    expect(readConfig().audit).toMatchObject({ auto: true, intervalDays: 14 });
+    expect(readConfig().audit).toMatchObject({ auto: true, notify: false, intervalDays: 14 });
     // Scheduling itself does not fabricate an email/consent state.
     expect(readConfig().audit.reportsConsentedAt).toBeUndefined();
   });

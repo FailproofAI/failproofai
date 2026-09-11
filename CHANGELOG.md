@@ -11,6 +11,8 @@ The stable release of the OpenClaw 2026.9 compatibility work shipped through
 
 - Restore OpenClaw sessions in the local dashboard's Projects view and session viewer. SQLite and legacy sessions are merged per agent, live SQLite copies win over archived duplicates, missing channels group under `local`, and downloads export the original `event_json` records as JSONL.
 
+- Deliver OpenClaw `PreToolUse` instructions to the agent through its model-visible tool rejection reason. The first matching `instruct()` temporarily interrupts the tool call, while a session-and-policy-scoped retry window lets the agent proceed after following the guidance. Policy source, tool canonicalization, and transcript ingestion remain unchanged.
+
 ## 1.0.4-beta.8 — 2026-09-11
 
 ### Fixes

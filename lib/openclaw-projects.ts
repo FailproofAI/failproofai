@@ -1,18 +1,21 @@
 /**
  * OpenClaw (openclaw gateway) session enumeration — AUDIT-ONLY.
  *
- * Surfaces the on-disk transcripts (agents/<agentId>/sessions/<uuid>.jsonl) as
- * synthetic dashboard "projects" grouped by (agentId, channel). The per-agent
- * `sessions.json` index maps sessionKey → {sessionId, timestamps}; we read it to
- * recover the sessionKey (which encodes the channel for gateway sessions) and a
- * reliable last-activity time. Verified live against openclaw v2026.7.1.
+ * Surfaces both legacy JSONL transcripts and OpenClaw 2026.9.2+ per-agent
+ * SQLite transcripts as synthetic dashboard "projects" grouped by
+ * (agentId, channel).
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { runtimeCache } from "./runtime-cache";
-import { listOpenClawAgents, listOpenClawTranscripts, openclawHome } from "./openclaw-sessions";
+import {
+  listOpenClawAgents,
+  listOpenClawTranscripts,
+  openclawHome,
+} from "./openclaw-sessions";
 import type { ProjectFolder, SessionFile } from "./projects";
 import { formatDate } from "./format-date";
+import { listOpenClawSqliteSessions } from "./openclaw-db";
 
 export interface OpenClawSessionRef {
   sessionId: string;
@@ -51,7 +54,13 @@ function str(v: unknown): string | undefined {
  *  than in the key — verified live against v2026.7.1. */
 function readSessionsIndex(agentId: string): Map<string, SessionIndexMeta> {
   const out = new Map<string, SessionIndexMeta>();
-  const indexPath = join(openclawHome(), "agents", agentId, "sessions", "sessions.json");
+  const indexPath = join(
+    openclawHome(),
+    "agents",
+    agentId,
+    "sessions",
+    "sessions.json",
+  );
   let raw: unknown;
   try {
     raw = JSON.parse(readFileSync(indexPath, "utf-8"));
@@ -64,7 +73,9 @@ function readSessionsIndex(agentId: string): Map<string, SessionIndexMeta> {
     const e = v as Record<string, unknown>;
     const sessionId = str(e.sessionId);
     if (!sessionId) continue;
-    const origin = (e.origin && typeof e.origin === "object" ? e.origin : {}) as Record<string, unknown>;
+    const origin = (
+      e.origin && typeof e.origin === "object" ? e.origin : {}
+    ) as Record<string, unknown>;
     const lastMs =
       typeof e.lastInteractionAt === "number"
         ? e.lastInteractionAt
@@ -73,7 +84,8 @@ function readSessionsIndex(agentId: string): Map<string, SessionIndexMeta> {
           : undefined;
     out.set(sessionId, {
       lastMs,
-      channel: str(e.lastChannel) ?? str(origin.provider) ?? str(origin.surface),
+      channel:
+        str(e.lastChannel) ?? str(origin.provider) ?? str(origin.surface),
       chatType: str(e.chatType) ?? str(origin.chatType),
       label: str(origin.label),
       chatId: str(e.lastTo) ?? str(origin.from),
@@ -86,7 +98,7 @@ function readSessionsIndex(agentId: string): Map<string, SessionIndexMeta> {
 export async function getOpenClawSessions(): Promise<OpenClawSessionRef[]> {
   const transcripts = listOpenClawTranscripts();
   const indexByAgent = new Map<string, Map<string, SessionIndexMeta>>();
-  const refs: OpenClawSessionRef[] = [];
+  const refs = new Map<string, OpenClawSessionRef>();
   for (const t of transcripts) {
     let idx = indexByAgent.get(t.agentId);
     if (!idx) {
@@ -94,7 +106,7 @@ export async function getOpenClawSessions(): Promise<OpenClawSessionRef[]> {
       indexByAgent.set(t.agentId, idx);
     }
     const meta = idx.get(t.sessionId);
-    refs.push({
+    refs.set(`${t.agentId}\0${t.sessionId}`, {
       sessionId: t.sessionId,
       agentId: t.agentId,
       // Gateway sessions group by channel; CLI/local runs have none.
@@ -107,8 +119,18 @@ export async function getOpenClawSessions(): Promise<OpenClawSessionRef[]> {
       sizeBytes: t.sizeBytes,
     });
   }
-  refs.sort((a, b) => b.mtimeMs - a.mtimeMs);
-  return refs;
+
+  // SQLite is the live source on OpenClaw 2026.9.2+. Insert it second so it
+  // replaces an archived JSONL copy of the same agent/session.
+  const sqliteSessions = await listOpenClawSqliteSessions(
+    openclawHome(),
+    listOpenClawAgents(),
+  );
+  for (const s of sqliteSessions) {
+    refs.set(`${s.agentId}\0${s.sessionId}`, s);
+  }
+
+  return [...refs.values()].sort((a, b) => b.mtimeMs - a.mtimeMs);
 }
 
 export const getCachedOpenClawSessions = runtimeCache(getOpenClawSessions, 2);
@@ -145,7 +167,9 @@ export interface OpenClawNameSplit {
  * form (`agentId: null`), so links shared before agents became part of the name
  * keep resolving — to every agent on that channel, which is what they meant.
  */
-export function openClawProjectNameCandidates(name: string): OpenClawNameSplit[] {
+export function openClawProjectNameCandidates(
+  name: string,
+): OpenClawNameSplit[] {
   if (!name.startsWith("openclaw-")) return [];
   const rest = name.slice("openclaw-".length);
   if (!rest) return [];
@@ -163,7 +187,9 @@ export function openClawProjectNameCandidates(name: string): OpenClawNameSplit[]
 }
 
 /** The best-guess split for a project name — `null` if it isn't an OpenClaw one. */
-export function parseOpenClawProjectName(name: string): OpenClawNameSplit | null {
+export function parseOpenClawProjectName(
+  name: string,
+): OpenClawNameSplit | null {
   return openClawProjectNameCandidates(name)[0] ?? null;
 }
 
@@ -190,7 +216,12 @@ export async function getOpenClawProjects(): Promise<ProjectFolder[]> {
       prev.latest = Math.max(prev.latest, s.mtimeMs);
       prev.count += 1;
     } else {
-      groups.set(key, { agentId: s.agentId, channel: s.channel, latest: s.mtimeMs, count: 1 });
+      groups.set(key, {
+        agentId: s.agentId,
+        channel: s.channel,
+        latest: s.mtimeMs,
+        count: 1,
+      });
     }
   }
   const out: ProjectFolder[] = [];
@@ -228,7 +259,9 @@ export async function getOpenClawSessionsByEncodedName(
   const sessions = await getOpenClawSessions();
   const matching = (split: OpenClawNameSplit) =>
     sessions.filter(
-      (s) => s.channel === split.channel && (split.agentId === null || s.agentId === split.agentId),
+      (s) =>
+        s.channel === split.channel &&
+        (split.agentId === null || s.agentId === split.agentId),
     );
 
   // Take the first split that actually owns sessions — length alone picks the
@@ -250,7 +283,10 @@ export async function getOpenClawSessionsByEncodedName(
   return {
     // Legacy channel-only names keep their old cwd label, since they really do
     // span every agent on that channel.
-    cwd: agentId === null ? `openclaw:${channel}` : openClawProjectPath(agentId, channel),
+    cwd:
+      agentId === null
+        ? `openclaw:${channel}`
+        : openClawProjectPath(agentId, channel),
     sessions: matched.map((s) => {
       const lastModified = new Date(s.mtimeMs);
       return {

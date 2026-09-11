@@ -23,12 +23,72 @@ const UUID_CLI = "f9e8516e-fed2-4e54-acbe-7a20aefc6cfa";
 // project row when grouping was channel-only. Its id contains a hyphen, which
 // is why the name parser can't just split the slug.
 const UUID_WEATHER = "bb222222-3333-4444-5555-666666666666";
+const UUID_SQLITE = "cc333333-4444-5555-6666-777777777777";
 
 let home: string | undefined;
 const prev = process.env.OPENCLAW_HOME;
 
 function writeSession(dir: string, uuid: string): void {
-  writeFileSync(join(dir, `${uuid}.jsonl`), JSON.stringify({ type: "session", cwd: "/x" }) + "\n");
+  writeFileSync(
+    join(dir, `${uuid}.jsonl`),
+    JSON.stringify({ type: "session", cwd: "/x" }) + "\n",
+  );
+}
+
+async function writeSqliteSession(
+  root: string,
+  agentId: string,
+  uuid: string,
+  updatedAt: number,
+  channel: string | null = null,
+): Promise<boolean> {
+  try {
+    const { DatabaseSync } = (await import("node:sqlite")) as unknown as {
+      DatabaseSync: new (path: string) => {
+        exec(sql: string): void;
+        prepare(sql: string): { run(...params: unknown[]): void };
+        close(): void;
+      };
+    };
+    const dir = join(root, "agents", agentId, "agent");
+    mkdirSync(dir, { recursive: true });
+    const db = new DatabaseSync(join(dir, "openclaw-agent.sqlite"));
+    db.exec(`
+      CREATE TABLE session_windows (
+        session_id TEXT PRIMARY KEY, session_key TEXT NOT NULL,
+        updated_at INTEGER NOT NULL, transcript_updated_at INTEGER,
+        ended_at INTEGER, channel TEXT, chat_type TEXT, display_name TEXT
+      );
+      CREATE TABLE transcript_events (
+        session_id TEXT NOT NULL, seq INTEGER NOT NULL,
+        event_json TEXT NOT NULL, created_at INTEGER NOT NULL,
+        PRIMARY KEY(session_id, seq)
+      );
+      CREATE TABLE session_nodes (
+        current_session_id TEXT NOT NULL, entry_json TEXT NOT NULL,
+        label TEXT, display_name TEXT
+      );
+      CREATE TABLE session_conversations (
+        session_id TEXT, conversation_id TEXT, role TEXT, last_seen_at INTEGER
+      );
+      CREATE TABLE conversations (
+        conversation_id TEXT, channel TEXT, kind TEXT, peer_id TEXT,
+        delivery_target TEXT, label TEXT
+      );
+    `);
+    db.prepare(
+      "INSERT INTO session_windows VALUES (?, ?, ?, ?, NULL, ?, NULL, NULL)",
+    ).run(uuid, `agent:${agentId}:main`, updatedAt, updatedAt, channel);
+    db.prepare("INSERT INTO transcript_events VALUES (?, 0, ?, ?)").run(
+      uuid,
+      JSON.stringify({ type: "session", id: uuid, cwd: `/work/${agentId}` }),
+      updatedAt,
+    );
+    db.close();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function seed(): string {
@@ -47,7 +107,12 @@ function seed(): string {
         lastChannel: "telegram",
         lastTo: "telegram:8674922496",
         chatType: "direct",
-        origin: { label: "Chetan (@chhhee10) id:8674922496", provider: "telegram", from: "telegram:8674922496", chatType: "direct" },
+        origin: {
+          label: "Chetan (@chhhee10) id:8674922496",
+          provider: "telegram",
+          from: "telegram:8674922496",
+          chatType: "direct",
+        },
       },
       // A pure CLI/local session — no channel metadata.
       "agent:main:cli": { sessionId: UUID_CLI, lastInteractionAt: 2000 },
@@ -86,7 +151,11 @@ describe("getOpenClawSessions", () => {
     const sessions = await getOpenClawSessions();
     // Sorted by mtime desc, ACROSS agents → weather-bot (9000), telegram
     // (5000), cli (2000).
-    expect(sessions.map((s) => s.sessionId)).toEqual([UUID_WEATHER, UUID_TG, UUID_CLI]);
+    expect(sessions.map((s) => s.sessionId)).toEqual([
+      UUID_WEATHER,
+      UUID_TG,
+      UUID_CLI,
+    ]);
 
     const tg = sessions.find((s) => s.sessionId === UUID_TG)!;
     expect(tg.channel).toBe("telegram");
@@ -97,6 +166,60 @@ describe("getOpenClawSessions", () => {
     const cli = sessions.find((s) => s.sessionId === UUID_CLI)!;
     expect(cli.channel).toBe("local"); // no channel metadata → local
     expect(cli.label).toBeUndefined();
+  });
+
+  it("discovers SQLite-only agents, defaults their channel, and keeps profiles separate", async () => {
+    home = mkdtempSync(join(tmpdir(), "openclaw-sqlite-proj-"));
+    if (!(await writeSqliteSession(home, "main", UUID_SQLITE, 12_000))) return;
+    await writeSqliteSession(
+      home,
+      "research",
+      UUID_WEATHER,
+      11_000,
+      "telegram",
+    );
+    process.env.OPENCLAW_HOME = home;
+
+    const sessions = await getOpenClawSessions();
+    expect(sessions.map((s) => [s.agentId, s.sessionId, s.channel])).toEqual([
+      ["main", UUID_SQLITE, "local"],
+      ["research", UUID_WEATHER, "telegram"],
+    ]);
+
+    const projects = await getOpenClawProjects();
+    expect(projects.map((p) => p.name)).toEqual([
+      "openclaw-main-local",
+      "openclaw-research-telegram",
+    ]);
+  });
+
+  it("prefers a live SQLite row over an archived JSONL copy of the same session", async () => {
+    home = mkdtempSync(join(tmpdir(), "openclaw-sqlite-dedup-"));
+    const legacyDir = join(home, "agents", "main", "sessions");
+    mkdirSync(legacyDir, { recursive: true });
+    writeSession(legacyDir, UUID_SQLITE);
+    writeFileSync(
+      join(legacyDir, "sessions.json"),
+      JSON.stringify({
+        old: {
+          sessionId: UUID_SQLITE,
+          lastInteractionAt: 1000,
+          lastChannel: "slack",
+        },
+      }),
+    );
+    if (
+      !(await writeSqliteSession(home, "main", UUID_SQLITE, 15_000, "telegram"))
+    )
+      return;
+    process.env.OPENCLAW_HOME = home;
+
+    const sessions = await getOpenClawSessions();
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({ channel: "telegram", mtimeMs: 15_000 });
+    expect(sessions[0].transcriptPath).toBe(
+      `openclaw-sqlite://main/${UUID_SQLITE}`,
+    );
   });
 });
 
@@ -118,8 +241,12 @@ describe("getOpenClawProjects / getOpenClawSessionsByEncodedName", () => {
     // Regression: grouping by channel alone collapsed every agent on Telegram
     // into one row with one mixed session list.
     home = seed();
-    const mainTg = await getOpenClawSessionsByEncodedName("openclaw-main-telegram");
-    const weatherTg = await getOpenClawSessionsByEncodedName("openclaw-weather-bot-telegram");
+    const mainTg = await getOpenClawSessionsByEncodedName(
+      "openclaw-main-telegram",
+    );
+    const weatherTg = await getOpenClawSessionsByEncodedName(
+      "openclaw-weather-bot-telegram",
+    );
     expect(mainTg.sessions.map((s) => s.sessionId)).toEqual([UUID_TG]);
     expect(weatherTg.sessions.map((s) => s.sessionId)).toEqual([UUID_WEATHER]);
   });
@@ -157,7 +284,11 @@ describe("getOpenClawProjects / getOpenClawSessionsByEncodedName", () => {
     writeFileSync(
       join(mainSessions, "sessions.json"),
       JSON.stringify({
-        "agent:main:main": { sessionId: UUID_TG, lastInteractionAt: 5000, lastChannel: "bot-telegram" },
+        "agent:main:main": {
+          sessionId: UUID_TG,
+          lastInteractionAt: 5000,
+          lastChannel: "bot-telegram",
+        },
       }),
     );
     process.env.OPENCLAW_HOME = home;
@@ -168,7 +299,9 @@ describe("getOpenClawProjects / getOpenClawSessionsByEncodedName", () => {
       channel: "telegram",
     });
     // Resolution still finds the real owner.
-    const resolved = await getOpenClawSessionsByEncodedName("openclaw-main-bot-telegram");
+    const resolved = await getOpenClawSessionsByEncodedName(
+      "openclaw-main-bot-telegram",
+    );
     expect(resolved.sessions.map((s) => s.sessionId)).toEqual([UUID_TG]);
     expect(resolved.cwd).toBe("openclaw:main:bot-telegram");
   });
@@ -179,7 +312,9 @@ describe("getOpenClawProjects / getOpenClawSessionsByEncodedName", () => {
     home = seed();
     const legacy = await getOpenClawSessionsByEncodedName("openclaw-telegram");
     expect(legacy.cwd).toBe("openclaw:telegram");
-    expect(legacy.sessions.map((s) => s.sessionId).sort()).toEqual([UUID_TG, UUID_WEATHER].sort());
+    expect(legacy.sessions.map((s) => s.sessionId).sort()).toEqual(
+      [UUID_TG, UUID_WEATHER].sort(),
+    );
   });
 
   it("names sessions by origin.label and carries channel metadata; non-openclaw names return empty", async () => {

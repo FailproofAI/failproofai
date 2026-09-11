@@ -21,11 +21,6 @@ see `scripts/changelog-section.py`.
   malformed, and honors `collector.redact: off` when verbatim capture is
   explicitly required. The daemon repeats the pass before upload as defence in
   depth for batches written by older SDK versions.
-
-## 0.0.1b2 — 2026-08-25
-
-### A promoted column passed as `None` no longer costs the event
-
 - **`None` on a promoted column is now dropped and warned about, not refused.**
   A promoted key left at `None` in `**fields` reached the wire as an explicit
   JSON `null`, so `_validate_promoted_string` refused it outright. But `None` is
@@ -48,6 +43,8 @@ see `scripts/changelog-section.py`.
   Both paths now agree: for a promoted column, no value means no key. Nothing
   that worked before changes, and no explicit `null` reaches a promoted column
   from either direction.
+
+## 0.0.1b2 — 2026-08-25
 
 - Retire the old inbound evaluator boundary and add evaluator authoring plus the
   outbound-only v2 worker runtime under the lazy `failproofai_sdk.evaluator`

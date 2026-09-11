@@ -103,7 +103,7 @@ async fn sdk_batches_are_redacted_before_upload() {
     let batch = spool.join("event-s-1-0.jsonl");
     fs::write(
         &batch,
-        r#"{"type":"tool_use","input":{"command":"API_KEY=abcdefghijklmnop"}}
+        r#"{"type":"tool_use","input":{"command":"API_KEY=abcdefghijklmnop","password":"qrstuvwxyzabcdef","API_KEY=secretvalue123456":true}}
 "#,
     )
     .unwrap();
@@ -119,6 +119,8 @@ async fn sdk_batches_are_redacted_before_upload() {
         !body.contains("abcdefghijklmnop"),
         "credential reached the wire"
     );
+    assert!(!body.contains("qrstuvwxyzabcdef"));
+    assert!(!body.contains("API_KEY=secretvalue123456"));
     assert!(body.contains("[redacted:secret-assignment]"));
 
     fs::remove_dir_all(&spool).ok();

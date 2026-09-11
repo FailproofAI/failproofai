@@ -61,6 +61,55 @@ def test_redaction_preserves_json_structure_and_is_deterministic():
     assert event["nested"][0]["output"] == "[redacted:github-token]"
 
 
+@pytest.mark.parametrize(
+    "field",
+    ["password", "client_secret", "api_key", "access_token", "apiKey", "accessToken"],
+)
+def test_secret_named_fields_redact_opaque_values(field):
+    encoded = json.dumps({"nested": {field: "abcdefghijklmnop"}})
+    event = json.loads(redact_json_line(encoded))
+    assert event["nested"][field] == "[redacted:secret-assignment]"
+
+
+def test_credential_shaped_dictionary_keys_are_redacted_without_colliding():
+    first = "API_KEY=abcdefghijklmnop"
+    second = "API_KEY=qrstuvwxyzabcdef"
+    event = json.loads(redact_json_line(json.dumps({"nested": {first: 1, second: 2}})))
+    keys = list(event["nested"])
+    assert first not in keys
+    assert second not in keys
+    assert len(keys) == 2
+    assert sorted(event["nested"].values()) == [1, 2]
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (
+            "PASSWORD='abcdefghijkL\"mnopQRST'",
+            "PASSWORD='[redacted:secret-assignment]'",
+        ),
+        (
+            'PASSWORD="abcdefghijkL\'mnopQRST"',
+            'PASSWORD="[redacted:secret-assignment]"',
+        ),
+    ],
+)
+def test_quoted_assignment_stops_only_at_its_matching_quote(raw, expected):
+    assert scrub_string(raw) == (expected, 1)
+
+
+def test_plain_string_scan_does_not_copy_every_remaining_suffix():
+    class NoTailSlices(str):
+        def __getitem__(self, item):
+            if isinstance(item, slice) and item.stop is None and (item.start or 0) > 0:
+                raise AssertionError(f"copied the remaining tail at {item.start}")
+            return super().__getitem__(item)
+
+    value = NoTailSlices("ordinary payload text " * 100)
+    assert scrub_string(value) == (value, 0)
+
+
 @pytest.mark.parametrize("config", [None, [], {"collector": None}, {"collector": "minimal"}])
 def test_malformed_redaction_config_fails_closed(tmp_path, config):
     (tmp_path / "config.json").write_text(json.dumps(config), encoding="utf-8")

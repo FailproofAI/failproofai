@@ -634,13 +634,19 @@ def test_writer_redacts_credentials_before_the_spool_reaches_disk(tmp_path):
                 "session_id": "s1",
                 "agent_id": "a1",
                 "type": "tool_use",
-                "input": {"command": "API_KEY=abcdefghijklmnop"},
+                "input": {
+                    "command": "API_KEY=abcdefghijklmnop",
+                    "password": "qrstuvwxyzabcdef",
+                    "API_KEY=secretvalue123456": True,
+                },
             }
         )
         writer.flush_now()
 
         raw = next((tmp_path / "events").glob("*.jsonl")).read_text()
         assert "abcdefghijklmnop" not in raw
+        assert "qrstuvwxyzabcdef" not in raw
+        assert "API_KEY=secretvalue123456" not in raw
         assert "API_KEY=[redacted:secret-assignment]" in raw
     finally:
         resolver.set_base_dir(original)

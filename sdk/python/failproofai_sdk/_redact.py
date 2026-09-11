@@ -43,98 +43,110 @@ def _at_boundary(value: str, start: int) -> bool:
 def _match_prefix(value: str, start: int):
     if not _at_boundary(value, start):
         return None
-    rest = value[start:]
     for prefix, minimum, label in _PREFIX_RULES:
-        if not rest.startswith(prefix):
+        if not value.startswith(prefix, start):
             continue
-        length = 0
-        for char in rest[len(prefix) :]:
-            if not _is_token_char(char):
-                break
-            length += 1
-        if length >= minimum:
-            return len(prefix) + length, label
+        end = start + len(prefix)
+        while end < len(value) and _is_token_char(value[end]):
+            end += 1
+        if end - start - len(prefix) >= minimum:
+            return end - start, label
     return None
 
 
 def _match_jwt(value: str, start: int):
     if not _at_boundary(value, start) or not value.startswith("eyJ", start):
         return None
-    rest = value[start:]
-    length = 0
+    end = start
     segments = 0
     while segments < 3:
-        segment = 0
-        for char in rest[length:]:
+        segment_start = end
+        while end < len(value):
+            char = value[end]
             if not (char.isascii() and (char.isalnum() or char in "-_=")):
                 break
-            segment += 1
-        if segment == 0:
+            end += 1
+        if end == segment_start:
             break
-        length += segment
         segments += 1
-        if segments < 3 and length < len(rest) and rest[length] == ".":
-            length += 1
+        if segments < 3 and end < len(value) and value[end] == ".":
+            end += 1
         elif segments < 3:
             break
+    length = end - start
     if segments == 3 and length >= 40:
         return length, "jwt"
     return None
 
 
 def _match_bearer(value: str, start: int):
-    rest = value[start:]
-    if rest[:7].lower() != "bearer ":
+    if value[start : start + 7].lower() != "bearer ":
         return None
-    token_length = 0
-    for char in rest[7:]:
+    end = start + 7
+    token_bytes = 0
+    while end < len(value):
+        char = value[end]
         if char.isspace() or char in "\"'":
             break
-        token_length += 1
-    token = rest[7 : 7 + token_length]
-    # The daemon's threshold is bytes; keep short multibyte tokens in parity.
-    if len(token.encode("utf-8")) >= 8:
-        return 7 + token_length, "bearer-token"
+        token_bytes += len(char.encode("utf-8"))
+        end += 1
+    if token_bytes >= 8:
+        return end - start, "bearer-token"
     return None
+
+
+def _is_secret_name(name: str) -> bool:
+    raw = name.strip("-")
+    lowered = raw.lower()
+    compound = "_" in raw or "-" in raw or any(char.isupper() for char in raw[1:])
+    return any(lowered.endswith(part) for part in _STRONG_SECRET_NAMES) or (
+        compound and any(lowered.endswith(part) for part in _WEAK_SECRET_NAMES)
+    )
+
+
+def _is_literal_secret(value: str) -> bool:
+    return (
+        len(value.encode("utf-8")) >= _MIN_ASSIGNMENT_VALUE
+        and not value.startswith(("{", "$", "<", "(", "`", "[redacted:"))
+    )
 
 
 def _match_assignment(value: str, start: int):
     if start == 0:
         return None
-    before = value[:start]
-    rest = value[start:]
-    if before.endswith("=") and rest.startswith(("\"", "'")):
-        return None
-    without_quote = before[:-1] if before[-1:] in ("\"", "'") else before
-    if not without_quote.endswith("="):
+    if value[start - 1] == "=" and value[start] in "\"'":
         return None
 
-    name_part = without_quote[:-1]
-    name_len = 0
-    for char in reversed(name_part):
+    quote = value[start - 1] if value[start - 1] in "\"'" else None
+    equals = start - 2 if quote else start - 1
+    if equals < 0 or value[equals] != "=":
+        return None
+
+    name_start = equals
+    while name_start > 0:
+        char = value[name_start - 1]
         if not (char.isascii() and (char.isalnum() or char in "_-")):
             break
-        name_len += 1
-    if not name_len:
+        name_start -= 1
+    if name_start == equals:
         return None
-    name = name_part[-name_len:].lower().strip("-")
-    compound = "_" in name or "-" in name
-    convincing = any(name.endswith(part) for part in _STRONG_SECRET_NAMES) or (
-        compound and any(name.endswith(part) for part in _WEAK_SECRET_NAMES)
-    )
-    if not convincing or rest.startswith(("{", "$", "<", "(", "`")):
+    if not _is_secret_name(value[name_start:equals]) or value.startswith(
+        ("{", "$", "<", "(", "`"), start
+    ):
         return None
 
-    quoted = before[-1:] in ("\"", "'")
-    length = 0
-    for char in rest:
-        if char in "\"'" or (not quoted and (char.isspace() or char in ";&")):
+    end = start
+    value_bytes = 0
+    while end < len(value):
+        char = value[end]
+        if (quote and char == quote) or (
+            not quote and (char.isspace() or char in ";&\"'")
+        ):
             break
-        length += 1
-    # The daemon measures byte length but advances by bytes; Python advances by
-    # characters, so use bytes only for the threshold and return characters.
-    if len(rest[:length].encode("utf-8")) >= _MIN_ASSIGNMENT_VALUE:
-        return length, "secret-assignment"
+        value_bytes += len(char.encode("utf-8"))
+        end += 1
+    if value_bytes >= _MIN_ASSIGNMENT_VALUE:
+        return end - start, "secret-assignment"
     return None
 
 
@@ -142,6 +154,7 @@ def scrub_string(value: str) -> tuple[str, int]:
     """Return the minimally redacted string and replacement count."""
     out = []
     cursor = 0
+    copied_through = 0
     hits = 0
     while cursor < len(value):
         match = (
@@ -151,14 +164,18 @@ def scrub_string(value: str) -> tuple[str, int]:
             or _match_assignment(value, cursor)
         )
         if match is None:
-            out.append(value[cursor])
             cursor += 1
             continue
         length, label = match
+        out.append(value[copied_through:cursor])
         out.append(f"[redacted:{label}]")
         cursor += length
+        copied_through = cursor
         hits += 1
-    return ("".join(out), hits) if hits else (value, 0)
+    if not hits:
+        return value, 0
+    out.append(value[copied_through:])
+    return "".join(out), hits
 
 
 def redaction_enabled(base_dir: Path) -> bool:
@@ -181,20 +198,34 @@ def redaction_enabled(base_dir: Path) -> bool:
 
 
 def redact_json_line(encoded: str) -> str:
-    """Redact every string value in one already-valid JSON event."""
+    """Redact credential-shaped keys and string values in a valid JSON event."""
     event = json.loads(encoded)
     hits = 0
 
-    def scrub(value):
+    def scrub(value, field_name=None):
         nonlocal hits
         if isinstance(value, str):
             value, count = scrub_string(value)
             hits += count
+            if count == 0 and isinstance(field_name, str) and _is_secret_name(field_name):
+                if _is_literal_secret(value):
+                    hits += 1
+                    return "[redacted:secret-assignment]"
             return value
         if isinstance(value, list):
             return [scrub(item) for item in value]
         if isinstance(value, dict):
-            return {key: scrub(item) for key, item in value.items()}
+            result = {}
+            for key, item in value.items():
+                redacted_key, count = scrub_string(key)
+                hits += count
+                unique_key = redacted_key
+                suffix = 2
+                while unique_key in result:
+                    unique_key = f"{redacted_key}#{suffix}"
+                    suffix += 1
+                result[unique_key] = scrub(item, key)
+            return result
         return value
 
     redacted = scrub(event)

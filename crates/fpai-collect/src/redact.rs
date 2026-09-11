@@ -156,7 +156,7 @@ const WEAK_SECRET_NAMES: &[&str] = &["key", "token"];
 /// to be a placeholder or a flag than a credential.
 const MIN_ASSIGNMENT_VALUE: usize = 12;
 
-/// Scrub every string leaf of an event in place.
+/// Scrub credential-shaped object keys and string values in place.
 ///
 /// Returns the number of replacements, so a caller can log that redaction
 /// actually did something without logging what it removed.
@@ -165,20 +165,58 @@ pub fn scrub_value(v: &mut Value, mode: Redact) -> usize {
         return 0;
     }
     let mut n = 0;
-    scrub_in_place(v, &mut n);
+    scrub_in_place(v, None, &mut n);
     n
 }
 
-fn scrub_in_place(v: &mut Value, n: &mut usize) {
+fn is_secret_name(name: &str) -> bool {
+    let raw = name.trim_matches('-');
+    let lower = raw.to_ascii_lowercase();
+    let compound = raw.contains('_')
+        || raw.contains('-')
+        || raw.chars().skip(1).any(|c| c.is_ascii_uppercase());
+    STRONG_SECRET_NAMES.iter().any(|part| lower.ends_with(part))
+        || (compound && WEAK_SECRET_NAMES.iter().any(|part| lower.ends_with(part)))
+}
+
+fn is_literal_secret(value: &str) -> bool {
+    value.len() >= MIN_ASSIGNMENT_VALUE
+        && !value.starts_with(['{', '$', '<', '(', '`'])
+        && !value.starts_with("[redacted:")
+}
+
+fn scrub_in_place(v: &mut Value, field_name: Option<&str>, n: &mut usize) {
     match v {
         Value::String(s) => {
             if let Some(replaced) = scrub_str(s) {
                 *n += replaced.1;
                 *s = replaced.0;
+            } else if field_name.is_some_and(is_secret_name) && is_literal_secret(s) {
+                *n += 1;
+                *s = "[redacted:secret-assignment]".to_string();
             }
         }
-        Value::Array(a) => a.iter_mut().for_each(|e| scrub_in_place(e, n)),
-        Value::Object(o) => o.values_mut().for_each(|e| scrub_in_place(e, n)),
+        Value::Array(a) => a.iter_mut().for_each(|e| scrub_in_place(e, None, n)),
+        Value::Object(o) => {
+            let entries = std::mem::take(o);
+            for (key, mut value) in entries {
+                scrub_in_place(&mut value, Some(&key), n);
+                let redacted_key = match scrub_str(&key) {
+                    Some((key, count)) => {
+                        *n += count;
+                        key
+                    }
+                    None => key,
+                };
+                let mut unique_key = redacted_key.clone();
+                let mut suffix = 2;
+                while o.contains_key(&unique_key) {
+                    unique_key = format!("{redacted_key}#{suffix}");
+                    suffix += 1;
+                }
+                o.insert(unique_key, value);
+            }
+        }
         _ => {}
     }
 }
@@ -344,12 +382,8 @@ fn match_assignment(s: &str, i: usize, rest: &str) -> Option<(usize, &'static st
     if name_len == 0 {
         return None;
     }
-    let raw = name_part[name_part.len() - name_len..].to_ascii_lowercase();
-    let name = raw.trim_matches('-');
-    let compound = name.contains('_') || name.contains('-');
-    let convincing = STRONG_SECRET_NAMES.iter().any(|n| name.ends_with(n))
-        || (compound && WEAK_SECRET_NAMES.iter().any(|n| name.ends_with(n)));
-    if !convincing {
+    let name = &name_part[name_part.len() - name_len..];
+    if !is_secret_name(name) {
         return None;
     }
 
@@ -362,15 +396,18 @@ fn match_assignment(s: &str, i: usize, rest: &str) -> Option<(usize, &'static st
 
     // The value runs to the closing quote, or to whitespace / a shell
     // separator when unquoted. The closing quote is left in place.
-    let quoted = matches!(s[..i].chars().next_back(), Some('"') | Some('\''));
+    let quote = match s[..i].chars().next_back() {
+        Some(c @ ('"' | '\'')) => Some(c),
+        _ => None,
+    };
     // Bytes, not characters — see the note on `match_bearer`. This predicate
     // also accepts non-ASCII, so a char count under-reports the span and
     // `scrub_str`'s `i += len` leaves the cursor inside the value.
     let value_len: usize = rest
         .chars()
         .take_while(|c| {
-            if quoted {
-                *c != '"' && *c != '\''
+            if let Some(quote) = quote {
+                *c != quote
             } else {
                 // Quotes end an unquoted value too, matching `match_bearer`'s
                 // token run. An unquoted shell word does not contain a bare
@@ -557,6 +594,16 @@ mod tests {
             scrub(r#"--api-token=abcdefghijklmnop"trailing""#),
             r#"--api-token=[redacted:secret-assignment]"trailing""#
         );
+        // The opposite quote is valid inside a quoted shell value and must not
+        // terminate the secret early.
+        assert_eq!(
+            scrub(r#"PASSWORD='abcdefghijkL"mnopQRST'"#),
+            r#"PASSWORD='[redacted:secret-assignment]'"#
+        );
+        assert_eq!(
+            scrub(r#"PASSWORD="abcdefghijkL'mnopQRST""#),
+            r#"PASSWORD="[redacted:secret-assignment]""#
+        );
     }
 
     /// Redaction must never be a net data loss beyond the secret itself: every
@@ -641,6 +688,33 @@ mod tests {
         assert!(!text.contains("sk-abcdefghij"));
         // Structure is untouched.
         assert_eq!(v["type"], "tool_use");
+    }
+
+    #[test]
+    fn secret_named_fields_and_credential_shaped_keys_are_scrubbed() {
+        let first = "API_KEY=abcdefghijklmnop";
+        let second = "API_KEY=qrstuvwxyzabcdef";
+        let mut nested = serde_json::Map::new();
+        nested.insert(first.to_string(), json!(1));
+        nested.insert(second.to_string(), json!(2));
+        let mut v = json!({
+            "password": "abcdefghijklmnop",
+            "client_secret": "abcdefghijklmnop",
+            "api_key": "abcdefghijklmnop",
+            "accessToken": "abcdefghijklmnop",
+            "nested": Value::Object(nested),
+        });
+
+        let n = scrub_value(&mut v, Redact::Minimal);
+        assert_eq!(v["password"], "[redacted:secret-assignment]");
+        assert_eq!(v["client_secret"], "[redacted:secret-assignment]");
+        assert_eq!(v["api_key"], "[redacted:secret-assignment]");
+        assert_eq!(v["accessToken"], "[redacted:secret-assignment]");
+        let nested = v["nested"].as_object().unwrap();
+        assert_eq!(nested.len(), 2, "redacted keys must not collapse fields");
+        assert!(!nested.contains_key(first));
+        assert!(!nested.contains_key(second));
+        assert!(n >= 6, "expected fields and keys to be scrubbed, got {n}");
     }
 
     #[test]

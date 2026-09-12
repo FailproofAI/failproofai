@@ -23,9 +23,9 @@ export interface OpenClawSessionRef {
   /** Channel/source the session last ran in (from sessions.json metadata) —
    *  e.g. "telegram", "slack", or "local" for a CLI session. Drives grouping. */
   channel: string;
-  /** Human-readable label from `origin.label` (e.g. "Chetan (@chhhee10) id:…"). */
+  /** Human-readable label from `origin.label` (e.g. "Example User (@example) id:…"). */
   label?: string;
-  /** Chat id (e.g. "telegram:8674922496") + type ("direct"/"group") for the
+  /** Chat id (e.g. "telegram:1234567890") + type ("direct"/"group") for the
    *  gateway-metadata columns. */
   chatId?: string;
   chatType?: string;
@@ -248,7 +248,7 @@ export interface OpenClawProjectByName {
 
 /** Resolve the OpenClaw sessions for a synthetic project name
  *  (`openclaw-<agentId>-<channel>`), for the project-detail page. Session names
- *  use the human-readable `origin.label` (e.g. "Chetan (@chhhee10) id:…")
+ *  use the human-readable `origin.label` (e.g. "Example User (@example) id:…")
  *  rather than the raw session key. */
 export async function getOpenClawSessionsByEncodedName(
   name: string,

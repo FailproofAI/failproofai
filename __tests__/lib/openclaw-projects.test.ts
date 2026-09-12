@@ -105,12 +105,12 @@ function seed(): string {
         sessionId: UUID_TG,
         lastInteractionAt: 5000,
         lastChannel: "telegram",
-        lastTo: "telegram:8674922496",
+        lastTo: "telegram:1234567890",
         chatType: "direct",
         origin: {
-          label: "Chetan (@chhhee10) id:8674922496",
+          label: "Example User (@example) id:1234567890",
           provider: "telegram",
-          from: "telegram:8674922496",
+          from: "telegram:1234567890",
           chatType: "direct",
         },
       },
@@ -159,9 +159,9 @@ describe("getOpenClawSessions", () => {
 
     const tg = sessions.find((s) => s.sessionId === UUID_TG)!;
     expect(tg.channel).toBe("telegram");
-    expect(tg.label).toBe("Chetan (@chhhee10) id:8674922496");
+    expect(tg.label).toBe("Example User (@example) id:1234567890");
     expect(tg.chatType).toBe("direct");
-    expect(tg.chatId).toBe("telegram:8674922496");
+    expect(tg.chatId).toBe("telegram:1234567890");
 
     const cli = sessions.find((s) => s.sessionId === UUID_CLI)!;
     expect(cli.channel).toBe("local"); // no channel metadata → local
@@ -322,10 +322,10 @@ describe("getOpenClawProjects / getOpenClawSessionsByEncodedName", () => {
     const tg = await getOpenClawSessionsByEncodedName("openclaw-main-telegram");
     expect(tg.sessions).toHaveLength(1);
     const s = tg.sessions[0];
-    expect(s.name).toBe("Chetan (@chhhee10) id:8674922496"); // readable, not the raw key
+    expect(s.name).toBe("Example User (@example) id:1234567890"); // readable, not the raw key
     expect(s.path).toBe(UUID_TG); // real transcript → download streams the file
     expect(s.cli).toBe("openclaw");
-    expect(s.channelId).toBe("telegram:8674922496");
+    expect(s.channelId).toBe("telegram:1234567890");
     expect(s.channelType).toBe("direct");
 
     const local = await getOpenClawSessionsByEncodedName("openclaw-main-local");

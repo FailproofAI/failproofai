@@ -10,6 +10,8 @@
 
 - Deliver OpenClaw `PreToolUse` instructions to the agent through its model-visible tool rejection reason. The first matching `instruct()` temporarily interrupts the tool call, while a session-and-policy-scoped retry window lets the agent proceed after following the guidance. Policy source, tool canonicalization, and transcript ingestion remain unchanged.
 
+- Install the FailproofAI plugin into every valid default and named OpenClaw profile, and preserve each agent's resolved workspace across agent and tool hooks so workspace-scoped policies evaluate consistently.
+
 ## 1.0.5-beta.0 — 2026-09-12
 
 ### Fixes

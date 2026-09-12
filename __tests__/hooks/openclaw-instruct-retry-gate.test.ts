@@ -14,7 +14,7 @@ describe("OpenClaw instruct retry gate", () => {
       reason: "recover once",
       policyName: "failproofai/retry-before-escalation",
     };
-    const ctx = { sessionKey: "invoice-session" };
+    const ctx = { sessionKey: "recovery-session" };
 
     expect(gate.shouldInterrupt(verdict, {}, ctx)).toBe(true);
     expect(gate.shouldInterrupt(verdict, {}, ctx)).toBe(false);
@@ -25,18 +25,18 @@ describe("OpenClaw instruct retry gate", () => {
 
   it("keeps sessions and policies independent", () => {
     const gate = createInstructRetryGate();
-    const invoice = { permission: "instruct", reason: "recover", policyName: "invoice" };
+    const recovery = { permission: "instruct", reason: "recover", policyName: "recovery" };
     const security = { permission: "instruct", reason: "review", policyName: "security" };
 
-    expect(gate.shouldInterrupt(invoice, {}, { sessionKey: "one" })).toBe(true);
-    expect(gate.shouldInterrupt(invoice, {}, { sessionKey: "one" })).toBe(false);
+    expect(gate.shouldInterrupt(recovery, {}, { sessionKey: "one" })).toBe(true);
+    expect(gate.shouldInterrupt(recovery, {}, { sessionKey: "one" })).toBe(false);
     expect(gate.shouldInterrupt(security, {}, { sessionKey: "one" })).toBe(true);
-    expect(gate.shouldInterrupt(invoice, {}, { sessionKey: "two" })).toBe(true);
+    expect(gate.shouldInterrupt(recovery, {}, { sessionKey: "two" })).toBe(true);
   });
 
   it("keeps separate OpenClaw runs independent within one session", () => {
     const gate = createInstructRetryGate();
-    const verdict = { permission: "instruct", reason: "recover", policyName: "invoice" };
+    const verdict = { permission: "instruct", reason: "recover", policyName: "recovery" };
 
     expect(gate.shouldInterrupt(verdict, {}, { sessionKey: "one", runId: "run-a" })).toBe(true);
     expect(gate.shouldInterrupt(verdict, {}, { sessionKey: "one", runId: "run-a" })).toBe(false);
@@ -45,7 +45,7 @@ describe("OpenClaw instruct retry gate", () => {
 
   it("does not share a retry window between anonymous invocations", () => {
     const gate = createInstructRetryGate();
-    const verdict = { permission: "instruct", reason: "recover", policyName: "invoice" };
+    const verdict = { permission: "instruct", reason: "recover", policyName: "recovery" };
 
     expect(gate.shouldInterrupt(verdict, {}, {})).toBe(true);
     expect(gate.shouldInterrupt(verdict, {}, {})).toBe(true);
@@ -53,23 +53,23 @@ describe("OpenClaw instruct retry gate", () => {
 
   it("clears the retry window when the session ends", () => {
     const gate = createInstructRetryGate();
-    const verdict = { permission: "instruct", reason: "recover", policyName: "invoice" };
-    const ctx = { sessionKey: "invoice-session", runId: "invoice-run" };
+    const verdict = { permission: "instruct", reason: "recover", policyName: "recovery" };
+    const ctx = { sessionKey: "recovery-session", runId: "recovery-run" };
 
     expect(gate.shouldInterrupt(verdict, {}, ctx)).toBe(true);
     expect(gate.shouldInterrupt(verdict, {}, ctx)).toBe(false);
-    gate.clear({}, { sessionKey: "invoice-session" });
+    gate.clear({}, { sessionKey: "recovery-session" });
     expect(gate.shouldInterrupt(verdict, {}, ctx)).toBe(true);
   });
 
   it("maps deny permanently and instruct to a one-shot model-visible rejection", () => {
     const gate = createInstructRetryGate();
-    const ctx = { sessionKey: "invoice-session" };
+    const ctx = { sessionKey: "recovery-session" };
     const deny = { permission: "deny", reason: "never send this" };
     const instruct = {
       permission: "instruct",
       reason: "perform one more recovery pass",
-      policyName: "invoice",
+      policyName: "recovery",
     };
 
     expect(mapBeforeToolVerdict(deny, {}, ctx, gate)).toEqual({

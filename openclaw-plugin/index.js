@@ -37,11 +37,13 @@ import { existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createInstructRetryGate, mapBeforeToolVerdict } from "./instruct-retry-gate.js";
+import { createWorkspaceContext } from "./workspace-context.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DIST_BIN = resolve(HERE, "..", "dist", "cli.mjs");
 const SRC_BIN = resolve(HERE, "..", "bin", "failproofai.mjs");
 const instructRetryGate = createInstructRetryGate();
+const workspaceContext = createWorkspaceContext();
 
 function resolveSpawn() {
   if (process.env.FAILPROOFAI_BINARY_OVERRIDE) {
@@ -117,12 +119,12 @@ function callPolicy(rawEvent, payload) {
 
 /** Claude-shaped stdin base. Extra keys are ignored by the binary's payload
  *  parser; they're forwarded for future use / activity attribution. */
-function baseMeta(payload, ctx) {
+function baseMeta(payload, ctx, config) {
   const p = payload || {};
   const c = ctx || {};
   return {
     session_id: c.sessionId ?? p.sessionId ?? c.sessionKey ?? p.sessionKey,
-    cwd: p.cwd ?? c.workspaceDir ?? process.cwd(),
+    cwd: workspaceContext.resolveWorkspace(p, c, config) ?? process.cwd(),
     transcript_path: p.transcriptPath,
     stop_hook_active: p.stopHookActive === true,
     openclaw: {
@@ -148,7 +150,7 @@ export default definePluginEntry({
       async (payload, ctx) => {
         const p = payload || {};
         const verdict = await callPolicy("before_tool_call", {
-          ...baseMeta(payload, ctx),
+          ...baseMeta(payload, ctx, api.config),
           tool_name: p.toolName,
           tool_input: p.params,
           hook_event_name: "before_tool_call",
@@ -163,8 +165,9 @@ export default definePluginEntry({
       "before_agent_run",
       async (payload, ctx) => {
         const p = payload || {};
+        workspaceContext.remember(payload, ctx);
         const verdict = await callPolicy("before_agent_run", {
-          ...baseMeta(payload, ctx),
+          ...baseMeta(payload, ctx, api.config),
           prompt: p.prompt,
           hook_event_name: "before_agent_run",
         });
@@ -184,7 +187,7 @@ export default definePluginEntry({
       "before_agent_finalize",
       async (payload, ctx) => {
         const verdict = await callPolicy("before_agent_finalize", {
-          ...baseMeta(payload, ctx),
+          ...baseMeta(payload, ctx, api.config),
           hook_event_name: "before_agent_finalize",
         });
         if (verdict.permission === "deny") {
@@ -210,14 +213,17 @@ export default definePluginEntry({
         async (payload, ctx) => {
           const p = payload || {};
           await callPolicy(ev, {
-            ...baseMeta(payload, ctx),
+            ...baseMeta(payload, ctx, api.config),
             tool_name: p.toolName,
             tool_input: p.params,
             tool_response: p.result,
             reason: p.reason,
             hook_event_name: ev,
           });
-          if (ev === "session_end") instructRetryGate.clear(payload, ctx);
+          if (ev === "session_end") {
+            instructRetryGate.clear(payload, ctx);
+            workspaceContext.clear(payload, ctx);
+          }
           return undefined;
         },
         { priority: 100, timeoutMs: 60_000 },

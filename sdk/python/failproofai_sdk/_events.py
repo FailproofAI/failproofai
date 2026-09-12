@@ -99,6 +99,11 @@ def _validate_promoted_string(name: str, value) -> None:
     own call. `_build` copies the base dict verbatim, so a `None` here reached
     the wire as an explicit JSON `null`, the row was accepted at 200 OK, and the
     column was empty for some events and not others with nothing logged anywhere.
+
+    `**fields` no longer reaches this holding a `None`: `_validate_fields` drops
+    the key and warns, so an optional column the caller simply does not have
+    costs a log line rather than the whole event. The raise below stays as the
+    backstop for any direct caller.
     """
     if value is None:
         raise ValueError(
@@ -320,6 +325,21 @@ class EventNamespace:
         bad = _RESERVED & fields.keys()
         if bad:
             raise ValueError(f"Reserved field names cannot be used as custom fields: {sorted(bad)}")
+        # `_build` omits None only from a dataclass's named `specifics`; `extra`
+        # is merged verbatim, so a promoted key left at None reaches the wire as
+        # an explicit JSON null — accepted at 200 OK, stored as NULL, invisible
+        # to every filter on that column. For a promoted column "no value" has to
+        # mean "no key", so drop it here, the one place holding the caller's own
+        # dict. Warned rather than silent: passing None is still a mistake worth
+        # hearing about, it just must not cost the event.
+        for name in (_PROMOTED_NUMERIC | _PROMOTED_STRING) & fields.keys():
+            if fields[name] is None:
+                logger.warning(
+                    "%s was passed as None and has been omitted from the event; "
+                    "pass a value, or omit the argument entirely to silence this.",
+                    name,
+                )
+                del fields[name]
         for name in _PROMOTED_NUMERIC & fields.keys():
             _validate_promoted_numeric(name, fields[name])
         for name in _PROMOTED_STRING & fields.keys():

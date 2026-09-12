@@ -315,8 +315,8 @@ def test_no_cross_adapter_page_presents_one_adapters_option_as_universal():
     and CrewAI has none — and `instrument()` drops options an adapter does not
     read, so `instrument("crewai", capture_content=False)` raised nothing and
     changed nothing. A reader on regulated data shipped believing prompts and
-    completions had stopped being recorded, and `collector.redact` explicitly
-    does not apply to SDK events, so nothing was behind it.
+    completions had stopped being recorded. Minimal credential redaction is not
+    a substitute: arbitrary regulated content need not resemble a secret.
 
     The four per-framework pages are checked elsewhere; these are the pages that
     speak about all of them at once and so must name the difference.

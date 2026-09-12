@@ -11,17 +11,40 @@ see `scripts/changelog-section.py`.
 
 ## 0.0.1b3 — 2026-09-08
 
-Open for the next release. `0.0.1b2` published on 2026-09-08 and the `bump` job
-moved the version here automatically; nothing has landed against `0.0.1b3` yet.
-Add entries as changes merge — this section becomes the GitHub Release body when
-it ships.
+### Fixes
+
+- Redact common credential shapes before SDK events reach the on-disk spool.
+  The daemon already exposes `collector.redact`, but SDK-written batches could
+  contain raw API keys, bearer tokens, JWTs, or secret assignments at rest until
+  upload. The SDK now applies the same deterministic minimal rules before each
+  JSONL write, defaults safely to redaction when configuration is absent or
+  malformed, and honors `collector.redact: off` when verbatim capture is
+  explicitly required. The daemon repeats the pass before upload as defence in
+  depth for batches written by older SDK versions.
+- **`None` on a promoted column is now dropped and warned about, not refused.**
+  A promoted key left at `None` in `**fields` reached the wire as an explicit
+  JSON `null`, so `_validate_promoted_string` refused it outright. But `None` is
+  how a caller says *I have no value*, and the refusal landed inside their emit
+  helper — which swallows telemetry errors, because telemetry must not break a
+  run. The event vanished with nothing logged.
+
+  `agent_end(error_type=None)` is the shape **every successful run** produces:
+  `error_type` is populated only on a failing outcome. Found against a real
+  multi-agent app, where it silently dropped `agent_end` for every session that
+  succeeded — leaving each one with a dangling `agent_start`, no outcome, and no
+  evaluation, since the server triggers evaluation on `agent_end`.
+
+- **The same fix closes the mirror bug on promoted numerics.** `_build` omits
+  `None` only from a dataclass's named `specifics`; `extra` is merged verbatim.
+  So `duration_ms=None` was dropped when passed as a named parameter and written
+  as an explicit `null` when passed through `**fields` — the same value, two
+  outcomes, decided by which door it came through.
+
+  Both paths now agree: for a promoted column, no value means no key. Nothing
+  that worked before changes, and no explicit `null` reaches a promoted column
+  from either direction.
 
 ## 0.0.1b2 — 2026-08-25
-
-Open for the next release. `0.0.1b1` published on 2026-08-24 and the `bump` job
-moved the version here automatically; nothing has landed against `0.0.1b2` yet.
-Add entries as changes merge — this section becomes the GitHub Release body when
-it ships.
 
 - Retire the old inbound evaluator boundary and add evaluator authoring plus the
   outbound-only v2 worker runtime under the lazy `failproofai_sdk.evaluator`

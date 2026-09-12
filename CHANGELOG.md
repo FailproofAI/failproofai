@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.5-beta.0 — 2026-09-12
+
+### Fixes
+
+- `failproofaid` now applies `collector.redact` to externally written SDK spool batches immediately before upload. SDK JSONL files previously bypassed the daemon's redaction path entirely because redaction only ran while the daemon created its own session and hook events. A batch written by an older SDK could therefore send a captured API key verbatim even with the default `minimal` setting. The uploader now scrubs every valid JSON event with the existing deterministic rules, leaves malformed lines untouched for ingest to reject and preserve through the failed-batch path, and still honors `collector.redact: off` (#791)
+
 ## 1.0.4-beta.0 — 2026-09-02
 
 ### Fixes

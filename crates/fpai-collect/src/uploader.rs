@@ -34,7 +34,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+
+use crate::config::Redact;
 
 /// Suffix marking a batch that exhausted its retry budget. Deliberately NOT
 /// `.jsonl`, so every directory scan and the watcher skip it for free rather
@@ -165,6 +167,7 @@ pub struct Uploader {
     max_retries: u32,
     retry_base: Duration,
     failed_retries_max: u32,
+    redact: Redact,
     metrics: Arc<UploadMetrics>,
 }
 
@@ -197,8 +200,14 @@ impl Uploader {
             max_retries: DEFAULT_MAX_RETRIES,
             retry_base: DEFAULT_RETRY_BASE,
             failed_retries_max: DEFAULT_FAILED_RETRIES_MAX,
+            redact: Redact::default(),
             metrics: Arc::new(UploadMetrics::default()),
         })
+    }
+
+    pub fn with_redact(mut self, redact: Redact) -> Self {
+        self.redact = redact;
+        self
     }
 
     /// Shorten every delay. Tests only — without it each retry test would wait
@@ -232,6 +241,7 @@ impl Uploader {
             Err(e) => return Err(UploadError::Io(e)),
         };
 
+        let bytes = redact_batch(&bytes, self.redact);
         for chunk in split_lines(&bytes, self.max_upload_bytes) {
             self.post_batch(path, chunk).await?;
         }
@@ -487,6 +497,35 @@ impl Uploader {
         );
         tokio::fs::rename(path, &dest).await
     }
+}
+
+fn redact_batch(bytes: &[u8], mode: Redact) -> Vec<u8> {
+    if mode == Redact::Off {
+        return bytes.to_vec();
+    }
+
+    let mut out = Vec::with_capacity(bytes.len());
+    for line in bytes.split_inclusive(|byte| *byte == b'\n') {
+        let (body, newline) = line
+            .strip_suffix(b"\n")
+            .map_or((line, false), |body| (body, true));
+        match serde_json::from_slice::<serde_json::Value>(body) {
+            Ok(mut event) => {
+                if crate::redact::scrub_value(&mut event, mode) > 0 {
+                    event
+                        .serialize(&mut serde_json::Serializer::new(&mut out))
+                        .expect("serializing JSON into Vec cannot fail");
+                } else {
+                    out.extend_from_slice(body);
+                }
+            }
+            Err(_) => out.extend_from_slice(body),
+        }
+        if newline {
+            out.push(b'\n');
+        }
+    }
+    out
 }
 
 /// Retry state carried in a parked batch's filename:

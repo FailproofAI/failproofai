@@ -817,6 +817,23 @@ describe("configure-wizard daemon integration", () => {
     expect(result.daemonInstalled).toBe(true);
     expect(installDaemonService).toHaveBeenCalledTimes(1);
     expect(readGlobalConfig().daemonConfigured).toBe(true);
+    expect(readFpConfig().audit).toMatchObject({ auto: true, notify: true, intervalDays: 7 });
+  });
+
+  it("preserves an explicit scheduled-audit opt-out during reconfiguration", async () => {
+    mkdirSync(dirname(globalConfigPath()), { recursive: true });
+    writeFileSync(
+      globalConfigPath(),
+      JSON.stringify({ audit: { auto: false, notify: true, interval_days: 14 } }),
+    );
+    vi.mocked(isDaemonSupportedPlatform).mockReturnValue(true);
+    vi.mocked(installDaemonService).mockResolvedValue({ installed: true });
+    drive(HAPPY);
+
+    const result = await runConfigureWizard(ttyIO());
+
+    expect(result.applied).toBe(true);
+    expect(readFpConfig().audit).toMatchObject({ auto: false, notify: true, intervalDays: 14 });
   });
 
   it("primes sudo before anything is drawn", async () => {

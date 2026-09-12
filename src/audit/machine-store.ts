@@ -7,9 +7,8 @@
  *  - `machine_id` is what the api-server keys reports on. Regenerate it and the
  *    server sees a brand-new machine, which burns a slot off the account's cap
  *    on every logout and splits one box's history into two.
- *  - `last_reported_at` is how far the last digest reached. Reset it and the
- *    next report re-covers months of history, and the user gets a digest of
- *    everything that ever happened as though it just did.
+ *  - `last_reported_at` is how far the last credential alert reached. Reset it
+ *    and the next report can re-cover old exposures as though they just happened.
  *
  * That is why this is a separate file from `session.json` rather than two more
  * keys in it: signing out deletes the session, and neither of these may go with
@@ -22,7 +21,7 @@
  * `state/telemetry-id` is already a stable per-machine random id and would have
  * been free to reuse. It is deliberately not reused: that id is the anonymous
  * PostHog person, and sending it alongside a verified email address would link
- * the two the moment somebody turns emailed reports on. Opting into a digest
+ * the two the moment somebody adds email alerts. Opting into email
  * should not de-anonymise telemetry, so this feature gets its own id and the
  * two never meet.
  */
@@ -66,8 +65,8 @@ export function readMachineIdentity(home?: string): MachineIdentity | null {
 /**
  * Read the identity, creating it on first call.
  *
- * Only ever called from the reporting path, so a machine that never opts into
- * emailed reports never gets an id at all — there is nothing to mint one for.
+ * Only ever called from the email-reporting path, so a machine without a valid
+ * email identity never gets an id at all — there is nothing to mint one for.
  */
 export function ensureMachineIdentity(home?: string): MachineIdentity {
   const existing = readMachineIdentity(home);
@@ -81,13 +80,13 @@ export function ensureMachineIdentity(home?: string): MachineIdentity {
 }
 
 /**
- * Record how far the last DELIVERED digest reached.
+ * Record how far the last delivered credential alert reached.
  *
  * The value is the server's `next_window_from`, not the window this run
  * scanned. The server is authoritative because it knows which reports actually
  * produced an email — a report held by the cooldown, or one whose send failed,
  * must not advance the watermark or its findings are silently dropped from every
- * future digest.
+ * future alert.
  */
 export function recordReportWatermark(nextWindowFrom: string, home?: string): void {
   const current = ensureMachineIdentity(home);
@@ -105,7 +104,7 @@ export function deleteMachineIdentity(home?: string): void {
 /**
  * A display name for this machine — its hostname.
  *
- * Shown in the digest so somebody with three boxes can tell which one is
+ * Shown in the email alert so somebody with three boxes can tell which one is
  * misbehaving, which is the whole reason it is sent. Falls back to `undefined`
  * rather than a placeholder: the server keeps whatever label it already has when
  * one is omitted, so guessing here would overwrite a good name with a bad one.

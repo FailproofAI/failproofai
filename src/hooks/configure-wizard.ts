@@ -74,6 +74,7 @@ import {
   probeDaemonEndToEnd,
   uninstallDaemonService,
 } from "./daemon-service";
+import { installMacNotifier } from "../audit/macos-notifier";
 import { hookLogWarn } from "./hook-logger";
 import {
   readCloudCredentials,
@@ -105,6 +106,7 @@ import {
   type RetryProbe,
 } from "./onboarding-attempt";
 import { acquireOnboardingLock } from "./onboarding-lock";
+import { readConfigRaw, updateConfig } from "./fp-config";
 
 export interface WizardIO {
   stdin?: TTYIn;
@@ -753,6 +755,19 @@ export async function runConfigureWizard(
   // stopping for is the sudo password, which is a CREDENTIAL rather than a
   // question, and no flag can supply it.
   const preAnswered = Boolean(answers.token);
+
+  // Capture the preference BEFORE the daemon setup writes config.json. A fresh
+  // machine reaches `setDaemonConfigured(true)` with no config file; that helper
+  // necessarily materialises the conservative no-file default (`auto: false`).
+  // Looking after that write cannot distinguish "the user switched it off"
+  // from "setup just wrote its fallback", which is how new installs ended up
+  // with a seven-day scheduler that was explicitly disabled.
+  const initialAudit = readConfigRaw().raw.audit;
+  const hadExplicitAuditAuto =
+    !!initialAudit &&
+    typeof initialAudit === "object" &&
+    !Array.isArray(initialAudit) &&
+    typeof (initialAudit as Record<string, unknown>).auto === "boolean";
 
 
   // Running the wizard itself under sudo configures the WRONG ACCOUNT, and
@@ -1438,10 +1453,50 @@ export async function runConfigureWizard(
   // binary filename are both derived from it.
   if (daemonInstalled) {
     setDaemonConfigured(true, cliVersion);
+    // A completed setup is the default opt-in to the LOCAL seven-day scan. It
+    // does not imply an email address or make a network request: reporting is
+    // independently gated by the signed-in audit identity. Reconfiguration
+    // preserves an explicit `auto: false`, so the user's off switch remains an
+    // off switch instead of being undone whenever they repair or upgrade the
+    // daemon.
+    if (!hadExplicitAuditAuto) {
+      try {
+        updateConfig({ audit: { auto: true } });
+      } catch {
+        // The daemon and hooks are already installed. Keep setup successful;
+        // the status screen will expose that scheduling could not be persisted.
+      }
+    }
     // Only now — the unit points at the new binary, so older ones are no
     // longer referenced by anything. Keeps the previous version for an
     // offline rollback.
     pruneOldDaemonBinaries();
+
+    // The delivery path for what the scheduled audit finds. macOS only, and a
+    // no-op everywhere else: a Linux box's audit talks to the session bus
+    // itself, while on a Mac the daemon runs outside the GUI session and cannot
+    // reach Notification Center at all — see `audit/macos-notifier.ts`.
+    //
+    // Installed here, with the daemon, because it exists only to deliver what
+    // the daemon's scheduled scan produces, and removed alongside it by
+    // `uninstall`. Silent, and not a step in the wizard: it needs no password,
+    // asks nothing, and narrating it would be an apology for the delivery half
+    // of a feature the user just switched on. What they are actually asked —
+    // does this machine scan, and may it interrupt — are real settings, and
+    // both are theirs to change afterwards.
+    //
+    // Its failure is not the wizard's failure. A Mac where `osacompile` is
+    // missing or launchd refuses the job must still finish installing its
+    // daemon, its hooks and its policies, which are the parts that enforce
+    // anything; the notice in-CLI still reaches them either way.
+    const notifier = installMacNotifier();
+    if (process.platform === "darwin" && !notifier.installed) {
+      hookLogWarn(`macOS notification helper was not installed: ${notifier.reason ?? "unknown error"}`);
+      stdout.write(
+        "\nSystem notifications could not be installed. Scheduled scans and email alerts\n" +
+          "still work; re-run `failproofai config` after checking the local LaunchAgent.\n\n",
+      );
+    }
   }
 
   // Telemetry runs concurrently with the install (never rejects, 5s-bounded) so

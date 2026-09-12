@@ -115,7 +115,14 @@ describe("a transcript that grew between audits", () => {
     expect(second).toEqual(first);
   });
 
-  it("carries stateful detectors across the boundary", async () => {
+  // Skipped, not rewritten: the 8 behavioural detectors are switched off with
+  // the rest of the old audit (see the header of `src/audit/scoring.ts`), so
+  // there is no hit left to carry across the resume boundary. The plumbing this
+  // guards IS still in place — `sessionState` is threaded through `scanOne` and
+  // returned as `detectorState` exactly as before, deliberately, so restoring
+  // the detector loop in `src/audit/index.ts` needs no other change and this
+  // test should pass again the moment it comes back. Un-skip it then.
+  it.skip("carries stateful detectors across the boundary", async () => {
     // reread-after-edit pairs an Edit with a later Read of the same path, and
     // its countdown spans tool calls. Split exactly between the two halves of
     // that pair: starting the detector empty on resume loses the pairing, and

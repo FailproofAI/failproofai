@@ -97,7 +97,8 @@ struct AuditConfig {
 /// Read `[audit]` out of `config.json`.
 ///
 /// Every failure — absent file, unparseable JSON, an `[audit]` table of the
-/// wrong shape — resolves to OFF rather than to an error or a default-on. The
+/// wrong shape — resolves to OFF rather than to an error. A CONFIGURED machine
+/// with no stated preference resolves to ON; see the comment at the return. The
 /// asymmetry with [`crate::cloud_client`], which treats a malformed credential
 /// as an error worth surfacing, is deliberate: this switch guards a scan that
 /// reads the CONTENTS of every session transcript on disk, so the only safe
@@ -119,11 +120,25 @@ fn load_config(home: &Path) -> AuditConfig {
         return off;
     };
     AuditConfig {
-        // Only a literal `true`. Absent, misspelled and `"yes"` all read as off,
-        // matching `readConfig` in fp-config.ts — the failure direction that
-        // matters is a machine that starts reading every transcript it can find
-        // on a timer nobody set.
-        auto: audit.get("auto") == Some(&serde_json::Value::Bool(true)),
+        // DEFAULT ON, but only from here — and the distinction is the whole
+        // safety property. Every `return off` above is a case where we could
+        // not tell what the user wanted: no config file (a machine that was
+        // never set up), unparseable JSON, or no `audit` key at all. None of
+        // those is consent to read the contents of every transcript on disk,
+        // so they still mean do-not-scan.
+        //
+        // Reaching this line means the file parsed AND carries an `audit`
+        // block, i.e. a configured machine that simply has no opinion about
+        // `auto`. That is the case that now defaults to on: scheduled scanning
+        // is the feature, and a leak nobody scanned for is a leak nobody finds.
+        //
+        // Only a literal `false` turns it back off. A misspelling or `"no"`
+        // reads as on, which is the inverse of the old rule and correct for the
+        // same reason it was correct before: the ambiguous value should land on
+        // whichever side a mistake is cheapest, and a scan the user did not
+        // want costs a scan, while a scan they wanted and did not get costs
+        // them a leaked key.
+        auto: audit.get("auto") != Some(&serde_json::Value::Bool(false)),
         interval: Duration::from_secs(read_interval_days(audit.get("interval_days")) * 86_400),
     }
 }
@@ -751,15 +766,24 @@ mod tests {
 
     // ── config ───────────────────────────────────────────────────────────────
 
+    // Scheduled scanning defaults ON for a CONFIGURED machine — the feature is
+    // the scan, and a leak nobody looked for is a leak nobody finds. Only a
+    // literal `false` turns it off. The fail-safe is intact one level up: every
+    // case where we cannot tell what the user wanted (no file, unparseable, no
+    // `audit` block) still reads as off, and that is asserted separately below.
     #[test]
-    fn auto_is_off_unless_the_table_says_exactly_true() {
+    fn auto_is_on_unless_the_table_says_exactly_false() {
         let dir = scratch("auto");
         for (body, expected) in [
             (r#"{"audit":{"auto":true}}"#, true),
             (r#"{"audit":{"auto":false}}"#, false),
-            (r#"{"audit":{"auto":"true"}}"#, false),
-            (r#"{"audit":{"auto":1}}"#, false),
-            (r#"{"audit":{}}"#, false),
+            // A configured machine with no opinion: the case that flipped.
+            (r#"{"audit":{}}"#, true),
+            // Ambiguous values land on the side where a mistake is cheapest —
+            // an unwanted scan costs a scan; a missing one costs a leaked key.
+            (r#"{"audit":{"auto":"true"}}"#, true),
+            (r#"{"audit":{"auto":1}}"#, true),
+            // No `audit` block at all is still "we could not tell" → off.
             (r#"{"collector":{"hooks":true}}"#, false),
             ("", false),
         ] {

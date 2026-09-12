@@ -29,12 +29,8 @@
  * acts and for anything wrong, mint for the thing that is alive. No third hue,
  * no new webfont, one hard pixel shadow on the console. That is the budget.
  *
- * ## One switch, not two
- *
- * Scheduling and mailing are the same decision — the reason to put a scan on a
- * timer is to be told what it found. So there is one toggle, it requires a
- * sign-in, and "signed out with the timer on" is a real state the page names
- * rather than a contradiction it prevents.
+ * Scheduling and system notifications are separate machine settings. Turning
+ * notifications off must not silently stop the seven-day scan or email alerts.
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
@@ -44,6 +40,7 @@ import {
 } from "@/app/actions/get-scheduled-audit";
 import {
   setAutoAuditAction,
+  setAuditNotifyAction,
   setAuditIntervalAction,
 } from "@/app/actions/update-scheduled-audit";
 import { triggerRun, RerunError } from "@/app/audit/_components/rerun-button";
@@ -187,12 +184,9 @@ function Toggle({
  * What the scan does, as three labelled lines. This is the old footer paragraph
  * restructured — same claims, scannable instead of a wall.
  *
- * "sends" ENUMERATES rather than saying "only counts and redacted examples".
- * That was very nearly true, and very nearly true is the worse kind: the report
- * carries the machine's name too — its hostname, which routinely carries its
- * owner's. A list a person can check beats a stronger claim they cannot, and
- * this panel is the one place they would come to check. The digest email states
- * the same three, in the same order.
+ * "sends" names the exact remote payload. The scheduled scan itself stays
+ * local, and no report is attempted unless a credential leak exists and the
+ * machine has a verified email identity.
  */
 const HOW_IT_WORKS: ReadonlyArray<{ label: string; body: string }> = [
   {
@@ -202,7 +196,7 @@ const HOW_IT_WORKS: ReadonlyArray<{ label: string; body: string }> = [
   { label: "runs", body: "entirely on this machine. the transcripts never leave it." },
   {
     label: "sends",
-    body: "counts, redacted examples, and this machine's name — and only when a scan finds something harmful.",
+    body: "only the newest masked credential exposure, its CLI, time, location, and this machine's name — only when email is configured.",
   },
 ];
 
@@ -211,6 +205,7 @@ export default function SettingsClient({ initial }: { initial: ScheduledAuditVie
   // about whether scheduled audits are on. See the note in `page.tsx`.
   const [view, setView] = useState<ScheduledAuditView | null>(initial);
   const [auto, setAuto] = useState(initial?.auto ?? false);
+  const [notify, setNotify] = useState(initial?.notify ?? true);
   const [intervalDays, setIntervalDays] = useState(initial?.intervalDays ?? 7);
   const [busy, setBusy] = useState(false);
   const [running, setRunning] = useState(false);
@@ -254,6 +249,7 @@ export default function SettingsClient({ initial }: { initial: ScheduledAuditVie
       setView(next);
       hasView.current = true;
       setAuto(next.auto);
+      setNotify(next.notify);
       setIntervalDays(next.intervalDays);
       setNowMs(Date.now());
       setLoadError(false);
@@ -312,26 +308,6 @@ export default function SettingsClient({ initial }: { initial: ScheduledAuditVie
     setBusy(true);
     try {
       const res = await setAutoAuditAction(true);
-      if (!res.ok) {
-        setAuto(false);
-        if (res.reason === "unreachable") {
-          // The session is fine and the network is not. Offering a code prompt
-          // here would name a failure the user does not have and hand them a
-          // flow that cannot succeed either — and abandoning it mid-way is how
-          // a working session gets replaced with none at all.
-          toast("could not reach the server. check your connection and try again.");
-          return;
-        }
-        // The server rejected the session this page had been showing an address
-        // for — expired, or minted against a different api-server. The local
-        // file is the only thing that said "signed in", and `whoAmI` has since
-        // cleared it, so re-read before opening the dialog: otherwise the page
-        // asks for an email while still displaying one.
-        await reload();
-        setAuthOpen(true);
-        toast("that sign-in expired. one more code and it's on.");
-        return;
-      }
       setAuto(res.auto);
       toast("scheduled audits on.");
       await reload();
@@ -360,13 +336,23 @@ export default function SettingsClient({ initial }: { initial: ScheduledAuditVie
       }
       return;
     }
-    // Turning it on needs somewhere to send the digest.
-    if (!signedIn) {
-      setAuthOpen(true);
-      return;
-    }
     await enable();
-  }, [auto, enable, reload, signedIn]);
+  }, [auto, enable, reload]);
+
+  const onNotifyToggle = useCallback(async () => {
+    const requested = !notify;
+    setBusy(true);
+    try {
+      const res = await setAuditNotifyAction(requested);
+      setNotify(res.notify);
+      setView((v) => (v ? { ...v, notify: res.notify } : v));
+      toast(res.notify ? "system notifications on." : "system notifications off.");
+    } catch {
+      toast(`could not turn system notifications ${requested ? "on" : "off"}.`);
+    } finally {
+      setBusy(false);
+    }
+  }, [notify]);
 
   const commitInterval = useCallback(
     async (raw: number) => {
@@ -403,7 +389,7 @@ export default function SettingsClient({ initial }: { initial: ScheduledAuditVie
     setBusy(true);
     try {
       await fetch("/api/auth/logout", { method: "POST" });
-      toast("signed out. scans continue; digests pause.");
+      toast("signed out. scans and desktop notifications continue; email alerts pause.");
       await reload();
     } catch {
       toast("could not sign out.");
@@ -534,7 +520,9 @@ export default function SettingsClient({ initial }: { initial: ScheduledAuditVie
                     </span>
                     <span className="set-dim">
                       {auto
-                        ? "you'll get an email only when a scan finds something."
+                        ? signedIn
+                          ? "scheduled scans are active; the latest masked leak is emailed."
+                          : "scheduled scans are active. add an email below for masked alerts."
                         : "off. nothing runs and nothing is sent."}
                     </span>
                   </div>
@@ -566,6 +554,23 @@ export default function SettingsClient({ initial }: { initial: ScheduledAuditVie
                   </span>
                 </div>
 
+                <div className="set-row set-row-main">
+                  <Toggle
+                    enabled={notify}
+                    disabled={busy || view === null}
+                    onChange={() => void onNotifyToggle()}
+                    label={notify ? "turn off system notifications" : "turn on system notifications"}
+                  />
+                  <div className="set-row-copy">
+                    <span className="set-strong">system notifications.</span>
+                    <span className="set-dim">
+                      {notify
+                        ? "on when a scheduled scan finds credentials."
+                        : "off. scheduled scans and email alerts continue."}
+                    </span>
+                  </div>
+                </div>
+
                 <div className="set-rule" />
 
                 <div className="set-row set-row-identity">
@@ -593,7 +598,7 @@ export default function SettingsClient({ initial }: { initial: ScheduledAuditVie
                     // from it at all.
                     <>
                       <span className="set-warn">
-                        signed out — scans continue, digests are paused.
+                        signed out — scheduled scans continue; email alerts are paused.
                       </span>
                       <button
                         type="button"
@@ -601,13 +606,13 @@ export default function SettingsClient({ initial }: { initial: ScheduledAuditVie
                         disabled={busy}
                         onClick={() => setAuthOpen(true)}
                       >
-                        sign in to resume
+                        add email alerts
                       </button>
                     </>
                   ) : (
                     <span className="set-dim">
-                      turning this on asks for an email, so there is somewhere to
-                      send the report.
+                      scans and system notifications work without an account.
+                      add email later if you want alerts in your inbox.
                     </span>
                   )}
                 </div>

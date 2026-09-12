@@ -7,7 +7,9 @@
  * file-based "internal hooks" are observation-only — and forwards each to the
  * failproofai binary as `failproofai --hook <event> --cli openclaw`. failproofai
  * prints a flat `{permission, reason}` verdict on stdout; this shim maps it to
- * each hook's native return shape.
+ * each hook's native return shape. On before_tool_call, an `instruct` verdict
+ * uses a one-shot blockReason as OpenClaw's model-visible instruction channel;
+ * retries from the same session/policy are allowed for a short window.
  *
  * Marker comment for failproofai's installer detection (do not remove):
  *   __failproofai_hook__: true
@@ -34,10 +36,12 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createInstructRetryGate, mapBeforeToolVerdict } from "./instruct-retry-gate.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DIST_BIN = resolve(HERE, "..", "dist", "cli.mjs");
 const SRC_BIN = resolve(HERE, "..", "bin", "failproofai.mjs");
+const instructRetryGate = createInstructRetryGate();
 
 function resolveSpawn() {
   if (process.env.FAILPROOFAI_BINARY_OVERRIDE) {
@@ -136,7 +140,9 @@ export default definePluginEntry({
   name: "failproofai",
   description: "Real-time policy enforcement for OpenClaw by failproofai",
   register(api) {
-    // before_tool_call → PreToolUse. Full deny: return {block:true, blockReason}.
+    // before_tool_call → PreToolUse. Deny always blocks. Instruct blocks the
+    // first matching attempt only, using blockReason to give the model the
+    // instruction, then permits retries from that session/policy for 5 minutes.
     api.on(
       "before_tool_call",
       async (payload, ctx) => {
@@ -147,10 +153,7 @@ export default definePluginEntry({
           tool_input: p.params,
           hook_event_name: "before_tool_call",
         });
-        if (verdict.permission === "deny") {
-          return { block: true, blockReason: verdict.reason || "Blocked by failproofai" };
-        }
-        return undefined;
+        return mapBeforeToolVerdict(verdict, payload, ctx, instructRetryGate);
       },
       { priority: 100, timeoutMs: 60_000 },
     );
@@ -214,6 +217,7 @@ export default definePluginEntry({
             reason: p.reason,
             hook_event_name: ev,
           });
+          if (ev === "session_end") instructRetryGate.clear(payload, ctx);
           return undefined;
         },
         { priority: 100, timeoutMs: 60_000 },

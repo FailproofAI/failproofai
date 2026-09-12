@@ -126,15 +126,80 @@ const JWT_RE = /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/;
 
 // sanitizeApiKeys
 const API_KEY_PATTERNS: Array<[RegExp, string]> = [
+  // ── Anthropic ── prefix doc-verified: platform.claude.com says a key
+  // "starts with `sk-ant-`" and its own example is `sk-ant-api03-...`.
+  [/sk-ant-api03-[A-Za-z0-9\-_]{20,}/, "Anthropic API key"],
+  // Minted by the Claude CLI's OAuth flow and billed against a Pro/Max
+  // subscription rather than the API account — a different thing to revoke.
+  [/sk-ant-oat01-[A-Za-z0-9\-_]{20,}/, "Anthropic OAuth token"],
   [/sk-ant-[A-Za-z0-9\-_]{20,}/, "Anthropic API key"],
+
+  // ── OpenAI ── the body charset EXCLUDES `-` and `_` on purpose: with them,
+  // this rule's run would bridge the hyphen in `sk-proj-` and report every
+  // project key a second time under the wrong label.
   [/sk-proj-[A-Za-z0-9\-_]{20,}/, "OpenAI project API key"],
-  [/sk-[A-Za-z0-9]{20,}/, "OpenAI API key"],
-  [/ghp_[A-Za-z0-9]{36}/, "GitHub personal access token"],
+  [/(?<!\w)sk-svcacct-[A-Za-z0-9\-_]{20,}/, "OpenAI service-account key"],
+  // Highest blast radius in the family: it authenticates the organisation
+  // admin surface, and lives at a DIFFERENT console from the other keys.
+  [/(?<!\w)sk-admin-[A-Za-z0-9\-_]{20,}/, "OpenAI admin key"],
+
+  // ── OpenAI-compatible gateways ──
+  [/sk-or-v1-[A-Za-z0-9\-_]{20,}/, "OpenRouter API key"],
+  // A BARE `sk-` CANNOT BE ATTRIBUTED, and calling it OpenAI is what this rule
+  // used to do. LiteLLM's own docs say its virtual keys "must start with sk-",
+  // and DeepSeek plus every other OpenAI-compatible proxy mints the same shape
+  // — so on a machine running a gateway (this one does) the old label sent the
+  // user to the wrong console to revoke a key that was never OpenAI's. The
+  // honest label names the family, not a vendor.
+  [/sk-[A-Za-z0-9]{20,}/, "OpenAI-compatible key (issuer unknown)"],
+
+  // ── GitHub ── all five documented types. github.blog's token-format post
+  // names ghp/gho/ghu/ghs/ghr; only two of them shipped before.
   [/github_pat_[A-Za-z0-9_]{82}/, "GitHub fine-grained token"],
+  [/ghp_[A-Za-z0-9]{36}/, "GitHub personal access token"],
+  [/gho_[A-Za-z0-9]{36}/, "GitHub OAuth token"],
+  [/ghu_[A-Za-z0-9]{36}/, "GitHub user-to-server token"],
+  [/ghs_[A-Za-z0-9]{36}/, "GitHub server-to-server token"],
+  [/ghr_[A-Za-z0-9]{36}/, "GitHub refresh token"],
+  [/glpat-[A-Za-z0-9\-_]{20,}/, "GitLab personal access token"],
+
+  // ── AWS ── the ID is the PUBLIC half; the paired 40-char secret is the
+  // credential. Reported anyway because an exposed ID names the account and is
+  // what a user searches their console for. `ASIA` (temporary STS) was missing.
   [/AKIA[A-Z0-9]{16}/, "AWS access key ID"],
+  [/ASIA[A-Z0-9]{16}/, "AWS temporary access key ID"],
+
+  // ── Payments ── Stripe documents `pk_*` as "Safe to expose: Yes", so only
+  // the secret and restricted halves appear here.
   [/sk_live_[A-Za-z0-9]{24,}/, "Stripe live secret key"],
   [/sk_test_[A-Za-z0-9]{24,}/, "Stripe test secret key"],
+  [/rk_live_[A-Za-z0-9]{24,}/, "Stripe restricted key"],
+
+  // ── Google ── `AIza` also covers Firebase Web and Maps browser keys, which
+  // are public by design, so the label stays non-committal about severity.
   [/AIza[0-9A-Za-z\-_]{35}/, "Google API key"],
+
+  // ── Messaging ── the Telegram bot token was matched by ZERO of the shipped
+  // patterns and was found only because a phone-number regex tripped over it;
+  // two live-looking ones sit in this machine's corpus right now. Slack's
+  // prefixes were in the Rust collector but not here — one of nine such
+  // divergences between the two engines.
+  [/\d{8,10}:[A-Za-z0-9_-]{35}/, "Telegram bot token"],
+  [/xox[baprs]-[A-Za-z0-9-]{10,}/, "Slack token"],
+  [/xapp-[0-9]-[A-Za-z0-9-]{10,}/, "Slack app-level token"],
+
+  // ── Model hosts ──
+  [/hf_[A-Za-z0-9]{30,}/, "Hugging Face token"],
+  [/gsk_[A-Za-z0-9]{40,}/, "Groq API key"],
+  [/r8_[A-Za-z0-9]{30,}/, "Replicate token"],
+  [/xai-[A-Za-z0-9]{40,}/, "xAI API key"],
+
+  // ── Registries ──
+  [/npm_[A-Za-z0-9]{36}/, "npm access token"],
+  [/dop_v1_[a-f0-9]{64}/, "DigitalOcean token"],
+  [/shpat_[a-fA-F0-9]{32}/, "Shopify access token"],
+  [/sb_secret_[A-Za-z0-9\-_]{20,}/, "Supabase secret key"],
+  [/sbp_[a-f0-9]{40}/, "Supabase personal token"],
 ];
 
 // sanitizeConnectionStrings

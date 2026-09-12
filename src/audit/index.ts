@@ -16,6 +16,11 @@ import { INTEGRATION_TYPES, type IntegrationType } from "../hooks/types";
 import { ADAPTERS } from "./cli-adapters";
 import { AUDIT_DETECTORS } from "./detectors";
 import { severityForBuiltin } from "./features";
+import { findSecrets, flattenToolInput } from "./leak-scan";
+import { fingerprintSecret, fingerprintId } from "./leak-fingerprint";
+import { readLeakIdentity, readLeakRecord, writeLeakRecord } from "./leak-store";
+import { upsertFinding, describeMechanism, emptyRecord } from "./leak-record";
+import { shortenPaths } from "./redact-example";
 import { readCachedTranscript, writeCachedTranscriptResult } from "./cache";
 import { initReplay, replayEvent, restoreReplay } from "./replay";
 import {
@@ -31,6 +36,64 @@ import {
 } from "./types";
 
 const TRANSCRIPT_CONCURRENCY = 8;
+
+/**
+ * Raw transcript bytes allowed in flight at once.
+ *
+ * The concurrency above counts FILES, which is the wrong unit. `streamEventsFrom`
+ * returns an array — despite the name it materialises every event of a
+ * transcript into JS objects — and a 57 MB JSONL becomes several hundred MB of
+ * them. On a real 1.15 GB corpus, 7 files hold 224 MB and the largest is
+ * 57.5 MB, so eight workers could put a quarter of the corpus in memory
+ * simultaneously. That machine printed `Aborted(OOM)` 22 times in one run.
+ *
+ * This is NOT what fixed those lines, and the distinction is worth keeping
+ * honest: they were measured at ~22 per run, appear within the first two
+ * seconds, are unchanged by this budget at 48 MB or at 16 MB, and do not fail
+ * the run — its counts come back correct. Their source is still unidentified.
+ * This bounds a real and separate failure mode (eight of the seven largest
+ * files in flight at once); it should not be read as having fixed the other.
+ *
+ * 48 MB of raw input is the budget because the expansion factor from JSONL to
+ * parsed objects is roughly 5-10x, which keeps the peak inside a default heap
+ * with room for the eight small-file workers this is meant not to slow down.
+ * Chosen to bound memory, not to be exactly right: the failure it prevents is a
+ * crash, and the cost of being conservative is that one very large file scans
+ * alone for a moment.
+ */
+const TRANSCRIPT_BYTE_BUDGET = 48 * 1024 * 1024;
+
+/**
+ * Admission control by weight, so a worker waits for MEMORY as well as a slot.
+ *
+ * A file bigger than the whole budget is admitted alone rather than refused —
+ * otherwise the largest transcript on the machine could never be scanned, which
+ * is precisely the one most likely to hold something.
+ */
+export class ByteGate {
+  private inFlight = 0;
+  private waiting: Array<() => void> = [];
+
+  constructor(private readonly budget: number) {}
+
+  async acquire(bytes: number): Promise<void> {
+    const want = Math.max(0, bytes);
+    while (this.inFlight > 0 && this.inFlight + want > this.budget) {
+      await new Promise<void>((resolve) => this.waiting.push(resolve));
+    }
+    this.inFlight += want;
+  }
+
+  release(bytes: number): void {
+    this.inFlight -= Math.max(0, bytes);
+    if (this.inFlight < 0) this.inFlight = 0;
+    // Wake everyone and let each re-test its own weight: a small task behind a
+    // large one should not be held by a queue position it does not need.
+    const waiters = this.waiting;
+    this.waiting = [];
+    for (const wake of waiters) wake();
+  }
+}
 
 /** Canonicalize a policy name to its short, qualified form for display
  *  (`failproofai/foo` → `foo`). */
@@ -113,6 +176,50 @@ interface ScanOutcome {
   resumed: boolean;
 }
 
+const CREDENTIAL_RESEARCH_MARKERS: ReadonlyArray<RegExp> = [
+  /\b(?:secret|credential)[-_ ](?:scanner|detection|detector|pattern|regex|corpus)\b/i,
+  /\b(?:trufflehog|trufflesecurity|gitleaks|detect-secrets|secret-detection-rules)\b/i,
+  /\b(?:SECRET_PATTERNS|findSecrets|isDocsLiteral|leak-scan)\b/,
+  /\b(?:fixture|placeholder|synthetic|sample) (?:api )?(?:key|token|secret|credential)s?\b/i,
+  /\b(?:grep|rg|ripgrep|scan|hunt|search)\b[^\n]{0,240}\b(?:secret|credential|token)s?\b/i,
+];
+
+const CREDENTIAL_RESEARCH_PURPOSE =
+  /\b(?:hunt|scan|search|research|test)(?:ing)?\b[^\n]{0,80}\b(?:secret|credential|token)s?\b|\b(?:secret|credential|token)s?\b[^\n]{0,80}\b(?:scanner|detector|detection|research|fixtures?|corpus)\b/i;
+
+/**
+ * Deliberate secret-detector research is full of realistic fake credentials.
+ * Reporting those as leaks is the feedback loop that made one measured session
+ * contribute 455 of the 500 rows in its own audit.
+ *
+ * Require independent signals across tool INPUTS. Results are excluded from
+ * classification: a normal command can print hostile text, while commands and
+ * URLs state what the agent intentionally set out to inspect. Two signals keep
+ * an ordinary discussion that happens to say "secret scanner" from silencing a
+ * session; dedicated detector/test work reliably carries several.
+ */
+export function isCredentialResearchSession(
+  events: NormalizedToolEvent[],
+  sessionDescription?: string,
+): boolean {
+  if (sessionDescription && CREDENTIAL_RESEARCH_PURPOSE.test(sessionDescription)) return true;
+  const matched = new Set<number>();
+  let evidenceEvents = 0;
+  for (const event of events) {
+    const intent = flattenToolInput(event.toolInput);
+    let eventMatched = false;
+    for (let i = 0; i < CREDENTIAL_RESEARCH_MARKERS.length; i++) {
+      if (CREDENTIAL_RESEARCH_MARKERS[i].test(intent)) {
+        matched.add(i);
+        eventMatched = true;
+      }
+    }
+    if (eventMatched) evidenceEvents++;
+    if (matched.size >= 2 || evidenceEvents >= 3) return true;
+  }
+  return false;
+}
+
 async function scanOneTranscript(
   meta: TranscriptMetadata,
   resume?: { fromByte: number; detectorState: DetectorSessionState },
@@ -181,21 +288,27 @@ async function scanOneTranscript(
   // Capture the session's cwd from the first event that carried one — every
   // event in a single transcript shares the same cwd by construction.
   result.cwd = result.cwd || events[0].cwd || "";
+  const suppressLeakScan = isCredentialResearchSession(events, meta.sessionDescription);
+  if (suppressLeakScan) result.leakScanSuppressed = "credential-research";
 
   for (const event of events) {
-    // Run audit detectors first (stateful, must see every event).
-    for (const detector of AUDIT_DETECTORS) {
-      const hit = detector.detect(event, sessionState);
-      if (!hit) continue;
-      recordHit(
-        result,
-        detector.name,
-        event.timestamp,
-        event.cwd,
-        truncateExample(hit.example),
-      );
-    }
-    // Then replay through every builtin policy.
+    // The 8 behavioural detectors are switched off with the rest of the old
+    // audit — see the header of `src/audit/scoring.ts`. The modules and their
+    // unit tests are untouched; nothing calls them. `sessionState` is still
+    // threaded through so a resumed scan keeps its shape and restoring this
+    // loop needs no plumbing.
+    // for (const detector of AUDIT_DETECTORS) {
+    //   const hit = detector.detect(event, sessionState);
+    //   if (!hit) continue;
+    //   recordHit(
+    //     result,
+    //     detector.name,
+    //     event.timestamp,
+    //     event.cwd,
+    //     truncateExample(hit.example),
+    //   );
+    // }
+    // Replay through every builtin policy.
     let replayHits;
     try {
       replayHits = await replayEvent(event);
@@ -212,9 +325,127 @@ async function scanOneTranscript(
         truncateExample(example),
       );
     }
+
+    // Credential VALUES, which the replay above cannot report: it returns a
+    // decision per policy, never the text that matched. Scanned separately so
+    // the leak report can name WHICH key, and so detection can be tuned for
+    // precision without dragging the redactor's recall down with it.
+    if (!suppressLeakScan) recordLeaks(result, event);
   }
 
   return { result, bytesScanned, detectorState: sessionState, resumed };
+}
+
+/**
+ * Fingerprint every credential in one event and attach the sightings.
+ *
+ * The raw value exists only inside this function. It is read out of the event,
+ * hashed into a salted id, rendered into a mask, and dropped — nothing that
+ * leaves here can reconstruct it.
+ *
+ * Input and result are scanned separately and tagged, because they are
+ * different exposures: an input is what the agent SENT (deniable at PreToolUse
+ * on 12/12 CLIs, and 39.5% of measured appearances) while a result is what it
+ * RECEIVED (blockable on 2/12, and only after the fact).
+ */
+function recordLeaks(result: TranscriptAuditResult, event: NormalizedToolEvent): void {
+  const salt = leakSalt();
+  if (!salt) return;
+
+  const filePath = (event.toolInput as { file_path?: unknown }).file_path;
+  const shortPath = typeof filePath === "string" ? shortenPaths(filePath) : null;
+
+  const scan = (text: string, direction: "input" | "result"): void => {
+    for (const match of findSecrets(text)) {
+      (result.leaks ??= []).push({
+        id: fingerprintId(match.value, salt),
+        fingerprint: fingerprintSecret(match.value, match.rule),
+        name: match.name,
+        rule: match.rule,
+        shaped: match.shaped,
+        timestamp: event.timestamp,
+        cwd: event.cwd,
+        toolName: event.toolName,
+        direction,
+        path: shortPath,
+      });
+    }
+  };
+
+  scan(flattenToolInput(event.toolInput), "input");
+  if (event.toolResultText !== undefined) scan(event.toolResultText, "result");
+}
+
+/**
+ * The machine's HMAC salt, read once per process.
+ *
+ * Cached because `scanOneTranscript` runs this per EVENT — 340,918 of them on
+ * the measured corpus — and re-reading a file that many times would dominate
+ * the scan. `null` when the store is unreadable, which disables leak recording
+ * rather than failing the audit: a scan that cannot fingerprint is still a scan
+ * that can count.
+ */
+let cachedSalt: string | null | undefined;
+function leakSalt(): string | null {
+  if (cachedSalt === undefined) {
+    try {
+      cachedSalt = readLeakIdentity().salt;
+    } catch {
+      cachedSalt = null;
+    }
+  }
+  return cachedSalt;
+}
+
+/**
+ * Merge this scan's sightings into `~/.failproofai/audit/leaks.json`.
+ *
+ * Returns the ids seen for the FIRST time, which is the set worth telling a
+ * human about. Never throws: a scan that finds leaks it cannot write down has
+ * still found them, and the caller reports on the in-memory result either way.
+ */
+export function persistLeaks(perTranscript: TranscriptAuditResult[], replaceExisting: boolean): string[] {
+  const fresh: string[] = [];
+  try {
+    const previous = readLeakRecord();
+    const previousIds = new Set(previous.findings.map((f) => f.id));
+    // A successful all-history scan is authoritative. Rebuilding is what lets
+    // detector precision fixes remove findings they now reject; merging made
+    // every false positive live for 90 days even after the code was fixed.
+    // Scoped or incomplete scans still merge because absence outside their
+    // coverage says nothing.
+    const record = replaceExisting
+      ? emptyRecord(previous.salt, new Date().toISOString())
+      : previous;
+    for (const t of perTranscript) {
+      for (const leak of t.leaks ?? []) {
+        const { isNew } = upsertFinding(record, {
+          id: leak.id,
+          fingerprint: leak.fingerprint,
+          name: leak.name,
+          rule: leak.rule,
+          // A vendor shape is what licenses an alert to name a console; a
+          // name-only match knows something leaked, not who issued it.
+          confidence: leak.shaped ? "doc-verified" : "name-only",
+          sighting: {
+            cli: t.cli,
+            sessionId: t.sessionId,
+            cwd: shortenPaths(leak.cwd),
+            at: leak.timestamp,
+            mechanism: describeMechanism(leak.toolName, leak.direction, leak.path),
+          },
+        });
+        // During an authoritative rebuild every insertion is new to the empty
+        // record, but only ids absent from the previous record are new to the
+        // HUMAN and eligible for a notification.
+        if (isNew && !previousIds.has(leak.id)) fresh.push(leak.id);
+      }
+    }
+    writeLeakRecord(record);
+  } catch {
+    // Bookkeeping failure must not fail the audit — see leak-store.ts.
+  }
+  return fresh;
 }
 
 function formatPolicyExample(_policyName: string, event: NormalizedToolEvent): string {
@@ -236,7 +467,7 @@ function formatPolicyExample(_policyName: string, event: NormalizedToolEvent): s
  * came from the FIRST event in the file and the tail's came from the first
  * event after the offset, so the older one wins.
  */
-function mergeIncremental(
+export function mergeIncremental(
   cached: TranscriptAuditResult,
   tail: TranscriptAuditResult,
 ): TranscriptAuditResult {
@@ -250,6 +481,12 @@ function mergeIncremental(
     examplesByName: {},
     rangeByName: { ...cached.rangeByName },
   };
+  if (cached.leakScanSuppressed || tail.leakScanSuppressed) {
+    out.leakScanSuppressed = "credential-research";
+    out.leaks = [];
+  } else {
+    out.leaks = [...(cached.leaks ?? []), ...(tail.leaks ?? [])];
+  }
   for (const [name, list] of Object.entries(cached.examplesByName)) {
     out.examplesByName[name] = [...list];
   }
@@ -432,18 +669,22 @@ async function runAuditInner(opts: RunAuditOptions, startedAt: number): Promise<
 
   // 1. Discover transcripts across all selected CLIs.
   const allTranscripts: TranscriptMetadata[] = [];
+  let discoveryErrors = 0;
   for (const cli of clis) {
     const adapter = ADAPTERS[cli];
     let list: TranscriptMetadata[];
     try {
       list = await adapter.listTranscripts({ projects: opts.projects, sinceMs });
     } catch {
+      discoveryErrors++;
       continue; // adapter failures shouldn't kill the whole audit
     }
     allTranscripts.push(...list);
   }
 
-  // 2. Scan each transcript (cache-aware), 8 in parallel.
+  // 2. Scan each transcript (cache-aware), 8 at a time and within a memory
+  // budget — see TRANSCRIPT_BYTE_BUDGET for why a file count is the wrong unit.
+  const gate = new ByteGate(TRANSCRIPT_BYTE_BUDGET);
   let skipped = 0;
   let errors = 0;
   const tasks = allTranscripts.map((meta) => async (): Promise<TranscriptAuditResult> => {
@@ -457,6 +698,9 @@ async function runAuditInner(opts: RunAuditOptions, startedAt: number): Promise<
         : undefined;
       cachedPrefix = found?.kind === "resume" ? found.result : null;
     }
+    // Memory admission. Taken AFTER the cache check above, so a cache hit — the
+    // common case on a warm machine — never waits for a slot it does not use.
+    await gate.acquire(meta.sizeBytes);
     try {
       const scan = await scanOneTranscript(meta, resume);
       // A resumed scan produced hits for the TAIL only; the cached result holds
@@ -500,6 +744,11 @@ async function runAuditInner(opts: RunAuditOptions, startedAt: number): Promise<
         examplesByName: {},
         rangeByName: {},
       };
+    } finally {
+      // Released on every path, including the error one — a task that threw
+      // still freed its memory, and holding its weight would shrink the budget
+      // permanently over a long scan until nothing could be admitted at all.
+      gate.release(meta.sizeBytes);
     }
   });
 
@@ -527,8 +776,30 @@ async function runAuditInner(opts: RunAuditOptions, startedAt: number): Promise<
     eventsScanned += t.eventsScanned ?? 0;
   }
 
+  // Fold every sighting into the persistent record. This is the ONLY place the
+  // leak record is written: `scanOneTranscript` runs 8-way concurrent and a
+  // per-transcript write would be eight processes racing one file — the exact
+  // shape that lost updates when it was measured (2 concurrent writers, 5/5
+  // trials, the loser's entry gone permanently).
+  //
+  // `newFindingIds` is what a notice keys on: an id already in the record must
+  // not alert again however many fresh sightings it accumulates, and a
+  // credential seen for the first time must alert even though its rule has
+  // fired a thousand times before.
+  const coversAllHistory =
+    opts.clis === undefined &&
+    opts.projects === undefined &&
+    opts.since === undefined &&
+    discoveryErrors === 0 &&
+    errors === 0 &&
+    skipped === 0;
+  const newFindingIds = persistLeaks(perTranscript, coversAllHistory);
+  const leakIds = [...new Set(perTranscript.flatMap((t) => (t.leaks ?? []).map((leak) => leak.id)))];
+
   const auditResult: AuditResult = {
     version: 2,
+    leakIds,
+    newLeakIds: newFindingIds,
     scannedAt: new Date(startedAt).toISOString(),
     scope: {
       cli: clis,

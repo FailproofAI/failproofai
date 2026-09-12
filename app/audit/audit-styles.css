@@ -496,7 +496,13 @@
 .poster-meta .of { color: var(--dim); }
 .poster-meta .poster-sep { color: var(--dim); }
 
-/* body — vertical centered stack: sigil → persona → score ─── */
+/* body — vertical centered stack: sigil → persona → score ───
+   The score block is switched off (see `src/audit/scoring.ts`), so this stack
+   currently renders two children, not three. It is a centered flex column with
+   a gap and no fixed track count, so it re-centers on its own. The
+   `.poster-score` rules below are kept, dormant, against the score coming
+   back — do not tidy them away, or restoring it means rewriting the styles
+   too. */
 .poster-body {
   display: flex;
   flex-direction: column;
@@ -555,6 +561,7 @@
 .poster-persona .persona-rarity .pct { color: var(--accent-pink); font-weight: 600; }
 
 /* score — score-n + /100, baseline-aligned and centered in the card. */
+/* Dormant while the score is switched off — see `src/audit/scoring.ts`. */
 .poster-score {
   display: flex;
   align-items: baseline;
@@ -1157,3 +1164,127 @@
 .share-card {
   max-width: 420px;
 }
+
+/* ── Leak report ─────────────────────────────────────────────────────────────
+   One block per distinct credential. Deliberately NOT a table: a table implies
+   columns worth scanning down, and the interesting comparison between two
+   leaked keys is never "which is longer" — it is what each one is and where it
+   went, which reads as a sentence.                                            */
+
+.leak-notify { margin-left: auto; }
+
+.leak-list {
+  list-style: none;
+  margin: 20px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.leak-row {
+  border: 1px solid var(--line-2);
+  /* Hard-offset pixel shadow, never a blur — the house rule. Pink is the
+     accent that means "this one is yours to act on". */
+  box-shadow: 4px 4px 0 0 var(--line-2);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--bg);
+}
+/* A recognised prefix means a console exists and this is revocable in a
+   minute. That is a real difference in what the reader has to do, so it is the
+   one thing the row's own frame encodes. */
+.leak-row[data-attributed="true"] { box-shadow: 4px 4px 0 0 var(--accent-pink); }
+
+.leak-row-top {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.leak-key {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--ink);
+  letter-spacing: 0.02em;
+  /* The masked value can be long; it must wrap rather than push the row wide. */
+  word-break: break-all;
+}
+
+.leak-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent-pink);
+  text-transform: lowercase;
+}
+
+.leak-name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-2);
+  border: 1px solid var(--line-2);
+  padding: 1px 5px;
+}
+
+.leak-dismiss {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--dim);
+  background: none;
+  border: 1px solid var(--line-2);
+  padding: 3px 8px;
+  cursor: pointer;
+  text-transform: lowercase;
+}
+.leak-dismiss:hover:not(:disabled) { color: var(--ink); border-color: var(--ink-2); }
+.leak-dismiss:disabled { opacity: 0.4; cursor: not-allowed; }
+.leak-dismiss:focus-visible { outline: 2px solid var(--accent-pink); outline-offset: 2px; }
+
+.leak-how {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-2);
+  line-height: 1.6;
+}
+.leak-verb { color: var(--ink); }
+.leak-where { color: var(--accent-green); }
+.leak-who { color: var(--ink); }
+.leak-when { color: var(--dim); }
+
+.leak-foot {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--dim);
+}
+.leak-fix { color: var(--accent-green); }
+.leak-dir { color: var(--ink-2); }
+
+@media (max-width: 640px) {
+  .leak-dismiss { margin-left: 0; }
+  .leak-foot { gap: 6px; flex-direction: column; }
+}
+
+/* The re-scan control in the scan header. Sits at the end of the eyebrow row so
+   it reads as an action on that section rather than a page-level nav item. */
+.scan-rerun {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: lowercase;
+  color: var(--ink-2);
+  background: none;
+  border: 1px solid var(--line-2);
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.scan-rerun:hover:not(:disabled) { color: var(--ink); border-color: var(--accent-pink); }
+.scan-rerun:disabled { opacity: 0.5; cursor: not-allowed; }
+.scan-rerun:focus-visible { outline: 2px solid var(--accent-pink); outline-offset: 2px; }

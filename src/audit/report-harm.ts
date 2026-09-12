@@ -1,6 +1,6 @@
 /**
- * The side effect a scheduled audit has that no other audit does: telling the
- * api-server what it found, so a harm digest can be mailed.
+ * The optional remote side effect of a scheduled audit: telling the api-server
+ * about the newest masked credential exposure so an email alert can be sent.
  *
  * Separated from `harm-report.ts` on purpose. That module is pure — result in,
  * payload out — and is where the windowing rules live and are tested. This one
@@ -15,7 +15,7 @@
  * token expired, whose network is down, or whose api-server is having a bad day
  * must keep auditing itself locally and keep showing results on its own
  * dashboard — the local feature does not depend on the remote one, and a person
- * who never enabled emailed reports must never be able to tell this code exists.
+ * who never added an email must never have the local scan depend on this code.
  *
  * ## Why the CHILD does this and not the daemon
  *
@@ -31,9 +31,11 @@ import { getValidAccessToken } from "../../lib/auth/auth-store";
 import { AuthApiError, submitAuditReport } from "../../lib/auth/api-server-client";
 import { readConfig } from "../hooks/fp-config";
 import { buildHarmReport } from "./harm-report";
+import { activeFindings, readLeakRecord } from "./leak-store";
 import {
   ensureMachineIdentity,
   machineLabel,
+  readMachineIdentity,
   recordReportWatermark,
 } from "./machine-store";
 import type { AuditResult } from "./types";
@@ -41,31 +43,26 @@ import type { AuditResult } from "./types";
 /** What happened, for the one line the scheduled run prints. */
 export type HarmReportOutcome =
   | { kind: "disabled" }
-  | { kind: "consent-required" }
+  | { kind: "no-leak" }
   | { kind: "signed-out" }
-  | { kind: "sent"; hits: number }
-  | { kind: "held"; hits: number; reason: string }
+  | { kind: "sent"; leaks: number }
+  | { kind: "held"; leaks: number; reason: string }
   | { kind: "failed"; error: string };
 
 /**
- * Report this scan's harmful findings, if the user asked for that.
+ * Report this scan's newest credential exposure when an email identity exists.
  *
  * Returns an outcome rather than a boolean so the caller can say something
- * truthful. "held" in particular is not a failure — a machine below the
- * threshold, or inside its cooldown, is working exactly as intended, and a line
- * that called that an error would train people to ignore the line.
+ * truthful. "held" in particular is not a failure — a machine inside its
+ * cooldown is working exactly as intended, and a line that called that an error
+ * would train people to ignore the line.
  */
 export async function reportHarm(result: AuditResult): Promise<HarmReportOutcome> {
-  // ONE switch. `auto` means "scan on a timer AND tell me", because the reason
-  // to put a scan on a timer is to be told — a machine scanning quietly with
-  // nothing to report to is a feature that looks on and does nothing visible.
   let auto = false;
-  let consentedAt: number | undefined;
   let intervalDays = 7;
   try {
     const config = readConfig();
     auto = config.audit.auto;
-    consentedAt = config.audit.reportsConsentedAt;
     // Also the width of a FIRST report's window, so a new machine's opening
     // digest covers the same period every later one will.
     intervalDays = config.audit.intervalDays;
@@ -75,13 +72,18 @@ export async function reportHarm(result: AuditResult): Promise<HarmReportOutcome
   }
   if (!auto) return { kind: "disabled" };
 
-  // `auto` alone is not consent to SEND, on a machine that set it before this
-  // existed. Through 1.0.0 that key meant "scan locally on a timer" — no
-  // account, no network, and the toggle that wrote it said so. Sending is
-  // gated on the separate stamp every current opt-in path writes, so a
-  // machine upgrading into this release keeps scanning and mails nothing until
-  // a person opts in again and sees what that sends. See `audit.reportsConsentedAt`.
-  if (consentedAt === undefined) return { kind: "consent-required" };
+  // Decide whether there is anything emailable before touching auth or the
+  // network. Scheduled scans are local by default; an email identity is an
+  // optional delivery channel, and a scan with no credential leak must make no
+  // report request at all.
+  const prior = readMachineIdentity();
+  const report = buildHarmReport(
+    result,
+    prior?.last_reported_at,
+    intervalDays,
+    activeFindings(readLeakRecord()),
+  );
+  if (report.leaks.length === 0) return { kind: "no-leak" };
 
   const auth = await getValidAccessToken();
   if (!auth) {
@@ -101,9 +103,6 @@ export async function reportHarm(result: AuditResult): Promise<HarmReportOutcome
     return { kind: "failed", error: err instanceof Error ? err.message : String(err) };
   }
 
-  const report = buildHarmReport(result, identity.last_reported_at, intervalDays);
-  const hits = report.harmful.reduce((n, p) => n + p.hits, 0);
-
   try {
     const res = await submitAuditReport(auth.access_token, {
       machine_id: identity.machine_id,
@@ -112,6 +111,7 @@ export async function reportHarm(result: AuditResult): Promise<HarmReportOutcome
       window_from: report.window_from,
       window_to: report.window_to,
       harmful: report.harmful,
+      leaks: report.leaks,
     });
 
     // Persist whatever the server says the next window starts at, INCLUDING when
@@ -128,8 +128,8 @@ export async function reportHarm(result: AuditResult): Promise<HarmReportOutcome
     }
 
     return res.emailed
-      ? { kind: "sent", hits }
-      : { kind: "held", hits, reason: res.reason ?? "not_sent" };
+      ? { kind: "sent", leaks: report.leaks.length }
+      : { kind: "held", leaks: report.leaks.length, reason: res.reason ?? "not_sent" };
   } catch (err) {
     // A 401 here means the session died between `getValidAccessToken` and this
     // call — rare, and indistinguishable from any other failure as far as this
@@ -149,19 +149,15 @@ export async function reportHarm(result: AuditResult): Promise<HarmReportOutcome
 export function describeOutcome(outcome: HarmReportOutcome): string | null {
   switch (outcome.kind) {
     case "disabled":
-      return null; // Say nothing at all to the majority who never opted in.
-    case "consent-required":
-      return "failproofai: scheduled scans are on, but emailing what they find needs a fresh opt-in — run `failproofai audit --schedule` (or visit /settings) to turn digests on";
+    case "no-leak":
+      return null;
     case "signed-out":
-      // Names the two places that can actually fix it. It used to say "sign in
-      // from the audit page", which stopped being true when this release moved
-      // that dialog behind "invite a friend".
-      return "failproofai: emailed reports are on but this machine is signed out — run `failproofai audit --schedule` or visit /settings to resume them";
+      return "failproofai: a credential exposure was found, but no email is configured — run `failproofai audit --schedule --email you@example.com`";
     case "sent":
-      return `failproofai: emailed a harm digest (${outcome.hits} finding${outcome.hits === 1 ? "" : "s"})`;
+      return "failproofai: emailed the most recent credential exposure";
     case "held":
-      return `failproofai: ${outcome.hits} finding${outcome.hits === 1 ? "" : "s"} reported, no email (${outcome.reason})`;
+      return `failproofai: credential exposure reported, no email (${outcome.reason})`;
     case "failed":
-      return `failproofai: could not send the harm report: ${outcome.error}`;
+      return `failproofai: could not send the credential alert: ${outcome.error}`;
   }
 }

@@ -74,7 +74,10 @@ export function EmptyState({ mode, running, onStarted, onCompleted }: Props) {
           <p className="empty-sub">
             we&apos;ll walk every transcript across your installed CLIs — Claude Code,
             Codex, Copilot, Cursor, OpenCode, Pi — and count every wasteful
-            or risky action. you&apos;ll get a tier, a score, and a punch-list.
+            {/* Was "a tier, a score, and a punch-list" — the tier was never
+                rendered and the score is switched off, so this promised two
+                things the page did not show. */}
+            or risky action. you&apos;ll get a leak report and a scan summary.
           </p>
 
           <div className="empty-actions">

@@ -68,6 +68,12 @@ vi.mock("../../src/hooks/fp-home", () => ({
   failproofaiHome: () => home,
 }));
 
+vi.mock("../../src/audit/macos-notifier", () => ({
+  uninstallMacNotifier: vi.fn(() => {
+    calls.push("uninstallMacNotifier");
+  }),
+}));
+
 beforeEach(() => {
   calls.length = 0;
   home = mkdtempSync(join(tmpdir(), "fpai-uninstall-"));
@@ -114,6 +120,7 @@ describe("hooks/uninstall-cli", () => {
 
     expect(res.exitCode).toBe(2);
     expect(calls).not.toContain("uninstallDaemonService");
+    expect(calls).not.toContain("uninstallMacNotifier");
     expect(calls).not.toContain("removeHooks");
     expect(res.lines.join("\n")).toMatch(/would deny every tool call/);
   });
@@ -228,6 +235,7 @@ describe("hooks/uninstall-cli — who decides the daemon's fate", () => {
 
     expect(res.exitCode).toBe(0);
     expect(calls).not.toContain("uninstallDaemonService");
+    expect(calls).not.toContain("uninstallMacNotifier");
     expect(calls).not.toContain("primeElevation");
     expect(res.lines.join("\n")).toMatch(/kept the daemon service/);
     expect(existsSync(servicePath)).toBe(true);
@@ -243,6 +251,7 @@ describe("hooks/uninstall-cli — who decides the daemon's fate", () => {
     expect(calls.indexOf("primeElevation")).toBeGreaterThanOrEqual(0);
     expect(calls.indexOf("primeElevation")).toBeLessThan(calls.indexOf("uninstallDaemonService"));
     expect(existsSync(servicePath)).toBe(false);
+    expect(calls).toContain("uninstallMacNotifier");
   });
 
   it("keeps the service when there is nobody to ask", async () => {
@@ -265,6 +274,7 @@ describe("hooks/uninstall-cli — who decides the daemon's fate", () => {
 
     expect(confirmDaemon).not.toHaveBeenCalled();
     expect(calls).toContain("uninstallDaemonService");
+    expect(calls).toContain("uninstallMacNotifier");
     expect(calls.indexOf("primeElevation")).toBeLessThan(calls.indexOf("uninstallDaemonService"));
     expect(res.exitCode).toBe(0);
   });
@@ -278,6 +288,7 @@ describe("hooks/uninstall-cli — who decides the daemon's fate", () => {
 
     expect(confirmDaemon).not.toHaveBeenCalled();
     expect(calls).toContain("uninstallDaemonService");
+    expect(calls).toContain("uninstallMacNotifier");
   });
 
   it("says it will ASK in the plan, rather than promising removal", async () => {

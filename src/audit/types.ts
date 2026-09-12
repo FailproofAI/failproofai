@@ -45,6 +45,9 @@ export interface TranscriptMetadata {
   mtimeMs: number;
   /** Byte size of the transcript file. Used for cache invalidation. */
   sizeBytes: number;
+  /** Optional host-authored session purpose. Used only to distinguish
+   * deliberate credential-scanner research from evidence of a leak. */
+  sessionDescription?: string;
 }
 
 /** Per-session detector state. Detectors mutate this freely. */
@@ -119,6 +122,27 @@ export interface AuditCount {
 }
 
 /** Per-transcript scan result (also the per-transcript cache value). */
+/** One credential sighting, already fingerprinted. */
+export interface TranscriptLeak {
+  /** Salted, machine-local id for the DISTINCT value. */
+  id: string;
+  /** Masked rendering + class + length. Never the value. */
+  fingerprint: import("./leak-fingerprint").LeakFingerprint;
+  /** Identifier it was assigned to, when it came from an assignment. */
+  name: string | null;
+  /** Rule that found it. */
+  rule: string;
+  /** Whether a vendor shape matched — gates whether an alert may name a console. */
+  shaped: boolean;
+  timestamp: string;
+  cwd: string;
+  toolName: string;
+  /** Sent by the agent, or received by it. Different exposures, different fixes. */
+  direction: "input" | "result";
+  /** Home-shortened path the value was read from or written to, when there was one. */
+  path: string | null;
+}
+
 export interface TranscriptAuditResult {
   /** Cache key: matches TranscriptMetadata.transcriptPath. */
   transcriptPath: string;
@@ -140,6 +164,20 @@ export interface TranscriptAuditResult {
   hitsByName: Record<string, number>;
   /** Up to 3 example commands per policy/detector (later coalesced upstream). */
   examplesByName: Record<string, { timestamp: string; cwd: string; example: string }[]>;
+  /**
+   * Credentials found in this transcript, one entry per SIGHTING.
+   *
+   * Deliberately separate from `hitsByName`, which counts by RULE and cannot
+   * enumerate distinct values. These carry the fingerprint rather than the
+   * credential — the raw value never leaves `scanOneTranscript`.
+   *
+   * Optional so a cached result written before this field existed still parses;
+   * absent reads as "this transcript predates leak scanning", not "clean".
+   */
+  leaks?: TranscriptLeak[];
+  /** The session was explicitly generating/researching credential fixtures,
+   * so its matches are examples rather than evidence of user leakage. */
+  leakScanSuppressed?: "credential-research";
   /** First/last timestamp per name. */
   rangeByName: Record<string, { first: string; last: string }>;
 }
@@ -179,6 +217,20 @@ export interface AuditResult {
    *  Lets the dashboard answer "is this policy already on?" for
    *  detector-mapped policies that may not have hit during this audit. */
   enabledBuiltinNames: string[];
+  /** Ids of credentials encountered by this scan, including ones already in
+   *  the persistent leak record. Scheduled desktop notifications key on this
+   *  list so every completed scan that still sees a leak can notify; the
+   *  narrower `newLeakIds` remains for first-seen-only surfaces. */
+  leakIds?: string[];
+  /**
+   * Ids of credentials seen for the FIRST time in this scan.
+   *
+   * What a notice keys on. Not "findings this scan saw" — a key already in the
+   * record must not re-alert however many fresh sightings it picks up, and one
+   * seen for the first time must alert even though its rule has fired before.
+   * Optional so a cached result predating leak scanning still parses.
+   */
+  newLeakIds?: string[];
 }
 
 /** CLI-supplied options for `runAudit()`. Set by `bin/failproofai.mjs`. */

@@ -14,18 +14,7 @@
  * server actions the dashboard calls (not a reimplementation), so CLI/dashboard
  * parity is real: both write through the same `updateConfig`.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-
-// `setAutoAuditAction(true)` now refuses without a session — scheduling and
-// mailing are one decision, so a timer with nobody to tell is a switch that
-// reads as on and produces nothing. These tests are about the CONFIG WRITE, so
-// the session check is stubbed to "signed in"; the refusal itself is covered in
-// the settings component tests.
-const { whoAmIMock, readAuthMock } = vi.hoisted(() => ({
-  whoAmIMock: vi.fn(),
-  readAuthMock: vi.fn(),
-}));
-vi.mock("../../lib/auth/auth-store", () => ({ whoAmI: whoAmIMock, readAuth: readAuthMock }));
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, readFileSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
@@ -33,6 +22,7 @@ import { configFile } from "../../src/hooks/fp-home";
 import { readConfig, writeConfig } from "../../src/hooks/fp-config";
 import {
   setAutoAuditAction,
+  setAuditNotifyAction,
   setAuditIntervalAction,
 } from "../../app/actions/update-scheduled-audit";
 
@@ -44,10 +34,6 @@ beforeEach(() => {
   home = mkdtempSync(resolve(tmpdir(), "fpai-settings-write-"));
   process.env.FAILPROOFAI_HOME = home;
   mkdirSync(home, { recursive: true });
-  whoAmIMock.mockReset().mockResolvedValue({
-    me: { id: "u1", email: "sidd@exosphere.host", status: "active", created_at: "" },
-    auth: { user: { id: "u1", email: "sidd@exosphere.host" } },
-  });
 });
 
 afterEach(() => {
@@ -62,6 +48,14 @@ describe("scheduled-audit write actions", () => {
     const res = await setAutoAuditAction(true);
     expect(res).toEqual({ ok: true, auto: true });
     expect(readConfig().audit.auto).toBe(true);
+  });
+
+  it("setAuditNotifyAction toggles only OS notifications and reflects the stored value", async () => {
+    expect(readConfig().audit.notify).toBe(true);
+    const res = await setAuditNotifyAction(false);
+    expect(res).toEqual({ notify: false });
+    expect(readConfig().audit.notify).toBe(false);
+    expect(readConfig().audit.auto).toBe(false);
   });
 
   it("setAuditIntervalAction lets the config own the 1..90 clamp and returns the stored value", async () => {
@@ -87,6 +81,7 @@ describe("scheduled-audit write actions", () => {
 
     // Now drive the dashboard's write paths.
     await setAutoAuditAction(true);
+    await setAuditNotifyAction(false);
     await setAuditIntervalAction(14);
 
     // Telemetry is still off, in memory and on disk. A dropped field would have
@@ -94,10 +89,9 @@ describe("scheduled-audit write actions", () => {
     expect(readConfig().telemetry.enabled).toBe(false);
     expect(JSON.parse(readFileSync(configFile(), "utf8")).telemetry).toEqual({ enabled: false });
     // And the audit write actually landed alongside it.
-    expect(readConfig().audit).toMatchObject({ auto: true, intervalDays: 14 });
-    // Enabling from the dashboard also records consent to send, in the same
-    // write — that stamp, not `auto`, is what `reportHarm` gates on.
-    expect(typeof readConfig().audit.reportsConsentedAt).toBe("number");
+    expect(readConfig().audit).toMatchObject({ auto: true, notify: false, intervalDays: 14 });
+    // Scheduling itself does not fabricate an email/consent state.
+    expect(readConfig().audit.reportsConsentedAt).toBeUndefined();
   });
 
   it("preserves an unrelated cloud/collector setting across a scan write", async () => {
@@ -117,74 +111,12 @@ describe("scheduled-audit write actions", () => {
   });
 });
 
-describe("a session the server rejects", () => {
-  it("is REPORTED, not thrown, so the caller can act on it", async () => {
-    // Next masks a thrown server-action error before the browser sees it — the
-    // client gets an opaque digest and never the message. A caller matching on
-    // the text works in development and silently degrades to a generic failure
-    // in production, which is what shipped: the page showed an address read
-    // from the local session file, the toggle took the signed-in path, and the
-    // click dead-ended on "could not turn that on."
-    whoAmIMock.mockResolvedValue(null);
-    // `whoAmI()` deletes the session on a 401, so nothing is left on disk.
-    readAuthMock.mockReturnValue(null);
-
-    const res = await setAutoAuditAction(true);
-
-    expect(res).toEqual({ ok: false, reason: "signed-out" });
-    // And nothing was written: a timer with nobody to tell reads as on and
-    // produces nothing.
-    expect(readConfig().audit.auto).toBe(false);
-  });
-
-  it("tells an OFFLINE machine apart from an expired one", async () => {
-    // `whoAmI()` collapses them: null for a 401 and null for every transport
-    // failure. The client discriminated on `res.ok` alone, so a machine behind
-    // a proxy or with the wifi down hit the 10s timeout, watched the switch
-    // snap back, and was told "that sign-in expired" — then handed a code
-    // prompt that cannot succeed either, which is how a working session gets
-    // abandoned. What is left ON DISK tells them apart: a 401 wipes it, a
-    // network failure leaves it.
-    whoAmIMock.mockResolvedValue(null);
-    readAuthMock.mockReturnValue({
-      access_token: "at",
-      refresh_token: "rt",
-      access_expires_at: Math.floor(Date.now() / 1000) + 900,
-      refresh_expires_at: Math.floor(Date.now() / 1000) + 86_400,
-      user: { id: "u1", email: "sidd@exosphere.host" },
-    });
-
-    const res = await setAutoAuditAction(true);
-
-    expect(res).toEqual({ ok: false, reason: "unreachable" });
-    expect(readConfig().audit.auto).toBe(false);
-  });
-
-  it("calls a session past its refresh window signed-out, not unreachable", async () => {
-    // The file being present is not the test — a lapsed refresh token cannot
-    // mint anything, so the code prompt really is the remedy here.
-    whoAmIMock.mockResolvedValue(null);
-    readAuthMock.mockReturnValue({
-      access_token: "at",
-      refresh_token: "rt",
-      access_expires_at: Math.floor(Date.now() / 1000) - 7200,
-      refresh_expires_at: Math.floor(Date.now() / 1000) - 3600,
-      user: { id: "u1", email: "sidd@exosphere.host" },
-    });
-
-    expect(await setAutoAuditAction(true)).toEqual({ ok: false, reason: "signed-out" });
-  });
-
-  it("still lets somebody turn scheduling OFF", async () => {
-    // The refusal is one-directional on purpose. An expired session must not
-    // trap a person into keeping a feature they are trying to disable.
-    whoAmIMock.mockResolvedValue({ me: { id: "u", email: "a@b.c" } });
+describe("scheduling without an account", () => {
+  it("turns on and off without consulting an email session", async () => {
     await setAutoAuditAction(true);
     expect(readConfig().audit.auto).toBe(true);
 
-    whoAmIMock.mockResolvedValue(null);
     const res = await setAutoAuditAction(false);
-
     expect(res).toEqual({ ok: true, auto: false });
     expect(readConfig().audit.auto).toBe(false);
   });

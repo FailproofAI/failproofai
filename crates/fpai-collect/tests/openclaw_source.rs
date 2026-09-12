@@ -13,6 +13,7 @@ use fpai_collect::cursor::TailState;
 use fpai_collect::filetail::{self, Ctx, Params, RereadPolicy, Spec};
 use fpai_collect::sources::openclaw::{self, transform};
 use fpai_collect::supervisor::Shutdown;
+use rusqlite::{Connection, params};
 use serde_json::{Value, json};
 
 const UUID: &str = "0c751d66-8f74-429d-a604-b29855d36c41";
@@ -618,6 +619,117 @@ async fn run_briefly(s: Spec, ms: u64) {
     let _ = tokio::time::timeout(Duration::from_millis(ms), filetail::run(s, sd)).await;
 }
 
+fn sqlite_spec(base: PathBuf, spool: PathBuf, state: PathBuf) -> openclaw::sqlite::Spec {
+    openclaw::sqlite::Spec {
+        roots: vec![base.join("agents")],
+        spool_dir: spool,
+        state_dir: state,
+        poll_interval: Duration::from_millis(100),
+        health_key: Some("openclaw-sqlite-test".into()),
+        params: openclaw::sqlite::Params {
+            environment: "local".into(),
+            redact: fpai_collect::Redact::Minimal,
+            machine_id: None,
+            user: None,
+            label: None,
+            max_rows_per_session: 2_000,
+            max_batch_bytes: 8 * 1024 * 1024,
+            since_days: None,
+        },
+    }
+}
+
+async fn run_sqlite_briefly(s: openclaw::sqlite::Spec, ms: u64) {
+    let sd = Shutdown::for_test(Arc::new(AtomicBool::new(false)));
+    let _ = tokio::time::timeout(Duration::from_millis(ms), openclaw::sqlite::run(s, sd)).await;
+}
+
+fn openclaw_db(base: &Path) -> PathBuf {
+    let dir = base.join("agents").join("main").join("agent");
+    fs::create_dir_all(&dir).unwrap();
+    dir.join("openclaw-agent.sqlite")
+}
+
+fn create_openclaw_db(base: &Path) -> Connection {
+    let conn = Connection::open(openclaw_db(base)).unwrap();
+    conn.execute_batch(
+        "PRAGMA journal_mode = WAL;
+         PRAGMA wal_autocheckpoint = 0;
+         CREATE TABLE session_windows (
+           session_id TEXT PRIMARY KEY,
+           updated_at INTEGER NOT NULL,
+           transcript_updated_at INTEGER,
+           ended_at INTEGER
+         );
+         CREATE TABLE transcript_events (
+           session_id TEXT NOT NULL,
+           seq INTEGER NOT NULL,
+           event_json TEXT NOT NULL,
+           created_at INTEGER NOT NULL,
+           PRIMARY KEY (session_id, seq)
+         );
+         CREATE TABLE transcript_rewrite_watermarks (
+           session_id TEXT PRIMARY KEY,
+           generation TEXT NOT NULL,
+           updated_at INTEGER NOT NULL
+         );",
+    )
+    .unwrap();
+    conn
+}
+
+fn replace_sqlite_session(conn: &Connection, generation: &str, lines: &[String], ended: bool) {
+    let activity = 1_788_251_542_907i64;
+    conn.execute(
+        "DELETE FROM transcript_events WHERE session_id = ?1",
+        [UUID],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO session_windows(session_id, updated_at, transcript_updated_at, ended_at)
+         VALUES(?1, ?2, ?2, ?3)
+         ON CONFLICT(session_id) DO UPDATE SET
+           updated_at = excluded.updated_at,
+           transcript_updated_at = excluded.transcript_updated_at,
+           ended_at = excluded.ended_at",
+        params![UUID, activity, ended.then_some(activity)],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO transcript_rewrite_watermarks(session_id, generation, updated_at)
+         VALUES(?1, ?2, ?3)
+         ON CONFLICT(session_id) DO UPDATE SET
+           generation = excluded.generation, updated_at = excluded.updated_at",
+        params![UUID, generation, activity],
+    )
+    .unwrap();
+    for (seq, line) in lines.iter().enumerate() {
+        conn.execute(
+            "INSERT INTO transcript_events(session_id, seq, event_json, created_at)
+             VALUES(?1, ?2, ?3, ?4)",
+            params![UUID, seq as i64, line, activity + seq as i64],
+        )
+        .unwrap();
+    }
+}
+
+fn append_sqlite_event(conn: &Connection, seq: i64, line: &str) {
+    let activity = 1_788_251_600_000i64 + seq;
+    conn.execute(
+        "INSERT INTO transcript_events(session_id, seq, event_json, created_at)
+         VALUES(?1, ?2, ?3, ?4)",
+        params![UUID, seq, line, activity],
+    )
+    .unwrap();
+    conn.execute(
+        "UPDATE session_windows
+            SET updated_at = ?2, transcript_updated_at = ?2, ended_at = NULL
+          WHERE session_id = ?1",
+        params![UUID, activity],
+    )
+    .unwrap();
+}
+
 /// A tree laid out exactly like OpenClaw's: `<state>/agents/<agentId>/sessions/`.
 fn sessions_dir(base: &Path) -> PathBuf {
     let d = base.join("agents").join("main").join("sessions");
@@ -855,6 +967,166 @@ async fn a_partially_written_final_line_is_held_back_then_picked_up() {
         "the completed record must ship on a later pass"
     );
 
+    fs::remove_dir_all(&root).ok();
+    fs::remove_dir_all(&spool).ok();
+    fs::remove_dir_all(&state).ok();
+}
+
+// ── OpenClaw 2026.9.2+ SQLite store ─────────────────────────────────────
+
+#[test]
+fn sqlite_databases_are_discovered_per_agent_and_nothing_else_is_claimed() {
+    let root = tmpdir("sqlite-discovery");
+    let expected = openclaw_db(&root);
+    let other = root
+        .join("agents")
+        .join("research")
+        .join("agent")
+        .join("openclaw-agent.sqlite");
+    fs::create_dir_all(other.parent().unwrap()).unwrap();
+    fs::write(&expected, b"").unwrap();
+    fs::write(&other, b"").unwrap();
+    fs::write(root.join("agents").join("not-a-database.sqlite"), b"").unwrap();
+
+    assert_eq!(
+        openclaw::sqlite::discover_databases(&[root.join("agents")]),
+        vec![expected.clone(), other.clone()]
+    );
+    assert_eq!(
+        openclaw::sqlite::discover_databases(std::slice::from_ref(&root)),
+        vec![expected, other],
+        "an extra path may name the OpenClaw state directory"
+    );
+    fs::remove_dir_all(&root).ok();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn sqlite_and_legacy_jsonl_produce_dedup_identical_events() {
+    let root = tmpdir("sqlite-equivalent-root");
+    let legacy_spool = tmpdir("sqlite-equivalent-legacy-spool");
+    let legacy_state = tmpdir("sqlite-equivalent-legacy-state");
+    let sqlite_spool = tmpdir("sqlite-equivalent-db-spool");
+    let sqlite_state = tmpdir("sqlite-equivalent-db-state");
+    let lines = full_session();
+    write_session(&root, &lines);
+
+    // Checkpoint the schema, then leave the transcript rows in the live WAL.
+    // A reader opened with `immutable=1` would miss these rows entirely.
+    let conn = create_openclaw_db(&root);
+    conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+        .unwrap();
+    replace_sqlite_session(&conn, "generation-a", &lines, true);
+    let wal = PathBuf::from(format!("{}-wal", openclaw_db(&root).display()));
+    assert!(
+        fs::metadata(&wal).unwrap().len() > 0,
+        "fixture must live in WAL"
+    );
+
+    run_briefly(
+        spec(root.clone(), legacy_spool.clone(), legacy_state.clone()),
+        700,
+    )
+    .await;
+    let mut db_spec = sqlite_spec(root.clone(), sqlite_spool.clone(), sqlite_state.clone());
+    db_spec.params.max_rows_per_session = 2;
+    run_sqlite_briefly(db_spec, 900).await;
+
+    let mut legacy: Vec<String> = spooled(&legacy_spool)
+        .into_iter()
+        .map(|event| serde_json::to_string(&event).unwrap())
+        .collect();
+    let mut sqlite: Vec<String> = spooled(&sqlite_spool)
+        .into_iter()
+        .map(|event| serde_json::to_string(&event).unwrap())
+        .collect();
+    legacy.sort();
+    sqlite.sort();
+    assert_eq!(
+        sqlite, legacy,
+        "SQLite rows must retain JSONL offsets and event identities"
+    );
+
+    drop(conn);
+    fs::remove_dir_all(&root).ok();
+    fs::remove_dir_all(&legacy_spool).ok();
+    fs::remove_dir_all(&legacy_state).ok();
+    fs::remove_dir_all(&sqlite_spool).ok();
+    fs::remove_dir_all(&sqlite_state).ok();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn sqlite_resume_only_ships_rows_appended_after_the_saved_sequence() {
+    let root = tmpdir("sqlite-resume-root");
+    let spool = tmpdir("sqlite-resume-spool");
+    let state = tmpdir("sqlite-resume-state");
+    let conn = create_openclaw_db(&root);
+    let lines = full_session();
+    replace_sqlite_session(&conn, "generation-a", &lines, false);
+
+    run_sqlite_briefly(sqlite_spec(root.clone(), spool.clone(), state.clone()), 500).await;
+    assert!(!spooled(&spool).is_empty());
+    clear(&spool);
+
+    run_sqlite_briefly(sqlite_spec(root.clone(), spool.clone(), state.clone()), 350).await;
+    assert!(spooled(&spool).is_empty(), "a resumed poll must be idle");
+
+    append_sqlite_event(
+        &conn,
+        lines.len() as i64,
+        &assistant_text("2026-08-03T08:06:00.000Z", "new SQLite turn"),
+    );
+    run_sqlite_briefly(sqlite_spec(root.clone(), spool.clone(), state.clone()), 500).await;
+    let events = spooled(&spool);
+    assert_eq!(
+        events.len(),
+        1,
+        "old rows must not be re-shipped: {events:?}"
+    );
+    assert_eq!(events[0]["type"], "model_response");
+    assert_eq!(events[0]["content"], "new SQLite turn");
+
+    drop(conn);
+    fs::remove_dir_all(&root).ok();
+    fs::remove_dir_all(&spool).ok();
+    fs::remove_dir_all(&state).ok();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_rewrite_generation_change_resets_sequence_offset_and_transform_state() {
+    let root = tmpdir("sqlite-rewrite-root");
+    let spool = tmpdir("sqlite-rewrite-spool");
+    let state = tmpdir("sqlite-rewrite-state");
+    let conn = create_openclaw_db(&root);
+    replace_sqlite_session(&conn, "generation-a", &full_session(), false);
+
+    run_sqlite_briefly(sqlite_spec(root.clone(), spool.clone(), state.clone()), 500).await;
+    clear(&spool);
+
+    let rewritten = vec![
+        session_header("2026-08-03T09:00:00.000Z"),
+        model_change("2026-08-03T09:00:00.010Z", "rewritten-model"),
+        user_prompt("2026-08-03T09:00:00.020Z", "rewritten opening prompt"),
+    ];
+    replace_sqlite_session(&conn, "generation-b", &rewritten, false);
+    run_sqlite_briefly(sqlite_spec(root.clone(), spool.clone(), state.clone()), 500).await;
+
+    let events = spooled(&spool);
+    let start = events
+        .iter()
+        .find(|event| event["type"] == "agent_start")
+        .unwrap();
+    assert_eq!(start["goal"], "rewritten opening prompt");
+    let request = events
+        .iter()
+        .find(|event| event["type"] == "model_request")
+        .unwrap();
+    assert_eq!(request["model"], "rewritten-model");
+    assert_eq!(
+        request["openclaw_line_offset"],
+        rewritten[0].len() + 1 + rewritten[1].len() + 1
+    );
+
+    drop(conn);
     fs::remove_dir_all(&root).ok();
     fs::remove_dir_all(&spool).ok();
     fs::remove_dir_all(&state).ok();

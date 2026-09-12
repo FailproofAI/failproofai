@@ -1031,13 +1031,25 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
         );
 
         let openclaw_roots = openclaw::default_roots();
+        let openclaw_extra = extras("openclaw", &openclaw_roots);
         file_source(
             &mut tasks,
             "openclaw",
             openclaw::FORMAT,
             openclaw_roots.clone(),
-            &extras("openclaw", &openclaw_roots),
+            &openclaw_extra,
             openclaw::DEFAULT_AGENT_ID,
+            &spool,
+            &cursors,
+            &env,
+            machine.as_deref(),
+            os_user.as_deref(),
+            redact,
+        );
+        openclaw_sqlite_harness(
+            &mut tasks,
+            openclaw_roots,
+            &openclaw_extra,
             &spool,
             &cursors,
             &env,
@@ -1402,6 +1414,94 @@ fn file_source_instance(
                     // A newly added extra path needs no special case: it has no
                     // cursor, so every file under it is a first discovery and is
                     // read from the start of this same window.
+                    since_days: file_source_since_days(),
+                },
+            },
+            sd,
+        )
+    }));
+}
+
+/// Register OpenClaw's 2026.9.2+ SQLite transcript store alongside the legacy
+/// JSONL tailer. Each configured root gets an independent cursor store because
+/// the stores are atomically rewritten whole and must never have two writers.
+#[allow(clippy::too_many_arguments)]
+fn openclaw_sqlite_harness(
+    tasks: &mut Vec<fpai_collect::TaskSpec>,
+    roots: Vec<std::path::PathBuf>,
+    extra: &[fpai_collect::ExtraPath],
+    spool_dir: &std::path::Path,
+    cursor_root: &std::path::Path,
+    environment: &str,
+    machine_id: Option<&str>,
+    user: Option<&str>,
+    redact: fpai_collect::Redact,
+) {
+    openclaw_sqlite_source(
+        tasks,
+        roots,
+        None,
+        cursor_root.join("openclaw-sqlite"),
+        None,
+        spool_dir,
+        environment,
+        machine_id,
+        user,
+        redact,
+    );
+    for ep in extra {
+        openclaw_sqlite_source(
+            tasks,
+            vec![ep.path.clone()],
+            Some(ep.label.clone()),
+            cursor_root.join("openclaw-sqlite").join(&ep.label),
+            Some(format!("openclaw-sqlite:{}", ep.label)),
+            spool_dir,
+            environment,
+            machine_id,
+            user,
+            redact,
+        );
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn openclaw_sqlite_source(
+    tasks: &mut Vec<fpai_collect::TaskSpec>,
+    roots: Vec<std::path::PathBuf>,
+    label: Option<String>,
+    state_dir: std::path::PathBuf,
+    health_key: Option<String>,
+    spool_dir: &std::path::Path,
+    environment: &str,
+    machine_id: Option<&str>,
+    user: Option<&str>,
+    redact: fpai_collect::Redact,
+) {
+    let task_name = match &label {
+        Some(label) => format!("openclaw-sqlite:{label}"),
+        None => "openclaw-sqlite".to_string(),
+    };
+    let spool_dir = spool_dir.to_path_buf();
+    let environment = environment.to_string();
+    let machine_id = machine_id.map(str::to_string);
+    let user = user.map(str::to_string);
+    tasks.push(fpai_collect::TaskSpec::new(task_name, move |sd| {
+        fpai_collect::sources::openclaw::sqlite::run(
+            fpai_collect::sources::openclaw::sqlite::Spec {
+                roots: roots.clone(),
+                spool_dir: spool_dir.clone(),
+                state_dir: state_dir.clone(),
+                poll_interval: std::time::Duration::from_secs(2),
+                health_key: health_key.clone(),
+                params: fpai_collect::sources::openclaw::sqlite::Params {
+                    environment: environment.clone(),
+                    redact,
+                    machine_id: machine_id.clone(),
+                    user: user.clone(),
+                    label: label.clone(),
+                    max_rows_per_session: 2_000,
+                    max_batch_bytes: fpai_collect::spool::DEFAULT_MAX_BATCH_BYTES,
                     since_days: file_source_since_days(),
                 },
             },

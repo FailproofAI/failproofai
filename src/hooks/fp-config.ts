@@ -308,49 +308,65 @@ export interface FpConfig {
   };
   audit: {
     /**
-     * Scan this machine on a schedule, and mail a digest when a scan finds
-     * something harmful.
+     * Scan this machine on a schedule. Delivery is deliberately separate:
+     * desktop notifications are controlled by `notify`, while a verified local
+     * email identity adds email alerts without changing the timer.
      *
-     * ONE switch, not two. An earlier revision split this into `auto` (scan
-     * locally, no account) and `email_enabled` (mail me, sign in), and the two
-     * could only ever disagree — a machine scanning on a timer with nothing to
-     * report it to is a feature that looks on and does nothing visible. The
-     * reason to put a scan on a timer is to be TOLD, so scheduling and mailing
-     * are the same decision and take the same switch.
+     * A signed-out machine with this on is therefore the normal local-only
+     * state rather than a contradiction: it keeps scanning, keeps its local
+     * dashboard current, and raises desktop notifications for credential leaks.
+     * A refresh token expiring must not silently switch off a background
+     * security feature.
      *
-     * A signed-out machine with this on is therefore a real, expected state
-     * rather than a contradiction: it keeps scanning and keeps its local
-     * dashboard current, and the UI says "signed out" until somebody signs back
-     * in. Auth gates SETTING it up, never the machine's ongoing work — a
-     * refresh token expiring must not silently switch off a background feature
-     * somebody configured months ago.
+     * ON for a configured machine that has never stated an opinion, OFF for
+     * every machine we could not read an opinion from — which is not the same
+     * default twice, and the difference is the whole design.
      *
-     * OFF by default, and the asymmetry with `telemetry.enabled` above is
-     * deliberate: the audit reads the CONTENTS of every session transcript on
-     * disk — prompts, file contents, command output — so nothing scans on a
-     * timer until somebody asks for it.
+     * The scan reads the CONTENTS of every session transcript on disk, so the
+     * conservative instinct is to keep it off until asked. But the thing it
+     * looks for now is a leaked credential, and a credential nobody scans for
+     * is a credential nobody revokes: a switch that is off by default is a
+     * feature that, for most users, never runs. Setup is where the machine's
+     * owner is told what it does, so completing setup is the opinion.
+     *
+     * Hence the split. Once `config.json` exists AND carries an `audit` table,
+     * this is on unless it says exactly `false`. Absent file, unparseable JSON,
+     * or no `audit` table at all still read as OFF, because those are the three
+     * ways of not knowing, and "we could not tell" must never turn a transcript
+     * scan on. `crates/failproofaid/src/audit_lane.rs` makes the identical
+     * distinction over the identical bytes — the daemon and this reader must
+     * agree, or the settings page describes a machine that is doing something
+     * else.
+     *
+     * Turning it on sends nothing remotely on its own. Email requires a valid
+     * identity in `audit/session.json`; without one, scans and notifications
+     * remain fully local.
      */
     auto: boolean;
     /**
-     * When this machine's owner agreed that a scheduled scan may send what it
-     * finds off the box, as epoch ms. Absent means they never did.
+     * Raise a desktop notification when a scan finds a credential.
      *
-     * This does NOT reintroduce the second switch the comment above rejects,
-     * and it is never drawn as one. `auto` is what a person sets; this is a
-     * record of the disclosure they were shown when they set it. The two cannot
-     * drift, because every path that turns `auto` on stamps this in the same
-     * call and nothing stamps it alone.
+     * Separate from `auto` because they answer different questions: `auto` is
+     * whether the machine scans, this is whether it interrupts. Somebody who
+     * wants the scan and not the banner is a coherent person, and without this
+     * their only way to stop the banner is to stop the scan.
      *
-     * It exists because `auto` CHANGED MEANING. Through 1.0.0 it meant "scan
-     * this machine on a timer" and nothing more — no account, no network, and
-     * the toggle that wrote it said as much in as many words. Harm digests gave
-     * the same stored bit a second job: uploading redacted transcript excerpts
-     * to the api-server and mailing them. Without a separate record, every
-     * machine that opted into the old meaning would have started sending on
-     * upgrade, having agreed to nothing of the kind, with the only notice a
-     * line in the journal. Gating on the stamp rather than the switch is what
-     * keeps that upgrade silent in the safe direction: those machines keep
-     * scanning locally and send nothing until somebody opts in again.
+     * ON by default. Every scheduled scan that still sees a leak may notify,
+     * which keeps a credential that remains exposed from disappearing after
+     * its first alert. A silent default would make the common case — a user who
+     * never opens the dashboard and never gave an email — a machine that finds
+     * the key and tells nobody.
+     *
+     * On a headless box, container or SSH-only session there may be no desktop
+     * server to receive the banner. The scheduled scan still completes and
+     * records its result; notification failure never changes the scan outcome.
+     */
+    notify: boolean;
+    /**
+     * Legacy migration marker from the earlier harm-digest consent model.
+     * Retained when reading and writing old configs so upgrades are lossless,
+     * but it no longer gates scheduling or credential-alert email. A verified
+     * email identity is now the delivery opt-in.
      */
     reportsConsentedAt?: number;
     /** Days between scheduled runs. Wall clock, so it survives suspend. */
@@ -402,7 +418,9 @@ export const DEFAULT_CONFIG: FpConfig = {
     environment: "local",
   },
   telemetry: { enabled: true },
-  audit: { auto: false, intervalDays: DEFAULT_AUDIT_INTERVAL_DAYS },
+  // `auto: false` is the no-file case specifically — see the field's doc for
+  // why a machine that HAS a config reads the other way.
+  audit: { auto: false, notify: true, intervalDays: DEFAULT_AUDIT_INTERVAL_DAYS },
 };
 
 /**
@@ -495,7 +513,11 @@ export function projectConfig(parsed: Record<string, unknown>): FpConfig {
     const daemon = (parsed.daemon ?? {}) as Record<string, unknown>;
     const collector = (parsed.collector ?? {}) as Record<string, unknown>;
     const telemetry = (parsed.telemetry ?? {}) as Record<string, unknown>;
-    const audit = (parsed.audit ?? {}) as Record<string, unknown>;
+    // Presence, not just contents: `audit.auto` reads differently when the
+    // table is absent than when it is present-but-silent. See the field's doc.
+    const auditPresent =
+      !!parsed.audit && typeof parsed.audit === "object" && !Array.isArray(parsed.audit);
+    const audit = (auditPresent ? parsed.audit : {}) as Record<string, unknown>;
     return {
       // Anything unrecognised reads as `oss`. The failure direction matters: a
       // corrupt config must not be able to turn cloud reporting ON.
@@ -525,15 +547,23 @@ export function projectConfig(parsed: Record<string, unknown>): FpConfig {
       // reads as on — the shipped default, and what a config with no
       // [telemetry] block at all means.
       telemetry: { enabled: telemetry.enabled !== false },
-      // Mirror image of telemetry above: only an explicit `true` switches the
-      // scheduled scan on. Absent, misspelled, or `"yes"` all read as off,
-      // because the failure direction here is a machine that starts reading
-      // every transcript it can find on a timer nobody set.
+      // A configured machine with no stated opinion scans; a machine we could
+      // not read an opinion FROM does not. `auditPresent` is what separates
+      // them, and it is the reason this is not simply `!== false`: with no
+      // `audit` table there is no opinion to have been stated, only an absence,
+      // and an absence must not start reading every transcript on disk. Same
+      // three-way split as `audit_lane.rs`, over the same file.
       audit: {
-        auto: audit.auto === true,
+        auto: auditPresent && audit.auto !== false,
+        // Default ON, off only on an explicit `false` — a notification the user
+        // never sees is the same as no detection at all. Ungated on
+        // `auditPresent`, unlike `auto`: this is read at the moment a
+        // notification is about to fire, which means a scan already ran and the
+        // question is only whether to speak.
+        notify: audit.notify !== false,
         intervalDays: readIntervalDays(audit.interval_days),
-        // A finite number or nothing. A garbage value reads as absent, which is
-        // the direction that sends nothing.
+        // Preserve the legacy marker when it is valid; current behavior does
+        // not consult it.
         reportsConsentedAt:
           typeof audit.reports_consented_at === "number" &&
           Number.isFinite(audit.reports_consented_at)
@@ -584,6 +614,7 @@ const OWNED_CONFIG_KEYS: readonly (readonly string[])[] = [
   ["collector", "sources", "*", "extra_paths"],
   ["telemetry", "enabled"],
   ["audit", "auto"],
+  ["audit", "notify"],
   ["audit", "interval_days"],
   ["audit", "reports_consented_at"],
 ];
@@ -682,16 +713,20 @@ export function writeConfig(config: FpConfig, raw?: Record<string, unknown>): vo
     ...(config.telemetry.enabled ? {} : { telemetry: { enabled: false } }),
     // Written ALWAYS, unlike telemetry directly above — the two are opposites
     // on purpose. Telemetry ships on and is deliberately not advertised;
-    // the scheduled audit ships off and is meant to be FOUND, and a switch
+    // the scheduled audit is configured during setup and is meant to be FOUND,
+    // and a switch
     // nobody can see is the same as a switch that does not exist. Emitting both
     // keys unconditionally also makes "a user's setting survives a rewrite"
     // total rather than conditional.
     audit: {
       auto: config.audit.auto,
+      // Emitted unconditionally, like `auto`. A switch that only appears in the
+      // file once you have used it is a switch nobody discovers, and this one
+      // exists to be found by somebody the banner annoyed.
+      notify: config.audit.notify,
       interval_days: config.audit.intervalDays,
-      // Written only once there IS consent, so an untouched machine's config
-      // does not grow a key implying it was asked. It is in
-      // `OWNED_CONFIG_KEYS`, so omitting it here really removes it.
+      // Preserve the legacy consent marker when present. It is not used by the
+      // current local-schedule + optional-email model.
       ...(config.audit.reportsConsentedAt === undefined
         ? {}
         : { reports_consented_at: config.audit.reportsConsentedAt }),

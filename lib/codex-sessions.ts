@@ -158,6 +158,21 @@ function joinTexts(blocks: CodexContentBlock[] | undefined, wantedType: "input_t
     .join("\n");
 }
 
+/** Text carried by tool outputs. Newer Codex chronicles use an array of
+ * `input_text` blocks for `custom_tool_call_output`, while older releases use
+ * one string for `function_call_output`. */
+function toolOutputText(output: unknown): string {
+  if (typeof output === "string") return output;
+  if (Array.isArray(output)) {
+    return output
+      .filter((block): block is CodexContentBlock => !!block && typeof block === "object")
+      .map((block) => typeof block.text === "string" ? block.text : "")
+      .filter(Boolean)
+      .join("\n");
+  }
+  return output === undefined ? "" : JSON.stringify(output);
+}
+
 /**
  * Parse a Codex JSONL transcript into `LogEntry[]` plus the raw lines.
  * Yields to the event loop every 200 lines so big transcripts don't block.
@@ -250,10 +265,11 @@ export async function parseCodexLog(
         continue;
       }
 
-      if (subType === "function_call") {
+      if (subType === "function_call" || subType === "custom_tool_call") {
         const callId = payload.call_id as string | undefined;
         const name = (payload.name as string | undefined) ?? "function_call";
-        const input = safeJsonParse(payload.arguments as string | undefined);
+        const encodedInput = (payload.arguments ?? payload.input) as string | undefined;
+        const input = safeJsonParse(encodedInput);
         const toolUse: ToolUseBlock = {
           type: "tool_use",
           id: callId ?? `${timestamp}-${name}`,
@@ -273,7 +289,7 @@ export async function parseCodexLog(
         continue;
       }
 
-      if (subType === "function_call_output") {
+      if (subType === "function_call_output" || subType === "custom_tool_call_output") {
         const callId = payload.call_id as string | undefined;
         const block = callId ? toolUseById.get(callId) : undefined;
         if (block) {
@@ -282,7 +298,7 @@ export async function parseCodexLog(
           block.result = {
             timestamp,
             timestampFormatted: formatTimestamp(date),
-            content: typeof payload.output === "string" ? (payload.output as string) : JSON.stringify(payload.output),
+            content: toolOutputText(payload.output),
             durationMs: duration,
             durationFormatted: formatDuration(duration),
           };

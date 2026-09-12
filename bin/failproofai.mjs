@@ -481,7 +481,7 @@ async function runCli() {
           label: "see what it caught",
           entries: [
             ["(no args)", "Open the policy dashboard on localhost:8020"],
-            ["audit", "Scan your agents' history, then open the audit view"],
+            ["audit", "Find credentials your agents leaked, and get told about it"],
             ["config --status", "Cloud connection, daemon version, pause state"],
           ],
         },

@@ -26,6 +26,10 @@ const h = vi.hoisted(() => ({
   writeDashboardCache: vi.fn(() => true),
   openWhenReady: vi.fn(),
   launch: vi.fn(),
+  notifyDesktop: vi.fn<(...a: unknown[]) => Promise<unknown>>(() => Promise.resolve({ ok: true, id: 1 })),
+  macNotifierInstalled: vi.fn(() => true),
+  queueMacNotification: vi.fn(() => true),
+  pruneMacNotifyQueue: vi.fn(),
 }));
 
 vi.mock("../../src/hooks/hook-telemetry", () => ({ trackHookEvent: h.trackHookEvent }));
@@ -33,6 +37,12 @@ vi.mock("../../src/audit/index", () => ({ runAudit: h.runAudit }));
 vi.mock("../../src/audit/dashboard-cache", () => ({ writeDashboardCache: h.writeDashboardCache }));
 vi.mock("../../src/audit/open-browser", () => ({ openWhenReady: h.openWhenReady }));
 vi.mock("../../scripts/launch", () => ({ launch: h.launch }));
+vi.mock("../../src/audit/desktop-notify", () => ({ notifyDesktop: h.notifyDesktop }));
+vi.mock("../../src/audit/macos-notifier", () => ({
+  macNotifierInstalled: h.macNotifierInstalled,
+  queueMacNotification: h.queueMacNotification,
+  pruneMacNotifyQueue: h.pruneMacNotifyQueue,
+}));
 vi.mock("../../lib/telemetry-id", () => ({ getInstanceId: () => "test-instance" }));
 
 import { runAuditCli, runScheduledAudit, EXIT_AUDIT_ALREADY_RUNNING } from "../../src/audit/cli";
@@ -60,6 +70,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.trackHookEvent.mockImplementation(() => Promise.resolve());
   h.writeDashboardCache.mockReturnValue(true);
+  h.notifyDesktop.mockResolvedValue({ ok: true, id: 1 });
+  h.macNotifierInstalled.mockReturnValue(true);
+  h.queueMacNotification.mockReturnValue(true);
   prevHome = process.env.FAILPROOFAI_HOME;
   home = mkdtempSync(resolve(tmpdir(), "fpai-sched-"));
   process.env.FAILPROOFAI_HOME = home;
@@ -253,6 +266,18 @@ describe("the interactive `failproofai audit` shares the lock", () => {
     expect(existsSync(auditLockFile())).toBe(false);
   });
 
+  it("does not send a desktop notification for an interactive audit, even when it finds a leak", async () => {
+    h.runAudit.mockResolvedValue(result({
+      totals: { hits: 1, projectsWithHits: 1 },
+      leakIds: ["1111111111111111"],
+      newLeakIds: ["1111111111111111"],
+    }));
+
+    await runAuditCli([]);
+
+    expect(h.notifyDesktop).not.toHaveBeenCalled();
+  });
+
   it("takes the lock before any telemetry, so a refusal is never counted as a run", async () => {
     // The order matters: acquiring after cli_audit_started would report a scan
     // that never happened every time two audits collided.
@@ -366,4 +391,90 @@ describe("the binary-level scheduled entry point", () => {
     // there afterwards.
     expect(existsSync(resolve(fp, "config.json"))).toBe(true);
   }, SUBPROCESS_TIMEOUT_MS);
+});
+
+// A scan that finds a key and tells nobody is the failure this whole feature
+// exists to prevent — and the scheduled run is precisely the one with nobody
+// watching the terminal it printed to.
+describe("announcing a leak on the desktop", () => {
+  const withLeaks = (ids: string[]) =>
+    result({ totals: { hits: 1, projectsWithHits: 1 }, leakIds: ids, newLeakIds: ids });
+
+  const writeAuditConfig = (audit: Record<string, unknown>) => {
+    mkdirSync(home, { recursive: true });
+    writeFileSync(resolve(home, "config.json"), JSON.stringify({ audit }));
+  };
+
+  it("raises one factual review banner when this run finds new matches", async () => {
+    h.runAudit.mockResolvedValue(withLeaks(["1111111111111111", "2222222222222222"]));
+
+    expect(await runScheduledAudit()).toBe(0);
+
+    expect(h.notifyDesktop).toHaveBeenCalledTimes(1);
+    const [summary, body] = h.notifyDesktop.mock.calls[0] as unknown as [string, string];
+    expect(summary).toContain("failproofai");
+    expect(body).toContain("Possible credential exposure");
+    expect(body).toContain("failproofai audit");
+    expect(body).toContain("--email you@example.com");
+    expect(body).not.toMatch(/2 credentials|leaked credential/i);
+  });
+
+  it("says nothing when the scan found nothing new", async () => {
+    // Including the repeat-scan case: the same key, already announced, is not
+    // news. Silence here is what makes a weekly timer tolerable.
+    h.runAudit.mockResolvedValue(result({ totals: { hits: 9, projectsWithHits: 3 } }));
+    await runScheduledAudit();
+    expect(h.notifyDesktop).not.toHaveBeenCalled();
+  });
+
+  it("announces again on every scheduled scan while the leak is still present", async () => {
+    h.runAudit.mockResolvedValue(withLeaks(["1111111111111111"]));
+    await runScheduledAudit();
+    await runScheduledAudit();
+    expect(h.notifyDesktop).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not interrupt a user who turned the banner off", async () => {
+    writeAuditConfig({ auto: true, notify: false });
+    h.runAudit.mockResolvedValue(withLeaks(["1111111111111111"]));
+    await runScheduledAudit();
+    expect(h.notifyDesktop).not.toHaveBeenCalled();
+  });
+
+  it("still announces when the config has an audit table but no opinion on notifying", async () => {
+    writeAuditConfig({ auto: true });
+    h.runAudit.mockResolvedValue(withLeaks(["1111111111111111"]));
+    await runScheduledAudit();
+    expect(h.notifyDesktop).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not create legacy per-CLI notification markers", async () => {
+    h.runAudit.mockResolvedValue(withLeaks(["1111111111111111"]));
+    await runScheduledAudit();
+    expect(existsSync(resolve(home, "audit", "notified-desktop", "1111111111111111"))).toBe(false);
+    expect(existsSync(resolve(home, "audit", "notified", "1111111111111111"))).toBe(false);
+    expect(existsSync(resolve(home, "audit", "notified-sessions"))).toBe(false);
+  });
+
+  it("stays a successful scan when there is no desktop to notify", async () => {
+    // A headless box, a container, an SSH session: all normal, none of them a
+    // reason to report the audit itself as failed and make the scheduler back
+    // off from the thing that actually matters.
+    h.notifyDesktop.mockResolvedValue({ ok: false, reason: "no-session", detail: "ENOENT" });
+    h.runAudit.mockResolvedValue(withLeaks(["1111111111111111"]));
+
+    expect(await runScheduledAudit()).toBe(0);
+    expect(existsSync(resolve(home, "audit", "notified-desktop", "1111111111111111"))).toBe(false);
+    await runScheduledAudit();
+    expect(h.notifyDesktop).toHaveBeenCalledTimes(2);
+  });
+
+  it("survives a notifier that throws outright", async () => {
+    h.notifyDesktop.mockRejectedValue(new Error("boom"));
+    h.runAudit.mockResolvedValue(withLeaks(["1111111111111111"]));
+    expect(await runScheduledAudit()).toBe(0);
+    expect(existsSync(resolve(home, "audit", "notified-desktop", "1111111111111111"))).toBe(false);
+    expect(await runScheduledAudit()).toBe(0);
+    expect(h.notifyDesktop).toHaveBeenCalledTimes(2);
+  });
 });

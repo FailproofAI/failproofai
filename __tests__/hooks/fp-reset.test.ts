@@ -42,15 +42,57 @@ import {
 let home: string;
 let prev: string | undefined;
 
+let prevUnitDir: string | undefined;
+let prevDaemonBinary: string | undefined;
+
 beforeEach(() => {
   prev = process.env.FAILPROOFAI_HOME;
   home = mkdtempSync(resolve(tmpdir(), "fpai-reset-"));
   process.env.FAILPROOFAI_HOME = home;
+
+  // FAILPROOFAI_HOME alone does not isolate this file, and the gap made three
+  // tests here fail on a developer's machine while passing in CI — which is
+  // exactly how they came to be written off as "known pre-existing".
+  //
+  // `checkLayoutForCli()` calls `healDaemonFlag()`, which asks the REAL
+  // `daemonServiceStatus()` — an `existsSync` on /etc/systemd/system plus a
+  // `systemctl is-active`. On the machine of anyone who has actually run
+  // `failproofai config`, that answers "running", and the next line awaits
+  // `probeDaemonEndToEnd()`: a poll against a socket inside THIS temp home that
+  // nothing will ever listen on, bounded by DAEMON_PROBE_READY_TIMEOUT_MS =
+  // 10s. That is twice vitest's 5s default, so the two `daemon.configured:true`
+  // tests time out.
+  //
+  // The timeout is the smaller half. Vitest fails the test but cannot cancel
+  // the promise, so the probe finishes ~5s later and runs
+  // `updateConfig({daemon:{configured:false}})`. Every path helper resolves
+  // FAILPROOFAI_HOME at CALL time, and beforeEach has repointed it by then — so
+  // that write lands in a LATER test's home. A stray config.json is a layout-4
+  // landmark that `detectLayout()` checks before config.toml, so the layout-2
+  // home the spool-drain test seeds reads as "current" and the migration it
+  // asserts never runs. One unisolated read, three failures, two files apart.
+  prevUnitDir = process.env.FAILPROOFAI_SYSTEMD_DIR;
+  process.env.FAILPROOFAI_SYSTEMD_DIR = resolve(home, "systemd");
+  mkdirSync(resolve(home, "systemd"), { recursive: true });
+
+  // Defensive, and honestly labelled: `daemonVersionSkew()` returns null
+  // outright when this is set ("someone named a binary explicitly"), which
+  // would delete the hint the tests below assert. Removing this block and
+  // exporting the variable did NOT change the outcome here — the tests that
+  // care now pin `daemonServiceStatus` themselves — so this is isolation
+  // against a read that could matter, not a demonstrated fix. It costs nothing
+  // and removes one more way this file can depend on whose machine it runs on.
+  prevDaemonBinary = process.env.FAILPROOFAI_DAEMON_BINARY;
+  delete process.env.FAILPROOFAI_DAEMON_BINARY;
 });
 
 afterEach(() => {
   if (prev === undefined) delete process.env.FAILPROOFAI_HOME;
   else process.env.FAILPROOFAI_HOME = prev;
+  if (prevUnitDir === undefined) delete process.env.FAILPROOFAI_SYSTEMD_DIR;
+  else process.env.FAILPROOFAI_SYSTEMD_DIR = prevUnitDir;
+  if (prevDaemonBinary === undefined) delete process.env.FAILPROOFAI_DAEMON_BINARY;
+  else process.env.FAILPROOFAI_DAEMON_BINARY = prevDaemonBinary;
   rmSync(home, { recursive: true, force: true });
 });
 
@@ -551,8 +593,16 @@ describe("checkLayoutForCli", () => {
       installedDaemon("0.0.1-old");
       writeVersionFile({ daemon: "0.0.1-old" });
       updateConfig({ daemon: { configured: true } });
+      // The unit dir is redirected to a scratch path in `beforeEach`, so the
+      // real status would read `not-installed` — which clears the flag and
+      // produces the SELF-HEAL message instead. That message happens to contain
+      // every string asserted below, so the test would pass while exercising a
+      // different branch entirely. Pin the status to the state this test names.
+      const svc = await import("../../src/hooks/daemon-service");
+      const stat = vi.spyOn(svc, "daemonServiceStatus").mockReturnValue("stopped");
 
       const text = (await checkLayoutForCli()).lines.join("\n");
+      stat.mockRestore();
 
       expect(text).toContain("0.0.1-old");
       // Must name the consequence, not just the mismatch: the reason to act now
@@ -580,8 +630,13 @@ describe("checkLayoutForCli", () => {
     it("says nothing about the daemon when there is no skew", async () => {
       seedLayoutOne();
       updateConfig({ daemon: { configured: true } });
+      // Same reason as above: without pinning, this asserts silence from a
+      // machine with no daemon rather than from one whose daemon is fine.
+      const svc = await import("../../src/hooks/daemon-service");
+      const stat = vi.spyOn(svc, "daemonServiceStatus").mockReturnValue("stopped");
 
       const text = (await checkLayoutForCli()).lines.join("\n");
+      stat.mockRestore();
 
       expect(text).not.toContain("failproofai update");
     });

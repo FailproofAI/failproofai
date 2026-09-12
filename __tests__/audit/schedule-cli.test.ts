@@ -10,10 +10,8 @@
  *
  *   - a bad day count must be rejected BEFORE anything is written or any code is
  *     emailed, or a typo costs a login;
- *   - turning scheduling ON requires a session (a timer with nobody to tell is a
- *     switch that reads as on and produces nothing), while turning it OFF never
- *     checks — an expired session must not trap somebody into keeping a feature
- *     they are trying to disable.
+ *   - scheduling is local and works without an email identity; `--email` adds
+ *     the optional mail channel without controlling the timer itself.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -120,12 +118,10 @@ describe("audit --schedule", () => {
     },
   );
 
-  it("refuses to turn scheduling on with no session and no terminal", async () => {
-    // vitest runs without a TTY, so `canPrompt()` is false — the same state a
-    // cron line or a CI runner is in. It must fail with a sentence rather than
-    // hang on a prompt nobody will answer.
-    await expect(runScheduleOn("7")).rejects.toThrow(/interactive terminal/i);
-    expect(readConfig().audit.auto).toBe(false);
+  it("turns scheduling on with no session and no terminal", async () => {
+    await expect(runScheduleOn("7")).resolves.toBeUndefined();
+    expect(readConfig().audit.auto).toBe(true);
+    expect(stdout()).toContain("email is optional");
   });
 });
 
@@ -179,7 +175,7 @@ describe("audit --status", () => {
     expect(stdout()).toContain("you@example.com");
   });
 
-  it("names the scans-continue-digests-pause state when scheduling outlives the session", async () => {
+  it("names the local-alerts-continue email-pauses state when scheduling outlives the session", async () => {
     writeAuth(SESSION);
     await runScheduleOn("7");
     deleteAuth();
@@ -189,7 +185,9 @@ describe("audit --status", () => {
 
     // The exact state `report-harm.ts` reports as "signed-out". Silence about
     // it would look like the feature failing.
-    expect(stdout()).toMatch(/scans continue/i);
+    const text = stdout().replace(/\s+/g, " ");
+    expect(text).toMatch(/scans and desktop alerts continue/i);
+    expect(text).toMatch(/email alerts are paused/i);
   });
 
   it("never throws on a home with no schedule, cache or machine file", () => {

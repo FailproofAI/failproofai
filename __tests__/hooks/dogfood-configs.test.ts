@@ -14,6 +14,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { CLAUDE_INSTALL_EVENT_TYPES } from "@/src/hooks/types";
 
@@ -169,6 +170,68 @@ describe("the surfaces that spawn bun from JS rather than a config", () => {
   it("pi's dogfood surface is knowingly NOT protected", () => {
     const src = readFileSync(resolve(ROOT, "pi-extension/index.ts"), "utf8");
     expect(src).toContain('cmd: "bun"');
+  });
+});
+
+describe("git must not be able to hide a gutted config", () => {
+  /**
+   * `git update-index --skip-worktree` on a dogfood config is a trap with no
+   * bottom, and it sprang: nine of these files were emptied on disk to `{}` /
+   * `{"version":1}` while `git status` reported a completely clean tree,
+   * `git checkout -- <path>` FAILED SILENTLY (exit 1, "pathspec did not match")
+   * leaving the empty file in place, and `git stash` said "No local changes to
+   * save". Every assertion in this file reads the WORKING TREE, so all eight
+   * per-file tests failed — and were written off as "known pre-existing
+   * failures" for weeks, because every attempt to restore from git was a no-op
+   * that reported success.
+   *
+   * The real cost was not the red tests. With those files empty, failproofai
+   * enforced NOTHING in this repo for codex, copilot, cursor, factory, devin,
+   * antigravity, goose, opencode and pi — silently, while `git status` said
+   * everything was fine.
+   */
+  it("marks no dogfood config skip-worktree or assume-unchanged", () => {
+    const paths = [
+      ...CONFIGS.map((c) => c.file),
+      ".opencode/opencode.json",
+      ".opencode/plugins/failproofai.mjs",
+      ".pi/settings.json",
+      ".failproofai/policies-config.json",
+    ].filter((f) => existsSync(resolve(ROOT, f)));
+
+    const out = execFileSync("git", ["ls-files", "-v", "--", ...paths], {
+      cwd: ROOT,
+      encoding: "utf8",
+    });
+
+    // `git ls-files -v` tags a normal tracked file `H`. UPPERCASE `S` is
+    // skip-worktree; a LOWERCASE letter is assume-unchanged. Both hide edits,
+    // so anything that is not exactly `H` fails — matching on case alone (the
+    // obvious `/^[a-z]/`) would have passed vacuously against the real damage,
+    // which was tagged `S`.
+    const hidden = out
+      .split(String.fromCharCode(10))
+      .filter((line) => line.trim() && !line.startsWith("H "))
+      .map((line) => line.trim());
+
+    expect(hidden, `hidden from git — these can be gutted invisibly:\n${hidden.join("\n")}`)
+      .toEqual([]);
+  });
+
+  it("has no dogfood config that is empty JSON", () => {
+    // The state the bit was hiding. Cheap, and it catches the damage directly
+    // rather than only the mechanism that concealed it.
+    const jsonConfigs = [
+      ...CONFIGS.map(({ file }) => file),
+      ".opencode/opencode.json",
+      ".pi/settings.json",
+      ".failproofai/policies-config.json",
+    ].filter((file) => existsSync(resolve(ROOT, file)));
+    for (const file of jsonConfigs) {
+      const raw = readFileSync(resolve(ROOT, file), "utf8").trim();
+      expect(raw.length, `${file} is empty`).toBeGreaterThan(20);
+      expect(raw, `${file} has been gutted`).not.toBe("{}");
+    }
   });
 });
 

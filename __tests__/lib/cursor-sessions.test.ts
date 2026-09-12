@@ -334,4 +334,41 @@ describe("lib/cursor-sessions: findCursorTranscript + getCursorSessionLog", () =
     if (block.type !== "text") throw new Error("expected text block");
     expect(block.text).toBe("world");
   });
+
+  it("keeps tool input and paired output in a 2026-04+ transcript", async () => {
+    const sessionId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const dir = join(fakeHome, ".cursor", "projects", "home-u-repo", "agent-transcripts", sessionId);
+    mkdirSync(dir, { recursive: true });
+    const file = join(dir, `${sessionId}.jsonl`);
+    writeFileSync(file, [
+      JSON.stringify({
+        role: "assistant",
+        message: { content: [{
+          type: "tool_use",
+          id: "call_1",
+          name: "Shell",
+          input: { command: "echo ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8" },
+        }] },
+      }),
+      JSON.stringify({
+        role: "user",
+        message: { content: [{
+          type: "tool_result",
+          tool_use_id: "call_1",
+          content: "sk-proj-abcdefghijklmnopqrstuvwxyz012345",
+        }] },
+      }),
+    ].join("\n"));
+
+    const result = await getCursorSessionLog(sessionId);
+    const assistant = result?.entries.find((entry) => entry.type === "assistant");
+    if (!assistant || assistant.type !== "assistant") throw new Error("expected assistant");
+    const tool = assistant.message.content.find((block) => block.type === "tool_use");
+    expect(tool).toMatchObject({
+      type: "tool_use",
+      name: "Shell",
+      input: { command: expect.stringContaining("ghp_") },
+      result: { content: expect.stringContaining("sk-proj-") },
+    });
+  });
 });

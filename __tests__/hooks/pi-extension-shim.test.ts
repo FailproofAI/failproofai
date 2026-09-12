@@ -30,6 +30,10 @@ const captured: CapturedCall[] = [];
  *  in the map gets the default empty stdout. */
 const mockSpawnReplyByEvent: Record<string, string | undefined> = {};
 
+/** Which child_process API each event actually used. Pins the blocking vs
+ *  non-blocking split — see the `spawn` mock below. */
+const spawnApiByEvent: Record<string, "spawnSync" | "spawn"> = {};
+
 function eventNameFromArgs(args: string[]): string | undefined {
   const i = args.indexOf("--hook");
   return i >= 0 ? args[i + 1] : undefined;
@@ -38,9 +42,51 @@ function eventNameFromArgs(args: string[]): string | undefined {
 vi.mock("node:child_process", () => ({
   spawnSync: (_cmd: string, args: string[], opts: { input?: string }) => {
     captured.push({ args: args ?? [], payload: JSON.parse(opts?.input ?? "{}") });
+    spawnApiByEvent[eventNameFromArgs(args ?? []) ?? "?"] = "spawnSync";
     const evt = eventNameFromArgs(args ?? []);
     const stdout = (evt && mockSpawnReplyByEvent[evt]) ?? "";
     return { pid: 0, output: [], status: 0, signal: null, stderr: "", stdout };
+  },
+  // `session_start`, `tool_result` and `session_shutdown` go through the
+  // detached `forwardPolicy` instead of `callPolicy`, because Pi awaits its
+  // handlers serially and those three discard the verdict — blocking the TUI
+  // on a subprocess whose answer is thrown away. They still have to deliver
+  // the same payload, so the mock captures them into the same array and every
+  // assertion below is unchanged. The payload arrives on stdin rather than as
+  // `opts.input`.
+  spawn: (_cmd: string, args: string[]) => {
+    let stdinBuf = "";
+    const childHandlers: Record<string, ((...args: unknown[]) => void)[]> = {};
+    const stdoutHandlers: Record<string, ((chunk: Buffer) => void)[]> = {};
+    const child = {
+      unref: () => {},
+      on: (name: string, fn: (...args: unknown[]) => void) => {
+        (childHandlers[name] ??= []).push(fn);
+        return child;
+      },
+      stdout: {
+        on: (name: string, fn: (chunk: Buffer) => void) => {
+          (stdoutHandlers[name] ??= []).push(fn);
+        },
+      },
+      stdin: {
+        on: () => {},
+        end: (chunk?: string) => {
+          stdinBuf += chunk ?? "";
+          captured.push({ args: args ?? [], payload: JSON.parse(stdinBuf || "{}") });
+          const eventName = eventNameFromArgs(args ?? []);
+          spawnApiByEvent[eventName ?? "?"] = "spawn";
+          queueMicrotask(() => {
+            const stdout = (eventName && mockSpawnReplyByEvent[eventName]) ?? "";
+            if (stdout) {
+              for (const fn of stdoutHandlers.data ?? []) fn(Buffer.from(stdout));
+            }
+            for (const fn of childHandlers.close ?? []) fn(0);
+          });
+        },
+      },
+    };
+    return child;
   },
 }));
 
@@ -116,6 +162,33 @@ describe("pi-extension shim — sessionId resolution via on-disk discovery", () 
     expect(captured.at(-1)?.payload.session_id).toBe(sid);
     handlers.session_shutdown({ type: "session_shutdown", reason: "quit", cwd: "/proj" });
     expect(captured.at(-1)?.payload.session_id).toBe(sid);
+  });
+
+  // Pi awaits its handlers serially, so a `spawnSync` inside one freezes the
+  // whole TUI for the subprocess's duration — measured at a 1.0-1.6s floor on
+  // every session start just to boot the binary, with a 60s ceiling. Three
+  // events discarded the verdict anyway, so they now forward detached. The
+  // other four consume the decision, and blocking there IS the enforcement.
+  it("only blocks Pi on the events whose verdict it actually reads", () => {
+    const sid = "66666666-6666-6666-6666-666666666666";
+    writeSessionFile("/proj", sid);
+    for (const k of Object.keys(spawnApiByEvent)) delete spawnApiByEvent[k];
+
+    handlers.session_start({ type: "session_start", cwd: "/proj" });
+    handlers.tool_result({ type: "tool_result", toolName: "bash", input: {}, content: [], isError: false, cwd: "/proj" });
+    handlers.session_shutdown({ type: "session_shutdown", reason: "quit", cwd: "/proj" });
+    expect(spawnApiByEvent.session_start).toBe("spawn");
+    expect(spawnApiByEvent.tool_result).toBe("spawn");
+    expect(spawnApiByEvent.session_shutdown).toBe("spawn");
+
+    handlers.tool_call({ type: "tool_call", toolName: "bash", input: { command: "ls" }, cwd: "/proj" });
+    handlers.user_bash({ type: "user_bash", command: "ls", cwd: "/proj" });
+    handlers.input({ type: "input", text: "hi", cwd: "/proj" });
+    handlers.agent_end({ type: "agent_end", cwd: "/proj" });
+    expect(spawnApiByEvent.tool_call).toBe("spawnSync");
+    expect(spawnApiByEvent.user_bash).toBe("spawnSync");
+    expect(spawnApiByEvent.input).toBe("spawnSync");
+    expect(spawnApiByEvent.agent_end).toBe("spawnSync");
   });
 
   it("clears the per-cwd cache on session_shutdown reason=new/resume/fork", () => {
@@ -303,6 +376,16 @@ describe("pi-extension shim — agent_end → before_agent_start stop-block hand
     expect(result?.systemPrompt).toBe(
       "BASE\n\nMANDATORY ACTION REQUIRED from failproofai (policy: require-commit-before-stop): commit now.",
     );
+  });
+
+  it("ignores legacy per-CLI notice output on session_start", async () => {
+    mockSpawnReplyByEvent.session_start = JSON.stringify({
+      permission: "allow",
+      failproofaiNotice: "Review possible credential exposure",
+    });
+    handlers.session_start({ type: "session_start", cwd: "/proj" });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(captured.at(-1)?.args).toContain("session_start");
   });
 
   it("before_agent_start with no pending block returns undefined", () => {

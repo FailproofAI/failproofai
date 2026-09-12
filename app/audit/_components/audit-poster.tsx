@@ -24,7 +24,12 @@
 import React, { forwardRef, useMemo, useState } from "react";
 import { pickArchetypeVariant, type ArchetypeKey } from "@/src/audit/archetypes";
 import { type Grade } from "@/src/audit/scoring";
-import { getArchetypeRarityPct } from "@/src/audit/social-proof";
+// Archetype rarity switched off — the percentages are eight hardcoded integers
+// ("Seeded with snapshot values; swap for live aggregates once that pipeline
+// lands"), and this is the ONLY surface that rendered them: baked by
+// html-to-image into the PNG people post publicly. A fabricated population
+// statistic on a shared card is a claim we cannot support.
+// import { getArchetypeRarityPct } from "@/src/audit/social-proof";
 import { copyOrDownloadCard, downloadCard, shareCardNative, shareCardToastMessage } from "@/lib/share-card";
 import { toast } from "@/app/components/toast";
 import { usePostHog } from "@/contexts/PostHogContext";
@@ -45,8 +50,11 @@ interface Props {
   archetypeKey: ArchetypeKey;
   /** Stable seed for variant selection (project name is the natural fit). */
   seed: string;
-  score: number;
-  grade: Grade;
+  /** The score is switched off (see `src/audit/scoring.ts`). Kept as optional
+   *  props rather than removed, so restoring is un-commenting rather than
+   *  re-threading: the dashboard simply stops passing them. */
+  score?: number;
+  grade?: Grade;
   /** Count of unenabled prescribed policies — passed to the share-text
    *  templates, not rendered on the poster itself. */
   missing: number;
@@ -63,7 +71,7 @@ export const AuditPoster = forwardRef<HTMLDivElement, Props>(function AuditPoste
     () => pickArchetypeVariant(archetypeKey, seed),
     [archetypeKey, seed],
   );
-  const rarityPct = getArchetypeRarityPct(archetypeKey);
+  // const rarityPct = getArchetypeRarityPct(archetypeKey);
   const indexLabel = String(archetype.index).padStart(2, "0");
   const auditedDate = useMemo(() => formatAuditedDate(auditedAt), [auditedAt]);
 
@@ -134,8 +142,11 @@ export const AuditPoster = forwardRef<HTMLDivElement, Props>(function AuditPoste
     }
   };
 
+  // Score switched off — the filename is keyed on the archetype instead, which
+  // is what the card now actually shows. Original:
+  //   `failproofai-${channel}-${grade.toLowerCase()}-${score}.png`
   const filenameFor = (channel: "x" | "linkedin" | "download") =>
-    `failproofai-${channel}-${grade.toLowerCase()}-${score}.png`;
+    `failproofai-${channel}-${archetypeKey}.png`;
 
   const handleShare = async (channel: "x" | "linkedin" | "download") => {
     if (busy) return;
@@ -143,8 +154,11 @@ export const AuditPoster = forwardRef<HTMLDivElement, Props>(function AuditPoste
     capture("audit_card_share_clicked", {
       channel,
       source: "poster",
-      score,
-      grade,
+      // Score switched off — see `src/audit/scoring.ts`. Note for whoever reads
+      // the funnel: these two properties stop appearing from this release, so a
+      // dashboard keyed on them breaks rather than reading zero.
+      // score,
+      // grade,
       missing_policies: missing,
     });
     try {
@@ -174,10 +188,10 @@ export const AuditPoster = forwardRef<HTMLDivElement, Props>(function AuditPoste
       }
 
       const shareCtx: ShareCtx = {
-        score,
         arch: archetype.name.toLowerCase(),
-        grade,
         missing,
+        // score,
+        // grade,
       };
       const shareText = channel === "x"
         ? pickTemplate(X_TEMPLATES, seed, shareCtx)
@@ -248,6 +262,7 @@ export const AuditPoster = forwardRef<HTMLDivElement, Props>(function AuditPoste
                 </React.Fragment>
               ))}
             </div>
+            {/* Rarity switched off — see the import above.
             {typeof rarityPct === "number" && (
               <div className="persona-rarity">
                 <span className="lbl">{"// only"}</span>{" "}
@@ -255,13 +270,17 @@ export const AuditPoster = forwardRef<HTMLDivElement, Props>(function AuditPoste
                 <span className="lbl">of agents are this archetype</span>
               </div>
             )}
+            */}
           </div>
 
-          {/* Score block — heroic number, centered in the card */}
+          {/* Score block — heroic number, centered in the card. Switched off;
+              see `src/audit/scoring.ts` for why. The archetype is the card's
+              headline now.
           <div className="poster-score">
             <span className="score-n">{score}</span>
             <span className="score-of">/100</span>
           </div>
+          */}
         </div>
 
         <footer className="poster-foot">

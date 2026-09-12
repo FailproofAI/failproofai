@@ -25,7 +25,7 @@
  * spawns extensions with an undefined cwd contract, so paths are resolved
  * relative to this file via `import.meta.url`, NOT process.cwd().
  */
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync, readdirSync, statSync } from "node:fs";
@@ -64,6 +64,47 @@ function debug(msg: string): void {
   }
 }
 
+/**
+ * Forward an event whose VERDICT NOBODY READS, without blocking Pi.
+ *
+ * `callPolicy` is `spawnSync`, and Pi awaits its handlers serially on the
+ * startup path — so a `session_start` forward froze the whole TUI for as long
+ * as the subprocess took (measured floor 1.0-1.6s just to boot the binary,
+ * ceiling the full 60s timeout) and then threw the answer away. Three call
+ * sites are like that by design: `session_start`, `tool_result` and
+ * `session_shutdown` forward for the activity feed and for session-id
+ * continuity, and Pi cannot act on their return in any case
+ * (`ToolResultEventResult` has no `block`; the other two have no Result type
+ * at all).
+ *
+ * So they get a detached `spawn` instead. The event still reaches failproofai,
+ * the policies still run and still log, and Pi keeps rendering. Deliberately
+ * NOT used for `tool_call`, `user_bash`, `input` or `agent_end`: those four
+ * consume the decision, and blocking is what enforcement means.
+ */
+function forwardPolicy(
+  eventName: string,
+  payload: unknown,
+): void {
+  const { cmd, args } = resolveSpawn();
+  debug(`forwardPolicy (detached) event=${eventName} cmd=${cmd}`);
+  try {
+    const child = spawn(cmd, [...args, "--hook", eventName, "--cli", "pi"], {
+      stdio: ["pipe", "ignore", "ignore"],
+      detached: false,
+    });
+    // A child that outlives its parent's interest must not keep the event loop
+    // alive, or Pi cannot exit until the subprocess does.
+    child.unref();
+    // EPIPE if the child died before stdin was consumed — fail-open, silently.
+    child.on("error", (err) => debug(`forward error ${err.message}`));
+    child.stdin?.on("error", () => {});
+    child.stdin?.end(JSON.stringify(payload));
+  } catch (err) {
+    debug(`FORWARD EXCEPTION ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 function callPolicy(eventName: string, payload: unknown): { block: boolean; reason: string } {
   const { cmd, args } = resolveSpawn();
   debug(`callPolicy event=${eventName} cmd=${cmd}`);
@@ -83,8 +124,12 @@ function callPolicy(eventName: string, payload: unknown): { block: boolean; reas
     const parsed = JSON.parse(stdout) as PolicyDecision;
     if (parsed.permission === "deny") {
       debug(`DENY reason=${parsed.reason}`);
-      return { block: true, reason: parsed.reason ?? "Blocked by failproofai" };
+      return {
+        block: true,
+        reason: parsed.reason ?? "Blocked by failproofai",
+      };
     }
+    return { block: false, reason: "" };
   } catch (err) {
     debug(`EXCEPTION ${err instanceof Error ? err.message : String(err)}`);
     // Fail-open: never block tool execution because of an infra failure.
@@ -417,7 +462,7 @@ export default function failproofaiBridge(pi: PiExtensionApi) {
   // need session_id continuity see the metadata.
   pi.on("session_start", (event: unknown): unknown => {
     const e = event as PiSessionStartEvent;
-    callPolicy("session_start", {
+    forwardPolicy("session_start", {
       session_id: resolveSessionId(e.sessionId, resolveCwd(e.cwd)),
       cwd: resolveCwd(e.cwd),
       reason: e.reason,
@@ -435,7 +480,7 @@ export default function failproofaiBridge(pi: PiExtensionApi) {
   pi.on("tool_result", (event: unknown): unknown => {
     const e = event as PiToolResultEvent;
     const canonicalTool = canonicalizeToolName(e.toolName);
-    callPolicy("tool_result", {
+    forwardPolicy("tool_result", {
       tool_name: canonicalTool,
       tool_input: canonicalizeToolInput(canonicalTool, e.input) ?? {},
       tool_response: { content: e.content, isError: e.isError },
@@ -500,7 +545,7 @@ export default function failproofaiBridge(pi: PiExtensionApi) {
   pi.on("session_shutdown", (event: unknown): unknown => {
     const e = event as PiSessionShutdownEvent;
     const cwd = resolveCwd(e.cwd);
-    callPolicy("session_shutdown", {
+    forwardPolicy("session_shutdown", {
       session_id: resolveSessionId(e.sessionId, cwd),
       cwd,
       reason: e.reason,

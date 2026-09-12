@@ -70,6 +70,13 @@ describe("audit --help", () => {
     expect(plain(render(false))).toMatch(/runs on this machine/i);
   });
 
+  it("describes system notifications without promising per-CLI messages", () => {
+    const text = plain(render(false));
+    expect(text).toMatch(/desktop system\s+notifications/i);
+    expect(text).toMatch(/never inside agent sessions/i);
+    expect(text).not.toMatch(/appear on the desktop and\s+inside your agent session/i);
+  });
+
   it.each([true, false])("aligns and fits 80 columns with color=%s", (color) => {
     const lines = plain(render(color)).split("\n");
 

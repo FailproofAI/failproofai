@@ -10,6 +10,7 @@
  * install command + report path + star link.
  */
 import type { AuditCount, AuditResult, RunAuditOptions } from "./types";
+import { maskSecretsOnly, redactAuditResult, redactExample, shortenPaths } from "./redact-example";
 
 const ANSI = {
   reset: "\x1B[0m",
@@ -105,7 +106,7 @@ function renderRow(r: AuditCount, opts: { showExamples?: boolean }): string[] {
     `        ${ANSI.dim}Last seen ${formatTimeAgo(r.lastSeen)} · ${r.projects} project${r.projects === 1 ? "" : "s"}${ANSI.reset}`,
   );
   if (opts.showExamples && r.examples[0]) {
-    out.push(`        ${ANSI.dim}Example: ${r.examples[0].example}${ANSI.reset}`);
+    out.push(`        ${ANSI.dim}Example: ${maskSecretsOnly(r.examples[0].example)}${ANSI.reset}`);
   }
   if (r.installHint) {
     const arrowColor = r.enabledInConfig ? ANSI.green : ANSI.cyan;
@@ -226,7 +227,7 @@ export function formatText(result: AuditResult, opts: RunAuditOptions = {}): str
 }
 
 export function formatJson(result: AuditResult): string {
-  return JSON.stringify(result, null, 2);
+  return JSON.stringify(redactAuditResult(result), null, 2);
 }
 
 /** Escape characters that would break a markdown table row. Pipes split
@@ -334,7 +335,9 @@ export function formatMarkdown(result: AuditResult): string {
         out.push("");
       }
       for (const e of r.examples) {
-        out.push(`- \`${escapeBackticks(e.example)}\` _(${e.cwd || "?"}, ${formatTimeAgo(e.timestamp)})_`);
+        out.push(
+          `- \`${escapeBackticks(redactExample(e.example))}\` _(${shortenPaths(e.cwd) || "?"}, ${formatTimeAgo(e.timestamp)})_`,
+        );
       }
       out.push("");
     }

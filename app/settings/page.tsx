@@ -30,7 +30,7 @@ export const dynamic = "force-dynamic";
 export default async function SettingsPage() {
   // Same gate the audit, policies and projects pages carry. It was dropped in
   // the rewrite, and this is the page that least deserves to lose it: it shows
-  // the address digests go to and can sign the machine out, on a dashboard an
+  // the address credential alerts go to and can sign the machine out, on a dashboard an
   // operator may deliberately be exposing beyond localhost.
   const disabled = (process.env.FAILPROOFAI_DISABLE_PAGES ?? "")
     .split(",").map((s) => s.trim()).filter(Boolean);

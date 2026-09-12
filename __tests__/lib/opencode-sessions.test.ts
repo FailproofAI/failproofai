@@ -17,6 +17,8 @@ vi.mock("@/lib/runtime-cache", () => ({
 import { withOpenCodeDb } from "@/lib/opencode-db";
 import type { SqliteReader } from "@/lib/sqlite-reader";
 import { getOpenCodeSessionLog, getOpenCodeSessionExport } from "@/lib/opencode-sessions";
+import { logEntriesToEvents } from "@/src/audit/cli-adapters/shared";
+import { findSecrets, flattenToolInput } from "@/src/audit/leak-scan";
 
 const mockWith = vi.mocked(withOpenCodeDb);
 
@@ -150,6 +152,40 @@ describe("getOpenCodeSessionLog", () => {
       input: { command: "ls" },
       result: { content: "file1\nfile2", durationMs: 50 },
     });
+  });
+
+  it("preserves detectable credentials in both tool input and output", async () => {
+    const inputSecret = `ghp_${"A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"}`;
+    const resultSecret = `sk-proj-${"a".repeat(40)}`;
+    mockQueries([
+      [{ id: "ses_x", project_id: "p1", slug: "x", directory: "/repo", title: "X", time_created: 1000, time_updated: 1000 }],
+      [{ id: "msg_1", session_id: "ses_x", time_created: 1100, time_updated: 1100, data: JSON.stringify({ role: "assistant" }) }],
+      [{
+        id: "prt_b", message_id: "msg_1", session_id: "ses_x", time_created: 1101, time_updated: 1150,
+        data: JSON.stringify({
+          type: "tool",
+          tool: "bash",
+          state: {
+            status: "completed",
+            input: { command: `echo ${inputSecret}` },
+            output: resultSecret,
+            time: { start: 1100, end: 1150 },
+          },
+        }),
+      }],
+    ]);
+
+    const log = await getOpenCodeSessionLog("ses_x");
+    const events = logEntriesToEvents(log!.entries, {
+      cli: "opencode",
+      sessionId: "ses_x",
+      transcriptPath: "opencode://ses_x",
+      cwd: log!.cwd ?? "",
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0].cli).toBe("opencode");
+    expect(findSecrets(flattenToolInput(events[0].toolInput)).map((m) => m.value)).toContain(inputSecret);
+    expect(findSecrets(events[0].toolResultText ?? "").map((m) => m.value)).toContain(resultSecret);
   });
 
   it("emits tool_use without result for in-flight (status=running) tool calls", async () => {

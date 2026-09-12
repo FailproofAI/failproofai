@@ -137,6 +137,44 @@ describe("lib/codex-sessions: parseCodexLog", () => {
     expect(tu.result?.durationMs).toBe(100);
   });
 
+  it("parses current custom tool calls and their block-array output", async () => {
+    const content = [
+      line({
+        timestamp: "2026-09-09T00:00:00.000Z",
+        type: "response_item",
+        payload: {
+          type: "custom_tool_call",
+          name: "exec",
+          input: '{"cmd":"node generate.js"}',
+          call_id: "call_current",
+        },
+      }),
+      line({
+        timestamp: "2026-09-09T00:00:00.500Z",
+        type: "response_item",
+        payload: {
+          type: "custom_tool_call_output",
+          call_id: "call_current",
+          output: [
+            { type: "input_text", text: "Chunk ID: abc" },
+            { type: "input_text", text: "sk-proj-abcdefghijklmnopqrstuvwxyz012345" },
+          ],
+        },
+      }),
+    ].join("\n");
+
+    const { entries } = await parseCodexLog(content);
+    const assistant = entries.find((entry) => entry.type === "assistant");
+    if (!assistant || assistant.type !== "assistant") throw new Error("expected assistant");
+    const block = assistant.message.content[0];
+    if (block.type !== "tool_use") throw new Error("expected tool_use");
+    expect(block).toMatchObject({ name: "exec", input: { cmd: "node generate.js" } });
+    expect(block.result?.content).toBe(
+      "Chunk ID: abc\nsk-proj-abcdefghijklmnopqrstuvwxyz012345",
+    );
+    expect(block.result?.durationMs).toBe(500);
+  });
+
   it("dedupes event_msg user_message and agent_message (already covered by response_item)", async () => {
     const content = [
       line({

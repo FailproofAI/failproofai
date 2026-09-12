@@ -11,6 +11,8 @@
  *   - `auto`         ⟷ `config.json [audit] auto` (readConfig / updateConfig —
  *                       the same call `failproofai audit --schedule` makes, so
  *                       the two cannot diverge)
+ *   - `notify`       ⟷ `config.json [audit] notify` (the same value changed by
+ *                       `failproofai audit --notify` / `--no-notify`)
  *   - `intervalDays` ⟷ `config.json [audit] interval_days` (readConfig owns the
  *                       1..90 clamp — see fp-config.readIntervalDays)
  *   - `daemon`       ⟷ `systemctl status failproofaid@<user>` (daemonServiceStatus)
@@ -58,6 +60,8 @@ export interface ScheduledAuditLastScan {
 export interface ScheduledAuditView {
   /** `[audit] auto` — whether the daemon scans on a timer. */
   auto: boolean;
+  /** `[audit] notify` — whether scheduled findings raise an OS notification. */
+  notify: boolean;
   /** `[audit] interval_days`, already clamped to 1..90 by readConfig. */
   intervalDays: number;
   /**
@@ -100,6 +104,7 @@ export async function getScheduledAuditAction(): Promise<ScheduledAuditView> {
 
   return {
     auto: config.audit.auto,
+    notify: config.audit.notify,
     intervalDays: config.audit.intervalDays,
     signedInAs: auth ? { id: auth.user.id, email: auth.user.email } : null,
     daemon,

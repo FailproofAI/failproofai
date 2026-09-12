@@ -798,9 +798,12 @@ export async function evaluatePolicies(
 
     // OpenClaw: Stop (before_agent_finalize) can force a revise, so we emit the
     // MANDATORY ACTION wording as a flat deny — the shim maps it to
-    // {action:"revise", reason}. Every other event lacks an additional-context
-    // channel (before_tool_call's return is {params,block,blockReason} only), so
-    // instruct degrades to allow + stderr note, like Hermes.
+    // {action:"revise", reason}. PreToolUse has no non-blocking context channel,
+    // but a rejected tool's blockReason is model-visible. Preserve `instruct`
+    // in the wire verdict so the shim can interrupt the first matching attempt,
+    // deliver the instruction through blockReason, and allow a retry. Other
+    // events still degrade to allow + stderr because their return channels
+    // cannot carry an instruction to the model.
     if (session?.cli === "openclaw") {
       if (eventType === "Stop") {
         const policyAttribution = policyNames.length === 1
@@ -810,6 +813,22 @@ export async function evaluatePolicies(
         return {
           exitCode: 0,
           stdout: JSON.stringify({ permission: "deny", reason: reasonText }),
+          stderr: "",
+          policyName: policyNames[0],
+          policyNames,
+          reason: combined,
+          decision: "instruct",
+        };
+      }
+      if (eventType === "PreToolUse") {
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({
+            permission: "instruct",
+            reason: `Instruction from failproofai: ${combined}`,
+            policyName: policyNames[0],
+            policyNames,
+          }),
           stderr: "",
           policyName: policyNames[0],
           policyNames,

@@ -73,8 +73,10 @@ describe("require-battery-green-before-stop policy", () => {
   });
 
   it("allows in plan mode without running anything", async () => {
+    // A red battery repo: allow here proves the plan-mode bypass,
+    // since the same repo denies without plan mode (see above).
     const result = await policy.fn(
-      makeCtx({ session: { cwd: "/nonexistent", permissionMode: "plan" } }),
+      makeCtx({ session: { cwd: repoWithBattery(1), permissionMode: "plan" } }),
     );
     expect(result.decision).toBe("allow");
   });

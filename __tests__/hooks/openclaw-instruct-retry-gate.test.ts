@@ -12,7 +12,7 @@ describe("OpenClaw instruct retry gate", () => {
     const verdict = {
       permission: "instruct",
       reason: "recover once",
-      policyName: "failproofai/warn-invoice-self-resolution",
+      policyName: "failproofai/retry-before-escalation",
     };
     const ctx = { sessionKey: "invoice-session" };
 

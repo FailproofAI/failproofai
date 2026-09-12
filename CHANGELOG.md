@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.0.4 — 2026-09-12
+
+The stable release of the OpenClaw 2026.9 compatibility work shipped through
+`1.0.4-beta.8`.
+
+### Fixes
+
+- Restore OpenClaw 2026.9.2+ observability after live transcripts moved from per-session JSONL files into per-agent SQLite databases. `failproofaid` now discovers every agent profile and configured extra path, tails each SQLite transcript incrementally, handles transcript rewrites without duplicating delivery, and retains legacy JSONL compatibility.
+
+- Restore OpenClaw sessions in the local dashboard's Projects view and session viewer. SQLite and legacy sessions are merged per agent, live SQLite copies win over archived duplicates, missing channels group under `local`, and downloads export the original `event_json` records as JSONL.
+
+- Deliver OpenClaw `PreToolUse` instructions to the agent through its model-visible tool rejection reason. The first matching `instruct()` temporarily interrupts the tool call, while a session-and-policy-scoped retry window lets the agent proceed after following the guidance. Policy source, tool canonicalization, and transcript ingestion remain unchanged.
+
+## 1.0.4-beta.8 — 2026-09-11
+
+### Fixes
+
+- Restore OpenClaw 2026.9.2+ observability after live transcripts moved from per-session JSONL files into per-agent SQLite databases. `failproofaid` now discovers every agent profile, tails each SQLite transcript incrementally, handles transcript rewrites without duplicating delivery, and retains legacy JSONL compatibility.
+
+- Restore OpenClaw sessions in the local dashboard's Projects view and session viewer. SQLite and legacy sessions are merged per agent, live SQLite copies win over archived duplicates, missing channels group under `local`, and downloads export the original `event_json` records as JSONL.
+
 ## 1.0.4-beta.7 — 2026-09-11
 
 ### Fixes

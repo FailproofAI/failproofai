@@ -477,9 +477,11 @@ maps in `types.ts` (single source of truth).
 `stopHookActive`, ≈ Claude's Stop payload), so the 5 `require-*-before-stop`
 builtins **enforce** on OpenClaw — a deny becomes a `{action:"revise"}` that
 re-runs the turn (unlike Hermes, which has no Stop event at all). **Instruct**
-degrades to allow + stderr note on non-Stop events (no additional-context
-channel); on Stop it emits the MANDATORY-ACTION deny so the revise loop carries
-the directive. **Omitted hooks:** `agent_end` (would double-fire Stop) and
+on `PreToolUse` uses a model-visible `blockReason` to interrupt the first
+matching tool attempt, then permits retries from that session/policy for five
+minutes; other non-Stop events still degrade to allow + stderr note. On Stop it
+emits the MANDATORY-ACTION deny so the revise loop carries the directive.
+**Omitted hooks:** `agent_end` (would double-fire Stop) and
 `message_sending` (outbound-message cancel gate — an OpenClaw-only capability,
 deferred).
 

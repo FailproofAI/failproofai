@@ -6,7 +6,7 @@ icon: "waypoints"
 
 <CardGroup cols={3}>
   <Card title="Local enforcement" icon="laptop">
-    Install hooks and policies on a machine. Use this when you need immediate guardrails without sending session data to Cloud.
+    Set a machine up with no Cloud key and take a policy pack. Use this when you need immediate guardrails without sending session data to Cloud.
   </Card>
   <Card title="Failproof AI Cloud" icon="cloud">
     Add centralized sessions, audits, online evaluations, dashboards, alerts, and fleet policy deployment.
@@ -15,6 +15,10 @@ icon: "waypoints"
     Use organization controls, scoped keys, private infrastructure, and deployment-specific security requirements.
   </Card>
 </CardGroup>
+
+## Enforce locally
+
+Run `failproofai config` without a key, then take a pack with `failproofai policies add FailproofAI/policies`. In a terminal, pick **Not now — stay local** when setup asks to connect to Cloud; with no terminal and no `FAILPROOFAI_CLOUD_TOKEN`, it stays local on its own. The daemon and hooks enforce on the machine, and no session data is sent to Cloud. To connect later, follow the steps below.
 
 ## Recommended production path
 
@@ -48,16 +52,33 @@ icon: "waypoints"
     Continue only after both the machine and its first event are visible.
   </Tab>
   <Tab title="CLI">
-    ```bash
-    failproofai config --connect https://app.befailproof.ai \
-      --token "$FAILPROOFAI_KEY" \
-      --machine-label checkout-runner-01
+    Read the one-time secret into the shell. `read -s` takes it at a prompt that does not echo, so it never appears in a command or in shell history:
 
-    failproofai policies --install --cli claude --scope user
+    ```bash
+    read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
+    ```
+
+    Then set the machine up, choose its policies, and name it:
+
+    ```bash
+    failproofai config
+
+    failproofai policies add FailproofAI/policies
+    failproofai config --machine-label checkout-runner-01
     failproofai config --status
     ```
 
+    `failproofai config` does the whole setup — daemon, hooks for every agent CLI it finds, and the Cloud connection — then chooses no policies, which is what the second command is for.
+
+    The label comes **after** connecting, not during: `failproofai config --machine-label <name>` renames a machine that is already connected, and on one that is not it does nothing but say so.
+
     Add `--no-transcripts` when transcript content must remain local.
+
+    In CI, set `FAILPROOFAI_CLOUD_TOKEN` from the secret store instead of `read -s`, and keep shell tracing (`set -x`) off, or the trace prints the key.
+
+    <Warning>
+      On a machine that is **already** set up, `failproofai config --connect <url>` enrols it and nothing else. Do not use that form for a first install: it returns before the daemon or any hook is in place, leaving a machine that shows up in Cloud but collects and enforces nothing.
+    </Warning>
   </Tab>
 </Tabs>
 

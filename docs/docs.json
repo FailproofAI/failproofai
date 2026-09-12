@@ -112,7 +112,6 @@
                   "sessions/policy-decisions",
                   "sessions/tools",
                   "sessions/errors",
-                  "sessions/evaluations",
                   "sessions/metrics",
                   "sessions/dashboards",
                   "sessions/queries"
@@ -121,6 +120,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "start/integrations",
                   "start/integrations/custom-agents",
                   "start/integrations/langchain",
                   "start/integrations/crewai",
@@ -134,6 +134,16 @@
             "tab": "Find failures",
             "icon": "scan-search",
             "groups": [
+              {
+                "group": "Evaluate agents",
+                "pages": [
+                  "evaluations/overview",
+                  "evaluations/write",
+                  "evaluations/test",
+                  "evaluations/deploy",
+                  "sessions/evaluations"
+                ]
+              },
               {
                 "group": "Find and manage failures",
                 "pages": [
@@ -157,17 +167,23 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "policies/overview",
-                  "policies/builtin",
-                  "policies/builtin-catalog",
-                  "policies/custom",
-                  "policies/packs",
-                  "policies/publish-a-pack",
-                  "policies/local-configuration",
+                  "policies/overview"
+                ]
+              },
+              {
+                "group": "Get a policy",
+                "pages": [
                   "policies/editor",
+                  "policies/packs"
+                ]
+              },
+              {
+                "group": "Ship a policy",
+                "pages": [
+                  "policies/test",
                   "policies/deploy",
-                  "policies/fleet",
                   "policies/rollback",
+                  "policies/publish-a-pack",
                   "policies/failure-behavior"
                 ]
               }
@@ -210,6 +226,7 @@
                 "pages": [
                   "reference/failproof-cli",
                   "reference/local-dashboard",
+                  "policies/local-configuration",
                   "reference/cloud-cli",
                   "reference/http-api",
                   "reference/events-and-configuration",
@@ -274,7 +291,6 @@
                   "zh/sessions/policy-decisions",
                   "zh/sessions/tools",
                   "zh/sessions/errors",
-                  "zh/sessions/evaluations",
                   "zh/sessions/metrics",
                   "zh/sessions/dashboards",
                   "zh/sessions/queries"
@@ -283,6 +299,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "zh/start/integrations",
                   "zh/start/integrations/custom-agents",
                   "zh/start/integrations/langchain",
                   "zh/start/integrations/crewai",
@@ -296,6 +313,12 @@
             "tab": "Find failures",
             "icon": "scan-search",
             "groups": [
+              {
+                "group": "Evaluate agents",
+                "pages": [
+                  "zh/sessions/evaluations"
+                ]
+              },
               {
                 "group": "Find and manage failures",
                 "pages": [
@@ -319,17 +342,22 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "zh/policies/overview",
-                  "zh/policies/builtin",
-                  "zh/policies/builtin-catalog",
-                  "zh/policies/custom",
-                  "zh/policies/packs",
-                  "zh/policies/publish-a-pack",
-                  "zh/policies/local-configuration",
+                  "zh/policies/overview"
+                ]
+              },
+              {
+                "group": "Get a policy",
+                "pages": [
                   "zh/policies/editor",
+                  "zh/policies/packs"
+                ]
+              },
+              {
+                "group": "Ship a policy",
+                "pages": [
                   "zh/policies/deploy",
-                  "zh/policies/fleet",
                   "zh/policies/rollback",
+                  "zh/policies/publish-a-pack",
                   "zh/policies/failure-behavior"
                 ]
               }
@@ -372,6 +400,7 @@
                 "pages": [
                   "zh/reference/failproof-cli",
                   "zh/reference/local-dashboard",
+                  "zh/policies/local-configuration",
                   "zh/reference/cloud-cli",
                   "zh/reference/http-api",
                   "zh/reference/events-and-configuration",
@@ -430,7 +459,6 @@
                   "ja/sessions/policy-decisions",
                   "ja/sessions/tools",
                   "ja/sessions/errors",
-                  "ja/sessions/evaluations",
                   "ja/sessions/metrics",
                   "ja/sessions/dashboards",
                   "ja/sessions/queries"
@@ -439,6 +467,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "ja/start/integrations",
                   "ja/start/integrations/custom-agents",
                   "ja/start/integrations/langchain",
                   "ja/start/integrations/crewai",
@@ -452,6 +481,12 @@
             "tab": "Find failures",
             "icon": "scan-search",
             "groups": [
+              {
+                "group": "Evaluate agents",
+                "pages": [
+                  "ja/sessions/evaluations"
+                ]
+              },
               {
                 "group": "Find and manage failures",
                 "pages": [
@@ -475,17 +510,22 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "ja/policies/overview",
-                  "ja/policies/builtin",
-                  "ja/policies/builtin-catalog",
-                  "ja/policies/custom",
-                  "ja/policies/packs",
-                  "ja/policies/publish-a-pack",
-                  "ja/policies/local-configuration",
+                  "ja/policies/overview"
+                ]
+              },
+              {
+                "group": "Get a policy",
+                "pages": [
                   "ja/policies/editor",
+                  "ja/policies/packs"
+                ]
+              },
+              {
+                "group": "Ship a policy",
+                "pages": [
                   "ja/policies/deploy",
-                  "ja/policies/fleet",
                   "ja/policies/rollback",
+                  "ja/policies/publish-a-pack",
                   "ja/policies/failure-behavior"
                 ]
               }
@@ -528,6 +568,7 @@
                 "pages": [
                   "ja/reference/failproof-cli",
                   "ja/reference/local-dashboard",
+                  "ja/policies/local-configuration",
                   "ja/reference/cloud-cli",
                   "ja/reference/http-api",
                   "ja/reference/events-and-configuration",
@@ -586,7 +627,6 @@
                   "ko/sessions/policy-decisions",
                   "ko/sessions/tools",
                   "ko/sessions/errors",
-                  "ko/sessions/evaluations",
                   "ko/sessions/metrics",
                   "ko/sessions/dashboards",
                   "ko/sessions/queries"
@@ -595,6 +635,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "ko/start/integrations",
                   "ko/start/integrations/custom-agents",
                   "ko/start/integrations/langchain",
                   "ko/start/integrations/crewai",
@@ -608,6 +649,12 @@
             "tab": "Find failures",
             "icon": "scan-search",
             "groups": [
+              {
+                "group": "Evaluate agents",
+                "pages": [
+                  "ko/sessions/evaluations"
+                ]
+              },
               {
                 "group": "Find and manage failures",
                 "pages": [
@@ -631,17 +678,22 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "ko/policies/overview",
-                  "ko/policies/builtin",
-                  "ko/policies/builtin-catalog",
-                  "ko/policies/custom",
-                  "ko/policies/packs",
-                  "ko/policies/publish-a-pack",
-                  "ko/policies/local-configuration",
+                  "ko/policies/overview"
+                ]
+              },
+              {
+                "group": "Get a policy",
+                "pages": [
                   "ko/policies/editor",
+                  "ko/policies/packs"
+                ]
+              },
+              {
+                "group": "Ship a policy",
+                "pages": [
                   "ko/policies/deploy",
-                  "ko/policies/fleet",
                   "ko/policies/rollback",
+                  "ko/policies/publish-a-pack",
                   "ko/policies/failure-behavior"
                 ]
               }
@@ -684,6 +736,7 @@
                 "pages": [
                   "ko/reference/failproof-cli",
                   "ko/reference/local-dashboard",
+                  "ko/policies/local-configuration",
                   "ko/reference/cloud-cli",
                   "ko/reference/http-api",
                   "ko/reference/events-and-configuration",
@@ -742,7 +795,6 @@
                   "es/sessions/policy-decisions",
                   "es/sessions/tools",
                   "es/sessions/errors",
-                  "es/sessions/evaluations",
                   "es/sessions/metrics",
                   "es/sessions/dashboards",
                   "es/sessions/queries"
@@ -751,6 +803,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "es/start/integrations",
                   "es/start/integrations/custom-agents",
                   "es/start/integrations/langchain",
                   "es/start/integrations/crewai",
@@ -764,6 +817,12 @@
             "tab": "Find failures",
             "icon": "scan-search",
             "groups": [
+              {
+                "group": "Evaluate agents",
+                "pages": [
+                  "es/sessions/evaluations"
+                ]
+              },
               {
                 "group": "Find and manage failures",
                 "pages": [
@@ -787,17 +846,22 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "es/policies/overview",
-                  "es/policies/builtin",
-                  "es/policies/builtin-catalog",
-                  "es/policies/custom",
-                  "es/policies/packs",
-                  "es/policies/publish-a-pack",
-                  "es/policies/local-configuration",
+                  "es/policies/overview"
+                ]
+              },
+              {
+                "group": "Get a policy",
+                "pages": [
                   "es/policies/editor",
+                  "es/policies/packs"
+                ]
+              },
+              {
+                "group": "Ship a policy",
+                "pages": [
                   "es/policies/deploy",
-                  "es/policies/fleet",
                   "es/policies/rollback",
+                  "es/policies/publish-a-pack",
                   "es/policies/failure-behavior"
                 ]
               }
@@ -840,6 +904,7 @@
                 "pages": [
                   "es/reference/failproof-cli",
                   "es/reference/local-dashboard",
+                  "es/policies/local-configuration",
                   "es/reference/cloud-cli",
                   "es/reference/http-api",
                   "es/reference/events-and-configuration",
@@ -898,7 +963,6 @@
                   "pt-br/sessions/policy-decisions",
                   "pt-br/sessions/tools",
                   "pt-br/sessions/errors",
-                  "pt-br/sessions/evaluations",
                   "pt-br/sessions/metrics",
                   "pt-br/sessions/dashboards",
                   "pt-br/sessions/queries"
@@ -907,6 +971,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "pt-br/start/integrations",
                   "pt-br/start/integrations/custom-agents",
                   "pt-br/start/integrations/langchain",
                   "pt-br/start/integrations/crewai",
@@ -920,6 +985,12 @@
             "tab": "Find failures",
             "icon": "scan-search",
             "groups": [
+              {
+                "group": "Evaluate agents",
+                "pages": [
+                  "pt-br/sessions/evaluations"
+                ]
+              },
               {
                 "group": "Find and manage failures",
                 "pages": [
@@ -943,17 +1014,22 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "pt-br/policies/overview",
-                  "pt-br/policies/builtin",
-                  "pt-br/policies/builtin-catalog",
-                  "pt-br/policies/custom",
-                  "pt-br/policies/packs",
-                  "pt-br/policies/publish-a-pack",
-                  "pt-br/policies/local-configuration",
+                  "pt-br/policies/overview"
+                ]
+              },
+              {
+                "group": "Get a policy",
+                "pages": [
                   "pt-br/policies/editor",
+                  "pt-br/policies/packs"
+                ]
+              },
+              {
+                "group": "Ship a policy",
+                "pages": [
                   "pt-br/policies/deploy",
-                  "pt-br/policies/fleet",
                   "pt-br/policies/rollback",
+                  "pt-br/policies/publish-a-pack",
                   "pt-br/policies/failure-behavior"
                 ]
               }
@@ -996,6 +1072,7 @@
                 "pages": [
                   "pt-br/reference/failproof-cli",
                   "pt-br/reference/local-dashboard",
+                  "pt-br/policies/local-configuration",
                   "pt-br/reference/cloud-cli",
                   "pt-br/reference/http-api",
                   "pt-br/reference/events-and-configuration",
@@ -1054,7 +1131,6 @@
                   "de/sessions/policy-decisions",
                   "de/sessions/tools",
                   "de/sessions/errors",
-                  "de/sessions/evaluations",
                   "de/sessions/metrics",
                   "de/sessions/dashboards",
                   "de/sessions/queries"
@@ -1063,6 +1139,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "de/start/integrations",
                   "de/start/integrations/custom-agents",
                   "de/start/integrations/langchain",
                   "de/start/integrations/crewai",
@@ -1076,6 +1153,12 @@
             "tab": "Find failures",
             "icon": "scan-search",
             "groups": [
+              {
+                "group": "Evaluate agents",
+                "pages": [
+                  "de/sessions/evaluations"
+                ]
+              },
               {
                 "group": "Find and manage failures",
                 "pages": [
@@ -1099,17 +1182,22 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "de/policies/overview",
-                  "de/policies/builtin",
-                  "de/policies/builtin-catalog",
-                  "de/policies/custom",
-                  "de/policies/packs",
-                  "de/policies/publish-a-pack",
-                  "de/policies/local-configuration",
+                  "de/policies/overview"
+                ]
+              },
+              {
+                "group": "Get a policy",
+                "pages": [
                   "de/policies/editor",
+                  "de/policies/packs"
+                ]
+              },
+              {
+                "group": "Ship a policy",
+                "pages": [
                   "de/policies/deploy",
-                  "de/policies/fleet",
                   "de/policies/rollback",
+                  "de/policies/publish-a-pack",
                   "de/policies/failure-behavior"
                 ]
               }
@@ -1152,6 +1240,7 @@
                 "pages": [
                   "de/reference/failproof-cli",
                   "de/reference/local-dashboard",
+                  "de/policies/local-configuration",
                   "de/reference/cloud-cli",
                   "de/reference/http-api",
                   "de/reference/events-and-configuration",
@@ -1210,7 +1299,6 @@
                   "fr/sessions/policy-decisions",
                   "fr/sessions/tools",
                   "fr/sessions/errors",
-                  "fr/sessions/evaluations",
                   "fr/sessions/metrics",
                   "fr/sessions/dashboards",
                   "fr/sessions/queries"
@@ -1219,6 +1307,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "fr/start/integrations",
                   "fr/start/integrations/custom-agents",
                   "fr/start/integrations/langchain",
                   "fr/start/integrations/crewai",
@@ -1232,6 +1321,12 @@
             "tab": "Find failures",
             "icon": "scan-search",
             "groups": [
+              {
+                "group": "Evaluate agents",
+                "pages": [
+                  "fr/sessions/evaluations"
+                ]
+              },
               {
                 "group": "Find and manage failures",
                 "pages": [
@@ -1255,17 +1350,22 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "fr/policies/overview",
-                  "fr/policies/builtin",
-                  "fr/policies/builtin-catalog",
-                  "fr/policies/custom",
-                  "fr/policies/packs",
-                  "fr/policies/publish-a-pack",
-                  "fr/policies/local-configuration",
+                  "fr/policies/overview"
+                ]
+              },
+              {
+                "group": "Get a policy",
+                "pages": [
                   "fr/policies/editor",
+                  "fr/policies/packs"
+                ]
+              },
+              {
+                "group": "Ship a policy",
+                "pages": [
                   "fr/policies/deploy",
-                  "fr/policies/fleet",
                   "fr/policies/rollback",
+                  "fr/policies/publish-a-pack",
                   "fr/policies/failure-behavior"
                 ]
               }
@@ -1308,6 +1408,7 @@
                 "pages": [
                   "fr/reference/failproof-cli",
                   "fr/reference/local-dashboard",
+                  "fr/policies/local-configuration",
                   "fr/reference/cloud-cli",
                   "fr/reference/http-api",
                   "fr/reference/events-and-configuration",
@@ -1366,7 +1467,6 @@
                   "ru/sessions/policy-decisions",
                   "ru/sessions/tools",
                   "ru/sessions/errors",
-                  "ru/sessions/evaluations",
                   "ru/sessions/metrics",
                   "ru/sessions/dashboards",
                   "ru/sessions/queries"
@@ -1375,6 +1475,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "ru/start/integrations",
                   "ru/start/integrations/custom-agents",
                   "ru/start/integrations/langchain",
                   "ru/start/integrations/crewai",
@@ -1388,6 +1489,12 @@
             "tab": "Find failures",
             "icon": "scan-search",
             "groups": [
+              {
+                "group": "Evaluate agents",
+                "pages": [
+                  "ru/sessions/evaluations"
+                ]
+              },
               {
                 "group": "Find and manage failures",
                 "pages": [
@@ -1411,17 +1518,22 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "ru/policies/overview",
-                  "ru/policies/builtin",
-                  "ru/policies/builtin-catalog",
-                  "ru/policies/custom",
-                  "ru/policies/packs",
-                  "ru/policies/publish-a-pack",
-                  "ru/policies/local-configuration",
+                  "ru/policies/overview"
+                ]
+              },
+              {
+                "group": "Get a policy",
+                "pages": [
                   "ru/policies/editor",
+                  "ru/policies/packs"
+                ]
+              },
+              {
+                "group": "Ship a policy",
+                "pages": [
                   "ru/policies/deploy",
-                  "ru/policies/fleet",
                   "ru/policies/rollback",
+                  "ru/policies/publish-a-pack",
                   "ru/policies/failure-behavior"
                 ]
               }
@@ -1464,6 +1576,7 @@
                 "pages": [
                   "ru/reference/failproof-cli",
                   "ru/reference/local-dashboard",
+                  "ru/policies/local-configuration",
                   "ru/reference/cloud-cli",
                   "ru/reference/http-api",
                   "ru/reference/events-and-configuration",
@@ -1522,7 +1635,6 @@
                   "hi/sessions/policy-decisions",
                   "hi/sessions/tools",
                   "hi/sessions/errors",
-                  "hi/sessions/evaluations",
                   "hi/sessions/metrics",
                   "hi/sessions/dashboards",
                   "hi/sessions/queries"
@@ -1531,6 +1643,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "hi/start/integrations",
                   "hi/start/integrations/custom-agents",
                   "hi/start/integrations/langchain",
                   "hi/start/integrations/crewai",
@@ -1544,6 +1657,12 @@
             "tab": "Find failures",
             "icon": "scan-search",
             "groups": [
+              {
+                "group": "Evaluate agents",
+                "pages": [
+                  "hi/sessions/evaluations"
+                ]
+              },
               {
                 "group": "Find and manage failures",
                 "pages": [
@@ -1567,17 +1686,22 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "hi/policies/overview",
-                  "hi/policies/builtin",
-                  "hi/policies/builtin-catalog",
-                  "hi/policies/custom",
-                  "hi/policies/packs",
-                  "hi/policies/publish-a-pack",
-                  "hi/policies/local-configuration",
+                  "hi/policies/overview"
+                ]
+              },
+              {
+                "group": "Get a policy",
+                "pages": [
                   "hi/policies/editor",
+                  "hi/policies/packs"
+                ]
+              },
+              {
+                "group": "Ship a policy",
+                "pages": [
                   "hi/policies/deploy",
-                  "hi/policies/fleet",
                   "hi/policies/rollback",
+                  "hi/policies/publish-a-pack",
                   "hi/policies/failure-behavior"
                 ]
               }
@@ -1620,6 +1744,7 @@
                 "pages": [
                   "hi/reference/failproof-cli",
                   "hi/reference/local-dashboard",
+                  "hi/policies/local-configuration",
                   "hi/reference/cloud-cli",
                   "hi/reference/http-api",
                   "hi/reference/events-and-configuration",
@@ -1678,7 +1803,6 @@
                   "tr/sessions/policy-decisions",
                   "tr/sessions/tools",
                   "tr/sessions/errors",
-                  "tr/sessions/evaluations",
                   "tr/sessions/metrics",
                   "tr/sessions/dashboards",
                   "tr/sessions/queries"
@@ -1687,6 +1811,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "tr/start/integrations",
                   "tr/start/integrations/custom-agents",
                   "tr/start/integrations/langchain",
                   "tr/start/integrations/crewai",
@@ -1700,6 +1825,12 @@
             "tab": "Find failures",
             "icon": "scan-search",
             "groups": [
+              {
+                "group": "Evaluate agents",
+                "pages": [
+                  "tr/sessions/evaluations"
+                ]
+              },
               {
                 "group": "Find and manage failures",
                 "pages": [
@@ -1723,17 +1854,22 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "tr/policies/overview",
-                  "tr/policies/builtin",
-                  "tr/policies/builtin-catalog",
-                  "tr/policies/custom",
-                  "tr/policies/packs",
-                  "tr/policies/publish-a-pack",
-                  "tr/policies/local-configuration",
+                  "tr/policies/overview"
+                ]
+              },
+              {
+                "group": "Get a policy",
+                "pages": [
                   "tr/policies/editor",
+                  "tr/policies/packs"
+                ]
+              },
+              {
+                "group": "Ship a policy",
+                "pages": [
                   "tr/policies/deploy",
-                  "tr/policies/fleet",
                   "tr/policies/rollback",
+                  "tr/policies/publish-a-pack",
                   "tr/policies/failure-behavior"
                 ]
               }
@@ -1776,6 +1912,7 @@
                 "pages": [
                   "tr/reference/failproof-cli",
                   "tr/reference/local-dashboard",
+                  "tr/policies/local-configuration",
                   "tr/reference/cloud-cli",
                   "tr/reference/http-api",
                   "tr/reference/events-and-configuration",
@@ -1834,7 +1971,6 @@
                   "vi/sessions/policy-decisions",
                   "vi/sessions/tools",
                   "vi/sessions/errors",
-                  "vi/sessions/evaluations",
                   "vi/sessions/metrics",
                   "vi/sessions/dashboards",
                   "vi/sessions/queries"
@@ -1843,6 +1979,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "vi/start/integrations",
                   "vi/start/integrations/custom-agents",
                   "vi/start/integrations/langchain",
                   "vi/start/integrations/crewai",
@@ -1856,6 +1993,12 @@
             "tab": "Find failures",
             "icon": "scan-search",
             "groups": [
+              {
+                "group": "Evaluate agents",
+                "pages": [
+                  "vi/sessions/evaluations"
+                ]
+              },
               {
                 "group": "Find and manage failures",
                 "pages": [
@@ -1879,17 +2022,22 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "vi/policies/overview",
-                  "vi/policies/builtin",
-                  "vi/policies/builtin-catalog",
-                  "vi/policies/custom",
-                  "vi/policies/packs",
-                  "vi/policies/publish-a-pack",
-                  "vi/policies/local-configuration",
+                  "vi/policies/overview"
+                ]
+              },
+              {
+                "group": "Get a policy",
+                "pages": [
                   "vi/policies/editor",
+                  "vi/policies/packs"
+                ]
+              },
+              {
+                "group": "Ship a policy",
+                "pages": [
                   "vi/policies/deploy",
-                  "vi/policies/fleet",
                   "vi/policies/rollback",
+                  "vi/policies/publish-a-pack",
                   "vi/policies/failure-behavior"
                 ]
               }
@@ -1932,6 +2080,7 @@
                 "pages": [
                   "vi/reference/failproof-cli",
                   "vi/reference/local-dashboard",
+                  "vi/policies/local-configuration",
                   "vi/reference/cloud-cli",
                   "vi/reference/http-api",
                   "vi/reference/events-and-configuration",
@@ -1990,7 +2139,6 @@
                   "it/sessions/policy-decisions",
                   "it/sessions/tools",
                   "it/sessions/errors",
-                  "it/sessions/evaluations",
                   "it/sessions/metrics",
                   "it/sessions/dashboards",
                   "it/sessions/queries"
@@ -1999,6 +2147,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "it/start/integrations",
                   "it/start/integrations/custom-agents",
                   "it/start/integrations/langchain",
                   "it/start/integrations/crewai",
@@ -2012,6 +2161,12 @@
             "tab": "Find failures",
             "icon": "scan-search",
             "groups": [
+              {
+                "group": "Evaluate agents",
+                "pages": [
+                  "it/sessions/evaluations"
+                ]
+              },
               {
                 "group": "Find and manage failures",
                 "pages": [
@@ -2035,17 +2190,22 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "it/policies/overview",
-                  "it/policies/builtin",
-                  "it/policies/builtin-catalog",
-                  "it/policies/custom",
-                  "it/policies/packs",
-                  "it/policies/publish-a-pack",
-                  "it/policies/local-configuration",
+                  "it/policies/overview"
+                ]
+              },
+              {
+                "group": "Get a policy",
+                "pages": [
                   "it/policies/editor",
+                  "it/policies/packs"
+                ]
+              },
+              {
+                "group": "Ship a policy",
+                "pages": [
                   "it/policies/deploy",
-                  "it/policies/fleet",
                   "it/policies/rollback",
+                  "it/policies/publish-a-pack",
                   "it/policies/failure-behavior"
                 ]
               }
@@ -2088,6 +2248,7 @@
                 "pages": [
                   "it/reference/failproof-cli",
                   "it/reference/local-dashboard",
+                  "it/policies/local-configuration",
                   "it/reference/cloud-cli",
                   "it/reference/http-api",
                   "it/reference/events-and-configuration",
@@ -2146,7 +2307,6 @@
                   "ar/sessions/policy-decisions",
                   "ar/sessions/tools",
                   "ar/sessions/errors",
-                  "ar/sessions/evaluations",
                   "ar/sessions/metrics",
                   "ar/sessions/dashboards",
                   "ar/sessions/queries"
@@ -2155,6 +2315,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "ar/start/integrations",
                   "ar/start/integrations/custom-agents",
                   "ar/start/integrations/langchain",
                   "ar/start/integrations/crewai",
@@ -2168,6 +2329,12 @@
             "tab": "Find failures",
             "icon": "scan-search",
             "groups": [
+              {
+                "group": "Evaluate agents",
+                "pages": [
+                  "ar/sessions/evaluations"
+                ]
+              },
               {
                 "group": "Find and manage failures",
                 "pages": [
@@ -2191,17 +2358,22 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "ar/policies/overview",
-                  "ar/policies/builtin",
-                  "ar/policies/builtin-catalog",
-                  "ar/policies/custom",
-                  "ar/policies/packs",
-                  "ar/policies/publish-a-pack",
-                  "ar/policies/local-configuration",
+                  "ar/policies/overview"
+                ]
+              },
+              {
+                "group": "Get a policy",
+                "pages": [
                   "ar/policies/editor",
+                  "ar/policies/packs"
+                ]
+              },
+              {
+                "group": "Ship a policy",
+                "pages": [
                   "ar/policies/deploy",
-                  "ar/policies/fleet",
                   "ar/policies/rollback",
+                  "ar/policies/publish-a-pack",
                   "ar/policies/failure-behavior"
                 ]
               }
@@ -2244,6 +2416,7 @@
                 "pages": [
                   "ar/reference/failproof-cli",
                   "ar/reference/local-dashboard",
+                  "ar/policies/local-configuration",
                   "ar/reference/cloud-cli",
                   "ar/reference/http-api",
                   "ar/reference/events-and-configuration",
@@ -2302,7 +2475,6 @@
                   "he/sessions/policy-decisions",
                   "he/sessions/tools",
                   "he/sessions/errors",
-                  "he/sessions/evaluations",
                   "he/sessions/metrics",
                   "he/sessions/dashboards",
                   "he/sessions/queries"
@@ -2311,6 +2483,7 @@
               {
                 "group": "Plug in your agent",
                 "pages": [
+                  "he/start/integrations",
                   "he/start/integrations/custom-agents",
                   "he/start/integrations/langchain",
                   "he/start/integrations/crewai",
@@ -2324,6 +2497,12 @@
             "tab": "Find failures",
             "icon": "scan-search",
             "groups": [
+              {
+                "group": "Evaluate agents",
+                "pages": [
+                  "he/sessions/evaluations"
+                ]
+              },
               {
                 "group": "Find and manage failures",
                 "pages": [
@@ -2347,17 +2526,22 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "he/policies/overview",
-                  "he/policies/builtin",
-                  "he/policies/builtin-catalog",
-                  "he/policies/custom",
-                  "he/policies/packs",
-                  "he/policies/publish-a-pack",
-                  "he/policies/local-configuration",
+                  "he/policies/overview"
+                ]
+              },
+              {
+                "group": "Get a policy",
+                "pages": [
                   "he/policies/editor",
+                  "he/policies/packs"
+                ]
+              },
+              {
+                "group": "Ship a policy",
+                "pages": [
                   "he/policies/deploy",
-                  "he/policies/fleet",
                   "he/policies/rollback",
+                  "he/policies/publish-a-pack",
                   "he/policies/failure-behavior"
                 ]
               }
@@ -2400,6 +2584,7 @@
                 "pages": [
                   "he/reference/failproof-cli",
                   "he/reference/local-dashboard",
+                  "he/policies/local-configuration",
                   "he/reference/cloud-cli",
                   "he/reference/http-api",
                   "he/reference/events-and-configuration",
@@ -2507,6 +2692,306 @@
     {
       "source": "/start/integrations/how-it-works",
       "destination": "/start/integrations/custom-agents"
+    },
+    {
+      "source": "/policies/builtin",
+      "destination": "/policies/packs"
+    },
+    {
+      "source": "/zh/policies/builtin",
+      "destination": "/zh/policies/packs"
+    },
+    {
+      "source": "/ja/policies/builtin",
+      "destination": "/ja/policies/packs"
+    },
+    {
+      "source": "/ko/policies/builtin",
+      "destination": "/ko/policies/packs"
+    },
+    {
+      "source": "/es/policies/builtin",
+      "destination": "/es/policies/packs"
+    },
+    {
+      "source": "/pt-br/policies/builtin",
+      "destination": "/pt-br/policies/packs"
+    },
+    {
+      "source": "/de/policies/builtin",
+      "destination": "/de/policies/packs"
+    },
+    {
+      "source": "/fr/policies/builtin",
+      "destination": "/fr/policies/packs"
+    },
+    {
+      "source": "/ru/policies/builtin",
+      "destination": "/ru/policies/packs"
+    },
+    {
+      "source": "/hi/policies/builtin",
+      "destination": "/hi/policies/packs"
+    },
+    {
+      "source": "/tr/policies/builtin",
+      "destination": "/tr/policies/packs"
+    },
+    {
+      "source": "/vi/policies/builtin",
+      "destination": "/vi/policies/packs"
+    },
+    {
+      "source": "/it/policies/builtin",
+      "destination": "/it/policies/packs"
+    },
+    {
+      "source": "/ar/policies/builtin",
+      "destination": "/ar/policies/packs"
+    },
+    {
+      "source": "/he/policies/builtin",
+      "destination": "/he/policies/packs"
+    },
+    {
+      "source": "/policies/builtin-catalog",
+      "destination": "/policies/packs"
+    },
+    {
+      "source": "/zh/policies/builtin-catalog",
+      "destination": "/zh/policies/packs"
+    },
+    {
+      "source": "/ja/policies/builtin-catalog",
+      "destination": "/ja/policies/packs"
+    },
+    {
+      "source": "/ko/policies/builtin-catalog",
+      "destination": "/ko/policies/packs"
+    },
+    {
+      "source": "/es/policies/builtin-catalog",
+      "destination": "/es/policies/packs"
+    },
+    {
+      "source": "/pt-br/policies/builtin-catalog",
+      "destination": "/pt-br/policies/packs"
+    },
+    {
+      "source": "/de/policies/builtin-catalog",
+      "destination": "/de/policies/packs"
+    },
+    {
+      "source": "/fr/policies/builtin-catalog",
+      "destination": "/fr/policies/packs"
+    },
+    {
+      "source": "/ru/policies/builtin-catalog",
+      "destination": "/ru/policies/packs"
+    },
+    {
+      "source": "/hi/policies/builtin-catalog",
+      "destination": "/hi/policies/packs"
+    },
+    {
+      "source": "/tr/policies/builtin-catalog",
+      "destination": "/tr/policies/packs"
+    },
+    {
+      "source": "/vi/policies/builtin-catalog",
+      "destination": "/vi/policies/packs"
+    },
+    {
+      "source": "/it/policies/builtin-catalog",
+      "destination": "/it/policies/packs"
+    },
+    {
+      "source": "/ar/policies/builtin-catalog",
+      "destination": "/ar/policies/packs"
+    },
+    {
+      "source": "/he/policies/builtin-catalog",
+      "destination": "/he/policies/packs"
+    },
+    {
+      "source": "/policies/custom",
+      "destination": "/policies/editor"
+    },
+    {
+      "source": "/zh/policies/custom",
+      "destination": "/zh/policies/editor"
+    },
+    {
+      "source": "/ja/policies/custom",
+      "destination": "/ja/policies/editor"
+    },
+    {
+      "source": "/ko/policies/custom",
+      "destination": "/ko/policies/editor"
+    },
+    {
+      "source": "/es/policies/custom",
+      "destination": "/es/policies/editor"
+    },
+    {
+      "source": "/pt-br/policies/custom",
+      "destination": "/pt-br/policies/editor"
+    },
+    {
+      "source": "/de/policies/custom",
+      "destination": "/de/policies/editor"
+    },
+    {
+      "source": "/fr/policies/custom",
+      "destination": "/fr/policies/editor"
+    },
+    {
+      "source": "/ru/policies/custom",
+      "destination": "/ru/policies/editor"
+    },
+    {
+      "source": "/hi/policies/custom",
+      "destination": "/hi/policies/editor"
+    },
+    {
+      "source": "/tr/policies/custom",
+      "destination": "/tr/policies/editor"
+    },
+    {
+      "source": "/vi/policies/custom",
+      "destination": "/vi/policies/editor"
+    },
+    {
+      "source": "/it/policies/custom",
+      "destination": "/it/policies/editor"
+    },
+    {
+      "source": "/ar/policies/custom",
+      "destination": "/ar/policies/editor"
+    },
+    {
+      "source": "/he/policies/custom",
+      "destination": "/he/policies/editor"
+    },
+    {
+      "source": "/policies/fleet",
+      "destination": "/policies/deploy"
+    },
+    {
+      "source": "/zh/policies/fleet",
+      "destination": "/zh/policies/deploy"
+    },
+    {
+      "source": "/ja/policies/fleet",
+      "destination": "/ja/policies/deploy"
+    },
+    {
+      "source": "/ko/policies/fleet",
+      "destination": "/ko/policies/deploy"
+    },
+    {
+      "source": "/es/policies/fleet",
+      "destination": "/es/policies/deploy"
+    },
+    {
+      "source": "/pt-br/policies/fleet",
+      "destination": "/pt-br/policies/deploy"
+    },
+    {
+      "source": "/de/policies/fleet",
+      "destination": "/de/policies/deploy"
+    },
+    {
+      "source": "/fr/policies/fleet",
+      "destination": "/fr/policies/deploy"
+    },
+    {
+      "source": "/ru/policies/fleet",
+      "destination": "/ru/policies/deploy"
+    },
+    {
+      "source": "/hi/policies/fleet",
+      "destination": "/hi/policies/deploy"
+    },
+    {
+      "source": "/tr/policies/fleet",
+      "destination": "/tr/policies/deploy"
+    },
+    {
+      "source": "/vi/policies/fleet",
+      "destination": "/vi/policies/deploy"
+    },
+    {
+      "source": "/it/policies/fleet",
+      "destination": "/it/policies/deploy"
+    },
+    {
+      "source": "/ar/policies/fleet",
+      "destination": "/ar/policies/deploy"
+    },
+    {
+      "source": "/he/policies/fleet",
+      "destination": "/he/policies/deploy"
+    },
+    {
+      "source": "/built-in-policies",
+      "destination": "/policies/packs"
+    },
+    {
+      "source": "/zh/built-in-policies",
+      "destination": "/zh/policies/packs"
+    },
+    {
+      "source": "/ja/built-in-policies",
+      "destination": "/ja/policies/packs"
+    },
+    {
+      "source": "/ko/built-in-policies",
+      "destination": "/ko/policies/packs"
+    },
+    {
+      "source": "/es/built-in-policies",
+      "destination": "/es/policies/packs"
+    },
+    {
+      "source": "/pt-br/built-in-policies",
+      "destination": "/pt-br/policies/packs"
+    },
+    {
+      "source": "/de/built-in-policies",
+      "destination": "/de/policies/packs"
+    },
+    {
+      "source": "/fr/built-in-policies",
+      "destination": "/fr/policies/packs"
+    },
+    {
+      "source": "/ru/built-in-policies",
+      "destination": "/ru/policies/packs"
+    },
+    {
+      "source": "/hi/built-in-policies",
+      "destination": "/hi/policies/packs"
+    },
+    {
+      "source": "/tr/built-in-policies",
+      "destination": "/tr/policies/packs"
+    },
+    {
+      "source": "/vi/built-in-policies",
+      "destination": "/vi/policies/packs"
+    },
+    {
+      "source": "/it/built-in-policies",
+      "destination": "/it/policies/packs"
+    },
+    {
+      "source": "/ar/built-in-policies",
+      "destination": "/ar/policies/packs"
+    },
+    {
+      "source": "/he/built-in-policies",
+      "destination": "/he/policies/packs"
     }
   ]
 }

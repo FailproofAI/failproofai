@@ -540,4 +540,13 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     defaultEnabled: false,
     category: "Workflow",
   },
+  {
+    name: "require-battery-green-before-stop",
+    displayTitle: "Stopped with red local battery",
+    impact: "Unverified work can't ship.",
+    description: "Require battery.sh L0 green before stopping; skip when absent",
+    match: { events: ["Stop"] },
+    defaultEnabled: false,
+    category: "Workflow",
+  },
 ];

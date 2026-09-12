@@ -194,7 +194,7 @@ describe("the audit replays the same policies from either source", () => {
     const raw = execFileSync("bun", [probe], { cwd: REPO, encoding: "utf8" }).trim().split("\n").pop() ?? "";
     const measured = JSON.parse(raw) as { compiled: string; mixed: string; policies: number };
 
-    expect(measured.policies).toBe(38);
+    expect(measured.policies).toBe(39);
     // The pack's function text IS the compiled function text, so the cache key
     // does not move and no existing audit result is invalidated.
     expect(measured.mixed).toBe(measured.compiled);

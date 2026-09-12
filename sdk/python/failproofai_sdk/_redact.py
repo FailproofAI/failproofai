@@ -213,7 +213,8 @@ def redact_json_line(encoded: str) -> str:
                     return "[redacted:secret-assignment]"
             return value
         if isinstance(value, list):
-            return [scrub(item) for item in value]
+            # Elements are more values for the same field, so its name still applies.
+            return [scrub(item, field_name) for item in value]
         if isinstance(value, dict):
             result = {}
             for key, item in value.items():

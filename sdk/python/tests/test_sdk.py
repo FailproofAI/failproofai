@@ -652,6 +652,35 @@ def test_writer_redacts_credentials_before_the_spool_reaches_disk(tmp_path):
         resolver.set_base_dir(original)
 
 
+def test_writer_redacts_opaque_secrets_in_secret_named_arrays(tmp_path):
+    import failproofai_sdk._resolver as resolver
+    original = resolver._base_dir
+    try:
+        resolver.set_base_dir(tmp_path)
+        writer = EventWriter(flush_interval=60)
+        writer.submit(
+            {
+                "timestamp": "t",
+                "session_id": "s1",
+                "agent_id": "a1",
+                "type": "tool_use",
+                "input": {
+                    "password": ["ordinarysecretvalue1"],
+                    "client_secret": ["ordinarysecretvalue2"],
+                    "api_key": ["ordinarysecretvalue3"],
+                    "access_token": [["ordinarysecretvalue4"]],
+                },
+            }
+        )
+        writer.flush_now()
+
+        raw = next((tmp_path / "events").glob("*.jsonl")).read_text()
+        assert "ordinarysecretvalue" not in raw
+        assert raw.count("[redacted:secret-assignment]") == 4
+    finally:
+        resolver.set_base_dir(original)
+
+
 def test_writer_honours_collector_redact_off(tmp_path):
     import failproofai_sdk._resolver as resolver
     original = resolver._base_dir

@@ -71,6 +71,29 @@ def test_secret_named_fields_redact_opaque_values(field):
     assert event["nested"][field] == "[redacted:secret-assignment]"
 
 
+@pytest.mark.parametrize(
+    "field",
+    ["password", "client_secret", "api_key", "access_token", "apiKey", "accessToken"],
+)
+def test_secret_named_arrays_redact_opaque_elements(field):
+    encoded = json.dumps(
+        {"nested": {field: ["abcdefghijklmnop", ["qrstuvwxyzabcdef"], "short", 7, None]}}
+    )
+    event = json.loads(redact_json_line(encoded))
+    assert event["nested"][field] == [
+        "[redacted:secret-assignment]",
+        ["[redacted:secret-assignment]"],
+        "short",
+        7,
+        None,
+    ]
+
+
+def test_arrays_under_ordinary_fields_are_left_alone():
+    encoded = json.dumps({"messages": ["an ordinary sentence of text", ["another long value"]]})
+    assert redact_json_line(encoded) == encoded
+
+
 def test_credential_shaped_dictionary_keys_are_redacted_without_colliding():
     first = "API_KEY=abcdefghijklmnop"
     second = "API_KEY=qrstuvwxyzabcdef"

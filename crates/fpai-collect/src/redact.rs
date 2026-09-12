@@ -196,7 +196,9 @@ fn scrub_in_place(v: &mut Value, field_name: Option<&str>, n: &mut usize) {
                 *s = "[redacted:secret-assignment]".to_string();
             }
         }
-        Value::Array(a) => a.iter_mut().for_each(|e| scrub_in_place(e, None, n)),
+        // Elements are more values for the same field, so its name still
+        // decides whether an opaque string among them is a secret.
+        Value::Array(a) => a.iter_mut().for_each(|e| scrub_in_place(e, field_name, n)),
         Value::Object(o) => {
             let entries = std::mem::take(o);
             for (key, mut value) in entries {
@@ -715,6 +717,34 @@ mod tests {
         assert!(!nested.contains_key(first));
         assert!(!nested.contains_key(second));
         assert!(n >= 6, "expected fields and keys to be scrubbed, got {n}");
+    }
+
+    /// An array's elements are values of the field that holds it.
+    ///
+    /// The field name used to be dropped on the way into an array, so
+    /// `{"password": ["hunter2hunter2"]}` reached the wire verbatim while the
+    /// same value as a plain string was redacted. Form bodies parsed with
+    /// `parse_qs` and multi-value header maps put every value in a list, so
+    /// this is an ordinary shape for a captured credential, not an exotic one.
+    #[test]
+    fn secret_named_arrays_are_scrubbed() {
+        let mut v = json!({
+            "password": ["abcdefghijklmnop"],
+            "client_secret": ["abcdefghijklmnop", "short", 7, null],
+            "api_key": [["abcdefghijklmnop"]],
+            "access_token": ["abcdefghijklmnop"],
+            "messages": ["an ordinary sentence of text"],
+        });
+
+        let n = scrub_value(&mut v, Redact::Minimal);
+        let marker = "[redacted:secret-assignment]";
+        assert_eq!(v["password"], json!([marker]));
+        assert_eq!(v["client_secret"], json!([marker, "short", 7, null]));
+        assert_eq!(v["api_key"], json!([[marker]]));
+        assert_eq!(v["access_token"], json!([marker]));
+        // The name is what makes a value secret: an ordinary array is untouched.
+        assert_eq!(v["messages"], json!(["an ordinary sentence of text"]));
+        assert_eq!(n, 4);
     }
 
     #[test]

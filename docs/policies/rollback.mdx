@@ -48,7 +48,7 @@ fp policies disable <policy-id>    # remove it from every deployment carrying it
 fp policies enable <policy-id>     # add it back
 ```
 
-Each mints a new generation on every deployment it touches, so both can themselves be rolled back.
+Each mints a new generation on every deployment it touches. Rolling one of those generations back is not how you undo a `disable`, though — `rollback` refuses a generation that names a disabled policy, and every generation from before the disable names this one. `fp policies enable` is the way back, and it mints its own generation in turn.
 
 ## Roll back a pack
 

@@ -82,8 +82,12 @@ Without the `__main__` block, `python -m failproofai_sdk.evaluator evaluator:app
 | `FAILPROOFAI_EVALUATOR_CONCURRENCY` | `1` | Sessions this worker scores at once |
 | `FAILPROOFAI_EVALUATOR_REQUEST_TIMEOUT_SECONDS` | `30` | Timeout for each request to Failproof AI |
 | `FAILPROOFAI_EVALUATOR_DRAIN_TIMEOUT_SECONDS` | `60` | How long a stopping worker waits for runs in flight |
-| `FAILPROOFAI_EVALUATOR_ALLOW_INSECURE_HTTP` | `false` | Allow plain HTTP to a URL that is not loopback |
+| `FAILPROOFAI_EVALUATOR_ALLOW_INSECURE_HTTP` | `false` | Allow plain HTTP to a URL that is not loopback — see the warning below |
 | `FAILPROOFAI_EVALUATOR_MODULE` | none | The `module:attribute` for `python -m failproofai_sdk.evaluator` |
+
+<Warning>
+  `FAILPROOFAI_EVALUATOR_ALLOW_INSECURE_HTTP` sends everything in cleartext. The worker carries `FAILPROOFAI_EVALUATOR_TOKEN` as an `Authorization: Bearer` header on every request, and the transcripts it fetches are the sessions themselves — so anyone on the path reads both, and the token they read runs evaluations until you rotate it. Use it only on an isolated development network. Everywhere else the URL must be HTTPS; loopback needs no flag.
+</Warning>
 
 ## Result types
 

@@ -2936,6 +2936,62 @@
     {
       "source": "/built-in-policies",
       "destination": "/policies/packs"
+    },
+    {
+      "source": "/zh/built-in-policies",
+      "destination": "/zh/policies/packs"
+    },
+    {
+      "source": "/ja/built-in-policies",
+      "destination": "/ja/policies/packs"
+    },
+    {
+      "source": "/ko/built-in-policies",
+      "destination": "/ko/policies/packs"
+    },
+    {
+      "source": "/es/built-in-policies",
+      "destination": "/es/policies/packs"
+    },
+    {
+      "source": "/pt-br/built-in-policies",
+      "destination": "/pt-br/policies/packs"
+    },
+    {
+      "source": "/de/built-in-policies",
+      "destination": "/de/policies/packs"
+    },
+    {
+      "source": "/fr/built-in-policies",
+      "destination": "/fr/policies/packs"
+    },
+    {
+      "source": "/ru/built-in-policies",
+      "destination": "/ru/policies/packs"
+    },
+    {
+      "source": "/hi/built-in-policies",
+      "destination": "/hi/policies/packs"
+    },
+    {
+      "source": "/tr/built-in-policies",
+      "destination": "/tr/policies/packs"
+    },
+    {
+      "source": "/vi/built-in-policies",
+      "destination": "/vi/policies/packs"
+    },
+    {
+      "source": "/it/built-in-policies",
+      "destination": "/it/policies/packs"
+    },
+    {
+      "source": "/ar/built-in-policies",
+      "destination": "/ar/policies/packs"
+    },
+    {
+      "source": "/he/built-in-policies",
+      "destination": "/he/policies/packs"
     }
   ]
 }

@@ -1,9 +1,13 @@
-//! OpenClaw session capture — a [`filetail`](crate::filetail) adapter.
+//! OpenClaw session capture from both generations of its transcript storage.
 //!
-//! OpenClaw writes live-appended JSONL transcripts at
+//! OpenClaw through 2026.7 wrote live-appended JSONL transcripts at
 //! `<state>/agents/<agentId>/sessions/<sessionId>.jsonl`, where `<state>` is
 //! `$OPENCLAW_STATE_DIR`, else `$OPENCLAW_HOME`, else `~/.openclaw`. We open
 //! them read-only; OpenClaw's own files are never written, moved or deleted.
+//! OpenClaw 2026.9.2 moved the live stream to
+//! `<state>/agents/<agentId>/agent/openclaw-agent.sqlite`; [`sqlite`] captures
+//! that store while this module's [`FORMAT`] keeps old and archived JSONL
+//! sessions working.
 //!
 //! # The sibling that must never be discovered
 //!
@@ -30,10 +34,9 @@
 //!   nested below the sessions directory. Excluded by requiring the transcript
 //!   to sit *directly* in `sessions/`.
 //!
-//! `<state>/state/openclaw.sqlite` (964 KB on the probe capture) and the
-//! agent's `workspace/` git checkout are outside the root entirely — see
-//! [`default_roots`], which points at `agents/` rather than the state directory
-//! so neither is even walked.
+//! `<state>/state/openclaw.sqlite` (the unrelated global state database) and
+//! the agent's `workspace/` git checkout are outside the root entirely — see
+//! [`default_roots`], which points at `agents/` rather than the state directory.
 //!
 //! # Grouping is by agent, not by working directory
 //!
@@ -54,6 +57,7 @@
 //! model snapshots) advance the session clock but emit nothing — they describe
 //! the harness, not the conversation.
 
+pub mod sqlite;
 pub mod transform;
 
 use std::path::{Path, PathBuf};

@@ -151,6 +151,19 @@ pub struct FileCursor {
     pub head_fingerprint: Option<u64>,
     #[serde(default)]
     pub state: TailState,
+    /// Last OpenClaw SQLite transcript sequence durably spooled.
+    ///
+    /// The SQLite store is ordered per session, so its adapter uses a
+    /// synthetic `(dev, inode)` key per `(database, session_id)` and carries
+    /// the real row position here. `None` means no row has been consumed yet;
+    /// OpenClaw sequences begin at zero.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sqlite_seq: Option<i64>,
+    /// OpenClaw rotates this token whenever it destructively rewrites a
+    /// transcript. A changed generation invalidates the sequence, byte offset
+    /// and transform state together and forces a deterministic re-read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sqlite_generation: Option<String>,
 }
 
 /// Bytes of a file's head that [`FileCursor::head_fingerprint`] covers.

@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.0.5 — 2026-09-13
+
+Stable OpenClaw 2026.9 compatibility release, validated against default profiles, named profiles, multiple agents, live policy enforcement, local dashboard rendering, and end-to-end ingestion.
+
+### Fixes
+
+- Restore OpenClaw 2026.9.2+ transcript ingestion from per-agent SQLite databases while preserving legacy JSONL support, including dynamically discovered agents under configured extra profile paths and stable per-profile agent namespacing (#796).
+- Restore complete OpenClaw sessions in the local dashboard, including live WAL-backed SQLite rows on every supported Node version, project grouping by agent and channel, session viewing, and JSONL downloads (#796).
+- Deliver OpenClaw `PreToolUse` `instruct()` decisions as model-visible guidance with a retry gate, while retaining ordinary deny behavior and leaving event canonicalization and transcript ingestion unchanged (#796).
+- Install the FailproofAI plugin into every valid default and named OpenClaw profile, resolve the correct agent workspace for policy evaluation, and prune collector cursors after OpenClaw removes retained session rows (#796).
+
+## 1.0.5-beta.1 — 2026-09-12
+
+### Fixes
+
+- Restore OpenClaw 2026.9.2+ observability after live transcripts moved from per-session JSONL files into per-agent SQLite databases. `failproofaid` now discovers every agent profile and configured extra path, tails each SQLite transcript incrementally, handles transcript rewrites without duplicating delivery, and retains legacy JSONL compatibility.
+
+- Restore OpenClaw sessions in the local dashboard's Projects view and session viewer. SQLite and legacy sessions are merged per agent, live SQLite copies win over archived duplicates, missing channels group under `local`, and downloads export the original `event_json` records as JSONL.
+
+- Deliver OpenClaw `PreToolUse` instructions to the agent through its model-visible tool rejection reason. The first matching `instruct()` temporarily interrupts the tool call, while a session-and-policy-scoped retry window lets the agent proceed after following the guidance. Policy source, tool canonicalization, and transcript ingestion remain unchanged.
+
+- Install the FailproofAI plugin into every valid default and named OpenClaw profile, and preserve each agent's resolved workspace across agent and tool hooks so workspace-scoped policies evaluate consistently.
+
 ## 1.0.5-beta.0 — 2026-09-12
 
 ### Fixes

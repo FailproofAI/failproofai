@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { parseDocument, type Document } from "yaml";
 import { listHermesProfiles, hermesRoot } from "../../lib/hermes-profiles";
+import { listOpenClawProfiles } from "../../lib/openclaw-profiles";
 import {
   CLAUDE_INSTALL_EVENT_TYPES,
   HOOK_SCOPES,
@@ -1534,7 +1535,7 @@ export function unhookedHermesProfiles(): string[] {
 // PLUGIN hooks (file-based "internal hooks" are observation-only), so failproofai
 // ships a static plugin package (`openclaw-plugin/`, like Pi's pi-extension) that
 // async-spawns the binary and maps verdicts back. Install registers the plugin in
-// `~/.openclaw/openclaw.json` (JSON):
+// every profile's `openclaw.json` (JSON):
 //   • plugins.load.paths[]  → the shipped openclaw-plugin dir (absolute path)
 //   • plugins.entries.failproofai = { enabled: true, hooks: { allowConversationAccess: true } }
 //     (allowConversationAccess is required for the raw-conversation hooks
@@ -1577,9 +1578,14 @@ export const openclaw: Integration = {
   scopes: OPENCLAW_HOOK_SCOPES,
   eventTypes: OPENCLAW_HOOK_EVENT_TYPES,
 
-  // USER scope only (~/.openclaw/openclaw.json); OpenClaw has no project config.
+  // USER scope only; this is the default profile. Named profiles are returned
+  // by getSettingsPaths so one config pass cannot leave gateways unenforced.
   getSettingsPath() {
-    return resolve(homedir(), ".openclaw", "openclaw.json");
+    return resolve(listOpenClawProfiles()[0].home, "openclaw.json");
+  },
+
+  getSettingsPaths() {
+    return listOpenClawProfiles().map((profile) => resolve(profile.home, "openclaw.json"));
   },
 
   readSettings(settingsPath) {
@@ -1657,17 +1663,19 @@ export const openclaw: Integration = {
   },
 
   hooksInstalledInSettings(scope, cwd) {
-    const settingsPath = this.getSettingsPath(scope, cwd);
-    if (!existsSync(settingsPath)) return false;
-    try {
-      const settings = this.readSettings(settingsPath) as OpenClawSettingsFile;
-      const paths = settings.plugins?.load?.paths;
-      const pathPresent = Array.isArray(paths) && paths.some((p) => isFailproofaiOpenClawPath(p));
-      const entryEnabled = settings.plugins?.entries?.[OPENCLAW_PLUGIN_ID]?.enabled === true;
-      return pathPresent && entryEnabled;
-    } catch {
-      return false;
-    }
+    const settingsPaths = settingsPathsFor(this, scope, cwd);
+    return settingsPaths.length > 0 && settingsPaths.every((settingsPath) => {
+      if (!existsSync(settingsPath)) return false;
+      try {
+        const settings = this.readSettings(settingsPath) as OpenClawSettingsFile;
+        const paths = settings.plugins?.load?.paths;
+        const pathPresent = Array.isArray(paths) && paths.some((p) => isFailproofaiOpenClawPath(p));
+        const entryEnabled = settings.plugins?.entries?.[OPENCLAW_PLUGIN_ID]?.enabled === true;
+        return pathPresent && entryEnabled;
+      } catch {
+        return false;
+      }
+    });
   },
 
   detectInstalled() {

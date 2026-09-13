@@ -477,9 +477,11 @@ maps in `types.ts` (single source of truth).
 `stopHookActive`, ≈ Claude's Stop payload), so the 5 `require-*-before-stop`
 builtins **enforce** on OpenClaw — a deny becomes a `{action:"revise"}` that
 re-runs the turn (unlike Hermes, which has no Stop event at all). **Instruct**
-degrades to allow + stderr note on non-Stop events (no additional-context
-channel); on Stop it emits the MANDATORY-ACTION deny so the revise loop carries
-the directive. **Omitted hooks:** `agent_end` (would double-fire Stop) and
+on `PreToolUse` uses a model-visible `blockReason` to interrupt the first
+matching tool attempt, then permits retries from that session/policy for five
+minutes; other non-Stop events still degrade to allow + stderr note. On Stop it
+emits the MANDATORY-ACTION deny so the revise loop carries the directive.
+**Omitted hooks:** `agent_end` (would double-fire Stop) and
 `message_sending` (outbound-message cancel gate — an OpenClaw-only capability,
 deferred).
 
@@ -1290,9 +1292,10 @@ Each entry should be a single line: a short description followed by the PR numbe
 
 ## Version bumps
 
-When bumping the version, update **only** `package.json` (root). The CI version-consistency
-check compares `packages/*/package.json` against root — that directory does not currently
-exist, so no other files need updating.
+When bumping the version, update both root `package.json` and the
+`[workspace.package]` version in root `Cargo.toml`, then refresh `Cargo.lock`. The CLI and
+native daemon must report the same version. The CI version-consistency check also compares
+any `packages/*/package.json` files against root; that directory does not currently exist.
 
 That is the **npm** version, and it governs the CLI, the daemon and the Cargo workspace.
 The two Python packages version **independently of it and of each other** — `fp-cloud-cli` and

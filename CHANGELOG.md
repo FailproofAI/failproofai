@@ -1,8 +1,8 @@
 # Changelog
 
-## 1.0.5 — 2026-09-13
+## 1.0.5-beta.2 — 2026-09-13
 
-The stable release of the OpenClaw 2026.9 compatibility work validated against default profiles, named profiles, multiple agents, live policy enforcement, and end-to-end AgentEye ingestion.
+Second beta of the OpenClaw 2026.9 compatibility work, ready for registry-based validation against default profiles, named profiles, multiple agents, live policy enforcement, and end-to-end AgentEye ingestion before stable promotion.
 
 ### Fixes
 

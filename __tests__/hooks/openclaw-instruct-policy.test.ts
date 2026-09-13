@@ -46,6 +46,23 @@ describe("OpenClaw instruct policy", () => {
     });
   });
 
+  it("instructs on a review checkpoint without requiring a notification command", async () => {
+    const result = await evaluatePolicies("PreToolUse", {
+      tool_name: "Write",
+      tool_input: { path: "status.json", content: "requires_manual_review" },
+      cwd: "/Users/tester/.openclaw/workspace/operations",
+    }, {
+      cli: "openclaw",
+      cwd: "/Users/tester/.openclaw/workspace/operations",
+    });
+
+    expect(result.decision).toBe("instruct");
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      permission: "instruct",
+      policyName: "failproofai/retry-before-action",
+    });
+  });
+
   it("does not affect unrelated OpenClaw Slack sends", async () => {
     const result = await evaluatePolicies("PreToolUse", {
       tool_name: "Bash",

@@ -10,6 +10,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import initSqlJs from "sql.js/dist/sql-asm.js";
 import {
   getOpenClawSessions,
   getOpenClawProjects,
@@ -41,19 +42,12 @@ async function writeSqliteSession(
   uuid: string,
   updatedAt: number,
   channel: string | null = null,
-): Promise<boolean> {
-  try {
-    const { DatabaseSync } = (await import("node:sqlite")) as unknown as {
-      DatabaseSync: new (path: string) => {
-        exec(sql: string): void;
-        prepare(sql: string): { run(...params: unknown[]): void };
-        close(): void;
-      };
-    };
-    const dir = join(root, "agents", agentId, "agent");
-    mkdirSync(dir, { recursive: true });
-    const db = new DatabaseSync(join(dir, "openclaw-agent.sqlite"));
-    db.exec(`
+): Promise<void> {
+  const SQL = await initSqlJs();
+  const dir = join(root, "agents", agentId, "agent");
+  mkdirSync(dir, { recursive: true });
+  const db = new SQL.Database();
+  db.run(`
       CREATE TABLE session_windows (
         session_id TEXT PRIMARY KEY, session_key TEXT NOT NULL,
         updated_at INTEGER NOT NULL, transcript_updated_at INTEGER,
@@ -75,20 +69,18 @@ async function writeSqliteSession(
         conversation_id TEXT, channel TEXT, kind TEXT, peer_id TEXT,
         delivery_target TEXT, label TEXT
       );
-    `);
-    db.prepare(
-      "INSERT INTO session_windows VALUES (?, ?, ?, ?, NULL, ?, NULL, NULL)",
-    ).run(uuid, `agent:${agentId}:main`, updatedAt, updatedAt, channel);
-    db.prepare("INSERT INTO transcript_events VALUES (?, 0, ?, ?)").run(
+  `);
+  db.run(
+    "INSERT INTO session_windows VALUES (?, ?, ?, ?, NULL, ?, NULL, NULL)",
+    [uuid, `agent:${agentId}:main`, updatedAt, updatedAt, channel],
+  );
+  db.run("INSERT INTO transcript_events VALUES (?, 0, ?, ?)", [
       uuid,
       JSON.stringify({ type: "session", id: uuid, cwd: `/work/${agentId}` }),
       updatedAt,
-    );
-    db.close();
-    return true;
-  } catch {
-    return false;
-  }
+  ]);
+  writeFileSync(join(dir, "openclaw-agent.sqlite"), Buffer.from(db.export()));
+  db.close();
 }
 
 function seed(): string {
@@ -170,7 +162,7 @@ describe("getOpenClawSessions", () => {
 
   it("discovers SQLite-only agents, defaults their channel, and keeps profiles separate", async () => {
     home = mkdtempSync(join(tmpdir(), "openclaw-sqlite-proj-"));
-    if (!(await writeSqliteSession(home, "main", UUID_SQLITE, 12_000))) return;
+    await writeSqliteSession(home, "main", UUID_SQLITE, 12_000);
     await writeSqliteSession(
       home,
       "research",
@@ -208,10 +200,7 @@ describe("getOpenClawSessions", () => {
         },
       }),
     );
-    if (
-      !(await writeSqliteSession(home, "main", UUID_SQLITE, 15_000, "telegram"))
-    )
-      return;
+    await writeSqliteSession(home, "main", UUID_SQLITE, 15_000, "telegram");
     process.env.OPENCLAW_HOME = home;
 
     const sessions = await getOpenClawSessions();

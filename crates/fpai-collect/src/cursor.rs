@@ -330,6 +330,20 @@ impl CursorStore {
         }
     }
 
+    /// Retain cursors selected by a source-specific liveness check.
+    ///
+    /// Some sources multiplex many logical sessions through one physical file.
+    /// `retain_existing` cannot prune one deleted logical session while that
+    /// shared file still exists, so those sources supply the identities that
+    /// were confirmed live by a successful poll.
+    pub fn retain_matching(&mut self, mut keep: impl FnMut(&FileCursor) -> bool) {
+        let before = self.cursors.len();
+        self.cursors.retain(|_, cursor| keep(cursor));
+        if self.cursors.len() != before {
+            self.dirty = true;
+        }
+    }
+
     /// Forget every cursor whose file was modified at or after `since`, so the
     /// next read starts those files from byte 0.
     ///

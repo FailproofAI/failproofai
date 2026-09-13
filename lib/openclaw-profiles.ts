@@ -19,8 +19,11 @@ export const OPENCLAW_DEFAULT_PROFILE = "default";
 
 /** Active/default OpenClaw state home, respecting OpenClaw's own overrides. */
 export function openclawProfileHome(): string {
-  const stateDir = (process.env.OPENCLAW_STATE_DIR || process.env.OPENCLAW_HOME || "").trim();
+  const stateDir = (process.env.OPENCLAW_STATE_DIR ?? "").trim();
   if (stateDir) return resolve(stateDir);
+
+  const openclawHome = (process.env.OPENCLAW_HOME ?? "").trim();
+  if (openclawHome) return resolve(openclawHome);
 
   const configPath = (process.env.OPENCLAW_CONFIG_PATH || "").trim();
   if (configPath) return dirname(resolve(configPath));

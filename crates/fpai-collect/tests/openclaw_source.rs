@@ -17,6 +17,7 @@ use rusqlite::{Connection, params};
 use serde_json::{Value, json};
 
 const UUID: &str = "0c751d66-8f74-429d-a604-b29855d36c41";
+const SECOND_UUID: &str = "1d862e77-906d-53ae-b715-c3a966e47d52";
 
 fn tmpdir(name: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!(
@@ -679,10 +680,20 @@ fn create_openclaw_db(base: &Path) -> Connection {
 }
 
 fn replace_sqlite_session(conn: &Connection, generation: &str, lines: &[String], ended: bool) {
+    replace_sqlite_session_for(conn, UUID, generation, lines, ended);
+}
+
+fn replace_sqlite_session_for(
+    conn: &Connection,
+    session_id: &str,
+    generation: &str,
+    lines: &[String],
+    ended: bool,
+) {
     let activity = 1_788_251_542_907i64;
     conn.execute(
         "DELETE FROM transcript_events WHERE session_id = ?1",
-        [UUID],
+        [session_id],
     )
     .unwrap();
     conn.execute(
@@ -692,7 +703,7 @@ fn replace_sqlite_session(conn: &Connection, generation: &str, lines: &[String],
            updated_at = excluded.updated_at,
            transcript_updated_at = excluded.transcript_updated_at,
            ended_at = excluded.ended_at",
-        params![UUID, activity, ended.then_some(activity)],
+        params![session_id, activity, ended.then_some(activity)],
     )
     .unwrap();
     conn.execute(
@@ -700,14 +711,14 @@ fn replace_sqlite_session(conn: &Connection, generation: &str, lines: &[String],
          VALUES(?1, ?2, ?3)
          ON CONFLICT(session_id) DO UPDATE SET
            generation = excluded.generation, updated_at = excluded.updated_at",
-        params![UUID, generation, activity],
+        params![session_id, generation, activity],
     )
     .unwrap();
     for (seq, line) in lines.iter().enumerate() {
         conn.execute(
             "INSERT INTO transcript_events(session_id, seq, event_json, created_at)
              VALUES(?1, ?2, ?3, ?4)",
-            params![UUID, seq as i64, line, activity + seq as i64],
+            params![session_id, seq as i64, line, activity + seq as i64],
         )
         .unwrap();
     }
@@ -1084,6 +1095,58 @@ async fn sqlite_resume_only_ships_rows_appended_after_the_saved_sequence() {
     );
     assert_eq!(events[0]["type"], "model_response");
     assert_eq!(events[0]["content"], "new SQLite turn");
+
+    drop(conn);
+    fs::remove_dir_all(&root).ok();
+    fs::remove_dir_all(&spool).ok();
+    fs::remove_dir_all(&state).ok();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn sqlite_cursors_are_pruned_when_openclaw_removes_a_session() {
+    let root = tmpdir("sqlite-prune-root");
+    let spool = tmpdir("sqlite-prune-spool");
+    let state = tmpdir("sqlite-prune-state");
+    let conn = create_openclaw_db(&root);
+    let lines = full_session();
+    replace_sqlite_session_for(&conn, UUID, "generation-a", &lines, false);
+    replace_sqlite_session_for(&conn, SECOND_UUID, "generation-b", &lines, false);
+
+    run_sqlite_briefly(sqlite_spec(root.clone(), spool.clone(), state.clone()), 500).await;
+    let first: Value = serde_json::from_str(
+        &fs::read_to_string(state.join("cursors.json")).expect("cursor file after first poll"),
+    )
+    .unwrap();
+    assert_eq!(first["cursors"].as_object().unwrap().len(), 2);
+
+    conn.execute(
+        "DELETE FROM transcript_events WHERE session_id = ?1",
+        [SECOND_UUID],
+    )
+    .unwrap();
+    conn.execute(
+        "DELETE FROM transcript_rewrite_watermarks WHERE session_id = ?1",
+        [SECOND_UUID],
+    )
+    .unwrap();
+    conn.execute(
+        "DELETE FROM session_windows WHERE session_id = ?1",
+        [SECOND_UUID],
+    )
+    .unwrap();
+
+    run_sqlite_briefly(sqlite_spec(root.clone(), spool.clone(), state.clone()), 350).await;
+    let pruned: Value = serde_json::from_str(
+        &fs::read_to_string(state.join("cursors.json")).expect("cursor file after pruning"),
+    )
+    .unwrap();
+    let cursors = pruned["cursors"].as_object().unwrap();
+    assert_eq!(cursors.len(), 1, "deleted sessions must not leak cursors");
+    assert_eq!(
+        cursors.values().next().unwrap()["session_id"],
+        UUID,
+        "the live session cursor must remain"
+    );
 
     drop(conn);
     fs::remove_dir_all(&root).ok();

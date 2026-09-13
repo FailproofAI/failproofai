@@ -10,13 +10,15 @@ const previousHome = process.env.OPENCLAW_HOME;
 const previousConfigPath = process.env.OPENCLAW_CONFIG_PATH;
 const dirs: string[] = [];
 
+function restore(name: "OPENCLAW_STATE_DIR" | "OPENCLAW_HOME" | "OPENCLAW_CONFIG_PATH", value: string | undefined) {
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
+}
+
 afterEach(() => {
-  if (previousStateDir === undefined) delete process.env.OPENCLAW_STATE_DIR;
-  else process.env.OPENCLAW_STATE_DIR = previousStateDir;
-  if (previousHome === undefined) delete process.env.OPENCLAW_HOME;
-  else process.env.OPENCLAW_HOME = previousHome;
-  if (previousConfigPath === undefined) delete process.env.OPENCLAW_CONFIG_PATH;
-  else process.env.OPENCLAW_CONFIG_PATH = previousConfigPath;
+  restore("OPENCLAW_STATE_DIR", previousStateDir);
+  restore("OPENCLAW_HOME", previousHome);
+  restore("OPENCLAW_CONFIG_PATH", previousConfigPath);
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -51,5 +53,40 @@ describe("OpenClaw profile discovery", () => {
 
     expect(openclawProfileHome()).toBe(home);
     expect(listOpenClawProfiles()).toEqual([{ name: "default", home }]);
+  });
+
+  it("uses OPENCLAW_HOME when the state override is absent or whitespace", () => {
+    const parent = mkdtempSync(join(tmpdir(), "openclaw-home-override-"));
+    dirs.push(parent);
+    const home = join(parent, ".openclaw");
+    process.env.OPENCLAW_STATE_DIR = "   ";
+    process.env.OPENCLAW_HOME = `  ${home}  `;
+    process.env.OPENCLAW_CONFIG_PATH = join(parent, "ignored", "openclaw.json");
+
+    expect(openclawProfileHome()).toBe(home);
+    expect(listOpenClawProfiles()[0]).toEqual({ name: "default", home });
+  });
+
+  it("uses OPENCLAW_CONFIG_PATH only after state and home overrides", () => {
+    const parent = mkdtempSync(join(tmpdir(), "openclaw-config-override-"));
+    dirs.push(parent);
+    const configHome = join(parent, "configured");
+    process.env.OPENCLAW_STATE_DIR = "";
+    process.env.OPENCLAW_HOME = "   ";
+    process.env.OPENCLAW_CONFIG_PATH = ` ${join(configHome, "openclaw.json")} `;
+
+    expect(openclawProfileHome()).toBe(configHome);
+    expect(listOpenClawProfiles()).toEqual([{ name: "default", home: configHome }]);
+  });
+
+  it("keeps state-directory precedence over home and config-path overrides", () => {
+    const parent = mkdtempSync(join(tmpdir(), "openclaw-precedence-"));
+    dirs.push(parent);
+    const stateHome = join(parent, "state");
+    process.env.OPENCLAW_STATE_DIR = stateHome;
+    process.env.OPENCLAW_HOME = join(parent, "home");
+    process.env.OPENCLAW_CONFIG_PATH = join(parent, "config", "openclaw.json");
+
+    expect(openclawProfileHome()).toBe(stateHome);
   });
 });

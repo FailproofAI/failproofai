@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.5 — 2026-09-13
+
+The stable release of the OpenClaw 2026.9 compatibility work validated against default profiles, named profiles, multiple agents, live policy enforcement, and end-to-end AgentEye ingestion.
+
+### Fixes
+
+- Restore OpenClaw 2026.9.2+ transcript ingestion from per-agent SQLite databases while preserving legacy JSONL support, including dynamically discovered agents under configured extra profile paths and stable per-profile agent namespacing (#796).
+- Restore complete OpenClaw sessions in the local dashboard, including live WAL-backed SQLite rows on every supported Node version, project grouping by agent and channel, session viewing, and JSONL downloads (#796).
+- Deliver OpenClaw `PreToolUse` `instruct()` decisions as model-visible guidance with a retry gate, while retaining ordinary deny behavior and leaving event canonicalization and transcript ingestion unchanged (#796).
+- Install the FailproofAI plugin into every valid default and named OpenClaw profile, resolve the correct agent workspace for policy evaluation, and prune collector cursors after OpenClaw removes retained session rows (#796).
+
 ## 1.0.5-beta.1 — 2026-09-12
 
 ### Fixes

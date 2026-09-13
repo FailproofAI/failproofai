@@ -1292,9 +1292,10 @@ Each entry should be a single line: a short description followed by the PR numbe
 
 ## Version bumps
 
-When bumping the version, update **only** `package.json` (root). The CI version-consistency
-check compares `packages/*/package.json` against root — that directory does not currently
-exist, so no other files need updating.
+When bumping the version, update both root `package.json` and the
+`[workspace.package]` version in root `Cargo.toml`, then refresh `Cargo.lock`. The CLI and
+native daemon must report the same version. The CI version-consistency check also compares
+any `packages/*/package.json` files against root; that directory does not currently exist.
 
 That is the **npm** version, and it governs the CLI, the daemon and the Cargo workspace.
 The two Python packages version **independently of it and of each other** — `fp-cloud-cli` and

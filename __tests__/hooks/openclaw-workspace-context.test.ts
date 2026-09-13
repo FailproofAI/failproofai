@@ -25,6 +25,20 @@ describe("OpenClaw tool-hook workspace context", () => {
     expect(workspaceFromConfig(config, "research")).toBe("/work/research");
   });
 
+  it("matches a legacy agents.list entry by name", () => {
+    const config = {
+      agents: { list: [{ name: "research", workspace: "/work/by-name" }] },
+    };
+    expect(workspaceFromConfig(config, "research")).toBe("/work/by-name");
+  });
+
+  it("falls back to the default agent workspace", () => {
+    const config = {
+      agents: { defaults: { workspace: "/work/default" } },
+    };
+    expect(workspaceFromConfig(config, "missing-agent")).toBe("/work/default");
+  });
+
   it("recovers workspace from an earlier agent hook for the same session", () => {
     const context = createWorkspaceContext();
     context.remember({}, {

@@ -10,6 +10,7 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import initSqlJs from "sql.js/dist/sql-asm.js";
 import {
   openclawLinesToLogEntries,
   findOpenClawTranscript,
@@ -175,18 +176,7 @@ describe("OpenClaw transcript resolution", () => {
   });
 
   it("loads and parses a SQLite transcript before an archived JSONL copy", async () => {
-    let DatabaseSync: new (path: string) => {
-      exec(sql: string): void;
-      prepare(sql: string): { run(...params: unknown[]): void };
-      close(): void;
-    };
-    try {
-      ({ DatabaseSync } = (await import("node:sqlite")) as unknown as {
-        DatabaseSync: typeof DatabaseSync;
-      });
-    } catch {
-      return;
-    }
+    const SQL = await initSqlJs();
     const home = mkdtempSync(join(tmpdir(), "openclaw-sqlite-log-"));
     const agentDir = join(home, "agents", "main", "agent");
     const sessionsDir = join(home, "agents", "main", "sessions");
@@ -199,21 +189,23 @@ describe("OpenClaw transcript resolution", () => {
         message: { role: "user", content: "archived" },
       }),
     );
-    const db = new DatabaseSync(join(agentDir, "openclaw-agent.sqlite"));
-    db.exec(`CREATE TABLE transcript_events (
+    const db = new SQL.Database();
+    db.run(`CREATE TABLE transcript_events (
       session_id TEXT, seq INTEGER, event_json TEXT, created_at INTEGER,
       PRIMARY KEY(session_id, seq)
     )`);
-    const insert = db.prepare(
+    db.run(
       "INSERT INTO transcript_events VALUES (?, ?, ?, ?)",
-    );
-    insert.run(
+      [
       UUID,
       0,
       JSON.stringify({ type: "session", cwd: "/sqlite/work" }),
       1000,
+      ],
     );
-    insert.run(
+    db.run(
+      "INSERT INTO transcript_events VALUES (?, ?, ?, ?)",
+      [
       UUID,
       1,
       JSON.stringify({
@@ -222,6 +214,11 @@ describe("OpenClaw transcript resolution", () => {
         message: { role: "user", content: "live sqlite" },
       }),
       2000,
+      ],
+    );
+    writeFileSync(
+      join(agentDir, "openclaw-agent.sqlite"),
+      Buffer.from(db.export()),
     );
     db.close();
 

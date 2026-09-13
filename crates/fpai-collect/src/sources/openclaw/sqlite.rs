@@ -12,6 +12,7 @@
 //! case: when it changes, all derived state for that session is reset and the
 //! current generation is read again from sequence zero.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -81,6 +82,13 @@ struct DbPoll {
     sessions: Vec<SessionRow>,
 }
 
+#[derive(Debug)]
+struct DatabaseResult {
+    emitted: u64,
+    database_key: u64,
+    live_session_keys: Vec<u64>,
+}
+
 /// Poll every discovered per-agent database until shutdown.
 pub async fn run(spec: Spec, sd: Shutdown) -> Result<(), TaskError> {
     let health_key = spec
@@ -94,10 +102,21 @@ pub async fn run(spec: Spec, sd: Shutdown) -> Result<(), TaskError> {
         let present = !databases.is_empty();
         let mut events = 0u64;
         let mut first_error = None;
+        let mut successful_databases = HashSet::new();
+        let mut live_sessions = HashSet::new();
 
         for db_path in databases {
             match process_database(&spec, &mut cursors, &db_path).await {
-                Ok(n) => events += n,
+                Ok(result) => {
+                    events += result.emitted;
+                    successful_databases.insert(result.database_key);
+                    live_sessions.extend(
+                        result
+                            .live_session_keys
+                            .into_iter()
+                            .map(|session_key| (result.database_key, session_key)),
+                    );
+                }
                 Err(err) => {
                     tracing::warn!(db = %db_path.display(), %err, "could not process OpenClaw database");
                     if first_error.is_none() {
@@ -107,6 +126,14 @@ pub async fn run(spec: Spec, sd: Shutdown) -> Result<(), TaskError> {
             }
         }
 
+        // One SQLite file contains many logical sessions, so its continued
+        // existence says nothing about whether each session still exists.
+        // Prune only databases we read successfully; a locked/corrupt database
+        // keeps its cursors and gets another chance on the next poll.
+        cursors.retain_matching(|cursor| {
+            !successful_databases.contains(&cursor.dev)
+                || live_sessions.contains(&(cursor.dev, cursor.inode))
+        });
         cursors.retain_existing();
         cursors.save().map_err(io_err)?;
         crate::health::report_poll(&health_key, present, events, cursors.len() as u64);
@@ -158,7 +185,7 @@ async fn process_database(
     spec: &Spec,
     cursors: &mut CursorStore,
     db_path: &Path,
-) -> Result<u64, TaskError> {
+) -> Result<DatabaseResult, TaskError> {
     let path = db_path.to_path_buf();
     let db_poll = tokio::task::spawn_blocking(move || read_sessions(&path))
         .await
@@ -167,6 +194,11 @@ async fn process_database(
 
     let agent_id = agent_id_from_database(db_path).unwrap_or_else(|| DEFAULT_AGENT_ID.to_string());
     let db_key = stable_hash(db_path.to_string_lossy().as_bytes());
+    let live_session_keys = db_poll
+        .sessions
+        .iter()
+        .map(|session| stable_hash(session.session_id.as_bytes()))
+        .collect();
     let mut emitted = 0u64;
 
     for session in db_poll.sessions {
@@ -301,7 +333,11 @@ async fn process_database(
         cursors.set(cursor);
     }
 
-    Ok(emitted)
+    Ok(DatabaseResult {
+        emitted,
+        database_key: db_key,
+        live_session_keys,
+    })
 }
 
 fn read_sessions(path: &Path) -> rusqlite::Result<DbPoll> {

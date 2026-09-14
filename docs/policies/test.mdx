@@ -1,0 +1,60 @@
+---
+title: "Test a policy"
+description: "Backtest a draft against traffic you already have, and prove it stops what it should and allows what it must, before any machine enforces it."
+icon: "flask-conical"
+---
+
+Test every policy two ways: against the traffic your agents already produced, and against a legitimate action it must let through. A policy that has only seen the unsafe case has not been tested.
+
+## Backtest the draft
+
+<Tabs>
+  <Tab title="Dashboard">
+    The policy editor replays a draft against calls your fleet already made, before you publish it.
+
+    1. Open the draft in **Admin → policy editor**. The editor confirms it parses as JavaScript.
+    2. In **backtest**, pick the agents and the time window to replay — **every agent** and **30d** by default — and leave the last filter on **everything** unless you want to narrow it.
+    3. Select **run backtest**.
+
+    ![The backtest panel under a draft that parses as JavaScript, with its three filters and the run backtest action, above publish version.](/images/dashboard/policy-backtest.png)
+
+    The result is what the draft would have done to those calls — including how many **working** calls it would have interrupted. Those are false positives found before any agent meets them: tighten the draft and run it again until that number is one you can accept.
+  </Tab>
+  <Tab title="CLI">
+    Backtesting is a dashboard feature. From a terminal, run the policy against events you describe instead, below.
+  </Tab>
+</Tabs>
+
+## Run it against an event you describe
+
+`fp policies test` runs a policy file on your machine against a synthetic event and checks the decision. Nothing is published and nothing reaches Cloud:
+
+```bash
+fp policies test ./checkout.policy.mjs --command "git push --force" --expect deny
+fp policies test ./checkout.policy.mjs --command "git push" --expect allow
+```
+
+Shape the event with `--event`, `--tool`, `--command` and `--file`. The policy's own `match` filter still applies, so a policy that does not cover the event you described reports `skipped` rather than a decision — usually a sign its `match` is narrower than you meant.
+
+## Run it on one machine
+
+Next, enforce it for real on your own machine, against your own agent:
+
+```bash
+failproofai policies --install --custom ./checkout.policy.mjs --scope project
+failproofai policies
+```
+
+The first command validates and installs the file; the second confirms it loaded, alongside everything else enforcing here. Ask the agent to do what the policy stops and watch it get refused, then do the legitimate version and watch it go through. Nobody else is affected.
+
+On a machine connected to Cloud, check both decisions under **Observe → policy**: filter by the policy name, then open each linked session to confirm the tool input it matched and the reason it returned.
+
+## Test what breaks
+
+The install refuses a missing file, a syntax error, an unresolved import, a top-level exception, or a module that times out while loading — so re-run it after every change to the file or anything it imports. At enforcement time the same broken file is logged and **skipped** so every other policy keeps running: treat a load warning in production logs as lost enforcement. Convention files load without the install command, so keep an explicit `failproofai policies --install --custom <file>` step in CI — it is what fails the build on a broken policy.
+
+Then feed it what agents actually send, not only the input you expect: missing fields, alternate tool names such as `Write` and `Edit`, Windows paths, malformed input. Return an intentional `allow`, `instruct` or `deny` on every path, keep the function deterministic, and bound any external call with a short timeout.
+
+## Then publish it and observe it
+
+A backtest shows what the policy would have done to the traffic you had; it cannot show what traffic you have not seen yet will do. Select **publish version** in the editor (or run `fp policies publish`), then [deploy it](/policies/deploy) in **observe** mode first — its verdicts are recorded and nothing is blocked — and enforce once its matches separate unsafe actions from valid ones.

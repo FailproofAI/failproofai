@@ -10,54 +10,45 @@ A policy evaluates an agent hook event and returns one of three decisions:
 - `instruct` gives the agent corrective guidance.
 - `deny` blocks the action with a reason.
 
-## Use the three policy surfaces
+## Where policies live
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. Go to **Observe → policy** to filter and inspect policy decisions from sessions.
-    2. Go to **Admin → policy editor** to compose, validate, publish, disable, or inspect immutable versions.
-    3. Go to **Admin → enforcement** to assign versions and effects to machines.
+| In the dashboard | What you do there |
+| --- | --- |
+| **Observe → policy** | Review decisions from real sessions: which policy matched, on which machine, and why |
+| **Admin → policy editor** | Write a policy, backtest it against past traffic, publish an immutable version, and compare versions in **library** |
+| **Admin → enforcement** | Put versions on machines, in observe or enforce mode |
 
-    Use the Policy page to understand what is already matching before authoring or changing enforcement.
+The policy editor is where a failure becomes a rule. Describe the failure mode or paste policy source in **compose**, backtest the draft against traffic you already have, and publish a version:
 
-    ![The Policy page showing decision totals and local and Cloud-managed policy mappings.](/images/dashboard/policy-observe.png)
+![The Policy editor compose view with policy identity, AI-assisted drafting, source validation, and publishing controls.](/images/dashboard/policy-editor.png)
 
-    The editor is where you turn a failure condition into source, validate it, and publish an immutable version.
+On a machine, `failproofai policies` lists everything enforcing there. `fp policies` and `fp fleet` cover the editor and enforcement from a terminal — see the [Cloud CLI reference](/reference/cloud-cli).
 
-    ![The Policy editor used to compose and publish an immutable policy version.](/images/dashboard/policy-editor.png)
+## Get a policy
 
-    Enforcement then assigns that published version and its observe or enforce effect to machines.
-
-    ![The Enforcement fleet showing machine coverage and assigned policy versions.](/images/dashboard/enforcement-fleet.png)
-
-    Verify decisions back on the Policy page after deployment so the authoring and fleet views are tied to real agent activity.
-  </Tab>
-  <Tab title="CLI">
-    Use `failproofai` for local policy installation and validation:
-
-    ```bash
-    failproofai policies
-    failproofai policy add block-rm-rf --scope project
-    failproofai config --status
-    ```
-
-    Use `fp` to find the Cloud sessions and events containing policy decisions. Cloud authoring and fleet deployment remain dashboard workflows.
-  </Tab>
-</Tabs>
-
-Policies have three distinct surfaces in Failproof AI:
-
-1. **Analyze decisions** in sessions, dashboards, and audits.
-2. **Author versions** with builtin rules, code, or the policy editor.
-3. **Deploy and enforce** versions across selected machines.
-
-Start from a confirmed failure mode. Define the smallest event and tool match that identifies it, test legitimate and unsafe examples, then observe before enforcing.
+There are two ways to get one.
 
 <Columns cols={2}>
-  <Card title="Use a builtin policy" icon="library" href="/policies/builtin">
-    Enable a reviewed rule for common secret, shell, Git, cloud, and workflow risks.
+  <Card title="Write a policy" icon="file-pen-line" href="/policies/editor">
+    Let Failproof AI draft one from an audit finding, or write the source yourself, then review and publish it in the editor.
   </Card>
-  <Card title="Write a custom policy" icon="code-2" href="/policies/custom">
-    Express a workflow-specific decision in JavaScript or TypeScript.
+  <Card title="Use a policy pack" icon="package" href="/policies/packs">
+    Plug in a Failproof AI policy pack for your use case, or a community pack from the policy hub, in one command.
   </Card>
 </Columns>
+
+## Then ship it
+
+<Steps>
+  <Step title="Test it">
+    Backtest the draft against traffic you already have, and run it against an action it must stop and one it must allow — all before you publish. See [Test a policy](/policies/test).
+  </Step>
+  <Step title="Deploy it">
+    Put the version on machines in **observe** mode, read its decisions, then enforce. See [Deploy a policy](/policies/deploy).
+  </Step>
+  <Step title="Version and roll back">
+    Every publish is a new, immutable version, so a rollout that blocks valid work is undone by redeploying the last good one. See [Versions and rollback](/policies/rollback).
+  </Step>
+</Steps>
+
+To share your policies with other teams, [publish them as a pack](/policies/publish-a-pack). For what happens when a policy cannot be evaluated at all, see [Failure behavior](/policies/failure-behavior).

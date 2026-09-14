@@ -1,10 +1,24 @@
 ---
-title: "Rollback"
-description: "Restore a known policy deployment when a rollout disrupts valid agent work."
+title: "Versions and rollback"
+description: "Every publish is an immutable version, so a rollout that disrupts valid agent work is undone by redeploying the last good one."
 icon: "rotate-ccw"
 ---
 
-Rollback changes the deployed version or removes a policy assignment; it does not erase the decision history that explains the incident.
+A published policy version never changes. Editing a policy and publishing again mints a new version; it never rewrites the one already on machines. That is what makes rollback safe: the last good version is still there, byte for byte, and rolling back does not erase the decision history that explains what went wrong.
+
+## Find a version
+
+<Tabs>
+  <Tab title="Dashboard">
+    Go to **Admin → policy editor** and open **library** to compare a policy's versions or disable one.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp policies list                 # every policy version
+    fp policies show <policy-id>     # one version, with its source
+    ```
+  </Tab>
+</Tabs>
 
 ## Roll back a machine
 
@@ -12,20 +26,40 @@ Rollback changes the deployed version or removes a policy assignment; it does no
   <Tab title="Dashboard">
     1. Go to **Admin → enforcement**, expand the affected machine, and identify its last known-good policy set.
     2. Select **edit**, restore those versions and effects, and apply the new deployment.
-    3. Wait for machine check-in, then verify the reported deployment.
+    3. Wait for the machine's check-in, then verify the reported deployment.
     4. Open **Observe → policy** and the affected sessions to confirm valid work is no longer blocked.
-
   </Tab>
   <Tab title="CLI">
-    Cloud deployment rollback is a dashboard workflow. Use local status to confirm that the corrected deployment has reached the machine:
+    Every deployment to a machine is a numbered generation. List them, then reinstate one:
 
     ```bash
-    failproofai config --status
+    fp fleet history <machine-id>
+    fp fleet rollback <machine-id> <generation>
     ```
 
-    `failproofai config --pause` pauses builtin, custom, and convention policies for one local session. It does not pause Cloud-managed policies, so it is not a workaround for a bad Cloud deployment.
+    `rollback` mints a new generation carrying the old set rather than rewinding the counter, so history stays append-only, and it refuses a generation that names a policy since disabled or deleted. It needs a signed-in session with `policies:write`. `fp fleet diff <machine-id>` shows what was intended against what the machine applied — it reads as `behind` until the machine next polls — and on the machine itself, `failproofai policies` lists the deployment it is running.
   </Tab>
 </Tabs>
+
+## Take one policy off every machine
+
+```bash
+fp policies disable <policy-id>    # remove it from every deployment carrying it
+fp policies enable <policy-id>     # add it back
+```
+
+Each mints a new generation on every deployment it touches. Rolling one of those generations back is not how you undo a `disable`, though — `rollback` refuses a generation that names a disabled policy, and every generation from before the disable names this one. `fp policies enable` is the way back, and it mints its own generation in turn.
+
+## Roll back a pack
+
+A pack is pinned to the release you installed, so rolling it back means installing an earlier one:
+
+```bash
+failproofai policies show FailproofAI/policies --releases   # every version it has published, and which one is here
+failproofai policies add FailproofAI/policies@a1b2c3d4e5f6   # pin that one
+```
+
+Without a terminal, or with `--policy`, `--category` or `--all`, re-adding keeps the subset you had chosen. At a terminal with none of those, it opens the picker pre-ticked with the author's defaults, and what you tick replaces your selection — so re-tick what you had.
 
 ## When to roll back
 
@@ -34,8 +68,8 @@ Rollback changes the deployed version or removes a policy assignment; it does no
 - A policy depends on fields that an integration does not provide.
 - A new version changes behavior outside the intended failure mode.
 
-After rollback, open the affected sessions and identify the condition that caused the false positive. Create a new version, test both the unsafe and legitimate cases, then repeat the observe phase.
+After rolling back, open the affected sessions and find the condition behind the false positive. Publish a new version, [test](/policies/test) both the unsafe and the legitimate case, and observe it again before enforcing.
 
 <Warning>
-  Pausing enforcement can be appropriate during an incident, but it widens exposure for every active policy in that scope. Prefer rolling back the specific policy version when possible.
+  `failproofai config --pause` suspends local policies for one session and never Cloud-managed ones, so it is no way out of a bad Cloud deployment. A pause also widens exposure for every policy in its scope; prefer rolling back the one version that misbehaves.
 </Warning>

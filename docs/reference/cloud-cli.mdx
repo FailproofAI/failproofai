@@ -331,7 +331,7 @@ Cloud-managed policy versions. **Session-only** — every command here exits `2`
 | `fp policies enable POLICY_ID` | Add it back to every deployment it was removed from, minting a new generation on each. | `--yes`, `-y` |
 | `fp policies disable POLICY_ID` | Remove it from every deployment carrying it, minting a new generation on each. | `--yes`, `-y` |
 | `fp policies delete POLICY_ID` | Delete a policy version. | `--yes`, `-y` |
-| `fp policies test PATH` | Run a policy locally against a synthetic context. Applies each policy's `match` filter, so one that does not cover the given event/tool is reported `skipped` rather than run. | `--event`; `--tool`; `--command`; `--file-path`; `--expect` |
+| `fp policies test PATH` | Run a policy locally against a synthetic context. Applies each policy's `match` filter, so one that does not cover the given event/tool is reported `skipped` rather than run. | `--event`; `--tool`; `--command`; `--file`; `--expect` |
 | `fp policies compose PROMPT` | Draft a policy with the assistant. Needs `policies:write`. | — |
 
 ### Fleet
@@ -345,7 +345,7 @@ Which machines run which policies.  **Session-only**, same reason as above.
 | `fp fleet deploy MACHINE_ID` | **Replaces the machine's whole policy set.** Prints the plan and asks only on an interactive terminal without `--json`. | `--add`; `--remove`; `--set`; `--create`; `--yes`, `-y` |
 | `fp fleet diff MACHINE_ID` | Compare a machine against another deployment. | — |
 | `fp fleet history MACHINE_ID` | Past deployments for a machine. | — |
-| `fp fleet rollback MACHINE_ID` | Restore a previous deployment. | `--yes`, `-y` |
+| `fp fleet rollback MACHINE_ID GENERATION` | Reinstate a past generation's policy set, as a new generation. | `--yes`, `-y` |
 | `fp fleet rename MACHINE_ID` | Give a machine a readable name. | required `--name` |
 
 ### Guardrails

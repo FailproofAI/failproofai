@@ -4,30 +4,25 @@ description: "Control policy scope, parameters, custom files, and machine-level 
 icon: "file-cog"
 ---
 
-Failproof AI separates policy selection from machine and daemon settings. This keeps repository policy choices reviewable while credentials and daemon state stay outside the repository.
+Failproof AI keeps what a repository can commit — hook wiring, policy parameters, custom policies — apart from machine state such as credentials, installed packs, and the daemon.
 
-## Choose a policy scope
+## Choose a scope
 
-<Tabs>
-  <Tab title="Dashboard">
-    Run `failproofai` without arguments to open the local policy dashboard. Choose the user, project, or local scope before enabling a policy so the change is written to the intended configuration file.
+A scope decides where the hooks are wired, and which configuration file you write parameters and custom policy paths into:
 
-    - **User** applies across projects on this machine.
-    - **Project** belongs to the repository and can be committed.
-    - **Local** overrides one project for one user and should remain gitignored.
+- **User** applies across projects on this machine.
+- **Project** belongs to the repository and can be committed.
+- **Local** overrides one project for one user and should remain gitignored.
 
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai policy add block-rm-rf --scope user
-    failproofai policy add block-force-push --scope project
-    failproofai policy add warn-large-file-write --scope local
-    failproofai policies
-    ```
+```bash
+failproofai policies --install --cli claude --scope project   # wire hooks for this repository
+failproofai policies --install --cli claude --scope user      # or for every project on this machine
+failproofai policies
+```
 
-    Not every harness supports local scope. The CLI rejects a scope that the selected harness cannot represent.
-  </Tab>
-</Tabs>
+Not every harness supports local scope; the CLI rejects a scope the selected harness cannot represent.
+
+Which pack policies are on is **not** scoped. The switch is recorded with the installed pack, so `failproofai policies add <name>` turns a policy on for the whole machine, whatever `--scope` says.
 
 | Scope | Policy configuration file |
 | --- | --- |
@@ -35,7 +30,7 @@ Failproof AI separates policy selection from machine and daemon settings. This k
 | Local | `<project>/.failproofai/policies-config.local.json` |
 | User | `~/.failproofai/policies-config.json` |
 
-Enabled policies are merged as a union. Policy parameters use the first scope that defines parameters for that policy, in project → local → user order. Explicit custom policy paths use the first scope that defines them.
+Policy parameters use the first scope that defines parameters for that policy, in project → local → user order. Explicit custom policy paths use the first scope that defines them.
 
 ## Configure policy parameters
 
@@ -45,11 +40,10 @@ Enabled policies are merged as a union. Policy parameters use the first scope th
 
   </Tab>
   <Tab title="CLI">
-    Edit the selected scope's `policies-config.json`, then run `failproofai policies` to surface unknown policy names or parameter keys.
+    Edit the selected scope's `policies-config.json`, then run `failproofai policies`: it warns about a `policyParams` entry naming a policy no installed pack carries. It does not check the keys inside an entry, so check their spelling against the table below.
 
     ```json
     {
-      "enabledPolicies": ["block-rm-rf", "block-force-push"],
       "policyParams": {
         "block-rm-rf": {
           "allowPaths": ["/tmp/build-output"]
@@ -64,6 +58,30 @@ Enabled policies are merged as a union. Policy parameters use the first scope th
   </Tab>
 </Tabs>
 
+### Parameters the Failproof AI policies accept
+
+Each policy validates its own parameter types.
+
+| Policy | Parameter | Type and default |
+| --- | --- | --- |
+| `sanitize-api-keys` | `additionalPatterns` | `pattern[]`, `[]`; entries contain `regex` and `label` |
+| `block-read-outside-cwd` | `allowPaths` | `string[]`, `[]` |
+| `block-sudo` | `allowPatterns` | `string[]`, `[]` |
+| `block-rm-rf` | `allowPaths` | `string[]`, `[]` |
+| Infrastructure blockers | `allowPatterns` | `string[]`, `[]` |
+| `block-secrets-write` | `additionalPatterns` | `string[]`, `[]` |
+| `block-push-master` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `block-work-on-main` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `prefer-package-manager` | `allowed`, `blocked` | `string[]`, `[]` |
+| `warn-large-file-write` | `thresholdKb` | `number`, `1024` |
+| `require-push-before-stop` | `remote`, `baseBranch` | `string`, `"origin"`; `string`, `"main"` |
+| `require-pr-before-stop` | `baseBranch` | `string`, `"main"` |
+| `require-no-conflicts-before-stop` | `baseBranch` | `string`, `"main"` |
+
+<Warning>
+  An allow pattern broadens what an agent may do. Test the exact tokenization and command variants on the target harness before deploying it across a fleet.
+</Warning>
+
 ## Understand the machine files
 
 `~/.failproofai` contains separate files for separate trust boundaries:
@@ -72,8 +90,8 @@ Enabled policies are merged as a union. Policy parameters use the first scope th
 | --- | --- |
 | `config.json` | Non-secret daemon, audit, and telemetry settings |
 | `credentials.json` | Cloud credentials; stored with owner-only permissions |
-| `policies-config.json` | User-scope builtin selection, parameters, and explicit custom paths |
-| `policies/` | User convention policies and Cloud-managed policy artifacts |
+| `policies-config.json` | User-scope parameters and explicit custom policy paths |
+| `policies/` | User convention policies, installed packs and which of their policies are on, and Cloud-managed policy artifacts |
 | `hook-activity/` | Local policy decision log |
 | `state/` | Daemon spool, health, pause, and runtime state |
 

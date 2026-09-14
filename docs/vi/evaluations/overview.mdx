@@ -1,0 +1,44 @@
+---
+title: "Đánh giá các agent"
+description: "Chấm điểm mỗi phiên làm việc hoàn tất với các đánh giá bạn định nghĩa: các kiểm tra Python được lưu trữ hoặc các tr裁判LLM trong worker của riêng bạn."
+icon: "gauge"
+---
+
+Một đánh giá chấm điểm một phiên agent hoàn tất. Khi một phiên kết thúc, mỗi đánh giá được bật và áp dụng cho nó sẽ chạy và ghi lại những gì nó tìm thấy, kèm theo lý do bạn có thể đọc bên cạnh trace:
+
+- một **điểm số** từ 0 đến 1, tùy chọn được đánh dấu là đã vượt qua hoặc không vượt qua
+- một **chỉ số**, chẳng hạn như số lượng, thời lượng hoặc chi phí, kèm theo đơn vị của nó
+- một **khẳng định**, đã vượt qua hoặc không vượt qua
+
+## Hai loại trình đánh giá
+
+| | Python được lưu trữ | Worker của riêng bạn |
+| --- | --- | --- |
+| Được viết | Trong bảng điều khiển, ở **Analyze → eval authoring** | Bằng Python, với [Evaluator SDK](/vi/reference/evaluator-sdk) |
+| Chạy | Trên trình đánh giá được quản lý của Failproof AI, trong một sandbox | Trên cơ sở hạ tầng của bạn |
+| Tốt nhất cho | Các kiểm tra xác định, dựa trên mã | Các tr裁判 LLM, lệnh gọi mô hình, gói, bí mật, truy cập mạng, xử lý nặng |
+
+Python được lưu trữ được thiết kế một cách cố ý nhỏ: một biểu thức, không có nhập khẩu, không có mạng. Bất cứ điều gì cần một mô hình — một tr裁判 LLM chấm điểm xem liệu một câu trả lời có phù hợp hay không, chẳng hạn — chạy trong worker của riêng bạn. Cả hai loại đều không cần kết nối vào: worker yêu cầu các phiên hoàn tất và gửi kết quả qua HTTPS đi ra ngoài.
+
+## Mỗi tổ chức đánh giá các agent của riêng nó
+
+Các đánh giá thuộc về tổ chức xác định chúng. Mỗi tổ chức trên một instance viết của riêng nó — các kiểm tra, điều kiện, ngưỡng và nhãn của riêng nó — các phiên bản và triển khai chúng mà không ảnh hưởng đến bất kỳ phiên bản nào khác, và chỉ xem kết quả của riêng nó. Lọc những kết quả đó theo agent, môi trường, đánh giá và thời gian, hoặc hỏi trợ lý về chúng.
+
+## Từ bản nháp đầu tiên đến các điểm số trực tiếp
+
+<Steps>
+  <Step title="Viết nó">
+    Mô tả những gì cần đo lường và để trợ lý soạn thảo nó, hoặc viết nó yourself. Xem [Write an evaluation](/vi/evaluations/write).
+  </Step>
+  <Step title="Kiểm tra nó">
+    Chạy nó với các phiên thực tế trước khi nó đi trực tiếp; không có gì được lưu trữ. Xem [Test an evaluation](/vi/evaluations/test).
+  </Step>
+  <Step title="Triển khai và phiên bản nó">
+    Triển khai một phiên bản bất biến, xuất bản những phiên bản mới khi nó phát triển, và quay lại một phiên bản trước đó. Xem [Deploy and version](/vi/evaluations/deploy).
+  </Step>
+  <Step title="Đọc kết quả">
+    Vẽ biểu đồ điểm số theo thời gian, so sánh các agent và môi trường, và hỏi trợ lý. Xem [Read evaluation results](/vi/sessions/evaluations).
+  </Step>
+</Steps>
+
+Đánh giá chạy về phía trước: một phiên bản triển khai ngay bây giờ chấm điểm các phiên hoàn tất từ bây giờ trở đi. Để chấm điểm các phiên bạn đã có, [backfill chúng](/vi/evaluations/deploy#score-sessions-you-already-have).

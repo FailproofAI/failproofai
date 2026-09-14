@@ -1,49 +1,96 @@
 ---
-title: "Editor de políticas"
-description: "Crie e revise políticas versionadas a partir de um modo de falha confirmado."
+title: "Escrever uma política"
+description: "Deixe o Failproof AI redigir uma política a partir de uma descoberta de auditoria, ou escreva o código-fonte você mesmo, depois revise, teste e publique."
 icon: "file-pen-line"
 ---
 
-Use o editor de políticas para transformar uma descoberta ou problema em uma regra publicável. Mantenha a criação separada da publicação para que um rascunho não possa alterar silenciosamente o comportamento em produção.
+Há duas formas de escrever uma política: deixar o Failproof AI redigir a partir de uma descoberta de auditoria, ou escrever o código-fonte você mesmo. Nada é publicado ou implantado até que você decida.
 
-Quando um problema tem um padrão de ação repetível, abra-o em **Analyze → issues** e selecione **generate policy**. O Failproof AI primeiro explica se uma política pode expressar o problema, e então leva o contexto do intent revisado e da descoberta para o editor. O código gerado permanece como rascunho até que você o publique.
+## Escrever uma política a partir de uma auditoria
 
-## Publicar uma versão de política
+Uma auditoria encontra uma falha; uma política impede que ela aconteça novamente. O Failproof AI redige a política a partir das evidências da própria descoberta.
+
+### 1. Execute uma auditoria
+
+[Execute uma auditoria](/pt-br/audits/run) sobre as sessões onde a falha ocorre. Cada descoberta carrega suas sessões de evidência, uma causa raiz e um caminho de prevenção sugerido. Trabalhe a partir de uma descoberta com um **padrão de ação repetível** — uma política só pode bloquear o que consegue reconhecer em um evento de hook.
+
+### 2. Gere o rascunho
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vá para **Admin → policy editor** e, em **compose**, descreva o modo de falha ou cole o código-fonte da política em JavaScript.
-    2. Valide o código-fonte e corrija todos os erros reportados.
-    3. Insira a identidade da política e publique-a; em seguida, use **library** para comparar ou desativar versões.
-    4. Selecione **enforcement** quando a versão estiver pronta para implantação em máquinas.
+    1. Abra o problema da descoberta em **Analyze → issues** e verifique as sessões citadas, a causa raiz e a recomendação.
+    2. Selecione **generate policy**. O Failproof AI primeiro informa se uma política consegue expressar o problema. Um resultado **no policy** significa que a solução é um alerta, uma mudança de processo ou uma pessoa — e não uma política.
+    3. Selecione **write this policy**. O título do problema, a descoberta, a causa raiz, a recomendação e a intenção de aplicação proposta se tornam um rascunho em **Admin → policy editor**. Use **open the editor anyway** quando você discordar da verificação de candidatura.
 
-    ![A view de composição do editor de políticas com identidade da política, criação assistida por IA, validação do código-fonte e controles de publicação.](/images/dashboard/policy-editor.png)
+    ![A visualização de composição do editor de políticas com identidade da política, redação assistida por IA, validação de código-fonte e controles de publicação.](/images/dashboard/policy-editor.png)
   </Tab>
   <Tab title="CLI">
-    Publique pela CLI com `fp policies publish`. O comando cria uma **nova versão** e nunca edita uma existente, além de verificar a sintaxe do código com node antes de enviar — nada downstream faz isso, portanto um erro de sintaxe só apareceria na máquina no momento da aplicação:
+    Leia as evidências e depois redija com o assistente. `compose` imprime o código-fonte para você revisar e não publica nada:
 
     ```bash
-    fp policies test ./checkout.policy.mjs --command "git push --force" --expect deny
-    fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
+    fp issues show <issue-id>
+    fp audits finding <finding-id>
+    fp policies compose "Block git push --force on release branches"
     ```
 
-    Publicar não implanta nada — uma nova versão fica inativa até que `fp fleet deploy` a coloque em uma máquina. `fp policies compose "<plain English>"` cria um rascunho do código com o assistente Cloud e o exibe para revisão, sem publicá-lo.
-
-    Para instalar uma política diretamente em um agente CLI local (não no Cloud), use `failproofai policies --install --custom ./checkout.policies.ts --cli claude --scope project`.
+    `compose` requer uma sessão autenticada (`fp login`) cuja função tenha `policies:write`; ele rejeita chaves de API.
   </Tab>
 </Tabs>
 
-## Lista de verificação para criação de políticas
+### 3. Revise o rascunho
 
-1. Nomeie o modo de falha em linguagem operacional.
-2. Selecione os eventos de hook e as ferramentas que contêm evidências suficientes para decidir.
-3. Escreva a condição mais restrita possível que corresponda ao comportamento inseguro.
-4. Retorne uma mensagem que informe ao agente ou operador o que fazer a seguir.
-5. Adicione exemplos que devem corresponder e exemplos que precisam permanecer permitidos.
-6. Salve uma nova versão e solicite revisão.
+Um rascunho é um ponto de partida, não um veredicto. Antes de publicar, verifique se ele:
 
-Use `instruct` quando o agente puder corrigir o curso com segurança. Use `deny` quando permitir a ação criaria um risco inaceitável ou irreversível.
+1. Nomeia o modo de falha em linguagem operacional.
+2. Corresponde apenas aos eventos de hook e ferramentas que carregam evidências suficientes para decidir.
+3. Usa a condição mais restrita possível que captura a ação insegura.
+4. Retorna um motivo que diz ao agente o que fazer em vez disso.
+5. Usa `instruct` onde o agente pode corrigir o curso com segurança, e `deny` apenas onde permitir a ação é inaceitável ou irreversível.
 
-<Info>
-  Versões de políticas são entradas de implantação imutáveis. Editar um rascunho cria uma nova versão; não deve reescrever a versão já atribuída às máquinas.
-</Info>
+Valide o código-fonte no editor e corrija todos os erros reportados.
+
+### 4. Teste e depois publique
+
+Execute o **backtest** na aba de código-fonte antes de publicar: ele repete o rascunho contra chamadas que sua frota já realizou e conta as chamadas funcionais que teriam sido interrompidas. [Testar uma política](/pt-br/policies/test) cobre isso e as outras verificações.
+
+Quando o comportamento estiver correto, insira a identidade da política e selecione **publish version**. Publicar cria uma versão imutável e não implanta nada: ela fica sem uso até que você [a implante](/pt-br/policies/deploy). Em um terminal:
+
+```bash
+fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
+```
+
+`publish` verifica a sintaxe do código-fonte antes de enviá-lo, então um erro de sintaxe aparece aqui em vez de aparecer em uma máquina no momento de aplicação.
+
+## Escreva você mesmo
+
+Uma política é JavaScript ou TypeScript usando a API `failproofai`:
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "protect-production-paths",
+  description: "Block writes to production configuration",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (ctx.toolName !== "Write" && ctx.toolName !== "Edit") return allow();
+    const path = String(ctx.toolInput?.file_path ?? "").replaceAll("\\", "/");
+    if (path.split("/").includes("production")) {
+      return deny("Writes to production configuration require approval.");
+    }
+    return allow();
+  },
+});
+```
+
+Isso corresponde a `production/config.yml`, `/srv/production/config.yml`, `/srv/production` e `C:\\production\\config.yml` tanto para `Write` quanto para `Edit`, mas não para `production-backup`: `production` precisa ser um segmento de caminho completo. O contexto também carrega o tipo de evento, payload normalizado, metadados de sessão, parâmetros e CLI de origem quando disponível — veja o [SDK de políticas](/pt-br/reference/policy-sdk).
+
+Para publicá-la como uma versão, cole o código-fonte em **compose** em **Admin → policy editor** e siga os passos 3 e 4 acima, ou publique o arquivo a partir de um terminal com `fp policies publish`.
+
+Para executá-la em uma máquina sem Cloud, salve-a em `.failproofai/policies/` com um nome terminando em `policies.js`, `policies.mjs` ou `policies.ts` — esses arquivos são carregados automaticamente nos escopos de projeto e usuário — ou instale por caminho:
+
+```bash
+failproofai policies --install --custom ./security.policies.ts --scope project
+```
+
+Dê a cada política um nome único entre políticas de convenção, personalizadas, de pacote e gerenciadas pela Cloud.

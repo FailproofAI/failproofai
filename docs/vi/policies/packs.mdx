@@ -1,110 +1,119 @@
 ---
-title: "Policy packs"
-description: "Cài đặt một bộ policies được công bố dưới dạng GitHub release, và quản lý những gì nó buộc thực thi."
+title: "Sử dụng một gói chính sách"
+description: "Cắm vào một gói chính sách Failproof AI cho trường hợp sử dụng của bạn, hoặc một gói của cộng đồng từ trung tâm chính sách, và chọn những gì nó áp dụng."
 icon: "package"
 ---
 
-A pack is a set of policies published as a GitHub release. One command installs it, the release's own checksums are verified before anything runs, and the digest is recorded so the pack cannot change under your machine afterwards.
+Một gói là một tập hợp các chính sách được xuất bản dưới dạng bản phát hành GitHub. Một lệnh duy nhất cài đặt nó: các tổng kiểm tra của bản phát hành được xác minh trước khi bất cứ thứ gì chạy, và nó được ghi lại sao cho gói không thể thay đổi trên máy của bạn sau này.
 
-## Cài đặt Failproof AI policies
+Duyệt qua mọi gói và mọi chính sách trong mỗi gói trên [trung tâm chính sách](https://befailproof.ai/policy-hub/). Có hai loại:
 
-```bash
-failproofai pack add core
-```
+- **Gói chính sách Failproof AI** — các gói sẵn sàng cho các trường hợp sử dụng được xác định trước: cắm vào một gói và nó hoạt động. [Gói chính sách coding agent](https://befailproof.ai/policy-hub/failproofai/policies/) hiện có sẵn, và các gói cho nhiều trường hợp sử dụng khác sắp ra mắt.
+- **Gói chính sách của cộng đồng** — các chính sách mà các nhà phát triển đã viết cho trường hợp sử dụng của riêng họ và xuất bản cho bất kỳ ai sử dụng.
 
-That installs the set we publish, from the copy inside the package — so it needs no network and cannot fail behind a proxy. Take part of it:
+## Gói chính sách Failproof AI
 
-```bash
-failproofai pack add core --policy block-rm-rf         # one, or a comma-separated few
-failproofai pack add core --category dangerous-commands # a whole category
-failproofai pack add core --all                         # everything in it
-```
-
-`failproofai pack list` names every category the pack offers.
-
-## Xem pack chứa gì trước khi cài đặt
+### Gói chính sách coding agent
 
 ```bash
-failproofai pack list acme/support-agent
+failproofai policies add FailproofAI/policies
 ```
 
-Lists every policy the pack carries, grouped by category, marking which ones its author switches on by default and which are opt-in. It reads **only the manifest** — the entry artifact is never downloaded and never imported, so looking at a stranger's pack cannot run a stranger's code. The manifest is still checked against the release's own `SHA256SUMS`, so what you are reading is what would install.
+Gói này chứa 38 chính sách và bật 10 chính sách mà tệp kê khai của nó đánh dấu là an toàn để bật không giám sát; phần còn lại được liệt kê để bạn chọn. Một số chính sách được sử dụng nhiều nhất, và việc `policies add` đơn giản có bật chúng không:
 
-`failproofai pack list` with no source lists the packs already installed here.
+| Chính sách | Chức năng | Bật theo mặc định |
+| --- | --- | --- |
+| `block-push-master` | Chặn push trực tiếp đến các nhánh được bảo vệ | Có |
+| `block-env-files` | Chặn đọc và ghi các tệp `.env` | Có |
+| `protect-env-vars` | Chặn các lệnh xả các biến môi trường | Có |
+| `block-sudo` | Chặn `sudo` trừ khi một mẫu cho phép phù hợp | Có |
+| `block-curl-pipe-sh` | Chặn các tập lệnh được tải xuống được dẫn thẳng vào shell | Có |
+| `sanitize-*` (năm chính sách) | Báo cáo các khóa API, mã thông báo người mang, JWT, khóa riêng tư và chuỗi kết nối được tìm thấy trong đầu ra công cụ | Có |
+| `block-rm-rf` | Chặn xóa đệ quy thảm họa | Không |
+| `block-force-push` | Chặn force-push | Không |
+| `block-secrets-write` | Chặn ghi vào các tệp thông tin xác thực và khóa bí mật | Không |
+| `warn-destructive-sql` | Cảnh báo về `DROP`, `TRUNCATE` và `DELETE` không có `WHERE` | Không |
 
-## Cài đặt pack của người khác
+Bật bất kỳ chính sách nào đang tắt theo tên — `failproofai policies add block-rm-rf` — hoặc lấy toàn bộ gói với `--all`. Xem mọi chính sách trong nó, được nhóm theo danh mục:
 
 ```bash
-failproofai pack add acme/support-agent
+failproofai policies show FailproofAI/policies
 ```
 
-Any of these work — paste whichever you have:
+## Gói chính sách của cộng đồng
+
+Các nhà phát triển xuất bản các gói cho những trường hợp sử dụng mà họ gặp, và [trung tâm chính sách](https://befailproof.ai/policy-hub/) liệt kê chúng. Một gói chính sách của cộng đồng được xuất bản bởi tác giả của nó, không được kiểm toán bởi Failproof AI, vì vậy hãy đọc những gì nó chứa trước khi cài đặt:
+
+```bash
+failproofai policies show acme/support-agent
+```
+
+Cái này liệt kê mọi chính sách nó chứa, được nhóm theo danh mục, và đánh dấu những cái mà tác giả của nó bật theo mặc định. Nó chỉ đọc **tệp kê khai** — artifact entry không bao giờ được tải xuống hoặc nhập, vì vậy xem xét gói của người lạ không thể chạy mã của người lạ. Tệp kê khai vẫn được kiểm tra so với `SHA256SUMS` của bản phát hành, vì vậy những gì bạn đọc chính là những gì sẽ được cài đặt.
+
+Sau đó cài đặt nó:
+
+```bash
+failproofai policies add acme/support-agent
+```
+
+Bất kỳ điều nào trong số này đều hoạt động — dán bất kỳ thứ gì bạn có:
 
 | Nguồn | Kết quả |
 | --- | --- |
-| `acme/support-agent` | Newest release, **pinned** to the exact tag it resolved |
-| `acme/support-agent@v2.1.0` | That release |
-| `github:acme/support-agent@v2.1.0` | The same, written explicitly |
-| `https://github.com/acme/support-agent/releases/tag/v2.1.0` | The same, copied from a browser |
+| `acme/support-agent` | Bản phát hành mới nhất, **được ghim** vào thẻ chính xác mà nó phân giải |
+| `acme/support-agent@v2.1.0` | Bản phát hành đó |
+| `github:acme/support-agent@v2.1.0` | Cái tương tự, được viết rõ ràng |
+| `https://github.com/acme/support-agent/releases/tag/v2.1.0` | Cái tương tự, được sao chép từ trình duyệt |
 
-Naming no tag installs the newest release **and pins it**, then tells you which tag it chose. What gets recorded always names exactly one release, so a reinstall cannot drift.
+Không đặt tên thẻ sẽ cài đặt bản phát hành mới nhất **và ghim nó**, sau đó cho bạn biết thẻ nào mà nó đã chọn. Những gì được ghi lại luôn đặt tên chính xác một bản phát hành, vì vậy một lần cài đặt lại không thể trôi dạt.
 
-## Lấy một phần của pack
+## Lấy một phần của gói
 
-By default you get the pack's **own** defaults — the policies its author marked safe to switch on unattended — not everything it contains.
-
-```bash
-failproofai pack add acme/support-agent --category billing,git
-failproofai pack add acme/support-agent --policy block-refunds
-failproofai pack add acme/support-agent --all
-```
-
-`--category` and `--policy` combine as a union (`--only` is accepted as a synonym for `--policy`). Re-adding at a newer version keeps whatever you chose rather than switching the rest back on.
-
-## Quản lý những gì được bật
+Theo mặc định, bạn nhận được **các giá trị mặc định riêng của** gói — các chính sách mà tác giả của nó đánh dấu là an toàn để bật không giám sát — không phải mọi thứ nó chứa.
 
 ```bash
-failproofai policies                    # every source in one list, packs included
-failproofai pack list                   # packs only, grouped by category
-failproofai policies --uninstall block-refunds        # turn one pack policy off
-failproofai policies --install block-refunds          # and back on
-failproofai pack remove acme/support-agent
+failproofai policies add FailproofAI/policies --policy block-rm-rf          # một, hoặc một vài được phân tách bằng dấu phẩy
+failproofai policies add FailproofAI/policies --category dangerous-commands # toàn bộ một danh mục
+failproofai policies add FailproofAI/policies --all                         # mọi thứ trong nó
 ```
 
-A bare name means the **builtin** when one exists by that name. Name a pack's copy explicitly when you need to:
+`--category` và `--policy` kết hợp như một liên hợp (`--only` được chấp nhận là từ đồng nghĩa cho `--policy`). Khi gói đã được cài đặt, các cờ sẽ thêm vào những gì bạn có, và thêm lại nó mà không có cờ và không có terminal — để nâng cấp, chẳng hạn — giữ nguyên lựa chọn của bạn như cũ. Ở terminal mà không có cờ, `add` mở trình chọn thay thế, được đánh dấu trước với các giá trị mặc định của tác giả, và những gì bạn đánh dấu sẽ thay thế lựa chọn của bạn.
+
+## Quản lý những gì đang bật
+
+```bash
+failproofai policies                                  # mọi nguồn trong một danh sách, các gói được bao gồm
+failproofai policies add block-rm-rf                  # bật một chính sách
+failproofai policies --uninstall block-refunds        # tắt một chính sách gói
+failproofai policies --install block-refunds          # và bật lại
+failproofai policies remove acme/support-agent        # dỡ cài đặt gói
+```
+
+Bật hoặc tắt chính sách gói áp dụng cho toàn bộ máy: công tắc được ghi lại với gói đã cài đặt, không phải trong cấu hình của dự án, bất kể `--scope` nói gì.
+
+Một tên không có dấu gạch chéo là một chính sách; bất cứ thứ gì có một tên là một nguồn gói. Một tên trần phân giải thành gói đã cài đặt khai báo nó. Khi hai gói đã cài đặt khai báo cùng một tên, hãy đặt tên cái bạn muốn:
 
 ```bash
 failproofai policies --uninstall acme/support-agent:block-refunds
 ```
 
-<Note>
-If a pack ships a policy whose name is also an **enabled builtin**, the builtin runs and the pack's copy is skipped — the same guard would otherwise be evaluated twice. Turn the builtin off to use the pack's copy instead.
-</Note>
+Phạm vi, tham số và các tệp mà các lệnh này viết được đề cập trong [cấu hình cục bộ](/vi/policies/local-configuration).
 
-## Failproof AI policies có nguồn gốc từ đâu
+## Tính toàn vẹn mua lại gì và không mua lại gì
 
-`core` reads the copy vendored in the npm package. The same set is published as a GitHub release, which is what you install if you want a specific version:
+`SHA256SUMS` được gửi trong cùng một bản phát hành như artifact, vì vậy nó **không** phải là chữ ký và không chứng minh bất cứ điều gì về ai xuất bản nó. Những gì nó chứng minh là các byte là những byte mà bản phát hành đó xuất bản — và bởi vì nó được ghi lại khi bạn thêm gói và được xác minh lại trước mỗi lần nhập, một gói không thể thay đổi trên máy của bạn sau này. Một kho lưu trữ mà retag hoặc thay thế một asset sẽ ngừng tải thay vì chạy âm thầm cái gì đó khác.
 
-```bash
-failproofai pack add core                    # from this package, no network
-failproofai pack add FailproofAI/policies    # the same set, from its GitHub release
-```
+Tại thời điểm cài đặt, gói cũng **được nhập một lần** và được kiểm tra so với tệp kê khai của riêng nó. Một gói mà artifact của nó không phân tích cú pháp, hoặc mà đăng ký cái gì đó khác hơn những gì nó khai báo, bị từ chối trước khi bất cứ điều gì được kích hoạt — thay vì cài đặt sạch sẽ và thất bại vào lệnh công cụ tiếp theo của bạn.
 
-## Tính toàn vẹn mang lại cái gì và không mang lại cái gì
+## Khi một gói sẽ không tải
 
-`SHA256SUMS` ships in the same release as the artifact, so it is **not** a signature and proves nothing about who published it. What it does prove is that the bytes are the ones that release published — and because the digest is recorded when you add the pack and re-verified before every import, a pack cannot change under your machine afterwards. A repository that retags or replaces an asset stops loading instead of quietly running something else.
+Một gói mà máy này được bảo ghi để áp dụng và không thể chạy **từ chối** các sự kiện mà các chính sách còn thiếu của nó bao phủ, thay vì cho phép chúng âm thầm — như `pack/failproofai-pack-unavailable`, vốn vượt trội so với các chính sách đã tải để việc từ chối được quy cho gói bị mất thay vì cho bất kỳ vệ sĩ nào xảy ra bắn đầu tiên. Ngoại lệ là `UserPromptSubmit`, mà hướng dẫn thay thế: từ chối ở đó sẽ khóa bạn khỏi agent bạn cần để sửa nó. Xem [Hành vi thất bại](/vi/policies/failure-behavior).
 
-At install time the pack is also **imported once** and checked against its own manifest. A pack whose artifact does not parse, or that registers something other than what it declares, is refused before anything is activated — rather than installing cleanly and failing on your next tool call.
+## Ngoại tuyến và gương
 
-## Khi một pack không tải được
-
-A pack this machine was told to enforce and cannot run **denies** the events its missing policies covered, rather than allowing them silently. See [Failure behavior](/vi/policies/failure-behavior). `failproofai pack list` names any pack in that state and exits non-zero.
-
-## Ngoại tuyến và mirror
-
-| Biến | Hiệu lực |
+| Biến | Hiệu ứng |
 | --- | --- |
-| `FAILPROOFAI_NO_DOWNLOAD=1` | Refuses to fetch; packs already installed keep enforcing |
-| `FAILPROOFAI_PACK_BASE_URL` | Points pack fetching at a mirror instead of `github.com` |
+| `FAILPROOFAI_NO_DOWNLOAD=1` | Từ chối tìm nạp; các gói đã cài đặt tiếp tục áp dụng |
+| `FAILPROOFAI_PACK_BASE_URL` | Chỉ các gói tìm nạp ở một gương thay vì `github.com` |
 
-Publishing your own pack: see [Publish a pack](/vi/policies/publish-a-pack).
+Để chia sẻ các chính sách của riêng bạn theo cách này, hãy xem [Xuất bản một gói chính sách](/vi/policies/publish-a-pack).

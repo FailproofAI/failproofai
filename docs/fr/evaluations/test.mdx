@@ -1,0 +1,29 @@
+---
+title: "Tester une évaluation"
+description: "Exécutez une évaluation sur vos vraies sessions avant de la déployer. Rien n'est enregistré."
+icon: "flask-conical"
+---
+
+**Tester cette évaluation**, depuis la page de création, exécute le code sur vos vraies sessions dans la flotte d'évaluateurs sans le déployer. Rien n'est enregistré : un échec ici n'est qu'un aperçu, et le déploiement reste toujours possible.
+
+<Steps>
+  <Step title="Vérifier la compilation">
+    Sélectionnez **vérifier** pour compiler le code et la condition en tenant compte des règles du bac à sable, sans les exécuter sur aucune session.
+  </Step>
+  <Step title="Choisir les sessions">
+    Filtrez les sessions correspondantes par agent, environnement, période ou identifiant de session, puis sélectionnez jusqu'à 10. Incluez des sessions sur lesquelles l'évaluation devrait échouer ainsi que des sessions sur lesquelles elle devrait réussir.
+  </Step>
+  <Step title="Lancer l'exécution">
+    Sélectionnez **exécuter sur N sessions**, puis lisez chaque ligne.
+  </Step>
+</Steps>
+
+| Ligne | Signification |
+| --- | --- |
+| **ok** | L'exécution s'est terminée. La ligne liste chaque score, métrique et assertion retournés, ainsi que la durée. |
+| **ignorée** | La condition a retourné `False`, donc l'évaluation n'a pas été exécutée. Il s'agit d'un saut, pas d'un échec. |
+| Échec | Elle a levé une exception, dépassé le délai ou utilisé quelque chose que le bac à sable refuse. La ligne l'indique, et **Corriger** transmet l'erreur à l'assistant lorsqu'il peut aider. |
+
+![Le panneau tester cette évaluation : trois sessions choisies par agent, deux ok et une ignorée car sa condition a retourné False.](/images/dashboard/eval-test.png)
+
+Un résultat cesse d'être à jour dès que vous modifiez le code ; il est alors grisé plutôt que réutilisé.

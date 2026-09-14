@@ -1,41 +1,75 @@
 ---
-title: "Rollback"
-description: "Restaure uma implantação de política conhecida quando um rollout interromper trabalhos válidos de agentes."
+title: "Versões e rollback"
+description: "Cada publicação gera uma versão imutável, então um rollout que interrompe trabalhos válidos do agente é desfeito reimplantando a última versão estável."
 icon: "rotate-ccw"
 ---
 
-O rollback altera a versão implantada ou remove uma atribuição de política; ele não apaga o histórico de decisões que explica o incidente.
+Uma versão de política publicada nunca muda. Editar uma política e publicar novamente cria uma nova versão; ela nunca sobrescreve a que já está nas máquinas. É isso que torna o rollback seguro: a última versão estável ainda está lá, byte por byte, e fazer o rollback não apaga o histórico de decisões que explica o que deu errado.
 
-## Reverter uma máquina
+## Encontrar uma versão
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Acesse **Admin → enforcement**, expanda a máquina afetada e identifique seu último conjunto de políticas conhecido como funcional.
-    2. Selecione **edit**, restaure as versões e efeitos anteriores e aplique a nova implantação.
-    3. Aguarde o check-in da máquina e verifique a implantação reportada.
-    4. Abra **Observe → policy** e as sessões afetadas para confirmar que trabalhos válidos não estão mais sendo bloqueados.
-
+    Vá para **Admin → policy editor** e abra **library** para comparar as versões de uma política ou desativar uma delas.
   </Tab>
   <Tab title="CLI">
-    O rollback de implantações na nuvem é um fluxo do dashboard. Use o status local para confirmar que a implantação corrigida chegou à máquina:
-
     ```bash
-    failproofai config --status
+    fp policies list                 # todas as versões de política
+    fp policies show <policy-id>     # uma versão específica, com seu código-fonte
     ```
-
-    `failproofai config --pause` pausa as políticas built-in, personalizadas e de convenção para uma sessão local. Ele não pausa políticas gerenciadas pela nuvem, portanto não é uma solução alternativa para uma implantação Cloud com problemas.
   </Tab>
 </Tabs>
 
+## Fazer rollback em uma máquina
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Vá para **Admin → enforcement**, expanda a máquina afetada e identifique seu último conjunto de políticas estável.
+    2. Selecione **edit**, restaure essas versões e efeitos e aplique a nova implantação.
+    3. Aguarde o check-in da máquina e verifique a implantação reportada.
+    4. Abra **Observe → policy** e as sessões afetadas para confirmar que o trabalho válido não está mais sendo bloqueado.
+  </Tab>
+  <Tab title="CLI">
+    Cada implantação em uma máquina é uma geração numerada. Liste-as e, em seguida, restaure uma:
+
+    ```bash
+    fp fleet history <machine-id>
+    fp fleet rollback <machine-id> <generation>
+    ```
+
+    O `rollback` cria uma nova geração carregando o conjunto antigo em vez de retroceder o contador, então o histórico permanece apenas-apenso. Ele recusa uma geração que referencia uma política desativada ou excluída. Requer uma sessão autenticada com `policies:write`. O `fp fleet diff <machine-id>` mostra o que foi planejado versus o que a máquina aplicou — aparece como `behind` até a próxima vez que a máquina fizer polling — e na própria máquina, `failproofai policies` lista a implantação em execução.
+  </Tab>
+</Tabs>
+
+## Remover uma política de todas as máquinas
+
+```bash
+fp policies disable <policy-id>    # remove de toda implantação que a contenha
+fp policies enable <policy-id>     # adiciona de volta
+```
+
+Cada comando cria uma nova geração em cada implantação que ele afeta. Porém, fazer rollback de uma dessas gerações não é a forma de desfazer um `disable` — o `rollback` recusa uma geração que referencia uma política desativada, e toda geração anterior ao disable referencia esta. O caminho de volta é `fp policies enable`, que por sua vez cria sua própria geração.
+
+## Fazer rollback de um pack
+
+Um pack fica fixado na versão que você instalou, então fazer rollback significa instalar uma versão anterior:
+
+```bash
+failproofai policies show FailproofAI/policies --releases   # todas as versões publicadas e qual está instalada
+failproofai policies add FailproofAI/policies@a1b2c3d4e5f6   # fixar essa versão
+```
+
+Sem um terminal, ou com `--policy`, `--category` ou `--all`, readicionar mantém o subconjunto que você havia escolhido. Em um terminal sem nenhuma dessas flags, o seletor abre pré-marcado com os padrões do autor, e o que você marcar substitui sua seleção — portanto, remarque o que você tinha.
+
 ## Quando fazer rollback
 
-- Uma política bloqueia uma ação de produção esperada.
-- O volume de correspondências é materialmente maior do que o rollout observado havia previsto.
+- Uma política bloqueia uma ação esperada em produção.
+- O volume de correspondências é materialmente maior do que o previsto no rollout observado.
 - Uma política depende de campos que uma integração não fornece.
 - Uma nova versão altera o comportamento fora do modo de falha pretendido.
 
-Após o rollback, abra as sessões afetadas e identifique a condição que causou o falso positivo. Crie uma nova versão, teste tanto os casos inseguros quanto os legítimos e repita a fase de observação.
+Após o rollback, abra as sessões afetadas e identifique a condição por trás do falso positivo. Publique uma nova versão, [teste](/pt-br/policies/test) tanto o caso inseguro quanto o legítimo e observe-a novamente antes de enforçar.
 
 <Warning>
-  Pausar o enforcement pode ser adequado durante um incidente, mas amplia a exposição para todas as políticas ativas naquele escopo. Prefira reverter a versão específica da política sempre que possível.
+  O `failproofai config --pause` suspende as políticas locais por uma sessão e nunca as gerenciadas pela Cloud, portanto não é uma saída para uma implantação Cloud problemática. Uma pausa também amplia a exposição para todas as políticas em seu escopo; prefira fazer rollback da versão específica que está se comportando incorretamente.
 </Warning>

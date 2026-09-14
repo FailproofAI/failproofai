@@ -1,51 +1,94 @@
 ---
-title: "Richtlinien deployen"
-description: "Eine geprüfte Richtlinienversion auf den vorgesehenen Maschinen ausrollen."
+title: "Eine Richtlinie bereitstellen"
+description: "Eine getestete Richtlinienversion im Beobachtungsmodus auf Maschinen ausrollen, durchsetzen und bestätigen, dass alle Maschinen sie erhalten haben."
 icon: "cloud-upload"
 ---
 
-Ein Deployment verbindet eine oder mehrere Richtlinienversionen mit einer Zielgruppe eingeschriebener Maschinen.
+Eine Bereitstellung überträgt veröffentlichte Richtlinienversionen auf eine Maschine, jeweils mit einem von zwei Effekten:
 
-## Deployment anwenden
+- **Beobachten** zeichnet auf, was die Richtlinie getan hätte, blockiert jedoch nichts.
+- **Durchsetzen** handelt gemäß der Entscheidung: ein `deny` blockiert den Aufruf und ein `instruct` lenkt den Agenten.
+
+## Eine Maschine hinzufügen
+
+Eine Maschine erscheint unter **Admin → enforcement**, sobald sie mit Cloud verbunden ist. Falls die gewünschte noch nicht dort angezeigt wird:
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehe zu **Admin → Durchsetzung**, finde die Maschine und klappe ihre Zeile auf.
-    2. Wähle **Bearbeiten**, füge die geprüfte Richtlinienversion hinzu und wähle **Beobachten** oder eine durchsetzende Wirkung.
-    3. Wende die Änderung an, warte dann auf den nächsten Check-in der Maschine und bestätige deren Deployment- und Coverage-Status.
-    4. Gehe zu **Beobachten → Richtlinie**, um Live-Entscheidungen einzusehen.
-
-    ![Der Maschinen-Deployment-Editor mit Richtlinienversionen, Durchsetzungs- und Beobachtungseffekten sowie der Aktion zum Anwenden des Deployments.](/images/dashboard/enforcement-editor.png)
+    1. Gehen Sie zu **Administration → Keys** und erstellen Sie einen Schlüssel mit `policies:pull`, damit die Maschine Bereitstellungen empfangen kann, und `events:add`, damit ihre Entscheidungen Cloud erreichen.
+    2. Verbinden Sie die Maschine mit diesem Schlüssel — [Eine Maschine mit Cloud verbinden](/de/start/setup#connect-a-machine-to-cloud) führt Sie durch den Vorgang.
+    3. Bestätigen Sie, dass sie unter **Admin → enforcement** angezeigt wird.
   </Tab>
   <Tab title="CLI">
-    Deploye über die CLI mit `fp fleet`. Überprüfe das resultierende Set, bevor du es anwendest — `deploy` gibt den vollständigen Plan aus und fragt **nur in einem interaktiven Terminal ohne `--json`**. Mit `--json`, mit `--yes` oder bei umgeleitetem stdin (ein CI-Schritt, ein Skript, ein Agent der eine Shell aufruft) wird der Plan sofort ohne Ausgabe und ohne Abfrage angewendet — führe daher zuerst `fp fleet show <machine>` aus, wenn du den Plan prüfen möchtest:
+    Auf der Maschine:
 
+    ```bash
+    npm install -g failproofai
+    failproofai config
+    failproofai config --status
+    ```
+
+    Im Terminal fragt `failproofai config`, ob eine Verbindung zu Cloud hergestellt werden soll, und fordert den Schlüssel an einer maskierten Eingabeaufforderung an. Bestätigen Sie anschließend von überall, dass die Maschine registriert ist, mit `fp fleet list`.
+  </Tab>
+</Tabs>
+
+## Im Beobachtungsmodus bereitstellen
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehen Sie zu **Admin → enforcement**, suchen Sie die Maschine und klappen Sie deren Zeile auf.
+    2. Wählen Sie **Bearbeiten**, fügen Sie die getestete Richtlinienversion hinzu und wählen Sie **Beobachten**.
+    3. Übernehmen Sie die Änderung, warten Sie dann auf den nächsten Check-in der Maschine und bestätigen Sie deren Bereitstellungs- und Abdeckungsstatus.
+    4. Gehen Sie zu **Observe → policy**, um Live-Entscheidungen zu prüfen.
+
+    ![Der Bereitstellungseditor für Maschinen mit Richtlinienversionen, Durchsetzen- und Beobachten-Effekten sowie der Aktion zum Anwenden der Bereitstellung.](/images/dashboard/enforcement-editor.png)
+  </Tab>
+  <Tab title="CLI">
     ```bash
     fp fleet list
     fp fleet show <machine-id>
-    fp fleet deploy <machine-id> --add no-force-push
+    fp fleet deploy <machine-id> --add no-force-push:observe
     ```
 
-    `fp fleet diff <machine-id>` zeigt Absicht vs. Lieferung (eine Maschine wird als `behind` angezeigt, bis sie das nächste Mal abfragt), `fp fleet history <machine-id>` listet die Generationen auf und `fp fleet rollback <machine-id> <generation>` stellt eine davon wieder her — dies schlägt fehl, wenn diese Generation eine inzwischen deaktivierte oder gelöschte Richtlinie benennt.
+    Das Suffix `:observe` sorgt für den Beobachtungsmodus: ein einfaches `--add no-force-push` ohne Suffix behält den Effekt bei, den die Maschine für diese Richtlinie bereits hat, und setzt andernfalls durch. Wechseln Sie später mit `--add no-force-push:enforce` zum Durchsetzungsmodus.
 
-    Überprüfe die Maschine selbst mit `failproofai config --status` und verwende nach dem Deployment `fp sessions --env production --since 24h` sowie `fp events --event-type hook_completed`, um zu verifizieren, dass Aktivität die Cloud erreicht.
+    `deploy` **ersetzt den gesamten Richtliniensatz der Maschine** mit dem Ergebnis. Es gibt den Plan aus und fragt vor der Anwendung nach — jedoch nur bei einem interaktiven Terminal. Mit `--yes`, unter `fp --json` oder bei umgeleiteter stdin (ein CI-Schritt, ein Skript, ein Agent, der ausführt) wird ohne Rückfrage angewendet; der Plan wird dennoch ausgegeben oder als `plan` unter `--json` zurückgegeben.
+
+    Auf der Maschine listet `failproofai policies` die von Cloud verwalteten Richtlinien auf, die ausgeführt werden, und `failproofai config --status` zeigt deren Verbindung an. Verwenden Sie `fp sessions --env production --since 24h` und `fp events --event-type hook_completed`, um zu bestätigen, dass die Aktivität die Cloud erreicht.
   </Tab>
 </Tabs>
 
 <Steps>
-  <Step title="Version und Ziele auswählen">
-    Deploye eine geprüfte Version, kein veränderliches Draft, beginnend mit einer Nicht-Produktionsmaschine oder einer kleinen Gruppe, deren Sessions du einsehen kannst.
+  <Step title="Version und Maschinen auswählen">
+    Wählen Sie die veröffentlichte Version und die Maschinen aus, auf denen sie ausgeführt werden soll.
   </Step>
-  <Step title="Entscheidungen beobachten">
-    Überprüfe Treffer, Begründungen, betroffene Tools und False Positives, ohne die Arbeit zu blockieren.
+  <Step title="Beobachten">
+    Überprüfen Sie Übereinstimmungen, Begründungen, betroffene Tools und Falschmeldungen, während nichts blockiert wird.
   </Step>
-  <Step title="Durchsetzen und Coverage verifizieren">
-    Stelle nach dem Deployment auf Durchsetzung um, wenn beobachtete Treffer unsichere Aktionen von gültigen trennen, und bestätige dann, dass jede vorgesehene Maschine das Deployment abgerufen hat und Entscheidungen meldet.
+  <Step title="Durchsetzen">
+    Wechseln Sie den Effekt zum Durchsetzen, sobald die beobachteten Übereinstimmungen unsichere Aktionen von gültigen trennen, und bestätigen Sie dann, dass jede vorgesehene Maschine die Änderung abgerufen hat und Entscheidungen meldet.
   </Step>
 </Steps>
 
-Maschinen benötigen die Berechtigung `policies:pull`. Die Ereignismeldung wird separat über `events:add` gesteuert; überprüfe beides, wenn du Cloud-Analyse und Durchsetzung erwartest.
+## Abdeckung prüfen
+
+Die Abdeckung zeigt, ob eine Richtlinie dort ausgeführt wird, wo das Risiko besteht.
+
+1. Gehen Sie zu **Admin → enforcement** und überprüfen Sie die Summen für Durchsetzen und Beobachten.
+2. Suchen Sie eine Maschine nach ID oder Label, oder filtern Sie nach Maschinen, bei denen eine Richtlinie fehlt.
+3. Klappen Sie eine Zeile auf, um zugewiesene Richtlinien, gemeldete Bereitstellung, letzten Check-in und Verlauf zu vergleichen.
+4. Aktualisieren Sie nach dem Abrufintervall der Maschine, wenn eine angewendete Bereitstellung noch aussteht.
+
+![Die Enforcement-Flotte mit Richtlinienabdeckung, Bereitstellungsstatus der Maschine sowie Beobachten- und Durchsetzen-Zuweisungen.](/images/dashboard/enforcement-fleet.png)
+
+Achten Sie auf Maschinen, die die neueste Bereitstellung nie abgerufen haben, registrierte Maschinen, die keine Meldungen mehr senden, eine Richtlinie, die der falschen Umgebung zugewiesen ist, und Versionsabweichungen nach einem unterbrochenen Update.
+
+Kennzeichnen Sie Maschinen nach Workload und Umgebung — Hostnamen allein überleben Autoskalierung oder Austausch selten:
+
+```bash
+failproofai config --machine-label checkout-runner-03
+```
 
 <Warning>
-  Die Verwaltung der Durchsetzung ist ein administrativer Cloud-Workflow. Behandle rein root-basierte Durchsetzungsrouten nicht als gewöhnliche Kunden-`/v1`-API-Endpunkte.
+  Die Durchsetzungsverwaltung ist ein administrativer Cloud-Workflow. Behandeln Sie root-exklusive Durchsetzungsrouten nicht als gewöhnliche Kunden-`/v1`-API-Endpunkte.
 </Warning>

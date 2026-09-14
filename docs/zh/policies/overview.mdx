@@ -1,63 +1,54 @@
 ---
 title: "策略"
-description: "在已知故障重复发生之前，观察、引导或阻止代理操作。"
+description: "在已知故障重复发生之前，观察、引导或阻断 Agent 行为。"
 icon: "shield-check"
 ---
 
-策略评估代理钩子事件，并返回以下三种决策之一：
+策略会评估一个 Agent 钩子事件，并返回以下三种决策之一：
 
 - `allow` 允许操作继续执行。
-- `instruct` 为代理提供纠正性指导。
-- `deny` 以指定原因阻止该操作。
+- `instruct` 向 Agent 提供纠正性指导。
+- `deny` 以特定原因阻断该操作。
 
-## 使用三个策略界面
+## 策略的位置
 
-<Tabs>
-  <Tab title="控制台">
-    1. 前往 **Observe → policy**，筛选并检查会话中的策略决策。
-    2. 前往 **Admin → policy editor**，编写、验证、发布、禁用或查看不可变版本。
-    3. 前往 **Admin → enforcement**，为机器分配版本和效果。
+| 控制台位置 | 在此执行的操作 |
+| --- | --- |
+| **Observe → policy** | 查看真实会话中的决策记录：哪条策略匹配、在哪台机器上、以及匹配原因 |
+| **Admin → policy editor** | 编写策略、针对历史流量进行回测、发布不可变版本，并在 **library** 中对比各版本 |
+| **Admin → enforcement** | 将版本部署到机器上，可选观察模式或强制执行模式 |
 
-    在编写或更改执行规则之前，先通过策略页面了解当前已匹配的内容。
+策略编辑器是将故障转化为规则的地方。在 **compose** 中描述故障模式或粘贴策略源码，针对已有流量进行回测，然后发布版本：
 
-    ![策略页面，显示决策总数以及本地和云端管理的策略映射。](/images/dashboard/policy-observe.png)
+![策略编辑器的 compose 视图，包含策略标识、AI 辅助起草、源码校验和发布控制。](/images/dashboard/policy-editor.png)
 
-    编辑器用于将故障条件转化为源代码、进行验证并发布不可变版本。
+在机器上，`failproofai policies` 会列出该机器上所有正在执行的策略。`fp policies` 和 `fp fleet` 可从终端操作编辑器和执行配置——详见 [Cloud CLI 参考](/zh/reference/cloud-cli)。
 
-    ![策略编辑器，用于编写和发布不可变策略版本。](/images/dashboard/policy-editor.png)
+## 获取策略
 
-    执行模块将已发布的版本及其观察或强制效果分配给各台机器。
-
-    ![执行机队视图，显示机器覆盖情况及已分配的策略版本。](/images/dashboard/enforcement-fleet.png)
-
-    部署后，返回策略页面验证决策，确保编写视图和机队视图与真实的代理活动相关联。
-  </Tab>
-  <Tab title="CLI">
-    使用 `failproofai` 进行本地策略安装和验证：
-
-    ```bash
-    failproofai policies
-    failproofai policy add block-rm-rf --scope project
-    failproofai config --status
-    ```
-
-    使用 `fp` 查找包含策略决策的云端会话和事件。云端编写和机队部署仍为控制台工作流。
-  </Tab>
-</Tabs>
-
-策略在 Failproof AI 中有三个独立的界面：
-
-1. **分析决策**——在会话、控制台和审计中查看。
-2. **编写版本**——使用内置规则、代码或策略编辑器。
-3. **部署与执行**——在选定机器上部署和强制执行版本。
-
-从已确认的故障模式出发。定义能够识别该故障的最小事件和工具匹配条件，测试合法示例和不安全示例，先观察再强制执行。
+有两种方式获取策略。
 
 <Columns cols={2}>
-  <Card title="使用内置策略" icon="library" href="/zh/policies/builtin">
-    启用经过审查的规则，覆盖常见的密钥、Shell、Git、云端和工作流风险。
+  <Card title="编写策略" icon="file-pen-line" href="/zh/policies/editor">
+    让 Failproof AI 根据审计发现起草策略，或自行编写源码，然后在编辑器中审核并发布。
   </Card>
-  <Card title="编写自定义策略" icon="code-2" href="/zh/policies/custom">
-    用 JavaScript 或 TypeScript 表达特定工作流的决策逻辑。
+  <Card title="使用策略包" icon="package" href="/zh/policies/packs">
+    一条命令即可接入适合您使用场景的 Failproof AI 策略包，或来自策略中心的社区策略包。
   </Card>
 </Columns>
+
+## 然后部署上线
+
+<Steps>
+  <Step title="测试策略">
+    在发布之前，针对已有流量进行回测，并分别针对一个必须被拦截的操作和一个必须被放行的操作运行测试。详见[测试策略](/zh/policies/test)。
+  </Step>
+  <Step title="部署策略">
+    以**观察**模式将版本部署到机器上，查看其决策结果，再切换到强制执行模式。详见[部署策略](/zh/policies/deploy)。
+  </Step>
+  <Step title="版本管理与回滚">
+    每次发布都会生成一个新的不可变版本，因此若某次部署阻断了正常工作，只需重新部署上一个可用版本即可撤销。详见[版本管理与回滚](/zh/policies/rollback)。
+  </Step>
+</Steps>
+
+如需与其他团队共享策略，请[将其发布为策略包](/zh/policies/publish-a-pack)。如需了解策略完全无法评估时的处理逻辑，请参阅[故障行为](/zh/policies/failure-behavior)。

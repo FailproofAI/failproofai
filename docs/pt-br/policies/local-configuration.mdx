@@ -1,55 +1,49 @@
 ---
 title: "Configuração local"
-description: "Controle o escopo de políticas, parâmetros, arquivos personalizados e configurações de máquina do Failproof AI."
+description: "Controle escopo de políticas, parâmetros, arquivos personalizados e configurações do Failproof AI a nível de máquina."
 icon: "file-cog"
 ---
 
-O Failproof AI separa a seleção de políticas das configurações de máquina e daemon. Isso mantém as escolhas de políticas do repositório revisáveis, enquanto as credenciais e o estado do daemon permanecem fora do repositório.
+O Failproof AI mantém separado o que um repositório pode commitar — conexão de hooks, parâmetros de políticas, políticas personalizadas — do estado da máquina, como credenciais, packs instalados e o daemon.
 
-## Escolha um escopo de política
+## Escolha um escopo
 
-<Tabs>
-  <Tab title="Dashboard">
-    Execute `failproofai` sem argumentos para abrir o dashboard de políticas local. Escolha o escopo de usuário, projeto ou local antes de ativar uma política, para que a alteração seja gravada no arquivo de configuração correto.
+O escopo define onde os hooks são conectados e em qual arquivo de configuração você escreve parâmetros e caminhos de políticas personalizadas:
 
-    - **Usuário** aplica-se a todos os projetos nesta máquina.
-    - **Projeto** pertence ao repositório e pode ser commitado.
-    - **Local** substitui um projeto para um usuário específico e deve permanecer no gitignore.
+- **User** aplica-se a todos os projetos nesta máquina.
+- **Project** pertence ao repositório e pode ser commitado.
+- **Local** substitui um projeto para um único usuário e deve permanecer no gitignore.
 
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai policy add block-rm-rf --scope user
-    failproofai policy add block-force-push --scope project
-    failproofai policy add warn-large-file-write --scope local
-    failproofai policies
-    ```
+```bash
+failproofai policies --install --cli claude --scope project   # wire hooks for this repository
+failproofai policies --install --cli claude --scope user      # or for every project on this machine
+failproofai policies
+```
 
-    Nem todo harness suporta escopo local. O CLI rejeita um escopo que o harness selecionado não consegue representar.
-  </Tab>
-</Tabs>
+Nem todos os harnesses suportam escopo local; o CLI rejeita um escopo que o harness selecionado não consegue representar.
 
-| Escopo | Arquivo de configuração de política |
+Quais políticas de um pack estão ativas **não** tem escopo definido. A configuração é registrada junto com o pack instalado, portanto `failproofai policies add <name>` ativa uma política para toda a máquina, independentemente do que o `--scope` especifica.
+
+| Escopo | Arquivo de configuração de políticas |
 | --- | --- |
-| Projeto | `<project>/.failproofai/policies-config.json` |
+| Project | `<project>/.failproofai/policies-config.json` |
 | Local | `<project>/.failproofai/policies-config.local.json` |
-| Usuário | `~/.failproofai/policies-config.json` |
+| User | `~/.failproofai/policies-config.json` |
 
-As políticas ativadas são mescladas como uma união. Os parâmetros de política utilizam o primeiro escopo que define parâmetros para aquela política, na ordem projeto → local → usuário. Caminhos de política personalizada explícitos utilizam o primeiro escopo que os define.
+Os parâmetros de políticas utilizam o primeiro escopo que define parâmetros para aquela política, na ordem project → local → user. Caminhos de políticas personalizadas explícitos utilizam o primeiro escopo que os define.
 
-## Configure os parâmetros de política
+## Configure parâmetros de políticas
 
 <Tabs>
   <Tab title="Dashboard">
-    Abra a política no dashboard local, edite os parâmetros suportados e salve no escopo selecionado. Execute uma ação de agente que corresponda e uma que não corresponda, depois inspecione a decisão em **Observar → política**.
+    Abra a política no dashboard local, edite os parâmetros suportados e salve no escopo selecionado. Execute uma ação do agente que corresponda e outra que não corresponda à política, depois inspecione a decisão em **Observe → policy**.
 
   </Tab>
   <Tab title="CLI">
-    Edite o `policies-config.json` do escopo selecionado e execute `failproofai policies` para identificar nomes de políticas ou chaves de parâmetros desconhecidos.
+    Edite o `policies-config.json` do escopo selecionado e execute `failproofai policies`: ele alertará sobre uma entrada `policyParams` que nomeia uma política que nenhum pack instalado possui. Ele não verifica as chaves dentro de uma entrada, portanto confira a ortografia delas na tabela abaixo.
 
     ```json
     {
-      "enabledPolicies": ["block-rm-rf", "block-force-push"],
       "policyParams": {
         "block-rm-rf": {
           "allowPaths": ["/tmp/build-output"]
@@ -64,21 +58,45 @@ As políticas ativadas são mescladas como uma união. Os parâmetros de políti
   </Tab>
 </Tabs>
 
-## Entenda os arquivos de máquina
+### Parâmetros aceitos pelas políticas do Failproof AI
 
-`~/.failproofai` contém arquivos separados para limites de confiança distintos:
+Cada política valida seus próprios tipos de parâmetro.
+
+| Política | Parâmetro | Tipo e padrão |
+| --- | --- | --- |
+| `sanitize-api-keys` | `additionalPatterns` | `pattern[]`, `[]`; entradas contêm `regex` e `label` |
+| `block-read-outside-cwd` | `allowPaths` | `string[]`, `[]` |
+| `block-sudo` | `allowPatterns` | `string[]`, `[]` |
+| `block-rm-rf` | `allowPaths` | `string[]`, `[]` |
+| Bloqueadores de infraestrutura | `allowPatterns` | `string[]`, `[]` |
+| `block-secrets-write` | `additionalPatterns` | `string[]`, `[]` |
+| `block-push-master` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `block-work-on-main` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `prefer-package-manager` | `allowed`, `blocked` | `string[]`, `[]` |
+| `warn-large-file-write` | `thresholdKb` | `number`, `1024` |
+| `require-push-before-stop` | `remote`, `baseBranch` | `string`, `"origin"`; `string`, `"main"` |
+| `require-pr-before-stop` | `baseBranch` | `string`, `"main"` |
+| `require-no-conflicts-before-stop` | `baseBranch` | `string`, `"main"` |
+
+<Warning>
+  Um padrão de permissão amplia o que um agente pode fazer. Teste a tokenização exata e as variantes de comando no harness de destino antes de implantá-lo em todo um conjunto de máquinas.
+</Warning>
+
+## Entenda os arquivos da máquina
+
+`~/.failproofai` contém arquivos separados para diferentes limites de confiança:
 
 | Caminho | Finalidade |
 | --- | --- |
-| `config.json` | Configurações de daemon, auditoria e telemetria sem segredos |
+| `config.json` | Configurações de daemon, auditoria e telemetria (sem segredos) |
 | `credentials.json` | Credenciais de nuvem; armazenadas com permissões somente para o proprietário |
-| `policies-config.json` | Seleção de built-ins com escopo de usuário, parâmetros e caminhos personalizados explícitos |
-| `policies/` | Políticas de convenção do usuário e artefatos de política gerenciados pela nuvem |
-| `hook-activity/` | Log local de decisões de política |
-| `state/` | Spool do daemon, integridade, pausa e estado de execução |
+| `policies-config.json` | Parâmetros de escopo de usuário e caminhos explícitos de políticas personalizadas |
+| `policies/` | Políticas de convenção do usuário, packs instalados e quais de suas políticas estão ativas, além de artefatos de políticas gerenciadas pela nuvem |
+| `hook-activity/` | Log local de decisões de políticas |
+| `state/` | Spool do daemon, saúde, pausa e estado de execução |
 
-Use `FAILPROOFAI_HOME` para realocar o layout completo da máquina para um container ou teste isolado. Não realoque diretórios de estado individuais de forma independente.
+Use `FAILPROOFAI_HOME` para relocar todo o layout da máquina para um container ou teste isolado. Não reloce diretórios de estado individuais de forma independente.
 
 <Warning>
-  Nunca faça commit de `credentials.json`. Faça commit da configuração de política do projeto e das políticas de convenção do projeto somente após revisá-las como código de aplicação.
+  Nunca faça commit de `credentials.json`. Faça commit da configuração de políticas do projeto e das políticas de convenção do projeto somente após revisá-las como código de enforcement.
 </Warning>

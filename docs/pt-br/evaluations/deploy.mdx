@@ -1,0 +1,55 @@
+---
+title: "Fazer deploy e versionar uma avaliação"
+description: "Faça deploy de uma versão imutável, veja o que está em produção, publique novas versões, faça rollback e pontue sessões que você já tem."
+icon: "cloud-upload"
+---
+
+## Fazer deploy
+
+Selecione **deploy `<key>@<version>`** na parte inferior da página de autoria. A versão é imutável após a publicação: a partir daí, toda sessão concluída à qual a condição se aplica é pontuada por ela.
+
+## Ver o que está em produção
+
+**Analyze → eval authoring** lista as definições hospedadas da sua organização — as avaliações que o avaliador gerenciado executa para ela. Cada linha exibe:
+
+- nome, chave, versão e tipo de resultado
+- checksum do código-fonte, que diferencia revisões implantadas sem precisar abrir o código
+- se é **condicional** ou se executa em **todas as sessões concluídas** — a condição é o que delimita uma avaliação a agentes ou ambientes específicos
+- timeout, labels e data da última alteração
+
+![A lista de definições hospedadas: nome, chave, versão, tipo de resultado, checksum, timeout e escopo de cada avaliação, com opções de nova versão e habilitar ou desabilitar.](/images/dashboard/eval-definitions.png)
+
+Pesquise na lista ou filtre por estado. Avaliações registradas pelo seu próprio worker não aparecem aqui; seus resultados recebem a tag **customer** na [página de avaliações](/pt-br/sessions/evaluations), enquanto as hospedadas recebem **managed**.
+
+Uma organização pode ter até 100 avaliações hospedadas diferentes habilitadas ao mesmo tempo.
+
+## Publicar uma nova versão
+
+Selecione **new version** em uma linha. A página de autoria abre com o código dessa versão; altere, teste e faça o deploy. A chave e o tipo de resultado são mantidos e não podem ser alterados.
+
+Publicar uma versão sucessora desabilita a anterior e a mantém na lista. Os resultados preservam a versão que os gerou, portanto um gráfico mostra exatamente quando a nova lógica entrou em vigor.
+
+## Fazer rollback
+
+Selecione **disable** na versão atual e **enable** na versão para a qual deseja reverter. Nada é excluído e todos os resultados permanecem como estavam.
+
+## Parar uma avaliação
+
+Selecione **disable**. Sem nenhuma versão habilitada, ela para de ser executada em novas sessões. Para parar uma avaliação que seu próprio worker executa, pare de registrá-la: remova-a do worker ou pare o worker.
+
+## Pontuar sessões que você já tem
+
+A execução de avaliações é prospectiva: uma versão implantada agora nunca pontua uma sessão que terminou antes dela. Para pontuar o histórico, abra **score sessions you already have** na página de autoria da avaliação, escolha uma janela de até 90 dias e, opcionalmente, uma avaliação específica; depois conte antes de executar. O total é exatamente o que será executado, e cada par sessão-avaliação nele é uma avaliação faturável.
+
+Apenas lacunas são preenchidas. Uma sessão que já tem um resultado para aquela avaliação o mantém, e executar a mesma janela duas vezes não pontua nada novo.
+
+Para pontuar uma sessão novamente — após uma correção ou para uma sessão que nunca terminou corretamente — selecione **re-evaluate** na página dela. O novo resultado é adicionado ao histórico da sessão; os anteriores são mantidos.
+
+## Permissões
+
+| Permissão | Permite |
+| --- | --- |
+| `evaluations:read` | Ver resultados e abrir a página de autoria de avaliações |
+| `evaluations:trigger` | Ver, fazer deploy, versionar, habilitar e desabilitar definições hospedadas; testá-las; pontuar o histórico; re-avaliar uma sessão |
+| `events:read` | Testar com sessões reais e basear rascunhos nas suas chaves de payload, além de `evaluations:trigger` |
+| `evaluations:run` | Executar seu próprio worker de avaliação |

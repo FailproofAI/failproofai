@@ -1,17 +1,17 @@
 ---
 title: "התחלה מהירה"
-description: "תופסים עבודה של סוכן, מוצאים כישלון ומתחילים למנוע אותו."
+description: "קבע מושב של סוכן, מצא כשל והתחל למנוע אותו."
 icon: "zap"
 ---
 
-התחלה זו תגרום למכונה אחת לדווח על עבודות, תריץ ביקורת ותפרוס מדיניות. השתמש בכישרון כדי להגדיר את Failproof AI, או בצע את השלבים ידנית.
+התחלה מהירה זו מציבה מחשב אחד לדיווח על מושבים, מפעילה ביקורת ופורסת מדיניות. השתמש בכישור כדי להגדיר את Failproof AI, או בצע את השלבים ידנית.
 
-**איזה נתיב שלך?** אם הסוכן שלך רץ באחד מ-12 ה[מנועים](/he/reference/harnesses) שנתמכים — CLI לקידוד, או שער כמו Hermes או OpenClaw — בצע את השלבים למטה; אתה צריך Node.js 20.9 או יותר חדש. אם לסוכן שלך אין מנוע, הוסף אותו עם ה-[Python SDK](/he/reference/custom-agents) לעקיבה וביקורות, ואז חזור ל[הריצה הראשונה שלך של בדיקת כישלון](/he/start/first-audit); האכיפה בנתיב זה דורשת hook בזמן הריצה שלך.
+**איזה נתיב שלך?** אם הסוכן שלך פועל באחד מ-12 [מסגרות](/he/reference/harnesses) שנתמכות — CLI קוד, או שער כמו Hermes או OpenClaw — בצע את השלבים למטה; אתה צריך Node.js 20.9 או גרסה חדשה יותר. אם לסוכן שלך אין מסגרת, יש לו אם כן להערות עם [Python SDK](/he/reference/custom-agents) לעקיבה וביקורות, ואז חזור אל [הפעל את בדיקת הכשל הראשונה שלך](/he/start/first-audit); אכיפה בנתיב זה דורשת hook בזמן הריצה שלך.
 
 <Tabs>
-  <Tab title="שימוש בכישרון">
+  <Tab title="השתמש בכישור">
     <Steps>
-      <Step title="התקן את כישרוני Failproof AI">
+      <Step title="התקן את כישורי Failproof AI">
         ```bash
         npx skills add FailproofAI/skills
         ```
@@ -21,19 +21,19 @@ icon: "zap"
         Set up Failproof AI for this project, connect this machine, install the right hooks and policies, and verify that a session arrives.
         ```
 
-        הסוכן שלך בודק את הפרויקט, בוחר את האינטגרציה הרלוונטית, מבצע את ההגדרה ומוודא אותה. ראה את [מאגר כישרוני FailproofAI](https://github.com/FailproofAI/skills) לכישרונות בודדים וואפשרויות התקנה מתקדמות.
+        הסוכן שלך בודק את הפרויקט, בוחר את האינטגרציה הרלוונטית, מבצע את ההגדרה ומוודא אותה. ראה את [מאגר כישורי FailproofAI](https://github.com/FailproofAI/skills) לקבלת כישורים בודדים ואפשרויות התקנה מתקדמות.
       </Step>
     </Steps>
   </Tab>
   <Tab title="הגדרה ידנית">
     ## לפני שתתחיל
 
-1. פתח את [לוח הבקרה של Failproof AI](https://app.befailproof.ai) וצור חשבון או היכנס עם דוא״ל שלך בעבודה.
-2. עבור ל**Administration → Keys** וצור מפתח עם `events:add` ו`policies:pull`.
-3. העתק את הסוד שלשימוש חד-פעמי ושמור אותו על המכונה היעד:
+1. פתח את [לוח הבקרה של Failproof AI](https://app.befailproof.ai) וצור חשבון או התחבר עם דוא״ל עבודה.
+2. עבור אל **Administration → Keys** וצור מפתח עם `events:add` ו-`policies:pull`.
+3. העתק את הסוד לשימוש חד-פעמי, ואז קרא אותו למעטפת על המחשב של היעד. `read -s` לוקח אותו בהודעה שלא משדרת, כך שהוא לא מופיע לעולם בפקודה:
 
 ```bash
-export FAILPROOFAI_KEY="<one-time-secret>"
+read -rs FAILPROOFAI_KEY && export FAILPROOFAI_KEY
 ```
 
     ## התקנה
@@ -42,12 +42,18 @@ export FAILPROOFAI_KEY="<one-time-secret>"
   <Step title="התקן וחבר את Failproof AI">
     ```bash
     npm install -g failproofai
-    failproofai config --connect https://app.befailproof.ai --token "$FAILPROOFAI_KEY"
+    FAILPROOFAI_CLOUD_TOKEN="$FAILPROOFAI_KEY" failproofai config
     ```
 
-    תמלילי עבודה נשלחים כברירת מחדל. הוסף `--no-transcripts` כדי לדווח על פעילות hook והחלטות מדיניות ללא תוכן תמלילים.
+    אותה פקודה אחת היא כל ההגדרה: היא מתקינה את ה-daemon המקומי (root פעם אחת), חוטה hooks לכל CLI סוכן שהוא מוצא, וחוברת מחשב זה ל-Cloud. העברת המפתח דרך הסביבה במקום `--token` שומרת אותו מתוך `ps`, כאשר כל משתמש במחשב יכול לקרוא ארגומנטים של פקודה. זה לא שומר אותו מתוך היסטוריית הקליפה — קריאה שלו עם `read -s` היא מה שעושה זאת. ב-CI, הזרק אותו כסוד מוסווה והחזק ניתוח קליפה (`set -x`) כבוי, או ניתוח הדפסים.
 
-    אם למכונה זו כבר יש הסטוריית סוכן, הצג תצוגה מקדימה ויבא את שבעת הימים האחרונים, ואז חכה שההעברה תסתיים. דלג על שלב זה במכונה חדשה.
+    תמלילי מושבים נשלחים כברירת מחדל. הוסף `--no-transcripts` לדיווח על פעילות hook והחלטות מדיניות ללא תוכן תמליל.
+
+    <Warning>
+      אל תשלוף `failproofai config --connect <url>` כאן. דגל זה רושם מחשב שהוא **כבר** מוגדר ופוחת ישר אחרי כן — לא daemon, לא hooks — כך שהמחשב יופיע ב-Cloud בעת איסוף והנפקה של כלום.
+    </Warning>
+
+    אם למחשב זה יש כבר היסטוריית סוכן, תצוגה מקדימה וייבוא של שבעת הימים האחרונים, ואז חכו שההסלמה תסתיים. דלג על שלב זה במחשב חדש.
 
     ```bash
     failproofai backfill --since 7d --dry-run
@@ -55,30 +61,41 @@ export FAILPROOFAI_KEY="<one-time-secret>"
     failproofai flush --wait
     ```
 
-    פתח את **Sessions** ב-Failproof AI ובחר עבודה שיובאה.
+    פתח **Sessions** ב-Failproof AI ובחר מושב שיובא.
   </Step>
-  <Step title="התקן hooks וכללי מדיניות של סוכן">
-    זה מצמיד את Failproof AI למנוע שלך ומתקין את 39 המדיניויות המובנות. השתמש בהן כדי לראות החלטות מדיניות מקומיות ולנסות אכיפה לפני שFailproof AI בוודק את העבודות שלך וכותב מדיניויות לסוכנים שלך.
-
-    אפשר לגלאי ההתקנה לגלות את המנוע שלך, או שם אחד במפורש. כל אחד מ-12 הוא ערך `--cli` תקף — `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity`, `goose`.
+  <Step title="צרף את Failproof AI למסגרת">
+    השלב הקודם כבר חוטה כל CLI סוכן שהוא גילה. הפעל אותו מחדש לבר אחד במפורש כשאתה צריך, או כדי להוסיף מסגרת שהותקנה אחרי כן. כל אחד מ-12 הוא ערך `--cli` תקף — `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity`, `goose`.
 
     ```bash
-    failproofai policies --install --cli claude --scope user     # a coding CLI
-    failproofai policies --install --cli hermes --scope user     # a Slack/Telegram gateway
+    failproofai policies --install --cli claude --scope user     # CLI קוד
+    failproofai policies --install --cli hermes --scope user     # שער Slack/Telegram
     ```
 
-    חסימת קריאת כלי לפני שהיא רצה מאומתת על כל 12. שערי סיום הפניה מאומתים על 8 — ראה [יכולת אכיפה](/he/reference/harnesses#enforcement-capability) למטריקס לכל מנוע.
+    חסימת קריאת כלי לפני שהוא פועל מאומתת על כל 12. שערים של קצה סיבוב מאומתים על 8 — ראה [יכולת אכיפה](/he/reference/harnesses#enforcement-capability) למטריקס ל-per-harness.
+  </Step>
+  <Step title="בחר מה להנוע">
+    חיטוב hooks מאפשר ללא מדיניות. התקנה בחרה בכוונה שום דבר — החלטה זו היא שלך — אז קחו חבילה:
+
+    ```bash
+    failproofai policies add FailproofAI/policies
+    ```
+
+    החבילה מחוזרת מהשחרור ב-GitHub שלה, מאומת checksum, וקבוע לתג המדויק שהוא נפתר. הוא נושא 38 מדיניויות ומפסיק את 10 המניפסט שלו מסמן כבטוח להפעלה ללא השגחה. השתמש בהם כדי לראות החלטות מדיניות מקומיות וניסיון אכיפה לפני שFailproof AI מבקר במושבים שלך וכותב מדיניויות לסוכנים שלך.
+
+    קרא כל חבילה לפני שתקחת אותה עם `failproofai policies show <owner>/<repo>`, ו[חבילות מדיניות](/he/policies/packs) לקבלת חלק אחד בלבד.
+
+    עד שזה פועל, הדבר היחיד שמנוע הוא `block-failproofai-commands` — השומר תמיד פעיל החוסם סוכן משבית Failproof AI. `failproofai policies` רושם מה הוא פועל.
   </Step>
   <Step title="בדוק את ההתנהגות">
-    עקוב אחר [הריצה הראשונה שלך של בדיקת כישלון](/he/start/first-audit). השתמש במטרה קונקרטית כגון "מצא עבודות שבהן הסוכן ניסה מחדש כלי כושל ללא שינוי בגישה שלו."
+    בצע את [הפעל את בדיקת הכשל הראשונה שלך](/he/start/first-audit). השתמש במטרה קונקרטית כמו "מצא מושבים שבהם הסוכן ניסה שוב כלי כושל ללא שינוי בגישה שלו."
   </Step>
-  <Step title="מנע את הכישלון">
-    עקוב אחר [מניעת הכישלון הראשון שלך עם מדיניות](/he/start/first-policy). התחל במצב צפייה, בדוק התאמות, ואז אכוף את הגרסה שנבדקה.
+  <Step title="מנע את הכשל">
+    בצע את [מנע את הכשל הראשון שלך עם מדיניות](/he/start/first-policy). התחל במצב צפייה, בדוק התאמות, ואז הנחל את הגרסה שבדקת.
   </Step>
 </Steps>
 
 <Check>
-  הרץ `failproofai config --status`. הגדרה בריאה מדווחת על חיבור הענן, מצב ה-daemon, וואם אכיפה מושהית.
+  הפעל `failproofai config --status`. הגדרה בריאה מדווחת על חיבור ענן, מצב daemon, והאם אכיפה מושהית.
 </Check>
   </Tab>
 </Tabs>

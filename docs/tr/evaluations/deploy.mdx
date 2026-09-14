@@ -1,0 +1,55 @@
+---
+title: "Bir değerlendirmeyi dağıtın ve sürümleyin"
+description: "Değişmez bir sürüm dağıtın, canlı olanı görün, yeni sürümler yayınlayın, geri alın ve zaten sahip olduğunuz oturumları puanlayın."
+icon: "cloud-upload"
+---
+
+## Dağıtın
+
+Yazma sayfasının altında **deploy `<key>@<version>`** seçeneğini seçin. Sürüm yayınlandıktan sonra değişmezdir: o andan itibaren, koşulu uygulanan her biten oturum tarafından puanlanır.
+
+## Canlı olanı görün
+
+**Analyze → eval authoring** kuruluşunuzun barındırılan tanımlarını, yönetilen değerlendirici tarafından çalıştırılan değerlendirmeleri listeler. Her satır şunları gösterir:
+
+- adı, anahtarı, sürümü ve sonuç türü
+- dağıtılan revizyonları ayırt etmek için kodu açmadan söyleyen kaynak sağlama toplamı
+- **koşullu** olup olmadığı veya **tüm tamamlanan oturumlar** üzerinde çalışıp çalışmadığı — koşul, bir değerlendirmeyi belirli ajanlar veya ortamlara kapsamlandıran şeydir
+- zaman aşımı, etiketleri ve son ne zaman değiştiği
+
+![Barındırılan tanımlar listesi: her değerlendirmenin adı, anahtarı, sürümü, sonuç türü, sağlama toplamı, zaman aşımı ve kapsamı, yeni sürüm ve etkinleştir veya devre dışı bırak seçenekleri ile.](/images/dashboard/eval-definitions.png)
+
+Listeyi arayın veya duruma göre filtreleyin. Kendi çalışanınızın kaydettiği değerlendirmeler burada listelenmez; bunların sonuçları [değerlendirmeler sayfasında](/tr/sessions/evaluations) **customer** etiketi taşır ve barındırılanlar **managed** etiketini taşır.
+
+Bir kuruluş aynı anda en fazla 100 farklı barındırılan değerlendirmeyi etkinleştirebilir.
+
+## Yeni sürüm yayınlayın
+
+Bir satırda **new version** seçeneğini seçin. Yazma sayfası o sürümün koduyla açılır; değiştirin, test edin ve dağıtın. Anahtarı ve sonuç türü aktarılır ve değişemez.
+
+Bir halefin yayınlanması, öncülünü devre dışı bırakır ve listeye alır. Sonuçlar bunları üreten sürümü korur, bu nedenle bir grafik tam olarak yeni mantığın ne zaman devralındığını gösterir.
+
+## Geri alın
+
+Geçerli sürümde **disable** seçeneğini ve istediğiniz sürümde **enable** seçeneğini belirleyin. Hiçbir şey silinmez ve her sonuç olduğu gibi kalır.
+
+## Bir değerlendirmeyi durdurun
+
+**Disable** seçeneğini belirleyin. Etkinleştirilen sürüm olmadan, yeni oturumlar üzerinde çalışmayı durdurur. Kendi çalışanınızın çalıştırdığı bir değerlendirmeyi durdurmak için, bunu kaydetmeyi durdurun: çalışanından kaldırın veya çalışanı durdurun.
+
+## Zaten sahip olduğunuz oturumları puanlayın
+
+Değerlendirme ileri gider: şimdi dağıtılan bir sürüm, bundan önce biten bir oturumu asla puanlamaz. Geçmişi puanlamak için, eval yazma sayfasında **score sessions you already have** seçeneğini açın, 90 güne kadar bir zaman penceresi ve isteğe bağlı olarak tek bir değerlendirme seçin ve çalıştırmadan önce sayın. Sayı tam olarak çalıştırılacak şeydir ve içindeki her oturum-ve-değerlendirme çifti bir faturalandırılabilir değerlendirmedir.
+
+Yalnızca boşlukları doldurur. O değerlendirme için zaten bir sonucu olan bir oturum bunu korur ve aynı pencereyi iki kez çalıştırmak hiçbir yeni şey puanlamaz.
+
+Bir oturumu tekrar puanlamak için — bir düzeltmeden sonra veya temiz bir şekilde bitmemiş bir oturum için — onun sayfasında **re-evaluate** seçeneğini belirleyin. Yeni sonuç, oturumun geçmişine eklenir; önceki olanlar kalır.
+
+## İzinler
+
+| İzin | Size izin verir |
+| --- | --- |
+| `evaluations:read` | Sonuçları görün ve eval yazma sayfasını açın |
+| `evaluations:trigger` | Barındırılan tanımları görmek, dağıtmak, sürümlemek, etkinleştirmek ve devre dışı bırakmak; test etmek; geçmişi puanlamak; bir oturumu yeniden değerlendirmek |
+| `events:read` | `evaluations:trigger` üstüne gerçek oturumlar karşısında test etmek ve taslakları yük anahtarlarınıza dayandırmak |
+| `evaluations:run` | Kendi değerlendirici çalışanınızı çalıştırmak |

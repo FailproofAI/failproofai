@@ -1,190 +1,118 @@
 ---
 title: "Evaluator SDK"
-description: "בנה שירות שמדרג Failproof AI sessions בצורה סינכרונית או אסינכרונית."
+description: "הפעל תהליך הערכה משלך, לשופטי LLM וכל דבר אחר שהפייתון המתארח אינו יכול לעשות."
 icon: "gauge"
 ---
 
-Evaluator מקבל סשן agent שהושלם ומחזיר את אותות האיכות שחשובים לך: ניקוד מספרי, הסבר לכל ניקוד, וסיכום אופציונלי. Failproof AI שומר את התוצאות הללו לצד ה-trace וממציא אותן על פני agents וסביבות שונות.
+ה-Evaluator SDK מריץ הערכות על התשתית שלך. התהליך שלך רושם את ההערכות שלו עם Failproof AI, משוך סשנים כשהם מסתיימים, נותן להם ניקוד ושולח את התוצאות, הכל דרך HTTPS יוצא: שום דבר לא מתחבר אליו. השתמש בו לדברים ש-[hosted Python](/he/evaluations/write) לא יכול לעשות — שופטי LLM, קריאות מודל, חבילות, סודות וגישה לרשת. התוצאות שלו מופיעות לצד אלה שמתארחות בעמוד [evaluations](/he/sessions/evaluations), מתויגות **customer**.
 
-## הגדר evaluator
+הוא משולח ב-`failproofai-sdk`, תחת `failproofai_sdk.evaluator`; ייבוא ה-tracing SDK אינו טוען אותו.
 
-<Steps>
-  <Step title="התקן את ה-SDK של ה-evaluator">
-    התקן את ה-SDK ואת השרת המשמש להריצה שלו.
-
-    ```bash
-    pip install failproofai-sdk uvicorn
-    ```
-  </Step>
-
-  <Step title="הגדר מה לדרג">
-    צור `evaluator.py`. הדוגמה הזו בודקת האם סשן מכיל קריאות tool כושלות.
-
-    ```python
-    import os
-    from failproofai.evaluator import Evaluator, EvalResponse
-
-    app = Evaluator(token=os.environ.get("EVALUATOR_TOKEN"))
-
-    @app.config
-    def config():
-        return {"inactivity_timeout_secs": 1800}
-
-    @app.evaluator
-    def evaluate(req):
-        tool_errors = sum(
-            1 for item in req.events
-            if item.event_type == "tool_result" and item.payload.get("error")
-        )
-        return EvalResponse(
-            scores={"tool_reliability": 1.0 if tool_errors == 0 else 0.0},
-            reasoning={"tool_reliability": f"{tool_errors} tool errors"},
-        )
-    ```
-  </Step>
-
-  <Step title="הרץ ובדוק מקומית">
-    הגדר token משותף, התחל את ה-evaluator, וודא שendpoint ה-health שלו מגיב.
-
-    ```bash
-    export EVALUATOR_TOKEN=<shared-token>
-    uvicorn evaluator:app --host 0.0.0.0 --port 8080
-    ```
-
-    בטרמינל אחר:
-
-    ```bash
-    curl http://127.0.0.1:8080/health
-    ```
-  </Step>
-</Steps>
-
-## חבר את ה-evaluator ל-Failproof AI
-
-1. פרוס את ה-evaluator ב-URL של HTTPS שנגיש עבור Failproof AI Cloud.
-2. הגדר את `EVALUATOR_ENDPOINT` עם ה-URL הזה וקבע את `EVALUATOR_TOKEN` לאותו token שמשמש את ה-evaluator. עבור Cloud מנוהל, צור קשר עם [support@befailproof.ai](mailto:support@befailproof.ai) כדי להגדיר את החיבור.
-3. הרץ הערכה וודא שהניקודים שלה מופיעים ב-Failproof AI.
-
-<Tabs>
-  <Tab title="Dashboard">
-    פתח סשן שהושלם תחת **Observe → Sessions** ובחר **Run evaluation** אם הוא לא הוערך באופן אוטומטי. בדוק את ה-status, הניקודים, הנימוק והסיכום בלוח **Evaluation** של הסשן.
-
-    השתמש ב-**Observe → Evaluations** כדי להשוות ניקודים על פני agents או סביבות שונות. השתמש ב-**Observe → Metrics** למדידות של latency, cost, token ואחרות מספריות.
-
-    התחל עם סשן אחד כדי לודא שה-evaluator החזיר את מפתחות הניקוד הצפויים ונימוק שימושי עבור ריצה ספציפית זו.
-
-    ![תצוגת פרטי סשן המציגה ניקודי הערכה ונימוק לצד ה-trace שלה.](/images/dashboard/session-detail.png)
-
-    כאשר התוצאות הבודדות נראות נכונות, השתמש בדשבורד ההערכה כדי להשוות ניקודים אלה לאורך זמן ועל פני agents או סביבות שונות.
-
-    ![דשבורד איכות שמציין ניקודי evaluator לאורך זמן.](/images/dashboard/dashboard-quality.png)
-
-    דיאגרמה בריאה צריכה להשתמש בשמות ניקוד יציבים; שינוי של מפתח יוצר סדרה נפרדת.
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp evals --since 1h --score tool_reliability:0..1
-    fp evals --since 24h --aggregate
-    ```
-  </Tab>
-</Tabs>
-
-עבור instance Cloud בהוראה עצמית, הערכה אוטומטית מושבתת עד שקבעו `EVALUATOR_ENDPOINT` בתהליך השרת. הפעל מחדש את השרת לאחר שינוי משתני סביבה של evaluator.
-
-השירות חושף `GET /health`, `GET /config`, `POST /evaluate`, ואפשרות `GET /evaluate/{job_id}`. החזר `JobPending` עבור עבודה אסינכרונית והרשם `@app.job_lookup` כדי Failproof AI יוכל לבדוק אותה.
-
-כאשר token מוגדר, כל הנתיבים חוץ מ-health דורשים את אותו bearer token ש-Failproof AI שולח כ-`EVALUATOR_TOKEN`.
-
-## סוגי SDK
-
-| Type | Fields |
-| --- | --- |
-| `AgentEvent` | `id`, `ts`, `event_type`, `payload` |
-| `EvalRequest` | `schema_version`, `session_id`, `agent_id`, `environment`, `started_at`, `ended_at`, `events` |
-| `EvalResponse` | `scores`, `reasoning`, `summary` |
-| `JobPending` | `job_id`, `next_poll_secs` |
-| `EvaluatorConfig` | `inactivity_timeout_secs`, `default_poll_interval_secs` |
-
-## Decorators ונתיבים
-
-| Decorator | Route | Required |
-| --- | --- | --- |
-| `@app.evaluator` | `POST /evaluate` | Yes |
-| `@app.job_lookup` | `GET /evaluate/{job_id}` | When returning `JobPending` |
-| `@app.config` | `GET /config` | No |
-
-ה-SDK מגביל גופי בקשות הערכה ל-25 MiB. שדות בקשה לא ידועים מתעלמים כך ששירותים נשארים תואמים כחוזה האירוע גדל.
-
-## החזר עבודה אסינכרונית
-
-השתמש ב-`JobPending` כאשר הערכה לא יכולה להסתיים בתוך בקשה אחת. מזהה הJob אטום ל-Failproof AI וחייב להישאר ניתן לפתרון על ידי שירותך עד שהתוצאה נאספת או תוקף ה-timeout של השרת תפוג.
-
-```python
-from failproofai.evaluator import EvalRequest, EvalResponse, Evaluator, JobPending
-
-app = Evaluator(token="shared-secret")
-
-@app.evaluator
-def start(req: EvalRequest) -> JobPending:
-    job_id = enqueue(req)
-    return JobPending(job_id=job_id, next_poll_secs=30)
-
-@app.job_lookup
-def lookup(job_id: str):
-    result = get_result(job_id)
-    if result is None:
-        return JobPending(job_id=job_id, next_poll_secs=30)
-    return EvalResponse(
-        scores=result.scores,
-        reasoning=result.reasoning,
-        summary=result.summary,
-    )
+```bash
+pip install failproofai-sdk
 ```
 
-קדנציה של polling נבחרת בסדר זה: `JobPending.next_poll_secs`, `EvaluatorConfig.default_poll_interval_secs`, ואז `EVALUATOR_POLLING_INTERVAL_SECS` של השרת. ערכים מחוברים בין שנייה אחת ושעה אחת. תקרת polling של wall-clock ברירת המחדל של השרת היא שעה אחת.
+## כתיבת הערכות
 
-## שדות בקשה ותגובה
+```python
+from failproofai_sdk.evaluator import ConditionResult, EvalResult, Evaluator, Metric, Score
 
-| Field | Type | Notes |
+app = Evaluator(name="customer-production", version="2026.08.1")
+
+
+@app.eval(
+    "tool_efficiency",
+    version="1.0.0",
+    labels=["tools", "deterministic"],
+    when=lambda session: ConditionResult(session.count("tool_use") > 0, "no_tool_calls"),
+)
+def tool_efficiency(session):
+    calls = session.events_of_type("tool_use")
+    distinct = {e.payload.get("tool_name") for e in calls if e.payload.get("tool_name")}
+    value = len(distinct) / len(calls)
+    return EvalResult(
+        score=Score(value, passed=value >= 0.7),
+        metrics={"tool_call_count": Metric(len(calls), unit="events")},
+        reasoning=f"{len(distinct)} distinct tools across {len(calls)} calls",
+    )
+
+
+@app.eval(
+    "answer_relevance",
+    version="judge-v1",
+    labels=["llm_judge", "relevance"],
+    when=lambda session: ConditionResult(
+        session.count("human_input") > 0 and session.count("model_response") > 0,
+        "no_exchange",
+    ),
+    timeout_seconds=30,
+)
+async def answer_relevance(session):
+    question = session.events_of_type("human_input")[-1].payload.get("response")
+    answer = session.events_of_type("model_response")[-1].payload.get("content")
+    value, reasoning = await ask_judge(question, answer)  # your LLM call: a 0-1 score and why
+    return EvalResult(score=Score(value, passed=value >= 0.7), reasoning=reasoning)
+
+
+if __name__ == "__main__":
+    app.run_from_env()
+```
+
+- `@app.eval(key, version=...)` רושם הערכה. המפתח הוא מה שתוצאותיו מתרשמות תחתיו; שנה את הגרסה בכל פעם שהלוגיקה משתנה, וכל תוצאה שומרת את הגרסה שיצרה אותה. תהליך אחד מחזיק עד 100 הערכות.
+- `result_kind` הוא `"score"` אלא אם ציינת אחרת. להערכת `"metric"` או `"assertion"`, תן לרשומה אחת `metrics` או `assertions` אחרי המפתח: הרשומה הזו היא התוצאה שלה.
+- `when` מחליט האם סשן חל. החזר `ConditionResult(False, "<reason>")` כדי לדלג על אחד, והסיבה נרשמת.
+- הערכה יכולה להיות פונקציה רגילה או `async`, ו-`timeout_seconds` מקשרת אותה.
+- מפתחות עומס — `tool_name`, `response` ו-`content` למעלה — הם מה שהאג'נטים שלך שולחים, אז קרא אותם מסשן אמיתי.
+
+## הפעלת התהליך
+
+שים מפתח עם הרשאת `evaluations:run`, שנוצר תחת **Administration → Keys**, ב-`FAILPROOFAI_EVALUATOR_TOKEN` — הגדר אותו מחנות הסודות שלך ולא הקלד אותו לפקודה — והתחל את התהליך:
+
+```bash
+FAILPROOFAI_EVALUATOR_URL=https://app.befailproof.ai python evaluator.py
+```
+
+ללא בלוק `__main__`, `python -m failproofai_sdk.evaluator evaluator:app` עושה את אותו הדבר.
+
+| משתנה | ברירת מחדל | תכלית |
 | --- | --- | --- |
-| `EvalRequest.schema_version` | `str` | כרגע `"1"`. |
-| `session_id`, `agent_id`, `environment` | `str` | זהות סשן וסביבה. |
-| `started_at` | `datetime` | חותמת זמן של האירוע הראשון. |
-| `ended_at` | `datetime \| None` | קיים כאשר הסשן פליט אירוע סיום. |
-| `events` | `list[AgentEvent]` | זרם אירוע מלא ומסודר. |
-| `AgentEvent.id` | `int` | מזהה שורה אירוע של backend. |
-| `AgentEvent.ts` | `datetime` | חותמת זמן של אירוע. |
-| `AgentEvent.event_type` | `str` | משפחת אירוע כגון `tool_use`. |
-| `AgentEvent.payload` | `dict[str, Any]` | גוף אירוע מלא. |
-| `EvalResponse.scores` | `dict[str, float] \| None` | ממדים מספריים שמופיעים בהערכות. |
-| `EvalResponse.reasoning` | `dict[str, str] \| None` | הסברים לכל ניקוד; מפתחות צריכים לשקף את `scores`. |
-| `EvalResponse.summary` | `str \| None` | סיפור הערכה כללי. |
+| `FAILPROOFAI_EVALUATOR_URL` | נדרש | היכן Failproof AI: `https://app.befailproof.ai` לעננן. HTTPS אלא אם זה מצביע על loopback |
+| `FAILPROOFAI_EVALUATOR_TOKEN` | נדרש | מפתח עם `evaluations:run` |
+| `FAILPROOFAI_EVALUATOR_WORKER_ID` | `<hostname>-<pid>` | שמות לתהליך זה |
+| `FAILPROOFAI_EVALUATOR_CONCURRENCY` | `1` | סשנים שתהליך זה נותן ניקוד בו בעת זו |
+| `FAILPROOFAI_EVALUATOR_REQUEST_TIMEOUT_SECONDS` | `30` | קצבת זמן לכל בקשה ל-Failproof AI |
+| `FAILPROOFAI_EVALUATOR_DRAIN_TIMEOUT_SECONDS` | `60` | כמה זמן תהליך עוצר מחכה להרצות בטיסה |
+| `FAILPROOFAI_EVALUATOR_ALLOW_INSECURE_HTTP` | `false` | אפשר HTTP רגיל לכתובת שאינה loopback — ראה את ההתריעה להלן |
+| `FAILPROOFAI_EVALUATOR_MODULE` | none | ה-`module:attribute` ל-`python -m failproofai_sdk.evaluator` |
 
-## הגדרות של מפעיל שרת
+<Warning>
+  `FAILPROOFAI_EVALUATOR_ALLOW_INSECURE_HTTP` שולח הכל בטקסט צחוח. התהליך נושא את `FAILPROOFAI_EVALUATOR_TOKEN` כראש `Authorization: Bearer` בכל בקשה, והתמלילים שהוא משיג הם הסשנים עצמם — אז כל אחד בנתיב קורא את שניהם, והמפתח שהם קוראים מריץ הערכות עד שתסובב אותו. השתמש בו רק ברשת פיתוח מבודדת. בכל מקום אחר כתובת ה-URL חייבת להיות HTTPS; loopback לא צריך דגל.
+</Warning>
 
-הערכה אוטומטית היא כל deployment וגם נשארת מושבתת כאשר `EVALUATOR_ENDPOINT` חסר.
+## סוגי תוצאה
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `EVALUATOR_ENDPOINT` | unset | Base URL של שירות ה-evaluator. |
-| `EVALUATOR_TOKEN` | unset | Bearer token משותף עם `Evaluator(token=...)`. |
-| `EVALUATOR_WORKERS` | `2` | עובדים של dispatcher בו-זמניים. |
-| `EVALUATOR_CLAIM_BATCH` | `4` | סשנים טבועים לכל מעבר של dispatcher. |
-| `EVALUATOR_POLLING_INTERVAL_SECS` | `10` | קדנציית polling אסינכרונית של fallback. |
-| `EVALUATOR_REQUEST_TIMEOUT_MS` | `30000` | timeout evaluator לכל בקשה. |
-| `EVALUATOR_MAX_ATTEMPTS` | `5` | ניסיונות משלוח לפני כישלון סופי. |
-| `EVALUATOR_CONFIG_REFRESH_SECS` | `300` | קדנציית refresh של `/config`. |
-| `EVALUATOR_MAX_POLL_DURATION_SECS` | `3600` | זמן polling אסינכרוני של wall-clock מרבי. |
+| סוג | שדות |
+| --- | --- |
+| `Score` | `value` (0 עד 1), `passed`, `unit` (ברירת מחדל `ratio`), `display_value`, `description` |
+| `Metric` | `value`, `unit`, `display_value`, `description` |
+| `Assertion` | `passed`, `description` |
+| `EvalResult` | `score`, `metrics`, `assertions`, `reasoning`, `summary`, `labels` |
+| `ConditionResult` | `applicable`, `reason_code` |
 
-השרת יכול גם להגביל אילו ארגונים משתמשים ב-evaluator הגלובלי של deployment. התייחס לשינויים של endpoint, token, retry ו-organization-gate כהגדרת מפעיל והפעל מחדש או גלגול את השרת לאחר שינוי שלהם.
+`EvalResult` נושא לפחות ניקוד, מדד או טענה אחת, ולכל היותר 25, כל אחד תחת מפתח ייחודי.
 
-## אבטחה ותפעול
+## הסשן
 
-- הצב את ה-evaluator מאחורי HTTPS כאשר תעבור עוברת גבול של רשת מהימנה.
-- הגדר bearer token לא ריק ושמור על זהותו בשני השירותים.
-- אל תיומן את ה-token או prompts רגישים מלאים מגופי בקשות.
-- הגדר핸handlers סינכרוניים כ-idempotent; retries עלולים לחזור על בקשה.
-- המשך מצב עבודה אסינכרוני מחוץ לזיכרון תהליך בייצור.
-- החזר מפתחות ניקוד יציבים. שינוי שם של מפתח יוצר סדרה תרשים חדשה במקום שינוי של הישן.
+| שדה או שיטה | נותן לך |
+| --- | --- |
+| `session_id`, `agent_id`, `environment` | הזהות של הסשן |
+| `started_at`, `ended_at` | מתי הוא התחיל והסתיים |
+| `event_count`, `events` | התמלול המלא, מסודר |
+| `count(event_type)` | כמה אירועים מסוג זה הוא מחזיק |
+| `events_of_type(event_type)` | אותם אירועים, בסדר |
 
-ה-SDK פולט רישומי life-cycle מובנים כגון `eval received`, `eval responded`, `job lookup`, `config returned`, `auth rejected`, ויוצאים מ-handler. הוא לא מגדיר handlers של logging; השתמש בהגדרת הlogging של יישום ה-host.
+כל אירוע נושא `id`, `ts`, `event_type` ו-`payload`.
+
+## מעריך המורשת
+
+ה-Evaluator SDK המוקדם — שירות HTTP שFailproof AI קרא ל-`EVALUATOR_ENDPOINT`, מענה ל-`/evaluate` ובדק דרך `JobPending` — הוא פרוש. בנה מעריכים חדשים בתהליך זה; מפעילים של מופע מתארח עצמי המריץ שירות מורשה יכול להשמור עליו דרך המעבר.

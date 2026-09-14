@@ -4,16 +4,16 @@ description: "Comprende qué ocurre cuando la evaluación de políticas o el dae
 icon: "shield-alert"
 ---
 
-Failproof AI está diseñado para que un fallo de aplicación sea visible en lugar de permitir silenciosamente trabajo de riesgo.
+Failproof AI está diseñado para que un fallo de aplicación sea visible en lugar de permitir silenciosamente trabajo arriesgado.
 
 ## Diagnosticar un bloqueo por fallo cerrado
 
 <Tabs>
-  <Tab title="Dashboard">
+  <Tab title="Panel de control">
     1. Ve a **Admin → enforcement** y abre la máquina.
-    2. Comprueba su último registro de actividad, el despliegue asignado y el despliegue reportado.
+    2. Comprueba su último check-in, el despliegue asignado y el despliegue reportado.
     3. Ve a **Observe → policy** y abre la sesión de la decisión denegada.
-    4. Confirma si el motivo indica inaccesibilidad del daemon, diferencia de versión o la propia política.
+    4. Confirma si la razón reporta inaccesibilidad del daemon, desfase de versión o la propia política.
 
   </Tab>
   <Tab title="CLI">
@@ -23,45 +23,47 @@ Failproof AI está diseñado para que un fallo de aplicación sea visible en lug
     failproofai config
     ```
 
-    Volver a ejecutar `failproofai config` actualiza y reinicia el daemon tras actualizar el paquete.
+    Volver a ejecutar `failproofai config` actualiza y reinicia el daemon tras una actualización del paquete.
   </Tab>
 </Tabs>
 
-En una máquina configurada para usar `failproofaid`, el daemon es el único evaluador. Si no es accesible o su versión de protocolo no coincide con la del CLI, la evaluación del hook falla de forma cerrada. La acción se deniega con un motivo que indica al operador que revise o actualice el daemon.
+En una máquina configurada para usar `failproofaid`, el daemon es el único evaluador. Si no es accesible o su versión de protocolo no coincide con la del CLI, la evaluación del hook falla de forma cerrada. La acción se deniega con un motivo que indica al operador que compruebe o actualice el daemon.
 
-Antes de configurar el daemon, los hooks evalúan las políticas en proceso. Una vez que la configuración del daemon queda registrada, Failproof AI no vuelve silenciosamente a un segundo evaluador cuando el daemon falla.
+Antes de la configuración del daemon, los hooks evalúan las políticas en proceso. Una vez que la configuración del daemon queda registrada, Failproof AI no recurre silenciosamente a un segundo evaluador cuando el daemon falla.
 
-## Responder a una decisión de fallo cerrado
+## Responder a una decisión por fallo cerrado
 
 1. Ejecuta `failproofai config --status`.
-2. Si las versiones difieren, vuelve a ejecutar `failproofai config` tras actualizar el paquete.
-3. Si el daemon no es accesible, inspecciona el estado de su servicio y los registros locales.
-4. Reanuda el trabajo del agente solo después de verificar que la ruta de evaluación de políticas conocida está en buen estado.
+2. Si las versiones difieren, vuelve a ejecutar `failproofai config` después de actualizar el paquete.
+3. Si el daemon no es accesible, inspecciona su estado de servicio y los registros locales.
+4. Reanuda el trabajo del agente solo cuando se haya verificado que la ruta de evaluación de políticas está operativa.
 
 <Warning>
-  No reintentar repetidamente la acción bloqueada. Una respuesta de fallo cerrado significa que el sistema no pudo determinar que la acción era segura.
+  No reintentes repetidamente la acción bloqueada. Una respuesta por fallo cerrado significa que el sistema no pudo determinar que la acción era segura.
 </Warning>
 
 ## Un pack no carga
 
-Una máquina que tenía instrucciones de aplicar un pack y no puede ejecutarlo, deniega en lugar de continuar silenciosamente. El desencadenante es una **expectativa registrada**, nunca una vacía: una máquina sin packs instalados permanece en silencio, mientras que un pack declarado que no puede resolverse — o que registra menos de lo que declara su manifiesto — deniega.
+Una máquina a la que se le indicó que aplicara un pack y no puede ejecutarlo deniega la operación en lugar de continuar silenciosamente. El desencadenante es una **expectativa registrada**, nunca una vacía: una máquina sin packs instalados permanece silenciosa, mientras que un pack declarado que no puede resolverse —o que registra menos de lo que declara su manifiesto— deniega.
 
-La denegación es **restringida**, a diferencia de un daemon inaccesible. Un daemon al que no se puede llegar significa que no se realizó ninguna evaluación, por lo que nada puede considerarse seguro. Un pack que no carga tiene un conjunto enumerable de guardas faltantes, ya que cada política declarada tiene su propio `match` — así que deniega únicamente los eventos y herramientas que esas políticas cubrían, y todo lo demás continúa.
+La denegación es **acotada**, a diferencia de un daemon inaccesible. Un daemon que no puede alcanzarse significa que no se realizó ninguna evaluación, por lo que nada puede considerarse seguro. Un pack que no carga tiene un conjunto enumerable de guardas ausentes, porque cada política declarada lleva su propio `match`; por tanto, solo deniega los eventos y herramientas que esas políticas cubrían, y todo lo demás continúa.
 
-No se activa para:
+No se activa en los siguientes casos:
 
-- un pack de `observe`, que evalúa y descarta por construcción
-- políticas que nunca adoptaste, o que desactivaste explícitamente
-- un pack que el cargador nunca recibió, donde no es posible distinguir "sin registros" de una omisión deliberada
+- un pack `observe`, que evalúa y descarta por construcción
+- políticas que nunca adoptaste o desactivaste explícitamente
+- un pack que el cargador nunca recibió, donde no es posible distinguir entre «sin registros» y un salto deliberado
 - una pausa de sesión activa
 - un timeout de carga, que es transitorio — un momento de disco lento no debe denegar hasta que intervenga un humano
 
-`UserPromptSubmit` **instruye** en lugar de denegar, independientemente de lo que declarara la política faltante. Una denegación general lo incluiría y te bloquearía el acceso al agente que podría solucionar el problema.
+`UserPromptSubmit` **instruye** en lugar de denegar, independientemente de lo que declarara la política ausente. Una denegación general también lo afectaría y te bloquearía el acceso al agente que podría resolver el problema.
 
 ### Qué hacer
 
 ```bash
-failproofai pack list
+failproofai policies
 ```
 
-Muestra cualquier pack instalado que no cargue, indica el motivo y termina con código de error no cero. A continuación, reinstálalo (`failproofai pack add <source>`) o elimínalo (`failproofai pack remove <publisher/name>`) — eliminarlo retira la expectativa y con ello cesa la denegación.
+El listado marca un pack instalado cuyo registro de instalación o digest ya no es válido, e indica el motivo. No importa el pack, por lo que uno que falla solo al cargarse —registrando menos de lo que declara su manifiesto— aparece como normal; la denegación descrita a continuación es la que identifica ese caso. En cualquier caso, reinstálalo (`failproofai policies add <source>`) o elimínalo (`failproofai policies remove <publisher/name>`) — eliminarlo retira la expectativa y la denegación cesa con ello.
+
+La propia denegación se atribuye a `pack/failproofai-pack-unavailable`, que tiene prioridad sobre las políticas que sí cargaron, de modo que una llamada a herramienta bloqueada nombra el pack ausente en lugar de la guarda superviviente que haya disparado primero.

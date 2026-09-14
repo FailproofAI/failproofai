@@ -1,0 +1,44 @@
+---
+title: "Agenten evaluieren"
+description: "Bewerte jede abgeschlossene Sitzung mit selbst definierten Evaluierungen: gehostete Python-Prüfungen oder LLM-Richter in deinem eigenen Worker."
+icon: "gauge"
+---
+
+Eine Evaluierung bewertet eine abgeschlossene Agenten-Sitzung. Wenn eine Sitzung endet, wird jede aktivierte Evaluierung, die auf sie zutrifft, ausgeführt und zeichnet die Ergebnisse auf – mit einer Begründung, die du direkt neben dem Trace lesen kannst:
+
+- ein **Score** von 0 bis 1, optional als bestanden oder nicht bestanden markiert
+- eine **Metrik**, z. B. eine Anzahl, eine Dauer oder Kosten, mit ihrer Einheit
+- eine **Assertion**, die bestanden hat oder nicht
+
+## Zwei Arten von Evaluatoren
+
+| | Gehostetes Python | Eigener Worker |
+| --- | --- | --- |
+| Geschrieben | Im Dashboard unter **Analyze → eval authoring** | In Python, mit dem [Evaluator SDK](/de/reference/evaluator-sdk) |
+| Läuft | Auf dem verwalteten Evaluator von Failproof AI, in einer Sandbox | Auf deiner eigenen Infrastruktur |
+| Am besten für | Deterministische, codebasierte Prüfungen | LLM-Richter, Modellaufrufe, Pakete, Secrets, Netzwerkzugriff, rechenintensive Verarbeitung |
+
+Gehostetes Python ist bewusst schlank gehalten: ein Ausdruck, keine Imports, kein Netzwerk. Alles, was ein Modell erfordert – etwa ein LLM-Richter, der bewertet, ob eine Antwort relevant war – läuft stattdessen in deinem eigenen Worker. Keine der beiden Varianten benötigt eine eingehende Verbindung: Worker holen abgeschlossene Sitzungen ab und übermitteln Ergebnisse über ausgehendes HTTPS.
+
+## Jede Organisation evaluiert ihre eigenen Agenten
+
+Evaluierungen gehören der Organisation, die sie definiert. Jede Organisation auf einer Instanz schreibt ihre eigenen – eigene Prüfungen, Bedingungen, Schwellenwerte und Labels – versioniert und deployt sie, ohne andere Organisationen zu beeinflussen, und sieht nur ihre eigenen Ergebnisse. Diese Ergebnisse lassen sich nach Agent, Umgebung, Evaluierung und Zeitraum filtern oder per Assistent abfragen.
+
+## Vom ersten Entwurf zu Live-Scores
+
+<Steps>
+  <Step title="Schreibe sie">
+    Beschreibe, was gemessen werden soll, und lass den Assistenten einen Entwurf erstellen – oder schreibe sie selbst. Siehe [Eine Evaluierung schreiben](/de/evaluations/write).
+  </Step>
+  <Step title="Teste sie">
+    Führe sie gegen echte Sitzungen aus, bevor sie live geht; nichts wird gespeichert. Siehe [Eine Evaluierung testen](/de/evaluations/test).
+  </Step>
+  <Step title="Deploye und versioniere sie">
+    Deploye eine unveränderliche Version, veröffentliche neue Versionen bei Weiterentwicklung und kehre bei Bedarf zu einer früheren zurück. Siehe [Deployen und versionieren](/de/evaluations/deploy).
+  </Step>
+  <Step title="Lies die Ergebnisse">
+    Visualisiere Scores über die Zeit, vergleiche Agenten und Umgebungen, und stelle Fragen an den Assistenten. Siehe [Evaluierungsergebnisse lesen](/de/sessions/evaluations).
+  </Step>
+</Steps>
+
+Evaluierungen wirken vorwärts: Eine jetzt deployete Version bewertet die Sitzungen, die ab sofort abgeschlossen werden. Um bereits vorhandene Sitzungen zu bewerten, [fülle sie nach](/de/evaluations/deploy#score-sessions-you-already-have).

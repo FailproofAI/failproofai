@@ -1,110 +1,119 @@
 ---
-title: "Pacotes de políticas"
-description: "Instale um conjunto de políticas publicado como uma release do GitHub e gerencie o que ele aplica."
+title: "Usar um pacote de políticas"
+description: "Conecte um pacote de políticas do Failproof AI para o seu caso de uso, ou um pacote da comunidade do hub de políticas, e escolha o que ele aplica."
 icon: "package"
 ---
 
-Um pacote é um conjunto de políticas publicado como uma release do GitHub. Um único comando o instala, os checksums da própria release são verificados antes de qualquer execução, e o digest é registrado para que o pacote não possa ser alterado na sua máquina depois disso.
+Um pacote é um conjunto de políticas publicado como uma release do GitHub. Um único comando o instala: os checksums da release são verificados antes de qualquer execução, e o digest é registrado para que o pacote não possa ser alterado na sua máquina posteriormente.
 
-## Instalar as políticas do Failproof AI
+Explore todos os pacotes e cada política em cada um deles no [hub de políticas](https://befailproof.ai/policy-hub/). Há dois tipos:
 
-```bash
-failproofai pack add core
-```
+- **Pacotes de políticas Failproof AI** — pacotes prontos para casos de uso predefinidos: conecte um e ele funciona. O [pacote de políticas para agente de codificação](https://befailproof.ai/policy-hub/failproofai/policies/) está disponível agora, e pacotes para mais casos de uso estão chegando em breve.
+- **Pacotes de políticas da comunidade** — políticas que desenvolvedores criaram para seus próprios casos de uso e publicaram para qualquer pessoa usar.
 
-Isso instala o conjunto que publicamos, a partir da cópia incluída no pacote — portanto, não precisa de rede e não falha por causa de um proxy. Para instalar apenas parte dele:
+## Pacotes de políticas Failproof AI
 
-```bash
-failproofai pack add core --policy block-rm-rf         # uma, ou algumas separadas por vírgula
-failproofai pack add core --category dangerous-commands # uma categoria inteira
-failproofai pack add core --all                         # tudo que está nele
-```
-
-`failproofai pack list` lista todas as categorias que o pacote oferece.
-
-## Ver o que um pacote contém antes de instalá-lo
+### Pacote de políticas para agente de codificação
 
 ```bash
-failproofai pack list acme/support-agent
+failproofai policies add FailproofAI/policies
 ```
 
-Lista todas as políticas que o pacote inclui, agrupadas por categoria, indicando quais foram ativadas por padrão pelo autor e quais são opcionais. Ele lê **apenas o manifesto** — o artefato de entrada nunca é baixado nem importado, portanto, inspecionar o pacote de um desconhecido não executa código desconhecido. O manifesto ainda é verificado contra o `SHA256SUMS` da própria release, garantindo que o que você está lendo é exatamente o que seria instalado.
+O pacote contém 38 políticas e ativa as 10 que seu manifesto marca como seguras para habilitar sem supervisão; as demais são listadas para você escolher. Algumas das mais usadas, e se um simples `policies add` as ativa:
 
-`failproofai pack list` sem nenhuma fonte lista os pacotes já instalados aqui.
+| Política | O que faz | Ativa por padrão |
+| --- | --- | --- |
+| `block-push-master` | Bloqueia pushes diretos para branches protegidas | Sim |
+| `block-env-files` | Bloqueia leitura e escrita de arquivos `.env` | Sim |
+| `protect-env-vars` | Bloqueia comandos que expõem variáveis de ambiente | Sim |
+| `block-sudo` | Bloqueia `sudo` a menos que um padrão de permissão corresponda | Sim |
+| `block-curl-pipe-sh` | Bloqueia scripts baixados redirecionados diretamente para um shell | Sim |
+| `sanitize-*` (cinco políticas) | Reporta chaves de API, bearer tokens, JWTs, chaves privadas e strings de conexão encontradas na saída das ferramentas | Sim |
+| `block-rm-rf` | Bloqueia exclusões recursivas catastróficas | Não |
+| `block-force-push` | Bloqueia force-pushes | Não |
+| `block-secrets-write` | Bloqueia escrita em arquivos de credenciais e chaves secretas | Não |
+| `warn-destructive-sql` | Avisa sobre `DROP`, `TRUNCATE` e `DELETE` sem `WHERE` | Não |
 
-## Instalar o pacote de outra pessoa
+Ative qualquer uma que esteja desativada pelo nome — `failproofai policies add block-rm-rf` — ou pegue o pacote inteiro com `--all`. Veja todas as políticas nele, agrupadas por categoria:
 
 ```bash
-failproofai pack add acme/support-agent
+failproofai policies show FailproofAI/policies
 ```
 
-Qualquer um destes formatos funciona — cole o que você tiver:
+## Pacotes de políticas da comunidade
+
+Desenvolvedores publicam pacotes para os casos de uso que encontraram, e o [hub de políticas](https://befailproof.ai/policy-hub/) os lista. Um pacote da comunidade é publicado pelo seu autor e não é auditado pelo Failproof AI, então leia o que ele contém antes de instalá-lo:
+
+```bash
+failproofai policies show acme/support-agent
+```
+
+Isso lista todas as políticas que ele contém, agrupadas por categoria, e marca quais o autor ativa por padrão. Ele lê **apenas o manifesto** — o artefato de entrada nunca é baixado ou importado, então examinar o pacote de um desconhecido não pode executar o código de um desconhecido. O manifesto ainda é verificado contra o `SHA256SUMS` da própria release, então o que você lê é exatamente o que seria instalado.
+
+Em seguida, instale-o:
+
+```bash
+failproofai policies add acme/support-agent
+```
+
+Qualquer uma dessas formas funciona — cole a que você tiver:
 
 | Fonte | Resultado |
 | --- | --- |
-| `acme/support-agent` | Release mais recente, **fixada** na tag exata que foi resolvida |
+| `acme/support-agent` | Release mais recente, **fixada** à tag exata que foi resolvida |
 | `acme/support-agent@v2.1.0` | Aquela release |
-| `github:acme/support-agent@v2.1.0` | O mesmo, escrito explicitamente |
-| `https://github.com/acme/support-agent/releases/tag/v2.1.0` | O mesmo, copiado do navegador |
+| `github:acme/support-agent@v2.1.0` | A mesma, escrita explicitamente |
+| `https://github.com/acme/support-agent/releases/tag/v2.1.0` | A mesma, copiada de um navegador |
 
-Não informar uma tag instala a release mais recente **e a fixa**, informando qual tag foi escolhida. O que fica registrado sempre nomeia exatamente uma release, portanto uma reinstalação não pode gerar divergências.
+Não informar nenhuma tag instala a release mais recente **e a fixa**, e depois informa qual tag foi escolhida. O que é registrado sempre nomeia exatamente uma release, portanto uma reinstalação não pode divergir.
 
-## Usar apenas parte de um pacote
+## Usar parte de um pacote
 
-Por padrão, você obtém os **próprios** padrões do pacote — as políticas que o autor marcou como seguras para ativar sem supervisão — e não tudo que ele contém.
+Por padrão, você recebe os **próprios** padrões do pacote — as políticas que o autor marcou como seguras para ativar sem supervisão — não tudo o que ele contém.
 
 ```bash
-failproofai pack add acme/support-agent --category billing,git
-failproofai pack add acme/support-agent --policy block-refunds
-failproofai pack add acme/support-agent --all
+failproofai policies add FailproofAI/policies --policy block-rm-rf          # uma, ou algumas separadas por vírgula
+failproofai policies add FailproofAI/policies --category dangerous-commands # uma categoria inteira
+failproofai policies add FailproofAI/policies --all                         # tudo nele
 ```
 
-`--category` e `--policy` se combinam como uma união (`--only` é aceito como sinônimo de `--policy`). Adicionar novamente em uma versão mais recente mantém o que você escolheu, em vez de reativar o restante.
+`--category` e `--policy` se combinam como uma união (`--only` é aceito como sinônimo de `--policy`). Quando o pacote já está instalado, os flags adicionam ao que você tinha, e re-adicioná-lo sem flag e sem terminal — para atualizar, por exemplo — mantém sua seleção como está. Em um terminal sem flag, `add` abre o seletor em vez disso, pré-marcado com os padrões do autor, e o que você marcar substitui sua seleção.
 
 ## Gerenciar o que está ativo
 
 ```bash
-failproofai policies                    # todas as fontes em uma lista, incluindo pacotes
-failproofai pack list                   # apenas pacotes, agrupados por categoria
-failproofai policies --uninstall block-refunds        # desativar uma política de pacote
+failproofai policies                                  # cada fonte em uma lista, pacotes incluídos
+failproofai policies add block-rm-rf                  # ativar uma política
+failproofai policies --uninstall block-refunds        # desativar uma política do pacote
 failproofai policies --install block-refunds          # e reativá-la
-failproofai pack remove acme/support-agent
+failproofai policies remove acme/support-agent        # desinstalar o pacote
 ```
 
-Um nome simples refere-se ao **builtin** quando existe um com esse nome. Nomeie explicitamente a cópia de um pacote quando necessário:
+Ativar ou desativar uma política de pacote se aplica a toda a máquina: a alteração é registrada com o pacote instalado, não na configuração de um projeto, independentemente do que `--scope` diga.
+
+Um nome sem barra é uma política; qualquer coisa com uma barra é uma fonte de pacote. Um nome simples resolve para o pacote instalado que o declara. Quando dois pacotes instalados declaram o mesmo nome, especifique o que você quer dizer:
 
 ```bash
 failproofai policies --uninstall acme/support-agent:block-refunds
 ```
 
-<Note>
-Se um pacote incluir uma política cujo nome também seja um **builtin habilitado**, o builtin é executado e a cópia do pacote é ignorada — caso contrário, a mesma proteção seria avaliada duas vezes. Desative o builtin para usar a cópia do pacote em seu lugar.
-</Note>
-
-## De onde vêm as políticas do Failproof AI
-
-`core` lê a cópia incluída no pacote npm. O mesmo conjunto é publicado como uma release do GitHub, que é o que você instala se quiser uma versão específica:
-
-```bash
-failproofai pack add core                    # do pacote atual, sem rede
-failproofai pack add FailproofAI/policies    # o mesmo conjunto, a partir da release no GitHub
-```
+Escopos, parâmetros e os arquivos que esses comandos escrevem estão cobertos em [configuração local](/pt-br/policies/local-configuration).
 
 ## O que a integridade garante e o que não garante
 
-`SHA256SUMS` é incluído na mesma release que o artefato, portanto **não** é uma assinatura e não prova nada sobre quem o publicou. O que ele prova é que os bytes são os que aquela release publicou — e como o digest é registrado quando você adiciona o pacote e reverificado antes de cada importação, um pacote não pode ser alterado na sua máquina depois disso. Um repositório que retaguea ou substitui um asset para de carregar em vez de executar silenciosamente algo diferente.
+`SHA256SUMS` é distribuído na mesma release que o artefato, portanto **não** é uma assinatura e não prova nada sobre quem o publicou. O que ele prova é que os bytes são os que aquela release publicou — e como o digest é registrado quando você adiciona o pacote e reverificado antes de cada importação, um pacote não pode ser alterado na sua máquina posteriormente. Um repositório que troca a tag ou substitui um asset para de carregar em vez de executar silenciosamente outra coisa.
 
-No momento da instalação, o pacote também é **importado uma vez** e verificado contra seu próprio manifesto. Um pacote cujo artefato não pode ser analisado, ou que registra algo diferente do que declara, é recusado antes de qualquer ativação — em vez de instalar normalmente e falhar na próxima chamada de ferramenta.
+No momento da instalação, o pacote também é **importado uma vez** e verificado contra seu próprio manifesto. Um pacote cujo artefato não seja analisável, ou que registre algo diferente do que declara, é recusado antes que qualquer coisa seja ativada — em vez de instalar sem erros e falhar na sua próxima chamada de ferramenta.
 
 ## Quando um pacote não carrega
 
-Um pacote que esta máquina foi instruída a aplicar e não consegue executar **nega** os eventos cobertos pelas políticas ausentes, em vez de permitir silenciosamente. Consulte [Comportamento em falhas](/pt-br/policies/failure-behavior). `failproofai pack list` identifica qualquer pacote nesse estado e encerra com código diferente de zero.
+Um pacote que esta máquina foi instruída a aplicar e não consegue executar **nega** os eventos cobertos pelas políticas ausentes, em vez de permitir silenciosamente — como `pack/failproofai-pack-unavailable`, que tem prioridade sobre as políticas que foram carregadas, de modo que a negação é atribuída ao pacote ausente e não a qualquer guarda que por acaso tenha disparado primeiro. A exceção é `UserPromptSubmit`, que instrui em vez de negar: negar ali bloquearia seu acesso ao agente que você precisa para corrigir o problema. Veja [Comportamento em falhas](/pt-br/policies/failure-behavior).
 
 ## Offline e espelhos
 
 | Variável | Efeito |
 | --- | --- |
-| `FAILPROOFAI_NO_DOWNLOAD=1` | Recusa fazer downloads; pacotes já instalados continuam sendo aplicados |
-| `FAILPROOFAI_PACK_BASE_URL` | Direciona o download de pacotes para um espelho em vez do `github.com` |
+| `FAILPROOFAI_NO_DOWNLOAD=1` | Recusa buscar dados; pacotes já instalados continuam aplicando políticas |
+| `FAILPROOFAI_PACK_BASE_URL` | Direciona a busca de pacotes para um espelho em vez de `github.com` |
 
-Para publicar seu próprio pacote, consulte [Publicar um pacote](/pt-br/policies/publish-a-pack).
+Para compartilhar suas próprias políticas dessa forma, veja [Publicar um pacote de políticas](/pt-br/policies/publish-a-pack).

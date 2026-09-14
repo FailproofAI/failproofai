@@ -1,0 +1,60 @@
+---
+title: "Testare una policy"
+description: "Backtesta una bozza rispetto al traffico che hai già, e dimostra che blocca ciò che deve bloccare e consente ciò che deve permettere, prima che qualsiasi macchina la esegua."
+icon: "flask-conical"
+---
+
+Testa ogni policy in due modi: rispetto al traffico che i tuoi agenti hanno già prodotto, e rispetto a un'azione legittima che deve lasciare passare. Una policy che ha visto solo il caso non sicuro non è stata testata.
+
+## Backtesta la bozza
+
+<Tabs>
+  <Tab title="Dashboard">
+    L'editor delle policy riesegue una bozza rispetto alle chiamate che la tua flotta ha già effettuato, prima di pubblicarla.
+
+    1. Apri la bozza in **Admin → policy editor**. L'editor conferma che il parsing avviene come JavaScript.
+    2. In **backtest**, scegli gli agenti e l'intervallo di tempo da rieseguire — **ogni agente** e **30d** per impostazione predefinita — e lascia l'ultimo filtro su **everything** a meno che tu non voglia restringerlo.
+    3. Seleziona **run backtest**.
+
+    ![Il pannello backtest sotto una bozza che esegue il parsing come JavaScript, con i suoi tre filtri e l'azione run backtest, sopra publish version.](/images/dashboard/policy-backtest.png)
+
+    Il risultato è ciò che la bozza avrebbe fatto a quelle chiamate — incluso quante chiamate **funzionanti** avrebbe interrotto. Questi sono falsi positivi trovati prima che qualsiasi agente li incontri: affina la bozza e rieseguila finché quel numero non è uno che puoi accettare.
+  </Tab>
+  <Tab title="CLI">
+    Il backtesting è una funzione del dashboard. Da un terminale, esegui invece la policy rispetto agli eventi che descrivi qui sotto.
+  </Tab>
+</Tabs>
+
+## Eseguila rispetto a un evento che descrivi
+
+`fp policies test` esegue un file di policy sulla tua macchina rispetto a un evento sintetico e controlla la decisione. Nulla viene pubblicato e nulla raggiunge Cloud:
+
+```bash
+fp policies test ./checkout.policy.mjs --command "git push --force" --expect deny
+fp policies test ./checkout.policy.mjs --command "git push" --expect allow
+```
+
+Modella l'evento con `--event`, `--tool`, `--command` e `--file`. Il filtro `match` della policy stessa si applica ancora, quindi una policy che non copre l'evento che hai descritto riporta `skipped` piuttosto che una decisione — di solito un segno che il suo `match` è più restrittivo di quanto intendevi.
+
+## Eseguila su una macchina
+
+Successivamente, forzala sul serio sulla tua macchina, rispetto al tuo agente:
+
+```bash
+failproofai policies --install --custom ./checkout.policy.mjs --scope project
+failproofai policies
+```
+
+Il primo comando valida e installa il file; il secondo conferma che è stato caricato, insieme a tutto il resto che sta applicando qui. Chiedi all'agente di fare ciò che la policy blocca e guardalo rifiutare, quindi fai la versione legittima e guardalo passare. Nessun altro è interessato.
+
+Su una macchina connessa a Cloud, controlla entrambe le decisioni sotto **Observe → policy**: filtra per il nome della policy, quindi apri ogni sessione collegata per confermare l'input dello strumento con cui ha fatto match e il motivo per cui ha restituito.
+
+## Testa cosa si rompe
+
+L'installazione rifiuta un file mancante, un errore di sintassi, un import non risolto, un'eccezione di primo livello, o un modulo che scade il timeout durante il caricamento — quindi rieseguila dopo ogni modifica al file o a qualsiasi cosa importi. Al momento dell'esecuzione lo stesso file rotto viene registrato e **skipped** in modo che ogni altra policy continui a funzionare: tratta un avviso di caricamento nei log di produzione come applicazione persa. I file di convenzione si caricano senza il comando install, quindi mantieni un passaggio esplicito `failproofai policies --install --custom <file>` in CI — è quello che fa fallire la build su una policy rotta.
+
+Quindi alimentala con ciò che gli agenti effettivamente inviano, non solo l'input che ti aspetti: campi mancanti, nomi di strumenti alternativi come `Write` e `Edit`, percorsi Windows, input malformato. Restituisci un `allow`, `instruct` o `deny` intenzionale su ogni percorso, mantieni la funzione deterministica, e limita qualsiasi chiamata esterna con un timeout breve.
+
+## Quindi pubblicala e osservala
+
+Un backtest mostra ciò che la policy avrebbe fatto al traffico che avevi; non può mostrare cosa farà il traffico che non hai ancora visto. Seleziona **publish version** nell'editor (o esegui `fp policies publish`), quindi [distribuiscila](/it/policies/deploy) in modalità **observe** prima — i suoi verdetti vengono registrati e nulla viene bloccato — e forzala una volta che i suoi match separano le azioni non sicure da quelle valide.

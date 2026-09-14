@@ -1,29 +1,29 @@
 ---
 title: "密钥与权限"
-description: "为机器、自动化任务和操作员创建具有范围限制的 API 密钥。"
+description: "为机器、自动化任务和运营方创建限定范围的 API 密钥。"
 icon: "key-round"
 ---
 
-API 密钥归属于某个组织，并携带明确的权限配置。请为代理数据采集、策略下发、评估器、CI 自动化以及管理脚本分别使用独立的密钥。
+API 密钥归属于某个组织，并携带明确的权限配置。请为 Agent 数据摄取、策略下发、评估器、CI 自动化及管理脚本分别使用独立的密钥。
 
 ## 创建与轮换密钥
 
 <Tabs>
   <Tab title="控制台">
-    1. 前往 **Administration → Keys**，点击 **new key**，并输入工作负载名称。
-    2. 选择一个权限预设，仅在预设无法满足需求时才单独调整各项权限。
-    3. 创建密钥后立即复制一次性密钥值。
-    4. 之后可打开该密钥进行权限更新、禁用或重新生成密钥值。
+    1. 前往 **Administration → Keys**，选择 **new key**，并输入工作负载名称。
+    2. 选择一个权限预设，仅在预设不满足需求时才单独调整各项权限。
+    3. 创建密钥后，立即复制其一次性密钥值。
+    4. 之后可重新打开该密钥，更新授权、禁用密钥或重新生成密钥值。
 
-    在创建抽屉中，您可以选择工作负载所需的最小权限范围。
+    创建抽屉是选择工作负载所需最小权限的地方。
 
-    ![包含权限预设和单项授权的新 API 密钥抽屉。](/images/dashboard/key-create.png)
+    ![带有权限预设和单项授权的新建 API 密钥抽屉。](/images/dashboard/key-create.png)
 
     创建完成后，Keys 页面将显示持久化的元数据及管理操作。一次性密钥值不会再次显示。
 
-    ![显示密钥权限、创建时间以及重新生成和禁用操作的 API Keys 页面。](/images/dashboard/api-keys.png)
+    ![显示密钥权限、创建时间以及重新生成和禁用操作的 API 密钥页面。](/images/dashboard/api-keys.png)
 
-    请定期使用此列表审查权限授予情况，并禁用已不再对应活跃工作负载的密钥。
+    请定期通过此列表审查授权，并禁用不再对应活跃工作负载的密钥。
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -36,39 +36,39 @@ API 密钥归属于某个组织，并携带明确的权限配置。请为代理�
     fp keys disable production-agents
     ```
 
-    请以安全的方式重定向或捕获创建/重新生成操作的输出，密钥值仅返回一次。
+    请安全地重定向或捕获 create/regenerate 命令的输出；密钥值仅返回一次。
   </Tab>
 </Tabs>
 
 已连接的 Failproof AI 机器所需的两项权限相互独立：
 
-- `events:add` 用于发送事件和会话数据。
-- `policies:pull` 用于获取已分配的策略部署。
+- `events:add`：发送事件和会话数据。
+- `policies:pull`：获取已分配的策略部署。
 
-密钥值在创建或重新生成时显示。请将其存储在密钥管理器中，并在不复用操作员交互凭证的情况下进行轮换。
+密钥值在创建或重新生成时显示。请将其存入密钥管理器，并在轮换时避免复用操作人员的交互式凭据。
 
 ## 权限目录
 
 | 领域 | 权限 |
 | --- | --- |
-| 事件 | `events:add`, `events:read` |
-| 密钥 | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`；`keys:update` 仅限人工会话 |
-| 用户 | `users:create`, `users:read`, `users:update`, `users:delete` |
-| 评估 | `evaluations:read`, `evaluations:trigger` |
-| 仪表板 | `dashboards:read`, `dashboards:write`, `dashboards:delete` |
-| 查询 | `queries:read`, `queries:write`, `queries:delete`, `queries:run` |
+| 事件 | `events:add`、`events:read` |
+| 密钥 | `keys:create`、`keys:read`、`keys:disable`、`keys:regenerate`；`keys:update` 仅限人工会话 |
+| 用户 | `users:create`、`users:read`、`users:update`、`users:delete` |
+| 评估 | `evaluations:read`、`evaluations:trigger`、`evaluations:run` |
+| 看板 | `dashboards:read`、`dashboards:write`、`dashboards:delete` |
+| 查询 | `queries:read`、`queries:write`、`queries:delete`、`queries:run` |
 | 助手 | `agent:use` |
-| 设置 | `settings:read`, `settings:write` |
-| 告警 | `alerts:read`, `alerts:write` |
-| 问题 | `issues:read`, `issues:create`, `issues:close` |
-| 审计 | `audits:read`, `audits:write` |
-| 策略 | `policies:read`, `policies:write`, `policies:pull` |
+| 设置 | `settings:read`、`settings:write` |
+| 告警 | `alerts:read`、`alerts:write` |
+| 问题 | `issues:read`、`issues:create`、`issues:close` |
+| 审计 | `audits:read`、`audits:write` |
+| 策略 | `policies:read`、`policies:write`、`policies:pull` |
 | 用量 | `usage:read` |
 
-`orgs:admin` 仅保留给实例操作员使用，无法授予给组织密钥或普通成员。已停用的 `incidents:*` 和 `alerts:ack` 令牌出于兼容性仍可被接受，并会规范化映射至当前的 `issues:*` 权限。
+`orgs:admin` 为实例运营方专属权限，不能授予组织密钥或普通成员。已停用的 `incidents:*` 和 `alerts:ack` 令牌出于兼容性仍可接受，并将规范化为当前的 `issues:*` 权限。
 
-内置权限集包括 `read-only`、`standard` 和 `admin`。`standard` 在只读权限的基础上新增了触发评估、执行查询、处理问题以及使用助手等能力。创建密钥时会自动剥离仅限人工会话的权限，即使所选权限集中包含这些权限也不例外。
+内置权限集包括 `read-only`、`standard` 和 `admin`。`standard` 在读取权限基础上增加了评估触发、查询执行、问题响应和助手使用功能。创建密钥时，即使权限集中包含仅限人工使用的授权，也会被自动移除。
 
 <Warning>
-  实例级密钥可通过 `X-AgentEye-Org` 请求头指定目标组织。在多组织部署环境中请务必明确设置该请求头；若省略，系统可能会选择默认组织。
+  实例级别的密钥可通过 `X-AgentEye-Org` 请求头指定组织。在多组织部署环境中请务必显式设置该请求头；若省略，可能会选中默认组织。
 </Warning>

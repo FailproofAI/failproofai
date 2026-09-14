@@ -1,25 +1,25 @@
 ---
-title: "Valutazioni online"
-description: "Valuta sessioni live e completate per qualità, conformità, costi e latenza."
+title: "Leggere i risultati delle valutazioni"
+description: "Traccia i punteggi di valutazione nel tempo, confronta agenti e ambienti, scopri perché una sessione ha ottenuto un punteggio basso e chiedi all'assistente."
 icon: "gauge"
 ---
 
-Le valutazioni online applicano giudizi coerenti alle sessioni degli agenti. Usale per segnali che devono essere misurati continuamente piuttosto che indagati solo durante un audit.
+I risultati di ogni valutazione, ospitata o dal tuo worker, arrivano negli stessi luoghi.
 
-## Rivedere la qualità della valutazione
+## Confronta i punteggi nel tempo
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vai a **Observe → Evaluations**.
-    2. Aggiungi una serie e scegli l'agente, l'ambiente, il punteggio di valutazione, la statistica e la curva.
-    3. Aggiungi serie per confrontare ambienti, agenti o chiavi di punteggio.
-    4. Seleziona un risultato per aprire le sessioni corrispondenti o condividere la vista filtrata. Usa **Observe → Metrics** per latenza, token, costi e altri valori di grandezza.
+    Vai a **Observe → evaluations**.
 
-    ![Un dashboard di qualità che mostra i punteggi di valutazione medi e i trend nel tempo.](/images/dashboard/dashboard-quality.png)
+    - **Recent runs** elenca ogni valutazione man mano che arriva: se proviene da un valutatore ospitato (**managed**) o dal tuo (**customer**), l'agente e la sessione, la valutazione e la sua versione, il suo stato e il suo punteggio o metriche.
+    - **Score over time** traccia quello che chiedi. Seleziona **add series** e scegli un agente, un ambiente, una valutazione e una statistica: avg, min, max, p50, p75, p90, p95, p99, stddev o mode. Ogni serie è una linea; assegnale una propria **curve** per disegnarla su un grafico separato.
 
-    Apri una sessione dal drill-down per ispezionare il suo ragionamento per punteggio:
+    ![La pagina delle valutazioni: esecuzioni recenti contrassegnate come customer, un grafico dei punteggi nel tempo con linee di riferimento a 0,5 e 0,8, e una serie che fa la media di finished_clean su tutti gli agenti e gli ambienti.](/images/dashboard/evaluations-chart.png)
 
-    ![Una vista dettagli sessione che mostra i punteggi di valutazione e il ragionamento accanto alla traccia completa.](/images/dashboard/session-detail.png)
+    Un intervallo di tempo e una dimensione del bin si applicano a tutte le serie. Un bin fine trova un incidente; uno grossolano mostra un trend e può nascondere i picchi che stai cercando. Un bucket dove non è stato calcolato alcun punteggio è uno spazio nella linea, mai uno zero, e le linee di riferimento segnano 0,5 e 0,8.
+
+    Ogni parte della vista vive nell'URL: **share** la copia, e chiunque la apra vede esattamente il confronto che hai costruito.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -28,25 +28,29 @@ Le valutazioni online applicano giudizi coerenti alle sessioni degli agenti. Usa
     fp evals --score helpfulness:0.8.. --since 7d
     ```
 
-    Aggiungi il flag globale `--json` prima di `evals` per l'automazione, ad esempio `fp --json evals --aggregate --env production`.
+    Aggiungi il global `--json` prima di `evals` per l'automazione, ad esempio `fp --json evals --aggregate --env production`.
   </Tab>
 </Tabs>
 
-Un valutatore riceve l'identità della sessione, l'ambiente, i timestamp e gli eventi ordinati. Può restituire chiavi di punteggio numeriche con ragionamento facoltativo e un riepilogo. I valutatori a lunga esecuzione possono restituire un job in sospeso e essere sottoposti a polling in seguito.
+Traccia **avg** e **p90** per la stessa valutazione per vedere se una buona media sta nascondendo una coda scadente, oppure la stessa valutazione per due agenti, o per production e staging, per confrontarli su un solo asse. Costi, latenze e conteggi di token, che hanno unità, si trovano in un grafico sotto **Observe → metrics**, un grafico per unità.
 
-## Buoni obiettivi di valutazione
+## Scopri perché una sessione ha ottenuto un punteggio basso
 
-- Completamento o correttezza del compito
-- Fondatezza e rischio di allucinazione
-- Selezione degli strumenti ed efficienza degli strumenti
-- Conformità alle politiche o ai processi
-- Budget di costi e latenza
-- Escalation umana richiesta
+Apri una sessione da **Observe → sessions**; la griglia contiene i punteggi di ogni sessione e filtra per intervallo di punteggio. La barra laterale destra della sessione inizia con il riepilogo della valutazione, quindi una barra per ogni punteggio con il ragionamento del valutatore sotto di essa.
 
-## Dal punteggio alla risposta
+![Una vista dei dettagli della sessione che mostra i punteggi di valutazione e il ragionamento accanto alla traccia completa.](/images/dashboard/session-detail.png)
 
-Mostra i punteggi nei dashboard per tracciare i trend. Crea avvisi per soglie o condizioni composte. Quando un punteggio diminuisce all'interno di una popolazione, esegui un audit per indagare il motivo; quando la causa è un'azione ripetibile, distribuisci una politica.
+## Chiedi all'assistente
 
-<Card title="Costruisci un valutatore" icon="code-2" href="/it/reference/evaluator-sdk">
-  Implementa una valutazione sincrona o asincrona con l'SDK valutatore Python.
-</Card>
+Fai domande sui dati di valutazione in inglese semplice: "dimmi qualcosa sulle valutazioni recenti", oppure su quali agenti i punteggi stanno diminuendo. L'[assistente](/it/sessions/assistant) legge e analizza i risultati e risponde con tabelle su cui puoi fare ulteriori domande, e una domanda interessante può diventare una [query](/it/sessions/queries) o una [dashboard](/it/sessions/dashboards).
+
+![La pagina delle valutazioni accanto all'assistente, che risponde a "tell me about some of the recent evaluations" con un riepilogo di totali, stati e punteggi.](/images/dashboard/evaluations-assistant.png)
+
+## Monitora e agisci
+
+- **Dashboards**, sotto **Analyze → dashboards**, tendono i punteggi che presenti, per agente e ambiente, per l'intera organizzazione.
+
+  ![Una dashboard di qualità che mostra i punteggi medi di valutazione e i trend nel tempo.](/images/dashboard/dashboard-quality.png)
+
+- **Alerts** ti notificano quando un punteggio supera una soglia. Vedi [alerts](/it/audits/alerts).
+- Quando un punteggio diminuisce su molte sessioni, [esegui un audit](/it/audits/run) per scoprire il motivo; quando la causa è un'azione ripetibile, [scrivi una policy](/it/policies/editor).

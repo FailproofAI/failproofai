@@ -1,13 +1,13 @@
 ---
 title: "Agents personnalisés"
 sidebarTitle: "Agents personnalisés"
-description: "Instrumentez un agent que vous avez développé vous-même, ou un framework sans adaptateur."
+description: "Instrumentez un agent que vous avez écrit vous-même, ou un framework sans adaptateur."
 icon: "code"
 ---
 
-Pour un agent que vous avez développé vous-même, ou un framework pour lequel Failproof AI ne dispose pas d'adaptateur. Il n'y a rien à instrumenter : vous émettez les événements.
+Pour un agent que vous avez écrit vous-même, ou un framework pour lequel Failproof AI ne dispose pas d'adaptateur. Il n'y a rien à instrumenter : vous émettez les événements.
 
-C'est la même API qu'appellent les quatre adaptateurs de framework en coulisses. Ce sont des tables de correspondance au-dessus d'elle.
+C'est la même API que les quatre adaptateurs de framework utilisent en interne. Ils ne sont que des tables de traduction par-dessus.
 
 ## Installation
 
@@ -30,27 +30,27 @@ with failproofai_sdk.session():                 # une exécution
             t.output = search(q)                # un appel d'outil
 ```
 
-En lisant de haut en bas, le sens est explicite :
+Lisez-le de haut en bas et il dit ce qu'il signifie :
 
-| Envelopper dans | Pour indiquer |
+| À encadrer | Pour indiquer |
 | --- | --- |
 | `session()` | Ces événements appartiennent à la même exécution |
-| `agent()` | Quelque chose effectue un travail — donnez-lui un nom que vous reconnaîtriez dans une liste |
-| `tool_call()` | Il s'agit d'un outil, et voici ce qu'il a retourné |
+| `agent()` | Quelque chose effectue un travail — donnez-lui un nom reconnaissable dans une liste |
+| `tool_call()` | Ceci est un outil, et voici ce qu'il a retourné |
 
 Et ce que chacun émet réellement :
 
-| Portée | Émet | Rôle |
+| Portée | Émet | Objectif |
 | --- | --- | --- |
 | `session()` | Rien | Lie un identifiant de session, regroupant une exécution |
-| `agent()` | `agent_start`, `agent_end` | Délimite une unité de travail |
-| `tool_call()` | `tool_use`, `tool_result` | Délimite un outil et le mesure |
+| `agent()` | `agent_start`, `agent_end` | Encadre une unité de travail |
+| `tool_call()` | `tool_use`, `tool_result` | Encadre un outil et le mesure |
 
-Tout ce qui se trouve à l'intérieur peut omettre `session_id` et `agent_id`. Les portées lient l'identité sur des variables de contexte, et chaque appel d'événement la relit — vous n'avez donc jamais à propager des identifiants dans vos fonctions.
+Tout ce qui se trouve à l'intérieur peut omettre `session_id` et `agent_id`. Les portées lient l'identité sur des variables de contexte et chaque appel d'événement la récupère, vous n'avez donc jamais besoin de propager les ids à travers vos fonctions.
 
-Les trois fonctionnent aussi bien avec `async with` qu'avec `with`.
+Les trois fonctionnent avec `async with` comme avec `with`.
 
-L'imbrication d'agents construit l'arbre. `parent_id` et la profondeur sont calculés depuis la pile :
+L'imbrication d'agents construit l'arbre. `parent_id` et la profondeur sont calculés à partir de la pile :
 
 ```python
 with failproofai_sdk.session():
@@ -59,7 +59,7 @@ with failproofai_sdk.session():
             ...
 ```
 
-## Fermeture d'une portée
+## Comment une portée se ferme
 
 `agent()` gère les exceptions pour vous :
 
@@ -70,11 +70,11 @@ with failproofai_sdk.session():
 | `KeyboardInterrupt`, `SystemExit` | `error`, puis `agent_end` | `failed` |
 | `CancelledError`, `GeneratorExit` | `agent_end` uniquement | `cancelled` |
 
-L'erreur est émise avant `agent_end`, car le tableau de bord ferme le span à `agent_end` et tout ce qui suit n'est attribué à rien. Une annulation n'est pas un échec, donc les exécutions annulées ne polluent pas la surface des erreurs. L'exception est toujours re-levée : une portée n'avale jamais.
+L'erreur est émise avant `agent_end`, car le tableau de bord ferme le span à `agent_end` et tout ce qui suit ne serait attribué à rien. Une annulation n'est pas un échec, donc les exécutions annulées ne polluent pas la surface des erreurs. L'exception est toujours re-levée : une portée n'avale jamais les exceptions.
 
 ## Les méthodes d'événements
 
-Quinze méthodes en six familles. La plupart vont par paires — vous émettez l'ouverture, puis la fermeture, et le SDK mesure l'intervalle entre les deux.
+Quinze méthodes en six familles. La plupart vont par paires — vous émettez l'ouverture, puis la fermeture, et le SDK mesure le span entre les deux.
 
 | Famille | Ouvre | Ferme | Autonome |
 | --- | --- | --- | --- |
@@ -87,7 +87,7 @@ Quinze méthodes en six familles. La plupart vont par paires — vous émettez l
 | **Échecs** | — | — | `error` |
 
 <Tip>
-  Préférez les portées — `agent()` et `tool_call()` — partout où elles s'appliquent. Elles garantissent l'événement de fermeture même lorsque le corps lève une exception. Utilisez ces méthodes directement lorsque votre flux de contrôle ne s'imbrique pas, par exemple un appel de modèle dans une fonction auxiliaire.
+  Préférez les portées — `agent()` et `tool_call()` — partout où elles s'adaptent. Elles garantissent l'événement de fermeture même si le corps lève une exception. Recourez à ces méthodes directement quand votre flux de contrôle ne se prête pas à l'imbrication, comme un appel de modèle dans une fonction auxiliaire.
 </Tip>
 
 <CodeGroup>
@@ -148,16 +148,16 @@ failproofai_sdk.event.error(
   | `human_wait` / `human_input` | **L'agent a sollicité une personne** — une porte d'approbation, une question de clarification |
   | `human_pause` / `human_interrupt` | **Une personne a agi sur l'agent** — un bouton d'arrêt, une pause opérateur |
 
-  Aucun framework ne signale la deuxième paire, donc c'est toujours à vous de l'émettre.
+  Aucun framework ne signale la seconde paire, c'est donc toujours à vous de l'émettre.
 </Note>
 
 <Warning>
-  **Passez `request_id` lorsque des appels de modèle s'exécutent en parallèle.** Sans lui, les requêtes et les réponses sont appariées dans l'ordre d'arrivée par agent — et les appels concurrents sont mal appariés, associant chaque réponse à la mauvaise requête.
+  **Passez `request_id` lorsque des appels de modèles s'exécutent en parallèle.** Sans lui, les requêtes et les réponses sont appariées dans l'ordre d'arrivée par agent — et les appels concurrents sont mal appariés, associant chaque réponse à la mauvaise requête.
 </Warning>
 
 ## Exemple
 
-Une boucle d'appels d'outils contre l'API OpenAI, sans framework d'agent :
+Une boucle d'appel d'outils contre l'API OpenAI, sans framework d'agent :
 
 ```python
 import json
@@ -171,7 +171,7 @@ MODEL = "gpt-4o-mini"
 
 
 def turn(messages: list):
-    """Un appel de modèle, délimité par la paire."""
+    """Un appel de modèle, encadré par la paire."""
     failproofai_sdk.event.model_request(model=MODEL, messages=messages)
     reply = client.chat.completions.create(model=MODEL, messages=messages, tools=TOOLS)
     usage = reply.usage
@@ -186,7 +186,7 @@ def turn(messages: list):
 
 with failproofai_sdk.session():
     with failproofai_sdk.agent("inventory", goal="price report"):
-        for _ in range(4):          # borné ; une boucle d'agent non bornée est un bug en soi
+        for _ in range(4):          # borné ; une boucle non bornée est un bug en soi
             message = turn(messages)
             if not message.tool_calls:
                 break
@@ -204,7 +204,7 @@ with failproofai_sdk.session():
                 })
 ```
 
-Cela produit les six mêmes types d'événements qu'un adaptateur vous donnerait. La version exécutable complète, avec les définitions d'outils, est incluse dans le dépôt du SDK sous `docs/manual/examples/`.
+Cela produit les mêmes six types d'événements qu'un adaptateur vous fournirait. La version exécutable complète, avec les définitions d'outils, est incluse dans le dépôt du SDK sous `docs/manual/examples/`.
 
 ## Threads et async
 
@@ -215,33 +215,33 @@ Les variables de contexte se propagent automatiquement dans les tâches asyncio.
 async with failproofai_sdk.session():
     await asyncio.gather(worker(1), worker(2))
 
-# threads : enveloppez le callable
+# threads : enveloppez l'appelable
 pool.submit(failproofai_sdk.propagate(work), x)
 threading.Thread(target=failproofai_sdk.propagate(work)).start()
 loop.run_in_executor(None, failproofai_sdk.propagate(work), x)
 ```
 
-Sans `propagate()`, les événements du worker lèvent un `TypeError` indiquant le correctif à apporter plutôt que d'atterrir sur aucune session. C'est intentionnel : un événement sans session est ignoré par l'ingest et reçoit une réponse `200`, ce qui est l'échec silencieux que la couche d'identité existe précisément pour prévenir.
+Sans `propagate()`, les événements du worker lèvent une `TypeError` indiquant le correctif plutôt que d'atterrir sans session. C'est délibéré : un événement sans session est ignoré à l'ingestion avec une réponse `200`, ce qui constitue l'échec silencieux que la couche d'identité existe précisément pour éviter.
 
 ## Instrumenter un framework sans adaptateur
 
-Chaque framework d'agent vous offre les mêmes trois points d'ancrage. Mappez-les et vous obtenez une trace complète — les quatre adaptateurs livrés ne font rien de plus que cela.
+Tout framework d'agent vous expose les mêmes trois points d'insertion. Mappez-les et vous avez une trace complète — les quatre adaptateurs fournis ne font rien de plus que cela.
 
-| Le point d'ancrage | Ce que vous écrivez | Ce qui est enregistré |
+| Le point d'insertion | Ce que vous écrivez | Ce qui est enregistré |
 | --- | --- | --- |
 | L'exécution | `session()` + `agent()` | `agent_start`, `agent_end` |
 | Chaque outil | `tool_call()` | `tool_use`, `tool_result` |
 | Chaque appel de modèle | La paire `model_*` | `model_request`, `model_response` |
 
 <Steps>
-  <Step title="Délimiter l'exécution">
+  <Step title="Encadrer l'exécution">
     ```python
     with failproofai_sdk.session():
         with failproofai_sdk.agent(agent_name, goal=task):
             result = framework.run(task)
     ```
   </Step>
-  <Step title="Délimiter chaque outil">
+  <Step title="Encadrer chaque outil">
     Dans ce que le framework appelle un wrapper d'outil ou un middleware.
 
     ```python
@@ -264,23 +264,23 @@ Chaque framework d'agent vous offre les mêmes trois points d'ancrage. Mappez-le
 </Steps>
 
 <Tip>
-  **Vous avez un nœud, une étape ou une frontière de middleware qui mérite d'être visible ?** Enveloppez-le dans une paire de hooks — `hook_triggered` / `hook_completed` — et non dans un `agent()` imbriqué. `agent_id` est une facette à faible cardinalité, et une entrée par nœud la noie. Les spans de hooks s'affichent de la même façon et vous donnent la latence par nœud.
+  **Vous avez un nœud, une étape ou une frontière de middleware qui mérite d'être visible ?** Enveloppez-le dans une paire de hooks — `hook_triggered` / `hook_completed` — et non dans un `agent()` imbriqué. `agent_id` est une facette à faible cardinalité, et une entrée par nœud la sature. Les spans de hooks s'affichent de la même façon et vous donnent la latence par nœud.
 </Tip>
 
 <Note>
-  **Le manuel et l'automatique se composent.** Un adaptateur s'exécutant dans une portée écrite à la main rejoint cette session et se rattache à cet agent, vous donnant un seul arbre plutôt que deux — utile lorsque vous instrumentez vous-même un framework en parallèle d'un framework supporté.
+  **Manuel et automatique se combinent.** Un adaptateur s'exécutant dans une portée écrite à la main rejoint cette session et se parenté à cet agent, vous obtenez donc un seul arbre plutôt que deux — utile quand vous instrumentez vous-même un framework aux côtés d'un framework supporté.
 </Note>
 
-<Accordion title="Pourquoi il n'y a pas d'adaptateur AutoGen">
-  Deux raisons, et les trois points d'ancrage ci-dessus sont la réponse aux deux :
+<Accordion title="Pourquoi il n'existe pas d'adaptateur AutoGen">
+  Deux raisons, et les trois points d'insertion ci-dessus sont la réponse aux deux :
 
   - `autogen-core` n'est plus maintenu depuis septembre 2025.
-  - AG2 n'expose aucun point d'enregistrement global équivalent aux hooks des autres frameworks, donc l'instrumenter signifie envelopper chaque agent à chaque site de construction.
+  - AG2 n'expose aucun point d'enregistrement global équivalent aux hooks des autres frameworks, ce qui fait qu'instrumenter AG2 implique d'envelopper chaque agent à chaque site de construction.
 
-  Mapper les points d'ancrage à la main enregistre les mêmes événements, avec la même fidélité, qu'un adaptateur livré le ferait.
+  Mapper les points d'insertion à la main enregistre les mêmes événements, avec la même fidélité, qu'un adaptateur fourni.
 </Accordion>
 
-## Approfondir
+## Aller plus loin
 
 Comment l'enregistrement fonctionne réellement. Rien de tout cela n'est nécessaire pour démarrer.
 
@@ -288,7 +288,7 @@ Comment l'enregistrement fonctionne réellement. Rien de tout cela n'est nécess
 
 <Accordion title="À quoi ressemble un enregistrement, par framework" icon="eye">
 
-Chaque enregistrement a la même forme : un span s'ouvre, le travail s'imbrique à l'intérieur, et chaque événement d'ouverture reçoit un événement de fermeture.
+Chaque enregistrement a la même forme : un span s'ouvre, le travail s'imbrique à l'intérieur, et chaque événement d'ouverture reçoit un événement de fermeture correspondant.
 
 ```mermaid
 flowchart LR
@@ -300,9 +300,9 @@ flowchart LR
     C --> E(["agent_end"])
 ```
 
-La **paire** est l'unité. Chaque événement de fermeture porte une durée mesurée par le SDK depuis son événement d'ouverture.
+La **paire** est l'unité. Chaque événement de fermeture porte une durée que le SDK mesure depuis l'événement d'ouverture correspondant.
 
-Voici une exécution réelle par framework — capturée depuis les exemples livrés avec le SDK, nom du modèle normalisé. Notez la quantité d'informations retournées par un seul appel.
+Voici une vraie exécution par framework — capturée à partir des exemples fournis avec le SDK, nom de modèle normalisé. Notez tout ce qu'un seul appel renvoie.
 
 <Tabs>
   <Tab title="LangGraph">
@@ -323,7 +323,7 @@ Voici une exécution réelle par framework — capturée depuis les exemples liv
     14  +5.721s  agent_end         LangGraph · success
     ```
 
-    Les nœuds deviennent des paires de hooks, vous obtenez donc la latence par nœud sans qu'ils encombrent la liste des agents.
+    Les nœuds deviennent des paires de hooks, vous obtenez donc la latence par nœud sans encombrer la liste des agents.
   </Tab>
 
   <Tab title="CrewAI">
@@ -360,7 +360,7 @@ Voici une exécution réelle par framework — capturée depuis les exemples liv
     26  +7.038s  agent_end         Agent · success
     ```
 
-    La boucle de l'agent elle-même est visible, pas seulement ses appels de modèle.
+    La boucle de l'agent elle-même est visible, pas seulement ses appels de modèles.
   </Tab>
 
   <Tab title="Pydantic AI">
@@ -375,7 +375,7 @@ Voici une exécution réelle par framework — capturée depuis les exemples liv
     8  +8.119s  agent_end         agent · success
     ```
 
-    Pas de paires de hooks : Pydantic AI n'a pas de frontière de nœud ou d'étape à délimiter.
+    Pas de paires de hooks : Pydantic AI n'a pas de frontière de nœud ou d'étape à encadrer.
   </Tab>
 
   <Tab title="Custom agents">
@@ -394,11 +394,11 @@ Voici une exécution réelle par framework — capturée depuis les exemples liv
 
 </Accordion>
 
-<Accordion title="Comment une session démarre et se termine" icon="circle-play">
+<Accordion title="Comment une session commence et se termine" icon="circle-play">
 
-**Il n'y a pas d'événement de fin de session.** Une session n'est pas quelque chose que vous fermez — c'est un groupe d'événements partageant un `session_id`.
+**Il n'y a pas d'événement de fin de session.** Une session n'est pas quelque chose que vous fermez — c'est un groupe d'événements partageant un même `session_id`.
 
-Le statut est déduit de la forme de la trace :
+Le statut est dérivé de la forme de la trace :
 
 | Statut | Quand |
 | --- | --- |
@@ -407,17 +407,17 @@ Le statut est déduit de la forme de la trace :
 | `error` | Rien n'est ouvert, et au moins un événement a échoué |
 | `done` | Rien n'est ouvert, et rien n'a échoué |
 
-Une session se termine donc quand toutes les paires sont fermées. Les adaptateurs émettent `agent_end` pour vous, et au démontage ils ferment tout ce qui est encore ouvert et le marquent comme incomplet — une exécution plantée se règle en `done` avec un écart visible plutôt qu'en restant bloquée.
+Une session se termine donc quand chaque paire est fermée. Les adaptateurs émettent `agent_end` pour vous, et au moment du teardown ils ferment tout ce qui est encore ouvert en le marquant incomplet — une exécution ayant planté se stabilise en `done` avec un écart visible plutôt que de rester suspendue.
 
 <Note>
-  C'est pourquoi une session peut s'étendre sur deux appels. Un `interrupt()` LangGraph met l'exécution en pause, le span racine reste délibérément ouvert, et l'appel de reprise le ferme. Les deux appels constituent une seule session.
+  C'est pourquoi une session peut s'étendre sur deux appels. Un `interrupt()` LangGraph met l'exécution en pause, le span racine reste délibérément ouvert, et l'appel de reprise le ferme. Les deux appels forment une seule session.
 </Note>
 
 </Accordion>
 
-<Accordion title="Identité : session_id, agent_id, et qui les génère" icon="fingerprint">
+<Accordion title="Identité : session_id, agent_id, et qui les crée" icon="fingerprint">
 
-`session_id` et `agent_id` sont optionnels sur chaque méthode d'événement. Omis, ils sont résolus depuis la portée englobante :
+`session_id` et `agent_id` sont optionnels sur chaque méthode d'événement. S'ils sont omis, ils sont résolus depuis la portée englobante :
 
 ```python
 with failproofai_sdk.session():
@@ -425,55 +425,55 @@ with failproofai_sdk.session():
         failproofai_sdk.event.tool_use(tool_name="search", tool_call_id="c1")
 ```
 
-Les passer explicitement fonctionne toujours et prend la priorité. Sans rien de lié ni passé, l'appel lève un `TypeError` indiquant le correctif plutôt que d'émettre un événement sans session, que l'ingest ignorerait tout en répondant `200`.
+Les passer explicitement fonctionne toujours et prend la priorité. Si rien n'est lié et rien n'est passé, l'appel lève une `TypeError` indiquant le correctif plutôt que d'émettre un événement sans session, que l'ingestion ignorerait tout en répondant `200`.
 
 Les portées lient l'identité sur des variables de contexte. Celles-ci se propagent automatiquement dans les tâches asyncio mais pas dans les nouveaux threads — enveloppez un worker dans `failproofai_sdk.propagate()`.
 
-#### Qui génère quel identifiant
+#### Qui crée quel identifiant
 
-| Identifiant | Généré par | Notes |
+| Id | Créé par | Notes |
 | --- | --- | --- |
-| `session_id` | Vous, ou le SDK | `session("chat-42")` est utilisé tel quel ; omis, le SDK génère un `uuid4().hex` |
+| `session_id` | Vous, ou le SDK | `session("chat-42")` est utilisé tel quel ; si omis, le SDK génère un `uuid4().hex` |
 | `agent_id` | Vous, ou le framework | Depuis `agent("analyst")`, un `role` CrewAI, un `FunctionAgent.name`. Une valeur ressemblant à un UUID est refusée et remplacée |
-| `tool_call_id`, `hook_id`, `request_id` | Vous, ou le framework | Les adaptateurs réutilisent les identifiants d'exécution propres au framework, ce qui explique pourquoi les paires survivent aux sauts de threads |
-| **Identifiant d'événement** | **Cloud, à l'ingest** | Le SDK n'en émet aucun |
-| **`dedup_key`** | **Cloud, à l'ingest** | Un hash de l'organisation, de la session, du timestamp, du type et du payload. C'est la véritable identité — elle fait qu'un lot réessayé se compresse plutôt que de se dupliquer |
+| `tool_call_id`, `hook_id`, `request_id` | Vous, ou le framework | Les adaptateurs réutilisent les propres ids d'exécution du framework, ce qui permet aux paires de survivre aux sauts de threads |
+| **Id d'événement** | **Cloud, à l'ingestion** | Le SDK n'en émet aucun |
+| **`dedup_key`** | **Cloud, à l'ingestion** | Un hash de l'org, de la session, du timestamp, du type et du payload. C'est la vraie identité — elle fait qu'un batch réessayé s'effondre en un seul plutôt que de se dupliquer |
 
 #### Comment les adaptateurs résolvent `session_id`
 
-La première correspondance gagne :
+Le premier match gagne :
 
 1. Une option `session_id` explicite
 2. Des métadonnées par appel
 3. La portée `session()` englobante
-4. Des métadonnées du framework
-5. L'identifiant d'exécution propre au framework
+4. Les métadonnées du framework
+5. Le propre id d'exécution du framework
 
-Il n'est jamais inventé tant que l'une de ces sources existe — un identifiant synthétisé fragmenterait une exécution sur plusieurs sessions.
+Il n'est jamais inventé tant qu'un de ces éléments existe — un id synthétisé fractionnerait une exécution en plusieurs sessions.
 
 #### Gardez `agent_id` à faible cardinalité
 
-C'est la facette principale sur toutes les surfaces du tableau de bord, et une colonne `LowCardinality(String)`. Une valeur par exécution dégrade la colonne et remplit le menu déroulant de filtres avec une entrée par exécution.
+C'est la facette principale sur chaque surface du tableau de bord, et une colonne `LowCardinality(String)`. Une valeur par exécution dégrade la colonne et remplit le menu déroulant de filtre avec une entrée par exécution.
 
 Les adaptateurs défendent cette colonne pour vous :
 
 | Ce que le framework fournit | Enregistré comme | Pourquoi |
 | --- | --- | --- |
 | `3f9a1c2b-…` (un UUID) | `main` | Rien de lisible à conserver |
-| Une longue chaîne hexadécimale brute | `main` | Même raison |
-| `agent-3f9a1c2b-…` | `agent` | Identifiant par exécution supprimé, partie lisible conservée |
+| Une longue chaîne hexadécimale brute | `main` | Idem |
+| `agent-3f9a1c2b-…` | `agent` | Id par exécution supprimé, partie lisible conservée |
 | `agent-v2` | `agent-v2` | Les segments courts sont laissés tels quels |
-| `step-3` | `step-3` | Même chose |
+| `step-3` | `step-3` | Idem |
 
-Le véritable identifiant est conservé dans `fw_agent_id` / `fw_run_id`, où il reste interrogeable sans être une facette.
+Le vrai id est conservé dans `fw_agent_id` / `fw_run_id`, où il reste interrogeable sans être une facette.
 
 <Warning>
-  **Cette protection ne touche que les libellés choisis par le *framework*.** Un `agent_id` que vous passez vous-même — à `event.*`, ou à `failproofai_sdk.agent(...)` — est enregistré exactement tel que fourni. Réécrire silencieusement un argument explicite serait pire que la cardinalité qu'il prévient, donc nommez vos propres spans en conséquence.
+  **Cette protection ne touche que les labels choisis par le *framework*.** Un `agent_id` que vous passez vous-même — à `event.*`, ou à `failproofai_sdk.agent(...)` — est enregistré exactement tel quel. Réécrire silencieusement un argument explicite serait pire que la cardinalité qu'il évite, nommez donc vos propres spans en conséquence.
 </Warning>
 
 </Accordion>
 
-<Accordion title="Types d'événements, regroupés — et ce que chaque framework enregistre" icon="table">
+<Accordion title="Types d'événements, regroupés — et quel framework enregistre quoi" icon="table">
 
 | Groupe | Événements |
 | --- | --- |
@@ -484,7 +484,7 @@ Le véritable identifiant est conservé dans `fw_agent_id` / `fw_run_id`, où il
 | Humains | `human_wait`, `human_input`, `human_pause`, `human_interrupt` |
 | Échecs | `error` |
 
-Ce que chaque framework enregistre, mesuré depuis les exécutions ci-dessus :
+Quel framework enregistre quoi, mesuré depuis les exécutions ci-dessus :
 
 | Événement | LangGraph | CrewAI | LlamaIndex | Pydantic AI | Custom |
 | --- | :--: | :--: | :--: | :--: | :--: |
@@ -493,7 +493,7 @@ Ce que chaque framework enregistre, mesuré depuis les exécutions ci-dessus :
 | Utilisation et résultat d'outil | Oui | Oui | Oui | Oui | Vous |
 | Hook déclenché et complété | Nœud | Tâche | Étape | — | Vous |
 | Erreur | Oui | Oui | Oui | Oui | Automatique |
-| Attente humaine et saisie | Oui | Oui | Oui | — | Vous |
+| Attente et saisie humaine | Oui | Oui | Oui | — | Vous |
 | Pause et reprise d'agent | Oui | Oui | Oui | — | Vous |
 
 Un tiret signifie que le framework n'a pas ce concept. `human_pause` et `human_interrupt` décrivent une *personne* agissant sur l'agent, ce qu'aucun framework ne signale — émettez-les vous-même.
@@ -510,44 +510,44 @@ Un événement n'arrive jamais seul. Un ouvre un span, un le ferme, et l'événe
 | `model_request` | `model_response` | tokens, `stop_reason`, latence |
 | `tool_use` | `tool_result` | `output` ou `error`, durée |
 | `hook_triggered` | `hook_completed` | `outcome`, durée |
-| `agent_pause` | `agent_resume` | la durée de la pause |
-| `human_wait` | `human_input` | la réponse, et le temps que la personne a mis |
+| `agent_pause` | `agent_resume` | combien de temps a duré la pause |
+| `human_wait` | `human_input` | la réponse, et combien de temps la personne a mis |
 
 <Warning>
-  Un événement d'ouverture sans événement de fermeture est un span qui ne se termine jamais. La session s'affiche comme toujours en cours, à l'infini, et sa durée active continue de croître. C'est le mode d'échec à surveiller lorsque vous instrumentez manuellement.
+  Un événement d'ouverture sans événement de fermeture correspondant est un span qui ne se termine jamais. La session s'affiche comme toujours en cours, indéfiniment, et sa durée active ne cesse de croître. C'est le mode d'échec à surveiller quand vous instrumentez à la main.
 </Warning>
 
 #### Règles de corrélation
 
-- Réutilisez le même `tool_call_id`, `hook_id`, `pause_id`, ou `input_id` pour l'événement de complétion correspondant.
-- Le SDK calcule `duration_ms` pour `tool_result`, `hook_completed`, `agent_resume`, et `human_input`. Le passer à ces méthodes lève un `ValueError`.
-- `duration_ms` **est** accepté sur `model_response`, car seul l'appelant connaît la vraie latence du fournisseur. Il doit être un entier — un float lève un `ValueError` au site d'appel, car le serveur lit la colonne comme un entier non signé 32 bits et stockerait NULL pour toute autre valeur.
-- Les clés de corrélation sont délimitées par type et session, donc un appel d'outil et un hook peuvent partager un identifiant en toute sécurité, et deux sessions concurrentes peuvent réutiliser les mêmes identifiants sans collision. Elles ne sont pas délimitées par agent : une paire ouverte sous un agent et fermée sous un autre est toujours corrélée, ce qui est le cas ordinaire dans les frameworks multi-agents.
+- Réutilisez le même `tool_call_id`, `hook_id`, `pause_id` ou `input_id` pour l'événement de complétion correspondant.
+- Le SDK calcule `duration_ms` pour `tool_result`, `hook_completed`, `agent_resume` et `human_input`. Le passer à ces méthodes lève une `ValueError`.
+- `duration_ms` **est** accepté sur `model_response`, car seul l'appelant connaît la vraie latence du fournisseur. Il doit être un entier — un flottant lève une `ValueError` au site d'appel, car le serveur lit la colonne comme un entier non signé 32 bits et stockerait NULL pour tout autre valeur.
+- Les clés de corrélation sont délimitées par type et session, donc un appel d'outil et un hook peuvent partager un id en toute sécurité, et deux sessions concurrentes peuvent réutiliser les mêmes ids sans collision. Elles ne sont pas délimitées par agent : une paire ouverte sous un agent et fermée sous un autre se corrèle quand même, ce qui est le cas ordinaire dans les frameworks multi-agents.
 - `request_id` apparie `model_request` avec `model_response`. Sans lui, les événements de modèle sont appariés dans l'ordre par agent, donc les appels concurrents sont mal appariés.
-- Une paire répartie entre plusieurs processus est toujours corrélée en aval, mais le SDK ne peut pas calculer sa durée intra-processus.
-- La table des opérations en attente contient au maximum 10 000 démarrages et expulse l'entrée la plus ancienne quand elle est pleine.
+- Une paire répartie sur plusieurs processus se corrèle toujours en aval, mais le SDK ne peut pas calculer sa durée en cours de processus.
+- La map des événements en attente contient au maximum 10 000 entrées et expulse la plus ancienne quand elle est pleine.
 
 </Accordion>
 
-<Accordion title="Contenu du package, et comment instrument() trouve votre framework" icon="box">
+<Accordion title="Ce que contient le package, et comment instrument() trouve votre framework" icon="box">
 
-Installer `failproofai-sdk` installe tout, les quatre adaptateurs inclus. Les extras récupèrent le **framework**, pas l'adaptateur.
+L'installation de `failproofai-sdk` installe tout, les quatre adaptateurs inclus. Les extras tirent le **framework**, pas l'adaptateur.
 
 ```python
 import failproofai_sdk        # ne charge rien en dehors de la bibliothèque standard
 failproofai_sdk.instrument()  # importe uniquement les adaptateurs dont vous avez besoin
 ```
 
-`import failproofai_sdk` est contractuellement sans dépendance, imposé par un test qui installe le wheel construit avec `--no-deps` et un autre qui prouve qu'aucun framework n'atteint `sys.modules`.
+`import failproofai_sdk` est contractuellement sans dépendance, vérifié par un test qui installe la wheel construite avec `--no-deps` et un autre qui prouve qu'aucun framework n'atteint `sys.modules`.
 
 <Warning>
-  Il n'y a pas d'attribut `failproofai_sdk.crewai`. Les adaptateurs ne sont délibérément pas exposés sur le package de niveau supérieur : y accéder importerait le framework comme effet secondaire d'un accès à un attribut, brisant la promesse zéro-dépendance. Utilisez `instrument()`.
+  Il n'existe pas d'attribut `failproofai_sdk.crewai`. Les adaptateurs ne sont délibérément pas exposés sur le package de premier niveau : y accéder importerait le framework comme effet de bord d'un accès d'attribut, rompant la promesse de zéro dépendance. Utilisez `instrument()`.
 </Warning>
 
 ```python
-failproofai_sdk.instrument()              # tout framework déjà importé
+failproofai_sdk.instrument()              # tous les frameworks déjà importés
 failproofai_sdk.instrument("crewai")      # exactement un, par nom
-failproofai_sdk.uninstrument("crewai")    # le remettre en place
+failproofai_sdk.uninstrument("crewai")    # le remettre comme avant
 ```
 
 | Nom | Accepte aussi |
@@ -557,7 +557,7 @@ failproofai_sdk.uninstrument("crewai")    # le remettre en place
 | `llama_index` | `llamaindex`, `llama-index` |
 | `pydantic_ai` | `pydantic-ai`, `pydanticai` |
 
-La détection automatique lit `sys.modules`, pas la liste des packages installés, donc un framework installé mais jamais importé n'est pas instrumenté et n'est jamais importé en votre nom. Pour voir ce qui est connecté :
+La détection automatique lit `sys.modules`, pas la liste des packages installés, donc un framework installé mais jamais importé n'est pas instrumenté et n'est jamais importé à votre place. Pour voir ce qui est câblé :
 
 ```python
 from failproofai_sdk.integrations import active, available
@@ -567,20 +567,20 @@ active()      # ('langchain',)
 ```
 
 <Note>
-  **`instrument("crewai")` sur une machine sans CrewAI ne lève pas d'exception.** Il enregistre un avertissement et retourne `()`, donc un framework manquant ne fait jamais tomber un processus qui instrumente aussi d'autres frameworks.
+  **`instrument("crewai")` sur une machine sans CrewAI ne lève pas d'exception.** Il enregistre un avertissement et retourne `()`, donc un framework manquant ne fait jamais tomber un processus qui instrumente d'autres frameworks.
 
-  L'avertissement contient l'`ImportError` sous-jacent, et ce message nomme la commande d'installation exacte — le correctif est donc dans vos logs, pas caché.
+  L'avertissement porte l'`ImportError` sous-jacent, et ce message indique la commande d'installation exacte — le correctif est donc dans vos logs, pas caché.
 
   ```text
   ImportError: failproofai_sdk: cannot instrument 'crewai' because 'crewai.events'
   is not importable. Install it with:  pip install 'failproofai_sdk[crewai]'
   ```
 
-  Définissez `FAILPROOFAI_SDK_STRICT=1` pour qu'il lève une exception à la place. Ce drapeau est lu **une seule fois et mis en cache**, donc exportez-le avant le démarrage de votre processus plutôt que de le définir en cours d'exécution.
+  Définissez `FAILPROOFAI_SDK_STRICT=1` pour qu'il lève une exception à la place. Ce flag est lu **une seule fois et mis en cache**, exportez-le donc avant le démarrage de votre processus plutôt que de le définir en cours d'exécution.
 </Note>
 
 <Warning>
-  **`instrument()` doit être appelé *après* l'import de votre framework.** La détection automatique lit `sys.modules`, donc un appel nu avant l'import ne trouve rien, n'installe rien, et retourne `()`.
+  **`instrument()` doit venir *après* l'import de votre framework.** La détection automatique lit `sys.modules`, donc un appel nu avant l'import ne trouve rien, n'installe rien et retourne `()`.
 </Warning>
 
 <CodeGroup>
@@ -588,11 +588,11 @@ active()      # ('langchain',)
 import failproofai_sdk
 failproofai_sdk.instrument()   # sys.modules n'a pas encore langchain -> ()
 
-import langchain               # trop tard, rien n'est connecté
+import langchain               # trop tard, rien n'est câblé
 ```
 
 ```python Right
-import langchain               # importez d'abord le framework
+import langchain               # importer le framework en premier
 import failproofai_sdk
 
 failproofai_sdk.instrument()   # le trouve -> ('langchain',)
@@ -601,61 +601,63 @@ failproofai_sdk.instrument()   # le trouve -> ('langchain',)
 ```python Right, order-proof
 import failproofai_sdk
 
-# Le nommer importe l'adaptateur à la demande, donc cela fonctionne depuis n'importe où.
+# Le nommer importe l'adaptateur à la demande, donc cela fonctionne de n'importe où.
 failproofai_sdk.instrument("langchain")
 ```
 </CodeGroup>
 
-Faites une erreur ici et le processus s'exécute avec le SDK importé, l'adaptateur apparemment installé, et **pas un seul événement émis**. Il enregistre un avertissement qui l'indique explicitement — vérifiez donc vos logs en premier lorsqu'une exécution n'enregistre rien.
+Faites cette erreur et le processus s'exécute avec le SDK importé, l'adaptateur apparemment installé, **et pas un seul événement émis**. Cela enregistre un avertissement qui le dit explicitement — vérifiez donc vos logs en premier quand une exécution n'enregistre rien.
 
 </Accordion>
 
-<Accordion title="Comment les événements atteignent Cloud" icon="cloud-upload">
+<Accordion title="Comment les événements parviennent au Cloud" icon="cloud-upload">
 
 ```mermaid
 flowchart LR
     A["Votre agent"] --> B["Adaptateur"]
     B --> C["Writer<br/>file d'attente en mémoire"]
     C -->|"toutes les 0,5s"| D["Spool<br/>JSONL sur disque"]
-    D --> E["Failproof daemon"]
+    D --> E["Daemon Failproof"]
     E -->|"HTTPS"| F["Cloud"]
 ```
 
 | Étape | Rôle | S'exécute dans |
 | --- | --- | --- |
-| Adaptateur | Traduit un callback du framework en l'un des 15 types d'événements | Votre processus |
-| Writer | Met en file d'attente, regroupe, écrit le JSONL de façon atomique | Votre processus, thread d'arrière-plan |
-| Spool | Transfert durable, survit à la sortie de votre processus | Disque local |
-| Daemon | Surveille le spool, envoie les lots, supprime ce qui a été envoyé | Votre machine |
-| Ingest | Assigne un identifiant de ligne et une clé de déduplication, promeut les colonnes interrogeables | Cloud |
+| Adaptateur | Traduit un callback framework en un des 15 types d'événements | Votre processus |
+| Writer | Met en file d'attente, regroupe, écrit du JSONL atomiquement | Votre processus, thread en arrière-plan |
+| Spool | Transfert durable, survit à la fermeture de votre processus | Disque local |
+| Daemon | Surveille le spool, envoie les batches, supprime ce qui a été envoyé | Votre machine |
+| Ingest | Attribue un id de ligne et une clé de déduplication, promeut les colonnes interrogeables | Cloud |
 
-Le spool est ce qui rend cela sûr : votre agent ne se bloque jamais sur le réseau, et une panne Cloud signifie un répertoire qui grossit plutôt que des événements perdus.
+Le spool est ce qui rend cela sûr : votre agent ne bloque jamais sur le réseau, et une panne Cloud signifie un répertoire qui grossit plutôt que des événements perdus.
 
-Chaque flush écrit un fichier de lot, `.tmp` d'abord, puis `fsync`, puis un renommage atomique :
+Chaque flush écrit un fichier batch, `.tmp` d'abord, puis `fsync`, puis un renommage atomique :
 
 ```text
 ~/.failproofai/custom-agents/events/
   event-2026-08-20T10-15-00-123Z-48213-0.jsonl
 ```
 
-Le daemon ne récupère que les `.jsonl`, il ne peut donc jamais lire un fichier partiellement écrit. Le nom du fichier contient un timestamp, un identifiant de processus et un numéro de séquence, de sorte que deux processus flushing dans la même milliseconde ne peuvent pas entrer en collision. La file d'attente est limitée à 10 000 événements ; au-delà, elle abandonne les plus anciens et enregistre un log.
+Le daemon ne prend que les `.jsonl`, il ne peut donc jamais lire un fichier à moitié écrit. Le nom de fichier porte un timestamp, un id de processus et un numéro de séquence, donc deux processus flushing dans la même milliseconde ne peuvent pas entrer en collision. La file d'attente est limitée à 10 000 événements ; au-delà, elle supprime les plus anciens et enregistre un log.
 
 <Warning>
-  **`collector.redact` est à `minimal` par défaut pour les événements SDK également.** Le SDK expurge avant d'écrire un lot sur disque, et le daemon répète le même passage déterministe avant l'upload afin que les lots d'anciens SDK soient protégés.
+  **`collector.redact` ne s'applique pas à vos événements SDK.** Il ne les voit jamais.
 </Warning>
 
-Le daemon lit chaque lot et applique la rédaction en mémoire avant l'upload. Il ne réécrit pas le fichier spool qu'il a lu.
+Le daemon **envoie** vos batches. Il ne les ouvre ni ne les réécrit.
 
-| Événements | Écrits par | Où la rédaction minimale s'exécute |
+| Événements | Écrits par | Traités par `collector.redact` ? |
 | --- | --- | --- |
-| Transcriptions de sessions CLI | Le daemon | Avant que le daemon écrive le lot |
-| Activité de hooks | Le daemon | Avant que le daemon écrive le lot |
-| **Tout ce que le SDK émet** | **Votre processus** | **Avant que le SDK écrive le lot et à nouveau avant l'upload par le daemon** |
+| Transcriptions de sessions CLI | Le daemon | Oui |
+| Activité des hooks | Le daemon | Oui |
+| **Tout ce que le SDK émet** | **Votre processus** | **Non** |
 
-Mettez `collector.redact` à `off` uniquement lorsque des payloads verbatim sont une exigence explicite ; le SDK et le daemon honorent tous les deux ce paramètre. La rédaction minimale attrape les clés d'API courantes, les tokens bearer, les JWT et les affectations de secrets. Elle ne peut pas identifier une prose sensible arbitraire.
+La rédaction s'exécute là où le daemon *écrit* ses propres événements — pas là où les batches sont *envoyés*. Donc un prompt ou un argument d'outil contenant une clé API la conserve à l'arrivée.
+
+C'est délibéré. Ce sont vos propres appels d'instrumentation, et réécrire les événements en transit signifierait que les événements que vous recevez ne sont pas ceux que vous avez émis.
 
 <Tip>
-  **Vous contrôlez les payloads à la source, à deux endroits :**
+  **Vous contrôlez les payloads à la source, en deux endroits :**
 
   - Désactivez la capture de contenu sur l'adaptateur. **Le nom de l'option diffère, et un adaptateur n'en a aucune** — ce n'est pas un interrupteur universel unique :
     - LangChain / LangGraph, Pydantic AI — `capture_content=False`
@@ -663,16 +665,16 @@ Mettez `collector.redact` à `off` uniquement lorsque des payloads verbatim sont
     - CrewAI — **aucun interrupteur de contenu du tout** ; `session_id` est la seule option qu'il lit, donc les prompts et les complétions sont toujours enregistrés.
 
     `instrument()` ignore les options qu'un adaptateur ne lit pas, donc passer le mauvais nom ne lève rien et ne change rien.
-  - Ne donnez pas le secret à `input=` en premier lieu.
+  - Ne transmettez pas le secret à `input=` en premier lieu.
 
-  `collector.redact` est une défense en profondeur, pas un substitut à l'un ou l'autre.
+  `collector.redact` ne remplace ni l'un ni l'autre.
 </Tip>
 
 <Warning>
   **Un répertoire spool vide est l'état sain.** Ne l'utilisez pas pour vérifier la livraison.
 </Warning>
 
-Le daemon supprime chaque lot dans les millisecondes suivant son envoi, donc un `ls` est en compétition avec le collecteur et ne montre qu'une fraction de ce que vous avez émis — impossible à distinguer d'un SDK qui n'a rien enregistré.
+Le daemon supprime chaque batch dans les millisecondes qui suivent son envoi, donc un `ls` est en concurrence avec le collecteur et ne montre qu'une fraction de ce que vous avez émis — impossible à distinguer d'un SDK qui n'a rien enregistré.
 
 Pour confirmer que les événements sont bien arrivés, consultez le tableau de bord. Pour observer le remplissage du spool, arrêtez d'abord le daemon.
 
@@ -680,7 +682,7 @@ Pour confirmer que les événements sont bien arrivés, consultez le tableau de 
 
 <Accordion title="Quand l'instrumentation échoue" icon="triangle-alert">
 
-Chaque callback s'exécute dans un wrapper dont le seul rôle est de re-lever, donc votre appel se trouve dans exactement un `try` et tout ce que fait le SDK se passe en dehors.
+Chaque callback s'exécute dans un wrapper dont le seul rôle est de re-lever les exceptions, votre appel se trouve donc dans exactement un `try` et tout ce que fait le SDK se passe en dehors.
 
 | Ce qui se passe | Résultat |
 | --- | --- |
@@ -690,7 +692,7 @@ Chaque callback s'exécute dans un wrapper dont le seul rôle est de re-lever, d
 | Une version de framework est hors de la plage testée | Avertit une fois, instrumente quand même |
 | Une seule capacité est manquante | Ce hook est désactivé, jamais l'adaptateur entier |
 
-Le comportement par défaut est correct en production et incorrect lors du débogage, car il ne peut que prouver « ça n'a pas planté ». Définissez `FAILPROOFAI_SDK_STRICT=1` pour rendre bruyant un échec silencieux.
+Le comportement par défaut est correct en production et problématique lors du débogage, car il ne peut que prouver que ça n'a pas planté. Définissez `FAILPROOFAI_SDK_STRICT=1` pour rendre visible un échec avalé.
 
 </Accordion>
 
@@ -700,23 +702,23 @@ Le comportement par défaut est correct en production et incorrect lors du débo
 
 <AccordionGroup>
   <Accordion title="Un span ne se termine jamais">
-    Un événement d'ouverture n'a pas d'événement de fermeture : un `model_request` sans `model_response`, ou un `tool_use` sans `tool_result`. Utilisez les portées, qui garantissent la paire même lorsque le corps lève une exception. Si vous appelez les méthodes d'événements directement, utilisez `try` et `finally`.
+    Un événement d'ouverture n'a pas d'événement de fermeture correspondant : un `model_request` sans `model_response`, ou un `tool_use` sans `tool_result`. Utilisez les portées, qui garantissent la paire même si le corps lève une exception. Si vous appelez les méthodes d'événements directement, utilisez `try` et `finally`.
   </Accordion>
 
-  <Accordion title="Passer duration_ms lève un ValueError">
-    Il est mesuré depuis l'événement d'ouverture correspondant, donc il est refusé sur `tool_result`, `hook_completed`, `agent_resume`, et `human_input`. Il est accepté sur `model_response`, car seul vous connaissez la vraie latence du fournisseur, et il doit être un entier.
+  <Accordion title="Passer duration_ms lève une ValueError">
+    Il est mesuré depuis l'événement d'ouverture correspondant, il est donc refusé sur `tool_result`, `hook_completed`, `agent_resume` et `human_input`. Il est accepté sur `model_response`, car seul vous connaissez la vraie latence du fournisseur, et il doit être un entier.
   </Accordion>
 
-  <Accordion title="Les événements d'un thread worker lèvent un TypeError">
-    Le thread n'a jamais hérité du contexte. Enveloppez le callable dans `failproofai_sdk.propagate()`. Voir [Threads et async](#threads-and-async).
+  <Accordion title="Les événements d'un thread worker lèvent une TypeError">
+    Le thread n'a jamais hérité du contexte. Enveloppez l'appelable dans `failproofai_sdk.propagate()`. Voir [Threads et async](#threads-and-async).
   </Accordion>
 
   <Accordion title="Un champ supplémentaire a disparu ou en a écrasé un autre">
     Les champs supplémentaires sont fusionnés en dernier, donc un champ nommé comme un vrai champ tel que `model` ou `outcome` l'écraserait et modifierait une colonne stockée. Préfixez les vôtres ; les adaptateurs utilisent le préfixe `fw_`.
   </Accordion>
 
-  <Accordion title="Le filtre d'agents contient des milliers d'entrées">
-    `agent_id` est une facette à faible cardinalité et vous y avez mis un identifiant d'exécution. Utilisez un nom de rôle ou de nœud et placez le vrai identifiant dans un champ de payload.
+  <Accordion title="Le filtre d'agent contient des milliers d'entrées">
+    `agent_id` est une facette à faible cardinalité et vous y avez mis un id d'exécution. Utilisez un nom de rôle ou de nœud et mettez le vrai id dans un champ de payload.
   </Accordion>
 </AccordionGroup>
 
@@ -724,7 +726,7 @@ Le comportement par défaut est correct en production et incorrect lors du débo
 
 <Columns cols={3}>
   <Card title="Comment ça fonctionne" icon="workflow" href="/fr/reference/custom-agents">
-    Paires, identifiants, cycle de vie de session et livraison.
+    Paires, ids, cycle de vie des sessions et livraison.
   </Card>
   <Card title="Lire une trace" icon="route" href="/fr/sessions/read-a-trace">
     Suivez la causalité à travers la session que vous venez de capturer.

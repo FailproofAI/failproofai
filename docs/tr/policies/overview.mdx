@@ -1,63 +1,54 @@
 ---
-title: "Politikalar"
-description: "Bilinen bir hata tekrarlanmadan önce agent eylemlerini gözlemleyin, yönlendirin veya engelleyin."
+title: "İlkeler"
+description: "Aracı eylemlerini gözlemleyin, yönlendirin veya bilinen bir hata tekrarlanmadan önce engelleyin."
 icon: "shield-check"
 ---
 
-Bir politika, bir agent hook olayını değerlendirir ve üç karardan birini döndürür:
+Bir ilke, bir aracı hook olayını değerlendirir ve üç karardan birini döndürür:
 
-- `allow` eylemi devam ettirir.
-- `instruct` agent'a düzeltici rehberlik sağlar.
-- `deny` eylemi bir nedenle engeller.
+- `allow` eyleme devam etmesine izin verir.
+- `instruct` aracıya düzeltici rehberlik sağlar.
+- `deny` eylemi bir neden ile engeller.
 
-## Üç politika yüzeyini kullanın
+## İlkeler nerede yer alır
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. Oturumlardan politika kararlarını filtrelemek ve incelemek için **Observe → policy** sayfasına gidin.
-    2. Politika oluşturmak, doğrulamak, yayınlamak, devre dışı bırakmak veya değişmez sürümleri incelemek için **Admin → policy editor** sayfasına gidin.
-    3. Sürümleri ve etkileri makinelere atamak için **Admin → enforcement** sayfasına gidin.
+| Panoda | Orada yapacağınız şey |
+| --- | --- |
+| **Gözlem → ilke** | Gerçek oturumlardan alınan kararları gözden geçirin: hangi ilke eşleşti, hangi makinede ve neden |
+| **Yönetim → ilke editörü** | Bir ilke yazın, geçmiş trafiğe karşı geri test edin, değişmez bir sürüm yayınlayın ve **kütüphanede** sürümleri karşılaştırın |
+| **Yönetim → zorlama** | Sürümleri makinelere, gözlem veya zorlama modunda yerleştirin |
 
-    Yazar olmadan veya zorlama değiştirmeden önce neyin zaten eşleştiğini anlamak için Policy sayfasını kullanın.
+İlke editörü, bir hatanın kural haline geldiği yerdir. **Oluştur** kısmında hata modunu açıklayın veya ilke kaynağını yapıştırın, taslağı halihazırda sahip olduğunuz trafiğe karşı geri test edin ve bir sürüm yayınlayın:
 
-    ![Karar toplamlarını ve yerel ve Cloud tarafından yönetilen politika eşlemelerini gösteren Policy sayfası.](/images/dashboard/policy-observe.png)
+![İlke editörü oluştur görünümü - ilke kimliği, yapay zeka destekli taslak oluşturma, kaynak doğrulama ve yayınlama kontrolleri.](/images/dashboard/policy-editor.png)
 
-    Editör, bir hata durumunu kaynağa dönüştürdüğünüz, doğruladığınız ve değişmez bir sürümü yayınladığınız yerdir.
+Bir makinede, `failproofai policies` orada uygulanan her şeyi listeler. `fp policies` ve `fp fleet` terminalden editörü ve uygulamayı kapsar — bkz. [Cloud CLI referansı](/tr/reference/cloud-cli).
 
-    ![Değişmez bir politika sürümü oluşturmak ve yayınlamak için kullanılan Policy editörü.](/images/dashboard/policy-editor.png)
+## Bir ilke edinin
 
-    Zorlama daha sonra o yayınlanmış sürümü ve onun gözlemle veya zorlama efektini makinelere atar.
-
-    ![Makine kapsamı ve atanan politika sürümlerini gösteren Enforcement fillosu.](/images/dashboard/enforcement-fleet.png)
-
-    Dağıtımdan sonra Policy sayfasında kararları doğrulayın, böylece yazma ve filo görünümleri gerçek agent aktivitesine bağlı olur.
-  </Tab>
-  <Tab title="CLI">
-    Yerel politika kurulumu ve doğrulaması için `failproofai` kullanın:
-
-    ```bash
-    failproofai policies
-    failproofai policy add block-rm-rf --scope project
-    failproofai config --status
-    ```
-
-    Politika kararları içeren Cloud oturumlarını ve olaylarını bulmak için `fp` kullanın. Cloud yazma ve filo dağıtımı dashboard iş akışlarında kalır.
-  </Tab>
-</Tabs>
-
-Politikaların Failproof AI'de üç farklı yüzeyi vardır:
-
-1. **Kararları analiz edin** oturumlarda, panorlarda ve denetimlerde.
-2. **Sürümleri yazın** yerleşik kurallar, kod veya politika editörü ile.
-3. **Sürümleri dağıtın ve zorlayın** seçilen makineler arasında.
-
-Onaylı bir hata modundan başlayın. Onu tanımlayan en küçük olayı ve araç eşleşmesini tanımlayın, yasal ve güvenli olmayan örnekleri test edin, sonra zorlamadan önce gözlemleyin.
+İki yolu vardır.
 
 <Columns cols={2}>
-  <Card title="Yerleşik politika kullanın" icon="library" href="/tr/policies/builtin">
-    Yaygın gizli bilgi, shell, Git, bulut ve iş akışı riskleri için gözden geçirilmiş bir kural etkinleştirin.
+  <Card title="Bir ilke yazın" icon="file-pen-line" href="/tr/policies/editor">
+    Failproof AI'ın bir denetim bulgusundan bir taslak oluşturmasına izin verin veya kaynağı kendiniz yazın, ardından editörde gözden geçirin ve yayınlayın.
   </Card>
-  <Card title="Özel politika yazın" icon="code-2" href="/tr/policies/custom">
-    JavaScript veya TypeScript ile iş akışına özgü bir karar ifade edin.
+  <Card title="İlke paketi kullanın" icon="package" href="/tr/policies/packs">
+    Kullanım durumunuz için bir Failproof AI ilke paketi ya da ilke hub'ından bir topluluk paketini tek bir komutla bağlayın.
   </Card>
 </Columns>
+
+## Ardından gönder
+
+<Steps>
+  <Step title="Test et">
+    Taslağı halihazırda sahip olduğunuz trafiğe karşı geri test edin ve durması gereken bir eylem ile izin vermesi gereken bir eyleme karşı çalıştırın — tümü yayınlamadan önce. Bkz. [İlkeyi test et](/tr/policies/test).
+  </Step>
+  <Step title="Dağıt">
+    Sürümü makinelere **gözlem** modunda yerleştirin, kararlarını okuyun, ardından uygulayın. Bkz. [İlke dağıt](/tr/policies/deploy).
+  </Step>
+  <Step title="Sürüm ve geri al">
+    Her yayın yeni, değişmez bir sürümdür; bu nedenle geçerli çalışmayı engelleyen bir dağıtım, son iyi sürümü yeniden dağıtarak geri alınır. Bkz. [Sürümler ve geri alma](/tr/policies/rollback).
+  </Step>
+</Steps>
+
+İlkelerinizi diğer ekiplerle paylaşmak için [bunları bir paket olarak yayınlayın](/tr/policies/publish-a-pack). Bir ilke hiç değerlendirilemediğinde ne olur öğrenmek için bkz. [Başarısızlık davranışı](/tr/policies/failure-behavior).

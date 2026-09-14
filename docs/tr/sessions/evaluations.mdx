@@ -1,25 +1,25 @@
 ---
-title: "Çevrimiçi değerlendirmeler"
-description: "Canlı ve tamamlanan oturumları kalite, uyum, maliyet ve gecikme açısından puanlayın."
+title: "Değerlendirme sonuçlarını okuyun"
+description: "Zaman içinde değerlendirme puanlarını grafikle gösterin, ajanları ve ortamları karşılaştırın, bir oturumun neden düşük puan aldığını görün ve asistana soruları sorun."
 icon: "gauge"
 ---
 
-Çevrimiçi değerlendirmeler, ajan oturumlarına tutarlı kararlar uygular. Yalnızca denetim sırasında araştırılması yerine sürekli olarak ölçülmesi gereken sinyaller için bunları kullanın.
+Her değerlendirmeden gelen sonuçlar, barındırılan veya kendi worker'ınızdan gelen sonuçlar, aynı yerlere kaydedilir.
 
-## Değerlendirme kalitesini gözden geçirin
+## Puanları zaman içinde karşılaştırın
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Observe → Evaluations** sayfasına gidin.
-    2. Bir seri ekleyin ve ajan, ortam, değerlendirme puanı, istatistik ve eğriyi seçin.
-    3. Ortamları, ajanları veya puan anahtarlarını karşılaştırmak için seri ekleyin.
-    4. Eşleşen oturumları açmak veya filtrelenmiş görünümü paylaşmak için bir sonucu seçin. Gecikme, token, maliyet ve diğer büyüklük değerleri için **Observe → Metrics** kullanın.
+    **Observe → evaluations** bölümüne gidin.
 
-    ![Ortalama değerlendirme puanlarını ve zaman içindeki eğilimleri gösteren bir kalite panosu.](/images/dashboard/dashboard-quality.png)
+    - **Recent runs**, her değerlendirmeyi geldiği sırayla listeler: barındırılan (**managed**) veya kendi (**customer**) evaluator'ünüzden gelip gelmediğini, ajanı ve oturumu, değerlendirmesini ve sürümünü, durumunu ve puanını veya metriklerini gösterir.
+    - **Score over time**, istediğiniz şeyi çizer. **add series** seçin ve bir ajan, bir ortam, bir değerlendirme ve bir istatistik seçin: avg, min, max, p50, p75, p90, p95, p99, stddev, veya mode. Her seri bir satırdır; ayrı bir grafikte çizmek için ona kendi **curve**'ünü verin.
 
-    Her puan için akıl yürütmeyi incelemek için drill-down'dan bir oturum açın:
+    ![Değerlendirmeler sayfası: customer olarak etiketlenmiş son çalıştırmalar, 0.5 ve 0.8 referans çizgileriyle bir puanı zaman içinde grafik ve tüm ajanlar ve ortamlar arasında finished_clean'i ortalaması alan bir seri.](/images/dashboard/evaluations-chart.png)
 
-    ![Değerlendirme puanlarını ve akıl yürütmeyi tam iz yanında gösteren bir oturum ayrıntı görünümü.](/images/dashboard/session-detail.png)
+    Bir zaman aralığı ve bir bin boyutu tüm serilere uygulanır. İnce bir bin bir olayı bulur; kaba bir bin trend gösterir ve aradığınız ani yükselişleri gizleyebilir. Hiçbir şeyin puanlanmadığı bir bucket, satırda bir boşluk olup, hiçbir zaman sıfır değildir ve referans çizgileri 0.5 ve 0.8'i işaretler.
+
+    Görünümün her parçası URL'de yaşar: **share** onu kopyalar ve onu açan herkes tam olarak oluşturduğunuz karşılaştırmayı görür.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -28,25 +28,29 @@ icon: "gauge"
     fp evals --score helpfulness:0.8.. --since 7d
     ```
 
-    Otomasyon için `evals` öncesine global `--json` ekleyin, örneğin `fp --json evals --aggregate --env production`.
+    Otomasyon için `evals` öncesinde genel `--json` ekleyin, örneğin `fp --json evals --aggregate --env production`.
   </Tab>
 </Tabs>
 
-Bir değerlendirici, oturum kimliğini, ortamı, zaman damgalarını ve sıralanmış olayları alır. İsteğe bağlı akıl yürütme ve bir özet ile sayısal puan anahtarlarını döndürebilir. Uzun süre çalışan değerlendiriciler, beklemede bir iş döndürebilir ve daha sonra sorgulanabilir.
+Aynı değerlendirme için iyi bir ortalamanın kötü bir tail'i gizleyip gizlemediğini görmek için **avg** ve **p90** çizin veya iki ajan için veya production ve staging için aynı değerlendirmeyi çizin, bunları bir eksende karşılaştırmak için. Birimler taşıyan maliyetler, gecikmeler ve token sayıları, **Observe → metrics** altında birim başına bir grafik olarak grafiklendirilir.
 
-## İyi değerlendirme hedefleri
+## Bir oturumun neden düşük puan aldığını görün
 
-- Görev tamamlanması veya doğruluğu
-- Gerçeklilik ve halüsinasyon riski
-- Araç seçimi ve araç verimliliği
-- İlke veya süreç uyumu
-- Maliyet ve gecikme bütçeleri
-- Gerekli insan eskalasyonu
+**Observe → sessions** bölümünden bir oturum açın; grid, her oturumun puanlarını taşır ve puan aralığına göre filtreler. Oturumun sağ raya, değerlendirme özeti ile başlar, sonra her puan için altında evaluator'ün akıl yürütmesi vardır.
 
-## Puandan yanıta
+![Tam izlemenin yanında değerlendirme puanları ve akıl yürütmeyi gösteren bir oturum ayrıntı görünümü.](/images/dashboard/session-detail.png)
 
-Eğilimleri izlemek için puanları panolarda gösterin. Eşikler veya bileşik koşullar için uyarılar oluşturun. Bir puanın bir popülasyon genelinde düşmesi durumunda, nedenini araştırmak için bir denetim çalıştırın; neden tekrarlanabilir bir eylem ise, bir ilke yayınlayın.
+## Asistana soruları sorun
 
-<Card title="Bir değerlendirici oluşturun" icon="code-2" href="/tr/reference/evaluator-sdk">
-  Python değerlendirici SDK'sı ile senkron veya asenkron değerlendirme uygulayın.
-</Card>
+Değerlendirme verileri hakkında düz İngilizce ile soruları sorun: "bana son değerlendirmelerden bazılarından bahset" veya hangi ajanların puanlarının düştüğü. [Asistan](/tr/sessions/assistant) sonuçları okur ve analiz eder ve takip edebileceğiniz tablolarla cevap verir ve tutulması gereken bir soru [query](/tr/sessions/queries) veya [dashboard](/tr/sessions/dashboards) haline gelebilir.
+
+![Değerlendirmeler sayfası asistan'ın yanında, "bana son değerlendirmelerden bazılarından bahset" sorusuna toplam, durumlar ve puanların özeti ile cevap verir.](/images/dashboard/evaluations-assistant.png)
+
+## İzleyin ve harekete geçin
+
+- **Dashboards**, **Analyze → dashboards** altında, öne çıkardığınız puanları, ajan ve ortam başına, tüm kuruluş için trendler.
+
+  ![Ortalama değerlendirme puanları ve zaman içinde trendleri gösteren bir kalite dashboard'u.](/images/dashboard/dashboard-quality.png)
+
+- **Alerts**, bir puan bir eşiği geçtiğinde sizi bilgilendirir. Bkz. [alerts](/tr/audits/alerts).
+- Bir puan birçok oturum arasında düştüğünde, nedenini öğrenmek için [bir audit çalıştırın](/tr/audits/run); neden tekrarlanabilir bir eylem olduğunda, [bir policy yazın](/tr/policies/editor).

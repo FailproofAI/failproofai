@@ -1,49 +1,96 @@
 ---
-title: "Editor criteri"
-description: "Crea e rivedi i criteri con versione a partire da una modalità di errore confermata."
+title: "Scrivi una policy"
+description: "Lascia che Failproof AI rediga una policy da un risultato di audit, o scrivi il codice sorgente tu stesso, quindi rivedilo, testalo e pubblicalo."
 icon: "file-pen-line"
 ---
 
-Utilizza l'editor criteri per trasformare un risultato o un problema in una regola distribuibile. Mantieni la creazione separata dalla distribuzione in modo che una bozza non possa modificare silenziosamente il comportamento in produzione.
+Ci sono due modi per scrivere una policy: lasciare che Failproof AI la rediga da un risultato di audit, oppure scrivere il codice sorgente tu stesso. Nulla viene pubblicato o distribuito finché non scegli di farlo.
 
-Quando un problema ha un modello di azione ripetibile, aprilo in **Analyze → issues** e seleziona **generate policy**. Failproof AI spiega innanzitutto se un criterio può esprimere il problema, quindi trasporta l'intento rivisto e il contesto del risultato nell'editor. La fonte generata rimane una bozza finché non la pubblichi.
+## Scrivi una policy da un audit
 
-## Pubblica una versione del criterio
+Un audit trova un errore; una policy lo impedisce che accada di nuovo. Failproof AI redige la policy dalla stessa evidenza del risultato.
+
+### 1. Esegui un audit
+
+[Esegui un audit](/it/audits/run) sulle sessioni in cui si verifica l'errore. Ogni risultato contiene le sessioni di evidenza, una causa radice e un percorso di prevenzione suggerito. Lavora da un risultato con un **pattern di azione ripetibile** — una policy può solo bloccare ciò che riesce a riconoscere in un evento hook.
+
+### 2. Genera la bozza
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vai a **Admin → policy editor** e, in **compose**, descrivi la modalità di errore o incolla la fonte della policy JavaScript.
-    2. Convalida la fonte e correggi ogni errore segnalato.
-    3. Inserisci l'identità del criterio e pubblicalo, quindi utilizza **library** per confrontare o disabilitare le versioni.
-    4. Seleziona **enforcement** quando la versione è pronta per una distribuzione su machine.
+    1. Apri il problema del risultato in **Analyze → issues** e controlla le sessioni citate, la causa radice e la raccomandazione.
+    2. Seleziona **generate policy**. Failproof AI innanzitutto indica se una policy può esprimere il problema. Un risultato **no policy** significa che la soluzione è un avviso, un cambiamento di flusso di lavoro, o una persona — non una policy.
+    3. Seleziona **write this policy**. Il titolo del problema, il risultato, la causa radice, la raccomandazione e l'intento di enforcement proposto diventano una bozza in **Admin → policy editor**. Usa **open the editor anyway** quando non sei d'accordo con il controllo di candidatura.
 
-    ![La vista compose dell'editor criteri con identità del criterio, redazione assistita da IA, convalida della fonte e controlli di pubblicazione.](/images/dashboard/policy-editor.png)
+    ![La vista compose dell'editor di policy con identità della policy, drafting assistito da AI, validazione del sorgente e controlli di pubblicazione.](/images/dashboard/policy-editor.png)
   </Tab>
   <Tab title="CLI">
-    Pubblica da CLI con `fp policies publish`. Crea una **nuova versione** e non ne modifica mai una sul posto, inoltre verifica la sintassi della fonte con node prima di inviare — nessun componente downstream lo fa, quindi un errore di sintassi altrimenti emergerebbe sulla machine al momento dell'enforcement:
+    Leggi l'evidenza, quindi redigi con l'assistente. `compose` stampa il sorgente per la revisione e non pubblica nulla:
 
     ```bash
-    fp policies test ./checkout.policy.mjs --command "git push --force" --expect deny
-    fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
+    fp issues show <issue-id>
+    fp audits finding <finding-id>
+    fp policies compose "Block git push --force on release branches"
     ```
 
-    La pubblicazione non distribuisce nulla — una nuova versione rimane inutilizzata finché `fp fleet deploy` non la mette su una machine. `fp policies compose "<plain English>"` redige la fonte con l'assistente Cloud e la stampa per la revisione piuttosto che pubblicarla.
-
-    Per installare un criterio in un agente CLI locale (non Cloud), utilizza `failproofai policies --install --custom ./checkout.policies.ts --cli claude --scope project`.
+    `compose` richiede una sessione autenticata (`fp login`) il cui ruolo ha `policies:write`; rifiuta le chiavi API.
   </Tab>
 </Tabs>
 
-## Checklist di creazione
+### 3. Rivedi la bozza
 
-1. Assegna un nome alla modalità di errore nel linguaggio operativo.
-2. Seleziona gli eventi hook e gli strumenti che contengono prove sufficienti per decidere.
-3. Scrivi la condizione più ristretta che corrisponda al comportamento non sicuro.
-4. Restituisci un motivo che comunichi all'agente o all'operatore cosa fare dopo.
-5. Aggiungi esempi che dovrebbero corrispondere ed esempi che devono rimanere consentiti.
-6. Salva una nuova versione e richiedi una revisione.
+Una bozza è un punto di partenza, non un verdetto. Prima di pubblicare, verifica che:
 
-Utilizza `instruct` quando l'agente può correggere il corso in modo sicuro. Utilizza `deny` quando consentire l'azione comporterebbe un rischio inaccettabile o irreversibile.
+1. Nomini la modalità di errore in linguaggio operativo.
+2. Corrisponda solo agli eventi hook e agli strumenti che portano sufficienti evidenze per decidere.
+3. Utilizzi la condizione più ristretta che catturi l'azione non sicura.
+4. Restituisca un motivo che dica all'agente cosa fare invece.
+5. Utilizzi `instruct` dove l'agente può correggere il corso in modo sicuro, e `deny` solo dove consentire l'azione è inaccettabile o irreversibile.
 
-<Info>
-  Le versioni dei criteri sono input di distribuzione immutabili. La modifica di una bozza crea una nuova versione; non dovrebbe riscrivere la versione già assegnata alle machine.
-</Info>
+Valida il sorgente nell'editor e correggi ogni errore segnalato.
+
+### 4. Testalo, quindi pubblicalo
+
+Esegui **backtest** sotto il sorgente prima di pubblicare: riproduce la bozza rispetto alle chiamate già effettuate dalla tua flotta e conta le chiamate funzionanti che avrebbe interrotto. [Test a policy](/it/policies/test) copre questo e gli altri controlli.
+
+Quando si comporta correttamente, inserisci l'identità della policy e seleziona **publish version**. La pubblicazione crea una versione immutabile e non distribuisce nulla: rimane inutilizzata finché non la [distribuisci](/it/policies/deploy). Da un terminale:
+
+```bash
+fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
+```
+
+`publish` effettua controlli di parse sul sorgente prima di inviarlo, così un errore di sintassi emerge qui invece che su una macchina al momento dell'enforcement.
+
+## Scrivila tu stesso
+
+Una policy è JavaScript o TypeScript contro l'API `failproofai`:
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "protect-production-paths",
+  description: "Block writes to production configuration",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (ctx.toolName !== "Write" && ctx.toolName !== "Edit") return allow();
+    const path = String(ctx.toolInput?.file_path ?? "").replaceAll("\\", "/");
+    if (path.split("/").includes("production")) {
+      return deny("Writes to production configuration require approval.");
+    }
+    return allow();
+  },
+});
+```
+
+Questo corrisponde a `production/config.yml`, `/srv/production/config.yml`, `/srv/production` e `C:\\production\\config.yml` per sia `Write` che `Edit`, ma non a `production-backup`: `production` deve essere un segmento di percorso intero. Il contesto contiene anche il tipo di evento, il payload normalizzato, i metadati della sessione, i parametri e la CLI sorgente quando disponibile — vedi l'[SDK per policy](/it/reference/policy-sdk).
+
+Per pubblicarla come versione, incolla il sorgente in **compose** in **Admin → policy editor** e segui i passaggi 3 e 4 sopra, oppure pubblica il file da un terminale con `fp policies publish`.
+
+Per eseguirla su una macchina senza Cloud, salvala in `.failproofai/policies/` con un nome che termina in `policies.js`, `policies.mjs` o `policies.ts` — questi si caricano automaticamente in ambito progetto e utente — o installala per percorso:
+
+```bash
+failproofai policies --install --custom ./security.policies.ts --scope project
+```
+
+Assegna a ogni policy un nome univoco tra le policy di convenzione, personalizzate, di pack e gestite da Cloud.

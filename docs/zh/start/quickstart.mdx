@@ -1,39 +1,39 @@
 ---
 title: "快速开始"
-description: "捕获一次 Agent 会话，发现故障，并开始预防它。"
+description: "捕获一次 agent 会话，发现故障，并开始预防。"
 icon: "zap"
 ---
 
-本快速开始指南将帮助你完成：让一台机器上报会话、运行审计，并部署一个策略。你可以使用技能包来完成 Failproof 的配置，也可以按照手动步骤操作。
+本快速开始指南将帮助你完成：让一台机器开始上报会话、执行审计、并部署策略。你可以使用技能来设置 Failproof AI，或按照手动步骤操作。
 
-**选择适合你的路径：** 如果你的 Agent 运行在 12 个受支持的[执行环境](/zh/reference/harnesses)之一中——例如编码 CLI，或 Hermes、OpenClaw 等网关——请按照以下步骤操作；你需要 Node.js 20.9 或更高版本。如果你的 Agent 没有执行环境，请使用 [Python SDK](/zh/reference/custom-agents) 对其进行埋点以实现追踪和审计，然后从[运行你的首次故障检查](/zh/start/first-audit)处继续；该路径下的执行能力需要在你的运行时中添加一个 hook。
+**你属于哪种情况？** 如果你的 agent 运行在 12 种受支持的 [harnesses](/zh/reference/harnesses) 之一中——例如编码 CLI，或者 Hermes、OpenClaw 这类网关——请按照以下步骤操作；你需要 Node.js 20.9 或更高版本。如果你的 agent 没有 harness，请使用 [Python SDK](/zh/reference/custom-agents) 对其进行插桩以支持追踪和审计，然后从[运行你的第一次故障检查](/zh/start/first-audit)处继续；该路径上的强制执行需要在你的运行时中添加一个 hook。
 
 <Tabs>
-  <Tab title="使用技能包">
+  <Tab title="使用技能">
     <Steps>
-      <Step title="安装 Failproof AI 技能包">
+      <Step title="安装 Failproof AI 技能">
         ```bash
         npx skills add FailproofAI/skills
         ```
       </Step>
-      <Step title="让你的 Agent 完成所有配置">
+      <Step title="让你的 agent 完成所有配置">
         ```text
         Set up Failproof AI for this project, connect this machine, install the right hooks and policies, and verify that a session arrives.
         ```
 
-        你的 Agent 会检查项目、选择相关集成、执行配置并验证会话是否正常到达。如需了解各个技能及高级安装选项，请参阅 [FailproofAI 技能仓库](https://github.com/FailproofAI/skills)。
+        你的 agent 会检查项目、选择相关的集成方式、执行配置，并验证会话是否正常到达。请查看 [FailproofAI 技能仓库](https://github.com/FailproofAI/skills) 了解各项技能和高级安装选项。
       </Step>
     </Steps>
   </Tab>
   <Tab title="手动配置">
-    ## 开始之前
+    ## 开始前的准备
 
 1. 打开 [Failproof AI 控制台](https://app.befailproof.ai)，创建账号或使用工作邮箱登录。
-2. 进入 **Administration → Keys**，创建一个具有 `events:add` 和 `policies:pull` 权限的密钥。
-3. 复制一次性密钥，并将其保存到目标机器上：
+2. 前往 **Administration → Keys**，创建一个具有 `events:add` 和 `policies:pull` 权限的密钥。
+3. 复制一次性密钥，然后在目标机器的 shell 中读取它。`read -s` 会在不回显的提示符下读取，因此密钥不会出现在命令中：
 
 ```bash
-export FAILPROOFAI_KEY="<one-time-secret>"
+read -rs FAILPROOFAI_KEY && export FAILPROOFAI_KEY
 ```
 
     ## 安装
@@ -42,12 +42,18 @@ export FAILPROOFAI_KEY="<one-time-secret>"
   <Step title="安装并连接 Failproof AI">
     ```bash
     npm install -g failproofai
-    failproofai config --connect https://app.befailproof.ai --token "$FAILPROOFAI_KEY"
+    FAILPROOFAI_CLOUD_TOKEN="$FAILPROOFAI_KEY" failproofai config
     ```
 
-    默认情况下会发送会话记录。添加 `--no-transcripts` 可在不包含记录内容的情况下上报 hook 活动和策略决策。
+    这一条命令完成全部配置：安装本地守护进程（需要 root 权限，仅一次）、将 hook 接入所有检测到的 agent CLI，并将本机连接到云端。通过环境变量而非 `--token` 传入密钥，可以避免密钥出现在 `ps` 输出中（机器上的所有用户都能读取命令参数）。但这并不能防止密钥出现在 shell 历史记录中——使用 `read -s` 读取才能做到这一点。在 CI 环境中，请以掩码密钥的方式注入，并关闭 shell 追踪（`set -x`），否则追踪日志会将其打印出来。
 
-    如果这台机器上已有 Agent 历史记录，可预览并导入最近七天的数据，然后等待传输完成。若是全新机器，请跳过此步骤。
+    默认情况下会发送会话记录。添加 `--no-transcripts` 可仅上报 hook 活动和策略决策，而不包含记录内容。
+
+    <Warning>
+      不要在此处使用 `failproofai config --connect <url>`。该标志用于注册一台**已经**完成配置的机器，执行后立即返回——不启动守护进程，也不安装 hook——因此该机器会出现在云端，但不会采集或执行任何内容。
+    </Warning>
+
+    如果此机器上已有 agent 历史记录，可预览并导入最近七天的数据，然后等待传输完成。新机器可跳过此步骤。
 
     ```bash
     failproofai backfill --since 7d --dry-run
@@ -55,30 +61,41 @@ export FAILPROOFAI_KEY="<one-time-secret>"
     failproofai flush --wait
     ```
 
-    在 Failproof AI 中打开 **Sessions**，选择一个已导入的会话。
+    在 Failproof AI 中打开 **Sessions** 并选择一个已导入的会话。
   </Step>
-  <Step title="安装 Agent hook 和策略">
-    此步骤会将 Failproof AI 附加到你的执行环境，并安装 39 个内置策略。在 Failproof AI 审计你的会话并为你的 Agent 编写策略之前，你可以先通过这些策略查看本地策略决策并试用执行功能。
-
-    你可以让安装程序自动检测你的执行环境，也可以明确指定一个。12 个执行环境都是有效的 `--cli` 参数值——`claude`、`codex`、`copilot`、`cursor`、`opencode`、`pi`、`hermes`、`openclaw`、`factory`、`devin`、`antigravity`、`goose`。
+  <Step title="将 Failproof AI 接入 harness">
+    上一步已自动接入所有检测到的 agent CLI。如需为某个 harness 单独重新运行，或添加后续安装的 harness，可通过以下命令显式操作。12 种 harness 均可作为 `--cli` 的有效值——`claude`、`codex`、`copilot`、`cursor`、`opencode`、`pi`、`hermes`、`openclaw`、`factory`、`devin`、`antigravity`、`goose`。
 
     ```bash
     failproofai policies --install --cli claude --scope user     # 编码 CLI
     failproofai policies --install --cli hermes --scope user     # Slack/Telegram 网关
     ```
 
-    在工具调用执行前拦截的功能已在全部 12 个执行环境中验证。轮次结束门控已在 8 个环境中验证——各执行环境的详细矩阵请参阅[执行能力](/zh/reference/harnesses#enforcement-capability)。
+    在工具调用执行前拦截的功能已在全部 12 种 harness 上验证。轮次结束门控已在 8 种上验证——请参阅[强制执行能力](/zh/reference/harnesses#enforcement-capability)查看各 harness 的详细矩阵。
+  </Step>
+  <Step title="选择要执行的策略">
+    接入 hook 并不会启用任何策略。配置过程故意不做任何选择——这个决定由你来做——请选取一个策略包：
+
+    ```bash
+    failproofai policies add FailproofAI/policies
+    ```
+
+    该策略包从其 GitHub Release 中获取，经过校验和验证，并固定到解析出的确切标签。它包含 38 条策略，并默认开启其中 10 条——这些策略在 manifest 中被标记为可无人值守启用。使用它们可以查看本地策略决策、在 Failproof AI 审计你的会话并为你的 agent 编写策略之前试用强制执行功能。
+
+    在采用策略包之前，可使用 `failproofai policies show <owner>/<repo>` 查看其内容；如需只采用其中一部分，请参阅[策略包](/zh/policies/packs)。
+
+    在此步骤运行之前，唯一生效的策略是 `block-failproofai-commands`——这是一个始终开启的守卫，用于阻止 agent 关闭 Failproof AI。`failproofai policies` 会列出当前已启用的策略。
   </Step>
   <Step title="审计行为">
-    按照[运行你的首次故障检查](/zh/start/first-audit)进行操作。请使用具体的目标，例如"查找 Agent 在未改变方法的情况下重试失败工具的会话"。
+    按照[运行你的第一次故障检查](/zh/start/first-audit)操作。使用具体的目标，例如"查找 agent 在未改变方法的情况下重试失败工具的会话"。
   </Step>
   <Step title="预防故障">
-    按照[使用策略预防首次故障](/zh/start/first-policy)进行操作。先以观察模式启动，检查匹配结果，然后对审查后的版本执行强制策略。
+    按照[使用策略预防你的第一次故障](/zh/start/first-policy)操作。先在观察模式下运行，检查匹配结果，然后对审查后的版本启用强制执行。
   </Step>
 </Steps>
 
 <Check>
-  运行 `failproofai config --status`。配置健康时，该命令会报告云连接状态、守护进程状态，以及执行功能是否已暂停。
+  运行 `failproofai config --status`。配置正常时，会输出云端连接状态、守护进程状态，以及强制执行是否已暂停。
 </Check>
   </Tab>
 </Tabs>

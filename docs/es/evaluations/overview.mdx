@@ -1,0 +1,44 @@
+---
+title: "Evaluar agentes"
+description: "Puntúa cada sesión finalizada con evaluaciones que tú defines: checks Python alojados o jueces LLM en tu propio worker."
+icon: "gauge"
+---
+
+Una evaluación puntúa una sesión de agente finalizada. Cuando una sesión termina, todas las evaluaciones habilitadas que le aplican se ejecutan y registran lo que encontraron, con un razonamiento que puedes leer junto a la traza:
+
+- una **puntuación** de 0 a 1, opcionalmente marcada como aprobada o fallida
+- una **métrica**, como un conteo, una duración o un costo, con su unidad
+- una **aserción**, que aprobó o no
+
+## Dos tipos de evaluador
+
+| | Python alojado | Tu propio worker |
+| --- | --- | --- |
+| Se escribe | En el dashboard, bajo **Analyze → eval authoring** | En Python, con el [SDK de evaluadores](/es/reference/evaluator-sdk) |
+| Se ejecuta | En el evaluador gestionado de Failproof AI, en un sandbox | En tu infraestructura |
+| Ideal para | Checks deterministas basados en código | Jueces LLM, llamadas a modelos, paquetes, secretos, acceso a red, procesamiento pesado |
+
+El Python alojado es deliberadamente simple: una expresión, sin imports, sin red. Todo lo que necesite un modelo —un juez LLM que evalúe si una respuesta fue relevante, por ejemplo— se ejecuta en tu propio worker. Ninguno de los dos tipos necesita una conexión entrante: los workers toman las sesiones finalizadas y envían los resultados mediante HTTPS saliente.
+
+## Cada organización evalúa sus propios agentes
+
+Las evaluaciones pertenecen a la organización que las define. Cada organización en una instancia escribe las suyas propias —sus propios checks, condiciones, umbrales y etiquetas—, las versiona y despliega sin afectar a ninguna otra, y solo ve sus propios resultados. Filtra esos resultados por agente, entorno, evaluación y tiempo, o consúltale al asistente sobre ellos.
+
+## Del primer borrador a puntuaciones en producción
+
+<Steps>
+  <Step title="Escríbela">
+    Describe qué medir y deja que el asistente haga el borrador, o escríbela tú mismo. Ver [Escribir una evaluación](/es/evaluations/write).
+  </Step>
+  <Step title="Pruébala">
+    Ejecútala contra sesiones reales antes de publicarla; nada se almacena. Ver [Probar una evaluación](/es/evaluations/test).
+  </Step>
+  <Step title="Despliégala y versionala">
+    Despliega una versión inmutable, publica nuevas versiones a medida que evoluciona, y vuelve a una versión anterior si es necesario. Ver [Desplegar y versionar](/es/evaluations/deploy).
+  </Step>
+  <Step title="Lee los resultados">
+    Visualiza las puntuaciones a lo largo del tiempo, compara agentes y entornos, y consulta al asistente. Ver [Leer resultados de evaluaciones](/es/sessions/evaluations).
+  </Step>
+</Steps>
+
+Las evaluaciones avanzan hacia adelante: una versión desplegada ahora puntúa las sesiones que finalicen a partir de ese momento. Para puntuar sesiones que ya tienes, [rellena los datos anteriores](/es/evaluations/deploy#score-sessions-you-already-have).

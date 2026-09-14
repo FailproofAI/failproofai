@@ -4,60 +4,51 @@ description: "Quan sát, hướng dẫn hoặc chặn các hành động của a
 icon: "shield-check"
 ---
 
-Một chính sách đánh giá một sự kiện hook của agent và trả về một trong ba quyết định:
+Một chính sách đánh giá sự kiện hook của agent và trả về một trong ba quyết định:
 
 - `allow` cho phép hành động tiếp tục.
-- `instruct` cung cấp hướng dẫn sửa chữa cho agent.
-- `deny` chặn hành động với một lý do.
+- `instruct` cung cấp hướng dẫn sửa lỗi cho agent.
+- `deny` chặn hành động kèm theo lý do.
 
-## Sử dụng ba bề mặt chính sách
+## Chính sách nằm ở đâu
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. Chuyển đến **Observe → policy** để lọc và kiểm tra các quyết định chính sách từ các phiên.
-    2. Chuyển đến **Admin → policy editor** để soạn, xác thực, xuất bản, vô hiệu hóa hoặc kiểm tra các phiên bản bất biến.
-    3. Chuyển đến **Admin → enforcement** để gán các phiên bản và hiệu ứng cho các máy.
+| Trên bảng điều khiển | Những gì bạn làm ở đó |
+| --- | --- |
+| **Observe → policy** | Xem xét các quyết định từ các phiên làm việc thực tế: chính sách nào khớp, trên máy nào và tại sao |
+| **Admin → policy editor** | Viết một chính sách, kiểm tra ngược lại lưu lượng trước đó, xuất bản một phiên bản bất biến và so sánh các phiên bản trong **library** |
+| **Admin → enforcement** | Triển khai các phiên bản trên các máy, ở chế độ quan sát hoặc thực thi |
 
-    Sử dụng trang Policy để hiểu những gì đã khớp trước khi soạn thảo hoặc thay đổi thực thi.
+Trình soạn thảo chính sách là nơi một lỗi trở thành một quy tắc. Mô tả chế độ lỗi hoặc dán mã nguồn chính sách trong **compose**, kiểm tra ngược bản nháp với lưu lượng bạn đã có và xuất bản một phiên bản:
 
-    ![Trang Policy hiển thị tổng số quyết định và ánh xạ chính sách do cục bộ và Cloud quản lý.](/images/dashboard/policy-observe.png)
+![Chế độ soạn thảo của trình soạn thảo chính sách với danh tính chính sách, soạn thảo hỗ trợ bởi AI, xác thực mã nguồn và các điều khiển xuất bản.](/images/dashboard/policy-editor.png)
 
-    Trình soạn thảo là nơi bạn biến một điều kiện lỗi thành mã nguồn, xác thực nó và xuất bản một phiên bản bất biến.
+Trên một máy, `failproofai policies` liệt kê tất cả những gì được thực thi ở đó. `fp policies` và `fp fleet` bao quát trình soạn thảo và thực thi từ terminal — xem [Tham chiếu Cloud CLI](/vi/reference/cloud-cli).
 
-    ![Trình soạn thảo Policy được sử dụng để soạn và xuất bản một phiên bản chính sách bất biến.](/images/dashboard/policy-editor.png)
+## Lấy một chính sách
 
-    Enforcement sau đó gán phiên bản đã xuất bản đó và hiệu ứng quan sát hoặc thực thi của nó cho các máy.
-
-    ![Fleet thực thi hiển thị phạm vi máy và các phiên bản chính sách được gán.](/images/dashboard/enforcement-fleet.png)
-
-    Xác minh các quyết định trở lại trang Policy sau khi triển khai để các chế độ xem soạn thảo và fleet được liên kết với hoạt động agent thực tế.
-  </Tab>
-  <Tab title="CLI">
-    Sử dụng `failproofai` để cài đặt và xác thực chính sách cục bộ:
-
-    ```bash
-    failproofai policies
-    failproofai policy add block-rm-rf --scope project
-    failproofai config --status
-    ```
-
-    Sử dụng `fp` để tìm các phiên Cloud và sự kiện chứa các quyết định chính sách. Soạn thảo Cloud và triển khai fleet vẫn còn là quy trình công việc trên dashboard.
-  </Tab>
-</Tabs>
-
-Chính sách có ba bề mặt riêng biệt trong Failproof AI:
-
-1. **Phân tích các quyết định** trong các phiên, dashboard và kiểm toán.
-2. **Soạn các phiên bản** với các quy tắc tích hợp, mã hoặc trình soạn thảo chính sách.
-3. **Triển khai và thực thi** các phiên bản trên các máy được chọn.
-
-Bắt đầu từ một chế độ lỗi được xác nhận. Xác định sự kiện nhỏ nhất và sự khớp công cụ xác định nó, kiểm tra các ví dụ hợp pháp và không an toàn, sau đó quan sát trước khi thực thi.
+Có hai cách để lấy một chính sách.
 
 <Columns cols={2}>
-  <Card title="Sử dụng một chính sách tích hợp" icon="library" href="/vi/policies/builtin">
-    Kích hoạt một quy tắc đã được xem xét cho các rủi ro bí mật, shell, Git, cloud và quy trình công việc phổ biến.
+  <Card title="Viết một chính sách" icon="file-pen-line" href="/vi/policies/editor">
+    Để Failproof AI soạn thảo một chính sách từ kết quả kiểm toàn, hoặc viết mã nguồn của bạn, sau đó xem xét và xuất bản nó trong trình soạn thảo.
   </Card>
-  <Card title="Viết một chính sách tùy chỉnh" icon="code-2" href="/vi/policies/custom">
-    Biểu thị một quyết định dành riêng cho quy trình công việc bằng JavaScript hoặc TypeScript.
+  <Card title="Sử dụng một gói chính sách" icon="package" href="/vi/policies/packs">
+    Cắm vào một gói chính sách Failproof AI cho trường hợp sử dụng của bạn, hoặc một gói cộng đồng từ kho chính sách, chỉ với một lệnh.
   </Card>
 </Columns>
+
+## Sau đó triển khai nó
+
+<Steps>
+  <Step title="Kiểm tra nó">
+    Kiểm tra ngược bản nháp với lưu lượng bạn đã có, và chạy nó với một hành động nó phải chặn và một hành động nó phải cho phép — tất cả trước khi bạn xuất bản. Xem [Kiểm tra một chính sách](/vi/policies/test).
+  </Step>
+  <Step title="Triển khai nó">
+    Đặt phiên bản trên các máy ở chế độ **observe**, đọc các quyết định của nó, sau đó thực thi. Xem [Triển khai một chính sách](/vi/policies/deploy).
+  </Step>
+  <Step title="Phiên bản và hoàn nguyên">
+    Mỗi lần xuất bản là một phiên bản mới, bất biến, do đó một bản triển khai mà chặn công việc hợp lệ được hoàn nguyên bằng cách triển khai lại phiên bản tốt cuối cùng. Xem [Phiên bản và hoàn nguyên](/vi/policies/rollback).
+  </Step>
+</Steps>
+
+Để chia sẻ chính sách của bạn với các nhóm khác, [xuất bản chúng dưới dạng một gói](/vi/policies/publish-a-pack). Để biết điều gì xảy ra khi một chính sách không thể được đánh giá hoàn toàn, xem [Hành vi khi thất bại](/vi/policies/failure-behavior).

@@ -1,80 +1,83 @@
 ---
 title: "Intégrations et référence"
-description: "Connectez les harnais d'agents, SDK, CLI et l'API HTTP supportés."
+description: "Connectez les harnais d'agents, SDKs, CLIs et l'API HTTP pris en charge."
 icon: "braces"
 ---
 
-Choisissez l'intégration la plus proche de l'environnement où votre agent s'exécute déjà.
+Choisissez l'intégration la plus proche de l'environnement dans lequel votre agent s'exécute déjà.
 
 <Columns cols={2}>
   <Card title="Harnais d'agents" icon="plug-zap" href="/fr/reference/harnesses">
-    Installez des hooks pour les CLI d'agents de codage et autonomes supportés.
+    Installez des hooks pour les CLIs d'agents de codage et autonomes pris en charge.
   </Card>
-  <Card title="Frameworks et SDK d'agents" icon="plug" href="/fr/start/integrations">
+  <Card title="Frameworks d'agents et SDKs" icon="plug" href="/fr/start/integrations">
     Instrumentez LangGraph, CrewAI, LlamaIndex, Pydantic AI, ou un agent personnalisé.
   </Card>
   <Card title="Référence du SDK Python" icon="python" href="/fr/reference/custom-agents">
-    Configuration, le catalogue d'événements, les règles de corrélation et la livraison.
+    Configuration, catalogue d'événements, règles de corrélation et livraison.
   </Card>
   <Card title="Tableau de bord local" icon="monitor-cog" href="/fr/reference/local-dashboard">
-    Consultez les projets locaux, sessions, activités de politique et audits hors ligne.
+    Consultez les projets locaux, sessions, activité des politiques et audits hors ligne.
   </Card>
   <Card title="CLI Failproof AI" icon="terminal" href="/fr/reference/failproof-cli">
-    Configurez la capture locale, les hooks, les politiques, les audits, la livraison et l'état de la machine.
+    Configurez la capture locale, les hooks, les politiques, les audits, la livraison et l'état machine.
   </Card>
   <Card title="CLI Failproof Cloud" icon="cloud-cog" href="/fr/reference/cloud-cli#cli-commands">
     Interrogez et administrez les sessions, audits, problèmes, alertes, clés, utilisateurs et paramètres Cloud.
   </Card>
-  <Card title="SDK Évaluateur" icon="gauge" href="/fr/reference/evaluator-sdk">
-    Notez des sessions complètes ou inactives avec un service FastAPI.
+  <Card title="SDK Evaluator" icon="gauge" href="/fr/reference/evaluator-sdk">
+    Évaluez des sessions complètes ou inactives avec un service FastAPI.
   </Card>
   <Card title="Politiques personnalisées" icon="shield-plus" href="/fr/reference/policy-sdk">
-    Rédigez et testez des décisions allow, instruct et deny spécifiques à votre flux de travail.
+    Créez et testez des décisions allow, instruct et deny spécifiques à votre workflow.
   </Card>
   <Card title="Auto-hébergement" icon="cloud-cog" href="/fr/reference/self-hosting">
     Déployez le plan de contrôle Cloud sur un cluster Kubernetes géré par le client.
   </Card>
 </Columns>
 
-La [référence de l'API HTTP](/fr/reference/http-api) générée couvre la surface publique `/v1`. Des pages rédigées manuellement expliquent les flux de travail qui s'étendent sur plusieurs endpoints ou utilisent des interfaces d'administration en dehors de cette surface publique.
+La [référence de l'API HTTP](/fr/reference/http-api) générée couvre la surface publique `/v1`. Des pages rédigées manuellement expliquent les workflows qui s'étendent sur plusieurs endpoints ou utilisent des interfaces d'administration en dehors de cette surface publique.
 
 ## Connecter un agent et vérifier les données
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Ouvrez **Administration → Clés**, créez une clé avec `events:add` et `policies:pull`, et copiez le secret.
+    1. Ouvrez **Administration → Clés**, créez une clé avec `events:add` et `policies:pull`, puis copiez le secret.
     2. Configurez l'intégration en utilisant la page correspondante ci-dessus.
     3. Ouvrez **Observer → Événements** pour confirmer que les événements arrivent, puis **Observer → Sessions** pour confirmer qu'ils forment des exécutions complètes.
-    4. Filtrez selon l'environnement de l'intégration et inspectez une session pour vérifier les champs modèle, outil, erreur et politique nécessaires aux audits.
+    4. Filtrez selon l'environnement de l'intégration et inspectez une session pour vérifier les champs modèle, outil, erreur et politique requis par les audits.
 
-    Commencez par le panneau de clés. Les autorisations sélectionnées déterminent si la machine peut envoyer des événements et recevoir des politiques gérées par Cloud.
+    Commencez par le tiroir de clé. Les droits sélectionnés déterminent si la machine peut envoyer des événements et recevoir des politiques gérées par le Cloud.
 
-    ![Le panneau de création de clé API utilisé pour accorder les permissions d'ingestion d'événements et de livraison de politiques.](/images/dashboard/key-create.png)
+    ![Le tiroir de création de clé API utilisé pour accorder les permissions d'ingestion d'événements et de livraison de politiques.](/images/dashboard/key-create.png)
 
     Après avoir connecté l'intégration, utilisez la liste des sessions pour confirmer que ses événements sont regroupés en exécutions complètes dans l'environnement attendu.
 
-    ![La liste des sessions utilisée pour vérifier qu'une intégration nouvellement connectée signale des exécutions d'agents complètes.](/images/dashboard/sessions-list.png)
+    ![La liste des sessions utilisée pour vérifier qu'une intégration nouvellement connectée signale des exécutions d'agent complètes.](/images/dashboard/sessions-list.png)
 
     Ouvrez l'une de ces sessions avant de considérer l'intégration comme terminée ; la trace doit contenir le modèle, l'outil, l'erreur et les preuves de politique dont vos audits ont besoin.
   </Tab>
   <Tab title="CLI">
-    Créez une clé machine, connectez le démon Failproof et vérifiez la première session.
+    Créez une clé machine, puis lisez le secret qu'elle affiche dans le shell. `read -s` le capture via une invite qui n'affiche pas l'entrée, de sorte qu'il n'apparaît jamais dans une commande ni dans l'historique du shell :
 
     ```bash
     fp keys create agent-production \
       --add events:add \
       --add policies:pull
+    read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
+    ```
 
-    failproofai config \
-      --connect https://app.befailproof.ai \
-      --token <machine-key>
+    Connectez le démon Failproof et vérifiez la première session :
+
+    ```bash
+    failproofai config
 
     failproofai flush --wait
     fp sessions --since 1h --env production
     fp events --since 1h --env production --limit 20
     ```
 
-    Utilisez `fp --json sessions ...` lorsqu'un autre outil doit consommer le résultat. Les indicateurs globaux tels que `--json`, `--org` et `--base-url` doivent être placés avant la commande.
+    Utilisez `fp --json sessions ...` lorsqu'un autre outil doit consommer le résultat. Les drapeaux globaux tels que `--json`, `--org` et `--base-url` doivent être placés avant la commande.
 
     Consultez la [référence du CLI Failproof AI](/fr/reference/failproof-cli) pour les commandes locales et la [référence du CLI Failproof Cloud](/fr/reference/cloud-cli#cli-commands) pour les commandes `fp`.
   </Tab>

@@ -1,0 +1,44 @@
+---
+title: "Avaliar agentes"
+description: "Pontue cada sessão finalizada com avaliações que você define: verificações Python hospedadas ou juízes LLM no seu próprio worker."
+icon: "gauge"
+---
+
+Uma avaliação pontua uma sessão de agente finalizada. Quando uma sessão termina, todas as avaliações habilitadas que se aplicam a ela são executadas e registram o que encontraram, com o raciocínio que você pode ler ao lado do trace:
+
+- uma **pontuação** de 0 a 1, opcionalmente marcada como aprovada ou reprovada
+- uma **métrica**, como uma contagem, uma duração ou um custo, com sua unidade
+- uma **asserção**, que passou ou não
+
+## Dois tipos de avaliador
+
+| | Python Hospedado | Seu próprio worker |
+| --- | --- | --- |
+| Escrito | No dashboard, em **Analyze → eval authoring** | Em Python, com o [SDK de Avaliador](/pt-br/reference/evaluator-sdk) |
+| Executa | No avaliador gerenciado do Failproof AI, em um sandbox | Na sua infraestrutura |
+| Ideal para | Verificações determinísticas baseadas em código | Juízes LLM, chamadas de modelo, pacotes, segredos, acesso à rede, processamento pesado |
+
+O Python Hospedado é deliberadamente limitado: uma expressão, sem imports, sem rede. Qualquer coisa que precise de um modelo — um juiz LLM avaliando se uma resposta foi relevante, por exemplo — executa no seu próprio worker. Nenhum dos dois tipos precisa de uma conexão de entrada: os workers buscam sessões finalizadas e enviam resultados via HTTPS de saída.
+
+## Cada organização avalia seus próprios agentes
+
+As avaliações pertencem à organização que as define. Cada organização em uma instância escreve as suas próprias — com suas próprias verificações, condições, limites e rótulos — versionando e implantando-as sem afetar nenhuma outra, e visualizando apenas seus próprios resultados. Filtre esses resultados por agente, ambiente, avaliação e período, ou pergunte ao assistente sobre eles.
+
+## Do primeiro rascunho às pontuações ao vivo
+
+<Steps>
+  <Step title="Escreva">
+    Descreva o que medir e deixe o assistente criar um rascunho, ou escreva você mesmo. Veja [Escrever uma avaliação](/pt-br/evaluations/write).
+  </Step>
+  <Step title="Teste">
+    Execute contra sessões reais antes de entrar em produção; nada é armazenado. Veja [Testar uma avaliação](/pt-br/evaluations/test).
+  </Step>
+  <Step title="Implante e versione">
+    Implante uma versão imutável, publique novas versões conforme ela evolui e reverta para uma anterior quando necessário. Veja [Implantar e versionar](/pt-br/evaluations/deploy).
+  </Step>
+  <Step title="Leia os resultados">
+    Visualize pontuações ao longo do tempo, compare agentes e ambientes e consulte o assistente. Veja [Ler resultados de avaliações](/pt-br/sessions/evaluations).
+  </Step>
+</Steps>
+
+A execução de avaliações segue em frente: uma versão implantada agora pontua as sessões que forem finalizadas a partir deste momento. Para pontuar sessões que você já tem, [faça um backfill](/pt-br/evaluations/deploy#score-sessions-you-already-have).

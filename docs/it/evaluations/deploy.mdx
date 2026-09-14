@@ -1,0 +1,55 @@
+---
+title: "Distribuire e versionare una valutazione"
+description: "Distribuisci una versione immutabile, vedi cosa è in produzione, pubblica nuove versioni, ripristina versioni precedenti e valuta le sessioni già presenti."
+icon: "cloud-upload"
+---
+
+## Distribuiscila
+
+Seleziona **deploy `<key>@<version>`** in fondo alla pagina di authoring. La versione diventa immutabile una volta pubblicata: da quel momento in poi, ogni sessione che si conclude e alla quale si applica la condizione sarà valutata da essa.
+
+## Vedi cosa è in produzione
+
+**Analyze → eval authoring** elenca le definizioni ospitate della tua organizzazione, le valutazioni che l'evaluator gestito esegue per essa. Ogni riga mostra:
+
+- il nome, la chiave, la versione e il tipo di risultato
+- il checksum della fonte, che distingue le revisioni distribuite senza aprire il codice
+- se è **condizionale** o se eseguita su **tutte le sessioni completate** — la condizione è quello che limita una valutazione a particolari agent o ambienti
+- il timeout, le etichette e quando è stato modificato per ultimo
+
+![L'elenco delle definizioni ospitate: nome, chiave, versione, tipo di risultato, checksum, timeout e ambito di ciascuna valutazione, con opzione per nuova versione e abilitazione o disabilitazione.](/images/dashboard/eval-definitions.png)
+
+Cerca nell'elenco o filtralo per stato. Le valutazioni registrate dal tuo worker non sono elencate qui; i loro risultati portano un'etichetta **customer** nella [pagina delle valutazioni](/it/sessions/evaluations), e quelle ospitate portano **managed**.
+
+Un'organizzazione può avere fino a 100 valutazioni ospitate diverse abilitate contemporaneamente.
+
+## Pubblica una nuova versione
+
+Seleziona **new version** su una riga. La pagina di authoring si apre con il codice di quella versione; modificalo, testalo e distribuiscilo. La sua chiave e il tipo di risultato rimangono e non possono cambiare.
+
+Pubblicare un successore disabilita il predecessore e lo mantiene nell'elenco. I risultati mantengono la versione che li ha prodotti, così un grafico mostra esattamente quando la nuova logica ha preso il controllo.
+
+## Ripristina una versione precedente
+
+Seleziona **disable** sulla versione attuale e **enable** su quella che desideri ripristinare. Niente è eliminato e ogni risultato rimane come era.
+
+## Interrompi una valutazione
+
+Seleziona **disable**. Senza una versione abilitata, interrompe l'esecuzione nelle nuove sessioni. Per interrompere una valutazione eseguita dal tuo worker, smetti di registrarla: rimuovila dal worker o arresta il worker.
+
+## Valuta le sessioni già presenti
+
+La valutazione procede in avanti: una versione distribuita ora non valuterà mai una sessione che è terminata prima. Per valutare la cronologia, apri **score sessions you already have** nella pagina di authoring della valutazione, scegli un intervallo di tempo fino a 90 giorni e, opzionalmente, una singola valutazione, e conta prima di eseguire. Il conteggio è esattamente quello che verrà eseguito e ogni coppia sessione-valutazione in esso è una valutazione fatturabile.
+
+Riempie solo i vuoti. Una sessione che ha già un risultato per quella valutazione lo mantiene e l'esecuzione della stessa finestra due volte non valuta nulla di nuovo.
+
+Per valutare nuovamente una sessione — dopo una correzione, o per una sessione che non si è mai conclusa correttamente — seleziona **re-evaluate** sulla sua pagina. Il nuovo risultato viene aggiunto alla cronologia della sessione; i precedenti rimangono.
+
+## Autorizzazioni
+
+| Autorizzazione | Ti permette di |
+| --- | --- |
+| `evaluations:read` | Vedere i risultati e aprire la pagina di authoring della valutazione |
+| `evaluations:trigger` | Vedere, distribuire, versionare, abilitare e disabilitare definizioni ospitate; testarle; valutare la cronologia; rivalutare una sessione |
+| `events:read` | Testare contro sessioni reali e basare bozze sulle tue chiavi payload, oltre a `evaluations:trigger` |
+| `evaluations:run` | Eseguire il tuo worker valutatore personalizzato |

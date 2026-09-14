@@ -1,25 +1,25 @@
 ---
-title: "Online-Evaluierungen"
-description: "Bewerten Sie aktive und abgeschlossene Sitzungen nach Qualität, Compliance, Kosten und Latenz."
+title: "Evaluierungsergebnisse lesen"
+description: "Evaluierungspunkte im Zeitverlauf darstellen, Agenten und Umgebungen vergleichen, verstehen warum eine Sitzung niedrig bewertet wurde, und den Assistenten befragen."
 icon: "gauge"
 ---
 
-Online-Evaluierungen wenden konsistente Beurteilungen auf Agentensitzungen an. Verwenden Sie sie für Signale, die kontinuierlich gemessen werden sollten, anstatt nur bei einem Audit untersucht zu werden.
+Ergebnisse aus jeder Evaluierung – ob gehostet oder aus deinem eigenen Worker – landen an denselben Stellen.
 
-## Evaluierungsqualität überprüfen
+## Punkte im Zeitverlauf vergleichen
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehen Sie zu **Observe → Evaluations**.
-    2. Fügen Sie eine Datenreihe hinzu und wählen Sie den Agenten, die Umgebung, den Evaluierungswert, die Statistik und die Kurve.
-    3. Fügen Sie Datenreihen hinzu, um Umgebungen, Agenten oder Score-Schlüssel zu vergleichen.
-    4. Wählen Sie ein Ergebnis aus, um passende Sitzungen zu öffnen oder die gefilterte Ansicht zu teilen. Verwenden Sie **Observe → Metrics** für Latenz, Tokens, Kosten und andere Größenwerte.
+    Gehe zu **Observe → evaluations**.
 
-    ![Ein Qualitäts-Dashboard mit durchschnittlichen Evaluierungswerten und Trends über die Zeit.](/images/dashboard/dashboard-quality.png)
+    - **Recent runs** listet jede Evaluierung auf, sobald sie eingeht: ob sie von einem gehosteten (**managed**) oder deinem eigenen (**customer**) Evaluator stammt, den Agenten und die Sitzung, die Evaluierung und ihre Version, ihren Status sowie ihren Punktestand oder ihre Metriken.
+    - **Score over time** stellt das dar, was du auswählst. Wähle **add series** und gib einen Agenten, eine Umgebung, eine Evaluierung und eine Statistik an: avg, min, max, p50, p75, p90, p95, p99, stddev oder mode. Jede Reihe ist eine Linie; weise ihr eine eigene **curve** zu, um sie in einem separaten Diagramm darzustellen.
 
-    Öffnen Sie eine Sitzung aus der Detailansicht, um ihre sitzungsbezogene Begründung zu untersuchen:
+    ![Die Evaluierungsseite: kürzliche Ausführungen mit dem Tag „customer", ein Score-over-time-Diagramm mit Referenzlinien bei 0,5 und 0,8 sowie eine Reihe, die finished_clean über alle Agenten und Umgebungen mittelt.](/images/dashboard/evaluations-chart.png)
 
-    ![Eine Sitzungsdetailansicht mit Evaluierungswerten und Begründungen neben dem vollständigen Trace.](/images/dashboard/session-detail.png)
+    Ein Zeitbereich und eine Bucket-Größe gelten für alle Reihen. Ein feiner Bucket findet einen Vorfall; ein grober zeigt einen Trend, kann aber die gesuchten Ausreißer verbergen. Ein Bucket ohne Bewertungen erscheint als Lücke in der Linie – niemals als Null –, und Referenzlinien markieren 0,5 und 0,8.
+
+    Jeder Teil der Ansicht ist in der URL enthalten: **share** kopiert sie, und wer sie öffnet, sieht genau den Vergleich, den du erstellt hast.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -28,25 +28,29 @@ Online-Evaluierungen wenden konsistente Beurteilungen auf Agentensitzungen an. V
     fp evals --score helpfulness:0.8.. --since 7d
     ```
 
-    Fügen Sie globales `--json` vor `evals` für die Automatisierung hinzu, zum Beispiel `fp --json evals --aggregate --env production`.
+    Füge das globale `--json` vor `evals` hinzu, um die Ausgabe zu automatisieren, z. B. `fp --json evals --aggregate --env production`.
   </Tab>
 </Tabs>
 
-Ein Evaluator erhält die Sitzungsidentität, Umgebung, Zeitstempel und geordnete Ereignisse. Er kann numerische Score-Schlüssel mit optionaler Begründung und einer Zusammenfassung zurückgeben. Langläufige Evaluatoren können einen ausstehenden Job zurückgeben und später abgefragt werden.
+Stelle **avg** und **p90** für dieselbe Evaluierung dar, um zu sehen, ob ein guter Durchschnitt einen schlechten Ausreißerbereich verdeckt – oder dieselbe Evaluierung für zwei Agenten oder für Produktion und Staging, um sie auf einer Achse zu vergleichen. Kosten, Latenzen und Token-Anzahlen, die Einheiten tragen, werden unter **Observe → metrics** dargestellt, ein Diagramm pro Einheit.
 
-## Geeignete Evaluierungsziele
+## Verstehen, warum eine Sitzung niedrig bewertet wurde
 
-- Aufgabenerfüllung oder Korrektheit
-- Faktentreue und Halluzinationsrisiko
-- Tool-Auswahl und Tool-Effizienz
-- Richtlinien- oder Prozess-Compliance
-- Kosten- und Latenzbudgets
-- Erforderliche Eskalation an Menschen
+Öffne eine Sitzung unter **Observe → sessions**; das Raster zeigt die Punktestände jeder Sitzung und lässt sich nach Punktebereich filtern. Die rechte Leiste der Sitzung beginnt mit der Evaluierungszusammenfassung, gefolgt von einem Balken pro Punktestand mit der Begründung des Evaluators darunter.
 
-## Vom Score zur Reaktion
+![Eine Sitzungsdetailansicht mit Evaluierungspunkten und Begründungen neben dem vollständigen Trace.](/images/dashboard/session-detail.png)
 
-Zeigen Sie Scores in Dashboards an, um Trends zu verfolgen. Erstellen Sie Warnmeldungen für Schwellenwerte oder zusammengesetzte Bedingungen. Wenn ein Score über eine Population hinweg abnimmt, führen Sie ein Audit durch, um die Ursache zu untersuchen; wenn die Ursache eine wiederholbare Aktion ist, stellen Sie eine Richtlinie bereit.
+## Den Assistenten befragen
 
-<Card title="Einen Evaluator erstellen" icon="code-2" href="/de/reference/evaluator-sdk">
-  Implementieren Sie synchrone oder asynchrone Evaluierungen mit dem Python-Evaluator-SDK.
-</Card>
+Stelle Fragen zu Evaluierungsdaten auf normalem Englisch: „tell me about some of the recent evaluations" oder welche Agenten-Punktestände nachlassen. Der [Assistent](/de/sessions/assistant) liest und analysiert die Ergebnisse und antwortet mit Tabellen, auf die du weiter eingehen kannst. Eine Frage, die sich lohnt zu behalten, kann zu einer [Abfrage](/de/sessions/queries) oder einem [Dashboard](/de/sessions/dashboards) werden.
+
+![Die Evaluierungsseite neben dem Assistenten, der auf „tell me about some of the recent evaluations" mit einer Zusammenfassung von Gesamtzahlen, Status und Punkteständen antwortet.](/images/dashboard/evaluations-assistant.png)
+
+## Beobachten und handeln
+
+- **Dashboards** unter **Analyze → dashboards** zeigen die Entwicklung der hervorgehobenen Punktestände pro Agent und Umgebung für die gesamte Organisation.
+
+  ![Ein Qualitäts-Dashboard mit durchschnittlichen Evaluierungspunkten und Trends im Zeitverlauf.](/images/dashboard/dashboard-quality.png)
+
+- **Alerts** benachrichtigen dich, wenn ein Punktestand einen Schwellenwert überschreitet. Siehe [alerts](/de/audits/alerts).
+- Wenn ein Punktestand über viele Sitzungen hinweg sinkt, [führe ein Audit durch](/de/audits/run), um die Ursache zu finden; wenn diese auf einer wiederholbaren Aktion beruht, [schreibe eine Policy](/de/policies/editor).

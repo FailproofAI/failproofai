@@ -1,0 +1,29 @@
+---
+title: "Probar una evaluación"
+description: "Ejecuta una evaluación contra tus sesiones reales antes de desplegarla. Nada se almacena."
+icon: "flask-conical"
+---
+
+**Probar esta evaluación**, en la página de creación, ejecuta el código contra tus sesiones reales en la flota de evaluadores sin desplegarla. Nada se almacena: un fallo aquí es solo una vista previa, y desplegar siempre está permitido.
+
+<Steps>
+  <Step title="Verificar que compila">
+    Selecciona **verificar** para compilar el código y la condición contra las reglas del sandbox sin ejecutarlos en ninguna sesión.
+  </Step>
+  <Step title="Seleccionar sesiones">
+    Filtra las sesiones coincidentes por agente, entorno, tiempo o ID de sesión, y marca hasta 10. Incluye tanto sesiones en las que la evaluación debería fallar como otras en las que debería pasar.
+  </Step>
+  <Step title="Ejecutarla">
+    Selecciona **ejecutar contra N sesiones** y lee cada fila.
+  </Step>
+</Steps>
+
+| Fila | Qué significa |
+| --- | --- |
+| **ok** | Se ejecutó. La fila muestra cada puntuación, métrica y aserción que devolvió, y cuánto tardó. |
+| **omitida** | La condición devolvió `False`, por lo que la evaluación no se ejecutó. Eso es una omisión, no un fallo. |
+| Fallida | Se produjo una excepción, se agotó el tiempo de espera o se usó algo que el sandbox rechaza. La fila indica cuál fue el problema, y **Corregir** entrega el error al asistente cuando puede ayudar. |
+
+![El panel de prueba de evaluación: tres sesiones seleccionadas por agente, dos ok y una omitida porque su condición devolvió False.](/images/dashboard/eval-test.png)
+
+Un resultado deja de estar vigente en el momento en que editas el código; se atenúa en lugar de reutilizarse.

@@ -1,41 +1,75 @@
 ---
-title: "Geri Alma"
-description: "Bir dağıtım geçerli ajan çalışmasını aksattığında bilinen bir politika dağıtımını geri yükleyin."
+title: "Sürümler ve geri alma"
+description: "Her yayın değişmez bir sürümdür, bu nedenle geçerli agent çalışmasını kesintiye uğratan bir dağıtım, son iyi sürümün yeniden dağıtılmasıyla geri alınır."
 icon: "rotate-ccw"
 ---
 
-Geri alma, dağıtılan sürümü değiştirir veya bir politika atamasını kaldırır; olayı açıklayan karar geçmişini silmez.
+Yayınlanan bir policy sürümü asla değişmez. Bir policy düzenlemesi ve yeniden yayınlanması yeni bir sürüm oluşturur; zaten makinelerde olan sürümü asla yeniden yazmaz. İşte geri almanın güvenli olmasının nedeni: son iyi sürüm hala tam olarak orada duruyor ve geri alma, ne gitmişse ona dair karar geçmişini silmez.
 
-## Bir makineyi geri alın
+## Bir sürümü bulma
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Admin → enforcement** bölümüne gidin, etkilenen makineyi genişletin ve son bilinen iyi politika setini tanımlayın.
-    2. **edit** seçeneğini seçin, bu sürümleri ve etkileri geri yükleyin ve yeni dağıtımı uygulayın.
-    3. Makine check-in için bekleyin, ardından bildirilen dağıtımı doğrulayın.
-    4. **Observe → policy** bölümünü açın ve geçerli çalışmanın artık engellenmediğini doğrulamak için etkilenen oturumları kontrol edin.
-
+    **Admin → policy editor** sayfasına gidin ve bir policy'nin sürümlerini karşılaştırmak veya birini devre dışı bırakmak için **library** sayfasını açın.
   </Tab>
   <Tab title="CLI">
-    Cloud dağıtımı geri alma, bir dashboard iş akışıdır. Düzeltilmiş dağıtımın makineye ulaştığını doğrulamak için yerel durumu kullanın:
-
     ```bash
-    failproofai config --status
+    fp policies list                 # her policy sürümü
+    fp policies show <policy-id>     # bir sürüm, kaynak kodu ile birlikte
     ```
-
-    `failproofai config --pause` yerleşik, özel ve kural politikalarını bir yerel oturum için duraklatır. Cloud tarafından yönetilen politikaları duraklatmaz, bu nedenle kötü bir Cloud dağıtımı için bir geçici çözüm değildir.
   </Tab>
 </Tabs>
 
-## Geri almak ne zaman gerekli
+## Bir makineyi geri alma
 
-- Bir politika beklenen bir üretim işlemini engeller.
-- Eşleştirme hacmi, gözlenen dağıtımın öngördüğünden materyal olarak daha yüksek.
-- Bir politika, bir integrasyon tarafından sağlanmayan alanlara bağlıdır.
-- Yeni bir sürüm, amaçlanan hata modunun dışında davranışı değiştirir.
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Admin → enforcement** sayfasına gidin, etkilenen makineyi genişletin ve son bilinen iyi policy setini belirleyin.
+    2. **edit** sayfasını seçin, bu sürümleri ve etkileri geri yükleyin ve yeni dağıtımı uygulayın.
+    3. Makinenin check-in'i için bekleyin, sonra bildirilen dağıtımı doğrulayın.
+    4. **Observe → policy** sayfasını açın ve geçerli çalışmanın artık engellenmediğini onaylamak için etkilenen oturumları kontrol edin.
+  </Tab>
+  <Tab title="CLI">
+    Bir makineye yapılan her dağıtım numaralı bir generasyondur. Listeleyin, sonra birini geri yükleyin:
 
-Geri aldıktan sonra etkilenen oturumları açın ve yanlış pozitife neden olan koşulu tanımlayın. Yeni bir sürüm oluşturun, hem güvensiz hem de yasal durumları test edin, ardından gözlem aşamasını tekrarlayın.
+    ```bash
+    fp fleet history <machine-id>
+    fp fleet rollback <machine-id> <generation>
+    ```
+
+    `rollback` sayacı geri sarmak yerine eski seti taşıyan yeni bir generasyon oluşturur, bu nedenle geçmiş sadece eklenmeye devam eder ve devre dışı bırakılan veya silinen bir policy'yi adlandıran generasyonu reddeder. `policies:write` izni olan oturum açmış bir oturuma ihtiyaç duyar. `fp fleet diff <machine-id>` makine uygulanırken amaçlanan şeyi gösterir — makine bir sonraki kez anket yapana kadar `behind` olarak okunur — ve makinenin kendisinde `failproofai policies` çalıştırılan dağıtımı listeler.
+  </Tab>
+</Tabs>
+
+## Bir policy'yi her makineden çıkarma
+
+```bash
+fp policies disable <policy-id>    # bunu taşıyan her dağıtımdan kaldır
+fp policies enable <policy-id>     # geri ekle
+```
+
+Her biri etkilediği her dağıtımda yeni bir generasyon oluşturur. Bu generasyonlardan birini geri almak, bir `disable` işlemini geri almanın yolu değildir — `rollback` devre dışı bırakılan bir policy'yi adlandıran generasyonu reddeder ve disable işleminden önceki her generasyon bu policy'yi adlandırır. `fp policies enable` geri dönüş yoludur ve sırasıyla kendi generasyonunu oluşturur.
+
+## Bir pack'i geri alma
+
+Bir pack yüklendiğiniz sürüme sabitlenmiştir, bu nedenle geri almak daha önceki bir sürümü yüklemek anlamına gelir:
+
+```bash
+failproofai policies show FailproofAI/policies --releases   # yayınladığı her sürüm ve burada hangisi olduğu
+failproofai policies add FailproofAI/policies@a1b2c3d4e5f6   # o sürümü sabitlenmiş şekilde kullan
+```
+
+Terminal olmadan veya `--policy`, `--category` veya `--all` ile, yeniden ekleme seçtiğiniz alt kümeyi tutar. Terminal ile hiçbiri olmadan, seçici yazarın varsayılanları ile önceden işaretli olarak açılır ve işaretledikleriniz seçiminizi değiştirir — bu nedenle sahip olduğunuz şeyleri yeniden işaretleyin.
+
+## Ne zaman geri alınır?
+
+- Bir policy beklenen bir üretim eylemini engeller.
+- Uyuşturma hacmi gözlenen dağıtımın tahmin ettiğinden önemli ölçüde daha yüksektir.
+- Bir policy, entegrasyonun sağlamadığı alanlara bağlıdır.
+- Yeni bir sürüm amaçlanan hata modunun dışında davranışı değiştirir.
+
+Geri aldıktan sonra, etkilenen oturumları açın ve yanlış pozitifin arkasındaki koşulu bulun. Yeni bir sürüm yayınlayın, [test](/tr/policies/test) hem güvenli olmayan hem de meşru durumu test edin ve zorunlu kılmadan önce tekrar gözlemleyin.
 
 <Warning>
-  Uygulamayı duraklatmak bir olay sırasında uygun olabilir, ancak bu kapsam içindeki her etkin politika için açığı genişletir. Mümkün olduğunda belirli politika sürümünü geri almayı tercih edin.
+  `failproofai config --pause` yerel policies'i bir oturum için askıya alır ve asla Cloud tarafından yönetilenleri askıya almaz, bu nedenle kötü bir Cloud dağıtımından çıkış yolu değildir. Durdurma ayrıca kapsamındaki her policy için maruziyeti genişletir; yanlış davranan tek sürümü geri almayı tercih edin.
 </Warning>

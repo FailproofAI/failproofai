@@ -1,86 +1,104 @@
 ---
 title: "Failproof AI CLI"
-description: "התקן hooks, נהל מדיניות מקומית, חבר ל-Cloud, והפעל את ה-daemon המקומי."
+description: "התקן hooks, נהל מדיניות מקומית, התחבר ל-Cloud והפעל את ה-daemon המקומי."
 icon: "terminal"
 ---
 
-התקן את ה-CLI המקומי עם `npm install -g failproofai`. הרץ אותו ללא ארגומנטים כדי לפתוח את לוח הבקרה של המדיניות המקומית.
+התקן את ה-CLI המקומי עם `npm install -g failproofai`. הפעל אותו ללא ארגומנטים כדי לפתוח את לוח הבקרה של המדיניות המקומית.
 
-החבילה דורשת Node.js 20.9 ואילך. Bun 1.3 ואילך נתמך לפיתוח והתקנות מקוד. `failproofai configure` ו-`failproofai setup` הם כינויים ל-`failproofai config`; `failproofai p` הוא כינוי ל-`failproofai policies`.
+החבילה דורשת Node.js 20.9 ובאופן חדש יותר. Bun 1.3 ובאופן חדש יותר נתמך לפיתוח והתקנות מקור. `failproofai configure` ו-`failproofai setup` הם כינויים ל-`failproofai config`. `failproofai policy`, `failproofai pack` ו-`failproofai p` הם כל הכתיבות של `failproofai policies` — packs ומדיניות בודדות היו שלוש פקודות לרעיון אחד והן כעת אחת. הכתיבות הישנות עדיין עובדות, עם שתי חריגויות: `pack list <source>` הוא כעת `policies show <source>`, ו-`pack build` הוא כעת `publish`.
 
-## הגדרת מכונה
+## הגדר מכונה
+
+התקן את ה-CLI, ואז קרא את מפתח המכונה לתוך ה-shell. `read -s` לוקח אותו בהנמקה שלא משתקפת, כך שהוא לא מופיע בפקודה:
 
 ```bash
 npm install -g failproofai
-failproofai config \
-  --connect https://app.befailproof.ai \
-  --token <machine-key> \
-  --machine-label checkout-prod-01
-failproofai policies --install
+read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
+```
+
+אז הגדר את המכונה בחר מה היא אוכפת:
+
+```bash
+failproofai config
+failproofai policies add FailproofAI/policies
 failproofai config --status
 ```
 
-הרץ את `failproofai` ללא ארגומנטים כדי לפתוח את לוח הבקרה של המדיניות המקומית.
+`failproofai config` הוא כל ההגדרה: הוא מתקין את שירות `failproofaid` (root פעם אחת, דרך `sudo -n` — לא לעולם הנחיית סיסמה אינטראקטיבית), חיווט hooks לכל agent CLI שהוא מוצא, והתחברות ל-Cloud כשמפתח זמין. ללא טרמינל — CI, קונטיינר, agent המנהל אותו — הוא מיישם במקום לשאול, ויוצא 1 אם משהו שהוא התבקש לעשות לא קרה.
+
+הוא בוחר **לא** מדיניות. זו עבודת הפקודה השנייה, וללא זה מכונה שנוצרה זה עתה אוכפת שום דבר פרט לשומר שתמיד פועל.
+
+עדיף להשתמש במשתנה הסביבה על פני `--token`: ארגומנט שורת פקודה קריא מ-`ps` על ידי כל משתמש בתיבה. זה כל מה שהמשתנה מגן עליו — מפתח שהוקלד לכל פקודה, כולל `export`, עדיין נוחת בהיסטוריית shell, וזו הסיבה שהוא קרא עם `read -s` למעלה. ב-CI, הגדר זאת מחנות הסודות והשאר עקיבה shell (`set -x`) כבויה, או העקיבה מדפיסה אותה.
+
+<Warning>
+  `--connect <url>` רושם מכונה שהוא **כבר הוגדר**. זה חוזר ברגע שההרשמה מצליחה — זה לא מתקין את ה-daemon וזה לא חיווט כל hooks. השתמש בפשוט `failproofai config` (או `failproofai config --token <key>`) על מכונה שלא הוגדרה עדיין, או זה יקרא כמחובר תוך איסוף והטלה של שום דבר.
+</Warning>
+
+הפעל את `failproofai` ללא ארגומנטים כדי לפתוח את לוח הבקרה של המדיניות המקומית.
 
 | פקודה | תוצאה |
 | --- | --- |
-| `failproofai config` | הרץ הגדרת מכונה אינטראקטיבית |
-| `failproofai config --connect <url> --token <key>` | חבר הזרמת Cloud והעברת מדיניות |
-| `failproofai config --status` | הצג מצב חיבור, daemon, העברה וקבוע השהייה |
-| `failproofai policies` | רשום מדיניות מובנות, מותאמות אישית, קונוונציה, חבילה וממנוהלות על-ידי Cloud |
-| `failproofai policies --install` | התקן hooks והפעל מדיניות |
-| `failproofai policy add <name>` | הפעל מדיניות אחת — מובנית, או `<pack-id>:<name>` מחבילה מותקנת |
-| `failproofai policy remove <name>` | השבת מדיניות אחת, אותה שמות |
-| `failproofai policies --uninstall` | השבת מדיניות או הסר hooks של ה-harness |
-| `failproofai pack list` | רשום חבילות מדיניות מותקנות וכל מדיניות שכל אחת נושאת |
-| `failproofai pack add <source>` | התקן חבילת מדיניות מ-GitHub release; ללא tag לוקח את החדשה ביותר וקובע אותה |
-| `failproofai pack add --bundled` | התקן את המדיניות המובנות כחבילה, מהחבילה זו, ללא רשת |
-| `failproofai pack build <entry.mjs>` | בנה את שלושת נכסי ה-release לחבילה שלך |
-| `failproofai pack remove <publisher/name>` | בטל הפעלה של חבילה מותקנת |
-| `failproofai audit` | סרוק היסטוריית סוכנים מקומית ופתח את תצוגת הביקורת המקומית |
-| `failproofai audit --schedule [days] --email <address>` | תזמן סריקות מקומיות חוזרות ושלח את הממצאים שלהן בדוא״ל |
-| `failproofai audit --status` | הצג את כתובת הדוח, המרווח והסריקה הבאה המתוזמנת |
+| `failproofai config` | הגדר את המכונה: agents, daemon, ו-Cloud כשמפתח נוכח |
+| `failproofai config --token <key>` | הגדר והתחבר בפעם אחת, ללא שאלה |
+| `failproofai config --connect <url>` | רשום מכונה שהיא **כבר** הוגדרה — לא daemon, לא hooks |
+| `failproofai config --status` | הצג חיבור, daemon, משלוח, והשהיה של מדינה |
+| `failproofai policies` | רשום מדיניות מובנית, מותאמת אישית, קונבנציה, pack, ו-Cloud |
+| `failproofai policies --install` | חיווט hooks לתוך agent CLIs שלך. לא מאפשר מדיניות בעצמו |
+| `failproofai policies add <name>` | אפשר מדיניות אחת — מובנית, או `<pack-id>:<name>` מ-pack מותקן |
+| `failproofai policies remove <name>` | השבת מדיניות אחת, אותו שם |
+| `failproofai policies --uninstall` | השבת מדיניות או הסר hook hooks harness |
+| `failproofai policies show <owner>/<repo>` | מה pack נושא, קרא מהמניפסט שלו, לפני שתיקח אותו |
+| `failproofai policies show <owner>/<repo> --releases` | כל גרסה שפרסמה, וזה איזה אחד כאן |
+| `failproofai policies add <source>` | התקן pack מדיניות מ-GitHub release; ללא תג לוקח את החדש ביותר וקובע אותו |
+| `failproofai publish` | שלח את המדיניות שלך כ-pack; `--init` כותב אחד להתחיל ממנו |
+| `failproofai policies remove <publisher/name>` | הסר התקנה של pack |
+| `failproofai audit` | סרוק היסטוריית agent מקומית ופתח את התצוגה ביקורת מקומית |
+| `failproofai audit --schedule [days] --email <address>` | תזמן סריקות מקומיות חוזרות ודברים את הממצאים שלהם |
+| `failproofai audit --status` | הצג את כתובת הדוח, את המרווח, וסריקה מתוזמנת הבאה |
 | `failproofai audit --no-schedule` | עצור סריקות חוזרות ללא מחיקת היסטוריית ביקורת |
-| `failproofai harness list` | רשום נתיבי לכידה נוספים |
-| `failproofai flush --wait` | העבר את ה-spool של האירוע הנוכחי |
+| `failproofai harness list` | רשום נתיבים של לכידה נוספים |
+| `failproofai flush --wait` | משלוח ספול האירוע הנוכחי |
 | `failproofai backfill --since 30d` | קרא מחדש היסטוריה שעברה בעבר |
-| `failproofai config --pause [duration]` | השהה ישומון מקומי אחד ל-30 דקות כברירת מחדל, עד 8 שעות |
-| `failproofai config --resume` | התחזר לישומון מקומי המושהה; הוסף `--all` כדי לנקות את כל ההשהיות |
-| `failproofai update` | סיים הידרות חבילה והדק את ה-daemon |
-| `failproofai migrate --dry-run` | תצוג או הפעל הידרות פריסת ביתיות ממתינות |
-| `failproofai uninstall` | הסר hooks וה-daemon לפני הסרת החבילה |
-| `failproofai --version` | הדפס את גרסת החבילה המותקנת |
+| `failproofai config --pause [duration]` | השהה הפעלה מקומית אחת במשך 30 דקות כברירת מחדל, עד 8 שעות |
+| `failproofai config --resume` | חידוש הפעלה מקומית מושהית אחת; הוסף `--all` כדי לנקות את כל ההשהיות |
+| `failproofai update` | סיים הגדרות חבילה והעדכן את ה-daemon |
+| `failproofai migrate --dry-run` | תצוגה מקדימה או הפעלת הגדרות בית הנדירות |
+| `failproofai uninstall` | הסר hooks ו-daemon לפני הסרת החבילה |
+| `failproofai --version` | הדפס גרסה חבילה מותקנת |
 | `failproofai --help` | הצג פקודות ושימוש גלובלי |
 
 ## דגלי תצורה
 
 | דגל | שימוש |
 | --- | --- |
-| `--connect <url> --token <key>` | חבר בלא אינטראקטיבי |
+| `--token <key>` | הגדר והתחבר ללא אינטראקטיבי; קראו גם מ-`FAILPROOFAI_CLOUD_TOKEN` |
+| `--url <url>` | התחבר למקום אחר מאשר `app.befailproof.ai`; קראו גם מ-`FAILPROOFAI_CLOUD_URL` |
+| `--connect <url>` | רשום בלבד, על מכונה כבר הוגדרה. דלג על ה-daemon וכל hook |
 | `--machine-id <id>` | הגדר את מזהה המכונה היציב |
-| `--machine-label <name>` | הגדר או שנה את תווית לוח הבקרה |
+| `--machine-label <name>` | שנה שם של מכונה שהיא **כבר מחוברת**. בעצמו זה לא מריץ הגדרה, כךשתן אותו אחרי `failproofai config`, לא במהלכו |
 | `--no-transcripts` | שלח החלטות ללא תוכן תמלול |
-| `--disconnect` | עצור משיכות מדיניות Cloud והעברת אירוע |
+| `--disconnect` | עצור משיכות מדיניות Cloud ומשלוח אירוע |
 | `--status` | הצג מצב מכונה נוכחי |
-| `--pause [duration]` | השהה את הישומון החדש ביותר בספריה הנוכחית; מקבל שניות, דקות או שעות וברירת המחדל היא 30 דקות |
-| `--resume` | סיים השהיה תואמת מוקדם |
-| `--session <id>` | כוונן ישומון מפורש להשהיה או חזרה |
+| `--pause [duration]` | השהה את הפעלה החדשה ביותר בספריה הנוכחית; קובל שניות, דקות, או שעות ברירת מחדל ל-30 דקות |
+| `--resume` | סיים השהיה משובטת מוקדם |
+| `--session <id>` | היעד הפעלה מפורשת להשהיה או חידוש |
 | `--all` | עם `--resume`, סיים כל השהיה פעילה |
 
-השהיות מקומיות משהות מדיניות מובנית, מותאמת אישית, קונוונציה וחבילה לישומון אחד. הם תמיד פוקעים ולא משביתים מדיניות ממנוהלות על-ידי Cloud. `block-failproofai-commands` — שהוא תמיד פעיל ולא ניתן להשבית או להשהות בעצמו — מונע מסוכן מכוונן לשימוש בדלת בריחה זו.
+השהיות מקומיות מחליקים מדיניות מובנית, מותאמת אישית, קונבנציה, ו-pack לפעלה אחת. הם תמיד פוקעים וזה לא משבית מדיניות Cloud. `block-failproofai-commands` — שהוא תמיד פועל ולא יכול להיות מושבת או מושהית — מונע agent מכשיר מ שימוש בדלק זה בעצמו.
 
 ## דגלי מדיניות
 
 | דגל | שימוש |
 | --- | --- |
-| `--install`, `-i` | הפעל מדיניות והתקן hooks של harness |
+| `--install`, `-i` | התקן hook harness. שמות אחריו מאפשרים את המדיניות הללו; ללא אחריו, לא שינויי מדיניות |
 | `--uninstall`, `-u` | השבת מדיניות או הסר hooks |
-| `--cli <names...>` | כוונן harness אחד או יותר הנתמכים |
-| `--scope user\|project\|local\|all` | בחר את טווח התצורה; `all` לביטול התקנה |
+| `--cli <names...>` | היעד מכשירים נתמכים אחד או יותר |
+| `--scope user\|project\|local\|all` | בחר טווח התצורה; `all` להסרה |
 | `--beta` | כלול מדיניות בטא |
-| `--custom`, `-c <path>` | אמת וטען קובץ מדיניות מותאם אישית; חוזרת |
+| `--custom`, `-c <path>` | אמת וטען קובץ מדיניות מותאם אישית; חוזר |
 
-## דגלי העברה ותחזוקה
+## משלוח וצמודים תחזוקה
 
 | פקודה | דגלים |
 | --- | --- |
@@ -90,7 +108,7 @@ failproofai config --status
 | `migrate` | `--dry-run` |
 | `uninstall` | `--purge`, `--dry-run`, `--yes` |
 
-יש להריץ את `failproofai update` לאחר `npm install -g failproofai@latest`; הוא מבצע הידרות פריסת ביתיות, מתקין את בינארי ה-daemon התואם, ומפעיל מחדש את השירות. `--no-daemon` מבצע רק את הידרת הפריסה.
+`failproofai update` צריך להיות מופעל אחרי `npm install -g failproofai@latest`; זה מבצע הגדרות בית וסיגים, מתקין את ה-daemon בינארי התואם, ומפעיל מחדש את השירות. `--no-daemon` מבצע רק את הגדרת הנתח.
 
 ## נתיבי Harness
 
@@ -100,38 +118,40 @@ failproofai harness add-path <harness> [label=]<path>
 failproofai harness remove-path <harness> <path-or-label>
 ```
 
-שמות harness הנתמכים הם `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity` ו-`goose`.
+שמות harness נתמכים הם `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity`, ו-`goose`.
 
-תוויות מרחב שמות מזהי סוכנים נגזרים כאשר שני roots מכילים עותקים של אותו פרויקט. roots חופפים וכינויים כפולים נדחים כדי למנוע אוספים כפולים או הישחתות cursor. תצורה של נתיבים נוספים טוענת מחדש ללא הפעלה מחדש של daemon.
+תוויות מרחב שמות agent ID נגזר כאשר שני שורשים מכילים עותקים של אותו פרויקט. שורשים חופפים וערכות כינויים כפולות נדחים כדי להתחמק מאיסוף כפול או קולקציה פעכרסור. תצורת נתיב נוסף טוענת מחדש ללא הפעלה מחדש של daemon.
 
-סביבות קונטיינר יכולות להחליף נתיבים קבועים בקובץ בעזרת משתנה מופרד בפסיקים בשם `FAILPROOFAI_<HARNESS>_EXTRA_PATHS`, למשל:
+סביבות קונטיינר יכולות להחליף נתיבים מוגדרים בקבצים בעזרת משתנה המופרד בפסיקים בשם `FAILPROOFAI_<HARNESS>_EXTRA_PATHS`, לדוגמה:
 
 ```bash
 export FAILPROOFAI_OPENCLAW_EXTRA_PATHS="user1=/srv/openclaw-a,user2=/srv/openclaw-b"
 ```
 
-## משתנים סביבתיים
+## משתני סביבה
 
-השתמש בקובצי תצורה לתנהגות מכונה קבועה. משתנים סביבתיים שימושיים ביותר לקונטיינרים, בדיקות וכתיב אחד.
+השתמש בקבצי תצורה להתנהגות מכונה קבועה. משתני סביבה הם שימושיים ביותר לקונטיינרים, בדיקות, תהליך אחד.
 
 | משתנה | שימוש |
 | --- | --- |
-| `FAILPROOFAI_HOME` | עביר את הפריסה השלמה של `~/.failproofai` |
-| `FAILPROOFAI_LOG_LEVEL` | הגדר מילולות רישום מקומיות |
-| `FAILPROOFAI_HOOK_LOG_FILE` | כתוב אבחון hook לקובץ שנבחר |
+| `FAILPROOFAI_CLOUD_TOKEN` | המפתח Cloud, במקום `--token`. עדיף זה: ארגומנט קריא מ-`ps` על ידי כל משתמש. הגדר אותו עם `read -s` או מחנות סוד CI, לעולם לא על ידי הקלדת המפתח לפקודה, אשר נוחתת בהיסטוריית shell בכל מקרה |
+| `FAILPROOFAI_CLOUD_URL` | Cloud URL, במקום `--url`. אותו משתנה ש-daemon קורא |
+| `FAILPROOFAI_HOME` | איכלס את הפריסה `~/.failproofai` הושלמה |
+| `FAILPROOFAI_LOG_LEVEL` | הגדר מילולוביות רישום מקומי |
+| `FAILPROOFAI_HOOK_LOG_FILE` | כתוב diagnostics hook לקובץ שנבחר |
 | `FAILPROOFAI_TELEMETRY_DISABLED=1` | השבת טלמטריה אנונימית לתהליך זה |
-| `FAILPROOFAI_NO_FIRST_RUN=1` | דלג על הגדרת ההפעלה הראשונה האינטראקטיבית |
-| `FAILPROOFAI_NO_AUTO_AUDIT=1` | דלג על הביקורת המקומית לאחר ההגדרה |
-| `FAILPROOFAI_LLM_BASE_URL` | דרוס את נקודת הקצה התואמת OpenAI המשמשת מדיניות LLM |
-| `FAILPROOFAI_LLM_API_KEY` | סך את מפתח ה-API המשמש מדיניות LLM |
-| `FAILPROOFAI_LLM_MODEL` | בחר את המודל המשמש מדיניות LLM |
-| `FAILPROOFAI_POLICY_LOAD_TIMEOUT_MS` | חץ טעינת מודול מדיניות מותאם אישית |
-| `FAILPROOFAI_NO_DOWNLOAD=1` | סרב להביא חבילות וביניאריות daemon; מה שמותקן שומר על אכיפה |
-| `FAILPROOFAI_PACK_BASE_URL` | הביא חבילות ממראה במקום מ-`github.com` |
-| `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` | החלף נתיבי לכידה נוספים מוגדרים לharness אחד |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | דלג על הגדרת הפעלה ראשונה אינטראקטיבית |
+| `FAILPROOFAI_NO_AUTO_AUDIT=1` | דלג על ביקורת מקומית לאחר הגדרה |
+| `FAILPROOFAI_LLM_BASE_URL` | לעקוף את endpoint התואם OpenAI המשמש במדיניות LLM |
+| `FAILPROOFAI_LLM_API_KEY` | סחן את מפתח API המשמש במדיניות LLM |
+| `FAILPROOFAI_LLM_MODEL` | בחר את המודל המשמש במדיניות LLM |
+| `FAILPROOFAI_POLICY_LOAD_TIMEOUT_MS` | חוק קובץ מדיניות מותאם אישית טעינת מודול |
+| `FAILPROOFAI_NO_DOWNLOAD=1` | סרב להביא packs ודק binaries; מה התקן שומר אכיפה |
+| `FAILPROOFAI_PACK_BASE_URL` | הביא packs מראי במקום `github.com` |
+| `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` | החלף נתיבי לכידה נוסף מוגדרים לאחד harness |
 | `NO_COLOR` | השבת פלט טרמינל צבעוני |
 
-משתנים בית ספציפיים לסוכן כגון `CLAUDE_PROJECTS_PATH`, `CURSOR_HOME`, `HERMES_HOME` ו-`OPENCLAW_HOME` דורסים היכן Failproof AI גילוי ישומונים מקומיים לחרט זה.
+משתני בית ספציפיים agent כגון `CLAUDE_PROJECTS_PATH`, `CURSOR_HOME`, `HERMES_HOME`, ו-`OPENCLAW_HOME` לעקוף איפה Failproof AI גולש הפעלות מקומיות ל-harness זה.
 
 ## השהה או הסר מכונה בבטחה
 
@@ -141,9 +161,9 @@ failproofai config --status
 failproofai config --resume
 ```
 
-השהיית ישומון מקומי אינה משביתה מדיניות ממנוהלות על-ידי Cloud. שחזר פריסות Cloud דרך זרימת העבודה של אכיפה Cloud כאשר ה-rollout עצמו הוא הבעיה.
+השהיה הפעלה מקומית אינה משביתה מדיניות Cloud. שחזר פרסומי Cloud דרך זרימת עבודת Cloud כאשר ההטלה עצמה היא הבעיה.
 
-לפני הסרת חבילת npm, הסר hooks מותקנים וה-daemon:
+לפני הסרת חבילת npm, הסר hooks מותקנים ו-daemon:
 
 ```bash
 failproofai uninstall --dry-run
@@ -151,8 +171,8 @@ failproofai uninstall --yes
 npm rm -g failproofai
 ```
 
-הרץ את `failproofai <command> --help` לפרטים ספציפיים לגרסה.
+הפעל את `failproofai <command> --help` לפרטים ספציפיים לגרסה.
 
 <Warning>
-  הרץ את `failproofai uninstall` לפני `npm rm -g failproofai`; npm אינו מסיר hooks של סוכנים מותקנים או שירות daemon.
+  הפעל את `failproofai uninstall` לפני `npm rm -g failproofai`; npm לא מסיר hook agent מותקנים או שירות daemon.
 </Warning>

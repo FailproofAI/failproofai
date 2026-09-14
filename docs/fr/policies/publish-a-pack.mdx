@@ -1,14 +1,22 @@
 ---
-title: "Publier un pack"
+title: "Publier un pack de politiques"
 description: "Distribuez vos propres politiques sous forme de release GitHub que n'importe qui peut installer."
 icon: "upload"
 ---
 
-Un pack se compose de trois fichiers joints à une release GitHub. `failproofai pack build` génère ces trois fichiers à partir d'un fichier de politiques existant.
+Un pack est composé de trois fichiers attachés à une release GitHub. `failproofai publish` génère ces trois fichiers à partir des fichiers de politiques qui lui sont fournis, crée la release et les téléverse.
 
 ## 1. Écrire les politiques
 
-Un seul fichier, utilisant la même API que n'importe quelle politique personnalisée. Deux champs supplémentaires sont importants pour un pack :
+Partez de quelque chose qui fonctionne déjà plutôt que d'un modèle vide :
+
+```bash
+failproofai publish --init
+```
+
+Cette commande demande le nom du pack, crée `<name>.mjs` et s'arrête — pas de réseau, pas de git, rien n'est publié. Le fichier généré contient une politique qui bloque déjà `git push --force`. Il refuse d'écraser un fichier existant.
+
+Les politiques utilisent la même API que toute politique personnalisée. Deux champs supplémentaires sont importants pour un pack :
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -17,7 +25,7 @@ customPolicies.add({
   name: "block-refunds",
   description: "Refunds above the approved limit need a human",
   category: "Billing",        // groups it, and is what --category selects on
-  defaultEnabled: true,       // switched on by a plain `pack add`
+  defaultEnabled: true,       // switched on by a plain `policies add`
   match: { events: ["PreToolUse"], tools: ["Bash"] },
   fn: async (ctx) =>
     String(ctx.toolInput?.command ?? "").includes("refund")
@@ -26,66 +34,95 @@ customPolicies.add({
 });
 ```
 
-`defaultEnabled` vaut **false** par défaut si vous l'omettez. Un simple `failproofai pack add` n'active que ce que vous avez marqué — activer silencieusement toutes les politiques d'un inconnu est une décision que l'installateur ne devrait pas prendre à la place de l'utilisateur.
+`defaultEnabled` vaut **false** par défaut si vous l'omettez. Un simple `failproofai policies add` n'active que ce que vous avez marqué — installer en masse toutes les politiques d'un inconnu sans supervision n'est pas une décision que l'installateur devrait prendre à la place de l'utilisateur.
+
+Créez autant de fichiers que vous le souhaitez ; un fichier par catégorie est lisible. Chaque fichier du répertoire qui enregistre des politiques est intégré dans l'artefact unique que doit constituer un pack.
 
 <Warning>
-L'entrée doit être **un fichier unique et autonome**. Seule l'entrée est épinglée par son condensé, donc un pack qui importe des fichiers locaux ne pourrait pas honnêtement prétendre que le condensé couvre ce qui s'exécute. Regroupez d'abord vos sources (`esbuild`, `bun build`, `rollup`) et construisez le pack à partir du bundle — `pack build` refuse une importation locale plutôt que de livrer une promesse qu'il ne peut pas tenir.
+  Le bundling nécessite **bun**. Sans lui, limitez-vous à un seul fichier autonome. Dans tous les cas, l'entrée publiée ne doit pas importer de fichiers locaux au moment de l'installation : seule l'entrée est épinglée par son empreinte, donc un pack qui accède à des fichiers adjacents ne peut pas honnêtement affirmer que l'empreinte couvre ce qui s'exécute — et `publish` refuse de le distribuer plutôt que de tenir une promesse qu'il ne peut pas tenir.
 </Warning>
 
-## 2. Construire les fichiers de release
+## 2. Testez-le d'abord localement
+
+Avant que quiconque puisse le voir, appliquez le fichier sur cette machine :
 
 ```bash
-failproofai pack build ./policies.mjs \
-  --id acme/support-agent \
-  --version 1.0.0 \
-  --out ./dist-pack
+failproofai policies -i -c ./<name>.mjs
 ```
 
-Cette commande génère trois fichiers et valide chaque politique avec les **règles propres au chargeur** en premier — ainsi, un pack qui ne pourrait jamais s'installer échoue ici, là où vous pouvez corriger le problème :
+N'importe quel chemin, n'importe quel nom de fichier. Demandez à votre agent d'effectuer l'action que vous avez bloquée et observez le refus. Rien n'est publié et personne d'autre n'est affecté. [Tester une politique](/fr/policies/test) couvre le reste : le cas légitime qui doit être autorisé, et les entrées qui la font échouer.
+
+## 3. Publier
+
+```bash
+failproofai publish
+```
+
+La commande détermine où publier, ce qu'il faut bundler, et quelle version attribuer, en ne posant des questions que lorsque le dépôt ne lui fournit pas l'information. Dans l'ordre, elle s'arrête avant de créer une release si quoi que ce soit pose problème :
+
+1. Trouve les fichiers de politiques par **contenu** — ceux qui importent `failproofai` et appellent `customPolicies.add` — plutôt que par nom de fichier ; elle trouve donc `guards.mjs` et ignore un `policies.mjs` sans rapport. Elle ne descend pas dans les sous-répertoires, ce qui évite d'embarquer accidentellement une fixture de test.
+2. Lit le dépôt depuis `git remote get-url origin`, dans le répertoire du **fichier** plutôt que le vôtre, et détermine la version.
+3. Trouve vos identifiants : `GITHUB_TOKEN`, `GH_TOKEN`, ou `gh auth login`. Seul le droit d'écriture sur les releases est requis, et ils ne sont jamais affichés.
+4. Crée le dépôt s'il n'existe pas. Cela se produit avant la construction, donc un pack refusé à l'étape suivante peut laisser un nouveau dépôt vide sans aucune release.
+5. Construit les trois assets en les validant avec les **propres règles du loader** — le même code qui décide ce qui peut s'installer sur la machine d'un inconnu — de sorte qu'un pack qui ne pourrait jamais s'installer échoue ici, là où vous pouvez encore le corriger.
+6. Crée ou réutilise la release et téléverse les fichiers, en remplaçant les assets portant le même nom.
 
 | Fichier | Description |
 | --- | --- |
 | `failproofai-pack.json` | Le manifeste : id, version, effet, et une entrée par politique |
-| `failproofai-pack.mjs` | Votre entrée, telle quelle |
-| `SHA256SUMS` | `<sha256>  <filename>` pour les deux autres fichiers |
+| `failproofai-pack.mjs` | Votre entrée bundlée |
+| `SHA256SUMS` | `<sha256>  <filename>` pour les deux autres |
 
-Refusé à la construction : un id qui n'est pas au format `publisher/name`, un nom de politique contenant `/`, une politique déclarant `alwaysOn`, une `description`, une `category` ou un `match` manquant, une entrée qui n'enregistre rien, et une entrée qui importe des fichiers locaux.
+Les noms des assets sont fixes — ce sont ceux qu'utilise le CLI d'un consommateur pour construire ses URLs, sans appel API ni découverte.
 
-## 3. Joindre les fichiers à une release
+Refusé à la construction : un id qui n'est pas de la forme `publisher/name`, un nom de politique contenant `/`, une politique déclarant `alwaysOn`, une `description`, une `category` ou un `match` manquant, une entrée qui n'enregistre rien, et une entrée qui importe des fichiers locaux.
 
-Étiquetez la release avec la même version que celle utilisée lors de la construction, et joignez les trois fichiers en tant qu'assets de release :
-
-```bash
-gh release create 1.0.0 \
-  ./dist-pack/failproofai-pack.json \
-  ./dist-pack/failproofai-pack.mjs \
-  ./dist-pack/SHA256SUMS
-```
-
-N'importe qui peut désormais l'installer :
+Surchargez les valeurs décidées automatiquement :
 
 ```bash
-failproofai pack add acme/support-agent
+failproofai publish \
+  --repo acme/support-agent \
+  --version 1.0.0 \
+  --effect observe \
+  --dry-run
 ```
 
-Les noms des assets sont fixes — c'est à partir d'eux que le CLI consommateur construit ses URLs, sans appel API ni découverte automatique.
+`--id` définit l'id du pack lorsqu'il doit différer du dépôt, `--tag` définit le tag de la release, `--notes` remplace les notes de release générées automatiquement — là où `policies show --releases` lit le nombre de politiques et le commit de chaque release —, `--out` choisit l'emplacement d'écriture des assets (par défaut `dist-pack`), et `--dry-run` les construit sans publier et ne nécessite aucune identifiant.
 
-## Publier une nouvelle version
+N'importe qui peut désormais l'installer avec `failproofai policies add acme/support-agent`. Consultez [les packs de politiques](/fr/policies/packs) pour épingler une version ou n'en prendre qu'une partie.
 
-Construisez avec le nouveau `--version`, créez une nouvelle release, joignez à nouveau les trois assets. Les utilisateurs exécutent le même `pack add` et conservent le sous-ensemble de politiques qu'ils avaient choisi ; une politique qu'ils avaient désactivée reste désactivée après la mise à jour.
+### Le référencer sur le hub de politiques
 
-Changer le **nom** d'une politique est un changement cassant : une machine qui l'avait désactivée désactive un nom qui n'existe plus, et le nouveau nom arrive avec ce que `defaultEnabled` indique.
+Ajoutez le topic `failproofai-policies` au dépôt sur GitHub. Il n'y a pas de formulaire de soumission ni de file d'approbation : le crawler du [hub de politiques](https://befailproof.ai/policy-hub/) détectera le dépôt lors de son prochain passage. Le topic ne fait que le soumettre à considération — ce qui le liste est une release dont le manifeste se vérifie contre son propre `SHA256SUMS` et se parse selon les mêmes règles que le CLI utilise, ce qui est exactement ce que `failproofai publish` produit.
 
-## Ce à quoi vos utilisateurs font confiance
+## Comment la version est déterminée
 
-`SHA256SUMS` réside dans la même release que l'artefact, ce qui prouve que les octets sont bien ceux que vous avez publiés — pas votre identité. Quiconque peut écrire dans le dépôt peut modifier les deux fichiers. La protection des utilisateurs tient au fait que le condensé est épinglé lors de l'installation, de sorte que ce que vous avez publié ne peut pas changer sous leurs pieds par la suite.
+La version correspond au **commit depuis lequel vous publiez** — son sha court, douze caractères : `a1b2c3d4e5f6`. Il n'y a rien à choisir ni à incrémenter, et la version nomme exactement l'origine des octets, de sorte que publier deux fois la même source donne la même version.
+
+Elle est lue depuis l'arbre qui se trouve devant vous, jamais depuis les releases du dépôt, ce qui permet à un clone fraîchement créé et à une machine isolée de calculer la même réponse sans interroger GitHub.
+
+Comme la version nomme un commit, ce commit doit exister. Dans un terminal, `publish` le crée pour vous : il initialise un dépôt s'il n'en existe pas, et commite les fichiers de politiques modifiés avant la construction. Il **refuse** en revanche — en indiquant `--version` comme solution de contournement — lorsqu'il s'exécute sans terminal (un commit créé sur un runner CI n'existerait nulle part ailleurs), lorsque des fichiers autres que les politiques ne sont pas commités, ou dans un checkout qui n'a encore aucun commit. Un tag sur `HEAD` prend la priorité sur le sha — quelqu'un qui a tagué `v1.2.0` a déclaré ce qu'est cette release.
+
+Un sha ne porte pas d'ordre intrinsèque ; utilisez `failproofai policies show <owner>/<repo> --releases` pour voir quelle release est arrivée en premier — la plus récente en haut.
+
+## Distribuer une nouvelle version
+
+Commitez la modification et relancez `failproofai publish` — le nouveau commit est la nouvelle version. Les consommateurs exécutent le même `failproofai policies add`. Sans terminal, ou avec un flag de sélection, ils conservent le sous-ensemble qu'ils avaient choisi et une politique désactivée reste désactivée ; dans un terminal sans flag, le sélecteur s'ouvre pré-coché avec vos valeurs par défaut et leur réponse remplace leur sélection.
+
+Modifier le **nom** d'une politique est un changement cassant : une machine qui l'avait désactivée désactive un nom qui n'existe plus, et le nouveau nom arrive avec ce que dit `defaultEnabled`.
+
+## Ce à quoi font confiance vos utilisateurs
+
+`SHA256SUMS` se trouve dans la même release que l'artefact, ce qui prouve que les octets sont bien ceux que vous avez publiés — pas qui vous êtes. Quiconque peut écrire dans le dépôt peut écrire les deux fichiers. La protection de vos utilisateurs repose sur le fait que l'empreinte est épinglée au moment de l'installation, ce qui empêche ce que vous avez distribué de changer ultérieurement à leur insu.
 
 Publiez depuis un dépôt dont vous contrôlez les accès en écriture, et traitez une release de pack comme la publication d'un package.
 
+Le dépôt doit également être **public**. Les installations se font en HTTPS anonyme sans identifiant à fournir, donc un dépôt privé existant est refusé avant que quoi que ce soit ne soit construit ou téléversé, et un dépôt créé par `publish` est public pour la même raison. `--allow-private` outrepasse cela pour quelqu'un qui transmet les trois assets par un autre moyen, et indique clairement qu'aucun `policies add` ne peut les atteindre. Seule la release compte : les installations lisent `releases/download/<tag>/<asset>` et n'accèdent jamais à votre arbre git.
+
 ## Observer avant d'appliquer
 
-Un manifeste peut déclarer `"effect": "observe"`. Ces politiques s'exécutent et leurs verdicts sont **enregistrés puis ignorés** — rien n'est bloqué. C'est la façon de mesurer une nouvelle règle sur du trafic réel avant qu'elle ne puisse interrompre le travail de quiconque.
+Un manifeste peut déclarer `"effect": "observe"` — c'est `failproofai publish --effect observe` qui le définit. Ces politiques s'exécutent et leurs verdicts sont **enregistrés puis ignorés** — rien n'est bloqué. C'est le moyen de mesurer une nouvelle règle face au trafic réel avant qu'elle puisse interrompre le travail de quiconque.
 
 ```json
-{ "id": "acme/support-agent", "version": "1.1.0", "effect": "observe", "policies": [ ... ] }
+{ "id": "acme/support-agent", "version": "a1b2c3d4e5f6", "effect": "observe", "policies": [ ... ] }
 ```

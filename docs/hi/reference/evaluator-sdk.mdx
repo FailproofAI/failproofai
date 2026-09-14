@@ -1,190 +1,118 @@
 ---
 title: "Evaluator SDK"
-description: "एक सेवा बनाएँ जो Failproof AI सेशन को समकालीन या असमकालीन रूप से स्कोर करती है।"
+description: "अपने स्वयं के evaluation worker को चलाएं, LLM judges और अन्य किसी भी चीज़ के लिए जो hosted Python नहीं कर सकता।"
 icon: "gauge"
 ---
 
-एक मूल्यांकनकर्ता एक पूर्ण एजेंट सेशन प्राप्त करता है और गुणवत्ता संकेत लौटाता है जिनकी आपको परवाह है: संख्यात्मक स्कोर, प्रत्येक स्कोर के लिए एक व्याख्या, और एक वैकल्पिक सारांश। Failproof AI इन परिणामों को ट्रेस के साथ संग्रहीत करता है और एजेंट और वातावरण के पार उन्हें चार्ट करता है।
+Evaluator SDK आपके स्वयं के infrastructure पर evaluations चलाता है। आपका worker अपने evaluations को Failproof AI में register करता है, जैसे ही sessions समाप्त होते हैं उन्हें claim करता है, उन्हें score करता है, और परिणाम सबमिट करता है, सब कुछ outbound HTTPS पर: कुछ भी इसमें कनेक्ट नहीं होता। इसे उस चीज़ के लिए use करें जो [hosted Python](/hi/evaluations/write) नहीं कर सकता — LLM judges, model calls, packages, secrets, और network access। इसके परिणाम [evaluations page](/hi/sessions/evaluations) पर hosted ones के साथ दिखाई देते हैं, **customer** टैग के साथ।
 
-## एक मूल्यांकनकर्ता सेट अप करें
+यह `failproofai-sdk` में आता है, `failproofai_sdk.evaluator` के तहत; tracing SDK को import करने से यह load नहीं होता।
 
-<Steps>
-  <Step title="Evaluator SDK इंस्टॉल करें">
-    SDK और इसे चलाने के लिए उपयोग किए जाने वाले सर्वर को इंस्टॉल करें।
-
-    ```bash
-    pip install failproofai-sdk uvicorn
-    ```
-  </Step>
-
-  <Step title="स्कोर करने के लिए क्या परिभाषित करें">
-    `evaluator.py` बनाएँ। यह उदाहरण जाँचता है कि क्या एक सेशन में कोई विफल टूल कॉल है।
-
-    ```python
-    import os
-    from failproofai.evaluator import Evaluator, EvalResponse
-
-    app = Evaluator(token=os.environ.get("EVALUATOR_TOKEN"))
-
-    @app.config
-    def config():
-        return {"inactivity_timeout_secs": 1800}
-
-    @app.evaluator
-    def evaluate(req):
-        tool_errors = sum(
-            1 for item in req.events
-            if item.event_type == "tool_result" and item.payload.get("error")
-        )
-        return EvalResponse(
-            scores={"tool_reliability": 1.0 if tool_errors == 0 else 0.0},
-            reasoning={"tool_reliability": f"{tool_errors} tool errors"},
-        )
-    ```
-  </Step>
-
-  <Step title="इसे स्थानीय रूप से चलाएँ और परीक्षण करें">
-    एक साझा टोकन सेट करें, मूल्यांकनकर्ता शुरू करें, और पुष्टि करें कि इसका health endpoint प्रतिक्रिया देता है।
-
-    ```bash
-    export EVALUATOR_TOKEN=<shared-token>
-    uvicorn evaluator:app --host 0.0.0.0 --port 8080
-    ```
-
-    एक अन्य टर्मिनल में:
-
-    ```bash
-    curl http://127.0.0.1:8080/health
-    ```
-  </Step>
-</Steps>
-
-## मूल्यांकनकर्ता को Failproof AI से कनेक्ट करें
-
-1. मूल्यांकनकर्ता को एक HTTPS URL पर तैनात करें जो Failproof AI Cloud द्वारा पहुँचा जा सकता है।
-2. `EVALUATOR_ENDPOINT` को उस URL के साथ कॉन्फ़िगर करें और `EVALUATOR_TOKEN` को मूल्यांकनकर्ता द्वारा उपयोग किए जाने वाले टोकन पर सेट करें। प्रबंधित Cloud के लिए, कनेक्शन कॉन्फ़िगर करने के लिए [support@befailproof.ai](mailto:support@befailproof.ai) से संपर्क करें।
-3. एक मूल्यांकन चलाएँ और पुष्टि करें कि इसके स्कोर Failproof AI में दिखाई देते हैं।
-
-<Tabs>
-  <Tab title="Dashboard">
-    **Observe → Sessions** के तहत एक पूर्ण सेशन खोलें और यदि यह स्वचालित रूप से मूल्यांकन नहीं किया गया था तो **Run evaluation** चुनें। सेशन के **Evaluation** पैनल में स्थिति, स्कोर, तर्क और सारांश की समीक्षा करें।
-
-    एजेंट या वातावरण के पार स्कोर की तुलना करने के लिए **Observe → Evaluations** का उपयोग करें। विलंबता, लागत, टोकन और अन्य संख्यात्मक माप के लिए **Observe → Metrics** का उपयोग करें।
-
-    पुष्टि करने के लिए एक सेशन के साथ शुरुआत करें कि मूल्यांकनकर्ता ने उस विशिष्ट रन के लिए अपेक्षित स्कोर कुंजी और उपयोगी तर्क लौटाए हैं।
-
-    ![एक सेशन विस्तार दृश्य जो इसके ट्रेस के बगल में मूल्यांकन स्कोर और तर्क दिखाता है।](/images/dashboard/session-detail.png)
-
-    एक बार जब व्यक्तिगत परिणाम सही दिखें, समय के साथ और एजेंट या वातावरण के पार उन स्कोर की तुलना करने के लिए मूल्यांकन डैशबोर्ड का उपयोग करें।
-
-    ![एक गुणवत्ता डैशबोर्ड जो समय के साथ मूल्यांकनकर्ता स्कोर चार्ट करता है।](/images/dashboard/dashboard-quality.png)
-
-    एक स्वस्थ चार्ट को स्थिर स्कोर नाम का उपयोग करना चाहिए; एक कुंजी को पुनः नाम देना एक अलग श्रृंखला बनाता है।
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp evals --since 1h --score tool_reliability:0..1
-    fp evals --since 24h --aggregate
-    ```
-  </Tab>
-</Tabs>
-
-एक self-hosted Cloud उदाहरण के लिए, जब तक `EVALUATOR_ENDPOINT` सर्वर प्रक्रिया पर सेट नहीं किया जाता तब तक स्वचालित मूल्यांकन अक्षम है। मूल्यांकनकर्ता पर्यावरण चर बदलने के बाद सर्वर को पुनः शुरू करें।
-
-सेवा `GET /health`, `GET /config`, `POST /evaluate`, और वैकल्पिक रूप से `GET /evaluate/{job_id}` को उजागर करती है। असमकालीन कार्य के लिए `JobPending` लौटाएँ और `@app.job_lookup` को पंजीकृत करें ताकि Failproof AI इसे पोल कर सके।
-
-जब एक टोकन कॉन्फ़िगर किया गया हो, तो health को छोड़कर सभी रूट को समान bearer token की आवश्यकता है जो Failproof AI `EVALUATOR_TOKEN` के रूप में भेजता है।
-
-## SDK प्रकार
-
-| प्रकार | फ़ील्ड |
-| --- | --- |
-| `AgentEvent` | `id`, `ts`, `event_type`, `payload` |
-| `EvalRequest` | `schema_version`, `session_id`, `agent_id`, `environment`, `started_at`, `ended_at`, `events` |
-| `EvalResponse` | `scores`, `reasoning`, `summary` |
-| `JobPending` | `job_id`, `next_poll_secs` |
-| `EvaluatorConfig` | `inactivity_timeout_secs`, `default_poll_interval_secs` |
-
-## Decorators और routes
-
-| Decorator | Route | आवश्यक |
-| --- | --- | --- |
-| `@app.evaluator` | `POST /evaluate` | हाँ |
-| `@app.job_lookup` | `GET /evaluate/{job_id}` | `JobPending` लौटाते समय |
-| `@app.config` | `GET /config` | नहीं |
-
-SDK मूल्यांकन request bodies को 25 MiB पर सीमित करता है। अज्ञात request फ़ील्ड को अनदेखा किया जाता है ताकि सेवाएँ event contract के विकास के साथ संगत रहें।
-
-## असमकालीन कार्य लौटाएँ
-
-`JobPending` का उपयोग करें जब मूल्यांकन एक request के भीतर समाप्त नहीं हो सकता है। job ID Failproof AI के लिए अपारदर्शी है और परिणाम एकत्र किए जाने या सर्वर timeout समाप्त होने तक आपकी सेवा द्वारा resolvable रहना चाहिए।
-
-```python
-from failproofai.evaluator import EvalRequest, EvalResponse, Evaluator, JobPending
-
-app = Evaluator(token="shared-secret")
-
-@app.evaluator
-def start(req: EvalRequest) -> JobPending:
-    job_id = enqueue(req)
-    return JobPending(job_id=job_id, next_poll_secs=30)
-
-@app.job_lookup
-def lookup(job_id: str):
-    result = get_result(job_id)
-    if result is None:
-        return JobPending(job_id=job_id, next_poll_secs=30)
-    return EvalResponse(
-        scores=result.scores,
-        reasoning=result.reasoning,
-        summary=result.summary,
-    )
+```bash
+pip install failproofai-sdk
 ```
 
-Polling cadence इस क्रम में चुना जाता है: `JobPending.next_poll_secs`, `EvaluatorConfig.default_poll_interval_secs`, फिर सर्वर का `EVALUATOR_POLLING_INTERVAL_SECS`। मान 1 सेकंड और 1 घंटे के बीच fixed हैं। सर्वर की डिफ़ॉल्ट wall-clock polling cap एक घंटा है।
+## Evaluations लिखें
 
-## Request और response फ़ील्ड
+```python
+from failproofai_sdk.evaluator import ConditionResult, EvalResult, Evaluator, Metric, Score
 
-| फ़ील्ड | प्रकार | नोट्स |
+app = Evaluator(name="customer-production", version="2026.08.1")
+
+
+@app.eval(
+    "tool_efficiency",
+    version="1.0.0",
+    labels=["tools", "deterministic"],
+    when=lambda session: ConditionResult(session.count("tool_use") > 0, "no_tool_calls"),
+)
+def tool_efficiency(session):
+    calls = session.events_of_type("tool_use")
+    distinct = {e.payload.get("tool_name") for e in calls if e.payload.get("tool_name")}
+    value = len(distinct) / len(calls)
+    return EvalResult(
+        score=Score(value, passed=value >= 0.7),
+        metrics={"tool_call_count": Metric(len(calls), unit="events")},
+        reasoning=f"{len(distinct)} distinct tools across {len(calls)} calls",
+    )
+
+
+@app.eval(
+    "answer_relevance",
+    version="judge-v1",
+    labels=["llm_judge", "relevance"],
+    when=lambda session: ConditionResult(
+        session.count("human_input") > 0 and session.count("model_response") > 0,
+        "no_exchange",
+    ),
+    timeout_seconds=30,
+)
+async def answer_relevance(session):
+    question = session.events_of_type("human_input")[-1].payload.get("response")
+    answer = session.events_of_type("model_response")[-1].payload.get("content")
+    value, reasoning = await ask_judge(question, answer)  # your LLM call: a 0-1 score and why
+    return EvalResult(score=Score(value, passed=value >= 0.7), reasoning=reasoning)
+
+
+if __name__ == "__main__":
+    app.run_from_env()
+```
+
+- `@app.eval(key, version=...)` एक evaluation को register करता है। key वह है जिसके तहत इसके परिणाम chart होते हैं; जब भी logic बदले तो version बदलें, और प्रत्येक result उस version को रखता है जिसने इसे produce किया। एक worker 100 तक evaluations hold कर सकता है।
+- `result_kind` है `"score"` जब तक आप अन्यथा न कहें। एक `"metric"` या `"assertion"` evaluation के लिए, key के बाद एक `metrics` या `assertions` entry को नाम दें: वह entry इसका result है।
+- `when` तय करता है कि क्या एक session लागू होता है। एक को skip करने के लिए `ConditionResult(False, "<reason>")` return करें, और reason record किया जाता है।
+- एक evaluation एक plain function या `async` हो सकता है, और `timeout_seconds` इसे bound करता है।
+- Payload keys — `tool_name`, `response`, और `content` ऊपर — जो कुछ भी आपके agents भेजते हैं, इसलिए उन्हें एक real session से पढ़ें।
+
+## Worker चलाएं
+
+**Administration → Keys** के तहत बनाई गई एक key को `evaluations:run` permission के साथ `FAILPROOFAI_EVALUATOR_TOKEN` में रखें — इसे अपने secret store से set करें न कि इसे किसी command में type करें — और worker शुरू करें:
+
+```bash
+FAILPROOFAI_EVALUATOR_URL=https://app.befailproof.ai python evaluator.py
+```
+
+`__main__` block के बिना, `python -m failproofai_sdk.evaluator evaluator:app` वही करता है।
+
+| Variable | Default | Purpose |
 | --- | --- | --- |
-| `EvalRequest.schema_version` | `str` | वर्तमान में `"1"`। |
-| `session_id`, `agent_id`, `environment` | `str` | सेशन identity और वातावरण। |
-| `started_at` | `datetime` | पहली event का timestamp। |
-| `ended_at` | `datetime \| None` | जब सेशन ने एक end event emit किया तो मौजूद है। |
-| `events` | `list[AgentEvent]` | पूर्ण क्रमबद्ध event stream। |
-| `AgentEvent.id` | `int` | Backend event row identifier। |
-| `AgentEvent.ts` | `datetime` | Event timestamp। |
-| `AgentEvent.event_type` | `str` | Event family जैसे `tool_use`। |
-| `AgentEvent.payload` | `dict[str, Any]` | संपूर्ण event payload। |
-| `EvalResponse.scores` | `dict[str, float] \| None` | मूल्यांकन में charted संख्यात्मक आयाम। |
-| `EvalResponse.reasoning` | `dict[str, str] \| None` | Per-score व्याख्या; keys को `scores` को mirror करना चाहिए। |
-| `EvalResponse.summary` | `str \| None` | समग्र मूल्यांकन narrative। |
+| `FAILPROOFAI_EVALUATOR_URL` | required | Failproof AI कहां है: Cloud के लिए `https://app.befailproof.ai`। HTTPS जब तक यह loopback की ओर न point करे |
+| `FAILPROOFAI_EVALUATOR_TOKEN` | required | `evaluations:run` के साथ एक key |
+| `FAILPROOFAI_EVALUATOR_WORKER_ID` | `<hostname>-<pid>` | इस worker को नाम देता है |
+| `FAILPROOFAI_EVALUATOR_CONCURRENCY` | `1` | Sessions जिन्हें यह worker एक साथ score करता है |
+| `FAILPROOFAI_EVALUATOR_REQUEST_TIMEOUT_SECONDS` | `30` | Failproof AI के लिए प्रत्येक request के लिए timeout |
+| `FAILPROOFAI_EVALUATOR_DRAIN_TIMEOUT_SECONDS` | `60` | रुकने वाला worker flight में runs के लिए कितने समय का इंतज़ार करता है |
+| `FAILPROOFAI_EVALUATOR_ALLOW_INSECURE_HTTP` | `false` | एक URL को plain HTTP की अनुमति दें जो loopback नहीं है — नीचे warning देखें |
+| `FAILPROOFAI_EVALUATOR_MODULE` | none | `python -m failproofai_sdk.evaluator` के लिए `module:attribute` |
 
-## Server operator सेटिंग्स
+<Warning>
+  `FAILPROOFAI_EVALUATOR_ALLOW_INSECURE_HTTP` सब कुछ cleartext में भेजता है। Worker प्रत्येक request पर एक `Authorization: Bearer` header के रूप में `FAILPROOFAI_EVALUATOR_TOKEN` ले जाता है, और transcripts जो वह fetch करता है वह sessions ही हैं — तो path पर कोई भी दोनों को reads करता है, और token जो वे read करते हैं वह evaluations चलाता है जब तक आप इसे rotate नहीं करते। इसे केवल एक isolated development network पर use करें। अन्य सभी जगह URL HTTPS होना चाहिए; loopback को कोई flag की ज़रूरत नहीं।
+</Warning>
 
-स्वचालित मूल्यांकन deployment-wide है और जब `EVALUATOR_ENDPOINT` अनुपस्थित होता है तो अक्षम रहता है।
+## Result types
 
-| Variable | Default | उद्देश्य |
-| --- | --- | --- |
-| `EVALUATOR_ENDPOINT` | unset | मूल्यांकनकर्ता सेवा का Base URL। |
-| `EVALUATOR_TOKEN` | unset | Bearer token `Evaluator(token=...)` के साथ साझा किया जाता है। |
-| `EVALUATOR_WORKERS` | `2` | समवर्ती dispatcher workers। |
-| `EVALUATOR_CLAIM_BATCH` | `4` | Dispatcher pass प्रति दावा किए गए सेशन। |
-| `EVALUATOR_POLLING_INTERVAL_SECS` | `10` | Fallback async polling cadence। |
-| `EVALUATOR_REQUEST_TIMEOUT_MS` | `30000` | Per-request मूल्यांकनकर्ता timeout। |
-| `EVALUATOR_MAX_ATTEMPTS` | `5` | Terminal failure से पहले delivery attempts। |
-| `EVALUATOR_CONFIG_REFRESH_SECS` | `300` | `/config` के लिए refresh cadence। |
-| `EVALUATOR_MAX_POLL_DURATION_SECS` | `3600` | अधिकतम wall-clock async polling time। |
+| Type | Fields |
+| --- | --- |
+| `Score` | `value` (0 से 1), `passed`, `unit` (default `ratio`), `display_value`, `description` |
+| `Metric` | `value`, `unit`, `display_value`, `description` |
+| `Assertion` | `passed`, `description` |
+| `EvalResult` | `score`, `metrics`, `assertions`, `reasoning`, `summary`, `labels` |
+| `ConditionResult` | `applicable`, `reason_code` |
 
-सर्वर यह भी restrict कर सकता है कि कौन सी organizations deployment-global मूल्यांकनकर्ता का उपयोग करती हैं। endpoint, token, retry, और organization-gate परिवर्तनों को operator configuration के रूप में मानें और उन्हें बदलने के बाद सर्वर को restart या roll करें।
+एक `EvalResult` कम से कम एक score, metric, या assertion ले जाता है, और अधिकतम 25, प्रत्येक एक unique key के तहत।
 
-## सुरक्षा और संचालन
+## Session
 
-- जब traffic एक trusted network boundary को पार करता है तो मूल्यांकनकर्ता को HTTPS के पीछे रखें।
-- एक non-empty bearer token कॉन्फ़िगर करें और इसे दोनों सेवाओं पर identical रखें।
-- टोकन या request payloads से पूर्ण sensitive prompts को log न करें।
-- समकालीन handlers को idempotent बनाएँ; retries एक request को दोहरा सकते हैं।
-- Production में process memory के बाहर असमकालीन job state को persist करें।
-- स्थिर स्कोर कुंजी लौटाएँ। एक कुंजी को पुनः नाम देना एक नई chart series बनाता है पुरानी को बदलने के बजाय।
+| Field या method | आपको देता है |
+| --- | --- |
+| `session_id`, `agent_id`, `environment` | Session की identity |
+| `started_at`, `ended_at` | जब यह शुरू हुआ और समाप्त हुआ |
+| `event_count`, `events` | पूर्ण, ordered transcript |
+| `count(event_type)` | कितने events उस type के इसमें हैं |
+| `events_of_type(event_type)` | वे events, order में |
 
-SDK structured lifecycle logs emit करता है जैसे `eval received`, `eval responded`, `job lookup`, `config returned`, `auth rejected`, और handler exceptions। यह logging handlers कॉन्फ़िगर नहीं करता; host application की logging configuration का उपयोग करें।
+प्रत्येक event `id`, `ts`, `event_type`, और `payload` ले जाता है।
+
+## Legacy evaluator
+
+पहले का Evaluator SDK — एक HTTP service जिसे Failproof AI `EVALUATOR_ENDPOINT` पर called करता था, `/evaluate` का जवाब देता था और `JobPending` के through poll किया जाता था — retired है। इस worker पर नए evaluators build करें; एक self-hosted instance के operators जो एक legacy service चला रहे हैं वह transition के through इसे keep कर सकते हैं।

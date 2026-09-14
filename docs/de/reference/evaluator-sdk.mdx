@@ -1,190 +1,118 @@
 ---
 title: "Evaluator SDK"
-description: "Erstelle einen Dienst, der Failproof AI-Sitzungen synchron oder asynchron bewertet."
+description: "Führen Sie Ihren eigenen Evaluierungs-Worker aus, für LLM-Richter und alles, was gehostetes Python nicht kann."
 icon: "gauge"
 ---
 
-Ein Evaluator empfängt eine abgeschlossene Agent-Sitzung und gibt die gewünschten Qualitätssignale zurück: numerische Bewertungen, eine Erklärung für jede Bewertung und eine optionale Zusammenfassung. Failproof AI speichert diese Ergebnisse neben dem Trace und stellt sie agenten- und umgebungsübergreifend in Diagrammen dar.
+Das Evaluator SDK führt Evaluierungen auf Ihrer eigenen Infrastruktur durch. Ihr Worker registriert seine Evaluierungen bei Failproof AI, beansprucht abgeschlossene Sessions, bewertet sie und übermittelt die Ergebnisse – alles über ausgehende HTTPS-Verbindungen: Es werden keine eingehenden Verbindungen benötigt. Verwenden Sie es für das, was [gehostetes Python](/de/evaluations/write) nicht kann – LLM-Richter, Modellaufrufe, Pakete, Geheimnisse und Netzwerkzugriff. Die Ergebnisse erscheinen neben den gehosteten Ergebnissen auf der [Evaluierungsseite](/de/sessions/evaluations) und sind mit **customer** gekennzeichnet.
 
-## Evaluator einrichten
+Es wird mit `failproofai-sdk` unter `failproofai_sdk.evaluator` ausgeliefert; der Import des Tracing-SDKs lädt es nicht.
 
-<Steps>
-  <Step title="Evaluator SDK installieren">
-    Installiere das SDK und den Server, der es ausführt.
-
-    ```bash
-    pip install failproofai-sdk uvicorn
-    ```
-  </Step>
-
-  <Step title="Bewertungskriterien definieren">
-    Erstelle `evaluator.py`. Dieses Beispiel prüft, ob eine Sitzung fehlgeschlagene Tool-Aufrufe enthält.
-
-    ```python
-    import os
-    from failproofai.evaluator import Evaluator, EvalResponse
-
-    app = Evaluator(token=os.environ.get("EVALUATOR_TOKEN"))
-
-    @app.config
-    def config():
-        return {"inactivity_timeout_secs": 1800}
-
-    @app.evaluator
-    def evaluate(req):
-        tool_errors = sum(
-            1 for item in req.events
-            if item.event_type == "tool_result" and item.payload.get("error")
-        )
-        return EvalResponse(
-            scores={"tool_reliability": 1.0 if tool_errors == 0 else 0.0},
-            reasoning={"tool_reliability": f"{tool_errors} tool errors"},
-        )
-    ```
-  </Step>
-
-  <Step title="Lokal ausführen und testen">
-    Setze ein gemeinsames Token, starte den Evaluator und bestätige, dass der Health-Endpunkt antwortet.
-
-    ```bash
-    export EVALUATOR_TOKEN=<shared-token>
-    uvicorn evaluator:app --host 0.0.0.0 --port 8080
-    ```
-
-    In einem anderen Terminal:
-
-    ```bash
-    curl http://127.0.0.1:8080/health
-    ```
-  </Step>
-</Steps>
-
-## Evaluator mit Failproof AI verbinden
-
-1. Stelle den Evaluator unter einer HTTPS-URL bereit, die von Failproof AI Cloud erreichbar ist.
-2. Konfiguriere `EVALUATOR_ENDPOINT` mit dieser URL und setze `EVALUATOR_TOKEN` auf dasselbe Token, das der Evaluator verwendet. Für verwaltete Cloud-Instanzen wende dich an [support@befailproof.ai](mailto:support@befailproof.ai), um die Verbindung einzurichten.
-3. Führe eine Bewertung durch und bestätige, dass die Scores in Failproof AI erscheinen.
-
-<Tabs>
-  <Tab title="Dashboard">
-    Öffne eine abgeschlossene Sitzung unter **Observe → Sessions** und wähle **Run evaluation**, falls sie nicht automatisch bewertet wurde. Überprüfe Status, Scores, Begründungen und Zusammenfassung im **Evaluation**-Panel der Sitzung.
-
-    Verwende **Observe → Evaluations**, um Scores über Agenten oder Umgebungen hinweg zu vergleichen. Nutze **Observe → Metrics** für Latenz, Kosten, Token und andere numerische Messungen.
-
-    Beginne mit einer einzelnen Sitzung, um zu bestätigen, dass der Evaluator die erwarteten Score-Schlüssel und nützliche Begründungen für diesen spezifischen Durchlauf zurückgegeben hat.
-
-    ![Eine Sitzungsdetailansicht, die Bewertungsscores und Begründungen neben dem Trace zeigt.](/images/dashboard/session-detail.png)
-
-    Sobald die Einzelergebnisse korrekt aussehen, verwende das Evaluierungs-Dashboard, um diese Scores über Zeit und über Agenten oder Umgebungen hinweg zu vergleichen.
-
-    ![Ein Qualitäts-Dashboard mit Evaluator-Scores über die Zeit.](/images/dashboard/dashboard-quality.png)
-
-    Ein gesundes Diagramm sollte stabile Score-Namen verwenden; das Ändern eines Schlüssels erstellt eine separate Reihe.
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp evals --since 1h --score tool_reliability:0..1
-    fp evals --since 24h --aggregate
-    ```
-  </Tab>
-</Tabs>
-
-Bei einer selbst gehosteten Cloud-Instanz ist die automatische Bewertung deaktiviert, bis `EVALUATOR_ENDPOINT` im Serverprozess gesetzt ist. Starte den Server nach dem Ändern von Evaluator-Umgebungsvariablen neu.
-
-Der Dienst stellt `GET /health`, `GET /config`, `POST /evaluate` und optional `GET /evaluate/{job_id}` bereit. Gib `JobPending` für asynchrone Aufgaben zurück und registriere `@app.job_lookup`, damit Failproof AI abfragen kann.
-
-Wenn ein Token konfiguriert ist, erfordern alle Routen außer health dasselbe Bearer-Token, das Failproof AI als `EVALUATOR_TOKEN` sendet.
-
-## SDK-Typen
-
-| Typ | Felder |
-| --- | --- |
-| `AgentEvent` | `id`, `ts`, `event_type`, `payload` |
-| `EvalRequest` | `schema_version`, `session_id`, `agent_id`, `environment`, `started_at`, `ended_at`, `events` |
-| `EvalResponse` | `scores`, `reasoning`, `summary` |
-| `JobPending` | `job_id`, `next_poll_secs` |
-| `EvaluatorConfig` | `inactivity_timeout_secs`, `default_poll_interval_secs` |
-
-## Dekoratoren und Routen
-
-| Dekorator | Route | Erforderlich |
-| --- | --- | --- |
-| `@app.evaluator` | `POST /evaluate` | Ja |
-| `@app.job_lookup` | `GET /evaluate/{job_id}` | Bei Rückgabe von `JobPending` |
-| `@app.config` | `GET /config` | Nein |
-
-Das SDK begrenzt den Anfragekörper für Bewertungsanfragen auf 25 MiB. Unbekannte Anforderungsfelder werden ignoriert, sodass Dienste kompatibel bleiben, wenn der Event-Vertrag erweitert wird.
-
-## Asynchrone Arbeit zurückgeben
-
-Verwende `JobPending`, wenn die Bewertung nicht innerhalb einer Anfrage abgeschlossen werden kann. Die Job-ID ist für Failproof AI undurchsichtig und muss von deinem Dienst auflösbar bleiben, bis das Ergebnis abgerufen oder der Server-Timeout abgelaufen ist.
-
-```python
-from failproofai.evaluator import EvalRequest, EvalResponse, Evaluator, JobPending
-
-app = Evaluator(token="shared-secret")
-
-@app.evaluator
-def start(req: EvalRequest) -> JobPending:
-    job_id = enqueue(req)
-    return JobPending(job_id=job_id, next_poll_secs=30)
-
-@app.job_lookup
-def lookup(job_id: str):
-    result = get_result(job_id)
-    if result is None:
-        return JobPending(job_id=job_id, next_poll_secs=30)
-    return EvalResponse(
-        scores=result.scores,
-        reasoning=result.reasoning,
-        summary=result.summary,
-    )
+```bash
+pip install failproofai-sdk
 ```
 
-Die Abfragereihenfolge wird in dieser Reihenfolge ausgewählt: `JobPending.next_poll_secs`, `EvaluatorConfig.default_poll_interval_secs`, dann `EVALUATOR_POLLING_INTERVAL_SECS` des Servers. Werte werden zwischen 1 Sekunde und 1 Stunde begrenzt. Die standardmäßige Wanduhr-Abfrageobergrenze des Servers beträgt eine Stunde.
+## Evaluierungen schreiben
 
-## Anfrage- und Antwortfelder
+```python
+from failproofai_sdk.evaluator import ConditionResult, EvalResult, Evaluator, Metric, Score
 
-| Feld | Typ | Hinweise |
-| --- | --- | --- |
-| `EvalRequest.schema_version` | `str` | Aktuell `"1"`. |
-| `session_id`, `agent_id`, `environment` | `str` | Sitzungsidentität und Umgebung. |
-| `started_at` | `datetime` | Zeitstempel des ersten Events. |
-| `ended_at` | `datetime \| None` | Vorhanden, wenn die Sitzung ein End-Event ausgelöst hat. |
-| `events` | `list[AgentEvent]` | Vollständiger geordneter Event-Stream. |
-| `AgentEvent.id` | `int` | Backend-Event-Zeilenkennung. |
-| `AgentEvent.ts` | `datetime` | Event-Zeitstempel. |
-| `AgentEvent.event_type` | `str` | Event-Familie wie `tool_use`. |
-| `AgentEvent.payload` | `dict[str, Any]` | Vollständige Event-Nutzlast. |
-| `EvalResponse.scores` | `dict[str, float] \| None` | Numerische Dimensionen, die in Bewertungen dargestellt werden. |
-| `EvalResponse.reasoning` | `dict[str, str] \| None` | Erklärungen pro Score; Schlüssel sollten `scores` spiegeln. |
-| `EvalResponse.summary` | `str \| None` | Gesamtbewertungsnarrativ. |
+app = Evaluator(name="customer-production", version="2026.08.1")
 
-## Einstellungen für Server-Betreiber
 
-Die automatische Bewertung gilt für die gesamte Bereitstellung und bleibt deaktiviert, wenn `EVALUATOR_ENDPOINT` nicht gesetzt ist.
+@app.eval(
+    "tool_efficiency",
+    version="1.0.0",
+    labels=["tools", "deterministic"],
+    when=lambda session: ConditionResult(session.count("tool_use") > 0, "no_tool_calls"),
+)
+def tool_efficiency(session):
+    calls = session.events_of_type("tool_use")
+    distinct = {e.payload.get("tool_name") for e in calls if e.payload.get("tool_name")}
+    value = len(distinct) / len(calls)
+    return EvalResult(
+        score=Score(value, passed=value >= 0.7),
+        metrics={"tool_call_count": Metric(len(calls), unit="events")},
+        reasoning=f"{len(distinct)} distinct tools across {len(calls)} calls",
+    )
+
+
+@app.eval(
+    "answer_relevance",
+    version="judge-v1",
+    labels=["llm_judge", "relevance"],
+    when=lambda session: ConditionResult(
+        session.count("human_input") > 0 and session.count("model_response") > 0,
+        "no_exchange",
+    ),
+    timeout_seconds=30,
+)
+async def answer_relevance(session):
+    question = session.events_of_type("human_input")[-1].payload.get("response")
+    answer = session.events_of_type("model_response")[-1].payload.get("content")
+    value, reasoning = await ask_judge(question, answer)  # your LLM call: a 0-1 score and why
+    return EvalResult(score=Score(value, passed=value >= 0.7), reasoning=reasoning)
+
+
+if __name__ == "__main__":
+    app.run_from_env()
+```
+
+- `@app.eval(key, version=...)` registriert eine Evaluierung. Der Schlüssel bestimmt, unter welchem Namen die Ergebnisse aufgeführt werden. Ändern Sie die Version bei jeder Änderung der Logik – jedes Ergebnis behält die Version, mit der es erzeugt wurde. Ein Worker kann bis zu 100 Evaluierungen halten.
+- `result_kind` ist `"score"`, sofern nichts anderes angegeben wird. Für eine `"metric"`- oder `"assertion"`-Evaluierung benennen Sie einen `metrics`- oder `assertions`-Eintrag nach dem Schlüssel: Dieser Eintrag ist ihr Ergebnis.
+- `when` entscheidet, ob eine Session anwendbar ist. Geben Sie `ConditionResult(False, "<reason>")` zurück, um eine Session zu überspringen – der Grund wird dabei gespeichert.
+- Eine Evaluierung kann eine normale Funktion oder `async` sein, und `timeout_seconds` begrenzt ihre Laufzeit.
+- Payload-Schlüssel – `tool_name`, `response` und `content` oben – sind das, was Ihre Agents senden; lesen Sie sie daher aus einer echten Session ab.
+
+## Den Worker starten
+
+Legen Sie einen Schlüssel mit der Berechtigung `evaluations:run`, der unter **Administration → Keys** erstellt wurde, in `FAILPROOFAI_EVALUATOR_TOKEN` ab – setzen Sie ihn aus Ihrem Secret-Store, anstatt ihn direkt in einen Befehl einzutippen – und starten Sie den Worker:
+
+```bash
+FAILPROOFAI_EVALUATOR_URL=https://app.befailproof.ai python evaluator.py
+```
+
+Ohne den `__main__`-Block bewirkt `python -m failproofai_sdk.evaluator evaluator:app` dasselbe.
 
 | Variable | Standard | Zweck |
 | --- | --- | --- |
-| `EVALUATOR_ENDPOINT` | nicht gesetzt | Basis-URL des Evaluator-Dienstes. |
-| `EVALUATOR_TOKEN` | nicht gesetzt | Bearer-Token, das mit `Evaluator(token=...)` geteilt wird. |
-| `EVALUATOR_WORKERS` | `2` | Gleichzeitige Dispatcher-Worker. |
-| `EVALUATOR_CLAIM_BATCH` | `4` | Sitzungen, die pro Dispatcher-Durchlauf beansprucht werden. |
-| `EVALUATOR_POLLING_INTERVAL_SECS` | `10` | Fallback-Abfradetakt für asynchrone Vorgänge. |
-| `EVALUATOR_REQUEST_TIMEOUT_MS` | `30000` | Evaluator-Timeout pro Anfrage. |
-| `EVALUATOR_MAX_ATTEMPTS` | `5` | Zustellversuche vor terminalem Fehler. |
-| `EVALUATOR_CONFIG_REFRESH_SECS` | `300` | Aktualisierungstakt für `/config`. |
-| `EVALUATOR_MAX_POLL_DURATION_SECS` | `3600` | Maximale Wanduhr-Zeit für asynchrones Polling. |
+| `FAILPROOFAI_EVALUATOR_URL` | erforderlich | Adresse von Failproof AI: `https://app.befailproof.ai` für Cloud. HTTPS, außer bei Loopback-Adressen |
+| `FAILPROOFAI_EVALUATOR_TOKEN` | erforderlich | Ein Schlüssel mit `evaluations:run` |
+| `FAILPROOFAI_EVALUATOR_WORKER_ID` | `<hostname>-<pid>` | Benennt diesen Worker |
+| `FAILPROOFAI_EVALUATOR_CONCURRENCY` | `1` | Sessions, die dieser Worker gleichzeitig bewertet |
+| `FAILPROOFAI_EVALUATOR_REQUEST_TIMEOUT_SECONDS` | `30` | Timeout für jede Anfrage an Failproof AI |
+| `FAILPROOFAI_EVALUATOR_DRAIN_TIMEOUT_SECONDS` | `60` | Wie lange ein stoppender Worker auf laufende Prozesse wartet |
+| `FAILPROOFAI_EVALUATOR_ALLOW_INSECURE_HTTP` | `false` | Erlaubt einfaches HTTP zu einer URL, die kein Loopback ist – siehe Warnung unten |
+| `FAILPROOFAI_EVALUATOR_MODULE` | keiner | Das `module:attribute` für `python -m failproofai_sdk.evaluator` |
 
-Der Server kann auch einschränken, welche Organisationen den deployment-globalen Evaluator verwenden. Behandle Änderungen an Endpunkt, Token, Wiederholungsversuchen und Organisations-Gates als Betreiberkonfiguration und starte den Server nach Änderungen neu oder führe ein Rolling-Restart durch.
+<Warning>
+  `FAILPROOFAI_EVALUATOR_ALLOW_INSECURE_HTTP` sendet alles im Klartext. Der Worker übermittelt `FAILPROOFAI_EVALUATOR_TOKEN` als `Authorization: Bearer`-Header bei jeder Anfrage, und die abgerufenen Transkripte sind die Sessions selbst – jeder auf dem Übertragungsweg kann beides lesen, und mit dem ausgelesenen Token können Evaluierungen ausgeführt werden, bis Sie ihn rotieren. Verwenden Sie diese Option nur in einem isolierten Entwicklungsnetzwerk. Überall sonst muss die URL HTTPS verwenden; Loopback-Adressen benötigen kein Flag.
+</Warning>
 
-## Sicherheit und Betrieb
+## Ergebnistypen
 
-- Stelle den Evaluator hinter HTTPS, wenn der Datenverkehr eine vertrauenswürdige Netzwerkgrenze überschreitet.
-- Konfiguriere ein nicht-leeres Bearer-Token und halte es auf beiden Diensten identisch.
-- Protokolliere nicht das Token oder vollständige sensible Prompts aus Anfrage-Nutzlasten.
-- Gestalte synchrone Handler idempotent; Wiederholungsversuche können eine Anfrage wiederholen.
-- Speichere den Status asynchroner Jobs in der Produktion außerhalb des Prozessspeichers.
-- Verwende stabile Score-Schlüssel. Das Umbenennen eines Schlüssels erstellt eine neue Diagrammreihe, anstatt die alte zu ändern.
+| Typ | Felder |
+| --- | --- |
+| `Score` | `value` (0 bis 1), `passed`, `unit` (Standard `ratio`), `display_value`, `description` |
+| `Metric` | `value`, `unit`, `display_value`, `description` |
+| `Assertion` | `passed`, `description` |
+| `EvalResult` | `score`, `metrics`, `assertions`, `reasoning`, `summary`, `labels` |
+| `ConditionResult` | `applicable`, `reason_code` |
 
-Das SDK gibt strukturierte Lifecycle-Logs aus, wie `eval received`, `eval responded`, `job lookup`, `config returned`, `auth rejected` und Handler-Ausnahmen. Es konfiguriert keine Logging-Handler; verwende die Logging-Konfiguration der Host-Anwendung.
+Ein `EvalResult` enthält mindestens einen Score, eine Metrik oder eine Assertion und höchstens 25, jeweils unter einem eindeutigen Schlüssel.
+
+## Die Session
+
+| Feld oder Methode | Liefert |
+| --- | --- |
+| `session_id`, `agent_id`, `environment` | Die Identität der Session |
+| `started_at`, `ended_at` | Start- und Endzeitpunkt |
+| `event_count`, `events` | Das vollständige, geordnete Transkript |
+| `count(event_type)` | Anzahl der Events dieses Typs |
+| `events_of_type(event_type)` | Diese Events in der richtigen Reihenfolge |
+
+Jedes Event enthält `id`, `ts`, `event_type` und `payload`.
+
+## Der Legacy-Evaluator
+
+Das frühere Evaluator SDK – ein HTTP-Dienst, den Failproof AI unter `EVALUATOR_ENDPOINT` aufrief, der `/evaluate` beantwortete und über `JobPending` abgefragt wurde – wurde eingestellt. Erstellen Sie neue Evaluatoren mit diesem Worker; Betreiber einer selbst gehosteten Instanz, die einen Legacy-Dienst betreiben, können ihn während der Übergangszeit weiter verwenden.

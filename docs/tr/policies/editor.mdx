@@ -1,49 +1,96 @@
 ---
-title: "Policy editor"
-description: "Onaylanmış bir hata modundan sürümlü politikalar oluşturun ve gözden geçirin."
+title: "Bir politika yazın"
+description: "Failproof AI'nın bir denetim bulgusundan bir politika taslağı hazırlamasını sağlayın veya kaynağı kendiniz yazın, ardından gözden geçirin, test edin ve yayınlayın."
 icon: "file-pen-line"
 ---
 
-Policy editor kullanarak bir bulguyu veya sorunu dağıtılabilir bir kurala dönüştürün. Yayımlamayı yazımdan ayrı tutarak, bir taslak canlı davranışı sessizce değiştiremez.
+Bir politika yazmanın iki yolu vardır: Failproof AI'nın bir denetim bulgusundan taslak hazırlamasını sağlamak veya kaynağı kendiniz yazmak. Yayınlamayı veya dağıtmayı seçene kadar hiçbir şey yayınlanmaz veya dağıtılmaz.
 
-Bir sorunun tekrarlanabilir bir eylem deseni varsa, bunu **Analyze → issues** altında açın ve **generate policy** seçeneğini seçin. Failproof AI önce politikanın sorunu ifade edip edemeyeceğini açıklar, ardından gözden geçirilen amacı ve bulgu bağlamını editöre taşır. Oluşturulan kaynak, yayımlayana kadar taslak olarak kalır.
+## Denetimden bir politika yazın
 
-## Bir politika sürümünü yayımlayın
+Denetim bir hatayı bulur; politika bunun yeniden olmasını engeller. Failproof AI, politikayı bulguyu oluşturan kanıtlardan taslaklaştırır.
+
+### 1. Denetim çalıştırın
+
+Hatanın meydana geldiği oturumlar üzerinde [denetim çalıştırın](/tr/audits/run). Her bulgu kanıt oturumları, kök neden ve önerilen önleme yolunu içerir. **Tekrarlanabilir bir işlem deseni** taşıyan bir bulguden başlayın — bir politika yalnızca hook olayında tanıyabileceği şeyi durdurabilir.
+
+### 2. Taslağı oluşturun
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Admin → policy editor** bölümüne gidin ve **compose** içinde hata modunu açıklayın veya JavaScript politika kaynağını yapıştırın.
-    2. Kaynağı doğrulayın ve bildirilen her hatayı düzeltin.
-    3. Politika kimliğini girin ve yayımlayın, ardından sürümleri karşılaştırmak veya devre dışı bırakmak için **library** kullanın.
-    4. Sürüm bir makine dağıtımı için hazır olduğunda **enforcement** seçeneğini seçin.
+    1. **Analyze → issues** altında bulgunun sorununu açın ve alıntı yapılan oturumları, kök nedeni ve tavsiyesini kontrol edin.
+    2. **generate policy** seçeneğini seçin. Failproof AI önce bir politikanın sorunu hiç ifade edip edemeyeceğini söyler. **no policy** sonucu, düzeltmenin bir uyarı, iş akışı değişikliği veya bir kişi olduğu anlamına gelir — politika değil.
+    3. **write this policy** seçeneğini seçin. Sorun başlığı, bulgu, kök neden, tavsiye ve önerilen yaptırım amacı **Admin → policy editor** içinde bir taslak haline gelir. Aday değerlendirme kontrolüne katılmadığınızda **open the editor anyway** kullanın.
 
-    ![Policy editor compose görünümü, politika kimliği, yapay zeka destekli taslaklama, kaynak doğrulama ve yayımlama kontrolleriyle.](/images/dashboard/policy-editor.png)
+    ![Policy editor compose görünümü, politika kimliği, yapay zeka destekli taslak, kaynak doğrulama ve yayın kontrolleri ile.](/images/dashboard/policy-editor.png)
   </Tab>
   <Tab title="CLI">
-    CLI'dan `fp policies publish` ile yayımlayın. Bu yeni bir **version** oluşturur ve asla mevcut olanı düzenlemez. Kaynak, gönderilmeden önce node ile ayrıştırılıp kontrol edilir — aşağıdaki hiçbir sistem bunu yapmaz, bu nedenle bir sözdizimi hatası uygulanma sırasında makinede ortaya çıkabilir:
+    Kanıtları okuyun, ardından asistan ile taslak oluşturun. `compose` kaynağı gözden geçirmeniz için yazdırır ve hiçbir şey yayınlamaz:
 
     ```bash
-    fp policies test ./checkout.policy.mjs --command "git push --force" --expect deny
-    fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
+    fp issues show <issue-id>
+    fp audits finding <finding-id>
+    fp policies compose "Block git push --force on release branches"
     ```
 
-    Yayımlama hiçbir şey dağıtmaz — yeni bir sürüm `fp fleet deploy` onu makineye koyana kadar kullanılmamış olarak kalır. `fp policies compose "<plain English>"` Cloud asistanı ile kaynak hazırlar ve yayımlamak yerine gözden geçirilmesi için yazdırır.
-
-    Bunun yerine yerel bir aracı CLI'ye (Cloud değil) bir politika yüklemek için `failproofai policies --install --custom ./checkout.policies.ts --cli claude --scope project` komutunu kullanın.
+    `compose` imzalanmış bir oturuma ihtiyaç duyar (`fp login`) ki rolü `policies:write` yetkisine sahip olsun; API anahtarlarını reddeder.
   </Tab>
 </Tabs>
 
-## Yazım kontrol listesi
+### 3. Taslağı gözden geçirin
 
-1. Hata modunu operasyonel dilinde adlandırın.
-2. Karar vermek için yeterli kanıt içeren hook olaylarını ve araçlarını seçin.
-3. Güvensiz davranışla eşleşen en dar koşulu yazın.
-4. Aracıya veya operatöre ne yapması gerektiğini söyleyen bir neden döndürün.
-5. Eşleşmesi gereken örnekler ve izin verilmesi gereken örnekler ekleyin.
-6. Yeni bir sürüm kaydedin ve gözden geçirilmesini isteyin.
+Taslak bir başlangıç noktasıdır, bir karar değil. Yayınlamadan önce şunları kontrol edin:
 
-Aracı güvenli bir şekilde yoluna döndürebiliyorsa `instruct` kullanın. Eyleme izin vermek kabul edilemez veya geri döndürülemez bir risk oluşturursa `deny` kullanın.
+1. Başarısızlık modunu operasyonel dilde adlandırır.
+2. Yalnızca karar almak için yeterli kanıt taşıyan hook olayları ve araçlarıyla eşleşir.
+3. Güvenli olmayan işlemi yakalayan en dar koşulu kullanır.
+4. Ajanı ne yapması gerektiğini söyleyen bir neden döndürür.
+5. Ajanın güvenli bir şekilde düzeltebileceği yerde `instruct` kullanır ve işlemin yapılmasına izin vermek kabul edilemez veya tersine döndürülemez olduğu yerde yalnızca `deny` kullanır.
 
-<Info>
-  Policy sürümleri değişmez dağıtım girdileridir. Bir taslağı düzenlemek yeni bir sürüm oluşturur; zaten makinelere atanmış olan sürümü yeniden yazmamalıdır.
-</Info>
+Editörde kaynağı doğrulayın ve bildirilen her hatayı düzeltin.
+
+### 4. Test edin, ardından yayınlayın
+
+Yayınlamadan önce kaynak altında **backtest** çalıştırın: taslağı donanımınızın zaten yaptığı çağrılara karşı yeniden oynatır ve kesintiye uğratacağı çalışan çağrıları sayar. [Bir politikayı test edin](/tr/policies/test) bunu ve diğer kontrolleri kapsar.
+
+Davrandığında, politika kimliğini girin ve **publish version** seçeneğini seçin. Yayınlama değişmez bir sürümü oluşturur ve hiçbir şey dağıtmaz: [dağıtıncaya kadar](/tr/policies/deploy) kullanılmamış kalır. Bir terminalden:
+
+```bash
+fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
+```
+
+`publish` kaynağı göndermeden önce ayrıştırma denetimi yapar, bu nedenle söz dizimi hatası bir makinede yaptırım süresi yerine burada ortaya çıkar.
+
+## Kendiniz yazın
+
+Bir politika `failproofai` API'ye karşı JavaScript veya TypeScript'tir:
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "protect-production-paths",
+  description: "Block writes to production configuration",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (ctx.toolName !== "Write" && ctx.toolName !== "Edit") return allow();
+    const path = String(ctx.toolInput?.file_path ?? "").replaceAll("\\", "/");
+    if (path.split("/").includes("production")) {
+      return deny("Writes to production configuration require approval.");
+    }
+    return allow();
+  },
+});
+```
+
+Bu `production/config.yml`, `/srv/production/config.yml`, `/srv/production` ve `C:\\production\\config.yml` için `Write` ve `Edit` öğelerini eşleştirir, ancak `production-backup` öğesini eşleştirmez: `production` tam bir yol segmenti olmalıdır. Bağlam ayrıca olay türü, normalleştirilmiş yük, oturum meta verileri, parametreler ve kullanılabilir olduğunda kaynak CLI'yi içerir — [politika SDK](/tr/reference/policy-sdk) sayfasına bakın.
+
+Bunu bir sürüm olarak yayınlamak için kaynağı **Admin → policy editor** içindeki **compose** girişine yapıştırın ve yukarıdaki 3 ve 4. adımları izleyin veya dosyayı terminalden `fp policies publish` ile yayınlayın.
+
+Cloud olmadan bir makinede çalıştırmak için `.failproofai/policies/` altında `policies.js`, `policies.mjs` veya `policies.ts` ile biten bir adla kaydedin — bunlar proje ve kullanıcı kapsamında otomatik olarak yüklenirler — veya yola göre yükleyin:
+
+```bash
+failproofai policies --install --custom ./security.policies.ts --scope project
+```
+
+Her politikaya, kural, özel, paket ve Cloud tarafından yönetilen politikalar arasında benzersiz olan bir ad verin.

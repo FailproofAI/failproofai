@@ -1,23 +1,23 @@
 ---
-title: "Özel ajanlar"
-sidebarTitle: "Özel ajanlar"
-description: "Kendi yazdığınız bir ajana veya uyarlaması olmayan bir çerçeveye bir alet yerleştirin."
+title: "Özel aracılar"
+sidebarTitle: "Özel aracılar"
+description: "Kendiniz yazdığınız bir aracıyı veya adaptörü olmayan bir çerçeveyi enstrüman edin."
 icon: "code"
 ---
 
-Kendi yazdığınız bir ajan için veya Failproof AI'ın uyarlaması olmayan bir çerçeve için. Yerleştirilecek hiçbir şey yoktur: siz olayları yayınlarsınız.
+Kendiniz yazdığınız bir aracı veya Failproof AI'nin adaptörü olmayan bir çerçeve için. Enstrümante edilecek bir şey yoktur: olayları siz yayınlarsınız.
 
-Bu, dört çerçeve adaptörünün altında çağırdığı API'dir. Bunlar bunun üzerindeki çeviri tablolarıdır.
+Bu, dört çerçeve adaptörünün altında çağırdığı API'dir. Bunlar onun üzerinde çeviri tablolarıdır.
 
-## Kurulum
+## Yükleme
 
 ```bash
 pip install failproofai-sdk
 ```
 
-Ekstralar ve bağımlılıklar yok.
+Ek paket yok, bağımlılık yok.
 
-## Yerleştirme
+## Enstrümantasyon
 
 ```python
 import failproofai_sdk
@@ -30,27 +30,27 @@ with failproofai_sdk.session():                 # bir çalışma
             t.output = search(q)                # bir araç çağrısı
 ```
 
-Yukarıdan aşağıya okuyun ve ne demek istediğini söyler:
+Baştan sona okuyun, söylediği şey budur:
 
-| İçinde sarmalayın | Söylemek için |
+| Bunu sarın | Demek için |
 | --- | --- |
 | `session()` | Bu olaylar aynı çalışmaya ait |
-| `agent()` | Bir şey çalışma yapıyor — bir listede tanıyabileceğiniz bir ad verin |
+| `agent()` | Birisi çalışıyor — listedeki tanıyacağınız bir ad verin |
 | `tool_call()` | Bu bir araç ve işte ne döndürdüğü |
 
-Ve her biri gerçekten ne yayınlar:
+Ve her biri aslında neyi yayınlar:
 
 | Kapsam | Yayınlar | Amaç |
 | --- | --- | --- |
-| `session()` | Hiçbir şey | Bir oturumu bağlar, bir çalışmayı gruplandırır |
-| `agent()` | `agent_start`, `agent_end` | Bir iş birimini parantez içine alır |
-| `tool_call()` | `tool_use`, `tool_result` | Bir aracı parantez içine alır ve ölçer |
+| `session()` | Hiçbir şey | Oturum kimliğini bağlar, bir çalışmayı gruplandırır |
+| `agent()` | `agent_start`, `agent_end` | Bir iş birimini köşeli ayraç içine alır |
+| `tool_call()` | `tool_use`, `tool_result` | Bir aracı köşeli ayraç içine alır ve ölçer |
 
-İçindeki her şey `session_id` ve `agent_id` öğesini atlayabilir. Kapsamlar kimliği bağlam değişkenlerine bağlar ve her olay çağrısı bunu geri okur, bu nedenle hiçbir zaman işlevleriniz arasında kimlikleri geçirmezsiniz.
+İçindeki her şey `session_id` ve `agent_id` atlamabilir. Kapsamlar kimliği bağlam değişkenlerine bağlar ve her olay çağrısı onu geri okur, bu yüzden kimlikler hiçbir zaman işlevler aracılığıyla iletilmez.
 
-Her üçü `async with` kadar `with` altında da çalışır.
+Üçü de `async with` ve `with` altında çalışır.
 
-Ajanlari yuvalamak ağacı oluşturur. `parent_id` ve derinlik yığından hesaplanır:
+Aracıları iç içe yerleştirmek ağacı oluşturur. `parent_id` ve derinlik yığından hesaplanır:
 
 ```python
 with failproofai_sdk.session():
@@ -59,42 +59,42 @@ with failproofai_sdk.session():
             ...
 ```
 
-## Bir kapsam kapanırken
+## Bir kapsam nasıl kapanır
 
-`agent()` istisnalar sizin için işler:
+`agent()` istisnaları sizin için işler:
 
 | Ne oldu | Olaylar | Sonuç |
 | --- | --- | --- |
 | Hiçbir şey yükseltilmedi | `agent_end` | `success` |
 | `Exception` | `error`, sonra `agent_end` | `failed` |
 | `KeyboardInterrupt`, `SystemExit` | `error`, sonra `agent_end` | `failed` |
-| `CancelledError`, `GeneratorExit` | sadece `agent_end` | `cancelled` |
+| `CancelledError`, `GeneratorExit` | yalnızca `agent_end` | `cancelled` |
 
-Hata `agent_end` öncesinde yayınlanır, çünkü pano aralığı `agent_end` adresinde kapatır ve bundan sonra her şey hiçbir şeye atfedilir. İptal bir başarısızlık değildir, bu nedenle iptal edilen çalışmalar hata yüzeyini kirletmez. İstisna her zaman yeniden yükseltilir: bir kapsam hiçbir zaman istisna kalmaz.
+Hata `agent_end` öncesinde yayınlanır, çünkü gösterge paneli yayını `agent_end` konumunda kapatır ve bundan sonra gelen her şey hiçbir şeye atfedilir. İptal bir hata değildir, bu nedenle iptal edilen çalışmalar hata yüzeyini kirletmez. İstisna her zaman yeniden yükseltilir: bir kapsam asla yutmaz.
 
 ## Olay yöntemleri
 
-On beş yöntem altı aileden. Çoğu çiftler halinde gelir — açıcıyı siz yayınlarsınız, sonra kapatıcıyı yayınlarsınız ve SDK arası aralığı ölçer.
+On beş yöntem altı ailededir. Çoğu çiftler halinde gelir — açan yayını yayınlarsınız, sonra kapatanı yayınlarsınız ve SDK aralarındaki yayını ölçer.
 
 | Aile | Açar | Kapatır | Bağımsız |
 | --- | --- | --- | --- |
-| **Ajanlar** | `agent_start` | `agent_end` | — |
+| **Aracılar** | `agent_start` | `agent_end` | — |
 | | `agent_pause` | `agent_resume` | — |
 | **Modeller** | `model_request` | `model_response` | — |
 | **Araçlar** | `tool_use` | `tool_result` | — |
 | **Kancalar** | `hook_triggered` | `hook_completed` | — |
 | **İnsanlar** | `human_wait` | `human_input` | `human_pause`, `human_interrupt` |
-| **Başarısızlıklar** | — | — | `error` |
+| **Hatalar** | — | — | `error` |
 
 <Tip>
-  Kapsamlar — `agent()` ve `tool_call()` — her yerde tercih edin. Gövde yükselttiğinde bile kapatma olayını garantilerler. İçinde iç içe geçmeyen kontrol akışına (örneğin bir yardımcı içinde bir model çağrısı) sahip olduğunuzda bu yöntemlere doğrudan ulaşın.
+  Kapsamları tercih edin — `agent()` ve `tool_call()` — uygun oldukları yerlerde. Gövde yükseltirse bile kapanan olayı garantilerler. İçerik akışınız iç içe olmadığında doğrudan bu yöntemlere ulaşın; örneğin yardımcı içinde bir model çağrısı.
 </Tip>
 
 <CodeGroup>
-```python Ajanlar
-failproofai_sdk.event.agent_start(agent_id="planner", goal="find the cheapest flight")
+```python Aracılar
+failproofai_sdk.event.agent_start(agent_id="planner", goal="en ucuz uçuşu bul")
 failproofai_sdk.event.agent_end(agent_id="planner", outcome="success", summary="...")
-failproofai_sdk.event.agent_pause(pause_id="p1", reason="awaiting approval")
+failproofai_sdk.event.agent_pause(pause_id="p1", reason="onay beklemede")
 failproofai_sdk.event.agent_resume(pause_id="p1")
 ```
 
@@ -125,39 +125,39 @@ failproofai_sdk.event.hook_completed(hook_name="retrieve", hook_id="h1", outcome
 ```
 
 ```python İnsanlar
-failproofai_sdk.event.human_wait(input_id="i1", prompt="Approve?", options=["yes", "no"])
+failproofai_sdk.event.human_wait(input_id="i1", prompt="Onayla?", options=["yes", "no"])
 failproofai_sdk.event.human_input(input_id="i1", response="yes")
-failproofai_sdk.event.human_pause(reason="operator paused the run", user_id="dana")
-failproofai_sdk.event.human_interrupt(reason="operator stopped the run", at_step="step_3")
+failproofai_sdk.event.human_pause(reason="operatör çalışmayı duraklatttı", user_id="dana")
+failproofai_sdk.event.human_interrupt(reason="operatör çalışmayı durdurdu", at_step="step_3")
 ```
 
-```python Başarısızlıklar
+```python Hatalar
 failproofai_sdk.event.error(
     error_type="TimeoutError",
-    message="provider timed out after 30s",
+    message="sağlayıcı 30 saniye sonra zaman aşımına uğradı",
     traceback="...",
 )
 ```
 </CodeGroup>
 
 <Note>
-  **İki insan ailesi zıt yönleri işaret eder.**
+  **İki insan ailesi zıt yönleri gösterir.**
 
   | Yöntemler | Anlamı |
   | --- | --- |
-  | `human_wait` / `human_input` | **Ajan bir kişiye sordu** — bir onay kapısı, açıklayıcı bir soru |
-  | `human_pause` / `human_interrupt` | **Bir kişi ajana hareket etti** — durdur düğmesi, operatör duraklatması |
+  | `human_wait` / `human_input` | **Aracı bir kişiye sordu** — onay kapısı, açıklayıcı soru |
+  | `human_pause` / `human_interrupt` | **Bir kişi aracıya etkide bulundu** — durdur düğmesi, operatör duraklaması |
 
-  Hiçbir çerçeve ikinci çifti sinyal vermez, bu nedenle her zaman sizin yayınlamanız gereken şeydir.
+  Hiçbir çerçeve ikinci çifti sinyal vermez, bu yüzden her zaman siz yayınlarsınız.
 </Note>
 
 <Warning>
-  **Model çağrıları eşzamanlı olarak çalıştığında `request_id` geçirin.** Olmadan, istekler ve yanıtlar ajan başına varış sırasıyla eşleşir — ve eşzamanlı çağrılar yanlış eşleşir ve her yanıtı yanlış isteğe ekler.
+  **Model çağrıları eşzamanlı olarak çalıştığında `request_id` geçirin.** Olmadan, istekler ve yanıtlar ajan başına varış sırasına göre eşleşir — ve eşzamanlı çağrılar yanlış eşleşir, her yanıtı yanlış isteğe iliştirir.
 </Warning>
 
 ## Örnek
 
-OpenAI API'sine karşı bir araç çağırma döngüsü, ajan çerçevesi olmadan:
+OpenAI API'sine karşı araç çağırma döngüsü, ajan çerçevesi olmadan:
 
 ```python
 import json
@@ -171,7 +171,7 @@ MODEL = "gpt-4o-mini"
 
 
 def turn(messages: list):
-    """Bir model çağrısı, çift tarafından parantez içine alındı."""
+    """Bir model çağrısı, çift tarafından köşeli ayraç içine alınmış."""
     failproofai_sdk.event.model_request(model=MODEL, messages=messages)
     reply = client.chat.completions.create(model=MODEL, messages=messages, tools=TOOLS)
     usage = reply.usage
@@ -185,8 +185,8 @@ def turn(messages: list):
 
 
 with failproofai_sdk.session():
-    with failproofai_sdk.agent("inventory", goal="price report"):
-        for _ in range(4):          # sınırlı; sınırsız bir ajan döngüsü kendi bir hatadır
+    with failproofai_sdk.agent("inventory", goal="fiyat raporu"):
+        for _ in range(4):          # sınırlandırılmış; sınırsız ajan döngüsü kendi hatası
             message = turn(messages)
             if not message.tool_calls:
                 break
@@ -204,45 +204,45 @@ with failproofai_sdk.session():
                 })
 ```
 
-Bu, bir adaptörün sağlayacağı aynı altı olay türünü üretir. Tam çalıştırılabilir sürüm, araç tanımlarıyla birlikte, SDK deposunda `docs/manual/examples/` altında gemi.
+Bu, bir adaptörün size vereceği altı olay türünü üretir. Tam çalıştırılabilir sürüm, araç tanımlarıyla birlikte, SDK deposunda `docs/manual/examples/` altında bulunur.
 
 ## İş parçacıkları ve async
 
-Bağlam değişkenleri asyncio görevlerine otomatik olarak yayılır. Bir iş parçacığı boş bir bağlamla başladığı için yeni iş parçacıklarına yayılmazlar.
+Bağlam değişkenleri asyncio görevlerine otomatik olarak yayılır. Bir iş parçacığı boş bir bağlamla başladığı için yeni iş parçacıklarına yayılmaz.
 
 ```python
-# asyncio: yapılacak hiçbir şey yok
+# asyncio: yapılacak bir şey yok
 async with failproofai_sdk.session():
     await asyncio.gather(worker(1), worker(2))
 
-# iş parçacıkları: çağrılanı sarmalayın
+# iş parçacıkları: çağrıyı sarın
 pool.submit(failproofai_sdk.propagate(work), x)
 threading.Thread(target=failproofai_sdk.propagate(work)).start()
 loop.run_in_executor(None, failproofai_sdk.propagate(work), x)
 ```
 
-`propagate()` olmadan, çalışanın olayları düzeltmeyi adlandıran bir `TypeError` yükseltir, bunun yerine hiçbir oturuma iniş. Bu kasıtlıdır: hiçbir oturuma sahip olmayan bir olay alımında atlanır ve `200` ile yanıtlanır, bu da kimlik katmanının var olması için sessiz başarısızlıktır.
+`propagate()` olmadan, worker'ın olayları düzeltmeyi adlandıran bir `TypeError` yükseltir, bu da hiçbir oturuma gitmez. Bu kasıtlıdır: oturumu olmayan bir olay ingest tarafından atlanır ve `200` ile yanıtlanır, bu da kimlik katmanının önlemesi amaçladığı sessiz başarısızdır.
 
-## Adaptörü olmayan bir çerçeveye alet takın
+## Adaptörü olmayan bir çerçeveyi enstrümante edin
 
-Her ajan çerçevesi aynı üç dikiş verir. Onları eşleştirin ve tam bir izin aldınız — dört gemi adaptörü bundan daha fazlasını yapmazlar.
+Her ajan çerçevesi aynı üç bağlantı noktası sağlar. Onları harita yapın ve tam bir izlemeniz vardır — sevk edilen dört adaptör bundan fazla bir şey yapmaz.
 
-| Dikiş | Yazarız | Arazileri |
+| Bağlantı noktası | Yazarınız | İnişi olan |
 | --- | --- | --- |
 | Çalışma | `session()` + `agent()` | `agent_start`, `agent_end` |
 | Her araç | `tool_call()` | `tool_use`, `tool_result` |
 | Her model çağrısı | `model_*` çifti | `model_request`, `model_response` |
 
 <Steps>
-  <Step title="Çalışmayı parantez içine alın">
+  <Step title="Çalışmayı köşeli ayraç içine alın">
     ```python
     with failproofai_sdk.session():
         with failproofai_sdk.agent(agent_name, goal=task):
             result = framework.run(task)
     ```
   </Step>
-  <Step title="Her aracı parantez içine alın">
-    Çerçevenin bir araç sarmalayıcısı veya ara yazılım dediği ne olursa olsun.
+  <Step title="Her aracı köşeli ayraç içine alın">
+    Çerçevenin araç sarıcısı veya ara yazılım olarak adlandırdığı her şeyde.
 
     ```python
     with failproofai_sdk.tool_call(name, input=args) as call:
@@ -264,31 +264,31 @@ Her ajan çerçevesi aynı üç dikiş verir. Onları eşleştirin ve tam bir iz
 </Steps>
 
 <Tip>
-  **Görmek değer bir düğüm, adım veya ara yazılım sınırı var mı?** Bir kanca çifti içinde sarmalayın — `hook_triggered` / `hook_completed` — iç içe geçmiş `agent()` değil. `agent_id`, düşük kardinalite bir nitelik ve düğüm başına bir giriş onu boğar. Kanca aralıkları aynı şekilde renderlenir ve size düğüm başına gecikme süresi verir.
+  **Görmeye değer bir düğüm, adım veya ara yazılım sınırı var mı?** Bunu iç içe bir `agent()` değil, kancanın içine sarın — `hook_triggered` / `hook_completed`. `agent_id` düşük kardinalite yönüdür ve düğüm başına bir giriş onu boğar. Kancanın yayını aynı şekilde işlenir ve düğüm başına gecikme süresi sağlar.
 </Tip>
 
 <Note>
-  **Manuel ve otomatik oluştur.** Bir uyarlanmış içinde çalışan bir çerçeve, bu oturuma katılır ve bu ajana üst olur, bu nedenle iki ağaç yerine bir ağaç alırsınız — bir desteklenen çerçeve ile birlikte kendi kendine bir çerçeve alet takmanız yararlı.
+  **Manuel ve otomatik oluşturma.** El yazısı bir kapsam içinde çalışan bir adaptör bu oturuma katılır ve bu aracıya ebeveyn olur, bu nedenle iki tane yerine bir ağaç alırsınız — desteklenen bir tarafı kendiniz enstrümante ederken bir çerçeveyi yan yana kullanışlı olduğunda.
 </Note>
 
-<Accordion title="Neden AutoGen adaptörü yoktur">
-  İki neden ve yukarıdaki üç dikiş her ikisinin cevabıdır:
+<Accordion title="AutoGen adaptörü neden yok">
+  İki neden vardır ve yukarıdaki üç bağlantı noktası her ikisine de cevaptır:
 
-  - `autogen-core` Eylül 2025'ten beri bakımsızdır.
-  - AG2, diğer çerçevelerin kancaları eşdeğer işlem çapında bir kayıt noktası ortaya çıkarmaz, bu nedenle bunu araç takınmak her inşaat sitesinde her ajanı sarmalamak anlamına gelir.
+  - `autogen-core` Eylül 2025'ten beri bakımsız olmuştur.
+  - AG2, diğer çerçevelerin kancanlarına eşdeğer hiçbir işlem açısından kayıt noktası açığa çıkarmaz, bu nedenle enstrümantasyonu her inşaat alanında her aracıyı sararak anlamına gelir.
 
-  Dikiş eşleştirmesini el ile yapmak, bir gemi adaptörü olarak aynı olayları aynı doğrulukta kaydeder.
+  Bağlantı noktalarını elle harita yaparak, sevk edilen bir adaptörün yaptığı aynı fidelitede aynı olayları kaydeder.
 </Accordion>
 
-## Daha derine inmek
+## Daha derine gitme
 
-Kayıt gerçekten nasıl çalışır. Başlamak için bunların hiçbiri gerekli değildir.
+Kaydın aslında nasıl çalıştığı. Başlamak için buna ihtiyaç yoktur.
 
 <AccordionGroup>
 
-<Accordion title="Bir kayıt çerçeve başına neye benzer" icon="eye">
+<Accordion title="Çerçeve başına bir kaydın neye benzediği" icon="eye">
 
-Her kaydın aynı şekli vardır: bir aralık açılır, çalışma içinde yuvalanır ve her açılış olayı kapatma olayı alır.
+Her kaydın aynı şekli vardır: bir yay açılır, iş içinde iç içe geçer ve her açma olayı kapatma olayı alır.
 
 ```mermaid
 flowchart LR
@@ -300,17 +300,17 @@ flowchart LR
     C --> E(["agent_end"])
 ```
 
-**Çift** birim. Her kapatma olayı, SDK'nın açılış olayından ölçtüğü bir süreyi taşır.
+**Çift** birimdir. Her kapatma olayı SDK'nın açma olayından ölçtüğü bir süre taşır.
 
-Aşağıda SDK ile birlikte gelen örneklerden yakalanan çerçeve başına bir gerçek çalışma — model adı normalleştirildi. Tek bir çağrıdan ne kadar geri döndüğüne dikkat edin.
+Aşağıda SDK ile sevk edilen örneklerden yakalanan çerçeve başına bir gerçek çalışma vardır — model adı normalleştirilmiştir. Tek bir çağrıdan ne kadar döndüğüne dikkat edin.
 
 <Tabs>
   <Tab title="LangGraph">
-    ```text 14 olaylar
+    ```text 14 olay
      1  +0.000s  agent_start       LangGraph
      2  +0.001s    hook_triggered  agent
      3  +0.002s      model_request   gpt-4o-mini
-     4  +3.023s      model_response  gpt-4o-mini · 21 out-tok
+     4  +3.023s      model_response  gpt-4o-mini · 21 çıkış-tok
      5  +3.024s    hook_completed  agent
      6  +3.024s    hook_triggered  tools
      7  +3.025s      tool_use      word_count
@@ -318,106 +318,106 @@ Aşağıda SDK ile birlikte gelen örneklerden yakalanan çerçeve başına bir 
      9  +3.025s    hook_completed  tools
     10  +3.026s    hook_triggered  agent
     11  +3.027s      model_request   gpt-4o-mini
-    12  +5.717s      model_response  gpt-4o-mini · 5 out-tok
+    12  +5.717s      model_response  gpt-4o-mini · 5 çıkış-tok
     13  +5.720s    hook_completed  agent
     14  +5.721s  agent_end         LangGraph · success
     ```
 
-    Düğümler kanca çiftleri haline gelir, böylece ajan listesini doldurmadan düğüm başına gecikme süresi alırsınız.
+    Düğümler kancanın çiftleri olur, bu nedenle onları kalabalık yapmadan düğüm başına gecikme süresi alırsınız.
   </Tab>
 
   <Tab title="CrewAI">
-    ```text 10 olaylar
+    ```text 10 olay
      1  +0.000s  agent_start       crew
      2  +0.050s    agent_start     analyst · under crew
      3  +0.057s      model_request   gpt-4o-mini
-     4  +3.475s      model_response  gpt-4o-mini · 19 out-tok
+     4  +3.475s      model_response  gpt-4o-mini · 19 çıkış-tok
      5  +3.478s      tool_use      lookup_metric
      6  +3.478s      tool_result   lookup_metric · ok
      7  +3.486s      model_request   gpt-4o-mini
-     8  +5.694s      model_response  gpt-4o-mini · 9 out-tok
+     8  +5.694s      model_response  gpt-4o-mini · 9 çıkış-tok
      9  +5.727s    agent_end       analyst · success
     10  +5.739s  agent_end         crew · success
     ```
 
-    Her ajanın `role` aralık adı haline gelir, böylece gecikme ve jeton harcaması rol başına bölünür.
+    Her aracının `role` yay adı olur, bu nedenle gecikme süresi ve jeton harcaması rol başına bölünür.
   </Tab>
 
   <Tab title="LlamaIndex">
-    ```text 26 olaylar
+    ```text 26 olay
      1  +0.000s  agent_start       Agent
      2  +0.001s    hook_triggered  init_run
      4  +0.501s    hook_triggered  setup_agent
      6  +0.503s    hook_triggered  run_agent_step
      7  +0.505s      model_request   gpt-4o-mini
-     8  +3.083s      model_response  gpt-4o-mini · 18 out-tok
+     8  +3.083s      model_response  gpt-4o-mini · 18 çıkış-tok
     10  +3.197s    hook_triggered  parse_agent_output
     12  +3.355s    hook_triggered  call_tool
     13  +3.355s      tool_use      city_population
     14  +3.355s      tool_result   city_population · ok
     16  +3.356s    hook_triggered  aggregate_tool_results
-       ...                        ikinci yineleme
+       ...                        ikinci iterasyon
     26  +7.038s  agent_end         Agent · success
     ```
 
-    Ajan döngüsünün kendisi görülebilir, sadece model çağrıları değil.
+    Ajan döngüsü kendisi görünür, yalnızca model çağrıları değil.
   </Tab>
 
   <Tab title="Pydantic AI">
-    ```text 8 olaylar
+    ```text 8 olay
     1  +0.000s  agent_start       agent
     2  +0.001s    model_request   gpt-4o-mini
-    3  +4.413s    model_response  gpt-4o-mini · 17 out-tok
+    3  +4.413s    model_response  gpt-4o-mini · 17 çıkış-tok
     4  +4.415s    tool_use        population
     5  +4.415s    tool_result     population · ok
     6  +4.416s    model_request   gpt-4o-mini
-    7  +8.118s    model_response  gpt-4o-mini · 6 out-tok
+    7  +8.118s    model_response  gpt-4o-mini · 6 çıkış-tok
     8  +8.119s  agent_end         agent · success
     ```
 
-    Kanca çifti yok: Pydantic AI'nin parantez içine alacak bir düğüm veya adım sınırı yoktur.
+    Kancanın çifti yok: Pydantic AI'nin köşeli ayraç içine alacak düğüm veya adım sınırı yok.
   </Tab>
 
-  <Tab title="Özel ajanlar">
-    ```text 6 olaylar
+  <Tab title="Özel aracılar">
+    ```text 6 olay
     1  +0.000s  agent_start       main
     2  +0.000s    tool_use        population
     3  +0.000s    tool_result     population · ok
     4  +0.000s    model_request   gpt-4o-mini
-    5  +0.000s    model_response  gpt-4o-mini · 3 out-tok
+    5  +0.000s    model_response  gpt-4o-mini · 3 çıkış-tok
     6  +0.000s  agent_end         main · success
     ```
 
-    Bunları kendiniz yayınlıyorsunuz. Aynı olay türleri, aynı doğruluk — çağrı sitelerine mal olur.
+    Bunları kendiniz yayınlarsınız. Aynı olay türleri, aynı fidelite — çağrı alanlarına mal olur.
   </Tab>
 </Tabs>
 
 </Accordion>
 
-<Accordion title="Bir oturum nasıl başlar ve biter" icon="circle-play">
+<Accordion title="Oturum nasıl başlar ve biter" icon="circle-play">
 
-**Oturum sonu olayı yoktur.** Bir oturum kapatıp kapatmadığınız bir şey değildir — aynı `session_id` paylaşan bir olay grubudur.
+**Oturum sonu olayı yoktur.** Oturum kapattığınız bir şey değil — `session_id` paylaşan bir olay grubudur.
 
-Durum izin şeklinden türetilir:
+Durum izlemenin şeklinden türetilir:
 
 | Durum | Ne zaman |
 | --- | --- |
-| `ongoing` | En az bir aralık hala açık |
-| `paused` | `agent_pause` eşleşen `agent_resume` yok |
+| `ongoing` | En az bir yay hala açık |
+| `paused` | Bir `agent_pause` eşleşen `agent_resume` yok |
 | `error` | Hiçbir şey açık değil ve en az bir olay başarısız oldu |
 | `done` | Hiçbir şey açık değil ve hiçbir şey başarısız olmadı |
 
-Bu nedenle bir oturum her çift kapandığında biter. Adaptörler sizin için `agent_end` yayınlar ve bozulma sırasında hala açık olan her şeyi kapatır ve eksik olarak işaretler — kilitlenmiş bir çalışma, asılı kalmak yerine görünen boşluk olarak `done` çözümlenir.
+Yani bir oturum her çift kapatıldığında biter. Adaptörler sizin için `agent_end` yayınlar ve kapalı kaldığında açık kalan her şeyi kapatırlar ve eksik olarak işaretlerler — çökmüş bir çalışma asılı kalmak yerine görünür bir boşlukla `done` olarak yerleşir.
 
 <Note>
-  Bu nedenle bir oturum iki çağrıya yayılabilir. Bir LangGraph `interrupt()` çalışmayı duraklatır, kök aralığı kasıtlı olarak açık kalır ve devam çağrısı bunu kapatır. Her iki çağrı da bir oturumdu.
+  Bu yüzden bir oturum iki çağrıya yayılabilir. Bir LangGraph `interrupt()` çalışmayı duraklatır, kök yayı kasıtlı olarak açık kalır ve devam eden çağrı onu kapatır. Her iki çağrı bir oturuma aittir.
 </Note>
 
 </Accordion>
 
-<Accordion title="Kimlik: session_id, agent_id ve kim bunları başlatır" icon="fingerprint">
+<Accordion title="Kimlik: session_id, agent_id ve kim onları basım yapıyor" icon="fingerprint">
 
-`session_id` ve `agent_id` her olay yönteminde isteğe bağlıdır. Atlanıldığında, çevreleyen kapsamdan çözülebilirler:
+`session_id` ve `agent_id` her olay yönteminde isteğe bağlıdır. Atlanırsa, çevreleyen kapsamdan çözülürler:
 
 ```python
 with failproofai_sdk.session():
@@ -425,84 +425,84 @@ with failproofai_sdk.session():
         failproofai_sdk.event.tool_use(tool_name="search", tool_call_id="c1")
 ```
 
-Bunları açıkça geçirmek yine de çalışır ve öncelik alır. Hiçbir şey bağlı olmayıp hiçbir şey geçmediyse, çağrı düzeltmeyi adlandıran bir `TypeError` yükseltir, yoksa alım tarafından atlanacak hiçbir oturuma sahip bir olay yayınlar ve `200` ile yanıtlar.
+Bunları açıkça iletmek yine de işe yarar ve önceliği alır. Hiçbir şey bağlı değil ve hiçbir şey iletilmezse, çağrı düzeltmeyi adlandıran bir `TypeError` yükseltir, ingest atlamış olacağı oturumu olmayan bir olayı yayınlamak yerine, `200` ile yanıtlar.
 
-Kapsamlar kimliği bağlam değişkenlerine bağlar. Bunlar asyncio görevlerine otomatik olarak yayılır, ancak yeni iş parçacıklarına değil — bir işçiyi `failproofai_sdk.propagate()` içinde sarmalayın.
+Kapsamlar kimliği bağlam değişkenlerine bağlar. Bunlar asyncio görevlerine otomatik olarak yayılır ancak yeni iş parçacıklarına yayılmaz — bir worker'ı `failproofai_sdk.propagate()` içine sarın.
 
-#### Hangi kimlik kim başlatır
+#### Hangi kimlik kim tarafından basım yapılır
 
-| Kimlik | Tarafından başlatıldı | Notlar |
+| Kimlik | Basım yapan | Notlar |
 | --- | --- | --- |
-| `session_id` | Siz veya SDK | `session("chat-42")` tam olarak kullanılır; atlanıldığında, SDK bir `uuid4().hex` üretir |
-| `agent_id` | Siz veya çerçeve | `agent("analyst")` danışmanından, CrewAI `role`, bir `FunctionAgent.name`. UUID benzeri bir değer reddedilir ve değiştirilir |
-| `tool_call_id`, `hook_id`, `request_id` | Siz veya çerçeve | Adaptörler çerçevenin kendi çalışma kimliklerini yeniden kullanır, bu da çiftlerin iş parçacığı atlaması nedeniyle hayatta kaldığı nedenidir |
-| **Olay kimliği** | **Bulut, alımda** | SDK hiçbirini yayınlamaz |
-| **`dedup_key`** | **Bulut, alımda** | Org, oturum, zaman damgası, tür ve yükün karması. Bu gerçek kimlik — bir yeniden denenen toplu işin kopyalanmak yerine çökmesini sağlar |
+| `session_id` | Siz veya SDK | `session("chat-42")` kelimesi kelimesine kullanılır; atlanırsa, SDK bir `uuid4().hex` oluşturur |
+| `agent_id` | Siz veya çerçeve | `agent("analyst")`, CrewAI `role`, bir `FunctionAgent.name`'den. UUID görünüşlü bir değer reddedilir ve değiştirilir |
+| `tool_call_id`, `hook_id`, `request_id` | Siz veya çerçeve | Adaptörler çerçevenin kendi çalışma kimliklerini yeniden kullanır, bu yüzden çiftler iş parçacığı atlamalarında hayatta kalır |
+| **Olay kimliği** | **Bulut, ingest'te** | SDK hiçbirini yayınlamaz |
+| **`dedup_key`** | **Bulut, ingest'te** | Kuruluş, oturum, zaman damgası, tür ve yüke karşı bir karma. Bu gerçek kimlik — yeniden denenen bir topluyu çoğaltmak yerine daraltır |
 
-#### Adaptörler `session_id` nasıl çözerler
+#### Adaptörler `session_id` nasıl çözer
 
 İlk eşleşme kazanır:
 
-1. Açık `session_id` seçeneği
-2. Çağrı başına meta veriler
-3. `session()` kapsamını çevreleyen
+1. Açık bir `session_id` seçeneği
+2. Çağrı başına meta veri
+3. Çevreleyen `session()` kapsamı
 4. Çerçeve meta verileri
 5. Çerçevenin kendi çalışma kimliği
 
-Bunlardan biri var iken asla icat edilmez — sentezlenmiş bir kimlik bir çalışmayı birkaç oturum arasında bölmek olur.
+Bunlardan biri vardığı sürece asla icat edilmez — sentezlenmiş bir kimlik bir çalışmayı birkaç oturuma böler.
 
-#### `agent_id` düşük kardinaliteyi tutun
+#### `agent_id` düşük kardinaliteyi koruyun
 
-Her pano yüzeyinde birincil yüz ve bir `LowCardinality(String)` sütunudur. Çalışma başına bir değer sütunu bozar ve filtre açılır penceresini çalışma başına bir giriş ile doldurur.
+Bu her gösterge paneli yüzeyinde birincil yönüdür ve `LowCardinality(String)` sütunu. Çalışma başına bir değer sütunu düşürür ve filtre açılır menüsünü çalışma başına bir giriş ile doldurur.
 
 Adaptörler bu sütunu sizin için savunur:
 
-| Çerçeve teslim eder | Olarak kaydedildi | Neden |
+| Çerçeve teslim eder | Kaydedilmiş olarak | Neden |
 | --- | --- | --- |
-| `3f9a1c2b-…` (UUID) | `main` | Tutacak hiçbir şey okunaklı |
-| Uzun çıplak onaltılık dize | `main` | Aynı |
-| `agent-3f9a1c2b-…` | `agent` | Çalışma başına kimlik çıkarıldı, okunaklı kısım tutuldu |
+| `3f9a1c2b-…` (bir UUID) | `main` | Tutmak için okunabilir bir şey yok |
+| Uzun çıplak hex dizesi | `main` | Aynı |
+| `agent-3f9a1c2b-…` | `agent` | Çalışma başına kimlik çıkarıldı, okunabilir bölüm tutuldu |
 | `agent-v2` | `agent-v2` | Kısa segmentler yalnız bırakılır |
 | `step-3` | `step-3` | Aynı |
 
-Gerçek kimlik, nitelik olmadan sorgulanabilir kaldığı `fw_agent_id` / `fw_run_id` üzerinde tutulur.
+Gerçek kimlik `fw_agent_id` / `fw_run_id` üzerinde tutulur, burada yönü olmuş bir yüzey olmadan sorgulanabilir kalır.
 
 <Warning>
-  **Bu koruma yalnızca *çerçevenin* seçtiği etiketlere dokunur.** Kendi geçtiğiniz bir `agent_id` — `event.*` veya `failproofai_sdk.agent(...)` — tam olarak verilen gibi kaydedilir. Açık bir argümanı sessizce yeniden yazmak önlediği kardinaliteden daha kötü olur, bu nedenle kendi aralıklarınızı buna göre adlandırın.
+  **Bu koruma yalnızca **çerçevenin** seçtiği etiketlere dokunur.** Kendiniz ilettiğiniz bir `agent_id` — `event.*` veya `failproofai_sdk.agent(...)` için — tam olarak verilen şekilde kaydedilir. Açık bir bağımsız değişkeni sessizce yeniden yazmak, kardinalieti önledikten daha kötü olur, bu yüzden kendi yaylarınızı buna göre adlandırın.
 </Warning>
 
 </Accordion>
 
-<Accordion title="Olay türleri, gruplandırılmış — ve hangi çerçeve ne kaydeder" icon="table">
+<Accordion title="Olay türleri, gruplandırılmış — ve hangi çerçeve neyi kaydeder" icon="table">
 
 | Grup | Olaylar |
 | --- | --- |
-| Ajanlar | `agent_start`, `agent_end`, `agent_pause`, `agent_resume` |
+| Aracılar | `agent_start`, `agent_end`, `agent_pause`, `agent_resume` |
 | Modeller | `model_request`, `model_response` |
 | Araçlar | `tool_use`, `tool_result` |
 | Kancalar | `hook_triggered`, `hook_completed` |
 | İnsanlar | `human_wait`, `human_input`, `human_pause`, `human_interrupt` |
-| Başarısızlıklar | `error` |
+| Hatalar | `error` |
 
-Hangi çerçeve ne kaydeder, yukarıdaki çalışmalardan ölçülmüştür:
+Hangi çerçeve neyi kaydeder, yukarıdaki çalışmalardan ölçülen:
 
 | Olay | LangGraph | CrewAI | LlamaIndex | Pydantic AI | Özel |
 | --- | :--: | :--: | :--: | :--: | :--: |
-| Ajan başlangıcı ve sonu | Evet | Evet | Evet | Evet | Siz |
+| Ajan başı ve sonu | Evet | Evet | Evet | Evet | Siz |
 | Model isteği ve yanıtı | Evet | Evet | Evet | Evet | Siz |
 | Araç kullanımı ve sonucu | Evet | Evet | Evet | Evet | Siz |
-| Kanca tetiklendi ve tamamlandı | Düğüm | Görev | Adım | — | Siz |
+| Kancanın tetiklenmesi ve tamamlanması | Düğüm | Görev | Adım | — | Siz |
 | Hata | Evet | Evet | Evet | Evet | Otomatik |
-| İnsan bekle ve giriş | Evet | Evet | Evet | — | Siz |
-| Ajan duraklat ve devam et | Evet | Evet | Evet | — | Siz |
+| İnsan bekleme ve girişi | Evet | Evet | Evet | — | Siz |
+| Ajan duraklaması ve devam etmesi | Evet | Evet | Evet | — | Siz |
 
-Bir tire çerçevenin böyle bir kavramı olmadığı anlamına gelir. `human_pause` ve `human_interrupt` ajana etki eden bir *kişi* anlatılar — hiçbir çerçeve sinyal vermez — bunları kendiniz yayınlayın.
+Tire, çerçevenin böyle bir kavramı olmadığı anlamına gelir. `human_pause` ve `human_interrupt`, aracıya etkide bulunan bir *kişiyi* tanımlar, hiçbir çerçeve sinyal vermez — bunları kendiniz yayınlayın.
 
 </Accordion>
 
 <Accordion title="Çiftler, korelasyon ve süre" icon="link">
 
-Bir olay asla tek başına gelmez. Biri aralığı açar, biri kapatır ve kapatma olayı SDK'nın açılış olayından ölçtüğü bir süreyi taşır.
+Bir olay asla yalnız gelmez. Biri bir yayı açar, biri onu kapatır ve kapatma olayı SDK'nın açma olayından ölçtüğü bir süre taşır.
 
 | Açar | Kapatır | Kapatma olayı taşır |
 | --- | --- | --- |
@@ -510,44 +510,44 @@ Bir olay asla tek başına gelmez. Biri aralığı açar, biri kapatır ve kapat
 | `model_request` | `model_response` | jetonlar, `stop_reason`, gecikme |
 | `tool_use` | `tool_result` | `output` veya `error`, süre |
 | `hook_triggered` | `hook_completed` | `outcome`, süre |
-| `agent_pause` | `agent_resume` | duraklatmanın ne kadar sürdüğü |
-| `human_wait` | `human_input` | cevap ve kişi kaç süre aldı |
+| `agent_pause` | `agent_resume` | duraklamanın ne kadar sürdüğü |
+| `human_wait` | `human_input` | cevap ve kişinin ne kadar sürdüğü |
 
 <Warning>
-  Kapatma olayı olmayan bir açılış olayı hiçbir zaman bitmeyen bir araçlıktır. Oturum sonsuza dek hala çalışıyor olarak renderlenir ve etkin süresi artmaya devam eder. Bu, elinizle alet takınırken izlenecek başarısızlık modudur.
+  Kapatma olayı olmayan açma olayı hiçbir zaman bitmez bir yaydır. Oturum sonsuza dek çalışıyor olarak işlenir ve etkin süresi büyümeye devam eder. Bu, el ile enstrümante ederken izlenecek hata modudur.
 </Warning>
 
 #### Korelasyon kuralları
 
 - Eşleşen tamamlama olayı için aynı `tool_call_id`, `hook_id`, `pause_id` veya `input_id` yeniden kullanın.
-- SDK, `tool_result`, `hook_completed`, `agent_resume` ve `human_input` için `duration_ms` hesaplar. Bunu bu yöntemlere geçirmek `ValueError` yükseltir.
-- `duration_ms` **kabul edilir** `model_response` adresinde, çünkü yalnızca arayana gerçek sağlayıcı gecikmesi bilinir. Tamsayı olmalı — bir kayan nokta çağrı sitesinde `ValueError` yükseltir, çünkü sunucu sütunu imzasız 32 bitlik bir tamsayı olarak okur ve diğer her şey için NULL depolar.
-- Korelasyon anahtarları tür ve oturum tarafından kapsamlandırılır, bu nedenle bir araç çağrısı ve kanca güvenli bir şekilde bir kimliği paylaşabilir ve iki eşzamanlı oturum aynı kimlikleri çarpışmadan yeniden kullanabilir. Ajan tarafından kapsamlandırılmaz: bir ajan altında açılıp başka bir ajan altında kapatılan bir çift hala korelat olur, bu da çok ajanı çerçevelerde sıradan bir durumdur.
-- `request_id` `model_request` ile `model_response` eşleştiriler. Olmadan, model olayları ajan başına sipariş olarak eşleşir, bu nedenle eşzamanlı çağrılar yanlış eşleşir.
-- İşlemler arasında bölünmüş bir çift hala aşağı akışta korelat, ancak SDK işlem içi süresini hesaplayamaz.
-- Beklemede harita en fazla 10.000 başlama tutar ve dolu olduğunda en eski girişi tahliye eder.
+- SDK `tool_result`, `hook_completed`, `agent_resume` ve `human_input` için `duration_ms` hesaplar. Bunları iletmek `ValueError` yükseltir.
+- `duration_ms` **kabul edilir** `model_response` üzerinde, çünkü yalnızca arayan gerçek sağlayıcı gecikmesini bilir. Bir tamsayı olmalı — bir kayan sayı çağrı sitesinde `ValueError` yükseltir, sunucu sütunu işaretsiz 32 bitlik bir tamsayı olarak okur ve başka bir şey için NULL depolar.
+- Korelasyon anahtarları tür ve oturum kapsamındadır, böylece bir araç çağrısı ve kancanın kimliği güvenle paylaşabilir ve iki eşzamanlı oturum kimlikler yeniden kullanabilir çarpışma olmadan. Agent kapsamında değil: bir ajan altında açılan ve diğeri altında kapatılan bir çift yine de ilişkilendirilir, bu multi-ajan çerçevelerdeki sıradan durumdur.
+- `request_id` `model_request` `model_response` ile eşleştirir. Olmadan, model olayları ajan başına sırada eşleşir, bu nedenle eşzamanlı çağrılar yanlış eşleşir.
+- İşlemler arasında bölünmüş bir çift yine de aşağı doğru ilişkilendirilir, ancak SDK işlem içi süresini hesaplayamaz.
+- Bekleyen harita en fazla 10.000 başlangıç tutar ve dolu olduğunda en eski giriş tahliye eder.
 
 </Accordion>
 
-<Accordion title="Paket içinde ne var ve instrument() çerçevenizi nasıl bulur" icon="box">
+<Accordion title="Pakette ne vardır ve instrument() çerçevenizi nasıl bulur" icon="box">
 
-`failproofai-sdk` kurulması her şeyi kurar, dört adaptör dahildir. Ekstralar **çerçeveyi** kurar, adaptörü değil.
+`failproofai-sdk` kurmak her şeyi, dört adaptör dahil olmak üzere yükler. Ekstralar adaptörü değil, **çerçeveyi** çeker.
 
 ```python
 import failproofai_sdk        # standart kitaplığın dışında hiçbir şey yüklemez
-failproofai_sdk.instrument()  # gerçekten ihtiyacınız olan adaptörleri yalnızca alır
+failproofai_sdk.instrument()  # yalnızca gerçekten ihtiyaç duyduğunuz adaptörleri içe aktarır
 ```
 
-`import failproofai_sdk` sözleşmeli olarak sıfır bağımlılık, inşa edilen tekerleği `--no-deps` ile kuran bir test ve hiçbir çerçevenin `sys.modules` ulaşmadığını kanıtlayan başka bir test tarafından zorunlu.
+`import failproofai_sdk` sözleşmeli olarak sıfır bağımlılıktır, yerleşik tekerleği `--no-deps` ile kuran ve hiçbir çerçevenin `sys.modules` erişmemesini kanıtlayan başka bir test tarafından uygulanır.
 
 <Warning>
-  `failproofai_sdk.crewai` özniteliği yoktur. Adaptörler kasıtlı olarak üst düzey pakette ortaya çıkmaz: bir adaptörü dokunmak çerçeveyi bir öznitelik erişiminin yan etkisi olarak içe aktarır, sıfır bağımlılık sözünü kırar. `instrument()` kullanın.
+  `failproofai_sdk.crewai` niteliği yoktur. Adaptörler kasıtlı olarak en üst düzey pakette açığa çıkarılmaz: birini değmek, öznitelik erişiminin yan etkisi olarak çerçeveyi içe aktarır, sıfır bağımlılık vaadini kırarak. `instrument()` kullanın.
 </Warning>
 
 ```python
-failproofai_sdk.instrument()              # her çerçeve zaten alındı
-failproofai_sdk.instrument("crewai")      # tam olarak biri, ada göre
-failproofai_sdk.uninstrument("crewai")    # geri koy
+failproofai_sdk.instrument()              # her çerçeve zaten içe aktarıldı
+failproofai_sdk.instrument("crewai")      # tam olarak bir, adıyla
+failproofai_sdk.uninstrument("crewai")    # geri koyun
 ```
 
 | Ad | Ayrıca kabul eder |
@@ -557,7 +557,7 @@ failproofai_sdk.uninstrument("crewai")    # geri koy
 | `llama_index` | `llamaindex`, `llama-index` |
 | `pydantic_ai` | `pydantic-ai`, `pydanticai` |
 
-Otomatik algılama `sys.modules` okur, yüklü paket listesi değil, bu nedenle yüklediğiniz ancak asla içe aktarmadığınız bir çerçeve alet takılmaz ve hiçbir zaman sizin adınıza alınmaz. Neler bağlıdır görmek için:
+Otomatik algılama `sys.modules` okur, yüklü paket listesi değil, bu nedenle kurmuş ancak asla içe aktarmadığınız bir çerçeve enstrümente edilmez ve asla sizin adınıza içe aktarılmaz. Neyin bağlı olduğunu görmek için:
 
 ```python
 from failproofai_sdk.integrations import active, available
@@ -567,130 +567,132 @@ active()      # ('langchain',)
 ```
 
 <Note>
-  **CrewAI olmayan bir makinede `instrument("crewai")` yükseltmez.** Bir uyarı günlüğe kaydeder ve `()` döndürür, bu nedenle eksik bir çerçeve diğerlerini de alet takmayan bir işlemi asla çökertmez.
+  **CrewAI olmayan bir makinede `instrument("crewai")` yükseltmez.** Bir uyarı kaydeder ve `()` döndürür, bu nedenle bir eksik çerçeve diğerlerini de enstrümante eden bir işlemi asla alır.
 
-  Uyarı temel `ImportError` taşır ve bu ileti kesin kurulum komutunu adlandırır — bu nedenle onarım günlüklerinizde, gizli değildir.
+  Uyarı temel `ImportError` taşır ve bu ileti tam kurulum komutu adlandırır — düzeltme günlüklerde gizli değildir.
 
   ```text
   ImportError: failproofai_sdk: cannot instrument 'crewai' because 'crewai.events'
   is not importable. Install it with:  pip install 'failproofai_sdk[crewai]'
   ```
 
-  Bunun yerine yükseltmesini sağlamak için `FAILPROOFAI_SDK_STRICT=1` ayarlayın. Bu bayrak **bir kez okunur ve önbelleğe alınır**, bu nedenle mid-run ayarlamak yerine işleminiz başlamadan önce ihraç edin.
+  Bunun yerine yükseltmesini sağlamak için `FAILPROOFAI_SDK_STRICT=1` ayarlayın. Bu bayrak **bir kez okunur ve önbelleğe alınır**, bu yüzden işleminiz başlamadan önce bunu dışa aktarın, çalışma sırasında ayarlamak yerine.
 </Note>
 
 <Warning>
-  **`instrument()` çerçeve alımınızdan *sonra* gelmelidir.** Otomatik algılama `sys.modules` okur, bu nedenle alımın üstünde bir çıplak çağrı hiçbir şey bulamaz, hiçbir şey kurmaz ve `()` döndürür.
+  **`instrument()` çerçeve ithalinizin *sonra* gelmeli.** Otomatik algılama `sys.modules` okur, bu yüzden içeri aktarmanın üstünde açık bir çağrı hiçbir şey bulmaz, hiçbir şey yüklemez ve `()` döndürür.
 </Warning>
 
 <CodeGroup>
 ```python Yanlış
 import failproofai_sdk
-failproofai_sdk.instrument()   # sys.modules'te henüz langchain yok -> ()
+failproofai_sdk.instrument()   # sys.modules'da henüz langchain yok -> ()
 
 import langchain               # çok geç, hiçbir şey bağlı değil
 ```
 
 ```python Doğru
-import langchain               # ilk çerçeveyi içe aktarın
+import langchain               # çerçeveyi ilk olarak içe aktarın
 import failproofai_sdk
 
 failproofai_sdk.instrument()   # onu bulur -> ('langchain',)
 ```
 
-```python Doğru, düzen kanıtı
+```python Doğru, sıra-kanıtlı
 import failproofai_sdk
 
-# Bunu adlandırmak adaptörü isteğe bağlı olarak alır, bu nedenle buradan her yerde çalışır.
+# Adını verme, adaptörü talep üzerine yükler, bu yüzden buradan herhangi bir yerden işe yarar.
 failproofai_sdk.instrument("langchain")
 ```
 </CodeGroup>
 
-Bunu yanlış aldıktan sonra işlem SDK alındı, adaptör görünen kurulu ve **hiçbir olay yayınlanmamış** dengan çalışır. Bu yayınlanan bir uyarı tam olarak söyler — bu nedenle bir çalışma hiçbir şey kaydettiğinde günlüklerinizi ilk kontrol edin.
+Bunu yanlış yapın ve işlem SDK'yı içe aktarılmış, adaptör görünüşte yüklenmiş ve **tek bir olayı yayınla olmayan** ile çalışır. Bu tam olarak söyleyen bir uyarı kaydeder — çalışma hiçbir şey kaydedildiğinde loglarınızı ilk kontrol edin.
 
 </Accordion>
 
-<Accordion title="Olaylar Bulut'a nasıl ulaşır" icon="cloud-upload">
+<Accordion title="Olaylar Buluta nasıl ulaşır" icon="cloud-upload">
 
 ```mermaid
 flowchart LR
-    A["Sizin ajanınız"] --> B["Adaptör"]
-    B --> C["Yazar<br/>bellek içi sıra"]
-    C -->|"her 0.5s"| D["Makara<br/>diskette JSONL"]
+    A["Ajanız"] --> B["Adaptör"]
+    B --> C["Yazar<br/>bellek içi kuyruk"]
+    C -->|"her 0.5s"| D["Makara<br/>diskte JSONL"]
     D --> E["Failproof daemon"]
     E -->|"HTTPS"| F["Bulut"]
 ```
 
-| Aşama | İş | Çalışması |
+| Aşama | İş | Çalışır |
 | --- | --- | --- |
-| Adaptör | Çerçeve geri aramasını 15 olay türünden birine çevirir | Sizin işleminiz |
-| Yazar | Kuyruklar, toplu işler, JSONL atomik olarak yazar | Sizin işleminiz, arka plan iş parçacığı |
-| Makara | Dayanıklı teslim, işleminizin çıkışını devam ettirir | Yerel disk |
-| Daemon | Makarayı izler, toplu işler gemi, ne gemi yaptığını siler | Sizin makineniz |
-| Alım | Satır kimliği ve dedup anahtarı atar, sorgulanabilir sütunları yükseltir | Bulut |
+| Adaptör | Çerçeve geri çağrısını 15 olay türünden birine çevirir | İşleminiz |
+| Yazar | Kuyruklar, toplar, JSONL atomik olarak yazar | İşleminiz, arka plan iş parçacığı |
+| Makara | Dayanıklı teslim, işleminiz çıktığında hayatta kalır | Yerel disk |
+| Daemon | Makarayı izler, topluları gönderir, gönderdiklerini siler | Makineniz |
+| Ingest | Satır kimliği ve dedup anahtarı atar, sorgulanabilir sütunları yükseltir | Bulut |
 
-Makara ne yapar güvenli bu: ajanınız hiçbir zaman ağda engellenmez ve Bulut kesintisi kayıp olaylar yerine büyüyen bir dizin anlamına gelir.
+Makara bunu güvenli yapar: ajanız hiçbir zaman ağda bloke olmaz ve Bulut kesintisi, kayıp olaylar yerine büyüyen bir dizin anlamına gelir.
 
-Her temizleme bir toplu işlem dosyası yazar, ilk `.tmp`, sonra `fsync`, sonra atomik adı değiştir:
+Her temizleme bir toplu dosya yazar, `.tmp` ilk, sonra `fsync`, sonra atomik yeniden adlandır:
 
 ```text
 ~/.failproofai/custom-agents/events/
   event-2026-08-20T10-15-00-123Z-48213-0.jsonl
 ```
 
-Daemon yalnızca `.jsonl` alır, bu nedenle hiçbir zaman yarı yazılı bir dosya okunamaz. Gövde bir zaman damgası, işlem kimliği ve sıra numarası taşır, bu nedenle iki işlem aynı milisaniye içinde temizleme yapabilen çarpışamaz. Sıra 10.000 olaya sınırlı; geçtikten sonra en eski bırakır ve günlüğe kaydeder.
+Daemon yalnızca `.jsonl` alır, bu nedenle asla yarı yazılı dosya okuyamaz. Gövde zaman damgası, işlem kimliği ve sıra numarası taşır, bu nedenle iki işlem aynı milisaniyede temizlenirse çarpışamaz. Kuyruk 10.000 olayda sınırlıdır; bunun ötesinde en eskisini bırakır ve kaydeder.
 
 <Warning>
-  **`collector.redact` SDK olayları için de `minimal` varsayılan olarak belirtilir.** SDK diske bir toplu işlem yazmadan önce kaşıntı çıkarır ve daemon yeniden deneme sırasında aynı belirleneci geçişi yapar, böylece eski SDK'lardan toplu işlemler korunur.
+  **`collector.redact` SDK olaylarınıza uygulanmaz.** Asla onları görmez.
 </Warning>
 
-Daemon her toplu işlem okur ve bellekte yükleme öncesi redaction uygular. Okuduğu makara dosyasını yeniden yazmaz.
+Daemon **gönderir** topluları. Açmaz veya yeniden yazmaları yapmaz.
 
-| Olaylar | Tarafından yazıldı | Minimal redaction nerede çalışır |
+| Olaylar | Tarafından yazılan | `collector.redact` tarafından redakte mi? |
 | --- | --- | --- |
-| CLI oturum transkriptleri | Daemon | Daemon toplu işlem yazmadan önce |
-| Kanca etkinliği | Daemon | Daemon toplu işlem yazmadan önce |
-| **SDK yayınlayan her şey** | **Sizin işleminiz** | **SDK toplu işlem yazmadan önce ve daemon yükleme öncesi** |
+| CLI oturum transkriptleri | Daemon | Evet |
+| Kancanın aktivitesi | Daemon | Evet |
+| **SDK'nin yayınladığı her şey** | **İşleminiz** | **Hayır** |
 
-`collector.redact` yalnızca verbatim yükleri açık bir gereklilik olduğunda `off` ayarlayın; SDK ve daemon her ikisi de bu ayarı onurlandırır. Minimal redaction yaygın API anahtarlarını, taşıyıcı jetonlarını, JWT'leri ve gizli atamalarını yakalar. Keyfi hassas nesri tanımlayamaz.
+Redaksiyon daemon'un kendi olaylarını *yazdığı* yerde çalışır — topluların *sevk edildiği* yerde değil. Bu yüzden bir istemi veya bir API anahtarı tutan araç bağımsız değişkeni varışta tutmaya devam eder.
+
+Bu kasıtlıdır. Bunlar kendi enstrümantasyon çağrılarınızdır ve bunları aktarım sırasında yeniden yazmak, aldığınız olayların yayınladığınız olaylar olmadığı anlamına gelir.
 
 <Tip>
-  **Kaynakta, iki yerde yükleri kontrol edersiniz:**
+  **Yüklemeleri kaynakta kontrol edersiniz, iki yerde:**
 
-  - Adaptör üzerinde içerik yakalamayı kapatın. **Seçenek adı farklıdır ve bir adaptör hiç yoktur** — bu tek bir evrensel anahtar değildir:
+  - Adaptörde içerik yakalamayı kapatın. **Seçenek adı farklıdır ve bir adaptörün hiçbiri yoktur** — bu tek evrensel anahtar değildir:
     - LangChain / LangGraph, Pydantic AI — `capture_content=False`
     - LlamaIndex — `capture_messages=False`
-    - CrewAI — **hiç içerik anahtarı yok**; `session_id` okuduğu tek seçenektir, bu nedenle istemler ve tamamlamalar her zaman kaydedilir.
+    - CrewAI — **içerik anahtarı hiç yoktur**; `session_id` okuduğu tek seçenektir, bu yüzden istekler ve tamamlamalar her zaman kaydedilir.
 
-    `instrument()` bir adaptörün okumadığı seçenekleri düşürür, bu nedenle yanlış adı geçirmek hiçbir şeyi yükseltmez ve değiştiremez.
-  - Gizli anahtarı ilk yerde `input=` adresine geçirmeyin.
+    `instrument()` bir adaptörün okumuyor olduğu seçenekleri bırakır, bu nedenle yanlış adı iletmek hiçbir şey yükseltmez ve hiçbir şey değiştirmez.
+  - Sırrı ilk yerde `input=` tutmayın.
 
-  `collector.redact` derinlemesine savunma, ikisinin yerine değildir.
+  `collector.redact` ikisi için bir yedek değil.
 </Tip>
 
 <Warning>
-  **Boş bir makara dizini sağlıklı durumdur.** Teslimatı kontrol etmek için kullanmayın.
+  **Boş bir makara dizini sağlıklı durumdur.** Teslimi kontrol etmek için kullanmayın.
 </Warning>
 
-Daemon her toplu işlem yükleme sayılı milisaniye içinde siler, bu nedenle bir `ls` dedektif ve yayınladığınız kesrini gösterir — hiç bir SDK kayıtlı olmamış bir dedektiften ayırt edilemez.
+Daemon her topluyu gönderdikten sonra milisaniyeler içinde siler, bu yüzden `ls` toplayıcıyı yarışır ve yayınladığınız kesirini gösterir — hiçbir şey kaydeden bir SDK'dan ayırt edilemez.
 
-Olayların gerçekten indiğini doğrulamak için panoyu kontrol edin. Makara doldurmak için izlemek için ilk daemon'u durdurun.
+Olayların gerçekten iniş yaptığını doğrulamak için gösterge panelini kontrol edin. Makarayı dolmaya karşı izlemek için daemon'u ilk durdurun.
 
 </Accordion>
 
-<Accordion title="Araç takılması başarısız olduğunda" icon="triangle-alert">
+<Accordion title="Enstrümantasyon başarısız olduğunda" icon="triangle-alert">
 
-Her geri arama, tek işi yeniden yükseltmek olan bir sarmalayıcı içinde çalışır, bu nedenle çağrınız tam olarak bir `try` ve SDK'nın yaptığı her şey dışında oturur.
+Her geri çağrı, tek işi yeniden yükseltmek olan bir sarıcı içinde çalışır, bu nedenle çağrınız tam olarak bir `try` içinde oturur ve SDK'nın yaptığı her şey bunun dışında olur.
 
 | Ne oldu | Sonuç |
 | --- | --- |
-| Bir kanca yükseltilir | Traceback ile bir kez günlüğe kaydedildi. Çağrınız etkilenmez |
-| Aynı kanca üç kez yükseltilir | O kanca, işlem geri kalanı için devre dışı bırakılır, bir hata satırı ile |
-| `FAILPROOFAI_SDK_STRICT=1` ayarlandı | İstisna bunun yerine yeniden yükseltilir |
-| Bir çerçeve sürümü sınanan aralığın dışında | Bir kez uyarır, yine de araç takın |
-| Tek bir yetenek eksiktir | O kanca devre dışı bırakılır, asla adaptörün tamamı değil |
+| Bir kancanın yükseltmesi | Traceback ile bir kez kaydedildi. Çağrınız etkilenmez |
+| Aynı kancanın üç kez yükseltmesi | O bir kancanın geri kalanı için devre dışı, tek bir hata satırı |
+| `FAILPROOFAI_SDK_STRICT=1` ayarlanmış | İstisna bunun yerine yeniden yükseltildi |
+| Bir çerçeve sürümü test edilen aralığın dışında | Uyarılar bir kez, yine de enstrümente eder |
+| Tek bir yetenek eksik | O bir kancanın devre dışı, asla tüm adaptör |
 
-Varsayılan üretimde doğrudur ve hata ayıklama sırasında yanlış, çünkü sadece "çökertmedi" kanıtlayabilir. Yutulmuş bir başarısızlığı yüksek yapmak için `FAILPROOFAI_SDK_STRICT=1` ayarlayın.
+Varsayılan, üretimde doğru ve hata ayıklarken yanlıştır, çünkü yalnızca hiçbir zaman çökmediğini kanıtlayabilir. Yutkunmuş bir başarısızlığı yüksek sesle yapmak için `FAILPROOFAI_SDK_STRICT=1` ayarlayın.
 
 </Accordion>
 
@@ -699,24 +701,24 @@ Varsayılan üretimde doğrudur ve hata ayıklama sırasında yanlış, çünkü
 ## Yaygın sorunlar
 
 <AccordionGroup>
-  <Accordion title="Bir aralık asla bitmez">
-    Bir açılış olayının hiçbir kapatma olayı yoktur: `model_response` olmayan `model_request` veya `tool_result` olmayan `tool_use`. Gövde yükselttiğinde bile çifti garantileyen kapsamları kullanın. Olay yöntemlerini doğrudan çağırırsanız, `try` ve `finally` kullanın.
+  <Accordion title="Bir yay hiçbir zaman bitmez">
+    Açma olayı kapatma olayı olmaz: `model_response` olmayan `model_request` veya `tool_result` olmayan `tool_use`. Kapsamları kullanın, gövde yükseltirse bile çifti garanti ederler. Olay yöntemlerini doğrudan çağrırsanız, `try` ve `finally` kullanın.
   </Accordion>
 
-  <Accordion title="duration_ms geçirmek bir ValueError yükseltir">
-    Eşleşen açılış olayından ölçülür, bu nedenle `tool_result`, `hook_completed`, `agent_resume` ve `human_input` üzerinde reddedilir. `model_response` adresinde kabul edilir, çünkü gerçek sağlayıcı gecikmesi yalnızca sizin biliyor ve tamsayı olması gerekir.
+  <Accordion title="duration_ms geçirmek ValueError yükseltir">
+    Eşleşen açma olayından ölçüldüğü için `tool_result`, `hook_completed`, `agent_resume` ve `human_input` üzerinde reddedilir. `model_response` üzerinde kabul edilir, çünkü yalnızca siz gerçek sağlayıcı gecikmesini bilirsiniz ve bir tamsayı olmalı.
   </Accordion>
 
-  <Accordion title="Bir işçi iş parçacığından olaylar bir TypeError yükseltir">
-    İş parçacığı hiçbir zaman bağlamı devralması. Çağrılanı `failproofai_sdk.propagate()` içinde sarmalayın. [İş parçacıkları ve async](#threads-and-async) adresine bakın.
+  <Accordion title="Bir worker iş parçacığından olaylar TypeError yükseltir">
+    İş parçacığı asla bağlamı devralması olmadı. Çağrıyı `failproofai_sdk.propagate()` içine sarın. Bkz. [İş parçacıkları ve async](#threads-and-async).
   </Accordion>
 
   <Accordion title="Ekstra bir alan kayboldu veya bir şeyin üzerine yazıldı">
-    Ekstra alanlar en son birleşir, bu nedenle `model` veya `outcome` gibi gerçek bir alanın adıyla biri bunu üzerine yazardı ve depolanmış bir sütunu değiştirir. Sizinkini ad alanı; adaptörler bir `fw_` öneki kullanır.
+    Ekstra alanlar son olarak birleşir, bu nedenle `model` veya `outcome` gibi gerçek alana benzer bir ad, onu yeniden yazar ve depolanmış sütunu değiştirir. Sizinkini ad alanı yapın; adaptörler bir `fw_` ön eki kullanır.
   </Accordion>
 
-  <Accordion title="Ajan filtresi binlerce girişe sahiptir">
-    `agent_id` düşük kardinalite nitelik ve siz buna bir çalışma kimliği koydunuz. Bir rol veya düğüm adı kullanın ve gerçek kimliği bir yük alanına koyun.
+  <Accordion title="Ajan filtresinin binlerce girişi var">
+    `agent_id` düşük kardinalite yönüdür ve bir çalışma kimliğini içine koydunuz. Rol veya düğüm adı kullanın ve gerçek kimliği yayın alanına koyun.
   </Accordion>
 </AccordionGroup>
 
@@ -726,8 +728,8 @@ Varsayılan üretimde doğrudur ve hata ayıklama sırasında yanlış, çünkü
   <Card title="Nasıl çalışır" icon="workflow" href="/tr/reference/custom-agents">
     Çiftler, kimlikler, oturum yaşam döngüsü ve teslim.
   </Card>
-  <Card title="İzin oku" icon="route" href="/tr/sessions/read-a-trace">
-    Yeni yakaladığınız oturum aracılığıyla nedenselliği izleyin.
+  <Card title="İzmeyi oku" icon="route" href="/tr/sessions/read-a-trace">
+    Az önce yakaladığınız oturum aracılığıyla nedenselliği takip edin.
   </Card>
   <Card title="Çerçeve adaptörleri" icon="plug" href="/tr/start/integrations">
     LangGraph, CrewAI, LlamaIndex ve Pydantic AI.

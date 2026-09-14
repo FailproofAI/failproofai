@@ -6,63 +6,84 @@ icon: "waypoints"
 
 <CardGroup cols={3}>
   <Card title="Lokale Durchsetzung" icon="laptop">
-    Installieren Sie Hooks und Richtlinien auf einem Rechner. Verwenden Sie diese Option, wenn Sie sofortige Sicherheitsmechanismen benötigen, ohne Sitzungsdaten in die Cloud zu senden.
+    Richten Sie eine Maschine ohne Cloud-Key ein und verwenden Sie ein Policy-Pack. Nutzen Sie diese Option, wenn Sie sofortige Sicherheitsmechanismen benötigen, ohne Sitzungsdaten an die Cloud zu senden.
   </Card>
   <Card title="Failproof AI Cloud" icon="cloud">
-    Fügen Sie zentrale Sitzungen, Audits, Online-Auswertungen, Dashboards, Warnmeldungen und Fleet-Richtlinienverteilung hinzu.
+    Fügen Sie zentralisierte Sitzungen, Audits, Online-Auswertungen, Dashboards, Benachrichtigungen und Fleet-Policy-Deployment hinzu.
   </Card>
   <Card title="Enterprise-Deployment" icon="building-2">
-    Nutzen Sie Organisationskontrollen, bereichsbezogene Schlüssel, private Infrastruktur und deploymentspezifische Sicherheitsanforderungen.
+    Nutzen Sie Organisationssteuerung, bereichsbezogene Keys, private Infrastruktur und deployment-spezifische Sicherheitsanforderungen.
   </Card>
 </CardGroup>
 
+## Lokal durchsetzen
+
+Führen Sie `failproofai config` ohne Key aus und installieren Sie anschließend ein Pack mit `failproofai policies add FailproofAI/policies`. Wählen Sie im Terminal **Not now — stay local**, wenn der Setup-Assistent fragt, ob eine Verbindung zur Cloud hergestellt werden soll. Ohne Terminal und ohne `FAILPROOFAI_CLOUD_TOKEN` bleibt die Konfiguration automatisch lokal. Der Daemon und die Hooks greifen auf der Maschine, und es werden keine Sitzungsdaten an die Cloud gesendet. Um die Verbindung später herzustellen, folgen Sie den nachstehenden Schritten.
+
 ## Empfohlener Produktionspfad
 
-1. Verbinden Sie einen Nicht-Produktionsrechner mit aktivierter Transkripterfassung.
+1. Verbinden Sie eine Nicht-Produktionsmaschine mit aktivierter Transkripterfassung.
 2. Überprüfen Sie Sitzungen und Auswertungen in der Cloud.
 3. Erstellen Sie ein Audit für einen bekannten Fehlerfall.
-4. Stellen Sie die erste Richtlinie im Beobachtungsmodus bereit.
-5. Weiten Sie die Nutzung auf die Produktion aus, nachdem Sie Treffer und falsch positive Ergebnisse geprüft haben.
+4. Deployen Sie die erste Policy im Beobachtungsmodus.
+5. Weiten Sie das Deployment auf die Produktion aus, nachdem Sie Treffer und False Positives geprüft haben.
 
-## Rechner mit der Cloud verbinden
+## Eine Maschine mit der Cloud verbinden
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehen Sie zu **Administration → Schlüssel** und erstellen Sie einen Schlüssel mit `events:add` und `policies:pull`.
-    2. Kopieren Sie das einmalig verwendbare Secret auf den Zielrechner.
-    3. Führen Sie den CLI-Verbindungsbefehl aus, wechseln Sie dann zu **Admin → Durchsetzung** und bestätigen Sie, dass der Rechner dort erscheint.
-    4. Gehen Sie zu **Beobachten → Ereignisse** und bestätigen Sie, dass das erste Ereignis des Rechners ankommt.
+    1. Gehen Sie zu **Administration → Keys** und erstellen Sie einen Key mit den Berechtigungen `events:add` und `policies:pull`.
+    2. Kopieren Sie das Einmal-Secret auf die Zielmaschine.
+    3. Führen Sie den CLI-Verbindungsbefehl aus, gehen Sie dann zu **Admin → Enforcement** und bestätigen Sie, dass die Maschine angezeigt wird.
+    4. Gehen Sie zu **Observe → Events** und bestätigen Sie, dass das erste Event ankommt.
 
-    Die Schlüsselansicht zeigt die zwei Berechtigungen, die ein verbundener Rechner benötigt: Ereignisaufnahme und Richtlinienbereitstellung.
+    Die Key-Schublade zeigt die zwei Berechtigungen, die eine verbundene Maschine benötigt: Event-Ingestion und Policy-Auslieferung.
 
-    ![Die neue API-Schlüssel-Ansicht zum Erteilen von Ereignisaufnahme- und Richtlinienbereitstellungsberechtigungen.](/images/dashboard/key-create.png)
+    ![Die neue API-Key-Schublade zum Vergeben von Berechtigungen für Event-Ingestion und Policy-Auslieferung.](/images/dashboard/key-create.png)
 
-    Nach der Verbindung sollte der Rechner in der Durchsetzungsübersicht mit seinem gewünschten und gemeldeten Richtlinienstatus erscheinen.
+    Nach der Verbindung sollte die Maschine im Enforcement-Bereich mit ihrem gewünschten und gemeldeten Policy-Status erscheinen.
 
-    ![Die Enforcement-Fleet mit einem eingetragenen Rechner, der seinen gewünschten Richtlinienstatus und Bereitstellungsstatus anzeigt.](/images/dashboard/enforcement-fleet.png)
+    ![Die Enforcement-Fleet mit einer eingetragenen Maschine, die ihren gewünschten Policy-Status und Deployment-Status anzeigt.](/images/dashboard/enforcement-fleet.png)
 
-    Das erste eingehende Ereignis bestätigt, dass der Daemon Daten unabhängig von der Richtlinienbereitstellung an die Cloud übermitteln kann.
+    Das erste eintreffende Event bestätigt, dass der Daemon Daten an die Cloud liefern kann – unabhängig vom Policy-Deployment.
 
-    ![Der Live-Ereignisstrom mit aktuellen Agent-, Modell- und Tool-Ereignissen.](/images/dashboard/events-stream-current.png)
+    ![Der Live-Eventstream mit aktuellen Agent-, Modell- und Tool-Events.](/images/dashboard/events-stream-current.png)
 
-    Fahren Sie erst fort, wenn sowohl der Rechner als auch sein erstes Ereignis sichtbar sind.
+    Fahren Sie erst fort, wenn sowohl die Maschine als auch ihr erstes Event sichtbar sind.
   </Tab>
   <Tab title="CLI">
-    ```bash
-    failproofai config --connect https://app.befailproof.ai \
-      --token "$FAILPROOFAI_KEY" \
-      --machine-label checkout-runner-01
+    Lesen Sie das Einmal-Secret in die Shell ein. `read -s` nimmt es über eine Eingabeaufforderung ohne Echo entgegen, sodass es weder in einem Befehl noch im Shell-Verlauf erscheint:
 
-    failproofai policies --install --cli claude --scope user
+    ```bash
+    read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
+    ```
+
+    Richten Sie die Maschine anschließend ein, wählen Sie ihre Policies und vergeben Sie einen Namen:
+
+    ```bash
+    failproofai config
+
+    failproofai policies add FailproofAI/policies
+    failproofai config --machine-label checkout-runner-01
     failproofai config --status
     ```
 
+    `failproofai config` übernimmt die gesamte Einrichtung – Daemon, Hooks für alle gefundenen Agent-CLIs und die Cloud-Verbindung – und wählt dabei keine Policies aus; dafür ist der zweite Befehl zuständig.
+
+    Das Label wird **nach** der Verbindung gesetzt, nicht davor: `failproofai config --machine-label <name>` benennt eine bereits verbundene Maschine um; bei einer noch nicht verbundenen Maschine tut der Befehl nichts außer darauf hinzuweisen.
+
     Fügen Sie `--no-transcripts` hinzu, wenn Transkriptinhalte lokal verbleiben müssen.
+
+    Setzen Sie in CI-Umgebungen `FAILPROOFAI_CLOUD_TOKEN` aus dem Secret-Store anstelle von `read -s` und deaktivieren Sie Shell-Tracing (`set -x`), da andernfalls der Key im Trace ausgegeben wird.
+
+    <Warning>
+      Auf einer Maschine, die **bereits** eingerichtet ist, registriert `failproofai config --connect <url>` diese ausschließlich in der Cloud und tut nichts weiter. Verwenden Sie diese Form nicht für eine Erstinstallation: Der Befehl kehrt zurück, bevor Daemon oder Hooks eingerichtet sind, und hinterlässt eine Maschine, die in der Cloud erscheint, aber weder Daten erfasst noch Policies durchsetzt.
+    </Warning>
   </Tab>
 </Tabs>
 
-Die Verbindung mit der Cloud überprüft Ereignisaufnahme und Richtlinienbereitstellung unabhängig voneinander. Ein Schlüssel kann daher gültig sein, aber eine erforderliche Berechtigung fehlen. Verwenden Sie `failproofai config --status`, um zu sehen, welche Funktion konfiguriert ist.
+Die Verbindung zur Cloud prüft Event-Ingestion und Policy-Auslieferung unabhängig voneinander. Ein Key kann daher gültig sein, aber eine erforderliche Berechtigung fehlen. Verwenden Sie `failproofai config --status`, um zu sehen, welche Funktion konfiguriert ist.
 
 <Info>
-  Das Cloud-Setup schreibt lokale Anmeldedaten nur dann, wenn die jeweilige Funktion erfolgreich verifiziert wurde. Eine fehlgeschlagene Verifizierung lässt einen Rechner nicht fälschlicherweise als verbunden erscheinen.
+  Das Cloud-Setup schreibt lokale Anmeldedaten erst dann, wenn die jeweilige Funktion erfolgreich verifiziert wurde. Eine fehlgeschlagene Verifizierung hinterlässt keine Maschine, die als verbunden erscheint, obwohl sie es nicht ist.
 </Info>

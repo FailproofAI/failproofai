@@ -1,55 +1,49 @@
 ---
-title: "Yerel yapılandırma"
-description: "Policy kapsamını, parametrelerini, özel dosyaları ve makine düzeyindeki Failproof AI ayarlarını kontrol edin."
+title: "Yerel konfigürasyon"
+description: "Failproof AI politika kapsamını, parametrelerini, özel dosyaları ve makine düzeyindeki ayarlarını kontrol edin."
 icon: "file-cog"
 ---
 
-Failproof AI, policy seçimini makine ve daemon ayarlarından ayırır. Bu, depo policy seçimlerinin gözden geçirilebilir kalmasını sağlarken, kimlik bilgileri ve daemon durumu depo dışında kalır.
+Failproof AI, bir deponun commit edebileceği şeyleri — hook bağlantısı, politika parametreleri, özel politikalar — kimlik bilgileri, yüklü paketler ve daemon gibi makine durumundan ayrı tutar.
 
-## Policy kapsamını seçin
+## Bir kapsam seçin
 
-<Tabs>
-  <Tab title="Dashboard">
-    Yerel policy panosunu açmak için `failproofai` komutunu bağımsız değişken olmadan çalıştırın. Bir policy'yi etkinleştirmeden önce kullanıcı, proje veya yerel kapsamı seçin, böylece değişiklik amaçlanan yapılandırma dosyasına yazılır.
+Bir kapsam, hook'ların nerede bağlandığını ve parametreleri ile özel politika yollarını hangi konfigürasyon dosyasına yazacağınızı belirler:
 
-    - **User** bu makinedeki tüm projeler arasında geçerlidir.
-    - **Project** depoya aittir ve işlenebilir (commit).
-    - **Local** bir projeyi tek bir kullanıcı için geçersiz kılar ve gitignore'da kalmalıdır.
+- **User** bu makinede projeler arasında geçerlidir.
+- **Project** depoya aittir ve commit edilebilir.
+- **Local** bir projeyi bir kullanıcı için geçersiz kılar ve gitignore'da kalmalıdır.
 
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai policy add block-rm-rf --scope user
-    failproofai policy add block-force-push --scope project
-    failproofai policy add warn-large-file-write --scope local
-    failproofai policies
-    ```
+```bash
+failproofai policies --install --cli claude --scope project   # bu depo için hook'ları bağla
+failproofai policies --install --cli claude --scope user      # veya bu makinedeki her proje için
+failproofai policies
+```
 
-    Her harness yerel kapsamı desteklemez. CLI, seçilen harness'in temsil edemediği bir kapsamı reddeder.
-  </Tab>
-</Tabs>
+Her harness yerel kapsamı desteklemez; CLI, seçilen harness'in temsil edemeyeceği bir kapsamı reddeder.
 
-| Kapsam | Policy yapılandırma dosyası |
+Hangi paket politikalarının açık olduğu **kapsamlı değildir**. Anahtar, yüklü pakettle kaydedilir, bu nedenle `failproofai policies add <name>` `--scope` ne derse desin, bir politikayı tüm makine için açar.
+
+| Kapsam | Politika konfigürasyon dosyası |
 | --- | --- |
 | Project | `<project>/.failproofai/policies-config.json` |
 | Local | `<project>/.failproofai/policies-config.local.json` |
 | User | `~/.failproofai/policies-config.json` |
 
-Etkinleştirilen policy'ler bir birleşim olarak birleştirilir. Policy parametreleri, bu policy için parametreleri tanımlayan ilk kapsamı kullanır (proje → yerel → kullanıcı sırasında). Açık özel policy yolları, bunları tanımlayan ilk kapsamı kullanır.
+Politika parametreleri, o politika için parametreleri tanımlayan ilk kapsamı kullanır; proje → yerel → kullanıcı sırasında. Açık özel politika yolları, bunları tanımlayan ilk kapsamı kullanır.
 
-## Policy parametrelerini yapılandırın
+## Politika parametrelerini yapılandırın
 
 <Tabs>
   <Tab title="Dashboard">
-    Yerel panosunda policy'yi açın, desteklenen parametrelerini düzenleyin ve seçilen kapsamda kaydedin. Eşleşen ve eşleşmeyen bir agent eylemi çalıştırın, ardından **Observe → policy** bölümünde kararı inceleyin.
+    Yerel dashboard'da politikayı açın, desteklenen parametrelerini düzenleyin ve seçilen kapsamda kaydedin. Eşleşen ve eşleşmeyen bir ajan eylemini çalıştırın, ardından **Observe → policy** kısmında kararı inceleyin.
 
   </Tab>
   <Tab title="CLI">
-    Seçilen kapsamın `policies-config.json` dosyasını düzenleyin, ardından bilinmeyen policy adlarını veya parametre anahtarlarını ortaya çıkarmak için `failproofai policies` komutunu çalıştırın.
+    Seçilen kapsamın `policies-config.json` dosyasını düzenleyin, ardından `failproofai policies` çalıştırın: bir `policyParams` girdisinin yüklenmiş hiçbir paket tarafından taşınmayan bir politikayı adlandırması durumunda uyarır. Bir girdinin içindeki anahtarları kontrol etmez, bu nedenle bunları aşağıdaki tabloya göre kontrol edin.
 
     ```json
     {
-      "enabledPolicies": ["block-rm-rf", "block-force-push"],
       "policyParams": {
         "block-rm-rf": {
           "allowPaths": ["/tmp/build-output"]
@@ -64,21 +58,45 @@ Etkinleştirilen policy'ler bir birleşim olarak birleştirilir. Policy parametr
   </Tab>
 </Tabs>
 
+### Failproof AI politikalarının kabul ettiği parametreler
+
+Her politika kendi parametre türlerini doğrular.
+
+| Politika | Parametre | Tür ve varsayılan |
+| --- | --- | --- |
+| `sanitize-api-keys` | `additionalPatterns` | `pattern[]`, `[]`; girdiler `regex` ve `label` içerir |
+| `block-read-outside-cwd` | `allowPaths` | `string[]`, `[]` |
+| `block-sudo` | `allowPatterns` | `string[]`, `[]` |
+| `block-rm-rf` | `allowPaths` | `string[]`, `[]` |
+| Altyapı engelleyicileri | `allowPatterns` | `string[]`, `[]` |
+| `block-secrets-write` | `additionalPatterns` | `string[]`, `[]` |
+| `block-push-master` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `block-work-on-main` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `prefer-package-manager` | `allowed`, `blocked` | `string[]`, `[]` |
+| `warn-large-file-write` | `thresholdKb` | `number`, `1024` |
+| `require-push-before-stop` | `remote`, `baseBranch` | `string`, `"origin"`; `string`, `"main"` |
+| `require-pr-before-stop` | `baseBranch` | `string`, `"main"` |
+| `require-no-conflicts-before-stop` | `baseBranch` | `string`, `"main"` |
+
+<Warning>
+  İzin verme deseni, bir ajanın yapabileceği şeyleri genişletir. Hedef harness'te tam tokenleştirme ve komut varyantlarını test ettikten sonra bir filo genelinde dağıtın.
+</Warning>
+
 ## Makine dosyalarını anlayın
 
-`~/.failproofai`, ayrı güven sınırları için ayrı dosyalar içerir:
+`~/.failproofai` farklı güven sınırları için ayrı dosyalar içerir:
 
 | Yol | Amaç |
 | --- | --- |
 | `config.json` | Gizli olmayan daemon, denetim ve telemetri ayarları |
-| `credentials.json` | Bulut kimlik bilgileri; yalnızca sahip izinleriyle depolanır |
-| `policies-config.json` | Kullanıcı kapsamı yerleşik seçim, parametreler ve açık özel yollar |
-| `policies/` | Kullanıcı kuralı policy'leri ve Bulut tarafından yönetilen policy yapıtları |
-| `hook-activity/` | Yerel policy karar günlüğü |
-| `state/` | Daemon spool'u, sağlık, duraklatma ve çalışma zamanı durumu |
+| `credentials.json` | Bulut kimlik bilgileri; yalnızca sahibin izinleriyle depolanır |
+| `policies-config.json` | Kullanıcı kapsamı parametreleri ve açık özel politika yolları |
+| `policies/` | Kullanıcı kural politikaları, yüklü paketler ve bunların politikalarından hangilerinin açık olduğu ve Bulut tarafından yönetilen politika yapıtları |
+| `hook-activity/` | Yerel politika karar günlüğü |
+| `state/` | Daemon spool, sistem sağlığı, duraklatma ve çalışma zamanı durumu |
 
-Bir konteyner veya izole test için tam makine düzenini yeniden konumlandırmak amacıyla `FAILPROOFAI_HOME` kullanın. Tek tek durum dizinlerini bağımsız olarak yeniden konumlandırmayın.
+Bir konteyner veya izole edilmiş test için tam makine düzenini yeniden konumlandırmak için `FAILPROOFAI_HOME` kullanın. Durum dizinlerini bağımsız olarak yeniden konumlandırmayın.
 
 <Warning>
-  `credentials.json` dosyasını asla işlemeyin (commit). Proje policy yapılandırması ve proje kuralı policy'lerini yalnızca uygulama kodu olarak gözden geçirdikten sonra işleyin.
+  Asla `credentials.json` commit etmeyin. Proje politika konfigürasyonunu ve proje kural politikalarını yalnızca uygulama kodu olarak inceledikten sonra commit edin.
 </Warning>

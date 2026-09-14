@@ -1,35 +1,35 @@
 ---
-title: "कस्टम नीतियां"
-description: "आपके एजेंट्स के लिए विशिष्ट विफलताओं के लिए जावास्क्रिप्ट या टाइपस्क्रिप्ट नीतियां बनाएं, परीक्षण करें और तैनात करें।"
+title: "कस्टम policies"
+description: "अपने agents के लिए विशिष्ट failures के लिए JavaScript या TypeScript policies को author, test, और deploy करें।"
 icon: "shield-plus"
 ---
 
-कस्टम नीतियां आपके ट्रेस या ऑडिट से एक विफलता पैटर्न को एक निर्णय में बदल देती हैं जो एजेंट काम करते समय चलता है। एक नीति एक कार्रवाई की अनुमति दे सकती है, एजेंट को मार्गदर्शन दे सकती है, या कार्रवाई को अस्वीकार कर सकती है इससे पहले कि यह एक और घटना का कारण बने।
+कस्टम policies आपके traces या audits से एक failure pattern को एक decision में बदल देते हैं जो agent के काम करते समय चलता है। एक policy एक action को allow कर सकता है, agent को guidance दे सकता है, या action को deny कर सकता है इससे पहले कि यह दूसरा incident का कारण बने।
 
-एक कस्टम नीति का उपयोग करें जब व्यवहार आपके टूल्स, पाथ्स, कमांड्स, एनवायरनमेंट्स या ऑपरेटिंग नियमों पर निर्भर करता है। पहले [बिल्ट-इन नीति कैटलॉग](/hi/policies/builtin-catalog) देखें ताकि आप किसी मौजूदा नियंत्रण को फिर से न बनाएं।
+एक कस्टम policy का उपयोग करें जब behavior आपके tools, paths, commands, environments, या operating rules पर निर्भर करता हो। पहले [Failproof AI policy pack](/hi/policies/packs) को check करें ताकि आप एक existing control को recreate न करें।
 
-## कस्टम नीति बनाएं
+## कस्टम policy को author करें
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Admin → policy editor** पर जाएं, **New policy** चुनें, और विफलता का वर्णन करें जिसे आप रोकना चाहते हैं।
-    2. नीति स्रोत जोड़ें, फिर संपादक में अपेक्षित मिलान और सुरक्षित गैर-मिलान परीक्षण करें। हर सत्यापन त्रुटि को हल करें।
-    3. ड्राफ्ट को सहेजें और एक अपरिवर्तनीय संस्करण बनाने के लिए **Publish version** चुनें।
-    4. **Admin → enforcement** पर जाएं, संस्करण को **observe** मोड में एक परीक्षण मशीन पर तैनात करें, और इसे लागू करने से पहले **Observe → policy** के तहत इसके निर्णयों को सत्यापित करें।
+    1. **Admin → policy editor** पर जाएं, **New policy** चुनें, और failure को describe करें जिसे आप prevent करना चाहते हैं।
+    2. policy source को add करें, फिर editor में expected matches और safe non-matches को test करें। हर validation error को resolve करें।
+    3. draft को save करें और **Publish version** को चुनकर एक immutable version बनाएं।
+    4. **Admin → enforcement** पर जाएं, version को एक test machine में **observe** mode में deploy करें, और **Observe → policy** के अंतर्गत इसके decisions को verify करें इससे पहले कि आप इसे enforce करें।
 
-    ![कस्टम नीति को बनाने और प्रकाशित करने के लिए उपयोग किया जाने वाला नीति संपादक।](/images/dashboard/policy-editor.png)
+    ![कस्टम policy को author और publish करने के लिए use की जाने वाली policy editor।](/images/dashboard/policy-editor.png)
   </Tab>
   <Tab title="CLI">
-    1. `.failproofai/policies/checkout-policies.ts` बनाएं। फाइल नाम `policies.js`, `policies.mjs`, या `policies.ts` में समाप्त होना चाहिए।
-    2. `customPolicies.add()` के साथ एक या अधिक नीतियों को पंजीकृत करें।
-    3. `failproofai policies --install --custom ./.failproofai/policies/checkout-policies.ts --scope project` के साथ फाइल को सत्यापित और स्थापित करें।
-    4. एक मेल खाने वाली कार्रवाई और एक सुरक्षित कार्रवाई को ट्रिगर करें। `failproofai policies` चलाएं, फिर **Observe → policy** के तहत जिम्मेदार निर्णयों का निरीक्षण करें।
+    1. `.failproofai/policies/checkout-policies.ts` create करें। filename को `policies.js`, `policies.mjs`, या `policies.ts` में end होना चाहिए।
+    2. एक या अधिक policies को `customPolicies.add()` के साथ register करें।
+    3. file को `failproofai policies --install --custom ./.failproofai/policies/checkout-policies.ts --scope project` के साथ validate और install करें।
+    4. एक matching action और एक safe action को trigger करें। `failproofai policies` run करें, फिर **Observe → policy** के अंतर्गत attributed decisions को inspect करें।
   </Tab>
 </Tabs>
 
-## एक संकीर्ण नियम से शुरू करें
+## एक narrow rule के साथ शुरू करें
 
-यह नीति विनाशकारी Kubernetes कमांड्स को केवल तब ब्लॉक करती है जब कमांड उत्पादन को लक्षित करता है। उस सटीक विफलता मोड के बाहर सब कुछ `allow()` देता है।
+यह policy destructive Kubernetes commands को केवल तभी block करता है जब command production को target करता है। उस exact failure mode के बाहर सब कुछ `allow()` return करता है।
 
 ```ts
 import { customPolicies, allow, deny } from "failproofai";
@@ -55,23 +55,23 @@ customPolicies.add({
 });
 ```
 
-अच्छी नीतियां इतनी संकीर्ण होती हैं कि एक वाक्य में समझाई जा सकें। अवलोकन योग्य कार्रवाई से मेल खाएं—न कि इस इरादे से जो आप उम्मीद करते हैं कि एजेंट ने किया हो—और जैसे ही नियम लागू न हो तुरंत `allow()` देता है।
+अच्छी policies उतनी narrow होती हैं कि एक sentence में explain की जा सकें। observable action को match करें—न कि वह intent जो आप उम्मीद करते हैं कि agent के पास हो—और `allow()` को return करें जैसे ही rule apply न हो।
 
-## एक निर्णय चुनें
+## एक decision चुनें
 
-| हेल्पर | परिणाम | इसका उपयोग करें जब |
+| Helper | Result | इसे use करें जब |
 | --- | --- | --- |
-| `allow(reason?)` | ऑपरेशन जारी रहता है। | नीति लागू नहीं होती है या कार्रवाई सुरक्षित है। |
-| `instruct(reason)` | ऑपरेशन जारी रहता है जहां कहीं हार्नेस इसका समर्थन करता है गाइडेंस के साथ। | आप एजेंट को एक बेहतर दृष्टिकोण की ओर निर्देशित करना चाहते हैं बिना किसी अपरिवर्तनीय को लागू किए। |
-| `deny(reason)` | ऑपरेशन को ब्लॉक किया जाता है जब इवेंट और हार्नेस ब्लॉकिंग का समर्थन करते हैं। | कार्रवाई आगे नहीं बढ़नी चाहिए। |
+| `allow(reason?)` | Operation continue होता है। | Policy apply नहीं होती है या action safe है। |
+| `instruct(reason)` | Operation guidance के साथ continue होता है जहां harness इसे support करता है। | आप agent को बेहतर approach की ओर guide करना चाहते हैं बिना एक invariant को enforce किए। |
+| `deny(reason)` | Operation blocked होता है जब event और harness blocking को support करते हैं। | Action को proceed नहीं करना चाहिए। |
 
-एजेंट के लिए कारण लिखें जिसे ठीक करना होगा। समझाएं कि क्या पहचाना गया था और इसे इसके बजाय क्या करना चाहिए।
+Agent के लिए reason लिखें जिसे recover करना होगा। Explain करें कि क्या detect किया गया और उसे इसके बजाय क्या करना चाहिए।
 
 <Warning>
-  सुरक्षा सीमा के लिए `instruct()` का उपयोग न करें। गाइडेंस डिलीवरी एजेंट हार्नेस के अनुसार भिन्न होती है। `deny()` का उपयोग करें जब कार्रवाई को रोका जाना चाहिए।
+  एक safety boundary के लिए `instruct()` का use न करें। Guidance delivery agent harness के आधार पर अलग-अलग होती है। `deny()` का use करें जब action को prevent किया जाना चाहिए।
 </Warning>
 
-## नीति ऑब्जेक्ट
+## Policy object
 
 ```ts
 customPolicies.add({
@@ -82,36 +82,36 @@ customPolicies.add({
 });
 ```
 
-| फील्ड | आवश्यक | विवरण |
+| Field | Required | Description |
 | --- | --- | --- |
-| `name` | हां | नीति के लिए स्थिर पहचानकर्ता। फाइलों में नाम अद्वितीय रखें। |
-| `description` | नहीं | मानव-पठनीय उद्देश्य नीति सूचियों और निर्णयों में दिखाया जाता है। |
-| `match.events` | नहीं | इवेंट प्रकार जो नीति को आमंत्रित करते हैं। `match` को छोड़ने से यह हर उपलब्ध इवेंट के लिए इसे आमंत्रित करता है। |
-| `fn` | हां | सिंक्रोनस या एसिंक्रोनस फंक्शन जो `allow`, `instruct`, या `deny` परिणाम देता है। |
+| `name` | Yes | Policy के लिए stable identifier। Names को files के across unique रखें। |
+| `description` | No | Human-readable purpose जो policy listings और decisions में show होता है। |
+| `match.events` | No | Event types जो policy को invoke करते हैं। `match` को omit करने से यह हर available event के लिए invoke होता है। |
+| `fn` | Yes | Synchronous या asynchronous function जो एक `allow`, `instruct`, या `deny` result return करता है। |
 
-`fn` के अंदर टूल्स को फिल्टर करें। `match.toolNames` सार्वजनिक कस्टम-नीति प्रकार का हिस्सा नहीं है।
+Tools को `fn` के अंदर filter करें। `match.toolNames` public custom-policy type का हिस्सा नहीं है।
 
-## नीति संदर्भ
+## Policy context
 
-हर नीति को एक `PolicyContext` प्राप्त होता है।
+हर policy को एक `PolicyContext` मिलता है।
 
-| फील्ड | प्रकार | इसमें क्या है |
+| Field | Type | यह क्या contain करता है |
 | --- | --- | --- |
-| `eventType` | `HookEventType` | वर्तमान में मूल्यांकन किए जा रहे सामान्यीकृत इवेंट। |
-| `toolName` | `string \| undefined` | कैनोनिकल टूल नाम जैसे `Bash`, `Read`, `Write`, या `Edit`। |
-| `toolInput` | `Record<string, unknown> \| undefined` | वर्तमान टूल कॉल के लिए कैनोनिकल इनपुट। |
-| `payload` | `Record<string, unknown>` | संपूर्ण सामान्यीकृत इवेंट पेलोड। |
-| `session` | `SessionMetadata \| undefined` | सेशन ID, कार्यशील निर्देशिका, ट्रांसक्रिप्ट पाथ, अनुमति मोड, और उपलब्ध होने पर हार्नेस मेटाडेटा। |
-| `cli` | `string \| undefined` | स्रोत एजेंट हार्नेस, जैसे `claude`, `codex`, या `cursor`। |
-| `params` | `Record<string, unknown>` | बिल्ट-इन नीति पैरामीटर। कस्टम नीतियां वर्तमान में एक खाली ऑब्जेक्ट प्राप्त करती हैं। |
+| `eventType` | `HookEventType` | Normalized event जो currently evaluate किया जा रहा है। |
+| `toolName` | `string \| undefined` | Canonical tool name जैसे `Bash`, `Read`, `Write`, या `Edit`। |
+| `toolInput` | `Record<string, unknown> \| undefined` | Current tool call के लिए canonical input। |
+| `payload` | `Record<string, unknown>` | Complete normalized event payload। |
+| `session` | `SessionMetadata \| undefined` | Session ID, working directory, transcript path, permission mode, और harness metadata जब available हो। |
+| `cli` | `string \| undefined` | Source agent harness, जैसे `claude`, `codex`, या `cursor`। |
+| `params` | `Record<string, unknown>` | Built-in policy parameters। Custom policies currently एक empty object receive करते हैं। |
 
-हर वैकल्पिक मान को वास्तव में वैकल्पिक मानें। एजेंट संस्करण और इवेंट प्रकार सभी समान फील्ड प्रदान नहीं करते हैं।
+हर optional value को genuinely optional मानें। Agent versions और event types सभी fields provide नहीं करते हैं।
 
-### सामान्य टूल इनपुट
+### Common tool inputs
 
-Failproof AI समर्थित हार्नेस में सामान्य टूल्स को सामान्यीकृत करता है ताकि एक नीति आमतौर पर एक इनपुट आकार का उपयोग कर सके।
+Failproof AI common tools को supported harnesses के across normalize करता है ताकि एक policy आमतौर पर एक input shape use कर सके।
 
-| टूल | सामान्य फील्ड्स |
+| Tool | Common fields |
 | --- | --- |
 | `Bash` | `command` |
 | `Read` | `file_path` |
@@ -119,34 +119,34 @@ Failproof AI समर्थित हार्नेस में सामा�
 | `Edit` | `file_path`, `old_string`, `new_string` |
 | `Grep` | `pattern`, `path` |
 
-रक्षात्मक जबरदस्ती का उपयोग करें क्योंकि टूल इनपुट मान `unknown` के रूप में टाइप किए गए हैं:
+Defensive coercion का use करें क्योंकि tool input values `unknown` के रूप में typed होती हैं:
 
 ```ts
 const command = String(ctx.toolInput?.command ?? "");
 const filePath = String(ctx.toolInput?.file_path ?? "");
 ```
 
-## इवेंट चुनें
+## Event को choose करें
 
-| इवेंट | कब चलता है | विशिष्ट उपयोग |
+| Event | यह कब चलता है | Typical use |
 | --- | --- | --- |
-| `PreToolUse` | एक टूल निष्पादित होने से पहले। | कमांड्स, लेखन, पढ़ने और बाहरी कार्रवाइयों को ब्लॉक या निर्देशित करें। |
-| `PostToolUse` | एक टूल परिणाम देने के बाद। | एजेंट तक पहुंचने से पहले परिणामों का निरीक्षण करें। एक अस्वीकार पूरे परिणाम को ब्लॉक करता है; यह चयनित फील्ड्स को संशोधित नहीं करता है। |
-| `PermissionRequest` | जब एजेंट अनुमति का अनुरोध करता है। | संगठन-विशिष्ट अनुमति नियम लागू करें। |
-| `UserPromptSubmit` | जमा किए गए प्रॉम्प्ट से पहले जारी रहता है। | प्रतिबंधित निर्देशों को अस्वीकार करें या वर्कफ़्लो गाइडेंस जोड़ें। |
-| `Stop` | जब एजेंट समाप्त करने का प्रयास करता है। | एक पहुंच योग्य समापन स्थिति की आवश्यकता करें, जैसे कि स्थानीय सत्यापन चरण। |
-| `SubagentStop` | जब एक सबएजेंट समाप्त करने का प्रयास करता है। | अनुचर कार्य को गेट करें इससे पहले कि यह माता-पिता को लौटे। |
-| `SessionStart` / `SessionEnd` | सेशन सीमाओं पर। | सेशन-स्तर की स्थिति रिकॉर्ड या जांच करें। |
+| `PreToolUse` | एक tool execute होने से पहले। | Commands, writes, reads, और external actions को block या guide करें। |
+| `PostToolUse` | एक tool return होने के बाद। | Agent तक पहुंचने से पहले results को inspect करें। एक deny पूरे result को block करता है; यह selected fields को redact नहीं करता है। |
+| `PermissionRequest` | जब agent permission request करता है। | Organization-specific permission rules को apply करें। |
+| `UserPromptSubmit` | एक submitted prompt continue होने से पहले। | Prohibited instructions को reject करें या workflow guidance add करें। |
+| `Stop` | जब agent finish करने का attempt करता है। | एक reachable completion condition require करें, जैसे कि एक local verification step। |
+| `SubagentStop` | जब एक subagent finish करने का attempt करता है। | Delegated work को gate करें इससे पहले कि यह parent को return हो। |
+| `SessionStart` / `SessionEnd` | Session boundaries पर। | Session-level state को record या check करें। |
 
-इवेंट उपलब्धता और ब्लॉकिंग व्यवहार एजेंट हार्नेस पर निर्भर करते हैं। एक मिश्रित बेड़े में किसी इवेंट पर निर्भर करने से पहले [Agent harnesses](/hi/reference/harnesses) देखें।
+Event availability और blocking behavior agent harness पर depend करते हैं। Mixed fleet के across एक event पर rely करने से पहले [Agent harnesses](/hi/reference/harnesses) को देखें।
 
-<Accordion title="सभी नीति इवेंट नाम">
+<Accordion title="सभी policy event names">
   `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PermissionDenied`, `PostToolUse`, `PostToolUseFailure`, `Notification`, `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `Stop`, `StopFailure`, `TeammateIdle`, `InstructionsLoaded`, `ConfigChange`, `CwdChanged`, `FileChanged`, `WorktreeCreate`, `WorktreeRemove`, `PreCompact`, `PostCompact`, `Elicitation`, `ElicitationResult`, `UserPromptExpansion`, `PostToolBatch`, और `Setup`।
 </Accordion>
 
-## सामान्य नीति पैटर्न बनाएं
+## Common policy patterns को author करें
 
-### संरक्षित पाथ्स में लेखन ब्लॉक करें
+### Protected paths में writes को block करें
 
 ```ts
 import { customPolicies, allow, deny } from "failproofai";
@@ -166,7 +166,7 @@ customPolicies.add({
 });
 ```
 
-### गैर-ब्लॉकिंग गाइडेंस दें
+### Non-blocking guidance दें
 
 ```ts
 import { customPolicies, allow, instruct } from "failproofai";
@@ -186,7 +186,7 @@ customPolicies.add({
 });
 ```
 
-### सेशन समापन को गेट करें
+### Session completion को gate करें
 
 ```ts
 import { execFileSync } from "node:child_process";
@@ -215,30 +215,30 @@ customPolicies.add({
 ```
 
 <Warning>
-  एक अस्वीकृत `Stop` इवेंट एजेंट को दोबारा कोशिश करने के लिए बना सकता है। केवल एक ऐसी शर्त पर गेट करें जिसे एजेंट वर्तमान वातावरण में संतुष्ट कर सके, और हर सबप्रोसेस या नेटवर्क कॉल को सीमित करें।
+  एक denied `Stop` event agent को retry करने के लिए कर सकता है। केवल एक ऐसी condition पर gate करें जिसे agent current environment में satisfy कर सकता है, और हर subprocess या network call को bound करें।
 </Warning>
 
-## नीति फाइलें लोड करें
+## Policy files को load करें
 
-### परंपरा फाइलें
+### Convention files
 
-परंपरा फाइलें स्वचालित रूप से लोड होती हैं:
+Convention files automatically load होती हैं:
 
 ```text
 <project>/.failproofai/policies/security-policies.ts
 ~/.failproofai/policies/personal-policies.mjs
 ```
 
-- प्रोजेक्ट और उपयोगकर्ता नीति निर्देशिकाएं दोनों लोड होती हैं।
-- फाइलें प्रत्येक निर्देशिका के भीतर वर्णानुक्रमिक रूप से लोड होती हैं।
-- एक फाइल `policies.js`, `policies.mjs`, या `policies.ts` में समाप्त होनी चाहिए।
-- एक फाइल में एकाधिक `customPolicies.add()` कॉल समर्थित हैं।
-- स्थानीय मॉड्यूल्स से सापेक्ष आयात समर्थित हैं।
-- प्रोजेक्ट नीतियां प्रतिबद्ध की जा सकती हैं ताकि समान नियम रिपोजिटरी का अनुसरण करें।
+- Project और user policy directories दोनों को load किया जाता है।
+- Files प्रत्येक directory के अंदर alphabetically load होती हैं।
+- एक file को `policies.js`, `policies.mjs`, या `policies.ts` में end होना चाहिए।
+- एक file में multiple `customPolicies.add()` calls supported हैं।
+- Local modules से relative imports supported हैं।
+- Project policies को commit किया जा सकता है ताकि same rules repository को follow करें।
 
-### स्पष्ट फाइलें
+### Explicit files
 
-स्पष्ट पाथ्स का उपयोग करें जब सत्यापन या कॉन्फ़िगरेशन को प्रवेश फाइल को सीधे नाम देना चाहिए:
+Explicit paths का use करें जब validation या configuration को entry file को directly name करना चाहिए:
 
 ```bash
 failproofai policies --install \
@@ -247,11 +247,11 @@ failproofai policies --install \
   --scope project
 ```
 
-स्पष्ट फाइलें पहले लोड होती हैं, इसके बाद प्रोजेक्ट परंपरा फाइलें और फिर उपयोगकर्ता परंपरा फाइलें। दोनों पाथ्स के माध्यम से खोजी गई फाइल एक बार लोड होती है।
+Explicit files पहले load होती हैं, फिर project convention files और फिर user convention files। एक file जो दोनों paths के through discover होती है, एक बार load होती है।
 
-## सत्यापित और परीक्षण करें
+## Validate और test करें
 
-सत्यापन मॉड्यूल को प्रोडक्शन लोडर के माध्यम से निष्पादित करता है और पुष्टि करता है कि यह कम से कम एक नीति को पंजीकृत करता है।
+Validation module को production loader के through execute करता है और confirm करता है कि यह कम से कम एक policy को register करता है।
 
 ```bash
 failproofai policies --install \
@@ -260,44 +260,44 @@ failproofai policies --install \
 failproofai policies
 ```
 
-सत्यापन लापता फाइलें, सिंटैक्स त्रुटियां, अनसुलझे आयात, शीर्ष-स्तरीय अपवाद और मॉड्यूल-लोड टाइमआउट को पकड़ता है। यह साबित नहीं करता है कि आपका मेल तर्क सही है।
+Validation missing files, syntax errors, unresolved imports, top-level exceptions, और module-load timeouts को catch करता है। यह prove नहीं करता कि आपकी match logic सही है।
 
-कम से कम ये मामले परीक्षण करें:
+कम से कम इन cases को test करें:
 
-- एक कार्रवाई जो मेल खानी चाहिए और इच्छित नीति कारण दे।
-- एक पास-पास लेकिन सुरक्षित कार्रवाई जो `allow()` देनी चाहिए।
-- लापता या विकृत टूल फील्ड्स।
-- वैकल्पिक कमांड सिंटैक्स, पाथ्स, उद्धरण, मामला और व्हाइटस्पेस।
-- एक अनुपलब्ध सबप्रोसेस या नेटवर्क निर्भरता।
+- एक action जो match करना चाहिए और intended policy reason produce करना चाहिए।
+- एक nearby लेकिन safe action जो `allow()` return करना चाहिए।
+- Missing या malformed tool fields।
+- Alternate command syntax, paths, quoting, casing, और whitespace।
+- एक unavailable subprocess या network dependency।
 
-परिणाम को **Observe → policy** के तहत आपकी कस्टम नीति के लिए जिम्मेदार ठहराएं। एक ब्लॉक किया गया परीक्षण पर्याप्त नहीं है यदि एक अलग बिल्ट-इन नीति ने निर्णय लिया।
+Result को अपने custom policy के लिए **Observe → policy** के अंतर्गत attribute करें। एक blocked test sufficient नहीं है अगर एक different built-in policy ने decision बनाया है।
 
-## रनटाइम व्यवहार
+## Runtime behavior
 
-- बिल्ट-इन नीतियां कस्टम नीतियों से पहले मूल्यांकन करती हैं।
-- पहला `deny` आगे की नीति मूल्यांकन को बंद करता है।
-- कई `instruct` परिणामों को जोड़ा जा सकता है जब कोई नीति इवेंट को अस्वीकार नहीं करती है।
-- एक नीति फंक्शन के पास 10-सेकंड का निष्पादन समय सीमा है।
-- एक फेंकी गई अपवाद या टाइमआउट को लॉग किया जाता है और `allow()` के रूप में माना जाता है।
-- एक परंपरा फाइल जो लोड करने में विफल हो जाती है को छोड़ दिया जाता है; अन्य कस्टम फाइलें और बिल्ट-इन नीतियां जारी रहती हैं।
-- शीर्ष-स्तरीय मॉड्यूल लोडिंग के पास भी 10-सेकंड की समय सीमा है।
-- क्लाउड अवलोकन मोड नीति चलाता है लेकिन एक गैर-अनुमति निर्णय को इसे लागू किए बिना रिकॉर्ड करता है।
+- Built-in policies custom policies से पहले evaluate होती हैं।
+- पहला `deny` further policy evaluation को stop करता है।
+- Multiple `instruct` results को combine किया जा सकता है जब कोई भी policy event को deny नहीं करता है।
+- एक policy function के पास 10-second execution deadline होता है।
+- एक thrown exception या timeout को log किया जाता है और `allow()` के रूप में treat किया जाता है।
+- एक convention file जो load होने में fail होती है, को skip किया जाता है; अन्य custom files और built-in policies continue होती हैं।
+- Top-level module loading के पास भी 10-second deadline होता है।
+- Cloud observe mode policy को run करता है लेकिन एक non-allow decision को record करता है बिना इसे enforce किए।
 
-नीति मॉड्यूल्स को नियतात्मक और तेज रखें। शीर्ष-स्तरीय नेटवर्क कॉल या सर्वर स्टार्टअप से बचें। `fn` के अंदर काम को सीमित करें, निर्भरता विफलताओं को पकड़ें, और जानबूझकर चुनें कि क्या वह विफलता ऑपरेशन को अनुमति दे या अस्वीकार करे।
+Policy modules को deterministic और quick रखें। Top-level network calls या server startup से avoid करें। `fn` के अंदर work को bound करें, dependency failures को catch करें, और deliberately choose करें कि वह failure operation को allow या deny करना चाहिए।
 
-## API निर्यात
+## API exports
 
-| निर्यात | उद्देश्य |
+| Export | Purpose |
 | --- | --- |
-| `customPolicies.add(policy)` | जब मॉड्यूल लोड होता है एक कस्टम नीति पंजीकृत करें। |
-| `allow(reason?)` | ऑपरेशन की अनुमति दें। |
-| `instruct(reason)` | ऑपरेशन की अनुमति दें और जहां समर्थित है गाइडेंस प्रदान करें। |
-| `deny(reason)` | जहां समर्थित है ऑपरेशन को ब्लॉक करें। |
-| `getCustomHooks()` | वर्तमान में मॉड्यूल रजिस्ट्री में पंजीकृत नीतियों को लौटाएं। |
-| `clearCustomHooks()` | उस रजिस्ट्री को साफ करें, मुख्य रूप से परीक्षणों और लोडर्स के लिए। |
+| `customPolicies.add(policy)` | Module load होने पर एक custom policy को register करें। |
+| `allow(reason?)` | Operation को permit करें। |
+| `instruct(reason)` | Operation को permit करें और जहां supported हो guidance provide करें। |
+| `deny(reason)` | Operation को block करें जहां supported हो। |
+| `getCustomHooks()` | Module registry में currently registered policies को return करें। |
+| `clearCustomHooks()` | उस registry को clear करें, primarily tests और loaders के लिए। |
 
-टाइपस्क्रिप्ट `PolicyContext`, `PolicyResult`, `CustomHook`, `PolicyDecision`, और `PolicyFunction` को निर्यात करता है।
+TypeScript `PolicyContext`, `PolicyResult`, `CustomHook`, `PolicyDecision`, और `PolicyFunction` को export करता है।
 
-<Card title="कस्टम नीतियां तैनात करें" icon="server-cog" href="/hi/policies/deploy">
-  एक संस्करण प्रकाशित करें, इसे अवलोकन मोड में तैनात करें, निर्णयों को सत्यापित करें, और प्रवर्तन में जाएं।
+<Card title="कस्टम policies को deploy करें" icon="server-cog" href="/hi/policies/deploy">
+  एक version को publish करें, इसे observe mode में deploy करें, decisions को verify करें, और enforcement की ओर move करें।
 </Card>

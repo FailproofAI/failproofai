@@ -672,6 +672,7 @@ async function installHooksImpl(
     const settingsPaths = settingsPathsFor(integration, scope, cwd);
     try {
       for (const settingsPath of settingsPaths) {
+        integration.prepareInstall?.(settingsPath);
         const settings = integration.readSettings(settingsPath);
         integration.writeHookEntries(settings, binaryPath, scope);
         integration.writeSettings(settingsPath, settings);
@@ -738,10 +739,17 @@ async function installHooksImpl(
 
   for (const { cli: cliId, path } of writtenSettingsPaths) {
     const integration = getIntegration(cliId);
-    console.log(
-      `Failproof AI hooks installed for ${integration.displayName} ` +
-        `(${integration.eventTypes.length} event types, scope: ${scope}).`
-    );
+    if (cliId === "hermes") {
+      console.log(
+        `Failproof AI native plugin installed for ${integration.displayName} ` +
+          `(8 registered hooks, scope: ${scope}).`
+      );
+    } else {
+      console.log(
+        `Failproof AI hooks installed for ${integration.displayName} ` +
+          `(${integration.eventTypes.length} event types, scope: ${scope}).`
+      );
+    }
     console.log(`Settings: ${path}`);
   }
   if (scope === "project") {
@@ -876,7 +884,11 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
     for (const s of scopesToRemove) {
       // Usually one path; Hermes returns one per profile.
       const settingsPaths = settingsPathsFor(integration, s, cwd);
-      const existing = settingsPaths.filter((p) => existsSync(p));
+      // A Hermes install copies its managed plugin before updating config.yaml.
+      // If the config write is interrupted, uninstall must still call the
+      // integration so it can remove that orphaned managed directory.
+      const existing =
+        cliId === "hermes" ? settingsPaths : settingsPaths.filter((p) => existsSync(p));
 
       if (existing.length === 0) {
         if (scope !== "all" && selectedClis.length === 1) {

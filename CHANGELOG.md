@@ -6,6 +6,15 @@
 
 - Translate the English documentation changes from #788 and #791 into all 14 locales, including the new evaluation pages and SDK event redaction on the custom-agents page, and point translated fragment links at their translated headings (#797)
 
+### Added
+
+- Add a native, profile-local Hermes plugin that evaluates policies through the existing failproofaid warm worker. Hermes `instruct()` decisions now interrupt the first matching tool attempt with model-visible guidance, then use a persistent bounded retry ledger so advisory policy cannot deadlock the turn; `deny()` remains a hard block.
+- Add structured `policyEvaluation` / `policyResult` messages to the versioned local daemon protocol for native integrations, including canonical tool, policy, match, reason, and latency metadata.
+
+### Changed
+
+- Hermes installation now copies and enables the managed plugin in every profile, migrates only legacy FailproofAI shell hooks, refuses to overwrite unmanaged plugin directories, and reports incomplete or duplicate profile installations as unhealthy.
+
 ### Dependencies
 
 - yaml 2.9.0 → 2.9.1, and rustls 0.23.43 → 0.23.45 (with rustls-webpki 0.103.13 → 0.103.15) in `Cargo.lock`, closing RUSTSEC-2026-0285 (5.3, fixed in 0.23.45). The advisory turned the Supply Chain gate red on `main` itself, not through any PR's change; rustls is transitive-only, via `reqwest` in `failproofaid` and `fpai-collect` (#803)

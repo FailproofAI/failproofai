@@ -12,6 +12,7 @@
     "scripts/",
     "lib/",
     "pi-extension/",
+    "hermes-plugin/",
     "openclaw-plugin/",
     ".next/standalone/",
     "dist/",

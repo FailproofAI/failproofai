@@ -2259,6 +2259,8 @@ async function runCli() {
         );
         const opts = optsFor(process.stdout);
         const report = connectionStatusReport();
+        const { hermesProfileStatusRows } = await import("../src/hooks/integrations");
+        const hermesRows = hermesProfileStatusRows();
         // The version line was written to be "the only place a user can find out
         // which daemon they are running" and then never called from anywhere. It
         // is the right thing for the heading to carry, and it retires a heading
@@ -2276,7 +2278,7 @@ async function runCli() {
             // Always printed, including where reports can never work: "why am I
             // not getting them?" is the question --status exists to answer, and
             // an omitted line answers it with silence.
-            rows([...report.rows, ...(result.rows ?? [])], opts),
+            rows([...report.rows, ...hermesRows, ...(result.rows ?? [])], opts),
             report.warnings.length > 0 ? warning(report.warnings, opts) : null,
             // The trailer is not rows — it is the note and the resume command.
             // Rendering only `rows` dropped the one line that tells a paused

@@ -1,0 +1,37 @@
+name: failproofai
+version: 1.0.6-beta.0
+description: Real-time FailproofAI policy enforcement for Hermes
+manifest_version: 2
+api_version: 1
+homepage: https://github.com/FailproofAI/failproofai
+tags: [security, policy, observability]
+provides_hooks:
+  - pre_tool_call
+  - post_tool_call
+  - pre_llm_call
+  - on_session_start
+  - on_session_end
+  - on_session_reset
+  - on_session_finalize
+  - subagent_stop
+config_schema:
+  failure_mode:
+    type: str
+    default: deny
+    description: Block or allow when the local FailproofAI evaluator is unavailable.
+  connect_timeout_ms:
+    type: int
+    default: 250
+    description: Maximum time to connect to the local FailproofAI daemon.
+  evaluation_timeout_ms:
+    type: int
+    default: 12000
+    description: Maximum total time allowed for one policy evaluation.
+  instruction_ttl_seconds:
+    type: int
+    default: 3600
+    description: Maximum lifetime of an instruction-delivery record.
+  max_instruction_rounds:
+    type: int
+    default: 2
+    description: Maximum distinct instruction interruptions in one Hermes turn.

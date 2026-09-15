@@ -10,7 +10,12 @@ manifest v2 fields, `PluginContext` methods/state, and keyword hook payloads.
 
 ## Installation
 
-Run:
+Hermes policy evaluation requires a configured, healthy local `failproofaid`
+daemon. If this machine has not been configured yet, run `failproofai config`
+first. The standalone installer refuses to enable the fail-closed plugin until
+the daemon answers an end-to-end health probe.
+
+Then run:
 
 ```bash
 failproofai policies --install --cli hermes --scope user

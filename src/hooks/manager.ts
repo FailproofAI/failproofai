@@ -29,6 +29,7 @@ import { CORE_SOURCE, addPack, setPackPolicyEnabled } from "./pack-store";
 import type { ResolvedPack } from "./pack-manifest";
 import { hasInstalledPacks, readInstalledPacks } from "./pack-manifest";
 import { packPolicyParamKey } from "./policy-evaluator";
+import { probeDaemonEndToEnd } from "./daemon-service";
 import {
   chip,
   note,
@@ -462,6 +463,20 @@ async function installHooksImpl(
           `Valid scopes: ${integration.scopes.join(", ")}`
       );
     }
+  }
+
+  // Hermes runs the FailproofAI plugin in-process and delegates every policy
+  // decision to failproofaid. Enabling the plugin without a daemon that can
+  // answer a real evaluation would therefore turn the default fail-closed
+  // behavior into an immediate lockout. The configure wizard has already
+  // installed and probed the daemon by the time it reaches this function; this
+  // guard protects direct `policies --install --cli hermes` invocations.
+  // Check before writing either the Hermes plugin or its config registration.
+  if (selectedClis.includes("hermes") && !(await probeDaemonEndToEnd())) {
+    throw new CliError(
+      "Hermes requires a healthy failproofaid daemon before its FailproofAI plugin can be enabled.\n" +
+        "Run `failproofai config` to install and configure the daemon, then retry.",
+    );
   }
 
   const binaryPath = resolveFailproofaiBinary();

@@ -7,6 +7,7 @@ import struct
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -424,8 +425,9 @@ class ClientTests(unittest.TestCase):
                     ready.set()
                     connection, _ = listener.accept()
                     with connection:
-                        length = struct.unpack(">I", client._read_exact(connection, 4))[0]
-                        received.update(json.loads(client._read_exact(connection, length)))
+                        deadline = time.monotonic() + 2
+                        length = struct.unpack(">I", client._read_exact(connection, 4, deadline))[0]
+                        received.update(json.loads(client._read_exact(connection, length, deadline)))
                         body = json.dumps(
                             {
                                 "type": "policyResult",
@@ -468,8 +470,9 @@ class ClientTests(unittest.TestCase):
                     ready.set()
                     connection, _ = listener.accept()
                     with connection:
-                        length = struct.unpack(">I", client._read_exact(connection, 4))[0]
-                        client._read_exact(connection, length)
+                        deadline = time.monotonic() + 2
+                        length = struct.unpack(">I", client._read_exact(connection, 4, deadline))[0]
+                        client._read_exact(connection, length, deadline)
                         body = json.dumps(
                             {
                                 "type": "policyResult",
@@ -502,8 +505,9 @@ class ClientTests(unittest.TestCase):
                     ready.set()
                     connection, _ = listener.accept()
                     with connection:
-                        length = struct.unpack(">I", client._read_exact(connection, 4))[0]
-                        client._read_exact(connection, length)
+                        deadline = time.monotonic() + 2
+                        length = struct.unpack(">I", client._read_exact(connection, 4, deadline))[0]
+                        client._read_exact(connection, length, deadline)
                         connection.sendall(struct.pack(">I", client.MAX_FRAME_BYTES + 1))
 
             thread = threading.Thread(target=server, daemon=True)
@@ -512,6 +516,43 @@ class ClientTests(unittest.TestCase):
             with patch.dict("os.environ", {"FAILPROOFAI_DAEMON_SOCKET": str(socket_path)}):
                 with self.assertRaisesRegex(client.EvaluationError, "16 MiB limit"):
                     client.evaluate_policy(event="pre_tool_call", payload={}, cwd="/tmp")
+            thread.join(timeout=2)
+
+    def test_evaluation_timeout_is_one_deadline_across_partial_reads(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            socket_path = Path(tmp) / "daemon.sock"
+            ready = threading.Event()
+
+            def server() -> None:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+                    listener.bind(str(socket_path))
+                    listener.listen(1)
+                    ready.set()
+                    connection, _ = listener.accept()
+                    with connection:
+                        deadline = time.monotonic() + 2
+                        length = struct.unpack(">I", client._read_exact(connection, 4, deadline))[0]
+                        client._read_exact(connection, length, deadline)
+                        try:
+                            for byte in struct.pack(">I", 0):
+                                connection.sendall(bytes((byte,)))
+                                time.sleep(0.04)
+                        except BrokenPipeError:
+                            pass
+
+            thread = threading.Thread(target=server, daemon=True)
+            thread.start()
+            self.assertTrue(ready.wait(timeout=2))
+            started = time.monotonic()
+            with patch.dict("os.environ", {"FAILPROOFAI_DAEMON_SOCKET": str(socket_path)}):
+                with self.assertRaisesRegex(client.EvaluationError, "timed out"):
+                    client.evaluate_policy(
+                        event="pre_tool_call",
+                        payload={},
+                        cwd="/tmp",
+                        evaluation_timeout_ms=70,
+                    )
+            self.assertLess(time.monotonic() - started, 0.14)
             thread.join(timeout=2)
 
 

@@ -6,6 +6,7 @@ import json
 import os
 import socket
 import struct
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -38,11 +39,22 @@ def daemon_socket_path() -> Path:
     return home / "run" / "failproofaid.sock"
 
 
-def _read_exact(sock: socket.socket, length: int) -> bytes:
+def _remaining_timeout(deadline: float) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise EvaluationError("failproofaid evaluation timed out")
+    return remaining
+
+
+def _read_exact(sock: socket.socket, length: int, deadline: float) -> bytes:
     chunks: list[bytes] = []
     remaining = length
     while remaining:
-        chunk = sock.recv(remaining)
+        sock.settimeout(_remaining_timeout(deadline))
+        try:
+            chunk = sock.recv(remaining)
+        except TimeoutError as exc:
+            raise EvaluationError("failproofaid evaluation timed out") from exc
         if not chunk:
             raise EvaluationError("failproofaid closed the connection before returning a verdict")
         chunks.append(chunk)
@@ -90,12 +102,16 @@ def evaluate_policy(
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
             sock.settimeout(max(connect_timeout_ms, 1) / 1000)
             sock.connect(str(daemon_socket_path()))
-            sock.settimeout(max(evaluation_timeout_ms, 1) / 1000)
-            sock.sendall(struct.pack(">I", len(body)) + body)
-            declared_length = struct.unpack(">I", _read_exact(sock, 4))[0]
+            deadline = time.monotonic() + max(evaluation_timeout_ms, 1) / 1000
+            sock.settimeout(_remaining_timeout(deadline))
+            try:
+                sock.sendall(struct.pack(">I", len(body)) + body)
+            except TimeoutError as exc:
+                raise EvaluationError("failproofaid evaluation timed out") from exc
+            declared_length = struct.unpack(">I", _read_exact(sock, 4, deadline))[0]
             if declared_length > MAX_FRAME_BYTES:
                 raise EvaluationError("failproofaid response exceeds the 16 MiB limit")
-            response = json.loads(_read_exact(sock, declared_length).decode("utf-8"))
+            response = json.loads(_read_exact(sock, declared_length, deadline).decode("utf-8"))
     except EvaluationError:
         raise
     except (OSError, UnicodeError, ValueError, struct.error) as exc:

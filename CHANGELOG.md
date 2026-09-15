@@ -14,6 +14,7 @@
 ### Changed
 
 - Hermes installation now copies and enables the managed plugin in every profile, migrates only legacy FailproofAI shell hooks, refuses to overwrite unmanaged plugin directories, and reports incomplete or duplicate profile installations as unhealthy.
+- Direct Hermes installation now requires a healthy end-to-end `failproofaid` probe before changing plugin or profile configuration, preventing the default fail-closed mode from locking tool use when no evaluator is available. Hermes policy evaluation also applies `evaluation_timeout_ms` as one total socket deadline instead of resetting it for each partial read.
 
 ### Dependencies
 

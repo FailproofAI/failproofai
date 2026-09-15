@@ -123,6 +123,12 @@ describe("integrations registry", () => {
     expect(getIntegration("hermes")).toBe(hermes);
   });
 
+  it("declares daemon-only installation requirements in registry metadata", () => {
+    expect(listIntegrations().filter((integration) => integration.requiresHealthyDaemon)).toEqual([
+      hermes,
+    ]);
+  });
+
   it("getIntegration('openclaw') returns openclaw", () => {
     expect(getIntegration("openclaw")).toBe(openclaw);
   });
@@ -591,6 +597,15 @@ describe("Hermes integration", () => {
     }
   }
 
+  /** Create legacy/custom `~/.hermes-<name>` homes that Hermes can run independently. */
+  function makeSiblingHomes(...names: string[]): void {
+    for (const name of names) {
+      const home = resolve(tempDir, `.hermes-${name}`);
+      mkdirSync(home, { recursive: true });
+      writeFileSync(resolve(home, "config.yaml"), `model: ${name}\n`);
+    }
+  }
+
   function pluginPath(settingsPath: string): string {
     return resolve(dirname(settingsPath), "plugins", "failproofai");
   }
@@ -858,6 +873,19 @@ describe("Hermes integration", () => {
     ]);
   });
 
+  it("getSettingsPaths covers valid sibling Hermes installations", () => {
+    makeProfiles("nested");
+    makeSiblingHomes("work", "personal");
+    mkdirSync(resolve(tempDir, ".hermes-backup"), { recursive: true });
+
+    expect(hermes.getSettingsPaths!("user")).toEqual([
+      resolve(tempDir, ".hermes", "config.yaml"),
+      resolve(tempDir, ".hermes", "profiles", "nested", "config.yaml"),
+      resolve(tempDir, ".hermes-personal", "config.yaml"),
+      resolve(tempDir, ".hermes-work", "config.yaml"),
+    ]);
+  });
+
   it("settingsPathsFor falls back to the single path for non-profile integrations", () => {
     expect(settingsPathsFor(claudeCode, "user")).toEqual([claudeCode.getSettingsPath("user")]);
     expect(settingsPathsFor(hermes, "user")).toEqual(hermes.getSettingsPaths!("user"));
@@ -869,6 +897,19 @@ describe("Hermes integration", () => {
 
     installAt(rootPath);
     // Root hooked, `work` still bare → the gateway is only partly enforced.
+    expect(hermes.hooksInstalledInSettings("user")).toBe(false);
+    expect(unhookedHermesProfiles()).toEqual(["work"]);
+
+    installAt(workPath);
+    expect(hermes.hooksInstalledInSettings("user")).toBe(true);
+    expect(unhookedHermesProfiles()).toEqual([]);
+  });
+
+  it("health remains false until every sibling installation is hooked", () => {
+    makeSiblingHomes("work");
+    const [rootPath, workPath] = settingsPathsFor(hermes, "user");
+
+    installAt(rootPath);
     expect(hermes.hooksInstalledInSettings("user")).toBe(false);
     expect(unhookedHermesProfiles()).toEqual(["work"]);
 

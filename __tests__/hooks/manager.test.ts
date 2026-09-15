@@ -113,6 +113,27 @@ describe("hooks/manager", () => {
       expect(writeFileSync).not.toHaveBeenCalled();
     });
 
+    it("enforces daemon readiness from integration metadata rather than a Hermes ID check", async () => {
+      const { probeDaemonEndToEnd } = await import("../../src/hooks/daemon-service");
+      const { writeScopedHooksConfig } = await import("../../src/hooks/hooks-config");
+      const { claudeCode } = await import("../../src/hooks/integrations");
+      const previous = claudeCode.requiresHealthyDaemon;
+      claudeCode.requiresHealthyDaemon = true;
+      vi.mocked(probeDaemonEndToEnd).mockResolvedValue(false);
+
+      try {
+        const { installHooks } = await import("../../src/hooks/manager");
+        await expect(
+          installHooks(undefined, "user", undefined, false, undefined, undefined, false, ["claude"]),
+        ).rejects.toThrow("Claude Code requires a healthy failproofaid daemon");
+      } finally {
+        claudeCode.requiresHealthyDaemon = previous;
+      }
+
+      expect(writeScopedHooksConfig).not.toHaveBeenCalled();
+      expect(writeFileSync).not.toHaveBeenCalled();
+    });
+
     // 28, not 29: WorktreeCreate is deliberately not installed — Claude uses it
     // as a worktree-PATH PROVIDER (first hook's stdout becomes the directory),
     // and our silent-on-allow contract broke `claude --worktree` for every user.

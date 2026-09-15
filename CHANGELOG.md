@@ -5,6 +5,8 @@
 ### Fixes
 
 - Require a healthy end-to-end `failproofaid` probe before direct Hermes installation changes plugin or profile configuration, preventing the default fail-closed mode from locking tool use when no evaluator is available.
+- Discover config-bearing `~/.hermes-<name>` installations alongside the default and upstream nested profiles, so install, uninstall, health checks, and audit coverage reach every Hermes home without mistaking empty backup directories for active profiles.
+- Make daemon readiness an integration capability rather than a Hermes command special-case, so future daemon-only plugins inherit the same pre-install lockout protection while CLI-backed integrations keep their local evaluator fallback.
 - Apply Hermes `evaluation_timeout_ms` as one total socket deadline instead of resetting the full timeout for each partial send or receive.
 - Allow npm up to 16 minutes 40 seconds to expose an accepted release while checking every package in parallel per retry round. The `1.0.6-beta.0` root package took 11 minutes 25 seconds to become visible after `npm publish` succeeded, causing the workflow to report a false version split while all five packages had actually published.
 

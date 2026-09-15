@@ -122,6 +122,12 @@ function binaryExists(name: string): boolean {
 export interface Integration {
   id: IntegrationType;
   displayName: string;
+  /**
+   * This integration has no in-process/CLI fallback and cannot evaluate policy
+   * unless failproofaid answers an end-to-end probe. Installation must stop
+   * before writing any hook or plugin when the daemon is unavailable.
+   */
+  requiresHealthyDaemon?: boolean;
   /** Settings scopes this integration supports (e.g. claude: user/project/local; codex: user/project). */
   scopes: readonly HookScope[];
   /** Hook events this integration fires (Claude: PascalCase, Codex: snake_case stored as Pascal in settings). */
@@ -1589,6 +1595,7 @@ export function hermesProfileStatusRows(): Array<[string, string]> {
 export const hermes: Integration = {
   id: "hermes",
   displayName: "Hermes",
+  requiresHealthyDaemon: true,
   scopes: HERMES_HOOK_SCOPES,
   eventTypes: HERMES_HOOK_EVENT_TYPES,
 

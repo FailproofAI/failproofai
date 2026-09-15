@@ -447,9 +447,13 @@ async function installHooksImpl(
   // the user for multi-CLI selection before reaching here when --cli is omitted.
   const selectedClis: IntegrationType[] = cli && cli.length > 0 ? [...new Set(cli)] : ["claude"];
 
+  const selectedIntegrations = selectedClis.map((cliId) => ({
+    cliId,
+    integration: getIntegration(cliId),
+  }));
+
   // Per-CLI scope validation: Codex doesn't have a "local" scope.
-  for (const cliId of selectedClis) {
-    const integration = getIntegration(cliId);
+  for (const { cliId, integration } of selectedIntegrations) {
     if (!integration.scopes.includes(scope)) {
       try {
         await trackHookEvent(getInstanceId(), "scope_validation_failed", {
@@ -465,16 +469,19 @@ async function installHooksImpl(
     }
   }
 
-  // Hermes runs the FailproofAI plugin in-process and delegates every policy
-  // decision to failproofaid. Enabling the plugin without a daemon that can
-  // answer a real evaluation would therefore turn the default fail-closed
-  // behavior into an immediate lockout. The configure wizard has already
-  // installed and probed the daemon by the time it reaches this function; this
-  // guard protects direct `policies --install --cli hermes` invocations.
-  // Check before writing either the Hermes plugin or its config registration.
-  if (selectedClis.includes("hermes") && !(await probeDaemonEndToEnd())) {
+  // Daemon-only native integrations fail closed when their evaluator cannot be
+  // reached. Never enable one until a real policy request succeeds; otherwise
+  // a direct `policies --install` can lock every tool call. Shell-hook and CLI-
+  // backed integrations retain their local evaluator fallback and therefore do
+  // not opt into this requirement.
+  const daemonRequiredBy = selectedIntegrations
+    .map(({ integration }) => integration)
+    .filter((integration) => integration.requiresHealthyDaemon);
+  if (daemonRequiredBy.length > 0 && !(await probeDaemonEndToEnd())) {
+    const names = daemonRequiredBy.map((integration) => integration.displayName).join(", ");
+    const verb = daemonRequiredBy.length === 1 ? "requires" : "require";
     throw new CliError(
-      "Hermes requires a healthy failproofaid daemon before its FailproofAI plugin can be enabled.\n" +
+      `${names} ${verb} a healthy failproofaid daemon before FailproofAI enforcement can be enabled.\n` +
         "Run `failproofai config` to install and configure the daemon, then retry.",
     );
   }

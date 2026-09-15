@@ -268,7 +268,7 @@ Tout framework d'agent vous expose les mêmes trois points d'insertion. Mappez-l
 </Tip>
 
 <Note>
-  **Manuel et automatique se combinent.** Un adaptateur s'exécutant dans une portée écrite à la main rejoint cette session et se parenté à cet agent, vous obtenez donc un seul arbre plutôt que deux — utile quand vous instrumentez vous-même un framework aux côtés d'un framework supporté.
+  **Manuel et automatique se combinent.** Un adaptateur s'exécutant dans une portée écrite à la main rejoint cette session et devient enfant de cet agent, vous obtenez donc un seul arbre plutôt que deux — utile quand vous instrumentez vous-même un framework aux côtés d'un framework supporté.
 </Note>
 
 <Accordion title="Pourquoi il n'existe pas d'adaptateur AutoGen">
@@ -641,20 +641,18 @@ Chaque flush écrit un fichier batch, `.tmp` d'abord, puis `fsync`, puis un reno
 Le daemon ne prend que les `.jsonl`, il ne peut donc jamais lire un fichier à moitié écrit. Le nom de fichier porte un timestamp, un id de processus et un numéro de séquence, donc deux processus flushing dans la même milliseconde ne peuvent pas entrer en collision. La file d'attente est limitée à 10 000 événements ; au-delà, elle supprime les plus anciens et enregistre un log.
 
 <Warning>
-  **`collector.redact` ne s'applique pas à vos événements SDK.** Il ne les voit jamais.
+  **`collector.redact` vaut aussi `minimal` par défaut pour les événements SDK.** Le SDK masque les données sensibles avant d'écrire un batch sur le disque, et le daemon répète le même passage déterministe avant l'envoi, si bien que les batches produits par des SDK plus anciens sont eux aussi protégés.
 </Warning>
 
-Le daemon **envoie** vos batches. Il ne les ouvre ni ne les réécrit.
+Le daemon lit chaque batch et applique le masquage en mémoire avant l'envoi. Il ne réécrit pas le fichier de spool qu'il a lu.
 
-| Événements | Écrits par | Traités par `collector.redact` ? |
+| Événements | Écrits par | Où s'exécute le masquage minimal |
 | --- | --- | --- |
-| Transcriptions de sessions CLI | Le daemon | Oui |
-| Activité des hooks | Le daemon | Oui |
-| **Tout ce que le SDK émet** | **Votre processus** | **Non** |
+| Transcriptions de sessions CLI | Le daemon | Avant que le daemon écrive le batch |
+| Activité des hooks | Le daemon | Avant que le daemon écrive le batch |
+| **Tout ce que le SDK émet** | **Votre processus** | **Avant que le SDK écrive le batch, puis à nouveau avant l'envoi par le daemon** |
 
-La rédaction s'exécute là où le daemon *écrit* ses propres événements — pas là où les batches sont *envoyés*. Donc un prompt ou un argument d'outil contenant une clé API la conserve à l'arrivée.
-
-C'est délibéré. Ce sont vos propres appels d'instrumentation, et réécrire les événements en transit signifierait que les événements que vous recevez ne sont pas ceux que vous avez émis.
+Ne réglez `collector.redact` sur `off` que si des payloads intacts sont une exigence explicite ; le SDK comme le daemon respectent ce réglage. Le masquage minimal détecte les clés d'API courantes, les bearer tokens, les JWT et les affectations de secrets. Il ne peut pas repérer n'importe quel texte sensible.
 
 <Tip>
   **Vous contrôlez les payloads à la source, en deux endroits :**
@@ -667,7 +665,7 @@ C'est délibéré. Ce sont vos propres appels d'instrumentation, et réécrire l
     `instrument()` ignore les options qu'un adaptateur ne lit pas, donc passer le mauvais nom ne lève rien et ne change rien.
   - Ne transmettez pas le secret à `input=` en premier lieu.
 
-  `collector.redact` ne remplace ni l'un ni l'autre.
+  `collector.redact` est une défense en profondeur, pas un substitut à l'une ou l'autre.
 </Tip>
 
 <Warning>
@@ -710,7 +708,7 @@ Le comportement par défaut est correct en production et problématique lors du 
   </Accordion>
 
   <Accordion title="Les événements d'un thread worker lèvent une TypeError">
-    Le thread n'a jamais hérité du contexte. Enveloppez l'appelable dans `failproofai_sdk.propagate()`. Voir [Threads et async](#threads-and-async).
+    Le thread n'a jamais hérité du contexte. Enveloppez l'appelable dans `failproofai_sdk.propagate()`. Voir [Threads et async](#threads-et-async).
   </Accordion>
 
   <Accordion title="Un champ supplémentaire a disparu ou en a écrasé un autre">

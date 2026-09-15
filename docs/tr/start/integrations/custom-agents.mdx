@@ -1,7 +1,7 @@
 ---
 title: "Özel aracılar"
 sidebarTitle: "Özel aracılar"
-description: "Kendiniz yazdığınız bir aracıyı veya adaptörü olmayan bir çerçeveyi enstrüman edin."
+description: "Kendi yazdığınız bir aracıyı ya da adaptörü olmayan bir çerçeveyi enstrümante edin."
 icon: "code"
 ---
 
@@ -268,7 +268,7 @@ Her ajan çerçevesi aynı üç bağlantı noktası sağlar. Onları harita yap�
 </Tip>
 
 <Note>
-  **Manuel ve otomatik oluşturma.** El yazısı bir kapsam içinde çalışan bir adaptör bu oturuma katılır ve bu aracıya ebeveyn olur, bu nedenle iki tane yerine bir ağaç alırsınız — desteklenen bir tarafı kendiniz enstrümante ederken bir çerçeveyi yan yana kullanışlı olduğunda.
+  **Manuel ve otomatik birlikte çalışır.** Elle yazılmış bir kapsam içinde çalışan bir adaptör bu oturuma katılır ve bu aracının alt öğesi olur; böylece iki ağaç yerine tek bir ağaç elde edersiniz — desteklenen bir çerçevenin yanında başka bir çerçeveyi kendiniz enstrümante ettiğinizde kullanışlıdır.
 </Note>
 
 <Accordion title="AutoGen adaptörü neden yok">
@@ -641,20 +641,18 @@ Her temizleme bir toplu dosya yazar, `.tmp` ilk, sonra `fsync`, sonra atomik yen
 Daemon yalnızca `.jsonl` alır, bu nedenle asla yarı yazılı dosya okuyamaz. Gövde zaman damgası, işlem kimliği ve sıra numarası taşır, bu nedenle iki işlem aynı milisaniyede temizlenirse çarpışamaz. Kuyruk 10.000 olayda sınırlıdır; bunun ötesinde en eskisini bırakır ve kaydeder.
 
 <Warning>
-  **`collector.redact` SDK olaylarınıza uygulanmaz.** Asla onları görmez.
+  **`collector.redact`, SDK olayları için de varsayılan olarak `minimal` değerindedir.** SDK bir topluyu diske yazmadan önce hassas verileri maskeler, daemon da yüklemeden önce aynı deterministik geçişi tekrarlar; böylece eski SDK sürümlerinden gelen toplular da korunur.
 </Warning>
 
-Daemon **gönderir** topluları. Açmaz veya yeniden yazmaları yapmaz.
+Daemon her topluyu okur ve yüklemeden önce maskelemeyi bellekte uygular. Okuduğu makara (spool) dosyasını yeniden yazmaz.
 
-| Olaylar | Tarafından yazılan | `collector.redact` tarafından redakte mi? |
+| Olaylar | Yazan | Minimal maskelemenin çalıştığı yer |
 | --- | --- | --- |
-| CLI oturum transkriptleri | Daemon | Evet |
-| Kancanın aktivitesi | Daemon | Evet |
-| **SDK'nin yayınladığı her şey** | **İşleminiz** | **Hayır** |
+| CLI oturum transkriptleri | Daemon | Daemon topluyu yazmadan önce |
+| Kanca etkinliği | Daemon | Daemon topluyu yazmadan önce |
+| **SDK'nin yayınladığı her şey** | **İşleminiz** | **SDK topluyu yazmadan önce ve daemon yüklemeden önce bir kez daha** |
 
-Redaksiyon daemon'un kendi olaylarını *yazdığı* yerde çalışır — topluların *sevk edildiği* yerde değil. Bu yüzden bir istemi veya bir API anahtarı tutan araç bağımsız değişkeni varışta tutmaya devam eder.
-
-Bu kasıtlıdır. Bunlar kendi enstrümantasyon çağrılarınızdır ve bunları aktarım sırasında yeniden yazmak, aldığınız olayların yayınladığınız olaylar olmadığı anlamına gelir.
+`collector.redact` değerini yalnızca payload'ların değiştirilmeden kalması açık bir gereksinim olduğunda `off` yapın; SDK da daemon da bu ayara uyar. Minimal maskeleme yaygın API anahtarlarını, bearer token'ları, JWT'leri ve gizli değer atamalarını yakalar. Rastgele hassas metinleri tanıyamaz.
 
 <Tip>
   **Yüklemeleri kaynakta kontrol edersiniz, iki yerde:**
@@ -667,7 +665,7 @@ Bu kasıtlıdır. Bunlar kendi enstrümantasyon çağrılarınızdır ve bunlar�
     `instrument()` bir adaptörün okumuyor olduğu seçenekleri bırakır, bu nedenle yanlış adı iletmek hiçbir şey yükseltmez ve hiçbir şey değiştirmez.
   - Sırrı ilk yerde `input=` tutmayın.
 
-  `collector.redact` ikisi için bir yedek değil.
+  `collector.redact` derinlemesine savunmanın bir katmanıdır; ikisinin de yerini tutmaz.
 </Tip>
 
 <Warning>
@@ -710,7 +708,7 @@ Varsayılan, üretimde doğru ve hata ayıklarken yanlıştır, çünkü yalnız
   </Accordion>
 
   <Accordion title="Bir worker iş parçacığından olaylar TypeError yükseltir">
-    İş parçacığı asla bağlamı devralması olmadı. Çağrıyı `failproofai_sdk.propagate()` içine sarın. Bkz. [İş parçacıkları ve async](#threads-and-async).
+    İş parçacığı asla bağlamı devralması olmadı. Çağrıyı `failproofai_sdk.propagate()` içine sarın. Bkz. [İş parçacıkları ve async](#i̇ş-parçacıkları-ve-async).
   </Accordion>
 
   <Accordion title="Ekstra bir alan kayboldu veya bir şeyin üzerine yazıldı">

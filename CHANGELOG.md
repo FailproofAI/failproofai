@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.6-beta.0 — 2026-09-15
+
+### Dependencies
+
+- yaml 2.9.0 → 2.9.1, and rustls 0.23.43 → 0.23.45 (with rustls-webpki 0.103.13 → 0.103.15) in `Cargo.lock`, closing RUSTSEC-2026-0285 (5.3, fixed in 0.23.45). The advisory turned the Supply Chain gate red on `main` itself, not through any PR's change; rustls is transitive-only, via `reqwest` in `failproofaid` and `fpai-collect` (#803)
+
 ## 1.0.5 — 2026-09-13
 
 Stable OpenClaw 2026.9 compatibility release, validated against default profiles, named profiles, multiple agents, live policy enforcement, local dashboard rendering, and end-to-end ingestion.

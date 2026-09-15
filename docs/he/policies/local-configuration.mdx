@@ -1,55 +1,49 @@
 ---
-title: "הגדרות מקומיות"
-description: "שלוט בטווח המדיניות, בפרמטרים, בקבצים מותאמים אישית והגדרות Failproof AI ברמת המכונה."
+title: "תצורה מקומית"
+description: "שלוט בטווח המדיניות, בפרמטרים, בקבצים מותאמים אישית, והגדרות Failproof AI ברמת המכונה."
 icon: "file-cog"
 ---
 
-Failproof AI מפריד בין בחירת מדיניות לבין הגדרות מכונה ו-daemon. זה שומר על בחירות מדיניות במאגר בהיקף ניתן לבדיקה בעוד שאישורים ומצב daemon נשארים מחוץ למאגר.
+Failproof AI שומר על הפרדה בין מה שמאגר יכול לבצע commit — חיווט hook, פרמטרי מדיניות, מדיניויות מותאמות אישית — לבין מצב המכונה כגון אישורים, חבילות מותקנות, והדימון.
 
-## בחר טווח מדיניות
+## בחר טווח
 
-<Tabs>
-  <Tab title="Dashboard">
-    הרץ `failproofai` ללא ארגומנטים כדי לפתוח את לוח הבקרה של המדיניות המקומית. בחר בטווח משתמש, פרויקט או מקומי לפני הפעלת מדיניות כך שהשינוי יכתב לקובץ התצורה המיועד.
+טווח קובע היכן מחוברים ה-hook, ואיזה קובץ תצורה אתה כותב פרמטרים ונתיבי מדיניויות מותאמים אישית אליו:
 
-    - **משתמש** חל על פני פרויקטים במכונה זו.
-    - **פרויקט** שייך למאגר וניתן לביצוע commit.
-    - **מקומי** דורס פרויקט אחד עבור משתמש אחד ויש להישאר gitignored.
+- **User** חל על כל הפרויקטים במכונה זו.
+- **Project** שייך למאגר וניתן לבצע עליו commit.
+- **Local** מחליף פרויקט אחד לרמת משתמש אחד ויש להישאיר אותו ב-gitignore.
 
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai policy add block-rm-rf --scope user
-    failproofai policy add block-force-push --scope project
-    failproofai policy add warn-large-file-write --scope local
-    failproofai policies
-    ```
+```bash
+failproofai policies --install --cli claude --scope project   # wire hooks for this repository
+failproofai policies --install --cli claude --scope user      # or for every project on this machine
+failproofai policies
+```
 
-    לא כל harness תומך בטווח מקומי. ה-CLI דוחה טווח שה-harness הנבחר לא יכול לייצג.
-  </Tab>
-</Tabs>
+לא כל harness תומך בטווח מקומי; ה-CLI דוחה טווח שה-harness הנבחר לא יכול לייצג.
 
-| טווח | קובץ תצורת מדיניות |
+איזו מדיניויות חבילה מופעלות **אינו** בתחום הטווח. המתג מתועד עם החבילה המותקנת, לכן `failproofai policies add <name>` מפעיל מדיניות עבור כל המכונה, ללא קשר למה `--scope` אומר.
+
+| Scope | קובץ תצורת מדיניות |
 | --- | --- |
-| פרויקט | `<project>/.failproofai/policies-config.json` |
-| מקומי | `<project>/.failproofai/policies-config.local.json` |
-| משתמש | `~/.failproofai/policies-config.json` |
+| Project | `<project>/.failproofai/policies-config.json` |
+| Local | `<project>/.failproofai/policies-config.local.json` |
+| User | `~/.failproofai/policies-config.json` |
 
-מדיניויות מופעלות מתמזגות כאיחוד. פרמטרים של מדיניות משתמשים בטווח הראשון המגדיר פרמטרים עבור אותה מדיניות, בסדר project → local → user. נתיבי מדיניות מותאמים אישית ממפורשים משתמשים בטווח הראשון המגדיר אותם.
+פרמטרי מדיניות משתמשים בטווח הראשון המגדיר פרמטרים לאותה מדיניות, בסדר project → local → user. נתיבי מדיניות מותאמים אישית מפורשים משתמשים בטווח הראשון המגדיר אותם.
 
-## הגדר פרמטרים של מדיניות
+## הגדר פרמטרי מדיניות
 
 <Tabs>
   <Tab title="Dashboard">
-    פתח את המדיניות בלוח הבקרה המקומי, ערוך את הפרמטרים הנתמכים שלה, והשמור בטווח הנבחר. הרץ פעולת agent תואמת ולא תואמת, ואז בדוק את ההחלטה ב-**Observe → policy**.
+    פתח את המדיניות בדוח הבקרה המקומי, ערוך את הפרמטרים הנתמכים שלה, ושמור בטווח שנבחר. הפעל פעולת agent תואמת ולא תואמת, ואז בדוק את ההחלטה ב-**Observe → policy**.
 
   </Tab>
   <Tab title="CLI">
-    ערוך את `policies-config.json` של הטווח הנבחר, ואז הרץ `failproofai policies` כדי להעלות שמות מדיניות או מפתחות פרמטרים לא ידועים.
+    ערוך את ה-`policies-config.json` של הטווח שנבחר, ואז הרץ `failproofai policies`: הוא מזהיר לגבי ערך `policyParams` השם מדיניות שלא חבילה מותקנת נושאת. הוא לא בודק את המפתחות בתוך ערך, לכן בדוק את הכתיב שלהם מול הטבלה למטה.
 
     ```json
     {
-      "enabledPolicies": ["block-rm-rf", "block-force-push"],
       "policyParams": {
         "block-rm-rf": {
           "allowPaths": ["/tmp/build-output"]
@@ -64,21 +58,45 @@ Failproof AI מפריד בין בחירת מדיניות לבין הגדרות �
   </Tab>
 </Tabs>
 
+### פרמטרים שמדיניויות Failproof AI מקבלות
+
+כל מדיניות מאמתת את סוגי הפרמטרים שלה.
+
+| מדיניות | פרמטר | סוג וברירת מחדל |
+| --- | --- | --- |
+| `sanitize-api-keys` | `additionalPatterns` | `pattern[]`, `[]`; ערכים מכילים `regex` ו-`label` |
+| `block-read-outside-cwd` | `allowPaths` | `string[]`, `[]` |
+| `block-sudo` | `allowPatterns` | `string[]`, `[]` |
+| `block-rm-rf` | `allowPaths` | `string[]`, `[]` |
+| Infrastructure blockers | `allowPatterns` | `string[]`, `[]` |
+| `block-secrets-write` | `additionalPatterns` | `string[]`, `[]` |
+| `block-push-master` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `block-work-on-main` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `prefer-package-manager` | `allowed`, `blocked` | `string[]`, `[]` |
+| `warn-large-file-write` | `thresholdKb` | `number`, `1024` |
+| `require-push-before-stop` | `remote`, `baseBranch` | `string`, `"origin"`; `string`, `"main"` |
+| `require-pr-before-stop` | `baseBranch` | `string`, `"main"` |
+| `require-no-conflicts-before-stop` | `baseBranch` | `string`, `"main"` |
+
+<Warning>
+  דפוס allow מרחיב את מה שה-agent יכול לעשות. בדוק את הטוקניזציה המדויקת וריאציות הפקודה ב-harness היעד לפני פריסה שלה על פני צי.
+</Warning>
+
 ## הבן את קבצי המכונה
 
 `~/.failproofai` מכיל קבצים נפרדים עבור גבולות אמון נפרדים:
 
-| נתיב | תכלית |
+| נתיב | מטרה |
 | --- | --- |
-| `config.json` | הגדרות daemon, ביקורת וטלמטריה ללא סוד |
-| `credentials.json` | אישורי Cloud; מאוחסנים עם הרשאות רק בעלים |
-| `policies-config.json` | בחירת builtin בטווח משתמש, פרמטרים ונתיבים מותאמים אישית ממפורשים |
-| `policies/` | מדיניויות קונוונציה משתמש וחפצי מדיניות מנוהלים בענן |
-| `hook-activity/` | יומן החלטות מדיניות מקומיות |
-| `state/` | daemon spool, בריאות, השהיה ומצב זמן ריצה |
+| `config.json` | הגדרות daemon, ביקורת וטלמטריה שאינן סודיות |
+| `credentials.json` | אישורי ענן; מאוחסנים עם הרשאות בבעלות בלבד |
+| `policies-config.json` | פרמטרי טווח user ונתיבי מדיניויות מותאמות אישית מפורשות |
+| `policies/` | מדיניויות מוסכמה של משתמש, חבילות מותקנות ומדיניויות שלהן מופעלות, וחפצי מדיניות המנוהלים בענן |
+| `hook-activity/` | יומן החלטות מדיניות מקומי |
+| `state/` | spool דימון, בריאות, השהייה, וזמן ריצה |
 
-השתמש ב-`FAILPROOFAI_HOME` כדי להעביר את פריסת המכונה המוחלטת עבור קונטיינר או בדיקה מבודדת. אל תעביר ספריות מצב בודדות באופן עצמאי.
+השתמש ב-`FAILPROOFAI_HOME` לשינוי מיקום של הפריסה המלאה של המכונה עבור container או בדיקה מבודדת. אל תשנה מיקום של ספריות מצב בודדות בנפרד.
 
 <Warning>
-  לעולם אל תבצע commit ל-`credentials.json`. בצע commit לתצורת מדיניות פרויקט ולמדיניויות קונוונציה פרויקט רק לאחר בדיקתם כקוד אכיפה.
+  לעולם אל תבצע commit ל-`credentials.json`. בצע commit לתצורת מדיניות פרויקט ומדיניויות מוסכמה של פרויקט רק לאחר בדיקתן כקוד אכיפה.
 </Warning>

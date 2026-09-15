@@ -1,41 +1,75 @@
 ---
-title: "Rollback"
-description: "Restaurer un déploiement de politique connu lorsqu'un rollout perturbe le travail valide des agents."
+title: "Versions et retour arrière"
+description: "Chaque publication est une version immuable, ce qui permet d'annuler un déploiement perturbant le travail valide d'un agent en redéployant la dernière version fonctionnelle."
 icon: "rotate-ccw"
 ---
 
-Le rollback modifie la version déployée ou supprime une affectation de politique ; il n'efface pas l'historique des décisions qui explique l'incident.
+Une version de politique publiée ne change jamais. Modifier une politique et la republier crée une nouvelle version ; elle ne réécrit jamais celle déjà déployée sur les machines. C'est ce qui rend le retour arrière sûr : la dernière bonne version est toujours là, octet pour octet, et revenir en arrière n'efface pas l'historique des décisions qui explique ce qui s'est mal passé.
 
-## Effectuer un rollback sur une machine
+## Trouver une version
 
 <Tabs>
-  <Tab title="Tableau de bord">
-    1. Accédez à **Admin → enforcement**, développez la machine concernée et identifiez son dernier ensemble de politiques connu comme fonctionnel.
-    2. Sélectionnez **edit**, restaurez ces versions et effets, puis appliquez le nouveau déploiement.
-    3. Attendez que la machine se reconnecte, puis vérifiez le déploiement signalé.
-    4. Ouvrez **Observe → policy** ainsi que les sessions concernées pour confirmer que le travail valide n'est plus bloqué.
-
+  <Tab title="Dashboard">
+    Allez dans **Admin → éditeur de politiques** et ouvrez la **bibliothèque** pour comparer les versions d'une politique ou en désactiver une.
   </Tab>
   <Tab title="CLI">
-    Le rollback d'un déploiement Cloud s'effectue via le tableau de bord. Utilisez le statut local pour confirmer que le déploiement corrigé a bien atteint la machine :
-
     ```bash
-    failproofai config --status
+    fp policies list                 # toutes les versions de politique
+    fp policies show <policy-id>     # une version, avec son code source
     ```
-
-    `failproofai config --pause` suspend les politiques intégrées, personnalisées et de convention pour une session locale. Il ne suspend pas les politiques gérées par Cloud, il ne constitue donc pas une solution de contournement pour un mauvais déploiement Cloud.
   </Tab>
 </Tabs>
 
-## Quand effectuer un rollback
+## Effectuer un retour arrière sur une machine
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Allez dans **Admin → application**, développez la machine concernée et identifiez son dernier ensemble de politiques connu comme fonctionnel.
+    2. Sélectionnez **modifier**, restaurez ces versions et leurs effets, puis appliquez le nouveau déploiement.
+    3. Attendez l'enregistrement de la machine, puis vérifiez le déploiement signalé.
+    4. Ouvrez **Observer → politique** ainsi que les sessions concernées pour confirmer que le travail valide n'est plus bloqué.
+  </Tab>
+  <Tab title="CLI">
+    Chaque déploiement sur une machine correspond à une génération numérotée. Listez-les, puis réinstaurez-en une :
+
+    ```bash
+    fp fleet history <machine-id>
+    fp fleet rollback <machine-id> <generation>
+    ```
+
+    `rollback` crée une nouvelle génération portant l'ancien ensemble plutôt que de rembobiner le compteur, de sorte que l'historique reste en ajout uniquement. Cette commande refuse une génération faisant référence à une politique désactivée ou supprimée. Elle nécessite une session connectée avec `policies:write`. `fp fleet diff <machine-id>` montre ce qui était prévu par rapport à ce que la machine a appliqué — il s'affiche comme `behind` jusqu'au prochain sondage de la machine — et sur la machine elle-même, `failproofai policies` liste le déploiement en cours d'exécution.
+  </Tab>
+</Tabs>
+
+## Retirer une politique de toutes les machines
+
+```bash
+fp policies disable <policy-id>    # la retirer de chaque déploiement qui la contient
+fp policies enable <policy-id>     # la réintégrer
+```
+
+Chaque commande crée une nouvelle génération sur chaque déploiement qu'elle touche. Revenir en arrière sur l'une de ces générations n'est toutefois pas la bonne façon d'annuler un `disable` — `rollback` refuse une génération faisant référence à une politique désactivée, et toutes les générations antérieures à la désactivation mentionnent celle-ci. `fp policies enable` est le chemin de retour, et il crée sa propre génération à son tour.
+
+## Retour arrière sur un pack
+
+Un pack est épinglé à la version que vous avez installée ; revenir en arrière signifie donc installer une version antérieure :
+
+```bash
+failproofai policies show FailproofAI/policies --releases   # toutes les versions publiées et celle actuellement installée
+failproofai policies add FailproofAI/policies@a1b2c3d4e5f6   # épingler cette version
+```
+
+Sans terminal, ou avec `--policy`, `--category` ou `--all`, le ré-ajout conserve le sous-ensemble que vous aviez choisi. Dans un terminal sans aucune de ces options, le sélecteur s'ouvre avec les sélections par défaut de l'auteur pré-cochées, et ce que vous cochez remplace votre sélection — pensez donc à recocher ce que vous aviez.
+
+## Quand effectuer un retour arrière
 
 - Une politique bloque une action de production attendue.
-- Le volume de correspondances est significativement plus élevé que ce que le rollout observé avait prédit.
+- Le volume de correspondances est sensiblement plus élevé que ce que le déploiement observé avait prédit.
 - Une politique dépend de champs qu'une intégration ne fournit pas.
-- Une nouvelle version modifie le comportement en dehors du mode d'échec prévu.
+- Une nouvelle version modifie un comportement en dehors du mode d'échec prévu.
 
-Après le rollback, ouvrez les sessions concernées et identifiez la condition ayant provoqué le faux positif. Créez une nouvelle version, testez les cas non sécurisés et légitimes, puis recommencez la phase d'observation.
+Après un retour arrière, ouvrez les sessions concernées et identifiez la condition à l'origine du faux positif. Publiez une nouvelle version, [testez](/fr/policies/test) aussi bien le cas non sécurisé que le cas légitime, puis observez-la à nouveau avant de l'appliquer.
 
 <Warning>
-  Suspendre l'application des politiques peut être approprié lors d'un incident, mais cela élargit l'exposition pour toutes les politiques actives dans ce périmètre. Privilégiez le rollback de la version spécifique de la politique lorsque c'est possible.
+  `failproofai config --pause` suspend les politiques locales pour une session uniquement et n'affecte jamais les politiques gérées dans le cloud — ce n'est donc pas une solution pour sortir d'un mauvais déploiement cloud. Une pause élargit également l'exposition pour toutes les politiques dans son périmètre ; préférez revenir en arrière sur la seule version qui se comporte mal.
 </Warning>

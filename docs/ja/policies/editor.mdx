@@ -1,49 +1,96 @@
 ---
-title: "ポリシーエディター"
-description: "確認された失敗パターンからバージョン管理されたポリシーを作成・改訂します。"
+title: "ポリシーを作成する"
+description: "Failproof AI に監査の発見からポリシーの下書きを作成させるか、自分でソースを記述し、レビュー・テスト・公開を行います。"
 icon: "file-pen-line"
 ---
 
-ポリシーエディターを使用して、検出された問題をデプロイ可能なルールへと変換します。下書きがライブの動作をサイレントに変更しないよう、作成とデプロイを分離しています。
+ポリシーを作成する方法は2つあります。Failproof AI に監査の発見からポリシーの下書きを作成させるか、自分でソースを記述するかです。いずれの場合も、明示的に選択するまで公開・デプロイは行われません。
 
-問題に繰り返し可能なアクションパターンがある場合は、**Analyze → issues** で該当の問題を開き、**generate policy** を選択してください。Failproof AI はまずそのポリシーで問題を表現できるかどうかを説明し、レビュー済みのインテントと検出コンテキストをエディターに引き継ぎます。生成されたソースは公開するまで下書きのままです。
+## 監査からポリシーを作成する
 
-## ポリシーバージョンの公開
+監査は失敗を検出し、ポリシーはその再発を防ぎます。Failproof AI は発見の証拠をもとにポリシーの下書きを作成します。
+
+### 1. 監査を実行する
+
+失敗が発生しているセッションに対して[監査を実行](/ja/audits/run)します。各発見には証拠となるセッション、根本原因、推奨される予防策が含まれています。**繰り返し可能なアクションパターン**を持つ発見をもとに作業してください。ポリシーはフックイベントで認識できるものしか防ぐことができません。
+
+### 2. 下書きを生成する
 
 <Tabs>
-  <Tab title="ダッシュボード">
-    1. **Admin → policy editor** に移動し、**compose** で失敗モードを説明するか、JavaScript ポリシーソースを貼り付けます。
-    2. ソースを検証し、報告されたすべてのエラーを修正します。
-    3. ポリシーの識別情報を入力して公開し、**library** を使用してバージョンの比較や無効化を行います。
-    4. マシンへのロールアウトの準備ができたら **enforcement** を選択します。
+  <Tab title="Dashboard">
+    1. **Analyze → issues** で発見の Issue を開き、引用されているセッション、根本原因、推奨事項を確認します。
+    2. **generate policy** を選択します。Failproof AI はまず、問題をポリシーで表現できるかどうかを判断します。**no policy** という結果が返った場合、修正策はアラート、ワークフローの変更、または人的対応であり、ポリシーではありません。
+    3. **write this policy** を選択します。Issue のタイトル、発見内容、根本原因、推奨事項、提案された強制意図が **Admin → policy editor** の下書きになります。候補チェックの結果に同意しない場合は **open the editor anyway** を使用してください。
 
-    ![ポリシーの識別情報、AI支援による下書き、ソース検証、公開コントロールを備えたポリシーエディターのcomposeビュー。](/images/dashboard/policy-editor.png)
+    ![ポリシーの識別情報、AI支援の下書き作成、ソースの検証、公開コントロールを含む Policy editor の作成画面。](/images/dashboard/policy-editor.png)
   </Tab>
   <Tab title="CLI">
-    CLI から `fp policies publish` を使用して公開します。このコマンドは**新しいバージョン**を作成するのみで、既存のバージョンをその場で編集することはありません。また、送信前に node でソースの構文チェックを行います。下流では誰もチェックしないため、構文エラーがあるとエンフォースメント時にマシン上で表面化してしまいます。
+    証拠を確認してから、アシスタントで下書きを作成します。`compose` はレビュー用のソースを出力するだけで、何も公開しません。
 
     ```bash
-    fp policies test ./checkout.policy.mjs --command "git push --force" --expect deny
-    fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
+    fp issues show <issue-id>
+    fp audits finding <finding-id>
+    fp policies compose "Block git push --force on release branches"
     ```
 
-    公開してもデプロイは行われません。新しいバージョンは `fp fleet deploy` でマシンに配備されるまで未使用のままです。`fp policies compose "<plain English>"` は Cloud アシスタントを使ってソースの下書きを生成し、公開せずにレビュー用として出力します。
-
-    Cloud ではなくローカルのエージェント CLI にポリシーをインストールするには、`failproofai policies --install --custom ./checkout.policies.ts --cli claude --scope project` を使用してください。
+    `compose` を使用するには、`policies:write` ロールを持つセッションでサインインしている必要があります（`fp login`）。API キーは使用できません。
   </Tab>
 </Tabs>
 
-## 作成チェックリスト
+### 3. 下書きをレビューする
 
-1. 運用上の言葉で失敗モードを明名する。
-2. 判断に十分な証拠を含むフックイベントとツールを選択する。
-3. 安全でない動作に一致する最も狭い条件を記述する。
-4. エージェントまたはオペレーターが次に何をすべきかを伝える理由を返す。
-5. 一致すべき例と、許可されたままであるべき例を追加する。
-6. 新しいバージョンを保存してレビューを依頼する。
+下書きはあくまで出発点であり、最終的な判断ではありません。公開前に以下を確認してください。
 
-エージェントが安全に軌道修正できる場合は `instruct` を使用します。そのアクションを許可することが受け入れがたいリスクや取り返しのつかない結果をもたらす場合は `deny` を使用します。
+1. 運用上の言葉で失敗モードが明確に示されていること。
+2. 判断に十分な証拠を持つフックイベントとツールのみに一致すること。
+3. 安全でないアクションを捉える最も狭い条件を使用していること。
+4. エージェントが次に何をすべきかを伝える理由を返すこと。
+5. エージェントが安全に修正できる場合は `instruct` を使用し、アクションの許可が受け入れられないか取り消せない場合にのみ `deny` を使用していること。
 
-<Info>
-  ポリシーバージョンはイミュータブルなデプロイ入力です。下書きを編集すると新しいバージョンが作成されます。すでにマシンに割り当てられているバージョンを上書きしないようにしてください。
-</Info>
+エディタでソースを検証し、報告されたすべてのエラーを修正してください。
+
+### 4. テストしてから公開する
+
+公開前にソースの下の **backtest** を実行してください。これにより、フリートがすでに実行した呼び出しに対して下書きを再生し、中断されたであろう有効な呼び出しをカウントします。[ポリシーのテスト](/ja/policies/test)では、この確認とその他のチェックについて説明しています。
+
+動作が確認できたら、ポリシーの識別情報を入力して **publish version** を選択します。公開すると不変のバージョンが作成されますが、何もデプロイされません。[デプロイ](/ja/policies/deploy)するまでは未使用のまま待機します。ターミナルから実行する場合:
+
+```bash
+fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
+```
+
+`publish` はソースを送信前に構文チェックを行うため、構文エラーはここで検出され、強制適用時にマシン上で発生することはありません。
+
+## 自分で記述する
+
+ポリシーは `failproofai` API に対する JavaScript または TypeScript で記述します。
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "protect-production-paths",
+  description: "Block writes to production configuration",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (ctx.toolName !== "Write" && ctx.toolName !== "Edit") return allow();
+    const path = String(ctx.toolInput?.file_path ?? "").replaceAll("\\", "/");
+    if (path.split("/").includes("production")) {
+      return deny("Writes to production configuration require approval.");
+    }
+    return allow();
+  },
+});
+```
+
+これは `production/config.yml`、`/srv/production/config.yml`、`/srv/production`、`C:\\production\\config.yml` に対して `Write` と `Edit` の両方でマッチしますが、`production-backup` にはマッチしません。`production` はパスセグメント全体である必要があります。コンテキストにはイベントタイプ、正規化されたペイロード、セッションメタデータ、パラメータ、利用可能な場合はソース CLI も含まれます。詳細は [policy SDK](/ja/reference/policy-sdk) を参照してください。
+
+バージョンとして公開するには、**Admin → policy editor** の **compose** にソースを貼り付けて上記の手順3と4に従うか、ターミナルから `fp policies publish` でファイルを公開してください。
+
+Cloud なしでマシン上で実行するには、名前の末尾が `policies.js`、`policies.mjs`、または `policies.ts` のファイルとして `.failproofai/policies/` に保存してください。これらはプロジェクトとユーザースコープで自動的に読み込まれます。パスを指定してインストールすることもできます。
+
+```bash
+failproofai policies --install --custom ./security.policies.ts --scope project
+```
+
+すべてのポリシーに、コンベンション・カスタム・パック・Cloud 管理ポリシーの全体で一意の名前を付けてください。

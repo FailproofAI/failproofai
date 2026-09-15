@@ -1,68 +1,89 @@
 ---
 title: "Kurulumunuzu seçin"
-description: "Yerel zorlama, Failproof AI Cloud veya kurumsal bir dağıtım seçin."
+description: "Yerel uygulama, Failproof AI Cloud veya kurumsal dağıtım seçin."
 icon: "waypoints"
 ---
 
 <CardGroup cols={3}>
-  <Card title="Yerel zorlama" icon="laptop">
-    Kancaları ve politikaları bir makineye kurun. Oturum verilerini Cloud'a göndermeden anında koruma raylı çözümler gerektiğinde bunu kullanın.
+  <Card title="Yerel uygulama" icon="laptop">
+    Bulut anahtarı olmadan bir makineyi ayarlayın ve bir politika paketi alın. Oturum verilerini Buluta göndermeden hemen koruma gerektiğinde bunu kullanın.
   </Card>
   <Card title="Failproof AI Cloud" icon="cloud">
-    Merkezi oturumlar, denetimler, çevrimiçi değerlendirmeler, gösterge tabloları, uyarılar ve filo politikası dağıtımı ekleyin.
+    Merkezi oturumlar, denetimler, çevrimiçi değerlendirmeler, panolar, uyarılar ve filo politikası dağıtımı ekleyin.
   </Card>
   <Card title="Kurumsal dağıtım" icon="building-2">
     Kuruluş kontrolleri, kapsamlı anahtarlar, özel altyapı ve dağıtıma özgü güvenlik gereksinimlerini kullanın.
   </Card>
 </CardGroup>
 
+## Yerel olarak uygulayın
+
+Anahtar olmadan `failproofai config` komutunu çalıştırın, ardından `failproofai policies add FailproofAI/policies` komutuyla bir paket alın. Terminal'de, kurulum Buluta bağlanmayı sorduğunda **Şimdi değil — yerel kal**'ı seçin; terminal yok ve `FAILPROOFAI_CLOUD_TOKEN` yok ise, kendi kendine yerel kalır. Daemon ve hook'lar makinede uygulama yapar ve Buluta hiçbir oturum verisi gönderilmez. Daha sonra bağlanmak için aşağıdaki adımları izleyin.
+
 ## Önerilen üretim yolu
 
-1. Transkript yakalaması etkinleştirilmiş şekilde üretim dışı bir makineyi bağlayın.
-2. Oturumları ve değerlendirmeleri Cloud'da doğrulayın.
+1. Transkript yakalama etkin olan bir üretim dışı makineyi bağlayın.
+2. Bulut'ta oturumları ve değerlendirmeleri doğrulayın.
 3. Bilinen bir hata modu için bir denetim oluşturun.
 4. İlk politikayı gözlem modunda dağıtın.
-5. Eşleşmeleri ve yanlış pozitif sonuçları gözden geçirdikten sonra üretimine geçin.
+5. Eşleşmeleri ve yanlış pozitifleri inceledikten sonra üretim ortamına genişletin.
 
-## Bir makineyi Cloud'a bağlayın
+## Bir makineyi Buluta bağlayın
 
 <Tabs>
   <Tab title="Dashboard">
     1. **Administration → Keys** bölümüne gidin ve `events:add` ve `policies:pull` izinleriyle bir anahtar oluşturun.
     2. Tek seferlik gizli anahtarı hedef makineye kopyalayın.
-    3. CLI bağlantı komutunu çalıştırdıktan sonra **Admin → enforcement** bölümüne gidin ve makinenin göründüğünü doğrulayın.
+    3. CLI bağlantı komutunu çalıştırdıktan sonra, **Admin → enforcement** bölümüne gidin ve makinenin görüntülendiğini doğrulayın.
     4. **Observe → Events** bölümüne gidin ve ilk etkinliğinin geldiğini doğrulayın.
 
-    Anahtar açılır penceresinde bağlı bir makine tarafından gereken iki izin gösterilir: etkinlik alımı ve politika teslimi.
+    Anahtar çekmecesi, bağlantılı bir makine tarafından gereken iki izni gösterir: etkinlik alımı ve politika dağıtımı.
 
-    ![Etkinlik alımı ve politika teslimi izinlerini vermek için kullanılan yeni API anahtar çekmeceği.](/images/dashboard/key-create.png)
+    ![Etkinlik alımı ve politika dağıtımı izinleri vermek için kullanılan yeni API anahtar çekmecesi.](/images/dashboard/key-create.png)
 
-    Bağlantıdan sonra makine, istenen ve bildirilen politika durumunu gösteren enforcement bölümünde görünmelidir.
+    Bağlantıdan sonra, makine, istenen ve raporlanan politika durumunu gösteren uygulamada görünmelidir.
 
-    ![Kayıtlı bir makineyi göstermek için genişletilmiş Enforcement filosu, istenen politika durumunu ve dağıtım durumunu gösterir.](/images/dashboard/enforcement-fleet.png)
+    ![İstenen politika durumu ve dağıtım durumunu gösteren genişletilmiş bağlı makinenin bulunduğu Uygulamalar filosu.](/images/dashboard/enforcement-fleet.png)
 
-    İlk gelen etkinlik, daemon'un politika dağıtımından bağımsız olarak verileri Cloud'a iletebileceğini doğrular.
+    Gelen ilk etkinlik, daemon'un politika dağıtımından bağımsız olarak Buluta veri teslim edebileceğini doğrular.
 
-    ![Son ajan, model ve araç etkinliklerini gösteren canlı etkinlik akışı.](/images/dashboard/events-stream-current.png)
+    ![Son aracı, model ve araç etkinliklerini gösteren canlı etkinlik akışı.](/images/dashboard/events-stream-current.png)
 
-    Hem makine hem de ilk etkinliği göründükten sonra devam edin.
+    Hem makine hem de ilk etkinliği görebildikten sonra devam edin.
   </Tab>
   <Tab title="CLI">
-    ```bash
-    failproofai config --connect https://app.befailproof.ai \
-      --token "$FAILPROOFAI_KEY" \
-      --machine-label checkout-runner-01
+    Tek seferlik gizli anahtarı kabuğa okuyun. `read -s` onu yankılamayan bir istemde alır, bu nedenle hiçbir zaman bir komutta veya kabuk geçmişinde görünmez:
 
-    failproofai policies --install --cli claude --scope user
+    ```bash
+    read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
+    ```
+
+    Daha sonra makineyi ayarlayın, politikalarını seçin ve adını verin:
+
+    ```bash
+    failproofai config
+
+    failproofai policies add FailproofAI/policies
+    failproofai config --machine-label checkout-runner-01
     failproofai config --status
     ```
 
-    Transkript içeriğinin yerel kalması gerektiğinde `--no-transcripts` ekleyin.
+    `failproofai config` tüm kurulumu yapar — daemon, bulduğu her aracı CLI için hook'lar ve Bulut bağlantısı — sonra hiç politika seçmez, bu yüzden ikinci komut oradadır.
+
+    Etiket bağlantı **sırasında değil**, **sonrasında** gelir: `failproofai config --machine-label <name>` zaten bağlantılı olan bir makineyi yeniden adlandırır ve bağlantılı olmayan bir makine üzerinde hiçbir şey yapmaz ve sadece bunu söyler.
+
+    Transkript içeriği yerel kalmalı ise `--no-transcripts` ekleyin.
+
+    CI'de, `read -s` yerine `FAILPROOFAI_CLOUD_TOKEN`'ı gizli depodan ayarlayın ve kabuk izlemeyi (`set -x`) kapatın, aksi takdirde iz, anahtarı yazdırır.
+
+    <Warning>
+      **Zaten** ayarlanmış olan bir makinede, `failproofai config --connect <url>` bunu kaydeder ve başka hiçbir şey yapmaz. İlk kurulum için bu formu kullanmayın: daemon veya herhangi bir hook uygulanmadan önce döner, bir makineyi Bulut'ta göründüğü halde hiçbir şey toplamayan ve uygulamayan bir durumda bırakır.
+    </Warning>
   </Tab>
 </Tabs>
 
-Cloud'a bağlanmak etkinlik alımı ve politika teslimini bağımsız olarak doğrular. Dolayısıyla bir anahtar geçerli olabilir ancak gerekli bir izne sahip olmayabilir. Hangi yeteneğin yapılandırıldığını görmek için `failproofai config --status` kullanın.
+Buluta bağlanmak, etkinlik alımı ve politika dağıtımını bağımsız olarak doğrular. Bu nedenle bir anahtar geçerli olabilir ancak gerekli izinlerden biri eksik olabilir. Yapılandırılan yetenekleri görmek için `failproofai config --status` komutunu kullanın.
 
 <Info>
-  Cloud kurulumu, ilgili yetenek başarılı olduktan sonra yerel kimlik bilgilerini yazar. Başarısız bir doğrulama, bir makineyi bağlı gibi görünmüş olduğu halde gerçekte bağlı olmadığını gösteren bir duruma yol açmaz.
+  Bulut kurulumu, ilgili yetenek başarılı olduktan sonra yalnızca yerel kimlik bilgilerini yazar. Başarısız bir doğrulama, bir makineyi olmadığında bağlantılı gibi bırakmaz.
 </Info>

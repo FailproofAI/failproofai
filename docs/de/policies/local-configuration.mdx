@@ -1,55 +1,49 @@
 ---
 title: "Lokale Konfiguration"
-description: "Richtlinienbereich, Parameter, benutzerdefinierte Dateien und maschinenspezifische Failproof AI-Einstellungen verwalten."
+description: "Steuern Sie Policy-Scope, Parameter, benutzerdefinierte Dateien und maschinenweite Failproof AI-Einstellungen."
 icon: "file-cog"
 ---
 
-Failproof AI trennt die Richtlinienauswahl von Maschinen- und Daemon-Einstellungen. Dadurch bleiben die Repository-Richtlinienentscheidungen überprüfbar, während Anmeldedaten und Daemon-Zustand außerhalb des Repositorys gespeichert werden.
+Failproof AI trennt, was ein Repository committen kann – Hook-Verdrahtung, Policy-Parameter, benutzerdefinierte Policies – von Maschinenzustand wie Anmeldedaten, installierten Packs und dem Daemon.
 
-## Einen Richtlinienbereich wählen
+## Scope auswählen
 
-<Tabs>
-  <Tab title="Dashboard">
-    Führen Sie `failproofai` ohne Argumente aus, um das lokale Richtlinien-Dashboard zu öffnen. Wählen Sie den Benutzer-, Projekt- oder lokalen Bereich, bevor Sie eine Richtlinie aktivieren, damit die Änderung in die gewünschte Konfigurationsdatei geschrieben wird.
+Ein Scope legt fest, wo die Hooks verdrahtet werden und in welche Konfigurationsdatei Sie Parameter und benutzerdefinierte Policy-Pfade schreiben:
 
-    - **Benutzer** gilt projektübergreifend auf dieser Maschine.
-    - **Projekt** gehört zum Repository und kann eingecheckt werden.
-    - **Lokal** überschreibt ein Projekt für einen Benutzer und sollte in der .gitignore bleiben.
+- **User** gilt projektübergreifend auf dieser Maschine.
+- **Project** gehört zum Repository und kann committet werden.
+- **Local** überschreibt ein Projekt für einen Benutzer und sollte gitignoriert bleiben.
 
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai policy add block-rm-rf --scope user
-    failproofai policy add block-force-push --scope project
-    failproofai policy add warn-large-file-write --scope local
-    failproofai policies
-    ```
+```bash
+failproofai policies --install --cli claude --scope project   # Hooks für dieses Repository verdrahten
+failproofai policies --install --cli claude --scope user      # oder für jedes Projekt auf dieser Maschine
+failproofai policies
+```
 
-    Nicht jedes Harness unterstützt den lokalen Bereich. Die CLI lehnt einen Bereich ab, den das ausgewählte Harness nicht abbilden kann.
-  </Tab>
-</Tabs>
+Nicht jedes Harness unterstützt den Local-Scope; die CLI lehnt einen Scope ab, den das gewählte Harness nicht abbilden kann.
 
-| Bereich | Richtlinien-Konfigurationsdatei |
+Welche Pack-Policies aktiviert sind, ist **nicht** scoped. Die Einstellung wird beim installierten Pack gespeichert, sodass `failproofai policies add <name>` eine Policy für die gesamte Maschine aktiviert, unabhängig von `--scope`.
+
+| Scope | Policy-Konfigurationsdatei |
 | --- | --- |
-| Projekt | `<project>/.failproofai/policies-config.json` |
-| Lokal | `<project>/.failproofai/policies-config.local.json` |
-| Benutzer | `~/.failproofai/policies-config.json` |
+| Project | `<project>/.failproofai/policies-config.json` |
+| Local | `<project>/.failproofai/policies-config.local.json` |
+| User | `~/.failproofai/policies-config.json` |
 
-Aktivierte Richtlinien werden als Vereinigung zusammengeführt. Für Richtlinienparameter wird der erste Bereich verwendet, der Parameter für die jeweilige Richtlinie definiert – in der Reihenfolge Projekt → Lokal → Benutzer. Bei expliziten benutzerdefinierten Richtlinienpfaden wird ebenfalls der erste Bereich verwendet, der diese definiert.
+Policy-Parameter verwenden den ersten Scope, der Parameter für diese Policy definiert, in der Reihenfolge Project → Local → User. Explizite benutzerdefinierte Policy-Pfade verwenden den ersten Scope, der sie definiert.
 
-## Richtlinienparameter konfigurieren
+## Policy-Parameter konfigurieren
 
 <Tabs>
   <Tab title="Dashboard">
-    Öffnen Sie die Richtlinie im lokalen Dashboard, bearbeiten Sie die unterstützten Parameter und speichern Sie im gewählten Bereich. Führen Sie dann eine passende und eine nicht passende Agentenaktion aus und überprüfen Sie die Entscheidung unter **Beobachten → Richtlinie**.
+    Öffnen Sie die Policy im lokalen Dashboard, bearbeiten Sie die unterstützten Parameter und speichern Sie im gewählten Scope. Führen Sie eine passende und eine nicht passende Agent-Aktion aus und prüfen Sie die Entscheidung unter **Observe → policy**.
 
   </Tab>
   <Tab title="CLI">
-    Bearbeiten Sie die `policies-config.json` des gewählten Bereichs und führen Sie anschließend `failproofai policies` aus, um unbekannte Richtliniennamen oder Parameterschlüssel anzuzeigen.
+    Bearbeiten Sie die `policies-config.json` des gewählten Scopes und führen Sie anschließend `failproofai policies` aus: Es warnt vor einem `policyParams`-Eintrag, der eine Policy benennt, die kein installiertes Pack enthält. Die Schlüssel innerhalb eines Eintrags werden nicht geprüft – vergleichen Sie daher deren Schreibweise mit der nachfolgenden Tabelle.
 
     ```json
     {
-      "enabledPolicies": ["block-rm-rf", "block-force-push"],
       "policyParams": {
         "block-rm-rf": {
           "allowPaths": ["/tmp/build-output"]
@@ -64,21 +58,45 @@ Aktivierte Richtlinien werden als Vereinigung zusammengeführt. Für Richtlinien
   </Tab>
 </Tabs>
 
+### Parameter, die die Failproof AI-Policies akzeptieren
+
+Jede Policy validiert ihre eigenen Parametertypen.
+
+| Policy | Parameter | Typ und Standard |
+| --- | --- | --- |
+| `sanitize-api-keys` | `additionalPatterns` | `pattern[]`, `[]`; Einträge enthalten `regex` und `label` |
+| `block-read-outside-cwd` | `allowPaths` | `string[]`, `[]` |
+| `block-sudo` | `allowPatterns` | `string[]`, `[]` |
+| `block-rm-rf` | `allowPaths` | `string[]`, `[]` |
+| Infrastructure blockers | `allowPatterns` | `string[]`, `[]` |
+| `block-secrets-write` | `additionalPatterns` | `string[]`, `[]` |
+| `block-push-master` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `block-work-on-main` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `prefer-package-manager` | `allowed`, `blocked` | `string[]`, `[]` |
+| `warn-large-file-write` | `thresholdKb` | `number`, `1024` |
+| `require-push-before-stop` | `remote`, `baseBranch` | `string`, `"origin"`; `string`, `"main"` |
+| `require-pr-before-stop` | `baseBranch` | `string`, `"main"` |
+| `require-no-conflicts-before-stop` | `baseBranch` | `string`, `"main"` |
+
+<Warning>
+  Ein Allow-Pattern erweitert, was ein Agent tun darf. Testen Sie die genaue Tokenisierung und Befehlsvarianten auf dem Ziel-Harness, bevor Sie es flächendeckend einsetzen.
+</Warning>
+
 ## Die Maschinendateien verstehen
 
-`~/.failproofai` enthält separate Dateien für separate Vertrauensbereiche:
+`~/.failproofai` enthält separate Dateien für separate Vertrauensgrenzen:
 
 | Pfad | Zweck |
 | --- | --- |
 | `config.json` | Nicht-geheime Daemon-, Audit- und Telemetrie-Einstellungen |
-| `credentials.json` | Cloud-Anmeldedaten; mit ausschließlichen Eigentümerberechtigungen gespeichert |
-| `policies-config.json` | Benutzerbereich: integrierte Auswahl, Parameter und explizite benutzerdefinierte Pfade |
-| `policies/` | Benutzerkonventions-Richtlinien und Cloud-verwaltete Richtlinien-Artefakte |
-| `hook-activity/` | Lokales Protokoll der Richtlinienentscheidungen |
-| `state/` | Daemon-Spool, Zustand für Gesundheit, Pause und Laufzeit |
+| `credentials.json` | Cloud-Anmeldedaten; gespeichert mit Nur-Eigentümer-Berechtigungen |
+| `policies-config.json` | User-Scope-Parameter und explizite benutzerdefinierte Policy-Pfade |
+| `policies/` | Benutzer-Konventions-Policies, installierte Packs und welche ihrer Policies aktiv sind, sowie Cloud-verwaltete Policy-Artefakte |
+| `hook-activity/` | Lokales Policy-Entscheidungsprotokoll |
+| `state/` | Daemon-Spool, Zustand, Pause und Laufzeitstatus |
 
-Verwenden Sie `FAILPROOFAI_HOME`, um das vollständige Maschinenverzeichnis für einen Container oder isolierten Test an einen anderen Ort zu verschieben. Verschieben Sie einzelne Zustandsverzeichnisse nicht unabhängig voneinander.
+Verwenden Sie `FAILPROOFAI_HOME`, um das gesamte Maschinen-Layout für einen Container oder einen isolierten Test zu verlagern. Verlegen Sie keine einzelnen Statusverzeichnisse unabhängig voneinander.
 
 <Warning>
-  Checken Sie `credentials.json` niemals ein. Checken Sie Projekt-Richtlinienkonfigurationen und Projektkonventions-Richtlinien erst ein, nachdem Sie diese als Durchsetzungscode überprüft haben.
+  Committen Sie niemals `credentials.json`. Committen Sie Projekt-Policy-Konfigurationen und Projekt-Konventions-Policies nur, nachdem Sie diese als Durchsetzungscode geprüft haben.
 </Warning>

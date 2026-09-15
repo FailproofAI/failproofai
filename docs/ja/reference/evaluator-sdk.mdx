@@ -1,190 +1,118 @@
 ---
 title: "Evaluator SDK"
-description: "Failproof AI セッションを同期または非同期でスコアリングするサービスを構築します。"
+description: "LLMジャッジなど、ホスト型Pythonでは対応できない処理を独自の評価ワーカーで実行します。"
 icon: "gauge"
 ---
 
-エバリュエーターは、完了したエージェントセッションを受け取り、必要な品質シグナルを返します。具体的には、数値スコア、各スコアの説明、およびオプションのサマリーです。Failproof AI はこれらの結果をトレースの横に保存し、エージェントや環境をまたいでグラフ化します。
+Evaluator SDKは、独自のインフラ上で評価を実行します。ワーカーはFailproof AIに評価を登録し、セッションが完了するたびにそれを取得してスコアリングし、結果を送信します。すべてアウトバウンドHTTPS経由で行われるため、外部から接続を受け付けません。[ホスト型Python](/ja/evaluations/write)では実現できないLLMジャッジ、モデル呼び出し、パッケージ、シークレット、ネットワークアクセスを活用するためにご利用ください。結果は[評価ページ](/ja/sessions/evaluations)にホスト型の結果と並んで表示され、**customer** タグが付きます。
 
-## エバリュエーターのセットアップ
+`failproofai-sdk` に含まれており、`failproofai_sdk.evaluator` 配下にあります。トレーシングSDKをインポートしても自動的には読み込まれません。
 
-<Steps>
-  <Step title="Evaluator SDK のインストール">
-    SDK と実行に使用するサーバーをインストールします。
-
-    ```bash
-    pip install failproofai-sdk uvicorn
-    ```
-  </Step>
-
-  <Step title="スコアリング対象の定義">
-    `evaluator.py` を作成します。この例では、セッション内に失敗したツール呼び出しが含まれているかどうかを確認します。
-
-    ```python
-    import os
-    from failproofai.evaluator import Evaluator, EvalResponse
-
-    app = Evaluator(token=os.environ.get("EVALUATOR_TOKEN"))
-
-    @app.config
-    def config():
-        return {"inactivity_timeout_secs": 1800}
-
-    @app.evaluator
-    def evaluate(req):
-        tool_errors = sum(
-            1 for item in req.events
-            if item.event_type == "tool_result" and item.payload.get("error")
-        )
-        return EvalResponse(
-            scores={"tool_reliability": 1.0 if tool_errors == 0 else 0.0},
-            reasoning={"tool_reliability": f"{tool_errors} tool errors"},
-        )
-    ```
-  </Step>
-
-  <Step title="ローカルでの実行とテスト">
-    共有トークンを設定し、エバリュエーターを起動して、ヘルスエンドポイントが応答することを確認します。
-
-    ```bash
-    export EVALUATOR_TOKEN=<shared-token>
-    uvicorn evaluator:app --host 0.0.0.0 --port 8080
-    ```
-
-    別のターミナルで:
-
-    ```bash
-    curl http://127.0.0.1:8080/health
-    ```
-  </Step>
-</Steps>
-
-## エバリュエーターを Failproof AI に接続する
-
-1. Failproof AI Cloud からアクセス可能な HTTPS URL にエバリュエーターをデプロイします。
-2. その URL で `EVALUATOR_ENDPOINT` を設定し、`EVALUATOR_TOKEN` にエバリュエーターが使用しているトークンと同じ値を設定します。マネージド Cloud の場合は、[support@befailproof.ai](mailto:support@befailproof.ai) に連絡して接続設定を行ってください。
-3. 評価を実行し、スコアが Failproof AI に表示されることを確認します。
-
-<Tabs>
-  <Tab title="ダッシュボード">
-    **Observe → Sessions** で完了したセッションを開き、自動評価が行われていない場合は **Run evaluation** を選択します。セッションの **Evaluation** パネルでステータス、スコア、推論、サマリーを確認します。
-
-    **Observe → Evaluations** を使用して、エージェントや環境をまたいでスコアを比較できます。レイテンシー、コスト、トークンなどの数値計測には **Observe → Metrics** を使用してください。
-
-    まず 1 つのセッションから始めて、エバリュエーターが期待するスコアキーと有用な推論をその実行について返しているかを確認します。
-
-    ![評価スコアと推論がトレースの横に表示されたセッション詳細ビュー。](/images/dashboard/session-detail.png)
-
-    個々の結果が正しいことを確認したら、評価ダッシュボードを使用してスコアを時系列でエージェントや環境をまたいで比較します。
-
-    ![エバリュエーターのスコアを時系列でグラフ化した品質ダッシュボード。](/images/dashboard/dashboard-quality.png)
-
-    健全なチャートは安定したスコア名を使用している必要があります。キーを変更すると別のシリーズが作成されます。
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp evals --since 1h --score tool_reliability:0..1
-    fp evals --since 24h --aggregate
-    ```
-  </Tab>
-</Tabs>
-
-セルフホスト型 Cloud インスタンスでは、サーバープロセスに `EVALUATOR_ENDPOINT` が設定されるまで自動評価は無効になっています。エバリュエーターの環境変数を変更した後はサーバーを再起動してください。
-
-このサービスは `GET /health`、`GET /config`、`POST /evaluate`、およびオプションで `GET /evaluate/{job_id}` を公開します。非同期処理には `JobPending` を返し、Failproof AI がポーリングできるよう `@app.job_lookup` を登録してください。
-
-トークンが設定されている場合、health 以外のすべてのルートは、Failproof AI が `EVALUATOR_TOKEN` として送信するベアラートークンと同一のトークンを要求します。
-
-## SDK の型
-
-| 型 | フィールド |
-| --- | --- |
-| `AgentEvent` | `id`, `ts`, `event_type`, `payload` |
-| `EvalRequest` | `schema_version`, `session_id`, `agent_id`, `environment`, `started_at`, `ended_at`, `events` |
-| `EvalResponse` | `scores`, `reasoning`, `summary` |
-| `JobPending` | `job_id`, `next_poll_secs` |
-| `EvaluatorConfig` | `inactivity_timeout_secs`, `default_poll_interval_secs` |
-
-## デコレーターとルート
-
-| デコレーター | ルート | 必須 |
-| --- | --- | --- |
-| `@app.evaluator` | `POST /evaluate` | はい |
-| `@app.job_lookup` | `GET /evaluate/{job_id}` | `JobPending` を返す場合 |
-| `@app.config` | `GET /config` | いいえ |
-
-SDK は評価リクエストボディを 25 MiB に制限します。不明なリクエストフィールドは無視されるため、イベントコントラクトが拡張されてもサービスの互換性が維持されます。
-
-## 非同期処理の返却
-
-評価が 1 回のリクエスト内で完了できない場合は `JobPending` を使用します。ジョブ ID は Failproof AI にとって不透明であり、結果が収集されるかサーバーのタイムアウトが切れるまで、サービスで解決可能な状態を維持する必要があります。
-
-```python
-from failproofai.evaluator import EvalRequest, EvalResponse, Evaluator, JobPending
-
-app = Evaluator(token="shared-secret")
-
-@app.evaluator
-def start(req: EvalRequest) -> JobPending:
-    job_id = enqueue(req)
-    return JobPending(job_id=job_id, next_poll_secs=30)
-
-@app.job_lookup
-def lookup(job_id: str):
-    result = get_result(job_id)
-    if result is None:
-        return JobPending(job_id=job_id, next_poll_secs=30)
-    return EvalResponse(
-        scores=result.scores,
-        reasoning=result.reasoning,
-        summary=result.summary,
-    )
+```bash
+pip install failproofai-sdk
 ```
 
-ポーリング間隔は次の順序で決定されます: `JobPending.next_poll_secs`、`EvaluatorConfig.default_poll_interval_secs`、次にサーバーの `EVALUATOR_POLLING_INTERVAL_SECS`。値は 1 秒から 1 時間の間にクランプされます。サーバーのデフォルトのウォールクロックポーリング上限は 1 時間です。
+## 評価の作成
 
-## リクエストとレスポンスのフィールド
+```python
+from failproofai_sdk.evaluator import ConditionResult, EvalResult, Evaluator, Metric, Score
 
-| フィールド | 型 | 備考 |
-| --- | --- | --- |
-| `EvalRequest.schema_version` | `str` | 現在は `"1"`。 |
-| `session_id`, `agent_id`, `environment` | `str` | セッションの識別子と環境。 |
-| `started_at` | `datetime` | 最初のイベントのタイムスタンプ。 |
-| `ended_at` | `datetime \| None` | セッションが終了イベントを発行した場合に存在。 |
-| `events` | `list[AgentEvent]` | 完全な順序付きイベントストリーム。 |
-| `AgentEvent.id` | `int` | バックエンドのイベント行識別子。 |
-| `AgentEvent.ts` | `datetime` | イベントのタイムスタンプ。 |
-| `AgentEvent.event_type` | `str` | `tool_use` などのイベントファミリー。 |
-| `AgentEvent.payload` | `dict[str, Any]` | 完全なイベントペイロード。 |
-| `EvalResponse.scores` | `dict[str, float] \| None` | 評価でグラフ化される数値ディメンション。 |
-| `EvalResponse.reasoning` | `dict[str, str] \| None` | スコアごとの説明。キーは `scores` と対応している必要があります。 |
-| `EvalResponse.summary` | `str \| None` | 評価全体のナラティブ。 |
+app = Evaluator(name="customer-production", version="2026.08.1")
 
-## サーバーオペレーターの設定
 
-自動評価はデプロイ全体に適用され、`EVALUATOR_ENDPOINT` が存在しない場合は無効のままになります。
+@app.eval(
+    "tool_efficiency",
+    version="1.0.0",
+    labels=["tools", "deterministic"],
+    when=lambda session: ConditionResult(session.count("tool_use") > 0, "no_tool_calls"),
+)
+def tool_efficiency(session):
+    calls = session.events_of_type("tool_use")
+    distinct = {e.payload.get("tool_name") for e in calls if e.payload.get("tool_name")}
+    value = len(distinct) / len(calls)
+    return EvalResult(
+        score=Score(value, passed=value >= 0.7),
+        metrics={"tool_call_count": Metric(len(calls), unit="events")},
+        reasoning=f"{len(distinct)} distinct tools across {len(calls)} calls",
+    )
+
+
+@app.eval(
+    "answer_relevance",
+    version="judge-v1",
+    labels=["llm_judge", "relevance"],
+    when=lambda session: ConditionResult(
+        session.count("human_input") > 0 and session.count("model_response") > 0,
+        "no_exchange",
+    ),
+    timeout_seconds=30,
+)
+async def answer_relevance(session):
+    question = session.events_of_type("human_input")[-1].payload.get("response")
+    answer = session.events_of_type("model_response")[-1].payload.get("content")
+    value, reasoning = await ask_judge(question, answer)  # your LLM call: a 0-1 score and why
+    return EvalResult(score=Score(value, passed=value >= 0.7), reasoning=reasoning)
+
+
+if __name__ == "__main__":
+    app.run_from_env()
+```
+
+- `@app.eval(key, version=...)` で評価を登録します。キーは結果のチャート表示に使われます。ロジックを変更したらバージョンも更新してください。各結果にはそれを生成したバージョンが保持されます。1つのワーカーには最大100件の評価を登録できます。
+- `result_kind` は特に指定しない限り `"score"` です。`"metric"` または `"assertion"` 評価の場合は、`metrics` または `assertions` エントリのいずれか1つにキーと同じ名前を付けてください。そのエントリが結果として扱われます。
+- `when` はセッションに評価を適用するかどうかを決定します。スキップする場合は `ConditionResult(False, "<reason>")` を返してください。理由が記録されます。
+- 評価は通常の関数でも `async` 関数でも構いません。`timeout_seconds` でタイムアウトを設定できます。
+- ペイロードキー（上記の `tool_name`、`response`、`content` など）はエージェントが送信する値によって異なるため、実際のセッションから確認してください。
+
+## ワーカーの起動
+
+**Administration → Keys** で作成した `evaluations:run` 権限を持つキーを `FAILPROOFAI_EVALUATOR_TOKEN` に設定し（コマンドに直接入力せず、シークレットストアから設定してください）、ワーカーを起動します。
+
+```bash
+FAILPROOFAI_EVALUATOR_URL=https://app.befailproof.ai python evaluator.py
+```
+
+`__main__` ブロックがない場合は、`python -m failproofai_sdk.evaluator evaluator:app` でも同様に起動できます。
 
 | 変数 | デフォルト | 用途 |
 | --- | --- | --- |
-| `EVALUATOR_ENDPOINT` | 未設定 | エバリュエーターサービスのベース URL。 |
-| `EVALUATOR_TOKEN` | 未設定 | `Evaluator(token=...)` と共有するベアラートークン。 |
-| `EVALUATOR_WORKERS` | `2` | 同時ディスパッチャーワーカー数。 |
-| `EVALUATOR_CLAIM_BATCH` | `4` | ディスパッチャーパスごとにクレームするセッション数。 |
-| `EVALUATOR_POLLING_INTERVAL_SECS` | `10` | 非同期ポーリングのフォールバック間隔。 |
-| `EVALUATOR_REQUEST_TIMEOUT_MS` | `30000` | リクエストごとのエバリュエータータイムアウト。 |
-| `EVALUATOR_MAX_ATTEMPTS` | `5` | 終端障害前の配信試行回数。 |
-| `EVALUATOR_CONFIG_REFRESH_SECS` | `300` | `/config` のリフレッシュ間隔。 |
-| `EVALUATOR_MAX_POLL_DURATION_SECS` | `3600` | 非同期ポーリングの最大ウォールクロック時間。 |
+| `FAILPROOFAI_EVALUATOR_URL` | 必須 | Failproof AI のURL。Cloudの場合は `https://app.befailproof.ai`。ループバックアドレス以外はHTTPS必須 |
+| `FAILPROOFAI_EVALUATOR_TOKEN` | 必須 | `evaluations:run` 権限を持つキー |
+| `FAILPROOFAI_EVALUATOR_WORKER_ID` | `<hostname>-<pid>` | このワーカーの識別名 |
+| `FAILPROOFAI_EVALUATOR_CONCURRENCY` | `1` | このワーカーが同時にスコアリングするセッション数 |
+| `FAILPROOFAI_EVALUATOR_REQUEST_TIMEOUT_SECONDS` | `30` | Failproof AI への各リクエストのタイムアウト |
+| `FAILPROOFAI_EVALUATOR_DRAIN_TIMEOUT_SECONDS` | `60` | 停止中のワーカーが実行中の処理の完了を待つ時間 |
+| `FAILPROOFAI_EVALUATOR_ALLOW_INSECURE_HTTP` | `false` | ループバック以外のURLへの平文HTTP通信を許可する（下記の警告を参照） |
+| `FAILPROOFAI_EVALUATOR_MODULE` | なし | `python -m failproofai_sdk.evaluator` 用の `module:attribute` |
 
-サーバーは、デプロイ全体のエバリュエーターを使用する組織を制限することもできます。エンドポイント、トークン、リトライ、組織ゲートの変更はオペレーター設定として扱い、変更後はサーバーを再起動またはローリング更新してください。
+<Warning>
+  `FAILPROOFAI_EVALUATOR_ALLOW_INSECURE_HTTP` を有効にすると、すべての通信が平文で送信されます。ワーカーはすべてのリクエストに `Authorization: Bearer` ヘッダーとして `FAILPROOFAI_EVALUATOR_TOKEN` を付加します。また、取得するトランスクリプトはセッションそのものであるため、通信経路上の第三者がトークンとセッション内容の両方を読み取ることができます。読み取られたトークンはローテーションするまで評価の実行に悪用される可能性があります。このオプションは隔離された開発ネットワーク上のみで使用してください。それ以外の環境ではURLはHTTPSである必要があります。ループバックアドレスの場合はフラグ不要です。
+</Warning>
 
-## セキュリティと運用
+## 結果の型
 
-- トラフィックが信頼されたネットワーク境界を越える場合は、エバリュエーターを HTTPS の背後に配置します。
-- 空でないベアラートークンを設定し、両方のサービスで同一に保ちます。
-- トークンやリクエストペイロードの機密プロンプトをログに記録しないでください。
-- 同期ハンドラーをべき等にしてください。リトライによってリクエストが繰り返される場合があります。
-- 本番環境では非同期ジョブの状態をプロセスメモリ外に永続化します。
-- スコアキーを安定させてください。キーの名前を変更すると、既存のシリーズが変更されるのではなく新しいチャートシリーズが作成されます。
+| 型 | フィールド |
+| --- | --- |
+| `Score` | `value`（0〜1）、`passed`、`unit`（デフォルト: `ratio`）、`display_value`、`description` |
+| `Metric` | `value`、`unit`、`display_value`、`description` |
+| `Assertion` | `passed`、`description` |
+| `EvalResult` | `score`、`metrics`、`assertions`、`reasoning`、`summary`、`labels` |
+| `ConditionResult` | `applicable`、`reason_code` |
 
-SDK は `eval received`、`eval responded`、`job lookup`、`config returned`、`auth rejected`、およびハンドラー例外などの構造化されたライフサイクルログを出力します。ロギングハンドラーの設定は行いません。ホストアプリケーションのロギング設定を使用してください。
+`EvalResult` にはスコア、メトリクス、アサーションのいずれかが少なくとも1つ必要で、最大25件まで設定できます。それぞれのキーは一意である必要があります。
+
+## セッション
+
+| フィールドまたはメソッド | 内容 |
+| --- | --- |
+| `session_id`、`agent_id`、`environment` | セッションの識別情報 |
+| `started_at`、`ended_at` | 開始時刻と終了時刻 |
+| `event_count`、`events` | 順序付きの完全なトランスクリプト |
+| `count(event_type)` | そのイベントタイプの件数 |
+| `events_of_type(event_type)` | そのイベントタイプのイベント一覧（順序付き） |
+
+各イベントには `id`、`ts`、`event_type`、`payload` が含まれます。
+
+## レガシー評価器
+
+旧Evaluator SDK（Failproof AIが `EVALUATOR_ENDPOINT` でHTTPサービスを呼び出し、`/evaluate` に応答し、`JobPending` でポーリングする方式）は廃止されました。新しい評価器はこのワーカーを使用して構築してください。レガシーサービスを稼働中のセルフホスト環境のオペレーターは、移行期間中は引き続き使用できます。

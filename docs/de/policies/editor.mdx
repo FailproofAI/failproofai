@@ -1,49 +1,96 @@
 ---
-title: "Policy-Editor"
-description: "Erstelle und überarbeite versionierte Richtlinien auf Basis eines bestätigten Fehlermusters."
+title: "Eine Richtlinie schreiben"
+description: "Lass Failproof AI eine Richtlinie aus einem Audit-Befund entwerfen, oder schreibe die Quelle selbst – dann überprüfen, testen und veröffentlichen."
 icon: "file-pen-line"
 ---
 
-Verwende den Policy-Editor, um einen Fund oder ein Problem in eine einsetzbare Regel umzuwandeln. Halte Erstellung und Deployment getrennt, damit ein Entwurf das Live-Verhalten nicht stillschweigend verändern kann.
+Es gibt zwei Möglichkeiten, eine Richtlinie zu schreiben: Failproof AI entwirft sie aus einem Audit-Befund, oder du schreibst die Quelle selbst. Nichts wird veröffentlicht oder bereitgestellt, bis du es entscheidest.
 
-Wenn ein Problem ein wiederholbares Aktionsmuster aufweist, öffne es unter **Analyze → issues** und wähle **generate policy**. Failproof AI erklärt zunächst, ob eine Richtlinie das Problem abbilden kann, und überführt dann den geprüften Intent sowie den Fundkontext in den Editor. Die generierte Quelle bleibt so lange ein Entwurf, bis du sie veröffentlichst.
+## Eine Richtlinie aus einem Audit schreiben
 
-## Eine Richtlinienversion veröffentlichen
+Ein Audit findet einen Fehler; eine Richtlinie verhindert, dass er sich wiederholt. Failproof AI entwirft die Richtlinie anhand der Belege des Befunds.
+
+### 1. Audit durchführen
+
+Führe einen [Audit](/de/audits/run) über die Sitzungen durch, in denen der Fehler auftritt. Jeder Befund enthält seine Belege, eine Grundursache und einen vorgeschlagenen Präventionspfad. Arbeite mit einem Befund, der ein **wiederholbares Aktionsmuster** aufweist – eine Richtlinie kann nur das stoppen, was sie in einem Hook-Ereignis erkennen kann.
+
+### 2. Den Entwurf generieren
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehe zu **Admin → policy editor** und beschreibe im Bereich **compose** das Fehlermuster, oder füge den JavaScript-Richtlinienquellcode ein.
-    2. Validiere den Quellcode und behebe alle gemeldeten Fehler.
-    3. Trage die Richtlinienidentität ein und veröffentliche sie. Nutze anschließend **library**, um Versionen zu vergleichen oder zu deaktivieren.
-    4. Wähle **enforcement**, sobald die Version für ein maschinelles Rollout bereit ist.
+    1. Öffne das Problem des Befunds unter **Analyze → issues** und überprüfe die zitierten Sitzungen, die Grundursache und die Empfehlung.
+    2. Wähle **generate policy**. Failproof AI beurteilt zunächst, ob eine Richtlinie das Problem überhaupt ausdrücken kann. Ein **no policy**-Ergebnis bedeutet, dass die Lösung eine Benachrichtigung, eine Workflow-Änderung oder eine Person erfordert – keine Richtlinie.
+    3. Wähle **write this policy**. Der Titel des Problems, der Befund, die Grundursache, die Empfehlung und die vorgeschlagene Durchsetzungsabsicht werden als Entwurf in **Admin → policy editor** übernommen. Verwende **open the editor anyway**, wenn du mit der Eignungsprüfung nicht einverstanden bist.
 
-    ![Die Compose-Ansicht des Policy-Editors mit Richtlinienidentität, KI-gestützter Erstellung, Quellvalidierung und Veröffentlichungssteuerung.](/images/dashboard/policy-editor.png)
+    ![Die Compose-Ansicht des Policy-Editors mit Richtlinienidentität, KI-gestütztem Entwurf, Quellvalidierung und Veröffentlichungssteuerung.](/images/dashboard/policy-editor.png)
   </Tab>
   <Tab title="CLI">
-    Veröffentliche über die CLI mit `fp policies publish`. Dieser Befehl erstellt eine **neue Version** und bearbeitet keine bestehende in-place. Außerdem prüft er den Quellcode syntaktisch mit node, bevor er ihn überträgt – da nachgelagerte Schritte dies nicht tun, würde ein Syntaxfehler sonst erst zur Enforcement-Zeit auf dem Zielsystem auftreten:
+    Lies die Belege und erstelle dann einen Entwurf mit dem Assistenten. `compose` gibt die Quelle zur Überprüfung aus und veröffentlicht nichts:
 
     ```bash
-    fp policies test ./checkout.policy.mjs --command "git push --force" --expect deny
-    fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
+    fp issues show <issue-id>
+    fp audits finding <finding-id>
+    fp policies compose "Block git push --force on release branches"
     ```
 
-    Das Veröffentlichen deployt nichts – eine neue Version liegt ungenutzt vor, bis `fp fleet deploy` sie auf einem Gerät aktiviert. `fp policies compose "<plain English>"` entwirft Quellcode mithilfe des Cloud-Assistenten und gibt ihn zur Überprüfung aus, anstatt ihn direkt zu veröffentlichen.
-
-    Um eine Richtlinie stattdessen in eine lokale Agenten-CLI (nicht Cloud) zu installieren, verwende `failproofai policies --install --custom ./checkout.policies.ts --cli claude --scope project`.
+    `compose` benötigt eine angemeldete Sitzung (`fp login`), deren Rolle `policies:write` besitzt; API-Keys werden abgelehnt.
   </Tab>
 </Tabs>
 
-## Checkliste für die Erstellung
+### 3. Den Entwurf überprüfen
 
-1. Benenne das Fehlermuster in operativer Sprache.
-2. Wähle die Hook-Events und Tools aus, die ausreichend Kontext für eine Entscheidung liefern.
-3. Formuliere die engstmögliche Bedingung, die unsicheres Verhalten trifft.
-4. Gib eine Begründung zurück, die dem Agenten oder Operator mitteilt, wie weiter vorzugehen ist.
-5. Füge Beispiele hinzu, die übereinstimmen sollen, sowie Beispiele, die weiterhin erlaubt bleiben müssen.
-6. Speichere eine neue Version und fordere eine Überprüfung an.
+Ein Entwurf ist ein Ausgangspunkt, kein Urteil. Überprüfe vor der Veröffentlichung, ob er:
 
-Verwende `instruct`, wenn der Agent den Kurs sicher korrigieren kann. Verwende `deny`, wenn das Zulassen der Aktion ein inakzeptables oder irreversibles Risiko darstellen würde.
+1. Den Fehlermodus in operativer Sprache benennt.
+2. Nur die Hook-Ereignisse und Tools abgleicht, die genug Belege für eine Entscheidung liefern.
+3. Die engste Bedingung verwendet, die die unsichere Aktion erfasst.
+4. Eine Begründung zurückgibt, die dem Agenten mitteilt, was er stattdessen tun soll.
+5. `instruct` verwendet, wenn der Agent den Kurs sicher korrigieren kann, und `deny` nur dann, wenn das Zulassen der Aktion inakzeptabel oder irreversibel ist.
 
-<Info>
-  Richtlinienversionen sind unveränderliche Deployment-Eingaben. Das Bearbeiten eines Entwurfs erstellt eine neue Version; bestehende Versionen, die bereits Maschinen zugewiesen sind, sollten nicht überschrieben werden.
-</Info>
+Validiere die Quelle im Editor und behebe jeden gemeldeten Fehler.
+
+### 4. Testen und dann veröffentlichen
+
+Führe **backtest** unter der Quelle durch, bevor du veröffentlichst: Es spielt den Entwurf gegen Aufrufe ab, die deine Agenten bereits gemacht haben, und zählt die funktionierenden Aufrufe, die unterbrochen worden wären. [Eine Richtlinie testen](/de/policies/test) behandelt das sowie die anderen Prüfungen.
+
+Wenn sie sich korrekt verhält, gib die Richtlinienidentität ein und wähle **publish version**. Das Veröffentlichen erstellt eine unveränderliche Version und stellt nichts bereit: Sie liegt ungenutzt, bis du sie [bereitstellst](/de/policies/deploy). Über ein Terminal:
+
+```bash
+fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
+```
+
+`publish` prüft die Quelle syntaktisch, bevor sie gesendet wird – ein Syntaxfehler wird also hier aufgedeckt und nicht zur Laufzeit auf einem Gerät.
+
+## Selbst schreiben
+
+Eine Richtlinie ist JavaScript oder TypeScript gegen die `failproofai`-API:
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "protect-production-paths",
+  description: "Block writes to production configuration",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (ctx.toolName !== "Write" && ctx.toolName !== "Edit") return allow();
+    const path = String(ctx.toolInput?.file_path ?? "").replaceAll("\\", "/");
+    if (path.split("/").includes("production")) {
+      return deny("Writes to production configuration require approval.");
+    }
+    return allow();
+  },
+});
+```
+
+Dies trifft auf `production/config.yml`, `/srv/production/config.yml`, `/srv/production` und `C:\\production\\config.yml` für sowohl `Write` als auch `Edit` zu, jedoch nicht auf `production-backup`: `production` muss ein vollständiges Pfadsegment sein. Der Kontext enthält außerdem den Ereignistyp, normalisierte Nutzdaten, Sitzungsmetadaten, Parameter und die Quell-CLI, sofern verfügbar – siehe das [Policy SDK](/de/reference/policy-sdk).
+
+Um es als Version zu veröffentlichen, füge die Quelle in **compose** unter **Admin → policy editor** ein und folge den Schritten 3 und 4 oben, oder veröffentliche die Datei über ein Terminal mit `fp policies publish`.
+
+Um sie ohne Cloud auf einem Gerät auszuführen, speichere sie unter `.failproofai/policies/` mit einem Namen, der auf `policies.js`, `policies.mjs` oder `policies.ts` endet – diese werden automatisch im Projekt- und Benutzerbereich geladen – oder installiere sie über den Pfad:
+
+```bash
+failproofai policies --install --custom ./security.policies.ts --scope project
+```
+
+Gib jeder Richtlinie einen Namen, der über Konventions-, benutzerdefinierte, Paket- und Cloud-verwaltete Richtlinien hinweg eindeutig ist.

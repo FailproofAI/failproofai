@@ -1,25 +1,25 @@
 ---
-title: "Évaluations en ligne"
-description: "Évaluez la qualité, la conformité, le coût et la latence des sessions en cours et terminées."
+title: "Lire les résultats d'évaluation"
+description: "Suivez les scores d'évaluation dans le temps, comparez agents et environnements, identifiez pourquoi une session a obtenu un score faible, et interrogez l'assistant."
 icon: "gauge"
 ---
 
-Les évaluations en ligne appliquent des jugements cohérents aux sessions d'agent. Utilisez-les pour les signaux qui doivent être mesurés en continu plutôt qu'examinés uniquement lors d'un audit.
+Les résultats de chaque évaluation, qu'elle soit hébergée ou issue de votre propre worker, arrivent aux mêmes endroits.
 
-## Examiner la qualité des évaluations
+## Comparer les scores dans le temps
 
 <Tabs>
-  <Tab title="Tableau de bord">
-    1. Accédez à **Observe → Evaluations**.
-    2. Ajoutez une série et choisissez l'agent, l'environnement, le score d'évaluation, la statistique et la courbe.
-    3. Ajoutez des séries pour comparer des environnements, des agents ou des clés de score.
-    4. Sélectionnez un résultat pour ouvrir les sessions correspondantes ou partager la vue filtrée. Utilisez **Observe → Metrics** pour la latence, les tokens, le coût et autres valeurs de magnitude.
+  <Tab title="Dashboard">
+    Accédez à **Observe → evaluations**.
 
-    ![Un tableau de bord qualité affichant les scores d'évaluation moyens et les tendances dans le temps.](/images/dashboard/dashboard-quality.png)
+    - **Recent runs** liste chaque évaluation dès qu'elle arrive : qu'elle provienne d'un évaluateur hébergé (**managed**) ou du vôtre (**customer**), l'agent et la session, l'évaluation et sa version, son statut, ainsi que son score ou ses métriques.
+    - **Score over time** trace ce que vous demandez. Sélectionnez **add series** et choisissez un agent, un environnement, une évaluation et une statistique : avg, min, max, p50, p75, p90, p95, p99, stddev ou mode. Chaque série correspond à une ligne ; attribuez-lui sa propre **curve** pour l'afficher sur un graphique séparé.
 
-    Ouvrez une session depuis l'exploration détaillée pour inspecter le raisonnement par score :
+    ![La page evaluations : des exécutions récentes étiquetées customer, un graphique Score over time avec des lignes de référence à 0,5 et 0,8, et une série calculant la moyenne de finished_clean sur tous les agents et environnements.](/images/dashboard/evaluations-chart.png)
 
-    ![Une vue détaillée de session affichant les scores d'évaluation et le raisonnement à côté de la trace complète.](/images/dashboard/session-detail.png)
+    Une plage temporelle et une taille de bin s'appliquent à toutes les séries. Un bin fin permet de détecter un incident ; un bin grossier révèle une tendance, mais peut masquer les pics que vous recherchez. Un bucket sans aucun score correspond à un vide dans la courbe, jamais à un zéro, et des lignes de référence sont placées à 0,5 et 0,8.
+
+    Chaque élément de la vue est encodé dans l'URL : **share** la copie, et quiconque l'ouvre voit exactement la comparaison que vous avez construite.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -28,25 +28,29 @@ Les évaluations en ligne appliquent des jugements cohérents aux sessions d'age
     fp evals --score helpfulness:0.8.. --since 7d
     ```
 
-    Ajoutez le flag global `--json` avant `evals` pour l'automatisation, par exemple `fp --json evals --aggregate --env production`.
+    Ajoutez l'option globale `--json` avant `evals` pour l'automatisation, par exemple `fp --json evals --aggregate --env production`.
   </Tab>
 </Tabs>
 
-Un évaluateur reçoit l'identité de la session, l'environnement, les horodatages et les événements ordonnés. Il peut retourner des clés de score numériques avec un raisonnement optionnel et un résumé. Les évaluateurs à longue durée d'exécution peuvent retourner un job en attente et être interrogés ultérieurement.
+Tracez **avg** et **p90** pour la même évaluation afin de vérifier si une bonne moyenne cache une queue problématique, ou comparez la même évaluation pour deux agents, ou pour la production et le staging, sur un même axe. Les coûts, latences et nombres de tokens, qui ont des unités, sont représentés sous **Observe → metrics**, avec un graphique par unité.
 
-## Bonnes cibles d'évaluation
+## Comprendre pourquoi une session a obtenu un score faible
 
-- Complétion ou exactitude des tâches
-- Ancrage factuel et risque d'hallucination
-- Sélection et efficacité des outils
-- Conformité aux politiques ou aux processus
-- Budgets de coût et de latence
-- Escalade humaine requise
+Ouvrez une session depuis **Observe → sessions** ; la grille affiche les scores de chaque session et permet de filtrer par plage de score. Le panneau latéral droit de la session présente d'abord le résumé de l'évaluation, puis une barre par score avec le raisonnement de l'évaluateur en dessous.
 
-## Du score à la réponse
+![Une vue détaillée de session affichant les scores d'évaluation et leur justification à côté de la trace complète.](/images/dashboard/session-detail.png)
 
-Affichez les scores dans des tableaux de bord pour suivre les tendances. Créez des alertes pour des seuils ou des conditions composées. Lorsqu'un score décline sur une population, lancez un audit pour en comprendre la cause ; lorsque la cause est une action répétable, déployez une politique.
+## Interroger l'assistant
 
-<Card title="Créer un évaluateur" icon="code-2" href="/fr/reference/evaluator-sdk">
-  Implémentez une évaluation synchrone ou asynchrone avec le SDK Python d'évaluateur.
-</Card>
+Posez vos questions sur les données d'évaluation en langage naturel : « parle-moi de quelques évaluations récentes », ou demandez quels agents voient leurs scores baisser. L'[assistant](/fr/sessions/assistant) lit et analyse les résultats, puis répond avec des tableaux sur lesquels vous pouvez rebondir ; une question pertinente peut devenir une [requête](/fr/sessions/queries) ou un [dashboard](/fr/sessions/dashboards).
+
+![La page evaluations à côté de l'assistant, qui répond à « parle-moi de quelques évaluations récentes » avec un résumé des totaux, statuts et scores.](/images/dashboard/evaluations-assistant.png)
+
+## Surveiller et agir
+
+- **Dashboards**, sous **Analyze → dashboards**, suivent l'évolution des scores que vous mettez en avant, par agent et environnement, pour toute l'organisation.
+
+  ![Un dashboard qualité affichant les scores d'évaluation moyens et leur évolution dans le temps.](/images/dashboard/dashboard-quality.png)
+
+- **Alerts** vous notifient lorsqu'un score franchit un seuil. Consultez [alerts](/fr/audits/alerts).
+- Lorsqu'un score baisse sur de nombreuses sessions, [lancez un audit](/fr/audits/run) pour en comprendre la cause ; si la cause est une action reproductible, [rédigez une policy](/fr/policies/editor).

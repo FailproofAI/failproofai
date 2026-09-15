@@ -1,41 +1,75 @@
 ---
-title: "Reversión"
-description: "Restaura una implementación de políticas conocida cuando un despliegue interrumpe el trabajo válido del agente."
+title: "Versiones y reversión"
+description: "Cada publicación es una versión inmutable, por lo que una implementación que interrumpa el trabajo válido de un agente se deshace volviendo a desplegar la última versión correcta."
 icon: "rotate-ccw"
 ---
 
-La reversión cambia la versión desplegada o elimina una asignación de política; no borra el historial de decisiones que explica el incidente.
+Una versión de política publicada nunca cambia. Editar una política y volver a publicarla genera una nueva versión; nunca sobreescribe la que ya está en las máquinas. Eso es lo que hace que la reversión sea segura: la última versión correcta sigue ahí, byte a byte, y revertir no borra el historial de decisiones que explica qué salió mal.
+
+## Encontrar una versión
+
+<Tabs>
+  <Tab title="Panel de control">
+    Ve a **Admin → editor de políticas** y abre la **biblioteca** para comparar las versiones de una política o desactivar una.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp policies list                 # every policy version
+    fp policies show <policy-id>     # one version, with its source
+    ```
+  </Tab>
+</Tabs>
 
 ## Revertir una máquina
 
 <Tabs>
   <Tab title="Panel de control">
     1. Ve a **Admin → enforcement**, expande la máquina afectada e identifica su último conjunto de políticas conocido como correcto.
-    2. Selecciona **edit**, restaura esas versiones y efectos, y aplica el nuevo despliegue.
-    3. Espera a que la máquina haga check-in y luego verifica el despliegue reportado.
+    2. Selecciona **editar**, restaura esas versiones y efectos, y aplica el nuevo despliegue.
+    3. Espera el registro de conexión de la máquina y verifica el despliegue reportado.
     4. Abre **Observe → policy** y las sesiones afectadas para confirmar que el trabajo válido ya no está bloqueado.
-
   </Tab>
   <Tab title="CLI">
-    La reversión de un despliegue en la nube es un flujo de trabajo del panel de control. Usa el estado local para confirmar que el despliegue corregido ha llegado a la máquina:
+    Cada despliegue en una máquina es una generación numerada. Listarlas y luego restablecer una:
 
     ```bash
-    failproofai config --status
+    fp fleet history <machine-id>
+    fp fleet rollback <machine-id> <generation>
     ```
 
-    `failproofai config --pause` pausa las políticas integradas, personalizadas y de convención para una sesión local. No pausa las políticas gestionadas por la nube, por lo que no es una solución alternativa para un despliegue incorrecto en la nube.
+    `rollback` genera una nueva generación que contiene el conjunto anterior en lugar de retroceder el contador, por lo que el historial permanece solo de adición, y rechaza una generación que nombre una política desactivada o eliminada. Requiere una sesión iniciada con `policies:write`. `fp fleet diff <machine-id>` muestra lo que se pretendía aplicar frente a lo que la máquina efectivamente aplicó — aparece como `behind` hasta que la máquina vuelva a sondear — y en la propia máquina, `failproofai policies` lista el despliegue que está ejecutando.
   </Tab>
 </Tabs>
 
-## Cuándo hacer una reversión
+## Quitar una política de todas las máquinas
+
+```bash
+fp policies disable <policy-id>    # remove it from every deployment carrying it
+fp policies enable <policy-id>     # add it back
+```
+
+Cada comando genera una nueva generación en cada despliegue que afecta. Revertir una de esas generaciones no es la forma de deshacer un `disable`, sin embargo — `rollback` rechaza una generación que nombre una política desactivada, y cada generación anterior a la desactivación nombra esta política. `fp policies enable` es el camino de regreso, y genera su propia generación a su vez.
+
+## Revertir un paquete
+
+Un paquete está anclado a la versión que instalaste, por lo que revertirlo implica instalar una anterior:
+
+```bash
+failproofai policies show FailproofAI/policies --releases   # every version it has published, and which one is here
+failproofai policies add FailproofAI/policies@a1b2c3d4e5f6   # pin that one
+```
+
+Sin una terminal, o con `--policy`, `--category` o `--all`, volver a agregar conserva el subconjunto que habías elegido. En una terminal sin ninguna de esas opciones, abre el selector con las selecciones predeterminadas del autor ya marcadas, y lo que marques reemplaza tu selección — así que vuelve a marcar lo que tenías.
+
+## Cuándo revertir
 
 - Una política bloquea una acción de producción esperada.
-- El volumen de coincidencias es materialmente mayor que el predicho durante el despliegue observado.
+- El volumen de coincidencias es materialmente superior al que predijo el despliegue observado.
 - Una política depende de campos que una integración no proporciona.
 - Una nueva versión cambia el comportamiento fuera del modo de fallo previsto.
 
-Tras la reversión, abre las sesiones afectadas e identifica la condición que causó el falso positivo. Crea una nueva versión, prueba tanto los casos inseguros como los legítimos y repite la fase de observación.
+Después de revertir, abre las sesiones afectadas y encuentra la condición detrás del falso positivo. Publica una nueva versión, [prueba](/es/policies/test) tanto el caso inseguro como el legítimo, y vuelve a observarla antes de aplicarla.
 
 <Warning>
-  Pausar la aplicación de políticas puede ser apropiado durante un incidente, pero amplía la exposición para todas las políticas activas en ese ámbito. Siempre que sea posible, prefiere revertir la versión de política específica.
+  `failproofai config --pause` suspende las políticas locales durante una sesión y nunca las gestionadas por Cloud, por lo que no es una salida ante un despliegue en Cloud defectuoso. Una pausa también amplía la exposición para todas las políticas en su alcance; es preferible revertir la versión concreta que se está comportando incorrectamente.
 </Warning>

@@ -1,51 +1,94 @@
 ---
-title: "Déployer des politiques"
-description: "Déployez une version de politique approuvée sur les machines concernées."
+title: "Déployer une politique"
+description: "Mettez une version de politique testée sur des machines en mode observation, appliquez-la, et confirmez que chaque machine l'a bien récupérée."
 icon: "cloud-upload"
 ---
 
-Un déploiement associe une ou plusieurs versions de politique à un ensemble cible de machines enrôlées.
+Un déploiement place des versions de politique publiées sur une machine, chacune avec l'un de deux effets possibles :
 
-## Appliquer un déploiement
+- **Observer** enregistre ce que la politique aurait fait, sans rien bloquer.
+- **Appliquer** agit sur la décision : un `deny` bloque l'appel et un `instruct` guide l'agent.
+
+## Ajouter une machine
+
+Une machine apparaît sous **Admin → enforcement** dès qu'elle est connectée au Cloud. Si celle que vous souhaitez n'y figure pas encore :
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Accédez à **Admin → enforcement**, trouvez la machine et développez sa ligne.
-    2. Sélectionnez **edit**, ajoutez la version de politique approuvée et choisissez l'effet **observe** ou un effet d'application.
-    3. Appliquez la modification, puis attendez le prochain check-in de la machine et confirmez son état de déploiement et de couverture.
-    4. Accédez à **Observe → policy** pour inspecter les décisions en temps réel.
-
-    ![L'éditeur de déploiement machine avec les versions de politique, les effets enforce et observe, et l'action d'application du déploiement.](/images/dashboard/enforcement-editor.png)
+    1. Allez dans **Administration → Keys** et créez une clé avec `policies:pull`, pour que la machine puisse recevoir les déploiements, et `events:add`, pour que ses décisions parviennent au Cloud.
+    2. Connectez la machine avec cette clé — [Connecter une machine au Cloud](/fr/start/setup#connecter-une-machine-au-cloud) vous guide pas à pas.
+    3. Confirmez qu'elle apparaît bien sous **Admin → enforcement**.
   </Tab>
   <Tab title="CLI">
-    Déployez depuis la CLI avec `fp fleet`. Examinez le plan résultant avant de l'appliquer — `deploy` affiche le plan complet et demande confirmation **uniquement sur un terminal interactif sans `--json`**. Avec `--json`, avec `--yes`, ou lorsque stdin est redirigé (une étape CI, un script, un agent exécutant un sous-shell), la commande s'applique immédiatement sans plan ni confirmation — exécutez donc `fp fleet show <machine>` au préalable si vous souhaitez vérifier :
+    Sur la machine :
 
+    ```bash
+    npm install -g failproofai
+    failproofai config
+    failproofai config --status
+    ```
+
+    Dans un terminal, `failproofai config` demande si vous souhaitez vous connecter au Cloud et saisit la clé via une invite masquée. Confirmez ensuite que la machine est enrôlée, depuis n'importe quel endroit, avec `fp fleet list`.
+  </Tab>
+</Tabs>
+
+## Déployer en mode observation
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    1. Allez dans **Admin → enforcement**, trouvez la machine et développez sa ligne.
+    2. Sélectionnez **edit**, ajoutez la version de politique testée et choisissez **observe**.
+    3. Appliquez la modification, puis attendez le prochain enregistrement de la machine et confirmez son état de déploiement et de couverture.
+    4. Allez dans **Observe → policy** pour inspecter les décisions en direct.
+
+    ![L'éditeur de déploiement de machine avec les versions de politique, les effets d'application et d'observation, et l'action d'application du déploiement.](/images/dashboard/enforcement-editor.png)
+  </Tab>
+  <Tab title="CLI">
     ```bash
     fp fleet list
     fp fleet show <machine-id>
-    fp fleet deploy <machine-id> --add no-force-push
+    fp fleet deploy <machine-id> --add no-force-push:observe
     ```
 
-    `fp fleet diff <machine-id>` affiche l'écart entre l'intention et la livraison (une machine apparaît comme `behind` jusqu'à sa prochaine interrogation), `fp fleet history <machine-id>` liste les générations, et `fp fleet rollback <machine-id> <generation>` en restaure une — la commande échoue si cette génération référence une politique désactivée ou supprimée depuis.
+    Le suffixe `:observe` est ce qui active le mode observation : un simple `--add no-force-push` sans suffixe conserve l'effet que la machine a déjà pour cette politique, et applique sinon. Basculez vers l'application plus tard avec `--add no-force-push:enforce`.
 
-    Vérifiez la machine elle-même avec `failproofai config --status`, et utilisez `fp sessions --env production --since 24h` et `fp events --event-type hook_completed` après le déploiement pour confirmer que l'activité remonte bien vers Cloud.
+    `deploy` **remplace l'ensemble des politiques de la machine** par le résultat. Il affiche le plan, puis demande confirmation avant d'appliquer — mais uniquement sur un terminal interactif. Avec `--yes`, sous `fp --json`, ou avec stdin redirigé (une étape CI, un script, un agent exécutant un shell), il s'applique sans demander ; le plan est tout de même affiché, ou retourné sous la clé `plan` avec `--json`.
+
+    Sur la machine, `failproofai policies` liste les politiques gérées par le Cloud en cours d'exécution et `failproofai config --status` affiche l'état de la connexion. Utilisez `fp sessions --env production --since 24h` et `fp events --event-type hook_completed` pour confirmer que son activité parvient au Cloud.
   </Tab>
 </Tabs>
 
 <Steps>
-  <Step title="Choisir la version et les cibles">
-    Déployez une version approuvée, et non un brouillon modifiable, en commençant par une machine hors production ou un petit groupe de machines dont vous pouvez inspecter les sessions.
+  <Step title="Choisir la version et les machines">
+    Sélectionnez la version publiée et les machines sur lesquelles elle doit s'exécuter.
   </Step>
-  <Step title="Observer les décisions">
-    Examinez les correspondances, les raisons, les outils concernés et les faux positifs sans bloquer le travail.
+  <Step title="Observer">
+    Examinez les correspondances, les raisons, les outils concernés et les faux positifs pendant qu'aucun blocage n'est actif.
   </Step>
-  <Step title="Appliquer et vérifier la couverture">
-    Passez en mode d'application une fois que les correspondances observées distinguent clairement les actions non sécurisées des actions valides, puis confirmez que chaque machine concernée a bien récupéré le déploiement et remonte ses décisions.
+  <Step title="Appliquer">
+    Basculez l'effet sur enforce une fois que les correspondances observées distinguent les actions non sécurisées des actions valides, puis confirmez que chaque machine concernée a bien récupéré la modification et signale ses décisions.
   </Step>
 </Steps>
 
-Les machines doivent disposer de la capacité `policies:pull`. Le reporting des événements est contrôlé séparément par `events:add` ; vérifiez les deux lorsque vous attendez une analyse et une application Cloud.
+## Vérifier la couverture
+
+La couverture indique si une politique s'exécute là où le risque est présent.
+
+1. Allez dans **Admin → enforcement** et consultez les totaux en mode application et en mode observation.
+2. Recherchez une machine par ID ou par label, ou filtrez les machines auxquelles il manque une politique.
+3. Développez une ligne pour comparer les politiques assignées, le déploiement signalé, le dernier enregistrement et l'historique.
+4. Actualisez après l'intervalle de polling de la machine si un déploiement appliqué est encore en attente.
+
+![La flotte d'application montrant la couverture des politiques, l'état de déploiement des machines, et les assignations d'observation et d'application.](/images/dashboard/enforcement-fleet.png)
+
+Repérez les machines qui n'ont jamais récupéré le dernier déploiement, les machines enrôlées qui ont cessé de signaler leur activité, une politique assignée au mauvais environnement, et la dérive de version après une mise à jour interrompue.
+
+Étiquetez les machines par charge de travail et par environnement — les noms d'hôte seuls survivent rarement à un autoscaling ou à un remplacement :
+
+```bash
+failproofai config --machine-label checkout-runner-03
+```
 
 <Warning>
-  La gestion de l'application est un flux de travail Cloud administratif. Ne traitez pas les routes d'application réservées à root comme des points de terminaison API `/v1` ordinaires destinés aux clients.
+  La gestion de l'application est un flux de travail administratif Cloud. Ne traitez pas les routes d'application réservées à root comme des points de terminaison API `/v1` ordinaires destinés aux clients.
 </Warning>

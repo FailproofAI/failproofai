@@ -1,0 +1,55 @@
+---
+title: "Triển khai và phiên bản hóa một evaluation"
+description: "Triển khai một phiên bản bất biến, xem những gì đang hoạt động, xuất bản các phiên bản mới, quay lại phiên bản trước, và chấm điểm các phiên làm việc bạn đã có."
+icon: "cloud-upload"
+---
+
+## Triển khai
+
+Chọn **deploy `<key>@<version>`** ở dưới cùng của trang soạn thảo. Phiên bản trở thành bất biến sau khi được xuất bản: từ đó trở đi, mọi phiên làm việc kết thúc mà điều kiện của nó áp dụng sẽ được chấm điểm bởi nó.
+
+## Xem những gì đang hoạt động
+
+**Analyze → eval authoring** liệt kê các định nghĩa được lưu trữ của tổ chức bạn, những evaluation mà trình đánh giá được quản lý chạy cho nó. Mỗi hàng hiển thị:
+
+- tên, khóa, phiên bản và loại kết quả của nó
+- mã kiểm tra nguồn của nó, cho phép phân biệt các bản triển khai mà không cần mở mã
+- liệu nó có **điều kiện** hay chạy trên **tất cả các phiên làm việc đã hoàn thành** — điều kiện là những gì giới hạn một evaluation để đặc trưng cho các agent hoặc môi trường cụ thể
+- thời gian chờ, nhãn của nó và thời điểm nó thay đổi lần cuối
+
+![Danh sách các định nghĩa được lưu trữ: tên, khóa, phiên bản, loại kết quả, mã kiểm tra, thời gian chờ và phạm vi của mỗi evaluation, với tùy chọn phiên bản mới và bật hoặc tắt.](/images/dashboard/eval-definitions.png)
+
+Tìm kiếm danh sách hoặc lọc theo trạng thái. Các evaluation mà worker của bạn tự đăng ký không được liệt kê ở đây; kết quả của chúng mang thẻ **customer** trên [trang evaluations](/vi/sessions/evaluations), và những cái được quản lý mang thẻ **managed**.
+
+Một tổ chức có thể có tối đa 100 evaluation được lưu trữ khác nhau được bật cùng một lúc.
+
+## Xuất bản phiên bản mới
+
+Chọn **new version** trên một hàng. Trang soạn thảo mở với mã của phiên bản đó; thay đổi nó, kiểm tra nó và triển khai nó. Khóa và loại kết quả của nó được chuyển giao và không thể thay đổi.
+
+Xuất bản một phiên bản kế tiếp sẽ vô hiệu hóa phần trước của nó và giữ nó trên danh sách. Kết quả giữ lại phiên bản đã tạo ra chúng, do đó biểu đồ cho thấy chính xác khi nào logic mới đảm nhận.
+
+## Quay lại phiên bản trước
+
+Chọn **disable** trên phiên bản hiện tại và **enable** trên phiên bản bạn muốn quay lại. Không có gì bị xóa, và mọi kết quả vẫn như cũ.
+
+## Dừng một evaluation
+
+Chọn **disable**. Khi không có phiên bản nào được bật, nó sẽ dừng chạy trên các phiên làm việc mới. Để dừng một evaluation mà worker của riêng bạn chạy, hãy dừng đăng ký nó: xóa nó khỏi worker hoặc dừng worker.
+
+## Chấm điểm các phiên làm việc bạn đã có
+
+Evaluation chạy về phía trước: một phiên bản được triển khai bây giờ sẽ không bao giờ chấm điểm một phiên làm việc kết thúc trước đó. Để chấm điểm lịch sử, hãy mở **score sessions you already have** trên trang soạn thảo eval, chọn một khoảng thời gian tối đa 90 ngày và tùy chọn một evaluation duy nhất, và đếm trước khi chạy. Số lượng chính xác là những gì sẽ chạy, và mỗi cặp phiên làm việc và evaluation trong nó là một evaluation có thể tính phí.
+
+Nó chỉ lấp đầy những khoảng trống. Một phiên làm việc đã có kết quả cho evaluation đó sẽ giữ lại, và chạy cùng một cửa sổ hai lần sẽ không chấm điểm gì mới.
+
+Để chấm điểm một phiên làm việc lại — sau khi sửa chữa hoặc cho một phiên làm việc không bao giờ kết thúc sạch sẽ — chọn **re-evaluate** trên trang của nó. Kết quả mới được thêm vào lịch sử phiên làm việc; những cái trước đó vẫn giữ nguyên.
+
+## Quyền hạn
+
+| Quyền hạn | Cho phép bạn |
+| --- | --- |
+| `evaluations:read` | Xem kết quả và mở trang soạn thảo eval |
+| `evaluations:trigger` | Xem, triển khai, phiên bản hóa, bật và tắt các định nghĩa được lưu trữ; kiểm tra chúng; chấm điểm lịch sử; đánh giá lại một phiên làm việc |
+| `events:read` | Kiểm tra với các phiên làm việc thực và định vị các bản nháp trong các khóa payload của bạn, trên cơ sở `evaluations:trigger` |
+| `evaluations:run` | Chạy worker evaluator của riêng bạn |

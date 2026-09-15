@@ -1,51 +1,94 @@
 ---
-title: "정책 배포"
-description: "검토된 정책 버전을 대상 머신에 배포합니다."
+title: "정책 배포하기"
+description: "테스트된 정책 버전을 관찰 모드로 머신에 배포하고, 적용(enforce)한 뒤 모든 머신이 정상적으로 업데이트를 수신했는지 확인합니다."
 icon: "cloud-upload"
 ---
 
-배포는 하나 이상의 정책 버전을 등록된 대상 머신 집합에 연결합니다.
+배포는 게시된 정책 버전을 머신에 적용하며, 다음 두 가지 효과 중 하나로 동작합니다:
 
-## 배포 적용
+- **Observe(관찰)**: 정책이 어떤 결정을 내렸을지 기록하며, 실제로 차단하지는 않습니다.
+- **Enforce(적용)**: 결정에 따라 실제로 동작합니다. `deny`는 호출을 차단하고, `instruct`는 에이전트를 유도합니다.
+
+## 머신 추가하기
+
+머신이 Cloud에 연결되면 **Admin → enforcement** 아래에 표시됩니다. 원하는 머신이 아직 나타나지 않는 경우:
 
 <Tabs>
   <Tab title="대시보드">
-    1. **Admin → enforcement**로 이동하여 머신을 찾고 해당 행을 펼칩니다.
-    2. **edit**를 선택하고 검토된 정책 버전을 추가한 후 **observe** 또는 적용할 enforcement 효과를 선택합니다.
-    3. 변경 사항을 적용한 후 머신의 다음 체크인을 기다리고 배포 및 커버리지 상태를 확인합니다.
-    4. **Observe → policy**로 이동하여 실시간 결정 사항을 검사합니다.
-
-    ![정책 버전, enforce 및 observe 효과, 배포 적용 액션이 표시된 머신 배포 편집기.](/images/dashboard/enforcement-editor.png)
+    1. **Administration → Keys**로 이동하여 키를 생성합니다. 머신이 배포를 수신할 수 있도록 `policies:pull` 권한을, Cloud로 결정 내용을 전송할 수 있도록 `events:add` 권한을 부여합니다.
+    2. 해당 키로 머신을 연결합니다. — [머신을 Cloud에 연결하기](/ko/start/setup#cloud에-머신-연결)에서 자세한 과정을 안내합니다.
+    3. **Admin → enforcement** 아래에 머신이 표시되는지 확인합니다.
   </Tab>
   <Tab title="CLI">
-    CLI에서 `fp fleet`을 사용하여 배포합니다. 적용하기 전에 결과 집합을 검토하세요 — `deploy`는 전체 계획을 출력하며 `--json` 없이 인터랙티브 터미널에서만 확인을 요청합니다. `--json`이나 `--yes`를 사용하거나 stdin이 리다이렉트된 경우(CI 단계, 스크립트, 에이전트 셸 실행 등)에는 계획 표시 및 확인 없이 즉시 적용되므로, 검토가 필요하다면 먼저 `fp fleet show <machine>`을 실행하세요:
+    머신에서 다음을 실행합니다:
 
+    ```bash
+    npm install -g failproofai
+    failproofai config
+    failproofai config --status
+    ```
+
+    터미널에서 `failproofai config`를 실행하면 Cloud 연결 여부를 묻고, 마스킹된 프롬프트에서 키를 입력받습니다. 이후 어디서든 `fp fleet list` 명령으로 머신이 등록되었는지 확인할 수 있습니다.
+  </Tab>
+</Tabs>
+
+## 관찰 모드로 배포하기
+
+<Tabs>
+  <Tab title="대시보드">
+    1. **Admin → enforcement**로 이동하여 머신을 찾고, 해당 행을 펼칩니다.
+    2. **편집(edit)**을 선택하고, 테스트된 정책 버전을 추가한 뒤 **observe**를 선택합니다.
+    3. 변경 사항을 적용한 후 머신의 다음 체크인을 기다리고, 배포 상태와 커버리지 상태를 확인합니다.
+    4. **Observe → policy**로 이동하여 실시간 결정 내용을 검토합니다.
+
+    ![정책 버전, enforce/observe 효과, 배포 적용 액션이 포함된 머신 배포 편집기 화면](/images/dashboard/enforcement-editor.png)
+  </Tab>
+  <Tab title="CLI">
     ```bash
     fp fleet list
     fp fleet show <machine-id>
-    fp fleet deploy <machine-id> --add no-force-push
+    fp fleet deploy <machine-id> --add no-force-push:observe
     ```
 
-    `fp fleet diff <machine-id>`는 의도와 실제 적용 상태의 차이를 보여주고(머신은 다음 폴링 전까지 `behind` 상태로 표시됨), `fp fleet history <machine-id>`는 세대 목록을 나열하며, `fp fleet rollback <machine-id> <generation>`은 특정 세대로 복원합니다 — 해당 세대가 비활성화되거나 삭제된 정책을 참조하는 경우 거부됩니다.
+    `:observe` 접미사가 관찰 모드로 동작하게 합니다. `--add no-force-push`처럼 접미사 없이 사용하면 해당 정책에 대해 머신이 이미 가진 효과를 유지하며, 기본값은 enforce입니다. 나중에 `--add no-force-push:enforce`로 적용 모드로 전환할 수 있습니다.
 
-    머신 자체는 `failproofai config --status`로 확인하고, 배포 후 `fp sessions --env production --since 24h` 및 `fp events --event-type hook_completed`를 사용하여 활동이 Cloud에 전달되는지 검증하세요.
+    `deploy`는 **머신의 전체 정책 세트를 결과로 교체합니다**. 계획(plan)을 출력한 뒤 적용 전에 확인을 요청하지만, 이는 인터랙티브 터미널에서만 해당됩니다. `--yes` 옵션 사용 시, `fp --json` 아래에서, 또는 stdin이 리디렉션된 경우(CI 단계, 스크립트, 에이전트가 셸을 실행하는 경우)에는 확인 없이 바로 적용됩니다. 이 경우에도 계획은 계속 출력되거나 `--json` 옵션 사용 시 `plan` 필드로 반환됩니다.
+
+    머신에서 `failproofai policies`를 실행하면 현재 실행 중인 Cloud 관리 정책 목록을, `failproofai config --status`를 실행하면 연결 상태를 확인할 수 있습니다. `fp sessions --env production --since 24h` 및 `fp events --event-type hook_completed` 명령으로 머신의 활동이 Cloud에 정상적으로 전달되는지 확인하세요.
   </Tab>
 </Tabs>
 
 <Steps>
-  <Step title="버전 및 대상 선택">
-    변경 가능한 드래프트가 아닌 검토된 버전을 배포하되, 세션을 검사할 수 있는 비프로덕션 머신 또는 소규모 그룹부터 시작하세요.
+  <Step title="버전과 머신 선택">
+    게시된 버전과 해당 버전을 실행할 머신을 선택합니다.
   </Step>
-  <Step title="결정 사항 관찰">
-    작업을 차단하지 않고 매칭 항목, 이유, 영향받은 도구, 오탐지를 검토합니다.
+  <Step title="관찰(Observe)">
+    아무것도 차단되지 않는 상태에서 매칭 결과, 사유, 영향받는 도구, 오탐(false positive)을 검토합니다.
   </Step>
-  <Step title="적용 및 커버리지 확인">
-    관찰된 매칭 항목이 안전하지 않은 작업과 유효한 작업을 구분한 후 적용(enforce)하고, 의도한 모든 머신이 배포를 가져왔으며 결정 사항을 보고하고 있는지 확인합니다.
+  <Step title="적용(Enforce)">
+    관찰된 매칭 결과가 안전하지 않은 행동과 유효한 행동을 명확히 구분하면 효과를 enforce로 전환합니다. 그런 다음 의도한 모든 머신이 변경 사항을 수신하고 결정 내용을 보고하고 있는지 확인합니다.
   </Step>
 </Steps>
 
-머신에는 `policies:pull` 권한이 필요합니다. 이벤트 보고는 `events:add`로 별도로 제어됩니다. Cloud 분석 및 적용을 기대하는 경우 두 가지 모두 확인하세요.
+## 커버리지 확인하기
+
+커버리지는 위험이 있는 곳에 정책이 실제로 실행되고 있는지를 나타냅니다.
+
+1. **Admin → enforcement**로 이동하여 enforce 및 observe 합계를 검토합니다.
+2. ID나 레이블로 머신을 검색하거나, 특정 정책이 누락된 머신을 필터링합니다.
+3. 행을 펼쳐 할당된 정책, 보고된 배포 상태, 마지막 체크인 시간, 이력을 비교합니다.
+4. 적용된 배포가 아직 대기 중인 경우, 머신의 폴링 간격이 지난 후 새로고침합니다.
+
+![정책 커버리지, 머신 배포 상태, observe/enforce 할당 현황을 보여주는 Enforcement 플릿 화면](/images/dashboard/enforcement-fleet.png)
+
+최신 배포를 한 번도 수신하지 않은 머신, 보고를 중단한 등록된 머신, 잘못된 환경에 할당된 정책, 업데이트 중단 후 발생한 버전 불일치 등을 주의 깊게 확인하세요.
+
+머신에는 워크로드와 환경별로 레이블을 지정하세요 — 호스트명만으로는 오토스케일링이나 머신 교체 시 식별이 어렵습니다:
+
+```bash
+failproofai config --machine-label checkout-runner-03
+```
 
 <Warning>
-  Enforcement 관리는 관리자 전용 Cloud 워크플로우입니다. 루트 전용 enforcement 경로를 일반 고객용 `/v1` API 엔드포인트로 취급하지 마세요.
+  Enforcement 관리는 관리자 전용 Cloud 워크플로입니다. 루트 전용 enforcement 라우트를 일반 고객용 `/v1` API 엔드포인트로 취급하지 마세요.
 </Warning>

@@ -1,41 +1,75 @@
 ---
-title: "Ripristino"
-description: "Ripristina una distribuzione di policy nota quando un rollout interrompe il lavoro valido dell'agent."
+title: "Versioni e rollback"
+description: "Ogni pubblicazione è una versione immutabile, quindi un rollout che interrompe il lavoro valido degli agent viene annullato ridistribuendo l'ultima versione corretta."
 icon: "rotate-ccw"
 ---
 
-Il ripristino cambia la versione distribuita o rimuove un'assegnazione di policy; non cancella la cronologia delle decisioni che spiega l'incidente.
+Una versione di policy pubblicata non cambia mai. La modifica di una policy e una nuova pubblicazione creano una nuova versione; non riscrivono mai quella già sui computer. Questo è ciò che rende il rollback sicuro: l'ultima versione corretta è ancora lì, byte per byte, e il rollback non cancella la cronologia delle decisioni che spiega cosa è andato storto.
 
-## Ripristinare una macchina
+## Trovare una versione
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vai a **Admin → enforcement**, espandi la macchina interessata e identifica il suo ultimo set di policy noto come corretto.
-    2. Seleziona **edit**, ripristina quelle versioni ed effetti e applica la nuova distribuzione.
-    3. Attendi il check-in della macchina, quindi verifica la distribuzione segnalata.
-    4. Apri **Observe → policy** e le sessioni interessate per confermare che il lavoro valido non è più bloccato.
-
+    Vai a **Admin → policy editor** e apri **library** per confrontare le versioni di una policy o disabilitarne una.
   </Tab>
   <Tab title="CLI">
-    Il ripristino della distribuzione cloud è un flusso di lavoro del dashboard. Usa lo stato locale per confermare che la distribuzione corretta ha raggiunto la macchina:
-
     ```bash
-    failproofai config --status
+    fp policies list                 # ogni versione di policy
+    fp policies show <policy-id>     # una versione, con il suo codice sorgente
     ```
-
-    `failproofai config --pause` sospende le policy builtin, custom e convention per una sessione locale. Non sospende le policy gestite da Cloud, quindi non è una soluzione alternativa per una distribuzione cloud non corretta.
   </Tab>
 </Tabs>
 
-## Quando eseguire un ripristino
+## Eseguire il rollback di un computer
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Vai a **Admin → enforcement**, espandi il computer interessato e identifica il suo ultimo set di policy noto come corretto.
+    2. Seleziona **edit**, ripristina quelle versioni e i loro effetti, e applica la nuova distribuzione.
+    3. Attendi il check-in del computer, quindi verifica la distribuzione segnalata.
+    4. Apri **Observe → policy** e le sessioni interessate per confermare che il lavoro valido non è più bloccato.
+  </Tab>
+  <Tab title="CLI">
+    Ogni distribuzione su un computer è una generazione numerata. Elencale, quindi ripristinane una:
+
+    ```bash
+    fp fleet history <machine-id>
+    fp fleet rollback <machine-id> <generation>
+    ```
+
+    `rollback` crea una nuova generazione con il vecchio set anziché riavvolgere il contatore, quindi la cronologia rimane append-only e rifiuta una generazione che nomina una policy successivamente disabilitata o eliminata. Richiede una sessione autenticata con `policies:write`. `fp fleet diff <machine-id>` mostra cosa era previsto rispetto a ciò che il computer ha applicato — viene letto come `behind` finché il computer non fa il prossimo polling — e sulla macchina stessa, `failproofai policies` elenca la distribuzione che sta eseguendo.
+  </Tab>
+</Tabs>
+
+## Rimuovere una policy da ogni computer
+
+```bash
+fp policies disable <policy-id>    # rimuovila da ogni distribuzione che la contiene
+fp policies enable <policy-id>     # aggiungila di nuovo
+```
+
+Ciascuno crea una nuova generazione su ogni distribuzione che tocca. Eseguire il rollback di una di quelle generazioni non è il modo per annullare un `disable`, però — `rollback` rifiuta una generazione che nomina una policy disabilitata, e ogni generazione da prima del disable nomina questa. `fp policies enable` è il modo per tornare indietro, e crea a sua volta la sua generazione.
+
+## Eseguire il rollback di un pack
+
+Un pack è bloccato alla versione che hai installato, quindi eseguirne il rollback significa installare una versione precedente:
+
+```bash
+failproofai policies show FailproofAI/policies --releases   # ogni versione che ha pubblicato e quale è qui
+failproofai policies add FailproofAI/policies@a1b2c3d4e5f6   # fissa quella
+```
+
+Senza un terminale, o con `--policy`, `--category` o `--all`, l'aggiunta di nuovo mantiene il sottoinsieme che avevi scelto. In un terminale senza questi, apre il picker pre-selezionato con le impostazioni predefinite dell'autore, e ciò che selezioni sostituisce la tua selezione — quindi seleziona di nuovo ciò che avevi.
+
+## Quando eseguire il rollback
 
 - Una policy blocca un'azione di produzione prevista.
-- Il volume di corrispondenze è notevolmente superiore a quanto previsto dal rollout osservato.
+- Il volume delle corrispondenze è materialmente superiore a quanto previsto dal rollout osservato.
 - Una policy dipende da campi che un'integrazione non fornisce.
 - Una nuova versione cambia il comportamento al di fuori della modalità di errore prevista.
 
-Dopo il ripristino, apri le sessioni interessate e identifica la condizione che ha causato il falso positivo. Crea una nuova versione, testa sia i casi non sicuri che quelli legittimi, quindi ripeti la fase di osservazione.
+Dopo il rollback, apri le sessioni interessate e trova la condizione dietro il falso positivo. Pubblica una nuova versione, [testa](/it/policies/test) sia il caso non sicuro che quello legittimo, e osservalo di nuovo prima di applicare.
 
 <Warning>
-  Sospendere l'enforcement può essere appropriato durante un incidente, ma allarga l'esposizione per ogni policy attiva in tale ambito. Preferisci eseguire il rollback della versione specifica della policy quando possibile.
+  `failproofai config --pause` sospende le policy locali per una sessione e non quelle gestite da Cloud, quindi non è una via d'uscita da una distribuzione Cloud difettosa. Una pausa allarga anche l'esposizione per ogni policy nel suo ambito; preferisci eseguire il rollback della versione che si comporta male.
 </Warning>

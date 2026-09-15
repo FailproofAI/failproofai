@@ -1,14 +1,22 @@
 ---
-title: "Công bố một pack"
-description: "Phân phối các policies của riêng bạn dưới dạng GitHub release mà bất kỳ ai cũng có thể cài đặt."
+title: "Xuất bản một gói policies"
+description: "Phát hành policies của riêng bạn như một GitHub release mà bất cứ ai cũng có thể cài đặt."
 icon: "upload"
 ---
 
-Một pack bao gồm ba tệp được đính kèm vào GitHub release. `failproofai pack build` ghi tất cả ba tệp từ tệp policy mà bạn đã có.
+Một gói là ba tệp được đính kèm vào một GitHub release. `failproofai publish` viết cả ba từ các policy files phía trước, tạo release và tải chúng lên.
 
 ## 1. Viết các policies
 
-Một tệp, sử dụng API giống như bất kỳ custom policy nào. Hai trường bổ sung rất quan trọng đối với pack:
+Bắt đầu từ thứ gì đó đã hoạt động thay vì một template có chỗ trống:
+
+```bash
+failproofai publish --init
+```
+
+Lệnh này hỏi gói được gọi là gì, viết `<name>.mjs` và dừng lại — không có mạng, không có git, không có gì được xuất bản. Tệp được viết là một policy đã chặn `git push --force`. Nó từ chối ghi đè lên một tệp đã tồn tại.
+
+Policies sử dụng cùng API với bất kỳ custom policy nào. Hai trường bổ sung quan trọng đối với một gói:
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -17,7 +25,7 @@ customPolicies.add({
   name: "block-refunds",
   description: "Refunds above the approved limit need a human",
   category: "Billing",        // groups it, and is what --category selects on
-  defaultEnabled: true,       // switched on by a plain `pack add`
+  defaultEnabled: true,       // switched on by a plain `policies add`
   match: { events: ["PreToolUse"], tools: ["Bash"] },
   fn: async (ctx) =>
     String(ctx.toolInput?.command ?? "").includes("refund")
@@ -26,66 +34,95 @@ customPolicies.add({
 });
 ```
 
-`defaultEnabled` mặc định là **false** khi bạn bỏ qua nó. Một lệnh `failproofai pack add` đơn giản chỉ bật những gì bạn đã đánh dấu — cài đặt tất cả các policies của người lạ mà không giám sát không phải là quyết định mà người cài đặt nên đưa ra cho người dùng của họ.
+`defaultEnabled` mặc định là **false** khi bạn bỏ qua nó. Một `failproofai policies add` đơn giản chỉ bật những gì bạn đánh dấu — cài đặt mọi policy của người lạ mà không được chú ý không phải là một quyết định mà trình cài đặt nên đưa ra cho người dùng của nó.
+
+Viết bao nhiêu tệp tùy thích; một tệp trên mỗi category sẽ dễ đọc. Mọi tệp trong thư mục đăng ký policies được gộp lại thành một artifact duy nhất mà một gói phải có.
 
 <Warning>
-Entry phải là **một tệp tự chứa đầy đủ**. Chỉ entry được pinned bởi digest, vì vậy một pack nhập tệp cục bộ không thể thành thật tuyên bố rằng digest bao phủ những gì sẽ chạy. Hãy bundle trước (`esbuild`, `bun build`, `rollup`) và xây dựng pack từ bundle — `pack build` từ chối local import thay vì gửi một lời hứa mà nó không thể giữ.
+  Bundling cần **bun**. Nếu không có nó, hãy giữ một tệp độc lập duy nhất. Dù bằng cách nào, entry được xuất bản phải không import các tệp cục bộ tại thời điểm cài đặt: chỉ entry được pin digest, vì vậy một gói tiếp cận với các tệp bên cạnh không thể thành thật khẳng định rằng digest bao gồm những gì chạy — và `publish` từ chối nó thay vì gửi một lời hứa mà nó không thể giữ được.
 </Warning>
 
-## 2. Xây dựng các asset release
+## 2. Hãy thử ở đây trước
+
+Trước khi bất cứ ai khác có thể thấy nó, thực thi tệp trên máy này:
 
 ```bash
-failproofai pack build ./policies.mjs \
-  --id acme/support-agent \
-  --version 1.0.0 \
-  --out ./dist-pack
+failproofai policies -i -c ./<name>.mjs
 ```
 
-Nó ghi ba tệp và xác thực mọi policy với **các quy tắc riêng của loader** trước — vì vậy một pack không thể cài đặt sẽ thất bại ở đây, nơi bạn có thể sửa nó:
+Bất kỳ đường dẫn, bất kỳ tên tệp nào. Yêu cầu agent của bạn làm việc bạn đã chặn và xem nó bị từ chối. Không có gì được xuất bản và không ai khác bị ảnh hưởng. [Test a policy](/vi/policies/test) bao gồm phần còn lại: trường hợp hợp pháp mà nó phải cho phép, và các đầu vào phá vỡ nó.
 
-| Tệp | Định nghĩa |
+## 3. Xuất bản nó
+
+```bash
+failproofai publish
+```
+
+Nó tìm ra nơi xuất bản, những gì cần gộp và phiên bản nào gọi nó, và chỉ hỏi khi không có gì trong repository cho nó biết. Theo thứ tự, dừng lại trước khi tạo release nếu có bất kỳ vấn đề nào:
+
+1. Tìm các policy files ở đây theo **nội dung** — những cái import `failproofai` và gọi `customPolicies.add` — thay vì theo tên tệp, vì vậy nó tìm thấy `guards.mjs` và bỏ qua một `policies.mjs` không liên quan. Nó không đi vào các thư mục con, vì vậy một test fixture không bao giờ bị quét lên vô tình.
+2. Đọc repo từ `git remote get-url origin`, trong **thư mục của tệp** thay vì của bạn, và quyết định phiên bản.
+3. Tìm thông tin xác thực của bạn: `GITHUB_TOKEN`, `GH_TOKEN` hoặc `gh auth login`. Nó cần release-write và không cần gì khác, và không bao giờ được in ra.
+4. Tạo repository nếu nó không tồn tại. Điều này xảy ra trước bản dựng, vì vậy một gói bị từ chối ở bước tiếp theo có thể để lại một repository mới mà không có release nào trong đó.
+5. Xây dựng ba assets, xác thực chúng bằng **quy tắc của chính loader** — mã giống nhau quyết định những gì có thể cài đặt trên máy của người lạ — vì vậy một gói không bao giờ có thể cài đặt sẽ thất bại ở đây, nơi bạn vẫn có thể sửa nó.
+6. Tạo hoặc sử dụng lại release và tải lên, thay thế assets có cùng tên.
+
+| Tệp | Nó là gì |
 | --- | --- |
-| `failproofai-pack.json` | Manifest: id, version, effect, và một entry cho mỗi policy |
-| `failproofai-pack.mjs` | Entry của bạn, nguyên vẹn |
-| `SHA256SUMS` | `<sha256>  <filename>` cho hai tệp còn lại |
+| `failproofai-pack.json` | Manifest: id, version, effect và một entry trên mỗi policy |
+| `failproofai-pack.mjs` | Entry được gộp của bạn |
+| `SHA256SUMS` | `<sha256>  <filename>` cho hai cái còn lại |
 
-Bị từ chối tại thời điểm build: một id không phải là `publisher/name`, tên policy chứa `/`, policy khai báo `alwaysOn`, thiếu `description`, `category` hoặc `match`, một entry không đăng ký bất cứ thứ gì, và một entry nhập tệp cục bộ.
+Tên assets được cố định — chúng là những gì CLI của người dùng xây dựng URL từ đó, không có lệnh gọi API và không có discovery.
 
-## 3. Đính kèm chúng vào một release
+Bị từ chối tại thời điểm xây dựng: một id không phải `publisher/name`, một tên policy chứa `/`, một policy khai báo `alwaysOn`, thiếu `description`, `category` hoặc `match`, một entry không đăng ký gì cả, và một entry import các tệp cục bộ.
 
-Tag release với cùng version mà bạn đã build, và đính kèm cả ba tệp dưới dạng release assets:
-
-```bash
-gh release create 1.0.0 \
-  ./dist-pack/failproofai-pack.json \
-  ./dist-pack/failproofai-pack.mjs \
-  ./dist-pack/SHA256SUMS
-```
-
-Bây giờ bất kỳ ai cũng có thể cài đặt nó:
+Ghi đè bất kỳ quyết định nào mà nó đã đưa ra:
 
 ```bash
-failproofai pack add acme/support-agent
+failproofai publish \
+  --repo acme/support-agent \
+  --version 1.0.0 \
+  --effect observe \
+  --dry-run
 ```
 
-Tên assets là cố định — chúng là những gì CLI của người tiêu dùng sử dụng để xây dựng các URL của nó, không có cuộc gọi API và không có discovery.
+`--id` đặt pack id khi nó nên khác với repo, `--tag` đặt tag của release, `--notes` thay thế các ghi chú release được tạo — đây là nơi `policies show --releases` đọc số lượng và commit của mỗi release từ — `--out` chọn nơi assets được viết (mặc định `dist-pack`), và `--dry-run` xây dựng chúng mà không xuất bản và không cần thông tin xác thực.
 
-## Phân phối một phiên bản mới
+Bây giờ bất cứ ai cũng có thể cài đặt nó bằng `failproofai policies add acme/support-agent`. Xem [policy packs](/vi/policies/packs) để pin một phiên bản và chỉ lấy một phần của nó.
 
-Xây dựng với `--version` mới, tag một release mới, đính kèm ba assets lần nữa. Người tiêu dùng chạy lệnh `pack add` tương tự và giữ bất kỳ tập hợp con nào họ đã chọn; một policy mà họ đã tắt sẽ vẫn tắt trong quá trình nâng cấp.
+### Liệt kê nó trên policy hub
 
-Thay đổi **name** của một policy là một breaking change: một máy tính đã tắt nó sẽ tắt một tên không còn tồn tại nữa, và tên mới tới với bất kỳ `defaultEnabled` nào.
+Thêm topic `failproofai-policies` vào repository trên GitHub. Không có biểu mẫu gửi và không có hàng chờ phê duyệt: [policy hub](https://befailproof.ai/policy-hub/) crawler sẽ nhặt repository lên trong lần chạy tiếp theo. Topic chỉ đưa nó lên để xem xét — những gì liệt kê nó là một release có manifest được xác minh dựa trên `SHA256SUMS` của nó và phân tích cú pháp theo các quy tắc giống nhau mà CLI sử dụng, đó chính xác là những gì `failproofai publish` tạo ra.
+
+## Cách phiên bản được quyết định
+
+Phiên bản là **commit bạn đang xuất bản từ** — sha ngắn của nó, mười hai ký tự: `a1b2c3d4e5f6`. Không có gì để chọn và không có gì để tăng, và phiên bản đặt tên chính xác nơi bytes đến từ, vì vậy xuất bản cùng một nguồn hai lần sẽ cho cùng một phiên bản.
+
+Nó được đọc từ tree phía trước bạn, không bao giờ từ các release của repository, vì vậy một bản clone mới và một máy cách ly không khí sẽ tính toán cùng một câu trả lời mà không cần hỏi GitHub điều gì đã xảy ra trước đó.
+
+Vì phiên bản đặt tên một commit, commit đó phải tồn tại. Tại một terminal, `publish` tạo nó cho bạn: nó khởi tạo một repository khi không có, và commit các policy files đã thay đổi trước khi xây dựng. Nó **từ chối** thay vào đó — đặt tên `--version` là cách ra khỏi — khi nó chạy mà không có terminal (một commit được tạo trên CI runner sẽ không tồn tại ở bất kỳ nơi nào khác), khi các tệp khác ngoài các policies không được commit, hoặc trong một checkout không có commits nào. Một tag trên `HEAD` thắng so với sha — một ai đó đã tag `v1.2.0` đã nói release này là gì.
+
+Một sha không mang bất kỳ thứ tự nào của chính nó, vì vậy hãy sử dụng `failproofai policies show <owner>/<repo> --releases` để xem release nào đến trước — newest ở trên cùng.
+
+## Gửi một phiên bản mới
+
+Commit thay đổi và chạy `failproofai publish` lại — commit mới là phiên bản mới. Người dùng chạy cùng một `failproofai policies add`. Nếu không có terminal, hoặc có một lá cờ chọn lọc, họ giữ lại tập con mà họ đã chọn và một policy mà họ tắt đi sẽ vẫn tắt; tại một terminal mà không có lá cờ, bộ chọn mở với các lựa chọn mặc định của bạn được đánh dấu trước và câu trả lời của họ thay thế lựa chọn của họ.
+
+Thay đổi **tên** của một policy là một breaking change: một máy mà đã tắt nó sẽ tắt một tên không còn tồn tại, và tên mới đến với bất kỳ `defaultEnabled` nào nó nói.
 
 ## Những gì người dùng của bạn đang tin tưởng
 
-`SHA256SUMS` nằm trong cùng release với artifact, vì vậy nó chứng minh rằng các byte là những byte bạn đã công bố — không phải bạn là ai. Bất kỳ ai có thể ghi vào repository đều có thể ghi cả hai tệp. Sự bảo vệ của người dùng bạn là digest được pinned khi họ cài đặt, vì vậy những gì bạn gửi không thể thay đổi dưới họ sau đó.
+`SHA256SUMS` sống trong cùng release với artifact, vì vậy nó chứng minh các bytes là những cái bạn xuất bản — không phải bạn là ai. Bất cứ ai có thể ghi vào repository có thể ghi cả hai tệp. Bảo vệ của người dùng của bạn là digest được pin khi họ cài đặt, vì vậy những gì bạn gửi không thể thay đổi dưới họ sau này.
 
-Công bố từ một repository mà bạn kiểm soát quyền ghi, và coi một pack release giống như công bố một package.
+Xuất bản từ một repository mà truy cập ghi bạn kiểm soát, và coi một pack release như xuất bản một package.
+
+Repository cũng phải **public**. Installs là HTTPS ẩn danh mà không có thông tin xác thực để cung cấp, vì vậy một repo private hiện có bị từ chối trước khi bất kỳ thứ gì được xây dựng hoặc tải lên, và một `publish` tạo được công khai vì cùng lý do. `--allow-private` ghi đè điều đó cho ai đó trao ba assets theo cách khác, và nói rõ ràng rằng không có `policies add` nào có thể tiếp cận chúng. Chỉ release quan trọng: installs đọc `releases/download/<tag>/<asset>` và không bao giờ chạm đến git tree của bạn.
 
 ## Quan sát trước khi bạn thực thi
 
-Một manifest có thể khai báo `"effect": "observe"`. Những policies đó chạy và verdicts của chúng được **ghi lại và loại bỏ** — không có gì bị chặn. Đó là cách để đo lường một quy tắc mới so với lưu lượng thực tế trước khi nó có thể gián đoạn công việc của bất kỳ ai.
+Một manifest có thể khai báo `"effect": "observe"` — `failproofai publish --effect observe` là những gì đặt nó. Những policies đó chạy và các phán quyết của chúng **được ghi lại và loại bỏ** — không có gì bị chặn. Đó là cách đo một quy tắc mới dựa trên lưu lượng thực tế trước khi nó có thể làm gián đoạn công việc của bất cứ ai.
 
 ```json
-{ "id": "acme/support-agent", "version": "1.1.0", "effect": "observe", "policies": [ ... ] }
+{ "id": "acme/support-agent", "version": "a1b2c3d4e5f6", "effect": "observe", "policies": [ ... ] }
 ```

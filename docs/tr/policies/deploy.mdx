@@ -1,51 +1,94 @@
 ---
-title: "İlkeleri dağıtma"
-description: "İncelenen bir ilke sürümünü hedeflenen makinelere kullanıma sunma."
+title: "Bir politikayı dağıtın"
+description: "Test edilmiş bir politika sürümünü makinelere gözlem modunda yerleştirin, uygulayın ve her makinenin bunu aldığını doğrulayın."
 icon: "cloud-upload"
 ---
 
-Bir dağıtım, bir veya daha fazla ilke sürümünü kaydedilmiş bir makine kümesine bağlar.
+Bir dağıtım, yayınlanan politika sürümlerini bir makineye yerleştirir; her biri iki etkiden birine sahiptir:
 
-## Bir dağıtımı uygulama
+- **Observe** politikanın ne yapacağını kaydeder ve hiçbir şeyi engellemiyor.
+- **Enforce** karara göre hareket eder: bir `deny` çağrıyı engeller ve bir `instruct` aracıyı yönlendirir.
+
+## Makine ekleyin
+
+Cloud'a bağlandıktan sonra bir makine **Admin → enforcement** altında görünür. İstediğiniz makine henüz orada değilse:
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Administration → Keys** sayfasına gidin ve makinenin dağıtımları alabilmesi için `policies:pull` ve kararlarının Cloud'a ulaşabilmesi için `events:add` yetkisine sahip bir anahtar oluşturun.
+    2. Makineyi bu anahtarla bağlayın — [Connect a machine to Cloud](/tr/start/setup#bir-makineyi-buluta-bağlayın) bunu adım adım göstermektedir.
+    3. **Admin → enforcement** altında göründüğünü doğrulayın.
+  </Tab>
+  <Tab title="CLI">
+    Makinede:
+
+    ```bash
+    npm install -g failproofai
+    failproofai config
+    failproofai config --status
+    ```
+
+    Bir terminalde `failproofai config` Cloud'a bağlanıp bağlanmayacağını sorar ve anahtarı gizli bir istemi de alır. Ardından makinenin kaydedildiğini `fp fleet list` komutuyla her yerden doğrulayın.
+  </Tab>
+</Tabs>
+
+## Gözlem modunda dağıtın
 
 <Tabs>
   <Tab title="Dashboard">
     1. **Admin → enforcement** sayfasına gidin, makineyi bulun ve satırını genişletin.
-    2. **edit** seçeneğini seçin, incelenen ilke sürümünü ekleyin ve **observe** ya da zorlama efektini seçin.
-    3. Değişikliği uygulayın, makinenin sonraki kontrolünü bekleyin ve dağıtım ile kapsam durumunu doğrulayın.
+    2. **edit** seçeneğini seçin, test edilmiş politika sürümünü ekleyin ve **observe** seçeneğini seçin.
+    3. Değişikliği uygulayın, ardından makinenin sonraki check-in'ini bekleyin ve dağıtım ile kapsam durumunu doğrulayın.
     4. Canlı kararları incelemek için **Observe → policy** sayfasına gidin.
 
-    ![İlke sürümleri, zorlama ve gözlem efektlerini gösteren ve dağıtımı uygulama eyleminin yer aldığı makine dağıtım editörü.](/images/dashboard/enforcement-editor.png)
+    ![Politika sürümleri, enforce ve observe efektleri ve dağıtımı uygula eylemini gösteren makine dağıtım editörü.](/images/dashboard/enforcement-editor.png)
   </Tab>
   <Tab title="CLI">
-    CLI'dan `fp fleet` komutuyla dağıtım yapın. Uygulamadan önce sonuç kümesini gözden geçirin — `deploy` komutu tam planı yazdırır ve **yalnızca `--json` olmayan etkileşimli bir terminalinde** sorar. `--json` altında, `--yes` ile veya stdin yönlendirildiğinde (CI adımı, betik, aracı kabuk komutu) hiç plan ve istem olmaksızın hemen uygulanır — gözden geçirmek istiyorsanız önce `fp fleet show <machine>` komutunu çalıştırın:
-
     ```bash
     fp fleet list
     fp fleet show <machine-id>
-    fp fleet deploy <machine-id> --add no-force-push
+    fp fleet deploy <machine-id> --add no-force-push:observe
     ```
 
-    `fp fleet diff <machine-id>` komut amacını ve teslimi gösterir (makine sonraki yoklamaya kadar `behind` olarak okunur), `fp fleet history <machine-id>` kuşakları listeler ve `fp fleet rollback <machine-id> <generation>` birini yeniden kurar — devre dışı bırakılmış veya silinmiş bir ilke adlandıran kuşak varsa reddeder.
+    `:observe` eki bunu gözlem moduna getirir: bare `--add no-force-push` makinenin o politika için zaten sahip olduğu efekti tutar ve aksi takdirde enforce eder. Bunu daha sonra `--add no-force-push:enforce` komutuyla enforce'a geçirin.
 
-    Makine üzerinde `failproofai config --status` komutuyla kontrol edin ve dağıtım sonrasında etkinliğin Cloud'a ulaşıp ulaşmadığını doğrulamak için `fp sessions --env production --since 24h` ve `fp events --event-type hook_completed` komutlarını kullanın.
+    `deploy` **makinenin tüm politika setini** sonuçla değiştirir. Planı yazdırır, ardından uygulamadan önce sorar — ancak yalnızca etkileşimli bir terminalde. `--yes` ile, `fp --json` altında veya stdin yönlendirilmiş olduğunda (CI adımı, betik, aracı shell dışarı atarken) onay istemeden uygular; plan yine de yazdırılır veya `--json` altında `plan` olarak döndürülür.
+
+    Makinede, `failproofai policies` çalıştırdığı Cloud tarafından yönetilen politikaları listeler ve `failproofai config --status` bağlantısını gösterir. Etkinliğinin Cloud'a ulaştığını doğrulamak için `fp sessions --env production --since 24h` ve `fp events --event-type hook_completed` komutlarını kullanın.
   </Tab>
 </Tabs>
 
 <Steps>
-  <Step title="Sürümü ve hedefleri seçin">
-    Değişebilir bir taslak değil, incelenen bir sürümü dağıtın; oturumlarını inceleyebileceğiniz üretim dışı bir makine veya küçük bir kohortla başlayın.
+  <Step title="Sürümü ve makineleri seçin">
+    Yayınlanan sürümü ve üzerinde çalışması gereken makineleri seçin.
   </Step>
-  <Step title="Kararları gözlemleyin">
-    Çalışmayı engellemeden eşleşmeleri, nedenleri, etkilenen araçları ve yanlış pozitifleri gözden geçirin.
+  <Step title="Gözlem">
+    Hiçbir şey engellenmediği sürece eşleşmeleri, nedenleri, etkilenen araçları ve yanlış pozitifleri gözden geçirin.
   </Step>
-  <Step title="Zorlama yapın ve kapsamı doğrulayın">
-    Gözlemlenen eşleşmeler güvensiz eylemleri geçerli olanlardan ayırdıktan sonra yükseltin, ardından hedeflenen tüm makinelerin dağıtımı çekmiş olduğunu ve kararları rapor ettiğini doğrulayın.
+  <Step title="Uygulama">
+    Gözlemlenen eşleşmeler güvensiz eylemleri geçerli olanlardan ayırdığında efekti enforce'a geçirin, ardından her amaçlanan makinenin değişikliği aldığını ve kararları raporladığını doğrulayın.
   </Step>
 </Steps>
 
-Makinelerin `policies:pull` yeteneğine ihtiyacı vardır. Olay raporlaması `events:add` tarafından ayrı olarak kontrol edilir; Cloud analizi ve zorlama beklediğinizde her ikisini de doğrulayın.
+## Kapsamı kontrol edin
+
+Kapsam, bir politikanın riskin olduğu yerde çalışıp çalışmadığını yanıtlar.
+
+1. **Admin → enforcement** sayfasına gidin ve enforce ve gözlem toplamlarını gözden geçirin.
+2. Makineleri ID veya etikete göre arayın veya bir politikadan eksik olan makineleri filtreleyin.
+3. Atanan politikaları, bildirilen dağıtımı, son check-in'i ve geçmişi karşılaştırmak için bir satırı genişletin.
+4. Uygulanan bir dağıtım henüz beklemede olduğunda makinenin yoklama aralığından sonra yenileyin.
+
+![Politika kapsamı, makine dağıtım durumu ve observe ve enforce atamalarını gösteren Enforcement filo.](/images/dashboard/enforcement-fleet.png)
+
+En son dağıtımı hiç almayan makineleri, raporlamayı durduran kayıtlı makineleri, yanlış ortama atanan bir politikayı ve kesintiye uğramış bir güncelleme sonrası sürüm kaymasını arayın.
+
+Makineleri iş yükü ve ortama göre etiketleyin — yalnızca ana bilgisayar adları nadiren otomatik ölçeklendirme veya değiştirmeden sağ çıkar:
+
+```bash
+failproofai config --machine-label checkout-runner-03
+```
 
 <Warning>
-  Zorlama yönetimi bir idari Cloud iş akışıdır. Yalnızca köke ait zorlama rotalarını sıradan müşteri `/v1` API uç noktaları olarak değerlendirmeyin.
+  Enforcement yönetimi, yönetimsel bir Cloud iş akışıdır. Yalnızca kök enforcemet rotalarını sıradan müşteri `/v1` API uç noktaları olarak ele almayın.
 </Warning>

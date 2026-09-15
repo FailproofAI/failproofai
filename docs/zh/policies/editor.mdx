@@ -1,49 +1,96 @@
 ---
-title: "策略编辑器"
-description: "从已确认的故障模式创建和修订带版本控制的策略。"
+title: "编写策略"
+description: "让 Failproof AI 根据审计发现起草策略，或自行编写源代码，然后审查、测试并发布。"
 icon: "file-pen-line"
 ---
 
-使用策略编辑器将发现的问题转化为可部署的规则。将创作与部署分离，确保草稿不会悄然改变已上线的行为。
+编写策略有两种方式：让 Failproof AI 根据审计发现起草，或自行编写源代码。在你主动选择之前，不会有任何内容被发布或部署。
 
-当某个问题具有可重复的操作模式时，在 **Analyze → issues** 下打开该问题并选择 **generate policy**。Failproof AI 会首先说明该问题是否可以用策略来表达，然后将经过审查的意图和问题上下文带入编辑器。生成的源代码在您发布之前始终保持草稿状态。
+## 根据审计编写策略
 
-## 发布策略版本
+审计发现失败；策略阻止其再次发生。Failproof AI 根据发现项自身的证据起草策略。
+
+### 1. 运行审计
+
+针对发生失败的会话[运行审计](/zh/audits/run)。每个发现项都包含其证据会话、根本原因以及建议的预防路径。请从具有**可重复操作模式**的发现项入手——策略只能阻止它能在 hook 事件中识别的行为。
+
+### 2. 生成草稿
 
 <Tabs>
   <Tab title="仪表板">
-    1. 前往 **Admin → policy editor**，在 **compose** 中描述故障模式或粘贴 JavaScript 策略源代码。
-    2. 验证源代码并修复所有报告的错误。
-    3. 输入策略标识并发布，然后使用 **library** 比较或禁用各个版本。
-    4. 当版本准备好进行机器部署时，选择 **enforcement**。
+    1. 在 **Analyze → issues** 下打开发现项的问题，查看其引用的会话、根本原因和建议。
+    2. 选择 **generate policy**。Failproof AI 首先判断某个策略是否能够表达该问题。**no policy** 结果意味着解决方案是警报、工作流程变更或人工介入——而非策略。
+    3. 选择 **write this policy**。问题标题、发现内容、根本原因、建议以及拟定的执行意图将作为草稿出现在 **Admin → policy editor** 中。如果你不同意候选检查的结论，可使用 **open the editor anyway**。
 
-    ![策略编辑器的 compose 视图，包含策略标识、AI 辅助草稿、源代码验证和发布控件。](/images/dashboard/policy-editor.png)
+    ![策略编辑器的编写视图，包含策略标识、AI 辅助起草、源代码验证和发布控件。](/images/dashboard/policy-editor.png)
   </Tab>
   <Tab title="CLI">
-    通过 CLI 使用 `fp policies publish` 发布。该命令会生成一个**新版本**，而不会在原处编辑，并在发送前使用 node 对源代码进行语法检查——否则语法错误只会在部署到机器上执行时才会暴露：
+    阅读证据，然后通过助手起草。`compose` 会打印源代码供你审查，不会发布任何内容：
 
     ```bash
-    fp policies test ./checkout.policy.mjs --command "git push --force" --expect deny
-    fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
+    fp issues show <issue-id>
+    fp audits finding <finding-id>
+    fp policies compose "Block git push --force on release branches"
     ```
 
-    发布本身不会部署任何内容——新版本在 `fp fleet deploy` 将其部署到机器之前不会生效。`fp policies compose "<plain English>"` 会使用云端助手生成源代码草稿并打印供审阅，而不会直接发布。
-
-    如需将策略安装到本地 Agent CLI（而非云端），请使用 `failproofai policies --install --custom ./checkout.policies.ts --cli claude --scope project`。
+    `compose` 需要一个已登录的会话（`fp login`），且其角色须具有 `policies:write` 权限；它不接受 API 密钥。
   </Tab>
 </Tabs>
 
-## 创作检查清单
+### 3. 审查草稿
 
-1. 用运营语言描述故障模式。
-2. 选择包含足够判断依据的 hook 事件和工具。
-3. 编写能够匹配不安全行为的最精确条件。
-4. 返回一个原因说明，告知 Agent 或操作员下一步应该怎么做。
-5. 添加应当匹配的示例以及必须保持允许状态的示例。
-6. 保存新版本并请求审查。
+草稿是起点，而非定论。在发布之前，请检查它是否：
 
-当 Agent 可以安全地自行纠正时，使用 `instruct`。当允许该操作会带来不可接受或不可逆的风险时，使用 `deny`。
+1. 用运营语言命名了失败模式。
+2. 仅匹配包含足够证据以作判断的 hook 事件和工具。
+3. 使用最窄的条件来捕获不安全的操作。
+4. 返回的原因能够告知 Agent 应该采取什么替代措施。
+5. 在 Agent 能够安全纠正方向时使用 `instruct`，仅在允许该操作不可接受或不可逆转时使用 `deny`。
 
-<Info>
-  策略版本是不可变的部署输入。编辑草稿会创建新版本；不应重写已分配给机器的版本。
-</Info>
+在编辑器中验证源代码，并修复所有报告的错误。
+
+### 4. 测试后发布
+
+在发布之前，在源代码下方运行 **backtest**：它会将草稿重放到你的集群已发出的调用上，并统计它会中断的正常调用数量。[测试策略](/zh/policies/test)涵盖了这一项及其他检查。
+
+确认其行为符合预期后，输入策略标识并选择 **publish version**。发布会生成一个不可变版本，且不会部署任何内容：它处于闲置状态，直到你[部署它](/zh/policies/deploy)。在终端中执行：
+
+```bash
+fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
+```
+
+`publish` 在发送前会对源代码进行语法检查，因此语法错误会在此处暴露，而不是在执行时的机器上。
+
+## 自行编写
+
+策略是基于 `failproofai` API 的 JavaScript 或 TypeScript：
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "protect-production-paths",
+  description: "Block writes to production configuration",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (ctx.toolName !== "Write" && ctx.toolName !== "Edit") return allow();
+    const path = String(ctx.toolInput?.file_path ?? "").replaceAll("\\", "/");
+    if (path.split("/").includes("production")) {
+      return deny("Writes to production configuration require approval.");
+    }
+    return allow();
+  },
+});
+```
+
+这会对 `Write` 和 `Edit` 两种操作匹配 `production/config.yml`、`/srv/production/config.yml`、`/srv/production` 以及 `C:\\production\\config.yml`，但不匹配 `production-backup`：`production` 必须是完整的路径段。上下文还包含事件类型、规范化的载荷、会话元数据、参数以及可用时的源 CLI——详见 [policy SDK](/zh/reference/policy-sdk)。
+
+要将其作为版本发布，请将源代码粘贴到 **Admin → policy editor** 的 **compose** 中，然后按照上述步骤 3 和 4 操作；或在终端中使用 `fp policies publish` 发布文件。
+
+若要在没有 Cloud 的机器上运行，请将其保存在 `.failproofai/policies/` 目录下，文件名以 `policies.js`、`policies.mjs` 或 `policies.ts` 结尾——这些文件会在项目和用户范围内自动加载——或通过路径安装：
+
+```bash
+failproofai policies --install --custom ./security.policies.ts --scope project
+```
+
+为每个策略指定一个在约定策略、自定义策略、包策略和 Cloud 托管策略中唯一的名称。

@@ -1,51 +1,94 @@
 ---
 title: "部署策略"
-description: "将已审核的策略版本推送到目标机器。"
+description: "将经过测试的策略版本以观察模式部署到机器上，强制执行，并确认每台机器都已接收到该版本。"
 icon: "cloud-upload"
 ---
 
-部署将一个或多个策略版本关联到一组已注册的目标机器。
+部署会将已发布的策略版本推送到机器上，每个版本具有以下两种效果之一：
 
-## 应用部署
+- **观察（Observe）** 记录策略本应执行的操作，但不阻止任何内容。
+- **强制（Enforce）** 根据决策采取行动：`deny` 会阻止调用，`instruct` 会引导代理。
+
+## 添加机器
+
+机器连接到 Cloud 后，会出现在 **Admin → enforcement** 下。如果目标机器尚未显示：
 
 <Tabs>
-  <Tab title="控制台">
-    1. 前往 **Admin → enforcement**，找到目标机器并展开其行。
-    2. 选择 **edit**，添加已审核的策略版本，并选择 **observe** 或对应的执行效果。
-    3. 应用更改，等待机器下次签入，然后确认其部署状态和覆盖状态。
-    4. 前往 **Observe → policy** 查看实时决策。
-
-    ![机器部署编辑器，包含策略版本、enforce 和 observe 效果，以及应用部署操作。](/images/dashboard/enforcement-editor.png)
+  <Tab title="Dashboard">
+    1. 前往 **Administration → Keys**，创建一个包含 `policies:pull`（用于接收部署）和 `events:add`（用于将决策上报到 Cloud）权限的密钥。
+    2. 使用该密钥连接机器 — 具体步骤请参阅 [将机器连接到 Cloud](/zh/start/setup#将机器连接到-cloud)。
+    3. 确认机器出现在 **Admin → enforcement** 下。
   </Tab>
   <Tab title="CLI">
-    使用 `fp fleet` 通过 CLI 进行部署。在应用之前请先审查生成的配置集——`deploy` 会打印完整计划，并**仅在不带 `--json` 的交互式终端中进行确认提示**。使用 `--json`、`--yes` 或重定向 stdin 时（如 CI 步骤、脚本、Agent 调用），将直接应用，不显示计划也不提示确认——因此如需审查，请先运行 `fp fleet show <machine>`：
+    在机器上执行：
 
+    ```bash
+    npm install -g failproofai
+    failproofai config
+    failproofai config --status
+    ```
+
+    在终端中，`failproofai config` 会询问是否连接到 Cloud，并通过掩码提示符接收密钥。然后可在任意位置使用 `fp fleet list` 确认机器已成功注册。
+  </Tab>
+</Tabs>
+
+## 以观察模式部署
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. 前往 **Admin → enforcement**，找到目标机器并展开其行。
+    2. 选择 **edit**，添加已测试的策略版本，并选择 **observe**。
+    3. 应用更改，等待机器下次签入，然后确认其部署和覆盖状态。
+    4. 前往 **Observe → policy** 查看实时决策。
+
+    ![机器部署编辑器，显示策略版本、强制和观察效果以及应用部署操作。](/images/dashboard/enforcement-editor.png)
+  </Tab>
+  <Tab title="CLI">
     ```bash
     fp fleet list
     fp fleet show <machine-id>
-    fp fleet deploy <machine-id> --add no-force-push
+    fp fleet deploy <machine-id> --add no-force-push:observe
     ```
 
-    `fp fleet diff <machine-id>` 显示预期配置与实际下发之间的差异（机器在下次轮询前会显示为 `behind`），`fp fleet history <machine-id>` 列出历史版本，`fp fleet rollback <machine-id> <generation>` 可回滚到指定版本——若该版本引用了已禁用或已删除的策略，则回滚将被拒绝。
+    `:observe` 后缀决定了观察模式：不带后缀的 `--add no-force-push` 会保持该策略在机器上原有的效果，默认为强制执行。之后可通过 `--add no-force-push:enforce` 切换为强制模式。
 
-    使用 `failproofai config --status` 检查机器本身的状态，并在部署后通过 `fp sessions --env production --since 24h` 和 `fp events --event-type hook_completed` 验证活动是否已上报至 Cloud。
+    `deploy` **会用执行结果替换机器上的整个策略集**。它会打印执行计划，然后在应用前进行确认——但仅限于交互式终端。使用 `--yes`、`fp --json` 或 stdin 被重定向时（CI 步骤、脚本、代理调用），将直接应用而不询问；执行计划仍会被打印，或在 `--json` 模式下以 `plan` 字段返回。
+
+    在机器上，`failproofai policies` 列出当前运行的 Cloud 管理策略，`failproofai config --status` 显示连接状态。使用 `fp sessions --env production --since 24h` 和 `fp events --event-type hook_completed` 确认机器活动已上报到 Cloud。
   </Tab>
 </Tabs>
 
 <Steps>
-  <Step title="选择版本和目标机器">
-    部署已审核的版本，而非可变草稿，并从非生产环境机器或小型机器组开始，以便检查其会话。
+  <Step title="选择版本和机器">
+    选择已发布的版本以及需要运行该版本的机器。
   </Step>
-  <Step title="观察决策">
-    在不阻断工作的前提下，审查匹配项、原因、受影响的工具及误报情况。
+  <Step title="观察">
+    在不阻止任何内容的情况下，审查匹配项、原因、受影响的工具以及误报。
   </Step>
-  <Step title="执行并验证覆盖范围">
-    在观察到的匹配项能够区分不安全操作与合法操作后，再提升为执行模式，并确认所有目标机器均已拉取部署配置并正在上报决策。
+  <Step title="强制执行">
+    当观察到的匹配项能够区分不安全操作与合法操作后，将效果切换为强制执行，然后确认每台目标机器已拉取变更并正在上报决策。
   </Step>
 </Steps>
 
-机器需要具备 `policies:pull` 能力。事件上报由 `events:add` 单独控制；当您期望 Cloud 进行分析和执行时，请验证两者均已配置。
+## 检查覆盖情况
+
+覆盖情况用于评估策略是否在存在风险的地方运行。
+
+1. 前往 **Admin → enforcement**，查看强制执行和观察中的汇总数据。
+2. 按 ID 或标签搜索机器，或筛选缺少某策略的机器。
+3. 展开某一行，比较已分配的策略、已上报的部署状态、最后签入时间以及历史记录。
+4. 如果已应用的部署仍处于待定状态，请在机器的轮询间隔后刷新。
+
+![Enforcement fleet 页面，显示策略覆盖情况、机器部署状态以及观察和强制执行分配。](/images/dashboard/enforcement-fleet.png)
+
+注意以下情况：从未拉取最新部署的机器、已注册但停止上报的机器、分配到错误环境的策略，以及更新中断后导致的版本漂移。
+
+按工作负载和环境为机器打标签——仅靠主机名在自动扩缩容或机器替换时往往无法持久：
+
+```bash
+failproofai config --machine-label checkout-runner-03
+```
 
 <Warning>
-  执行管理是 Cloud 的管理员工作流。请勿将仅限 root 的执行路由视为普通客户的 `/v1` API 端点。
+  强制执行管理是一项管理员级别的 Cloud 工作流。请勿将仅限 root 的强制执行路由视为普通客户的 `/v1` API 端点。
 </Warning>

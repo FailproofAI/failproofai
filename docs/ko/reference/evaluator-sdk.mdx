@@ -1,190 +1,118 @@
 ---
 title: "Evaluator SDK"
-description: "Failproof AI 세션을 동기 또는 비동기 방식으로 채점하는 서비스를 구축합니다."
+description: "자체 평가 워커를 실행하세요. LLM 판정자나 호스팅 Python으로 처리할 수 없는 모든 작업에 활용할 수 있습니다."
 icon: "gauge"
 ---
 
-evaluator는 완료된 에이전트 세션을 수신하고, 원하는 품질 신호를 반환합니다: 수치 점수, 각 점수에 대한 설명, 그리고 선택적 요약. Failproof AI는 이 결과를 트레이스 옆에 저장하고, 에이전트 및 환경별로 차트로 시각화합니다.
+Evaluator SDK는 자체 인프라에서 평가를 실행합니다. 워커가 Failproof AI에 평가를 등록하고, 세션이 완료되면 가져와서 점수를 매긴 뒤 결과를 제출합니다. 모든 통신은 아웃바운드 HTTPS로 이루어지며, 외부에서 워커로 직접 연결하는 일은 없습니다. [호스팅 Python](/ko/evaluations/write)으로 할 수 없는 작업 — LLM 판정자, 모델 호출, 패키지, 시크릿, 네트워크 접근 — 에 활용하세요. 결과는 [evaluations 페이지](/ko/sessions/evaluations)에서 호스팅 결과와 함께 **customer** 태그로 표시됩니다.
 
-## evaluator 설정
+이 SDK는 `failproofai-sdk` 패키지의 `failproofai_sdk.evaluator` 모듈에 포함되어 있으며, 트레이싱 SDK를 임포트해도 자동으로 로드되지 않습니다.
 
-<Steps>
-  <Step title="evaluator SDK 설치">
-    SDK와 실행에 필요한 서버를 설치합니다.
+```bash
+pip install failproofai-sdk
+```
 
-    ```bash
-    pip install failproofai-sdk uvicorn
-    ```
-  </Step>
+## 평가 작성
 
-  <Step title="채점 항목 정의">
-    `evaluator.py`를 생성합니다. 이 예제는 세션에 실패한 도구 호출이 있는지 확인합니다.
+```python
+from failproofai_sdk.evaluator import ConditionResult, EvalResult, Evaluator, Metric, Score
 
-    ```python
-    import os
-    from failproofai.evaluator import Evaluator, EvalResponse
+app = Evaluator(name="customer-production", version="2026.08.1")
 
-    app = Evaluator(token=os.environ.get("EVALUATOR_TOKEN"))
 
-    @app.config
-    def config():
-        return {"inactivity_timeout_secs": 1800}
+@app.eval(
+    "tool_efficiency",
+    version="1.0.0",
+    labels=["tools", "deterministic"],
+    when=lambda session: ConditionResult(session.count("tool_use") > 0, "no_tool_calls"),
+)
+def tool_efficiency(session):
+    calls = session.events_of_type("tool_use")
+    distinct = {e.payload.get("tool_name") for e in calls if e.payload.get("tool_name")}
+    value = len(distinct) / len(calls)
+    return EvalResult(
+        score=Score(value, passed=value >= 0.7),
+        metrics={"tool_call_count": Metric(len(calls), unit="events")},
+        reasoning=f"{len(distinct)} distinct tools across {len(calls)} calls",
+    )
 
-    @app.evaluator
-    def evaluate(req):
-        tool_errors = sum(
-            1 for item in req.events
-            if item.event_type == "tool_result" and item.payload.get("error")
-        )
-        return EvalResponse(
-            scores={"tool_reliability": 1.0 if tool_errors == 0 else 0.0},
-            reasoning={"tool_reliability": f"{tool_errors} tool errors"},
-        )
-    ```
-  </Step>
 
-  <Step title="로컬에서 실행 및 테스트">
-    공유 토큰을 설정하고, evaluator를 시작한 후 헬스 엔드포인트가 응답하는지 확인합니다.
+@app.eval(
+    "answer_relevance",
+    version="judge-v1",
+    labels=["llm_judge", "relevance"],
+    when=lambda session: ConditionResult(
+        session.count("human_input") > 0 and session.count("model_response") > 0,
+        "no_exchange",
+    ),
+    timeout_seconds=30,
+)
+async def answer_relevance(session):
+    question = session.events_of_type("human_input")[-1].payload.get("response")
+    answer = session.events_of_type("model_response")[-1].payload.get("content")
+    value, reasoning = await ask_judge(question, answer)  # your LLM call: a 0-1 score and why
+    return EvalResult(score=Score(value, passed=value >= 0.7), reasoning=reasoning)
 
-    ```bash
-    export EVALUATOR_TOKEN=<shared-token>
-    uvicorn evaluator:app --host 0.0.0.0 --port 8080
-    ```
 
-    다른 터미널에서:
+if __name__ == "__main__":
+    app.run_from_env()
+```
 
-    ```bash
-    curl http://127.0.0.1:8080/health
-    ```
-  </Step>
-</Steps>
+- `@app.eval(key, version=...)` 은 평가를 등록합니다. key는 결과가 표시될 이름이며, 로직이 변경될 때마다 version을 업데이트하면 각 결과에 생성 당시의 버전이 기록됩니다. 하나의 워커는 최대 100개의 평가를 보유할 수 있습니다.
+- `result_kind` 는 별도로 지정하지 않으면 `"score"` 입니다. `"metric"` 또는 `"assertion"` 평가의 경우, `metrics` 또는 `assertions` 항목 중 하나의 이름을 key와 동일하게 지정하면 해당 항목이 결과로 사용됩니다.
+- `when` 은 세션 적용 여부를 결정합니다. `ConditionResult(False, "<reason>")` 를 반환하면 해당 세션을 건너뛰고, 이유가 기록됩니다.
+- 평가 함수는 일반 함수 또는 `async` 함수로 정의할 수 있으며, `timeout_seconds` 로 실행 시간을 제한할 수 있습니다.
+- 페이로드 키 — 위 예시의 `tool_name`, `response`, `content` — 는 에이전트가 전송하는 값이므로, 실제 세션에서 확인하여 사용하세요.
 
-## evaluator를 Failproof AI에 연결
+## 워커 실행
 
-1. Failproof AI Cloud에서 접근 가능한 HTTPS URL에 evaluator를 배포합니다.
-2. `EVALUATOR_ENDPOINT`에 해당 URL을 설정하고, `EVALUATOR_TOKEN`을 evaluator에서 사용하는 토큰과 동일하게 설정합니다. 관리형 Cloud의 경우, 연결 설정을 위해 [support@befailproof.ai](mailto:support@befailproof.ai)로 문의하세요.
-3. 평가를 실행하고, 점수가 Failproof AI에 표시되는지 확인합니다.
+**Administration → Keys** 에서 `evaluations:run` 권한을 가진 키를 생성하고, `FAILPROOFAI_EVALUATOR_TOKEN` 환경 변수에 설정하세요. 명령어에 직접 입력하지 말고 시크릿 저장소를 통해 설정하는 것을 권장합니다. 그런 다음 워커를 시작합니다:
 
-<Tabs>
-  <Tab title="대시보드">
-    **Observe → Sessions**에서 완료된 세션을 열고, 자동으로 평가되지 않은 경우 **Run evaluation**을 선택합니다. 세션의 **Evaluation** 패널에서 상태, 점수, 근거, 요약을 확인합니다.
+```bash
+FAILPROOFAI_EVALUATOR_URL=https://app.befailproof.ai python evaluator.py
+```
 
-    **Observe → Evaluations**를 사용하여 에이전트 또는 환경별로 점수를 비교합니다. 지연 시간, 비용, 토큰 및 기타 수치 측정값은 **Observe → Metrics**를 사용합니다.
+`__main__` 블록 없이 사용할 경우, `python -m failproofai_sdk.evaluator evaluator:app` 으로도 동일하게 실행할 수 있습니다.
 
-    먼저 하나의 세션으로 시작하여, evaluator가 해당 실행에 대해 예상된 점수 키와 유용한 근거를 반환했는지 확인합니다.
+| 변수 | 기본값 | 설명 |
+| --- | --- | --- |
+| `FAILPROOFAI_EVALUATOR_URL` | 필수 | Failproof AI 주소: Cloud의 경우 `https://app.befailproof.ai`. 루프백을 가리키지 않는 한 HTTPS 사용 |
+| `FAILPROOFAI_EVALUATOR_TOKEN` | 필수 | `evaluations:run` 권한을 가진 키 |
+| `FAILPROOFAI_EVALUATOR_WORKER_ID` | `<hostname>-<pid>` | 이 워커의 이름 |
+| `FAILPROOFAI_EVALUATOR_CONCURRENCY` | `1` | 동시에 점수를 매길 세션 수 |
+| `FAILPROOFAI_EVALUATOR_REQUEST_TIMEOUT_SECONDS` | `30` | Failproof AI에 대한 각 요청의 타임아웃 |
+| `FAILPROOFAI_EVALUATOR_DRAIN_TIMEOUT_SECONDS` | `60` | 워커 종료 시 진행 중인 작업을 기다리는 시간 |
+| `FAILPROOFAI_EVALUATOR_ALLOW_INSECURE_HTTP` | `false` | 루프백이 아닌 URL에 대한 평문 HTTP 허용 — 아래 경고 참조 |
+| `FAILPROOFAI_EVALUATOR_MODULE` | 없음 | `python -m failproofai_sdk.evaluator` 에 사용할 `module:attribute` |
 
-    ![평가 점수와 근거가 트레이스 옆에 표시된 세션 상세 보기.](/images/dashboard/session-detail.png)
+<Warning>
+  `FAILPROOFAI_EVALUATOR_ALLOW_INSECURE_HTTP` 를 사용하면 모든 데이터가 평문으로 전송됩니다. 워커는 모든 요청의 `Authorization: Bearer` 헤더에 `FAILPROOFAI_EVALUATOR_TOKEN` 을 포함하며, 가져오는 트랜스크립트는 세션 자체입니다. 따라서 경로상의 누구든 토큰과 내용을 모두 읽을 수 있으며, 탈취된 토큰은 교체 전까지 평가 실행에 악용될 수 있습니다. 격리된 개발 네트워크에서만 사용하세요. 그 외 모든 환경에서는 URL이 HTTPS여야 하며, 루프백은 플래그 없이 사용할 수 있습니다.
+</Warning>
 
-    개별 결과가 정확한 것을 확인한 후, 평가 대시보드를 사용하여 시간 경과에 따른 점수와 에이전트 또는 환경별 점수를 비교합니다.
-
-    ![시간 경과에 따른 evaluator 점수를 차트로 나타낸 품질 대시보드.](/images/dashboard/dashboard-quality.png)
-
-    정상적인 차트는 안정적인 점수 이름을 사용해야 합니다. 키를 변경하면 별도의 시리즈가 생성됩니다.
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp evals --since 1h --score tool_reliability:0..1
-    fp evals --since 24h --aggregate
-    ```
-  </Tab>
-</Tabs>
-
-셀프 호스팅 Cloud 인스턴스의 경우, 서버 프로세스에 `EVALUATOR_ENDPOINT`가 설정될 때까지 자동 평가가 비활성화됩니다. evaluator 환경 변수를 변경한 후에는 서버를 재시작하세요.
-
-이 서비스는 `GET /health`, `GET /config`, `POST /evaluate`, 그리고 선택적으로 `GET /evaluate/{job_id}`를 노출합니다. 비동기 작업에는 `JobPending`을 반환하고, Failproof AI가 폴링할 수 있도록 `@app.job_lookup`을 등록하세요.
-
-토큰이 설정된 경우, health를 제외한 모든 라우트는 Failproof AI가 `EVALUATOR_TOKEN`으로 전송하는 동일한 bearer 토큰을 요구합니다.
-
-## SDK 타입
+## 결과 타입
 
 | 타입 | 필드 |
 | --- | --- |
-| `AgentEvent` | `id`, `ts`, `event_type`, `payload` |
-| `EvalRequest` | `schema_version`, `session_id`, `agent_id`, `environment`, `started_at`, `ended_at`, `events` |
-| `EvalResponse` | `scores`, `reasoning`, `summary` |
-| `JobPending` | `job_id`, `next_poll_secs` |
-| `EvaluatorConfig` | `inactivity_timeout_secs`, `default_poll_interval_secs` |
+| `Score` | `value` (0~1), `passed`, `unit` (기본값 `ratio`), `display_value`, `description` |
+| `Metric` | `value`, `unit`, `display_value`, `description` |
+| `Assertion` | `passed`, `description` |
+| `EvalResult` | `score`, `metrics`, `assertions`, `reasoning`, `summary`, `labels` |
+| `ConditionResult` | `applicable`, `reason_code` |
 
-## 데코레이터 및 라우트
+`EvalResult` 는 score, metric, assertion 중 최소 하나 이상, 최대 25개까지 고유한 키로 포함해야 합니다.
 
-| 데코레이터 | 라우트 | 필수 여부 |
-| --- | --- | --- |
-| `@app.evaluator` | `POST /evaluate` | 필수 |
-| `@app.job_lookup` | `GET /evaluate/{job_id}` | `JobPending` 반환 시 |
-| `@app.config` | `GET /config` | 선택 |
+## 세션
 
-SDK는 평가 요청 본문을 25 MiB로 제한합니다. 알 수 없는 요청 필드는 무시되므로, 이벤트 계약이 확장되어도 서비스 호환성이 유지됩니다.
+| 필드 또는 메서드 | 반환값 |
+| --- | --- |
+| `session_id`, `agent_id`, `environment` | 세션의 식별 정보 |
+| `started_at`, `ended_at` | 세션 시작 및 종료 시각 |
+| `event_count`, `events` | 전체 이벤트 목록 (순서 유지) |
+| `count(event_type)` | 해당 타입의 이벤트 수 |
+| `events_of_type(event_type)` | 해당 타입의 이벤트 목록 (순서 유지) |
 
-## 비동기 작업 반환
+각 이벤트는 `id`, `ts`, `event_type`, `payload` 를 포함합니다.
 
-평가가 단일 요청 내에서 완료될 수 없는 경우 `JobPending`을 사용합니다. job ID는 Failproof AI에 불투명하며, 결과가 수집되거나 서버 타임아웃이 만료될 때까지 서비스에서 조회 가능한 상태로 유지되어야 합니다.
+## 레거시 Evaluator
 
-```python
-from failproofai.evaluator import EvalRequest, EvalResponse, Evaluator, JobPending
-
-app = Evaluator(token="shared-secret")
-
-@app.evaluator
-def start(req: EvalRequest) -> JobPending:
-    job_id = enqueue(req)
-    return JobPending(job_id=job_id, next_poll_secs=30)
-
-@app.job_lookup
-def lookup(job_id: str):
-    result = get_result(job_id)
-    if result is None:
-        return JobPending(job_id=job_id, next_poll_secs=30)
-    return EvalResponse(
-        scores=result.scores,
-        reasoning=result.reasoning,
-        summary=result.summary,
-    )
-```
-
-폴링 주기는 다음 순서로 결정됩니다: `JobPending.next_poll_secs`, `EvaluatorConfig.default_poll_interval_secs`, 서버의 `EVALUATOR_POLLING_INTERVAL_SECS`. 값은 1초에서 1시간 사이로 제한됩니다. 서버의 기본 wall-clock 폴링 상한은 1시간입니다.
-
-## 요청 및 응답 필드
-
-| 필드 | 타입 | 비고 |
-| --- | --- | --- |
-| `EvalRequest.schema_version` | `str` | 현재 `"1"`. |
-| `session_id`, `agent_id`, `environment` | `str` | 세션 식별자 및 환경. |
-| `started_at` | `datetime` | 첫 번째 이벤트의 타임스탬프. |
-| `ended_at` | `datetime \| None` | 세션에서 종료 이벤트가 발생한 경우 존재. |
-| `events` | `list[AgentEvent]` | 순서가 있는 전체 이벤트 스트림. |
-| `AgentEvent.id` | `int` | 백엔드 이벤트 행 식별자. |
-| `AgentEvent.ts` | `datetime` | 이벤트 타임스탬프. |
-| `AgentEvent.event_type` | `str` | `tool_use` 등의 이벤트 유형. |
-| `AgentEvent.payload` | `dict[str, Any]` | 전체 이벤트 페이로드. |
-| `EvalResponse.scores` | `dict[str, float] \| None` | 평가에서 차트로 표시되는 수치 차원. |
-| `EvalResponse.reasoning` | `dict[str, str] \| None` | 점수별 설명; 키는 `scores`와 일치해야 함. |
-| `EvalResponse.summary` | `str \| None` | 전체 평가 서술. |
-
-## 서버 운영자 설정
-
-자동 평가는 배포 전체에 적용되며, `EVALUATOR_ENDPOINT`가 없으면 비활성화 상태로 유지됩니다.
-
-| 변수 | 기본값 | 용도 |
-| --- | --- | --- |
-| `EVALUATOR_ENDPOINT` | 미설정 | evaluator 서비스의 기본 URL. |
-| `EVALUATOR_TOKEN` | 미설정 | `Evaluator(token=...)`과 공유하는 Bearer 토큰. |
-| `EVALUATOR_WORKERS` | `2` | 동시 디스패처 워커 수. |
-| `EVALUATOR_CLAIM_BATCH` | `4` | 디스패처 패스당 처리 세션 수. |
-| `EVALUATOR_POLLING_INTERVAL_SECS` | `10` | 폴백 비동기 폴링 주기. |
-| `EVALUATOR_REQUEST_TIMEOUT_MS` | `30000` | 요청당 evaluator 타임아웃. |
-| `EVALUATOR_MAX_ATTEMPTS` | `5` | 최종 실패 전 전송 시도 횟수. |
-| `EVALUATOR_CONFIG_REFRESH_SECS` | `300` | `/config` 갱신 주기. |
-| `EVALUATOR_MAX_POLL_DURATION_SECS` | `3600` | 비동기 폴링 최대 wall-clock 시간. |
-
-서버는 배포 전역 evaluator를 사용하는 조직을 제한할 수도 있습니다. 엔드포인트, 토큰, 재시도, 조직 게이트 변경은 운영자 설정으로 처리하고, 변경 후 서버를 재시작하거나 롤링 업데이트하세요.
-
-## 보안 및 운영
-
-- 트래픽이 신뢰할 수 없는 네트워크 경계를 넘는 경우 evaluator 앞에 HTTPS를 적용합니다.
-- 비어 있지 않은 bearer 토큰을 설정하고, 두 서비스에서 동일하게 유지합니다.
-- 토큰이나 요청 페이로드에 포함된 민감한 프롬프트 전체를 로그에 기록하지 마세요.
-- 동기 핸들러는 멱등성을 보장하도록 작성하세요. 재시도 시 요청이 반복될 수 있습니다.
-- 프로덕션 환경에서는 비동기 job 상태를 프로세스 메모리 외부에 저장하세요.
-- 안정적인 점수 키를 반환하세요. 키 이름을 변경하면 기존 시리즈가 변경되는 것이 아니라 새 차트 시리즈가 생성됩니다.
-
-SDK는 `eval received`, `eval responded`, `job lookup`, `config returned`, `auth rejected`, 핸들러 예외 등의 구조화된 라이프사이클 로그를 출력합니다. 로깅 핸들러는 자체적으로 설정하지 않으므로, 호스트 애플리케이션의 로깅 설정을 사용하세요.
+이전 Evaluator SDK — Failproof AI가 `EVALUATOR_ENDPOINT` 로 호출하고, `/evaluate` 엔드포인트에서 응답하며 `JobPending` 방식으로 폴링되는 HTTP 서비스 — 는 지원이 종료되었습니다. 새로운 평가는 이 워커 방식으로 구축하세요. 레거시 서비스를 운영 중인 셀프 호스팅 인스턴스의 운영자는 전환 기간 동안 기존 방식을 유지할 수 있습니다.

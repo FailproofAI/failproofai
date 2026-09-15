@@ -1,51 +1,94 @@
 ---
-title: "Distribuire policy"
-description: "Implementa una versione di policy revisionata sulle macchine designate."
+title: "Distribuire una policy"
+description: "Metti in produzione una versione di policy testata su macchine in modalità osservazione, attivala e conferma che ogni macchina l'ha ricevuta."
 icon: "cloud-upload"
 ---
 
-Una distribuzione connette una o più versioni di policy a un insieme di macchine registrate.
+Una distribuzione mette versioni di policy pubblicate su una macchina, ciascuna con uno dei due effetti:
 
-## Applicare una distribuzione
+- **Observe** registra quello che la policy avrebbe fatto e non blocca nulla.
+- **Enforce** agisce sulla decisione: un `deny` blocca la chiamata e un `instruct` orienta l'agente.
+
+## Aggiungi una macchina
+
+Una macchina appare in **Admin → enforcement** una volta connessa a Cloud. Se quella che ti serve non è ancora lì:
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vai su **Admin → enforcement**, trova la macchina e espandi la sua riga.
-    2. Seleziona **edit**, aggiungi la versione di policy revisionata e scegli **observe** o il suo effetto di enforcement.
-    3. Applica la modifica, quindi attendi il prossimo check-in della macchina e conferma lo stato della sua distribuzione e copertura.
-    4. Vai su **Observe → policy** per ispezionare le decisioni in diretta.
-
-    ![L'editor di distribuzione della macchina con versioni di policy, effetti enforce e observe, e l'azione di applicazione della distribuzione.](/images/dashboard/enforcement-editor.png)
+    1. Vai a **Administration → Keys** e crea una chiave con `policies:pull`, in modo che la macchina possa ricevere distribuzioni, e `events:add`, in modo che le sue decisioni raggiungano Cloud.
+    2. Connetti la macchina con quella chiave — [Connect a machine to Cloud](/it/start/setup#connetti-una-macchina-a-cloud) ti spiega come.
+    3. Conferma che appare in **Admin → enforcement**.
   </Tab>
   <Tab title="CLI">
-    Distribuisci dalla CLI con `fp fleet`. Rivedi il set risultante prima di applicarlo — `deploy` stampa il piano completo e chiede conferma **solo su un terminale interattivo senza `--json`**. Con `--json`, con `--yes`, o con stdin reindirizzato (un step di CI, uno script, un agente che esegue comandi shell) applica immediatamente senza piano e senza richiesta — quindi esegui prima `fp fleet show <machine>` se vuoi revisionare:
+    Sulla macchina:
 
+    ```bash
+    npm install -g failproofai
+    failproofai config
+    failproofai config --status
+    ```
+
+    In un terminale, `failproofai config` chiede se connettersi a Cloud e richiede la chiave in un prompt mascherato. Poi conferma che la macchina è registrata, da qualsiasi posto, con `fp fleet list`.
+  </Tab>
+</Tabs>
+
+## Distribuisci in modalità osservazione
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Vai a **Admin → enforcement**, trova la macchina e espandi la sua riga.
+    2. Seleziona **edit**, aggiungi la versione di policy testata e scegli **observe**.
+    3. Applica la modifica, poi attendi il prossimo check-in della macchina e conferma lo stato della distribuzione e della copertura.
+    4. Vai a **Observe → policy** per ispezionare le decisioni in tempo reale.
+
+    ![L'editor di distribuzione della macchina con versioni di policy, effetti enforce e observe, e l'azione di distribuzione apply.](/images/dashboard/enforcement-editor.png)
+  </Tab>
+  <Tab title="CLI">
     ```bash
     fp fleet list
     fp fleet show <machine-id>
-    fp fleet deploy <machine-id> --add no-force-push
+    fp fleet deploy <machine-id> --add no-force-push:observe
     ```
 
-    `fp fleet diff <machine-id>` mostra intent vs delivery (una macchina si legge come `behind` finché non esegue il prossimo poll), `fp fleet history <machine-id>` elenca le generazioni, e `fp fleet rollback <machine-id> <generation>` ripristina una — rifiuta se quella generazione nomina una policy nel frattempo disabilitata o cancellata.
+    Il suffisso `:observe` è quello che attiva l'osservazione: un semplice `--add no-force-push` mantiene l'effetto che la macchina ha già per quella policy, altrimenti applica enforce. Cambialo in enforce più tardi con `--add no-force-push:enforce`.
 
-    Controlla la macchina stessa con `failproofai config --status`, e usa `fp sessions --env production --since 24h` e `fp events --event-type hook_completed` dopo la distribuzione per verificare che l'attività raggiunga Cloud.
+    `deploy` **sostituisce l'intero set di policy della macchina** con il risultato. Stampa il piano, poi chiede prima di applicare — ma solo su un terminale interattivo. Con `--yes`, sotto `fp --json`, o con stdin reindirizzato (un step di CI, uno script, un agente che lancia comandi) applica senza chiedere; il piano è ancora stampato, oppure restituito come `plan` sotto `--json`.
+
+    Sulla macchina, `failproofai policies` elenca le policy gestite da Cloud che sta eseguendo e `failproofai config --status` mostra la sua connessione. Usa `fp sessions --env production --since 24h` e `fp events --event-type hook_completed` per confermare che la sua attività raggiunge Cloud.
   </Tab>
 </Tabs>
 
 <Steps>
-  <Step title="Scegli la versione e i target">
-    Distribuisci una versione revisionata, non una bozza mutabile, iniziando con una macchina non-production o una piccola coorte le cui sessioni puoi ispezionare.
+  <Step title="Scegli la versione e le macchine">
+    Seleziona la versione pubblicata e le macchine su cui dovrebbe essere eseguita.
   </Step>
-  <Step title="Osserva le decisioni">
-    Rivedi corrispondenze, motivi, strumenti interessati e falsi positivi senza bloccare il lavoro.
+  <Step title="Osserva">
+    Rivedi i match, le ragioni, gli strumenti interessati e i falsi positivi mentre nulla viene bloccato.
   </Step>
-  <Step title="Enforza e verifica la copertura">
-    Promuovi dopo che le corrispondenze osservate separano le azioni non sicure da quelle valide, quindi conferma che ogni macchina designata ha acquisito la distribuzione e sta segnalando le decisioni.
+  <Step title="Applica enforce">
+    Cambia l'effetto in enforce una volta che i match osservati distinguono le azioni non sicure da quelle valide, poi conferma che ogni macchina prevista ha ricevuto la modifica e sta segnalando le decisioni.
   </Step>
 </Steps>
 
-Le macchine necessitano della capacità `policies:pull`. La segnalazione degli eventi è controllata separatamente da `events:add`; verifica entrambi quando prevedi analisi e enforcement da Cloud.
+## Controlla la copertura
+
+La copertura risponde se una policy è in esecuzione dove c'è il rischio.
+
+1. Vai a **Admin → enforcement** e rivedi i totali di enforce e observe.
+2. Cerca una macchina per ID o label, o filtra le macchine a cui manca una policy.
+3. Espandi una riga per confrontare le policy assegnate, la distribuzione segnalata, l'ultimo check-in e la cronologia.
+4. Aggiorna dopo l'intervallo di polling della macchina quando una distribuzione applicata è ancora in sospeso.
+
+![La flotta Enforcement che mostra la copertura della policy, lo stato di distribuzione della macchina e gli incarichi observe e enforce.](/images/dashboard/enforcement-fleet.png)
+
+Cerca macchine che non hanno mai ricevuto l'ultima distribuzione, macchine registrate che hanno smesso di segnalare, una policy assegnata all'ambiente sbagliato e drift di versione dopo un aggiornamento interrotto.
+
+Etichetta le macchine per workload e ambiente — i nomi host da soli raramente sopravvivono all'autoscaling o alla sostituzione:
+
+```bash
+failproofai config --machine-label checkout-runner-03
+```
 
 <Warning>
-  La gestione dell'enforcement è un flusso di lavoro amministrativo di Cloud. Non trattare le rotte di enforcement solo-root come endpoint API ordinari `/v1` del cliente.
+  La gestione dell'enforcement è un flusso di lavoro Cloud amministrativo. Non trattare le route di enforcement root-only come endpoint `/v1` ordinari del cliente.
 </Warning>

@@ -1,17 +1,17 @@
 ---
 title: "Inicio rápido"
-description: "Captura una sesión de agente, encuentra un fallo y empieza a prevenirlo."
+description: "Captura una sesión del agente, encuentra un fallo y empieza a prevenirlo."
 icon: "zap"
 ---
 
-Esta guía de inicio rápido permite que una máquina reporte sesiones, ejecuta una auditoría y despliega una política. Usa la habilidad para configurar Failproof o sigue los pasos manuales.
+Este inicio rápido conecta una máquina para reportar sesiones, ejecuta una auditoría e implementa una política. Usa la skill para configurar Failproof, o sigue los pasos manuales.
 
-**¿Cuál es tu camino?** Si tu agente corre en uno de los 12 [harnesses](/es/reference/harnesses) soportados — una CLI de codificación o una pasarela como Hermes u OpenClaw — sigue los pasos a continuación; necesitas Node.js 20.9 o superior. Si tu agente no tiene harness, instrumenta con el [SDK de Python](/es/reference/custom-agents) para trazabilidad y auditorías, y luego continúa en [Ejecuta tu primera verificación de fallos](/es/start/first-audit); la aplicación de políticas en esa ruta requiere un hook en tu entorno de ejecución.
+**¿Cuál es tu camino?** Si tu agente se ejecuta en uno de los 12 [harnesses](/es/reference/harnesses) compatibles — una CLI de programación, o una gateway como Hermes o OpenClaw — sigue los pasos a continuación; necesitas Node.js 20.9 o posterior. Si tu agente no tiene harness, instrumentalo con el [SDK de Python](/es/reference/custom-agents) para trazas y auditorías, y luego únete en [Ejecuta tu primera comprobación de fallos](/es/start/first-audit); la aplicación de políticas en esa ruta requiere un hook en tu runtime.
 
 <Tabs>
-  <Tab title="Usar la habilidad">
+  <Tab title="Usar la skill">
     <Steps>
-      <Step title="Instala las habilidades de Failproof AI">
+      <Step title="Instala las skills de Failproof AI">
         ```bash
         npx skills add FailproofAI/skills
         ```
@@ -21,7 +21,7 @@ Esta guía de inicio rápido permite que una máquina reporte sesiones, ejecuta 
         Set up Failproof AI for this project, connect this machine, install the right hooks and policies, and verify that a session arrives.
         ```
 
-        Tu agente inspecciona el proyecto, elige la integración relevante, realiza la configuración y la verifica. Consulta el [repositorio de habilidades de FailproofAI](https://github.com/FailproofAI/skills) para ver habilidades individuales y opciones de instalación avanzadas.
+        Tu agente inspecciona el proyecto, elige la integración adecuada, realiza la configuración y la verifica. Consulta el [repositorio de skills de FailproofAI](https://github.com/FailproofAI/skills) para ver skills individuales y opciones de instalación avanzadas.
       </Step>
     </Steps>
   </Tab>
@@ -29,25 +29,31 @@ Esta guía de inicio rápido permite que una máquina reporte sesiones, ejecuta 
     ## Antes de empezar
 
 1. Abre el [panel de Failproof AI](https://app.befailproof.ai) y crea una cuenta o inicia sesión con tu correo de trabajo.
-2. Ve a **Administration → Keys** y crea una clave con `events:add` y `policies:pull`.
-3. Copia el secreto de un solo uso y guárdalo en la máquina de destino:
+2. Ve a **Administración → Claves** y crea una clave con `events:add` y `policies:pull`.
+3. Copia el secreto de un solo uso, luego léelo en una shell en la máquina de destino. `read -s` lo captura en un prompt que no muestra lo que escribes, así nunca aparece en un comando:
 
 ```bash
-export FAILPROOFAI_KEY="<one-time-secret>"
+read -rs FAILPROOFAI_KEY && export FAILPROOFAI_KEY
 ```
 
-    ## Instalación
+    ## Instalar
 
 <Steps>
   <Step title="Instala y conecta Failproof AI">
     ```bash
     npm install -g failproofai
-    failproofai config --connect https://app.befailproof.ai --token "$FAILPROOFAI_KEY"
+    FAILPROOFAI_CLOUD_TOKEN="$FAILPROOFAI_KEY" failproofai config
     ```
 
-    Las transcripciones de sesiones se envían por defecto. Añade `--no-transcripts` para reportar actividad de hooks y decisiones de políticas sin el contenido de las transcripciones.
+    Ese único comando es toda la configuración: instala el daemon local (una vez como root), conecta los hooks en cada CLI de agente que encuentre, y conecta esta máquina a Cloud. Pasar la clave a través del entorno en lugar de `--token` evita que aparezca en `ps`, donde cualquier usuario de la máquina puede leer los argumentos de un comando. Eso no evita que quede en el historial de la shell — leerla con `read -s` es lo que hace eso. En CI, inyéctala como un secreto enmascarado y mantén el rastreo de shell (`set -x`) desactivado, o la traza la imprimirá.
 
-    Si esta máquina ya tiene historial de agente, previsualiza e importa los últimos siete días, luego espera a que finalice la entrega. Omite este paso en una máquina nueva.
+    Los transcritos de sesión se envían por defecto. Agrega `--no-transcripts` para reportar la actividad de hooks y las decisiones de políticas sin el contenido de los transcritos.
+
+    <Warning>
+      No uses `failproofai config --connect <url>` aquí. Esa opción registra una máquina que **ya** está configurada y retorna inmediatamente — sin daemon, sin hooks — por lo que la máquina aparecería en Cloud sin recopilar ni aplicar nada.
+    </Warning>
+
+    Si esta máquina ya tiene historial de agentes, previsualiza e importa los últimos siete días, luego espera a que finalice la entrega. Omite este paso en una máquina nueva.
 
     ```bash
     failproofai backfill --since 7d --dry-run
@@ -55,30 +61,41 @@ export FAILPROOFAI_KEY="<one-time-secret>"
     failproofai flush --wait
     ```
 
-    Abre **Sessions** en Failproof AI y selecciona una sesión importada.
+    Abre **Sesiones** en Failproof AI y selecciona una sesión importada.
   </Step>
-  <Step title="Instala hooks y políticas del agente">
-    Esto conecta Failproof AI a tu harness e instala las 39 políticas integradas. Úsalas para ver las decisiones de políticas locales y probar la aplicación antes de que Failproof AI audite tus sesiones y escriba políticas para tus agentes.
-
-    Deja que el instalador detecte tu harness, o especifica uno explícitamente. Cualquiera de los 12 es un valor válido para `--cli` — `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity`, `goose`.
+  <Step title="Conecta Failproof AI a un harness">
+    El paso anterior ya conectó los hooks en cada CLI de agente que detectó. Vuelve a ejecutarlo para un harness específico cuando lo necesites, o para agregar un harness instalado después. Cada uno de los 12 es un valor válido para `--cli` — `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity`, `goose`.
 
     ```bash
-    failproofai policies --install --cli claude --scope user     # una CLI de codificación
-    failproofai policies --install --cli hermes --scope user     # una pasarela de Slack/Telegram
+    failproofai policies --install --cli claude --scope user     # una CLI de programación
+    failproofai policies --install --cli hermes --scope user     # una gateway de Slack/Telegram
     ```
 
-    Bloquear una llamada a herramienta antes de que se ejecute está verificado en los 12. Las compuertas de fin de turno están verificadas en 8 — consulta la [capacidad de aplicación](/es/reference/harnesses#enforcement-capability) para ver la matriz por harness.
+    El bloqueo de una llamada de herramienta antes de ejecutarse está verificado en los 12. Las compuertas al final del turno están verificadas en 8 — consulta la [capacidad de aplicación](/es/reference/harnesses#capacidades-de-aplicación) para ver la matriz por harness.
+  </Step>
+  <Step title="Elige qué aplicar">
+    Conectar los hooks no habilita ninguna política. La configuración no elige ninguna deliberadamente — esa decisión es tuya — así que toma un pack:
+
+    ```bash
+    failproofai policies add FailproofAI/policies
+    ```
+
+    El pack se obtiene desde su release de GitHub, se verifica su checksum y se fija al tag exacto que resolvió. Incluye 38 políticas y activa las 10 que su manifiesto marca como seguras para habilitar sin supervisión. Úsalas para ver las decisiones de políticas locales y probar la aplicación antes de que Failproof AI audite tus sesiones y escriba políticas para tus agentes.
+
+    Lee cualquier pack antes de tomarlo con `failproofai policies show <owner>/<repo>`, y consulta [packs de políticas](/es/policies/packs) para tomar solo una parte de uno.
+
+    Hasta que esto se ejecute, lo único que se aplica es `block-failproofai-commands` — el guard siempre activo que impide que un agente desactive Failproof AI. `failproofai policies` lista lo que está activo.
   </Step>
   <Step title="Audita el comportamiento">
-    Sigue [Ejecuta tu primera verificación de fallos](/es/start/first-audit). Usa un objetivo concreto como "encuentra sesiones donde el agente reintentó una herramienta fallida sin cambiar su enfoque".
+    Sigue [Ejecuta tu primera comprobación de fallos](/es/start/first-audit). Usa un objetivo concreto como "encontrar sesiones donde el agente reintentó una herramienta fallida sin cambiar su enfoque".
   </Step>
-  <Step title="Previene el fallo">
-    Sigue [Previene tu primer fallo con una política](/es/start/first-policy). Comienza en modo de observación, inspecciona las coincidencias y luego aplica la versión revisada.
+  <Step title="Prevén el fallo">
+    Sigue [Prevén tu primer fallo con una política](/es/start/first-policy). Comienza en modo de observación, inspecciona las coincidencias, luego aplica la versión revisada.
   </Step>
 </Steps>
 
 <Check>
-  Ejecuta `failproofai config --status`. Una configuración saludable reporta la conexión a la nube, el estado del daemon y si la aplicación de políticas está en pausa.
+  Ejecuta `failproofai config --status`. Una configuración saludable reporta la conexión a cloud, el estado del daemon y si la aplicación está pausada.
 </Check>
   </Tab>
 </Tabs>

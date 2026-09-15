@@ -1,0 +1,55 @@
+---
+title: "Eine Evaluation deployen und versionieren"
+description: "Eine unveränderliche Version deployen, den aktiven Stand einsehen, neue Versionen veröffentlichen, zurückrollen und bereits vorhandene Sessions bewerten."
+icon: "cloud-upload"
+---
+
+## Deployment
+
+Wähle unten auf der Authoring-Seite **deploy `<key>@<version>`** aus. Die Version ist nach der Veröffentlichung unveränderlich: Ab diesem Zeitpunkt wird jede abgeschlossene Session, auf die die Bedingung zutrifft, damit bewertet.
+
+## Den aktiven Stand einsehen
+
+**Analyze → eval authoring** listet die gehosteten Definitionen deiner Organisation – also die Evaluationen, die der verwaltete Evaluator dafür ausführt. Jede Zeile zeigt:
+
+- Name, Key, Version und Ergebnistyp
+- die Quell-Prüfsumme, anhand derer sich deployte Revisionen unterscheiden lassen, ohne den Code öffnen zu müssen
+- ob die Evaluation **konditionell** ist oder für **alle abgeschlossenen Sessions** läuft – die Bedingung schränkt eine Evaluation auf bestimmte Agents oder Umgebungen ein
+- Timeout, Labels und den Zeitpunkt der letzten Änderung
+
+![Die Liste gehosteter Definitionen: Name, Key, Version, Ergebnistyp, Prüfsumme, Timeout und Geltungsbereich jeder Evaluation, mit Optionen für neue Version sowie Aktivieren oder Deaktivieren.](/images/dashboard/eval-definitions.png)
+
+Du kannst die Liste durchsuchen oder nach Status filtern. Evaluationen, die dein eigener Worker registriert, werden hier nicht aufgeführt; ihre Ergebnisse tragen auf der [Evaluations-Seite](/de/sessions/evaluations) das Tag **customer**, gehostete dagegen **managed**.
+
+Eine Organisation kann gleichzeitig bis zu 100 verschiedene gehostete Evaluationen aktiviert haben.
+
+## Eine neue Version veröffentlichen
+
+Wähle in einer Zeile **new version** aus. Die Authoring-Seite öffnet sich mit dem Code dieser Version; ändere ihn, teste ihn und deploye ihn. Key und Ergebnistyp werden übernommen und können nicht geändert werden.
+
+Die Veröffentlichung einer Nachfolgeversion deaktiviert die Vorgängerversion, die jedoch in der Liste verbleibt. Ergebnisse behalten die Version, die sie erzeugt hat – ein Diagramm zeigt also genau, wann die neue Logik übernommen hat.
+
+## Zurückrollen
+
+Wähle bei der aktuellen Version **disable** und bei der gewünschten Version **enable** aus. Es wird nichts gelöscht, und alle Ergebnisse bleiben unverändert erhalten.
+
+## Eine Evaluation stoppen
+
+Wähle **disable** aus. Ohne aktivierte Version läuft die Evaluation für neue Sessions nicht mehr. Um eine Evaluation zu stoppen, die dein eigener Worker ausführt, registriere sie nicht mehr: Entferne sie aus dem Worker oder stoppe den Worker.
+
+## Bereits vorhandene Sessions bewerten
+
+Evaluationen laufen vorwärts: Eine jetzt deployte Version bewertet niemals eine Session, die davor geendet hat. Um historische Daten zu bewerten, öffne auf der Eval-Authoring-Seite **score sessions you already have**, wähle ein Zeitfenster von bis zu 90 Tagen und optional eine einzelne Evaluation aus, und zähle vor dem Ausführen nach. Die Anzahl entspricht genau dem, was ausgeführt wird – jedes Session-Evaluations-Paar darin ist eine abrechenbare Evaluation.
+
+Dabei werden nur Lücken gefüllt. Eine Session, für die bereits ein Ergebnis dieser Evaluation vorliegt, behält es, und das zweifache Ausführen desselben Zeitfensters bewertet nichts Neues.
+
+Um eine Session erneut zu bewerten – nach einer Korrektur oder für eine Session, die nicht sauber beendet wurde – wähle auf der Session-Seite **re-evaluate** aus. Das neue Ergebnis wird der Verlaufshistorie der Session hinzugefügt; frühere Ergebnisse bleiben erhalten.
+
+## Berechtigungen
+
+| Berechtigung | Ermöglicht |
+| --- | --- |
+| `evaluations:read` | Ergebnisse einsehen und die Eval-Authoring-Seite öffnen |
+| `evaluations:trigger` | Gehostete Definitionen einsehen, deployen, versionieren, aktivieren und deaktivieren; testen; Verlauf bewerten; eine Session neu bewerten |
+| `events:read` | Gegen echte Sessions testen und Entwürfe auf Payload-Keys stützen, zusätzlich zu `evaluations:trigger` |
+| `evaluations:run` | Einen eigenen Evaluator-Worker betreiben |

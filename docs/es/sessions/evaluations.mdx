@@ -1,25 +1,25 @@
 ---
-title: "Evaluaciones en línea"
-description: "Puntúa sesiones activas y completadas por calidad, cumplimiento, costo y latencia."
+title: "Leer resultados de evaluaciones"
+description: "Visualiza puntuaciones a lo largo del tiempo, compara agentes y entornos, descubre por qué una sesión obtuvo una puntuación baja y consulta al asistente."
 icon: "gauge"
 ---
 
-Las evaluaciones en línea aplican criterios consistentes a las sesiones de agentes. Úsalas para señales que deban medirse continuamente, en lugar de investigarse únicamente durante una auditoría.
+Los resultados de cada evaluación, ya sea alojada o de tu propio worker, llegan a los mismos lugares.
 
-## Revisar la calidad de las evaluaciones
+## Comparar puntuaciones a lo largo del tiempo
 
 <Tabs>
-  <Tab title="Panel de control">
-    1. Ve a **Observe → Evaluations**.
-    2. Agrega una serie y elige el agente, el entorno, la puntuación de evaluación, la estadística y la curva.
-    3. Agrega series para comparar entornos, agentes o claves de puntuación.
-    4. Selecciona un resultado para abrir las sesiones correspondientes o compartir la vista filtrada. Usa **Observe → Metrics** para latencia, tokens, costo y otros valores de magnitud.
+  <Tab title="Dashboard">
+    Ve a **Observe → evaluations**.
 
-    ![Un panel de calidad que muestra las puntuaciones de evaluación promedio y las tendencias a lo largo del tiempo.](/images/dashboard/dashboard-quality.png)
+    - **Recent runs** lista cada evaluación a medida que llega: si proviene de un evaluador alojado (**managed**) o del tuyo propio (**customer**), el agente y la sesión, la evaluación y su versión, su estado, y su puntuación o métricas.
+    - **Score over time** grafica lo que solicites. Selecciona **add series** y elige un agente, un entorno, una evaluación y una estadística: avg, min, max, p50, p75, p90, p95, p99, stddev o mode. Cada serie es una línea; asígnale su propia **curve** para mostrarla en un gráfico separado.
 
-    Abre una sesión desde el desglose para inspeccionar el razonamiento por puntuación:
+    ![La página de evaluaciones: ejecuciones recientes etiquetadas como customer, un gráfico de puntuación a lo largo del tiempo con líneas de referencia en 0.5 y 0.8, y una serie que promedia finished_clean en todos los agentes y entornos.](/images/dashboard/evaluations-chart.png)
 
-    ![Una vista de detalle de sesión que muestra las puntuaciones de evaluación y el razonamiento junto a la traza completa.](/images/dashboard/session-detail.png)
+    Un único rango de tiempo y un tamaño de intervalo se aplican a todas las series. Un intervalo fino detecta un incidente; uno más amplio muestra una tendencia y puede ocultar los picos que estás buscando. Un intervalo donde no se registró ninguna puntuación aparece como una brecha en la línea, nunca como un cero; las líneas de referencia marcan 0.5 y 0.8.
+
+    Cada parte de la vista vive en la URL: **share** la copia, y quien la abra verá exactamente la comparación que construiste.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -32,21 +32,25 @@ Las evaluaciones en línea aplican criterios consistentes a las sesiones de agen
   </Tab>
 </Tabs>
 
-Un evaluador recibe la identidad de la sesión, el entorno, las marcas de tiempo y los eventos ordenados. Puede devolver claves de puntuación numéricas con razonamiento opcional y un resumen. Los evaluadores de larga duración pueden devolver un trabajo pendiente y ser consultados posteriormente.
+Grafica **avg** y **p90** para la misma evaluación y comprueba si un buen promedio está ocultando una cola deficiente, o grafica la misma evaluación para dos agentes distintos, o para producción y staging, y compáralos en un mismo eje. Los costos, las latencias y los conteos de tokens, que llevan unidades, se grafican en **Observe → metrics**, un gráfico por unidad.
 
-## Buenos objetivos de evaluación
+## Ver por qué una sesión obtuvo una puntuación baja
 
-- Completitud o corrección de tareas
-- Fundamentación y riesgo de alucinaciones
-- Selección de herramientas y eficiencia de herramientas
-- Cumplimiento de políticas o procesos
-- Presupuestos de costo y latencia
-- Escalado humano requerido
+Abre una sesión desde **Observe → sessions**; la cuadrícula muestra las puntuaciones de cada sesión y permite filtrar por rango de puntuación. El panel derecho de la sesión comienza con el resumen de la evaluación, seguido de una barra por puntuación con el razonamiento del evaluador debajo.
 
-## De la puntuación a la respuesta
+![Vista detallada de una sesión con puntuaciones de evaluación y razonamiento junto al trazado completo.](/images/dashboard/session-detail.png)
 
-Muestra las puntuaciones en paneles para rastrear tendencias. Crea alertas para umbrales o condiciones compuestas. Cuando una puntuación disminuye en una población, ejecuta una auditoría para investigar el motivo; cuando la causa es una acción repetible, despliega una política.
+## Consultar al asistente
 
-<Card title="Construir un evaluador" icon="code-2" href="/es/reference/evaluator-sdk">
-  Implementa evaluaciones síncronas o asíncronas con el SDK de evaluadores de Python.
-</Card>
+Pregunta sobre datos de evaluación en lenguaje natural: "cuéntame sobre algunas de las evaluaciones recientes", o qué agentes están viendo sus puntuaciones caer. El [asistente](/es/sessions/assistant) lee y analiza los resultados, y responde con tablas sobre las que puedes hacer seguimiento; una pregunta que valga la pena conservar puede convertirse en una [consulta](/es/sessions/queries) o un [dashboard](/es/sessions/dashboards).
+
+![La página de evaluaciones junto al asistente, que responde a "cuéntame sobre algunas de las evaluaciones recientes" con un resumen de totales, estados y puntuaciones.](/images/dashboard/evaluations-assistant.png)
+
+## Monitorear y actuar
+
+- Los **Dashboards**, en **Analyze → dashboards**, muestran la tendencia de las puntuaciones que destacas, por agente y entorno, para toda la organización.
+
+  ![Un dashboard de calidad que muestra puntuaciones de evaluación promedio y tendencias a lo largo del tiempo.](/images/dashboard/dashboard-quality.png)
+
+- Las **Alerts** te notifican cuando una puntuación supera un umbral. Consulta [alerts](/es/audits/alerts).
+- Cuando una puntuación decae en muchas sesiones, [ejecuta una auditoría](/es/audits/run) para averiguar por qué; cuando la causa es una acción repetible, [escribe una política](/es/policies/editor).

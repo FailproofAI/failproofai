@@ -1,29 +1,29 @@
 ---
 title: "Benutzerdefinierte Richtlinien"
-description: "JavaScript- oder TypeScript-Richtlinien für agentenspezifische Fehler erstellen, testen und bereitstellen."
+description: "JavaScript- oder TypeScript-Richtlinien für Fehler spezifisch für Ihre Agenten erstellen, testen und bereitstellen."
 icon: "shield-plus"
 ---
 
-Benutzerdefinierte Richtlinien wandeln ein Fehlermuster aus Ihren Traces oder Audits in eine Entscheidung um, die während der Arbeit eines Agenten ausgeführt wird. Eine Richtlinie kann eine Aktion erlauben, dem Agenten Anleitung geben oder die Aktion blockieren, bevor sie zu einem weiteren Vorfall führt.
+Benutzerdefinierte Richtlinien verwandeln ein Fehlermuster aus Ihren Traces oder Audits in eine Entscheidung, die während der Arbeit eines Agenten ausgeführt wird. Eine Richtlinie kann eine Aktion erlauben, dem Agenten Hinweise geben oder die Aktion blockieren, bevor sie einen weiteren Vorfall verursacht.
 
-Verwenden Sie eine benutzerdefinierte Richtlinie, wenn das Verhalten von Ihren Tools, Pfaden, Befehlen, Umgebungen oder Betriebsregeln abhängt. Prüfen Sie zunächst den [integrierten Richtlinienkatalog](/de/policies/builtin-catalog), um keine bestehende Kontrolle neu zu erstellen.
+Verwenden Sie eine benutzerdefinierte Richtlinie, wenn das Verhalten von Ihren Tools, Pfaden, Befehlen, Umgebungen oder Betriebsregeln abhängt. Prüfen Sie zunächst das [Failproof AI Policy-Paket](/de/policies/packs), damit Sie keine vorhandene Kontrolle neu erstellen.
 
 ## Benutzerdefinierte Richtlinie erstellen
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehen Sie zu **Admin → Richtlinieneditor**, wählen Sie **Neue Richtlinie** und beschreiben Sie den Fehler, den Sie verhindern möchten.
-    2. Fügen Sie den Richtliniencode hinzu und testen Sie erwartete Übereinstimmungen sowie sichere Nicht-Übereinstimmungen im Editor. Beheben Sie alle Validierungsfehler.
+    1. Gehen Sie zu **Admin → Policy-Editor**, wählen Sie **Neue Richtlinie** und beschreiben Sie den Fehler, den Sie verhindern möchten.
+    2. Fügen Sie den Richtlinienquellcode hinzu und testen Sie im Editor erwartete Treffer sowie sichere Nicht-Treffer. Beheben Sie jeden Validierungsfehler.
     3. Speichern Sie den Entwurf und wählen Sie **Version veröffentlichen**, um eine unveränderliche Version zu erstellen.
-    4. Gehen Sie zu **Admin → Durchsetzung**, stellen Sie die Version auf einem Testgerät im **Beobachtungs**-Modus bereit und überprüfen Sie die Entscheidungen unter **Beobachten → Richtlinie**, bevor Sie sie durchsetzen.
+    4. Gehen Sie zu **Admin → Durchsetzung**, stellen Sie die Version auf einem Testrechner im **Beobachtungs**-Modus bereit, und überprüfen Sie die Entscheidungen unter **Beobachten → Richtlinie**, bevor Sie sie durchsetzen.
 
-    ![Der Richtlinieneditor zum Erstellen und Veröffentlichen einer benutzerdefinierten Richtlinie.](/images/dashboard/policy-editor.png)
+    ![Der Policy-Editor zum Erstellen und Veröffentlichen einer benutzerdefinierten Richtlinie.](/images/dashboard/policy-editor.png)
   </Tab>
   <Tab title="CLI">
     1. Erstellen Sie `.failproofai/policies/checkout-policies.ts`. Der Dateiname muss auf `policies.js`, `policies.mjs` oder `policies.ts` enden.
     2. Registrieren Sie eine oder mehrere Richtlinien mit `customPolicies.add()`.
     3. Validieren und installieren Sie die Datei mit `failproofai policies --install --custom ./.failproofai/policies/checkout-policies.ts --scope project`.
-    4. Lösen Sie eine passende und eine sichere Aktion aus. Führen Sie `failproofai policies` aus und prüfen Sie die zugeordneten Entscheidungen unter **Beobachten → Richtlinie**.
+    4. Lösen Sie eine passende Aktion und eine sichere Aktion aus. Führen Sie `failproofai policies` aus und prüfen Sie die zugeordneten Entscheidungen unter **Beobachten → Richtlinie**.
   </Tab>
 </Tabs>
 
@@ -55,23 +55,23 @@ customPolicies.add({
 });
 ```
 
-Gute Richtlinien sind eng genug, um sie in einem Satz zu erklären. Prüfen Sie die beobachtbare Aktion – nicht die vermutete Absicht des Agenten – und geben Sie `allow()` zurück, sobald die Regel nicht zutrifft.
+Gute Richtlinien sind eng genug, um sie in einem Satz zu erklären. Treffen Sie die beobachtbare Aktion – nicht die Absicht, die Sie dem Agenten zuschreiben – und geben Sie `allow()` zurück, sobald die Regel nicht zutrifft.
 
-## Entscheidung wählen
+## Eine Entscheidung auswählen
 
-| Hilfsfunktion | Ergebnis | Verwendung |
+| Hilfsfunktion | Ergebnis | Verwenden, wenn |
 | --- | --- | --- |
 | `allow(reason?)` | Die Operation wird fortgesetzt. | Die Richtlinie gilt nicht oder die Aktion ist sicher. |
-| `instruct(reason)` | Die Operation wird mit Anleitung fortgesetzt, wo die Umgebung dies unterstützt. | Sie möchten den Agenten zu einem besseren Ansatz leiten, ohne eine Invariante zu erzwingen. |
-| `deny(reason)` | Die Operation wird blockiert, wenn das Ereignis und die Umgebung das Blockieren unterstützen. | Die Aktion darf nicht fortgesetzt werden. |
+| `instruct(reason)` | Die Operation wird mit Hinweisen fortgesetzt, sofern der Harness dies unterstützt. | Sie den Agenten zu einem besseren Vorgehen lenken möchten, ohne eine Invariante zu erzwingen. |
+| `deny(reason)` | Die Operation wird blockiert, wenn Ereignis und Harness das Blockieren unterstützen. | Die Aktion darf nicht fortgesetzt werden. |
 
-Formulieren Sie den Grund für den Agenten, der sich erholen muss. Erklären Sie, was erkannt wurde und was stattdessen getan werden soll.
+Schreiben Sie die Begründung für den Agenten, der sich erholen muss. Erklären Sie, was erkannt wurde und was stattdessen getan werden sollte.
 
 <Warning>
-  Verwenden Sie `instruct()` nicht für eine Sicherheitsgrenze. Die Zustellung von Anleitungen variiert je nach Agent-Umgebung. Verwenden Sie `deny()`, wenn die Aktion verhindert werden muss.
+  Verwenden Sie `instruct()` nicht für eine Sicherheitsgrenze. Die Zustellung von Hinweisen variiert je nach Agent-Harness. Verwenden Sie `deny()`, wenn die Aktion verhindert werden muss.
 </Warning>
 
-## Richtlinienobjekt
+## Policy-Objekt
 
 ```ts
 customPolicies.add({
@@ -84,32 +84,32 @@ customPolicies.add({
 
 | Feld | Erforderlich | Beschreibung |
 | --- | --- | --- |
-| `name` | Ja | Stabiler Bezeichner für die Richtlinie. Namen müssen dateiübergreifend eindeutig sein. |
-| `description` | Nein | Lesbare Beschreibung, die in Richtlinienübersichten und Entscheidungen angezeigt wird. |
-| `match.events` | Nein | Ereignistypen, die die Richtlinie aufrufen. Ohne `match` wird sie für jedes verfügbare Ereignis aufgerufen. |
+| `name` | Ja | Stabiler Bezeichner für die Richtlinie. Namen über Dateien hinweg eindeutig halten. |
+| `description` | Nein | Menschenlesbare Beschreibung, die in Richtlinienübersichten und Entscheidungen angezeigt wird. |
+| `match.events` | Nein | Ereignistypen, die die Richtlinie aufrufen. Wenn `match` weggelassen wird, wird sie für jedes verfügbare Ereignis aufgerufen. |
 | `fn` | Ja | Synchrone oder asynchrone Funktion, die ein `allow`-, `instruct`- oder `deny`-Ergebnis zurückgibt. |
 
-Filtern Sie Tools innerhalb von `fn`. `match.toolNames` ist kein Bestandteil des öffentlichen Typs für benutzerdefinierte Richtlinien.
+Tools innerhalb von `fn` filtern. `match.toolNames` ist nicht Teil des öffentlichen benutzerdefinierten Richtlinientyps.
 
 ## Richtlinienkontext
 
-Jede Richtlinie erhält einen `PolicyContext`.
+Jede Richtlinie empfängt einen `PolicyContext`.
 
 | Feld | Typ | Inhalt |
 | --- | --- | --- |
 | `eventType` | `HookEventType` | Normalisiertes Ereignis, das aktuell ausgewertet wird. |
 | `toolName` | `string \| undefined` | Kanonischer Tool-Name wie `Bash`, `Read`, `Write` oder `Edit`. |
 | `toolInput` | `Record<string, unknown> \| undefined` | Kanonische Eingabe für den aktuellen Tool-Aufruf. |
-| `payload` | `Record<string, unknown>` | Vollständige normalisierte Ereignisnutzlast. |
-| `session` | `SessionMetadata \| undefined` | Sitzungs-ID, Arbeitsverzeichnis, Transcript-Pfad, Berechtigungsmodus und Umgebungsmetadaten, sofern verfügbar. |
-| `cli` | `string \| undefined` | Quell-Agent-Umgebung, z. B. `claude`, `codex` oder `cursor`. |
-| `params` | `Record<string, unknown>` | Parameter für integrierte Richtlinien. Benutzerdefinierte Richtlinien erhalten derzeit ein leeres Objekt. |
+| `payload` | `Record<string, unknown>` | Vollständige normalisierte Ereignis-Nutzlast. |
+| `session` | `SessionMetadata \| undefined` | Sitzungs-ID, Arbeitsverzeichnis, Transcript-Pfad, Berechtigungsmodus und Harness-Metadaten, sofern verfügbar. |
+| `cli` | `string \| undefined` | Quell-Agent-Harness, z. B. `claude`, `codex` oder `cursor`. |
+| `params` | `Record<string, unknown>` | Eingebaute Richtlinienparameter. Benutzerdefinierte Richtlinien erhalten aktuell ein leeres Objekt. |
 
-Behandeln Sie jeden optionalen Wert als tatsächlich optional. Nicht alle Agent-Versionen und Ereignistypen liefern dieselben Felder.
+Jeden optionalen Wert als tatsächlich optional behandeln. Agent-Versionen und Ereignistypen stellen nicht alle dieselben Felder bereit.
 
 ### Häufige Tool-Eingaben
 
-Failproof AI normalisiert gängige Tools über unterstützte Umgebungen hinweg, sodass eine Richtlinie in der Regel eine einheitliche Eingabeform verwenden kann.
+Failproof AI normalisiert gängige Tools über unterstützte Harnesses hinweg, sodass eine Richtlinie in der Regel eine einheitliche Eingabeform verwenden kann.
 
 | Tool | Häufige Felder |
 | --- | --- |
@@ -119,26 +119,26 @@ Failproof AI normalisiert gängige Tools über unterstützte Umgebungen hinweg, 
 | `Edit` | `file_path`, `old_string`, `new_string` |
 | `Grep` | `pattern`, `path` |
 
-Verwenden Sie defensive Typumwandlung, da Tool-Eingabewerte als `unknown` typisiert sind:
+Defensive Typumwandlung verwenden, da Tool-Eingabewerte als `unknown` typisiert sind:
 
 ```ts
 const command = String(ctx.toolInput?.command ?? "");
 const filePath = String(ctx.toolInput?.file_path ?? "");
 ```
 
-## Ereignis wählen
+## Ereignis auswählen
 
 | Ereignis | Zeitpunkt | Typische Verwendung |
 | --- | --- | --- |
 | `PreToolUse` | Vor der Ausführung eines Tools. | Befehle, Schreibvorgänge, Lesevorgänge und externe Aktionen blockieren oder steuern. |
-| `PostToolUse` | Nachdem ein Tool zurückgekehrt ist. | Ergebnisse prüfen, bevor sie den Agenten erreichen. Ein deny blockiert das gesamte Ergebnis; einzelne Felder werden nicht geschwärzt. |
+| `PostToolUse` | Nachdem ein Tool zurückgekehrt ist. | Ergebnisse prüfen, bevor sie den Agenten erreichen. Ein Deny blockiert das gesamte Ergebnis; es schwärzt keine einzelnen Felder. |
 | `PermissionRequest` | Wenn der Agent eine Berechtigung anfordert. | Organisationsspezifische Berechtigungsregeln anwenden. |
-| `UserPromptSubmit` | Bevor ein gesendeter Prompt fortgesetzt wird. | Verbotene Anweisungen ablehnen oder Workflow-Anleitungen hinzufügen. |
-| `Stop` | Wenn der Agent versucht, abzuschließen. | Eine erreichbare Abschlussbedingung erfordern, z. B. einen lokalen Verifikationsschritt. |
+| `UserPromptSubmit` | Bevor ein eingereichter Prompt fortgesetzt wird. | Verbotene Anweisungen ablehnen oder Workflow-Hinweise hinzufügen. |
+| `Stop` | Wenn der Agent versucht, abzuschließen. | Eine erreichbare Abschlussbedingung erfordern, z. B. einen lokalen Verifizierungsschritt. |
 | `SubagentStop` | Wenn ein Subagent versucht, abzuschließen. | Delegierte Arbeit prüfen, bevor sie an den übergeordneten Agenten zurückgegeben wird. |
 | `SessionStart` / `SessionEnd` | An Sitzungsgrenzen. | Sitzungsweiten Zustand aufzeichnen oder prüfen. |
 
-Ereignisverfügbarkeit und Blockierungsverhalten hängen von der Agent-Umgebung ab. Lesen Sie [Agent-Umgebungen](/de/reference/harnesses), bevor Sie sich auf ein Ereignis über eine gemischte Flotte hinweg verlassen.
+Die Verfügbarkeit von Ereignissen und das Blockierverhalten hängen vom Agent-Harness ab. Lesen Sie [Agent-Harnesses](/de/reference/harnesses), bevor Sie sich auf ein Ereignis über eine gemischte Flotte hinweg verlassen.
 
 <Accordion title="Alle Richtlinienereignisnamen">
   `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PermissionDenied`, `PostToolUse`, `PostToolUseFailure`, `Notification`, `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `Stop`, `StopFailure`, `TeammateIdle`, `InstructionsLoaded`, `ConfigChange`, `CwdChanged`, `FileChanged`, `WorktreeCreate`, `WorktreeRemove`, `PreCompact`, `PostCompact`, `Elicitation`, `ElicitationResult`, `UserPromptExpansion`, `PostToolBatch` und `Setup`.
@@ -166,7 +166,7 @@ customPolicies.add({
 });
 ```
 
-### Nicht-blockierende Anleitung geben
+### Nicht-blockierende Hinweise geben
 
 ```ts
 import { customPolicies, allow, instruct } from "failproofai";
@@ -186,7 +186,7 @@ customPolicies.add({
 });
 ```
 
-### Sitzungsabschluss kontrollieren
+### Sitzungsabschluss prüfen
 
 ```ts
 import { execFileSync } from "node:child_process";
@@ -215,7 +215,7 @@ customPolicies.add({
 ```
 
 <Warning>
-  Ein abgelehntes `Stop`-Ereignis kann dazu führen, dass der Agent es erneut versucht. Stellen Sie die Bedingung nur dann auf, wenn der Agent sie in der aktuellen Umgebung erfüllen kann, und begrenzen Sie jeden Subprozess oder Netzwerkaufruf.
+  Ein abgelehntes `Stop`-Ereignis kann dazu führen, dass der Agent es erneut versucht. Prüfen Sie nur eine Bedingung, die der Agent in der aktuellen Umgebung erfüllen kann, und begrenzen Sie jeden Unterprozess oder Netzwerkaufruf.
 </Warning>
 
 ## Richtliniendateien laden
@@ -229,7 +229,7 @@ Konventionsdateien werden automatisch geladen:
 ~/.failproofai/policies/personal-policies.mjs
 ```
 
-- Projekt- und Benutzerrichtlinienverzeichnisse werden beide geladen.
+- Projekt- und Benutzer-Richtlinienverzeichnisse werden beide geladen.
 - Dateien werden alphabetisch innerhalb jedes Verzeichnisses geladen.
 - Eine Datei muss auf `policies.js`, `policies.mjs` oder `policies.ts` enden.
 - Mehrere `customPolicies.add()`-Aufrufe in einer Datei werden unterstützt.
@@ -238,7 +238,7 @@ Konventionsdateien werden automatisch geladen:
 
 ### Explizite Dateien
 
-Verwenden Sie explizite Pfade, wenn Validierung oder Konfiguration die Einstiegsdatei direkt benennen sollen:
+Verwenden Sie explizite Pfade, wenn Validierung oder Konfiguration die Einstiegsdatei direkt benennen soll:
 
 ```bash
 failproofai policies --install \
@@ -251,7 +251,7 @@ Explizite Dateien werden zuerst geladen, gefolgt von Projekt-Konventionsdateien 
 
 ## Validieren und testen
 
-Die Validierung führt das Modul über den Produktions-Loader aus und bestätigt, dass es mindestens eine Richtlinie registriert.
+Die Validierung führt das Modul durch den Produktionslader aus und bestätigt, dass es mindestens eine Richtlinie registriert.
 
 ```bash
 failproofai policies --install \
@@ -260,41 +260,41 @@ failproofai policies --install \
 failproofai policies
 ```
 
-Die Validierung erkennt fehlende Dateien, Syntaxfehler, nicht aufgelöste Importe, Ausnahmen auf oberster Ebene und Modul-Lade-Timeouts. Sie beweist nicht, dass Ihre Match-Logik korrekt ist.
+Die Validierung erkennt fehlende Dateien, Syntaxfehler, ungelöste Importe, Top-Level-Ausnahmen und Modul-Lade-Timeouts. Sie beweist nicht, dass Ihre Match-Logik korrekt ist.
 
 Testen Sie mindestens diese Fälle:
 
-- Eine Aktion, die übereinstimmen und den beabsichtigten Richtliniengrund erzeugen muss.
+- Eine Aktion, die treffen muss und den vorgesehenen Richtliniengrund erzeugt.
 - Eine ähnliche, aber sichere Aktion, die `allow()` zurückgeben muss.
 - Fehlende oder fehlerhafte Tool-Felder.
 - Alternative Befehlssyntax, Pfade, Anführungszeichen, Groß-/Kleinschreibung und Leerzeichen.
-- Ein nicht verfügbarer Subprozess oder eine Netzwerkabhängigkeit.
+- Ein nicht verfügbarer Unterprozess oder eine Netzwerkabhängigkeit.
 
-Ordnen Sie das Ergebnis Ihrer benutzerdefinierten Richtlinie unter **Beobachten → Richtlinie** zu. Ein blockierter Test reicht nicht aus, wenn eine andere integrierte Richtlinie die Entscheidung getroffen hat.
+Ordnen Sie das Ergebnis unter **Beobachten → Richtlinie** Ihrer benutzerdefinierten Richtlinie zu. Ein blockierter Test reicht nicht aus, wenn eine andere eingebaute Richtlinie die Entscheidung getroffen hat.
 
 ## Laufzeitverhalten
 
-- Integrierte Richtlinien werden vor benutzerdefinierten Richtlinien ausgewertet.
+- Eingebaute Richtlinien werden vor benutzerdefinierten Richtlinien ausgewertet.
 - Das erste `deny` stoppt die weitere Richtlinienauswertung.
 - Mehrere `instruct`-Ergebnisse können kombiniert werden, wenn keine Richtlinie das Ereignis ablehnt.
 - Eine Richtlinienfunktion hat eine Ausführungsfrist von 10 Sekunden.
 - Eine ausgelöste Ausnahme oder ein Timeout wird protokolliert und als `allow()` behandelt.
-- Eine Konventionsdatei, die nicht geladen werden kann, wird übersprungen; andere benutzerdefinierte Dateien und integrierte Richtlinien werden weiter ausgeführt.
-- Das Laden von Modulen auf oberster Ebene hat ebenfalls eine Frist von 10 Sekunden.
-- Der Cloud-Beobachtungsmodus führt die Richtlinie aus, zeichnet jedoch eine Nicht-allow-Entscheidung auf, ohne sie durchzusetzen.
+- Eine Konventionsdatei, die nicht geladen werden kann, wird übersprungen; andere benutzerdefinierte Dateien und eingebaute Richtlinien werden weiter ausgeführt.
+- Das Top-Level-Modulladen hat ebenfalls eine Frist von 10 Sekunden.
+- Der Cloud-Beobachtungsmodus führt die Richtlinie aus, zeichnet aber eine Nicht-allow-Entscheidung auf, ohne sie durchzusetzen.
 
-Halten Sie Richtlinienmodule deterministisch und schnell. Vermeiden Sie Netzwerkaufrufe oder Server-Starts auf oberster Ebene. Begrenzen Sie die Arbeit innerhalb von `fn`, fangen Sie Abhängigkeitsfehler ab und entscheiden Sie bewusst, ob dieser Fehler die Operation erlauben oder verweigern soll.
+Richtlinienmodule deterministisch und schnell halten. Top-Level-Netzwerkaufrufe oder Server-Starts vermeiden. Arbeit innerhalb von `fn` begrenzen, Abhängigkeitsfehler abfangen und bewusst entscheiden, ob dieser Fehler die Operation erlauben oder blockieren soll.
 
 ## API-Exporte
 
 | Export | Zweck |
 | --- | --- |
-| `customPolicies.add(policy)` | Eine benutzerdefinierte Richtlinie registrieren, wenn das Modul geladen wird. |
-| `allow(reason?)` | Die Operation erlauben. |
-| `instruct(reason)` | Die Operation erlauben und Anleitung bereitstellen, wo unterstützt. |
-| `deny(reason)` | Die Operation blockieren, wo unterstützt. |
-| `getCustomHooks()` | Die aktuell im Modul-Registry registrierten Richtlinien zurückgeben. |
-| `clearCustomHooks()` | Dieses Registry leeren, hauptsächlich für Tests und Loader. |
+| `customPolicies.add(policy)` | Benutzerdefinierte Richtlinie beim Laden des Moduls registrieren. |
+| `allow(reason?)` | Operation erlauben. |
+| `instruct(reason)` | Operation erlauben und Hinweise bereitstellen, sofern unterstützt. |
+| `deny(reason)` | Operation blockieren, sofern unterstützt. |
+| `getCustomHooks()` | Die aktuell im Modulregister registrierten Richtlinien zurückgeben. |
+| `clearCustomHooks()` | Dieses Register leeren, hauptsächlich für Tests und Lader. |
 
 TypeScript exportiert `PolicyContext`, `PolicyResult`, `CustomHook`, `PolicyDecision` und `PolicyFunction`.
 

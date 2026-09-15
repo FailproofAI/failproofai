@@ -1,0 +1,29 @@
+---
+title: "Bir değerlendirmeyi test etme"
+description: "Dağıtmadan önce değerlendirmeyi gerçek oturumlarınıza karşı çalıştırın. Hiçbir şey depolanmaz."
+icon: "flask-conical"
+---
+
+**bu değerlendirmeyi test et**, yazma sayfasında, kodu değerlendirici filoya karşı gerçek oturumlarınızda dağıtmadan çalıştırır. Hiçbir şey depolanmaz: burada bir hata, bir ön izlemedir ve dağıtım her zaman yapılabilir.
+
+<Steps>
+  <Step title="Derlenmesini kontrol edin">
+    Kodu derlemek ve koşulu sandbox kurallarına karşı kontrol etmek için **check** seçeneğini seçin, herhangi bir oturumda çalıştırmadan.
+  </Step>
+  <Step title="Oturumları seçin">
+    Eşleşen oturumları aracıya, ortama, zamana veya oturum kimliğine göre daraltın ve en fazla 10 tanesini işaretleyin. Değerlendirmenin başarısız olması gereken oturumların yanı sıra başarılı olması gereken oturumları da dahil edin.
+  </Step>
+  <Step title="Çalıştırın">
+    **N oturuma karşı çalıştır** seçeneğini seçin ve her satırı okuyun.
+  </Step>
+</Steps>
+
+| Satır | Ne anlama gelmektedir |
+| --- | --- |
+| **ok** | Çalıştı. Satır, döndürdüğü tüm puanları, metrikleri, onaylamaları ve ne kadar sürdüğünü listeler. |
+| **skipped** | Koşul `False` döndürdü, bu nedenle değerlendirme çalışmadı. Bu bir hata değil, bir atlamadır. |
+| Failed | Bir hata oluştu, zaman aşımı oluştu veya sandbox'un reddettiği bir şey kullandı. Satır hangisinin olduğunu söyler ve **Fix it** hata yardımcı olabildiğinde onu asistana verir. |
+
+![Bu değerlendirmeyi test et paneli: aracıya göre seçilen üç oturum, ikisi ok ve biri koşul False döndürdüğü için atlandı.](/images/dashboard/eval-test.png)
+
+Bir sonuç, kodu düzenledikten sonra güncel olmaktan çıkar; yeniden kullanılmak yerine soluklaştırılır.

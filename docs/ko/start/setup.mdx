@@ -1,68 +1,89 @@
 ---
-title: "설정 방법 선택"
-description: "로컬 강제 적용, Failproof AI Cloud, 또는 엔터프라이즈 배포 중에서 선택하세요."
+title: "설정 방식 선택"
+description: "로컬 적용, Failproof AI Cloud, 또는 엔터프라이즈 배포 중 선택하세요."
 icon: "waypoints"
 ---
 
 <CardGroup cols={3}>
-  <Card title="로컬 강제 적용" icon="laptop">
-    머신에 훅과 정책을 설치합니다. 세션 데이터를 Cloud에 전송하지 않고 즉시 가드레일이 필요한 경우에 사용하세요.
+  <Card title="로컬 적용" icon="laptop">
+    Cloud 키 없이 머신을 설정하고 정책 팩을 적용합니다. 세션 데이터를 Cloud에 전송하지 않고 즉시 가드레일이 필요할 때 사용하세요.
   </Card>
   <Card title="Failproof AI Cloud" icon="cloud">
-    중앙화된 세션 관리, 감사, 온라인 평가, 대시보드, 알림, 그리고 플릿 정책 배포 기능을 추가합니다.
+    중앙화된 세션, 감사, 온라인 평가, 대시보드, 알림, 그리고 플릿 정책 배포 기능을 추가합니다.
   </Card>
   <Card title="엔터프라이즈 배포" icon="building-2">
-    조직 제어, 범위 지정 키, 프라이빗 인프라, 그리고 배포별 보안 요구사항을 활용합니다.
+    조직 제어, 범위가 지정된 키, 프라이빗 인프라, 그리고 배포별 보안 요구사항을 활용합니다.
   </Card>
 </CardGroup>
 
+## 로컬 적용
+
+키 없이 `failproofai config`를 실행한 다음 `failproofai policies add FailproofAI/policies`로 팩을 적용하세요. 터미널에서 설정 시 Cloud 연결 여부를 묻는 질문이 나오면 **지금은 아님 — 로컬 유지**를 선택하세요. 터미널이 없거나 `FAILPROOFAI_CLOUD_TOKEN`이 없으면 자동으로 로컬 모드로 유지됩니다. 데몬과 훅은 해당 머신에서 적용되며, 세션 데이터는 Cloud로 전송되지 않습니다. 나중에 연결하려면 아래 단계를 따르세요.
+
 ## 권장 프로덕션 경로
 
-1. 트랜스크립트 캡처를 활성화한 상태로 비프로덕션 머신을 연결합니다.
-2. Cloud에서 세션과 평가 결과를 확인합니다.
-3. 알려진 장애 유형에 대한 감사를 생성합니다.
-4. 첫 번째 정책을 관찰 모드로 배포합니다.
-5. 매치 결과와 오탐을 검토한 후 프로덕션으로 확대합니다.
+1. 트랜스크립트 캡처가 활성화된 비프로덕션 머신을 연결합니다.
+2. Cloud에서 세션과 평가를 확인합니다.
+3. 알려진 오류 사례에 대한 감사를 생성합니다.
+4. 관찰 모드로 첫 번째 정책을 배포합니다.
+5. 매칭 결과와 거짓 양성을 검토한 후 프로덕션으로 확장합니다.
 
-## 머신을 Cloud에 연결하기
+## Cloud에 머신 연결
 
 <Tabs>
   <Tab title="대시보드">
-    1. **Administration → Keys**로 이동하여 `events:add` 및 `policies:pull` 권한이 있는 키를 생성합니다.
+    1. **Administration → Keys**로 이동하여 `events:add`와 `policies:pull` 권한이 있는 키를 생성합니다.
     2. 일회용 시크릿을 대상 머신에 복사합니다.
     3. CLI 연결 명령을 실행한 후 **Admin → enforcement**로 이동하여 머신이 표시되는지 확인합니다.
     4. **Observe → Events**로 이동하여 첫 번째 이벤트가 도착하는지 확인합니다.
 
-    키 드로어에는 연결된 머신에 필요한 두 가지 권한이 표시됩니다: 이벤트 수집과 정책 전달입니다.
+    키 서랍에는 연결된 머신에 필요한 두 가지 권한(이벤트 수집 및 정책 전달)이 표시됩니다.
 
-    ![이벤트 수집 및 정책 전달 권한을 부여하는 새 API 키 드로어](/images/dashboard/key-create.png)
+    ![이벤트 수집 및 정책 전달 권한을 부여하는 데 사용되는 새 API 키 서랍.](/images/dashboard/key-create.png)
 
-    연결 후, 머신이 원하는 정책 상태 및 배포 상태와 함께 enforcement에 표시되어야 합니다.
+    연결 후 머신은 원하는 정책 상태와 배포 상태가 표시된 상태로 enforcement에 나타나야 합니다.
 
-    ![등록된 머신의 원하는 정책 상태와 배포 상태가 펼쳐진 Enforcement 플릿](/images/dashboard/enforcement-fleet.png)
+    ![등록된 머신의 원하는 정책 상태와 배포 상태가 펼쳐진 Enforcement 플릿.](/images/dashboard/enforcement-fleet.png)
 
-    첫 번째 이벤트가 도착하면 데몬이 정책 배포와 독립적으로 Cloud에 데이터를 전달할 수 있음을 확인합니다.
+    첫 번째 이벤트 도착은 정책 배포와 독립적으로 데몬이 Cloud에 데이터를 전달할 수 있음을 확인해 줍니다.
 
-    ![최근 에이전트, 모델, 도구 이벤트를 보여주는 실시간 이벤트 스트림](/images/dashboard/events-stream-current.png)
+    ![최근 에이전트, 모델, 툴 이벤트를 표시하는 실시간 이벤트 스트림.](/images/dashboard/events-stream-current.png)
 
-    머신과 첫 번째 이벤트가 모두 표시된 후에만 다음 단계로 진행하세요.
+    머신과 첫 번째 이벤트가 모두 표시된 것을 확인한 후에만 계속 진행하세요.
   </Tab>
   <Tab title="CLI">
-    ```bash
-    failproofai config --connect https://app.befailproof.ai \
-      --token "$FAILPROOFAI_KEY" \
-      --machine-label checkout-runner-01
+    일회용 시크릿을 셸로 읽어들입니다. `read -s`는 에코되지 않는 프롬프트에서 입력을 받으므로, 명령어나 셸 히스토리에 절대 나타나지 않습니다:
 
-    failproofai policies --install --cli claude --scope user
+    ```bash
+    read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
+    ```
+
+    그런 다음 머신을 설정하고, 정책을 선택하고, 이름을 지정합니다:
+
+    ```bash
+    failproofai config
+
+    failproofai policies add FailproofAI/policies
+    failproofai config --machine-label checkout-runner-01
     failproofai config --status
     ```
 
+    `failproofai config`는 전체 설정(데몬, 발견된 모든 에이전트 CLI에 대한 훅, Cloud 연결)을 수행한 후 정책은 선택하지 않습니다. 정책 선택은 두 번째 명령어를 위한 것입니다.
+
+    레이블은 연결 **이후에** 지정하세요. 연결 중에 지정하는 것이 아닙니다: `failproofai config --machine-label <name>`은 이미 연결된 머신의 이름을 변경하며, 연결되지 않은 머신에서는 그 사실만 알려줄 뿐 아무것도 하지 않습니다.
+
     트랜스크립트 내용을 로컬에 유지해야 하는 경우 `--no-transcripts`를 추가하세요.
+
+    CI 환경에서는 `read -s` 대신 시크릿 스토어에서 `FAILPROOFAI_CLOUD_TOKEN`을 설정하고, 셸 트레이싱(`set -x`)은 키가 출력될 수 있으므로 꺼두세요.
+
+    <Warning>
+      **이미** 설정된 머신에서 `failproofai config --connect <url>`은 등록만 수행하며 그 외에는 아무것도 하지 않습니다. 최초 설치에 이 형식을 사용하지 마세요: 데몬이나 훅이 준비되기 전에 반환되어, Cloud에는 표시되지만 아무것도 수집하거나 적용하지 않는 머신이 남게 됩니다.
+    </Warning>
   </Tab>
 </Tabs>
 
-Cloud에 연결하면 이벤트 수집과 정책 전달이 각각 독립적으로 검증됩니다. 따라서 키가 유효하더라도 필요한 권한 중 하나가 누락될 수 있습니다. 어떤 기능이 구성되어 있는지 확인하려면 `failproofai config --status`를 사용하세요.
+Cloud 연결은 이벤트 수집과 정책 전달을 독립적으로 검증합니다. 따라서 키가 유효하더라도 필수 권한 중 하나가 누락될 수 있습니다. `failproofai config --status`를 사용하여 어떤 기능이 구성되어 있는지 확인하세요.
 
 <Info>
-  Cloud 설정은 해당 기능 검증이 성공한 후에만 로컬 자격 증명을 기록합니다. 검증에 실패하더라도 실제로 연결되지 않은 머신이 연결된 것처럼 보이는 상태로 남지 않습니다.
+  Cloud 설정은 해당 기능 검증이 성공한 후에만 로컬 자격증명을 기록합니다. 검증에 실패해도 실제로는 연결되지 않은 머신이 연결된 것처럼 보이는 상태로 남지 않습니다.
 </Info>

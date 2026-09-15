@@ -1,29 +1,29 @@
 ---
 title: "מפתחות והרשאות"
-description: "יצירת מפתחות API בהיקף מוגבל עבור מכונות, אוטומציה ואופרטורים."
+description: "צור מפתחות API בהיקף מוגדר למכונות, אוטומציה ומפעילים."
 icon: "key-round"
 ---
 
-מפתחות API שייכים לארגון ונושאים הרשאות מפורשות. השתמשו במפתחות נפרדים עבור ספיגת סוכנים, משלוח מדיניות, מעריכים, אוטומציה של CI וסקריפטים ניהוליים.
+מפתחות API שייכים לארגון ונושאים הרשאות מפורשות. השתמש במפתחות נפרדים לספיגת סוכנים, משלוח מדיניות, מעריכים, אוטומציית CI וסקריפטים ניהוליים.
 
-## יצירה והחלפה של מפתח
+## יצירה וסיבוב של מפתח
 
 <Tabs>
   <Tab title="Dashboard">
-    1. עברו ל-**Administration → Keys**, בחרו **new key** והזינו שם של עומס עבודה.
-    2. בחרו קבוצת הרשאות והתאימו הרשאות בודדות רק כאשר ההגדרה המוכנה מראש אינה מספיקה.
-    3. יצרו את המפתח והעתיקו את הסוד החד-פעמי שלו מיד.
-    4. פתחו את המפתח מאוחר יותר כדי לעדכן הקצאות, להשבית אותו או ליצור מחדש את הסוד.
+    1. עבור אל **Administration → Keys**, בחר **new key**, והזן שם עומס עבודה.
+    2. בחר סט הרשאות והתאם הרשאות בודדות רק כאשר הקבוע אינו מספיק.
+    3. צור את המפתח והעתק את הסוד החד-פעמי שלו מיד.
+    4. פתח את המפתח מאוחר יותר כדי לעדכן הענקות, להשבית אותו או ליצור מחדש את הסוד.
 
-    תיבת הכלים של יצירה היא המקום שבו תבחרו בהקצאות הצרות ביותר הנדרשות על ידי עומס העבודה.
+    תיקיית היצירה היא המקום בו אתה בוחר בהענקות הצרות ביותר הנדרשות על ידי עומס העבודה.
 
-    ![תיבת המפתח API החדש עם ערכות הרשאות מוכנות מראש והקצאות בודדות.](/images/dashboard/key-create.png)
+    ![תיקיית מפתח ה-API החדשה עם הגדרות הרשאות והענקות בודדות.](/images/dashboard/key-create.png)
 
-    לאחר יצירה, דף Keys מציג את המטא-דאטה הקבוע וקצר אפשרויות הניהול. הסוד החד-פעמי אינו מוצג שוב.
+    לאחר יצירה, דף Keys מציג את המטא-נתונים הקבועים וכללי ניהול. הסוד החד-פעמי לא יוצג שוב.
 
-    ![דף API Keys המציג הרשאות מפתח, זמן יצירה וקצוות לשיחזור והשבתה.](/images/dashboard/api-keys.png)
+    ![דף API Keys המציג הרשאות מפתח, זמן יצירה וכללי Regenerate וDisable.](/images/dashboard/api-keys.png)
 
-    השתמשו ברשימה זו כדי לבדוק הקצאות בקביעות והשבתו מפתחות שאינם עוד תואמים לעומס עבודה פעיל.
+    השתמש ברשימה זו כדי לבדוק הענקות בעיתוי קבוע והשבת מפתחות שלא עוד תואמים עומס עבודה פעיל.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -36,39 +36,39 @@ icon: "key-round"
     fp keys disable production-agents
     ```
 
-    הפנו או תפסו את פלט יצירה/שיחזור בצורה מאובטחת; הסוד מוחזר פעם אחת.
+    הפנה או תפוס פלט יצירה/יצירה מחדש בצורה מאובטחת; הסוד מוחזר פעם אחת.
   </Tab>
 </Tabs>
 
 שתי ההרשאות הנדרשות על ידי מכונת Failproof AI מחוברת הן עצמאיות:
 
 - `events:add` שולח אירועים ונתוני הפעלה.
-- `policies:pull` אחזור הקצאות מדיניות שהוקצו.
+- `policies:pull` משחזר פריסות מדיניות משויכות.
 
-סודות מפתח מוצגים כאשר נוצרים או משוחזרים. אחסנו אותם במנהל סודות והחליפו אותם ללא שימוש חוזר בעיות אישיות של אופרטור.
+סודות המפתח מוצגים כאשר נוצרים או נוצרים מחדש. אחסן אותם במנהל סודות וסובב אותם מבלי להשתמש בחדשות הקלט האינטראקטיביות של מפעיל.
 
 ## קטלוג הרשאות
 
 | אזור | הרשאות |
 | --- | --- |
-| אירועים | `events:add`, `events:read` |
-| מפתחות | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` הוא רק עבור הפעלה אישית |
-| משתמשים | `users:create`, `users:read`, `users:update`, `users:delete` |
-| הערכות | `evaluations:read`, `evaluations:trigger` |
-| לוחות בקרה | `dashboards:read`, `dashboards:write`, `dashboards:delete` |
-| שאילתות | `queries:read`, `queries:write`, `queries:delete`, `queries:run` |
-| עוזר | `agent:use` |
-| הגדרות | `settings:read`, `settings:write` |
-| התראות | `alerts:read`, `alerts:write` |
-| בעיות | `issues:read`, `issues:create`, `issues:close` |
-| ביקורות | `audits:read`, `audits:write` |
-| מדיניות | `policies:read`, `policies:write`, `policies:pull` |
-| שימוש | `usage:read` |
+| Events | `events:add`, `events:read` |
+| Keys | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` הוא רק הפעלת אדם |
+| Users | `users:create`, `users:read`, `users:update`, `users:delete` |
+| Evaluations | `evaluations:read`, `evaluations:trigger`, `evaluations:run` |
+| Dashboards | `dashboards:read`, `dashboards:write`, `dashboards:delete` |
+| Queries | `queries:read`, `queries:write`, `queries:delete`, `queries:run` |
+| Assistant | `agent:use` |
+| Settings | `settings:read`, `settings:write` |
+| Alerts | `alerts:read`, `alerts:write` |
+| Issues | `issues:read`, `issues:create`, `issues:close` |
+| Audits | `audits:read`, `audits:write` |
+| Policies | `policies:read`, `policies:write`, `policies:pull` |
+| Usage | `usage:read` |
 
-`orgs:admin` שמור עבור אופרטור ההתקנה ולא ניתן להעניק למפתח ארגוני או לחבר רגיל. אסימוני `incidents:*` ו-`alerts:ack` בדימוס מתקבלים לצורך תאימות ומתקנדים להרשאות `issues:*` הנוכחיות.
+`orgs:admin` שמור למפעיל המופע ולא ניתן להעניק למפתח ארגוני או לחבר רגיל. אסימונים `incidents:*` ו-`alerts:ack` מיושנים מתקבלים לתאימות ומנורמלים להרשאות `issues:*` עדכניות.
 
-ערכות הרשאות מובנות הן `read-only`, `standard` ו-`admin`. `standard` מוסיף הפעלת הערכה, ביצוע שאילתה, תגובה לבעיות והשימוש בעוזר להרשאות קריאה. יצירת מפתח מסיר הקצאות-רק-לאנשים גם כאשר קבוצת הרשאות מכילה אותן.
+סטי הרשאות מובנים הם `read-only`, `standard` ו-`admin`. `standard` מוסיף השראת הערכה, ביצוע שאילתה, תגובה בנושא והשתמשות בעוזר להרשאות קריאה. יצירת מפתח מסיר הענקות שרק לאדם גם כאשר סט הרשאות מכיל אותן.
 
 <Warning>
-  מפתחות בהיקף התקנה יכולים לבחור ארגון עם הכותרת `X-AgentEye-Org`. הגדרו אותה במפורש בהפצות מרובות-ארגוניות; השמטה עלולה לבחור בארגון ברירת המחדל.
+  מפתחות בהיקף מופע יכולים לבחור ארגון עם כותרת `X-AgentEye-Org`. קבע זאת במפורש בפריסות ארגוניות מרובות; השמטה עשויה לבחור בארגון ברירת המחדל.
 </Warning>

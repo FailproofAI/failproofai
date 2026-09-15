@@ -1,41 +1,75 @@
 ---
-title: "Rollback"
-description: "Einen bekannten Policy-Deployment-Zustand wiederherstellen, wenn ein Rollout gültige Agent-Arbeit unterbricht."
+title: "Versionen und Rollback"
+description: "Jede Veröffentlichung ist eine unveränderliche Version, sodass ein Rollout, der gültige Agenten-Arbeit beeinträchtigt, durch erneutes Bereitstellen der letzten funktionierenden Version rückgängig gemacht werden kann."
 icon: "rotate-ccw"
 ---
 
-Rollback ändert die bereitgestellte Version oder entfernt eine Policy-Zuweisung; die Entscheidungshistorie, die den Vorfall erklärt, wird dabei nicht gelöscht.
+Eine veröffentlichte Richtlinienversion ändert sich nie. Das Bearbeiten einer Richtlinie und erneute Veröffentlichen erstellt eine neue Version; die bereits auf Maschinen vorhandene Version wird dabei nie überschrieben. Das macht Rollbacks sicher: Die letzte funktionierende Version ist noch vorhanden, Byte für Byte, und ein Rollback löscht nicht den Entscheidungsverlauf, der erklärt, was schiefgelaufen ist.
 
-## Eine Maschine zurücksetzen
+## Eine Version finden
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehen Sie zu **Admin → enforcement**, erweitern Sie die betroffene Maschine und identifizieren Sie das zuletzt bekannte funktionierende Policy-Set.
-    2. Wählen Sie **edit**, stellen Sie die entsprechenden Versionen und Effekte wieder her und wenden Sie das neue Deployment an.
-    3. Warten Sie auf den Check-in der Maschine und überprüfen Sie dann das gemeldete Deployment.
-    4. Öffnen Sie **Observe → policy** und die betroffenen Sessions, um zu bestätigen, dass gültige Arbeit nicht länger blockiert wird.
-
+    Gehe zu **Admin → Richtlinien-Editor** und öffne die **Bibliothek**, um Versionen einer Richtlinie zu vergleichen oder eine zu deaktivieren.
   </Tab>
   <Tab title="CLI">
-    Der Rollback eines Cloud-Deployments ist ein Dashboard-Workflow. Verwenden Sie den lokalen Status, um zu bestätigen, dass das korrigierte Deployment die Maschine erreicht hat:
-
     ```bash
-    failproofai config --status
+    fp policies list                 # every policy version
+    fp policies show <policy-id>     # one version, with its source
     ```
-
-    `failproofai config --pause` pausiert eingebaute, benutzerdefinierte und konventionsbasierte Policies für eine lokale Session. Cloud-verwaltete Policies werden dadurch nicht pausiert – es handelt sich also nicht um eine Umgehungslösung für ein fehlerhaftes Cloud-Deployment.
   </Tab>
 </Tabs>
 
+## Rollback einer Maschine
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehe zu **Admin → Durchsetzung**, erweitere die betroffene Maschine und identifiziere ihren zuletzt als gut bekannten Richtliniensatz.
+    2. Wähle **Bearbeiten**, stelle diese Versionen und Effekte wieder her und wende das neue Deployment an.
+    3. Warte auf den Check-in der Maschine und verifiziere dann das gemeldete Deployment.
+    4. Öffne **Beobachten → Richtlinie** und die betroffenen Sitzungen, um zu bestätigen, dass gültige Arbeit nicht länger blockiert wird.
+  </Tab>
+  <Tab title="CLI">
+    Jedes Deployment auf einer Maschine ist eine nummerierte Generation. Liste sie auf und stelle dann eine davon wieder her:
+
+    ```bash
+    fp fleet history <machine-id>
+    fp fleet rollback <machine-id> <generation>
+    ```
+
+    `rollback` erstellt eine neue Generation mit dem alten Satz, anstatt den Zähler zurückzusetzen, sodass der Verlauf nur erweiterbar bleibt. Es lehnt eine Generation ab, die eine inzwischen deaktivierte oder gelöschte Richtlinie benennt. Der Befehl benötigt eine angemeldete Sitzung mit `policies:write`. `fp fleet diff <machine-id>` zeigt den Unterschied zwischen dem Beabsichtigten und dem, was die Maschine tatsächlich angewendet hat — der Status erscheint als `behind`, bis die Maschine das nächste Mal abfragt. Auf der Maschine selbst listet `failproofai policies` das aktuell laufende Deployment auf.
+  </Tab>
+</Tabs>
+
+## Eine Richtlinie von allen Maschinen entfernen
+
+```bash
+fp policies disable <policy-id>    # remove it from every deployment carrying it
+fp policies enable <policy-id>     # add it back
+```
+
+Jeder dieser Befehle erstellt eine neue Generation für jedes betroffene Deployment. Das Zurückrollen einer dieser Generationen ist jedoch nicht der Weg, ein `disable` rückgängig zu machen — `rollback` lehnt eine Generation ab, die eine deaktivierte Richtlinie benennt, und jede Generation vor dem Deaktivieren verweist auf diese. `fp policies enable` ist der richtige Weg zurück, und er erstellt seinerseits eine eigene neue Generation.
+
+## Rollback eines Pakets
+
+Ein Paket ist an das installierte Release gebunden; ein Rollback bedeutet daher die Installation eines früheren Releases:
+
+```bash
+failproofai policies show FailproofAI/policies --releases   # every version it has published, and which one is here
+failproofai policies add FailproofAI/policies@a1b2c3d4e5f6   # pin that one
+```
+
+Ohne Terminal oder mit `--policy`, `--category` oder `--all` behält das erneute Hinzufügen die zuvor gewählte Teilmenge. Im Terminal ohne diese Optionen öffnet sich die Auswahl mit den Standardeinstellungen des Autors vorausgewählt, und die getroffene Auswahl ersetzt die vorherige — daher die bisherige Auswahl erneut bestätigen.
+
 ## Wann ein Rollback sinnvoll ist
 
-- Eine Policy blockiert eine erwartete Produktionsaktion.
-- Das Match-Volumen ist deutlich höher als beim beobachteten Rollout prognostiziert.
-- Eine Policy ist von Feldern abhängig, die eine Integration nicht bereitstellt.
-- Eine neue Version ändert das Verhalten außerhalb des beabsichtigten Failure-Modes.
+- Eine Richtlinie blockiert eine erwartete Produktionsaktion.
+- Das Übereinstimmungsvolumen ist erheblich höher als der beobachtete Rollout vorhergesagt hat.
+- Eine Richtlinie ist abhängig von Feldern, die eine Integration nicht bereitstellt.
+- Eine neue Version ändert das Verhalten außerhalb des vorgesehenen Fehlerfalls.
 
-Öffnen Sie nach dem Rollback die betroffenen Sessions und identifizieren Sie die Bedingung, die das False Positive verursacht hat. Erstellen Sie eine neue Version, testen Sie sowohl den unsicheren als auch den legitimen Fall und wiederholen Sie anschließend die Observe-Phase.
+Nach einem Rollback die betroffenen Sitzungen öffnen und die Ursache des False Positives ermitteln. Eine neue Version veröffentlichen, [testen](/de/policies/test) — sowohl den unsicheren als auch den legitimen Fall — und erneut beobachten, bevor die Durchsetzung aktiviert wird.
 
 <Warning>
-  Das Pausieren der Enforcement kann bei einem Vorfall angebracht sein, weitet jedoch die Angriffsfläche für jede aktive Policy in diesem Scope aus. Bevorzugen Sie nach Möglichkeit den Rollback der spezifischen Policy-Version.
+  `failproofai config --pause` pausiert lokale Richtlinien für eine Sitzung, jedoch niemals Cloud-verwaltete. Es ist daher kein Ausweg aus einem fehlerhaften Cloud-Deployment. Eine Pause weitet außerdem die Angriffsfläche für alle Richtlinien in ihrem Geltungsbereich aus; es ist vorzuziehen, die eine fehlerhafte Version zurückzurollen.
 </Warning>

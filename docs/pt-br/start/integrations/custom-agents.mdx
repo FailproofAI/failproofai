@@ -643,20 +643,18 @@ Cada flush escreve um arquivo de lote, `.tmp` primeiro, depois `fsync`, depois u
 O daemon só lê `.jsonl`, então nunca pode ler um arquivo parcialmente escrito. O nome do arquivo carrega um timestamp, id de processo e número de sequência, então dois processos fazendo flush no mesmo milissegundo não podem colidir. A fila tem capacidade máxima de 10.000 eventos; além disso, descarta os mais antigos e registra um log.
 
 <Warning>
-  **`collector.redact` não se aplica aos seus eventos do SDK.** Ele nunca os vê.
+  **`collector.redact` também usa `minimal` por padrão para eventos do SDK.** O SDK mascara os dados sensíveis antes de gravar um lote em disco, e o daemon repete a mesma passagem determinística antes do upload, para que lotes de SDKs mais antigos também fiquem protegidos.
 </Warning>
 
-O daemon **envia** seus lotes. Ele não os abre nem os reescreve.
+O daemon lê cada lote e aplica o mascaramento em memória antes do upload. Ele não reescreve o arquivo de spool que leu.
 
-| Eventos | Escritos por | Redacted por `collector.redact`? |
+| Eventos | Escritos por | Onde o mascaramento mínimo é aplicado |
 | --- | --- | --- |
-| Transcrições de sessão CLI | O daemon | Sim |
-| Atividade de hook | O daemon | Sim |
-| **Tudo que o SDK emite** | **Seu processo** | **Não** |
+| Transcrições de sessão CLI | O daemon | Antes de o daemon gravar o lote |
+| Atividade de hook | O daemon | Antes de o daemon gravar o lote |
+| **Tudo que o SDK emite** | **Seu processo** | **Antes de o SDK gravar o lote e de novo antes do upload pelo daemon** |
 
-A redação roda onde o daemon *escreve* seus próprios eventos — não onde os lotes são *enviados*. Então um prompt ou argumento de ferramenta contendo uma chave de API ainda a contém na chegada.
-
-Isso é intencional. Estas são suas próprias chamadas de instrumentação, e reescrevê-las em trânsito significaria que os eventos que você recebe não são os eventos que você emitiu.
+Defina `collector.redact` como `off` somente quando payloads literais forem um requisito explícito; tanto o SDK quanto o daemon respeitam essa configuração. O mascaramento mínimo detecta chaves de API comuns, bearer tokens, JWTs e atribuições de segredos. Ele não consegue identificar qualquer texto sensível arbitrário.
 
 <Tip>
   **Você controla os payloads na fonte, em dois lugares:**
@@ -669,7 +667,7 @@ Isso é intencional. Estas são suas próprias chamadas de instrumentação, e r
     `instrument()` descarta opções que um adaptador não lê, então passar o nome errado não lança nada e não altera nada.
   - Não passe o segredo para `input=` em primeiro lugar.
 
-  `collector.redact` não é substituto para nenhum dos dois.
+  `collector.redact` é defesa em profundidade, não um substituto para nenhum dos dois.
 </Tip>
 
 <Warning>
@@ -712,7 +710,7 @@ O padrão é correto em produção e errado durante debug, porque só pode prova
   </Accordion>
 
   <Accordion title="Eventos de uma thread worker lançam TypeError">
-    A thread nunca herdou o contexto. Envolva o callable em `failproofai_sdk.propagate()`. Veja [Threads e async](#threads-and-async).
+    A thread nunca herdou o contexto. Envolva o callable em `failproofai_sdk.propagate()`. Veja [Threads e async](#threads-e-async).
   </Accordion>
 
   <Accordion title="Um campo extra desapareceu ou sobrescreveu algo">

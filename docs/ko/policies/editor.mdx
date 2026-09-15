@@ -1,49 +1,96 @@
 ---
-title: "정책 편집기"
-description: "확인된 실패 모드에서 버전 관리되는 정책을 생성하고 수정합니다."
+title: "정책 작성"
+description: "Failproof AI가 감사 결과를 바탕으로 정책 초안을 작성하거나, 직접 소스를 작성한 후 검토, 테스트, 게시할 수 있습니다."
 icon: "file-pen-line"
 ---
 
-정책 편집기를 사용하여 발견된 문제나 이슈를 배포 가능한 규칙으로 변환합니다. 초안이 라이브 동작을 조용히 변경하지 않도록 작성과 배포를 분리하여 유지합니다.
+정책을 작성하는 방법은 두 가지입니다. Failproof AI가 감사 결과를 바탕으로 초안을 작성하거나, 직접 소스를 작성하는 것입니다. 직접 선택하기 전까지는 어떤 것도 게시되거나 배포되지 않습니다.
 
-이슈에 반복 가능한 액션 패턴이 있는 경우, **Analyze → issues** 에서 해당 이슈를 열고 **generate policy**를 선택합니다. Failproof AI는 먼저 정책이 해당 문제를 표현할 수 있는지 설명한 다음, 검토된 의도와 발견 컨텍스트를 편집기로 가져옵니다. 생성된 소스는 게시하기 전까지 초안 상태로 유지됩니다.
+## 감사 결과로 정책 작성
 
-## 정책 버전 게시하기
+감사는 실패를 찾아내고, 정책은 그 실패가 다시 발생하는 것을 막습니다. Failproof AI는 결과의 증거 자료를 바탕으로 정책 초안을 작성합니다.
+
+### 1. 감사 실행
+
+실패가 발생한 세션을 대상으로 [감사를 실행](/ko/audits/run)하세요. 각 결과에는 증거 세션, 근본 원인, 권장 예방 방법이 포함됩니다. **반복 가능한 액션 패턴**이 있는 결과를 기준으로 작업하세요 — 정책은 훅 이벤트에서 인식할 수 있는 것만 막을 수 있습니다.
+
+### 2. 초안 생성
 
 <Tabs>
-  <Tab title="Dashboard">
-    1. **Admin → policy editor**로 이동하여 **compose**에서 실패 모드를 설명하거나 JavaScript 정책 소스를 붙여넣습니다.
-    2. 소스를 검증하고 보고된 모든 오류를 수정합니다.
-    3. 정책 ID를 입력하고 게시한 다음, **library**를 사용하여 버전을 비교하거나 비활성화합니다.
-    4. 버전이 머신 롤아웃 준비가 되면 **enforcement**를 선택합니다.
+  <Tab title="대시보드">
+    1. **Analyze → issues**에서 해당 결과의 이슈를 열고, 인용된 세션, 근본 원인, 권장 사항을 확인하세요.
+    2. **generate policy**를 선택하세요. Failproof AI가 먼저 해당 문제를 정책으로 표현할 수 있는지 여부를 알려줍니다. **no policy** 결과는 수정 방법이 알림, 워크플로 변경, 또는 사람의 개입이 필요함을 의미하며 — 정책으로는 해결되지 않습니다.
+    3. **write this policy**를 선택하세요. 이슈 제목, 결과, 근본 원인, 권장 사항, 제안된 적용 의도가 **Admin → policy editor**에 초안으로 생성됩니다. 적합성 검사에 동의하지 않을 경우 **open the editor anyway**를 사용하세요.
 
-    ![정책 ID, AI 지원 초안 작성, 소스 검증, 게시 컨트롤이 포함된 정책 편집기 compose 뷰.](/images/dashboard/policy-editor.png)
+    ![정책 ID, AI 지원 초안 작성, 소스 유효성 검사, 게시 컨트롤이 포함된 정책 편집기 작성 화면.](/images/dashboard/policy-editor.png)
   </Tab>
   <Tab title="CLI">
-    `fp policies publish`를 사용하여 CLI에서 게시합니다. 이 명령은 **새 버전**을 생성하며 기존 버전을 직접 수정하지 않습니다. 또한 전송 전에 node로 소스의 파싱 오류를 확인합니다. 다운스트림에서는 이 검사를 수행하지 않으므로, 구문 오류가 있을 경우 시행 시점에 머신에서 오류가 발생할 수 있습니다:
+    증거를 읽은 다음 어시스턴트로 초안을 작성하세요. `compose`는 검토할 소스를 출력하며 아무것도 게시하지 않습니다:
 
     ```bash
-    fp policies test ./checkout.policy.mjs --command "git push --force" --expect deny
-    fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
+    fp issues show <issue-id>
+    fp audits finding <finding-id>
+    fp policies compose "Block git push --force on release branches"
     ```
 
-    게시는 아무것도 배포하지 않습니다. 새 버전은 `fp fleet deploy`가 머신에 적용하기 전까지 미사용 상태로 유지됩니다. `fp policies compose "<plain English>"`는 Cloud 어시스턴트를 사용하여 소스 초안을 작성하고, 게시하지 않고 검토를 위해 출력합니다.
-
-    로컬 에이전트 CLI(Cloud가 아닌)에 정책을 설치하려면 `failproofai policies --install --custom ./checkout.policies.ts --cli claude --scope project`를 사용합니다.
+    `compose`는 `policies:write` 역할이 있는 로그인 세션(`fp login`)이 필요하며, API 키는 허용되지 않습니다.
   </Tab>
 </Tabs>
 
-## 작성 체크리스트
+### 3. 초안 검토
 
-1. 실패 모드를 운영 언어로 명명합니다.
-2. 판단에 충분한 증거를 포함하는 훅 이벤트와 도구를 선택합니다.
-3. 안전하지 않은 동작과 일치하는 가장 좁은 조건을 작성합니다.
-4. 에이전트 또는 운영자에게 다음 조치를 알려주는 이유를 반환합니다.
-5. 일치해야 하는 예시와 허용된 상태로 유지되어야 하는 예시를 추가합니다.
-6. 새 버전을 저장하고 검토를 요청합니다.
+초안은 시작점이지, 최종 결론이 아닙니다. 게시하기 전에 다음 사항을 확인하세요:
 
-에이전트가 안전하게 방향을 수정할 수 있을 때는 `instruct`를 사용합니다. 액션을 허용하면 용납할 수 없거나 되돌릴 수 없는 위험이 발생할 때는 `deny`를 사용합니다.
+1. 운영 언어로 실패 모드가 명시되어 있는지 확인합니다.
+2. 판단에 충분한 증거를 담은 훅 이벤트와 도구에만 매칭되는지 확인합니다.
+3. 안전하지 않은 액션을 포착하는 가장 좁은 조건을 사용하는지 확인합니다.
+4. 에이전트에게 대신 해야 할 일을 알려주는 이유를 반환하는지 확인합니다.
+5. 에이전트가 안전하게 경로를 수정할 수 있는 경우 `instruct`를 사용하고, 액션을 허용하는 것이 허용 불가하거나 되돌릴 수 없는 경우에만 `deny`를 사용하는지 확인합니다.
 
-<Info>
-  정책 버전은 변경 불가능한 배포 입력입니다. 초안을 편집하면 새 버전이 생성되며, 이미 머신에 할당된 버전을 덮어쓰지 않아야 합니다.
-</Info>
+편집기에서 소스를 검증하고 보고된 모든 오류를 수정하세요.
+
+### 4. 테스트 후 게시
+
+게시하기 전에 소스 아래에서 **backtest**를 실행하세요: 플릿이 이미 수행한 호출에 대해 초안을 재실행하여, 중단되었을 정상 작동 호출의 수를 계산합니다. [정책 테스트](/ko/policies/test)에서 해당 내용과 기타 검사 방법을 확인할 수 있습니다.
+
+정책이 올바르게 작동하면, 정책 ID를 입력하고 **publish version**을 선택하세요. 게시하면 변경 불가능한 버전이 생성되며 배포는 이루어지지 않습니다: [배포](/ko/policies/deploy)할 때까지 사용되지 않은 상태로 남아 있습니다. 터미널에서 실행하려면:
+
+```bash
+fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
+```
+
+`publish`는 소스를 전송하기 전에 구문을 검사하므로, 구문 오류는 적용 시점에 머신에서 발생하는 대신 여기서 표면화됩니다.
+
+## 직접 작성하기
+
+정책은 `failproofai` API를 사용하는 JavaScript 또는 TypeScript입니다:
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "protect-production-paths",
+  description: "Block writes to production configuration",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (ctx.toolName !== "Write" && ctx.toolName !== "Edit") return allow();
+    const path = String(ctx.toolInput?.file_path ?? "").replaceAll("\\", "/");
+    if (path.split("/").includes("production")) {
+      return deny("Writes to production configuration require approval.");
+    }
+    return allow();
+  },
+});
+```
+
+이 정책은 `Write`와 `Edit` 모두에 대해 `production/config.yml`, `/srv/production/config.yml`, `/srv/production`, `C:\\production\\config.yml`에 매칭되지만, `production-backup`에는 매칭되지 않습니다: `production`은 전체 경로 세그먼트여야 합니다. 컨텍스트에는 이벤트 유형, 정규화된 페이로드, 세션 메타데이터, 파라미터, 가능한 경우 소스 CLI도 포함됩니다 — [policy SDK](/ko/reference/policy-sdk)를 참조하세요.
+
+버전으로 게시하려면, **Admin → policy editor**의 **compose**에 소스를 붙여넣고 위의 3단계와 4단계를 따르거나, `fp policies publish`로 터미널에서 파일을 게시하세요.
+
+Cloud 없이 머신에서 실행하려면, 이름이 `policies.js`, `policies.mjs` 또는 `policies.ts`로 끝나는 파일을 `.failproofai/policies/` 아래에 저장하세요 — 이 파일들은 프로젝트 및 사용자 범위에서 자동으로 로드됩니다 — 또는 경로로 설치하세요:
+
+```bash
+failproofai policies --install --custom ./security.policies.ts --scope project
+```
+
+모든 정책에는 기본 제공, 커스텀, 팩, Cloud 관리 정책 전체에서 고유한 이름을 지정하세요.

@@ -1,68 +1,89 @@
 ---
-title: "בחר את ההגדרות שלך"
-description: "בחר אכיפה מקומית, Failproof AI Cloud, או פריסה ישירה לארגון."
+title: "בחרו בהגדרת ההפעלה שלכם"
+description: "בחרו בהאכיפה המקומית, ב-Failproof AI Cloud, או בהפעלה ארגונית."
 icon: "waypoints"
 ---
 
 <CardGroup cols={3}>
   <Card title="אכיפה מקומית" icon="laptop">
-    התקן hooks ומדיניות על מכונה. השתמש בזה כאשר אתה זקוק ל-guardrails מידיים ללא שליחת נתוני session ל-Cloud.
+    הגדירו מכונה ללא מפתח Cloud וקחו חבילת מדיניות. השתמשו בכך כאשר אתם זקוקים לממגנים מיידיים ללא שליחת נתוני הפעלה ל-Cloud.
   </Card>
   <Card title="Failproof AI Cloud" icon="cloud">
-    הוסף sessions מרכזיות, ביקורות, הערכות מקוונות, dashboards, התראות, ופריסת מדיניות לחיל.
+    הוסיפו הפעלות מרכזיות, ביקורות, הערכות מקוונות, לוחות בקרה, התראות והפעלת מדיניות בחfleet.
   </Card>
-  <Card title="פריסה ישירה לארגון" icon="building-2">
-    השתמש בבקרות ארגוניות, מפתחות בהיקף מוגבל, תשתית פרטית, ודרישות אבטחה ספציפיות לפריסה.
+  <Card title="פריסה ארגונית" icon="building-2">
+    השתמשו בבקרות ארגוניות, מפתחות בטווח מסוים, תשתית פרטית ודרישות אבטחה ספציפיות להפעלה.
   </Card>
 </CardGroup>
 
-## נתיב הייצור המומלץ
+## אכיפה מקומית
 
-1. חבר מכונה שאינה בייצור עם capture transcript מופעל.
-2. אמת sessions והערכות ב-Cloud.
-3. צור ביקורת עבור מצב תקלה ידוע.
-4. פרוס את המדיניות הראשונה במצב observe.
-5. הרחב לייצור לאחר בדיקת התאמות ו-false positives.
+הריצו `failproofai config` ללא מפתח, ואז קחו חבילה עם `failproofai policies add FailproofAI/policies`. בטרמינל, בחרו **Not now — stay local** כאשר ההגדרה שואלת להתחבר ל-Cloud; ללא טרמינל וללא `FAILPROOFAI_CLOUD_TOKEN`, היא תישאר מקומית מעצמה. ה-daemon והחיבורים מאכיפים את המכונה, ואף נתוני הפעלה לא נשלחים ל-Cloud. כדי להתחבר מאוחר יותר, עקבו אחר השלבים למטה.
 
-## חבר מכונה ל-Cloud
+## נתיב הפקה מומלץ
+
+1. חברו מכונה שאינה בייצור עם הקטעת שדר מופעלת.
+2. אמתו הפעלות והערכות ב-Cloud.
+3. צרו ביקורת לצורך מצב כשל ידוע.
+4. הפעילו את המדיניות הראשונה ב-observe mode.
+5. הרחיבו לייצור לאחר בדיקת התאמות וחיובי שווא.
+
+## חברו מכונה ל-Cloud
 
 <Tabs>
   <Tab title="Dashboard">
-    1. עבור ל-**Administration → Keys** וצור מפתח עם `events:add` ו-`policies:pull`.
-    2. העתק את הסוד לשימוש חד-פעמי למכונת היעד.
-    3. לאחר הפעלת פקודת החיבור של ה-CLI, עבור ל-**Admin → enforcement** ואמת שהמכונה מופיעה.
-    4. עבור ל-**Observe → Events** ואמת שהאירוע הראשון שלה הגיע.
+    1. עברו ל-**Administration → Keys** וצרו מפתח עם `events:add` ו-`policies:pull`.
+    2. העתיקו את הסוד החד פעמי למכונה היעד.
+    3. לאחר הרצת פקודת ה-CLI של החיבור, עברו ל-**Admin → enforcement** ואשרו שהמכונה מופיעה.
+    4. עברו ל-**Observe → Events** ואשרו שהאירוע הראשון שלה הגיע.
 
-    מגירת המפתח מציגה שתי ההרשאות הנדרשות על ידי מכונה מחוברת: ingestion של אירועים ו-policy delivery.
+    מגירת המפתח מציגה את שתי ההרשאות הנדרשות על ידי מכונה מחוברת: ספיגת אירועים והעברת מדיניות.
 
-    ![מגירת מפתח ה-API החדשה המשמשת להענקת הרשאות ingestion של אירועים ו-policy delivery.](/images/dashboard/key-create.png)
+    ![מגירת מפתח ה-API החדשה המשמשת להעניית הרשאות ספיגת אירועים והעברת מדיניות.](/images/dashboard/key-create.png)
 
-    לאחר החיבור, המכונה צריכה להופיע ב-enforcement עם מצב המדיניות הרצוי שלה וסטטוס הפריסה.
+    לאחר החיבור, המכונה צריכה להופיע באכיפה עם מצב המדיניות הרצוי והמדווח שלה.
 
-    ![צי ה-Enforcement עם מכונה רשומה מורחבת כדי להציג את מצב המדיניות הרצוי שלה וסטטוס הפריסה.](/images/dashboard/enforcement-fleet.png)
+    ![ה-fleet בעינה עם מכונה רשומה המורחבת כדי להציג את מצב המדיניות הרצוי שלה וסטטוס ההפעלה.](/images/dashboard/enforcement-fleet.png)
 
-    האירוע הראשון שמגיע מאשר שה-daemon יכול להעביר נתונים ל-Cloud, ללא תלות בפריסת המדיניות.
+    האירוע הראשון שהגיע מאשר שה-daemon יכול להעביר נתונים ל-Cloud, בנפרדות מהפעלת המדיניות.
 
-    ![זרם האירועים החי המציג אירועים של agent, model ו-tool אחרונים.](/images/dashboard/events-stream-current.png)
+    ![זרם האירועים הקי מציג אירועי סוכן, מודל וכלים עדכניים.](/images/dashboard/events-stream-current.png)
 
-    המשך רק לאחר שהמכונה והאירוע הראשון שלה גלויים.
+    המשיכו רק לאחר שהמכונה והאירוע הראשון שלה גלויים.
   </Tab>
   <Tab title="CLI">
-    ```bash
-    failproofai config --connect https://app.befailproof.ai \
-      --token "$FAILPROOFAI_KEY" \
-      --machine-label checkout-runner-01
+    קראו את הסוד החד פעמי לתוך ה-shell. `read -s` לוקח אותו בהנחיה שאינה משדרת, כך שהוא לעולם לא מופיע בפקודה או בהיסטוריית shell:
 
-    failproofai policies --install --cli claude --scope user
+    ```bash
+    read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
+    ```
+
+    לאחר מכן הגדירו את המכונה, בחרו את המדיניויות שלה ותנו לה שם:
+
+    ```bash
+    failproofai config
+
+    failproofai policies add FailproofAI/policies
+    failproofai config --machine-label checkout-runner-01
     failproofai config --status
     ```
 
-    הוסף `--no-transcripts` כאשר תוכן transcript חייב להישאר מקומי.
+    `failproofai config` עושה את כל ההגדרה — daemon, חיבורים לכל CLI סוכן שהוא מוצא, והחיבור ל-Cloud — לאחר מכן בוחר אפס מדיניויות, שזה מה שהפקודה השנייה היא בשביל.
+
+    התווית מגיעה **לאחר** החיבור, לא במהלכו: `failproofai config --machine-label <name>` משנה את שם מכונה שכבר מחוברת, ועל אחת שאינה, היא לא עושה דבר אלא לומר זאת.
+
+    הוסיפו `--no-transcripts` כאשר תוכן הקלטות חייב להישאר מקומי.
+
+    ב-CI, הגדירו `FAILPROOFAI_CLOUD_TOKEN` מחנות הסודות במקום `read -s`, והשאירו את עקבוב ה-shell (`set -x`) כבוי, או העקבוב מדפיס את המפתח.
+
+    <Warning>
+      על מכונה שכבר **מוגדרת**, `failproofai config --connect <url>` רושמת אותה ושום דבר אחר. אל תשתמשו בצורה זו לעבור ראשון: היא חוזרת לפני שה-daemon או איזה חיבור יש במקום, ומשאירה מכונה שמופיעה ב-Cloud אך לא אוספת ולא אוכפת שום דבר.
+    </Warning>
   </Tab>
 </Tabs>
 
-חיבור ל-Cloud מאמת את ingestion של אירועים ו-policy delivery באופן עצמאי. מפתח עשוי אפוא להיות תקף אך חסר הרשאה אחת נדרשת. השתמש ב-`failproofai config --status` כדי לראות איזו יכולת מוגדרת.
+התחברות ל-Cloud מאמתת ספיגת אירועים והעברת מדיניות בנפרדות. מפתח עשוי אפוא להיות תקף אך חסר הרשאה נדרשת אחת. השתמשו ב-`failproofai config --status` כדי לראות איזו יכולת מוגדרת.
 
 <Info>
-  הגדרת Cloud כותבת credentials מקומיות רק לאחר שהיכולת הרלוונטית מצליחה. אימות שנכשל לא משאיר מכונה שנראית מחוברת כאשר היא לא כן.
+  הגדרת Cloud כותבת אישורים מקומיים רק לאחר שהיכולת הרלוונטית הצליחה. אימות כשל אינו משאיר מכונה שנראית מחוברת כשהיא לא כן.
 </Info>

@@ -1,68 +1,89 @@
 ---
 title: "अपना सेटअप चुनें"
-description: "स्थानीय प्रवर्तन, Failproof AI Cloud, या एंटरप्राइज़ तैनाती चुनें।"
+description: "स्थानीय प्रवर्तन, Failproof AI Cloud, या एंटरप्राइज़ परिनियोजन चुनें।"
 icon: "waypoints"
 ---
 
 <CardGroup cols={3}>
   <Card title="स्थानीय प्रवर्तन" icon="laptop">
-    एक मशीन पर हुक और नीतियां स्थापित करें। इसका उपयोग करें जब आपको सत्र डेटा को Cloud में भेजे बिना तुरंत सुरक्षा उपायों की आवश्यकता हो।
+    एक मशीन को बिना Cloud key के सेट करें और एक policy pack लें। इसका उपयोग तब करें जब आपको तुरंत safeguards की आवश्यकता हो और session डेटा को Cloud में भेजना न हो।
   </Card>
   <Card title="Failproof AI Cloud" icon="cloud">
-    केंद्रीकृत सत्र, ऑडिट, ऑनलाइन मूल्यांकन, डैशबोर्ड, अलर्ट और फ्लीट नीति तैनाती जोड़ें।
+    केंद्रीकृत sessions, audits, ऑनलाइन मूल्यांकन, डैशबोर्ड, alerts, और fleet policy परिनियोजन जोड़ें।
   </Card>
   <Card title="एंटरप्राइज़ तैनाती" icon="building-2">
-    संगठन नियंत्रण, स्कोप्ड कुंजियां, निजी बुनियादी ढांचा, और तैनाती-विशिष्ट सुरक्षा आवश्यकताओं का उपयोग करें।
+    संगठन नियंत्रण, scoped keys, निजी infrastructure, और परिनियोजन-विशिष्ट सुरक्षा आवश्यकताओं का उपयोग करें।
   </Card>
 </CardGroup>
 
-## अनुशंसित उत्पादन पथ
+## स्थानीय रूप से प्रवर्तन करें
 
-1. ट्रांसक्रिप्ट कैप्चर सक्षम करके एक गैर-उत्पादन मशीन को कनेक्ट करें।
-2. Cloud में सत्रों और मूल्यांकनों को सत्यापित करें।
-3. एक ज्ञात विफलता मोड के लिए एक ऑडिट बनाएं।
-4. पहली नीति को निरीक्षण मोड में तैनात करें।
-5. मिलान और गलत सकारात्मकों की समीक्षा करने के बाद उत्पादन में विस्तार करें।
+बिना key के `failproofai config` चलाएं, फिर `failproofai policies add FailproofAI/policies` के साथ एक pack लें। एक terminal में, जब setup Cloud से कनेक्ट करने के लिए कहे तो **Not now — stay local** चुनें; बिना terminal और बिना `FAILPROOFAI_CLOUD_TOKEN` के, यह अपने आप स्थानीय रहता है। daemon और hooks मशीन पर प्रवर्तन करते हैं, और कोई session डेटा Cloud को भेजा नहीं जाता। बाद में कनेक्ट करने के लिए, नीचे दिए गए चरणों का पालन करें।
 
-## Cloud के साथ एक मशीन को कनेक्ट करें
+## अनुशंसित production path
+
+1. transcript capture सक्षम के साथ एक non-production मशीन को कनेक्ट करें।
+2. Cloud में sessions और मूल्यांकन सत्यापित करें।
+3. एक ज्ञात failure mode के लिए एक audit बनाएं।
+4. पहली policy को observe mode में परिनियोजित करें।
+5. matches और false positives की समीक्षा करने के बाद production में विस्तार करें।
+
+## एक मशीन को Cloud से कनेक्ट करें
 
 <Tabs>
   <Tab title="डैशबोर्ड">
-    1. **Administration → Keys** पर जाएं और `events:add` और `policies:pull` के साथ एक कुंजी बनाएं।
-    2. एकबारी गुप्त को लक्ष्य मशीन में कॉपी करें।
+    1. **Administration → Keys** पर जाएं और `events:add` और `policies:pull` के साथ एक key बनाएं।
+    2. one-time secret को target मशीन पर कॉपी करें।
     3. CLI कनेक्शन कमांड चलाने के बाद, **Admin → enforcement** पर जाएं और पुष्टि करें कि मशीन दिखाई देती है।
-    4. **Observe → Events** पर जाएं और पुष्टि करें कि इसकी पहली घटना आती है।
+    4. **Observe → Events** पर जाएं और पुष्टि करें कि इसकी पहली event पहुंचती है।
 
-    कुंजी ड्रॉअर कनेक्ट की गई मशीन के लिए आवश्यक दो अनुमतियां दिखाता है: ईवेंट अंतर्ग्रहण और नीति वितरण।
+    key drawer एक कनेक्ट की गई मशीन के लिए आवश्यक दो grants दिखाता है: event ingestion और policy delivery।
 
-    ![नई API कुंजी ड्रॉअर जिसका उपयोग ईवेंट अंतर्ग्रहण और नीति वितरण अनुमतियां देने के लिए किया जाता है।](/images/dashboard/key-create.png)
+    ![नई API key drawer जिसका उपयोग event ingestion और policy delivery permissions देने के लिए किया जाता है।](/images/dashboard/key-create.png)
 
-    कनेक्शन के बाद, मशीन enforcement में अपनी वांछित और रिपोर्ट की गई नीति स्थिति के साथ दिखाई देनी चाहिए।
+    कनेक्शन के बाद, मशीन enforcement में दिखाई देनी चाहिए जिसमें इसकी desired और reported policy state दिखाई दे।
 
-    ![Enforcement फ्लीट एक नामांकित मशीन के साथ विस्तृत है जो इसकी वांछित नीति स्थिति और तैनाती स्थिति दिखाती है।](/images/dashboard/enforcement-fleet.png)
+    ![Enforcement fleet एक enrolled मशीन के साथ विस्तृत है जो इसकी desired policy state और deployment status दिखाती है।](/images/dashboard/enforcement-fleet.png)
 
-    पहली आने वाली घटना की पुष्टि करती है कि daemon नीति तैनाती से स्वतंत्र रूप से Cloud को डेटा वितरित कर सकता है।
+    पहली arriving event पुष्टि करती है कि daemon Cloud को डेटा deliver कर सकता है, policy deployment से स्वतंत्र रूप से।
 
-    ![लाइव ईवेंट स्ट्रीम जो हाल की एजेंट, मॉडल और टूल घटनाएं दिखाती है।](/images/dashboard/events-stream-current.png)
+    ![लाइव event stream जो हाल के agent, model, और tool events दिखाता है।](/images/dashboard/events-stream-current.png)
 
-    केवल तब जारी रखें जब मशीन और इसकी पहली घटना दोनों दृश्यमान हों।
+    केवल तभी आगे बढ़ें जब मशीन और इसकी पहली event दोनों दिखाई दें।
   </Tab>
   <Tab title="CLI">
-    ```bash
-    failproofai config --connect https://app.befailproof.ai \
-      --token "$FAILPROOFAI_KEY" \
-      --machine-label checkout-runner-01
+    one-time secret को shell में पढ़ें। `read -s` इसे एक ऐसे prompt पर लेता है जो echo नहीं करता, इसलिए यह कभी command में या shell history में नहीं दिखाई देता:
 
-    failproofai policies --install --cli claude --scope user
+    ```bash
+    read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
+    ```
+
+    फिर मशीन को सेट करें, इसकी policies चुनें, और इसे नाम दें:
+
+    ```bash
+    failproofai config
+
+    failproofai policies add FailproofAI/policies
+    failproofai config --machine-label checkout-runner-01
     failproofai config --status
     ```
 
-    जब ट्रांसक्रिप्ट सामग्री स्थानीय रहनी चाहिए तो `--no-transcripts` जोड़ें।
+    `failproofai config` पूरे सेटअप को करता है — daemon, हर agent CLI के लिए hooks जो यह पाता है, और Cloud connection — फिर कोई policies नहीं चुनता, जो दूसरी कमांड किसके लिए है।
+
+    label कनेक्ट करने के **बाद** आता है, during नहीं: `failproofai config --machine-label <name>` एक मशीन का नाम बदलता है जो पहले से कनेक्ट है, और जो नहीं है उस पर यह केवल ऐसा कहता है।
+
+    `--no-transcripts` जोड़ें जब transcript content को स्थानीय रहना चाहिए।
+
+    CI में, `read -s` के बजाय secret store से `FAILPROOFAI_CLOUD_TOKEN` सेट करें, और shell tracing (`set -x`) को बंद रखें, या trace key को प्रिंट करता है।
+
+    <Warning>
+      एक मशीन पर जो **पहले से** सेट अप है, `failproofai config --connect <url>` इसे enrol करता है और कुछ नहीं। पहली install के लिए वह form का उपयोग न करें: यह daemon या किसी hook के स्थान पर लौटता है, एक मशीन छोड़ जाता है जो Cloud में दिखाई देती है लेकिन कुछ भी collect और enforce नहीं करती है।
+    </Warning>
   </Tab>
 </Tabs>
 
-Cloud से कनेक्ट करने से ईवेंट अंतर्ग्रहण और नीति वितरण स्वतंत्र रूप से सत्यापित होते हैं। एक कुंजी इसलिए वैध हो सकती है लेकिन एक आवश्यक अनुमति गायब हो सकती है। यह देखने के लिए `failproofai config --status` का उपयोग करें कि कौन सी क्षमता कॉन्फ़िगर की गई है।
+Cloud से कनेक्ट करना event ingestion और policy delivery को independently सत्यापित करता है। एक key इसलिए valid हो सकता है लेकिन एक आवश्यक permission missing हो सकता है। कौन सी capability configured है यह देखने के लिए `failproofai config --status` का उपयोग करें।
 
 <Info>
-  Cloud सेटअप स्थानीय क्रेडेंशियल केवल प्रासंगिक क्षमता सफल होने के बाद लिखता है। एक विफल सत्यापन मशीन को कनेक्ट दिखने नहीं देता जब यह नहीं है।
+  Cloud सेटअप स्थानीय credentials केवल तभी लिखता है जब relevant capability succeed हो। एक failed verification एक मशीन को कनेक्ट दिखते हुए नहीं छोड़ता जब यह नहीं है।
 </Info>

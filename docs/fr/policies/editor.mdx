@@ -1,49 +1,96 @@
 ---
-title: "Éditeur de politiques"
-description: "Créez et révisez des politiques versionnées à partir d'un mode de défaillance confirmé."
+title: "Écrire une politique"
+description: "Laissez Failproof AI rédiger une politique à partir d'un résultat d'audit, ou écrivez la source vous-même, puis révisez, testez et publiez-la."
 icon: "file-pen-line"
 ---
 
-Utilisez l'éditeur de politiques pour transformer un constat ou un problème en règle déployable. Maintenez la rédaction séparée du déploiement afin qu'un brouillon ne puisse pas modifier silencieusement le comportement en production.
+Il existe deux façons d'écrire une politique : laisser Failproof AI la rédiger à partir d'un résultat d'audit, ou écrire la source vous-même. Rien n'est publié ni déployé tant que vous ne le décidez pas.
 
-Lorsqu'un problème présente un schéma d'action reproductible, ouvrez-le sous **Analyze → issues** et sélectionnez **generate policy**. Failproof AI explique d'abord si une politique peut exprimer le problème, puis intègre l'intention validée et le contexte du constat dans l'éditeur. La source générée reste un brouillon jusqu'à sa publication.
+## Écrire une politique à partir d'un audit
 
-## Publier une version de politique
+Un audit détecte une défaillance ; une politique empêche qu'elle se reproduise. Failproof AI rédige la politique à partir des preuves propres au résultat.
+
+### 1. Lancer un audit
+
+[Lancez un audit](/fr/audits/run) sur les sessions où la défaillance se produit. Chaque résultat contient ses sessions de preuves, une cause racine et un chemin de prévention suggéré. Partez d'un résultat avec un **schéma d'action répétable** — une politique ne peut bloquer que ce qu'elle peut reconnaître dans un événement de hook.
+
+### 2. Générer le brouillon
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Accédez à **Admin → policy editor** et, dans **compose**, décrivez le mode de défaillance ou collez la source JavaScript de la politique.
-    2. Validez la source et corrigez chaque erreur signalée.
-    3. Saisissez l'identité de la politique et publiez-la, puis utilisez **library** pour comparer ou désactiver des versions.
-    4. Sélectionnez **enforcement** lorsque la version est prête pour un déploiement sur les machines.
+    1. Ouvrez le problème du résultat sous **Analyze → issues** et vérifiez ses sessions citées, sa cause racine et sa recommandation.
+    2. Sélectionnez **generate policy**. Failproof AI indique d'abord si une politique peut exprimer le problème. Un résultat **no policy** signifie que la correction passe par une alerte, un changement de flux de travail ou une intervention humaine — pas une politique.
+    3. Sélectionnez **write this policy**. Le titre du problème, le résultat, la cause racine, la recommandation et l'intention d'application proposée deviennent un brouillon dans **Admin → policy editor**. Utilisez **open the editor anyway** si vous n'êtes pas d'accord avec la vérification de candidature.
 
-    ![La vue compose de l'éditeur de politiques avec l'identité de la politique, la rédaction assistée par IA, la validation de la source et les contrôles de publication.](/images/dashboard/policy-editor.png)
+    ![La vue de composition de l'éditeur de politique avec l'identité de la politique, la rédaction assistée par IA, la validation de la source et les contrôles de publication.](/images/dashboard/policy-editor.png)
   </Tab>
   <Tab title="CLI">
-    Publiez depuis le CLI avec `fp policies publish`. Cette commande crée une **nouvelle version** et ne modifie jamais une version existante en place ; elle vérifie également la syntaxe de la source avec node avant l'envoi — aucune étape ultérieure ne le fait, donc une erreur de syntaxe se manifesterait autrement sur la machine au moment de l'application :
+    Lisez les preuves, puis rédigez avec l'assistant. `compose` affiche la source pour que vous la révisiez et ne publie rien :
 
     ```bash
-    fp policies test ./checkout.policy.mjs --command "git push --force" --expect deny
-    fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
+    fp issues show <issue-id>
+    fp audits finding <finding-id>
+    fp policies compose "Block git push --force on release branches"
     ```
 
-    La publication ne déploie rien — une nouvelle version reste inutilisée jusqu'à ce que `fp fleet deploy` la place sur une machine. `fp policies compose "<plain English>"` rédige une source avec l'assistant Cloud et l'affiche pour révision sans la publier.
-
-    Pour installer une politique dans un CLI d'agent local (et non dans Cloud), utilisez `failproofai policies --install --custom ./checkout.policies.ts --cli claude --scope project`.
+    `compose` nécessite une session connectée (`fp login`) dont le rôle dispose de `policies:write` ; il refuse les clés API.
   </Tab>
 </Tabs>
 
-## Liste de contrôle pour la rédaction
+### 3. Réviser le brouillon
 
-1. Nommez le mode de défaillance dans un langage opérationnel.
-2. Sélectionnez les événements de hook et les outils qui contiennent suffisamment d'informations pour décider.
-3. Rédigez la condition la plus restrictive qui correspond au comportement non sécurisé.
-4. Retournez une raison indiquant à l'agent ou à l'opérateur quoi faire ensuite.
-5. Ajoutez des exemples qui doivent correspondre et des exemples qui doivent rester autorisés.
-6. Enregistrez une nouvelle version et demandez une révision.
+Un brouillon est un point de départ, pas un verdict. Avant de publier, vérifiez qu'il :
 
-Utilisez `instruct` lorsque l'agent peut corriger sa trajectoire en toute sécurité. Utilisez `deny` lorsqu'autoriser l'action créerait un risque inacceptable ou irréversible.
+1. Nomme le mode de défaillance dans un langage opérationnel.
+2. Ne correspond qu'aux événements de hook et aux outils qui contiennent suffisamment de preuves pour décider.
+3. Utilise la condition la plus étroite possible pour intercepter l'action non sécurisée.
+4. Retourne une raison indiquant à l'agent ce qu'il doit faire à la place.
+5. Utilise `instruct` lorsque l'agent peut corriger sa trajectoire en toute sécurité, et `deny` uniquement lorsque autoriser l'action est inacceptable ou irréversible.
 
-<Info>
-  Les versions de politique sont des entrées de déploiement immuables. La modification d'un brouillon crée une nouvelle version ; elle ne doit pas réécrire la version déjà assignée aux machines.
-</Info>
+Validez la source dans l'éditeur et corrigez chaque erreur signalée.
+
+### 4. Tester, puis publier
+
+Exécutez **backtest** sous la source avant de publier : cela rejoue le brouillon contre les appels déjà effectués par votre flotte et compte les appels en cours de fonctionnement qui auraient été interrompus. [Tester une politique](/fr/policies/test) couvre cela ainsi que les autres vérifications.
+
+Une fois qu'elle se comporte correctement, saisissez l'identité de la politique et sélectionnez **publish version**. La publication crée une version immuable et ne déploie rien : elle reste inutilisée jusqu'à ce que vous la [déployiez](/fr/policies/deploy). Depuis un terminal :
+
+```bash
+fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
+```
+
+`publish` vérifie la syntaxe de la source avant de l'envoyer, de sorte qu'une erreur de syntaxe apparaît ici plutôt que sur une machine au moment de l'application.
+
+## L'écrire vous-même
+
+Une politique est du JavaScript ou du TypeScript utilisant l'API `failproofai` :
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "protect-production-paths",
+  description: "Block writes to production configuration",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (ctx.toolName !== "Write" && ctx.toolName !== "Edit") return allow();
+    const path = String(ctx.toolInput?.file_path ?? "").replaceAll("\\", "/");
+    if (path.split("/").includes("production")) {
+      return deny("Writes to production configuration require approval.");
+    }
+    return allow();
+  },
+});
+```
+
+Cela correspond à `production/config.yml`, `/srv/production/config.yml`, `/srv/production` et `C:\\production\\config.yml` pour `Write` et `Edit`, mais pas à `production-backup` : `production` doit être un segment de chemin complet. Le contexte contient également le type d'événement, la charge utile normalisée, les métadonnées de session, les paramètres et la CLI source lorsqu'elle est disponible — consultez le [SDK de politique](/fr/reference/policy-sdk).
+
+Pour la publier en tant que version, collez la source dans **compose** sous **Admin → policy editor** et suivez les étapes 3 et 4 ci-dessus, ou publiez le fichier depuis un terminal avec `fp policies publish`.
+
+Pour l'exécuter sur une machine sans Cloud, enregistrez-la sous `.failproofai/policies/` avec un nom se terminant par `policies.js`, `policies.mjs` ou `policies.ts` — ces fichiers se chargent automatiquement aux portées projet et utilisateur — ou installez-la par chemin :
+
+```bash
+failproofai policies --install --custom ./security.policies.ts --scope project
+```
+
+Donnez à chaque politique un nom unique parmi les politiques conventionnelles, personnalisées, en pack et gérées par Cloud.

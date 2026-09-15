@@ -1,14 +1,22 @@
 ---
-title: "Ein Pack veröffentlichen"
+title: "Ein Policy-Pack veröffentlichen"
 description: "Eigene Policies als GitHub-Release bereitstellen, das jeder installieren kann."
 icon: "upload"
 ---
 
-Ein Pack besteht aus drei Dateien, die an ein GitHub-Release angehängt werden. `failproofai pack build` erzeugt alle drei aus einer bereits vorhandenen Policy-Datei.
+Ein Pack besteht aus drei Dateien, die einem GitHub-Release angehängt werden. `failproofai publish` schreibt alle drei aus den vorliegenden Policy-Dateien, erstellt das Release und lädt sie hoch.
 
 ## 1. Die Policies schreiben
 
-Eine Datei, mit derselben API wie jede andere Custom Policy. Zwei zusätzliche Felder sind für ein Pack relevant:
+Fang mit etwas Funktionierendem an, nicht mit einer Vorlage voller Lücken:
+
+```bash
+failproofai publish --init
+```
+
+Dieser Befehl fragt nach dem Namen des Packs, schreibt `<name>.mjs` und hört auf — kein Netzwerk, kein Git, nichts wird veröffentlicht. Die erzeugte Datei enthält eine Policy, die `git push --force` bereits blockiert. Eine vorhandene Datei wird nicht überschrieben.
+
+Policies verwenden dieselbe API wie jede benutzerdefinierte Policy. Zwei zusätzliche Felder sind für ein Pack relevant:
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -17,7 +25,7 @@ customPolicies.add({
   name: "block-refunds",
   description: "Refunds above the approved limit need a human",
   category: "Billing",        // groups it, and is what --category selects on
-  defaultEnabled: true,       // switched on by a plain `pack add`
+  defaultEnabled: true,       // switched on by a plain `policies add`
   match: { events: ["PreToolUse"], tools: ["Bash"] },
   fn: async (ctx) =>
     String(ctx.toolInput?.command ?? "").includes("refund")
@@ -26,66 +34,95 @@ customPolicies.add({
 });
 ```
 
-`defaultEnabled` ist standardmäßig **false**, wenn es weggelassen wird. Ein einfaches `failproofai pack add` aktiviert nur die Policies, die du als solche markiert hast — alle Policies eines unbekannten Packs unbeaufsichtigt zu installieren ist eine Entscheidung, die der Installer nicht für seinen Nutzer treffen sollte.
+`defaultEnabled` ist standardmäßig **false**, wenn es weggelassen wird. Ein einfaches `failproofai policies add` aktiviert nur die Policies, die du entsprechend markiert hast — alle Policies eines Fremden unbeaufsichtigt zu installieren ist keine Entscheidung, die der Installer für den Benutzer treffen sollte.
+
+Schreib so viele Dateien wie nötig; eine pro Kategorie ist gut lesbar. Jede Datei im Verzeichnis, die Policies registriert, wird in das einzelne Artefakt gebündelt, das ein Pack sein muss.
 
 <Warning>
-Der Eintrag muss eine **in sich geschlossene Datei** sein. Nur der Eintrag wird per Digest gesichert, daher könnte ein Pack, das lokale Dateien importiert, nicht ernsthaft behaupten, der Digest decke das ab, was tatsächlich ausgeführt wird. Bündele die Dateien zuerst (`esbuild`, `bun build`, `rollup`) und baue das Pack aus dem Bundle — `pack build` lehnt einen lokalen Import ab, anstatt ein Versprechen zu liefern, das es nicht einhalten kann.
+  Für das Bündeln wird **bun** benötigt. Ohne bun bleib bei einer einzigen, in sich geschlossenen Datei. In jedem Fall darf der veröffentlichte Einstiegspunkt zur Installationszeit keine lokalen Dateien importieren: Nur der Einstiegspunkt wird per Digest gesichert. Ein Pack, der auf Geschwisterdateien zugreift, könnte nicht ehrlich behaupten, der Digest decke das ab, was ausgeführt wird — und `publish` lehnt ein solches Pack ab, anstatt ein Versprechen zu liefern, das es nicht halten kann.
 </Warning>
 
-## 2. Die Release-Assets bauen
+## 2. Erst hier testen
+
+Bevor es jemand anderes sehen kann, die Datei auf diesem Rechner erzwingen:
 
 ```bash
-failproofai pack build ./policies.mjs \
-  --id acme/support-agent \
-  --version 1.0.0 \
-  --out ./dist-pack
+failproofai policies -i -c ./<name>.mjs
 ```
 
-Der Befehl schreibt drei Dateien und validiert jede Policy zunächst mit den **eigenen Regeln des Loaders** — damit schlägt ein Pack, das sich nie installieren ließe, hier fehl, wo du es noch beheben kannst:
+Beliebiger Pfad, beliebiger Dateiname. Lass deinen Agenten das tun, was du blockiert hast, und beobachte, wie es abgelehnt wird. Es wird nichts veröffentlicht und niemand sonst ist betroffen. [Eine Policy testen](/de/policies/test) behandelt den Rest: den legitimen Fall, den sie erlauben muss, und die Eingaben, die sie brechen.
 
-| Datei | Beschreibung |
+## 3. Veröffentlichen
+
+```bash
+failproofai publish
+```
+
+Der Befehl ermittelt selbst, wo veröffentlicht werden soll, was gebündelt wird und welche Versionsnummer vergeben wird — und fragt nur nach, wenn das Repository keine Informationen liefert. Der Ablauf, der abbricht, bevor ein Release erstellt wird, wenn etwas nicht stimmt:
+
+1. Findet die Policy-Dateien hier nach **Inhalt** — solche, die `failproofai` importieren und `customPolicies.add` aufrufen — anstatt nach Dateiname. So findet es `guards.mjs` und ignoriert ein unverwandtes `policies.mjs`. Es steigt nicht in Unterverzeichnisse hinab, sodass ein Test-Fixture nie versehentlich erfasst wird.
+2. Liest das Repo aus `git remote get-url origin` — im Verzeichnis der **Datei**, nicht in deinem — und bestimmt die Version.
+3. Findet deine Zugangsdaten: `GITHUB_TOKEN`, `GH_TOKEN` oder `gh auth login`. Release-Schreibzugriff wird benötigt und nichts weiter; die Zugangsdaten werden nie ausgegeben.
+4. Erstellt das Repository, falls es nicht existiert. Das geschieht vor dem Build, sodass ein im nächsten Schritt abgelehntes Pack ein neues Repository ohne Release hinterlassen kann.
+5. Baut die drei Assets und validiert sie mit den **eigenen Regeln des Loaders** — demselben Code, der entscheidet, was auf einer fremden Maschine installiert werden darf — sodass ein Pack, das sich nie installieren ließe, hier scheitert, wo du es noch beheben kannst.
+6. Erstellt oder verwendet das Release erneut und lädt hoch, wobei Assets gleichen Namens ersetzt werden.
+
+| Datei | Inhalt |
 | --- | --- |
 | `failproofai-pack.json` | Das Manifest: ID, Version, Effekt und ein Eintrag pro Policy |
-| `failproofai-pack.mjs` | Dein Eintrag, unverändert |
-| `SHA256SUMS` | `<sha256>  <dateiname>` für die anderen beiden Dateien |
+| `failproofai-pack.mjs` | Dein gebündelter Einstiegspunkt |
+| `SHA256SUMS` | `<sha256>  <filename>` für die anderen beiden |
 
-Beim Build abgelehnt werden: eine ID, die nicht dem Format `publisher/name` entspricht, ein Policy-Name mit `/`, eine Policy, die `alwaysOn` deklariert, eine fehlende `description`, `category` oder `match`, ein Eintrag, der nichts registriert, und ein Eintrag, der lokale Dateien importiert.
+Die Asset-Namen sind fest vorgegeben — sie sind das, woraus die CLI eines Verbrauchers seine URLs konstruiert, ohne API-Aufruf und ohne Discovery.
 
-## 3. An ein Release anhängen
+Beim Build abgelehnt wird: eine ID, die nicht `publisher/name` entspricht, ein Policy-Name mit `/`, eine Policy, die `alwaysOn` deklariert, eine fehlende `description`, `category` oder `match`, ein Einstiegspunkt, der nichts registriert, und ein Einstiegspunkt, der lokale Dateien importiert.
 
-Tagge das Release mit derselben Version, die du beim Build angegeben hast, und füge alle drei Dateien als Release-Assets hinzu:
-
-```bash
-gh release create 1.0.0 \
-  ./dist-pack/failproofai-pack.json \
-  ./dist-pack/failproofai-pack.mjs \
-  ./dist-pack/SHA256SUMS
-```
-
-Jetzt kann jeder das Pack installieren:
+Alles Entschiedene lässt sich überschreiben:
 
 ```bash
-failproofai pack add acme/support-agent
+failproofai publish \
+  --repo acme/support-agent \
+  --version 1.0.0 \
+  --effect observe \
+  --dry-run
 ```
 
-Die Asset-Namen sind fest vorgegeben — aus ihnen baut die CLI des Consumers die URLs, ohne API-Aufruf und ohne Erkennung.
+`--id` setzt die Pack-ID, wenn sie vom Repo abweichen soll; `--tag` setzt den Tag des Releases; `--notes` ersetzt die generierten Release-Notes — aus denen `policies show --releases` die Anzahl und den Commit jedes Releases liest; `--out` legt fest, wohin die Assets geschrieben werden (Standard: `dist-pack`); und `--dry-run` baut sie, ohne zu veröffentlichen, und benötigt keine Zugangsdaten.
 
-## Eine neue Version veröffentlichen
+Jetzt kann jeder es mit `failproofai policies add acme/support-agent` installieren. Siehe [Policy-Packs](/de/policies/packs) zum Pinnen einer Version und zum Übernehmen nur eines Teils davon.
 
-Baue mit der neuen `--version`, tagge ein neues Release und hänge die drei Assets erneut an. Consumers führen dasselbe `pack add` aus und behalten die Auswahl, die sie getroffen hatten; eine deaktivierte Policy bleibt auch nach dem Upgrade deaktiviert.
+### Im Policy-Hub listen
 
-Den **Namen** einer Policy zu ändern ist ein Breaking Change: Eine Maschine, die ihn deaktiviert hatte, deaktiviert nun einen Namen, der nicht mehr existiert — und der neue Name wird mit dem Wert aus `defaultEnabled` aktiviert.
+Füge dem Repository auf GitHub das Topic `failproofai-policies` hinzu. Es gibt kein Einreichungsformular und keine Genehmigungswarteschlange: Der Crawler des [Policy-Hubs](https://befailproof.ai/policy-hub/) nimmt das Repository beim nächsten Durchlauf auf. Das Topic stellt es nur zur Aufnahme bereit — was es listet, ist ein Release, dessen Manifest gegen seine eigene `SHA256SUMS` verifiziert und nach denselben Regeln geparst wird, die die CLI verwendet — genau das, was `failproofai publish` erzeugt.
+
+## Wie die Version bestimmt wird
+
+Die Version ist der **Commit, von dem aus veröffentlicht wird** — sein kurzes SHA, zwölf Zeichen: `a1b2c3d4e5f6`. Es gibt nichts auszuwählen und nichts zu inkrementieren, und die Version benennt genau, woher die Bytes stammen — dasselbe Quell-Commit zweimal zu veröffentlichen ergibt dieselbe Version.
+
+Sie wird aus dem aktuellen Verzeichnisbaum gelesen, nie aus den Releases des Repositories, sodass ein frischer Clone und eine Air-Gapped-Maschine dieselbe Antwort berechnen, ohne GitHub nach dem Vorherigen zu fragen.
+
+Da die Version einen Commit benennt, muss dieser Commit existieren. An einem Terminal erstellt `publish` ihn für dich: Es initialisiert ein Repository, wenn keines vorhanden ist, und committet geänderte Policy-Dateien, bevor es baut. Es **verweigert** die Aktion stattdessen — mit `--version` als Ausweg — wenn es ohne Terminal läuft (ein auf einem CI-Runner erstellter Commit würde sonst nirgendwo anders existieren), wenn andere Dateien als die Policies uncommitted sind oder in einem Checkout ohne Commits. Ein Tag auf `HEAD` hat Vorrang vor dem SHA — wer `v1.2.0` getaggt hat, hat gesagt, was dieses Release ist.
+
+Ein SHA trägt keine eigene Reihenfolge, also verwende `failproofai policies show <owner>/<repo> --releases`, um zu sehen, welches Release zuerst kam — neuestes oben.
+
+## Eine neue Version liefern
+
+Die Änderung committen und `failproofai publish` erneut ausführen — der neue Commit ist die neue Version. Verbraucher führen dasselbe `failproofai policies add` aus. Ohne Terminal oder mit einem Auswahlparameter behalten sie die Teilmenge, die sie gewählt hatten, und eine deaktivierte Policy bleibt deaktiviert; an einem Terminal ohne Parameter öffnet sich der Picker mit deinen Standardwerten vorausgewählt, und ihre Antwort ersetzt ihre bisherige Auswahl.
+
+Das **Umbenennen** einer Policy ist eine Breaking Change: Eine Maschine, die sie deaktiviert hatte, deaktiviert nun einen Namen, der nicht mehr existiert, und der neue Name wird mit dem Wert von `defaultEnabled` übernommen.
 
 ## Was deine Nutzer vertrauen
 
-`SHA256SUMS` liegt im selben Release wie das Artefakt und beweist damit, dass die Bytes genau die sind, die du veröffentlicht hast — nicht wer du bist. Wer Schreibzugriff auf das Repository hat, kann beide Dateien schreiben. Der Schutz für deine Nutzer besteht darin, dass der Digest beim Installieren fest eingespeichert wird — was du geliefert hast, kann sich danach nicht mehr unter ihnen ändern.
+`SHA256SUMS` liegt im selben Release wie das Artefakt und beweist damit, dass die Bytes die sind, die du veröffentlicht hast — nicht wer du bist. Wer Schreibzugriff auf das Repository hat, kann beide Dateien schreiben. Der Schutz deiner Nutzer liegt darin, dass der Digest beim Installieren gepinnt wird — was du geliefert hast, kann sich danach nicht unter ihnen ändern.
 
-Veröffentliche aus einem Repository, dessen Schreibzugriff du kontrollierst, und behandle ein Pack-Release wie die Veröffentlichung eines Pakets.
+Veröffentliche aus einem Repository, dessen Schreibzugriff du kontrollierst, und behandle ein Pack-Release wie das Veröffentlichen eines Pakets.
+
+Das Repository muss außerdem **öffentlich** sein. Installationen sind anonymes HTTPS ohne Zugangsdaten, daher wird ein bestehendes privates Repo abgelehnt, bevor etwas gebaut oder hochgeladen wird — und ein von `publish` erstelltes Repository ist aus demselben Grund öffentlich. `--allow-private` überschreibt das für jemanden, der die drei Assets auf anderem Weg weitergibt, und macht deutlich, dass kein `policies add` sie erreichen kann. Nur das Release ist relevant: Installationen lesen `releases/download/<tag>/<asset>` und berühren deinen Git-Tree nie.
 
 ## Beobachten, bevor du durchsetzt
 
-Ein Manifest kann `"effect": "observe"` deklarieren. Diese Policies laufen, und ihre Urteile werden **aufgezeichnet und verworfen** — es wird nichts blockiert. Das ist der Weg, eine neue Regel gegen echten Traffic zu messen, bevor sie die Arbeit von jemandem unterbrechen kann.
+Ein Manifest kann `"effect": "observe"` deklarieren — gesetzt wird das mit `failproofai publish --effect observe`. Diese Policies laufen und ihre Urteile werden **aufgezeichnet und verworfen** — nichts wird blockiert. So lässt sich eine neue Regel gegen echten Traffic messen, bevor sie die Arbeit irgendjemanden unterbrechen kann.
 
 ```json
-{ "id": "acme/support-agent", "version": "1.1.0", "effect": "observe", "policies": [ ... ] }
+{ "id": "acme/support-agent", "version": "a1b2c3d4e5f6", "effect": "observe", "policies": [ ... ] }
 ```

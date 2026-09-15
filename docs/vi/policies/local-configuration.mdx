@@ -4,30 +4,25 @@ description: "Kiểm soát phạm vi chính sách, tham số, tệp tùy chỉnh
 icon: "file-cog"
 ---
 
-Failproof AI tách rời lựa chọn chính sách từ cài đặt máy và daemon. Điều này giữ cho lựa chọn chính sách kho lưu trữ có thể được xem xét trong khi thông tin xác thực và trạng thái daemon ở bên ngoài kho lưu trữ.
+Failproof AI tách biệt những gì một kho lưu trữ có thể commit — hook wiring, tham số chính sách, chính sách tùy chỉnh — khỏi trạng thái máy như thông tin xác thực, các pack đã cài đặt và daemon.
 
-## Chọn phạm vi chính sách
+## Chọn một phạm vi
 
-<Tabs>
-  <Tab title="Dashboard">
-    Chạy `failproofai` mà không có đối số để mở bảng điều khiển chính sách cục bộ. Chọn phạm vi người dùng, dự án hoặc cục bộ trước khi bật một chính sách để thay đổi được ghi vào tệp cấu hình dự định.
+Phạm vi quyết định vị trí hook được wiring và tệp cấu hình nào bạn ghi tham số và đường dẫn chính sách tùy chỉnh vào:
 
-    - **User** áp dụng trên các dự án trên máy này.
-    - **Project** thuộc về kho lưu trữ và có thể được commit.
-    - **Local** ghi đè một dự án cho một người dùng và nên giữ trong gitignore.
+- **User** áp dụng trên các dự án trên máy này.
+- **Project** thuộc về kho lưu trữ và có thể được commit.
+- **Local** ghi đè một dự án cho một người dùng và nên được gitignored.
 
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai policy add block-rm-rf --scope user
-    failproofai policy add block-force-push --scope project
-    failproofai policy add warn-large-file-write --scope local
-    failproofai policies
-    ```
+```bash
+failproofai policies --install --cli claude --scope project   # wire hooks for this repository
+failproofai policies --install --cli claude --scope user      # or for every project on this machine
+failproofai policies
+```
 
-    Không phải mọi harness đều hỗ trợ phạm vi cục bộ. CLI từ chối một phạm vi mà harness đã chọn không thể biểu diễn.
-  </Tab>
-</Tabs>
+Không phải mọi harness đều hỗ trợ phạm vi cục bộ; CLI từ chối một phạm vi mà harness được chọn không thể đại diện.
+
+Chính sách pack nào được bật **không** được phạm vi hóa. Công tắc được ghi lại với pack đã cài đặt, vì vậy `failproofai policies add <name>` bật một chính sách cho toàn bộ máy, bất kể `--scope` nói gì.
 
 | Phạm vi | Tệp cấu hình chính sách |
 | --- | --- |
@@ -35,21 +30,20 @@ Failproof AI tách rời lựa chọn chính sách từ cài đặt máy và dae
 | Local | `<project>/.failproofai/policies-config.local.json` |
 | User | `~/.failproofai/policies-config.json` |
 
-Các chính sách được bật được hợp nhất dưới dạng một union. Tham số chính sách sử dụng phạm vi đầu tiên xác định tham số cho chính sách đó, theo thứ tự project → local → user. Đường dẫn chính sách tùy chỉnh rõ ràng sử dụng phạm vi đầu tiên xác định chúng.
+Tham số chính sách sử dụng phạm vi đầu tiên xác định tham số cho chính sách đó, theo thứ tự project → local → user. Đường dẫn chính sách tùy chỉnh rõ ràng sử dụng phạm vi đầu tiên xác định chúng.
 
 ## Cấu hình tham số chính sách
 
 <Tabs>
   <Tab title="Dashboard">
-    Mở chính sách trong bảng điều khiển cục bộ, chỉnh sửa các tham số được hỗ trợ của nó và lưu trong phạm vi đã chọn. Chạy một hành động agent phù hợp và không phù hợp, sau đó kiểm tra quyết định trong **Observe → policy**.
+    Mở chính sách trong bảng điều khiển cục bộ, chỉnh sửa các tham số được hỗ trợ của nó và lưu trong phạm vi được chọn. Chạy một hành động tác nhân phù hợp và không phù hợp, sau đó kiểm tra quyết định trong **Observe → policy**.
 
   </Tab>
   <Tab title="CLI">
-    Chỉnh sửa `policies-config.json` của phạm vi đã chọn, sau đó chạy `failproofai policies` để làm nổi bật tên chính sách hoặc khóa tham số không xác định.
+    Chỉnh sửa `policies-config.json` của phạm vi được chọn, sau đó chạy `failproofai policies`: nó cảnh báo về mục nhập `policyParams` đặt tên cho một chính sách mà không có pack được cài đặt nào mang theo. Nó không kiểm tra các khóa bên trong mục nhập, vì vậy hãy kiểm tra cách viết của chúng so với bảng bên dưới.
 
     ```json
     {
-      "enabledPolicies": ["block-rm-rf", "block-force-push"],
       "policyParams": {
         "block-rm-rf": {
           "allowPaths": ["/tmp/build-output"]
@@ -64,6 +58,30 @@ Các chính sách được bật được hợp nhất dưới dạng một unio
   </Tab>
 </Tabs>
 
+### Tham số mà các chính sách Failproof AI chấp nhận
+
+Mỗi chính sách xác thực loại tham số của riêng nó.
+
+| Chính sách | Tham số | Loại và mặc định |
+| --- | --- | --- |
+| `sanitize-api-keys` | `additionalPatterns` | `pattern[]`, `[]`; các mục nhập chứa `regex` và `label` |
+| `block-read-outside-cwd` | `allowPaths` | `string[]`, `[]` |
+| `block-sudo` | `allowPatterns` | `string[]`, `[]` |
+| `block-rm-rf` | `allowPaths` | `string[]`, `[]` |
+| Công cụ chặn cơ sở hạ tầng | `allowPatterns` | `string[]`, `[]` |
+| `block-secrets-write` | `additionalPatterns` | `string[]`, `[]` |
+| `block-push-master` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `block-work-on-main` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `prefer-package-manager` | `allowed`, `blocked` | `string[]`, `[]` |
+| `warn-large-file-write` | `thresholdKb` | `number`, `1024` |
+| `require-push-before-stop` | `remote`, `baseBranch` | `string`, `"origin"`; `string`, `"main"` |
+| `require-pr-before-stop` | `baseBranch` | `string`, `"main"` |
+| `require-no-conflicts-before-stop` | `baseBranch` | `string`, `"main"` |
+
+<Warning>
+  Một mẫu cho phép mở rộng những gì một tác nhân có thể làm. Kiểm tra mã hóa token chính xác và các biến thể lệnh trên harness đích trước khi triển khai trên toàn bộ bộ máy.
+</Warning>
+
 ## Hiểu các tệp máy
 
 `~/.failproofai` chứa các tệp riêng biệt cho các ranh giới tin tưởng riêng biệt:
@@ -72,13 +90,13 @@ Các chính sách được bật được hợp nhất dưới dạng một unio
 | --- | --- |
 | `config.json` | Cài đặt daemon, kiểm toán và telemetry không bí mật |
 | `credentials.json` | Thông tin xác thực đám mây; được lưu trữ với quyền chỉ dành cho chủ sở hữu |
-| `policies-config.json` | Lựa chọn builtin phạm vi người dùng, tham số và đường dẫn tùy chỉnh rõ ràng |
-| `policies/` | Chính sách quy ước người dùng và hiện vật chính sách được quản lý bởi Cloud |
+| `policies-config.json` | Tham số phạm vi người dùng và đường dẫn chính sách tùy chỉnh rõ ràng |
+| `policies/` | Chính sách quy ước người dùng, các pack đã cài đặt và chính sách của chúng được bật, cũng như các tạo phẩm chính sách được quản lý bởi Cloud |
 | `hook-activity/` | Nhật ký quyết định chính sách cục bộ |
-| `state/` | Daemon spool, health, pause và trạng thái runtime |
+| `state/` | Daemon spool, tình trạng sức khỏe, tạm dừng và trạng thái thời gian chạy |
 
-Sử dụng `FAILPROOFAI_HOME` để di chuyển bố cục máy hoàn chỉnh cho một container hoặc bài kiểm tra bị cô lập. Không di chuyển các thư mục trạng thái riêng lẻ độc lập.
+Sử dụng `FAILPROOFAI_HOME` để định vị lại bố cục máy hoàn chỉnh cho container hoặc bài kiểm tra cô lập. Không định vị lại các thư mục trạng thái riêng lẻ độc lập với nhau.
 
 <Warning>
-  Không bao giờ commit `credentials.json`. Commit cấu hình chính sách dự án và chính sách quy ước dự án chỉ sau khi xem xét chúng như mã thực thi.
+  Không bao giờ commit `credentials.json`. Chỉ commit cấu hình chính sách dự án và chính sách quy ước dự án sau khi xem xét chúng như mã thực thi.
 </Warning>

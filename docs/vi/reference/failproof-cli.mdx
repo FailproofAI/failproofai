@@ -4,83 +4,101 @@ description: "Cài đặt hooks, quản lý chính sách cục bộ, kết nối
 icon: "terminal"
 ---
 
-Cài đặt CLI cục bộ với `npm install -g failproofai`. Chạy mà không có tham số để mở bảng điều khiển chính sách cục bộ.
+Cài đặt CLI cục bộ với `npm install -g failproofai`. Chạy nó mà không có đối số để mở bảng điều khiển chính sách cục bộ.
 
-Gói này yêu cầu Node.js 20.9 trở lên. Bun 1.3 trở lên được hỗ trợ cho phát triển và cài đặt từ nguồn. `failproofai configure` và `failproofai setup` là bí danh cho `failproofai config`; `failproofai p` là bí danh cho `failproofai policies`.
+Gói yêu cầu Node.js 20.9 hoặc mới hơn. Bun 1.3 hoặc mới hơn được hỗ trợ để phát triển và cài đặt từ mã nguồn. `failproofai configure` và `failproofai setup` là bí danh cho `failproofai config`. `failproofai policy`, `failproofai pack` và `failproofai p` đều là cách viết của `failproofai policies` — các gói và chính sách riêng lẻ trước đây là ba lệnh cho một ý tưởng và bây giờ là một. Các cách viết cũ vẫn hoạt động, ngoại trừ hai trường hợp: `pack list <source>` hiện là `policies show <source>`, và `pack build` hiện là `publish`.
 
-## Thiết lập một máy
+## Thiết lập máy
+
+Cài đặt CLI, sau đó đọc khóa máy vào shell. `read -s` nhận nó tại lệnh nhắc không hiển thị, do đó nó không bao giờ xuất hiện trong một lệnh:
 
 ```bash
 npm install -g failproofai
-failproofai config \
-  --connect https://app.befailproof.ai \
-  --token <machine-key> \
-  --machine-label checkout-prod-01
-failproofai policies --install
+read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
+```
+
+Sau đó thiết lập máy và chọn những gì nó sẽ thực thi:
+
+```bash
+failproofai config
+failproofai policies add FailproofAI/policies
 failproofai config --status
 ```
 
-Chạy `failproofai` mà không có tham số để mở bảng điều khiển chính sách cục bộ.
+`failproofai config` là toàn bộ thiết lập: nó cài đặt dịch vụ `failproofaid` (root một lần, thông qua `sudo -n` — không bao giờ là lệnh nhắc mật khẩu tương tác), kết nối hooks vào mọi agent CLI mà nó tìm thấy, và kết nối với Cloud khi có khóa. Không có terminal — CI, container, agent điều hành nó — nó áp dụng thay vì hỏi, và thoát với mã 1 nếu bất cứ điều gì được yêu cầu không xảy ra.
+
+Nó không chọn bất kỳ chính sách nào. Đó là công việc của lệnh thứ hai, và nếu không có nó, một máy vừa được cấu hình không thực thi gì ngoài công cụ bảo vệ luôn bật.
+
+Ưu tiên biến môi trường hơn `--token`: một đối số dòng lệnh có thể đọc được từ `ps` bởi mọi người dùng trên máy. Đó là tất cả những gì biến bảo vệ — một khóa được nhập vào bất kỳ lệnh nào, `export` bao gồm, vẫn xuất hiện trong lịch sử shell, đó là lý do tại sao nó được đọc bằng `read -s` ở trên. Trong CI, đặt nó từ kho bí mật và tắt theo dõi shell (`set -x`), nếu không theo dõi sẽ in nó.
+
+<Warning>
+  `--connect <url>` ghi danh một máy đã được **thiết lập**. Nó trả lại ngay khi ghi danh thành công — nó không cài đặt daemon và không kết nối bất kỳ hooks nào. Sử dụng `failproofai config` thuần túy (hoặc `failproofai config --token <key>`) trên một máy chưa được thiết lập, nếu không nó sẽ được đọc là đã kết nối trong khi không thu thập và thực thi gì cả.
+</Warning>
+
+Chạy `failproofai` mà không có đối số để mở bảng điều khiển chính sách cục bộ.
 
 | Lệnh | Kết quả |
 | --- | --- |
-| `failproofai config` | Chạy thiết lập máy tương tác |
-| `failproofai config --connect <url> --token <key>` | Kết nối Cloud ingestion và phân phối chính sách |
-| `failproofai config --status` | Hiển thị trạng thái kết nối, daemon, phân phối và tạm dừng |
-| `failproofai policies` | Liệt kê chính sách tích hợp sẵn, tùy chỉnh, quy ước, gói và được quản lý bởi Cloud |
-| `failproofai policies --install` | Cài đặt hooks và bật chính sách |
-| `failproofai policy add <name>` | Bật một chính sách — một tích hợp sẵn, hoặc `<pack-id>:<name>` từ một gói đã cài đặt |
-| `failproofai policy remove <name>` | Tắt một chính sách, cách đặt tên giống nhau |
-| `failproofai policies --uninstall` | Tắt chính sách hoặc loại bỏ hooks harness |
-| `failproofai pack list` | Liệt kê các gói chính sách đã cài đặt và mỗi chính sách mà chúng có |
-| `failproofai pack add <source>` | Cài đặt một gói chính sách từ bản phát hành GitHub; không có thẻ sẽ lấy phiên bản mới nhất và ghim nó |
-| `failproofai pack add --bundled` | Cài đặt chính sách tích hợp sẵn dưới dạng gói, từ gói này, không có mạng |
-| `failproofai pack build <entry.mjs>` | Xây dựng ba tài sản phát hành cho gói của riêng bạn |
-| `failproofai pack remove <publisher/name>` | Hủy kích hoạt một gói đã cài đặt |
-| `failproofai audit` | Quét lịch sử agent cục bộ và mở chế độ xem audit cục bộ |
-| `failproofai audit --schedule [days] --email <address>` | Lên lịch quét cục bộ định kỳ và gửi email các kết quả của chúng |
-| `failproofai audit --status` | Hiển thị địa chỉ báo cáo, khoảng thời gian và quét được lên lịch tiếp theo |
-| `failproofai audit --no-schedule` | Dừng quét định kỳ mà không xóa lịch sử audit |
-| `failproofai harness list` | Liệt kê các đường dẫn chụp bổ sung |
-| `failproofai flush --wait` | Phân phối spooler sự kiện hiện tại |
+| `failproofai config` | Thiết lập máy: agent, daemon, và Cloud khi có khóa |
+| `failproofai config --token <key>` | Thiết lập và kết nối trong một lần, không hỏi gì |
+| `failproofai config --connect <url>` | Ghi danh một máy **đã** được thiết lập — không daemon, không hooks |
+| `failproofai config --status` | Hiển thị kết nối, daemon, truyền tải và trạng thái tạm dừng |
+| `failproofai policies` | Liệt kê các chính sách tích hợp, tùy chỉnh, quy ước, gói và được quản lý bởi Cloud |
+| `failproofai policies --install` | Kết nối hooks vào agent CLI của bạn. Không bật bất kỳ chính sách nào riêng lẻ |
+| `failproofai policies add <name>` | Bật một chính sách — một tích hợp, hoặc `<pack-id>:<name>` từ một gói đã cài đặt |
+| `failproofai policies remove <name>` | Tắt một chính sách, cách đặt tên tương tự |
+| `failproofai policies --uninstall` | Tắt chính sách hoặc loại bỏ hooks của harness |
+| `failproofai policies show <owner>/<repo>` | Những gì một gói mang theo, đọc từ tệp kê khai của nó, trước khi bạn lấy nó |
+| `failproofai policies show <owner>/<repo> --releases` | Mọi phiên bản nó đã xuất bản, và phiên bản nào ở đây |
+| `failproofai policies add <source>` | Cài đặt một gói chính sách từ bản phát hành GitHub; không có thẻ nhận phiên bản mới nhất và ghim nó |
+| `failproofai publish` | Vận chuyển các chính sách của riêng bạn dưới dạng một gói; `--init` viết một để bắt đầu |
+| `failproofai policies remove <publisher/name>` | Gỡ cài đặt một gói |
+| `failproofai audit` | Quét lịch sử agent cục bộ và mở chế độ xem kiểm tra cục bộ |
+| `failproofai audit --schedule [days] --email <address>` | Lên lịch quét cục bộ định kỳ và gửi email kết quả của chúng |
+| `failproofai audit --status` | Hiển thị địa chỉ báo cáo, khoảng thời gian và quét tiếp theo được lên lịch |
+| `failproofai audit --no-schedule` | Dừng quét định kỳ mà không xóa lịch sử kiểm tra |
+| `failproofai harness list` | Liệt kê các đường dẫn nắm bắt bổ sung |
+| `failproofai flush --wait` | Truyền tải spool sự kiện hiện tại |
 | `failproofai backfill --since 30d` | Đọc lại lịch sử đã vượt qua trước đó |
 | `failproofai config --pause [duration]` | Tạm dừng một phiên cục bộ trong 30 phút theo mặc định, tối đa 8 giờ |
-| `failproofai config --resume` | Tiếp tục một phiên cục bộ tạm dừng; thêm `--all` để xóa tất cả các tạm dừng |
+| `failproofai config --resume` | Tiếp tục một phiên cục bộ đã tạm dừng; thêm `--all` để xóa tất cả các lần tạm dừng |
 | `failproofai update` | Hoàn thành di chuyển gói và cập nhật daemon |
-| `failproofai migrate --dry-run` | Xem trước hoặc chạy các di chuyển bố cục nhà chờ xử lý |
+| `failproofai migrate --dry-run` | Xem trước hoặc chạy các di chuyển bố cục nhà chờ |
 | `failproofai uninstall` | Loại bỏ hooks và daemon trước khi loại bỏ gói |
 | `failproofai --version` | In phiên bản gói được cài đặt |
-| `failproofai --help` | Hiển thị lệnh và cách sử dụng chung |
+| `failproofai --help` | Hiển thị lệnh và cách sử dụng toàn cầu |
 
 ## Cờ cấu hình
 
 | Cờ | Sử dụng |
 | --- | --- |
-| `--connect <url> --token <key>` | Kết nối không tương tác |
+| `--token <key>` | Thiết lập và kết nối không tương tác; cũng đọc từ `FAILPROOFAI_CLOUD_TOKEN` |
+| `--url <url>` | Kết nối ở nơi khác ngoài `app.befailproof.ai`; cũng đọc từ `FAILPROOFAI_CLOUD_URL` |
+| `--connect <url>` | Chỉ ghi danh, trên một máy đã được thiết lập. Bỏ qua daemon và mọi hook |
 | `--machine-id <id>` | Đặt ID máy ổn định |
-| `--machine-label <name>` | Đặt hoặc thay đổi nhãn bảng điều khiển |
-| `--no-transcripts` | Gửi quyết định mà không có nội dung bản ghi |
-| `--disconnect` | Dừng kéo chính sách Cloud và phân phối sự kiện |
+| `--machine-label <name>` | Đổi tên một máy **đã** được kết nối. Riêng lẻ, nó không bao giờ chạy thiết lập, vì vậy hãy đặt nó sau `failproofai config`, không phải trong |
+| `--no-transcripts` | Gửi quyết định mà không có nội dung bảng điểm |
+| `--disconnect` | Dừng kéo chính sách Cloud và truyền tải sự kiện |
 | `--status` | Hiển thị trạng thái máy hiện tại |
 | `--pause [duration]` | Tạm dừng phiên mới nhất trong thư mục hiện tại; chấp nhận giây, phút hoặc giờ và mặc định là 30 phút |
-| `--resume` | Kết thúc một tạm dừng phù hợp sớm |
+| `--resume` | Kết thúc một lần tạm dừng khớp sớm |
 | `--session <id>` | Nhắm mục tiêu một phiên rõ ràng để tạm dừng hoặc tiếp tục |
-| `--all` | Với `--resume`, kết thúc mọi tạm dừng hoạt động |
+| `--all` | Với `--resume`, kết thúc mọi lần tạm dừng đang hoạt động |
 
-Tạm dừng cục bộ tạm ngừng chính sách tích hợp sẵn, tùy chỉnh, quy ước và gói cho một phiên. Chúng luôn hết hạn và không vô hiệu hóa chính sách được quản lý bởi Cloud. `block-failproofai-commands` — luôn bật và không thể bị vô hiệu hóa hoặc tạm dừng chính nó — ngăn chặn một agent được cấy dòng sử dụng lối thoát này.
+Các lần tạm dừng cục bộ tạm dừng chính sách tích hợp, tùy chỉnh, quy ước và gói cho một phiên. Chúng luôn hết hạn và không vô hiệu hóa các chính sách được quản lý bởi Cloud. `block-failproofai-commands` — luôn bật và không thể bị vô hiệu hóa hoặc tạm dừng — ngăn một agent được nhập chứng từ sử dụng cách thoát này.
 
 ## Cờ chính sách
 
 | Cờ | Sử dụng |
 | --- | --- |
-| `--install`, `-i` | Bật chính sách và cài đặt hooks harness |
+| `--install`, `-i` | Cài đặt hooks harness. Các tên sau đó bật các chính sách đó; không có gì, không có thay đổi chính sách |
 | `--uninstall`, `-u` | Tắt chính sách hoặc loại bỏ hooks |
 | `--cli <names...>` | Nhắm mục tiêu một hoặc nhiều harness được hỗ trợ |
 | `--scope user\|project\|local\|all` | Chọn phạm vi cấu hình; `all` dành cho gỡ cài đặt |
 | `--beta` | Bao gồm các chính sách beta |
 | `--custom`, `-c <path>` | Xác thực và tải tệp chính sách tùy chỉnh; có thể lặp lại |
 
-## Cờ phân phối và bảo trì
+## Cờ truyền tải và bảo trì
 
 | Lệnh | Cờ |
 | --- | --- |
@@ -90,7 +108,7 @@ Tạm dừng cục bộ tạm ngừng chính sách tích hợp sẵn, tùy chỉ
 | `migrate` | `--dry-run` |
 | `uninstall` | `--purge`, `--dry-run`, `--yes` |
 
-`failproofai update` nên được chạy sau `npm install -g failproofai@latest`; nó thực hiện di chuyển bố cục nhà, cài đặt nhị phân daemon phù hợp và khởi động lại dịch vụ. `--no-daemon` chỉ thực hiện di chuyển bố cục.
+`failproofai update` nên được chạy sau `npm install -g failproofai@latest`; nó thực hiện di chuyển bố cục nhà, cài đặt tệp nhị phân daemon phù hợp, và khởi động lại dịch vụ. `--no-daemon` chỉ thực hiện di chuyển bố cục.
 
 ## Đường dẫn harness
 
@@ -100,11 +118,11 @@ failproofai harness add-path <harness> [label=]<path>
 failproofai harness remove-path <harness> <path-or-label>
 ```
 
-Các tên harness được hỗ trợ là `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity` và `goose`.
+Tên harness được hỗ trợ là `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity`, và `goose`.
 
-Nhãn không gian ID agent dẫn xuất khi hai gốc chứa bản sao của cùng một dự án. Các gốc chồng chéo và nhãn trùng lặp bị từ chối để ngăn chặn thu thập trùng lặp hoặc hỏng con trỏ. Cấu hình đường dẫn bổ sung tải lại mà không cần khởi động lại daemon.
+Nhãn không gian ID agent xuất phát khi hai gốc chứa bản sao của cùng một dự án. Gốc chồng chéo và nhãn trùng lặp bị từ chối để ngăn chặn bộ sưu tập trùng lặp hoặc hỏng con trỏ. Cấu hình đường dẫn bổ sung được tải lại mà không cần khởi động lại daemon.
 
-Các môi trường vùng chứa có thể thay thế các đường dẫn bổ sung được cấu hình bằng tệp bằng một biến được phân tách bằng dấu phẩy được đặt tên `FAILPROOFAI_<HARNESS>_EXTRA_PATHS`, ví dụ:
+Các môi trường vùng chứa có thể thay thế các đường dẫn bổ sung được cấu hình tệp bằng biến được phân tách bằng dấu phẩy có tên `FAILPROOFAI_<HARNESS>_EXTRA_PATHS`, ví dụ:
 
 ```bash
 export FAILPROOFAI_OPENCLAW_EXTRA_PATHS="user1=/srv/openclaw-a,user2=/srv/openclaw-b"
@@ -112,28 +130,30 @@ export FAILPROOFAI_OPENCLAW_EXTRA_PATHS="user1=/srv/openclaw-a,user2=/srv/opencl
 
 ## Biến môi trường
 
-Sử dụng tệp cấu hình cho hành vi máy liên tục. Các biến môi trường rất hữu ích cho các vùng chứa, bài kiểm tra và một quy trình.
+Sử dụng tệp cấu hình cho hành vi máy liên tục. Các biến môi trường hữu ích nhất cho vùng chứa, bài kiểm tra và một quy trình.
 
 | Biến | Sử dụng |
 | --- | --- |
-| `FAILPROOFAI_HOME` | Chuyển bố cục `~/.failproofai` hoàn chỉnh |
-| `FAILPROOFAI_LOG_LEVEL` | Đặt mức chi tiết đăng nhập cục bộ |
-| `FAILPROOFAI_HOOK_LOG_FILE` | Viết chẩn đoán hook vào một tệp được chọn |
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Tắt telemetry ẩn danh cho quy trình này |
-| `FAILPROOFAI_NO_FIRST_RUN=1` | Bỏ qua thiết lập chạy lần đầu tương tác |
-| `FAILPROOFAI_NO_AUTO_AUDIT=1` | Bỏ qua audit cục bộ sau thiết lập |
-| `FAILPROOFAI_LLM_BASE_URL` | Ghi đè điểm cuối tương thích với OpenAI được sử dụng bởi chính sách LLM |
-| `FAILPROOFAI_LLM_API_KEY` | Cung cấp khóa API được sử dụng bởi chính sách LLM |
-| `FAILPROOFAI_LLM_MODEL` | Chọn mô hình được sử dụng bởi chính sách LLM |
+| `FAILPROOFAI_CLOUD_TOKEN` | Khóa Cloud, thay vì `--token`. Ưu tiên cái này: một đối số có thể đọc được từ `ps` bởi mọi người dùng. Đặt nó bằng `read -s` hoặc từ kho bí mật CI, không bao giờ bằng cách nhập khóa vào một lệnh, nó xuất hiện trong lịch sử shell đều như vậy |
+| `FAILPROOFAI_CLOUD_URL` | URL Cloud, thay vì `--url`. Cùng biến mà daemon đọc |
+| `FAILPROOFAI_HOME` | Dịch chuyển bố cục `~/.failproofai` hoàn chỉnh |
+| `FAILPROOFAI_LOG_LEVEL` | Đặt chi tiết ghi nhật ký cục bộ |
+| `FAILPROOFAI_HOOK_LOG_FILE` | Viết chẩn đoán hook vào tệp được chọn |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Vô hiệu hóa telemetry ẩn danh cho quy trình này |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | Bỏ qua thiết lập lần đầu chạy tương tác |
+| `FAILPROOFAI_NO_AUTO_AUDIT=1` | Bỏ qua kiểm tra cục bộ sau thiết lập |
+| `FAILPROOFAI_LLM_BASE_URL` | Ghi đè điểm cuối tương thích OpenAI được sử dụng bởi các chính sách LLM |
+| `FAILPROOFAI_LLM_API_KEY` | Cung cấp khóa API được sử dụng bởi các chính sách LLM |
+| `FAILPROOFAI_LLM_MODEL` | Chọn mô hình được sử dụng bởi các chính sách LLM |
 | `FAILPROOFAI_POLICY_LOAD_TIMEOUT_MS` | Ràng buộc tải mô-đun chính sách tùy chỉnh |
-| `FAILPROOFAI_NO_DOWNLOAD=1` | Từ chối tìm nạp gói và nhị phân daemon; những gì được cài đặt tiếp tục thực thi |
+| `FAILPROOFAI_NO_DOWNLOAD=1` | Từ chối tìm nạp gói và tệp nhị phân daemon; những gì được cài đặt tiếp tục thực thi |
 | `FAILPROOFAI_PACK_BASE_URL` | Tìm nạp gói từ một bản sao thay vì `github.com` |
-| `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` | Thay thế các đường dẫn chụp bổ sung được cấu hình cho một harness |
-| `NO_COLOR` | Tắt đầu ra thiết bị đầu cuối có màu |
+| `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` | Thay thế đường dẫn nắm bắt bổ sung được cấu hình cho một harness |
+| `NO_COLOR` | Tắt đầu ra terminal có màu |
 
-Các biến nhà dành riêng cho agent chẳng hạn như `CLAUDE_PROJECTS_PATH`, `CURSOR_HOME`, `HERMES_HOME` và `OPENCLAW_HOME` ghi đè nơi Failproof AI khám phá các phiên cục bộ cho harness đó.
+Biến home cụ thể agent như `CLAUDE_PROJECTS_PATH`, `CURSOR_HOME`, `HERMES_HOME`, và `OPENCLAW_HOME` ghi đè nơi Failproof AI phát hiện các phiên cục bộ cho harness đó.
 
-## Tạm dừng hoặc loại bỏ một máy một cách an toàn
+## Tạm dừng hoặc loại bỏ máy một cách an toàn
 
 ```bash
 failproofai config --pause
@@ -141,9 +161,9 @@ failproofai config --status
 failproofai config --resume
 ```
 
-Tạm dừng phiên cục bộ không vô hiệu hóa chính sách được quản lý bởi Cloud. Khôi phục các triển khai Cloud thông qua quy trình công việc thực thi Cloud khi chính triển khai đó là vấn đề.
+Tạm dừng phiên cục bộ không vô hiệu hóa các chính sách được quản lý bởi Cloud. Khôi phục triển khai Cloud thông qua quy trình thực thi Cloud khi chính bản rollout là vấn đề.
 
-Trước khi loại bỏ gói npm, hãy loại bỏ các hooks đã cài đặt và daemon:
+Trước khi loại bỏ gói npm, loại bỏ hooks được cài đặt và daemon:
 
 ```bash
 failproofai uninstall --dry-run
@@ -151,7 +171,7 @@ failproofai uninstall --yes
 npm rm -g failproofai
 ```
 
-Chạy `failproofai <command> --help` để biết chi tiết dành riêng cho phiên bản.
+Chạy `failproofai <command> --help` để biết chi tiết cụ thể phiên bản.
 
 <Warning>
   Chạy `failproofai uninstall` trước `npm rm -g failproofai`; npm không loại bỏ các hooks agent được cài đặt hoặc dịch vụ daemon.

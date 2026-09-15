@@ -1,55 +1,49 @@
 ---
 title: "التكوين المحلي"
-description: "التحكم في نطاق السياسة والمعاملات والملفات المخصصة وإعدادات Failproof AI على مستوى الجهاز."
+description: "تحكم في نطاق السياسة والمعاملات والملفات المخصصة وإعدادات Failproof AI على مستوى الجهاز."
 icon: "file-cog"
 ---
 
-يفصل Failproof AI بين اختيار السياسة وإعدادات الجهاز والخادم. يحافظ هذا على قابلية مراجعة اختيارات سياسة المستودع بينما تبقى بيانات الاعتماد وحالة الخادم خارج المستودع.
+يحافظ Failproof AI على فصل ما يمكن للمستودع أن يلتزم به — توصيل الخطافات ومعاملات السياسة والسياسات المخصصة — عن حالة الجهاز مثل بيانات الاعتماد والحزم المثبتة والخادم.
 
-## اختر نطاق السياسة
+## اختر نطاقًا
 
-<Tabs>
-  <Tab title="Dashboard">
-    شغّل `failproofai` بدون معاملات لفتح لوحة معلومات السياسة المحلية. اختر نطاق المستخدم أو المشروع أو المحلي قبل تفعيل سياسة بحيث يتم كتابة التغيير إلى ملف التكوين المقصود.
+يقرر النطاق مكان توصيل الخطافات وملف التكوين الذي تكتب فيه المعاملات ومسارات السياسات المخصصة:
 
-    - **المستخدم** ينطبق على جميع المشاريع على هذا الجهاز.
-    - **المشروع** ينتمي إلى المستودع ويمكن إرساله.
-    - **محلي** يتجاوز مشروعًا واحدًا لمستخدم واحد ويجب أن يبقى في gitignore.
+- **المستخدم** ينطبق على جميع المشاريع على هذا الجهاز.
+- **المشروع** ينتمي إلى المستودع ويمكن الالتزام به.
+- **محلي** يتجاوز مشروعًا واحدًا لمستخدم واحد ويجب أن يبقى معاملاً من قبل gitignore.
 
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai policy add block-rm-rf --scope user
-    failproofai policy add block-force-push --scope project
-    failproofai policy add warn-large-file-write --scope local
-    failproofai policies
-    ```
+```bash
+failproofai policies --install --cli claude --scope project   # wire hooks for this repository
+failproofai policies --install --cli claude --scope user      # or for every project on this machine
+failproofai policies
+```
 
-    لا يدعم كل محرك النطاق المحلي. يرفض CLI نطاقًا لا يستطيع المحرك المختار تمثيله.
-  </Tab>
-</Tabs>
+لا يدعم كل جهاز النطاق المحلي؛ يرفض CLI نطاقًا لا يمكن لجهاز التشغيل المختار تمثيله.
+
+سياسات الحزم التي تعمل **لا** تُحدد النطاق. يتم تسجيل المفتاح مع الحزمة المثبتة، لذا فإن `failproofai policies add <name>` يشغل سياسة على كامل الجهاز، مهما قال `--scope`.
 
 | النطاق | ملف تكوين السياسة |
 | --- | --- |
-| مشروع | `<project>/.failproofai/policies-config.json` |
+| المشروع | `<project>/.failproofai/policies-config.json` |
 | محلي | `<project>/.failproofai/policies-config.local.json` |
-| مستخدم | `~/.failproofai/policies-config.json` |
+| المستخدم | `~/.failproofai/policies-config.json` |
 
-يتم دمج السياسات المفعلة كاتحاد. معاملات السياسة تستخدم النطاق الأول الذي يحدد المعاملات لتلك السياسة، بالترتيب: مشروع → محلي → مستخدم. تستخدم مسارات السياسات المخصصة الصريحة النطاق الأول الذي يحددها.
+معاملات السياسة تستخدم أول نطاق يحدد معاملات لتلك السياسة، بترتيب المشروع → محلي → المستخدم. مسارات السياسات المخصصة الصريحة تستخدم أول نطاق يحددها.
 
-## كوّن معاملات السياسة
+## قم بتكوين معاملات السياسة
 
 <Tabs>
-  <Tab title="Dashboard">
-    افتح السياسة في لوحة معلومات محلية، حرّر المعاملات المدعومة، وحفظ في النطاق المختار. شغّل إجراء وكيل يطابق وآخر لا يطابق، ثم افحص القرار في **Observe → policy**.
+  <Tab title="لوحة التحكم">
+    افتح السياسة في لوحة التحكم المحلية وعدّل معاملاتها المدعومة وحفظ في النطاق المختار. قم بتشغيل إجراء وكيل متطابق وغير متطابق، ثم افحص القرار في **Observe → policy**.
 
   </Tab>
   <Tab title="CLI">
-    حرّر `policies-config.json` للنطاق المختار، ثم شغّل `failproofai policies` لتسطيح أسماء السياسات أو مفاتيح المعاملات غير المعروفة.
+    عدّل `policies-config.json` للنطاق المختار، ثم قم بتشغيل `failproofai policies`: سيحذرك عن إدخال `policyParams` يسمي سياسة لا تحملها أي حزمة مثبتة. لا يفحص المفاتيح داخل الإدخال، لذا تحقق من تهجئتها مقابل الجدول أدناه.
 
     ```json
     {
-      "enabledPolicies": ["block-rm-rf", "block-force-push"],
       "policyParams": {
         "block-rm-rf": {
           "allowPaths": ["/tmp/build-output"]
@@ -64,21 +58,45 @@ icon: "file-cog"
   </Tab>
 </Tabs>
 
+### المعاملات التي تقبلها سياسات Failproof AI
+
+تتحقق كل سياسة من أنواع معاملاتها الخاصة.
+
+| السياسة | المعامل | النوع والإفتراضي |
+| --- | --- | --- |
+| `sanitize-api-keys` | `additionalPatterns` | `pattern[]`, `[]`؛ الإدخالات تحتوي على `regex` و `label` |
+| `block-read-outside-cwd` | `allowPaths` | `string[]`, `[]` |
+| `block-sudo` | `allowPatterns` | `string[]`, `[]` |
+| `block-rm-rf` | `allowPaths` | `string[]`, `[]` |
+| محجوبات البنية التحتية | `allowPatterns` | `string[]`, `[]` |
+| `block-secrets-write` | `additionalPatterns` | `string[]`, `[]` |
+| `block-push-master` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `block-work-on-main` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `prefer-package-manager` | `allowed`, `blocked` | `string[]`, `[]` |
+| `warn-large-file-write` | `thresholdKb` | `number`, `1024` |
+| `require-push-before-stop` | `remote`, `baseBranch` | `string`, `"origin"`؛ `string`, `"main"` |
+| `require-pr-before-stop` | `baseBranch` | `string`, `"main"` |
+| `require-no-conflicts-before-stop` | `baseBranch` | `string`, `"main"` |
+
+<Warning>
+  نمط السماح يوسع ما قد يفعله الوكيل. اختبر التجزئة الدقيقة وتباينات الأوامر على جهاز التشغيل الهدف قبل نشره عبر أسطول.
+</Warning>
+
 ## افهم ملفات الجهاز
 
-يحتوي `~/.failproofai` على ملفات منفصلة لحدود ثقة منفصلة:
+`~/.failproofai` يحتوي على ملفات منفصلة لحدود الثقة المختلفة:
 
 | المسار | الغرض |
 | --- | --- |
-| `config.json` | إعدادات الخادم والتدقيق والقياس عن بُعد غير السرية |
-| `credentials.json` | بيانات اعتماد السحابة؛ مخزنة برمز إذن المالك فقط |
-| `policies-config.json` | اختيار نطاق المستخدم المدمج والمعاملات والمسارات المخصصة الصريحة |
-| `policies/` | سياسات اتفاقية المستخدم وتحفظات السياسة المدارة من السحابة |
-| `hook-activity/` | سجل قرار السياسة المحلية |
-| `state/` | ملف الخادم والصحة والإيقاف المؤقت وحالة وقت التشغيل |
+| `config.json` | إعدادات الخادم وعدم السرية والتدقيق والقياس عن بعد |
+| `credentials.json` | بيانات اعتماد السحابة؛ مخزنة بأذونات المالك فقط |
+| `policies-config.json` | معاملات نطاق المستخدم ومسارات السياسات المخصصة الصريحة |
+| `policies/` | سياسات اتفاقية المستخدم والحزم المثبتة وأي من سياساتها مشغلة وتخطيطات السياسة المدارة من السحابة |
+| `hook-activity/` | سجل قرارات السياسة المحلية |
+| `state/` | حالة الخادم والصحة والإيقاف المؤقت وحالة التشغيل |
 
-استخدم `FAILPROOFAI_HOME` لنقل تخطيط الجهاز الكامل لحاوية أو اختبار معزول. لا تنقل دلائل الحالة الفردية بشكل مستقل.
+استخدم `FAILPROOFAI_HOME` لنقل تخطيط الجهاز الكامل لحاوية أو اختبار معزول. لا تنقل مجلدات الحالة الفردية بشكل مستقل.
 
 <Warning>
-  لا تُرسل `credentials.json`. أرسل تكوين سياسة المشروع وسياسات اتفاقية المشروع فقط بعد مراجعتها كرمز فرض.
+  لا تلتزم أبدًا بـ `credentials.json`. التزم بتكوين السياسة على مستوى المشروع وسياسات اتفاقية المشروع فقط بعد مراجعتها كرمز إنفاذ.
 </Warning>

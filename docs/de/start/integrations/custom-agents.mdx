@@ -270,7 +270,7 @@ Jedes Agent-Framework gibt dir dieselben drei Nahtpunkte. Mappe sie und du hast 
 </Tip>
 
 <Note>
-  **Manuell und automatisch komponieren.** Ein Adapter, der innerhalb eines manuell erstellten Scopes läuft, schließt sich dieser Session an und wird dem Agenten als übergeordnet zugeordnet – du bekommst einen Baum statt zwei. Das ist nützlich, wenn du ein Framework selbst instrumentierst, das neben einem unterstützten läuft.
+  **Manuell und automatisch komponieren.** Ein Adapter, der innerhalb eines manuell erstellten Scopes läuft, schließt sich dieser Session an und wird diesem Agenten untergeordnet – du bekommst einen Baum statt zwei. Das ist nützlich, wenn du ein Framework selbst instrumentierst, das neben einem unterstützten läuft.
 </Note>
 
 <Accordion title="Warum es keinen AutoGen-Adapter gibt">
@@ -643,20 +643,18 @@ Jeder Flush schreibt eine Batch-Datei: zuerst `.tmp`, dann `fsync`, dann ein ato
 Der Daemon liest nur `.jsonl`, kann also nie eine halb geschriebene Datei lesen. Der Dateiname trägt Timestamp, Prozess-ID und Sequenznummer, sodass zwei Prozesse, die in derselben Millisekunde flushen, nicht kollidieren können. Die Queue ist auf 10.000 Events begrenzt; darüber hinaus werden die ältesten gelöscht und geloggt.
 
 <Warning>
-  **`collector.redact` gilt nicht für deine SDK-Events.** Es sieht sie nie.
+  **`collector.redact` steht auch für SDK-Events standardmäßig auf `minimal`.** Das SDK bereinigt die Daten, bevor es einen Batch auf die Disk schreibt, und der Daemon wiederholt denselben deterministischen Durchlauf vor dem Upload, sodass auch Batches älterer SDKs geschützt sind.
 </Warning>
 
-Der Daemon **versendet** deine Batches. Er öffnet oder überschreibt sie nicht.
+Der Daemon liest jeden Batch und wendet die Bereinigung vor dem Upload im Arbeitsspeicher an. Die gelesene Spool-Datei schreibt er nicht um.
 
-| Events | Geschrieben von | Durch `collector.redact` bereinigt? |
+| Events | Geschrieben von | Wo die minimale Bereinigung läuft |
 | --- | --- | --- |
-| CLI-Session-Transkripte | Dem Daemon | Ja |
-| Hook-Aktivität | Dem Daemon | Ja |
-| **Alles, was das SDK sendet** | **Deinem Prozess** | **Nein** |
+| CLI-Session-Transkripte | Dem Daemon | Bevor der Daemon den Batch schreibt |
+| Hook-Aktivität | Dem Daemon | Bevor der Daemon den Batch schreibt |
+| **Alles, was das SDK sendet** | **Deinem Prozess** | **Bevor das SDK den Batch schreibt, und erneut vor dem Upload durch den Daemon** |
 
-Bereinigung läuft dort, wo der Daemon seine *eigenen* Events schreibt – nicht wo Batches *versendet* werden. Ein Prompt oder ein Tool-Argument mit einem API-Key enthält ihn also noch beim Ankommen.
-
-Das ist beabsichtigt. Das sind deine eigenen Instrumentierungsaufrufe, und sie im Transit umzuschreiben würde bedeuten, dass die Events, die du empfängst, nicht die Events sind, die du gesendet hast.
+Setze `collector.redact` nur dann auf `off`, wenn unveränderte Payloads ausdrücklich gefordert sind; SDK und Daemon halten sich beide an diese Einstellung. Die minimale Bereinigung erkennt gängige API-Keys, Bearer-Tokens, JWTs und Zuweisungen von Secrets. Beliebigen sensiblen Fließtext kann sie nicht erkennen.
 
 <Tip>
   **Du kontrollierst Payloads an der Quelle, an zwei Stellen:**
@@ -669,7 +667,7 @@ Das ist beabsichtigt. Das sind deine eigenen Instrumentierungsaufrufe, und sie i
     `instrument()` ignoriert Optionen, die ein Adapter nicht liest, sodass das Übergeben des falschen Namens nichts auslöst und nichts ändert.
   - Gib das Geheimnis von vornherein nicht an `input=` weiter.
 
-  `collector.redact` ist kein Ersatz für beides.
+  `collector.redact` ist ein Baustein der gestaffelten Verteidigung (Defense in Depth), aber kein Ersatz für beides.
 </Tip>
 
 <Warning>

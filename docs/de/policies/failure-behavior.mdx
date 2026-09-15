@@ -1,19 +1,19 @@
 ---
 title: "Fehlerverhalten"
-description: "Verstehen Sie, was passiert, wenn die Policy-Auswertung oder der lokale Daemon nicht erreichbar ist."
+description: "Verstehen Sie, was passiert, wenn die Policy-Auswertung oder der lokale Daemon nicht verfügbar ist."
 icon: "shield-alert"
 ---
 
-Failproof AI ist so konzipiert, dass ein Durchsetzungsfehler sichtbar wird, anstatt riskante Aktionen stillschweigend zuzulassen.
+Failproof AI ist so konzipiert, dass ein Erzwingungsfehler sichtbar wird, anstatt riskante Aktionen stillschweigend zuzulassen.
 
 ## Einen Failure-Closed-Block diagnostizieren
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehen Sie zu **Admin → enforcement** und öffnen Sie den Rechner.
-    2. Prüfen Sie dessen letzten Check-in, zugewiesene Deployment und gemeldetes Deployment.
-    3. Gehen Sie zu **Observe → policy** und öffnen Sie die Sitzung der abgelehnten Entscheidung.
-    4. Überprüfen Sie, ob der Grund auf Daemon-Erreichbarkeit, Versionsabweichung oder die Policy selbst hinweist.
+    1. Gehen Sie zu **Admin → Enforcement** und öffnen Sie die Maschine.
+    2. Prüfen Sie das letzte Check-in, das zugewiesene Deployment und das gemeldete Deployment.
+    3. Gehen Sie zu **Observe → Policy** und öffnen Sie die Sitzung der abgelehnten Entscheidung.
+    4. Prüfen Sie, ob der Grund auf Daemon-Erreichbarkeit, Versionsunterschiede oder die Policy selbst hinweist.
 
   </Tab>
   <Tab title="CLI">
@@ -23,45 +23,47 @@ Failproof AI ist so konzipiert, dass ein Durchsetzungsfehler sichtbar wird, anst
     failproofai config
     ```
 
-    Ein erneutes Ausführen von `failproofai config` aktualisiert und startet den Daemon nach einem Paket-Upgrade neu.
+    Das erneute Ausführen von `failproofai config` aktualisiert und startet den Daemon nach einem Paket-Upgrade neu.
   </Tab>
 </Tabs>
 
-Auf einem Rechner, der für die Verwendung von `failproofaid` konfiguriert ist, ist der Daemon der einzige Auswerter. Wenn er nicht erreichbar ist oder seine Protokollversion nicht mit der CLI übereinstimmt, schlägt die Hook-Auswertung geschlossen fehl. Die Aktion wird mit einem Hinweis abgelehnt, der den Operator auffordert, den Daemon zu überprüfen oder zu aktualisieren.
+Auf einer Maschine, die für die Verwendung von `failproofaid` konfiguriert ist, ist der Daemon der einzige Auswertende. Wenn er nicht erreichbar ist oder seine Protokollversion nicht mit der CLI übereinstimmt, schlägt die Hook-Auswertung geschlossen fehl. Die Aktion wird mit einem Hinweis abgelehnt, der den Operator anweist, den Daemon zu überprüfen oder zu aktualisieren.
 
-Vor der Daemon-Konfiguration werten Hooks Policies prozessintern aus. Sobald die Daemon-Konfiguration gespeichert ist, fällt Failproof AI bei einem Daemon-Ausfall nicht stillschweigend auf einen zweiten Auswerter zurück.
+Vor der Daemon-Konfiguration werten Hooks Policies in-process aus. Sobald die Daemon-Konfiguration gespeichert ist, fällt Failproof AI bei einem Daemon-Fehler nicht stillschweigend auf einen zweiten Auswertenden zurück.
 
 ## Auf eine Failure-Closed-Entscheidung reagieren
 
 1. Führen Sie `failproofai config --status` aus.
-2. Wenn sich die Versionen unterscheiden, führen Sie `failproofai config` nach dem Paket-Update erneut aus.
-3. Wenn der Daemon nicht erreichbar ist, prüfen Sie dessen Dienststatus und lokale Logs.
-4. Setzen Sie die Agenten-Arbeit erst fort, wenn ein bekannter Policy-Auswertungspfad wieder funktioniert.
+2. Wenn sich die Versionen unterscheiden, führen Sie `failproofai config` nach dem Aktualisieren des Pakets erneut aus.
+3. Wenn der Daemon nicht erreichbar ist, prüfen Sie seinen Service-Status und die lokalen Logs.
+4. Setzen Sie die Agent-Arbeit erst fort, wenn ein bekannter Policy-Auswertungspfad fehlerfrei funktioniert.
 
 <Warning>
-  Wiederholen Sie die blockierte Aktion nicht wiederholt. Eine Failure-Closed-Antwort bedeutet, dass das System nicht feststellen konnte, ob die Aktion sicher war.
+  Versuchen Sie nicht wiederholt, die blockierte Aktion erneut auszuführen. Eine Failure-Closed-Antwort bedeutet, dass das System nicht feststellen konnte, ob die Aktion sicher war.
 </Warning>
 
 ## Ein Pack lässt sich nicht laden
 
-Ein Rechner, der angewiesen wurde, ein Pack durchzusetzen, und es nicht ausführen kann, lehnt ab, anstatt stillschweigend fortzufahren. Der Auslöser ist eine **aufgezeichnete Erwartung**, niemals eine leere: Ein Rechner ohne installierte Packs ist still, während ein Pack, das deklariert wurde und sich nicht auflösen lässt – oder das weniger registriert als sein Manifest angibt – ablehnt.
+Eine Maschine, die angewiesen wurde, ein Pack durchzusetzen, und es nicht ausführen kann, lehnt ab, anstatt still weiterzumachen. Der Auslöser ist eine **aufgezeichnete Erwartung**, niemals eine leere: Eine Maschine ohne installierte Packs ist still, während ein Pack, das deklariert ist und sich nicht auflösen lässt – oder das weniger registriert, als sein Manifest deklariert – ablehnt.
 
-Die Ablehnung ist **eng gefasst**, anders als bei einem nicht erreichbaren Daemon. Ein Daemon, der nicht erreicht werden kann, bedeutet, dass überhaupt keine Auswertung stattgefunden hat und daher nichts als sicher eingestuft werden kann. Ein Pack, das sich nicht laden lässt, hat eine aufzählbare Menge fehlender Guards, da jede deklarierte Policy ihren eigenen `match` mitbringt – es lehnt daher nur die Ereignisse und Tools ab, die diese Policies abdeckten, während alles andere weiterläuft.
+Die Ablehnung ist **eng gefasst**, anders als bei einem nicht erreichbaren Daemon. Ein Daemon, der nicht erreichbar ist, bedeutet, dass überhaupt keine Auswertung stattgefunden hat, sodass nichts als sicher eingestuft werden kann. Ein Pack, das sich nicht laden lässt, hat einen aufzählbaren Satz fehlender Guards, da jede deklarierte Policy ihren eigenen `match` trägt – es lehnt also nur die Ereignisse und Tools ab, die diese Policies abdeckten, und alles andere wird fortgesetzt.
 
 Es wird nicht ausgelöst bei:
 
 - einem `observe`-Pack, das konstruktionsbedingt auswertet und verwirft
-- Policies, die nie übernommen oder explizit deaktiviert wurden
-- einem Pack, das der Loader nie erhalten hat, wo sich „keine Registrierungen" nicht von einem bewussten Überspringen unterscheiden lässt
-- einer Pause einer aktiven Sitzung
-- einem Load-Timeout, das vorübergehend ist – ein kurzer langsamer Festplattenmoment darf nicht ablehnen, bis ein Mensch eingreift
+- Policies, die Sie nie übernommen oder explizit deaktiviert haben
+- einem Pack, das der Loader nie erhalten hat und bei dem „keine Registrierungen" nicht von einem bewussten Überspringen unterschieden werden kann
+- einer aktiven Sitzungspause
+- einem Lade-Timeout, das vorübergehend ist – ein einzelner langsamer Festplattenmoment darf nicht ablehnen, bis ein Mensch eingreift
 
-`UserPromptSubmit` **instruiert** statt abzulehnen, unabhängig davon, was die fehlende Policy deklariert hat. Eine pauschale Ablehnung würde dies einschließen und Sie vom Agenten aussperren, der das Problem beheben könnte.
+`UserPromptSubmit` **weist an**, anstatt abzulehnen, unabhängig davon, was die fehlende Policy deklariert hat. Eine pauschale Ablehnung würde auch diesen Eintrag erfassen und Sie von dem Agent aussperren, der das Problem beheben könnte.
 
 ### Vorgehensweise
 
 ```bash
-failproofai pack list
+failproofai policies
 ```
 
-Der Befehl nennt alle installierten Packs, die sich nicht laden lassen, gibt den Grund an und beendet sich mit einem Nicht-Null-Exit-Code. Installieren Sie das Pack anschließend entweder neu (`failproofai pack add <source>`) oder entfernen Sie es (`failproofai pack remove <publisher/name>`) – durch das Entfernen wird die Erwartung zurückgezogen, und die Ablehnung endet damit.
+Die Auflistung markiert ein installiertes Pack, dessen Installationseintrag oder Digest nicht mehr verifiziert werden kann, und gibt den Grund an. Das Pack wird dabei nicht importiert, sodass eines, das erst beim Laden fehlschlägt – indem es weniger als sein Manifest deklariert registriert – normal aufgelistet wird; die nachfolgende Ablehnung ist das, was dieses Pack benennt. In jedem Fall installieren Sie es neu (`failproofai policies add <source>`) oder entfernen Sie es (`failproofai policies remove <publisher/name>`) – das Entfernen zieht die Erwartung zurück, und die Ablehnung hört damit auf.
+
+Die Ablehnung selbst wird `pack/failproofai-pack-unavailable` zugeschrieben, was die geladenen Policies überrangt, sodass ein blockierter Tool-Aufruf das fehlende Pack benennt und nicht den zufällig zuerst ausgelösten verbleibenden Guard.

@@ -268,7 +268,7 @@ Ogni framework di agenti ti dà le stesse tre giunzioni. Mappale e hai una tracc
 </Tip>
 
 <Note>
-  **Manuale e automatico si compongono.** Un adapter in esecuzione dentro un ambito scritto a mano si unisce a quella sessione e si aggancia a quell'agente, quindi ottieni un albero anziché due — utile quando strumenti un framework da solo insieme a uno supportato.
+  **Manuale e automatico si compongono.** Un adapter in esecuzione dentro un ambito scritto a mano si unisce a quella sessione e diventa figlio di quell'agente, quindi ottieni un albero anziché due — utile quando strumenti un framework da solo insieme a uno supportato.
 </Note>
 
 <Accordion title="Perché non c'è un adapter AutoGen">
@@ -641,20 +641,18 @@ Ogni flush scrive un file batch, `.tmp` per primo, poi `fsync`, poi un rename at
 Il daemon raccoglie solo `.jsonl`, quindi non può mai leggere un file scritto a metà. Lo stem porta un timestamp, id processo e numero di sequenza, quindi due processi che flushano nello stesso millisecondo non possono collisioni. La coda è limitata a 10.000 eventi; passato questo i più vecchi sono scartati e registrati.
 
 <Warning>
-  **`collector.redact` non si applica ai tuoi eventi SDK.** Non li vede mai.
+  **Anche per gli eventi SDK il valore predefinito di `collector.redact` è `minimal`.** L'SDK maschera i dati sensibili prima di scrivere un batch su disco, e il daemon ripete lo stesso passaggio deterministico prima dell'upload, così anche i batch prodotti da SDK meno recenti restano protetti.
 </Warning>
 
-Il daemon **spedisce** i tuoi batch. Non li apre o li riscrive.
+Il daemon legge ogni batch e applica il mascheramento in memoria prima dell'upload. Non riscrive il file di spool che ha letto.
 
-| Eventi | Scritti da | Redatti da `collector.redact`? |
+| Eventi | Scritti da | Dove viene applicato il mascheramento minimo |
 | --- | --- | --- |
-| Trascritti di sessione CLI | Il daemon | Sì |
-| Attività hook | Il daemon | Sì |
-| **Tutto ciò che l'SDK emette** | **Il tuo processo** | **No** |
+| Trascritti di sessione CLI | Il daemon | Prima che il daemon scriva il batch |
+| Attività hook | Il daemon | Prima che il daemon scriva il batch |
+| **Tutto ciò che l'SDK emette** | **Il tuo processo** | **Prima che l'SDK scriva il batch e di nuovo prima dell'upload da parte del daemon** |
 
-La redazione viene eseguita dove il daemon *scrive* i suoi propri eventi — non dove i batch sono *spediti*. Quindi un prompt o un argomento di strumento che tiene una chiave API ancora la tiene all'arrivo.
-
-È deliberato. Queste sono le tue stesse chiamate di strumentazione, e riscriverle in transito significherebbe che gli eventi che ricevi non sono gli eventi che hai emesso.
+Imposta `collector.redact` su `off` solo quando i payload integrali sono un requisito esplicito; sia l'SDK sia il daemon rispettano questa impostazione. Il mascheramento minimo intercetta le chiavi API più comuni, i bearer token, i JWT e le assegnazioni di secret. Non è in grado di riconoscere qualsiasi testo sensibile.
 
 <Tip>
   **Controlli i payload alla sorgente, in due posti:**
@@ -667,7 +665,7 @@ La redazione viene eseguita dove il daemon *scrive* i suoi propri eventi — non
     `instrument()` scarta le opzioni che un adapter non legge, quindi passare il nome sbagliato non genera nulla e non cambia nulla.
   - Non consegnare il segreto a `input=` in primo luogo.
 
-  `collector.redact` non è un sostituto per nessuno dei due.
+  `collector.redact` è una difesa in profondità, non un sostituto di nessuno dei due.
 </Tip>
 
 <Warning>

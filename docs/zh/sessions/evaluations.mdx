@@ -1,25 +1,25 @@
 ---
-title: "在线评估"
-description: "对实时和已完成的会话进行质量、合规性、成本和延迟评分。"
+title: "读取评估结果"
+description: "跨时间维度绘制评估分数图表、比较 Agent 和环境、查看会话低分原因，并向助手提问。"
 icon: "gauge"
 ---
 
-在线评估对 Agent 会话应用一致的判断标准。适用于需要持续监测而非仅在审计时才进行检查的指标。
+每次评估的结果，无论来自托管评估器还是您自己的 Worker，都会汇聚到相同的位置。
 
-## 审查评估质量
+## 跨时间比较分数
 
 <Tabs>
   <Tab title="控制台">
-    1. 前往 **Observe → Evaluations**。
-    2. 添加系列，选择 Agent、环境、评估分数、统计量和曲线。
-    3. 添加多个系列以比较不同环境、Agent 或分数键。
-    4. 选择某条结果以打开匹配的会话或共享筛选视图。延迟、Token 数、成本及其他量值请使用 **Observe → Metrics**。
+    前往 **Observe → evaluations**。
 
-    ![展示平均评估分数及其随时间变化趋势的质量仪表盘。](/images/dashboard/dashboard-quality.png)
+    - **Recent runs** 列出每次评估的到达记录：包括来源（**managed** 托管评估器或 **customer** 自有评估器）、Agent 和会话、评估项及其版本、状态，以及分数或指标。
+    - **Score over time** 绘制您所关注的内容。选择 **add series**，然后选择 Agent、环境、评估项和统计量：avg、min、max、p50、p75、p90、p95、p99、stddev 或 mode。每个数据系列对应一条折线；为其分配独立的 **curve** 可将其绘制在单独的图表上。
 
-    从下钻视图中打开会话，可查看各分项的评估推理过程：
+    ![评估页面：标记为 customer 的近期运行记录、带有 0.5 和 0.8 参考线的随时间变化的分数图表，以及对所有 Agent 和环境中 finished_clean 取平均值的单条数据系列。](/images/dashboard/evaluations-chart.png)
 
-    ![在完整追踪旁边展示评估分数和推理内容的会话详情视图。](/images/dashboard/session-detail.png)
+    所有数据系列共用同一个时间范围和分组粒度。细粒度分组便于定位异常事件，粗粒度分组有助于呈现整体趋势，但可能会掩盖您正在寻找的波峰。某个时间桶内若无评估数据，折线上会显示空缺而非零值，参考线标记在 0.5 和 0.8 处。
+
+    视图的每个配置都保存在 URL 中：点击 **share** 即可复制链接，打开链接的人将看到与您完全相同的对比视图。
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -28,25 +28,29 @@ icon: "gauge"
     fp evals --score helpfulness:0.8.. --since 7d
     ```
 
-    如需用于自动化，可在 `evals` 前添加全局参数 `--json`，例如 `fp --json evals --aggregate --env production`。
+    在 `evals` 前添加全局参数 `--json` 可用于自动化，例如 `fp --json evals --aggregate --env production`。
   </Tab>
 </Tabs>
 
-评估器接收会话标识、环境、时间戳和有序事件，可返回带有可选推理说明和摘要的数值分数键。长时间运行的评估器可返回一个待处理任务，并在稍后进行轮询。
+对同一评估项同时绘制 **avg** 和 **p90**，可判断良好的平均值是否掩盖了较差的尾部表现；也可将同一评估项应用于两个不同的 Agent，或分别对生产环境和预发布环境进行对比，在同一坐标轴上直观呈现差异。费用、延迟和 Token 数量等带有单位的指标，请在 **Observe → metrics** 下查看图表，每种单位对应一张独立图表。
 
-## 适合评估的目标
+## 查看会话低分原因
 
-- 任务完成度或正确性
-- 事实依据与幻觉风险
-- 工具选择与使用效率
-- 政策或流程合规性
-- 成本与延迟预算
-- 是否需要人工介入升级
+从 **Observe → sessions** 打开某个会话；列表中每个会话都显示其分数，并支持按分数范围筛选。会话详情页右侧边栏首先展示评估摘要，然后为每个分数显示一条进度条，下方附有评估器的推理说明。
 
-## 从评分到响应
+![会话详情视图，在完整追踪记录旁边展示评估分数和推理说明。](/images/dashboard/session-detail.png)
 
-在仪表盘中展示分数以跟踪趋势。为阈值或复合条件创建告警。当某项分数在整体水平上持续下降时，运行审计调查原因；若原因是某个可重复的操作，则部署相应策略。
+## 向助手提问
 
-<Card title="构建评估器" icon="code-2" href="/zh/reference/evaluator-sdk">
-  使用 Python 评估器 SDK 实现同步或异步评估。
-</Card>
+用自然语言向助手提问，例如："告诉我一些近期的评估情况"，或哪些 Agent 的分数在下滑。[助手](/zh/sessions/assistant)会读取并分析评估结果，以表格形式作答供您进一步追问；值得保留的问题可以转化为[查询](/zh/sessions/queries)或[仪表板](/zh/sessions/dashboards)。
+
+![评估页面与助手并排展示，助手回答了"告诉我一些近期的评估情况"，并给出了总数、状态和分数的摘要。](/images/dashboard/evaluations-assistant.png)
+
+## 监控与响应
+
+- **Dashboards** 位于 **Analyze → dashboards** 下，按 Agent 和环境维度，为整个组织展示您关注的分数趋势。
+
+  ![质量仪表板，展示平均评估分数及随时间变化的趋势。](/images/dashboard/dashboard-quality.png)
+
+- **Alerts** 在分数超过阈值时发出通知。请参阅[告警](/zh/audits/alerts)。
+- 当某项分数在多个会话中持续下降时，[运行审计](/zh/audits/run)以查明原因；当原因可归结为某个可重现的操作时，[编写策略](/zh/policies/editor)加以约束。

@@ -1,0 +1,60 @@
+---
+title: "Testar uma política"
+description: "Faça backtest de um rascunho com o tráfego que você já possui e comprove que ela bloqueia o que deve bloquear e permite o que deve permitir, antes que qualquer máquina a aplique."
+icon: "flask-conical"
+---
+
+Teste cada política de duas formas: com o tráfego que seus agentes já produziram e com uma ação legítima que ela deve permitir. Uma política que só foi testada com o caso inseguro não foi verdadeiramente testada.
+
+## Faça backtest do rascunho
+
+<Tabs>
+  <Tab title="Dashboard">
+    O editor de políticas reproduz um rascunho com as chamadas que sua frota já realizou, antes de você publicá-lo.
+
+    1. Abra o rascunho em **Admin → policy editor**. O editor confirma que o código é um JavaScript válido.
+    2. Em **backtest**, escolha os agentes e o intervalo de tempo a reproduzir — **every agent** e **30d** por padrão — e deixe o último filtro em **everything**, a menos que queira restringir o escopo.
+    3. Selecione **run backtest**.
+
+    ![O painel de backtest abaixo de um rascunho que é um JavaScript válido, com seus três filtros e a ação de executar backtest, acima de publicar versão.](/images/dashboard/policy-backtest.png)
+
+    O resultado mostra o que o rascunho teria feito com essas chamadas — incluindo quantas chamadas **funcionando** ele teria interrompido. Esses são falsos positivos encontrados antes que qualquer agente os encontre: ajuste o rascunho e execute novamente até que esse número seja aceitável.
+  </Tab>
+  <Tab title="CLI">
+    O backtest é um recurso do dashboard. No terminal, execute a política com eventos que você descrever diretamente, conforme explicado abaixo.
+  </Tab>
+</Tabs>
+
+## Execute contra um evento que você descreve
+
+`fp policies test` executa um arquivo de política na sua máquina com um evento sintético e verifica a decisão. Nada é publicado e nada chega à Cloud:
+
+```bash
+fp policies test ./checkout.policy.mjs --command "git push --force" --expect deny
+fp policies test ./checkout.policy.mjs --command "git push" --expect allow
+```
+
+Modele o evento com `--event`, `--tool`, `--command` e `--file`. O filtro `match` da própria política ainda é aplicado, então uma política que não cobre o evento descrito reporta `skipped` em vez de uma decisão — geralmente um sinal de que seu `match` é mais restrito do que você pretendia.
+
+## Execute em uma máquina
+
+Em seguida, aplique a política de verdade na sua própria máquina, com o seu próprio agente:
+
+```bash
+failproofai policies --install --custom ./checkout.policy.mjs --scope project
+failproofai policies
+```
+
+O primeiro comando valida e instala o arquivo; o segundo confirma que ele foi carregado, junto com tudo mais que está sendo aplicado aqui. Peça ao agente para realizar o que a política bloqueia e observe a recusa; depois faça a versão legítima e observe que ela é permitida. Ninguém mais é afetado.
+
+Em uma máquina conectada à Cloud, verifique ambas as decisões em **Observe → policy**: filtre pelo nome da política e abra cada sessão vinculada para confirmar o input da ferramenta que foi correspondido e o motivo retornado.
+
+## Teste o que quebra
+
+A instalação rejeita um arquivo ausente, um erro de sintaxe, uma importação não resolvida, uma exceção de nível superior ou um módulo que excede o tempo limite ao carregar — portanto, reexecute após cada alteração no arquivo ou em qualquer coisa que ele importe. No momento de aplicação, o mesmo arquivo com problema é registrado e **ignorado** para que todas as outras políticas continuem em execução: trate um aviso de carregamento nos logs de produção como perda de aplicação. Os arquivos de convenção carregam sem o comando de instalação, então mantenha uma etapa explícita de `failproofai policies --install --custom <file>` no CI — é ela que falha o build quando uma política está com problema.
+
+Depois, alimente a política com o que os agentes realmente enviam, não apenas o input que você espera: campos ausentes, nomes de ferramentas alternativos como `Write` e `Edit`, caminhos do Windows, input malformado. Retorne um `allow`, `instruct` ou `deny` intencional em cada caminho, mantenha a função determinística e limite qualquer chamada externa com um timeout curto.
+
+## Publique e observe
+
+Um backtest mostra o que a política teria feito com o tráfego que você tinha; ele não consegue mostrar o que o tráfego ainda não visto fará. Selecione **publish version** no editor (ou execute `fp policies publish`), depois [faça o deploy](/pt-br/policies/deploy) no modo **observe** primeiro — os vereditos são registrados e nada é bloqueado — e aplique a política apenas quando suas correspondências separarem ações inseguras das válidas.

@@ -1,49 +1,96 @@
 ---
-title: "Trình soạn thảo chính sách"
-description: "Tạo và sửa đổi các chính sách có phiên bản từ một chế độ lỗi đã được xác nhận."
+title: "Viết một chính sách"
+description: "Cho phép Failproof AI soạn thảo một chính sách từ kết quả kiểm tra, hoặc tự viết nguồn, sau đó xem xét, kiểm tra và xuất bản."
 icon: "file-pen-line"
 ---
 
-Sử dụng trình soạn thảo chính sách để biến một phát hiện hoặc vấn đề thành một quy tắc có thể triển khai. Giữ tác vụ soạn thảo riêng biệt với triển khai để một bản nháp không thể âm thầm thay đổi hành vi hiện tại.
+Có hai cách để viết một chính sách: cho phép Failproof AI soạn thảo từ kết quả kiểm tra, hoặc tự viết nguồn. Không có gì được xuất bản hoặc triển khai cho đến khi bạn chọn.
 
-Khi một vấn đề có mẫu hành động có thể lặp lại, hãy mở nó trong **Analyze → issues** và chọn **generate policy**. Failproof AI trước tiên giải thích liệu một chính sách có thể biểu thị vấn đề hay không, sau đó đưa ý định đã xem xét và bối cảnh phát hiện vào trình soạn thảo. Nguồn được tạo ra vẫn là bản nháp cho đến khi bạn xuất bản nó.
+## Viết một chính sách từ một cuộc kiểm tra
 
-## Xuất bản một phiên bản chính sách
+Một cuộc kiểm tra phát hiện một lỗi; một chính sách ngăn chặn nó lặp lại. Failproof AI soạn thảo chính sách từ bằng chứng của kết quả phát hiện.
+
+### 1. Chạy một cuộc kiểm tra
+
+[Chạy một cuộc kiểm tra](/vi/audits/run) trên các phiên làm việc nơi lỗi xảy ra. Mỗi kết quả phát hiện mang theo các phiên bằng chứng, nguyên nhân gốc rễ và đường dẫn ngăn chặn được đề xuất. Làm việc từ một kết quả phát hiện có **mẫu hành động có thể lặp lại** — một chính sách chỉ có thể ngăn chặn những gì nó có thể nhận dạng trong sự kiện hook.
+
+### 2. Tạo bản nháp
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Đi tới **Admin → policy editor** và trong **compose**, mô tả chế độ lỗi hoặc dán nguồn chính sách JavaScript.
-    2. Xác nhận nguồn và sửa lỗi từng cái được báo cáo.
-    3. Nhập danh tính chính sách và xuất bản nó, sau đó sử dụng **library** để so sánh hoặc vô hiệu hóa các phiên bản.
-    4. Chọn **enforcement** khi phiên bản sẵn sàng để triển khai máy.
+    1. Mở vấn đề phát hiện dưới **Analyze → issues** và kiểm tra các phiên được trích dẫn, nguyên nhân gốc rễ và khuyến cáo.
+    2. Chọn **generate policy**. Failproof AI trước tiên cho biết liệu chính sách có thể biểu đạt vấn đề hay không. Kết quả **no policy** có nghĩa là bản sửa lỗi là một cảnh báo, thay đổi quy trình làm việc hoặc một người — không phải một chính sách.
+    3. Chọn **write this policy**. Tiêu đề vấn đề, kết quả phát hiện, nguyên nhân gốc rễ, khuyến cáo và ý định thực thi được đề xuất trở thành bản nháp trong **Admin → policy editor**. Sử dụng **open the editor anyway** khi bạn không đồng ý với kiểm tra ứng cử viên.
 
-    ![Chế độ soạn thảo của trình soạn thảo chính sách với danh tính chính sách, soạn thảo hỗ trợ AI, xác nhận nguồn và kiểm soát xuất bản.](/images/dashboard/policy-editor.png)
+    ![Chế độ soạn thảo trình soạn chính sách với danh tính chính sách, soạn thảo hỗ trợ AI, xác thực nguồn và điều khiển xuất bản.](/images/dashboard/policy-editor.png)
   </Tab>
   <Tab title="CLI">
-    Xuất bản từ CLI bằng `fp policies publish`. Nó tạo ra một **phiên bản mới** và không bao giờ chỉnh sửa một phiên bản tại chỗ, và nó kiểm tra cú pháp nguồn bằng node trước khi gửi — không có gì phía sau làm, vì vậy một lỗi cú pháp sẽ xuất hiện trên máy tại thời điểm thực thi:
+    Đọc bằng chứng, sau đó soạn thảo với trợ lý. `compose` in nguồn để bạn xem xét và không xuất bản bất cứ điều gì:
 
     ```bash
-    fp policies test ./checkout.policy.mjs --command "git push --force" --expect deny
-    fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
+    fp issues show <issue-id>
+    fp audits finding <finding-id>
+    fp policies compose "Block git push --force on release branches"
     ```
 
-    Xuất bản không triển khai bất cứ điều gì — một phiên bản mới không được sử dụng cho đến khi `fp fleet deploy` đặt nó trên một máy. `fp policies compose "<plain English>"` soạn thảo nguồn với trợ lý Cloud và in nó để xem xét thay vì xuất bản nó.
-
-    Để cài đặt một chính sách vào CLI tác nhân cục bộ thay vào đó (không phải Cloud), hãy sử dụng `failproofai policies --install --custom ./checkout.policies.ts --cli claude --scope project`.
+    `compose` cần một phiên đã đăng nhập (`fp login`) có vai trò `policies:write`; nó từ chối các khóa API.
   </Tab>
 </Tabs>
 
-## Danh sách kiểm tra tác vụ soạn thảo
+### 3. Xem xét bản nháp
 
-1. Đặt tên cho chế độ lỗi bằng ngôn ngữ hoạt động.
-2. Chọn các sự kiện hook và công cụ chứa đủ bằng chứng để quyết định.
-3. Viết điều kiện hẹp nhất phù hợp với hành vi không an toàn.
-4. Trả về lý do cho tác nhân hoặc nhà điều hành biết phải làm gì tiếp theo.
-5. Thêm ví dụ phải khớp và ví dụ phải vẫn được phép.
-6. Lưu một phiên bản mới và yêu cầu xem xét.
+Bản nháp là điểm khởi đầu, không phải một phán quyết. Trước khi xuất bản, hãy kiểm tra rằng nó:
 
-Sử dụng `instruct` khi tác nhân có thể an toàn sửa lỗi đường hướng. Sử dụng `deny` khi cho phép hành động sẽ tạo ra rủi ro không thể chấp nhận hoặc không thể đảo ngược.
+1. Đặt tên chế độ lỗi bằng ngôn ngữ vận hành.
+2. Khớp chỉ các sự kiện hook và công cụ mang đủ bằng chứng để quyết định.
+3. Sử dụng điều kiện hẹp nhất bắt được hành động không an toàn.
+4. Trả lại một lý do cho agent biết phải làm gì khác.
+5. Sử dụng `instruct` khi agent có thể an toàn sửa đổi hướng, và `deny` chỉ khi cho phép hành động là không thể chấp nhận được hoặc không thể đảo ngược.
 
-<Info>
-  Các phiên bản chính sách là đầu vào triển khai không thay đổi. Chỉnh sửa bản nháp tạo ra một phiên bản mới; nó không nên viết lại phiên bản đã được gán cho máy.
-</Info>
+Xác thực nguồn trong trình soạn thảo và sửa tất cả các lỗi được báo cáo.
+
+### 4. Kiểm tra, sau đó xuất bản
+
+Chạy **backtest** dưới nguồn trước khi bạn xuất bản: nó phát lại bản nháp dựa trên các lệnh gọi mà hạm đội của bạn đã thực hiện và đếm số lượng các lệnh gọi hoạt động mà nó sẽ đã gián đoạn. [Test a policy](/vi/policies/test) bao gồm điều đó và các kiểm tra khác.
+
+Khi nó hoạt động, nhập danh tính chính sách và chọn **publish version**. Xuất bản tạo một phiên bản bất biến và không triển khai bất cứ điều gì: nó nằm không được sử dụng cho đến khi bạn [triển khai nó](/vi/policies/deploy). Từ một terminal:
+
+```bash
+fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
+```
+
+`publish` kiểm tra phân tích cú pháp nguồn trước khi gửi, vì vậy lỗi cú pháp sẽ xuất hiện ở đây thay vì trên máy tại thời điểm thực thi.
+
+## Tự viết nó
+
+Một chính sách là JavaScript hoặc TypeScript dựa trên API `failproofai`:
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "protect-production-paths",
+  description: "Block writes to production configuration",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (ctx.toolName !== "Write" && ctx.toolName !== "Edit") return allow();
+    const path = String(ctx.toolInput?.file_path ?? "").replaceAll("\\", "/");
+    if (path.split("/").includes("production")) {
+      return deny("Writes to production configuration require approval.");
+    }
+    return allow();
+  },
+});
+```
+
+Điều này khớp `production/config.yml`, `/srv/production/config.yml`, `/srv/production` và `C:\\production\\config.yml` cho cả `Write` và `Edit`, nhưng không phải `production-backup`: `production` phải là một phân đoạn đường dẫn hoàn chỉnh. Ngữ cảnh cũng mang theo loại sự kiện, tải trọng chuẩn hóa, siêu dữ liệu phiên, tham số và CLI nguồn khi có sẵn — xem [policy SDK](/vi/reference/policy-sdk).
+
+Để xuất bản nó như một phiên bản, dán nguồn vào **compose** trong **Admin → policy editor** và làm theo các bước 3 và 4 ở trên, hoặc xuất bản tệp từ terminal bằng `fp policies publish`.
+
+Để chạy nó trên máy mà không có Cloud, lưu nó dưới `.failproofai/policies/` với tên kết thúc bằng `policies.js`, `policies.mjs` hoặc `policies.ts` — những cái này tải tự động ở phạm vi dự án và người dùng — hoặc cài đặt nó theo đường dẫn:
+
+```bash
+failproofai policies --install --custom ./security.policies.ts --scope project
+```
+
+Đặt cho mỗi chính sách một tên duy nhất trên các chính sách theo quy ước, tùy chỉnh, gói và được quản lý bởi Cloud.

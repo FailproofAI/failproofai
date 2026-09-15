@@ -1,55 +1,49 @@
 ---
 title: "本地配置"
-description: "控制策略范围、参数、自定义文件及机器级 Failproof AI 设置。"
+description: "管理策略作用域、参数、自定义文件以及机器级 Failproof AI 设置。"
 icon: "file-cog"
 ---
 
-Failproof AI 将策略选择与机器和守护进程设置分离。这样既能让仓库中的策略选择保持可审查性，又能将凭据和守护进程状态保留在仓库之外。
+Failproof AI 将仓库可提交的内容（钩子连接、策略参数、自定义策略）与机器状态（如凭据、已安装的包及守护进程）分开管理。
 
-## 选择策略范围
+## 选择作用域
 
-<Tabs>
-  <Tab title="控制台">
-    不带参数运行 `failproofai` 可打开本地策略控制台。在启用策略之前，先选择用户、项目或本地范围，确保更改写入到正确的配置文件。
+作用域决定了钩子的连接位置，以及您在哪个配置文件中写入参数和自定义策略路径：
 
-    - **用户**：应用于本机上的所有项目。
-    - **项目**：属于仓库，可以提交。
-    - **本地**：针对某一用户覆盖单个项目，应保留在 gitignore 中。
+- **User**：应用于本机上的所有项目。
+- **Project**：归属于仓库，可以提交。
+- **Local**：为单个用户覆盖某个项目的配置，应保留在 gitignore 中。
 
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai policy add block-rm-rf --scope user
-    failproofai policy add block-force-push --scope project
-    failproofai policy add warn-large-file-write --scope local
-    failproofai policies
-    ```
+```bash
+failproofai policies --install --cli claude --scope project   # 为此仓库连接钩子
+failproofai policies --install --cli claude --scope user      # 或为本机上的所有项目连接钩子
+failproofai policies
+```
 
-    并非所有执行器都支持本地范围。如果所选执行器无法表示该范围，CLI 将拒绝执行。
-  </Tab>
-</Tabs>
+并非所有 harness 都支持 local 作用域；如果所选 harness 不支持指定的作用域，CLI 会拒绝该请求。
 
-| 范围 | 策略配置文件 |
+包策略的启用状态**不受作用域限制**。该开关与已安装的包一起记录，因此 `failproofai policies add <name>` 会在整台机器范围内启用某个策略，无论 `--scope` 如何设置。
+
+| 作用域 | 策略配置文件 |
 | --- | --- |
-| 项目 | `<project>/.failproofai/policies-config.json` |
-| 本地 | `<project>/.failproofai/policies-config.local.json` |
-| 用户 | `~/.failproofai/policies-config.json` |
+| Project | `<project>/.failproofai/policies-config.json` |
+| Local | `<project>/.failproofai/policies-config.local.json` |
+| User | `~/.failproofai/policies-config.json` |
 
-已启用的策略以并集方式合并。策略参数按 项目 → 本地 → 用户 的顺序，使用第一个为该策略定义了参数的范围。显式自定义策略路径同样使用第一个定义它们的范围。
+策略参数按 project → local → user 的顺序，使用第一个为该策略定义了参数的作用域。显式自定义策略路径同样使用第一个定义了路径的作用域。
 
 ## 配置策略参数
 
 <Tabs>
   <Tab title="控制台">
-    在本地控制台中打开策略，编辑其支持的参数，然后在选定范围内保存。运行一个匹配及一个不匹配的代理操作，然后在 **观察 → 策略** 中查看决策结果。
+    在本地控制台中打开相应策略，编辑其支持的参数，并保存到所选作用域。运行一个匹配和一个不匹配的 Agent 操作，然后在 **Observe → policy** 中查看决策结果。
 
   </Tab>
   <Tab title="CLI">
-    编辑所选范围的 `policies-config.json`，然后运行 `failproofai policies` 以检测未知的策略名称或参数键。
+    编辑所选作用域的 `policies-config.json`，然后运行 `failproofai policies`：如果 `policyParams` 条目中指定的策略不存在于任何已安装的包中，系统会发出警告。它不会检查条目内部的键名，因此请对照下方表格核对拼写。
 
     ```json
     {
-      "enabledPolicies": ["block-rm-rf", "block-force-push"],
       "policyParams": {
         "block-rm-rf": {
           "allowPaths": ["/tmp/build-output"]
@@ -64,21 +58,45 @@ Failproof AI 将策略选择与机器和守护进程设置分离。这样既能�
   </Tab>
 </Tabs>
 
+### Failproof AI 策略接受的参数
+
+每个策略会自行验证其参数类型。
+
+| 策略 | 参数 | 类型与默认值 |
+| --- | --- | --- |
+| `sanitize-api-keys` | `additionalPatterns` | `pattern[]`，`[]`；条目包含 `regex` 和 `label` |
+| `block-read-outside-cwd` | `allowPaths` | `string[]`，`[]` |
+| `block-sudo` | `allowPatterns` | `string[]`，`[]` |
+| `block-rm-rf` | `allowPaths` | `string[]`，`[]` |
+| 基础设施拦截器 | `allowPatterns` | `string[]`，`[]` |
+| `block-secrets-write` | `additionalPatterns` | `string[]`，`[]` |
+| `block-push-master` | `protectedBranches` | `string[]`，`["main", "master"]` |
+| `block-work-on-main` | `protectedBranches` | `string[]`，`["main", "master"]` |
+| `prefer-package-manager` | `allowed`，`blocked` | `string[]`，`[]` |
+| `warn-large-file-write` | `thresholdKb` | `number`，`1024` |
+| `require-push-before-stop` | `remote`，`baseBranch` | `string`，`"origin"`；`string`，`"main"` |
+| `require-pr-before-stop` | `baseBranch` | `string`，`"main"` |
+| `require-no-conflicts-before-stop` | `baseBranch` | `string`，`"main"` |
+
+<Warning>
+  允许模式会扩大 Agent 的操作权限。在将其部署到整个集群之前，请先在目标 harness 上测试准确的分词行为和各种命令变体。
+</Warning>
+
 ## 了解机器文件
 
-`~/.failproofai` 包含针对不同信任边界的独立文件：
+`~/.failproofai` 针对不同信任边界包含独立文件：
 
 | 路径 | 用途 |
 | --- | --- |
-| `config.json` | 非敏感的守护进程、审计及遥测设置 |
-| `credentials.json` | 云凭据；以仅所有者可读的权限存储 |
-| `policies-config.json` | 用户范围内置策略选择、参数及显式自定义路径 |
-| `policies/` | 用户约定策略及云托管策略工件 |
+| `config.json` | 守护进程、审计和遥测的非敏感设置 |
+| `credentials.json` | 云凭据；以仅限所有者的权限存储 |
+| `policies-config.json` | 用户作用域的参数及显式自定义策略路径 |
+| `policies/` | 用户约定策略、已安装的包及其策略启用状态，以及云端管理的策略产物 |
 | `hook-activity/` | 本地策略决策日志 |
-| `state/` | 守护进程队列、健康状态、暂停及运行时状态 |
+| `state/` | 守护进程缓冲区、健康状态、暂停状态及运行时状态 |
 
-使用 `FAILPROOFAI_HOME` 可为容器或隔离测试重新指定完整的机器布局目录。请勿单独迁移各个状态目录。
+使用 `FAILPROOFAI_HOME` 可将完整的机器目录布局迁移至容器或隔离测试环境。请勿单独迁移各个状态目录。
 
 <Warning>
-  切勿提交 `credentials.json`。仅在将项目策略配置和项目约定策略作为执行代码审查后，才可提交它们。
+  切勿提交 `credentials.json`。项目策略配置和项目约定策略只有在作为执行代码审查完毕后才可提交。
 </Warning>

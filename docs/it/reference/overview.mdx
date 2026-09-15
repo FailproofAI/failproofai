@@ -1,73 +1,76 @@
 ---
 title: "Integrazioni e riferimento"
-description: "Connetti harness di agenti supportati, SDK, CLI e l'API HTTP."
+description: "Connetti harness di agent supportati, SDK, CLI e l'API HTTP."
 icon: "braces"
 ---
 
-Scegli l'integrazione più vicina a dove il tuo agente viene già eseguito.
+Scegli l'integrazione più vicina a dove il tuo agent è già in esecuzione.
 
 <Columns cols={2}>
   <Card title="Agent harness" icon="plug-zap" href="/it/reference/harnesses">
-    Installa hook per CLI di agenti autonomi e di codifica supportati.
+    Installa hook per CLI di agent di codifica e autonomi supportati.
   </Card>
-  <Card title="Framework di agenti e SDK" icon="plug" href="/it/start/integrations">
-    Strumenta LangGraph, CrewAI, LlamaIndex, Pydantic AI o un agente personalizzato.
+  <Card title="Framework di agent e SDK" icon="plug" href="/it/start/integrations">
+    Strumenta LangGraph, CrewAI, LlamaIndex, Pydantic AI o un agent personalizzato.
   </Card>
   <Card title="Riferimento Python SDK" icon="python" href="/it/reference/custom-agents">
     Configurazione, catalogo degli eventi, regole di correlazione e consegna.
   </Card>
   <Card title="Dashboard locale" icon="monitor-cog" href="/it/reference/local-dashboard">
-    Rivedi progetti locali, sessioni, attività delle policy e audit offline.
+    Esamina progetti locali, sessioni, attività delle policy e audit offline.
   </Card>
-  <Card title="CLI Failproof AI" icon="terminal" href="/it/reference/failproof-cli">
-    Configura cattura locale, hook, policy, audit, consegna e stato della macchina.
+  <Card title="Failproof AI CLI" icon="terminal" href="/it/reference/failproof-cli">
+    Configura acquisizione locale, hook, policy, audit, consegna e stato della macchina.
   </Card>
-  <Card title="CLI Failproof Cloud" icon="cloud-cog" href="/it/reference/cloud-cli#cli-commands">
+  <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/it/reference/cloud-cli#comandi-cli">
     Interroga e amministra sessioni Cloud, audit, problemi, avvisi, chiavi, utenti e impostazioni.
   </Card>
   <Card title="Evaluator SDK" icon="gauge" href="/it/reference/evaluator-sdk">
     Valuta sessioni complete o inattive con un servizio FastAPI.
   </Card>
   <Card title="Policy personalizzate" icon="shield-plus" href="/it/reference/policy-sdk">
-    Crea e testa decisioni di autorizzazione, istruzione e negazione specifiche per il flusso di lavoro.
+    Crea e testa decisioni allow, instruct e deny specifiche del flusso di lavoro.
   </Card>
-  <Card title="Self-hosting" icon="cloud-cog" href="/it/reference/self-hosting">
+  <Card title="Auto-hosting" icon="cloud-cog" href="/it/reference/self-hosting">
     Distribuisci il piano di controllo Cloud su un cluster Kubernetes gestito dal cliente.
   </Card>
 </Columns>
 
-Il [riferimento dell'API HTTP](/it/reference/http-api) generato copre la superficie pubblica `/v1`. Le pagine scritte manualmente spiegano i flussi di lavoro che si estendono su più endpoint o utilizzano interfacce amministrative al di fuori di quella superficie pubblica.
+Il [riferimento dell'API HTTP](/it/reference/http-api) generato copre la superficie pubblica `/v1`. Le pagine scritte manualmente spiegano i flussi di lavoro che abbracciano più endpoint o utilizzano interfacce amministrative al di fuori di quella superficie pubblica.
 
-## Connetti un agente e verifica i dati
+## Connetti un agent e verifica i dati
 
 <Tabs>
   <Tab title="Dashboard">
     1. Apri **Administration → Keys**, crea una chiave con `events:add` e `policies:pull`, e copia il segreto.
-    2. Configura l'integrazione utilizzando la pagina corrispondente in alto.
-    3. Apri **Observe → Events** per confermare l'arrivo degli eventi, quindi **Observe → Sessions** per confermare che formano esecuzioni complete.
-    4. Filtra per l'ambiente dell'integrazione e ispeziona una sessione per i campi modello, strumento, errore e policy necessari agli audit.
+    2. Configura l'integrazione usando la pagina corrispondente sopra.
+    3. Apri **Observe → Events** per confermare che gli eventi arrivano, quindi **Observe → Sessions** per confermare che formano esecuzioni complete.
+    4. Filtra per l'ambiente dell'integrazione e ispeziona una sessione per i campi model, tool, error e policy necessari agli audit.
 
     Inizia con il cassetto delle chiavi. I grant selezionati determinano se la macchina può inviare eventi e ricevere policy gestite da Cloud.
 
-    ![Il nuovo cassetto della chiave API utilizzato per concedere le autorizzazioni di acquisizione degli eventi e consegna delle policy.](/images/dashboard/key-create.png)
+    ![Il cassetto delle nuove chiavi API utilizzato per concedere autorizzazioni di acquisizione degli eventi e consegna delle policy.](/images/dashboard/key-create.png)
 
-    Dopo aver connesso l'integrazione, usa l'elenco Sessions per confermare che i suoi eventi vengono raggruppati in esecuzioni complete nell'ambiente previsto.
+    Dopo aver connesso l'integrazione, utilizza l'elenco delle sessioni per confermare che i suoi eventi vengono raggruppati in esecuzioni complete nell'ambiente previsto.
 
-    ![L'elenco Sessions utilizzato per verificare che un'integrazione appena connessa stia segnalando esecuzioni complete dell'agente.](/images/dashboard/sessions-list.png)
+    ![L'elenco delle sessioni utilizzato per verificare che un'integrazione appena connessa stia segnalando esecuzioni complete dell'agent.](/images/dashboard/sessions-list.png)
 
-    Apri una di queste sessioni prima di considerare l'integrazione completa; la traccia deve contenere il modello, lo strumento, l'errore e le prove di policy di cui i tuoi audit hanno bisogno.
+    Apri una di queste sessioni prima di considerare l'integrazione completa; la traccia dovrebbe contenere il model, il tool, l'error e le evidenze delle policy di cui i tuoi audit hanno bisogno.
   </Tab>
   <Tab title="CLI">
-    Crea una chiave macchina, connetti il daemon Failproof e verifica la prima sessione.
+    Crea una chiave della macchina, quindi leggi il segreto che stampa nella shell. `read -s` lo accetta a un prompt che non fa echo, quindi non appare mai in un comando o nella cronologia della shell:
 
     ```bash
     fp keys create agent-production \
       --add events:add \
       --add policies:pull
+    read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
+    ```
 
-    failproofai config \
-      --connect https://app.befailproof.ai \
-      --token <machine-key>
+    Connetti il daemon Failproof e verifica la prima sessione:
+
+    ```bash
+    failproofai config
 
     failproofai flush --wait
     fp sessions --since 1h --env production
@@ -76,6 +79,6 @@ Il [riferimento dell'API HTTP](/it/reference/http-api) generato copre la superfi
 
     Usa `fp --json sessions ...` quando un altro strumento consumerà il risultato. I flag globali come `--json`, `--org` e `--base-url` devono venire prima del comando.
 
-    Consulta il [riferimento della CLI Failproof AI](/it/reference/failproof-cli) per i comandi locali e il [riferimento della CLI Failproof Cloud](/it/reference/cloud-cli#cli-commands) per i comandi `fp`.
+    Vedi il [riferimento della Failproof AI CLI](/it/reference/failproof-cli) per i comandi locali e il [riferimento della Failproof Cloud CLI](/it/reference/cloud-cli#comandi-cli) per i comandi `fp`.
   </Tab>
 </Tabs>

@@ -1,0 +1,29 @@
+---
+title: "Testare una valutazione"
+description: "Esegui una valutazione rispetto alle tue sessioni reali prima di distribuirla. Nulla viene archiviato."
+icon: "flask-conical"
+---
+
+**testare questa valutazione**, nella pagina di creazione, esegue il codice rispetto alle sessioni reali tue sulla flotta di valutazione senza distribuirlo. Nulla viene archiviato: un errore qui è un'anteprima, e la distribuzione è sempre consentita.
+
+<Steps>
+  <Step title="Verifica che si compili">
+    Seleziona **check** per compilare il codice e la condizione rispetto alle regole della sandbox senza eseguirli su alcuna sessione.
+  </Step>
+  <Step title="Seleziona le sessioni">
+    Restringi le sessioni corrispondenti per agente, ambiente, ora o ID della sessione, e selezionane fino a 10. Includi sia sessioni in cui la valutazione dovrebbe fallire che sessioni in cui dovrebbe avere successo.
+  </Step>
+  <Step title="Eseguila">
+    Seleziona **run against N sessions**, e leggi ogni riga.
+  </Step>
+</Steps>
+
+| Riga | Cosa significa |
+| --- | --- |
+| **ok** | Si è eseguita. La riga elenca ogni punteggio, metrica e asserzione che ha restituito, e quanto tempo ha impiegato. |
+| **skipped** | La condizione ha restituito `False`, quindi la valutazione non si è eseguita. È un salto, non un errore. |
+| Failed | Ha sollevato un'eccezione, è scaduta o ha utilizzato qualcosa che la sandbox rifiuta. La riga indica quale, e **Fix it** passa l'errore all'assistente quando può essere utile. |
+
+![Il pannello test this evaluation: tre sessioni selezionate per agente, due ok e una saltata perché la sua condizione ha restituito False.](/images/dashboard/eval-test.png)
+
+Un risultato smette di essere attuale nel momento in cui modifichi il codice; viene attenuato invece di essere riutilizzato.

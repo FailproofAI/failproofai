@@ -1,63 +1,54 @@
 ---
-title: "Politiche"
-description: "Osserva, guida o blocca le azioni degli agenti prima che un errore noto si ripeta."
+title: "Policies"
+description: "Osserva, guida o blocca le azioni dell'agente prima che un errore noto si ripeta."
 icon: "shield-check"
 ---
 
-Una politica valuta un evento hook dell'agente e restituisce una di tre decisioni:
+Una policy valuta un evento hook dell'agente e restituisce una di tre decisioni:
 
 - `allow` consente all'azione di continuare.
 - `instruct` fornisce all'agente una guida correttiva.
 - `deny` blocca l'azione con una motivazione.
 
-## Utilizza le tre superfici di politica
+## Dove si trovano le policy
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. Vai a **Observe → policy** per filtrare e ispezionare le decisioni di politica dalle sessioni.
-    2. Vai a **Admin → policy editor** per comporre, convalidare, pubblicare, disabilitare o ispezionare versioni immutabili.
-    3. Vai a **Admin → enforcement** per assegnare versioni ed effetti alle macchine.
+| Nel dashboard | Cosa fai lì |
+| --- | --- |
+| **Observe → policy** | Rivedi le decisioni dalle sessioni reali: quale policy ha corrisposto, su quale macchina e perché |
+| **Admin → policy editor** | Scrivi una policy, effettua un backtest rispetto al traffico passato, pubblica una versione immutabile e confronta le versioni in **library** |
+| **Admin → enforcement** | Distribuisci le versioni sulle macchine, in modalità observe o enforce |
 
-    Utilizza la pagina Policy per comprendere cosa sta già corrispondendo prima di creare o modificare l'applicazione.
+L'editor di policy è dove un errore diventa una regola. Descrivi la modalità di errore o incolla il codice della policy in **compose**, effettua un backtest della bozza rispetto al traffico che hai già, e pubblica una versione:
 
-    ![La pagina Policy che mostra i totali delle decisioni e i mapping delle politiche gestite localmente e nel Cloud.](/images/dashboard/policy-observe.png)
+![La vista compose dell'editor di policy con identità della policy, drafting assistito da AI, convalida del codice sorgente e controlli di pubblicazione.](/images/dashboard/policy-editor.png)
 
-    L'editor è il luogo in cui trasformi una condizione di errore in codice, la convalidi e pubblichi una versione immutabile.
+Su una macchina, `failproofai policies` elenca tutto ciò che viene applicato lì. `fp policies` e `fp fleet` coprono l'editor e l'enforcement da un terminale — vedi il [Cloud CLI reference](/it/reference/cloud-cli).
 
-    ![L'editor Policy utilizzato per comporre e pubblicare una versione di politica immutabile.](/images/dashboard/policy-editor.png)
+## Ottieni una policy
 
-    L'applicazione assegna quindi quella versione pubblicata e il suo effetto di osservazione o applicazione alle macchine.
-
-    ![La flotta di applicazione che mostra la copertura delle macchine e le versioni di politica assegnate.](/images/dashboard/enforcement-fleet.png)
-
-    Verifica le decisioni sulla pagina Policy dopo la distribuzione in modo che le visualizzazioni di creazione e flotta siano legate all'attività reale dell'agente.
-  </Tab>
-  <Tab title="CLI">
-    Utilizza `failproofai` per l'installazione e la convalida locale della politica:
-
-    ```bash
-    failproofai policies
-    failproofai policy add block-rm-rf --scope project
-    failproofai config --status
-    ```
-
-    Utilizza `fp` per trovare le sessioni e gli eventi del Cloud contenenti decisioni di politica. La creazione nel Cloud e la distribuzione della flotta rimangono flussi di lavoro del dashboard.
-  </Tab>
-</Tabs>
-
-Le politiche hanno tre superfici distinte in Failproof AI:
-
-1. **Analizza le decisioni** nelle sessioni, nei dashboard e negli audit.
-2. **Crea versioni** con regole integrate, codice o l'editor di politica.
-3. **Distribuisci e applica** versioni su macchine selezionate.
-
-Inizia da una modalità di errore confermata. Definisci l'evento e l'abbinamento di strumento più piccoli che lo identificano, testa esempi legittimi e non sicuri, quindi osserva prima di applicare.
+Ci sono due modi per ottenerne una.
 
 <Columns cols={2}>
-  <Card title="Utilizza una politica integrata" icon="library" href="/it/policies/builtin">
-    Abilita una regola verificata per rischi comuni di segreti, shell, Git, cloud e flussi di lavoro.
+  <Card title="Scrivi una policy" icon="file-pen-line" href="/it/policies/editor">
+    Lascia che Failproof AI ne rediga una da una rilevazione di audit, oppure scrivi il codice sorgente tu stesso, quindi rivedi e pubblica nell'editor.
   </Card>
-  <Card title="Scrivi una politica personalizzata" icon="code-2" href="/it/policies/custom">
-    Esprimi una decisione specifica del flusso di lavoro in JavaScript o TypeScript.
+  <Card title="Usa un policy pack" icon="package" href="/it/policies/packs">
+    Integra un policy pack di Failproof AI per il tuo caso d'uso, oppure un pack della community dall'hub delle policy, con un unico comando.
   </Card>
 </Columns>
+
+## Poi distribuiscilo
+
+<Steps>
+  <Step title="Testalo">
+    Effettua un backtest della bozza rispetto al traffico che hai già, ed eseguila su un'azione che deve bloccare e una che deve consentire — tutto prima di pubblicare. Vedi [Test a policy](/it/policies/test).
+  </Step>
+  <Step title="Distribuiscilo">
+    Metti la versione sulle macchine in modalità **observe**, leggi le sue decisioni, quindi applica l'enforce. Vedi [Deploy a policy](/it/policies/deploy).
+  </Step>
+  <Step title="Versionamento e rollback">
+    Ogni pubblicazione è una versione nuova e immutabile, quindi un rollout che blocca lavoro valido viene annullato ridistribuendo l'ultima versione buona. Vedi [Versions and rollback](/it/policies/rollback).
+  </Step>
+</Steps>
+
+Per condividere le tue policy con altri team, [pubblicale come pack](/it/policies/publish-a-pack). Per scoprire cosa accade quando una policy non può essere valutata affatto, vedi [Failure behavior](/it/policies/failure-behavior).

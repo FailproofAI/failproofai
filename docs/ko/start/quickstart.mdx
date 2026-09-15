@@ -1,12 +1,12 @@
 ---
 title: "빠른 시작"
-description: "에이전트 세션을 캡처하고, 실패를 발견하고, 예방을 시작하세요."
+description: "에이전트 세션을 캡처하고, 실패를 찾고, 이를 방지하기 시작하세요."
 icon: "zap"
 ---
 
-이 빠른 시작 가이드는 하나의 머신에서 세션을 보고하고, 감사를 실행하고, 정책을 배포하는 과정을 안내합니다. 스킬을 사용하거나 수동 단계를 따라 Failproof AI를 설정하세요.
+이 빠른 시작 가이드는 한 대의 머신에서 세션을 보고하도록 설정하고, 감사를 실행하며, 정책을 배포하는 과정을 안내합니다. 스킬을 사용하거나 수동 단계를 따라 Failproof AI를 설정하세요.
 
-**어떤 방법을 선택할까요?** 에이전트가 지원되는 12개의 [하네스](/ko/reference/harnesses) 중 하나에서 실행되는 경우 — 코딩 CLI, 또는 Hermes나 OpenClaw 같은 게이트웨이 — 아래 단계를 따르세요. Node.js 20.9 이상이 필요합니다. 에이전트에 하네스가 없는 경우, 추적과 감사를 위해 [Python SDK](/ko/reference/custom-agents)로 계측한 후 [첫 번째 실패 검사 실행](/ko/start/first-audit)에서 다시 합류하세요. 이 경로에서 적용(enforcement)은 런타임에 훅이 필요합니다.
+**어떤 방법을 선택하시겠어요?** 에이전트가 12개의 지원 [하네스](/ko/reference/harnesses) 중 하나(코딩 CLI, 또는 Hermes나 OpenClaw 같은 게이트웨이)에서 실행된다면 아래 단계를 따르세요. Node.js 20.9 이상이 필요합니다. 에이전트에 하네스가 없다면 추적 및 감사를 위해 [Python SDK](/ko/reference/custom-agents)로 계측한 후, [첫 번째 실패 검사 실행](/ko/start/first-audit)에서 다시 합류하세요. 해당 경로에서의 적용(enforcement)은 런타임에 훅이 필요합니다.
 
 <Tabs>
   <Tab title="스킬 사용">
@@ -16,24 +16,24 @@ icon: "zap"
         npx skills add FailproofAI/skills
         ```
       </Step>
-      <Step title="에이전트에게 모든 것을 설정하도록 요청">
+      <Step title="에이전트에게 모든 설정을 요청">
         ```text
         Set up Failproof AI for this project, connect this machine, install the right hooks and policies, and verify that a session arrives.
         ```
 
-        에이전트가 프로젝트를 검사하고, 관련 통합을 선택하고, 설정을 수행하고, 검증합니다. 개별 스킬과 고급 설치 옵션은 [FailproofAI 스킬 저장소](https://github.com/FailproofAI/skills)를 참고하세요.
+        에이전트가 프로젝트를 검사하고, 관련 통합을 선택하며, 설정을 수행하고, 검증합니다. 개별 스킬 및 고급 설치 옵션은 [FailproofAI 스킬 저장소](https://github.com/FailproofAI/skills)를 참조하세요.
       </Step>
     </Steps>
   </Tab>
   <Tab title="수동 설정">
     ## 시작 전 준비
 
-1. [Failproof AI 대시보드](https://app.befailproof.ai)를 열고 계정을 만들거나 업무용 이메일로 로그인하세요.
-2. **Administration → Keys**로 이동하여 `events:add`와 `policies:pull` 권한이 있는 키를 생성하세요.
-3. 일회용 시크릿을 복사하여 대상 머신에 저장하세요:
+1. [Failproof AI 대시보드](https://app.befailproof.ai)를 열고 계정을 생성하거나 업무용 이메일로 로그인하세요.
+2. **관리 → 키**로 이동하여 `events:add`와 `policies:pull` 권한을 가진 키를 생성하세요.
+3. 일회성 시크릿을 복사한 후, 대상 머신의 셸로 읽어 들이세요. `read -s`는 에코되지 않는 프롬프트에서 입력을 받으므로 명령어에 노출되지 않습니다:
 
 ```bash
-export FAILPROOFAI_KEY="<one-time-secret>"
+read -rs FAILPROOFAI_KEY && export FAILPROOFAI_KEY
 ```
 
     ## 설치
@@ -42,12 +42,18 @@ export FAILPROOFAI_KEY="<one-time-secret>"
   <Step title="Failproof AI 설치 및 연결">
     ```bash
     npm install -g failproofai
-    failproofai config --connect https://app.befailproof.ai --token "$FAILPROOFAI_KEY"
+    FAILPROOFAI_CLOUD_TOKEN="$FAILPROOFAI_KEY" failproofai config
     ```
 
-    기본적으로 세션 트랜스크립트가 전송됩니다. `--no-transcripts`를 추가하면 트랜스크립트 내용 없이 훅 활동과 정책 결정만 보고합니다.
+    이 단 하나의 명령으로 전체 설정이 완료됩니다. 로컬 데몬을 설치하고(루트 권한 한 번 필요), 발견된 모든 에이전트 CLI에 훅을 연결하며, 이 머신을 Cloud에 연결합니다. 키를 `--token`이 아닌 환경 변수로 전달하면 `ps`에서 노출되지 않습니다(머신의 모든 사용자가 명령의 인수를 볼 수 있기 때문). 단, 셸 히스토리에는 남을 수 있으므로, `read -s`로 읽어 들이는 것이 그것을 방지합니다. CI에서는 마스킹된 시크릿으로 주입하고 셸 추적(`set -x`)을 끄세요. 추적이 켜져 있으면 키가 출력됩니다.
 
-    이 머신에 이미 에이전트 히스토리가 있다면, 최근 7일간의 데이터를 미리 보고 가져온 후 전송이 완료될 때까지 기다리세요. 새 머신이라면 이 단계를 건너뛰세요.
+    세션 트랜스크립트는 기본적으로 전송됩니다. 트랜스크립트 내용 없이 훅 활동과 정책 결정만 보고하려면 `--no-transcripts`를 추가하세요.
+
+    <Warning>
+      여기서 `failproofai config --connect <url>`을 사용하지 마세요. 이 플래그는 **이미** 설정된 머신을 등록하고 바로 반환합니다. 데몬도, 훅도 설정되지 않으므로, 머신이 Cloud에는 나타나지만 실제로는 아무것도 수집하거나 적용하지 않게 됩니다.
+    </Warning>
+
+    이 머신에 이미 에이전트 기록이 있다면, 최근 7일치를 미리 보고 가져온 후 전달이 완료될 때까지 기다리세요. 새 머신이라면 이 단계를 건너뛰세요.
 
     ```bash
     failproofai backfill --since 7d --dry-run
@@ -55,30 +61,41 @@ export FAILPROOFAI_KEY="<one-time-secret>"
     failproofai flush --wait
     ```
 
-    Failproof AI에서 **Sessions**를 열고 가져온 세션을 선택하세요.
+    Failproof AI에서 **세션**을 열고 가져온 세션을 선택하세요.
   </Step>
-  <Step title="에이전트 훅 및 정책 설치">
-    이 단계는 Failproof AI를 하네스에 연결하고 39개의 기본 제공 정책을 설치합니다. 이를 통해 로컬 정책 결정을 확인하고, Failproof AI가 세션을 감사하고 에이전트를 위한 정책을 작성하기 전에 적용을 시험해볼 수 있습니다.
-
-    설치 프로그램이 하네스를 자동으로 감지하게 하거나, 명시적으로 지정할 수 있습니다. 12개 모두 유효한 `--cli` 값입니다 — `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity`, `goose`.
+  <Step title="하네스에 Failproof AI 연결">
+    이전 단계에서 감지된 모든 에이전트 CLI에 이미 연결이 완료되었습니다. 필요할 때 특정 하네스에 대해 명시적으로 재실행하거나, 이후에 설치된 하네스를 추가할 때 사용하세요. 12개 모두 유효한 `--cli` 값입니다 — `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity`, `goose`.
 
     ```bash
     failproofai policies --install --cli claude --scope user     # 코딩 CLI
     failproofai policies --install --cli hermes --scope user     # Slack/Telegram 게이트웨이
     ```
 
-    도구 호출을 실행 전에 차단하는 기능은 12개 모두에서 검증되었습니다. 턴 종료 게이트는 8개에서 검증되었습니다 — 하네스별 매트릭스는 [적용 기능](/ko/reference/harnesses#enforcement-capability)을 참고하세요.
+    실행 전에 도구 호출을 차단하는 기능은 12개 모두에서 검증됩니다. 턴 종료 게이트는 8개에서 검증됩니다 — 하네스별 매트릭스는 [적용 기능](/ko/reference/harnesses#적용-가능-범위)을 참조하세요.
+  </Step>
+  <Step title="적용할 정책 선택">
+    훅 연결 자체는 어떤 정책도 활성화하지 않습니다. 설정 시 정책을 의도적으로 선택하지 않습니다 — 그 결정은 여러분의 것입니다. 다음과 같이 팩을 가져오세요:
+
+    ```bash
+    failproofai policies add FailproofAI/policies
+    ```
+
+    팩은 GitHub 릴리스에서 가져와 체크섬이 검증되고, 해석된 정확한 태그에 고정됩니다. 38개의 정책이 포함되어 있으며, 매니페스트에서 무인 활성화가 안전하다고 표시된 10개가 켜집니다. 이를 통해 Failproof AI가 세션을 감사하고 에이전트를 위한 정책을 작성하기 전에 로컬 정책 결정을 확인하고 적용을 시험해볼 수 있습니다.
+
+    `failproofai policies show <owner>/<repo>`로 가져오기 전에 팩을 먼저 읽어보고, 일부만 가져오는 방법은 [정책 팩](/ko/policies/packs)을 참조하세요.
+
+    이 단계가 실행되기 전까지는 `block-failproofai-commands`만 적용됩니다 — 이는 에이전트가 Failproof AI를 끄지 못하도록 막는 항상 켜져 있는 가드입니다. `failproofai policies`로 현재 활성화된 정책을 확인할 수 있습니다.
   </Step>
   <Step title="동작 감사">
     [첫 번째 실패 검사 실행](/ko/start/first-audit)을 따르세요. "에이전트가 접근 방식을 변경하지 않고 실패한 도구를 재시도한 세션 찾기"와 같이 구체적인 목표를 사용하세요.
   </Step>
-  <Step title="실패 예방">
-    [정책으로 첫 번째 실패 예방하기](/ko/start/first-policy)를 따르세요. 관찰 모드에서 시작하고, 매칭을 검사한 후, 검토된 버전을 적용하세요.
+  <Step title="실패 방지">
+    [정책으로 첫 번째 실패 방지](/ko/start/first-policy)를 따르세요. 관찰 모드에서 시작하여 매칭을 검사한 후, 검토된 버전을 적용하세요.
   </Step>
 </Steps>
 
 <Check>
-  `failproofai config --status`를 실행하세요. 정상적인 설정은 클라우드 연결, 데몬 상태, 그리고 적용이 일시 중지되어 있는지 여부를 보고합니다.
+  `failproofai config --status`를 실행하세요. 정상적인 설정은 클라우드 연결, 데몬 상태, 적용(enforcement) 일시 중지 여부를 보고합니다.
 </Check>
   </Tab>
 </Tabs>

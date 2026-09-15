@@ -1,63 +1,54 @@
 ---
 title: "Policies"
-description: "Beobachte, steuere oder blockiere Agentenaktionen, bevor ein bekannter Fehler erneut auftritt."
+description: "Agent-Aktionen beobachten, steuern oder blockieren, bevor ein bekannter Fehler sich wiederholt."
 icon: "shield-check"
 ---
 
-Eine Policy wertet ein Agenten-Hook-Ereignis aus und gibt eine von drei Entscheidungen zurück:
+Eine Policy wertet ein Agent-Hook-Ereignis aus und gibt eine von drei Entscheidungen zurück:
 
 - `allow` lässt die Aktion fortfahren.
 - `instruct` gibt dem Agenten korrigierende Hinweise.
 - `deny` blockiert die Aktion mit einer Begründung.
 
-## Die drei Policy-Oberflächen nutzen
+## Wo Policies gespeichert sind
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. Gehe zu **Observe → policy**, um Policy-Entscheidungen aus Sitzungen zu filtern und zu untersuchen.
-    2. Gehe zu **Admin → policy editor**, um Policies zu erstellen, zu validieren, zu veröffentlichen, zu deaktivieren oder unveränderliche Versionen einzusehen.
-    3. Gehe zu **Admin → enforcement**, um Versionen und Effekte Maschinen zuzuweisen.
+| Im Dashboard | Was Sie dort tun |
+| --- | --- |
+| **Observe → policy** | Entscheidungen aus echten Sitzungen überprüfen: welche Policy übereinstimmte, auf welcher Maschine und warum |
+| **Admin → policy editor** | Eine Policy schreiben, gegen vergangenen Traffic backtesten, eine unveränderliche Version veröffentlichen und Versionen in der **library** vergleichen |
+| **Admin → enforcement** | Versionen auf Maschinen in Observe- oder Enforce-Modus einsetzen |
 
-    Nutze die Policy-Seite, um zu verstehen, was bereits greift, bevor du Enforcement erstellst oder änderst.
+Der Policy-Editor ist der Ort, an dem ein Fehler zur Regel wird. Beschreiben Sie den Fehlerfall oder fügen Sie Policy-Quellcode in **compose** ein, testen Sie den Entwurf gegen bereits vorhandenen Traffic und veröffentlichen Sie eine Version:
 
-    ![Die Policy-Seite mit Entscheidungszahlen und lokalen sowie Cloud-verwalteten Policy-Zuordnungen.](/images/dashboard/policy-observe.png)
+![Die Compose-Ansicht des Policy-Editors mit Policy-Identität, KI-gestütztem Entwurf, Quellvalidierung und Veröffentlichungskontrollen.](/images/dashboard/policy-editor.png)
 
-    Im Editor wandelst du eine Fehlerbedingung in Quellcode um, validierst ihn und veröffentlichst eine unveränderliche Version.
+Auf einer Maschine listet `failproofai policies` alles auf, was dort durchgesetzt wird. `fp policies` und `fp fleet` decken Editor und Enforcement vom Terminal aus ab — siehe die [Cloud-CLI-Referenz](/de/reference/cloud-cli).
 
-    ![Der Policy-Editor zum Erstellen und Veröffentlichen einer unveränderlichen Policy-Version.](/images/dashboard/policy-editor.png)
+## Eine Policy erhalten
 
-    Enforcement weist dann diese veröffentlichte Version und ihren Beobachtungs- oder Durchsetzungseffekt Maschinen zu.
-
-    ![Die Enforcement-Flotte mit Maschinenabdeckung und zugewiesenen Policy-Versionen.](/images/dashboard/enforcement-fleet.png)
-
-    Überprüfe die Entscheidungen nach der Bereitstellung erneut auf der Policy-Seite, damit die Authoring- und Flottenansichten mit der tatsächlichen Agentenaktivität verknüpft sind.
-  </Tab>
-  <Tab title="CLI">
-    Verwende `failproofai` für lokale Policy-Installation und -Validierung:
-
-    ```bash
-    failproofai policies
-    failproofai policy add block-rm-rf --scope project
-    failproofai config --status
-    ```
-
-    Verwende `fp`, um Cloud-Sitzungen und -Ereignisse mit Policy-Entscheidungen zu finden. Das Erstellen von Policies in der Cloud und die Flottenbereitstellung bleiben Dashboard-Workflows.
-  </Tab>
-</Tabs>
-
-Policies haben drei eigenständige Bereiche in Failproof AI:
-
-1. **Entscheidungen analysieren** in Sitzungen, Dashboards und Audits.
-2. **Versionen erstellen** mit eingebauten Regeln, Code oder dem Policy-Editor.
-3. **Versionen bereitstellen und durchsetzen** auf ausgewählten Maschinen.
-
-Beginne mit einem bestätigten Fehlermodus. Definiere die kleinstmögliche Ereignis- und Tool-Übereinstimmung, die ihn identifiziert, teste legitime und unsichere Beispiele, und beobachte zunächst, bevor du durchsetzt.
+Es gibt zwei Möglichkeiten.
 
 <Columns cols={2}>
-  <Card title="Eine eingebaute Policy verwenden" icon="library" href="/de/policies/builtin">
-    Aktiviere eine geprüfte Regel für häufige Risiken bei Secrets, Shell, Git, Cloud und Workflows.
+  <Card title="Eine Policy schreiben" icon="file-pen-line" href="/de/policies/editor">
+    Lassen Sie Failproof AI einen Entwurf aus einem Audit-Befund erstellen, oder schreiben Sie den Quellcode selbst, überprüfen und veröffentlichen Sie ihn dann im Editor.
   </Card>
-  <Card title="Eine eigene Policy schreiben" icon="code-2" href="/de/policies/custom">
-    Formuliere eine workflow-spezifische Entscheidung in JavaScript oder TypeScript.
+  <Card title="Ein Policy-Pack verwenden" icon="package" href="/de/policies/packs">
+    Binden Sie ein Failproof AI Policy-Pack für Ihren Anwendungsfall oder ein Community-Pack aus dem Policy-Hub mit einem einzigen Befehl ein.
   </Card>
 </Columns>
+
+## Dann ausrollen
+
+<Steps>
+  <Step title="Testen">
+    Testen Sie den Entwurf gegen bereits vorhandenen Traffic und führen Sie ihn gegen eine Aktion aus, die er stoppen muss, und eine, die er zulassen muss — alles vor der Veröffentlichung. Siehe [Eine Policy testen](/de/policies/test).
+  </Step>
+  <Step title="Deployen">
+    Setzen Sie die Version auf Maschinen im **Observe**-Modus ein, lesen Sie ihre Entscheidungen, und erzwingen Sie sie dann. Siehe [Eine Policy deployen](/de/policies/deploy).
+  </Step>
+  <Step title="Versionieren und zurückrollen">
+    Jede Veröffentlichung ist eine neue, unveränderliche Version, sodass ein Rollout, der gültige Arbeit blockiert, durch erneutes Deployen der letzten funktionierenden Version rückgängig gemacht werden kann. Siehe [Versionen und Rollback](/de/policies/rollback).
+  </Step>
+</Steps>
+
+Um Ihre Policies mit anderen Teams zu teilen, [veröffentlichen Sie sie als Pack](/de/policies/publish-a-pack). Was passiert, wenn eine Policy überhaupt nicht ausgewertet werden kann, erfahren Sie unter [Fehlerverhalten](/de/policies/failure-behavior).

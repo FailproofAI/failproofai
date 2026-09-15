@@ -4,7 +4,7 @@ description: "Hiểu điều gì xảy ra khi đánh giá chính sách hoặc da
 icon: "shield-alert"
 ---
 
-Failproof AI được thiết kế để một lỗi thực thi có thể nhìn thấy được thay vì im lặng cho phép công việc rủi ro.
+Failproof AI được thiết kế để sự cố trong thực thi là có thể nhìn thấy được thay vì âm thầm cho phép công việc rủi ro.
 
 ## Chẩn đoán một khối failure-closed
 
@@ -12,8 +12,8 @@ Failproof AI được thiết kế để một lỗi thực thi có thể nhìn 
   <Tab title="Dashboard">
     1. Đi tới **Admin → enforcement** và mở máy.
     2. Kiểm tra lần check-in cuối cùng, deployment được gán và deployment được báo cáo.
-    3. Đi tới **Observe → policy** và mở phiên của quyết định bị từ chối.
-    4. Xác nhận xem lý do có báo cáo về khả năng tiếp cận daemon, chênh lệch phiên bản, hay chính sách đó không.
+    3. Đi tới **Observe → policy** và mở phiên làm việc của quyết định bị từ chối.
+    4. Xác nhận xem lý do có báo cáo về khả năng tiếp cận daemon, version skew hoặc chính sách đó không.
 
   </Tab>
   <Tab title="CLI">
@@ -27,41 +27,43 @@ Failproof AI được thiết kế để một lỗi thực thi có thể nhìn 
   </Tab>
 </Tabs>
 
-Trên một máy được cấu hình để sử dụng `failproofaid`, daemon là công cụ đánh giá duy nhất. Nếu nó không thể truy cập được hoặc phiên bản giao thức của nó không khớp với CLI, đánh giá hook sẽ thất bại. Hành động bị từ chối với lý do hướng dẫn người vận hành kiểm tra hoặc cập nhật daemon.
+Trên một máy được cấu hình để sử dụng `failproofaid`, daemon là bộ đánh giá duy nhất. Nếu nó không thể tiếp cận được hoặc phiên bản giao thức của nó không khớp với CLI, đánh giá hook sẽ thất bại ở chế độ đóng. Hành động bị từ chối với lý do hướng dẫn nhà điều hành kiểm tra hoặc cập nhật daemon.
 
-Trước khi cấu hình daemon, hooks đánh giá chính sách trong quá trình. Sau khi ghi lại cấu hình daemon, Failproof AI không im lặng quay lại một công cụ đánh giá thứ hai khi daemon gặp sự cố.
+Trước khi cấu hình daemon, hook đánh giá các chính sách trong quá trình. Khi bản ghi cấu hình daemon được lưu, Failproof AI không âm thầm quay trở lại bộ đánh giá thứ hai khi daemon gặp sự cố.
 
-## Phản ứng với quyết định failure-closed
+## Đáp ứng với quyết định failure-closed
 
 1. Chạy `failproofai config --status`.
-2. Nếu các phiên bản khác nhau, chạy lại `failproofai config` sau khi cập nhật gói.
-3. Nếu daemon không thể truy cập được, kiểm tra trạng thái dịch vụ của nó và nhật ký cục bộ.
-4. Tiếp tục công việc của agent chỉ sau khi một đường đánh giá chính sách đã biết có tình trạng lành mạnh.
+2. Nếu phiên bản khác nhau, hãy chạy lại `failproofai config` sau khi cập nhật gói.
+3. Nếu daemon không thể tiếp cận được, hãy kiểm tra trạng thái dịch vụ và nhật ký cục bộ.
+4. Chỉ tiếp tục công việc agent sau khi một đường dẫn đánh giá chính sách đã biết là lành mạnh.
 
 <Warning>
-  Không thử lại hành động bị chặn lặp đi lặp lại. Phản ứng failure-closed có nghĩa là hệ thống không thể xác lập rằng hành động là an toàn.
+  Không lặp đi lặp lại hành động bị khóa. Phản hồi failure-closed có nghĩa là hệ thống không thể xác định được rằng hành động đó là an toàn.
 </Warning>
 
 ## Một pack sẽ không tải
 
-Một máy được yêu cầu thực thi một pack và không thể chạy nó sẽ từ chối thay vì tiếp tục im lặng. Kích hoạt là một **recorded expectation**, không bao giờ là một cái trống: một máy không có pack nào được cài đặt là im lặng, trong khi một pack được khai báo và sẽ không giải quyết — hoặc đăng ký ít hơn những gì manifest khai báo — sẽ từ chối.
+Một máy được yêu cầu thực thi một pack và không thể chạy nó, sẽ từ chối thay vì tiếp tục âm thầm. Kích hoạt là một **recorded expectation**, không bao giờ là một cái trống: một máy không có pack nào được cài đặt là im lặng, trong khi một pack được khai báo và sẽ không giải quyết được — hoặc đăng ký ít hơn những gì manifest khai báo — sẽ từ chối.
 
-Từ chối là **narrow**, không giống như một daemon không thể truy cập được. Một daemon không thể truy cập được có nghĩa là không có đánh giá nào xảy ra, vì vậy không có gì có thể được biết là an toàn. Một pack sẽ không tải có một bộ các guard bị thiếu có thể liệt kê, bởi vì mọi chính sách được khai báo đều mang `match` của riêng nó — vì vậy nó chỉ từ chối các sự kiện và công cụ mà những chính sách đó bao phủ, và mọi thứ khác diễn ra bình thường.
+Sự từ chối là **narrow**, không giống như một daemon không thể tiếp cận được. Một daemon không thể tiếp cận được có nghĩa là không xảy ra đánh giá nào cả, vì vậy không có gì có thể được biết là an toàn. Một pack sẽ không tải có một tập hợp các guard bị thiếu có thể liệt kê, vì mỗi chính sách được khai báo đều mang theo `match` của riêng nó — vì vậy nó chỉ từ chối các sự kiện và công cụ mà các chính sách đó bao phủ, và mọi thứ khác sẽ tiếp tục.
 
-Nó không phát động cho:
+Nó không kích hoạt cho:
 
-- một pack `observe`, để đánh giá và loại bỏ theo cấu trúc
-- các chính sách bạn không bao giờ lấy, hoặc rõ ràng tắt
-- một pack mà trình tải không bao giờ nhận được, nơi "không có đăng ký" không thể được phân biệt với một lần bỏ qua cố ý
-- một tạm dừng phiên hoạt động
-- một hết thời gian tải, đó là tạm thời — một thời điểm đĩa chậm không được phép từ chối cho đến khi con người can thiệp
+- một pack `observe`, được đánh giá và loại bỏ theo cấu trúc
+- các chính sách bạn không bao giờ áp dụng hoặc rõ ràng tắt
+- một pack mà trình tải không bao giờ nhận được, nơi "no registrations" không thể phân biệt được với một bỏ qua cố ý
+- một tạm dừng phiên làm việc hoạt động
+- một timeout tải, đó là geçici — một thời điểm đĩa chậm không phải từ chối cho đến khi con người can thiệp
 
-`UserPromptSubmit` **instructs** thay vì từ chối, bất kể chính sách bị thiếu đã khai báo gì. Một từ chối toàn bộ sẽ kéo theo nó và khóa bạn ra khỏi agent có thể khắc phục sự cố.
+`UserPromptSubmit` **hướng dẫn** thay vì từ chối, bất kể chính sách bị thiếu khai báo gì. Một sự từ chối toàn diện sẽ thực hiện nó cùng nhau và khóa bạn khỏi agent có thể sửa chữa vấn đề.
 
-### Việc cần làm
+### Phải làm gì
 
 ```bash
-failproofai pack list
+failproofai policies
 ```
 
-Nó liệt kê bất kỳ pack được cài đặt nào sẽ không tải, cho biết lý do và thoát với mã khác không. Sau đó hãy cài đặt lại nó (`failproofai pack add <source>`) hoặc xóa nó (`failproofai pack remove <publisher/name>`) — xóa nó loại bỏ kỳ vọng, và từ chối dừng lại cùng với nó.
+Danh sách này đánh dấu một pack được cài đặt có bản ghi cài đặt hoặc digest không còn kiểm tra được nữa, và nói rõ lý do. Nó không nhập pack, vì vậy một pack chỉ thất bại khi nó tải — đăng ký ít hơn những gì manifest khai báo — liệt kê như bình thường; sự từ chối dưới đây là cái đặt tên cho cái đó. Dù bằng cách nào, hãy cài đặt lại nó (`failproofai policies add <source>`) hoặc loại bỏ nó (`failproofai policies remove <publisher/name>`) — loại bỏ nó sẽ rút lại kỳ vọng, và sự từ chối sẽ dừng lại cùng với nó.
+
+Sự từ chối chính nó được gán cho `pack/failproofai-pack-unavailable`, vượt qua các chính sách đã tải, vì vậy một cuộc gọi công cụ bị khóa sẽ đặt tên cho pack bị thiếu thay vì bất kỳ guard nào còn sống mà tình cờ kích hoạt đầu tiên.

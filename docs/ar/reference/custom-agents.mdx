@@ -1,17 +1,17 @@
 ---
-title: "وكلاء مخصصون"
-description: "الإعدادات والفهرس الكامل للأحداث وقواعد الربط والتسليم لـ failproofai-sdk."
+title: "وكلاء مخصصة"
+description: "الإعدادات وفهرس الأحداث وقواعد الارتباط والتسليم لـ failproofai-sdk."
 icon: "python"
 ---
 
-شرح لكل إعداد وطريقة وحقل. إذا كنت تقوم بالقياس للمرة الأولى، ابدأ بالدليل — هذه الصفحة مخصصة للبحث عن الأشياء.
+شرح لكل إعداد وطريقة وحقل ويعمل. إذا كنت تقوم بالتجهيز للمرة الأولى، ابدأ بالدليل — هذه الصفحة مخصصة للبحث.
 
 <Columns cols={2}>
-  <Card title="دليل الوكلاء المخصصين" icon="code" href="/ar/start/integrations/custom-agents">
-    التثبيت والقياس وطرق الأحداث ومثال عملي والمشاكل الشائعة.
+  <Card title="دليل الوكلاء المخصصة" icon="code" href="/ar/start/integrations/custom-agents">
+    التثبيت والتجهيز وطرق الأحداث ومثال عملي ومشاكل شائعة.
   </Card>
   <Card title="هل تستخدم إطار عمل؟" icon="plug" href="/ar/start/integrations">
-    LangChain و CrewAI و LlamaIndex و Pydantic AI تقيس نفسها بنفسها باستدعاء واحد.
+    تجهز LangChain و CrewAI و LlamaIndex و Pydantic AI نفسها بمكالمة واحدة.
   </Card>
 </Columns>
 
@@ -23,24 +23,30 @@ Python 3.10 أو أحدث. بدون متطلبات وقت التشغيل.
 pip install failproofai-sdk
 ```
 
-يتم تثبيت الحزمة باسم `failproofai-sdk` واستيرادها في Python باسم `failproofai_sdk`. إضافات الإطار مثل `failproofai-sdk[langgraph]` تثبت الإطار نفسه؛ المحولات دائماً مدرجة في العجلة الأساسية.
+يتم تثبيت الحزمة باسم `failproofai-sdk` واستيرادها في Python كـ `failproofai_sdk`. الإضافات الإطار مثل `failproofai-sdk[langgraph]` تثبت الإطار نفسه؛ تأتي المحولات دائماً في الحزمة الأساسية.
 
-## ربط مراقب Failproof
+## توصيل مُراقب Failproof
 
 <Tabs>
   <Tab title="لوحة التحكم">
-    1. انتقل إلى **Admin → Keys** وأنشئ مفتاحاً بصلاحية `events:add`.
-    2. [ربط مراقب Failproof بـ Cloud](/ar/start/setup#connect-a-machine-to-cloud) على جهاز الوكيل.
-    3. قم بتشغيل جلسة واحدة مع القياس، ثم ابحث عن معرّفها الدقيق تحت **Observe → Events**.
-    4. انتقل إلى **Observe → Sessions**، اختر نفس البيئة، وافتح الأثر المعاد بناؤه.
+    1. انتقل إلى **Admin → Keys** وأنشئ مفتاحاً بـ `events:add`.
+    2. [وصّل مُراقب Failproof إلى Cloud](/ar/start/setup#توصيل-جهاز-بـ-cloud) على جهاز الوكيل.
+    3. قم بتشغيل جلسة واحدة مجهزة، ثم ابحث عن معرّفها الدقيق ضمن **Observe → Events**.
+    4. انتقل إلى **Observe → Sessions** واختر نفس البيئة وافتح الأثر المعاد بناؤه.
 
-    ![جلسة وكيل Python مخصص معاد بناؤها كرسم بياني للتنفيذ وتسلسل حدث مرتب.](/images/dashboard/session-detail.png)
+    ![جلسة وكيل Python مخصصة معاد بناؤها كرسم بياني للتنفيذ وتتبع الأحداث المرتبة.](/images/dashboard/session-detail.png)
   </Tab>
-  <Tab title="CLI">
+  <Tab title="سطر الأوامر">
+    اقرأ مفتاح `events:add` إلى الـ shell. `read -s` يأخذها عند نص لا يتكرر، لذا لا تظهر أبداً في أمر أو في سجل shell:
+
     ```bash
-    failproofai config \
-      --connect https://app.befailproof.ai \
-      --token <events-add-key>
+    read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
+    ```
+
+    ثم جهز الجهاز وتحقق من أنه متصل:
+
+    ```bash
+    failproofai config
     failproofai config --status
     ```
   </Tab>
@@ -58,32 +64,32 @@ failproofai_sdk.configure(
 )
 ```
 
-| الحجة | ما تفعله |
+| الوسيط | ما يفعله |
 | --- | --- |
-| `environment` | العلامة على كل حدث — `production` أو `staging` أو `prod-eu`. القيمة الافتراضية `dev`. |
-| `flush_interval` | عدد مرات كتابة الخيط الخلفي إلى القرص بالثواني. القيمة الافتراضية `0.5`. |
-| `base_dir` | مكان الكتابة. القيمة الافتراضية سبول المراقب، وهذا ما تريده ما لم تكن تعرف خلاف ذلك. |
+| `environment` | التسمية على كل حدث — `production` أو `staging` أو `prod-eu`. الافتراضي هو `dev`. |
+| `flush_interval` | عدد مرات كتابة الـ thread في الخلفية إلى القرص، بالثواني. الافتراضي هو `0.5`. |
+| `base_dir` | مكان الكتابة. الافتراضي هو spool المُراقب، وهو ما تريده إلا إذا كنت تعرف خلاف ذلك. |
 
-اضبط عن طريق متغير البيئة بدلاً من ذلك:
+عيّن من خلال متغير البيئة بدلاً من ذلك:
 
-| متغير | ما يفعله |
+| المتغير | ما يفعله |
 | --- | --- |
-| `AGENTEYE_ENVIRONMENT` | يضبط `environment` بدون تغيير الكود، لعندما تكون العلامة تابعة للنشر وليس التطبيق. حجة `configure()` تتفوق عليها. |
-| `FAILPROOFAI_HOME` | ينقل جذر Failproof AI الذي يحتفظ بالسبول. |
-| `FAILPROOFAI_SDK_STRICT` | قيمة `1` تجعل أخطاء القياس ترفع بدلاً من تسجيلها. |
-| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | قيمة `1` تجعل مشكلة توافق الإطار ترفع بدلاً من التحذير والمتابعة. |
+| `AGENTEYE_ENVIRONMENT` | يضبط `environment` بدون تغيير في الكود، لما تكون التسمية تخص النشر وليس التطبيق. وسيط `configure()` يفوز عليه. |
+| `FAILPROOFAI_HOME` | ينقل جذر Failproof AI الذي يحتفظ بـ spool. |
+| `FAILPROOFAI_SDK_STRICT` | `1` يجعل أخطاء التجهيز ترفع بدلاً من أن تُسجل. |
+| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | `1` يجعل مشكلة توافق الإطار ترفع بدلاً من التحذير والمتابعة. |
 
 <Warning>
-  **لا توجد فواصل في `environment`.** تقسم وحدة الاستيعاب هذا الحقل على الفواصل لبناء المرشحات، وتتخطى أي حدث تحتوي علامته على واحدة — لذلك يختفي التشغيل كله بصمت. اكتب `prod-eu` وليس `prod,eu`.
+  **لا فواصل في `environment`.** يقسم Ingest هذا الحقل على الفواصل لبناء عوامل تصفيتها، وتخطي أي حدث تحتوي تسميته على واحدة — لذا يختفي التشغيل الكامل بصمت. اكتب `prod-eu` وليس `prod,eu`.
 
-  `configure(environment="prod,eu")` ترفع لذلك تكتشفها فوراً. `AGENTEYE_ENVIRONMENT` لا يمكنها أن ترفع — لا أحد يناديك — لذلك تحذر مرة واحدة وتعود إلى `dev`.
+  `configure(environment="prod,eu")` ترفع لذا تكتشف على الفور. `AGENTEYE_ENVIRONMENT` لا يمكن أن ترفع — لا أحد يناديك — لذا تحذر مرة واحدة وتعود إلى `dev`.
 </Warning>
 
-يتم صف الأحداث في الذاكرة والكتابة في الخلفية كل `flush_interval` ثانية، مع كتابة نهائية عند خروج المترجم. تفقد العملية المقتولة مباشرة أي شيء لم يتم كتابته بعد.
+يتم وضع الأحداث في قائمة الانتظار في الذاكرة والكتابة في الخلفية كل `flush_interval` ثانية، مع كتابة نهائية عند خروج المفسّر. تخسر العملية المقتولة بشكل مباشر كل ما لم يتم كتابته بعد.
 
 ## الهوية
 
-كل حدث ينتمي إلى جلسة ووكيل. **النطاقات تملأ كليهما**، لذا نادراً ما تمرر هما:
+ينتمي كل حدث إلى جلسة ووكيل. **النطاقات تملأ كليهما**، لذا نادراً ما تمررهما:
 
 ```python
 with failproofai_sdk.session():
@@ -91,15 +97,15 @@ with failproofai_sdk.session():
         failproofai_sdk.event.tool_use(tool_name="search", tool_call_id="c1")
 ```
 
-تمرير `session_id` أو `agent_id` بشكل صريح لا يزال يعمل ويتفوق عليه. بدون ربط أو تمرير، يرفع الاستدعاء `TypeError` بدلاً من إصدار حدث قد تتجاهله Cloud بصمت.
+لا يزال تمرير `session_id` أو `agent_id` بشكل صريح يعمل ويفوز. بدون ربط أو تمرير، تطرح المكالمة `TypeError` بدلاً من إصدار حدث سيتجاهله Cloud بصمت.
 
 <Note>
-  تركب الهوية على متغيرات السياق. تتابع مهام `asyncio` تلقائياً، لكن **ليس** الخيوط الجديدة — غلف العامل بـ `failproofai_sdk.propagate()` أو أحداثه تهبط بدون تعلق.
+  الهوية تركب على متغيرات السياق. تتبع مهام `asyncio` تلقائياً، لكن **ليس** الـ threads الجديدة — لف عامل في `failproofai_sdk.propagate()` أو أحداثه تهبط غير مرتبطة.
 </Note>
 
 ## فهرس الأحداث
 
-خمسة عشر طريقة. معظمها يأتي في **أزواج** — تستدعي الفتاح، ثم الإغلاق، والمراقب يوقت الفجوة.
+خمسة عشر طريقة. معظمها يأتي في **أزواج** — تستدعي الفاتح، ثم الإغلاق، وتوقيت الـ SDK الفجوة.
 
 | | يفتح | يغلق |
 | --- | --- | --- |
@@ -110,39 +116,39 @@ with failproofai_sdk.session():
 | **الخطافات** | `hook_triggered` | `hook_completed` |
 | **البشر** | `human_wait` | `human_input` |
 
-ثلاثة تقف بمفردها: `error` و `human_pause` و `human_interrupt`.
+ثلاثة تقف وحدها: `error` و `human_pause` و `human_interrupt`.
 
 <Accordion title="كل حقل لكل طريقة" icon="table">
 
-كل طريقة تأخذ أيضاً `session_id` و `agent_id`، والتي تملأها النطاقات لك. أي شيء يُترك كـ `None` يُسقط بدلاً من إرساله كـ JSON `null`، وكل طريقة ترجع `None`.
+كل طريقة تأخذ أيضاً `session_id` و `agent_id`، التي تملأها النطاقات لك. أي شيء متروك كـ `None` يتم حذفه بدلاً من إرساله كـ JSON `null`، وكل طريقة تعود `None`.
 
-| الطريقة | مطلوب | اختياري |
+| الطريقة | مطلوبة | اختيارية |
 | --- | --- | --- |
-| `agent_start` | — | `goal` و `parent_id` |
-| `agent_end` | — | `outcome` و `summary` |
-| `agent_pause` | `pause_id` | `reason` و `user_id` |
-| `agent_resume` | `pause_id` | `reason` و `user_id` |
-| `model_request` | — | `model` و `messages` و `system` و `tools` و `request_id` |
-| `model_response` | — | `model` و `stop_reason` و `input_tokens` و `output_tokens` و `content` و `role` و `request_id` و `duration_ms` |
-| `tool_use` | `tool_name` و `tool_call_id` | `input` |
-| `tool_result` | `tool_name` و `tool_call_id` | `output` و `error` |
-| `hook_triggered` | `hook_name` و `hook_id` | `trigger_event` و `input` |
-| `hook_completed` | `hook_name` و `hook_id` | `outcome` و `output` و `error` |
-| `error` | `error_type` و `message` | `traceback` |
-| `human_wait` | `input_id` | `prompt` و `options` و `reason` |
+| `agent_start` | — | `goal`, `parent_id` |
+| `agent_end` | — | `outcome`, `summary` |
+| `agent_pause` | `pause_id` | `reason`, `user_id` |
+| `agent_resume` | `pause_id` | `reason`, `user_id` |
+| `model_request` | — | `model`, `messages`, `system`, `tools`, `request_id` |
+| `model_response` | — | `model`, `stop_reason`, `input_tokens`, `output_tokens`, `content`, `role`, `request_id`, `duration_ms` |
+| `tool_use` | `tool_name`, `tool_call_id` | `input` |
+| `tool_result` | `tool_name`, `tool_call_id` | `output`, `error` |
+| `hook_triggered` | `hook_name`, `hook_id` | `trigger_event`, `input` |
+| `hook_completed` | `hook_name`, `hook_id` | `outcome`, `output`, `error` |
+| `error` | `error_type`, `message` | `traceback` |
+| `human_wait` | `input_id` | `prompt`, `options`, `reason` |
 | `human_input` | `input_id` | `response` |
-| `human_pause` | — | `reason` و `user_id` |
-| `human_interrupt` | — | `reason` و `user_id` و `at_step` |
+| `human_pause` | — | `reason`, `user_id` |
+| `human_interrupt` | — | `reason`, `user_id`, `at_step` |
 
 </Accordion>
 
 <Warning>
-  لتحديد تشغيل كفاشل، يجب أن تكون `outcome` واحدة من `failed` أو `error` أو `timeout` أو `rejected`. أي شيء آخر — بما في ذلك الحالة القريبة الفائتة `"failure"` — يُحسب كنجاح.
+  لوضع علامة على التشغيل كفاشل، يجب أن يكون `outcome` أحد `failed` أو `error` أو `timeout` أو `rejected`. أي شيء آخر — بما في ذلك `"failure"` القريب جداً — يعتبر نجاحاً.
 </Warning>
 
 ## الاقتران والمدة
 
-**قاعدة واحدة: أعط حدث الإغلاق نفس المعرّف مثل فاتحه.** هذا ما يقرنهما، وما يسمح للمراقب بتوقيت الفجوة.
+**قاعدة واحدة: أعط حدث الإغلاق نفس معرّف الفاتح.** هذا هو ما يقرنهما، وما يسمح للـ SDK بتوقيت الفجوة.
 
 | الزوج | مطابقة على |
 | --- | --- |
@@ -152,48 +158,48 @@ with failproofai_sdk.session():
 | `human_wait` → `human_input` | `input_id` |
 | `model_request` → `model_response` | `request_id` |
 
-**لا تمرر `duration_ms` بنفسك.** المراقب يقيسه، وتمريره يرفع `ValueError`.
+**لا تمرر `duration_ms` بنفسك.** الـ SDK يقيسها، ومررها يرفع `ValueError`.
 
-الاستثناء الوحيد هو `model_response`، حيث أنت فقط تعرف كمون المزود الحقيقي. مرر عدداً صحيحاً من الميلي ثانية — تمرير عدد عشري يرفع، لأن العمود عدد صحيح 32 بت وسيهبط فارغاً وإلا.
+الاستثناء الوحيد هو `model_response`، حيث فقط أنت تعرف زمن انتظار المزود الحقيقي. مرّر عدداً صحيحاً من الملي ثواني — عائم يرفع، لأن العمود عدد صحيح 32 بت وسيهبط فارغاً وإلا.
 
-<Accordion title="الحالات الحدودية" icon="circle-help">
+<Accordion title="حالات حافة" icon="circle-help">
 
-- **المعرّفات لا تحتاج فقط أن تكون فريدة حسب النوع لكل جلسة.** استدعاء أداة وخطاف يمكنهما مشاركة واحد؛ جلستان تعمل مرة واحدة يمكنهما إعادة استخدام نفس المعرّفات بدون تصادم.
-- **لا تقتصر على وكيل.** زوج مفتوح تحت وكيل واحد ومغلق تحت آخر لا يزال يطابق — وهي الحالة الطبيعية في الكود متعدد الوكلاء.
-- **`request_id` اختياري لكن موصى به.** بدونه، أحداث النموذج تقترن بالترتيب الذي تصل به، لذا استدعاءان متزامنان في نفس الوكيل يمكنهما عدم الاقتران بشكل صحيح.
-- **زوج منقسم عبر العمليات** لا يزال يطابق في Cloud، لكن المراقب لا يمكنه توقيت ذلك — لا شيء في أي عملية رأى كلا النصفين.
-- **بحد أقصى 10،000 فاتح ينتظرون إغلاق في وقت واحد.** بعد ذلك الأقدم يُسقط، لذا تسرب لا يمكن أن ينمو بدون حد.
+- **المعرّفات تحتاج فقط أن تكون فريدة لكل نوع، لكل جلسة.** يمكن لاستدعاء أداة وخطاف أن يشاركا واحداً؛ جلستان تعملان في نفس الوقت يمكن أن تعيد استخدام نفس المعرّفات بدون اصطدام.
+- **لم يتم نطاقها لوكيل.** زوج مفتوح تحت وكيل واحد ومغلق تحت آخر لا يزال يطابق — وهي الحالة الطبيعية في كود متعدد الوكلاء.
+- **`request_id` اختياري ولكن موصى به.** بدونه، تقترن أحداث النموذج بترتيب وصولها، لذا يمكن لمكالمتي متزامنة في نفس الوكيل أن تخطئا في الاقتران.
+- **زوج مقسوم عبر العمليات** لا يزال يطابق في Cloud، لكن الـ SDK لا يمكنه توقيته — لم تر أي عملية كلا النصفين.
+- **على الأكثر 10,000 فاتح ينتظر إغلاقاً في نفس الوقت.** بعد ذلك الأقدم يتم حذفه، لذا التسريب لا يمكن أن ينمو بدون حد.
 
 </Accordion>
 
 ## حقولك الخاصة
 
-أي كلمة أساسية إضافية تمررها يتم تخزينها مع الحدث:
+أي كلمة مفتاحية إضافية تمررها يتم تخزينها مع الحدث:
 
 ```python
 failproofai_sdk.event.tool_use(
     tool_name="search", tool_call_id="c1",
-    fw_tenant="acme", fw_region="eu-west-1",     # خاصتك
+    fw_tenant="acme", fw_region="eu-west-1",     # حقولك الخاصة
 )
 ```
 
-فضّل أنواع JSON إذا كنت تريد الاستعلام عنها لاحقاً. أي شيء آخر — UUID أو datetime أو `Decimal` أو set أو bytes أو كائن نموذج — يتم تخزينه كسلسلة.
+فضّل أنواع JSON إذا كنت تريد الاستعلام عنها لاحقاً. أي شيء آخر — UUID أو datetime أو `Decimal` أو مجموعة أو bytes أو كائن نموذج — يتم تخزينه كسلسلة.
 
 <Warning>
-  **ضع بادئة لأسماء حقولك.** الإضافات يتم تطبيقها أخيراً، لذا حقل يسمى `model` أو `tool_name` أو `outcome` يستبدل الحقيقي بصمت. محولات الإطار تستخدم `fw_`؛ افعل الشيء نفسه والشيء الوحيد الذي يمكن أن يتصادم.
+  **أضف بادئة لأسماء الحقول الخاصة بك.** يتم تطبيق الإضافات أخيراً، لذا حقل يسمى `model` أو `tool_name` أو `outcome` سيكتب فوق الحقل الحقيقي بصمت. المحولات الإطار تستخدم `fw_`؛ افعل الشيء ذاته ولا شيء يمكن أن يصطدم.
 
-  هذا هو أيضاً السبب في أن حقل اختياري مكتوب بخطأ لا يخطئ أبداً — إنه ببساطة يصبح حقل مخصص جديد. إذا كان حقل قياسي مفقوداً في Cloud، تحقق من الإملاء أولاً.
+  هذا هو أيضاً لماذا حقل اختياري مكتوب بشكل خاطئ لا ينتج خطأ — فقط يصبح حقل مخصص جديد. إذا كان حقل قياسي غائب في Cloud، تحقق من الإملاء أولاً.
 </Warning>
 
-هذه الأسماء الخمسة محجوزة ومرفوضة بشكل مباشر: `timestamp` و `session_id` و `agent_id` و `type` و `environment`.
+هذه خمسة أسماء محجوزة ومرفوضة بشكل مباشر: `timestamp` و `session_id` و `agent_id` و `type` و `environment`.
 
 ## التسليم والتحقق
 
 <Tabs>
   <Tab title="لوحة التحكم">
-    في **Observe → Events**، تحقق من وجود `agent_start` أولاً و `agent_end` أخيراً. ثم افتح **Observe → Sessions** وأكّد ظهور أحداث النموذج والأداة والبشر والخطاف والخطأ بالترتيب المقصود. استخدم معرّف الجلسة كمفتاح استكشاف الأخطاء الأساسي.
+    في **Observe → Events**، تحقق من وجود `agent_start` أولاً و `agent_end` موجود أخيراً. ثم افتح **Observe → Sessions** وأكد ظهور نموذج وأداة وإنسان وخطاف وأحداث خطأ بالترتيب المقصود. استخدم معرّف الجلسة كمفتاح استكشاف أخطاء أساسي.
   </Tab>
-  <Tab title="CLI">
+  <Tab title="سطر الأوامر">
     ```bash
     failproofai flush --wait --timeout 60
     failproofai config --status
@@ -203,14 +209,14 @@ failproofai_sdk.event.tool_use(
   </Tab>
 </Tabs>
 
-إذا كانت Cloud فارغة، افحص `$FAILPROOFAI_HOME/custom-agents/events`، وإلا `~/.failproofai/custom-agents/events`. ملفات JSONL تثبت إصدار المراقب؛ سبول متنام يشير إلى إعدادات المراقب أو التسليم، بينما سبول فارغ يشير إلى القياس أو عمر العملية.
+إذا كانت Cloud فارغة، افحص `$FAILPROOFAI_HOME/custom-agents/events`، وإلا `~/.failproofai/custom-agents/events`. ملفات JSONL تثبت إصدار SDK؛ تشير مخزونة متنامية إلى إعدادات المُراقب أو التسليم، بينما تشير مخزونة فارغة إلى التجهيز أو عمر العملية.
 
 <Note>
-  افحص السبول فقط عندما يكون المراقب متوقفاً. بينما يعمل، يجمع ويحذف كل دفعة في ميلي ثانية، لذا قائمة الدليل تتسابق مع المجمع وتظهر أحداث أقل بكثير مما تم إصدارها.
+  افحص المخزن فقط عند توقف المُراقب. بينما يعمل، يجمع ويحذف كل دفعة خلال ملي ثانية، لذا قائمة الدليل تتنافس مع المجمّع وتظهر أحداثاً أقل بكثير مما تم إصدارها.
 </Note>
 
-## منع الإخفاقات في وقت تشغيل مخصص
+## منع الأخطاء في وقت تشغيل مخصص
 
-استخدم النتائج القابلة للتدقيق والآثار المرتبطة لتعريف الإجراء غير الآمن والأدلة المطلوبة والاستجابة المقصودة. يجب أن تعريض تكامل الإنفاذ المخصص الإجراء قبل التنفيذ، وتمرير إدخاله المنظم إلى محرك السياسة، وتطبيق قرار allow أو instruct أو deny الناتج.
+استخدم نتائج التدقيق والأثار المرتبطة لتحديد الإجراء غير الآمن والدليل المطلوب والرد المقصود. يجب أن يكشف التكامل الإنفاذ المخصص الإجراء قبل التنفيذ، ومرّر مدخلاته المنظمة إلى محرك السياسة، وطبّق قرار allow أو instruct أو deny الناتج.
 
-[اتصل بـ Failproof AI](mailto:support@befailproof.ai) وسنساعدك على ربط نموذج وقت التشغيل الخاص بك وحدود الأداة والدورة الحياتية بخطافات السياسة، ثم التحقق من التكامل معك.
+[تواصل مع Failproof AI](mailto:support@befailproof.ai) وسيساعدك في ربط نموذج وقت التشغيل المخصص وحدود الأداة والدورة الحياة إلى خطافات السياسة، ثم التحقق من التكامل معك.

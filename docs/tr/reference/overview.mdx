@@ -1,81 +1,84 @@
 ---
 title: "Entegrasyonlar ve referans"
-description: "Desteklenen agent harness'leri, SDK'ları, CLI'ları ve HTTP API'sini bağlayın."
+description: "Desteklenen agent harness'ları, SDK'ları, CLI'ları ve HTTP API'sini bağlayın."
 icon: "braces"
 ---
 
-Agenizin zaten çalıştığı yere en yakın entegrasyonu seçin.
+Agent'inizin zaten çalıştığı yere en yakın entegrasyonu seçin.
 
 <Columns cols={2}>
-  <Card title="Agent harness'leri" icon="plug-zap" href="/tr/reference/harnesses">
-    Desteklenen kodlama ve özerk agent CLI'ları için hook'ları yükleyin.
+  <Card title="Agent harness'ları" icon="plug-zap" href="/tr/reference/harnesses">
+    Desteklenen kodlama ve otonom agent CLI'ları için hook'lar yükleyin.
   </Card>
-  <Card title="Agent çerçeveleri ve SDK'lar" icon="plug" href="/tr/start/integrations">
-    LangGraph, CrewAI, LlamaIndex, Pydantic AI veya özel bir agent'ı araçlandırın.
+  <Card title="Agent çerçeveleri ve SDK'ları" icon="plug" href="/tr/start/integrations">
+    LangGraph, CrewAI, LlamaIndex, Pydantic AI veya özel bir agent'i enstrüman edin.
   </Card>
   <Card title="Python SDK referansı" icon="python" href="/tr/reference/custom-agents">
-    Konfigürasyon, olay kataloğu, korelasyon kuralları ve teslimat.
+    Konfigürasyon, etkinlik kataloğu, korelasyon kuralları ve teslimat.
   </Card>
   <Card title="Yerel dashboard" icon="monitor-cog" href="/tr/reference/local-dashboard">
     Yerel projeleri, oturumları, politika aktivitesini ve çevrimdışı denetimleri gözden geçirin.
   </Card>
   <Card title="Failproof AI CLI" icon="terminal" href="/tr/reference/failproof-cli">
-    Yerel yakalaması, hook'ları, politikaları, denetimleri, teslimati ve makine durumunu yapılandırın.
+    Yerel yakalama, hook'lar, politikalar, denetimler, teslimat ve makine durumunu yapılandırın.
   </Card>
-  <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/tr/reference/cloud-cli#cli-commands">
+  <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/tr/reference/cloud-cli#cli-komutları">
     Cloud oturumlarını, denetimleri, sorunları, uyarıları, anahtarları, kullanıcıları ve ayarları sorgulayın ve yönetin.
   </Card>
   <Card title="Evaluator SDK" icon="gauge" href="/tr/reference/evaluator-sdk">
-    Tamamlanmış veya etkin olmayan oturumları FastAPI hizmeti ile puanlayın.
+    Tamamlanan veya inaktif oturumları FastAPI hizmeti ile puanlayın.
   </Card>
   <Card title="Özel politikalar" icon="shield-plus" href="/tr/reference/policy-sdk">
     İş akışına özgü allow, instruct ve deny kararlarını yazın ve test edin.
   </Card>
-  <Card title="Kendi sunucunuzda barındırma" icon="cloud-cog" href="/tr/reference/self-hosting">
+  <Card title="Kendi kendine barındırma" icon="cloud-cog" href="/tr/reference/self-hosting">
     Cloud kontrol düzlemini müşteri tarafından yönetilen bir Kubernetes kümesine dağıtın.
   </Card>
 </Columns>
 
-Oluşturulan [HTTP API referansı](/tr/reference/http-api), genel `/v1` yüzeyini kapsar. El yazısı sayfalar, birden çok endpoint'i kapsayan veya bu genel yüzeyin dışında idari arayüzleri kullanan iş akışlarını açıklar.
+Oluşturulan [HTTP API referansı](/tr/reference/http-api), genel `/v1` yüzeyini kapsar. El ile yazılmış sayfalar, birden fazla uç noktaya yayılan veya söz konusu genel yüzeyin dışında yönetim arabirimleri kullanan iş akışlarını açıklar.
 
-## Bir agent'ı bağlayın ve verileri doğrulayın
+## Agent'i bağlayın ve verileri doğrulayın
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Administration → Keys** bölümünü açın, `events:add` ve `policies:pull` izinlerine sahip bir anahtar oluşturun ve parolayı kopyalayın.
+    1. **Administration → Keys** seçeneğini açın, `events:add` ve `policies:pull` ile bir anahtar oluşturun ve sırrı kopyalayın.
     2. Entegrasyonu yukarıdaki eşleşen sayfa kullanarak yapılandırın.
-    3. Olayların gelişini doğrulamak için **Observe → Events** bölümünü açın, ardından bunların tam çalıştırılışlar oluşturduğunu doğrulamak için **Observe → Sessions** bölümünü açın.
-    4. Entegrasyonun ortamına filtre uygulayın ve denetimler tarafından gerekli olan model, araç, hata ve politika alanları için bir oturumu inceleyin.
+    3. **Observe → Events** seçeneğini açarak etkinliklerin geldiğini onaylayın, ardından **Observe → Sessions** seçeneğini açarak tam çalıştırımlar oluşturduğunu onaylayın.
+    4. Entegrasyonun ortamına filtre uygulayın ve denetimler için gereken model, tool, error ve policy alanlarını incelemek için bir oturumu açın.
 
-    Anahtar çekmecesiyle başlayın. Seçilen izinler, makinenin olayları gönderip Cloud tarafından yönetilen politikaları alıp alamayacağını belirler.
+    Anahtar çekmeciyle başlayın. Seçilen yetkiler, makinenin etkinlik gönderebilmesini ve Cloud tarafından yönetilen politikaları alabilmesini belirler.
 
-    ![Etkinlik alımı ve politika teslim izinleri vermek için kullanılan yeni API anahtar çekmecesi.](/images/dashboard/key-create.png)
+    ![Etkinlik alımı ve politika teslimatı izinleri vermek için kullanılan yeni API anahtarı çekmeciği.](/images/dashboard/key-create.png)
 
-    Entegrasyonu bağladıktan sonra, olaylarının beklenen ortamda tam çalıştırılışlar halinde gruplandırıldığını doğrulamak için Sessions listesini kullanın.
+    Entegrasyonu bağladıktan sonra, etkinliklerinin beklenen ortamda tam çalıştırımlara gruplandırılıp gruplandırılmadığını doğrulamak için Sessions listesini kullanın.
 
-    ![Yeni bağlanmış bir entegrasyonun tam agent çalıştırılışlarını raporladığını doğrulamak için kullanılan Sessions listesi.](/images/dashboard/sessions-list.png)
+    ![Yeni bağlanan bir entegrasyonun tam agent çalıştırımlarını raporladığını doğrulamak için kullanılan Sessions listesi.](/images/dashboard/sessions-list.png)
 
-    Entegrasyonu tamamlanmış olarak değerlendirmeden önce bu oturumlardan birini açın; izleme, denetimlerinizin ihtiyaç duyduğu model, araç, hata ve politika kanıtlarını içermelidir.
+    Entegrasyonu tamamlanmış kabul etmeden önce bu oturumlardan birini açın; iz, denetimlerinizin ihtiyaç duyduğu model, tool, error ve policy kanıtlarını içermelidir.
   </Tab>
   <Tab title="CLI">
-    Bir makine anahtarı oluşturun, Failproof daemon'unu bağlayın ve ilk oturumu doğrulayın.
+    Bir makine anahtarı oluşturun, ardından yazdığı sırrı shell'e okuyun. `read -s` bunu yankılanmayan bir istemde alır, bu nedenle bir komutta veya shell geçmişinde asla görünmez:
 
     ```bash
     fp keys create agent-production \
       --add events:add \
       --add policies:pull
+    read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
+    ```
 
-    failproofai config \
-      --connect https://app.befailproof.ai \
-      --token <machine-key>
+    Failproof daemon'ını bağlayın ve ilk oturumu doğrulayın:
+
+    ```bash
+    failproofai config
 
     failproofai flush --wait
     fp sessions --since 1h --env production
     fp events --since 1h --env production --limit 20
     ```
 
-    Başka bir araç sonucu kullanacağında `fp --json sessions ...` komutunu kullanın. `--json`, `--org` ve `--base-url` gibi genel bayraklar komuttan önce gelmelidir.
+    Başka bir araç sonucu tüketecek olduğunda `fp --json sessions ...` kullanın. `--json`, `--org` ve `--base-url` gibi global bayraklar komuttan önce gelmelidir.
 
-    Yerel komutlar için [Failproof AI CLI referansı](/tr/reference/failproof-cli) ve `fp` komutları için [Failproof Cloud CLI referansı](/tr/reference/cloud-cli#cli-commands) bölümüne bakın.
+    Yerel komutlar için [Failproof AI CLI referansı](/tr/reference/failproof-cli) ve `fp` komutları için [Failproof Cloud CLI referansı](/tr/reference/cloud-cli#cli-komutları) sayfalarına bakın.
   </Tab>
 </Tabs>

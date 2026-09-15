@@ -1,18 +1,18 @@
 ---
-title: "Comportamento em falhas"
+title: "Comportamento em caso de falha"
 description: "Entenda o que acontece quando a avaliação de políticas ou o daemon local está indisponível."
 icon: "shield-alert"
 ---
 
-O Failproof AI é projetado para que uma falha de imposição seja visível, em vez de permitir silenciosamente trabalhos arriscados.
+O Failproof AI foi projetado para que uma falha de execução seja visível, em vez de permitir silenciosamente que trabalhos arriscados prossigam.
 
 ## Diagnosticar um bloqueio por falha fechada
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vá para **Admin → enforcement** e abra a máquina.
+    1. Acesse **Admin → enforcement** e abra a máquina.
     2. Verifique o último check-in, o deployment atribuído e o deployment reportado.
-    3. Vá para **Observe → policy** e abra a sessão da decisão negada.
+    3. Acesse **Observe → policy** e abra a sessão da decisão negada.
     4. Confirme se o motivo indica inacessibilidade do daemon, divergência de versão ou a própria política.
 
   </Tab>
@@ -27,16 +27,16 @@ O Failproof AI é projetado para que uma falha de imposição seja visível, em 
   </Tab>
 </Tabs>
 
-Em uma máquina configurada para usar `failproofaid`, o daemon é o único avaliador. Se ele estiver inacessível ou se sua versão de protocolo não corresponder à da CLI, a avaliação do hook falha de forma fechada. A ação é negada com um motivo que orienta o operador a verificar ou atualizar o daemon.
+Em uma máquina configurada para usar o `failproofaid`, o daemon é o único avaliador. Se ele estiver inacessível ou se a versão do protocolo não corresponder à da CLI, a avaliação do hook falha de forma fechada. A ação é negada com um motivo que orienta o operador a verificar ou atualizar o daemon.
 
-Antes da configuração do daemon, os hooks avaliam as políticas no processo. Uma vez que a configuração do daemon é registrada, o Failproof AI não recorre silenciosamente a um segundo avaliador quando o daemon falha.
+Antes da configuração do daemon, os hooks avaliam as políticas no próprio processo. Uma vez que a configuração do daemon é registrada, o Failproof AI não recai silenciosamente sobre um segundo avaliador quando o daemon falha.
 
 ## Responder a uma decisão de falha fechada
 
 1. Execute `failproofai config --status`.
-2. Se as versões divergirem, execute `failproofai config` novamente após atualizar o pacote.
+2. Se as versões forem diferentes, execute `failproofai config` novamente após atualizar o pacote.
 3. Se o daemon estiver inacessível, inspecione o estado do serviço e os logs locais.
-4. Retome o trabalho do agente somente após confirmar que o caminho de avaliação de políticas está saudável.
+4. Retome o trabalho do agente somente após confirmar que um caminho de avaliação de políticas conhecido está saudável.
 
 <Warning>
   Não tente repetidamente a ação bloqueada. Uma resposta de falha fechada significa que o sistema não conseguiu estabelecer que a ação era segura.
@@ -44,24 +44,26 @@ Antes da configuração do daemon, os hooks avaliam as políticas no processo. U
 
 ## Um pack não carrega
 
-Uma máquina instruída a aplicar um pack que não consegue executá-lo nega em vez de continuar silenciosamente. O gatilho é uma **expectativa registrada**, nunca uma vazia: uma máquina sem packs instalados permanece silenciosa, enquanto um pack declarado que não consegue ser resolvido — ou que registra menos do que seu manifesto declara — nega.
+Uma máquina instruída a aplicar um pack que não consegue executá-lo nega em vez de continuar silenciosamente. O gatilho é uma **expectativa registrada**, nunca uma vazia: uma máquina sem packs instalados fica em silêncio, enquanto um pack declarado que não resolve — ou que registra menos do que seu manifesto declara — nega.
 
-A negação é **restrita**, diferentemente de um daemon inacessível. Um daemon inacessível significa que nenhuma avaliação ocorreu, portanto nada pode ser considerado seguro. Um pack que não carrega possui um conjunto enumerável de guardas ausentes, pois cada política declarada carrega seu próprio `match` — portanto, ele nega apenas os eventos e ferramentas cobertos por essas políticas, e tudo o mais prossegue normalmente.
+A negação é **restrita**, diferentemente de um daemon inacessível. Um daemon que não pode ser alcançado significa que nenhuma avaliação ocorreu, portanto nada pode ser considerado seguro. Um pack que não carrega possui um conjunto enumerável de guardas ausentes, pois cada política declarada carrega seu próprio `match` — portanto, ele nega apenas os eventos e ferramentas cobertos por essas políticas, e tudo o mais prossegue normalmente.
 
 Não é acionado para:
 
 - um pack `observe`, que avalia e descarta por construção
-- políticas que você nunca assumiu ou desativou explicitamente
-- um pack que o loader nunca recebeu, onde "sem registros" não pode ser distinguido de um skip deliberado
+- políticas que você nunca adotou ou desativou explicitamente
+- um pack que o loader nunca recebeu, onde "nenhum registro" não pode ser distinguido de um salto deliberado
 - uma pausa de sessão ativa
 - um timeout de carregamento, que é transitório — um momento de disco lento não deve negar até que um humano intervenha
 
-`UserPromptSubmit` **instrui** em vez de negar, independentemente do que a política ausente declarou. Uma negação geral o incluiria e bloquearia o acesso ao agente que poderia corrigir o problema.
+`UserPromptSubmit` **instrui** em vez de negar, independentemente do que a política ausente declarou. Uma negação irrestrita a incluiria e bloquearia o acesso ao agente que poderia corrigir o problema.
 
 ### O que fazer
 
 ```bash
-failproofai pack list
+failproofai policies
 ```
 
-Ele lista qualquer pack instalado que não carregará, indica o motivo e encerra com código não-zero. Em seguida, reinstale-o (`failproofai pack add <source>`) ou remova-o (`failproofai pack remove <publisher/name>`) — removê-lo retira a expectativa, e a negação cessa junto com ela.
+A listagem sinaliza um pack instalado cujo registro de instalação ou digest não confere mais, e informa o motivo. Ela não importa o pack, portanto um que falha apenas ao carregar — registrando menos do que seu manifesto declara — aparece como normal; a negação abaixo é o que identifica esse caso. De qualquer forma, reinstale-o (`failproofai policies add <source>`) ou remova-o (`failproofai policies remove <publisher/name>`) — removê-lo retira a expectativa, e a negação cessa junto.
+
+A própria negação é atribuída a `pack/failproofai-pack-unavailable`, que tem precedência sobre as políticas que foram carregadas, de modo que uma chamada de ferramenta bloqueada identifica o pack ausente em vez de qualquer guarda sobrevivente que por acaso tenha disparado primeiro.

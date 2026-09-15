@@ -1,25 +1,25 @@
 ---
-title: "Đánh giá trực tuyến"
-description: "Chấm điểm các phiên làm việc trực tiếp và đã hoàn thành để đánh giá chất lượng, tuân thủ, chi phí và độ trễ."
+title: "Đọc kết quả đánh giá"
+description: "Vẽ biểu đồ điểm đánh giá theo thời gian, so sánh các agent và môi trường, xem lý do tại sao một phiên ghi điểm thấp, và hỏi trợ lý."
 icon: "gauge"
 ---
 
-Đánh giá trực tuyến áp dụng các nhận xét nhất quán cho các phiên làm việc của agent. Sử dụng chúng cho các tín hiệu cần được đo lường liên tục thay vì chỉ được điều tra trong quá trình kiểm tra.
+Kết quả từ mỗi đánh giá, được lưu trữ hoặc từ worker của riêng bạn, đều được lưu tới những nơi giống nhau.
 
-## Xem xét chất lượng đánh giá
+## So sánh điểm theo thời gian
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Đi tới **Observe → Evaluations**.
-    2. Thêm một chuỗi và chọn agent, môi trường, điểm đánh giá, thống kê và đường cong.
-    3. Thêm các chuỗi để so sánh các môi trường, agent hoặc các khóa điểm.
-    4. Chọn một kết quả để mở các phiên khớp hoặc chia sẻ chế độ xem được lọc. Sử dụng **Observe → Metrics** cho độ trễ, token, chi phí và các giá trị độ lớn khác.
+    Đi tới **Observe → evaluations**.
 
-    ![Bảng điều khiển chất lượng hiển thị điểm đánh giá trung bình và các xu hướng theo thời gian.](/images/dashboard/dashboard-quality.png)
+    - **Recent runs** liệt kê từng đánh giá khi nó được ghi nhận: cho dù nó đến từ người đánh giá được lưu trữ (**managed**) hay từ người đánh giá của bạn (**customer**), agent và phiên, đánh giá và phiên bản của nó, trạng thái và điểm hoặc chỉ số của nó.
+    - **Score over time** vẽ biểu đồ những gì bạn yêu cầu. Chọn **add series** và lựa chọn một agent, một môi trường, một đánh giá, và một thống kê: avg, min, max, p50, p75, p90, p95, p99, stddev, hoặc mode. Mỗi series là một dòng; tạo **curve** riêng cho nó để vẽ nó trên biểu đồ riêng.
 
-    Mở một phiên từ phần chi tiết để kiểm tra lý do từng điểm:
+    ![Trang đánh giá: các lần chạy gần đây được gắn thẻ customer, biểu đồ điểm theo thời gian với các đường tham chiếu ở 0.5 và 0.8, và một series lấy trung bình finished_clean trên tất cả các agent và môi trường.](/images/dashboard/evaluations-chart.png)
 
-    ![Chế độ xem chi tiết phiên hiển thị điểm đánh giá và lý do bên cạnh dấu vết hoàn chỉnh.](/images/dashboard/session-detail.png)
+    Một phạm vi thời gian và một kích thước bin áp dụng cho mỗi series. Một bin nhỏ tìm thấy một sự cố; một bin lớn hơn thể hiện một xu hướng, và có thể ẩn các đỉnh bạn đang tìm kiếm. Một bucket mà không có gì được ghi điểm là một khoảng trống trong dòng, không bao giờ là số không, và các đường tham chiếu đánh dấu 0.5 và 0.8.
+
+    Mỗi phần của chế độ xem nằm trong URL: **share** sao chép nó, và bất kỳ ai mở nó sẽ thấy chính xác so sánh bạn đã xây dựng.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -28,25 +28,29 @@ icon: "gauge"
     fp evals --score helpfulness:0.8.. --since 7d
     ```
 
-    Thêm `--json` toàn cục trước `evals` để tự động hóa, ví dụ `fp --json evals --aggregate --env production`.
+    Thêm global `--json` trước `evals` để tự động hóa, ví dụ như `fp --json evals --aggregate --env production`.
   </Tab>
 </Tabs>
 
-Một bộ đánh giá nhận được nhận dạng phiên, môi trường, dấu thời gian và các sự kiện được sắp xếp. Nó có thể trả về các khóa điểm số với lý do tùy chọn và bản tóm tắt. Các bộ đánh giá chạy lâu dài có thể trả về một công việc đang chờ xử lý và được kiểm tra sau này.
+Vẽ biểu đồ **avg** và **p90** cho cùng một đánh giá để xem liệu một trung bình tốt có đang ẩn một đuôi xấu, hoặc cùng một đánh giá cho hai agent, hoặc cho production và staging, để so sánh chúng trên một trục. Chi phí, độ trễ và số lượng token, mang các đơn vị, được vẽ biểu đồ dưới **Observe → metrics**, một biểu đồ cho mỗi đơn vị.
 
-## Các mục tiêu đánh giá tốt
+## Xem lý do tại sao một phiên ghi điểm thấp
 
-- Hoàn thành hoặc độ chính xác của tác vụ
-- Tính dựa trên cơ sở và rủi ro ảo tưởng
-- Lựa chọn công cụ và hiệu quả sử dụng công cụ
-- Tuân thủ chính sách hoặc quy trình
-- Ngân sách chi phí và độ trễ
-- Yêu cầu leo thang cho con người
+Mở một phiên từ **Observe → sessions**; lưới thể hiện các điểm của mỗi phiên và lọc theo phạm vi điểm. Thanh bên phải của phiên bắt đầu với tóm tắt đánh giá, sau đó là một thanh cho mỗi điểm với lý do của người đánh giá dưới nó.
 
-## Từ điểm đến phản hồi
+![Chế độ xem chi tiết phiên hiển thị điểm đánh giá và lý do bên cạnh dấu vết hoàn chỉnh.](/images/dashboard/session-detail.png)
 
-Hiển thị điểm trên bảng điều khiển để theo dõi xu hướng. Tạo cảnh báo cho các ngưỡng hoặc điều kiện tổng hợp. Khi một điểm giảm trên toàn bộ dân số, hãy chạy một cuộc kiểm tra để điều tra lý do; khi nguyên nhân là một hành động có thể lặp lại, hãy triển khai một chính sách.
+## Hỏi trợ lý
 
-<Card title="Xây dựng một bộ đánh giá" icon="code-2" href="/vi/reference/evaluator-sdk">
-  Triển khai đánh giá đồng bộ hoặc không đồng bộ với Python evaluator SDK.
-</Card>
+Hỏi về dữ liệu đánh giá bằng tiếng Anh đơn giản: "tell me about some of the recent evaluations", hoặc điểm của các agent nào đang giảm. [Trợ lý](/vi/sessions/assistant) đọc và phân tích kết quả và trả lời bằng các bảng bạn có thể theo dõi, và một câu hỏi đáng giữ có thể trở thành một [query](/vi/sessions/queries) hoặc một [dashboard](/vi/sessions/dashboards).
+
+![Trang đánh giá bên cạnh trợ lý, trợ lý trả lời "tell me about some of the recent evaluations" bằng tóm tắt tổng số, trạng thái và điểm.](/images/dashboard/evaluations-assistant.png)
+
+## Giám sát và hành động
+
+- **Dashboards**, dưới **Analyze → dashboards**, theo dõi xu hướng các điểm bạn giới thiệu, trên mỗi agent và môi trường, cho toàn bộ tổ chức.
+
+  ![Bảng điều khiển chất lượng hiển thị các điểm đánh giá trung bình và xu hướng theo thời gian.](/images/dashboard/dashboard-quality.png)
+
+- **Alerts** thông báo cho bạn khi một điểm vượt qua ngưỡng. Xem [alerts](/vi/audits/alerts).
+- Khi một điểm giảm trong nhiều phiên, [chạy một audit](/vi/audits/run) để tìm hiểu lý do; khi nguyên nhân là một hành động có thể lặp lại, [viết một policy](/vi/policies/editor).

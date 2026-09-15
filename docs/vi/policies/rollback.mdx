@@ -1,41 +1,75 @@
 ---
-title: "Rollback"
-description: "Khôi phục một deployment policy được biết là hoạt động tốt khi quá trình triển khai gây gián đoạn công việc hợp lệ của agent."
+title: "Phiên bản và khôi phục"
+description: "Mỗi lần công bố là một phiên bản bất biến, vì vậy một triển khai gây gián đoạn công việc hợp lệ của agent được khôi phục bằng cách triển khai lại phiên bản cuối cùng tốt."
 icon: "rotate-ccw"
 ---
 
-Rollback thay đổi phiên bản được triển khai hoặc xóa một gán policy; nó không xóa lịch sử quyết định giải thích sự cố.
+Một phiên bản chính sách đã công bố không bao giờ thay đổi. Chỉnh sửa chính sách và công bố lại sẽ tạo một phiên bản mới; nó không bao giờ viết lại phiên bản đã có trên các máy. Đó là điều làm cho khôi phục an toàn: phiên bản tốt cuối cùng vẫn còn đó, từng byte, và khôi phục không xóa lịch sử quyết định giải thích điều gì đã xảy ra.
 
-## Rollback một máy
+## Tìm một phiên bản
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Đi tới **Admin → enforcement**, mở rộng máy bị ảnh hưởng và xác định bộ policy được biết là hoạt động tốt lần cuối cùng.
-    2. Chọn **edit**, khôi phục những phiên bản và hiệu ứng đó, rồi áp dụng deployment mới.
-    3. Chờ cho máy check-in, sau đó xác minh deployment được báo cáo.
-    4. Mở **Observe → policy** và các phiên làm việc bị ảnh hưởng để xác nhận công việc hợp lệ không còn bị chặn.
-
+    Đi tới **Admin → policy editor** và mở **library** để so sánh các phiên bản của chính sách hoặc vô hiệu hóa một trong số chúng.
   </Tab>
   <Tab title="CLI">
-    Rollback deployment trên cloud là một quy trình dashboard. Sử dụng trạng thái local để xác nhận rằng deployment được sửa đã đến máy:
-
     ```bash
-    failproofai config --status
+    fp policies list                 # mọi phiên bản chính sách
+    fp policies show <policy-id>     # một phiên bản, với mã nguồn của nó
     ```
-
-    `failproofai config --pause` tạm dừng builtin, custom, và convention policies cho một phiên làm việc local. Nó không tạm dừng Cloud-managed policies, vì vậy nó không phải là một cách khác cho deployment Cloud xấu.
   </Tab>
 </Tabs>
 
-## Khi nào để rollback
+## Khôi phục một máy
 
-- Một policy chặn một hành động production được mong đợi.
-- Khối lượng kết quả match cao hơn đáng kể so với những gì dự đoán khi triển khai.
-- Một policy phụ thuộc vào các trường mà một integration không cung cấp.
-- Một phiên bản mới thay đổi hành vi ngoài failure mode được dự định.
+<Tabs>
+  <Tab title="Dashboard">
+    1. Đi tới **Admin → enforcement**, mở rộng máy bị ảnh hưởng và xác định bộ chính sách tốt cuối cùng được biết đến của nó.
+    2. Chọn **edit**, khôi phục các phiên bản và hiệu ứng đó, rồi áp dụng triển khai mới.
+    3. Chờ máy check-in, sau đó xác minh triển khai được báo cáo.
+    4. Mở **Observe → policy** và các phiên làm việc bị ảnh hưởng để xác nhận công việc hợp lệ không còn bị chặn.
+  </Tab>
+  <Tab title="CLI">
+    Mỗi triển khai cho một máy là một thế hệ được đánh số. Liệt kê chúng, sau đó khôi phục một:
 
-Sau khi rollback, mở các phiên bị ảnh hưởng và xác định điều kiện gây ra false positive. Tạo một phiên bản mới, kiểm thử cả trường hợp không an toàn và trường hợp hợp lệ, sau đó lặp lại giai đoạn observe.
+    ```bash
+    fp fleet history <machine-id>
+    fp fleet rollback <machine-id> <generation>
+    ```
+
+    `rollback` tạo một thế hệ mới mang bộ cũ thay vì đặt lại bộ đếm, vì vậy lịch sử luôn chỉ được nối thêm, và nó từ chối một thế hệ đặt tên cho chính sách vì đã bị vô hiệu hóa hoặc xóa. Nó cần một phiên đăng nhập với `policies:write`. `fp fleet diff <machine-id>` hiển thị những gì được dự định so với những gì máy áp dụng — nó được đọc là `behind` cho đến khi máy thăm dò tiếp theo — và trên chính máy đó, `failproofai policies` liệt kê triển khai mà nó đang chạy.
+  </Tab>
+</Tabs>
+
+## Tắt một chính sách trên mọi máy
+
+```bash
+fp policies disable <policy-id>    # xóa nó khỏi mọi triển khai mang nó
+fp policies enable <policy-id>     # thêm nó lại
+```
+
+Mỗi lần tạo một thế hệ mới trên mọi triển khai mà nó chạm đến. Khôi phục một trong những thế hệ đó không phải là cách bạn hoàn tác `disable` — `rollback` từ chối một thế hệ đặt tên cho chính sách bị vô hiệu hóa, và mọi thế hệ từ trước lần vô hiệu hóa đều đặt tên cho chính sách này. `fp policies enable` là cách quay lại, và nó tạo thế hệ riêng của nó.
+
+## Khôi phục một gói
+
+Một gói được ghim vào bản phát hành mà bạn đã cài đặt, vì vậy khôi phục nó có nghĩa là cài đặt một bản trước đó:
+
+```bash
+failproofai policies show FailproofAI/policies --releases   # mọi phiên bản mà nó đã công bố, và phiên bản nào ở đây
+failproofai policies add FailproofAI/policies@a1b2c3d4e5f6   # ghim phiên bản đó
+```
+
+Nếu không có terminal, hoặc với `--policy`, `--category` hoặc `--all`, thêm lại sẽ giữ tập con mà bạn đã chọn. Tại terminal không có những điều đó, nó mở bộ chọn được đánh dấu trước bằng các giá trị mặc định của tác giả, và những gì bạn đánh dấu sẽ thay thế lựa chọn của bạn — vì vậy hãy đánh dấu lại những gì bạn đã có.
+
+## Khi nào cần khôi phục
+
+- Một chính sách chặn một hành động sản xuất dự kiến.
+- Khối lượng khớp cao hơn đáng kể so với dự báo triển khai quan sát được.
+- Một chính sách phụ thuộc vào các trường mà một tích hợp không cung cấp.
+- Một phiên bản mới thay đổi hành vi ngoài chế độ lỗi dự định.
+
+Sau khi khôi phục, mở các phiên làm việc bị ảnh hưởng và tìm điều kiện đằng sau dương tính giả. Công bố một phiên bản mới, [test](/vi/policies/test) cả trường hợp không an toàn và hợp pháp, rồi quan sát lại trước khi thực thi.
 
 <Warning>
-  Tạm dừng enforcement có thể thích hợp trong một sự cố, nhưng nó mở rộng phơi nhiễm cho mọi policy đang hoạt động trong phạm vi đó. Ưu tiên rollback phiên bản policy cụ thể khi có thể.
+  `failproofai config --pause` tạm dừng chính sách cục bộ cho một phiên và không bao giờ những chính sách được quản lý bởi Cloud, vì vậy nó không phải là cách thoát khỏi triển khai Cloud xấu. Việc tạm dừng cũng mở rộng tiếp xúc cho mọi chính sách trong phạm vi của nó; ưu tiên khôi phục phiên bản duy nhất mà hoạt động không đúng.
 </Warning>

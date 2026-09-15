@@ -1,0 +1,60 @@
+---
+title: "Bir politikayı test edin"
+description: "Sahip olduğunuz trafiğe karşı bir taslağı geriye dönük test edin ve herhangi bir makine onu uygulamadan önce, istediğinizi durdurduğunu ve izin vermesi gerekenlere izin verdiğini kanıtlayın."
+icon: "flask-conical"
+---
+
+Her politikayı iki şekilde test edin: ajanlarınızın halihazırda ürettiği trafiğe karşı ve geçmesi gereken meşru bir işleme karşı. Yalnızca güvenli olmayan durumu görmüş bir politika test edilmemiştir.
+
+## Taslağı geriye dönük olarak test edin
+
+<Tabs>
+  <Tab title="Dashboard">
+    Politika editörü, taslağı yayımlamadan önce aracınızın zaten yaptığı çağrılara karşı yeniden oynatır.
+
+    1. **Admin → policy editor** altında taslağı açın. Editör, JavaScript olarak ayrıştırıldığını doğrular.
+    2. **backtest** bölümünde, yeniden oynatılacak ajanları ve zaman penceresini seçin — varsayılan olarak **her ajan** ve **30d** — ve son filtreyi **her şey**te bırakın, sürece daraltmak istemeseniz.
+    3. **run backtest** seçeneğini belirleyin.
+
+    ![JavaScript olarak ayrıştırılan bir taslağın altındaki backtest paneli, üç filtresine ve run backtest işlemine sahip, yayımla sürümün üzerinde.](/images/dashboard/policy-backtest.png)
+
+    Sonuç, taslağın bu çağrılara ne yapacağı olacaktır — kaç tane **çalışan** çağrıyı kesmesi gerektiği dahil. Bunlar, herhangi bir ajan onlarla karşılaşmadan önce bulunan yanlış pozitiflerdir: taslağı sıkılaştırın ve o sayı kabul edebileceğiniz bir sayı olana kadar tekrar çalıştırın.
+  </Tab>
+  <Tab title="CLI">
+    Geriye dönük test, bir dashboard özelliğidir. Bir terminalden, bunun yerine aşağıda açıkladığınız olaylara karşı politikayı çalıştırın.
+  </Tab>
+</Tabs>
+
+## Açıkladığınız bir olaya karşı çalıştırın
+
+`fp policies test`, makinenizde bir politika dosyasını sentetik bir olay üzerinde çalıştırır ve kararı kontrol eder. Hiçbir şey yayımlanmaz ve Cloud'a hiçbir şey ulaşmaz:
+
+```bash
+fp policies test ./checkout.policy.mjs --command "git push --force" --expect deny
+fp policies test ./checkout.policy.mjs --command "git push" --expect allow
+```
+
+Olayı `--event`, `--tool`, `--command` ve `--file` ile şekillendirin. Politikanın kendi `match` filtresi hala geçerlidir, bu nedenle açıkladığınız olayı kapsamamış bir politika, karar yerine `skipped` bildirir — genellikle `match` değerinin amaçladığınızdan daha dar olduğunun bir işaretidir.
+
+## Bir makinede çalıştırın
+
+Sonra, kendi makinenizde kendi ajanınıza karşı gerçekten uygulamaya koyun:
+
+```bash
+failproofai policies --install --custom ./checkout.policy.mjs --scope project
+failproofai policies
+```
+
+İlk komut dosyayı doğrular ve yükler; ikincisi, burada uygulamaya konulan her şeyin yanında yüklü olduğunu doğrular. Ajantan politikanın durdurduğu şeyi yapmasını isteyin ve reddedildiğini izleyin, sonra meşru sürümü yapın ve geçişini izleyin. Başka kimse etkilenmez.
+
+Cloud'a bağlı bir makinede, **Observe → policy** altında her iki kararı da kontrol edin: politika adına göre filtreleyin, ardından eşleştirdiği araç girişini ve döndürdüğü nedeni doğrulamak için her bağlantılı oturumu açın.
+
+## Neyin kırıldığını test edin
+
+Yükleme, eksik dosyayı, sözdizimi hatasını, çözümlenemeyen ithalatı, üst düzey istisnayı veya yüklenmesi sırasında zaman aşımına uğrayan bir modülü reddeder — bu nedenle dosyaya veya ithalatı yapılan her şeyde bir değişiklik yapıldıktan sonra yeniden çalıştırın. Uygulamaya koyma zamanında aynı bozuk dosya kaydedilir ve **atlanır**, böylece diğer her politika çalışmaya devam eder: üretim günlüklerindeki yükleme uyarısını kayıp uygulamaya koyma olarak değerlendirin. Kural dosyaları yükleme komutu olmadan yüklenir, bu nedenle CI'de açık bir `failproofai policies --install --custom <file>` adımı tutun — bozuk bir politikada derlemede başarısız olandır.
+
+Daha sonra ajanların gerçekten gönderdiklerini verin, yalnızca beklediğiniz girişi değil: eksik alanlar, `Write` ve `Edit` gibi alternatif araç adları, Windows yolları, yanlış biçimlendirilmiş giriş. Her yolda kasıtlı bir `allow`, `instruct` veya `deny` döndürün, işlevi deterministik tutun ve tüm dış çağrıları kısa bir zaman aşımı ile sınırlayın.
+
+## Daha sonra yayımla ve gözlemle
+
+Geriye dönük test, politikanın sahip olduğu trafiğe ne yapacağını gösterir; görmediğiniz trafiğin ne yapacağını gösteremez. Editörde **publish version** seçeneğini seçin (veya `fp policies publish` çalıştırın), ardından ilk olarak **observe** modunda [dağıtın](/tr/policies/deploy) — verdikleri kararlar kaydedilir ve hiçbir şey engellenmez — ve eşleştirmeleri güvenli olmayan işlemleri geçerli olanlardan ayırdığında uygulamaya koyun.

@@ -1,51 +1,94 @@
 ---
-title: "Triển khai chính sách"
-description: "Đưa phiên bản chính sách đã xem xét ra các máy được chỉ định."
+title: "Triển khai một policy"
+description: "Đưa một phiên bản policy đã kiểm tra lên các máy ở chế độ observe, thực thi nó, và xác nhận mọi máy đã nhận được."
 icon: "cloud-upload"
 ---
 
-Một triển khai kết nối một hoặc nhiều phiên bản chính sách với một tập hợp các máy đã được đăng ký.
+Một deployment đưa các phiên bản policy đã xuất bản lên một máy, mỗi phiên bản có một trong hai hiệu ứng:
 
-## Áp dụng một triển khai
+- **Observe** ghi lại những gì policy sẽ làm, và không chặn bất kỳ điều gì.
+- **Enforce** thực hiện quyết định: một `deny` chặn cuộc gọi và một `instruct` điều hướng agent.
+
+## Thêm một máy
+
+Một máy xuất hiện dưới **Admin → enforcement** sau khi nó kết nối với Cloud. Nếu máy bạn muốn chưa có ở đó:
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Truy cập **Admin → enforcement**, tìm máy và mở rộng hàng của nó.
-    2. Chọn **edit**, thêm phiên bản chính sách đã xem xét, và chọn **observe** hoặc hiệu ứng thực thi của nó.
-    3. Áp dụng thay đổi, sau đó đợi lần kiểm tra tiếp theo của máy và xác nhận trạng thái triển khai và phạm vi của nó.
-    4. Truy cập **Observe → policy** để kiểm tra các quyết định trực tiếp.
-
-    ![Trình chỉnh sửa triển khai máy với các phiên bản chính sách, hiệu ứng enforce và observe, và hành động áp dụng triển khai.](/images/dashboard/enforcement-editor.png)
+    1. Đi tới **Administration → Keys** và tạo một khóa với `policies:pull`, để máy có thể nhận các deployment, và `events:add`, để các quyết định của nó đạt tới Cloud.
+    2. Kết nối máy với khóa đó — [Connect a machine to Cloud](/vi/start/setup#kết-nối-máy-đến-cloud) hướng dẫn từng bước.
+    3. Xác nhận nó xuất hiện dưới **Admin → enforcement**.
   </Tab>
   <Tab title="CLI">
-    Triển khai từ CLI bằng `fp fleet`. Xem xét tập hợp kết quả trước khi áp dụng — `deploy` in ra toàn bộ kế hoạch và chỉ hỏi **trên terminal tương tác mà không có `--json`**. Dưới `--json`, với `--yes`, hoặc với stdin được chuyển hướng (một bước CI, một script, một agent chạy lệnh shell) nó sẽ áp dụng ngay lập tức mà không có kế hoạch và không có lời nhắc — vì vậy hãy chạy `fp fleet show <machine>` trước nếu bạn muốn xem xét:
+    Trên máy:
 
+    ```bash
+    npm install -g failproofai
+    failproofai config
+    failproofai config --status
+    ```
+
+    Trong terminal, `failproofai config` hỏi có muốn kết nối với Cloud và nhận khóa tại một dấu nhắc ẩn. Sau đó xác nhận máy đã được đăng ký, từ bất kỳ đâu, bằng `fp fleet list`.
+  </Tab>
+</Tabs>
+
+## Triển khai ở chế độ observe
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Đi tới **Admin → enforcement**, tìm máy, và mở rộng hàng của nó.
+    2. Chọn **edit**, thêm phiên bản policy đã kiểm tra, và chọn **observe**.
+    3. Áp dụng thay đổi, sau đó chờ đợi lần check-in tiếp theo của máy và xác nhận trạng thái deployment và coverage của nó.
+    4. Đi tới **Observe → policy** để kiểm tra các quyết định trực tiếp.
+
+    ![Trình chỉnh sửa deployment máy với các phiên bản policy, hiệu ứng enforce và observe, và hành động áp dụng deployment.](/images/dashboard/enforcement-editor.png)
+  </Tab>
+  <Tab title="CLI">
     ```bash
     fp fleet list
     fp fleet show <machine-id>
-    fp fleet deploy <machine-id> --add no-force-push
+    fp fleet deploy <machine-id> --add no-force-push:observe
     ```
 
-    `fp fleet diff <machine-id>` hiển thị ý định so với việc phân phối (một máy được đọc là `behind` cho đến khi nó tiếp theo thăm dò), `fp fleet history <machine-id>` liệt kê các thế hệ, và `fp fleet rollback <machine-id> <generation>` khôi phục một thế hệ — nó từ chối nếu thế hệ đó đặt tên cho một chính sách vì đã bị tắt hoặc xóa.
+    Hậu tố `:observe` là thứ làm nó observe: một `--add no-force-push` đơn thuần giữ lại hiệu ứng mà máy đã có cho policy đó, và ngoài ra thực thi. Chuyển nó sang enforce sau này bằng `--add no-force-push:enforce`.
 
-    Kiểm tra chính máy với `failproofai config --status`, và sử dụng `fp sessions --env production --since 24h` và `fp events --event-type hook_completed` sau khi triển khai để xác minh hoạt động đến Cloud.
+    `deploy` **thay thế toàn bộ tập hợp policy của máy** bằng kết quả. Nó in ra kế hoạch, sau đó hỏi trước khi áp dụng — nhưng chỉ trên một terminal tương tác. Với `--yes`, dưới `fp --json`, hoặc với stdin được chuyển hướng (một bước CI, một kịch bản, một agent gọi shell) nó sẽ áp dụng mà không hỏi; kế hoạch vẫn được in hoặc trả về dưới dạng `plan` trong `--json`.
+
+    Trên máy, `failproofai policies` liệt kê các policy do Cloud quản lý mà nó đang chạy và `failproofai config --status` hiển thị kết nối của nó. Sử dụng `fp sessions --env production --since 24h` và `fp events --event-type hook_completed` để xác nhận hoạt động của nó đạt tới Cloud.
   </Tab>
 </Tabs>
 
 <Steps>
-  <Step title="Chọn phiên bản và mục tiêu">
-    Triển khai một phiên bản đã xem xét, không phải bản nháp có thể thay đổi được, bắt đầu bằng một máy không phải sản xuất hoặc một nhóm nhỏ mà bạn có thể kiểm tra các phiên làm việc của nó.
+  <Step title="Chọn phiên bản và máy">
+    Chọn phiên bản đã xuất bản và các máy nó sẽ chạy trên đó.
   </Step>
-  <Step title="Quan sát quyết định">
-    Xem xét các kết quả trùng khớp, lý do, công cụ bị ảnh hưởng và dương tính giả mà không chặn công việc.
+  <Step title="Observe">
+    Kiểm tra các kết quả khớp, lý do, công cụ bị ảnh hưởng, và những lần dương tính giả trong khi không có gì bị chặn.
   </Step>
-  <Step title="Thực thi và xác minh phạm vi">
-    Nâng cấp sau khi các kết quả quan sát được tách các hành động không an toàn khỏi các hành động hợp lệ, sau đó xác nhận mọi máy dự định đã kéo bản triển khai và đang báo cáo quyết định.
+  <Step title="Enforce">
+    Chuyển hiệu ứng thành enforce sau khi các kết quả được quan sát tách biệt các hành động không an toàn khỏi những hành động hợp lệ, sau đó xác nhận mọi máy dự định đã kéo thay đổi và đang báo cáo quyết định.
   </Step>
 </Steps>
 
-Các máy cần khả năng `policies:pull`. Báo cáo sự kiện được kiểm soát riêng biệt bởi `events:add`; xác minh cả hai khi bạn mong đợi phân tích và thực thi Cloud.
+## Kiểm tra coverage
+
+Coverage trả lời câu hỏi liệu một policy có đang chạy nơi có rủi ro không.
+
+1. Đi tới **Admin → enforcement** và kiểm tra tổng số enforcing và observing.
+2. Tìm kiếm một máy theo ID hoặc nhãn, hoặc lọc các máy thiếu một policy.
+3. Mở rộng một hàng để so sánh các policy được gán, deployment được báo cáo, lần check-in cuối cùng, và lịch sử.
+4. Làm mới sau khoảng thời gian polling của máy khi một deployment được áp dụng vẫn đang chờ xử lý.
+
+![Lực lượng Enforcement hiển thị coverage policy, trạng thái deployment máy, và các gán observe và enforce.](/images/dashboard/enforcement-fleet.png)
+
+Tìm các máy chưa bao giờ kéo latest deployment, các máy đã đăng ký ngừng báo cáo, một policy được gán cho môi trường sai, và version drift sau khi cập nhật bị gián đoạn.
+
+Gắn nhãn máy theo workload và môi trường — chỉ tên máy chủ hiếm khi sống sót qua autoscaling hoặc thay thế:
+
+```bash
+failproofai config --machine-label checkout-runner-03
+```
 
 <Warning>
-  Quản lý thực thi là một quy trình công việc Cloud của quản trị viên. Không coi các tuyến thực thi chỉ root như các điểm cuối API `/v1` khách hàng thông thường.
+  Enforcement management là một quy trình Cloud quản trị. Đừng coi các tuyến đường enforcement chỉ dành cho root là các endpoint `/v1` API khách hàng thông thường.
 </Warning>

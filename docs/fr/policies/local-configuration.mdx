@@ -4,52 +4,46 @@ description: "Contrôlez la portée des politiques, les paramètres, les fichier
 icon: "file-cog"
 ---
 
-Failproof AI sépare la sélection des politiques des paramètres de la machine et du daemon. Cela permet de garder les choix de politiques du dépôt lisibles et révisables, tandis que les identifiants et l'état du daemon restent en dehors du dépôt.
+Failproof AI sépare ce qu'un dépôt peut committer — câblage des hooks, paramètres des politiques, politiques personnalisées — de l'état machine tel que les identifiants, les packs installés et le daemon.
 
-## Choisir une portée de politique
+## Choisir une portée
 
-<Tabs>
-  <Tab title="Tableau de bord">
-    Exécutez `failproofai` sans arguments pour ouvrir le tableau de bord des politiques locales. Choisissez la portée utilisateur, projet ou locale avant d'activer une politique, afin que la modification soit écrite dans le fichier de configuration approprié.
+La portée détermine l'endroit où les hooks sont câblés, ainsi que le fichier de configuration dans lequel vous saisissez les paramètres et les chemins de politiques personnalisées :
 
-    - **Utilisateur** s'applique à tous les projets sur cette machine.
-    - **Projet** appartient au dépôt et peut être versionné.
-    - **Local** remplace un projet pour un utilisateur donné et doit rester dans le gitignore.
+- **User** s'applique à tous les projets sur cette machine.
+- **Project** appartient au dépôt et peut être committé.
+- **Local** remplace un projet pour un utilisateur donné et doit rester dans le gitignore.
 
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai policy add block-rm-rf --scope user
-    failproofai policy add block-force-push --scope project
-    failproofai policy add warn-large-file-write --scope local
-    failproofai policies
-    ```
+```bash
+failproofai policies --install --cli claude --scope project   # wire hooks for this repository
+failproofai policies --install --cli claude --scope user      # or for every project on this machine
+failproofai policies
+```
 
-    Tous les harnais ne prennent pas en charge la portée locale. Le CLI rejette une portée que le harnais sélectionné ne peut pas représenter.
-  </Tab>
-</Tabs>
+Tous les harnais ne prennent pas en charge la portée locale ; la CLI rejette une portée que le harnais sélectionné ne peut pas représenter.
+
+L'activation ou la désactivation des politiques d'un pack **n'est pas** délimitée par une portée. Ce réglage est enregistré avec le pack installé, de sorte que `failproofai policies add <name>` active une politique pour toute la machine, quelle que soit la valeur de `--scope`.
 
 | Portée | Fichier de configuration des politiques |
 | --- | --- |
-| Projet | `<project>/.failproofai/policies-config.json` |
+| Project | `<project>/.failproofai/policies-config.json` |
 | Local | `<project>/.failproofai/policies-config.local.json` |
-| Utilisateur | `~/.failproofai/policies-config.json` |
+| User | `~/.failproofai/policies-config.json` |
 
-Les politiques activées sont fusionnées en une union. Les paramètres des politiques utilisent la première portée qui définit des paramètres pour cette politique, dans l'ordre projet → local → utilisateur. Les chemins de politiques personnalisées explicites utilisent la première portée qui les définit.
+Les paramètres des politiques utilisent la première portée qui définit des paramètres pour cette politique, dans l'ordre project → local → user. Les chemins de politiques personnalisées explicites utilisent la première portée qui les définit.
 
 ## Configurer les paramètres des politiques
 
 <Tabs>
   <Tab title="Tableau de bord">
-    Ouvrez la politique dans le tableau de bord local, modifiez ses paramètres pris en charge, puis enregistrez dans la portée sélectionnée. Exécutez une action agent correspondante et une non correspondante, puis inspectez la décision dans **Observer → politique**.
+    Ouvrez la politique dans le tableau de bord local, modifiez ses paramètres pris en charge et enregistrez dans la portée sélectionnée. Exécutez une action d'agent correspondante et non correspondante, puis inspectez la décision dans **Observer → politique**.
 
   </Tab>
   <Tab title="CLI">
-    Modifiez le fichier `policies-config.json` de la portée sélectionnée, puis exécutez `failproofai policies` pour détecter les noms de politique ou les clés de paramètre inconnus.
+    Modifiez le fichier `policies-config.json` de la portée sélectionnée, puis exécutez `failproofai policies` : cette commande avertit si une entrée `policyParams` désigne une politique qu'aucun pack installé ne contient. Elle ne vérifie pas les clés à l'intérieur d'une entrée, vérifiez donc leur orthographe par rapport au tableau ci-dessous.
 
     ```json
     {
-      "enabledPolicies": ["block-rm-rf", "block-force-push"],
       "policyParams": {
         "block-rm-rf": {
           "allowPaths": ["/tmp/build-output"]
@@ -64,21 +58,45 @@ Les politiques activées sont fusionnées en une union. Les paramètres des poli
   </Tab>
 </Tabs>
 
+### Paramètres acceptés par les politiques Failproof AI
+
+Chaque politique valide ses propres types de paramètres.
+
+| Politique | Paramètre | Type et valeur par défaut |
+| --- | --- | --- |
+| `sanitize-api-keys` | `additionalPatterns` | `pattern[]`, `[]` ; les entrées contiennent `regex` et `label` |
+| `block-read-outside-cwd` | `allowPaths` | `string[]`, `[]` |
+| `block-sudo` | `allowPatterns` | `string[]`, `[]` |
+| `block-rm-rf` | `allowPaths` | `string[]`, `[]` |
+| Bloqueurs d'infrastructure | `allowPatterns` | `string[]`, `[]` |
+| `block-secrets-write` | `additionalPatterns` | `string[]`, `[]` |
+| `block-push-master` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `block-work-on-main` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `prefer-package-manager` | `allowed`, `blocked` | `string[]`, `[]` |
+| `warn-large-file-write` | `thresholdKb` | `number`, `1024` |
+| `require-push-before-stop` | `remote`, `baseBranch` | `string`, `"origin"` ; `string`, `"main"` |
+| `require-pr-before-stop` | `baseBranch` | `string`, `"main"` |
+| `require-no-conflicts-before-stop` | `baseBranch` | `string`, `"main"` |
+
+<Warning>
+  Un motif d'autorisation élargit ce qu'un agent peut faire. Testez la tokenisation exacte et les variantes de commandes sur le harnais cible avant de le déployer sur un parc de machines.
+</Warning>
+
 ## Comprendre les fichiers machine
 
-`~/.failproofai` contient des fichiers distincts pour des périmètres de confiance distincts :
+`~/.failproofai` contient des fichiers distincts pour des périmètres de confiance séparés :
 
 | Chemin | Rôle |
 | --- | --- |
-| `config.json` | Paramètres du daemon, de l'audit et de la télémétrie (non sensibles) |
+| `config.json` | Paramètres du daemon, de l'audit et de la télémétrie (sans secrets) |
 | `credentials.json` | Identifiants cloud ; stockés avec des permissions réservées au propriétaire |
-| `policies-config.json` | Sélection des politiques intégrées, paramètres et chemins personnalisés explicites pour la portée utilisateur |
-| `policies/` | Politiques de convention utilisateur et artefacts de politique gérés par le cloud |
+| `policies-config.json` | Paramètres de portée utilisateur et chemins de politiques personnalisées explicites |
+| `policies/` | Politiques de convention utilisateur, packs installés avec indication des politiques activées, et artefacts de politiques gérés par le cloud |
 | `hook-activity/` | Journal local des décisions de politique |
-| `state/` | Spool du daemon, santé, pause et état d'exécution |
+| `state/` | File d'attente du daemon, état de santé, pause et état d'exécution |
 
-Utilisez `FAILPROOFAI_HOME` pour déplacer l'ensemble de la structure machine vers un conteneur ou un environnement de test isolé. Ne déplacez pas des répertoires d'état individuels de façon indépendante.
+Utilisez `FAILPROOFAI_HOME` pour déplacer l'intégralité de l'organisation machine vers un conteneur ou un environnement de test isolé. Ne déplacez pas des répertoires d'état individuels de manière indépendante.
 
 <Warning>
-  Ne commitez jamais `credentials.json`. Ne committez la configuration des politiques du projet et les politiques de convention du projet qu'après les avoir examinées en tant que code d'application des règles.
+  Ne committez jamais `credentials.json`. Ne committez la configuration des politiques du projet et les politiques de convention du projet qu'après les avoir examinées en tant que code d'application.
 </Warning>

@@ -316,6 +316,10 @@
               {
                 "group": "Evaluate agents",
                 "pages": [
+                  "zh/evaluations/overview",
+                  "zh/evaluations/write",
+                  "zh/evaluations/test",
+                  "zh/evaluations/deploy",
                   "zh/sessions/evaluations"
                 ]
               },
@@ -355,6 +359,7 @@
               {
                 "group": "Ship a policy",
                 "pages": [
+                  "zh/policies/test",
                   "zh/policies/deploy",
                   "zh/policies/rollback",
                   "zh/policies/publish-a-pack",
@@ -484,6 +489,10 @@
               {
                 "group": "Evaluate agents",
                 "pages": [
+                  "ja/evaluations/overview",
+                  "ja/evaluations/write",
+                  "ja/evaluations/test",
+                  "ja/evaluations/deploy",
                   "ja/sessions/evaluations"
                 ]
               },
@@ -523,6 +532,7 @@
               {
                 "group": "Ship a policy",
                 "pages": [
+                  "ja/policies/test",
                   "ja/policies/deploy",
                   "ja/policies/rollback",
                   "ja/policies/publish-a-pack",
@@ -652,6 +662,10 @@
               {
                 "group": "Evaluate agents",
                 "pages": [
+                  "ko/evaluations/overview",
+                  "ko/evaluations/write",
+                  "ko/evaluations/test",
+                  "ko/evaluations/deploy",
                   "ko/sessions/evaluations"
                 ]
               },
@@ -691,6 +705,7 @@
               {
                 "group": "Ship a policy",
                 "pages": [
+                  "ko/policies/test",
                   "ko/policies/deploy",
                   "ko/policies/rollback",
                   "ko/policies/publish-a-pack",
@@ -820,6 +835,10 @@
               {
                 "group": "Evaluate agents",
                 "pages": [
+                  "es/evaluations/overview",
+                  "es/evaluations/write",
+                  "es/evaluations/test",
+                  "es/evaluations/deploy",
                   "es/sessions/evaluations"
                 ]
               },
@@ -859,6 +878,7 @@
               {
                 "group": "Ship a policy",
                 "pages": [
+                  "es/policies/test",
                   "es/policies/deploy",
                   "es/policies/rollback",
                   "es/policies/publish-a-pack",
@@ -988,6 +1008,10 @@
               {
                 "group": "Evaluate agents",
                 "pages": [
+                  "pt-br/evaluations/overview",
+                  "pt-br/evaluations/write",
+                  "pt-br/evaluations/test",
+                  "pt-br/evaluations/deploy",
                   "pt-br/sessions/evaluations"
                 ]
               },
@@ -1027,6 +1051,7 @@
               {
                 "group": "Ship a policy",
                 "pages": [
+                  "pt-br/policies/test",
                   "pt-br/policies/deploy",
                   "pt-br/policies/rollback",
                   "pt-br/policies/publish-a-pack",
@@ -1156,6 +1181,10 @@
               {
                 "group": "Evaluate agents",
                 "pages": [
+                  "de/evaluations/overview",
+                  "de/evaluations/write",
+                  "de/evaluations/test",
+                  "de/evaluations/deploy",
                   "de/sessions/evaluations"
                 ]
               },
@@ -1195,6 +1224,7 @@
               {
                 "group": "Ship a policy",
                 "pages": [
+                  "de/policies/test",
                   "de/policies/deploy",
                   "de/policies/rollback",
                   "de/policies/publish-a-pack",
@@ -1324,6 +1354,10 @@
               {
                 "group": "Evaluate agents",
                 "pages": [
+                  "fr/evaluations/overview",
+                  "fr/evaluations/write",
+                  "fr/evaluations/test",
+                  "fr/evaluations/deploy",
                   "fr/sessions/evaluations"
                 ]
               },
@@ -1363,6 +1397,7 @@
               {
                 "group": "Ship a policy",
                 "pages": [
+                  "fr/policies/test",
                   "fr/policies/deploy",
                   "fr/policies/rollback",
                   "fr/policies/publish-a-pack",
@@ -1492,6 +1527,10 @@
               {
                 "group": "Evaluate agents",
                 "pages": [
+                  "ru/evaluations/overview",
+                  "ru/evaluations/write",
+                  "ru/evaluations/test",
+                  "ru/evaluations/deploy",
                   "ru/sessions/evaluations"
                 ]
               },
@@ -1531,6 +1570,7 @@
               {
                 "group": "Ship a policy",
                 "pages": [
+                  "ru/policies/test",
                   "ru/policies/deploy",
                   "ru/policies/rollback",
                   "ru/policies/publish-a-pack",
@@ -1660,6 +1700,10 @@
               {
                 "group": "Evaluate agents",
                 "pages": [
+                  "hi/evaluations/overview",
+                  "hi/evaluations/write",
+                  "hi/evaluations/test",
+                  "hi/evaluations/deploy",
                   "hi/sessions/evaluations"
                 ]
               },
@@ -1699,6 +1743,7 @@
               {
                 "group": "Ship a policy",
                 "pages": [
+                  "hi/policies/test",
                   "hi/policies/deploy",
                   "hi/policies/rollback",
                   "hi/policies/publish-a-pack",
@@ -1828,6 +1873,10 @@
               {
                 "group": "Evaluate agents",
                 "pages": [
+                  "tr/evaluations/overview",
+                  "tr/evaluations/write",
+                  "tr/evaluations/test",
+                  "tr/evaluations/deploy",
                   "tr/sessions/evaluations"
                 ]
               },
@@ -1867,6 +1916,7 @@
               {
                 "group": "Ship a policy",
                 "pages": [
+                  "tr/policies/test",
                   "tr/policies/deploy",
                   "tr/policies/rollback",
                   "tr/policies/publish-a-pack",
@@ -1996,6 +2046,10 @@
               {
                 "group": "Evaluate agents",
                 "pages": [
+                  "vi/evaluations/overview",
+                  "vi/evaluations/write",
+                  "vi/evaluations/test",
+                  "vi/evaluations/deploy",
                   "vi/sessions/evaluations"
                 ]
               },
@@ -2035,6 +2089,7 @@
               {
                 "group": "Ship a policy",
                 "pages": [
+                  "vi/policies/test",
                   "vi/policies/deploy",
                   "vi/policies/rollback",
                   "vi/policies/publish-a-pack",
@@ -2164,6 +2219,10 @@
               {
                 "group": "Evaluate agents",
                 "pages": [
+                  "it/evaluations/overview",
+                  "it/evaluations/write",
+                  "it/evaluations/test",
+                  "it/evaluations/deploy",
                   "it/sessions/evaluations"
                 ]
               },
@@ -2203,6 +2262,7 @@
               {
                 "group": "Ship a policy",
                 "pages": [
+                  "it/policies/test",
                   "it/policies/deploy",
                   "it/policies/rollback",
                   "it/policies/publish-a-pack",
@@ -2332,6 +2392,10 @@
               {
                 "group": "Evaluate agents",
                 "pages": [
+                  "ar/evaluations/overview",
+                  "ar/evaluations/write",
+                  "ar/evaluations/test",
+                  "ar/evaluations/deploy",
                   "ar/sessions/evaluations"
                 ]
               },
@@ -2371,6 +2435,7 @@
               {
                 "group": "Ship a policy",
                 "pages": [
+                  "ar/policies/test",
                   "ar/policies/deploy",
                   "ar/policies/rollback",
                   "ar/policies/publish-a-pack",
@@ -2500,6 +2565,10 @@
               {
                 "group": "Evaluate agents",
                 "pages": [
+                  "he/evaluations/overview",
+                  "he/evaluations/write",
+                  "he/evaluations/test",
+                  "he/evaluations/deploy",
                   "he/sessions/evaluations"
                 ]
               },
@@ -2539,6 +2608,7 @@
               {
                 "group": "Ship a policy",
                 "pages": [
+                  "he/policies/test",
                   "he/policies/deploy",
                   "he/policies/rollback",
                   "he/policies/publish-a-pack",

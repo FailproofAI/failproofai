@@ -268,7 +268,7 @@ Mỗi framework agent cung cấp cho bạn ba đường nối tương tự. Ánh
 </Tip>
 
 <Note>
-  **Tay và tự động soạn.** Một adapter chạy bên trong một phạm vi viết tay tham gia session đó và phụ huynh của đó, vì vậy bạn nhận được một cây chứ không phải hai — hữu ích khi bạn công cụ hóa một framework tự bên cạnh một cái được hỗ trợ.
+  **Thủ công và tự động kết hợp được với nhau.** Một adapter chạy bên trong một phạm vi viết tay sẽ tham gia session đó và trở thành con của agent đó, nên bạn có một cây thay vì hai — hữu ích khi bạn tự công cụ hóa một framework bên cạnh một framework được hỗ trợ.
 </Note>
 
 <Accordion title="Tại sao không có adapter AutoGen">
@@ -437,7 +437,7 @@ Phạm vi liên kết danh tính trên các biến ngữ cảnh. Những cái đ
 | `agent_id` | Bạn, hoặc framework | Từ `agent("analyst")`, một `role` CrewAI, một `FunctionAgent.name`. Một giá trị trông giống như UUID bị từ chối và thay thế |
 | `tool_call_id`, `hook_id`, `request_id` | Bạn, hoặc framework | Các adapter tái sử dụng các id chạy của riêng framework, đó là lý do tại sao các cặp sống sót qua bước hoa |
 | **Event id** | **Cloud, tại ingest** | SDK không phát ra cái nào |
-| **`dedup_key`** | **Cloud, tại ingest** | Một hash của org, phiên, dấu thời gian, loại và tải trọng. Đây là danh tính thực — nó làm cho một lô được thử lại sập thay vì sao chép |
+| **`dedup_key`** | **Cloud, tại ingest** | Một hash của org, phiên, dấu thời gian, loại và tải trọng. Đây mới là danh tính thực sự — nhờ nó, một lô được gửi lại sẽ được gộp vào sự kiện đã có thay vì bị nhân đôi |
 
 #### Cách các adapter giải quyết `session_id`
 
@@ -641,20 +641,18 @@ Mỗi xóa viết một tệp lô, `.tmp` đầu tiên, sau đó `fsync`, sau đ
 Daemon chỉ nhặt `.jsonl`, vì vậy nó không bao giờ có thể đọc một tệp nửa viết. Thân phần mang một dấu thời gian, id quy trình và số thứ tự, vì vậy hai quy trình xóa trong cùng một mili giây không thể va chạm. Hàng đợi bị giới hạn ở 10.000 sự kiện; quá điểm đó, nó bỏ cái cũ nhất và ghi nhật ký.
 
 <Warning>
-  **`collector.redact` không áp dụng cho các sự kiện SDK của bạn.** Nó không bao giờ nhìn thấy chúng.
+  **`collector.redact` cũng mặc định là `minimal` đối với sự kiện SDK.** SDK che giấu dữ liệu nhạy cảm trước khi ghi một lô xuống đĩa, và daemon lặp lại đúng lượt xử lý tất định đó trước khi tải lên, nhờ vậy các lô từ những phiên bản SDK cũ hơn cũng được bảo vệ.
 </Warning>
 
-Daemon **tàu** lô của bạn. Nó không mở hoặc viết lại chúng.
+Daemon đọc từng lô và áp dụng việc che giấu dữ liệu trong bộ nhớ trước khi tải lên. Nó không ghi lại tệp spool mà nó đã đọc.
 
-| Sự kiện | Viết bởi | Được chỉnh sửa bởi `collector.redact`? |
+| Sự kiện | Viết bởi | Nơi áp dụng che giấu tối thiểu |
 | --- | --- | --- |
-| Bản ghi phiên CLI | Daemon | Có |
-| Hoạt động hook | Daemon | Có |
-| **Mọi thứ SDK phát ra** | **Quy trình của bạn** | **Không** |
+| Bản ghi phiên CLI | Daemon | Trước khi daemon ghi lô |
+| Hoạt động hook | Daemon | Trước khi daemon ghi lô |
+| **Mọi thứ SDK phát ra** | **Quy trình của bạn** | **Trước khi SDK ghi lô và một lần nữa trước khi daemon tải lên** |
 
-Chỉnh sửa chạy ở nơi daemon *viết* sự kiện riêng của nó — không phải ở nơi lô được *gửi*. Vì vậy, một lời nhắc hoặc một đối số công cụ giữ một khóa API vẫn giữ nó trên lẫn.
-
-Điều đó cố ý. Đây là các cuộc gọi công cụ hóa của riêng bạn, và viết lại chúng trong quá trình không có nghĩa là các sự kiện bạn nhận được không phải là các sự kiện bạn phát ra.
+Chỉ đặt `collector.redact` thành `off` khi bạn thực sự cần giữ nguyên payload; cả SDK và daemon đều tuân theo thiết lập này. Che giấu tối thiểu phát hiện các khóa API phổ biến, bearer token, JWT và các phép gán bí mật. Nó không thể nhận diện mọi đoạn văn bản nhạy cảm tùy ý.
 
 <Tip>
   **Bạn kiểm soát tải trọng tại nguồn, ở hai nơi:**
@@ -667,7 +665,7 @@ Chỉnh sửa chạy ở nơi daemon *viết* sự kiện riêng của nó — k
     `instrument()` bỏ các tùy chọn một adapter không đọc, vì vậy chuyển tên sai không tăng và không thay đổi gì.
   - Đừng trao bí mật cho `input=` ở nơi đầu tiên.
 
-  `collector.redact` không phải là thay thế cho cái nào cả.
+  `collector.redact` là phòng thủ theo chiều sâu, không thay thế cho cách nào trong hai cách trên.
 </Tip>
 
 <Warning>
@@ -710,7 +708,7 @@ Giá trị mặc định là đúng trong sản xuất và sai trong khi gỡ l�
   </Accordion>
 
   <Accordion title="Sự kiện từ luồng worker tăng TypeError">
-    Luồng không bao giờ kế thừa ngữ cảnh. Bao `callable` trong `failproofai_sdk.propagate()`. Xem [Luồng và async](#threads-and-async).
+    Luồng không bao giờ kế thừa ngữ cảnh. Bao `callable` trong `failproofai_sdk.propagate()`. Xem [Luồng và async](#luồng-và-async).
   </Accordion>
 
   <Accordion title="Một trường bổ sung biến mất hoặc ghi đè cái gì đó">

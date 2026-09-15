@@ -192,6 +192,7 @@ function handleConnection(socket: Socket, shutdown: () => void): void {
               exitCode: result.exitCode,
               stdout: result.stdout,
               stderr: result.stderr,
+              evaluation: result.evaluation,
             }),
           );
         } catch (err) {

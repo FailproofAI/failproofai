@@ -14,8 +14,9 @@
  *
  * PROFILES: Hermes profiles are separate home dirs, each with its OWN state.db
  * (`~/.hermes/state.db` for the default, `~/.hermes/profiles/<name>/state.db`
- * otherwise) — see lib/hermes-profiles.ts. So every read here fans out across
- * profiles instead of assuming one DB.
+ * for upstream profiles, and `~/.hermes-<name>/state.db` for sibling homes) —
+ * see lib/hermes-profiles.ts. So every read here fans out across profiles
+ * instead of assuming one DB.
  *
  * DB path override: set `HERMES_DB_PATH` (used by tests and to point at a copied
  * or remote state.db) — it collapses discovery to that single file. Set

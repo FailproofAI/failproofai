@@ -1,10 +1,29 @@
 # Changelog
 
+## 1.0.6-beta.1 — 2026-09-15
+
+### Fixes
+
+- Require a healthy end-to-end `failproofaid` probe before direct Hermes installation changes plugin or profile configuration, preventing the default fail-closed mode from locking tool use when no evaluator is available.
+- Discover config-bearing `~/.hermes-<name>` installations alongside the default and upstream nested profiles, so install, uninstall, health checks, and audit coverage reach every Hermes home without mistaking empty backup directories for active profiles.
+- Make daemon readiness an integration capability rather than a Hermes command special-case, so future daemon-only plugins inherit the same pre-install lockout protection while CLI-backed integrations keep their local evaluator fallback.
+- Apply Hermes `evaluation_timeout_ms` as one total socket deadline instead of resetting the full timeout for each partial send or receive.
+- Allow npm up to 16 minutes 40 seconds to expose an accepted release while checking every package in parallel per retry round. The `1.0.6-beta.0` root package took 11 minutes 25 seconds to become visible after `npm publish` succeeded, causing the workflow to report a false version split while all five packages had actually published.
+
 ## 1.0.6-beta.0 — 2026-09-15
 
 ### Docs
 
 - Translate the English documentation changes from #788 and #791 into all 14 locales, including the new evaluation pages and SDK event redaction on the custom-agents page, and point translated fragment links at their translated headings (#797)
+
+### Added
+
+- Add a native, profile-local Hermes plugin that evaluates policies through the existing failproofaid warm worker. Hermes `instruct()` decisions now interrupt the first matching tool attempt with model-visible guidance, then use a persistent bounded retry ledger so advisory policy cannot deadlock the turn; `deny()` remains a hard block.
+- Add structured `policyEvaluation` / `policyResult` messages to the versioned local daemon protocol for native integrations, including canonical tool, policy, match, reason, and latency metadata.
+
+### Changed
+
+- Hermes installation now copies and enables the managed plugin in every profile, migrates only legacy FailproofAI shell hooks, refuses to overwrite unmanaged plugin directories, and reports incomplete or duplicate profile installations as unhealthy.
 
 ### Dependencies
 

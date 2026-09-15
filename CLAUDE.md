@@ -321,13 +321,12 @@ we run in-repo. Hermes is a **dual-pillar** integration: an **audit** adapter
 (`src/audit/cli-adapters/hermes.ts`, reads `~/.hermes/state.db` directly) **and** a
 **live-hook** integration (`hermes` in `INTEGRATIONS`).
 
-Hermes uses a **Claude/Codex-style external shell-hook system**, but its config is
-**YAML** (`~/.hermes/config.yaml`) under a `hooks:` map — the only integration whose
-settings file is YAML, so `integrations.ts` has a comment-preserving `readYamlDoc`/
-`writeYamlDoc` layer (the `yaml` package's `Document` API) that rewrites only the
-`hooks:` key, preserving the operator's other settings and any comments **outside**
-that block. (Comments *inside* the `hooks:` map are not preserved — we rebuild the
-key from `doc.toJS()` — but failproofai owns that block, so there's nothing to keep.)
+Hermes enforcement uses the shipped **native Python plugin** under each profile's
+`plugins/failproofai/` directory. The profile's YAML config enables it through
+`plugins.enabled: [failproofai]`. `integrations.ts` copies the plugin atomically,
+marks the directory as FailproofAI-managed, refuses to overwrite an unmanaged
+directory with the same name, and uses the `yaml` package's comment-preserving
+`Document` API for config changes.
 
 Settings file paths:
 
@@ -336,21 +335,21 @@ Settings file paths:
 | user    | `~/.hermes/config.yaml`     |
 
 Hermes is **user-scope only** — there is no project config, so `getSettingsPath`
-ignores scope/cwd. Hermes exposes no `$HERMES_PROJECT_DIR`; the installed command uses
-the resolved binary path (`"${binaryPath}" --hook <event> --cli hermes`) — since
-Hermes is user-scope only, no `npx` project form applies. `timeout` is in **seconds** (30).
+ignores scope/cwd. Every default and named profile receives its own plugin copy and
+enablement entry. Installed-state detection requires both the complete managed plugin
+directory and the config entry; a missing file, disabled plugin, newly-created profile,
+or leftover legacy shell hook is reported as unhealthy.
 
-**Consent (headless gateway).** Hermes prompts once per unique `(event, command)` hook
-before running it. The gateway has no TTY, so install also writes
-`hooks_auto_accept: true` into config.yaml (uninstall removes it). Tradeoff: this
-auto-accepts *any* hook the operator adds — a deliberate choice for headless operation.
-A more targeted alternative is to pre-seed `~/.hermes/shell-hooks-allowlist.json` with
-just our `(event, command)` pairs; deferred as a future refinement.
+The plugin talks directly to `failproofaid` over the existing owner-only Unix socket.
+The daemon relays a versioned `policyEvaluation` request to the warm TypeScript worker
+and returns a structured `policyResult` with `allow`, `deny`, or `instruct`, policy
+names, reason, matched policies, canonical tool name, and evaluation duration. The
+normal native path does not parse CLI stdout and does not spawn a process per event.
 
-**Block contract** (verified live): Hermes reads a `{"decision":"block","reason"}` JSON
-object on **stdout** and **ignores exit codes**. So `policy-evaluator.ts` has a
-`cli === "hermes"` deny branch (ahead of the Stop block) that emits that shape
-unconditionally for every event — one branch covers PreToolUse/PostToolUse/SubagentStop.
+The contract is pinned to upstream Hermes 0.21.3 / commit
+`4d55ca91656ac5f83e1506679b7f81e0238e5e16`: plugin manifest v2, `PluginState.data_dir`,
+keyword hook payloads, and `pre_tool_call` correlation IDs are all present there.
+Callbacks accept `**kwargs` for additive compatibility.
 
 **Platform independence & subagents.** The gateway is one Hermes process and
 `pre_tool_call` fires on the *tool event*, not the source — so a single install
@@ -362,17 +361,36 @@ internal tool calls don't fire Hermes hooks — gate the *spawn* at `pre_tool_ca
 
 **Per-event capability matrix:**
 
-| Hermes event       | Canonical (`HERMES_EVENT_MAP`) | Veto / mutate? | Notes |
-|--------------------|--------------------------------|----------------|-------|
-| `pre_tool_call`    | `PreToolUse`                   | ✅ block       | The core deny point — stops the tool before it runs. |
-| `post_tool_call`   | `PostToolUse`                  | observation    | Observe / sanitize. |
-| `on_session_start` | `SessionStart`                 | observation    | — |
-| `on_session_end`   | `SessionEnd`                   | observation    | — |
-| `subagent_stop`    | `SubagentStop`                 | observation    | **NOT a gate** — see the correction below. |
-| `pre_verify`       | *(not installed)*              | ✅ block       | Real turn-end gate upstream — **we deliberately do not install it**; see below. |
+| Hermes plugin hook | Canonical (`HERMES_EVENT_MAP`) | Effect | Notes |
+|--------------------|--------------------------------|--------|-------|
+| `pre_tool_call`    | `PreToolUse`                   | ✅ block | Deny always blocks. Instruct blocks once for model-visible delivery, then the next API iteration may proceed. |
+| `post_tool_call`   | `PostToolUse`                  | observation | Return value is ignored by Hermes. |
+| `pre_llm_call`     | plugin-local                  | context | Adds the stable instruction protocol hint to the current turn. |
+| `on_session_start` | `SessionStart`                 | observation | Forwarded to the evaluator. |
+| `on_session_end`   | `SessionEnd`                   | observation + cleanup | Forwarded, then clears that session's instruction ledger. |
+| `on_session_reset` / `on_session_finalize` | plugin-local | cleanup | Clears stale per-session retry state. |
+| `subagent_stop`    | `SubagentStop`                 | observation | Not a gate. |
+| `pre_verify`       | *(not installed)*              | none | Hermes exposes a bounded turn-end gate, but FailproofAI does not map it yet. |
 
-**Corrections (2026-07-29).** Three claims that stood here were wrong, each verified
-against upstream `hermes-agent` @ `5771a6e`. `agent/shell_hooks.py:567-621`
+**Bounded `instruct()` delivery.** The first matching instruction in a
+profile/session/task/turn/policy/tool scope is persisted to the profile-local SQLite
+ledger before `pre_tool_call` returns a block. Re-entry with the same
+`api_request_id` remains blocked, which prevents sibling calls from consuming the
+permit. A later API request acknowledges the instruction and proceeds. At most two
+distinct instruction scopes may interrupt one turn by default. Missing correlation
+IDs or ledger failure fail open for advisory instructions so a broken ledger cannot
+deadlock Hermes; a real `deny()` remains a hard block. Evaluator or protocol failure
+defaults to fail closed and may be changed per profile with
+`plugins.entries.failproofai.settings.failure_mode: allow`.
+
+Install migrates only shell-hook entries carrying the FailproofAI marker or legacy
+`failproofai --hook` command. It preserves unrelated hooks and removes the old broad
+`hooks_auto_accept` setting only when no hook remains. The native plugin itself needs
+no shell-hook consent prompt.
+
+**Legacy shell-adapter findings (retained for migration context).** Three earlier
+claims were corrected against upstream `hermes-agent` @ `5771a6e`.
+`agent/shell_hooks.py:567-621`
 (`_parse_response`) is **event-gated**: it returns a verdict for `pre_tool_call` and
 `pre_verify` only, and falls through to `return None` for everything else. So:
 
@@ -398,10 +416,10 @@ against upstream `hermes-agent` @ `5771a6e`. `agent/shell_hooks.py:567-621`
    (`agent/verify_hooks.py:21`, operator-overridable), and on Hermes older than
    ~2026-06-30 the config key fails `VALID_HOOKS` and is **warn-and-skipped silently**
    (`agent/shell_hooks.py:325`).
-3. **"No additional-context channel" was false.** `pre_llm_call` consumes
-   `{"context": str}` via the parser's fallthrough (`shell_hooks.py:617-621`). We do
-   not install it, so `instruct()` still degrades to allow + a stderr note — but that
-   is now a gap we chose, not a limit of the platform.
+3. **"No additional-context channel" was false.** Native `pre_llm_call` callbacks
+   consume `{"context": str}`. The plugin uses that channel for a stable protocol
+   hint, while each concrete `instruct()` reason is delivered through the blocked
+   `pre_tool_call` result that Hermes inserts into model-visible history.
 
 Hermes still lacks `UserPromptSubmit` (only per-LLM-call `pre_llm_call`),
 `PreCompact`/`Notification`, etc. In exchange it has capabilities others lack

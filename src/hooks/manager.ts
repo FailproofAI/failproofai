@@ -29,6 +29,7 @@ import { CORE_SOURCE, addPack, setPackPolicyEnabled } from "./pack-store";
 import type { ResolvedPack } from "./pack-manifest";
 import { hasInstalledPacks, readInstalledPacks } from "./pack-manifest";
 import { packPolicyParamKey } from "./policy-evaluator";
+import { probeDaemonEndToEnd } from "./daemon-service";
 import {
   chip,
   note,
@@ -446,9 +447,13 @@ async function installHooksImpl(
   // the user for multi-CLI selection before reaching here when --cli is omitted.
   const selectedClis: IntegrationType[] = cli && cli.length > 0 ? [...new Set(cli)] : ["claude"];
 
+  const selectedIntegrations = selectedClis.map((cliId) => ({
+    cliId,
+    integration: getIntegration(cliId),
+  }));
+
   // Per-CLI scope validation: Codex doesn't have a "local" scope.
-  for (const cliId of selectedClis) {
-    const integration = getIntegration(cliId);
+  for (const { cliId, integration } of selectedIntegrations) {
     if (!integration.scopes.includes(scope)) {
       try {
         await trackHookEvent(getInstanceId(), "scope_validation_failed", {
@@ -462,6 +467,23 @@ async function installHooksImpl(
           `Valid scopes: ${integration.scopes.join(", ")}`
       );
     }
+  }
+
+  // Daemon-only native integrations fail closed when their evaluator cannot be
+  // reached. Never enable one until a real policy request succeeds; otherwise
+  // a direct `policies --install` can lock every tool call. Shell-hook and CLI-
+  // backed integrations retain their local evaluator fallback and therefore do
+  // not opt into this requirement.
+  const daemonRequiredBy = selectedIntegrations
+    .map(({ integration }) => integration)
+    .filter((integration) => integration.requiresHealthyDaemon);
+  if (daemonRequiredBy.length > 0 && !(await probeDaemonEndToEnd())) {
+    const names = daemonRequiredBy.map((integration) => integration.displayName).join(", ");
+    const verb = daemonRequiredBy.length === 1 ? "requires" : "require";
+    throw new CliError(
+      `${names} ${verb} a healthy failproofaid daemon before FailproofAI enforcement can be enabled.\n` +
+        "Run `failproofai config` to install and configure the daemon, then retry.",
+    );
   }
 
   const binaryPath = resolveFailproofaiBinary();
@@ -672,6 +694,7 @@ async function installHooksImpl(
     const settingsPaths = settingsPathsFor(integration, scope, cwd);
     try {
       for (const settingsPath of settingsPaths) {
+        integration.prepareInstall?.(settingsPath);
         const settings = integration.readSettings(settingsPath);
         integration.writeHookEntries(settings, binaryPath, scope);
         integration.writeSettings(settingsPath, settings);
@@ -738,10 +761,17 @@ async function installHooksImpl(
 
   for (const { cli: cliId, path } of writtenSettingsPaths) {
     const integration = getIntegration(cliId);
-    console.log(
-      `Failproof AI hooks installed for ${integration.displayName} ` +
-        `(${integration.eventTypes.length} event types, scope: ${scope}).`
-    );
+    if (cliId === "hermes") {
+      console.log(
+        `Failproof AI native plugin installed for ${integration.displayName} ` +
+          `(8 registered hooks, scope: ${scope}).`
+      );
+    } else {
+      console.log(
+        `Failproof AI hooks installed for ${integration.displayName} ` +
+          `(${integration.eventTypes.length} event types, scope: ${scope}).`
+      );
+    }
     console.log(`Settings: ${path}`);
   }
   if (scope === "project") {
@@ -876,7 +906,11 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
     for (const s of scopesToRemove) {
       // Usually one path; Hermes returns one per profile.
       const settingsPaths = settingsPathsFor(integration, s, cwd);
-      const existing = settingsPaths.filter((p) => existsSync(p));
+      // A Hermes install copies its managed plugin before updating config.yaml.
+      // If the config write is interrupted, uninstall must still call the
+      // integration so it can remove that orphaned managed directory.
+      const existing =
+        cliId === "hermes" ? settingsPaths : settingsPaths.filter((p) => existsSync(p));
 
       if (existing.length === 0) {
         if (scope !== "all" && selectedClis.length === 1) {

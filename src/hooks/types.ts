@@ -113,13 +113,13 @@ export const HERMES_TOOL_INPUT_MAP: Record<string, Record<string, string>> = {
   Edit: { path: "file_path" },
 };
 
-// Hermes live-hook (Pillar 1) events + scopes. Hermes fires these snake_case
-// events with a JSON payload on stdin; the command we install runs
-// `failproofai --hook <event> --cli hermes`. Config is USER-scope only
-// (`~/.hermes/config.yaml`; Hermes has no project scope). `pre_tool_call` is the
-// core deny point — it fires for tool calls from every source
-// (slack/telegram/cli/cron) and internal subagents, so a single install
-// intercepts all platforms.
+// Hermes live-hook (Pillar 1) events + scopes. The native Python plugin sends
+// these events to failproofaid's warm worker. It also handles `pre_llm_call`,
+// `on_session_reset`, and `on_session_finalize` locally for instruction context
+// and ledger cleanup, so those do not need canonical policy-event mappings.
+// Config is USER-scope only (`~/.hermes/config.yaml`; Hermes has no project
+// scope). `pre_tool_call` is the core gate and fires for tool calls from every
+// source (Slack/Telegram/CLI/cron) and internal subagents.
 //
 // `pre_verify` IS a turn-end gate — the earlier claim here that Hermes has none
 // was wrong. We deliberately do NOT install it (product decision, 2026-07-29);
@@ -143,7 +143,7 @@ export const HERMES_TOOL_INPUT_MAP: Record<string, Record<string, string>> = {
 //   2. Capped at 3 nudges per turn (`DEFAULT_MAX_VERIFY_NUDGES`,
 //      `agent/verify_hooks.py:21`), operator-overridable; resets each turn.
 //   3. It landed upstream ~2026-06-30. Older Hermes fails the key against
-//      VALID_HOOKS and warn-and-skips it SILENTLY (`agent/shell_hooks.py:325`).
+//      VALID_HOOKS and warn-and-skips it silently.
 //
 // Until it is installed, `HERMES_EVENT_MAP` emits no `Stop` and those 5
 // builtins remain inapplicable on Hermes.

@@ -2,6 +2,10 @@
 
 ## 1.0.6-beta.0 — 2026-09-15
 
+### Docs
+
+- Translate the English documentation changes from #788 and #791 into all 14 locales, including the new evaluation pages and SDK event redaction on the custom-agents page, and point translated fragment links at their translated headings (#797)
+
 ### Dependencies
 
 - yaml 2.9.0 → 2.9.1, and rustls 0.23.43 → 0.23.45 (with rustls-webpki 0.103.13 → 0.103.15) in `Cargo.lock`, closing RUSTSEC-2026-0285 (5.3, fixed in 0.23.45). The advisory turned the Supply Chain gate red on `main` itself, not through any PR's change; rustls is transitive-only, via `reqwest` in `failproofaid` and `fpai-collect` (#803)

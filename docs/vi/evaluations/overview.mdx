@@ -16,9 +16,9 @@ Một đánh giá chấm điểm một phiên agent hoàn tất. Khi một phiê
 | --- | --- | --- |
 | Được viết | Trong bảng điều khiển, ở **Analyze → eval authoring** | Bằng Python, với [Evaluator SDK](/vi/reference/evaluator-sdk) |
 | Chạy | Trên trình đánh giá được quản lý của Failproof AI, trong một sandbox | Trên cơ sở hạ tầng của bạn |
-| Tốt nhất cho | Các kiểm tra xác định, dựa trên mã | Các tr裁判 LLM, lệnh gọi mô hình, gói, bí mật, truy cập mạng, xử lý nặng |
+| Tốt nhất cho | Các kiểm tra xác định, dựa trên mã | Các giám khảo LLM, lệnh gọi mô hình, gói, bí mật, truy cập mạng, xử lý nặng |
 
-Python được lưu trữ được thiết kế một cách cố ý nhỏ: một biểu thức, không có nhập khẩu, không có mạng. Bất cứ điều gì cần một mô hình — một tr裁判 LLM chấm điểm xem liệu một câu trả lời có phù hợp hay không, chẳng hạn — chạy trong worker của riêng bạn. Cả hai loại đều không cần kết nối vào: worker yêu cầu các phiên hoàn tất và gửi kết quả qua HTTPS đi ra ngoài.
+Python được lưu trữ được thiết kế một cách cố ý nhỏ: một biểu thức, không có nhập khẩu, không có mạng. Bất cứ điều gì cần một mô hình — một giám khảo LLM chấm điểm xem liệu một câu trả lời có phù hợp hay không, chẳng hạn — chạy trong worker của riêng bạn. Cả hai loại đều không cần kết nối vào: worker yêu cầu các phiên hoàn tất và gửi kết quả qua HTTPS đi ra ngoài.
 
 ## Mỗi tổ chức đánh giá các agent của riêng nó
 
@@ -41,4 +41,4 @@ Các đánh giá thuộc về tổ chức xác định chúng. Mỗi tổ chức
   </Step>
 </Steps>
 
-Đánh giá chạy về phía trước: một phiên bản triển khai ngay bây giờ chấm điểm các phiên hoàn tất từ bây giờ trở đi. Để chấm điểm các phiên bạn đã có, [backfill chúng](/vi/evaluations/deploy#score-sessions-you-already-have).
+Đánh giá chạy về phía trước: một phiên bản triển khai ngay bây giờ chấm điểm các phiên hoàn tất từ bây giờ trở đi. Để chấm điểm các phiên bạn đã có, [backfill chúng](/vi/evaluations/deploy#chấm-điểm-các-phiên-làm-việc-bạn-đã-có).

@@ -28,7 +28,7 @@ pip install failproofai-sdk
 ## Failproof daemon को कनेक्ट करें
 
 <Tabs>
-  <Tab title="Dashboard">
+  <Tab title="डैशबोर्ड">
     1. **Admin → Keys** पर जाएं और `events:add` के साथ एक key बनाएं।
     2. [Failproof daemon को Cloud से कनेक्ट करें](/hi/start/setup#connect-a-machine-to-cloud) agent मशीन पर।
     3. एक instrumented सेशन चलाएं, फिर **Observe → Events** के तहत इसकी सटीक ID खोजें।
@@ -162,7 +162,7 @@ with failproofai_sdk.session():
 
 एक अपवाद `model_response` है, जहां केवल आप real provider latency को जानते हैं। milliseconds की एक पूरी संख्या pass करें — एक float raise करता है, क्योंकि column एक 32-bit integer है और अन्यथा empty land करेगी।
 
-<Accordion title="Edge cases" icon="circle-help">
+<Accordion title="सीमांत स्थितियां" icon="circle-help">
 
 - **Ids केवल kind per, per session के लिए unique होना चाहिए।** एक tool call और एक hook एक share कर सकते हैं; दो sessions एक साथ चल सकते हैं एक ही ids को reuse कर सकते हैं बिना colliding के।
 - **वे agent को scoped नहीं हैं।** एक pair एक agent के तहत open किया गया और दूसरे agent के तहत close किया गया अभी भी match करता है — जो multi-agent code में सामान्य case है।
@@ -196,7 +196,7 @@ failproofai_sdk.event.tool_use(
 ## Deliver और verify करें
 
 <Tabs>
-  <Tab title="Dashboard">
+  <Tab title="डैशबोर्ड">
     **Observe → Events** में, पहले verify करें `agent_start` exists है और `agent_end` exists अंत में है। फिर **Observe → Sessions** खोलें और confirm करें model, tool, human, hook, और error events intended order में दिखाई देते हैं। Session ID को primary troubleshooting key के रूप में उपयोग करें।
   </Tab>
   <Tab title="CLI">

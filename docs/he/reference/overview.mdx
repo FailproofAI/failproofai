@@ -1,22 +1,22 @@
 ---
-title: "Integrations and reference"
-description: "Connect supported agent harnesses, SDKs, CLIs, and the HTTP API."
+title: "אינטגרציות ומדריכי עיון"
+description: "חבר סביבות סוכנים נתמכות, SDKs, ממשקי CLI ואת ה-HTTP API."
 icon: "braces"
 ---
 
 בחר את האינטגרציה הקרובה ביותר למקום שבו הסוכן שלך כבר פועל.
 
 <Columns cols={2}>
-  <Card title="Agent harnesses" icon="plug-zap" href="/he/reference/harnesses">
+  <Card title="מנגנוני סוכנים" icon="plug-zap" href="/he/reference/harnesses">
     התקן hooks עבור CLIs של coding ו-autonomous agents נתמכים.
   </Card>
-  <Card title="Agent frameworks and SDKs" icon="plug" href="/he/start/integrations">
-    Instrument LangGraph, CrewAI, LlamaIndex, Pydantic AI, או סוכן מותאם אישית.
+  <Card title="מסגרות סוכנים ו-SDKs" icon="plug" href="/he/start/integrations">
+    הוסף instrumentation ל-LangGraph, ל-CrewAI, ל-LlamaIndex, ל-Pydantic AI או לסוכן מותאם אישית.
   </Card>
-  <Card title="Python SDK reference" icon="python" href="/he/reference/custom-agents">
-    Configuration, the event catalog, correlation rules, and delivery.
+  <Card title="מדריך עיון ל-Python SDK" icon="python" href="/he/reference/custom-agents">
+    תצורה, קטלוג האירועים, כללי הקורלציה והמסירה.
   </Card>
-  <Card title="Local dashboard" icon="monitor-cog" href="/he/reference/local-dashboard">
+  <Card title="לוח בקרה מקומי" icon="monitor-cog" href="/he/reference/local-dashboard">
     בדוק פרויקטים מקומיים, sessions, policy activity, ו-audits offline.
   </Card>
   <Card title="Failproof AI CLI" icon="terminal" href="/he/reference/failproof-cli">
@@ -28,10 +28,10 @@ icon: "braces"
   <Card title="Evaluator SDK" icon="gauge" href="/he/reference/evaluator-sdk">
     דרג sessions שלמות או לא פעילות עם שירות FastAPI.
   </Card>
-  <Card title="Custom policies" icon="shield-plus" href="/he/reference/policy-sdk">
+  <Card title="מדיניות מותאמת אישית" icon="shield-plus" href="/he/reference/policy-sdk">
     כתוב ובדוק החלטות allow, instruct, ו-deny ספציפיות לflow עבודה.
   </Card>
-  <Card title="Self-hosting" icon="cloud-cog" href="/he/reference/self-hosting">
+  <Card title="אירוח עצמי" icon="cloud-cog" href="/he/reference/self-hosting">
     פרוס את Cloud control plane על cluster Kubernetes מנוהל על ידי לקוח.
   </Card>
 </Columns>
@@ -49,11 +49,11 @@ icon: "braces"
 
     התחל עם תא ה-keys. ההרשאות שנבחרו קובעות אם המכונה יכולה לשלוח אירועים ולקבל policies מנוהלות בענן.
 
-    ![The new API key drawer used to grant event ingestion and policy delivery permissions.](/images/dashboard/key-create.png)
+    ![מגירת מפתח ה-API החדש, שבה מעניקים הרשאות לקליטת אירועים ולמסירת מדיניות.](/images/dashboard/key-create.png)
 
     לאחר חיבור האינטגרציה, השתמש ברשימת Sessions כדי לאשר שהאירועים שלה מקובצים לריצות שלמות בסביבה הצפויה.
 
-    ![The Sessions list used to verify that a newly connected integration is reporting complete agent runs.](/images/dashboard/sessions-list.png)
+    ![רשימת ה-Sessions, שבה מוודאים שאינטגרציה שחוברה זה עתה מדווחת על ריצות סוכן שלמות.](/images/dashboard/sessions-list.png)
 
     פתח אחת מ-sessions הללו לפני שאתה שוקל את האינטגרציה כמושלמת; ה-trace צריך להכיל את ה-evidence של model, tool, error, ו-policy שה-audits שלך צריכים.
   </Tab>

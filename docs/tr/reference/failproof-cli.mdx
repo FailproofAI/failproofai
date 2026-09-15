@@ -122,7 +122,7 @@ Desteklenen ağ adları `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`
 
 Etiketler, iki kök aynı projenin kopyalarını içerdiğinde türetilen ajan kimliklerinin ad alanlarını verir. Çakışan kökler ve yinelenen etiketler, yinelenen koleksiyon veya imleç bozulmasını önlemek için reddedilir. Ekstra yol yapılandırması, daemon yeniden başlaması olmadan yeniden yüklenir.
 
-Konteyner ortamları, dosya yapılandırılmış ekstra yolları virgülle ayrılmış bir değişkenle değiştirebilir; örneğin:
+Konteyner ortamları, dosyada yapılandırılmış ekstra yolları, `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` adlı virgülle ayrılmış bir değişkenle değiştirebilir; örneğin:
 
 ```bash
 export FAILPROOFAI_OPENCLAW_EXTRA_PATHS="user1=/srv/openclaw-a,user2=/srv/openclaw-b"

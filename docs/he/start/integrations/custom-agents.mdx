@@ -1,13 +1,13 @@
 ---
 title: "סוכנים מותאמים אישית"
 sidebarTitle: "סוכנים מותאמים אישית"
-description: "הוסף מעקב לסוכן שכתבת בעצמך, או לפריימוורק ללא מתאם."
+description: "הוספת אינסטרומנטציה לסוכן שכתבת בעצמך, או לפריימוורק שאין לו מתאם."
 icon: "code"
 ---
 
-לסוכן שכתבת בעצמך, או לפריימוורק של Failproof AI אין לו מתאם. אין כלום להוסיף: אתה פולט את האירועים.
+הדף הזה מיועד לסוכן שכתבת בעצמך, או לפריימוורק שאין לו מתאם ב-Failproof AI. אין כאן פריימוורק שצריך לבצע עליו אינסטרומנטציה: את האירועים אתה פולט בעצמך.
 
-זה אותו API שארבעת מתאמי הפריימוורק קוראים תחתיו. הם טבלאות תרגום עליו.
+זהו אותו API שארבעת מתאמי הפריימוורק קוראים לו מאחורי הקלעים. הם בסך הכול טבלאות תרגום שנבנו מעליו.
 
 ## התקנה
 
@@ -15,42 +15,42 @@ icon: "code"
 pip install failproofai-sdk
 ```
 
-ללא תוספים, וללא תלויות.
+בלי extras ובלי תלויות.
 
-## הוספת מעקב
+## אינסטרומנטציה
 
 ```python
 import failproofai_sdk
 
 failproofai_sdk.configure(environment="production")
 
-with failproofai_sdk.session():                 # הרצה אחת
-    with failproofai_sdk.agent("planner"):      # יחידת עבודה אחת
+with failproofai_sdk.session():                 # one run
+    with failproofai_sdk.agent("planner"):      # one unit of work
         with failproofai_sdk.tool_call("search", input={"q": q}) as t:
-            t.output = search(q)                # קריאת כלי אחת
+            t.output = search(q)                # one tool call
 ```
 
-קרא זאת מלמעלה למטה והיא אומרת מה זה אומר:
+קרא את הקוד מלמעלה למטה, והוא מסביר את עצמו:
 
-| עטוף אותו ב | כדי לומר |
+| במה לעטוף | מה זה אומר |
 | --- | --- |
-| `session()` | האירועים הללו שייכים לאותה הרצה |
-| `agent()` | משהו עושה עבודה — תן לו שם שהיית מזהה ברשימה |
-| `tool_call()` | זהו כלי אחד, וזה מה שהוא החזיר |
+| `session()` | האירועים האלה שייכים לאותה הרצה |
+| `agent()` | משהו מבצע עבודה — תן לו שם שתזהה ברשימה |
+| `tool_call()` | זה כלי אחד, וזה מה שהוא החזיר |
 
-ומה כל אחד מהם למעשה פולט:
+ומה כל אחד מהם פולט בפועל:
 
-| טווח | פולט | מטרה |
+| היקף | פולט | תפקיד |
 | --- | --- | --- |
-| `session()` | כלום | קושר מזהה session, ומקבץ הרצה אחת |
+| `session()` | כלום | קושר מזהה session שמקבץ הרצה אחת |
 | `agent()` | `agent_start`, `agent_end` | תוחם יחידת עבודה |
 | `tool_call()` | `tool_use`, `tool_result` | תוחם כלי אחד ומודד אותו |
 
-הכל בתוך יכול להשמיט `session_id` ו-`agent_id`. הטווחים קושרים זהות על משתנות context ותוך כל קריאת event היא קוראת אותה חזרה, כך שאתה אף פעם לא מחליק מזהים דרך הפונקציות שלך.
+כל מה שבתוך ההיקפים יכול להשמיט את `session_id` ואת `agent_id`. ההיקפים קושרים את הזהות למשתני הקשר (context variables), וכל קריאה לשיטת אירוע קוראת אותה משם, כך שלעולם לא צריך להעביר מזהים מפונקציה לפונקציה.
 
-כל השלושה עובדים תחת `async with` כמו גם תחת `with`.
+שלושתם עובדים גם עם `async with`, ולא רק עם `with`.
 
-קינון סוכנים בונה את העץ. `parent_id` והעמוק מחושבים מהערימה:
+קינון סוכנים בונה את העץ. `parent_id` והעומק מחושבים מתוך המחסנית:
 
 ```python
 with failproofai_sdk.session():
@@ -59,22 +59,22 @@ with failproofai_sdk.session():
             ...
 ```
 
-## כיצד טווח סוגר
+## איך היקף נסגר
 
-`agent()` מטפל בחריגות עבורך:
+`agent()` מטפל בחריגות בשבילך:
 
 | מה קרה | אירועים | תוצאה |
 | --- | --- | --- |
-| כלום לא הוגבה | `agent_end` | `success` |
-| `Exception` | `error`, ואז `agent_end` | `failed` |
-| `KeyboardInterrupt`, `SystemExit` | `error`, ואז `agent_end` | `failed` |
+| לא נזרקה חריגה | `agent_end` | `success` |
+| `Exception` | `error`, ואחריו `agent_end` | `failed` |
+| `KeyboardInterrupt`, `SystemExit` | `error`, ואחריו `agent_end` | `failed` |
 | `CancelledError`, `GeneratorExit` | `agent_end` בלבד | `cancelled` |
 
-השגיאה פלטת לפני `agent_end`, כי הדashboard סוגר את ה-span ב-`agent_end` וכל דבר אחרי זה מיוחס לכלום. ביטול אינו כשל, כך שהרצות מבולות לא מזוהמות על משטח השגיאות. החריגה תמיד מוגבה מחדש: טווח אף פעם לא בולע.
+השגיאה נפלטת לפני `agent_end`, כי ה-dashboard סוגר את ה-span ב-`agent_end`, וכל מה שמגיע אחריו לא משויך לשום דבר. ביטול אינו כישלון, ולכן הרצות שבוטלו לא מזהמות את תצוגת השגיאות. החריגה תמיד נזרקת מחדש: היקף אף פעם לא בולע אותה.
 
-## שיטות האירוע
+## שיטות האירועים
 
-חמש עשרה שיטות בשש משפחות. רובן מגיעות בזוגות — אתה פולט את הפותח, ואז את הסוגר, והSDK מודד את ה-span ביניהם.
+חמש עשרה שיטות בשש משפחות. רובן באות בזוגות — אתה פולט את אירוע הפתיחה ואחריו את אירוע הסגירה, וה-SDK מודד את ה-span שביניהם.
 
 | משפחה | פותח | סוגר | עצמאי |
 | --- | --- | --- | --- |
@@ -82,23 +82,23 @@ with failproofai_sdk.session():
 | | `agent_pause` | `agent_resume` | — |
 | **מודלים** | `model_request` | `model_response` | — |
 | **כלים** | `tool_use` | `tool_result` | — |
-| **וו (Hook)** | `hook_triggered` | `hook_completed` | — |
+| **Hooks** | `hook_triggered` | `hook_completed` | — |
 | **בני אדם** | `human_wait` | `human_input` | `human_pause`, `human_interrupt` |
 | **כשלים** | — | — | `error` |
 
 <Tip>
-  העדף את הטווחים — `agent()` ו-`tool_call()` — בכל מקום שהם מתאימים. הם מבטיחים את אירוע הסיום גם כאשר הגוף מגביל. פנה לשיטות אלה ישירות כאשר זרימת הבקרה שלך לא קינה, כמו קריאה למודל בתוך עוזר.
+  העדף את ההיקפים — `agent()` ו-`tool_call()` — בכל מקום שהם מתאימים. הם מבטיחים שאירוע הסגירה ייפלט גם כשגוף הבלוק זורק חריגה. פנה לשיטות האלה ישירות כשזרימת הבקרה שלך לא בנויה בצורה מקוננת, למשל כשהקריאה למודל מתבצעת בתוך פונקציית עזר.
 </Tip>
 
 <CodeGroup>
-```python סוכנים
+```python Agents
 failproofai_sdk.event.agent_start(agent_id="planner", goal="find the cheapest flight")
 failproofai_sdk.event.agent_end(agent_id="planner", outcome="success", summary="...")
 failproofai_sdk.event.agent_pause(pause_id="p1", reason="awaiting approval")
 failproofai_sdk.event.agent_resume(pause_id="p1")
 ```
 
-```python מודלים
+```python Models
 failproofai_sdk.event.model_request(
     model="gpt-4o-mini",
     messages=[{"role": "user", "content": "..."}],
@@ -114,24 +114,24 @@ failproofai_sdk.event.model_response(
 )
 ```
 
-```python כלים
+```python Tools
 failproofai_sdk.event.tool_use(tool_name="search", tool_call_id="c1", input={"q": "..."})
 failproofai_sdk.event.tool_result(tool_name="search", tool_call_id="c1", output="...")
 ```
 
-```python וו
+```python Hooks
 failproofai_sdk.event.hook_triggered(hook_name="retrieve", hook_id="h1", trigger_event="node")
 failproofai_sdk.event.hook_completed(hook_name="retrieve", hook_id="h1", outcome="success")
 ```
 
-```python בני אדם
+```python Humans
 failproofai_sdk.event.human_wait(input_id="i1", prompt="Approve?", options=["yes", "no"])
 failproofai_sdk.event.human_input(input_id="i1", response="yes")
 failproofai_sdk.event.human_pause(reason="operator paused the run", user_id="dana")
 failproofai_sdk.event.human_interrupt(reason="operator stopped the run", at_step="step_3")
 ```
 
-```python כשלים
+```python Failures
 failproofai_sdk.event.error(
     error_type="TimeoutError",
     message="provider timed out after 30s",
@@ -141,23 +141,23 @@ failproofai_sdk.event.error(
 </CodeGroup>
 
 <Note>
-  **שתי משפחות בני אדם מצביעות בכיוונים מנוגדים.**
+  **שתי משפחות בני האדם פועלות בכיוונים הפוכים.**
 
   | שיטות | משמעות |
   | --- | --- |
-  | `human_wait` / `human_input` | **הסוכן שאל אדם** — שער אישור, שאלה הבהרה |
-  | `human_pause` / `human_interrupt` | **אדם פעל על הסוכן** — כפתור עצור, השהיית מפעיל |
+  | `human_wait` / `human_input` | **הסוכן פנה לאדם** — שער אישור, שאלת הבהרה |
+  | `human_pause` / `human_interrupt` | **אדם פעל על הסוכן** — כפתור עצירה, השהיה של מפעיל |
 
-  אף פריימוורק לא משדר את הזוג השני, כך שתמיד שלך להפליט.
+  אף פריימוורק לא מסמן את הזוג השני, ולכן תמיד תצטרך לפלוט אותו בעצמך.
 </Note>
 
 <Warning>
-  **עבור `request_id` כאשר קריאות מודל פועלות במקביל.** בלעדיו, בקשות ותגובות מתזווגות בסדר הגעה לכל סוכן — וקריאות מקבילות מתזווגות בצורה שגויה, ומצרפות כל תגובה לבקשה הלא נכונה.
+  **העבר `request_id` כשקריאות למודל רצות במקביל.** בלעדיו, בקשות ותגובות מזווגות לפי סדר ההגעה בכל סוכן — וקריאות מקבילות מזווגות לא נכון, כך שכל תגובה מוצמדת לבקשה הלא נכונה.
 </Warning>
 
 ## דוגמה
 
-לולאת קריאת כלי כנגד ה-OpenAI API, ללא פריימוורק סוכנים:
+לולאת קריאות לכלים מול ה-API של OpenAI, בלי פריימוורק סוכנים:
 
 ```python
 import json
@@ -171,7 +171,7 @@ MODEL = "gpt-4o-mini"
 
 
 def turn(messages: list):
-    """קריאה מודל אחת, תוחומה בזוג."""
+    """One model call, bracketed by the pair."""
     failproofai_sdk.event.model_request(model=MODEL, messages=messages)
     reply = client.chat.completions.create(model=MODEL, messages=messages, tools=TOOLS)
     usage = reply.usage
@@ -204,38 +204,37 @@ with failproofai_sdk.session():
                 })
 ```
 
-זה מייצר את אותם ששת סוגי אירוע שמתאם היה נותן לך. הגרסה הרצה המלאה, עם הגדרות הכלים, משפנה ב-SDK repository תחת
-`docs/manual/examples/`.
+הקוד הזה מפיק את אותם שישה סוגי אירועים שמתאם היה נותן לך. הגרסה המלאה והניתנת להרצה, כולל הגדרות הכלים, נמצאת במאגר של ה-SDK תחת `docs/manual/examples/`.
 
 ## חוטים ו-async
 
-משתנות context מתפשטות לתוך asyncio tasks באופן אוטומטי. הן לא מתפשטות לתוך חוטים חדשים, כי חוט מתחיל עם context ריק.
+משתני הקשר עוברים אוטומטית למשימות asyncio. הם לא עוברים לחוטים חדשים, כי חוט מתחיל עם הקשר ריק.
 
 ```python
-# asyncio: כלום לא לעשות
+# asyncio: nothing to do
 async with failproofai_sdk.session():
     await asyncio.gather(worker(1), worker(2))
 
-# threads: עטוף את ה-callable
+# threads: wrap the callable
 pool.submit(failproofai_sdk.propagate(work), x)
 threading.Thread(target=failproofai_sdk.propagate(work)).start()
 loop.run_in_executor(None, failproofai_sdk.propagate(work), x)
 ```
 
-ללא `propagate()`, אירועי העובד מגבילים `TypeError` ששם את התיקון במקום נחיתה ללא session. זה כוונתי: אירוע ללא session מדולל על ידי ingest וענות `200`, שזה הכשל שקט שלנו שה-identity layer קיים כדי למנוע.
+בלי `propagate()`, קריאות האירועים ב-worker זורקות `TypeError` שמציין את התיקון, במקום שהאירועים ינחתו בלי session. זה מכוון: ה-ingest מדלג על אירוע בלי session ועונה `200`, וזה בדיוק הכשל השקט ששכבת הזהות נועדה למנוע.
 
-## הוסף מעקב לפריימוורק ללא מתאם
+## אינסטרומנטציה לפריימוורק שאין לו מתאם
 
-כל סוכן פריימוורק נותן לך את אותם שלושה seams. מפה אותם ויש לך עקבות מלא — ארבעת המתאמים המספקים לא עושים יותר מזה.
+כל פריימוורק סוכנים נותן לך את אותן שלוש נקודות חיבור. מפה אותן ותקבל trace מלא — ארבעת המתאמים שמגיעים עם ה-SDK לא עושים יותר מזה.
 
-| ה-seam | מה שאתה כותב | מה נחיתה |
+| נקודת החיבור | מה אתה כותב | מה נרשם |
 | --- | --- | --- |
-| ה-run | `session()` + `agent()` | `agent_start`, `agent_end` |
+| ההרצה | `session()` + `agent()` | `agent_start`, `agent_end` |
 | כל כלי | `tool_call()` | `tool_use`, `tool_result` |
-| כל קריאת מודל | הזוג `model_*` | `model_request`, `model_response` |
+| כל קריאה למודל | הזוג `model_*` | `model_request`, `model_response` |
 
 <Steps>
-  <Step title="תחום את ה-run">
+  <Step title="תחום את ההרצה">
     ```python
     with failproofai_sdk.session():
         with failproofai_sdk.agent(agent_name, goal=task):
@@ -243,14 +242,14 @@ loop.run_in_executor(None, failproofai_sdk.propagate(work), x)
     ```
   </Step>
   <Step title="תחום כל כלי">
-    בכל מה שהפריימוורק קורא tool wrapper או middleware.
+    בכל רכיב שהפריימוורק מכנה tool wrapper או middleware.
 
     ```python
     with failproofai_sdk.tool_call(name, input=args) as call:
         call.output = original(**args)
     ```
   </Step>
-  <Step title="זווג כל קריאת מודל">
+  <Step title="עטוף כל קריאה למודל בזוג אירועים">
     ```python
     failproofai_sdk.event.model_request(model=model, messages=messages)
     reply = provider.complete(...)
@@ -265,31 +264,31 @@ loop.run_in_executor(None, failproofai_sdk.propagate(work), x)
 </Steps>
 
 <Tip>
-  **יש node, step או middleware boundary שחייב להיות נראה?** עטוף אותו בזוג hook — `hook_triggered` / `hook_completed` — לא nested `agent()`. `agent_id` הוא facet low-cardinality, והערך אחד לכל node טובע אותו. Hook spans מתרנדרים בדרך זהה וגם נותנים לך לטנציה לכל node.
+  **יש גבול של צומת, שלב או middleware שכדאי לראות?** עטוף אותו בזוג hook — `hook_triggered` / `hook_completed` — ולא ב-`agent()` מקונן. `agent_id` הוא facet בעל קרדינליות נמוכה, ורשומה נפרדת לכל צומת מציפה אותו. ה-spans של hooks מוצגים באותה צורה ונותנים לך latency לכל צומת.
 </Tip>
 
 <Note>
-  **ידני והאוטומטי מרכיבים.** מתאם שנמצא בתוך scope כתוב ביד מצטרף לשיוך זה ומוריש לסוכן זה, כך שאתה מקבל עץ אחד ולא שניים — שימושי כאשר אתה מעביר מסגרת אחת בעצמך לצד אחד בעל תמיכה.
+  **אינסטרומנטציה ידנית ואוטומטית משתלבות.** מתאם שרץ בתוך היקף שכתבת ידנית מצטרף ל-session של ההיקף הזה, והסוכן של המתאם נרשם כילד של הסוכן שכתבת ידנית — כך מתקבל עץ אחד ולא שניים. זה שימושי כשאתה מוסיף אינסטרומנטציה ידנית לפריימוורק אחד לצד פריימוורק נתמך.
 </Note>
 
-<Accordion title="למה אין מתאם AutoGen">
-  שתי סיבות, והשלושת ה-seams למעלה הן התשובה לשניהם:
+<Accordion title="למה אין מתאם ל-AutoGen">
+  יש לכך שתי סיבות, ושלוש נקודות החיבור שלמעלה הן התשובה לשתיהן:
 
-  - `autogen-core` לא תופסת תחזוקה מ-September 2025.
-  - AG2 לא חושף נקודת רישום כללית תהליך שווה ערך למשדרים של פריימוורקים אחרים, כך שהוספת מעקב אומר עטיפת כל סוכן בכל אתר בנייה.
+  - `autogen-core` לא מתוחזק מאז ספטמבר 2025.
+  - AG2 לא חושף נקודת רישום ברמת התהליך כולו, מקבילה ל-hooks של הפריימוורקים האחרים, ולכן אינסטרומנטציה שלו פירושה לעטוף כל סוכן בכל מקום שבו הוא נוצר.
 
-  מיפוי ה-seams ביד רושם את אותם אירועים, בדיוק זהה, שמתאם משודר היה עושה.
+  מיפוי ידני של נקודות החיבור רושם את אותם אירועים, באותה רמת פירוט, שמתאם מובנה היה רושם.
 </Accordion>
 
-## עומק יותר
+## לעומק
 
-איך ההקלטה למעשה עובדת. כלום מזה לא נחוץ כדי להתחיל.
+איך ההקלטה עובדת בפועל. שום דבר מזה לא נדרש כדי להתחיל.
 
 <AccordionGroup>
 
-<Accordion title="מה הקלטה נראית כמו, לכל פריימוורק" icon="eye">
+<Accordion title="איך נראית הקלטה בכל פריימוורק" icon="eye">
 
-לכל הקלטה אותו צורה: span נפתח, עבודה קינה בתוכו, ולכל אירוע פותח יש אירוע סוגר אחד.
+לכל הקלטה יש אותו מבנה: span נפתח, העבודה מקוננת בתוכו, ולכל אירוע פתיחה יש אירוע סגירה משלו.
 
 ```mermaid
 flowchart LR
@@ -301,9 +300,9 @@ flowchart LR
     C --> E(["agent_end"])
 ```
 
-ה**זוג** הוא היחידה. כל אירוע סוגר נושא משך זמן SDK מודד מה-opening שלו.
+**הזוג** הוא יחידת הבסיס. כל אירוע סגירה נושא משך זמן שה-SDK מודד מאירוע הפתיחה שלו.
 
-להלן הרצה אמיתית אחת לכל פריימוורק — תפוסה מהדוגמאות שנמצאות עם ה-SDK, שם מודל מנורמל. שים לב כמה חוזר מקריאה יחידה.
+להלן הרצה אמיתית אחת לכל פריימוורק — כל אחת נלכדה מהדוגמאות שמגיעות עם ה-SDK, ושם המודל עבר נרמול. שים לב כמה מידע מתקבל מקריאה אחת.
 
 <Tabs>
   <Tab title="LangGraph">
@@ -324,7 +323,7 @@ flowchart LR
     14  +5.721s  agent_end         LangGraph · success
     ```
 
-    Nodes הופכים לזוגות hook, כך שאתה מקבל לטנציה לכל node ללא טביעת הרשימה סוכנים.
+    צמתים הופכים לזוגות hook, כך שמתקבל latency לכל צומת בלי שהם יציפו את רשימת הסוכנים.
   </Tab>
 
   <Tab title="CrewAI">
@@ -341,7 +340,7 @@ flowchart LR
     10  +5.739s  agent_end         crew · success
     ```
 
-    `role` של כל סוכן הופך לשם ה-span שלו, כך שלטנציה ו-token spend מתפרקים לפי תפקיד.
+    ה-`role` של כל סוכן הופך לשם ה-span שלו, כך שה-latency וצריכת הטוקנים מתפלגים לפי תפקיד.
   </Tab>
 
   <Tab title="LlamaIndex">
@@ -361,7 +360,7 @@ flowchart LR
     26  +7.038s  agent_end         Agent · success
     ```
 
-    לולאת סוכן עצמה נראית, לא רק קריאות המודל שלו.
+    לולאת הסוכן עצמה גלויה, ולא רק הקריאות שלה למודל.
   </Tab>
 
   <Tab title="Pydantic AI">
@@ -376,7 +375,7 @@ flowchart LR
     8  +8.119s  agent_end         agent · success
     ```
 
-    אין זוגות hook: ל-Pydantic AI אין node או step boundary לתחום.
+    אין זוגות hook: ל-Pydantic AI אין גבול של צומת או שלב שאפשר לתחום.
   </Tab>
 
   <Tab title="סוכנים מותאמים אישית">
@@ -389,7 +388,7 @@ flowchart LR
     6  +0.000s  agent_end         main · success
     ```
 
-    אתה פולט אלה בעצמך. אותם סוגי אירוע, דיוק זהה — זה עולה לך לאתרי קריאה.
+    את האירועים האלה אתה פולט בעצמך. אותם סוגי אירועים, אותה רמת פירוט — המחיר הוא נקודות הקריאה שאתה כותב בעצמך.
   </Tab>
 </Tabs>
 
@@ -397,28 +396,28 @@ flowchart LR
 
 <Accordion title="איך session מתחיל ומסתיים" icon="circle-play">
 
-**אין אירוע session-end.** session אינה משהו שאתה סוגר — היא קבוצה של אירועים השיתוף `session_id`.
+**אין אירוע סיום ל-session.** את ה-session לא סוגרים — הוא פשוט קבוצת אירועים שחולקים את אותו `session_id`.
 
-סטטוס נגזר מצורת העקבות:
+הסטטוס נגזר מהמבנה של ה-trace:
 
 | סטטוס | מתי |
 | --- | --- |
 | `ongoing` | לפחות span אחד עדיין פתוח |
-| `paused` | `agent_pause` אין לו matching `agent_resume` |
-| `error` | כלום לא פתוח, ולפחות אירוע אחד נכשל |
-| `done` | כלום לא פתוח, וכלום לא נכשל |
+| `paused` | יש `agent_pause` בלי `agent_resume` תואם |
+| `error` | שום דבר לא פתוח, ולפחות אירוע אחד נכשל |
+| `done` | שום דבר לא פתוח, ושום דבר לא נכשל |
 
-כך שsession מסתיים כאשר כל זוג סוגר. המתאמים פולטים `agent_end` עבורך, והם סוגרים כל דבר עדיין פתוח ומסימנים אותו לא שלם — הרצה קרוסה מתפזרת כ-`done` עם פער גלוי במקום תלויה לנצח.
+כלומר, session מסתיים כשכל הזוגות נסגרו. המתאמים פולטים את `agent_end` בשבילך, ובזמן הכיבוי הם סוגרים כל מה שעדיין פתוח ומסמנים אותו כלא שלם — הרצה שקרסה מסתיימת בסטטוס `done` עם פער גלוי, במקום להישאר תלויה.
 
 <Note>
-  זה למה session יכול להקיף שתי קריאות. LangGraph `interrupt()` השהה את ה-run, ה-root span בכוונה נשאר פתוח, והקריאה הממשיכה סוגרת אותה. שתי הקריאות הן session אחד.
+  זו הסיבה ש-session יכול להשתרע על פני שתי קריאות. `interrupt()` של LangGraph משהה את ההרצה, ה-span השורשי נשאר פתוח בכוונה, והקריאה שממשיכה את ההרצה סוגרת אותו. שתי הקריאות הן session אחד.
 </Note>
 
 </Accordion>
 
-<Accordion title="זהות: session_id, agent_id, והמי חושב אותם" icon="fingerprint">
+<Accordion title="זהות: session_id, agent_id ומי מנפיק אותם" icon="fingerprint">
 
-`session_id` ו-`agent_id` הם אופציונליים בכל שיטת event. בהשמטה, הם מתפזרים מהטווח שוקע:
+`session_id` ו-`agent_id` הם אופציונליים בכל שיטות האירועים. אם משמיטים אותם, הם נלקחים מההיקף העוטף:
 
 ```python
 with failproofai_sdk.session():
@@ -426,139 +425,139 @@ with failproofai_sdk.session():
         failproofai_sdk.event.tool_use(tool_name="search", tool_call_id="c1")
 ```
 
-העברתם בגלוי עדיין עובדת ולוקחת עדיפות. ללא כלום קשור וכלום עברר, הקריאה מגבילה `TypeError` שם את התיקון במקום הפקת אירוע ללא session, אשר ingest היה דלל תוך התשובה `200`.
+אפשר עדיין להעביר אותם במפורש, ואז הם גוברים על ההיקף. אם שום דבר לא קשור ושום דבר לא הועבר, הקריאה זורקת `TypeError` שמציין את התיקון, במקום לפלוט אירוע בלי session — אירוע שה-ingest היה מדלג עליו ובכל זאת עונה `200`.
 
-טווחים קושרים זהות על משתנות context. אלה מתפשטות לתוך asyncio tasks באופן אוטומטי אך לא לתוך חוטים חדשים — עטוף עובד ב-`failproofai_sdk.propagate()`.
+ההיקפים קושרים את הזהות למשתני הקשר. אלה עוברים אוטומטית למשימות asyncio, אבל לא לחוטים חדשים — עטוף את ה-worker ב-`failproofai_sdk.propagate()`.
 
-#### מי חושב איזה id
+#### מי מנפיק איזה מזהה
 
-| Id | חשוב על ידי | הערות |
+| מזהה | מי מנפיק | הערות |
 | --- | --- | --- |
-| `session_id` | אתה, או ה-SDK | `session("chat-42")` משמש verbatim; בהשמטה, SDK מייצר `uuid4().hex` |
-| `agent_id` | אתה, או הפריימוורק | מ-`agent("analyst")`, CrewAI `role`, `FunctionAgent.name`. ערך דומה UUID נדחה והחלפה |
-| `tool_call_id`, `hook_id`, `request_id` | אתה, או הפריימוורק | מתאמים מחדשים שימוש ב-framework's שלהם run ids, שזה למה זוגות שורדים thread hops |
-| **Event id** | **Cloud, ב-ingest** | ה-SDK לא פולט |
-| **`dedup_key`** | **Cloud, ב-ingest** | hash של org, session, timestamp, type ו-payload. זאת הזהות האמיתית — היא גורמת batch שנו נסכל בקריסה במקום כפול |
+| `session_id` | אתה, או ה-SDK | `session("chat-42")` נשמר כפי שהוא; אם משמיטים אותו, ה-SDK מייצר `uuid4().hex` |
+| `agent_id` | אתה, או הפריימוורק | מתוך `agent("analyst")`, ה-`role` של CrewAI או `FunctionAgent.name`. ערך שנראה כמו UUID נדחה ומוחלף |
+| `tool_call_id`, `hook_id`, `request_id` | אתה, או הפריימוורק | המתאמים משתמשים מחדש במזהי ההרצה של הפריימוורק עצמו, ולכן זוגות שורדים מעבר בין חוטים |
+| **מזהה האירוע** | **Cloud, בשלב ה-ingest** | ה-SDK לא פולט מזהה כזה |
+| **`dedup_key`** | **Cloud, בשלב ה-ingest** | גיבוב (hash) של הארגון, ה-session, חותמת הזמן, הסוג וה-payload. זו הזהות האמיתית — בזכותה אצווה שנשלחה שוב מתמזגת לעותק אחד במקום ליצור כפילויות |
 
-#### איך מתאמים מתפזרים `session_id`
+#### איך מתאמים קובעים את `session_id`
 
-תאימה ראשונה זוכה:
+ההתאמה הראשונה קובעת:
 
-1. ערך `session_id` מפורש
-2. metadata לכל קריאה
-3. טווח `session()` שוקע
-4. framework metadata
-5. framework's שלהם run id
+1. אפשרות `session_id` מפורשת
+2. מטא-דאטה ברמת הקריאה
+3. היקף `session()` העוטף
+4. מטא-דאטה של הפריימוורק
+5. מזהה ההרצה של הפריימוורק עצמו
 
-זה אף פעם לא המצוי בזמן אחד מאלה קיים — id סינתטי היה מפלג הרצה אחת על פני מספר sessions.
+המזהה אף פעם לא מומצא כל עוד אחד מאלה קיים — מזהה סינתטי היה מפצל הרצה אחת על פני כמה sessions.
 
-#### שמור `agent_id` low cardinality
+#### שמור על קרדינליות נמוכה ב-`agent_id`
 
-זה ה-facet ראשי בכל משטח dashboard, ו-`LowCardinality(String)` כולונה. ערך לכל run מורידה את הכולונה ומלאה את ה-filter dropdown בערך אחד לכל run.
+זהו ה-facet העיקרי בכל תצוגה של ה-dashboard, והוא עמודה מסוג `LowCardinality(String)`. ערך שמשתנה בכל הרצה פוגע ביעילות העמודה וממלא את התפריט הנפתח של המסנן ברשומה נפרדת לכל הרצה.
 
-מתאמים בטחון כולונה זו עבורך:
+המתאמים מגנים על העמודה הזו בשבילך:
 
-| הפריימוורק מוביל על | הוקלט כ | למה |
+| הפריימוורק מעביר | מה נרשם | הסיבה |
 | --- | --- | --- |
-| `3f9a1c2b-…` (UUID) | `main` | כלום קריא לשמור |
-| hex ארוך חשוף string | `main` | זהה |
-| `agent-3f9a1c2b-…` | `agent` | לכל run id חשוף, ible part שמור |
-| `agent-v2` | `agent-v2` | קטגוריה קצרה משומרת |
-| `step-3` | `step-3` | זהה |
+| `3f9a1c2b-…` (UUID) | `main` | אין חלק קריא שאפשר לשמור |
+| מחרוזת hex ארוכה ותו לא | `main` | אותו דבר |
+| `agent-3f9a1c2b-…` | `agent` | מזהה ההרצה הוסר, והחלק הקריא נשמר |
+| `agent-v2` | `agent-v2` | מקטעים קצרים נשארים כמו שהם |
+| `step-3` | `step-3` | אותו דבר |
 
-ה-ID האמיתי שמור ב-`fw_agent_id` / `fw_run_id`, איפה זה נשאר queryable ללא להיות facet.
+המזהה האמיתי נשמר ב-`fw_agent_id` / `fw_run_id`, שם עדיין אפשר לתשאל אותו בלי שהוא יהיה facet.
 
 <Warning>
-  **שמירה זו רק נוגעת בתוויות **הפריימוורק** בחר.** `agent_id` אתה עבור עצמך — ל-`event.*`, או ל-`failproofai_sdk.agent(...)` — הוקלט בדיוק כנתון. שמאלה כתוב argument מפורש היה גרוע יותר מה-cardinality זה מנע, כך שקרא את הspan שלך בהתאם.
+  **ההגנה הזו חלה רק על תוויות שבחר *הפריימוורק*.** `agent_id` שאתה מעביר בעצמך — ל-`event.*` או ל-`failproofai_sdk.agent(...)` — נרשם בדיוק כפי שהועבר. שכתוב שקט של ארגומנט מפורש היה גרוע יותר מבעיית הקרדינליות שהוא בא למנוע, ולכן תן ל-spans שלך שמות מתאימים.
 </Warning>
 
 </Accordion>
 
-<Accordion title="סוגי אירוע, מקובצים — וריימוורק איזה רשום מה" icon="table">
+<Accordion title="סוגי האירועים לפי קבוצות — ומה כל פריימוורק רושם" icon="table">
 
 | קבוצה | אירועים |
 | --- | --- |
 | סוכנים | `agent_start`, `agent_end`, `agent_pause`, `agent_resume` |
 | מודלים | `model_request`, `model_response` |
 | כלים | `tool_use`, `tool_result` |
-| וו | `hook_triggered`, `hook_completed` |
+| Hooks | `hook_triggered`, `hook_completed` |
 | בני אדם | `human_wait`, `human_input`, `human_pause`, `human_interrupt` |
 | כשלים | `error` |
 
-איזה פריימוורק רושם מה, נמדד מה-runs למעלה:
+מה כל פריימוורק רושם, לפי מדידה בהרצות שלמעלה:
 
 | אירוע | LangGraph | CrewAI | LlamaIndex | Pydantic AI | מותאם אישית |
 | --- | :--: | :--: | :--: | :--: | :--: |
-| תחילת וסוף סוכן | כן | כן | כן | כן | אתה |
-| בקשת מודל ותגובה | כן | כן | כן | כן | אתה |
-| שימוש בכלי ותוצאה | כן | כן | כן | כן | אתה |
-| וו מתוגבר וסיום | Node | משימה | Step | — | אתה |
+| התחלה וסיום של סוכן | כן | כן | כן | כן | אתה |
+| בקשה ותגובה של מודל | כן | כן | כן | כן | אתה |
+| שימוש בכלי ותוצאתו | כן | כן | כן | כן | אתה |
+| הפעלה וסיום של hook | צומת | משימה | שלב | — | אתה |
 | שגיאה | כן | כן | כן | כן | אוטומטי |
-| חכיית אדם וקלט | כן | כן | כן | — | אתה |
-| השהיית סוכן וחידוש | כן | כן | כן | — | אתה |
+| המתנה לאדם וקלט ממנו | כן | כן | כן | — | אתה |
+| השהיה וחידוש של סוכן | כן | כן | כן | — | אתה |
 
-dash פירושו הפריימוורק אין לו כזה קונספט. `human_pause` ו-`human_interrupt` תארו **אדם** פועל על סוכן, אשר אף פריימוורק משדר — הפלוט אלה בעצמך.
+מקף פירושו שאין לפריימוורק מושג כזה. `human_pause` ו-`human_interrupt` מתארים *אדם* שפועל על הסוכן, ואף פריימוורק לא מסמן זאת — את אלה עליך לפלוט בעצמך.
 
 </Accordion>
 
-<Accordion title="זוגות, קורלציה ומשך זמן" icon="link">
+<Accordion title="זוגות, קורלציה ומשך" icon="link">
 
-אירוע אף פעם לא מגיע בודד. אחד פותח span, אחד סוגר אותו, ואירוע הסיום נוצא משך זמן SDK מודד מה-opening.
+אירוע אף פעם לא מגיע לבד. אירוע אחד פותח span, אחר סוגר אותו, ואירוע הסגירה נושא משך זמן שה-SDK מודד מאירוע הפתיחה.
 
-| פותח | סוגר | אירוע הסיום נוצא |
+| פותח | סוגר | מה אירוע הסגירה נושא |
 | --- | --- | --- |
 | `agent_start` | `agent_end` | `outcome`, `summary` |
-| `model_request` | `model_response` | tokens, `stop_reason`, latency |
-| `tool_use` | `tool_result` | `output` או `error`, duration |
-| `hook_triggered` | `hook_completed` | `outcome`, duration |
-| `agent_pause` | `agent_resume` | כמה זמן ההשהיה נמשכה |
-| `human_wait` | `human_input` | התשובה, וכמה זמן האדם לקח |
+| `model_request` | `model_response` | טוקנים, `stop_reason`, latency |
+| `tool_use` | `tool_result` | `output` או `error`, משך |
+| `hook_triggered` | `hook_completed` | `outcome`, משך |
+| `agent_pause` | `agent_resume` | כמה זמן נמשכה ההשהיה |
+| `human_wait` | `human_input` | התשובה, וכמה זמן לקח לאדם לענות |
 
 <Warning>
-  אירוע פותח ללא סוגר אחד הוא span שלא סיים. השיוך מתרנדר כעדיין פעיל, לנצח, וה-active duration שלו ממשיך לגדול. זה כשל mode לצפות בו כאשר אתה מוסיף מעקב ביד.
+  אירוע פתיחה בלי אירוע סגירה הוא span שלעולם לא מסתיים. ה-session מוצג כאילו הוא עדיין רץ, לנצח, ומשך הפעילות שלו ממשיך לגדול. זה הכשל שצריך להיזהר ממנו כשמבצעים אינסטרומנטציה ידנית.
 </Warning>
 
 #### כללי קורלציה
 
-- חזור על אותו `tool_call_id`, `hook_id`, `pause_id`, או `input_id` לאירוע השלמה תואם.
-- SDK מחשבות `duration_ms` לכל `tool_result`, `hook_completed`, `agent_resume`, ו-`human_input`. עברור אותו הודעות raises `ValueError`.
-- `duration_ms` **הוא** קבול ב-`model_response`, כי רק ה-caller יודע ה-real provider latency. זה חייב להיות integer — float raises `ValueError` בקריאה site, כי השרת קורא את הכולונה כ-unsigned 32-bit integer וחנה NULL לכל דבר אחר.
-- מפתחות קורלציה בטוח לפי סוג וsession, אז tool call ו-hook עשוי בטוח שיתוף id, וsessions מקבילות שני חזור על אותם ids ללא התנגשות. הם לא בטוח על ידי סוכן: זוג פתוח תחת סוכן אחד וסגור תחת אחר עדיין קורלציה, שהיא המקרה הרגיל במסגרות רב סוכנים.
-- `request_id` זוגות `model_request` עם `model_response`. ללא אותו, אירועי מודל זוג בסדר לכל סוכן, כך קריאות מקבילות mispair.
-- זוג פיצול על פני processes עדיין קורלציה downstream, אך SDK לא יכול לחשב in-process duration.
-- מפת pending מחזיקה לכל היותר 10,000 starts ו-evicts ערך עתיק כאשר מלא.
+- השתמש באותו `tool_call_id`, `hook_id`, `pause_id` או `input_id` גם באירוע הסיום התואם.
+- ה-SDK מחשב את `duration_ms` עבור `tool_result`, `hook_completed`, `agent_resume` ו-`human_input`. העברה שלו לשיטות האלה זורקת `ValueError`.
+- `duration_ms` **כן** מתקבל ב-`model_response`, כי רק מי שמבצע את הקריאה יודע מה ה-latency האמיתי של הספק. הוא חייב להיות מספר שלם — ערך float זורק `ValueError` כבר בנקודת הקריאה, כי השרת קורא את העמודה כמספר שלם לא מסומן של 32 סיביות, ועבור כל ערך אחר היה שומר NULL.
+- מפתחות הקורלציה תחומים לפי סוג ולפי session, כך שקריאה לכלי ו-hook יכולים לחלוק מזהה בבטחה, ושני sessions שרצים במקביל יכולים להשתמש באותם מזהים בלי להתנגש. הם לא תחומים לפי סוכן: זוג שנפתח תחת סוכן אחד ונסגר תחת סוכן אחר עדיין מתואם, וזה המצב הרגיל בפריימוורקים מרובי סוכנים.
+- `request_id` מזווג את `model_request` עם `model_response`. בלעדיו, אירועי מודל מזווגים לפי הסדר בכל סוכן, כך שקריאות מקבילות מזווגות לא נכון.
+- זוג שמפוצל בין תהליכים עדיין מתואם בהמשך הצינור, אבל ה-SDK לא יכול לחשב את משך הזמן שלו בתוך התהליך.
+- מפת האירועים הממתינים מחזיקה לכל היותר 10,000 אירועי פתיחה, וכשהיא מתמלאת היא מפנה את הרשומה הישנה ביותר.
 
 </Accordion>
 
-<Accordion title="מה בחבילה, ואיך instrument() מוצא הפריימוורק שלך" icon="box">
+<Accordion title="מה יש בחבילה, ואיך instrument() מוצא את הפריימוורק שלך" icon="box">
 
-התקנת `failproofai-sdk` מתקנת הכל, כל ארבעת המתאמים כלול. ה-extras משדרים את **הפריימוורק**, לא את המתאם.
+התקנת `failproofai-sdk` מתקינה הכול, כולל ארבעת המתאמים. ה-extras מושכים את **הפריימוורק**, לא את המתאם.
 
 ```python
-import failproofai_sdk        # עומס כלום חוץ מה-standard library
-failproofai_sdk.instrument()  # ייבוא רק המתאמים אתה בעצם צריך
+import failproofai_sdk        # loads nothing outside the standard library
+failproofai_sdk.instrument()  # imports only the adapters you actually need
 ```
 
-`import failproofai_sdk` הוא חוזה אפס תלויות, אינפורמציה על ידי בדיקה שמתקנת את הגלגלון עם `--no-deps` ועוד שמוכיח אף פריימוורק מגיע ל-`sys.modules`.
+`import failproofai_sdk` מחויב חוזית לאפס תלויות. הדבר נאכף על ידי בדיקה שמתקינה את ה-wheel הבנוי עם `--no-deps`, ועל ידי בדיקה נוספת שמוכיחה שאף פריימוורק לא מגיע ל-`sys.modules`.
 
 <Warning>
-  אין `failproofai_sdk.crewai` תכונה. מתאמים בכוונת לא חשוף על הפרה עליונה חבילה: לוגע אחד היה ייבוא הפריימוורק כ-side effect של גישה תכונה, שבירת אפס תלויות הבטחה. השתמש `instrument()`.
+  אין מאפיין `failproofai_sdk.crewai`. המתאמים לא נחשפים ברמה העליונה של החבילה, וזה מכוון: גישה לאחד מהם הייתה מייבאת את הפריימוורק כתופעת לוואי של גישה למאפיין, ושוברת את ההבטחה לאפס תלויות. השתמש ב-`instrument()`.
 </Warning>
 
 ```python
-failproofai_sdk.instrument()              # כל פריימוורק כבר ייובא
-failproofai_sdk.instrument("crewai")      # בדיוק אחד, לפי שם
-failproofai_sdk.uninstrument("crewai")    # שים חזרה
+failproofai_sdk.instrument()              # every framework already imported
+failproofai_sdk.instrument("crewai")      # exactly one, by name
+failproofai_sdk.uninstrument("crewai")    # put it back
 ```
 
-| שם | גם קבול |
+| שם | מקבל גם |
 | --- | --- |
 | `langchain` | `langgraph`, `langchain_core` |
 | `crewai` | — |
 | `llama_index` | `llamaindex`, `llama-index` |
 | `pydantic_ai` | `pydantic-ai`, `pydanticai` |
 
-גילוי אוטומטי קורא `sys.modules`, לא את רשימת חבילה מותקנת, אז פריימוורק שיש לך מותקן אבל אף פעם לא ייבוא הוא לא מוכן והוא אף פעם לא ייובא בשמך. להראות מה חווט למעלה:
+הזיהוי האוטומטי קורא את `sys.modules`, ולא את רשימת החבילות המותקנות, כך שפריימוורק שהתקנת אבל אף פעם לא ייבאת לא עובר אינסטרומנטציה, וגם לא ייובא בשמך. כדי לראות מה מחובר:
 
 ```python
 from failproofai_sdk.integrations import active, available
@@ -568,132 +567,136 @@ active()      # ('langchain',)
 ```
 
 <Note>
-  **`instrument("crewai")` על מכונה ללא CrewAI לא מגביל.** זה עוקב אזהרה ו-return `()`, אז פריימוורק חמיץ אף פעם לוקח תהליך שגם מהמרות אחרים.
+  **`instrument("crewai")` במכונה שאין בה CrewAI לא זורק חריגה.** הוא רושם אזהרה בלוג ומחזיר `()`, כך שפריימוורק אחד חסר לעולם לא מפיל תהליך שמבצע אינסטרומנטציה גם לפריימוורקים אחרים.
 
-  האזהרה נוצא ה-`ImportError` בקדמה, וזה הודעה שם את פקודת התקנה מדויקת — כך התיקון בלוגים שלך, לא מוסתר.
+  האזהרה כוללת את ה-`ImportError` המקורי, וההודעה שלו מציינת את פקודת ההתקנה המדויקת — כך שהתיקון נמצא בלוגים שלך, ולא מוסתר.
 
   ```text
   ImportError: failproofai_sdk: cannot instrument 'crewai' because 'crewai.events'
   is not importable. Install it with:  pip install 'failproofai_sdk[crewai]'
   ```
 
-  ערכה `FAILPROOFAI_SDK_STRICT=1` כדי יש לו מגביל במקום. זה דגל קורא **פעם אחת ו-cached**, אז ייצוא זה לפני התהליך מתחיל במקום קביעה mid-run.
+  הגדר `FAILPROOFAI_SDK_STRICT=1` כדי שבמקום זאת תיזרק חריגה. הדגל הזה נקרא **פעם אחת ונשמר במטמון**, לכן הגדר אותו בסביבה לפני שהתהליך מתחיל, ולא באמצע ההרצה.
 </Note>
 
 <Warning>
-  **`instrument()` חייב לבוא **אחרי** ייבוא הפריימוורק שלך.** גילוי אוטומטי קורא `sys.modules`, אז קריאה ערומה מעל הייבוא מוצא כלום, מתקן כלום, וחוזר `()`.
+  **הקריאה ל-`instrument()` חייבת לבוא *אחרי* ייבוא הפריימוורק.** הזיהוי האוטומטי קורא את `sys.modules`, כך שקריאה בלי ארגומנטים מעל הייבוא לא מוצאת כלום, לא מתקינה כלום ומחזירה `()`.
 </Warning>
 
 <CodeGroup>
-```python שגוי
+```python Wrong
 import failproofai_sdk
-failproofai_sdk.instrument()   # sys.modules אין langchain עדיין -> ()
+failproofai_sdk.instrument()   # sys.modules has no langchain yet -> ()
 
-import langchain               # מאוחר מדי, כלום לא חווט
+import langchain               # too late, nothing is wired
 ```
 
-```python נכון
-import langchain               # ייבוא הפריימוורק ראשון
+```python Right
+import langchain               # import the framework first
 import failproofai_sdk
 
-failproofai_sdk.instrument()   # מוצא זה -> ('langchain',)
+failproofai_sdk.instrument()   # finds it -> ('langchain',)
 ```
 
-```python נכון, order-proof
+```python Right, order-proof
 import failproofai_sdk
 
-# שם זה ייבוא את המתאם על בקשה, אז זה עובד מכל מקום.
+# Naming it imports the adapter on request, so this works from anywhere.
 failproofai_sdk.instrument("langchain")
 ```
 </CodeGroup>
 
-קבל את זה שגוי והתהליך פועל עם ה-SDK ייובא, המתאם לכאורה מותקן, ו**לא אירוע אחד פלט**. זה עוקב אזהרה אומר בדיוק זה — אז בדוק לוגים ראשון כאשר run רושם כלום.
+אם הסדר שגוי, התהליך רץ עם ה-SDK מיובא, המתאם מותקן לכאורה, **ואף אירוע לא נפלט**. נרשמת בלוג אזהרה שאומרת בדיוק את זה — לכן כשהרצה לא מתעדת כלום, בדוק קודם את הלוגים.
 
 </Accordion>
 
-<Accordion title="איך אירועים מגיעים Cloud" icon="cloud-upload">
+<Accordion title="איך אירועים מגיעים ל-Cloud" icon="cloud-upload">
 
 ```mermaid
 flowchart LR
-    A["הסוכן שלך"] --> B["מתאם"]
-    B --> C["כותב<br/>תור בזיכרון"]
-    C -->|"כל 0.5s"| D["Spool<br/>JSONL בדיסק"]
+    A["Your agent"] --> B["Adapter"]
+    B --> C["Writer<br/>in-memory queue"]
+    C -->|"every 0.5s"| D["Spool<br/>JSONL on disk"]
     D --> E["Failproof daemon"]
     E -->|"HTTPS"| F["Cloud"]
 ```
 
-| שלב | משימה | פועל בתוך |
+| שלב | תפקיד | היכן רץ |
 | --- | --- | --- |
-| מתאם | תרגם callback פריימוורק לתוך אחד מ-15 סוגי אירוע | התהליך שלך |
-| כותב | תור, אצווה, כתיבה JSONL אטומית | התהליך שלך, חוט רקע |
-| Spool | Durable handoff, שורד התהליך יציאה | דיסק מקומי |
-| Daemon | שומר spool, משלח אצוות, מוחק מה-shipped | המכונה שלך |
-| Ingest | מקצה שורה id ו-dedup key, מקדם שאלה כולוניות | Cloud |
+| מתאם | מתרגם callback של הפריימוורק לאחד מ-15 סוגי האירועים | התהליך שלך |
+| Writer | מכניס לתור, מאגד לאצוות וכותב JSONL באופן אטומי | התהליך שלך, בחוט רקע |
+| Spool | נקודת מסירה עמידה, ששורדת גם את היציאה של התהליך שלך | הדיסק המקומי |
+| Daemon | עוקב אחרי ה-spool, שולח אצוות ומוחק את מה שנשלח | המכונה שלך |
+| Ingest | מקצה מזהה שורה ומפתח dedup, ומקדם שדות לעמודות שאפשר לתשאל | Cloud |
 
-ה-spool הוא מה עושה זה בטוח: סוכן שלך אף פעם לא חסום על הרשת, וCloud outage אומר ספריה גדלה במקום קביעה אירועים.
+ה-spool הוא מה שהופך את זה לבטוח: הסוכן שלך אף פעם לא נחסם בהמתנה לרשת, והשבתה של Cloud פירושה תיקייה שהולכת וגדלה, ולא אירועים שאבדו.
 
-כל flush כתוב קובץ אצווה אחד, `.tmp` ראשון, ואז `fsync`, ואז atomic rename:
+כל flush כותב קובץ אצווה אחד: קודם `.tmp`, אחר כך `fsync`, ולבסוף שינוי שם אטומי:
 
 ```text
 ~/.failproofai/custom-agents/events/
   event-2026-08-20T10-15-00-123Z-48213-0.jsonl
 ```
 
-ה-daemon רק עוזב `.jsonl`, אז זה לא יכול אף פעם קרא חצי כתוב קובץ. הגזע נוצא timestamp, process id וסדר מספר, אז שני תהליכים flush בה-millisecond לא יכול להתנגש. התור כובל בחסום 10,000 אירועים; העבר זה זה טיפל הוקדם וrelog.
+ה-daemon אוסף רק קבצי `.jsonl`, כך שלעולם לא יקרא קובץ שנכתב רק בחלקו. שם הקובץ כולל חותמת זמן, מזהה תהליך ומספר רץ, כך ששני תהליכים שמבצעים flush באותה אלפית שנייה לא יכולים להתנגש. התור מוגבל ל-10,000 אירועים; מעבר לכך הוא משליך את הישנים ביותר ורושם זאת בלוג.
 
 <Warning>
-  **`collector.redact` עושה לא חל ל-SDK אירועים שלך.** זה אף פעם לא רואה אותם.
+  **ברירת המחדל של `collector.redact` היא `minimal` גם עבור אירועי SDK.** ה-SDK
+  מבצע השחרה לפני שהוא כותב אצווה לדיסק, וה-daemon מריץ שוב את אותו מעבר
+  דטרמיניסטי לפני ההעלאה, כך שגם אצוות מגרסאות SDK ישנות מוגנות.
 </Warning>
 
-ה-daemon **משלח** אצוות שלך. זה לא פתוח או לשכתב אותם.
+ה-daemon קורא כל אצווה ומחיל עליה השחרה בזיכרון לפני ההעלאה. הוא לא משכתב את
+קובץ ה-spool שקרא.
 
-| אירועים | כתוב על ידי | Redacted על ידי `collector.redact`? |
+| אירועים | נכתבים על ידי | היכן רצה ההשחרה המינימלית |
 | --- | --- | --- |
-| CLI session תחקירי | Daemon | כן |
-| וו פעילות | Daemon | כן |
-| **הכל ה-SDK פלט** | **התהליך שלך** | **לא** |
+| תמלילי sessions של CLI | ה-daemon | לפני שה-daemon כותב את האצווה |
+| פעילות hooks | ה-daemon | לפני שה-daemon כותב את האצווה |
+| **כל מה שה-SDK פולט** | **התהליך שלך** | **לפני שה-SDK כותב את האצווה, ושוב לפני שה-daemon מעלה אותה** |
 
-Redaction פועל איפה ה-daemon **כתוב** שלהם אירועים — לא איפה אצוות **משודרים**. כך prompt או tool argument מחזיק API key עדיין מחזיק זה בהגעה.
-
-זה כוונתי. אלה בעצמך מעקב קריאות, וכתיבה מחדש בטרנזיט יומר את אירועים אתה קבל הם לא אירועים אתה פלט.
+הגדר את `collector.redact` ל-`off` רק כשיש דרישה מפורשת לשמור payloads כלשונם;
+גם ה-SDK וגם ה-daemon מכבדים את ההגדרה הזו. השחרה מינימלית תופסת מפתחות API
+נפוצים, אסימוני bearer, אסימוני JWT והשמה של סודות למשתנים. היא לא יכולה לזהות
+מידע רגיש שמנוסח כטקסט חופשי.
 
 <Tip>
-  **אתה שלוט בפעילויות ב-source, בשני מקומות:**
+  **אתה שולט ב-payloads כבר במקור, בשני מקומות:**
 
-  - כבה לכידת תוכן על המתאם. **שם אפשרות שונה, ומתאם אחד אין אחד** — זה לא אחד כללי אוניברסלי מתג:
+  - כבה את לכידת התוכן במתאם. **שם האפשרות שונה ממתאם למתאם, ולאחד המתאמים אין אפשרות כזו בכלל** — זה לא מתג אוניברסלי אחד:
     - LangChain / LangGraph, Pydantic AI — `capture_content=False`
     - LlamaIndex — `capture_messages=False`
-    - CrewAI — **אין מתג תוכן בכל**; `session_id` היא רק אפשרות שהיא קורא, אז prompts ו-completions תמיד רשום.
+    - CrewAI — **אין שום מתג תוכן**; `session_id` היא האפשרות היחידה שהוא קורא, ולכן ההנחיות והתשובות של המודל תמיד נרשמות.
 
-    `instrument()` טיול אפשרויות מתאם לא קורא, אז עברור שם שגוי מגביל כלום ושינויים כלום.
-  - אל תעביר את הסוד ל-`input=` בראשון מקום.
+    `instrument()` משמיט אפשרויות שהמתאם לא קורא, כך שהעברת שם שגוי לא זורקת שום חריגה וגם לא משנה דבר.
+  - מלכתחילה, אל תעביר את הסוד ל-`input=`.
 
-  `collector.redact` הוא לא תחליף לאף אחד מאלה.
+  `collector.redact` הוא הגנה לעומק, ולא תחליף לאף אחד משני אלה.
 </Tip>
 
 <Warning>
-  **ספריה spool ריקה היא המדינה הבריאה.** אל תשתמש בזה כדי בדוק משלוח.
+  **תיקיית spool ריקה היא המצב התקין.** אל תשתמש בה כדי לבדוק אם האירועים נמסרו.
 </Warning>
 
-ה-daemon מוחק כל אצווה בתוך milliseconds משליחה, אז `ls` מרוצים collector וש fraction של מה אתה פלט — לא ניתנת להבחנה מ-SDK ש קיבוץ כלום.
+ה-daemon מוחק כל אצווה תוך אלפיות שנייה מרגע שליחתה, כך ש-`ls` מתחרה ב-collector ומציג רק חלק קטן ממה שפלטת — ואי אפשר להבחין בין זה לבין SDK שלא תיעד כלום.
 
-לאשר אירועים באמת נחתו, בדוק את ה-dashboard. לצפות ה-spool תמלא, עצור את ה-daemon ראשון.
+כדי לוודא שהאירועים באמת הגיעו, בדוק ב-dashboard. כדי לראות את ה-spool מתמלא, עצור קודם את ה-daemon.
 
 </Accordion>
 
-<Accordion title="כאשר מעקב נכשל" icon="triangle-alert">
+<Accordion title="כשהאינסטרומנטציה נכשלת" icon="triangle-alert">
 
-כל callback פועל בתוך wrapper שלה יחידה משימה היא להגביל מחדש, אז קריאה שלך יושבת בדיוק אחד `try` והכל SDK עושה קורה מחוץ אותה.
+כל callback רץ בתוך עוטף שתפקידו היחיד הוא לזרוק חריגות מחדש, כך שהקריאה שלך נמצאת בתוך `try` אחד בדיוק, וכל מה שה-SDK עושה קורה מחוצה לו.
 
-| מה קורה | תוצאה |
+| מה קורה | התוצאה |
 | --- | --- |
-| hook מגביל | עיתון פעם עם traceback. קריאה שלך לא השפעה |
-| אותו hook מגביל שלוש פעמים | זה hook אחד משוביץ לנו התהליך, עם שורה טעות אחד |
-| `FAILPROOFAI_SDK_STRICT=1` הוא קביעה | החריגה הוא re-raised במקום |
-| פריימוורק גרסה חוץ בדוקו טווח | הזהרות פעם, מהמרות בכל זאת |
-| יחיד יכולת היא חמיץ | זה חוק אחד משוביץ, אף פעם כל מתאם |
+| hook זורק חריגה | החריגה נרשמת בלוג פעם אחת, יחד עם ה-traceback שלה. הקריאה שלך לא מושפעת |
+| אותו hook זורק חריגה שלוש פעמים | ה-hook הזה בלבד מושבת עד סוף חיי התהליך, ונרשמת שורת שגיאה אחת |
+| `FAILPROOFAI_SDK_STRICT=1` מוגדר | במקום זאת, החריגה נזרקת מחדש |
+| גרסת הפריימוורק מחוץ לטווח שנבדק | אזהרה אחת, והאינסטרומנטציה מתבצעת בכל זאת |
+| יכולת בודדת חסרה | רק ה-hook הזה מושבת, אף פעם לא המתאם כולו |
 
-ה-default הוא ימין בייצור וחצי בזמן debug, כי זה יכול רק אי פעם הוכח אתה לא קרס. קביעה `FAILPROOFAI_SDK_STRICT=1` לעשות בוליט כשל קול.
+ברירת המחדל נכונה ב-production ושגויה בזמן דיבוג, כי כל מה שהיא יכולה להוכיח הוא ש"זה לא קרס". הגדר `FAILPROOFAI_SDK_STRICT=1` כדי שכשל שהיה נבלע בשקט יתריע בקול רם.
 
 </Accordion>
 
@@ -702,37 +705,37 @@ Redaction פועל איפה ה-daemon **כתוב** שלהם אירועים — �
 ## בעיות נפוצות
 
 <AccordionGroup>
-  <Accordion title="span לא סיים">
-    אירוע פותח אין אחד סוגר: `model_request` ללא `model_response`, או `tool_use` ללא `tool_result`. השתמש הטווחים, אשר ערובה הזוג אפילו כאשר הגוף מגביל. אם אתה קורא את שיטות האירוע ישירות, השתמש `try` ו-`finally`.
+  <Accordion title="span שאף פעם לא מסתיים">
+    לאירוע פתיחה אין אירוע סגירה: `model_request` בלי `model_response`, או `tool_use` בלי `tool_result`. השתמש בהיקפים, שמבטיחים את הזוג גם כשגוף הבלוק זורק חריגה. אם אתה קורא לשיטות האירועים ישירות, השתמש ב-`try` וב-`finally`.
   </Accordion>
 
-  <Accordion title="עברור duration_ms מגביל ValueError">
-    זה נמדד מה-opening תואם אירוע, אז זה דחוי ב-`tool_result`, `hook_completed`, `agent_resume`, ו-`human_input`. זה קבול ב-`model_response`, כי רק אתה יודע ה-real provider latency, וזה חייב להיות integer.
+  <Accordion title="העברת duration_ms זורקת ValueError">
+    הערך נמדד מאירוע הפתיחה התואם, ולכן הוא נדחה ב-`tool_result`, `hook_completed`, `agent_resume` ו-`human_input`. הוא מתקבל ב-`model_response`, כי רק אתה יודע מה ה-latency האמיתי של הספק, ושם הוא חייב להיות מספר שלם.
   </Accordion>
 
-  <Accordion title="אירועים מעובד חוט מגביל TypeError">
-    החוט לא אף פעם inherited ה-context. עטוף את ה-callable ב-`failproofai_sdk.propagate()`. ראה [חוטים ו-async](#threads-and-async).
+  <Accordion title="אירועים מחוט worker זורקים TypeError">
+    החוט לא ירש את ההקשר. עטוף את ה-callable ב-`failproofai_sdk.propagate()`. ראה [חוטים ו-async](#חוטים-ו-async).
   </Accordion>
 
-  <Accordion title="שדה תוספת נעלם או כתוב על משהו">
-    שדות תוספת מיזוג אחרון, אז אחד שנקרא כמו שדה אמיתי כמו `model` או `outcome` היה כתוב על זה ו-שינוי כלונה שמור. Namespace שלך; המתאמים משתמשים `fw_` קידומת.
+  <Accordion title="שדה נוסף נעלם או דרס משהו">
+    שדות נוספים ממוזגים אחרונים, כך ששדה ששמו זהה לשדה אמיתי, כמו `model` או `outcome`, ידרוס אותו וישנה עמודה שמורה. תן לשדות שלך קידומת ייחודית; המתאמים משתמשים בקידומת `fw_`.
   </Accordion>
 
-  <Accordion title="סוכן filter יש אלפים of entries">
-    `agent_id` היא low-cardinality facet ו-אתה שים run id בזה. השתמש תפקיד או node שם ו-שים ה-ID אמיתי בשדה payload.
+  <Accordion title="במסנן הסוכנים יש אלפי רשומות">
+    `agent_id` הוא facet בעל קרדינליות נמוכה, והכנסת אליו מזהה הרצה. השתמש בשם של תפקיד או של צומת, ושמור את המזהה האמיתי בשדה של ה-payload.
   </Accordion>
 </AccordionGroup>
 
-## הבא
+## מה הלאה
 
 <Columns cols={3}>
   <Card title="איך זה עובד" icon="workflow" href="/he/reference/custom-agents">
-    זוגות, ids, session lifecycle, ו-delivery.
+    זוגות, מזהים, מחזור החיים של session ומסירה.
   </Card>
-  <Card title="קרא trace" icon="route" href="/he/sessions/read-a-trace">
-    עקוב סיבתיות דרך ה-session אתה רק תפוסה.
+  <Card title="קריאת trace" icon="route" href="/he/sessions/read-a-trace">
+    עקוב אחרי שרשרת הסיבתיות ב-session שזה עתה לכדת.
   </Card>
   <Card title="מתאמי פריימוורק" icon="plug" href="/he/start/integrations">
-    LangGraph, CrewAI, LlamaIndex, ו-Pydantic AI.
+    LangGraph, CrewAI, LlamaIndex ו-Pydantic AI.
   </Card>
 </Columns>

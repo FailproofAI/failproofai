@@ -64,10 +64,12 @@ name: Publish fp-cloud-cli to PyPI
 #
 # The `preflight` job resolves it, refuses a version PyPI has already taken, and
 # computes what `main` moves to; the `bump` job pushes that to `main` after a
-# successful upload. Cutting a release is therefore: edit ONE line only when you
-# want to LEAVE the current beta line (a stable cut, or a minor/major bump), then
-# dispatch. A plain beta needs no edit at all — the previous run already left main
-# on the next one.
+# successful upload — the version line AND a stub CHANGELOG section for it, in one
+# commit, because a version with no section is a release `preflight` refuses.
+# Cutting a release is therefore: edit ONE line only when you want to LEAVE the
+# current beta line (a stable cut, or a minor/major bump), then dispatch. A plain
+# beta needs no edit at all — the previous run already left main on the next one,
+# with a section open to write entries into as they merge.
 #
 # The bump pushes to `main`, which the org ruleset protects, so it authenticates as
 # the version-bot GitHub App — the SAME app and the SAME two secrets
@@ -493,17 +495,30 @@ jobs:
 
           python3 scripts/python-version.py write fp-cloud-cli/fp_cli/_version.py "$NEXT_VERSION"
 
-          # Nothing moves with it. `pyproject.toml` declares `dynamic = ["version"]`,
-          # so `uv.lock` records this project as `source = { editable = "." }` with NO
-          # `version =` line, and `uv sync --locked` keeps working across a bump.
-          # Giving the package a static version would silently make that false and
-          # turn every post-release CI run red.
-          if git diff --quiet -- fp-cloud-cli/fp_cli/_version.py; then
+          # The stub section is opened in the SAME commit, never left for a human.
+          # A version with no section is the state `changelog-section.py` refuses at
+          # release time and `__tests__/ci/python-version-pipeline.test.ts` asserts
+          # against — and this commit carries a skip-ci marker, so main went red not
+          # here but on the next unrelated PR to run CI. That happened at the first
+          # publish and again at the second; a rule whose commit is written by a
+          # workflow cannot be a rule a maintainer remembers. Idempotent, so a
+          # re-run against a main that already carries the section is a no-op
+          # rather than a second heading (which would silently release only the
+          # first one's body).
+          python3 scripts/changelog-open.py fp-cloud-cli/CHANGELOG.md "$NEXT_VERSION" "$PUBLISHED"
+
+          # Nothing else moves with them. `pyproject.toml` declares `dynamic =
+          # ["version"]`, so `uv.lock` records this project as
+          # `source = { editable = "." }` with NO `version =` line, and
+          # `uv sync --locked` keeps working across a bump. Giving the package a
+          # static version would silently make that false and turn every
+          # post-release CI run red.
+          if git diff --quiet -- fp-cloud-cli/fp_cli/_version.py fp-cloud-cli/CHANGELOG.md; then
             printf '%s\n' "::notice::main already carries ${NEXT_VERSION} — nothing to push."
             exit 0
           fi
 
-          git add fp-cloud-cli/fp_cli/_version.py
+          git add fp-cloud-cli/fp_cli/_version.py fp-cloud-cli/CHANGELOG.md
           git commit -m "chore(fp-cloud-cli): open ${NEXT_VERSION} after publishing ${PUBLISHED} [skip ci]"
 
           # Supplied to the single command that needs it rather than persisted, and

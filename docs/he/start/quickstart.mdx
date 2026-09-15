@@ -1,18 +1,17 @@
 ---
----
 title: "התחלה מהירה"
-description: "תפוס הפעלת סוכן, מצא כשל והתחל למנוע אותו."
+description: "תופסים עבודה של סוכן, מוצאים כישלון ומתחילים למנוע אותו."
 icon: "zap"
 ---
 
-התחלה מהירה זו מעלה מכונה אחת לדיווח הפעלות, מריצה ביקורת ופורסת מדיניות. השתמש בכישור כדי להגדיר את Failproof AI, או בצע את השלבים ידנית.
+התחלה זו תגרום למכונה אחת לדווח על עבודות, תריץ ביקורת ותפרוס מדיניות. השתמש בכישרון כדי להגדיר את Failproof AI, או בצע את השלבים ידנית.
 
-**איזו דרך היא שלך?** אם הסוכן שלך פועל באחד מ-12 [הרתקים](/he/reference/harnesses) הנתמכים — CLI קידוד, או שער כמו Hermes או OpenClaw — בצע את השלבים להלן; אתה זקוק Node.js 20.9 ואילך. אם לסוכן שלך אין הרתק, צור אותו בעזרת [Python SDK](/he/reference/custom-agents) לעקיבה וביקורות, ואז חזור אל [הרץ את בדיקת הכשל הראשונה שלך](/he/start/first-audit); אכיפה בנתיב זה דורשת hook בזמן ריצה שלך.
+**איזה נתיב שלך?** אם הסוכן שלך רץ באחד מ-12 ה[מנועים](/he/reference/harnesses) שנתמכים — CLI לקידוד, או שער כמו Hermes או OpenClaw — בצע את השלבים למטה; אתה צריך Node.js 20.9 או יותר חדש. אם לסוכן שלך אין מנוע, הוסף אותו עם ה-[Python SDK](/he/reference/custom-agents) לעקיבה וביקורות, ואז חזור ל[הריצה הראשונה שלך של בדיקת כישלון](/he/start/first-audit); האכיפה בנתיב זה דורשת hook בזמן הריצה שלך.
 
 <Tabs>
-  <Tab title="השתמש בכישור">
+  <Tab title="שימוש בכישרון">
     <Steps>
-      <Step title="התקן את כישורי Failproof AI">
+      <Step title="התקן את כישרוני Failproof AI">
         ```bash
         npx skills add FailproofAI/skills
         ```
@@ -22,16 +21,16 @@ icon: "zap"
         Set up Failproof AI for this project, connect this machine, install the right hooks and policies, and verify that a session arrives.
         ```
 
-        הסוכן שלך בוחן את הפרויקט, בוחר את האינטגרציה הרלוונטית, מבצע את ההגדרה ומאמת אותה. ראה את [מאגר כישורי FailproofAI](https://github.com/FailproofAI/skills) לקבלת כישורים בודדים ואפשרויות התקנה מתקדמות.
+        הסוכן שלך בודק את הפרויקט, בוחר את האינטגרציה הרלוונטית, מבצע את ההגדרה ומוודא אותה. ראה את [מאגר כישרוני FailproofAI](https://github.com/FailproofAI/skills) לכישרונות בודדים וואפשרויות התקנה מתקדמות.
       </Step>
     </Steps>
   </Tab>
   <Tab title="הגדרה ידנית">
     ## לפני שתתחיל
 
-1. פתח את [לוח הבקרה של Failproof AI](https://app.befailproof.ai) וצור חשבון או היכנס עם כתובת הדוא"ל שלך בעבודה.
-2. עבור אל **Administration → Keys** וצור מפתח עם `events:add` ו-`policies:pull`.
-3. העתק את הסוד לשימוש חד-פעמי והנח אותו במכונת היעד:
+1. פתח את [לוח הבקרה של Failproof AI](https://app.befailproof.ai) וצור חשבון או היכנס עם דוא״ל שלך בעבודה.
+2. עבור ל**Administration → Keys** וצור מפתח עם `events:add` ו`policies:pull`.
+3. העתק את הסוד שלשימוש חד-פעמי ושמור אותו על המכונה היעד:
 
 ```bash
 export FAILPROOFAI_KEY="<one-time-secret>"
@@ -46,9 +45,9 @@ export FAILPROOFAI_KEY="<one-time-secret>"
     failproofai config --connect https://app.befailproof.ai --token "$FAILPROOFAI_KEY"
     ```
 
-    תמלילי הפעלות נשלחים כברירת מחדל. הוסף `--no-transcripts` כדי לדווח על פעילות hook והחלטות מדיניות ללא תוכן תמליל.
+    תמלילי עבודה נשלחים כברירת מחדל. הוסף `--no-transcripts` כדי לדווח על פעילות hook והחלטות מדיניות ללא תוכן תמלילים.
 
-    אם למכונה זו כבר יש היסטוריה סוכן, הצג תצוגה מקדימה וייבא את שבעת הימים האחרונים, ואז חכה שהמסירה תסתיים. דלג על שלב זה במכונה חדשה.
+    אם למכונה זו כבר יש הסטוריית סוכן, הצג תצוגה מקדימה ויבא את שבעת הימים האחרונים, ואז חכה שההעברה תסתיים. דלג על שלב זה במכונה חדשה.
 
     ```bash
     failproofai backfill --since 7d --dry-run
@@ -56,30 +55,30 @@ export FAILPROOFAI_KEY="<one-time-secret>"
     failproofai flush --wait
     ```
 
-    פתח **Sessions** ב-Failproof AI ובחר הפעלה מיובאת.
+    פתח את **Sessions** ב-Failproof AI ובחר עבודה שיובאה.
   </Step>
-  <Step title="התקן hooks וקניינות סוכן">
-    פעולה זו מחברת את Failproof AI להרתק שלך ומתקנת את 39 המדיניות הבנויות. השתמש בהם כדי לראות החלטות מדיניות מקומיות וכדי לנסות אכיפה לפני שFailproof AI מבקר בהפעלות שלך וכותב מדיניות לסוכנים שלך.
+  <Step title="התקן hooks וכללי מדיניות של סוכן">
+    זה מצמיד את Failproof AI למנוע שלך ומתקין את 39 המדיניויות המובנות. השתמש בהן כדי לראות החלטות מדיניות מקומיות ולנסות אכיפה לפני שFailproof AI בוודק את העבודות שלך וכותב מדיניויות לסוכנים שלך.
 
-    אפשר לגלאי להעלות את ההרתק שלך, או ציין אחד במפורש. כל אחד מ-12 הוא ערך `--cli` תקף — `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity`, `goose`.
+    אפשר לגלאי ההתקנה לגלות את המנוע שלך, או שם אחד במפורש. כל אחד מ-12 הוא ערך `--cli` תקף — `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity`, `goose`.
 
     ```bash
     failproofai policies --install --cli claude --scope user     # a coding CLI
     failproofai policies --install --cli hermes --scope user     # a Slack/Telegram gateway
     ```
 
-    חסימת קריאת כלי לפני שהיא רצה מאומתת על כל 12. שערים בסוף פנייה מאומתים ב-8 — ראה [יכולת אכיפה](/he/reference/harnesses#enforcement-capability) למטריצה לפי הרתק.
+    חסימת קריאת כלי לפני שהיא רצה מאומתת על כל 12. שערי סיום הפניה מאומתים על 8 — ראה [יכולת אכיפה](/he/reference/harnesses#enforcement-capability) למטריקס לכל מנוע.
   </Step>
   <Step title="בדוק את ההתנהגות">
-    עקוב אחר [הרץ את בדיקת הכשל הראשונה שלך](/he/start/first-audit). השתמש במטרה קונקרטית כמו "מצא הפעלות שבהן הסוכן ניסה שוב כלי שכישל ללא שינוי בגישתו."
+    עקוב אחר [הריצה הראשונה שלך של בדיקת כישלון](/he/start/first-audit). השתמש במטרה קונקרטית כגון "מצא עבודות שבהן הסוכן ניסה מחדש כלי כושל ללא שינוי בגישה שלו."
   </Step>
-  <Step title="מנע את הכשל">
-    עקוב אחר [מנע את הכשל הראשון שלך עם מדיניות](/he/start/first-policy). התחל במצב תצפית, בדוק התאמות, ואז אכוף את הגרסה שבדוקה.
+  <Step title="מנע את הכישלון">
+    עקוב אחר [מניעת הכישלון הראשון שלך עם מדיניות](/he/start/first-policy). התחל במצב צפייה, בדוק התאמות, ואז אכוף את הגרסה שנבדקה.
   </Step>
 </Steps>
 
 <Check>
-  הרץ `failproofai config --status`. הגדרה בריאה מדווחת על חיבור ענן, מצב daemon, ויומא האכיפה מושהה.
+  הרץ `failproofai config --status`. הגדרה בריאה מדווחת על חיבור הענן, מצב ה-daemon, וואם אכיפה מושהית.
 </Check>
   </Tab>
 </Tabs>

@@ -522,6 +522,8 @@ async fn new_cursor(
         first_seen_epoch_ms: mtime_epoch_ms(meta),
         head_fingerprint: Some(cursor::head_fingerprint(&head)),
         state,
+        sqlite_seq: None,
+        sqlite_generation: None,
     }))
 }
 

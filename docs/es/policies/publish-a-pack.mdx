@@ -26,10 +26,10 @@ customPolicies.add({
 });
 ```
 
-`defaultEnabled` es **false** por defecto cuando se omite. Un `failproofai pack add` simple solo activa lo que hayas marcado — instalar automáticamente todas las políticas de un desconocido no es una decisión que el instalador deba tomar por su usuario.
+`defaultEnabled` es **false** por defecto cuando se omite. Un `failproofai pack add` sin parámetros adicionales activa únicamente lo que marcaste — instalar silenciosamente todas las políticas de un desconocido no es una decisión que el instalador deba tomar por su usuario.
 
 <Warning>
-La entrada debe ser **un único archivo autocontenido**. Solo la entrada tiene el digest fijado, por lo que un pack que importe archivos locales no podría garantizar honestamente que el digest cubre lo que se ejecuta. Primero empaqueta con (`esbuild`, `bun build`, `rollup`) y construye el pack desde el bundle — `pack build` rechaza una importación local en lugar de hacer una promesa que no puede cumplir.
+La entrada debe ser **un único archivo autocontenido**. Solo la entrada tiene el digest anclado, por lo que un pack que importe archivos locales no podría afirmar honestamente que el digest cubre lo que se ejecuta. Empaqueta primero (`esbuild`, `bun build`, `rollup`) y construye el pack desde el bundle — `pack build` rechaza una importación local en lugar de hacer una promesa que no puede cumplir.
 </Warning>
 
 ## 2. Construye los archivos de la release
@@ -41,15 +41,15 @@ failproofai pack build ./policies.mjs \
   --out ./dist-pack
 ```
 
-Genera tres archivos y valida cada política con las **reglas propias del loader** antes — así un pack que nunca podría instalarse falla aquí, donde puedes corregirlo:
+Genera tres archivos y valida cada política con las **reglas propias del cargador** primero — así, un pack que nunca podría instalarse falla aquí, donde puedes corregirlo:
 
-| Archivo | Descripción |
+| Archivo | Qué es |
 | --- | --- |
 | `failproofai-pack.json` | El manifiesto: id, versión, efecto y una entrada por política |
 | `failproofai-pack.mjs` | Tu entrada, tal cual |
-| `SHA256SUMS` | `<sha256>  <nombre_de_archivo>` para los otros dos |
+| `SHA256SUMS` | `<sha256>  <filename>` para los otros dos |
 
-Se rechaza en tiempo de construcción: un id que no sea `publisher/name`, un nombre de política que contenga `/`, una política que declare `alwaysOn`, una `description`, `category` o `match` ausente, una entrada que no registra nada, y una entrada que importa archivos locales.
+Se rechaza en tiempo de construcción: un id que no sea `publisher/name`, un nombre de política que contenga `/`, una política que declare `alwaysOn`, una `description`, `category` o `match` ausente, una entrada que no registre nada, y una entrada que importe archivos locales.
 
 ## 3. Adjúntalos a una release
 
@@ -68,23 +68,23 @@ Ahora cualquiera puede instalarlo:
 failproofai pack add acme/support-agent
 ```
 
-Los nombres de los assets son fijos — son los que la CLI del consumidor usa para construir sus URLs, sin llamadas a la API ni descubrimiento automático.
+Los nombres de los assets son fijos — son los que usa la CLI del consumidor para construir sus URLs, sin ninguna llamada a la API ni proceso de descubrimiento.
 
 ## Publicar una nueva versión
 
-Construye con el nuevo `--version`, crea una nueva release, adjunta los tres assets nuevamente. Los consumidores ejecutan el mismo `pack add` y conservan el subconjunto que habían elegido; una política que desactivaron permanece desactivada tras la actualización.
+Construye con el nuevo `--version`, etiqueta una nueva release y adjunta los tres assets de nuevo. Los consumidores ejecutan el mismo `pack add` y conservan el subconjunto que habían elegido; una política que desactivaron permanece desactivada tras la actualización.
 
-Cambiar el **nombre** de una política es un cambio incompatible: una máquina que la había desactivado está desactivando un nombre que ya no existe, y el nuevo nombre llega con lo que `defaultEnabled` indique.
+Cambiar el **nombre** de una política es un cambio incompatible: una máquina que la había desactivado está desactivando un nombre que ya no existe, y el nuevo nombre llega con lo que diga `defaultEnabled`.
 
 ## En qué confían tus usuarios
 
-`SHA256SUMS` vive en la misma release que el artefacto, por lo que prueba que los bytes son los que publicaste — no quién eres. Cualquiera que pueda escribir en el repositorio puede escribir ambos archivos. La protección de tus usuarios es que el digest queda fijado al instalar, de modo que lo que publicaste no puede cambiar posteriormente.
+`SHA256SUMS` vive en la misma release que el artefacto, por lo que prueba que los bytes son los que publicaste — no quién eres. Cualquiera que pueda escribir en el repositorio puede modificar ambos archivos. La protección de tus usuarios radica en que el digest queda anclado cuando instalan, de modo que lo que publicaste no puede cambiar posteriormente para ellos.
 
-Publica desde un repositorio cuyo acceso de escritura controles, y trata una release de pack como si fuera la publicación de un paquete.
+Publica desde un repositorio cuyo acceso de escritura controles y trata una release de pack como si fuera la publicación de un paquete.
 
 ## Observar antes de aplicar
 
-Un manifiesto puede declarar `"effect": "observe"`. Esas políticas se ejecutan y sus veredictos se **registran y descartan** — nada queda bloqueado. Es la forma de medir una nueva regla frente al tráfico real antes de que pueda interrumpir el trabajo de alguien.
+Un manifiesto puede declarar `"effect": "observe"`. Esas políticas se ejecutan y sus veredictos se **registran y descartan** — nada queda bloqueado. Es la manera de medir una nueva regla frente al tráfico real antes de que pueda interrumpir el trabajo de alguien.
 
 ```json
 { "id": "acme/support-agent", "version": "1.1.0", "effect": "observe", "policies": [ ... ] }

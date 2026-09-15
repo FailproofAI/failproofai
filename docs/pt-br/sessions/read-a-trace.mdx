@@ -6,16 +6,16 @@ icon: "route"
 
 Um trace transforma um fluxo plano de eventos na história causal da execução. Leia-o a partir da primeira divergência, não de trás para frente a partir do último erro.
 
-## Abra o trace
+## Abrir o trace
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vá em **Observe → Sessions** e abra uma sessão.
+    1. Acesse **Observe → Sessions** e abra uma sessão.
     2. Use o resumo do perfil para verificar resultado, tempo, erros e pontuações de avaliação.
-    3. Percorra a linha do tempo e o minimapa. Filtre tipos de eventos ou período quando a sessão for muito grande.
-    4. Selecione um evento para inspecioná-lo. Use **export** para JSON do avaliador, ou copie a URL da página para compartilhar um link direto para a evidência selecionada.
+    3. Percorra a linha do tempo e o minimapa. Filtre tipos de eventos ou período quando a sessão for grande.
+    4. Selecione um evento para inspecioná-lo. Use **export** para obter o JSON do avaliador, ou copie a URL da página para compartilhar um link direto para a evidência selecionada.
 
-    ![Uma visão detalhada de sessão com seu grafo de execução, linha do tempo de eventos, painel de avaliação e resumo de ferramentas, modelo e hooks.](/images/dashboard/session-detail.png)
+    ![Uma visão detalhada de sessão com seu grafo de execução, linha do tempo de eventos, painel de avaliação e detalhamento de ferramentas, modelo e hooks.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -24,16 +24,16 @@ Um trace transforma um fluxo plano de eventos na história causal da execução.
     fp --json events --full --session-id <session-id> --all
     ```
 
-    Use primeiro o feed de eventos leve. Solicite payloads completos apenas quando os resumos dos eventos não contiverem evidências suficientes.
+    Use primeiro o feed de eventos simplificado. Solicite os payloads completos somente quando os resumos dos eventos não contiverem evidências suficientes.
   </Tab>
 </Tabs>
 
 <Steps>
   <Step title="Oriente-se">
-    Confirme o agente, o ambiente, o tempo, o resultado e a duração; em seguida, verifique erros, spans longos, ferramentas repetidas, esperas humanas e decisões de política negadas.
+    Confirme o agente, o ambiente, o tempo, o resultado e a duração; em seguida, busque erros, spans longos, ferramentas repetidas, esperas humanas e decisões de política negadas.
   </Step>
   <Step title="Expanda o primeiro evento suspeito">
-    Inspecione sua requisição, resposta, entrada e saída da ferramenta e ID de correlação. Conteúdo sensível fica visível somente quando a captura de transcrição está habilitada e suas permissões permitem.
+    Inspecione sua requisição, resposta, entrada e saída da ferramenta e o ID de correlação. Conteúdo sensível é visível apenas quando a captura de transcrição está habilitada e suas permissões permitem.
   </Step>
   <Step title="Inspecione o contexto anterior">
     A causa geralmente está um evento antes: uma resposta incorreta do modelo, resultado de ferramenta ausente ou premissa desatualizada.

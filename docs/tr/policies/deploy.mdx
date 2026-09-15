@@ -1,24 +1,24 @@
 ---
-title: "İlkeleri dağıtın"
-description: "İncelenen bir ilke sürümünü hedeflenen makinelere aktarın."
+title: "İlkeleri dağıtma"
+description: "İncelenen bir ilke sürümünü hedeflenen makinelere kullanıma sunma."
 icon: "cloud-upload"
 ---
 
-Bir dağıtım, bir veya daha fazla ilke sürümünü kayıtlı makinelerin hedef kümesine bağlar.
+Bir dağıtım, bir veya daha fazla ilke sürümünü kaydedilmiş bir makine kümesine bağlar.
 
-## Dağıtım uygulayın
+## Bir dağıtımı uygulama
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Admin → enforcement** bölümüne gidin, makineyi bulun ve satırını genişletin.
-    2. **edit** seçeneğini tıklayın, incelenen ilke sürümünü ekleyin ve **observe** veya zorlayıcı etkisini seçin.
-    3. Değişikliği uygulayın, ardından makinenin sonraki kontrolünü bekleyin ve dağıtım ile kapsama durumunu doğrulayın.
-    4. Canlı kararları incelemek için **Observe → policy** bölümüne gidin.
+    1. **Admin → enforcement** sayfasına gidin, makineyi bulun ve satırını genişletin.
+    2. **edit** seçeneğini seçin, incelenen ilke sürümünü ekleyin ve **observe** ya da zorlama efektini seçin.
+    3. Değişikliği uygulayın, makinenin sonraki kontrolünü bekleyin ve dağıtım ile kapsam durumunu doğrulayın.
+    4. Canlı kararları incelemek için **Observe → policy** sayfasına gidin.
 
-    ![İlke sürümleri, enforce ve observe efektleri ile dağıtım editörü ve dağıtım uygulaması aksiyonu.](/images/dashboard/enforcement-editor.png)
+    ![İlke sürümleri, zorlama ve gözlem efektlerini gösteren ve dağıtımı uygulama eyleminin yer aldığı makine dağıtım editörü.](/images/dashboard/enforcement-editor.png)
   </Tab>
   <Tab title="CLI">
-    CLI'dan `fp fleet` komutuyla dağıtım yapın. Uygulamadan önce ortaya çıkan kümesini gözden geçirin — `deploy` tam planı yazdırır ve **yalnızca `--json` olmayan etkileşimli terminalde** sorar. `--json` altında, `--yes` ile veya stdin yönlendirildiğinde (bir CI adımı, bir betik, bir aracı shell komutu) plan ve istem olmadan hemen uygulanır — bu nedenle gözden geçirmek istiyorsanız önce `fp fleet show <machine>` çalıştırın:
+    CLI'dan `fp fleet` komutuyla dağıtım yapın. Uygulamadan önce sonuç kümesini gözden geçirin — `deploy` komutu tam planı yazdırır ve **yalnızca `--json` olmayan etkileşimli bir terminalinde** sorar. `--json` altında, `--yes` ile veya stdin yönlendirildiğinde (CI adımı, betik, aracı kabuk komutu) hiç plan ve istem olmaksızın hemen uygulanır — gözden geçirmek istiyorsanız önce `fp fleet show <machine>` komutunu çalıştırın:
 
     ```bash
     fp fleet list
@@ -26,26 +26,26 @@ Bir dağıtım, bir veya daha fazla ilke sürümünü kayıtlı makinelerin hede
     fp fleet deploy <machine-id> --add no-force-push
     ```
 
-    `fp fleet diff <machine-id>` amaç ile teslimatı gösterir (bir makine sonraki yoklamasına kadar `behind` olarak okunur), `fp fleet history <machine-id>` nesilleri listeler ve `fp fleet rollback <machine-id> <generation>` birini geri yükler — devre dışı bırakılan veya silinen bir ilkeyi adlandıran nesil varsa reddeder.
+    `fp fleet diff <machine-id>` komut amacını ve teslimi gösterir (makine sonraki yoklamaya kadar `behind` olarak okunur), `fp fleet history <machine-id>` kuşakları listeler ve `fp fleet rollback <machine-id> <generation>` birini yeniden kurar — devre dışı bırakılmış veya silinmiş bir ilke adlandıran kuşak varsa reddeder.
 
-    Makineyi `failproofai config --status` ile kontrol edin ve dağıtımdan sonra `fp sessions --env production --since 24h` ile `fp events --event-type hook_completed` kullanarak aktivitenin Cloud'a ulaştığını doğrulayın.
+    Makine üzerinde `failproofai config --status` komutuyla kontrol edin ve dağıtım sonrasında etkinliğin Cloud'a ulaşıp ulaşmadığını doğrulamak için `fp sessions --env production --since 24h` ve `fp events --event-type hook_completed` komutlarını kullanın.
   </Tab>
 </Tabs>
 
 <Steps>
   <Step title="Sürümü ve hedefleri seçin">
-    Değişken bir taslak değil, incelenen bir sürümü dağıtın; oturumlarını inceleyebileceğiniz üretim dışı bir makine veya küçük bir grupla başlayın.
+    Değişebilir bir taslak değil, incelenen bir sürümü dağıtın; oturumlarını inceleyebileceğiniz üretim dışı bir makine veya küçük bir kohortla başlayın.
   </Step>
   <Step title="Kararları gözlemleyin">
-    Eşleşmeleri, nedenleri, etkilenen araçları ve yanlış pozitif sonuçları işi engellemeden gözden geçirin.
+    Çalışmayı engellemeden eşleşmeleri, nedenleri, etkilenen araçları ve yanlış pozitifleri gözden geçirin.
   </Step>
-  <Step title="Zorlama ve kapsama doğrulayın">
-    Gözlenen eşleşmeler güvenli olmayan eylemleri geçerli olanlardan ayırdıktan sonra promosyon yapın, ardından her hedeflenen makinenin dağıtımı çektiğini ve kararları raporladığını doğrulayın.
+  <Step title="Zorlama yapın ve kapsamı doğrulayın">
+    Gözlemlenen eşleşmeler güvensiz eylemleri geçerli olanlardan ayırdıktan sonra yükseltin, ardından hedeflenen tüm makinelerin dağıtımı çekmiş olduğunu ve kararları rapor ettiğini doğrulayın.
   </Step>
 </Steps>
 
-Makinelerin `policies:pull` yeteneğine ihtiyacı vardır. Olay raporlaması `events:add` tarafından ayrıca kontrol edilir; Cloud analizi ve zorlama beklediğinizde her ikisini de doğrulayın.
+Makinelerin `policies:pull` yeteneğine ihtiyacı vardır. Olay raporlaması `events:add` tarafından ayrı olarak kontrol edilir; Cloud analizi ve zorlama beklediğinizde her ikisini de doğrulayın.
 
 <Warning>
-  Zorlama yönetimi, idari bir Cloud iş akışıdır. Yalnızca root erişimli zorlama rotalarını sıradan müşteri `/v1` API uç noktaları olarak değerlendirmeyin.
+  Zorlama yönetimi bir idari Cloud iş akışıdır. Yalnızca köke ait zorlama rotalarını sıradan müşteri `/v1` API uç noktaları olarak değerlendirmeyin.
 </Warning>

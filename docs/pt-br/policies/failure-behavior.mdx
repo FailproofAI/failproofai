@@ -4,15 +4,15 @@ description: "Entenda o que acontece quando a avaliação de políticas ou o dae
 icon: "shield-alert"
 ---
 
-O Failproof AI é projetado para que uma falha de execução seja visível, em vez de permitir silenciosamente trabalhos de risco.
+O Failproof AI é projetado para que uma falha de imposição seja visível, em vez de permitir silenciosamente trabalhos arriscados.
 
 ## Diagnosticar um bloqueio por falha fechada
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Acesse **Admin → enforcement** e abra a máquina.
+    1. Vá para **Admin → enforcement** e abra a máquina.
     2. Verifique o último check-in, o deployment atribuído e o deployment reportado.
-    3. Acesse **Observe → policy** e abra a sessão da decisão negada.
+    3. Vá para **Observe → policy** e abra a sessão da decisão negada.
     4. Confirme se o motivo indica inacessibilidade do daemon, divergência de versão ou a própria política.
 
   </Tab>
@@ -27,36 +27,36 @@ O Failproof AI é projetado para que uma falha de execução seja visível, em v
   </Tab>
 </Tabs>
 
-Em uma máquina configurada para usar `failproofaid`, o daemon é o único avaliador. Se ele estiver inacessível ou se a versão do protocolo não corresponder à da CLI, a avaliação do hook falha de forma fechada. A ação é negada com um motivo que orienta o operador a verificar ou atualizar o daemon.
+Em uma máquina configurada para usar `failproofaid`, o daemon é o único avaliador. Se ele estiver inacessível ou se sua versão de protocolo não corresponder à da CLI, a avaliação do hook falha de forma fechada. A ação é negada com um motivo que orienta o operador a verificar ou atualizar o daemon.
 
-Antes da configuração do daemon, os hooks avaliam as políticas em processo. Uma vez que a configuração do daemon é registrada, o Failproof AI não recorre silenciosamente a um segundo avaliador quando o daemon falha.
+Antes da configuração do daemon, os hooks avaliam as políticas no processo. Uma vez que a configuração do daemon é registrada, o Failproof AI não recorre silenciosamente a um segundo avaliador quando o daemon falha.
 
-## Responder a uma decisão por falha fechada
+## Responder a uma decisão de falha fechada
 
 1. Execute `failproofai config --status`.
-2. Se as versões forem diferentes, execute `failproofai config` novamente após atualizar o pacote.
+2. Se as versões divergirem, execute `failproofai config` novamente após atualizar o pacote.
 3. Se o daemon estiver inacessível, inspecione o estado do serviço e os logs locais.
 4. Retome o trabalho do agente somente após confirmar que o caminho de avaliação de políticas está saudável.
 
 <Warning>
-  Não tente repetir a ação bloqueada várias vezes. Uma resposta por falha fechada significa que o sistema não conseguiu confirmar que a ação era segura.
+  Não tente repetidamente a ação bloqueada. Uma resposta de falha fechada significa que o sistema não conseguiu estabelecer que a ação era segura.
 </Warning>
 
 ## Um pack não carrega
 
-Uma máquina que foi instruída a aplicar um pack e não consegue executá-lo nega a ação em vez de continuar silenciosamente. O gatilho é uma **expectativa registrada**, nunca uma vazia: uma máquina sem packs instalados fica em silêncio, enquanto um pack declarado que não resolve — ou que registra menos do que seu manifesto declara — nega.
+Uma máquina instruída a aplicar um pack que não consegue executá-lo nega em vez de continuar silenciosamente. O gatilho é uma **expectativa registrada**, nunca uma vazia: uma máquina sem packs instalados permanece silenciosa, enquanto um pack declarado que não consegue ser resolvido — ou que registra menos do que seu manifesto declara — nega.
 
-A negação é **específica**, ao contrário de um daemon inacessível. Um daemon que não pode ser alcançado significa que nenhuma avaliação ocorreu, portanto nada pode ser considerado seguro. Um pack que não carrega tem um conjunto enumerável de guardas ausentes, pois cada política declarada carrega seu próprio `match` — portanto, ele nega apenas os eventos e ferramentas cobertos por essas políticas, e tudo o mais prossegue normalmente.
+A negação é **restrita**, diferentemente de um daemon inacessível. Um daemon inacessível significa que nenhuma avaliação ocorreu, portanto nada pode ser considerado seguro. Um pack que não carrega possui um conjunto enumerável de guardas ausentes, pois cada política declarada carrega seu próprio `match` — portanto, ele nega apenas os eventos e ferramentas cobertos por essas políticas, e tudo o mais prossegue normalmente.
 
-Ele não é acionado para:
+Não é acionado para:
 
 - um pack `observe`, que avalia e descarta por construção
-- políticas que você nunca adotou ou desativou explicitamente
-- um pack que o loader nunca recebeu, onde "sem registros" não pode ser distinguido de um salto deliberado
+- políticas que você nunca assumiu ou desativou explicitamente
+- um pack que o loader nunca recebeu, onde "sem registros" não pode ser distinguido de um skip deliberado
 - uma pausa de sessão ativa
-- um timeout de carregamento, que é transitório — um momento lento de disco não deve negar até que um humano intervenha
+- um timeout de carregamento, que é transitório — um momento de disco lento não deve negar até que um humano intervenha
 
-`UserPromptSubmit` **instrui** em vez de negar, independentemente do que a política ausente declarava. Uma negação genérica a incluiria e bloquearia o acesso ao agente que poderia resolver o problema.
+`UserPromptSubmit` **instrui** em vez de negar, independentemente do que a política ausente declarou. Uma negação geral o incluiria e bloquearia o acesso ao agente que poderia corrigir o problema.
 
 ### O que fazer
 
@@ -64,4 +64,4 @@ Ele não é acionado para:
 failproofai pack list
 ```
 
-O comando nomeia qualquer pack instalado que não carrega, informa o motivo e encerra com código não zero. Em seguida, reinstale-o (`failproofai pack add <source>`) ou remova-o (`failproofai pack remove <publisher/name>`) — removê-lo cancela a expectativa, e a negação cessa junto com ela.
+Ele lista qualquer pack instalado que não carregará, indica o motivo e encerra com código não-zero. Em seguida, reinstale-o (`failproofai pack add <source>`) ou remova-o (`failproofai pack remove <publisher/name>`) — removê-lo retira a expectativa, e a negação cessa junto com ela.

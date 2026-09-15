@@ -1222,6 +1222,90 @@ describe("OpenClaw integration", () => {
     expect(openclaw.getSettingsPath("project", "/some/where")).toBe(p);
   });
 
+  it("returns every valid named profile settings file", () => {
+    const previousStateDir = process.env.OPENCLAW_STATE_DIR;
+    const previousHome = process.env.OPENCLAW_HOME;
+    const previousConfigPath = process.env.OPENCLAW_CONFIG_PATH;
+    const root = join(tempDir, ".openclaw");
+    try {
+      process.env.OPENCLAW_STATE_DIR = root;
+      delete process.env.OPENCLAW_HOME;
+      delete process.env.OPENCLAW_CONFIG_PATH;
+      for (const name of ["research", "operations"]) {
+        const profile = join(tempDir, `.openclaw-${name}`);
+        mkdirSync(profile);
+        writeFileSync(join(profile, "openclaw.json"), "{}\n");
+      }
+
+      expect(settingsPathsFor(openclaw, "user")).toEqual([
+        join(root, "openclaw.json"),
+        join(tempDir, ".openclaw-operations", "openclaw.json"),
+        join(tempDir, ".openclaw-research", "openclaw.json"),
+      ]);
+    } finally {
+      if (previousStateDir === undefined) delete process.env.OPENCLAW_STATE_DIR;
+      else process.env.OPENCLAW_STATE_DIR = previousStateDir;
+      if (previousHome === undefined) delete process.env.OPENCLAW_HOME;
+      else process.env.OPENCLAW_HOME = previousHome;
+      if (previousConfigPath === undefined) delete process.env.OPENCLAW_CONFIG_PATH;
+      else process.env.OPENCLAW_CONFIG_PATH = previousConfigPath;
+    }
+  });
+
+  it("reports hooks installed only when every discovered profile is enabled", () => {
+    const previousStateDir = process.env.OPENCLAW_STATE_DIR;
+    const previousHome = process.env.OPENCLAW_HOME;
+    const previousConfigPath = process.env.OPENCLAW_CONFIG_PATH;
+    const root = join(tempDir, ".openclaw");
+    const named = join(tempDir, ".openclaw-operations");
+    const configured = (enabled: boolean) => JSON.stringify({
+      plugins: {
+        load: { paths: ["/opt/failproofai/openclaw-plugin"] },
+        entries: { failproofai: { enabled } },
+      },
+    });
+    try {
+      process.env.OPENCLAW_STATE_DIR = root;
+      delete process.env.OPENCLAW_HOME;
+      delete process.env.OPENCLAW_CONFIG_PATH;
+      mkdirSync(root);
+      mkdirSync(named);
+      writeFileSync(join(root, "openclaw.json"), configured(true));
+      writeFileSync(join(named, "openclaw.json"), configured(true));
+
+      expect(openclaw.hooksInstalledInSettings("user")).toBe(true);
+
+      writeFileSync(join(named, "openclaw.json"), configured(false));
+      expect(openclaw.hooksInstalledInSettings("user")).toBe(false);
+    } finally {
+      if (previousStateDir === undefined) delete process.env.OPENCLAW_STATE_DIR;
+      else process.env.OPENCLAW_STATE_DIR = previousStateDir;
+      if (previousHome === undefined) delete process.env.OPENCLAW_HOME;
+      else process.env.OPENCLAW_HOME = previousHome;
+      if (previousConfigPath === undefined) delete process.env.OPENCLAW_CONFIG_PATH;
+      else process.env.OPENCLAW_CONFIG_PATH = previousConfigPath;
+    }
+  });
+
+  it("reports hooks missing when a returned settings file does not exist", () => {
+    const previousStateDir = process.env.OPENCLAW_STATE_DIR;
+    const previousHome = process.env.OPENCLAW_HOME;
+    const previousConfigPath = process.env.OPENCLAW_CONFIG_PATH;
+    try {
+      process.env.OPENCLAW_STATE_DIR = join(tempDir, ".openclaw");
+      delete process.env.OPENCLAW_HOME;
+      delete process.env.OPENCLAW_CONFIG_PATH;
+      expect(openclaw.hooksInstalledInSettings("user")).toBe(false);
+    } finally {
+      if (previousStateDir === undefined) delete process.env.OPENCLAW_STATE_DIR;
+      else process.env.OPENCLAW_STATE_DIR = previousStateDir;
+      if (previousHome === undefined) delete process.env.OPENCLAW_HOME;
+      else process.env.OPENCLAW_HOME = previousHome;
+      if (previousConfigPath === undefined) delete process.env.OPENCLAW_CONFIG_PATH;
+      else process.env.OPENCLAW_CONFIG_PATH = previousConfigPath;
+    }
+  });
+
   it("writeHookEntries registers the plugin path + enables the entry with allowConversationAccess", () => {
     const settings: Record<string, unknown> = {};
     openclaw.writeHookEntries(settings, "");
@@ -1798,4 +1882,3 @@ describe("claudeCode — WorktreeCreate is never registered", () => {
     expect(hooks.WorktreeCreate[0].hooks[0].command).toBe("echo /tmp/wt");
   });
 });
-

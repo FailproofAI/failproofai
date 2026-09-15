@@ -394,20 +394,47 @@ async function installHooksImpl(
     // Check unknown names first (most actionable error for the user). Pack
     // policies are applied here and taken out of the list: the rest of this
     // function writes `enabledPolicies`, which is a builtin-only set.
+    let wireHooksOnly = false;
     if (nonAllNames.length > 0) {
       const resolved = resolvePolicyNames(nonAllNames);
       applyPackPolicies(resolved.packs, true, scope, cwd);
       if (resolved.packs.length > 0) {
         policyNames = policyNames.filter((n) => n === "all" || resolved.builtins.includes(n));
-        // Named ONLY pack policies: the work is done. Carrying on would resolve
-        // the failproofai binary and rewrite every CLI's settings to enable a
-        // set of builtins nobody asked about — and would fail outright on a
-        // machine where the binary is not on PATH, AFTER the pack change landed.
-        if (policyNames.length === 0) return;
+        if (policyNames.length === 0) {
+          // Named ONLY pack policies. Two different requests hide in that
+          // shape, and treating them alike wired no hooks for three days
+          // across nine agent CLIs while reporting success.
+          //
+          // A THIRD-PARTY name (`policies add block-big-refund`) implies no
+          // hook work: the switch IS the request. Carrying on would resolve
+          // the failproofai binary and rewrite every CLI's settings to enable
+          // a set of builtins nobody asked about — and would fail outright on
+          // a machine where the binary is not on PATH, AFTER the pack change
+          // landed. So that one still stops here.
+          //
+          // A BUILTIN name is an ordinary install — `policies --install
+          // block-sudo --cli codex`, the form 16 CLAUDE.md references and the
+          // quickstart both name. Every builtin is ALSO declared by the
+          // bundled pack, so from the first install onward every such command
+          // looked "pack-only" and returned here: exit 0, a reassuring
+          // `Enabled … from pack` line, and no settings file for that CLI,
+          // with --cli/--scope/--custom dropped on the way out. The first
+          // install per machine worked and every one after it was dead, which
+          // is why it survived manual testing.
+          if (!nonAllNames.some((n) => VALID_POLICY_NAMES.has(n))) return;
+          wireHooksOnly = true;
+        }
       }
     }
-    // Then check if "all" is mixed with valid specific names
-    if (policyNames.includes("all") && nonAllNames.length > 0) {
+    if (wireHooksOnly) {
+      // Wire the hooks, touch no policy — the same path `--install` with no
+      // names takes. `applyPackPolicies` above already flipped these on in the
+      // pack, which is where the switch lives now; re-writing them into
+      // `enabledPolicies` would resurrect the stale-key problem the pack lane
+      // exists to end (see the `fromPack` note below).
+      policyNames = undefined;
+    } else if (policyNames.includes("all") && nonAllNames.length > 0) {
+      // Then check if "all" is mixed with valid specific names
       throw new CliError(
         `"all" cannot be combined with specific policy names.\n` +
         `Use either: --install all  or  --install block-sudo sanitize-jwt ...`

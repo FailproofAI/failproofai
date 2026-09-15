@@ -176,7 +176,24 @@ customPolicies.add({
     }
     if (!/CANARY/.test(blob)) return allow();
 
-    const canonicalEmpty = !/CANARY/.test(`${cmd}\n${fp}`);
+    // EMPTY, not "does not contain the token". The message below claims the
+    // canonical field arrived empty, and until now the test asked something
+    // weaker — whether CANARY appears in it — so a call whose command mapped
+    // PERFECTLY was reported as drift whenever the token rode along in some
+    // other field.
+    //
+    // Antigravity is where this bites: `run_command` carries `toolAction` and
+    // `toolSummary`, free text the model writes about what it is doing ("View
+    // canary marker"), alongside `CommandLine`. An `ls` issued while hunting for
+    // the marker normalizes fine — command is `ls -la`, exactly as it should be
+    // — yet the token sits in the summary, so the old test saw "not in the
+    // canonical field" and cried drift. That scored a CLI whose input keys map
+    // correctly as the copilot-1.0.70 silent-allow class.
+    //
+    // Real drift still reads the same: when the keys stop mapping there is no
+    // `command`/`file_path` at all, so both are "". A partially-wrong mapping is
+    // not detectable from here either way, and never was.
+    const canonicalEmpty = cmd === "" && fp === "";
     const expectsCanonical = ctx.toolName === "Bash" || PATH_TOOLS.has(String(ctx.toolName));
     if (canonicalEmpty && expectsCanonical) {
       return deny(

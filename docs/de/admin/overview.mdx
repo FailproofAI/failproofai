@@ -1,16 +1,16 @@
 ---
 title: "Administration"
-description: "Zugriff, Nutzung, Organisationen und Sicherheit verwalten – ohne den Zuverlässigkeits-Workflow zu beeinträchtigen."
+description: "Zugriff, Nutzung, Organisationen und Sicherheit verwalten, ohne sie in den Zuverlässigkeits-Workflow einzumischen."
 icon: "settings-2"
 ---
 
-Die Administration enthält alle Steuerelemente, die für den Betrieb von Failproof AI im Team erforderlich sind. Die meisten Benutzer arbeiten in Sessions, Audits und Policies; Administratoren nutzen diesen Bereich, um Zugriff und Betriebsgrenzen zu verwalten.
+Die Administration enthält alle Steuerungsmöglichkeiten, um Failproof AI teamweit zu betreiben. Die meisten Nutzer bleiben in Sessions, Audits und Policies; Administratoren verwenden diesen Bereich, um Zugriffsrechte und Betriebsgrenzen zu verwalten.
 
 <Tabs>
   <Tab title="Dashboard">
-    Verwenden Sie den Bereich **Admin** in der Cloud-Seitenleiste für den **Policy-Editor**, **Durchsetzung**, **Nutzung**, **Schlüssel**, **Benutzer** und **Einstellungen**. Ein gesperrtes Element zeigt an, dass Ihrem Konto die erforderliche Leseberechtigung fehlt.
+    Nutzen Sie den Bereich **Admin** in der Cloud-Seitenleiste für den **Richtlinieneditor**, die **Durchsetzung**, **Nutzung**, **Schlüssel**, **Benutzer** und **Einstellungen**. Ein gesperrtes Element zeigt an, dass Ihrem Konto die entsprechende Leseberechtigung fehlt.
 
-    ![Der Admin-Bereich der Cloud-Seitenleiste mit Policy-Editor, Durchsetzung, Nutzung, Schlüssel, Benutzer und Einstellungen.](/images/dashboard/admin-navigation.png)
+    ![Der Admin-Bereich der Cloud-Seitenleiste mit Richtlinieneditor, Durchsetzung, Nutzung, Schlüsseln, Benutzern und Einstellungen.](/images/dashboard/admin-navigation.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -20,7 +20,7 @@ Die Administration enthält alle Steuerelemente, die für den Betrieb von Failpr
     fp usage
     ```
 
-    Globale Optionen werden vor dem Befehl angegeben, z. B. `fp --org reliability-team --json usage`.
+    Globale Optionen vor dem Befehl angeben, zum Beispiel `fp --org reliability-team --json usage`.
   </Tab>
 </Tabs>
 
@@ -35,6 +35,6 @@ Die Administration enthält alle Steuerelemente, die für den Betrieb von Failpr
     Mitgliedschaften, Standardwerte und Organisationsgrenzen verwalten.
   </Card>
   <Card title="Einstellungen und Sicherheit" icon="lock-keyhole" href="/de/admin/settings-and-security">
-    Betriebseinstellungen, Datenverarbeitung und Bereitstellungssicherheit konfigurieren.
+    Betriebseinstellungen, Datenverarbeitung und Deployment-Sicherheit konfigurieren.
   </Card>
 </Columns>

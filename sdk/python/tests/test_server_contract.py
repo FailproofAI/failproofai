@@ -428,6 +428,66 @@ def test_the_promoted_numeric_set_matches_the_one_ingest_lifts():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# A promoted column the caller does not have costs a warning, not the event
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("name", sorted(_events._PROMOTED_STRING))
+def test_a_promoted_string_passed_as_none_is_omitted_not_refused(name):
+    """None means "I have no value", and that must not cost the whole event.
+
+    `agent_end(error_type=None)` is the shape every successful run produces: the
+    field is populated only on a failing outcome, so the ordinary success path
+    passes None. Refusing it raised inside the caller's emit helper, and a helper
+    that swallows telemetry errors — which every one of them does, because
+    telemetry must not break a run — turned that into a silently missing event.
+    """
+    recorder = _Recorder()
+    EventNamespace(recorder).agent_start(session_id="s", agent_id="a", **{name: None})
+    assert name not in recorder.entries[0]
+
+
+@pytest.mark.parametrize("name", sorted(_events._PROMOTED_NUMERIC))
+def test_a_promoted_numeric_passed_as_none_in_fields_is_omitted_too(name):
+    """The named-parameter path already dropped None; `**fields` did not.
+
+    `_build` omits None only from a dataclass's own `specifics` — `extra` is
+    merged verbatim — so the same value went to the wire as an explicit JSON
+    null depending only on which door it came through.
+    """
+    recorder = _Recorder()
+    EventNamespace(recorder).agent_start(session_id="s", agent_id="a", **{name: None})
+    assert name not in recorder.entries[0]
+
+
+def test_a_dropped_promoted_column_is_warned_about(caplog):
+    """Silently dropping it would hide a real mistake; refusing it costs the event."""
+    recorder = _Recorder()
+    with caplog.at_level("WARNING", logger="failproofai_sdk._events"):
+        EventNamespace(recorder).agent_end(session_id="s", agent_id="a", error_type=None)
+    assert "error_type" in caplog.text
+
+
+def test_agent_end_on_a_successful_run_is_still_emitted():
+    """The regression this all exists for, in the shape the caller actually sends."""
+    recorder = _Recorder()
+    EventNamespace(recorder).agent_end(
+        session_id="s", agent_id="a", outcome="success", summary=None, error_type=None
+    )
+    assert [e["type"] for e in recorder.entries] == ["agent_end"]
+    assert recorder.entries[0]["outcome"] == "success"
+    assert "error_type" not in recorder.entries[0]
+
+
+@pytest.mark.parametrize("name", sorted(_events._PROMOTED_STRING))
+def test_a_promoted_string_with_a_real_value_still_goes_through(name):
+    """Dropping None must not also drop the values that matter."""
+    recorder = _Recorder()
+    EventNamespace(recorder).agent_start(session_id="s", agent_id="a", **{name: "real"})
+    assert recorder.entries[0][name] == "real"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # The MEASURED duration is bound by the same u32 range a caller is held to
 # ─────────────────────────────────────────────────────────────────────────────
 

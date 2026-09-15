@@ -4,23 +4,23 @@ description: "Authentifizierung bei der öffentlichen Failproof AI Cloud `/v1` A
 icon: "braces"
 ---
 
-Die öffentliche API wird unter `/v1` auf der Origin Ihres Failproof AI-Dashboards bereitgestellt.
+Die öffentliche API ist unter `/v1` in Ihrem Failproof AI Dashboard erreichbar.
 
-## Schlüssel erstellen und eine Anfrage stellen
+## Schlüssel erstellen und Anfrage stellen
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Öffnen Sie **Administration → Keys**, wählen Sie **Create key** und wählen Sie das engste Berechtigungs-Preset, das die Integration abdeckt.
+    1. Öffnen Sie **Administration → Keys**, wählen Sie **Schlüssel erstellen** und wählen Sie das engste Berechtigungs-Preset, das die Integration abdeckt.
     2. Fügen Sie individuelle Berechtigungen nur bei Bedarf hinzu, erstellen Sie den Schlüssel und kopieren Sie das einmalig angezeigte Secret.
-    3. Senden Sie eine Testanfrage an `/v1/sessions` und bestätigen Sie, dass der Schlüssel auf der Keys-Seite aktiv bleibt.
-    4. Rotieren oder deaktivieren Sie den Schlüssel über sein Aktionsmenü, wenn sich der Eigentümer der Integration ändert.
+    3. Stellen Sie eine Testanfrage an `/v1/sessions` und bestätigen Sie, dass der Schlüssel auf der Keys-Seite aktiv bleibt.
+    4. Rotieren oder deaktivieren Sie den Schlüssel über sein Aktionsmenü, wenn die Integration den Eigentümer wechselt.
 
-    ![Die Drawer-Ansicht für neue API-Schlüssel mit Berechtigungs-Presets und individuellen Grants.](/images/dashboard/key-create.png)
+    ![Die neue API-Key-Seitenleiste mit Berechtigungs-Presets und individuellen Grants.](/images/dashboard/key-create.png)
 
-    Der Erstellungs-Drawer ist oben abgebildet. Das einmalige Secret erscheint erst, nachdem Sie **create** ausgewählt haben – kopieren Sie es, bevor Sie die Bestätigung schließen.
+    Die Erstellungs-Seitenleiste ist oben abgebildet. Das einmalige Secret erscheint nur, nachdem Sie **Erstellen** ausgewählt haben; kopieren Sie es vor dem Schließen der Bestätigung.
   </Tab>
   <Tab title="CLI">
-    Erstellen Sie einen Read-Schlüssel und verwenden Sie ihn direkt mit `fp` oder `curl`:
+    Erstellen Sie einen Leseschlüssel und verwenden Sie ihn direkt mit `fp` oder `curl`:
 
     ```bash
     fp keys create reliability-reader \
@@ -40,11 +40,11 @@ Schlüssel sind auf eine Organisation und ein Berechtigungs-Set beschränkt. Ein
 
 ## Organisationsauswahl
 
-Ein organisationsbezogener Schlüssel agiert automatisch im Kontext seiner Organisation. Ein instanzweit gültiger Schlüssel kann pro Anfrage eine Organisation auswählen:
+Ein Organisationsschlüssel wirkt automatisch auf seine Organisation. Ein instanzweit gültiger Schlüssel kann die Organisation pro Anfrage auswählen:
 
 <Tabs>
   <Tab title="Dashboard">
-    Verwenden Sie den Organisations-Umschalter im Dashboard-Header, bevor Sie **Administration → Keys** öffnen. Dort erstellte Schlüssel gehören zur ausgewählten Organisation. Bestätigen Sie den Organisations-Slug in der URL und den Schlüsseldetails, bevor Sie die Anmeldeinformation in die Automatisierung übernehmen.
+    Verwenden Sie den Organisations-Umschalter in der Dashboard-Kopfzeile, bevor Sie **Administration → Keys** öffnen. Dort erstellte Schlüssel gehören zur ausgewählten Organisation. Bestätigen Sie den Organisations-Slug in der URL und in den Schlüsseldetails, bevor Sie die Zugangsdaten in die Automatisierung übernehmen.
 
   </Tab>
   <Tab title="CLI">
@@ -63,12 +63,12 @@ Ein organisationsbezogener Schlüssel agiert automatisch im Kontext seiner Organ
   </Tab>
 </Tabs>
 
-Verwenden Sie die generierten Endpunkt-Seiten in diesem Abschnitt für aktuelle Pfade, Parameter, Berechtigungsanforderungen und Statuscodes. Die Spezifikation wird aus den Server-Route-Annotationen generiert und gegen den `/v1`-Router geprüft.
+Verwenden Sie die generierten Endpunkt-Seiten in diesem Abschnitt für aktuelle Pfade, Parameter, Berechtigungsanforderungen und Statuscodes. Die Spezifikation wird aus den Server-Routen-Annotationen generiert und gegen den `/v1`-Router geprüft.
 
-Die aktuelle Spezifikation bietet vollständige Abdeckung für Routen, Methoden, Parameter, Berechtigungen und Statuscodes. Einige Response-Bodies bleiben absichtlich untypisiert, da der Server sie noch als dynamisches JSON konstruiert. Untersuchen Sie eine echte Antwort, bevor Sie einen stark typisierten Client für einen Endpunkt ohne Response-Schema generieren.
+Die aktuelle Spezifikation deckt Routen, Methoden, Parameter, Berechtigungen und Statuscodes vollständig ab. Einige Response-Bodies bleiben absichtlich ohne Typisierung, da der Server sie noch als dynamisches JSON konstruiert. Untersuchen Sie eine echte Antwort, bevor Sie einen stark typisierten Client für einen Endpunkt ohne Response-Schema generieren.
 
-Verwenden Sie `Content-Type: application/json` für JSON-Schreibvorgänge. Behandeln Sie `401` als fehlende oder ungültige Authentifizierung, `403` als gültige Identität ohne die erforderliche Berechtigung, `404` als fehlende oder für die Organisation nicht zugängliche Ressource, `409` als Zustandskonflikt und `422` als ungültiges Feld oder ungültigen Berechtigungswert. Fehlerantworten enthalten eine lesbare Meldung; bei Berechtigungsfehlern wird zudem der erforderliche Grant benannt.
+Verwenden Sie `Content-Type: application/json` für JSON-Schreiboperationen. Behandeln Sie `401` als fehlende oder ungültige Authentifizierung, `403` als gültige Identität ohne die erforderliche Berechtigung, `404` als fehlende oder organisationsseitig nicht zugängliche Ressource, `409` als Zustandskonflikt und `422` als ungültigen Feld- oder Berechtigungswert. Fehlerantworten enthalten eine lesbare Nachricht; Berechtigungsfehler nennen zusätzlich den erforderlichen Grant.
 
 <Warning>
-  Die Bereitstellung der Richtlinien-Durchsetzung wird absichtlich außerhalb der gewöhnlichen öffentlichen `/v1`-Oberfläche verwaltet. Verwenden Sie den unterstützten Cloud-Deployment-Workflow.
+  Die Bereitstellung der Policy-Durchsetzung wird bewusst außerhalb der gewöhnlichen öffentlichen `/v1`-Oberfläche verwaltet. Verwenden Sie den unterstützten Cloud-Deployment-Workflow.
 </Warning>

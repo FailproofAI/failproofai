@@ -1,6 +1,6 @@
 ---
 title: "Politiques"
-description: "Observez, guidez ou bloquez les actions des agents avant qu'une défaillance connue ne se reproduise."
+description: "Observez, guidez ou bloquez les actions des agents avant qu'une défaillance connue se reproduise."
 icon: "shield-check"
 ---
 
@@ -8,21 +8,21 @@ Une politique évalue un événement de hook d'agent et retourne l'une des trois
 
 - `allow` laisse l'action se poursuivre.
 - `instruct` fournit des conseils correctifs à l'agent.
-- `deny` bloque l'action avec une raison.
+- `deny` bloque l'action avec une justification.
 
 ## Utiliser les trois surfaces de politique
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Allez dans **Observe → politique** pour filtrer et inspecter les décisions de politique issues des sessions.
-    2. Allez dans **Admin → éditeur de politique** pour composer, valider, publier, désactiver ou inspecter des versions immuables.
-    3. Allez dans **Admin → application** pour assigner des versions et des effets aux machines.
+    1. Accédez à **Observer → politique** pour filtrer et inspecter les décisions de politique issues des sessions.
+    2. Accédez à **Admin → éditeur de politique** pour composer, valider, publier, désactiver ou inspecter des versions immuables.
+    3. Accédez à **Admin → application** pour assigner des versions et des effets aux machines.
 
     Utilisez la page Politique pour comprendre ce qui correspond déjà avant de créer ou de modifier l'application.
 
-    ![La page Politique affichant les totaux de décisions et les mappages de politiques locales et gérées dans le Cloud.](/images/dashboard/policy-observe.png)
+    ![La page Politique affichant les totaux de décisions et les mappages de politiques locales et gérées par le Cloud.](/images/dashboard/policy-observe.png)
 
-    L'éditeur est l'endroit où vous transformez une condition d'échec en source, la validez et publiez une version immuable.
+    L'éditeur est l'endroit où vous transformez une condition d'échec en code source, la validez et publiez une version immuable.
 
     ![L'éditeur de politique utilisé pour composer et publier une version de politique immuable.](/images/dashboard/policy-editor.png)
 
@@ -41,7 +41,7 @@ Une politique évalue un événement de hook d'agent et retourne l'une des trois
     failproofai config --status
     ```
 
-    Utilisez `fp` pour trouver les sessions et événements Cloud contenant des décisions de politique. La création de politiques dans le Cloud et le déploiement sur la flotte restent des workflows du tableau de bord.
+    Utilisez `fp` pour trouver les sessions Cloud et les événements contenant des décisions de politique. La création et le déploiement en flotte dans le Cloud restent des workflows du tableau de bord.
   </Tab>
 </Tabs>
 
@@ -51,7 +51,7 @@ Les politiques disposent de trois surfaces distinctes dans Failproof AI :
 2. **Créer des versions** avec des règles intégrées, du code ou l'éditeur de politique.
 3. **Déployer et appliquer** des versions sur les machines sélectionnées.
 
-Commencez par un mode de défaillance confirmé. Définissez la correspondance d'événement et d'outil la plus restreinte qui l'identifie, testez des exemples légitimes et non sécurisés, puis observez avant d'appliquer.
+Partez d'un mode de défaillance confirmé. Définissez la correspondance d'événement et d'outil la plus restreinte qui l'identifie, testez des exemples légitimes et non sécurisés, puis observez avant d'appliquer.
 
 <Columns cols={2}>
   <Card title="Utiliser une politique intégrée" icon="library" href="/fr/policies/builtin">

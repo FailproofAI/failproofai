@@ -1,25 +1,25 @@
 ---
-title: "Online-Auswertungen"
-description: "Bewerte aktive und abgeschlossene Sessions hinsichtlich Qualität, Compliance, Kosten und Latenz."
+title: "Online-Evaluierungen"
+description: "Bewerten Sie aktive und abgeschlossene Sitzungen nach Qualität, Compliance, Kosten und Latenz."
 icon: "gauge"
 ---
 
-Online-Auswertungen wenden konsistente Beurteilungen auf Agent-Sessions an. Verwende sie für Signale, die kontinuierlich gemessen werden sollten – anstatt erst bei einem Audit untersucht zu werden.
+Online-Evaluierungen wenden konsistente Beurteilungen auf Agentensitzungen an. Verwenden Sie sie für Signale, die kontinuierlich gemessen werden sollten, anstatt nur bei einem Audit untersucht zu werden.
 
-## Auswertungsqualität prüfen
+## Evaluierungsqualität überprüfen
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehe zu **Observe → Evaluations**.
-    2. Füge eine Reihe hinzu und wähle den Agent, die Umgebung, den Auswertungswert, die Statistik und die Kurve.
-    3. Füge weitere Reihen hinzu, um Umgebungen, Agents oder Score-Schlüssel zu vergleichen.
-    4. Wähle ein Ergebnis aus, um passende Sessions zu öffnen oder die gefilterte Ansicht zu teilen. Nutze **Observe → Metrics** für Latenz, Tokens, Kosten und andere Mengenwerte.
+    1. Gehen Sie zu **Observe → Evaluations**.
+    2. Fügen Sie eine Datenreihe hinzu und wählen Sie den Agenten, die Umgebung, den Evaluierungswert, die Statistik und die Kurve.
+    3. Fügen Sie Datenreihen hinzu, um Umgebungen, Agenten oder Score-Schlüssel zu vergleichen.
+    4. Wählen Sie ein Ergebnis aus, um passende Sitzungen zu öffnen oder die gefilterte Ansicht zu teilen. Verwenden Sie **Observe → Metrics** für Latenz, Tokens, Kosten und andere Größenwerte.
 
-    ![Ein Qualitäts-Dashboard mit durchschnittlichen Auswertungswerten und zeitlichen Trends.](/images/dashboard/dashboard-quality.png)
+    ![Ein Qualitäts-Dashboard mit durchschnittlichen Evaluierungswerten und Trends über die Zeit.](/images/dashboard/dashboard-quality.png)
 
-    Öffne eine Session über die Drill-down-Ansicht, um die auswertungsspezifische Begründung zu prüfen:
+    Öffnen Sie eine Sitzung aus der Detailansicht, um ihre sitzungsbezogene Begründung zu untersuchen:
 
-    ![Eine Session-Detailansicht mit Auswertungswerten und Begründungen neben dem vollständigen Trace.](/images/dashboard/session-detail.png)
+    ![Eine Sitzungsdetailansicht mit Evaluierungswerten und Begründungen neben dem vollständigen Trace.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -28,13 +28,13 @@ Online-Auswertungen wenden konsistente Beurteilungen auf Agent-Sessions an. Verw
     fp evals --score helpfulness:0.8.. --since 7d
     ```
 
-    Füge das globale Flag `--json` vor `evals` für die Automatisierung hinzu, z. B. `fp --json evals --aggregate --env production`.
+    Fügen Sie globales `--json` vor `evals` für die Automatisierung hinzu, zum Beispiel `fp --json evals --aggregate --env production`.
   </Tab>
 </Tabs>
 
-Ein Evaluator erhält die Session-Identität, Umgebung, Zeitstempel und geordnete Ereignisse. Er kann numerische Score-Schlüssel mit optionaler Begründung und einer Zusammenfassung zurückgeben. Lang laufende Evaluatoren können einen ausstehenden Job zurückgeben und später abgefragt werden.
+Ein Evaluator erhält die Sitzungsidentität, Umgebung, Zeitstempel und geordnete Ereignisse. Er kann numerische Score-Schlüssel mit optionaler Begründung und einer Zusammenfassung zurückgeben. Langläufige Evaluatoren können einen ausstehenden Job zurückgeben und später abgefragt werden.
 
-## Geeignete Auswertungsziele
+## Geeignete Evaluierungsziele
 
 - Aufgabenerfüllung oder Korrektheit
 - Faktentreue und Halluzinationsrisiko
@@ -43,10 +43,10 @@ Ein Evaluator erhält die Session-Identität, Umgebung, Zeitstempel und geordnet
 - Kosten- und Latenzbudgets
 - Erforderliche Eskalation an Menschen
 
-## Von der Bewertung zur Reaktion
+## Vom Score zur Reaktion
 
-Zeige Werte in Dashboards an, um Trends zu verfolgen. Erstelle Alerts für Schwellenwerte oder zusammengesetzte Bedingungen. Wenn ein Score über eine Population hinweg sinkt, führe ein Audit durch, um die Ursache zu untersuchen; wenn die Ursache eine wiederholbare Aktion ist, setze eine Policy ein.
+Zeigen Sie Scores in Dashboards an, um Trends zu verfolgen. Erstellen Sie Warnmeldungen für Schwellenwerte oder zusammengesetzte Bedingungen. Wenn ein Score über eine Population hinweg abnimmt, führen Sie ein Audit durch, um die Ursache zu untersuchen; wenn die Ursache eine wiederholbare Aktion ist, stellen Sie eine Richtlinie bereit.
 
 <Card title="Einen Evaluator erstellen" icon="code-2" href="/de/reference/evaluator-sdk">
-  Implementiere synchrone oder asynchrone Auswertungen mit dem Python Evaluator SDK.
+  Implementieren Sie synchrone oder asynchrone Evaluierungen mit dem Python-Evaluator-SDK.
 </Card>

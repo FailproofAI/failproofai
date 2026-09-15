@@ -1,15 +1,15 @@
 ---
-title: "Ajanınızı enstrüman edin"
+title: "Aracısını işaretle"
 sidebarTitle: "Frameworks"
-description: "Desteklenen herhangi bir ajan çerçevesini Failproof AI'ye tek bir çağrıyla bağlayın."
+description: "Desteklenen herhangi bir ajan framework'ünü tek bir çağrı ile Failproof AI'a bağla."
 icon: "plug"
 ---
 
-Ajanınız zaten kaydedilmeye değer her şeyi üretir — model çağrıları, araç çağrıları, düğüm sınırları, insan beklentileri, hatalar. Çerçeve bunu atar. SDK onu tutar.
+Aracın zaten kaydedilmeye değer her şeyi üretiyor — model çağrıları, araç çağrıları, düğüm sınırları, insan beklentileri, hatalar. Framework bunu atıyor. SDK bunu tutuyor.
 
 <Columns cols={3}>
   <Card title="Özel ajanlar" icon="wrench" href="/tr/start/quickstarts/custom-agents">
-    Kendiniz yazdığınız bir ajan ya da burada listelenmemiş bir ajan.
+    Kendin yazdığın bir ajan veya burada listelenmeyen bir ajan.
   </Card>
   <Card title="LangChain ve LangGraph" icon="share-2" href="/tr/start/quickstarts/langchain">
     Grafikler, düğümler, araçlar, alıcılar, modeller.
@@ -21,11 +21,11 @@ Ajanınız zaten kaydedilmeye değer her şeyi üretir — model çağrıları, 
     İş akışları, adımlar, fonksiyon ajanları, alıcılar.
   </Card>
   <Card title="Pydantic AI" icon="badge-check" href="/tr/start/quickstarts/pydantic-ai">
-    Yazılı ajanlar, yetenekler, araçlar, yeniden denemeler.
+    Yazılan ajanlar, yetenekler, araçlar, yeniden denemeler.
   </Card>
 </Columns>
 
-## Hangi çerçeve olursa olsun üç satır
+## Hangi framework olursa olsun, üç satır
 
 <CodeGroup>
 ```bash LangGraph
@@ -44,7 +44,7 @@ pip install 'failproofai-sdk[llamaindex]'
 pip install 'failproofai-sdk[pydantic-ai]'
 ```
 
-```bash Custom agents
+```bash Özel ajanlar
 pip install failproofai-sdk
 ```
 </CodeGroup>
@@ -53,13 +53,13 @@ pip install failproofai-sdk
 import failproofai_sdk
 
 failproofai_sdk.configure(environment="production")
-failproofai_sdk.instrument()          # içe aktardığınız çerçeveleri algılar
+failproofai_sdk.instrument()          # içe aktardığın framework'leri algılar
 
 with failproofai_sdk.session():
-    ...                               # mevcut ajan çağrınız, değişmemiş
+    ...                               # mevcut ajan çağrın, değişmez
 ```
 
-Fonksiyonlarınız üzerinde dekoratör yok, çağrılarınıza iletilen geri arama yok, kodunuzda iliştirilmiş kimlikler yok. Yalnızca oturum içindeki çağrı farklı:
+Fonksiyonlarında hiçbir dekoratör yok, çağrılarına hiçbir callback geçilmiyor, kodunuz boyunca thread edilmiş hiçbir id yok. Sadece oturum içindeki çağrı farklı:
 
 <Tabs>
   <Tab title="LangGraph">
@@ -82,7 +82,7 @@ Fonksiyonlarınız üzerinde dekoratör yok, çağrılarınıza iletilen geri ar
     agent.run_sync("...")
     ```
   </Tab>
-  <Tab title="Custom agents">
+  <Tab title="Özel ajanlar">
     ```python
     with failproofai_sdk.agent("planner"):
         with failproofai_sdk.tool_call("search", input={"q": q}) as t:
@@ -91,30 +91,30 @@ Fonksiyonlarınız üzerinde dekoratör yok, çağrılarınıza iletilen geri ar
   </Tab>
 </Tabs>
 
-Ekstra yükleme **çerçeveyi** kurar. Her adaptör temel wheel'de gönderilir, bu nedenle zaten çerçevesi olan bir proje hiç ekstraya ihtiyaç duymaz.
+Ekstra yükleme **framework**'ü kurar. Her adapter temel wheel'de gönderilir, bu nedenle framework'ü zaten olan bir proje hiçbir ekstra yüklemeye ihtiyaç duymaz.
 
-## Geldiğini kontrol edin
+## Varışını kontrol et
 
-Bir enstrüman edilmiş oturumu çalıştırın, ardından **Observe → Sessions** açın ve ortamınızı seçin. Çalıştırma yeniden oluşturulmuş bir iz olarak görünür.
+Bir işaretli oturumu çalıştır, ardından **Observe → Sessions** öğesini aç ve ortamını seç. Çalıştırma yeniden yapılandırılmış bir iz olarak görünür.
 
-Hiçbir şey gelmezse, makinenin `failproofai config --status` ile bağlı olduğunu doğrulayın. Bkz. [Yakalamayı ayarlayın](/tr/start/setup).
+Hiçbir şey gelmezse, makinenin `failproofai config --status` ile bağlı olduğunu doğrula. Bkz. [Yakalamanın kurulumu](/tr/start/setup).
 
 <Warning>
-  Teslimatı doğrulamak için spool dizinini kontrol etmeyin. Failproof daemon her bir toplu işi milisaniyeler içinde toplar ve siler, bu nedenle onu okumak toplayıcı ile yarışır ve yayılan olaylardan çok daha azını gösterir.
+  Teslimi doğrulamak için spool dizinini kontrol etme. Failproof daemon'u her toplu işi milisaniye içinde toplar ve siler, bu nedenle onu okumak toplayıcı ile yarışır ve yayılan olaylardan çok daha azını gösterir.
 </Warning>
 
-## Sonraki adım
+## Sonraki
 
-Yukarıdaki her hızlı başlangıç, tam kılavuzuna bağlantı verir — neler kaydedilir, seçenekler, akış, açıklık adlandırması ve insanların gerçekten karşılaştığı sorunlar. Bunlar **Trace Agents → Ajanınızı bağlayın** altında bulunur.
+Yukarıdaki her hızlı başlangıç, tam rehberine bağlantı verir — ne kaydedilir, seçenekler, akış, span adlandırması ve insanların gerçekten karşılaştığı sorunlar. **Trace Agents → Aracını bağla** altında yaşarlar.
 
 <Columns cols={3}>
   <Card title="Nasıl çalışır" icon="workflow" href="/tr/start/integrations/custom-agents#going-deeper">
-    Veri modeli, kimlikler, olay türleri ve olayların Cloud'a nasıl ulaştığı.
+    Veri modeli, id'ler, olay türleri ve olayların Cloud'a nasıl ulaştığı.
   </Card>
-  <Card title="Bir izi oku" icon="route" href="/tr/sessions/read-a-trace">
-    Bağlantısız günlüklerin yerine bir oturum aracılığıyla nedenselliği takip edin.
+  <Card title="İz oku" icon="route" href="/tr/sessions/read-a-trace">
+    Bağlantısız günlükler yerine bir oturum aracılığıyla nedenselliği takip et.
   </Card>
-  <Card title="İlk hatanı bul" icon="scan-search" href="/tr/start/first-audit">
-    Az önce yakaladığınız oturumları denetleyin.
+  <Card title="İlk başarısızlığını bul" icon="scan-search" href="/tr/start/first-audit">
+    Az önce yakaladığın oturumları denetle.
   </Card>
 </Columns>

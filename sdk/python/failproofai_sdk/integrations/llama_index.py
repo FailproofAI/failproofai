@@ -498,11 +498,11 @@ class _State:
         recorded, so the setting looked like it had worked.
 
         That is the switch `docs/start/integrations/llamaindex.mdx` presents as
-        the control for regulated data, and `collector.redact` explicitly does
-        not apply to SDK events — so there is no second line of defence behind
-        it. The sibling adapters route every payload through one helper
-        (LangChain's `_shrink`, Pydantic AI's `capture_content` checks); this is
-        that helper.
+        the control for regulated data. Minimal credential redaction is defence
+        in depth, not a replacement for disabling content capture: it catches
+        known secret shapes, not arbitrary regulated content. The sibling
+        adapters route every payload through one helper (LangChain's `_shrink`,
+        Pydantic AI's `capture_content` checks); this is that helper.
         """
         if not self.capture_messages:
             return None

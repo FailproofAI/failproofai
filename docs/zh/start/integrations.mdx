@@ -1,31 +1,31 @@
 ---
-title: "接入你的智能体"
+title: "为你的 Agent 接入监控"
 sidebarTitle: "框架"
-description: "通过一次调用，将任意受支持的智能体框架连接到 Failproof AI。"
+description: "只需一次调用，将任意受支持的 Agent 框架连接到 Failproof AI。"
 icon: "plug"
 ---
 
-你的智能体已经产生了所有值得记录的内容——模型调用、工具调用、节点边界、人工等待、失败信息。框架会将这些数据丢弃，而 SDK 会将其保留。
+你的 Agent 已经产出了所有值得记录的内容——模型调用、工具调用、节点边界、人工等待、错误信息。框架会将这些数据丢弃，而 SDK 会将其保留下来。
 
 <Columns cols={3}>
-  <Card title="自定义智能体" icon="wrench" href="/zh/start/quickstarts/custom-agents">
-    你自己编写的智能体，或此处未列出的智能体。
+  <Card title="自定义 Agent" icon="wrench" href="/zh/start/quickstarts/custom-agents">
+    你自己编写的 Agent，或未在此列出的 Agent。
   </Card>
   <Card title="LangChain 和 LangGraph" icon="share-2" href="/zh/start/quickstarts/langchain">
     图、节点、工具、检索器、模型。
   </Card>
   <Card title="CrewAI" icon="users" href="/zh/start/quickstarts/crewai">
-    团队、流程、按角色划分的智能体、工具。
+    Crew、Flow、按角色划分的 Agent、工具。
   </Card>
   <Card title="LlamaIndex" icon="database" href="/zh/start/quickstarts/llamaindex">
-    工作流、步骤、函数智能体、检索器。
+    工作流、步骤、函数 Agent、检索器。
   </Card>
   <Card title="Pydantic AI" icon="badge-check" href="/zh/start/quickstarts/pydantic-ai">
-    类型化智能体、能力、工具、重试。
+    类型化 Agent、能力、工具、重试。
   </Card>
 </Columns>
 
-## 三行代码，适用任意框架
+## 无论哪种框架，三行代码搞定
 
 <CodeGroup>
 ```bash LangGraph
@@ -56,10 +56,10 @@ failproofai_sdk.configure(environment="production")
 failproofai_sdk.instrument()          # 自动检测你已导入的框架
 
 with failproofai_sdk.session():
-    ...                               # 你现有的智能体调用，无需任何修改
+    ...                               # 你现有的 Agent 调用，无需任何改动
 ```
 
-无需在函数上添加装饰器，无需向调用传递回调，也无需在代码中传递 ID。唯一的变化是将调用放在 session 内部：
+无需在函数上添加装饰器，无需向调用传入回调，也无需在代码中穿插各种 ID。唯一的变化是将调用放在 session 内部：
 
 <Tabs>
   <Tab title="LangGraph">
@@ -74,7 +74,7 @@ with failproofai_sdk.session():
   </Tab>
   <Tab title="LlamaIndex">
     ```python
-    await agent.run("...")        # 在 `async with failproofai_sdk.session():` 下使用
+    await agent.run("...")        # 在 `async with failproofai_sdk.session():` 内部
     ```
   </Tab>
   <Tab title="Pydantic AI">
@@ -91,30 +91,30 @@ with failproofai_sdk.session():
   </Tab>
 </Tabs>
 
-额外安装的是**框架**本身。所有适配器均已内置在基础包中，因此已安装框架的项目无需任何额外依赖。
+额外安装的是**框架**本身。所有适配器都已内置于基础安装包中，因此对于已安装框架的项目，无需任何额外依赖。
 
-## 验证数据是否已到达
+## 确认数据已到达
 
-运行一次已接入的会话，然后打开 **Observe → Sessions** 并选择你的环境。该运行将以重建的追踪形式显示。
+运行一次已接入监控的会话，然后打开 **Observe → Sessions** 并选择你的环境。该次运行将以重建后的 Trace 形式展示。
 
-如果没有数据到达，请使用 `failproofai config --status` 确认机器已连接。请参阅[设置数据捕获](/zh/start/setup)。
+如果没有数据到达，请通过 `failproofai config --status` 确认机器已连接。详见[配置数据采集](/zh/start/setup)。
 
 <Warning>
-  请勿通过查看缓冲目录来确认数据是否已送达。Failproof 守护进程会在毫秒内收集并删除每个批次，因此读取该目录时会与收集器产生竞争，显示的事件数将远少于实际发出的数量。
+  请勿通过查看 spool 目录来确认数据是否已送达。Failproof 守护进程会在毫秒级别内收集并删除每批数据，因此读取 spool 目录会与收集器产生竞争，导致看到的事件数量远少于实际产生的数量。
 </Warning>
 
 ## 下一步
 
-上方每个快速入门均链接到完整指南——包括记录的内容、选项、流式处理、span 命名以及常见问题。这些内容位于 **Trace Agents → Plug in your agent** 下。
+上方每个快速入门链接都对应完整指南，涵盖：记录了哪些内容、配置选项、流式处理、Span 命名，以及常见问题。相关内容位于 **Trace Agents → Plug in your agent** 下。
 
 <Columns cols={3}>
   <Card title="工作原理" icon="workflow" href="/zh/start/integrations/custom-agents#going-deeper">
-    数据模型、ID、事件类型，以及事件如何上报至云端。
+    数据模型、ID 体系、事件类型，以及事件如何上报至云端。
   </Card>
-  <Card title="解读追踪" icon="route" href="/zh/sessions/read-a-trace">
-    通过因果关系串联整个会话，而非查看零散的日志。
+  <Card title="解读 Trace" icon="route" href="/zh/sessions/read-a-trace">
+    通过因果关系追踪一次会话，而非查看零散的日志。
   </Card>
-  <Card title="发现首个故障" icon="scan-search" href="/zh/start/first-audit">
-    对刚刚捕获的会话进行审计。
+  <Card title="定位首个故障" icon="scan-search" href="/zh/start/first-audit">
+    对刚刚采集到的会话进行审计。
   </Card>
 </Columns>

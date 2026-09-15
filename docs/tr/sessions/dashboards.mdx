@@ -4,7 +4,7 @@ description: "Bir aracı veya iş akışı için önemli olan güvenilirlik siny
 icon: "layout-dashboard"
 ---
 
-Panolar, kaydedilmiş sorguları operasyonel bir görünümde birleştirir. Bir pano, her kullanılabilir metrik etrafında değil, birinin vermesini beklediğiniz bir karar etrafında oluşturun.
+Panolar, kaydedilmiş sorguları operasyonel bir görünüme birleştirir. Biri etrafında—her kullanılabilir metrik etrafında değil—birinin almasını beklediğiniz bir karar etrafında oluşturun.
 
 ## Pano oluşturma
 
@@ -12,13 +12,13 @@ Panolar, kaydedilmiş sorguları operasyonel bir görünümde birleştirir. Bir 
   <Tab title="Pano">
     1. **Analyze → Queries** bölümüne gidin, kaydedilmiş bir sorgu oluşturun veya açın ve sonucunu doğrulayın.
     2. **add to dashboard** seçeneğini seçin, ardından mevcut bir panoyu seçin veya **Analyze → Dashboards** altında yeni bir pano oluşturun.
-    3. Panoyu açın, düzenleme moduna girin, kutucukları düzenleyin ve düzeni kaydedin.
-    4. Bir kutucuğun arkasındaki verileri veya filtreleri değiştirmeniz gerektiğinde sorguya geri dönün.
+    3. Panoyu açın, düzenleme moduna girin, karoları düzenleyin ve düzeni kaydedin.
+    4. Bir karonun arkasındaki verileri veya filtreleri değiştirmeniz gerektiğinde sorguya döndürün.
 
-    ![Olay hacmi, hatalar, gecikme süresi ve model jeton kullanımı için kaydedilmiş sorgulardan oluşturulan bir pano.](/images/dashboard/dashboard-fleet.png)
+    ![Olay hacmi, hatalar, gecikme süresi ve model token kullanımı için kaydedilmiş sorgulardan oluşturulan pano.](/images/dashboard/dashboard-fleet.png)
   </Tab>
   <Tab title="CLI">
-    Pano CRUD işlemleri geçerli Cloud CLI tarafından açığa çıkarılmamıştır. Kaydedilmiş sorguyu oluşturmak ve doğrulamak için CLI'yı kullanın, ardından UI'da bir panoya ekleyin.
+    Pano CRUD işlemleri mevcut Cloud CLI tarafından açığa çıkarılmamaktadır. Kaydedilmiş sorguyu oluşturmak ve doğrulamak için CLI'yi kullanın, ardından UI'da bir panoya ekleyin.
 
     ```bash
     fp query schema
@@ -28,16 +28,16 @@ Panolar, kaydedilmiş sorguları operasyonel bir görünümde birleştirir. Bir 
   </Tab>
 </Tabs>
 
-Yararlı pano grupları şunlardır:
+Kullanışlı pano grupları şunlardır:
 
-- **Models:** hacim, gecikme süresi, jeton kullanımı, hata oranı ve değerlendirme puanları.
-- **Evaluations:** başarı oranı ve aracı veya ortama göre puan eğilimleri.
-- **Tools:** çağrı hacmi, başarısızlık oranı, süre ve tekrarlanan çağrılar.
-- **Hooks and policies:** kararlar, reddetmeler ve politika eşleşme oranı.
-- **Custom workflow metrics:** kendi olay alanlarınızdan ve SQL'den sonuçlar.
+- **Modeller:** hacim, gecikme süresi, token kullanımı, hata oranı ve değerlendirme puanları.
+- **Değerlendirmeler:** başarı oranı ve aracı veya ortama göre puan eğilimleri.
+- **Araçlar:** çağrı hacmi, hata oranı, süre ve tekrarlanan çağrılar.
+- **Kancalar ve politikalar:** kararlar, reddetmeler ve politika eşleştirme oranı.
+- **Özel iş akışı metrikleri:** kendi olay alanlarınız ve SQL'inizden sonuçlar.
 
-Kaydedilmiş bir sorgudan başlayın, sonucunu doğrulayın, ardından bir kutucuk olarak ekleyin. Üretim ve geliştirme filtreleri açık tutun, böylece test trafiği bir regresyonu gizlemesin.
+Kaydedilmiş bir sorguyla başlayın, sonucunu doğrulayın, ardından karo olarak ekleyin. Prodüksiyon ve geliştirme filtrelerini açık tutun, böylece test trafiği bir gerilemeyi gizlemez.
 
 <Tip>
-  Her panoya bir sahip ve "checkout-agent güvenilirliği geçen haftadan daha kötü mü?" gibi bir yanıt sorusu verin.
+  Her panoya bir sahip ve bir yanıt sorusu verin, örneğin "checkout-agent güvenilirliği geçen haftadan daha kötü mü?"
 </Tip>

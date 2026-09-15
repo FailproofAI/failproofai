@@ -1,16 +1,16 @@
 ---
 title: "Evaluator SDK"
-description: "Crie um serviço que avalia sessões do Failproof AI de forma síncrona ou assíncrona."
+description: "Construa um serviço que avalia sessões do Failproof AI de forma síncrona ou assíncrona."
 icon: "gauge"
 ---
 
-Um avaliador recebe uma sessão de agente concluída e retorna os indicadores de qualidade que você precisa: pontuações numéricas, uma explicação para cada pontuação e um resumo opcional. O Failproof AI armazena esses resultados junto ao trace e os exibe em gráficos por agentes e ambientes.
+Um avaliador recebe uma sessão de agente concluída e retorna os sinais de qualidade que importam para você: pontuações numéricas, uma explicação para cada pontuação e um resumo opcional. O Failproof AI armazena esses resultados ao lado do trace e os exibe em gráficos por agentes e ambientes.
 
 ## Configurar um avaliador
 
 <Steps>
   <Step title="Instalar o SDK do avaliador">
-    Instale o SDK e o servidor utilizado para executá-lo.
+    Instale o SDK e o servidor necessário para executá-lo.
 
     ```bash
     pip install failproofai-sdk uvicorn
@@ -62,22 +62,22 @@ Um avaliador recebe uma sessão de agente concluída e retorna os indicadores de
 ## Conectar o avaliador ao Failproof AI
 
 1. Faça o deploy do avaliador em uma URL HTTPS acessível pelo Failproof AI Cloud.
-2. Configure `EVALUATOR_ENDPOINT` com essa URL e defina `EVALUATOR_TOKEN` com o mesmo token utilizado pelo avaliador. Para o Cloud gerenciado, entre em contato com [support@befailproof.ai](mailto:support@befailproof.ai) para configurar a conexão.
+2. Configure `EVALUATOR_ENDPOINT` com essa URL e defina `EVALUATOR_TOKEN` com o mesmo token usado pelo avaliador. Para o Cloud gerenciado, entre em contato com [support@befailproof.ai](mailto:support@befailproof.ai) para configurar a conexão.
 3. Execute uma avaliação e confirme que as pontuações aparecem no Failproof AI.
 
 <Tabs>
   <Tab title="Dashboard">
-    Abra uma sessão concluída em **Observe → Sessions** e selecione **Run evaluation** caso ela não tenha sido avaliada automaticamente. Revise o status, as pontuações, o raciocínio e o resumo no painel **Evaluation** da sessão.
+    Abra uma sessão concluída em **Observe → Sessions** e selecione **Run evaluation** se ela não foi avaliada automaticamente. Revise o status, as pontuações, o raciocínio e o resumo no painel **Evaluation** da sessão.
 
-    Use **Observe → Evaluations** para comparar pontuações entre agentes ou ambientes. Use **Observe → Metrics** para latência, custo, tokens e outras medições numéricas.
+    Use **Observe → Evaluations** para comparar pontuações entre agentes ou ambientes. Use **Observe → Metrics** para medições de latência, custo, tokens e outros valores numéricos.
 
-    Comece com uma única sessão para confirmar que o avaliador retornou as chaves de pontuação esperadas e um raciocínio útil para aquela execução específica.
+    Comece com uma sessão para confirmar que o avaliador retornou as chaves de pontuação esperadas e um raciocínio útil para aquela execução específica.
 
-    ![Uma visualização detalhada de sessão exibindo pontuações de avaliação e raciocínio ao lado do seu trace.](/images/dashboard/session-detail.png)
+    ![Uma visualização de detalhe de sessão mostrando pontuações de avaliação e raciocínio ao lado do trace.](/images/dashboard/session-detail.png)
 
-    Quando os resultados individuais estiverem corretos, use o dashboard de avaliações para comparar essas pontuações ao longo do tempo e entre agentes ou ambientes.
+    Quando os resultados individuais parecerem corretos, use o dashboard de avaliação para comparar essas pontuações ao longo do tempo e entre agentes ou ambientes.
 
-    ![Um dashboard de qualidade com gráfico de pontuações do avaliador ao longo do tempo.](/images/dashboard/dashboard-quality.png)
+    ![Um dashboard de qualidade com gráficos de pontuações do avaliador ao longo do tempo.](/images/dashboard/dashboard-quality.png)
 
     Um gráfico saudável deve usar nomes de pontuação estáveis; alterar uma chave cria uma série separada.
   </Tab>
@@ -89,9 +89,9 @@ Um avaliador recebe uma sessão de agente concluída e retorna os indicadores de
   </Tab>
 </Tabs>
 
-Em uma instância Cloud auto-hospedada, a avaliação automática fica desativada até que `EVALUATOR_ENDPOINT` seja definido no processo do servidor. Reinicie o servidor após alterar as variáveis de ambiente do avaliador.
+Para uma instância Cloud auto-hospedada, a avaliação automática fica desabilitada até que `EVALUATOR_ENDPOINT` seja definido no processo do servidor. Reinicie o servidor após alterar variáveis de ambiente do avaliador.
 
-O serviço expõe `GET /health`, `GET /config`, `POST /evaluate` e opcionalmente `GET /evaluate/{job_id}`. Retorne `JobPending` para trabalhos assíncronos e registre `@app.job_lookup` para que o Failproof AI possa fazer polling.
+O serviço expõe `GET /health`, `GET /config`, `POST /evaluate` e, opcionalmente, `GET /evaluate/{job_id}`. Retorne `JobPending` para trabalho assíncrono e registre `@app.job_lookup` para que o Failproof AI possa fazer polling.
 
 Quando um token está configurado, todas as rotas, exceto health, exigem o mesmo bearer token que o Failproof AI envia como `EVALUATOR_TOKEN`.
 
@@ -113,7 +113,7 @@ Quando um token está configurado, todas as rotas, exceto health, exigem o mesmo
 | `@app.job_lookup` | `GET /evaluate/{job_id}` | Ao retornar `JobPending` |
 | `@app.config` | `GET /config` | Não |
 
-O SDK limita o corpo das requisições de avaliação a 25 MiB. Campos desconhecidos nas requisições são ignorados, mantendo os serviços compatíveis à medida que o contrato de eventos evolui.
+O SDK limita o corpo das requisições de avaliação em 25 MiB. Campos desconhecidos nas requisições são ignorados, mantendo a compatibilidade dos serviços conforme o contrato de eventos evolui.
 
 ## Retornar trabalho assíncrono
 
@@ -160,15 +160,15 @@ A cadência de polling é selecionada nesta ordem: `JobPending.next_poll_secs`, 
 | `EvalResponse.reasoning` | `dict[str, str] \| None` | Explicações por pontuação; as chaves devem espelhar `scores`. |
 | `EvalResponse.summary` | `str \| None` | Narrativa geral da avaliação. |
 
-## Configurações para operadores do servidor
+## Configurações do operador do servidor
 
-A avaliação automática é aplicada a todo o deployment e permanece desativada quando `EVALUATOR_ENDPOINT` não está definido.
+A avaliação automática é global para o deployment e permanece desabilitada quando `EVALUATOR_ENDPOINT` não está definido.
 
 | Variável | Padrão | Finalidade |
 | --- | --- | --- |
 | `EVALUATOR_ENDPOINT` | não definido | URL base do serviço avaliador. |
 | `EVALUATOR_TOKEN` | não definido | Bearer token compartilhado com `Evaluator(token=...)`. |
-| `EVALUATOR_WORKERS` | `2` | Workers de despacho concorrentes. |
+| `EVALUATOR_WORKERS` | `2` | Workers do dispatcher em execução simultânea. |
 | `EVALUATOR_CLAIM_BATCH` | `4` | Sessões reivindicadas por passagem do dispatcher. |
 | `EVALUATOR_POLLING_INTERVAL_SECS` | `10` | Cadência de polling assíncrono de fallback. |
 | `EVALUATOR_REQUEST_TIMEOUT_MS` | `30000` | Timeout do avaliador por requisição. |
@@ -176,15 +176,15 @@ A avaliação automática é aplicada a todo o deployment e permanece desativada
 | `EVALUATOR_CONFIG_REFRESH_SECS` | `300` | Cadência de atualização para `/config`. |
 | `EVALUATOR_MAX_POLL_DURATION_SECS` | `3600` | Tempo máximo de polling assíncrono em tempo real. |
 
-O servidor também pode restringir quais organizações utilizam o avaliador global do deployment. Trate alterações de endpoint, token, retry e controle de organização como configuração de operador e reinicie ou faça rollout do servidor após modificá-las.
+O servidor também pode restringir quais organizações utilizam o avaliador global do deployment. Trate as alterações de endpoint, token, retry e controle de acesso por organização como configuração de operador e reinicie ou atualize o servidor após modificá-las.
 
 ## Segurança e operações
 
-- Coloque o avaliador atrás de HTTPS quando o tráfego cruzar um limite de rede confiável.
+- Coloque o avaliador atrás de HTTPS quando o tráfego cruzar um limite de rede não confiável.
 - Configure um bearer token não vazio e mantenha-o idêntico em ambos os serviços.
-- Não registre o token nem prompts sensíveis completos dos payloads de requisição.
-- Torne os handlers síncronos idempotentes; tentativas de retry podem repetir uma requisição.
+- Não registre em log o token nem prompts sensíveis completos dos payloads das requisições.
+- Torne os handlers síncronos idempotentes; novas tentativas podem repetir uma requisição.
 - Persista o estado de jobs assíncronos fora da memória do processo em produção.
 - Retorne chaves de pontuação estáveis. Renomear uma chave cria uma nova série no gráfico em vez de alterar a existente.
 
-O SDK emite logs de ciclo de vida estruturados como `eval received`, `eval responded`, `job lookup`, `config returned`, `auth rejected` e exceções de handlers. Ele não configura handlers de logging; utilize a configuração de logging da aplicação host.
+O SDK emite logs de ciclo de vida estruturados como `eval received`, `eval responded`, `job lookup`, `config returned`, `auth rejected` e exceções de handlers. Ele não configura handlers de logging; utilize a configuração de logging da aplicação hospedeira.

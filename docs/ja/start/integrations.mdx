@@ -1,15 +1,15 @@
 ---
-title: "エージェントをインストルメント化する"
+title: "エージェントをインストゥルメントする"
 sidebarTitle: "フレームワーク"
-description: "サポートされている任意のエージェントフレームワークを、1回の呼び出しで Failproof AI に接続します。"
+description: "サポートされているエージェントフレームワークをワンコールで Failproof AI に接続します。"
 icon: "plug"
 ---
 
-あなたのエージェントはすでに記録すべきすべてのデータを生成しています — モデル呼び出し、ツール呼び出し、ノードの境界、人間の待機、失敗。フレームワークはそれを捨ててしまいます。SDKはそれを保持します。
+エージェントはすでに記録する価値のあるすべてのデータを生成しています — モデル呼び出し、ツール呼び出し、ノード境界、人間の待機、失敗。フレームワークはそれを捨てますが、SDKが保持します。
 
 <Columns cols={3}>
   <Card title="カスタムエージェント" icon="wrench" href="/ja/start/quickstarts/custom-agents">
-    自分で書いたエージェント、またはここに記載されていないエージェント。
+    自分で書いたエージェント、またはここに記載されていないもの。
   </Card>
   <Card title="LangChain と LangGraph" icon="share-2" href="/ja/start/quickstarts/langchain">
     グラフ、ノード、ツール、リトリーバー、モデル。
@@ -25,7 +25,7 @@ icon: "plug"
   </Card>
 </Columns>
 
-## どのフレームワークでも3行で
+## 3行で完了 — どのフレームワークでも
 
 <CodeGroup>
 ```bash LangGraph
@@ -53,13 +53,13 @@ pip install failproofai-sdk
 import failproofai_sdk
 
 failproofai_sdk.configure(environment="production")
-failproofai_sdk.instrument()          # インポートしたフレームワークを自動検出
+failproofai_sdk.instrument()          # インポートされたフレームワークを自動検出
 
 with failproofai_sdk.session():
-    ...                               # 既存のエージェント呼び出し、変更不要
+    ...                               # 既存のエージェント呼び出し、変更なし
 ```
 
-関数へのデコレーター不要、呼び出しへのコールバック渡し不要、コード全体へのID受け渡し不要。変わるのはセッション内の呼び出しだけです：
+関数へのデコレーター不要、呼び出しへのコールバック渡し不要、コード全体へのID埋め込み不要。変わるのはセッション内の呼び出しだけです：
 
 <Tabs>
   <Tab title="LangGraph">
@@ -74,7 +74,7 @@ with failproofai_sdk.session():
   </Tab>
   <Tab title="LlamaIndex">
     ```python
-    await agent.run("...")        # `async with failproofai_sdk.session():` の下で
+    await agent.run("...")        # `async with failproofai_sdk.session():` 内で
     ```
   </Tab>
   <Tab title="Pydantic AI">
@@ -91,28 +91,28 @@ with failproofai_sdk.session():
   </Tab>
 </Tabs>
 
-追加インストールは**フレームワーク**をインストールします。すべてのアダプターはベースホイールに同梱されているため、すでにフレームワークを持つプロジェクトは追加インストールが不要です。
+追加インストールは**フレームワーク**そのものに向けられています。すべてのアダプターはベースホイールに含まれているため、すでにフレームワークを持つプロジェクトでは追加インストールは不要です。
 
 ## 到達確認
 
-インストルメント化したセッションを1回実行し、**Observe → Sessions** を開いて環境を選択します。実行結果が再構成されたトレースとして表示されます。
+インストゥルメントされたセッションを1回実行し、**Observe → Sessions** を開いてお使いの環境を選択します。実行が再構築されたトレースとして表示されます。
 
-何も届かない場合は、`failproofai config --status` でマシンの接続を確認してください。[キャプチャのセットアップ](/ja/start/setup) を参照してください。
+何も届かない場合は、`failproofai config --status` でマシンが接続されていることを確認してください。[キャプチャのセットアップ](/ja/start/setup) を参照。
 
 <Warning>
-  配信確認のためにスプールディレクトリを確認しないでください。Failproof デーモンは各バッチをミリ秒以内に収集・削除するため、ディレクトリを読み取るとコレクターと競合し、実際に送出されたイベントよりはるかに少ないイベントしか表示されません。
+  スプールディレクトリを確認して配信を確かめようとしないでください。Failproof デーモンは各バッチをミリ秒以内に収集・削除するため、読み取りはコレクターと競合し、実際に送出されたイベントよりもはるかに少ない数しか表示されません。
 </Warning>
 
 ## 次のステップ
 
-上記の各クイックスタートはフルガイドへのリンクです — 記録される内容、オプション、ストリーミング、スパン名、実際によく起きる問題について説明しています。これらは **Trace Agents → Plug in your agent** の下にあります。
+上記の各クイックスタートはフルガイドへのリンクです — 記録される内容、オプション、ストリーミング、スパンの命名、実際によく起きる問題などを扱っています。**Trace Agents → エージェントの接続** 以下にあります。
 
 <Columns cols={3}>
-  <Card title="仕組み" icon="workflow" href="/ja/start/integrations/custom-agents#going-deeper">
-    データモデル、ID、イベントタイプ、そしてイベントがクラウドに到達する仕組み。
+  <Card title="仕組みを理解する" icon="workflow" href="/ja/start/integrations/custom-agents#going-deeper">
+    データモデル、ID、イベントタイプ、そしてイベントがクラウドに届くまでの流れ。
   </Card>
   <Card title="トレースを読む" icon="route" href="/ja/sessions/read-a-trace">
-    切り離されたログではなく、セッション全体の因果関係を追う。
+    バラバラなログではなく、セッションを通じて因果関係を追う。
   </Card>
   <Card title="最初の障害を見つける" icon="scan-search" href="/ja/start/first-audit">
     キャプチャしたセッションを監査する。

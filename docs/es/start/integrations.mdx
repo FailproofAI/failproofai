@@ -5,7 +5,7 @@ description: "Conecta cualquier framework de agentes compatible con Failproof AI
 icon: "plug"
 ---
 
-Tu agente ya produce todo lo que vale la pena registrar: llamadas a modelos, llamadas a herramientas, límites de nodos, esperas humanas y fallos. El framework lo descarta. El SDK lo conserva.
+Tu agente ya produce todo lo que vale la pena registrar: llamadas al modelo, llamadas a herramientas, límites de nodos, esperas humanas y fallos. El framework lo descarta. El SDK lo conserva.
 
 <Columns cols={3}>
   <Card title="Agentes personalizados" icon="wrench" href="/es/start/quickstarts/custom-agents">
@@ -15,17 +15,17 @@ Tu agente ya produce todo lo que vale la pena registrar: llamadas a modelos, lla
     Grafos, nodos, herramientas, retrievers, modelos.
   </Card>
   <Card title="CrewAI" icon="users" href="/es/start/quickstarts/crewai">
-    Crews, flujos, agentes por rol, herramientas.
+    Crews, flows, agentes por rol, herramientas.
   </Card>
   <Card title="LlamaIndex" icon="database" href="/es/start/quickstarts/llamaindex">
-    Workflows, pasos, agentes de funciones, retrievers.
+    Workflows, pasos, agentes de función, retrievers.
   </Card>
   <Card title="Pydantic AI" icon="badge-check" href="/es/start/quickstarts/pydantic-ai">
     Agentes tipados, capacidades, herramientas, reintentos.
   </Card>
 </Columns>
 
-## Tres líneas, cualquiera que sea el framework
+## Tres líneas, con cualquier framework
 
 <CodeGroup>
 ```bash LangGraph
@@ -59,7 +59,7 @@ with failproofai_sdk.session():
     ...                               # tu llamada al agente existente, sin cambios
 ```
 
-Sin decoradores en tus funciones, sin callbacks pasados a tus llamadas, sin ids propagados por tu código. Solo difiere la llamada dentro de la sesión:
+Sin decoradores en tus funciones, sin callbacks pasados a tus llamadas, sin IDs propagados por tu código. Solo la llamada dentro de la sesión es diferente:
 
 <Tabs>
   <Tab title="LangGraph">
@@ -74,7 +74,7 @@ Sin decoradores en tus funciones, sin callbacks pasados a tus llamadas, sin ids 
   </Tab>
   <Tab title="LlamaIndex">
     ```python
-    await agent.run("...")        # bajo `async with failproofai_sdk.session():`
+    await agent.run("...")        # dentro de `async with failproofai_sdk.session():`
     ```
   </Tab>
   <Tab title="Pydantic AI">
@@ -91,25 +91,25 @@ Sin decoradores en tus funciones, sin callbacks pasados a tus llamadas, sin ids 
   </Tab>
 </Tabs>
 
-El extra instala el **framework**. Cada adaptador viene incluido en el paquete base, por lo que un proyecto que ya tenga su framework no necesita ningún extra en absoluto.
+El extra instala el **framework**. Todos los adaptadores se incluyen en el paquete base, por lo que un proyecto que ya tiene su framework no necesita ningún extra en absoluto.
 
 ## Verifica que llegó
 
 Ejecuta una sesión instrumentada y luego abre **Observe → Sessions** y selecciona tu entorno. La ejecución aparece como una traza reconstruida.
 
-Si no llega nada, confirma que la máquina está conectada con `failproofai config --status`. Consulta [Configurar la captura](/es/start/setup).
+Si no llega nada, confirma que la máquina está conectada con `failproofai config --status`. Consulta [Set up capture](/es/start/setup).
 
 <Warning>
-  No compruebes el directorio de spool para confirmar la entrega. El daemon de Failproof recopila y elimina cada lote en cuestión de milisegundos, por lo que leerlo compite con el recolector y muestra muchos menos eventos de los que se emitieron.
+  No compruebes el directorio de spool para confirmar la entrega. El daemon de Failproof recopila y elimina cada lote en cuestión de milisegundos, por lo que leerlo compite con el recolector y mostrará muchos menos eventos de los que se emitieron.
 </Warning>
 
-## Siguientes pasos
+## A continuación
 
-Cada quickstart de arriba enlaza a su guía completa: qué se registra, opciones, streaming, nombres de spans y los problemas que la gente realmente encuentra. Se encuentran en **Trace Agents → Plug in your agent**.
+Cada quickstart anterior enlaza a su guía completa: qué se registra, opciones, streaming, nombres de spans y los problemas que la gente realmente encuentra. Están disponibles en **Trace Agents → Plug in your agent**.
 
 <Columns cols={3}>
   <Card title="Cómo funciona" icon="workflow" href="/es/start/integrations/custom-agents#going-deeper">
-    El modelo de datos, los ids, los tipos de eventos y cómo los eventos llegan a Cloud.
+    El modelo de datos, los IDs, los tipos de eventos y cómo los eventos llegan a Cloud.
   </Card>
   <Card title="Lee una traza" icon="route" href="/es/sessions/read-a-trace">
     Sigue la causalidad a través de una sesión en lugar de logs desconectados.

@@ -4,18 +4,18 @@ description: "Scegli quando eseguire gli audit ricorrenti e quanti dati esaminar
 icon: "calendar-clock"
 ---
 
-Utilizza gli audit ricorrenti per le modalità di errore che possono ripresentarsi al variare di agenti, prompt, strumenti e modelli.
+Utilizza gli audit ricorrenti per le modalità di errore che possono ripresentarsi man mano che agent, prompt, strumenti e modelli cambiano.
 
-## Cambia la pianificazione
+## Modifica la pianificazione
 
 <Tabs>
   <Tab title="Dashboard">
     1. Vai a **Analyze → Audits** e apri l'audit.
-    2. Apri le impostazioni e modifica lo stato di abilitazione, l'intervallo, l'ancoraggio UTC, la modalità della finestra o il lookback.
-    3. Salva l'audit e conferma l'ora della prossima esecuzione sulla scheda dell'audit.
-    4. Usa **run now** una volta dopo una modifica importante di ambito o contesto.
+    2. Apri le sue impostazioni e modifica lo stato di abilitazione, l'intervallo, l'anchor UTC, la modalità di finestra o il lookback.
+    3. Salva l'audit e conferma il prossimo tempo di esecuzione sulla scheda dell'audit.
+    4. Usa **run now** una volta dopo una modifica significativa di ambito o contesto.
 
-    ![L'editor dell'audit che mostra cadenza, finestra di sweep, ambito, impostazioni di analisi, contesto e canali di notifica.](/images/dashboard/audit-edit.png)
+    ![L'editor di audit che mostra cadenza, finestra di sweep, ambito, impostazioni di analisi, contesto e canali di notifica.](/images/dashboard/audit-edit.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -29,7 +29,7 @@ Utilizza gli audit ricorrenti per le modalità di errore che possono ripresentar
     fp audits edit checkout-reliability --enabled --yes
     ```
 
-    Consulta il riferimento [`fp audits`](/it/reference/cloud-cli#audits) per i limiti della pianificazione, il comportamento della finestra e tutti i comandi di audit.
+    Consulta il riferimento [`fp audits`](/it/reference/cloud-cli#audits) per i limiti di pianificazione, il comportamento della finestra e tutti i comandi di audit.
   </Tab>
 </Tabs>
 
@@ -37,13 +37,13 @@ Scegli la cadenza in base alla velocità e al costo del rischio:
 
 | Modello di rischio | Cadenza iniziale |
 | --- | --- |
-| Azione di produzione ad alto impatto | Giornaliera |
+| Azione di produzione ad alto impatto | Giornaliero |
 | Regressione del flusso di lavoro o del modello | Settimanale |
-| Revisione di governance o accesso | Mensile |
+| Revisione della governance o dell'accesso | Mensile |
 | Indagine di rilascio una tantum | Esegui una volta |
 
-Allinea la finestra di lookback con la cadenza in modo che le esecuzioni non lascino vuoti né esaminino ripetutamente una popolazione inutilmente grande. Dopo aver modificato l'obiettivo o il contesto di un audit, eseguilo manualmente una volta prima di affidarti al prossimo risultato pianificato.
+Allinea la finestra di lookback con la cadenza in modo che le esecuzioni non lascino lacune né esaminino ripetutamente una popolazione inutilmente ampia. Dopo aver modificato l'obiettivo o il contesto di un audit, eseguilo manualmente una volta prima di fare affidamento sul prossimo risultato programmato.
 
 <Note>
-  Gli audit pianificati locali sono configurati sulla macchina e scansionano la cronologia dell'agente locale. Le pianificazioni degli audit Cloud operano sulle sessioni Cloud. Tratta i loro risultati e la loro proprietà separatamente.
+  Gli audit pianificati locali sono configurati sulla macchina e scansionano la cronologia dell'agent locale. Le pianificazioni degli audit Cloud operano sulle sessioni Cloud. Tratta i loro risultati e la proprietà separatamente.
 </Note>

@@ -1,22 +1,21 @@
 ---
----
 title: "Lỗi"
-description: "Nhóm các lỗi lặp lại và mở các phiên đó."
+description: "Nhóm các lỗi lặp lại và mở các phiên liên quan."
 icon: "circle-alert"
 ---
 
-Errors cho bạn một cái nhìn ưu tiên hỗn loạn trên các phiên. Nhóm theo loại lỗi, agent, môi trường, mô hình, công cụ hoặc cửa sổ thời gian để tìm các vấn đề hoạt động lặp lại.
+Errors cung cấp cho bạn một khung nhìn tập trung vào lỗi trên các phiên. Nhóm theo loại lỗi, agent, môi trường, mô hình, công cụ, hoặc khoảng thời gian để tìm ra các vấn đề vận hành lặp lại.
 
 ## Điều tra lỗi
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Truy cập **Observe → Errors**.
-    2. Lọc theo môi trường, loại sự kiện, loại lỗi, agent, ID phiên hoặc văn bản tìm kiếm.
-    3. Mở rộng một lỗi được nhóm để xem các lần xuất hiện. Chọn một hàng để mở sự kiện chính xác trong phiên của nó.
-    4. Chọn điều khiển chuông trên một lỗi đại diện để bắt đầu đặt cảnh báo cho các lỗi tương tự.
+    1. Đi tới **Observe → Errors**.
+    2. Lọc theo môi trường, loại sự kiện, loại lỗi, agent, ID phiên, hoặc tìm kiếm văn bản.
+    3. Mở rộng một lỗi được nhóm để xem các lần xảy ra. Chọn một hàng để mở sự kiện chính xác trong phiên của nó.
+    4. Chọn nút chuông trên một lỗi đại diện để bắt đầu cảnh báo cho các lỗi tương tự.
 
-    ![Trang Errors hiển thị biểu đồ lỗi, các lỗi được nhóm và điều khiển tạo cảnh báo.](/images/dashboard/errors.png)
+    ![Trang Errors hiển thị biểu đồ lỗi, các lỗi được nhóm, và nút điều khiển để tạo cảnh báo.](/images/dashboard/errors.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -25,20 +24,20 @@ Errors cho bạn một cái nhìn ưu tiên hỗn loạn trên các phiên. Nhó
     fp errors --aggregate --env production --since 7d
     ```
 
-    Sử dụng `fp events --full --session-id <id>` khi bạn cần tải trọng thô đằng sau một bản tóm tắt lỗi.
+    Sử dụng `fp events --full --session-id <id>` khi bạn cần dữ liệu thô đằng sau tóm tắt lỗi.
   </Tab>
 </Tabs>
 
 ## Sử dụng Errors khi bạn cần
 
 - Tìm lớp lỗi phổ biến nhất trong production.
-- Xác định xem một công cụ hoặc mô hình có gây ra làn sóng hay không.
-- Nhảy từ số lượng tổng hợp đến các phiên đại diện.
+- Xác định xem một công cụ hoặc mô hình nào gây ra sự tăng đột ngột.
+- Chuyển từ một số lượng tổng hợp sang các phiên đại diện.
 - Tạo cảnh báo cho sự lặp lại.
-- Đưa dân số bị ảnh hưởng vào một cuộc kiểm toán.
+- Bao gồm dân số bị ảnh hưởng trong một kiểm toán.
 
-Một lỗi là một sự kiện được quan sát. Một đánh giá thất bại là một phán xét chất lượng, và một phát hiện kiểm toán là một mô hình hỗn loạn được điều tra. Giữ các phân biệt đó khi quyết định quy trình phản ứng nào sẽ sử dụng.
+Một lỗi là một sự kiện được quan sát. Một đánh giá thất bại là một phán đoán về chất lượng, và một phát hiện kiểm toán là một mẫu lỗi được điều tra. Hãy giữ những phân biệt này khi quyết định quy trình phản hồi nào sẽ sử dụng.
 
 <Card title="Tạo cảnh báo" icon="bell-ring" href="/vi/audits/alerts">
-  Thông báo cho những người phản ứng khi một lỗi hoặc điều kiện chất lượng vượt quá ngưỡng.
+  Thông báo cho những người phản hồi khi một lỗi hoặc điều kiện chất lượng vượt qua ngưỡng.
 </Card>

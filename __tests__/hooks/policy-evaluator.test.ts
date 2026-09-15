@@ -356,7 +356,7 @@ describe("hooks/policy-evaluator", () => {
     expect(String(parsed.reason)).toContain("commit first");
   });
 
-  it("OpenClaw instruct on Stop emits MANDATORY-ACTION deny (revise); on tool events degrades to allow + note", async () => {
+  it("OpenClaw instruct uses revise on Stop and a one-shot shim verdict on PreToolUse", async () => {
     registerPolicy("advise-stop", "desc", () => ({ decision: "instruct", reason: "run tests" }), {
       events: ["Stop"],
     });
@@ -373,9 +373,11 @@ describe("hooks/policy-evaluator", () => {
     const pre = await evaluatePolicies("PreToolUse", { tool_name: "Bash" }, { cli: "openclaw" });
     expect(pre.decision).toBe("instruct");
     const preParsed = JSON.parse(pre.stdout) as Record<string, unknown>;
-    expect(preParsed.permission).toBe("allow"); // does NOT block — no context channel on tool events
+    expect(preParsed.permission).toBe("instruct");
     expect(preParsed.reason).toContain("prefer git mv");
-    expect(pre.stderr).toContain("prefer git mv");
+    expect(preParsed.policyName).toBe("failproofai/advise-tool");
+    expect(preParsed.policyNames).toEqual(["failproofai/advise-tool"]);
+    expect(pre.stderr).toBe("");
   });
 
   it("Cursor SubagentStop + instruct emits {followup_message} JSON (parity with Stop branch)", async () => {

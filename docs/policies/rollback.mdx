@@ -1,10 +1,24 @@
 ---
-title: "Rollback"
-description: "Restore a known policy deployment when a rollout disrupts valid agent work."
+title: "Versions and rollback"
+description: "Every publish is an immutable version, so a rollout that disrupts valid agent work is undone by redeploying the last good one."
 icon: "rotate-ccw"
 ---
 
-Rollback changes the deployed version or removes a policy assignment; it does not erase the decision history that explains the incident.
+A published policy version never changes. Editing a policy and publishing again mints a new version; it never rewrites the one already on machines. That is what makes rollback safe: the last good version is still there, byte for byte, and rolling back does not erase the decision history that explains what went wrong.
+
+## Find a version
+
+<Tabs>
+  <Tab title="Dashboard">
+    Go to **Admin → policy editor** and open **library** to compare a policy's versions or disable one.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp policies list                 # every policy version
+    fp policies show <policy-id>     # one version, with its source
+    ```
+  </Tab>
+</Tabs>
 
 ## Roll back a machine
 
@@ -12,38 +26,40 @@ Rollback changes the deployed version or removes a policy assignment; it does no
   <Tab title="Dashboard">
     1. Go to **Admin → enforcement**, expand the affected machine, and identify its last known-good policy set.
     2. Select **edit**, restore those versions and effects, and apply the new deployment.
-    3. Wait for machine check-in, then verify the reported deployment.
+    3. Wait for the machine's check-in, then verify the reported deployment.
     4. Open **Observe → policy** and the affected sessions to confirm valid work is no longer blocked.
-
   </Tab>
   <Tab title="CLI">
-    Find the generation to return to, reinstate it, then confirm it landed:
+    Every deployment to a machine is a numbered generation. List them, then reinstate one:
 
     ```bash
-    fp fleet history ci-runner-01
-    fp fleet rollback ci-runner-01 3
-    fp fleet diff ci-runner-01
-    failproofai config --status
+    fp fleet history <machine-id>
+    fp fleet rollback <machine-id> <generation>
     ```
 
-    `fp fleet rollback` mints a **new** generation carrying the old set rather than rewinding the counter, so history stays append-only. It refuses if that generation names a policy that has since been disabled or deleted — the server says so rather than reinstating a set that cannot be delivered.
-
-    `fp fleet diff` shows intent versus delivery. A machine reads as drifted until it next polls, so check the diff before concluding the rollback did not take. `failproofai config --status` confirms it on the machine itself.
+    `rollback` mints a new generation carrying the old set rather than rewinding the counter, so history stays append-only, and it refuses a generation that names a policy since disabled or deleted. It needs a signed-in session with `policies:write`. `fp fleet diff <machine-id>` shows what was intended against what the machine applied — it reads as `behind` until the machine next polls — and on the machine itself, `failproofai policies` lists the deployment it is running.
   </Tab>
 </Tabs>
 
-## Pause is not a rollback
+## Take one policy off every machine
 
-A pause suspends every locally-installed policy for **one session**, and always expires on its own — packs, custom files, convention files and builtins alike. Only Cloud-managed policies and the always-on `block-failproofai-commands` guard keep enforcing. So a pause is not a workaround for a bad Cloud deployment, and it is a wider blast radius than it reads like: a pack is where essentially all local enforcement lives, and the pack fail-closed guard is skipped for the duration too.
+```bash
+fp policies disable <policy-id>    # remove it from every deployment carrying it
+fp policies enable <policy-id>     # add it back
+```
 
-| Command | Effect |
-|---|---|
-| `failproofai config --pause` | This directory's newest agent session, for 30 minutes |
-| `failproofai config --pause 10m` | A given time. Maximum 8h; `s`/`m`/`h` suffixes, a bare number means minutes |
-| `failproofai config --pause --session <id>` | Target a specific session |
-| `failproofai config --resume` | End the pause early |
-| `failproofai config --resume --all` | End every active pause |
-| `failproofai config --status` | What is paused, and when it lifts |
+Each mints a new generation on every deployment it touches. Rolling one of those generations back is not how you undo a `disable`, though — `rollback` refuses a generation that names a disabled policy, and every generation from before the disable names this one. `fp policies enable` is the way back, and it mints its own generation in turn.
+
+## Roll back a pack
+
+A pack is pinned to the release you installed, so rolling it back means installing an earlier one:
+
+```bash
+failproofai policies show FailproofAI/policies --releases   # every version it has published, and which one is here
+failproofai policies add FailproofAI/policies@a1b2c3d4e5f6   # pin that one
+```
+
+Without a terminal, or with `--policy`, `--category` or `--all`, re-adding keeps the subset you had chosen. At a terminal with none of those, it opens the picker pre-ticked with the author's defaults, and what you tick replaces your selection — so re-tick what you had.
 
 ## When to roll back
 
@@ -52,17 +68,8 @@ A pause suspends every locally-installed policy for **one session**, and always 
 - A policy depends on fields that an integration does not provide.
 - A new version changes behavior outside the intended failure mode.
 
-After rollback, open the affected sessions and identify the condition that caused the false positive. Create a new version, test both the unsafe and the legitimate case locally, then go back through observe before you enforce again:
-
-```bash
-fp policies test ./policy.mjs --tool Bash --command '<the legitimate case>' --expect allow
-fp policies publish my-policy ./policy.mjs
-fp fleet deploy ci-runner-01 --add my-policy:observe
-fp guardrails summary --since 24h --machine ci-runner-01
-```
-
-`:observe` is what makes that a shadow rollout. A bare `fp fleet deploy ... --add my-policy` **enforces immediately** — an omitted effect resolves to the effect already deployed, and then to `enforce` — which on a policy you have just rolled back means reinstating the incident. Observe mode still evaluates the policy for real and records every non-allow verdict; only the enforcement is withheld, so `fp guardrails summary` measures the new version against the same traffic that broke on the old one. Promote with `--add my-policy:enforce` when the numbers say so.
+After rolling back, open the affected sessions and find the condition behind the false positive. Publish a new version, [test](/policies/test) both the unsafe and the legitimate case, and observe it again before enforcing.
 
 <Warning>
-  Pausing enforcement can be appropriate during an incident, but it widens exposure for every active policy in that scope. Prefer rolling back the specific policy version when possible.
+  `failproofai config --pause` suspends local policies for one session and never Cloud-managed ones, so it is no way out of a bad Cloud deployment. A pause also widens exposure for every policy in its scope; prefer rolling back the one version that misbehaves.
 </Warning>

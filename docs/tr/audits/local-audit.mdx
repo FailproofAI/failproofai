@@ -1,20 +1,20 @@
 ---
-title: "Yerel ajan geçmişini denetle"
-description: "Desteklenen ajan CLI geçmişlerini çevrimdışı olarak tarayın ve riskli veya israfçı davranışları yerel olarak gözden geçirin."
+title: "Yerel agent geçmişini denetleme"
+description: "Desteklenen agent CLI geçmişlerini çevrimdışı olarak tarayın ve riskli veya israflı davranışları yerel olarak gözden geçirin."
 icon: "laptop-minimal-check"
 ---
 
-Yerel denetim, bir makineyi Failproof AI Cloud'a bağlamadan önce hızlı ve gizli bir inceleme için kullanılır. Makinenizde depolanmış olan ajan geçmişlerini tarar, araç etkinliğini yerleşik politikalar aracılığıyla yeniden oynatır ve yerel bir sonuç panosunu açar.
+Bir makineyi Failproof AI Cloud'a bağlamadan önce hızlı ve özel bir inceleme için yerel denetim kullanın. Makinenizde zaten depolanmış olan agent geçmişlerini tarar, araç aktivitesini yerleşik ilkeler aracılığıyla yeniden oynatır ve yerel bir sonuçlar panosu açar.
 
 ## Etkileşimli denetim çalıştırın
 
 <Tabs>
   <Tab title="Pano">
-    Yerel denetim CLI'dan başlar çünkü mevcut makinedeki geçmişleri keşfetmesi gerekir. `failproofai audit` komutunu çalıştırın; tarama sonrası Failproof AI, paketlenmiş panoyu başlatır ve **http://localhost:8020/audit** adresini açar.
+    Yerel denetim CLI'den başlar çünkü mevcut makinedeki geçmişleri keşfetmesi gerekir. `failproofai audit` komutunu çalıştırın; tarama sonrasında Failproof AI, paketlenmiş panoyu başlatır ve **http://localhost:8020/audit** adresini açar.
 
-    Denetim görünümünde oturum sayısı, araç çağrıları, projeler ve politika eşleşmelerinin sayısını gözden geçirin. Sık bulunan sonuçlarla başlayın, ardından uygulama aktif hale getirmeden önce etkilenen projeyi ve ajan geçmişini inceleyin.
+    Denetim görünümünde, oturum sayısını, araç çağrılarını, projeleri ve ilke isabetlerini gözden geçirin. Sık karşılaşılan bulgularla başlayın, ardından uygulamayı etkinleştirmeden önce etkilenen projeyi ve agent geçmişini inceleyin.
 
-    <Info>Yerel denetim panosu, Failproof AI Cloud'daki **Analiz → Denetimler** bölümünden ayrıdır. Yerel denetimler makinede kalır ve hesap veya ağ bağlantısı gerektirmez.</Info>
+    <Info>Yerel denetim panosu, Failproof AI Cloud'daki **Analiz → Denetimler** seçeneğinden ayrıdır. Yerel denetimler makinede kalır ve hesap veya ağ bağlantısı gerektirmez.</Info>
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -30,23 +30,23 @@ Yerel denetim, bir makineyi Failproof AI Cloud'a bağlamadan önce hızlı ve gi
 
 Mevcut denetim adaptörleri Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory, Devin, Antigravity ve Goose'dan geçmişleri okuyabilir. Yalnızca yerel olarak mevcut olan geçmişler taranır.
 
-## Düzenli yerel denetimler zamanlayın
+## Düzenli yerel denetimler planlayın
 
 <Tabs>
   <Tab title="Pano">
-    Yerel panoda **Ayarlar** bölümünü açın, zamanlanan denetimleri etkinleştirin, aralığı seçin ve bulguları alması gereken e-posta adresini ayarlayın. Pano ve CLI, aynı makine yapılandırmasını günceller.
+    Yerel panoda **Ayarlar**'ı açın, zamanlanmış denetleri etkinleştirin, aralığı seçin ve bulguları alması gereken e-posta adresini belirleyin. Pano ve CLI, aynı makine yapılandırmasını günceller.
   </Tab>
   <Tab title="CLI">
-    Haftalık denetim etkinleştirin ve bulguları belirtilen adrese gönderin:
+    Haftalık bir denetimi etkinleştirin ve bulguları belirtilen adrese gönderin:
 
     ```bash
     failproofai audit --schedule 7 --email reliability@example.com
     failproofai audit --status
     ```
 
-    Aralık 1–90 gün arasında değer kabul eder ve atlanırsa 7 gün olarak ayarlanır. İlk kurulum gerektiğinde sizi oturum açtırır; `--email` istem olmadan rapor adresini sağlar.
+    Aralık 1–90 gün arası değer kabul eder ve atlanırsa varsayılan olarak 7'dir. İlk kurulum gerektiğinde sizi oturum açar; `--email`, raporun adresini istem olmadan sağlar.
 
-    Yerel denetim geçmişini silmeden zamanlamayı durdurun:
+    Yerel denetim geçmişini silmeden planlamayı durdurun:
 
     ```bash
     failproofai audit --no-schedule
@@ -54,21 +54,21 @@ Mevcut denetim adaptörleri Claude Code, Codex, GitHub Copilot CLI, Cursor, Open
   </Tab>
 </Tabs>
 
-Daemon, arka planda zamanlanan taramaları çalıştırır, yerel pano tarafından kullanılan önbelleğe alınmış sonucu yeniler ve yapılandırılmış raporu e-postayla gönderir. Hemen etkileşimli bir tarama çalıştırmak istediğinizde `failproofai audit` komutunu kullanın.
+Daemon, arka planda zamanlanmış taramaları çalıştırır, yerel pano tarafından kullanılan önbelleğe alınmış sonucu yeniler ve yapılandırılan raporu e-postayla gönderir. Hemen etkileşimli bir tarama çalıştırmak istediğinizde `failproofai audit` komutunu kullanın.
 
 ## Yerel kanıtlardan Cloud işlemlerine geçin
 
-Yerel denetim hızlı bir başlangıçtır. Paylaşılan izler, yinelenen popülasyon denetimleri, bulgular ve sorunlar, uyarılar, kuruluş genelinde politika dağıtımı veya filo sağlığına ihtiyaç duyduğunuzda makineyi Failproof AI Cloud'a bağlayın.
+Yerel denetim hızlı bir başlangıçtır. Paylaşılan izler, yinelenen popülasyon denetimleri, bulgular ve sorunlar, uyarılar, kuruluş genelinde ilke dağıtımı veya filo durumu gerektiğinde makineyi Failproof AI Cloud'a bağlayın.
 
 <CardGroup cols={2}>
   <Card title="Cloud denetimi oluşturun" icon="scan-search" href="/tr/audits/setup">
-    Yinelenen bir hedef, popülasyon, kanıt penceresi ve yanıt kanalları tanımlayın.
+    Yinelenen bir hedef, popülasyon, kanıt penceresi ve yanıt kanallarını belirleyin.
   </Card>
-  <Card title="Politika etkinleştirin" icon="shield-check" href="/tr/start/first-policy">
-    Yerel olarak doğrulayın, kasıtla yayınlayın ve dar bir makine grubuna önce dağıtın.
+  <Card title="İlke etkinleştirin" icon="shield-check" href="/tr/start/first-policy">
+    Yerel olarak doğrulayın, kasıtlı olarak yayınlayın ve önce dar bir makine grubuna dağıtın.
   </Card>
 </CardGroup>
 
 <Warning>
-  Denetim çıktısı, her işaretli eylem hakkında kanıt olup ispat değildir. Bir bulguyu engelleme uygulamasına dönüştürmeden önce bağlamı doğrulayın.
+  Denetim çıktısı, işaretlenen her işlemin güvenli olmadığının kanıtı değil, inceleme için kanıttır. Bir buluşu uygulama uygulamaya dönüştürmeden önce bağlamı doğrulayın.
 </Warning>

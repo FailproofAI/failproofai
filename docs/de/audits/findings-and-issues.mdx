@@ -1,35 +1,35 @@
 ---
-title: "Findings und Issues"
-description: "Verwandle Audit-Belege in zugewiesene, nachverfolgbare Behebungsaufgaben."
+title: "Erkenntnisse und Issues"
+description: "Audit-Nachweise in zugewiesene, nachverfolgbare Behebungsmaßnahmen umwandeln."
 icon: "clipboard-check"
 ---
 
-Ein Finding ist die beleggestützte Aussage des Audits über einen Fehler. Ein Issue ist der dauerhaft bestehende Workflow, um darauf zu reagieren.
+Eine Erkenntnis ist die durch Nachweise gestützte Aussage des Audits über einen Fehler. Ein Issue ist der beständige Workflow zur Reaktion darauf.
 
-## Arbeit triagieren und zuweisen
+## Triage und Zuweisung der Arbeit
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Öffne **Analyze → Audits**, wähle einen abgeschlossenen Lauf und selektiere ein Finding, um dessen Analyse, Empfehlung, Sessions und Evidenzabfragen einzusehen.
-    2. Bestätige, weise zu, verwerfe, stumme, löse auf oder öffne das Finding erneut, nachdem du seine Belege geprüft hast.
-    3. Gehe zu **Analyze → Issues** und filtere den dauerhaften Eingang nach Status, Schweregrad oder Verantwortlichem.
-    4. Öffne das Issue, um es zuzuweisen, Kommentare oder Abonnenten hinzuzufügen und es nach verifizierter Behebung aufzulösen.
+    1. Öffne **Analyze → Audits**, wähle einen abgeschlossenen Durchlauf und wähle eine Erkenntnis aus, um deren Analyse, Empfehlung, Sitzungen und Nachweisabfragen einzusehen.
+    2. Bestätige, weise zu, verwerfe, stummschalte, löse auf oder öffne die Erkenntnis erneut, nachdem du ihre Nachweise geprüft hast.
+    3. Gehe zu **Analyze → Issues** und filtere den beständigen Posteingang nach Status, Schweregrad oder Zuweisungsempfänger.
+    4. Öffne das Issue, um es zuzuweisen, Kommentare oder Abonnenten hinzuzufügen und es nach Überprüfung der Behebung aufzulösen.
 
-    Beginne mit der Finding-Zusammenfassung. Überprüfe, ob die Fehlerbeschreibung, die empfohlene Reaktion, der Schweregrad und die Einordnung mit den Sessions übereinstimmen, die du vom Audit erwartet hast.
+    Beginne mit der Zusammenfassung der Erkenntnis. Vergewissere dich, dass die Fehlerbeschreibung, die empfohlene Reaktion, der Schweregrad und die Einstufung mit den Sitzungen übereinstimmen, die das Audit untersuchen sollte.
 
-    ![Ein Audit-Finding mit Schweregrad, Vorkommenszahl, Ursachenanalyse, empfohlener Maßnahme, Rankingfaktoren und Belegen.](/images/dashboard/audit-finding.png)
+    ![Eine Audit-Erkenntnis mit Schweregrad, Vorkommensanzahl, Ursachenanalyse, empfohlener Maßnahme, Einstufungsfaktoren und Nachweisen.](/images/dashboard/audit-finding.png)
 
-    Öffne anschließend eine betroffene Session, anstatt allein auf Basis der Zusammenfassung zu entscheiden. Der verknüpfte Trace sollte das genaue Ereignis und den Payload zeigen, die das Finding unterstützen.
+    Öffne als Nächstes eine betroffene Sitzung, anstatt allein auf Basis der Zusammenfassung zu entscheiden. Der verknüpfte Trace sollte das genaue Ereignis und die Nutzlast zeigen, die die Erkenntnis belegen.
 
-    ![Eine von einem Audit-Finding verknüpfte Session, geöffnet am relevanten Fehler mit seinen Ereignis-Metadaten und dem rohen Payload.](/images/dashboard/audit-linked-session.png)
+    ![Eine von einer Audit-Erkenntnis verknüpfte Sitzung, geöffnet am relevanten Fehler mit seinen Ereignismetadaten und der Roh-Nutzlast.](/images/dashboard/audit-linked-session.png)
 
-    Verwende nach der Überprüfung der Belege Issues, um der Reaktion einen Eigentümer zu geben und sie unabhängig von künftigen Audit-Läufen zu verfolgen.
+    Nach der Überprüfung der Nachweise verwende Issues, um der Reaktion einen Verantwortlichen zuzuweisen und sie unabhängig von zukünftigen Audit-Durchläufen zu verfolgen.
 
-    ![Der Issues-Eingang mit aktiven, bestätigten und aufgelösten Aufgaben inklusive Schweregrad und Eigentümerschaft.](/images/dashboard/incidents.png)
+    ![Der Issues-Posteingang mit aktiven, bestätigten und aufgelösten Aufgaben samt Schweregrad und Eigentümerschaft.](/images/dashboard/incidents.png)
 
-    Öffne das Issue, um Untersuchungsnotizen zu erfassen, Abonnenten zu benachrichtigen und den Reaktionsverlauf festzuhalten. Löse es erst auf, nachdem die Behebung deployed und verifiziert wurde.
+    Öffne das Issue, um Untersuchungsnotizen zu erfassen, Abonnenten zu benachrichtigen und den Reaktionsverlauf zu bewahren. Löse es erst auf, nachdem die Behebung ausgerollt und verifiziert wurde.
 
-    ![Eine Issue-Detailansicht mit Quelle, Verstoßbelegen, Verantwortlichen, Abonnenten, Zeitverlauf und Kommentaren.](/images/dashboard/incident-detail.png)
+    ![Eine Issue-Detailansicht mit Quelle, Verstoßnachweisen, Zuweisungsempfängern, Abonnenten, Zeitverlauf und Kommentaren.](/images/dashboard/incident-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -47,39 +47,39 @@ Ein Finding ist die beleggestützte Aussage des Audits über einen Fehler. Ein I
 
     Verwende `fp issues subscribe <issue-id>`, `fp issues unsubscribe <issue-id>` und `fp issues subscribers <issue-id>`, um Beobachter zu verwalten.
 
-    Siehe die [Cloud-CLI-Audit- und Issue-Referenz](/de/reference/cloud-cli#audits) für Audit-Findings und [`fp issues`](/de/reference/cloud-cli#issues) für die Issue-Verwaltung.
+    Siehe die [Cloud-CLI-Referenz für Audits und Issues](/de/reference/cloud-cli#audits) für Audit-Erkenntnisse und [`fp issues`](/de/reference/cloud-cli#issues) für das Issue-Management.
   </Tab>
 </Tabs>
 
-## Ein Finding überprüfen
+## Eine Erkenntnis überprüfen
 
-Stelle sicher, dass es folgendes enthält:
+Stelle sicher, dass sie Folgendes enthält:
 
-- Ein stabiles Fehlermuster, nicht nur einen einmaligen Titel
+- Ein stabiles Fehlerbild, nicht nur einen einmaligen Titel
 - Schweregrad und betriebliche Auswirkung
-- Betroffene Session-IDs oder unterstützende Abfragen
+- Betroffene Sitzungs-IDs oder unterstützende Abfragen
 - Ausreichend Kontext, um das Verhalten zu reproduzieren
-- Eine vorgeschlagene Reaktion, die mit den Belegen übereinstimmt
+- Eine vorgeschlagene Reaktion, die den Nachweisen entspricht
 
-## Ein Issue zur Verwaltung der Reaktion verwenden
+## Ein Issue zur Steuerung der Reaktion verwenden
 
-Erstelle oder verknüpfe ein Issue, wenn das Finding Zuweisung, Diskussion, Statusänderungen, Kommentare oder Abonnenten benötigt. Issues können auch Alert-Incidents und manuell gemeldete Probleme repräsentieren – deshalb sind sie unter „Audit-Reaktion" und nicht in der primären Navigation angesiedelt.
+Erstelle oder verknüpfe ein Issue, wenn die Erkenntnis eine Zuweisung, Diskussion, Statusänderungen, Kommentare oder Abonnenten erfordert. Issues können auch Alarm-Vorfälle und manuell gemeldete Probleme repräsentieren – daher sind sie unter der Audit-Reaktion und nicht in der primären Navigation angesiedelt.
 
-Löse das Issue auf, wenn die Behebung deployed und verifiziert ist. Löse das Finding auf, wenn das Fehlermuster für die Audit-Population adressiert wurde. Diese Zeitpunkte können sich unterscheiden.
+Löse das Issue auf, wenn die Behebung ausgerollt und verifiziert wurde. Löse die Erkenntnis auf, wenn das Fehlerbild für die Audit-Population behoben wurde. Diese Zeitpunkte können voneinander abweichen.
 
 ## Ein Issue in einen Policy-Entwurf umwandeln
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Öffne das Issue und überprüfe sein Finding, die zitierten Sessions, die Ursache und die Empfehlung.
-    2. Wähle **generate policy** und überprüfe das Eignungsergebnis sowie den vorgeschlagenen Durchsetzungsintent. Ein **no policy**-Ergebnis bedeutet, dass das Verhalten stattdessen einen Alert, eine Workflow-Änderung oder eine menschliche Reaktion erfordern könnte.
-    3. Wähle **write this policy**, überprüfe und teste den generierten Quellcode dann im **Admin → policy editor**, bevor du **publish version** auswählst. Verwende **open the editor anyway**, wenn du dem Eignungscheck nicht zustimmst.
-    4. Gehe zu **Admin → enforcement**, deploye die Version im **observe**-Modus und überprüfe ihre Entscheidungen unter **Observe → policy**, bevor du sie durchsetzt.
+    1. Öffne das Issue und überprüfe dessen Erkenntnis, zitierte Sitzungen, Ursache und Empfehlung.
+    2. Wähle **generate policy** und überprüfe das Eignungsergebnis sowie den vorgeschlagenen Durchsetzungsansatz. Ein Ergebnis **no policy** bedeutet, dass das Verhalten stattdessen möglicherweise eine Benachrichtigung, eine Workflow-Änderung oder eine manuelle Reaktion erfordert.
+    3. Wähle **write this policy**, dann überprüfe und teste den generierten Quellcode im **Admin → policy editor**, bevor du **publish version** auswählst. Verwende **open the editor anyway**, wenn du der Eignungsprüfung nicht zustimmst.
+    4. Gehe zu **Admin → enforcement**, stelle die Version im **observe**-Modus bereit und überprüfe ihre Entscheidungen unter **Observe → policy**, bevor du sie durchsetzt.
 
-    Der Issue-Titel, die Finding-Beschreibung, die Ursache, die Empfehlung und der Eignungsintent helfen beim Verfassen des Entwurfs. Es wird nichts automatisch veröffentlicht oder deployed.
+    Der Issue-Titel, die Erkenntnisbeschreibung, die Ursache, die Empfehlung und der Eignungsansatz helfen beim Verfassen des Entwurfs. Es wird nichts automatisch veröffentlicht oder ausgerollt.
   </Tab>
   <Tab title="CLI">
-    Verwende die CLI, um die Belege zu prüfen, bevor du das Issue im Dashboard öffnest:
+    Verwende die CLI, um die Nachweise zu prüfen, bevor du das Issue im Dashboard öffnest:
 
     ```bash
     fp issues show <issue-id>
@@ -87,10 +87,10 @@ Löse das Issue auf, wenn die Behebung deployed und verifiziert ist. Löse das F
     fp events --session-id <session-id> --full --all
     ```
 
-    Policy-Eignung, Cloud-Veröffentlichung und Fleet-Deployment sind Dashboard-Workflows. Verwende `failproofai policies --install --custom <file>`, wenn du den entsprechenden Policy-Quellcode zuerst lokal validieren möchtest.
+    Policy-Eignung, Cloud-Veröffentlichung und Fleet-Deployment sind Dashboard-Workflows. Verwende `failproofai policies --install --custom <file>`, wenn du zuerst äquivalenten Policy-Quellcode lokal validieren möchtest.
   </Tab>
 </Tabs>
 
-<Card title="Eine Policy verfassen" icon="shield-plus" href="/de/policies/editor">
+<Card title="Eine Policy erstellen" icon="shield-plus" href="/de/policies/editor">
   Wandle ein bestätigtes, wiederholbares Aktionsmuster in eine Policy-Version um.
 </Card>

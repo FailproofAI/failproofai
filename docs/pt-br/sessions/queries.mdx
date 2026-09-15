@@ -4,7 +4,7 @@ description: "Explore dados de sessão, evento e avaliação com SQL reutilizáv
 icon: "database"
 ---
 
-Queries são a camada flexível por baixo de dashboards, auditorias e investigações. Use SQL ad-hoc para testar uma ideia e, quando ela se tornar parte de um fluxo recorrente, salve a query.
+Queries são a camada flexível por baixo de dashboards, auditorias e investigações. Use SQL ad-hoc para testar uma ideia e, em seguida, salve a query quando ela se tornar parte de um fluxo de trabalho recorrente.
 
 ## Criar e executar uma query
 
@@ -13,15 +13,15 @@ Queries são a camada flexível por baixo de dashboards, auditorias e investiga�
     1. Acesse **Analyze → Queries** e selecione **new query**.
     2. Abra o navegador de schema e escolha campos dos dados de evento, sessão ou avaliação.
     3. Escreva o SQL, adicione parâmetros quando necessário e execute a query.
-    4. Salve com um nome e descrição claros e use **add to dashboard** quando o resultado precisar ser monitorado.
+    4. Salve com um nome e descrição claros, depois use **add to dashboard** quando o resultado precisar ser monitorado.
 
-    O editor de queries combina o schema de eventos, SQL, parâmetros e uma prévia dos resultados para que você possa validar a questão antes de salvá-la.
+    O editor de queries combina o schema de eventos, SQL, parâmetros e uma prévia dos resultados para que você possa validar a pergunta antes de salvá-la.
 
-    ![O editor de queries SQL com navegador de schema e grid de resultados em tempo real.](/images/dashboard/query-lab.png)
+    ![O editor de queries SQL com navegador de schema e grid de resultados ao vivo.](/images/dashboard/query-lab.png)
 
     As queries salvas aparecem na biblioteca compartilhada, onde os membros da equipe podem reexecutá-las ou adicionar seus resultados a dashboards.
 
-    ![A biblioteca de Queries salvas contendo queries nativas e personalizadas reutilizáveis.](/images/dashboard/queries.png)
+    ![A biblioteca de Queries salvas contendo queries integradas e personalizadas reutilizáveis.](/images/dashboard/queries.png)
 
     Use um nome e descrição claros para que o resultado continue compreensível sem precisar reabrir o SQL.
   </Tab>
@@ -44,9 +44,9 @@ Queries são a camada flexível por baixo de dashboards, auditorias e investiga�
 - Comparar pontuações de avaliação entre modelos ou ambientes.
 - Medir o tempo entre uma espera humana e a retomada.
 - Identificar negações de política seguidas de uma alternativa bem-sucedida.
-- Construir uma coorte para auditoria.
+- Construir um coorte para uma auditoria.
 
-Abra **Queries → Schema** antes de escrever consultas contra campos desconhecidos. Prefira filtros explícitos de tempo e ambiente, e mantenha limites de resultados durante a exploração.
+Abra **Queries → Schema** antes de escrever contra campos desconhecidos. Prefira filtros explícitos de tempo e ambiente, e mantenha limites de resultado durante a exploração.
 
 <Warning>
   Uma query pode identificar um padrão suspeito, mas não estabelece o modo de falha por si só. Abra traces representativos ou execute uma auditoria antes de transformar o resultado em uma política.

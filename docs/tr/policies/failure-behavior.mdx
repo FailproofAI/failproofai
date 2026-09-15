@@ -1,20 +1,19 @@
 ---
----
 title: "Hata davranışı"
-description: "İlke değerlendirmesi veya yerel daemon'un kullanılamadığı durumları anlayın."
+description: "İlke değerlendirmesi veya yerel daemon kullanılamadığında neler olacağını anlayın."
 icon: "shield-alert"
 ---
 
-Failproof AI, bir zorlama hatasının sessizce riskli işlere izin vermek yerine görünür olması için tasarlanmıştır.
+Failproof AI, bir zorunluluk hatasının sessizce riskli işlere izin vermek yerine görünür olacak şekilde tasarlanmıştır.
 
-## Başarısızlık-kapalı engeli tanılayın
+## Kapalı hata bloğunu tanılayın
 
 <Tabs>
-  <Tab title="Pano">
+  <Tab title="Dashboard">
     1. **Admin → enforcement** bölümüne gidin ve makineyi açın.
-    2. Son check-in zamanını, atanmış deployment'ını ve bildirilen deployment'ını kontrol edin.
+    2. Son check-in'ini, atanan dağıtımını ve bildirilen dağıtımını kontrol edin.
     3. **Observe → policy** bölümüne gidin ve reddedilen kararın oturumunu açın.
-    4. Nedenin daemon erişilebilirliğini, sürüm uyumsuzluğunu veya ilkenin kendisini bildirip bildirmediğini doğrulayın.
+    4. Nedinin daemon ulaşılabilirliğini, sürüm uyumsuzluğunu veya ilkenin kendisini bildirip bildirmediğini doğrulayın.
 
   </Tab>
   <Tab title="CLI">
@@ -24,45 +23,45 @@ Failproof AI, bir zorlama hatasının sessizce riskli işlere izin vermek yerine
     failproofai config
     ```
 
-    `failproofai config` komutu paket yükseltmesinden sonra daemon'u günceller ve yeniden başlatır.
+    `failproofai config` komutunu yeniden çalıştırmak, bir paket yükseltmesinden sonra daemon'u günceller ve yeniden başlatır.
   </Tab>
 </Tabs>
 
-`failproofaid` kullanacak şekilde yapılandırılmış bir makinede, daemon tek değerlendiricidir. Erişilemez ise veya protokol sürümü CLI ile eşleşmez ise, hook değerlendirmesi kapalı durumda başarısız olur. İşlem, operatörü daemon'u kontrol etmeye veya güncelleştirmeye yönlendiren bir nedenle reddedilir.
+`failproofaid` kullanmak üzere yapılandırılan bir makinede, daemon tek değerlendirmeci olur. Ulaşılamıyorsa veya protokol sürümü CLI'dan eşleşmiyorsa, hook değerlendirmesi kapalı olarak başarısız olur. İşlem, operatöre daemon'u kontrol etme veya güncelleme talimatı veren bir nedenden reddedilir.
 
-Daemon yapılandırmasından önce, hook'lar ilkeleri işlem içinde değerlendirir. Daemon yapılandırması kaydedildikten sonra, Failproof AI daemon başarısız olduğunda ikinci bir değerlendirici'ye sessizce geri dönmez.
+Daemon yapılandırmasından önce, hook'lar ilkeleri işlem içinde değerlendirir. Daemon yapılandırması kaydedildikten sonra, Failproof AI daemon başarısız olduğunda ikinci bir değerlendirmeciye sessizce geri dönmez.
 
-## Başarısızlık-kapalı karara yanıt verin
+## Kapalı bir karara yanıt verin
 
 1. `failproofai config --status` komutunu çalıştırın.
-2. Sürümler farklı ise, paketi güncelledikten sonra `failproofai config` komutunu çalıştırın.
-3. Daemon erişilemez ise, hizmet durumunu ve yerel günlükleri inceleyin.
-4. Bilinen bir ilke değerlendirmesi yolu sağlıklı olana kadar aracı işini devam ettirin.
+2. Sürümler farklıysa, paketi güncelledikten sonra `failproofai config` komutunu yeniden çalıştırın.
+3. Daemon ulaşılamıyorsa, hizmet durumunu ve yerel günlükleri inceleyin.
+4. Bilinen bir ilke değerlendirme yolunun sağlıklı olduğundan emin olduktan sonra aracı çalışmasını devam ettirin.
 
 <Warning>
-  Engellenen işemi tekrarlı olarak denemeyin. Başarısızlık-kapalı yanıt, sistemin işlemin güvenli olduğunu doğrulayamadığı anlamına gelir.
+  Engellenen işlemi tekrar tekrar denemeyin. Kapalı bir yanıt, sistemin işlemin güvenli olduğunu belirleyemediği anlamına gelir.
 </Warning>
 
-## Bir paket yüklenmeyecek
+## Bir pack yüklenmeyecek
 
-Bir paket zorunlu kılmak için söylenen ve çalıştıramayan bir makine, sessizce devam etmek yerine reddeder. Tetikleyici **kaydedilmiş bir beklenti**dir, hiçbir zaman boş değildir: kurulu paketi olmayan bir makine sessizdir, ancak bildirilen ve çözülmeyecek olan veya manifestinin bildirdiğinden daha az tescil eden bir paket reddeder.
+Bir pack'i uygulamak için söylenen bir makine, bunu çalıştıramıyorsa, sessizce devam etmek yerine reddeder. Tetikleyici, asla boş olmayan **kaydedilmiş bir beklenti**dir: hiçbir pack'i yüklü olmayan bir makine sessizdir, ancak bildirilen ve çözülmeyecek bir pack veya manifesti bildirdiklerinden daha az kayıt yapan bir pack reddeder.
 
-Reddetme **dar kapsamlı**dır, ulaşılamayan daemon'dan farklı olarak. Ulaşılamayan bir daemon hiçbir değerlendirme yapılmadığı anlamına gelir, bu nedenle hiçbir şey güvenli olarak bilinemez. Yüklenmeyecek bir pakette, her bildirilen ilke kendi `match`'e sahip olduğu için numaralandırılabilir eksik guardlar kümesi vardır — bu nedenle yalnızca bu ilkelerin kapsadığı olaylar ve araçları reddeder, diğer her şey devam eder.
+Reddetme **dar kapsamlı**dır, ulaşılamayan bir daemon'dan farklı olarak. Ulaşılamayan bir daemon, hiçbir değerlendirmenin gerçekleşmediği anlamına gelir, bu nedenle hiçbir şey güvenli olduğu bilinmez. Yüklenmeyecek bir pack, numaralandırılabilen eksik guard kümesine sahiptir, çünkü her bildirilen ilke kendi `match` değerine sahiptir; bu nedenle, yalnızca bu ilkelerin kapsadığı olayları ve araçları reddeder, diğer her şey devam eder.
 
-Aşağıdakiler için tetiklenmez:
+Şu durumlar için tetiklenmez:
 
-- yapısı gereği değerlendiren ve atan `observe` paketi
-- asla almadığınız veya açıkça kapattığınız ilkeler
-- yükleyicinin hiçbir zaman almadığı paket; burada "kayıt yok" bilinçli atlamadan ayrılamaz
-- aktif bir oturum pausu
-- bir yükleme timeout'u, bu geçici — bir yavaş disk anı sorun çözene kadar reddetmemelidir
+- yapısı gereği değerlendiren ve atma işlemi yapan bir `observe` pack
+- asla almadığınız veya açıkça kapatılan ilkeler
+- yükleyicinin hiçbir zaman almadığı bir pack; burada "kayıt yok", kasıtlı bir atlanmışlık olarak ayırt edilemez
+- etkin bir oturum duraklatması
+- geçici olan bir yükleme zaman aşımı; bir yavaş disk anı, bir insan müdahale edene kadar reddetmemelidir
 
-`UserPromptSubmit` eksik ilkenin ne bildirdiğine bakılmaksızın reddetten ziyade **talimatlar** verir. Genel bir reddetme, sorunun çözülmesini sağlayabilecek aracıyı kilitleyerek ilerler.
+`UserPromptSubmit`, bildirilen eksik ilkelerden bağımsız olarak reddediş yerine **talimat** verir. Kapsamlı bir reddetme, bunu da yanına alır ve sorunu çözebilecek aracıya sizi kilitler.
 
-### Ne yapmalı
+### Yapılması gerekenler
 
 ```bash
 failproofai pack list
 ```
 
-Yüklenmeyecek olan kurulu paketleri adlandırır, nedenini söyler ve sıfır olmayan bir değer döndürerek çıkış yapar. Daha sonra ya yeniden yükleyin (`failproofai pack add <source>`) ya da kaldırın (`failproofai pack remove <publisher/name>`) — kaldırılması beklentiyi geri çeker ve reddetme bununla birlikte durur.
+Yüklenmeyecek yüklü pack'leri listeler, nedenini söyler ve sıfır olmayan bir değerle çıkır. Sonra bunu yeniden yükleyin (`failproofai pack add <source>`) veya kaldırın (`failproofai pack remove <publisher/name>`) — kaldırmak beklentiyi geri çeker ve reddetme de bununla birlikte durur.

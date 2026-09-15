@@ -4,25 +4,25 @@ description: "Erstelle ein Audit über das Cloud-Dashboard oder die fp CLI und �
 icon: "scan-search"
 ---
 
-Ein Audit wandelt eine Reihe von Sitzungen in priorisierte, belegbasierte Fehlerbefunde um. Beginne mit einer konkreten Fehlerfrage.
+Ein Audit wandelt eine Reihe von Sitzungen in priorisierte, evidenzbasierte Fehlerbefunde um. Beginne mit einer konkreten, klar eingegrenzten Fehlerfrage.
 
 <Tabs>
   <Tab title="Dashboard">
     <Steps>
       <Step title="Audits öffnen">
-        Gehe in der Cloud-Seitenleiste zu **Analyze → Audits**. Wähle **new audit**.
+        Navigiere in der Cloud-Seitenleiste zu **Analyze → Audits**. Wähle **new audit** aus.
       </Step>
       <Step title="Audit einrichten">
-        Gib einen Namen und ein konkretes Fehlerziel ein, z. B. „Produktionssitzungen finden, die denselben fehlgeschlagenen Zahlungsaufruf wiederholen, ohne die Eingabe zu ändern oder eskalieren." Wähle den Agent, die Umgebung, das Zeitfenster und den Zeitplan aus. Füge eine kurze Beschreibung und Referenz-URLs hinzu, wenn der Auditor deine Workflow-Regeln benötigt.
+        Gib einen Namen und ein konkretes Fehlerziel ein, z. B. „Produktionssitzungen finden, die denselben fehlgeschlagenen Zahlungsaufruf wiederholen, ohne die Eingabe zu ändern oder eskalieren." Wähle den Agenten, die Umgebung, den Zeitraum und den Zeitplan aus. Füge eine kurze Beschreibung und Referenz-URLs hinzu, wenn der Auditor deine Workflow-Regeln benötigt.
       </Step>
-      <Step title="Erstellen und auf den Lauf warten">
-        Wähle **create audit**. Der erste Lauf wird sofort in die Warteschlange gestellt. Öffne die Audit-Karte, um den Fortschritt von „queued" über „running" bis „complete" zu verfolgen.
+      <Step title="Audit erstellen und auf den Durchlauf warten">
+        Wähle **create audit** aus. Der erste Durchlauf wird sofort in die Warteschlange gestellt. Öffne die Audit-Karte, um den Fortschritt von „queued" über „running" bis „complete" zu verfolgen.
       </Step>
     </Steps>
 
-    Nach Abschluss des Laufs öffne einen Befund und prüfe seine Sitzungsbelege. Anschließend kannst du ihn bestätigen, zuweisen, verwerfen, stummschalten oder auflösen.
+    Sobald der Durchlauf abgeschlossen ist, öffne einen Befund und überprüfe die zugehörigen Sitzungsbelege. Anschließend kannst du ihn bestätigen, zuweisen, verwerfen, stummschalten oder auflösen.
 
-    ![Ein abgeschlossener Audit-Befund mit Fehlerbeschreibung, empfohlener Maßnahme, Belegen und betroffenen Sitzungen.](/images/dashboard/audit-finding.png)
+    ![Ein abgeschlossener Audit-Befund mit Fehlerbeschreibung, empfohlener Maßnahme, unterstützenden Belegen und betroffenen Sitzungen.](/images/dashboard/audit-finding.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -49,4 +49,4 @@ Ein Audit wandelt eine Reihe von Sitzungen in priorisierte, belegbasierte Fehler
   </Tab>
 </Tabs>
 
-Als nächstes [verhindere deinen ersten Fehler mit einer Policy](/de/start/first-policy) für eine bestätigte, wiederholbare Aktion.
+Als Nächstes kannst du [mit einer Richtlinie deinen ersten Fehler verhindern](/de/start/first-policy) – für eine bestätigte, wiederholbare Aktion.

@@ -9,8 +9,8 @@ import threading
 import weakref
 from datetime import datetime, timezone
 
+from failproofai_sdk._redact import redact_json_line, redaction_enabled
 from failproofai_sdk._resolver import get_base_dir
-
 
 logger = logging.getLogger(__name__)
 
@@ -638,11 +638,14 @@ class EventWriter:
         # whole batch goes back on the queue to be retried.
         lines = []
         dropped = 0
+        redact = redaction_enabled(get_base_dir())
         for entry in entries:
             encoded = _encode_entry(entry)
             if encoded is None:
                 dropped += 1
                 continue
+            if redact:
+                encoded = redact_json_line(encoded)
             lines.append(encoded)
 
         if dropped:

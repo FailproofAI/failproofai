@@ -1,21 +1,21 @@
 ---
 title: "Canlı etkinlikler"
-description: "Oturum çalışırken aracı etkinliğini gerçek zamanlı izleyin."
+description: "Bir oturum çalışırken aracı aktivitesini gerçek zamanlı olarak izleyin."
 icon: "radio"
 ---
 
-Canlı etkinlikler, enstrümantasyonu doğrulamak ve oturum bitmesini beklemeden riskli bir çalışmayı izlemenize yardımcı olur.
+Canlı etkinlikler, enstrümantasyonunuzu doğrulamanıza ve oturum bitene kadar beklemeden riskli bir çalıştırmayı izlemenize yardımcı olur.
 
-## Etkinliği izleyin
+## Aktiviteyi izleyin
 
 <Tabs>
   <Tab title="Dashboard">
     1. **Observe → Events** kısmına gidin.
-    2. Verilerin geldiğini doğrulamak için geçerli zaman penceresiyle başlayın ve filtre uygulamayın.
-    3. Ortam, etkinlik türü, aracı veya oturum ile filtreleyin. Yük metni için aramayı kullanın.
-    4. Bir etkinliği seçerek özeti ve ayrıntılarını inceleyin. Tam izleme için oturum bağlantısını takip edin.
+    2. Mevcut zaman penceresinden başlayın ve verilerin geldiğini doğrulamak için filtre kullanmayın.
+    3. Ortam, etkinlik türü, aracı veya oturum ile filtreleyin. Yük metni için araması kullanın.
+    4. Özet ve ayrıntılarını incelemek için bir etkinliği seçin. Tam izleme için oturum bağlantısını takip edin.
 
-    ![Hermes sohbet ağ geçidinden gelen trafiği ve kodlama-CLI çalışmalarını gösteren, zaman, ortam, etkinlik türü, aracı, model, bağlam ve oturum ile filtrelenen canlı Etkinlikler akışı.](/images/dashboard/events-stream-current.png)
+    ![Hermes sohbet ağ geçidinden gelen trafiği gösteren canlı Etkinlikler akışı, zaman, ortam, etkinlik türü, aracı, model, bağlam ve oturuma göre filtrelenen kodlama-CLI çalıştırmaları yanında.](/images/dashboard/events-stream-current.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -24,22 +24,22 @@ Canlı etkinlikler, enstrümantasyonu doğrulamak ve oturum bitmesini beklemeden
     fp --json events --full --session-id <session-id> --all
     ```
 
-    Varsayılan akış ham yükleri hariç tutar. `--full` seçeneğini yalnızca sınırlı bir oturum incelemesi için kullanın.
+    Varsayılan akış ham yükleri hariç tutar. `--full` seçeneğini yalnızca sınırlı bir oturum araştırması için kullanın.
   </Tab>
 </Tabs>
 
-Üç temel soruyu cevaplamak için etkinlik akışını kullanın:
+Etkinlik akışını üç acil soruyu cevaplamak için kullanın:
 
-- Beklenen aracı doğru ortama raportu veriyor mu?
-- Model çağrıları, araç çağrıları ve politika kararları sırada mı geliyor?
-- Oturum ilerlemeyi durdurdu mu yoksa bir eylemi tekrarlamaya mı başladı?
+- Beklenen aracı doğru ortama mı raporluyor?
+- Model çağrıları, araç çağrıları ve politika kararları sırada mı geliyorlar?
+- Oturum ilerleme yapmayı mı durdurdu yoksa bir eylemi tekrar etmeye mi başladı?
 
-Etkinlik türleri aracı yaşam döngüsü etkinliklerini, model isteklerini ve yanıtlarını, araç kullanımını ve sonuçlarını, kanca yürütmesini, insan beklentilerini ve kesintilerini ve açık hataları içerir. Korelasyon kimlikleri araç çağrısı ve sonucu gibi eşleştirilmiş etkinlikleri birleştirir.
+Etkinlik türleri, aracı yaşam döngüsü etkinliklerini, model isteklerini ve yanıtlarını, araç kullanımını ve sonuçlarını, kanca yürütmesini, insan bekleme ve kesintilerini ve açık hataları içerir. Korelasyon kimlikleri, bir araç çağrısı ve sonucu gibi eşleştirilmiş etkinlikleri birleştirir.
 
 <Tip>
-  Yeni bir entegrasyonu doğrularken canlı görünümü geniş tutun. İlk etkinliği gördükten sonra filtre ekleyin; yanlış bir filtre başarısız alımı izlenebilir hale getirebilir.
+  Yeni bir entegrasyon doğrulanırken canlı görünümü geniş tutun. İlk etkinliği gördükten sonra yalnızca filtre ekleyin; yanlış bir filtre, başarısız alımına benzeyebilir.
 </Tip>
 
-Hiçbir etkinlik görünmezse `failproofai config --status` komutunu çalıştırın, ardından [alımı giderin](/tr/reference/troubleshooting).
+Hiçbir etkinlik görünmüyorsa, `failproofai config --status` komutunu çalıştırın, ardından [alımda sorun giderin](/tr/reference/troubleshooting).
 
-Desteklenen 12 [harnisten](/tr/reference/harnesses) birinde çalışmayan aracılar, insan-döngüde etkinlikleri (`human_wait`, `human_input`, `human_interrupt`) dahil olmak üzere [Python SDK](/tr/reference/custom-agents) aracılığıyla aynı etkinlik türlerini raportar; bu etkinlikler ağ geçidi ve üretim aracılarının bağlı olduğu etkinliklerdir.
+Desteklenen 12 [harness](/tr/reference/harnesses) içinde çalışmayan aracılar, insan döngüsü etkinlikleri (`human_wait`, `human_input`, `human_interrupt`) dahil olmak üzere aynı etkinlik türlerini [Python SDK](/tr/reference/custom-agents) üzerinden rapor eder; bu etkinlikler ağ geçidi ve üretim aracılarının bağlı olduğu etkinliklerdir.

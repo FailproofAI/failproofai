@@ -1,49 +1,96 @@
 ---
-title: "Policy editor"
-description: "Create and revise versioned policies from a confirmed failure mode."
+title: "Write a policy"
+description: "Let Failproof AI draft a policy from an audit finding, or write the source yourself, then review, test, and publish it."
 icon: "file-pen-line"
 ---
 
-Use the policy editor to turn a finding or issue into a deployable rule. Keep authoring separate from deployment so a draft cannot silently change live behavior.
+There are two ways to write a policy: let Failproof AI draft it from an audit finding, or write the source yourself. Nothing is published or deployed until you choose to.
 
-When an issue has a repeatable action pattern, open it under **Analyze → issues** and select **generate policy**. Failproof AI first explains whether a policy can express the problem, then carries the reviewed intent and finding context into the editor. The generated source remains a draft until you publish it.
+## Write a policy from an audit
 
-## Publish a policy version
+An audit finds a failure; a policy stops it happening again. Failproof AI drafts the policy from the finding's own evidence.
+
+### 1. Run an audit
+
+[Run an audit](/audits/run) over the sessions where the failure happens. Each finding carries its evidence sessions, a root cause, and a suggested prevention path. Work from a finding with a **repeatable action pattern** — a policy can only stop what it can recognize in a hook event.
+
+### 2. Generate the draft
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Admin → policy editor** and, in **compose**, describe the failure mode or paste the JavaScript policy source.
-    2. Validate the source and fix every reported error.
-    3. Enter the policy identity and publish it, then use **library** to compare or disable versions.
-    4. Select **enforcement** when the version is ready for a machine rollout.
+    1. Open the finding's issue under **Analyze → issues** and check its cited sessions, root cause, and recommendation.
+    2. Select **generate policy**. Failproof AI first says whether a policy can express the problem at all. A **no policy** result means the fix is an alert, a workflow change, or a person — not a policy.
+    3. Select **write this policy**. The issue title, finding, root cause, recommendation, and proposed enforcement intent become a draft in **Admin → policy editor**. Use **open the editor anyway** when you disagree with the candidacy check.
 
     ![The Policy editor compose view with policy identity, AI-assisted drafting, source validation, and publishing controls.](/images/dashboard/policy-editor.png)
   </Tab>
   <Tab title="CLI">
-    Publish from the CLI with `fp policies publish`. It mints a **new version** and never edits one in place, and it parse-checks the source with node before sending — nothing downstream does, so a syntax error would otherwise surface on the machine at enforcement time:
+    Read the evidence, then draft with the assistant. `compose` prints source for you to review and publishes nothing:
 
     ```bash
-    fp policies test ./checkout.policy.mjs --command "git push --force" --expect deny
-    fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
+    fp issues show <issue-id>
+    fp audits finding <finding-id>
+    fp policies compose "Block git push --force on release branches"
     ```
 
-    Publishing deploys nothing — a new version sits unused until `fp fleet deploy` puts it on a machine. `fp policies compose "<plain English>"` drafts source with the Cloud assistant and prints it for review rather than publishing it.
-
-    To install a policy into a local agent CLI instead (not Cloud), use `failproofai policies --install --custom ./checkout.policies.ts --cli claude --scope project`.
+    `compose` needs a signed-in session (`fp login`) whose role has `policies:write`; it refuses API keys.
   </Tab>
 </Tabs>
 
-## Authoring checklist
+### 3. Review the draft
 
-1. Name the failure mode in operational language.
-2. Select the hook events and tools that contain enough evidence to decide.
-3. Write the narrowest condition that matches unsafe behavior.
-4. Return a reason that tells the agent or operator what to do next.
-5. Add examples that should match and examples that must remain allowed.
-6. Save a new version and request review.
+A draft is a starting point, not a verdict. Before publishing, check that it:
 
-Use `instruct` when the agent can safely correct course. Use `deny` when allowing the action would create unacceptable or irreversible risk.
+1. Names the failure mode in operational language.
+2. Matches only the hook events and tools that carry enough evidence to decide.
+3. Uses the narrowest condition that catches the unsafe action.
+4. Returns a reason that tells the agent what to do instead.
+5. Uses `instruct` where the agent can safely correct course, and `deny` only where allowing the action is unacceptable or irreversible.
 
-<Info>
-  Policy versions are immutable deployment inputs. Editing a draft creates a new version; it should not rewrite the version already assigned to machines.
-</Info>
+Validate the source in the editor and fix every reported error.
+
+### 4. Test it, then publish
+
+Run **backtest** under the source before you publish: it replays the draft against calls your fleet already made and counts the working calls it would have interrupted. [Test a policy](/policies/test) covers that and the other checks.
+
+When it behaves, enter the policy identity and select **publish version**. Publishing mints an immutable version and deploys nothing: it sits unused until you [deploy it](/policies/deploy). From a terminal:
+
+```bash
+fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
+```
+
+`publish` parse-checks the source before sending it, so a syntax error surfaces here instead of on a machine at enforcement time.
+
+## Write it yourself
+
+A policy is JavaScript or TypeScript against the `failproofai` API:
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "protect-production-paths",
+  description: "Block writes to production configuration",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (ctx.toolName !== "Write" && ctx.toolName !== "Edit") return allow();
+    const path = String(ctx.toolInput?.file_path ?? "").replaceAll("\\", "/");
+    if (path.split("/").includes("production")) {
+      return deny("Writes to production configuration require approval.");
+    }
+    return allow();
+  },
+});
+```
+
+This matches `production/config.yml`, `/srv/production/config.yml`, `/srv/production`, and `C:\\production\\config.yml` for both `Write` and `Edit`, but not `production-backup`: `production` has to be a whole path segment. The context also carries the event type, normalized payload, session metadata, parameters, and source CLI when available — see the [policy SDK](/reference/policy-sdk).
+
+To publish it as a version, paste the source into **compose** in **Admin → policy editor** and follow steps 3 and 4 above, or publish the file from a terminal with `fp policies publish`.
+
+To run it on a machine without Cloud, save it under `.failproofai/policies/` with a name ending in `policies.js`, `policies.mjs` or `policies.ts` — those load automatically at project and user scope — or install it by path:
+
+```bash
+failproofai policies --install --custom ./security.policies.ts --scope project
+```
+
+Give every policy a name that is unique across convention, custom, pack, and Cloud-managed policies.

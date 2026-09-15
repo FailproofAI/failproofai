@@ -836,13 +836,19 @@ describe("probe B tells a route-around apart from a silent-allow", () => {
     expect(probeSh).toMatch(/shell_route_attempted\(\) \{ grep -q "result=deny policy=custom\/canary-read-shell "/);
   });
 
-  it("downgrades a leak to INCONCLUSIVE only when the shell was being denied", () => {
-    // A leak with NO shell attempt stays FAIL — that is what a CLI ignoring our
-    // deny looks like (copilot 1.0.70), and blurring the two would blind this
-    // suite to the silent-allow it exists to catch.
+  it("downgrades a leak to INCONCLUSIVE only when a route-around was being denied", () => {
+    // Either route the probe does not target counts: the shell
+    // (canary-read-shell) or any other tool (canary-guard). A leak with NEITHER
+    // stays FAIL — that is what a CLI ignoring our deny looks like (copilot
+    // 1.0.70), and blurring the two would blind this suite to the silent-allow
+    // it exists to catch.
     expect(probeSh).toMatch(
-      /if shell_route_attempted "\$LOGB\/hooks\.log"; then VB=INCONCLUSIVE; else VB=FAIL; fi/,
+      /if shell_route_attempted "\$LOGB\/hooks\.log" \|\| route_around "\$LOGB\/hooks\.log"\n\s*then VB=INCONCLUSIVE; else VB=FAIL; fi/,
     );
+    // And drift keeps its own verdict ahead of that branch: canary-guard denies
+    // for two opposite reasons under one name, so the widened exception must
+    // not be able to reach a NORMALIZATION-DRIFT-SUSPECT deny.
+    expect(probeSh).toMatch(/if drift_suspected "\$LOGB\/hooks\.log"; then VB=FAIL/);
   });
 });
 

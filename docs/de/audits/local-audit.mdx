@@ -1,20 +1,20 @@
 ---
-title: "Lokalen Agentenverlauf prüfen"
-description: "Unterstützte Agent-CLI-Verläufe offline scannen und riskantes oder verschwenderisches Verhalten lokal überprüfen."
+title: "Lokale Agent-Historie prüfen"
+description: "Unterstützte Agent-CLI-Historien offline scannen und riskantes oder verschwenderisches Verhalten lokal überprüfen."
 icon: "laptop-minimal-check"
 ---
 
-Verwende ein lokales Audit für eine sofortige, private Überprüfung, bevor du einen Rechner mit Failproof AI Cloud verbindest. Es scannt die bereits auf deinem Rechner gespeicherten Agentenverläufe, repliziert die Tool-Aktivität durch integrierte Richtlinien und öffnet ein lokales Ergebnis-Dashboard.
+Führen Sie ein lokales Audit durch, um sofort und vertraulich zu prüfen, bevor Sie einen Rechner mit Failproof AI Cloud verbinden. Es scannt die Agent-Historien, die bereits auf Ihrem Rechner gespeichert sind, repliziert die Tool-Aktivitäten anhand integrierter Richtlinien und öffnet ein lokales Ergebnis-Dashboard.
 
-## Interaktives Audit ausführen
+## Interaktives Audit starten
 
 <Tabs>
   <Tab title="Dashboard">
-    Das lokale Audit startet über die CLI, da es Verläufe auf dem aktuellen Rechner auffinden muss. Führe `failproofai audit` aus; nach dem Scan startet Failproof AI das mitgelieferte Dashboard und öffnet **http://localhost:8020/audit**.
+    Das lokale Audit wird über die CLI gestartet, da es Historien auf dem aktuellen Rechner auffinden muss. Führen Sie `failproofai audit` aus; nach dem Scan startet Failproof AI das mitgelieferte Dashboard und öffnet **http://localhost:8020/audit**.
 
-    Überprüfe in der Audit-Ansicht die Anzahl der Sitzungen, Tool-Aufrufe, Projekte und Richtlinientreffer. Beginne mit häufigen Befunden, und untersuche dann das betroffene Projekt und den Agentenverlauf, bevor du die Durchsetzung aktivierst.
+    Überprüfen Sie in der Audit-Ansicht die Anzahl der Sitzungen, Tool-Aufrufe, Projekte und Policy-Treffer. Beginnen Sie mit häufigen Befunden, und untersuchen Sie dann das betroffene Projekt und die Agent-Historie, bevor Sie die Durchsetzung aktivieren.
 
-    <Info>Das lokale Audit-Dashboard ist von **Analyze → Audits** in Failproof AI Cloud getrennt. Lokale Audits verbleiben auf dem Rechner und erfordern kein Konto oder keine Netzwerkverbindung.</Info>
+    <Info>Das lokale Audit-Dashboard ist von **Analyse → Audits** in Failproof AI Cloud getrennt. Lokale Audits verbleiben auf dem Rechner und erfordern weder ein Konto noch eine Netzwerkverbindung.</Info>
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -22,31 +22,31 @@ Verwende ein lokales Audit für eine sofortige, private Überprüfung, bevor du 
     failproofai audit
     ```
 
-    Der Befehl führt einen vollständigen Scan aller gefundenen unterstützten Verläufe durch. Der aktuelle Befehl akzeptiert keine Filter wie `--since`, `--cli`, `--project`, `--port` oder `--no-open`.
+    Der Befehl führt einen vollständigen Scan aller gefundenen unterstützten Historien durch. Der aktuelle Befehl akzeptiert keine Filter wie `--since`, `--cli`, `--project`, `--port` oder `--no-open`.
 
-    Halte den Prozess am Laufen, während du das lokale Dashboard verwendest. Drücke <kbd>Ctrl</kbd>+<kbd>C</kbd>, wenn du fertig bist.
+    Lassen Sie den Prozess laufen, während Sie das lokale Dashboard verwenden. Drücken Sie <kbd>Ctrl</kbd>+<kbd>C</kbd>, wenn Sie fertig sind.
   </Tab>
 </Tabs>
 
-Die aktuellen Audit-Adapter können Verläufe von Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory, Devin, Antigravity und Goose lesen. Es werden nur lokal verfügbare Verläufe gescannt.
+Die aktuellen Audit-Adapter können Historien von Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory, Devin, Antigravity und Goose lesen. Es werden nur lokal verfügbare Historien gescannt.
 
-## Regelmäßige lokale Audits planen
+## Wiederkehrende lokale Audits planen
 
 <Tabs>
   <Tab title="Dashboard">
-    Öffne **Einstellungen** im lokalen Dashboard, aktiviere geplante Audits, wähle das Intervall und gib die E-Mail-Adresse an, die Befunde erhalten soll. Dashboard und CLI aktualisieren dieselbe Rechnerkonfiguration.
+    Öffnen Sie **Einstellungen** im lokalen Dashboard, aktivieren Sie geplante Audits, wählen Sie das Intervall aus und geben Sie die E-Mail-Adresse an, die Befunde erhalten soll. Dashboard und CLI aktualisieren dieselbe Rechnerkonfiguration.
   </Tab>
   <Tab title="CLI">
-    Ein wöchentliches Audit aktivieren und Befunde an die angegebene Adresse senden:
+    Wöchentliches Audit aktivieren und Befunde an die angegebene Adresse senden:
 
     ```bash
     failproofai audit --schedule 7 --email reliability@example.com
     failproofai audit --status
     ```
 
-    Das Intervall akzeptiert 1–90 Tage und ist standardmäßig 7, wenn es weggelassen wird. Bei der ersten Einrichtung wirst du bei Bedarf angemeldet; `--email` gibt die Berichtsadresse an, ohne eine Eingabeaufforderung zu zeigen.
+    Das Intervall akzeptiert 1–90 Tage und ist standardmäßig 7, wenn es weggelassen wird. Bei der ersten Einrichtung werden Sie bei Bedarf angemeldet; `--email` gibt die Berichtsadresse an, ohne eine Eingabeaufforderung anzuzeigen.
 
-    Den Zeitplan deaktivieren, ohne den lokalen Audit-Verlauf zu löschen:
+    Zeitplan stoppen, ohne die lokale Audit-Historie zu löschen:
 
     ```bash
     failproofai audit --no-schedule
@@ -54,15 +54,15 @@ Die aktuellen Audit-Adapter können Verläufe von Claude Code, Codex, GitHub Cop
   </Tab>
 </Tabs>
 
-Der Daemon führt geplante Scans im Hintergrund aus, aktualisiert das zwischengespeicherte Ergebnis für das lokale Dashboard und sendet den konfigurierten Bericht per E-Mail. Verwende `failproofai audit`, wenn du sofort einen interaktiven Scan ausführen möchtest.
+Der Daemon führt geplante Scans im Hintergrund durch, aktualisiert das im lokalen Dashboard verwendete zwischengespeicherte Ergebnis und sendet den konfigurierten Bericht per E-Mail. Verwenden Sie `failproofai audit`, wenn Sie sofort einen interaktiven Scan ausführen möchten.
 
-## Von lokalen Erkenntnissen zu Cloud-Betrieb wechseln
+## Von lokalen Belegen zu Cloud-Betrieb wechseln
 
-Ein lokales Audit ist eine schnelle Ausgangsbasis. Verbinde den Rechner mit Failproof AI Cloud, wenn du gemeinsame Traces, wiederkehrende Populations-Audits, Befunde und Probleme, Warnmeldungen, organisationsweite Richtlinienbereitstellung oder Fleet-Übersicht benötigst.
+Ein lokales Audit ist eine schnelle Ausgangsbasis. Verbinden Sie den Rechner mit Failproof AI Cloud, wenn Sie gemeinsame Traces, wiederkehrende Populations-Audits, Befunde und Issues, Benachrichtigungen, organisationsweite Richtlinienbereitstellung oder Fleet-Health benötigen.
 
 <CardGroup cols={2}>
   <Card title="Cloud-Audit erstellen" icon="scan-search" href="/de/audits/setup">
-    Definiere ein wiederkehrendes Ziel, eine Population, ein Nachweisfenster und Reaktionskanäle.
+    Definieren Sie ein wiederkehrendes Ziel, eine Population, ein Beweisfenster und Reaktionskanäle.
   </Card>
   <Card title="Richtlinie aktivieren" icon="shield-check" href="/de/start/first-policy">
     Lokal validieren, gezielt veröffentlichen und zunächst für eine kleine Rechnergruppe bereitstellen.
@@ -70,5 +70,5 @@ Ein lokales Audit ist eine schnelle Ausgangsbasis. Verbinde den Rechner mit Fail
 </CardGroup>
 
 <Warning>
-  Audit-Ausgabe ist ein Überprüfungsnachweis, kein Beweis dafür, dass jede markierte Aktion unsicher ist. Überprüfe den Kontext, bevor du einen Befund in eine blockierende Durchsetzungsmaßnahme umwandelst.
+  Audit-Ergebnisse sind Belege zur Überprüfung, kein Beweis dafür, dass jede gemeldete Aktion unsicher ist. Überprüfen Sie den Kontext, bevor Sie einen Befund in eine blockierende Durchsetzung umwandeln.
 </Warning>

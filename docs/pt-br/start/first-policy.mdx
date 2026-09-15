@@ -1,26 +1,26 @@
 ---
-title: "Previna sua primeira falha com uma política"
-description: "Crie uma versão de política, implante-a em modo de observação e depois a aplique."
+title: "Evite sua primeira falha com uma política"
+description: "Crie uma versão de política, implante-a no modo de observação e depois aplique o bloqueio."
 icon: "shield-check"
 ---
 
-Use uma política somente depois de conseguir descrever a ação insegura e as ações legítimas que devem continuar sendo permitidas.
+Use uma política somente quando conseguir descrever a ação insegura e as ações legítimas que devem continuar permitidas.
 
 <Tabs>
   <Tab title="Dashboard">
     <Steps>
-      <Step title="Criar a política">
-        Vá para **Admin → policy editor**. Comece com a política de demonstração, revise ou edite seu código-fonte e, em seguida, selecione **publish version**. A publicação cria a versão imutável que você pode implantar nas máquinas.
+      <Step title="Crie a política">
+        Acesse **Admin → policy editor**. Comece com a política de demonstração, revise ou edite seu código-fonte e selecione **publish version**. A publicação cria a versão imutável que pode ser implantada nas máquinas.
 
         ![The Policy editor compose view with a demo policy ready to publish as an immutable version.](/images/dashboard/policy-editor.png)
       </Step>
-      <Step title="Implantar em uma máquina">
-        Vá para **Admin → enforcement**, expanda a máquina de destino e selecione **edit this machine**. Adicione a política de demonstração publicada, fixe sua versão, escolha **observe** e aplique a implantação.
+      <Step title="Implante-a em uma máquina">
+        Acesse **Admin → enforcement**, expanda a máquina de destino e selecione **edit this machine**. Adicione a política de demonstração publicada, fixe sua versão, escolha **observe** e aplique a implantação.
 
         ![The machine deployment editor with a published policy version selected in observe mode before applying the deployment.](/images/dashboard/enforcement-editor.png)
       </Step>
-      <Step title="Verificar a política">
-        Execute uma nova sessão de agente nessa máquina e, em seguida, abra **Observe → policy**. Selecione a máquina e confirme que a política de demonstração aparece no mapeamento de políticas e na linha do tempo de decisões. O modo de observação registra o que a política faria sem bloquear a ação.
+      <Step title="Verifique a política">
+        Execute uma nova sessão de agente nessa máquina e abra **Observe → policy**. Selecione a máquina e confirme que a política de demonstração aparece no mapeamento de políticas e na linha do tempo de decisões. O modo de observação registra o que a política faria sem bloquear a ação.
 
         ![The Policy page showing decision totals, enforcement activity over time, and local and Cloud-managed policy mappings.](/images/dashboard/policy-observe.png)
       </Step>
@@ -42,6 +42,6 @@ Use uma política somente depois de conseguir descrever a ação insegura e as a
     fp sessions --env production --since 24h
     ```
 
-    Ambas as etapas também estão disponíveis pelo CLI: `fp policies publish <id> <file>` cria uma versão e `fp fleet deploy <machine-id> --add <id>` a coloca em uma máquina. Os equivalentes no dashboard são **Admin → policy editor** e **Admin → enforcement**.
+    Ambas as etapas também estão disponíveis pelo CLI: `fp policies publish <id> <file>` cria uma versão e `fp fleet deploy <machine-id> --add <id>` a implanta em uma máquina. Os equivalentes no dashboard são **Admin → policy editor** e **Admin → enforcement**.
   </Tab>
 </Tabs>

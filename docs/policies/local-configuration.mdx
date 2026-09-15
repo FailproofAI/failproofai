@@ -1,50 +1,102 @@
 ---
-title: "Local policy configuration"
-description: "Choose where policies apply and set their parameters."
-icon: "sliders-horizontal"
+title: "Local configuration"
+description: "Control policy scope, parameters, custom files, and machine-level Failproof AI settings."
+icon: "file-cog"
 ---
 
-Use scope to decide who receives a local policy:
+Failproof AI keeps what a repository can commit — hook wiring, policy parameters, custom policies — apart from machine state such as credentials, installed packs, and the daemon.
 
-| Scope | Applies to |
+## Choose a scope
+
+A scope decides where the hooks are wired, and which configuration file you write parameters and custom policy paths into:
+
+- **User** applies across projects on this machine.
+- **Project** belongs to the repository and can be committed.
+- **Local** overrides one project for one user and should remain gitignored.
+
+```bash
+failproofai policies --install --cli claude --scope project   # wire hooks for this repository
+failproofai policies --install --cli claude --scope user      # or for every project on this machine
+failproofai policies
+```
+
+Not every harness supports local scope; the CLI rejects a scope the selected harness cannot represent.
+
+Which pack policies are on is **not** scoped. The switch is recorded with the installed pack, so `failproofai policies add <name>` turns a policy on for the whole machine, whatever `--scope` says.
+
+| Scope | Policy configuration file |
 | --- | --- |
-| `user` | Your supported agents on this machine |
-| `project` | Agents running in this project |
-| `local` | Claude only, in the local project settings |
-| `all` | Uninstall only |
+| Project | `<project>/.failproofai/policies-config.json` |
+| Local | `<project>/.failproofai/policies-config.local.json` |
+| User | `~/.failproofai/policies-config.json` |
 
-```bash
-failproofai policies add block-sudo --scope user
-failproofai policies add block-rm-rf --scope project
-```
+Policy parameters use the first scope that defines parameters for that policy, in project → local → user order. Explicit custom policy paths use the first scope that defines them.
 
-Hermes and OpenClaw support user scope only. Most other harnesses support user and project. Claude also supports local scope. See [Harnesses](/reference/harnesses).
+## Configure policy parameters
 
-## Policy parameters
+<Tabs>
+  <Tab title="Dashboard">
+    Open the policy in the local dashboard, edit its supported parameters, and save in the selected scope. Run a matching and non-matching agent action, then inspect the decision in **Observe → policy**.
 
-Policy settings live in `policies-config.json` at the matching scope. Use the local dashboard's **Policies → Configure** view when possible.
+  </Tab>
+  <Tab title="CLI">
+    Edit the selected scope's `policies-config.json`, then run `failproofai policies`: it warns about a `policyParams` entry naming a policy no installed pack carries. It does not check the keys inside an entry, so check their spelling against the table below.
 
-A parameter belongs to one policy and changes how that policy decides. For example, an allow-list can make a blocking policy accept known-safe commands or paths.
+    ```json
+    {
+      "policyParams": {
+        "block-rm-rf": {
+          "allowPaths": ["/tmp/build-output"]
+        }
+      }
+    }
+    ```
 
-Custom policy files can be loaded automatically from `.failproofai/policies/`, or explicitly:
+    ```bash
+    failproofai policies
+    ```
+  </Tab>
+</Tabs>
 
-```bash
-failproofai policies -i -c ./guards.mjs --scope project
-```
+### Parameters the Failproof AI policies accept
 
-Remove explicit paths with:
+Each policy validates its own parameter types.
 
-```bash
-failproofai policies -u -c
-```
+| Policy | Parameter | Type and default |
+| --- | --- | --- |
+| `sanitize-api-keys` | `additionalPatterns` | `pattern[]`, `[]`; entries contain `regex` and `label` |
+| `block-read-outside-cwd` | `allowPaths` | `string[]`, `[]` |
+| `block-sudo` | `allowPatterns` | `string[]`, `[]` |
+| `block-rm-rf` | `allowPaths` | `string[]`, `[]` |
+| Infrastructure blockers | `allowPatterns` | `string[]`, `[]` |
+| `block-secrets-write` | `additionalPatterns` | `string[]`, `[]` |
+| `block-push-master` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `block-work-on-main` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `prefer-package-manager` | `allowed`, `blocked` | `string[]`, `[]` |
+| `warn-large-file-write` | `thresholdKb` | `number`, `1024` |
+| `require-push-before-stop` | `remote`, `baseBranch` | `string`, `"origin"`; `string`, `"main"` |
+| `require-pr-before-stop` | `baseBranch` | `string`, `"main"` |
+| `require-no-conflicts-before-stop` | `baseBranch` | `string`, `"main"` |
 
-## Files
+<Warning>
+  An allow pattern broadens what an agent may do. Test the exact tokenization and command variants on the target harness before deploying it across a fleet.
+</Warning>
 
-| File | Purpose |
+## Understand the machine files
+
+`~/.failproofai` contains separate files for separate trust boundaries:
+
+| Path | Purpose |
 | --- | --- |
-| `~/.failproofai/config.json` | Machine and collector settings |
-| `policies-config.json` | Enabled policies and parameters for a scope |
-| `.failproofai/policies/*policies.mjs` | Convention-loaded policies |
-| `~/.failproofai/policies/packs/installed.json` | Installed packs and selections |
+| `config.json` | Non-secret daemon, audit, and telemetry settings |
+| `credentials.json` | Cloud credentials; stored with owner-only permissions |
+| `policies-config.json` | User-scope parameters and explicit custom policy paths |
+| `policies/` | User convention policies, installed packs and which of their policies are on, and Cloud-managed policy artifacts |
+| `hook-activity/` | Local policy decision log |
+| `state/` | Daemon spool, health, pause, and runtime state |
 
-Do not edit installed pack artifacts directly. Reinstall or publish a corrected release.
+Use `FAILPROOFAI_HOME` to relocate the complete machine layout for a container or isolated test. Do not relocate individual state directories independently.
+
+<Warning>
+  Never commit `credentials.json`. Commit project policy configuration and project convention policies only after reviewing them as enforcement code.
+</Warning>

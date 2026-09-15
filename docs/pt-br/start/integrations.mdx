@@ -5,7 +5,7 @@ description: "Conecte qualquer framework de agente compatível ao Failproof AI c
 icon: "plug"
 ---
 
-Seu agente já produz tudo que vale a pena registrar — chamadas de modelo, chamadas de ferramenta, limites de nós, esperas humanas, falhas. O framework descarta tudo isso. O SDK preserva.
+Seu agente já produz tudo o que vale registrar — chamadas de modelo, chamadas de ferramentas, limites de nós, esperas humanas, falhas. O framework descarta tudo isso. O SDK preserva.
 
 <Columns cols={3}>
   <Card title="Agentes personalizados" icon="wrench" href="/pt-br/start/quickstarts/custom-agents">
@@ -15,10 +15,10 @@ Seu agente já produz tudo que vale a pena registrar — chamadas de modelo, cha
     Grafos, nós, ferramentas, retrievers, modelos.
   </Card>
   <Card title="CrewAI" icon="users" href="/pt-br/start/quickstarts/crewai">
-    Crews, fluxos, agentes por papel, ferramentas.
+    Crews, flows, agentes por papel, ferramentas.
   </Card>
   <Card title="LlamaIndex" icon="database" href="/pt-br/start/quickstarts/llamaindex">
-    Workflows, etapas, function agents, retrievers.
+    Workflows, steps, agentes de função, retrievers.
   </Card>
   <Card title="Pydantic AI" icon="badge-check" href="/pt-br/start/quickstarts/pydantic-ai">
     Agentes tipados, capacidades, ferramentas, retentativas.
@@ -59,7 +59,7 @@ with failproofai_sdk.session():
     ...                               # sua chamada de agente existente, sem alterações
 ```
 
-Sem decoradores nas suas funções, sem callbacks passados para suas chamadas, sem IDs espalhados pelo seu código. Apenas a chamada dentro da sessão é diferente:
+Sem decoradores nas suas funções, sem callbacks passados às suas chamadas, sem IDs espalhados pelo seu código. Apenas a chamada dentro da sessão muda:
 
 <Tabs>
   <Tab title="LangGraph">
@@ -91,16 +91,16 @@ Sem decoradores nas suas funções, sem callbacks passados para suas chamadas, s
   </Tab>
 </Tabs>
 
-O extra instala o **framework**. Todos os adaptadores já estão incluídos no pacote base, então um projeto que já possui seu framework não precisa de nenhum extra.
+O extra instala o **framework**. Todos os adaptadores são distribuídos no pacote base, portanto um projeto que já possui seu framework não precisa de nenhum extra.
 
 ## Verifique se chegou
 
-Execute uma sessão instrumentada e, em seguida, abra **Observe → Sessions** e selecione seu ambiente. A execução aparece como um trace reconstruído.
+Execute uma sessão instrumentada e abra **Observe → Sessions**, selecionando seu ambiente. A execução aparece como um trace reconstruído.
 
-Se nada chegar, confirme que a máquina está conectada com `failproofai config --status`. Consulte [Configurar captura](/pt-br/start/setup).
+Se nada chegar, confirme se a máquina está conectada com `failproofai config --status`. Veja [Configurar captura](/pt-br/start/setup).
 
 <Warning>
-  Não verifique o diretório de spool para confirmar a entrega. O daemon do Failproof coleta e exclui cada lote em milissegundos, então ler esse diretório compete com o coletor e exibe muito menos eventos do que foram emitidos.
+  Não verifique o diretório de spool para confirmar a entrega. O daemon do Failproof coleta e exclui cada lote em milissegundos, portanto ler esse diretório compete com o coletor e exibe muito menos eventos do que foram emitidos.
 </Warning>
 
 ## Próximos passos
@@ -112,7 +112,7 @@ Cada quickstart acima leva ao seu guia completo — o que é registrado, opçõe
     O modelo de dados, os IDs, os tipos de eventos e como os eventos chegam à Cloud.
   </Card>
   <Card title="Leia um trace" icon="route" href="/pt-br/sessions/read-a-trace">
-    Acompanhe a causalidade ao longo de uma sessão em vez de logs desconectados.
+    Siga a causalidade por uma sessão em vez de logs desconectados.
   </Card>
   <Card title="Encontre sua primeira falha" icon="scan-search" href="/pt-br/start/first-audit">
     Audite as sessões que você acabou de capturar.

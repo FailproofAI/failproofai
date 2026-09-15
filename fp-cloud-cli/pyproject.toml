@@ -31,7 +31,14 @@ dependencies = [
     # through that — which is what makes both sides of the split work. Import Click from
     # there and nowhere else; `tests/test_click_compat.py` enforces it, because every way
     # this breaks is silent (typed errors collapse to exit 1 with an empty stderr, and the
-    # telemetry flag catalog empties). Suite verified against 0.25.1 and 0.27.0.
+    # telemetry flag catalog empties). Suite verified against 0.25.1, 0.27.0, 0.27.1 and
+    # 0.27.2.
+    #
+    # The split keeps moving INSIDE the vendored tree, so the shim resolves each symbol
+    # separately: 0.27.2 moved `Abort` out of `typer._click.exceptions` into
+    # `typer.exceptions`, and the one all-or-nothing `try/except ImportError` that used to
+    # wrap the vendored import sent every OTHER symbol to pip Click over that single
+    # missing name — 105 tests red, every typed error at exit 1.
     #
     # The floor is 0.13, not 0.12, because 0.12 cannot BUILD this app: the global
     # `--insecure/--secure` option in `app.py` is an `Optional[bool]` with a
@@ -39,7 +46,7 @@ dependencies = [
     # rejects with `TypeError: Secondary flag is not valid for non-boolean flag`.
     # That fires while the command tree is constructed, before any parsing, so
     # `fp --version`, `fp --help` and every subcommand die identically — an
-    # installed CLI that cannot run one command. `uv.lock` pins 0.27.1, so
+    # installed CLI that cannot run one command. `uv.lock` pins 0.27.2, so
     # neither CI nor the publish smoke test ever installed the broken part of the
     # range. Measured across 0.12.0/0.12.3/0.12.5 (all fail) and 0.13.0 upward
     # (all pass).

@@ -1,10 +1,10 @@
 ---
 title: "Packs de politiques"
-description: "Installez un ensemble de politiques publiées sous forme de release GitHub et gérez ce qu'elles appliquent."
+description: "Installez un ensemble de politiques publiées en tant que release GitHub et gérez ce qu'elles appliquent."
 icon: "package"
 ---
 
-Un pack est un ensemble de politiques publiées sous forme de release GitHub. Une seule commande suffit à l'installer, les checksums de la release sont vérifiés avant toute exécution, et le digest est enregistré pour que le pack ne puisse pas être modifié sur votre machine par la suite.
+Un pack est un ensemble de politiques publié sous forme de release GitHub. Une seule commande suffit pour l'installer, les sommes de contrôle de la release sont vérifiées avant toute exécution, et le digest est enregistré pour garantir que le pack ne peut pas changer sur votre machine par la suite.
 
 ## Installer les politiques Failproof AI
 
@@ -12,23 +12,23 @@ Un pack est un ensemble de politiques publiées sous forme de release GitHub. Un
 failproofai pack add core
 ```
 
-Cette commande installe l'ensemble que nous publions, depuis la copie incluse dans le package — aucune connexion réseau n'est nécessaire et elle ne peut pas échouer derrière un proxy. Vous pouvez n'en prendre qu'une partie :
+Cette commande installe l'ensemble que nous publions, depuis la copie incluse dans le package — aucune connexion réseau n'est nécessaire et l'installation ne peut pas échouer derrière un proxy. Pour n'en prendre qu'une partie :
 
 ```bash
 failproofai pack add core --policy block-rm-rf         # une seule, ou quelques-unes séparées par des virgules
 failproofai pack add core --category dangerous-commands # toute une catégorie
-failproofai pack add core --all                         # tout son contenu
+failproofai pack add core --all                         # tout ce qu'il contient
 ```
 
-`failproofai pack list` liste toutes les catégories proposées par le pack.
+`failproofai pack list` affiche toutes les catégories proposées par le pack.
 
-## Consulter le contenu d'un pack avant de l'installer
+## Voir le contenu d'un pack avant de l'installer
 
 ```bash
 failproofai pack list acme/support-agent
 ```
 
-Liste toutes les politiques du pack, regroupées par catégorie, en indiquant celles que l'auteur active par défaut et celles qui sont optionnelles. Seul le **manifeste** est lu — l'artefact principal n'est jamais téléchargé ni importé, ce qui fait que consulter le pack d'un inconnu n'exécute aucun code étranger. Le manifeste est tout de même vérifié par rapport au `SHA256SUMS` de la release, de sorte que ce que vous lisez correspond exactement à ce qui serait installé.
+Liste toutes les politiques du pack, regroupées par catégorie, en indiquant lesquelles son auteur active par défaut et lesquelles sont optionnelles. Seul le **manifeste** est lu — l'artefact d'entrée n'est jamais téléchargé ni importé, de sorte que consulter le pack d'un inconnu ne peut pas exécuter son code. Le manifeste est tout de même vérifié par rapport au fichier `SHA256SUMS` de la release, ce qui garantit que ce que vous lisez correspond à ce qui serait installé.
 
 `failproofai pack list` sans argument liste les packs déjà installés sur cette machine.
 
@@ -38,20 +38,20 @@ Liste toutes les politiques du pack, regroupées par catégorie, en indiquant ce
 failproofai pack add acme/support-agent
 ```
 
-Chacune de ces formes est acceptée — collez celle que vous avez sous la main :
+L'une ou l'autre de ces formes fonctionne — collez celle que vous avez :
 
 | Source | Résultat |
 | --- | --- |
 | `acme/support-agent` | Dernière release, **épinglée** au tag exact résolu |
-| `acme/support-agent@v2.1.0` | Cette release précise |
-| `github:acme/support-agent@v2.1.0` | La même, écrite explicitement |
-| `https://github.com/acme/support-agent/releases/tag/v2.1.0` | La même, copiée depuis un navigateur |
+| `acme/support-agent@v2.1.0` | Cette release spécifique |
+| `github:acme/support-agent@v2.1.0` | Identique, écrit explicitement |
+| `https://github.com/acme/support-agent/releases/tag/v2.1.0` | Identique, copié depuis un navigateur |
 
-Ne pas spécifier de tag installe la dernière release **et l'épingle**, puis vous indique le tag choisi. Ce qui est enregistré désigne toujours exactement une release, de sorte qu'une réinstallation ne peut pas dériver.
+Ne pas préciser de tag installe la dernière release **et l'épingle**, puis vous indique le tag choisi. Ce qui est enregistré identifie toujours exactement une release, de sorte qu'une réinstallation ne peut pas dériver.
 
 ## Ne prendre qu'une partie d'un pack
 
-Par défaut, vous obtenez les **propres** valeurs par défaut du pack — les politiques que son auteur a jugées sûres à activer sans surveillance — et non son contenu intégral.
+Par défaut, vous obtenez les **propres** valeurs par défaut du pack — les politiques que son auteur a jugées sûres à activer sans surveillance — et non tout ce qu'il contient.
 
 ```bash
 failproofai pack add acme/support-agent --category billing,git
@@ -59,52 +59,52 @@ failproofai pack add acme/support-agent --policy block-refunds
 failproofai pack add acme/support-agent --all
 ```
 
-`--category` et `--policy` se combinent en union (`--only` est accepté comme synonyme de `--policy`). Réinstaller à une version plus récente conserve vos sélections plutôt que de tout réactiver.
+`--category` et `--policy` se combinent en union (`--only` est accepté comme synonyme de `--policy`). Réajouter le pack à une version plus récente conserve vos choix plutôt que de réactiver le reste.
 
 ## Gérer ce qui est activé
 
 ```bash
-failproofai policies                    # toutes les sources en une seule liste, packs inclus
-failproofai pack list                   # les packs uniquement, regroupés par catégorie
-failproofai policies --uninstall block-refunds        # désactiver une politique de pack
+failproofai policies                    # toutes les sources dans une seule liste, packs inclus
+failproofai pack list                   # packs uniquement, regroupés par catégorie
+failproofai policies --uninstall block-refunds        # désactiver une politique du pack
 failproofai policies --install block-refunds          # la réactiver
 failproofai pack remove acme/support-agent
 ```
 
-Un nom seul désigne la politique **intégrée** si elle existe sous ce nom. Désignez explicitement la copie d'un pack lorsque nécessaire :
+Un nom seul désigne le **builtin** lorsqu'il en existe un portant ce nom. Nommez explicitement la copie d'un pack lorsque c'est nécessaire :
 
 ```bash
 failproofai policies --uninstall acme/support-agent:block-refunds
 ```
 
 <Note>
-Si un pack fournit une politique dont le nom correspond à une **politique intégrée activée**, c'est la version intégrée qui s'exécute et la copie du pack est ignorée — la même protection serait sinon évaluée deux fois. Désactivez la politique intégrée pour utiliser la copie du pack à la place.
+Si un pack embarque une politique dont le nom correspond également à un **builtin activé**, c'est le builtin qui s'exécute et la copie du pack est ignorée — sinon la même protection serait évaluée deux fois. Désactivez le builtin pour utiliser la copie du pack à la place.
 </Note>
 
-## Origine des politiques Failproof AI
+## D'où viennent les politiques Failproof AI
 
-`core` lit la copie fournie dans le package npm. Ce même ensemble est publié sous forme de release GitHub, que vous installez si vous souhaitez une version spécifique :
+`core` lit la copie intégrée dans le package npm. Le même ensemble est publié en tant que release GitHub, ce qui vous permet d'installer une version spécifique :
 
 ```bash
 failproofai pack add core                    # depuis ce package, sans réseau
 failproofai pack add FailproofAI/policies    # le même ensemble, depuis sa release GitHub
 ```
 
-## Ce que l'intégrité garantit et ce qu'elle ne garantit pas
+## Ce que l'intégrité garantit ou non
 
-`SHA256SUMS` est livré dans la même release que l'artefact, ce qui signifie que ce **n'est pas** une signature et ne prouve rien sur l'identité de l'éditeur. Ce que cela prouve, c'est que les octets sont bien ceux publiés dans cette release — et comme le digest est enregistré lors de l'ajout du pack et re-vérifié avant chaque import, un pack ne peut pas être modifié sur votre machine par la suite. Un dépôt qui retague ou remplace un artefact cesse de se charger au lieu d'exécuter silencieusement autre chose.
+`SHA256SUMS` est livré dans la même release que l'artefact, ce n'est donc **pas** une signature et cela ne prouve rien sur l'identité de l'auteur de la publication. Ce que cela prouve, en revanche, c'est que les octets sont bien ceux publiés dans cette release — et parce que le digest est enregistré lors de l'ajout du pack et revérifié avant chaque import, un pack ne peut pas changer sur votre machine par la suite. Un dépôt qui retague ou remplace un asset cessera de se charger plutôt que d'exécuter silencieusement autre chose.
 
-Au moment de l'installation, le pack est également **importé une fois** et vérifié par rapport à son propre manifeste. Un pack dont l'artefact ne se parse pas, ou qui enregistre autre chose que ce qu'il déclare, est refusé avant toute activation — plutôt que de s'installer proprement et d'échouer lors de votre prochain appel d'outil.
+Au moment de l'installation, le pack est également **importé une fois** et vérifié par rapport à son propre manifeste. Un pack dont l'artefact ne peut pas être analysé, ou qui enregistre autre chose que ce qu'il déclare, est refusé avant toute activation — plutôt que de s'installer proprement et d'échouer au prochain appel d'outil.
 
 ## Quand un pack ne se charge pas
 
-Un pack que cette machine a reçu l'ordre d'appliquer et qu'elle ne peut pas exécuter **refuse** les événements couverts par ses politiques manquantes, plutôt que de les autoriser silencieusement. Voir [Comportement en cas d'échec](/fr/policies/failure-behavior). `failproofai pack list` indique tout pack dans cet état et retourne un code de sortie non nul.
+Un pack que cette machine a été configurée pour appliquer et qui ne peut pas s'exécuter **refuse** les événements couverts par ses politiques manquantes, plutôt que de les autoriser silencieusement. Voir [Comportement en cas d'échec](/fr/policies/failure-behavior). `failproofai pack list` indique tout pack dans cet état et se termine avec un code d'erreur non nul.
 
 ## Hors ligne et miroirs
 
 | Variable | Effet |
 | --- | --- |
-| `FAILPROOFAI_NO_DOWNLOAD=1` | Refuse tout téléchargement ; les packs déjà installés continuent d'être appliqués |
-| `FAILPROOFAI_PACK_BASE_URL` | Redirige le téléchargement des packs vers un miroir plutôt que `github.com` |
+| `FAILPROOFAI_NO_DOWNLOAD=1` | Refuse tout téléchargement ; les packs déjà installés continuent de s'appliquer |
+| `FAILPROOFAI_PACK_BASE_URL` | Redirige les téléchargements de packs vers un miroir au lieu de `github.com` |
 
 Pour publier votre propre pack, consultez [Publier un pack](/fr/policies/publish-a-pack).

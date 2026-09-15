@@ -1,6 +1,6 @@
 {
   "name": "failproofai",
-  "version": "1.0.3-beta.0",
+  "version": "1.0.6-beta.0",
   "description": "Observability and enforcement for AI agent harnesses. 39 built-in policies hooked into 12 of them — Claude Code, Codex, Cursor, Hermes, OpenClaw and more — blocking the tool call before it runs. Local dashboard included, no account needed.",
   "bin": {
     "failproofai": "./dist/cli.mjs",
@@ -80,14 +80,14 @@
     "access": "public"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.120.0",
+    "@anthropic-ai/sdk": "^0.125.0",
     "@mdx-js/mdx": "^3.1.1",
     "@tailwindcss/postcss": "^4.3.1",
     "@tanstack/react-virtual": "^3.14.10",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.5",
-    "@types/node": "26.2.0",
+    "@types/node": "26.5.1",
     "@types/react": "19.2.18",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.1.0",
@@ -102,7 +102,7 @@
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.3.1",
     "typescript": "6.0.3",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.0"
   },
   "dependencies": {
     "html-to-image": "^1.11.13",
@@ -117,6 +117,7 @@
     "vite": "8.0.16",
     "undici": "7.29.0",
     "brace-expansion": "5.0.9",
-    "sharp": "0.35.0"
+    "sharp": "0.35.4",
+    "browserslist": "4.28.8"
   }
 }

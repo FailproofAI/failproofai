@@ -1,10 +1,10 @@
 ---
-title: "Assistant Failproof"
+title: "Failproof Assistant"
 description: "Analysez et exploitez Failproof AI en langage naturel, des questions et requêtes aux tableaux de bord et audits."
 icon: "message-square-text"
 ---
 
-Demandez à l'Assistant Failproof d'effectuer n'importe quelle action dans Failproof AI en langage naturel. Il peut analyser des sessions et des échecs, exécuter des requêtes, créer des tableaux de bord, examiner des évaluations et des alertes, et aider à concevoir et lancer des audits sans vous obliger à traduire la tâche en écrans produit ou en commandes CLI.
+Demandez au Failproof Assistant de réaliser n'importe quelle tâche dans Failproof AI en langage naturel. Il peut analyser des sessions et des défaillances, exécuter des requêtes, créer des tableaux de bord, investiguer des évaluations et des alertes, et aider à concevoir et exécuter des audits sans que vous ayez à traduire la tâche en écrans produit ou en commandes CLI.
 
 ```text
 Why did production checkout agents regress this week?
@@ -13,18 +13,18 @@ Create an audit that finds agents retrying the same failed action without changi
 Show me the sessions behind the most common audit finding.
 ```
 
-L'assistant fonctionne avec les données et les permissions disponibles dans l'organisation active. Examinez ses éléments de preuve et les modifications proposées avant d'appliquer des actions qui affectent d'autres utilisateurs ou agents.
+L'assistant travaille avec les données et les permissions disponibles dans l'organisation active. Vérifiez ses preuves et les modifications proposées avant d'appliquer des actions qui affectent d'autres utilisateurs ou agents.
 
-## Interroger l'assistant
+## Utiliser l'assistant
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Sélectionnez **Open agent chat** et décrivez ce que vous souhaitez comprendre, créer ou gérer.
-    2. Examinez les appels d'outils, les tableaux et les résultats de requêtes de l'assistant pendant son traitement.
-    3. Ouvrez la session, l'alerte ou la requête citée pour vérifier le résultat par rapport aux données source.
-    4. Démarrez une nouvelle conversation pour une investigation différente, ou utilisez l'historique de chat pour poursuivre la même analyse.
+    1. Sélectionnez **Open agent chat** et décrivez ce que vous souhaitez comprendre, créer ou opérer.
+    2. Consultez les appels d'outils, les tableaux et les résultats de requêtes de l'assistant pendant qu'il travaille.
+    3. Ouvrez la session, l'alerte ou la requête citée pour vérifier le résultat par rapport aux données sources.
+    4. Démarrez un nouveau chat pour une investigation différente, ou utilisez l'historique des chats pour poursuivre la même ligne d'analyse.
 
-    ![L'assistant Cloud répondant à une question d'observabilité avec une analyse et des requêtes de support.](/images/dashboard/assistant.png)
+    ![Le Cloud assistant répondant à une question d'observabilité avec une analyse et des requêtes d'appui.](/images/dashboard/assistant.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -40,14 +40,14 @@ L'assistant fonctionne avec les données et les permissions disponibles dans l'o
   </Tab>
 </Tabs>
 
-## Utiliser efficacement l'assistant
+## Travailler efficacement avec l'assistant
 
-- Donnez-lui d'abord un objectif ; ajoutez un environnement, un workflow ou une plage horaire lorsque ces contraintes sont importantes.
-- Traitez le SQL généré et les résumés comme une aide à l'investigation, et non comme des preuves définitives.
+- Donnez-lui d'abord un objectif ; précisez un environnement, un flux de travail ou une plage temporelle lorsque ces limites sont pertinentes.
+- Considérez le SQL généré et les résumés comme des outils d'investigation, non comme des preuves définitives.
 - Ouvrez des sessions représentatives avant de créer un audit, un problème, une alerte ou une politique.
-- Gardez les filtres d'organisation, d'environnement et de temps explicites.
-- Enregistrez le SQL utile sous forme de requête afin qu'un autre opérateur puisse reproduire le résultat.
+- Gardez les filtres d'organisation, d'environnement et de plage temporelle explicites.
+- Enregistrez le SQL utile en tant que requête afin qu'un autre opérateur puisse reproduire le résultat.
 
 <Warning>
-  L'assistant ne peut lire que ce à quoi votre utilisateur actuel a accès. N'élargissez pas les permissions pour qu'une question fonctionne ; demandez plutôt à un opérateur autorisé de mener l'investigation.
+  L'assistant ne peut lire que ce à quoi votre utilisateur actuel a accès. N'élargissez pas les permissions pour qu'une question fonctionne ; demandez plutôt à un opérateur autorisé d'effectuer l'investigation à la place.
 </Warning>

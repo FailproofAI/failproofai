@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.6-beta.1 — 2026-09-15
+
+### Fixes
+
+- Require a healthy end-to-end `failproofaid` probe before direct Hermes installation changes plugin or profile configuration, preventing the default fail-closed mode from locking tool use when no evaluator is available.
+- Apply Hermes `evaluation_timeout_ms` as one total socket deadline instead of resetting the full timeout for each partial send or receive.
+- Allow npm up to 16 minutes 40 seconds to expose an accepted release while checking every package in parallel per retry round. The `1.0.6-beta.0` root package took 11 minutes 25 seconds to become visible after `npm publish` succeeded, causing the workflow to report a false version split while all five packages had actually published.
+
 ## 1.0.6-beta.0 — 2026-09-15
 
 ### Docs
@@ -14,7 +22,6 @@
 ### Changed
 
 - Hermes installation now copies and enables the managed plugin in every profile, migrates only legacy FailproofAI shell hooks, refuses to overwrite unmanaged plugin directories, and reports incomplete or duplicate profile installations as unhealthy.
-- Direct Hermes installation now requires a healthy end-to-end `failproofaid` probe before changing plugin or profile configuration, preventing the default fail-closed mode from locking tool use when no evaluator is available. Hermes policy evaluation also applies `evaluation_timeout_ms` as one total socket deadline instead of resetting it for each partial read.
 
 ### Dependencies
 

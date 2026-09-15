@@ -670,28 +670,30 @@ jobs:
             done
           fi
 
-          MISSING=()
-          for NAME in "${NAMES[@]}"; do
-            # The registry is a read-through cache, so a just-published version
-            # can take a moment to be visible everywhere. Check immediately,
-            # then back off 10s / 30s / 1m / 2m before calling it missing —
-            # long enough that propagation is not mistaken for a failed publish,
-            # short enough that a genuinely failed publish is still reported in
-            # the same run rather than hours later by a user.
-            FOUND=""
-            for DELAY in 0 10 30 60 120; do
-              [[ "$DELAY" -gt 0 ]] && sleep "$DELAY"
-              if npm view "$NAME@$PUBLISH_VERSION" version >/dev/null 2>&1; then
-                FOUND=1
-                break
+          # npm may accept a publish but keep a large package in asynchronous
+          # processing for much longer than normal registry propagation. The
+          # 1.0.6-beta.0 root package took 11m25s to become queryable after npm
+          # printed `+ failproofai@...`; the previous 3m40s window therefore
+          # reported a false version split and skipped install verification.
+          # Check every still-missing name in each round so several genuinely
+          # missing packages cannot multiply this bounded wait.
+          MISSING=("${NAMES[@]}")
+          for DELAY in 0 10 30 60 120 180 300 300; do
+            [[ "$DELAY" -gt 0 ]] && sleep "$DELAY"
+            STILL_MISSING=()
+            for NAME in "${MISSING[@]}"; do
+              if npm view "$NAME@$PUBLISH_VERSION" version --prefer-online >/dev/null 2>&1; then
+                echo "  ok  $NAME@$PUBLISH_VERSION"
+              else
+                STILL_MISSING+=("$NAME")
               fi
             done
-            if [[ -n "$FOUND" ]]; then
-              echo "  ok  $NAME@$PUBLISH_VERSION"
-            else
-              echo "  MISSING  $NAME@$PUBLISH_VERSION"
-              MISSING+=("$NAME")
-            fi
+            MISSING=("${STILL_MISSING[@]}")
+            [[ ${#MISSING[@]} -eq 0 ]] && break
+          done
+
+          for NAME in "${MISSING[@]}"; do
+            echo "  MISSING  $NAME@$PUBLISH_VERSION"
           done
 
           if [[ ${#MISSING[@]} -gt 0 ]]; then

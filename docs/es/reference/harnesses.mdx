@@ -1,68 +1,84 @@
 ---
-title: "Agentes soportados"
-description: "Captura sesiones y aplica políticas en los 12 agentes compatibles."
+title: "Entornos de agente"
+description: "Capture sesiones y aplique políticas en los 12 entornos de agente compatibles."
 icon: "plug-zap"
 ---
 
-Un harness es el entorno en el que realmente se ejecuta tu agente. Failproof AI soporta doce de ellos, en dos categorías:
+Un entorno es el espacio en el que tu agente realmente se ejecuta. Failproof AI admite doce de ellos, en dos categorías:
 
-- **CLIs de programación** (10) — Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Factory Droid, Devin CLI, Antigravity CLI, Goose
-- **Gateways de chat y asistentes** (2) — Hermes (Slack, Telegram, cron), OpenClaw (asistente autoalojado)
+- **CLIs de codificación** (10) — Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Factory Droid, Devin CLI, Antigravity CLI, Goose
+- **Gateways de chat y asistente** (2) — Hermes (Slack, Telegram, cron), OpenClaw (asistente autoalojado)
 
-Las mismas políticas y el mismo historial de sesiones se aplican independientemente del entorno en que se ejecute el agente. Una capa de adaptador mapea los nombres de eventos nativos, nombres de herramientas y campos de entrada de cada harness en 29 eventos canónicos antes de que se ejecute cualquier política.
+Las mismas políticas y el mismo historial de sesión se aplican independientemente del entorno en que se ejecute el agente. Una capa de adaptadores traduce los nombres de eventos nativos, nombres de herramientas y campos de entrada de cada entorno a 29 eventos canónicos antes de que se ejecute cualquier política.
 
-Un agente que no se ejecute en **ninguno** de los doce se instrumenta directamente con el [SDK de Python](/es/reference/custom-agents). Ese es un contrato distinto, y vale la pena dejarlo claro: el SDK proporciona trazabilidad, sesiones, evaluaciones y auditorías — **no aplica políticas por sí solo.** Para bloquear una acción insegura antes de que se ejecute se necesita un hook de aplicación en el límite de herramientas de tu runtime; [contáctanos](mailto:support@befailproof.ai) y lo mapearemos.
+Un agente que no se ejecuta en **ninguno** de los doce se instrumenta directamente con el [SDK de Python](/es/reference/custom-agents). Este es un contrato diferente, y vale la pena mencionarlo claramente: el SDK proporciona trazado, sesiones, evaluaciones y auditorías — **no aplica políticas por sí solo.** Bloquear una acción no segura antes de que se ejecute requiere un hook de aplicación en el límite de herramientas de tu entorno de ejecución; [contáctanos](mailto:support@befailproof.ai) y lo mapeamos.
 
-| Harness | Ámbitos de hook soportados |
+| Entorno | Ámbitos de hook admitidos |
 | --- | --- |
 | Claude Code | Usuario, proyecto, local |
 | Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi | Usuario, proyecto |
 | Factory Droid, Devin CLI, Antigravity CLI, Goose | Usuario, proyecto |
 | Hermes, OpenClaw | Usuario |
 
-Cada integración normaliza los nombres de eventos nativos, nombres de herramientas y campos de entrada antes de que se ejecuten las políticas. Una política solo puede actuar sobre los eventos que el harness expone; prueba el comportamiento al final del turno y las instrucciones en el harness y versión exactos que vayas a desplegar.
+Cada integración normaliza los nombres de eventos nativos, nombres de herramientas y campos de entrada antes de que se ejecuten las políticas. Una política solo puede actuar sobre los eventos que expone el entorno; prueba el comportamiento de fin de turno e instrucciones en el entorno y versión exactos que despliegues.
 
 ## Capacidades de aplicación
 
-"Bloquear" significa que el veredicto devuelto por el adaptador actual es consumido por el harness indicado. El bloqueo post-herramienta puede reemplazar el resultado mostrado al modelo, pero no puede deshacer un efecto secundario de la herramienta que ya ocurrió.
+"Bloquear" significa que el veredicto devuelto por el adaptador actual es consumido por el entorno indicado. El bloqueo post-herramienta puede reemplazar el resultado mostrado al modelo, pero no puede deshacer un efecto secundario de herramienta que ya ocurrió.
 
-| Harness | Eventos de bloqueo verificados | Advertencias de solo observación o no bloqueantes |
+| Entorno | Eventos de bloqueo verificados | Advertencias de solo observación o no bloqueantes |
 | --- | --- | --- |
-| Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact` y varios eventos de tarea/configuración | `PostToolUse`, el ciclo de vida de sesión, las notificaciones y los eventos post-fallo son observacionales. |
-| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | El bloqueo post-herramienta reemplaza el resultado tras la ejecución; los eventos de inicio de sesión y compactación son observacionales en el adaptador actual. |
-| GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | El bloqueo post-herramienta reemplaza el resultado tras la ejecución; los eventos de sesión y notificación son observacionales. |
+| Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact` y varios eventos de tarea/configuración | `PostToolUse`, ciclo de vida de sesión, notificaciones y eventos post-fallo son observacionales. |
+| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | El bloqueo post-herramienta reemplaza el resultado después de la ejecución; los eventos de inicio de sesión y compactación son observacionales en el adaptador actual. |
+| GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | El bloqueo post-herramienta reemplaza el resultado después de la ejecución; los eventos de sesión y notificación son observacionales. |
 | Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` y los eventos de sesión son observacionales. |
-| OpenCode | `PreToolUse` | Los eventos post-herramienta y de ciclo de vida son observacionales; el manejo actual de stop es una guía para un turno posterior, no una puerta verificada. |
-| Pi | `PreToolUse`, `UserPromptSubmit` | Los eventos post-herramienta y de ciclo de vida son observacionales; la guía de stop se aplica a un turno posterior. |
-| Hermes | `PreToolUse` | Los veredictos post-herramienta, de sesión y de subagent-stop no son puertas de control. |
+| OpenCode | `PreToolUse` | Los eventos post-herramienta y de ciclo de vida son observacionales; el manejo de stop actual es orientación para un turno posterior, no una barrera verificada. |
+| Pi | `PreToolUse`, `UserPromptSubmit` | Los eventos post-herramienta y de ciclo de vida son observacionales; la orientación de stop se aplica a un turno posterior. |
+| Hermes | `PreToolUse` | Un plugin nativo entrega `instruct()` como una interrupción acotada y visible para el modelo antes de permitir una iteración de API posterior. Los veredictos post-herramienta, de sesión y de subagent-stop no son barreras. |
 | OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | Los eventos post-herramienta, de sesión, subagent-stop y compactación son observacionales. |
 | Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | Los veredictos post-herramienta y subagent-stop son observacionales. |
-| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PermissionRequest` condicional | Los hooks de permiso no se ejecutan en todos los modos de permiso; los eventos post-herramienta y de sesión son observacionales. |
-| Antigravity CLI | `PreToolUse`, `Stop` | Los veredictos de user-prompt y post-herramienta son observacionales; las instrucciones de prompt aún pueden inyectarse. |
-| Goose | `PreToolUse` | Los eventos de user-prompt, post-herramienta y de sesión son observacionales. Existe un hook de stop nativo bloqueante en la capa superior, pero el adaptador actual no lo instala. |
+| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PermissionRequest` condicional | Los hooks de permisos no se ejecutan en todos los modos de permiso; los eventos post-herramienta y de sesión son observacionales. |
+| Antigravity CLI | `PreToolUse`, `Stop` | Los veredictos de prompt de usuario y post-herramienta son observacionales; las instrucciones de prompt aún pueden inyectarse. |
+| Goose | `PreToolUse` | Los eventos de prompt de usuario, post-herramienta y de sesión son observacionales. Existe un hook de stop bloqueante nativo en upstream, pero no está instalado por el adaptador actual. |
 
-Las capacidades dependen de la versión. Vuelve a probar tras actualizar un CLI de agente, especialmente cuando una política dependa del comportamiento de prompt, stop, permiso o post-herramienta en lugar de la puerta pre-herramienta habitual.
+Las capacidades dependen de la versión. Vuelve a probar tras actualizar un CLI de agente, especialmente cuando una política depende del comportamiento de prompt, stop, permisos o post-herramienta en lugar de la barrera pre-herramienta común.
 
-## Instalar hooks de captura y políticas
+### Plugin nativo de Hermes
+
+Hermes se integra a través de un plugin nativo local del perfil en lugar de un
+comando de shell. La instalación copia el plugin en todos los perfiles de Hermes
+predeterminados y con nombre, lo habilita en el `config.yaml` de ese perfil, y
+migra únicamente las entradas de hook de shell legacy de FailproofAI. Esto evita
+generar un proceso en cada hook y permite que `instruct()` llegue al modelo a
+través del resultado de herramienta bloqueada nativo de Hermes.
+
+La primera instrucción coincidente bloquea la llamada pendiente. La misma solicitud
+de API permanece bloqueada; una iteración posterior del modelo puede volver a intentarlo.
+Un registro persistente con ámbito de perfil y un límite por turno evitan que una
+instrucción consultiva se convierta en un bucle sin límite. `deny()` sigue siendo
+un bloqueo estricto. Ejecuta `failproofai config --status` para detectar un perfil
+deshabilitado, incompleto, duplicado o sin configurar recientemente.
+
+## Instalar hooks de captura y política
 
 <Tabs>
   <Tab title="Panel de control">
-    1. Abre **Administración → Claves** y crea una clave con `events:add` y `policies:pull`, con un nombre que identifique la máquina o el entorno.
-    2. En la máquina de destino, conecta el CLI local con la clave mostrada e instala los hooks del harness.
-    3. Inicia una nueva sesión de agente y confirma sus eventos de hook y sesión en **Observar → Eventos**.
-    4. Abre **Observar → Política** para el mismo intervalo de tiempo y confirma que una decisión de política está atribuida a la máquina.
+    1. Abre **Administración → Claves** y crea una clave con `events:add` y `policies:pull`, con un nombre asociado a la máquina o entorno.
+    2. En la máquina de destino, conecta el CLI local con la clave mostrada e instala los hooks del entorno.
+    3. Inicia una nueva sesión de agente y confirma sus hooks y eventos de sesión en **Observar → Eventos**.
+    4. Abre **Observar → Política** para la misma ventana de tiempo y confirma que una decisión de política está atribuida a la máquina.
 
-    La conexión comienza con una clave de máquina. Confirma que incluye permisos de ingesta y entrega de políticas antes de copiar su secreto.
+    La conexión comienza con una clave de máquina. Confirma que incluye tanto permisos de ingesta como de entrega de políticas antes de copiar su secreto.
 
-    ![El panel para crear una nueva clave de API, utilizado para otorgar permisos de ingesta de eventos y entrega de políticas.](/images/dashboard/key-create.png)
+    ![El panel de nueva clave de API usado para conceder permisos de ingesta de eventos y entrega de políticas.](/images/dashboard/key-create.png)
 
-    Tras instalar los hooks, el flujo de Eventos debería mostrar nuevos eventos desde la máquina y el entorno que conectaste.
+    Tras instalar los hooks, el flujo de Eventos debería mostrar nuevos eventos de la máquina y el entorno que conectaste.
 
-    ![El flujo de Eventos en tiempo real utilizado para confirmar que un harness recién instalado está reportando.](/images/dashboard/events-stream.png)
+    ![El flujo de Eventos en vivo usado para confirmar que un entorno recién instalado está reportando.](/images/dashboard/events-stream.png)
 
-    Por último, verifica que las decisiones de política están atribuidas a la misma máquina. Esto confirma que el harness está reportando tanto la actividad de políticas como los eventos de traza.
+    Por último, verifica que las decisiones de política estén atribuidas a la misma máquina. Esto confirma que el entorno está reportando actividad de política además de eventos de trazado.
 
-    ![La página de Política utilizada para verificar las decisiones de política de un harness recién conectado.](/images/dashboard/policy-observe.png)
+    ![La página de Política usada para verificar decisiones de política de un entorno recién conectado.](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
     Lee la clave de máquina en el shell. `read -s` la solicita en un prompt que no hace eco, por lo que nunca aparece en un comando ni en el historial del shell:
@@ -71,16 +87,16 @@ Las capacidades dependen de la versión. Vuelve a probar tras actualizar un CLI 
     read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
     ```
 
-    Luego configura la máquina — esto conecta hooks para cada harness detectado, instala el daemon y se conecta a Cloud:
+    Luego configura la máquina — esto conecta hooks para cada entorno detectado, instala el daemon y se conecta a Cloud:
 
     ```bash
     failproofai config
     failproofai policies add FailproofAI/policies
     ```
 
-    La configuración no habilita ninguna política por sí sola; para eso sirve el segundo comando.
+    La configuración no habilita ninguna política por sí misma; para eso es el segundo comando.
 
-    También puedes apuntar a harnesses específicos y un ámbito de configuración:
+    O apunta a entornos específicos y un ámbito de configuración:
 
     ```bash
     failproofai policies --install \
@@ -88,7 +104,7 @@ Las capacidades dependen de la versión. Vuelve a probar tras actualizar un CLI 
       --scope user
     ```
 
-    El ámbito de proyecto mantiene la configuración de hooks junto al repositorio. El ámbito de usuario cubre el trabajo en múltiples repositorios. Claude Code también soporta el ámbito local; el soporte varía según el harness y el CLI rechaza las combinaciones no soportadas.
+    El ámbito de proyecto mantiene la configuración de hooks junto al repositorio. El ámbito de usuario cubre el trabajo en varios repositorios. Claude Code también admite ámbito local; la compatibilidad varía según el entorno y el CLI rechaza las combinaciones no admitidas.
 
     Verifica la máquina y sus eventos:
 
@@ -104,12 +120,12 @@ Las capacidades dependen de la versión. Vuelve a probar tras actualizar un CLI 
 
 <Tabs>
   <Tab title="Panel de control">
-    Las rutas adicionales se registran en la máquina, no en Cloud. Después de agregar una, abre **Observar → Sesiones**, filtra por el entorno de la máquina y confirma que aparecen sesiones desde la nueva ruta. Abre una sesión y comprueba el agente, el harness y las marcas de tiempo de los eventos antes de utilizarla en una auditoría.
+    Las rutas adicionales se registran en la máquina, no en Cloud. Después de agregar una, abre **Observar → Sesiones**, filtra por el entorno de la máquina y confirma que aparecen sesiones desde la nueva ruta. Abre una sesión y revisa el agente, el entorno y las marcas de tiempo de eventos antes de utilizarla en una auditoría.
 
-    ![La lista de Sesiones filtrada al entorno que recibe datos de la ruta de captura adicional.](/images/dashboard/sessions-list.png)
+    ![La lista de Sesiones filtrada al entorno que recibe datos desde la ruta de captura adicional.](/images/dashboard/sessions-list.png)
   </Tab>
   <Tab title="CLI">
-    Agrega una ruta con una etiqueta opcional y luego inspecciona las rutas configuradas:
+    Agrega una ruta con una etiqueta opcional, luego inspecciona las rutas configuradas:
 
     ```bash
     failproofai harness add-path claude checkout=/srv/checkout/.claude
@@ -123,5 +139,5 @@ Las capacidades dependen de la versión. Vuelve a probar tras actualizar un CLI 
 </Tabs>
 
 <Tip>
-  Ejecuta una sesión nueva tras la instalación. Verifica tanto el flujo de eventos en tiempo real como una decisión de política real antes de ampliar el despliegue.
+  Ejecuta una nueva sesión tras la instalación. Verifica tanto el flujo de eventos en vivo como una decisión de política real antes de ampliar el despliegue.
 </Tip>

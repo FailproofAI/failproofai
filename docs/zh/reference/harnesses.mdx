@@ -1,17 +1,17 @@
 ---
-title: "Agent Harness"
-description: "跨所有 12 个支持的 agent harness 捕获会话并执行策略。"
+title: "Agent harnesses"
+description: "捕获会话并在所有 12 个受支持的 agent harness 上执行策略。"
 icon: "plug-zap"
 ---
 
-Harness 是你的 agent 实际运行的环境。Failproof AI 支持其中十二种，分为两类：
+harness 是指你的 agent 实际运行所在的环境。Failproof AI 支持十二种，分为两类：
 
-- **编程 CLI**（10 种）—— Claude Code、Codex、GitHub Copilot CLI、Cursor、OpenCode、Pi、Factory Droid、Devin CLI、Antigravity CLI、Goose
-- **对话与助手网关**（2 种）—— Hermes（Slack、Telegram、cron）、OpenClaw（自托管助手）
+- **编码 CLI**（10 种）—— Claude Code、Codex、GitHub Copilot CLI、Cursor、OpenCode、Pi、Factory Droid、Devin CLI、Antigravity CLI、Goose
+- **聊天与助手网关**（2 种）—— Hermes（Slack、Telegram、cron）、OpenClaw（自托管助手）
 
-无论 agent 运行在哪个 harness 中，同一套策略和同一份会话历史均适用。一个适配器层会在任何策略执行之前，将每个 harness 的原生事件名称、工具名称和工具输入字段映射到 29 个标准化事件上。
+无论 agent 在哪个 harness 中运行，策略和会话历史记录均保持一致。一个适配器层会在策略执行之前，将每个 harness 的原生事件名称、工具名称和工具输入字段映射到 29 个标准事件上。
 
-如果 agent 不在上述十二种 harness 中运行，则需直接使用 [Python SDK](/zh/reference/custom-agents) 进行插桩。这是一份不同的契约，有必要明确说明：SDK 提供追踪、会话、评估和审计功能——**它本身并不执行策略。** 在不安全操作执行之前将其拦截，需要在你的运行时工具边界处设置执行钩子；请[联系我们](mailto:support@befailproof.ai)，我们将为你完成映射。
+如果 agent 不在上述十二种 harness 中运行，则需直接通过 [Python SDK](/zh/reference/custom-agents) 进行埋点。这是一种不同的契约，值得明确说明：SDK 提供追踪、会话、评估和审计功能，**但本身不执行策略。** 若要在不安全操作执行前将其拦截，需要在运行时的工具边界处设置执行钩子；请[联系我们](mailto:support@befailproof.ai)，我们将为你完成映射。
 
 | Harness | 支持的钩子作用域 |
 | --- | --- |
@@ -20,52 +20,58 @@ Harness 是你的 agent 实际运行的环境。Failproof AI 支持其中十二�
 | Factory Droid、Devin CLI、Antigravity CLI、Goose | User、project |
 | Hermes、OpenClaw | User |
 
-每个集成会在策略执行之前对其原生钩子事件名称、工具名称和工具输入字段进行标准化处理。策略只能对该 harness 所暴露的事件起作用；请在你实际部署的 harness 及其版本上测试轮次结束和指令行为。
+每个集成在策略运行之前都会对其原生钩子事件名称、工具名称和工具输入字段进行规范化处理。策略只能作用于 harness 暴露的事件；请在你实际部署的 harness 及其版本上测试轮末和指令行为。
 
 ## 执行能力
 
-"拦截"是指当前适配器返回的裁决由指定 harness 消费。工具执行后的拦截可能会替换模型所看到的结果，但无法撤销已经发生的工具副作用。
+"拦截"表示当前适配器返回的裁决由指定 harness 消费。工具后拦截可能会替换展示给模型的结果，但无法撤销已发生的工具副作用。
 
-| Harness | 已验证的拦截事件 | 仅观测或非拦截说明 |
+| Harness | 已验证的拦截事件 | 仅观测或不可拦截的说明 |
 | --- | --- | --- |
-| Claude Code | `PreToolUse`、`UserPromptSubmit`、`PermissionRequest`、`Stop`、`SubagentStop`、`PreCompact` 以及若干任务/配置事件 | `PostToolUse`、会话生命周期、通知及失败后事件仅供观测。 |
-| Codex | `PreToolUse`、`PermissionRequest`、`UserPromptSubmit`、`Stop`、`SubagentStop`、`PostToolUse` | 工具执行后的拦截会在执行完成后替换结果；会话启动和压缩事件在当前适配器中仅供观测。 |
-| GitHub Copilot CLI | `PreToolUse`、`UserPromptSubmit`、`PermissionRequest`、`Stop`、`SubagentStop`、`PostToolUse` | 工具执行后的拦截会在执行完成后替换结果；会话和通知事件仅供观测。 |
-| Cursor | `PreToolUse`、`UserPromptSubmit`、`Stop` | `PostToolUse` 和会话事件仅供观测。 |
-| OpenCode | `PreToolUse` | 工具后和生命周期事件仅供观测；当前的停止处理是对后续轮次的引导，而非已验证的拦截门。 |
-| Pi | `PreToolUse`、`UserPromptSubmit` | 工具后和生命周期事件仅供观测；停止引导作用于后续轮次。 |
-| Hermes | `PreToolUse` | 工具后、会话和子 agent 停止的裁决不构成拦截门。 |
-| OpenClaw | `PreToolUse`、`UserPromptSubmit`、`Stop` | 工具后、会话、子 agent 停止和压缩事件仅供观测。 |
-| Factory Droid | `PreToolUse`、`UserPromptSubmit`、`Stop`、`PreCompact` | 工具后和子 agent 停止的裁决仅供观测。 |
-| Devin CLI | `PreToolUse`、`UserPromptSubmit`、`Stop`、条件性 `PermissionRequest` | 权限钩子并非在所有权限模式下都会运行；工具后和会话事件仅供观测。 |
-| Antigravity CLI | `PreToolUse`、`Stop` | 用户提示和工具后的裁决仅供观测；仍可注入提示指令。 |
-| Goose | `PreToolUse` | 用户提示、工具后和会话事件仅供观测。上游存在原生拦截停止钩子，但当前适配器未安装。 |
+| Claude Code | `PreToolUse`、`UserPromptSubmit`、`PermissionRequest`、`Stop`、`SubagentStop`、`PreCompact` 及若干任务/配置事件 | `PostToolUse`、会话生命周期、通知和故障后事件均为观测性。 |
+| Codex | `PreToolUse`、`PermissionRequest`、`UserPromptSubmit`、`Stop`、`SubagentStop`、`PostToolUse` | 工具后拦截在执行后替换结果；会话启动和压缩事件在当前适配器中为观测性。 |
+| GitHub Copilot CLI | `PreToolUse`、`UserPromptSubmit`、`PermissionRequest`、`Stop`、`SubagentStop`、`PostToolUse` | 工具后拦截在执行后替换结果；会话和通知事件为观测性。 |
+| Cursor | `PreToolUse`、`UserPromptSubmit`、`Stop` | `PostToolUse` 和会话事件为观测性。 |
+| OpenCode | `PreToolUse` | 工具后和生命周期事件为观测性；当前的停止处理是对后续轮次的引导，而非已验证的门控。 |
+| Pi | `PreToolUse`、`UserPromptSubmit` | 工具后和生命周期事件为观测性；停止引导适用于后续轮次。 |
+| Hermes | `PreToolUse` | 原生插件在允许后续 API 迭代之前，以一次有界的、模型可见的中断形式传递 `instruct()`。工具后、会话和 subagent-stop 裁决不作为门控。 |
+| OpenClaw | `PreToolUse`、`UserPromptSubmit`、`Stop` | 工具后、会话、subagent-stop 和压缩事件为观测性。 |
+| Factory Droid | `PreToolUse`、`UserPromptSubmit`、`Stop`、`PreCompact` | 工具后和 subagent-stop 裁决为观测性。 |
+| Devin CLI | `PreToolUse`、`UserPromptSubmit`、`Stop`、条件性 `PermissionRequest` | 权限钩子并非在所有权限模式下都运行；工具后和会话事件为观测性。 |
+| Antigravity CLI | `PreToolUse`、`Stop` | 用户提示和工具后裁决为观测性；仍可注入提示指令。 |
+| Goose | `PreToolUse` | 用户提示、工具后和会话事件为观测性。上游存在原生的阻塞性停止钩子，但当前适配器未安装。 |
 
-各项能力对版本敏感。升级 agent CLI 后请重新测试，尤其是当策略依赖提示、停止、权限或工具后行为而非通用的工具前拦截门时。
+能力与版本相关。升级 agent CLI 后请重新测试，尤其是当策略依赖提示、停止、权限或工具后行为而非通用的工具前门控时。
+
+### Hermes 原生插件
+
+Hermes 通过 profile 本地原生插件而非 shell 命令集成。安装过程会将插件复制到每个默认和具名 Hermes profile 中，在该 profile 的 `config.yaml` 中启用它，并仅迁移遗留的 FailproofAI shell 钩子条目。这样可以避免每次钩子触发时产生进程开销，并让 `instruct()` 通过 Hermes 的原生阻塞工具结果传达给模型。
+
+第一个匹配的指令会阻止待处理的调用。同一个 API 请求保持阻塞状态；后续模型迭代可能会重试。一个持久化的、profile 级别的账本和每轮次上限可防止建议性指令演变为无限循环。`deny()` 仍为硬性拦截。运行 `failproofai config --status` 可检测已禁用、不完整、重复或新增的未配置 profile。
 
 ## 安装捕获和策略钩子
 
 <Tabs>
-  <Tab title="控制台">
-    1. 打开**管理 → 密钥**，创建一个具有 `events:add` 和 `policies:pull` 权限的密钥，并以机器或环境命名。
-    2. 在目标机器上，使用显示的密钥连接本地 CLI，并安装 harness 钩子。
-    3. 启动一个新的 agent 会话，然后在**观测 → 事件**下确认其钩子和会话事件。
-    4. 打开相同时间窗口的**观测 → 策略**，确认某条策略决策已归属到该机器。
+  <Tab title="仪表板">
+    1. 打开 **Administration → Keys**，创建一个具有 `events:add` 和 `policies:pull` 权限的密钥，并以机器或环境命名。
+    2. 在目标机器上，使用显示的密钥连接本地 CLI 并安装 harness 钩子。
+    3. 启动一个新的 agent 会话，然后在 **Observe → Events** 下确认其钩子和会话事件。
+    4. 打开同一时间窗口下的 **Observe → policy**，确认策略决策已归因于该机器。
 
-    连接从机器密钥开始。在复制其密钥之前，请确认它包含摄取和策略分发两项权限。
+    连接从机器密钥开始。在复制其 secret 之前，请确认它同时包含数据采集和策略分发权限。
 
-    ![用于授予事件摄取和策略分发权限的新 API 密钥抽屉。](/images/dashboard/key-create.png)
+    ![用于授予事件采集和策略分发权限的新 API 密钥抽屉。](/images/dashboard/key-create.png)
 
-    安装钩子后，事件流应显示来自你所连接的机器和环境的新事件。
+    安装钩子后，Events 流应显示来自你所连接机器和环境的新事件。
 
-    ![用于确认新安装的 harness 正在上报数据的实时事件流。](/images/dashboard/events-stream.png)
+    ![用于确认新安装的 harness 正在上报数据的实时 Events 流。](/images/dashboard/events-stream.png)
 
-    最后，验证策略决策已归属到同一台机器。这可以确认 harness 不仅在上报追踪事件，也在上报策略活动。
+    最后，验证策略决策是否归因于同一台机器。这可确认 harness 正在同时上报策略活动和追踪事件。
 
-    ![用于验证新连接 harness 策略决策的策略页面。](/images/dashboard/policy-observe.png)
+    ![用于验证新连接 harness 策略决策的 Policy 页面。](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
-    将机器密钥读入 shell。`read -s` 通过不回显的提示接收输入，因此它不会出现在命令或 shell 历史记录中：
+    将机器密钥读入 shell。`read -s` 会在不回显的提示符处接收输入，因此它不会出现在命令或 shell 历史记录中：
 
     ```bash
     read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
@@ -78,9 +84,9 @@ Harness 是你的 agent 实际运行的环境。Failproof AI 支持其中十二�
     failproofai policies add FailproofAI/policies
     ```
 
-    配置本身不会启用任何策略，第二条命令正是为此而设。
+    初始设置本身不启用任何策略，这正是第二条命令的用途。
 
-    或者指定具体的 harness 和配置作用域：
+    或者指定具名 harness 和配置作用域：
 
     ```bash
     failproofai policies --install \
@@ -88,7 +94,7 @@ Harness 是你的 agent 实际运行的环境。Failproof AI 支持其中十二�
       --scope user
     ```
 
-    Project 作用域将钩子配置保留在仓库中。User 作用域覆盖跨仓库的工作。Claude Code 还支持 local 作用域；支持情况因 harness 而异，CLI 会拒绝不支持的组合。
+    project 作用域将钩子配置保存在仓库中。user 作用域覆盖跨仓库的工作。Claude Code 还支持 local 作用域；支持情况因 harness 而异，CLI 会拒绝不支持的组合。
 
     验证机器及其事件：
 
@@ -103,13 +109,13 @@ Harness 是你的 agent 实际运行的环境。Failproof AI 支持其中十二�
 ## 添加非默认会话路径
 
 <Tabs>
-  <Tab title="控制台">
-    额外路径注册在机器上，而非 Cloud 中。添加后，打开**观测 → 会话**，按机器所在环境过滤，并确认来自新路径的会话已出现。打开一个会话，在将其用于审计之前检查 agent、harness 和事件时间戳。
+  <Tab title="仪表板">
+    额外路径在机器上注册，而非在 Cloud 中注册。添加路径后，打开 **Observe → Sessions**，筛选到该机器的环境，并确认来自新路径的会话已出现。打开一个会话，在将其用于审计之前检查 agent、harness 和事件时间戳。
 
-    ![过滤到接收附加捕获路径数据的环境的会话列表。](/images/dashboard/sessions-list.png)
+    ![Sessions 列表，已筛选到接收额外捕获路径数据的环境。](/images/dashboard/sessions-list.png)
   </Tab>
   <Tab title="CLI">
-    添加带有可选标签的路径，然后查看已配置的路径：
+    添加一个路径（可附带可选标签），然后查看已配置的路径：
 
     ```bash
     failproofai harness add-path claude checkout=/srv/checkout/.claude
@@ -118,10 +124,10 @@ Harness 是你的 agent 实际运行的环境。Failproof AI 支持其中十二�
     failproofai backfill --since 7d
     ```
 
-    使用 `failproofai harness remove-path claude checkout` 移除路径。
+    使用 `failproofai harness remove-path claude checkout` 删除路径。
   </Tab>
 </Tabs>
 
 <Tip>
-  安装后运行一个新会话。在扩大推广范围之前，先验证实时事件流和实际的策略决策均正常工作。
+  安装后运行一个新会话。在扩大推广范围之前，先验证实时事件流和实际的策略决策。
 </Tip>

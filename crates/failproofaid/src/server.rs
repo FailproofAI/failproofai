@@ -340,6 +340,63 @@ fn dispatch(request: ClientMessage, worker: &Worker) -> ServerMessage {
                 message: format!("worker call failed: {err}"),
             },
         },
+        ClientMessage::PolicyEvaluation {
+            integration,
+            event,
+            payload,
+            cwd,
+            ..
+        } => {
+            let stdin = match serde_json::to_string(&payload) {
+                Ok(value) => value,
+                Err(err) => {
+                    return ServerMessage::Error {
+                        protocol_version: PROTOCOL_VERSION,
+                        message: format!("could not encode policy payload: {err}"),
+                    };
+                }
+            };
+            match worker.call(&event, &integration, &stdin, cwd.as_deref()) {
+                Ok(outcome) => match outcome.evaluation {
+                    Some(evaluation)
+                        if matches!(
+                            evaluation.decision.as_str(),
+                            "allow" | "deny" | "instruct"
+                        ) =>
+                    {
+                        let policy_names = if evaluation.policy_names.is_empty() {
+                            evaluation.policy_name.into_iter().collect()
+                        } else {
+                            evaluation.policy_names
+                        };
+                        ServerMessage::PolicyResult {
+                            protocol_version: PROTOCOL_VERSION,
+                            decision: evaluation.decision,
+                            policy_names,
+                            reason: evaluation.reason,
+                            matched_policies: evaluation.matched_policies,
+                            duration_ms: evaluation.duration_ms,
+                            tool_name: evaluation.tool_name,
+                        }
+                    }
+                    Some(evaluation) => ServerMessage::Error {
+                        protocol_version: PROTOCOL_VERSION,
+                        message: format!(
+                            "worker returned an invalid policy decision: {}",
+                            evaluation.decision
+                        ),
+                    },
+                    None => ServerMessage::Error {
+                        protocol_version: PROTOCOL_VERSION,
+                        message: "worker did not return structured policy metadata".to_string(),
+                    },
+                },
+                Err(err) => ServerMessage::Error {
+                    protocol_version: PROTOCOL_VERSION,
+                    message: format!("worker call failed: {err}"),
+                },
+            }
+        }
     }
 }
 
@@ -474,6 +531,33 @@ mod tests {
         }
     }
 
+    #[test]
+    fn policy_evaluation_gets_an_error_when_the_worker_cannot_be_reached() {
+        let socket_path = temp_socket_path("policy-broken-worker");
+        let _guard = start_test_server(socket_path.clone());
+
+        let mut stream = UnixStream::connect(&socket_path).unwrap();
+        write_message(
+            &mut stream,
+            &ClientMessage::PolicyEvaluation {
+                protocol_version: PROTOCOL_VERSION,
+                integration: "hermes".to_string(),
+                event: "pre_tool_call".to_string(),
+                payload: serde_json::json!({
+                    "tool_name": "terminal",
+                    "tool_input": {"command": "echo hi"}
+                }),
+                cwd: None,
+            },
+        )
+        .unwrap();
+        let response: ServerMessage = read_message(&mut stream).unwrap();
+        match response {
+            ServerMessage::Error { .. } => {}
+            other => panic!("expected Error, got {other:?}"),
+        }
+    }
+
     /// The real end-to-end path: a real `failproofaid` server relaying a
     /// real Hook request to the real TypeScript worker (spawned via `bun`
     /// against this repo's own `bin/failproofai-worker.mjs`), which runs
@@ -481,7 +565,7 @@ mod tests {
     /// sides of the wire protocol actually agree, not just that each side's
     /// own unit tests pass in isolation.
     #[test]
-    fn relays_a_hook_request_to_the_real_typescript_worker_end_to_end() {
+    fn relays_hook_and_structured_policy_requests_to_the_real_worker() {
         let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .and_then(|p| p.parent())
@@ -551,6 +635,44 @@ mod tests {
                 );
             }
             other => panic!("expected HookResult, got {other:?}"),
+        }
+
+        let mut stream = UnixStream::connect(&socket_path).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(15)))
+            .unwrap();
+        write_message(
+            &mut stream,
+            &ClientMessage::PolicyEvaluation {
+                protocol_version: PROTOCOL_VERSION,
+                integration: "hermes".to_string(),
+                event: "pre_tool_call".to_string(),
+                payload: serde_json::json!({
+                    "cwd": project_dir.to_string_lossy(),
+                    "tool_name": "terminal",
+                    "tool_input": { "command": "sudo rm -rf /" }
+                }),
+                cwd: Some(project_dir.to_string_lossy().to_string()),
+            },
+        )
+        .unwrap();
+        let response: ServerMessage = read_message(&mut stream).unwrap();
+        match response {
+            ServerMessage::PolicyResult {
+                decision,
+                policy_names,
+                tool_name,
+                ..
+            } => {
+                assert_eq!(decision, "deny");
+                assert!(
+                    policy_names
+                        .iter()
+                        .any(|name| name.ends_with("/block-sudo"))
+                );
+                assert_eq!(tool_name.as_deref(), Some("Bash"));
+            }
+            other => panic!("expected PolicyResult, got {other:?}"),
         }
 
         std::fs::remove_dir_all(&project_dir).ok();

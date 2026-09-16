@@ -49,15 +49,18 @@ describe("which scopes actually hold hooks", () => {
     writeFileSync(
       join(home, ".hermes", "config.yaml"),
       [
-        "hooks:",
-        "  pre_tool_call:",
-        "    - type: command",
-        '      command: "failproofai --hook PreToolUse --cli hermes"',
-        "      __failproofai_hook__: true",
+        "plugins:",
+        "  enabled:",
+        "    - failproofai",
         "",
       ].join("\n"),
       "utf8",
     );
+    const pluginDir = join(home, ".hermes", "plugins", "failproofai");
+    mkdirSync(pluginDir, { recursive: true });
+    for (const file of ["plugin.yaml", "__init__.py", "client.py", "ledger.py", ".failproofai-managed"]) {
+      writeFileSync(join(pluginDir, file), "", "utf8");
+    }
 
     const { integrationsInstalledAt } = await import("../../src/hooks/manager");
     // Run from a directory that is NOT home, so the project-path collision

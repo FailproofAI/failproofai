@@ -195,7 +195,9 @@ describe("publish.yml", () => {
     expect(verify.if).toContain("dry_run != 'true'");
     // The registry is a read-through cache — propagation must not read as a
     // failed publish, and a failed publish must not wait forever.
-    expect(verify.run).toContain("for DELAY in 0 10 30 60 120");
+    expect(verify.run).toContain("for DELAY in 0 10 30 60 120 180 300 300");
+    expect(verify.run).toContain('MISSING=("${NAMES[@]}")');
+    expect(verify.run).toContain('STILL_MISSING+=("$NAME")');
   });
 
   it("installs the published packages from the registry, once per platform", () => {

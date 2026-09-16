@@ -34,7 +34,7 @@ Each integration normalizes its native hook event names, tool names, and tool-in
 | Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` and session events are observational. |
 | OpenCode | `PreToolUse` | Post-tool and lifecycle events are observational; current stop handling is guidance for a later turn rather than a verified gate. |
 | Pi | `PreToolUse`, `UserPromptSubmit` | Post-tool and lifecycle events are observational; stop guidance applies to a later turn. |
-| Hermes | `PreToolUse` | Post-tool, session, and subagent-stop verdicts are not gates. |
+| Hermes | `PreToolUse` | A native plugin delivers `instruct()` as one bounded, model-visible interruption before permitting a later API iteration. Post-tool, session, and subagent-stop verdicts are not gates. |
 | OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | Post-tool, session, subagent-stop, and compaction events are observational. |
 | Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | Post-tool and subagent-stop verdicts are observational. |
 | Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, conditional `PermissionRequest` | Permission hooks do not run in every permission mode; post-tool and session events are observational. |
@@ -42,6 +42,20 @@ Each integration normalizes its native hook event names, tool names, and tool-in
 | Goose | `PreToolUse` | User-prompt, post-tool, and session events are observational. A native blocking stop hook exists upstream but is not installed by the current adapter. |
 
 Capabilities are version-sensitive. Re-test after upgrading an agent CLI, especially when a policy relies on prompt, stop, permission, or post-tool behavior rather than the common pre-tool gate.
+
+### Hermes native plugin
+
+Hermes is integrated through a profile-local native plugin rather than a shell
+command. Installation copies the plugin into every default and named Hermes
+profile, enables it in that profile's `config.yaml`, and migrates only legacy
+FailproofAI shell-hook entries. This avoids a process spawn on each hook and
+lets `instruct()` reach the model through Hermes' native blocked-tool result.
+
+The first matching instruction blocks the pending call. The same API request
+stays blocked; a later model iteration may retry. A persistent, profile-scoped
+ledger and a per-turn cap prevent an advisory instruction from becoming an
+unbounded loop. `deny()` remains a hard block. Run `failproofai config --status`
+to detect a disabled, incomplete, duplicated, or newly unconfigured profile.
 
 ## Install capture and policy hooks
 

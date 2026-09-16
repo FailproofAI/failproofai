@@ -129,6 +129,53 @@ describe("hooks/worker-server (real socket, real evaluation)", () => {
     expect(response.type).toBe("hookResult");
     expect(response.exitCode).toBe(0);
     expect(permissionDecisionOf(response)).toBe("deny");
+    expect(response.evaluation).toMatchObject({
+      decision: "deny",
+      policyName: "failproofai/block-sudo",
+      policyNames: ["failproofai/block-sudo"],
+      toolName: "Bash",
+    });
+  });
+
+  it("returns an explicit instruct verdict for native plugin adapters", async () => {
+    const policyPath = join(projectDir, "instruct-policy.mjs");
+    writeFileSync(
+      policyPath,
+      `import { customPolicies, instruct } from "failproofai";
+customPolicies.add({
+  name: "approved-write-route",
+  description: "guide writes through the approved route",
+  match: { events: ["PreToolUse"], tools: ["Write"] },
+  fn: async () => instruct("Use the approved write route."),
+});\n`,
+    );
+    writeFileSync(
+      join(projectDir, ".failproofai", "policies-config.json"),
+      JSON.stringify({ enabledPolicies: [], customPoliciesPaths: [policyPath] }),
+    );
+
+    const response = await sendRequest(workerSocketPath, {
+      type: "hook",
+      hookEvent: "pre_tool_call",
+      cli: "hermes",
+      stdin: JSON.stringify({
+        cwd: projectDir,
+        tool_name: "write_file",
+        tool_input: { path: join(projectDir, "output.txt"), content: "hello" },
+      }),
+    });
+
+    expect(response.type).toBe("hookResult");
+    expect(response.evaluation).toMatchObject({
+      decision: "instruct",
+      policyName: "custom/approved-write-route",
+      policyNames: ["custom/approved-write-route"],
+      reason: "Use the approved write route.",
+      toolName: "Write",
+    });
+    expect((response.evaluation as { matchedPolicies: string[] }).matchedPolicies).toEqual(
+      expect.arrayContaining(["custom/approved-write-route"]),
+    );
   });
 
   // The daemon forwards the hook with `json!({ "cwd": cwd })`, and serde writes

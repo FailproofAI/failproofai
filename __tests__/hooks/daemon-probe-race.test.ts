@@ -21,8 +21,8 @@ let sockPath: string;
 let server: Server | null = null;
 const originalSocket = process.env.FAILPROOFAI_DAEMON_SOCKET;
 
-/** A stand-in daemon: answers `ping` with `pong` and `hook` with exit 0. */
-function startDaemon(opts: { answerHooks: boolean }): Promise<Server> {
+/** A stand-in daemon with independently selectable old and native APIs. */
+function startDaemon(opts: { answerHooks: boolean; answerPolicyEvaluations?: boolean }): Promise<Server> {
   return new Promise((resolve) => {
     const s = createServer((conn) => {
       let buf = Buffer.alloc(0);
@@ -39,6 +39,29 @@ function startDaemon(opts: { answerHooks: boolean }): Promise<Server> {
         // is exactly the case the taxonomy has to tell apart from a socket that
         // never came up, so this stub must accept and then stay silent.
         if (msg.type === "hook" && !opts.answerHooks) return;
+        if (msg.type === "policyEvaluation") {
+          const value = opts.answerPolicyEvaluations
+            ? {
+                type: "policyResult",
+                protocolVersion: 1,
+                decision: "allow",
+                policyNames: [],
+                reason: null,
+                matchedPolicies: [],
+                durationMs: 0,
+                toolName: null,
+              }
+            : {
+                type: "error",
+                protocolVersion: 1,
+                message: "unknown variant `policyEvaluation`",
+              };
+          const body = Buffer.from(JSON.stringify(value), "utf-8");
+          const head = Buffer.alloc(4);
+          head.writeUInt32BE(body.length, 0);
+          conn.write(Buffer.concat([head, body]));
+          return;
+        }
         const body = Buffer.from(
           JSON.stringify(
             msg.type === "ping"
@@ -113,4 +136,24 @@ describe("hooks/daemon-service — health probe startup race", () => {
     const probe = await probeDaemon();
     expect(probe).toEqual({ ok: false, reason: "worker" });
   }, 40_000);
+
+  it("rejects a hook-compatible v1 daemon that lacks policyEvaluation", async () => {
+    server = await startDaemon({ answerHooks: true, answerPolicyEvaluations: false });
+    const { probeDaemonEndToEnd, probeDaemonPolicyEvaluation } = await import(
+      "../../src/hooks/daemon-service"
+    );
+
+    // This is the dangerous upgrade state: the old health check passes, but
+    // enabling the native plugin would make every request hit its fail-closed
+    // fallback because the daemon cannot answer the request Hermes actually uses.
+    expect(await probeDaemonEndToEnd()).toBe(true);
+    expect(await probeDaemonPolicyEvaluation()).toBe(false);
+  }, 20_000);
+
+  it("accepts a daemon that returns a complete native policy result", async () => {
+    server = await startDaemon({ answerHooks: true, answerPolicyEvaluations: true });
+    const { probeDaemonPolicyEvaluation } = await import("../../src/hooks/daemon-service");
+
+    expect(await probeDaemonPolicyEvaluation()).toBe(true);
+  }, 20_000);
 });

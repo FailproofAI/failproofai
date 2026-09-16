@@ -37,6 +37,17 @@ pub enum ClientMessage {
         /// resolve project config or custom policies).
         cwd: Option<String>,
     },
+    /// Structured policy evaluation for native in-process integrations.
+    /// Unlike `Hook`, this does not expose CLI-specific stdout/stderr shapes:
+    /// the daemon returns an explicit allow/deny/instruct verdict instead.
+    #[serde(rename_all = "camelCase")]
+    PolicyEvaluation {
+        protocol_version: u32,
+        integration: String,
+        event: String,
+        payload: serde_json::Value,
+        cwd: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -50,6 +61,17 @@ pub enum ServerMessage {
         exit_code: i32,
         stdout: String,
         stderr: String,
+    },
+    /// Integration-neutral policy result consumed by native plugins.
+    #[serde(rename_all = "camelCase")]
+    PolicyResult {
+        protocol_version: u32,
+        decision: String,
+        policy_names: Vec<String>,
+        reason: Option<String>,
+        matched_policies: Vec<String>,
+        duration_ms: u64,
+        tool_name: Option<String>,
     },
     /// The daemon accepted the connection and parsed the request, but could
     /// not produce a verdict (e.g. the worker is down/hung). Distinct from
@@ -70,6 +92,9 @@ impl ClientMessage {
             ClientMessage::Hook {
                 protocol_version, ..
             } => *protocol_version,
+            ClientMessage::PolicyEvaluation {
+                protocol_version, ..
+            } => *protocol_version,
         }
     }
 }
@@ -79,6 +104,9 @@ impl ServerMessage {
         match self {
             ServerMessage::Pong { protocol_version } => *protocol_version,
             ServerMessage::HookResult {
+                protocol_version, ..
+            } => *protocol_version,
+            ServerMessage::PolicyResult {
                 protocol_version, ..
             } => *protocol_version,
             ServerMessage::Error {
@@ -135,6 +163,22 @@ mod tests {
     }
 
     #[test]
+    fn policy_evaluation_uses_structured_camel_case_fields() {
+        let msg = ClientMessage::PolicyEvaluation {
+            protocol_version: PROTOCOL_VERSION,
+            integration: "hermes".to_string(),
+            event: "pre_tool_call".to_string(),
+            payload: serde_json::json!({"tool_name": "terminal"}),
+            cwd: Some("/repo".to_string()),
+        };
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(json["type"], "policyEvaluation");
+        assert_eq!(json["integration"], "hermes");
+        assert_eq!(json["event"], "pre_tool_call");
+        assert_eq!(json["payload"]["tool_name"], "terminal");
+    }
+
+    #[test]
     fn unknown_message_type_fails_to_deserialize() {
         let json = serde_json::json!({ "type": "bogus", "protocolVersion": 1 });
         let result: Result<ClientMessage, _> = serde_json::from_value(json);
@@ -148,6 +192,22 @@ mod tests {
             exit_code: 2,
             stdout: String::new(),
             stderr: "blocked".to_string(),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        let decoded: ServerMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded, msg);
+    }
+
+    #[test]
+    fn structured_policy_result_round_trips() {
+        let msg = ServerMessage::PolicyResult {
+            protocol_version: PROTOCOL_VERSION,
+            decision: "instruct".to_string(),
+            policy_names: vec!["custom/approved-write-route".to_string()],
+            reason: Some("Use the approved write route.".to_string()),
+            matched_policies: vec!["custom/approved-write-route".to_string()],
+            duration_ms: 4,
+            tool_name: Some("Write".to_string()),
         };
         let json = serde_json::to_string(&msg).unwrap();
         let decoded: ServerMessage = serde_json::from_str(&json).unwrap();

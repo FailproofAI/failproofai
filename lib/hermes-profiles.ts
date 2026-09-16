@@ -3,10 +3,11 @@
  *
  * A Hermes "profile" is not a column or a flag: it is a whole separate Hermes
  * home directory, each with its own `config.yaml`, `.env`, `SOUL.md`, and
- * `state.db`. The default profile lives at `~/.hermes`; every other profile at
- * `~/.hermes/profiles/<name>/`. Selection is `hermes -p <name>`, a generated
- * `~/.local/bin/<name>` alias that exports `HERMES_HOME`, or a sticky default
- * recorded in `<root>/active_profile`.
+ * `state.db`. The default profile lives at `~/.hermes`; upstream named profiles
+ * live at `~/.hermes/profiles/<name>/`, while older/custom multi-install setups
+ * may use sibling homes such as `~/.hermes-work`. Selection is `hermes -p
+ * <name>`, a generated `~/.local/bin/<name>` alias that exports `HERMES_HOME`,
+ * or a sticky default recorded in `<root>/active_profile`.
  *
  * Upstream's own contributor guide warns that hardcoding `~/.hermes` breaks
  * profiles — which is exactly what both pillars used to do:
@@ -21,12 +22,14 @@
  * Home override: set `HERMES_HOME` (Hermes's own env var — respected here so a
  * profile-scoped shell and failproofai agree on what "all profiles" means).
  */
-import { readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 
 /** Directory under the Hermes root that holds non-default profiles. */
 const PROFILES_DIR = "profiles";
+const STANDARD_HOME = ".hermes";
+const SIBLING_HOME_PREFIX = ".hermes-";
 
 /** Name we give the root home (`~/.hermes`), which Hermes itself leaves unnamed. */
 export const HERMES_DEFAULT_PROFILE = "default";
@@ -41,28 +44,45 @@ export interface HermesProfile {
 /**
  * The Hermes ROOT home — the directory that owns `profiles/`.
  *
- * `HERMES_HOME` may point AT a profile (`<root>/profiles/<name>`), because
- * that's what the per-profile alias wrapper exports. We climb back to `<root>`
- * in that case so discovery still sees every sibling profile — mirroring what
- * upstream does so `profile list` can see them all.
+ * `HERMES_HOME` may point AT an upstream profile (`<root>/profiles/<name>`) or
+ * at a sibling installation (`~/.hermes-<name>`). We normalize either standard
+ * layout back to `~/.hermes` so discovery covers every installation. A custom
+ * non-standard path remains authoritative; scanning arbitrary sibling paths
+ * would risk treating backups and unrelated directories as live agents.
  */
 export function hermesRoot(): string {
   const env = (process.env.HERMES_HOME || "").trim();
   if (env) {
-    const home = resolve(env);
+    let home = resolve(env);
     const parent = dirname(home);
-    if (basename(parent) === PROFILES_DIR) return dirname(parent);
+    if (basename(parent) === PROFILES_DIR) home = dirname(parent);
+    const base = basename(home);
+    if (base === STANDARD_HOME || base.startsWith(SIBLING_HOME_PREFIX)) {
+      return join(dirname(home), STANDARD_HOME);
+    }
     return home;
   }
-  return join(homedir(), ".hermes");
+  return join(homedir(), STANDARD_HOME);
+}
+
+function uniqueProfileName(preferred: string, seen: Set<string>): string {
+  if (!seen.has(preferred)) return preferred;
+  const base = `${preferred}-home`;
+  if (!seen.has(base)) return base;
+  let suffix = 2;
+  while (seen.has(`${base}-${suffix}`)) suffix += 1;
+  return `${base}-${suffix}`;
 }
 
 /**
  * Every Hermes profile on disk: the root home first (as `"default"`), then each
- * `<root>/profiles/<name>/` in name order.
+ * `<root>/profiles/<name>/`, then valid `~/.hermes-<name>` sibling homes, in
+ * name order within each layout.
  *
- * Fail-open — a missing or unreadable `profiles/` dir just means "default only",
- * which is the single-profile install everyone starts with.
+ * A sibling home counts only when it contains `config.yaml`, matching OpenClaw
+ * discovery and avoiding arbitrary `.hermes-*` backup directories. Upstream
+ * `profiles/` directories are authoritative and remain discoverable before
+ * their config is first written.
  *
  * A profile directory literally named `default` would collide with the root's
  * reserved name; the root wins and the directory is skipped (dedup by name keeps
@@ -73,21 +93,49 @@ export function listHermesProfiles(): HermesProfile[] {
   const out: HermesProfile[] = [{ name: HERMES_DEFAULT_PROFILE, home: root }];
   const seen = new Set<string>([HERMES_DEFAULT_PROFILE]);
 
-  let names: string[];
+  let names: string[] = [];
   try {
     names = readdirSync(join(root, PROFILES_DIR), { withFileTypes: true })
       // Symlinked profile dirs are legitimate, and `isDirectory()` is false for them.
       .filter((e) => (e.isDirectory() || e.isSymbolicLink()) && !e.name.startsWith("."))
       .map((e) => e.name)
       .sort();
-  } catch {
-    return out;
-  }
+  } catch {}
 
   for (const name of names) {
     if (seen.has(name)) continue;
     seen.add(name);
     out.push({ name, home: join(root, PROFILES_DIR, name) });
+  }
+
+  // Only the standard ~/.hermes layout defines `.hermes-*` sibling homes.
+  // A custom HERMES_HOME is intentionally not used as a prefix convention.
+  if (basename(root) !== STANDARD_HOME) return out;
+
+  let siblings: HermesProfile[] = [];
+  const parent = dirname(root);
+  try {
+    siblings = readdirSync(parent, { withFileTypes: true })
+      .filter(
+        (entry) =>
+          (entry.isDirectory() || entry.isSymbolicLink()) &&
+          entry.name.startsWith(SIBLING_HOME_PREFIX) &&
+          entry.name.length > SIBLING_HOME_PREFIX.length &&
+          existsSync(join(parent, entry.name, "config.yaml")),
+      )
+      .map((entry) => ({
+        name: entry.name.slice(SIBLING_HOME_PREFIX.length),
+        home: join(parent, entry.name),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  } catch {
+    return out;
+  }
+
+  for (const sibling of siblings) {
+    const name = uniqueProfileName(sibling.name, seen);
+    seen.add(name);
+    out.push({ name, home: sibling.home });
   }
   return out;
 }

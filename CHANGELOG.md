@@ -1,10 +1,47 @@
 # Changelog
 
+## 1.0.6 — 2026-09-16
+
+Stable native Hermes policy-enforcement release, validated across CLI and
+Telegram sessions, default and named profiles, instruction delivery, hard
+denials, daemon-backed evaluation, and end-to-end event ingestion.
+
+### Added
+
+- Add a native Hermes plugin backed by the existing `failproofaid` warm worker. Policies now intercept Hermes tool calls before execution, deliver model-visible `instruct()` guidance with a bounded retry ledger, and preserve hard blocking for `deny()` decisions.
+- Add structured `policyEvaluation` / `policyResult` daemon messages for native integrations, including canonical tool, policy, match, reason, and latency metadata.
+
+### Fixes
+
+- Install, remove, and report health for every active Hermes home, including the default profile, upstream nested profiles, and config-bearing `~/.hermes-<name>` installations.
+- Require an exact native-policy capability check before changing any Hermes plugin or profile configuration. Missing, unhealthy, outdated, or protocol-incompatible daemons are rejected with setup instructions before fail-closed enforcement can be enabled.
+- Apply Hermes evaluation timeouts as one total socket deadline and keep advisory instruction retries bounded so an unavailable state store or repeatedly unchanged action cannot deadlock a turn.
+- Make npm release verification tolerate registry propagation delay while still requiring the root package and all platform daemon packages to publish at the same version.
+
+## 1.0.6-beta.1 — 2026-09-15
+
+### Fixes
+
+- Require an exact `policyEvaluation` / `policyResult` capability probe before direct Hermes installation changes plugin or profile configuration. A healthy older daemon that only supports shell-hook requests is now rejected with upgrade instructions instead of enabling a fail-closed plugin it cannot serve.
+- Discover config-bearing `~/.hermes-<name>` installations alongside the default and upstream nested profiles, so install, uninstall, health checks, and audit coverage reach every Hermes home without mistaking empty backup directories for active profiles.
+- Make daemon readiness an integration capability rather than a Hermes command special-case, so future daemon-only plugins inherit the same pre-install lockout protection while CLI-backed integrations keep their local evaluator fallback.
+- Apply Hermes `evaluation_timeout_ms` as one total socket deadline instead of resetting the full timeout for each partial send or receive.
+- Allow npm up to 16 minutes 40 seconds to expose an accepted release while checking every package in parallel per retry round. The `1.0.6-beta.0` root package took 11 minutes 25 seconds to become visible after `npm publish` succeeded, causing the workflow to report a false version split while all five packages had actually published.
+
 ## 1.0.6-beta.0 — 2026-09-15
 
 ### Docs
 
 - Translate the English documentation changes from #788 and #791 into all 14 locales, including the new evaluation pages and SDK event redaction on the custom-agents page, and point translated fragment links at their translated headings (#797)
+
+### Added
+
+- Add a native, profile-local Hermes plugin that evaluates policies through the existing failproofaid warm worker. Hermes `instruct()` decisions now interrupt the first matching tool attempt with model-visible guidance, then use a persistent bounded retry ledger so advisory policy cannot deadlock the turn; `deny()` remains a hard block.
+- Add structured `policyEvaluation` / `policyResult` messages to the versioned local daemon protocol for native integrations, including canonical tool, policy, match, reason, and latency metadata.
+
+### Changed
+
+- Hermes installation now copies and enables the managed plugin in every profile, migrates only legacy FailproofAI shell hooks, refuses to overwrite unmanaged plugin directories, and reports incomplete or duplicate profile installations as unhealthy.
 
 ### Dependencies
 

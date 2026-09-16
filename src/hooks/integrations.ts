@@ -7,7 +7,17 @@
  * is agent-agnostic — only install/uninstall plumbing varies.
  */
 import { execSync } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
+import {
+  cpSync,
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  renameSync,
+  rmSync,
+  unlinkSync,
+} from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
@@ -112,6 +122,13 @@ function binaryExists(name: string): boolean {
 export interface Integration {
   id: IntegrationType;
   displayName: string;
+  /**
+   * This integration has no in-process/CLI fallback and cannot evaluate policy
+   * unless failproofaid answers the structured native-policy probe. Installation
+   * must stop before writing any hook or plugin when the daemon is unavailable
+   * or predates the `policyEvaluation` capability.
+   */
+  requiresHealthyDaemon?: boolean;
   /** Settings scopes this integration supports (e.g. claude: user/project/local; codex: user/project). */
   scopes: readonly HookScope[];
   /** Hook events this integration fires (Claude: PascalCase, Codex: snake_case stored as Pascal in settings). */
@@ -134,6 +151,9 @@ export interface Integration {
 
   /** Read the raw settings/hooks file (returns {} when missing). */
   readSettings(settingsPath: string): Record<string, unknown>;
+
+  /** Install integration-owned files before enabling them in settings. */
+  prepareInstall?(settingsPath: string): void;
 
   /** Write the settings/hooks file. */
   writeSettings(settingsPath: string, settings: Record<string, unknown>): void;
@@ -1363,14 +1383,14 @@ function makePiProjectRelativeEntry(extPath: string): string {
   // works for the local user.
   return extResolved;
 }
-// ── Hermes (hermes-agent) — live hooks (Pillar 1) ────────────────────────────
+// ── Hermes (hermes-agent) — native plugin (Pillar 1) ────────────────────────
 //
-// External-command CLI like codex/cursor, but its config is YAML
-// (`~/.hermes/config.yaml`) under a `hooks:` map, so the I/O layer uses the yaml
-// Document API (comment-preserving). Flat per-event arrays like cursor:
-// `hooks: { pre_tool_call: [ { command, timeout, <marker> } ], … }`. Hermes
-// reads a `{"decision":"block",…}` JSON response on stdout (see
-// policy-evaluator.ts); exit codes are ignored. User-scope only.
+// Hermes loads trusted Python plugins from `<HERMES_HOME>/plugins/<name>/`.
+// The shipped plugin registers Hermes-native hooks and talks directly to the
+// local failproofaid socket, avoiding a fresh CLI process per event. Config is
+// YAML and profile-scoped; install copies the plugin into every profile and
+// adds `failproofai` to `plugins.enabled`. Legacy shell-hook entries are removed
+// during migration so one tool call is never evaluated twice.
 
 /** One hook entry as stored under a `hooks:` event key in config.yaml. */
 interface HermesHookEntry {
@@ -1379,9 +1399,204 @@ interface HermesHookEntry {
   [key: string]: unknown;
 }
 
+interface HermesPluginsConfig {
+  enabled?: unknown[];
+  disabled?: unknown[];
+  entries?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+const HERMES_PLUGIN_ID = "failproofai";
+const HERMES_PLUGIN_MARKER = ".failproofai-managed";
+const HERMES_PLUGIN_FILES = ["plugin.yaml", "__init__.py", "client.py", "ledger.py"] as const;
+
+function getHermesPluginSourcePath(): string {
+  const fromEnv = process.env.FAILPROOFAI_PACKAGE_ROOT;
+  if (fromEnv) return resolve(fromEnv, "hermes-plugin");
+  return resolve(fileURLToPath(import.meta.url), "..", "..", "..", "hermes-plugin");
+}
+
+export function hermesPluginPathForSettings(settingsPath: string): string {
+  return resolve(dirname(settingsPath), "plugins", HERMES_PLUGIN_ID);
+}
+
+function hasManagedHermesPlugin(settingsPath: string): boolean {
+  const pluginPath = hermesPluginPathForSettings(settingsPath);
+  try {
+    if (lstatSync(pluginPath).isSymbolicLink()) return false;
+    if (!existsSync(resolve(pluginPath, HERMES_PLUGIN_MARKER))) return false;
+    return HERMES_PLUGIN_FILES.every((file) => existsSync(resolve(pluginPath, file)));
+  } catch {
+    return false;
+  }
+}
+
+function hasHermesPluginMarker(settingsPath: string): boolean {
+  const pluginPath = hermesPluginPathForSettings(settingsPath);
+  try {
+    return !lstatSync(pluginPath).isSymbolicLink() && existsSync(resolve(pluginPath, HERMES_PLUGIN_MARKER));
+  } catch {
+    return false;
+  }
+}
+
+function installHermesPlugin(settingsPath: string): void {
+  const source = getHermesPluginSourcePath();
+  for (const file of HERMES_PLUGIN_FILES) {
+    if (!existsSync(resolve(source, file))) {
+      throw new Error(`Hermes plugin asset is missing from the failproofai package: ${file}`);
+    }
+  }
+
+  const destination = hermesPluginPathForSettings(settingsPath);
+  if (existsSync(destination)) {
+    if (lstatSync(destination).isSymbolicLink() || !existsSync(resolve(destination, HERMES_PLUGIN_MARKER))) {
+      throw new Error(
+        `Refusing to overwrite an unmanaged Hermes plugin at ${destination}. ` +
+          `Move it aside or install FailproofAI under a different Hermes profile.`,
+      );
+    }
+  }
+
+  mkdirSync(dirname(destination), { recursive: true });
+  const suffix = `${process.pid}-${Date.now()}`;
+  const temporary = `${destination}.install-${suffix}`;
+  const backup = `${destination}.backup-${suffix}`;
+  let movedExisting = false;
+  try {
+    mkdirSync(temporary, { recursive: true });
+    for (const file of HERMES_PLUGIN_FILES) {
+      cpSync(resolve(source, file), resolve(temporary, file));
+    }
+    writeFileSync(
+      resolve(temporary, HERMES_PLUGIN_MARKER),
+      "Managed by failproofai. Remove with `failproofai policies --uninstall --cli hermes`.\n",
+      { encoding: "utf8", mode: 0o600 },
+    );
+    if (existsSync(destination)) {
+      renameSync(destination, backup);
+      movedExisting = true;
+    }
+    renameSync(temporary, destination);
+    if (movedExisting) rmSync(backup, { recursive: true, force: true });
+  } catch (err) {
+    rmSync(temporary, { recursive: true, force: true });
+    if (movedExisting && !existsSync(destination) && existsSync(backup)) {
+      renameSync(backup, destination);
+    }
+    throw err;
+  }
+}
+
+function removeManagedHermesPlugin(settingsPath: string): boolean {
+  const pluginPath = hermesPluginPathForSettings(settingsPath);
+  // The marker is the ownership boundary. Remove even an incomplete managed
+  // install so an interrupted copy can always be repaired or uninstalled.
+  if (!hasHermesPluginMarker(settingsPath)) return false;
+  rmSync(pluginPath, { recursive: true, force: true });
+  return true;
+}
+
+function removeLegacyHermesHooks(doc: Document): number {
+  const js = (doc.toJS() ?? {}) as { hooks?: Record<string, HermesHookEntry[]> };
+  const hooks = js.hooks;
+  let removed = 0;
+  if (hooks && typeof hooks === "object") {
+    for (const eventType of Object.keys(hooks)) {
+      const entries = hooks[eventType];
+      if (!Array.isArray(entries)) continue;
+      const before = entries.length;
+      const filtered = entries.filter((hook) => !isMarkedHook(hook));
+      removed += before - filtered.length;
+      if (filtered.length === 0) delete hooks[eventType];
+      else hooks[eventType] = filtered;
+    }
+    if (Object.keys(hooks).length === 0) {
+      doc.delete("hooks");
+      // Older FailproofAI installs set this broad Hermes switch so headless
+      // shell hooks could run. It is safe to remove only when no operator hook
+      // remains that may rely on it.
+      if (removed > 0) doc.delete("hooks_auto_accept");
+    } else {
+      doc.set("hooks", hooks);
+    }
+  }
+  return removed;
+}
+
+function hermesConfigState(settingsPath: string): {
+  pluginEnabled: boolean;
+  legacyShellHookPresent: boolean;
+} {
+  if (!existsSync(settingsPath)) {
+    return { pluginEnabled: false, legacyShellHookPresent: false };
+  }
+  const doc = readYamlDoc(settingsPath);
+  const js = (doc.toJS() ?? {}) as {
+    hooks?: Record<string, HermesHookEntry[]>;
+    plugins?: HermesPluginsConfig;
+  };
+  const enabled = js.plugins?.enabled;
+  const legacyShellHookPresent =
+    !!js.hooks &&
+    typeof js.hooks === "object" &&
+    Object.values(js.hooks).some(
+      (entries) => Array.isArray(entries) && entries.some((entry) => isMarkedHook(entry)),
+    );
+  return {
+    pluginEnabled: Array.isArray(enabled) && enabled.includes(HERMES_PLUGIN_ID),
+    legacyShellHookPresent,
+  };
+}
+
+export interface HermesProfileHealth {
+  name: string;
+  home: string;
+  settingsPath: string;
+  pluginInstalled: boolean;
+  pluginEnabled: boolean;
+  legacyShellHookPresent: boolean;
+  healthy: boolean;
+}
+
+/** Read-only, per-profile Hermes installation health for setup/status surfaces. */
+export function hermesProfileHealth(): HermesProfileHealth[] {
+  return listHermesProfiles().map((profile) => {
+    const settingsPath = resolve(profile.home, "config.yaml");
+    const config = hermesConfigState(settingsPath);
+    const pluginInstalled = hasManagedHermesPlugin(settingsPath);
+    return {
+      name: profile.name,
+      home: profile.home,
+      settingsPath,
+      pluginInstalled,
+      pluginEnabled: config.pluginEnabled,
+      legacyShellHookPresent: config.legacyShellHookPresent,
+      healthy: pluginInstalled && config.pluginEnabled && !config.legacyShellHookPresent,
+    };
+  });
+}
+
+/** Compact rows for the machine-status display; absent Hermes homes produce no noise. */
+export function hermesProfileStatusRows(): Array<[string, string]> {
+  return hermesProfileHealth()
+    .filter((profile) => existsSync(profile.home))
+    .map((profile) => {
+      const problems: string[] = [];
+      if (!profile.pluginInstalled) problems.push("plugin files missing or incomplete");
+      if (!profile.pluginEnabled) problems.push("plugin not enabled");
+      if (profile.legacyShellHookPresent) problems.push("legacy shell hook also present");
+      return [
+        "hermes/" + profile.name,
+        problems.length === 0 ? "native plugin enabled" : "UNHEALTHY — " + problems.join("; "),
+      ];
+    });
+}
+
 export const hermes: Integration = {
   id: "hermes",
   displayName: "Hermes",
+  requiresHealthyDaemon: true,
   scopes: HERMES_HOOK_SCOPES,
   eventTypes: HERMES_HOOK_EVENT_TYPES,
 
@@ -1410,75 +1625,66 @@ export const hermes: Integration = {
     writeYamlDoc(settingsPath, settings as unknown as Document);
   },
 
-  buildHookEntry(binaryPath, eventType, scope) {
-    // No matcher → fires for ALL tools / all platforms (slack/telegram/cli/cron)
-    // and internal subagents. `timeout` is in seconds; Hermes runs the command
-    // via shlex.split (shell=false).
-    const command =
-      scope === "project"
-        ? `npx -y failproofai --hook ${eventType} --cli hermes`
-        : `"${binaryPath}" --hook ${eventType} --cli hermes`;
+  prepareInstall(settingsPath) {
+    installHermesPlugin(settingsPath);
+  },
+
+  buildHookEntry(_binaryPath, _eventType, _scope) {
+    // Native plugins are package-level registrations. This sentinel preserves
+    // the common Integration interface; writeHookEntries does the real work.
     return {
-      command,
-      timeout: 30,
       [FAILPROOFAI_HOOK_MARKER]: true,
+      _hermesPluginPath: getHermesPluginSourcePath(),
     };
   },
 
   isFailproofaiHook: isMarkedHook,
 
-  writeHookEntries(settings, binaryPath, scope) {
+  writeHookEntries(settings) {
     const doc = settings as unknown as Document;
-    // Read the current hooks map as plain JS, then re-set ONLY the `hooks` key —
-    // preserving comments on every other part of config.yaml.
-    const js = (doc.toJS() ?? {}) as { hooks?: Record<string, HermesHookEntry[]> };
-    const hooks: Record<string, HermesHookEntry[]> =
-      js.hooks && typeof js.hooks === "object" ? js.hooks : {};
+    // A native plugin and the legacy shell bridge running together would
+    // evaluate every event twice. Remove only failproofai-owned shell entries;
+    // unrelated operator hooks remain intact.
+    removeLegacyHermesHooks(doc);
 
-    for (const eventType of HERMES_HOOK_EVENT_TYPES) {
-      const entry = this.buildHookEntry(binaryPath, eventType, scope) as unknown as HermesHookEntry;
-      const arr = Array.isArray(hooks[eventType]) ? hooks[eventType] : [];
-      const idx = arr.findIndex((h) => isMarkedHook(h));
-      if (idx >= 0) arr[idx] = entry;
-      else arr.push(entry);
-      hooks[eventType] = arr;
+    const js = (doc.toJS() ?? {}) as { plugins?: HermesPluginsConfig };
+    const plugins: HermesPluginsConfig =
+      js.plugins && typeof js.plugins === "object" ? js.plugins : {};
+    const enabled = Array.isArray(plugins.enabled) ? [...plugins.enabled] : [];
+    if (!enabled.includes(HERMES_PLUGIN_ID)) enabled.push(HERMES_PLUGIN_ID);
+    plugins.enabled = enabled;
+    if (Array.isArray(plugins.disabled)) {
+      plugins.disabled = plugins.disabled.filter((name) => name !== HERMES_PLUGIN_ID);
+      if (plugins.disabled.length === 0) delete plugins.disabled;
     }
-    doc.set("hooks", hooks);
-    // The headless gateway has no TTY to answer Hermes's first-use hook-consent
-    // prompt, so auto-accept declared hooks. Tradeoff: also auto-accepts any
-    // other hook the operator adds; a targeted `shell-hooks-allowlist.json`
-    // pre-seed is a future refinement.
-    doc.set("hooks_auto_accept", true);
+    doc.set("plugins", plugins);
   },
 
   removeHooksFromFile(settingsPath) {
-    if (!existsSync(settingsPath)) return 0;
     const doc = readYamlDoc(settingsPath);
-    const js = (doc.toJS() ?? {}) as { hooks?: Record<string, HermesHookEntry[]> };
-    const hooks = js.hooks;
-
-    let removed = 0;
-    if (hooks && typeof hooks === "object") {
-      for (const eventType of Object.keys(hooks)) {
-        const entries = hooks[eventType];
-        if (!Array.isArray(entries)) continue;
-        const before = entries.length;
-        const filtered = entries.filter((h) => !isMarkedHook(h));
-        removed += before - filtered.length;
-        if (filtered.length === 0) delete hooks[eventType];
-        else hooks[eventType] = filtered;
+    let removed = removeLegacyHermesHooks(doc);
+    const js = (doc.toJS() ?? {}) as { plugins?: HermesPluginsConfig };
+    const plugins = js.plugins;
+    let configChanged = removed > 0;
+    if (plugins && typeof plugins === "object") {
+      if (Array.isArray(plugins.enabled)) {
+        const before = plugins.enabled.length;
+        plugins.enabled = plugins.enabled.filter((name) => name !== HERMES_PLUGIN_ID);
+        if (plugins.enabled.length !== before) {
+          removed += 1;
+          configChanged = true;
+        }
+        if (plugins.enabled.length === 0) delete plugins.enabled;
       }
-      if (removed > 0) {
-        if (Object.keys(hooks).length === 0) doc.delete("hooks");
-        else doc.set("hooks", hooks);
+      if (plugins.entries && HERMES_PLUGIN_ID in plugins.entries) {
+        delete plugins.entries[HERMES_PLUGIN_ID];
+        configChanged = true;
       }
+      if (Object.keys(plugins).length === 0) doc.delete("plugins");
+      else doc.set("plugins", plugins);
     }
-
-    // Always drop our headless-consent flag on uninstall — even if the hooks were
-    // already removed manually — so it can't silently auto-accept future operator
-    // hooks. `doc.delete` returns true iff the key was present.
-    const droppedAutoAccept = doc.delete("hooks_auto_accept");
-    if (removed > 0 || droppedAutoAccept) writeYamlDoc(settingsPath, doc);
+    if (configChanged) writeYamlDoc(settingsPath, doc);
+    if (removeManagedHermesPlugin(settingsPath)) removed += 1;
     return removed;
   },
 
@@ -1497,15 +1703,9 @@ export const hermes: Integration = {
 };
 
 function hermesConfigHasHooks(settingsPath: string): boolean {
-  if (!existsSync(settingsPath)) return false;
   try {
-    const doc = readYamlDoc(settingsPath);
-    const js = (doc.toJS() ?? {}) as { hooks?: Record<string, HermesHookEntry[]> };
-    const hooks = js.hooks;
-    if (!hooks || typeof hooks !== "object") return false;
-    for (const entries of Object.values(hooks)) {
-      if (Array.isArray(entries) && entries.some((h) => isMarkedHook(h))) return true;
-    }
+    const state = hermesConfigState(settingsPath);
+    return state.pluginEnabled && hasManagedHermesPlugin(settingsPath) && !state.legacyShellHookPresent;
   } catch {
     // Corrupt config — treat as not installed.
   }
@@ -1523,10 +1723,9 @@ function hermesConfigHasHooks(settingsPath: string): boolean {
  * warning.
  */
 export function unhookedHermesProfiles(): string[] {
-  return listHermesProfiles()
-    .filter((p) => existsSync(p.home))
-    .filter((p) => !hermesConfigHasHooks(resolve(p.home, "config.yaml")))
-    .map((p) => p.name);
+  return hermesProfileHealth()
+    .filter((profile) => existsSync(profile.home) && !profile.healthy)
+    .map((profile) => profile.name);
 }
 
 // ── OpenClaw integration ────────────────────────────────────────────────────

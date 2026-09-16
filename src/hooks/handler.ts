@@ -102,6 +102,21 @@ export interface HookEventOutcome {
   exitCode: number;
   stdout: string;
   stderr: string;
+  /**
+   * Structured policy metadata for in-process adapters. Existing shell-hook
+   * callers intentionally ignore this and keep consuming stdout/stderr.
+   */
+  evaluation?: HookEvaluationSummary;
+}
+
+export interface HookEvaluationSummary {
+  decision: "allow" | "deny" | "instruct";
+  policyName: string | null;
+  policyNames: string[];
+  reason: string | null;
+  matchedPolicies: string[];
+  durationMs: number;
+  toolName: string | null;
 }
 
 export interface EvaluateHookEventOptions {
@@ -757,7 +772,20 @@ export async function evaluateHookEvent(
       }
     }
 
-    return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr };
+    return {
+      exitCode: result.exitCode,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      evaluation: {
+        decision: result.decision,
+        policyName: result.policyName,
+        policyNames: result.policyNames ?? (result.policyName ? [result.policyName] : []),
+        reason: result.reason,
+        matchedPolicies,
+        durationMs,
+        toolName: (parsed.tool_name as string) ?? null,
+      },
+    };
   } finally {
     if (opts?.awaitTelemetryFlush ?? true) {
       // Await any un-awaited (`void trackHookEvent(...)`) events fired during

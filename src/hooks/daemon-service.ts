@@ -1071,6 +1071,36 @@ export async function probeDaemonEndToEnd(): Promise<boolean> {
 }
 
 /**
+ * Proves that the daemon supports the structured request native plugins use.
+ *
+ * This deliberately follows the ordinary end-to-end hook probe. Besides
+ * retaining its startup-race retry, that makes the failure meaningful: an old
+ * daemon can be fully healthy for shell hooks while still lacking the
+ * `policyEvaluation` variant added for Hermes. Protocol v1 predates that
+ * variant, so version equality alone cannot establish the capability.
+ */
+export async function probeDaemonPolicyEvaluation(): Promise<boolean> {
+  if (!(await probeDaemonEndToEnd())) return false;
+  try {
+    const { attemptDaemonPolicyEvaluation } = await import("./daemon-client");
+    const attempt = await attemptDaemonPolicyEvaluation(
+      {
+        integration: "hermes",
+        event: "on_session_start",
+        payload: {
+          hook_event_name: "on_session_start",
+          source: "failproofai-native-policy-health-probe",
+        },
+      },
+      { responseTimeoutMs: DAEMON_PROBE_TIMEOUT_MS },
+    );
+    return attempt.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Waits for the service to report running and to HOLD it — a `Type=simple` unit
  * is active the moment it forks, so one optimistic reading passes a daemon that
  * died at startup.

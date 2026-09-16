@@ -4,7 +4,7 @@
 
 ### Fixes
 
-- Require a healthy end-to-end `failproofaid` probe before direct Hermes installation changes plugin or profile configuration, preventing the default fail-closed mode from locking tool use when no evaluator is available.
+- Require an exact `policyEvaluation` / `policyResult` capability probe before direct Hermes installation changes plugin or profile configuration. A healthy older daemon that only supports shell-hook requests is now rejected with upgrade instructions instead of enabling a fail-closed plugin it cannot serve.
 - Discover config-bearing `~/.hermes-<name>` installations alongside the default and upstream nested profiles, so install, uninstall, health checks, and audit coverage reach every Hermes home without mistaking empty backup directories for active profiles.
 - Make daemon readiness an integration capability rather than a Hermes command special-case, so future daemon-only plugins inherit the same pre-install lockout protection while CLI-backed integrations keep their local evaluator fallback.
 - Apply Hermes `evaluation_timeout_ms` as one total socket deadline instead of resetting the full timeout for each partial send or receive.

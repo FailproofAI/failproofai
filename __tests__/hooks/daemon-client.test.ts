@@ -108,6 +108,64 @@ describe("hooks/daemon-client", () => {
     expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
   });
 
+  it("proves native policy evaluation only from a complete policyResult", async () => {
+    await startServer(async (socket) => {
+      const req = await readFrame(socket);
+      expect(req).toMatchObject({
+        type: "policyEvaluation",
+        protocolVersion: 1,
+        integration: "hermes",
+        event: "on_session_start",
+        payload: { hook_event_name: "on_session_start" },
+      });
+      socket.end(
+        encodeFrame({
+          type: "policyResult",
+          protocolVersion: 1,
+          decision: "allow",
+          policyNames: [],
+          reason: null,
+          matchedPolicies: [],
+          durationMs: 1,
+          toolName: null,
+        }),
+      );
+    });
+
+    const { attemptDaemonPolicyEvaluation } = await import("../../src/hooks/daemon-client");
+    await expect(
+      attemptDaemonPolicyEvaluation({
+        integration: "hermes",
+        event: "on_session_start",
+        payload: { hook_event_name: "on_session_start" },
+      }),
+    ).resolves.toEqual({ ok: true });
+  });
+
+  it("does not mistake a matching-version hook response for native policy support", async () => {
+    await startServer(async (socket) => {
+      await readFrame(socket);
+      socket.end(
+        encodeFrame({
+          type: "hookResult",
+          protocolVersion: 1,
+          exitCode: 0,
+          stdout: "",
+          stderr: "",
+        }),
+      );
+    });
+
+    const { attemptDaemonPolicyEvaluation } = await import("../../src/hooks/daemon-client");
+    await expect(
+      attemptDaemonPolicyEvaluation({
+        integration: "hermes",
+        event: "on_session_start",
+        payload: {},
+      }),
+    ).resolves.toEqual({ ok: false, failure: "unreachable" });
+  });
+
   it("round-trips a deny response with real stdout/stderr content", async () => {
     await startServer(async (socket) => {
       await readFrame(socket);

@@ -93,6 +93,26 @@ export type DaemonAttempt =
   | { ok: true; response: DaemonHookResponse }
   | { ok: false; failure: DaemonFailure };
 
+export interface DaemonPolicyEvaluationRequest {
+  integration: IntegrationType;
+  event: string;
+  payload: Record<string, unknown>;
+  cwd?: string;
+}
+
+export type DaemonPolicyEvaluationAttempt =
+  | { ok: true }
+  | { ok: false; failure: DaemonFailure };
+
+interface DaemonRequestOptions {
+  /** Override the response budget; the connect budget is never relaxed. */
+  responseTimeoutMs?: number;
+}
+
+type DaemonWireAttempt =
+  | { ok: true; message: Record<string, unknown> }
+  | { ok: false; failure: DaemonFailure };
+
 /**
  * Whether a daemon is listening, regardless of how it was started.
  *
@@ -176,29 +196,22 @@ function encodeFrame(value: unknown): Buffer {
   return Buffer.concat([header, body]);
 }
 
-/** Attempts a daemon evaluation while preserving the failure category. */
-export async function attemptDaemonHook(
-  req: DaemonHookRequest,
-  opts?: {
-    /**
-     * Override the RESPONSE budget only — the connect budget is never
-     * relaxed. Used by the health probe (`probeDaemonEndToEnd`), which runs
-     * from an interactive command rather than a hook and must not make a
-     * person wait out the full 30s hook budget to be told their daemon is
-     * broken. Never set this on the hook path: 30s is matched to the
-     * daemon's own read timeout so this side never gives up on a request the
-     * daemon is still honestly working on.
-     */
-    responseTimeoutMs?: number;
-  },
-): Promise<DaemonAttempt> {
+/**
+ * Sends one framed daemon request while preserving the failure category.
+ * Shape validation belongs to the typed caller: both shell hooks and native
+ * integrations share the transport, but require different response variants.
+ */
+async function attemptDaemonRequest(
+  request: Record<string, unknown>,
+  opts?: DaemonRequestOptions,
+): Promise<DaemonWireAttempt> {
   // Windows never has a daemon in this phase (see the plan's platform
   // scope) — skip the attempt outright rather than depending on however
   // Node happens to behave when handed a POSIX socket path on Windows.
   if (process.platform === "win32") return { ok: false, failure: "unreachable" };
   const responseBudget = opts?.responseTimeoutMs ?? DAEMON_RESPONSE_TIMEOUT_MS;
 
-  return new Promise<DaemonAttempt>((resolvePromise) => {
+  return new Promise<DaemonWireAttempt>((resolvePromise) => {
     let settled = false;
     let timer: ReturnType<typeof setTimeout>;
     const arm = (ms: number) => {
@@ -210,7 +223,7 @@ export async function attemptDaemonHook(
       // process lingers if something upstream forgets to await us.
       timer.unref?.();
     };
-    const finish = (result: DaemonAttempt) => {
+    const finish = (result: DaemonWireAttempt) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
@@ -230,16 +243,7 @@ export async function attemptDaemonHook(
       // Connected: the daemon is demonstrably reachable, so the question is
       // no longer "is it there" but "how long does this evaluation take".
       arm(responseBudget);
-      socket.write(
-        encodeFrame({
-          type: "hook",
-          protocolVersion: PROTOCOL_VERSION,
-          hookEvent: req.hookEvent,
-          cli: req.cli,
-          stdin: req.stdin,
-          cwd: req.cwd,
-        }),
-      );
+      socket.write(encodeFrame(request));
     });
 
     socket.on("data", (chunk: Buffer) => {
@@ -258,13 +262,18 @@ export async function attemptDaemonHook(
       if (recvBuf.length < declaredLen) return;
 
       const body = recvBuf.subarray(0, declaredLen);
-      let message: Record<string, unknown>;
+      let parsed: unknown;
       try {
-        message = JSON.parse(body.toString("utf8")) as Record<string, unknown>;
+        parsed = JSON.parse(body.toString("utf8"));
       } catch {
         fail("unreachable");
         return;
       }
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        fail("unreachable");
+        return;
+      }
+      const message = parsed as Record<string, unknown>;
 
       if (message.protocolVersion !== PROTOCOL_VERSION) {
         // Catches BOTH directions. A newer CLI sends v2 and the daemon replies
@@ -274,29 +283,98 @@ export async function attemptDaemonHook(
         fail("protocol-mismatch");
         return;
       }
-      if (
-        message.type === "hookResult" &&
-        typeof message.exitCode === "number" &&
-        typeof message.stdout === "string" &&
-        typeof message.stderr === "string"
-      ) {
-        finish({
-          ok: true,
-          response: {
-            exitCode: message.exitCode,
-            stdout: message.stdout,
-            stderr: message.stderr,
-          },
-        });
-        return;
-      }
-      // Anything else — an explicit `error` message at a MATCHING protocol
-      // version, a `pong` (protocol confusion), or a well-formed-but-wrong-shape
-      // body — is treated identically to a connection failure: no partial trust.
-      fail("unreachable");
+      finish({ ok: true, message });
     });
 
     socket.on("error", () => fail("unreachable"));
     socket.on("close", () => fail("unreachable"));
   });
+}
+
+/** Attempts a shell-hook daemon evaluation while preserving the failure category. */
+export async function attemptDaemonHook(
+  req: DaemonHookRequest,
+  opts?: DaemonRequestOptions,
+): Promise<DaemonAttempt> {
+  const attempt = await attemptDaemonRequest(
+    {
+      type: "hook",
+      protocolVersion: PROTOCOL_VERSION,
+      hookEvent: req.hookEvent,
+      cli: req.cli,
+      stdin: req.stdin,
+      cwd: req.cwd,
+    },
+    opts,
+  );
+  if (!attempt.ok) return attempt;
+
+  const message = attempt.message;
+  if (
+    message.type === "hookResult" &&
+    typeof message.exitCode === "number" &&
+    typeof message.stdout === "string" &&
+    typeof message.stderr === "string"
+  ) {
+    return {
+      ok: true,
+      response: {
+        exitCode: message.exitCode,
+        stdout: message.stdout,
+        stderr: message.stderr,
+      },
+    };
+  }
+
+  // An explicit matching-version error, pong, or malformed hook result is not
+  // an evaluation. Never grant partial trust to a daemon that answered the
+  // connection but not the request we sent.
+  return { ok: false, failure: "unreachable" };
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+/**
+ * Attempts the structured request used by native in-process integrations.
+ * A matching protocol version is not sufficient: pre-native v1 daemons speak
+ * `hook` but cannot deserialize `policyEvaluation`, so only a complete,
+ * well-shaped `policyResult` proves this capability exists.
+ */
+export async function attemptDaemonPolicyEvaluation(
+  req: DaemonPolicyEvaluationRequest,
+  opts?: DaemonRequestOptions,
+): Promise<DaemonPolicyEvaluationAttempt> {
+  const attempt = await attemptDaemonRequest(
+    {
+      type: "policyEvaluation",
+      protocolVersion: PROTOCOL_VERSION,
+      integration: req.integration,
+      event: req.event,
+      payload: req.payload,
+      cwd: req.cwd,
+    },
+    opts,
+  );
+  if (!attempt.ok) return attempt;
+
+  const message = attempt.message;
+  const validOptionalString = (value: unknown) =>
+    value === null || value === undefined || typeof value === "string";
+  if (
+    message.type === "policyResult" &&
+    (message.decision === "allow" || message.decision === "deny" || message.decision === "instruct") &&
+    isStringArray(message.policyNames) &&
+    validOptionalString(message.reason) &&
+    isStringArray(message.matchedPolicies) &&
+    typeof message.durationMs === "number" &&
+    Number.isInteger(message.durationMs) &&
+    message.durationMs >= 0 &&
+    validOptionalString(message.toolName)
+  ) {
+    return { ok: true };
+  }
+
+  return { ok: false, failure: "unreachable" };
 }

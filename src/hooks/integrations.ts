@@ -124,8 +124,9 @@ export interface Integration {
   displayName: string;
   /**
    * This integration has no in-process/CLI fallback and cannot evaluate policy
-   * unless failproofaid answers an end-to-end probe. Installation must stop
-   * before writing any hook or plugin when the daemon is unavailable.
+   * unless failproofaid answers the structured native-policy probe. Installation
+   * must stop before writing any hook or plugin when the daemon is unavailable
+   * or predates the `policyEvaluation` capability.
    */
   requiresHealthyDaemon?: boolean;
   /** Settings scopes this integration supports (e.g. claude: user/project/local; codex: user/project). */

@@ -29,7 +29,7 @@ import { CORE_SOURCE, addPack, setPackPolicyEnabled } from "./pack-store";
 import type { ResolvedPack } from "./pack-manifest";
 import { hasInstalledPacks, readInstalledPacks } from "./pack-manifest";
 import { packPolicyParamKey } from "./policy-evaluator";
-import { probeDaemonEndToEnd } from "./daemon-service";
+import { probeDaemonPolicyEvaluation } from "./daemon-service";
 import {
   chip,
   note,
@@ -477,12 +477,12 @@ async function installHooksImpl(
   const daemonRequiredBy = selectedIntegrations
     .map(({ integration }) => integration)
     .filter((integration) => integration.requiresHealthyDaemon);
-  if (daemonRequiredBy.length > 0 && !(await probeDaemonEndToEnd())) {
+  if (daemonRequiredBy.length > 0 && !(await probeDaemonPolicyEvaluation())) {
     const names = daemonRequiredBy.map((integration) => integration.displayName).join(", ");
     const verb = daemonRequiredBy.length === 1 ? "requires" : "require";
     throw new CliError(
-      `${names} ${verb} a healthy failproofaid daemon before FailproofAI enforcement can be enabled.\n` +
-        "Run `failproofai config` to install and configure the daemon, then retry.",
+      `${names} ${verb} a compatible failproofaid daemon with native policy evaluation before FailproofAI enforcement can be enabled.\n` +
+        "Run `failproofai config` to install or update the daemon, then retry.",
     );
   }
 

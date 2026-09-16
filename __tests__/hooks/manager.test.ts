@@ -62,7 +62,7 @@ vi.mock("../../src/hooks/hook-telemetry", () => ({
 }));
 
 vi.mock("../../src/hooks/daemon-service", () => ({
-  probeDaemonEndToEnd: vi.fn(() => Promise.resolve(true)),
+  probeDaemonPolicyEvaluation: vi.fn(() => Promise.resolve(true)),
 }));
 
 vi.mock("../../lib/telemetry-id", () => ({
@@ -99,10 +99,10 @@ describe("hooks/manager", () => {
   });
 
   describe("installHooks", () => {
-    it("refuses to enable Hermes before a daemon passes an end-to-end probe", async () => {
-      const { probeDaemonEndToEnd } = await import("../../src/hooks/daemon-service");
+    it("refuses to enable Hermes before a daemon proves native policy evaluation support", async () => {
+      const { probeDaemonPolicyEvaluation } = await import("../../src/hooks/daemon-service");
       const { writeScopedHooksConfig } = await import("../../src/hooks/hooks-config");
-      vi.mocked(probeDaemonEndToEnd).mockResolvedValue(false);
+      vi.mocked(probeDaemonPolicyEvaluation).mockResolvedValue(false);
 
       const { installHooks } = await import("../../src/hooks/manager");
       await expect(
@@ -114,18 +114,18 @@ describe("hooks/manager", () => {
     });
 
     it("enforces daemon readiness from integration metadata rather than a Hermes ID check", async () => {
-      const { probeDaemonEndToEnd } = await import("../../src/hooks/daemon-service");
+      const { probeDaemonPolicyEvaluation } = await import("../../src/hooks/daemon-service");
       const { writeScopedHooksConfig } = await import("../../src/hooks/hooks-config");
       const { claudeCode } = await import("../../src/hooks/integrations");
       const previous = claudeCode.requiresHealthyDaemon;
       claudeCode.requiresHealthyDaemon = true;
-      vi.mocked(probeDaemonEndToEnd).mockResolvedValue(false);
+      vi.mocked(probeDaemonPolicyEvaluation).mockResolvedValue(false);
 
       try {
         const { installHooks } = await import("../../src/hooks/manager");
         await expect(
           installHooks(undefined, "user", undefined, false, undefined, undefined, false, ["claude"]),
-        ).rejects.toThrow("Claude Code requires a healthy failproofaid daemon");
+        ).rejects.toThrow("Claude Code requires a compatible failproofaid daemon with native policy evaluation");
       } finally {
         claudeCode.requiresHealthyDaemon = previous;
       }

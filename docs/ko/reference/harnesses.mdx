@@ -1,86 +1,92 @@
 ---
 title: "에이전트 하네스"
-description: "지원되는 12개 에이전트 하네스 전반에 걸쳐 세션을 캡처하고 정책을 적용합니다."
+description: "지원되는 12개의 에이전트 하네스 전반에서 세션을 캡처하고 정책을 적용합니다."
 icon: "plug-zap"
 ---
 
-하네스란 에이전트가 실제로 실행되는 환경을 의미합니다. Failproof AI는 두 가지 범주로 나뉜 12개의 하네스를 지원합니다.
+하네스는 에이전트가 실제로 실행되는 환경을 의미합니다. Failproof AI는 두 가지 유형으로 구분되는 12개의 하네스를 지원합니다:
 
 - **코딩 CLI** (10개) — Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Factory Droid, Devin CLI, Antigravity CLI, Goose
 - **채팅 및 어시스턴트 게이트웨이** (2개) — Hermes (Slack, Telegram, cron), OpenClaw (자체 호스팅 어시스턴트)
 
-에이전트가 어떤 하네스에서 실행되든 동일한 정책과 동일한 세션 히스토리가 적용됩니다. 하나의 어댑터 레이어가 각 하네스의 네이티브 이벤트 이름, 툴 이름, 툴 입력 필드를 정책이 실행되기 전에 29개의 표준 이벤트로 매핑합니다.
+에이전트가 어떤 하네스에서 실행되든 동일한 정책과 세션 히스토리가 적용됩니다. 하나의 어댑터 레이어가 각 하네스의 네이티브 이벤트 이름, 도구 이름, 도구 입력 필드를 정책이 실행되기 전에 29개의 표준 이벤트로 매핑합니다.
 
-12개 중 **어느 하네스에도** 속하지 않는 에이전트는 [Python SDK](/ko/reference/custom-agents)를 통해 직접 계측됩니다. 이는 별개의 계약이므로 명확히 짚고 넘어갈 필요가 있습니다. SDK는 트레이싱, 세션, 평가, 감사 기능을 제공하지만 **정책을 자체적으로 적용하지는 않습니다.** 툴이 실행되기 전에 안전하지 않은 동작을 차단하려면 런타임의 툴 경계에 실행 훅이 필요합니다. [문의하기](mailto:support@befailproof.ai)를 통해 연락 주시면 매핑해 드리겠습니다.
+12개 중 **어느 것도** 사용하지 않는 에이전트는 [Python SDK](/ko/reference/custom-agents)를 통해 직접 계측됩니다. 이는 별도의 계약이므로 명확히 말씀드립니다: SDK는 추적, 세션, 평가, 감사를 제공하지만 **자체적으로는 정책을 적용하지 않습니다.** 실행 전에 안전하지 않은 동작을 차단하려면 런타임의 도구 경계에 실행 훅이 필요합니다. [문의하기](mailto:support@befailproof.ai)를 통해 연락하시면 매핑해 드립니다.
 
-| 하네스 | 지원되는 훅 스코프 |
+| 하네스 | 지원되는 훅 범위 |
 | --- | --- |
 | Claude Code | User, project, local |
 | Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi | User, project |
 | Factory Droid, Devin CLI, Antigravity CLI, Goose | User, project |
 | Hermes, OpenClaw | User |
 
-각 통합은 정책이 실행되기 전에 네이티브 훅 이벤트 이름, 툴 이름, 툴 입력 필드를 정규화합니다. 정책은 해당 하네스가 노출하는 이벤트에만 적용될 수 있으므로, 실제로 배포하는 하네스와 버전에서 직접 턴 종료 및 명령 동작을 테스트하시기 바랍니다.
+각 통합은 정책이 실행되기 전에 네이티브 훅 이벤트 이름, 도구 이름, 도구 입력 필드를 정규화합니다. 정책은 해당 하네스가 노출하는 이벤트에만 작용할 수 있으므로, 실제로 배포하는 하네스와 버전에서 턴 종료 및 명령 동작을 테스트하시기 바랍니다.
 
-## 적용 가능 범위
+## 적용 기능
 
-"차단(Block)"은 현재 어댑터가 반환한 판정(verdict)이 해당 하네스에 의해 처리됨을 의미합니다. 툴 실행 후(post-tool) 차단은 모델에게 표시되는 결과를 대체할 수 있지만, 이미 발생한 툴 부작용을 되돌릴 수는 없습니다.
+"차단"이란 현재 어댑터가 반환한 판정이 해당 하네스에서 소비됨을 의미합니다. 도구 사후 차단은 모델에 표시되는 결과를 대체할 수 있지만, 이미 발생한 도구 부작용을 되돌릴 수는 없습니다.
 
 | 하네스 | 검증된 차단 이벤트 | 관찰 전용 또는 비차단 주의사항 |
 | --- | --- | --- |
-| Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact` 및 여러 태스크/설정 이벤트 | `PostToolUse`, 세션 라이프사이클, 알림, 실패 후 이벤트는 관찰용입니다. |
-| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | 툴 실행 후 차단은 실행 완료 후 결과를 대체합니다. 세션 시작 및 컴팩트 이벤트는 현재 어댑터에서 관찰 전용입니다. |
-| GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | 툴 실행 후 차단은 실행 완료 후 결과를 대체합니다. 세션 및 알림 이벤트는 관찰 전용입니다. |
-| Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` 및 세션 이벤트는 관찰 전용입니다. |
-| OpenCode | `PreToolUse` | 툴 실행 후 및 라이프사이클 이벤트는 관찰 전용입니다. 현재 stop 처리는 검증된 게이트가 아닌 다음 턴에 대한 안내입니다. |
-| Pi | `PreToolUse`, `UserPromptSubmit` | 툴 실행 후 및 라이프사이클 이벤트는 관찰 전용입니다. stop 안내는 다음 턴에 적용됩니다. |
-| Hermes | `PreToolUse` | 툴 실행 후, 세션, 서브에이전트 stop 판정은 게이트로 작동하지 않습니다. |
-| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | 툴 실행 후, 세션, 서브에이전트 stop, 컴팩션 이벤트는 관찰 전용입니다. |
-| Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | 툴 실행 후 및 서브에이전트 stop 판정은 관찰 전용입니다. |
-| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, 조건부 `PermissionRequest` | 권한 훅은 모든 권한 모드에서 실행되지 않습니다. 툴 실행 후 및 세션 이벤트는 관찰 전용입니다. |
-| Antigravity CLI | `PreToolUse`, `Stop` | 사용자 프롬프트 및 툴 실행 후 판정은 관찰 전용입니다. 프롬프트 지침은 여전히 주입될 수 있습니다. |
-| Goose | `PreToolUse` | 사용자 프롬프트, 툴 실행 후, 세션 이벤트는 관찰 전용입니다. 네이티브 차단 stop 훅이 업스트림에 존재하지만 현재 어댑터에는 설치되어 있지 않습니다. |
+| Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact`, 및 여러 태스크/설정 이벤트 | `PostToolUse`, 세션 라이프사이클, 알림, 실패 후 이벤트는 관찰용입니다. |
+| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | 도구 사후 차단은 실행 후 결과를 대체하며, 세션 시작 및 컴팩트 이벤트는 현재 어댑터에서 관찰용입니다. |
+| GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | 도구 사후 차단은 실행 후 결과를 대체하며, 세션 및 알림 이벤트는 관찰용입니다. |
+| Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` 및 세션 이벤트는 관찰용입니다. |
+| OpenCode | `PreToolUse` | 도구 사후 및 라이프사이클 이벤트는 관찰용이며, 현재 중단 처리는 검증된 게이트가 아닌 이후 턴에 대한 안내입니다. |
+| Pi | `PreToolUse`, `UserPromptSubmit` | 도구 사후 및 라이프사이클 이벤트는 관찰용이며, 중단 안내는 이후 턴에 적용됩니다. |
+| Hermes | `PreToolUse` | 네이티브 플러그인이 `instruct()`를 이후 API 반복을 허용하기 전의 단일, 경계가 있는 모델 가시적 중단으로 전달합니다. 도구 사후, 세션, 서브에이전트 중단 판정은 게이트가 아닙니다. |
+| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | 도구 사후, 세션, 서브에이전트 중단, 컴팩션 이벤트는 관찰용입니다. |
+| Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | 도구 사후 및 서브에이전트 중단 판정은 관찰용입니다. |
+| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, 조건부 `PermissionRequest` | 권한 훅이 모든 권한 모드에서 실행되지는 않으며, 도구 사후 및 세션 이벤트는 관찰용입니다. |
+| Antigravity CLI | `PreToolUse`, `Stop` | 사용자 프롬프트 및 도구 사후 판정은 관찰용이지만, 프롬프트 명령은 여전히 주입될 수 있습니다. |
+| Goose | `PreToolUse` | 사용자 프롬프트, 도구 사후, 세션 이벤트는 관찰용입니다. 네이티브 차단 중단 훅이 업스트림에 존재하지만 현재 어댑터에서는 설치되지 않습니다. |
 
-기능은 버전에 따라 달라질 수 있습니다. 에이전트 CLI를 업그레이드한 후에는, 특히 정책이 공통 프리툴 게이트가 아닌 프롬프트, stop, 권한, 또는 툴 실행 후 동작에 의존하는 경우 반드시 재테스트하시기 바랍니다.
+기능은 버전에 따라 달라집니다. 에이전트 CLI를 업그레이드한 후, 특히 정책이 공통 사전 도구 게이트가 아닌 프롬프트, 중단, 권한 또는 도구 사후 동작에 의존하는 경우에는 반드시 재테스트하십시오.
+
+### Hermes 네이티브 플러그인
+
+Hermes는 셸 명령이 아닌 프로필 로컬 네이티브 플러그인을 통해 통합됩니다. 설치 시 플러그인이 모든 기본 및 명명된 Hermes 프로필에 복사되고, 해당 프로필의 `config.yaml`에서 활성화되며, 레거시 FailproofAI 셸 훅 항목만 마이그레이션됩니다. 이를 통해 각 훅마다 프로세스가 생성되는 것을 방지하고, `instruct()`가 Hermes의 네이티브 차단 도구 결과를 통해 모델에 도달할 수 있습니다.
+
+첫 번째로 일치하는 명령이 대기 중인 호출을 차단합니다. 동일한 API 요청은 차단된 상태로 유지되며, 이후 모델 반복에서 재시도할 수 있습니다. 영구적인 프로필 범위 원장과 턴당 상한이 권고 명령이 무한 루프가 되는 것을 방지합니다. `deny()`는 여전히 강력한 차단으로 유지됩니다. `failproofai config --status`를 실행하여 비활성화되거나, 불완전하거나, 중복되거나, 새로 구성되지 않은 프로필을 감지하세요.
 
 ## 캡처 및 정책 훅 설치
 
 <Tabs>
   <Tab title="대시보드">
-    1. **Administration → Keys**를 열고 `events:add` 및 `policies:pull` 권한을 가진 키를 생성하고, 머신 또는 환경에 맞는 이름을 붙입니다.
+    1. **Administration → Keys**를 열고 머신 또는 환경에 맞는 이름으로 `events:add`와 `policies:pull` 권한이 있는 키를 생성합니다.
     2. 대상 머신에서 표시된 키로 로컬 CLI를 연결하고 하네스 훅을 설치합니다.
-    3. 새 에이전트 세션을 시작한 후 **Observe → Events**에서 해당 훅 및 세션 이벤트를 확인합니다.
-    4. 동일한 시간 범위의 **Observe → policy**를 열고 정책 결정이 해당 머신에 귀속되는지 확인합니다.
+    3. 새 에이전트 세션을 시작한 다음 **Observe → Events**에서 훅 및 세션 이벤트를 확인합니다.
+    4. 동일한 시간 범위에서 **Observe → policy**를 열고 해당 머신에 정책 결정이 귀속되는지 확인합니다.
 
-    연결은 머신 키로 시작됩니다. 시크릿을 복사하기 전에 수집 및 정책 전달 권한이 모두 포함되어 있는지 확인하세요.
+    연결은 머신 키로 시작됩니다. 비밀 키를 복사하기 전에 수집 및 정책 전달 권한이 모두 포함되어 있는지 확인하세요.
 
-    ![이벤트 수집 및 정책 전달 권한을 부여하는 새 API 키 드로어.](/images/dashboard/key-create.png)
+    ![이벤트 수집 및 정책 전달 권한을 부여하는 데 사용되는 새 API 키 드로어.](/images/dashboard/key-create.png)
 
-    훅을 설치한 후, Events 스트림에 연결한 머신 및 환경의 새 이벤트가 표시되어야 합니다.
+    훅을 설치한 후, Events 스트림에 연결한 머신 및 환경에서 새로운 이벤트가 표시되어야 합니다.
 
-    ![새로 설치된 하네스가 보고 중인지 확인하는 라이브 Events 스트림.](/images/dashboard/events-stream.png)
+    ![새로 설치된 하네스가 보고 중임을 확인하는 데 사용되는 라이브 Events 스트림.](/images/dashboard/events-stream.png)
 
-    마지막으로, 정책 결정이 동일한 머신에 귀속되는지 확인합니다. 이를 통해 하네스가 트레이스 이벤트뿐만 아니라 정책 활동도 보고하고 있음을 확인할 수 있습니다.
+    마지막으로, 동일한 머신에 정책 결정이 귀속되는지 확인합니다. 이를 통해 하네스가 추적 이벤트뿐만 아니라 정책 활동도 보고하고 있음을 확인할 수 있습니다.
 
-    ![새로 연결된 하네스의 정책 결정을 검증하는 Policy 페이지.](/images/dashboard/policy-observe.png)
+    ![새로 연결된 하네스의 정책 결정을 확인하는 데 사용되는 Policy 페이지.](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
-    머신 키를 셸로 읽어옵니다. `read -s`는 에코되지 않는 프롬프트에서 키를 입력받으므로 커맨드나 셸 히스토리에 절대 남지 않습니다.
+    머신 키를 셸로 읽어옵니다. `read -s`는 에코되지 않는 프롬프트에서 키를 입력받으므로, 명령이나 셸 히스토리에 절대 나타나지 않습니다:
 
     ```bash
     read -rs FAILPROOFAI_CLOUD_TOKEN && export FAILPROOFAI_CLOUD_TOKEN
     ```
 
-    그런 다음 머신을 설정합니다. 이 과정에서 감지된 모든 하네스에 훅을 연결하고, 데몬을 설치하며, Cloud에 연결합니다.
+    그런 다음 머신을 설정합니다 — 감지된 모든 하네스에 훅을 연결하고, 데몬을 설치하며, Cloud에 연결합니다:
 
     ```bash
     failproofai config
     failproofai policies add FailproofAI/policies
     ```
 
-    설정 자체는 어떠한 정책도 활성화하지 않으며, 두 번째 명령이 그 역할을 합니다.
+    설정 자체는 어떤 정책도 활성화하지 않으며, 그것이 두 번째 명령의 역할입니다.
 
-    또는 특정 하네스와 설정 스코프를 지정할 수 있습니다.
+    또는 특정 하네스와 설정 범위를 지정할 수 있습니다:
 
     ```bash
     failproofai policies --install \
@@ -88,9 +94,9 @@ icon: "plug-zap"
       --scope user
     ```
 
-    프로젝트 스코프는 훅 설정을 리포지토리와 함께 유지합니다. 유저 스코프는 리포지토리 전반의 작업을 포괄합니다. Claude Code는 로컬 스코프도 지원하며, 지원 여부는 하네스마다 다르고 CLI는 지원되지 않는 조합을 거부합니다.
+    프로젝트 범위는 훅 설정을 레포지토리에 유지합니다. 사용자 범위는 레포지토리 전반의 작업을 커버합니다. Claude Code는 로컬 범위도 지원하며, 지원 여부는 하네스마다 다르고 CLI는 지원되지 않는 조합을 거부합니다.
 
-    머신과 이벤트를 확인합니다.
+    머신과 이벤트를 확인합니다:
 
     ```bash
     failproofai config --status
@@ -100,16 +106,16 @@ icon: "plug-zap"
   </Tab>
 </Tabs>
 
-## 기본이 아닌 세션 경로 추가
+## 기본값이 아닌 세션 경로 추가
 
 <Tabs>
   <Tab title="대시보드">
-    추가 경로는 Cloud가 아닌 머신에 등록됩니다. 경로를 추가한 후 **Observe → Sessions**를 열고, 머신의 환경으로 필터링하여 새 경로에서 세션이 나타나는지 확인합니다. 감사에 활용하기 전에 세션을 열어 에이전트, 하네스, 이벤트 타임스탬프를 검토하세요.
+    추가 경로는 Cloud가 아닌 머신에 등록됩니다. 경로를 추가한 후 **Observe → Sessions**를 열고, 해당 머신의 환경으로 필터링하여 새 경로에서의 세션이 표시되는지 확인합니다. 감사에 활용하기 전에 세션을 열어 에이전트, 하네스, 이벤트 타임스탬프를 확인하세요.
 
-    ![추가 캡처 경로로부터 데이터를 수신하는 환경으로 필터링된 Sessions 목록.](/images/dashboard/sessions-list.png)
+    ![추가 캡처 경로에서 데이터를 수신하는 환경으로 필터링된 Sessions 목록.](/images/dashboard/sessions-list.png)
   </Tab>
   <Tab title="CLI">
-    선택적 레이블과 함께 경로를 추가한 후 설정된 경로를 확인합니다.
+    선택적 레이블과 함께 경로를 추가한 다음 설정된 경로를 확인합니다:
 
     ```bash
     failproofai harness add-path claude checkout=/srv/checkout/.claude
@@ -118,10 +124,10 @@ icon: "plug-zap"
     failproofai backfill --since 7d
     ```
 
-    경로를 제거하려면 `failproofai harness remove-path claude checkout`을 사용하세요.
+    `failproofai harness remove-path claude checkout`으로 경로를 제거합니다.
   </Tab>
 </Tabs>
 
 <Tip>
-  설치 후 새 세션을 한 번 실행하세요. 롤아웃을 확대하기 전에 라이브 이벤트 스트림과 실제 정책 결정을 모두 확인하시기 바랍니다.
+  설치 후 새 세션을 하나 실행하세요. 롤아웃을 확장하기 전에 라이브 이벤트 스트림과 실제 정책 결정을 모두 확인하시기 바랍니다.
 </Tip>

@@ -139,6 +139,7 @@
                 "pages": [
                   "evaluations/overview",
                   "evaluations/write",
+                  "evaluations/judge",
                   "evaluations/test",
                   "evaluations/deploy",
                   "sessions/evaluations"

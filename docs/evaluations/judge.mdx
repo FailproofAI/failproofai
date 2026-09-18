@@ -1,0 +1,87 @@
+---
+title: "LLM judges"
+description: "Score sessions on things code cannot measure — correctness, tone, whether the agent followed a policy — by describing what good looks like and letting a model read the conversation."
+icon: "scale"
+---
+
+A hosted Python evaluation can count and compare: how many tool calls, how many errors, how long a session took. It cannot tell you whether an answer was *correct*, whether a reply was rude, or whether the agent checked a policy before acting.
+
+An **LLM judge** can. You describe what good looks like in plain language, and a model reads the session and returns a score from 0 to 1 with its reasoning.
+
+<Note>
+A judge costs one model call for every session it runs on, and a code evaluation costs nothing. Use a judge only for questions that need the conversation to be *understood* — and give it a condition, so it runs on the sessions the question is actually about.
+</Note>
+
+## Which one do I want?
+
+| Question | Use |
+| --- | --- |
+| Did it call the same tool twice? | code |
+| How many errors were there? | code |
+| Was the session under 30 seconds? | code |
+| Was the answer actually correct? | **judge** |
+| Was the reply rude or dismissive? | **judge** |
+| Did it check the refund policy before promising a refund? | **judge** |
+
+You do not have to decide up front. Describe what you want measured and the assistant picks, then tells you which it chose and why. You can switch it.
+
+## Write one
+
+1. Go to **Analyze → eval authoring** and select **new eval**.
+2. Describe what you want judged, and select **draft**.
+3. Review the **criteria**, the **threshold**, and the **condition**, then deploy.
+
+### Criteria
+
+One or two sentences, written as a requirement rather than a question:
+
+> The assistant must not promise or approve a refund without first checking the refund policy.
+
+Be specific about what would make it *fail*. "Was the response good?" gives you a number that means nothing; the sentence above gives you one you can act on.
+
+### Threshold
+
+The score at or above which the session passes. `0.7` is a sensible starting point. The full 0-to-1 score is always stored, so the threshold only decides pass/fail — you can see the distribution and adjust.
+
+### Condition
+
+The same Python condition as any other evaluation, and it matters far more here. Without one, the judge runs on **every** session in your organization, at a model call each:
+
+```python
+session.count("tool_use") > 0
+```
+
+```python
+session.agent_id == "support-bot" and session.count("error") > 0
+```
+
+The dashboard warns you if you deploy a judge with no condition. That is sometimes right — a low-volume agent you want fully judged — but it should be a decision, not an accident.
+
+## What the judge sees
+
+The conversation, as turns, newest-first if the session is long:
+
+- what the user said
+- what the assistant replied
+- **every tool the agent called, and what that call returned, in order**
+
+That last part is what makes "did it do X *before* Y" a fair question to ask. A failed tool call is shown as a failure, so "did it recover gracefully from an error" works too.
+
+Very long sessions are truncated to fit the model's context. When that happens the reasoning says so explicitly — you will never see a judgement made on part of a session presented as one made on all of it.
+
+## Reading the results
+
+A judge produces a **score** like any other scored evaluation, so it charts, filters, and triggers alerts the same way. Alongside the number it stores the judge's **reasoning** — the paragraph explaining what it saw. Read that first when a score surprises you; it is usually either a genuinely interesting session or a sign the criteria needs sharpening.
+
+Scores are stable for clear-cut cases but not bit-for-bit deterministic. Treat a single borderline score as a prompt to go and read the session, not as a verdict.
+
+## Limits
+
+- **Testing is not available yet.** A dry run has no session assignment behind it, and that assignment is what authorises spending your model budget — so there is nothing for a test call to charge. Deploy against a narrow condition and read the first few results.
+- **Backfill is not available.** Backfilling a code evaluation over months of history is free; doing it with a judge would spend your entire budget in minutes.
+- **Editing the criteria publishes a new version.** Old and new scores are not comparable, so they are kept apart rather than mixed into one trend line.
+- **A judge always produces a score**, never a metric or an assertion.
+
+## When your budget runs out
+
+Judges spend your organization's model budget. When it is exhausted, judge evaluations stop with a clear reason rather than failing silently, and **code evaluations keep running normally**. Raise the budget and they resume on the next session.

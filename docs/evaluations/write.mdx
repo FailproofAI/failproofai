@@ -1,10 +1,14 @@
 ---
 title: "Write an evaluation"
-description: "Describe what to measure and let the assistant draft a hosted Python evaluation, or write the code yourself. LLM judges run in your own worker."
+description: "Describe what to measure and let the assistant draft a hosted Python evaluation, or write the code yourself."
 icon: "file-pen-line"
 ---
 
-Hosted evaluations are small, deterministic Python, written in the dashboard and run on Failproof AI's evaluator fleet. Heavier logic — an LLM judge, a package, a secret, a network call — runs in [your own worker](#write-it-in-your-own-worker) instead.
+Hosted evaluations are small, deterministic Python, written in the dashboard and run on Failproof AI's evaluator fleet. They count and compare: how many tool calls, how many errors, how long a session took.
+
+For questions that need the conversation to be *understood* — was the answer correct, was the reply rude, did the agent follow a policy — write an [LLM judge](/evaluations/judge) instead. It is authored in the same place, from a description of what good looks like.
+
+Anything needing a package, a secret, or your own network runs in [your own worker](#write-it-in-your-own-worker).
 
 ## Draft it from a description
 
@@ -66,7 +70,7 @@ Nothing else is reachable: no imports, and no attributes beyond that session dat
 
 ## Write it in your own worker
 
-When an evaluation needs a model, a package, a secret, or the network, write it with the [Evaluator SDK](/reference/evaluator-sdk) and run it on your own infrastructure. It uses the same result types, and its results appear beside hosted ones, tagged **customer**:
+When an evaluation needs a package, a secret, the network, or a model you host yourself, write it with the [Evaluator SDK](/reference/evaluator-sdk) and run it on your own infrastructure. It uses the same result types, and its results appear beside hosted ones, tagged **customer**:
 
 ```python
 @app.eval("answer_relevance", version="judge-v1", labels=["llm_judge"], timeout_seconds=30)

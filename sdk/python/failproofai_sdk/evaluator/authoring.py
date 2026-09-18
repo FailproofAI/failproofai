@@ -36,6 +36,17 @@ ConditionFunction = Callable[
     [SessionTranscript], "bool | ConditionResult | Awaitable[bool | ConditionResult]"
 ]
 CancellationFunction = Callable[[SessionTranscript], "Any | Awaitable[Any]"]
+# Compiles server-authored (managed) source into something callable with a
+# session. Signature mirrors `source.compile_evaluator`, which is the default.
+#
+# A host that serves managed definitions whose source is NOT a restricted Python
+# expression — FailproofAI's own managed worker, whose source may instead be a
+# declarative judge document — installs its own compiler here. The SDK stays
+# agnostic: it never inspects the source, it just hands it to whoever compiles.
+# Returning an `async def` is supported and is the right shape for a compiler
+# whose work is IO-bound (see `WorkerRuntime._invoke`, which awaits an awaitable
+# result on the event loop rather than parking a thread on it).
+ManagedCompiler = Callable[..., EvalFunction]
 
 
 def _bounded(value: str, *, field_name: str, maximum: int) -> str:
@@ -284,11 +295,23 @@ class EvalDefinition:
 class Evaluator:
     """A process-local collection of explicitly versioned evaluations."""
 
-    def __init__(self, *, name: str, version: str) -> None:
+    def __init__(
+        self,
+        *,
+        name: str,
+        version: str,
+        managed_compiler: ManagedCompiler | None = None,
+    ) -> None:
         self.name = _bounded(name, field_name="name", maximum=MAX_DISPLAY_NAME_BYTES)
         self.version = _bounded(
             version, field_name="version", maximum=MAX_VERSION_BYTES
         )
+        # `None` keeps the default: managed source is compiled and sandboxed by
+        # `source.compile_evaluator`. Customer workers never set this — their
+        # definitions are LOCAL and never carry source at all.
+        if managed_compiler is not None and not callable(managed_compiler):
+            raise TypeError("managed_compiler must be callable")
+        self.managed_compiler = managed_compiler
         self._definitions: dict[str, EvalDefinition] = {}
 
     def eval(

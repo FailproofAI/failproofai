@@ -3,9 +3,26 @@
 ## 0.0.1b3 — 2026-09-12
 
 Open for the next release. `0.0.1b2` published on 2026-09-12 and the `bump` job
-moved the version here automatically; nothing has landed against `0.0.1b3` yet.
-Add entries as changes merge — this section becomes the GitHub Release body when
-it ships.
+moved the version here automatically. This section becomes the GitHub Release
+body when it ships.
+
+### Added
+
+- `fp issues close <id>` — end an issue as won't-fix. Distinct from `resolve`: a
+  recurring audit finding reopens a **resolved** issue and leaves a **closed** one
+  alone. On an audit issue it marks the finding `dismissed`, without writing the
+  org-wide fingerprint suppression that `fp audits dismiss` writes. Exit 9 if the
+  issue already ended. (#815)
+- `fp issues archive <id>` / `unarchive <id>` — take an issue off the board and put
+  it back. Orthogonal to state, allowed in any state, no confirmation prompt. (#815)
+- `fp issues clear (--audit <id> | --all-audits | --everything) [--dry-run]` — resolve
+  every open issue in a scope plus the audit findings behind them, in one server-side
+  transaction. Exactly one scope flag is required. Needs `issues:close` **and**
+  `audits:write`. Writes no suppression, so anything still broken returns as a new
+  issue on the next run. The confirm names the count from a dry run that shares its
+  scope predicate with the write. (#815)
+- `issues list --state closed` is accepted, and `Incident` carries `closed_at` and
+  `archived_at`. (#815)
 
 ## 0.0.1b2 — 2026-08-25
 

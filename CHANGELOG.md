@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.7-beta.0 — 2026-09-22
+
+### Added
+
+- `fp issues` gains `close`, `archive`, `unarchive` and `clear`. `close` is the second terminal state — "we're done with it", not "we fixed it" — and the difference is what happens next: a **resolved** issue reopens when its audit finding recurs, a **closed** one does not. `archive`/`unarchive` toggle a flag that is orthogonal to state, so taking an issue off the board never overwrites how it ended. `clear` is the bulk operation behind "we changed our agents, give us a fresh board": it resolves every open issue in a scope (`--audit <id>`, `--all-audits`, or `--everything` — exactly one required, no default) plus the audit findings behind them, needs `issues:close` **and** `audits:write`, and previews with `--dry-run` from the same server-side scope predicate the write uses. It writes **no** suppression, so a pattern that survived the agent changes opens a new issue on the next run rather than staying hidden. `--state closed` is accepted by `issues list`, and `Incident` carries `closed_at` / `archived_at`. (#815)
+
+### Docs
+
+- Document ending an issue three ways (resolve / close / archive) and clearing a board after an agent change, in the audits guide and the Cloud CLI reference. (#815)
+
 ## 1.0.6 — 2026-09-16
 
 Stable native Hermes policy-enforcement release, validated across CLI and

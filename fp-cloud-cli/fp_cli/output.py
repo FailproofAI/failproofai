@@ -4563,6 +4563,73 @@ def incident_resolved(incident_id: str) -> None:
            (_short_id(incident_id or "-"), theme.ACCENT))
 
 
+def confirm_incident_close(incident_id: str, alert_name: Optional[str] = None) -> bool:
+    """Plain close confirm (stderr). Says what separates close from resolve — a closed issue
+    does NOT come back when the pattern recurs — because that is the whole distinction and
+    nobody can infer it from the word."""
+    h = Text()
+    h.append("⚠ ", style=f"bold {theme.AMBER}")
+    h.append("close issue ", style=theme.TEXT)
+    h.append(_short_id(incident_id or "-"), style=f"bold {theme.ACCENT}")
+    if alert_name:
+        h.append(f" ({alert_name})", style=theme.LABEL)
+    h.append("?", style=theme.TEXT)
+    return confirm_line(
+        h, Text("won't fix — it stays closed even if the pattern comes back", style=theme.LABEL)
+    )
+
+
+def incident_closed(incident_id: str) -> None:
+    """Plain green line (stderr): ``✓ closed issue {short id}``."""
+    if _quiet:
+        return
+    _stderr.print()
+    _plain(("✓ ", theme.SUCCESS), ("closed issue ", theme.TEXT),
+           (_short_id(incident_id or "-"), theme.ACCENT))
+
+
+def incident_archived(incident_id: str, archived: bool) -> None:
+    """Plain green line (stderr): ``✓ archived issue {short id}`` / ``✓ unarchived …``."""
+    if _quiet:
+        return
+    _stderr.print()
+    _plain(("✓ ", theme.SUCCESS),
+           ("archived issue " if archived else "unarchived issue ", theme.TEXT),
+           (_short_id(incident_id or "-"), theme.ACCENT))
+
+
+def confirm_issues_clear(scope_label: str, issues: int, findings: int) -> bool:
+    """The bulk-clear confirm (stderr). Names the COUNT from the server's dry run rather than
+    the scope alone — a confirmation that cannot say how many rows it will change is a
+    confirmation in name only — and states the part operators actually need: nothing is
+    suppressed, so a pattern that survived their agent changes comes back as a new issue."""
+    h = Text()
+    h.append("⚠ ", style=f"bold {theme.AMBER}")
+    h.append("clear ", style=theme.TEXT)
+    h.append(f"{issues} issue{'' if issues == 1 else 's'}", style=f"bold {theme.ACCENT}")
+    h.append(f" ({scope_label})", style=theme.LABEL)
+    h.append("?", style=theme.TEXT)
+    tail = f"resolves them"
+    if findings:
+        tail += f" and {findings} audit finding{'' if findings == 1 else 's'}"
+    tail += " — nothing is deleted or suppressed"
+    return confirm_line(h, Text(tail, style=theme.LABEL))
+
+
+def issues_cleared(issues: int, findings: int, dry_run: bool = False) -> None:
+    """Plain green line (stderr) for a completed bulk clear, or the dry-run preview."""
+    if _quiet:
+        return
+    _stderr.print()
+    noun = f"{issues} issue{'' if issues == 1 else 's'}"
+    if dry_run:
+        _plain(("○ ", theme.FAINT), ("would clear ", theme.LABEL), (noun, theme.ACCENT),
+               (f"  ·  {findings} finding{'' if findings == 1 else 's'}", theme.FAINT))
+        return
+    _plain(("✓ ", theme.SUCCESS), ("cleared ", theme.TEXT), (noun, theme.ACCENT),
+           (f"  ·  {findings} finding{'' if findings == 1 else 's'} resolved", theme.FAINT))
+
+
 def incident_assigned(incident_id: str, assignees: Sequence[str]) -> None:
     """Plain green line (stderr): ``✓ assigned {short id} · a@x, b@x`` — or ``✓ cleared assignees
     on {short id}`` when the list is empty."""

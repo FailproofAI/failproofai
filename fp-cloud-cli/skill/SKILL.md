@@ -192,7 +192,7 @@ you need a flag you don't already know.
 - `users list|show|create|update|disable|enable` — referenced by **email**.
 - `settings list|schema|set` — fixed registry; `schema` shows what each key accepts.
 - `alerts list|show|create|update|delete|test` — referenced by **name**.
-- `issues list|count|show|ack|assign|resolve|comment-add|comment-list|comment-delete|subscribe|subscribers|unsubscribe|open` — by id (short ids accepted). **One board for everything needing attention**: alert breaches, hand-raised issues, and audit findings, told apart by a `source` of `alert` / `manual` / `audit`. (This group was called `incidents` before; the old name is gone.)
+- `issues list|count|show|ack|assign|resolve|close|archive|unarchive|clear|comment-add|comment-list|comment-delete|subscribe|subscribers|unsubscribe|open` — by id (short ids accepted). **One board for everything needing attention**: alert breaches, hand-raised issues, and audit findings, told apart by a `source` of `alert` / `manual` / `audit`. (This group was called `incidents` before; the old name is gone.)
 - `audits list|show|create|edit|delete|run|runs` — scheduled sweeps, referenced by **name**; `audits findings|finding` + the triage verbs `ack|mute|dismiss|resolve|reopen|assign` act on a finding **id**. `audits run <name>` only *queues* a run (poll `audits runs <name>` for completion). See §8.
 
 **Enforce (cloud-managed policy, session-only — see §2):**
@@ -225,6 +225,9 @@ command (`list <kind>`, `whoami`, a `list` subcommand) before committing.
 | "what has this org used this metering window?" | `usage` (or `--json usage` for the complete response) |
 | "is anything on fire?", "any alerts firing / open issues?" | `alerts list` + `issues list` (and `issues count`) |
 | "ack / look at / resolve that issue" | `issues list` → `issues show <id>` → **confirm** → `issues ack`/`resolve <id>` |
+| "clear all our issues", "fresh start", "we changed the agents" | `issues clear --all-audits --dry-run` → show the count → **confirm** → `issues clear --all-audits` |
+| "we're not going to fix that one" | `issues close <id>` (NOT `resolve` — closed survives a recurrence) |
+| "get that off my board" | `issues archive <id>` |
 | "run an audit", "what did the audit find?", "any findings to triage?" | `audits list` → `audits run <name>` (queues) → `audits runs <name>` (wait for `succeeded`) → `audits findings --audit <name>`; triage with `audits resolve/mute/dismiss <id>` — **confirm first** |
 | "give CI / this service an API key" | `keys create <name> --add events:add` (scope to what they describe) — **state it, then create**; capture the one-time secret |
 | "who has access?", "add / remove a teammate", "make them read-only" | `users list` / `users show <email>` / `users create`/`update`/`disable` |
@@ -267,6 +270,15 @@ fp --json events --full --session-id run-001 --all | jq '.events[].payload'   # 
   reliable cross-check that you pulled everything.
 - **Triage flow:** `issues list` → `issues show <id>` (read the activity
   log) → confirm with the user → `issues ack <id>` or `resolve <id>`.
+- **`resolve` vs `close`:** `resolve` claims a fix, so a recurring audit finding
+  REOPENS it — that is the signal that the fix did not hold. `close` records a
+  decision (won't fix / not a problem / stale) and survives the recurrence. Pick
+  the one that matches what the user actually said; they are not synonyms.
+- **"clear all our issues" / "fresh start":** that is `issues clear`, not a loop
+  of `resolve`. Run it `--dry-run` first, tell the user the number it returns,
+  and only then run it for real. It resolves the audit findings too and writes
+  **no** suppression, so anything still broken comes back as a new issue — say
+  that, because users often expect "clear" to mean "silence".
 - **Investigate a regression:** `evals --aggregate` to see which score dropped →
   `evals --score helpfulness:..0.5` to list the bad runs → `events --session-id <id>`
   to see what happened inside one.

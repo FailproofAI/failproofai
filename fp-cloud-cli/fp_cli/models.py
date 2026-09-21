@@ -417,6 +417,12 @@ class Incident:
     acknowledged_by: Optional[str] = None
     assignees: List[str] = field(default_factory=list)
     resolved_at: Optional[str] = None
+    #: When the issue was CLOSED (won't-fix) rather than resolved (fixed). At most
+    #: one of the two is ever set. Both absent on a live issue.
+    closed_at: Optional[str] = None
+    #: When the issue was hidden from the board. Orthogonal to ``state`` — an
+    #: archived issue keeps whatever state it ended in.
+    archived_at: Optional[str] = None
     breach_value: Optional[float] = None
     breach_summary: Optional[str] = None
     evidence: Optional[Dict[str, Any]] = None
@@ -443,6 +449,11 @@ class Incident:
             acknowledged_by=d.get("acknowledged_by"),
             assignees=list(d.get("assignees") or []),
             resolved_at=d.get("resolved_at"),
+            # `from_dict` is an ALLOWLIST: a key missing here is dropped with no
+            # error, so a column added server-side renders as a blank column here
+            # and nowhere complains. That is why these two lines exist at all.
+            closed_at=d.get("closed_at"),
+            archived_at=d.get("archived_at"),
             breach_value=d.get("breach_value"),
             breach_summary=d.get("breach_summary"),
             evidence=d.get("evidence"),

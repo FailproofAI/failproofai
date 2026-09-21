@@ -642,3 +642,187 @@ def test_issues_show_malformed_id_is_not_found(logged_in, runner):
     result = runner.invoke(app, ["--json", "issues", "show", "not-a-uuid"])
     assert result.exit_code == 6
     assert "no issue not-a-uuid" in json.loads(result.stdout)["error"]
+
+# --- close / archive / clear ------------------------------------------------
+#
+# The issue lifecycle grew a second terminal state (`closed`) and an orthogonal
+# archived flag. The CLI restates the server's contract by hand — the state
+# allowlist, the paths, the response keys — with nothing checking the two agree,
+# so these pin the CLI half.
+
+
+@respx.mock
+def test_issues_close_posts_to_close_not_resolve(logged_in, runner):
+    # The whole point of `close` is that it is NOT `resolve`: a resolved issue
+    # reopens when its audit finding recurs and a closed one does not, so a
+    # close that quietly hit /resolve would silently give the opposite
+    # behaviour with an identical success line.
+    resolve = respx.post(f"{BASE}/api/issues/i1/resolve").mock(return_value=httpx.Response(200, json={}))
+    close = respx.post(f"{BASE}/api/issues/i1/close").mock(
+        return_value=httpx.Response(200, json={"id": "i1", "state": "closed", "closed_at": "t"}))
+    result = runner.invoke(app, ["--json", "issues", "close", "i1", "--yes"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {"closed": True, "id": "i1"}
+    assert close.called
+    assert not resolve.called
+
+
+@respx.mock
+def test_issues_close_human_line(logged_in, runner):
+    respx.post(f"{BASE}/api/issues/i1/close").mock(return_value=httpx.Response(200, json={}))
+    result = runner.invoke(app, ["issues", "close", "i1", "--yes"])
+    assert result.exit_code == 0, result.output
+    assert "closed issue" in result.stderr
+
+
+@respx.mock
+def test_issues_close_declined_emits_the_json_cancel_envelope(logged_in, runner, monkeypatch):
+    monkeypatch.setattr(_write, "should_prompt", lambda *a, **k: True)
+    monkeypatch.setattr(output, "confirm_incident_close", lambda *a, **k: False)
+    respx.get(f"{BASE}/api/issues/i1").mock(
+        return_value=httpx.Response(200, json={"id": "i1", "alert_name": "p95"}))
+    close = respx.post(f"{BASE}/api/issues/i1/close").mock(return_value=httpx.Response(200, json={}))
+    result = runner.invoke(app, ["--json", "issues", "close", "i1"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {"cancelled": True}
+    assert not close.called
+
+
+@respx.mock
+def test_issues_archive_and_unarchive_hit_their_own_verbs(logged_in, runner):
+    arch = respx.post(f"{BASE}/api/issues/i1/archive").mock(return_value=httpx.Response(200, json={}))
+    unarch = respx.post(f"{BASE}/api/issues/i1/unarchive").mock(return_value=httpx.Response(200, json={}))
+
+    result = runner.invoke(app, ["--json", "issues", "archive", "i1"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {"archived": True, "id": "i1"}
+    assert arch.called and not unarch.called
+
+    result = runner.invoke(app, ["--json", "issues", "unarchive", "i1"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {"archived": False, "id": "i1"}
+    assert unarch.called
+
+
+@respx.mock
+def test_issues_archive_does_not_prompt(logged_in, runner, monkeypatch):
+    # Archiving destroys nothing and `unarchive` undoes it, so it must not ask —
+    # a prompt here would be the only blocking one in a cleanup loop.
+    monkeypatch.setattr(_write, "should_prompt", lambda *a, **k: True)
+    route = respx.post(f"{BASE}/api/issues/i1/archive").mock(return_value=httpx.Response(200, json={}))
+    result = runner.invoke(app, ["--json", "issues", "archive", "i1"])
+    assert result.exit_code == 0, result.output
+    assert route.called
+
+
+def test_issues_clear_requires_exactly_one_scope(logged_in, runner):
+    # The three scopes have very different blast radii, so there is deliberately
+    # no default and no way to pass two.
+    none_given = runner.invoke(app, ["--json", "issues", "clear"])
+    assert none_given.exit_code == 2, none_given.output
+
+    two_given = runner.invoke(app, ["--json", "issues", "clear", "--all-audits", "--everything"])
+    assert two_given.exit_code == 2, two_given.output
+
+
+@respx.mock
+def test_issues_clear_dry_run_writes_nothing(logged_in, runner):
+    calls = []
+
+    def record(request):
+        calls.append(json.loads(request.content))
+        return httpx.Response(200, json={"issues": 12, "findings": 9, "dry_run": True, "scope": "all_audits"})
+
+    respx.post(f"{BASE}/api/issues/bulk-clear").mock(side_effect=record)
+    result = runner.invoke(app, ["--json", "issues", "clear", "--all-audits", "--dry-run"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["issues"] == 12
+    # Exactly one request, and it carried dry_run — a second (writing) call here
+    # would mean --dry-run cleared the board.
+    assert len(calls) == 1
+    assert calls[0] == {"scope": "all_audits", "dry_run": True}
+
+
+@respx.mock
+def test_issues_clear_previews_then_writes(logged_in, runner):
+    calls = []
+
+    def record(request):
+        body = json.loads(request.content)
+        calls.append(body)
+        return httpx.Response(200, json={
+            "issues": 3, "findings": 2, "dry_run": body["dry_run"], "scope": "audit"})
+
+    respx.post(f"{BASE}/api/issues/bulk-clear").mock(side_effect=record)
+    result = runner.invoke(app, ["--json", "issues", "clear", "--audit", "a1", "--yes"])
+    assert result.exit_code == 0, result.output
+    # Preview first (so the confirm can name a number), then the real write.
+    assert [c["dry_run"] for c in calls] == [True, False]
+    assert all(c["audit_id"] == "a1" and c["scope"] == "audit" for c in calls)
+    assert json.loads(result.stdout)["issues"] == 3
+
+
+@respx.mock
+def test_issues_clear_declined_emits_the_json_cancel_envelope(logged_in, runner, monkeypatch):
+    monkeypatch.setattr(_write, "should_prompt", lambda *a, **k: True)
+    monkeypatch.setattr(output, "confirm_issues_clear", lambda *a, **k: False)
+    calls = []
+
+    def record(request):
+        calls.append(json.loads(request.content))
+        return httpx.Response(200, json={"issues": 5, "findings": 4, "dry_run": True, "scope": "everything"})
+
+    respx.post(f"{BASE}/api/issues/bulk-clear").mock(side_effect=record)
+    result = runner.invoke(app, ["--json", "issues", "clear", "--everything"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {"cancelled": True}
+    # Only the preview ran. A declined confirm that had already written would be
+    # the worst possible version of this bug.
+    assert [c["dry_run"] for c in calls] == [True]
+
+
+@respx.mock
+def test_issues_clear_on_an_empty_scope_does_not_prompt_or_write(logged_in, runner, monkeypatch):
+    monkeypatch.setattr(_write, "should_prompt", lambda *a, **k: True)
+
+    def boom(*a, **k):  # pragma: no cover - asserts it is never reached
+        raise AssertionError("prompted to confirm clearing zero issues")
+
+    monkeypatch.setattr(output, "confirm_issues_clear", boom)
+    calls = []
+
+    def record(request):
+        calls.append(json.loads(request.content))
+        return httpx.Response(200, json={"issues": 0, "findings": 0, "dry_run": True, "scope": "all_audits"})
+
+    respx.post(f"{BASE}/api/issues/bulk-clear").mock(side_effect=record)
+    result = runner.invoke(app, ["--json", "issues", "clear", "--all-audits"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["issues"] == 0
+    assert [c["dry_run"] for c in calls] == [True]
+
+
+def test_issues_list_accepts_closed_as_a_state(logged_in, runner):
+    # `--state` is validated client-side (exit 2) against a hand-copied list. A
+    # state missing from it is rejected here for something the server accepts.
+    from fp_cli.commands import incidents_cmds
+
+    assert "closed" in incidents_cmds._STATES
+    bad = runner.invoke(app, ["--json", "issues", "list", "--state", "nope"])
+    assert bad.exit_code == 2, bad.output
+
+
+@respx.mock
+def test_issues_show_surfaces_closed_at_and_archived_at(logged_in, runner):
+    # `Incident.from_dict` is an ALLOWLIST — a key it does not name is dropped
+    # with no error, which renders as a permanently blank column.
+    respx.get(f"{BASE}/api/issues/i1").mock(return_value=httpx.Response(200, json={
+        "id": "i1", "state": "closed", "closed_at": "2026-09-22T10:00:00Z",
+        "archived_at": "2026-09-22T11:00:00Z", "alert_severity": "warning",
+    }))
+    from fp_cli import client as api
+
+    inc = api.get_incident(api.ClientContext(base_url=BASE, token="s"), "i1")
+    assert inc.closed_at == "2026-09-22T10:00:00Z"
+    assert inc.archived_at == "2026-09-22T11:00:00Z"
+    assert inc.state == "closed"

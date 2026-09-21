@@ -90,7 +90,7 @@ fp keys list|show|create|update|disable|regenerate     # API keys (secret shown 
 fp users list|show|create|update|disable|enable
 fp settings list|schema|set
 fp alerts list|show|create|update|delete|test
-fp issues list|count|show|ack|assign|resolve|comment-add|comment-list|comment-delete|subscribe|subscribers|unsubscribe|open
+fp issues list|count|show|ack|assign|resolve|close|archive|unarchive|clear|comment-add|comment-list|comment-delete|subscribe|subscribers|unsubscribe|open
 fp audits list|show|create|edit|delete|run|runs|findings|finding    # scheduled audits
 fp audits ack|assign|resolve|dismiss|mute|reopen                    # triage a finding
 fp audits context-show|context-set|context-refresh                  # reference context

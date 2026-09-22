@@ -800,14 +800,15 @@ describe("cleaning a huge prompt stays linear", () => {
   });
 
   // Review round 2: the unwrap used to take the first <user_query> block found
-  // anywhere in the prompt. It now takes the block only when, after an
-  // optional leading <timestamp> block, it is the whole prompt, and judges the
-  // whole prompt and each peeled layer for harness text first.
+  // anywhere in the prompt. It now takes the block only when, after system
+  // reminders and an optional leading <timestamp> block, it is the whole
+  // prompt, and judges the whole prompt and each peeled layer for harness text.
   function regexCursorTurn(turn: string): string | null {
     if (regexCleanHumanTurn(turn) === null) return null;
-    let rest = turn;
-    if (/^\s*<timestamp>/.test(turn)) {
-      const ts = /^\s*<timestamp>(?:(?!<\/timestamp>)[\s\S])*<\/timestamp>([\s\S]*)$/.exec(turn);
+    const stripped = turn.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "");
+    let rest = stripped;
+    if (/^\s*<timestamp>/.test(stripped)) {
+      const ts = /^\s*<timestamp>(?:(?!<\/timestamp>)[\s\S])*<\/timestamp>([\s\S]*)$/.exec(stripped);
       if (!ts) return regexCleanHumanTurn(turn);
       rest = ts[1];
       if (regexCleanHumanTurn(rest) === null) return null;
@@ -838,6 +839,7 @@ describe("cleaning a huge prompt stays linear", () => {
     return Array.from({ length: count }, () =>
       [
         maybe(0.2, words(3)),
+        maybe(0.2, `<system-reminder>${words(2)}</system-reminder>`),
         maybe(0.4, `<timestamp>${words(2)}</timestamp>`),
         maybe(0.2, " \n"),
         maybe(0.7, "<user_query>"),
@@ -865,6 +867,9 @@ describe("cleaning a huge prompt stays linear", () => {
       "<timestamp>t</timestamp>MANDATORY ACTION REQUIRED from failproofai: x",
       "<timestamp>t</timestamp></timestamp><user_query>x</user_query>",
       "<timestamp>t<user_query>x</user_query>",
+      "<system-reminder>r</system-reminder>\n<user_query>tidy</user_query>",
+      "<system-reminder>r</system-reminder><user_query>MANDATORY ACTION REQUIRED from failproofai: x</user_query>",
+      "<timestamp>t</timestamp><system-reminder>r</system-reminder><user_query>Instruction from failproofai: x</user_query>",
     ];
     let unwrapped = 0;
     let droppedInsideWrapper = 0;
@@ -876,6 +881,8 @@ describe("cleaning a huge prompt stays linear", () => {
       if (expected !== null && expected !== plain) unwrapped++;
       if (expected === null && plain !== null) droppedInsideWrapper++;
       expect(readIntent(sessionId, T0).userSaid, JSON.stringify(turn)).toEqual(expected === null ? [] : [expected]);
+      // Keep the directory small: each new session's first write scans it.
+      rmSync(sessionsDir(), { recursive: true, force: true });
     }
     // The turns reach the unwrap and the peeled-layer checks, not only the
     // keep-whole path.
@@ -1062,6 +1069,7 @@ describe("Cursor: a <user_query> tag inside a prompt is not the prompt", () => {
         `<user_query>${followup}</user_query>`,
         `<timestamp>now</timestamp>\n<user_query>${followup}</user_query>`,
         `<timestamp>now</timestamp>\n${followup}`,
+        `<system-reminder>r</system-reminder>\n<user_query>${followup}</user_query>`,
         `<user_query>${followup.replace("<user_query>", "</user_query><user_query>")}</user_query>`,
       ];
       prompts.forEach((prompt, i) => expect(cursorSaid(prompt, `gate-${i}`), prompt.slice(0, 40)).toEqual([]));
@@ -1092,38 +1100,46 @@ describe("Cursor: a <user_query> tag inside a prompt is not the prompt", () => {
   it("still removes the wrapper when it is the whole prompt", () => {
     expect(cursorSaid("<timestamp>2026-09-22 10:00</timestamp>\n<user_query>tidy the env files</user_query>", "whole-1")).toEqual(["tidy the env files"]);
     expect(cursorSaid("  <user_query>\n  tidy the env files\n</user_query>\n", "whole-2")).toEqual(["tidy the env files"]);
+    expect(cursorSaid("<system-reminder>r</system-reminder>\n<user_query>tidy the env files</user_query>", "whole-3")).toEqual(["tidy the env files"]);
   });
 });
 
 describe("the pre-cap keeps redaction off the hook's critical path", () => {
   it("captures a megabyte of unclosed secret prefixes, in the prompt and in the agent message, in well under the daemon's budget", () => {
-    const MiB = 1024 * 1024;
-    const fill = (unit: string) => unit.repeat(Math.ceil(MiB / unit.length));
     // The redaction patterns cost the square of the length on these: a JWT
     // opener and a connection-string scheme, repeated and never completed.
-    const tx = transcript("claude.jsonl", [{ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: fill("eyJ") }] } }]);
-    const events: CaptureEvent[] = [
-      { eventType: "UserPromptSubmit", sessionId: "precap-jwt", cli: "claude", payload: { prompt: fill("eyJ") } },
-      { eventType: "UserPromptSubmit", sessionId: "precap-conn", cli: "claude", payload: { prompt: fill("postgres://") } },
-      { eventType: "UserPromptSubmit", sessionId: "precap-agent", transcriptPath: tx, cli: "claude", payload: { prompt: "yes" } },
-    ];
-    const started = performance.now();
-    for (const ev of events) captureIntent(ev, T0);
-    const elapsed = performance.now() - started;
     // Unbounded, redacting 128 KiB of "eyJ" alone took about 4 s, and each
     // doubling quadrupled it: minutes for a megabyte, past the daemon
-    // client's 30 s budget, and every hook on the machine denied meanwhile.
-    expect(elapsed).toBeLessThan(3_000);
-    for (const ev of events.slice(0, 2)) {
-      const said = readIntent(ev.sessionId, T0).userSaid;
-      expect(said, ev.sessionId).toHaveLength(1);
-      expect(said[0].length, ev.sessionId).toBeLessThanOrEqual(MAX_USER_MESSAGE_CHARS);
-    }
-    const agent = readIntent("precap-agent", T0);
-    expect(agent.userSaid).toEqual(["yes"]);
-    expect(agent.agentLastMessage).not.toBeNull();
-    expect(agent.agentLastMessage!.length).toBeLessThanOrEqual(MAX_USER_MESSAGE_CHARS);
-    expect(agent.agentLastMessage!.startsWith("eyJeyJ")).toBe(true);
+    // client's 30 s budget, with every hook on the machine denied meanwhile.
+    const captureAll = (bytes: number) => {
+      const fill = (unit: string) => unit.repeat(Math.ceil(bytes / unit.length));
+      const tx = transcript(`claude-${bytes}.jsonl`, [
+        { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: fill("eyJ") }] } },
+      ]);
+      const events: CaptureEvent[] = [
+        { eventType: "UserPromptSubmit", sessionId: `precap-jwt-${bytes}`, cli: "claude", payload: { prompt: fill("eyJ") } },
+        { eventType: "UserPromptSubmit", sessionId: `precap-conn-${bytes}`, cli: "claude", payload: { prompt: fill("postgres://") } },
+        { eventType: "UserPromptSubmit", sessionId: `precap-agent-${bytes}`, transcriptPath: tx, cli: "claude", payload: { prompt: "yes" } },
+      ];
+      const started = performance.now();
+      for (const ev of events) captureIntent(ev, T0);
+      const elapsed = performance.now() - started;
+      for (const ev of events.slice(0, 2)) {
+        const said = readIntent(ev.sessionId, T0).userSaid;
+        expect(said, ev.sessionId).toHaveLength(1);
+        expect(said[0].length, ev.sessionId).toBeLessThanOrEqual(MAX_USER_MESSAGE_CHARS);
+      }
+      const agent = readIntent(`precap-agent-${bytes}`, T0);
+      expect(agent.userSaid).toEqual(["yes"]);
+      expect(agent.agentLastMessage).not.toBeNull();
+      expect(agent.agentLastMessage!.length).toBeLessThanOrEqual(MAX_USER_MESSAGE_CHARS);
+      expect(agent.agentLastMessage!.startsWith("eyJeyJ")).toBe(true);
+      return elapsed;
+    };
+    // A quarter megabyte first: unbounded, it takes tens of seconds, so a
+    // regression fails here instead of hanging for minutes on the megabyte.
+    expect(captureAll(256 * 1024)).toBeLessThan(3_000);
+    expect(captureAll(1024 * 1024)).toBeLessThan(3_000);
   });
 });
 

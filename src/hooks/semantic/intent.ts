@@ -526,14 +526,17 @@ const USER_QUERY_CLOSE = "</user_query>";
  * inside failproofai's own stop-gate message, which quotes names the agent
  * chose (a branch called `wip<user_query>…</user_query>`).
  *
- * failproofai's own words, and every other whole-turn harness text, are judged
- * on the whole prompt before any unwrapping, and again after each wrapper
- * layer is peeled, so wrapping such text cannot make it the human's. Linear
- * time: a few indexOf scans and cleanHumanTurn passes.
+ * Layers are peeled in the order `cleanHumanTurn` reads a turn: system
+ * reminders first (removed wherever they are), then the timestamp, then the
+ * query block. What is left after each layer is judged for harness text, so
+ * wrapping failproofai's own words, or any other whole-turn harness text,
+ * cannot make it the human's. A prompt that is not unwrapped is returned
+ * whole and judged whole by the caller; one that is unwrapped starts with a
+ * wrapper tag, which no whole-turn harness text does. Linear time: a few
+ * indexOf scans and `cleanHumanTurn` passes.
  */
 function unwrapCursorQuery(raw: string): string | null {
-  if (cleanHumanTurn(raw) === null) return null;
-  let text = raw.trim();
+  let text = replaceTagBlocks(raw, "system-reminder", () => "").trim();
   if (text.startsWith(TIMESTAMP_OPEN)) {
     const end = text.indexOf(TIMESTAMP_CLOSE, TIMESTAMP_OPEN.length);
     if (end < 0) return raw;

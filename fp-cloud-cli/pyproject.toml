@@ -12,7 +12,7 @@ license = { file = "LICENSE" }
 authors = [{ name = "Failproof AI", email = "failproofai@exosphere.host" }]
 keywords = ["agents", "observability", "ai", "monitoring", "failproofai", "cli"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",

@@ -1,10 +1,18 @@
 # Changelog — `fp` CLI
 
-## 0.0.1b3 — 2026-09-12
+## 0.0.1 — 2026-09-22
 
-Open for the next release. `0.0.1b2` published on 2026-09-12 and the `bump` job
-moved the version here automatically. This section becomes the GitHub Release
-body when it ships.
+**First stable release.** `0.0.1b1` and `0.0.1b2` are the two betas behind it; the
+`0.0.1b3` line the `bump` job opened is cut stable here rather than published, because
+the server endpoints these commands drive are deployed to FailproofAI Cloud and the
+CLI half should not stay a pre-release behind them. Until now `pipx install
+fp-cloud-cli` resolved a beta only because no stable existed — a default that would
+have silently changed the day one did. `Development Status` moves to
+`5 - Production/Stable` with the version, so the classifier and the one string pip
+reads say the same thing.
+
+Nothing about the command surface changes at the cut: the entries below are the
+entire diff from `0.0.1b2`, and `0.0.2b0` opens the next beta line.
 
 ### Added
 

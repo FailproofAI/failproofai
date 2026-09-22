@@ -132,6 +132,24 @@ export const MATRIX_CLIS: readonly IntegrationType[] = INTEGRATION_TYPES;
 
 /** A cwd that exists on no machine, so no path in any output is machine-specific. */
 export const CORPUS_CWD = "/nonexistent-fpai-golden/project";
+
+/**
+ * The builtins enabled for the handler corpus: exactly the 39 the golden was
+ * recorded with. Pinned rather than read from the catalog, so a builtin added
+ * later (which changes `matchedPolicies` on every call it matches) is a
+ * catalog change for its own tests to cover, not an equivalence failure here.
+ */
+export const CORPUS_BUILTINS = [
+  "sanitize-jwt", "sanitize-api-keys", "sanitize-connection-strings", "sanitize-private-key-content",
+  "sanitize-bearer-tokens", "protect-env-vars", "block-env-files", "block-read-outside-cwd", "block-sudo",
+  "block-curl-pipe-sh", "block-rm-rf", "block-failproofai-commands", "block-kubectl", "block-terraform",
+  "block-aws-cli", "block-gcloud", "block-az-cli", "block-helm", "block-gh-pipeline", "block-secrets-write",
+  "block-push-master", "block-force-push", "block-work-on-main", "warn-git-amend", "warn-git-stash-drop",
+  "warn-all-files-staged", "warn-destructive-sql", "warn-schema-alteration", "warn-package-publish",
+  "warn-global-package-install", "prefer-package-manager", "warn-large-file-write", "warn-background-process",
+  "warn-repeated-tool-calls", "require-commit-before-stop", "require-push-before-stop", "require-pr-before-stop",
+  "require-no-conflicts-before-stop", "require-ci-green-before-stop",
+] as const;
 export const CORPUS_SESSION = "golden-session";
 
 export interface HandlerCase {
@@ -141,11 +159,9 @@ export interface HandlerCase {
 }
 
 const self = "fail" + "proofai";
-const fakeKey = "s" + "k-" + "proj-" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8S9t0";
 const fakeJwt = ["eyJhbGciOiJIUzI1NiJ9", "eyJzdWIiOiIxMjM0NTY3ODkwIn0", "dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"].join(".");
 const fakePem = "-----BEGIN " + "RSA PRIVATE KEY-----\nMIIEow\n-----END " + "RSA PRIVATE KEY-----";
 const fakeConn = "postgres://" + "admin:hunter2" + "@db.internal:5432/app";
-const fakeBearer = "Authorization: " + "Bearer " + "abcdefghijklmnopqrstuvwxyz0123456789";
 
 const BASH_COMMANDS: Array<[string, string]> = [
   ["ls", "ls -la"],
@@ -211,13 +227,14 @@ export function handlerCorpus(): HandlerCase[] {
       event: "PermissionRequest",
       payload: { ...base, hook_event_name: "PermissionRequest", tool_name: "Bash", tool_input: { command: "ls" } },
     },
+    // Deliberately no `sk-…` key or `Authorization: Bearer` case: the secret
+    // pattern list is being widened in parallel (T6), and a relabelled match
+    // there is that change's business, not an equivalence failure here.
     ...(
       [
-        ["post:api-key", `key=${fakeKey}`],
         ["post:jwt", `token ${fakeJwt}`],
         ["post:pem", fakePem],
         ["post:conn", fakeConn],
-        ["post:bearer", fakeBearer],
         ["post:plain", "all good"],
       ] as Array<[string, string]>
     ).map(([id, output]): HandlerCase => ({

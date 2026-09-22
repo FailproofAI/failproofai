@@ -14,7 +14,8 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { Golden } from "./two-tier/corpus";
+import { CORPUS_BUILTINS, type Golden } from "./two-tier/corpus";
+import { BUILTIN_POLICIES } from "../../src/hooks/builtin-policies";
 import { enterSandbox, runEvaluatorMatrix, runHandlerCorpus, type CorpusSandbox } from "./two-tier/runner";
 
 const golden = JSON.parse(
@@ -32,12 +33,18 @@ afterAll(() => {
 describe("unconfigured equivalence (no jev.json)", () => {
   it("records a meaningful corpus", () => {
     expect(Object.keys(golden.evaluator).length).toBe(1536);
-    expect(Object.keys(golden.handler).length).toBe(576);
+    expect(Object.keys(golden.handler).length).toBe(552);
     // The corpus must actually exercise every decision, or equality proves little.
     const outs = golden.outputs.join("\n");
     for (const needle of ['"decision":"deny"', '"decision":"instruct"', '"decision":"allow"', "MANDATORY ACTION REQUIRED"]) {
       expect(outs).toContain(needle);
     }
+  });
+
+  it("still enables real builtins: every pinned name exists in the catalog", () => {
+    const names = new Set(BUILTIN_POLICIES.map((p) => p.name));
+    expect(CORPUS_BUILTINS.filter((n) => !names.has(n))).toEqual([]);
+    expect(CORPUS_BUILTINS).toHaveLength(39);
   });
 
   it("evaluatePolicies: every CLI × event × allow/instruct/deny combination is byte-identical", async () => {

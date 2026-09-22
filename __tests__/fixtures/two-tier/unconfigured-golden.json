@@ -1,5 +1,5 @@
 {
- "generatedFrom": "b766a940 (main + T0 port, before the two-tier wiring)",
+ "generatedFrom": "b766a940 (main + T0 port, before the two-tier wiring); pruned of the post:api-key and post:bearer cases (subset, not regenerated)",
  "outputs": [
   "{\"exitCode\":0,\"stdout\":\"\",\"stderr\":\"\",\"policyName\":null,\"reason\":null,\"decision\":\"allow\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"additionalContext\\\":\\\"Note from failproofai: note one\\\"}}\",\"stderr\":\"[failproofai] failproofai/p-note: note one\\n\",\"policyName\":\"failproofai/p-note\",\"policyNames\":[\"failproofai/p-note\"],\"reason\":\"note one\",\"decision\":\"allow\"}",
@@ -20,77 +20,77 @@
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PermissionRequest\\\",\\\"additionalContext\\\":\\\"Instruction from failproofai: do x first\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PostToolUse\\\",\\\"additionalContext\\\":\\\"Instruction from failproofai: do x first\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"UserPromptSubmit\\\",\\\"additionalContext\\\":\\\"Instruction from failproofai: do x first\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first\",\"decision\":\"instruct\"}",
-  "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): do x first\\n\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first\",\"decision\":\"instruct\"}",
+  "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): do x first\\n\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation \u2014 execute the required action(s), then attempt to finish your task again.\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"SessionStart\\\",\\\"additionalContext\\\":\\\"Instruction from failproofai: do x first\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"Notification\\\",\\\"additionalContext\\\":\\\"Instruction from failproofai: do x first\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first\",\"decision\":\"instruct\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): do x first\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first\",\"decision\":\"instruct\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): do x first\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation \u2014 execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"allow\\\",\\\"additional_context\\\":\\\"Instruction from failproofai: do x first\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"followup_message\\\":\\\"Instruction from failproofai: do x first\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first\",\"decision\":\"instruct\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"additionalContext\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): do x first\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first\",\"decision\":\"instruct\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"additionalContext\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): do x first\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation \u2014 execute the required action(s), then attempt to finish your task again.\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"allow\\\",\\\"reason\\\":\\\"Instruction from failproofai: do x first\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first\",\"decision\":\"instruct\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): do x first\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first\",\"decision\":\"instruct\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): do x first\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation \u2014 execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"allow\\\",\\\"reason\\\":\\\"Instruction from failproofai: do x first\\\"}\",\"stderr\":\"[failproofai] failproofai/p-inst: do x first\\n\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"instruct\\\",\\\"reason\\\":\\\"Instruction from failproofai: do x first\\\",\\\"policyName\\\":\\\"failproofai/p-inst\\\",\\\"policyNames\\\":[\\\"failproofai/p-inst\\\"]}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"allow\\\",\\\"reason\\\":\\\"Instruction from failproofai: do x first\\\"}\",\"stderr\":\"[failproofai] failproofai/p-inst: do x first\\n\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"\",\"stderr\":\"[failproofai] failproofai/p-inst: do x first\\n\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"injectSteps\\\":[{\\\"ephemeralMessage\\\":\\\"Instruction from failproofai: do x first\\\"}]}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first\",\"decision\":\"instruct\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"continue\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): do x first\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first\",\"decision\":\"instruct\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"continue\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): do x first\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation \u2014 execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"additionalContext\\\":\\\"Instruction from failproofai: Instruction from policy: failproofai/p-inst\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"Instruction from policy: failproofai/p-inst\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PermissionRequest\\\",\\\"additionalContext\\\":\\\"Instruction from failproofai: Instruction from policy: failproofai/p-inst\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"Instruction from policy: failproofai/p-inst\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PostToolUse\\\",\\\"additionalContext\\\":\\\"Instruction from failproofai: Instruction from policy: failproofai/p-inst\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"Instruction from policy: failproofai/p-inst\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"UserPromptSubmit\\\",\\\"additionalContext\\\":\\\"Instruction from failproofai: Instruction from policy: failproofai/p-inst\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"Instruction from policy: failproofai/p-inst\",\"decision\":\"instruct\"}",
-  "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): Instruction from policy: failproofai/p-inst\\n\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"Instruction from policy: failproofai/p-inst\",\"decision\":\"instruct\"}",
+  "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): Instruction from policy: failproofai/p-inst\\n\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation \u2014 execute the required action(s), then attempt to finish your task again.\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"Instruction from policy: failproofai/p-inst\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"SessionStart\\\",\\\"additionalContext\\\":\\\"Instruction from failproofai: Instruction from policy: failproofai/p-inst\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"Instruction from policy: failproofai/p-inst\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"Notification\\\",\\\"additionalContext\\\":\\\"Instruction from failproofai: Instruction from policy: failproofai/p-inst\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"Instruction from policy: failproofai/p-inst\",\"decision\":\"instruct\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): Instruction from policy: failproofai/p-inst\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"Instruction from policy: failproofai/p-inst\",\"decision\":\"instruct\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): Instruction from policy: failproofai/p-inst\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation \u2014 execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"Instruction from policy: failproofai/p-inst\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"allow\\\",\\\"additional_context\\\":\\\"Instruction from failproofai: Instruction from policy: failproofai/p-inst\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"Instruction from policy: failproofai/p-inst\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"followup_message\\\":\\\"Instruction from failproofai: Instruction from policy: failproofai/p-inst\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"Instruction from policy: failproofai/p-inst\",\"decision\":\"instruct\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"additionalContext\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): Instruction from policy: failproofai/p-inst\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"Instruction from policy: failproofai/p-inst\",\"decision\":\"instruct\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"additionalContext\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): Instruction from policy: failproofai/p-inst\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation \u2014 execute the required action(s), then attempt to finish your task again.\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"Instruction from policy: failproofai/p-inst\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"allow\\\",\\\"reason\\\":\\\"Instruction from failproofai: Instruction from policy: failproofai/p-inst\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"Instruction from policy: failproofai/p-inst\",\"decision\":\"instruct\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): Instruction from policy: failproofai/p-inst\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"Instruction from policy: failproofai/p-inst\",\"decision\":\"instruct\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): Instruction from policy: failproofai/p-inst\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation \u2014 execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"Instruction from policy: failproofai/p-inst\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"allow\\\",\\\"reason\\\":\\\"Instruction from failproofai: Instruction from policy: failproofai/p-inst\\\"}\",\"stderr\":\"[failproofai] failproofai/p-inst: Instruction from policy: failproofai/p-inst\\n\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"Instruction from policy: failproofai/p-inst\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"instruct\\\",\\\"reason\\\":\\\"Instruction from failproofai: Instruction from policy: failproofai/p-inst\\\",\\\"policyName\\\":\\\"failproofai/p-inst\\\",\\\"policyNames\\\":[\\\"failproofai/p-inst\\\"]}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"Instruction from policy: failproofai/p-inst\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"allow\\\",\\\"reason\\\":\\\"Instruction from failproofai: Instruction from policy: failproofai/p-inst\\\"}\",\"stderr\":\"[failproofai] failproofai/p-inst: Instruction from policy: failproofai/p-inst\\n\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"Instruction from policy: failproofai/p-inst\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"\",\"stderr\":\"[failproofai] failproofai/p-inst: Instruction from policy: failproofai/p-inst\\n\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"Instruction from policy: failproofai/p-inst\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"injectSteps\\\":[{\\\"ephemeralMessage\\\":\\\"Instruction from failproofai: Instruction from policy: failproofai/p-inst\\\"}]}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"Instruction from policy: failproofai/p-inst\",\"decision\":\"instruct\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"continue\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): Instruction from policy: failproofai/p-inst\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"Instruction from policy: failproofai/p-inst\",\"decision\":\"instruct\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"continue\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): Instruction from policy: failproofai/p-inst\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation \u2014 execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"Instruction from policy: failproofai/p-inst\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"additionalContext\\\":\\\"Instruction from failproofai: do x first\\\\nand y\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\",\"custom/p-inst2\"],\"reason\":\"do x first\\nand y\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PermissionRequest\\\",\\\"additionalContext\\\":\\\"Instruction from failproofai: do x first\\\\nand y\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\",\"custom/p-inst2\"],\"reason\":\"do x first\\nand y\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PostToolUse\\\",\\\"additionalContext\\\":\\\"Instruction from failproofai: do x first\\\\nand y\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\",\"custom/p-inst2\"],\"reason\":\"do x first\\nand y\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"UserPromptSubmit\\\",\\\"additionalContext\\\":\\\"Instruction from failproofai: do x first\\\\nand y\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\",\"custom/p-inst2\"],\"reason\":\"do x first\\nand y\",\"decision\":\"instruct\"}",
-  "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"MANDATORY ACTION REQUIRED from failproofai (policies: failproofai/p-inst, custom/p-inst2): do x first\\nand y\\n\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\",\"custom/p-inst2\"],\"reason\":\"do x first\\nand y\",\"decision\":\"instruct\"}",
+  "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"MANDATORY ACTION REQUIRED from failproofai (policies: failproofai/p-inst, custom/p-inst2): do x first\\nand y\\n\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation \u2014 execute the required action(s), then attempt to finish your task again.\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\",\"custom/p-inst2\"],\"reason\":\"do x first\\nand y\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"SessionStart\\\",\\\"additionalContext\\\":\\\"Instruction from failproofai: do x first\\\\nand y\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\",\"custom/p-inst2\"],\"reason\":\"do x first\\nand y\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"Notification\\\",\\\"additionalContext\\\":\\\"Instruction from failproofai: do x first\\\\nand y\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\",\"custom/p-inst2\"],\"reason\":\"do x first\\nand y\",\"decision\":\"instruct\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policies: failproofai/p-inst, custom/p-inst2): do x first\\\\nand y\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\",\"custom/p-inst2\"],\"reason\":\"do x first\\nand y\",\"decision\":\"instruct\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policies: failproofai/p-inst, custom/p-inst2): do x first\\\\nand y\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation \u2014 execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\",\"custom/p-inst2\"],\"reason\":\"do x first\\nand y\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"allow\\\",\\\"additional_context\\\":\\\"Instruction from failproofai: do x first\\\\nand y\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\",\"custom/p-inst2\"],\"reason\":\"do x first\\nand y\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"followup_message\\\":\\\"Instruction from failproofai: do x first\\\\nand y\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\",\"custom/p-inst2\"],\"reason\":\"do x first\\nand y\",\"decision\":\"instruct\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"additionalContext\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policies: failproofai/p-inst, custom/p-inst2): do x first\\\\nand y\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\",\"custom/p-inst2\"],\"reason\":\"do x first\\nand y\",\"decision\":\"instruct\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"additionalContext\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policies: failproofai/p-inst, custom/p-inst2): do x first\\\\nand y\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation \u2014 execute the required action(s), then attempt to finish your task again.\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\",\"custom/p-inst2\"],\"reason\":\"do x first\\nand y\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"allow\\\",\\\"reason\\\":\\\"Instruction from failproofai: do x first\\\\nand y\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\",\"custom/p-inst2\"],\"reason\":\"do x first\\nand y\",\"decision\":\"instruct\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policies: failproofai/p-inst, custom/p-inst2): do x first\\\\nand y\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\",\"custom/p-inst2\"],\"reason\":\"do x first\\nand y\",\"decision\":\"instruct\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policies: failproofai/p-inst, custom/p-inst2): do x first\\\\nand y\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation \u2014 execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\",\"custom/p-inst2\"],\"reason\":\"do x first\\nand y\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"allow\\\",\\\"reason\\\":\\\"Instruction from failproofai: do x first\\\\nand y\\\"}\",\"stderr\":\"[failproofai] failproofai/p-inst: do x first\\n[failproofai] custom/p-inst2: and y\\n\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\",\"custom/p-inst2\"],\"reason\":\"do x first\\nand y\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"instruct\\\",\\\"reason\\\":\\\"Instruction from failproofai: do x first\\\\nand y\\\",\\\"policyName\\\":\\\"failproofai/p-inst\\\",\\\"policyNames\\\":[\\\"failproofai/p-inst\\\",\\\"custom/p-inst2\\\"]}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\",\"custom/p-inst2\"],\"reason\":\"do x first\\nand y\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"allow\\\",\\\"reason\\\":\\\"Instruction from failproofai: do x first\\\\nand y\\\"}\",\"stderr\":\"[failproofai] failproofai/p-inst: do x first\\n[failproofai] custom/p-inst2: and y\\n\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\",\"custom/p-inst2\"],\"reason\":\"do x first\\nand y\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"\",\"stderr\":\"[failproofai] failproofai/p-inst: do x first\\n[failproofai] custom/p-inst2: and y\\n\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\",\"custom/p-inst2\"],\"reason\":\"do x first\\nand y\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"injectSteps\\\":[{\\\"ephemeralMessage\\\":\\\"Instruction from failproofai: do x first\\\\nand y\\\"}]}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\",\"custom/p-inst2\"],\"reason\":\"do x first\\nand y\",\"decision\":\"instruct\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"continue\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policies: failproofai/p-inst, custom/p-inst2): do x first\\\\nand y\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\",\"custom/p-inst2\"],\"reason\":\"do x first\\nand y\",\"decision\":\"instruct\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"continue\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policies: failproofai/p-inst, custom/p-inst2): do x first\\\\nand y\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation \u2014 execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\",\"custom/p-inst2\"],\"reason\":\"do x first\\nand y\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"permissionDecision\\\":\\\"deny\\\",\\\"permissionDecisionReason\\\":\\\"Blocked Bash by failproofai because: not allowed, as per the policy configured by the user\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PermissionRequest\\\",\\\"decision\\\":{\\\"behavior\\\":\\\"deny\\\",\\\"message\\\":\\\"Blocked Bash by failproofai because: not allowed, as per the policy configured by the user\\\"}}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PostToolUse\\\",\\\"additionalContext\\\":\\\"Blocked Bash by failproofai because: not allowed, as per the policy configured by the user\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
   "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"not allowed\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
-  "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): not allowed\\n\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
+  "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): not allowed\\n\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation \u2014 execute the required action, then attempt to finish your task again.\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: not allowed, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"behavior\\\":\\\"deny\\\",\\\"message\\\":\\\"Blocked Bash by failproofai because: not allowed, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"Blocked prompt by failproofai because: not allowed, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): not allowed\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): not allowed\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation \u2014 execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"user_message\\\":\\\"Blocked Bash by failproofai because: not allowed, as per the policy configured by the user\\\",\\\"agent_message\\\":\\\"Blocked Bash by failproofai because: not allowed, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"continue\\\":false,\\\"user_message\\\":\\\"Blocked prompt by failproofai because: not allowed, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"followup_message\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): not allowed\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"followup_message\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): not allowed\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation \u2014 execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"user_message\\\":\\\"Blocked session start by failproofai because: not allowed, as per the policy configured by the user\\\",\\\"agent_message\\\":\\\"Blocked session start by failproofai because: not allowed, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"user_message\\\":\\\"Blocked operation by failproofai because: not allowed, as per the policy configured by the user\\\",\\\"agent_message\\\":\\\"Blocked operation by failproofai because: not allowed, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"additionalContext\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): not allowed\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"additionalContext\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): not allowed\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation \u2014 execute the required action, then attempt to finish your task again.\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: not allowed, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked prompt by failproofai because: not allowed, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): not allowed\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): not allowed\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation \u2014 execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked operation by failproofai because: not allowed, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked session start by failproofai because: not allowed, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"Blocked stop by failproofai because: not allowed, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
@@ -102,27 +102,27 @@
   "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"Blocked session start by failproofai because: not allowed, as per the policy configured by the user\\n\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: not allowed, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked prompt by failproofai because: not allowed, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"continue\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): not allowed\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"continue\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): not allowed\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation \u2014 execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked operation by failproofai because: not allowed, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked session start by failproofai because: not allowed, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"permissionDecision\\\":\\\"deny\\\",\\\"permissionDecisionReason\\\":\\\"Blocked Bash by failproofai because: Blocked by policy: failproofai/p-deny, as per the policy configured by the user\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PermissionRequest\\\",\\\"decision\\\":{\\\"behavior\\\":\\\"deny\\\",\\\"message\\\":\\\"Blocked Bash by failproofai because: Blocked by policy: failproofai/p-deny, as per the policy configured by the user\\\"}}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PostToolUse\\\",\\\"additionalContext\\\":\\\"Blocked Bash by failproofai because: Blocked by policy: failproofai/p-deny, as per the policy configured by the user\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
   "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"Blocked by policy: failproofai/p-deny\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
-  "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): Blocked by policy: failproofai/p-deny\\n\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
+  "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): Blocked by policy: failproofai/p-deny\\n\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation \u2014 execute the required action, then attempt to finish your task again.\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: Blocked by policy: failproofai/p-deny, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"behavior\\\":\\\"deny\\\",\\\"message\\\":\\\"Blocked Bash by failproofai because: Blocked by policy: failproofai/p-deny, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"Blocked prompt by failproofai because: Blocked by policy: failproofai/p-deny, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): Blocked by policy: failproofai/p-deny\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): Blocked by policy: failproofai/p-deny\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation \u2014 execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"user_message\\\":\\\"Blocked Bash by failproofai because: Blocked by policy: failproofai/p-deny, as per the policy configured by the user\\\",\\\"agent_message\\\":\\\"Blocked Bash by failproofai because: Blocked by policy: failproofai/p-deny, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"continue\\\":false,\\\"user_message\\\":\\\"Blocked prompt by failproofai because: Blocked by policy: failproofai/p-deny, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"followup_message\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): Blocked by policy: failproofai/p-deny\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"followup_message\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): Blocked by policy: failproofai/p-deny\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation \u2014 execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"user_message\\\":\\\"Blocked session start by failproofai because: Blocked by policy: failproofai/p-deny, as per the policy configured by the user\\\",\\\"agent_message\\\":\\\"Blocked session start by failproofai because: Blocked by policy: failproofai/p-deny, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"user_message\\\":\\\"Blocked operation by failproofai because: Blocked by policy: failproofai/p-deny, as per the policy configured by the user\\\",\\\"agent_message\\\":\\\"Blocked operation by failproofai because: Blocked by policy: failproofai/p-deny, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"additionalContext\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): Blocked by policy: failproofai/p-deny\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"additionalContext\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): Blocked by policy: failproofai/p-deny\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation \u2014 execute the required action, then attempt to finish your task again.\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: Blocked by policy: failproofai/p-deny, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked prompt by failproofai because: Blocked by policy: failproofai/p-deny, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): Blocked by policy: failproofai/p-deny\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): Blocked by policy: failproofai/p-deny\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation \u2014 execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked operation by failproofai because: Blocked by policy: failproofai/p-deny, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked session start by failproofai because: Blocked by policy: failproofai/p-deny, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"Blocked stop by failproofai because: Blocked by policy: failproofai/p-deny, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
@@ -134,27 +134,27 @@
   "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"Blocked session start by failproofai because: Blocked by policy: failproofai/p-deny, as per the policy configured by the user\\n\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: Blocked by policy: failproofai/p-deny, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked prompt by failproofai because: Blocked by policy: failproofai/p-deny, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"continue\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): Blocked by policy: failproofai/p-deny\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"continue\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): Blocked by policy: failproofai/p-deny\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation \u2014 execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked operation by failproofai because: Blocked by policy: failproofai/p-deny, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked session start by failproofai because: Blocked by policy: failproofai/p-deny, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"Blocked by policy: failproofai/p-deny\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"permissionDecision\\\":\\\"deny\\\",\\\"permissionDecisionReason\\\":\\\"Blocked Bash by failproofai because: first, as per the policy configured by the user\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PermissionRequest\\\",\\\"decision\\\":{\\\"behavior\\\":\\\"deny\\\",\\\"message\\\":\\\"Blocked Bash by failproofai because: first, as per the policy configured by the user\\\"}}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PostToolUse\\\",\\\"additionalContext\\\":\\\"Blocked Bash by failproofai because: first, as per the policy configured by the user\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
   "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"first\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
-  "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): first\\n\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
+  "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): first\\n\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation \u2014 execute the required action, then attempt to finish your task again.\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: first, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"behavior\\\":\\\"deny\\\",\\\"message\\\":\\\"Blocked Bash by failproofai because: first, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"Blocked prompt by failproofai because: first, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): first\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): first\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation \u2014 execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"user_message\\\":\\\"Blocked Bash by failproofai because: first, as per the policy configured by the user\\\",\\\"agent_message\\\":\\\"Blocked Bash by failproofai because: first, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"continue\\\":false,\\\"user_message\\\":\\\"Blocked prompt by failproofai because: first, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"followup_message\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): first\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"followup_message\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): first\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation \u2014 execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"user_message\\\":\\\"Blocked session start by failproofai because: first, as per the policy configured by the user\\\",\\\"agent_message\\\":\\\"Blocked session start by failproofai because: first, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"user_message\\\":\\\"Blocked operation by failproofai because: first, as per the policy configured by the user\\\",\\\"agent_message\\\":\\\"Blocked operation by failproofai because: first, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"additionalContext\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): first\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"additionalContext\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): first\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation \u2014 execute the required action, then attempt to finish your task again.\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: first, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked prompt by failproofai because: first, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): first\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): first\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation \u2014 execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked operation by failproofai because: first, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked session start by failproofai because: first, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"Blocked stop by failproofai because: first, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
@@ -166,46 +166,46 @@
   "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"Blocked session start by failproofai because: first, as per the policy configured by the user\\n\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: first, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked prompt by failproofai because: first, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"continue\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): first\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"continue\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): first\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation \u2014 execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked operation by failproofai because: first, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked session start by failproofai because: first, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"first\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"additionalContext\\\":\\\"Instruction from failproofai: after a crash\\\"}}\",\"stderr\":\"\",\"policyName\":\"custom/p-inst\",\"policyNames\":[\"custom/p-inst\"],\"reason\":\"after a crash\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PermissionRequest\\\",\\\"additionalContext\\\":\\\"Instruction from failproofai: after a crash\\\"}}\",\"stderr\":\"\",\"policyName\":\"custom/p-inst\",\"policyNames\":[\"custom/p-inst\"],\"reason\":\"after a crash\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PostToolUse\\\",\\\"additionalContext\\\":\\\"Instruction from failproofai: after a crash\\\"}}\",\"stderr\":\"\",\"policyName\":\"custom/p-inst\",\"policyNames\":[\"custom/p-inst\"],\"reason\":\"after a crash\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"UserPromptSubmit\\\",\\\"additionalContext\\\":\\\"Instruction from failproofai: after a crash\\\"}}\",\"stderr\":\"\",\"policyName\":\"custom/p-inst\",\"policyNames\":[\"custom/p-inst\"],\"reason\":\"after a crash\",\"decision\":\"instruct\"}",
-  "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"MANDATORY ACTION REQUIRED from failproofai (policy: custom/p-inst): after a crash\\n\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.\",\"policyName\":\"custom/p-inst\",\"policyNames\":[\"custom/p-inst\"],\"reason\":\"after a crash\",\"decision\":\"instruct\"}",
+  "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"MANDATORY ACTION REQUIRED from failproofai (policy: custom/p-inst): after a crash\\n\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation \u2014 execute the required action(s), then attempt to finish your task again.\",\"policyName\":\"custom/p-inst\",\"policyNames\":[\"custom/p-inst\"],\"reason\":\"after a crash\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"SessionStart\\\",\\\"additionalContext\\\":\\\"Instruction from failproofai: after a crash\\\"}}\",\"stderr\":\"\",\"policyName\":\"custom/p-inst\",\"policyNames\":[\"custom/p-inst\"],\"reason\":\"after a crash\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"Notification\\\",\\\"additionalContext\\\":\\\"Instruction from failproofai: after a crash\\\"}}\",\"stderr\":\"\",\"policyName\":\"custom/p-inst\",\"policyNames\":[\"custom/p-inst\"],\"reason\":\"after a crash\",\"decision\":\"instruct\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: custom/p-inst): after a crash\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"custom/p-inst\",\"policyNames\":[\"custom/p-inst\"],\"reason\":\"after a crash\",\"decision\":\"instruct\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: custom/p-inst): after a crash\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation \u2014 execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"custom/p-inst\",\"policyNames\":[\"custom/p-inst\"],\"reason\":\"after a crash\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"allow\\\",\\\"additional_context\\\":\\\"Instruction from failproofai: after a crash\\\"}\",\"stderr\":\"\",\"policyName\":\"custom/p-inst\",\"policyNames\":[\"custom/p-inst\"],\"reason\":\"after a crash\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"followup_message\\\":\\\"Instruction from failproofai: after a crash\\\"}\",\"stderr\":\"\",\"policyName\":\"custom/p-inst\",\"policyNames\":[\"custom/p-inst\"],\"reason\":\"after a crash\",\"decision\":\"instruct\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"additionalContext\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: custom/p-inst): after a crash\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.\\\"}}\",\"stderr\":\"\",\"policyName\":\"custom/p-inst\",\"policyNames\":[\"custom/p-inst\"],\"reason\":\"after a crash\",\"decision\":\"instruct\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"additionalContext\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: custom/p-inst): after a crash\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation \u2014 execute the required action(s), then attempt to finish your task again.\\\"}}\",\"stderr\":\"\",\"policyName\":\"custom/p-inst\",\"policyNames\":[\"custom/p-inst\"],\"reason\":\"after a crash\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"allow\\\",\\\"reason\\\":\\\"Instruction from failproofai: after a crash\\\"}\",\"stderr\":\"\",\"policyName\":\"custom/p-inst\",\"policyNames\":[\"custom/p-inst\"],\"reason\":\"after a crash\",\"decision\":\"instruct\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: custom/p-inst): after a crash\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"custom/p-inst\",\"policyNames\":[\"custom/p-inst\"],\"reason\":\"after a crash\",\"decision\":\"instruct\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: custom/p-inst): after a crash\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation \u2014 execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"custom/p-inst\",\"policyNames\":[\"custom/p-inst\"],\"reason\":\"after a crash\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"allow\\\",\\\"reason\\\":\\\"Instruction from failproofai: after a crash\\\"}\",\"stderr\":\"[failproofai] custom/p-inst: after a crash\\n\",\"policyName\":\"custom/p-inst\",\"policyNames\":[\"custom/p-inst\"],\"reason\":\"after a crash\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"instruct\\\",\\\"reason\\\":\\\"Instruction from failproofai: after a crash\\\",\\\"policyName\\\":\\\"custom/p-inst\\\",\\\"policyNames\\\":[\\\"custom/p-inst\\\"]}\",\"stderr\":\"\",\"policyName\":\"custom/p-inst\",\"policyNames\":[\"custom/p-inst\"],\"reason\":\"after a crash\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"allow\\\",\\\"reason\\\":\\\"Instruction from failproofai: after a crash\\\"}\",\"stderr\":\"[failproofai] custom/p-inst: after a crash\\n\",\"policyName\":\"custom/p-inst\",\"policyNames\":[\"custom/p-inst\"],\"reason\":\"after a crash\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"\",\"stderr\":\"[failproofai] custom/p-inst: after a crash\\n\",\"policyName\":\"custom/p-inst\",\"policyNames\":[\"custom/p-inst\"],\"reason\":\"after a crash\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"injectSteps\\\":[{\\\"ephemeralMessage\\\":\\\"Instruction from failproofai: after a crash\\\"}]}\",\"stderr\":\"\",\"policyName\":\"custom/p-inst\",\"policyNames\":[\"custom/p-inst\"],\"reason\":\"after a crash\",\"decision\":\"instruct\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"continue\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: custom/p-inst): after a crash\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"custom/p-inst\",\"policyNames\":[\"custom/p-inst\"],\"reason\":\"after a crash\",\"decision\":\"instruct\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"continue\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: custom/p-inst): after a crash\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation \u2014 execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"custom/p-inst\",\"policyNames\":[\"custom/p-inst\"],\"reason\":\"after a crash\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"permissionDecision\\\":\\\"deny\\\",\\\"permissionDecisionReason\\\":\\\"Blocked Bash by failproofai because: not allowed. use the staging db, as per the policy configured by the user\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PermissionRequest\\\",\\\"decision\\\":{\\\"behavior\\\":\\\"deny\\\",\\\"message\\\":\\\"Blocked Bash by failproofai because: not allowed. use the staging db, as per the policy configured by the user\\\"}}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PostToolUse\\\",\\\"additionalContext\\\":\\\"Blocked Bash by failproofai because: not allowed. use the staging db, as per the policy configured by the user\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
   "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"not allowed. use the staging db\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
-  "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): not allowed. use the staging db\\n\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
+  "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): not allowed. use the staging db\\n\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation \u2014 execute the required action, then attempt to finish your task again.\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: not allowed. use the staging db, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"behavior\\\":\\\"deny\\\",\\\"message\\\":\\\"Blocked Bash by failproofai because: not allowed. use the staging db, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"Blocked prompt by failproofai because: not allowed. use the staging db, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): not allowed. use the staging db\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): not allowed. use the staging db\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation \u2014 execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"user_message\\\":\\\"Blocked Bash by failproofai because: not allowed. use the staging db, as per the policy configured by the user\\\",\\\"agent_message\\\":\\\"Blocked Bash by failproofai because: not allowed. use the staging db, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"continue\\\":false,\\\"user_message\\\":\\\"Blocked prompt by failproofai because: not allowed. use the staging db, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"followup_message\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): not allowed. use the staging db\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"followup_message\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): not allowed. use the staging db\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation \u2014 execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"user_message\\\":\\\"Blocked session start by failproofai because: not allowed. use the staging db, as per the policy configured by the user\\\",\\\"agent_message\\\":\\\"Blocked session start by failproofai because: not allowed. use the staging db, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"user_message\\\":\\\"Blocked operation by failproofai because: not allowed. use the staging db, as per the policy configured by the user\\\",\\\"agent_message\\\":\\\"Blocked operation by failproofai because: not allowed. use the staging db, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"additionalContext\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): not allowed. use the staging db\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"additionalContext\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): not allowed. use the staging db\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation \u2014 execute the required action, then attempt to finish your task again.\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: not allowed. use the staging db, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked prompt by failproofai because: not allowed. use the staging db, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): not allowed. use the staging db\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): not allowed. use the staging db\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation \u2014 execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked operation by failproofai because: not allowed. use the staging db, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked session start by failproofai because: not allowed. use the staging db, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"Blocked stop by failproofai because: not allowed. use the staging db, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
@@ -217,28 +217,28 @@
   "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"Blocked session start by failproofai because: not allowed. use the staging db, as per the policy configured by the user\\n\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: not allowed. use the staging db, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked prompt by failproofai because: not allowed. use the staging db, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"continue\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): not allowed. use the staging db\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"continue\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-deny): not allowed. use the staging db\\\\n\\\\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation \u2014 execute the required action, then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked operation by failproofai because: not allowed. use the staging db, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked session start by failproofai because: not allowed. use the staging db, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-deny\",\"reason\":\"not allowed. use the staging db\",\"decision\":\"deny\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"additionalContext\\\":\\\"Instruction from failproofai: do x first. see CONTRIBUTING\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first. see CONTRIBUTING\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PermissionRequest\\\",\\\"additionalContext\\\":\\\"Instruction from failproofai: do x first. see CONTRIBUTING\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first. see CONTRIBUTING\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PostToolUse\\\",\\\"additionalContext\\\":\\\"Instruction from failproofai: do x first. see CONTRIBUTING\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first. see CONTRIBUTING\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"UserPromptSubmit\\\",\\\"additionalContext\\\":\\\"Instruction from failproofai: do x first. see CONTRIBUTING\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first. see CONTRIBUTING\",\"decision\":\"instruct\"}",
-  "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): do x first. see CONTRIBUTING\\n\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first. see CONTRIBUTING\",\"decision\":\"instruct\"}",
+  "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): do x first. see CONTRIBUTING\\n\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation \u2014 execute the required action(s), then attempt to finish your task again.\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first. see CONTRIBUTING\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"SessionStart\\\",\\\"additionalContext\\\":\\\"Instruction from failproofai: do x first. see CONTRIBUTING\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first. see CONTRIBUTING\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"Notification\\\",\\\"additionalContext\\\":\\\"Instruction from failproofai: do x first. see CONTRIBUTING\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first. see CONTRIBUTING\",\"decision\":\"instruct\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): do x first. see CONTRIBUTING\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first. see CONTRIBUTING\",\"decision\":\"instruct\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): do x first. see CONTRIBUTING\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation \u2014 execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first. see CONTRIBUTING\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"allow\\\",\\\"additional_context\\\":\\\"Instruction from failproofai: do x first. see CONTRIBUTING\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first. see CONTRIBUTING\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"followup_message\\\":\\\"Instruction from failproofai: do x first. see CONTRIBUTING\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first. see CONTRIBUTING\",\"decision\":\"instruct\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"additionalContext\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): do x first. see CONTRIBUTING\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first. see CONTRIBUTING\",\"decision\":\"instruct\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"additionalContext\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): do x first. see CONTRIBUTING\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation \u2014 execute the required action(s), then attempt to finish your task again.\\\"}}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first. see CONTRIBUTING\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"allow\\\",\\\"reason\\\":\\\"Instruction from failproofai: do x first. see CONTRIBUTING\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first. see CONTRIBUTING\",\"decision\":\"instruct\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): do x first. see CONTRIBUTING\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first. see CONTRIBUTING\",\"decision\":\"instruct\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): do x first. see CONTRIBUTING\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation \u2014 execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first. see CONTRIBUTING\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"allow\\\",\\\"reason\\\":\\\"Instruction from failproofai: do x first. see CONTRIBUTING\\\"}\",\"stderr\":\"[failproofai] failproofai/p-inst: do x first. see CONTRIBUTING\\n\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first. see CONTRIBUTING\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"instruct\\\",\\\"reason\\\":\\\"Instruction from failproofai: do x first. see CONTRIBUTING\\\",\\\"policyName\\\":\\\"failproofai/p-inst\\\",\\\"policyNames\\\":[\\\"failproofai/p-inst\\\"]}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first. see CONTRIBUTING\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"allow\\\",\\\"reason\\\":\\\"Instruction from failproofai: do x first. see CONTRIBUTING\\\"}\",\"stderr\":\"[failproofai] failproofai/p-inst: do x first. see CONTRIBUTING\\n\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first. see CONTRIBUTING\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"\",\"stderr\":\"[failproofai] failproofai/p-inst: do x first. see CONTRIBUTING\\n\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first. see CONTRIBUTING\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"injectSteps\\\":[{\\\"ephemeralMessage\\\":\\\"Instruction from failproofai: do x first. see CONTRIBUTING\\\"}]}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first. see CONTRIBUTING\",\"decision\":\"instruct\"}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"continue\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): do x first. see CONTRIBUTING\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation — execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first. see CONTRIBUTING\",\"decision\":\"instruct\"}",
+  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"continue\\\",\\\"reason\\\":\\\"MANDATORY ACTION REQUIRED from failproofai (policy: failproofai/p-inst): do x first. see CONTRIBUTING\\\\n\\\\nYou MUST complete the above action(s) NOW. Do NOT ask the user for confirmation \u2014 execute the required action(s), then attempt to finish your task again.\\\"}\",\"stderr\":\"\",\"policyName\":\"failproofai/p-inst\",\"policyNames\":[\"failproofai/p-inst\"],\"reason\":\"do x first. see CONTRIBUTING\",\"decision\":\"instruct\"}",
   "{\"exitCode\":0,\"stdout\":\"\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"allow\",\"policyName\":null,\"policyNames\":[],\"reason\":null,\"matchedPolicies\":\"408e78b8c563d8ec3d50d02c\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"permissionDecision\\\":\\\"deny\\\",\\\"permissionDecisionReason\\\":\\\"Blocked Bash by failproofai because: sudo commands are blocked, as per the policy configured by the user\\\"}}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/block-sudo\",\"policyNames\":[\"failproofai/block-sudo\"],\"reason\":\"sudo commands are blocked\",\"matchedPolicies\":\"408e78b8c563d8ec3d50d02c\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"permissionDecision\\\":\\\"deny\\\",\\\"permissionDecisionReason\\\":\\\"Blocked Bash by failproofai because: Catastrophic deletion blocked, as per the policy configured by the user\\\"}}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/block-rm-rf\",\"policyNames\":[\"failproofai/block-rm-rf\"],\"reason\":\"Catastrophic deletion blocked\",\"matchedPolicies\":\"408e78b8c563d8ec3d50d02c\",\"toolName\":\"Bash\"}}",
@@ -276,18 +276,14 @@
   "{\"exitCode\":0,\"stdout\":\"\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"allow\",\"policyName\":null,\"policyNames\":[],\"reason\":null,\"matchedPolicies\":\"4ee41d5ded79645ec5b432eb\",\"toolName\":\"mcp__github__delete_repo\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PermissionRequest\\\",\\\"decision\\\":{\\\"behavior\\\":\\\"deny\\\",\\\"message\\\":\\\"Blocked Bash by failproofai because: sudo commands are blocked, as per the policy configured by the user\\\"}}}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/block-sudo\",\"policyNames\":[\"failproofai/block-sudo\"],\"reason\":\"sudo commands are blocked\",\"matchedPolicies\":\"a37448f70f44189f727efb05\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"allow\",\"policyName\":null,\"policyNames\":[],\"reason\":null,\"matchedPolicies\":\"a37448f70f44189f727efb05\",\"toolName\":\"Bash\"}}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PostToolUse\\\",\\\"additionalContext\\\":\\\"Blocked Bash by failproofai because: OpenAI project API key detected in tool output, as per the policy configured by the user\\\"}}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-api-keys\",\"policyNames\":[\"failproofai/sanitize-api-keys\"],\"reason\":\"OpenAI project API key detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PostToolUse\\\",\\\"additionalContext\\\":\\\"Blocked Bash by failproofai because: JWT token detected in tool output, as per the policy configured by the user\\\"}}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-jwt\",\"policyNames\":[\"failproofai/sanitize-jwt\"],\"reason\":\"JWT token detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PostToolUse\\\",\\\"additionalContext\\\":\\\"Blocked Bash by failproofai because: Private key content detected in tool output, as per the policy configured by the user\\\"}}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-private-key-content\",\"policyNames\":[\"failproofai/sanitize-private-key-content\"],\"reason\":\"Private key content detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PostToolUse\\\",\\\"additionalContext\\\":\\\"Blocked Bash by failproofai because: Database connection string with credentials detected in tool output, as per the policy configured by the user\\\"}}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-connection-strings\",\"policyNames\":[\"failproofai/sanitize-connection-strings\"],\"reason\":\"Database connection string with credentials detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PostToolUse\\\",\\\"additionalContext\\\":\\\"Blocked Bash by failproofai because: Bearer token detected in tool output, as per the policy configured by the user\\\"}}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-bearer-tokens\",\"policyNames\":[\"failproofai/sanitize-bearer-tokens\"],\"reason\":\"Bearer token detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"allow\",\"policyName\":null,\"policyNames\":[],\"reason\":null,\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"allow\",\"policyName\":null,\"policyNames\":[],\"reason\":null,\"matchedPolicies\":\"4f53cda18c2baa0c0354bb5f\",\"toolName\":null}}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: OpenAI project API key detected in tool output, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-api-keys\",\"policyNames\":[\"failproofai/sanitize-api-keys\"],\"reason\":\"OpenAI project API key detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: JWT token detected in tool output, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-jwt\",\"policyNames\":[\"failproofai/sanitize-jwt\"],\"reason\":\"JWT token detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: Private key content detected in tool output, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-private-key-content\",\"policyNames\":[\"failproofai/sanitize-private-key-content\"],\"reason\":\"Private key content detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: Database connection string with credentials detected in tool output, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-connection-strings\",\"policyNames\":[\"failproofai/sanitize-connection-strings\"],\"reason\":\"Database connection string with credentials detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: Bearer token detected in tool output, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-bearer-tokens\",\"policyNames\":[\"failproofai/sanitize-bearer-tokens\"],\"reason\":\"Bearer token detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"behavior\\\":\\\"deny\\\",\\\"message\\\":\\\"Blocked Bash by failproofai because: sudo commands are blocked, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/block-sudo\",\"policyNames\":[\"failproofai/block-sudo\"],\"reason\":\"sudo commands are blocked\",\"matchedPolicies\":\"a37448f70f44189f727efb05\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"user_message\\\":\\\"Blocked Bash by failproofai because: sudo commands are blocked, as per the policy configured by the user\\\",\\\"agent_message\\\":\\\"Blocked Bash by failproofai because: sudo commands are blocked, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/block-sudo\",\"policyNames\":[\"failproofai/block-sudo\"],\"reason\":\"sudo commands are blocked\",\"matchedPolicies\":\"408e78b8c563d8ec3d50d02c\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"user_message\\\":\\\"Blocked Bash by failproofai because: Catastrophic deletion blocked, as per the policy configured by the user\\\",\\\"agent_message\\\":\\\"Blocked Bash by failproofai because: Catastrophic deletion blocked, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/block-rm-rf\",\"policyNames\":[\"failproofai/block-rm-rf\"],\"reason\":\"Catastrophic deletion blocked\",\"matchedPolicies\":\"408e78b8c563d8ec3d50d02c\",\"toolName\":\"Bash\"}}",
@@ -320,11 +316,9 @@
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"user_message\\\":\\\"Blocked Write by failproofai because: Writing secret key files is blocked, as per the policy configured by the user\\\",\\\"agent_message\\\":\\\"Blocked Write by failproofai because: Writing secret key files is blocked, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/block-secrets-write\",\"policyNames\":[\"failproofai/block-secrets-write\"],\"reason\":\"Writing secret key files is blocked\",\"matchedPolicies\":\"ca3eeff3a0f77ee53954430a\",\"toolName\":\"Write\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"user_message\\\":\\\"Blocked Edit by failproofai because: Writing to failproofai's own state would switch enforcement off. If a policy is blocking legitimate work, say so and let the operator decide., as per the policy configured by the user\\\",\\\"agent_message\\\":\\\"Blocked Edit by failproofai because: Writing to failproofai's own state would switch enforcement off. If a policy is blocking legitimate work, say so and let the operator decide., as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/block-failproofai-commands\",\"policyNames\":[\"failproofai/block-failproofai-commands\"],\"reason\":\"Writing to failproofai's own state would switch enforcement off. If a policy is blocking legitimate work, say so and let the operator decide.\",\"matchedPolicies\":\"f7c8f7df513332c83655cd38\",\"toolName\":\"Edit\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"user_message\\\":\\\"Blocked Bash by failproofai because: sudo commands are blocked, as per the policy configured by the user\\\",\\\"agent_message\\\":\\\"Blocked Bash by failproofai because: sudo commands are blocked, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/block-sudo\",\"policyNames\":[\"failproofai/block-sudo\"],\"reason\":\"sudo commands are blocked\",\"matchedPolicies\":\"a37448f70f44189f727efb05\",\"toolName\":\"Bash\"}}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"user_message\\\":\\\"Blocked Bash by failproofai because: OpenAI project API key detected in tool output, as per the policy configured by the user\\\",\\\"agent_message\\\":\\\"Blocked Bash by failproofai because: OpenAI project API key detected in tool output, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-api-keys\",\"policyNames\":[\"failproofai/sanitize-api-keys\"],\"reason\":\"OpenAI project API key detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"user_message\\\":\\\"Blocked Bash by failproofai because: JWT token detected in tool output, as per the policy configured by the user\\\",\\\"agent_message\\\":\\\"Blocked Bash by failproofai because: JWT token detected in tool output, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-jwt\",\"policyNames\":[\"failproofai/sanitize-jwt\"],\"reason\":\"JWT token detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"user_message\\\":\\\"Blocked Bash by failproofai because: Private key content detected in tool output, as per the policy configured by the user\\\",\\\"agent_message\\\":\\\"Blocked Bash by failproofai because: Private key content detected in tool output, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-private-key-content\",\"policyNames\":[\"failproofai/sanitize-private-key-content\"],\"reason\":\"Private key content detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"user_message\\\":\\\"Blocked Bash by failproofai because: Database connection string with credentials detected in tool output, as per the policy configured by the user\\\",\\\"agent_message\\\":\\\"Blocked Bash by failproofai because: Database connection string with credentials detected in tool output, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-connection-strings\",\"policyNames\":[\"failproofai/sanitize-connection-strings\"],\"reason\":\"Database connection string with credentials detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"user_message\\\":\\\"Blocked Bash by failproofai because: Bearer token detected in tool output, as per the policy configured by the user\\\",\\\"agent_message\\\":\\\"Blocked Bash by failproofai because: Bearer token detected in tool output, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-bearer-tokens\",\"policyNames\":[\"failproofai/sanitize-bearer-tokens\"],\"reason\":\"Bearer token detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: sudo commands are blocked, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/block-sudo\",\"policyNames\":[\"failproofai/block-sudo\"],\"reason\":\"sudo commands are blocked\",\"matchedPolicies\":\"408e78b8c563d8ec3d50d02c\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: Catastrophic deletion blocked, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/block-rm-rf\",\"policyNames\":[\"failproofai/block-rm-rf\"],\"reason\":\"Catastrophic deletion blocked\",\"matchedPolicies\":\"408e78b8c563d8ec3d50d02c\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: Piping downloads to shell is blocked, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/block-curl-pipe-sh\",\"policyNames\":[\"failproofai/block-curl-pipe-sh\"],\"reason\":\"Piping downloads to shell is blocked\",\"matchedPolicies\":\"408e78b8c563d8ec3d50d02c\",\"toolName\":\"Bash\"}}",
@@ -356,11 +350,9 @@
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Write by failproofai because: Writing secret key files is blocked, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/block-secrets-write\",\"policyNames\":[\"failproofai/block-secrets-write\"],\"reason\":\"Writing secret key files is blocked\",\"matchedPolicies\":\"ca3eeff3a0f77ee53954430a\",\"toolName\":\"Write\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Edit by failproofai because: Writing to failproofai's own state would switch enforcement off. If a policy is blocking legitimate work, say so and let the operator decide., as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/block-failproofai-commands\",\"policyNames\":[\"failproofai/block-failproofai-commands\"],\"reason\":\"Writing to failproofai's own state would switch enforcement off. If a policy is blocking legitimate work, say so and let the operator decide.\",\"matchedPolicies\":\"f7c8f7df513332c83655cd38\",\"toolName\":\"Edit\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: sudo commands are blocked, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/block-sudo\",\"policyNames\":[\"failproofai/block-sudo\"],\"reason\":\"sudo commands are blocked\",\"matchedPolicies\":\"a37448f70f44189f727efb05\",\"toolName\":\"Bash\"}}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: OpenAI project API key detected in tool output, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-api-keys\",\"policyNames\":[\"failproofai/sanitize-api-keys\"],\"reason\":\"OpenAI project API key detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: JWT token detected in tool output, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-jwt\",\"policyNames\":[\"failproofai/sanitize-jwt\"],\"reason\":\"JWT token detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: Private key content detected in tool output, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-private-key-content\",\"policyNames\":[\"failproofai/sanitize-private-key-content\"],\"reason\":\"Private key content detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: Database connection string with credentials detected in tool output, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-connection-strings\",\"policyNames\":[\"failproofai/sanitize-connection-strings\"],\"reason\":\"Database connection string with credentials detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"permission\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: Bearer token detected in tool output, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-bearer-tokens\",\"policyNames\":[\"failproofai/sanitize-bearer-tokens\"],\"reason\":\"Bearer token detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: sudo commands are blocked, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/block-sudo\",\"policyNames\":[\"failproofai/block-sudo\"],\"reason\":\"sudo commands are blocked\",\"matchedPolicies\":\"408e78b8c563d8ec3d50d02c\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: Catastrophic deletion blocked, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/block-rm-rf\",\"policyNames\":[\"failproofai/block-rm-rf\"],\"reason\":\"Catastrophic deletion blocked\",\"matchedPolicies\":\"408e78b8c563d8ec3d50d02c\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: Piping downloads to shell is blocked, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/block-curl-pipe-sh\",\"policyNames\":[\"failproofai/block-curl-pipe-sh\"],\"reason\":\"Piping downloads to shell is blocked\",\"matchedPolicies\":\"408e78b8c563d8ec3d50d02c\",\"toolName\":\"Bash\"}}",
@@ -431,11 +423,9 @@
   "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"Blocked Write by failproofai because: Writing secret key files is blocked, as per the policy configured by the user\\n\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/block-secrets-write\",\"policyNames\":[\"failproofai/block-secrets-write\"],\"reason\":\"Writing secret key files is blocked\",\"matchedPolicies\":\"ca3eeff3a0f77ee53954430a\",\"toolName\":\"Write\"}}",
   "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"Blocked Edit by failproofai because: Writing to failproofai's own state would switch enforcement off. If a policy is blocking legitimate work, say so and let the operator decide., as per the policy configured by the user\\n\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/block-failproofai-commands\",\"policyNames\":[\"failproofai/block-failproofai-commands\"],\"reason\":\"Writing to failproofai's own state would switch enforcement off. If a policy is blocking legitimate work, say so and let the operator decide.\",\"matchedPolicies\":\"f7c8f7df513332c83655cd38\",\"toolName\":\"Edit\"}}",
   "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"Blocked Bash by failproofai because: sudo commands are blocked, as per the policy configured by the user\\n\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/block-sudo\",\"policyNames\":[\"failproofai/block-sudo\"],\"reason\":\"sudo commands are blocked\",\"matchedPolicies\":\"a37448f70f44189f727efb05\",\"toolName\":\"Bash\"}}",
-  "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"Blocked Bash by failproofai because: OpenAI project API key detected in tool output, as per the policy configured by the user\\n\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-api-keys\",\"policyNames\":[\"failproofai/sanitize-api-keys\"],\"reason\":\"OpenAI project API key detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"Blocked Bash by failproofai because: JWT token detected in tool output, as per the policy configured by the user\\n\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-jwt\",\"policyNames\":[\"failproofai/sanitize-jwt\"],\"reason\":\"JWT token detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"Blocked Bash by failproofai because: Private key content detected in tool output, as per the policy configured by the user\\n\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-private-key-content\",\"policyNames\":[\"failproofai/sanitize-private-key-content\"],\"reason\":\"Private key content detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"Blocked Bash by failproofai because: Database connection string with credentials detected in tool output, as per the policy configured by the user\\n\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-connection-strings\",\"policyNames\":[\"failproofai/sanitize-connection-strings\"],\"reason\":\"Database connection string with credentials detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
-  "{\"exitCode\":2,\"stdout\":\"\",\"stderr\":\"Blocked Bash by failproofai because: Bearer token detected in tool output, as per the policy configured by the user\\n\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-bearer-tokens\",\"policyNames\":[\"failproofai/sanitize-bearer-tokens\"],\"reason\":\"Bearer token detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: sudo commands are blocked, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/block-sudo\",\"policyNames\":[\"failproofai/block-sudo\"],\"reason\":\"sudo commands are blocked\",\"matchedPolicies\":\"408e78b8c563d8ec3d50d02c\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: Catastrophic deletion blocked, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/block-rm-rf\",\"policyNames\":[\"failproofai/block-rm-rf\"],\"reason\":\"Catastrophic deletion blocked\",\"matchedPolicies\":\"408e78b8c563d8ec3d50d02c\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: Piping downloads to shell is blocked, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/block-curl-pipe-sh\",\"policyNames\":[\"failproofai/block-curl-pipe-sh\"],\"reason\":\"Piping downloads to shell is blocked\",\"matchedPolicies\":\"408e78b8c563d8ec3d50d02c\",\"toolName\":\"Bash\"}}",
@@ -459,11 +449,9 @@
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Write by failproofai because: Writing secret key files is blocked, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/block-secrets-write\",\"policyNames\":[\"failproofai/block-secrets-write\"],\"reason\":\"Writing secret key files is blocked\",\"matchedPolicies\":\"ca3eeff3a0f77ee53954430a\",\"toolName\":\"Write\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Edit by failproofai because: Writing to failproofai's own state would switch enforcement off. If a policy is blocking legitimate work, say so and let the operator decide., as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/block-failproofai-commands\",\"policyNames\":[\"failproofai/block-failproofai-commands\"],\"reason\":\"Writing to failproofai's own state would switch enforcement off. If a policy is blocking legitimate work, say so and let the operator decide.\",\"matchedPolicies\":\"f7c8f7df513332c83655cd38\",\"toolName\":\"Edit\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: sudo commands are blocked, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/block-sudo\",\"policyNames\":[\"failproofai/block-sudo\"],\"reason\":\"sudo commands are blocked\",\"matchedPolicies\":\"a37448f70f44189f727efb05\",\"toolName\":\"Bash\"}}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: OpenAI project API key detected in tool output, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-api-keys\",\"policyNames\":[\"failproofai/sanitize-api-keys\"],\"reason\":\"OpenAI project API key detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: JWT token detected in tool output, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-jwt\",\"policyNames\":[\"failproofai/sanitize-jwt\"],\"reason\":\"JWT token detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
   "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: Private key content detected in tool output, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-private-key-content\",\"policyNames\":[\"failproofai/sanitize-private-key-content\"],\"reason\":\"Private key content detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: Database connection string with credentials detected in tool output, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-connection-strings\",\"policyNames\":[\"failproofai/sanitize-connection-strings\"],\"reason\":\"Database connection string with credentials detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}",
-  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: Bearer token detected in tool output, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-bearer-tokens\",\"policyNames\":[\"failproofai/sanitize-bearer-tokens\"],\"reason\":\"Bearer token detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}"
+  "{\"exitCode\":0,\"stdout\":\"{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"Blocked Bash by failproofai because: Database connection string with credentials detected in tool output, as per the policy configured by the user\\\"}\",\"stderr\":\"\",\"evaluation\":{\"decision\":\"deny\",\"policyName\":\"failproofai/sanitize-connection-strings\",\"policyNames\":[\"failproofai/sanitize-connection-strings\"],\"reason\":\"Database connection string with credentials detected in tool output\",\"matchedPolicies\":\"f631901f4dafea29cc21aefa\",\"toolName\":\"Bash\"}}"
  ],
  "evaluator": {
   "none|claude|PreToolUse": 0,
@@ -2164,36 +2152,28 @@
    "out": 274,
    "activity": "e6f189d869b2c00583803b44"
   },
-  "post:api-key|claude": {
-   "out": 275,
-   "activity": "9cb99472b9aa6377f108bb87"
-  },
   "post:jwt|claude": {
-   "out": 276,
+   "out": 275,
    "activity": "777867dc1b6943f59334ed9e"
   },
   "post:pem|claude": {
-   "out": 277,
+   "out": 276,
    "activity": "7824b40436a93f4501352537"
   },
   "post:conn|claude": {
-   "out": 278,
+   "out": 277,
    "activity": "c57c80d827198ade34d1bce6"
   },
-  "post:bearer|claude": {
-   "out": 279,
-   "activity": "7e8476beb2a747f5e9326f61"
-  },
   "post:plain|claude": {
-   "out": 280,
+   "out": 278,
    "activity": "414b55f50e6054a429636e39"
   },
   "prompt:hello|claude": {
-   "out": 281,
+   "out": 279,
    "activity": "98dda788588b702b7dc5cf87"
   },
   "session:start|claude": {
-   "out": 281,
+   "out": 279,
    "activity": "0ac16e294855b6154d23e4cb"
   },
   "bash:ls|codex": {
@@ -2356,36 +2336,28 @@
    "out": 274,
    "activity": "daef201908541ae43ca730af"
   },
-  "post:api-key|codex": {
-   "out": 282,
-   "activity": "9a80e9a72e18072b1d6c7715"
-  },
   "post:jwt|codex": {
-   "out": 283,
+   "out": 280,
    "activity": "df54b2199eaf4e814b30f9e2"
   },
   "post:pem|codex": {
-   "out": 284,
+   "out": 281,
    "activity": "912f6b01e3b03a2703e8238f"
   },
   "post:conn|codex": {
-   "out": 285,
+   "out": 282,
    "activity": "964dc4bff0e0e831f07e9165"
   },
-  "post:bearer|codex": {
-   "out": 286,
-   "activity": "5ad0e6206f3bb2e4ab03ebcd"
-  },
   "post:plain|codex": {
-   "out": 280,
+   "out": 278,
    "activity": "f420dc896ee12d82ce374c43"
   },
   "prompt:hello|codex": {
-   "out": 281,
+   "out": 279,
    "activity": "98d752f7b5ebfe4f6d32f4e3"
   },
   "session:start|codex": {
-   "out": 281,
+   "out": 279,
    "activity": "0e5f4d5c8856db4afb619034"
   },
   "bash:ls|copilot": {
@@ -2541,43 +2513,35 @@
    "activity": "4c03b0480f743824157394f0"
   },
   "permission:sudo|copilot": {
-   "out": 287,
+   "out": 283,
    "activity": "988945f5eef88aab8c1e301c"
   },
   "permission:ls|copilot": {
    "out": 274,
    "activity": "9e47a8a0088c4bb9cefe6868"
   },
-  "post:api-key|copilot": {
-   "out": 282,
-   "activity": "c4f56ed0e6f16207f67e63e2"
-  },
   "post:jwt|copilot": {
-   "out": 283,
+   "out": 280,
    "activity": "c7de944425193759bf6b8249"
   },
   "post:pem|copilot": {
-   "out": 284,
+   "out": 281,
    "activity": "c359249d742b3de53f0c62df"
   },
   "post:conn|copilot": {
-   "out": 285,
+   "out": 282,
    "activity": "d8f736c117926b9cf2a431b2"
   },
-  "post:bearer|copilot": {
-   "out": 286,
-   "activity": "a91c55506d844a9e9a28b895"
-  },
   "post:plain|copilot": {
-   "out": 280,
+   "out": 278,
    "activity": "62f0f9e953227954aa1accd4"
   },
   "prompt:hello|copilot": {
-   "out": 281,
+   "out": 279,
    "activity": "ede2898476afc1478337e7b3"
   },
   "session:start|copilot": {
-   "out": 281,
+   "out": 279,
    "activity": "b516a02bec47447317790299"
   },
   "bash:ls|cursor": {
@@ -2585,7 +2549,7 @@
    "activity": "60c4d50d2c7aa273717eccdc"
   },
   "bash:sudo|cursor": {
-   "out": 288,
+   "out": 284,
    "activity": "fc07281b4f004d60ae719f8c"
   },
   "bash:rm-rf-build|cursor": {
@@ -2593,51 +2557,51 @@
    "activity": "60c4d50d2c7aa273717eccdc"
   },
   "bash:rm-rf-root|cursor": {
-   "out": 289,
+   "out": 285,
    "activity": "bd75bc1f0a8441670dfe797f"
   },
   "bash:curl-pipe-sh|cursor": {
-   "out": 290,
+   "out": 286,
    "activity": "1d7d62bb93d6964cc754c626"
   },
   "bash:push-main|cursor": {
-   "out": 291,
+   "out": 287,
    "activity": "40a51ca11d35c82e607f6612"
   },
   "bash:push-head-master|cursor": {
-   "out": 291,
+   "out": 287,
    "activity": "40a51ca11d35c82e607f6612"
   },
   "bash:force-push|cursor": {
-   "out": 292,
+   "out": 288,
    "activity": "22417657afa5794e653519f4"
   },
   "bash:amend|cursor": {
-   "out": 293,
+   "out": 289,
    "activity": "0c03ff39c60a9ad591a2c434"
   },
   "bash:stash-drop|cursor": {
-   "out": 294,
+   "out": 290,
    "activity": "2dfa1b8f58a40d00cd276a6d"
   },
   "bash:add-all|cursor": {
-   "out": 295,
+   "out": 291,
    "activity": "c52be546379ddd108b67e695"
   },
   "bash:drop-table|cursor": {
-   "out": 296,
+   "out": 292,
    "activity": "75c08ff1ef3b848744ad0ddf"
   },
   "bash:alter-table|cursor": {
-   "out": 297,
+   "out": 293,
    "activity": "917853f023546c3faf42a642"
   },
   "bash:npm-publish|cursor": {
-   "out": 298,
+   "out": 294,
    "activity": "c7dcfd3fcbd17acc2f40b6ed"
   },
   "bash:npm-global|cursor": {
-   "out": 299,
+   "out": 295,
    "activity": "95f2abbf42b4bf970e7c46f9"
   },
   "bash:npm-install|cursor": {
@@ -2645,59 +2609,59 @@
    "activity": "60c4d50d2c7aa273717eccdc"
   },
   "bash:kubectl|cursor": {
-   "out": 300,
+   "out": 296,
    "activity": "1a508cdfe910b0e73ad1866e"
   },
   "bash:terraform|cursor": {
-   "out": 301,
+   "out": 297,
    "activity": "0b8fe6a0c2f348aa83c0dc25"
   },
   "bash:aws|cursor": {
-   "out": 302,
+   "out": 298,
    "activity": "554da238ef89a8f91c8cd3dc"
   },
   "bash:gcloud|cursor": {
-   "out": 303,
+   "out": 299,
    "activity": "01e5b9d705fa8d0593b00177"
   },
   "bash:az|cursor": {
-   "out": 304,
+   "out": 300,
    "activity": "f992caf88f243d4632002d1a"
   },
   "bash:helm|cursor": {
-   "out": 305,
+   "out": 301,
    "activity": "7b4015366d6f4186f98e6f46"
   },
   "bash:gh-pipeline|cursor": {
-   "out": 306,
+   "out": 302,
    "activity": "6bcaebb5909d258fc1774843"
   },
   "bash:cat-env|cursor": {
-   "out": 307,
+   "out": 303,
    "activity": "7bd793ce72d89c4493490bd3"
   },
   "bash:printenv|cursor": {
-   "out": 308,
+   "out": 304,
    "activity": "46bd309700fdf095e768ac0f"
   },
   "bash:cat-passwd|cursor": {
-   "out": 309,
+   "out": 305,
    "activity": "d7a1a77a64d8b3ceeb3924ba"
   },
   "bash:background|cursor": {
-   "out": 310,
+   "out": 306,
    "activity": "aa8d6c98622d118f2c987ff8"
   },
   "bash:self-uninstall|cursor": {
-   "out": 311,
+   "out": 307,
    "activity": "7edcefee99b8987fe97e1b88"
   },
   "read:env|cursor": {
-   "out": 312,
+   "out": 308,
    "activity": "5a74ba865b6841b38b97b764"
   },
   "read:outside|cursor": {
-   "out": 313,
+   "out": 309,
    "activity": "eed5ba028e77eddfbbaf7c80"
   },
   "read:inside|cursor": {
@@ -2705,7 +2669,7 @@
    "activity": "416c22c1b340f43149f2ba7c"
   },
   "glob:outside|cursor": {
-   "out": 314,
+   "out": 310,
    "activity": "e29fce6c77e7ca7093eeb35d"
   },
   "grep:inside|cursor": {
@@ -2713,11 +2677,11 @@
    "activity": "821e8a47abfac8515fdc813d"
   },
   "write:env|cursor": {
-   "out": 315,
+   "out": 311,
    "activity": "e6b929261ea812f4d5b6e5f7"
   },
   "write:pem|cursor": {
-   "out": 316,
+   "out": 312,
    "activity": "7a59906578714524af2bd32d"
   },
   "write:plain|cursor": {
@@ -2725,7 +2689,7 @@
    "activity": "590b88f911111de92a2012c2"
   },
   "edit:self-config|cursor": {
-   "out": 317,
+   "out": 313,
    "activity": "83450ece13a1b758111d262e"
   },
   "mcp:tool|cursor": {
@@ -2733,43 +2697,35 @@
    "activity": "2a318e051c7deddff7be7ef2"
   },
   "permission:sudo|cursor": {
-   "out": 318,
+   "out": 314,
    "activity": "6dbd225248d91eda1d30038e"
   },
   "permission:ls|cursor": {
    "out": 274,
    "activity": "16a4edf6afc2c5a5f6ab600b"
   },
-  "post:api-key|cursor": {
-   "out": 319,
-   "activity": "dfe892c91ba1c30116019a94"
-  },
   "post:jwt|cursor": {
-   "out": 320,
+   "out": 315,
    "activity": "feb45e4c9ff03e62d1a3aa17"
   },
   "post:pem|cursor": {
-   "out": 321,
+   "out": 316,
    "activity": "183a674f048e20ec6e0f1ee5"
   },
   "post:conn|cursor": {
-   "out": 322,
+   "out": 317,
    "activity": "d8ab45975b4624172eb713a2"
   },
-  "post:bearer|cursor": {
-   "out": 323,
-   "activity": "c2d06b882b5f501da8a4c77a"
-  },
   "post:plain|cursor": {
-   "out": 280,
+   "out": 278,
    "activity": "e1d4557c5259bc05bab163e7"
   },
   "prompt:hello|cursor": {
-   "out": 281,
+   "out": 279,
    "activity": "b1d408321dc5adf458bbc7e5"
   },
   "session:start|cursor": {
-   "out": 281,
+   "out": 279,
    "activity": "0cebb76ae0ac9428cc97d8aa"
   },
   "bash:ls|opencode": {
@@ -2932,36 +2888,28 @@
    "out": 274,
    "activity": "b1c2ce415ca23b25bc0a6a5d"
   },
-  "post:api-key|opencode": {
-   "out": 275,
-   "activity": "d4c10ed4a814d7f9e5591265"
-  },
   "post:jwt|opencode": {
-   "out": 276,
+   "out": 275,
    "activity": "636201db6d33e55b03c47426"
   },
   "post:pem|opencode": {
-   "out": 277,
+   "out": 276,
    "activity": "ae49c67760d504dc75d5f0b9"
   },
   "post:conn|opencode": {
-   "out": 278,
+   "out": 277,
    "activity": "5595f420e3bc9684d71912c8"
   },
-  "post:bearer|opencode": {
-   "out": 279,
-   "activity": "b063d26f4b537152f1d7dec8"
-  },
   "post:plain|opencode": {
-   "out": 280,
+   "out": 278,
    "activity": "4d1efe62804370da7fc06e8c"
   },
   "prompt:hello|opencode": {
-   "out": 281,
+   "out": 279,
    "activity": "38ed0170b618c3d4fd5b65a6"
   },
   "session:start|opencode": {
-   "out": 281,
+   "out": 279,
    "activity": "e03afb4477a89cd8e846fa0c"
   },
   "bash:ls|pi": {
@@ -2969,7 +2917,7 @@
    "activity": "fb662e32172574aa60534016"
   },
   "bash:sudo|pi": {
-   "out": 324,
+   "out": 318,
    "activity": "586a936040d6c4cc369b8c31"
   },
   "bash:rm-rf-build|pi": {
@@ -2977,51 +2925,51 @@
    "activity": "fb662e32172574aa60534016"
   },
   "bash:rm-rf-root|pi": {
-   "out": 325,
+   "out": 319,
    "activity": "d1b834d3e7843e683cfd8d8b"
   },
   "bash:curl-pipe-sh|pi": {
-   "out": 326,
+   "out": 320,
    "activity": "468378f2ab60f90d3959fe2f"
   },
   "bash:push-main|pi": {
-   "out": 327,
+   "out": 321,
    "activity": "1d6897b73c19d65b221b4b6d"
   },
   "bash:push-head-master|pi": {
-   "out": 327,
+   "out": 321,
    "activity": "1d6897b73c19d65b221b4b6d"
   },
   "bash:force-push|pi": {
-   "out": 328,
+   "out": 322,
    "activity": "832c5bd9592caf50cee37d54"
   },
   "bash:amend|pi": {
-   "out": 329,
+   "out": 323,
    "activity": "5d212f95020ddf12a17cde08"
   },
   "bash:stash-drop|pi": {
-   "out": 330,
+   "out": 324,
    "activity": "c70da42885264a952d04f6fb"
   },
   "bash:add-all|pi": {
-   "out": 331,
+   "out": 325,
    "activity": "378dc2eb803c5f632d1bffb6"
   },
   "bash:drop-table|pi": {
-   "out": 332,
+   "out": 326,
    "activity": "840808bbf3f3f498c39472e4"
   },
   "bash:alter-table|pi": {
-   "out": 333,
+   "out": 327,
    "activity": "36d9267bb437e038bdba1684"
   },
   "bash:npm-publish|pi": {
-   "out": 334,
+   "out": 328,
    "activity": "2f525c9245b506a2e66384d0"
   },
   "bash:npm-global|pi": {
-   "out": 335,
+   "out": 329,
    "activity": "ad0395dc3ab4ddea9b14d24f"
   },
   "bash:npm-install|pi": {
@@ -3029,59 +2977,59 @@
    "activity": "fb662e32172574aa60534016"
   },
   "bash:kubectl|pi": {
-   "out": 336,
+   "out": 330,
    "activity": "9bc65bfdd44347f4003673fc"
   },
   "bash:terraform|pi": {
-   "out": 337,
+   "out": 331,
    "activity": "173aef5d5ad61cdf8862f2a4"
   },
   "bash:aws|pi": {
-   "out": 338,
+   "out": 332,
    "activity": "382606ed54d717f903064773"
   },
   "bash:gcloud|pi": {
-   "out": 339,
+   "out": 333,
    "activity": "496d8090656659e7e09dfb02"
   },
   "bash:az|pi": {
-   "out": 340,
+   "out": 334,
    "activity": "6fe9c830a8b01f5e521c47a2"
   },
   "bash:helm|pi": {
-   "out": 341,
+   "out": 335,
    "activity": "7227be4684e58cc3915a41bf"
   },
   "bash:gh-pipeline|pi": {
-   "out": 342,
+   "out": 336,
    "activity": "a89a587c949794242ee3e631"
   },
   "bash:cat-env|pi": {
-   "out": 343,
+   "out": 337,
    "activity": "fdf897a8730490c24626fac8"
   },
   "bash:printenv|pi": {
-   "out": 344,
+   "out": 338,
    "activity": "a5092dbc6934e4afba37f96a"
   },
   "bash:cat-passwd|pi": {
-   "out": 345,
+   "out": 339,
    "activity": "ca3785ab791e393d5458b1ff"
   },
   "bash:background|pi": {
-   "out": 346,
+   "out": 340,
    "activity": "122d0f333eb3a80dc7c0fe91"
   },
   "bash:self-uninstall|pi": {
-   "out": 347,
+   "out": 341,
    "activity": "a934a2d9cc567ef0607f6e15"
   },
   "read:env|pi": {
-   "out": 348,
+   "out": 342,
    "activity": "2279ac695bc45797e6a86b36"
   },
   "read:outside|pi": {
-   "out": 349,
+   "out": 343,
    "activity": "fc45939b277b3ee79178ee7d"
   },
   "read:inside|pi": {
@@ -3089,7 +3037,7 @@
    "activity": "210fa020aacadbe7427b869c"
   },
   "glob:outside|pi": {
-   "out": 350,
+   "out": 344,
    "activity": "84b953e3dd9f86c3f1a49ba7"
   },
   "grep:inside|pi": {
@@ -3097,11 +3045,11 @@
    "activity": "238998b6cf0800a3ee7a8f0a"
   },
   "write:env|pi": {
-   "out": 351,
+   "out": 345,
    "activity": "e645ffdd31256522c697e77f"
   },
   "write:pem|pi": {
-   "out": 352,
+   "out": 346,
    "activity": "dde8caba03e0d9ba65b69ddc"
   },
   "write:plain|pi": {
@@ -3109,7 +3057,7 @@
    "activity": "cbc289d0809027b9a0347eb8"
   },
   "edit:self-config|pi": {
-   "out": 353,
+   "out": 347,
    "activity": "8c6443a696dd91cb84e9731e"
   },
   "mcp:tool|pi": {
@@ -3117,43 +3065,35 @@
    "activity": "b026bfc5ce83a4dcb49c630d"
   },
   "permission:sudo|pi": {
-   "out": 354,
+   "out": 348,
    "activity": "af9234092d6b69f3940033d8"
   },
   "permission:ls|pi": {
    "out": 274,
    "activity": "622612dedee36b93ecffc189"
   },
-  "post:api-key|pi": {
-   "out": 355,
-   "activity": "6dae13d89ef288b76a1353c4"
-  },
   "post:jwt|pi": {
-   "out": 356,
+   "out": 349,
    "activity": "9fc4aec4ce249055a7ca48f2"
   },
   "post:pem|pi": {
-   "out": 357,
+   "out": 350,
    "activity": "9fa4fece34b763c710173051"
   },
   "post:conn|pi": {
-   "out": 358,
+   "out": 351,
    "activity": "da5f48457977e9cadecbf3e9"
   },
-  "post:bearer|pi": {
-   "out": 359,
-   "activity": "6c33e88cabdf1f170cdf3726"
-  },
   "post:plain|pi": {
-   "out": 280,
+   "out": 278,
    "activity": "92a51ecb859e237c5ee50440"
   },
   "prompt:hello|pi": {
-   "out": 281,
+   "out": 279,
    "activity": "59a651ee3bc88ad71390fd6a"
   },
   "session:start|pi": {
-   "out": 281,
+   "out": 279,
    "activity": "eac339a6987bb31d3ef5072d"
   },
   "bash:ls|hermes": {
@@ -3161,7 +3101,7 @@
    "activity": "998773979b43237046b01288"
   },
   "bash:sudo|hermes": {
-   "out": 360,
+   "out": 352,
    "activity": "699fbed69799a7929994e4fd"
   },
   "bash:rm-rf-build|hermes": {
@@ -3169,51 +3109,51 @@
    "activity": "998773979b43237046b01288"
   },
   "bash:rm-rf-root|hermes": {
-   "out": 361,
+   "out": 353,
    "activity": "86121eb242a8e9340dbf1b72"
   },
   "bash:curl-pipe-sh|hermes": {
-   "out": 362,
+   "out": 354,
    "activity": "4ed68264abb2217faf56bd44"
   },
   "bash:push-main|hermes": {
-   "out": 363,
+   "out": 355,
    "activity": "6c84db83cb0233afa382755c"
   },
   "bash:push-head-master|hermes": {
-   "out": 363,
+   "out": 355,
    "activity": "6c84db83cb0233afa382755c"
   },
   "bash:force-push|hermes": {
-   "out": 364,
+   "out": 356,
    "activity": "6a43e6dc7549587a45f1ee03"
   },
   "bash:amend|hermes": {
-   "out": 365,
+   "out": 357,
    "activity": "cd66ccd1bf6c8af7d6fbb93b"
   },
   "bash:stash-drop|hermes": {
-   "out": 366,
+   "out": 358,
    "activity": "fea237078b3e66e71d16072b"
   },
   "bash:add-all|hermes": {
-   "out": 367,
+   "out": 359,
    "activity": "1a5bd6969d906f177de783f8"
   },
   "bash:drop-table|hermes": {
-   "out": 368,
+   "out": 360,
    "activity": "c29a14afe257539173a4999e"
   },
   "bash:alter-table|hermes": {
-   "out": 369,
+   "out": 361,
    "activity": "42192cdda6bca671e23877f9"
   },
   "bash:npm-publish|hermes": {
-   "out": 370,
+   "out": 362,
    "activity": "6cecb425e17abe93b2f101e9"
   },
   "bash:npm-global|hermes": {
-   "out": 371,
+   "out": 363,
    "activity": "c92690b06f876ef6e06e071f"
   },
   "bash:npm-install|hermes": {
@@ -3221,59 +3161,59 @@
    "activity": "998773979b43237046b01288"
   },
   "bash:kubectl|hermes": {
-   "out": 372,
+   "out": 364,
    "activity": "a6b138473116b2024fbe7e23"
   },
   "bash:terraform|hermes": {
-   "out": 373,
+   "out": 365,
    "activity": "8a6d706b31e19b358f0251a5"
   },
   "bash:aws|hermes": {
-   "out": 374,
+   "out": 366,
    "activity": "5d8b7497b2eea6c512d26886"
   },
   "bash:gcloud|hermes": {
-   "out": 375,
+   "out": 367,
    "activity": "195c70950d00d47be165931b"
   },
   "bash:az|hermes": {
-   "out": 376,
+   "out": 368,
    "activity": "c68af66cdfa7011d427ce429"
   },
   "bash:helm|hermes": {
-   "out": 377,
+   "out": 369,
    "activity": "74397bcf9a11ed32f5caac79"
   },
   "bash:gh-pipeline|hermes": {
-   "out": 378,
+   "out": 370,
    "activity": "8232246dcf1affb6963a90de"
   },
   "bash:cat-env|hermes": {
-   "out": 379,
+   "out": 371,
    "activity": "1d8e4a8932725c65d0108db5"
   },
   "bash:printenv|hermes": {
-   "out": 380,
+   "out": 372,
    "activity": "3173bcf20989aa57df24aa02"
   },
   "bash:cat-passwd|hermes": {
-   "out": 381,
+   "out": 373,
    "activity": "4821b87ef5478780699508b4"
   },
   "bash:background|hermes": {
-   "out": 382,
+   "out": 374,
    "activity": "4089d6efef8261c1451ed4d4"
   },
   "bash:self-uninstall|hermes": {
-   "out": 383,
+   "out": 375,
    "activity": "89205c1a2f66fa848f5d1d32"
   },
   "read:env|hermes": {
-   "out": 384,
+   "out": 376,
    "activity": "39834ccc076f03b9d8c1bec8"
   },
   "read:outside|hermes": {
-   "out": 385,
+   "out": 377,
    "activity": "3a3dfe46ac589a0d5906aee7"
   },
   "read:inside|hermes": {
@@ -3281,7 +3221,7 @@
    "activity": "4f96e9eca74fdae69db3ccfd"
   },
   "glob:outside|hermes": {
-   "out": 386,
+   "out": 378,
    "activity": "9e4b1897a75a5c8d21e607cc"
   },
   "grep:inside|hermes": {
@@ -3289,11 +3229,11 @@
    "activity": "c1494dee08ed71a05b4f9965"
   },
   "write:env|hermes": {
-   "out": 387,
+   "out": 379,
    "activity": "6b5a18ce821e61e12c854e60"
   },
   "write:pem|hermes": {
-   "out": 388,
+   "out": 380,
    "activity": "952b45e35ecec125d557e52c"
   },
   "write:plain|hermes": {
@@ -3301,7 +3241,7 @@
    "activity": "705b3f132151db28ac4b7a2d"
   },
   "edit:self-config|hermes": {
-   "out": 389,
+   "out": 381,
    "activity": "32a6cc6f3937612a751da118"
   },
   "mcp:tool|hermes": {
@@ -3309,43 +3249,35 @@
    "activity": "ad7d34002be713f3455961dc"
   },
   "permission:sudo|hermes": {
-   "out": 390,
+   "out": 382,
    "activity": "34b3b1b2866628bcc9f78f0a"
   },
   "permission:ls|hermes": {
    "out": 274,
    "activity": "609c87c851329c26d2392f0a"
   },
-  "post:api-key|hermes": {
-   "out": 282,
-   "activity": "fe559fdf4fbecd6bcb4f3f1e"
-  },
   "post:jwt|hermes": {
-   "out": 283,
+   "out": 280,
    "activity": "fccc682ac9fcb837130e6c5c"
   },
   "post:pem|hermes": {
-   "out": 284,
+   "out": 281,
    "activity": "6bd31bb2aa6966fcac261237"
   },
   "post:conn|hermes": {
-   "out": 285,
+   "out": 282,
    "activity": "d10c941bc0830c0036b615cf"
   },
-  "post:bearer|hermes": {
-   "out": 286,
-   "activity": "742322ccd3c44e139db55765"
-  },
   "post:plain|hermes": {
-   "out": 280,
+   "out": 278,
    "activity": "1337c8874a16410ec44f4fc2"
   },
   "prompt:hello|hermes": {
-   "out": 281,
+   "out": 279,
    "activity": "cefb0aa7d3d1ca28ee501f08"
   },
   "session:start|hermes": {
-   "out": 281,
+   "out": 279,
    "activity": "93b38148e4c059a7850e8513"
   },
   "bash:ls|openclaw": {
@@ -3353,7 +3285,7 @@
    "activity": "3bb449e5f587bef8875b4ba7"
   },
   "bash:sudo|openclaw": {
-   "out": 324,
+   "out": 318,
    "activity": "406a28e869cb6eebb00e8941"
   },
   "bash:rm-rf-build|openclaw": {
@@ -3361,51 +3293,51 @@
    "activity": "3bb449e5f587bef8875b4ba7"
   },
   "bash:rm-rf-root|openclaw": {
-   "out": 325,
+   "out": 319,
    "activity": "e9cda7b86d945c92f463e178"
   },
   "bash:curl-pipe-sh|openclaw": {
-   "out": 326,
+   "out": 320,
    "activity": "57f8391e0046b3e327a9df2d"
   },
   "bash:push-main|openclaw": {
-   "out": 327,
+   "out": 321,
    "activity": "5f65bc18b5b66d5327c3e658"
   },
   "bash:push-head-master|openclaw": {
-   "out": 327,
+   "out": 321,
    "activity": "5f65bc18b5b66d5327c3e658"
   },
   "bash:force-push|openclaw": {
-   "out": 328,
+   "out": 322,
    "activity": "e3090bcea5ce9a67595944fd"
   },
   "bash:amend|openclaw": {
-   "out": 391,
+   "out": 383,
    "activity": "6d43790b42969ac3ffd3ddd3"
   },
   "bash:stash-drop|openclaw": {
-   "out": 392,
+   "out": 384,
    "activity": "428c26f7a155bcb603e0dd80"
   },
   "bash:add-all|openclaw": {
-   "out": 393,
+   "out": 385,
    "activity": "44968d701ec2988cffbceb54"
   },
   "bash:drop-table|openclaw": {
-   "out": 394,
+   "out": 386,
    "activity": "6dfc672a58effe3c56cc8087"
   },
   "bash:alter-table|openclaw": {
-   "out": 395,
+   "out": 387,
    "activity": "c4e3e1a96d438802672fe3f6"
   },
   "bash:npm-publish|openclaw": {
-   "out": 396,
+   "out": 388,
    "activity": "175f6a3d9f858aa1d2302d6f"
   },
   "bash:npm-global|openclaw": {
-   "out": 397,
+   "out": 389,
    "activity": "826cfb5ce7130c0a9383dc11"
   },
   "bash:npm-install|openclaw": {
@@ -3413,59 +3345,59 @@
    "activity": "3bb449e5f587bef8875b4ba7"
   },
   "bash:kubectl|openclaw": {
-   "out": 336,
+   "out": 330,
    "activity": "6af7ccb5e5c275aec308dca6"
   },
   "bash:terraform|openclaw": {
-   "out": 337,
+   "out": 331,
    "activity": "d4d3358a818ca7c27cb695d9"
   },
   "bash:aws|openclaw": {
-   "out": 338,
+   "out": 332,
    "activity": "9ce48717098a2ad00608c549"
   },
   "bash:gcloud|openclaw": {
-   "out": 339,
+   "out": 333,
    "activity": "9705dc312fe3aafd6d84ad4a"
   },
   "bash:az|openclaw": {
-   "out": 340,
+   "out": 334,
    "activity": "659e3ad6f004f2022796e232"
   },
   "bash:helm|openclaw": {
-   "out": 341,
+   "out": 335,
    "activity": "28f94a020996202532413a2a"
   },
   "bash:gh-pipeline|openclaw": {
-   "out": 342,
+   "out": 336,
    "activity": "c443c017f1348c18d23ccbdd"
   },
   "bash:cat-env|openclaw": {
-   "out": 343,
+   "out": 337,
    "activity": "91e77b944871cc30b7473ba7"
   },
   "bash:printenv|openclaw": {
-   "out": 344,
+   "out": 338,
    "activity": "7f7c485dc91326edf54f85a9"
   },
   "bash:cat-passwd|openclaw": {
-   "out": 345,
+   "out": 339,
    "activity": "14ccb67db71abc7f543a2fcb"
   },
   "bash:background|openclaw": {
-   "out": 398,
+   "out": 390,
    "activity": "40dd5d000116687a3a941075"
   },
   "bash:self-uninstall|openclaw": {
-   "out": 347,
+   "out": 341,
    "activity": "7f83f526ea5e87aa0782ed52"
   },
   "read:env|openclaw": {
-   "out": 348,
+   "out": 342,
    "activity": "a4bb4aa777e1876076e56886"
   },
   "read:outside|openclaw": {
-   "out": 349,
+   "out": 343,
    "activity": "e8a8d54dfdcc00c99452dfc8"
   },
   "read:inside|openclaw": {
@@ -3473,7 +3405,7 @@
    "activity": "6e30eb1921080f892bf5fa46"
   },
   "glob:outside|openclaw": {
-   "out": 350,
+   "out": 344,
    "activity": "504d4125b0e4a909f8dd1a7b"
   },
   "grep:inside|openclaw": {
@@ -3481,11 +3413,11 @@
    "activity": "9121c3d82bb8f39446e45fda"
   },
   "write:env|openclaw": {
-   "out": 351,
+   "out": 345,
    "activity": "f16f948c4c0d458799050d74"
   },
   "write:pem|openclaw": {
-   "out": 352,
+   "out": 346,
    "activity": "e98b0db399cd5b2a9639e5f9"
   },
   "write:plain|openclaw": {
@@ -3493,7 +3425,7 @@
    "activity": "473ac0ceefd46e9900af5845"
   },
   "edit:self-config|openclaw": {
-   "out": 353,
+   "out": 347,
    "activity": "25a21ef75b739f9eab0a9895"
   },
   "mcp:tool|openclaw": {
@@ -3501,43 +3433,35 @@
    "activity": "bc07443d9765f506027698f2"
   },
   "permission:sudo|openclaw": {
-   "out": 354,
+   "out": 348,
    "activity": "95f20f06f4325f998f9ab6c0"
   },
   "permission:ls|openclaw": {
    "out": 274,
    "activity": "9f225579e66dc8ecc7262004"
   },
-  "post:api-key|openclaw": {
-   "out": 355,
-   "activity": "af81c6a06178b8c8b5dff382"
-  },
   "post:jwt|openclaw": {
-   "out": 356,
+   "out": 349,
    "activity": "73a9b5677fe7dc77f1d67ca8"
   },
   "post:pem|openclaw": {
-   "out": 357,
+   "out": 350,
    "activity": "b3db8d21125030fc067839d2"
   },
   "post:conn|openclaw": {
-   "out": 358,
+   "out": 351,
    "activity": "0f57566e4779082329201a13"
   },
-  "post:bearer|openclaw": {
-   "out": 359,
-   "activity": "3264e96a77a6b002bdf165cf"
-  },
   "post:plain|openclaw": {
-   "out": 280,
+   "out": 278,
    "activity": "b10a1b55abba4e3c9224633d"
   },
   "prompt:hello|openclaw": {
-   "out": 281,
+   "out": 279,
    "activity": "caadddbde0e0aa17254f53f6"
   },
   "session:start|openclaw": {
-   "out": 281,
+   "out": 279,
    "activity": "eb28df667c052d1a1c93cbee"
   },
   "bash:ls|factory": {
@@ -3545,7 +3469,7 @@
    "activity": "a064479868ab9c0b274d239a"
   },
   "bash:sudo|factory": {
-   "out": 399,
+   "out": 391,
    "activity": "2cd0735dd9e912b6900b528c"
   },
   "bash:rm-rf-build|factory": {
@@ -3553,51 +3477,51 @@
    "activity": "a064479868ab9c0b274d239a"
   },
   "bash:rm-rf-root|factory": {
-   "out": 400,
+   "out": 392,
    "activity": "9a91276cb31338df63548521"
   },
   "bash:curl-pipe-sh|factory": {
-   "out": 401,
+   "out": 393,
    "activity": "a6846bb581e5f5aefea599b6"
   },
   "bash:push-main|factory": {
-   "out": 402,
+   "out": 394,
    "activity": "cc798061b118419b93aad2ca"
   },
   "bash:push-head-master|factory": {
-   "out": 402,
+   "out": 394,
    "activity": "cc798061b118419b93aad2ca"
   },
   "bash:force-push|factory": {
-   "out": 403,
+   "out": 395,
    "activity": "7d6c5ddabec9c395ef5d3b2c"
   },
   "bash:amend|factory": {
-   "out": 404,
+   "out": 396,
    "activity": "60039404c7313ec6e8a3f004"
   },
   "bash:stash-drop|factory": {
-   "out": 405,
+   "out": 397,
    "activity": "83bedd45fd780fccc4c0a86b"
   },
   "bash:add-all|factory": {
-   "out": 406,
+   "out": 398,
    "activity": "293acf46e556534539cb09ab"
   },
   "bash:drop-table|factory": {
-   "out": 407,
+   "out": 399,
    "activity": "ba6edc128db63435bc60aba2"
   },
   "bash:alter-table|factory": {
-   "out": 408,
+   "out": 400,
    "activity": "3089583d74f6f22415b6943a"
   },
   "bash:npm-publish|factory": {
-   "out": 409,
+   "out": 401,
    "activity": "1d76526a0769c8f860983f49"
   },
   "bash:npm-global|factory": {
-   "out": 410,
+   "out": 402,
    "activity": "b569ed2bd93c2c821369ed40"
   },
   "bash:npm-install|factory": {
@@ -3605,59 +3529,59 @@
    "activity": "a064479868ab9c0b274d239a"
   },
   "bash:kubectl|factory": {
-   "out": 411,
+   "out": 403,
    "activity": "78a4269164597db385dee1f0"
   },
   "bash:terraform|factory": {
-   "out": 412,
+   "out": 404,
    "activity": "11dedb9818631b0c532263fb"
   },
   "bash:aws|factory": {
-   "out": 413,
+   "out": 405,
    "activity": "bfd0d9627c0f3ddce398ce16"
   },
   "bash:gcloud|factory": {
-   "out": 414,
+   "out": 406,
    "activity": "3b781e47bd82ed00cae5512a"
   },
   "bash:az|factory": {
-   "out": 415,
+   "out": 407,
    "activity": "41151dd10e0c08b1c1a1030d"
   },
   "bash:helm|factory": {
-   "out": 416,
+   "out": 408,
    "activity": "0b001363392b29550e3bf765"
   },
   "bash:gh-pipeline|factory": {
-   "out": 417,
+   "out": 409,
    "activity": "ec55342c3a70a40716c441af"
   },
   "bash:cat-env|factory": {
-   "out": 418,
+   "out": 410,
    "activity": "8ce81ba31df1a63dcedf7df0"
   },
   "bash:printenv|factory": {
-   "out": 419,
+   "out": 411,
    "activity": "4f6ca66220597c7b34341887"
   },
   "bash:cat-passwd|factory": {
-   "out": 420,
+   "out": 412,
    "activity": "75494552a1c7df1357747183"
   },
   "bash:background|factory": {
-   "out": 421,
+   "out": 413,
    "activity": "014b427c833115e13d9ff5dc"
   },
   "bash:self-uninstall|factory": {
-   "out": 422,
+   "out": 414,
    "activity": "fd95599aadeccf595fb9b0be"
   },
   "read:env|factory": {
-   "out": 423,
+   "out": 415,
    "activity": "b092afccf449b53d994d5bc5"
   },
   "read:outside|factory": {
-   "out": 424,
+   "out": 416,
    "activity": "f8329c11a4a66cdeb2e0bf1c"
   },
   "read:inside|factory": {
@@ -3665,7 +3589,7 @@
    "activity": "c61312025abf1798ad201f5d"
   },
   "glob:outside|factory": {
-   "out": 425,
+   "out": 417,
    "activity": "16d25eba8ea737b2ff6806a4"
   },
   "grep:inside|factory": {
@@ -3673,11 +3597,11 @@
    "activity": "fb3e4178d4977bfda282ca41"
   },
   "write:env|factory": {
-   "out": 426,
+   "out": 418,
    "activity": "bc44361599c69fc906af6403"
   },
   "write:pem|factory": {
-   "out": 427,
+   "out": 419,
    "activity": "a72671d14ea78632cae93765"
   },
   "write:plain|factory": {
@@ -3685,7 +3609,7 @@
    "activity": "22535e5ec3f5261e3b1eb351"
   },
   "edit:self-config|factory": {
-   "out": 428,
+   "out": 420,
    "activity": "f5f74e20a3e2a924a813301f"
   },
   "mcp:tool|factory": {
@@ -3693,43 +3617,35 @@
    "activity": "b6f6562db96c067a1e9d1a34"
   },
   "permission:sudo|factory": {
-   "out": 429,
+   "out": 421,
    "activity": "bb406307cb912f19a8a64e12"
   },
   "permission:ls|factory": {
    "out": 274,
    "activity": "d3837625787bee81cc0ce152"
   },
-  "post:api-key|factory": {
-   "out": 430,
-   "activity": "75cb30ff0879bafc38066cde"
-  },
   "post:jwt|factory": {
-   "out": 431,
+   "out": 422,
    "activity": "5222037e0f0ad0345f91acc3"
   },
   "post:pem|factory": {
-   "out": 432,
+   "out": 423,
    "activity": "b93f9662c0dd0f7619ff1363"
   },
   "post:conn|factory": {
-   "out": 433,
+   "out": 424,
    "activity": "e857ed40cf17a76d6179c7bf"
   },
-  "post:bearer|factory": {
-   "out": 434,
-   "activity": "a664a5e88b40f54250f4917d"
-  },
   "post:plain|factory": {
-   "out": 280,
+   "out": 278,
    "activity": "7efd374073ca55d408d4fad0"
   },
   "prompt:hello|factory": {
-   "out": 281,
+   "out": 279,
    "activity": "e88215bf809441325ae77855"
   },
   "session:start|factory": {
-   "out": 281,
+   "out": 279,
    "activity": "1b9a250d7756cd182f57ce27"
   },
   "bash:ls|devin": {
@@ -3737,7 +3653,7 @@
    "activity": "ca68f828b0c8a476bcd8de49"
   },
   "bash:sudo|devin": {
-   "out": 360,
+   "out": 352,
    "activity": "999aaaa567e2690457986973"
   },
   "bash:rm-rf-build|devin": {
@@ -3745,23 +3661,23 @@
    "activity": "ca68f828b0c8a476bcd8de49"
   },
   "bash:rm-rf-root|devin": {
-   "out": 361,
+   "out": 353,
    "activity": "aaac885c56ab2c080f566d32"
   },
   "bash:curl-pipe-sh|devin": {
-   "out": 362,
+   "out": 354,
    "activity": "0e1c218b3f94ac0b9432dc51"
   },
   "bash:push-main|devin": {
-   "out": 363,
+   "out": 355,
    "activity": "c27ad29bc735bffb87d23030"
   },
   "bash:push-head-master|devin": {
-   "out": 363,
+   "out": 355,
    "activity": "c27ad29bc735bffb87d23030"
   },
   "bash:force-push|devin": {
-   "out": 364,
+   "out": 356,
    "activity": "c23185c8a9f9d287f2908796"
   },
   "bash:amend|devin": {
@@ -3797,43 +3713,43 @@
    "activity": "ca68f828b0c8a476bcd8de49"
   },
   "bash:kubectl|devin": {
-   "out": 372,
+   "out": 364,
    "activity": "e932abb2779a50b4946b1eb4"
   },
   "bash:terraform|devin": {
-   "out": 373,
+   "out": 365,
    "activity": "42b6178aebf1887528cde51a"
   },
   "bash:aws|devin": {
-   "out": 374,
+   "out": 366,
    "activity": "80dc1d46ef533be5529ef686"
   },
   "bash:gcloud|devin": {
-   "out": 375,
+   "out": 367,
    "activity": "a94754b98b42b3aea636a1d5"
   },
   "bash:az|devin": {
-   "out": 376,
+   "out": 368,
    "activity": "664cc22d98c4f83f6cf322c7"
   },
   "bash:helm|devin": {
-   "out": 377,
+   "out": 369,
    "activity": "70a7422ec9ced56ed0f32b96"
   },
   "bash:gh-pipeline|devin": {
-   "out": 378,
+   "out": 370,
    "activity": "15a4e58427d0f0a68d267b8b"
   },
   "bash:cat-env|devin": {
-   "out": 379,
+   "out": 371,
    "activity": "53417bad61d7fb11cc7ecb85"
   },
   "bash:printenv|devin": {
-   "out": 380,
+   "out": 372,
    "activity": "9fe1683bb89ea596cb130128"
   },
   "bash:cat-passwd|devin": {
-   "out": 381,
+   "out": 373,
    "activity": "db49b7d1dd26b263c8ad9f26"
   },
   "bash:background|devin": {
@@ -3841,15 +3757,15 @@
    "activity": "3f617a87bf6da7f739ef72ec"
   },
   "bash:self-uninstall|devin": {
-   "out": 383,
+   "out": 375,
    "activity": "3429a9c801dea1bef2f103f2"
   },
   "read:env|devin": {
-   "out": 384,
+   "out": 376,
    "activity": "26594870a097899dfa1c06ac"
   },
   "read:outside|devin": {
-   "out": 385,
+   "out": 377,
    "activity": "3946b1a4b5da362b07f1f838"
   },
   "read:inside|devin": {
@@ -3857,7 +3773,7 @@
    "activity": "55bc36d553be95c40ccaafa6"
   },
   "glob:outside|devin": {
-   "out": 386,
+   "out": 378,
    "activity": "67e2bfdc62566350c57a659f"
   },
   "grep:inside|devin": {
@@ -3865,11 +3781,11 @@
    "activity": "b38a32402fb577dfc4fd1f37"
   },
   "write:env|devin": {
-   "out": 387,
+   "out": 379,
    "activity": "3b500d310ad17b7bdbcee494"
   },
   "write:pem|devin": {
-   "out": 388,
+   "out": 380,
    "activity": "1372a7713016e4f5ff1f1950"
   },
   "write:plain|devin": {
@@ -3877,7 +3793,7 @@
    "activity": "a324b1a81ed68f6f55215939"
   },
   "edit:self-config|devin": {
-   "out": 389,
+   "out": 381,
    "activity": "0e617e78895dca55cd3c39fb"
   },
   "mcp:tool|devin": {
@@ -3885,43 +3801,35 @@
    "activity": "527dd6c675ad6a1749ab2990"
   },
   "permission:sudo|devin": {
-   "out": 390,
+   "out": 382,
    "activity": "f2f417a51c000f1d997e5d6b"
   },
   "permission:ls|devin": {
    "out": 274,
    "activity": "528bb575e6b48643f4473cc5"
   },
-  "post:api-key|devin": {
-   "out": 282,
-   "activity": "2a81fc84a1bea4a9b0c8d232"
-  },
   "post:jwt|devin": {
-   "out": 283,
+   "out": 280,
    "activity": "b96b84589c8570691a0f5f68"
   },
   "post:pem|devin": {
-   "out": 284,
+   "out": 281,
    "activity": "7fc9e15fbc24da2bbab373f9"
   },
   "post:conn|devin": {
-   "out": 285,
+   "out": 282,
    "activity": "bc686b13cf329f92ae6b5353"
   },
-  "post:bearer|devin": {
-   "out": 286,
-   "activity": "d6b434dcaa709224047ea422"
-  },
   "post:plain|devin": {
-   "out": 280,
+   "out": 278,
    "activity": "6c3b8de3599478a5e21126fe"
   },
   "prompt:hello|devin": {
-   "out": 281,
+   "out": 279,
    "activity": "c121becadb5702d525367aa0"
   },
   "session:start|devin": {
-   "out": 281,
+   "out": 279,
    "activity": "54a48b4c36e6d750abe34931"
   },
   "bash:ls|antigravity": {
@@ -3929,7 +3837,7 @@
    "activity": "8c3dd9241fc11dec8125c616"
   },
   "bash:sudo|antigravity": {
-   "out": 435,
+   "out": 425,
    "activity": "0ccbd62884e8df6d189d9b3d"
   },
   "bash:rm-rf-build|antigravity": {
@@ -3937,51 +3845,51 @@
    "activity": "8c3dd9241fc11dec8125c616"
   },
   "bash:rm-rf-root|antigravity": {
-   "out": 436,
+   "out": 426,
    "activity": "117efac425b722cf9e0078e1"
   },
   "bash:curl-pipe-sh|antigravity": {
-   "out": 437,
+   "out": 427,
    "activity": "8c00765ed40187a4081aa714"
   },
   "bash:push-main|antigravity": {
-   "out": 438,
+   "out": 428,
    "activity": "a196e841f8e8e58d6be26596"
   },
   "bash:push-head-master|antigravity": {
-   "out": 438,
+   "out": 428,
    "activity": "a196e841f8e8e58d6be26596"
   },
   "bash:force-push|antigravity": {
-   "out": 439,
+   "out": 429,
    "activity": "5c99e5e4f28e369952424034"
   },
   "bash:amend|antigravity": {
-   "out": 404,
+   "out": 396,
    "activity": "f342f96c4e68ce469ea12610"
   },
   "bash:stash-drop|antigravity": {
-   "out": 405,
+   "out": 397,
    "activity": "6a001614cbe786c1a1a7e4f4"
   },
   "bash:add-all|antigravity": {
-   "out": 406,
+   "out": 398,
    "activity": "168bfa200158c5d1d390fa54"
   },
   "bash:drop-table|antigravity": {
-   "out": 407,
+   "out": 399,
    "activity": "fa79fe56a6cc5dcbd35e3cd3"
   },
   "bash:alter-table|antigravity": {
-   "out": 408,
+   "out": 400,
    "activity": "91ca122846d7d9974c5c5478"
   },
   "bash:npm-publish|antigravity": {
-   "out": 409,
+   "out": 401,
    "activity": "32e4c2c660b1e2020ffc0604"
   },
   "bash:npm-global|antigravity": {
-   "out": 410,
+   "out": 402,
    "activity": "0dac69ef0e980cfd6f2c15e1"
   },
   "bash:npm-install|antigravity": {
@@ -3989,59 +3897,59 @@
    "activity": "8c3dd9241fc11dec8125c616"
   },
   "bash:kubectl|antigravity": {
-   "out": 440,
+   "out": 430,
    "activity": "e86f8f68cca23559575f558a"
   },
   "bash:terraform|antigravity": {
-   "out": 441,
+   "out": 431,
    "activity": "a85379bf33eecb9babbf64b8"
   },
   "bash:aws|antigravity": {
-   "out": 442,
+   "out": 432,
    "activity": "aa250eb478ac274c5ea818d8"
   },
   "bash:gcloud|antigravity": {
-   "out": 443,
+   "out": 433,
    "activity": "12a75db4f8fcafe6cc1eb650"
   },
   "bash:az|antigravity": {
-   "out": 444,
+   "out": 434,
    "activity": "b212665d6aaa720e3c8ff150"
   },
   "bash:helm|antigravity": {
-   "out": 445,
+   "out": 435,
    "activity": "b351dfb3caf68521c3183ab4"
   },
   "bash:gh-pipeline|antigravity": {
-   "out": 446,
+   "out": 436,
    "activity": "b26c887a2d88f3de56c93c28"
   },
   "bash:cat-env|antigravity": {
-   "out": 447,
+   "out": 437,
    "activity": "90cb85bab87896d5b8923fdb"
   },
   "bash:printenv|antigravity": {
-   "out": 448,
+   "out": 438,
    "activity": "15a41861ed6297c9165c2eb3"
   },
   "bash:cat-passwd|antigravity": {
-   "out": 449,
+   "out": 439,
    "activity": "5c658c1048adbcb93469a7eb"
   },
   "bash:background|antigravity": {
-   "out": 421,
+   "out": 413,
    "activity": "4a0432dc4105eacbac0ddb56"
   },
   "bash:self-uninstall|antigravity": {
-   "out": 450,
+   "out": 440,
    "activity": "3dbca665b2c1fdace82ce393"
   },
   "read:env|antigravity": {
-   "out": 451,
+   "out": 441,
    "activity": "8fdf47c36a6cd349c8a8bbe1"
   },
   "read:outside|antigravity": {
-   "out": 452,
+   "out": 442,
    "activity": "c7abee867483b2d2fb964494"
   },
   "read:inside|antigravity": {
@@ -4049,7 +3957,7 @@
    "activity": "21aebe0761ac5fcbb959a3ef"
   },
   "glob:outside|antigravity": {
-   "out": 453,
+   "out": 443,
    "activity": "4cf03eb37ad548f30aff1822"
   },
   "grep:inside|antigravity": {
@@ -4057,11 +3965,11 @@
    "activity": "6a90fd6df54463a237564ce3"
   },
   "write:env|antigravity": {
-   "out": 454,
+   "out": 444,
    "activity": "8755feac8e94737f13ab7df4"
   },
   "write:pem|antigravity": {
-   "out": 455,
+   "out": 445,
    "activity": "dd270d0355d0e088034a5cf0"
   },
   "write:plain|antigravity": {
@@ -4069,7 +3977,7 @@
    "activity": "50fe4d06453c310a6d2eb1ab"
   },
   "edit:self-config|antigravity": {
-   "out": 456,
+   "out": 446,
    "activity": "dc3166301833c501518b924f"
   },
   "mcp:tool|antigravity": {
@@ -4077,43 +3985,35 @@
    "activity": "ea2383a425c3ff63f2afbd59"
   },
   "permission:sudo|antigravity": {
-   "out": 457,
+   "out": 447,
    "activity": "aef51303228f4b2d1c2220ea"
   },
   "permission:ls|antigravity": {
    "out": 274,
    "activity": "0a2013029d6fd04f92c13cdc"
   },
-  "post:api-key|antigravity": {
-   "out": 458,
-   "activity": "d20627674a9aaa3889aaf3bb"
-  },
   "post:jwt|antigravity": {
-   "out": 459,
+   "out": 448,
    "activity": "06578662ce95feab434597a9"
   },
   "post:pem|antigravity": {
-   "out": 460,
+   "out": 449,
    "activity": "e1d56ed72a852498e7c182c5"
   },
   "post:conn|antigravity": {
-   "out": 461,
+   "out": 450,
    "activity": "a0d399721cfe5054d4c1cdc1"
   },
-  "post:bearer|antigravity": {
-   "out": 462,
-   "activity": "351dc27d02b9ebdffd688303"
-  },
   "post:plain|antigravity": {
-   "out": 280,
+   "out": 278,
    "activity": "71797658a87ec05e7b150d74"
   },
   "prompt:hello|antigravity": {
-   "out": 281,
+   "out": 279,
    "activity": "fcdc8d636ef14039d93c7c06"
   },
   "session:start|antigravity": {
-   "out": 281,
+   "out": 279,
    "activity": "8d1d82b63781ca781ce5c214"
   },
   "bash:ls|goose": {
@@ -4121,7 +4021,7 @@
    "activity": "b6c5e79ff284f80164d8fa9e"
   },
   "bash:sudo|goose": {
-   "out": 360,
+   "out": 352,
    "activity": "fde2266a3ea15b0813693db1"
   },
   "bash:rm-rf-build|goose": {
@@ -4129,51 +4029,51 @@
    "activity": "b6c5e79ff284f80164d8fa9e"
   },
   "bash:rm-rf-root|goose": {
-   "out": 361,
+   "out": 353,
    "activity": "9169ae0e3045a17c3de0bd38"
   },
   "bash:curl-pipe-sh|goose": {
-   "out": 362,
+   "out": 354,
    "activity": "27b7470f7f1b2d64ebc62de9"
   },
   "bash:push-main|goose": {
-   "out": 363,
+   "out": 355,
    "activity": "336398b8fd43cbfac1820e17"
   },
   "bash:push-head-master|goose": {
-   "out": 363,
+   "out": 355,
    "activity": "336398b8fd43cbfac1820e17"
   },
   "bash:force-push|goose": {
-   "out": 364,
+   "out": 356,
    "activity": "1f0179f819f10ee68403cb90"
   },
   "bash:amend|goose": {
-   "out": 404,
+   "out": 396,
    "activity": "f52c4f164ce0fe2868689dc2"
   },
   "bash:stash-drop|goose": {
-   "out": 405,
+   "out": 397,
    "activity": "e662177bab29330fbb3e568c"
   },
   "bash:add-all|goose": {
-   "out": 406,
+   "out": 398,
    "activity": "9854ae0e1d44c85c5ae1a040"
   },
   "bash:drop-table|goose": {
-   "out": 407,
+   "out": 399,
    "activity": "7565d6dd231908a22e27a690"
   },
   "bash:alter-table|goose": {
-   "out": 408,
+   "out": 400,
    "activity": "fa5613f67210ed6d5505d612"
   },
   "bash:npm-publish|goose": {
-   "out": 409,
+   "out": 401,
    "activity": "6369163b38d1de9fc68deebc"
   },
   "bash:npm-global|goose": {
-   "out": 410,
+   "out": 402,
    "activity": "9e5b707a718d270db9b4275f"
   },
   "bash:npm-install|goose": {
@@ -4181,59 +4081,59 @@
    "activity": "b6c5e79ff284f80164d8fa9e"
   },
   "bash:kubectl|goose": {
-   "out": 372,
+   "out": 364,
    "activity": "a0701b097cf217c1e69c7c08"
   },
   "bash:terraform|goose": {
-   "out": 373,
+   "out": 365,
    "activity": "d97a1e39662faa6dc106f7c4"
   },
   "bash:aws|goose": {
-   "out": 374,
+   "out": 366,
    "activity": "1411a252066c6ca7f598b955"
   },
   "bash:gcloud|goose": {
-   "out": 375,
+   "out": 367,
    "activity": "0f56332a1775d537a62fdc70"
   },
   "bash:az|goose": {
-   "out": 376,
+   "out": 368,
    "activity": "b8d707b5a51a649d75128cac"
   },
   "bash:helm|goose": {
-   "out": 377,
+   "out": 369,
    "activity": "787c43eb3623df6b475167f0"
   },
   "bash:gh-pipeline|goose": {
-   "out": 378,
+   "out": 370,
    "activity": "dbba94c6d86d5f4aea79141f"
   },
   "bash:cat-env|goose": {
-   "out": 379,
+   "out": 371,
    "activity": "c23506194b562667d01e1822"
   },
   "bash:printenv|goose": {
-   "out": 380,
+   "out": 372,
    "activity": "7c422917f9492e96ff01c913"
   },
   "bash:cat-passwd|goose": {
-   "out": 381,
+   "out": 373,
    "activity": "a548e3d2de6f9491e4c46808"
   },
   "bash:background|goose": {
-   "out": 421,
+   "out": 413,
    "activity": "ecead5cc0e9753e270791171"
   },
   "bash:self-uninstall|goose": {
-   "out": 383,
+   "out": 375,
    "activity": "d99cbd10cbfa047bb83c4b34"
   },
   "read:env|goose": {
-   "out": 384,
+   "out": 376,
    "activity": "9581183774ebfbff4981341c"
   },
   "read:outside|goose": {
-   "out": 385,
+   "out": 377,
    "activity": "7a000ad79227be081fcf0fc9"
   },
   "read:inside|goose": {
@@ -4241,7 +4141,7 @@
    "activity": "f5c506ccd41acd31d20295ab"
   },
   "glob:outside|goose": {
-   "out": 386,
+   "out": 378,
    "activity": "ef6ede24b482f4ca78c4fcb4"
   },
   "grep:inside|goose": {
@@ -4249,11 +4149,11 @@
    "activity": "1c7e5e854c326bb4aec8f5be"
   },
   "write:env|goose": {
-   "out": 387,
+   "out": 379,
    "activity": "a5f13fcc04bf282fcdde57d1"
   },
   "write:pem|goose": {
-   "out": 388,
+   "out": 380,
    "activity": "78cf28f4624e115196f072f6"
   },
   "write:plain|goose": {
@@ -4261,7 +4161,7 @@
    "activity": "d7f884b42dada9d677148077"
   },
   "edit:self-config|goose": {
-   "out": 389,
+   "out": 381,
    "activity": "0d9c251c3517e2c8f52844dc"
   },
   "mcp:tool|goose": {
@@ -4269,43 +4169,35 @@
    "activity": "aab8ee00b903956fd4511109"
   },
   "permission:sudo|goose": {
-   "out": 390,
+   "out": 382,
    "activity": "825c4662f967675ff3700d05"
   },
   "permission:ls|goose": {
    "out": 274,
    "activity": "122efc2608e49f014869c5b5"
   },
-  "post:api-key|goose": {
-   "out": 282,
-   "activity": "b950eabb38da4ae1e17ae13a"
-  },
   "post:jwt|goose": {
-   "out": 283,
+   "out": 280,
    "activity": "3ec117b05e7c41f19c87d6ff"
   },
   "post:pem|goose": {
-   "out": 284,
+   "out": 281,
    "activity": "b18e6637af5176f57cac27b7"
   },
   "post:conn|goose": {
-   "out": 285,
+   "out": 282,
    "activity": "198f200c6b162542b5dc7077"
   },
-  "post:bearer|goose": {
-   "out": 286,
-   "activity": "c63329c5ae2500e2de0a6225"
-  },
   "post:plain|goose": {
-   "out": 280,
+   "out": 278,
    "activity": "766b4949ba318c6fa1f4e436"
   },
   "prompt:hello|goose": {
-   "out": 281,
+   "out": 279,
    "activity": "64e3fb041dfc6898e9ce0534"
   },
   "session:start|goose": {
-   "out": 281,
+   "out": 279,
    "activity": "84df212547f5c96f50d77481"
   }
  }

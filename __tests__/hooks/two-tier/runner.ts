@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SessionMetadata } from "../../../src/hooks/types";
 import {
+  CORPUS_BUILTINS,
   EVALUATOR_SCENARIOS,
   MATRIX_CLIS,
   MATRIX_EVENTS,
@@ -101,12 +102,8 @@ export async function runEvaluatorMatrix(add: Add): Promise<void> {
 }
 
 export async function runHandlerCorpus(add: AddHandler, sandbox: CorpusSandbox): Promise<void> {
-  const { BUILTIN_POLICIES } = await import("../../../src/hooks/builtin-policies");
   const fpHome = process.env.FAILPROOFAI_HOME!;
-  writeFileSync(
-    join(fpHome, "policies-config.json"),
-    JSON.stringify({ enabledPolicies: BUILTIN_POLICIES.map((p) => p.name) }),
-  );
+  writeFileSync(join(fpHome, "policies-config.json"), JSON.stringify({ enabledPolicies: CORPUS_BUILTINS }));
   const { evaluateHookEvent } = await import("../../../src/hooks/handler");
   const store = await import("../../../src/hooks/hook-activity-store");
   const { clearGitBranchCache } = await import("../../../src/hooks/builtin-policies");

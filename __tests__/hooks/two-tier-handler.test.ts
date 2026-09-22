@@ -6,7 +6,10 @@
  *
  * - `loadJevConfig` (T1) — returns the test's config, or null;
  * - `transportForConfig` (T1) — a scripted fake Jev;
- * - `readIntent` / `captureIntent` (T4) — scripted / spied;
+ * - `readIntent` / `captureIntent` (T4) — scripted per session / spied.
+ *   `readIntent` answers for this file's SESSION only, like T4's store: a
+ *   handler that stops passing the session id gets no human message, and
+ *   every clear test below fails;
  * - `throttleTransport` / `isCachedJevResponse` (T5) — a pass-through, or a
  *   minimal scope-keyed cache where a test turns one on. T5's real cache and
  *   token bucket are module-level, shared by every test in the file, which
@@ -18,6 +21,7 @@
  * real `jev.json` is ever read or written.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -92,9 +96,16 @@ vi.mock("../../src/hooks/semantic/jev-client", async (importOriginal) => {
  */
 const HUMAN = { userSaid: ["tidy up my notes and the build folder"], agentLastMessage: null };
 let intent: { userSaid: string[]; agentLastMessage: string | null } = HUMAN;
+/** What T4's store holds for any other session (or none): nothing. */
+const NO_INTENT = { userSaid: [] as string[], agentLastMessage: null };
 vi.mock("../../src/hooks/semantic/intent", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/hooks/semantic/intent")>();
-  return { ...actual, readIntent: vi.fn(() => intent), captureIntent: vi.fn() };
+  return {
+    ...actual,
+    // SESSION is declared below; the mock body only runs once a test calls it.
+    readIntent: vi.fn((sessionId?: string) => (sessionId === SESSION ? intent : NO_INTENT)),
+    captureIntent: vi.fn(),
+  };
 });
 
 /** The user-approved (D1) reviewable builtins; everything else stays hard. */
@@ -160,7 +171,7 @@ vi.mock("../../src/hooks/custom-hooks-loader", async (importOriginal) => {
 
 import { evaluateHookEvent } from "../../src/hooks/handler";
 import { clearPolicies } from "../../src/hooks/policy-registry";
-import { captureIntent } from "../../src/hooks/semantic/intent";
+import { captureIntent, readIntent } from "../../src/hooks/semantic/intent";
 import { startJevReview } from "../../src/hooks/semantic/jev-review";
 import { loadJevConfig } from "../../src/hooks/semantic/jev-config";
 import { transportForConfig } from "../../src/hooks/semantic/jev-client";
@@ -234,6 +245,7 @@ beforeEach(() => {
   telemetryEvents.length = 0;
   vi.mocked(startJevReview).mockClear();
   vi.mocked(captureIntent).mockClear();
+  vi.mocked(readIntent).mockClear();
   vi.mocked(transportForConfig).mockClear();
   vi.mocked(loadJevConfig).mockClear();
 });
@@ -1049,5 +1061,140 @@ describe("hook_policy_triggered carries T8's Jev properties on the two-tier path
     expect(outcome.evaluation?.decision).toBe("deny");
     expect(triggered()).toHaveLength(1);
     expect(jevKeys(triggered()[0])).toEqual([]);
+  });
+});
+
+// ── Round-3 review findings ──────────────────────────────────────────────────
+
+describe("what the handler hands Jev: this call's session id and cwd", () => {
+  type SentFacts = {
+    cwd: string | null;
+    project_root: string | null;
+    current_git_branch: string | null;
+    permission_mode: string | null;
+    paths: Array<{ resolved: string; relation: string }>;
+  };
+  /** The context of the one startJevReview call. */
+  const handed = () => {
+    expect(startJevReview).toHaveBeenCalledTimes(1);
+    return vi.mocked(startJevReview).mock.calls[0][1];
+  };
+  /** The deterministic `facts` the one Jev request carried. */
+  const sentFacts = (): SentFacts => {
+    expect(jevCalls).toHaveLength(1);
+    return jevCalls[0].request.state.facts as SentFacts;
+  };
+  const asked = () => Object.keys(jevCalls[0]?.request.questions ?? {});
+
+  it("the whole call context, exactly, and the intent is read for this session", async () => {
+    jevConfig = CFG;
+    await run("PreToolUse", { tool_name: "Bash", tool_input: { command: "ls -la" }, permission_mode: "acceptEdits" });
+    expect(startJevReview).toHaveBeenCalledWith(CFG, {
+      eventType: "PreToolUse",
+      toolName: "Bash",
+      toolInput: { command: "ls -la" },
+      cwd: project,
+      permissionMode: "acceptEdits",
+      sessionId: SESSION,
+      cli: "claude",
+    });
+    expect(readIntent).toHaveBeenCalledWith(SESSION);
+    expect(sentFacts()).toMatchObject({ cwd: project, project_root: project, permission_mode: "acceptEdits" });
+  });
+
+  // Each CLI carries its session id and cwd somewhere else; what Jev gets is
+  // the handler's resolved session, never a raw payload field. The payloads
+  // are built per test: the project directory is created in beforeEach.
+  const LS = { command: "ls -la" };
+  type Case = [string, IntegrationType, string, () => Record<string, unknown>, (() => Parameters<typeof evaluateHookEvent>[3])?];
+  it.each<Case>([
+    ["claude", "claude", "PreToolUse", () => ({ session_id: SESSION, cwd: project, tool_name: "Bash", tool_input: LS })],
+    [
+      "claude through the daemon, the cwd coming from the hook client",
+      "claude",
+      "PreToolUse",
+      () => ({ session_id: SESSION, tool_name: "Bash", tool_input: LS }),
+      () => ({ fallbackCwd: project }),
+    ],
+    [
+      "cursor (workspace_roots)",
+      "cursor",
+      "preToolUse",
+      () => ({ session_id: SESSION, workspace_roots: [project], tool_name: "Shell", tool_input: LS }),
+    ],
+    ["goose (working_dir)", "goose", "PreToolUse", () => ({ session_id: SESSION, working_dir: project, tool_name: "shell", tool_input: LS })],
+    [
+      "antigravity (conversationId, workspacePaths)",
+      "antigravity",
+      "PreToolUse",
+      () => ({ conversationId: SESSION, workspacePaths: [project], toolCall: { name: "run_command", args: { CommandLine: "ls -la" } } }),
+    ],
+    [
+      "copilot's camelCase PermissionRequest (sessionId)",
+      "copilot",
+      "PermissionRequest",
+      () => ({ sessionId: SESSION, cwd: project, toolName: "bash", toolInput: LS }),
+    ],
+  ])("%s", async (_label, cli, event, payload, opts) => {
+    jevConfig = CFG;
+    await evaluateHookEvent(event, cli, JSON.stringify(payload()), { awaitTelemetryFlush: false, ...opts?.() });
+    expect(handed()).toMatchObject({ toolName: "Bash", sessionId: SESSION, cwd: project, cli });
+    expect(readIntent).toHaveBeenCalledWith(SESSION);
+    expect(sentFacts().cwd).toBe(project);
+  });
+
+  it("a read inside the project is judged as one: read-outside-workspace is not asked, so it cannot fire", async () => {
+    jevConfig = CFG;
+    // Had the cwd been lost, this path would be `outside_project_in_home`,
+    // read-outside-workspace would be asked, and this answer would turn a
+    // normal read into an instruct.
+    respond = answers({ "read-outside-workspace": 0.95 });
+    const file = join(project, "src", "index.ts");
+    const { outcome, row } = await readFile(file);
+    expect(outcome.evaluation?.decision).toBe("allow");
+    expect(outcome.stdout).toBe("");
+    expect(sentFacts().cwd).toBe(project);
+    expect(sentFacts().paths).toContainEqual(expect.objectContaining({ resolved: file, relation: "inside_project" }));
+    expect(asked().filter((id) => id.startsWith("read-outside-workspace"))).toEqual([]);
+    expect(row).toMatchObject({ evaluator: "jev", jevDecision: "allow" });
+  });
+
+  it("block-work-on-main: the branch comes from the call's cwd, so its reviewer is asked and can clear it", async () => {
+    writeFileSync(
+      join(home, ".failproofai", "policies-config.json"),
+      JSON.stringify({ enabledPolicies: [...ENABLED, "block-work-on-main"] }),
+    );
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", ...args], {
+        cwd: project,
+        stdio: "ignore",
+        env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1" },
+      });
+    git("init", "-q", "-b", "main");
+    git("commit", "-q", "--allow-empty", "-m", "init");
+    const commit = "git commit -m 'wip'";
+
+    const plain = await bash(commit);
+    expect(plain.outcome.evaluation?.decision).toBe("deny");
+    expect(plain.outcome.evaluation?.policyName).toBe("failproofai/block-work-on-main");
+
+    jevConfig = CFG;
+    const { outcome, row } = await bash(commit);
+    expect(sentFacts()).toMatchObject({ cwd: project, current_git_branch: "main" });
+    expect(asked()).toContain("commit-on-protected-branch.creates_commit");
+    expect(outcome.evaluation?.decision).toBe("allow");
+    expect(row.jevCleared).toEqual(["failproofai/block-work-on-main"]);
+  });
+
+  it("another session's words are not this call's: nothing to judge against, so nothing is cleared", async () => {
+    jevConfig = CFG;
+    const { outcome, row } = await run(
+      "PreToolUse",
+      { session_id: "some-other-session", tool_name: "Read", tool_input: { file_path: join(home, "other", "notes.txt") } },
+    );
+    expect(readIntent).toHaveBeenCalledWith("some-other-session");
+    expect(asked()).not.toContain("injection");
+    expect(outcome.evaluation?.decision).toBe("deny");
+    expect(row.jevCleared).toBeUndefined();
   });
 });

@@ -1,5 +1,12 @@
 # Changelog — `fp` CLI
 
+## 0.0.2b0 — 2026-09-22
+
+Open for the next release. `0.0.1` published on 2026-09-22 and the `bump` job
+moved the version here automatically; nothing has landed against `0.0.2b0` yet.
+Add entries as changes merge — this section becomes the GitHub Release body when
+it ships.
+
 ## 0.0.1 — 2026-09-22
 
 **First stable release.** `0.0.1b1` and `0.0.1b2` are the two betas behind it; the

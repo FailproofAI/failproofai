@@ -1,15 +1,14 @@
 /**
  * The §4 combine table, exhaustively: every row × {shadow, enforce} ×
- * {complete, context cut, call cut}. Each row is driven from a SemanticOutcome — what
+ * {complete, truncated}. Each row is driven from a SemanticOutcome — what
  * `evaluateSemantic` actually returns — through `toReview` (how the handler
  * reads it) and `combineTwoTier` (what it enforces), so the truncation →
  * fallback step is covered by the same table rather than beside it.
  *
  * The expected result is written out for `enforce` + complete. The other
  * columns follow from rules the table asserts on every row: shadow enforces
- * the regex result; a truncated CALL falls back to it; and an envelope whose
- * only cut was context (the human's words, the agent's last message) is
- * treated exactly like a complete one, because it hides nothing of the call.
+ * the regex result, and a truncated envelope — whatever was cut: the call,
+ * the human's words or the agent's last message — falls back to it (§4).
  */
 import { describe, expect, it } from "vitest";
 import { combineTwoTier, regexOnly, type JevMode, type JevReview, type RegexVerdict } from "../../../src/hooks/semantic/combine";
@@ -39,6 +38,7 @@ function semOutcome(opts: {
   decision?: SemanticVerdict["decision"];
   reason?: string | null;
   policies?: Record<string, SemVerdict>;
+  /** Default 0.05: the probe was asked and came back low. `null`: it was not asked. */
   injection?: number | null;
   truncated?: boolean;
   via?: "cloudflare" | "none";
@@ -60,7 +60,7 @@ function semOutcome(opts: {
       decision: opts.decision ?? "allow",
       reason: opts.reason ?? null,
       outcomes,
-      injectionSuspected: opts.injection ?? null,
+      injectionSuspected: opts.injection === undefined ? 0.05 : opts.injection,
       scopeWithinRequest: null,
       beyondTask: opts.beyondTask ?? false,
     },
@@ -69,7 +69,6 @@ function semOutcome(opts: {
     inputTokens: 100,
     questionCount: outcomes.length,
     truncated: opts.truncated ?? false,
-    requestTruncated: opts.truncated ?? false,
     redactions: 0,
     model: "jev-1.13.0",
     modelVerified: true,
@@ -78,16 +77,11 @@ function semOutcome(opts: {
 }
 
 function degradedOutcome(reason: string, truncated = false): SemanticOutcome {
-  return { status: "degraded", reason, latencyMs: 1500, questionCount: 3, truncated, requestTruncated: truncated };
+  return { status: "degraded", reason, latencyMs: 1500, questionCount: 3, truncated };
 }
 
-/** complete: nothing cut; context: only the human's words / agent message cut; call: the judged call cut. */
-type Truncation = "complete" | "context" | "call";
-const withTruncation = (o: SemanticOutcome, t: Truncation): SemanticOutcome => ({
-  ...o,
-  truncated: t !== "complete",
-  requestTruncated: t === "call",
-});
+type Truncation = "complete" | "truncated";
+const withTruncation = (o: SemanticOutcome, t: Truncation): SemanticOutcome => ({ ...o, truncated: t === "truncated" });
 
 // ── The table ────────────────────────────────────────────────────────────────
 
@@ -200,6 +194,18 @@ const ROWS: Row[] = [
     enforce: { decision: "deny", names: [RRO], cleared: [] },
   },
   {
+    id: "injection probe NOT asked (no human message recorded) → every clear withheld",
+    verdicts: [reviewable(RRO, "deny", ["read-outside-workspace"]), reviewable(AMEND, "instruct", ["git-history-rewrite"])],
+    outcome: semOutcome({ injection: null, policies: { "read-outside-workspace": "none", "git-history-rewrite": "none" } }),
+    enforce: { decision: "deny", names: [RRO], cleared: [] },
+  },
+  {
+    id: "injection probe NOT asked, reviewable instruct only → it stands",
+    verdicts: [reviewable(AMEND, "instruct", ["git-history-rewrite"])],
+    outcome: semOutcome({ injection: null, policies: { "git-history-rewrite": "none" } }),
+    enforce: { decision: "instruct", names: [AMEND], cleared: [] },
+  },
+  {
     id: "injection probe below threshold → clears apply",
     verdicts: [reviewable(RRO, "deny", ["read-outside-workspace"])],
     outcome: semOutcome({ injection: 0.4, policies: { "read-outside-workspace": "none" } }),
@@ -290,14 +296,14 @@ const ROWS: Row[] = [
 ];
 
 const MODES: JevMode[] = ["enforce", "shadow"];
-const TRUNCATED: Truncation[] = ["complete", "context", "call"];
+const TRUNCATED: Truncation[] = ["complete", "truncated"];
 
 function reviewFor(row: Row, truncated: Truncation): JevReview {
   if (!row.outcome) return { kind: "not-consulted" };
   return toReview(withTruncation(row.outcome, truncated));
 }
 
-describe("combine table (§4) — every row × shadow/enforce × complete/context-cut/call-cut", () => {
+describe("combine table (§4) — every row × shadow/enforce × complete/truncated", () => {
   for (const row of ROWS) {
     for (const mode of MODES) {
       for (const truncated of TRUNCATED) {
@@ -308,7 +314,7 @@ describe("combine table (§4) — every row × shadow/enforce × complete/contex
           const names = out.final.entries.map((e) => e.policyName);
 
           const hardDecided = row.outcome === null;
-          const fallback = !hardDecided && (row.fallback !== undefined || truncated === "call");
+          const fallback = !hardDecided && (row.fallback !== undefined || truncated === "truncated");
           const answered = !hardDecided && !fallback;
 
           // What is ENFORCED.
@@ -358,10 +364,9 @@ describe("combine table (§4) — every row × shadow/enforce × complete/contex
     const answeredRows = ROWS.filter((r) => r.outcome !== null && r.fallback === undefined);
     expect(hardRows.length).toBe(2);
     expect(degradedRows.length).toBe(10);
-    expect(answeredRows.length).toBe(22);
-    // Every answered row also runs with its call cut (the truncation → fallback
-    // row) and with only its context cut (which must change nothing).
-    expect(ROWS.length * MODES.length * TRUNCATED.length).toBe(204);
+    expect(answeredRows.length).toBe(24);
+    // Every answered row also runs truncated (the truncation → fallback row).
+    expect(ROWS.length * MODES.length * TRUNCATED.length).toBe(144);
     // The four degraded causes §10 gate 5 names must each be a row.
     for (const cause of ["timeout", "http-429", "out-of-credits", "model-mismatch"]) {
       expect(degradedRows.map((r) => r.fallback)).toContain(cause);
@@ -418,5 +423,71 @@ describe("fallbackCode", () => {
   it("never passes through free text", () => {
     expect(fallbackCode("Something Weird Happened")).toBe("error");
     expect(fallbackCode("")).toBe("error");
+  });
+});
+
+describe("the clear rule, on hand-built reviews", () => {
+  const answered = (over: Partial<Extract<JevReview, { kind: "answered" }>> = {}): JevReview => ({
+    kind: "answered",
+    decision: "allow",
+    reason: null,
+    policyName: "semantic/jev",
+    asked: ["read-outside-workspace"],
+    clear: ["read-outside-workspace"],
+    injectionAsked: true,
+    injected: false,
+    latencyMs: 10,
+    model: "jev-1.13.0",
+    ...over,
+  });
+  const verdicts = [reviewable(RRO, "deny", ["read-outside-workspace"])];
+
+  it("clears when the reviewer was asked, came back clear, and injection was measured low", () => {
+    const out = combineTwoTier(verdicts, answered(), "enforce");
+    expect(out.cleared).toEqual([RRO]);
+    expect(out.final.decision).toBe("allow");
+  });
+
+  it("a reviewer reported clear but NOT asked does not clear", () => {
+    const out = combineTwoTier(verdicts, answered({ asked: [] }), "enforce");
+    expect(out.cleared).toEqual([]);
+    expect(out.final).toEqual(regexOnly(verdicts));
+  });
+
+  it("a reviewer asked but not clear does not clear", () => {
+    const out = combineTwoTier(verdicts, answered({ clear: [] }), "enforce");
+    expect(out.cleared).toEqual([]);
+    expect(out.final.decision).toBe("deny");
+  });
+
+  it("an unasked injection probe withholds every clear", () => {
+    const out = combineTwoTier(verdicts, answered({ injectionAsked: false }), "enforce");
+    expect(out.cleared).toEqual([]);
+    expect(out.final).toEqual(regexOnly(verdicts));
+    expect(out.activity.jevCleared).toBeUndefined();
+  });
+
+  it("a held injection probe withholds every clear", () => {
+    const out = combineTwoTier(verdicts, answered({ injected: true }), "enforce");
+    expect(out.cleared).toEqual([]);
+    expect(out.final.decision).toBe("deny");
+  });
+});
+
+describe("toReview", () => {
+  it("records whether the injection probe was asked", () => {
+    const asked = toReview(semOutcome({ injection: 0.1, policies: { "secret-exposure": "none" } }));
+    const notAsked = toReview(semOutcome({ injection: null, policies: { "secret-exposure": "none" } }));
+    expect(asked).toMatchObject({ kind: "answered", injectionAsked: true, injected: false });
+    expect(notAsked).toMatchObject({ kind: "answered", injectionAsked: false, injected: false });
+  });
+
+  it("nothing sent → nothing asked, injection included", () => {
+    expect(toReview(semOutcome({ via: "none", injection: 0.1 }))).toMatchObject({ asked: [], clear: [], injectionAsked: false });
+  });
+
+  it("any truncation of the envelope is a fallback, with Jev's decision kept for the record", () => {
+    const out = toReview({ ...semOutcome({ decision: "instruct", policies: { "secret-exposure": "instruct" } }), truncated: true });
+    expect(out).toEqual({ kind: "fallback", reason: "truncated", latencyMs: 42, model: "jev-1.13.0", decision: "instruct" });
   });
 });

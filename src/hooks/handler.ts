@@ -157,6 +157,16 @@ export interface EvaluateHookEventOptions {
    * written for.
    */
   fallbackCwd?: string;
+  /**
+   * The warm worker's hook into its request queue. Called at most once, and
+   * only on the two-tier path, at the point this evaluation stops reading the
+   * process-global policy registry and starts waiting on Jev's network answer
+   * — so the next queued hook can run instead of every hook on the machine
+   * queueing behind that round trip. After it is called nothing in this
+   * evaluation reads the registry again. The one-shot path has no queue and
+   * leaves it unset.
+   */
+  releaseRegistry?: () => void;
 }
 
 /**
@@ -214,11 +224,15 @@ function jevForcedOff(opts: EvaluateHookEventOptions | undefined): boolean {
   return process.env.FAILPROOFAI_EVALUATOR === "legacy" || !!opts?.forceDecision;
 }
 
-/** The BYOK config, or null (Jev off). A config that cannot be read is off, never a failure. */
-async function readJevConfig(): Promise<JevConfig | null> {
+/**
+ * The BYOK config (with the build's default mode, D2), or null (Jev off). A
+ * config that cannot be read is off, never a failure.
+ */
+async function readJevConfig(): Promise<{ config: JevConfig; defaultMode: TwoTierReview["mode"] } | null> {
   try {
-    const { loadJevConfig } = await import("./semantic/jev-config");
-    return loadJevConfig();
+    const { loadJevConfig, DEFAULT_JEV_MODE } = await import("./semantic/jev-config");
+    const config = loadJevConfig();
+    return config ? { config, defaultMode: DEFAULT_JEV_MODE } : null;
   } catch (err) {
     hookLogWarn(
       `Jev config could not be read (${err instanceof Error ? err.message : String(err)}); the regex engine decides alone`,
@@ -242,8 +256,9 @@ async function startTwoTier(
   if (!JEV_GATE_EVENTS.has(canonicalEventType)) return null;
   if (typeof parsed.tool_name !== "string" || parsed.tool_name.length === 0) return null;
   if (jevForcedOff(opts) || activePause) return null;
-  const cfg = await readJevConfig();
-  if (!cfg) return null;
+  const loaded = await readJevConfig();
+  if (!loaded) return null;
+  const cfg = loaded.config;
   try {
     const { startJevReview } = await import("./semantic/jev-review");
     return startJevReview(cfg, {
@@ -260,7 +275,7 @@ async function startTwoTier(
     // as one — every regex verdict hard, the regex result final.
     hookLogWarn(`Jev review could not start (${err instanceof Error ? err.message : String(err)})`);
     return {
-      mode: cfg.mode === "shadow" ? "shadow" : "enforce",
+      mode: cfg.mode === "shadow" || cfg.mode === "enforce" ? cfg.mode : loaded.defaultMode,
       review: Promise.resolve({ kind: "fallback", reason: "unavailable", latencyMs: null, model: null, decision: null }),
       abort: () => {},
       authorityOf: () => ({ authority: "hard", reviewedBy: [] }),
@@ -778,10 +793,21 @@ export async function evaluateHookEvent(
     // the two (see semantic/combine.ts). Otherwise this is null and the call
     // below is exactly the regex-only evaluation it always was.
     const twoTier = await startTwoTier(canonicalEventType, parsed, session, cli, opts, activePause);
+    // On the two-tier path the registry is read for the activity row BEFORE
+    // evaluating, because evaluatePolicies may hand the registry back to the
+    // warm worker's queue (`releaseRegistry`) while it waits on Jev, and the
+    // next request's clearPolicies() could then run under this one. Same
+    // cached lookup, same answer: nothing between here and there registers.
+    const matchedBeforeRelease = twoTier
+      ? getPoliciesForEvent(canonicalEventType, parsed.tool_name as string | undefined).map((p) => p.name)
+      : null;
 
     // Evaluate policies (use canonical PascalCase event type)
     const result = twoTier
-      ? await evaluatePolicies(canonicalEventType, parsed, session, config, twoTier)
+      ? await evaluatePolicies(canonicalEventType, parsed, session, config, {
+          ...twoTier,
+          releaseRegistry: opts?.releaseRegistry,
+        })
       : await evaluatePolicies(canonicalEventType, parsed, session, config);
     const durationMs = Math.round(performance.now() - startTime);
     hookLogInfo(`result=${result.decision} policy=${result.policyName ?? "none"} duration=${durationMs}ms`);
@@ -793,9 +819,9 @@ export async function evaluateHookEvent(
     // allow — so without this a row cannot tell "your policy ran and allowed"
     // from "no policy covers this event". The lookup is the same cached call
     // the evaluator already made, so it costs nothing.
-    const matchedPolicies = getPoliciesForEvent(canonicalEventType, parsed.tool_name as string | undefined).map(
-      (p) => p.name,
-    );
+    const matchedPolicies =
+      matchedBeforeRelease ??
+      getPoliciesForEvent(canonicalEventType, parsed.tool_name as string | undefined).map((p) => p.name);
 
     // Persist activity to disk (visible in /policies activity tab)
     const activityEntry = {

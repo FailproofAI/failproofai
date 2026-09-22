@@ -22,7 +22,14 @@
  * its `reviewedBy` was among the ones put to Jev for this call AND came back
  * `none` or `overridden`. A name Jev was not asked about — its precondition was
  * false, the tool class did not apply, the name is misspelled — keeps the
- * regex verdict standing. Suspected injection withdraws every clear.
+ * regex verdict standing.
+ *
+ * Suspected injection withdraws every clear — and so does an injection probe
+ * that was never asked. A clear is only as good as the check that the call is
+ * not acting on text planted by a repo, a tool result or the agent itself;
+ * v1 asks that probe only when a human message was recorded, so a call with
+ * no captured intent (the first call of a session, every call on a CLI with
+ * no prompt event) clears nothing.
  */
 import type { PolicyAuthority } from "../policy-types";
 
@@ -69,6 +76,11 @@ export type JevReview =
       asked: readonly string[];
       /** Of `asked`, the ones whose outcome was `none` or `overridden`. */
       clear: readonly string[];
+      /**
+       * The injection probe was in the request and answered. False → no clear:
+       * an unmeasured injection is not an absent one.
+       */
+      injectionAsked: boolean;
       /** The injection probe held: every clear is withdrawn. */
       injected: boolean;
       /** Null when nothing had to be sent (no semantic policy applied). */
@@ -87,6 +99,14 @@ export interface TwoTierReview {
   review: Promise<JevReview>;
   /** Abort the in-flight request (a hard deny decided). No-op once settled. */
   abort(): void;
+  /**
+   * Called once, right before the evaluator awaits `review` — by then every
+   * read of the process-global policy registry for this call is done. The
+   * daemon's warm worker serializes requests around that registry, and uses
+   * this to let the next queued request run while this one waits on the
+   * network instead of holding every hook on the machine behind it.
+   */
+  releaseRegistry?: () => void;
   /** Effective authority + the reviewing semantic policies (empty unless reviewable). */
   authorityOf(p: { name: string; authority?: PolicyAuthority; reviewedBy?: string[] }): {
     authority: PolicyAuthority;
@@ -178,9 +198,10 @@ export function combineTwoTier(
 
   const asked = new Set(review.asked);
   const clearSet = new Set(review.clear);
-  const cleared = review.injected
-    ? []
-    : verdicts.filter((v) => clears(v, asked, clearSet)).map((v) => v.policyName);
+  const cleared =
+    review.injected || !review.injectionAsked
+      ? []
+      : verdicts.filter((v) => clears(v, asked, clearSet)).map((v) => v.policyName);
   const activity: JevActivityFields = {
     evaluator: "jev",
     jevDecision: review.decision,

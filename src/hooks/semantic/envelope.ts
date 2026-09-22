@@ -92,16 +92,7 @@ function cleanValue(value: unknown, acc: Accumulator, depth = 0): unknown {
 
 export interface Envelope {
   state: Record<string, unknown>;
-  /** Anything was cut: the call, the human's words, or the agent's last message. */
   truncated: boolean;
-  /**
-   * The CALL being judged was cut — its input, its command, or the shell
-   * comments removed from it. This is the padding case the two-tier combine
-   * falls back on: Jev did not see all of what would run. Capping the human's
-   * words or the agent's message hides nothing of the call, so it does not
-   * set this.
-   */
-  requestTruncated: boolean;
   redactions: number;
 }
 
@@ -129,9 +120,6 @@ export function buildEnvelope(
     // security` is the whole of the simplest injection there is.
     input.command = cleanString(scanned.withoutComments, MAX_STRING_CHARS, acc);
   }
-  const removedComments = scanned?.commentsRemoved ? cleanString(scanned.comments.join("\n"), 600, acc) : null;
-  // Everything above is the call; everything below is context.
-  const requestTruncated = acc.truncated;
 
   const said = userSaid
     .slice(-MAX_USER_MESSAGES)
@@ -169,10 +157,12 @@ export function buildEnvelope(
       // Out of the command, so they cannot argue with the probes that judge
       // it — but still in view, because "# approved by security" is exactly
       // what the injection probe exists to see.
-      ...(removedComments !== null ? { shell_comments_removed: true, removed_shell_comments: removedComments } : {}),
+      ...(scanned?.commentsRemoved
+        ? { shell_comments_removed: true, removed_shell_comments: cleanString(scanned.comments.join("\n"), 600, acc) }
+        : {}),
       ...(acc.truncated ? { truncated: true } : {}),
     },
   };
 
-  return { state, truncated: acc.truncated, requestTruncated, redactions: acc.redactions };
+  return { state, truncated: acc.truncated, redactions: acc.redactions };
 }

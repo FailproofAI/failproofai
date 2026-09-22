@@ -194,6 +194,10 @@ export async function evaluatePolicies(
     twoTier.abort();
     review = { kind: "not-consulted" };
   } else {
+    // Nothing from here on reads the policy registry (the verdicts, their
+    // authority and every policy name are already captured), so the warm
+    // worker may start the next queued hook while this one waits on Jev.
+    twoTier.releaseRegistry?.();
     review = await twoTier.review;
   }
   const combined = combineTwoTier(collected.verdicts, review, twoTier.mode);

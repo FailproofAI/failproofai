@@ -60,9 +60,26 @@ export function resolveMode(cfg: JevConfig): JevMode {
   return cfg.mode === "shadow" || cfg.mode === "enforce" ? cfg.mode : DEFAULT_JEV_MODE;
 }
 
-function resolveTimeout(cfg: JevConfig): number {
+/**
+ * Bounds on how long one call may wait for Jev — the same bounds T1's config
+ * loader enforces, applied again here because this is the component that
+ * knows what they protect: every millisecond is added to the tool call, and
+ * the daemon client gives a whole hook 30 s before it fail-closed denies.
+ */
+export const MIN_JEV_TIMEOUT_MS = 100;
+export const MAX_JEV_TIMEOUT_MS = 10_000;
+/**
+ * How long past its own timeout a review may run before it is abandoned as a
+ * timeout anyway: a transport that ignores its abort signal must not be able
+ * to hold a hook open.
+ */
+export const JEV_DEADLINE_GRACE_MS = 250;
+
+/** The config's timeout, clamped to the bounds above; anything unusable → the 1500 ms default. */
+export function resolveTimeout(cfg: JevConfig): number {
   const t = cfg.timeoutMs;
-  return typeof t === "number" && Number.isFinite(t) && t > 0 ? t : DEFAULT_JEV_TIMEOUT_MS;
+  if (typeof t !== "number" || !Number.isFinite(t) || t <= 0) return DEFAULT_JEV_TIMEOUT_MS;
+  return Math.min(MAX_JEV_TIMEOUT_MS, Math.max(MIN_JEV_TIMEOUT_MS, t));
 }
 
 /** The semantic policy an attributable Jev verdict is filed under. */
@@ -92,21 +109,19 @@ export function toReview(outcome: SemanticOutcome): JevReview {
   const sent = outcome.via !== "none";
   const latencyMs = sent ? outcome.latencyMs : null;
   const model = sent ? outcome.model : null;
-  // A truncated call means Jev did not see all of what would run: padding a
-  // command must not be a way to hide its dangerous part, so the regex result
-  // stands, every deny counting. Jev's answer is still recorded.
-  //
-  // Only the CALL counts. The envelope also caps the human's words and the
-  // agent's last message (1,200 chars each); cutting those hides nothing of
-  // the call, and treating it as truncation would hand every call made after
-  // a long prompt — or after any long agent message — back to the regex
-  // engine alone. Measured on the 1,332 labelled inputs: 100 calls are cut
-  // themselves; 176 would be flagged once the (cleaned) human turns count.
-  if (outcome.requestTruncated) {
+  // §4: a truncated ENVELOPE means Jev judged less than the whole picture —
+  // the call, the human's words or the agent's last message was cut — so the
+  // regex result stands, every deny counting. Padding a command must not be a
+  // way to hide its dangerous part, and a clear resting on half of what the
+  // human typed is not a clear. Jev's answer is still recorded.
+  if (outcome.truncated) {
     return { kind: "fallback", reason: "truncated", latencyMs, model, decision: outcome.verdict.decision };
   }
   const outcomes = outcome.verdict.outcomes;
-  const injection = outcome.verdict.injectionSuspected;
+  // `null` when the injection probe was not in the request: v1 asks it only
+  // when there is a recorded human message to judge the call against (never
+  // on Hermes, which has no prompt event; never before the first prompt).
+  const injection = sent ? outcome.verdict.injectionSuspected : null;
   return {
     kind: "answered",
     decision: outcome.verdict.decision,
@@ -117,6 +132,7 @@ export function toReview(outcome: SemanticOutcome): JevReview {
     // when a request was actually made.
     asked: sent ? outcomes.map((o) => o.policy) : [],
     clear: sent ? outcomes.filter((o) => o.verdict === "none" || o.verdict === "overridden").map((o) => o.policy) : [],
+    injectionAsked: injection !== null,
     injected: injection !== null && injection >= DEFAULT_THRESHOLDS_V1.injection,
     latencyMs,
     model,
@@ -173,11 +189,14 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
     agentLastMessage: intent.agentLastMessage,
   };
 
-  const review = evaluateSemantic(input, {
+  const timeoutMs = resolveTimeout(cfg);
+  /** Set once the backstop below gave up on the answer: a late one is logged, never applied. */
+  let abandoned = false;
+  const answered = evaluateSemantic(input, {
     transport,
     via: route.via,
     model: route.model,
-    timeoutMs: resolveTimeout(cfg),
+    timeoutMs,
     intent: "v1",
     v1: { thresholds: DEFAULT_THRESHOLDS_V1 },
     signal: controller.signal,
@@ -193,12 +212,31 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
             sessionId: call.sessionId,
             cli: call.cli,
             eventType: call.eventType,
-            applied: review.kind !== "answered" ? "legacy-fallback" : mode === "shadow" ? "shadow" : "two-tier",
+            applied: abandoned || review.kind !== "answered" ? "legacy-fallback" : mode === "shadow" ? "shadow" : "two-tier",
           }),
         );
       }
       return review;
     })
     .catch((): JevReview => ({ kind: "fallback", reason: "error", latencyMs: null, model: null, decision: null }));
-  return handle(review);
+
+  // The backstop: `evaluateSemantic` times out through the transport's
+  // abort signal, which only works if the transport honours it. Whatever the
+  // transport does, the review settles shortly after the configured timeout.
+  // Deliberately NOT unref'd: in a one-shot hook process a transport stuck on
+  // nothing the event loop can see would otherwise let the process exit with
+  // the review still pending — an empty stdout, which every CLI reads as allow.
+  let deadline: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<JevReview>((resolve) => {
+    deadline = setTimeout(() => {
+      abandoned = true;
+      controller.abort();
+      resolve({ kind: "fallback", reason: "timeout", latencyMs: timeoutMs + JEV_DEADLINE_GRACE_MS, model: null, decision: null });
+    }, timeoutMs + JEV_DEADLINE_GRACE_MS);
+  });
+  return handle(
+    Promise.race([answered, expired]).finally(() => {
+      if (deadline !== undefined) clearTimeout(deadline);
+    }),
+  );
 }

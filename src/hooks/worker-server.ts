@@ -17,7 +17,10 @@
  * evaluations could have request B's `clearPolicies()` wipe request A's
  * in-flight registration. Serializing keeps the existing registry code
  * correct with zero changes; a worker_threads/process pool is a valid
- * future enhancement if this becomes a real throughput bottleneck.
+ * future enhancement if this becomes a real throughput bottleneck. The one
+ * exception is the network wait of a two-tier (Jev) review, which happens
+ * after the registry is no longer read and so does not hold the queue (see
+ * `enqueue`).
  */
 import { createConnection, createServer, type Server, type Socket } from "node:net";
 import { existsSync, unlinkSync } from "node:fs";
@@ -97,11 +100,22 @@ const TASK_DEADLINE_MS = 60_000;
  * worker whose `try_wait()` reports it gone), which costs one cold start and
  * denies the in-flight requests — the same fail-closed outcome they were headed
  * for anyway, but recovered on the next call instead of never.
+ *
+ * A task may hand its place in the chain back early by calling `release`:
+ * the next request starts while the task finishes on its own. Only the
+ * two-tier (Jev) path does, at the point it stops reading the registry and
+ * starts waiting on Jev's network answer (`EvaluateHookEventOptions.
+ * releaseRegistry`). Without that, every hook on the machine — PostToolUse,
+ * UserPromptSubmit, other agents' calls — would queue behind each gated call's
+ * round trip, and a slow or unreachable provider would push the calls at the
+ * back of the queue past the client's 30 s budget into fail-closed denies.
+ * A released task no longer holds the registry, so the wedge deadline stops
+ * applying to it; its own Jev wait is bounded by the configured timeout.
  */
 const WEDGED_EXIT_CODE = 75;
 
 let processingChain: Promise<void> = Promise.resolve();
-function enqueue(task: () => Promise<void>): void {
+function enqueue(task: (release: () => void) => Promise<void>): void {
   processingChain = processingChain
     .then(
       () =>
@@ -119,7 +133,7 @@ function enqueue(task: () => Promise<void>): void {
             clearTimeout(timer);
             settle();
           };
-          void task().then(done, done);
+          void task(done).then(done, done);
         }),
     )
     .catch(() => {});
@@ -178,13 +192,14 @@ function handleConnection(socket: Socket, shutdown: () => void): void {
       }
       const request = message;
 
-      enqueue(async () => {
+      enqueue(async (release) => {
         try {
           const result = await evaluateHookEvent(request.hookEvent, request.cli, request.stdin, {
             awaitTelemetryFlush: false,
             // Normalised here so no consumer has to know the wire spells
             // "absent" as null.
             fallbackCwd: request.cwd ?? undefined,
+            releaseRegistry: release,
           });
           socket.write(
             encodeFrame({

@@ -82,8 +82,6 @@ export type SemanticOutcome =
       inputTokens: number | null;
       questionCount: number;
       truncated: boolean;
-      /** The judged call itself was cut; see `Envelope.requestTruncated`. */
-      requestTruncated: boolean;
       redactions: number;
       model: string;
       /** False when the provider did not say which Jev version answered. */
@@ -97,7 +95,6 @@ export type SemanticOutcome =
       latencyMs: number;
       questionCount: number;
       truncated: boolean;
-      requestTruncated: boolean;
     };
 
 function envNumber(name: string, fallback: number): number {
@@ -130,14 +127,7 @@ export async function evaluateSemantic(input: SemanticInput, opts: SemanticOptio
   try {
     prepared = prepareSemantic(input, opts);
   } catch (err) {
-    return {
-      status: "degraded",
-      reason: `prepare: ${err instanceof Error ? err.message : String(err)}`,
-      latencyMs: elapsed(),
-      questionCount: 0,
-      truncated: false,
-      requestTruncated: false,
-    };
+    return { status: "degraded", reason: `prepare: ${err instanceof Error ? err.message : String(err)}`, latencyMs: elapsed(), questionCount: 0, truncated: false };
   }
   const { selected, envelope, compiled } = prepared;
   const questionCount = Object.keys(compiled.request.questions).length;
@@ -158,7 +148,6 @@ export async function evaluateSemantic(input: SemanticInput, opts: SemanticOptio
       inputTokens: null,
       questionCount: 0,
       truncated: envelope.truncated,
-      requestTruncated: envelope.requestTruncated,
       redactions: envelope.redactions,
       model: compiled.request.model,
       modelVerified: true,
@@ -172,7 +161,6 @@ export async function evaluateSemantic(input: SemanticInput, opts: SemanticOptio
     latencyMs: elapsed(),
     questionCount,
     truncated: envelope.truncated,
-    requestTruncated: envelope.requestTruncated,
   });
 
   if (JSON.stringify(compiled.request).length > MAX_REQUEST_CHARS) return degraded("request-too-large");
@@ -195,7 +183,6 @@ export async function evaluateSemantic(input: SemanticInput, opts: SemanticOptio
       inputTokens: typeof response.usage?.input_tokens === "number" ? response.usage.input_tokens : null,
       questionCount,
       truncated: envelope.truncated,
-      requestTruncated: envelope.requestTruncated,
       redactions: envelope.redactions,
       model: response.model,
       modelVerified: response.modelUnverified !== true,
@@ -230,8 +217,8 @@ export interface VerdictLogMeta {
   /**
    * What the handler did with the outcome: combined it with the regex results
    * (`two-tier`), logged it while enforcing the regex result (`shadow`), or
-   * kept the regex result because Jev was unavailable or the call it judged
-   * was truncated (`legacy-fallback`).
+   * kept the regex result because Jev was unavailable or the envelope it
+   * judged was truncated (`legacy-fallback`).
    */
   applied: "two-tier" | "shadow" | "legacy-fallback";
 }
@@ -250,7 +237,6 @@ export function verdictLogRow(input: SemanticInput, outcome: SemanticOutcome, me
     latencyMs: outcome.latencyMs,
     questionCount: outcome.questionCount,
     truncated: outcome.truncated,
-    requestTruncated: outcome.requestTruncated,
   };
   if (outcome.status === "degraded") return { ...base, status: "degraded", reason: outcome.reason };
   return {

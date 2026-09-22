@@ -25,7 +25,10 @@ vi.mock("../../src/hooks/hook-telemetry", () => ({
   flushHookTelemetry: vi.fn(() => Promise.resolve()),
 }));
 
-const JEV_TIMEOUT_MS = 1_200;
+// Long enough that the three hooks queued behind the gated call finish well
+// inside it even on a loaded machine (1.2 s was seen to flake at load ~12);
+// serialized, they would still come after it however long it is.
+const JEV_TIMEOUT_MS = 2_500;
 const CFG: JevConfig = { provider: "cloudflare", apiKey: "not-a-real-key", accountId: "0".repeat(32), timeoutMs: JEV_TIMEOUT_MS };
 vi.mock("../../src/hooks/semantic/jev-config", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/hooks/semantic/jev-config")>();

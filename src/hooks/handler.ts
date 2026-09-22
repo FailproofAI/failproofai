@@ -33,6 +33,7 @@ import { evaluatePolicies } from "./policy-evaluator";
 // Types only: the semantic (Jev) modules are loaded with a dynamic import, and
 // only once a Jev config exists, so an unconfigured machine never loads them.
 import type { TwoTierReview } from "./semantic/combine";
+import type { JevActivityFields } from "./semantic/combine";
 import type { JevConfig } from "./semantic/jev-config";
 import { clearPolicies, registerPolicy, getPoliciesForEvent } from "./policy-registry";
 import { loadAllCustomHooks } from "./custom-hooks-loader";
@@ -40,6 +41,7 @@ import type { CustomHook } from "./policy-types";
 import { persistHookActivity } from "./hook-activity-store";
 import { deliveryHealth, deliveryHealthLine } from "./delivery-health";
 import { trackHookEvent, flushHookTelemetry } from "./hook-telemetry";
+import * as hookTelemetry from "./hook-telemetry";
 import { resolveCwd } from "./resolve-cwd";
 import { resolvePermissionMode } from "./resolve-permission-mode";
 import { resolveTranscriptPath } from "./resolve-transcript-path";
@@ -282,6 +284,26 @@ async function startTwoTier(
       abort: () => {},
       authorityOf: () => ({ authority: "hard", reviewedBy: [] }),
     };
+  }
+}
+
+/**
+ * The Jev properties for `hook_policy_triggered`, from T8's
+ * `jevTelemetryProperties` (decisions, reason codes, policy and model names,
+ * a latency — never command or prompt text). `{}` when the two-tier path did
+ * not run, so an unconfigured machine's event is unchanged, and `{}` when the
+ * helper is not in this build (it is T8's, not a §7 contract) or throws:
+ * telemetry never costs a hook its answer.
+ */
+function jevTelemetry(activity: JevActivityFields | undefined): Record<string, unknown> {
+  if (!activity) return {};
+  try {
+    const build = (hookTelemetry as unknown as { jevTelemetryProperties?: (entry: JevActivityFields) => unknown })
+      .jevTelemetryProperties;
+    const props = typeof build === "function" ? build(activity) : null;
+    return props && typeof props === "object" && !Array.isArray(props) ? (props as Record<string, unknown>) : {};
+  } catch {
+    return {};
   }
 }
 
@@ -915,6 +937,7 @@ export async function evaluateHookEvent(
           convention_scope: conventionScope,
           has_custom_params: hasCustomParams,
           param_keys_overridden: paramKeysOverridden,
+          ...jevTelemetry(result.twoTier?.activity),
         });
         // Deny/instruct is exactly the response the daemon's warm worker
         // needs to return fast — a live network POST to PostHog on this path

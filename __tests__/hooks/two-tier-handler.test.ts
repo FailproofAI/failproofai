@@ -127,6 +127,28 @@ vi.mock("../../src/hooks/builtin-policies", async (importOriginal) => {
   };
 });
 
+/**
+ * Telemetry: every event recorded, then passed through to the real sender
+ * unchanged. `jevTelemetryProperties` is T8's (not a §7 contract, absent from
+ * the stub), faked here so the handler's spread of it can be pinned.
+ */
+const telemetryEvents: Array<{ event: string; props: Record<string, unknown> }> = [];
+vi.mock("../../src/hooks/hook-telemetry", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/hooks/hook-telemetry")>();
+  return {
+    ...actual,
+    trackHookEvent: vi.fn((id: string, event: string, props?: Record<string, unknown>) => {
+      telemetryEvents.push({ event, props: props ?? {} });
+      return actual.trackHookEvent(id, event, props);
+    }),
+    jevTelemetryProperties: vi.fn((entry: Record<string, unknown>) => ({
+      jev_evaluator: entry.evaluator,
+      jev_mode: entry.jevMode,
+      ...(entry.jevFallbackReason ? { jev_fallback_reason: entry.jevFallbackReason } : {}),
+    })),
+  };
+});
+
 vi.mock("../../src/hooks/cloud-managed-policies", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/hooks/cloud-managed-policies")>();
   return { ...actual, readActiveCloudManagedPolicies: vi.fn(actual.readActiveCloudManagedPolicies) };
@@ -209,6 +231,7 @@ beforeEach(() => {
   extraReviewable = {};
   fakeCache.on = false;
   fakeCache.entries.clear();
+  telemetryEvents.length = 0;
   vi.mocked(startJevReview).mockClear();
   vi.mocked(captureIntent).mockClear();
   vi.mocked(transportForConfig).mockClear();
@@ -988,5 +1011,43 @@ describe("a Jev fallback stays off the hook's stderr", () => {
       spy.mockRestore();
     }
     expect(writes.filter((w) => /jev/i.test(w))).toEqual([]);
+  });
+});
+
+describe("hook_policy_triggered carries T8's Jev properties on the two-tier path only", () => {
+  const triggered = () => telemetryEvents.filter((e) => e.event === "hook_policy_triggered").map((e) => e.props);
+  const jevKeys = (props: Record<string, unknown>) => Object.keys(props).filter((k) => k.startsWith("jev_"));
+
+  it("a two-tier deny: the Jev properties are spread into the event", async () => {
+    jevConfig = { ...CFG, timeoutMs: 25 };
+    respond = hang;
+    await readFile(join(home, "other", "notes.txt"));
+    expect(triggered()).toHaveLength(1);
+    expect(triggered()[0]).toMatchObject({
+      policy_name: "failproofai/block-read-outside-cwd",
+      decision: "deny",
+      jev_evaluator: "jev-fallback",
+      jev_mode: "enforce",
+      jev_fallback_reason: "timeout",
+    });
+  });
+
+  it("unconfigured: the event is exactly what it was, no Jev key", async () => {
+    await readFile(join(home, "other", "notes.txt"));
+    expect(triggered()).toHaveLength(1);
+    expect(jevKeys(triggered()[0])).toEqual([]);
+  });
+
+  it("a helper that throws costs nothing: the event still goes out, without Jev keys", async () => {
+    const telemetry = await import("../../src/hooks/hook-telemetry");
+    vi.mocked((telemetry as unknown as { jevTelemetryProperties: () => unknown }).jevTelemetryProperties).mockImplementationOnce(() => {
+      throw new Error("bad row");
+    });
+    jevConfig = { ...CFG, timeoutMs: 25 };
+    respond = hang;
+    const { outcome } = await readFile(join(home, "other", "notes.txt"));
+    expect(outcome.evaluation?.decision).toBe("deny");
+    expect(triggered()).toHaveLength(1);
+    expect(jevKeys(triggered()[0])).toEqual([]);
   });
 });

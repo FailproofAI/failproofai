@@ -8,6 +8,8 @@ import {
   computeJevStats,
   formatJevStats,
   jevStats,
+  MAX_JEV_STATS_WINDOW_MS,
+  parseJevStatsWindow,
   percentile,
   type JevStats,
 } from "../../../src/hooks/semantic/jev-stats";
@@ -253,5 +255,20 @@ describe("formatJevStats", () => {
     const out = formatJevStats(s) + JSON.stringify(s);
     expect(out).not.toContain("payroll");
     expect(out).not.toContain("curl");
+  });
+});
+
+describe("parseJevStatsWindow", () => {
+  it("accepts minutes, hours and days", () => {
+    expect(parseJevStatsWindow("30m")).toBe(30 * 60_000);
+    expect(parseJevStatsWindow("24h")).toBe(24 * HOUR);
+    expect(parseJevStatsWindow(" 7D ")).toBe(7 * 24 * HOUR);
+    expect(parseJevStatsWindow("90d")).toBe(MAX_JEV_STATS_WINDOW_MS);
+  });
+
+  it("rejects anything else rather than guessing", () => {
+    for (const bad of ["", "24", "0h", "-1h", "1.5h", "1w", "91d", "24 hours", "h"]) {
+      expect(parseJevStatsWindow(bad), bad).toBeNull();
+    }
   });
 });

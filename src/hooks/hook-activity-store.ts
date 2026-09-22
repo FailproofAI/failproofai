@@ -85,6 +85,11 @@ export interface HookActivityEntry {
    * `evaluator`: `jev` (Jev answered and the combine rules ran) or
    * `jev-fallback` (Jev was unavailable, truncated or mismatched, so the regex
    * result stood; `jevFallbackReason` says why).
+   *
+   * Validated on write by `persistHookActivity` (see `jev-activity.ts`): an
+   * invalid value is dropped field by field, and `jevFallbackReason` is stored
+   * as a short code (`timeout`, `http-429`, `error`, …), never free text. The
+   * collector ships these fields to FailproofAI Cloud.
    */
   evaluator?: "jev" | "jev-fallback";
   /** Jev's own verdict, before combining with the regex results. */

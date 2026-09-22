@@ -18,7 +18,7 @@
  * reasons a degraded evaluation produces. Whatever the handler ends up
  * writing, it cannot write more than this.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -95,19 +95,25 @@ function expectClean(surface: string, text: string): void {
 
 describe("Jev telemetry privacy", () => {
   let testDir: string;
-  let fetchSpy: ReturnType<typeof vi.fn>;
+  // A hand-rolled fetch stub rather than vi.stubGlobal, so this file runs
+  // under both vitest and `bun test`.
+  const realFetch = globalThis.fetch;
+  let bodies: string[] = [];
   const originalEnv = { ...process.env };
 
   beforeEach(() => {
     testDir = mkdtempSync(join(tmpdir(), "jev-privacy-"));
     _resetForTest(testDir);
-    fetchSpy = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
-    vi.stubGlobal("fetch", fetchSpy);
+    bodies = [];
+    globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
+      bodies.push(String(init?.body));
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch;
     delete process.env.FAILPROOFAI_TELEMETRY_DISABLED;
   });
 
   afterEach(() => {
-    vi.unstubAllGlobals();
+    globalThis.fetch = realFetch;
     process.env = { ...originalEnv };
     _resetForTest();
     rmSync(testDir, { recursive: true, force: true });
@@ -166,7 +172,8 @@ describe("Jev telemetry privacy", () => {
         const props = jevTelemetryProperties(entry);
         expectClean("the PostHog properties", JSON.stringify(props));
         await trackHookEvent("inst-id", "hook_policy_triggered", { event_type: "PreToolUse", ...props });
-        expectClean("the PostHog request body", String(fetchSpy.mock.calls.at(-1)?.[1]?.body));
+        expect(bodies.length).toBeGreaterThan(0);
+        expectClean("the PostHog request body", bodies.at(-1)!);
 
         // 3. The dashboard summary.
         expectClean("the dashboard summary", JSON.stringify(describeJevActivity(entry)));

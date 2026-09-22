@@ -50,6 +50,23 @@ export interface JevStats {
 export type JevStatsDetail = Required<JevStats>;
 
 export const DEFAULT_JEV_STATS_WINDOW_MS = 24 * 60 * 60 * 1000;
+/** The longest window `jev status` accepts. The store is never pruned, so this bounds the read. */
+export const MAX_JEV_STATS_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
+
+const WINDOW_UNIT_MS: Record<string, number> = { m: 60_000, h: 3_600_000, d: 86_400_000 };
+
+/**
+ * Parse a `--window` value for `failproofai jev status`: a positive whole
+ * number of minutes, hours or days (`30m`, `24h`, `7d`), at most
+ * {@link MAX_JEV_STATS_WINDOW_MS}. Null for anything else, so the CLI can say
+ * what it accepts instead of guessing.
+ */
+export function parseJevStatsWindow(input: string): number | null {
+  const m = /^\s*(\d{1,5})\s*([mhd])\s*$/i.exec(input);
+  if (!m) return null;
+  const ms = Number(m[1]) * WINDOW_UNIT_MS[m[2].toLowerCase()];
+  return ms > 0 && ms <= MAX_JEV_STATS_WINDOW_MS ? ms : null;
+}
 
 /** Nearest-rank percentile of an ascending array; null when empty. */
 export function percentile(sortedAsc: ReadonlyArray<number>, p: number): number | null {

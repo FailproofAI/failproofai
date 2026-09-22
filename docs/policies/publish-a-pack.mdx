@@ -36,7 +36,7 @@ customPolicies.add({
 
 `defaultEnabled` defaults to **false** when you omit it. A plain `failproofai policies add` switches on only what you marked — installing a stranger's every policy unattended is not a decision the installer should make for its user.
 
-A policy may also declare `authority: "reviewable"` with a `reviewedBy` list, which lets the Jev semantic evaluator clear its verdict on machines that configure Jev. `failproofai publish` copies both into the manifest, and a machine reads them from there. Leave them out and the policy is hard. See [Policy authority](/policies/authority).
+A policy may also declare `authority: "reviewable"` with a `reviewedBy` list, which lets the Jev semantic evaluator clear its verdict on machines that configure Jev. `failproofai publish` copies both into the manifest, and a machine reads them from there; it refuses to build if a declaration would not be honored, such as a misspelled check name. Leave them out and the policy is hard. See [Policy authority](/policies/authority).
 
 Write as many files as you like; one per category reads well. Every file in the directory that registers policies is bundled into the single artifact a pack has to be.
 

@@ -1,0 +1,96 @@
+// @vitest-environment node
+/**
+ * The three `sk-` entries T6 added to SECRET_PATTERNS, seen from the blocking
+ * side: sanitize-api-keys now denies tool output carrying a gateway key, and
+ * nothing it allowed before that is not a key starts being denied.
+ *
+ * Key-shaped fixtures are built at runtime (see ./semantic/redaction-fixtures).
+ */
+import { describe, expect, it } from "vitest";
+import { BUILTIN_POLICIES, SECRET_PATTERNS } from "../../src/hooks/builtin-policies";
+import type { PolicyContext } from "../../src/hooks/policy-types";
+import { ALNUM, B64URL, HEX, SK, gatewayKey, prng, rnd } from "./semantic/redaction-fixtures";
+
+const rand = prng(0x5a17);
+const policy = BUILTIN_POLICIES.find((p) => p.name === "sanitize-api-keys")!;
+
+async function decide(output: unknown): Promise<{ decision: string; reason?: string }> {
+  const ctx = { eventType: "PostToolUse", payload: { tool_response: { output } }, toolName: "Bash", toolInput: {} } as unknown as PolicyContext;
+  return (await policy.fn(ctx)) as { decision: string; reason?: string };
+}
+
+describe("SECRET_PATTERNS keeps every original pattern", () => {
+  it("has the original 13 entries, unchanged and in their original order", () => {
+    // Only additions are allowed: this is what "sanitize-* only catch more" rests on.
+    const original: Array<[string, string]> = [
+      ["-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----", "private key"],
+      ["eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}", "JWT"],
+      ["Authorization:\\s*Bearer\\s+[A-Za-z0-9\\-._~+/]{20,}", "bearer token"],
+      ["(?:postgresql|postgres|mysql|mongodb(?:\\+srv)?|redis|amqps?|smtps?):\\/\\/[^@\\s]+@", "database credentials"],
+      ["sk-ant-[A-Za-z0-9\\-_]{20,}", "Anthropic API key"],
+      ["sk-proj-[A-Za-z0-9\\-_]{20,}", "OpenAI project API key"],
+      ["sk-[A-Za-z0-9]{20,}", "OpenAI API key"],
+      ["ghp_[A-Za-z0-9]{36}", "GitHub personal access token"],
+      ["github_pat_[A-Za-z0-9_]{82}", "GitHub fine-grained token"],
+      ["AKIA[A-Z0-9]{16}", "AWS access key ID"],
+      ["sk_live_[A-Za-z0-9]{24,}", "Stripe live secret key"],
+      ["sk_test_[A-Za-z0-9]{24,}", "Stripe test secret key"],
+      ["AIza[0-9A-Za-z\\-_]{35}", "Google API key"],
+    ];
+    const kept = SECRET_PATTERNS.map(([re, label]) => [re.source, label] as [string, string]).filter(([, label]) =>
+      original.some(([, l]) => l === label),
+    );
+    expect(kept).toEqual(original);
+    const added = SECRET_PATTERNS.map(([, l]) => l).filter((l) => !original.some(([, o]) => o === l));
+    expect(added).toEqual(["OpenRouter API key", "Langfuse secret key", "sk- API key"]);
+  });
+});
+
+describe("sanitize-api-keys — gateway keys", () => {
+  it("denies a 25-character gateway key wherever its separator lands", async () => {
+    for (let at = 3; at < 22; at++) {
+      for (const sep of ["-", "_"] as const) {
+        const r = await decide(`config: ${gatewayKey(rand, at, sep)}`);
+        expect(r.decision, `separator at ${at}`).toBe("deny");
+      }
+    }
+  });
+
+  it("denies a key at the start of a line, where JSON.stringify puts `\\n` before it", async () => {
+    const r = await decide(`line one\n${gatewayKey(rand, 10)}\nline three`);
+    expect(r.decision).toBe("deny");
+  });
+
+  it("labels OpenRouter, Langfuse and OpenAI service-account keys", async () => {
+    const uuid = [8, 4, 4, 4, 12].map((n) => rnd(rand, n, HEX)).join("-");
+    const cases: Array<[string, string]> = [
+      [SK + "or-v1-" + rnd(rand, 64, HEX), "OpenRouter API key"],
+      [SK + "lf-" + uuid, "Langfuse secret key"],
+      [SK + "svcacct-" + "Ab3" + rnd(rand, 60, B64URL), "sk- API key"],
+    ];
+    for (const [key, label] of cases) {
+      const r = await decide(`export KEY=${key}`);
+      expect(r.decision, label).toBe("deny");
+      expect(r.reason).toContain(label);
+    }
+  });
+
+  it("keeps the original label for a plain OpenAI key", async () => {
+    const r = await decide(`key ${SK}${rnd(rand, 48, ALNUM)}`);
+    expect(r.decision).toBe("deny");
+    expect(r.reason).toContain("OpenAI API key");
+  });
+
+  it("still allows hyphenated names that merely contain or start with `sk-`", async () => {
+    for (const s of [
+      "NAME                                READY   STATUS\nrisk-scoring-7d9f8b6c5-x2k4p   1/1     Running",
+      "npm run task-runner-for-the-build-2",
+      "sk-learn-tutorial-for-beginners-2024-part-one",
+      "sk-Some-Title-Case-Words-Here-And-There",
+      "desk-booking-service-v2-staging-deployment",
+    ]) {
+      const r = await decide(s);
+      expect(r.decision, s).toBe("allow");
+    }
+  });
+});

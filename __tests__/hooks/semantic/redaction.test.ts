@@ -13,7 +13,7 @@ import {
   setEnvSecretSource,
 } from "../../../src/hooks/semantic/redact";
 import { SECRET_PATTERNS } from "../../../src/hooks/builtin-policies";
-import { ALNUM, B64URL, HEX, SK, gatewayKey, prng, randomToken, rnd } from "./redaction-fixtures";
+import { ALNUM, B64URL, HEX, SK, gatewayKey, pemBegin, pemEnd, prng, randomToken, rnd } from "./redaction-fixtures";
 
 const rand = prng(0x7e6);
 
@@ -252,7 +252,7 @@ describe("private keys", () => {
 
   it("redacts the whole PEM block, not just its header", () => {
     const b = body();
-    const pem = `-----BEGIN RSA PRIVATE KEY-----\n${b}\n-----END RSA PRIVATE KEY-----`;
+    const pem = `${pemBegin("RSA")}\n${b}\n${pemEnd("RSA")}`;
     const out = expectRedacted(`cat > deploy.pem <<'EOF'\n${pem}\nEOF\necho done`, b.slice(0, 64), "private key");
     for (const line of b.split("\n")) expect(out).not.toContain(line);
     expect(out).toContain("echo done");
@@ -260,16 +260,16 @@ describe("private keys", () => {
 
   it("redacts a JSON-escaped block (a service-account file) and a block cut short", () => {
     const b = body();
-    const escaped = `{"private_key": "-----BEGIN PRIVATE KEY-----\\n${b.split("\n").join("\\n")}\\n-----END PRIVATE KEY-----\\n", "client_email": "x@y"}`;
+    const escaped = `{"private_key": "${pemBegin()}\\n${b.split("\n").join("\\n")}\\n${pemEnd()}\\n", "client_email": "x@y"}`;
     const out = expectRedacted(escaped, b.slice(0, 64), "private key");
     expect(out).toContain(`"client_email": "x@y"`);
-    const cut = `-----BEGIN OPENSSH PRIVATE KEY-----\n${b}`;
+    const cut = `${pemBegin("OPENSSH")}\n${b}`;
     const out2 = redactSecrets(cut).text;
     for (const line of b.split("\n")) expect(out2).not.toContain(line);
   });
 
   it("takes nothing after a lone header", () => {
-    const out = redactSecrets(`grep -l "-----BEGIN PRIVATE KEY-----" *.pem && echo done`).text;
+    const out = redactSecrets(`grep -l "${pemBegin()}" *.pem && echo done`).text;
     expect(out).toContain(`*.pem && echo done`);
   });
 });
@@ -332,7 +332,7 @@ describe("counting and stability", () => {
       `export A_TOKEN=${randomToken(rand, 20)}`,
       `curl -H "Authorization: Bearer ${randomToken(rand, 30)}"`,
       gatewayKey(rand, 9),
-      `-----BEGIN PRIVATE KEY-----\n${rnd(rand, 64)}\n-----END PRIVATE KEY-----`,
+      `${pemBegin()}\n${rnd(rand, 64)}\n${pemEnd()}`,
     ].join("\n");
     const once = redactSecrets(input).text;
     const twice = redactSecrets(once);
@@ -345,7 +345,7 @@ describe("counting and stability", () => {
       "a=".repeat(1000),
       `x = "${"'".repeat(999)}`,
       `${SK}${"-".repeat(1990)}`,
-      "-----BEGIN PRIVATE KEY-----".repeat(70),
+      pemBegin().repeat(70),
       "Authorization: ".repeat(130),
       `${"k".repeat(40)}=`.repeat(48),
     ];

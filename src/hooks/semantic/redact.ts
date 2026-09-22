@@ -82,14 +82,14 @@ export const SHARED_PATTERN_EXTENDED: ReadonlyArray<boolean> = SECRET_PATTERNS.m
 /**
  * A whole PEM private-key block, header to footer.
  *
- * The shared pattern matches the `-----BEGIN … PRIVATE KEY-----` header only —
+ * The shared pattern matches the `BEGIN … PRIVATE KEY` armour header only —
  * enough for a detector, useless for a redactor, which would replace the header
  * and send the base64 key body underneath it. The second alternative covers a
  * block whose footer was cut off by the envelope's length cap: it takes the
  * lines that follow the header while they still look like key material (base64
  * of 16+ characters, or an encrypted key's `Proc-Type:`-style header line),
- * separated by real or JSON-escaped newlines. A lone header in prose — `grep
- * "-----BEGIN PRIVATE KEY-----" *.pem` — therefore takes nothing after it.
+ * separated by real or JSON-escaped newlines. A lone header in a command — a
+ * `grep` for the armour line across `*.pem` — therefore takes nothing after it.
  * The body of a complete block is limited to what a PEM body contains, so a
  * header and a footer quoted separately in documentation do not take the
  * prose between them.

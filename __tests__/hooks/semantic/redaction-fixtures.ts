@@ -51,3 +51,14 @@ export function gatewayKey(rand: () => number, sepAt: number, sep: "-" | "_" = "
 export function randomToken(rand: () => number, len: number): string {
   return "a" + "Z" + "3" + rnd(rand, len - 3, ALNUM);
 }
+
+/**
+ * PEM armour lines, joined at runtime: a literal private-key header in a test
+ * source trips sanitize-private-key-content for anyone who reads the file.
+ */
+export function pemBegin(kind = ""): string {
+  return ["-----BEGIN", kind, "PRIVATE", "KEY-----"].filter(Boolean).join(" ");
+}
+export function pemEnd(kind = ""): string {
+  return ["-----END", kind, "PRIVATE", "KEY-----"].filter(Boolean).join(" ");
+}

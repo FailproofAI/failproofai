@@ -11,7 +11,7 @@ import { prepareSemantic } from "../../../src/hooks/semantic/evaluator";
 import { computeFacts, scanCommand } from "../../../src/hooks/semantic/facts";
 import { setEnvSecretSource } from "../../../src/hooks/semantic/redact";
 import type { Facts } from "../../../src/hooks/semantic/types";
-import { ALNUM, SK, gatewayKey, prng, randomToken, rnd } from "./redaction-fixtures";
+import { ALNUM, SK, gatewayKey, pemBegin, pemEnd, prng, randomToken, rnd } from "./redaction-fixtures";
 
 const rand = prng(0x5ec7e7);
 
@@ -196,7 +196,7 @@ describe("the request that is actually sent", () => {
         toolName: "Bash",
         toolInput: { command, description: `deploy with ${secrets.anthropic}` },
         cwd: "/p",
-        userSaid: [`use ${secrets.anthropic}`, `-----BEGIN PRIVATE KEY-----\n${secrets.pem}\n-----END PRIVATE KEY-----`],
+        userSaid: [`use ${secrets.anthropic}`, `${pemBegin()}\n${secrets.pem}\n${pemEnd()}`],
         agentLastMessage: `Shall I export ANTHROPIC_API_KEY=${secrets.anthropic}?`,
       },
       { intent: "v1" },

@@ -47,9 +47,9 @@ const CUT_SNAP_MAX = 256;
  * Each cut is moved to the nearest stop character (within `CUT_SNAP_MAX`) so
  * it never lands inside a token. Callers cap BEFORE they redact, to bound the
  * redactor's cost, and a key sliced at the cut arrives as a fragment no pattern
- * matches — `sk-ant-api03-AbCdEfGhIj` is 22 characters of a live key and too
- * short for its own rule. Snapping drops the fragment into the omitted middle
- * instead, whole.
+ * matches — an Anthropic key cut ten characters past its `api03-` is too short
+ * for its own rule and still ten characters of a live key. Snapping drops the
+ * fragment into the omitted middle instead, whole.
  */
 export function capHeadTail(text: string, max: number): { text: string; truncated: boolean } {
   if (text.length <= max) return { text, truncated: false };

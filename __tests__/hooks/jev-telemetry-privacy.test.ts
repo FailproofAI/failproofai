@@ -189,6 +189,88 @@ describe("Jev telemetry privacy", () => {
     return record(outcome, "enforce");
   }
 
+  // The cases above record what a real evaluation produces, so the cleared
+  // names are always policy names and the model is the echoed model id: they
+  // never test that those two fields are VALIDATED before they ship. This row
+  // is what a buggy or hostile writer could produce — every Jev string field
+  // carries the command or the prompt (the collector's twin is
+  // `no_command_or_prompt_text_reaches_a_shipped_event` in hooks_jev.rs) — and
+  // nothing of it may reach disk, PostHog, the dashboard or the stats.
+  describe("a row whose every Jev string carries the command or the prompt", () => {
+    const poisoned = [
+      COMMAND,
+      PROMPT,
+      AGENT_MESSAGE,
+      // Shaped like names, with a registered namespace in the MIDDLE rather
+      // than at the start: `isJevPolicyName` must anchor it.
+      `cat /srv/custom/zebra-archive ${PROMPT}`,
+      `git push origin failproofai/zebra-archive && ${COMMAND}`,
+      `mv pack/tangerine-ledger.csv cloud/marmalade review`,
+    ];
+    const poisonedRow = (mode: "shadow" | "enforce", overrides: Partial<HookActivityEntry> = {}): HookActivityEntry => ({
+      timestamp: Date.now(),
+      eventType: "PreToolUse",
+      integration: "claude",
+      toolName: "Bash",
+      policyName: null,
+      decision: "allow",
+      reason: null,
+      durationMs: 40,
+      sessionId: "sess-privacy",
+      cwd: "/home/u/repo",
+      evaluator: "jev",
+      jevDecision: "allow",
+      jevCleared: [...poisoned, "block-env-files"],
+      jevModel: `${PROMPT} ${COMMAND}`,
+      jevLatencyMs: 38,
+      jevMode: mode,
+      ...overrides,
+    });
+    const rows: Array<[string, (mode: "shadow" | "enforce") => HookActivityEntry]> = [
+      ["answered", (mode) => poisonedRow(mode)],
+      [
+        "fell back",
+        (mode) =>
+          poisonedRow(mode, {
+            evaluator: "jev-fallback",
+            jevDecision: "deny",
+            jevFallbackReason: `${COMMAND} ${PROMPT}`,
+          }),
+      ],
+    ];
+
+    for (const [name, make] of rows) {
+      it(`${name}: none of it reaches the row, PostHog, the dashboard or the stats`, async () => {
+        const entries: HookActivityEntry[] = [];
+        for (const mode of ["enforce", "shadow"] as const) {
+          const entry = make(mode);
+          entries.push(entry);
+          persistHookActivity(entry);
+          expectClean("the persisted activity row", readFileSync(join(testDir, "current.jsonl"), "utf-8"));
+
+          const props = jevTelemetryProperties(entry);
+          expectClean("the PostHog properties", JSON.stringify(props));
+          await trackHookEvent("inst-id", "hook_policy_triggered", { event_type: "PreToolUse", ...props });
+          expectClean("the PostHog request body", bodies.at(-1)!);
+
+          expectClean("the dashboard summary", JSON.stringify(describeJevActivity(entry)));
+        }
+        const stats = computeJevStats(entries);
+        expectClean("the stats", JSON.stringify(stats) + formatJevStats(stats));
+      });
+    }
+
+    it("the valid name among them still ships, so the check above is not vacuous", async () => {
+      const props = jevTelemetryProperties(poisonedRow("enforce"));
+      expect(props.jev_cleared).toEqual(["block-env-files"]);
+      expect(props.jev_cleared_count).toBe(1);
+      expect(props).not.toHaveProperty("jev_model");
+      expect(props.jev_latency_ms).toBe(38);
+      await trackHookEvent("inst-id", "hook_policy_triggered", { event_type: "PreToolUse", ...props });
+      expect(bodies.at(-1)).toContain("block-env-files");
+    });
+  });
+
   it("a degraded reason reaches disk as a code", async () => {
     const outcome = await cases[2][1]();
     expect(outcome.status).toBe("degraded");

@@ -175,9 +175,35 @@ function isPlainHttp(url: string): boolean {
   }
 }
 
+/**
+ * Prefixes real credentials carry: OpenAI / OpenRouter / Anthropic / Stripe
+ * (`sk-`, `sk_`, `rk_`), GitHub, GitLab, Slack, AWS, Google, Hugging Face and
+ * Vercel AI Gateway (`vck_`). No Jev model id starts with any of them.
+ */
+const CREDENTIAL_PREFIX_RE = /^(?:(?:sk|rk)[-_]|gh[pousr]_|github_pat_|glpat-|xox[abprs]-|AKIA[0-9A-Z]{12}|AIza[0-9A-Za-z_-]{20}|hf_[A-Za-z0-9]{16}|vck_)/;
+
+/**
+ * Whether a would-be model id is shaped like a credential: a known key prefix,
+ * or 32+ characters mixing letters and digits with no `/` and no "jev" — which
+ * describes a pasted token, and no model id any Jev route knows. The check
+ * exists so a key pasted into `--model` is refused rather than written to the
+ * file, printed by `jev status`, and sent to the provider as the model.
+ */
+export function looksLikeCredential(s: string): boolean {
+  if (CREDENTIAL_PREFIX_RE.test(s)) return true;
+  return s.length >= 32 && !s.includes("/") && !/jev/i.test(s) && /[A-Za-z]/.test(s) && /[0-9]/.test(s);
+}
+
 function validateModel(raw: unknown): ValidationResult<string> {
   if (typeof raw !== "string" || !MODEL_RE.test(raw)) {
     return { ok: false, problem: "model must be 1–200 characters of letters, digits and . _ : / @ ~ + -" };
+  }
+  if (looksLikeCredential(raw)) {
+    // Never quoted: it may well be a key.
+    return {
+      ok: false,
+      problem: "model looks like an API key, not a model id (not repeated here). The key goes on stdin: failproofai jev setup --key-stdin",
+    };
   }
   const v = jevModelVersion(raw);
   if (v && (v.major !== JEV_CALIBRATED_FAMILY.major || v.minor !== JEV_CALIBRATED_FAMILY.minor)) {
@@ -244,6 +270,8 @@ export function validateJevConfig(raw: unknown, envKey?: string | null): Validat
   if (o.model !== undefined) {
     const r = validateModel(o.model);
     if (!r.ok) return r;
+    // The key pasted twice — once on stdin, once as --model — whatever its shape.
+    if (r.value === apiKey) return { ok: false, problem: "model is the API key (not repeated here); give the model id, or leave --model out for the provider's default" };
     cfg.model = r.value;
   }
 
@@ -383,12 +411,25 @@ export function loadJevConfig(): JevConfig | null {
   }
 }
 
+export interface JevConfigFileForUpdate {
+  raw: Record<string, unknown>;
+  /** The file's permission bits (null where they mean nothing). */
+  mode: number | null;
+  /**
+   * Group or other bits were set: the loader refuses this file, and someone
+   * other than its owner may have written it — so the endpoint it names is not
+   * trusted with the key it holds (see `jev setup`).
+   */
+  tooOpen: boolean;
+}
+
 /**
- * The file's raw JSON object regardless of its permissions, for `jev setup` to
- * update in place (carry the key over a mode switch, or re-save a file that is
- * too open at 0600). Never used on the hook path.
+ * The file's raw JSON object regardless of its permissions, with those
+ * permissions, for `jev setup` to update in place (carry the key over a mode
+ * switch, or re-save a file that is too open at 0600) and for `jev status` to
+ * show what a refused file names. Never used on the hook path.
  */
-export function readJevConfigForUpdate(): Record<string, unknown> | null {
+export function readJevConfigFileForUpdate(): JevConfigFileForUpdate | null {
   const path = jevConfigPath();
   let fd: number;
   try {
@@ -407,7 +448,10 @@ export function readJevConfigForUpdate(): Record<string, unknown> | null {
       off += n;
     }
     const parsed: unknown = JSON.parse(buf.subarray(0, off).toString("utf8"));
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const meaningful = modesAreMeaningful();
+    const mode = meaningful ? st.mode & 0o777 : null;
+    return { raw: parsed as Record<string, unknown>, mode, tooOpen: mode !== null && (mode & 0o077) !== 0 };
   } catch {
     return null;
   } finally {
@@ -417,4 +461,9 @@ export function readJevConfigForUpdate(): Record<string, unknown> | null {
       // Nothing useful to do.
     }
   }
+}
+
+/** `readJevConfigFileForUpdate()` without the permissions. */
+export function readJevConfigForUpdate(): Record<string, unknown> | null {
+  return readJevConfigFileForUpdate()?.raw ?? null;
 }

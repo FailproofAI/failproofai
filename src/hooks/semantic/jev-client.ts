@@ -42,7 +42,9 @@
  * # Errors
  *
  * Every failure is a `JevError`, and the caller falls back to regex:
- * `timeout`, `network`, `http-<status>` (429 and every 5xx included),
+ * `timeout`, `network`, `http-<status>` (429 and every 5xx included, and every
+ * 3xx: a redirect is never followed, so the answer only ever comes from the
+ * configured origin),
  * `out-of-credits` (HTTP 402, or a 402 inside a 200 body), `upstream-error`,
  * `cloudflare-error`, `cloudflare-incomplete`, `malformed`, `model-mismatch`,
  * `config`.
@@ -207,6 +209,11 @@ export function scrubSecret(text: string, secret: string): string {
   return secret.length >= 4 ? text.split(secret).join("[key]") : text;
 }
 
+/** A redirect, including the opaque form a browser-style fetch returns for `redirect: "manual"` (status 0). */
+function isRedirect(res: Response): boolean {
+  return res.type === "opaqueredirect" || (res.status >= 300 && res.status < 400);
+}
+
 async function postJson(url: string, bearer: string, body: unknown, signal: AbortSignal): Promise<unknown> {
   let res: Response;
   try {
@@ -215,10 +222,24 @@ async function postJson(url: string, bearer: string, body: unknown, signal: Abor
       headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json" },
       body: JSON.stringify(body),
       signal,
+      // Never followed. The configured URL is the one `validateBaseUrl` checked
+      // (https, or loopback http in shadow mode only); a redirect would hand the
+      // answer — the thing that can clear a deny — to an origin nobody checked,
+      // plain http included. No provider redirects this POST.
+      redirect: "manual",
     });
   } catch (err) {
     if (signal.aborted) throw new JevError("timeout", "Jev did not answer in time");
     throw new JevError("network", scrubSecret(err instanceof Error ? err.message : String(err), bearer));
+  }
+  if (isRedirect(res)) {
+    try {
+      void res.body?.cancel().catch(() => {});
+    } catch {
+      // The body is irrelevant; freeing it is best effort.
+    }
+    const status = res.status >= 300 && res.status < 400 ? String(res.status) : "3xx";
+    throw new JevError(`http-${status}`, `HTTP ${status}: the endpoint answered with a redirect, which is never followed`);
   }
   let parsed: unknown;
   try {

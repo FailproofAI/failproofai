@@ -18,10 +18,10 @@
  * because a cooked-mode read would echo each character as it is typed. No
  * output of this module, human or `--json`, contains the key; provider error
  * text is scrubbed of it in `jev-client.ts`, and `jev test` scrubs whatever
- * error it prints once more. `setup` never repeats a value it could not use
- * (a stray argument, an unknown provider, an unreadable timeout): a key pasted
- * into the wrong place on the command line is already in shell history, and
- * does not also need to be on the screen.
+ * error it prints once more. No subcommand repeats a value it could not use
+ * (a stray argument, an unknown provider, an unreadable timeout, a model id
+ * shaped like a key): a key pasted into the wrong place on the command line is
+ * already in shell history, and does not also need to be on the screen.
  *
  * # A stored key stays with its host
  *
@@ -30,6 +30,13 @@
  * provider's own API — the key is asked for again, exactly as on a provider
  * switch: for `custom` (and any override) the URL is what picks the gateway,
  * and a key issued for one gateway must not be sent to another unasked.
+ *
+ * A file that was open to other users is the loader's "someone else may have
+ * chosen the endpoint" case, and re-saving it at 0600 must not undo that: its
+ * stored key is carried only to the provider's own API. Any other endpoint it
+ * names — kept or passed again with `--base-url` — needs the key again, given
+ * explicitly (not at a bare prompt that would not say where it goes). `jev
+ * status` shows such a file's endpoint next to its `chmod 600` hint.
  *
  * # No restart
  *
@@ -44,7 +51,7 @@ import {
   JEV_PROVIDER_KINDS,
   inspectJevConfig,
   jevConfigPath,
-  readJevConfigForUpdate,
+  readJevConfigFileForUpdate,
   validateApiKey,
   validateJevConfig,
   type JevConfig,
@@ -99,6 +106,13 @@ const DEFAULT_TEST_TIMEOUT_MS = 15_000;
 const ENV_KEY_STAND_IN = "env-key-stand-in";
 
 // ── Argument parsing ─────────────────────────────────────────────────────────
+
+/**
+ * Every subcommand's answer to a stray argument. Never the argument itself: the
+ * likeliest one is a key pasted in the wrong place, which is already in shell
+ * history and does not also need to be on the screen.
+ */
+const STRAY_ARGUMENT = "Unexpected argument (not repeated here, in case it is a key). The key goes on stdin: --key-stdin.";
 
 const VALUE_FLAGS = new Set(["--provider", "--base-url", "--account-id", "--model", "--timeout-ms", "--mode"]);
 const BOOL_FLAGS = new Set(["--key-stdin", "--key-from-env", "--json"]);
@@ -173,6 +187,9 @@ function remedy(code: string): string {
   if (code.startsWith("http-5")) return "The provider had a server error. Hooks fall back to regex whenever that happens; try again shortly.";
   if (code === "timeout") return "No answer in time. Check the endpoint and your network.";
   if (code === "network") return "The endpoint could not be reached. Check the base URL and your network.";
+  if (/^http-3(?:\d\d|xx)$/.test(code)) {
+    return "The endpoint answered with a redirect, and Jev requests never follow one (the answer must come from the URL you configured). Set --base-url to the final URL.";
+  }
   if (code === "model-mismatch") {
     return "A Jev version the thresholds were not calibrated for answered (or a custom endpoint did not say which model answered), so hooks would fall back to regex. Pin a jev-1.13 model with --model.";
   }
@@ -251,14 +268,12 @@ async function maskedPrompt(): Promise<string | null> {
 async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise<JevCliResult> {
   const parsed = parseFlags(argv, new Set([...VALUE_FLAGS, "--key-stdin", "--key-from-env"]));
   if (typeof parsed === "string") return fail([parsed, "", ...JEV_USAGE]);
-  if (parsed.positionals.length > 0) {
-    // Not repeated: the likeliest stray argument to `setup` is the key itself.
-    return fail(["Unexpected argument (not repeated here, in case it is a key). The key goes on stdin: --key-stdin.", "", ...JEV_USAGE]);
-  }
+  if (parsed.positionals.length > 0) return fail([STRAY_ARGUMENT, "", ...JEV_USAGE]);
   const { values, bools } = parsed;
   if (bools.has("--key-stdin") && bools.has("--key-from-env")) return fail(["Use one of --key-stdin and --key-from-env, not both."]);
 
-  const existing = readJevConfigForUpdate();
+  const existingFile = readJevConfigFileForUpdate();
+  const existing = existingFile?.raw ?? null;
   const providerArg = values.get("--provider");
   const provider = providerArg ?? (typeof existing?.provider === "string" ? existing.provider : undefined);
   if (!provider) {
@@ -303,8 +318,16 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
     next.timeoutMs = n;
   }
 
-  // A key stored for one host is not carried to another (see the header).
-  const hostMove = sameProvider && values.has("--base-url") ? movedHost(kind, existing?.baseUrl, next.baseUrl) : null;
+  // A key stored for one host is not carried to another (see the header). A
+  // file that was open to other users is the loader's "someone else may have
+  // chosen the endpoint" case, so the URL it names is measured against the
+  // provider's own API, not trusted as the host the key already went to —
+  // whether it is carried over or passed again with --base-url.
+  const untrustedFile = sameProvider && existingFile?.tooOpen === true;
+  const hostMove =
+    sameProvider && (values.has("--base-url") || untrustedFile)
+      ? movedHost(kind, untrustedFile ? undefined : existing?.baseUrl, next.baseUrl)
+      : null;
   if (hostMove) delete next.apiKey;
 
   // The key. A config that takes it from the environment stores none, and
@@ -338,6 +361,24 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
     keyNote = envKeyNote();
   } else {
     const tty = deps.stdinIsTTY ?? Boolean(process.stdin.isTTY);
+    if (hostMove && untrustedFile) {
+      // Not even at a terminal: a bare "Jev API key" prompt would not say where
+      // the key is going, and here that is exactly the question.
+      const perms = octal(existingFile?.mode ?? null) ?? "unknown";
+      const named = values.has("--base-url");
+      return fail([
+        named
+          ? `${jevConfigPath()} was open to other users (${perms}), so its stored key is not carried to ${hostMove.to}.`
+          : `${jevConfigPath()} was open to other users (${perms}), so the endpoint it names — ${hostMove.to} — may not be one you chose, and its stored key is not carried there.`,
+        "If that endpoint is yours, give the key for it again:",
+        `  failproofai jev setup${named ? " --base-url <url>" : ""} --key-stdin < key-file`,
+        "",
+        kind === "custom"
+          ? "If it is not, give your own --base-url along with its key."
+          : "If it is not, send requests back to the provider's own API, which keeps the stored key: failproofai jev setup --base-url default",
+        "Nothing was written.",
+      ]);
+    }
     if (!tty && hostMove) {
       return fail([
         `The new base URL sends requests to ${hostMove.to}${hostMove.from ? `, not ${hostMove.from}` : ""}.`,
@@ -412,10 +453,28 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
 
 // ── status ───────────────────────────────────────────────────────────────────
 
+/**
+ * Where a file would send requests, for display, whether or not it loads. Only
+ * the routing fields are used — the key and model do not decide where requests
+ * go — and shadow mode lets a loopback http URL through validation. Null when
+ * it names nothing recognisable.
+ */
+function namedEndpoint(raw: Record<string, unknown> | null): string | null {
+  if (!raw || typeof raw.provider !== "string" || !(JEV_PROVIDER_KINDS as readonly string[]).includes(raw.provider)) return null;
+  const routing: Record<string, unknown> = { provider: raw.provider, apiKey: ENV_KEY_STAND_IN, mode: "shadow" };
+  if (raw.baseUrl !== undefined) routing.baseUrl = raw.baseUrl;
+  if (raw.accountId !== undefined) routing.accountId = raw.accountId;
+  try {
+    return displayEndpoint(jevRoute(routing as unknown as JevConfig).endpoint);
+  } catch {
+    return typeof raw.baseUrl === "string" ? displayEndpoint(raw.baseUrl) : null;
+  }
+}
+
 async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
   const parsed = parseFlags(argv, new Set(["--json"]));
   if (typeof parsed === "string") return fail([parsed, "", ...JEV_USAGE]);
-  if (parsed.positionals.length > 0) return fail([`Unexpected argument: ${parsed.positionals[0]}`, "", ...JEV_USAGE]);
+  if (parsed.positionals.length > 0) return fail([STRAY_ARGUMENT, "", ...JEV_USAGE]);
   const asJson = parsed.bools.has("--json");
 
   const inspection = inspectJevConfig();
@@ -431,6 +490,10 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
     const base: Record<string, unknown> = { path: inspection.path, status: inspection.status, legacyOverride: legacy, stats };
     if (inspection.status === "refused") {
       Object.assign(base, { reason: inspection.reason, problem: inspection.problem, permissions: octal(inspection.mode) });
+      if (inspection.reason === "too-open") {
+        const named = namedEndpoint(readJevConfigFileForUpdate()?.raw ?? null);
+        if (named) base.endpoint = named;
+      }
     }
     if (inspection.status === "ok") {
       const { config: cfg } = inspection;
@@ -478,12 +541,21 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
   }
 
   if (inspection.status === "refused") {
+    // A file other users could change may name an endpoint its owner never
+    // chose, and `chmod 600` would start trusting it with the key — so say
+    // where it points before suggesting that.
+    const named = inspection.reason === "too-open" ? namedEndpoint(readJevConfigFileForUpdate()?.raw ?? null) : null;
     return fail(
       stack(
         title("failproofai jev status", "off (config refused)", opts),
         warning([`Jev is off: ${inspection.path} was refused — ${inspection.problem}.`, "Hooks run the regex policies exactly as before."], opts),
+        named ? rows([["endpoint it names", named]], opts) : null,
         inspection.reason === "too-open"
-          ? nextStep(`chmod 600 ${inspection.path}`, "Make it owner-only (or re-run `failproofai jev setup`):", opts)
+          ? nextStep(
+              `chmod 600 ${inspection.path}`,
+              "Other users could change this file, so check that endpoint is one you chose. Then make the file owner-only (or re-run `failproofai jev setup`, which asks for the key again unless the endpoint is the provider's own):",
+              opts,
+            )
           : nextStep("failproofai jev setup --provider <kind> --key-stdin", "Write a valid one:", opts),
         legacyNote,
         jevStatsLines(stats, opts),
@@ -535,7 +607,7 @@ export function jevTestRequest(model: string): JevRequest {
 async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise<JevCliResult> {
   const parsed = parseFlags(argv, new Set(["--json"]));
   if (typeof parsed === "string") return fail([parsed, "", ...JEV_USAGE]);
-  if (parsed.positionals.length > 0) return fail([`Unexpected argument: ${parsed.positionals[0]}`, "", ...JEV_USAGE]);
+  if (parsed.positionals.length > 0) return fail([STRAY_ARGUMENT, "", ...JEV_USAGE]);
   const asJson = parsed.bools.has("--json");
 
   const inspection = inspectJevConfig();
@@ -648,7 +720,7 @@ async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise
 function remove(argv: string[], opts: RenderOpts): JevCliResult {
   const parsed = parseFlags(argv, new Set());
   if (typeof parsed === "string") return fail([parsed, "", ...JEV_USAGE]);
-  if (parsed.positionals.length > 0) return fail([`Unexpected argument: ${parsed.positionals[0]}`, "", ...JEV_USAGE]);
+  if (parsed.positionals.length > 0) return fail([STRAY_ARGUMENT, "", ...JEV_USAGE]);
   const path = jevConfigPath();
   if (!existsSync(path)) {
     return ok(stack(title("failproofai jev remove", "nothing to do", opts), note(`There is no ${path}; Jev is already off.`, opts)));

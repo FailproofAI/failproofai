@@ -124,13 +124,13 @@ Everything lives in one file, `~/.failproofai/jev.json`, written by `setup`:
 | `apiKey` | Sent as `Authorization: Bearer <key>`. |
 | `baseUrl` | Required for `custom`; replaces the provider's API base otherwise. Must be `https`. Plain `http` to `localhost` is accepted only with `mode: shadow`: nothing authenticates a local port, so while your proxy is down any process on the machine, including the agent being judged, could answer in its place. |
 | `accountId` | Cloudflare only: 32 lowercase hex characters. |
-| `model` | Replaces the provider's default model id. A versioned id must name Jev 1.13. |
+| `model` | Replaces the provider's default model id. A versioned id must name Jev 1.13. A value shaped like an API key is refused (and not repeated back), so a key pasted into `--model` is never stored or sent as the model. |
 | `timeoutMs` | How long a tool call waits for Jev before using the regex result. 100–10000, default 1500. |
 | `mode` | `enforce` (default) or `shadow`. |
 
 Three rules protect it:
 
-- **Owner-only.** It is written with permissions `0600`. A copy that any other user or group can read or write is **refused**, and hooks fall back to regex until you run `chmod 600 ~/.failproofai/jev.json` or `setup` again. `failproofai jev status` says when that has happened.
+- **Owner-only.** It is written with permissions `0600`. A copy that any other user or group can read or write is **refused**, and hooks fall back to regex until you run `chmod 600 ~/.failproofai/jev.json` or `setup` again. `failproofai jev status` says when that has happened and shows the endpoint the file names: someone else could have changed it, so check it is yours before you `chmod`. Re-running `setup` on such a file carries its stored key only to the provider's own API; any other endpoint it names needs the key again (`--key-stdin`), or `--base-url default` to send requests back to the provider.
 - **Global only.** A repository cannot turn Jev on, point it at another endpoint or pick its model: a `.failproofai/jev.json` inside a project is ignored, and the provider, URL, model and account id are never read from the environment, which a repository's agent settings can set.
 - **The key alone may come from the environment.** If the file has no `apiKey`, `FAILPROOFAI_JEV_API_KEY` supplies it for that session (`setup --key-from-env` writes such a file). It never replaces a key the file holds, and it cannot turn Jev on without the file. The `failproofaid` daemon does not see your shell's environment, so on a machine set up with `failproofai config`, keep the key in the file.
 
@@ -150,6 +150,7 @@ Each of these falls back to the regex result for that call and is recorded with 
 | `out-of-credits` | HTTP 402: the provider account has no credits left. |
 | `http-401`, `http-403` | The key was refused. |
 | `network` | The endpoint could not be reached. |
+| `http-3xx` | The endpoint answered with a redirect. Redirects are never followed, so the answer only ever comes from the URL in your config; set `--base-url` to the final URL. |
 | `model-mismatch` | A Jev version other than 1.13 answered, or a `custom` endpoint did not say which model answered. |
 
 ## What leaves the machine

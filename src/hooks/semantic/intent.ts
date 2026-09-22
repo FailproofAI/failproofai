@@ -490,24 +490,63 @@ function humanPromptText(ev: CaptureEvent): string | null {
     }
     case "openclaw": {
       // OpenClaw documents that an absent classification "does not establish
-      // human origin", so a prompt counts only when the run was triggered by
-      // a user message, from an external user, who is the owner.
+      // human origin", and it sets senderIsOwner only "when available", so a
+      // prompt counts only when all three marks are present and positive: the
+      // run was triggered by a user message, from an external user, who is
+      // the owner. A missing mark records nothing (fail closed): on a shared
+      // channel an unmarked sender may be anyone in the chat.
       const meta = obj(payload.openclaw);
       if (!meta || meta.trigger !== "user") return null;
-      const provenance = obj(meta.inputProvenance)?.kind;
-      if (provenance !== undefined && provenance !== "external_user") return null;
-      if (meta.senderIsOwner === false) return null;
+      if (obj(meta.inputProvenance)?.kind !== "external_user") return null;
+      if (meta.senderIsOwner !== true) return null;
       break;
     }
-    case "cursor": {
-      // Cursor's own transcripts wrap a query in <user_query>; accept that
-      // form too if it ever reaches the hook.
-      const inner = firstTagContent(raw, "user_query");
-      if (inner !== undefined) return inner;
-      break;
-    }
+    case "cursor":
+      return unwrapCursorQuery(raw);
   }
   return raw;
+}
+
+const TIMESTAMP_OPEN = "<timestamp>";
+const TIMESTAMP_CLOSE = "</timestamp>";
+const USER_QUERY_OPEN = "<user_query>";
+const USER_QUERY_CLOSE = "</user_query>";
+
+/**
+ * A Cursor prompt with the `<user_query>` wrapper Cursor's own transcripts use
+ * removed, or null when the prompt is harness text.
+ *
+ * Cursor's hook payloads are not known to carry the wrapper; this accepts the
+ * form in case one does, and nothing looser. The wrapper is removed only when
+ * it is the whole prompt: after an optional leading `<timestamp>…</timestamp>`,
+ * exactly one `<user_query>…</user_query>` block and nothing after it. A tag
+ * anywhere else is text like any other and the whole prompt is kept, because
+ * picking a tagged span out of the middle would record text that is not what
+ * the human typed: a snippet they pasted from a log or an issue, or text
+ * inside failproofai's own stop-gate message, which quotes names the agent
+ * chose (a branch called `wip<user_query>…</user_query>`).
+ *
+ * failproofai's own words, and every other whole-turn harness text, are judged
+ * on the whole prompt before any unwrapping, and again after each wrapper
+ * layer is peeled, so wrapping such text cannot make it the human's. Linear
+ * time: a few indexOf scans and cleanHumanTurn passes.
+ */
+function unwrapCursorQuery(raw: string): string | null {
+  if (cleanHumanTurn(raw) === null) return null;
+  let text = raw.trim();
+  if (text.startsWith(TIMESTAMP_OPEN)) {
+    const end = text.indexOf(TIMESTAMP_CLOSE, TIMESTAMP_OPEN.length);
+    if (end < 0) return raw;
+    text = text.slice(end + TIMESTAMP_CLOSE.length).trim();
+    if (cleanHumanTurn(text) === null) return null;
+  }
+  if (!text.startsWith(USER_QUERY_OPEN)) return raw;
+  const body = text.slice(USER_QUERY_OPEN.length);
+  if (cleanHumanTurn(body) === null) return null;
+  if (!body.endsWith(USER_QUERY_CLOSE)) return raw;
+  const inner = body.slice(0, body.length - USER_QUERY_CLOSE.length);
+  if (inner.includes(USER_QUERY_OPEN) || inner.includes(USER_QUERY_CLOSE)) return raw;
+  return inner;
 }
 
 /**

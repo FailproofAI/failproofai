@@ -34,7 +34,7 @@ When a harness records nothing, Jev still evaluates every tool call, but with no
 - **Hermes** has no prompt-submit event. Its native plugin handles `pre_llm_call` itself and forwards only tool, session and subagent events.
 - **Antigravity CLI** maps `PreInvocation` to `UserPromptSubmit`, but `PreInvocation` fires before *every* model call in a turn, carries no prompt text, and hooks can inject `userMessage` steps into the same conversation. Nothing in it identifies a human turn.
 - **OpenCode** reports prompts through the `message.updated` bus event. In current OpenCode the message it carries has no text parts, so the forwarded prompt is empty. The event also fires again on every update to the same message, for the child sessions the task tool creates (whose "user" message the parent agent wrote), and for the re-prompts Failproof AI itself sends to deliver an instruction.
-- **OpenClaw** fires `before_agent_run` for heartbeat, cron, memory and inter-session runs as well as for chat messages, and on a shared channel the sender may not be the owner. OpenClaw states that a missing classification does not establish human origin, so a prompt is recorded only when the payload carries `openclaw.trigger: "user"`, an `openclaw.inputProvenance.kind` that is absent or `external_user`, and no `openclaw.senderIsOwner: false`. The current plugin does not forward these fields, so no OpenClaw prompt is recorded yet.
+- **OpenClaw** fires `before_agent_run` for heartbeat, cron, memory and inter-session runs as well as for chat messages, and on a shared channel the sender may not be the owner. OpenClaw states that a missing classification does not establish human origin, and it sets the owner flag only when it knows the sender. So a prompt is recorded only when the payload carries all three of `openclaw.trigger: "user"`, `openclaw.inputProvenance.kind: "external_user"` and `openclaw.senderIsOwner: true`. A missing field counts as not typed by the owner, so on a shared channel a message from anyone else in the chat is never recorded. The current plugin does not forward these fields, so no OpenClaw prompt is recorded yet.
 
 ## What is kept from a prompt
 
@@ -47,6 +47,7 @@ Harnesses put more than the human's words into a prompt. Before anything is stor
 - A slash command is kept as the command and arguments the human typed, never the body the harness expanded it into.
 - A Codex IDE-context prompt keeps only the text under `## My request for Codex:`. The active file and open tabs are dropped.
 - Pasted blocks are kept and labelled as pasted by the human.
+- A Cursor prompt wrapped the way Cursor's own transcripts wrap a query (an optional `<timestamp>…</timestamp>`, then one `<user_query>…</user_query>` block) has the wrapper removed, but only when that wrapper is the whole prompt. A `<user_query>` tag anywhere else is part of the text: the whole prompt is kept, and the tagged span is never picked out as the request. Failproof AI's own messages are dropped whether or not they are wrapped.
 
 A prompt that is nothing but harness text is not recorded at all.
 

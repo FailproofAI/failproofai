@@ -173,6 +173,10 @@ export function readUserIntent(sessionId: string | undefined, now: number = Date
  * `followup_message` as the next user message, and Copilot, Devin and
  * OpenClaw feed a Stop block's reason back into the next turn, so what
  * policy-evaluator.ts wrote can arrive looking like a prompt.
+ *
+ * Also the wrappers Claude Code puts around a user-role turn that another
+ * agent or session wrote (a peer session, a teammate, a coordinator, a
+ * channel): its own classifier calls those "never user intent".
  */
 const NON_HUMAN_PREFIXES = [
   "<local-command-caveat>",
@@ -183,6 +187,11 @@ const NON_HUMAN_PREFIXES = [
   "[Request interrupted",
   "MANDATORY ACTION REQUIRED from failproofai",
   "Instruction from failproofai:",
+  "<cross-session-message",
+  "<teammate-message",
+  "<agent-message",
+  "<coordinator-relay",
+  "<channel source=",
 ];
 
 // ── Tag blocks, in linear time ───────────────────────────────────────────────
@@ -404,6 +413,9 @@ export interface PromptChannel {
 }
 
 export const PROMPT_CHANNELS: Readonly<Record<IntegrationType, PromptChannel>> = {
+  // UserPromptSubmit also fires for prompts the model scheduled for itself
+  // (CronCreate, ScheduleWakeup, /loop), with a payload identical to a typed
+  // one. Only the transcript tells them apart: see `modelScheduledPrompt`.
   claude: { nativeEvent: "UserPromptSubmit", field: "prompt", capture: "yes" },
   codex: { nativeEvent: "user_prompt_submit", field: "prompt", capture: "yes" },
   copilot: { nativeEvent: "UserPromptSubmit", field: "prompt", capture: "yes" },
@@ -417,6 +429,8 @@ export const PROMPT_CHANNELS: Readonly<Record<IntegrationType, PromptChannel>> =
   hermes: { nativeEvent: null, field: null, capture: "no" },
   // Heartbeat, cron, memory and inter-session runs fire before_agent_run too.
   openclaw: { nativeEvent: "before_agent_run", field: "prompt", capture: "gated" },
+  // Claude-shaped payloads: the same transcript cross-check runs for Factory.
+  // Devin's transcript is not JSONL, so there is nothing to cross-check.
   factory: { nativeEvent: "UserPromptSubmit", field: "prompt", capture: "yes" },
   devin: { nativeEvent: "UserPromptSubmit", field: "prompt", capture: "yes" },
   // PreInvocation fires before every model call, carries no text, and hooks
@@ -476,6 +490,10 @@ function humanPromptText(ev: CaptureEvent): string | null {
       // that payload without it), so today this never fires; it is here in
       // case a later version starts marking the event.
       if (str(payload.agent_id)) return null;
+      if (modelScheduledPrompt(ev.transcriptPath, raw)) return null;
+      break;
+    case "factory":
+      if (modelScheduledPrompt(ev.transcriptPath, raw)) return null;
       break;
     case "codex":
       if (codexRolloutIsSubagent(ev.transcriptPath)) return null;
@@ -552,53 +570,115 @@ function unwrapCursorQuery(raw: string): string | null {
   return inner;
 }
 
-/**
- * `capHeadTail`'s head/tail split and marker, with the marker's count taken
- * from `fullLength` — the length of the text `text` was cut down from —
- * rather than from `text` itself.
- */
-function cutHeadTail(text: string, budget: number, fullLength: number): string {
+const omissionMarker = (count: number): string => `\n…[${count} characters omitted]…\n`;
+
+/** `capHeadTail`'s head/tail split and marker, keeping `budget` characters of `text`. */
+function cutHeadTail(text: string, budget: number): string {
   const head = Math.ceil(budget * 0.6);
   const tail = budget - head;
-  return `${text.slice(0, head)}\n…[${fullLength - budget} characters omitted]…\n${text.slice(text.length - tail)}`;
+  return `${text.slice(0, head)}${omissionMarker(text.length - budget)}${text.slice(text.length - tail)}`;
 }
 
 /**
  * Cap to at most `max` characters INCLUDING the omission marker, so the
  * envelope's own cap (the same `MAX_USER_MESSAGE_CHARS`) never fires again on
- * a stored message and flags the whole request as truncated. `fullLength` is
- * the length the marker reports against: `text`'s own, unless `text` is
- * already a pre-capped cut of something longer.
+ * a stored message and flags the whole request as truncated.
  */
-function capWithin(text: string, max: number, fullLength: number = text.length): string {
+function capWithin(text: string, max: number): string {
   if (text.length <= max) return text;
   let budget = max;
   for (let i = 0; i < 4; i++) {
-    const capped = cutHeadTail(text, budget, fullLength);
+    const capped = cutHeadTail(text, budget);
     if (capped.length <= max) return capped;
     budget -= capped.length - max;
   }
-  return cutHeadTail(text, budget, fullLength).slice(0, max);
+  return cutHeadTail(text, budget).slice(0, max);
 }
 
-/** Far more than the final cap keeps, so its cut points never reach the stored head or tail. */
+/**
+ * A prefix of `head` and a suffix of `tail` around one omission marker, in at
+ * most `max` characters, the marker included (see `capWithin`). The head gets
+ * 60% of the room unless the tail needs less, and the tail gets the rest. The
+ * marker counts `omitted` plus whatever of either piece is left out.
+ */
+function joinWithin(head: string, tail: string, omitted: number, max: number): string {
+  // Room for the text around the longest marker this can need.
+  const room = Math.max(0, max - omissionMarker(omitted + head.length + tail.length).length);
+  const keepTail = Math.min(tail.length, room - Math.min(head.length, Math.ceil(room * 0.6)));
+  const keepHead = Math.min(head.length, room - keepTail);
+  const dropped = omitted + (head.length - keepHead) + (tail.length - keepTail);
+  return head.slice(0, keepHead) + omissionMarker(dropped) + tail.slice(tail.length - keepTail);
+}
+
+/**
+ * The pre-cap: a bound on what the redaction regexes scan (a pasted log can be
+ * megabytes, and some patterns cost the square of the length on the text they
+ * scan), and far more than the final cap keeps.
+ */
 const PRE_CAP_CHARS = MAX_USER_MESSAGE_CHARS * 8;
+/**
+ * Text this close to a pre-cap cut is never stored. A secret the cut split no
+ * longer matches any pattern, so its piece on our side of the cut is left
+ * unredacted, and redaction elsewhere in the same piece (a long JWT becomes a
+ * 14-character marker) can pull that piece into the head or tail the final
+ * cap keeps.
+ */
+const PRE_CAP_GUARD_CHARS = 256;
+/**
+ * How much further a token the guard ends inside is followed, so all of a
+ * long one is dropped, not just its end. Bounded so the start of a giant
+ * paste with no whitespace in it can still be kept.
+ */
+const PRE_CAP_TOKEN_CHARS = 4_096;
+
+const isSpace = (c: string | undefined): boolean => c !== undefined && /\s/.test(c);
+
+/**
+ * Where the kept part of a pre-capped head ends: `PRE_CAP_GUARD_CHARS` short
+ * of the cut, moved back to the start of any token that reaches into the
+ * guard (up to `PRE_CAP_TOKEN_CHARS` back). A secret is almost always one
+ * token, so no piece of one the cut split survives, whatever its length.
+ */
+function headEndClearOfCut(head: string): number {
+  let end = Math.max(0, head.length - PRE_CAP_GUARD_CHARS);
+  if (end > 0 && !isSpace(head[end])) {
+    const floor = Math.max(0, end - PRE_CAP_TOKEN_CHARS);
+    while (end > floor && !isSpace(head[end - 1])) end--;
+  }
+  return end;
+}
+
+/** `headEndClearOfCut` for the tail: where its kept part starts. */
+function tailStartClearOfCut(tail: string): number {
+  let start = Math.min(tail.length, PRE_CAP_GUARD_CHARS);
+  if (start < tail.length && !isSpace(tail[start - 1])) {
+    const ceiling = Math.min(tail.length, start + PRE_CAP_TOKEN_CHARS);
+    while (start < ceiling && !isSpace(tail[start])) start++;
+  }
+  return start;
+}
 
 /**
  * Redact, then cap. Redacting first means the final cut can never leave half
- * a secret the patterns no longer match. A generous pre-cap bounds what the
- * redaction regexes have to scan (a pasted log can be megabytes); its cut
- * points lie far outside the head and tail the final cap keeps, so a secret
- * it splits never reaches the stored text. The pre-cap's own marker is in the
- * middle the final cut removes, so the final marker counts what both cuts
- * dropped: the whole prompt's length, not the pre-capped one's.
+ * a secret the patterns no longer match.
+ *
+ * A text longer than the pre-cap is redacted as two pieces, its head and its
+ * tail, and the middle is never looked at. The pre-cap's cuts CAN split a
+ * secret, so each piece drops the text next to its cut before the final cap
+ * picks what to keep: a piece that redaction shrank to almost nothing
+ * contributes almost nothing, rather than the fragment by its cut. The
+ * marker counts every character left out, in the redacted text's terms.
  */
 function storable(text: string): string {
-  const bounded = capHeadTail(text, PRE_CAP_CHARS).text;
-  const redacted = redactSecrets(bounded).text;
-  // Redaction can change the length; count it, and swap the pre-cap's marker
-  // for what that marker stood for.
-  return capWithin(redacted, MAX_USER_MESSAGE_CHARS, redacted.length + (text.length - bounded.length));
+  if (text.length <= PRE_CAP_CHARS) return capWithin(redactSecrets(text).text, MAX_USER_MESSAGE_CHARS);
+  const headLen = Math.ceil(PRE_CAP_CHARS * 0.6);
+  const tailLen = PRE_CAP_CHARS - headLen;
+  const head = redactSecrets(text.slice(0, headLen)).text;
+  const tail = redactSecrets(text.slice(text.length - tailLen)).text;
+  const keptHead = head.slice(0, headEndClearOfCut(head));
+  const keptTail = tail.slice(tailStartClearOfCut(tail));
+  const omitted = head.length - keptHead.length + (text.length - headLen - tailLen) + (tail.length - keptTail.length);
+  return joinWithin(keptHead, keptTail, omitted, MAX_USER_MESSAGE_CHARS);
 }
 
 // ── Transcript snapshot ──────────────────────────────────────────────────────
@@ -627,19 +707,20 @@ function agentTextOfLine(line: Buffer): string | null {
 }
 
 /**
- * The agent's last visible message in a transcript (JSONL of any format
- * `agentMessageText` knows), reading backwards from the end in chunks and at
- * most `TRANSCRIPT_TAIL_MAX_BYTES`. Null when there is no transcript file, no
- * such message within reach, or anything goes wrong. Only a regular file is
- * opened, so a path naming a FIFO or a device cannot stall a hook.
+ * Visit a transcript's lines from the last to the first, reading backwards
+ * from the end in chunks and at most `maxBytes`, until `visit` returns true.
+ * Only whole lines are visited, empty ones included. Does nothing when there
+ * is no transcript file, and stops quietly if anything goes wrong. Only a
+ * regular file is opened, so a path naming a FIFO or a device cannot stall a
+ * hook.
  */
-export function lastAgentMessage(transcriptPath: string | undefined, maxBytes: number = TRANSCRIPT_TAIL_MAX_BYTES): string | null {
+function visitLinesBackwards(transcriptPath: string | undefined, maxBytes: number, visit: (line: Buffer) => boolean): void {
   const path = readTranscriptPath(transcriptPath);
-  if (!path) return null;
+  if (!path) return;
   let fd: number | undefined;
   try {
     const st = statSync(path);
-    if (!st.isFile() || st.size === 0) return null;
+    if (!st.isFile() || st.size === 0) return;
     fd = openSync(path, "r");
     let end = st.size;
     let consumed = 0;
@@ -659,11 +740,13 @@ export function lastAgentMessage(transcriptPath: string | undefined, maxBytes: n
       while (lineEnd > 0) {
         const nl = buf.lastIndexOf(0x0a, lineEnd - 1);
         if (nl < 0) break;
-        const found = agentTextOfLine(buf.subarray(nl + 1, lineEnd));
-        if (found !== null) return found;
+        if (visit(buf.subarray(nl + 1, lineEnd))) return;
         lineEnd = nl;
       }
-      if (start === 0) return agentTextOfLine(buf.subarray(0, lineEnd));
+      if (start === 0) {
+        visit(buf.subarray(0, lineEnd));
+        return;
+      }
       partial = Buffer.from(buf.subarray(0, lineEnd));
     }
     // The budget ran out. What is left in `partial` starts exactly where the
@@ -671,11 +754,10 @@ export function lastAgentMessage(transcriptPath: string | undefined, maxBytes: n
     // read in full, and gets looked at like any other.
     if (end > 0 && partial.length > 0) {
       const before = Buffer.alloc(1);
-      if (readSync(fd, before, 0, 1, end - 1) === 1 && before[0] === 0x0a) return agentTextOfLine(partial);
+      if (readSync(fd, before, 0, 1, end - 1) === 1 && before[0] === 0x0a) visit(partial);
     }
-    return null;
   } catch {
-    return null;
+    // An unreadable transcript is one with nothing in it.
   } finally {
     if (fd !== undefined) {
       try {
@@ -688,10 +770,131 @@ export function lastAgentMessage(transcriptPath: string | undefined, maxBytes: n
 }
 
 /**
+ * The agent's last visible message in a transcript (JSONL of any format
+ * `agentMessageText` knows), reading backwards from the end and at most
+ * `maxBytes`. Null when there is no transcript file, no such message within
+ * reach, or anything goes wrong.
+ */
+export function lastAgentMessage(transcriptPath: string | undefined, maxBytes: number = TRANSCRIPT_TAIL_MAX_BYTES): string | null {
+  let found: string | null = null;
+  visitLinesBackwards(transcriptPath, maxBytes, (line) => {
+    found = agentTextOfLine(line);
+    return found !== null;
+  });
+  return found;
+}
+
+// ── Prompts the model scheduled (Claude Code) ────────────────────────────────
+//
+// Claude Code runs UserPromptSubmit hooks for prompts the model scheduled for
+// itself — CronCreate, ScheduleWakeup and /loop fire their prompt through the
+// same submit path as a typed one — and 2.1.278 builds the same payload for
+// both, with no field saying where the prompt came from. The model writes
+// those prompts, so recording one would let the agent put words in the
+// human's mouth. The transcript is the only witness:
+//
+// - When a scheduled task fires, Claude Code appends a
+//   `{type:"system", subtype:"scheduled_task_fire", prompt}` entry just
+//   before submitting the task's prompt. `prompt` there is the task's prompt
+//   with control characters and ANSI escapes removed and whitespace
+//   collapsed, cut to 200 characters.
+// - The model scheduled it with a tool call whose input carries the prompt
+//   (`CronCreate` / `ScheduleWakeup` `input.prompt`).
+
+/** Lines that can hold a scheduling tool call or a fire entry. */
+const SCHEDULE_HINTS = ['"scheduled_task_fire"', '"prompt":'].map((h) => Buffer.from(h));
+/** Lines that can hold a conversation entry (Claude Code's user/assistant, Factory's message). */
+const TURN_HINTS = ['"type":"user"', '"type":"assistant"', '"type":"message"'].map((h) => Buffer.from(h));
+/** Claude Code cuts a fire entry's prompt to this many characters. */
+const FIRE_PROMPT_CHARS = 200;
+
+/** Claude Code's ANSI-escape pattern, which it strips from a fire entry's prompt. */
+const ANSI_RE = /[\u001B\u009B][[\]()#;?]*(?:(?:(?:(?:;[-a-zA-Z\d/#&.:=?%@~_]+)*|[a-zA-Z\d]+(?:;[-a-zA-Z\d/#&.:=?%@~_]*)*)?(?:\u0007|\u001B\\|\u009C))|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/g;
+/** Whitespace and every character Claude Code strips from a fire entry's prompt. */
+const INVISIBLE_RE = /[\s\p{Cc}\p{Cf}\p{Cs}\p{Default_Ignorable_Code_Point}\u2028\u2029]/gu;
+
+/** Text reduced to its visible characters, so two spellings of one prompt compare equal. */
+const visibleText = (text: string): string => text.replace(ANSI_RE, "").replace(INVISIBLE_RE, "");
+
+/** The `prompt` of every tool call in an entry: Claude Code and Factory `tool_use`, Pi `toolCall`. */
+function toolCallPrompts(entry: unknown): string[] {
+  const content = (entry as { message?: { content?: unknown } })?.message?.content;
+  if (!Array.isArray(content)) return [];
+  const prompts: string[] = [];
+  for (const block of content) {
+    const b = obj(block);
+    if (b?.type !== "tool_use" && b?.type !== "toolCall") continue;
+    const prompt = (obj(b.input) ?? obj(b.arguments))?.prompt;
+    if (typeof prompt === "string") prompts.push(prompt);
+  }
+  return prompts;
+}
+
+function isTurnEntry(entry: unknown): boolean {
+  const type = (entry as { type?: unknown })?.type;
+  return type === "user" || type === "assistant" || type === "message";
+}
+
+/**
+ * Whether the transcript shows that the model, not the human, wrote `raw`:
+ *
+ * - a scheduled-task fire entry newer than every conversation entry — the
+ *   prompt being submitted is the one that fire started, whatever it says;
+ * - a fire entry whose prompt is this prompt (or, cut to 200 characters, its
+ *   start) — the task fired while a turn was running and its prompt waited
+ *   in the queue;
+ * - a tool call whose `prompt` input is this prompt.
+ *
+ * Reads at most `TRANSCRIPT_TAIL_MAX_BYTES` from the end. A match that is
+ * really the human typing the same words again only costs that prompt its
+ * standing as intent.
+ */
+function modelScheduledPrompt(transcriptPath: string | undefined, raw: string): boolean {
+  let typed: string | undefined;
+  const visible = (): string => (typed ??= visibleText(raw));
+  let turnSeen = false;
+  let scheduled = false;
+  visitLinesBackwards(transcriptPath, TRANSCRIPT_TAIL_MAX_BYTES, (line) => {
+    const hinted = SCHEDULE_HINTS.some((h) => line.includes(h));
+    if (!hinted && (turnSeen || !TURN_HINTS.some((h) => line.includes(h)))) return false;
+    let entry: Record<string, unknown> | undefined;
+    try {
+      entry = obj(JSON.parse(line.toString("utf8")));
+    } catch {
+      return false;
+    }
+    if (!entry) return false;
+    if (entry.type === "system" && entry.subtype === "scheduled_task_fire") {
+      if (!turnSeen) return (scheduled = true);
+      const fired = typeof entry.prompt === "string" ? visibleText(entry.prompt) : "";
+      if (fired.length > 0) {
+        const cut = (entry.prompt as string).length >= FIRE_PROMPT_CHARS - 1;
+        if (cut ? visible().startsWith(fired) : visible() === fired) return (scheduled = true);
+      }
+      return false;
+    }
+    if (hinted && visible().length > 0 && toolCallPrompts(entry).some((p) => visibleText(p) === visible())) return (scheduled = true);
+    if (isTurnEntry(entry)) turnSeen = true;
+    return false;
+  });
+  return scheduled;
+}
+
+/** A session source or thread source naming a sub-agent, however it is spelled. */
+const SUBAGENT_NAME_RE = /sub[-_ ]?agent/i;
+/**
+ * The same rule over the raw text of a session_meta line too long to parse:
+ * an object-form source, or a string source or thread source naming a
+ * sub-agent.
+ */
+const RAW_SUBAGENT_SOURCE_RE = /"source"\s*:\s*(?:\{|"[^"]*sub[-_ ]?agent)|"thread_source"\s*:\s*"[^"]*sub[-_ ]?agent/i;
+
+/**
  * Whether a Codex rollout belongs to a sub-agent thread, whose prompts the
  * parent agent wrote. Codex's `SessionSource` serializes the sub-agent variant
  * as an object (`{"subagent": …}`) where every human-driven source is a plain
- * string (`cli`, `vscode`, `exec`, …).
+ * string (`cli`, `vscode`, `exec`, …); a string source or `thread_source`
+ * naming a sub-agent counts too.
  */
 function codexRolloutIsSubagent(transcriptPath: string | undefined): boolean {
   const path = readTranscriptPath(transcriptPath);
@@ -710,14 +913,15 @@ function codexRolloutIsSubagent(transcriptPath: string | undefined): boolean {
     try {
       first = JSON.parse(firstLine);
     } catch {
-      // A first line longer than the read: judge by the raw text.
-      return /"type"\s*:\s*"session_meta"/.test(firstLine) && /"source"\s*:\s*\{\s*"sub[-_]?agent"/i.test(firstLine);
+      // A first line longer than the read: judge by the raw text, by the
+      // same rule as the parsed line below.
+      return /"type"\s*:\s*"session_meta"/.test(firstLine) && RAW_SUBAGENT_SOURCE_RE.test(firstLine);
     }
     if (first?.type !== "session_meta") return false;
     const source = first.payload?.source;
     if (source !== null && typeof source === "object") return true;
     const marks = [source, first.payload?.thread_source].filter((s): s is string => typeof s === "string");
-    return marks.some((s) => /sub[-_ ]?agent/i.test(s));
+    return marks.some((s) => SUBAGENT_NAME_RE.test(s));
   } catch {
     return false;
   } finally {

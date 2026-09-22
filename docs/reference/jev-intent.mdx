@@ -14,7 +14,7 @@ This page lists, for each of the 12 supported harnesses, where that text comes f
 
 | Harness | `--cli` | Prompt event → canonical | Text field | Recorded | Agent's last message read from |
 | --- | --- | --- | --- | --- | --- |
-| Claude Code | `claude` | `UserPromptSubmit` | `prompt` | Yes | the session transcript (`transcript_path`) |
+| Claude Code | `claude` | `UserPromptSubmit` | `prompt` | Yes, except a prompt the transcript shows the model scheduled (`CronCreate`, `ScheduleWakeup`, `/loop`) | the session transcript (`transcript_path`) |
 | Codex | `codex` | `user_prompt_submit` → `UserPromptSubmit` | `prompt` | Yes, except in a sub-agent thread (the rollout's `session_meta.source`) | the rollout JSONL (`transcript_path`) |
 | GitHub Copilot CLI | `copilot` | `UserPromptSubmit` | `prompt` | Yes | the session's `events.jsonl` |
 | Cursor | `cursor` | `beforeSubmitPrompt` → `UserPromptSubmit` | `prompt` | Yes | the agent transcript JSONL |
@@ -22,12 +22,24 @@ This page lists, for each of the 12 supported harnesses, where that text comes f
 | Pi | `pi` | `input` → `UserPromptSubmit` | `prompt` | Yes, except input another extension sent (`source: "extension"`, once forwarded) | the session JSONL |
 | Hermes | `hermes` | none | — | No | — |
 | OpenClaw | `openclaw` | `before_agent_run` → `UserPromptSubmit` | `prompt` | Only when marked as the owner's own message | none (`before_agent_run` carries no transcript path) |
-| Factory Droid | `factory` | `UserPromptSubmit` | `prompt` | Yes | the session JSONL (`transcript_path`) |
+| Factory Droid | `factory` | `UserPromptSubmit` | `prompt` | Yes, except a prompt one of the agent's own tool calls in the transcript carried | the session JSONL (`transcript_path`) |
 | Devin CLI | `devin` | `UserPromptSubmit` | `prompt` | Yes | none (its transcript is one JSON document, not JSONL) |
 | Antigravity CLI | `antigravity` | `PreInvocation` → `UserPromptSubmit` | none | No | — |
 | Goose | `goose` | `UserPromptSubmit` | `message` | Yes | none (sessions are stored in SQLite) |
 
 When a harness records nothing, Jev still evaluates every tool call, but with no task to judge against. Nothing can be cleared on the grounds that the human asked for it, and the check that flags a call reaching beyond the human's task stays off.
+
+## Prompts the model scheduled (Claude Code)
+
+Claude Code fires `UserPromptSubmit` for more than typed prompts. When a task the model scheduled comes due (`CronCreate`, `ScheduleWakeup`, or a `/loop`), Claude Code submits the task's prompt through the same path, and the hook payload is identical to a typed prompt's: nothing in it says the model wrote the text. Recording it would let the agent write the words it is later cleared by, so the session transcript is checked before a Claude Code prompt is recorded. The prompt is not recorded when:
+
+- the newest conversation entry in the transcript is a scheduled task firing (`"subtype": "scheduled_task_fire"`), which Claude Code writes just before it submits that task's prompt;
+- an older scheduled-task entry names this prompt (the task fired during a running turn, and its prompt waited in the queue). The entry keeps the first 200 characters, so a longer prompt matches on those;
+- a tool call in the transcript carries this prompt as its `prompt` input, as `CronCreate` and `ScheduleWakeup` do.
+
+Whitespace, control characters and ANSI escapes are ignored when comparing. If the human types exactly the words of a scheduled prompt, that prompt is not recorded either. Nothing breaks: Jev just has no stated intent to judge it against.
+
+The same tool-call check runs for Factory Droid, whose payloads and transcripts are shaped like Claude Code's.
 
 ## Harnesses that are not recorded
 
@@ -43,6 +55,7 @@ Harnesses put more than the human's words into a prompt. Before anything is stor
 - `<system-reminder>` blocks are removed, and the human's words around them are kept.
 - A session-continuation summary ("This session is being continued from a previous conversation…") is dropped entirely.
 - Task notifications, local-command output and interruption markers are dropped entirely.
+- A turn another agent or session wrote is dropped entirely: Claude Code wraps those in `<cross-session-message>`, `<teammate-message>`, `<agent-message>`, `<coordinator-relay>` or `<channel source=…>`.
 - Failproof AI's own messages are dropped entirely. A stop gate's `MANDATORY ACTION REQUIRED from failproofai …` or an `Instruction from failproofai: …` can come back as the next user turn on some harnesses (Cursor submits a stop gate's follow-up message as one), and they never count as the human's words.
 - A slash command is kept as the command and arguments the human typed, never the body the harness expanded it into.
 - A Codex IDE-context prompt keeps only the text under `## My request for Codex:`. The active file and open tabs are dropped.
@@ -66,7 +79,7 @@ It is read from the end of the transcript, at most the last 4 MB. Supported tran
 | Kept per session | the last 5 prompts |
 | Window | prompts older than 6 hours are ignored |
 | Size | each prompt and agent message is capped at 1,200 characters, keeping the head and the tail |
-| Secrets | redacted with the same patterns as the `sanitize-*` policies before anything is written |
+| Secrets | redacted with the same patterns as the `sanitize-*` policies before anything is written. A text longer than 9,600 characters is redacted as its first 5,760 and last 3,840 characters, and the text next to those cuts, where a secret could have been split, is never stored |
 
 A session ID containing anything but letters, digits, `.`, `_` and `-`, or longer than 128 characters, is never used as a file name, so nothing is recorded for it. Session files whose newest prompt is older than the window are deleted the next time a new session starts recording.
 
@@ -75,5 +88,6 @@ Nothing is recorded unless a Jev endpoint is configured.
 ## Known limits
 
 - **Subagents.** Codex sub-agent threads are detected from the rollout's `session_meta`. Claude Code's `UserPromptSubmit` payload has no field that marks a subagent (Claude Code 2.1.278 does not set `agent_id` on it), so a prompt event fired inside a Claude Code subagent could not be told apart from a typed one. The prompt is still skipped if a later version adds `agent_id` to this event. Whether Copilot, Cursor, Factory, Devin or Goose fire their prompt event inside a subagent has not been verified.
+- **Scheduled prompts beyond the transcript.** Recognizing a scheduled prompt depends on the transcript. The check reads the last 4 MB of it. It can miss a prompt whose scheduling call has scrolled further back than that, when Claude Code also wrote no scheduled-task entry for it (headless and SDK sessions have not been verified to write one). It can also miss one that fires when the transcript has not yet been written. Devin has no JSONL transcript to check.
 - **Programmatic prompts count.** A prompt sent through a harness's SDK or headless mode (`claude -p`, `codex exec`) is treated as the operator's request, because the harness cannot tell it apart from a typed one.
 - **Pi extensions.** Pi marks input sent by another extension with `source: "extension"`, but the Pi bridge does not forward that field yet, so such input is currently recorded like a typed prompt.

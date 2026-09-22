@@ -243,6 +243,81 @@ export const claudeTranscript = (): unknown[] => [
   { type: "ai-title", aiTitle: "Rebase login branch", sessionId: SID.claude },
 ];
 
+// ── Claude Code: prompts the model scheduled (2.1.278) ──────────────────────
+
+/**
+ * The model scheduling a prompt for itself: the tool call, its result, and
+ * the model's closing words. `CronCreate` takes `{cron, prompt, recurring}`
+ * and `ScheduleWakeup` `{delaySeconds, reason, prompt}`.
+ */
+export const claudeScheduleCall = (
+  uuid: string,
+  parent: string,
+  tool: "CronCreate" | "ScheduleWakeup",
+  prompt: string,
+): unknown[] => [
+  claudeAssistant(`${uuid}-call`, parent, [
+    {
+      type: "tool_use",
+      id: `toolu_${uuid}`,
+      name: tool,
+      input: tool === "CronCreate" ? { cron: "*/5 * * * *", prompt, recurring: true } : { delaySeconds: 600, reason: "wait for CI", prompt },
+      caller: { type: "direct" },
+    },
+  ]),
+  {
+    ...claudeCommon(`${uuid}-result`, `${uuid}-call`),
+    promptId: "p1",
+    type: "user",
+    message: { role: "user", content: [{ tool_use_id: `toolu_${uuid}`, type: "tool_result", content: `Scheduled ${tool === "CronCreate" ? "job a1b2c3d4" : "a wakeup in 600s"}.` }] },
+    sourceToolAssistantUUID: `${uuid}-call`,
+  },
+  claudeAssistant(`${uuid}-done`, `${uuid}-result`, [{ type: "text", text: "Scheduled. I'll check back." }]),
+  { ...claudeCommon(`${uuid}-turn`, `${uuid}-done`), type: "system", subtype: "turn_duration", durationMs: 4200, messageCount: 4, isMeta: false },
+];
+
+/**
+ * What Claude Code's `useScheduledTasks` appends when a task fires, just
+ * before it submits the task's prompt (`g2t` in 2.1.278): the prompt with
+ * control characters removed and whitespace collapsed, cut to 200 characters.
+ */
+export const claudeScheduledFire = (uuid: string, parent: string, prompt: string, extra: Record<string, unknown> = {}) => ({
+  ...claudeCommon(uuid, parent),
+  type: "system",
+  subtype: "scheduled_task_fire",
+  content: "Running scheduled task (Sep 22, 9:20 AM)",
+  isMeta: false,
+  taskId: "a1b2c3d4",
+  cron: "*/5 * * * *",
+  prompt: prompt.replace(/\s+/g, " ").trim().slice(0, 200),
+  ...extra,
+});
+
+/** The user entry Claude Code writes for a scheduled prompt once it has been submitted. */
+export const claudeScheduledTurn = (uuid: string, parent: string, prompt: string) => ({
+  ...claudeCommon(uuid, parent),
+  promptId: `p-${uuid}`,
+  type: "user",
+  message: { role: "user", content: prompt },
+  isMeta: true,
+  scheduledTaskId: "a1b2c3d4",
+  scheduledFireId: uuid,
+});
+
+/** A plain assistant text entry, for building transcripts around the above. */
+export const claudeSays = (uuid: string, parent: string, text: string) => claudeAssistant(uuid, parent, [{ type: "text", text }]);
+
+/** A human's typed prompt, as Claude Code writes it once submitted. */
+export const claudeTyped = (uuid: string, parent: string, text: string) => ({
+  ...claudeCommon(uuid, parent),
+  promptId: `p-${uuid}`,
+  type: "user",
+  message: { role: "user", content: text },
+  permissionMode: "default",
+  origin: { kind: "human" },
+  promptSource: "typed",
+});
+
 export const CODEX_AGENT_QUESTION = "The dev database has 3 stale migrations. Shall I drop it and re-run them from scratch?";
 
 /** Codex 0.153 rollout: agent text as `event_msg` `agent_message`. */
@@ -395,6 +470,24 @@ export const factorySession = (): unknown[] => [
   { type: "session_start", id: SID.factory, title: "db cleanup", owner: "dev", version: 2, cwd: "/work/app" },
   { type: "message", id: "m1", timestamp: "2026-09-22T10:00:01Z", message: { role: "user", content: [{ type: "text", text: "clean up old tables" }], visibility: "both" } },
   { type: "message", id: "m2", timestamp: "2026-09-22T10:00:07Z", message: { role: "assistant", content: [{ type: "text", text: FACTORY_AGENT_QUESTION }], visibility: "both" } },
+];
+
+/**
+ * A droid session whose agent made a tool call carrying a `prompt` input. The
+ * `tool_use` block is droid's own shape; the `Task` input keys are illustrative.
+ */
+export const factorySessionWithToolPrompt = (prompt: string): unknown[] => [
+  ...factorySession(),
+  {
+    type: "message",
+    id: "m3",
+    timestamp: "2026-09-22T10:00:09Z",
+    message: {
+      role: "assistant",
+      content: [{ type: "tool_use", id: "call_0a1b2c3d4e5f", name: "Task", input: { subagent_type: "worker", description: "follow-up", prompt } }],
+      visibility: "both",
+    },
+  },
 ];
 
 export const toJsonl = (lines: unknown[]): string => lines.map((l) => JSON.stringify(l)).join("\n") + "\n";

@@ -26,11 +26,27 @@ entire diff from `0.0.1b2`, and `0.0.2b0` opens the next beta line.
 - `fp issues clear (--audit <id> | --all-audits | --everything) [--dry-run]` — resolve
   every open issue in a scope plus the audit findings behind them, in one server-side
   transaction. Exactly one scope flag is required. Needs `issues:close` **and**
-  `audits:write`. Writes no suppression, so anything still broken returns as a new
-  issue on the next run. The confirm names the count from a dry run that shares its
+  `audits:write`. Writes no suppression, so anything still broken reopens its issue
+  on the next run. The confirm names the count from a dry run that shares its
   scope predicate with the write. (#815)
 - `issues list --state closed` is accepted, and `Incident` carries `closed_at` and
   `archived_at`. (#815)
+
+### Fixes
+
+- The recurrence sentence said two different things in one release. `audits resolve`'s
+  confirm line (`a genuine recurrence re-opens as new`), the skill and the command
+  reference implied a recurrence opens a **different** issue; `issues close --help`, the
+  audits guide and the CLI reference said the resolved issue **reopens**. The second is
+  the one the rest of the model needs — a `closed` issue has to have something to stay
+  closed through — so `reopens` is now what every surface says. (#815)
+- `issues clear --help` claimed the `--dry-run` count "cannot disagree" with the write.
+  The two requests share a scope predicate, not a row set, so an issue entering the scope
+  between them is cleared without being in the confirmed number — correct for a scoped
+  clear, but not the guarantee that was written. The help now states the real one, and
+  names the closing line as the count of what changed. (#815)
+- The skill answered "clear all our issues" with `--all-audits`, which leaves alert-born
+  and hand-opened issues untouched. Settling the scope is now the first step. (#815)
 
 ## 0.0.1b2 — 2026-08-25
 

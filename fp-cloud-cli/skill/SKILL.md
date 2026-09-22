@@ -225,7 +225,7 @@ command (`list <kind>`, `whoami`, a `list` subcommand) before committing.
 | "what has this org used this metering window?" | `usage` (or `--json usage` for the complete response) |
 | "is anything on fire?", "any alerts firing / open issues?" | `alerts list` + `issues list` (and `issues count`) |
 | "ack / look at / resolve that issue" | `issues list` → `issues show <id>` → **confirm** → `issues ack`/`resolve <id>` |
-| "clear all our issues", "fresh start", "we changed the agents" | `issues clear --all-audits --dry-run` → show the count → **confirm** → `issues clear --all-audits` |
+| "clear all our issues", "fresh start", "we changed the agents" | **settle the scope first** (`--all-audits` leaves alert and hand-opened issues alone; `--everything` does not; `--audit <id>` is one audit) → `issues clear <scope> --dry-run` → show the count → **confirm** → `issues clear <scope>` |
 | "we're not going to fix that one" | `issues close <id>` (NOT `resolve` — closed survives a recurrence) |
 | "get that off my board" | `issues archive <id>` |
 | "run an audit", "what did the audit find?", "any findings to triage?" | `audits list` → `audits run <name>` (queues) → `audits runs <name>` (wait for `succeeded`) → `audits findings --audit <name>`; triage with `audits resolve/mute/dismiss <id>` — **confirm first** |
@@ -275,10 +275,13 @@ fp --json events --full --session-id run-001 --all | jq '.events[].payload'   # 
   decision (won't fix / not a problem / stale) and survives the recurrence. Pick
   the one that matches what the user actually said; they are not synonyms.
 - **"clear all our issues" / "fresh start":** that is `issues clear`, not a loop
-  of `resolve`. Run it `--dry-run` first, tell the user the number it returns,
-  and only then run it for real. It resolves the audit findings too and writes
-  **no** suppression, so anything still broken comes back as a new issue — say
-  that, because users often expect "clear" to mean "silence".
+  of `resolve`. **Settle the scope before you run anything** — "all our issues"
+  does not pick one: `--all-audits` leaves alert and hand-opened issues on the
+  board, `--everything` takes them too, and `--audit <id>` is one audit's work.
+  Ask which they mean, then `--dry-run` first, tell the user the number it
+  returns, and only then run it for real. It resolves the audit findings too and
+  writes **no** suppression, so anything still broken comes back and reopens its
+  issue — say that, because users often expect "clear" to mean "silence".
 - **Investigate a regression:** `evals --aggregate` to see which score dropped →
   `evals --score helpfulness:..0.5` to list the bad runs → `events --session-id <id>`
   to see what happened inside one.
@@ -305,7 +308,7 @@ Two things about the flow matter when driving it from the CLI:
   either surface works, they never disagree. Triage a finding with
   `audits ack|mute|dismiss|resolve|reopen <id>` (durable **mute/dismiss** suppress
   the pattern org-wide by fingerprint; **resolve** leaves no suppression, so a true
-  recurrence reopens as new). Reads need `audits:read`, every mutation
+  recurrence reopens the issue). Reads need `audits:read`, every mutation
   `audits:write` (note: triaging a finding needs `audits:write`, not an `issues:*`
   permission — the audit is the system of record and the issue follows it).
 

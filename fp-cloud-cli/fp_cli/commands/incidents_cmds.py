@@ -374,12 +374,16 @@ def incidents_clear(
 
     This is the same thing as resolving each issue by hand, including what it does NOT do.
     **Nothing is deleted, and nothing is suppressed.** A pattern your agent changes genuinely
-    fixed stays gone; one they did not opens a NEW issue on the next audit run. If you want a
-    pattern silenced for good, that is `fp audits finding-status <id> --action mute`, which is
-    a different and much bigger hammer.
+    fixed stays gone; one they did not comes back on the next audit run and REOPENS the issue
+    it was raised under — a cleared board is not a quiet one. If you want a pattern silenced
+    for good, that is `fp audits finding-status <id> --action mute`, which is a different and
+    much bigger hammer.
 
-    Run it with `--dry-run` first: the count comes from the server and is taken with the same
-    scope predicate the write uses, so the number you see is the number of rows that change.
+    Run it with `--dry-run` first: the count comes from the server, taken with the same scope
+    predicate the write uses, so it is the real size of the scope rather than a client-side
+    guess. It is a count, not a lease — the confirmed write re-runs that predicate, so an
+    issue that entered the scope since the preview is cleared along with the rest, which is
+    what clearing a SCOPE means. The line printed at the end is what actually changed.
 
     Needs `issues:close` AND `audits:write` — clearing resolves the audit findings behind the
     issues, so a key that cannot touch one finding cannot resolve all of them at once.

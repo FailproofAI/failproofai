@@ -4602,7 +4602,7 @@ def confirm_issues_clear(scope_label: str, issues: int, findings: int) -> bool:
     """The bulk-clear confirm (stderr). Names the COUNT from the server's dry run rather than
     the scope alone — a confirmation that cannot say how many rows it will change is a
     confirmation in name only — and states the part operators actually need: nothing is
-    suppressed, so a pattern that survived their agent changes comes back as a new issue."""
+    suppressed, so a pattern that survived their agent changes comes back and reopens its issue."""
     h = Text()
     h.append("⚠ ", style=f"bold {theme.AMBER}")
     h.append("clear ", style=theme.TEXT)
@@ -5821,7 +5821,7 @@ def confirm_finding_action(action: str, finding_id: str, *, title: Optional[str]
     consequence = {
         "mute": "future runs stop surfacing this pattern",
         "dismiss": "it's suppressed as not worth acting on",
-        "resolve": "it closes; a genuine recurrence re-opens as new",
+        "resolve": "it closes; a genuine recurrence re-opens it",
     }.get(action, "this changes the finding's status")
     return confirm_line(h, Text(consequence, style=theme.LABEL))
 

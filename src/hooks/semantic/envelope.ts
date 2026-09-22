@@ -9,53 +9,70 @@
  *    that Jev "does not treat data as hostile by default", so this is a
  *    mitigation, not a guarantee — the real defence is in `decide.ts`, where
  *    no answer about injected text can ever produce a deny or an allow.
- * 2. Secrets never leave the machine. Every string is run through the same
- *    SECRET_PATTERNS the sanitize-* builtins use before it is sent, and the
- *    count is reported so a redaction is auditable.
+ * 2. Secrets never leave the machine. Every string that is sent — tool input
+ *    values AND keys, human and agent messages, and the path/cwd/branch facts
+ *    — goes through `redactSecrets` (./redact.ts): the SECRET_PATTERNS the
+ *    sanitize-* builtins block on, plus the wider net only a redactor can
+ *    afford. A value under a secret-named key (`{"password": "…"}`) is
+ *    redacted whatever it looks like. The count is reported so a redaction is
+ *    auditable.
  * 3. Small beats complete. Jev degrades as state fills with content unrelated
  *    to the question, so long fields keep their head and tail, and anything
  *    cut is flagged `truncated` — which the handler treats as "keep the regex
  *    engine voting too", so padding a command cannot hide its dangerous part.
  */
-import { SECRET_PATTERNS } from "../builtin-policies";
 import type { ScannedCommand } from "./facts";
+import { isSecretFieldValue, redactSecretsDetailed, scrubKnownSecrets } from "./redact";
 import type { Facts } from "./types";
+
+export { redactSecrets, type Redacted } from "./redact";
 
 export const MAX_STRING_CHARS = 2_000;
 export const MAX_USER_MESSAGE_CHARS = 1_200;
 export const MAX_USER_MESSAGES = 3;
 const MAX_KEYS = 24;
 
-const GLOBAL_SECRET_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = SECRET_PATTERNS.map(([re, label]) => [
-  new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g"),
-  label,
-]);
+/**
+ * Characters a secret does not contain, so a cut next to one never splits one:
+ * whitespace, quotes, and the delimiters of code and JSON.
+ */
+const CUT_STOP = /[\s"'`,;{}()<>|]/;
+/** How far a cut may move to reach one. Past this the token is long enough that
+ * its surviving part still matches a full pattern on its own. */
+const CUT_SNAP_MAX = 256;
 
-export interface Redacted {
-  text: string;
-  count: number;
-}
-
-export function redactSecrets(text: string): Redacted {
-  let count = 0;
-  let out = text;
-  for (const [re, label] of GLOBAL_SECRET_PATTERNS) {
-    re.lastIndex = 0;
-    out = out.replace(re, () => {
-      count++;
-      return `<redacted:${label}>`;
-    });
-  }
-  return { text: out, count };
-}
-
-/** Keep the head and the tail: a dangerous suffix cannot be padded out of view. */
+/**
+ * Keep the head and the tail: a dangerous suffix cannot be padded out of view.
+ *
+ * Each cut is moved to the nearest stop character (within `CUT_SNAP_MAX`) so
+ * it never lands inside a token. Callers cap BEFORE they redact, to bound the
+ * redactor's cost, and a key sliced at the cut arrives as a fragment no pattern
+ * matches — `sk-ant-api03-AbCdEfGhIj` is 22 characters of a live key and too
+ * short for its own rule. Snapping drops the fragment into the omitted middle
+ * instead, whole.
+ */
 export function capHeadTail(text: string, max: number): { text: string; truncated: boolean } {
   if (text.length <= max) return { text, truncated: false };
-  const head = Math.ceil(max * 0.6);
-  const tail = max - head;
+  let head = Math.ceil(max * 0.6);
+  let tailStart = text.length - (max - head);
+  if (head > 0 && !CUT_STOP.test(text[head - 1]) && !CUT_STOP.test(text[head])) {
+    for (let i = head - 1; i >= Math.max(0, head - CUT_SNAP_MAX); i--) {
+      if (CUT_STOP.test(text[i])) {
+        head = i + 1;
+        break;
+      }
+    }
+  }
+  if (tailStart < text.length && !CUT_STOP.test(text[tailStart - 1]) && !CUT_STOP.test(text[tailStart])) {
+    for (let i = tailStart; i < Math.min(text.length, tailStart + CUT_SNAP_MAX); i++) {
+      if (CUT_STOP.test(text[i])) {
+        tailStart = i;
+        break;
+      }
+    }
+  }
   return {
-    text: `${text.slice(0, head)}\n…[${text.length - max} characters omitted]…\n${text.slice(text.length - tail)}`,
+    text: `${text.slice(0, head)}\n…[${tailStart - head} characters omitted]…\n${text.slice(tailStart)}`,
     truncated: true,
   };
 }
@@ -63,6 +80,15 @@ export function capHeadTail(text: string, max: number): { text: string; truncate
 interface Accumulator {
   redactions: number;
   truncated: boolean;
+  /** Every literal secret replaced so far, so its copies can be scrubbed too. */
+  found: Set<string>;
+}
+
+function redactInto(text: string, acc: Accumulator): string {
+  const r = redactSecretsDetailed(text);
+  acc.redactions += r.count;
+  for (const f of r.found) acc.found.add(f);
+  return r.text;
 }
 
 function cleanString(value: string, max: number, acc: Accumulator): string {
@@ -70,24 +96,80 @@ function cleanString(value: string, max: number, acc: Accumulator): string {
   // and never by whatever the agent chose to send.
   const capped = capHeadTail(value, Math.max(max, 0));
   if (capped.truncated) acc.truncated = true;
-  const r = redactSecrets(capped.text);
-  acc.redactions += r.count;
-  return r.text;
+  return redactInto(capped.text, acc);
 }
 
-function cleanValue(value: unknown, acc: Accumulator, depth = 0): unknown {
-  if (typeof value === "string") return cleanString(value, MAX_STRING_CHARS, acc);
+/**
+ * The last pass over the finished state: replace every copy of a secret found
+ * anywhere in it. A secret is recognised where its context gives it away, but
+ * its bytes can sit elsewhere without that context — `facts.paths` lifts the
+ * bare value out of `aws configure set aws_secret_access_key <value>`, and a
+ * human may paste the same value into a message.
+ */
+function scrubDeep(value: unknown, acc: Accumulator): unknown {
+  if (typeof value === "string") {
+    const r = scrubKnownSecrets(value, acc.found);
+    acc.redactions += r.count;
+    return r.text;
+  }
+  if (Array.isArray(value)) return value.map((v) => scrubDeep(v, acc));
+  if (value === null || typeof value !== "object") return value;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    const r = scrubKnownSecrets(k, acc.found);
+    acc.redactions += r.count;
+    let key = r.text;
+    for (let n = 2; Object.hasOwn(out, key); n++) key = `${r.text}#${n}`;
+    out[key] = scrubDeep(v, acc);
+  }
+  return out;
+}
+
+/**
+ * `fieldName` is the key the value sits under. A string under a secret-named
+ * key (`{"password": "hunter2"}` from an MCP tool) is redacted whole: nothing
+ * inside the string itself says it is a secret, only its key does. Array
+ * elements inherit their array's key, as more values of the same field.
+ */
+function cleanValue(value: unknown, acc: Accumulator, depth = 0, fieldName?: string): unknown {
+  if (typeof value === "string") {
+    if (fieldName !== undefined && isSecretFieldValue(fieldName, value)) {
+      acc.redactions++;
+      acc.found.add(value);
+      return "<redacted:assigned secret>";
+    }
+    return cleanString(value, MAX_STRING_CHARS, acc);
+  }
   if (typeof value === "number" || typeof value === "boolean" || value === null) return value;
   if (depth >= 2 || typeof value !== "object") {
     return cleanString(JSON.stringify(value) ?? String(value), MAX_STRING_CHARS / 2, acc);
   }
   if (Array.isArray(value)) {
     if (value.length > MAX_KEYS) acc.truncated = true;
-    return value.slice(0, MAX_KEYS).map((v) => cleanValue(v, acc, depth + 1));
+    return value.slice(0, MAX_KEYS).map((v) => cleanValue(v, acc, depth + 1, fieldName));
   }
   const entries = Object.entries(value as Record<string, unknown>);
   if (entries.length > MAX_KEYS) acc.truncated = true;
-  return Object.fromEntries(entries.slice(0, MAX_KEYS).map(([k, v]) => [k, cleanValue(v, acc, depth + 1)]));
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of entries.slice(0, MAX_KEYS)) {
+    // Keys are sent too, and a key can be the secret (`{"<token>": true}`).
+    const redactedKey = redactInto(k, acc);
+    let key = redactedKey;
+    for (let n = 2; Object.hasOwn(out, key); n++) key = `${redactedKey}#${n}`;
+    out[key] = cleanValue(v, acc, depth + 1, k);
+  }
+  return out;
+}
+
+/**
+ * Redact a fact string. Not capped at the usual size, because a fact must stay
+ * whole to stay correct — only a pathological one past MAX_STRING_CHARS is cut
+ * (and flagged), which bounds the redactor's cost the same way `cleanString` does.
+ */
+function cleanFact(value: string | null, acc: Accumulator): string | null {
+  if (value === null) return null;
+  if (value.length > MAX_STRING_CHARS) return cleanString(value, MAX_STRING_CHARS, acc);
+  return redactInto(value, acc);
 }
 
 export interface Envelope {
@@ -112,7 +194,7 @@ export function buildEnvelope(
   scanned: ScannedCommand | null,
   opts: EnvelopeOptions = {},
 ): Envelope {
-  const acc: Accumulator = { redactions: 0, truncated: false };
+  const acc: Accumulator = { redactions: 0, truncated: false, found: new Set() };
 
   const input = cleanValue(toolInput, acc) as Record<string, unknown>;
   if (scanned && typeof toolInput.command === "string") {
@@ -141,14 +223,22 @@ export function buildEnvelope(
           "it, so it only explains what a short human reply refers to and is never the human's own request."
         : ""),
     user_said: said,
+    // Redacted too: a path fact is a token lifted out of the command, and
+    // anything with a `/` in it counts as a path — `aws configure set
+    // aws_secret_access_key wJalr…/K7MD…` puts the secret in `paths` twice,
+    // with none of the context that identified it (the scrub pass below).
     facts: {
       tool_name: facts.toolName,
       tool_is_known: facts.toolIsKnown,
-      cwd: facts.cwd,
-      project_root: facts.projectRoot,
-      current_git_branch: facts.currentGitBranch,
+      cwd: cleanFact(facts.cwd, acc),
+      project_root: cleanFact(facts.projectRoot, acc),
+      current_git_branch: cleanFact(facts.currentGitBranch, acc),
       permission_mode: facts.permissionMode,
-      paths: facts.paths.map((p) => ({ as_written: p.asWritten, resolved: p.resolved, relation: p.relation })),
+      paths: facts.paths.map((p) => ({
+        as_written: cleanFact(p.asWritten, acc),
+        resolved: cleanFact(p.resolved, acc),
+        relation: p.relation,
+      })),
     },
     ...(agentLast ? { agent_last_message: agentLast } : {}),
     agent_request: {
@@ -163,6 +253,10 @@ export function buildEnvelope(
       ...(acc.truncated ? { truncated: true } : {}),
     },
   };
+
+  if (acc.found.size > 0) {
+    for (const key of Object.keys(state)) if (key !== "how_to_read") state[key] = scrubDeep(state[key], acc);
+  }
 
   return { state, truncated: acc.truncated, redactions: acc.redactions };
 }

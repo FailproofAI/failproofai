@@ -125,10 +125,31 @@ const SHELL_METACHAR_RE = /[;&<>`$()\\]/;
 const JWT_RE = /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/;
 
 // sanitizeApiKeys
+//
+// The three entries after "OpenAI API key" close the gateway-key gap. That
+// pattern's `[A-Za-z0-9]{20,}` stops at the first `-` or `_`, so every key whose
+// random part is base64url walked past it the moment one of those two landed in
+// its first twenty characters: LiteLLM's 25-character `sk-` + token_urlsafe(16)
+// (about half of all its keys), OpenRouter's `sk-or-v1-…`, OpenAI's own
+// `sk-svcacct-…` / `sk-admin-…` / `sk-None-…`, Langfuse's `sk-lf-<uuid>`.
+//
+// Unlike the older `sk-` entries these are anchored at a token boundary, because
+// the hyphenated shape is exactly what ordinary identifiers look like: pod names
+// such as `risk-scoring-7d9f8b6c5-x2k4p` contain `sk-` followed by twenty-odd
+// token characters. `\\[nrt]` also counts as a boundary: the sanitize-* policies
+// scan JSON.stringify output, where a key at the start of a line follows the two
+// characters `\n`. The generic entry additionally requires the mix of classes a
+// random token has and a kebab-case name does not: upper AND lower case, plus a
+// digit or a lower→upper hump.
+const SK_GATEWAY_KEY_RE =
+  /(?:(?<![A-Za-z0-9_-])|(?<=\\[nrt]))sk-(?=[A-Za-z0-9_-]*[A-Z])(?=[A-Za-z0-9_-]*[a-z])(?=[A-Za-z0-9_-]*(?:[0-9]|[a-z][A-Z]))[A-Za-z0-9_-]{20,}/;
 const API_KEY_PATTERNS: Array<[RegExp, string]> = [
   [/sk-ant-[A-Za-z0-9\-_]{20,}/, "Anthropic API key"],
   [/sk-proj-[A-Za-z0-9\-_]{20,}/, "OpenAI project API key"],
   [/sk-[A-Za-z0-9]{20,}/, "OpenAI API key"],
+  [/(?:(?<![A-Za-z0-9_-])|(?<=\\[nrt]))sk-or-v\d+-[A-Za-z0-9]{32,}/, "OpenRouter API key"],
+  [/(?:(?<![A-Za-z0-9_-])|(?<=\\[nrt]))sk-lf-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/, "Langfuse secret key"],
+  [SK_GATEWAY_KEY_RE, "sk- API key"],
   [/ghp_[A-Za-z0-9]{36}/, "GitHub personal access token"],
   [/github_pat_[A-Za-z0-9_]{82}/, "GitHub fine-grained token"],
   [/AKIA[A-Z0-9]{16}/, "AWS access key ID"],

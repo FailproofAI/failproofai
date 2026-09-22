@@ -26,7 +26,16 @@ import {
 type Add = (id: string, value: unknown) => void;
 type AddHandler = (id: string, value: ComparableHandlerOutcome) => void;
 
-const ENV_KEYS = ["HOME", "FAILPROOFAI_HOME", "FAILPROOFAI_PACK_DIR", "FAILPROOFAI_TELEMETRY_DISABLED", "FAILPROOFAI_EVALUATOR"] as const;
+const ENV_KEYS = [
+  "HOME",
+  "FAILPROOFAI_HOME",
+  "FAILPROOFAI_PACK_DIR",
+  "FAILPROOFAI_TELEMETRY_DISABLED",
+  "FAILPROOFAI_EVALUATOR",
+  // block-read-outside-cwd prefers it over the payload's cwd; a developer
+  // running the suite from inside a Claude Code session may have it set.
+  "CLAUDE_PROJECT_DIR",
+] as const;
 
 export interface CorpusSandbox {
   root: string;
@@ -47,6 +56,7 @@ export function enterSandbox(): CorpusSandbox {
   process.env.FAILPROOFAI_PACK_DIR = packs;
   process.env.FAILPROOFAI_TELEMETRY_DISABLED = "1";
   delete process.env.FAILPROOFAI_EVALUATOR;
+  delete process.env.CLAUDE_PROJECT_DIR;
   return {
     root,
     restore() {

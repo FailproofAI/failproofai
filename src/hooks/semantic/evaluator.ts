@@ -3,10 +3,17 @@
  * decided by a single Jev request carrying every applicable policy.
  *
  * It never throws and it never guesses. Anything that stops it from getting a
- * complete, valid answer — no key, timeout, HTTP error, malformed body, a
- * different model than the one pinned — comes back as `degraded`, and the
- * handler then lets the regex engine decide that call exactly as it does
- * today. A semantic outage is a return to the old engine, not an open door.
+ * complete, valid answer — no transport, timeout, HTTP error, malformed body, a
+ * different model than the one pinned, an abort — comes back as `degraded`,
+ * and the two-tier combine then keeps the regex result for that call exactly
+ * as it is today. A semantic outage is a return to the old engine, not an
+ * open door.
+ *
+ * The caller always supplies the transport: in the product that is the
+ * customer's own BYOK config (`transportForConfig` behind `throttleTransport`,
+ * see `jev-review.ts`). There is deliberately no fallback that goes looking
+ * for credentials on disk — a machine without a `jev.json` must never reach
+ * Jev at all.
  *
  * Every evaluation, degraded ones included, is written to
  * `~/.failproofai/state/semantic/verdicts.jsonl` with the per-question
@@ -21,7 +28,8 @@ import { DEFAULT_THRESHOLDS, decide, decideV1, type DecideV1Options, type Thresh
 import { buildEnvelope, redactSecrets, type Envelope } from "./envelope";
 import { computeFacts, scanCommand } from "./facts";
 import { cleanUserSaid } from "./intent";
-import { JevError, readAnswers, resolveJevProvider, transportFor, type JevTransport } from "./jev-client";
+import { JevError, readAnswers, type JevTransport } from "./jev-client";
+import type { JevProviderKind } from "./jev-config";
 import { SEMANTIC_POLICIES } from "./policies";
 import type { Facts, IntentMode, SemanticInput, SemanticPolicy, SemanticVerdict } from "./types";
 
@@ -29,9 +37,17 @@ import type { Facts, IntentMode, SemanticInput, SemanticPolicy, SemanticVerdict 
 export const DEFAULT_JEV_TIMEOUT_MS = 1_500;
 
 export interface SemanticOptions {
-  /** Defaults to whichever provider `resolveJevProvider()` finds: TypeSafe, then Cloudflare. */
+  /** How to reach Jev. Required for a request to be made; absent → `degraded("no-transport")`. */
   transport?: JevTransport;
+  /** Which provider `transport` reaches, for the outcome and the verdict log. */
+  via?: JevProviderKind;
   timeoutMs?: number;
+  /**
+   * Aborts the request from outside — the two-tier handler does this the
+   * moment a hard regex deny makes Jev's answer irrelevant. An abort comes
+   * back as `degraded("aborted")`, never as a timeout.
+   */
+  signal?: AbortSignal;
   model?: string;
   policies?: ReadonlyArray<SemanticPolicy>;
   thresholds?: Thresholds;
@@ -71,7 +87,7 @@ export type SemanticOutcome =
       /** False when the provider did not say which Jev version answered. */
       modelVerified: boolean;
       /** Which route answered; `none` when no policy applied and nothing was sent. */
-      via: "typesafe" | "cloudflare" | "custom" | "none";
+      via: JevProviderKind | "none";
     }
   | {
       status: "degraded";
@@ -149,17 +165,14 @@ export async function evaluateSemantic(input: SemanticInput, opts: SemanticOptio
 
   if (JSON.stringify(compiled.request).length > MAX_REQUEST_CHARS) return degraded("request-too-large");
 
-  let transport = opts.transport;
-  let via: "typesafe" | "cloudflare" | "custom" = "custom";
-  if (!transport) {
-    const provider = resolveJevProvider();
-    if (!provider) return degraded("no-api-key");
-    transport = transportFor(provider);
-    via = provider.kind;
-  }
+  const transport = opts.transport;
+  if (!transport) return degraded("no-transport");
+  const via: JevProviderKind = opts.via ?? "custom";
+  if (opts.signal?.aborted) return degraded("aborted");
 
   try {
-    const signal = AbortSignal.timeout(opts.timeoutMs ?? envNumber("FAILPROOFAI_JEV_TIMEOUT_MS", DEFAULT_JEV_TIMEOUT_MS));
+    const timeout = AbortSignal.timeout(opts.timeoutMs ?? envNumber("FAILPROOFAI_JEV_TIMEOUT_MS", DEFAULT_JEV_TIMEOUT_MS));
+    const signal = opts.signal ? AbortSignal.any([timeout, opts.signal]) : timeout;
     const response = await transport(compiled.request, signal);
     const answers = readAnswers(compiled.request, response);
     return {
@@ -176,6 +189,9 @@ export async function evaluateSemantic(input: SemanticInput, opts: SemanticOptio
       via,
     };
   } catch (err) {
+    // Checked first: a transport that surfaces the abort as its own timeout
+    // error must still read as the caller's abort, not as Jev being slow.
+    if (opts.signal?.aborted) return degraded("aborted");
     if (err instanceof JevError) return degraded(err.code);
     if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")) return degraded("timeout");
     return degraded(`error: ${err instanceof Error ? err.message : String(err)}`);
@@ -198,8 +214,13 @@ export interface VerdictLogMeta {
   sessionId?: string;
   cli?: string;
   eventType: string;
-  /** What the handler did with the outcome: enforced it, or fell back to the regex engine. */
-  applied: "semantic" | "semantic+legacy" | "legacy-fallback";
+  /**
+   * What the handler did with the outcome: combined it with the regex results
+   * (`two-tier`), logged it while enforcing the regex result (`shadow`), or
+   * kept the regex result because Jev was unavailable or its envelope was
+   * truncated (`legacy-fallback`).
+   */
+  applied: "two-tier" | "shadow" | "legacy-fallback";
 }
 
 export function verdictLogRow(input: SemanticInput, outcome: SemanticOutcome, meta: VerdictLogMeta): Record<string, unknown> {

@@ -30,6 +30,10 @@ import type { PolicyFunction, PolicyResult, HooksConfig } from "./policy-types";
 import { readMergedHooksConfig } from "./hooks-config";
 import { registerBuiltinPolicies } from "./builtin-policies";
 import { evaluatePolicies } from "./policy-evaluator";
+// Types only: the semantic (Jev) modules are loaded with a dynamic import, and
+// only once a Jev config exists, so an unconfigured machine never loads them.
+import type { TwoTierReview } from "./semantic/combine";
+import type { JevConfig } from "./semantic/jev-config";
 import { clearPolicies, registerPolicy, getPoliciesForEvent } from "./policy-registry";
 import { loadAllCustomHooks } from "./custom-hooks-loader";
 import type { CustomHook } from "./policy-types";
@@ -183,6 +187,115 @@ async function runObserved(
       is_observe_mode: true,
     });
     return { decision: "allow" };
+  }
+}
+
+// ── Two-tier (Jev) opt-in ────────────────────────────────────────────────────
+//
+// Jev reviews a call only when ALL of these hold, and the regex engine runs
+// alone — exactly as it did before two tiers existed — otherwise:
+//
+// - a valid BYOK config exists (`~/.failproofai/jev.json`, global only);
+// - `FAILPROOFAI_EVALUATOR` is not `legacy` (the escape hatch). On a daemon
+//   machine this must be set in the daemon's environment: the daemon forwards
+//   a hook's stdin and cwd to the warm worker, never the shell's environment;
+// - this is not the fail-closed `forceDecision` path and no session pause is
+//   active — a pause suspends local policy, and Jev must not become a way to
+//   evaluate what the pause switched off;
+// - the event is a gate (`PreToolUse` / `PermissionRequest`) for a named tool.
+//
+// There is no cloud-deployment exclusion: cloud policies default to `hard`, so
+// Jev can only make a centrally managed machine stricter, never weaker.
+
+/** The two gate events Jev reviews. Everything else is regex-only. */
+const JEV_GATE_EVENTS: ReadonlySet<string> = new Set(["PreToolUse", "PermissionRequest"]);
+
+function jevForcedOff(opts: EvaluateHookEventOptions | undefined): boolean {
+  return process.env.FAILPROOFAI_EVALUATOR === "legacy" || !!opts?.forceDecision;
+}
+
+/** The BYOK config, or null (Jev off). A config that cannot be read is off, never a failure. */
+async function readJevConfig(): Promise<JevConfig | null> {
+  try {
+    const { loadJevConfig } = await import("./semantic/jev-config");
+    return loadJevConfig();
+  } catch (err) {
+    hookLogWarn(
+      `Jev config could not be read (${err instanceof Error ? err.message : String(err)}); the regex engine decides alone`,
+    );
+    return null;
+  }
+}
+
+/**
+ * Start Jev's review of this call — before the regex policies run, so the two
+ * proceed in parallel — or return null for the regex-only path.
+ */
+async function startTwoTier(
+  canonicalEventType: string,
+  parsed: Record<string, unknown>,
+  session: SessionMetadata,
+  cli: IntegrationType,
+  opts: EvaluateHookEventOptions | undefined,
+  activePause: ActivePause | null,
+): Promise<TwoTierReview | null> {
+  if (!JEV_GATE_EVENTS.has(canonicalEventType)) return null;
+  if (typeof parsed.tool_name !== "string" || parsed.tool_name.length === 0) return null;
+  if (jevForcedOff(opts) || activePause) return null;
+  const cfg = await readJevConfig();
+  if (!cfg) return null;
+  try {
+    const { startJevReview } = await import("./semantic/jev-review");
+    return startJevReview(cfg, {
+      eventType: canonicalEventType,
+      toolName: parsed.tool_name,
+      toolInput: parsed.tool_input,
+      cwd: session.cwd,
+      permissionMode: session.permissionMode,
+      sessionId: session.sessionId,
+      cli,
+    });
+  } catch (err) {
+    // Configured but unable to start: that is a fallback, and it is recorded
+    // as one — every regex verdict hard, the regex result final.
+    hookLogWarn(`Jev review could not start (${err instanceof Error ? err.message : String(err)})`);
+    return {
+      mode: cfg.mode === "shadow" ? "shadow" : "enforce",
+      review: Promise.resolve({ kind: "fallback", reason: "unavailable", latencyMs: null, model: null, decision: null }),
+      abort: () => {},
+      authorityOf: () => ({ authority: "hard", reviewedBy: [] }),
+    };
+  }
+}
+
+/**
+ * Record what the human just typed, for Jev to judge later calls against.
+ * Only when Jev is configured, and never for a prompt a policy blocked — the
+ * agent never receives that one, so it cannot be what the agent is working
+ * on. Which CLIs' prompt events count as human is decided inside
+ * `captureIntent` (T4). Never throws.
+ */
+async function captureJevIntent(
+  canonicalEventType: string,
+  decision: "allow" | "deny" | "instruct",
+  parsed: Record<string, unknown>,
+  session: SessionMetadata,
+  cli: IntegrationType,
+  opts: EvaluateHookEventOptions | undefined,
+): Promise<void> {
+  if (canonicalEventType !== "UserPromptSubmit" || decision === "deny" || jevForcedOff(opts)) return;
+  try {
+    if (!(await readJevConfig())) return;
+    const { captureIntent } = await import("./semantic/intent");
+    captureIntent({
+      eventType: canonicalEventType,
+      sessionId: session.sessionId,
+      prompt: parsed.prompt,
+      transcriptPath: session.transcriptPath,
+      cli,
+    });
+  } catch (err) {
+    hookLogWarn(`Jev intent capture failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
@@ -660,10 +773,20 @@ export async function evaluateHookEvent(
       );
     }
 
+    // Two-tier: when a Jev config exists and this is a gate, Jev's request
+    // starts HERE, before any regex policy runs, and evaluatePolicies combines
+    // the two (see semantic/combine.ts). Otherwise this is null and the call
+    // below is exactly the regex-only evaluation it always was.
+    const twoTier = await startTwoTier(canonicalEventType, parsed, session, cli, opts, activePause);
+
     // Evaluate policies (use canonical PascalCase event type)
-    const result = await evaluatePolicies(canonicalEventType, parsed, session, config);
+    const result = twoTier
+      ? await evaluatePolicies(canonicalEventType, parsed, session, config, twoTier)
+      : await evaluatePolicies(canonicalEventType, parsed, session, config);
     const durationMs = Math.round(performance.now() - startTime);
     hookLogInfo(`result=${result.decision} policy=${result.policyName ?? "none"} duration=${durationMs}ms`);
+
+    await captureJevIntent(canonicalEventType, result.decision, parsed, session, cli, opts);
 
     // Which policies actually ran for this event, regardless of how they
     // decided. `result.policyName` names only the decider — null on a plain
@@ -686,6 +809,8 @@ export async function evaluateHookEvent(
       decision: result.decision,
       reason: result.reason,
       durationMs,
+      // How Jev took part (§7 fields). Absent unless the two-tier path ran.
+      ...(result.twoTier ? result.twoTier.activity : {}),
       sessionId: session.sessionId,
       transcriptPath: session.transcriptPath,
       cwd: session.cwd,
@@ -693,8 +818,10 @@ export async function evaluateHookEvent(
       hookEventName: session.hookEventName,
       // Attribution. A builtin is anything registered that is not in the map,
       // so its absence is meaningful rather than missing — but only when a
-      // policy actually decided; a plain allow names nobody.
-      ...(result.policyName
+      // policy actually decided; a plain allow names nobody. When Jev's own
+      // verdict decided, no registered policy did: `evaluator` + `jevDecision`
+      // say so, and claiming "builtin" here would be false.
+      ...(result.policyName && !result.twoTier?.decidedByJev
         ? (() => {
             const attribution = policyAttribution.get(result.policyName);
             return {

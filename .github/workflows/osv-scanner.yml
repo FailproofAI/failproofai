@@ -62,7 +62,7 @@ jobs:
       # nothing at all — not this job, which was only ever given `bun.lock`, and
       # not Dependabot, which had no `cargo` ecosystem — for a TLS stack that
       # compiles into a root-installed system service.
-      - name: Scan bun.lock and Cargo.lock for known-vulnerable / malicious dependencies
+      - name: Scan every lockfile for known-vulnerable / malicious dependencies
         id: scan
         uses: google/osv-scanner-action/osv-scanner-action@f4cfcc01edc9c8b756a9b873b7a623ca674da51e # v2.3.8
         with:
@@ -79,6 +79,7 @@ jobs:
             --lockfile=Cargo.lock
             --lockfile=fp-cloud-cli/uv.lock
             --lockfile=sdk/python/uv.lock
+            --lockfile=sdk/typescript/package-lock.json
       # Only the schedule run notifies — nothing on main touched the lockfile,
       # so nobody is watching it the way a PR author watches their own checks
       # or a push failure shows up against the commit they just merged. Same

@@ -1,0 +1,17 @@
+# Build output
+dist/
+*.tgz
+
+# Dependencies
+node_modules/
+
+# Testing & coverage
+coverage/
+.vitest/
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store

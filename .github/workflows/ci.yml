@@ -484,6 +484,154 @@ jobs:
           AGENTEYE_TESTS_REQUIRE_FRAMEWORKS: "1"
         run: uv run pytest tests/integrations -q
 
+  # The TypeScript telemetry SDK (`@failproofai/sdk`). Separate from `quality`
+  # and `test` because it is its own npm package with its own lockfile, its own
+  # tsconfig and its own vitest config — running it inside the root project's
+  # jobs would mean the root's dependency tree decided whether this package's
+  # zero-dependency claim holds.
+  #
+  # The matrix is Node's supported majors, not a single version. This package's
+  # floor is 20.9 and its `using` support, `AsyncLocalStorage.enterWith`,
+  # `worker_threads` resource limits and `Symbol.dispose` shim all behave
+  # differently across that range — which is precisely the range a customer's
+  # agent runs on.
+  failproofai-ts-sdk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: sdk/typescript
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ["20.9", "20.x", "22.x", "24.x"]
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: sdk/typescript/package-lock.json
+
+      - name: Install dependencies
+        uses: nick-fields/retry@v4
+        with:
+          max_attempts: 3
+          timeout_minutes: 5
+          command: cd sdk/typescript && npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      # `test` re-runs `build` via its pre-step; that is deliberate rather than
+      # wasteful — the evaluator sandbox is a real `worker_threads` entry and
+      # cannot load a `.ts` file, so the sandbox suite needs `dist/` present and
+      # asserts rather than skips when it is missing.
+      - name: Test
+        run: npx vitest run
+
+      # Everything above ran against the source tree. These two steps run
+      # against the ARTIFACT, because the failures they catch — a missing export
+      # condition, a CommonJS build Node reads as ESM, a `dist/` path the files
+      # list does not ship — are invisible from inside the package and total
+      # from outside it.
+      - name: Pack
+        run: npm pack --pack-destination /tmp
+
+      - name: Smoke-test the packed tarball with no dependencies
+        run: |
+          mkdir -p /tmp/ts-sdk-smoke && cd /tmp/ts-sdk-smoke
+          npm init -y >/dev/null
+          # `--omit=optional --omit=peer` is the assertion, not an optimisation.
+          # "Zero dependencies" is the reason this package is safe to drop into
+          # someone else's agent, so prove it against the built artifact: install
+          # it with nothing else present, emit real events, and read them back
+          # off disk.
+          npm install --no-audit --no-fund --omit=optional --omit=peer /tmp/failproofai-sdk-*.tgz
+          test ! -d node_modules/@failproofai/sdk/node_modules \
+            || { echo "the published package brought transitive dependencies"; exit 1; }
+
+          cat > esm.mjs <<'EOF'
+          import * as fp from "@failproofai/sdk";
+          fp.configure({ baseDir: process.env.SPOOL });
+          await fp.agent("smoke", { goal: "ci" }, async () => {
+            await fp.toolCall("t", { input: { q: 1 } }, () => "ok");
+          });
+          await fp.flush();
+          console.log(fp.version);
+          EOF
+          SPOOL=/tmp/ts-sdk-spool node esm.mjs
+
+          cat > cjs.cjs <<'EOF'
+          const fp = require("@failproofai/sdk");
+          fp.configure({ baseDir: process.env.SPOOL });
+          fp.event.agentStart({ sessionId: "cjs", goal: "ci" });
+          fp.flushSync();
+          console.log(fp.version);
+          EOF
+          SPOOL=/tmp/ts-sdk-spool node cjs.cjs
+
+          # The evaluator loads from its own subpath, and its CLI has to be
+          # executable — a `bin` that is not fails on every platform where the
+          # installer links rather than copies.
+          node -e "const e = require('@failproofai/sdk/evaluator'); if (typeof e.Evaluator !== 'function') throw new Error('evaluator subpath is broken')"
+          npx --no-install failproofai-evaluator --help > /dev/null
+
+          node - <<'EOF'
+          const { readdirSync, readFileSync } = require("node:fs");
+          const { join } = require("node:path");
+          const dir = "/tmp/ts-sdk-spool/events";
+          const events = readdirSync(dir)
+            .filter((f) => f.endsWith(".jsonl"))
+            .flatMap((f) => readFileSync(join(dir, f), "utf8").split("\n").filter(Boolean))
+            .map((line) => JSON.parse(line));
+          const types = new Set(events.map((e) => e.type));
+          const want = ["agent_start", "agent_end", "tool_use", "tool_result"];
+          for (const type of want) {
+            if (!types.has(type)) throw new Error(`the installed artifact never wrote ${type}`);
+          }
+          // Emitted by the artifact, so this also proves the wire format
+          // survived packaging rather than only surviving an in-tree import.
+          if (!events.every((e) => "environment" in e && "session_id" in e)) {
+            throw new Error("an event reached disk missing a required field");
+          }
+          console.log(`${events.length} events written by the installed artifact`);
+          EOF
+
+      # The evaluator sandbox in an INSTALLED package resolves its worker
+      # through the package's own `./sandbox-worker` export, with no env
+      # override in sight. That resolution is the one part of the sandbox that
+      # cannot be exercised from inside this repository, and a failure in it
+      # means managed evaluations refuse to run for every customer.
+      - name: Verify the evaluator sandbox resolves from an installed package
+        run: |
+          cd /tmp/ts-sdk-smoke
+          node - <<'EOF'
+          const { compileEvaluator, sessionTranscriptFromWire } = require("@failproofai/sdk/evaluator");
+          const session = sessionTranscriptFromWire({
+            schema_version: "2",
+            assignment_id: "a", session_id: "s", session_revision_id: "r",
+            agent_id: "main", environment: "dev",
+            started_at: "2026-01-01T00:00:00.000000Z",
+            ended_at: "2026-01-01T00:01:00.000000Z",
+            event_count: 1,
+            events: [{ id: "1", ts: "2026-01-01T00:00:01.000000Z", event_type: "tool_use", payload: {} }],
+          });
+          compileEvaluator("EvalResult({ score: Score(session.count('tool_use') > 0 ? 1 : 0) })", { evalKey: "k" })(session)
+            .then((result) => {
+              if (result.score.value !== 1) throw new Error(`unexpected score ${result.score.value}`);
+              console.log("sandbox resolved and evaluated from the installed package");
+            })
+            .catch((error) => { console.error(error); process.exit(1); });
+          EOF
+
   test:
     runs-on: ubuntu-latest
     # The retry above nominally allows 3 attempts x 10 minutes. Capping the job

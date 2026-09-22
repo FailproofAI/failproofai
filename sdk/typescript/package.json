@@ -1,0 +1,127 @@
+{
+  "name": "@failproofai/sdk",
+  "version": "0.0.1-beta.0",
+  "description": "Emit agent telemetry to FailproofAI Cloud — zero-dependency, Node stdlib only",
+  "keywords": [
+    "agents",
+    "observability",
+    "ai",
+    "monitoring",
+    "failproofai",
+    "telemetry",
+    "sdk",
+    "langchain",
+    "langgraph",
+    "ai-sdk",
+    "mastra",
+    "llamaindex",
+    "evals"
+  ],
+  "homepage": "https://befailproof.ai",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FailproofAI/failproofai.git",
+    "directory": "sdk/typescript"
+  },
+  "bugs": {
+    "url": "https://github.com/FailproofAI/failproofai/issues"
+  },
+  "author": "Failproof AI <failproofai@exosphere.host>",
+  "license": "SEE LICENSE IN LICENSE",
+  "type": "module",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    },
+    "./ai": {
+      "types": "./dist/esm/integrations/ai.d.ts",
+      "import": "./dist/esm/integrations/ai.js",
+      "require": "./dist/cjs/integrations/ai.js"
+    },
+    "./mastra": {
+      "types": "./dist/esm/integrations/mastra.d.ts",
+      "import": "./dist/esm/integrations/mastra.js",
+      "require": "./dist/cjs/integrations/mastra.js"
+    },
+    "./langchain": {
+      "types": "./dist/esm/integrations/langchain.d.ts",
+      "import": "./dist/esm/integrations/langchain.js",
+      "require": "./dist/cjs/integrations/langchain.js"
+    },
+    "./llamaindex": {
+      "types": "./dist/esm/integrations/llamaindex.d.ts",
+      "import": "./dist/esm/integrations/llamaindex.js",
+      "require": "./dist/cjs/integrations/llamaindex.js"
+    },
+    "./evaluator": {
+      "types": "./dist/esm/evaluator/index.d.ts",
+      "import": "./dist/esm/evaluator/index.js",
+      "require": "./dist/cjs/evaluator/index.js"
+    },
+    "./sandbox-worker": {
+      "types": "./dist/esm/evaluator/sandbox-worker.d.ts",
+      "require": "./dist/cjs/evaluator/sandbox-worker.js",
+      "default": "./dist/cjs/evaluator/sandbox-worker.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "failproofai-evaluator": "./dist/esm/evaluator/cli.js"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "sideEffects": [
+    "./dist/esm/writer.js",
+    "./dist/cjs/writer.js",
+    "./dist/esm/runtime.js",
+    "./dist/cjs/runtime.js",
+    "./dist/esm/evaluator/sandbox-worker.js",
+    "./dist/cjs/evaluator/sandbox-worker.js",
+    "./dist/esm/evaluator/cli.js",
+    "./dist/cjs/evaluator/cli.js"
+  ],
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "npm run clean && tsc -p tsconfig.build.json && tsc -p tsconfig.cjs.json && node scripts/finalize-build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint . --config eslint.config.mjs",
+    "test": "npm run build && vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "@langchain/core": ">=0.3.0 <2",
+    "@mastra/core": ">=0.10.0 <2",
+    "ai": ">=4.0.0 <7",
+    "llamaindex": ">=0.9.0 <1"
+  },
+  "peerDependenciesMeta": {
+    "@langchain/core": { "optional": true },
+    "@mastra/core": { "optional": true },
+    "ai": { "optional": true },
+    "llamaindex": { "optional": true }
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.38.0",
+    "@types/node": "^22.10.2",
+    "eslint": "^9.38.0",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.46.0",
+    "vitest": "^2.1.9"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -230,8 +230,8 @@ export interface VerdictLogMeta {
   /**
    * What the handler did with the outcome: combined it with the regex results
    * (`two-tier`), logged it while enforcing the regex result (`shadow`), or
-   * kept the regex result because Jev was unavailable or its envelope was
-   * truncated (`legacy-fallback`).
+   * kept the regex result because Jev was unavailable or the call it judged
+   * was truncated (`legacy-fallback`).
    */
   applied: "two-tier" | "shadow" | "legacy-fallback";
 }

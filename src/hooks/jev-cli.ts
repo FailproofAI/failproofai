@@ -363,7 +363,13 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
   }
 
   const legacyNote = legacy
-    ? warning(["FAILPROOFAI_EVALUATOR=legacy is set in this shell: sessions started from it run the regex policies only."], opts)
+    ? warning(
+        [
+          "FAILPROOFAI_EVALUATOR=legacy is set in this shell: sessions started from it skip Jev when their hooks evaluate in-process.",
+          "The daemon does not see this shell's environment.",
+        ],
+        opts,
+      )
     : null;
 
   if (inspection.status === "absent") {
@@ -518,7 +524,10 @@ async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise
           ],
           opts,
         ),
-        note("One request, sent directly: the hook path's cache and rate limit were not involved.", opts),
+        note(
+          "One request, sent directly: the hook path's cache and rate limit were not involved, and a fresh process pays DNS and TLS setup that the daemon's warm worker does not.",
+          opts,
+        ),
       ),
     );
   } catch (err) {

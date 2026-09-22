@@ -39,6 +39,7 @@ describe("runners", () => {
     ["taskset 0x1 mkfs /dev/sda", "mkfs"],
     ["chrt -r 5 mkfs /dev/sda", "mkfs"],
     ["script -qc 'mkfs /dev/sda' /dev/null", "mkfs"],
+    ["script -q /dev/null mkfs /dev/sda", "mkfs"],
     ["watch -n1 'mkfs /dev/sda'", "mkfs"],
     ["systemd-run --wait -p X=y mkfs /dev/sda", "mkfs"],
     ["unshare -rm mkfs /dev/sda", "mkfs"],

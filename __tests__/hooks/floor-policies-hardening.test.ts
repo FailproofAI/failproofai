@@ -157,6 +157,8 @@ describe("exec and privilege wrappers are followed", () => {
     ["block-disk-destruction", "ltrace -o out.txt dd if=/dev/zero of=/dev/sda"],
     ["block-disk-destruction", "script -qc 'dd if=/dev/zero of=/dev/sda' /dev/null"],
     ["block-disk-destruction", "script -q -c 'dd if=/dev/zero of=/dev/sda' out.log"],
+    // BSD/macOS: script [-q] FILE command …
+    ["block-disk-destruction", "script -q /dev/null dd if=/dev/zero of=/dev/sda"],
     ["block-disk-destruction", "flock /tmp/lock dd if=/dev/zero of=/dev/sda"],
     ["block-disk-destruction", "flock -w 5 /tmp/lock -c 'dd if=/dev/zero of=/dev/sda'"],
     ["block-disk-destruction", "taskset 1 dd if=/dev/zero of=/dev/sda"],

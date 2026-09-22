@@ -1091,11 +1091,12 @@ const RUNNERS: Record<string, RunnerSpec> = {
     positional: 1,
     stopOn: ["-p", "--pid", "-m", "--max", "-h", "--help", "-V", "--version"],
   },
+  // util-linux: `script [-c cmd] [FILE]`; BSD/macOS: `script [-q] FILE [cmd …]`.
   script: {
     withOperand: ["-E", "--echo", "-I", "--log-in", "-O", "--log-out", "-B", "--log-io", "-T", "--log-timing",
-      "-m", "--logging-format", "-o", "--output-limit"],
+      "-m", "--logging-format", "-o", "--output-limit", "-F"],
+    positional: 1,
     commandString: ["-c", "--command"],
-    wraps: false,
   },
   watch: {
     withOperand: ["-n", "--interval", "-q", "--equexit"],

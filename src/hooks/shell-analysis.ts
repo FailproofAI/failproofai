@@ -287,6 +287,12 @@ export function lexShell(src: string, depth = 0, state?: { truncated: boolean })
   let parts: WordPart[] = [];
   let inWord = false;
   let pipeNext = false;
+  /**
+   * `case WORD in PATTERN|PATTERN) BODY ;; … esac`: patterns are data, and the
+   * `|` and `)` inside them are not a pipe and a subshell end. One entry per
+   * open `case`; "head" until its `in`, then alternating "patterns"/"body".
+   */
+  const caseStack: Array<"head" | "patterns" | "body"> = [];
   const n = src.length;
 
   const addLit = (text: string, quoted: boolean, ansi = false) => {
@@ -300,10 +306,30 @@ export function lexShell(src: string, depth = 0, state?: { truncated: boolean })
     }
   };
   const endWord = () => {
-    if (inWord) words.push(makeWord(parts));
+    if (inWord) {
+      const word = makeWord(parts);
+      const only = parts[0];
+      const bare = parts.length === 1 && only.kind === "lit" && !only.quoted ? only.text : null;
+      const top = caseStack[caseStack.length - 1];
+      if (top === "patterns") {
+        // A pattern is dropped; only `esac` in command position means anything here.
+        if (bare === "esac" && words.length === 0) {
+          caseStack.pop();
+          words.push(word);
+        }
+      } else {
+        // In command position: first word, or after reserved words (`do case …`).
+        const commandPosition = words.every((w) => LEADING_RESERVED.has(literalText(w) ?? ""));
+        words.push(word);
+        if (commandPosition && bare === "case") caseStack.push("head");
+        else if (top === "head" && bare === "in") caseStack[caseStack.length - 1] = "patterns";
+        else if (top === "body" && commandPosition && bare === "esac") caseStack.pop();
+      }
+    }
     parts = [];
     inWord = false;
   };
+  const inCasePatterns = () => caseStack[caseStack.length - 1] === "patterns";
   const endCommand = (pipe = false) => {
     endWord();
     if (words.length) {
@@ -546,6 +572,12 @@ export function lexShell(src: string, depth = 0, state?: { truncated: boolean })
     }
     if (c === ";") {
       endCommand();
+      if (caseStack[caseStack.length - 1] === "body" && (src[i + 1] === ";" || src[i + 1] === "&")) {
+        // `;;`, `;&`, `;;&` close a case arm: the next words are patterns again.
+        caseStack[caseStack.length - 1] = "patterns";
+        i += src[i + 1] === ";" && src[i + 2] === "&" ? 3 : 2;
+        continue;
+      }
       i++;
       continue;
     }
@@ -560,6 +592,11 @@ export function lexShell(src: string, depth = 0, state?: { truncated: boolean })
       i++;
       continue;
     }
+    if (c === "|" && inCasePatterns()) {
+      endWord();
+      i++;
+      continue;
+    }
     if (c === "|") {
       const isOr = src[i + 1] === "|";
       endCommand(!isOr);
@@ -568,6 +605,16 @@ export function lexShell(src: string, depth = 0, state?: { truncated: boolean })
     }
     if (c === "<" || c === ">") {
       i = readRedirect(i);
+      continue;
+    }
+    if ((c === "(" || c === ")") && inCasePatterns()) {
+      // `(pattern)`: the optional open paren, then the close that starts the arm.
+      endWord();
+      if (c === ")") {
+        endCommand();
+        caseStack[caseStack.length - 1] = "body";
+      }
+      i++;
       continue;
     }
     if (c === "(") {

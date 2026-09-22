@@ -33,6 +33,7 @@ import {
   type Invocation,
   type ShellAnalysis,
   type ShellWord,
+  type SimpleCommand,
 } from "./shell-analysis";
 
 // ── Shared ──────────────────────────────────────────────────────────────────
@@ -138,7 +139,10 @@ function deviceTarget(a: ShellAnalysis, word: ShellWord, cwdIsDev: boolean, stri
   if (prefix) {
     if (prefix.startsWith("/")) {
       const norm = posix.normalize(prefix);
-      if (norm.startsWith("/dev/") || (strict && "/dev/".startsWith(norm))) return word.text;
+      // `/dev/tcp/$HOST/5432` is a socket; `/dev/sd$X` is a disk. Decide on
+      // the literal part with a placeholder for the rest.
+      if (norm.startsWith("/dev/")) return isDevicePath(prefix + "x", false) ? word.text : null;
+      if (strict && "/dev/".startsWith(norm)) return word.text;
       return null;
     }
     return cwdIsDev && strict ? word.text : null;
@@ -326,22 +330,29 @@ const KILLALL_OPERAND_LONG = new Set([
 const SIGNAL_FLAG_RE = /^-(?:\d+|(?:SIG)?[A-Z][A-Z0-9+-]+)$/;
 
 /** Normalise a process pattern to the name it targets: anchors, `.*`, `[n]ode` and a path removed. */
-function patternTarget(pattern: string): string {
+function stripPattern(pattern: string): string {
   let s = pattern.trim().toLowerCase();
   s = s.replace(/^\^/, "").replace(/\$$/, "");
   s = s.replace(/^(?:\.\*|\.\+)+/, "").replace(/(?:\.\*|\.\+)+$/, "");
-  s = s.replace(/\[([^\]^])\]/g, "$1").replace(/\\(.)/g, "$1");
-  if (!/\s/.test(s) && s.includes("/")) s = s.slice(s.lastIndexOf("/") + 1);
+  return s.replace(/\[([^\]^])\]/g, "$1").replace(/\\(.)/g, "$1");
+}
+
+/** The process name a pattern targets: anchors, `.*`, `[n]ode`, `.exe` and an ABSOLUTE binary path removed. */
+function patternTarget(pattern: string): string {
+  let s = stripPattern(pattern);
+  // `/usr/bin/node` targets node; `linux-x64/rg` is a specific path fragment.
+  if (s.startsWith("/") && !/\s/.test(s)) s = s.slice(s.lastIndexOf("/") + 1);
   return s.replace(/\.exe$/, "");
 }
 
 /** Whether a pkill/pgrep pattern (a regex matched as a substring unless `-x`) reaches too much. */
 function broadPattern(pattern: string, exact: boolean): boolean {
   if (pattern.includes("|")) return pattern.split("|").some((alt) => broadPattern(alt, exact));
-  const s = patternTarget(pattern);
-  if (/^[.*+?\s\\^$]*$/.test(s)) return true;
-  if (!exact && s.length <= 2) return true;
-  return GENERIC_PROCESS_NAMES.has(s);
+  const raw = stripPattern(pattern);
+  if (/^[.*+?\s\\^$]*$/.test(raw)) return true;
+  // Unanchored and short, it is a substring of half the process table: `pkill sh`.
+  if (!exact && raw.length <= 2) return true;
+  return GENERIC_PROCESS_NAMES.has(patternTarget(pattern));
 }
 
 /** Why a pkill/pgrep invocation selects processes en masse, or null. */
@@ -497,14 +508,114 @@ function isGenericOrWildcard(name: string): boolean {
   return name.includes("*") || GENERIC_PROCESS_NAMES.has(patternTarget(name));
 }
 
+/**
+ * A broad process listing among `invs` — `pgrep node`, `pidof python3`,
+ * `ps -C node`, `ps aux | grep node`, `Get-Process node` — or null.
+ */
+function massSource(a: ShellAnalysis, invs: Invocation[]): string | null {
+  const psPresent = invs.some((inv) => inv.names.includes("ps"));
+  for (const inv of invs) {
+    for (const name of inv.names) {
+      const texts = lits(inv.args);
+      if (name === "pgrep") {
+        const why = pgrepMass(a, "pgrep", inv.args);
+        if (why) return why;
+      } else if (name === "pidof") {
+        const generic = texts.find((t) => t !== null && !t.startsWith("-") && GENERIC_PROCESS_NAMES.has(patternTarget(t)));
+        if (generic) return `pidof ${generic}`;
+      } else if (name === "get-process" || name === "gps") {
+        const named = [...psNames(inv.args), ...texts.filter((t): t is string => t !== null && !t.startsWith("-"))]
+          .find(isGenericOrWildcard);
+        if (named) return `Get-Process ${named}`;
+      } else if (name === "ps") {
+        const k = texts.findIndex((t) => t === "-C");
+        const value = k >= 0 ? texts[k + 1] : null;
+        if (value && value.split(",").some((v) => GENERIC_PROCESS_NAMES.has(patternTarget(v)))) return `ps -C ${value}`;
+      } else if (psPresent && (name === "grep" || name === "egrep" || name === "fgrep" || name === "rg")) {
+        if (texts.includes("-v")) continue;
+        let pattern: string | null = null;
+        for (let k = 0; k < texts.length; k++) {
+          const t = texts[k];
+          if (t === null) break;
+          if (t === "-e" || t === "--regexp") {
+            pattern = texts[k + 1] ?? null;
+            break;
+          }
+          if (t.startsWith("-")) continue;
+          pattern = t;
+          break;
+        }
+        if (pattern !== null && broadPattern(pattern, false)) return `ps | grep ${pattern}`;
+      }
+    }
+  }
+  return null;
+}
+
+/** A broad listing inside a `$( … )` of this word. */
+function massSourceInSubstitutions(word: ShellWord): string | null {
+  for (const p of word.parts) {
+    if (p.kind !== "sub") continue;
+    const inner = analyzeShell(p.body);
+    const why = massSource(inner, inner.invocations);
+    if (why) return why;
+  }
+  return null;
+}
+
+/**
+ * The command decides per process before killing: a `case`/`if`/test, or a
+ * grep that reads the PID variable (`grep -q x /proc/$p/cmdline && kill $p`).
+ * A grep that only builds the list (`$(ps aux | grep node)`) is not a filter.
+ */
+function filtersBeforeKilling(a: ShellAnalysis, variable: string): boolean {
+  const readsVariable = (w: ShellWord) => w.parts.some((p) => p.kind === "param" && p.name === variable);
+  for (const inv of a.invocations) {
+    if (inv.names.some((n) => n === "[" || n === "[[" || n === "test")) return true;
+    if (inv.names.some((n) => n === "grep" || n === "egrep" || n === "rg") && inv.args.some(readsVariable)) return true;
+  }
+  return a.commands.some((cmd) => cmd.words.some((w) => {
+    const t = literalText(w);
+    return t === "case" || t === "if" || t === "elif";
+  }));
+}
+
+/**
+ * What feeds a kill its PIDs, when that is a broad listing:
+ * - a substitution in its arguments: `kill $(pgrep node)`;
+ * - the pipeline it reads: `pgrep node | xargs kill`, `ps aux | grep node | … | xargs kill`;
+ * - a variable holding such a substitution: `P=$(pgrep node); kill $P`,
+ *   `for p in $(pgrep node); do kill $p; done` — unless the command filters
+ *   each process first, which is the careful form (`… case "$cmdline" in …`).
+ */
+function killFedByMass(a: ShellAnalysis, inv: Invocation): string | null {
+  for (const w of inv.args) {
+    const why = massSourceInSubstitutions(w);
+    if (why) return why;
+  }
+  const chain = new Set<SimpleCommand>();
+  for (let c = inv.command.pipedFrom; c && !chain.has(c); c = c.pipedFrom) chain.add(c);
+  if (chain.size) {
+    const why = massSource(a, a.invocations.filter((i) => chain.has(i.command)));
+    if (why) return why;
+  }
+  for (const w of inv.args) {
+    for (const p of w.parts) {
+      if (p.kind !== "param") continue;
+      for (const bound of a.bindings.get(p.name) ?? []) {
+        const why = massSourceInSubstitutions(bound);
+        if (why && !filtersBeforeKilling(a, p.name)) return why;
+      }
+    }
+  }
+  return null;
+}
+
 function blockMassKill(ctx: PolicyContext): PolicyResult {
   const a = analysisFor(ctx);
   if (!a) return allow();
   const hit = (why: string) =>
     deny(`Killing processes en masse is blocked (${why}). Stop the specific process you started, by PID or with an exact name.`);
-  const psPresent = a.invocations.some((inv) => inv.names.includes("ps"));
-  let sink = false;
-  let source: string | null = null;
   for (const inv of a.invocations) {
     for (const name of inv.names) {
       switch (name) {
@@ -526,7 +637,9 @@ function blockMassKill(ctx: PolicyContext): PolicyResult {
           if (name === "kill" && killsEveryProcess(inv.args)) return hit("kill -1");
           const named = psNames(inv.args).find(isGenericOrWildcard);
           if (named) return hit(`${name} -Name ${named}`);
-          if (!lits(inv.args).some((t) => t === "-l" || t === "-L")) sink = true;
+          if (lits(inv.args).some((t) => t === "-l" || t === "-L")) break;
+          const fed = killFedByMass(a, inv);
+          if (fed) return hit(`${name} fed by ${fed}`);
           break;
         }
         case "taskkill": {
@@ -535,60 +648,16 @@ function blockMassKill(ctx: PolicyContext): PolicyResult {
             const flag = (texts[k] ?? "").toLowerCase();
             const value = texts[k + 1] ?? "";
             if ((flag === "/im" || flag === "-im") && isGenericOrWildcard(value)) return hit(`taskkill /IM ${value}`);
-            if ((flag === "/fi" || flag === "-fi")) {
+            if (flag === "/fi" || flag === "-fi") {
               const m = /^\s*imagename\s+eq\s+(\S+)/i.exec(value);
               if (m && isGenericOrWildcard(m[1])) return hit(`taskkill /FI imagename eq ${m[1]}`);
             }
           }
           break;
         }
-        case "pgrep":
-          source ??= pgrepMass(a, "pgrep", inv.args);
-          break;
-        case "pidof": {
-          const generic = lits(inv.args).find((t) => t !== null && !t.startsWith("-") && GENERIC_PROCESS_NAMES.has(patternTarget(t)));
-          if (generic) source ??= `pidof ${generic}`;
-          break;
-        }
-        case "get-process":
-        case "gps": {
-          const named = [...psNames(inv.args), ...lits(inv.args).filter((t): t is string => t !== null && !t.startsWith("-"))]
-            .find(isGenericOrWildcard);
-          if (named) source ??= `Get-Process ${named}`;
-          break;
-        }
-        case "ps": {
-          const texts = lits(inv.args);
-          const k = texts.findIndex((t) => t === "-C");
-          const value = k >= 0 ? texts[k + 1] : null;
-          if (value && value.split(",").some((v) => GENERIC_PROCESS_NAMES.has(patternTarget(v)))) source ??= `ps -C ${value}`;
-          break;
-        }
-        case "grep":
-        case "egrep":
-        case "fgrep":
-        case "rg": {
-          if (!psPresent) break;
-          const texts = lits(inv.args);
-          let pattern: string | null = null;
-          for (let k = 0; k < texts.length; k++) {
-            const t = texts[k];
-            if (t === null) break;
-            if (t === "-e" || t === "--regexp") {
-              pattern = texts[k + 1] ?? null;
-              break;
-            }
-            if (t.startsWith("-")) continue;
-            pattern = t;
-            break;
-          }
-          if (pattern !== null && !lits(inv.args).includes("-v") && broadPattern(pattern, false)) source ??= `ps | grep ${pattern}`;
-          break;
-        }
       }
     }
   }
-  if (sink && source) return hit(`kill fed by ${source}`);
   return allow();
 }
 

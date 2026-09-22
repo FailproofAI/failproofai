@@ -32,10 +32,12 @@
  * states: assignments, `export`, `for … in`, `read <<<`, `set --`, array
  * literals, `${X:-default}`, and `$(echo …)` / `$(which …)`-style substitutions.
  *
- * Everything is linear in the input apart from bounded recursion into
- * substitutions (`MAX_DEPTH`) and a bounded candidate set per word
- * (`MAX_CANDIDATES`). It never throws on malformed input: an unterminated quote
- * or substitution runs to the end of the string.
+ * Lexing is linear in the input apart from bounded recursion into
+ * substitutions (`MAX_DEPTH`). Everything after it — following runners and
+ * `-c` strings, resolving variables — draws on a work budget proportional to
+ * the command (`BASE_BUDGET`); a command that exhausts it is marked
+ * `truncated`, which the floor policies deny. It never throws on malformed
+ * input: an unterminated quote or substitution runs to the end of the string.
  */
 import { posix } from "node:path";
 
@@ -70,8 +72,8 @@ export interface SimpleCommand {
 
 /** How deep the lexer follows `$( … )` inside `$( … )`, and `bash -c` inside `bash -c`. */
 const MAX_DEPTH = 6;
-/** Candidate values kept per word and per variable. */
-const MAX_CANDIDATES = 16;
+/** Arguments GNU parallel's command template is expanded with. */
+const MAX_PARALLEL_RUNS = 16;
 /** Nested `"$( "$( … )" )"` levels the bracket matcher recurses through. */
 const MAX_NESTING = 64;
 
@@ -284,6 +286,13 @@ export function lexShell(src: string, depth = 0, state?: { truncated: boolean })
   const nested: string[] = [];
   const heredocs: Array<{ word: ShellWord; stripTabs: boolean; quoted: boolean }> = [];
   let words: ShellWord[] = [];
+  /**
+   * Every word so far in this simple command is a leading reserved word
+   * (`if`, `!`, `do` …), so the next one is in command position. Kept
+   * incrementally: recomputing it over `words` per word was quadratic in a
+   * run of reserved words, and `! ! ! …` is cheap to type.
+   */
+  let leadingOnly = true;
   let parts: WordPart[] = [];
   let inWord = false;
   let pipeNext = false;
@@ -316,11 +325,13 @@ export function lexShell(src: string, depth = 0, state?: { truncated: boolean })
         if (bare === "esac" && words.length === 0) {
           caseStack.pop();
           words.push(word);
+          leadingOnly = false;
         }
       } else {
         // In command position: first word, or after reserved words (`do case …`).
-        const commandPosition = words.every((w) => LEADING_RESERVED.has(literalText(w) ?? ""));
+        const commandPosition = leadingOnly;
         words.push(word);
+        leadingOnly = leadingOnly && LEADING_RESERVED.has(literalText(word) ?? "");
         if (commandPosition && bare === "case") caseStack.push("head");
         else if (top === "head" && bare === "in") caseStack[caseStack.length - 1] = "patterns";
         else if (top === "body" && commandPosition && bare === "esac") caseStack.pop();
@@ -341,10 +352,12 @@ export function lexShell(src: string, depth = 0, state?: { truncated: boolean })
       pipeNext = false;
     }
     words = [];
+    leadingOnly = true;
   };
   const pushOperator = (op: string) => {
     endWord();
     words.push({ parts: [{ kind: "lit", text: op, quoted: false }], text: op, redirect: op });
+    leadingOnly = false;
   };
 
   const readBacktick = (i: number): number => {
@@ -493,6 +506,7 @@ export function lexShell(src: string, depth = 0, state?: { truncated: boolean })
       j = end;
       const word: ShellWord = { parts: [{ kind: "lit", text: delim, quoted: true }], text: delim };
       words.push(word);
+      leadingOnly = false;
       heredocs.push({ word, stripTabs: op === "<<-", quoted });
     }
     return j;
@@ -688,9 +702,30 @@ export function literalText(word: ShellWord | undefined): string | null {
   if (word.text === "[" || word.text === "[[") return word.text;
   for (const p of word.parts) {
     if (p.kind !== "lit" || p.ansi) return null;
-    if (!p.quoted && (/[*?[]/.test(p.text) || /\{[^}]*(?:,|\.\.)[^}]*\}/.test(p.text))) return null;
+    if (!p.quoted && (/[*?[]/.test(p.text) || hasBraceExpansion(p.text))) return null;
   }
   return word.text;
+}
+
+/**
+ * Whether text holds a `{a,b}` / `{1..3}` brace expansion: a `{`, then a `,` or
+ * `..`, then a `}`, with no `}` in between. One linear pass — the equivalent
+ * regex (`/\{[^}]*(?:,|\.\.)[^}]*\}/`) backtracks quadratically on a long run
+ * of `{`, and this runs on every argument word.
+ */
+function hasBraceExpansion(text: string): boolean {
+  let open = false;
+  let sep = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === "{") open = true;
+    else if (c === "}") {
+      if (open && sep) return true;
+      open = false;
+      sep = false;
+    } else if (open && (c === "," || (c === "." && text[i + 1] === "."))) sep = true;
+  }
+  return false;
 }
 
 /** The leading literal text of a word, up to its first expansion. */
@@ -755,14 +790,19 @@ export function basenameGlob(word: ShellWord): RegExp | null {
   chars.forEach((c, i) => {
     if (c.ch === "/" || c.ch === "\\") start = i + 1;
   });
+  // The next `]` after each position, so a run of `[` stays linear.
+  const nextClose = new Array<number>(chars.length + 1).fill(-1);
+  for (let i = chars.length - 1; i >= 0; i--) nextClose[i] = chars[i].ch === "]" ? i : nextClose[i + 1];
   let src = "";
   for (let i = start; i < chars.length; i++) {
     const c = chars[i];
-    if (c.dynamic) src += ".*";
-    else if (!c.quoted && c.ch === "*") src += ".*";
-    else if (!c.quoted && c.ch === "?") src += ".";
+    // Consecutive `*` (or expansions) are one `.*`: a run of them is the same
+    // glob, and as separate `.*` terms it backtracks exponentially.
+    if (c.dynamic || (!c.quoted && c.ch === "*")) {
+      if (!src.endsWith(".*")) src += ".*";
+    } else if (!c.quoted && c.ch === "?") src += ".";
     else if (!c.quoted && c.ch === "[") {
-      const close = chars.findIndex((d, k) => k > i + 1 && d.ch === "]");
+      const close = i + 2 < chars.length ? nextClose[i + 2] : -1;
       if (close === -1) {
         src += "\\[";
         continue;
@@ -773,12 +813,17 @@ export function basenameGlob(word: ShellWord): RegExp | null {
       i = close;
     } else src += c.ch.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
   }
+  // A glob this long is not a program name anyone types; say it can match anything.
+  if (src.length > MAX_GLOB_SOURCE) return /^.*$/;
   try {
     return new RegExp("^" + src + "$", "i");
   } catch {
     return /^.*$/;
   }
 }
+
+/** Longest glob (as a regex source) `basenameGlob` compiles; past it, the glob matches anything. */
+const MAX_GLOB_SOURCE = 1024;
 
 /** The first word an unquoted brace expansion produces (`{rm,-rf,/}` → `rm`), or null. */
 export function firstBraceExpansion(word: ShellWord): string | null {
@@ -844,28 +889,146 @@ export interface ShellAnalysis {
   /** Some `cd`/`pushd` in the command moves into `/dev`. */
   cdIntoDev: boolean;
   /**
-   * The command nests substitutions, `bash -c` strings or runners deeper than
-   * the analyser follows, so part of it was not looked at. No real command gets
-   * here; a command built to hide what it runs can.
+   * Every change of directory in the command — `cd`, `pushd`, and a runner's
+   * own `-C`/`-D`/`--chdir`/`--working-directory` — as the values its target
+   * can take, or null when the command string cannot say. A relative target is
+   * relative to wherever the shell was; the policies resolve it.
+   */
+  chdirs: Array<string[] | null>;
+  /**
+   * The command nests substitutions, `bash -c` strings, runners or variable
+   * hops deeper than the analyser follows, or costs more to analyse than its
+   * budget, so part of it was not looked at. No real command gets here; a
+   * command built to hide what it runs can.
    */
   truncated: boolean;
+  /** The analyser threw on this command (a bug). Set together with `truncated`. */
+  failed?: boolean;
 }
 
 /** Runner hops (`sudo nice timeout …`, `find -exec find -exec …`) followed per command. */
 const MAX_HOPS = 32;
+/** Variable and substitution hops resolution follows (`A=$B; B=$C; …`). */
+const MAX_RESOLVE_DEPTH = 12;
+/** Values kept per variable binding list and per resolved word. */
+const MAX_BINDINGS = 256;
 
-/** Per-analysis memo of resolved variable values, so resolution stays polynomial. */
-const valueMemo = new WeakMap<ShellAnalysis, Map<string, string[] | null>>();
+/**
+ * The analysis budget, in rough work units: one per byte lexed, a few per
+ * program invocation and per resolution step. It scales with the command, so
+ * a real command — even a 1 MB heredoc — never meets it; a command built to
+ * multiply the analyser's work (a variable bound to every shell, feeding
+ * `$S -c '$S -c …'`) runs out of it in milliseconds and is marked truncated,
+ * which every floor policy denies. Without it, 3 KB of such a command held
+ * the hook for 20 s and 11 GB, and a crashed or timed-out hook lets the tool
+ * call through.
+ */
+const BASE_BUDGET = 2_000_000;
+const BUDGET_PER_BYTE = 16;
+const INVOCATION_COST = 16;
+const RESOLVE_COST = 4;
+/** The budget of one `resolveWord` call a policy makes after the analysis. */
+const CALL_BUDGET = 500_000;
 
-/** Programs that run another program given as their trailing words. */
-const RUNNERS: Record<string, { withOperand: string[]; positional?: number; stopOn?: string[] }> = {
+interface Scope {
+  used: number;
+  limit: number;
+}
+
+/** Everything the analyser keeps per analysis that is not part of its result. */
+interface State {
+  scope: Scope;
+  /** Sources already analysed, with the shallowest depth each one was analysed at. */
+  sources: Map<string, number>;
+  /** Head words already walked, with the extents (words from the head to the end) walked from each. */
+  walked: WeakMap<ShellWord, Set<number>>;
+  /** Variable values that do not depend on where resolution started. Cleared by every new binding. */
+  values: Map<string, string[] | null>;
+  /**
+   * Values that do — they cut a cycle (`A=$B; B=$A`) or hit the depth cap —
+   * keyed by name, depth and the names being resolved. Keying these by name
+   * alone let one resolution poison the next: a `cd "$A"` resolved while B
+   * was mid-cycle stored B as unresolvable, and a later `$B file` ran rm unseen.
+   */
+  contextual: Map<string, string[] | null>;
+  /** Variables given more values than `MAX_BINDINGS` keeps. */
+  overflowed: Set<string>;
+  /** Bumped by every binding, so a head resolved before a later binding is re-resolved. */
+  bindCount: number;
+  /** Indirect invocations, with the `bindCount` their names were resolved at. */
+  indirect: Array<{ inv: Invocation; at: number }>;
+}
+
+const states = new WeakMap<ShellAnalysis, State>();
+
+function stateOf(a: ShellAnalysis): State {
+  let st = states.get(a);
+  if (!st) {
+    st = {
+      scope: { used: 0, limit: BASE_BUDGET },
+      sources: new Map(),
+      walked: new WeakMap(),
+      values: new Map(),
+      contextual: new Map(),
+      overflowed: new Set(),
+      bindCount: 0,
+      indirect: [],
+    };
+    states.set(a, st);
+  }
+  return st;
+}
+
+/** Spend `units` of the current budget. False — and the analysis marked truncated — once it is spent. */
+function charge(a: ShellAnalysis, units: number): boolean {
+  const scope = stateOf(a).scope;
+  scope.used += units;
+  if (scope.used <= scope.limit) return true;
+  a.truncated = true;
+  return false;
+}
+
+/**
+ * A program that runs another program on its behalf.
+ *
+ * Options are parsed getopt-style: a short option that takes a value takes
+ * the rest of its bundle or the next word (`-uroot`, `-iu root`, `-qc 'cmd'`),
+ * a long one takes `=value` or the next word.
+ */
+interface RunnerSpec {
+  /** Options that take a value. */
+  withOperand: string[];
+  /** Positional operands before the wrapped command (`timeout 5`, `chroot DIR`, `flock FILE`). */
+  positional?: number;
+  /** Options after which the program runs nothing (`sudo -l`, `taskset -p`). */
+  stopOn?: string[];
+  /** Options whose value is a command line (`su -c`, `script -c`, `flock -c`, `env -S`). */
+  commandString?: string[];
+  /** The words after a `commandString` value belong to it too (`env -S 'mkfs.ext4' /dev/sda`). */
+  commandStringTakesRest?: boolean;
+  /** Options whose value is the wrapped command's working directory. */
+  chdir?: string[];
+  /** False when the program never runs its operands as a command (`su user`, `script FILE`). */
+  wraps?: boolean;
+  /** The wrapped words are one command line for a shell (`watch 'dd …'`, `sg grp 'cmd'`). */
+  joinsArgs?: boolean;
+}
+
+/** Programs that run another program given as their trailing words, or as a command string. */
+const RUNNERS: Record<string, RunnerSpec> = {
   sudo: {
-    withOperand: ["-u", "-g", "-C", "-D", "-p", "-r", "-t", "-U", "-T", "--user", "--group",
-      "--close-from", "--chdir", "--prompt", "--role", "--type", "--other-user", "--command-timeout", "--host"],
+    withOperand: ["-u", "-g", "-C", "-p", "-r", "-t", "-U", "-T", "--user", "--group",
+      "--close-from", "--prompt", "--role", "--type", "--other-user", "--command-timeout", "--host"],
     stopOn: ["-e", "--edit", "-l", "--list", "-v", "--validate", "-V", "--version", "-h", "--help", "-K"],
+    chdir: ["-D", "--chdir"],
   },
   doas: { withOperand: ["-u", "-C"] },
-  env: { withOperand: ["-u", "--unset", "-C", "--chdir", "-S", "--split-string", "-a", "--argv0"] },
+  env: {
+    withOperand: ["-u", "--unset", "-a", "--argv0"],
+    commandString: ["-S", "--split-string"],
+    commandStringTakesRest: true,
+    chdir: ["-C", "--chdir"],
+  },
   nohup: { withOperand: [] },
   setsid: { withOperand: [] },
   builtin: { withOperand: [] },
@@ -875,7 +1038,7 @@ const RUNNERS: Record<string, { withOperand: string[]; positional?: number; stop
   time: { withOperand: ["-f", "--format", "-o", "--output"] },
   timeout: { withOperand: ["-s", "--signal", "-k", "--kill-after"], positional: 1 },
   nice: { withOperand: ["-n", "--adjustment"] },
-  ionice: { withOperand: ["-c", "--class", "-n", "--classdata", "-t"], stopOn: ["-p", "--pid", "-P", "--pgid", "-u", "--uid"] },
+  ionice: { withOperand: ["-c", "--class", "-n", "--classdata"], stopOn: ["-p", "--pid", "-P", "--pgid", "-u", "--uid"] },
   stdbuf: { withOperand: ["-i", "-o", "-e", "--input", "--output", "--error"] },
   xargs: {
     withOperand: ["-a", "--arg-file", "-d", "--delimiter", "-E", "-I", "-L", "-n", "--max-args",
@@ -884,12 +1047,105 @@ const RUNNERS: Record<string, { withOperand: string[]; positional?: number; stop
   command: { withOperand: [], stopOn: ["-v", "-V"] },
   exec: { withOperand: ["-a"] },
   chroot: { withOperand: ["--userspec", "--groups"], positional: 1 },
+  // Privilege and identity changers.
+  pkexec: { withOperand: ["--user"], stopOn: ["--help", "--version"] },
+  run0: {
+    withOperand: ["-u", "--user", "-g", "--group", "--nice", "--setenv", "--machine", "--unit", "--property",
+      "--description", "--slice", "--background", "--shell-prompt-prefix"],
+    chdir: ["-D", "--chdir"],
+    stopOn: ["-h", "--help", "--version"],
+  },
+  su: {
+    withOperand: ["-g", "--group", "-G", "--supp-group", "-s", "--shell", "-w", "--whitelist-environment"],
+    commandString: ["-c", "--command", "--session-command"],
+    wraps: false,
+  },
+  sg: { withOperand: [], positional: 1, commandString: ["-c"], joinsArgs: true },
+  setpriv: {
+    withOperand: ["--ruid", "--euid", "--rgid", "--egid", "--reuid", "--regid", "--groups", "--inh-caps",
+      "--ambient-caps", "--bounding-set", "--securebits", "--pdeathsig", "--selinux-label",
+      "--apparmor-profile", "--landlock-access", "--landlock-rule", "--seccomp-filter"],
+    stopOn: ["-d", "--dump", "-h", "--help", "-V", "--version"],
+  },
+  // Tracers, schedulers, locks, sandboxes and namespaces: all run their operand.
+  strace: {
+    withOperand: ["-a", "-b", "-e", "-E", "-I", "-o", "-O", "-p", "-P", "-s", "-S", "-u", "-U", "-X",
+      "--output", "--trace", "--signal", "--status", "--user", "--env", "--detach-on", "--trace-path",
+      "--string-limit", "--summary-sort-by", "--summary-columns", "--attach", "--columns"],
+    stopOn: ["-h", "--help", "-V", "--version"],
+  },
+  ltrace: {
+    withOperand: ["-a", "-A", "-D", "-e", "-F", "-l", "-n", "-o", "-p", "-s", "-u", "-w", "-x",
+      "--align", "--library", "--output", "--indent"],
+    stopOn: ["-h", "--help", "-V", "--version"],
+  },
+  flock: {
+    withOperand: ["-w", "--wait", "--timeout", "-E", "--conflict-exit-code"],
+    positional: 1,
+    commandString: ["-c", "--command"],
+    stopOn: ["-h", "--help", "-V", "--version"],
+  },
+  taskset: { withOperand: [], positional: 1, stopOn: ["-p", "--pid", "-h", "--help", "-V", "--version"] },
+  chrt: {
+    withOperand: ["-T", "--sched-runtime", "-P", "--sched-period", "-D", "--sched-deadline"],
+    positional: 1,
+    stopOn: ["-p", "--pid", "-m", "--max", "-h", "--help", "-V", "--version"],
+  },
+  script: {
+    withOperand: ["-E", "--echo", "-I", "--log-in", "-O", "--log-out", "-B", "--log-io", "-T", "--log-timing",
+      "-m", "--logging-format", "-o", "--output-limit"],
+    commandString: ["-c", "--command"],
+    wraps: false,
+  },
+  watch: {
+    withOperand: ["-n", "--interval", "-q", "--equexit"],
+    joinsArgs: true,
+    stopOn: ["-h", "--help", "-v", "--version"],
+  },
+  "systemd-run": {
+    withOperand: ["-u", "--unit", "-p", "--property", "-E", "--setenv", "-M", "--machine", "-H", "--host",
+      "--description", "--slice", "--service-type", "--uid", "--gid", "--nice", "--on-active", "--on-boot",
+      "--on-startup", "--on-unit-active", "--on-unit-inactive", "--on-calendar", "--timer-property",
+      "--path-property", "--socket-property"],
+    chdir: ["--working-directory"],
+    stopOn: ["-h", "--help", "--version"],
+  },
+  unshare: {
+    withOperand: ["-S", "--setuid", "-G", "--setgid", "-R", "--root", "--map-user", "--map-group",
+      "--map-users", "--map-groups", "--propagation", "--setgroups", "--monotonic", "--boottime"],
+    chdir: ["-w", "--wd"],
+    stopOn: ["-h", "--help", "-V", "--version"],
+  },
+  nsenter: {
+    withOperand: ["-t", "--target", "-S", "--setuid", "-G", "--setgid"],
+    stopOn: ["-h", "--help", "-V", "--version"],
+  },
+  firejail: { withOperand: [], stopOn: ["--help", "--version", "--list", "--tree", "--top"] },
+  parallel: {
+    withOperand: ["-j", "--jobs", "-P", "--max-procs", "-S", "--sshlogin", "--slf", "--sshloginfile", "-a",
+      "--arg-file", "-d", "--delimiter", "-E", "-I", "-C", "--colsep", "-n", "--max-args", "-N", "-L",
+      "--max-lines", "--timeout", "--joblog", "--results", "--res", "--tmpdir", "--tempdir", "--env",
+      "--delay", "--retries", "--workdir", "--wd", "--tagstring", "--halt", "--halt-on-error", "--memfree",
+      "--load", "--nice", "--return", "--basefile", "--bf", "--sshdelay", "--ssh", "--limit", "--block",
+      "--block-size", "--recstart", "--recend", "--header", "--transferfile", "--tf", "--rpl", "--profile",
+      "-J", "--seqreplace"],
+    joinsArgs: true,
+    stopOn: ["-h", "--help", "--version"],
+  },
+};
+
+/** `runuser -u USER cmd …` runs cmd; without `-u` it is `su`. */
+const RUNUSER_AS_USER: RunnerSpec = {
+  withOperand: [...RUNNERS.su.withOperand, "-u", "--user"],
+  commandString: RUNNERS.su.commandString,
 };
 
 const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh", "mksh", "ash", "fish", "yash"]);
 const SHELL_OPT_OPERAND = new Set(["-o", "+o", "-O", "+O", "--rcfile", "--init-file"]);
 const SSH_OPT_OPERAND = new Set("BbcDEeFIiJLlmOoPpQRSWw".split("").map((c) => "-" + c));
 const FIND_EXEC = new Set(["-exec", "-execdir", "-ok", "-okdir"]);
+/** GNU parallel's argument-source separators. */
+const PARALLEL_SEPARATOR = /^:{3,4}\+?$/;
 /** Reserved words that may precede a command. */
 const LEADING_RESERVED = new Set(["!", "{", "}", "then", "do", "else", "elif", "if", "while", "until", "coproc"]);
 /** Reserved words whose command is not a program invocation. */
@@ -897,13 +1153,27 @@ const NON_INVOCATION = new Set(["for", "case", "select", "function", "in", "esac
 const DECLARE_BUILTINS = new Set(["export", "declare", "typeset", "local", "readonly"]);
 
 function bind(a: ShellAnalysis, name: string, value: ShellWord): void {
+  const st = stateOf(a);
   const list = a.bindings.get(name) ?? [];
-  if (list.length < MAX_CANDIDATES) list.push(value);
   a.bindings.set(name, list);
+  if (list.length >= MAX_BINDINGS) {
+    st.overflowed.add(name);
+    return;
+  }
+  list.push(value);
+  // A new value can change any memoized resolution.
+  st.values.clear();
+  st.contextual.clear();
+  st.bindCount++;
 }
 
 function litWord(text: string): ShellWord {
   return { parts: [{ kind: "lit", text, quoted: true }], text };
+}
+
+/** Quote one argument so a joined command line re-lexes to the same words. */
+function shellQuote(arg: string): string {
+  return /^[A-Za-z0-9_@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, `'\\''`)}'`;
 }
 
 /** The first word of a text lexed as a command (`(rm -rf /)` → `rm`). */
@@ -1000,16 +1270,32 @@ function collectBindings(a: ShellAnalysis, cmd: SimpleCommand): void {
   }
 }
 
+/** One kind per distinct way `followRunner` treats a name: every shell reads `-c` the same way. */
+function runnerKind(name: string): string {
+  if (SHELLS.has(name)) return "sh";
+  if (name === "pwsh" || name === "powershell") return "pwsh";
+  return name;
+}
+
 /**
  * Record the program a simple command runs, then follow whatever it wraps.
  *
- * Iterative over runners (`sudo nice timeout 5 rm …`) rather than recursive, so
- * a command stacking thousands of them cannot exhaust the stack — a throw here
- * would be swallowed by the evaluator and the hook would ALLOW.
+ * A worklist, not recursion, over runners (`sudo nice timeout …`), so a command
+ * stacking thousands of them cannot exhaust the stack — a throw here would be
+ * swallowed by the evaluator and the hook would ALLOW. Each head word is walked
+ * once per extent, and each runner KIND once per invocation: a variable bound
+ * to nine shells reads the same `-c` string nine ways, and following each one
+ * made the work exponential in the nesting.
  */
-function walk(a: ShellAnalysis, words: ShellWord[], command: SimpleCommand, depth: number, hops = 0): void {
-  let current = words;
-  for (let hop = hops; hop < MAX_HOPS; hop++) {
+function walk(a: ShellAnalysis, words: ShellWord[], command: SimpleCommand, depth: number): void {
+  const st = stateOf(a);
+  const queue: Array<{ words: ShellWord[]; hop: number }> = [{ words, hop: 0 }];
+  for (let q = 0; q < queue.length; q++) {
+    const { words: current, hop } = queue[q];
+    if (hop >= MAX_HOPS) {
+      a.truncated = true;
+      continue;
+    }
     let i = 0;
     const env: Invocation["env"] = [];
     while (i < current.length) {
@@ -1026,24 +1312,32 @@ function walk(a: ShellAnalysis, words: ShellWord[], command: SimpleCommand, dept
       }
       break;
     }
-    if (i >= current.length) return;
+    if (i >= current.length) continue;
     const head = current[i];
     const headLit = literalText(head);
-    if (headLit !== null && NON_INVOCATION.has(headLit)) return;
+    if (headLit !== null && NON_INVOCATION.has(headLit)) continue;
+    const extent = current.length - i;
+    let extents = st.walked.get(head);
+    if (!extents) st.walked.set(head, (extents = new Set()));
+    if (extents.has(extent)) continue;
+    extents.add(extent);
+    if (!charge(a, INVOCATION_COST)) return;
+
     const args = current.slice(i + 1);
     const { names, indirect } = headNames(a, head);
     const inv: Invocation = { names, word: head, args, env, indirect, command };
     a.invocations.push(inv);
+    if (indirect) st.indirect.push({ inv, at: st.bindCount });
 
-    let next: ShellWord[] | null = null;
+    const kinds = new Set<string>();
     for (const name of new Set(names.length ? names : [""])) {
-      const wrapped = followRunner(a, name, inv, depth, hop);
-      if (wrapped && !next) next = wrapped;
+      const kind = runnerKind(name);
+      if (kinds.has(kind)) continue;
+      kinds.add(kind);
+      if (!charge(a, 1 + args.length)) return;
+      followRunner(a, name, inv, depth, (wrapped) => queue.push({ words: wrapped, hop: hop + 1 }));
     }
-    if (!next) return;
-    current = next;
   }
-  a.truncated = true;
 }
 
 function headNames(a: ShellAnalysis, head: ShellWord): { names: string[]; indirect: boolean } {
@@ -1053,26 +1347,90 @@ function headNames(a: ShellAnalysis, head: ShellWord): { names: string[]; indire
   const brace = firstBraceExpansion(head);
   if (brace !== null) names.add(normalizeName(brace));
   else {
-    const resolved = resolveWord(a, head);
+    const resolved = resolveIn(a, head, 0, NO_NAMES, { tainted: false });
     if (resolved) for (const r of resolved) names.add(normalizeName(r));
+    // A command word read from a variable given more values than are kept may
+    // run one of the dropped ones.
+    const { overflowed } = stateOf(a);
+    if (overflowed.size && head.parts.some((p) => p.kind === "param" && overflowed.has(p.name))) a.truncated = true;
   }
   names.delete("");
   return { names: [...names], indirect: true };
 }
 
-/** Index in `args` where a runner's wrapped command starts, or -1 when it runs none. */
-function wrappedStart(name: string, args: ShellWord[]): number {
-  const spec = RUNNERS[name];
+/** Record a change of directory to `word`. */
+function recordChdir(a: ShellAnalysis, word: ShellWord | undefined): void {
+  if (!word) return;
+  const values = resolveIn(a, word, 0, NO_NAMES, { tainted: false });
+  a.chdirs.push(values);
+  if (values?.some((t) => /^\/+dev(?:\/|$)/.test(t))) a.cdIntoDev = true;
+}
+
+/**
+ * Index in `args` where a runner's wrapped command starts, or -1 when it runs
+ * none. Runs any command-string option (`-c 'cmd'`) and records any
+ * working-directory option on the way.
+ */
+function wrappedStart(a: ShellAnalysis, spec: RunnerSpec, args: ShellWord[], depth: number): number {
   let positional = spec.positional ?? 0;
+  const wraps = spec.wraps !== false;
+  const runString = (value: ShellWord | undefined, restFrom: number) => {
+    if (!value) return;
+    const rest = spec.commandStringTakesRest ? args.slice(restFrom).map((w) => w.text) : [];
+    addSource(a, [value.text, ...rest].join(" "), depth + 1);
+  };
   for (let k = 0; k < args.length; k++) {
     const t = literalText(args[k]);
-    if (t === null) return positional > 0 ? -1 : k;
-    if (t === "--") return positional > 0 ? k + 1 + positional : k + 1;
+    if (t === null) {
+      // `timeout $T cmd`: an expansion where an operand goes is that operand.
+      if (positional > 0) {
+        positional--;
+        continue;
+      }
+      if (!wraps) continue;
+      return k;
+    }
+    if (t === "--") {
+      if (!wraps) continue;
+      return positional > 0 ? k + 1 + positional : k + 1;
+    }
+    // `su -`, `sg -`, `env -`: a login shell / empty environment, not an operand.
+    if (t === "-") continue;
+    if (t.startsWith("--")) {
+      const eq = t.indexOf("=");
+      const flag = eq === -1 ? t : t.slice(0, eq);
+      if (spec.stopOn?.includes(flag)) return -1;
+      const isCmd = spec.commandString?.includes(flag) ?? false;
+      const isDir = spec.chdir?.includes(flag) ?? false;
+      if (!isCmd && !isDir && !spec.withOperand.includes(flag)) continue;
+      const value = eq === -1 ? args[k + 1] : litWord(t.slice(eq + 1));
+      if (eq === -1) k++;
+      if (isDir) recordChdir(a, value);
+      if (isCmd) {
+        runString(value, k + 1);
+        if (wraps) return -1;
+      }
+      continue;
+    }
     if (t.startsWith("-") && t.length > 1) {
       if (spec.stopOn?.includes(t)) return -1;
-      if (spec.withOperand.includes(t)) {
-        k++;
-        continue;
+      // A bundle of short options: the first one that takes a value takes the
+      // rest of the bundle, or the next word when it ends the bundle.
+      for (let j = 1; j < t.length; j++) {
+        const opt = "-" + t[j];
+        if (spec.stopOn?.includes(opt)) return -1;
+        const isCmd = spec.commandString?.includes(opt) ?? false;
+        const isDir = spec.chdir?.includes(opt) ?? false;
+        if (!isCmd && !isDir && !spec.withOperand.includes(opt)) continue;
+        const rest = t.slice(j + 1);
+        const value = rest ? litWord(rest) : args[k + 1];
+        if (!rest) k++;
+        if (isDir) recordChdir(a, value);
+        if (isCmd) {
+          runString(value, k + 1);
+          if (wraps) return -1;
+        }
+        break;
       }
       continue;
     }
@@ -1080,6 +1438,7 @@ function wrappedStart(name: string, args: ShellWord[]): number {
       positional--;
       continue;
     }
+    if (!wraps) continue;
     return k;
   }
   return -1;
@@ -1089,30 +1448,61 @@ function joinText(words: ShellWord[]): string {
   return words.map((w) => w.text).join(" ");
 }
 
+/** Whether a `runuser` invocation names its user with `-u`, and so runs a command rather than a shell. */
+function runuserRunsCommand(args: ShellWord[]): boolean {
+  for (const w of args) {
+    const t = literalText(w);
+    if (t === null || t === "--") return false;
+    if (t === "--user" || t.startsWith("--user=")) return true;
+    if (/^-[A-Za-z]*u/.test(t) && !t.startsWith("--")) return true;
+  }
+  return false;
+}
+
 /**
- * Follow what a program runs on its behalf. Returns the wrapped words when the
- * program is a plain runner (`sudo`, `nice`, `xargs` …) so `walk` can
- * continue iteratively; everything else (a `-c` string, `eval`, `ssh`, a
- * `find -exec`, a shell reading stdin) is analysed here.
+ * GNU parallel: the command template runs once per argument after `:::`, with
+ * the argument in place of `{}` or appended.
  */
-function followRunner(a: ShellAnalysis, name: string, inv: Invocation, depth: number, hops: number): ShellWord[] | null {
+function followParallel(a: ShellAnalysis, words: ShellWord[], depth: number): void {
+  const sep = words.findIndex((w) => PARALLEL_SEPARATOR.test(literalText(w) ?? ""));
+  const template = joinText(sep === -1 ? words : words.slice(0, sep));
+  if (!template.trim()) return;
+  addSource(a, template, depth + 1);
+  if (sep === -1 || literalText(words[sep])?.startsWith("::::")) return;
+  let runs = 0;
+  for (const w of words.slice(sep + 1)) {
+    const t = literalText(w);
+    if (t === null) continue;
+    if (PARALLEL_SEPARATOR.test(t)) break;
+    if (++runs > MAX_PARALLEL_RUNS) break;
+    const arg = shellQuote(t);
+    addSource(a, template.includes("{}") ? template.split("{}").join(arg) : `${template} ${arg}`, depth + 1);
+  }
+}
+
+/**
+ * Follow what a program runs on its behalf. A plain runner (`sudo`, `nice`,
+ * `xargs` …) hands its wrapped words to `follow`, so `walk` continues
+ * iteratively; everything else (a `-c` string, `eval`, `ssh`, a `find -exec`,
+ * a shell reading stdin) is analysed here.
+ */
+function followRunner(
+  a: ShellAnalysis, name: string, inv: Invocation, depth: number, follow: (words: ShellWord[]) => void,
+): void {
   const args = inv.args;
-  if (name in RUNNERS) {
-    if (name === "env") {
-      for (let k = 0; k < args.length; k++) {
-        const t = literalText(args[k]);
-        if ((t === "-S" || t === "--split-string") && args[k + 1]) {
-          addSource(a, args[k + 1].text, depth + 1);
-          return null;
-        }
-        if (t?.startsWith("--split-string=")) {
-          addSource(a, t.slice("--split-string=".length), depth + 1);
-          return null;
-        }
-      }
-    }
-    const start = wrappedStart(name, args);
-    return start >= 0 && start < args.length ? args.slice(start) : null;
+  // `Object.hasOwn`, never `in`: `in` walks the prototype chain, so a command
+  // named `constructor` looked up `Object` as its spec and threw.
+  const spec = name === "runuser"
+    ? (runuserRunsCommand(args) ? RUNUSER_AS_USER : RUNNERS.su)
+    : Object.hasOwn(RUNNERS, name) ? RUNNERS[name] : undefined;
+  if (spec) {
+    const start = wrappedStart(a, spec, args, depth);
+    if (start < 0 || start >= args.length) return;
+    const wrapped = args.slice(start);
+    if (!spec.joinsArgs) follow(wrapped);
+    else if (name === "parallel") followParallel(a, wrapped, depth);
+    else addSource(a, joinText(wrapped), depth + 1);
+    return;
   }
   if (SHELLS.has(name) || (name === "" && inv.indirect)) {
     let sawC = false;
@@ -1139,12 +1529,12 @@ function followRunner(a: ShellAnalysis, name: string, inv: Invocation, depth: nu
     }
     if (sawC) {
       if (args[k]) addSource(a, args[k].text, depth + 1);
-      return null;
+      return;
     }
-    if (name === "") return null;
+    if (name === "") return;
     // No `-c` and no script operand: the shell reads its program from stdin —
     // a here-string, a heredoc, or `echo … |`.
-    if (k < args.length) return null;
+    if (k < args.length) return;
     const { redirects } = splitRedirects(inv.command.words);
     for (const r of redirects) {
       if (r.op === "<<<" && r.target) addSource(a, r.target.text, depth + 1);
@@ -1159,12 +1549,12 @@ function followRunner(a: ShellAnalysis, name: string, inv: Invocation, depth: nu
         addSource(a, joinText(body).replace(/\\n/g, "\n"), depth + 1);
       }
     }
-    return null;
+    return;
   }
   switch (name) {
     case "eval":
       addSource(a, joinText(args), depth + 1);
-      return null;
+      return;
     case "ssh": {
       let k = 0;
       for (; k < args.length; k++) {
@@ -1178,37 +1568,37 @@ function followRunner(a: ShellAnalysis, name: string, inv: Invocation, depth: nu
       }
       const remote = args.slice(k + 1);
       if (remote.length) addSource(a, joinText(remote), depth + 1);
-      return null;
+      return;
     }
     case "find":
       for (let k = 0; k < args.length; k++) {
         if (!FIND_EXEC.has(literalText(args[k]) ?? "")) continue;
         let end = k + 1;
         while (end < args.length && !/^[;+]$/.test(literalText(args[end]) ?? "")) end++;
-        if (hops + 1 >= MAX_HOPS) a.truncated = true;
-        else walk(a, args.slice(k + 1, end), inv.command, depth, hops + 1);
+        follow(args.slice(k + 1, end));
         k = end;
       }
-      return null;
+      return;
     case "powershell":
     case "pwsh": {
       const k = args.findIndex((w) => /^[-/](?:c|command)$/i.test(literalText(w) ?? ""));
       if (k >= 0) addSource(a, joinText(args.slice(k + 1)), depth + 1);
-      return null;
+      return;
     }
     case "cmd": {
       const k = args.findIndex((w) => /^\/[ck]$/i.test(literalText(w) ?? ""));
       if (k >= 0) addSource(a, joinText(args.slice(k + 1)), depth + 1);
-      return null;
+      return;
     }
     case "cd":
     case "pushd": {
-      const target = resolveWord(a, args.find((w) => !/^-/.test(w.text)) ?? litWord("~"));
-      if (target?.some((t) => /^\/+dev(?:\/|$)/.test(t))) a.cdIntoDev = true;
-      return null;
+      const target = args.find((w) => !/^-/.test(w.text));
+      // `cd -` goes back to a directory already counted; plain `cd` goes home.
+      if (!target && args.some((w) => w.text === "-")) return;
+      recordChdir(a, target ?? litWord("~"));
+      return;
     }
   }
-  return null;
 }
 
 function addSource(a: ShellAnalysis, src: string, depth: number): void {
@@ -1216,6 +1606,12 @@ function addSource(a: ShellAnalysis, src: string, depth: number): void {
     a.truncated = true;
     return;
   }
+  // The same text analysed again at the same or a deeper level adds nothing.
+  const { sources } = stateOf(a);
+  const seenAt = sources.get(src);
+  if (seenAt !== undefined && seenAt <= depth) return;
+  sources.set(src, depth);
+  if (!charge(a, src.length + 1)) return;
   const commands = lexShell(src, depth, a);
   a.commands.push(...commands);
   for (const cmd of commands) collectBindings(a, cmd);
@@ -1229,32 +1625,72 @@ function addSource(a: ShellAnalysis, src: string, depth: number): void {
 /** Lex a command and work out every program it runs. */
 export function analyzeShell(command: string): ShellAnalysis {
   const a: ShellAnalysis = {
-    commands: [], invocations: [], redirects: [], bindings: new Map(), cdIntoDev: false, truncated: false,
+    commands: [], invocations: [], redirects: [], bindings: new Map(), cdIntoDev: false, chdirs: [], truncated: false,
   };
+  const st = stateOf(a);
+  st.scope.limit = BASE_BUDGET + BUDGET_PER_BYTE * command.length;
   addSource(a, command, 0);
+  // An `eval`/`bash -c` walked later can bind what an earlier head reads
+  // (`f() { $X x; }; eval X=rm; f`): resolve those heads again.
+  for (const { inv, at } of st.indirect) {
+    if (at === st.bindCount || firstBraceExpansion(inv.word) !== null) continue;
+    const more = headNames(a, inv.word).names.filter((n) => !inv.names.includes(n));
+    if (more.length) inv.names = [...inv.names, ...more];
+  }
   return a;
 }
 
 // ── Resolution ──────────────────────────────────────────────────────────────
 
+/** Set when a resolution cut a cycle or hit a cap, so its result depends on where it started. */
+interface Taint {
+  tainted: boolean;
+}
+
+const NO_NAMES: ReadonlySet<string> = new Set();
+
 /**
  * Every string a word can expand to, given what the same command assigned, or
  * null when some part of it cannot be known from the command string alone.
+ *
+ * Each call has its own budget. A chain of variables deeper than resolution
+ * follows marks the analysis truncated rather than reading as "unknown".
  */
-export function resolveWord(a: ShellAnalysis, word: ShellWord, depth = 0, seen: ReadonlySet<string> = new Set()): string[] | null {
-  if (depth > 6) return null;
+export function resolveWord(a: ShellAnalysis, word: ShellWord): string[] | null {
+  const st = stateOf(a);
+  const outer = st.scope;
+  st.scope = { used: 0, limit: CALL_BUDGET };
+  try {
+    return resolveIn(a, word, 0, NO_NAMES, { tainted: false });
+  } finally {
+    st.scope = outer;
+  }
+}
+
+function resolveIn(a: ShellAnalysis, word: ShellWord, depth: number, seen: ReadonlySet<string>, t: Taint): string[] | null {
+  if (depth > MAX_RESOLVE_DEPTH) {
+    // Twelve hops of `A=$B` is built to hide what it names: say so.
+    t.tainted = true;
+    a.truncated = true;
+    return null;
+  }
+  if (!charge(a, RESOLVE_COST)) {
+    t.tainted = true;
+    return null;
+  }
   let acc = [""];
   for (const p of word.parts) {
     let opts: string[] | null;
     if (p.kind === "lit") opts = [p.text];
-    else if (p.kind === "param") opts = resolveParam(a, p, depth, seen);
-    else if (p.kind === "sub") opts = staticSubstitution(a, p.body, depth, seen);
+    else if (p.kind === "param") opts = resolveParam(a, p, depth, seen, t);
+    else if (p.kind === "sub") opts = staticSubstitution(a, p.body, depth, seen, t);
     else opts = null;
     if (!opts || opts.length === 0) return null;
     const next: string[] = [];
-    for (const x of acc) {
+    outer: for (const x of acc) {
       for (const y of opts) {
-        if (next.length < MAX_CANDIDATES) next.push(x + y);
+        if (next.length >= MAX_BINDINGS) break outer;
+        next.push(x + y);
       }
     }
     acc = next;
@@ -1262,61 +1698,87 @@ export function resolveWord(a: ShellAnalysis, word: ShellWord, depth = 0, seen: 
   return acc;
 }
 
-function valuesOf(a: ShellAnalysis, name: string, depth: number, seen: ReadonlySet<string>): string[] | null {
-  if (seen.has(name)) return null;
+function valuesOf(a: ShellAnalysis, name: string, depth: number, seen: ReadonlySet<string>, t: Taint): string[] | null {
+  if (seen.has(name)) {
+    t.tainted = true;
+    return null;
+  }
   const words = a.bindings.get(name);
   if (!words) return null;
-  let memo = valueMemo.get(a);
-  if (!memo) valueMemo.set(a, (memo = new Map()));
-  if (memo.has(name)) return memo.get(name) ?? null;
-  const result = computeValues(a, name, words, depth, seen);
-  memo.set(name, result);
+  const st = stateOf(a);
+  if (st.values.has(name)) return st.values.get(name) ?? null;
+  const key = `${name}\u0000${depth}\u0000${[...seen].sort().join("\u0000")}`;
+  if (st.contextual.has(key)) {
+    t.tainted = true;
+    return st.contextual.get(key) ?? null;
+  }
+  const inner: Taint = { tainted: false };
+  const result = computeValues(a, name, words, depth, seen, inner);
+  if (inner.tainted) {
+    st.contextual.set(key, result);
+    t.tainted = true;
+  } else {
+    st.values.set(name, result);
+  }
   return result;
 }
 
-function computeValues(a: ShellAnalysis, name: string, words: ShellWord[], depth: number, seen: ReadonlySet<string>): string[] | null {
+function computeValues(
+  a: ShellAnalysis, name: string, words: ShellWord[], depth: number, seen: ReadonlySet<string>, t: Taint,
+): string[] | null {
   const inner = new Set(seen).add(name);
   const out: string[] = [];
   for (const w of words) {
-    const r = resolveWord(a, w, depth + 1, inner);
+    const r = resolveIn(a, w, depth + 1, inner, t);
     if (r) out.push(...r);
+    if (out.length >= MAX_BINDINGS) break;
   }
-  return out.length ? out.slice(0, MAX_CANDIDATES) : null;
+  return out.length ? out.slice(0, MAX_BINDINGS) : null;
 }
 
-function resolveText(a: ShellAnalysis, text: string, depth: number, seen: ReadonlySet<string>): string[] | null {
+function resolveText(a: ShellAnalysis, text: string, depth: number, seen: ReadonlySet<string>, t: Taint): string[] | null {
+  if (!charge(a, text.length + 1)) {
+    t.tainted = true;
+    return null;
+  }
   const w = firstWordOf(text);
-  return w ? resolveWord(a, w, depth + 1, seen) : [""];
+  return w ? resolveIn(a, w, depth + 1, seen, t) : [""];
 }
 
-function resolveParam(a: ShellAnalysis, p: Extract<WordPart, { kind: "param" }>, depth: number, seen: ReadonlySet<string>): string[] | null {
+function resolveParam(
+  a: ShellAnalysis, p: Extract<WordPart, { kind: "param" }>, depth: number, seen: ReadonlySet<string>, t: Taint,
+): string[] | null {
   if (p.op === "len" || p.op === "other" || !p.name) return null;
   let names = [p.name];
   if (p.indirect) {
-    const targets = valuesOf(a, p.name, depth, seen);
+    const targets = valuesOf(a, p.name, depth, seen, t);
     if (!targets) return null;
-    names = targets.filter((t) => /^[A-Za-z_]\w*$/.test(t));
+    names = targets.filter((x) => /^[A-Za-z_]\w*$/.test(x));
     if (!names.length) return null;
   }
   const bound = names.some((n) => a.bindings.has(n));
   const out: string[] = [];
-  for (const n of names) out.push(...(valuesOf(a, n, depth, seen) ?? []));
-  if (p.op === ":+" || p.op === "+") return bound ? resolveText(a, p.arg, depth, seen) : [""];
+  for (const n of names) out.push(...(valuesOf(a, n, depth, seen, t) ?? []));
+  if (p.op === ":+" || p.op === "+") return bound ? resolveText(a, p.arg, depth, seen, t) : [""];
   if (p.op === ":-" || p.op === "-" || p.op === ":=" || p.op === "=") {
-    const d = resolveText(a, p.arg, depth, seen);
+    const d = resolveText(a, p.arg, depth, seen, t);
     if (d) out.push(...d);
   }
-  return out.length ? out.slice(0, MAX_CANDIDATES) : null;
+  return out.length ? out.slice(0, MAX_BINDINGS) : null;
 }
 
 /** What `$( … )` prints when its body is a trivially static command, else null. */
-function staticSubstitution(a: ShellAnalysis, body: string, depth: number, seen: ReadonlySet<string>): string[] | null {
+function staticSubstitution(a: ShellAnalysis, body: string, depth: number, seen: ReadonlySet<string>, t: Taint): string[] | null {
+  if (!charge(a, body.length + 1)) {
+    t.tainted = true;
+    return null;
+  }
   const cmds = lexShell(body, MAX_DEPTH);
   if (cmds.length !== 1) return null;
   const words = splitRedirects(cmds[0].words).plain;
   const head = normalizeName(literalText(words[0]) ?? "");
   const args = words.slice(1);
-  const one = (w: ShellWord | undefined) => (w ? resolveWord(a, w, depth + 1, seen) : null);
+  const one = (w: ShellWord | undefined) => (w ? resolveIn(a, w, depth + 1, seen, t) : null);
   switch (head) {
     case "echo": {
       const flags = literalText(args[0]) ?? "";

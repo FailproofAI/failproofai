@@ -15,6 +15,12 @@
  * `xargs`, `bash -c`, `find -exec` … are walked off) for its arguments to count,
  * so `git commit -m "never use --no-verify"` and `grep mkfs notes.md` pass.
  *
+ * They fail CLOSED, each on its own: a command the analyser could not read to
+ * the end (`truncated`) is denied by every one of them, and so is a command
+ * that makes one of them throw. The evaluator swallows a throw and allows, and
+ * each of these is enabled independently — a guard that relied on another one
+ * being on to catch what it could not read would have a trivial bypass.
+ *
  * The implementations are plain hoisted functions, never wrappers — see the note
  * on `POLICY_IMPLEMENTATIONS` in builtin-policies.ts for why that matters.
  */
@@ -34,6 +40,7 @@ import {
   type ShellAnalysis,
   type ShellWord,
   type SimpleCommand,
+  type WordPart,
 } from "./shell-analysis";
 
 // ── Shared ──────────────────────────────────────────────────────────────────
@@ -68,16 +75,38 @@ function analysisFor(ctx: PolicyContext): ShellAnalysis | null {
 
 /**
  * The analyser never throws by design; if it ever does, the command is reported
- * as unanalysable (`truncated`) instead of the error escaping — an escaping
- * error is swallowed by the evaluator and the hook ALLOWS. `block-indirect-exec`
- * denies an unanalysable command; the other floor policies see no invocations.
+ * as unanalysable (`failed`, `truncated`) instead of the error escaping — an
+ * escaping error is swallowed by the evaluator and the hook ALLOWS.
  */
 function safeAnalyze(command: string): ShellAnalysis {
   try {
     return analyzeShell(command);
   } catch {
-    return { commands: [], invocations: [], redirects: [], bindings: new Map(), cdIntoDev: false, truncated: true };
+    return {
+      commands: [], invocations: [], redirects: [], bindings: new Map(), cdIntoDev: false, chdirs: [],
+      truncated: true, failed: true,
+    };
   }
+}
+
+/**
+ * The deny for a command the analyser could not read to the end, or null when
+ * it read all of it. Every floor policy returns this when it found nothing
+ * else: what it did not read may hold exactly what it looks for.
+ */
+function unanalysable(a: ShellAnalysis): PolicyResult | null {
+  if (!a.truncated) return null;
+  return deny(
+    a.failed
+      ? "This command could not be analysed, so it is blocked. Split it into simpler commands."
+      : "This command nests substitutions, shells or wrappers too deeply to check, so it is blocked. " +
+          "Split it into simpler commands.",
+  );
+}
+
+/** A floor policy that throws denies: the evaluator would log the throw and ALLOW. */
+function failedClosed(policy: string): PolicyResult {
+  return deny(`The ${policy} check could not process this command, so it is blocked. Split it into simpler commands.`);
 }
 
 /** Literal text of each argument; null for an argument that is not a plain literal. */
@@ -96,6 +125,10 @@ function valuesOf(a: ShellAnalysis, word: ShellWord | undefined): string[] | nul
 const PSEUDO_DEVICE_RE =
   /^\/dev\/(?:null|zero|full|random|urandom|stdin|stdout|stderr|tty\w*|console|ptmx|kmsg|fd\/.*|pts\/.*|shm(?:\/.*)?|mqueue(?:\/.*)?|tcp\/.*|udp\/.*)$/;
 
+/** A block device's name as it appears in /dev: what a bare `mkfs sda1` names when the directory is /dev. */
+const BLOCK_DEVICE_NAME_RE =
+  /^(?:[sh]d[a-z]+\d*|x?vd[a-z]+\d*|nvme\d+n\d+(?:p\d+)?|mmcblk\d+(?:p\d+)?|r?disk\d+(?:s\d+)*|loop\d+|md\d+|dm-\d+|sr\d+|mapper\/.+|disk\/by-[a-z-]+\/.+)$/;
+
 /** Variables that name a directory, never a device. */
 const SAFE_PATH_VARS = new Set([
   "HOME", "PWD", "OLDPWD", "TMPDIR", "TMP", "TEMP", "USERPROFILE", "XDG_CACHE_HOME",
@@ -112,54 +145,136 @@ const DISKUTIL_DESTRUCTIVE = new Set([
 const WINDOWS_DISK_TOOLS = new Set(["clear-disk", "format-volume", "remove-partition", "diskpart"]);
 /** Redirection operators that write to their target. */
 const WRITE_REDIRECT_RE = /^\d*(?:>|>>|>\||&>|&>>|<>|>&)$/;
+/** Working directories tracked per command before the set counts as unknown. */
+const MAX_CWDS = 64;
 
-function isDevicePath(path: string, cwdIsDev: boolean): boolean {
-  let p = path.trim();
-  if (!p) return false;
-  if (!p.startsWith("/")) {
-    if (!cwdIsDev) return false;
-    p = "/dev/" + p;
+/** The directories a relative path in the command can be relative to. */
+interface Cwds {
+  dirs: string[];
+  /** Some directory the command can run in is unknown: no session cwd, or a `cd` it cannot resolve. */
+  unknown: boolean;
+}
+
+/**
+ * Every directory the command's paths can be relative to: the session cwd,
+ * plus every `cd`/`pushd`/`--chdir` target in the command resolved against it.
+ * The analysis is flat, so every change applies — `cd ..; cd ..` walks up
+ * twice from any directory already reached.
+ */
+function possibleCwds(a: ShellAnalysis, sessionCwd: unknown): Cwds {
+  const dirs = new Set<string>();
+  let unknown = false;
+  if (typeof sessionCwd === "string" && sessionCwd.startsWith("/")) dirs.add(posix.normalize(sessionCwd));
+  else unknown = true;
+  // Past MAX_CWDS directories the set stops growing and counts as unknown:
+  // a relative `cd` doubles it, and a command can hold thousands of them.
+  const add = (dir: string): boolean => {
+    if (dirs.size >= MAX_CWDS && !dirs.has(dir)) {
+      unknown = true;
+      return false;
+    }
+    dirs.add(dir);
+    return true;
+  };
+  const rounds = Math.min(a.chdirs.length, 8);
+  rounds: for (let round = 0; round < rounds; round++) {
+    const before = dirs.size;
+    for (const targets of a.chdirs) {
+      if (targets === null) {
+        unknown = true;
+        continue;
+      }
+      for (const raw of targets) {
+        const t = raw.trim();
+        if (!t) continue;
+        if (t.startsWith("~")) unknown = true;
+        else if (t.startsWith("/")) {
+          if (!add(posix.normalize(t))) break rounds;
+        } else if (dirs.size === 0) unknown = true;
+        else for (const d of [...dirs]) if (!add(posix.resolve(d, t))) break rounds;
+      }
+    }
+    if (dirs.size === before) break;
   }
-  const norm = posix.normalize(p);
+  return { dirs: [...dirs], unknown };
+}
+
+function isDeviceAbs(path: string): boolean {
+  const norm = posix.normalize(path);
   return (norm === "/dev" || norm.startsWith("/dev/")) && !PSEUDO_DEVICE_RE.test(norm);
 }
 
 /**
- * The device a word writes to, or null when it is not one.
- *
- * With `strict`, a target the command string cannot resolve counts as a device
- * too — that is for tools whose only job is disks (`dd`, `mkfs`, `wipefs`),
- * where `of=$DISK` is exactly the shape worth stopping. A redirect or `tee` to
- * an unknown `$FILE` is ordinary and stays allowed.
+ * The absolute paths a path in the command can name. A relative path is
+ * resolved against every possible cwd; from an unknown one, `dev/sda` and
+ * `../../dev/sda` can each be /dev/sda, and — for a disk tool (`diskTool`) — a
+ * bare `sda1` can be /dev/sda1.
  */
-function deviceTarget(a: ShellAnalysis, word: ShellWord, cwdIsDev: boolean, strict: boolean): string | null {
+function absolutePaths(path: string, cwds: Cwds, diskTool: boolean): string[] {
+  const p = path.trim();
+  if (!p) return [];
+  if (p.startsWith("/")) return [p];
+  const out = cwds.dirs.map((d) => posix.resolve(d, p));
+  if (cwds.unknown) {
+    const rel = posix.normalize(p);
+    const m = /^(?:\.\.\/)*(dev(?:\/.*)?)$/.exec(rel);
+    if (m) out.push("/" + m[1]);
+    if (diskTool && BLOCK_DEVICE_NAME_RE.test(rel)) out.push("/dev/" + rel);
+  }
+  return out;
+}
+
+function isDevicePath(path: string, cwds: Cwds, diskTool: boolean): boolean {
+  return absolutePaths(path, cwds, diskTool).some(isDeviceAbs);
+}
+
+/**
+ * How to read a word that may name a device.
+ * - `unresolved`: a target the command string cannot resolve counts as a
+ *   device. For tools whose only job is disks (`dd`, `mkfs`, `wipefs`), where
+ *   `of=$DISK` is exactly the shape worth stopping. A redirect or `tee` to an
+ *   unknown `$FILE` is ordinary and stays allowed.
+ * - `diskTool`: a bare device name (`sda1`) counts when the cwd is unknown.
+ */
+interface TargetMode {
+  unresolved: boolean;
+  diskTool: boolean;
+}
+
+const DISK_TOOL_STRICT: TargetMode = { unresolved: true, diskTool: true };
+const DISK_TOOL_LITERAL: TargetMode = { unresolved: false, diskTool: true };
+const ORDINARY: TargetMode = { unresolved: false, diskTool: false };
+
+/** The device a word writes to, or null when it is not one. */
+function deviceTarget(a: ShellAnalysis, word: ShellWord, cwds: Cwds, mode: TargetMode): string | null {
   const values = resolveWord(a, word);
-  if (values) return values.find((v) => isDevicePath(v, cwdIsDev)) ?? null;
+  if (values) return values.find((v) => isDevicePath(v, cwds, mode.diskTool)) ?? null;
   const prefix = literalPrefix(word);
   if (prefix) {
-    if (prefix.startsWith("/")) {
-      const norm = posix.normalize(prefix);
-      // `/dev/tcp/$HOST/5432` is a socket; `/dev/sd$X` is a disk. Decide on
-      // the literal part with a placeholder for the rest.
-      if (norm.startsWith("/dev/")) return isDevicePath(prefix + "x", false) ? word.text : null;
-      if (strict && "/dev/".startsWith(norm)) return word.text;
-      return null;
+    // `/dev/tcp/$HOST/5432` is a socket; `/dev/sd$X` is a disk. Decide on
+    // the literal part with a placeholder for the rest.
+    if (absolutePaths(prefix + "x", cwds, mode.diskTool).some((p) => posix.normalize(p).startsWith("/dev/") && isDeviceAbs(p))) {
+      return word.text;
     }
-    return cwdIsDev && strict ? word.text : null;
+    // `/$X` or `/de$X` can still become /dev/….
+    if (mode.unresolved && absolutePaths(prefix, cwds, false).some((p) => "/dev/".startsWith(posix.normalize(p)))) {
+      return word.text;
+    }
+    return null;
   }
-  if (!strict) return null;
+  if (!mode.unresolved) return null;
   const first = word.parts[0];
   if (first?.kind === "param" && SAFE_PATH_VARS.has(first.name)) return null;
   return word.text;
 }
 
-function diskHit(a: ShellAnalysis, inv: Invocation, name: string, cwdIsDev: boolean): string | null {
+function diskHit(a: ShellAnalysis, inv: Invocation, name: string, cwds: Cwds): string | null {
   const args = inv.args;
   const operands = args.filter((w) => !(literalText(w) ?? "").startsWith("-"));
   if (name === "dd") {
     for (const w of args) {
       if (!literalPrefix(w).startsWith("of=")) continue;
-      const dev = deviceTarget(a, dropPrefix(w, 3), cwdIsDev, true);
+      const dev = deviceTarget(a, dropPrefix(w, 3), cwds, DISK_TOOL_STRICT);
       if (dev) return `dd of=${dev}`;
     }
     return null;
@@ -167,31 +282,32 @@ function diskHit(a: ShellAnalysis, inv: Invocation, name: string, cwdIsDev: bool
   if (MKFS_RE.test(name) || WIPE_TOOLS.has(name)) {
     for (const w of operands) {
       if (literalText(w) === null) continue;
-      const dev = deviceTarget(a, w, cwdIsDev, false);
+      const dev = deviceTarget(a, w, cwds, DISK_TOOL_LITERAL);
       if (dev) return `${name} ${dev}`;
     }
     // The device is the last operand; one the command cannot resolve is not given the benefit of the doubt.
     const last = operands[operands.length - 1];
     if (last && literalText(last) === null) {
-      const dev = deviceTarget(a, last, cwdIsDev, true);
+      const dev = deviceTarget(a, last, cwds, DISK_TOOL_STRICT);
       if (dev) return `${name} ${dev}`;
     }
     return null;
   }
   if (name === "shred" || name === "tee") {
     for (const w of operands) {
-      const dev = deviceTarget(a, w, cwdIsDev, false);
+      const dev = deviceTarget(a, w, cwds, ORDINARY);
       if (dev) return `${name} ${dev}`;
     }
     return null;
   }
   if (name === "cp" && operands.length >= 2) {
-    const dev = deviceTarget(a, operands[operands.length - 1], cwdIsDev, false);
+    const dev = deviceTarget(a, operands[operands.length - 1], cwds, ORDINARY);
     return dev ? `cp … ${dev}` : null;
   }
   if (name === "diskutil") {
+    // A bare `diskutil` (or only flags) has no verb.
     const verbs = lits(operands).map((t) => t ?? "");
-    const verb = verbs[0].toLowerCase() === "apfs" ? verbs[1] : verbs[0];
+    const verb = (verbs[0] ?? "").toLowerCase() === "apfs" ? verbs[1] : verbs[0];
     const lower = verb?.toLowerCase();
     if (lower && (DISKUTIL_DESTRUCTIVE.has(lower) || /^delete(?:container|volume)$/.test(lower))) {
       return `diskutil ${verb}`;
@@ -204,26 +320,29 @@ function diskHit(a: ShellAnalysis, inv: Invocation, name: string, cwdIsDev: bool
 }
 
 function blockDiskDestruction(ctx: PolicyContext): PolicyResult {
-  const a = analysisFor(ctx);
-  if (!a) return allow();
-  const cwd = ctx.session?.cwd;
-  const cwdIsDev = a.cdIntoDev || (typeof cwd === "string" && /^\/+dev(?:\/|$)/.test(cwd));
-  for (const inv of a.invocations) {
-    for (const name of inv.names) {
-      const hit = diskHit(a, inv, name, cwdIsDev);
-      if (hit) {
-        return deny(`Formatting, wiping or writing raw data to a disk device is blocked (${hit}).`);
+  try {
+    const a = analysisFor(ctx);
+    if (!a) return allow();
+    const cwds = possibleCwds(a, ctx.session?.cwd);
+    for (const inv of a.invocations) {
+      for (const name of inv.names) {
+        const hit = diskHit(a, inv, name, cwds);
+        if (hit) {
+          return deny(`Formatting, wiping or writing raw data to a disk device is blocked (${hit}).`);
+        }
       }
     }
+    for (const r of a.redirects) {
+      if (!r.target || !WRITE_REDIRECT_RE.test(r.op)) continue;
+      // `>&2` duplicates a file descriptor; only `>&file` writes a file.
+      if (r.op.endsWith(">&") && /^(?:\d+|-)$/.test(r.target.text)) continue;
+      const dev = deviceTarget(a, r.target, cwds, ORDINARY);
+      if (dev) return deny(`Formatting, wiping or writing raw data to a disk device is blocked (redirect to ${dev}).`);
+    }
+    return unanalysable(a) ?? allow();
+  } catch {
+    return failedClosed("block-disk-destruction");
   }
-  for (const r of a.redirects) {
-    if (!r.target || !WRITE_REDIRECT_RE.test(r.op)) continue;
-    // `>&2` duplicates a file descriptor; only `>&file` writes a file.
-    if (r.op.endsWith(">&") && /^(?:\d+|-)$/.test(r.target.text)) continue;
-    const dev = deviceTarget(a, r.target, cwdIsDev, false);
-    if (dev) return deny(`Formatting, wiping or writing raw data to a disk device is blocked (redirect to ${dev}).`);
-  }
-  return allow();
 }
 
 // ── block-gh-destructive ────────────────────────────────────────────────────
@@ -234,28 +353,68 @@ const GH_DELETABLE = new Set([
   "ssh-key", "gpg-key", "codespace", "project",
 ]);
 const GH_NOUN_ALIASES: Record<string, string> = { cs: "codespace" };
-const GH_FIELD_FLAGS = new Set(["-f", "-F", "--field", "--raw-field"]);
-/** A GraphQL mutation whose name starts with `delete` (`deleteRef`, `deleteIssue`, …). */
-const GRAPHQL_DELETE_RE = /\bmutation\b[\s\S]*\bdelete[A-Z]\w*/;
+/** `gh api` short options that take a value (pflag): `-X`, `-F`, `-f`, `-H`, `-p`, `-q`, `-t`. */
+const GH_API_SHORT_VALUE = new Set(["X", "F", "f", "H", "p", "q", "t"]);
+/** `gh api` long options that take a value. */
+const GH_API_LONG_VALUE = new Set([
+  "--method", "--field", "--raw-field", "--header", "--hostname", "--input", "--jq", "--template",
+  "--preview", "--cache",
+]);
 
+/** A GraphQL mutation whose name starts with `delete` (`deleteRef`, `deleteIssue`, …). Linear, unlike one regex with `[\s\S]*`. */
+function graphqlDelete(query: string): boolean {
+  const at = query.search(/\bmutation\b/);
+  return at >= 0 && /\bdelete[A-Z]/.test(query.slice(at));
+}
+
+/**
+ * `gh api` with a DELETE method or a delete mutation. Options are read the way
+ * gh's pflag reads them: a short option that takes a value takes the rest of
+ * its bundle (`-XDELETE`, `-iXDELETE`, with a leading `=` dropped: `-X=DELETE`)
+ * or the next word (`-X DELETE`, `-iX DELETE`); a long one takes `=value` or
+ * the next word.
+ */
 function ghApiHit(a: ShellAnalysis, args: ShellWord[]): string | null {
+  const methods: Array<string | ShellWord | undefined> = [];
+  const fields: string[] = [];
   for (let k = 0; k < args.length; k++) {
     const t = literalText(args[k]);
     if (t === null) continue;
-    let method: string[] | null | undefined;
-    if (t === "-X" || t === "--method") {
-      method = args[k + 1] ? valuesOf(a, args[k + 1]) : undefined;
-      if (method === null) return "gh api -X <unresolved method>";
-    } else if (/^-X.+/.test(t)) method = [t.slice(2)];
-    else if (t.startsWith("--method=")) method = [t.slice("--method=".length)];
-    if (method?.some((m) => m.trim().toUpperCase() === "DELETE")) return "gh api -X DELETE";
-
-    let field: string | null = null;
-    if (GH_FIELD_FLAGS.has(t)) field = args[k + 1]?.text ?? null;
-    else if (/^--(?:raw-)?field=/.test(t)) field = t.slice(t.indexOf("=") + 1);
-    else if (/^-[fF]query=/.test(t)) field = t.slice(2);
-    if (field?.startsWith("query=") && GRAPHQL_DELETE_RE.test(field)) return "gh api graphql delete mutation";
+    if (t === "--") break;
+    if (t.startsWith("--")) {
+      const eq = t.indexOf("=");
+      const flag = eq === -1 ? t : t.slice(0, eq);
+      if (!GH_API_LONG_VALUE.has(flag)) continue;
+      const value: string | ShellWord | undefined = eq === -1 ? args[k + 1] : t.slice(eq + 1);
+      if (eq === -1) k++;
+      if (flag === "--method") methods.push(value);
+      else if (flag === "--field" || flag === "--raw-field") fields.push(typeof value === "string" ? value : value?.text ?? "");
+      continue;
+    }
+    if (!t.startsWith("-") || t.length < 2) continue;
+    for (let j = 1; j < t.length; j++) {
+      const ch = t[j];
+      if (!GH_API_SHORT_VALUE.has(ch)) continue;
+      let value: string | ShellWord | undefined;
+      if (j + 1 < t.length) {
+        const rest = t.slice(j + 1);
+        value = rest.length > 1 && rest[0] === "=" ? rest.slice(1) : rest;
+      } else {
+        value = args[k + 1];
+        k++;
+      }
+      if (ch === "X") methods.push(value);
+      else if (ch === "f" || ch === "F") fields.push(typeof value === "string" ? value : value?.text ?? "");
+      break;
+    }
   }
+  for (const m of methods) {
+    if (m === undefined) continue;
+    const values = typeof m === "string" ? [m] : valuesOf(a, m);
+    if (values === null) return "gh api -X <unresolved method>";
+    if (values.some((v) => v.trim().toUpperCase() === "DELETE")) return "gh api -X DELETE";
+  }
+  if (fields.some((f) => f.startsWith("query=") && graphqlDelete(f))) return "gh api graphql delete mutation";
   return null;
 }
 
@@ -276,7 +435,8 @@ function ghHit(a: ShellAnalysis, args: ShellWord[]): string | null {
     if (t.startsWith("-")) continue;
     positional.push({ text: t.toLowerCase(), index: k });
   }
-  const noun = GH_NOUN_ALIASES[positional[0]?.text ?? ""] ?? positional[0]?.text;
+  const first = positional[0]?.text ?? "";
+  const noun = Object.hasOwn(GH_NOUN_ALIASES, first) ? GH_NOUN_ALIASES[first] : first;
   const verb = positional[1]?.text;
   if (!noun) return null;
   if (noun === "api") return ghApiHit(a, args.slice(positional[0].index + 1));
@@ -288,14 +448,18 @@ function ghHit(a: ShellAnalysis, args: ShellWord[]): string | null {
 }
 
 function blockGhDestructive(ctx: PolicyContext): PolicyResult {
-  const a = analysisFor(ctx);
-  if (!a) return allow();
-  for (const inv of a.invocations) {
-    if (!inv.names.includes("gh")) continue;
-    const hit = ghHit(a, inv.args);
-    if (hit) return deny(`Deleting GitHub resources through the gh CLI is blocked (${hit}).`);
+  try {
+    const a = analysisFor(ctx);
+    if (!a) return allow();
+    for (const inv of a.invocations) {
+      if (!inv.names.includes("gh")) continue;
+      const hit = ghHit(a, inv.args);
+      if (hit) return deny(`Deleting GitHub resources through the gh CLI is blocked (${hit}).`);
+    }
+    return unanalysable(a) ?? allow();
+  } catch {
+    return failedClosed("block-gh-destructive");
   }
-  return allow();
 }
 
 // ── block-mass-kill ─────────────────────────────────────────────────────────
@@ -333,7 +497,9 @@ const SIGNAL_FLAG_RE = /^-(?:\d+|(?:SIG)?[A-Z][A-Z0-9+-]+)$/;
 function stripPattern(pattern: string): string {
   let s = pattern.trim().toLowerCase();
   s = s.replace(/^\^/, "").replace(/\$$/, "");
-  s = s.replace(/^(?:\.\*|\.\+)+/, "").replace(/(?:\.\*|\.\+)+$/, "");
+  s = s.replace(/^(?:\.\*|\.\+)+/, "");
+  // A loop, not `/(?:\.\*|\.\+)+$/`: that backtracks quadratically on a long `.*.*…x`.
+  while (s.endsWith(".*") || s.endsWith(".+")) s = s.slice(0, -2);
   return s.replace(/\[([^\]^])\]/g, "$1").replace(/\\(.)/g, "$1").trim();
 }
 
@@ -552,12 +718,36 @@ function massSource(a: ShellAnalysis, invs: Invocation[]): string | null {
   return null;
 }
 
+/**
+ * Per-analysis memos for the kill checks, so a command repeating `kill $P`
+ * or `x | kill` thousands of times stays linear: each substitution is analysed
+ * once, each variable's filter looked up once, each pipeline's invocations
+ * indexed once.
+ */
+interface KillMemo {
+  subs: WeakMap<WordPart, string | null>;
+  filters: Map<string, boolean>;
+  byCommand: Map<SimpleCommand, Invocation[]> | null;
+}
+const killMemos = new WeakMap<ShellAnalysis, KillMemo>();
+
+function killMemo(a: ShellAnalysis): KillMemo {
+  let m = killMemos.get(a);
+  if (!m) killMemos.set(a, (m = { subs: new WeakMap(), filters: new Map(), byCommand: null }));
+  return m;
+}
+
 /** A broad listing inside a `$( … )` of this word. */
-function massSourceInSubstitutions(word: ShellWord): string | null {
+function massSourceInSubstitutions(a: ShellAnalysis, word: ShellWord): string | null {
+  const memo = killMemo(a).subs;
   for (const p of word.parts) {
     if (p.kind !== "sub") continue;
-    const inner = analyzeShell(p.body);
-    const why = massSource(inner, inner.invocations);
+    let why = memo.get(p);
+    if (why === undefined) {
+      const inner = analyzeShell(p.body);
+      why = massSource(inner, inner.invocations);
+      memo.set(p, why);
+    }
     if (why) return why;
   }
   return null;
@@ -569,15 +759,33 @@ function massSourceInSubstitutions(word: ShellWord): string | null {
  * A grep that only builds the list (`$(ps aux | grep node)`) is not a filter.
  */
 function filtersBeforeKilling(a: ShellAnalysis, variable: string): boolean {
+  const memo = killMemo(a).filters;
+  const cached = memo.get(variable);
+  if (cached !== undefined) return cached;
   const readsVariable = (w: ShellWord) => w.parts.some((p) => p.kind === "param" && p.name === variable);
-  for (const inv of a.invocations) {
-    if (inv.names.some((n) => n === "[" || n === "[[" || n === "test")) return true;
-    if (inv.names.some((n) => n === "grep" || n === "egrep" || n === "rg") && inv.args.some(readsVariable)) return true;
-  }
-  return a.commands.some((cmd) => cmd.words.some((w) => {
+  let filters = a.invocations.some((inv) =>
+    inv.names.some((n) => n === "[" || n === "[[" || n === "test") ||
+    (inv.names.some((n) => n === "grep" || n === "egrep" || n === "rg") && inv.args.some(readsVariable)));
+  filters ||= a.commands.some((cmd) => cmd.words.some((w) => {
     const t = literalText(w);
     return t === "case" || t === "if" || t === "elif";
   }));
+  memo.set(variable, filters);
+  return filters;
+}
+
+/** The invocations of each simple command, indexed once per analysis. */
+function invocationsOf(a: ShellAnalysis, cmd: SimpleCommand): Invocation[] {
+  const memo = killMemo(a);
+  if (!memo.byCommand) {
+    memo.byCommand = new Map();
+    for (const inv of a.invocations) {
+      const list = memo.byCommand.get(inv.command) ?? [];
+      list.push(inv);
+      memo.byCommand.set(inv.command, list);
+    }
+  }
+  return memo.byCommand.get(cmd) ?? [];
 }
 
 /**
@@ -590,20 +798,24 @@ function filtersBeforeKilling(a: ShellAnalysis, variable: string): boolean {
  */
 function killFedByMass(a: ShellAnalysis, inv: Invocation): string | null {
   for (const w of inv.args) {
-    const why = massSourceInSubstitutions(w);
+    const why = massSourceInSubstitutions(a, w);
     if (why) return why;
   }
-  const chain = new Set<SimpleCommand>();
-  for (let c = inv.command.pipedFrom; c && !chain.has(c); c = c.pipedFrom) chain.add(c);
-  if (chain.size) {
-    const why = massSource(a, a.invocations.filter((i) => chain.has(i.command)));
+  const chain: SimpleCommand[] = [];
+  const onChain = new Set<SimpleCommand>();
+  for (let c = inv.command.pipedFrom; c && !onChain.has(c); c = c.pipedFrom) {
+    onChain.add(c);
+    chain.push(c);
+  }
+  if (chain.length) {
+    const why = massSource(a, chain.flatMap((c) => invocationsOf(a, c)));
     if (why) return why;
   }
   for (const w of inv.args) {
     for (const p of w.parts) {
       if (p.kind !== "param") continue;
       for (const bound of a.bindings.get(p.name) ?? []) {
-        const why = massSourceInSubstitutions(bound);
+        const why = massSourceInSubstitutions(a, bound);
         if (why && !filtersBeforeKilling(a, p.name)) return why;
       }
     }
@@ -612,53 +824,57 @@ function killFedByMass(a: ShellAnalysis, inv: Invocation): string | null {
 }
 
 function blockMassKill(ctx: PolicyContext): PolicyResult {
-  const a = analysisFor(ctx);
-  if (!a) return allow();
-  const hit = (why: string) =>
-    deny(`Killing processes en masse is blocked (${why}). Stop the specific process you started, by PID or with an exact name.`);
-  for (const inv of a.invocations) {
-    for (const name of inv.names) {
-      switch (name) {
-        case "killall5":
-          return hit("killall5");
-        case "killall": {
-          const why = killallMass(a, inv.args);
-          if (why) return hit(why);
-          break;
-        }
-        case "pkill": {
-          const why = pgrepMass(a, "pkill", inv.args);
-          if (why) return hit(why);
-          break;
-        }
-        case "kill":
-        case "stop-process":
-        case "spps": {
-          if (name === "kill" && killsEveryProcess(inv.args)) return hit("kill -1");
-          const named = psNames(inv.args).find(isGenericOrWildcard);
-          if (named) return hit(`${name} -Name ${named}`);
-          if (lits(inv.args).some((t) => t === "-l" || t === "-L")) break;
-          const fed = killFedByMass(a, inv);
-          if (fed) return hit(`${name} fed by ${fed}`);
-          break;
-        }
-        case "taskkill": {
-          const texts = lits(inv.args);
-          for (let k = 0; k < texts.length; k++) {
-            const flag = (texts[k] ?? "").toLowerCase();
-            const value = texts[k + 1] ?? "";
-            if ((flag === "/im" || flag === "-im") && isGenericOrWildcard(value)) return hit(`taskkill /IM ${value}`);
-            if (flag === "/fi" || flag === "-fi") {
-              const m = /^\s*imagename\s+eq\s+(\S+)/i.exec(value);
-              if (m && isGenericOrWildcard(m[1])) return hit(`taskkill /FI imagename eq ${m[1]}`);
-            }
+  try {
+    const a = analysisFor(ctx);
+    if (!a) return allow();
+    const hit = (why: string) =>
+      deny(`Killing processes en masse is blocked (${why}). Stop the specific process you started, by PID or with an exact name.`);
+    for (const inv of a.invocations) {
+      for (const name of inv.names) {
+        switch (name) {
+          case "killall5":
+            return hit("killall5");
+          case "killall": {
+            const why = killallMass(a, inv.args);
+            if (why) return hit(why);
+            break;
           }
-          break;
+          case "pkill": {
+            const why = pgrepMass(a, "pkill", inv.args);
+            if (why) return hit(why);
+            break;
+          }
+          case "kill":
+          case "stop-process":
+          case "spps": {
+            if (name === "kill" && killsEveryProcess(inv.args)) return hit("kill -1");
+            const named = psNames(inv.args).find(isGenericOrWildcard);
+            if (named) return hit(`${name} -Name ${named}`);
+            if (lits(inv.args).some((t) => t === "-l" || t === "-L")) break;
+            const fed = killFedByMass(a, inv);
+            if (fed) return hit(`${name} fed by ${fed}`);
+            break;
+          }
+          case "taskkill": {
+            const texts = lits(inv.args);
+            for (let k = 0; k < texts.length; k++) {
+              const flag = (texts[k] ?? "").toLowerCase();
+              const value = texts[k + 1] ?? "";
+              if ((flag === "/im" || flag === "-im") && isGenericOrWildcard(value)) return hit(`taskkill /IM ${value}`);
+              if (flag === "/fi" || flag === "-fi") {
+                const m = /^\s*imagename\s+eq\s+(\S+)/i.exec(value);
+                if (m && isGenericOrWildcard(m[1])) return hit(`taskkill /FI imagename eq ${m[1]}`);
+              }
+            }
+            break;
+          }
         }
       }
     }
+    return unanalysable(a) ?? allow();
+  } catch {
+    return failedClosed("block-mass-kill");
   }
-  return allow();
 }
 
 // ── block-no-verify ─────────────────────────────────────────────────────────
@@ -676,24 +892,45 @@ const COMMIT_OPERAND_SHORT = new Set(["m", "F", "C", "c", "t"]);
 /** `--no-verify` and the unambiguous prefixes git's option parser accepts for it. */
 const NO_VERIFY_RE = /^--no-veri(?:f|fy)?$/;
 
-function parseGit(args: ShellWord[]): { sub: string | null; subArgs: ShellWord[]; configs: string[] } {
+/**
+ * A `core.hooksPath` value that turns hooks off: empty, or a null device. An
+ * ordinary directory (`.husky`, `.githooks`) is how hook managers install
+ * themselves, and runs hooks.
+ */
+function hooksPathDisablesHooks(value: string): boolean {
+  const v = value.trim();
+  return v === "" || v === "/dev/null" || v.toLowerCase() === "nul";
+}
+
+interface GitCall {
+  sub: string | null;
+  subArgs: ShellWord[];
+  /** `-c key=value` settings. */
+  configs: string[];
+  /** `--config-env key=ENVVAR` settings: the value lives in an environment variable. */
+  configEnvs: string[];
+}
+
+function parseGit(args: ShellWord[]): GitCall {
   const configs: string[] = [];
+  const configEnvs: string[] = [];
   for (let k = 0; k < args.length; k++) {
     const t = literalText(args[k]);
-    if (t === null) return { sub: null, subArgs: [], configs };
+    if (t === null) return { sub: null, subArgs: [], configs, configEnvs };
     if (GIT_GLOBAL_OPERAND.has(t)) {
-      if (t === "-c" || t === "--config-env") configs.push(args[k + 1]?.text ?? "");
+      if (t === "-c") configs.push(args[k + 1]?.text ?? "");
+      else if (t === "--config-env") configEnvs.push(args[k + 1]?.text ?? "");
       k++;
       continue;
     }
     if (t.startsWith("--config-env=")) {
-      configs.push(t.slice("--config-env=".length));
+      configEnvs.push(t.slice("--config-env=".length));
       continue;
     }
     if (t.startsWith("-")) continue;
-    return { sub: t.toLowerCase(), subArgs: args.slice(k + 1), configs };
+    return { sub: t.toLowerCase(), subArgs: args.slice(k + 1), configs, configEnvs };
   }
-  return { sub: null, subArgs: [], configs };
+  return { sub: null, subArgs: [], configs, configEnvs };
 }
 
 function commitSkipsHooks(args: ShellWord[]): string | null {
@@ -773,20 +1010,28 @@ function noVerifyHit(a: ShellAnalysis, depth: number): string | null {
       const k = texts.findIndex((t) => t !== null && t.toLowerCase() === "core.hookspath");
       if (k >= 0 && k + 1 < texts.length) {
         const value = (texts[k + 1] ?? "").trim();
-        if (value === "" || value === "/dev/null" || value.toLowerCase() === "nul") return `git config core.hooksPath ${value || "''"}`;
+        if (hooksPathDisablesHooks(value)) return `git config core.hooksPath ${value || "''"}`;
       }
       continue;
     }
     const expanded = expandInlineAlias(g.configs, g.sub, g.subArgs);
     if (expanded !== null) {
       if (depth >= 2) continue;
-      const why = noVerifyHit(analyzeShell(expanded), depth + 1);
+      const inner = analyzeShell(expanded);
+      const why = noVerifyHit(inner, depth + 1);
       if (why) return `git -c alias.${g.sub}=… → ${why}`;
+      if (inner.truncated) return `git -c alias.${g.sub}=… (too deeply nested to check)`;
       continue;
     }
     if (!HOOK_SUBCOMMANDS.has(g.sub)) continue;
     runsHooks = true;
-    if (g.configs.some((c) => /^core\.hookspath=/i.test(c.trim()))) return `git -c core.hooksPath=… ${g.sub}`;
+    const hooksPath = g.configs.find((c) => {
+      const m = /^core\.hookspath=([\s\S]*)$/i.exec(c.trim());
+      return m !== null && hooksPathDisablesHooks(m[1]);
+    });
+    if (hooksPath !== undefined) return `git -c ${hooksPath.trim()} ${g.sub}`;
+    // `--config-env` reads the value from the environment, which the command string does not show.
+    if (g.configEnvs.some((c) => /^core\.hookspath=/i.test(c.trim()))) return `git --config-env core.hooksPath=… ${g.sub}`;
     if (g.sub === "commit") {
       const why = commitSkipsHooks(g.subArgs);
       if (why) return why;
@@ -820,11 +1065,15 @@ function noVerifyHit(a: ShellAnalysis, depth: number): string | null {
 }
 
 function blockNoVerify(ctx: PolicyContext): PolicyResult {
-  const a = analysisFor(ctx);
-  if (!a) return allow();
-  const why = noVerifyHit(a, 0);
-  if (!why) return allow();
-  return deny(`Skipping git hooks is blocked (${why}). Fix what the hook reports instead of bypassing it.`);
+  try {
+    const a = analysisFor(ctx);
+    if (!a) return allow();
+    const why = noVerifyHit(a, 0);
+    if (why) return deny(`Skipping git hooks is blocked (${why}). Fix what the hook reports instead of bypassing it.`);
+    return unanalysable(a) ?? allow();
+  } catch {
+    return failedClosed("block-no-verify");
+  }
 }
 
 // ── block-indirect-exec ─────────────────────────────────────────────────────
@@ -881,36 +1130,44 @@ function indirectHit(inv: Invocation): string | null {
 }
 
 function blockIndirectExec(ctx: PolicyContext): PolicyResult {
-  const a = analysisFor(ctx);
-  if (!a) return allow();
-  for (const inv of a.invocations) {
-    const why = indirectHit(inv);
-    if (why) {
-      return deny(
-        `Running rm, dd or mkfs through a variable, substitution or glob is blocked (${why}). ` +
-          "Write the command out literally so it can be checked.",
-      );
+  try {
+    const a = analysisFor(ctx);
+    if (!a) return allow();
+    for (const inv of a.invocations) {
+      const why = indirectHit(inv);
+      if (why) {
+        return deny(
+          `Running rm, dd or mkfs through a variable, substitution or glob is blocked (${why}). ` +
+            "Write the command out literally so it can be checked.",
+        );
+      }
     }
+    return unanalysable(a) ?? allow();
+  } catch {
+    return failedClosed("block-indirect-exec");
   }
-  if (a.truncated) {
-    return deny(
-      "This command nests substitutions, shells or wrappers too deeply to check, so it is blocked. " +
-        "Split it into simpler commands.",
-    );
-  }
-  return allow();
 }
 
 // ── block-chmod-777 ─────────────────────────────────────────────────────────
 
 const CHMOD_FLAG_RE = /^-[RfvchHLP]+$/;
 
-/** Whether a chmod-style mode grants write to "others" (world-writable), without the sticky bit. */
-export function worldWritableMode(mode: string): boolean {
+/**
+ * Whether a chmod-style mode grants write to "others" (world-writable).
+ *
+ * The sticky bit changes nothing for a file — `chmod 1777 file` leaves it
+ * `-rwxrwxrwt`, writable by anyone — and `chmod -R` applies the mode to files
+ * too. Only a mode given to a directory being CREATED (`mkdir -m 1777`) is the
+ * /tmp-style shared directory the sticky bit makes safe; pass `directory` for
+ * that and it is exempt.
+ */
+export function worldWritableMode(mode: string, directory = false): boolean {
   const m = mode.trim();
-  if (/^[0-7]{1,4}$/.test(m)) {
-    const v = parseInt(m, 8);
-    return (v & 0o002) !== 0 && (v & 0o1000) === 0;
+  if (/^[0-7]+$/.test(m)) {
+    // Any number of digits (`00777`); only the last four carry permission bits.
+    const v = parseInt(m.slice(-4), 8);
+    if ((v & 0o002) === 0) return false;
+    return !(directory && (v & 0o1000) !== 0);
   }
   for (const clause of m.split(",")) {
     const cm = /^([ugoa]*)((?:[-+=][rwxXstugo]*)+)$/.exec(clause);
@@ -919,8 +1176,10 @@ export function worldWritableMode(mode: string): boolean {
     if (!who.includes("a") && !who.includes("o")) continue;
     for (const op of cm[2].matchAll(/([-+=])([rwxXstugo]*)/g)) {
       const perms = op[2];
-      if (op[1] === "-" || perms.includes("t")) continue;
-      if (perms.includes("w") || /[ug]/.test(perms)) return true;
+      if (op[1] === "-") continue;
+      if (!perms.includes("w") && !/[ug]/.test(perms)) continue;
+      if (directory && perms.includes("t")) continue;
+      return true;
     }
   }
   return false;
@@ -956,9 +1215,22 @@ function modeFlagWord(args: ShellWord[]): ShellWord | null {
   return null;
 }
 
+/** Whether `install` is creating directories (`install -d`), so its mode applies to a directory. */
+function installCreatesDirectories(args: ShellWord[]): boolean {
+  for (const t of lits(args)) {
+    if (t === null) continue;
+    if (t === "--") break;
+    if (t === "--directory") return true;
+    if (!t.startsWith("--") && /^-[a-zA-Z]*d/.test(t)) return true;
+  }
+  return false;
+}
+
 /** icacls grants of write/modify/full control to Everyone. */
 function icaclsWorldWrite(args: ShellWord[]): string | null {
-  const texts = lits(args);
+  // An unquoted `*S-1-1-0:F` is a glob to literalText, but icacls reads it as
+  // written; a word of plain text is taken as its text.
+  const texts = args.map((w) => literalText(w) ?? (w.parts.every((p) => p.kind === "lit") ? w.text : null));
   for (let k = 0; k < texts.length; k++) {
     if (!/^\/grant(?::r)?$/i.test(texts[k] ?? "")) continue;
     for (let j = k + 1; j < texts.length; j++) {
@@ -976,26 +1248,33 @@ function icaclsWorldWrite(args: ShellWord[]): string | null {
 }
 
 function blockChmod777(ctx: PolicyContext): PolicyResult {
-  const a = analysisFor(ctx);
-  if (!a) return allow();
-  const hit = (why: string) =>
-    deny(`Making files world-writable is blocked (${why}). Grant only what is needed, e.g. chmod 755 or chmod u+w.`);
-  for (const inv of a.invocations) {
-    for (const name of inv.names) {
-      let modeWord: ShellWord | null = null;
-      if (name === "chmod") modeWord = chmodModeWord(inv.args);
-      else if (name === "mkdir" || name === "install") modeWord = modeFlagWord(inv.args);
-      else if (name === "icacls") {
-        const why = icaclsWorldWrite(inv.args);
-        if (why) return hit(why);
-        continue;
+  try {
+    const a = analysisFor(ctx);
+    if (!a) return allow();
+    const hit = (why: string) =>
+      deny(`Making files world-writable is blocked (${why}). Grant only what is needed, e.g. chmod 755 or chmod u+w.`);
+    for (const inv of a.invocations) {
+      for (const name of inv.names) {
+        let modeWord: ShellWord | null = null;
+        let directory = false;
+        if (name === "chmod") modeWord = chmodModeWord(inv.args);
+        else if (name === "mkdir" || name === "install") {
+          modeWord = modeFlagWord(inv.args);
+          directory = name === "mkdir" || installCreatesDirectories(inv.args);
+        } else if (name === "icacls") {
+          const why = icaclsWorldWrite(inv.args);
+          if (why) return hit(why);
+          continue;
+        }
+        if (!modeWord) continue;
+        const mode = valuesOf(a, modeWord)?.find((v) => worldWritableMode(v, directory));
+        if (mode !== undefined) return hit(`${name} ${name === "chmod" ? "" : "-m "}${mode}`);
       }
-      if (!modeWord) continue;
-      const mode = valuesOf(a, modeWord)?.find(worldWritableMode);
-      if (mode !== undefined) return hit(`${name} ${name === "chmod" ? "" : "-m "}${mode}`);
     }
+    return unanalysable(a) ?? allow();
+  } catch {
+    return failedClosed("block-chmod-777");
   }
-  return allow();
 }
 
 export {

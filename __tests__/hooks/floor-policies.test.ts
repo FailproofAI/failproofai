@@ -417,6 +417,7 @@ describe("block-chmod-777", () => {
     "chmod --recursive 0777 dir",
     "chmod 666 file",
     "chmod 2777 shared",
+    "chmod 1777 /tmp/shared",
     "chmod a+rwx file",
     "chmod ugo+rwx file",
     "chmod o+w file",
@@ -448,7 +449,6 @@ describe("block-chmod-777", () => {
     "chmod -w file",
     "chmod a-w file",
     "chmod o-rwx file",
-    "chmod 1777 /tmp/shared",
     "chmod +t dir",
     "chmod --reference=a b",
     "chmod -R 644 /tmp/share",
@@ -464,8 +464,8 @@ describe("block-chmod-777", () => {
 
   it.each([
     ["777", true], ["0777", true], ["666", true], ["7", true], ["2777", true],
-    ["1777", false], ["755", false], ["775", false], ["0644", false],
-    ["a+w", true], ["o+rw", true], ["+w", false], ["u+rwx", false], ["o+wt", false],
+    ["1777", true], ["755", false], ["775", false], ["0644", false],
+    ["a+w", true], ["o+rw", true], ["+w", false], ["u+rwx", false], ["o+wt", true],
   ] as const)("worldWritableMode(%s) is %s", (mode, expected) => {
     expect(worldWritableMode(mode)).toBe(expected);
   });

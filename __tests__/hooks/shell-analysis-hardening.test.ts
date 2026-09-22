@@ -11,6 +11,7 @@ import {
   basenameGlob,
   lexShell,
   literalText,
+  resetResolution,
   resolveWord,
   type ShellAnalysis,
 } from "../../src/hooks/shell-analysis";
@@ -162,6 +163,25 @@ describe("resolution", () => {
     const items = Array.from({ length: 300 }, (_, i) => `v${i}`).join(" ");
     expect(analyzeShell(`for c in ${items}; do $c x; done`).truncated).toBe(true);
     expect(analyzeShell(`for f in ${items}; do cat $f; done`).truncated).toBe(false);
+  });
+
+  it("resetResolution undoes what resolveWord added, and keeps what the analysis found", () => {
+    const hops = Array.from({ length: 14 }, (_, i) => (i === 0 ? "A1=x" : `A${i + 1}=$A${i}`)).join("; ");
+    const a = analyzeShell(`${hops}; echo hi > $A14`);
+    expect(a.truncated).toBe(false);
+    const target = a.redirects[0].target!;
+    expect(resolveWord(a, target)).toBeNull();
+    expect(a.truncated).toBe(true);
+    resetResolution(a);
+    expect(a.truncated).toBe(false);
+    // The give-up was not memoized: resolving again reports it again.
+    expect(resolveWord(a, target)).toBeNull();
+    expect(a.truncated).toBe(true);
+
+    const deep = analyzeShell(Array.from({ length: 20 }, (_, i) => (i === 0 ? "V0=rm" : `V${i}=$V${i - 1}`)).join("; ") + "; $V19 x");
+    expect(deep.truncated).toBe(true);
+    resetResolution(deep);
+    expect(deep.truncated).toBe(true);
   });
 
   it("gives each resolveWord call its own budget, so repeated calls never add up", () => {

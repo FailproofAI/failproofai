@@ -35,6 +35,7 @@ import {
   literalPrefix,
   literalText,
   normalizeName,
+  resetResolution,
   resolveWord,
   type Invocation,
   type ShellAnalysis,
@@ -63,6 +64,11 @@ function shellCommand(ctx: PolicyContext): string | null {
  * One analysis per command string. Up to six floor policies read the same
  * command in one evaluation, and the warm worker evaluates serially, so a
  * single-entry cache is enough and can never serve a stale answer.
+ *
+ * Each read starts from the analysis as `analyzeShell` left it: a word one
+ * policy could not resolve (a variable chain too deep to follow) truncates
+ * that policy's verdict only — not the policies after it, and not a later
+ * hook event carrying the same command.
  */
 let lastAnalysis: { command: string; analysis: ShellAnalysis } | null = null;
 
@@ -70,6 +76,7 @@ function analysisFor(ctx: PolicyContext): ShellAnalysis | null {
   const command = shellCommand(ctx);
   if (!command || !command.trim()) return null;
   if (lastAnalysis?.command !== command) lastAnalysis = { command, analysis: safeAnalyze(command) };
+  resetResolution(lastAnalysis.analysis);
   return lastAnalysis.analysis;
 }
 

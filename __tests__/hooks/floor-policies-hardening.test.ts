@@ -464,6 +464,48 @@ describe("block-no-verify: an inline alias it cannot read to the end", () => {
   });
 });
 
+describe("one policy's resolution does not decide another's verdict", () => {
+  /** `A1=<first>; A2=$A1; …; A14=$A13`: two hops more than resolution follows. */
+  const chain14 = (first: string) =>
+    Array.from({ length: 14 }, (_, i) => (i === 0 ? `A1=${first}` : `A${i + 1}=$A${i}`)).join("; ");
+
+  it("a chain too deep for block-disk-destruction to resolve leaves the other policies' verdicts alone", async () => {
+    const cmd = `${chain14("notes.txt")}; echo hi > $A14`;
+    for (const name of ["block-chmod-777", "block-gh-destructive"] as const) {
+      expect(await decide(name, cmd + ` # ${name} alone`)).toBe("allow");
+    }
+    // Disk resolves the redirect target, cannot, and says so.
+    const disk = await policy("block-disk-destruction").fn(bash(cmd));
+    expect(disk.decision).toBe("deny");
+    expect(disk.reason).toMatch(/too deeply/);
+    // Every other policy reading the same cached analysis afterwards.
+    for (const name of FLOOR) {
+      if (name !== "block-disk-destruction") expect(await decide(name, cmd)).toBe("allow");
+    }
+    // And the next hook event carrying the same command gets the same verdicts.
+    expect(await decide("block-disk-destruction", cmd)).toBe("deny");
+    expect(await decide("block-chmod-777", cmd)).toBe("allow");
+  });
+
+  it("the policy that cannot resolve a word still denies after another policy gave up on the same word", async () => {
+    // chmod reads $A14 as its mode and gives up; disk then reads the same
+    // variable as a redirect target and must not be served chmod's give-up
+    // as an ordinary unknown.
+    const cmd = `${chain14("/dev/sda")}; chmod $A14 f > $A14`;
+    expect(await decide("block-chmod-777", cmd)).toBe("deny");
+    const disk = await policy("block-disk-destruction").fn(bash(cmd));
+    expect(disk.decision).toBe("deny");
+    expect(disk.reason).toMatch(/too deeply/);
+  });
+
+  it("a command the analysis itself could not finish stays denied by every policy, however often it is read", async () => {
+    const cmd = nestBashC(7, HARMLESS);
+    for (let round = 0; round < 2; round++) {
+      for (const name of FLOOR) expect(await decide(name, cmd)).toBe("deny");
+    }
+  });
+});
+
 describe("branches with no other test", () => {
   it("block-mass-kill: a short unanchored pattern is broad, an exact one is not", async () => {
     expect(await decide("block-mass-kill", "pkill -f ab")).toBe("deny");

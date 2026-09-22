@@ -957,6 +957,8 @@ interface State {
   bindCount: number;
   /** Indirect invocations, with the `bindCount` their names were resolved at. */
   indirect: Array<{ inv: Invocation; at: number }>;
+  /** `truncated` as `analyzeShell` left it, before any `resolveWord` call. */
+  truncatedByAnalysis: boolean;
 }
 
 const states = new WeakMap<ShellAnalysis, State>();
@@ -973,6 +975,7 @@ function stateOf(a: ShellAnalysis): State {
       overflowed: new Set(),
       bindCount: 0,
       indirect: [],
+      truncatedByAnalysis: false,
     };
     states.set(a, st);
   }
@@ -1638,7 +1641,24 @@ export function analyzeShell(command: string): ShellAnalysis {
     const more = headNames(a, inv.word).names.filter((n) => !inv.names.includes(n));
     if (more.length) inv.names = [...inv.names, ...more];
   }
+  st.truncatedByAnalysis = a.truncated;
   return a;
+}
+
+/**
+ * Forget what `resolveWord` calls made after the analysis added to it: the
+ * truncation they reported and the cycle- or cap-dependent results they
+ * memoized. Callers that share one analysis (the floor policies) call it
+ * before each reads it, so one reader's resolution that gave up marks that
+ * reader's verdict, not every later one's. The memo goes too: a later reader
+ * served a memoized give-up would get null WITHOUT the truncation, and read a
+ * chain too deep to follow as an ordinary unknown.
+ */
+export function resetResolution(a: ShellAnalysis): void {
+  const st = states.get(a);
+  if (!st) return;
+  a.truncated = st.truncatedByAnalysis;
+  st.contextual.clear();
 }
 
 // ── Resolution ──────────────────────────────────────────────────────────────

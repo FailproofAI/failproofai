@@ -677,3 +677,228 @@ async fn golden_rows_ship_clears_and_shadow_disagreements_individually() {
 
     cleanup(&[&store, &state, &spool]);
 }
+
+// ---------------------------------------------------------------------------
+// Calls Jev was not consulted on
+// ---------------------------------------------------------------------------
+//
+// When a hard policy denies, the combine rules abort Jev and record
+// `{ evaluator: "jev", jevMode }` and nothing else. `evaluator: "jev"` there
+// means "the two-tier path ran", not "Jev answered", and nothing shipped may
+// say Jev reviewed a call it never saw.
+
+/// `fixtures/hook-activity-jev-not-consulted.jsonl`: rows in exactly that
+/// shape, persisted by the TypeScript store from
+/// `__tests__/fixtures/jev-not-consulted-rows.ts` (a TypeScript test fails if
+/// the store stops producing it byte for byte).
+fn not_consulted_golden() -> String {
+    fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/hook-activity-jev-not-consulted.jsonl"),
+    )
+    .unwrap()
+}
+
+/// The Jev keys only an answer can produce.
+const ANSWER_KEYS: [&str; 4] = ["jev_decision", "jev_cleared", "jev_latency_ms", "jev_model"];
+
+#[test]
+fn a_call_jev_was_not_consulted_on_claims_no_answer() {
+    let rows: Vec<HookRow> = not_consulted_golden()
+        .lines()
+        .map(|l| serde_json::from_str(l).expect("a store-written row must parse"))
+        .collect();
+    assert_eq!(rows.len(), 2);
+    for (i, row) in rows.iter().enumerate() {
+        let jev = JevFacts::of(row).expect("the two-tier path ran");
+        assert_eq!(jev.key.outcome, transform::JevOutcome::NotConsulted);
+
+        let events = transform::to_events(row, i as u64, "local");
+        assert_eq!(events.len(), 2, "a deny ships as a pair");
+        let end = completed(&events);
+        assert_eq!(end["outcome"], "deny");
+        assert_eq!(end["failproofai_evaluator"], "jev");
+        assert_eq!(end["jev_outcome"], "not-consulted");
+        for k in ANSWER_KEYS {
+            assert!(
+                end.get(k).is_none(),
+                "{k} must not ship for a call Jev never saw: {end:#}"
+            );
+        }
+        assert!(end.get("jev_fallback_reason").is_none());
+    }
+    assert_eq!(
+        completed(&transform::to_events(&rows[0], 0, "local"))["jev_mode"],
+        "enforce"
+    );
+    assert_eq!(
+        completed(&transform::to_events(&rows[1], 1, "local"))["jev_mode"],
+        "shadow"
+    );
+}
+
+#[test]
+fn every_jev_row_says_what_became_of_jev() {
+    let answered = parse(&jev_row(1785740912184, "allow", json!({})));
+    let fallback = parse(&jev_row(
+        1785740912184,
+        "deny",
+        json!({
+            "policyName": "block-env-files",
+            "evaluator": "jev-fallback",
+            "jevDecision": null,
+            "jevModel": null,
+            "jevFallbackReason": "timeout",
+        }),
+    ));
+    assert_eq!(
+        completed(&transform::to_events(&answered, 0, "local"))["jev_outcome"],
+        "answered"
+    );
+    assert_eq!(
+        completed(&transform::to_events(&fallback, 0, "local"))["jev_outcome"],
+        "fallback"
+    );
+    // No Jev row is outcome-less, and no plain row carries one.
+    let plain = parse(&json!({
+        "timestamp": 1785740912184i64, "eventType": "PreToolUse", "integration": "claude",
+        "toolName": "Bash", "decision": "allow", "durationMs": 1, "sessionId": "s1", "cwd": "/w"
+    }));
+    for e in transform::to_events(&plain, 0, "local") {
+        assert!(e.get("jev_outcome").is_none());
+    }
+}
+
+#[test]
+fn an_unreadable_verdict_still_counts_as_answered() {
+    // Only the bare not-consulted shape is "not consulted". A row that carries
+    // anything only an answer produces — here a latency and a model — was
+    // answered, even when another build wrote its verdict in a shape this
+    // side cannot read.
+    let row = parse(&jev_row(
+        1785740912184,
+        "allow",
+        json!({ "jevDecision": ["allow"] }),
+    ));
+    let jev = JevFacts::of(&row).unwrap();
+    assert_eq!(jev.decision, None);
+    assert_eq!(jev.key.outcome, transform::JevOutcome::Answered);
+    // And each answer-only field is enough on its own.
+    for only in [
+        json!({ "jevDecision": "deny" }),
+        json!({ "jevCleared": [] }),
+        json!({ "jevLatencyMs": 12 }),
+        json!({ "jevModel": "jev-1.13.0" }),
+    ] {
+        let mut v = json!({
+            "timestamp": 1785740912184i64, "eventType": "PreToolUse", "integration": "claude",
+            "toolName": "Bash", "decision": "allow", "durationMs": 1, "sessionId": "s1",
+            "cwd": "/w", "evaluator": "jev", "jevMode": "enforce"
+        });
+        for (k, val) in only.as_object().unwrap() {
+            v[k] = val.clone();
+        }
+        assert_eq!(
+            JevFacts::of(&parse(&v)).unwrap().key.outcome,
+            transform::JevOutcome::Answered,
+            "{only}"
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn not_consulted_rows_ship_without_an_answer_under_every_verbosity() {
+    for verbosity in [HooksVerbosity::All, HooksVerbosity::Decisions] {
+        let (store, state, spool) = (tmpdir("nc-s"), tmpdir("nc-st"), tmpdir("nc-sp"));
+        fs::write(store.join("current.jsonl"), not_consulted_golden()).unwrap();
+        run_once(&store, &state, &spool, verbosity).await;
+
+        let events = spooled(&spool);
+        let completions: Vec<&Value> = events
+            .iter()
+            .filter(|e| e["type"] == "hook_completed")
+            .collect();
+        assert_eq!(completions.len(), 2, "{events:#?}");
+        for end in completions {
+            assert_eq!(end["jev_outcome"], "not-consulted");
+            for k in ANSWER_KEYS {
+                assert!(
+                    end.get(k).is_none(),
+                    "{k} shipped under {verbosity:?}: {end:#}"
+                );
+            }
+        }
+        cleanup(&[&store, &state, &spool]);
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_rollup_never_mixes_answered_and_not_consulted_calls() {
+    // The combine rules only write the not-consulted shape on a deny, which
+    // never rolls up. Should an allow ever carry it, it must not share a bucket
+    // — and so an evaluator claim — with calls Jev did answer.
+    let (store, state, spool) = (tmpdir("ncmix-s"), tmpdir("ncmix-st"), tmpdir("ncmix-sp"));
+    let base = |ts: i64| {
+        json!({
+            "timestamp": ts, "eventType": "PreToolUse", "integration": "claude",
+            "toolName": "Bash", "decision": "allow", "durationMs": 2,
+            "sessionId": "s1", "cwd": "/w", "evaluator": "jev", "jevMode": "enforce"
+        })
+    };
+    let not_consulted = base(1785740912000);
+    let mut answered = base(1785740912100);
+    answered["jevDecision"] = json!("allow");
+    answered["jevLatencyMs"] = json!(30);
+    write_rows(&store, &[not_consulted, answered]);
+    run_once(&store, &state, &spool, HooksVerbosity::Decisions).await;
+
+    let events = spooled(&spool);
+    assert_eq!(events.len(), 2, "one bucket each: {events:#?}");
+    let outcomes: std::collections::BTreeSet<&str> = events
+        .iter()
+        .map(|e| e["jev_outcome"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        outcomes,
+        ["answered", "not-consulted"].into_iter().collect()
+    );
+    assert_ne!(events[0]["hook_id"], events[1]["hook_id"]);
+    let nc = events
+        .iter()
+        .find(|e| e["jev_outcome"] == "not-consulted")
+        .unwrap();
+    assert!(nc.get("jev_latency_ms").is_none());
+
+    cleanup(&[&store, &state, &spool]);
+}
+
+#[test]
+fn only_known_reason_codes_ship() {
+    // Every code a producer writes survives, bare or in front of free text.
+    for code in transform::JEV_REASON_CODES {
+        assert_eq!(jev_reason_code(code).as_deref(), Some(*code));
+        assert_eq!(
+            jev_reason_code(&format!("{code}: details that stay local")).as_deref(),
+            Some(*code)
+        );
+    }
+    // The combine rules cut `prepare: <message>` down to `prepare`; both are
+    // the same failure and ship under one name.
+    assert_eq!(jev_reason_code("prepare").as_deref(), Some("prepare-error"));
+    assert_eq!(
+        jev_reason_code("prepare: boom").as_deref(),
+        Some("prepare-error")
+    );
+    // A short kebab-case word is not trusted just for looking like a code: it
+    // could be the first word of the judged command.
+    for word in [
+        "curl",
+        "zebra-archive",
+        "secret-project",
+        "constructor",
+        "rm",
+    ] {
+        assert_eq!(jev_reason_code(word).as_deref(), Some("other"), "{word}");
+    }
+    assert_eq!(jev_reason_code("http-4290").as_deref(), Some("other"));
+}

@@ -82,14 +82,17 @@ export interface HookActivityEntry {
    * the call was a PreToolUse / PermissionRequest gate. Absent means the regex
    * engine decided alone, exactly as before these fields existed.
    *
-   * `evaluator`: `jev` (Jev answered and the combine rules ran) or
-   * `jev-fallback` (Jev was unavailable, truncated or mismatched, so the regex
-   * result stood; `jevFallbackReason` says why).
+   * `evaluator`: `jev` (the two-tier path ran) or `jev-fallback` (Jev was
+   * unavailable, truncated or mismatched, so the regex result stood;
+   * `jevFallbackReason` says why). `jev` alone does NOT mean Jev answered:
+   * when a hard policy denies, Jev is aborted and the row carries
+   * `{ evaluator: "jev", jevMode }` and no other Jev field. Read a row with
+   * `jevOutcome` (`jev-activity.ts`): answered, fallback or not-consulted.
    *
    * Validated on write by `persistHookActivity` (see `jev-activity.ts`): an
    * invalid value is dropped field by field, and `jevFallbackReason` is stored
-   * as a short code (`timeout`, `http-429`, `error`, …), never free text. The
-   * collector ships these fields to FailproofAI Cloud.
+   * as a known code (`timeout`, `http-429`, `error`, …) or `other`, never free
+   * text. The collector ships these fields to FailproofAI Cloud.
    */
   evaluator?: "jev" | "jev-fallback";
   /** Jev's own verdict, before combining with the regex results. */

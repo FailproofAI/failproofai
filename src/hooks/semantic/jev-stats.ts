@@ -10,11 +10,16 @@
  * T1's CLI calls {@link jevStats} and may print it with {@link formatJevStats}.
  */
 import { getHookActivityEntriesSince, type HookActivityEntry } from "../hook-activity-store";
-import { hasJevActivity, sanitizeJevActivity } from "../jev-activity";
+import { jevOutcome, sanitizeJevActivity } from "../jev-activity";
 
 export interface JevStats {
   windowMs: number;
-  /** Gate evaluations in the window where a Jev config was present. */
+  /**
+   * Gate evaluations in the window that Jev was consulted on: it answered, or
+   * it was asked and fell back. A call a hard policy denied before Jev's
+   * answer was read says nothing about Jev, so it is not counted here (nor in
+   * the fallback rate) but in {@link JevStats.notConsulted}.
+   */
   total: number;
   /** Share of `total` recorded as `jev-fallback`, 0..1. */
   fallbackRate: number;
@@ -36,9 +41,18 @@ export interface JevStats {
   /** Calls Jev answered. `answered + fallbacks === total`. */
   answered?: number;
   fallbacks?: number;
-  /** Jev's own verdict on the calls it answered, before combining with the regex results. */
+  /**
+   * Calls on a configured machine where a hard policy denied first, so Jev was
+   * aborted and never consulted. Outside `total`.
+   */
+  notConsulted?: number;
+  /**
+   * Jev's own verdict on the calls it answered, before combining with the
+   * regex results. Sums to `answered` except for a row whose verdict another
+   * build wrote in a shape this one cannot read.
+   */
   decisions?: { allow: number; instruct: number; deny: number };
-  /** Rows per rollout mode; a row written without a mode is counted in neither. */
+  /** Consulted calls (`total`) per rollout mode; a row written without a mode is counted in neither. */
   modes?: { shadow: number; enforce: number };
   /** What Jev would have cleared in shadow mode, where the regex result was enforced instead. */
   shadowClearsByPolicy?: Record<string, number>;
@@ -75,14 +89,28 @@ export function percentile(sortedAsc: ReadonlyArray<number>, p: number): number 
   return sortedAsc[Math.min(sortedAsc.length, Math.max(1, rank)) - 1];
 }
 
-const bump = (m: Record<string, number>, k: string) => {
-  m[k] = (m[k] ?? 0) + 1;
-};
+/**
+ * Counts by name. A Map rather than an object literal: the names come off disk,
+ * and `constructor`, `toString` or `__proto__` must count like any other name
+ * instead of hitting `Object.prototype`.
+ */
+class Counter {
+  private readonly counts = new Map<string, number>();
+  bump(k: string): void {
+    this.counts.set(k, (this.counts.get(k) ?? 0) + 1);
+  }
+  /** A plain object with an own property per name — `__proto__` included. */
+  toRecord(): Record<string, number> {
+    return Object.fromEntries(this.counts);
+  }
+}
 
 /**
  * The stats for `entries` that fall in `[since, now]`. Pure; {@link jevStats}
  * feeds it from the store. Rows without a Jev evaluator (Jev not configured,
- * a non-gate event, a paused session) are not part of any number here.
+ * a non-gate event, a paused session) are not part of any number here, and a
+ * call Jev was not consulted on (a hard deny decided first) is counted only in
+ * `notConsulted`.
  */
 export function computeJevStats(
   entries: ReadonlyArray<HookActivityEntry>,
@@ -102,35 +130,49 @@ export function computeJevStats(
     since,
     answered: 0,
     fallbacks: 0,
+    notConsulted: 0,
     decisions: { allow: 0, instruct: 0, deny: 0 },
     modes: { shadow: 0, enforce: 0 },
     shadowClearsByPolicy: {},
     models: {},
   };
   const latencies: number[] = [];
+  const fallbackReasons = new Counter();
+  const clearsByPolicy = new Counter();
+  const shadowClearsByPolicy = new Counter();
+  const models = new Counter();
 
   for (const raw of entries) {
     if (typeof raw.timestamp !== "number" || raw.timestamp < since || raw.timestamp > now) continue;
     // Rows are sanitized on write, but this also reads rows another build wrote.
     const e = sanitizeJevActivity(raw);
-    if (!hasJevActivity(e)) continue;
+    const outcome = jevOutcome(e);
+    if (outcome === null) continue;
+    if (outcome === "not-consulted") {
+      stats.notConsulted += 1;
+      continue;
+    }
     stats.total += 1;
     if (e.jevMode) stats.modes[e.jevMode] += 1;
 
-    if (e.evaluator === "jev-fallback") {
+    if (outcome === "fallback") {
       stats.fallbacks += 1;
-      bump(stats.fallbackReasons, e.jevFallbackReason ?? "unknown");
+      fallbackReasons.bump(e.jevFallbackReason ?? "unknown");
       continue;
     }
 
     stats.answered += 1;
     if (e.jevDecision) stats.decisions[e.jevDecision] += 1;
     if (e.jevLatencyMs !== undefined) latencies.push(e.jevLatencyMs);
-    if (e.jevModel) bump(stats.models, e.jevModel);
-    const clears = e.jevMode === "shadow" ? stats.shadowClearsByPolicy : stats.clearsByPolicy;
-    for (const name of e.jevCleared ?? []) bump(clears, name);
+    if (e.jevModel) models.bump(e.jevModel);
+    const clears = e.jevMode === "shadow" ? shadowClearsByPolicy : clearsByPolicy;
+    for (const name of e.jevCleared ?? []) clears.bump(name);
   }
 
+  stats.fallbackReasons = fallbackReasons.toRecord();
+  stats.clearsByPolicy = clearsByPolicy.toRecord();
+  stats.shadowClearsByPolicy = shadowClearsByPolicy.toRecord();
+  stats.models = models.toRecord();
   stats.fallbackRate = stats.total > 0 ? stats.fallbacks / stats.total : 0;
   latencies.sort((a, b) => a - b);
   stats.latencyP50Ms = percentile(latencies, 50);
@@ -175,7 +217,12 @@ function topCounts(m: Record<string, number>, limit = 5): string {
  */
 export function formatJevStats(s: JevStats): string {
   const win = formatWindow(s.windowMs);
-  if (s.total === 0) return `Activity (last ${win}): no Jev evaluations recorded.`;
+  const notConsulted = s.notConsulted ?? 0;
+  const notAsked = `  Not asked:    ${notConsulted} (a hard policy denied first)`;
+  if (s.total === 0) {
+    const none = `Activity (last ${win}): no Jev evaluations recorded.`;
+    return notConsulted > 0 ? [none, notAsked].join("\n") : none;
+  }
   const fallbacks = s.fallbacks ?? Object.values(s.fallbackReasons).reduce((a, b) => a + b, 0);
   const answered = s.answered ?? s.total - fallbacks;
   const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
@@ -189,6 +236,7 @@ export function formatJevStats(s: JevStats): string {
     `  Fell back:    ${fallbacks} (${pct(s.fallbackRate)})` +
       (fallbacks > 0 ? ` — ${topCounts(s.fallbackReasons)}` : ""),
   );
+  if (notConsulted > 0) lines.push(notAsked);
   if (s.latencyP50Ms !== null) lines.push(`  Latency:      p50 ${s.latencyP50Ms} ms, p95 ${s.latencyP95Ms} ms`);
   if (Object.keys(s.clearsByPolicy).length > 0) lines.push(`  Cleared:      ${topCounts(s.clearsByPolicy)}`);
   if (s.shadowClearsByPolicy && Object.keys(s.shadowClearsByPolicy).length > 0) {

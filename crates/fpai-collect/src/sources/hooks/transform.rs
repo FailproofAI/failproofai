@@ -160,13 +160,47 @@ where
 // reads whatever is on disk, including rows from another build. The rule both
 // enforce is the one every shipped hook field follows: decisions, codes and
 // names — never command or prompt text. `jevFallbackReason` is the field that
-// could otherwise carry free text (an error message), so it is reduced to a
-// short code and anything else becomes `other`.
+// could otherwise carry free text (an error message), so it is reduced to one
+// of a closed list of codes ([`JEV_REASON_CODES`]) and anything else becomes
+// `other`.
+//
+// `jevCleared` and `jevModel` are checked for shape only (no whitespace or
+// control characters; a model-id alphabet). That keeps a sentence, a command
+// line or a prompt out, but a whitespace-free fragment — a path, a file name —
+// has the same shape as a policy name or a model id and would pass. Those two
+// fields rely on the writer supplying registered policy names and the
+// provider's model id.
 
 /// Longest fallback reason code kept verbatim.
 pub const JEV_REASON_MAX_CHARS: usize = 40;
 /// Most cleared-policy names carried on one event.
 pub const JEV_CLEARED_MAX: usize = 64;
+
+/// Every fallback reason code a row may carry, besides `http-NNN`. Any other
+/// reason ships as `other` — even a short kebab-case word, which could be the
+/// first word of the judged command. `JEV_REASON_CODES` in
+/// `src/hooks/jev-activity.ts` is the same list; a test keeps the two
+/// identical.
+pub const JEV_REASON_CODES: &[&str] = &[
+    "aborted",
+    "cloudflare-error",
+    "cloudflare-incomplete",
+    "config",
+    "error",
+    "malformed",
+    "model-mismatch",
+    "network",
+    "no-api-key",
+    "no-transport",
+    "other",
+    "out-of-credits",
+    "prepare-error",
+    "rate-limited",
+    "request-too-large",
+    "timeout",
+    "truncated",
+    "upstream-error",
+];
 
 /// Lowercase kebab-case: `timeout`, `http-429`, `out-of-credits`.
 fn is_reason_code(s: &str) -> bool {
@@ -179,9 +213,10 @@ fn is_reason_code(s: &str) -> bool {
         })
 }
 
-/// Leading words the evaluator puts in front of free text, and the code each
-/// becomes. Only these are trusted from a free-form reason: an arbitrary
-/// leading word could be the first word of the judged command.
+/// Leading words that are renamed on the way in: the evaluator's free-text
+/// prefixes, each mapped to its code. `prepare` is the one that differs: the
+/// evaluator writes `prepare: <message>` and the combine rules cut that down to
+/// a bare `prepare`; both become `prepare-error`.
 const FREE_TEXT_PREFIXES: &[(&str, &str)] = &[
     ("prepare", "prepare-error"),
     ("error", "error"),
@@ -196,29 +231,36 @@ const FREE_TEXT_PREFIXES: &[(&str, &str)] = &[
     ("config", "config"),
 ];
 
-/// A fallback reason reduced to a code, or `None` when there is none.
+/// A fallback reason reduced to a known code, or `None` when there is none.
+///
+/// A known code — alone, or in front of `:` / `(` and free text — is kept
+/// (renamed through [`FREE_TEXT_PREFIXES`]); anything else is `other`.
 pub fn jev_reason_code(raw: &str) -> Option<String> {
     let s = raw.trim().to_lowercase();
     if s.is_empty() {
         return None;
-    }
-    if s.chars().count() <= JEV_REASON_MAX_CHARS && is_reason_code(&s) {
-        return Some(s);
     }
     let head_len = s
         .find(|c: char| !(c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'))
         .unwrap_or(s.len());
     let (head, rest) = s.split_at(head_len);
     let rest = rest.trim_start();
-    if is_reason_code(head) && (rest.starts_with(':') || rest.starts_with('(')) {
+    let code_shaped = head.len() <= JEV_REASON_MAX_CHARS
+        && is_reason_code(head)
+        && (rest.is_empty() || rest.starts_with(':') || rest.starts_with('('));
+    if code_shaped {
         let is_http = head.len() == 8
             && head.starts_with("http-")
             && head[5..].chars().all(|c| c.is_ascii_digit());
         if is_http {
             return Some(head.to_string());
         }
-        if let Some((_, code)) = FREE_TEXT_PREFIXES.iter().find(|(p, _)| *p == head) {
-            return Some((*code).to_string());
+        let code = FREE_TEXT_PREFIXES
+            .iter()
+            .find(|(p, _)| *p == head)
+            .map_or(head, |(_, code)| *code);
+        if JEV_REASON_CODES.contains(&code) {
+            return Some(code.to_string());
         }
     }
     Some("other".into())
@@ -242,13 +284,41 @@ fn is_policy_name(s: &str) -> bool {
         && s.chars().all(|c| !c.is_whitespace() && !c.is_control())
 }
 
+/// What happened to Jev on one call. `evaluator: "jev"` alone does not say:
+/// when a hard policy denies, the combine rules abort Jev and record
+/// `{ evaluator: "jev", jevMode }` and nothing else. Mirrors `jevOutcome` in
+/// `src/hooks/jev-activity.ts`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub enum JevOutcome {
+    /// Jev's answer was read and the combine rules applied it.
+    #[default]
+    Answered,
+    /// Jev was asked and was unavailable, truncated or mismatched; the regex
+    /// result stood.
+    Fallback,
+    /// A hard policy denied first, so Jev was aborted and never consulted.
+    NotConsulted,
+}
+
+impl JevOutcome {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Answered => "answered",
+            Self::Fallback => "fallback",
+            Self::NotConsulted => "not-consulted",
+        }
+    }
+}
+
 /// The part of a row's Jev facts that rows are grouped by in an allow
-/// roll-up: which engine decided, in which mode, and why it fell back. All
-/// three are closed or bounded sets, so they cost the roll-up little.
+/// roll-up: which engine decided, what became of Jev, in which mode, and why
+/// it fell back. All are closed or bounded sets, so they cost the roll-up
+/// little.
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct JevKey {
     /// `jev` | `jev-fallback`.
     pub evaluator: String,
+    pub outcome: JevOutcome,
     pub mode: Option<String>,
     pub fallback_reason: Option<String>,
 }
@@ -303,9 +373,25 @@ impl JevFacts {
             .map(str::trim)
             .filter(|m| is_model_id(m))
             .map(str::to_string);
+        // Answered when the row carries anything only an answer produces: a
+        // verdict, a cleared list (even an empty one), a latency or a model.
+        // A verdict another build wrote in a shape this side cannot read still
+        // leaves the call answered; only the bare not-consulted shape is not.
+        let outcome = if evaluator == "jev-fallback" {
+            JevOutcome::Fallback
+        } else if decision.is_some()
+            || row.jev_cleared.is_some()
+            || latency_ms.is_some()
+            || model.is_some()
+        {
+            JevOutcome::Answered
+        } else {
+            JevOutcome::NotConsulted
+        };
         Some(Self {
             key: JevKey {
                 evaluator,
+                outcome,
                 mode,
                 fallback_reason,
             },
@@ -327,14 +413,19 @@ impl JevFacts {
                 && matches!(self.decision.as_deref(), Some("deny" | "instruct")))
     }
 
-    /// Everything except the key, for an individually shipped event.
+    /// Everything except the key, for an individually shipped event. Nothing
+    /// for a call Jev was not consulted on: it has no verdict, clears,
+    /// latency or model to report, and must not look as if it had.
     fn apply_detail(&self, m: &mut Map<String, Value>) {
+        if self.key.outcome == JevOutcome::NotConsulted {
+            return;
+        }
         if let Some(d) = &self.decision {
             m.insert("jev_decision".into(), json!(d));
         }
         // An answered call carries its (possibly empty) list, so "Jev answered
         // and cleared nothing" is distinguishable from "not asked".
-        if self.key.evaluator == "jev" {
+        if self.key.outcome == JevOutcome::Answered {
             m.insert("jev_cleared".into(), json!(self.cleared));
         }
         if let Some(l) = self.latency_ms {
@@ -351,6 +442,9 @@ impl JevKey {
         // Prefixed: "evaluator" alone would read as the server's own
         // evaluation feature, which is a different thing.
         m.insert("failproofai_evaluator".into(), json!(self.evaluator));
+        // Always present on a Jev row: `failproofai_evaluator: "jev"` alone
+        // does not say whether Jev answered or a hard deny came first.
+        m.insert("jev_outcome".into(), json!(self.outcome.as_str()));
         if let Some(mode) = &self.mode {
             m.insert("jev_mode".into(), json!(mode));
         }
@@ -746,8 +840,9 @@ impl AllowBucket {
             .as_ref()
             .map(|j| {
                 format!(
-                    ":{}:{}:{}",
+                    ":{}:{}:{}:{}",
                     j.evaluator,
+                    j.outcome.as_str(),
                     j.mode.as_deref().unwrap_or("-"),
                     j.fallback_reason.as_deref().unwrap_or("-"),
                 )

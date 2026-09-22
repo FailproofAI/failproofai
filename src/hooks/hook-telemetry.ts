@@ -8,7 +8,7 @@
 import { version } from "../../package.json";
 import { POSTHOG_API_KEY, POSTHOG_PRODUCT } from "../posthog-key";
 import { isTelemetryEnabled } from "../../lib/telemetry-enabled";
-import { hasJevActivity, sanitizeJevActivity, type JevActivityFields } from "./jev-activity";
+import { jevOutcome, sanitizeJevActivity, type JevActivityFields } from "./jev-activity";
 
 const API_KEY = POSTHOG_API_KEY;
 const CAPTURE_URL = "https://us.i.posthog.com/capture/";
@@ -98,14 +98,23 @@ export async function flushHookTelemetry(): Promise<void> {
  * go through the same normaliser the activity store applies on write, so a
  * free-text fallback reason is reduced to its code here too.
  *
+ * A call a hard policy denied before Jev's answer was read carries
+ * `jev_outcome: "not-consulted"` and no Jev verdict, clears, latency or model:
+ * `jev_evaluator: "jev"` alone does not mean Jev answered (see `jevOutcome`).
+ *
  * Meant to be spread into `hook_policy_triggered` by the handler:
  * `{ ...existingProps, ...jevTelemetryProperties(activityEntry) }`.
  */
 export function jevTelemetryProperties(entry: JevActivityFields): Record<string, unknown> {
   const e = sanitizeJevActivity(entry);
-  if (!hasJevActivity(e)) return {};
+  const outcome = jevOutcome(e);
+  if (outcome === null) return {};
   const props: Record<string, unknown> = { jev_evaluator: e.evaluator };
   if (e.jevMode) props.jev_mode = e.jevMode;
+  if (outcome === "not-consulted") {
+    props.jev_outcome = outcome;
+    return props;
+  }
   if (e.jevDecision) props.jev_decision = e.jevDecision;
   if (e.jevCleared) {
     props.jev_cleared = e.jevCleared;

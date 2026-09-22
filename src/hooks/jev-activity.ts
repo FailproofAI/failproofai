@@ -11,9 +11,24 @@
  * the exception: the evaluator's degraded reasons include free text
  * (`prepare: <error message>`, `error: <message>`), and an error message is
  * exactly where a fragment of the judged command or the human's prompt can end
- * up. So a reason is reduced to a short kebab-case CODE before it is stored,
- * and anything that is not code-shaped becomes `other`. The Rust side applies
- * the same rule again, for rows written by some other build.
+ * up. So a reason is reduced to one of a closed list of CODES before it is
+ * stored ({@link JEV_REASON_CODES}), and anything else becomes `other` — even a
+ * short kebab-case word, which could be the command's own first word. The Rust
+ * side applies the same rule again, for rows written by some other build.
+ *
+ * WHAT THE VALIDATORS DO NOT COVER. `jevCleared` and `jevModel` are checked for
+ * shape only (no whitespace or control characters; a model-id alphabet). That
+ * keeps a sentence, a command line or a prompt out, but a whitespace-free
+ * fragment — a path, a file name — has the same shape as a policy name or a
+ * model id and would pass. Those two fields rely on the writer supplying
+ * registered policy names and the provider's model id, which is what the
+ * combine rules write.
+ *
+ * WHAT `evaluator: "jev"` MEANS. The two-tier path ran for this call. It does
+ * NOT by itself mean Jev answered: when a hard policy denies, the combine rules
+ * abort Jev and record `{ evaluator: "jev", jevMode }` and nothing else. So
+ * every reader classifies a row with {@link jevOutcome} — answered, fell back,
+ * or not consulted — rather than reading `evaluator` alone.
  *
  * Pure on purpose — no node imports — so the client dashboard can use
  * {@link describeJevActivity} without pulling `node:fs` into a browser bundle.
@@ -40,18 +55,51 @@ const EVALUATORS = new Set(["jev", "jev-fallback"]);
 const DECISIONS = new Set(["allow", "instruct", "deny"]);
 const MODES = new Set(["shadow", "enforce"]);
 
-/** A fallback reason code: lowercase kebab-case, e.g. `timeout`, `http-429`, `out-of-credits`. */
-const REASON_CODE_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+/**
+ * A reason's leading code — lowercase kebab-case — either alone or followed by
+ * `:` / `(` and free text: `timeout`, `http-429`, `prepare: <message>`.
+ */
+const REASON_HEAD_RE = /^([a-z0-9]+(?:-[a-z0-9]+)*)\s*(?:$|[:(])/;
+const HTTP_CODE_RE = /^http-\d{3}$/;
 export const JEV_REASON_MAX_CHARS = 40;
-/** What a reason that is not code-shaped is stored as. */
+/** What a reason that is not a known code is stored as. */
 export const JEV_REASON_OTHER = "other";
 
 /**
- * Leading words the evaluator puts in front of free text. Only these are kept
- * from a free-form reason: an arbitrary leading word could be the first word of
- * the command itself (`rm`, `curl`), so it is not trusted just for being short.
- * `FREE_TEXT_PREFIXES` in the collector's `transform.rs` is the same list; a
- * test keeps the two identical.
+ * Every fallback reason code a row may carry, besides `http-NNN`. The codes the
+ * Jev client, the evaluator, the throttle and the combine rules produce; any
+ * other reason is stored as `other`. A code added to a producer must be added
+ * here AND to `JEV_REASON_CODES` in the collector's `transform.rs` (a test
+ * keeps the two identical), or it ships as `other` — safe, but less useful.
+ */
+export const JEV_REASON_CODES: ReadonlySet<string> = new Set<string>([
+  "aborted",
+  "cloudflare-error",
+  "cloudflare-incomplete",
+  "config",
+  "error",
+  "malformed",
+  "model-mismatch",
+  "network",
+  "no-api-key",
+  "no-transport",
+  "other",
+  "out-of-credits",
+  "prepare-error",
+  "rate-limited",
+  "request-too-large",
+  "timeout",
+  "truncated",
+  "upstream-error",
+]);
+
+/**
+ * Leading words that are renamed on the way in: the evaluator's free-text
+ * prefixes, each mapped to its code. `prepare` is the one that differs — the
+ * evaluator writes `prepare: <message>`, and the combine rules cut that down
+ * to a bare `prepare` — and both are stored as `prepare-error`, so one failure
+ * never shows up under two names. `FREE_TEXT_PREFIXES` in the collector's
+ * `transform.rs` is the same list; a test keeps the two identical.
  */
 export const JEV_FREE_TEXT_PREFIXES: ReadonlyMap<string, string> = new Map<string, string>([
   ["prepare", "prepare-error"],
@@ -74,25 +122,23 @@ const POLICY_NAME_RE = /^[^\s\u0000-\u001f\u007f]{1,200}$/;
 export const JEV_CLEARED_MAX = 64;
 
 /**
- * Reduce a fallback reason to a short code, or undefined when there is none.
+ * Reduce a fallback reason to a known code, or undefined when there is none.
  *
- * - Already a code (`timeout`, `http-429`, `model-mismatch`): kept, lowercased.
- * - Free text behind a known prefix (`prepare: Unexpected token…`,
- *   `http-500: upstream said …`): the prefix's code.
- * - Anything else: `other`. Never the text.
+ * - A known code (`timeout`, `http-429`, `model-mismatch`), alone or in front
+ *   of free text (`prepare: Unexpected token…`, `http-500: upstream said …`):
+ *   that code, lowercased, renamed through {@link JEV_FREE_TEXT_PREFIXES}.
+ * - Anything else: `other`. Never the text — not even a short kebab-case word
+ *   that merely looks like a code (`curl`, `secret-project`).
  */
 export function normalizeJevFallbackReason(raw: unknown): string | undefined {
   if (typeof raw !== "string") return undefined;
   const s = raw.trim().toLowerCase();
   if (s.length === 0) return undefined;
-  if (s.length <= JEV_REASON_MAX_CHARS && REASON_CODE_RE.test(s)) return s;
-  const head = /^([a-z0-9]+(?:-[a-z0-9]+)*)\s*[:(]/.exec(s)?.[1];
-  if (head) {
-    if (/^http-\d{3}$/.test(head)) return head;
-    const known = JEV_FREE_TEXT_PREFIXES.get(head);
-    if (known) return known;
-  }
-  return JEV_REASON_OTHER;
+  const head = REASON_HEAD_RE.exec(s)?.[1];
+  if (head === undefined || head.length > JEV_REASON_MAX_CHARS) return JEV_REASON_OTHER;
+  if (HTTP_CODE_RE.test(head)) return head;
+  const code = JEV_FREE_TEXT_PREFIXES.get(head) ?? head;
+  return JEV_REASON_CODES.has(code) ? code : JEV_REASON_OTHER;
 }
 
 /**
@@ -145,17 +191,56 @@ export function hasJevActivity(entry: JevActivityFields): boolean {
 }
 
 /**
+ * What happened to Jev on one call:
+ *
+ * - `answered`: Jev's answer was read and the combine rules applied it.
+ * - `fallback`: Jev was asked and was unavailable, truncated or mismatched, so
+ *   the regex result stood (`evaluator: "jev-fallback"`).
+ * - `not-consulted`: a hard policy denied first, so Jev was aborted and its
+ *   answer never read. The combine rules record exactly
+ *   `{ evaluator: "jev", jevMode }` for that.
+ *
+ * Null when Jev was not part of the call (no config, or not a gate).
+ *
+ * A `jev` row counts as answered when it carries anything only an answer
+ * produces: a verdict, a cleared list (even an empty one), a latency or a
+ * model id. So a row whose verdict another build wrote in a shape this one
+ * cannot read still counts as answered; only the bare not-consulted shape
+ * does not. `transform.rs` applies the same rule (`JevOutcome`).
+ */
+export type JevOutcome = "answered" | "fallback" | "not-consulted";
+
+export function jevOutcome(raw: JevActivityFields): JevOutcome | null {
+  return outcomeOf(sanitizeJevActivity(raw));
+}
+
+/** {@link jevOutcome} for a row that is already sanitized. */
+function outcomeOf(e: JevActivityFields): JevOutcome | null {
+  if (e.evaluator === "jev-fallback") return "fallback";
+  if (e.evaluator !== "jev") return null;
+  const answered =
+    e.jevDecision !== undefined || e.jevCleared !== undefined || e.jevLatencyMs !== undefined || e.jevModel !== undefined;
+  return answered ? "answered" : "not-consulted";
+}
+
+/** What the dashboard says about a call Jev was not consulted on. */
+export const JEV_NOT_CONSULTED_FACT = "Jev not consulted: a hard policy's deny is final";
+
+/**
  * What Jev did on one row, as short facts in display order — e.g.
  * `["Jev verdict: allow", "cleared block-env-files", "38 ms", "jev-1.13.0"]` —
  * or null when Jev was not involved. Plain language, no probabilities: those
- * live in the verdict log.
+ * live in the verdict log. Never an empty list: a call Jev was not consulted
+ * on says so ({@link JEV_NOT_CONSULTED_FACT}).
  */
 export function describeJevActivity(raw: JevActivityFields): string[] | null {
   const e = sanitizeJevActivity(raw);
-  if (!hasJevActivity(e)) return null;
+  const outcome = outcomeOf(e);
+  if (outcome === null) return null;
+  if (outcome === "not-consulted") return [JEV_NOT_CONSULTED_FACT];
   const facts: string[] = [];
 
-  if (e.evaluator === "jev-fallback") {
+  if (outcome === "fallback") {
     facts.push(`Jev unavailable: ${e.jevFallbackReason ?? "unknown reason"}`, "the regex policies decided alone");
     if (e.jevLatencyMs !== undefined) facts.push(`${e.jevLatencyMs} ms`);
     return facts;
@@ -169,5 +254,7 @@ export function describeJevActivity(raw: JevActivityFields): string[] | null {
   if (e.jevMode === "shadow") facts.push("shadow mode: the regex result was enforced");
   if (e.jevLatencyMs !== undefined) facts.push(`${e.jevLatencyMs} ms`);
   if (e.jevModel) facts.push(e.jevModel);
+  // Answered, but nothing this build can show (a verdict in a shape it cannot read).
+  if (facts.length === 0) facts.push("Jev answered");
   return facts;
 }

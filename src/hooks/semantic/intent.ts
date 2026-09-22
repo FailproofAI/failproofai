@@ -167,7 +167,13 @@ export function readUserIntent(sessionId: string | undefined, now: number = Date
 
 // ── Transcript replay ────────────────────────────────────────────────────────
 
-/** Harness-generated user entries: slash-command echoes, caveats, notifications. */
+/**
+ * Harness-generated user entries: slash-command echoes, caveats,
+ * notifications — and failproofai's own words. Cursor submits a Stop gate's
+ * `followup_message` as the next user message, and Copilot, Devin and
+ * OpenClaw feed a Stop block's reason back into the next turn, so what
+ * policy-evaluator.ts wrote can arrive looking like a prompt.
+ */
 const NON_HUMAN_PREFIXES = [
   "<local-command-caveat>",
   "<local-command-stdout>",
@@ -175,6 +181,8 @@ const NON_HUMAN_PREFIXES = [
   "<task-notification>",
   "<system-reminder>",
   "[Request interrupted",
+  "MANDATORY ACTION REQUIRED from failproofai",
+  "Instruction from failproofai:",
 ];
 
 function stripHarnessMarkup(text: string): string {

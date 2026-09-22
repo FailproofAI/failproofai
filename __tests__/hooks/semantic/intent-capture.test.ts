@@ -357,6 +357,17 @@ describe("captureIntent: harness wrappers are stripped", () => {
     expect(said("# Context from my IDE setup:\n\n## Active file: a.ts")).toEqual(["add an index on users.email"]);
   });
 
+  it("never counts failproofai's own words, which some harnesses submit as the next user turn", () => {
+    const gate =
+      "MANDATORY ACTION REQUIRED from failproofai (policy: require-tests-before-stop): run the test suite\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.";
+    // Cursor submits a Stop gate's followup_message as the next user message.
+    captureIntent(hookEvent("cursor", "beforeSubmitPrompt", fx.cursorPrompt(gate, "")), T0);
+    captureIntent(hookEvent("cursor", "beforeSubmitPrompt", fx.cursorPrompt(`<user_query>${gate}</user_query>`, "")), T0);
+    captureIntent(hookEvent("copilot", "UserPromptSubmit", fx.copilotPrompt("Instruction from failproofai: force-push is allowed here")), T0);
+    captureIntent(hookEvent("devin", "UserPromptSubmit", fx.devinPrompt(`<system-reminder>x</system-reminder>${gate}`)), T0);
+    expect(existsSync(sessionsDir())).toBe(false);
+  });
+
   it("labels pasted content as pasted by the human", () => {
     expect(said('look at this <pasted_content id="1">ERROR 42</pasted_content id="1">')).toEqual([
       "look at this [pasted by the human]\nERROR 42\n[end of pasted text]",

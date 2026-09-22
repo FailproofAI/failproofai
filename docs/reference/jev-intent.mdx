@@ -43,6 +43,7 @@ Harnesses put more than the human's words into a prompt. Before anything is stor
 - `<system-reminder>` blocks are removed, and the human's words around them are kept.
 - A session-continuation summary ("This session is being continued from a previous conversation…") is dropped entirely.
 - Task notifications, local-command output and interruption markers are dropped entirely.
+- Failproof AI's own messages are dropped entirely. A stop gate's `MANDATORY ACTION REQUIRED from failproofai …` or an `Instruction from failproofai: …` can come back as the next user turn on some harnesses (Cursor submits a stop gate's follow-up message as one), and they never count as the human's words.
 - A slash command is kept as the command and arguments the human typed, never the body the harness expanded it into.
 - A Codex IDE-context prompt keeps only the text under `## My request for Codex:`. The active file and open tabs are dropped.
 - Pasted blocks are kept and labelled as pasted by the human.

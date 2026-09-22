@@ -1,0 +1,77 @@
+---
+title: "Jev intent capture"
+description: "Which harness events tell the Jev evaluator what the human asked for, which field carries the text, and which prompts are never counted."
+icon: "message-square-quote"
+---
+
+When you configure your own Jev endpoint, the Jev evaluator judges each tool call against **what the human asked for**, not against whatever text the harness put in front of the agent. A reply such as "yes, force-push it" can clear a reviewable policy, so the only text that ever counts as the human's is text a human typed into the harness's prompt box.
+
+This page lists, for each of the 12 supported harnesses, where that text comes from. Harnesses that never deliver human text through a prompt event are also listed, with the reason.
+
+## Per-harness table
+
+"Text field" is the stdin payload field after Failproof AI's per-harness normalization. "Recorded" says whether the prompt is kept as the human's request.
+
+| Harness | `--cli` | Prompt event → canonical | Text field | Recorded | Agent's last message read from |
+| --- | --- | --- | --- | --- | --- |
+| Claude Code | `claude` | `UserPromptSubmit` | `prompt` | Yes, except inside a subagent (`agent_id` set) | the session transcript (`transcript_path`) |
+| Codex | `codex` | `user_prompt_submit` → `UserPromptSubmit` | `prompt` | Yes, except in a sub-agent thread (the rollout's `session_meta.source`) | the rollout JSONL (`transcript_path`) |
+| GitHub Copilot CLI | `copilot` | `UserPromptSubmit` | `prompt` | Yes | the session's `events.jsonl` |
+| Cursor | `cursor` | `beforeSubmitPrompt` → `UserPromptSubmit` | `prompt` | Yes | the agent transcript JSONL |
+| OpenCode | `opencode` | `message.updated` (user role) → `UserPromptSubmit` | `prompt` | No | — |
+| Pi | `pi` | `input` → `UserPromptSubmit` | `prompt` | Yes, except input another extension sent (`source: "extension"`, once forwarded) | the session JSONL |
+| Hermes | `hermes` | none | — | No | — |
+| OpenClaw | `openclaw` | `before_agent_run` → `UserPromptSubmit` | `prompt` | Only when marked as the owner's own message | the session JSONL (`transcript_path`) |
+| Factory Droid | `factory` | `UserPromptSubmit` | `prompt` | Yes | the session JSONL (`transcript_path`) |
+| Devin CLI | `devin` | `UserPromptSubmit` | `prompt` | Yes | none (sessions are stored in SQLite) |
+| Antigravity CLI | `antigravity` | `PreInvocation` → `UserPromptSubmit` | none | No | — |
+| Goose | `goose` | `UserPromptSubmit` | `message` | Yes | none (sessions are stored in SQLite) |
+
+When a harness records nothing, Jev still evaluates every tool call, but with no task to judge against. Nothing can be cleared on the grounds that the human asked for it, and the check that flags a call reaching beyond the human's task stays off.
+
+## Harnesses that are not recorded
+
+- **Hermes** has no prompt-submit event. Its native plugin handles `pre_llm_call` itself and forwards only tool, session and subagent events.
+- **Antigravity CLI** maps `PreInvocation` to `UserPromptSubmit`, but `PreInvocation` fires before *every* model call in a turn, carries no prompt text, and hooks can inject `userMessage` steps into the same conversation. Nothing in it identifies a human turn.
+- **OpenCode** reports prompts through the `message.updated` bus event. In current OpenCode the message it carries has no text parts, so the forwarded prompt is empty. The event also fires again on every update to the same message, for the child sessions the task tool creates (whose "user" message the parent agent wrote), and for the re-prompts Failproof AI itself sends to deliver an instruction.
+- **OpenClaw** fires `before_agent_run` for heartbeat, cron, memory and inter-session runs as well as for chat messages, and on a shared channel the sender may not be the owner. OpenClaw states that a missing classification does not establish human origin, so a prompt is recorded only when the payload carries `openclaw.trigger: "user"`, an `openclaw.inputProvenance.kind` that is absent or `external_user`, and no `openclaw.senderIsOwner: false`. The current plugin does not forward these fields, so no OpenClaw prompt is recorded yet.
+
+## What is kept from a prompt
+
+Harnesses put more than the human's words into a prompt. Before anything is stored:
+
+- `<system-reminder>` blocks are removed, and the human's words around them are kept.
+- A session-continuation summary ("This session is being continued from a previous conversation…") is dropped entirely.
+- Task notifications, local-command output and interruption markers are dropped entirely.
+- A slash command is kept as the command and arguments the human typed, never the body the harness expanded it into.
+- A Codex IDE-context prompt keeps only the text under `## My request for Codex:`. The active file and open tabs are dropped.
+- Pasted blocks are kept and labelled as pasted by the human.
+
+A prompt that is nothing but harness text is not recorded at all.
+
+## The agent's last message
+
+A reply like "yes" means nothing without the question it answers. When a prompt is recorded, Failproof AI also reads the agent's last visible message from the session transcript **at that moment**, and stores it with the prompt. Jev receives it in its own field, labelled as written by the agent: it explains a short reply and never counts as the human's request.
+
+It is read from the end of the transcript, at most the last 4 MB. Supported transcript formats are Claude Code, Codex rollouts (older `agent_message` events and newer `AgentMessage` items), Cursor, Copilot `events.jsonl`, and the Pi, Factory and OpenClaw session JSONL. Claude Code's own synthetic and API-error messages and subagent (sidechain) messages are skipped. Harnesses that keep sessions in SQLite (Devin, Goose, OpenCode) have no snapshot.
+
+## Storage
+
+| Property | Value |
+| --- | --- |
+| Location | `~/.failproofai/state/semantic/sessions/<session-id>.json` |
+| Permissions | file `0600`, directory `0700` |
+| Kept per session | the last 5 prompts |
+| Window | prompts older than 6 hours are ignored |
+| Size | each prompt and agent message is capped at 1,200 characters, keeping the head and the tail |
+| Secrets | redacted with the same patterns as the `sanitize-*` policies before anything is written |
+
+A session ID containing anything but letters, digits, `.`, `_` and `-`, or longer than 128 characters, is never used as a file name, so nothing is recorded for it. Session files whose newest prompt is older than the window are deleted the next time a new session starts recording.
+
+Nothing is recorded unless a Jev endpoint is configured.
+
+## Known limits
+
+- **Subagents on other harnesses.** Codex and Claude Code subagents are detected. Whether Copilot, Cursor, Factory, Devin or Goose fire their prompt event inside a subagent has not been verified.
+- **Programmatic prompts count.** A prompt sent through a harness's SDK or headless mode (`claude -p`, `codex exec`) is treated as the operator's request, because the harness cannot tell it apart from a typed one.
+- **Pi extensions.** Pi marks input sent by another extension with `source: "extension"`, but the Pi bridge does not forward that field yet, so such input is currently recorded like a typed prompt.

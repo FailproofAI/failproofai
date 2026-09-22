@@ -261,6 +261,24 @@ function outcomeOf(e: JevActivityFields): JevOutcome | null {
   return "not-consulted";
 }
 
+/**
+ * Fallback reasons that mean Jev DID answer and the combine rules set the
+ * answer aside: the call was truncated to fit the envelope (Jev judged only
+ * part of it), or a model other than the configured one answered.
+ */
+const ANSWERED_BUT_NOT_APPLIED_REASONS: ReadonlySet<string> = new Set(["truncated", "model-mismatch"]);
+
+/**
+ * True for a fallback row where Jev answered but its answer was not applied —
+ * the row carries Jev's verdict (the combine rules record one only when Jev
+ * answered), or its reason is one of {@link ANSWERED_BUT_NOT_APPLIED_REASONS}.
+ * Such a row is not "Jev unavailable". Expects a sanitized row.
+ */
+export function jevAnsweredButNotApplied(e: JevActivityFields): boolean {
+  if (e.evaluator !== "jev-fallback") return false;
+  return e.jevDecision !== undefined || ANSWERED_BUT_NOT_APPLIED_REASONS.has(e.jevFallbackReason ?? "");
+}
+
 /** What the dashboard says about a call Jev was not consulted on. */
 export const JEV_NOT_CONSULTED_FACT = "Jev not consulted: a hard policy's deny is final";
 /** What the dashboard says about a call no semantic policy applied to. */
@@ -271,7 +289,9 @@ export const JEV_NO_REQUEST_FACT = "Jev not asked: no semantic policy applies to
  * `["Jev verdict: allow", "cleared block-env-files", "38 ms", "jev-1.13.0"]` —
  * or null when Jev was not involved. Plain language, no probabilities: those
  * live in the verdict log. Never an empty list: a call Jev was not consulted
- * on says so ({@link JEV_NOT_CONSULTED_FACT}).
+ * on says so ({@link JEV_NOT_CONSULTED_FACT}). A fallback where Jev answered
+ * but was set aside (truncated, model mismatch) says "Jev's answer not
+ * applied" and shows the verdict it gave, not "Jev unavailable".
  */
 export function describeJevActivity(raw: JevActivityFields): string[] | null {
   const e = sanitizeJevActivity(raw);
@@ -282,8 +302,19 @@ export function describeJevActivity(raw: JevActivityFields): string[] | null {
   const facts: string[] = [];
 
   if (outcome === "fallback") {
-    facts.push(`Jev unavailable: ${e.jevFallbackReason ?? "unknown reason"}`, "the regex policies decided alone");
+    const reason = e.jevFallbackReason ?? "unknown reason";
+    if (jevAnsweredButNotApplied(e)) {
+      // Jev did answer — the call was cut to fit the envelope, or the wrong
+      // model answered — so "unavailable" would be false, and its verdict is
+      // exactly what someone reading this row wants to see.
+      facts.push(`Jev's answer not applied: ${reason}`);
+      if (e.jevDecision) facts.push(`Jev verdict (not applied): ${e.jevDecision}`);
+    } else {
+      facts.push(`Jev unavailable: ${reason}`);
+    }
+    facts.push("the regex policies decided alone");
     if (e.jevLatencyMs !== undefined) facts.push(`${e.jevLatencyMs} ms`);
+    if (e.jevModel && jevAnsweredButNotApplied(e)) facts.push(e.jevModel);
     return facts;
   }
 

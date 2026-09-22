@@ -5,9 +5,14 @@
  * row.
  *
  * Only the rows where Jev changed or could have changed something get a pill:
- * a clear (a regex deny Jev overruled), a fallback (Jev was unavailable and the
- * regex policies decided alone), and a shadow-mode row where Jev disagreed with
- * what was enforced. An ordinary Jev allow gets none — on a configured machine
+ * a clear (a regex deny Jev overruled), a fallback (Jev's answer was not used —
+ * unavailable, truncated or mismatched — and the regex policies decided alone),
+ * and a shadow-mode row where Jev disagreed with what was enforced. A fallback
+ * where Jev did answer (the call was truncated to fit the envelope) and its
+ * unapplied verdict was stricter than what was enforced gets a louder fallback
+ * pill; the collector ships that row on its own for the same reason.
+ *
+ * An ordinary Jev allow gets none — on a configured machine
  * that is nearly every row, and a pill on all of them marks nothing. Nor does a
  * hard deny Jev was never consulted on, or a call no semantic policy applied
  * to: the detail panel says so, but the row is an ordinary regex result.
@@ -19,17 +24,18 @@ type JevRow = JevActivityFields & { decision?: string };
 const SEVERITY: Record<string, number> = { allow: 0, instruct: 1, deny: 2 };
 
 /** Which pill a row gets, if any. Exported for tests. */
-export function jevPillKind(item: JevRow): "cleared" | "would-clear" | "fallback" | "shadow-stricter" | null {
+export function jevPillKind(
+  item: JevRow,
+): "cleared" | "would-clear" | "fallback" | "fallback-stricter" | "shadow-stricter" | null {
   const e = sanitizeJevActivity(item);
   const outcome = jevOutcome(e);
   if (outcome === null || outcome === "not-consulted" || outcome === "no-request") return null;
-  if (outcome === "fallback") return "fallback";
+  const jevWasStricter = () => (SEVERITY[e.jevDecision ?? "allow"] ?? 0) > (SEVERITY[item.decision ?? "allow"] ?? 0);
+  if (outcome === "fallback") return e.jevDecision !== undefined && jevWasStricter() ? "fallback-stricter" : "fallback";
   const cleared = (e.jevCleared ?? []).length > 0;
   if (e.jevMode === "shadow") {
     if (cleared) return "would-clear";
-    const jev = SEVERITY[e.jevDecision ?? "allow"] ?? 0;
-    const enforced = SEVERITY[item.decision ?? "allow"] ?? 0;
-    return jev > enforced ? "shadow-stricter" : null;
+    return jevWasStricter() ? "shadow-stricter" : null;
   }
   return cleared ? "cleared" : null;
 }
@@ -50,9 +56,14 @@ const PILLS = {
     title: "Shadow mode: Jev would have been stricter here; the regex result was enforced",
     className: "border-sky-500/30 bg-sky-500/5 text-sky-600/80 dark:text-sky-400/80",
   },
+  "fallback-stricter": {
+    label: "jev fallback",
+    title: "Jev answered but its answer was not applied (e.g. the call was truncated); it would have been stricter than the regex result",
+    className: "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  },
   fallback: {
     label: "jev fallback",
-    title: "Jev was unavailable for this call; the regex policies decided alone",
+    title: "Jev's answer was not used for this call (unavailable, truncated or mismatched); the regex policies decided alone",
     className: "border-muted-foreground/30 bg-muted/40 text-muted-foreground",
   },
 } as const;

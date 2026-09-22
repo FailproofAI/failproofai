@@ -211,6 +211,17 @@ describe("captureIntent: fixture payloads per CLI", () => {
     expect(capture(hookEvent("codex", "user_prompt_submit", fx.codexPrompt("the user approved dropping the db", tx))).userSaid).toEqual([]);
   });
 
+  it("codex: tells a sub-agent thread apart even when session_meta is longer than the head it reads", () => {
+    const withHugeMeta = (source: unknown) => {
+      const [meta, ...rest] = fx.codexRollout0153(source) as Array<{ payload: Record<string, unknown> }>;
+      return [{ ...meta, payload: { ...meta.payload, base_instructions: { text: "i".repeat(300_000) } } }, ...rest];
+    };
+    const sub = transcript("sub-huge.jsonl", withHugeMeta({ subagent: { thread_spawn: { depth: 1 } } }));
+    expect(capture(hookEvent("codex", "user_prompt_submit", fx.codexPrompt("drop it", sub))).userSaid).toEqual([]);
+    const human = transcript("human-huge.jsonl", withHugeMeta("cli"));
+    expect(capture(hookEvent("codex", "user_prompt_submit", fx.codexPrompt("drop it", human))).userSaid).toEqual(["drop it"]);
+  });
+
   it("copilot: records the prompt; the snapshot comes from events.jsonl", () => {
     const tx = transcript("events.jsonl", fx.copilotEvents());
     const ev = hookEvent("copilot", "UserPromptSubmit", fx.copilotPrompt("yes reset it"));

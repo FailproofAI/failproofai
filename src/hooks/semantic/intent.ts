@@ -573,13 +573,18 @@ function codexRolloutIsSubagent(transcriptPath: string | undefined): boolean {
     const st = statSync(path);
     if (!st.isFile()) return false;
     fd = openSync(path, "r");
-    const head = Buffer.alloc(Math.min(st.size, 64 * 1024));
+    // session_meta carries the base instructions: ~13–22 KB in 0.153/0.154.
+    const head = Buffer.alloc(Math.min(st.size, 256 * 1024));
     readSync(fd, head, 0, head.length, 0);
     const nl = head.indexOf(0x0a);
-    const first = JSON.parse(head.subarray(0, nl < 0 ? head.length : nl).toString("utf8")) as {
-      type?: string;
-      payload?: { source?: unknown; thread_source?: unknown };
-    };
+    const firstLine = head.subarray(0, nl < 0 ? head.length : nl).toString("utf8");
+    let first: { type?: string; payload?: { source?: unknown; thread_source?: unknown } };
+    try {
+      first = JSON.parse(firstLine);
+    } catch {
+      // A first line longer than the read: judge by the raw text.
+      return /"type"\s*:\s*"session_meta"/.test(firstLine) && /"source"\s*:\s*\{\s*"sub[-_]?agent"/i.test(firstLine);
+    }
     if (first?.type !== "session_meta") return false;
     const source = first.payload?.source;
     if (source !== null && typeof source === "object") return true;

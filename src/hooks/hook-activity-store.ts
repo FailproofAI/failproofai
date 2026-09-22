@@ -76,6 +76,25 @@ export interface HookActivityEntry {
   matchedPolicies?: string[];
   decision: "allow" | "deny" | "instruct";
   reason: string | null;
+  /**
+   * The Jev (two-tier) fields. Present only when a Jev config (BYOK) exists and
+   * the call was a PreToolUse / PermissionRequest gate. Absent means the regex
+   * engine decided alone, exactly as before these fields existed.
+   *
+   * `evaluator`: `jev` (Jev answered and the combine rules ran) or
+   * `jev-fallback` (Jev was unavailable, truncated or mismatched, so the regex
+   * result stood; `jevFallbackReason` says why).
+   */
+  evaluator?: "jev" | "jev-fallback";
+  /** Jev's own verdict, before combining with the regex results. */
+  jevDecision?: "allow" | "instruct" | "deny";
+  /** Reviewable policies whose deny/instruct Jev cleared. */
+  jevCleared?: string[];
+  jevFallbackReason?: string;
+  jevLatencyMs?: number;
+  jevModel?: string;
+  /** `shadow` logs Jev but enforces the regex result; `enforce` applies the combine rules. */
+  jevMode?: "shadow" | "enforce";
   durationMs: number;
   sessionId?: string;
   transcriptPath?: string;

@@ -6,7 +6,7 @@
  * chunk splitting and remains a true singleton across dynamic imports.
  */
 import type { HookEventType } from "./types";
-import type { PolicyFunction, PolicyMatcher, PolicyParamsSchema, RegisteredPolicy } from "./policy-types";
+import type { PolicyAuthority, PolicyFunction, PolicyMatcher, PolicyParamsSchema, RegisteredPolicy } from "./policy-types";
 
 const REGISTRY_KEY = "__FAILPROOFAI_POLICY_REGISTRY__";
 const INDEX_CACHE_KEY = "__FAILPROOFAI_POLICY_INDEX_CACHE__";
@@ -58,6 +58,7 @@ export function registerPolicy(
   match: PolicyMatcher,
   priority: number = 0,
   params?: PolicyParamsSchema,
+  meta?: { authority?: PolicyAuthority; reviewedBy?: string[] },
 ): void {
   const canonical = normalizePolicyName(name);
   const registry = getRegistry();
@@ -67,6 +68,8 @@ export function registerPolicy(
     // Absent stays absent: `evaluatePolicies` distinguishes "declares a schema"
     // from "declares none", and a spread `params: undefined` is neither.
     ...(params ? { params } : {}),
+    ...(meta?.authority ? { authority: meta.authority } : {}),
+    ...(meta?.reviewedBy ? { reviewedBy: meta.reviewedBy } : {}),
   };
   if (idx >= 0) {
     registry[idx] = entry;

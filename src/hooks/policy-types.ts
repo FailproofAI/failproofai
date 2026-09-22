@@ -43,6 +43,39 @@ export interface RegisteredPolicy {
    * the user's OWN configured `policyParams` for it, not merely the defaults.
    */
   params?: PolicyParamsSchema;
+  /** Whether Jev may clear this policy's deny/instruct; see {@link effectiveAuthority}. */
+  authority?: PolicyAuthority;
+  /** The semantic policies (`src/hooks/semantic/policies.ts`) that must all come back clear. */
+  reviewedBy?: string[];
+}
+
+/**
+ * Who has the last word on a policy's deny or instruct when Jev is configured.
+ *
+ * - `hard`: final. Jev can never clear it.
+ * - `reviewable`: Jev may clear it, but only through the semantic policies
+ *   named in `reviewedBy`, and only when every one of them was actually asked
+ *   and came back clear.
+ */
+export type PolicyAuthority = "hard" | "reviewable";
+
+/**
+ * The authority a policy actually has. `reviewable` only when it is declared
+ * `reviewable`, names at least one semantic policy in `reviewedBy`, and is not
+ * `alwaysOn`. Anything else — absent, invalid, an empty `reviewedBy`, the
+ * self-protection guard — is `hard`, so an unknown custom, cloud or third-party
+ * policy can never be weakened by Jev.
+ */
+export function effectiveAuthority(p: {
+  authority?: unknown;
+  reviewedBy?: unknown;
+  alwaysOn?: boolean;
+}): PolicyAuthority {
+  if (p.alwaysOn === true) return "hard";
+  if (p.authority !== "reviewable") return "hard";
+  if (!Array.isArray(p.reviewedBy)) return "hard";
+  const named = p.reviewedBy.filter((n) => typeof n === "string" && n.length > 0);
+  return named.length > 0 ? "reviewable" : "hard";
 }
 
 export interface PolicyParamsSchema {
@@ -89,6 +122,10 @@ export interface BuiltinPolicyDefinition {
    *  secondary line in the audit report. e.g. "Could leak code from neighboring
    *  repos to the model." */
   impact?: string;
+  /** See {@link PolicyAuthority}. Absent means `hard`. */
+  authority?: PolicyAuthority;
+  /** See {@link RegisteredPolicy.reviewedBy}. */
+  reviewedBy?: string[];
 }
 
 export interface CustomHook {
@@ -98,6 +135,10 @@ export interface CustomHook {
     events?: HookEventType[];
   };
   fn: (ctx: PolicyContext) => PolicyResult | Promise<PolicyResult>;
+  /** See {@link PolicyAuthority}. Absent means `hard`. */
+  authority?: PolicyAuthority;
+  /** See {@link RegisteredPolicy.reviewedBy}. */
+  reviewedBy?: string[];
 }
 
 export interface LlmConfig {

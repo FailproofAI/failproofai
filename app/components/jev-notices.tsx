@@ -71,12 +71,12 @@ export function JevPill({ item }: { item: JevRow }) {
 
 /** The detail-panel line: what Jev said, cleared, or why it fell back. */
 export function JevNote({ item }: { item: JevRow }) {
-  const summary = describeJevActivity(item);
-  if (!summary) return null;
+  const facts = describeJevActivity(item);
+  if (!facts) return null;
   return (
     <div className="sm:col-span-2 lg:col-span-3">
       <span className="text-muted-foreground">Semantic review: </span>
-      <span className="font-mono text-foreground">{summary.facts.join(" · ")}</span>
+      <span className="font-mono text-foreground">{facts.join(" · ")}</span>
     </div>
   );
 }

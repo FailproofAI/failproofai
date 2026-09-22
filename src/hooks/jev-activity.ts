@@ -139,48 +139,35 @@ export function sanitizeJevActivity<T extends JevActivityFields>(entry: T): T {
   return out;
 }
 
-/** True when a row carries any Jev field, i.e. a Jev config was present for the call. */
+/** True when the row says which evaluator ran, i.e. a Jev config was present for the call. */
 export function hasJevActivity(entry: JevActivityFields): boolean {
   return entry.evaluator === "jev" || entry.evaluator === "jev-fallback";
 }
 
-export interface JevActivitySummary {
-  /** One line, e.g. `Jev · enforce · cleared block-env-files · 38 ms`. */
-  headline: string;
-  /** Short facts for a detail view, in display order. */
-  facts: string[];
-}
-
 /**
- * How the dashboard says what Jev did on one row, or null when Jev was not
- * involved. Plain language, no probabilities: those live in the verdict log.
+ * What Jev did on one row, as short facts in display order — e.g.
+ * `["Jev verdict: allow", "cleared block-env-files", "38 ms", "jev-1.13.0"]` —
+ * or null when Jev was not involved. Plain language, no probabilities: those
+ * live in the verdict log.
  */
-export function describeJevActivity(raw: JevActivityFields & { decision?: string }): JevActivitySummary | null {
+export function describeJevActivity(raw: JevActivityFields): string[] | null {
   const e = sanitizeJevActivity(raw);
   if (!hasJevActivity(e)) return null;
   const facts: string[] = [];
-  const mode = e.jevMode ? ` (${e.jevMode})` : "";
 
   if (e.evaluator === "jev-fallback") {
-    const why = e.jevFallbackReason ?? "unknown reason";
-    facts.push(`Jev unavailable: ${why}`, "the regex policies decided alone");
+    facts.push(`Jev unavailable: ${e.jevFallbackReason ?? "unknown reason"}`, "the regex policies decided alone");
     if (e.jevLatencyMs !== undefined) facts.push(`${e.jevLatencyMs} ms`);
-    return { headline: `Jev fell back${mode} · ${why}`, facts };
+    return facts;
   }
 
   if (e.jevDecision) facts.push(`Jev verdict: ${e.jevDecision}`);
   const cleared = e.jevCleared ?? [];
   if (cleared.length > 0) {
-    const verb = e.jevMode === "shadow" ? "would have cleared" : "cleared";
-    facts.push(`${verb} ${cleared.join(", ")}`);
+    facts.push(`${e.jevMode === "shadow" ? "would have cleared" : "cleared"} ${cleared.join(", ")}`);
   }
   if (e.jevMode === "shadow") facts.push("shadow mode: the regex result was enforced");
   if (e.jevLatencyMs !== undefined) facts.push(`${e.jevLatencyMs} ms`);
   if (e.jevModel) facts.push(e.jevModel);
-
-  const headlineParts = [`Jev${mode}`];
-  if (e.jevDecision) headlineParts.push(e.jevDecision);
-  if (cleared.length > 0) headlineParts.push(`${e.jevMode === "shadow" ? "would clear" : "cleared"} ${cleared.length}`);
-  if (e.jevLatencyMs !== undefined) headlineParts.push(`${e.jevLatencyMs} ms`);
-  return { headline: headlineParts.join(" · "), facts };
+  return facts;
 }

@@ -171,35 +171,36 @@ describe("describeJevActivity", () => {
   });
 
   it("describes an answered call with a clear", () => {
-    const d = describeJevActivity(
-      entry({
-        evaluator: "jev",
-        jevMode: "enforce",
-        jevDecision: "allow",
-        jevCleared: ["block-read-outside-cwd"],
-        jevLatencyMs: 38,
-        jevModel: "jev-1.13.0",
-      }),
-    );
-    expect(d?.headline).toBe("Jev (enforce) · allow · cleared 1 · 38 ms");
-    expect(d?.facts).toEqual(["Jev verdict: allow", "cleared block-read-outside-cwd", "38 ms", "jev-1.13.0"]);
+    expect(
+      describeJevActivity(
+        entry({
+          evaluator: "jev",
+          jevMode: "enforce",
+          jevDecision: "allow",
+          jevCleared: ["block-read-outside-cwd"],
+          jevLatencyMs: 38,
+          jevModel: "jev-1.13.0",
+        }),
+      ),
+    ).toEqual(["Jev verdict: allow", "cleared block-read-outside-cwd", "38 ms", "jev-1.13.0"]);
   });
 
   it("says shadow mode enforced the regex result", () => {
-    const d = describeJevActivity(
+    const facts = describeJevActivity(
       entry({ evaluator: "jev", jevMode: "shadow", jevDecision: "allow", jevCleared: ["block-env-files"] }),
     );
-    expect(d?.headline).toBe("Jev (shadow) · allow · would clear 1");
-    expect(d?.facts).toContain("would have cleared block-env-files");
-    expect(d?.facts).toContain("shadow mode: the regex result was enforced");
+    expect(facts).toEqual([
+      "Jev verdict: allow",
+      "would have cleared block-env-files",
+      "shadow mode: the regex result was enforced",
+    ]);
   });
 
   it("describes a fallback by its reason code only", () => {
-    const d = describeJevActivity(
+    const facts = describeJevActivity(
       entry({ evaluator: "jev-fallback", jevMode: "enforce", jevFallbackReason: "prepare: rm -rf failed", jevLatencyMs: 3 }),
     );
-    expect(d?.headline).toBe("Jev fell back (enforce) · prepare-error");
-    expect(d?.facts).toEqual(["Jev unavailable: prepare-error", "the regex policies decided alone", "3 ms"]);
-    expect(JSON.stringify(d)).not.toContain("rm -rf");
+    expect(facts).toEqual(["Jev unavailable: prepare-error", "the regex policies decided alone", "3 ms"]);
+    expect(JSON.stringify(facts)).not.toContain("rm -rf");
   });
 });

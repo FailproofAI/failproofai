@@ -24,6 +24,7 @@ import {
 import { join } from "node:path";
 import type { IntegrationType } from "./types";
 import { hookActivityDir } from "./fp-home";
+import { sanitizeJevActivity } from "./jev-activity";
 
 export const PAGE_SIZE = 25;
 
@@ -213,7 +214,13 @@ function releaseLock(): void {
 
 // ── Writing (synchronous — hook handler is short-lived) ──
 
-export function persistHookActivity(entry: HookActivityEntry): void {
+export function persistHookActivity(input: HookActivityEntry): void {
+  // The Jev fields are validated here, at the one door every row passes
+  // through, rather than trusted from the caller: they are shipped off the
+  // machine by the collector, and a fallback reason is the one field that can
+  // carry free text (see jev-activity.ts). A row with no Jev fields is written
+  // exactly as given.
+  const entry = sanitizeJevActivity(input);
   ensureDir();
   acquireLock();
   try {
@@ -414,6 +421,39 @@ export function getAllHookActivityEntries(): HookActivityEntry[] {
   }
 
   return [...currentEntries, ...archiveEntries];
+}
+
+/** See {@link getHookActivityEntriesSince}. */
+export const ROTATION_CLOCK_SLACK_MS = 10 * 60 * 1000;
+
+/**
+ * Every entry stamped at or after `sinceMs`, newest first — without reading the
+ * whole history.
+ *
+ * Pages are never pruned, so a long-lived machine has hundreds of them, and a
+ * windowed question ("how did Jev do in the last day") should not pay for all
+ * of them. It does not have to: an entry's timestamp is taken before it is
+ * appended, and a page is only renamed to `page-<rotatedAt>-<seq>` after its
+ * last append, so every entry in a page is at or before `rotatedAt`. Archives
+ * are listed newest first, so once one was rotated before the window opened,
+ * it and every older page lie wholly outside it and reading stops there.
+ *
+ * `current.jsonl` and the newest pages can still hold entries just outside the
+ * window (two hook processes race to append), hence the per-entry filter.
+ * The stop is taken with {@link ROTATION_CLOCK_SLACK_MS} to spare, so a clock
+ * stepped back a few minutes between two writes costs one extra page read
+ * rather than silently dropping rows from the window.
+ */
+export function getHookActivityEntriesSince(sinceMs: number): HookActivityEntry[] {
+  ensureDir();
+  const inWindow = (e: HookActivityEntry) => typeof e.timestamp === "number" && e.timestamp >= sinceMs;
+  const out = readJsonlFile(join(storeDirValue(), CURRENT_FILE)).reverse().filter(inWindow);
+  for (const file of getArchiveFiles()) {
+    const rotatedAt = parseInt(file.slice(5, -6).split("-")[0], 10);
+    if (Number.isFinite(rotatedAt) && rotatedAt < sinceMs - ROTATION_CLOCK_SLACK_MS) break;
+    out.push(...readJsonlFile(join(storeDirValue(), file)).reverse().filter(inWindow));
+  }
+  return out;
 }
 
 

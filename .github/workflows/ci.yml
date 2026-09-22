@@ -504,7 +504,26 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: ["20.9", "20.x", "22.x", "24.x"]
+        include:
+          # The `engines` FLOOR. This leg proves the published artifact runs on
+          # it, and deliberately does not run the suite: vitest 5 pulls vite 8,
+          # which pulls rolldown, which imports `styleText` from `node:util` —
+          # added in Node 20.12. The TEST RUNNER's floor is not the PACKAGE's
+          # floor, and the honest way to say so is to keep the floor at 20.9 and
+          # prove it with the thing a consumer actually gets.
+          #
+          # Pinning the runner back to something 20.9 can load is the tail
+          # wagging the dog: it means carrying the CVEs vitest 5 fixed (one
+          # Critical, one High) so that a test runner can start on a Node
+          # release nobody runs the tests on.
+          - node-version: "20.9"
+            suite: false
+          - node-version: "20.x"
+            suite: true
+          - node-version: "22.x"
+            suite: true
+          - node-version: "24.x"
+            suite: true
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -522,19 +541,24 @@ jobs:
           command: cd sdk/typescript && npm ci --no-audit --no-fund
 
       - name: Typecheck
+        if: matrix.suite
         run: npm run typecheck
 
       - name: Lint
+        if: matrix.suite
         run: npm run lint
 
+      # Runs on EVERY leg, including the floor: `tsc` is the thing that produces
+      # what ships, so "it builds on 20.9" is a claim worth checking there.
       - name: Build
         run: npm run build
 
-      # `test` re-runs `build` via its pre-step; that is deliberate rather than
-      # wasteful — the evaluator sandbox is a real `worker_threads` entry and
-      # cannot load a `.ts` file, so the sandbox suite needs `dist/` present and
-      # asserts rather than skips when it is missing.
+      # The sandbox suite needs `dist/` present — the evaluator sandbox is a
+      # real `worker_threads` entry and cannot load a `.ts` file — and it
+      # asserts rather than skips when it is missing, so the build above is a
+      # prerequisite rather than a duplicate.
       - name: Test
+        if: matrix.suite
         run: npx vitest run
 
       # Everything above ran against the source tree. These two steps run

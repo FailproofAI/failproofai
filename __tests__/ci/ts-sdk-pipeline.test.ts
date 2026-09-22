@@ -183,16 +183,44 @@ describe("the CI job", () => {
     expect(job.defaults.run["working-directory"]).toBe("sdk/typescript");
   });
 
-  it("covers the Node range the package advertises", () => {
+  it("covers the Node range the package advertises, floor included", () => {
     const manifest = JSON.parse(readFileSync(resolve(SDK, "package.json"), "utf8")) as {
       engines: { node: string };
     };
     const floor = /(\d+)\.(\d+)/.exec(manifest.engines.node)!;
-    const versions = job.strategy.matrix["node-version"] as string[];
+    const legs = job.strategy.matrix.include as Array<{ "node-version": string; suite: boolean }>;
+    const versions = legs.map((leg) => leg["node-version"]);
     // The floor itself has to be in the matrix, or "we support 20.9" is a claim
     // nothing checks.
     expect(versions).toContain(`${floor[1]!}.${floor[2]!}`);
     expect(versions.length).toBeGreaterThanOrEqual(3);
+    // And at least one leg has to run the suite, or the matrix proves only that
+    // the package installs.
+    expect(legs.some((leg) => leg.suite)).toBe(true);
+  });
+
+  it("proves the floor with the ARTIFACT, since the test runner cannot start there", () => {
+    // vitest 5 pulls vite 8 pulls rolldown, which needs `styleText` from
+    // `node:util` — Node 20.12. The test runner's floor is not the package's
+    // floor, so the floor leg skips the suite and must still do the thing that
+    // actually demonstrates 20.9 support: build, pack, install, run.
+    const legs = job.strategy.matrix.include as Array<{ "node-version": string; suite: boolean }>;
+    const floorLeg = legs.find((leg) => !leg.suite);
+    expect(floorLeg).toBeDefined();
+
+    const steps = job.steps as Array<Record<string, any>>;
+    const unconditional = steps
+      .filter((step) => step.if === undefined)
+      .map((step) => String(step.name ?? step.uses ?? ""));
+    for (const required of ["Build", "Pack", "Smoke-test the packed tarball with no dependencies"]) {
+      expect(unconditional).toContain(required);
+    }
+    // Conversely, the steps that cannot run there must be gated rather than
+    // failing the leg.
+    for (const gated of ["Typecheck", "Lint", "Test"]) {
+      const step = steps.find((item) => String(item.name ?? "") === gated)!;
+      expect(step.if).toBe("matrix.suite");
+    }
   });
 
   it("typechecks, lints, tests and proves the artifact installs", () => {

@@ -1,44 +1,54 @@
 ---
 title: "Evaluar agentes"
-description: "Puntúa cada sesión finalizada con evaluaciones que tú defines: checks Python alojados o jueces LLM en tu propio worker."
+description: "Puntúa cada sesión finalizada con evaluaciones que tú defines: comprobaciones Python alojadas o jueces LLM en tu propio worker."
 icon: "gauge"
 ---
 
-Una evaluación puntúa una sesión de agente finalizada. Cuando una sesión termina, todas las evaluaciones habilitadas que le aplican se ejecutan y registran lo que encontraron, con un razonamiento que puedes leer junto a la traza:
+Una evaluación puntúa una sesión de agente finalizada. Cuando una sesión termina, todas las evaluaciones habilitadas que le aplican se ejecutan y registran lo que encontraron, con un razonamiento que puedes leer junto al trace:
 
 - una **puntuación** de 0 a 1, opcionalmente marcada como aprobada o fallida
-- una **métrica**, como un conteo, una duración o un costo, con su unidad
-- una **aserción**, que aprobó o no
+- una **métrica**, como un conteo, una duración o un coste, con su unidad
+- una **aserción**, que se cumplió o no
 
 ## Dos tipos de evaluador
 
 | | Python alojado | Tu propio worker |
 | --- | --- | --- |
-| Se escribe | En el dashboard, bajo **Analyze → eval authoring** | En Python, con el [SDK de evaluadores](/es/reference/evaluator-sdk) |
+| Se escribe | En el dashboard, en **Analyze → eval authoring** | En Python, con el [SDK de Evaluador](/es/reference/evaluator-sdk) |
 | Se ejecuta | En el evaluador gestionado de Failproof AI, en un sandbox | En tu infraestructura |
-| Ideal para | Checks deterministas basados en código | Jueces LLM, llamadas a modelos, paquetes, secretos, acceso a red, procesamiento pesado |
+| Ideal para | Comprobaciones deterministas y las respaldadas por modelos que nosotros alojamos | Paquetes, secretos, tu propia red, modelos que alojas tú mismo, procesamiento intensivo |
 
-El Python alojado es deliberadamente simple: una expresión, sin imports, sin red. Todo lo que necesite un modelo —un juez LLM que evalúe si una respuesta fue relevante, por ejemplo— se ejecuta en tu propio worker. Ninguno de los dos tipos necesita una conexión entrante: los workers toman las sesiones finalizadas y envían los resultados mediante HTTPS saliente.
+Las evaluaciones alojadas tienen tres formas, y el asistente elige entre ellas por ti:
+
+| | Lee la sesión con | Te ofrece |
+| --- | --- | --- |
+| **Código** | nada — una expresión Python, sin imports, sin red | una puntuación, una métrica o una aserción |
+| **[Clasificador](/es/evaluations/jev)** | un modelo pequeño diseñado para clasificación | solo una puntuación — no se explica a sí mismo |
+| **[Juez](/es/evaluations/judge)** | un modelo de propósito general | una puntuación **y** el razonamiento detrás de ella |
+
+El código no tiene coste de ejecución. Los otros dos consumen una llamada al modelo por sesión, así que asígnales una condición que los limite a las sesiones sobre las que realmente trata la pregunta.
+
+Tu propio worker sigue siendo la opción cuando una evaluación necesita algo que nosotros no alojamos: un paquete, un secreto, tu propia red o un modelo que ejecutas tú mismo. Ningún tipo necesita una conexión entrante: los workers reclaman sesiones finalizadas y envían resultados a través de HTTPS saliente.
 
 ## Cada organización evalúa sus propios agentes
 
-Las evaluaciones pertenecen a la organización que las define. Cada organización en una instancia escribe las suyas propias —sus propios checks, condiciones, umbrales y etiquetas—, las versiona y despliega sin afectar a ninguna otra, y solo ve sus propios resultados. Filtra esos resultados por agente, entorno, evaluación y tiempo, o consúltale al asistente sobre ellos.
+Las evaluaciones pertenecen a la organización que las define. Cada organización en una instancia escribe las suyas propias — sus propias comprobaciones, condiciones, umbrales y etiquetas — las versiona y despliega sin afectar a ninguna otra, y solo ve sus propios resultados. Filtra esos resultados por agente, entorno, evaluación y tiempo, o consulta al asistente sobre ellos.
 
-## Del primer borrador a puntuaciones en producción
+## Del primer borrador a las puntuaciones en vivo
 
 <Steps>
   <Step title="Escríbela">
-    Describe qué medir y deja que el asistente haga el borrador, o escríbela tú mismo. Ver [Escribir una evaluación](/es/evaluations/write).
+    Describe qué medir y deja que el asistente la redacte, o escríbela tú mismo. Consulta [Escribir una evaluación](/es/evaluations/write).
   </Step>
   <Step title="Pruébala">
-    Ejecútala contra sesiones reales antes de publicarla; nada se almacena. Ver [Probar una evaluación](/es/evaluations/test).
+    Ejecútala contra sesiones reales antes de que entre en producción; nada se almacena. Consulta [Probar una evaluación](/es/evaluations/test).
   </Step>
-  <Step title="Despliégala y versionala">
-    Despliega una versión inmutable, publica nuevas versiones a medida que evoluciona, y vuelve a una versión anterior si es necesario. Ver [Desplegar y versionar](/es/evaluations/deploy).
+  <Step title="Despliégala y versiona">
+    Despliega una versión inmutable, publica nuevas versiones a medida que evoluciona y vuelve a una anterior cuando lo necesites. Consulta [Desplegar y versionar](/es/evaluations/deploy).
   </Step>
   <Step title="Lee los resultados">
-    Visualiza las puntuaciones a lo largo del tiempo, compara agentes y entornos, y consulta al asistente. Ver [Leer resultados de evaluaciones](/es/sessions/evaluations).
+    Visualiza puntuaciones a lo largo del tiempo, compara agentes y entornos, y consulta al asistente. Consulta [Leer resultados de evaluación](/es/sessions/evaluations).
   </Step>
 </Steps>
 
-Las evaluaciones avanzan hacia adelante: una versión desplegada ahora puntúa las sesiones que finalicen a partir de ese momento. Para puntuar sesiones que ya tienes, [rellena los datos anteriores](/es/evaluations/deploy#puntuar-sesiones-que-ya-tienes).
+Las evaluaciones se ejecutan hacia adelante: una versión desplegada ahora puntúa las sesiones que terminen a partir de este momento. Para puntuar sesiones que ya tienes, [rellena el histórico](/es/evaluations/deploy#score-sessions-you-already-have).

@@ -1,12 +1,12 @@
 ---
-title: "واجهة سطر الأوامر Failproof Cloud"
-description: "مرجع شامل للاستعلام عن Failproof AI Cloud والإشراف على fp."
+title: "Failproof Cloud CLI"
+description: "مرجع شامل للاستعلام وإدارة Failproof AI Cloud باستخدام fp."
 icon: "cloud-cog"
 ---
 
-استخدم `fp` للتفتيش على بيانات telemetry السحابة، وإدارة فرض العمل المدار بواسطة السحابة (السياسات، نشرات الأسطول، قرارات guardrail)، والإشراف على عمليات التدقيق والنتائج والمشاكل والتنبيهات والمفاتيح والمستخدمين والاستعلامات والإعدادات. استخدم [`failproofai`](/ar/reference/failproof-cli) للخطافات المحلية والسياسات والالتقاط وتسجيل الماكينة.
+استخدم `fp` للتحقق من التلميترية السحابية وإدارة الفرض المدار من السحابة (السياسات ونشرات الأسطول وقرارات guardrail) وإدارة التدقيقات والنتائج والمشاكل والتنبيهات والمفاتيح والمستخدمين والاستعلامات والإعدادات. استخدم [`failproofai`](/ar/reference/failproof-cli) للخطافات المحلية والسياسات والالتقاط وتسجيل الآلات.
 
-ثبّت واجهة سطر الأوامر السحابية المُصدرة كأداة معزولة:
+ثبّت أداة Cloud CLI المُصدرة كأداة معزولة:
 
 ```bash
 uv tool install fp-cloud-cli
@@ -20,7 +20,7 @@ fp login
 fp whoami
 ```
 
-## بناء الجملة
+## بنية الصيغة
 
 ```text
 fp [GLOBAL_OPTIONS] COMMAND [SUBCOMMAND] [ARGUMENTS] [OPTIONS]
@@ -32,7 +32,7 @@ fp [GLOBAL_OPTIONS] COMMAND [SUBCOMMAND] [ARGUMENTS] [OPTIONS]
 fp --json sessions --since 24h
 ```
 
-شغّل `fp COMMAND --help` أو `fp COMMAND SUBCOMMAND --help` للحصول على مساعدة من المحطة الطرفية.
+قم بتشغيل `fp COMMAND --help` أو `fp COMMAND SUBCOMMAND --help` للحصول على مساعدة في المحطة الطرفية.
 
 ## أوامر CLI
 
@@ -40,11 +40,11 @@ fp --json sessions --since 24h
 
 | الأمر | الغرض | الخيارات |
 | --- | --- | --- |
-| `fp login` | تسجيل الدخول برمز أحادي المرة مرسل عبر البريد الإلكتروني واختر مؤسسة. | `--email`, `-e`; `--org`; `--force` |
-| `fp logout` | إلغاء وإزالة جلسة المستخدم المحفوظة. | — |
-| `fp whoami` | عرض الهوية الحالية وطريقة المصادقة والمؤسسة والأذونات. | — |
-| `fp version` | عرض إصدار CLI المثبتة. | — |
-| `fp help` | عرض مساعدة الأمر على المستوى الأعلى. | — |
+| `fp login` | سجل الدخول باستخدام رمز لمرة واحدة يتم إرساله عبر البريد الإلكتروني واختر منظمة. | `--email`, `-e`; `--org`; `--force` |
+| `fp logout` | ألغِ وأزل جلسة المستخدم المحفوظة. | — |
+| `fp whoami` | أظهر الهوية الحالية وطريقة المصادقة والمنظمة والأذونات. | — |
+| `fp version` | أظهر إصدار CLI المثبت. | — |
+| `fp help` | أظهر مساعدة الأمر العام. | — |
 
 ```bash
 fp login --email you@example.com --org reliability-team
@@ -57,24 +57,24 @@ fp whoami
 fp events [OPTIONS]
 ```
 
-تسرد أحداث الوكيل الفردية. يستبعد التغذية الخفيفة الافتراضية الحمولات الأولية؛ استخدم `--full` فقط للتحقيق المحدود.
+يسرد أحداث الوكيل الفردية. يستبعد الفيد الخفيف الافتراضي الحمولات الأولية؛ استخدم `--full` فقط للتحقيق المحدود.
 
 | الخيار | الوصف |
 | --- | --- |
-| `--limit`, `-n <n>` | الحد الأقصى للصفوف الكلية. الافتراضي: `50`. |
+| `--limit`, `-n <n>` | أقصى عدد صفوف إجمالي. الافتراضي: `50`. |
 | `--since <window>` | `all`, `15m`, `1h`, `6h`, `24h`, أو `7d`. |
 | `--from <timestamp>` / `--to <timestamp>` | نطاق ISO 8601 UTC؛ يتجاوز `--since`. |
-| `--env <value>` | تصفية البيئة؛ كرر أو افصل القيم بفواصل. |
-| `--event-type <value>` | تصفية نوع الحدث؛ كرر أو افصل القيم بفواصل. |
-| `--agent-id <value>` | تصفية الوكيل؛ كرر أو افصل القيم بفواصل. |
-| `--session-id <value>` | تصفية الجلسة؛ كرر أو افصل القيم بفواصل. |
-| `--search <text>` | بحث نصي عن الحمولة؛ قابل للتكرار، مع مطابقة أي حد. |
-| `--order asc\|desc` | ترتيب زمني. الافتراضي: الأحدث أولاً. |
-| `--all` | ترحيل تلقائي حتى `--limit`. |
-| `--cursor <token>` | استئناف من مؤشر معتم. |
+| `--env <value>` | عامل تصفية البيئة؛ كرر أو افصل القيم بفواصل. |
+| `--event-type <value>` | عامل تصفية نوع الحدث؛ كرر أو افصل القيم بفواصل. |
+| `--agent-id <value>` | عامل تصفية الوكيل؛ كرر أو افصل القيم بفواصل. |
+| `--session-id <value>` | عامل تصفية الجلسة؛ كرر أو افصل القيم بفواصل. |
+| `--search <text>` | البحث عن نص الحمولة؛ قابل للتكرار، أي مصطلح متطابق. |
+| `--order asc\|desc` | ترتيب الوقت. الافتراضي: الأحدث أولاً. |
+| `--all` | الترقيم التلقائي حتى `--limit`. |
+| `--cursor <token>` | استأنف من مؤشر معتم. |
 | `--page-size <n>` | صفوف لكل طلب مع `--all`؛ الحد الأقصى `200`. |
-| `--full` | تضمين الحمولات الأولية من خلال نقطة نهاية الحدث الأثقل. |
-| `--fields <csv>` | إرجاع الحقول المحددة فقط؛ طلب `payload` يفعّل الوضع الكامل. |
+| `--full` | قم بتضمين الحمولات الأولية من خلال نقطة نهاية الحدث الأثقل. |
+| `--fields <csv>` | أرجع الحقول المحددة فقط؛ يتطلب طلب `payload` الوضع الكامل. |
 
 ```bash
 fp events --session-id <session-id> --order asc --all --limit 10000
@@ -82,7 +82,7 @@ fp --json events --full --session-id <session-id> --all --limit 10000
 ```
 
 <Note>
-  `--all` يرحّل **حتى `--limit`**، والذي يبلغ افتراضياً **50** — لذا `--all` بمفرده يتوقف عند 50 صف. عندما يتوقف مبكراً، تحمل الاستجابة `next_cursor` للاستئناف منه؛ `"next_cursor": null` يعني أن التغذية كانت مستنفدة فعلاً.
+  `--all` يرقّم **حتى `--limit`**، الذي يبلغ افتراضياً **50** — لذا `--all` وحده يتوقف عند 50 صفاً. عندما يتوقف مبكراً، تحمل الاستجابة `next_cursor` للاستئناف منه؛ `"next_cursor": null` يعني أن الفيد استُنزف فعلاً.
 </Note>
 
 ### الجلسات
@@ -93,19 +93,19 @@ fp sessions [OPTIONS]
 
 | الخيار | الوصف |
 | --- | --- |
-| `--limit`, `-n <n>` | الحد الأقصى للصفوف الكلية. الافتراضي: `50`. |
+| `--limit`, `-n <n>` | أقصى عدد صفوف إجمالي. الافتراضي: `50`. |
 | `--since <window>` | `all`, `15m`, `1h`, `6h`, `24h`, أو `7d`. |
 | `--from <timestamp>` / `--to <timestamp>` | نطاق ISO 8601 UTC؛ يتجاوز `--since`. |
-| `--env <value>` | تصفية البيئة؛ كرر أو افصل القيم بفواصل. |
+| `--env <value>` | عامل تصفية البيئة؛ كرر أو افصل القيم بفواصل. |
 | `--status <value>` | `done`, `error`, أو `timeout`؛ كرر أو افصل القيم بفواصل. |
-| `--agent-id <value>` | طابق الجلسات التي تتضمن أي وكيل محدد. |
-| `--session-id <value>` | تصفية الجلسة؛ كرر أو افصل القيم بفواصل. |
-| `--all` | ترحيل تلقائي حتى `--limit`. |
-| `--cursor <token>` | استئناف من مؤشر معتم. |
+| `--agent-id <value>` | طابق الجلسات التي تشمل أي وكيل محدد. |
+| `--session-id <value>` | عامل تصفية الجلسة؛ كرر أو افصل القيم بفواصل. |
+| `--all` | الترقيم التلقائي حتى `--limit`. |
+| `--cursor <token>` | استأنف من مؤشر معتم. |
 | `--page-size <n>` | صفوف لكل طلب مع `--all`؛ الحد الأقصى `200`. |
-| `--fields <csv>` | إرجاع الحقول المحددة فقط. |
-| `--full-ids` | لا تقصّر معرفات الجلسات في إخراج المحطة الطرفية. |
-| `--agents` | توسيع قائمة الوكلاء للجلسات متعددة الوكلاء. |
+| `--fields <csv>` | أرجع الحقول المحددة فقط. |
+| `--full-ids` | لا تختصر معرفات الجلسات في مخرجات المحطة الطرفية. |
+| `--agents` | وسّع قائمة الوكلاء لجلسات متعددة الوكيل. |
 
 ### التقييمات
 
@@ -115,15 +115,15 @@ fp evals [OPTIONS]
 
 | الخيار | الوصف |
 | --- | --- |
-| `--aggregate` | عرض الإجماليات والإحصائيات لكل درجة بدلاً من التقييمات الفردية. |
-| `--limit`, `-n <n>` | الحد الأقصى لصفوف القائمة. الافتراضي: `50`. |
-| `--since`, `--from`, `--to` | حدد نطاق الوقت. |
-| `--env`, `--status`, `--agent-id`, `--session-id` | ضيّق على قيمة واحدة محددة لكل تصفية. |
-| `--score KEY:MIN..MAX` | نطاق الدرجات؛ قابل للتكرار ويجب أن تطابق جميع النطاقات. |
-| `--all`, `--cursor`, `--page-size` | تحكم في ترحيل القائمة. |
-| `--fields <csv>` | إرجاع الحقول المحددة فقط. |
-| `--full-ids` | عرض معرفات الجلسات الكاملة. |
-| `--scores-full` | عرض كل درجة في إخراج المحطة الطرفية. |
+| `--aggregate` | أظهر الإجماليات وإحصائيات لكل درجة بدلاً من التقييمات الفردية. |
+| `--limit`, `-n <n>` | أقصى صفوف القائمة. الافتراضي: `50`. |
+| `--since`, `--from`, `--to` | اختر نطاق الوقت. |
+| `--env`, `--status`, `--agent-id`, `--session-id` | ضيّق إلى قيمة دقيقة واحدة لكل عامل تصفية. |
+| `--score KEY:MIN..MAX` | نطاق الدرجة؛ قابل للتكرار وجميع النطاقات يجب أن تتطابق. |
+| `--all`, `--cursor`, `--page-size` | تحكم بالترقيم التلقائي للقائمة. |
+| `--fields <csv>` | أرجع الحقول المحددة فقط. |
+| `--full-ids` | أظهر معرفات الجلسة الكاملة. |
+| `--scores-full` | أظهر كل درجة في مخرجات المحطة الطرفية. |
 
 ### الأخطاء
 
@@ -133,120 +133,120 @@ fp errors [OPTIONS]
 
 | الخيار | الوصف |
 | --- | --- |
-| `--aggregate` | ملخص الأخطاء المطابقة بدلاً من عرض الصفوف. |
-| `--limit`, `-n <n>` | الحد الأقصى لصفوف القائمة. الافتراضي: `50`. |
-| `--since`, `--from`, `--to` | حدد نطاق الوقت. |
-| `--env`, `--error-type`, `--event-type`, `--agent-id`, `--session-id` | ضيّق من مجموعة الأخطاء. |
-| `--search <text>` | بحث نصي عن الحمولة؛ قابل للتكرار. |
-| `--order asc\|desc` | ترتيب زمني. |
-| `--all`, `--cursor`, `--page-size` | تحكم في ترحيل القائمة. |
-| `--fields <csv>` | إرجاع الحقول المحددة فقط. |
-| `--full-ids` | عرض معرفات الجلسات الكاملة. |
+| `--aggregate` | ملخّص الأخطاء المطابقة بدلاً من إدراج الصفوف. |
+| `--limit`, `-n <n>` | أقصى صفوف القائمة. الافتراضي: `50`. |
+| `--since`, `--from`, `--to` | اختر نطاق الوقت. |
+| `--env`, `--error-type`, `--event-type`, `--agent-id`, `--session-id` | ضيّق مجتمع الأخطاء. |
+| `--search <text>` | ابحث عن نص الحمولة؛ قابل للتكرار. |
+| `--order asc\|desc` | ترتيب الوقت. |
+| `--all`, `--cursor`, `--page-size` | تحكم بالترقيم التلقائي للقائمة. |
+| `--fields <csv>` | أرجع الحقول المحددة فقط. |
+| `--full-ids` | أظهر معرفات الجلسة الكاملة. |
 
 ### الاستخدام وقيم التصفية
 
 | الأمر | الغرض |
 | --- | --- |
-| `fp usage` | عرض الاستخدام لنافذة التقسيم الحالية. |
-| `fp list envs` | عرض قائمة البيئات المراقبة. |
-| `fp list agents` | عرض قائمة معرفات الوكلاء المراقبة. |
-| `fp list event_types` | عرض قائمة أنواع الأحداث. |
-| `fp list score_filters` | عرض قائمة مفاتيح درجات التقييم. |
-| `fp list models` | عرض قائمة أسماء النماذج. |
-| `fp list hooks` | عرض قائمة أسماء الخطافات. |
-| `fp list tools` | عرض قائمة أسماء الأدوات. |
-| `fp list error_types` | عرض قائمة أنواع الأخطاء. |
+| `fp usage` | أظهر الاستخدام لنافذة القياس الحالية. |
+| `fp list envs` | اسرد البيئات المرصودة. |
+| `fp list agents` | اسرد معرفات الوكلاء المرصودة. |
+| `fp list event_types` | اسرد أنواع الأحداث. |
+| `fp list score_filters` | اسرد مفاتيح درجات التقييم. |
+| `fp list models` | اسرد أسماء النماذج. |
+| `fp list hooks` | اسرد أسماء الخطافات. |
+| `fp list tools` | اسرد أسماء الأدوات. |
+| `fp list error_types` | اسرد أنواع الأخطاء. |
 
-### المؤسسات
+### المنظمات
 
 | الأمر | الغرض |
 | --- | --- |
-| `fp orgs list` | عرض قائمة المؤسسات القابلة للوصول. |
-| `fp orgs switch [SLUG]` | احفظ مؤسسة نشطة؛ يُطلب عند الحذف. |
-| `fp orgs current` | عرض المؤسسة النشطة. |
-| `fp orgs perms` | عرض أذوناتك في المؤسسة النشطة. |
+| `fp orgs list` | اسرد المنظمات التي يمكن الوصول إليها. |
+| `fp orgs switch [SLUG]` | احفظ منظمة نشطة؛ اطلب عند الحذف. |
+| `fp orgs current` | أظهر المنظمة النشطة. |
+| `fp orgs perms` | أظهر أذوناتك في المنظمة النشطة. |
 
 ### مفاتيح API
 
 | الأمر | الغرض | الخيارات |
 | --- | --- | --- |
-| `fp keys list` | عرض قائمة مفاتيح المؤسسة. | `--show-id`; `--fields <csv>` |
-| `fp keys show NAME` | عرض مفتاح واحد ومنحاته. | — |
-| `fp keys create NAME` | إنشاء مفتاح وكشف سره مرة واحدة. | `--permission-set`; `--add`; `--remove` |
-| `fp keys update NAME` | استبدال مجموعة الأذونات أو ضبط المنح. | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
-| `fp keys regenerate NAME` | تدوير السر واكشف الاستبدال مرة واحدة. | `--yes`, `-y` |
-| `fp keys disable NAME` | إلغاء مفتاح بشكل دائم. | `--yes`, `-y` |
+| `fp keys list` | اسرد مفاتيح المنظمة. | `--show-id`; `--fields <csv>` |
+| `fp keys show NAME` | أظهر مفتاحاً واحداً ومنحه. | — |
+| `fp keys create NAME` | أنشئ مفتاحاً واكشف سره مرة واحدة. | `--permission-set`; `--add`; `--remove` |
+| `fp keys update NAME` | استبدل مجموعة الأذونات أو اضبط المنح. | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
+| `fp keys regenerate NAME` | أدر السر واكشف الاستبدال مرة واحدة. | `--yes`, `-y` |
+| `fp keys disable NAME` | ألغِ مفتاحاً بشكل دائم. | `--yes`, `-y` |
 
-تستخدم رموز الأذونات `resource:action`، مثل `events:add`. كرر `--add`، افصل الرموز بفواصل، أو استخدم إجراءات مفصولة بنقاط مثل `events:read.add`.
+تستخدم رموز الأذونات `resource:action`، مثل `events:add`. كرّر `--add`، أو افصل الرموز بفواصل، أو استخدم الإجراءات المنقطة مثل `events:read.add`.
 
 ### الاستعلامات
 
 | الأمر | الغرض | الخيارات |
 | --- | --- | --- |
-| `fp query list` | عرض قائمة الاستعلامات المحفوظة. | `--show-id`; `--fields <csv>` |
-| `fp query show NAME` | عرض استعلام واحد. | — |
-| `fp query create NAME` | حفظ استعلام. | `--sql <text\|@file>`; `--description` |
-| `fp query update NAME` | تحديث أو إعادة تسمية استعلام. | `--name`; `--sql`; `--description`; `--yes`, `-y` |
-| `fp query delete NAME` | حذف استعلام محفوظ. | `--yes`, `-y` |
-| `fp query run [NAME]` | شغّل استعلاماً محفوظاً أو SQL فوري. | `--sql`; `--limit`; `--all`; `--arg`, `--param` |
-| `fp query schema [TABLE]` | عرض قائمة الجداول القابلة للاستعلام أو فحص جدول واحد. | — |
+| `fp query list` | اسرد الاستعلامات المحفوظة. | `--show-id`; `--fields <csv>` |
+| `fp query show NAME` | أظهر استعلاماً واحداً. | — |
+| `fp query create NAME` | احفظ استعلاماً. | `--sql <text\|@file>`; `--description` |
+| `fp query update NAME` | حدّث أو أعد تسمية استعلام. | `--name`; `--sql`; `--description`; `--yes`, `-y` |
+| `fp query delete NAME` | احذف استعلاماً محفوظاً. | `--yes`, `-y` |
+| `fp query run [NAME]` | قم بتشغيل استعلام محفوظ أو SQL مخصص. | `--sql`; `--limit`; `--all`; `--arg`, `--param` |
+| `fp query schema [TABLE]` | اسرد الجداول القابلة للاستعلام أو افحص جدولاً واحداً. | — |
 
 ### المستخدمون
 
 | الأمر | الغرض | الخيارات |
 | --- | --- | --- |
-| `fp users list` | عرض قائمة أعضاء المؤسسة. | `--active-only`; `--show-id` |
-| `fp users show EMAIL` | عرض عضو ومنحاه. | — |
-| `fp users create EMAIL` | إضافة عضو. | `--permission-set`; `--add`; `--remove` |
-| `fp users update EMAIL` | تغيير منح العضو. | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
-| `fp users disable EMAIL` | تعطيل تسجيل الدخول. | `--yes`, `-y` |
-| `fp users enable EMAIL` | إعادة تفعيل تسجيل الدخول. | `--yes`, `-y` |
+| `fp users list` | اسرد أعضاء المنظمة. | `--active-only`; `--show-id` |
+| `fp users show EMAIL` | أظهر عضواً ومنحه. | — |
+| `fp users create EMAIL` | أضف عضواً. | `--permission-set`; `--add`; `--remove` |
+| `fp users update EMAIL` | غيّر منح عضو. | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
+| `fp users disable EMAIL` | عطّل تسجيل الدخول. | `--yes`, `-y` |
+| `fp users enable EMAIL` | أعد تفعيل تسجيل الدخول. | `--yes`, `-y` |
 
 ### الإعدادات
 
 | الأمر | الغرض | الخيارات |
 | --- | --- | --- |
-| `fp settings list` | عرض قائمة إعدادات المؤسسة والقيم الحالية. | — |
-| `fp settings schema` | عرض القيم المقبولة والأوصاف. | — |
-| `fp settings set KEY` | تغيير إعداد موجود. | واحد فقط من `--value`, `--json-value`, `--file`؛ اختياري `--yes`, `-y` |
+| `fp settings list` | اسرد إعدادات المنظمة والقيم الحالية. | — |
+| `fp settings schema` | أظهر القيم المقبولة والأوصاف. | — |
+| `fp settings set KEY` | غيّر إعداداً موجوداً. | واحد بالضبط من `--value`, `--json-value`, `--file`؛ اختياري `--yes`, `-y` |
 
 ### التنبيهات
 
 | الأمر | الغرض | الخيارات |
 | --- | --- | --- |
-| `fp alerts list` | عرض قائمة قواعد التنبيه. | `--show-id` |
-| `fp alerts show NAME` | عرض تنبيه واحد. | — |
-| `fp alerts create NAME` | إنشاء تنبيه. | `--file`; `--description`; `--severity`; `--trigger-kind`; `--trigger-spec`; `--channels`; `--eval-interval-secs`; `--min-breaches`; `--eval-window` |
-| `fp alerts update NAME` | تحديث أو إعادة تسمية تنبيه. | خيارات الإنشاء بالإضافة إلى `--name`; `--yes`, `-y` |
-| `fp alerts delete NAME` | حذف تنبيه. | `--yes`, `-y` |
-| `fp alerts test NAME` | إرسال إخطار اختبار. | `--channels`; `--yes`, `-y` |
+| `fp alerts list` | اسرد قواعد التنبيهات. | `--show-id` |
+| `fp alerts show NAME` | أظهر تنبيهاً واحداً. | — |
+| `fp alerts create NAME` | أنشئ تنبيهاً. | `--file`; `--description`; `--severity`; `--trigger-kind`; `--trigger-spec`; `--channels`; `--eval-interval-secs`; `--min-breaches`; `--eval-window` |
+| `fp alerts update NAME` | حدّث أو أعد تسمية تنبيه. | خيارات الإنشاء بالإضافة إلى `--name`; `--yes`, `-y` |
+| `fp alerts delete NAME` | احذف تنبيهاً. | `--yes`, `-y` |
+| `fp alerts test NAME` | أرسل إخطاراً اختباراً. | `--channels`; `--yes`, `-y` |
 
-شدات التنبيه هي `info`, `warning`, و `critical`. أنواع المشغلات هي `metric_threshold`, `custom_sql`, `evaluation_score`, `eval_compound`, و `per_event`. يجب أن تكون فترات التقييم بين 30 و 86400 ثانية.
+شدات التنبيهات هي `info`, `warning`, و `critical`. أنواع المُطلقات هي `metric_threshold`, `custom_sql`, `evaluation_score`, `eval_compound`, و `per_event`. يجب أن تكون فترات التقييم بين 30 و 86400 ثانية.
 
-### التدقيق
+### التدقيقات
 
 | الأمر | الغرض | الخيارات |
 | --- | --- | --- |
-| `fp audits list` | عرض قائمة المراجعات. | `--enabled-only`; `--show-id` |
-| `fp audits show NAME` | عرض تعريف المراجعة واحدة وحالتها. | — |
-| `fp audits create NAME` | إنشاء مراجعة وطلب تشغيلها الأول على الفور. | انظر [خيارات الإنشاء](#خيارات-إنشاء-المراجعة). |
-| `fp audits edit NAME` | استبدل إعدادات المراجعة مع الاحتفاظ بالقيم غير المحددة. | خيارات تعريف الإنشاء؛ `--name`; `--yes`, `-y` |
-| `fp audits delete NAME` | حذف مراجعة ونتائجها وسجل التشغيل. | `--yes`, `-y` |
-| `fp audits run NAME` | طلب تشغيل يدوي. | — |
-| `fp audits runs NAME` | عرض قائمة سجل التشغيل. | `--limit`, `-n`; `--show-id` |
-| `fp audits context-show NAME` | عرض الملخص وحالة جلب عنوان URL المرجعي. | — |
-| `fp audits context-set NAME` | تغيير الملخص أو عناوين URL المرجعية. | `--text`; `--text-file`; `--url`; `--clear-urls` |
-| `fp audits context-refresh NAME` | إعادة جلب عناوين URL المرجعية. | — |
-| `fp audits findings` | عرض قائمة النتائج. | `--audit`; `--run-id`; `--status`; `--limit`, `-n`; `--offset`; `--show-id` |
-| `fp audits finding FINDING_ID` | عرض نتيجة واحدة وأدلتها. | — |
-| `fp audits ack FINDING_ID` | الإقرار بنتيجة. | `--reason` |
-| `fp audits mute FINDING_ID` | قمع نمط متكرر. | `--reason`; `--yes`, `-y` |
-| `fp audits dismiss FINDING_ID` | وضع علامة على النمط غير قابل للتنفيذ وقمعه. | `--reason`; `--yes`, `-y` |
-| `fp audits resolve FINDING_ID` | وضع علامة على إصلاح النتيجة بدون قمع مستقبلي. | `--yes`, `-y` |
-| `fp audits reopen FINDING_ID` | إرجاع نتيجة إلى قائمة الانتظار المباشرة ومسح القمع. | — |
-| `fp audits assign FINDING_ID` | تعيين مالك النتيجة. | `--to <email>` مطلوب |
+| `fp audits list` | اسرد التدقيقات. | `--enabled-only`; `--show-id` |
+| `fp audits show NAME` | أظهر تعريف وحالة تدقيق واحد. | — |
+| `fp audits create NAME` | أنشئ تدقيقاً وصفّ تشغيله الأول فوراً. | انظر [خيارات الإنشاء](#audit-create-options). |
+| `fp audits edit NAME` | استبدل إعدادات التدقيق مع الاحتفاظ بالقيم غير المحددة. | خيارات تعريف الإنشاء؛ `--name`; `--yes`, `-y` |
+| `fp audits delete NAME` | احذف تدقيقاً ونتائجه وسجل التشغيل. | `--yes`, `-y` |
+| `fp audits run NAME` | صفّ تشغيلاً يدوياً. | — |
+| `fp audits runs NAME` | اسرد سجل التشغيل. | `--limit`, `-n`; `--show-id` |
+| `fp audits context-show NAME` | أظهر الملخص وحالة جلب URL المرجعي. | — |
+| `fp audits context-set NAME` | غيّر الملخص أو URLs المرجعية. | `--text`; `--text-file`; `--url`; `--clear-urls` |
+| `fp audits context-refresh NAME` | أعد جلب URLs المرجعية. | — |
+| `fp audits findings` | اسرد النتائج. | `--audit`; `--run-id`; `--status`; `--limit`, `-n`; `--offset`; `--show-id` |
+| `fp audits finding FINDING_ID` | أظهر نتيجة واحدة وأدلتها. | — |
+| `fp audits ack FINDING_ID` | اعترف بنتيجة. | `--reason` |
+| `fp audits mute FINDING_ID` | اكبت نمطاً متكررة. | `--reason`; `--yes`, `-y` |
+| `fp audits dismiss FINDING_ID` | ضع علامة على نمط غير قابل للتنفيذ واكبته. | `--reason`; `--yes`, `-y` |
+| `fp audits resolve FINDING_ID` | ضع علامة على نتيجة كمُصلحة بدون كبت مستقبلي. | `--yes`, `-y` |
+| `fp audits reopen FINDING_ID` | أعد نتيجة إلى قائمة الانتظار الحية واحذف الكبت. | — |
+| `fp audits assign FINDING_ID` | ضع مالك النتيجة. | مطلوب `--to <email>` |
 
-#### خيارات إنشاء المراجعة
+#### خيارات إنشاء التدقيق
 
 ```bash
 fp audits create checkout-reliability \
@@ -261,116 +261,120 @@ fp audits create checkout-reliability \
 
 | الخيار | الوصف |
 | --- | --- |
-| `--file <path>` | بناء التعريف على JSON، أو استخدم `-` للإدخال القياسي. الأعلام الصريحة تتجاوز قيم الملف. |
-| `--description <text>` | حدد سؤال الفشل أو الغرض. |
-| `--enabled` / `--disabled` | ابدأ الجدولة على أو بـ إيقاف. الافتراضي: مفعّل. |
+| `--file <path>` | أساس التعريف على JSON، أو استخدم `-` لـ stdin. تتجاوز الأعلام الصريحة قيم الملف. |
+| `--description <text>` | اذكر سؤال الفشل أو الغرض. |
+| `--enabled` / `--disabled` | ابدأ الجدولة على أو إيقاف. الافتراضي: مُفعّل. |
 | `--schedule-interval-secs <n>` | `3600`–`604800`. الافتراضي: `86400`. |
-| `--schedule-anchor <timestamp>` | المرحلة UTC الثابتة بصيغة ISO 8601. الافتراضي: 09:00 UTC التالية. |
-| `--window-mode since_last\|fixed` | متابعة بعد آخر نافذة تم تحليلها بالكامل أو فحص نافذة متداخلة بشكل متكرر. الافتراضي: `since_last`. |
+| `--schedule-anchor <timestamp>` | مرحلة UTC ثابتة في شكل ISO 8601. الافتراضي: 09:00 UTC القادمة. |
+| `--window-mode since_last\|fixed` | استمر بعد النافذة التي تم تحليلها بالكامل الأخيرة أو افحص النافذة المتداول بشكل متكرر. الافتراضي: `since_last`. |
 | `--lookback-window-secs <n>` | `3600`–`7776000`. الافتراضي: `604800`. |
-| `--scope '<json>'` | التصفية حسب `environments`, `agent_ids`, أو حقول نطاق أخرى مدعومة. |
+| `--scope '<json>'` | صفّي حسب `environments`, `agent_ids`, أو حقول النطاق المدعومة الأخرى. |
 | `--ignore-error-type <type>` | استبعد أنواع الأخطاء؛ كرر أو افصل بفواصل. |
-| `--llm` / `--no-llm` | فعّل أو عطّل التحليل الذي يحركه الوكيل. الافتراضي: مفعّل. |
+| `--llm` / `--no-llm` | فعّل أو عطّل التحليل الوكيلي. الافتراضي: مُفعّل. |
 | `--top-k <n>` | احتفظ بـ `1`–`500` نتيجة. الافتراضي: `50`. |
-| `--sensitivity low\|medium\|high` | اضبط حساسية الإبلاغ. الافتراضي: `medium`. |
-| `--channels '<json>'` | مصفوفة قنوات الإخطار. |
-| `--text <brief>` | ملخص مضمن، بحد أقصى 8192 حرف. |
-| `--text-file <path>` | اقرأ الملخص من ملف؛ متعارض مع `--text`. |
-| `--url <https-url>` | أضف مرجعاً عام HTTPS؛ كرر حتى خمس مرات. |
+| `--sensitivity low\|medium\|high` | ضع حساسية التقرير. الافتراضي: `medium`. |
+| `--channels '<json>'` | مصفوفة قناة الإخطار. |
+| `--text <brief>` | ملخص مضمن، بحد أقصى 8192 حرفاً. |
+| `--text-file <path>` | اقرأ الملخص من ملف؛ حصري مع `--text`. |
+| `--url <https-url>` | أضف مرجعاً عاماً HTTPS؛ كرر حتى خمس مرات. |
 
-أدرج السياق أثناء الإنشاء عندما يحتاجه التشغيل الأول. الإنشاء ينفذ التعريف والسياق معاً قبل بدء التشغيل المطلوب.
+قم بتضمين السياق أثناء الإنشاء عندما يحتاج التشغيل الأول إليه. يلتزم الإنشاء بالتعريف والسياق معاً قبل أن يبدأ التشغيل المصفوف.
 
 <Note>
-  `fp audits run` غير متزامن. استطلع `fp audits runs NAME` حتى ينجح التشغيل الأخير أو يفشل قبل قراءة نتائجه.
+  `fp audits run` غير متزامن. اسأل `fp audits runs NAME` حتى ينجح أو يفشل آخر تشغيل قبل قراءة النتائج.
 </Note>
 
 ### المشاكل
 
 | الأمر | الغرض | الخيارات |
 | --- | --- | --- |
-| `fp issues list` | عرض قائمة المشاكل. | `--state`; `--alert-id`; `--limit`, `-n`; `--show-id` |
-| `fp issues count` | عدّ المشاكل المفتوحة أو حالات المشاكل المحددة. | `--state` |
-| `fp issues show INCIDENT_ID` | عرض تفاصيل المشكلة والتعليقات والمشتركين والنشاط. | — |
-| `fp issues open` | افتح مشكلة يدوية أو مرتبطة بتنبيه. | `--summary` مطلوب؛ اختياري `--title`, `--alert-id`, `--severity` |
-| `fp issues ack INCIDENT_ID` | الإقرار بمشكلة. | — |
-| `fp issues assign INCIDENT_ID` | استبدل المكلفين؛ حذف الخيار لمسحهم. | `--assignee` قابل للتكرار |
-| `fp issues resolve INCIDENT_ID` | حل مشكلة. | `--yes`, `-y` |
-| `fp issues comment-list INCIDENT_ID` | عرض قائمة التعليقات. | — |
-| `fp issues comment-add INCIDENT_ID` | إضافة تعليق. | واحد فقط من `--body`, `--file` |
-| `fp issues comment-delete INCIDENT_ID COMMENT_ID` | حذف تعليق. | `--yes`, `-y` |
-| `fp issues subscribers INCIDENT_ID` | عرض قائمة المشتركين. | — |
-| `fp issues subscribe INCIDENT_ID` | اشترك بنفسك أو بمشغل آخر. | `--email` |
-| `fp issues unsubscribe INCIDENT_ID` | إزالة اشتراك. | `--email` |
+| `fp issues list` | اسرد المشاكل. المشاكل المؤرشفة مخفية. | `--state`; `--alert-id`; `--limit`, `-n`; `--show-id` |
+| `fp issues count` | احسب حالات المشاكل المفتوحة أو المحددة. | `--state` |
+| `fp issues show INCIDENT_ID` | أظهر تفاصيل المشكلة والتعليقات والمشتركين والنشاط. | — |
+| `fp issues open` | افتح مشكلة يدوية أو مرتبطة بتنبيه. | مطلوب `--summary`; اختياري `--title`, `--alert-id`, `--severity` |
+| `fp issues ack INCIDENT_ID` | اعترف بمشكلة. | — |
+| `fp issues assign INCIDENT_ID` | استبدل المسؤولين؛ احذف الخيار لمسحهم. | قابل للتكرار `--assignee` |
+| `fp issues resolve INCIDENT_ID` | حل مشكلة: المشكلة مُصلحة. قد يعاد فتح النتيجة المتكررة من التدقيق. | `--yes`, `-y` |
+| `fp issues close INCIDENT_ID` | أغلق مشكلة: انتهيت منها، مُصلحة أم لا. لن تفتح مرة أخرى في حالة التكرار. | `--yes`, `-y` |
+| `fp issues archive INCIDENT_ID` | أزل مشكلة من اللوحة دون تغيير كيفية انتهائها. | — |
+| `fp issues unarchive INCIDENT_ID` | ضع مشكلة مؤرشفة على اللوحة. | — |
+| `fp issues clear` | حل كل مشكلة مفتوحة في نطاق، بالإضافة إلى نتائج التدقيق خلفها. يتطلب علماً نطاقياً واحداً بالضبط. | واحد من `--audit`, `--all-audits`, `--everything`; `--dry-run`; `--yes`, `-y` |
+| `fp issues comment-list INCIDENT_ID` | اسرد التعليقات. | — |
+| `fp issues comment-add INCIDENT_ID` | أضف تعليقاً. | واحد بالضبط من `--body`, `--file` |
+| `fp issues comment-delete INCIDENT_ID COMMENT_ID` | احذف تعليقاً. | `--yes`, `-y` |
+| `fp issues subscribers INCIDENT_ID` | اسرد المشتركين. | — |
+| `fp issues subscribe INCIDENT_ID` | اشترك بنفسك أو مشغّل آخر. | `--email` |
+| `fp issues unsubscribe INCIDENT_ID` | أزل اشتراكاً. | `--email` |
 
-حالات المشاكل الصحيحة هي `firing`, `acknowledged`, و `resolved`. شدات المشاكل المستقلة هي `info`, `warning`, و `critical`.
+حالات المشاكل الصالحة هي `firing`, `acknowledged`, و `resolved`. شدات المشاكل المستقلة هي `info`, `warning`, و `critical`.
 
 ### مساعد السحابة
 
 | الأمر | الغرض | الخيارات |
 | --- | --- | --- |
-| `fp agent health` | تحقق من توفر وتكوين المساعد. | — |
-| `fp agent models` | عرض قائمة نماذج المساعد المتاحة. | — |
-| `fp agent chats` | عرض قائمة المحادثات المحفوظة. | — |
-| `fp agent ask [MESSAGE]` | ابدأ أو استمر في محادثة؛ اقرأ من الإدخال القياسي عند حذف الرسالة. | `--chat`; `--model`; `--page-context` |
-| `fp agent show CHAT_ID` | عرض محادثة محفوظة. | — |
-| `fp agent rename CHAT_ID` | أعد تسمية محادثة. | `--title` مطلوب |
-| `fp agent delete CHAT_ID` | حذف محادثة. | `--yes`, `-y` |
+| `fp agent health` | تحقق من توفر المساعد والتكوين. | — |
+| `fp agent models` | اسرد نماذج المساعد المتاحة. | — |
+| `fp agent chats` | اسرد الدردشات المحفوظة. | — |
+| `fp agent ask [MESSAGE]` | ابدأ أو استمر في دردشة؛ اقرأ stdin عند حذف الرسالة. | `--chat`; `--model`; `--page-context` |
+| `fp agent show CHAT_ID` | أظهر محادثة محفوظة. | — |
+| `fp agent rename CHAT_ID` | أعد تسمية محادثة. | مطلوب `--title` |
+| `fp agent delete CHAT_ID` | احذف محادثة. | `--yes`, `-y` |
 
 ### السياسات
 
-إصدارات السياسة المدارة بواسطة السحابة. **جلسة فقط** — كل أمر هنا يُخرج `2` تحت مفتاح API، قبل أي طلب، لأن هذه مسارات كتابة جذرية محذوفة عن قصد من `/v1`.
+نسخ السياسة المدارة من السحابة. **جلسة فقط** — كل أمر هنا يخرج `2` تحت مفتاح API، قبل أي طلب، لأن هذه مسارات الكتابة الجذرية المتعمدة غائبة عن `/v1`.
 
 | الأمر | الغرض | الخيارات |
 | --- | --- | --- |
-| `fp policies list` | عرض قائمة إصدارات السياسة. | `--json` |
-| `fp policies show POLICY_ID` | عرض سياسة واحدة، مع مصدرها. | — |
-| `fp policies publish NAME PATH` | نقيب إصدار من `.mjs` محلي. | `--description`; `--no-verify` |
-| `fp policies enable POLICY_ID` | أضفها مرة أخرى إلى كل نشر تم إزالتها منه، نقيب جيل جديد على كل واحد. | `--yes`, `-y` |
-| `fp policies disable POLICY_ID` | أزلها من كل نشر تحملها، نقيب جيل جديد على كل واحد. | `--yes`, `-y` |
-| `fp policies delete POLICY_ID` | حذف إصدار سياسة. | `--yes`, `-y` |
-| `fp policies test PATH` | شغّل سياسة محلياً مقابل سياق تركيبي. تطبق تصفية `match` لكل سياسة، لذلك التي لا تغطي الحدث/الأداة المحددة يتم الإبلاغ عنها `skipped` بدلاً من التشغيل. | `--event`; `--tool`; `--command`; `--file`; `--expect` |
+| `fp policies list` | اسرد نسخ السياسة. | `--json` |
+| `fp policies show POLICY_ID` | أظهر سياسة واحدة، مع مصدرها. | — |
+| `fp policies publish NAME PATH` | اسك نسخة من `.mjs` محلي. | `--description`; `--no-verify` |
+| `fp policies enable POLICY_ID` | أضفها إلى كل نشرة تم إزالتها منها، اسك جيلاً جديداً على كل واحدة. | `--yes`, `-y` |
+| `fp policies disable POLICY_ID` | أزلها من كل نشرة تحمله، اسك جيلاً جديداً على كل واحدة. | `--yes`, `-y` |
+| `fp policies delete POLICY_ID` | احذف نسخة سياسة. | `--yes`, `-y` |
+| `fp policies test PATH` | قم بتشغيل سياسة محلياً مقابل سياق اصطناعي. تطبق عامل المطابقة لكل سياسة، لذا واحدة لا تغطي الحدث/الأداة المعطاة يتم الإبلاغ عنها `skipped` بدلاً من التشغيل. | `--event`; `--tool`; `--command`; `--file`; `--expect` |
 | `fp policies compose PROMPT` | صيغ سياسة مع المساعد. يحتاج `policies:write`. | — |
 
 ### الأسطول
 
-أي ماكينات تشغل أي سياسات. **جلسة فقط**، نفس السبب أعلاه.
+أي آلات تقوم بتشغيل أي سياسات. **جلسة فقط**، نفس السبب كما هو أعلاه.
 
 | الأمر | الغرض | الخيارات |
 | --- | --- | --- |
-| `fp fleet list` | عرض قائمة الماكينات المسجلة وجيل النشر الخاص بها. | — |
-| `fp fleet show MACHINE_ID` | مجموعة السياسات التي تشغلها ماكينة حالياً. | — |
-| `fp fleet deploy MACHINE_ID` | **استبدل مجموعة السياسات الكاملة للماكينة.** اطبع الخطة واسأل فقط على محطة طرفية تفاعلية بدون `--json`. | `--add`; `--remove`; `--set`; `--create`; `--yes`, `-y` |
-| `fp fleet diff MACHINE_ID` | قارن ماكينة مقابل نشر آخر. | — |
-| `fp fleet history MACHINE_ID` | النشريات السابقة لماكينة. | — |
-| `fp fleet rollback MACHINE_ID GENERATION` | أعد تثبيت مجموعة السياسات لجيل سابق، كجيل جديد. | `--yes`, `-y` |
-| `fp fleet rename MACHINE_ID` | أعط ماكينة اسماً قابلاً للقراءة. | `--name` مطلوب |
+| `fp fleet list` | اسرد الآلات المسجلة وجيل النشر الخاص بها. | — |
+| `fp fleet show MACHINE_ID` | مجموعة السياسة التي تقوم الآلة بتشغيلها حالياً. | — |
+| `fp fleet deploy MACHINE_ID` | **استبدل مجموعة السياسة الكاملة للآلة.** اطبع الخطة واسأل فقط على محطة تفاعلية بدون `--json`. | `--add`; `--remove`; `--set`; `--create`; `--yes`, `-y` |
+| `fp fleet diff MACHINE_ID` | قارن آلة مقابل نشرة أخرى. | — |
+| `fp fleet history MACHINE_ID` | النشرات الماضية لآلة. | — |
+| `fp fleet rollback MACHINE_ID GENERATION` | أعد تشغيل مجموعة السياسة من جيل ماضٍ، كجيل جديد. | `--yes`, `-y` |
+| `fp fleet rename MACHINE_ID` | أعط آلة اسماً قابلاً للقراءة. | مطلوب `--name` |
 
-### guardrails
+### Guardrails
 
-ما فعله الفرض فعلاً. **جلسة فقط**، نفس السبب أعلاه.
+ماذا فعل الفرض فعلاً. **جلسة فقط**، نفس السبب كما هو أعلاه.
 
 | الأمر | الغرض | الخيارات |
 | --- | --- | --- |
-| `fp guardrails summary` | التغطية والإجماليات المحجوبة/المقيّمة وخط رفض وجدول لكل سياسة. | `--since` (`1h`, `6h`, `24h`, `7d`); `--machine` |
-| `fp guardrails timeline` | القرارات المجمعة على النافذة، مجموعة على كل مصدر سياسة. | `--since` (`1h`, `6h`, `24h`, `7d`); `--machine` |
+| `fp guardrails summary` | التغطية، إجماليات الكبت/التقييم، شرارة النفي، وجدول لكل سياسة. | `--since` (`1h`, `6h`, `24h`, `7d`); `--machine` |
+| `fp guardrails timeline` | القرارات مدرجة على النافذة، مجموع على كل مصدر سياسة. | `--since` (`1h`, `6h`, `24h`, `7d`); `--machine` |
 
 ## الأعلام العامة
 
 | العلم | الوصف |
 | --- | --- |
-| `--json` | بث JSON قابل للقراءة من الآلة. |
-| `--base-url <url>` | استخدم لوحة تحكم ذاتية الاستضافة أو التطوير. |
-| `--org <slug>` | حدد مؤسسة لهذا الاستدعاء. |
+| `--json` | أصدر JSON قابل للقراءة من قبل الآلة. |
+| `--base-url <url>` | استخدم لوحة تحكم مضيافة ذاتياً أو للتطوير. |
+| `--org <slug>` | اختر منظمة لهذا الاستدعاء. |
 | `--token <token>` | تجاوز رمز جلسة المستخدم المحفوظ. |
-| `--api-key <key>` | المصادقة الأتمتة برمز API؛ لا تُحفظ أبداً. |
-| `--timeout <seconds>` | مهلة HTTP؛ يجب أن تكون موجبة. الافتراضي: `30`. |
-| `--quiet`, `-q` | قمع إخراج الحالة على stderr. |
-| `--no-color` | تعطيل الإخراج الملون. |
-| `--insecure` / `--secure` | تعطيل أو استعادة التحقق من شهادة TLS. |
-| `--version` | طباعة الإصدار المفتوح والخروج. |
-| `--help`, `-h` | عرض المساعدة. |
+| `--api-key <key>` | مصادقة الأتمتة مع مفتاح API؛ أبداً لم يتم الحفظ. |
+| `--timeout <seconds>` | انتظار HTTP؛ يجب أن يكون موجباً. الافتراضي: `30`. |
+| `--quiet`, `-q` | اكبت مخرجات الحالة على stderr. |
+| `--no-color` | عطّل مخرجات ملونة. |
+| `--insecure` / `--secure` | عطّل أو استعد التحقق من شهادة TLS. |
+| `--version` | اطبع الإصدار بدون صندوق وخرج. |
+| `--help`, `-h` | أظهر المساعدة. |
 
-`--api-key` مخصصة للأتمتة. تسجيل الدخول وتبديل المؤسسة وأوامر المساعد تتطلب جلسة مستخدم.
+`--api-key` مخصص للأتمتة. تسجيل الدخول وتبديل المنظمة وأوامر المساعد تتطلب جلسة مستخدم.
 
 ## متغيرات البيئة
 
@@ -382,18 +386,18 @@ fp audits create checkout-reliability \
 | `FP_API_KEY` | `--api-key` |
 | `FP_JSON` | `--json` |
 | `FP_INSECURE` | `--insecure` |
-| `FP_HOME` | أعد وضع مجلد تكوين CLI (الافتراضي `~/.failproofai/fpcli`). |
+| `FP_HOME` | نقل دليل تكوين CLI (افتراضي `~/.failproofai/fpcli`). |
 | `FP_ANALYTICS_DISABLED` أو `DO_NOT_TRACK` | عطّل تحليلات CLI المجهولة. |
-| `NO_COLOR` | عطّل الإخراج الملون. |
+| `NO_COLOR` | عطّل مخرجات ملونة. |
 
-الأعلام الصريحة تتجاوز متغيرات البيئة، التي تتجاوز التكوين المحفوظ. في وضع مفتاح API، حدد المستأجر بشكل صريح مع `--org` أو `FP_ORG`.
+تتجاوز الأعلام الصريحة متغيرات البيئة، التي تتجاوز التكوين المحفوظ. في وضع مفتاح API، اختر المستأجر بشكل صريح مع `--org` أو `FP_ORG`.
 
 <Warning>
-  تهجئات `AGENTEYE_*` لهذه **لا تُقرأ بواسطة `fp`** وأبداً لم تكن — يعلن CLI عن `FP_*` (`fp_cli/app.py`)، وحتى متغير غير معروف ليس خطأ. تعيين `AGENTEYE_DASHBOARD_URL` لا يعيد تحديد هدف CLI؛ يتم تجاهله والأمر يعمل بصمت مقابل لوحة التحكم المحفوظة بدلاً منه.
+  تهجئات `AGENTEYE_*` لهذه **لم يتم قراءتها بواسطة `fp`** وأبداً كانت — يعلن CLI `FP_*` (`fp_cli/app.py`)، ومتغير غير معروف ليس خطأ. تعيين `AGENTEYE_DASHBOARD_URL` لا يعيد توجيه CLI؛ يتم تجاهله والأمر يعمل بصمت ضد لوحة التحكم المحفوظة بدلاً من ذلك.
 
-  `AGENTEYE_HOME` و `AGENTEYE_ENVIRONMENT` لا تزال موجودة، لكنها تتعلق بـ **المجمع و telemetry SDK**، وليس بـ CLI هذا.
+  `AGENTEYE_HOME` و `AGENTEYE_ENVIRONMENT` لا يزالان موجودان، لكنهما ينتميان إلى **جامع وTelemetry SDK**، وليس إلى هذا CLI.
 </Warning>
 
 <Warning>
-  الأوامر التي تحذف أو تلغي أو تقمع أو تحل أو تستبدل التكوين تطالب بشكل افتراضي. استخدم `--yes` فقط بعد التحقق من المؤسسة النشطة والهدف.
+  الأوامر التي تحذف أو تلغي أو تكبت أو تحل أو تستبدل التكوين تطالب بشكل افتراضي. استخدم `--yes` فقط بعد التحقق من المنظمة النشطة والهدف.
 </Warning>

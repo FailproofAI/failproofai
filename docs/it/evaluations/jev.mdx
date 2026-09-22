@@ -1,0 +1,88 @@
+---
+title: "Valutazioni con classificatore"
+description: "Valuta le sessioni rispetto a risposte che puoi scrivere in anticipo — è vero, oppure quanto di questo — usando un piccolo classificatore calibrato invece di un modello generico."
+icon: "list-checks"
+---
+
+Alcune domande richiedono a un modello di *leggere* la conversazione, ma non di *scrivere* su di essa. "Il cliente ha espresso urgenza?" ha due risposte. "Quanto erano frustrati?" ha un paio di risposte, in ordine. Conosci ogni risposta prima ancora di fare la domanda.
+
+Una **valutazione con classificatore** è esattamente per questi casi. Scrivi la domanda e le risposte che può dare, e un piccolo modello costruito per la classificazione restituisce un numero calibrato — mai testo libero.
+
+<Note>
+Come un giudice, una valutazione con classificatore costa una chiamata a un modello per sessione. A differenza di un giudice è un modello piccolo e monouso invece che generico, quindi è più veloce e economico — ma non si spiegherà mai. Se hai bisogno del ragionamento, usa un [giudice](/it/evaluations/judge).
+</Note>
+
+## Quale scelgo?
+
+| Domanda | Usa |
+| --- | --- |
+| Quante chiamate a strumenti ci sono state? | codice |
+| La sessione è durata meno di 30 secondi? | codice |
+| Il cliente ha espresso urgenza? | **classificatore** |
+| Quale team dovrebbe gestire questo: fatturazione, supporto tecnico o vendite? | **classificatore** |
+| Quanto era frustrato il cliente? | **classificatore** |
+| La risposta era davvero corretta? | **giudice** |
+| Ha seguito la nostra politica di escalation, e perché pensi così? | **giudice** |
+
+La regola empirica: **contabile → codice, risposte che puoi elencare → classificatore, richiede una spiegazione → giudice.**
+
+Non devi decidere in anticipo. Descrivi cosa vuoi misurare e l'assistente sceglie, ti dice quale ha scelto e perché, e puoi cambiarlo.
+
+## I due tipi di domanda
+
+### `noul` — è vero?
+
+Due risposte, e tu descrivi entrambe. Il risultato è la probabilità che la descrizione "vera" sia corretta:
+
+```json
+{
+  "instructions": "L'assistente ha promesso un rimborso senza prima verificare la politica dei rimborsi?",
+  "criteria": {
+    "true":  "Un rimborso è stato promesso o emesso senza verifica o approvazione preventiva della politica",
+    "false": "Nessun rimborso è stato promesso, oppure ogni rimborso ha seguito una verifica della politica"
+  }
+}
+```
+
+Descrivi entrambi i lati. "Nessuna urgenza espressa" è una risposta reale e dirlo rende l'altro lato più netto.
+
+### `score` — quanto di questo?
+
+Una rubrica ordinata, **peggiore per primo**. Il risultato è dove la sessione si posiziona, riscalato su 0–1:
+
+```json
+{
+  "instructions": "Quanto è frustrato il cliente?",
+  "criteria": ["Calmo", "Frustrato", "Molto arrabbiato"]
+}
+```
+
+**Una rubrica ha tre o cinque livelli, e devono essere tutti diversi.** Entrambi i limiti sono misurati, non stilistici:
+
+- **Due livelli** collassa in quello che `noul` fa già meglio, e **più di cinque** fa sì che il modello esiti verso il mezzo invece di impegnarsi. La stessa domanda sulla stessa sessione ha ottenuto 0,00 con due livelli, 0,01 con tre e 0,55 con dieci.
+- **Livelli ripetuti** dividono la risposta arbitrariamente tra loro. Una sessione che era inequivocabilmente arrabbiata ha ottenuto 1,00 contro `["Calmo", "Frustrato", "Molto arrabbiato"]` e 0,66 contro `["Arrabbiato", "Arrabbiato", "Arrabbiato"]` — un numero ben formato che non significa nulla.
+
+Categorie senza ordine — "fatturazione, supporto tecnico o vendite" — non sono una rubrica. Chiedile come `noul` per categoria, oppure usa un giudice.
+
+## Leggere i risultati
+
+Un classificatore produce un **punteggio** da 0 a 1, esattamente come un giudice, quindi crea grafici, filtra e attiva avvisi allo stesso modo. Due differenze meritano di essere conosciute:
+
+- **Non c'è ragionamento.** Il campo è vuoto, deliberatamente. Questo modello non si spiega, e inventare una spiegazione sarebbe una falsificazione piuttosto che una caratteristica.
+- **L'incertezza è etichettata.** Una domanda `score` segnala la propria fiducia, e un risultato di cui il modello non era sicuro viene etichettato `low_confidence` — quindi "quale di questi dovrebbe controllare un umano" è un filtro piuttosto che un'ipotesi. Una domanda `noul` non segnala la fiducia, quindi non viene mai etichettata.
+
+Le sessioni molto lunghe vengono lette in estratti e combinate. Quando una sessione è troppo lunga per essere letta completamente, il risultato dice quanti turni sono stati omessi — non vedrai mai un giudizio fatto su parte di una sessione presentato come se fatto su tutta intera.
+
+## Limiti
+
+- **Da tre a cinque livelli di rubrica, tutti distinti.** Vedi sopra; entrambi i limiti vengono applicati al momento della creazione.
+- **Una domanda per valutazione.** Se fai due domande ottieni due valutazioni, che è anche quello che vuoi su un grafico.
+- **Modificare la domanda pubblica una nuova versione.** I punteggi vecchi e nuovi non sono comparabili, quindi vengono tenuti separati piuttosto che mescolati in una singola linea di tendenza.
+- **Un classificatore produce sempre un punteggio**, mai una metrica o un'asserzione.
+- **Nessun ragionamento**, come sopra. Se un numero farà domandare a qualcuno "perché?", scrivi piuttosto un giudice.
+
+## Test e backfill
+
+A differenza di un giudice, una valutazione con classificatore **può** essere testata prima di distribuirla — [testala](/it/evaluations/test) su sessioni reali nello stesso modo in cui faresti con una valutazione del codice, e leggi i punteggi prima che vada in diretta.
+
+Può anche essere [backfilled](/it/evaluations/deploy#score-sessions-you-already-have) su sessioni che hai già. Costa una chiamata a un modello per sessione, quindi definisci l'intervallo deliberatamente piuttosto che riprodurre tutto.

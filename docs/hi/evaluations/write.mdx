@@ -1,44 +1,48 @@
 ---
-title: "एक मूल्यांकन लिखें"
-description: "वर्णन करें कि क्या मापना है और सहायक को एक होस्टेड Python मूल्यांकन का मसौदा तैयार करने दें, या कोड स्वयं लिखें। LLM जजों को आपके अपने worker में चलाया जाता है।"
+title: "मूल्यांकन लिखें"
+description: "बताएं कि क्या मापना है और सहायक को एक होस्टेड Python मूल्यांकन का मसौदा तैयार करने दें, या कोड स्वयं लिखें।"
 icon: "file-pen-line"
 ---
 
-होस्टेड मूल्यांकन छोटे, नियतात्मक Python होते हैं, जो डैशबोर्ड में लिखे जाते हैं और Failproof AI के evaluator fleet पर चलाए जाते हैं। भारी तर्क — एक LLM judge, एक पैकेज, एक secret, एक नेटवर्क कॉल — इसके बजाय [आपके अपने worker](#इसे-अपने-worker-में-लिखें) में चलता है।
+होस्टेड मूल्यांकन छोटे, नियतात्मक Python हैं, जिन्हें डैशबोर्ड में लिखा जाता है और Failproof AI के evaluator fleet पर चलाया जाता है। वे गिनते और तुलना करते हैं: कितनी tool calls, कितनी errors, एक सत्र कितने समय तक चला।
 
-## विवरण से मसौदा तैयार करें
+ऐसे प्रश्नों के लिए जहां conversation को *समझना* आवश्यक है — क्या उत्तर सही था, क्या जवाब असभ्य था, क्या agent ने किसी नीति का पालन किया — [LLM judge](/hi/evaluations/judge) लिखें। इसे उसी जगह से, अच्छे के दिखने वाली चीज़ के विवरण से लेखन किया जाता है।
+
+कोई भी चीज़ जिसे पैकेज, गुप्त, या आपका अपना नेटवर्क चाहिए [आपने अपने worker में चलता है](#write-it-in-your-own-worker)।
+
+## विवरण से इसका मसौदा तैयार करें
 
 1. **Analyze → eval authoring** पर जाएं और **new eval** चुनें।
-2. सादी English में मापने के लिए क्या है यह बताएं, या **start from an example…** से चुनें, और **draft** को चुनें।
-3. Fields और code की समीक्षा करें, फिर इसे [test करें](/hi/evaluations/test) और [deploy करें](/hi/evaluations/deploy)।
+2. मापने के लिए क्या है इसे सादे अंग्रेजी में बताएं, या **start from an example…** से चुनें, और **draft** चुनें।
+3. fields और code की समीक्षा करें जो यह भरता है, फिर [इसे test करें](/hi/evaluations/test) और [इसे deploy करें](/hi/evaluations/deploy)।
 
-![eval authoring पेज एक मसौदा मूल्यांकन के साथ: विवरण, मसौदे पर सहायक की नोट्स, और नाम, कुंजी, संस्करण, परिणाम, timeout, लेबल्स, और condition fields।](/images/dashboard/eval-authoring-draft.png)
+![eval authoring page जिसमें एक drafted evaluation दिखाया गया है: विवरण, मसौदे पर सहायक की टिप्पणियां, और नाम, key, version, result, timeout, labels, और condition fields।](/images/dashboard/eval-authoring-draft.png)
 
-मसौदा आपके संगठन की अपनी events पर आधारित है: पेज पढ़ता है कि आपके sessions ने पिछले सात दिनों में कौन सी payload keys ले जाई हैं, इसलिए code उन keys को पढ़ता है जो मौजूद हैं अनुमान लगाने के बजाय। मसौदे को सौंपने से पहले, सहायक इसे आपके हाल के पांच sessions के साथ परीक्षण करता है, कुछ भी ठीक करता है जो वह साबित कर सकता है कि टूटा हुआ है — तीन राउंड तक — और एक बार जांच करता है कि code आपने जो पूछा था वह मापता है। विवरण को विशिष्ट रखें: व्यापक prompts धीमे हो सकते हैं और timeout हो सकते हैं। किसी भी तरह से code की समीक्षा करें; deploying कभी भी blocked नहीं होता है।
+मसौदा आपके संगठन के अपने events पर आधारित है: यह page पढ़ता है कि आपके sessions ने पिछले सात दिनों में कौन सी payload keys ली हैं, इसलिए code ऐसी keys को पढ़ता है जो मौजूद हैं न कि अनुमान लगाता है। मसौदे को आगे बढ़ाने से पहले, सहायक इसे आपके पाँच हाल के sessions के विरुद्ध test करता है, कुछ भी repair करता है जो यह साबित कर सकता है कि टूटा हुआ है — तीन rounds तक — और एक बार जांचता है कि code आपसे पूछी गई चीज़ को मापता है या नहीं। विवरण को विशिष्ट रखें: व्यापक prompts धीमे हो सकते हैं और समय समाप्त हो सकता है। किसी भी तरह code की समीक्षा करें; deploying कभी भी blocked नहीं है।
 
 ## Fields सेट करें
 
 | Field | यह क्या है |
 | --- | --- |
 | name | जो लोग देखते हैं। बाद में editable |
-| key | स्थिर identifier जिसके तहत इसके परिणाम chart होते हैं, जैसे `code_assistant_quality_gate` |
-| version | कोई भी संस्करण string बिना spaces के, जैसे `1.0.0` |
-| result | **score** (0 से 1), **metric** (एक संख्या एक इकाई के साथ), या **assertion** (पास किया गया या नहीं) |
-| timeout seconds | Default 30। Sandbox किसी भी एकल run को 60 पर रोकता है |
+| key | stable identifier जिसके तहत इसके results chart होते हैं, जैसे `code_assistant_quality_gate` |
+| version | बिना spaces के कोई भी version string, जैसे `1.0.0` |
+| result | **score** (0 to 1), **metric** (एक संख्या unit के साथ), या **assertion** (passed या नहीं) |
+| timeout seconds | Default 30। Sandbox किसी भी single run को 60 पर रोकता है |
 | labels | 20 तक, comma-separated। बाद में editable |
-| condition | Optional। एक Python expression; मूल्यांकन केवल उन sessions पर चलता है जहां यह `True` है |
+| condition | Optional। एक Python expression; evaluation केवल sessions पर चलता है जहां यह `True` है |
 
-एक मूल्यांकन को उन agents और environments तक सीमित करने के लिए condition का उपयोग करें जिसके लिए यह meant है:
+एक evaluation को उन agents और environments तक scope करने के लिए condition का उपयोग करें जिसके लिए यह अभिप्रेत है:
 
 ```python
 session.agent_id == "code-assistant" and session.environment == "production"
 ```
 
-Key, version, result type, condition, और code deployment के बाद immutable हैं: इनमें से कोई भी बदलने के लिए, एक नया version publish करें। Name, labels, और क्या यह enabled है यह editable रहता है।
+Key, version, result type, condition, और code deployed होने के बाद immutable हैं: इनमें से किसी को भी बदलने के लिए, एक नया version publish करें। Name, labels, और क्या यह enabled है यह editable रहता है।
 
 ## कोड स्वयं लिखें
 
-**evaluator code** एक Python expression है जो `EvalResult(...)` return करता है, जिसमें `session` in scope है। यह tool results के share को score करता है जो ok आए:
+**evaluator code** एक Python expression है जो `EvalResult(...)` return करता है, `session` scope में। यह tool results के share को स्कोर करता है जो ok आए:
 
 ```python
 EvalResult(
@@ -51,22 +55,22 @@ EvalResult(
 )
 ```
 
-एक result मूल्यांकन की अपनी key के साथ शुरू होता है, अपने declared type में: score evaluation के लिए `score=`, या एक metric या assertion evaluation के लिए key के नाम से एक `metrics` या `assertions` entry। अन्य metrics और assertions इसके साथ ride करते हैं, एक run में 25 परिणाम तक।
+एक result अपनी key के साथ शुरू होता है, इसके घोषित type में: score evaluation के लिए `score=`, या metric या assertion evaluation के लिए `metrics` या `assertions` entry जो key के नाम पर हो। अन्य metrics और assertions इसके साथ चलते हैं, एक run में 25 results तक।
 
-| In scope | आपको देता है |
+| Scope में | आपको देता है |
 | --- | --- |
 | `session` | `session_id`, `agent_id`, `environment`, `started_at`, `ended_at`, `event_count`, और `events`, plus `count(event_type)` और `events_of_type(event_type)` |
 | प्रत्येक event | `id`, `ts`, `event_type`, और `payload` |
-| Result types | `EvalResult`, `Score`, `Metric`, `Assertion`, और एक condition के लिए `ConditionResult` |
+| Result types | `EvalResult`, `Score`, `Metric`, `Assertion`, और `ConditionResult` एक condition के लिए |
 | Builtins | `abs`, `all`, `any`, `bool`, `dict`, `float`, `int`, `len`, `list`, `max`, `min`, `range`, `round`, `set`, `sorted`, `str`, `sum`, `tuple` |
 
-कुछ भी और reachable नहीं है: कोई imports नहीं, और session data और plain string और dictionary methods जैसे `get`, `lower`, और `split` से परे कोई attributes नहीं, जिन्हें reference किए जाने के बजाय called होना चाहिए। Payload keys वह हैं जो आपके agents भेजते हैं — `status` ऊपर केवल एक example है — इसलिए उन्हें एक real session से पढ़ें। **format** code को tidy करता है और **fix** सहायक को इसे repair करने के लिए कहता है। Code 128 KiB तक हो सकता है, और condition 16 KiB तक हो सकता है।
+कुछ और नहीं reachable है: कोई imports नहीं, और उस session data और सादे string और dictionary methods जैसे `get`, `lower`, और `split` से परे कोई attributes नहीं, जिन्हें referenced के बजाय called होना चाहिए। Payload keys जो भी आपके agents भेजते हैं — `status` ऊपर केवल एक उदाहरण है — तो एक real session से उन्हें पढ़ें। **format** code को tidies करता है और **fix** सहायक से इसे repair करने के लिए पूछता है। Code 128 KiB तक हो सकता है, और condition 16 KiB तक।
 
-![evaluator code editor, format और fix के साथ, एक मसौदा मूल्यांकन की assertions दिखा रहा है।](/images/dashboard/eval-authoring-code.png)
+![evaluator code editor, format और fix के साथ, एक drafted evaluation की assertions दिखा रहा है।](/images/dashboard/eval-authoring-code.png)
 
-## इसे अपने worker में लिखें
+## अपने खुद के worker में लिखें
 
-जब एक मूल्यांकन को एक model, एक पैकेज, एक secret, या नेटवर्क की आवश्यकता होती है, तो इसे [Evaluator SDK](/hi/reference/evaluator-sdk) के साथ लिखें और इसे अपने infrastructure पर चलाएं। यह same result types का उपयोग करता है, और इसके परिणाम hosted ones के बगल में दिखाई देते हैं, **customer** tagged:
+जब एक evaluation को पैकेज, गुप्त, नेटवर्क, या आपके द्वारा hosted किया गया model चाहिए, तो इसे [Evaluator SDK](/hi/reference/evaluator-sdk) के साथ लिखें और इसे अपने infrastructure पर चलाएं। यह समान result types का उपयोग करता है, और इसके परिणाम hosted ones के बगल में दिखाई देते हैं, **customer** को tag किया गया:
 
 ```python
 @app.eval("answer_relevance", version="judge-v1", labels=["llm_judge"], timeout_seconds=30)

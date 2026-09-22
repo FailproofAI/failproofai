@@ -4,41 +4,51 @@ description: "Notez chaque session terminée avec des évaluations que vous déf
 icon: "gauge"
 ---
 
-Une évaluation attribue une note à une session d'agent terminée. Lorsqu'une session se termine, chaque évaluation activée qui lui est applicable s'exécute et enregistre ses résultats, avec un raisonnement que vous pouvez consulter à côté de la trace :
+Une évaluation attribue une note à une session d'agent terminée. Lorsqu'une session se termine, chaque évaluation activée qui s'y applique s'exécute et enregistre ses résultats, avec un raisonnement lisible à côté de la trace :
 
 - un **score** de 0 à 1, éventuellement marqué comme réussi ou échoué
-- une **métrique**, telle qu'un comptage, une durée ou un coût, avec son unité
+- une **métrique**, telle qu'un nombre, une durée ou un coût, avec son unité
 - une **assertion**, qui a réussi ou non
 
 ## Deux types d'évaluateur
 
 | | Python hébergé | Votre propre worker |
 | --- | --- | --- |
-| Rédigé | Dans le tableau de bord, sous **Analyze → eval authoring** | En Python, avec le [SDK Évaluateur](/fr/reference/evaluator-sdk) |
+| Écrit | Dans le tableau de bord, sous **Analyze → eval authoring** | En Python, avec le [SDK Évaluateur](/fr/reference/evaluator-sdk) |
 | S'exécute | Sur l'évaluateur géré de Failproof AI, dans un bac à sable | Sur votre infrastructure |
-| Idéal pour | Vérifications déterministes basées sur du code | Juges LLM, appels de modèles, packages, secrets, accès réseau, traitement intensif |
+| Idéal pour | Les vérifications déterministes, et celles basées sur des modèles que nous hébergeons pour vous | Les packages, les secrets, votre propre réseau, les modèles que vous hébergez vous-même, les traitements lourds |
 
-Le Python hébergé est volontairement minimaliste : une seule expression, sans imports, sans réseau. Tout ce qui nécessite un modèle — un juge LLM évaluant la pertinence d'une réponse, par exemple — s'exécute dans votre propre worker à la place. Aucun des deux types ne nécessite de connexion entrante : les workers récupèrent les sessions terminées et soumettent les résultats via HTTPS sortant.
+Les évaluations hébergées se déclinent en trois formes, et l'assistant choisit entre elles pour vous :
+
+| | Lit la session avec | Vous fournit |
+| --- | --- | --- |
+| **Code** | rien — une seule expression Python, sans imports, sans réseau | un score, une métrique ou une assertion |
+| **[Classificateur](/fr/evaluations/jev)** | un petit modèle conçu pour la classification | un score, et rien d'autre — il ne s'explique pas |
+| **[Juge](/fr/evaluations/judge)** | un modèle à usage général | un score **et** le raisonnement qui le sous-tend |
+
+Le code ne coûte rien à exécuter. Les deux autres nécessitent un appel de modèle par session ; donnez-leur donc une condition qui les limite aux sessions concernées par la question.
+
+Votre propre worker reste la solution appropriée lorsqu'une évaluation nécessite quelque chose que nous n'hébergeons pas : un package, un secret, votre propre réseau ou un modèle que vous exécutez vous-même. Aucun des deux types ne nécessite de connexion entrante : les workers récupèrent les sessions terminées et soumettent les résultats via HTTPS sortant.
 
 ## Chaque organisation évalue ses propres agents
 
-Les évaluations appartiennent à l'organisation qui les définit. Chaque organisation sur une instance rédige les siennes — ses propres vérifications, conditions, seuils et libellés — les versionne et les déploie sans affecter les autres, et ne consulte que ses propres résultats. Filtrez ces résultats par agent, environnement, évaluation et période, ou interrogez l'assistant à leur sujet.
+Les évaluations appartiennent à l'organisation qui les définit. Chaque organisation sur une instance rédige les siennes — ses propres vérifications, conditions, seuils et étiquettes — les versionne et les déploie sans affecter les autres, et ne voit que ses propres résultats. Filtrez ces résultats par agent, environnement, évaluation et période, ou interrogez l'assistant à leur sujet.
 
 ## Du premier brouillon aux scores en production
 
 <Steps>
-  <Step title="Rédigez-la">
-    Décrivez ce que vous souhaitez mesurer et laissez l'assistant en rédiger une ébauche, ou écrivez-la vous-même. Voir [Rédiger une évaluation](/fr/evaluations/write).
+  <Step title="Rédiger">
+    Décrivez ce que vous souhaitez mesurer et laissez l'assistant en faire un brouillon, ou rédigez-le vous-même. Voir [Rédiger une évaluation](/fr/evaluations/write).
   </Step>
-  <Step title="Testez-la">
+  <Step title="Tester">
     Exécutez-la sur de vraies sessions avant sa mise en production ; rien n'est enregistré. Voir [Tester une évaluation](/fr/evaluations/test).
   </Step>
-  <Step title="Déployez-la et versionnez-la">
-    Déployez une version immuable, publiez de nouvelles versions à mesure qu'elle évolue, et revenez à une version antérieure si nécessaire. Voir [Déployer et versionner](/fr/evaluations/deploy).
+  <Step title="Déployer et versionner">
+    Déployez une version immuable, publiez-en de nouvelles au fil de l'évolution, et revenez à une version antérieure si besoin. Voir [Déployer et versionner](/fr/evaluations/deploy).
   </Step>
-  <Step title="Consultez les résultats">
-    Visualisez les scores dans le temps, comparez les agents et les environnements, et interrogez l'assistant. Voir [Consulter les résultats des évaluations](/fr/sessions/evaluations).
+  <Step title="Consulter les résultats">
+    Représentez les scores dans le temps, comparez les agents et les environnements, et interrogez l'assistant. Voir [Consulter les résultats d'évaluation](/fr/sessions/evaluations).
   </Step>
 </Steps>
 
-L'évaluation s'applique en avance : une version déployée maintenant notera les sessions qui se termineront à partir de ce moment. Pour noter les sessions déjà existantes, [effectuez un remplissage rétrospectif](/fr/evaluations/deploy#noter-des-sessions-existantes).
+Les évaluations s'appliquent vers l'avenir : une version déployée maintenant notera les sessions qui se termineront à partir de ce moment. Pour noter des sessions déjà existantes, [remplissez-les rétroactivement](/fr/evaluations/deploy#score-sessions-you-already-have).

@@ -320,6 +320,8 @@
                 "pages": [
                   "zh/evaluations/overview",
                   "zh/evaluations/write",
+                  "zh/evaluations/judge",
+                  "zh/evaluations/jev",
                   "zh/evaluations/test",
                   "zh/evaluations/deploy",
                   "zh/sessions/evaluations"
@@ -493,6 +495,8 @@
                 "pages": [
                   "ja/evaluations/overview",
                   "ja/evaluations/write",
+                  "ja/evaluations/judge",
+                  "ja/evaluations/jev",
                   "ja/evaluations/test",
                   "ja/evaluations/deploy",
                   "ja/sessions/evaluations"
@@ -666,6 +670,8 @@
                 "pages": [
                   "ko/evaluations/overview",
                   "ko/evaluations/write",
+                  "ko/evaluations/judge",
+                  "ko/evaluations/jev",
                   "ko/evaluations/test",
                   "ko/evaluations/deploy",
                   "ko/sessions/evaluations"
@@ -839,6 +845,8 @@
                 "pages": [
                   "es/evaluations/overview",
                   "es/evaluations/write",
+                  "es/evaluations/judge",
+                  "es/evaluations/jev",
                   "es/evaluations/test",
                   "es/evaluations/deploy",
                   "es/sessions/evaluations"
@@ -1012,6 +1020,8 @@
                 "pages": [
                   "pt-br/evaluations/overview",
                   "pt-br/evaluations/write",
+                  "pt-br/evaluations/judge",
+                  "pt-br/evaluations/jev",
                   "pt-br/evaluations/test",
                   "pt-br/evaluations/deploy",
                   "pt-br/sessions/evaluations"
@@ -1185,6 +1195,8 @@
                 "pages": [
                   "de/evaluations/overview",
                   "de/evaluations/write",
+                  "de/evaluations/judge",
+                  "de/evaluations/jev",
                   "de/evaluations/test",
                   "de/evaluations/deploy",
                   "de/sessions/evaluations"
@@ -1358,6 +1370,8 @@
                 "pages": [
                   "fr/evaluations/overview",
                   "fr/evaluations/write",
+                  "fr/evaluations/judge",
+                  "fr/evaluations/jev",
                   "fr/evaluations/test",
                   "fr/evaluations/deploy",
                   "fr/sessions/evaluations"
@@ -1531,6 +1545,8 @@
                 "pages": [
                   "ru/evaluations/overview",
                   "ru/evaluations/write",
+                  "ru/evaluations/judge",
+                  "ru/evaluations/jev",
                   "ru/evaluations/test",
                   "ru/evaluations/deploy",
                   "ru/sessions/evaluations"
@@ -1704,6 +1720,8 @@
                 "pages": [
                   "hi/evaluations/overview",
                   "hi/evaluations/write",
+                  "hi/evaluations/judge",
+                  "hi/evaluations/jev",
                   "hi/evaluations/test",
                   "hi/evaluations/deploy",
                   "hi/sessions/evaluations"
@@ -1877,6 +1895,8 @@
                 "pages": [
                   "tr/evaluations/overview",
                   "tr/evaluations/write",
+                  "tr/evaluations/judge",
+                  "tr/evaluations/jev",
                   "tr/evaluations/test",
                   "tr/evaluations/deploy",
                   "tr/sessions/evaluations"
@@ -2050,6 +2070,8 @@
                 "pages": [
                   "vi/evaluations/overview",
                   "vi/evaluations/write",
+                  "vi/evaluations/judge",
+                  "vi/evaluations/jev",
                   "vi/evaluations/test",
                   "vi/evaluations/deploy",
                   "vi/sessions/evaluations"
@@ -2223,6 +2245,8 @@
                 "pages": [
                   "it/evaluations/overview",
                   "it/evaluations/write",
+                  "it/evaluations/judge",
+                  "it/evaluations/jev",
                   "it/evaluations/test",
                   "it/evaluations/deploy",
                   "it/sessions/evaluations"
@@ -2396,6 +2420,8 @@
                 "pages": [
                   "ar/evaluations/overview",
                   "ar/evaluations/write",
+                  "ar/evaluations/judge",
+                  "ar/evaluations/jev",
                   "ar/evaluations/test",
                   "ar/evaluations/deploy",
                   "ar/sessions/evaluations"
@@ -2569,6 +2595,8 @@
                 "pages": [
                   "he/evaluations/overview",
                   "he/evaluations/write",
+                  "he/evaluations/judge",
+                  "he/evaluations/jev",
                   "he/evaluations/test",
                   "he/evaluations/deploy",
                   "he/sessions/evaluations"

@@ -1,35 +1,35 @@
 ---
-title: "Hallazgos y problemas"
-description: "Convierte la evidencia de auditoría en trabajo de remediación con propietario y seguimiento."
+title: "Hallazgos e incidencias"
+description: "Convierte la evidencia de auditoría en trabajo de remediación asignado y rastreable."
 icon: "clipboard-check"
 ---
 
-Un hallazgo es la declaración respaldada por evidencia de la auditoría sobre un fallo. Un problema es el flujo de trabajo duradero para responder a él.
+Un hallazgo es la declaración respaldada por evidencia que hace la auditoría sobre un fallo. Una incidencia es el flujo de trabajo duradero para responder a él.
 
 ## Clasificar y asignar el trabajo
 
 <Tabs>
-  <Tab title="Panel de control">
+  <Tab title="Dashboard">
     1. Abre **Analyze → Audits**, elige una ejecución completada y selecciona un hallazgo para inspeccionar su análisis, recomendación, sesiones y consultas de evidencia.
-    2. Confirma, asigna, descarta, silencia, resuelve o reabre el hallazgo tras revisar su evidencia.
-    3. Ve a **Analyze → Issues** y filtra la bandeja de entrada duradera por estado, severidad o responsable.
-    4. Abre el problema para asignarlo, añadir comentarios o suscriptores, y resuélvelo una vez verificada la corrección.
+    2. Reconoce, asigna, descarta, silencia, resuelve o reabre el hallazgo tras revisar su evidencia.
+    3. Ve a **Analyze → Issues** y filtra la bandeja de entrada duradera por estado, gravedad o responsable.
+    4. Abre la incidencia para asignarla, añadir comentarios o suscriptores, y resuélvela una vez verificada la corrección.
 
-    Comienza con el resumen del hallazgo. Confirma que la descripción del fallo, la respuesta recomendada, la severidad y la clasificación coinciden con las sesiones que esperabas que la auditoría examinara.
+    Comienza por el resumen del hallazgo. Confirma que la descripción del fallo, la respuesta recomendada, la gravedad y el ranking coincidan con las sesiones que esperabas que examinara la auditoría.
 
-    ![Un hallazgo de auditoría con severidad, recuento de ocurrencias, análisis de causa raíz, acción recomendada, factores de clasificación y evidencia.](/images/dashboard/audit-finding.png)
+    ![Un hallazgo de auditoría con gravedad, recuento de ocurrencias, análisis de causa raíz, acción recomendada, factores de ranking y evidencia.](/images/dashboard/audit-finding.png)
 
-    A continuación, abre una sesión afectada en lugar de decidir únicamente a partir del resumen. La traza vinculada debe mostrar el evento exacto y el payload que respaldan el hallazgo.
+    A continuación, abre una sesión afectada en lugar de decidir solo a partir del resumen. El rastreo vinculado debería mostrar el evento exacto y el payload que respaldan el hallazgo.
 
     ![Una sesión vinculada desde un hallazgo de auditoría, abierta en el error relevante con sus metadatos de evento y payload sin procesar.](/images/dashboard/audit-linked-session.png)
 
-    Tras verificar la evidencia, usa Issues para asignar un responsable a la respuesta y darle seguimiento de forma independiente de futuras ejecuciones de auditoría.
+    Tras verificar la evidencia, usa Issues para asignar un responsable a la respuesta y hacer seguimiento de forma independiente de futuras ejecuciones de auditoría.
 
-    ![La bandeja de entrada de Issues mostrando trabajo activo, confirmado y resuelto con severidad y titularidad.](/images/dashboard/incidents.png)
+    ![La bandeja de entrada de Issues mostrando trabajo en curso, reconocido y resuelto, con gravedad y propietario.](/images/dashboard/incidents.png)
 
-    Abre el problema para registrar notas de investigación, notificar a los suscriptores y conservar el historial de respuesta. Resuélvelo solo después de que la remediación esté desplegada y verificada.
+    Abre la incidencia para registrar notas de investigación, notificar a los suscriptores y preservar el historial de la respuesta. Resuélvela solo cuando la remediación esté desplegada y verificada.
 
-    ![Vista de detalle de un problema con su origen, evidencia de incumplimiento, responsables, suscriptores, línea de tiempo y comentarios.](/images/dashboard/incident-detail.png)
+    ![Vista de detalle de una incidencia con su origen, evidencia de incumplimiento, responsables, suscriptores, cronología y comentarios.](/images/dashboard/incident-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -43,11 +43,13 @@ Un hallazgo es la declaración respaldada por evidencia de la auditoría sobre u
     fp issues assign <issue-id> --assignee engineer@example.com
     fp issues comment-add <issue-id> --body "policy is in observe mode"
     fp issues resolve <issue-id> --yes
+    fp issues close <issue-id> --yes
+    fp issues archive <issue-id>
     ```
 
     Usa `fp issues subscribe <issue-id>`, `fp issues unsubscribe <issue-id>` y `fp issues subscribers <issue-id>` para gestionar los observadores.
 
-    Consulta la [referencia de CLI de Cloud para auditorías y problemas](/es/reference/cloud-cli#audits) para hallazgos de auditoría y [`fp issues`](/es/reference/cloud-cli#issues) para la gestión de problemas.
+    Consulta la [referencia de CLI de auditorías e incidencias en la nube](/es/reference/cloud-cli#audits) para hallazgos de auditoría y [`fp issues`](/es/reference/cloud-cli#issues) para la gestión de incidencias.
   </Tab>
 </Tabs>
 
@@ -56,30 +58,71 @@ Un hallazgo es la declaración respaldada por evidencia de la auditoría sobre u
 Confirma que contiene:
 
 - Un modo de fallo estable, no solo un título puntual
-- Severidad e impacto operativo
+- Gravedad e impacto operacional
 - IDs de sesiones afectadas o consultas de respaldo
-- Suficiente contexto para reproducir el comportamiento
+- Contexto suficiente para reproducir el comportamiento
 - Una respuesta propuesta que coincida con la evidencia
 
-## Usar un problema para gestionar la respuesta
+## Usar una incidencia para gestionar la respuesta
 
-Crea o vincula un problema cuando el hallazgo requiera asignación, discusión, cambios de estado, comentarios o suscriptores. Los problemas también pueden representar incidentes de alertas y problemas reportados manualmente, razón por la que se encuentran dentro de la respuesta a auditorías y no en la navegación principal.
+Crea o vincula una incidencia cuando el hallazgo requiera asignación, discusión, cambios de estado, comentarios o suscriptores. Las incidencias también pueden representar alertas y problemas reportados manualmente, por eso se ubican bajo la respuesta de auditoría y no en la navegación principal.
 
-Resuelve el problema cuando la remediación esté desplegada y verificada. Resuelve el hallazgo cuando el modo de fallo haya sido tratado para la población de la auditoría. Esos momentos pueden diferir.
+Resuelve la incidencia cuando la remediación esté desplegada y verificada. Resuelve el hallazgo cuando el modo de fallo haya sido tratado en la población de la auditoría. Esos momentos pueden diferir.
 
-## Convertir un problema en un borrador de política
+## Cerrar una incidencia: resolver, cerrar o archivar
+
+Una incidencia termina una sola vez, y la forma en que la termines determina qué ocurre la próxima vez que la auditoría detecte el mismo patrón.
+
+| Acción | Significa | Si el patrón vuelve a aparecer |
+| --- | --- | --- |
+| **Resolver** | Lo has corregido. | La incidencia **se reabre**, para que sepas que la corrección no se mantuvo. |
+| **Cerrar** | Has terminado con ella: no se corregirá, no es un problema o ya no es relevante. | **Permanece cerrada**. |
+| **Archivar** | Retírala del tablero. No dice nada sobre cómo terminó. | Una incidencia activa vuelve al tablero automáticamente. |
+
+Resolver y cerrar son ambas acciones definitivas y ninguna puede sobrescribir a la otra, por lo que una incidencia que alguien resolvió conserva ese registro. Archivar es independiente de ambas: puedes archivar una incidencia en cualquier estado y conservará el estado en que terminó. Si una incidencia archivada sigue activa y el problema reaparece, vuelve al tablero por sí sola — archivar oculta el historial, pero no puede ocultar un problema activo.
+
+Cerrar una incidencia que proviene de una auditoría también descarta el hallazgo detrás de ella. No silencia ese patrón en tus otras auditorías; para eso, silencia o descarta el hallazgo directamente.
+
+## Empezar de cero tras modificar tus agentes
+
+Cuando publicas una ronda de cambios en tus agentes, las incidencias que ya están en el tablero describen el comportamiento que acabas de reemplazar. Limpiar las resuelve en un solo paso, junto con los hallazgos de auditoría que hay detrás de ellas.
 
 <Tabs>
-  <Tab title="Panel de control">
-    1. Abre el problema y verifica su hallazgo, sesiones citadas, causa raíz y recomendación.
-    2. Selecciona **generate policy** y revisa el resultado de la evaluación de candidatura y la intención de aplicación propuesta. Un resultado **no policy** significa que el comportamiento puede requerir una alerta, un cambio de flujo de trabajo o una respuesta humana en su lugar.
-    3. Selecciona **write this policy**, luego revisa y prueba el código fuente generado en **Admin → policy editor** antes de seleccionar **publish version**. Usa **open the editor anyway** cuando no estés de acuerdo con la verificación de candidatura.
-    4. Ve a **Admin → enforcement**, despliega la versión en modo **observe** y verifica sus decisiones en **Observe → policy** antes de aplicarla.
-
-    El título del problema, la descripción del hallazgo, la causa raíz, la recomendación y la intención de candidatura contribuyen a componer el borrador. Nada se publica ni se despliega automáticamente.
+  <Tab title="Dashboard">
+    1. Ve a **Analyze → Issues** y selecciona **clear**, o abre una auditoría concreta y selecciona **clear issues** para limitarlo al trabajo de esa auditoría.
+    2. Elige el alcance. Cada opción muestra cuántas incidencias abarca antes de confirmar.
+    3. Confirma. Las incidencias quedan resueltas, y también los hallazgos de auditoría que hay detrás de ellas.
   </Tab>
   <Tab title="CLI">
-    Usa la CLI para inspeccionar la evidencia antes de abrir el problema en el panel de control:
+    ```bash
+    fp issues clear --all-audits --dry-run
+    fp issues clear --all-audits --yes
+
+    fp issues clear --audit <audit-id> --yes
+    fp issues clear --everything --yes
+    ```
+
+    `--dry-run` informa de qué cambiaría sin aplicar ningún cambio. Se requiere exactamente uno de `--audit`, `--all-audits` y `--everything`.
+  </Tab>
+</Tabs>
+
+**Limpiar no suprime nada.** Un patrón que tus cambios corrigieron genuinamente desaparece. Un patrón que sobrevivió a ellos **reabre** su incidencia en la siguiente ejecución de auditoría — lo mismo que hace resolverla manualmente —, por lo que un inicio limpio no puede ocultar en silencio un problema que aún tienes. Cuando quieras silenciar un patrón de forma permanente, silencia o descarta el hallazgo en su lugar.
+
+Limpiar requiere permiso tanto para cerrar incidencias como para escribir auditorías, porque también resuelve los hallazgos junto con las incidencias.
+
+## Convertir una incidencia en un borrador de política
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Abre la incidencia y verifica su hallazgo, sesiones citadas, causa raíz y recomendación.
+    2. Selecciona **generate policy** y revisa el resultado de candidatura y la intención de aplicación propuesta. Un resultado **no policy** significa que el comportamiento puede requerir una alerta, un cambio de flujo de trabajo o una respuesta humana en su lugar.
+    3. Selecciona **write this policy**, luego revisa y prueba el código generado en **Admin → policy editor** antes de seleccionar **publish version**. Usa **open the editor anyway** cuando no estés de acuerdo con la comprobación de candidatura.
+    4. Ve a **Admin → enforcement**, despliega la versión en modo **observe** y verifica sus decisiones en **Observe → policy** antes de aplicarla.
+
+    El título de la incidencia, la descripción del hallazgo, la causa raíz, la recomendación y la intención de candidatura ayudan a redactar el borrador. Nada se publica ni se despliega automáticamente.
+  </Tab>
+  <Tab title="CLI">
+    Usa la CLI para inspeccionar la evidencia antes de abrir la incidencia en el dashboard:
 
     ```bash
     fp issues show <issue-id>
@@ -87,7 +130,7 @@ Resuelve el problema cuando la remediación esté desplegada y verificada. Resue
     fp events --session-id <session-id> --full --all
     ```
 
-    La evaluación de candidatura de políticas, la publicación en Cloud y el despliegue en flota son flujos de trabajo del panel de control. Usa `failproofai policies --install --custom <file>` cuando quieras validar primero el código fuente de una política equivalente localmente.
+    La candidatura de política, la publicación en la nube y el despliegue en la flota son flujos de trabajo del dashboard. Usa `failproofai policies --install --custom <file>` cuando quieras validar primero el código de política equivalente en local.
   </Tab>
 </Tabs>
 

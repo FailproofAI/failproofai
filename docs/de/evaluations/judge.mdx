@@ -1,0 +1,91 @@
+---
+title: "LLM-Richter"
+description: "Bewerte Sitzungen anhand von Dingen, die Code nicht messen kann – Korrektheit, Ton, ob der Agent eine Richtlinie eingehalten hat – indem du beschreibst, wie gutes Verhalten aussieht, und ein Modell das Gespräch lesen lässt."
+icon: "scale"
+---
+
+Eine gehostete Python-Auswertung kann zählen und vergleichen: wie viele Tool-Aufrufe, wie viele Fehler, wie lang eine Sitzung gedauert hat. Sie kann dir jedoch nicht sagen, ob eine Antwort *korrekt* war, ob eine Antwort unhöflich war oder ob der Agent eine Richtlinie geprüft hat, bevor er gehandelt hat.
+
+Ein **LLM-Richter** kann das. Du beschreibst in klarer Sprache, wie gutes Verhalten aussieht, und ein Modell liest die Sitzung und gibt eine Bewertung von 0 bis 1 mit Begründung zurück.
+
+<Note>
+Ein Richter kostet einen Modell-Aufruf für jede Sitzung, auf der er läuft, während eine Code-Auswertung nichts kostet. Verwende einen Richter nur für Fragen, bei denen das Gespräch *verstanden* werden muss – und gib ihm eine Bedingung, damit er nur auf den Sitzungen läuft, für die die Frage tatsächlich relevant ist.
+</Note>
+
+## Welche Option passt zu mir?
+
+| Frage | Verwendung |
+| --- | --- |
+| Hat es dasselbe Tool zweimal aufgerufen? | Code |
+| Wie viele Fehler gab es? | Code |
+| Dauerte die Sitzung weniger als 30 Sekunden? | Code |
+| Hat der Kunde Dringlichkeit ausgedrückt? | [Klassifikator](/de/evaluations/jev) |
+| Wie frustriert war der Kunde? | [Klassifikator](/de/evaluations/jev) |
+| War die Antwort tatsächlich korrekt? | **Richter** |
+| War die Antwort unhöflich oder abweisend? | **Richter** |
+| Hat es die Rückgaberichtlinie geprüft, bevor eine Rückerstattung zugesagt wurde? | **Richter** |
+
+Die Faustregel: **Zählbares → Code, Antworten, die sich vorab auflisten lassen → [Klassifikator](/de/evaluations/jev), benötigt eine Erklärung → Richter.** Ein Richter ist derjenige, der in Prosa beschreibt, was er gesehen hat – greife auf ihn zurück, wenn eine Zahl jemanden dazu veranlasst, „Warum?" zu fragen.
+
+Du musst dich nicht im Voraus entscheiden. Beschreibe, was gemessen werden soll, und der Assistent wählt aus und erklärt, was er gewählt hat und warum. Du kannst es jederzeit ändern.
+
+## Einen Richter erstellen
+
+1. Gehe zu **Analyze → eval authoring** und wähle **new eval**.
+2. Beschreibe, was bewertet werden soll, und wähle **draft**.
+3. Überprüfe die **Kriterien**, den **Schwellenwert** und die **Bedingung**, dann veröffentliche.
+
+### Kriterien
+
+Ein oder zwei Sätze, formuliert als Anforderung statt als Frage:
+
+> Der Assistent darf eine Rückerstattung nicht zusagen oder genehmigen, ohne zuvor die Rückgaberichtlinie geprüft zu haben.
+
+Sei konkret darüber, was zu einem *Fehlschlag* führen würde. „War die Antwort gut?" liefert dir eine bedeutungslose Zahl; der obige Satz liefert dir eine, auf der du handeln kannst.
+
+### Schwellenwert
+
+Die Punktzahl, ab der eine Sitzung als bestanden gilt. `0.7` ist ein sinnvoller Ausgangspunkt. Die vollständige Punktzahl von 0 bis 1 wird immer gespeichert, sodass der Schwellenwert nur über Bestanden/Nicht bestanden entscheidet – du kannst die Verteilung einsehen und anpassen.
+
+### Bedingung
+
+Dieselbe Python-Bedingung wie bei jeder anderen Auswertung, und sie ist hier noch wichtiger. Ohne eine Bedingung läuft der Richter auf **jeder** Sitzung in deiner Organisation, mit jeweils einem Modell-Aufruf:
+
+```python
+session.count("tool_use") > 0
+```
+
+```python
+session.agent_id == "support-bot" and session.count("error") > 0
+```
+
+Das Dashboard warnt dich, wenn du einen Richter ohne Bedingung veröffentlichst. Das kann manchmal richtig sein – etwa bei einem wenig frequentierten Agenten, den du vollständig bewertet haben möchtest – aber es sollte eine bewusste Entscheidung sein, kein Versehen.
+
+## Was der Richter sieht
+
+Das Gespräch in Gesprächsrunden, bei langen Sitzungen beginnend mit den neuesten:
+
+- was der Nutzer gesagt hat
+- was der Assistent geantwortet hat
+- **jedes Tool, das der Agent aufgerufen hat, und was dieser Aufruf zurückgegeben hat, in der Reihenfolge**
+
+Dieser letzte Punkt macht „Hat er X *vor* Y getan?" zu einer fairen Frage. Ein fehlgeschlagener Tool-Aufruf wird als Fehler angezeigt, sodass „Hat er sich nach einem Fehler angemessen erholt?" ebenfalls funktioniert.
+
+Sehr lange Sitzungen werden gekürzt, um in den Kontext des Modells zu passen. Wenn das passiert, weist die Begründung ausdrücklich darauf hin – du wirst nie ein Urteil sehen, das auf einem Teil einer Sitzung basiert, aber als auf der gesamten Sitzung basierend dargestellt wird.
+
+## Ergebnisse lesen
+
+Ein Richter liefert eine **Bewertung** wie jede andere bewertete Auswertung, sodass er genauso in Diagrammen dargestellt wird, filtert und Benachrichtigungen auslöst. Neben der Zahl speichert er die **Begründung** des Richters – den Absatz, der erklärt, was er gesehen hat. Lies diesen zuerst, wenn dich eine Bewertung überrascht; es handelt sich in der Regel entweder um eine wirklich interessante Sitzung oder um ein Zeichen, dass die Kriterien geschärft werden müssen.
+
+Bewertungen sind bei eindeutigen Fällen stabil, aber nicht bitgenau deterministisch. Behandle eine einzelne Grenzfall-Bewertung als Anlass, die Sitzung zu lesen, nicht als endgültiges Urteil.
+
+## Einschränkungen
+
+- **Tests sind noch nicht verfügbar.** Ein Probelauf hat keine Sitzungszuweisung dahinter, und diese Zuweisung ist es, die das Ausgeben deines Modell-Budgets autorisiert – daher gibt es für einen Test-Aufruf nichts zu berechnen. Veröffentliche mit einer engen Bedingung und lies die ersten Ergebnisse.
+- **Rückwirkende Auswertung ist nicht verfügbar.** Eine Code-Auswertung über Monate alter Daten rückwirkend auszuführen ist kostenlos; mit einem Richter würde das dein gesamtes Budget in wenigen Minuten aufbrauchen.
+- **Das Bearbeiten der Kriterien veröffentlicht eine neue Version.** Alte und neue Bewertungen sind nicht vergleichbar, daher werden sie getrennt gehalten und nicht in einer gemeinsamen Trendlinie vermischt.
+- **Ein Richter liefert immer eine Bewertung**, niemals eine Metrik oder eine Behauptung.
+
+## Wenn dein Budget aufgebraucht ist
+
+Richter verbrauchen das Modell-Budget deiner Organisation. Wenn es erschöpft ist, werden Richter-Auswertungen mit einem klaren Hinweis gestoppt, anstatt stillschweigend zu scheitern, und **Code-Auswertungen laufen weiterhin normal**. Erhöhe das Budget, und sie werden mit der nächsten Sitzung fortgesetzt.

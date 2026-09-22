@@ -1,35 +1,35 @@
 ---
-title: "Constatações e problemas"
+title: "Descobertas e problemas"
 description: "Transforme evidências de auditoria em trabalho de remediação rastreável e com responsáveis definidos."
 icon: "clipboard-check"
 ---
 
-Uma constatação é a declaração baseada em evidências da auditoria sobre uma falha. Um problema é o fluxo de trabalho duradouro para respondê-la.
+Uma descoberta é a declaração fundamentada em evidências da auditoria sobre uma falha. Um problema é o fluxo de trabalho duradouro para responder a ela.
 
 ## Triagem e atribuição do trabalho
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Acesse **Analyze → Audits**, escolha uma execução concluída e selecione uma constatação para inspecionar sua análise, recomendação, sessões e consultas de evidência.
-    2. Reconheça, atribua, descarte, silencie, resolva ou reabra a constatação após verificar suas evidências.
-    3. Vá para **Analyze → Issues** e filtre a caixa de entrada duradoura por status, severidade ou responsável.
-    4. Abra o problema para atribuí-lo, adicionar comentários ou assinantes, e resolva-o após a correção ser verificada.
+    1. Abra **Analyze → Audits**, escolha uma execução concluída e selecione uma descoberta para inspecionar sua análise, recomendação, sessões e consultas de evidência.
+    2. Reconheça, atribua, descarte, silencie, resolva ou reabra a descoberta após verificar suas evidências.
+    3. Vá para **Analyze → Issues** e filtre a caixa de entrada durável por status, severidade ou responsável.
+    4. Abra o problema para atribuí-lo, adicionar comentários ou assinantes e resolvê-lo após a verificação da correção.
 
-    Comece pelo resumo da constatação. Confirme que a descrição da falha, a resposta recomendada, a severidade e a classificação estão de acordo com as sessões que você esperava que a auditoria examinasse.
+    Comece pelo resumo da descoberta. Confirme se a descrição da falha, a resposta recomendada, a severidade e o ranking estão de acordo com as sessões que você esperava que a auditoria examinasse.
 
-    ![Uma constatação de auditoria com severidade, contagem de ocorrências, análise de causa raiz, ação recomendada, fatores de classificação e evidências.](/images/dashboard/audit-finding.png)
+    ![Uma descoberta de auditoria com severidade, contagem de ocorrências, análise de causa raiz, ação recomendada, fatores de ranking e evidências.](/images/dashboard/audit-finding.png)
 
-    Em seguida, abra uma sessão afetada em vez de decidir apenas pelo resumo. O rastreamento vinculado deve mostrar o evento exato e o payload que sustentam a constatação.
+    Em seguida, abra uma sessão afetada em vez de decidir apenas com base no resumo. O rastreamento vinculado deve mostrar o evento exato e o payload que sustentam a descoberta.
 
-    ![Uma sessão vinculada a uma constatação de auditoria, aberta no erro relevante com seus metadados de evento e payload bruto.](/images/dashboard/audit-linked-session.png)
+    ![Uma sessão vinculada a uma descoberta de auditoria, aberta no erro relevante com seus metadados de evento e payload bruto.](/images/dashboard/audit-linked-session.png)
 
-    Após verificar as evidências, use Issues para atribuir um responsável pela resposta e acompanhá-la independentemente das execuções futuras de auditoria.
+    Após verificar as evidências, use Issues para atribuir um responsável pela resposta e acompanhá-la independentemente de execuções futuras de auditoria.
 
-    ![A caixa de entrada de Issues mostrando trabalhos em andamento, reconhecidos e resolvidos com severidade e responsabilidade.](/images/dashboard/incidents.png)
+    ![A caixa de entrada de Issues mostrando trabalhos ativos, reconhecidos e resolvidos com severidade e responsabilidade.](/images/dashboard/incidents.png)
 
-    Abra o problema para registrar notas de investigação, notificar assinantes e preservar o histórico de respostas. Resolva-o somente após a remediação ser implantada e verificada.
+    Abra o problema para registrar notas de investigação, notificar assinantes e preservar o histórico da resposta. Resolva-o somente após a implantação e verificação da remediação.
 
-    ![Uma visualização de detalhe de problema com sua origem, evidências de violação, responsáveis, assinantes, linha do tempo e comentários.](/images/dashboard/incident-detail.png)
+    ![Uma visualização de detalhe do problema com sua origem, evidências de violação, responsáveis, assinantes, linha do tempo e comentários.](/images/dashboard/incident-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -43,19 +43,21 @@ Uma constatação é a declaração baseada em evidências da auditoria sobre um
     fp issues assign <issue-id> --assignee engineer@example.com
     fp issues comment-add <issue-id> --body "policy is in observe mode"
     fp issues resolve <issue-id> --yes
+    fp issues close <issue-id> --yes
+    fp issues archive <issue-id>
     ```
 
     Use `fp issues subscribe <issue-id>`, `fp issues unsubscribe <issue-id>` e `fp issues subscribers <issue-id>` para gerenciar observadores.
 
-    Consulte a [referência da Cloud CLI para auditorias e problemas](/pt-br/reference/cloud-cli#auditorias) para constatações de auditoria e [`fp issues`](/pt-br/reference/cloud-cli#problemas) para gerenciamento de problemas.
+    Consulte a [referência de auditoria e problemas da Cloud CLI](/pt-br/reference/cloud-cli#audits) para descobertas de auditoria e [`fp issues`](/pt-br/reference/cloud-cli#issues) para gerenciamento de problemas.
   </Tab>
 </Tabs>
 
-## Revisar uma constatação
+## Revisar uma descoberta
 
-Confirme que ela contém:
+Confirme se ela contém:
 
-- Um modo de falha recorrente, não apenas um título pontual
+- Um modo de falha estável, não apenas um título pontual
 - Severidade e impacto operacional
 - IDs de sessões afetadas ou consultas de suporte
 - Contexto suficiente para reproduzir o comportamento
@@ -63,20 +65,62 @@ Confirme que ela contém:
 
 ## Usar um problema para gerenciar a resposta
 
-Crie ou vincule um problema quando a constatação precisar de atribuição, discussão, mudanças de status, comentários ou assinantes. Os problemas também podem representar incidentes de alerta e problemas reportados manualmente, razão pela qual ficam sob a resposta de auditoria em vez de na navegação principal.
+Crie ou vincule um problema quando a descoberta precisar de atribuição, discussão, mudanças de status, comentários ou assinantes. Problemas também podem representar incidentes de alerta e problemas relatados manualmente, por isso ficam sob resposta de auditoria em vez de na navegação principal.
 
-Resolva o problema quando a remediação for implantada e verificada. Resolva a constatação quando o modo de falha tiver sido tratado para a população auditada. Esses momentos podem ser diferentes.
+Resolva o problema quando a remediação for implantada e verificada. Resolva a descoberta quando o modo de falha tiver sido tratado para a população auditada. Esses momentos podem ser diferentes.
 
-## Transformar um problema em um rascunho de política
+## Encerrar um problema: resolver, fechar ou arquivar
+
+Um problema é encerrado uma única vez, e a forma como você o encerra determina o que acontece na próxima vez que a auditoria identificar o mesmo padrão.
+
+| Ação | Significa | Se o padrão retornar |
+| --- | --- | --- |
+| **Resolver** | Você corrigiu. | O problema **é reaberto**, para que você saiba que a correção não se manteve. |
+| **Fechar** | Você terminou: não será corrigido, não é um problema ou não é mais relevante. | **Permanece fechado**. |
+| **Arquivar** | Tire do quadro. Não diz nada sobre como foi encerrado. | Um problema ativo retorna ao quadro automaticamente. |
+
+Resolver e fechar são ambos definitivos e nenhum pode sobrescrever o outro, portanto um problema que alguém resolveu mantém esse registro. Arquivar é separado dos dois: você pode arquivar um problema em qualquer estado, e ele mantém o estado em que foi encerrado. Se um problema arquivado ainda estiver ativo e o problema recorrer, ele volta ao quadro por conta própria — arquivar oculta o histórico, mas não pode ocultar um problema ativo.
+
+Fechar um problema originado de uma auditoria também descarta a descoberta por trás dele. Isso não silencia esse padrão em suas outras auditorias; para isso, silencie ou descarte a própria descoberta.
+
+## Começar do zero após alterar seus agentes
+
+Quando você implanta uma rodada de mudanças nos seus agentes, os problemas já no quadro descrevem o comportamento que você acabou de substituir. Limpar os resolve em uma única etapa, junto com as descobertas de auditoria por trás deles.
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Abra o problema e verifique sua constatação, sessões citadas, causa raiz e recomendação.
+    1. Vá para **Analyze → Issues** e selecione **clear**, ou abra uma auditoria específica e selecione **clear issues** para limitá-lo ao trabalho dessa auditoria.
+    2. Escolha o escopo. Cada opção mostra quantos problemas abrange antes de você confirmar.
+    3. Confirme. Os problemas são resolvidos, assim como as descobertas de auditoria por trás deles.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp issues clear --all-audits --dry-run
+    fp issues clear --all-audits --yes
+
+    fp issues clear --audit <audit-id> --yes
+    fp issues clear --everything --yes
+    ```
+
+    `--dry-run` reporta o que seria alterado sem efetuar nenhuma mudança. Exatamente uma das opções
+    `--audit`, `--all-audits` e `--everything` é obrigatória.
+  </Tab>
+</Tabs>
+
+**Limpar não suprime nada.** Um padrão que suas mudanças realmente corrigiram permanece resolvido. Um padrão que sobreviveu a elas **reabre** seu problema na próxima execução de auditoria — o mesmo que acontece ao resolver um manualmente — portanto, um novo início não pode ocultar silenciosamente um problema que você ainda possui. Quando você quiser silenciar um padrão definitivamente, silencie ou descarte a descoberta em vez disso.
+
+Limpar requer permissão para fechar problemas e gravar auditorias, pois resolve tanto as descobertas quanto os problemas.
+
+## Transformar um problema em rascunho de política
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Abra o problema e verifique sua descoberta, sessões citadas, causa raiz e recomendação.
     2. Selecione **generate policy** e revise o resultado de candidatura e a intenção de aplicação proposta. Um resultado **no policy** significa que o comportamento pode exigir um alerta, mudança de fluxo de trabalho ou resposta humana.
     3. Selecione **write this policy**, depois revise e teste o código-fonte gerado em **Admin → policy editor** antes de selecionar **publish version**. Use **open the editor anyway** quando discordar da verificação de candidatura.
     4. Vá para **Admin → enforcement**, implante a versão no modo **observe** e verifique suas decisões em **Observe → policy** antes de aplicá-la.
 
-    O título do problema, a descrição da constatação, a causa raiz, a recomendação e a intenção de candidatura ajudam a compor o rascunho. Nada é publicado ou implantado automaticamente.
+    O título do problema, a descrição da descoberta, a causa raiz, a recomendação e a intenção de candidatura ajudam a compor o rascunho. Nada é publicado ou implantado automaticamente.
   </Tab>
   <Tab title="CLI">
     Use a CLI para inspecionar as evidências antes de abrir o problema no dashboard:
@@ -87,10 +131,10 @@ Resolva o problema quando a remediação for implantada e verificada. Resolva a 
     fp events --session-id <session-id> --full --all
     ```
 
-    A candidatura de políticas, a publicação na Cloud e a implantação em frota são fluxos de trabalho do dashboard. Use `failproofai policies --install --custom <file>` quando quiser validar o código-fonte de uma política equivalente localmente primeiro.
+    Candidatura de política, publicação na Cloud e implantação em frota são fluxos de trabalho do dashboard. Use `failproofai policies --install --custom <file>` quando quiser validar o código-fonte de política equivalente localmente primeiro.
   </Tab>
 </Tabs>
 
 <Card title="Criar uma política" icon="shield-plus" href="/pt-br/policies/editor">
-  Converta um padrão de ação confirmado e recorrente em uma versão de política.
+  Converta um padrão de ação confirmado e repetível em uma versão de política.
 </Card>

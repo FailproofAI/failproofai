@@ -1,44 +1,48 @@
 ---
 title: "Bir değerlendirme yazın"
-description: "Neyi ölçeceğinizi açıklayın ve asistanın barındırılan bir Python değerlendirmesini taslak hale getirmesini sağlayın veya kodu kendiniz yazın. LLM hakimleri kendi worker'ınızda çalışır."
+description: "Ölçülecek şeyi açıklayın ve asistana barındırılan bir Python değerlendirmesi taslağını hazırlatın veya kodu kendiniz yazın."
 icon: "file-pen-line"
 ---
 
-Barındırılan değerlendirmeler, panoda yazılan ve Failproof AI'nin değerlendirici filosunda çalıştırılan küçük, belirleyici Python kodlarıdır. Daha ağır mantık — bir LLM hakim, bir paket, bir gizli anahtar, bir ağ çağrısı — bunun yerine [kendi worker'ınızda](#bunu-kendi-worker-ınızda-yazın) çalışır.
+Barındırılan değerlendirmeler, panelde yazılmış ve Failproof AI'ın değerlendirici filosunda çalıştırılan küçük, deterministic Python programlarıdır. Şu şeyleri sayar ve karşılaştırır: kaç aracı çağrısı yapıldı, kaç hata oluştu, bir oturum ne kadar sürdü.
 
-## Bir açıklamadan taslak oluşturun
+Konuşmanın *anlaşılmasını* gerektiren sorular için — cevap doğru muydu, yanıt kaba mıydı, ajan bir politikayı takip etti mi — bunun yerine bir [LLM hakim](/tr/evaluations/judge) yazın. Aynı yerde, iyi görünen şeyin tanımından yazılır.
 
-1. **Analyze → eval authoring** öğesine gidin ve **new eval** öğesini seçin.
-2. Ölçülecek şeyi düz İngilizce'de açıklayın veya **start from an example…** öğesinden seçim yapın ve **draft** öğesini seçin.
+Bir paket, bir gizli dizi veya kendi ağınız gerektiren herhangi bir şey [kendi işçinizde](#write-it-in-your-own-worker) çalışır.
+
+## Bir açıklamadan taslağını hazırlayın
+
+1. **Analyze → eval authoring** bölümüne gidin ve **new eval** seçeneğini seçin.
+2. Ölçülecek şeyi düz İngilizce olarak açıklayın veya **start from an example…** seçeneğinden birini seçin ve **draft** seçeneğini tıklayın.
 3. Alanları ve doldurduğu kodu gözden geçirin, ardından [test edin](/tr/evaluations/test) ve [dağıtın](/tr/evaluations/deploy).
 
-![Taslak bir değerlendirme içeren eval authoring sayfası: açıklama, taslaağa ilişkin asistanın notları ve ad, anahtar, sürüm, sonuç, zaman aşımı, etiketler ve koşul alanları.](/images/dashboard/eval-authoring-draft.png)
+![Taslak bir değerlendirmesi olan eval authoring sayfası: açıklama, taslağa ilişkin asistanın notları ve ad, anahtar, sürüm, sonuç, zaman aşımı, etiketler ve koşul alanları.](/images/dashboard/eval-authoring-draft.png)
 
-Taslak, kuruluşunuzun kendi etkinliklerine dayanır: sayfa, oturumlarınızın son yedi gün içinde hangi yük anahtarlarını taşıdığını okur, böylece kod tahmin etmek yerine var olan anahtarları okur. Taslağı teslim etmeden önce, asistan onu son oturumlarınızdan beşe kadarına karşı test eder, kanıtlayabileceği herhangi bir şeyi onarır — üç tura kadar — ve kodu istediğiniz şeyi ölçüp ölçmediğini bir kez daha kontrol eder. Açıklamayı spesifik tutun: geniş istekler daha yavaş olabilir ve zaman aşımına uğrayabilir. Her halükarda kodu gözden geçirin; dağıtım asla engellenmez.
+Taslak, kuruluşunuzun kendi olaylarına dayanır: sayfa son yedi gün içinde oturumlarınızın taşıdığı yük anahtarlarını okur, bu nedenle kod tahmin etmek yerine var olan anahtarları okur. Taslağı teslim etmeden önce, asistan bunu son oturumlarınızdan beşe kadarı karşısında test eder, kanıtlayabildiği herhangi bir şeyi onarır — en fazla üç tur — ve kodu istediğinizi ölçüp ölçmediğini bir kez kontrol eder. Açıklamayı belirli tutun: geniş istemler daha yavaş olabilir ve zaman aşımına uğrayabilir. Her iki durumda da kodu gözden geçirin; dağıtım asla engellenmez.
 
 ## Alanları ayarlayın
 
-| Alan | Nedir |
+| Alan | Ne olduğu |
 | --- | --- |
 | name | İnsanların gördüğü şey. Daha sonra düzenlenebilir |
-| key | Sonuçlarını grafiklere çizen kararlı tanımlayıcı, örneğin `code_assistant_quality_gate` |
-| version | Boşluk olmayan herhangi bir sürüm dizesi, örneğin `1.0.0` |
-| result | **score** (0 ile 1 arasında), **metric** (bir birime sahip sayı) veya **assertion** (geçti ya da geçmedi) |
-| timeout seconds | Varsayılan 30. Sandbox herhangi bir çalışmayı 60'ta durdurur |
+| key | Sonuçlarını grafik altında tuttuğu kararlı tanımlayıcı, örneğin `code_assistant_quality_gate` |
+| version | Boşluksuz herhangi bir sürüm dizesi, örneğin `1.0.0` |
+| result | **score** (0 ile 1 arasında), **metric** (bir birimli sayı) veya **assertion** (geçti veya geçmedi) |
+| timeout seconds | Varsayılan 30. Korumalı alan herhangi bir çalıştırmayı 60'da durdurur |
 | labels | En fazla 20, virgülle ayrılmış. Daha sonra düzenlenebilir |
-| condition | İsteğe bağlı. Bir Python ifadesi; değerlendirme yalnızca `True` olduğu oturumlarla çalışır |
+| condition | İsteğe bağlı. Python ifadesi; değerlendirme yalnızca `True` olduğu oturumlarda çalışır |
 
-Bir değerlendirmeyi bunu amaçlayan aracılara ve ortamlara kapsamı belirlemek için koşulu kullanın:
+Değerlendirmeyi amaçlandığı ajanlar ve ortamlara sınırlamak için koşulu kullanın:
 
 ```python
 session.agent_id == "code-assistant" and session.environment == "production"
 ```
 
-Anahtar, sürüm, sonuç türü, koşul ve kod dağıtıldıktan sonra değişmezdir: bunlardan herhangi birini değiştirmek için yeni bir sürüm yayınlayın. Ad, etiketler ve etkinleştirilip etkinleştirilmediği düzenlenebilir kalır.
+Anahtar, sürüm, sonuç türü, koşul ve kod dağıtıldıktan sonra değişmez: bunlardan herhangi birini değiştirmek için yeni bir sürüm yayınlayın. Ad, etiketler ve etkin olup olmadığı düzenlenebilir kalır.
 
 ## Kodu kendiniz yazın
 
-**Evaluator kodu**, `EvalResult(...)` döndüren tek bir Python ifadesidir ve `session` kapsamındadır. Bu, araç sonuçlarının iyi olma oranını puanlar:
+**Evaluator kodu**, `session` kapsam içinde `EvalResult(...)` döndüren tek bir Python ifadesidir. Bu, tamam olarak geri gelen araç sonuçlarının payını puanlar:
 
 ```python
 EvalResult(
@@ -51,22 +55,22 @@ EvalResult(
 )
 ```
 
-Bir sonuç değerlendirmenin kendi anahtarı ile başlar, deklaresi edilen türünde: bir skor değerlendirmesi için `score=` veya bir metrik veya assertion değerlendirmesi için anahtarla adlandırılan `metrics` veya `assertions` girişi. Diğer metrikler ve iddialar bununla birlikte gider, bir çalışmada 25'e kadar sonuç.
+Bir sonuç, değerlendirmenin kendi anahtarıyla başlar, bildirilen türünde: bir puan değerlendirmesi için `score=` veya bir metrik veya iddian değerlendirmesi için anahtardan sonra adlandırılan `metrics` veya `assertions` girişi. Diğer metrikler ve iddialar bununla birlikte gider, bir çalıştırmada 25 sonuca kadar.
 
-| Kapsamında | Sağlar |
+| Kapsam içinde | Size verir |
 | --- | --- |
 | `session` | `session_id`, `agent_id`, `environment`, `started_at`, `ended_at`, `event_count` ve `events`, artı `count(event_type)` ve `events_of_type(event_type)` |
 | Her olay | `id`, `ts`, `event_type` ve `payload` |
 | Sonuç türleri | `EvalResult`, `Score`, `Metric`, `Assertion` ve bir koşul için `ConditionResult` |
 | Builtins | `abs`, `all`, `any`, `bool`, `dict`, `float`, `int`, `len`, `list`, `max`, `min`, `range`, `round`, `set`, `sorted`, `str`, `sum`, `tuple` |
 
-Başka hiçbir şeye ulaşılamaz: içe aktarma yok ve oturum verileri ve `get`, `lower` ve `split` gibi düz dize ve sözlük yöntemleri dışında hiçbir öznitelik yoktur ve bunlar başvurulan değil, çağrılan şeylerse. Yük anahtarları aracılarınızın gönderdiği şeydir — yukarıdaki `status` yalnızca bir örnektir — bunları gerçek bir oturumdan okuyun. **format** kodu temizler ve **fix** asistandan bunu onarmalarını ister. Kod 128 KiB'e kadar olabilir ve koşul 16 KiB'e kadar olabilir.
+Başka hiçbir şey ulaşılabilir değildir: hiç import yok ve oturum verileri ile `get`, `lower` ve `split` gibi düz dize ve sözlük yöntemlerinin ötesinde öznitelik yok, bunlar referans alınmaktan ziyade çağrılmalıdır. Yük anahtarları, aracılarınızın gönderdiği şeydir — yukarıdaki `status` yalnızca bir örnektir — bu nedenle bunları gerçek bir oturumdan okuyun. **format** kodu düzenler ve **fix** asistantan onarmasını ister. Kod 128 KiB'e kadar olabilir ve koşul 16 KiB'e kadar olabilir.
 
-![Evaluator kod editörü, biçim ve onarım ile birlikte, taslak bir değerlendirmenin iddialarını gösterir.](/images/dashboard/eval-authoring-code.png)
+![Taslak bir değerlendirmenin iddialarını gösteren format ve fix ile evaluator kod editörü.](/images/dashboard/eval-authoring-code.png)
 
-## Bunu kendi worker'ınızda yazın
+## Kendi işçinizde yazın
 
-Bir değerlendirme bir modele, bir pakete, bir gizli anahtara veya ağa ihtiyaç duyduğunda, onu [Evaluator SDK](/tr/reference/evaluator-sdk) ile yazın ve kendi altyapınızda çalıştırın. Aynı sonuç türlerini kullanır ve sonuçları barındırılan olanların yanında görünür, **customer** olarak etiketlenir:
+Bir değerlendirme bir paket, bir gizli dizi, ağ veya kendiniz barındırdığınız bir model gerektirdiğinde, [Evaluator SDK](/tr/reference/evaluator-sdk) ile yazın ve kendi altyapınızda çalıştırın. Aynı sonuç türlerini kullanır ve sonuçları barındırılanların yanında görünür, **customer** etiketli:
 
 ```python
 @app.eval("answer_relevance", version="judge-v1", labels=["llm_judge"], timeout_seconds=30)

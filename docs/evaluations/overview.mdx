@@ -16,9 +16,19 @@ An evaluation scores a finished agent session. When a session ends, every enable
 | --- | --- | --- |
 | Written | In the dashboard, under **Analyze → eval authoring** | In Python, with the [Evaluator SDK](/reference/evaluator-sdk) |
 | Runs | On Failproof AI's managed evaluator, in a sandbox | On your infrastructure |
-| Best for | Deterministic, code-based checks | LLM judges, model calls, packages, secrets, network access, heavy processing |
+| Best for | Deterministic checks, and model-backed ones we host for you | Packages, secrets, your own network, models you host yourself, heavy processing |
 
-Hosted Python is deliberately small: one expression, no imports, no network. Anything that needs a model — an LLM judge scoring whether an answer was relevant, say — runs in your own worker instead. Neither kind needs an inbound connection: workers claim finished sessions and submit results over outbound HTTPS.
+Hosted evaluations come in three shapes, and the assistant picks between them for you:
+
+| | Reads the session with | Gives you |
+| --- | --- | --- |
+| **Code** | nothing — one Python expression, no imports, no network | a score, a metric, or an assertion |
+| **[Classifier](/evaluations/jev)** | a small model built for classification | a score, and nothing else — it does not explain itself |
+| **[Judge](/evaluations/judge)** | a general-purpose model | a score **and** the reasoning behind it |
+
+Code costs nothing to run. The other two cost a model call per session, so give them a condition that narrows them to the sessions the question is actually about.
+
+Your own worker is still where an evaluation goes when it needs something we do not host: a package, a secret, your own network, or a model you run yourself. Neither kind needs an inbound connection: workers claim finished sessions and submit results over outbound HTTPS.
 
 ## Each organization evaluates its own agents
 

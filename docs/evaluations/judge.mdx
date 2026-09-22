@@ -19,9 +19,13 @@ A judge costs one model call for every session it runs on, and a code evaluation
 | Did it call the same tool twice? | code |
 | How many errors were there? | code |
 | Was the session under 30 seconds? | code |
+| Did the customer express urgency? | [classifier](/evaluations/jev) |
+| How frustrated was the customer? | [classifier](/evaluations/jev) |
 | Was the answer actually correct? | **judge** |
 | Was the reply rude or dismissive? | **judge** |
 | Did it check the refund policy before promising a refund? | **judge** |
+
+The rule of thumb: **countable → code, answers you can list in advance → [classifier](/evaluations/jev), needs an explanation → judge.** A judge is the one that writes prose about what it saw; reach for it when the number will make someone ask "why?".
 
 You do not have to decide up front. Describe what you want measured and the assistant picks, then tells you which it chose and why. You can switch it.
 

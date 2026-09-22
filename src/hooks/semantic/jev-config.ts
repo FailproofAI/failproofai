@@ -38,7 +38,7 @@
  * the very next tool call — including inside the long-lived daemon worker —
  * with no restart and no stale state to reason about.
  */
-import { closeSync, fstatSync, openSync, readSync } from "node:fs";
+import { closeSync, constants as fsConstants, fstatSync, openSync, readSync } from "node:fs";
 import { jevConfigFile } from "../fp-home";
 
 export type JevProviderKind = "typesafe" | "openrouter" | "vercel" | "cloudflare" | "custom";
@@ -81,6 +81,13 @@ export const JEV_CALIBRATED_FAMILY = { major: 1, minor: 13 } as const;
 
 /** No legitimate config is anywhere near this; the hook path never reads more. */
 const MAX_CONFIG_BYTES = 64 * 1024;
+
+/**
+ * Non-blocking open: a FIFO in the file's place would otherwise hang every
+ * hook in `open()` until something wrote to it. For a regular file the flag
+ * changes nothing, and the fstat below refuses anything that is not one.
+ */
+const OPEN_FLAGS = fsConstants.O_RDONLY | (fsConstants.O_NONBLOCK ?? 0);
 
 export function jevConfigPath(): string {
   return jevConfigFile();
@@ -286,7 +293,7 @@ export function inspectJevConfig(): JevConfigInspection {
   const path = jevConfigPath();
   let fd: number;
   try {
-    fd = openSync(path, "r");
+    fd = openSync(path, OPEN_FLAGS);
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code === "ENOENT" || code === "ENOTDIR") return { status: "absent", path };
@@ -361,7 +368,7 @@ export function readJevConfigForUpdate(): Record<string, unknown> | null {
   const path = jevConfigPath();
   let fd: number;
   try {
-    fd = openSync(path, "r");
+    fd = openSync(path, OPEN_FLAGS);
   } catch {
     return null;
   }

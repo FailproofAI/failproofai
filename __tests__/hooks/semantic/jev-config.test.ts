@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -228,6 +229,17 @@ describe("semantic/jev-config", () => {
       const r = inspectJevConfig();
       expect(r.status === "refused" && r.reason).toBe("not-json");
       expect(JSON.stringify(r)).not.toContain(KEY);
+    });
+
+    it.skipIf(!posix)("refuses a FIFO in the file's place without blocking", () => {
+      mkdirSync(join(home, ".failproofai"), { recursive: true });
+      const made = spawnSync("mkfifo", [jevConfigPath()]);
+      if (made.status !== 0) return; // no mkfifo here; nothing to check
+      const started = Date.now();
+      expect(loadJevConfig()).toBeNull();
+      const r = inspectJevConfig();
+      expect(r.status === "refused" && r.problem).toContain("not a regular file");
+      expect(Date.now() - started).toBeLessThan(2_000);
     });
 
     it("refuses a directory in the file's place", () => {

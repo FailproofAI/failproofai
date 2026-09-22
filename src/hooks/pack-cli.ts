@@ -30,6 +30,7 @@ import {
 } from "./pack-store";
 import type { PolicyEffect } from "./cloud-managed-policies";
 import { loadCustomHooks } from "./custom-hooks-loader";
+import { authorityFieldsOf } from "./policy-authority";
 import type { MultiChoice, TTYIn, TTYOut } from "./tui";
 import {
   chip,
@@ -374,6 +375,11 @@ async function build(rest: string[]): Promise<PackCliResult> {
       category: typeof extra.category === "string" && extra.category ? extra.category : "General",
       defaultEnabled: extra.defaultEnabled === true,
       match: hook.match ?? {},
+      // Whether Jev may clear this policy's verdict. A pack's MANIFEST is what
+      // a machine reads it from, so a declaration left on the registration
+      // alone would be published as nothing — silently hard. Only shape-valid
+      // fields travel; absent stays absent.
+      ...authorityFieldsOf(hook as unknown as Record<string, unknown>),
     };
     try {
       policies.push(parsePackPolicy(identity.id, candidate, index));

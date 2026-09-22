@@ -6,7 +6,8 @@
  * chunk splitting and remains a true singleton across dynamic imports.
  */
 import type { HookEventType } from "./types";
-import type { PolicyAuthority, PolicyFunction, PolicyMatcher, PolicyParamsSchema, RegisteredPolicy } from "./policy-types";
+import type { PolicyFunction, PolicyMatcher, PolicyParamsSchema, RegisteredPolicy } from "./policy-types";
+import { resolvePolicyAuthority, type AuthorityDeclaration } from "./policy-authority";
 
 const REGISTRY_KEY = "__FAILPROOFAI_POLICY_REGISTRY__";
 const INDEX_CACHE_KEY = "__FAILPROOFAI_POLICY_INDEX_CACHE__";
@@ -58,18 +59,27 @@ export function registerPolicy(
   match: PolicyMatcher,
   priority: number = 0,
   params?: PolicyParamsSchema,
-  meta?: { authority?: PolicyAuthority; reviewedBy?: string[] },
+  /**
+   * The policy's authority declaration, as its source wrote it. Judged HERE,
+   * so the registry only ever holds an effective value: `reviewable` with a
+   * clean `reviewedBy`, or `hard`. See `resolvePolicyAuthority`.
+   *
+   * Absent means the caller declared nothing, and the entry then carries no
+   * authority field at all — which `effectiveAuthority` reads as hard.
+   */
+  meta?: AuthorityDeclaration,
 ): void {
   const canonical = normalizePolicyName(name);
   const registry = getRegistry();
   const idx = registry.findIndex((p) => p.name === canonical);
+  const authority = meta ? resolvePolicyAuthority(meta) : undefined;
   const entry: RegisteredPolicy = {
     name: canonical, description, fn, match, priority,
     // Absent stays absent: `evaluatePolicies` distinguishes "declares a schema"
     // from "declares none", and a spread `params: undefined` is neither.
     ...(params ? { params } : {}),
-    ...(meta?.authority ? { authority: meta.authority } : {}),
-    ...(meta?.reviewedBy ? { reviewedBy: meta.reviewedBy } : {}),
+    ...(authority ? { authority: authority.authority } : {}),
+    ...(authority?.reviewedBy ? { reviewedBy: authority.reviewedBy } : {}),
   };
   if (idx >= 0) {
     registry[idx] = entry;

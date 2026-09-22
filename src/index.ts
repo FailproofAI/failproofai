@@ -16,4 +16,5 @@ export type {
   CustomHook,
   PolicyDecision,
   PolicyFunction,
+  PolicyAuthority,
 } from "./hooks/policy-types";

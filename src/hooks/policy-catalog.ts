@@ -25,6 +25,12 @@
  * - **Absent optionals stay absent.** `beta`, `alwaysOn` and `params` are read
  *   with `in` and `undefined` checks; default-filling them changes behaviour and
  *   fails existing tests.
+ * - **Every entry states its `authority`,** even though absent already means
+ *   `hard`: whether Jev may clear a builtin's verdict is a decision to make per
+ *   policy, not a default to inherit. `reviewable` only where a semantic policy
+ *   genuinely covers the same concern, named in `reviewedBy`. The table and the
+ *   reasoning are in `docs/policies/authority.mdx`; `alwaysOn` is hard whatever
+ *   it says here.
  *
  * `params.default` values are handed to policies BY REFERENCE, so this must stay
  * one module-level const — never a factory minting fresh defaults per call.
@@ -38,6 +44,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     displayTitle: "Redacted JWT tokens from tool output",
     impact: "Stops the agent from echoing auth tokens it saw in command output.",
     match: { events: ["PostToolUse"] },
+    authority: "hard",
     defaultEnabled: true,
     category: "Sanitize",
   },
@@ -47,6 +54,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     displayTitle: "Redacted API keys from tool output",
     impact: "Catches OpenAI / Anthropic / GitHub / AWS / Stripe / Google keys before the model sees them.",
     match: { events: ["PostToolUse"] },
+    authority: "hard",
     defaultEnabled: true,
     category: "Sanitize",
     params: {
@@ -63,6 +71,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     displayTitle: "Redacted database connection strings from tool output",
     impact: "Strips embedded DB credentials before they reach the model context.",
     match: { events: ["PostToolUse"] },
+    authority: "hard",
     defaultEnabled: true,
     category: "Sanitize",
   },
@@ -72,6 +81,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     displayTitle: "Redacted PEM private keys from tool output",
     impact: "Prevents private key bodies from being echoed into chat context.",
     match: { events: ["PostToolUse"] },
+    authority: "hard",
     defaultEnabled: true,
     category: "Sanitize",
   },
@@ -81,6 +91,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Strips Authorization: Bearer values before they hit the model.",
     description: "Stop Claude from reading Authorization Bearer tokens in tool responses",
     match: { events: ["PostToolUse"] },
+    authority: "hard",
     defaultEnabled: true,
     category: "Sanitize",
   },
@@ -90,6 +101,8 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Env vars often contain secrets; blocking `env` / `printenv` keeps them out of the model context.",
     description: "Prevent commands that read environment variables",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "reviewable",
+    reviewedBy: ["env-secrets-dump", "secret-exposure"],
     defaultEnabled: true,
     category: "Environment",
   },
@@ -99,6 +112,8 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "`.env` files routinely contain API keys and DB credentials.",
     description: "Block reading/writing .env files",
     match: { events: ["PreToolUse"] },
+    authority: "reviewable",
+    reviewedBy: ["secret-exposure"],
     defaultEnabled: true,
     category: "Environment",
   },
@@ -108,6 +123,8 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Stops the agent from peeking at neighboring repos or your home directory.",
     description: "Block file reads outside the session working directory",
     match: { events: ["PreToolUse"], toolNames: ["Read", "Glob", "Grep", "Bash"] },
+    authority: "reviewable",
+    reviewedBy: ["read-outside-workspace"],
     defaultEnabled: false,
     category: "Environment",
     params: {
@@ -126,6 +143,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     // PermissionRequest is Codex's escalation-approval event; fire the same
     // sudo guard there so Codex sandbox bypasses are blocked too.
     match: { events: ["PreToolUse", "PermissionRequest"], toolNames: ["Bash"] },
+    authority: "hard",
     defaultEnabled: true,
     category: "Dangerous Commands",
     params: {
@@ -142,6 +160,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "`curl ... | sh` runs unverified remote code on your machine.",
     description: "Block piping downloads to shell",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "hard",
     defaultEnabled: true,
     category: "Dangerous Commands",
   },
@@ -151,6 +170,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Catches catastrophic `rm -rf /` and Windows equivalents.",
     description: "Prevent catastrophic deletions",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "hard",
     defaultEnabled: false,
     category: "Dangerous Commands",
     params: {
@@ -180,6 +200,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     },
     defaultEnabled: true,
     alwaysOn: true,
+    authority: "hard",
     category: "Dangerous Commands",
   },
   {
@@ -188,6 +209,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "kubectl can change live cluster state — gated unless allow-listed.",
     description: "Block kubectl commands (Kubernetes cluster mutations)",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "hard",
     defaultEnabled: false,
     category: "Infra Commands",
     params: {
@@ -204,6 +226,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Terraform mutates real infrastructure — gated unless allow-listed.",
     description: "Block terraform and tofu (OpenTofu) commands",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "hard",
     defaultEnabled: false,
     category: "Infra Commands",
     params: {
@@ -220,6 +243,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "AWS CLI can spend money or break prod — gated.",
     description: "Block aws CLI commands",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "hard",
     defaultEnabled: false,
     category: "Infra Commands",
     params: {
@@ -236,6 +260,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "gcloud can spend money or break prod — gated.",
     description: "Block gcloud (Google Cloud) CLI commands",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "hard",
     defaultEnabled: false,
     category: "Infra Commands",
     params: {
@@ -252,6 +277,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "az can spend money or break prod — gated.",
     description: "Block az (Azure) CLI commands",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "hard",
     defaultEnabled: false,
     category: "Infra Commands",
     params: {
@@ -268,6 +294,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Helm releases mutate cluster state — gated.",
     description: "Block helm commands",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "hard",
     defaultEnabled: false,
     category: "Infra Commands",
     params: {
@@ -284,6 +311,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Catches `gh workflow run`, `gh pr merge`, `gh secret set`, etc.",
     description: "Block gh CLI pipeline-trigger subcommands (workflow run, run rerun/cancel, pr merge, release create/delete, cache delete, secret set/delete)",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "hard",
     defaultEnabled: false,
     category: "Infra Commands",
     params: {
@@ -300,6 +328,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Stops the agent from creating `.pem`, `id_rsa`, `credentials.json`, etc.",
     description: "Block writing secret key files",
     match: { events: ["PreToolUse"], toolNames: ["Write"] },
+    authority: "hard",
     defaultEnabled: false,
     category: "Dangerous Commands",
     params: {
@@ -316,6 +345,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Direct pushes to a protected branch bypass review.",
     description: "Block pushing to main/master",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "hard",
     defaultEnabled: true,
     category: "Git",
     params: {
@@ -332,6 +362,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Force-pushes rewrite history and can clobber teammates' work.",
     description: "Prevent force-pushing to any branch",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "hard",
     defaultEnabled: false,
     category: "Git",
   },
@@ -341,6 +372,8 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Work should land via PR — direct commits skip review.",
     description: "Block git commits and merges on main/master branch",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "reviewable",
+    reviewedBy: ["commit-on-protected-branch"],
     defaultEnabled: false,
     category: "Git",
     params: {
@@ -357,6 +390,8 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Amending after a push rewrites history that others may have pulled.",
     description: "Warns before amending git commits, which rewrites history",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "reviewable",
+    reviewedBy: ["git-history-rewrite"],
     defaultEnabled: false,
     category: "Git",
   },
@@ -366,6 +401,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Stash deletions are permanent and silent.",
     description: "Warns before permanently deleting stashed changes",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "hard",
     defaultEnabled: false,
     category: "Git",
   },
@@ -375,6 +411,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Wide stages routinely catch generated files or secrets you didn't intend to commit.",
     description: "Warns before staging all working tree files with git add -A / . / --all",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "hard",
     defaultEnabled: false,
     category: "Git",
   },
@@ -384,6 +421,8 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Easy way to wipe a table by accident.",
     description: "Warn before executing destructive SQL (DROP/TRUNCATE/DELETE without WHERE) via database clients",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "reviewable",
+    reviewedBy: ["database-destruction"],
     defaultEnabled: false,
     category: "Database",
   },
@@ -393,6 +432,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "ALTER TABLE operations can lock tables and break readers.",
     description: "Warns before SQL schema changes (ALTER TABLE with column or rename operations)",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "hard",
     defaultEnabled: false,
     category: "Database",
   },
@@ -402,6 +442,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Publishes are irreversible — `npm publish` / `cargo publish` shouldn't happen without intent.",
     description: "Warn before publishing packages to public registries (npm, PyPI, crates.io, RubyGems, etc.)",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "hard",
     defaultEnabled: false,
     category: "Packages & System",
   },
@@ -411,6 +452,8 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "`npm i -g`, `cargo install`, `pip --user` pollute your machine outside the project.",
     description: "Warns before installing packages globally (npm -g, cargo install, etc.)",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "reviewable",
+    reviewedBy: ["system-modification"],
     defaultEnabled: false,
     category: "Packages & System",
   },
@@ -420,6 +463,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Mixing package managers creates lockfile churn for your team.",
     description: "Blocks non-preferred package managers and tells Claude to use an allowed one (e.g., uv instead of pip)",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "hard",
     defaultEnabled: false,
     category: "Packages & System",
     params: {
@@ -441,6 +485,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Catches accidentally large file writes (logs, binaries, model dumps).",
     description: "Warn before writing files larger than 1MB (configurable via thresholdKb param)",
     match: { events: ["PreToolUse"], toolNames: ["Write"] },
+    authority: "hard",
     defaultEnabled: false,
     category: "Packages & System",
     params: {
@@ -457,6 +502,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Catches `nohup` / `&` / `screen` / `tmux` / `disown` patterns that the agent often forgets to clean up.",
     description: "Warns before starting detached or background processes",
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    authority: "hard",
     defaultEnabled: false,
     category: "Packages & System",
   },
@@ -466,6 +512,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Usually a sign of a stuck loop burning tokens.",
     description: "Warn when the same tool is called 3+ times with identical parameters",
     match: { events: ["PreToolUse"] },
+    authority: "hard",
     defaultEnabled: false,
     category: "AI Behavior",
   },
@@ -475,6 +522,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Work not in a commit is invisible to teammates and easy to lose.",
     description: "Require all changes to be committed before Claude stops",
     match: { events: ["Stop"] },
+    authority: "hard",
     defaultEnabled: false,
     category: "Workflow",
   },
@@ -484,6 +532,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Local-only commits won't trigger CI or be reviewable.",
     description: "Require all commits to be pushed to remote before Claude stops",
     match: { events: ["Stop"] },
+    authority: "hard",
     defaultEnabled: false,
     category: "Workflow",
     params: {
@@ -505,6 +554,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Branches without PRs don't get reviewed.",
     description: "Require a pull request to exist for the current branch before Claude stops",
     match: { events: ["Stop"] },
+    authority: "hard",
     defaultEnabled: false,
     category: "Workflow",
     params: {
@@ -521,6 +571,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Conflicting branches can't merge — surface them early.",
     description: "Require the current branch to merge cleanly with the base branch before Claude stops",
     match: { events: ["Stop"] },
+    authority: "hard",
     defaultEnabled: false,
     category: "Workflow",
     params: {
@@ -537,6 +588,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     impact: "Failing CI blocks deploy.",
     description: "Require CI checks to pass on the current HEAD commit before Claude stops (ignores stale runs on prior commits)",
     match: { events: ["Stop"] },
+    authority: "hard",
     defaultEnabled: false,
     category: "Workflow",
   },

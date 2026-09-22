@@ -65,6 +65,16 @@ export type PolicyAuthority = "hard" | "reviewable";
  * `alwaysOn`. Anything else — absent, invalid, an empty `reviewedBy`, the
  * self-protection guard — is `hard`, so an unknown custom, cloud or third-party
  * policy can never be weakened by Jev.
+ *
+ * One malformed entry in `reviewedBy` makes the whole declaration invalid
+ * rather than being skipped: the list is a conjunction ("every one of these
+ * must come back clear"), so dropping an entry would let Jev clear the policy
+ * on fewer checks than its author asked for.
+ *
+ * Shape only. Whether each name is a semantic policy this build actually has is
+ * checked by `resolvePolicyAuthority` in `policy-authority.ts`, which is what
+ * `registerPolicy` stores — so a registered policy's fields are already
+ * resolved and this function is safe to call on one directly.
  */
 export function effectiveAuthority(p: {
   authority?: unknown;
@@ -73,9 +83,8 @@ export function effectiveAuthority(p: {
 }): PolicyAuthority {
   if (p.alwaysOn === true) return "hard";
   if (p.authority !== "reviewable") return "hard";
-  if (!Array.isArray(p.reviewedBy)) return "hard";
-  const named = p.reviewedBy.filter((n) => typeof n === "string" && n.length > 0);
-  return named.length > 0 ? "reviewable" : "hard";
+  if (!Array.isArray(p.reviewedBy) || p.reviewedBy.length === 0) return "hard";
+  return p.reviewedBy.every((n) => typeof n === "string" && n.length > 0) ? "reviewable" : "hard";
 }
 
 export interface PolicyParamsSchema {
@@ -135,7 +144,15 @@ export interface CustomHook {
     events?: HookEventType[];
   };
   fn: (ctx: PolicyContext) => PolicyResult | Promise<PolicyResult>;
-  /** See {@link PolicyAuthority}. Absent means `hard`. */
+  /**
+   * See {@link PolicyAuthority}. Absent means `hard`.
+   *
+   * Honored for the user's own local policy files (explicit paths and
+   * `.failproofai/policies/`). For a pack policy the pack's MANIFEST decides,
+   * and for a cloud-managed one the cloud ARTIFACT record does — the same split
+   * as `params`, so the declaration a user reviewed in a listing is the one
+   * that takes effect.
+   */
   authority?: PolicyAuthority;
   /** See {@link RegisteredPolicy.reviewedBy}. */
   reviewedBy?: string[];

@@ -185,11 +185,62 @@ const NON_HUMAN_PREFIXES = [
   "Instruction from failproofai:",
 ];
 
+// ── Tag blocks, in linear time ───────────────────────────────────────────────
+//
+// A prompt can be megabytes of pasted text, and it is cleaned on the hook path
+// before anything caps it. A lazy regex such as /<x>[\s\S]*?<\/x>/g rescans to
+// the end of the text from every opener that has no closer, so its cost grows
+// with the square of the number of unclosed openers: 1 MB of them took over
+// 20 s, long enough for the daemon client to give up and deny every hook on
+// the machine. These helpers find exactly the regex's matches with indexOf:
+// once an opener has no closer after it, no later opener can have one either,
+// so the scan stops there.
+
+/**
+ * Replace every block the lazy regex `/<tag>([\s\S]*?)<\/tag>/g` matches —
+ * with `attributes`, `/<tag[^>]*>([\s\S]*?)<\/tag[^>]*>/g` — by
+ * `replace(inner)`. Same matches, same order, linear time.
+ */
+function replaceTagBlocks(text: string, tag: string, replace: (inner: string) => string, attributes = false): string {
+  const open = attributes ? `<${tag}` : `<${tag}>`;
+  const close = attributes ? `</${tag}` : `</${tag}>`;
+  let out = "";
+  let from = 0;
+  for (;;) {
+    const at = text.indexOf(open, from);
+    if (at < 0) break;
+    let inner = at + open.length;
+    if (attributes) {
+      const gt = text.indexOf(">", inner);
+      if (gt < 0) break;
+      inner = gt + 1;
+    }
+    const closeAt = text.indexOf(close, inner);
+    if (closeAt < 0) break;
+    let end = closeAt + close.length;
+    if (attributes) {
+      const gt = text.indexOf(">", end);
+      if (gt < 0) break;
+      end = gt + 1;
+    }
+    out += text.slice(from, at) + replace(text.slice(inner, closeAt));
+    from = end;
+  }
+  return from === 0 ? text : out + text.slice(from);
+}
+
+/** The inner text of the first block `/<tag>([\s\S]*?)<\/tag>/` matches, in linear time. */
+function firstTagContent(text: string, tag: string): string | undefined {
+  const open = `<${tag}>`;
+  const at = text.indexOf(open);
+  if (at < 0) return undefined;
+  const closeAt = text.indexOf(`</${tag}>`, at + open.length);
+  return closeAt < 0 ? undefined : text.slice(at + open.length, closeAt);
+}
+
 function stripHarnessMarkup(text: string): string {
-  return text
-    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
-    .replace(/<pasted_content[^>]*>[\s\S]*?<\/pasted_content[^>]*>/g, "[pasted content]")
-    .trim();
+  const noReminders = replaceTagBlocks(text, "system-reminder", () => "");
+  return replaceTagBlocks(noReminders, "pasted_content", () => "[pasted content]", true).trim();
 }
 
 /**
@@ -219,7 +270,7 @@ export function humanMessageText(entry: unknown): string | null {
   }
   const trimmed = text.trim();
   if (trimmed.startsWith("<command-name>")) {
-    const args = /<command-args>([\s\S]*?)<\/command-args>/.exec(trimmed)?.[1]?.trim();
+    const args = firstTagContent(trimmed, "command-args")?.trim();
     return args ? args : null;
   }
   if (NON_HUMAN_PREFIXES.some((p) => trimmed.startsWith(p))) return null;
@@ -249,7 +300,9 @@ const IDE_REQUEST_HEADING = "## My request for Codex:";
 export function cleanHumanTurn(raw: string): string | null {
   // Reminders first: one can precede the human's words in the same turn, and
   // a turn that merely starts with a reminder is not therefore machine-written.
-  let text = raw.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "").trim();
+  // Every step is linear in the prompt's length (see replaceTagBlocks): this
+  // runs on the hook path, on the whole prompt, before anything caps it.
+  let text = replaceTagBlocks(raw, "system-reminder", () => "").trim();
   if (!text) return null;
   if (text.startsWith(CONTINUATION_PREFIX)) return null;
   if (NON_HUMAN_PREFIXES.some((p) => text.startsWith(p))) return null;
@@ -259,14 +312,12 @@ export function cleanHumanTurn(raw: string): string | null {
     text = text.slice(at + IDE_REQUEST_HEADING.length).trim();
   }
   if (/^<command-(?:name|message)>/.test(text)) {
-    const name = /<command-name>([\s\S]*?)<\/command-name>/.exec(text)?.[1]?.trim() ?? "";
-    const args = /<command-args>([\s\S]*?)<\/command-args>/.exec(text)?.[1]?.trim() ?? "";
+    const name = firstTagContent(text, "command-name")?.trim() ?? "";
+    const args = firstTagContent(text, "command-args")?.trim() ?? "";
     const typed = `${name} ${args}`.trim();
     return typed.length > 0 ? typed : null;
   }
-  text = text
-    .replace(/<pasted_content[^>]*>([\s\S]*?)<\/pasted_content[^>]*>/g, "[pasted by the human]\n$1\n[end of pasted text]")
-    .trim();
+  text = replaceTagBlocks(text, "pasted_content", (inner) => `[pasted by the human]\n${inner}\n[end of pasted text]`, true).trim();
   return text.length > 0 ? text : null;
 }
 
@@ -374,22 +425,25 @@ export const PROMPT_CHANNELS: Readonly<Record<IntegrationType, PromptChannel>> =
   goose: { nativeEvent: "UserPromptSubmit", field: "message", capture: "yes" },
 };
 
-/** What T3 passes from the handler for every canonical `UserPromptSubmit`. */
+/**
+ * What the handler (T3) passes for every canonical `UserPromptSubmit`:
+ * `captureIntent({ eventType, sessionId, transcriptPath, cli, payload: parsed })`.
+ *
+ * The whole payload is required, not just its `prompt`. The text is in a
+ * different field on some harnesses (Goose sends `message`), and every marker
+ * that tells a human's prompt from one a subagent, an extension or a scheduled
+ * run sent is elsewhere in the payload. The first draft of this contract
+ * passed only `prompt`, which silently dropped every Goose prompt and skipped
+ * those checks; a caller that still omits the payload records nothing.
+ */
 export interface CaptureEvent {
   /** Canonical event type; anything but `UserPromptSubmit` is ignored. */
   eventType: string;
   sessionId?: string;
-  /** The payload's `prompt` field. Used only when `payload` is absent. */
-  prompt?: unknown;
   transcriptPath?: string;
   cli: string;
-  /**
-   * The stdin payload after `normalizeCliPayload`. Optional, but without it a
-   * harness whose text is not in `prompt` (Goose) records nothing, and the
-   * human-origin markers some harnesses carry cannot be checked, so a gated
-   * harness (OpenClaw) records nothing either.
-   */
-  payload?: Record<string, unknown>;
+  /** The stdin payload after `normalizeCliPayload`: the handler's `parsed`. */
+  payload: Record<string, unknown>;
 }
 
 const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
@@ -409,15 +463,19 @@ function humanPromptText(ev: CaptureEvent): string | null {
   if (!isKnownCli(ev.cli)) return null;
   const channel = PROMPT_CHANNELS[ev.cli];
   if (channel.capture === "no" || channel.field === null) return null;
-  const payload = ev.payload;
-  const raw = payload ? payload[channel.field] : ev.prompt;
+  // No payload, no way to run the checks below: record nothing (fail closed).
+  const payload = obj(ev.payload);
+  if (!payload) return null;
+  const raw = payload[channel.field];
   if (typeof raw !== "string") return null;
 
   switch (ev.cli) {
     case "claude":
-      // agent_id is set only when the hook fires inside a subagent, whose
-      // "prompt" the parent agent wrote.
-      if (str(payload?.agent_id)) return null;
+      // Defence in depth only. Claude Code sets agent_id on hook payloads
+      // fired inside a subagent, but not on UserPromptSubmit (2.1.278 builds
+      // that payload without it), so today this never fires; it is here in
+      // case a later version starts marking the event.
+      if (str(payload.agent_id)) return null;
       break;
     case "codex":
       if (codexRolloutIsSubagent(ev.transcriptPath)) return null;
@@ -426,7 +484,7 @@ function humanPromptText(ev: CaptureEvent): string | null {
       // Pi's InputEvent.source is "interactive" | "rpc" | "extension"; the
       // last is another extension calling sendUserMessage(). The shim does
       // not forward it today, so this applies once it does.
-      const source = str(payload?.input_source) ?? str(payload?.source);
+      const source = str(payload.input_source) ?? str(payload.source);
       if (source === "extension") return null;
       break;
     }
@@ -434,7 +492,7 @@ function humanPromptText(ev: CaptureEvent): string | null {
       // OpenClaw documents that an absent classification "does not establish
       // human origin", so a prompt counts only when the run was triggered by
       // a user message, from an external user, who is the owner.
-      const meta = obj(payload?.openclaw);
+      const meta = obj(payload.openclaw);
       if (!meta || meta.trigger !== "user") return null;
       const provenance = obj(meta.inputProvenance)?.kind;
       if (provenance !== undefined && provenance !== "external_user") return null;
@@ -444,7 +502,7 @@ function humanPromptText(ev: CaptureEvent): string | null {
     case "cursor": {
       // Cursor's own transcripts wrap a query in <user_query>; accept that
       // form too if it ever reaches the hook.
-      const inner = /<user_query>([\s\S]*?)<\/user_query>/.exec(raw)?.[1];
+      const inner = firstTagContent(raw, "user_query");
       if (inner !== undefined) return inner;
       break;
     }
@@ -453,31 +511,52 @@ function humanPromptText(ev: CaptureEvent): string | null {
 }
 
 /**
+ * `capHeadTail`'s head/tail split and marker, with the marker's count taken
+ * from `fullLength` — the length of the text `text` was cut down from —
+ * rather than from `text` itself.
+ */
+function cutHeadTail(text: string, budget: number, fullLength: number): string {
+  const head = Math.ceil(budget * 0.6);
+  const tail = budget - head;
+  return `${text.slice(0, head)}\n…[${fullLength - budget} characters omitted]…\n${text.slice(text.length - tail)}`;
+}
+
+/**
  * Cap to at most `max` characters INCLUDING the omission marker, so the
  * envelope's own cap (the same `MAX_USER_MESSAGE_CHARS`) never fires again on
- * a stored message and flags the whole request as truncated.
+ * a stored message and flags the whole request as truncated. `fullLength` is
+ * the length the marker reports against: `text`'s own, unless `text` is
+ * already a pre-capped cut of something longer.
  */
-function capWithin(text: string, max: number): string {
+function capWithin(text: string, max: number, fullLength: number = text.length): string {
   if (text.length <= max) return text;
   let budget = max;
   for (let i = 0; i < 4; i++) {
-    const capped = capHeadTail(text, budget).text;
+    const capped = cutHeadTail(text, budget, fullLength);
     if (capped.length <= max) return capped;
     budget -= capped.length - max;
   }
-  return capHeadTail(text, budget).text.slice(0, max);
+  return cutHeadTail(text, budget, fullLength).slice(0, max);
 }
+
+/** Far more than the final cap keeps, so its cut points never reach the stored head or tail. */
+const PRE_CAP_CHARS = MAX_USER_MESSAGE_CHARS * 8;
 
 /**
  * Redact, then cap. Redacting first means the final cut can never leave half
  * a secret the patterns no longer match. A generous pre-cap bounds what the
  * redaction regexes have to scan (a pasted log can be megabytes); its cut
  * points lie far outside the head and tail the final cap keeps, so a secret
- * it splits never reaches the stored text.
+ * it splits never reaches the stored text. The pre-cap's own marker is in the
+ * middle the final cut removes, so the final marker counts what both cuts
+ * dropped: the whole prompt's length, not the pre-capped one's.
  */
 function storable(text: string): string {
-  const bounded = capHeadTail(text, MAX_USER_MESSAGE_CHARS * 8).text;
-  return capWithin(redactSecrets(bounded).text, MAX_USER_MESSAGE_CHARS);
+  const bounded = capHeadTail(text, PRE_CAP_CHARS).text;
+  const redacted = redactSecrets(bounded).text;
+  // Redaction can change the length; count it, and swap the pre-cap's marker
+  // for what that marker stood for.
+  return capWithin(redacted, MAX_USER_MESSAGE_CHARS, redacted.length + (text.length - bounded.length));
 }
 
 // ── Transcript snapshot ──────────────────────────────────────────────────────
@@ -545,6 +624,13 @@ export function lastAgentMessage(transcriptPath: string | undefined, maxBytes: n
       if (start === 0) return agentTextOfLine(buf.subarray(0, lineEnd));
       partial = Buffer.from(buf.subarray(0, lineEnd));
     }
+    // The budget ran out. What is left in `partial` starts exactly where the
+    // reading stopped; if the byte before it ends a line, it is a whole line,
+    // read in full, and gets looked at like any other.
+    if (end > 0 && partial.length > 0) {
+      const before = Buffer.alloc(1);
+      if (readSync(fd, before, 0, 1, end - 1) === 1 && before[0] === 0x0a) return agentTextOfLine(partial);
+    }
     return null;
   } catch {
     return null;
@@ -608,9 +694,10 @@ function codexRolloutIsSubagent(transcriptPath: string | undefined): boolean {
  * agent message it replies to. Never throws.
  *
  * Ignored: any event but `UserPromptSubmit`; harnesses with no human prompt
- * channel (see `PROMPT_CHANNELS`); prompts a harness marks as not typed by
- * the human; turns that are entirely harness text (`cleanHumanTurn` → null);
- * session ids that could name a path outside the state directory.
+ * channel (see `PROMPT_CHANNELS`); an event without its payload, whose origin
+ * cannot be checked; prompts a harness marks as not typed by the human; turns
+ * that are entirely harness text (`cleanHumanTurn` → null); session ids that
+ * could name a path outside the state directory.
  */
 export function captureIntent(ev: CaptureEvent, now: number = Date.now()): void {
   try {

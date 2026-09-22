@@ -14,7 +14,7 @@ This page lists, for each of the 12 supported harnesses, where that text comes f
 
 | Harness | `--cli` | Prompt event → canonical | Text field | Recorded | Agent's last message read from |
 | --- | --- | --- | --- | --- | --- |
-| Claude Code | `claude` | `UserPromptSubmit` | `prompt` | Yes, except inside a subagent (`agent_id` set) | the session transcript (`transcript_path`) |
+| Claude Code | `claude` | `UserPromptSubmit` | `prompt` | Yes | the session transcript (`transcript_path`) |
 | Codex | `codex` | `user_prompt_submit` → `UserPromptSubmit` | `prompt` | Yes, except in a sub-agent thread (the rollout's `session_meta.source`) | the rollout JSONL (`transcript_path`) |
 | GitHub Copilot CLI | `copilot` | `UserPromptSubmit` | `prompt` | Yes | the session's `events.jsonl` |
 | Cursor | `cursor` | `beforeSubmitPrompt` → `UserPromptSubmit` | `prompt` | Yes | the agent transcript JSONL |
@@ -73,6 +73,6 @@ Nothing is recorded unless a Jev endpoint is configured.
 
 ## Known limits
 
-- **Subagents on other harnesses.** Codex and Claude Code subagents are detected. Whether Copilot, Cursor, Factory, Devin or Goose fire their prompt event inside a subagent has not been verified.
+- **Subagents.** Codex sub-agent threads are detected from the rollout's `session_meta`. Claude Code's `UserPromptSubmit` payload has no field that marks a subagent (Claude Code 2.1.278 does not set `agent_id` on it), so a prompt event fired inside a Claude Code subagent could not be told apart from a typed one. The prompt is still skipped if a later version adds `agent_id` to this event. Whether Copilot, Cursor, Factory, Devin or Goose fire their prompt event inside a subagent has not been verified.
 - **Programmatic prompts count.** A prompt sent through a harness's SDK or headless mode (`claude -p`, `codex exec`) is treated as the operator's request, because the harness cannot tell it apart from a typed one.
 - **Pi extensions.** Pi marks input sent by another extension with `source: "extension"`, but the Pi bridge does not forward that field yet, so such input is currently recorded like a typed prompt.

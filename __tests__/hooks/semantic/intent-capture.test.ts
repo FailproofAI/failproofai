@@ -25,7 +25,10 @@ import {
   MAX_RECORDED_PROMPTS,
   PROMPT_CHANNELS,
   TRANSCRIPT_TAIL_MAX_BYTES,
+  agentMessageText,
   captureIntent,
+  cleanHumanTurn,
+  humanMessageText,
   lastAgentMessage,
   pruneExpiredSessions,
   readIntent,
@@ -34,6 +37,7 @@ import {
 import { buildEnvelope, MAX_USER_MESSAGE_CHARS } from "../../../src/hooks/semantic/envelope";
 import { normalizeCliPayload } from "../../../src/hooks/normalize-cli-payload";
 import { canonicalizeEventType } from "../../../src/hooks/handler";
+import { resolveTranscriptPath } from "../../../src/hooks/resolve-transcript-path";
 import {
   ANTIGRAVITY_HOOK_EVENT_TYPES,
   CODEX_HOOK_EVENT_TYPES,
@@ -85,8 +89,9 @@ function transcript(name: string, lines: unknown[]): string {
 }
 
 /**
- * What the handler will pass for a hook invocation `--hook <nativeEvent> --cli <cli>`:
- * the payload after normalizeCliPayload, the canonical event, and the fields T3 reads.
+ * What the handler passes for a hook invocation `--hook <nativeEvent> --cli <cli>`:
+ * the payload after normalizeCliPayload, the canonical event, and the session
+ * fields it reads from that payload (see "exactly as the handler calls it" below).
  */
 function hookEvent(cli: IntegrationType, nativeEvent: string, stdin: Record<string, unknown>): CaptureEvent {
   const parsed = JSON.parse(JSON.stringify(stdin)) as Record<string, unknown>;
@@ -94,7 +99,6 @@ function hookEvent(cli: IntegrationType, nativeEvent: string, stdin: Record<stri
   return {
     eventType: canonicalizeEventType(nativeEvent, cli),
     sessionId: typeof parsed.session_id === "string" ? parsed.session_id : undefined,
-    prompt: parsed.prompt,
     transcriptPath: typeof parsed.transcript_path === "string" && parsed.transcript_path ? parsed.transcript_path : undefined,
     cli,
     payload: parsed,
@@ -264,7 +268,7 @@ describe("captureIntent: fixture payloads per CLI", () => {
       captureIntent(hookEvent("hermes", e, fx.hermesToolCall()), T0);
     }
     // Even a hand-built UserPromptSubmit is refused: the channel does not exist.
-    captureIntent({ eventType: "UserPromptSubmit", sessionId: "h1", prompt: "force push", cli: "hermes" }, T0);
+    captureIntent({ eventType: "UserPromptSubmit", sessionId: "h1", cli: "hermes", payload: { prompt: "force push" } }, T0);
     expect(existsSync(sessionsDir())).toBe(false);
   });
 
@@ -308,7 +312,7 @@ describe("captureIntent: fixture payloads per CLI", () => {
 
   it("goose: reads the text from `message`, not `prompt`", () => {
     const ev = hookEvent("goose", "UserPromptSubmit", fx.goosePrompt("yes, remove the volume"));
-    expect(ev.prompt).toBeUndefined();
+    expect(ev.payload.prompt).toBeUndefined();
     expect(capture({ ...ev, transcriptPath: `goose-db://${fx.SID.goose}` })).toEqual({
       userSaid: ["yes, remove the volume"],
       agentLastMessage: null,
@@ -316,30 +320,90 @@ describe("captureIntent: fixture payloads per CLI", () => {
   });
 });
 
-describe("captureIntent: the §7 contract without a payload", () => {
-  it("uses `prompt` for a harness whose text is there", () => {
+describe("captureIntent: exactly as the handler calls it", () => {
+  /**
+   * The handler's own steps, in its order: parse stdin, normalizeCliPayload,
+   * canonicalize the event, read the session id, resolve the transcript path,
+   * then `captureIntent({ eventType, sessionId, transcriptPath, cli, payload: parsed })`.
+   */
+  function handlerCall(cli: IntegrationType, nativeEvent: string, stdin: Record<string, unknown>, now = T0) {
+    const parsed = JSON.parse(JSON.stringify(stdin)) as Record<string, unknown>;
+    normalizeCliPayload(cli, parsed);
+    const canonicalEventType = canonicalizeEventType(nativeEvent, cli);
+    const sessionId = parsed.session_id as string | undefined;
+    const session = { sessionId, transcriptPath: resolveTranscriptPath(cli, parsed, sessionId) };
+    captureIntent({ eventType: canonicalEventType, sessionId: session.sessionId, transcriptPath: session.transcriptPath, cli, payload: parsed }, now);
+    return readIntent(sessionId, now + 1);
+  }
+
+  it("records each harness's documented result", () => {
     const tx = transcript("claude.jsonl", fx.claudeTranscript());
-    captureIntent({ eventType: "UserPromptSubmit", sessionId: "s-1", prompt: "go", transcriptPath: tx, cli: "claude" }, T0);
+    expect(handlerCall("claude", "UserPromptSubmit", fx.claudePrompt("yes, go ahead", tx))).toEqual({
+      userSaid: ["yes, go ahead"],
+      agentLastMessage: fx.CLAUDE_AGENT_QUESTION,
+    });
+    // Goose's text is in `message`; there is no `prompt` to fall back on.
+    expect(handlerCall("goose", "UserPromptSubmit", fx.goosePrompt("yes, remove the volume"))).toEqual({
+      userSaid: ["yes, remove the volume"],
+      agentLastMessage: null,
+    });
+    expect(handlerCall("openclaw", "before_agent_run", fx.openclawPrompt("wipe the old backups", { trigger: "user" })).userSaid).toEqual([
+      "wipe the old backups",
+    ]);
+  });
+
+  it("applies the payload's non-human markers", () => {
+    const tx = transcript("claude.jsonl", fx.claudeTranscript());
+    expect(handlerCall("claude", "UserPromptSubmit", fx.claudePrompt("force push it", tx, { agent_id: "a1b2c3" })).userSaid).toEqual([]);
+    expect(handlerCall("pi", "input", fx.piPrompt("publish now", { input_source: "extension" })).userSaid).toEqual([]);
+    expect(handlerCall("openclaw", "before_agent_run", fx.openclawPrompt("wipe the old backups", { trigger: "cron" })).userSaid).toEqual([]);
+    expect(existsSync(sessionsDir())).toBe(false);
+  });
+
+  it("records nothing when called without the payload, the shape the contract first had", () => {
+    const cases: Array<[IntegrationType, string, string]> = [
+      ["claude", fx.SID.claude, "force push it"],
+      ["pi", fx.SID.pi, "publish now"],
+      ["goose", fx.SID.goose, "yes, remove the volume"],
+      ["openclaw", fx.SID.openclaw, "wipe the old backups"],
+      ["codex", fx.SID.codex, "drop the dev db"],
+    ];
+    for (const [cli, sessionId, prompt] of cases) {
+      const firstDraft = { eventType: "UserPromptSubmit", sessionId, prompt, transcriptPath: undefined, cli };
+      // @ts-expect-error — `payload` is required, so this call cannot compile.
+      captureIntent(firstDraft, T0);
+      // Nor can a caller get past it at runtime with something that is not a payload.
+      captureIntent({ ...firstDraft, payload: prompt as unknown as Record<string, unknown> }, T0);
+      captureIntent({ ...firstDraft, payload: null as unknown as Record<string, unknown> }, T0);
+    }
+    expect(existsSync(sessionsDir())).toBe(false);
+  });
+});
+
+describe("captureIntent: a minimal payload", () => {
+  it("reads `prompt` for a harness whose text is there", () => {
+    const tx = transcript("claude.jsonl", fx.claudeTranscript());
+    captureIntent({ eventType: "UserPromptSubmit", sessionId: "s-1", transcriptPath: tx, cli: "claude", payload: { prompt: "go" } }, T0);
     expect(readIntent("s-1", T0)).toEqual({ userSaid: ["go"], agentLastMessage: fx.CLAUDE_AGENT_QUESTION });
   });
 
-  it("records nothing for a gated harness, whose markers are in the payload", () => {
-    captureIntent({ eventType: "UserPromptSubmit", sessionId: "s-2", prompt: "wipe it", cli: "openclaw" }, T0);
+  it("records nothing for a gated harness whose payload has no origin markers", () => {
+    captureIntent({ eventType: "UserPromptSubmit", sessionId: "s-2", cli: "openclaw", payload: { prompt: "wipe it" } }, T0);
     expect(readIntent("s-2", T0).userSaid).toEqual([]);
   });
 
   it("ignores every event but UserPromptSubmit, and unknown harnesses", () => {
     for (const eventType of ["PreToolUse", "SessionStart", "Stop", "user_prompt_submit", "beforeSubmitPrompt"]) {
-      captureIntent({ eventType, sessionId: "s-3", prompt: "force push", cli: "claude" }, T0);
+      captureIntent({ eventType, sessionId: "s-3", cli: "claude", payload: { prompt: "force push" } }, T0);
     }
-    captureIntent({ eventType: "UserPromptSubmit", sessionId: "s-3", prompt: "force push", cli: "grok" }, T0);
+    captureIntent({ eventType: "UserPromptSubmit", sessionId: "s-3", cli: "grok", payload: { prompt: "force push" } }, T0);
     expect(existsSync(sessionsDir())).toBe(false);
   });
 });
 
 describe("captureIntent: harness wrappers are stripped", () => {
   const said = (prompt: string) => {
-    captureIntent({ eventType: "UserPromptSubmit", sessionId: "wrap", prompt, cli: "claude" }, T0);
+    captureIntent({ eventType: "UserPromptSubmit", sessionId: "wrap", cli: "claude", payload: { prompt } }, T0);
     return readIntent("wrap", T0).userSaid;
   };
 
@@ -387,7 +451,7 @@ describe("captureIntent: harness wrappers are stripped", () => {
 });
 
 describe("captureIntent: storage", () => {
-  const ev = (prompt: string, sessionId = "store"): CaptureEvent => ({ eventType: "UserPromptSubmit", sessionId, prompt, cli: "claude" });
+  const ev = (prompt: string, sessionId = "store"): CaptureEvent => ({ eventType: "UserPromptSubmit", sessionId, cli: "claude", payload: { prompt } });
 
   it("writes an owner-only file in an owner-only directory", () => {
     captureIntent(ev("hello"), T0);
@@ -468,7 +532,7 @@ describe("captureIntent: session-id validation stays", () => {
 
   it("never writes a file for an id that is not a plain name", () => {
     for (const sessionId of bad) {
-      captureIntent({ eventType: "UserPromptSubmit", sessionId, prompt: "force push", cli: "claude" }, T0);
+      captureIntent({ eventType: "UserPromptSubmit", sessionId, cli: "claude", payload: { prompt: "force push" } }, T0);
     }
     expect(existsSync(sessionsDir())).toBe(false);
     expect(existsSync(join(home, "evil.json"))).toBe(false);
@@ -484,7 +548,7 @@ describe("captureIntent: session-id validation stays", () => {
 
   it("accepts the id shapes the harnesses actually use", () => {
     for (const id of Object.values(fx.SID)) {
-      captureIntent({ eventType: "UserPromptSubmit", sessionId: id, prompt: "hello", cli: "claude" }, T0);
+      captureIntent({ eventType: "UserPromptSubmit", sessionId: id, cli: "claude", payload: { prompt: "hello" } }, T0);
       expect(readIntent(id, T0).userSaid, id).toEqual(["hello"]);
     }
   });
@@ -493,11 +557,11 @@ describe("captureIntent: session-id validation stays", () => {
 describe("captureIntent never throws", () => {
   it("survives odd payloads, a directory as the transcript, and an unwritable home", () => {
     const odd: CaptureEvent[] = [
-      { eventType: "UserPromptSubmit", sessionId: "odd", prompt: { text: "x" }, cli: "claude" },
-      { eventType: "UserPromptSubmit", sessionId: "odd", prompt: 42, cli: "claude" },
+      { eventType: "UserPromptSubmit", sessionId: "odd", cli: "claude", payload: { prompt: { text: "x" } } },
+      { eventType: "UserPromptSubmit", sessionId: "odd", cli: "claude", payload: { prompt: 42 } },
       { eventType: "UserPromptSubmit", sessionId: "odd", cli: "claude", payload: { prompt: ["x"] } },
       { eventType: "UserPromptSubmit", sessionId: "odd", cli: "openclaw", payload: { prompt: "x", openclaw: "not-an-object" } },
-      { eventType: "UserPromptSubmit", sessionId: "odd", prompt: "hi", cli: "claude", transcriptPath: scratch },
+      { eventType: "UserPromptSubmit", sessionId: "odd", cli: "claude", transcriptPath: scratch, payload: { prompt: "hi" } },
       null as unknown as CaptureEvent,
     ];
     for (const e of odd) expect(() => captureIntent(e, T0)).not.toThrow();
@@ -506,7 +570,7 @@ describe("captureIntent never throws", () => {
     const file = join(scratch, "not-a-dir");
     writeFileSync(file, "");
     process.env.FAILPROOFAI_HOME = file;
-    expect(() => captureIntent({ eventType: "UserPromptSubmit", sessionId: "s", prompt: "hi", cli: "claude" }, T0)).not.toThrow();
+    expect(() => captureIntent({ eventType: "UserPromptSubmit", sessionId: "s", cli: "claude", payload: { prompt: "hi" } }, T0)).not.toThrow();
     expect(readIntent("s", T0)).toEqual({ userSaid: [], agentLastMessage: null });
   });
 });
@@ -514,10 +578,10 @@ describe("captureIntent never throws", () => {
 describe("the agent-message snapshot", () => {
   it("is taken at capture time and does not follow the transcript afterwards", () => {
     const tx = transcript("claude.jsonl", fx.claudeTranscript());
-    captureIntent({ eventType: "UserPromptSubmit", sessionId: "snap", prompt: "yes", transcriptPath: tx, cli: "claude" }, T0);
+    captureIntent({ eventType: "UserPromptSubmit", sessionId: "snap", transcriptPath: tx, cli: "claude", payload: { prompt: "yes" } }, T0);
     appendFileSync(tx, JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "Force-pushed. Anything else?" }] } }) + "\n");
     expect(readIntent("snap", T0 + 1).agentLastMessage).toBe(fx.CLAUDE_AGENT_QUESTION);
-    captureIntent({ eventType: "UserPromptSubmit", sessionId: "snap", prompt: "no, thanks", transcriptPath: tx, cli: "claude" }, T0 + 2);
+    captureIntent({ eventType: "UserPromptSubmit", sessionId: "snap", transcriptPath: tx, cli: "claude", payload: { prompt: "no, thanks" } }, T0 + 2);
     expect(readIntent("snap", T0 + 3)).toEqual({ userSaid: ["yes", "no, thanks"], agentLastMessage: "Force-pushed. Anything else?" });
   });
 
@@ -624,8 +688,256 @@ describe("pruneExpiredSessions", () => {
     write("stale.json.123.tmp", old);
     write("fresh.json");
     write("notes.txt", old);
-    captureIntent({ eventType: "UserPromptSubmit", sessionId: "brand-new", prompt: "hi", cli: "claude" }, now);
+    captureIntent({ eventType: "UserPromptSubmit", sessionId: "brand-new", cli: "claude", payload: { prompt: "hi" } }, now);
     expect(readdirSync(dir).sort()).toEqual(["brand-new.json", "fresh.json", "notes.txt"]);
     expect(pruneExpiredSessions(now)).toBe(0);
+  });
+});
+
+// ── Review round 1 ──────────────────────────────────────────────────────────
+
+describe("cleaning a huge prompt stays linear", () => {
+  const claudeEv = (sessionId: string, prompt: string): CaptureEvent => ({ eventType: "UserPromptSubmit", sessionId, cli: "claude", payload: { prompt } });
+
+  it("handles megabytes of unclosed harness tags in well under the daemon's budget", () => {
+    const MiB = 1024 * 1024;
+    const fill = (unit: string) => unit.repeat(Math.ceil(MiB / unit.length));
+    const prompts: Array<[CaptureEvent, string]> = [
+      [claudeEv("lin-1", `fix it ${fill("<system-reminder>")}`), "fix it <system-reminder>"],
+      [claudeEv("lin-2", `fix it ${fill("<pasted_content>")}`), "fix it <pasted_content>"],
+      [claudeEv("lin-3", `fix it ${fill("<pasted_content ")}`), "fix it <pasted_content "],
+      [claudeEv("lin-4", `fix it <pasted_content id="1">${fill("</pasted_content ")}`), 'fix it <pasted_content id="1">'],
+      [claudeEv("lin-5", `<command-message>x</command-message>${fill("<command-name>")}`), ""],
+      [hookEvent("cursor", "beforeSubmitPrompt", { ...fx.cursorPrompt(`fix it ${fill("<user_query>")}`, ""), session_id: "lin-6" }), "fix it <user_query>"],
+    ];
+    const started = performance.now();
+    for (const [ev] of prompts) captureIntent(ev, T0);
+    const elapsed = performance.now() - started;
+    // The lazy regexes this replaced took over 20 s on 1 MiB of these.
+    expect(elapsed).toBeLessThan(3_000);
+    for (const [ev, head] of prompts) {
+      const said = readIntent(ev.sessionId, T0).userSaid;
+      if (head === "") {
+        expect(said, ev.sessionId).toEqual([]);
+        continue;
+      }
+      expect(said, ev.sessionId).toHaveLength(1);
+      expect(said[0].startsWith(head), ev.sessionId).toBe(true);
+      expect(said[0].length).toBeLessThanOrEqual(MAX_USER_MESSAGE_CHARS);
+    }
+  });
+
+  // What the lazy regexes did, kept here as the oracle for the linear version.
+  const NON_HUMAN = [
+    "<local-command-caveat>",
+    "<local-command-stdout>",
+    "<local-command-stderr>",
+    "<task-notification>",
+    "<system-reminder>",
+    "[Request interrupted",
+    "MANDATORY ACTION REQUIRED from failproofai",
+    "Instruction from failproofai:",
+  ];
+  function regexCleanHumanTurn(raw: string): string | null {
+    let text = raw.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "").trim();
+    if (!text) return null;
+    if (text.startsWith("This session is being continued from a previous conversation")) return null;
+    if (NON_HUMAN.some((p) => text.startsWith(p))) return null;
+    if (text.startsWith("# Context from my IDE setup:")) {
+      const at = text.lastIndexOf("## My request for Codex:");
+      if (at < 0) return null;
+      text = text.slice(at + "## My request for Codex:".length).trim();
+    }
+    if (/^<command-(?:name|message)>/.test(text)) {
+      const name = /<command-name>([\s\S]*?)<\/command-name>/.exec(text)?.[1]?.trim() ?? "";
+      const args = /<command-args>([\s\S]*?)<\/command-args>/.exec(text)?.[1]?.trim() ?? "";
+      const typed = `${name} ${args}`.trim();
+      return typed.length > 0 ? typed : null;
+    }
+    text = text.replace(/<pasted_content[^>]*>([\s\S]*?)<\/pasted_content[^>]*>/g, "[pasted by the human]\n$1\n[end of pasted text]").trim();
+    return text.length > 0 ? text : null;
+  }
+  function regexHumanText(content: string): string | null {
+    const trimmed = content.trim();
+    if (trimmed.startsWith("<command-name>")) {
+      const args = /<command-args>([\s\S]*?)<\/command-args>/.exec(trimmed)?.[1]?.trim();
+      return args ? args : null;
+    }
+    if (NON_HUMAN.some((p) => trimmed.startsWith(p))) return null;
+    const cleaned = trimmed
+      .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
+      .replace(/<pasted_content[^>]*>[\s\S]*?<\/pasted_content[^>]*>/g, "[pasted content]")
+      .trim();
+    return cleaned.length > 0 ? cleaned : null;
+  }
+
+  const TOKENS = [
+    "<system-reminder>", "</system-reminder>", "<pasted_content", "<pasted_content>", "</pasted_content", "</pasted_content>",
+    ">", ' id="1"', "<command-name>", "</command-name>", "<command-args>", "</command-args>", "<command-message>",
+    "<user_query>", "</user_query>", "a", "b c", " ", "\n", "$1", "$&",
+  ];
+  function randomTurns(seed: number, count: number): string[] {
+    let s = seed >>> 0;
+    const next = () => {
+      s = (s + 0x6d2b79f5) >>> 0;
+      let t = s;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    return Array.from({ length: count }, () => Array.from({ length: Math.floor(next() * 14) }, () => TOKENS[Math.floor(next() * TOKENS.length)]).join(""));
+  }
+
+  it("strips exactly what the regexes stripped", () => {
+    for (const turn of randomTurns(20260922, 20_000)) {
+      expect(cleanHumanTurn(turn), JSON.stringify(turn)).toBe(regexCleanHumanTurn(turn));
+      expect(humanMessageText({ type: "user", message: { role: "user", content: turn } }), JSON.stringify(turn)).toBe(regexHumanText(turn));
+    }
+  });
+
+  it("unwraps Cursor's <user_query> exactly as the regex did", () => {
+    let i = 0;
+    for (const turn of randomTurns(7, 300)) {
+      const sessionId = `uq-${i++}`;
+      captureIntent(hookEvent("cursor", "beforeSubmitPrompt", { ...fx.cursorPrompt(turn, ""), session_id: sessionId }), T0);
+      const inner = /<user_query>([\s\S]*?)<\/user_query>/.exec(turn)?.[1];
+      const expected = regexCleanHumanTurn(inner ?? turn);
+      expect(readIntent(sessionId, T0).userSaid, JSON.stringify(turn)).toEqual(expected === null ? [] : [expected]);
+    }
+  });
+});
+
+describe("captureIntent: redaction happens before the cut", () => {
+  it("stores no piece of a key that straddles the head/tail cut", () => {
+    const key = fakeKey();
+    const body = key.slice(3);
+    const filler = "log line ".repeat(600);
+    // The head the cap keeps ends about 0.6 of the way into the 1,200-character
+    // budget; slide the key across that cut and a little beyond on both sides.
+    const cut = Math.ceil(MAX_USER_MESSAGE_CHARS * 0.6);
+    for (let at = cut - 160; at <= cut + 60; at++) {
+      const sessionId = `split-${at}`;
+      const prompt = `${filler.slice(0, at)} ${key} ${filler}`;
+      captureIntent({ eventType: "UserPromptSubmit", sessionId, cli: "claude", payload: { prompt } }, T0);
+      const raw = readFileSync(join(sessionsDir(), `${sessionId}.json`), "utf8");
+      for (let i = 0; i + 10 <= body.length; i++) {
+        expect(raw.includes(body.slice(i, i + 10)), `key at ${at} leaked "${body.slice(i, i + 10)}"`).toBe(false);
+      }
+    }
+  });
+});
+
+describe("captureIntent: the omission marker", () => {
+  const omitted = (stored: string) => {
+    const m = /\n…\[(\d+) characters omitted\]…\n/.exec(stored);
+    expect(m, stored.slice(0, 80)).not.toBeNull();
+    return { count: Number(m![1]), kept: stored.length - m![0].length };
+  };
+
+  it("counts every character the stored text leaves out, however long the prompt", () => {
+    for (const length of [1_201, 5_000, 9_601, 100_000, 1_000_000]) {
+      const prompt = `HEAD ${"a".repeat(length - 10)} TAIL`;
+      const sessionId = `omit-${length}`;
+      captureIntent({ eventType: "UserPromptSubmit", sessionId, cli: "claude", payload: { prompt } }, T0);
+      const [stored] = readIntent(sessionId, T0).userSaid;
+      expect(stored.length).toBeLessThanOrEqual(MAX_USER_MESSAGE_CHARS);
+      expect(stored.startsWith("HEAD ")).toBe(true);
+      expect(stored.endsWith(" TAIL")).toBe(true);
+      const { count, kept } = omitted(stored);
+      expect(count + kept, `a ${length}-character prompt`).toBe(prompt.length);
+    }
+  });
+});
+
+describe("the stored agent message", () => {
+  it("is capped like the prompt, head and tail kept, within the envelope's budget", () => {
+    const text = `A-HEAD ${"b".repeat(20_000)} A-TAIL`;
+    const tx = transcript("claude.jsonl", [{ type: "assistant", message: { role: "assistant", content: [{ type: "text", text }] } }]);
+    captureIntent({ eventType: "UserPromptSubmit", sessionId: "agent-cap", transcriptPath: tx, cli: "claude", payload: { prompt: "yes" } }, T0);
+    const { agentLastMessage } = readIntent("agent-cap", T0);
+    expect(agentLastMessage).not.toBeNull();
+    expect(agentLastMessage!.length).toBeLessThanOrEqual(MAX_USER_MESSAGE_CHARS);
+    expect(agentLastMessage!.startsWith("A-HEAD ")).toBe(true);
+    expect(agentLastMessage!.endsWith(" A-TAIL")).toBe(true);
+    expect(readFileSync(join(sessionsDir(), "agent-cap.json"), "utf8").length).toBeLessThan(4 * MAX_USER_MESSAGE_CHARS);
+    expect(buildEnvelope({ command: "ls" }, ["yes"], facts(), null, { agentLastMessage }).truncated).toBe(false);
+  });
+});
+
+describe("per-harness channels, round 1", () => {
+  it("opencode: never records, even a prompt a human could have typed", () => {
+    expect(capture(hookEvent("opencode", "UserPromptSubmit", fx.opencodePrompt("drop the db"))).userSaid).toEqual([]);
+    expect(existsSync(sessionsDir())).toBe(false);
+  });
+
+  it("openclaw: records a user-triggered run that has no provenance and no owner flag", () => {
+    const ev = hookEvent("openclaw", "before_agent_run", fx.openclawPrompt("wipe the old backups", { trigger: "user" }));
+    expect(capture(ev).userSaid).toEqual(["wipe the old backups"]);
+  });
+
+  it("codex: a string session source or thread source naming a sub-agent also counts as one", () => {
+    const withMeta = (extra: Record<string, unknown>) => {
+      const [meta, ...rest] = fx.codexRollout0153() as Array<{ payload: Record<string, unknown> }>;
+      return [{ ...meta, payload: { ...meta.payload, ...extra } }, ...rest];
+    };
+    const bySource = transcript("sub-source.jsonl", withMeta({ source: "subagent" }));
+    expect(capture(hookEvent("codex", "user_prompt_submit", fx.codexPrompt("drop it", bySource))).userSaid).toEqual([]);
+    const byThread = transcript("sub-thread.jsonl", withMeta({ source: "cli", thread_source: "sub_agent" }));
+    expect(capture(hookEvent("codex", "user_prompt_submit", fx.codexPrompt("drop it", byThread))).userSaid).toEqual([]);
+    const human = transcript("user-thread.jsonl", withMeta({ source: "cli", thread_source: "user" }));
+    expect(capture(hookEvent("codex", "user_prompt_submit", fx.codexPrompt("drop it", human))).userSaid).toEqual(["drop it"]);
+  });
+
+  it("claude: a payload whose fields throw on access records nothing and throws nothing", () => {
+    const payload = {
+      get prompt(): string {
+        throw new Error("boom");
+      },
+    } as unknown as Record<string, unknown>;
+    expect(() => captureIntent({ eventType: "UserPromptSubmit", sessionId: "throws", cli: "claude", payload }, T0)).not.toThrow();
+    const hostile = new Proxy({} as CaptureEvent, {
+      get() {
+        throw new Error("boom");
+      },
+    });
+    expect(() => captureIntent(hostile, T0)).not.toThrow();
+    expect(existsSync(sessionsDir())).toBe(false);
+  });
+});
+
+describe("agentMessageText, one entry at a time", () => {
+  it("reads a Codex response_item assistant message on its own", () => {
+    expect(
+      agentMessageText({ type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "Drop the table?" }] } }),
+    ).toBe("Drop the table?");
+    expect(agentMessageText({ type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "no" }] } })).toBeNull();
+  });
+
+  it("finds the snapshot in a rollout that has only response_item messages", () => {
+    const rollout = (fx.codexRollout0153() as Array<{ type: string; payload: { type?: string } }>).filter(
+      (l) => !(l.type === "event_msg" && (l.payload.type === "agent_message" || l.payload.type === "task_complete")),
+    );
+    expect(lastAgentMessage(transcript("rollout-items.jsonl", rollout))).toBe(fx.CODEX_AGENT_QUESTION);
+  });
+});
+
+describe("the transcript tail budget", () => {
+  it("still reads a whole line that starts exactly where the budget runs out", () => {
+    const budget = 64 * 1024;
+    const agent = JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "Force-push to main?" }] } }) + "\n";
+    // One user line of exactly `bytes` bytes, newline included.
+    const userLine = (content: string) => JSON.stringify({ type: "user", message: { role: "user", content } }) + "\n";
+    const pad = (bytes: number) => userLine("p".repeat(bytes - Buffer.byteLength(userLine(""))));
+    const after = pad(budget - Buffer.byteLength(agent));
+    const before = JSON.stringify({ type: "user", message: { role: "user", content: "earlier" } }) + "\n";
+    const path = join(scratch, "boundary.jsonl");
+    writeFileSync(path, before + agent + after);
+    expect(Buffer.byteLength(agent + after)).toBe(budget);
+    expect(lastAgentMessage(path, budget)).toBe("Force-push to main?");
+    // One byte short and the line was not read in full: nothing.
+    expect(lastAgentMessage(path, budget - 1)).toBeNull();
+    // A whole line that starts exactly at the file's start still counts.
+    writeFileSync(path, agent + after);
+    expect(lastAgentMessage(path, budget)).toBe("Force-push to main?");
   });
 });

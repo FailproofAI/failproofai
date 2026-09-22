@@ -233,12 +233,22 @@ const FREE_TEXT_PREFIXES: &[(&str, &str)] = &[
     ("config", "config"),
 ];
 
+/// Whitespace exactly as JavaScript's `\s` and `String.prototype.trim` see
+/// it, so the validators below apply the same rule as
+/// `src/hooks/jev-activity.ts` to the same bytes. Rust's
+/// `char::is_whitespace` differs in two code points: it counts U+0085 (NEL, a
+/// C1 control) and not U+FEFF (the byte-order mark); JavaScript does the
+/// opposite.
+fn is_js_whitespace(c: char) -> bool {
+    c == '\u{FEFF}' || (c.is_whitespace() && c != '\u{85}')
+}
+
 /// A fallback reason reduced to a known code, or `None` when there is none.
 ///
 /// A known code — alone, or in front of `:` / `(` and free text — is kept
 /// (renamed through [`FREE_TEXT_PREFIXES`]); anything else is `other`.
 pub fn jev_reason_code(raw: &str) -> Option<String> {
-    let s = raw.trim().to_lowercase();
+    let s = raw.trim_matches(is_js_whitespace).to_lowercase();
     if s.is_empty() {
         return None;
     }
@@ -246,7 +256,7 @@ pub fn jev_reason_code(raw: &str) -> Option<String> {
         .find(|c: char| !(c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'))
         .unwrap_or(s.len());
     let (head, rest) = s.split_at(head_len);
-    let rest = rest.trim_start();
+    let rest = rest.trim_start_matches(is_js_whitespace);
     let code_shaped = head.len() <= JEV_REASON_MAX_CHARS
         && is_reason_code(head)
         && (rest.is_empty() || rest.starts_with(':') || rest.starts_with('('));
@@ -310,7 +320,7 @@ fn is_policy_name(s: &str) -> bool {
         && s.chars().count() <= JEV_POLICY_NAME_MAX_CHARS
         && s.chars()
             .all(|c| !c.is_control() && c != '\u{2028}' && c != '\u{2029}')
-        && (!s.chars().any(char::is_whitespace) || has_registered_namespace(s))
+        && (!s.chars().any(is_js_whitespace) || has_registered_namespace(s))
 }
 
 /// What happened to Jev on one call. `evaluator: "jev"` alone does not say:
@@ -411,7 +421,7 @@ impl JevFacts {
         let model = row
             .jev_model
             .as_deref()
-            .map(str::trim)
+            .map(|m| m.trim_matches(is_js_whitespace))
             .filter(|m| is_model_id(m))
             .map(str::to_string);
         // Answered when the row carries anything only a request produces: a

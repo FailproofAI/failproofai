@@ -1294,3 +1294,132 @@ fn the_handlers_unavailable_reason_ships_as_itself() {
     let end = completed(&transform::to_events(&row, 0, "local")).clone();
     assert_eq!(end["jev_fallback_reason"], "unavailable");
 }
+
+// ---------------------------------------------------------------------------
+// Round-1 review: cases the tests above did not pin
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_registered_namespace_counts_only_at_the_start() {
+    // The same cases as __tests__/hooks/jev-field-shapes.test.ts: a command
+    // line that merely contains `custom/` or `failproofai/` is not a name.
+    let mid_string = [
+        "cat /srv/custom/payroll 2026.csv",
+        "git push origin failproofai/x",
+        "cp pack/acme/x.json /tmp/out dir",
+        "see cloud/pol_1@2/Guard prod deploys",
+        "ls ~/.failproofai-project/Ask before deploy",
+        " custom/leading space",
+    ];
+    let mut all: Vec<Value> = mid_string.iter().map(|n| json!(n)).collect();
+    all.push(json!("block-env-files"));
+    let row = parse(&jev_row(
+        1785740912184,
+        "allow",
+        json!({ "jevCleared": all }),
+    ));
+    assert_eq!(
+        JevFacts::of(&row).unwrap().cleared,
+        vec!["block-env-files".to_string()]
+    );
+}
+
+#[test]
+fn whitespace_is_what_javascript_calls_whitespace() {
+    // The same cases as __tests__/hooks/jev-whitespace-parity.test.ts. JS
+    // counts U+FEFF as whitespace and not U+0085; Rust's own `trim` and
+    // `is_whitespace` do the opposite, so the two validators disagreed.
+    assert_eq!(
+        jev_reason_code("\u{FEFF}timeout").as_deref(),
+        Some("timeout")
+    );
+    assert_eq!(
+        jev_reason_code("timeout\u{FEFF}").as_deref(),
+        Some("timeout")
+    );
+    assert_eq!(
+        jev_reason_code("timeout\u{FEFF}: rm -rf x").as_deref(),
+        Some("timeout")
+    );
+    assert_eq!(jev_reason_code("\u{FEFF}"), None);
+    assert_eq!(jev_reason_code("\u{85}timeout").as_deref(), Some("other"));
+
+    let cleared = |names: Value| {
+        JevFacts::of(&parse(&jev_row(
+            1785740912184,
+            "allow",
+            json!({ "jevCleared": names }),
+        )))
+        .unwrap()
+        .cleared
+    };
+    assert_eq!(
+        cleared(json!(["a\u{FEFF}b", "custom/a\u{FEFF}b", "a\u{85}b"])),
+        vec!["custom/a\u{FEFF}b".to_string()]
+    );
+
+    let model = |id: &str| {
+        JevFacts::of(&parse(&jev_row(
+            1785740912184,
+            "allow",
+            json!({ "jevModel": id }),
+        )))
+        .unwrap()
+        .model
+    };
+    assert_eq!(
+        model("\u{FEFF}jev-1.13.0\u{FEFF}").as_deref(),
+        Some("jev-1.13.0")
+    );
+    assert_eq!(model("\u{85}jev-1.13.0"), None);
+    assert_eq!(model("jev-1.13.0\u{85}"), None);
+}
+
+#[test]
+fn a_negative_latency_is_not_shipped() {
+    let row = parse(&jev_row(
+        1785740912184,
+        "allow",
+        json!({ "jevLatencyMs": -5 }),
+    ));
+    let jev = JevFacts::of(&row).unwrap();
+    assert_eq!(jev.latency_ms, None);
+    let end = completed(&transform::to_events(&row, 0, "local")).clone();
+    assert!(end.get("jev_latency_ms").is_none(), "{end}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_rollups_latency_is_the_mean_and_max_of_valid_values_only() {
+    let (store, state, spool) = (tmpdir("aggmax-s"), tmpdir("aggmax-st"), tmpdir("aggmax-sp"));
+    // Not in increasing order, so the last value is not the largest, and one
+    // negative latency another build wrote, which must feed neither number.
+    let rows: Vec<Value> = [json!(90), json!(20), json!(40), json!(-500)]
+        .into_iter()
+        .enumerate()
+        .map(|(i, l)| {
+            jev_row(
+                1785740912000 + i as i64 * 100,
+                "allow",
+                json!({ "jevLatencyMs": l }),
+            )
+        })
+        .collect();
+    write_rows(&store, &rows);
+    run_once(&store, &state, &spool, HooksVerbosity::Decisions).await;
+
+    let events = spooled(&spool);
+    assert_eq!(
+        events.len(),
+        1,
+        "four ordinary Jev allows are one aggregate"
+    );
+    let agg = &events[0];
+    assert_eq!(agg["failproofai_allow_count"], 4);
+    assert_eq!(
+        agg["jev_latency_ms"], 50.0,
+        "the mean over the valid values"
+    );
+    assert_eq!(agg["jev_max_latency_ms"], 90.0, "the largest, not the last");
+
+    cleanup(&[&store, &state, &spool]);
+}

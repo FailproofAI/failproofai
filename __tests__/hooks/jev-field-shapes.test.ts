@@ -76,6 +76,27 @@ describe("isJevPolicyName", () => {
     for (const n of NOT_NAMES) expect(isJevPolicyName(n), JSON.stringify(n)).toBe(false);
     expect(isJevPolicyName(7)).toBe(false);
   });
+
+  // The namespace must START the name. A command line or a path that merely
+  // contains `custom/` or `failproofai/` somewhere is still a command line.
+  const NAMESPACE_MID_STRING = [
+    "cat /srv/custom/payroll 2026.csv",
+    "git push origin failproofai/x",
+    "cp pack/acme/x.json /tmp/out dir",
+    "see cloud/pol_1@2/Guard prod deploys",
+    "ls ~/.failproofai-project/Ask before deploy",
+    " custom/leading space",
+  ];
+
+  it("rejects a command line with a registered namespace mid-string", () => {
+    for (const n of NAMESPACE_MID_STRING) expect(isJevPolicyName(n), JSON.stringify(n)).toBe(false);
+  });
+
+  it("drops such a string from a cleared list before it is stored or shipped", () => {
+    const e = sanitizeJevActivity({ evaluator: "jev", jevCleared: [...NAMESPACE_MID_STRING, "block-env-files"] });
+    expect(e.jevCleared).toEqual(["block-env-files"]);
+    expect(jevTelemetryProperties({ evaluator: "jev", jevCleared: NAMESPACE_MID_STRING }).jev_cleared).toEqual([]);
+  });
 });
 
 describe("a clear of a reviewable policy whose name has spaces", () => {

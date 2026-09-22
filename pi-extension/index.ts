@@ -404,6 +404,10 @@ export default function failproofaiBridge(pi: PiExtensionApi) {
       session_id: resolveSessionId(e.sessionId, resolveCwd(e.cwd)),
       cwd: resolveCwd(e.cwd),
       hook_event_name: "UserPromptSubmit",
+      // "interactive" | "rpc" | "extension": the Jev evaluator records a
+      // prompt as the human's only when it was not another extension's
+      // sendUserMessage() (src/hooks/semantic/intent.ts).
+      input_source: e.source,
     });
     if (decision.block) {
       console.error(`[failproofai] prompt blocked: ${decision.reason ?? "blocked by policy"}`);

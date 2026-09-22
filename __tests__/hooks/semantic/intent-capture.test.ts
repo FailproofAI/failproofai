@@ -374,7 +374,8 @@ describe("captureIntent: exactly as the handler calls it", () => {
     ];
     for (const [cli, sessionId, prompt] of cases) {
       const firstDraft = { eventType: "UserPromptSubmit", sessionId, prompt, transcriptPath: undefined, cli };
-      // @ts-expect-error — `payload` is required, so this call cannot compile.
+      // The draft shape compiles again (review round 4), but each of these
+      // harnesses checks origin (or, for Goose, has no `prompt`): nothing.
       captureIntent(firstDraft, T0);
       // Nor can a caller get past it at runtime with something that is not a payload.
       captureIntent({ ...firstDraft, payload: prompt as unknown as Record<string, unknown> }, T0);

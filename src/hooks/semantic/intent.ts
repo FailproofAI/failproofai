@@ -40,7 +40,7 @@ import {
 import { resolve } from "node:path";
 import { semanticDir } from "../fp-home";
 import type { IntegrationType } from "../types";
-import { MAX_USER_MESSAGE_CHARS, capHeadTail, redactSecrets } from "./envelope";
+import { MAX_USER_MESSAGE_CHARS, redactSecrets } from "./envelope";
 
 export const MAX_RECORDED_PROMPTS = 5;
 /** Older than this and a prompt no longer describes what the agent is doing. */
@@ -136,13 +136,17 @@ export function pruneExpiredSessions(now: number = Date.now()): number {
   return removed;
 }
 
-/** Record a human prompt. Never throws: losing intent only means no override. */
+/**
+ * Record a prompt as given: no harness check and no cleaning (`captureIntent`
+ * does both). Redacted before it is capped, like everything stored here, so a
+ * cut can never leave half a secret the patterns no longer match. Never
+ * throws: losing intent only means no override.
+ */
 export function recordUserPrompt(sessionId: string | undefined, prompt: unknown, now: number = Date.now()): boolean {
   if (!sessionId || !SESSION_ID_RE.test(sessionId)) return false;
   if (typeof prompt !== "string" || prompt.trim().length === 0) return false;
   try {
-    const text = redactSecrets(capHeadTail(prompt.trim(), MAX_USER_MESSAGE_CHARS).text).text;
-    return appendPrompt(sessionId, { at: now, text });
+    return appendPrompt(sessionId, { at: now, text: storable(prompt.trim()) });
   } catch {
     return false;
   }
@@ -290,8 +294,63 @@ export function humanMessageText(entry: unknown): string | null {
 // ── Harness-written text (intent mode v1) ────────────────────────────────────
 
 const CONTINUATION_PREFIX = "This session is being continued from a previous conversation";
-const IDE_CONTEXT_PREFIX = "# Context from my IDE setup:";
-const IDE_REQUEST_HEADING = "## My request for Codex:";
+
+/**
+ * How the Codex IDE extension starts a prompt it builds around the human's
+ * words: every section it can put first (the extension's own prompt builder,
+ * openai.chatgpt 26.803, and the shapes seen in codex_vscode rollouts). The
+ * sections carry the active file, open tabs, text selected in the editor,
+ * diff and browser comments, files and apps mentioned, PR checks, earlier
+ * conversations: all of it is file, repo or tool text that the agent or the
+ * repo can write, and none of it is what the human typed.
+ */
+const IDE_CONTEXT_OPENERS = [
+  "# Context from my IDE setup:",
+  "# Selected text:",
+  "# Files mentioned by the user:",
+  "# Applications mentioned by the user:",
+  "# Response annotations:",
+  "# Diff comments:",
+  "# Browser comments:",
+  "# MCP app context:",
+  "# Failing PR checks:",
+  "# Pull request merge conflict:",
+  "# Chrome tabs:",
+  "# In app browser:",
+  '<in-app-browser-context source="ambient-ui-state">',
+  "## Prior conversation with Codex:",
+  "## Referenced chats with Codex:",
+  "## Referenced ChatGPT conversation:",
+  "## Code review guidelines:",
+  "## Pull request fix:",
+  "## Pull request merge task:",
+  "## Auto resolve merge:",
+  "The attached pasted text file(s) contain the user's request.",
+];
+/**
+ * The heading the extension puts right before the human's words, in both
+ * spellings: older builds wrote "for Codex", 26.803 writes `## My request:`.
+ * The extension itself shows the text after the last one as the message.
+ */
+const IDE_REQUEST_HEADINGS = ["## My request for Codex:", "## My request:"];
+
+/**
+ * The human's request from a prompt the Codex IDE extension built, or null
+ * when there is none: the text after the LAST request heading, since the
+ * human's words come last and a selection above them can contain the heading.
+ */
+function ideRequest(text: string): string | null {
+  let at = -1;
+  let heading = "";
+  for (const h of IDE_REQUEST_HEADINGS) {
+    const i = text.lastIndexOf(h);
+    if (i > at) {
+      at = i;
+      heading = h;
+    }
+  }
+  return at < 0 ? null : text.slice(at + heading.length).trim();
+}
 
 /**
  * The part of one "user" turn the human actually typed, or null when none of
@@ -299,7 +358,9 @@ const IDE_REQUEST_HEADING = "## My request for Codex:";
  *
  * Harnesses deliver more than the human's words in a user turn, and every
  * extra is written by something other than the human: Codex's IDE extension
- * prepends the active file and open tabs, Claude Code files its
+ * puts the active file, open tabs, selected text and more (see
+ * `IDE_CONTEXT_OPENERS`) before the `## My request…:` heading that introduces
+ * the human's words, Claude Code files its
  * session-continuation summary as a user turn, reminders arrive in
  * `<system-reminder>` blocks, and a slash command carries the command's own
  * instructions. The task is what the human typed, so only that is kept: a
@@ -315,10 +376,10 @@ export function cleanHumanTurn(raw: string): string | null {
   if (!text) return null;
   if (text.startsWith(CONTINUATION_PREFIX)) return null;
   if (NON_HUMAN_PREFIXES.some((p) => text.startsWith(p))) return null;
-  if (text.startsWith(IDE_CONTEXT_PREFIX)) {
-    const at = text.lastIndexOf(IDE_REQUEST_HEADING);
-    if (at < 0) return null;
-    text = text.slice(at + IDE_REQUEST_HEADING.length).trim();
+  if (IDE_CONTEXT_OPENERS.some((p) => text.startsWith(p))) {
+    const request = ideRequest(text);
+    if (request === null) return null;
+    text = request;
   }
   if (/^<command-(?:name|message)>/.test(text)) {
     const name = firstTagContent(text, "command-name")?.trim() ?? "";
@@ -424,7 +485,10 @@ export const PROMPT_CHANNELS: Readonly<Record<IntegrationType, PromptChannel>> =
   // parts), fires again on every update of the same message, and fires for
   // task-tool child sessions and for failproofai's own instruct re-prompts.
   opencode: { nativeEvent: "message.updated", field: "prompt", capture: "no" },
-  pi: { nativeEvent: "input", field: "prompt", capture: "yes" },
+  // Another extension's sendUserMessage() fires `input` too, and its text can
+  // be model-written or repo-derived: only a source the bridge forwards as
+  // typed (or sent by an RPC client) counts. See `PI_HUMAN_SOURCES`.
+  pi: { nativeEvent: "input", field: "prompt", capture: "gated" },
   // pre_llm_call is handled inside the native plugin; nothing reaches the handler.
   hermes: { nativeEvent: null, field: null, capture: "no" },
   // Heartbeat, cron, memory and inter-session runs fire before_agent_run too.
@@ -443,12 +507,18 @@ export const PROMPT_CHANNELS: Readonly<Record<IntegrationType, PromptChannel>> =
  * What the handler (T3) passes for every canonical `UserPromptSubmit`:
  * `captureIntent({ eventType, sessionId, transcriptPath, cli, payload: parsed })`.
  *
- * The whole payload is required, not just its `prompt`. The text is in a
- * different field on some harnesses (Goose sends `message`), and every marker
- * that tells a human's prompt from one a subagent, an extension or a scheduled
- * run sent is elsewhere in the payload. The first draft of this contract
- * passed only `prompt`, which silently dropped every Goose prompt and skipped
- * those checks; a caller that still omits the payload records nothing.
+ * Pass the whole payload, not just its `prompt`. The text is in a different
+ * field on some harnesses (Goose sends `message`), and the marks that tell a
+ * human's prompt from one a subagent, an extension or a scheduled run sent
+ * are elsewhere in the payload.
+ *
+ * The first draft of this contract (JEV-BUILD-PLAN §7) passed `prompt` and no
+ * payload. That shape still compiles and is still honoured where it loses
+ * nothing: for a harness that applies no origin check (`NO_ORIGIN_CHECK`), a
+ * `prompt` given without a payload is read as the payload `{ prompt }`. Every
+ * harness with an origin check records nothing without the payload (fail
+ * closed): its checks were written against the payload the handler has, and a
+ * caller that leaves it out is not running them.
  */
 export interface CaptureEvent {
   /** Canonical event type; anything but `UserPromptSubmit` is ignored. */
@@ -458,7 +528,38 @@ export interface CaptureEvent {
   cli: string;
   /** The stdin payload after `normalizeCliPayload`: the handler's `parsed`. */
   payload: Record<string, unknown>;
+  /** Ignored: with a payload, the text is read from the payload. */
+  prompt?: unknown;
 }
+
+/**
+ * The §7 draft's shape: the prompt and no payload. Recorded only for a
+ * harness in `NO_ORIGIN_CHECK`; nothing is recorded for any other.
+ */
+export interface PromptOnlyCaptureEvent {
+  eventType: string;
+  sessionId?: string;
+  transcriptPath?: string;
+  cli: string;
+  prompt?: unknown;
+  payload?: undefined;
+}
+
+/**
+ * Harnesses whose prompt is recorded from its text alone: no mark in the
+ * payload or the transcript is consulted to tell a human's prompt from
+ * anyone else's. Goose also consults nothing, but its text is in `message`,
+ * so a bare `prompt` is not its text.
+ */
+const NO_ORIGIN_CHECK: ReadonlySet<IntegrationType> = new Set<IntegrationType>(["copilot", "cursor", "devin"]);
+
+/**
+ * Pi's `InputEvent.source` values that count as the operator's own input:
+ * typed in Pi's editor (`pi -p` reports this too), or sent by the program
+ * driving Pi in RPC mode. Not `extension`: another extension's
+ * `sendUserMessage()`, whose text can be model-written or repo-derived.
+ */
+const PI_HUMAN_SOURCES: ReadonlySet<string> = new Set(["interactive", "rpc"]);
 
 const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
 const obj = (v: unknown): Record<string, unknown> | undefined =>
@@ -473,12 +574,13 @@ function isKnownCli(cli: string): cli is IntegrationType {
  * Each rejection below is a way a harness delivers text through this event
  * that no human typed.
  */
-function humanPromptText(ev: CaptureEvent): string | null {
+function humanPromptText(ev: CaptureEvent | PromptOnlyCaptureEvent): string | null {
   if (!isKnownCli(ev.cli)) return null;
   const channel = PROMPT_CHANNELS[ev.cli];
   if (channel.capture === "no" || channel.field === null) return null;
-  // No payload, no way to run the checks below: record nothing (fail closed).
-  const payload = obj(ev.payload);
+  // No payload, no way to run the checks below: record nothing (fail closed),
+  // unless the harness has no checks to run (see `CaptureEvent`).
+  const payload = obj(ev.payload) ?? (NO_ORIGIN_CHECK.has(ev.cli) ? { prompt: ev.prompt } : undefined);
   if (!payload) return null;
   const raw = payload[channel.field];
   if (typeof raw !== "string") return null;
@@ -500,10 +602,13 @@ function humanPromptText(ev: CaptureEvent): string | null {
       break;
     case "pi": {
       // Pi's InputEvent.source is "interactive" | "rpc" | "extension"; the
-      // last is another extension calling sendUserMessage(). The shim does
-      // not forward it today, so this applies once it does.
-      const source = str(payload.input_source) ?? str(payload.source);
-      if (source === "extension") return null;
+      // last is another extension calling sendUserMessage(). pi-extension
+      // forwards it as `input_source`. Every mark present must be a human
+      // source, and at least one must be present: a bridge that does not
+      // forward it (older installs) records nothing (fail closed).
+      const marks = [payload.input_source, payload.source].filter((m) => m !== undefined);
+      if (marks.length === 0) return null;
+      if (!marks.every((m) => typeof m === "string" && PI_HUMAN_SOURCES.has(m))) return null;
       break;
     }
     case "openclaw": {
@@ -941,11 +1046,12 @@ function codexRolloutIsSubagent(transcriptPath: string | undefined): boolean {
  *
  * Ignored: any event but `UserPromptSubmit`; harnesses with no human prompt
  * channel (see `PROMPT_CHANNELS`); an event without its payload, whose origin
- * cannot be checked; prompts a harness marks as not typed by the human; turns
+ * cannot be checked, for every harness that checks origin (see
+ * `CaptureEvent`); prompts a harness marks as not typed by the human; turns
  * that are entirely harness text (`cleanHumanTurn` → null); session ids that
  * could name a path outside the state directory.
  */
-export function captureIntent(ev: CaptureEvent, now: number = Date.now()): void {
+export function captureIntent(ev: CaptureEvent | PromptOnlyCaptureEvent, now: number = Date.now()): void {
   try {
     if (ev?.eventType !== "UserPromptSubmit") return;
     if (!ev.sessionId || !SESSION_ID_RE.test(ev.sessionId)) return;

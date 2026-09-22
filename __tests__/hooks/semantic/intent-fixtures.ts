@@ -88,6 +88,8 @@ export const piPrompt = (prompt: string, extra: Record<string, unknown> = {}) =>
   session_id: SID.pi,
   cwd: "/work/app",
   hook_event_name: "UserPromptSubmit",
+  // Pi's InputEvent.source for a prompt typed in its editor.
+  input_source: "interactive",
   ...extra,
 });
 

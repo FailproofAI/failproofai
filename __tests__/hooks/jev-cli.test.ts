@@ -179,7 +179,10 @@ describe("failproofai jev", () => {
 
     it(`--key-from-env stores no key and reads ${JEV_API_KEY_ENV} at run time`, async () => {
       const unset = await runJevCommand(["setup", "--provider", "typesafe", "--key-from-env"], noTty);
-      expect(unset.exitCode).toBe(1);
+      expect(unset.exitCode).toBe(0);
+      expect(text(unset)).toContain("is not set in this shell");
+      expect(readFile()).toEqual({ provider: "typesafe" });
+      expect(loadJevConfig()).toBeNull();
 
       process.env[JEV_API_KEY_ENV] = KEY;
       const r = await runJevCommand(["setup", "--provider", "typesafe", "--key-from-env"], noTty);
@@ -187,6 +190,13 @@ describe("failproofai jev", () => {
       expect(text(r)).not.toContain(KEY);
       expect(readFile()).toEqual({ provider: "typesafe" });
       expect(loadJevConfig()?.apiKey).toBe(KEY);
+      // A re-run for the same provider keeps it an environment-key config.
+      const again = await runJevCommand(["setup", "--mode", "shadow"], noTty);
+      expect(again.exitCode).toBe(0);
+      expect(readFile()).toEqual({ provider: "typesafe", mode: "shadow" });
+      // A variable that is set but malformed is refused, not stored around.
+      process.env[JEV_API_KEY_ENV] = "two words";
+      expect((await runJevCommand(["setup", "--provider", "typesafe", "--key-from-env"], noTty)).exitCode).toBe(1);
       delete process.env[JEV_API_KEY_ENV];
       expect(loadJevConfig()).toBeNull();
     });
@@ -244,7 +254,7 @@ describe("failproofai jev", () => {
         keySource: "file",
         legacyOverride: false,
       });
-      if (posix) expect(j.permissions).toBe(0o600);
+      if (posix) expect(j.permissions).toBe("0600");
       expect(j.stats).toMatchObject({ total: 0 });
     });
 

@@ -74,6 +74,8 @@ export const JEV_USAGE = [
 /** One live `jev test` request: small, harmless, and with an answer that is obviously right. */
 export const JEV_TEST_QUESTION_ID = "jev_test";
 const DEFAULT_TEST_TIMEOUT_MS = 15_000;
+/** Validation-only placeholder for a config whose key comes from the environment. Never written. */
+const ENV_KEY_STAND_IN = "env-key-stand-in";
 
 // ── Argument parsing ─────────────────────────────────────────────────────────
 
@@ -122,10 +124,14 @@ function modeLine(mode: NonNullable<JevConfig["mode"]>): string {
     : "shadow — Jev is asked and logged; the regex result is what is enforced";
 }
 
+/** `0600`, or null when unknown. */
+function octal(mode: number | null): string | null {
+  return mode === null ? null : mode.toString(8).padStart(4, "0");
+}
+
 function permissions(mode: number | null): string {
   if (mode === null) return "unknown";
-  const octal = mode.toString(8).padStart(4, "0");
-  return (mode & 0o077) === 0 ? `${octal} (owner-only)` : `${octal} (too open)`;
+  return (mode & 0o077) === 0 ? `${octal(mode)} (owner-only)` : `${octal(mode)} (too open)`;
 }
 
 function describeError(err: unknown): { code: string; message: string } {
@@ -241,13 +247,19 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
     next.timeoutMs = n;
   }
 
-  // The key.
+  // The key. A config that takes it from the environment stores none, and
+  // stays that way across a re-run for the same provider.
   let keyNote: string;
+  let keyFromEnv = false;
   const envKey = process.env[JEV_API_KEY_ENV];
+  const envKeyNote = () =>
+    envKey
+      ? `not stored — read from ${JEV_API_KEY_ENV} when a hook runs`
+      : `not stored — ${JEV_API_KEY_ENV} is not set in this shell, and Jev stays off wherever it is not`;
   if (bools.has("--key-from-env")) {
     delete next.apiKey;
-    if (!envKey) return fail([`--key-from-env: ${JEV_API_KEY_ENV} is not set in this shell.`]);
-    keyNote = `not stored — read from ${JEV_API_KEY_ENV} when a hook runs`;
+    keyFromEnv = true;
+    keyNote = envKeyNote();
   } else if (bools.has("--key-stdin")) {
     const tty = deps.stdinIsTTY ?? Boolean(process.stdin.isTTY);
     // On a terminal a cooked-mode read echoes each keystroke, so a person
@@ -261,6 +273,9 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
     keyNote = "set from stdin";
   } else if (typeof next.apiKey === "string") {
     keyNote = "kept from the existing config";
+  } else if (sameProvider) {
+    keyFromEnv = true;
+    keyNote = envKeyNote();
   } else {
     const tty = deps.stdinIsTTY ?? Boolean(process.stdin.isTTY);
     if (!tty) {
@@ -282,7 +297,10 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
     keyNote = "set at the prompt";
   }
 
-  const checked = validateJevConfig(next, bools.has("--key-from-env") ? envKey : null);
+  // With the key in the environment the FILE is what is being checked, so a
+  // stand-in fills the key when the variable is unset here. A variable that is
+  // set but malformed is checked for real, and refused.
+  const checked = validateJevConfig(next, keyFromEnv ? envKey || ENV_KEY_STAND_IN : null);
   if (!checked.ok) return fail([`Not saved: ${checked.problem}.`, "", "Nothing was written."]);
   const cfg = checked.value;
 
@@ -342,13 +360,13 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
   if (asJson) {
     const base: Record<string, unknown> = { path: inspection.path, status: inspection.status, legacyOverride: legacy, stats };
     if (inspection.status === "refused") {
-      Object.assign(base, { reason: inspection.reason, problem: inspection.problem, permissions: inspection.mode });
+      Object.assign(base, { reason: inspection.reason, problem: inspection.problem, permissions: octal(inspection.mode) });
     }
     if (inspection.status === "ok") {
       const { config: cfg } = inspection;
       const route = jevRoute(cfg);
       Object.assign(base, {
-        permissions: inspection.mode,
+        permissions: octal(inspection.mode),
         provider: cfg.provider,
         endpoint: displayEndpoint(route.endpoint),
         model: route.model,

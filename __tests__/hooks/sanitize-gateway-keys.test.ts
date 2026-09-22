@@ -7,6 +7,7 @@
  * Key-shaped fixtures are built at runtime (see ./semantic/redaction-fixtures).
  */
 import { describe, expect, it } from "vitest";
+import { maskSecrets } from "../../src/audit/redact-example";
 import { BUILTIN_POLICIES, SECRET_PATTERNS } from "../../src/hooks/builtin-policies";
 import type { PolicyContext } from "../../src/hooks/policy-types";
 import { ALNUM, B64URL, HEX, SK, gatewayKey, prng, rnd } from "./semantic/redaction-fixtures";
@@ -85,12 +86,82 @@ describe("sanitize-api-keys — gateway keys", () => {
     for (const s of [
       "NAME                                READY   STATUS\nrisk-scoring-7d9f8b6c5-x2k4p   1/1     Running",
       "npm run task-runner-for-the-build-2",
-      "sk-learn-tutorial-for-beginners-2024-part-one",
-      "sk-Some-Title-Case-Words-Here-And-There",
+      SK + "learn-tutorial-for-beginners-2024-part-one",
+      SK + "Some-Title-Case-Words-Here-And-There",
       "desk-booking-service-v2-staging-deployment",
     ]) {
       const r = await decide(s);
       expect(r.decision, s).toBe("allow");
+    }
+  });
+});
+
+/**
+ * Words that END in `sk`, followed by a hyphen and a Title-Case or mixed name
+ * with a digit: every class a random key has, but mid-token. Each was denied by
+ * the first version of the generic entry, which had no token boundary.
+ */
+const MID_WORD: string[] = [
+  `Switched to a new branch 'ta${SK}PROJ-1234-add-login-page'`,
+  `git checkout -b feature/ta${SK}ABC-123-UpdateDashboardWidget`,
+  `* ri${SK}Model2-scoring-service-v2`,
+  `remote: Create a pull request for 'de${SK}JIRA-42-fix-seat-map' on GitHub`,
+  `docker tag api fla${SK}App2-backend-prod-latest`,
+  `ls: dist/assets/Ta${SK}DetailPanel-a1B2c3D4.js`,
+  `drwxr-xr-x  Ta${SK}Management-System-v2`,
+  `-rw-r--r--  Ri${SK}Assessment-2024-Final.pdf`,
+  `De${SK}Booking-App-2023-Redesign`,
+  `Kio${SK}Mode-Configuration-v3`,
+  `open Di${SK}Usage-Report-2024-Q3.xlsx`,
+  `git checkout feature/Ta${SK}Runner-Refactor-v2-Final`,
+  `Kio${SK}Mode-Setup-Guide-v10`,
+  `De${SK}Booking-Service-V2-Prod`,
+];
+
+describe("sanitize-api-keys — the generic sk- entry starts a token", () => {
+  it("allows Title-Case and mixed names with a digit that merely contain `sk-` mid-word", async () => {
+    for (const s of MID_WORD) {
+      const r = await decide(s);
+      expect(r.decision, s).toBe("allow");
+    }
+  });
+
+  it("the audit redactor, which shares the list, leaves them whole too", () => {
+    for (const s of MID_WORD) expect(maskSecrets(s), s).toBe(s);
+  });
+
+  it("still denies a key after any character that cannot be part of a token", async () => {
+    const key = gatewayKey(rand, 5);
+    for (const before of ["", " ", "=", ":", '"', "'", "`", "/", "(", "[", "{", ",", ";", "|", "\t", "@"]) {
+      const r = await decide(`${before}${key}`);
+      expect(r.decision, JSON.stringify(before)).toBe("deny");
+      expect(r.reason).toContain("sk- API key");
+    }
+  });
+
+  it("does not treat a key glued to a word, a hyphen or an underscore as a key", async () => {
+    const key = gatewayKey(rand, 5);
+    for (const before of ["a", "Z", "9", "-", "_"]) {
+      const r = await decide(`${before}${key}`);
+      expect(r.decision, before).toBe("allow");
+    }
+  });
+
+  it("the audit redactor still masks a hyphenated gateway key", () => {
+    const key = gatewayKey(rand, 5);
+    const out = maskSecrets(`export OPENAI_API_KEY=${key}`);
+    expect(out).not.toContain(key.slice(3));
+    expect(out).toContain("[REDACTED: sk- API key]");
+  });
+
+  it("stays linear on a long run of `sk-` (every token start, not every `sk-`, runs the class checks)", async () => {
+    // The unanchored version rescanned the rest of the run at each `sk-`:
+    // 120 KB took ~3.5 s. The whole PostToolUse payload is scanned, uncapped.
+    for (const unit of [SK, `${SK}a`, `${SK}aB`, `x${SK}`]) {
+      const output = unit.repeat(Math.ceil(120_000 / unit.length));
+      const t0 = performance.now();
+      await decide(output);
+      expect(performance.now() - t0, JSON.stringify(unit)).toBeLessThan(250);
     }
   });
 });

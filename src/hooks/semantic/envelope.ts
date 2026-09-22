@@ -14,7 +14,8 @@
  *    — goes through `redactSecrets` (./redact.ts): the SECRET_PATTERNS the
  *    sanitize-* builtins block on, plus the wider net only a redactor can
  *    afford. A value under a secret-named key (`{"password": "…"}`) is
- *    redacted whatever it looks like. The count is reported so a redaction is
+ *    redacted whatever it looks like, and so is the credential in an
+ *    `Authorization` field. The count is reported so a redaction is
  *    auditable.
  * 3. Small beats complete. Jev degrades as state fills with content unrelated
  *    to the question, so long fields keep their head and tail, and anything
@@ -22,7 +23,7 @@
  *    engine voting too", so padding a command cannot hide its dangerous part.
  */
 import type { ScannedCommand } from "./facts";
-import { isSecretFieldValue, redactSecretsDetailed, scrubKnownSecrets } from "./redact";
+import { isSecretFieldValue, redactAuthorizationField, redactSecretsDetailed, scrubKnownSecrets } from "./redact";
 import type { Facts } from "./types";
 
 export { redactSecrets, type Redacted } from "./redact";
@@ -31,6 +32,8 @@ export const MAX_STRING_CHARS = 2_000;
 export const MAX_USER_MESSAGE_CHARS = 1_200;
 export const MAX_USER_MESSAGES = 3;
 const MAX_KEYS = 24;
+/** An object key is sent too; one longer than this is cut like a value. */
+const MAX_KEY_CHARS = MAX_STRING_CHARS / 8;
 
 /**
  * Characters a secret does not contain, so a cut next to one never splits one:
@@ -41,6 +44,18 @@ const CUT_STOP = /[\s"'`,;{}()<>|]/;
  * its surviving part still matches a full pattern on its own. */
 const CUT_SNAP_MAX = 256;
 
+const isEscapeLetter = (c: string | undefined): boolean => c === "n" || c === "r" || c === "t";
+
+/** A cut right AFTER `text[i]` splits no token: a stop character, or the end of a JSON-escaped `\n`. */
+function endsSegment(text: string, i: number): boolean {
+  return CUT_STOP.test(text[i]) || (isEscapeLetter(text[i]) && text[i - 1] === "\\");
+}
+
+/** A cut right BEFORE `text[i]` splits no token: a stop character, or the start of a JSON-escaped `\n`. */
+function startsSegment(text: string, i: number): boolean {
+  return CUT_STOP.test(text[i]) || (text[i] === "\\" && isEscapeLetter(text[i + 1]));
+}
+
 /**
  * Keep the head and the tail: a dangerous suffix cannot be padded out of view.
  *
@@ -50,22 +65,28 @@ const CUT_SNAP_MAX = 256;
  * matches — an Anthropic key cut ten characters past its `api03-` is too short
  * for its own rule and still ten characters of a live key. Snapping drops the
  * fragment into the omitted middle instead, whole.
+ *
+ * A JSON-escaped newline counts as a stop too. Structured input nested two
+ * levels deep is JSON-stringified before it is capped, and a PEM key in there is one
+ * unbroken run of characters with `\n` escapes between its lines: without
+ * this the cut lands mid-line, and the fragment it leaves is too short for the
+ * key-line rules to recognise.
  */
 export function capHeadTail(text: string, max: number): { text: string; truncated: boolean } {
   if (text.length <= max) return { text, truncated: false };
   let head = Math.ceil(max * 0.6);
   let tailStart = text.length - (max - head);
-  if (head > 0 && !CUT_STOP.test(text[head - 1]) && !CUT_STOP.test(text[head])) {
+  if (head > 0 && !endsSegment(text, head - 1) && !startsSegment(text, head)) {
     for (let i = head - 1; i >= Math.max(0, head - CUT_SNAP_MAX); i--) {
-      if (CUT_STOP.test(text[i])) {
+      if (endsSegment(text, i)) {
         head = i + 1;
         break;
       }
     }
   }
-  if (tailStart < text.length && !CUT_STOP.test(text[tailStart - 1]) && !CUT_STOP.test(text[tailStart])) {
+  if (tailStart < text.length && !endsSegment(text, tailStart - 1) && !startsSegment(text, tailStart)) {
     for (let i = tailStart; i < Math.min(text.length, tailStart + CUT_SNAP_MAX); i++) {
-      if (CUT_STOP.test(text[i])) {
+      if (startsSegment(text, i)) {
         tailStart = i;
         break;
       }
@@ -133,10 +154,19 @@ function scrubDeep(value: unknown, acc: Accumulator): unknown {
  */
 function cleanValue(value: unknown, acc: Accumulator, depth = 0, fieldName?: string): unknown {
   if (typeof value === "string") {
-    if (fieldName !== undefined && isSecretFieldValue(fieldName, value)) {
-      acc.redactions++;
-      acc.found.add(value);
-      return "<redacted:assigned secret>";
+    if (fieldName !== undefined) {
+      if (isSecretFieldValue(fieldName, value)) {
+        acc.redactions++;
+        acc.found.add(value);
+        return "<redacted:assigned secret>";
+      }
+      // `{"Authorization": "Basic …"}`: the scheme stays, the credential goes.
+      const auth = redactAuthorizationField(fieldName, value);
+      if (auth) {
+        acc.redactions++;
+        acc.found.add(auth.secret);
+        return auth.text;
+      }
     }
     return cleanString(value, MAX_STRING_CHARS, acc);
   }
@@ -153,7 +183,9 @@ function cleanValue(value: unknown, acc: Accumulator, depth = 0, fieldName?: str
   const out: Record<string, unknown> = {};
   for (const [k, v] of entries.slice(0, MAX_KEYS)) {
     // Keys are sent too, and a key can be the secret (`{"<token>": true}`).
-    const redactedKey = redactInto(k, acc);
+    // Capped first like any value, so one huge key cannot make the
+    // redactor's cost unbounded.
+    const redactedKey = cleanString(k, MAX_KEY_CHARS, acc);
     let key = redactedKey;
     for (let n = 2; Object.hasOwn(out, key); n++) key = `${redactedKey}#${n}`;
     out[key] = cleanValue(v, acc, depth + 1, k);

@@ -5,13 +5,14 @@
  *
  * Every secret-shaped fixture is built at runtime (see ./redaction-fixtures).
  */
+import { generateKeyPairSync } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { MAX_STRING_CHARS, MAX_USER_MESSAGE_CHARS, buildEnvelope, capHeadTail } from "../../../src/hooks/semantic/envelope";
+import { MAX_STRING_CHARS, MAX_USER_MESSAGE_CHARS, buildEnvelope, capHeadTail, redactSecrets } from "../../../src/hooks/semantic/envelope";
 import { prepareSemantic } from "../../../src/hooks/semantic/evaluator";
 import { computeFacts, scanCommand } from "../../../src/hooks/semantic/facts";
 import { setEnvSecretSource } from "../../../src/hooks/semantic/redact";
 import type { Facts } from "../../../src/hooks/semantic/types";
-import { ALNUM, SK, gatewayKey, pemBegin, pemEnd, prng, randomToken, rnd } from "./redaction-fixtures";
+import { ALNUM, B64URL, HEX, SK, gatewayKey, pemBegin, pemEnd, prng, randomToken, rnd } from "./redaction-fixtures";
 
 const rand = prng(0x5ec7e7);
 
@@ -78,6 +79,76 @@ describe("buildEnvelope — structured tool input", () => {
     expect(env.redactions).toBe(0);
     expect((env.state.agent_request as { input: Record<string, unknown> }).input).toEqual(input);
   });
+
+  it("redacts the credential of an Authorization field and keeps its scheme", () => {
+    const http = facts({ toolName: "mcp__http__request", toolClass: "other", toolIsKnown: false });
+    const basic = Buffer.from(`admin:${randomToken(rand, 12)}`).toString("base64");
+    const hex = rnd(rand, 40, HEX);
+    const tok = randomToken(rand, 30);
+    const cases: Array<[Record<string, unknown>, string, (input: Record<string, unknown>) => unknown, string]> = [
+      [{ url: "https://api.example.com", headers: { Authorization: `Basic ${basic}` } }, basic, (i) => (i.headers as Record<string, unknown>).Authorization, "Basic <redacted:authorization header>"],
+      [{ url: "https://api.example.com", headers: { Authorization: hex } }, hex, (i) => (i.headers as Record<string, unknown>).Authorization, "<redacted:authorization header>"],
+      [{ url: "https://api.example.com", headers: { Authorization: `Token ${hex}` } }, hex, (i) => (i.headers as Record<string, unknown>).Authorization, "Token <redacted:authorization header>"],
+      [{ url: "https://api.example.com", headers: { authorization: `Bearer ${tok}` } }, tok, (i) => (i.headers as Record<string, unknown>).authorization, "Bearer <redacted:bearer token>"],
+      [{ authorization: `Basic ${basic}` }, basic, (i) => i.authorization, "Basic <redacted:authorization header>"],
+      [{ headers: { "Proxy-Authorization": `Basic ${basic}` } }, basic, (i) => (i.headers as Record<string, unknown>)["Proxy-Authorization"], "Basic <redacted:authorization header>"],
+    ];
+    for (const [toolInput, secret, pick, want] of cases) {
+      const env = buildEnvelope(toolInput, [], http, null);
+      const input = (env.state.agent_request as { input: Record<string, unknown> }).input;
+      expect(pick(input), want).toBe(want);
+      expect(JSON.stringify(env.state)).not.toContain(secret);
+      expect(env.redactions, want).toBe(1);
+    }
+  });
+
+  it("leaves Authorization references, bare schemes and other headers alone", () => {
+    const http = facts({ toolName: "mcp__http__request", toolClass: "other", toolIsKnown: false });
+    for (const auth of ["Bearer ${API_TOKEN}", "Bearer $TOKEN", "Bearer <token>", "Bearer", ""]) {
+      const toolInput = { headers: { Authorization: auth, "Content-Type": "application/json" } };
+      const env = buildEnvelope(toolInput, [], http, null);
+      expect((env.state.agent_request as { input: Record<string, unknown> }).input, auth).toEqual(toolInput);
+      expect(env.redactions, auth).toBe(0);
+    }
+  });
+
+  it("caps a huge object key before redacting it, and says so", () => {
+    for (const key of ["a.".repeat(40_000), `${SK}`.repeat(20_000), "x=".repeat(40_000)]) {
+      const t0 = performance.now();
+      const env = buildEnvelope({ [key]: true }, [], facts({ toolName: "mcp__x__y", toolClass: "other", toolIsKnown: false }), null);
+      expect(performance.now() - t0, key.slice(0, 4)).toBeLessThan(250);
+      expect(env.truncated).toBe(true);
+      const sent = Object.keys((env.state.agent_request as { input: Record<string, unknown> }).input)[0];
+      expect(sent.length).toBeLessThan(MAX_STRING_CHARS);
+    }
+  });
+
+  it("finds a token at the start of a line inside input nested two levels deep", () => {
+    // Depth 2 is JSON-stringified, so the token follows the characters \ n.
+    const tok = "gl" + "pat-" + rnd(rand, 20, B64URL);
+    const env = buildEnvelope({ args: { opts: { note: `first line\n${tok} rest` } } }, [], facts({ toolName: "mcp__x__y", toolClass: "other", toolIsKnown: false }), null);
+    const s = JSON.stringify(env.state);
+    expect(s).not.toContain(tok);
+    expect(s).toContain("<redacted:GitLab token> rest");
+    expect(env.redactions).toBe(1);
+  });
+
+  it("scrubs a recognised secret out of later strings and object keys, counting each", () => {
+    // Recognised once, by its field name; its other two copies have no context.
+    const pw = "hunter2-" + rnd(rand, 8, "abcdefghijklmnop");
+    const env = buildEnvelope(
+      { password: pw, lookup: { [pw]: 1 } },
+      [`the password is ${pw}`],
+      facts({ toolName: "mcp__db__connect", toolClass: "other", toolIsKnown: false }),
+      null,
+    );
+    const s = JSON.stringify(env.state);
+    expect(s).not.toContain(pw);
+    const input = (env.state.agent_request as { input: { lookup: Record<string, unknown> } }).input;
+    expect(Object.keys(input.lookup)).toEqual(["<redacted:repeated secret>"]);
+    expect(env.state.user_said).toEqual(["the password is <redacted:repeated secret>"]);
+    expect(env.redactions).toBe(3);
+  });
 });
 
 describe("buildEnvelope — every field that is sent", () => {
@@ -117,6 +188,20 @@ describe("buildEnvelope — every field that is sent", () => {
     const v = randomToken(rand, 20).slice(0, 12) + "+" + rnd(rand, 6);
     const env = buildEnvelope({ command: `export DB_PASSWORD='${v}'` }, [`the password is ${v}`], facts(), null);
     expectAbsent(JSON.stringify(env.state), v);
+  });
+
+  it("leaves a branch name alone that only contains `sk-` mid-word", () => {
+    const branch = `ta${SK}PROJ-1234-add-login-page`;
+    const env = buildEnvelope({ command: "git status" }, [], facts({ currentGitBranch: branch }), null);
+    expect((env.state.facts as { current_git_branch: string }).current_git_branch).toBe(branch);
+    expect(env.redactions).toBe(0);
+  });
+
+  it("scrubs a secret whose shorter prefix is also a secret, leaving no tail", () => {
+    const short = randomToken(rand, 16);
+    const long = short + rnd(rand, 10);
+    const env = buildEnvelope({ command: `export API_TOKEN=${short} OTHER_TOKEN=${long}` }, [`please use ${long} for the deploy`], facts(), null);
+    expect(env.state.user_said).toEqual(["please use <redacted:repeated secret> for the deploy"]);
   });
 
   it("redacts the cwd, project root and branch facts too", () => {
@@ -170,6 +255,73 @@ describe("capHeadTail — cuts never split a token", () => {
     const prompt = "p".repeat(pre - 1) + " " + key + " " + "q ".repeat(MAX_USER_MESSAGE_CHARS);
     const env = buildEnvelope({ command: "ls" }, [prompt], facts(), null);
     expectAbsent(JSON.stringify(env.state), key.slice(3));
+  });
+});
+
+describe("private keys longer than the caps", () => {
+  /** A PKCS#8-shaped block: 64-character base64 lines and a short last one. */
+  function fakePem(lines: number): { pem: string; body: string[] } {
+    const body = Array.from({ length: lines }, () => rnd(rand, 64, ALNUM + "+/"));
+    body.push(rnd(rand, 30, ALNUM + "+/") + "==");
+    return { pem: `${pemBegin()}\n${body.join("\n")}\n${pemEnd()}\n`, body };
+  }
+
+  /** Every 16-character window of every body line: none may reach Jev. */
+  function expectNoKeyMaterial(sent: string, body: string[]): void {
+    for (const line of body) {
+      for (let i = 0; i + 16 <= line.length; i += 8) expect(sent, `key line fragment ${line.slice(i, i + 2)}…`).not.toContain(line.slice(i, i + 16));
+    }
+  }
+
+  const write = facts({ toolName: "Write", toolClass: "write" });
+
+  it("sends none of a 3072- or 4096-bit-sized key written with the Write tool", () => {
+    // 38 and 50 body lines: past MAX_STRING_CHARS, so the header is in the head,
+    // the footer in the tail, and the middle is omitted.
+    for (const lines of [38, 50]) {
+      const { pem, body } = fakePem(lines);
+      expect(pem.length).toBeGreaterThan(MAX_STRING_CHARS);
+      const env = buildEnvelope({ file_path: "/p/deploy_key", content: pem }, [], write, null);
+      expect(env.truncated).toBe(true);
+      expectNoKeyMaterial(JSON.stringify(env.state), body);
+      expect((env.state.agent_request as { input: { content: string } }).input.content).toContain("<redacted:private key>");
+    }
+  });
+
+  it("sends none of a real generated key, cut by the cap", () => {
+    // Throwaway, generated in memory and never written anywhere.
+    const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 3072 });
+    const pem = privateKey.export({ type: "pkcs8", format: "pem" }) as string;
+    const body = pem.split("\n").filter((l) => l && !l.startsWith("-----"));
+    const env = buildEnvelope({ file_path: "/p/deploy_key", content: pem }, [], write, null);
+    expectNoKeyMaterial(JSON.stringify(env.state), body);
+  });
+
+  it("sends none of a key nested two levels deep, where it is JSON-escaped and cut at half the cap", () => {
+    const { pem, body } = fakePem(26);
+    const env = buildEnvelope({ entry: { tls: { private_key: pem } } }, [], facts({ toolName: "mcp__vault__put", toolClass: "other", toolIsKnown: false }), null);
+    expect(env.truncated).toBe(true);
+    expectNoKeyMaterial(JSON.stringify(env.state), body);
+  });
+
+  it("sends none of a key pasted into a prompt, in user_said or in the recorded intent", () => {
+    const { pem, body } = fakePem(26);
+    const prompt = `here is the deploy key, install it:\n${pem}`;
+    const env = buildEnvelope({ command: "ls" }, [prompt], facts(), null);
+    expectNoKeyMaterial(JSON.stringify(env.state), body);
+    // What intent.ts's recordUserPrompt stores: the same cap, then the redactor.
+    expectNoKeyMaterial(redactSecrets(capHeadTail(prompt, MAX_USER_MESSAGE_CHARS).text).text, body);
+  });
+
+  it("cuts JSON-escaped text at an escaped newline, not inside a line", () => {
+    const lines = Array.from({ length: 40 }, () => rnd(rand, 60, ALNUM));
+    const c = capHeadTail(lines.join("\\n"), 1000);
+    const [head, tail] = c.text.split(/\n…\[\d+ characters omitted\]…\n/);
+    expect(head.endsWith("\\n")).toBe(true);
+    expect(tail.startsWith("\\n")).toBe(true);
+    for (const piece of [...head.split("\\n"), ...tail.split("\\n")]) {
+      if (piece) expect(lines, piece.slice(0, 4)).toContain(piece);
+    }
   });
 });
 

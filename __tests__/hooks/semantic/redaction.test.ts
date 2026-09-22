@@ -9,10 +9,12 @@ import {
   SHARED_PATTERN_EXTENDED,
   looksRandomToken,
   redactSecrets,
+  scrubKnownSecrets,
   secretNameStrength,
   setEnvSecretSource,
 } from "../../../src/hooks/semantic/redact";
-import { SECRET_PATTERNS } from "../../../src/hooks/builtin-policies";
+import { BUILTIN_POLICIES, SECRET_PATTERNS } from "../../../src/hooks/builtin-policies";
+import type { PolicyContext } from "../../../src/hooks/policy-types";
 import { ALNUM, B64URL, HEX, SK, gatewayKey, pemBegin, pemEnd, prng, randomToken, rnd } from "./redaction-fixtures";
 
 const rand = prng(0x7e6);
@@ -79,6 +81,50 @@ describe("sk- keys", () => {
       expectUntouched(s);
     }
   });
+
+  it("does not find a key inside a Title-Case or mixed name with a digit", () => {
+    // Every class a random key has, but mid-word: the shared generic entry
+    // matched these (`ta<redacted:…>`) before it required a token start.
+    for (const s of [
+      `Switched to a new branch 'ta${SK}PROJ-1234-add-login-page'`,
+      `git checkout -b feature/ta${SK}ABC-123-UpdateDashboardWidget`,
+      `* ri${SK}Model2-scoring-service-v2`,
+      `ls: dist/assets/Ta${SK}DetailPanel-a1B2c3D4.js`,
+      `open Di${SK}Usage-Report-2024-Q3.xlsx`,
+      `Kio${SK}Mode-Setup-Guide-v10`,
+    ]) {
+      expectUntouched(s);
+    }
+  });
+
+  it("keeps the character in front of a key and replaces only the key", () => {
+    const key = gatewayKey(rand, 5); // a hyphen at 5: only the generic entry sees it
+    expect(redactSecrets(`export X=${key}`).text).toBe("export X=<redacted:sk- API key>");
+    expect(redactSecrets(`{"k":"${key}"}`).text).toBe(`{"k":"<redacted:sk- API key>"}`);
+    expect(redactSecrets(`${key} first`).text).toBe("<redacted:sk- API key> first");
+    expect(redactSecrets(JSON.stringify({ o: `line\n${key}` })).text).toBe(`{"o":"line\\n<redacted:sk- API key>"}`);
+  });
+
+  it("redacts the sk- keys only its own catch-all sees, which sanitize-api-keys does not block", async () => {
+    // The shared entries want 20+ characters, and the generic one the mixed
+    // classes of a random token; the redactor's `sk-[A-Za-z0-9_-]{16,}` takes
+    // the rest. Blocking stays narrow on purpose: these must still be allowed.
+    const lowerDigits = "abcdefghijklmnopqrstuvwxyz0123456789";
+    const keys = [
+      SK + rnd(rand, 8, lowerDigits) + "_" + rnd(rand, 12, lowerDigits),
+      SK + rnd(rand, 8, lowerDigits) + "-" + rnd(rand, 16, lowerDigits),
+      SK + rnd(rand, 8, HEX) + "-" + rnd(rand, 12, HEX),
+      SK + randomToken(rand, 17),
+      SK + randomToken(rand, 16),
+    ];
+    const policy = BUILTIN_POLICIES.find((p) => p.name === "sanitize-api-keys")!;
+    for (const key of keys) {
+      expectRedacted(`use ${key} here`, key, "sk- API key");
+      const ctx = { eventType: "PostToolUse", payload: { tool_response: { output: `use ${key} here` } }, toolName: "Bash", toolInput: {} };
+      const r = (await policy.fn(ctx as unknown as PolicyContext)) as { decision: string };
+      expect(r.decision, key.slice(0, 6)).toBe("allow");
+    }
+  });
 });
 
 describe("bearer and authorization values", () => {
@@ -135,6 +181,13 @@ describe("assignments named like a secret", () => {
       [`x-api-key: ${v}`, "x-api-key: <redacted:assigned secret>"],
       [`SECRET_KEY_BASE=${v}`, "SECRET_KEY_BASE=<redacted:assigned secret>"],
       [`ORGKEY="${v}"`, `ORGKEY="<redacted:assigned secret>"`],
+      // The bare names themselves.
+      [`KEY=${v} ./deploy.sh`, "KEY=<redacted:assigned secret> ./deploy.sh"],
+      [`export KEY=${v}`, "export KEY=<redacted:assigned secret>"],
+      [`TOKEN=${v} ./deploy.sh`, "TOKEN=<redacted:assigned secret> ./deploy.sh"],
+      [`export TOKEN=${v}`, "export TOKEN=<redacted:assigned secret>"],
+      [`SECRET=${v} ./deploy.sh`, "SECRET=<redacted:assigned secret> ./deploy.sh"],
+      [`export SECRET=${v}`, "export SECRET=<redacted:assigned secret>"],
     ];
     for (const [input, survives] of cases) {
       const out = expectRedacted(input, v, "assigned secret");
@@ -147,6 +200,33 @@ describe("assignments named like a secret", () => {
     expectRedacted("PGPASSWORD=letmein psql", "letmein", "assigned secret");
     expectRedacted("password: hunter2", "hunter2", "assigned secret");
     expectRedacted(`ADMIN_KEY="dev-admin-key"`, "dev-admin-key", "assigned secret");
+  });
+
+  it("redacts a letters-only literal in YAML and in a --flag=value", () => {
+    // docker-compose `environment:` blocks and `mysql --password=…` carry
+    // plain passwords that look like identifiers; neither syntax has variables.
+    expectRedacted("services:\n  db:\n    environment:\n      POSTGRES_PASSWORD: supersecretpassword", "supersecretpassword", "assigned secret");
+    expectRedacted("DB_PASSWORD: changeme", "changeme", "assigned secret");
+    expectRedacted("mysql -u root --password=letmein prod", "letmein", "assigned secret");
+  });
+
+  it("still leaves type annotations, variables, member access and paths alone", () => {
+    for (const s of [
+      "DB_PASSWORD: string;",
+      "SECRET_KEY: str",
+      "API_TOKEN: Optional[str] = None",
+      "{ DB_PASSWORD: dbPassword }",
+      "API_TOKEN: config.apiToken",
+      "PASSWORD: required",
+      // psql's --password takes no value: it forces a prompt, and the next word is the database.
+      "psql --password letmein",
+      // A path names where a secret is kept, not the secret.
+      "API_TOKEN=/run/secrets/api",
+      "password: ~/.pgpass",
+      "export DB_PASSWORD=./secrets/db.txt",
+    ]) {
+      expectUntouched(s);
+    }
   });
 
   it("redacts the literal default of a parameter expansion, not a reference", () => {
@@ -240,6 +320,16 @@ describe("vendor tokens and webhook URLs", () => {
     for (const [tok, label] of cases) expectRedacted(`value ${tok} end`, tok, label);
   });
 
+  it("finds a vendor token at the start of a JSON-escaped line", () => {
+    // Serialised input puts a backslash and an `n` in front of a token that
+    // started a line; together they are a boundary, not the end of a word.
+    const tok = "gl" + "pat-" + rnd(rand, 20, B64URL);
+    const out = expectRedacted(JSON.stringify({ note: `first line\n${tok} rest` }), tok, "GitLab token");
+    expect(out).toBe(`{"note":"first line\\n<redacted:GitLab token> rest"}`);
+    // A plain `n` with no backslash is still the end of a word.
+    expectUntouched(`plain n${tok}`);
+  });
+
   it("redacts the credential path of a webhook URL and keeps the host", () => {
     const path = `T${rnd(rand, 8, "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")}/B${rnd(rand, 8, "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")}/${rnd(rand, 24)}`;
     const out = expectRedacted(`curl -X POST https://hooks.slack.com/services/${path}`, path, "Slack webhook");
@@ -271,6 +361,47 @@ describe("private keys", () => {
   it("takes nothing after a lone header", () => {
     const out = redactSecrets(`grep -l "${pemBegin()}" *.pem && echo done`).text;
     expect(out).toContain(`*.pem && echo done`);
+  });
+
+  it("redacts the key lines in front of a footer whose header was cut away", () => {
+    // What the envelope's head/tail cap leaves in the tail of a long key.
+    const lines = body().split("\n");
+    const last = rnd(rand, 22, ALNUM + "+/") + "==";
+    const tail = `…[1234 characters omitted]…\n${lines.join("\n")}\n${last}\n${pemEnd()}\n`;
+    const out = expectRedacted(tail, lines[0], "private key");
+    for (const line of [...lines, last]) expect(out).not.toContain(line);
+    expect(out).toBe("…[1234 characters omitted]…\n<redacted:private key>\n");
+  });
+
+  it("redacts an orphan footer's lines when they are JSON-escaped, and a first line the cut split", () => {
+    const lines = body().split("\n");
+    const escaped = `…[99 characters omitted]…\n${lines[0].slice(50)}\\n${lines.slice(1).join("\\n")}\\n${pemEnd()}\\n"}`;
+    const out = expectRedacted(escaped, lines[1], "private key");
+    expect(out).not.toContain(lines[0].slice(50));
+    expect(out.endsWith(`<redacted:private key>\\n"}`)).toBe(true);
+  });
+
+  it("redacts a block escaped twice (a JSON string inside JSON)", () => {
+    const lines = body().split("\n");
+    const twice = `${pemBegin()}\\\\n${lines.join("\\\\n")}\\\\n${pemEnd()}\\\\n`;
+    const out = expectRedacted(`{"sa": "{\\"private_key\\": \\"${twice}\\"}"}`, lines[0], "private key");
+    for (const line of lines) expect(out).not.toContain(line);
+    // One block, header to footer — not a header-only match and a stray footer.
+    expect(out).not.toContain(pemEnd());
+  });
+
+  it("takes the short tail of a line that a slice cut, after a header-only block", () => {
+    const lines = body().split("\n");
+    const cut = `${pemBegin()}\n${lines[0]}\n${lines[1].slice(0, 10)}`;
+    const out = expectRedacted(cut, lines[0], "private key");
+    expect(out).toBe("<redacted:private key>");
+  });
+
+  it("leaves a footer alone when no key material is in front of it", () => {
+    expectUntouched(`The file ends with\n${pemEnd()}`);
+    expectUntouched(`and it ends with \`${pemEnd()}\`, one line`);
+    expectUntouched(`grep -c "${pemEnd()}" keys/*.pem`);
+    expectUntouched(`see docs/keys.md\n${pemEnd()}`);
   });
 });
 
@@ -315,6 +446,16 @@ describe("this machine's own secret environment variables", () => {
   it("ignores short, non-token and non-secret-named values", () => {
     setEnvSecretSource({ SHORT_TOKEN: "abc123", APP_SECRET: "production-environment", HOME: "/home/u/abcdefghijk" });
     expectUntouched("abc123 production-environment /home/u/abcdefghijk");
+  });
+});
+
+describe("scrubKnownSecrets", () => {
+  it("replaces the longest known secret first, so a shorter prefix cannot split it", () => {
+    const short = randomToken(rand, 16);
+    const long = short + rnd(rand, 10);
+    const r = scrubKnownSecrets(`use ${long} and ${short}`, [short, long]);
+    expect(r.text).toBe("use <redacted:repeated secret> and <redacted:repeated secret>");
+    expect(r.count).toBe(2);
   });
 });
 
@@ -370,6 +511,9 @@ describe("secretNameStrength", () => {
       ["x-api-key", "strong"],
       ["SECRET_KEY_BASE", "strong"],
       ["STRIPE_KEY", "strong"],
+      ["KEY", "strong"],
+      ["TOKEN", "strong"],
+      ["SECRET", "strong"],
       ["stripeKey", "weak"],
       ["sentry_dsn", "weak"],
       ["key", null],

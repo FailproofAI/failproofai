@@ -137,13 +137,24 @@ const JWT_RE = /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/;
 // such as `risk-scoring-7d9f8b6c5-x2k4p` contain `sk-` followed by twenty-odd
 // token characters — so the generic entry requires the mix of classes a random
 // token has and a kebab-case name does not: upper AND lower case, plus a digit
-// or a lower→upper hump. That alone is what keeps it precise: over 277k real
-// transcript strings (tool results included, JSON-stringified the way sanitize
-// sees them) none of the three entries ever matched mid-token, so they carry no
-// boundary lookbehind — which would drop JSC's regex JIT to its interpreter and
-// cost ~20x on every PostToolUse payload.
+// or a lower→upper hump.
+//
+// It must also START a token. Title-Case names with a digit have that mix too,
+// and `sk-` is the tail of many words: `task-PROJ-1234-add-login-page`,
+// `Disk-Usage-Report-2024-Q3.xlsx`, `Kiosk-Mode-Setup-Guide-v10`. The boundary
+// is the leading group — start of input, a character that cannot be part of a
+// token, or a JSON-escaped `\n`/`\r`/`\t` (sanitize-api-keys scans
+// `JSON.stringify(payload)`, where a key at the start of a line follows the two
+// characters `\` `n`). It is a consuming CAPTURE group rather than a
+// lookbehind for two reasons: a lookbehind drops JSC's regex JIT to its
+// interpreter (~15x slower on every PostToolUse payload), and the redactor
+// (src/hooks/semantic/redact.ts) puts group 1 back in front of its marker, so
+// only the key is replaced. The boundary is also what keeps the scan linear:
+// the class-mix lookaheads run once per token that starts with `sk-`, never at
+// each `sk-` inside one, so a crafted `sk-sk-sk-…` run costs what its length
+// costs instead of its square.
 const SK_GATEWAY_KEY_RE =
-  /sk-(?=[A-Za-z0-9_-]*[A-Z])(?=[A-Za-z0-9_-]*[a-z])(?=[A-Za-z0-9_-]*(?:[0-9]|[a-z][A-Z]))[A-Za-z0-9_-]{20,}/;
+  /(^|[^A-Za-z0-9_-]|\\[nrt])sk-(?=[A-Za-z0-9_-]*[A-Z])(?=[A-Za-z0-9_-]*[a-z])(?=[A-Za-z0-9_-]*(?:[0-9]|[a-z][A-Z]))[A-Za-z0-9_-]{20,}/;
 const API_KEY_PATTERNS: Array<[RegExp, string]> = [
   [/sk-ant-[A-Za-z0-9\-_]{20,}/, "Anthropic API key"],
   [/sk-proj-[A-Za-z0-9\-_]{20,}/, "OpenAI project API key"],

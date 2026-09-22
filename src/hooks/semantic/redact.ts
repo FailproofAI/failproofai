@@ -67,11 +67,17 @@ function atTokenBoundary(whole: string, offset: number, tokenChars = /[A-Za-z0-9
  * same to anything longer. The two patterns that end on a literal (`…@` for
  * connection strings, `-----` for a PEM header) are not extended: what follows
  * them is a hostname or a newline, not more of the secret.
+ *
+ * A pattern that OPENS with a capture group matched context in front of the
+ * secret rather than the secret itself — the generic `sk-` entry's token
+ * boundary, a consuming group because a lookbehind would cost the blocking
+ * policy its regex JIT. Group 1 goes back in front of the marker.
  */
-const SHARED_RULES: ReadonlyArray<readonly [RegExp, string]> = SECRET_PATTERNS.map(([re, label]) => {
+const SHARED_RULES: ReadonlyArray<readonly [RegExp, string, boolean]> = SECRET_PATTERNS.map(([re, label]) => {
   const flags = re.flags.includes("g") ? re.flags : re.flags + "g";
   const extend = /[}+]$/.test(re.source);
-  return [new RegExp(extend ? `(?:${re.source})[A-Za-z0-9_-]*` : re.source, flags), label] as const;
+  const keepsPrefix = re.source.startsWith("(") && !re.source.startsWith("(?");
+  return [new RegExp(extend ? `(?:${re.source})[A-Za-z0-9_-]*` : re.source, flags), label, keepsPrefix] as const;
 });
 
 /** Exposed for the test that pins which shared patterns are extended. */
@@ -88,14 +94,135 @@ export const SHARED_PATTERN_EXTENDED: ReadonlyArray<boolean> = SECRET_PATTERNS.m
  * block whose footer was cut off by the envelope's length cap: it takes the
  * lines that follow the header while they still look like key material (base64
  * of 16+ characters, or an encrypted key's `Proc-Type:`-style header line),
- * separated by real or JSON-escaped newlines. A lone header in a command — a
- * `grep` for the armour line across `*.pem` — therefore takes nothing after it.
+ * separated by real or JSON-escaped newlines (`redactPemBlocks` adds a last
+ * line shorter than that when it ends the text or meets the envelope's cut
+ * marker: a block cut mid-line). A lone header in a command — a `grep` for
+ * the armour line across `*.pem` — therefore takes nothing after it.
  * The body of a complete block is limited to what a PEM body contains, so a
  * header and a footer quoted separately in documentation do not take the
  * prose between them.
+ *
+ * "JSON-escaped" is one to four backslashes before the `n`: a block inside a
+ * JSON string that was itself serialised again (a service-account file passed
+ * as a string argument, then stringified by the envelope at depth 2) arrives as
+ * `\\n`. The count is bounded so a run of backslashes cannot backtrack.
  */
 const PEM_BLOCK_RE =
-  /-----BEGIN[ A-Z0-9]*PRIVATE KEY(?: BLOCK)?-----(?:(?:[A-Za-z0-9+/=\s:,.-]|\\[nrt])*?-----END[ A-Z0-9]*PRIVATE KEY(?: BLOCK)?-----|(?:(?:\s|\\[nrt])+(?:[A-Za-z0-9+/=]{16,}|[A-Za-z-]+:[^\n\\]*))*)/g;
+  /-----BEGIN[ A-Z0-9]*PRIVATE KEY(?: BLOCK)?-----(?:(?:[A-Za-z0-9+/=\s:,.-]|\\{1,4}[nrt])*?-----END[ A-Z0-9]*PRIVATE KEY(?: BLOCK)?-----|(?:(?:\s|\\{1,4}[nrt])+(?:[A-Za-z0-9+/=]{16,}|[A-Za-z-]+:[^\n\\]*))*)/g;
+const PEM_COMPLETE_RE = /-----END[ A-Z0-9]*PRIVATE KEY(?: BLOCK)?-----$/;
+/**
+ * The short tail of a key line a cut split, right after a block that lost its
+ * footer. Matched in code at the end of such a block: as an optional group at
+ * the end of `PEM_BLOCK_RE` it cost that regex ~8x on every string.
+ */
+const PEM_CUT_FRAGMENT_RE = /(?:\s|\\{1,4}[nrt])+[A-Za-z0-9+/=]{1,15}(?=\s*(?:$|…\[))/y;
+
+/** Every PEM private-key block, whole or cut short, as one marker each. */
+function redactPemBlocks(text: string, counter: { n: number; found: string[] }): string {
+  if (!text.includes("-----BEGIN")) return text;
+  let out = "";
+  let last = 0;
+  PEM_BLOCK_RE.lastIndex = 0;
+  for (let m = PEM_BLOCK_RE.exec(text); m !== null; m = PEM_BLOCK_RE.exec(text)) {
+    let end = m.index + m[0].length;
+    if (!PEM_COMPLETE_RE.test(m[0])) {
+      PEM_CUT_FRAGMENT_RE.lastIndex = end;
+      const f = PEM_CUT_FRAGMENT_RE.exec(text);
+      if (f) end += f[0].length;
+    }
+    out += text.slice(last, m.index) + marker("private key");
+    counter.n++;
+    counter.found.push(text.slice(m.index, end));
+    last = end;
+    PEM_BLOCK_RE.lastIndex = end;
+  }
+  PEM_BLOCK_RE.lastIndex = 0;
+  return last === 0 ? text : out + text.slice(last);
+}
+
+/**
+ * A private-key footer. What survives the complete-block rule is a footer whose
+ * header is not in the same string — almost always because the envelope's
+ * head/tail cap dropped the header into the omitted middle and kept the last
+ * lines of the key in the tail. `redactOrphanFooters` takes those lines.
+ */
+const PEM_FOOTER_RE = /-----END[ A-Z0-9]*PRIVATE KEY(?: BLOCK)?-----/g;
+const BASE64_CHAR = /[A-Za-z0-9+/=]/;
+
+/** Length of a JSON-escaped `\n`/`\r`/`\t` (one to four backslashes) ending just before `end`, or 0. */
+function escapeBefore(text: string, end: number): number {
+  const c = text[end - 1];
+  if (c !== "n" && c !== "r" && c !== "t") return 0;
+  let i = end - 1;
+  while (i > 0 && text[i - 1] === "\\" && end - i <= 4) i--;
+  return i < end - 1 ? end - i : 0;
+}
+
+/** Whether only whitespace separates `at` from the start of the text or the envelope's cut marker. */
+function startsAfterCut(text: string, at: number, floor: number): boolean {
+  let j = at;
+  while (j > floor && /\s/.test(text[j - 1])) j--;
+  return j === 0 || text[j - 1] === "…";
+}
+
+/**
+ * The key lines in front of a footer that has no header, walking back from the
+ * footer one line at a time. A line is a whole run of base64 between line
+ * separators (real or escaped newlines). Every line must be 16+ characters
+ * except two: the one right before the footer (a PEM body's short last line)
+ * and one that starts the text or follows the cut marker (a line the cut
+ * split). A short last line on its own counts only in that second position
+ * too. Prose never qualifies: its lines have spaces in them.
+ *
+ * Returns where the key material starts, or -1.
+ */
+function orphanKeyStart(text: string, footerAt: number, floor: number): number {
+  const lines: Array<{ start: number; len: number }> = [];
+  let pos = footerAt;
+  for (;;) {
+    let j = pos;
+    while (j > floor) {
+      if (/\s/.test(text[j - 1])) j--;
+      else {
+        const esc = escapeBefore(text, j);
+        if (esc === 0) break;
+        j -= esc;
+      }
+    }
+    if (j === pos && lines.length > 0) break;
+    let k = j;
+    while (k > floor && BASE64_CHAR.test(text[k - 1]) && escapeBefore(text, k) === 0) k--;
+    const len = j - k;
+    if (len === 0) break;
+    // A whole line: it starts the text, or follows a separator, a quote or the cut marker.
+    if (k > floor && !/[\s"'`…]/.test(text[k - 1]) && escapeBefore(text, k) === 0) break;
+    if (lines.length > 0 && len < 16 && !startsAfterCut(text, k, floor)) break;
+    lines.push({ start: k, len });
+    pos = k;
+  }
+  if (lines.length === 0) return -1;
+  if (lines.length === 1 && lines[0].len < 16 && !startsAfterCut(text, lines[0].start, floor)) return -1;
+  return lines[lines.length - 1].start;
+}
+
+/** Redact key lines in front of every footer that lost its header. */
+function redactOrphanFooters(text: string, counter: { n: number; found: string[] }): string {
+  if (!text.includes("-----END")) return text;
+  let out = "";
+  let last = 0;
+  PEM_FOOTER_RE.lastIndex = 0;
+  for (let m = PEM_FOOTER_RE.exec(text); m !== null; m = PEM_FOOTER_RE.exec(text)) {
+    const start = orphanKeyStart(text, m.index, last);
+    if (start < 0) continue;
+    const end = m.index + m[0].length;
+    out += text.slice(last, start) + marker("private key");
+    counter.n++;
+    counter.found.push(text.slice(start, end));
+    last = end;
+  }
+  PEM_FOOTER_RE.lastIndex = 0;
+  return last === 0 ? text : out + text.slice(last);
+}
 
 /**
  * Vendor prefixes the shared list does not carry. They stay OUT of
@@ -328,6 +455,12 @@ export function secretNameStrength(name: string): "strong" | "weak" | null {
 
 const NON_VALUE_WORDS = new Set(["true", "false", "null", "none", "nil", "undefined", "yes", "no", "on", "off"]);
 const TYPED_ARRAY_RE = /^(?:Big)?(?:Uint|Int)\d+Array$|^Float\d+Array$|^Uint8ClampedArray$/;
+/** Type names and schema words that follow `NAME: ` in code and config, not a value. */
+const TYPE_WORDS = new Set([
+  "str", "string", "int", "integer", "number", "float", "double", "bool", "boolean", "bytes", "any",
+  "unknown", "object", "optional", "secretstr", "secretbytes", "union", "list", "dict", "map", "array",
+  "text", "char", "varchar", "required",
+]);
 
 /** True for a string that could be a literal value rather than a reference, a path or a keyword. */
 function isLiteral(value: string): boolean {
@@ -384,7 +517,7 @@ function looksLikeExpression(value: string): boolean {
 function assignmentValueIsSecret(
   name: string,
   value: string,
-  opts: { quoted: boolean; spaced: boolean; urlQuery: boolean; flag?: boolean },
+  opts: { quoted: boolean; spaced: boolean; urlQuery: boolean; flag?: boolean; colon?: boolean },
 ): boolean {
   let strength = secretNameStrength(name);
   if (!strength && opts.urlQuery && /^(?:key|sig|auth|code|access_token|client_secret)$/i.test(name)) strength = "weak";
@@ -395,13 +528,23 @@ function assignmentValueIsSecret(
   // A "quoted value" that starts with a delimiter is the tail of a string the
   // name sat inside: `print('has_key=', …)` quotes `, …` up to the next quote.
   if (opts.quoted && /^[,;)\]}\s]/.test(value)) return false;
+  const envStyle = /^[A-Z][A-Z0-9_]*$/.test(bare);
   if (!opts.quoted) {
-    if (opts.spaced && looksLikeExpression(value)) return false;
+    // YAML has no expressions, so `POSTGRES_PASSWORD: changeme` under an
+    // environment-style name is a literal. A type annotation on the same name
+    // (`DB_PASSWORD: string`, `SECRET_KEY: str`), a camelCase variable
+    // (`{ DB_PASSWORD: dbPassword }`) and member access (`API_TOKEN:
+    // process.env.X`) are still code.
+    const yamlLiteral =
+      opts.colon === true && envStyle && /^[A-Za-z]+$/.test(value) && !/[a-z][A-Z]/.test(value) && !TYPE_WORDS.has(value.toLowerCase());
+    if (opts.spaced && looksLikeExpression(value) && !yamlLiteral) return false;
     if (!opts.spaced) {
       if (/^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+$/.test(value) && !/\d/.test(value)) return false; // token=self.token
       // `authToken=userAuthTokenValue` in code is a variable, not a secret; an
-      // environment-style name (`PASSWORD=letmein`) keeps any literal.
-      if (!/^[A-Z][A-Z0-9_]*$/.test(bare) && /^[A-Za-z_$][A-Za-z_$]*$/.test(value) && classSwitchRate(value) < 0.45) return false;
+      // environment-style name (`PASSWORD=letmein`) keeps any literal, and so
+      // does a command-line flag (`mysql --password=letmein`): a shell has no
+      // variables without a `$`.
+      if (!envStyle && !name.startsWith("-") && /^[A-Za-z_$][A-Za-z_$]*$/.test(value) && classSwitchRate(value) < 0.45) return false;
     }
   }
   if (opts.flag) return value.length >= (strength === "strong" ? 6 : 8) && tokenLike(value);
@@ -416,6 +559,36 @@ function assignmentValueIsSecret(
  */
 export function isSecretFieldValue(name: string, value: string): boolean {
   return assignmentValueIsSecret(name, value, { quoted: true, spaced: false, urlQuery: false });
+}
+
+/** Header names whose value IS a credential, whatever it looks like. */
+const AUTHORIZATION_FIELD_RE = /^(?:x-|proxy-)?authorization$/i;
+const AUTH_SCHEME_WORDS = /^(?:bearer|basic|token|bot|apikey|digest|negotiate)$/i;
+
+/**
+ * The value of an `Authorization` field in structured input — `{"headers":
+ * {"Authorization": "Basic …"}}` from an HTTP-calling MCP tool. The text rules
+ * only see such a value when the word `authorization` sits in the same string,
+ * and a name-based rule cannot tell the scheme from the credential. Whatever
+ * follows the scheme is the credential, and with no scheme the whole value is.
+ * The scheme is kept, because which kind of credential it was is context Jev
+ * can use.
+ *
+ * Returns the redacted value and the credential it removed, or null when the
+ * field is not an authorization header or its value is a reference
+ * (`Bearer ${TOKEN}`, `Bearer <token>`) or a bare scheme word.
+ */
+export function redactAuthorizationField(name: string, value: string): { text: string; secret: string } | null {
+  if (!AUTHORIZATION_FIELD_RE.test(name.trim())) return null;
+  const v = value.trim();
+  const schemed = /^([A-Za-z][A-Za-z0-9-]{0,31})[ \t]+(\S[\s\S]*)$/.exec(v);
+  if (schemed) {
+    const [, scheme, credential] = schemed;
+    if (!isLiteral(credential)) return null;
+    return { text: `${scheme} ${marker(/^bearer$/i.test(scheme) ? "bearer token" : "authorization header")}`, secret: credential };
+  }
+  if (!isLiteral(v) || AUTH_SCHEME_WORDS.test(v)) return null;
+  return { text: marker("authorization header"), secret: v };
 }
 
 /**
@@ -549,12 +722,14 @@ function replacedPart(match: string, replacement: string): string {
  * same bytes can travel on without that context — the path facts lift bare
  * tokens out of the command, a human pastes the value into a message. Only
  * values distinctive enough to scrub blindly are used: 16+ characters, or 8+
- * that look like a token.
+ * that look like a token. Longest first, as for the environment's values: a
+ * shorter secret that is a prefix of a longer one would otherwise split the
+ * longer one's copy and leave its tail behind.
  */
 export function scrubKnownSecrets(text: string, known: Iterable<string>): Redacted {
   let out = text;
   let count = 0;
-  for (const secret of known) {
+  for (const secret of [...known].sort((a, b) => b.length - a.length)) {
     if (!(secret.length >= 16 || (secret.length >= 8 && tokenLike(secret))) || !out.includes(secret)) continue;
     const parts = out.split(secret);
     count += parts.length - 1;
@@ -591,11 +766,15 @@ export function redactSecretsDetailed(text: string): RedactedDetail {
     out = parts.join(marker(`value of $${name}`));
   }
 
-  // 2. Whole PEM blocks, before the shared rule eats just the header.
-  out = replaceCounting(out, PEM_BLOCK_RE, () => marker("private key"), c);
+  // 2. Whole PEM blocks, before the shared rule eats just the header; then
+  //    the lines in front of a footer whose header was cut away.
+  out = redactPemBlocks(out, c);
+  out = redactOrphanFooters(out, c);
 
   // 3. The shared floor.
-  for (const [re, label] of SHARED_RULES) out = replaceCounting(out, re, () => marker(label), c);
+  for (const [re, label, keepsPrefix] of SHARED_RULES) {
+    out = replaceCounting(out, re, (_m, g) => (keepsPrefix ? (g[0] ?? "") : "") + marker(label), c);
+  }
 
   // 4. Vendor prefixes and webhook URLs.
   for (const [re, label] of VENDOR_RULES) {
@@ -660,8 +839,9 @@ export function redactSecretsDetailed(text: string): RedactedDetail {
       // default that is itself `$OTHER` is a reference, not a literal.
       if (!quoted && offset >= 2 && whole.slice(offset - 2, offset) === "${" && sep === ":") value = value.replace(/^[-=+?]/, "");
       const urlQuery = offset > 0 && (whole[offset - 1] === "?" || whole[offset - 1] === "&");
-      const spaced = sep.trim() === ":" || /\s/.test(sep);
-      if (!assignmentValueIsSecret(name, value, { quoted, spaced, urlQuery })) return null;
+      const colon = sep.trim() === ":";
+      const spaced = colon || /\s/.test(sep);
+      if (!assignmentValueIsSecret(name, value, { quoted, spaced, urlQuery, colon })) return null;
       return `${q1}${name}${q2}${sep}${quoted ? openQuote : ""}${marker("assigned secret")}${quoted ? openQuote : ""}`;
     },
     c,

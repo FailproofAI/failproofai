@@ -1,11 +1,52 @@
 # Changelog — `fp` CLI
 
-## 0.0.1b3 — 2026-09-12
+## 0.0.1 — 2026-09-22
 
-Open for the next release. `0.0.1b2` published on 2026-09-12 and the `bump` job
-moved the version here automatically; nothing has landed against `0.0.1b3` yet.
-Add entries as changes merge — this section becomes the GitHub Release body when
-it ships.
+**First stable release.** `0.0.1b1` and `0.0.1b2` are the two betas behind it; the
+`0.0.1b3` line the `bump` job opened is cut stable here rather than published, because
+the server endpoints these commands drive are deployed to FailproofAI Cloud and the
+CLI half should not stay a pre-release behind them. Until now `pipx install
+fp-cloud-cli` resolved a beta only because no stable existed — a default that would
+have silently changed the day one did. `Development Status` moves to
+`5 - Production/Stable` with the version, so the classifier and the one string pip
+reads say the same thing.
+
+Nothing about the command surface changes at the cut: the entries below are the
+entire diff from `0.0.1b2`, and `0.0.2b0` opens the next beta line.
+
+### Added
+
+- `fp issues close <id>` — end an issue as won't-fix. Distinct from `resolve`: a
+  recurring audit finding reopens a **resolved** issue and leaves a **closed** one
+  alone. On an audit issue it marks the finding `dismissed`, without writing the
+  org-wide fingerprint suppression that `fp audits dismiss` writes. Exit 9 if the
+  issue already ended. (#815)
+- `fp issues archive <id>` / `unarchive <id>` — take an issue off the board and put
+  it back. Orthogonal to state, allowed in any state, no confirmation prompt. (#815)
+- `fp issues clear (--audit <id> | --all-audits | --everything) [--dry-run]` — resolve
+  every open issue in a scope plus the audit findings behind them, in one server-side
+  transaction. Exactly one scope flag is required. Needs `issues:close` **and**
+  `audits:write`. Writes no suppression, so anything still broken reopens its issue
+  on the next run. The confirm names the count from a dry run that shares its
+  scope predicate with the write. (#815)
+- `issues list --state closed` is accepted, and `Incident` carries `closed_at` and
+  `archived_at`. (#815)
+
+### Fixes
+
+- The recurrence sentence said two different things in one release. `audits resolve`'s
+  confirm line (`a genuine recurrence re-opens as new`), the skill and the command
+  reference implied a recurrence opens a **different** issue; `issues close --help`, the
+  audits guide and the CLI reference said the resolved issue **reopens**. The second is
+  the one the rest of the model needs — a `closed` issue has to have something to stay
+  closed through — so `reopens` is now what every surface says. (#815)
+- `issues clear --help` claimed the `--dry-run` count "cannot disagree" with the write.
+  The two requests share a scope predicate, not a row set, so an issue entering the scope
+  between them is cleared without being in the confirmed number — correct for a scoped
+  clear, but not the guarantee that was written. The help now states the real one, and
+  names the closing line as the count of what changed. (#815)
+- The skill answered "clear all our issues" with `--all-audits`, which leaves alert-born
+  and hand-opened issues untouched. Settling the scope is now the first step. (#815)
 
 ## 0.0.1b2 — 2026-08-25
 

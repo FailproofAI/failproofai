@@ -1161,6 +1161,50 @@ def resolve_incident(ctx: ClientContext, incident_id: str) -> None:
     _post_json(ctx, f"/api/issues/{incident_id}/resolve")
 
 
+def close_incident(ctx: ClientContext, incident_id: str) -> None:
+    """POST /api/issues/{id}/close — end the issue as won't-fix.
+
+    The sibling of ``resolve_incident``, and the difference is what happens next:
+    a resolved issue REOPENS if its audit finding recurs, a closed one does not.
+    409 if the issue already ended.
+    """
+    _post_json(ctx, f"/api/issues/{incident_id}/close")
+
+
+def set_incident_archived(ctx: ClientContext, incident_id: str, archived: bool) -> None:
+    """POST /api/issues/{id}/archive or /unarchive — hide from the board, or restore.
+
+    Does not change ``state``: an issue ends once, and archiving says nothing
+    about how. Idempotent on both sides, so a caller never has to read the
+    current value first.
+    """
+    verb = "archive" if archived else "unarchive"
+    _post_json(ctx, f"/api/issues/{incident_id}/{verb}")
+
+
+def clear_issues(
+    ctx: ClientContext,
+    *,
+    scope: str,
+    audit_id: Optional[str] = None,
+    dry_run: bool = False,
+) -> Dict[str, Any]:
+    """POST /api/issues/bulk-clear — resolve every live issue in a scope.
+
+    ``scope`` is ``audit`` (with ``audit_id``), ``all_audits`` or ``everything``.
+    Returns ``{issues, findings, dry_run, scope}``.
+
+    Needs ``issues:close`` AND ``audits:write`` — clearing resolves the audit
+    findings behind the issues, and the second grant is what stops a key that
+    cannot touch one finding from resolving all of them at once.
+    """
+    body: Dict[str, Any] = {"scope": scope, "dry_run": dry_run}
+    if audit_id:
+        body["audit_id"] = audit_id
+    data = _post_json(ctx, "/api/issues/bulk-clear", body)
+    return data if isinstance(data, dict) else {}
+
+
 def list_incident_comments(ctx: ClientContext, incident_id: str) -> List[IncidentComment]:
     data = _get_json(ctx, f"/api/issues/{incident_id}/comments")
     return [IncidentComment.from_dict(c) for c in (data if isinstance(data, list) else [])]

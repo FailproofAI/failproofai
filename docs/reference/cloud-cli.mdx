@@ -291,13 +291,17 @@ Include context during creation when the first run needs it. Creation commits th
 
 | Command | Purpose | Options |
 | --- | --- | --- |
-| `fp issues list` | List issues. | `--state`; `--alert-id`; `--limit`, `-n`; `--show-id` |
+| `fp issues list` | List issues. Archived issues are hidden. | `--state`; `--alert-id`; `--limit`, `-n`; `--show-id` |
 | `fp issues count` | Count open or selected issue states. | `--state` |
 | `fp issues show INCIDENT_ID` | Show issue details, comments, subscribers, and activity. | — |
 | `fp issues open` | Open a manual or alert-linked issue. | required `--summary`; optional `--title`, `--alert-id`, `--severity` |
 | `fp issues ack INCIDENT_ID` | Acknowledge an issue. | — |
 | `fp issues assign INCIDENT_ID` | Replace assignees; omit the option to clear them. | repeatable `--assignee` |
-| `fp issues resolve INCIDENT_ID` | Resolve an issue. | `--yes`, `-y` |
+| `fp issues resolve INCIDENT_ID` | Resolve an issue: the problem is fixed. A recurring audit finding reopens it. | `--yes`, `-y` |
+| `fp issues close INCIDENT_ID` | Close an issue: you are done with it, fixed or not. A recurrence does not reopen it. | `--yes`, `-y` |
+| `fp issues archive INCIDENT_ID` | Take an issue off the board without changing how it ended. | — |
+| `fp issues unarchive INCIDENT_ID` | Put an archived issue back on the board. | — |
+| `fp issues clear` | Resolve every open issue in a scope, plus the audit findings behind them. Requires exactly one scope flag. | one of `--audit`, `--all-audits`, `--everything`; `--dry-run`; `--yes`, `-y` |
 | `fp issues comment-list INCIDENT_ID` | List comments. | — |
 | `fp issues comment-add INCIDENT_ID` | Add a comment. | exactly one of `--body`, `--file` |
 | `fp issues comment-delete INCIDENT_ID COMMENT_ID` | Delete a comment. | `--yes`, `-y` |

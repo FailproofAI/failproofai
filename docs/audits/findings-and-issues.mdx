@@ -43,6 +43,8 @@ A finding is the audit's evidence-backed statement about a failure. An issue is 
     fp issues assign <issue-id> --assignee engineer@example.com
     fp issues comment-add <issue-id> --body "policy is in observe mode"
     fp issues resolve <issue-id> --yes
+    fp issues close <issue-id> --yes
+    fp issues archive <issue-id>
     ```
 
     Use `fp issues subscribe <issue-id>`, `fp issues unsubscribe <issue-id>`, and `fp issues subscribers <issue-id>` to manage watchers.
@@ -66,6 +68,62 @@ Confirm that it contains:
 Create or link an issue when the finding needs assignment, discussion, status changes, comments, or subscribers. Issues can also represent alert incidents and manually reported problems, which is why they live under audit response rather than in the primary navigation.
 
 Resolve the issue when remediation is deployed and verified. Resolve the finding when the failure mode has been addressed for the audit population. Those moments may differ.
+
+## End an issue: resolve, close, or archive
+
+An issue ends once, and how you end it decides what happens the next time the audit
+sees the same pattern.
+
+| Action | Means | If the pattern comes back |
+| --- | --- | --- |
+| **Resolve** | You fixed it. | The issue **reopens**, so you find out the fix did not hold. |
+| **Close** | You are done with it: won't fix, not a problem, or no longer relevant. | It **stays closed**. |
+| **Archive** | Take it off the board. Says nothing about how it ended. | A live issue returns to the board automatically. |
+
+Resolve and close are both final and neither can overwrite the other, so an issue
+someone resolved keeps that record. Archiving is separate from both: you can archive
+an issue in any state, and it keeps whatever state it ended in. If an archived issue
+is still live and the problem recurs, it comes back to the board on its own — archive
+hides history, it cannot hide an active problem.
+
+Closing an issue that came from an audit also dismisses the finding behind it. It
+does not silence that pattern in your other audits; for that, mute or dismiss the
+finding itself.
+
+## Start fresh after changing your agents
+
+When you ship a round of changes to your agents, the issues already on the board
+describe the behavior you just replaced. Clearing resolves them in one step, along
+with the audit findings behind them.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Go to **Analyze → Issues** and select **clear**, or open a single audit and select **clear issues** to limit it to that audit's work.
+    2. Choose the scope. Each one shows how many issues it covers before you commit to it.
+    3. Confirm. The issues are resolved, and so are the audit findings behind them.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp issues clear --all-audits --dry-run
+    fp issues clear --all-audits --yes
+
+    fp issues clear --audit <audit-id> --yes
+    fp issues clear --everything --yes
+    ```
+
+    `--dry-run` reports what would change without changing it. Exactly one of
+    `--audit`, `--all-audits`, and `--everything` is required.
+  </Tab>
+</Tabs>
+
+**Clearing suppresses nothing.** A pattern your changes genuinely fixed stays gone. A
+pattern that survived them **reopens** its issue on the next audit run — the same thing
+resolving one by hand does — so a fresh start cannot quietly hide a problem you still
+have. When you do want a pattern
+silenced for good, mute or dismiss the finding instead.
+
+Clearing needs permission to both close issues and write audits, because it resolves
+the findings as well as the issues.
 
 ## Turn an issue into a policy draft
 

@@ -1,4 +1,4 @@
-"""Incident triage: incidents list/count/show/ack/assign/resolve/comment*/subscribe*/open.
+"""Incident triage: incidents list/count/show/ack/assign/resolve/close/archive/clear/comment*/subscribe*/open.
 
 Incidents live under /api/issues but the triage workflow is distinct, so it
 gets its own top-level group. The id IS the handle (incidents have no human name), so the
@@ -19,13 +19,16 @@ from ..errors import ApiError, ForbiddenError, NotFoundError
 from . import _write
 
 _SEVERITIES = ("info", "warning", "critical")
-_STATES = ("firing", "acknowledged", "resolved")
+# Mirrors `issue_sync::ISSUE_STATES` on the server. `closed` is the second
+# TERMINAL state (won't-fix); missing it here would reject `--state closed`
+# client-side with exit 2 for a state the server accepts.
+_STATES = ("firing", "acknowledged", "resolved", "closed")
 _UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
 
 def _validate_states(value: Optional[str]) -> None:
     """Reject an unknown ``--state`` value up front (exit 2) rather than letting the server
-    silently drop it and return a confusing set. Accepts a CSV of firing/acknowledged/resolved."""
+    silently drop it and return a confusing set. Accepts a CSV of firing/acknowledged/resolved/closed."""
     if value is None:
         return
     for s in value.split(","):
@@ -67,7 +70,7 @@ def _fail(state: AppState, exc: Exception, *, incident_id: str = "") -> None:
 
 def incidents_list(
     ctx: typer.Context,
-    state_filter: Optional[str] = typer.Option(None, "--state", help="Filter by state(s): firing, acknowledged, resolved (CSV)."),
+    state_filter: Optional[str] = typer.Option(None, "--state", help="Filter by state(s): firing, acknowledged, resolved, closed (CSV)."),
     alert_id: Optional[str] = typer.Option(None, "--alert-id", help="Only incidents for this alert."),
     limit: int = typer.Option(50, "--limit", "-n", help="Max incidents to return."),
     show_id: bool = typer.Option(False, "--show-id", help="Show the full incident id instead of the short form (always full in --json)."),
@@ -242,6 +245,220 @@ def incidents_resolve(
         output.emit_json({"resolved": True, "id": incident_id})
     else:
         output.incident_resolved(incident_id)
+
+
+def incidents_close(
+    ctx: typer.Context,
+    incident_id: str = typer.Argument(..., help="Issue id."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
+) -> None:
+    """Close an issue — "we're done with it", not "we fixed it".
+
+    The difference from `resolve` is what happens next. A **resolved** issue REOPENS if its
+    audit finding recurs: someone claimed a fix and the fix did not hold, which is worth
+    knowing. A **closed** issue does not — closing records a decision (won't fix, not a
+    problem, stale), and a recurrence is not news about a decision.
+
+    For an issue that came from an audit, this also marks the finding `dismissed`. It does
+    NOT write the finding's org-wide suppression: closing one issue never hides that pattern
+    in your other audits. Use `fp audits finding-status <id> --action dismiss` for that.
+
+    Needs `issues:close`. Exits 9 (conflict) if the issue already ended — an issue ends once,
+    and closing must not overwrite the record that someone believed they had fixed it.
+
+    With `--json`: `{"closed": true, "id": "<id>"}` (or `{cancelled: true}` on a declined
+    prompt).
+
+    Example:
+
+    * `fp issues close <id> --yes`
+    """
+    state: AppState = ctx.obj
+    cctx = require_auth(state)
+    if _write.should_prompt(state, yes):
+        alert_name = None
+        try:
+            alert_name = api.get_incident(cctx, incident_id).alert_name
+        except NotFoundError as exc:
+            _fail(state, exc, incident_id=incident_id)
+        except (ApiError, ForbiddenError):
+            alert_name = None
+        if not output.confirm_incident_close(incident_id, alert_name):
+            if state.json:
+                output.emit_json({"cancelled": True})
+            else:
+                output.cancelled_plain("nothing changed")
+            return
+    try:
+        api.close_incident(cctx, incident_id)
+    except (ApiError, ForbiddenError, NotFoundError) as exc:
+        _fail(state, exc, incident_id=incident_id)
+    _write.record_action("incident_closed", resource="incident", success=True)
+    if state.json:
+        output.emit_json({"closed": True, "id": incident_id})
+    else:
+        output.incident_closed(incident_id)
+
+
+def incidents_archive(
+    ctx: typer.Context,
+    incident_id: str = typer.Argument(..., help="Issue id."),
+) -> None:
+    """Take an issue off the issues board, keeping its history.
+
+    Archiving is separate from state: it does not resolve or close anything, and an issue
+    that has already ended keeps the record of HOW it ended. It works on a live issue too —
+    you should not have to triage something in order to stop looking at it — because the
+    safety net is on the other side: a fresh alert breach or a recurring audit finding puts
+    a live issue back on the board automatically. Archive can hide a problem; it cannot keep
+    hiding one that is still happening. A closed (won't-fix) issue is the exception and stays
+    hidden, since nobody asked for it back.
+
+    No confirmation: archiving destroys nothing and `fp issues unarchive` undoes it.
+
+    Needs `issues:close`. With `--json`: `{"archived": true, "id": "<id>"}`.
+
+    Example:
+
+    * `fp issues archive <id>`
+    """
+    _set_archived(ctx, incident_id, True)
+
+
+def incidents_unarchive(
+    ctx: typer.Context,
+    incident_id: str = typer.Argument(..., help="Issue id."),
+) -> None:
+    """Put an archived issue back on the issues board. See `fp issues archive`.
+
+    Needs `issues:close`. With `--json`: `{"archived": false, "id": "<id>"}`.
+
+    Example:
+
+    * `fp issues unarchive <id>`
+    """
+    _set_archived(ctx, incident_id, False)
+
+
+def _set_archived(ctx: typer.Context, incident_id: str, archived: bool) -> None:
+    """Shared body of archive/unarchive. Two commands rather than one with a flag, so each
+    reads as the verb it is and neither can be invoked meaning the opposite."""
+    state: AppState = ctx.obj
+    cctx = require_auth(state)
+    try:
+        api.set_incident_archived(cctx, incident_id, archived)
+    except (ApiError, ForbiddenError, NotFoundError) as exc:
+        _fail(state, exc, incident_id=incident_id)
+    _write.record_action(
+        "incident_archived" if archived else "incident_unarchived",
+        resource="incident", success=True,
+    )
+    if state.json:
+        output.emit_json({"archived": archived, "id": incident_id})
+    else:
+        output.incident_archived(incident_id, archived)
+
+
+def incidents_clear(
+    ctx: typer.Context,
+    audit_id: Optional[str] = typer.Option(None, "--audit", help="Clear only the issues this audit raised."),
+    all_audits: bool = typer.Option(False, "--all-audits", help="Clear every issue any audit raised. Alert and hand-opened issues are left alone."),
+    everything: bool = typer.Option(False, "--everything", help="Clear every open issue in the workspace, whatever opened it."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print what would be cleared and change nothing."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
+) -> None:
+    """Resolve every open issue in a scope — a fresh start after changing your agents.
+
+    Exactly one of `--audit <id>`, `--all-audits` or `--everything` is required: the three
+    have very different blast radii, so there is deliberately no default.
+
+    This is the same thing as resolving each issue by hand, including what it does NOT do.
+    **Nothing is deleted, and nothing is suppressed.** A pattern your agent changes genuinely
+    fixed stays gone; one they did not comes back on the next audit run and REOPENS the issue
+    it was raised under — a cleared board is not a quiet one. If you want a pattern silenced
+    for good, that is `fp audits finding-status <id> --action mute`, which is a different and
+    much bigger hammer.
+
+    Run it with `--dry-run` first: the count comes from the server, taken with the same scope
+    predicate the write uses, so it is the real size of the scope rather than a client-side
+    guess. It is a count, not a lease — the confirmed write re-runs that predicate, so an
+    issue that entered the scope since the preview is cleared along with the rest, which is
+    what clearing a SCOPE means. The line printed at the end is what actually changed.
+
+    Needs `issues:close` AND `audits:write` — clearing resolves the audit findings behind the
+    issues, so a key that cannot touch one finding cannot resolve all of them at once.
+
+    With `--json`: `{"issues": n, "findings": n, "dry_run": bool, "scope": "..."}` (or
+    `{cancelled: true}` on a declined prompt).
+
+    Examples:
+
+    * `fp issues clear --all-audits --dry-run`
+    * `fp issues clear --audit <id> --yes`
+    """
+    state: AppState = ctx.obj
+    picked = [bool(audit_id), all_audits, everything]
+    if sum(picked) != 1:
+        raise typer.BadParameter(
+            "choose exactly one of --audit <id>, --all-audits, or --everything.",
+            param_hint="--all-audits",
+        )
+    if audit_id:
+        scope, label = "audit", "this audit"
+    elif all_audits:
+        scope, label = "all_audits", "every audit"
+    else:
+        scope, label = "everything", "the whole workspace"
+
+    cctx = require_auth(state)
+
+    # The dry run is also the preview behind the prompt, so a `--dry-run` call and a
+    # confirmed clear count the same rows the same way.
+    try:
+        preview = api.clear_issues(cctx, scope=scope, audit_id=audit_id, dry_run=True)
+    except (ApiError, ForbiddenError, NotFoundError) as exc:
+        _fail(state, exc)
+        return
+    issues = int(preview.get("issues") or 0)
+    findings = int(preview.get("findings") or 0)
+
+    if dry_run:
+        if state.json:
+            output.emit_json(preview)
+        else:
+            output.issues_cleared(issues, findings, dry_run=True)
+        return
+
+    if issues == 0:
+        # Nothing to do is not a failure, and prompting to confirm zero rows is noise.
+        if state.json:
+            output.emit_json({"issues": 0, "findings": 0, "dry_run": False, "scope": scope})
+        else:
+            output.issues_cleared(0, 0)
+        return
+
+    if _write.should_prompt(state, yes) and not output.confirm_issues_clear(label, issues, findings):
+        if state.json:
+            output.emit_json({"cancelled": True})
+        else:
+            output.cancelled_plain("nothing changed")
+        return
+
+    try:
+        result = api.clear_issues(cctx, scope=scope, audit_id=audit_id)
+    except (ApiError, ForbiddenError, NotFoundError) as exc:
+        _fail(state, exc)
+        return
+    # `mode` and `count` are both on _SAFE_PROP_KEYS, and both are shape: a closed enum we
+    # authored and an integer. Never an audit id or an issue title.
+    _write.record_action(
+        "issues_cleared", resource="incident", success=True, destructive=True,
+        mode=scope, count=int(result.get("issues") or 0),
+    )
+    if state.json:
+        output.emit_json(result)
+    else:
+        output.issues_cleared(int(result.get("issues") or 0), int(result.get("findings") or 0))
 
 
 def incidents_comment_list(
@@ -454,7 +671,7 @@ def register(app: typer.Typer) -> None:
         no_args_is_help=True,
         rich_markup_mode="markdown",
         context_settings={"help_option_names": ["-h", "--help"]},
-        help="Triage issues (list / count / show / ack / assign / resolve / comment-* / subscribe* / open).",
+        help="Triage issues (list / count / show / ack / assign / resolve / close / archive / unarchive / clear / comment-* / subscribe* / open).",
     )
     inc.command("list", epilog=GLOBALS_EPILOG)(incidents_list)
     inc.command("count", epilog=GLOBALS_EPILOG)(incidents_count)
@@ -462,6 +679,10 @@ def register(app: typer.Typer) -> None:
     inc.command("ack", epilog=GLOBALS_EPILOG)(incidents_ack)
     inc.command("assign", epilog=GLOBALS_EPILOG)(incidents_assign)
     inc.command("resolve", epilog=GLOBALS_EPILOG)(incidents_resolve)
+    inc.command("close", epilog=GLOBALS_EPILOG)(incidents_close)
+    inc.command("archive", epilog=GLOBALS_EPILOG)(incidents_archive)
+    inc.command("unarchive", epilog=GLOBALS_EPILOG)(incidents_unarchive)
+    inc.command("clear", epilog=GLOBALS_EPILOG)(incidents_clear)
     inc.command("comment-list", epilog=GLOBALS_EPILOG)(incidents_comment_list)
     inc.command("comment-add", epilog=GLOBALS_EPILOG)(incidents_comment_add)
     inc.command("comment-delete", epilog=GLOBALS_EPILOG)(incidents_comment_delete)

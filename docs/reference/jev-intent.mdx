@@ -21,9 +21,9 @@ This page lists, for each of the 12 supported harnesses, where that text comes f
 | OpenCode | `opencode` | `message.updated` (user role) → `UserPromptSubmit` | `prompt` | No | — |
 | Pi | `pi` | `input` → `UserPromptSubmit` | `prompt` | Yes, except input another extension sent (`source: "extension"`, once forwarded) | the session JSONL |
 | Hermes | `hermes` | none | — | No | — |
-| OpenClaw | `openclaw` | `before_agent_run` → `UserPromptSubmit` | `prompt` | Only when marked as the owner's own message | the session JSONL (`transcript_path`) |
+| OpenClaw | `openclaw` | `before_agent_run` → `UserPromptSubmit` | `prompt` | Only when marked as the owner's own message | none (`before_agent_run` carries no transcript path) |
 | Factory Droid | `factory` | `UserPromptSubmit` | `prompt` | Yes | the session JSONL (`transcript_path`) |
-| Devin CLI | `devin` | `UserPromptSubmit` | `prompt` | Yes | none (sessions are stored in SQLite) |
+| Devin CLI | `devin` | `UserPromptSubmit` | `prompt` | Yes | none (its transcript is one JSON document, not JSONL) |
 | Antigravity CLI | `antigravity` | `PreInvocation` → `UserPromptSubmit` | none | No | — |
 | Goose | `goose` | `UserPromptSubmit` | `message` | Yes | none (sessions are stored in SQLite) |
 
@@ -54,7 +54,7 @@ A prompt that is nothing but harness text is not recorded at all.
 
 A reply like "yes" means nothing without the question it answers. When a prompt is recorded, Failproof AI also reads the agent's last visible message from the session transcript **at that moment**, and stores it with the prompt. Jev receives it in its own field, labelled as written by the agent: it explains a short reply and never counts as the human's request.
 
-It is read from the end of the transcript, at most the last 4 MB. Supported transcript formats are Claude Code, Codex rollouts (older `agent_message` events and newer `AgentMessage` items), Cursor, Copilot `events.jsonl`, and the Pi, Factory and OpenClaw session JSONL. Claude Code's own synthetic and API-error messages and subagent (sidechain) messages are skipped. Harnesses that keep sessions in SQLite (Devin, Goose, OpenCode) have no snapshot.
+It is read from the end of the transcript, at most the last 4 MB. Supported transcript formats are Claude Code, Codex rollouts (older `agent_message` events and newer `AgentMessage` items), Cursor, Copilot `events.jsonl`, and the Pi, Factory and OpenClaw session JSONL. Claude Code's own synthetic and API-error messages and subagent (sidechain) messages are skipped. There is no snapshot for Goose and OpenCode, which keep sessions in SQLite, for Devin, whose transcript is a single JSON document, or for OpenClaw, whose `before_agent_run` event carries no transcript path.
 
 ## Storage
 

@@ -536,6 +536,13 @@ describe("the agent-message snapshot", () => {
     expect(lastAgentMessage(scratch)).toBeNull();
     expect(lastAgentMessage(transcript("empty.jsonl", []))).toBeNull();
     expect(lastAgentMessage(transcript("users-only.jsonl", [{ type: "user", message: { role: "user", content: "hi" } }]))).toBeNull();
+    // Devin's transcript is one pretty-printed JSON document: no line of it is an entry.
+    const devin = join(scratch, "repeated-maxilla.json");
+    writeFileSync(
+      devin,
+      JSON.stringify({ schema_version: "ATIF-v1.7", session_id: "x", steps: [{ source: "agent", type: "assistant", message: "Delete it?" }] }, null, 2),
+    );
+    expect(lastAgentMessage(devin)).toBeNull();
   });
 
   it("never opens a FIFO, which would block the hook", () => {

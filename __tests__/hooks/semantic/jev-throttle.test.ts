@@ -634,3 +634,214 @@ describe("jev-throttle: telling a hit apart through evaluateSemantic", () => {
     expect(again.status === "ok" && again.inputTokens).toBe(321);
   });
 });
+
+// ── Review round 2 ───────────────────────────────────────────────────────────
+
+/**
+ * Like fetch(): settles when its signal aborts (rejecting with the signal's
+ * reason), otherwise answers after `settleAfterMs`. `cleanup()` clears any
+ * timer still pending, so a failing test leaves nothing running.
+ */
+function fetchLike(settleAfterMs = 3_000) {
+  const timers = new Set<ReturnType<typeof setTimeout>>();
+  const signals: AbortSignal[] = [];
+  const transport: JevTransport = (req, signal) =>
+    new Promise<JevResponse>((resolve, reject) => {
+      signals.push(signal);
+      const timer = setTimeout(() => {
+        timers.delete(timer);
+        resolve(answerFor(req));
+      }, settleAfterMs);
+      timers.add(timer);
+      signal.addEventListener(
+        "abort",
+        () => {
+          clearTimeout(timer);
+          timers.delete(timer);
+          reject(signal.reason);
+        },
+        { once: true },
+      );
+    });
+  return {
+    transport,
+    signals,
+    cleanup: () => {
+      for (const timer of timers) clearTimeout(timer);
+      timers.clear();
+    },
+  };
+}
+
+describe("jev-throttle: the caller's signal reaches the transport", () => {
+  it("hands the transport the caller's own signal object, on the direct path and after waiting for a token", async () => {
+    const seen: AbortSignal[] = [];
+    const t = throttleTransport(
+      async (r, s) => {
+        seen.push(s);
+        return answerFor(r);
+      },
+      { ratePerSec: 25, burst: 1, maxWaitMs: 200 }, // the second call waits ~40 ms for its token
+    );
+    const first = live();
+    const second = live();
+    await t(request("a"), first);
+    await t(request("b"), second);
+    expect(seen).toHaveLength(2);
+    expect(seen[0]).toBe(first);
+    expect(seen[1]).toBe(second);
+  });
+
+  it("aborting the caller's controller mid-flight ends the upstream call at once, with the transport's own error", async () => {
+    const slow = fetchLike(3_000);
+    try {
+      const t = throttleTransport(slow.transport, { ratePerSec: 100 });
+      const ctl = new AbortController();
+      const started = performance.now();
+      const pending = t(request("ls"), ctl.signal);
+      setTimeout(() => ctl.abort(), 20);
+      const err = await caught(pending);
+      expect(performance.now() - started).toBeLessThan(1_000);
+      expect(err).toBe(ctl.signal.reason);
+      expect(slow.signals).toHaveLength(1);
+      expect(slow.signals[0]).toBe(ctl.signal);
+      expect(jevThrottleStats()).toMatchObject({ upstreamErrors: 1, entries: 0 });
+    } finally {
+      slow.cleanup();
+    }
+  });
+
+  it("evaluateSemantic's timeoutMs still bounds a slow provider through the throttle", async () => {
+    const input = { eventType: "PreToolUse", toolName: "Bash", toolInput: { command: "rm -rf ./build" }, cwd: "/work/repo", userSaid: ["clean the build output"] };
+    const slow = fetchLike(3_000);
+    try {
+      const started = performance.now();
+      const out = await evaluateSemantic(input, { transport: throttleTransport(slow.transport), timeoutMs: 50 });
+      expect(out).toMatchObject({ status: "degraded", reason: "timeout" });
+      expect(performance.now() - started).toBeLessThan(1_000);
+    } finally {
+      slow.cleanup();
+    }
+  });
+});
+
+describe("jev-throttle: a timeout while waiting for a token reads as 'timeout'", () => {
+  it("reports 'timeout', not 'aborted', when AbortSignal.timeout fires during the wait, and gives the slot back", async () => {
+    const { transport, calls } = fakeTransport();
+    const t = throttleTransport(transport, { ratePerSec: 2, burst: 1, maxWaitMs: 5_000 });
+    await t(request("a"), live());
+    // The next token is ~500 ms out; had the wait ignored the signal, the call would go through and not reject.
+    const err = await caught(t(request("b"), AbortSignal.timeout(20)));
+    expect(err).toBeInstanceOf(JevError);
+    expect((err as JevError).code).toBe("timeout");
+    expect(calls).toHaveLength(1);
+    expect(jevThrottleStats().rateLimited).toBe(0);
+  });
+
+  it("through evaluateSemantic, a timeout spent waiting for a token degrades with reason 'timeout'", async () => {
+    const input = { eventType: "PreToolUse", toolName: "Bash", toolInput: { command: "rm -rf ./build" }, cwd: "/work/repo", userSaid: ["clean the build output"] };
+    const { transport, calls } = fakeTransport();
+    const t = throttleTransport(transport, { ratePerSec: 2, burst: 1, maxWaitMs: 5_000 });
+    expect((await evaluateSemantic(input, { transport: t })).status).toBe("ok");
+    const other = await evaluateSemantic({ ...input, toolInput: { command: "rm -rf ./dist" } }, { transport: t, timeoutMs: 30 });
+    expect(other).toMatchObject({ status: "degraded", reason: "timeout" });
+    expect(calls).toHaveLength(1);
+  });
+});
+
+describe("jev-throttle: each invalid option falls back to its own default", () => {
+  it("cacheTtlMs Infinity, NaN or negative: the five-minute default, not an answer kept forever", async () => {
+    for (const cacheTtlMs of [Number.POSITIVE_INFINITY, Number.NaN, -1]) {
+      resetJevThrottle();
+      const clock = fakeClock();
+      const { transport, calls } = fakeTransport();
+      const t = throttleTransport(transport, { cacheTtlMs, now: clock.now });
+      await t(request("ls"), live());
+      clock.advance(299_999);
+      await t(request("ls"), live());
+      expect(calls).toHaveLength(1);
+      clock.advance(1);
+      await t(request("ls"), live());
+      expect(calls).toHaveLength(2);
+    }
+  });
+
+  it("ratePerSec 0, negative, Infinity or NaN: the default 5 req/s with a burst of 5", async () => {
+    for (const ratePerSec of [0, -2, Number.POSITIVE_INFINITY, Number.NaN]) {
+      resetJevThrottle();
+      const clock = fakeClock();
+      const { transport, calls } = fakeTransport();
+      const t = throttleTransport(transport, { ratePerSec, now: clock.now });
+      for (let i = 0; i < 5; i++) await t(request(`c${i}`), live());
+      expect(((await caught(t(request("c5"), live()))) as JevError).code).toBe("rate-limited");
+      clock.advance(200); // one token at 5/s
+      await t(request("c5"), live());
+      expect(calls).toHaveLength(6);
+    }
+  });
+
+  it("a rate below 1/s with no burst still admits one call (the burst never drops below 1)", async () => {
+    const clock = fakeClock();
+    const { transport, calls } = fakeTransport();
+    const t = throttleTransport(transport, { ratePerSec: 0.5, now: clock.now });
+    await t(request("a"), live());
+    expect(((await caught(t(request("b"), live()))) as JevError).code).toBe("rate-limited");
+    clock.advance(1_999);
+    expect(((await caught(t(request("b"), live()))) as JevError).code).toBe("rate-limited");
+    clock.advance(1); // 2 s at 0.5/s = one token
+    await t(request("b"), live());
+    expect(calls).toHaveLength(2);
+
+    resetJevThrottle();
+    const fractional = fakeTransport();
+    await throttleTransport(fractional.transport, { ratePerSec: 5, burst: 0.25, now: clock.now })(request("a"), live());
+    expect(fractional.calls).toHaveLength(1);
+  });
+
+  it("maxWaitMs Infinity or NaN: the default 0, so an over-budget call is refused at once rather than parked", async () => {
+    for (const maxWaitMs of [Number.POSITIVE_INFINITY, Number.NaN]) {
+      resetJevThrottle();
+      const { transport, calls } = fakeTransport();
+      const t = throttleTransport(transport, { ratePerSec: 1, burst: 1, maxWaitMs });
+      await t(request("a"), live());
+      const started = performance.now();
+      expect(((await caught(t(request("b"), live()))) as JevError).code).toBe("rate-limited");
+      expect(performance.now() - started).toBeLessThan(500); // the next token was ~1 s out
+      expect(calls).toHaveLength(1);
+    }
+  });
+
+  it("cacheMaxBytes 0 turns the cache off, as documented", async () => {
+    const { transport, calls } = fakeTransport();
+    const t = throttleTransport(transport, { cacheMaxBytes: 0 });
+    await t(request("ls"), live());
+    const again = await t(request("ls"), live());
+    expect(calls).toHaveLength(2);
+    expect(isCachedJevResponse(again)).toBe(false);
+    expect(jevThrottleStats()).toMatchObject({ hits: 0, misses: 0, entries: 0, chars: 0 });
+  });
+});
+
+describe("jev-throttle: what the default bucket admits, as documented", () => {
+  it("at most burst + ratePerSec (10) in any one second and burst + 60 × ratePerSec (305) in any minute", async () => {
+    const clock = fakeClock(0);
+    const admittedAt: number[] = [];
+    const t = throttleTransport(
+      async (r) => {
+        admittedAt.push(clock.now());
+        return answerFor(r);
+      },
+      { cacheTtlMs: 0, now: clock.now },
+    );
+    for (let i = 0; i < 6_000; i++) {
+      await t(request(`c${i}`), live()).catch(() => undefined); // over budget is expected here
+      clock.advance(10);
+    }
+    let worstSecond = 0;
+    for (const start of admittedAt) worstSecond = Math.max(worstSecond, admittedAt.filter((x) => x >= start && x < start + 1_000).length);
+    expect(worstSecond).toBeLessThanOrEqual(DEFAULT_THROTTLE.ratePerSec * 2);
+    expect(worstSecond).toBeGreaterThan(DEFAULT_THROTTLE.ratePerSec); // the burst is really there
+    expect(admittedAt.length).toBeLessThanOrEqual(5 + 60 * DEFAULT_THROTTLE.ratePerSec);
+    expect(admittedAt.length).toBeGreaterThanOrEqual(60 * DEFAULT_THROTTLE.ratePerSec);
+  });
+});

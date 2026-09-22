@@ -17,8 +17,9 @@
  *   never change what the next caller gets. A side effect worth having: within
  *   the TTL, retrying a denied call gets the same answer rather than a fresh
  *   draw from a model that is ~98% run-to-run stable.
- * - **A token bucket** (default 5 req/s, burst 5) on the calls that actually
- *   go upstream; cache hits are free. Over budget, it throws
+ * - **A token bucket** (default 5 req/s, burst 5; see `ThrottleOptions` for
+ *   what those bound) on the calls that actually go upstream; cache hits are
+ *   free. Over budget, it throws
  *   `JevError("rate-limited")` at once, so the evaluator degrades and the
  *   caller falls back to the regex result with a recorded reason — visibly,
  *   not silently. `maxWaitMs` lets a call wait briefly for the next token
@@ -81,15 +82,26 @@ import type { JevRequest, JevResponse } from "./types";
 
 export interface ThrottleOptions {
   /**
-   * Sustained upstream requests per second. Default 5: Cloudflare Workers AI
-   * answered HTTP 429 from ~6 calls/s per key (measured); TypeSafe documents
-   * 1,200/min (20/s). Must be a positive finite number, else the default.
+   * Sustained upstream requests per second. Default 5, from the one Cloudflare
+   * figure there is: a replay against one key sustained ~6 calls/s before
+   * HTTP 429s took over (measured over the replay as a whole, not over any
+   * one-second window). Cloudflare publishes its Workers AI limits per
+   * minute (300/min for text generation by default, i.e. 5/s); whether
+   * `typesafe/jev` is under that default, and so which window a burst runs
+   * into, is unconfirmed (R4 or a live check). TypeSafe documents 1,200/min
+   * (20/s). Must be a positive finite number, else the default.
    */
   ratePerSec?: number;
   /**
    * Bucket capacity — how many calls may go out back to back. Default: one
-   * second's worth (`ratePerSec`, at least 1). A bucket admits at most
-   * `burst + ratePerSec` calls in any one-second window.
+   * second's worth (`ratePerSec`, at least 1), so a handful of parallel tool
+   * calls after a pause are all judged. A bucket admits at most
+   * `burst + ratePerSec` calls in any one-second window (10 with the
+   * defaults) and `burst + 60 × ratePerSec` in any minute (305). Against a
+   * per-minute limit that is the sustained rate plus one burst; against a
+   * strict per-second one it could spend a few calls a provider refuses, and
+   * the first 429 then empties the bucket, so the loss stays at a few calls
+   * per burst. Pass `burst: 1` to cap any one second at `1 + ratePerSec`.
    */
   burst?: number;
   /** How long a call may wait for the next token before it is rate-limited. Default 0: over budget fails at once. */

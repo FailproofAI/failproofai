@@ -32,7 +32,8 @@ export interface JevStats {
   /**
    * Reviewable policies Jev cleared, by name — enforce mode only, where a
    * clear changed the outcome. Shadow mode's would-be clears are in
-   * {@link JevStats.shadowClearsByPolicy}.
+   * {@link JevStats.shadowClearsByPolicy}, so a renderer that prints only this
+   * field says "nothing cleared" on a shadow-mode machine: print both.
    */
   clearsByPolicy: Record<string, number>;
   // The fields below are optional in the TYPE only so that a caller written
@@ -90,6 +91,24 @@ export function parseJevStatsWindow(input: string): number | null {
   return ms > 0 && ms <= MAX_JEV_STATS_WINDOW_MS ? ms : null;
 }
 
+/**
+ * The window a stats call really uses. {@link parseJevStatsWindow} bounds what
+ * the CLI accepts, but {@link jevStats} is a library call too: a window that is
+ * not a positive number (NaN, 0, negative, not a number at all) falls back to
+ * {@link DEFAULT_JEV_STATS_WINDOW_MS}, and a longer one — Infinity included —
+ * is capped at {@link MAX_JEV_STATS_WINDOW_MS}; that cap is what bounds the
+ * store read.
+ */
+export function clampJevStatsWindow(windowMs: unknown): number {
+  if (typeof windowMs !== "number" || Number.isNaN(windowMs) || windowMs <= 0) return DEFAULT_JEV_STATS_WINDOW_MS;
+  return Math.min(windowMs, MAX_JEV_STATS_WINDOW_MS);
+}
+
+/** `now` when it is a finite epoch-ms value, else the current time. */
+function clampNow(now: unknown): number {
+  return typeof now === "number" && Number.isFinite(now) ? now : Date.now();
+}
+
 /** Nearest-rank percentile of an ascending array; null when empty. */
 export function percentile(sortedAsc: ReadonlyArray<number>, p: number): number | null {
   if (sortedAsc.length === 0) return null;
@@ -124,8 +143,8 @@ export function computeJevStats(
   entries: ReadonlyArray<HookActivityEntry>,
   opts: { windowMs?: number; now?: number } = {},
 ): JevStatsDetail {
-  const windowMs = opts.windowMs ?? DEFAULT_JEV_STATS_WINDOW_MS;
-  const now = opts.now ?? Date.now();
+  const windowMs = clampJevStatsWindow(opts.windowMs);
+  const now = clampNow(opts.now);
   const since = now - windowMs;
   const stats: JevStatsDetail = {
     windowMs,
@@ -194,12 +213,17 @@ export function computeJevStats(
 }
 
 /**
- * Jev stats over the trailing window (default 24 h), read from the hook
- * activity store. Never throws: an unreadable store reads as no activity.
+ * Jev stats over the trailing window (default 24 h, at most 90 days — see
+ * {@link clampJevStatsWindow}), read from the hook activity store. Never
+ * throws: an unreadable store reads as no activity.
+ *
+ * A renderer must show {@link JevStats.shadowClearsByPolicy} as well as
+ * `clearsByPolicy`: in shadow mode every clear Jev would have made is in the
+ * former, and the latter is empty. {@link formatJevStats} prints both.
  */
 export async function jevStats(opts: { windowMs?: number; now?: number } = {}): Promise<JevStatsDetail> {
-  const windowMs = opts.windowMs ?? DEFAULT_JEV_STATS_WINDOW_MS;
-  const now = opts.now ?? Date.now();
+  const windowMs = clampJevStatsWindow(opts.windowMs);
+  const now = clampNow(opts.now);
   let entries: HookActivityEntry[] = [];
   try {
     entries = getHookActivityEntriesSince(now - windowMs);

@@ -164,10 +164,11 @@ where
 // of a closed list of codes ([`JEV_REASON_CODES`]) and anything else becomes
 // `other`.
 //
-// `jevCleared` and `jevModel` are checked for shape only (no whitespace or
-// control characters; a model-id alphabet). That keeps a sentence, a command
-// line or a prompt out, but a whitespace-free fragment — a path, a file name —
-// has the same shape as a policy name or a model id and would pass. Those two
+// `jevCleared` and `jevModel` are checked for shape only: a registered policy
+// name (no control characters or line breaks, whitespace only under a
+// registered namespace such as `custom/`) and the model-id alphabet `jev.json`
+// accepts. That keeps a bare sentence, a command line or a prompt out, but a
+// fragment of the right shape — a path, a file name — would pass. Those two
 // fields rely on the writer supplying registered policy names and the
 // provider's model id.
 
@@ -199,6 +200,7 @@ pub const JEV_REASON_CODES: &[&str] = &[
     "request-too-large",
     "timeout",
     "truncated",
+    "unavailable",
     "upstream-error",
 ];
 
@@ -266,28 +268,57 @@ pub fn jev_reason_code(raw: &str) -> Option<String> {
     Some("other".into())
 }
 
-/// `jev-1.13.0`, `typesafe/jev-1.13-20260917`, `typesafe-ai/jev`, `~typesafe/jev-latest`.
+/// Longest model id kept.
+pub const JEV_MODEL_MAX_CHARS: usize = 200;
+/// Longest cleared-policy name kept.
+pub const JEV_POLICY_NAME_MAX_CHARS: usize = 200;
+
+/// `jev-1.13.0`, `typesafe/jev-1.13-20260917`, `~typesafe/jev-latest`,
+/// `@cf/typesafe/jev`: exactly what `jev.json` accepts for `model`, since the
+/// recorded model must match the configured one. `MODEL_RE` in
+/// `src/hooks/jev-activity.ts` is the same rule.
 fn is_model_id(s: &str) -> bool {
-    let mut chars = s.chars();
-    let Some(first) = chars.next() else {
-        return false;
-    };
-    (first.is_ascii_alphanumeric() || first == '~')
-        && s.chars().count() <= 100
-        && chars.all(|c| c.is_ascii_alphanumeric() || "._/:@~+-".contains(c))
+    !s.is_empty()
+        && s.chars().count() <= JEV_MODEL_MAX_CHARS
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || "._:/@~+-".contains(c))
 }
 
-/// Policy names never contain whitespace or control characters.
+/// The namespaces the handler registers a loaded hook under
+/// (`${prefix}/${hook.name}`), plus the builtins' `failproofai/`. The hook's
+/// own name after the prefix is whatever its author wrote, spaces included.
+fn has_registered_namespace(s: &str) -> bool {
+    let Some((ns, _)) = s.split_once('/') else {
+        return false;
+    };
+    matches!(ns, "custom" | "pack" | "cloud" | "failproofai")
+        || ns.strip_prefix(".failproofai-").is_some_and(|scope| {
+            (1..=32).contains(&scope.len())
+                && scope
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        })
+}
+
+/// A registered policy name: 1–200 characters, no control characters or line
+/// breaks, and whitespace only under a registered namespace
+/// (`custom/No secrets in logs`). A bare sentence or command line is not a
+/// policy name. `isJevPolicyName` in `src/hooks/jev-activity.ts` is the same
+/// rule.
 fn is_policy_name(s: &str) -> bool {
     !s.is_empty()
-        && s.chars().count() <= 200
-        && s.chars().all(|c| !c.is_whitespace() && !c.is_control())
+        && s.chars().count() <= JEV_POLICY_NAME_MAX_CHARS
+        && s.chars()
+            .all(|c| !c.is_control() && c != '\u{2028}' && c != '\u{2029}')
+        && (!s.chars().any(char::is_whitespace) || has_registered_namespace(s))
 }
 
 /// What happened to Jev on one call. `evaluator: "jev"` alone does not say:
 /// when a hard policy denies, the combine rules abort Jev and record
-/// `{ evaluator: "jev", jevMode }` and nothing else. Mirrors `jevOutcome` in
-/// `src/hooks/jev-activity.ts`.
+/// `{ evaluator: "jev", jevMode }`, and when no semantic policy applies to the
+/// call they send no request and record
+/// `{ evaluator: "jev", jevDecision: "allow", jevMode }`. Mirrors `jevOutcome`
+/// in `src/hooks/jev-activity.ts`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub enum JevOutcome {
     /// Jev's answer was read and the combine rules applied it.
@@ -298,6 +329,9 @@ pub enum JevOutcome {
     Fallback,
     /// A hard policy denied first, so Jev was aborted and never consulted.
     NotConsulted,
+    /// No semantic policy applies to the call (TodoWrite, Task, …): Jev had
+    /// nothing to ask and no request was sent.
+    NoRequest,
 }
 
 impl JevOutcome {
@@ -306,7 +340,14 @@ impl JevOutcome {
             Self::Answered => "answered",
             Self::Fallback => "fallback",
             Self::NotConsulted => "not-consulted",
+            Self::NoRequest => "no-request",
         }
+    }
+
+    /// True when Jev actually answered or was asked and fell back — the calls
+    /// that say something about Jev.
+    fn was_asked(self) -> bool {
+        matches!(self, Self::Answered | Self::Fallback)
     }
 }
 
@@ -373,18 +414,21 @@ impl JevFacts {
             .map(str::trim)
             .filter(|m| is_model_id(m))
             .map(str::to_string);
-        // Answered when the row carries anything only an answer produces: a
-        // verdict, a cleared list (even an empty one), a latency or a model.
-        // A verdict another build wrote in a shape this side cannot read still
-        // leaves the call answered; only the bare not-consulted shape is not.
+        // Answered when the row carries anything only a request produces: a
+        // cleared list (even an empty one), a latency, a model, or a deny /
+        // instruct verdict (the evaluator reaches those only from answers). An
+        // allow and nothing else is the no-request shape; no readable Jev
+        // field at all is the not-consulted shape.
         let outcome = if evaluator == "jev-fallback" {
             JevOutcome::Fallback
-        } else if decision.is_some()
-            || row.jev_cleared.is_some()
+        } else if row.jev_cleared.is_some()
             || latency_ms.is_some()
             || model.is_some()
+            || matches!(decision.as_deref(), Some("deny" | "instruct"))
         {
             JevOutcome::Answered
+        } else if decision.is_some() {
+            JevOutcome::NoRequest
         } else {
             JevOutcome::NotConsulted
         };
@@ -408,16 +452,18 @@ impl JevFacts {
     /// regex result was enforced). Either is a decision someone will want to
     /// find, and a count cannot show it.
     pub fn is_notable(&self, final_decision: &str) -> bool {
-        !self.cleared.is_empty()
-            || (final_decision == "allow"
-                && matches!(self.decision.as_deref(), Some("deny" | "instruct")))
+        self.key.outcome.was_asked()
+            && (!self.cleared.is_empty()
+                || (final_decision == "allow"
+                    && matches!(self.decision.as_deref(), Some("deny" | "instruct"))))
     }
 
     /// Everything except the key, for an individually shipped event. Nothing
-    /// for a call Jev was not consulted on: it has no verdict, clears,
-    /// latency or model to report, and must not look as if it had.
+    /// for a call Jev was not consulted on or had nothing to ask about: it has
+    /// no verdict, clears, latency or model to report, and must not look as if
+    /// it had.
     fn apply_detail(&self, m: &mut Map<String, Value>) {
-        if self.key.outcome == JevOutcome::NotConsulted {
+        if !self.key.outcome.was_asked() {
             return;
         }
         if let Some(d) = &self.decision {

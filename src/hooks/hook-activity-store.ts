@@ -86,8 +86,11 @@ export interface HookActivityEntry {
    * unavailable, truncated or mismatched, so the regex result stood;
    * `jevFallbackReason` says why). `jev` alone does NOT mean Jev answered:
    * when a hard policy denies, Jev is aborted and the row carries
-   * `{ evaluator: "jev", jevMode }` and no other Jev field. Read a row with
-   * `jevOutcome` (`jev-activity.ts`): answered, fallback or not-consulted.
+   * `{ evaluator: "jev", jevMode }` and no other Jev field; when no semantic
+   * policy applies to the call, no request is sent and the row carries
+   * `{ evaluator: "jev", jevDecision: "allow", jevMode }`. Read a row with
+   * `jevOutcome` (`jev-activity.ts`): answered, fallback, not-consulted or
+   * no-request.
    *
    * Validated on write by `persistHookActivity` (see `jev-activity.ts`): an
    * invalid value is dropped field by field, and `jevFallbackReason` is stored
@@ -451,17 +454,50 @@ export const ROTATION_CLOCK_SLACK_MS = 10 * 60 * 1000;
  * The stop is taken with {@link ROTATION_CLOCK_SLACK_MS} to spare, so a clock
  * stepped back a few minutes between two writes costs one extra page read
  * rather than silently dropping rows from the window.
+ *
+ * No row is returned twice, although this reads without the writers' lock. A
+ * hook process can rotate `current.jsonl` into a new page between this reading
+ * `current.jsonl` and listing the pages, and that page then holds the rows just
+ * read. So the pages are listed once before `current.jsonl` is read; a page
+ * that appears only in the second listing was rotated during the read, and any
+ * of its rows that were also in `current.jsonl` are skipped. (A page rotated
+ * before the read holds none of them: `current.jsonl` was fresh by then.)
  */
 export function getHookActivityEntriesSince(sinceMs: number): HookActivityEntry[] {
   ensureDir();
+  const dir = storeDirValue();
   const inWindow = (e: HookActivityEntry) => typeof e.timestamp === "number" && e.timestamp >= sinceMs;
-  const out = readJsonlFile(join(storeDirValue(), CURRENT_FILE)).reverse().filter(inWindow);
+  const listedBefore = new Set(getArchiveFiles());
+  sinceReadProbe?.("before-current");
+  const current = readJsonlFile(join(dir, CURRENT_FILE));
+  sinceReadProbe?.("after-current");
+  const readFromCurrent = new Map<string, number>();
+  for (const e of current) {
+    const key = JSON.stringify(e);
+    readFromCurrent.set(key, (readFromCurrent.get(key) ?? 0) + 1);
+  }
+  const notReadYet = (e: HookActivityEntry): boolean => {
+    const key = JSON.stringify(e);
+    const n = readFromCurrent.get(key) ?? 0;
+    if (n === 0) return true;
+    readFromCurrent.set(key, n - 1);
+    return false;
+  };
+  const out = current.reverse().filter(inWindow);
   for (const file of getArchiveFiles()) {
     const rotatedAt = parseInt(file.slice(5, -6).split("-")[0], 10);
     if (Number.isFinite(rotatedAt) && rotatedAt < sinceMs - ROTATION_CLOCK_SLACK_MS) break;
-    out.push(...readJsonlFile(join(storeDirValue(), file)).reverse().filter(inWindow));
+    let entries = readJsonlFile(join(dir, file));
+    if (!listedBefore.has(file)) entries = entries.filter(notReadYet);
+    out.push(...entries.reverse().filter(inWindow));
   }
   return out;
+}
+
+/** Test-only: runs between the reads of {@link getHookActivityEntriesSince}, to land a rotation exactly there. */
+let sinceReadProbe: ((phase: "before-current" | "after-current") => void) | null = null;
+export function _setSinceReadProbeForTest(probe: ((phase: "before-current" | "after-current") => void) | null): void {
+  sinceReadProbe = probe;
 }
 
 
@@ -586,6 +622,7 @@ function getArchiveFiles(): string[] {
 
 export function _resetForTest(testDir?: string): void {
   rotateSeq = 0;
+  sinceReadProbe = null;
   // null, not the default path: clearing the override lets the getter re-read
   // FAILPROOFAI_HOME, which a test may have changed since this module loaded.
   storeDirOverride = testDir ?? null;

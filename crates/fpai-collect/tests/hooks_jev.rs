@@ -902,3 +902,395 @@ fn only_known_reason_codes_ship() {
     }
     assert_eq!(jev_reason_code("http-4290").as_deref(), Some("other"));
 }
+
+// ---------------------------------------------------------------------------
+// Calls Jev sent no request for
+// ---------------------------------------------------------------------------
+//
+// When no semantic policy applies to the call (TodoWrite, Task, Skill, …), the
+// evaluator compiles no questions and answers allow without calling the
+// provider, and the two-tier path records
+// `{ evaluator: "jev", jevDecision: "allow", jevMode }` — a verdict with no
+// latency, model or cleared list. Jev never saw the call, so nothing shipped
+// may say it answered.
+
+/// `fixtures/hook-activity-jev-no-request.jsonl`: rows in exactly that shape,
+/// persisted by the TypeScript store from
+/// `__tests__/fixtures/jev-no-request-rows.ts` (a TypeScript test fails if the
+/// store stops producing it byte for byte).
+fn no_request_golden() -> String {
+    fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/hook-activity-jev-no-request.jsonl"),
+    )
+    .unwrap()
+}
+
+#[test]
+fn a_call_jev_sent_no_request_for_claims_no_answer() {
+    let rows: Vec<HookRow> = no_request_golden()
+        .lines()
+        .map(|l| serde_json::from_str(l).expect("a store-written row must parse"))
+        .collect();
+    assert_eq!(rows.len(), 2);
+    for (i, row) in rows.iter().enumerate() {
+        let jev = JevFacts::of(row).expect("the two-tier path ran");
+        assert_eq!(jev.key.outcome, transform::JevOutcome::NoRequest);
+        assert!(!jev.is_notable("allow"));
+        assert!(!row.has_jev_signal());
+
+        let end = completed(&transform::to_events(row, i as u64, "local")).clone();
+        assert_eq!(end["outcome"], "allow");
+        assert_eq!(end["failproofai_evaluator"], "jev");
+        assert_eq!(end["jev_outcome"], "no-request");
+        for k in ANSWER_KEYS {
+            assert!(
+                end.get(k).is_none(),
+                "{k} must not ship for a call Jev never saw: {end:#}"
+            );
+        }
+    }
+    assert_eq!(
+        completed(&transform::to_events(&rows[0], 0, "local"))["jev_mode"],
+        "enforce"
+    );
+    assert_eq!(
+        completed(&transform::to_events(&rows[1], 1, "local"))["jev_mode"],
+        "shadow"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn no_request_rows_ship_without_an_answer_under_every_verbosity() {
+    for verbosity in [HooksVerbosity::All, HooksVerbosity::Decisions] {
+        let (store, state, spool) = (tmpdir("nr-s"), tmpdir("nr-st"), tmpdir("nr-sp"));
+        fs::write(store.join("current.jsonl"), no_request_golden()).unwrap();
+        run_once(&store, &state, &spool, verbosity).await;
+
+        let events = spooled(&spool);
+        let completions: Vec<&Value> = events
+            .iter()
+            .filter(|e| e["type"] == "hook_completed")
+            .collect();
+        assert_eq!(completions.len(), 2, "{events:#?}");
+        for end in completions {
+            assert_eq!(end["jev_outcome"], "no-request");
+            for k in ANSWER_KEYS {
+                assert!(
+                    end.get(k).is_none(),
+                    "{k} shipped under {verbosity:?}: {end:#}"
+                );
+            }
+            if verbosity == HooksVerbosity::Decisions {
+                assert_eq!(end["failproofai_allow_count"], 1, "an allow rolls up");
+            }
+        }
+        cleanup(&[&store, &state, &spool]);
+    }
+}
+
+#[test]
+fn only_an_answer_produces_a_deny_or_instruct_verdict() {
+    // With nothing asked the evaluator's verdict is always allow, so an allow
+    // and nothing else is the no-request shape — while a deny or instruct can
+    // only come from Jev's answers, and still counts as answered.
+    let only = |fields: Value| {
+        let mut v = json!({
+            "timestamp": 1785740912184i64, "eventType": "PreToolUse", "integration": "claude",
+            "toolName": "TodoWrite", "decision": "allow", "durationMs": 1, "sessionId": "s1",
+            "cwd": "/w", "evaluator": "jev", "jevMode": "enforce"
+        });
+        for (k, val) in fields.as_object().unwrap() {
+            v[k] = val.clone();
+        }
+        JevFacts::of(&parse(&v)).unwrap().key.outcome
+    };
+    use transform::JevOutcome::{Answered, NoRequest, NotConsulted};
+    assert_eq!(only(json!({ "jevDecision": "allow" })), NoRequest);
+    assert_eq!(only(json!({ "jevDecision": "deny" })), Answered);
+    assert_eq!(only(json!({ "jevDecision": "instruct" })), Answered);
+    assert_eq!(
+        only(json!({ "jevDecision": "allow", "jevLatencyMs": 30 })),
+        Answered
+    );
+    assert_eq!(
+        only(json!({ "jevDecision": "allow", "jevModel": "jev-1.13.0" })),
+        Answered
+    );
+    assert_eq!(
+        only(json!({ "jevDecision": "allow", "jevCleared": [] })),
+        Answered
+    );
+    assert_eq!(only(json!({})), NotConsulted);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_rollup_keeps_every_jev_outcome_and_the_regex_apart() {
+    // One allow of each kind in the same session/event/tool/minute: the regex
+    // alone, a real Jev answer, a call Jev had nothing to ask about, a call
+    // Jev was not consulted on, and a fallback. Each is its own bucket, so no
+    // aggregate claims an answer for calls Jev never saw.
+    let (store, state, spool) = (tmpdir("allmix-s"), tmpdir("allmix-st"), tmpdir("allmix-sp"));
+    let base = |ts: i64| {
+        json!({
+            "timestamp": ts, "eventType": "PreToolUse", "integration": "claude",
+            "toolName": "Bash", "decision": "allow", "durationMs": 2,
+            "sessionId": "s1", "cwd": "/w"
+        })
+    };
+    let regex_only = base(1785740912000);
+    let mut answered = base(1785740912100);
+    answered["evaluator"] = json!("jev");
+    answered["jevDecision"] = json!("allow");
+    answered["jevLatencyMs"] = json!(40);
+    answered["jevModel"] = json!("jev-1.13.0");
+    answered["jevMode"] = json!("enforce");
+    let mut no_request = base(1785740912200);
+    no_request["evaluator"] = json!("jev");
+    no_request["jevDecision"] = json!("allow");
+    no_request["jevMode"] = json!("enforce");
+    let mut not_consulted = base(1785740912300);
+    not_consulted["evaluator"] = json!("jev");
+    not_consulted["jevMode"] = json!("enforce");
+    let mut timed_out = base(1785740912400);
+    timed_out["evaluator"] = json!("jev-fallback");
+    timed_out["jevFallbackReason"] = json!("timeout");
+    timed_out["jevLatencyMs"] = json!(1500);
+    timed_out["jevMode"] = json!("enforce");
+    write_rows(
+        &store,
+        &[regex_only, answered, no_request, not_consulted, timed_out],
+    );
+    run_once(&store, &state, &spool, HooksVerbosity::Decisions).await;
+
+    let events = spooled(&spool);
+    assert_eq!(events.len(), 5, "one bucket each: {events:#?}");
+    let ids: std::collections::BTreeSet<&str> = events
+        .iter()
+        .map(|e| e["hook_id"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        ids.len(),
+        5,
+        "the server dedups on hook_id, so ids must differ"
+    );
+    for e in &events {
+        assert_eq!(e["failproofai_allow_count"], 1);
+    }
+    let by_outcome = |o: &str| {
+        events
+            .iter()
+            .find(|e| e["jev_outcome"] == o)
+            .unwrap_or_else(|| panic!("no {o} bucket: {events:#?}"))
+    };
+    assert_eq!(by_outcome("answered")["jev_latency_ms"], 40.0);
+    assert_eq!(by_outcome("fallback")["jev_fallback_reason"], "timeout");
+    for o in ["no-request", "not-consulted"] {
+        assert!(by_outcome(o).get("jev_latency_ms").is_none(), "{o}");
+    }
+    assert_eq!(
+        events
+            .iter()
+            .filter(|e| e.get("failproofai_evaluator").is_none())
+            .count(),
+        1,
+        "the regex-only allow keeps a bucket of its own"
+    );
+
+    cleanup(&[&store, &state, &spool]);
+}
+
+// ---------------------------------------------------------------------------
+// Shadow-mode and fallback verdicts stricter than the outcome
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_shadow_allow_jev_would_have_instructed_on_is_shipped_on_its_own() {
+    let (store, state, spool) = (tmpdir("shi-s"), tmpdir("shi-st"), tmpdir("shi-sp"));
+    let shadow = jev_row(
+        1785740912000,
+        "allow",
+        json!({ "jevMode": "shadow", "jevDecision": "instruct" }),
+    );
+    write_rows(&store, &[shadow]);
+    run_once(&store, &state, &spool, HooksVerbosity::Decisions).await;
+
+    let events = spooled(&spool);
+    assert_eq!(events.len(), 2, "a pair, not an aggregate: {events:#?}");
+    assert!(
+        events
+            .iter()
+            .all(|e| e.get("failproofai_allow_count").is_none())
+    );
+    let end = completed(&events);
+    assert_eq!(end["outcome"], "allow");
+    assert_eq!(end["jev_decision"], "instruct");
+    assert_eq!(end["jev_mode"], "shadow");
+
+    cleanup(&[&store, &state, &spool]);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_truncated_fallback_jev_would_have_blocked_is_shipped_on_its_own() {
+    // The two-tier path records Jev's verdict on a truncated call but lets the
+    // regex result stand. Jev saying deny where the regex allowed is still a
+    // disagreement someone will want to find.
+    let (store, state, spool) = (tmpdir("trf-s"), tmpdir("trf-st"), tmpdir("trf-sp"));
+    let truncated = jev_row(
+        1785740912000,
+        "allow",
+        json!({
+            "evaluator": "jev-fallback",
+            "jevDecision": "deny",
+            "jevFallbackReason": "truncated",
+        }),
+    );
+    write_rows(&store, &[truncated]);
+    run_once(&store, &state, &spool, HooksVerbosity::Decisions).await;
+
+    let events = spooled(&spool);
+    assert_eq!(events.len(), 2, "a pair, not an aggregate: {events:#?}");
+    let end = completed(&events);
+    assert_eq!(end["outcome"], "allow");
+    assert_eq!(end["jev_outcome"], "fallback");
+    assert_eq!(end["jev_fallback_reason"], "truncated");
+    assert_eq!(end["jev_decision"], "deny");
+    assert!(end.get("jev_cleared").is_none());
+
+    cleanup(&[&store, &state, &spool]);
+}
+
+// ---------------------------------------------------------------------------
+// Cleared-policy names and model ids: the shapes the writers really produce
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_clear_of_a_policy_whose_name_has_spaces_ships_on_its_own() {
+    // The handler registers a user's hook as `custom/<hook.name>`, and the name
+    // is whatever they typed. Jev clearing it must not vanish — nor let the
+    // overruled deny roll into an allow count.
+    let (store, state, spool) = (tmpdir("sp-s"), tmpdir("sp-st"), tmpdir("sp-sp"));
+    let name = "custom/No secrets in logs";
+    let cleared = jev_row(1785740912000, "allow", json!({ "jevCleared": [name] }));
+    let jev = JevFacts::of(&parse(&cleared)).unwrap();
+    assert_eq!(jev.cleared, vec![name.to_string()]);
+    assert!(jev.is_notable("allow"));
+    write_rows(&store, &[cleared]);
+    run_once(&store, &state, &spool, HooksVerbosity::Decisions).await;
+
+    let events = spooled(&spool);
+    assert_eq!(events.len(), 2, "a clear is a full pair: {events:#?}");
+    assert!(
+        events
+            .iter()
+            .all(|e| e.get("failproofai_allow_count").is_none())
+    );
+    assert_eq!(completed(&events)["jev_cleared"], json!([name]));
+
+    cleanup(&[&store, &state, &spool]);
+}
+
+#[test]
+fn cleared_names_are_registered_names() {
+    // The same cases as __tests__/hooks/jev-field-shapes.test.ts.
+    let registered = [
+        "custom/No secrets in logs",
+        "pack/acme/fin@1.2.0/No curl to payroll",
+        "cloud/pol_8f2a@7/Guard prod deploys",
+        ".failproofai-project/Ask before deploy",
+        ".failproofai-user/Keep notes tidy",
+        "block-env-files",
+        "failproofai/protect-env-vars",
+        "custom/no-secrets",
+        "pack/acme/fin@1.2.0/no-curl",
+    ];
+    let long_ok = format!("custom/{}", "x".repeat(193));
+    let long_bad = format!("custom/{}", "x".repeat(194));
+    let not_names = [
+        "two words",
+        "not a policy name",
+        "curl -d @payroll.csv",
+        "/home/u/secret project/notes.txt",
+        "rm -rf /home/u/x",
+        "customs/looks close",
+        "custom/line\nbreak",
+        "custom/tab\there",
+        "custom/carriage\rreturn",
+        "custom/sep\u{2028}arator",
+        "",
+        long_bad.as_str(),
+    ];
+    let mut all: Vec<Value> = registered.iter().map(|n| json!(n)).collect();
+    all.push(json!(long_ok));
+    all.extend(not_names.iter().map(|n| json!(n)));
+    let row = parse(&jev_row(
+        1785740912184,
+        "allow",
+        json!({ "jevCleared": all }),
+    ));
+    let mut want: Vec<String> = registered.iter().map(|n| n.to_string()).collect();
+    want.push(long_ok.clone());
+    assert_eq!(JevFacts::of(&row).unwrap().cleared, want);
+}
+
+#[test]
+fn every_model_id_jev_json_accepts_ships() {
+    // `MODEL_RE` in the T1 config validator, and `JEV_MODEL_RE` in
+    // src/hooks/jev-activity.ts: /^[A-Za-z0-9._:/@~+-]{1,200}$/.
+    let long_ok = "a".repeat(200);
+    for id in [
+        "jev-1.13.0",
+        "typesafe/jev-1.13-20260917",
+        "~typesafe/jev-latest",
+        "@cf/typesafe/jev",
+        ".jev",
+        ":jev",
+        "/jev",
+        "_jev",
+        "+jev",
+        "-jev",
+        long_ok.as_str(),
+    ] {
+        let row = parse(&jev_row(1785740912184, "allow", json!({ "jevModel": id })));
+        assert_eq!(
+            JevFacts::of(&row).unwrap().model.as_deref(),
+            Some(id),
+            "{id}"
+        );
+    }
+    let long_bad = "a".repeat(201);
+    for id in [
+        long_bad.as_str(),
+        "jev 1.13 (latest)",
+        "je\nv",
+        "jev#1",
+        "jév",
+    ] {
+        let row = parse(&jev_row(1785740912184, "allow", json!({ "jevModel": id })));
+        assert_eq!(JevFacts::of(&row).unwrap().model, None, "{id:?}");
+    }
+}
+
+#[test]
+fn the_handlers_unavailable_reason_ships_as_itself() {
+    // The two-tier handler records `unavailable` when the Jev review cannot
+    // even start; it must not ship as `other`.
+    assert_eq!(
+        jev_reason_code("unavailable").as_deref(),
+        Some("unavailable")
+    );
+    let row = parse(&jev_row(
+        1785740912184,
+        "deny",
+        json!({
+            "policyName": "block-env-files",
+            "evaluator": "jev-fallback",
+            "jevDecision": null,
+            "jevLatencyMs": null,
+            "jevModel": null,
+            "jevFallbackReason": "unavailable",
+        }),
+    ));
+    let end = completed(&transform::to_events(&row, 0, "local")).clone();
+    assert_eq!(end["jev_fallback_reason"], "unavailable");
+}

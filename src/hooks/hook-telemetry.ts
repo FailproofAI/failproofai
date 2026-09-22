@@ -99,8 +99,10 @@ export async function flushHookTelemetry(): Promise<void> {
  * free-text fallback reason is reduced to its code here too.
  *
  * A call a hard policy denied before Jev's answer was read carries
- * `jev_outcome: "not-consulted"` and no Jev verdict, clears, latency or model:
- * `jev_evaluator: "jev"` alone does not mean Jev answered (see `jevOutcome`).
+ * `jev_outcome: "not-consulted"`, and a call no semantic policy applied to (no
+ * request sent) `jev_outcome: "no-request"`; neither carries a Jev verdict,
+ * clears, latency or model: `jev_evaluator: "jev"` alone does not mean Jev
+ * answered (see `jevOutcome`).
  *
  * Meant to be spread into `hook_policy_triggered` by the handler:
  * `{ ...existingProps, ...jevTelemetryProperties(activityEntry) }`.
@@ -111,7 +113,7 @@ export function jevTelemetryProperties(entry: JevActivityFields): Record<string,
   if (outcome === null) return {};
   const props: Record<string, unknown> = { jev_evaluator: e.evaluator };
   if (e.jevMode) props.jev_mode = e.jevMode;
-  if (outcome === "not-consulted") {
+  if (outcome === "not-consulted" || outcome === "no-request") {
     props.jev_outcome = outcome;
     return props;
   }

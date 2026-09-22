@@ -17,8 +17,10 @@ export interface JevStats {
   /**
    * Gate evaluations in the window that Jev was consulted on: it answered, or
    * it was asked and fell back. A call a hard policy denied before Jev's
-   * answer was read says nothing about Jev, so it is not counted here (nor in
-   * the fallback rate) but in {@link JevStats.notConsulted}.
+   * answer was read, and a call no semantic policy applied to (so no request
+   * was sent), say nothing about Jev, so they are not counted here (nor in the
+   * fallback rate) but in {@link JevStats.notConsulted} and
+   * {@link JevStats.noRequest}.
    */
   total: number;
   /** Share of `total` recorded as `jev-fallback`, 0..1. */
@@ -46,6 +48,12 @@ export interface JevStats {
    * aborted and never consulted. Outside `total`.
    */
   notConsulted?: number;
+  /**
+   * Calls on a configured machine that no semantic policy applied to
+   * (TodoWrite, Task, …): Jev had nothing to ask and no request was sent.
+   * Outside `total`.
+   */
+  noRequest?: number;
   /**
    * Jev's own verdict on the calls it answered, before combining with the
    * regex results. Sums to `answered` except for a row whose verdict another
@@ -108,9 +116,9 @@ class Counter {
 /**
  * The stats for `entries` that fall in `[since, now]`. Pure; {@link jevStats}
  * feeds it from the store. Rows without a Jev evaluator (Jev not configured,
- * a non-gate event, a paused session) are not part of any number here, and a
+ * a non-gate event, a paused session) are not part of any number here; a
  * call Jev was not consulted on (a hard deny decided first) is counted only in
- * `notConsulted`.
+ * `notConsulted`, and one it had nothing to ask about only in `noRequest`.
  */
 export function computeJevStats(
   entries: ReadonlyArray<HookActivityEntry>,
@@ -131,6 +139,7 @@ export function computeJevStats(
     answered: 0,
     fallbacks: 0,
     notConsulted: 0,
+    noRequest: 0,
     decisions: { allow: 0, instruct: 0, deny: 0 },
     modes: { shadow: 0, enforce: 0 },
     shadowClearsByPolicy: {},
@@ -150,6 +159,10 @@ export function computeJevStats(
     if (outcome === null) continue;
     if (outcome === "not-consulted") {
       stats.notConsulted += 1;
+      continue;
+    }
+    if (outcome === "no-request") {
+      stats.noRequest += 1;
       continue;
     }
     stats.total += 1;
@@ -218,10 +231,13 @@ function topCounts(m: Record<string, number>, limit = 5): string {
 export function formatJevStats(s: JevStats): string {
   const win = formatWindow(s.windowMs);
   const notConsulted = s.notConsulted ?? 0;
-  const notAsked = `  Not asked:    ${notConsulted} (a hard policy denied first)`;
+  const noRequest = s.noRequest ?? 0;
+  const notAsked = [
+    ...(notConsulted > 0 ? [`  Not asked:    ${notConsulted} (a hard policy denied first)`] : []),
+    ...(noRequest > 0 ? [`  No request:   ${noRequest} (no semantic policy applied to the call)`] : []),
+  ];
   if (s.total === 0) {
-    const none = `Activity (last ${win}): no Jev evaluations recorded.`;
-    return notConsulted > 0 ? [none, notAsked].join("\n") : none;
+    return [`Activity (last ${win}): no Jev evaluations recorded.`, ...notAsked].join("\n");
   }
   const fallbacks = s.fallbacks ?? Object.values(s.fallbackReasons).reduce((a, b) => a + b, 0);
   const answered = s.answered ?? s.total - fallbacks;
@@ -236,7 +252,7 @@ export function formatJevStats(s: JevStats): string {
     `  Fell back:    ${fallbacks} (${pct(s.fallbackRate)})` +
       (fallbacks > 0 ? ` — ${topCounts(s.fallbackReasons)}` : ""),
   );
-  if (notConsulted > 0) lines.push(notAsked);
+  lines.push(...notAsked);
   if (s.latencyP50Ms !== null) lines.push(`  Latency:      p50 ${s.latencyP50Ms} ms, p95 ${s.latencyP95Ms} ms`);
   if (Object.keys(s.clearsByPolicy).length > 0) lines.push(`  Cleared:      ${topCounts(s.clearsByPolicy)}`);
   if (s.shadowClearsByPolicy && Object.keys(s.shadowClearsByPolicy).length > 0) {

@@ -9,8 +9,8 @@
  * regex policies decided alone), and a shadow-mode row where Jev disagreed with
  * what was enforced. An ordinary Jev allow gets none — on a configured machine
  * that is nearly every row, and a pill on all of them marks nothing. Nor does a
- * hard deny Jev was never consulted on: the detail panel says so, but the row
- * is an ordinary regex deny.
+ * hard deny Jev was never consulted on, or a call no semantic policy applied
+ * to: the detail panel says so, but the row is an ordinary regex result.
  */
 import { describeJevActivity, jevOutcome, sanitizeJevActivity, type JevActivityFields } from "@/src/hooks/jev-activity";
 
@@ -22,7 +22,7 @@ const SEVERITY: Record<string, number> = { allow: 0, instruct: 1, deny: 2 };
 export function jevPillKind(item: JevRow): "cleared" | "would-clear" | "fallback" | "shadow-stricter" | null {
   const e = sanitizeJevActivity(item);
   const outcome = jevOutcome(e);
-  if (outcome === null || outcome === "not-consulted") return null;
+  if (outcome === null || outcome === "not-consulted" || outcome === "no-request") return null;
   if (outcome === "fallback") return "fallback";
   const cleared = (e.jevCleared ?? []).length > 0;
   if (e.jevMode === "shadow") {

@@ -17,18 +17,22 @@
  * side applies the same rule again, for rows written by some other build.
  *
  * WHAT THE VALIDATORS DO NOT COVER. `jevCleared` and `jevModel` are checked for
- * shape only (no whitespace or control characters; a model-id alphabet). That
- * keeps a sentence, a command line or a prompt out, but a whitespace-free
- * fragment — a path, a file name — has the same shape as a policy name or a
- * model id and would pass. Those two fields rely on the writer supplying
- * registered policy names and the provider's model id, which is what the
- * combine rules write.
+ * shape only. A cleared name is a registered policy name: no control characters
+ * or line breaks, and no whitespace unless it sits under a registered namespace
+ * (`custom/`, `pack/`, `cloud/`, `.failproofai-<scope>/`, `failproofai/`),
+ * where a user's own hook name may contain spaces. A model id is the alphabet
+ * `jev.json` accepts. That keeps a bare sentence, a command line or a prompt
+ * out, but a fragment of the right shape — a path, a file name — would pass.
+ * Those two fields rely on the writer supplying registered policy names and the
+ * provider's model id, which is what the combine rules write.
  *
  * WHAT `evaluator: "jev"` MEANS. The two-tier path ran for this call. It does
- * NOT by itself mean Jev answered: when a hard policy denies, the combine rules
- * abort Jev and record `{ evaluator: "jev", jevMode }` and nothing else. So
- * every reader classifies a row with {@link jevOutcome} — answered, fell back,
- * or not consulted — rather than reading `evaluator` alone.
+ * NOT by itself mean Jev answered. When a hard policy denies, the combine rules
+ * abort Jev and record `{ evaluator: "jev", jevMode }`; when no semantic policy
+ * applies to the call (TodoWrite, Task, …), no request is sent and they record
+ * `{ evaluator: "jev", jevDecision: "allow", jevMode }`. So every reader
+ * classifies a row with {@link jevOutcome} — answered, fell back, not consulted
+ * or no request — rather than reading `evaluator` alone.
  *
  * Pure on purpose — no node imports — so the client dashboard can use
  * {@link describeJevActivity} without pulling `node:fs` into a browser bundle.
@@ -90,6 +94,7 @@ export const JEV_REASON_CODES: ReadonlySet<string> = new Set<string>([
   "request-too-large",
   "timeout",
   "truncated",
+  "unavailable",
   "upstream-error",
 ]);
 
@@ -115,11 +120,37 @@ export const JEV_FREE_TEXT_PREFIXES: ReadonlyMap<string, string> = new Map<strin
   ["config", "config"],
 ]);
 
-/** Model ids: `jev-1.13.0`, `typesafe/jev-1.13-20260917`, `typesafe-ai/jev`, `~typesafe/jev-latest`. */
-const MODEL_RE = /^[A-Za-z0-9~][A-Za-z0-9._/:@~+-]{0,99}$/;
-/** Policy names never contain whitespace or control characters; `pack/<id>@<v>/<name>` is the longest shape. */
-const POLICY_NAME_RE = /^[^\s\u0000-\u001f\u007f]{1,200}$/;
+/**
+ * Model ids: `jev-1.13.0`, `typesafe/jev-1.13-20260917`, `~typesafe/jev-latest`,
+ * `@cf/typesafe/jev`. Exactly what `jev.json` accepts for `model` (`MODEL_RE`
+ * in `semantic/jev-config.ts`), since the recorded model must match the
+ * configured one; `is_model_id` in the collector's `transform.rs` is the same.
+ */
+export const JEV_MODEL_RE = /^[A-Za-z0-9._:/@~+-]{1,200}$/;
+export const JEV_POLICY_NAME_MAX_CHARS = 200;
+/** Control characters (C0, DEL, C1) and the Unicode line and paragraph separators. */
+const NAME_FORBIDDEN_RE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
+/**
+ * The namespaces the handler registers a loaded hook under
+ * (`${prefix}/${hook.name}`): `custom/`, `pack/<id>@<v>/`, `cloud/<id>@<v>/`,
+ * `.failproofai-<scope>/`, plus the builtins' `failproofai/`. The hook's own
+ * name after the prefix is whatever its author wrote, spaces included.
+ */
+const REGISTERED_NAMESPACE_RE = /^(?:custom|pack|cloud|failproofai|\.failproofai-[A-Za-z0-9_-]{1,32})\//;
 export const JEV_CLEARED_MAX = 64;
+
+/**
+ * True for a string shaped like a registered policy name: 1–200 characters,
+ * no control characters or line breaks, and whitespace only after a registered
+ * namespace (`custom/No secrets in logs`). A bare sentence or command line
+ * (`curl -d @payroll.csv`) is not a policy name. `is_policy_name` in the
+ * collector's `transform.rs` applies the same rule.
+ */
+export function isJevPolicyName(s: unknown): s is string {
+  if (typeof s !== "string" || s.length === 0 || [...s].length > JEV_POLICY_NAME_MAX_CHARS) return false;
+  if (NAME_FORBIDDEN_RE.test(s)) return false;
+  return !/\s/.test(s) || REGISTERED_NAMESPACE_RE.test(s);
+}
 
 /**
  * Reduce a fallback reason to a known code, or undefined when there is none.
@@ -162,7 +193,7 @@ export function sanitizeJevActivity<T extends JevActivityFields>(entry: T): T {
 
   if (Array.isArray(out.jevCleared)) {
     const names = [
-      ...new Set(out.jevCleared.filter((n): n is string => typeof n === "string" && POLICY_NAME_RE.test(n))),
+      ...new Set(out.jevCleared.filter(isJevPolicyName)),
     ].slice(0, JEV_CLEARED_MAX);
     out.jevCleared = names;
   } else {
@@ -179,7 +210,7 @@ export function sanitizeJevActivity<T extends JevActivityFields>(entry: T): T {
     drop("jevLatencyMs");
   }
 
-  if (typeof out.jevModel === "string" && MODEL_RE.test(out.jevModel.trim())) out.jevModel = out.jevModel.trim();
+  if (typeof out.jevModel === "string" && JEV_MODEL_RE.test(out.jevModel.trim())) out.jevModel = out.jevModel.trim();
   else drop("jevModel");
 
   return out;
@@ -199,16 +230,22 @@ export function hasJevActivity(entry: JevActivityFields): boolean {
  * - `not-consulted`: a hard policy denied first, so Jev was aborted and its
  *   answer never read. The combine rules record exactly
  *   `{ evaluator: "jev", jevMode }` for that.
+ * - `no-request`: no semantic policy applies to the call (TodoWrite, Task,
+ *   Skill, …), so Jev had nothing to ask and no request was sent. The
+ *   evaluator's answer to an empty question list is always `allow`, and the
+ *   combine rules record `{ evaluator: "jev", jevDecision: "allow", jevMode }`
+ *   — a verdict with no latency and no model.
  *
  * Null when Jev was not part of the call (no config, or not a gate).
  *
- * A `jev` row counts as answered when it carries anything only an answer
- * produces: a verdict, a cleared list (even an empty one), a latency or a
- * model id. So a row whose verdict another build wrote in a shape this one
- * cannot read still counts as answered; only the bare not-consulted shape
- * does not. `transform.rs` applies the same rule (`JevOutcome`).
+ * A `jev` row counts as answered when it carries anything only a request
+ * produces: a cleared list (even an empty one), a latency, a model id, or a
+ * `deny` / `instruct` verdict (the evaluator reaches those only from answers).
+ * An `allow` and nothing else is `no-request`; no Jev field at all (or only a
+ * verdict this build cannot read) is `not-consulted`. `transform.rs` applies
+ * the same rule (`JevOutcome`).
  */
-export type JevOutcome = "answered" | "fallback" | "not-consulted";
+export type JevOutcome = "answered" | "fallback" | "not-consulted" | "no-request";
 
 export function jevOutcome(raw: JevActivityFields): JevOutcome | null {
   return outcomeOf(sanitizeJevActivity(raw));
@@ -218,13 +255,16 @@ export function jevOutcome(raw: JevActivityFields): JevOutcome | null {
 function outcomeOf(e: JevActivityFields): JevOutcome | null {
   if (e.evaluator === "jev-fallback") return "fallback";
   if (e.evaluator !== "jev") return null;
-  const answered =
-    e.jevDecision !== undefined || e.jevCleared !== undefined || e.jevLatencyMs !== undefined || e.jevModel !== undefined;
-  return answered ? "answered" : "not-consulted";
+  if (e.jevCleared !== undefined || e.jevLatencyMs !== undefined || e.jevModel !== undefined) return "answered";
+  if (e.jevDecision === "deny" || e.jevDecision === "instruct") return "answered";
+  if (e.jevDecision === "allow") return "no-request";
+  return "not-consulted";
 }
 
 /** What the dashboard says about a call Jev was not consulted on. */
 export const JEV_NOT_CONSULTED_FACT = "Jev not consulted: a hard policy's deny is final";
+/** What the dashboard says about a call no semantic policy applied to. */
+export const JEV_NO_REQUEST_FACT = "Jev not asked: no semantic policy applies to this call";
 
 /**
  * What Jev did on one row, as short facts in display order — e.g.
@@ -238,6 +278,7 @@ export function describeJevActivity(raw: JevActivityFields): string[] | null {
   const outcome = outcomeOf(e);
   if (outcome === null) return null;
   if (outcome === "not-consulted") return [JEV_NOT_CONSULTED_FACT];
+  if (outcome === "no-request") return [JEV_NO_REQUEST_FACT];
   const facts: string[] = [];
 
   if (outcome === "fallback") {

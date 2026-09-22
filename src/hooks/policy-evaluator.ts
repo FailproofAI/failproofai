@@ -201,7 +201,11 @@ export async function evaluatePolicies(
     hookLogInfo(`jev ${twoTier.mode === "shadow" ? "would clear" : "cleared"}: ${combined.cleared.join(", ")}`);
   }
   if (combined.activity.evaluator === "jev-fallback") {
-    hookLogWarn(`jev unavailable (${combined.activity.jevFallbackReason}); the regex result decided this call`);
+    // Info, not warn: during an outage this is every gated call, and warn-level
+    // lines reach the hook's stderr — which is the deny text itself on some
+    // CLIs. The activity row (`evaluator: "jev-fallback"` + reason) and
+    // `failproofai jev status` are where a fallback is made visible.
+    hookLogInfo(`jev unavailable (${combined.activity.jevFallbackReason}); the regex result decided this call`);
   }
   return {
     ...formatVerdict(eventType, session, toolName, combined.final),

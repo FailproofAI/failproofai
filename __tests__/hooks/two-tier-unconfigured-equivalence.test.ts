@@ -22,6 +22,14 @@ const golden = JSON.parse(
   readFileSync(resolve(__dirname, "../fixtures/two-tier/unconfigured-golden.json"), "utf8"),
 ) as Golden;
 
+/**
+ * The two corpus tests make ~1,500 and ~550 real evaluations in one `it`:
+ * about 1–3 s on a quiet machine, and past vitest's 5 s default under a
+ * parallel full suite. A timeout there is not a difference, and it leaves the
+ * corpus loop writing into a sandbox `afterAll` already removed.
+ */
+const CORPUS_TIMEOUT_MS = 30_000;
+
 let sandbox: CorpusSandbox;
 beforeAll(() => {
   sandbox = enterSandbox();
@@ -58,7 +66,7 @@ describe("unconfigured equivalence (no jev.json)", () => {
     });
     expect(seen).toBe(Object.keys(golden.evaluator).length);
     expect(mismatches.slice(0, 5)).toEqual([]);
-  });
+  }, CORPUS_TIMEOUT_MS);
 
   it("evaluateHookEvent: real tool calls on all 12 CLIs, with every builtin enabled, are byte-identical", async () => {
     const mismatches: string[] = [];
@@ -80,5 +88,5 @@ describe("unconfigured equivalence (no jev.json)", () => {
     }, sandbox);
     expect(seen).toBe(Object.keys(golden.handler).length);
     expect(mismatches.slice(0, 5)).toEqual([]);
-  });
+  }, CORPUS_TIMEOUT_MS);
 });

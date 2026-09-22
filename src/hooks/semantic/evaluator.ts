@@ -71,6 +71,36 @@ export interface PreparedCall {
   userSaid: string[];
   /** The agent message actually sent (v1), or null. */
   agentLastMessage: string | null;
+  /**
+   * Jev is judging less than the whole picture: the envelope cut something
+   * (`envelope.truncated`), OR a human message or agent message it carries was
+   * already cut before it got here (see `contextCutUpstream`). This, not
+   * `envelope.truncated`, is the outcome's `truncated`.
+   */
+  truncated: boolean;
+}
+
+/**
+ * The mark a head-and-tail cap leaves where it cut: `capHeadTail`
+ * (`envelope.ts`) writes it, and so does the intent store when it caps a
+ * stored prompt or agent message (T4's `intent.ts` uses the same marker).
+ */
+const OMISSION_MARK = /\n…\[\d+ characters omitted\]…\n/;
+
+/**
+ * Whether a human message or the agent message in the envelope was cut
+ * BEFORE the envelope saw it. The intent store caps what it keeps to fit
+ * inside the envelope's own limit, marker included, precisely so the envelope
+ * does not cut it a second time — which also means the envelope cannot tell
+ * it was cut, and `envelope.truncated` stays false. §4 falls back on a
+ * truncated envelope whatever was cut (a clear resting on half of what the
+ * human typed is not a clear), so the mark itself is what counts. Only what
+ * is actually sent is looked at: `user_said` (cleaned, the last few) and
+ * `agent_last_message`.
+ */
+function contextCutUpstream(state: Record<string, unknown>): boolean {
+  const said = Array.isArray(state.user_said) ? state.user_said : [];
+  return [...said, state.agent_last_message].some((m) => typeof m === "string" && OMISSION_MARK.test(m));
 }
 
 export type SemanticOutcome =
@@ -117,7 +147,8 @@ export function prepareSemantic(input: SemanticInput, opts: SemanticOptions = {}
   const envelope = buildEnvelope(input.toolInput, userSaid, facts, scanned, { agentLastMessage });
   const model = opts.model ?? (process.env.FAILPROOFAI_JEV_MODEL || DEFAULT_JEV_MODEL);
   const compiled = compileRequest(selected, envelope.state, userSaid, model, intent);
-  return { facts, selected, envelope, compiled, intent, userSaid, agentLastMessage };
+  const truncated = envelope.truncated || contextCutUpstream(envelope.state);
+  return { facts, selected, envelope, compiled, intent, userSaid, agentLastMessage, truncated };
 }
 
 export async function evaluateSemantic(input: SemanticInput, opts: SemanticOptions = {}): Promise<SemanticOutcome> {
@@ -129,7 +160,7 @@ export async function evaluateSemantic(input: SemanticInput, opts: SemanticOptio
   } catch (err) {
     return { status: "degraded", reason: `prepare: ${err instanceof Error ? err.message : String(err)}`, latencyMs: elapsed(), questionCount: 0, truncated: false };
   }
-  const { selected, envelope, compiled } = prepared;
+  const { selected, envelope, compiled, truncated } = prepared;
   const questionCount = Object.keys(compiled.request.questions).length;
   const thresholds = opts.thresholds ?? DEFAULT_THRESHOLDS;
   const judge = (answers: Record<string, number>): SemanticVerdict =>
@@ -147,7 +178,7 @@ export async function evaluateSemantic(input: SemanticInput, opts: SemanticOptio
       latencyMs: elapsed(),
       inputTokens: null,
       questionCount: 0,
-      truncated: envelope.truncated,
+      truncated,
       redactions: envelope.redactions,
       model: compiled.request.model,
       modelVerified: true,
@@ -160,7 +191,7 @@ export async function evaluateSemantic(input: SemanticInput, opts: SemanticOptio
     reason,
     latencyMs: elapsed(),
     questionCount,
-    truncated: envelope.truncated,
+    truncated,
   });
 
   if (JSON.stringify(compiled.request).length > MAX_REQUEST_CHARS) return degraded("request-too-large");
@@ -182,7 +213,7 @@ export async function evaluateSemantic(input: SemanticInput, opts: SemanticOptio
       latencyMs: elapsed(),
       inputTokens: typeof response.usage?.input_tokens === "number" ? response.usage.input_tokens : null,
       questionCount,
-      truncated: envelope.truncated,
+      truncated,
       redactions: envelope.redactions,
       model: response.model,
       modelVerified: response.modelUnverified !== true,

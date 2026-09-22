@@ -1198,3 +1198,205 @@ describe("what the handler hands Jev: this call's session id and cwd", () => {
     expect(row.jevCleared).toBeUndefined();
   });
 });
+
+// ── Round-4 review findings ──────────────────────────────────────────────────
+
+describe("Pi's user_bash: a command the HUMAN typed (`!cmd`) is not Jev's to judge", () => {
+  // Allowed by every regex policy; Jev below would deny it as an unrequested deletion.
+  const COMMAND = "find . -name '*.sqlite' -delete";
+  const pi = (event: "user_bash" | "tool_call", command = COMMAND) =>
+    run(event, { tool_name: "bash", tool_input: { command } }, "pi");
+  const strip = (o: Awaited<ReturnType<typeof pi>>) => ({ ...o.outcome, evaluation: { ...o.outcome.evaluation, durationMs: 0 } });
+
+  it("configured: Jev is never started, and the answer is byte-identical to an unconfigured machine's", async () => {
+    const plain = await pi("user_bash");
+    jevConfig = CFG;
+    respond = answers({ "destructive-deletion": 0.97 });
+    store._resetForTest(join(root, "activity-2"));
+    const configured = await pi("user_bash");
+    expect(startJevReview).not.toHaveBeenCalled();
+    expect(jevCalls).toHaveLength(0);
+    expect(configured.outcome.evaluation?.decision).toBe("allow");
+    expect(strip(configured)).toEqual(strip(plain));
+    expect(jevKeysOf(configured.row)).toEqual([]);
+  });
+
+  it("the agent's own tool_call with the same command IS reviewed, and Jev's deny holds (the premise)", async () => {
+    jevConfig = CFG;
+    respond = answers({ "destructive-deletion": 0.97 });
+    const { outcome, row } = await pi("tool_call");
+    expect(jevCalls).toHaveLength(1);
+    expect(outcome.evaluation?.decision).toBe("deny");
+    expect(outcome.evaluation?.policyName).toBe("semantic/destructive-deletion");
+    expect(row.evaluator).toBe("jev");
+  });
+
+  it("the regex policies still judge the human's command exactly as before", async () => {
+    jevConfig = CFG;
+    respond = hang;
+    const { outcome, row } = await pi("user_bash", "sudo ls");
+    expect(outcome.evaluation?.decision).toBe("deny");
+    expect(outcome.evaluation?.policyName).toBe("failproofai/block-sudo");
+    expect(jevCalls).toHaveLength(0);
+    expect(jevKeysOf(row)).toEqual([]);
+  });
+});
+
+describe("a hard deny stops evaluation on a configured machine: no later policy runs", () => {
+  function recordingCustomHook(ran: string[]) {
+    vi.mocked(loadAllCustomHooks).mockResolvedValueOnce({
+      hooks: [
+        {
+          name: "after-builtins",
+          description: "records that it ran",
+          match: { events: ["PreToolUse"] },
+          fn: async () => {
+            ran.push("after-builtins");
+            return { decision: "allow" };
+          },
+        },
+      ],
+      conventionSources: [],
+    } as never);
+  }
+
+  it("a custom policy (priority below the builtins) never runs; Jev is aborted; block-sudo decides", async () => {
+    jevConfig = CFG;
+    respond = hang;
+    const ran: string[] = [];
+    recordingCustomHook(ran);
+    const t0 = performance.now();
+    const { outcome, row } = await bash("sudo ls");
+    // The premise: the custom policy was registered for this call, after block-sudo.
+    const order = outcome.evaluation?.matchedPolicies ?? [];
+    const custom = order.findIndex((n) => n.endsWith("after-builtins"));
+    expect(custom).toBeGreaterThan(order.indexOf("failproofai/block-sudo"));
+    expect(order.indexOf("failproofai/block-sudo")).toBeGreaterThanOrEqual(0);
+
+    expect(ran).toEqual([]);
+    expect(outcome.evaluation?.decision).toBe("deny");
+    expect(outcome.evaluation?.policyName).toBe("failproofai/block-sudo");
+    expect(jevCalls).toHaveLength(1);
+    expect(jevCalls[0].signal.aborted).toBe(true);
+    expect(row).toMatchObject({ evaluator: "jev", jevMode: "enforce" });
+    expect(row.jevDecision).toBeUndefined();
+    expect(performance.now() - t0).toBeLessThan(1_000);
+  });
+
+  it("control: with no hard deny the same custom policy does run", async () => {
+    jevConfig = CFG;
+    const ran: string[] = [];
+    recordingCustomHook(ran);
+    await bash("ls -la");
+    expect(ran).toEqual(["after-builtins"]);
+  });
+});
+
+describe("FAILPROOFAI_EVALUATOR=legacy (§4 row 1) under every configured mode: today's answer, byte for byte", () => {
+  const CALLS: Array<[string, () => ReturnType<typeof run>]> = [
+    ["a reviewable deny Jev would clear", () => readFile(join(home, "other", "notes.txt"))],
+    ["a hard deny", () => bash("sudo ls")],
+    ["an allow Jev would deny", () => bash("find . -name '*.sqlite' -delete")],
+    ["a reviewable instruct Jev would clear", () => bash("git commit --amend -m 'fix typo'")],
+    ["a non-gate event", () => run("PostToolUse", { tool_name: "Bash", tool_input: { command: "ls" }, tool_response: {} })],
+  ];
+  const strip = (o: Awaited<ReturnType<typeof run>>) => ({ ...o.outcome, evaluation: { ...o.outcome.evaluation, durationMs: 0 } });
+
+  it.each<[string, JevConfig["mode"]]>([
+    ["no mode (the build's default)", undefined],
+    ["shadow", "shadow"],
+    ["enforce", "enforce"],
+  ])("%s", async (_label, mode) => {
+    respond = answers({ "destructive-deletion": 0.97 });
+    let n = 0;
+    for (const [label, call] of CALLS) {
+      jevConfig = null;
+      delete process.env.FAILPROOFAI_EVALUATOR;
+      store._resetForTest(join(root, `activity-${n++}`));
+      const plain = await call();
+
+      jevConfig = mode ? { ...CFG, mode } : CFG;
+      process.env.FAILPROOFAI_EVALUATOR = "legacy";
+      vi.mocked(loadJevConfig).mockClear();
+      store._resetForTest(join(root, `activity-${n++}`));
+      const legacy = await call();
+
+      expect(strip(legacy), label).toEqual(strip(plain));
+      expect(jevKeysOf(legacy.row), label).toEqual([]);
+      expect(loadJevConfig, label).not.toHaveBeenCalled();
+    }
+    expect(jevCalls).toHaveLength(0);
+    expect(startJevReview).not.toHaveBeenCalled();
+  });
+});
+
+describe("captureIntent and a prompt deny the CLI does not enforce", () => {
+  it("Goose ignores a UserPromptSubmit deny, so its agent does get the prompt: it IS recorded", async () => {
+    jevConfig = CFG;
+    vi.mocked(loadAllCustomHooks).mockResolvedValueOnce({
+      hooks: [
+        {
+          name: "prompt-guard",
+          description: "test",
+          match: { events: ["UserPromptSubmit"] },
+          fn: async () => ({ decision: "deny", reason: "prompt deny" }),
+        },
+      ],
+      conventionSources: [],
+    } as never);
+    const { outcome } = await run("UserPromptSubmit", { message: "tidy the build folder", working_dir: project }, "goose");
+    expect(outcome.evaluation?.decision).toBe("deny");
+    expect(captureIntent).toHaveBeenCalledTimes(1);
+    const event = vi.mocked(captureIntent).mock.calls[0][0] as unknown as Record<string, unknown>;
+    expect(event).toMatchObject({ eventType: "UserPromptSubmit", cli: "goose", sessionId: SESSION });
+    expect(event.payload).toMatchObject({ message: "tidy the build folder" });
+  });
+});
+
+describe("configured-but-broken Jev paths stay off the hook's stderr", () => {
+  async function stderrOf(fn: () => Promise<unknown>): Promise<string[]> {
+    const writes: string[] = [];
+    const spy = vi.spyOn(process.stderr, "write").mockImplementation(((chunk: unknown) => {
+      writes.push(String(chunk));
+      return true;
+    }) as typeof process.stderr.write);
+    try {
+      await fn();
+    } finally {
+      spy.mockRestore();
+    }
+    return writes.filter((w) => /jev/i.test(w));
+  }
+
+  it("a review that cannot start", async () => {
+    jevConfig = CFG;
+    vi.mocked(startJevReview).mockImplementationOnce(() => {
+      throw new Error("module failed to initialise");
+    });
+    // An allowed call, so the recorded fallback shows (a deny would short-circuit first: every policy is hard here).
+    const lines = await stderrOf(async () => {
+      const { row } = await bash("ls -la");
+      expect(row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "error" });
+    });
+    expect(lines).toEqual([]);
+  });
+
+  it("an intent capture that throws", async () => {
+    jevConfig = CFG;
+    vi.mocked(captureIntent).mockImplementationOnce(() => {
+      throw new Error("disk full");
+    });
+    const lines = await stderrOf(() => run("UserPromptSubmit", { prompt: "hello" }));
+    expect(captureIntent).toHaveBeenCalledTimes(1);
+    expect(lines).toEqual([]);
+  });
+
+  it("a config that throws on load", async () => {
+    vi.mocked(loadJevConfig).mockImplementationOnce(() => {
+      throw new Error("bad json");
+    });
+    const lines = await stderrOf(() => bash("ls"));
+    expect(loadJevConfig).toHaveBeenCalled();
+    expect(lines).toEqual([]);
+  });
+});

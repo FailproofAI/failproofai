@@ -158,7 +158,10 @@ export function toReview(outcome: SemanticOutcome, cached = false): JevReview {
   // the call, the human's words or the agent's last message was cut — so the
   // regex result stands, every deny counting. Padding a command must not be a
   // way to hide its dangerous part, and a clear resting on half of what the
-  // human typed is not a clear. Jev's answer is still recorded.
+  // human typed is not a clear. Jev's answer is still recorded. "Cut" includes
+  // a message the intent store capped before the envelope saw it (T4 caps what
+  // it keeps to fit the envelope, so only its omission mark tells):
+  // `outcome.truncated` covers both (see `prepareSemantic`).
   //
   // Only when a request was actually sent: with no semantic policy applying
   // nothing reaches Jev, so nothing was judged on a cut envelope, nothing can

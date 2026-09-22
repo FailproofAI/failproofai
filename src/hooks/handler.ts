@@ -208,19 +208,45 @@ async function runObserved(
 // alone — exactly as it did before two tiers existed — otherwise:
 //
 // - a valid BYOK config exists (`~/.failproofai/jev.json`, global only);
-// - `FAILPROOFAI_EVALUATOR` is not `legacy` (the escape hatch). On a daemon
-//   machine this must be set in the daemon's environment: the daemon forwards
-//   a hook's stdin and cwd to the warm worker, never the shell's environment;
+// - `FAILPROOFAI_EVALUATOR` is not `legacy` (see "Turning Jev off" below);
 // - this is not the fail-closed `forceDecision` path and no session pause is
 //   active — a pause suspends local policy, and Jev must not become a way to
 //   evaluate what the pause switched off;
-// - the event is a gate (`PreToolUse` / `PermissionRequest`) for a named tool.
+// - the event is a gate (`PreToolUse` / `PermissionRequest`) for a named tool
+//   that the AGENT requested (see `isHumanAuthoredGate`).
 //
 // There is no cloud-deployment exclusion: cloud policies default to `hard`, so
 // Jev can only make a centrally managed machine stricter, never weaker.
+//
+// Turning Jev off. The switch that works everywhere is the config file itself:
+// it is read on every event, here, in whichever process evaluates — the
+// daemon's warm worker included — so `failproofai jev remove` (or a `mode:
+// "shadow"` config, which keeps enforcing the regex result) applies from the
+// next tool call, with no restart. `FAILPROOFAI_EVALUATOR=legacy` is the dev
+// escape hatch, read from the EVALUATING process's environment: it covers a
+// one-shot hook (no daemon) and a worker whose own environment sets it, but
+// not a variable exported in a shell on a daemon machine — the daemon
+// forwards a hook's event, cli, stdin and cwd to the worker, never the hook
+// process's environment. `failproofai jev status` says so when it sees the
+// variable. A per-session switch for daemon machines would be a new field in
+// the daemon protocol; there is none today.
 
 /** The two gate events Jev reviews. Everything else is regex-only. */
 const JEV_GATE_EVENTS: ReadonlySet<string> = new Set(["PreToolUse", "PermissionRequest"]);
+
+/**
+ * A gate event that carries a command the HUMAN typed, not one the agent
+ * requested: Pi's `user_bash` (`!cmd` at Pi's prompt) canonicalizes to
+ * `PreToolUse` like an agent's `tool_call`. Jev judges an agent's request
+ * against what the human asked for, and says so to the model ("A coding agent
+ * has REQUESTED the tool call"); the human's own command is the human asking,
+ * and never appears in `user_said`, so Jev would judge it as an unrequested
+ * agent action and could block the human's own command. The regex policies
+ * still run on it exactly as they always have.
+ */
+function isHumanAuthoredGate(rawEventType: string | undefined, cli: IntegrationType): boolean {
+  return cli === "pi" && rawEventType === "user_bash";
+}
 
 function jevForcedOff(opts: EvaluateHookEventOptions | undefined): boolean {
   return process.env.FAILPROOFAI_EVALUATOR === "legacy" || !!opts?.forceDecision;
@@ -228,7 +254,10 @@ function jevForcedOff(opts: EvaluateHookEventOptions | undefined): boolean {
 
 /**
  * The BYOK config (with the build's default mode, D2), or null (Jev off). A
- * config that cannot be read is off, never a failure.
+ * config that cannot be read is off, never a failure. Logged at info, like
+ * every configured-but-broken Jev path: warn-level lines reach the hook's
+ * stderr, which is the deny text itself on some CLIs (Factory's exit 2).
+ * `failproofai jev status` is where a broken config is made visible.
  */
 async function readJevConfig(): Promise<{ config: JevConfig; defaultMode: TwoTierReview["mode"] } | null> {
   try {
@@ -236,7 +265,7 @@ async function readJevConfig(): Promise<{ config: JevConfig; defaultMode: TwoTie
     const config = loadJevConfig();
     return config ? { config, defaultMode: DEFAULT_JEV_MODE } : null;
   } catch (err) {
-    hookLogWarn(
+    hookLogInfo(
       `Jev config could not be read (${err instanceof Error ? err.message : String(err)}); the regex engine decides alone`,
     );
     return null;
@@ -256,6 +285,7 @@ async function startTwoTier(
   activePause: ActivePause | null,
 ): Promise<TwoTierReview | null> {
   if (!JEV_GATE_EVENTS.has(canonicalEventType)) return null;
+  if (isHumanAuthoredGate(session.rawHookEventName, cli)) return null;
   if (typeof parsed.tool_name !== "string" || parsed.tool_name.length === 0) return null;
   if (jevForcedOff(opts) || activePause) return null;
   const loaded = await readJevConfig();
@@ -276,8 +306,10 @@ async function startTwoTier(
     // Configured but unable to start: that is a fallback, and it is recorded
     // as one — every regex verdict hard, the regex result final. Recorded as
     // `error`, one of the reason codes the activity store and the collector
-    // know (T8's closed list); an unknown code would ship as `other`.
-    hookLogWarn(`Jev review could not start (${err instanceof Error ? err.message : String(err)})`);
+    // know (T8's closed list); an unknown code would ship as `other`. Logged
+    // at info, off the hook's stderr (see `readJevConfig`); the activity row
+    // carries the fallback.
+    hookLogInfo(`Jev review could not start (${err instanceof Error ? err.message : String(err)})`);
     return {
       mode: cfg.mode === "shadow" || cfg.mode === "enforce" ? cfg.mode : loaded.defaultMode,
       review: Promise.resolve({ kind: "fallback", reason: "error", latencyMs: null, model: null, decision: null }),
@@ -309,10 +341,14 @@ function jevTelemetry(activity: JevActivityFields | undefined): Record<string, u
 
 /**
  * Record what the human just typed, for Jev to judge later calls against.
- * Only when Jev is configured, and never for a prompt a policy blocked — the
- * agent never receives that one, so it cannot be what the agent is working
- * on. Which CLIs' prompt events count as human is decided inside
- * `captureIntent` (T4). Never throws.
+ * Only when Jev is configured. Every canonical `UserPromptSubmit` is passed,
+ * except a prompt a policy denied on a CLI where that deny is known to hold
+ * (`ENFORCEMENT_CAPABILITY` says `block`): the agent never receives that
+ * prompt, so it cannot be what the agent is working on. Where a prompt deny
+ * is only observed — Goose, OpenCode, Antigravity — or not verified, the
+ * agent does get the prompt, and it is passed like any other. Which CLIs'
+ * prompt events count as human is decided inside `captureIntent` (T4).
+ * Never throws; a failure is logged at info (see `readJevConfig`).
  *
  * `captureIntent` gets the whole normalized payload (`payload`): the prompt
  * text is in a different field on some harnesses (Goose: `message`), and the
@@ -328,9 +364,13 @@ async function captureJevIntent(
   cli: IntegrationType,
   opts: EvaluateHookEventOptions | undefined,
 ): Promise<void> {
-  if (canonicalEventType !== "UserPromptSubmit" || decision === "deny" || jevForcedOff(opts)) return;
+  if (canonicalEventType !== "UserPromptSubmit" || jevForcedOff(opts)) return;
   try {
     if (!(await readJevConfig())) return;
+    if (decision === "deny") {
+      const { ENFORCEMENT_CAPABILITY } = await import("./enforcement-capability");
+      if (ENFORCEMENT_CAPABILITY[cli]?.UserPromptSubmit === "block") return;
+    }
     const { captureIntent } = await import("./semantic/intent");
     // Built first, then passed: the one object satisfies §7's shape and T4's.
     const event = {
@@ -343,7 +383,7 @@ async function captureJevIntent(
     };
     captureIntent(event);
   } catch (err) {
-    hookLogWarn(`Jev intent capture failed: ${err instanceof Error ? err.message : String(err)}`);
+    hookLogInfo(`Jev intent capture failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 

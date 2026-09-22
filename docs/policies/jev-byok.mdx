@@ -27,7 +27,7 @@ Jev is reachable through five routes. Bring a key for any one of them.
 | OpenRouter | `openrouter` | `openrouter.ai/api/v1/systemone` | `typesafe/jev-1.13` | Requests are routed to zero-data-retention endpoints only, with no fallback to another provider. Reports a dated version such as `typesafe/jev-1.13-20260917`. |
 | Vercel AI Gateway | `vercel` | `ai-gateway.vercel.sh/typesafe/v1/systemone` | `typesafe-ai/jev` | Names Jev only by an alias, so the answering version is recorded as unverified. |
 | Cloudflare Workers AI | `cloudflare` | `api.cloudflare.com/client/v4/accounts/<id>/ai/run` | `typesafe/jev` | Needs `--account-id`. About six calls a second per key were measured before HTTP 429. |
-| Your own endpoint | `custom` | `<base-url>/systemone` | `jev-1.13.0` | Any endpoint that accepts TypeSafe's request body. `https` only, except `http://localhost`. |
+| Your own endpoint | `custom` | `<base-url>/systemone` | `jev-1.13.0` | Any endpoint that accepts TypeSafe's request body and reports which model answered. `https` only; plain `http://localhost` is accepted in shadow mode only. |
 
 <Warning>
 With Vercel's own bring-your-own-key feature, a failed request is silently retried with Vercel's credentials. If you need every call billed to, and seen by, your own TypeSafe account only, use TypeSafe directly.
@@ -102,7 +102,7 @@ failproofai jev setup --mode shadow
 failproofai jev setup --mode enforce
 ```
 
-Re-running `setup` for the same provider keeps the stored key, so a mode switch is one flag. Switching provider starts over and asks for that provider's key.
+Re-running `setup` for the same provider keeps the stored key, so a mode switch is one flag. Switching provider starts over and asks for that provider's key. So does a `--base-url` that moves requests to a different host: a stored key is only sent to the host it was given for, or to its provider's own API.
 
 ## The config file
 
@@ -122,7 +122,7 @@ Everything lives in one file, `~/.failproofai/jev.json`, written by `setup`:
 | --- | --- |
 | `provider` | `typesafe`, `openrouter`, `vercel`, `cloudflare` or `custom`. |
 | `apiKey` | Sent as `Authorization: Bearer <key>`. |
-| `baseUrl` | Required for `custom`; replaces the provider's API base otherwise. |
+| `baseUrl` | Required for `custom`; replaces the provider's API base otherwise. Must be `https`. Plain `http` to `localhost` is accepted only with `mode: shadow`: nothing authenticates a local port, so while your proxy is down any process on the machine, including the agent being judged, could answer in its place. |
 | `accountId` | Cloudflare only: 32 lowercase hex characters. |
 | `model` | Replaces the provider's default model id. A versioned id must name Jev 1.13. |
 | `timeoutMs` | How long a tool call waits for Jev before using the regex result. 100–10000, default 1500. |
@@ -136,7 +136,7 @@ Three rules protect it:
 
 ## Which Jev answers
 
-Failproof AI's decision thresholds were calibrated on Jev 1.13, so an answer is used only when it comes from that family: `jev-1.13.x`, or OpenRouter's `typesafe/jev-1.13-<date>`. Where a provider names Jev only by an alias and reports no version (Vercel, and Cloudflare when it does not say), the answer is used and recorded as unverified. An answer reporting any other version is not used: that call falls back to regex with the reason `model-mismatch`.
+Failproof AI's decision thresholds were calibrated on Jev 1.13, so an answer is used only when it comes from that family: `jev-1.13.x`, or OpenRouter's `typesafe/jev-1.13-<date>`. Where a provider names Jev only by an alias and reports no version (Vercel, and Cloudflare when it does not say), the answer is used and recorded as unverified. A `custom` endpoint must report the model that answered; the one exception is an unversioned `--model` name you configured for it, which, echoed back, is recorded as unverified in the same way. An answer reporting any other version, or a `custom` answer reporting none, is not used: that call falls back to regex with the reason `model-mismatch`.
 
 ## When Jev cannot answer
 
@@ -150,7 +150,7 @@ Each of these falls back to the regex result for that call and is recorded with 
 | `out-of-credits` | HTTP 402: the provider account has no credits left. |
 | `http-401`, `http-403` | The key was refused. |
 | `network` | The endpoint could not be reached. |
-| `model-mismatch` | A Jev version other than 1.13 answered. |
+| `model-mismatch` | A Jev version other than 1.13 answered, or a `custom` endpoint did not say which model answered. |
 
 ## What leaves the machine
 

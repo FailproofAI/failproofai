@@ -30,11 +30,12 @@
  * The decision thresholds were calibrated against Jev 1.13, so `readAnswers`
  * accepts an answer only from that family: `jev-1.13.x`, OpenRouter's
  * `typesafe/jev-1.13-<date>` snapshot, or — where the provider reports no
- * version at all (Vercel's `typesafe-ai/jev`, Cloudflare's `typesafe/jev`, a
- * custom proxy echoing its own name) — an answer the TRANSPORT marked
+ * version at all (Vercel's `typesafe-ai/jev` or no model, Cloudflare's
+ * `typesafe/jev` or no model, a custom proxy echoing back the unversioned name
+ * the customer configured for it) — an answer the TRANSPORT marked
  * `modelUnverified`, which the evaluator records as `modelVerified: false`. A
  * reported version of another major.minor is a `model-mismatch`, and the caller
- * falls back to regex. The flag is set only by the transports in this file from
+ * falls back to regex; so is a custom endpoint that reports no model at all. The flag is set only by the transports in this file from
  * what the provider reported; a `modelUnverified` field in a response body is
  * never copied through.
  *
@@ -194,11 +195,15 @@ function errorDetail(body: unknown, secret: string): string {
     if (!detail && typeof b.message === "string") detail = b.message;
     if (!detail && typeof b.detail === "string") detail = b.detail;
   }
-  return scrub(detail, secret).slice(0, MAX_ERROR_DETAIL);
+  return scrubSecret(detail, secret).slice(0, MAX_ERROR_DETAIL);
 }
 
-/** Replace every occurrence of the key. A provider echoing a credential must not put it in a log line. */
-function scrub(text: string, secret: string): string {
+/**
+ * Replace every occurrence of the key. A provider echoing a credential must not
+ * put it in a log line. Exported so a caller that prints an error (`jev test`)
+ * can scrub it again, whatever path the text took to get there.
+ */
+export function scrubSecret(text: string, secret: string): string {
   return secret.length >= 4 ? text.split(secret).join("[key]") : text;
 }
 
@@ -213,7 +218,7 @@ async function postJson(url: string, bearer: string, body: unknown, signal: Abor
     });
   } catch (err) {
     if (signal.aborted) throw new JevError("timeout", "Jev did not answer in time");
-    throw new JevError("network", scrub(err instanceof Error ? err.message : String(err), bearer));
+    throw new JevError("network", scrubSecret(err instanceof Error ? err.message : String(err), bearer));
   }
   let parsed: unknown;
   try {
@@ -274,7 +279,8 @@ function normalizeNative(body: unknown, sentModel: string, opts: NativeTransport
     throw new JevError("malformed", "Jev response has no answers object");
   }
   const usage = b.usage && typeof b.usage === "object" ? (b.usage as JevResponse["usage"]) : undefined;
-  const reported = typeof b.model === "string" && b.model.length > 0 ? b.model : null;
+  // The reported id reaches a `model-mismatch` message, so a server echoing the key there must not carry it through.
+  const reported = typeof b.model === "string" && b.model.length > 0 ? scrubSecret(b.model, opts.apiKey) : null;
   let model: string;
   let unverified = false;
   if (reported === null) {
@@ -321,7 +327,7 @@ export function cloudflareTransport(token: string, accountId: string, opts: Clou
   const endpoint = cloudflareEndpoint(accountId, opts.baseUrl);
   return async (request, signal) => {
     const body = await postJson(endpoint, token, { model, input: { state: request.state, questions: request.questions } }, signal);
-    return unwrapCloudflare(body, request, model);
+    return unwrapCloudflare(body, request, model, token);
   };
 }
 
@@ -342,13 +348,25 @@ function cloudflareEndpoint(accountId: string, baseUrl?: string): string {
  * back — the version cannot be checked from here: the response carries the
  * request's model so the answers are usable, and `modelUnverified` puts that
  * gap in the verdict log instead of hiding it.
+ *
+ * `secret` is the token the request was sent with. Every piece of provider
+ * text that can reach an error message (`errors[].message`, a job state, a
+ * reported model id) is scrubbed of it: a 200 `{success: false}` is not
+ * scrubbed by `postJson`, which sees only the status.
  */
-export function unwrapCloudflare(body: unknown, request: JevRequest, sentModel: string = CLOUDFLARE_JEV_MODEL): JevResponse {
-  const envelope = body as { success?: unknown; errors?: Array<{ message?: string }>; result?: unknown } | null;
+export function unwrapCloudflare(
+  body: unknown,
+  request: JevRequest,
+  sentModel: string = CLOUDFLARE_JEV_MODEL,
+  secret = "",
+): JevResponse {
+  const envelope = body as { success?: unknown; errors?: Array<{ message?: unknown }>; result?: unknown } | null;
   if (!envelope || typeof envelope !== "object") throw new JevError("malformed", "Cloudflare returned no object");
   if (envelope.success === false) {
-    const detail = Array.isArray(envelope.errors) ? envelope.errors.map((e) => e?.message).filter(Boolean).join("; ") : "";
-    throw new JevError("cloudflare-error", detail || "Cloudflare reported failure");
+    const detail = Array.isArray(envelope.errors)
+      ? envelope.errors.map((e) => (typeof e?.message === "string" ? e.message : "")).filter(Boolean).join("; ")
+      : "";
+    throw new JevError("cloudflare-error", scrubSecret(detail, secret).slice(0, MAX_ERROR_DETAIL) || "Cloudflare reported failure");
   }
   let inner: unknown = "result" in envelope ? envelope.result : envelope;
   // Observed live (2026-09-21): partner models add a job layer —
@@ -356,7 +374,9 @@ export function unwrapCloudflare(body: unknown, request: JevRequest, sentModel: 
   // Anything but a completed job is not an answer.
   const job = inner as { state?: unknown; result?: unknown } | null;
   if (job && typeof job === "object" && "state" in job && "result" in job) {
-    if (job.state !== "Completed") throw new JevError("cloudflare-incomplete", `Cloudflare job state ${String(job.state)}`);
+    if (job.state !== "Completed") {
+      throw new JevError("cloudflare-incomplete", `Cloudflare job state ${scrubSecret(String(job.state), secret).slice(0, MAX_ERROR_DETAIL)}`);
+    }
     inner = job.result;
   }
   const result = inner as Partial<JevResponse> | null;
@@ -366,7 +386,7 @@ export function unwrapCloudflare(body: unknown, request: JevRequest, sentModel: 
   // Echoing back the alias is not a version either.
   const reported =
     typeof result.model === "string" && result.model.length > 0 && !isAliasFor(result.model, [CLOUDFLARE_JEV_MODEL, sentModel])
-      ? result.model
+      ? scrubSecret(result.model, secret)
       : null;
   return {
     model: reported ?? request.model,
@@ -390,7 +410,8 @@ export function readAnswers(request: JevRequest, response: JevResponse): Record<
     throw new JevError("malformed", "Jev response has no answers object");
   }
   if (response.modelUnverified !== true && !isCalibratedJevModel(String(response.model))) {
-    throw new JevError("model-mismatch", `asked for ${request.model}, got ${String(response.model)}`);
+    const got = typeof response.model === "string" && response.model !== "" ? response.model.slice(0, 200) : "no model id";
+    throw new JevError("model-mismatch", `asked for ${request.model}, got ${got}`);
   }
   const out: Record<string, number> = {};
   for (const id of Object.keys(request.questions)) {
@@ -505,10 +526,14 @@ export function transportForConfig(input: JevConfig): { transport: JevTransport;
           url: route.endpoint,
           apiKey: cfg.apiKey,
           model: route.model,
-          // A proxy echoing the name it was configured with has said nothing
-          // about the version; one reporting a real Jev version is checked.
+          // A proxy echoing back an UNVERSIONED name the customer configured for
+          // it (`--model house-jev`) has said nothing about the version, the way
+          // Vercel's alias has not; that answer is used and marked unverified.
+          // One reporting a real Jev version is checked. One reporting no model
+          // at all is refused: unlike Vercel and Cloudflare, nothing is known
+          // about what sits behind a custom URL, so silence is not accepted.
           aliases: [route.model],
-          allowUnreported: true,
+          allowUnreported: false,
         }),
         via: "custom",
         model: route.model,

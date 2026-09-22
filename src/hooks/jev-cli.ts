@@ -17,7 +17,19 @@
  * (`--key-from-env`). `--key-stdin` on a terminal uses the masked prompt too,
  * because a cooked-mode read would echo each character as it is typed. No
  * output of this module, human or `--json`, contains the key; provider error
- * text is scrubbed of it in `jev-client.ts`.
+ * text is scrubbed of it in `jev-client.ts`, and `jev test` scrubs whatever
+ * error it prints once more. `setup` never repeats a value it could not use
+ * (a stray argument, an unknown provider, an unreadable timeout): a key pasted
+ * into the wrong place on the command line is already in shell history, and
+ * does not also need to be on the screen.
+ *
+ * # A stored key stays with its host
+ *
+ * Re-running `setup` for the same provider keeps the stored key. When the new
+ * `--base-url` moves requests to a different origin — other than the
+ * provider's own API — the key is asked for again, exactly as on a provider
+ * switch: for `custom` (and any override) the URL is what picks the gateway,
+ * and a key issued for one gateway must not be sent to another unasked.
  *
  * # No restart
  *
@@ -36,8 +48,17 @@ import {
   validateApiKey,
   validateJevConfig,
   type JevConfig,
+  type JevProviderKind,
 } from "./semantic/jev-config";
-import { JevError, displayEndpoint, jevRoute, readAnswers, transportForConfig } from "./semantic/jev-client";
+import {
+  JEV_PROVIDER_DEFAULTS,
+  JevError,
+  displayEndpoint,
+  jevRoute,
+  readAnswers,
+  scrubSecret,
+  transportForConfig,
+} from "./semantic/jev-client";
 import { jevStats, type JevStats } from "./semantic/jev-stats";
 import type { JevRequest } from "./semantic/types";
 import { emptyState, nextStep, note, optsFor, rows, rule, stack, title, warning, type RenderOpts } from "./tui";
@@ -140,6 +161,10 @@ function describeError(err: unknown): { code: string; message: string } {
   return { code: "error", message: err instanceof Error ? err.message : String(err) };
 }
 
+function scrubbed(e: { code: string; message: string }, key: string): { code: string; message: string } {
+  return { code: e.code, message: scrubSecret(e.message, key) };
+}
+
 /** What the person should do about a failed request, by cause. */
 function remedy(code: string): string {
   if (code === "http-401" || code === "http-403") return "The provider refused the key. Re-run `failproofai jev setup` with the right one.";
@@ -148,7 +173,9 @@ function remedy(code: string): string {
   if (code.startsWith("http-5")) return "The provider had a server error. Hooks fall back to regex whenever that happens; try again shortly.";
   if (code === "timeout") return "No answer in time. Check the endpoint and your network.";
   if (code === "network") return "The endpoint could not be reached. Check the base URL and your network.";
-  if (code === "model-mismatch") return "A Jev version the thresholds were not calibrated for answered, so hooks would fall back to regex. Pin a jev-1.13 model with --model.";
+  if (code === "model-mismatch") {
+    return "A Jev version the thresholds were not calibrated for answered (or a custom endpoint did not say which model answered), so hooks would fall back to regex. Pin a jev-1.13 model with --model.";
+  }
   if (code === "config") return "The config is not usable. Re-run `failproofai jev setup`.";
   return "Hooks would fall back to regex for this reason.";
 }
@@ -185,6 +212,31 @@ export function jevStatsLines(stats: JevStats | null, opts: RenderOpts = {}): st
 
 // ── setup ────────────────────────────────────────────────────────────────────
 
+/** The origin requests go to for this provider and base URL (the provider's own API when none), or null. */
+function originOf(provider: JevProviderKind, baseUrl: unknown): string | null {
+  const base = typeof baseUrl === "string" ? baseUrl : JEV_PROVIDER_DEFAULTS[provider].baseUrl;
+  if (!base) return null;
+  try {
+    const origin = new URL(base.trim()).origin;
+    return origin === "null" ? null : origin;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether a same-provider re-run's base URL sends requests to a new host, and
+ * which. Not a move: the same origin, an unusable URL (validation reports it),
+ * or the provider's own API, which is where its key belongs anyway.
+ */
+function movedHost(provider: JevProviderKind, before: unknown, after: unknown): { from: string | null; to: string } | null {
+  const to = originOf(provider, after);
+  if (to === null) return null;
+  const from = originOf(provider, before);
+  if (to === from || to === originOf(provider, undefined)) return null;
+  return { from, to };
+}
+
 async function readAllStdin(): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
@@ -199,7 +251,10 @@ async function maskedPrompt(): Promise<string | null> {
 async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise<JevCliResult> {
   const parsed = parseFlags(argv, new Set([...VALUE_FLAGS, "--key-stdin", "--key-from-env"]));
   if (typeof parsed === "string") return fail([parsed, "", ...JEV_USAGE]);
-  if (parsed.positionals.length > 0) return fail([`Unexpected argument: ${parsed.positionals[0]}`, "", ...JEV_USAGE]);
+  if (parsed.positionals.length > 0) {
+    // Not repeated: the likeliest stray argument to `setup` is the key itself.
+    return fail(["Unexpected argument (not repeated here, in case it is a key). The key goes on stdin: --key-stdin.", "", ...JEV_USAGE]);
+  }
   const { values, bools } = parsed;
   if (bools.has("--key-stdin") && bools.has("--key-from-env")) return fail(["Use one of --key-stdin and --key-from-env, not both."]);
 
@@ -215,8 +270,9 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
     ]);
   }
   if (!(JEV_PROVIDER_KINDS as readonly string[]).includes(provider)) {
-    return fail([`Unknown provider: ${provider}`, `Providers: ${JEV_PROVIDER_KINDS.join(", ")}`]);
+    return fail(["Unknown provider (not repeated here, in case it is a key).", `Providers: ${JEV_PROVIDER_KINDS.join(", ")}`]);
   }
+  const kind = provider as JevProviderKind;
   const sameProvider = existing !== null && existing.provider === provider;
 
   // Same provider: update in place, keeping the key and every field not named
@@ -243,9 +299,13 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
   if (values.has("--timeout-ms")) {
     const raw = values.get("--timeout-ms") as string;
     const n = Number(raw);
-    if (!/^\d+$/.test(raw) || !Number.isSafeInteger(n)) return fail([`Could not read --timeout-ms ${raw}. Give a whole number of milliseconds.`]);
+    if (!/^\d+$/.test(raw) || !Number.isSafeInteger(n)) return fail(["Could not read --timeout-ms. Give a whole number of milliseconds."]);
     next.timeoutMs = n;
   }
+
+  // A key stored for one host is not carried to another (see the header).
+  const hostMove = sameProvider && values.has("--base-url") ? movedHost(kind, existing?.baseUrl, next.baseUrl) : null;
+  if (hostMove) delete next.apiKey;
 
   // The key. A config that takes it from the environment stores none, and
   // stays that way across a re-run for the same provider.
@@ -273,11 +333,21 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
     keyNote = "set from stdin";
   } else if (typeof next.apiKey === "string") {
     keyNote = "kept from the existing config";
-  } else if (sameProvider) {
+  } else if (sameProvider && !hostMove) {
     keyFromEnv = true;
     keyNote = envKeyNote();
   } else {
     const tty = deps.stdinIsTTY ?? Boolean(process.stdin.isTTY);
+    if (!tty && hostMove) {
+      return fail([
+        `The new base URL sends requests to ${hostMove.to}${hostMove.from ? `, not ${hostMove.from}` : ""}.`,
+        "A stored key is not carried to a different host. Give the key for that endpoint again:",
+        "  failproofai jev setup --base-url <url> --key-stdin < key-file",
+        "",
+        `Or store no key and supply ${JEV_API_KEY_ENV} per session (--key-from-env).`,
+        "Nothing was written.",
+      ]);
+    }
     if (!tty) {
       return fail([
         "No key given, and there is no terminal to ask on.",
@@ -294,7 +364,7 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
     const bad = validateApiKey(key);
     if (bad) return fail([`Not saved: ${bad}.`]);
     next.apiKey = key;
-    keyNote = "set at the prompt";
+    keyNote = hostMove ? `set at the prompt, for ${hostMove.to}` : "set at the prompt";
   }
 
   // With the key in the environment the FILE is what is being checked, so a
@@ -487,7 +557,7 @@ async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise
     route = jevRoute(cfg);
     built = transportForConfig(cfg);
   } catch (err) {
-    const e = describeError(err);
+    const e = scrubbed(describeError(err), cfg.apiKey);
     return fail([`Not run: ${e.message}`], asJson ? JSON.stringify({ ok: false, error: e }, null, 2) : undefined);
   }
 
@@ -550,7 +620,9 @@ async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise
     );
   } catch (err) {
     const latencyMs = Math.round(performance.now() - started);
-    const e = describeError(err);
+    // jev-client scrubs provider text already; this is the last line of that
+    // defence, for any error text that reached here some other way.
+    const e = scrubbed(describeError(err), cfg.apiKey);
     if (asJson) return fail([], JSON.stringify({ ok: false, provider: cfg.provider, latencyMs, error: e }, null, 2));
     return fail(
       stack(

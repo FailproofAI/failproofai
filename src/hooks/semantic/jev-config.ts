@@ -144,7 +144,8 @@ export function validateApiKey(key: unknown): string | null {
 /**
  * An endpoint base URL: https, or http to a loopback host only (a local proxy).
  * No credentials in the URL and no fragment — a key belongs in the key field,
- * where it is sent as a bearer and never printed.
+ * where it is sent as a bearer and never printed. `validateJevConfig` further
+ * accepts the loopback http form only in shadow mode.
  */
 export function validateBaseUrl(raw: unknown): ValidationResult<string> {
   if (typeof raw !== "string" || raw.trim() === "") return { ok: false, problem: "baseUrl must be a non-empty string" };
@@ -164,6 +165,14 @@ export function validateBaseUrl(raw: unknown): ValidationResult<string> {
   // the pathname, so it must never end up inside the query.
   url.pathname = url.pathname.replace(/\/+$/, "") || "/";
   return { ok: true, value: url.toString() };
+}
+
+function isPlainHttp(url: string): boolean {
+  try {
+    return new URL(url).protocol === "http:";
+  } catch {
+    return false;
+  }
 }
 
 function validateModel(raw: unknown): ValidationResult<string> {
@@ -249,6 +258,21 @@ export function validateJevConfig(raw: unknown, envKey?: string | null): Validat
   if (o.mode !== undefined) {
     if (o.mode !== "shadow" && o.mode !== "enforce") return { ok: false, problem: 'mode must be "shadow" or "enforce"' };
     cfg.mode = o.mode;
+  }
+
+  // Plain http reaches only a loopback host (`validateBaseUrl`), and nothing
+  // authenticates the server there: while the local proxy is down, any process
+  // of this user — the agent being judged included — can bind its port and
+  // answer "none" to every question. In enforce mode that answer clears
+  // reviewable denies; in shadow mode it changes nothing, so that is the only
+  // mode it is accepted in.
+  if (cfg.baseUrl !== undefined && isPlainHttp(cfg.baseUrl) && cfg.mode !== "shadow") {
+    return {
+      ok: false,
+      problem:
+        "plain http (to localhost) is accepted only with mode shadow: in enforce mode Jev's answers can clear a deny, " +
+        "and while the local proxy is down any process on this machine could take its port and answer. Use https, or mode shadow",
+    };
   }
 
   return { ok: true, value: cfg };

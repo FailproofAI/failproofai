@@ -147,7 +147,8 @@ function remedy(code: string): string {
   return "Hooks would fall back to regex for this reason.";
 }
 
-function statsBlock(stats: JevStats | null, opts: RenderOpts): string[] {
+/** The `jev status` activity block, from `jevStats()` (null when it could not be read). */
+export function jevStatsLines(stats: JevStats | null, opts: RenderOpts = {}): string[] {
   const hours = stats ? Math.round(stats.windowMs / 3_600_000) : 24;
   const heading = rule(`last ${hours} hours`, opts);
   if (!stats) return stack(heading, note("Activity could not be read.", opts));
@@ -301,8 +302,7 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
   const route = jevRoute(cfg);
   return ok(
     stack(
-      title("failproofai jev setup", `${provider} · ${cfg.mode ?? DEFAULT_JEV_MODE}`, opts),
-      note(`Saved ${path}, permissions ${permissions(fileMode)}.`, opts),
+      title("failproofai jev setup", `saved · ${provider} · ${cfg.mode ?? DEFAULT_JEV_MODE}`, opts),
       rows(
         [
           ["provider", provider],
@@ -311,6 +311,8 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
           ["mode", modeLine(cfg.mode ?? DEFAULT_JEV_MODE)],
           ["timeout", `${cfg.timeoutMs} ms`],
           ["key", keyNote],
+          ["config", path],
+          ["permissions", permissions(fileMode)],
         ],
         opts,
       ),
@@ -376,7 +378,7 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
           },
           opts,
         ),
-        statsBlock(stats, opts),
+        jevStatsLines(stats, opts),
       ),
     );
   }
@@ -390,7 +392,7 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
           ? nextStep(`chmod 600 ${inspection.path}`, "Make it owner-only (or re-run `failproofai jev setup`):", opts)
           : nextStep("failproofai jev setup --provider <kind> --key-stdin", "Write a valid one:", opts),
         legacyNote,
-        statsBlock(stats, opts),
+        jevStatsLines(stats, opts),
       ),
     );
   }
@@ -415,7 +417,7 @@ async function status(argv: string[], opts: RenderOpts): Promise<JevCliResult> {
         opts,
       ),
       legacyNote,
-      statsBlock(stats, opts),
+      jevStatsLines(stats, opts),
     ),
   );
 }

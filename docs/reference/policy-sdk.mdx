@@ -88,6 +88,8 @@ customPolicies.add({
 | `description` | No | Human-readable purpose shown in policy listings and decisions. |
 | `match.events` | No | Event types that invoke the policy. Omitting `match` invokes it for every available event. |
 | `fn` | Yes | Synchronous or asynchronous function that returns an `allow`, `instruct`, or `deny` result. |
+| `authority` | No | `"hard"` (the default) or `"reviewable"`. Whether the Jev semantic evaluator may clear this policy's verdict. See [Policy authority](/policies/authority). |
+| `reviewedBy` | No | The semantic checks that must all come back clear before Jev may clear the verdict. Required for `"reviewable"`. |
 
 Filter tools inside `fn`. `match.toolNames` is not part of the public custom-policy type.
 
@@ -296,7 +298,7 @@ Keep policy modules deterministic and quick. Avoid top-level network calls or se
 | `getCustomHooks()` | Return the policies currently registered in the module registry. |
 | `clearCustomHooks()` | Clear that registry, primarily for tests and loaders. |
 
-TypeScript exports `PolicyContext`, `PolicyResult`, `CustomHook`, `PolicyDecision`, and `PolicyFunction`.
+TypeScript exports `PolicyContext`, `PolicyResult`, `CustomHook`, `PolicyDecision`, `PolicyFunction`, and `PolicyAuthority`.
 
 <Card title="Deploy custom policies" icon="server-cog" href="/policies/deploy">
   Publish a version, deploy it in observe mode, verify decisions, and move to enforcement.

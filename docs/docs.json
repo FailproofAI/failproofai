@@ -229,6 +229,7 @@
                   "reference/failproof-cli",
                   "reference/local-dashboard",
                   "policies/local-configuration",
+                  "policies/authority",
                   "reference/cloud-cli",
                   "reference/http-api",
                   "reference/events-and-configuration",

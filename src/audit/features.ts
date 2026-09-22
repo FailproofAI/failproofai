@@ -77,7 +77,8 @@ export const ARCHITECT_CAUTION_SIGNALS = new Set(["reread-after-edit", "redundan
  * mapped yet: block-no-verify would double-count the git-commit-no-verify
  * detector below, and adding cowboy signals shifts the lift baselines — a
  * persona change that wants its own calibration. Their hits still appear in the
- * report. Weights express *severity within* a persona; cross-persona
+ * report and the score; a block-no-verify hit on an event the detector already
+ * counted is dropped (DETECTOR_COVERED_POLICIES in replay.ts). Weights express *severity within* a persona; cross-persona
  * fairness is handled later by lift normalisation, not by these numbers.
  */
 export const SIGNAL_MAP: Record<string, { archetype: ArchetypeKey; weight: number }> = {

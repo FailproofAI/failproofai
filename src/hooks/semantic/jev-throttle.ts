@@ -10,8 +10,9 @@
  *   The request is everything Jev sees — no clock, no randomness — so an
  *   identical request is an identical question, and its answer is reused for
  *   a short TTL. The TTL runs from when the answer was fetched; a hit never
- *   extends it. Only complete answers are stored (a finite probability in
- *   [0, 1] for every question asked), bounded by entry count and by size, and
+ *   extends it. Only answers the evaluator accepts are stored (`readAnswers`:
+ *   a probability in [0, 1] for every question asked, from a model it
+ *   accepts), bounded by entry count and by size, and
  *   every hit hands back a fresh copy, so a caller mutating its response can
  *   never change what the next caller gets. A side effect worth having: within
  *   the TTL, retrying a denied call gets the same answer rather than a fresh
@@ -21,8 +22,9 @@
  *   `JevError("rate-limited")` at once, so the evaluator degrades and the
  *   caller falls back to the regex result with a recorded reason — visibly,
  *   not silently. `maxWaitMs` lets a call wait briefly for the next token
- *   instead. A provider 429 empties the bucket, so the calls right behind it
- *   fall back locally instead of spending more requests on a full window.
+ *   instead. A provider 429 empties the bucket as of when the 429 arrived
+ *   (however long that round-trip took), so the calls right behind it fall
+ *   back locally instead of spending more requests on a full window.
  *
  * It never throws on its own except for those two cases: an over-budget call,
  * and a signal that is already aborted (or aborts while waiting for a token).
@@ -47,9 +49,34 @@
  * pre-write an all-clear answer — clearing reviewable denies without Jev ever
  * being asked. The worker's memory has no such surface. Signing the entries
  * would not help: any key the hook can read, the agent can read too.
+ *
+ * **What a caller wiring this in must do** (T3), because the module cannot see
+ * any of it from here:
+ *
+ * - **Pass `scope`** naming where answers come from, e.g.
+ *   `` `${route.via}|${route.endpoint}|${route.model}` `` from T1's route. The
+ *   request alone does not say which provider, endpoint or model answered — a
+ *   transport may send a model other than `request.model` — and the cache is
+ *   process-wide, so without a scope a `jev.json` change in a long-lived
+ *   worker serves the old provider's answers under the new one until they
+ *   expire. The scope is only ever hashed into the key, never stored, so an
+ *   endpoint carrying a credential in its query string is safe to pass. It
+ *   cannot default to anything better: the transport's identity changes on
+ *   every hook event (a new wrapper each time), which would turn the cache off.
+ * - **A hit is the original answer, `usage` included**, returned in ~0 ms.
+ *   Anything that sums tokens or cost, or takes latency percentiles, must tell
+ *   hits apart. `evaluateSemantic` never exposes the response, so wrap the
+ *   throttled transport and ask {@link isCachedJevResponse}:
+ *   `async (r, s) => { const res = await throttled(r, s); cached = isCachedJevResponse(res); return res; }`
+ *   then record `inputTokens: null` (and flag the latency) when `cached`.
+ * - **Tests** that route through a throttled transport share this module's
+ *   state across every file bun runs in one process: call
+ *   `resetJevThrottle()` in `beforeEach`, or pass
+ *   `{ cacheTtlMs: 0, ratePerSec: 1e6 }` where caching and limiting are not
+ *   what is under test.
  */
 import { createHash } from "node:crypto";
-import { JevError, type JevTransport } from "./jev-client";
+import { JevError, readAnswers, type JevTransport } from "./jev-client";
 import type { JevRequest, JevResponse } from "./types";
 
 export interface ThrottleOptions {
@@ -74,8 +101,12 @@ export interface ThrottleOptions {
   /** Most characters of serialized answers kept (≈ bytes; answers are ASCII JSON). Default 4 MiB. 0 disables the cache. */
   cacheMaxBytes?: number;
   /**
-   * Mixed into the cache key: where the answers came from (e.g. provider and
-   * model id). Answers cached under one scope are never served under another.
+   * Mixed into the cache key (hashed, never stored): where the answers came
+   * from — provider, endpoint and the model actually sent, e.g.
+   * `` `${via}|${endpoint}|${model}` ``. Answers cached under one scope are
+   * never served under another. Default `""`, which every unscoped wrapper in
+   * the process shares: a real caller should always pass one (see the module
+   * doc).
    */
   scope?: string;
   /** Monotonic clock in milliseconds. For tests; defaults to `performance.now()`. */
@@ -181,7 +212,10 @@ export function resetJevThrottle(): void {
 
 /**
  * True when `response` came from the cache rather than the network — for a
- * caller that wants to record it (a hit's latency is ~0 ms and costs nothing).
+ * caller that wants to record it. A hit costs nothing and takes ~0 ms, but it
+ * still carries the original answer's `usage`: token and cost totals must
+ * skip it. Through `evaluateSemantic`, wrap the throttled transport to see
+ * the response (module doc).
  */
 export function isCachedJevResponse(response: unknown): boolean {
   return typeof response === "object" && response !== null && servedFromCache.has(response);
@@ -230,20 +264,23 @@ function cacheGet(key: string, now: number): JevResponse | null {
   }
 }
 
-/** Only an answer the evaluator could use is worth keeping: a probability for every question. */
-function isCompleteAnswer(request: JevRequest, response: JevResponse): boolean {
-  if (!response || typeof response !== "object" || typeof response.model !== "string") return false;
-  const answers = response.answers;
-  if (!answers || typeof answers !== "object") return false;
-  for (const id of Object.keys(request.questions ?? {})) {
-    const p = answers[id]?.noul;
-    if (typeof p !== "number" || !Number.isFinite(p) || p < 0 || p > 1) return false;
+/**
+ * Only an answer the evaluator could use is worth keeping. The rule is the
+ * evaluator's own (`readAnswers`: a probability in [0, 1] for every question,
+ * and a model it accepts), not a copy of it, so the two cannot drift apart: a
+ * wrong-model answer the evaluator rejects is never pinned for the TTL.
+ */
+function isUsableAnswer(request: JevRequest, response: JevResponse): boolean {
+  try {
+    readAnswers(request, response);
+    return true;
+  } catch {
+    return false;
   }
-  return true;
 }
 
 function cachePut(cfg: ResolvedOptions, key: string, request: JevRequest, response: JevResponse, now: number): void {
-  if (!isCompleteAnswer(request, response)) return;
+  if (!isUsableAnswer(request, response)) return;
   let body: string;
   try {
     body = JSON.stringify(response);
@@ -355,8 +392,14 @@ export function throttleTransport(t: JevTransport, opts?: ThrottleOptions | null
       counters.upstreamErrors++;
       // The provider's window is full: the calls right behind this one fall
       // back locally until the bucket refills, rather than each spending a
-      // request to learn the same thing.
-      if (err instanceof JevError && PROVIDER_WINDOW_FULL.has(err.code)) bucket.tokens = Math.min(bucket.tokens, 0);
+      // request to learn the same thing. Refill to now first: the bucket was
+      // last stamped when this call was admitted, so without it the next
+      // refill would credit the whole round-trip (hundreds of ms against a
+      // real provider, i.e. one or more tokens) and undo the emptying.
+      if (err instanceof JevError && PROVIDER_WINDOW_FULL.has(err.code)) {
+        refill(cfg, cfg.now());
+        bucket.tokens = Math.min(bucket.tokens, 0);
+      }
       throw err;
     }
 

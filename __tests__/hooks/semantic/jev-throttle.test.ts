@@ -498,3 +498,139 @@ describe("jev-throttle: through evaluateSemantic", () => {
     }
   });
 });
+
+// ── Review round 1 ───────────────────────────────────────────────────────────
+
+async function caught(p: Promise<unknown>): Promise<unknown> {
+  try {
+    await p;
+  } catch (err) {
+    return err;
+  }
+  throw new Error("expected a rejection");
+}
+
+describe("jev-throttle: a provider 429 empties the bucket however long the round-trip took", () => {
+  /** Takes `latencyMs` of fake time to answer, and answers the first call with `first`. */
+  function slowFirstFailure(clock: ReturnType<typeof fakeClock>, latencyMs: number, first: Error) {
+    return fakeTransport((r, n) => {
+      clock.advance(latencyMs);
+      if (n === 1) throw first;
+      return answerFor(r);
+    });
+  }
+
+  for (const latencyMs of [0, 150, 400, 1_000, 5_000]) {
+    it(`refuses the very next call locally after a 429 that took ${latencyMs} ms`, async () => {
+      const clock = fakeClock();
+      const limited = new JevError("http-429", "Too Many Requests");
+      const { transport, calls } = slowFirstFailure(clock, latencyMs, limited);
+      const t = throttleTransport(transport, { now: clock.now }); // defaults: 5 req/s, burst 5
+      expect(await caught(t(request("a"), live()))).toBe(limited);
+      expect(((await caught(t(request("b"), live()))) as JevError).code).toBe("rate-limited");
+      clock.advance(150); // 0.75 of a token since the 429
+      expect(((await caught(t(request("b"), live()))) as JevError).code).toBe("rate-limited");
+      expect(calls).toHaveLength(1);
+      clock.advance(50); // one full token, 200 ms after the 429 arrived
+      await t(request("b"), live());
+      expect(calls).toHaveLength(2);
+    });
+  }
+
+  it("does the same for a transport's own 'rate-limited' after a slow round-trip", async () => {
+    const clock = fakeClock();
+    const limited = new JevError("rate-limited", "provider window full");
+    const { transport, calls } = slowFirstFailure(clock, 400, limited);
+    const t = throttleTransport(transport, { now: clock.now });
+    expect(await caught(t(request("a"), live()))).toBe(limited);
+    expect(((await caught(t(request("b"), live()))) as JevError).code).toBe("rate-limited");
+    expect(calls).toHaveLength(1);
+  });
+
+  it("leaves the bucket alone for any other upstream error, slow or not", async () => {
+    const clock = fakeClock();
+    const failed = new JevError("http-500", "HTTP 500");
+    const { transport, calls } = slowFirstFailure(clock, 400, failed);
+    const t = throttleTransport(transport, { now: clock.now });
+    expect(await caught(t(request("a"), live()))).toBe(failed);
+    await t(request("b"), live());
+    await t(request("c"), live());
+    expect(calls).toHaveLength(3);
+    expect(jevThrottleStats().rateLimited).toBe(0);
+  });
+});
+
+describe("jev-throttle: caches only what the evaluator accepts", () => {
+  it("never caches a wrong-model or unreported-model answer, but returns it unchanged", async () => {
+    for (const model of ["jev-2.0.0", ""]) {
+      resetJevThrottle();
+      const { transport, calls } = fakeTransport((r) => ({ ...answerFor(r), model }));
+      const t = throttleTransport(transport, { ratePerSec: 100 });
+      const out = await t(request("ls"), live());
+      expect(out.model).toBe(model);
+      await t(request("ls"), live());
+      expect(calls).toHaveLength(2);
+      expect(jevThrottleStats()).toMatchObject({ hits: 0, entries: 0 });
+    }
+  });
+
+  it("asks again after a model-mismatch through evaluateSemantic instead of replaying it for the TTL", async () => {
+    const input = { eventType: "PreToolUse", toolName: "Bash", toolInput: { command: "rm -rf ./build" }, cwd: "/work/repo", userSaid: ["clean the build output"] };
+    const { transport, calls } = fakeTransport((r, n) => (n === 1 ? { ...answerFor(r), model: "jev-2.0.0" } : answerFor(r)));
+    const t = throttleTransport(transport);
+    expect(await evaluateSemantic(input, { transport: t })).toMatchObject({ status: "degraded", reason: "model-mismatch" });
+    expect((await evaluateSemantic(input, { transport: t })).status).toBe("ok");
+    expect(calls).toHaveLength(2);
+    expect((await evaluateSemantic(input, { transport: t })).status).toBe("ok"); // the good answer is the one kept
+    expect(calls).toHaveLength(2);
+  });
+
+  it("still caches an answer the evaluator accepts with an unverified model (Cloudflare's alias)", async () => {
+    const { transport, calls } = fakeTransport((r) => ({ ...answerFor(r), modelUnverified: true }));
+    const t = throttleTransport(transport);
+    await t(request("ls"), live());
+    const hit = await t(request("ls"), live());
+    expect(calls).toHaveLength(1);
+    expect(isCachedJevResponse(hit)).toBe(true);
+    expect(hit.modelUnverified).toBe(true);
+  });
+});
+
+describe("jev-throttle: scope keeps one provider's answers from another's", () => {
+  it("serves nothing across scopes, and each scope its own answer", async () => {
+    const a = fakeTransport((r) => answerFor(r, 0.1));
+    const b = fakeTransport((r) => answerFor(r, 0.95));
+    const viaA = throttleTransport(a.transport, { scope: "cloudflare|https://api.cloudflare.com/x/ai/run/typesafe/jev|typesafe/jev" });
+    const viaB = throttleTransport(b.transport, { scope: "typesafe|https://api.typesafe.ai/v1/systemone|jev-1.13.0" });
+    expect((await viaA(request("ls"), live())).answers["destroy.target"].noul).toBe(0.1);
+    expect((await viaB(request("ls"), live())).answers["destroy.target"].noul).toBe(0.95);
+    expect([a.calls.length, b.calls.length]).toEqual([1, 1]);
+    expect((await viaA(request("ls"), live())).answers["destroy.target"].noul).toBe(0.1);
+    expect((await viaB(request("ls"), live())).answers["destroy.target"].noul).toBe(0.95);
+    expect([a.calls.length, b.calls.length]).toEqual([1, 1]);
+    expect(jevThrottleStats().hits).toBe(2);
+  });
+});
+
+describe("jev-throttle: telling a hit apart through evaluateSemantic", () => {
+  it("a caller wrapping the throttled transport sees which outcome came from the cache", async () => {
+    const input = { eventType: "PreToolUse", toolName: "Bash", toolInput: { command: "rm -rf ./build" }, cwd: "/work/repo", userSaid: ["clean the build output"] };
+    const { transport, calls } = fakeTransport();
+    const throttled = throttleTransport(transport);
+    let cached: boolean | null = null;
+    const observed: JevTransport = async (r, s) => {
+      const res = await throttled(r, s);
+      cached = isCachedJevResponse(res);
+      return res;
+    };
+    const first = await evaluateSemantic(input, { transport: observed });
+    expect(cached).toBe(false);
+    const again = await evaluateSemantic(input, { transport: observed });
+    expect(cached).toBe(true);
+    expect(calls).toHaveLength(1);
+    // As documented: the hit carries the original usage, so token and cost
+    // totals must skip it by this flag rather than trust inputTokens.
+    expect(first.status === "ok" && first.inputTokens).toBe(321);
+    expect(again.status === "ok" && again.inputTokens).toBe(321);
+  });
+});

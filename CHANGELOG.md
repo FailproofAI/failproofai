@@ -17,6 +17,7 @@
 
 ### Docs
 
+- A TypeScript reference page sits beside the Python custom-agents one, registered in the English navigation; the translate pipeline picks up the other fourteen locales on its next run. The cross-link runs both ways and both sides say the same thing in the same place — the two SDKs write the same events into the same spool, so a fleet with Node agents and Python agents produces one set of sessions, not two. That is the fact a reader needs before they start choosing, and it appeared nowhere the choice is actually made. (#830)
 - Document ending an issue three ways (resolve / close / archive) and clearing a board after an agent change, in the audits guide and the Cloud CLI reference. (#815)
 
 ## 1.0.6 — 2026-09-16

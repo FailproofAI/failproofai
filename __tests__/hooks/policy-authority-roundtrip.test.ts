@@ -19,7 +19,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { POLICY_CATALOG } from "@/src/hooks/policy-catalog";
@@ -71,6 +71,16 @@ afterEach(() => {
 
 function writeConfig(config: Record<string, unknown>): void {
   writeFileSync(join(home, "policies-config.json"), JSON.stringify(config));
+}
+
+/**
+ * Make this (temporary) home one where Jev is configured, as far as authority
+ * warnings are concerned: a global jev.json exists. Deliberately not a valid
+ * config — nothing here should ever reach a provider — and never the real
+ * ~/.failproofai, where it would switch Jev on for the machine's live hooks.
+ */
+function configureJev(): void {
+  writeFileSync(join(home, "jev.json"), "{}", { mode: 0o600 });
 }
 
 const sha = (text: string) => createHash("sha256").update(text).digest("hex");
@@ -147,6 +157,15 @@ describe("catalog → build-policy-pack → policies add → loader → registry
       })),
     ).toEqual(expected);
     expect(manifest.policies.filter((p) => p.authority === "reviewable")).toHaveLength(7);
+  });
+
+  it("does not bundle the semantic policies into the pack's entry", () => {
+    // policy-registry → policy-authority once imported semantic/policies at
+    // runtime, and its module-level name set kept all sixteen of Jev's prompts
+    // alive in every bundle that registers a policy (+22 KB, never used).
+    const entry = readFileSync(join(packDir, "failproofai-pack.mjs"), "utf8");
+    expect(entry).not.toMatch(/\/\/ src\/hooks\/semantic\//);
+    expect(entry).not.toMatch(/Tried to permanently delete data that cannot be regenerated/);
   });
 
   it("passes the same fields to customPolicies.add in the entry, so a rebuilt manifest agrees", async () => {
@@ -254,6 +273,7 @@ describe("a third-party pack: its manifest decides, and only for its own policie
 
   it("makes an invalid declaration hard without refusing the pack", async () => {
     installPack();
+    configureJev();
     const { readInstalledPacks } = await import("@/src/hooks/pack-manifest");
     const { packs, errors } = readInstalledPacks();
     expect(errors).toEqual([]);
@@ -269,6 +289,15 @@ describe("a third-party pack: its manifest decides, and only for its own policie
     );
     // The pack still enforces: nothing about it failed closed.
     expect(registered.has("pack/failproofai-pack-unavailable")).toBe(false);
+  });
+
+  it("says nothing about a refused declaration on a machine without Jev, where it decides nothing", async () => {
+    // A pack built against a newer semantic set would otherwise put a WARN on
+    // the hook's stderr for every tool call of every machine that installed it.
+    installPack();
+    const registered = await registeredAfterOneEvent();
+    expect(authorityOf(registered.get("pack/acme/ops@1.0.0/names-unknown-check"))).toEqual({ authority: "hard" });
+    expect(warnings()).not.toMatch(/asks to be reviewable/);
   });
 
   it("cannot make anything outside its own prefix reviewable", async () => {
@@ -362,6 +391,7 @@ describe("the user's own policy files → registry", () => {
     mkdirSync(join(project, ".failproofai", "policies"), { recursive: true });
     writeFileSync(join(project, ".failproofai", "policies", "infra-policies.mjs"), CONVENTION);
     writeConfig({ enabledPolicies: [], customPoliciesPaths: [explicit] });
+    configureJev();
 
     const registered = await registeredAfterOneEvent();
     expect(authorityOf(registered.get("custom/outside-reads"))).toEqual({
@@ -378,6 +408,18 @@ describe("the user's own policy files → registry", () => {
     expect(warnings()).toMatch(/custom\/typo asks to be reviewable, but reviewedBy names "read-outside-workspce"/);
     expect(warnings()).not.toMatch(/custom\/silent asks/);
   });
+
+  it("says it once per process, not once per event", async () => {
+    // The daemon's warm worker runs every event in one process.
+    const explicit = join(project, "team-rules.mjs");
+    writeFileSync(explicit, FILE);
+    writeConfig({ enabledPolicies: [], customPoliciesPaths: [explicit] });
+    configureJev();
+    await registeredAfterOneEvent();
+    await registeredAfterOneEvent();
+    await registeredAfterOneEvent();
+    expect(warnings().match(/custom\/typo asks to be reviewable/g)).toHaveLength(1);
+  });
 });
 
 describe("failproofai publish → manifest", () => {
@@ -386,9 +428,22 @@ describe("failproofai publish → manifest", () => {
     const ok = async () => allow();
     customPolicies.add({ name: "block-prod-deploy", description: "d", match: { events: ["PreToolUse"] },
       authority: "reviewable", reviewedBy: ["production-infra-change"], fn: ok });
+    customPolicies.add({ name: "hard-on-purpose", description: "d", match: { events: ["PreToolUse"] },
+      authority: "hard", fn: ok });
+    customPolicies.add({ name: "silent", description: "d", match: { events: ["PreToolUse"] }, fn: ok });
+  `;
+  /** Each of these would reach a machine as silently hard, or not at all. */
+  const UNPUBLISHABLE = `
+    import { customPolicies, allow } from "failproofai";
+    const ok = async () => allow();
+    customPolicies.add({ name: "fine", description: "d", match: { events: ["PreToolUse"] },
+      authority: "reviewable", reviewedBy: ["production-infra-change"], fn: ok });
+    customPolicies.add({ name: "typo", description: "d", match: { events: ["PreToolUse"] },
+      authority: "reviewable", reviewedBy: ["secret-exposre"], fn: ok });
+    customPolicies.add({ name: "stringly", description: "d", match: { events: ["PreToolUse"] },
+      authority: "reviewable", reviewedBy: "secret-exposure", fn: ok });
     customPolicies.add({ name: "garbled", description: "d", match: { events: ["PreToolUse"] },
       authority: "maybe", reviewedBy: [1], fn: ok });
-    customPolicies.add({ name: "silent", description: "d", match: { events: ["PreToolUse"] }, fn: ok });
   `;
 
   it("copies a registration's authority into the manifest a machine reads it from", async () => {
@@ -407,10 +462,25 @@ describe("failproofai publish → manifest", () => {
       authority: "reviewable",
       reviewedBy: ["production-infra-change"],
     });
-    // Malformed fields are not published, so no machine ever reads them.
-    expect("authority" in byName.get("garbled")!).toBe(false);
-    expect("reviewedBy" in byName.get("garbled")!).toBe(false);
+    expect(byName.get("hard-on-purpose")).toMatchObject({ authority: "hard" });
     // Absent stays absent: nothing is invented for a policy that said nothing.
     expect("authority" in byName.get("silent")!).toBe(false);
+  });
+
+  it("refuses to build a pack whose declarations a machine would not honor, naming each", async () => {
+    const entry = join(project, "policies.mjs");
+    writeFileSync(entry, UNPUBLISHABLE);
+    const out = join(project, "dist-pack");
+    const { runPackCommand } = await import("@/src/hooks/pack-cli");
+    const r = await runPackCommand(["build", entry, "--id", "acme/support", "--version", "1.0.0", "--out", out]);
+    expect(r.exitCode).not.toBe(0);
+    const text = r.lines.join("\n");
+    expect(text).toMatch(/3 policies declare an authority this build cannot publish/);
+    expect(text).toMatch(/typo: authority "reviewable" was refused — reviewedBy names "secret-exposre"/);
+    expect(text).toMatch(/stringly: reviewedBy must be a list of semantic policy names/);
+    expect(text).toMatch(/garbled: authority must be "hard" or "reviewable", and is "maybe"/);
+    expect(text).not.toMatch(/\bfine:/);
+    // Nothing was written: there is no half-built pack to upload by mistake.
+    expect(existsSync(join(out, "failproofai-pack.json"))).toBe(false);
   });
 });

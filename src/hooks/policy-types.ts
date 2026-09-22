@@ -66,15 +66,13 @@ export type PolicyAuthority = "hard" | "reviewable";
  * self-protection guard — is `hard`, so an unknown custom, cloud or third-party
  * policy can never be weakened by Jev.
  *
- * One malformed entry in `reviewedBy` makes the whole declaration invalid
- * rather than being skipped: the list is a conjunction ("every one of these
- * must come back clear"), so dropping an entry would let Jev clear the policy
- * on fewer checks than its author asked for.
- *
- * Shape only. Whether each name is a semantic policy this build actually has is
- * checked by `resolvePolicyAuthority` in `policy-authority.ts`, which is what
- * `registerPolicy` stores — so a registered policy's fields are already
- * resolved and this function is safe to call on one directly.
+ * This is the §7 contract every task builds against, and it is deliberately
+ * the looser of two rules: one usable name is enough here. REGISTRATION is
+ * stricter — `resolvePolicyAuthority` in `policy-authority.ts` makes the whole
+ * declaration hard if any entry is malformed or is not a semantic policy this
+ * build has, and that is what `registerPolicy` stores. So a registered policy's
+ * `reviewedBy` is already clean, and the two rules agree on everything that
+ * reaches the registry.
  */
 export function effectiveAuthority(p: {
   authority?: unknown;
@@ -83,8 +81,9 @@ export function effectiveAuthority(p: {
 }): PolicyAuthority {
   if (p.alwaysOn === true) return "hard";
   if (p.authority !== "reviewable") return "hard";
-  if (!Array.isArray(p.reviewedBy) || p.reviewedBy.length === 0) return "hard";
-  return p.reviewedBy.every((n) => typeof n === "string" && n.length > 0) ? "reviewable" : "hard";
+  if (!Array.isArray(p.reviewedBy)) return "hard";
+  const named = p.reviewedBy.filter((n) => typeof n === "string" && n.length > 0);
+  return named.length > 0 ? "reviewable" : "hard";
 }
 
 export interface PolicyParamsSchema {

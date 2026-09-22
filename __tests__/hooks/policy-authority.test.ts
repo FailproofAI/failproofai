@@ -6,13 +6,22 @@
  * authority that silently widened would let Jev clear a deny its author never
  * agreed to hand over.
  */
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { effectiveAuthority } from "../../src/hooks/policy-types";
 import {
+  SEMANTIC_POLICY_NAMES,
   SEMANTIC_REVIEWER_NAMES,
   authorityDeclarationFor,
   authorityFieldsOf,
+  authorityProblem,
+  manifestAuthority,
+  type AuthorityFields,
   resolvePolicyAuthority,
+  warnAuthority,
+  withMergedAuthority,
 } from "../../src/hooks/policy-authority";
 import { SEMANTIC_POLICIES, INJECTION_PROBE, SCOPE_PROBE, TASK_PROBES } from "../../src/hooks/semantic/policies";
 import { clearPolicies, getAllPolicies, registerPolicy } from "../../src/hooks/policy-registry";
@@ -30,8 +39,7 @@ describe("effectiveAuthority — shape only", () => {
     ["reviewable with no reviewedBy", { authority: "reviewable" }],
     ["reviewable with an empty reviewedBy", { authority: "reviewable", reviewedBy: [] }],
     ["reviewable with a string reviewedBy", { authority: "reviewable", reviewedBy: "secret-exposure" }],
-    ["reviewable with one malformed entry", { authority: "reviewable", reviewedBy: ["secret-exposure", 5] }],
-    ["reviewable with an empty-string entry", { authority: "reviewable", reviewedBy: ["", "secret-exposure"] }],
+    ["reviewable with only malformed entries", { authority: "reviewable", reviewedBy: ["", 7, null] }],
   ])("is hard for %s", (_label, decl) => {
     expect(effectiveAuthority(decl as never)).toBe("hard");
   });
@@ -40,6 +48,19 @@ describe("effectiveAuthority — shape only", () => {
     expect(
       effectiveAuthority({ authority: "reviewable", reviewedBy: ["agent-config-tampering"], alwaysOn: true }),
     ).toBe("hard");
+  });
+
+  it("keeps the §7 contract: one usable name is enough, malformed entries are skipped", () => {
+    // T3's `authorityOf` is built on exactly this, and filters the list itself.
+    // The stricter every-entry rule belongs to REGISTRATION (resolvePolicyAuthority
+    // below), which is what the registry stores.
+    expect(effectiveAuthority({ authority: "reviewable", reviewedBy: ["secret-exposure", "", 7] } as never)).toBe(
+      "reviewable",
+    );
+    expect(effectiveAuthority({ authority: "reviewable", reviewedBy: ["secret-exposure", 5] } as never)).toBe(
+      "reviewable",
+    );
+    expect(effectiveAuthority({ authority: "reviewable", reviewedBy: ["", "secret-exposure"] })).toBe("reviewable");
   });
 
   it("is reviewable only for a complete declaration", () => {
@@ -54,6 +75,19 @@ describe("SEMANTIC_REVIEWER_NAMES", () => {
   it("is exactly the semantic policy names", () => {
     expect([...SEMANTIC_REVIEWER_NAMES].sort()).toEqual(SEMANTIC_POLICIES.map((p) => p.name).sort());
     expect(SEMANTIC_REVIEWER_NAMES.size).toBe(16);
+  });
+
+  it("is a literal list, so the registry never loads Jev's prompts at runtime", () => {
+    // policy-registry imports policy-authority. A runtime import of
+    // semantic/policies from here put all sixteen prompts on every hook event
+    // and into every pack artifact that registers a policy.
+    const src = readFileSync(resolve(__dirname, "../../src/hooks/policy-authority.ts"), "utf8");
+    const runtimeSemantic = [...src.matchAll(/^import (type )?[^;]*from "\.\/semantic\/[^"]+";/gm)].filter(
+      (m) => m[1] !== "type ",
+    );
+    expect(runtimeSemantic.map((m) => m[0])).toEqual([]);
+    expect(src).not.toMatch(/import\(\s*["']\.\/semantic\//);
+    expect([...SEMANTIC_POLICY_NAMES]).toEqual(SEMANTIC_POLICIES.map((p) => p.name));
   });
 
   it("does not accept a probe as a reviewer", () => {
@@ -100,6 +134,32 @@ describe("resolvePolicyAuthority", () => {
     expect(r.reviewedBy).toBeUndefined();
     expect(r.downgraded).toMatch(/"secret-exposure-v2"/);
     expect(r.downgraded).toMatch(/is not a semantic policy/);
+  });
+
+  it.each([
+    ["a malformed entry", ["secret-exposure", 5]],
+    ["an empty-string entry", ["", "secret-exposure"]],
+    ["both", ["secret-exposure", "", 7]],
+    ["a null entry", ["secret-exposure", null]],
+  ])("refuses a reviewedBy with %s, which the §7 contract alone would accept", (_label, reviewedBy) => {
+    // Registration is the strict half: skipping the stray entry would let Jev
+    // clear the policy on fewer checks than its author wrote down.
+    const decl = { authority: "reviewable", reviewedBy };
+    expect(effectiveAuthority(decl as never)).toBe("reviewable");
+    const r = resolvePolicyAuthority(decl);
+    expect(r).toEqual({ authority: "hard", downgraded: "reviewedBy is not a list of semantic policy names" });
+  });
+
+  it("never throws on an entry that cannot be printed", () => {
+    // A user's own policy file can put anything in the list.
+    const odd = [Object.create(null), BigInt(1), Symbol("x"), () => 1];
+    for (const entry of odd) {
+      expect(resolvePolicyAuthority({ authority: "reviewable", reviewedBy: ["secret-exposure", entry] }).authority).toBe(
+        "hard",
+      );
+      expect(() => authorityProblem({ authority: "reviewable", reviewedBy: [entry] })).not.toThrow();
+      expect(() => authorityProblem({ authority: entry })).not.toThrow();
+    }
   });
 
   it("says why a reviewable claim was refused", () => {
@@ -160,6 +220,8 @@ describe("registerPolicy stores the RESOLVED authority", () => {
     ["no reviewedBy", { authority: "reviewable" }],
     ["an unknown semantic policy", { authority: "reviewable", reviewedBy: ["made-up"] }],
     ["a malformed reviewedBy", { authority: "reviewable", reviewedBy: [null] }],
+    ["one malformed entry beside a real name", { authority: "reviewable", reviewedBy: ["secret-exposure", 7] }],
+    ["an empty-string entry beside a real name", { authority: "reviewable", reviewedBy: ["secret-exposure", ""] }],
     ["alwaysOn", { authority: "reviewable", reviewedBy: ["agent-config-tampering"], alwaysOn: true }],
   ])("registers %s as hard with no reviewedBy", (_label, meta) => {
     registerPolicy("p", "d", allow, {}, 0, undefined, meta as never);
@@ -290,5 +352,145 @@ describe("parsePackPolicy — authority fields", () => {
     expect(() =>
       parsePackPolicy("acme/ops", { ...base, alwaysOn: true, authority: "reviewable", reviewedBy: ["x"] }, 0),
     ).toThrow(/alwaysOn/);
+  });
+});
+
+describe("withMergedAuthority — several declarations, one registration", () => {
+  /** A record the way the loader has them: other fields beside the two authority ones. */
+  type Rec = { id: string } & AuthorityFields;
+  const R = (...reviewedBy: string[]): AuthorityFields => ({ authority: "reviewable", reviewedBy });
+  const H: AuthorityFields = { authority: "hard" };
+
+  it("is reviewable only when every declaration is, through the union of their checks", () => {
+    const a: Rec = { id: "a", ...R("database-destruction") };
+    const { merged, overruled } = withMergedAuthority(a, [a, R("secret-exposure", "database-destruction")]);
+    expect(merged).toEqual({ id: "a", authority: "reviewable", reviewedBy: ["database-destruction", "secret-exposure"] });
+    expect(overruled).toBe(false);
+  });
+
+  it.each([
+    ["an explicit hard", H],
+    ["no declaration at all", {}],
+    ["a refused reviewable", R("not-a-check")],
+  ])("leans toward hard against %s, whichever order they come in", (_label, other: AuthorityFields) => {
+    const reviewable: Rec = { id: "r", ...R("database-destruction") };
+    const otherRecord: Rec = { id: "o", ...other };
+    const cases: Array<[Rec, Rec[]]> = [
+      [reviewable, [reviewable, otherRecord]],
+      [reviewable, [otherRecord, reviewable]],
+      [otherRecord, [reviewable, otherRecord]],
+      [otherRecord, [otherRecord, reviewable]],
+    ];
+    for (const [record, decls] of cases) {
+      const { merged } = withMergedAuthority(record, decls);
+      expect(resolvePolicyAuthority(merged).authority).toBe("hard");
+      expect(merged.id).toBe(record.id);
+    }
+  });
+
+  it("keeps a refused declaration's reason, so registration still reports it", () => {
+    const typo = R("databse-destruction");
+    const { merged, overruled } = withMergedAuthority<Rec>({ id: "x", ...R("database-destruction") }, [
+      R("database-destruction"),
+      typo,
+    ]);
+    expect(merged).toEqual({ id: "x", ...typo });
+    expect(resolvePolicyAuthority(merged).downgraded).toMatch(/"databse-destruction"/);
+    expect(overruled).toBe(true);
+  });
+
+  it("drops the fields entirely when the hard vote declared nothing", () => {
+    const { merged, overruled } = withMergedAuthority<Rec>({ id: "x", ...R("secret-exposure") }, [
+      R("secret-exposure"),
+      {},
+    ]);
+    expect(merged).toEqual({ id: "x" });
+    expect(overruled).toBe(true);
+  });
+
+  it("hands back the record itself when nothing changes, and reports nothing overruled", () => {
+    const plain: Rec = { id: "p" };
+    expect(withMergedAuthority(plain, [plain, {}]).merged).toBe(plain);
+    expect(withMergedAuthority(plain, [plain, {}]).overruled).toBe(false);
+    const hard: Rec = { id: "h", ...H };
+    expect(withMergedAuthority(hard, [hard, {}]).merged).toBe(hard);
+  });
+});
+
+describe("authorityProblem / manifestAuthority — what a build may publish", () => {
+  it("publishes a clean declaration as the registry will resolve it", () => {
+    expect(manifestAuthority({ name: "p", authority: "reviewable", reviewedBy: ["secret-exposure", "secret-exposure"] }))
+      .toEqual({ authority: "reviewable", reviewedBy: ["secret-exposure"] });
+    expect(manifestAuthority({ name: "p", authority: "hard" })).toEqual({ authority: "hard" });
+    expect(manifestAuthority({ name: "p" })).toEqual({ authority: "hard" });
+    // An empty list on a hard policy says nothing, and is not a problem.
+    expect(authorityProblem({ authority: "hard", reviewedBy: [] })).toBeUndefined();
+  });
+
+  it("refuses a reviewable declaration naming a check this build does not have, naming the policy", () => {
+    // The guard build-policy-pack.mjs relies on for the core pack: it builds
+    // every manifest entry's authority through this call.
+    expect(() =>
+      manifestAuthority({ name: "block-env-files", authority: "reviewable", reviewedBy: ["secret-exposure-v2"] }),
+    ).toThrow(/^block-env-files: authority "reviewable" was refused — reviewedBy names "secret-exposure-v2"/);
+  });
+
+  it.each([
+    ["a misspelled value", { authority: "Reviewable", reviewedBy: ["secret-exposure"] }, /authority must be "hard" or "reviewable", and is "Reviewable"/],
+    ["a non-string value", { authority: 1 }, /authority must be "hard" or "reviewable", and is a number/],
+    ["a string reviewedBy", { authority: "reviewable", reviewedBy: "secret-exposure" }, /reviewedBy must be a list/],
+    ["a malformed entry", { authority: "hard", reviewedBy: ["secret-exposure", 3] }, /reviewedBy must be a list/],
+    ["reviewable with nothing named", { authority: "reviewable" }, /was refused — reviewedBy does not name any/],
+    ["reviewable on alwaysOn", { authority: "reviewable", reviewedBy: ["secret-exposure"], alwaysOn: true }, /was refused — it is alwaysOn/],
+  ])("refuses %s", (_label, decl, message) => {
+    expect(authorityProblem(decl)).toMatch(message);
+    expect(() => manifestAuthority({ name: "p", ...decl })).toThrow(message);
+  });
+});
+
+describe("warnAuthority — only where Jev can act on it, once", () => {
+  let home: string;
+  let saved: string | undefined;
+  let stderr: string[];
+
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), "fpai-authority-warn-"));
+    saved = process.env.FAILPROOFAI_HOME;
+    process.env.FAILPROOFAI_HOME = home;
+    stderr = [];
+    vi.spyOn(process.stderr, "write").mockImplementation((chunk: string | Uint8Array) => {
+      stderr.push(String(chunk));
+      return true;
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    if (saved === undefined) delete process.env.FAILPROOFAI_HOME;
+    else process.env.FAILPROOFAI_HOME = saved;
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  it("says nothing without a Jev config, where authority decides nothing", () => {
+    warnAuthority("unit: no jev config");
+    expect(stderr.join("")).toBe("");
+  });
+
+  it("warns once per process once Jev is configured", () => {
+    writeFileSync(join(home, "jev.json"), "{}", { mode: 0o600 });
+    warnAuthority("unit: with jev config");
+    warnAuthority("unit: with jev config");
+    expect(stderr.join("").match(/unit: with jev config/g)).toHaveLength(1);
+    warnAuthority("unit: a different message");
+    expect(stderr.join("")).toMatch(/unit: a different message/);
+  });
+
+  it("does not use up the once when it stayed silent", () => {
+    // A long-lived worker that starts before jev.json exists must still say it
+    // once the file appears.
+    warnAuthority("unit: before and after");
+    writeFileSync(join(home, "jev.json"), "{}", { mode: 0o600 });
+    warnAuthority("unit: before and after");
+    expect(stderr.join("").match(/unit: before and after/g)).toHaveLength(1);
   });
 });

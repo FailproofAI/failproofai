@@ -66,6 +66,24 @@ describe("runners", () => {
     expect(run(command)).not.toContain(name);
   });
 
+  // getopt reads a value bundled into its flag's word: `-c'cmd'` is `-ccmd`.
+  it.each([
+    ["su -c'mkfs /dev/sda'", "mkfs"],
+    ["su -lc'mkfs /dev/sda' root", "mkfs"],
+    ["script -qc'mkfs /dev/sda' /dev/null", "mkfs"],
+    ["flock -c'mkfs /dev/sda' /tmp/l", "mkfs"],
+    ["sg disk -c'mkfs /dev/sda'", "mkfs"],
+  ])("%s runs %s from the value bundled with its flag", (command, name) => {
+    expect(run(command)).toContain(name);
+  });
+
+  it.each([
+    ["script -qc'mkfs /dev/sda' /dev/null", "null"],
+    ["flock -c'mkfs /dev/sda' /tmp/l", "l"],
+  ])("%s does not run its operand %s as the command", (command, name) => {
+    expect(run(command)).not.toContain(name);
+  });
+
   it("runs a GNU parallel template once per argument", () => {
     const a = analyzeShell("parallel 'wipefs -a {}' ::: /dev/sdb /dev/sdc");
     const wipes = a.invocations.filter((i) => i.names.includes("wipefs")).map((i) => i.args.map((w) => w.text).join(" "));
@@ -98,6 +116,15 @@ describe("directory changes", () => {
     ["unshare -w /var ls", [["/var"]]],
   ] as Array<[string, Array<string[] | null>]>)("%s", (command, chdirs) => {
     expect(analyzeShell(command).chdirs).toEqual(chdirs);
+  });
+
+  it.each([
+    ["sudo -D/var ls", [["/var"]]],
+    ["env -C/tmp ls", [["/tmp"]]],
+  ] as Array<[string, Array<string[] | null>]>)("%s: a directory bundled with its flag", (command, chdirs) => {
+    const a = analyzeShell(command);
+    expect(a.chdirs).toEqual(chdirs);
+    expect(programs(a)).toContain("ls");
   });
 
   it("still flags a cd into /dev", () => {
@@ -160,9 +187,44 @@ describe("the analysis budget", () => {
     expect(a.invocations.length).toBeLessThan(40);
   });
 
-  it("marks a command that exhausts it truncated", () => {
+  // 16 copies bind 400 values to S, past the 256 kept, so this one is marked
+  // truncated by the binding overflow before it reaches the budget.
+  it("marks a command word read from a variable bound to 400 runners truncated (binding overflow)", () => {
     const runners = "su sg script flock watch parallel env eval ssh sudo nice timeout xargs strace " + shells;
     const a = analyzeShell(Array(16).fill(nest(6, runners)).join("; "));
+    expect(a.truncated).toBe(true);
+  });
+
+  // A template GNU parallel analyses once, then once per argument: 17 × 10,000
+  // invocations. No variable, one level of nesting, one runner hop — nothing
+  // but the budget can stop it.
+  const parallelRuns = (invocations: number) =>
+    `parallel '${"a; ".repeat(invocations)}' ::: ${Array.from({ length: 16 }, (_, i) => `x${i}`).join(" ")}`;
+
+  it("marks a command that exhausts it truncated, with no binding, depth or hop cap involved", () => {
+    const a = analyzeShell(parallelRuns(10_000));
+    expect(a.bindings.size).toBe(0);
+    expect(a.truncated).toBe(true);
+    // The same shape at half the size stays inside the budget, so the caps that
+    // do not depend on size are not what truncated it.
+    expect(analyzeShell(parallelRuns(5_000)).truncated).toBe(false);
+  });
+
+  it("gives resolveWord calls a budget of their own: calls costing twice the analysis's in total never truncate it", () => {
+    // A substitution is not memoized, so each call lexes its 20 KB body again:
+    // 200 calls spend ~4M units against an analysis budget of ~2.3M.
+    const a = analyzeShell(`dd of=$(echo${" ".repeat(20_000)} /dev/sda)`);
+    expect(a.truncated).toBe(false);
+    const dd = a.invocations.find((i) => i.names.includes("dd"))!;
+    for (let k = 0; k < 200; k++) expect(resolveWord(a, dd.args[0])).toEqual(["of=/dev/sda"]);
+    expect(a.truncated).toBe(false);
+  });
+
+  it("marks the analysis truncated when a single resolveWord call runs past its own budget", () => {
+    const a = analyzeShell(`dd of=$(echo${" ".repeat(600_000)} /dev/sda)`);
+    expect(a.truncated).toBe(false);
+    const dd = a.invocations.find((i) => i.names.includes("dd"))!;
+    expect(resolveWord(a, dd.args[0])).toBeNull();
     expect(a.truncated).toBe(true);
   });
 

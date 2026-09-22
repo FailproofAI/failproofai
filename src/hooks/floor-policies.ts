@@ -1016,7 +1016,9 @@ function noVerifyHit(a: ShellAnalysis, depth: number): string | null {
     }
     const expanded = expandInlineAlias(g.configs, g.sub, g.subArgs);
     if (expanded !== null) {
-      if (depth >= 2) continue;
+      // An alias defined inside an alias inside an alias is built to hide what
+      // it runs; one level more than is expanded is not waved through.
+      if (depth >= 2) return `git -c alias.${g.sub}=… (too deeply nested to check)`;
       const inner = analyzeShell(expanded);
       const why = noVerifyHit(inner, depth + 1);
       if (why) return `git -c alias.${g.sub}=… → ${why}`;

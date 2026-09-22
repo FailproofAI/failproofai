@@ -186,6 +186,30 @@ describe("exec and privilege wrappers are followed", () => {
     expect(await decide(name, command)).toBe("deny");
   });
 
+  // getopt reads a value bundled into its flag's word: `-c'cmd'` is `-ccmd`,
+  // `-D/dev` is `-D /dev`. The session cwd keeps a bare `sda1` from counting
+  // on its own, so the `-D/dev` row stands on the chdir being read.
+  it.each([
+    ["block-disk-destruction", "su -c'mkfs.ext4 /dev/sdb1'"],
+    ["block-disk-destruction", "su -lc'wipefs -a /dev/sdb' root"],
+    ["block-disk-destruction", "script -qc'dd if=/dev/zero of=/dev/sda' /dev/null"],
+    ["block-disk-destruction", "flock -c'dd if=/dev/zero of=/dev/sda' /tmp/lock"],
+    ["block-disk-destruction", "sg disk -c'mkfs.ext4 /dev/sdb1'"],
+    ["block-disk-destruction", "sudo -D/dev mkfs.ext4 sda1"],
+    ["block-disk-destruction", "env -C/dev dd if=/dev/zero of=sda"],
+    ["block-chmod-777", "su -c'chmod -R 777 /srv'"],
+    ["block-no-verify", "su -c'git commit --no-verify -m x'"],
+  ] as Array<[Floor, string]>)("%s denies %s (a value attached to its flag)", async (name, command) => {
+    expect(await decide(name, command, "/home/u/proj")).toBe("deny");
+  });
+
+  it.each(["sudo -D/srv mkfs.ext4 sda1", "su -c'mkfs.ext4 -F rootfs.img'"])(
+    "block-disk-destruction allows %s (cwd /home/u/proj)",
+    async (command) => {
+      expect(await decide("block-disk-destruction", command, "/home/u/proj")).toBe("allow");
+    },
+  );
+
   it.each([
     "sudo -l dd",
     "taskset -p 1234",
@@ -274,6 +298,26 @@ describe("block-disk-destruction: relative device paths", () => {
     "cd / && ls dev/sda",
     "cd / && cat dev/null > /dev/null",
     "echo x > ../../dev/null",
+  ])("allows %s (cwd /home/u/proj)", async (command) => {
+    expect(await decide("block-disk-destruction", command, cwd)).toBe("allow");
+  });
+
+  // A `cd` the policy cannot place makes the cwd unknown: `~` (whose home?), or
+  // a set of candidate directories grown past the 64 it tracks. In bash the
+  // failed cds below leave the shell at /, so `cd dev` lands in /dev.
+  it.each([
+    "cd ~ && dd if=/dev/zero of=../../dev/sda",
+    "cd ~/src && mkfs.ext4 sda1",
+    "cd /; cd a; cd b; cd c; cd d; cd e; cd f; cd dev; mkfs.ext4 sda1",
+    "cd /; cd a; cd b; cd c; cd d; cd e; cd f; cd dev; dd if=/dev/zero of=sda",
+  ])("denies %s (cwd /home/u/proj): the directory it reaches is unknown", async (command) => {
+    expect(await decide("block-disk-destruction", command, cwd)).toBe("deny");
+  });
+
+  it.each([
+    "cd ~ && dd if=/dev/zero of=disk.img",
+    "cd ~/build && mkfs.ext4 -F rootfs.img",
+    "cd /; cd a; cd b; cd c; cd d; cd e; cd f; cd g; dd if=/dev/zero of=disk.img",
   ])("allows %s (cwd /home/u/proj)", async (command) => {
     expect(await decide("block-disk-destruction", command, cwd)).toBe("allow");
   });
@@ -385,6 +429,41 @@ describe("block-no-verify: a core.hooksPath override is judged by its value", ()
   });
 });
 
+describe("block-no-verify: an inline alias it cannot read to the end", () => {
+  /** Single-quote a string for the shell. */
+  const shq = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
+  /** `git -c alias.x='!<body>' x`: the alias runs its body in a shell. */
+  const bangAlias = (body: string) => `git -c alias.x=${shq("!" + body)} x`;
+  /** `inner` wrapped in `levels` inline `!` aliases, each defined on the git that runs the next. */
+  const nestAlias = (levels: number, inner: string) => {
+    let s = inner;
+    for (let i = 0; i < levels; i++) s = `git -c alias.a${i}=${shq("!" + s)} a${i}`;
+    return s;
+  };
+
+  // The alias body gets an analysis of its own; the command around it is
+  // shallow, so only that inner analysis knows it gave up.
+  it("denies an alias whose body nests `bash -c` too deeply to check", async () => {
+    const r = await policy("block-no-verify").fn(bash(bangAlias(nestBashC(7, "git commit --no-verify -m x"))));
+    expect(r.decision).toBe("deny");
+    expect(r.reason).toMatch(/too deeply nested/);
+  });
+
+  it("denies inline aliases nested deeper than it expands", async () => {
+    const r = await policy("block-no-verify").fn(bash(nestAlias(3, "git commit --no-verify -m x")));
+    expect(r.decision).toBe("deny");
+    expect(r.reason).toMatch(/too deeply nested/);
+    expect(await decide("block-no-verify", nestAlias(2, "git commit --no-verify -m x"))).toBe("deny");
+  });
+
+  it.each([
+    ["an alias body nesting `bash -c` six deep", bangAlias(nestBashC(6, "git commit -m x"))],
+    ["two nested aliases around a plain commit", nestAlias(2, "git commit -m x")],
+  ])("allows %s", async (_, command) => {
+    expect(await decide("block-no-verify", command)).toBe("allow");
+  });
+});
+
 describe("branches with no other test", () => {
   it("block-mass-kill: a short unanchored pattern is broad, an exact one is not", async () => {
     expect(await decide("block-mass-kill", "pkill -f ab")).toBe("deny");
@@ -427,12 +506,32 @@ describe("cost stays bounded (a hook that times out lets the call through)", () 
     expect(performance.now() - t).toBeLessThan(1500);
   });
 
-  it("a command built to exhaust the analysis budget is denied, quickly", async () => {
+  // 16 copies bind 400 runners to S, past the 256 values kept: the binding
+  // overflow, not the budget, is what marks this one truncated.
+  it("a command word read from a variable bound to 400 runners is denied, quickly (binding overflow)", async () => {
     const runners = "su sg script flock watch parallel env eval ssh sudo nice timeout xargs strace " + shells;
     const cmd = Array(16).fill(nestVar(6, HARMLESS, runners)).join("; ");
     const t = performance.now();
     for (const name of FLOOR) expect(await decide(name, cmd)).toBe("deny");
     expect(performance.now() - t).toBeLessThan(1500);
+  });
+
+  // GNU parallel analyses its template once, then once per argument. No
+  // variable, one level of nesting, one runner hop: only the budget stops it.
+  const parallelRuns = (invocations: number) =>
+    `parallel '${"a; ".repeat(invocations)}' ::: ${Array.from({ length: 16 }, (_, i) => `x${i}`).join(" ")}`;
+
+  it("a command that runs the analysis out of budget is denied by every floor policy, quickly", async () => {
+    const cmd = parallelRuns(10_000);
+    const t = performance.now();
+    for (const name of FLOOR) {
+      const r = await policy(name).fn(bash(cmd));
+      expect(r.decision).toBe("deny");
+      expect(r.reason).toMatch(/too deeply/);
+    }
+    expect(performance.now() - t).toBeLessThan(1500);
+    // Half the work fits in the budget: the deny above is the budget's.
+    for (const name of FLOOR) expect(await decide(name, parallelRuns(5_000))).toBe("allow");
   });
 
   it.each([

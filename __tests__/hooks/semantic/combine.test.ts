@@ -1,13 +1,15 @@
 /**
  * The §4 combine table, exhaustively: every row × {shadow, enforce} ×
- * {truncated, not}. Each row is driven from a SemanticOutcome — what
+ * {complete, context cut, call cut}. Each row is driven from a SemanticOutcome — what
  * `evaluateSemantic` actually returns — through `toReview` (how the handler
  * reads it) and `combineTwoTier` (what it enforces), so the truncation →
  * fallback step is covered by the same table rather than beside it.
  *
- * The expected result is written out for `enforce` + not truncated. The other
- * three columns follow from two rules the table asserts on every row:
- * shadow enforces the regex result, and a truncated envelope falls back to it.
+ * The expected result is written out for `enforce` + complete. The other
+ * columns follow from rules the table asserts on every row: shadow enforces
+ * the regex result; a truncated CALL falls back to it; and an envelope whose
+ * only cut was context (the human's words, the agent's last message) is
+ * treated exactly like a complete one, because it hides nothing of the call.
  */
 import { describe, expect, it } from "vitest";
 import { combineTwoTier, regexOnly, type JevMode, type JevReview, type RegexVerdict } from "../../../src/hooks/semantic/combine";
@@ -67,6 +69,7 @@ function semOutcome(opts: {
     inputTokens: 100,
     questionCount: outcomes.length,
     truncated: opts.truncated ?? false,
+    requestTruncated: opts.truncated ?? false,
     redactions: 0,
     model: "jev-1.13.0",
     modelVerified: true,
@@ -75,10 +78,16 @@ function semOutcome(opts: {
 }
 
 function degradedOutcome(reason: string, truncated = false): SemanticOutcome {
-  return { status: "degraded", reason, latencyMs: 1500, questionCount: 3, truncated };
+  return { status: "degraded", reason, latencyMs: 1500, questionCount: 3, truncated, requestTruncated: truncated };
 }
 
-const withTruncation = (o: SemanticOutcome, truncated: boolean): SemanticOutcome => ({ ...o, truncated });
+/** complete: nothing cut; context: only the human's words / agent message cut; call: the judged call cut. */
+type Truncation = "complete" | "context" | "call";
+const withTruncation = (o: SemanticOutcome, t: Truncation): SemanticOutcome => ({
+  ...o,
+  truncated: t !== "complete",
+  requestTruncated: t === "call",
+});
 
 // ── The table ────────────────────────────────────────────────────────────────
 
@@ -281,25 +290,25 @@ const ROWS: Row[] = [
 ];
 
 const MODES: JevMode[] = ["enforce", "shadow"];
-const TRUNCATED = [false, true];
+const TRUNCATED: Truncation[] = ["complete", "context", "call"];
 
-function reviewFor(row: Row, truncated: boolean): JevReview {
+function reviewFor(row: Row, truncated: Truncation): JevReview {
   if (!row.outcome) return { kind: "not-consulted" };
   return toReview(withTruncation(row.outcome, truncated));
 }
 
-describe("combine table (§4) — every row × shadow/enforce × truncated/not", () => {
+describe("combine table (§4) — every row × shadow/enforce × complete/context-cut/call-cut", () => {
   for (const row of ROWS) {
     for (const mode of MODES) {
       for (const truncated of TRUNCATED) {
-        it(`${row.id} | ${mode} | ${truncated ? "truncated" : "complete"}`, () => {
+        it(`${row.id} | ${mode} | ${truncated}`, () => {
           const review = reviewFor(row, truncated);
           const out = combineTwoTier(row.verdicts, review, mode);
           const legacy = regexOnly(row.verdicts);
           const names = out.final.entries.map((e) => e.policyName);
 
           const hardDecided = row.outcome === null;
-          const fallback = !hardDecided && (row.fallback !== undefined || truncated);
+          const fallback = !hardDecided && (row.fallback !== undefined || truncated === "call");
           const answered = !hardDecided && !fallback;
 
           // What is ENFORCED.
@@ -350,8 +359,9 @@ describe("combine table (§4) — every row × shadow/enforce × truncated/not",
     expect(hardRows.length).toBe(2);
     expect(degradedRows.length).toBe(10);
     expect(answeredRows.length).toBe(22);
-    // Every answered row also runs truncated, which is the truncation → fallback row.
-    expect(ROWS.length * MODES.length * TRUNCATED.length).toBe(136);
+    // Every answered row also runs with its call cut (the truncation → fallback
+    // row) and with only its context cut (which must change nothing).
+    expect(ROWS.length * MODES.length * TRUNCATED.length).toBe(204);
     // The four degraded causes §10 gate 5 names must each be a row.
     for (const cause of ["timeout", "http-429", "out-of-credits", "model-mismatch"]) {
       expect(degradedRows.map((r) => r.fallback)).toContain(cause);

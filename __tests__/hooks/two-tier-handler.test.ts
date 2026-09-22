@@ -490,6 +490,14 @@ describe("fallback: the regex result, recorded with a reason", () => {
     expect(row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "truncated", jevDecision: "allow" });
   });
 
+  it("a long human prompt is not a truncated call: the combine runs normally", async () => {
+    jevConfig = CFG;
+    intent = { userSaid: ["summarise my notes. " + "Some background. ".repeat(200)], agentLastMessage: "Done. ".repeat(400) };
+    const { outcome, row } = await outsideRead();
+    expect(outcome.evaluation?.decision).toBe("allow");
+    expect(row).toMatchObject({ evaluator: "jev", jevCleared: ["failproofai/block-read-outside-cwd"] });
+  });
+
   it("a provider the transport layer cannot build", async () => {
     const { JevError } = await import("../../src/hooks/semantic/jev-client");
     jevConfig = CFG;

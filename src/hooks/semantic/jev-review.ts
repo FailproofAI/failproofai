@@ -92,10 +92,17 @@ export function toReview(outcome: SemanticOutcome): JevReview {
   const sent = outcome.via !== "none";
   const latencyMs = sent ? outcome.latencyMs : null;
   const model = sent ? outcome.model : null;
-  // A truncated envelope means Jev did not see all of the call: padding a
+  // A truncated call means Jev did not see all of what would run: padding a
   // command must not be a way to hide its dangerous part, so the regex result
   // stands, every deny counting. Jev's answer is still recorded.
-  if (outcome.truncated) {
+  //
+  // Only the CALL counts. The envelope also caps the human's words and the
+  // agent's last message (1,200 chars each); cutting those hides nothing of
+  // the call, and treating it as truncation would hand every call made after
+  // a long prompt — or after any long agent message — back to the regex
+  // engine alone. Measured on the 1,332 labelled inputs: 100 calls are cut
+  // themselves; 176 would be flagged once the (cleaned) human turns count.
+  if (outcome.requestTruncated) {
     return { kind: "fallback", reason: "truncated", latencyMs, model, decision: outcome.verdict.decision };
   }
   const outcomes = outcome.verdict.outcomes;

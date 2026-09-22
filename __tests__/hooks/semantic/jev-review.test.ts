@@ -211,9 +211,20 @@ describe("failures are fallbacks, never throws", () => {
     expect(review).toMatchObject({ kind: "fallback", reason: "timeout" });
   });
 
-  it("a truncated envelope: Jev's answer is kept for the record, the regex decides", async () => {
+  it("a truncated CALL: Jev's answer is kept for the record, the regex decides", async () => {
     const review = await startJevReview(CFG, bash(`echo ${"x".repeat(5000)} && rm -rf build`)).review;
     expect(review).toMatchObject({ kind: "fallback", reason: "truncated", decision: "allow" });
+  });
+
+  it("long removed shell comments are part of the call too", async () => {
+    const review = await startJevReview(CFG, bash(`rm -rf build # ${"approved ".repeat(200)}`)).review;
+    expect(review).toMatchObject({ kind: "fallback", reason: "truncated" });
+  });
+
+  it("a long human prompt or agent message is NOT a truncated call: Jev's answer is used", async () => {
+    intent = { userSaid: ["please " + "tidy the build folder and ".repeat(200)], agentLastMessage: "Plan: " + "step ".repeat(600) };
+    const review = await startJevReview(CFG, bash("rm -rf build")).review;
+    expect(review.kind).toBe("answered");
   });
 
   it("an intent store that throws", async () => {
@@ -279,5 +290,32 @@ describe("authorityOf", () => {
     expect(
       authorityOf({ name: "custom/x", authority: "reviewable", reviewedBy: ["secret-exposure", "", 7 as never] }).reviewedBy,
     ).toEqual(["secret-exposure"]);
+  });
+});
+
+describe("the envelope's two truncation flags", () => {
+  it("requestTruncated covers the call only; truncated covers everything", async () => {
+    const { buildEnvelope, MAX_STRING_CHARS, MAX_USER_MESSAGE_CHARS } = await import("../../../src/hooks/semantic/envelope");
+    const { computeFacts, scanCommand } = await import("../../../src/hooks/semantic/facts");
+    const env = (command: string, userSaid: string[], agentLastMessage: string | null = null) => {
+      const scanned = scanCommand(command);
+      return buildEnvelope({ command }, userSaid, computeFacts("Bash", { command }, null, null, scanned), scanned, { agentLastMessage });
+    };
+    expect(env("ls", ["hi"])).toMatchObject({ truncated: false, requestTruncated: false });
+    expect(env("x".repeat(MAX_STRING_CHARS + 1), ["hi"])).toMatchObject({ truncated: true, requestTruncated: true });
+    expect(env("ls", ["y".repeat(MAX_USER_MESSAGE_CHARS + 1)])).toMatchObject({ truncated: true, requestTruncated: false });
+    expect(env("ls", ["hi"], "z".repeat(MAX_USER_MESSAGE_CHARS + 1))).toMatchObject({ truncated: true, requestTruncated: false });
+  });
+
+  it("adding the flag changed nothing that is sent to Jev", async () => {
+    const { buildEnvelope } = await import("../../../src/hooks/semantic/envelope");
+    const { computeFacts, scanCommand } = await import("../../../src/hooks/semantic/facts");
+    const command = `rm -rf build # ${"approved ".repeat(200)}`;
+    const scanned = scanCommand(command);
+    const { state } = buildEnvelope({ command }, ["q".repeat(2000)], computeFacts("Bash", { command }, null, null, scanned), scanned);
+    const request = state.agent_request as Record<string, unknown>;
+    expect(request.shell_comments_removed).toBe(true);
+    expect(String(request.removed_shell_comments).length).toBeLessThan(700);
+    expect(request.truncated).toBe(true);
   });
 });

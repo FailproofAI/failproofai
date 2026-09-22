@@ -88,7 +88,12 @@ def _utc_now() -> str:
     )
 
 
-def _deferred_managed_eval(source: str, timeout_seconds: int | None, eval_key: str):
+def _deferred_managed_eval(
+    source: str,
+    timeout_seconds: int | None,
+    eval_key: str,
+    compiler: Any = None,
+):
     """Compile server-authored source lazily, at invocation time.
 
     Compilation can reject unsafe or malformed source (``UnsafeEvaluatorSource``).
@@ -98,10 +103,19 @@ def _deferred_managed_eval(source: str, timeout_seconds: int | None, eval_key: s
     dead-letters cleanly as one failed run instead of raising out of assignment
     setup, crashing the task, and forcing the whole assignment to be reclaimed
     and retried until its attempt budget is exhausted.
+
+    ``compiler`` defaults to :func:`compile_evaluator` — the restricted-expression
+    sandbox. A host serving managed definitions in another shape installs its own
+    via ``Evaluator(managed_compiler=...)``; the SDK never inspects the source.
+    The thunk stays SYNCHRONOUS either way, so a sandboxed compile still runs in
+    the runtime's sized executor exactly as before. A compiler that returns an
+    ``async def`` simply makes this thunk return a coroutine, which ``_invoke``
+    awaits on the event loop — the right place for IO-bound work.
     """
+    compile_source = compiler if compiler is not None else compile_evaluator
 
     def evaluate(session: Any) -> Any:
-        return compile_evaluator(
+        return compile_source(
             source, timeout_seconds=timeout_seconds, eval_key=eval_key
         )(session)
 
@@ -551,6 +565,7 @@ class WorkerRuntime:
                         run.evaluator_source,
                         run.timeout_seconds or descriptor.timeout_seconds,
                         descriptor.eval_key,
+                        self.evaluator.managed_compiler,
                     ),
                     condition=None,
                     on_cancel=None,
@@ -597,9 +612,15 @@ class WorkerRuntime:
         started = time.monotonic()
         # A synchronous evaluator runs in the executor thread; if it overruns the
         # wall-clock timeout below, the thread cannot be cancelled and is orphaned.
-        sync_function = not inspect.iscoroutinefunction(definition.function)
+        #
+        # Decided AFTER the fact, not from the function object: a deferred managed
+        # thunk is a sync callable that may return a coroutine, which `_invoke`
+        # awaits on the loop. That case is cancellable and leaves no orphan, so
+        # counting it as one would send an operator hunting a hung thread that
+        # does not exist.
+        awaited_on_loop: list[bool] = []
         try:
-            invocation = self._invoke(definition.function, session)
+            invocation = self._invoke(definition.function, session, awaited_on_loop)
             # Always bound the evaluation. A definition with no declared
             # timeout_seconds falls back to DEFAULT_EVAL_TIMEOUT_SECONDS rather
             # than awaiting unbounded — an unbounded local eval that hangs would
@@ -630,7 +651,7 @@ class WorkerRuntime:
             # the forked managed sandbox was killed by its CPU/memory/time budget —
             # the real, thread-uncancellable case. Both are a timed-out run.
             await self._cancel_hook(definition, session)
-            if isinstance(timeout_error, asyncio.TimeoutError) and sync_function:
+            if isinstance(timeout_error, asyncio.TimeoutError) and not awaited_on_loop:
                 # The awaiter gave up while a SYNCHRONOUS evaluator was still
                 # running in the executor. CPython cannot interrupt that thread,
                 # so it is now orphaned — it runs to completion (or forever)
@@ -824,12 +845,26 @@ class WorkerRuntime:
             remaining = min(remaining, float(timeout_seconds))
         return remaining
 
-    async def _invoke(self, function, session):
+    async def _invoke(self, function, session, awaited: list[bool] | None = None):
+        """Run an evaluation or condition, on the loop or in the executor.
+
+        ``awaited`` is an out-parameter: append-only, and appended to exactly when
+        the work ends up being awaited on the EVENT LOOP rather than occupying an
+        executor thread. The timeout handler needs that distinction — a coroutine
+        is cancelled cleanly, a running thread is not — and it cannot be known
+        from the function object alone, because a deferred managed thunk is a
+        plain sync callable that may still RETURN a coroutine.
+        """
         if inspect.iscoroutinefunction(function):
+            if awaited is not None:
+                awaited.append(True)
             return await function(session)
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(self._eval_executor, function, session)
         if inspect.isawaitable(result):
+            # The thread has already returned; only the coroutine is outstanding.
+            if awaited is not None:
+                awaited.append(True)
             return await result
         return result
 

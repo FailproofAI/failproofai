@@ -10,6 +10,7 @@ from failproofai_sdk.evaluator.authoring import (
     EvalDefinition,
     EvalResult,
     Evaluator,
+    ManagedCompiler,
     Metric,
     Score,
 )
@@ -67,6 +68,7 @@ __all__ = [
     "EvalSelection",
     "ExecutionMode",
     "Evaluator",
+    "ManagedCompiler",
     "EvaluatorAPIError",
     "EvaluatorClient",
     "EvaluatorKind",

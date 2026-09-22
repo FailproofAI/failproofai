@@ -1,0 +1,88 @@
+---
+title: "Classifier evaluations"
+description: "Score sessions against answers you can write down in advance — is this true, or how much of this — using a small calibrated classifier instead of a general-purpose model."
+icon: "list-checks"
+---
+
+Some questions need a model to *read* the conversation, but not to *write* about it. "Did the customer express urgency?" has two answers. "How frustrated were they?" has a handful, in order. You know every answer before you ask.
+
+A **classifier evaluation** is for exactly those. You write the question and the answers it may give, and a small model built for classification returns a calibrated number — never free text.
+
+<Note>
+Like a judge, a classifier evaluation costs a model call per session. Unlike a judge it is a small, single-purpose model rather than a general one, so it is faster and cheaper — but it will never explain itself. If you need the reasoning, use a [judge](/evaluations/judge).
+</Note>
+
+## Which one do I want?
+
+| Question | Use |
+| --- | --- |
+| How many tool calls were there? | code |
+| Was the session under 30 seconds? | code |
+| Did the customer express urgency? | **classifier** |
+| Which team should handle this: billing, technical, or sales? | **classifier** |
+| How frustrated was the customer? | **classifier** |
+| Was the answer actually correct? | **judge** |
+| Did it follow our escalation policy, and why do you think so? | **judge** |
+
+The rule of thumb: **countable → code, answers you can list → classifier, needs an explanation → judge.**
+
+You do not have to decide up front. Describe what you want measured and the assistant picks, tells you which it chose and why, and you can switch it.
+
+## The two question types
+
+### `noul` — is this true?
+
+Two answers, and you describe both. The result is the probability that the "true" description fits:
+
+```json
+{
+  "instructions": "Did the assistant promise a refund without first checking the refund policy?",
+  "criteria": {
+    "true":  "A refund was promised or issued with no prior policy check or approval",
+    "false": "No refund was promised, or every refund followed a policy check"
+  }
+}
+```
+
+Describe both sides. "No urgency expressed" is a real answer and saying so makes the other one sharper.
+
+### `score` — how much of this?
+
+An ordered rubric, **worst first**. The result is where the session lands on it, rescaled to 0–1:
+
+```json
+{
+  "instructions": "How frustrated is the customer?",
+  "criteria": ["Calm", "Frustrated", "Very angry"]
+}
+```
+
+**A rubric takes three to five levels, and they must all be different.** Both limits are measured, not stylistic:
+
+- **Two levels** collapses into what `noul` already does better, and **more than five** makes the model hedge toward the middle instead of committing. The same question over the same session scored 0.00 with two levels, 0.01 with three, and 0.55 with ten.
+- **Repeated levels** split the answer arbitrarily between them. A session that was unmistakably angry scored 1.00 against `["Calm", "Frustrated", "Very angry"]` and 0.66 against `["Angry", "Angry", "Angry"]` — a well-formed number that means nothing.
+
+Categories with no order — "billing, technical, or sales" — are not a rubric. Ask them as a `noul` per category, or use a judge.
+
+## Reading the results
+
+A classifier produces a **score** from 0 to 1, exactly like a judge, so it charts, filters, and triggers alerts the same way. Two differences are worth knowing:
+
+- **There is no reasoning.** The field is empty, deliberately. This model does not explain itself, and inventing an explanation would be a fabrication rather than a feature.
+- **Uncertainty is labelled.** A `score` question reports its own confidence, and a result the model was unsure about is tagged `low_confidence` — so "which of these should a human look at" is a filter rather than a guess. A `noul` question does not report confidence, so it is never tagged.
+
+Very long sessions are read in excerpts and combined. When a session is too long to read in full, the result says how many turns were left out — you will never see a judgement made on part of a session presented as one made on all of it.
+
+## Limits
+
+- **Three to five rubric levels, all distinct.** See above; both bounds are enforced at authoring time.
+- **One question per evaluation.** Ask two things and you get two evaluations, which is also what you want on a chart.
+- **Editing the question publishes a new version.** Old and new scores are not comparable, so they are kept apart rather than mixed into one trend line.
+- **A classifier always produces a score**, never a metric or an assertion.
+- **No reasoning**, as above. If a number will make someone ask "why?", write a judge instead.
+
+## Testing and backfill
+
+Unlike a judge, a classifier evaluation **can** be tested before you deploy it — [test it](/evaluations/test) against real sessions the same way you would a code evaluation, and read the scores before anything goes live.
+
+It can also be [backfilled](/evaluations/deploy#score-sessions-you-already-have) over sessions you already have. It costs a model call per session, so scope the window deliberately rather than replaying everything.

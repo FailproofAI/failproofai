@@ -1101,3 +1101,91 @@ def test_condition_phase_deadline_and_budget_are_lease_bounded():
     assert runtime._condition_budget(deadline, None) == pytest.approx(95, abs=2)
     assert runtime._condition_budget(deadline, 10) == pytest.approx(10, abs=0.05)
     assert runtime._condition_budget(time.monotonic(), None) < 0
+
+
+def test_managed_compiler_hook_receives_source_verbatim_and_may_be_async():
+    # The SDK must never inspect managed source. FailproofAI's hosted worker
+    # serves definitions whose source is a declarative judge document rather than
+    # a restricted Python expression; it installs its own compiler, and the SDK's
+    # only job is to hand the string over unchanged. The compiler returns an
+    # `async def` here because judge work is IO-bound — `_invoke` must await that
+    # on the event loop rather than parking an executor thread on it.
+    source = '{"kind": "judge", "criteria": "was it helpful", "threshold": 0.5}'
+    seen: dict[str, object] = {}
+
+    def compiler(raw, *, timeout_seconds, eval_key):
+        seen["source"] = raw
+        seen["timeout_seconds"] = timeout_seconds
+        seen["eval_key"] = eval_key
+
+        async def judge(session):
+            seen["session_id"] = session.session_id
+            return EvalResult(score=Score(0.9, passed=True), summary="judged")
+
+        return judge
+
+    class HostedClient(FakeClient):
+        def __init__(self):
+            super().__init__()
+            self.assignment = replace(
+                self.assignment,
+                definitions_url=f"/v1/evaluator/assignments/{self.assignment.assignment_id}/definitions",
+            )
+
+        def definitions(self, assignment, *, worker_id):
+            return DefinitionsResponse(
+                assignment_id=assignment.assignment_id,
+                catalog_revision="sha256:hosted",
+                definitions=(
+                    AssignmentDefinition(
+                        eval_key="answer_quality",
+                        display_name="Answer quality",
+                        eval_version="1",
+                        result_kind=ResultKind.SCORE,
+                        execution_mode=ExecutionMode.PYTHON,
+                        source_checksum=source_checksum(None, source),
+                    ),
+                ),
+            )
+
+        def plan(self, assignment_id, request):
+            self.plans.append(request)
+            return PlanResponse(
+                assignment_id=assignment_id,
+                assignment_status="planned",
+                runs=(
+                    PlannedRun(
+                        "run-judge",
+                        "answer_quality",
+                        "1",
+                        execution_mode=ExecutionMode.PYTHON,
+                        evaluator_source=source,
+                        source_checksum=source_checksum(None, source),
+                        timeout_seconds=30,
+                    ),
+                ),
+            )
+
+    client = HostedClient()
+    evaluator = Evaluator(name="managed", version="1", managed_compiler=compiler)
+    asyncio.run(_runtime(evaluator, client).process_assignment(client.assignment))
+
+    # Verbatim: not parsed, not normalised, not validated by the SDK.
+    assert seen["source"] == source
+    assert seen["eval_key"] == "answer_quality"
+    assert seen["timeout_seconds"] == 30
+    assert seen["session_id"] == client.assignment.session_id
+
+    assert len(client.submissions) == 1
+    run_id, result = client.submissions[0]
+    assert run_id == "run-judge"
+    assert result.status.value == "succeeded"
+    assert result.results[0].numeric_value == 0.9
+
+
+def test_managed_compiler_defaults_to_the_sandbox_and_rejects_non_callables():
+    # No compiler installed => the restricted-expression sandbox, unchanged. This
+    # is what every customer worker and every existing deployment gets.
+    assert Evaluator(name="default", version="1").managed_compiler is None
+    with pytest.raises(TypeError):
+        Evaluator(name="bad", version="1", managed_compiler="not-callable")

@@ -41,11 +41,18 @@ export interface RedactedDetail extends Redacted {
 const marker = (label: string): string => `<redacted:${label}>`;
 
 /**
- * A token boundary. `\n`, `\r` and `\t` count as one because several inputs are
- * JSON-serialised before they get here, and there a secret at the start of a
- * line follows the two characters `\` `n`, not a newline.
+ * Whether a match at `offset` starts a token. `\n`, `\r` and `\t` count as a
+ * boundary because several inputs are JSON-serialised before they get here, and
+ * there a secret at the start of a line follows the two characters `\` `n`.
+ *
+ * Checked in code, never as a regex lookbehind: a lookbehind drops JSC's regex
+ * JIT to its interpreter, which measured ~100µs per rule per 2 KB string — 3 ms
+ * of every envelope across the vendor list alone.
  */
-const B = String.raw`(?:(?<![A-Za-z0-9_-])|(?<=\\[nrt]))`;
+function atTokenBoundary(whole: string, offset: number, tokenChars = /[A-Za-z0-9_-]/): boolean {
+  if (offset === 0 || !tokenChars.test(whole[offset - 1])) return true;
+  return offset >= 2 && whole[offset - 2] === "\\" && /[nrt]/.test(whole[offset - 1]);
+}
 
 // ── Layer 1: the shared floor ────────────────────────────────────────────────
 
@@ -132,7 +139,7 @@ const VENDOR_RULES: ReadonlyArray<readonly [RegExp, string]> = (
     // redactor (crates/fpai-collect/src/redact.rs) uses.
     [String.raw`sk-[A-Za-z0-9_-]{16,}`, "sk- API key"],
   ] as const
-).map(([src, label]) => [new RegExp(`${B}${src}[A-Za-z0-9_-]*`, "g"), label] as const);
+).map(([src, label]) => [new RegExp(`${src}[A-Za-z0-9_-]*`, "g"), label] as const);
 
 /** Webhook URLs whose path IS the credential. */
 const WEBHOOK_RULES: ReadonlyArray<readonly [RegExp, string]> = [
@@ -207,14 +214,17 @@ const CONFIG_SET_RE =
  *   7  an unquoted value
  */
 const ASSIGNMENT_RE =
-  /(?<![A-Za-z0-9_.-])((?:\\?["'])?)(-{0,2}[A-Za-z_][A-Za-z0-9_.-]*)((?:\\?["'])?)([ \t]*(?::=|=|:(?!\/\/))[ \t]*)(?:(\\?["'])(.*?)\5|([^\s"'`<>(){}[\],;&|\\]+))/g;
+  /((?:\\?["'])?)(-{0,2}[A-Za-z_][A-Za-z0-9_.-]*)((?:\\?["'])?)([ \t]*(?::=|=|:(?!\/\/))[ \t]*)(?:(\\?["'])(.*?)\5|([^\s"'`<>(){}[\],;&|\\]+))/g;
 
 /** `--password hunter2`: a secret-named flag and a separate value. */
 const FLAG_VALUE_RE =
-  /(?<![A-Za-z0-9_.-])(--?[A-Za-z][A-Za-z0-9_-]*)([ \t]+)(?:(["'])(.*?)\3|([^\s"'`<>(){}[\],;&|\\-][^\s"'`<>(){}[\],;&|\\]*))/g;
+  /(--?[A-Za-z][A-Za-z0-9_-]*)([ \t]+)(?:(["'])(.*?)\3|([^\s"'`<>(){}[\],;&|\\-][^\s"'`<>(){}[\],;&|\\]*))/g;
 
-/** Long runs of token characters: candidates for the high-entropy rule. */
-const LONG_TOKEN_RE = /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{32,}(?![A-Za-z0-9_-])/g;
+/** Characters an identifier is made of; a name must not start in the middle of one. */
+const NAME_CHAR = /[A-Za-z0-9_.-]/;
+
+/** Long runs of token characters: candidates for the high-entropy rule. Greedy, so a match is a whole run. */
+const LONG_TOKEN_RE = /[A-Za-z0-9_-]{32,}/g;
 
 // ── Secret names ─────────────────────────────────────────────────────────────
 
@@ -493,15 +503,17 @@ type Groups = string[];
  * would resume scanning after it, and a declined match can contain the very
  * thing a rule is looking for: `raw = 'AWS_SECRET_ACCESS_KEY=wJalr…'` is first
  * seen as the assignment `raw = '…'`, declined because `raw` is no secret name,
- * and the secret-named assignment INSIDE its value was never looked at. Every
- * pattern here starts on a lookbehind or a literal, so the rescan costs one
- * failed position per character, not a quadratic walk.
+ * and the secret-named assignment INSIDE its value was never looked at. A
+ * rule whose declined match cannot hide a nested candidate — a token run, a
+ * vendor prefix inside a longer word — passes `onDecline: "skip"` and resumes
+ * after it instead.
  */
 function replaceCounting(
   text: string,
   re: RegExp,
   fn: (match: string, groups: Groups, offset: number, whole: string) => string | null,
   counter: { n: number; found: string[] },
+  onDecline: "rescan" | "skip" = "rescan",
 ): string {
   re.lastIndex = 0;
   let out = "";
@@ -510,7 +522,7 @@ function replaceCounting(
     const groups = m.slice(1).map((g) => g ?? "");
     const replacement = m[0].length > 0 ? fn(m[0], groups, m.index, text) : null;
     if (replacement === null) {
-      re.lastIndex = m.index + 1;
+      re.lastIndex = onDecline === "skip" && m[0].length > 0 ? m.index + m[0].length : m.index + 1;
       continue;
     }
     out += text.slice(last, m.index) + replacement;
@@ -586,7 +598,9 @@ export function redactSecretsDetailed(text: string): RedactedDetail {
   for (const [re, label] of SHARED_RULES) out = replaceCounting(out, re, () => marker(label), c);
 
   // 4. Vendor prefixes and webhook URLs.
-  for (const [re, label] of VENDOR_RULES) out = replaceCounting(out, re, () => marker(label), c);
+  for (const [re, label] of VENDOR_RULES) {
+    out = replaceCounting(out, re, (_m, _g, offset, whole) => (atTokenBoundary(whole, offset) ? marker(label) : null), c, "skip");
+  }
   for (const [re, label] of WEBHOOK_RULES) out = replaceCounting(out, re, (_m, g) => g[0] + marker(label), c);
 
   // 5. Credentials in URLs and HTTP auth.
@@ -637,7 +651,8 @@ export function redactSecretsDetailed(text: string): RedactedDetail {
   out = replaceCounting(
     out,
     ASSIGNMENT_RE,
-    (m, g, offset, whole) => {
+    (_m, g, offset, whole) => {
+      if (!atTokenBoundary(whole, offset, NAME_CHAR)) return null; // mid-identifier
       const [q1, name, q2, sep, openQuote, quotedValue, bareValue] = g;
       const quoted = openQuote !== "";
       let value = quoted ? quotedValue : bareValue;
@@ -654,7 +669,8 @@ export function redactSecretsDetailed(text: string): RedactedDetail {
   out = replaceCounting(
     out,
     FLAG_VALUE_RE,
-    (_m, g) => {
+    (_m, g, offset, whole) => {
+      if (!atTokenBoundary(whole, offset, NAME_CHAR)) return null; // `x--token`, `a-b c`
       const [flag, space, quote, quotedValue, bareValue] = g;
       const quoted = quote !== "";
       const value = quoted ? quotedValue : bareValue;
@@ -670,6 +686,7 @@ export function redactSecretsDetailed(text: string): RedactedDetail {
     LONG_TOKEN_RE,
     (m, _g, offset, whole) => (looksRandomToken(m) && !insideDigest(whole, offset) ? marker("high-entropy token") : null),
     c,
+    "skip",
   );
 
   return { text: out, count: c.n, found: c.found };

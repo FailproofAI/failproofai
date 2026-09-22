@@ -9,7 +9,8 @@
  *
  * Everything the request needs comes through the §7 contracts:
  * `transportForConfig` (T1) for the provider, `throttleTransport` (T5) for the
- * cache and rate limit, `readIntent` (T4) for what the human asked. Jev's own
+ * cache and rate limit (scoped to the config's provider, endpoint and model;
+ * see `throttleScope`), `readIntent` (T4) for what the human asked. Jev's own
  * verdict is intent v1 (`decideV1` with `DEFAULT_THRESHOLDS_V1`).
  *
  * The returned promise never rejects: every failure is a `fallback` review,
@@ -22,10 +23,49 @@ import type { JevMode, JevReview, TwoTierReview } from "./combine";
 import { DEFAULT_THRESHOLDS_V1 } from "./decide";
 import { DEFAULT_JEV_TIMEOUT_MS, appendVerdictLog, evaluateSemantic, verdictLogRow, type SemanticOutcome } from "./evaluator";
 import { readIntent } from "./intent";
-import { JevError, transportForConfig } from "./jev-client";
+import { JevError, transportForConfig, type JevTransport } from "./jev-client";
 import { DEFAULT_JEV_MODE, type JevConfig } from "./jev-config";
-import { throttleTransport } from "./jev-throttle";
+import * as jevThrottle from "./jev-throttle";
 import type { SemanticInput } from "./types";
+
+/**
+ * T5's throttle as this file calls it. §7 declares only
+ * `throttleTransport(t)`; T5 added the `scope` option and the
+ * `isCachedJevResponse` probe, and both are used through this shape so the
+ * call compiles against the contract stub and the real module alike. The
+ * probe is optional: without it every answer counts as a fresh one.
+ */
+interface JevThrottle {
+  throttleTransport(t: JevTransport, opts?: { scope?: string }): JevTransport;
+  isCachedJevResponse?(response: unknown): boolean;
+}
+const throttle: JevThrottle = jevThrottle;
+
+/** Whether T5's cache, not the provider, produced this response. Never throws. */
+function servedFromCache(response: unknown): boolean {
+  try {
+    const probe = throttle.isCachedJevResponse;
+    return typeof probe === "function" && probe(response) === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Where a config's answers come from — provider, endpoint (base URL,
+ * Cloudflare account) and the model id sent — as T5's cache scope.
+ *
+ * The cache lives as long as the warm worker, which outlives any one
+ * `jev.json`, and the request alone does not say who answered it: two
+ * providers asked for the same model build byte-identical requests. Unscoped,
+ * an answer one config got — from a plain-http loopback proxy T1 allows only in
+ * shadow mode, say — would clear denies under the next config in enforce mode
+ * without that provider ever being asked. The scope is only hashed into the
+ * cache key, never stored, so a URL carrying a credential is safe here.
+ */
+export function throttleScope(cfg: JevConfig, route: { via: string; model: string }): string {
+  return JSON.stringify([route.via, cfg.baseUrl ?? null, cfg.accountId ?? null, route.model]);
+}
 
 /**
  * The self-protection guard (and anything else `alwaysOn`) is hard whatever
@@ -102,19 +142,29 @@ export function fallbackCode(reason: string): string {
   return /^[a-z0-9][a-z0-9-]{0,63}$/.test(code) ? code : "error";
 }
 
-export function toReview(outcome: SemanticOutcome): JevReview {
+/**
+ * @param cached - the answer came from T5's cache, not the provider: it is
+ *   applied like any other, but its ~0 ms is not a latency (`latencyMs`
+ *   null, so latency percentiles only ever measure the provider).
+ */
+export function toReview(outcome: SemanticOutcome, cached = false): JevReview {
   if (outcome.status === "degraded") {
     return { kind: "fallback", reason: fallbackCode(outcome.reason), latencyMs: outcome.latencyMs, model: null, decision: null };
   }
   const sent = outcome.via !== "none";
-  const latencyMs = sent ? outcome.latencyMs : null;
+  const latencyMs = sent && !cached ? outcome.latencyMs : null;
   const model = sent ? outcome.model : null;
   // §4: a truncated ENVELOPE means Jev judged less than the whole picture —
   // the call, the human's words or the agent's last message was cut — so the
   // regex result stands, every deny counting. Padding a command must not be a
   // way to hide its dangerous part, and a clear resting on half of what the
   // human typed is not a clear. Jev's answer is still recorded.
-  if (outcome.truncated) {
+  //
+  // Only when a request was actually sent: with no semantic policy applying
+  // nothing reaches Jev, so nothing was judged on a cut envelope, nothing can
+  // be cleared (`asked` is empty) and the answer below is the regex result
+  // anyway — recording it as a fallback would only inflate the fallback rate.
+  if (outcome.truncated && sent) {
     return { kind: "fallback", reason: "truncated", latencyMs, model, decision: outcome.verdict.decision };
   }
   const outcomes = outcome.verdict.outcomes;
@@ -163,10 +213,10 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
   });
 
   let route: ReturnType<typeof transportForConfig>;
-  let transport: ReturnType<typeof throttleTransport>;
+  let throttled: JevTransport;
   try {
     route = transportForConfig(cfg);
-    transport = throttleTransport(route.transport);
+    throttled = throttle.throttleTransport(route.transport, { scope: throttleScope(cfg, route) });
   } catch (err) {
     const reason = err instanceof JevError ? err.code : "config";
     return handle(Promise.resolve({ kind: "fallback", reason, latencyMs: null, model: null, decision: null }));
@@ -189,6 +239,14 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
     agentLastMessage: intent.agentLastMessage,
   };
 
+  /** Set when the answer came from T5's cache (a hit carries the original `usage` and no real latency). */
+  let cached = false;
+  const transport: JevTransport = async (request, signal) => {
+    const response = await throttled(request, signal);
+    cached = servedFromCache(response);
+    return response;
+  };
+
   const timeoutMs = resolveTimeout(cfg);
   /** Set once the backstop below gave up on the answer: a late one is logged, never applied. */
   let abandoned = false;
@@ -202,19 +260,20 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
     signal: controller.signal,
   })
     .then((outcome): JevReview => {
-      const review = toReview(outcome);
+      const hit = cached && outcome.status === "ok";
+      const review = toReview(outcome, hit);
       // An aborted request has nothing worth replaying; everything else goes
       // to the local verdict log (never shipped), so any verdict can be
-      // re-derived offline from its recorded probabilities.
+      // re-derived offline from its recorded probabilities. A cache hit is
+      // marked, and its tokens are not counted again.
       if (!(outcome.status === "degraded" && outcome.reason === "aborted")) {
-        appendVerdictLog(
-          verdictLogRow(input, outcome, {
-            sessionId: call.sessionId,
-            cli: call.cli,
-            eventType: call.eventType,
-            applied: abandoned || review.kind !== "answered" ? "legacy-fallback" : mode === "shadow" ? "shadow" : "two-tier",
-          }),
-        );
+        const row = verdictLogRow(input, hit ? { ...outcome, inputTokens: null } : outcome, {
+          sessionId: call.sessionId,
+          cli: call.cli,
+          eventType: call.eventType,
+          applied: abandoned || review.kind !== "answered" ? "legacy-fallback" : mode === "shadow" ? "shadow" : "two-tier",
+        });
+        appendVerdictLog(hit ? { ...row, cached: true } : row);
       }
       return review;
     })

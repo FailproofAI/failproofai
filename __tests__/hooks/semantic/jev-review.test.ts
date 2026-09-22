@@ -33,13 +33,35 @@ vi.mock("../../../src/hooks/semantic/jev-client", async (importOriginal) => {
 });
 
 const throttled = vi.fn();
+/**
+ * T5's throttle, faked at its boundary: a pass-through by default. With
+ * `fakeCache.on` it is a minimal stand-in for T5's cache — keyed, like T5's,
+ * by the scope the caller passes plus the request — so a test can show what
+ * the scope keeps apart. Hits are recognisable through `isCachedJevResponse`,
+ * as with T5's.
+ */
+const fakeCache = { on: false, entries: new Map<string, JevResponse>(), hits: new WeakSet<object>() };
+/** The options each `throttleTransport` call was given (the contract stub declares none). */
+const throttleOpts: Array<{ scope?: string } | undefined> = [];
+const cacheProbe = vi.fn((response: unknown) => typeof response === "object" && response !== null && fakeCache.hits.has(response));
 vi.mock("../../../src/hooks/semantic/jev-throttle", () => ({
-  throttleTransport: vi.fn((t: (r: JevRequest, s: AbortSignal) => Promise<JevResponse>) => {
-    return (r: JevRequest, s: AbortSignal) => {
+  throttleTransport: vi.fn((t: (r: JevRequest, s: AbortSignal) => Promise<JevResponse>, opts?: { scope?: string }) => {
+    throttleOpts.push(opts);
+    return async (r: JevRequest, s: AbortSignal) => {
       throttled(r);
-      return t(r, s);
+      const key = `${opts?.scope ?? ""}\n${JSON.stringify(r)}`;
+      const cachedAnswer = fakeCache.on ? fakeCache.entries.get(key) : undefined;
+      if (cachedAnswer) {
+        const hit = structuredClone(cachedAnswer);
+        fakeCache.hits.add(hit);
+        return hit;
+      }
+      const response = await t(r, s);
+      if (fakeCache.on) fakeCache.entries.set(key, structuredClone(response));
+      return response;
     };
   }),
+  isCachedJevResponse: (response: unknown) => cacheProbe(response),
 }));
 
 let intent: { userSaid: string[]; agentLastMessage: string | null } = { userSaid: [], agentLastMessage: null };
@@ -58,6 +80,7 @@ import {
   resolveMode,
   resolveTimeout,
   startJevReview,
+  throttleScope,
 } from "../../../src/hooks/semantic/jev-review";
 import type { JevConfig } from "../../../src/hooks/semantic/jev-config";
 
@@ -75,6 +98,10 @@ beforeEach(() => {
   process.env.FAILPROOFAI_HOME = home;
   transportCalls.length = 0;
   throttled.mockClear();
+  throttleOpts.length = 0;
+  cacheProbe.mockClear();
+  fakeCache.on = false;
+  fakeCache.entries.clear();
   vi.mocked(transportForConfig).mockClear();
   vi.mocked(readIntent).mockClear();
   intent = { userSaid: [], agentLastMessage: null };
@@ -321,6 +348,10 @@ describe("the route transportForConfig chose", () => {
   it("sends ITS model id — not the evaluator's default — and logs which provider answered", async () => {
     // Not DEFAULT_JEV_MODEL: every non-TypeSafe provider names Jev differently.
     intent = { userSaid: ["clean the build folder"], agentLastMessage: null };
+    // Answered the way a route that names Jev by an unversioned alias does
+    // (Cloudflare's `typesafe/jev`): the transport marks it modelUnverified,
+    // which is the only way T1's readAnswers accepts an uncalibrated id.
+    respond = async (request) => ({ ...allLow(request), modelUnverified: true });
     const review = await startJevReview({ ...CFG, model: "typesafe/jev" }, bash("rm -rf build")).review;
     expect(transportCalls).toHaveLength(1);
     expect(transportCalls[0].request.model).toBe("typesafe/jev");
@@ -409,5 +440,132 @@ describe("how long a call may wait for Jev", () => {
     await new Promise((r) => setTimeout(r, 300));
     expect(logRows()).toHaveLength(1);
     expect(logRows()[0]).toMatchObject({ status: "ok", applied: "legacy-fallback" });
+  });
+});
+
+// ── Round-2 review findings ──────────────────────────────────────────────────
+
+describe("the throttle's cache is scoped to where answers come from", () => {
+  const LOOPBACK_SHADOW: JevConfig = { provider: "custom", apiKey: "not-a-real-key", baseUrl: "http://127.0.0.1:9", mode: "shadow" };
+  const TYPESAFE_ENFORCE: JevConfig = { provider: "typesafe", apiKey: "not-a-real-key", baseUrl: "https://jev.invalid", mode: "enforce" };
+
+  it("passes a scope naming the provider, endpoint, account and model", async () => {
+    const configs: JevConfig[] = [
+      CFG,
+      { ...CFG, accountId: "1".repeat(32) },
+      { ...CFG, model: "typesafe/jev" },
+      { provider: "typesafe", apiKey: "not-a-real-key" },
+      TYPESAFE_ENFORCE,
+      LOOPBACK_SHADOW,
+      { ...LOOPBACK_SHADOW, baseUrl: "http://127.0.0.1:10" },
+      { provider: "openrouter", apiKey: "not-a-real-key" },
+    ];
+    for (const cfg of configs) await startJevReview(cfg, bash("ls")).review;
+    const scopes = throttleOpts.map((o) => o?.scope);
+    expect(scopes).toHaveLength(configs.length);
+    for (const s of scopes) expect(typeof s === "string" && s.length > 0).toBe(true);
+    expect(new Set(scopes).size).toBe(configs.length);
+    // The same config always gets the same scope (the cache still works),
+    // whatever its key or mode — neither changes who answers.
+    expect(throttleScope({ ...CFG, apiKey: "another" , mode: "shadow" }, { via: "cloudflare", model: "jev-1.13.0" })).toBe(scopes[0]);
+  });
+
+  it("an answer cached under one provider is never served under another", async () => {
+    fakeCache.on = true;
+    intent = { userSaid: ["show me my notes"], agentLastMessage: null };
+    // Both routes ask for the same model, so the requests are byte-identical.
+    const first = await startJevReview(LOOPBACK_SHADOW, bash("cat ~/other/notes.txt")).review;
+    expect(first).toMatchObject({ kind: "answered" });
+    expect(transportCalls).toHaveLength(1);
+
+    respond = async () => {
+      throw new JevError("network", "unreachable");
+    };
+    const second = await startJevReview(TYPESAFE_ENFORCE, bash("cat ~/other/notes.txt")).review;
+    expect(transportCalls[1].request).toEqual(transportCalls[0].request);
+    expect(second).toMatchObject({ kind: "fallback", reason: "network" });
+  });
+
+  it("the same provider asked the same thing again IS a cache hit, recorded as one", async () => {
+    fakeCache.on = true;
+    intent = { userSaid: ["show me my notes"], agentLastMessage: null };
+    respond = async (request) => ({ ...allLow(request), usage: { input_tokens: 1234 } });
+    const fresh = await startJevReview(CFG, bash("cat notes.txt")).review;
+    const hit = await startJevReview(CFG, bash("cat notes.txt")).review;
+    expect(transportCalls).toHaveLength(1);
+    expect(fresh).toMatchObject({ kind: "answered", model: "jev-1.13.0" });
+    expect(fresh.kind === "answered" && typeof fresh.latencyMs === "number").toBe(true);
+    // Applied like any answer; its ~0 ms is not a provider latency.
+    expect(hit).toMatchObject({ kind: "answered", latencyMs: null, model: "jev-1.13.0" });
+    expect(logRows().map((r) => [r.inputTokens, r.cached])).toEqual([
+      [1234, undefined],
+      [null, true],
+    ]);
+  });
+
+  it("a cache probe that throws counts as a fresh answer, never as a failure", async () => {
+    cacheProbe.mockImplementationOnce(() => {
+      throw new Error("probe broke");
+    });
+    const review = await startJevReview(CFG, bash("ls")).review;
+    expect(review).toMatchObject({ kind: "answered" });
+    expect(review.kind === "answered" && typeof review.latencyMs === "number").toBe(true);
+  });
+});
+
+describe("a truncated envelope that was never sent", () => {
+  it("is not recorded as a fallback: nothing was judged on it", async () => {
+    intent = { userSaid: ["please " + "tidy the build folder and ".repeat(100)], agentLastMessage: null };
+    const review = await startJevReview(CFG, { ...bash(""), toolName: "TodoWrite", toolInput: { todos: [] } }).review;
+    expect(transportCalls).toHaveLength(0);
+    expect(review).toMatchObject({ kind: "answered", decision: "allow", asked: [], clear: [], latencyMs: null, model: null });
+    expect(logRows()[0]).toMatchObject({ applied: "two-tier", truncated: true });
+  });
+});
+
+/**
+ * T8's closed reason-code list (`JEV_REASON_CODES` + the free-text prefixes it
+ * renames, in jev-task/t8's src/hooks/jev-activity.ts; the collector's
+ * transform.rs holds the same list). Any other code is stored and shipped as
+ * `other`, which says nothing about what went wrong.
+ */
+const T8_REASON_CODES = new Set([
+  "aborted", "cloudflare-error", "cloudflare-incomplete", "config", "error", "malformed", "model-mismatch", "network",
+  "no-api-key", "no-transport", "other", "out-of-credits", "prepare-error", "rate-limited", "request-too-large",
+  "timeout", "truncated", "upstream-error",
+  // free-text prefixes, renamed on the way in
+  "prepare",
+]);
+const knownToT8 = (code: string) => T8_REASON_CODES.has(code) || /^http-\d{3}$/.test(code);
+
+describe("every fallback this path records carries a code the activity store knows", () => {
+  it.each([
+    ["a transport that cannot be built (JevError)", () => {
+      vi.mocked(transportForConfig).mockImplementationOnce(() => {
+        throw new JevError("config", "bad");
+      });
+    }],
+    ["a transport that cannot be built (anything else)", () => {
+      vi.mocked(transportForConfig).mockImplementationOnce(() => {
+        throw new TypeError("boom");
+      });
+    }],
+    ["a transport that throws a plain error", () => {
+      respond = async () => {
+        throw new Error("socket hang up");
+      };
+    }],
+    ["a model mismatch", () => {
+      respond = async (request) => ({ ...allLow(request), model: "jev-2.0.0" });
+    }],
+    ["a truncated call", () => {
+      intent = { userSaid: ["x ".repeat(3000)], agentLastMessage: null };
+    }],
+  ])("%s", async (_name, arrange) => {
+    arrange();
+    const review = await startJevReview(CFG, bash("rm -rf build")).review;
+    expect(review.kind).toBe("fallback");
+    if (review.kind !== "fallback") return;
+    expect(knownToT8(review.reason)).toBe(true);
   });
 });

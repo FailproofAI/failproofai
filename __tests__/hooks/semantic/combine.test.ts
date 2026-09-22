@@ -13,6 +13,7 @@
 import { describe, expect, it } from "vitest";
 import { combineTwoTier, regexOnly, type JevMode, type JevReview, type RegexVerdict } from "../../../src/hooks/semantic/combine";
 import { fallbackCode, toReview } from "../../../src/hooks/semantic/jev-review";
+import { DEFAULT_THRESHOLDS_V1 } from "../../../src/hooks/semantic/decide";
 import type { SemanticOutcome } from "../../../src/hooks/semantic/evaluator";
 import type { PolicyOutcome, SemanticVerdict } from "../../../src/hooks/semantic/types";
 
@@ -314,7 +315,11 @@ describe("combine table (§4) — every row × shadow/enforce × complete/trunca
           const names = out.final.entries.map((e) => e.policyName);
 
           const hardDecided = row.outcome === null;
-          const fallback = !hardDecided && (row.fallback !== undefined || truncated === "truncated");
+          // Truncation is a fallback only for a call Jev was actually sent:
+          // with no semantic policy applying nothing is judged, so nothing was
+          // judged on a cut envelope (and the answered row clears nothing).
+          const nothingSent = row.outcome?.status === "ok" && row.outcome.via === "none";
+          const fallback = !hardDecided && (row.fallback !== undefined || (truncated === "truncated" && !nothingSent));
           const answered = !hardDecided && !fallback;
 
           // What is ENFORCED.
@@ -472,6 +477,25 @@ describe("the clear rule, on hand-built reviews", () => {
     expect(out.cleared).toEqual([]);
     expect(out.final.decision).toBe("deny");
   });
+
+  // Round 2: the exported pure function is safe on its own, not only behind
+  // authorityOf — a verdict it is handed is cleared only when it is BOTH
+  // reviewable AND names at least one reviewer.
+  it("a HARD verdict is never cleared, even one that names a reviewer Jev cleared", () => {
+    const hardNamed: RegexVerdict = { ...reviewable(RRO, "deny", ["read-outside-workspace"]), authority: "hard" };
+    const out = combineTwoTier([hardNamed], answered(), "enforce");
+    expect(out.cleared).toEqual([]);
+    expect(out.final).toEqual(regexOnly([hardNamed]));
+  });
+
+  it("a reviewable verdict that names NO reviewer is never cleared (every() on nothing is not a clear)", () => {
+    const unnamed = reviewable(RRO, "deny", []);
+    const out = combineTwoTier([unnamed], answered(), "enforce");
+    expect(out.cleared).toEqual([]);
+    expect(out.final.decision).toBe("deny");
+    const instruct = reviewable(AMEND, "instruct", []);
+    expect(combineTwoTier([instruct], answered(), "enforce").cleared).toEqual([]);
+  });
 });
 
 describe("toReview", () => {
@@ -489,5 +513,29 @@ describe("toReview", () => {
   it("any truncation of the envelope is a fallback, with Jev's decision kept for the record", () => {
     const out = toReview({ ...semOutcome({ decision: "instruct", policies: { "secret-exposure": "instruct" } }), truncated: true });
     expect(out).toEqual({ kind: "fallback", reason: "truncated", latencyMs: 42, model: "jev-1.13.0", decision: "instruct" });
+  });
+
+  it("a truncated envelope that was never SENT is not a fallback: nothing was judged, nothing can clear", () => {
+    const out = toReview({ ...semOutcome({ via: "none", policies: {} }), truncated: true });
+    expect(out).toMatchObject({ kind: "answered", decision: "allow", asked: [], clear: [], injectionAsked: false, latencyMs: null, model: null });
+    // …so the combine records an answered call and enforces the regex result.
+    const verdicts = [reviewable(RRO, "deny", ["read-outside-workspace"])];
+    const combined = combineTwoTier(verdicts, out, "enforce");
+    expect(combined.final).toEqual(regexOnly(verdicts));
+    expect(combined.activity.evaluator).toBe("jev");
+    expect(combined.activity.jevFallbackReason).toBeUndefined();
+  });
+
+  it("injection is held AT the threshold, not only above it", () => {
+    const at = DEFAULT_THRESHOLDS_V1.injection;
+    expect(toReview(semOutcome({ injection: at, policies: { "secret-exposure": "none" } }))).toMatchObject({ injected: true });
+    expect(toReview(semOutcome({ injection: at - 0.001, policies: { "secret-exposure": "none" } }))).toMatchObject({ injected: false });
+  });
+
+  it("a cache hit is applied like any answer, but its ~0 ms is not recorded as a latency", () => {
+    const outcome = semOutcome({ policies: { "secret-exposure": "none" } });
+    expect(toReview(outcome, true)).toMatchObject({ kind: "answered", latencyMs: null, model: "jev-1.13.0", clear: ["secret-exposure"] });
+    expect(toReview(outcome)).toMatchObject({ kind: "answered", latencyMs: 42 });
+    expect(combineTwoTier([], toReview(outcome, true), "enforce").activity.jevLatencyMs).toBeUndefined();
   });
 });

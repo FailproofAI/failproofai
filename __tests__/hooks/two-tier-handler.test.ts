@@ -7,6 +7,10 @@
  * - `loadJevConfig` (T1) — returns the test's config, or null;
  * - `transportForConfig` (T1) — a scripted fake Jev;
  * - `readIntent` / `captureIntent` (T4) — scripted / spied;
+ * - `throttleTransport` / `isCachedJevResponse` (T5) — a pass-through, or a
+ *   minimal scope-keyed cache where a test turns one on. T5's real cache and
+ *   token bucket are module-level, shared by every test in the file, which
+ *   would let one test's answer or rate budget decide another's;
  * - the builtin AUTHORITY table (T2) — simulated by re-registering the
  *   user-approved (D1) reviewable builtins with their `reviewedBy` meta.
  *
@@ -40,6 +44,27 @@ vi.mock("../../src/hooks/semantic/jev-review", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/hooks/semantic/jev-review")>();
   return { ...actual, startJevReview: vi.fn(actual.startJevReview) };
 });
+
+/** T5's cache, faked: keyed like T5's by the caller's scope plus the request. Off unless a test turns it on. */
+const fakeCache = { on: false, entries: new Map<string, JevResponse>(), hits: new WeakSet<object>() };
+vi.mock("../../src/hooks/semantic/jev-throttle", () => ({
+  throttleTransport: vi.fn(
+    (t: (r: JevRequest, s: AbortSignal) => Promise<JevResponse>, opts?: { scope?: string }) =>
+      async (r: JevRequest, s: AbortSignal) => {
+        const key = `${opts?.scope ?? ""}\n${JSON.stringify(r)}`;
+        const cachedAnswer = fakeCache.on ? fakeCache.entries.get(key) : undefined;
+        if (cachedAnswer) {
+          const hit = structuredClone(cachedAnswer);
+          fakeCache.hits.add(hit);
+          return hit;
+        }
+        const response = await t(r, s);
+        if (fakeCache.on) fakeCache.entries.set(key, structuredClone(response));
+        return response;
+      },
+  ),
+  isCachedJevResponse: vi.fn((response: unknown) => typeof response === "object" && response !== null && fakeCache.hits.has(response)),
+}));
 
 type Respond = (request: JevRequest, signal: AbortSignal) => Promise<JevResponse>;
 const jevCalls: Array<{ request: JevRequest; signal: AbortSignal }> = [];
@@ -182,6 +207,8 @@ beforeEach(() => {
   intent = HUMAN;
   defaultModeOverride = undefined;
   extraReviewable = {};
+  fakeCache.on = false;
+  fakeCache.entries.clear();
   vi.mocked(startJevReview).mockClear();
   vi.mocked(captureIntent).mockClear();
   vi.mocked(transportForConfig).mockClear();
@@ -599,12 +626,15 @@ describe("captureIntent", () => {
     await run("UserPromptSubmit", { prompt: "please tidy the build folder", transcript_path: join(root, "t.jsonl") });
     await run("beforeSubmitPrompt", { prompt: "and the cache" }, "cursor");
     expect(captureIntent).toHaveBeenCalledTimes(2);
+    // `payload` is T4's contract (the whole normalized payload); `prompt` is
+    // §7's original field, which the contract stub reads.
     expect(vi.mocked(captureIntent).mock.calls[0][0]).toEqual({
       eventType: "UserPromptSubmit",
       sessionId: SESSION,
       prompt: "please tidy the build folder",
       transcriptPath: join(root, "t.jsonl"),
       cli: "claude",
+      payload: expect.objectContaining({ prompt: "please tidy the build folder", transcript_path: join(root, "t.jsonl") }),
     });
     expect(vi.mocked(captureIntent).mock.calls[1][0]).toMatchObject({ eventType: "UserPromptSubmit", cli: "cursor" });
   });
@@ -744,7 +774,7 @@ describe("the warm worker's queue: releaseRegistry", () => {
 describe("a Jev review that cannot start", () => {
   // Every policy counts as hard on this path, so a deny short-circuits before
   // the (already failed) review is read; an allowed call shows the record.
-  it("is a recorded fallback ('unavailable'), in the build's default mode (D2)", async () => {
+  it("is a recorded fallback ('error'), in the build's default mode (D2)", async () => {
     jevConfig = CFG;
     vi.mocked(startJevReview).mockImplementationOnce(() => {
       throw new Error("module failed to initialise");
@@ -753,7 +783,7 @@ describe("a Jev review that cannot start", () => {
     expect(outcome.evaluation?.decision).toBe("allow");
     expect(outcome.stdout).toBe("");
     expect(jevCalls).toHaveLength(0);
-    expect(row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "unavailable", jevMode: "enforce" });
+    expect(row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "error", jevMode: "enforce" });
   });
 
   it("every regex deny counts: the regex result decides", async () => {
@@ -773,7 +803,7 @@ describe("a Jev review that cannot start", () => {
       throw new Error("module failed to initialise");
     });
     const { row } = await bash("ls -la");
-    expect(row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "unavailable", jevMode: "shadow" });
+    expect(row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "error", jevMode: "shadow" });
   });
 
   it("an explicit mode in the config wins", async () => {
@@ -827,5 +857,136 @@ describe("captureIntent and a prompt a policy acted on", () => {
     expect(outcome.evaluation?.decision).toBe("instruct");
     expect(captureIntent).toHaveBeenCalledTimes(1);
     expect(vi.mocked(captureIntent).mock.calls[0][0]).toMatchObject({ prompt: "tidy the build folder", cli: "claude" });
+  });
+});
+
+// ── Round-2 review findings ──────────────────────────────────────────────────
+
+describe("the throttle's cache across a jev.json change", () => {
+  const outsideRead = () => readFile(join(home, "other", "notes.txt"));
+  // T1 accepts plain http to a loopback proxy only in shadow mode: its answers
+  // must never clear a deny. Both routes ask for the same model, so their
+  // requests are byte-identical.
+  const LOOPBACK_SHADOW: JevConfig = { provider: "custom", apiKey: "not-a-real-key", baseUrl: "http://127.0.0.1:9", mode: "shadow" };
+  const TYPESAFE_ENFORCE: JevConfig = { provider: "typesafe", apiKey: "not-a-real-key", baseUrl: "https://jev.invalid", mode: "enforce" };
+
+  it("never serves one provider's answer under another: switching providers asks the new one", async () => {
+    const { JevError } = await import("../../src/hooks/semantic/jev-client");
+    fakeCache.on = true;
+
+    jevConfig = LOOPBACK_SHADOW;
+    const shadow = await outsideRead();
+    expect(shadow.outcome.evaluation?.decision).toBe("deny");
+    expect(shadow.row).toMatchObject({ evaluator: "jev", jevMode: "shadow", jevCleared: ["failproofai/block-read-outside-cwd"] });
+    expect(jevCalls).toHaveLength(1);
+
+    jevConfig = TYPESAFE_ENFORCE;
+    respond = async () => {
+      throw new JevError("network", "unreachable");
+    };
+    const enforce = await outsideRead();
+    expect(jevCalls).toHaveLength(2);
+    expect(jevCalls[1].request).toEqual(jevCalls[0].request);
+    expect(enforce.outcome.evaluation?.decision).toBe("deny");
+    expect(enforce.row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "network", jevMode: "enforce" });
+    expect(enforce.row.jevCleared).toBeUndefined();
+  });
+
+  it("the same provider asked again is a hit: applied, but no latency recorded for it", async () => {
+    fakeCache.on = true;
+    jevConfig = CFG;
+    const fresh = await outsideRead();
+    store._resetForTest(join(root, "activity-2"));
+    const hit = await outsideRead();
+    expect(jevCalls).toHaveLength(1);
+    expect(fresh.row).toMatchObject({ evaluator: "jev", jevCleared: ["failproofai/block-read-outside-cwd"] });
+    expect(typeof fresh.row.jevLatencyMs).toBe("number");
+    expect(hit.outcome.evaluation?.decision).toBe("allow");
+    expect(hit.row).toMatchObject({ evaluator: "jev", jevCleared: ["failproofai/block-read-outside-cwd"], jevModel: "jev-1.13.0" });
+    expect(hit.row.jevLatencyMs).toBeUndefined();
+  });
+});
+
+describe("captureIntent gets the whole normalized payload (T4's contract)", () => {
+  it("Goose's prompt text is in `message`, not `prompt`: it reaches captureIntent", async () => {
+    jevConfig = CFG;
+    await run("UserPromptSubmit", { message: "summarise my notes", working_dir: project }, "goose");
+    expect(captureIntent).toHaveBeenCalledTimes(1);
+    const event = vi.mocked(captureIntent).mock.calls[0][0] as unknown as Record<string, unknown>;
+    expect(event).toMatchObject({ eventType: "UserPromptSubmit", cli: "goose", sessionId: SESSION });
+    expect(event.payload).toMatchObject({ message: "summarise my notes", cwd: project });
+  });
+
+  it("the payload carries the marks T4 checks, e.g. a subagent's agent_id", async () => {
+    jevConfig = CFG;
+    await run("UserPromptSubmit", { prompt: "carry on", agent_id: "sub-1" });
+    const event = vi.mocked(captureIntent).mock.calls[0][0] as unknown as Record<string, unknown>;
+    expect(event.payload).toMatchObject({ prompt: "carry on", agent_id: "sub-1" });
+  });
+});
+
+/** T8's closed reason-code list (jev-task/t8 src/hooks/jev-activity.ts, mirrored in the collector's transform.rs). */
+const T8_REASON_CODES = new Set([
+  "aborted", "cloudflare-error", "cloudflare-incomplete", "config", "error", "malformed", "model-mismatch", "network",
+  "no-api-key", "no-transport", "other", "out-of-credits", "prepare-error", "rate-limited", "request-too-large",
+  "timeout", "truncated", "upstream-error", "prepare",
+]);
+
+describe("a review that cannot start is recorded under a code the activity store knows", () => {
+  it("not as `other`", async () => {
+    jevConfig = CFG;
+    vi.mocked(startJevReview).mockImplementationOnce(() => {
+      throw new Error("module failed to initialise");
+    });
+    const { row } = await bash("ls -la");
+    expect(T8_REASON_CODES.has(row.jevFallbackReason as string)).toBe(true);
+    expect(row.jevFallbackReason).not.toBe("other");
+  });
+});
+
+describe("a policy that breaks the evaluator mid-collection", () => {
+  it("aborts the in-flight Jev request, and the error still propagates", async () => {
+    jevConfig = CFG;
+    respond = hang;
+    vi.mocked(loadAllCustomHooks).mockResolvedValueOnce({
+      hooks: [
+        {
+          name: "broken",
+          description: "returns no verdict object",
+          match: { events: ["PreToolUse"] },
+          fn: async () => null as never,
+        },
+      ],
+      conventionSources: [],
+    } as never);
+    await expect(
+      evaluateHookEvent(
+        "PreToolUse",
+        "claude",
+        JSON.stringify({ session_id: SESSION, cwd: project, hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "ls -la" } }),
+        { awaitTelemetryFlush: false },
+      ),
+    ).rejects.toThrow();
+    expect(jevCalls).toHaveLength(1);
+    expect(jevCalls[0].signal.aborted).toBe(true);
+  });
+});
+
+describe("a Jev fallback stays off the hook's stderr", () => {
+  it("is logged below the default level: nothing about it reaches process.stderr", async () => {
+    jevConfig = { ...CFG, timeoutMs: 25 };
+    respond = hang;
+    const writes: string[] = [];
+    const spy = vi.spyOn(process.stderr, "write").mockImplementation(((chunk: unknown) => {
+      writes.push(String(chunk));
+      return true;
+    }) as typeof process.stderr.write);
+    try {
+      const { row } = await readFile(join(home, "other", "notes.txt"));
+      expect(row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "timeout" });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(writes.filter((w) => /jev/i.test(w))).toEqual([]);
   });
 });

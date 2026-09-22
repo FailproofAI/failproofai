@@ -272,11 +272,13 @@ async function startTwoTier(
     });
   } catch (err) {
     // Configured but unable to start: that is a fallback, and it is recorded
-    // as one — every regex verdict hard, the regex result final.
+    // as one — every regex verdict hard, the regex result final. Recorded as
+    // `error`, one of the reason codes the activity store and the collector
+    // know (T8's closed list); an unknown code would ship as `other`.
     hookLogWarn(`Jev review could not start (${err instanceof Error ? err.message : String(err)})`);
     return {
       mode: cfg.mode === "shadow" || cfg.mode === "enforce" ? cfg.mode : loaded.defaultMode,
-      review: Promise.resolve({ kind: "fallback", reason: "unavailable", latencyMs: null, model: null, decision: null }),
+      review: Promise.resolve({ kind: "fallback", reason: "error", latencyMs: null, model: null, decision: null }),
       abort: () => {},
       authorityOf: () => ({ authority: "hard", reviewedBy: [] }),
     };
@@ -289,6 +291,12 @@ async function startTwoTier(
  * agent never receives that one, so it cannot be what the agent is working
  * on. Which CLIs' prompt events count as human is decided inside
  * `captureIntent` (T4). Never throws.
+ *
+ * `captureIntent` gets the whole normalized payload (`payload`): the prompt
+ * text is in a different field on some harnesses (Goose: `message`), and the
+ * marks that tell a human's prompt from a subagent's or an extension's are
+ * elsewhere in it. `prompt` is §7's original field, still read by the
+ * contract stub; T4's implementation reads `payload` and ignores it.
  */
 async function captureJevIntent(
   canonicalEventType: string,
@@ -302,13 +310,16 @@ async function captureJevIntent(
   try {
     if (!(await readJevConfig())) return;
     const { captureIntent } = await import("./semantic/intent");
-    captureIntent({
+    // Built first, then passed: the one object satisfies §7's shape and T4's.
+    const event = {
       eventType: canonicalEventType,
       sessionId: session.sessionId,
-      prompt: parsed.prompt,
       transcriptPath: session.transcriptPath,
       cli,
-    });
+      payload: parsed,
+      prompt: parsed.prompt,
+    };
+    captureIntent(event);
   } catch (err) {
     hookLogWarn(`Jev intent capture failed: ${err instanceof Error ? err.message : String(err)}`);
   }

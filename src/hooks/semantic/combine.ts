@@ -83,7 +83,11 @@ export type JevReview =
       injectionAsked: boolean;
       /** The injection probe held: every clear is withdrawn. */
       injected: boolean;
-      /** Null when nothing had to be sent (no semantic policy applied). */
+      /**
+       * Null when nothing had to be sent (no semantic policy applied), or when
+       * the answer came from the throttle's cache: a hit's ~0 ms is not a
+       * provider latency.
+       */
       latencyMs: number | null;
       model: string | null;
     };

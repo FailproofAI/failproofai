@@ -176,4 +176,44 @@ describe("two-tier in the warm worker: the Jev wait does not hold the queue", ()
     expect(inFlight.max).toBe(4);
     expect(inFlight.now).toBe(0);
   }, 15_000);
+
+  it("replies on ONE connection still leave in request order, though a later request finished first", async () => {
+    // The wire has no request id: a client pipelining requests on one
+    // connection matches replies by order. A (gated, waits out Jev's timeout)
+    // releases the queue, so B (a hard deny, instant) finishes long before it.
+    const frames = [
+      hook("PreToolUse", { tool_name: "Bash", tool_input: { command: "ls -la pipelined" } }),
+      hook("PreToolUse", { tool_name: "Bash", tool_input: { command: "sudo whoami" } }),
+    ];
+    const replies = await new Promise<Record<string, unknown>[]>((resolvePromise, reject) => {
+      const socket = createConnection({ path: socketPath }, () => socket.write(Buffer.concat(frames.map(encodeFrame))));
+      const collected: Record<string, unknown>[] = [];
+      let buf = Buffer.alloc(0);
+      let declaredLen: number | null = null;
+      socket.on("data", (chunk: Buffer) => {
+        buf = Buffer.concat([buf, chunk]);
+        for (;;) {
+          if (declaredLen === null) {
+            if (buf.length < 4) return;
+            declaredLen = buf.readUInt32BE(0);
+            buf = buf.subarray(4);
+          }
+          if (buf.length < declaredLen) return;
+          collected.push(JSON.parse(buf.subarray(0, declaredLen).toString("utf8")));
+          buf = buf.subarray(declaredLen);
+          declaredLen = null;
+          if (collected.length === frames.length) {
+            socket.end();
+            resolvePromise(collected);
+            return;
+          }
+        }
+      });
+      socket.on("error", reject);
+    });
+    expect(decisionOf(replies[0])).toBe("allow");
+    expect(replies[0].stdout).toBe("");
+    expect(decisionOf(replies[1])).toBe("deny");
+    expect((replies[1].evaluation as { policyName?: string }).policyName).toBe("failproofai/block-sudo");
+  }, 15_000);
 });

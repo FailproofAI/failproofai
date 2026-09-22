@@ -111,6 +111,12 @@ const TASK_DEADLINE_MS = 60_000;
  * back of the queue past the client's 30 s budget into fail-closed denies.
  * A released task no longer holds the registry, so the wedge deadline stops
  * applying to it; its own Jev wait is bounded by the configured timeout.
+ *
+ * Released tasks therefore run concurrently with each other and with the
+ * queue: two gated calls can be waiting on Jev at once (T5's throttle shares
+ * one cache and token bucket across them, and does not merge identical
+ * in-flight requests). Replies on one connection still leave in request order
+ * (see `handleConnection`).
  */
 const WEDGED_EXIT_CODE = 75;
 
@@ -142,6 +148,18 @@ function enqueue(task: (release: () => void) => Promise<void>): void {
 function handleConnection(socket: Socket, shutdown: () => void): void {
   let recvBuf = Buffer.alloc(0);
   let declaredLen: number | null = null;
+  /**
+   * Hook replies leave in the order their requests arrived on this
+   * connection. The wire carries no request id, so a client that pipelines
+   * several requests on one connection can match replies only by order — which
+   * the strictly serialized queue used to guarantee by itself. A two-tier task
+   * that releases the queue early (see `enqueue`) can finish after a request
+   * that arrived behind it, so each reply waits for every earlier one on its
+   * connection. The Rust supervisor opens one connection per request, so today
+   * this never delays anything; it keeps the ordering true for any client that
+   * does pipeline.
+   */
+  let replies: Promise<void> = Promise.resolve();
 
   socket.on("data", (chunk: Buffer) => {
     recvBuf = Buffer.concat([recvBuf, chunk]);
@@ -192,6 +210,17 @@ function handleConnection(socket: Socket, shutdown: () => void): void {
       }
       const request = message;
 
+      let deliver!: (frame: Buffer) => void;
+      const reply = new Promise<Buffer>((resolveReply) => {
+        deliver = resolveReply;
+      });
+      replies = replies
+        .then(() => reply)
+        .then((frame) => {
+          socket.write(frame);
+        })
+        .catch(() => {});
+
       enqueue(async (release) => {
         try {
           const result = await evaluateHookEvent(request.hookEvent, request.cli, request.stdin, {
@@ -201,7 +230,7 @@ function handleConnection(socket: Socket, shutdown: () => void): void {
             fallbackCwd: request.cwd ?? undefined,
             releaseRegistry: release,
           });
-          socket.write(
+          deliver(
             encodeFrame({
               type: "hookResult",
               exitCode: result.exitCode,
@@ -213,7 +242,7 @@ function handleConnection(socket: Socket, shutdown: () => void): void {
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           hookLogWarn(`worker: evaluateHookEvent threw: ${msg}`);
-          socket.write(encodeFrame({ type: "error", message: msg }));
+          deliver(encodeFrame({ type: "error", message: msg }));
         }
       });
     }

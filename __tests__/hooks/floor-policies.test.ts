@@ -246,6 +246,7 @@ describe("block-mass-kill", () => {
     "pkill -u $USER",
     "pkill -v myapp",
     "pkill -f 'node|python'",
+    "pkill -f 'node .*'",
     "sudo pkill -KILL chrome",
     "kill -9 -1",
     "kill -- -1",
@@ -321,6 +322,8 @@ describe("block-no-verify", () => {
     "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m x",
     "git config core.hooksPath /dev/null",
     "bash -c 'git commit -n -m wip'",
+    "git -c alias.ci='commit --no-verify' ci -m x",
+    "git -c alias.x='!git commit -n' x -m y",
   ])("denies %s", async (command) => {
     expect(await decide("block-no-verify", command)).toBe("deny");
   });
@@ -339,6 +342,8 @@ describe("block-no-verify", () => {
     "git config core.hooksPath .husky",
     "HUSKY=0 npm ci && git commit -m x",
     "HUSKY=1 git commit -m x",
+    "git -c alias.l='log -n 5' l",
+    "git -c alias.ci=commit ci -m x",
     "git commit -m \"$(cat <<'EOF'\nDon't skip hooks with --no-verify.\nEOF\n)\"",
     "echo git commit --no-verify",
     "grep -rn -- '--no-verify' docs/",
@@ -369,6 +374,9 @@ describe("block-indirect-exec", () => {
     "$UNKNOWN -rf /",
     "\"$CMD\" --no-preserve-root /",
     "$TOOL if=/dev/zero of=/dev/sda",
+    "$(printf '\\x72\\x6d') -rf x",
+    "$(echo -e '\\x72\\x6d') x",
+    "$(printf %b '\\x64\\x64') if=x",
   ])("denies %s", async (command) => {
     expect(await decide("block-indirect-exec", command)).toBe("deny");
   });

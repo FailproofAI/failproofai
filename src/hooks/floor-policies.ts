@@ -334,7 +334,7 @@ function stripPattern(pattern: string): string {
   let s = pattern.trim().toLowerCase();
   s = s.replace(/^\^/, "").replace(/\$$/, "");
   s = s.replace(/^(?:\.\*|\.\+)+/, "").replace(/(?:\.\*|\.\+)+$/, "");
-  return s.replace(/\[([^\]^])\]/g, "$1").replace(/\\(.)/g, "$1");
+  return s.replace(/\[([^\]^])\]/g, "$1").replace(/\\(.)/g, "$1").trim();
 }
 
 /** The process name a pattern targets: anchors, `.*`, `[n]ode`, `.exe` and an ABSOLUTE binary path removed. */
@@ -744,11 +744,25 @@ function envSkipsHooks(name: string, value: string, prefixOnly: boolean): boolea
   return false;
 }
 
-function blockNoVerify(ctx: PolicyContext): PolicyResult {
-  const a = analysisFor(ctx);
-  if (!a) return allow();
-  const hit = (why: string) =>
-    deny(`Skipping git hooks is blocked (${why}). Fix what the hook reports instead of bypassing it.`);
+/**
+ * An inline alias, expanded into the command it stands for:
+ * `git -c alias.ci='commit --no-verify' ci -m x` → `git commit --no-verify -m x`,
+ * `git -c alias.x='!git commit -n' x` → `git commit -n`. Null when `sub` is
+ * not an alias this command defines.
+ */
+function expandInlineAlias(configs: string[], sub: string, subArgs: ShellWord[]): string | null {
+  for (const c of configs) {
+    const m = /^alias\.([^=]+)=([\s\S]*)$/i.exec(c.trim());
+    if (!m || m[1].toLowerCase() !== sub) continue;
+    const rest = subArgs.map((w) => w.text).join(" ");
+    const body = m[2].trim();
+    return body.startsWith("!") ? `${body.slice(1)} ${rest}` : `git ${body} ${rest}`;
+  }
+  return null;
+}
+
+/** Why this command skips git hooks, or null. `depth` bounds alias expansion. */
+function noVerifyHit(a: ShellAnalysis, depth: number): string | null {
   let runsHooks = false;
   for (const inv of a.invocations) {
     if (!inv.names.includes("git")) continue;
@@ -759,22 +773,29 @@ function blockNoVerify(ctx: PolicyContext): PolicyResult {
       const k = texts.findIndex((t) => t !== null && t.toLowerCase() === "core.hookspath");
       if (k >= 0 && k + 1 < texts.length) {
         const value = (texts[k + 1] ?? "").trim();
-        if (value === "" || value === "/dev/null" || value.toLowerCase() === "nul") return hit(`git config core.hooksPath ${value || "''"}`);
+        if (value === "" || value === "/dev/null" || value.toLowerCase() === "nul") return `git config core.hooksPath ${value || "''"}`;
       }
+      continue;
+    }
+    const expanded = expandInlineAlias(g.configs, g.sub, g.subArgs);
+    if (expanded !== null) {
+      if (depth >= 2) continue;
+      const why = noVerifyHit(analyzeShell(expanded), depth + 1);
+      if (why) return `git -c alias.${g.sub}=… → ${why}`;
       continue;
     }
     if (!HOOK_SUBCOMMANDS.has(g.sub)) continue;
     runsHooks = true;
-    if (g.configs.some((c) => /^core\.hookspath=/i.test(c.trim()))) return hit(`git -c core.hooksPath=… ${g.sub}`);
+    if (g.configs.some((c) => /^core\.hookspath=/i.test(c.trim()))) return `git -c core.hooksPath=… ${g.sub}`;
     if (g.sub === "commit") {
       const why = commitSkipsHooks(g.subArgs);
-      if (why) return hit(why);
+      if (why) return why;
     } else if (hasNoVerify(g.subArgs)) {
-      return hit(`git ${g.sub} --no-verify`);
+      return `git ${g.sub} --no-verify`;
     }
     for (const { name, value } of inv.env) {
       for (const v of resolveWord(a, value) ?? []) {
-        if (envSkipsHooks(name, v, true)) return hit(`${name}=${v} git ${g.sub}`);
+        if (envSkipsHooks(name, v, true)) return `${name}=${v} git ${g.sub}`;
       }
     }
   }
@@ -790,12 +811,20 @@ function blockNoVerify(ctx: PolicyContext): PolicyResult {
         const m = /^([A-Za-z_]\w*)=/.exec(literalPrefix(w));
         if (!m) continue;
         for (const v of resolveWord(a, dropPrefix(w, m[0].length)) ?? []) {
-          if (envSkipsHooks(m[1], v, false)) return hit(`export ${m[1]}=${v}`);
+          if (envSkipsHooks(m[1], v, false)) return `export ${m[1]}=${v}`;
         }
       }
     }
   }
-  return allow();
+  return null;
+}
+
+function blockNoVerify(ctx: PolicyContext): PolicyResult {
+  const a = analysisFor(ctx);
+  if (!a) return allow();
+  const why = noVerifyHit(a, 0);
+  if (!why) return allow();
+  return deny(`Skipping git hooks is blocked (${why}). Fix what the hook reports instead of bypassing it.`);
 }
 
 // ── block-indirect-exec ─────────────────────────────────────────────────────

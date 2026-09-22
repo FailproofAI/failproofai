@@ -1319,16 +1319,20 @@ function staticSubstitution(a: ShellAnalysis, body: string, depth: number, seen:
   const one = (w: ShellWord | undefined) => (w ? resolveWord(a, w, depth + 1, seen) : null);
   switch (head) {
     case "echo": {
+      const flags = literalText(args[0]) ?? "";
+      const escapes = /^-[neE]+$/.test(flags) && flags.includes("e");
       const rest = args.filter((w, k) => !(k === 0 && /^-[neE]+$/.test(literalText(w) ?? "")));
       if (rest.length === 0) return [""];
       const first = one(rest[0]);
-      return first ? first.map((f) => [f, ...rest.slice(1).map((w) => w.text)].join(" ")) : null;
+      const decode = (v: string) => (escapes ? decodeAnsiC(v) : v);
+      return first ? first.map((f) => decode([f, ...rest.slice(1).map((w) => w.text)].join(" "))) : null;
     }
     case "printf": {
+      // printf decodes \xHH, octal and \n in its format, and in %b arguments.
       const fmt = literalText(args[0]);
       if (fmt === null) return null;
-      if (!fmt.includes("%")) return [fmt.replace(/\\n$/, "")];
-      if (/^%s(?:\\n)?$/.test(fmt)) return one(args[1]);
+      if (!fmt.includes("%")) return [decodeAnsiC(fmt).replace(/\n$/, "")];
+      if (/^%[sb](?:\\n)?$/.test(fmt)) return one(args[1])?.map((v) => (fmt.startsWith("%b") ? decodeAnsiC(v) : v)) ?? null;
       return null;
     }
     case "which":

@@ -30,9 +30,11 @@ Each way a policy reaches a machine has one place that decides its authority:
 | Built-in policies | The table below | Hard unless listed as reviewable |
 | Your own policy files | `authority` and `reviewedBy` on `customPolicies.add` | Hard |
 | Policy packs | Each policy's entry in the pack manifest (`failproofai-pack.json`) | Hard |
-| Cloud-managed policies | The policy's assignment in the active deployment | Hard |
+| Cloud-managed policies | The policy's assignment in the active deployment | Hard. Deployments do not set it yet, so every cloud-managed policy is hard today. |
 
 For a pack or a cloud-managed policy, fields set inside the policy code are ignored; the manifest or the assignment decides. A pack can only describe its own policies: its policy names cannot contain `/` and are registered under the pack's own prefix, so no manifest can mark a built-in policy or another pack's policy as reviewable. A policy a pack's code registers without declaring it in the manifest is hard.
+
+Most machines get the built-in policies from the `FailproofAI/policies` pack, and read their authority from that pack's manifest. The reviewable entries below take effect once a release of the pack that carries them is installed; an older release carries none, so every policy in it stays hard.
 
 ## Declare authority in your own policy
 

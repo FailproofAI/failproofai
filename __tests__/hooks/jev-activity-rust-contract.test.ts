@@ -8,14 +8,19 @@
  * reads the Rust source and holds them together.
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import {
   JEV_ACTIVITY_KEYS,
   JEV_CLEARED_MAX,
   JEV_FREE_TEXT_PREFIXES,
   JEV_REASON_MAX_CHARS,
 } from "../../src/hooks/jev-activity";
+import { _resetForTest, persistHookActivity } from "../../src/hooks/hook-activity-store";
+import { JEV_ACTIVITY_ROWS } from "../fixtures/jev-activity-rows";
+
+const GOLDEN = join(__dirname, "..", "..", "crates", "fpai-collect", "tests", "fixtures", "hook-activity-jev.jsonl");
 
 const RUST = readFileSync(
   join(__dirname, "..", "..", "crates", "fpai-collect", "src", "sources", "hooks", "transform.rs"),
@@ -43,5 +48,20 @@ describe("Jev activity fields: TypeScript and the collector agree", () => {
   it("the bounds are the same", () => {
     expect(RUST).toContain(`pub const JEV_REASON_MAX_CHARS: usize = ${JEV_REASON_MAX_CHARS};`);
     expect(RUST).toContain(`pub const JEV_CLEARED_MAX: usize = ${JEV_CLEARED_MAX};`);
+  });
+
+  it("the collector's golden rows are exactly what the store writes today", () => {
+    // crates/fpai-collect/tests/hooks_jev.rs reads this file. If the store's
+    // output changes, regenerate it from __tests__/fixtures/jev-activity-rows.ts
+    // (persist each row, copy current.jsonl) and re-run the Rust tests.
+    const dir = mkdtempSync(join(tmpdir(), "jev-golden-"));
+    try {
+      _resetForTest(dir);
+      for (const row of JEV_ACTIVITY_ROWS) persistHookActivity(row);
+      expect(readFileSync(join(dir, "current.jsonl"), "utf-8")).toBe(readFileSync(GOLDEN, "utf-8"));
+    } finally {
+      _resetForTest();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

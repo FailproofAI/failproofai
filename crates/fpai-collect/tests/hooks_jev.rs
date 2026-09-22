@@ -596,3 +596,84 @@ async fn no_command_or_prompt_text_reaches_a_shipped_event() {
         cleanup(&[&store, &state, &spool]);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Rows exactly as the TypeScript store writes them
+// ---------------------------------------------------------------------------
+
+/// `fixtures/hook-activity-jev.jsonl` is persisted by `persistHookActivity`
+/// from `__tests__/fixtures/jev-activity-rows.ts`, and a TypeScript test fails
+/// if the store stops producing it byte for byte. So this reads what a real
+/// machine's store holds, not a shape this file imagined.
+fn golden() -> String {
+    fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/hook-activity-jev.jsonl"),
+    )
+    .unwrap()
+}
+
+#[test]
+fn every_golden_row_parses_and_maps() {
+    let rows: Vec<HookRow> = golden()
+        .lines()
+        .map(|l| serde_json::from_str(l).expect("a store-written row must parse"))
+        .collect();
+    assert_eq!(rows.len(), 5);
+
+    let end = |i: usize| completed(&transform::to_events(&rows[i], i as u64, "local")).clone();
+
+    // 0: Jev denied, having cleared a reviewable policy on the way.
+    let e = end(0);
+    assert_eq!(e["failproofai_evaluator"], "jev");
+    assert_eq!(e["jev_decision"], "deny");
+    assert_eq!(e["jev_cleared"], json!(["block-env-files"]));
+    assert_eq!(e["jev_latency_ms"], 38.0);
+    assert_eq!(e["jev_model"], "jev-1.13.0");
+    assert_eq!(e["jev_mode"], "enforce");
+
+    // 2: a fallback; the store already reduced the free-text reason.
+    let e = end(2);
+    assert_eq!(e["failproofai_evaluator"], "jev-fallback");
+    assert_eq!(e["jev_fallback_reason"], "prepare-error");
+    assert_eq!(e["outcome"], "deny");
+
+    // 4: no Jev config involved — nothing Jev-shaped.
+    let e = end(4);
+    assert!(e.get("failproofai_evaluator").is_none());
+    assert!(e.get("jev_mode").is_none());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn golden_rows_ship_clears_and_shadow_disagreements_individually() {
+    let (store, state, spool) = (tmpdir("gold-s"), tmpdir("gold-st"), tmpdir("gold-sp"));
+    fs::write(store.join("current.jsonl"), golden()).unwrap();
+    run_once(&store, &state, &spool, HooksVerbosity::Decisions).await;
+
+    let events = spooled(&spool);
+    let completions: Vec<&Value> = events
+        .iter()
+        .filter(|e| e["type"] == "hook_completed")
+        .collect();
+    // Two denies, the enforce-mode clear and the shadow disagreement ship as
+    // pairs; only the plain regex allow rolls up.
+    assert_eq!(completions.len(), 5, "{events:#?}");
+    let aggs: Vec<&&Value> = completions
+        .iter()
+        .filter(|e| e.get("failproofai_allow_count").is_some())
+        .collect();
+    assert_eq!(aggs.len(), 1);
+    assert!(aggs[0].get("failproofai_evaluator").is_none());
+    assert!(
+        completions
+            .iter()
+            .any(|e| e["jev_cleared"] == json!(["block-read-outside-cwd"]))
+    );
+    assert!(
+        completions
+            .iter()
+            .any(|e| e["jev_mode"] == "shadow" && e["jev_decision"] == "deny")
+    );
+    assert!(!spooled_text(&spool).contains("zebra"));
+
+    cleanup(&[&store, &state, &spool]);
+}

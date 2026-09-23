@@ -92,7 +92,8 @@ const isClaudeInternalPath = isAgentInternalPath;
 const isClaudeSettingsFile = isAgentSettingsFile;
 
 function getCommand(ctx: PolicyContext): string {
-  return (ctx.toolInput?.command as string) ?? "";
+  const command = ctx.toolInput?.command;
+  return typeof command === "string" ? command : "";
 }
 
 function getFilePath(ctx: PolicyContext): string {

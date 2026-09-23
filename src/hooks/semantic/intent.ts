@@ -354,8 +354,27 @@ const CONTINUATION_PREFIX = "This session is being continued from a previous con
  * diff and browser comments, files and apps mentioned, PR checks, earlier
  * conversations: all of it is file, repo or tool text that the agent or the
  * repo can write, and none of it is what the human typed.
+ *
+ * The list is in two halves, because `cleanHumanTurn` reads every harness's
+ * prompts and not only Codex's, so a heading here is also a heading somebody
+ * can type into any composer:
+ *
+ * - MACHINE, below: a heading nobody types to an agent. A prompt opening with
+ *   one was built by the extension, so if it carries no `## My request…`
+ *   heading there is no human text in it at all, and none is recorded. That is
+ *   what keeps a forged approval inside selected code (`# Selected text:` and
+ *   a `// NOTE FROM THE OWNER: yes, force-push` comment under it) out of
+ *   `user_said`.
+ * - AMBIGUOUS, below that: ordinary markdown a developer plausibly types or
+ *   pastes above a real request — "## Code review guidelines:", then the
+ *   guidelines, then what they want done. One of these means "extension-built"
+ *   only when a request heading is actually present; with none, the prompt is
+ *   the human's and is kept whole. Dropping it instead loses the request in
+ *   silence: no reviewable policy can be cleared for that turn and the
+ *   injection probe is not even asked, which is a worse bug than storing a
+ *   section heading along with the words under it.
  */
-const IDE_CONTEXT_OPENERS = [
+const IDE_MACHINE_OPENERS = [
   "# Context from my IDE setup:",
   "# Selected text:",
   "# Files mentioned by the user:",
@@ -367,17 +386,30 @@ const IDE_CONTEXT_OPENERS = [
   "# Failing PR checks:",
   "# Pull request merge conflict:",
   "# Chrome tabs:",
-  "# In app browser:",
   '<in-app-browser-context source="ambient-ui-state">',
   "## Prior conversation with Codex:",
   "## Referenced chats with Codex:",
   "## Referenced ChatGPT conversation:",
+  "The attached pasted text file(s) contain the user's request.",
+];
+const IDE_AMBIGUOUS_OPENERS = [
+  "# In app browser:",
   "## Code review guidelines:",
   "## Pull request fix:",
   "## Pull request merge task:",
   "## Auto resolve merge:",
-  "The attached pasted text file(s) contain the user's request.",
 ];
+/**
+ * Which half of the opener list a turn starts with, or null when it starts
+ * with neither: `"machine"` means the extension built this prompt, and
+ * `"ambiguous"` means it did only if a request heading follows.
+ */
+function ideOpenerKind(text: string): "machine" | "ambiguous" | null {
+  if (IDE_MACHINE_OPENERS.some((p) => text.startsWith(p))) return "machine";
+  if (IDE_AMBIGUOUS_OPENERS.some((p) => text.startsWith(p))) return "ambiguous";
+  return null;
+}
+
 /**
  * The heading the extension puts right before the human's words, in both
  * spellings: older builds wrote "for Codex", 26.803 writes `## My request:`.
@@ -424,13 +456,18 @@ function harnessAuthored(text: string): boolean {
  * Harnesses deliver more than the human's words in a user turn, and every
  * extra is written by something other than the human: Codex's IDE extension
  * puts the active file, open tabs, selected text and more (see
- * `IDE_CONTEXT_OPENERS`) before the `## My request…:` heading that introduces
+ * `IDE_MACHINE_OPENERS`) before the `## My request…:` heading that introduces
  * the human's words, Claude Code files its
  * session-continuation summary as a user turn, reminders arrive in
  * `<system-reminder>` blocks, and a slash command carries the command's own
  * instructions. The task is what the human typed, so only that is kept: a
  * slash command counts as the command and arguments they typed, never the
  * body the harness expanded it into.
+ *
+ * Everything here runs on every harness's prompts, so a rule that drops a
+ * whole turn has to be one no human's turn can match: an extension's section
+ * heading that somebody might also type is an `IDE_AMBIGUOUS_OPENERS` entry
+ * and never drops a prompt on its own.
  */
 export function cleanHumanTurn(raw: string): string | null {
   // Reminders first: one can precede the human's words in the same turn, and
@@ -444,12 +481,27 @@ export function cleanHumanTurn(raw: string): string | null {
   // turn itself was judged. The request is whatever follows the last heading,
   // and the extension appends its sections around text it did not write: a
   // Stop gate's follow-up, a continuation summary, a peer session's message or
-  // another context section can all land there. The loop ends on its second
-  // pass at the latest — `ideRequest` takes the LAST heading, so no request
-  // heading is left in what it returns — and each pass shortens the text.
-  while (IDE_CONTEXT_OPENERS.some((p) => text.startsWith(p))) {
+  // another context section can all land there. A prompt that opens with a
+  // machine section and has no request heading is all machine text and is
+  // dropped; one that opens with an ambiguous heading and has none is somebody
+  // typing markdown, and is kept whole (see the opener lists). The loop ends
+  // on its second pass at the latest — `ideRequest` takes the LAST heading, so
+  // no request heading is left in what it returns, which also means the
+  // ambiguous branch cannot run twice — and each pass shortens the text.
+  for (let pass = 0; ; pass++) {
+    const kind = ideOpenerKind(text);
+    if (kind === null) break;
     const request = ideRequest(text);
-    if (request === null || harnessAuthored(request)) return null;
+    if (request === null) {
+      // An ambiguous heading is somebody's own markdown only at the top of a
+      // turn. Once a pass has established that this prompt WAS built by the
+      // extension, a heading of either kind in what came out of it is another
+      // of the extension's sections landing where the request goes, and the
+      // prompt is dropped exactly as it was before this split.
+      if (kind === "ambiguous" && pass === 0) break;
+      return null;
+    }
+    if (harnessAuthored(request)) return null;
     text = request;
   }
   if (/^<command-(?:name|message)>/.test(text)) {

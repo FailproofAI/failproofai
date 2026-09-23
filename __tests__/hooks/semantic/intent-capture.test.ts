@@ -678,15 +678,14 @@ describe("the agent-message snapshot", () => {
     expect(lastAgentMessage(devin)).toBeNull();
   });
 
-  it("never opens a FIFO, which would block the hook", () => {
-    const fifo = join(scratch, "fifo.jsonl");
-    try {
-      execFileSync("mkfifo", [fifo]);
-    } catch {
-      return; // No mkfifo on this platform.
-    }
-    expect(lastAgentMessage(fifo)).toBeNull();
-  });
+  // "never opens a FIFO, which would block the hook" lives in
+  // intent-capture-r4.test.ts ("a rollout that is not a readable file neither
+  // blocks the hook nor changes the prompt"), where it runs in a child process
+  // with a 20 s deadline. It cannot be asserted here: `lastAgentMessage` is
+  // synchronous, so if the regular-file guard ever regresses, opening a FIFO
+  // nobody writes to blocks this runner's only thread, vitest's own test
+  // timeout can never fire, and the regression hangs CI instead of failing it.
+  // NOTHING in this file may call `lastAgentMessage` on a FIFO or a device.
 
   it("finds a message well behind the first chunk, and reads a file with no trailing newline", () => {
     const tail = { type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t", content: "x".repeat(4_000) }] } };

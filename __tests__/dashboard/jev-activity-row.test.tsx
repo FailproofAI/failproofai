@@ -1,0 +1,188 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import type { HooksConfigPayload } from "@/app/actions/get-hooks-config";
+import type { HookActivityPayload } from "@/app/actions/get-hook-activity";
+import type { HookActivityEntry } from "@/src/hooks/hook-activity-store";
+
+/**
+ * The activity tab's wiring of the Jev notices: the pill in the Decision cell
+ * and the "Semantic review" line in the detail panel.
+ *
+ * The components themselves are tested in __tests__/components/jev-notices*.
+ * This renders the REAL activity table against Jev rows, so dropping either
+ * `<JevPill>` or `<JevNote>` from hooks-client.tsx fails here — and a row
+ * without Jev fields, the unconfigured machine, gets neither.
+ */
+
+const NOW = Date.now();
+
+function row(overrides: Partial<HookActivityEntry>): HookActivityEntry {
+  return {
+    timestamp: NOW - 60_000,
+    eventType: "PreToolUse",
+    integration: "claude",
+    toolName: "Read",
+    policyName: null,
+    decision: "allow",
+    reason: null,
+    durationMs: 52,
+    sessionId: "sess-jev-dashboard",
+    cwd: "/home/tester/repo",
+    ...overrides,
+  };
+}
+
+let entries: HookActivityEntry[] = [];
+const activity = (): HookActivityPayload => ({
+  entries,
+  totalPages: 1,
+  page: 1,
+  stats: { totalEvents: 0, denyCount: 0, topPolicy: null, topPolicyCount: 0 },
+});
+
+vi.mock("next/link", () => ({
+  default: ({ href, children, ...props }: Record<string, unknown> & { href: string; children: React.ReactNode }) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  ),
+}));
+
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(),
+  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
+  usePathname: () => "/policies",
+}));
+
+vi.mock("@/contexts/PostHogContext", () => ({
+  usePostHog: () => ({ capture: vi.fn() }),
+}));
+
+vi.mock("@/contexts/AutoRefreshContext", () => ({
+  useAutoRefresh: () => ({ intervalSec: 0, setIntervalSec: vi.fn() }),
+}));
+
+// Every server action the component imports. These are "use server" modules
+// that reach the filesystem on import, so none of them may actually run.
+vi.mock("@/app/actions/get-hooks-config", () => ({
+  getHooksConfigAction: vi.fn(
+    async () =>
+      ({
+        enabledPolicies: [],
+        installedScopes: [],
+        settingsPath: "/home/tester/.claude/settings.json",
+        clis: [
+          {
+            id: "claude",
+            label: "Claude Code",
+            installed: true,
+            settingsPath: "/home/tester/.claude/settings.json",
+            detected: true,
+          },
+        ],
+        policies: [],
+        conventionPolicies: [],
+        packs: [],
+      }) as unknown as HooksConfigPayload,
+  ),
+}));
+vi.mock("@/app/actions/get-hook-activity", () => ({
+  getHookActivityAction: vi.fn(async () => activity()),
+  searchHookActivityAction: vi.fn(async () => activity()),
+}));
+vi.mock("@/app/actions/get-active-pauses", () => ({
+  getActivePausesAction: vi.fn(async () => []),
+}));
+vi.mock("@/app/actions/update-hooks-config", () => ({
+  toggleCustomPolicyAction: vi.fn(async () => {}),
+}));
+vi.mock("@/app/actions/pack-actions", () => ({
+  togglePackPolicyAction: vi.fn(async () => ({ ok: true })),
+  addBundledPackWebAction: vi.fn(async () => ({ ok: true })),
+  addPackWebAction: vi.fn(async () => ({ ok: true })),
+  previewPackWebAction: vi.fn(async () => ({ ok: true })),
+  removePackWebAction: vi.fn(async () => ({ ok: true })),
+}));
+vi.mock("@/app/actions/install-hooks-web", () => ({
+  installHooksWebAction: vi.fn(async () => {}),
+  removeHooksWebAction: vi.fn(async () => {}),
+}));
+vi.mock("@/app/actions/update-policy-params", () => ({
+  updatePolicyParamsAction: vi.fn(async () => {}),
+}));
+
+import HooksClient from "@/app/policies/hooks-client";
+
+/** The table row whose Tool cell reads `tool`. */
+async function rowFor(tool: string): Promise<HTMLElement> {
+  const cell = await screen.findByText(tool);
+  const tr = cell.closest("tr");
+  if (!tr) throw new Error(`no activity row for ${tool}`);
+  return tr;
+}
+
+describe("the activity tab with Jev rows", () => {
+  beforeEach(() => {
+    entries = [];
+  });
+
+  it("marks a Jev clear in the Decision cell and explains it in the detail panel", async () => {
+    entries = [
+      row({
+        toolName: "Read",
+        evaluator: "jev",
+        jevDecision: "allow",
+        jevCleared: ["block-read-outside-cwd"],
+        jevLatencyMs: 38,
+        jevModel: "jev-1.13.0",
+        jevMode: "enforce",
+      }),
+    ];
+    const user = userEvent.setup();
+    render(<HooksClient initialTab="activity" />);
+    const tr = await rowFor("Read");
+    expect(within(tr).getByText("jev cleared")).toBeInTheDocument();
+    expect(screen.queryByText("Semantic review:", { exact: false })).toBeNull();
+
+    await user.click(tr);
+    expect(await screen.findByText("Semantic review:", { exact: false })).toBeInTheDocument();
+    expect(
+      screen.getByText("Jev verdict: allow · cleared block-read-outside-cwd · 38 ms · jev-1.13.0"),
+    ).toBeInTheDocument();
+  });
+
+  it("marks a fallback and says why", async () => {
+    entries = [
+      row({
+        toolName: "Bash",
+        decision: "deny",
+        policyName: "block-env-files",
+        reason: "Reading .env files is blocked",
+        evaluator: "jev-fallback",
+        jevFallbackReason: "timeout",
+        jevLatencyMs: 1500,
+        jevMode: "enforce",
+      }),
+    ];
+    const user = userEvent.setup();
+    render(<HooksClient initialTab="activity" />);
+    const tr = await rowFor("Bash");
+    expect(within(tr).getByText("jev fallback")).toBeInTheDocument();
+    await user.click(tr);
+    expect(
+      await screen.findByText("Jev unavailable: timeout · the regex policies decided alone · 1500 ms"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows nothing Jev-related for a row written without Jev", async () => {
+    entries = [row({ toolName: "Grep" })];
+    const user = userEvent.setup();
+    render(<HooksClient initialTab="activity" />);
+    const tr = await rowFor("Grep");
+    expect(within(tr).queryByText(/^jev /)).toBeNull();
+    await user.click(tr);
+    await screen.findByText("event detail", { exact: false });
+    expect(screen.queryByText("Semantic review:", { exact: false })).toBeNull();
+  });
+});

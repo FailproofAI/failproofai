@@ -11,6 +11,7 @@ import type { HookActivityPayload } from "@/app/actions/get-hook-activity";
 import { getActivePausesAction } from "@/app/actions/get-active-pauses";
 import type { ActivePause } from "@/src/hooks/session-pause";
 import { PausedBanner, PausedNote, PausedPill } from "@/app/components/pause-notices";
+import { JevNote, JevPill } from "@/app/components/jev-notices";
 import { getHooksConfigAction } from "@/app/actions/get-hooks-config";
 import type { HooksConfigPayload, InstalledPackInfo, PolicyInfo } from "@/app/actions/get-hooks-config";
 import type { IntegrationType } from "@/src/hooks/types";
@@ -411,6 +412,7 @@ function DetailPanel({
                 </span>
               </div>
             )}
+            <JevNote item={item} />
             {item.cloudDeployment !== undefined && (
               <div>
                 {/* Present on every row of a managed machine, not just cloud
@@ -829,6 +831,7 @@ function ActivityTab({
                         <td className="px-3 py-2">
                           <DecisionBadge decision={item.decision} />
                           {item.pausedBy && <PausedPill />}
+                          <JevPill item={item} />
                         </td>
                         <td className="px-3 py-2">
                           <EventTypeBadge eventType={item.eventType} />

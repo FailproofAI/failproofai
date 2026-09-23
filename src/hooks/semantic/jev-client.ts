@@ -323,15 +323,11 @@ async function postJson(url: string, bearer: string, body: unknown, signal: Abor
     throw new JevError("malformed", "response body is not JSON");
   }
   if (res.status === 402) {
+    // A refusal is only ever recognised FROM the provider's words, so a 402
+    // with none is `out-of-credits` and this message fits it. Anything the
+    // provider did say is the message, refusal or not.
     const detail = errorDetail(parsed, bearer);
-    const code = paymentRequiredCode(detail);
-    throw new JevError(
-      code,
-      detail ||
-        (code === JEV_REASON_PROVIDER_REFUSED
-          ? "HTTP 402: the provider would not run the model on this request"
-          : "HTTP 402: the account is out of credits"),
-    );
+    throw new JevError(paymentRequiredCode(detail), detail || "HTTP 402: the account is out of credits");
   }
   if (!res.ok) {
     throw new JevError(`http-${res.status}`, errorDetail(parsed, bearer) || `HTTP ${res.status}`);

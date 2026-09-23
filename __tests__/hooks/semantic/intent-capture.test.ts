@@ -559,7 +559,8 @@ describe("captureIntent: storage", () => {
   });
 
   it("caps a long prompt head-and-tail, within the envelope's own budget so Jev sees it as not truncated", () => {
-    const long = `HEAD ${"a".repeat(6_000)} TAIL`;
+    // Ten characters past the cap, whatever the cap is, so it is always cut.
+    const long = `HEAD ${"a".repeat(MAX_USER_MESSAGE_CHARS)} TAIL`;
     captureIntent(ev(long), T0);
     const [stored] = readIntent("store", T0).userSaid;
     expect(stored.length).toBeLessThanOrEqual(MAX_USER_MESSAGE_CHARS);
@@ -868,7 +869,7 @@ describe("captureIntent: redaction happens before the cut", () => {
     const key = fakeKey();
     const body = key.slice(3);
     const filler = "log line ".repeat(600);
-    // The head the cap keeps ends about 0.6 of the way into the 1,200-character
+    // The head the cap keeps ends about 0.6 of the way into the stored-message
     // budget; slide the key across that cut and a little beyond on both sides.
     const cut = Math.ceil(MAX_USER_MESSAGE_CHARS * 0.6);
     for (let at = cut - 160; at <= cut + 60; at++) {
@@ -890,8 +891,30 @@ describe("captureIntent: the omission marker", () => {
     return { count: Number(m![1]), kept: stored.length - m![0].length };
   };
 
+  /**
+   * Prompt lengths that are all PAST the cap — a prompt the cap keeps whole
+   * omits nothing and has no marker to count. Derived from
+   * `MAX_USER_MESSAGE_CHARS` rather than written out, because the cap moves:
+   * these were literals from a 1,200-character cap and quietly stopped
+   * exercising anything when it was raised to 6,000. The first three are the
+   * smallest prompt that is cut at all, a middling one and eight times the
+   * cap; the last two are absolute sizes a pasted file or a generated dump
+   * reaches, and the assertion in the loop is their tripwire if the cap is
+   * ever raised past them.
+   */
+  const PAST_THE_CAP = [
+    MAX_USER_MESSAGE_CHARS + 1,
+    4 * MAX_USER_MESSAGE_CHARS,
+    8 * MAX_USER_MESSAGE_CHARS + 1,
+    100_000,
+    1_000_000,
+  ];
+
   it("counts every character the stored text leaves out, however long the prompt", () => {
-    for (const length of [1_201, 5_000, 9_601, 100_000, 1_000_000]) {
+    for (const length of PAST_THE_CAP) {
+      expect(length, `a ${length}-character prompt is not past the ${MAX_USER_MESSAGE_CHARS}-character cap`).toBeGreaterThan(
+        MAX_USER_MESSAGE_CHARS,
+      );
       const prompt = `HEAD ${"a".repeat(length - 10)} TAIL`;
       const sessionId = `omit-${length}`;
       captureIntent({ eventType: "UserPromptSubmit", sessionId, cli: "claude", payload: { source: "user", prompt } }, T0);

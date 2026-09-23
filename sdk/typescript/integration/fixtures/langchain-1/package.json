@@ -1,0 +1,14 @@
+{
+  "name": "failproofai-it-langchain-1",
+  "private": true,
+  "type": "module",
+  "description": "Integration fixture: LangChain.js 1.x + LangGraph.js 1.x against the packed @failproofai/sdk.",
+  "dependencies": {
+    "@langchain/core": "1.2.12",
+    "@langchain/langgraph": "1.4.17",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.4"
+  }
+}

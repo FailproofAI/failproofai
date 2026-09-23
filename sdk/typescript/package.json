@@ -1,7 +1,7 @@
 {
   "name": "@failproofai/sdk",
   "version": "0.0.1-beta.0",
-  "description": "Emit agent telemetry to FailproofAI Cloud — zero-dependency, Node stdlib only",
+  "description": "Emit agent telemetry to FailproofAI Cloud \u2014 zero-dependency, Node stdlib only",
   "keywords": [
     "agents",
     "observability",
@@ -98,6 +98,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint . --config eslint.config.mjs",
     "test": "npm run build && vitest run",
+    "test:integration": "npm run build && vitest run --config vitest.integration.config.ts",
     "test:watch": "vitest",
     "prepublishOnly": "npm run build"
   },

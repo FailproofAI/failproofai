@@ -480,12 +480,15 @@ export const adapter: Adapter = {
   name: NAME,
 
   async install(options: Record<string, unknown> = {}): Promise<void> {
-    const managerModule = (await compat.requireModule(
-      "@langchain/core/callbacks/manager",
-      "npm install @langchain/core",
-    )) as { CallbackManager?: CallbackManagerCtor };
-    const CallbackManager = managerModule.CallbackManager;
-    if (typeof CallbackManager !== "function") {
+    // Every loaded copy: the ES-module and CommonJS builds of @langchain/core
+    // are two different CallbackManager classes. See `requireModuleCopies`.
+    const managers = (
+      (await compat.requireModuleCopies(
+        "@langchain/core/callbacks/manager",
+        "npm install @langchain/core",
+      )) as Array<{ CallbackManager?: CallbackManagerCtor }>
+    ).map((module) => module.CallbackManager);
+    if (managers.some((CallbackManager) => typeof CallbackManager !== "function")) {
       throw new Error("@langchain/core/callbacks/manager does not export CallbackManager");
     }
 
@@ -507,6 +510,7 @@ export const adapter: Adapter = {
     // through the other would install cleanly and record nothing — the single
     // most expensive failure an adapter can have, because everything looks fine.
     let patched = 0;
+    for (const CallbackManager of managers as CallbackManagerCtor[])
     for (const method of ["configure", "_configureSync"] as const) {
       const original = CallbackManager[method];
       if (typeof original !== "function") continue;

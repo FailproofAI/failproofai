@@ -39,7 +39,14 @@ import { join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { logger } from "../logger.js";
-import { importModule, nodeRequire, resolveFrom } from "../node-require.js";
+import {
+  entryIsCommonJs,
+  importModule,
+  isRequired,
+  nodeRequire,
+  resolveEsm,
+  resolveFrom,
+} from "../node-require.js";
 
 /** A framework is outside the range this adapter was written against. */
 export class FailproofAICompatError extends Error {
@@ -170,13 +177,69 @@ export function versionTuple(pkg: string): number[] | null {
  * the user can fix in one command, so we hand them the command.
  */
 export async function requireModule(specifier: string, install: string): Promise<unknown> {
-  // Resolve against the APPLICATION first. A bare `import(specifier)` resolves
+  const copies = await requireModuleCopies(specifier, install);
+  return copies[0]!;
+}
+
+/**
+ * Every in-memory copy of `specifier` the application can be using — the one
+ * it loads first. Adapters that patch or subscribe must do so on EACH.
+ *
+ * ## Why there can be two
+ *
+ * A dual-published framework ships an ES-module build and a CommonJS build of
+ * every module, and Node loads them as two unrelated module instances: two
+ * `CallbackManager` classes, two `Agent.prototype`s, two `Settings` singletons.
+ * Patching one does nothing to the other. The first release of these adapters
+ * resolved with `createRequire` and so always patched the CommonJS copy — in an
+ * ES-module application, which is the default for a new TypeScript project,
+ * `instrument()` returned success and not one event was ever recorded.
+ *
+ * ## Which copies
+ *
+ *   1. The copy the application's own imports reach: CommonJS when the process
+ *      entry point is CommonJS, the ES-module build otherwise. Loaded if it is
+ *      not loaded yet — instrumenting before the framework's first import is
+ *      the documented order, and loading it then is exactly what the
+ *      application is about to do anyway.
+ *   2. The CommonJS copy as well, but ONLY if something has already
+ *      `require`d it — an ES-module application with a CommonJS dependency
+ *      that pulls the framework in. It is never loaded speculatively: a second
+ *      copy that nothing uses costs memory at best, and at worst the framework
+ *      notices — LlamaIndex prints "llamaindex was already imported. This
+ *      breaks constructor checks" to the customer's terminal.
+ *
+ * The one arrangement this cannot see is the mirror image of (2): a CommonJS
+ * application whose ESM-only dependency imports the framework's ES-module
+ * build. Node keeps no inspectable registry of loaded ES modules, so there is
+ * nothing to detect it with short of a loader hook. Call-site helpers
+ * (`langchainHandler()`, `telemetry()`) cover that case, as they cover a
+ * bundled application where neither copy in `node_modules` is the one running.
+ */
+export async function requireModuleCopies(specifier: string, install: string): Promise<unknown[]> {
+  // Resolve against the APPLICATION. A bare `import(specifier)` resolves
   // relative to this file, which under pnpm or a workspace cannot see the
   // caller's dependencies at all — so the framework the user definitely has
   // installed reports as missing.
-  const resolved = resolveFrom(specifier);
+  const cjsPath = resolveFrom(specifier);
+  const esmPath = resolveEsm(specifier);
+  const dual = cjsPath !== null && esmPath !== null && esmPath !== cjsPath;
+
+  const load = async (path: string | null, viaRequire: boolean): Promise<unknown> =>
+    viaRequire && path !== null
+      ? nodeRequire(path)
+      : await importModule(path === null ? specifier : pathToFileURL(path).href);
+
+  const copies: unknown[] = [];
   try {
-    return await importModule(resolved === null ? specifier : pathToFileURL(resolved).href);
+    if (!dual) {
+      copies.push(await load(cjsPath ?? esmPath, false));
+    } else if (entryIsCommonJs()) {
+      copies.push(await load(cjsPath, true));
+    } else {
+      copies.push(await load(esmPath, false));
+      if (isRequired(cjsPath)) copies.push(nodeRequire(cjsPath));
+    }
   } catch (error) {
     throw new Error(
       `cannot instrument ${JSON.stringify(specifier)} because it is not importable. ` +
@@ -184,6 +247,7 @@ export async function requireModule(specifier: string, install: string): Promise
       { cause: error },
     );
   }
+  return [...new Set(copies)];
 }
 
 /**

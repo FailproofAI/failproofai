@@ -2,7 +2,7 @@ import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist/**", "node_modules/**", "eslint.config.mjs"] },
+  { ignores: ["dist/**", "node_modules/**", "eslint.config.mjs", "integration/fixtures/**"] },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   {
@@ -31,7 +31,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ["test/**/*.ts", "scripts/**/*.mjs"],
+    files: ["test/**/*.ts", "integration/*.ts", "scripts/**/*.mjs"],
     rules: {
       // A test's whole job is to feed the wrong shape in and watch what
       // happens, so the casts it needs are the point rather than a smell.

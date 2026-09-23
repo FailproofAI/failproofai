@@ -15,3 +15,10 @@ coverage/
 *.swp
 *.swo
 .DS_Store
+
+# Integration fixtures: installed frameworks and the transpiled agents
+integration/fixtures/*/node_modules/
+integration/fixtures/*/.run/
+# ...but their lockfiles are the point: each pins the framework release under
+# test. The repo root ignores package-lock.json (it is a bun repo), so re-include.
+!integration/fixtures/*/package-lock.json

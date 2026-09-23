@@ -27,9 +27,14 @@
  * suppresses Node's default termination), so this package will not do it for
  * you. Two lines, at your own startup:
  *
- *     for (const signal of ["SIGINT", "SIGTERM"] as const) {
- *       process.once(signal, () => { failproofai.flushSync(); process.exit(0); });
+ *     for (const [signal, code] of [["SIGINT", 130], ["SIGTERM", 143]] as const) {
+ *       process.once(signal, () => { failproofai.flushSync(); process.exit(code); });
  *     }
+ *
+ * 128 + the signal number, so an orchestrator sees a termination rather than a
+ * success. On the way out, anything still open — a tool, a hook, a model call,
+ * an agent, including those an adapter opened — is closed with a `ProcessExit`
+ * error, so an interrupted run never renders as running forever.
  */
 
 import { setEnvironment, rejectComma } from "./environment.js";

@@ -19,6 +19,7 @@ import {
 } from "./schema.js";
 import type { EventWriter } from "./writer.js";
 import { formatMicros, nowMicros } from "./clock.js";
+import { onProcessExit } from "./exit.js";
 
 /**
  * `sessionId` and `agentId` are named options on every method, so a caller
@@ -398,12 +399,76 @@ export interface HumanInterruptOptions extends BaseEventOptions {
 
 type Extras = Record<string, unknown>;
 
+/** A tool call, hook or model call opened and not yet closed. */
+interface OpenLeaf {
+  kind: "tool" | "hook" | "model";
+  sessionId: string;
+  agentId: string;
+  id: string;
+  /** Tool or hook name; the model, for a model call. */
+  name: string | undefined;
+}
+
 export class EventNamespace {
   private readonly writer: EventWriter;
   private readonly pending = new Map<string, number>();
+  /**
+   * Tool calls, hooks and model calls opened and not yet closed, keyed
+   * `<kind>:<session>:<id>`, so the exit path can close them — whoever opened
+   * them: a hand-written `event.*` call, a `toolCall()` scope, or an adapter.
+   * Every one of those goes through this namespace, which is why this is the
+   * one place it is done.
+   */
+  private readonly openLeaves = new Map<string, OpenLeaf>();
+  /** Open `agent_pause`s per session: a run waiting on a human is not abandoned. */
+  private readonly pausedSessions = new Map<string, number>();
 
   constructor(writer: EventWriter) {
     this.writer = writer;
+    const self = new WeakRef(this);
+    const unregister = onProcessExit((exitCode) => {
+      const namespace = self.deref();
+      if (namespace === undefined) {
+        unregister();
+        return;
+      }
+      namespace.closeLeavesAtExit(exitCode);
+    }, "leaves");
+  }
+
+  private openLeaf(key: string, leaf: OpenLeaf): void {
+    if (this.openLeaves.size >= PENDING_CAP) {
+      const oldest = this.openLeaves.keys().next();
+      if (!oldest.done) this.openLeaves.delete(oldest.value);
+    }
+    this.openLeaves.set(key, leaf);
+  }
+
+  /**
+   * The process is exiting: close every open tool call, hook and model call,
+   * newest first, with a `ProcessExit` error — except in a session paused on a
+   * human, which another process may resume. Agents close after this, in the
+   * `agents` phase (`exit.ts`), so a leaf always ends before its agent does.
+   */
+  closeLeavesAtExit(exitCode: number): void {
+    const why = (what: string) =>
+      `ProcessExit: the process exited (code ${exitCode}) while ${what} was still running`;
+    for (const [key, leaf] of [...this.openLeaves].reverse()) {
+      if ((this.pausedSessions.get(leaf.sessionId) ?? 0) > 0) continue;
+      this.openLeaves.delete(key);
+      try {
+        const identity = { sessionId: leaf.sessionId, agentId: leaf.agentId };
+        if (leaf.kind === "tool") {
+          this.toolResult({ ...identity, toolName: leaf.name ?? "tool", toolCallId: leaf.id, error: why(`tool ${JSON.stringify(leaf.name)}`) });
+        } else if (leaf.kind === "hook") {
+          this.hookCompleted({ ...identity, hookName: leaf.name ?? "hook", hookId: leaf.id, outcome: "failed", error: why(`hook ${JSON.stringify(leaf.name)}`) });
+        } else {
+          this.modelResponse({ ...identity, requestId: leaf.id, model: leaf.name, stopReason: "error", error: why("the model call") });
+        }
+      } catch {
+        // One leaf that cannot be closed must not cost the others, or the flush.
+      }
+    }
   }
 
   private trackPending(key: string, ts: number): void {
@@ -479,6 +544,9 @@ export class EventNamespace {
     const { sessionId, agentId, toolName, toolCallId, input, ...fields } = options;
     this.validateFields(fields);
     const [sid, aid] = resolveIdentity(sessionId, agentId);
+    if (typeof toolCallId === "string") {
+      this.openLeaf(`tool:${sid}:${toolCallId}`, { kind: "tool", sessionId: sid, agentId: aid, id: toolCallId, name: toolName });
+    }
     const ts = this.now();
     this.trackPending(toolKey(sid, toolCallId), ts);
     this.writer.submit(
@@ -499,6 +567,7 @@ export class EventNamespace {
     this.refuseDuration(fields);
     this.validateFields(fields);
     const [sid, aid] = resolveIdentity(sessionId, agentId);
+    this.openLeaves.delete(`tool:${sid}:${toolCallId}`);
     const ts = this.now();
     const durationMs = measuredDurationMs(this.takePending(toolKey(sid, toolCallId)), ts);
     this.writer.submit(
@@ -520,6 +589,9 @@ export class EventNamespace {
     const { sessionId, agentId, model, messages, system, tools, requestId, ...fields } = options;
     this.validateFields(fields);
     const [sid, aid] = resolveIdentity(sessionId, agentId);
+    if (typeof requestId === "string" && requestId !== "") {
+      this.openLeaf(`model:${sid}:${requestId}`, { kind: "model", sessionId: sid, agentId: aid, id: requestId, name: model ?? undefined });
+    }
     this.writer.submit(
       modelRequestEvent({
         timestamp: this.fmtTs(this.now()),
@@ -555,6 +627,7 @@ export class EventNamespace {
     validatePromotedNumeric("outputTokens", outputTokens);
     this.validateFields(fields);
     const [sid, aid] = resolveIdentity(sessionId, agentId);
+    if (typeof requestId === "string") this.openLeaves.delete(`model:${sid}:${requestId}`);
     this.writer.submit(
       modelResponseEvent({
         timestamp: this.fmtTs(this.now()),
@@ -608,6 +681,7 @@ export class EventNamespace {
     const { sessionId, agentId, pauseId, reason, userId, ...fields } = options;
     this.validateFields(fields);
     const [sid, aid] = resolveIdentity(sessionId, agentId);
+    this.pausedSessions.set(sid, (this.pausedSessions.get(sid) ?? 0) + 1);
     const ts = this.now();
     this.trackPending(pauseKey(sid, pauseId), ts);
     this.writer.submit(
@@ -628,6 +702,11 @@ export class EventNamespace {
     this.refuseDuration(fields);
     this.validateFields(fields);
     const [sid, aid] = resolveIdentity(sessionId, agentId);
+    {
+      const open = (this.pausedSessions.get(sid) ?? 0) - 1;
+      if (open > 0) this.pausedSessions.set(sid, open);
+      else this.pausedSessions.delete(sid);
+    }
     const ts = this.now();
     const durationMs = measuredDurationMs(this.takePending(pauseKey(sid, pauseId)), ts);
     this.writer.submit(
@@ -648,6 +727,9 @@ export class EventNamespace {
     const { sessionId, agentId, hookName, hookId, triggerEvent, input, ...fields } = options;
     this.validateFields(fields);
     const [sid, aid] = resolveIdentity(sessionId, agentId);
+    if (typeof hookId === "string") {
+      this.openLeaf(`hook:${sid}:${hookId}`, { kind: "hook", sessionId: sid, agentId: aid, id: hookId, name: hookName });
+    }
     const ts = this.now();
     this.trackPending(hookKey(sid, hookId), ts);
     this.writer.submit(
@@ -670,6 +752,7 @@ export class EventNamespace {
     this.validateFields(fields);
     const [sid, aid] = resolveIdentity(sessionId, agentId);
     const ts = this.now();
+    this.openLeaves.delete(`hook:${sid}:${hookId}`);
     const durationMs = measuredDurationMs(this.takePending(hookKey(sid, hookId)), ts);
     this.writer.submit(
       hookCompletedEvent({

@@ -364,7 +364,8 @@ async function callModel(messages) {
     model: reply.model, requestId, role: message.role, content: message.content ?? "",
     stopReason: finish_reason, duration_ms: Date.now() - started,
     inputTokens: reply.usage?.prompt_tokens, outputTokens: reply.usage?.completion_tokens,
-    tool_calls: (message.tool_calls ?? []).map((c) => ({ id: c.id, name: c.function.name })),
+    fw_tool_calls: (message.tool_calls ?? []).map((c) =>
+      ({ toolCallId: c.id, toolName: c.function.name, input: c.function.arguments })),
   });
   return message;
 }

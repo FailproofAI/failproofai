@@ -766,7 +766,7 @@ export interface AiTelemetry {
  *     const { text } = await generateText({
  *       model,
  *       prompt,
- *       experimental_telemetry: telemetry({ functionId: "answer-question" }),
+ *       telemetry: telemetry({ functionId: "answer-question" }), // ai 4–6: experimental_telemetry
  *     });
  *
  * `functionId` names the agent; without one it is named after the operation

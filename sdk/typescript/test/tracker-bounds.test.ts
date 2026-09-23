@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { runExitClosers } from "../src/exit.js";
 import * as core from "../src/integrations/core.js";
 import { runtime } from "../src/runtime.js";
 import { PAUSED_SESSION_TTL_MS, _stats, adapter, langchainHandler } from "../src/integrations/langchain.js";
@@ -85,6 +86,34 @@ describe("RunTracker", () => {
       ["busy", "failed"],
     ]);
     expect(tracker.isOpen("waiting")).toBe(true);
+  });
+
+  it("closes an adapter's open tool, hook and model call at exit, then its agent with an error", async () => {
+    // Live on LangGraph, Mastra, LlamaIndex and the AI SDK: SIGTERM mid-tool
+    // closed the agent and left the tool_use, the node's hook_triggered and
+    // the model_request open — spans the dashboard shows as running forever.
+    const tracker = new core.RunTracker("t");
+    tracker.startAgent("root", { agentId: "svc", sessionId: "exit-s" });
+    tracker.emit("hookTriggered", "node", { parentKey: "root", hookName: "tools", hookId: "h1" });
+    tracker.emit("modelRequest", "llm", { parentKey: "root", requestId: "r1", model: "m" });
+    tracker.emit("toolUse", "tool", { parentKey: "node", toolName: "slow", toolCallId: "c1" });
+    tracker.emit("toolUse", "done", { parentKey: "node", toolName: "fast", toolCallId: "c0" });
+    tracker.emit("toolResult", "done", { toolName: "fast", toolCallId: "c0" });
+    runExitClosers(143); // both phases, as the writer's exit hook runs them
+    // This session only: the exit closes whatever else this test process left open too.
+    const events = (await flushed(spool)).filter((e) => e.session_id === "exit-s").slice(6); // start, hook, model, two tool_use, one tool_result
+    expect(events.map((e) => [e.type, e.tool_call_id ?? e.hook_id ?? e.request_id ?? null])).toEqual([
+      ["tool_result", "c1"],
+      ["model_response", "r1"],
+      ["hook_completed", "h1"],
+      ["error", null],
+      ["agent_end", null],
+    ]);
+    expect(events[0]!.error).toMatch(/^ProcessExit: the process exited \(code 143\)/);
+    expect(events[1]!.stop_reason).toBe("error");
+    expect(events[2]!.outcome).toBe("failed");
+    expect(events[3]!.error_type).toBe("ProcessExit");
+    expect(events[4]!.outcome).toBe("failed");
   });
 });
 

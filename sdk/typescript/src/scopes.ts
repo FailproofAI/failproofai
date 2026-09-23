@@ -599,18 +599,7 @@ export class ToolCallScope {
       input: options.input,
       ...toolUseFields(options),
     });
-    this.open = trackOpen((exitCode) =>
-      runtime.event.toolResult({
-        sessionId: this.sid,
-        agentId: this.aid,
-        toolName,
-        toolCallId: this.call.id,
-        error: describe(new ProcessExit(exitCode, `tool ${JSON.stringify(toolName)}`)),
-      }),
-    );
   }
-
-  private readonly open: { settle(): boolean };
 
   fail(error: unknown): void {
     this.failure = { error };
@@ -619,7 +608,8 @@ export class ToolCallScope {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    if (!this.open.settle()) return;
+    // A tool still open at exit is closed by the event namespace (exit.ts),
+    // which sees every tool_use; its tool_result there makes this a no-op.
     const failed = this.failure !== null && !isCancellation(this.failure.error);
     runtime.event.toolResult({
       sessionId: this.sid,
@@ -682,18 +672,7 @@ const toolCallImpl = (<T>(
     ...toolUseFields(options),
   });
 
-  const open = trackOpen((exitCode) =>
-    runtime.event.toolResult({
-      sessionId: sid,
-      agentId: aid,
-      toolName,
-      toolCallId: call.id,
-      error: describe(new ProcessExit(exitCode, `tool ${JSON.stringify(toolName)}`)),
-    }),
-  );
-
   const finish = (output: unknown, error: unknown, failed: boolean): void => {
-    if (!open.settle()) return;
     runtime.event.toolResult({
       sessionId: sid,
       agentId: aid,

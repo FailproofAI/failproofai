@@ -79,11 +79,14 @@ async function callModel(messages: ChatCompletionMessageParam[]) {
   failproofai.event.modelRequest({
     model: MODEL,
     requestId,
-    // Plain role/content pairs: what a reader of the trace needs, not the
-    // provider's full message objects.
+    // Role and content, plus the ids that link a tool result to the call that
+    // asked for it: what a reader of the trace needs, not the provider's full
+    // message objects.
     messages: messages.map((m) => ({
       role: m.role,
-      content: typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? ""),
+      content: typeof m.content === "string" ? m.content : m.content == null ? "" : JSON.stringify(m.content),
+      ...(m.role === "tool" ? { tool_call_id: m.tool_call_id } : {}),
+      ...(m.role === "assistant" && m.tool_calls ? { tool_calls: m.tool_calls.map((c) => c.id) } : {}),
     })),
     tools: TOOLS.flatMap((t) => (t.type === "function" ? [{ name: t.function.name, description: t.function.description ?? "" }] : [])),
   });
@@ -111,8 +114,9 @@ async function callModel(messages: ChatCompletionMessageParam[]) {
     inputTokens: reply.usage?.prompt_tokens ?? null,
     outputTokens: reply.usage?.completion_tokens ?? null,
     duration_ms: Date.now() - started,
-    // What the model asked for, so a turn that is only tool calls is not blank.
-    tool_calls: calls.map((c) => ({ id: c.id, name: c.function.name })),
+    // What the model asked for, so a turn that is only tool calls is not blank —
+    // the field and shape the framework adapters write.
+    fw_tool_calls: calls.map((c) => ({ toolCallId: c.id, toolName: c.function.name, input: c.function.arguments })),
   });
   return choice.message;
 }
@@ -124,13 +128,23 @@ async function callModel(messages: ChatCompletionMessageParam[]) {
 // the loop turns that into a tool message so the model can recover.
 
 async function dispatch(call: { id: string; function: { name: string; arguments: string } }): Promise<string> {
+  // Malformed arguments from the model are still a tool call: recorded with the
+  // raw text as input and failed inside toolCall(), so the trace shows it and
+  // the model gets an error it can recover from — not a crashed run, and not a
+  // call that silently never appears.
+  let args: { item?: string } = {};
+  let malformed: unknown;
   try {
-    // Parsed inside the `try`: malformed arguments from the model become a
-    // tool error the model can recover from, not a crashed run.
-    const args = JSON.parse(call.function.arguments || "{}") as { item?: string };
-    return await failproofai.toolCall(call.function.name, { toolCallId: call.id, input: args }, async () =>
-      runTool(call.function.name, args),
-    );
+    args = JSON.parse(call.function.arguments || "{}") as { item?: string };
+  } catch (error) {
+    malformed = error;
+  }
+  try {
+    const input = malformed === undefined ? args : { arguments: call.function.arguments };
+    return await failproofai.toolCall(call.function.name, { toolCallId: call.id, input }, async () => {
+      if (malformed !== undefined) throw malformed;
+      return runTool(call.function.name, args);
+    });
   } catch (error) {
     return `error: ${error instanceof Error ? error.message : String(error)}`;
   }

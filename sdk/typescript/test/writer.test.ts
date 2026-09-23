@@ -310,6 +310,30 @@ describe("process lifetime", () => {
     expect(events.find((e) => e.type === "error")!.error_type).toBe("ProcessExit");
   });
 
+  it("closes a hand-written model call left open by a SIGTERM", async () => {
+    // The no-framework recipe: modelRequest before the provider call,
+    // modelResponse after. Killed in between, the request had no response and
+    // rendered as running forever.
+    const child = await runNode(`
+      const fp = await import(${JSON.stringify(indexUrl())});
+      fp.configure({ baseDir: ${JSON.stringify(spool.dir)}, flushInterval: 3600 });
+      process.once("SIGTERM", () => { fp.flushSync(); process.exit(143); });
+      setInterval(() => {}, 1000);
+      setTimeout(() => process.kill(process.pid, "SIGTERM"), 50);
+      await fp.agent("planner", { sessionId: "model-term" }, async () => {
+        fp.event.modelRequest({ model: "m", requestId: "r1" });
+        await new Promise(() => {});
+      });
+    `);
+    expect(child.code).toBe(143);
+    const events = spool.events();
+    expect(events.map((e) => e.type)).toEqual(["agent_start", "model_request", "model_response", "error", "agent_end"]);
+    const response = events[2]!;
+    expect(response.request_id).toBe("r1");
+    expect(response.stop_reason).toBe("error");
+    expect(response.error).toMatch(/^ProcessExit: the process exited \(code 143\) while the model call/);
+  });
+
   it("closes nothing on a flushSync() while the process carries on", async () => {
     const child = await runNode(`
       const fp = await import(${JSON.stringify(indexUrl())});

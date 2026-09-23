@@ -7,43 +7,47 @@
  * running forever and the run is never handed to evaluation. Python gets this
  * for free: its SIGTERM recipe raises `SystemExit`, which unwinds every
  * `with agent(...)` block. JavaScript has no unwinding through a pending
- * `await`, so the scopes and the adapters' trackers register a closer here and
- * the writer's `exit` listener runs them before its final synchronous flush.
+ * `await`, so the event namespace, the scopes and the adapters' trackers
+ * register closers here and the writer's `exit` listener runs them before its
+ * final synchronous flush.
+ *
+ * Two phases, in order: `leaves` (open tool calls, hooks and model calls), then
+ * `agents` — so every leaf ends before the agent that contains it, whichever
+ * module registered first. Within a phase, newest first.
  *
  * Only on `exit`. A `flushSync()` called while the process carries on closes
  * nothing — the runs it would close are still running.
- *
- * Closers run newest first, so an inner agent ends before the one that
- * contains it, as it would have had it returned. A closer that throws is
- * skipped rather than allowed to cost the flush that follows.
  */
 
 export type ExitCloser = (exitCode: number) => void;
+export type ExitPhase = "leaves" | "agents";
 
-const closers = new Set<ExitCloser>();
+const closers: Record<ExitPhase, Set<ExitCloser>> = { leaves: new Set(), agents: new Set() };
 
 /** Register a closer; returns its unregister function. */
-export function onProcessExit(closer: ExitCloser): () => void {
-  closers.add(closer);
+export function onProcessExit(closer: ExitCloser, phase: ExitPhase = "agents"): () => void {
+  closers[phase].add(closer);
   return () => {
-    closers.delete(closer);
+    closers[phase].delete(closer);
   };
 }
 
-/** Run every registered closer, newest first. Called from the writer's `exit` hook. */
+/** Run every registered closer: leaves, then agents, each newest first. */
 export function runExitClosers(exitCode: number): void {
-  for (const closer of [...closers].reverse()) {
-    try {
-      closer(exitCode);
-    } catch {
-      // Swallowed: an exception thrown inside `process.on("exit")` prints a
-      // stack into the host's stderr and would skip the flush of everything
-      // the other closers just queued.
+  for (const phase of ["leaves", "agents"] as const) {
+    for (const closer of [...closers[phase]].reverse()) {
+      try {
+        closer(exitCode);
+      } catch {
+        // Swallowed: an exception thrown inside `process.on("exit")` prints a
+        // stack into the host's stderr and would skip the flush of everything
+        // the other closers just queued.
+      }
     }
   }
 }
 
-/** The error an agent or tool is closed with when the process exits under it. */
+/** The error an agent is closed with when the process exits under it. */
 export class ProcessExit extends Error {
   readonly exitCode: number;
 

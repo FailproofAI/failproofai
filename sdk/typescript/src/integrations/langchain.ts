@@ -771,6 +771,9 @@ function onStart(args: StartArgs): void {
   state.tracker.link(info.id, info.parent);
 
   if (info.parent === null) {
+    // A LangGraph node never runs outside its graph. One arriving as a root
+    // means the graph's own run began before the callback was installed.
+    if (nodeOf(info, info.meta) !== null) warnOrphan(info);
     startRoot(info, args);
     return;
   }
@@ -833,7 +836,8 @@ function warnOrphan(info: RunInfo): void {
   warnedOrphan = true;
   logger.warn(
     `a LangChain run (${JSON.stringify(info.name)}) started under a parent run the langchain ` +
-      "adapter never saw, so its trace is missing the root. Most often `instrument()` was not " +
+      "adapter never saw (or, being a graph node, with no parent at all), so its trace is " +
+      "missing the root. Most often `instrument()` was not " +
       "awaited before the run began — `await failproofai.instrument()` at startup, before the " +
       "first invoke/stream.",
   );

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
@@ -25,7 +25,7 @@ import { FIXTURES, FORMATS, ROOT, describeTrace, ofType, runAgentAsync, traceVio
 
 const FIXTURE = "vanilla";
 
-type Mode = "conversation" | "model-fails";
+type Mode = "conversation" | "model-fails" | "bad-arguments";
 
 interface ChatRequest {
   messages: Array<{ role: string; content?: unknown }>;
@@ -76,7 +76,30 @@ async function startModel(mode: Mode): Promise<string> {
         res.end(JSON.stringify({ error: { message: "model gpt-imaginary does not exist", type: "invalid_request_error" } }));
         return;
       }
-      res.end(JSON.stringify(reply(JSON.parse(raw || "{}") as ChatRequest)));
+      const body = JSON.parse(raw || "{}") as ChatRequest;
+      if (mode === "bad-arguments") {
+        // First turn: a tool call whose arguments are not JSON. Second: answer.
+        const answered = body.messages.some((m) => m.role === "tool");
+        const message = answered
+          ? { role: "assistant", content: "could not look it up" }
+          : {
+              role: "assistant",
+              content: null,
+              tool_calls: [{ id: "call_9", type: "function", function: { name: "price_of", arguments: "{not json" } }],
+            };
+        res.end(
+          JSON.stringify({
+            id: "chatcmpl-bad",
+            object: "chat.completion",
+            created: 0,
+            model: "fake-model",
+            choices: [{ index: 0, message, finish_reason: answered ? "stop" : "tool_calls" }],
+            usage: usage(10, 5),
+          }),
+        );
+        return;
+      }
+      res.end(JSON.stringify(reply(body)));
     });
   });
   await new Promise<void>((resolveListen) => server!.listen(0, "127.0.0.1", resolveListen));
@@ -101,6 +124,37 @@ describe("an agent with no framework (examples/research-agent.ts)", () => {
 
   it("typechecks against the real openai types", () => {
     expect(typecheck(FIXTURE)).toBe("");
+  });
+
+  it("the skill's no-framework snippet typechecks against the real openai types too", () => {
+    // Users copy this block, not the example file. It failed `tsc --strict` once
+    // openai's tool and tool-call types became unions, and nothing caught it.
+    const page = readFileSync(join(ROOT, "..", "python", "skill", "references", "typescript.md"), "utf8");
+    const blocks = [...page.matchAll(/```ts\n([\s\S]*?)```/g)].map((m) => m[1]!);
+    const snippet = blocks.find((block) => block.includes("// 1. the run"));
+    expect(snippet, "the no-framework block in typescript.md").toBeDefined();
+    const dir = join(FIXTURES, FIXTURE);
+    // What the snippet leaves to the reader's own program.
+    const context = [
+      "declare const MODEL: string;",
+      "declare const client: OpenAI;",
+      "declare const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[];",
+      "declare const question: string;",
+      "declare const messages: ChatCompletionMessageParam[];",
+      "declare function runTool(name: string, input: Record<string, unknown>): string;",
+      "export {};",
+    ].join("\n");
+    writeFileSync(join(dir, "skill-snippet.ts"), `${snippet}\n${context}\n`);
+    writeFileSync(
+      join(dir, "tsconfig.skill.json"),
+      JSON.stringify({ extends: "./tsconfig.json", files: ["skill-snippet.ts"] }),
+    );
+    try {
+      expect(typecheck(FIXTURE, "tsconfig.skill.json")).toBe("");
+    } finally {
+      rmSync(join(dir, "skill-snippet.ts"), { force: true });
+      rmSync(join(dir, "tsconfig.skill.json"), { force: true });
+    }
   });
 
   describe.each(FORMATS)("as %s", (format) => {
@@ -140,7 +194,7 @@ describe("an agent with no framework (examples/research-agent.ts)", () => {
       ]);
       expect(responses.map((e) => e.stop_reason)).toEqual(["tool_calls", "tool_calls", "stop"]);
       // A turn that is only tool calls still says what the model asked for.
-      expect(responses.map((e) => (e.tool_calls as Array<{ id: string }>).map((c) => c.id))).toEqual([
+      expect(responses.map((e) => (e.fw_tool_calls as Array<{ toolCallId: string }>).map((c) => c.toolCallId))).toEqual([
         ["call_1", "call_2"],
         ["call_3"],
         [],
@@ -154,6 +208,24 @@ describe("an agent with no framework (examples/research-agent.ts)", () => {
       expect(results[2]!.error).toMatch(/unknown item "doohickey"/);
       expect(ofType(result.events, "agent_end")[0]!.outcome).toBe("success");
       expect(ofType(result.events, "agent_start")[0]!.goal).toBe("Price and stock for widget and gadget?");
+    });
+
+    it("records a tool call with malformed arguments, and the run recovers", async () => {
+      const baseUrl = await startModel("bad-arguments");
+      const result = await runAgentAsync(FIXTURE, format, "Price of widget?", {
+        OPENAI_API_KEY: "test-key",
+        OPENAI_BASE_URL: baseUrl,
+        MODEL: "fake-model",
+      });
+      expect(result.status, describeTrace(result)).toBe(0);
+      const use = ofType(result.events, "tool_use")[0]!;
+      expect(use.tool_call_id).toBe("call_9");
+      expect(use.input).toEqual({ arguments: "{not json" });
+      const toolResult = ofType(result.events, "tool_result")[0]!;
+      expect(toolResult.tool_call_id).toBe("call_9");
+      expect(toolResult.error).toMatch(/^SyntaxError: /);
+      expect(ofType(result.events, "agent_end")[0]!.outcome).toBe("success");
+      expect(traceViolations(result.events), describeTrace(result)).toEqual([]);
     });
 
     it("records a failed model call once, and ends the run failed", async () => {

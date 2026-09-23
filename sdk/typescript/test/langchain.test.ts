@@ -896,6 +896,17 @@ describe("options", () => {
     expect(orphan[0]).toContain("await failproofai.instrument()");
   });
 
+  it("says so when a graph node arrives as a root — the other shape of an unawaited instrument()", () => {
+    // Live: the graph's root started before the callback existed, so the
+    // handler it built never reached the nodes' parent chain, and each node
+    // arrived with no parent at all and became the session's agent.
+    resetOrphanWarning();
+    const warn = vi.fn();
+    setLogger({ debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() });
+    chain("n1", undefined, "agent", { tags: ["graph:step:1"], meta: { langgraph_node: "agent", langgraph_step: 1 } });
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes("never saw"))).toHaveLength(1);
+  });
+
   it("does not warn about orphans on an ordinary graph run", () => {
     resetOrphanWarning();
     const warn = vi.fn();

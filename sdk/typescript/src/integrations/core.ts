@@ -900,6 +900,7 @@ export type EventMethod =
 /** The event methods that end the run they are keyed on. */
 const CLOSING_METHODS: ReadonlySet<string> = new Set(["toolResult", "modelResponse", "hookCompleted"]);
 
+
 export class RunTracker {
   readonly name: string;
   private readonly maxOpen: number;
@@ -938,13 +939,13 @@ export class RunTracker {
     // mid-graph) would otherwise render as running forever. Held weakly, so a
     // tracker an adapter drops is not kept alive by this registration.
     const self = new WeakRef(this);
-    const unregister = onProcessExit(() => {
+    const unregister = onProcessExit((exitCode) => {
       const tracker = self.deref();
       if (tracker === undefined) {
         unregister();
         return;
       }
-      tracker.closeAtExit();
+      tracker.closeAtExit(exitCode);
     });
   }
 
@@ -1186,9 +1187,17 @@ export class RunTracker {
    * The process is exiting: end every open agent as `failed`, newest first —
    * except one paused on a human, which is waiting, not abandoned (`pauses`).
    */
-  closeAtExit(): void {
+  closeAtExit(exitCode = 0): void {
+    // Open tools, hooks and model calls were already closed, in the `leaves`
+    // phase, by the event namespace every adapter emits through (exit.ts).
+    const message = `the process exited (code ${exitCode}) while this run was still running`;
     for (const key of this.openAgents().reverse()) {
       if ((this.pauses.get(key) ?? 0) > 0) continue;
+      const identity = this.runs.get(key)?.identity;
+      if (identity && this.runs.get(key)?.joined !== true) {
+        // `error` strictly before `agent_end`, as a scope that threw would.
+        this.emitWith("error", identity, { errorType: "ProcessExit", message });
+      }
       this.endAgent(key, { outcome: "failed", summary: "the process exited while this run was open" });
     }
   }

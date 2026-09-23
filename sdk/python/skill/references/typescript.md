@@ -34,7 +34,7 @@ node -e 'console.log(require("@failproofai/sdk").version)'
 | `@failproofai/sdk/langchain` | `langchainHandler()` — a callback handler, no patching |
 | `@failproofai/sdk/ai` | `telemetry()`, `wrapModel()` for the Vercel AI SDK |
 | `@failproofai/sdk/mastra` | `wrapTool()`, `workflow()` |
-| `@failproofai/sdk/llamaindex` | the LlamaIndex.TS adapter's options and helpers (`instrument("llamaindex")` is the usual entry) |
+| `@failproofai/sdk/llamaindex` | the adapter's internals — nothing to import; use `instrument("llamaindex", { … })` |
 | `@failproofai/sdk/next` | `withFailproofai()` for `next.config` |
 | `@failproofai/sdk/evaluator` | the evaluator worker — see `evaluator.md` |
 
@@ -218,11 +218,13 @@ own logs or database share it — bind it around the framework call:
 await failproofai.session({ sessionId: requestId }, () => graph.invoke(input));
 ```
 
-`session()` emits nothing; the adapter's agent is the one agent. Wrapping in
+`session()` emits nothing; each framework run inside it is its own agent — so
+three AI SDK calls under one `session()` are three agents in one session. Wrapping in
 `agent()` also works: under the **same** name as the framework agent it becomes that
-agent (one `agent_start`); under a **different** name the framework agent nests
+agent (one `agent_start`, and every call inside joins it — how several AI SDK
+calls become one agent); under a **different** name the framework agent nests
 under yours (`parent_id` = your name), which is right when your wrapper is a real
-outer agent. Inside either, `failproofai.current().sessionId` is the id.
+outer agent. A joined agent's `agent_start` is yours, so put the `goal` on it. Inside either, `failproofai.current().sessionId` is the id.
 
 Two consequences of owning it: a **retried** job that reuses its job id lands in the
 **same** session, as a second run in it — append the attempt (`${jobId}-2`) if you
@@ -248,7 +250,10 @@ await generateText({
   On `ai` 4–6, `instrument("ai")` records nothing by itself and warns: the only
   process-wide hook there is the global OpenTelemetry tracer, and taking it would
   break the app's own tracing. `instrument("ai", { registerGlobalTracer: true })`
-  opts in when the process runs no OpenTelemetry of its own. `await wrapModel(model)`
+  opts in when the process runs no OpenTelemetry of its own. An agent class takes
+  it the same way — `new ToolLoopAgent({ model, tools, telemetry: telemetry({
+  functionId: "ai-research" }) })` — since its own `id` is not passed through.
+  `await wrapModel(model)`
   (async — pass the resolved model) records model calls only; tools run above the
   model layer. In a route handler on `ai` 7, pass `abortSignal: request.signal` so a
   client that disconnects mid-stream closes the run instead of leaving it open.
@@ -257,7 +262,9 @@ await generateText({
   from your own code or a workflow step, not by an agent; `workflow(name, body)` only
   groups work that is not a Mastra workflow under one named span.
 - **LlamaIndex.TS.** A tool or LLM call made *outside* an agent workflow is recorded
-  as its own one-call run — that is how bare calls are shown, not a bug.
+  as its own one-call run — that is how bare calls are shown, not a bug. Its
+  `openai()` client sends `temperature: 0.1` by default, which some models reject
+  with a 400 that crashes the workflow; set `temperature` on `openai({ … })` then.
 
 **Token counts — set usage on the model client, or they are silently missing.**
 OpenAI-compatible APIs report usage on a stream only when asked, and some framework
@@ -308,7 +315,7 @@ export async function register() {
 
 - `withFailproofai` adds LangChain, Mastra, LlamaIndex and the SDK to
   `serverExternalPackages` and keeps your own list. Without it, `instrument()` warns
-  at **runtime** (the first request, not `next build`) for each framework it cannot
+  when `next start` boots — not at `next build` — for each framework it cannot
   reach, and those frameworks record nothing. If you list the packages by hand,
   `FAILPROOFAI_NEXT_EXTERNALS=1` silences the warning.
 - The Vercel AI SDK is not externalized and does not need to be: `telemetry()` and
@@ -338,12 +345,14 @@ called. Find them in the codebase first:
 ```ts
 import { randomUUID } from "node:crypto";
 import * as failproofai from "@failproofai/sdk";
+import OpenAI from "openai";
+import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 
 // 1. the run — everything inside lands on this session, with no ids passed
 const answer = await failproofai.agent("inventory", { goal: question }, async () => {
   for (let turn = 0; turn < 6; turn++) {
     const message = await callModel(messages);
-    const calls = message.tool_calls ?? [];
+    const calls = (message.tool_calls ?? []).filter((c) => c.type === "function");
     if (calls.length === 0) return message.content ?? "";
     messages.push(message);
     for (const call of calls) {
@@ -360,15 +369,18 @@ async function callModel(messages: ChatCompletionMessageParam[]) {
   failproofai.event.modelRequest({
     model: MODEL,
     requestId,
-    // Plain role/content pairs: what a reader of the trace needs. (openai's own
-    // message types do not satisfy the SDK's JSON types under `tsc --strict`.)
+    // Role and content, plus the ids linking a tool result to its call. (openai's
+    // own message types do not satisfy the SDK's JSON types under `tsc --strict`.)
     messages: messages.map((m) => ({
       role: m.role,
-      content: typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? ""),
+      content: typeof m.content === "string" ? m.content : m.content == null ? "" : JSON.stringify(m.content),
+      ...(m.role === "tool" ? { tool_call_id: m.tool_call_id } : {}),
+      ...(m.role === "assistant" && m.tool_calls ? { tool_calls: m.tool_calls.map((c) => c.id) } : {}),
     })),
-    tools: TOOLS.map((t) => ({ name: t.function.name, description: t.function.description ?? "" })),
+    // Tool and tool-call types are unions in openai ≥ 6 (custom tools): narrow them.
+    tools: TOOLS.flatMap((t) => (t.type === "function" ? [{ name: t.function.name, description: t.function.description ?? "" }] : [])),
   });
-  let reply;
+  let reply: OpenAI.Chat.Completions.ChatCompletion;
   try {
     // Only the provider call in the `try`: nothing else can reach the error path.
     reply = await client.chat.completions.create({ model: MODEL, messages, tools: TOOLS });
@@ -382,7 +394,8 @@ async function callModel(messages: ChatCompletionMessageParam[]) {
     });
     throw error; // the enclosing agent() then ends "failed"
   }
-  const choice = reply.choices[0];
+  const choice = reply.choices[0]!;
+  const calls = (choice.message.tool_calls ?? []).filter((c) => c.type === "function");
   failproofai.event.modelResponse({
     model: reply.model,
     requestId,
@@ -392,18 +405,29 @@ async function callModel(messages: ChatCompletionMessageParam[]) {
     inputTokens: reply.usage?.prompt_tokens ?? null,
     outputTokens: reply.usage?.completion_tokens ?? null,
     duration_ms: Date.now() - started,
-    tool_calls: (choice.message.tool_calls ?? []).map((c) => ({ id: c.id, name: c.function.name })),
+    // the field and shape the adapters write
+    fw_tool_calls: calls.map((c) => ({ toolCallId: c.id, toolName: c.function.name, input: c.function.arguments })),
   });
   return choice.message;
 }
 
 // 3. the tool dispatcher — reuse the model's own tool-call id
-async function dispatch(call) {
+async function dispatch(call: { id: string; function: { name: string; arguments: string } }): Promise<string> {
+  // Malformed arguments are still a tool call: recorded, and failed inside
+  // toolCall(), so the trace shows it and the model gets an error to recover from.
+  let input: Record<string, unknown> = {};
+  let malformed: unknown;
   try {
-    const input = JSON.parse(call.function.arguments || "{}"); // bad JSON → a tool error, not a crash
-    return await failproofai.toolCall(call.function.name, { toolCallId: call.id, input }, () =>
-      runTool(call.function.name, input),
-    );
+    input = JSON.parse(call.function.arguments || "{}");
+  } catch (error) {
+    malformed = error;
+    input = { arguments: call.function.arguments };
+  }
+  try {
+    return await failproofai.toolCall(call.function.name, { toolCallId: call.id, input }, async () => {
+      if (malformed !== undefined) throw malformed;
+      return runTool(call.function.name, input);
+    });
   } catch (error) {
     return `error: ${error instanceof Error ? error.message : String(error)}`; // let the model recover
   }
@@ -433,6 +457,10 @@ The rules that make this correct:
   agent's name.
 - **Don't reach for a module-level session variable.** Two overlapping runs mix
   their events. `AsyncLocalStorage` already does this correctly.
+- **A failed tool does not fail the run.** It is an `error` on its `tool_result`,
+  and if the model recovers the run ends `success` with no `error` event — so an
+  evaluation that counts `error` events will not see it. Count `tool_result`s
+  with an `error` instead.
 - **Types are the only guard on names in plain JavaScript.** A misspelt required
   option (`toolCallID`) is not a runtime error: the event is written without it and
   never pairs. Use TypeScript, or check the ids when you verify.

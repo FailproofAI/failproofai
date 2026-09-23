@@ -612,6 +612,96 @@ describe("fallback: the regex result, recorded with a reason", () => {
   });
 });
 
+// ── Padding, end to end ──────────────────────────────────────────────────────
+
+/**
+ * The truncation tests above all use a Jev ALLOW, so they pass whether or not
+ * a truncated verdict survives the handler. These are the other half: the
+ * regex engine allows, JEV denies, and the call is cut — the exact shape the
+ * padding hole produced, through the real handler, per-CLI formatter and
+ * activity row.
+ *
+ * Both spellings are covered: past a field's cap (the envelope cuts) and past
+ * the whole request budget (`prepareSemantic` rebuilds the envelope smaller
+ * rather than degrading, which used to be `request-too-large` — a `fallback`,
+ * with Jev's deny discarded).
+ */
+describe("a padded call cannot make Jev's own deny go away", () => {
+  const DELETE = "find . -name '*.sqlite' -delete";
+  /** Past MAX_STRING_CHARS in a shell comment: the judged command is unchanged. */
+  const padField = () => `${DELETE} #${"x".repeat(2_500)}`;
+  /** An extra key no policy reads, long enough to have overrun the request budget. */
+  const padBudget = () => ({ command: DELETE, file_path: `${project}/${"d".repeat(70_000)}` });
+
+  it("a field-capped call: the regex engine allows, Jev's deny decides, recorded as truncated", async () => {
+    jevConfig = CFG;
+    respond = answers({ "destructive-deletion": 0.97 });
+    const { outcome, row } = await bash(padField());
+    expect(outcome.evaluation?.decision).toBe("deny");
+    expect(outcome.evaluation?.policyName).toBe("semantic/destructive-deletion");
+    expect(outcome.stdout).toContain('"permissionDecision":"deny"');
+    expect(outcome.stdout).toContain("semantic/destructive-deletion");
+    expect(row).toMatchObject({
+      evaluator: "jev-fallback",
+      jevFallbackReason: "truncated",
+      jevDecision: "deny",
+      jevMode: "enforce",
+    });
+    // No registered policy decided, and nothing was cleared on a cut call.
+    expect(row.policySource).toBeUndefined();
+    expect(row.jevCleared).toBeUndefined();
+    expect(
+      telemetryEvents.filter((e) => e.event === "hook_policy_triggered").map((e) => e.props),
+    ).toContainEqual(
+      expect.objectContaining({ policy_name: "semantic/destructive-deletion", jev_evaluator: "jev-fallback" }),
+    );
+  });
+
+  it("the same call is delivered in each CLI's own shape", async () => {
+    jevConfig = CFG;
+    respond = answers({ "destructive-deletion": 0.97 });
+    const factory = await bash(padField(), "factory");
+    expect(factory.outcome.exitCode).toBe(2);
+    expect(factory.outcome.stderr).toContain("semantic/destructive-deletion");
+    const cursor = await bash(padField(), "cursor");
+    expect(JSON.parse(cursor.outcome.stdout).permission).toBe("deny");
+  });
+
+  it("a call padded past the REQUEST budget is answered, not degraded", async () => {
+    jevConfig = CFG;
+    respond = answers({ "destructive-deletion": 0.97 });
+    const { outcome, row } = await run("PreToolUse", { tool_name: "Bash", tool_input: padBudget() });
+    expect(outcome.evaluation?.decision).toBe("deny");
+    expect(outcome.evaluation?.policyName).toBe("semantic/destructive-deletion");
+    // Not `request-too-large`, which carried no decision at all.
+    expect(row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "truncated", jevDecision: "deny" });
+    expect(row.policySource).toBeUndefined();
+  });
+
+  it("shadow mode still enforces the regex result for both spellings", async () => {
+    jevConfig = { ...CFG, mode: "shadow" };
+    respond = answers({ "destructive-deletion": 0.97 });
+
+    const field = await bash(padField());
+    expect(field.outcome.evaluation?.decision).toBe("allow");
+    expect(field.row).toMatchObject({ evaluator: "jev-fallback", jevDecision: "deny", jevMode: "shadow" });
+
+    const budget = await run("PreToolUse", { tool_name: "Bash", tool_input: padBudget() });
+    expect(budget.outcome.evaluation?.decision).toBe("allow");
+    expect(budget.row).toMatchObject({ evaluator: "jev-fallback", jevDecision: "deny", jevMode: "shadow" });
+  });
+
+  it("control: unpadded, the very same deny is a plain `jev` row", async () => {
+    jevConfig = CFG;
+    respond = answers({ "destructive-deletion": 0.97 });
+    const { outcome, row } = await bash(DELETE);
+    expect(outcome.evaluation?.decision).toBe("deny");
+    expect(outcome.evaluation?.policyName).toBe("semantic/destructive-deletion");
+    expect(row).toMatchObject({ evaluator: "jev", jevDecision: "deny" });
+    expect(row.jevFallbackReason).toBeUndefined();
+  });
+});
+
 // ── Cloud-managed machines ───────────────────────────────────────────────────
 
 describe("a cloud-managed machine", () => {

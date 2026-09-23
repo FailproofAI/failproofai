@@ -19,7 +19,9 @@
  * did produce can never be dropped on the way in. A verdict given on a
  * truncated envelope comes through as `answered` with `truncated: true`: it
  * clears nothing, and it still counts toward the most-severe rule, because
- * padding a command must not be a way to stop Jev's own deny applying.
+ * padding a command must not be a way to stop Jev's own deny applying —
+ * including padding it past the request budget, which `prepareSemantic`
+ * answers by rebuilding the envelope smaller rather than degrading the call.
  */
 import { BUILTIN_POLICIES } from "../builtin-policies";
 import { normalizePolicyName } from "../policy-registry";

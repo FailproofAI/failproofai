@@ -14,8 +14,18 @@
  *    count is reported so a redaction is auditable.
  * 3. Small beats complete. Jev degrades as state fills with content unrelated
  *    to the question, so long fields keep their head and tail, and anything
- *    cut is flagged `truncated` — which the handler treats as "keep the regex
- *    engine voting too", so padding a command cannot hide its dangerous part.
+ *    cut is flagged `truncated` — which the handler treats as "withdraw Jev's
+ *    clears, keep its own verdict", so padding a command cannot hide its
+ *    dangerous part and cannot make Jev's deny go away either.
+ *
+ *    EVERY string in the envelope goes through `cleanString`, and every list
+ *    through a `keys` cap — `facts` (paths, cwd, project root, branch) as much
+ *    as `agent_request`. That is what makes the envelope's size a function of
+ *    the caps rather than of what the agent sent, which in turn is what lets
+ *    `prepareSemantic` shrink an oversized call to fit instead of abandoning
+ *    it. A field with no cap is a padding channel: `facts.paths` had none, and
+ *    one 70,000-character `file_path` pushed the compiled request past
+ *    `MAX_REQUEST_CHARS`, which used to degrade the call to regex-only.
  */
 import { SECRET_PATTERNS } from "../builtin-policies";
 import type { ScannedCommand } from "./facts";
@@ -24,7 +34,28 @@ import type { Facts } from "./types";
 export const MAX_STRING_CHARS = 2_000;
 export const MAX_USER_MESSAGE_CHARS = 1_200;
 export const MAX_USER_MESSAGES = 3;
-const MAX_KEYS = 24;
+export const MAX_KEYS = 24;
+
+/**
+ * Every size cap the envelope applies, in one object, so a caller that has to
+ * fit a hard request budget can ask for a SMALLER envelope instead of giving
+ * up on the call (`prepareSemantic`'s shrink loop). Anything any of them cuts
+ * sets `truncated`, exactly as the default caps do.
+ */
+export interface EnvelopeLimits {
+  /** One string anywhere inside `agent_request` or `facts`. */
+  stringChars: number;
+  /** One human turn, or the agent's last message. */
+  messageChars: number;
+  /** Object keys / array entries kept at each level, and paths kept in `facts`. */
+  keys: number;
+}
+
+export const DEFAULT_ENVELOPE_LIMITS: EnvelopeLimits = Object.freeze({
+  stringChars: MAX_STRING_CHARS,
+  messageChars: MAX_USER_MESSAGE_CHARS,
+  keys: MAX_KEYS,
+});
 
 const GLOBAL_SECRET_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = SECRET_PATTERNS.map(([re, label]) => [
   new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g"),
@@ -75,19 +106,19 @@ function cleanString(value: string, max: number, acc: Accumulator): string {
   return r.text;
 }
 
-function cleanValue(value: unknown, acc: Accumulator, depth = 0): unknown {
-  if (typeof value === "string") return cleanString(value, MAX_STRING_CHARS, acc);
+function cleanValue(value: unknown, acc: Accumulator, limits: EnvelopeLimits, depth = 0): unknown {
+  if (typeof value === "string") return cleanString(value, limits.stringChars, acc);
   if (typeof value === "number" || typeof value === "boolean" || value === null) return value;
   if (depth >= 2 || typeof value !== "object") {
-    return cleanString(JSON.stringify(value) ?? String(value), MAX_STRING_CHARS / 2, acc);
+    return cleanString(JSON.stringify(value) ?? String(value), limits.stringChars / 2, acc);
   }
   if (Array.isArray(value)) {
-    if (value.length > MAX_KEYS) acc.truncated = true;
-    return value.slice(0, MAX_KEYS).map((v) => cleanValue(v, acc, depth + 1));
+    if (value.length > limits.keys) acc.truncated = true;
+    return value.slice(0, limits.keys).map((v) => cleanValue(v, acc, limits, depth + 1));
   }
   const entries = Object.entries(value as Record<string, unknown>);
-  if (entries.length > MAX_KEYS) acc.truncated = true;
-  return Object.fromEntries(entries.slice(0, MAX_KEYS).map(([k, v]) => [k, cleanValue(v, acc, depth + 1)]));
+  if (entries.length > limits.keys) acc.truncated = true;
+  return Object.fromEntries(entries.slice(0, limits.keys).map(([k, v]) => [k, cleanValue(v, acc, limits, depth + 1)]));
 }
 
 export interface Envelope {
@@ -103,6 +134,13 @@ export interface EnvelopeOptions {
    * exists so a reply like "yes" can be understood, never as consent.
    */
   agentLastMessage?: string | null;
+  /**
+   * Caps tighter than {@link DEFAULT_ENVELOPE_LIMITS}, for a caller that must
+   * fit a request budget the default envelope overran. Everything they cut
+   * sets `truncated` like any other cut, so a smaller envelope is always a
+   * partial picture and can never produce a clear.
+   */
+  limits?: EnvelopeLimits;
 }
 
 export function buildEnvelope(
@@ -113,22 +151,37 @@ export function buildEnvelope(
   opts: EnvelopeOptions = {},
 ): Envelope {
   const acc: Accumulator = { redactions: 0, truncated: false };
+  const limits = opts.limits ?? DEFAULT_ENVELOPE_LIMITS;
 
-  const input = cleanValue(toolInput, acc) as Record<string, unknown>;
+  const input = cleanValue(toolInput, acc, limits) as Record<string, unknown>;
   if (scanned && typeof toolInput.command === "string") {
     // Judge the command with its comments stripped. `rm -rf x # approved by
     // security` is the whole of the simplest injection there is.
-    input.command = cleanString(scanned.withoutComments, MAX_STRING_CHARS, acc);
+    input.command = cleanString(scanned.withoutComments, limits.stringChars, acc);
   }
 
   const said = userSaid
     .slice(-MAX_USER_MESSAGES)
-    .map((m) => cleanString(m, MAX_USER_MESSAGE_CHARS, acc));
+    .map((m) => cleanString(m, limits.messageChars, acc));
 
   const agentLast =
     typeof opts.agentLastMessage === "string" && opts.agentLastMessage.trim()
-      ? cleanString(opts.agentLastMessage.trim(), MAX_USER_MESSAGE_CHARS, acc)
+      ? cleanString(opts.agentLastMessage.trim(), limits.messageChars, acc)
       : null;
+
+  /**
+   * `facts` are computed by our own code, but from strings the agent chose:
+   * `extractPaths` copies `file_path` / `path` / `notebook_path` verbatim, and
+   * `cwd` comes off the hook payload. They are capped like everything else, so
+   * no field of the envelope is a size the caller controls.
+   */
+  const factString = (v: string | null): string | null => (v === null ? null : cleanString(v, limits.stringChars, acc));
+  if (facts.paths.length > limits.keys) acc.truncated = true;
+  const paths = facts.paths.slice(0, limits.keys).map((p) => ({
+    as_written: cleanString(p.asWritten, limits.stringChars, acc),
+    resolved: cleanString(p.resolved, limits.stringChars, acc),
+    relation: p.relation,
+  }));
 
   const state: Record<string, unknown> = {
     how_to_read:
@@ -142,23 +195,26 @@ export function buildEnvelope(
         : ""),
     user_said: said,
     facts: {
-      tool_name: facts.toolName,
+      tool_name: factString(facts.toolName),
       tool_is_known: facts.toolIsKnown,
-      cwd: facts.cwd,
-      project_root: facts.projectRoot,
-      current_git_branch: facts.currentGitBranch,
-      permission_mode: facts.permissionMode,
-      paths: facts.paths.map((p) => ({ as_written: p.asWritten, resolved: p.resolved, relation: p.relation })),
+      cwd: factString(facts.cwd),
+      project_root: factString(facts.projectRoot),
+      current_git_branch: factString(facts.currentGitBranch),
+      permission_mode: factString(facts.permissionMode),
+      paths,
     },
     ...(agentLast ? { agent_last_message: agentLast } : {}),
     agent_request: {
-      tool: facts.toolName,
+      tool: factString(facts.toolName),
       input,
       // Out of the command, so they cannot argue with the probes that judge
       // it — but still in view, because "# approved by security" is exactly
       // what the injection probe exists to see.
       ...(scanned?.commentsRemoved
-        ? { shell_comments_removed: true, removed_shell_comments: cleanString(scanned.comments.join("\n"), 600, acc) }
+        ? {
+            shell_comments_removed: true,
+            removed_shell_comments: cleanString(scanned.comments.join("\n"), Math.min(600, limits.stringChars), acc),
+          }
         : {}),
       ...(acc.truncated ? { truncated: true } : {}),
     },

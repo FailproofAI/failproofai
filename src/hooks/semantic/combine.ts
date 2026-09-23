@@ -29,13 +29,26 @@
  *
  * ## One rule about a partial picture
  *
- * Three things mean Jev judged less than the whole call: the envelope was
+ * Three things mean Jev judged less than what it was given: the envelope was
  * truncated (§4), injection is suspected, or the injection probe was never
  * asked. Each withdraws every CLEAR and nothing else. Jev's own deny or
  * instruct still joins the most-severe rule, because an answer given on part
  * of the evidence can only ever ADD severity — `combineTwoTier`'s result is
  * never less severe than `regexOnly(verdicts)` unless a clear fired, and a
- * clear fires only on a complete, uninjected, injection-checked picture.
+ * clear fires only when nothing was cut, injection was asked about, and the
+ * answer was no.
+ *
+ * What "nothing was cut" does and does not claim. The envelope keeps a
+ * BOUNDED window by design — the last `MAX_USER_MESSAGES` human turns — and
+ * dropping older turns does not set `truncated`. So a clear rests on a
+ * complete view of what was SENT, not on the whole session: an instruction
+ * from twenty turns ago is not in the picture, and the tier is not a record of
+ * consent over a session. What it does guarantee is that nothing in the
+ * clearing half rests on evidence Jev never saw — `prepareSemantic` reads
+ * `user_said` and `agent_last_message` back out of the envelope and judges the
+ * local `targetNamedByUser` check against those, so a dropped turn cannot
+ * supply the consent for an `op-requested` override (it could, and flipped a
+ * reviewable deny to allow with `truncated` false, so this gate never saw it).
  *
  * That invariant is what makes the tier safe to pad. §4's table files a
  * truncated envelope under "fall back to the regex result", and reading that
@@ -46,6 +59,13 @@
  * What §4 asks for is still there — every regex deny counts, and the call is
  * recorded as `jev-fallback` / `truncated` — the answer is just not thrown
  * away on the way in.
+ *
+ * Size is part of the same class and is handled the same way: a request that
+ * overruns `MAX_REQUEST_CHARS` used to be `degraded("request-too-large")` — a
+ * `fallback`, no verdict, regex-only — which one ignored 70,000-character
+ * `file_path` beside the command was enough to trigger. `prepareSemantic` now
+ * rebuilds such a call with tighter caps and `truncated` set, so it arrives
+ * here as `answered` like any other cut call.
  *
  * Structurally: a `fallback` review carries no `decision` at all, so a verdict
  * Jev actually produced cannot be filed as one. If Jev decided, it comes
@@ -118,7 +138,9 @@ export type JevReview =
       injected: boolean;
       /**
        * Jev judged less than the whole call: the envelope cut the command, the
-       * human's words or the agent's last message (§4, `SemanticOutcome.truncated`).
+       * human's words or the agent's last message, or the whole envelope had
+       * to be rebuilt smaller to fit the request budget (§4,
+       * `SemanticOutcome.truncated`).
        *
        * Withdraws every clear — a clear resting on half of the evidence is not
        * a clear — and nothing else: the decision below still joins the

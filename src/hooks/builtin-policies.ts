@@ -125,81 +125,16 @@ const SHELL_METACHAR_RE = /[;&<>`$()\\]/;
 const JWT_RE = /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/;
 
 // sanitizeApiKeys
-//
-// The three entries after "OpenAI API key" close the gateway-key gap. That
-// pattern's `[A-Za-z0-9]{20,}` stops at the first `-` or `_`, so every key whose
-// random part is base64url walked past it the moment one of those two landed in
-// its first twenty characters: LiteLLM's 25-character `sk-` + token_urlsafe(16)
-// (about half of all its keys), OpenRouter's `sk-or-v1-…`, OpenAI's own
-// `sk-svcacct-…` / `sk-admin-…` / `sk-None-…`, Langfuse's `sk-lf-<uuid>`.
-//
-// The hyphenated shape is also what ordinary identifiers look like — pod names
-// such as `risk-scoring-7d9f8b6c5-x2k4p` contain `sk-` followed by twenty-odd
-// token characters — so the generic entry requires the mix of classes a random
-// token has and a kebab-case name does not: upper AND lower case, plus a digit
-// or a lower→upper hump.
-//
-// That mix is asked of ONE SEGMENT, not of the whole run, and that is the whole
-// false-positive guard. Spread across the run it is satisfied by any Title-Case
-// name with a number in it, and `sanitize-api-keys` answers a match by REPLACING
-// the entire tool result with a marker — so a git branch listing
-// (`* sk-1234-Fix-Login-Bug-Now`), an `ls` row (`sk-Report-2024-Q3-Final-v2.xlsx`),
-// a kubectl line (`sk-Gateway-Prod-7d9f8b6c5x2`), a CSS class and a Markdown
-// anchor all came back to the user as `[REDACTED: …]` with the output gone.
-// A real gateway key is random from its first character, so its base64url part
-// has a six-plus run of letters and digits with all three classes in it, while
-// `Gateway`, `Container`, `Session` and `Report-2024` have none — measured at
-// 99.95-100% of LiteLLM's `token_urlsafe(16)`/`(24)` keys and OpenAI's
-// `sk-svcacct-`/`sk-admin-`/`sk-None-` shapes, and 0 of the eight ordinary lines.
-//
-// The `{0,6}` leading-segment hop is what keeps that bounded: it reaches the
-// random part behind a vendor word (`sk-svcacct-…`) in at most seven tries of
-// at most 24 characters, where an unbounded `(?:…)*?` walk would cost the
-// square of a crafted `sk-a-b-c-…` run.
-//
-// The trailing token run puts the REST of the key back inside the match, so a
-// consumer that replaces one replaces all of it — `maskSecrets` in the audit
-// redactor uses these patterns raw, and a match stopping at the qualifying
-// segment would print `[REDACTED: sk- API key]_x7Qd`, the tail of a live key.
-// It is spelled `{0,}` rather than `*` because `SHARED_PATTERN_EXTENDED` reads
-// `/[}+]$/` to decide which patterns end on a token class and must be carried
-// to the end of their token; the two spellings are the same quantifier, and a
-// `*` there silently dropped this entry out of that class.
-//
-// It must also START a token. Title-Case names with a digit have that mix too,
-// and `sk-` is the tail of many words: `task-PROJ-1234-add-login-page`,
-// `Disk-Usage-Report-2024-Q3.xlsx`, `Kiosk-Mode-Setup-Guide-v10`. The boundary
-// is the leading group — start of input, a character that cannot be part of a
-// token, or a JSON-escaped `\n`/`\r`/`\t` (sanitize-api-keys scans
-// `JSON.stringify(payload)`, where a key at the start of a line follows the two
-// characters `\` `n`). It is a consuming CAPTURE group rather than a
-// lookbehind for two reasons: a lookbehind drops JSC's regex JIT to its
-// interpreter (~15x slower on every PostToolUse payload), and every consumer
-// that REPLACES a match can put group 1 back in front of its marker, so only
-// the key is replaced (see `SECRET_PATTERNS_KEEPING_PREFIX`). The boundary is
-// also what keeps the scan linear: the class-mix lookaheads run once per token
-// that starts with `sk-`, never at each `sk-` inside one, so a crafted
-// `sk-sk-sk-…` run costs what its length costs instead of its square.
-const SK_GATEWAY_KEY_RE =
-  /(^|[^A-Za-z0-9_-]|\\[nrt])sk-(?=[A-Za-z0-9_-]{20,})(?:[A-Za-z0-9]{0,24}[-_]){0,6}(?=[A-Za-z0-9]*[A-Z])(?=[A-Za-z0-9]*[a-z])(?=[A-Za-z0-9]*(?:[0-9]|[a-z][A-Z]))[A-Za-z0-9]{6,}[A-Za-z0-9_-]{0,}/;
-// The generic `sk-` entry goes LAST: `sanitizeApiKeys` reports the first
-// pattern that matches, so a vendor prefix that has its own name — an
-// Anthropic, OpenRouter or Langfuse key, a GitHub token, an AWS key ID — must
-// be seen before the catch-all that would only call it "sk- API key". The
-// specific `sk-…` prefixes stay at the top for the same reason.
 const API_KEY_PATTERNS: Array<[RegExp, string]> = [
   [/sk-ant-[A-Za-z0-9\-_]{20,}/, "Anthropic API key"],
   [/sk-proj-[A-Za-z0-9\-_]{20,}/, "OpenAI project API key"],
   [/sk-[A-Za-z0-9]{20,}/, "OpenAI API key"],
-  [/sk-or-v\d+-[A-Za-z0-9]{32,}/, "OpenRouter API key"],
-  [/sk-lf-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/, "Langfuse secret key"],
   [/ghp_[A-Za-z0-9]{36}/, "GitHub personal access token"],
   [/github_pat_[A-Za-z0-9_]{82}/, "GitHub fine-grained token"],
   [/AKIA[A-Z0-9]{16}/, "AWS access key ID"],
   [/sk_live_[A-Za-z0-9]{24,}/, "Stripe live secret key"],
   [/sk_test_[A-Za-z0-9]{24,}/, "Stripe test secret key"],
   [/AIza[0-9A-Za-z\-_]{35}/, "Google API key"],
-  [SK_GATEWAY_KEY_RE, "sk- API key"],
 ];
 
 // sanitizeConnectionStrings
@@ -236,25 +171,6 @@ export const SECRET_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
   [CONNECTION_STRING_RE, "database credentials"],
   ...API_KEY_PATTERNS,
 ];
-
-/**
- * The entries whose match does NOT start at the secret: group 1 holds the
- * character in FRONT of it — the token boundary `SK_GATEWAY_KEY_RE` consumes
- * because a lookbehind would cost the blocking policy its regex JIT.
- *
- * Every consumer that REPLACES a match — `maskSecrets` in
- * src/audit/redact-example.ts, `redactSecrets` in src/hooks/semantic/redact.ts
- * — must re-emit group 1, or it deletes the character in front of each key it
- * masks: `export KEY=<key>` came out as `export KEY[REDACTED: sk- API key]`,
- * and `{"k": "<key>"}` lost its opening quote. A consumer that only `.test`s
- * (the `sanitize-*` policies) can ignore this.
- *
- * Membership is declared HERE rather than inferred from the pattern source. A
- * `source.startsWith("(")` heuristic reads the same for an entry whose first
- * group captures part of the SECRET, and would then re-emit the secret in
- * front of the marker.
- */
-export const SECRET_PATTERNS_KEEPING_PREFIX: ReadonlySet<RegExp> = new Set<RegExp>([SK_GATEWAY_KEY_RE]);
 
 // warnDestructiveSql / warnSchemaAlteration
 const SQL_TOOL_RE = /\b(?:psql|mysql|sqlite3|pgcli|clickhouse-client)\b/;

@@ -9,16 +9,34 @@ import {
   SHARED_PATTERN_EXTENDED,
   looksRandomToken,
   redactAuthorizationField,
-  redactSecrets,
-  redactSecretsDetailed,
+  buildSecretScrubber,
+  redactSecrets as redactSecretsRaw,
+  redactSecretsDetailed as redactSecretsDetailedRaw,
   scrubKnownSecrets,
   secretNameStrength,
   setEnvSecretSource,
 } from "../../../src/hooks/semantic/redact";
+import type { Redacted, RedactedDetail, RedactOptions } from "../../../src/hooks/semantic/redact";
+import { verdictLogRow } from "../../../src/hooks/semantic/evaluator";
+import type { SemanticOutcome } from "../../../src/hooks/semantic/evaluator";
+import type { SemanticInput } from "../../../src/hooks/semantic/types";
 import { maskSecrets } from "../../../src/audit/redact-example";
-import { BUILTIN_POLICIES, SECRET_PATTERNS, SECRET_PATTERNS_KEEPING_PREFIX } from "../../../src/hooks/builtin-policies";
+import { BUILTIN_POLICIES, SECRET_PATTERNS } from "../../../src/hooks/builtin-policies";
 import type { PolicyContext } from "../../../src/hooks/policy-types";
 import { ALNUM, B64URL, HEX, SK, gatewayKey, pemBegin, pemEnd, prng, randomToken, rnd } from "./redaction-fixtures";
+
+/**
+ * This file asks what the ENVELOPE sends, and the envelope is the one caller
+ * that opts into the two blunt rules (`RedactOptions.blunt`, opt-IN since the
+ * default-on version over-redacted every local caller's own records). Rather
+ * than spell `{ blunt: true }` at seventy call sites, the envelope's option is
+ * bound here once; a test that means the DEFAULT calls `redactSecretsRaw` by
+ * name, and `{ blunt: false }` still overrides, because the caller's options
+ * are spread last.
+ */
+const redactSecrets = (text: string, opts: RedactOptions = {}): Redacted => redactSecretsRaw(text, { blunt: true, ...opts });
+const redactSecretsDetailed = (text: string, opts: RedactOptions = {}): RedactedDetail =>
+  redactSecretsDetailedRaw(text, { blunt: true, ...opts });
 
 const rand = prng(0x7e6);
 
@@ -577,6 +595,51 @@ describe("the blunt rules are confined to the request body", () => {
       // The envelope still takes every one of them.
       expect(redactSecrets(s).text, s).not.toBe(s);
     }
+  });
+
+  it("is OPT-IN: the default leaves a local caller's text whole", () => {
+    // `redactSecretsRaw` is the exported function, called the way any caller
+    // outside ./envelope.ts calls it. It used to default to ON, so forgetting
+    // the option was invisible and silently cost that caller its text.
+    for (const s of [
+      "authorization: required for this endpoint",
+      "grep -r authorization: src/hooks/semantic/",
+      "async def read_items(authorization: str = Header(None)):",
+      "use --token to authenticate and --password followed by the value",
+      "delete the cookie: header from the proxy config",
+      'bun test -t "sends authorization: Bearer when configured"',
+    ]) {
+      expect(redactSecretsRaw(s).text, s).toBe(s);
+      expect(redactSecretsRaw(s).count, s).toBe(0);
+      // Only the envelope's explicit opt-in takes them.
+      expect(redactSecretsRaw(s, { blunt: true }).text, s).not.toBe(s);
+    }
+  });
+
+  it("keeps the verdict log's own preview of the command whole", () => {
+    // `verdictLogRow` writes the local verdict log, an operator's record of
+    // what the agent tried, which never leaves the machine. `inputPreview`
+    // called `redactSecrets` with no options, so every command that merely
+    // NAMED a credential was logged cut off at the name.
+    const outcome = { status: "degraded", reason: "timeout", latencyMs: 12, questionCount: 0, truncated: false } as unknown as SemanticOutcome;
+    const preview = (command: string): string => {
+      const input = { toolName: "Bash", toolInput: { command }, userSaid: [] } as unknown as SemanticInput;
+      return String(verdictLogRow(input, outcome, { eventType: "PreToolUse", applied: "semantic" }).inputPreview);
+    };
+    for (const command of [
+      'curl -H "authorization:" https://api.example.com/v1/models',
+      'echo "cookie: set by the login handler" >> NOTES.md',
+      'bun test -t "sends authorization: Bearer when configured"',
+      "grep -rn 'x-api-key' src/ --include=*.ts",
+    ]) {
+      expect(preview(command), command).toBe(command);
+    }
+
+    // A secret that is actually there still goes: the narrow rules run.
+    const key = gatewayKey(rand, 6);
+    const logged = preview(`curl -H "authorization: Bearer ${key}" https://api.example.com/v1`);
+    expect(logged).not.toContain(key);
+    expect(logged).toContain("<redacted:");
   });
 
   it("still runs every NARROW rule for a local caller", () => {
@@ -1340,6 +1403,85 @@ describe("scrubKnownSecrets", () => {
     expect(r.text).toBe("use <redacted:repeated secret> and <redacted:repeated secret>");
     expect(r.count).toBe(2);
   });
+
+  it("leaves no fragment of any known secret behind, whatever order they arrive in", () => {
+    // The single-pass matcher resolves overlaps by MERGING the region rather
+    // than by sorting the secrets, so neither the nesting nor the arrival
+    // order can leave a head or a tail of one visible.
+    const base = randomToken(rand, 24);
+    const cases: Array<[string, string[]]> = [
+      ["a secret nested inside another", [base, base.slice(4, 22)]],
+      ["the nested one first", [base.slice(4, 22), base]],
+      ["two secrets sharing a middle", [base, base.slice(10) + randomToken(rand, 12)]],
+      ["the same secret twice", [base, base]],
+    ];
+    for (const [name, known] of cases) {
+      const r = scrubKnownSecrets(`before ${base} after`, known);
+      expect(r.text, name).toBe("before <redacted:repeated secret> after");
+      expect(r.count, name).toBe(1);
+      for (const k of known) expect(r.text, `${name}: ${k}`).not.toContain(k);
+    }
+  });
+
+  it("scrubs every copy, and counts markers not secrets", () => {
+    const a = randomToken(rand, 20);
+    const b = randomToken(rand, 20);
+    const r = scrubKnownSecrets(`${a} then ${b} then ${a}`, [a, b]);
+    expect(r.text).toBe("<redacted:repeated secret> then <redacted:repeated secret> then <redacted:repeated secret>");
+    expect(r.count).toBe(3);
+  });
+
+  it("keeps the floor: too short, or word-like under 16, is not scrubbed blindly", () => {
+    // The floor is the one the loop had, to the character: under 8 never, 8-15
+    // only if it looks like a token, 16+ always.
+    const short = "abc1234"; // 7, a token but under 8
+    const words = "app-settings"; // 12, lower-kebab, so not token-like
+    const r = scrubKnownSecrets(`${short} and ${words} and nothing else`, [short, words]);
+    expect(r.text).toBe(`${short} and ${words} and nothing else`);
+    expect(r.count).toBe(0);
+  });
+
+  it("scrubs a 16+ value even when it reads like words", () => {
+    // The other half of that floor, stated so a future narrowing of it is a
+    // deliberate change: at 16 characters the value is distinctive enough to
+    // delete wherever it appears, whatever it looks like. `aws configure set
+    // aws_secret_access_key "correct horse battery staple"` is a real secret.
+    const passphrase = "correct horse battery staple";
+    const r = scrubKnownSecrets(`the passphrase is ${passphrase} ok`, [passphrase]);
+    expect(r.text).toBe("the passphrase is <redacted:repeated secret> ok");
+    expect(r.count).toBe(1);
+  });
+
+  it("does not touch text that holds no secret", () => {
+    const text = "ordinary output with no credential in it at all";
+    const r = scrubKnownSecrets(text, [randomToken(rand, 24)]);
+    expect(r.text).toBe(text);
+    expect(r.count).toBe(0);
+  });
+
+  it("is one pass over the text, not one per secret", () => {
+    // The pin for the cost the old loop had: it ran `includes` + `split` over
+    // the WHOLE string once per known secret, so 40x the secrets cost 40x the
+    // time over the same bytes. Building the matcher is charged to the
+    // secrets; scanning is charged to the text, and only to the text.
+    const text = "deploy " + Array.from({ length: 40 }, () => randomToken(rand, 24)).join(" ");
+    const few = Array.from({ length: 50 }, () => randomToken(rand, 24));
+    const many = Array.from({ length: 2_000 }, () => randomToken(rand, 24));
+    const scanTime = (known: string[]): number => {
+      const scrubber = buildSecretScrubber(known);
+      let best = Infinity;
+      for (let pass = 0; pass < 3; pass++) {
+        const t0 = performance.now();
+        for (let i = 0; i < 200; i++) scrubber.scrub(text);
+        best = Math.min(best, performance.now() - t0);
+      }
+      return best;
+    };
+    const small = scanTime(few);
+    const large = scanTime(many);
+    // 40x the secrets over the same bytes: the old loop cost ~40x here.
+    expect(large / Math.max(small, 0.05), `${small.toFixed(2)}ms vs ${large.toFixed(2)}ms`).toBeLessThan(6);
+  });
 });
 
 describe("counting and stability", () => {
@@ -1452,7 +1594,6 @@ describe("the shared floor", () => {
 
   /** One positive fixture per SECRET_PATTERNS entry, all built at runtime. */
   const UPPER_DIGITS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  const uuid = (): string => [8, 4, 4, 4, 12].map((n) => rnd(rand, n, HEX)).join("-");
   const samples: Array<[label: string, sample: string, body: string]> = (() => {
     const mk = (label: string, sample: string, body = sample): [string, string, string] => [label, sample, body];
     const jwtPart = (): string => rnd(rand, 20, B64URL);
@@ -1466,15 +1607,12 @@ describe("the shared floor", () => {
       mk("Anthropic API key", SK + "ant-api03-" + rnd(rand, 40)),
       mk("OpenAI project API key", SK + "proj-" + rnd(rand, 40)),
       mk("OpenAI API key", SK + rnd(rand, 32)),
-      mk("OpenRouter API key", SK + "or-v1-" + rnd(rand, 64, HEX)),
-      mk("Langfuse secret key", SK + "lf-" + uuid()),
       mk("GitHub personal access token", "ghp_" + rnd(rand, 36)),
       mk("GitHub fine-grained token", "github_pat_" + rnd(rand, 82, ALNUM + "_")),
       mk("AWS access key ID", "AKIA" + rnd(rand, 16, UPPER_DIGITS)),
       mk("Stripe live secret key", "sk" + "_live_" + rnd(rand, 24)),
       mk("Stripe test secret key", "sk" + "_test_" + rnd(rand, 24)),
       mk("Google API key", "AIza" + rnd(rand, 35)),
-      mk("sk- API key", gatewayKey(rand, 5)),
     ];
   })();
 
@@ -1483,22 +1621,15 @@ describe("the shared floor", () => {
   });
 
   /**
-   * The boundary contract, for BOTH consumers of the list at once.
+   * Every entry's match must BE the secret, start to end.
    *
-   * An entry may open with a consuming capture group holding the character in
-   * front of the secret (a lookbehind would cost the blocking policy its regex
-   * JIT). Every consumer that replaces a match has to put that character back,
-   * and only that character:
-   *
-   *  - forgetting it deletes the character in front of every key — `export
-   *    KEY=<key>` became `export KEY[REDACTED: sk- API key]`, `{"k":"<key>"}`
-   *    lost its opening quote, and two lines merged where the boundary was a
-   *    newline (the audit consumer shipped exactly this);
-   *  - re-emitting a group that holds part of the SECRET would print the
-   *    secret in front of the marker.
-   *
-   * Both show up here as the marker no longer sitting exactly where the secret
-   * started, whichever entry is at fault and whoever adds the next one.
+   * An entry whose match starts before the secret (a consumed token boundary,
+   * say) silently deletes the character in front of every key its consumers
+   * replace: `export KEY=<key>` came back as `export KEY[REDACTED: …]`,
+   * `{"k":"<key>"}` lost its opening quote, and two lines merged where the
+   * boundary was a newline. The shared list is read by the blocking policies,
+   * by the audit masker and by this redactor, so the contract is asserted for
+   * every consumer at once — whoever adds the next entry.
    */
   it("replaces each secret in place, keeping the character in front of it — in the redactor and the audit masker", () => {
     // The tail is parenthesised because a PEM header with no footer takes a
@@ -1519,32 +1650,34 @@ describe("the shared floor", () => {
     }
   });
 
-  it("declares its prefix-keeping entries instead of inferring them from the source", () => {
-    for (const re of SECRET_PATTERNS_KEEPING_PREFIX) {
-      expect(SECRET_PATTERNS.some(([p]) => p === re), re.source.slice(0, 20)).toBe(true);
-      // A member MUST open with a capture group, or there is no group 1 to keep.
-      expect(re.source.startsWith("(") && !re.source.startsWith("(?"), re.source.slice(0, 20)).toBe(true);
-    }
-  });
-
-  it("reports the most specific label when two entries could claim the output", () => {
-    // sanitize-api-keys returns on the first pattern that matches, so the
-    // generic `sk- API key` entry sits last: a vendor prefix with a name of
-    // its own must keep it.
-    const key = gatewayKey(rand, 5);
-    const policy = BUILTIN_POLICIES.find((p) => p.name === "sanitize-api-keys")!;
-    const cases: Array<[string, string]> = [
-      [`token ghp_${rnd(rand, 36)} and ${key}`, "GitHub personal access token"],
-      [`AKIA${rnd(rand, 16, UPPER_DIGITS)} and ${key}`, "AWS access key ID"],
-      [`AIza${rnd(rand, 35)} and ${key}`, "Google API key"],
-      [`${key} alone`, "sk- API key"],
-    ];
-    for (const [output, label] of cases) {
-      const ctx = { eventType: "PostToolUse", payload: { tool_response: { output } }, toolName: "Bash", toolInput: {} };
-      const r = policy.fn(ctx as unknown as PolicyContext) as { decision: string; reason?: string };
-      expect(r.decision, label).toBe("deny");
-      expect(r.reason, label).toContain(label);
-    }
+  it("is exactly the list the blocking policies had, and is never grown from here", () => {
+    // The `sanitize-*` builtins are DEFAULT-ON and answer a match by replacing
+    // the whole tool result with a marker. A pattern put on this list for the
+    // redactor's benefit therefore deletes real output for every user who has
+    // never enabled Jev — which is what three `sk-` gateway entries added here
+    // did, denying `sk-Release2024-Notes-Final-Draft`, a pod name, a branch
+    // listing and a Markdown anchor. Everything this file's redactor needs
+    // beyond the floor lives in its own rules (see ./sanitize-gateway-keys for
+    // the shapes, and that they are still redacted on the envelope path).
+    expect(SECRET_PATTERNS.map(([, label]) => label)).toEqual([
+      "private key",
+      "JWT",
+      "bearer token",
+      "database credentials",
+      "Anthropic API key",
+      "OpenAI project API key",
+      "OpenAI API key",
+      "GitHub personal access token",
+      "GitHub fine-grained token",
+      "AWS access key ID",
+      "Stripe live secret key",
+      "Stripe test secret key",
+      "Google API key",
+    ]);
+    // No entry may open with a capture group: every consumer replaces the
+    // WHOLE match, so a group holding context in front of a secret is deleted
+    // and a group holding part of the secret is re-emitted next to its marker.
+    for (const [re] of SECRET_PATTERNS) expect(re.source.startsWith("(") && !re.source.startsWith("(?"), re.source.slice(0, 24)).toBe(false);
   });
 });
 

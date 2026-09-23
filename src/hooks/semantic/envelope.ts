@@ -35,7 +35,8 @@
  *    engine voting too", so padding a command cannot hide its dangerous part.
  */
 import type { ScannedCommand } from "./facts";
-import { isSecretFieldValue, redactAuthorizationField, redactSecretsDetailed, scrubKnownSecrets } from "./redact";
+import { buildSecretScrubber, isSecretFieldValue, redactAuthorizationField, redactSecretsDetailed } from "./redact";
+import type { SecretScrubber } from "./redact";
 import type { Facts } from "./types";
 
 export { redactSecrets, type Redacted } from "./redact";
@@ -156,22 +157,27 @@ function cleanString(value: string, max: number, acc: Accumulator): string {
  * its bytes can sit elsewhere without that context — `facts.paths` lifts the
  * bare value out of `aws configure set aws_secret_access_key <value>`, and a
  * human may paste the same value into a message.
+ *
+ * The secrets are compiled ONCE, by the caller, and every string in the state
+ * is scanned against that one matcher. Compiling per string put the number of
+ * secrets back into the per-string cost, which is the product this pass exists
+ * not to pay: see `buildSecretScrubber` in ./redact.ts.
  */
-function scrubDeep(value: unknown, acc: Accumulator, known: ReadonlySet<string>): unknown {
+function scrubDeep(value: unknown, acc: Accumulator, scrubber: SecretScrubber): unknown {
   if (typeof value === "string") {
-    const r = scrubKnownSecrets(value, known);
+    const r = scrubber.scrub(value);
     acc.redactions += r.count;
     return r.text;
   }
-  if (Array.isArray(value)) return value.map((v) => scrubDeep(v, acc, known));
+  if (Array.isArray(value)) return value.map((v) => scrubDeep(v, acc, scrubber));
   if (value === null || typeof value !== "object") return value;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-    const r = scrubKnownSecrets(k, known);
+    const r = scrubber.scrub(k);
     acc.redactions += r.count;
     let key = r.text;
     for (let n = 2; Object.hasOwn(out, key); n++) key = `${r.text}#${n}`;
-    out[key] = scrubDeep(v, acc, known);
+    out[key] = scrubDeep(v, acc, scrubber);
   }
   return out;
 }
@@ -329,9 +335,12 @@ export function buildEnvelope(
     // a credential, and deleting one from `user_said` or `facts` hands the
     // agent a way to edit the human's words and blind the evaluator.
     const wide = acc.weak.size === 0 ? acc.found : new Set([...acc.found, ...acc.weak]);
+    // Two matchers at most, each compiled once for the whole walk.
+    const narrowScrubber = buildSecretScrubber(acc.found);
+    const wideScrubber = wide === acc.found ? narrowScrubber : buildSecretScrubber(wide);
     for (const key of Object.keys(state)) {
       if (key === "how_to_read") continue;
-      state[key] = scrubDeep(state[key], acc, key === "agent_request" ? wide : acc.found);
+      state[key] = scrubDeep(state[key], acc, key === "agent_request" ? wideScrubber : narrowScrubber);
     }
   }
 

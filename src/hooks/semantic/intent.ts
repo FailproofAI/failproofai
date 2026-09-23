@@ -47,7 +47,8 @@ export function recordUserPrompt(sessionId: string | undefined, prompt: unknown,
   if (!sessionId || !SESSION_ID_RE.test(sessionId)) return false;
   if (typeof prompt !== "string" || prompt.trim().length === 0) return false;
   try {
-    // `blunt: false`: the credential-header and credential-flag rules give up
+    // `blunt: false` — the default, spelled out so a future change to it
+    // cannot reach this path silently. The credential-header and flag rules give up
     // a whole line or a whole argument on the strength of a NAME, which is the
     // right trade for the Jev request body and the wrong one here. This is the
     // evaluator's record of what the HUMAN asked for — it never leaves the

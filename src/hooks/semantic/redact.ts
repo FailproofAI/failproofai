@@ -77,14 +77,17 @@
  * third party, and only one of those two is recoverable.
  *
  * That trade only holds for the REQUEST BODY, so the two blunt rules are
- * confined to it: `redactSecrets(text, { blunt: false })` runs everything
- * else, and that is what `recordUserPrompt` stores and what any other local
- * caller gets. The human's own prompt is the evaluator's record of what they
- * asked for; coming back cut off after a `cookie:` costs the targets they
- * named and protects nothing, because nothing has left the machine yet and
- * `buildEnvelope` redacts it again — bluntly — when it does. The `sanitize-*`
- * builtins are narrower still: they match `SECRET_PATTERNS` and nothing in
- * this file, and that list is untouched by every rule here.
+ * OPT-IN and exactly one caller opts in: `redactInto` in ./envelope.ts. Every
+ * other caller — `recordUserPrompt`, the verdict log's `inputPreview`, any
+ * future local one — gets the narrow rules by default and keeps its text. The
+ * human's own prompt is the evaluator's record of what they asked for and the
+ * verdict log is the operator's record of what the agent tried; coming back
+ * cut off after a `cookie:` costs the targets they named and protects nothing,
+ * because nothing has left the machine yet and `buildEnvelope` redacts it
+ * again — bluntly — when it does. A default of ON put that cost on every
+ * caller that simply forgot the option, which is why it is off. The
+ * `sanitize-*` builtins are narrower still: they match `SECRET_PATTERNS` and
+ * nothing in this file, and that list is untouched by every rule here.
  *
  * The SCRUB LIST runs the other way, and is the one place this file is
  * deliberately narrow. What it reports is deleted from every other string in
@@ -114,7 +117,7 @@
  * pass. What it does promise is that the formats seen leaking in practice — the
  * 25-character `sk-` gateway keys among them — do not.
  */
-import { SECRET_PATTERNS, SECRET_PATTERNS_KEEPING_PREFIX } from "../builtin-policies";
+import { SECRET_PATTERNS } from "../builtin-policies";
 
 export interface Redacted {
   text: string;
@@ -182,19 +185,17 @@ function atTokenBoundary(whole: string, offset: number, tokenChars = /[A-Za-z0-9
  * connection strings, `-----` for a PEM header) are not extended: what follows
  * them is a hostname or a newline, not more of the secret.
  *
- * A pattern listed in `SECRET_PATTERNS_KEEPING_PREFIX` matched context in front
- * of the secret rather than the secret itself — the generic `sk-` entry's token
- * boundary, a consuming group because a lookbehind would cost the blocking
- * policy its regex JIT. Group 1 goes back in front of the marker. Membership is
- * read from that set rather than guessed from the pattern's source: a future
- * entry whose first group captures part of the SECRET would look identical to a
- * `startsWith("(")` test, and the redactor would print the secret it removed.
+ * `SECRET_PATTERNS` is read, never extended. It is the list the default-on
+ * `sanitize-*` builtins match, and those answer a match by REPLACING the whole
+ * tool result with a marker — so a pattern added there for the redactor's
+ * benefit denies ordinary output to every user who never enabled Jev. The
+ * gateway-key shapes the redactor needs live in `VENDOR_RULES` below, which is
+ * this file's own and runs on the envelope path only.
  */
-const SHARED_RULES: ReadonlyArray<readonly [RegExp, string, boolean]> = SECRET_PATTERNS.map(([re, label]) => {
+const SHARED_RULES: ReadonlyArray<readonly [RegExp, string]> = SECRET_PATTERNS.map(([re, label]) => {
   const flags = re.flags.includes("g") ? re.flags : re.flags + "g";
   const extend = /[}+]$/.test(re.source);
-  const keepsPrefix = SECRET_PATTERNS_KEEPING_PREFIX.has(re);
-  return [new RegExp(extend ? `(?:${re.source})[A-Za-z0-9_-]*` : re.source, flags), label, keepsPrefix] as const;
+  return [new RegExp(extend ? `(?:${re.source})[A-Za-z0-9_-]*` : re.source, flags), label] as const;
 });
 
 /** Exposed for the test that pins which shared patterns are extended. */
@@ -430,8 +431,23 @@ const VENDOR_RULES: ReadonlyArray<readonly [RegExp, string]> = (
     [String.raw`tskey-[a-z]+-[A-Za-z0-9-]{16,}`, "Tailscale key"],
     [String.raw`do[oprt]_v1_[a-f0-9]{64}`, "DigitalOcean token"],
     [String.raw`AGE-SECRET-KEY-1[0-9A-Z]{50,}`, "age secret key"],
+    // The gateway keys `SECRET_PATTERNS`' `sk-[A-Za-z0-9]{20,}` walks past,
+    // because its token class stops at the first `-` or `_`. They belong HERE
+    // and not on the shared list: `sanitize-api-keys` answers a match by
+    // replacing the whole tool result, so anything on that list which also
+    // matches an ordinary hyphenated name (`sk-Release2024-Notes-Final-Draft`,
+    // a pod name, a branch, an `ls` row) deletes real output for every user,
+    // whether or not they run Jev. On this path a false positive costs Jev a
+    // few characters of context, so the generic entry below can be blunt.
+    [String.raw`sk-or-v\d+-[A-Za-z0-9]{32,}`, "OpenRouter API key"],
+    [String.raw`sk-lf-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`, "Langfuse secret key"],
     // Any other `sk-` token, down to the 16 characters the collector's own
-    // redactor (crates/fpai-collect/src/redact.rs) uses.
+    // redactor (crates/fpai-collect/src/redact.rs) uses. Blunter than anything
+    // the shared list could carry, and it already covered every hyphenated
+    // gateway shape: LiteLLM's `sk-` + token_urlsafe(16), OpenRouter,
+    // Langfuse, OpenAI's `sk-svcacct-` / `sk-admin-` / `sk-None-`. The two
+    // entries above only give those their own NAME in the marker, which the
+    // generic one cannot.
     [String.raw`sk-[A-Za-z0-9_-]{16,}`, "sk- API key"],
   ] as const
 ).map(([src, label]) => [new RegExp(`${src}[A-Za-z0-9_-]*`, "g"), label] as const);
@@ -2034,25 +2050,258 @@ function replacedPart(match: string, replacement: string): string {
 }
 
 /**
- * Replace every copy of an already-found secret. A secret is only RECOGNISED
- * where its context gives it away (`aws_secret_access_key <value>`), but the
- * same bytes can travel on without that context — the path facts lift bare
- * tokens out of the command, a human pastes the value into a message. Only
- * values distinctive enough to scrub blindly are used: 16+ characters, or 8+
- * that look like a token. Longest first, as for the environment's values: a
- * shorter secret that is a prefix of a longer one would otherwise split the
- * longer one's copy and leave its tail behind.
+ * Whether a secret is distinctive enough to scrub blindly wherever its bytes
+ * appear: 16+ characters, or 8+ that look like a token.
+ */
+const scrubbable = (secret: string): boolean => secret.length >= 16 || (secret.length >= 8 && tokenLike(secret));
+
+/**
+ * Replace every copy of an already-found secret, in ONE pass over the text.
+ *
+ * A secret is only RECOGNISED where its context gives it away
+ * (`aws_secret_access_key <value>`), but the same bytes can travel on without
+ * that context — the path facts lift bare tokens out of the command, a human
+ * pastes the value into a message.
+ *
+ * This ran as a loop over the secrets, each pass an `includes` + `split` over
+ * the whole string, which made the envelope's final scrub the PRODUCT of two
+ * things the agent writes: the number of distinct credentials in the request
+ * and the number of bytes in the state. Both max out together — `cleanValue`
+ * takes 24 keys at each of two levels, so a tool input of 24 objects of 24
+ * strings is 576 strings of a thousand characters, and every one of them may
+ * be a list of `--password <token>` arguments. Measured at 1.24 s for one
+ * envelope inside the PreToolUse hook, on a curve where 6x the strings cost
+ * 23x the time — and the `[...known].sort()` ran once per string on top.
+ *
+ * So the secrets are compiled into an Aho-Corasick automaton once
+ * (`buildSecretScrubber`) and every string is scanned once against it. Both
+ * halves are linear: building costs the total length of the secrets, which
+ * are themselves substrings of the envelope, and scanning costs the text.
+ *
+ * `scrubKnownSecrets` compiles on each call, which is the right shape for a
+ * single string. A caller with many strings — `scrubDeep` in ./envelope.ts —
+ * builds the scrubber once and reuses it.
  */
 export function scrubKnownSecrets(text: string, known: Iterable<string>): Redacted {
-  let out = text;
-  let count = 0;
-  for (const secret of [...known].sort((a, b) => b.length - a.length)) {
-    if (!(secret.length >= 16 || (secret.length >= 8 && tokenLike(secret))) || !out.includes(secret)) continue;
-    const parts = out.split(secret);
-    count += parts.length - 1;
-    out = parts.join(marker("repeated secret"));
+  return buildSecretScrubber(known).scrub(text);
+}
+
+/** A set of secrets compiled once, then scanned against many strings. */
+export interface SecretScrubber {
+  scrub(text: string): Redacted;
+}
+
+/** The one scrubber that matches nothing, for an empty or all-filtered set. */
+const NO_SECRETS: SecretScrubber = { scrub: (text) => ({ text, count: 0 }) };
+
+/**
+ * Compile the secrets into a single-pass matcher.
+ *
+ * The automaton is the textbook one: a trie of the secrets, plus a failure
+ * link per node to the longest proper suffix of that node's prefix which is
+ * also a node. Following failure links while scanning is amortised O(1) per
+ * character — each one lowers the node's depth, and a character raises it by
+ * at most one — so the scan is linear in the text no matter what the secrets
+ * look like, including 15 000 of them sharing one prefix, which is what a
+ * prefix-bucket or first-k-character index would turn back into a product.
+ *
+ * Every node's edges are stored in ONE `Map` keyed by `parent * alphabet +
+ * index`, rather than a `Map` per node: a maximal envelope compiles ~415 000
+ * nodes, and 415 000 small `Map` objects cost more to allocate than the whole
+ * scan. The index is the character's place in the alphabet the secrets
+ * actually use (see below), which is what keeps those keys small integers.
+ */
+export function buildSecretScrubber(known: Iterable<string>): SecretScrubber {
+  const secrets = [...new Set(known)].filter(scrubbable);
+  if (secrets.length === 0) return NO_SECRETS;
+
+  // ── the alphabet ───────────────────────────────────────────────────────
+  // The characters the secrets are actually made of, numbered from zero. Two
+  // things come out of this, and both are worth a pass over the secrets.
+  //
+  // The edge keys below are `node * alphabet + index`, and the alphabet of a
+  // set of credentials is some 64 characters rather than the 65 536 a raw
+  // charCode spans. That keeps every key inside the 2^31 a small integer has,
+  // where a `Map` hashes it directly; keyed on the raw code, a trie of any
+  // size past 32 768 nodes pushed its keys into doubles, which is most of what
+  // the build used to cost (86 ms of a maximal envelope's 127).
+  //
+  // And a character that appears in NO secret needs no lookup at all while
+  // scanning: no match can span it, so the walk returns to the root. Ordinary
+  // prose is mostly such characters.
+  const ascii = new Int32Array(128).fill(-1);
+  let wide: Map<number, number> | null = null;
+  let alphabet = 0;
+  const indexOfCode = (code: number): number => {
+    if (code < 128) {
+      const known = ascii[code];
+      if (known >= 0) return known;
+      return (ascii[code] = alphabet++);
+    }
+    wide ??= new Map<number, number>();
+    const known = wide.get(code);
+    if (known !== undefined) return known;
+    const next = alphabet++;
+    wide.set(code, next);
+    return next;
+  };
+  for (const secret of secrets) for (let i = 0; i < secret.length; i++) indexOfCode(secret.charCodeAt(i));
+  const A = alphabet;
+  /** The scanning side, which must never ADD a character to the alphabet. */
+  const lookup = (code: number): number => (code < 128 ? ascii[code] : (wide?.get(code) ?? -1));
+
+  // ── the trie ───────────────────────────────────────────────────────────
+  const next = new Map<number, number>();
+  // Every node but the root has exactly one incoming edge, so its parent and
+  // the character on that edge are one entry each rather than a child list.
+  const parent: number[] = [0];
+  const edgeIdx: number[] = [0];
+  /** The length of the longest secret ending at this node; 0 for none. */
+  const ends: number[] = [0];
+  let maxLen = 0;
+  let minLen = Infinity;
+  for (const secret of secrets) {
+    maxLen = Math.max(maxLen, secret.length);
+    minLen = Math.min(minLen, secret.length);
+    let node = 0;
+    for (let i = 0; i < secret.length; i++) {
+      const idx = lookup(secret.charCodeAt(i));
+      const key = node * A + idx;
+      const existing = next.get(key);
+      if (existing !== undefined) {
+        node = existing;
+        continue;
+      }
+      const child = parent.length;
+      parent.push(node);
+      edgeIdx.push(idx);
+      ends.push(0);
+      next.set(key, child);
+      node = child;
+    }
+    ends[node] = secret.length;
   }
-  return { text: out, count };
+
+  // ── failure links, breadth first ───────────────────────────────────────
+  // Children are bucketed by parent with a counting sort (every node but the
+  // root contributes exactly one edge), so the BFS needs no per-node array.
+  const n = parent.length;
+  const start = new Int32Array(n + 1);
+  for (let v = 1; v < n; v++) start[parent[v] + 1]++;
+  for (let v = 0; v < n; v++) start[v + 1] += start[v];
+  const bucket = new Int32Array(n - 1);
+  const cursor = Int32Array.from(start.subarray(0, n));
+  for (let v = 1; v < n; v++) bucket[cursor[parent[v]]++] = v;
+
+  const fail = new Int32Array(n);
+  const matchLen = new Int32Array(n);
+  const queue = new Int32Array(n);
+  let head = 0;
+  let tail = 0;
+  for (let k = start[0]; k < start[1]; k++) {
+    const child = bucket[k];
+    fail[child] = 0;
+    matchLen[child] = ends[child];
+    queue[tail++] = child;
+  }
+  while (head < tail) {
+    const v = queue[head++];
+    for (let k = start[v]; k < start[v + 1]; k++) {
+      const child = bucket[k];
+      const idx = edgeIdx[child];
+      let f = fail[v];
+      for (;;) {
+        const step = next.get(f * A + idx);
+        if (step !== undefined) {
+          fail[child] = step;
+          break;
+        }
+        if (f === 0) {
+          fail[child] = 0;
+          break;
+        }
+        f = fail[f];
+      }
+      // A secret ending here is the longest one ending at this position; any
+      // other is a proper suffix of it, reachable down the failure chain.
+      matchLen[child] = ends[child] !== 0 ? ends[child] : matchLen[fail[child]];
+      queue[tail++] = child;
+    }
+  }
+
+  /**
+   * Overlapping matches are MERGED into one replaced region rather than
+   * resolved in favour of one of them.
+   *
+   * The loop this replaced took the longest secret first, so a secret that is
+   * a prefix of another never split the longer one's copy and left its tail
+   * behind. Merging keeps that promise without needing an order, and keeps it
+   * in the symmetric case the old loop got wrong too: two known secrets that
+   * overlap at different offsets used to leave a fragment of the loser
+   * behind, whichever one was longer. Nothing inside a merged region survives,
+   * and a region is only ever made of characters that were part of some
+   * secret. The count stays the count of MARKERS, which is what it was: two
+   * copies of one secret are still two, and a prefix inside its own longer
+   * secret was one replacement then and is one region now.
+   */
+  const scrub = (text: string): Redacted => {
+    if (text.length < minLen) return { text, count: 0 };
+    let node = 0;
+    let out = "";
+    let last = 0;
+    let count = 0;
+    let pendStart = -1;
+    let pendEnd = -1;
+    const flush = (): void => {
+      out += text.slice(last, pendStart) + marker("repeated secret");
+      last = pendEnd + 1;
+      count++;
+      pendStart = -1;
+      pendEnd = -1;
+    };
+    for (let i = 0; i < text.length; i++) {
+      // No match found from here on can reach back into the pending region:
+      // one would have to start at or before `pendEnd`, and a secret is at
+      // most `maxLen` characters long.
+      if (pendStart >= 0 && i >= pendEnd + maxLen) flush();
+      const idx = lookup(text.charCodeAt(i));
+      // No secret holds this character, so no match can span it.
+      if (idx < 0) {
+        node = 0;
+        continue;
+      }
+      for (;;) {
+        const step = next.get(node * A + idx);
+        if (step !== undefined) {
+          node = step;
+          break;
+        }
+        if (node === 0) break;
+        node = fail[node];
+      }
+      const len = matchLen[node];
+      if (len === 0) continue;
+      // Clamp to the first uncommitted character: a long secret can end after
+      // a region that was already replaced, and that region's bytes are gone.
+      const s = Math.max(i - len + 1, last);
+      if (s > i) continue;
+      if (pendStart < 0) {
+        pendStart = s;
+        pendEnd = i;
+      } else if (s <= pendEnd) {
+        if (s < pendStart) pendStart = s;
+        if (i > pendEnd) pendEnd = i;
+      } else {
+        flush();
+        pendStart = s;
+        pendEnd = i;
+      }
+    }
+    if (pendStart >= 0) flush();
+    return { text: last === 0 ? text : out + text.slice(last), count };
+  };
+
+  return { scrub };
 }
 
 export interface RedactOptions {
@@ -2064,13 +2313,20 @@ export interface RedactOptions {
    * They exist for the ENVELOPE, the one place where over-redaction costs Jev
    * a little context it almost never needs and a miss hands a third party a
    * live key. Everywhere else that trade does not hold, because nothing leaves
-   * the machine: the human's own prompt, stored for `readUserIntent`, used to
-   * come back with everything after a `cookie:` or an `authorization:` cut out
-   * of it — which is the evaluator's own record of what the user asked for.
-   * So this defaults to on for `buildEnvelope`, and callers outside the
-   * request body pass `false` and keep the narrow rules only (the shared
-   * floor, vendor prefixes, PEM blocks, URL credentials, secret-named
-   * assignments and flags, high-entropy tokens).
+   * the machine: the human's own prompt, stored for `readUserIntent`, came
+   * back with everything after a `cookie:` or an `authorization:` cut out of
+   * it, and the local verdict log's `inputPreview` — the operator's own record
+   * of what the agent tried — lost the tail of any command that merely NAMED a
+   * credential.
+   *
+   * So it is opt-IN, and the only caller that opts in is `redactInto` in
+   * ./envelope.ts, where the request body is built. A default of ON is the
+   * same mistake in a different place: every caller that forgets the option
+   * silently gets the envelope's trade, and forgetting it is invisible until
+   * someone reads a truncated log. Everyone else keeps the narrow rules (the
+   * shared floor, vendor prefixes, PEM blocks, URL credentials, secret-named
+   * assignments and flags, high-entropy tokens), which still remove a secret
+   * that is actually there.
    */
   blunt?: boolean;
 }
@@ -2091,7 +2347,7 @@ export function redactSecrets(text: string, opts: RedactOptions = {}): Redacted 
 /** `redactSecrets`, plus the literal secrets it replaced. */
 export function redactSecretsDetailed(text: string, opts: RedactOptions = {}): RedactedDetail {
   if (!text) return { text, count: 0, found: [], weak: [] };
-  const blunt = opts.blunt !== false;
+  const blunt = opts.blunt === true;
   const c: Counter = { n: 0, found: [], weak: [] };
   let out = text;
 
@@ -2110,9 +2366,9 @@ export function redactSecretsDetailed(text: string, opts: RedactOptions = {}): R
   out = redactOrphanFooters(out, c);
 
   // 3. The shared floor.
-  for (const [re, label, keepsPrefix] of SHARED_RULES) {
+  for (const [re, label] of SHARED_RULES) {
     const before = c.found.length;
-    out = replaceCounting(out, re, (_m, g) => (keepsPrefix ? (g[0] ?? "") : "") + marker(label), c);
+    out = replaceCounting(out, re, () => marker(label), c);
     // A floor entry that takes the header NAME along with the value —
     // `Authorization: Bearer <tok>` is one match — reports the whole match as
     // the secret, and that string matches no copy of the credential anywhere

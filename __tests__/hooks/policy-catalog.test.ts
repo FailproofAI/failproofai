@@ -185,9 +185,7 @@ describe("policy catalog / implementation split", () => {
       // Its hand-written most-specific-first ORDER is load-bearing — a
       // Bearer-wrapped JWT reports as "JWT" today and as "bearer token" if two
       // entries swap.
-      // 16 = the original 13 + the three `sk-` gateway-key entries (OpenRouter,
-      // Langfuse, generic hyphenated `sk-…`) added for Jev redaction (T6).
-      expect(SECRET_PATTERNS).toHaveLength(16);
+      expect(SECRET_PATTERNS).toHaveLength(13);
       for (const [re] of SECRET_PATTERNS) expect(re).toBeInstanceOf(RegExp);
     });
   });

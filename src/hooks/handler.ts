@@ -326,6 +326,14 @@ async function startTwoTier(
  * not run, so an unconfigured machine's event is unchanged, and `{}` when the
  * helper is not in this build (it is T8's, not a §7 contract) or throws:
  * telemetry never costs a hook its answer.
+ *
+ * Only its `jev_`-prefixed keys are kept. These are spread into an event whose
+ * core properties (`decision`, `policy_name`, `event_type`, …) are what the
+ * rollout is read from, and a helper owned by another task must not be able to
+ * overwrite one of them — silently, and only on two-tier machines — by
+ * emitting a key of that name. The helper is treated as untrusted in every
+ * other respect (absent, non-object, throwing); this is the same guard for
+ * what it returns.
  */
 function jevTelemetry(activity: JevActivityFields | undefined): Record<string, unknown> {
   if (!activity) return {};
@@ -333,7 +341,8 @@ function jevTelemetry(activity: JevActivityFields | undefined): Record<string, u
     const build = (hookTelemetry as unknown as { jevTelemetryProperties?: (entry: JevActivityFields) => unknown })
       .jevTelemetryProperties;
     const props = typeof build === "function" ? build(activity) : null;
-    return props && typeof props === "object" && !Array.isArray(props) ? (props as Record<string, unknown>) : {};
+    if (!props || typeof props !== "object" || Array.isArray(props)) return {};
+    return Object.fromEntries(Object.entries(props as Record<string, unknown>).filter(([key]) => key.startsWith("jev_")));
   } catch {
     return {};
   }

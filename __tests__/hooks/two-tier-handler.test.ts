@@ -1050,6 +1050,28 @@ describe("hook_policy_triggered carries T8's Jev properties on the two-tier path
     expect(jevKeys(triggered()[0])).toEqual([]);
   });
 
+  it("a helper that returns a core property cannot overwrite it: only its jev_ keys are spread", async () => {
+    // The helper is T8's, and the event's core properties are what the rollout
+    // is read from. A key collision would otherwise rewrite one of them
+    // silently, and only on two-tier machines.
+    const telemetry = await import("../../src/hooks/hook-telemetry");
+    vi.mocked((telemetry as unknown as { jevTelemetryProperties: () => unknown }).jevTelemetryProperties).mockImplementationOnce(
+      () => ({ jev_evaluator: "jev-fallback", decision: "allow", policy_name: "semantic/nothing", cli: "not-claude", event_type: "Stop" }),
+    );
+    jevConfig = { ...CFG, timeoutMs: 25 };
+    respond = hang;
+    await readFile(join(home, "other", "notes.txt"));
+    expect(triggered()).toHaveLength(1);
+    expect(triggered()[0]).toMatchObject({
+      event_type: "PreToolUse",
+      cli: "claude",
+      policy_name: "failproofai/block-read-outside-cwd",
+      decision: "deny",
+      jev_evaluator: "jev-fallback",
+    });
+    expect(jevKeys(triggered()[0])).toEqual(["jev_evaluator"]);
+  });
+
   it("a helper that throws costs nothing: the event still goes out, without Jev keys", async () => {
     const telemetry = await import("../../src/hooks/hook-telemetry");
     vi.mocked((telemetry as unknown as { jevTelemetryProperties: () => unknown }).jevTelemetryProperties).mockImplementationOnce(() => {

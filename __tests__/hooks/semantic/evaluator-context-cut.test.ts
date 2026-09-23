@@ -8,6 +8,16 @@
  * `prepareSemantic` / `evaluateSemantic` report it, and `toReview` turns it
  * into the `truncated` fallback.
  *
+ * Where the cut comes from matters, because the fallback THROWS JEV'S VERDICT
+ * AWAY. `user_said` and `agent_last_message` are content — the agent writes
+ * the second one, and it repeats file and tool-output text a third party
+ * controls — so a cut must never be something that text can simply claim:
+ *
+ * - `SemanticOptions.contextTruncated` is the store's own word, out of band,
+ *   and is believed exactly (`startJevReview` reads it off `readIntent`).
+ * - With no word from the store, the mark alone is not enough: a message the
+ *   store cut also FILLS the cap, and one that merely quotes a mark does not.
+ *
  * `storedByIntentStore` reproduces what T4's `capWithin` stores (head and
  * tail around the same `\n…[N characters omitted]…\n` mark `capHeadTail`
  * writes, the mark counted inside the limit), so these tests hold against the
@@ -35,6 +45,12 @@ function storedByIntentStore(text: string, max = MAX_USER_MESSAGE_CHARS): string
 
 const LONG_PROMPT = "Please tidy the notes folder. " + "Background detail the human pasted about the project. ".repeat(90);
 const LONG_AGENT = "Here is the plan. " + "Step: move the file and check the result. ".repeat(80);
+
+/**
+ * A message that merely QUOTES the mark — an excerpt of one of our own capped
+ * prompts, pasted into a file the agent then summarised. Nothing was cut.
+ */
+const QUOTES_THE_MARK = `I read the saved prompt; it ends "${mark(4_213)}…and then run the tests."`;
 
 const allLow = async (request: JevRequest): Promise<JevResponse> => ({
   model: request.model,
@@ -67,6 +83,11 @@ describe("the fixture is what the intent store keeps", () => {
     expect(stored.length).toBeLessThanOrEqual(MAX_USER_MESSAGE_CHARS);
     expect(stored).toContain(" characters omitted]…");
     expect(capHeadTail(stored, MAX_USER_MESSAGE_CHARS).truncated).toBe(false);
+  });
+
+  it("the quoting fixture carries the same mark and is nowhere near the cap", () => {
+    expect(QUOTES_THE_MARK).toContain(" characters omitted]…");
+    expect(QUOTES_THE_MARK.length).toBeLessThan(MAX_USER_MESSAGE_CHARS / 2);
   });
 });
 
@@ -115,6 +136,63 @@ describe("a message the intent store already cut is a truncated envelope (§4)",
 
   it("a message the envelope cuts itself is still truncated (unchanged)", () => {
     const prepared = prepareSemantic(outsideRead([LONG_PROMPT]), OPTS);
+    expect(prepared.envelope.truncated).toBe(true);
+    expect(prepared.truncated).toBe(true);
+  });
+});
+
+/**
+ * The regression this guards: the mark used to be the whole test, so a message
+ * that merely contained it forced the call onto the regex-only path and threw
+ * Jev's verdict away — an off switch for the semantic tier that any repo file
+ * the agent quoted could pull, logged below the default level so nothing
+ * surfaced it.
+ */
+describe("a mark inside content does not switch the semantic tier off", () => {
+  it("an agent message that quotes a mark is judged normally", async () => {
+    const input = outsideRead(["tidy my notes"], QUOTES_THE_MARK);
+    const prepared = prepareSemantic(input, OPTS);
+    expect(prepared.envelope.truncated).toBe(false);
+    expect(prepared.truncated).toBe(false);
+
+    const review = toReview(await evaluateSemantic(input, OPTS));
+    expect(review.kind).toBe("answered");
+    expect(review.kind === "answered" && review.clear).toContain("read-outside-workspace");
+  });
+
+  it("a human message that quotes a mark is judged normally", async () => {
+    const input = outsideRead([QUOTES_THE_MARK]);
+    expect(prepareSemantic(input, OPTS).truncated).toBe(false);
+    expect(toReview(await evaluateSemantic(input, OPTS)).kind).toBe("answered");
+  });
+
+  it("a mark pasted into the tool input is not a cut either", () => {
+    const input = outsideRead(["tidy my notes"]);
+    input.toolInput = { file_path: join(homedir(), "fpai-context-cut-other", `notes${mark(9_000)}.txt`) };
+    expect(prepareSemantic(input, OPTS).truncated).toBe(false);
+  });
+});
+
+describe("the store's own word (`contextTruncated`) is believed exactly", () => {
+  it("true: the call is truncated although nothing in it looks cut", async () => {
+    const input = outsideRead(["tidy my notes"], "I can tidy them.");
+    const prepared = prepareSemantic(input, { ...OPTS, contextTruncated: true });
+    expect(prepared.envelope.truncated).toBe(false);
+    expect(prepared.truncated).toBe(true);
+    expect(toReview(await evaluateSemantic(input, { ...OPTS, contextTruncated: true }))).toMatchObject({
+      kind: "fallback",
+      reason: "truncated",
+    });
+  });
+
+  it("false: a store that says it cut nothing overrides the mark-and-cap guess", () => {
+    const input = outsideRead([storedByIntentStore(LONG_PROMPT)]);
+    expect(prepareSemantic(input, OPTS).truncated).toBe(true);
+    expect(prepareSemantic(input, { ...OPTS, contextTruncated: false }).truncated).toBe(false);
+  });
+
+  it("false cannot talk away a cut the envelope made itself", () => {
+    const prepared = prepareSemantic(outsideRead([LONG_PROMPT]), { ...OPTS, contextTruncated: false });
     expect(prepared.envelope.truncated).toBe(true);
     expect(prepared.truncated).toBe(true);
   });

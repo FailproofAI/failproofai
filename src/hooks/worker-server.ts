@@ -109,8 +109,13 @@ const TASK_DEADLINE_MS = 60_000;
  * UserPromptSubmit, other agents' calls — would queue behind each gated call's
  * round trip, and a slow or unreachable provider would push the calls at the
  * back of the queue past the client's 30 s budget into fail-closed denies.
- * A released task no longer holds the registry, so the wedge deadline stops
- * applying to it; its own Jev wait is bounded by the configured timeout.
+ * A released task no longer holds the registry, so the deadline it was running
+ * under — the one that protects the QUEUE — has done its job. It gets a fresh
+ * one of its own instead of none: it is still running, its connection's later
+ * replies still queue behind it (see `handleConnection`), and a task that has
+ * not settled a minute after handing the queue back is wedged on something
+ * that is not going to finish. Its Jev wait is bounded by the configured
+ * timeout, so nothing on the intended path comes close.
  *
  * Released tasks therefore run concurrently with each other and with the
  * queue: two gated calls can be waiting on Jev at once (T5's throttle shares
@@ -119,30 +124,74 @@ const TASK_DEADLINE_MS = 60_000;
  * (see `handleConnection`).
  */
 const WEDGED_EXIT_CODE = 75;
+/**
+ * A released task's own deadline, counted from the moment it handed the queue
+ * back. Its Jev wait is bounded by the configured timeout (at most 10 s, plus
+ * the review's own backstop), so only a task stuck on something else ever
+ * reaches this.
+ */
+const RELEASED_TASK_DEADLINE_MS = 60_000;
+
+/** What a wedged task costs: this worker, so the supervisor respawns a clean one. */
+function exitWedged(ms: number, released: boolean): void {
+  hookLogWarn(
+    `worker: a ${released ? "released " : ""}request did not settle within ${ms}ms; ` +
+      `exiting so the supervisor can respawn a clean worker`,
+  );
+  process.exit(WEDGED_EXIT_CODE);
+}
+
+export interface QueuedTaskOptions {
+  taskMs?: number;
+  releasedMs?: number;
+  onWedged?: (ms: number, released: boolean) => void;
+}
+
+/**
+ * Runs one queued task under a wedge deadline, calling `settle` when the next
+ * task may start — because this one finished, or because it handed its place
+ * back early with the `release` it is given. A released task keeps running
+ * under a deadline of its own (see `RELEASED_TASK_DEADLINE_MS`); dropping the
+ * deadline at that point would have made every wedge past the release
+ * invisible.
+ *
+ * Exported for the deadlines' own tests: they are a minute long and expiry
+ * exits the process, so a test passes its own values and its own `onWedged`.
+ */
+export function runQueuedTask(task: (release: () => void) => Promise<void>, settle: () => void, opts: QueuedTaskOptions = {}): void {
+  const onWedged = opts.onWedged ?? exitWedged;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let finished = false;
+  let started = false;
+  const arm = (ms: number, released: boolean) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => onWedged(ms, released), ms);
+    // Never let the deadline itself hold the event loop open.
+    timer.unref?.();
+  };
+  /** The next task starts once, whether this one released first or just finished. */
+  const startNext = () => {
+    if (started) return;
+    started = true;
+    settle();
+  };
+  const finish = () => {
+    finished = true;
+    clearTimeout(timer);
+    startNext();
+  };
+  const release = () => {
+    if (finished) return;
+    arm(opts.releasedMs ?? RELEASED_TASK_DEADLINE_MS, true);
+    startNext();
+  };
+  arm(opts.taskMs ?? TASK_DEADLINE_MS, false);
+  void task(release).then(finish, finish);
+}
 
 let processingChain: Promise<void> = Promise.resolve();
 function enqueue(task: (release: () => void) => Promise<void>): void {
-  processingChain = processingChain
-    .then(
-      () =>
-        new Promise<void>((settle) => {
-          const timer = setTimeout(() => {
-            hookLogWarn(
-              `worker: a request did not settle within ${TASK_DEADLINE_MS}ms; ` +
-                `exiting so the supervisor can respawn a clean worker`,
-            );
-            process.exit(WEDGED_EXIT_CODE);
-          }, TASK_DEADLINE_MS);
-          // Never let the deadline itself hold the event loop open.
-          timer.unref?.();
-          const done = () => {
-            clearTimeout(timer);
-            settle();
-          };
-          void task(done).then(done, done);
-        }),
-    )
-    .catch(() => {});
+  processingChain = processingChain.then(() => new Promise<void>((settle) => runQueuedTask(task, settle))).catch(() => {});
 }
 
 function handleConnection(socket: Socket, shutdown: () => void): void {

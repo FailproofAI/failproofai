@@ -25,7 +25,7 @@ import { resolve } from "node:path";
 import { semanticDir } from "../fp-home";
 import { DEFAULT_JEV_MODEL, MAX_REQUEST_CHARS, compileRequest, selectPolicies, type CompiledRequest } from "./compile";
 import { DEFAULT_THRESHOLDS, decide, decideV1, type DecideV1Options, type Thresholds } from "./decide";
-import { buildEnvelope, redactSecrets, type Envelope } from "./envelope";
+import { MAX_USER_MESSAGE_CHARS, buildEnvelope, redactSecrets, type Envelope } from "./envelope";
 import { computeFacts, scanCommand } from "./facts";
 import { cleanUserSaid } from "./intent";
 import { JevError, readAnswers, type JevTransport } from "./jev-client";
@@ -59,6 +59,20 @@ export interface SemanticOptions {
   includeAgentLastMessage?: boolean;
   /** v1 only: strip harness-written text from `user_said`. Defaults to true; false is an ablation. */
   cleanHarnessText?: boolean;
+  /**
+   * The human turns or the agent message handed in were already cut before
+   * they got here — the intent store caps what it keeps, and caps it to fit
+   * inside the envelope's own limit, so the envelope cannot see that cut
+   * (see {@link intentStoreCut}).
+   *
+   * This is metadata from the store, deliberately out of band: the messages
+   * themselves are agent-authored (and repeat file and tool-output text a
+   * third party controls), so a cut read out of their text would be an off
+   * switch for the semantic tier that a repo file could pull. A store that
+   * reports it here is believed exactly; `undefined` (a store that does not)
+   * leaves `intentStoreCut`'s narrower guess.
+   */
+  contextTruncated?: boolean;
 }
 
 export interface PreparedCall {
@@ -74,8 +88,9 @@ export interface PreparedCall {
   /**
    * Jev is judging less than the whole picture: the envelope cut something
    * (`envelope.truncated`), OR a human message or agent message it carries was
-   * already cut before it got here (see `contextCutUpstream`). This, not
-   * `envelope.truncated`, is the outcome's `truncated`.
+   * already cut before it got here (`opts.contextTruncated`, or failing that
+   * `intentStoreCut`). This, not `envelope.truncated`, is the outcome's
+   * `truncated`.
    */
   truncated: boolean;
 }
@@ -88,19 +103,39 @@ export interface PreparedCall {
 const OMISSION_MARK = /\n…\[\d+ characters omitted\]…\n/;
 
 /**
- * Whether a human message or the agent message in the envelope was cut
- * BEFORE the envelope saw it. The intent store caps what it keeps to fit
- * inside the envelope's own limit, marker included, precisely so the envelope
- * does not cut it a second time — which also means the envelope cannot tell
- * it was cut, and `envelope.truncated` stays false. §4 falls back on a
- * truncated envelope whatever was cut (a clear resting on half of what the
- * human typed is not a clear), so the mark itself is what counts. Only what
+ * How far below the envelope's own per-message cap a message the intent store
+ * cut can land. The store fits what it keeps INSIDE that cap, the mark
+ * included (T4's `capWithin`), so what it stores ends within about one mark's
+ * length of the cap; this is comfortably longer than the longest mark.
+ */
+const STORE_CUT_SLACK = 64;
+
+/**
+ * A guess — used only when the caller does not say
+ * ({@link SemanticOptions.contextTruncated}) — at whether a human message or
+ * the agent message in the envelope was cut BEFORE the envelope saw it. The
+ * intent store caps what it keeps to fit inside the envelope's own limit,
+ * marker included, precisely so the envelope does not cut it a second time —
+ * which also means the envelope cannot tell it was cut, and
+ * `envelope.truncated` stays false. §4 falls back on a truncated envelope
+ * whatever was cut: a clear resting on half of what the human typed is not a
+ * clear.
+ *
+ * The mark alone is NOT the test, and this is the whole point of the length.
+ * `agent_last_message` is written by the agent, which repeats text from files,
+ * web pages and command output that a third party controls, so a message that
+ * merely quotes the mark — an excerpt of one of our own capped prompts, say —
+ * would otherwise force this call onto the regex-only path and throw Jev's
+ * verdict away, from nothing but repo content. A message the store actually
+ * cut also FILLS the cap; a quoted mark in ordinary prose does not. Only what
  * is actually sent is looked at: `user_said` (cleaned, the last few) and
  * `agent_last_message`.
  */
-function contextCutUpstream(state: Record<string, unknown>): boolean {
+function intentStoreCut(state: Record<string, unknown>): boolean {
   const said = Array.isArray(state.user_said) ? state.user_said : [];
-  return [...said, state.agent_last_message].some((m) => typeof m === "string" && OMISSION_MARK.test(m));
+  return [...said, state.agent_last_message].some(
+    (m) => typeof m === "string" && m.length >= MAX_USER_MESSAGE_CHARS - STORE_CUT_SLACK && OMISSION_MARK.test(m),
+  );
 }
 
 export type SemanticOutcome =
@@ -147,7 +182,7 @@ export function prepareSemantic(input: SemanticInput, opts: SemanticOptions = {}
   const envelope = buildEnvelope(input.toolInput, userSaid, facts, scanned, { agentLastMessage });
   const model = opts.model ?? (process.env.FAILPROOFAI_JEV_MODEL || DEFAULT_JEV_MODEL);
   const compiled = compileRequest(selected, envelope.state, userSaid, model, intent);
-  const truncated = envelope.truncated || contextCutUpstream(envelope.state);
+  const truncated = envelope.truncated || (opts.contextTruncated ?? intentStoreCut(envelope.state));
   return { facts, selected, envelope, compiled, intent, userSaid, agentLastMessage, truncated };
 }
 

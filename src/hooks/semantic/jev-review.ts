@@ -22,7 +22,7 @@ import { effectiveAuthority, type PolicyAuthority, type RegisteredPolicy } from 
 import type { JevMode, JevReview, TwoTierReview } from "./combine";
 import { DEFAULT_THRESHOLDS_V1 } from "./decide";
 import { DEFAULT_JEV_TIMEOUT_MS, appendVerdictLog, evaluateSemantic, verdictLogRow, type SemanticOutcome } from "./evaluator";
-import { readIntent } from "./intent";
+import * as intentStore from "./intent";
 import { JevError, transportForConfig, type JevTransport } from "./jev-client";
 import { DEFAULT_JEV_MODE, type JevConfig } from "./jev-config";
 import * as jevThrottle from "./jev-throttle";
@@ -40,6 +40,23 @@ interface JevThrottle {
   isCachedJevResponse?(response: unknown): boolean;
 }
 const throttle: JevThrottle = jevThrottle;
+
+/**
+ * T4's intent store as this file calls it. §7 declares
+ * `readIntent(sessionId)` returning what the human typed and the agent's last
+ * message; a store that CUT either to fit what it keeps reports that here, out
+ * of band, and the evaluator believes it (`SemanticOptions.contextTruncated`).
+ * It has to be out of band: the messages are agent-authored, so a cut read out
+ * of their text would let repo content switch the semantic tier off for a call
+ * (see `intentStoreCut` in `evaluator.ts`, the narrower guess used when
+ * nothing is reported). Optional, and read the same defensive way as T5's
+ * `scope` above, so this compiles against the contract stub and T4's real
+ * store alike.
+ */
+interface IntentStore {
+  readIntent(sessionId?: string): { userSaid: string[]; agentLastMessage: string | null; truncated?: boolean };
+}
+const intentReader: IntentStore = intentStore;
 
 /** Whether T5's cache, not the provider, produced this response. Never throws. */
 function servedFromCache(response: unknown): boolean {
@@ -160,7 +177,8 @@ export function toReview(outcome: SemanticOutcome, cached = false): JevReview {
   // way to hide its dangerous part, and a clear resting on half of what the
   // human typed is not a clear. Jev's answer is still recorded. "Cut" includes
   // a message the intent store capped before the envelope saw it (T4 caps what
-  // it keeps to fit the envelope, so only its omission mark tells):
+  // it keeps to fit the envelope, so the envelope cannot see that cut; the
+  // store reports it through `readIntent`, see `IntentStore`):
   // `outcome.truncated` covers both (see `prepareSemantic`).
   //
   // Only when a request was actually sent: with no semantic policy applying
@@ -225,9 +243,9 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
     return handle(Promise.resolve({ kind: "fallback", reason, latencyMs: null, model: null, decision: null }));
   }
 
-  let intent: { userSaid: string[]; agentLastMessage: string | null };
+  let intent: { userSaid: string[]; agentLastMessage: string | null; truncated?: boolean };
   try {
-    intent = readIntent(call.sessionId);
+    intent = intentReader.readIntent(call.sessionId);
   } catch {
     intent = { userSaid: [], agentLastMessage: null };
   }
@@ -261,6 +279,9 @@ export function startJevReview(cfg: JevConfig, call: JevCallContext): TwoTierRev
     intent: "v1",
     v1: { thresholds: DEFAULT_THRESHOLDS_V1 },
     signal: controller.signal,
+    // Only when the store actually reports it; otherwise the evaluator's own
+    // (narrower) guess stands. See `IntentStore` above.
+    ...(typeof intent.truncated === "boolean" ? { contextTruncated: intent.truncated } : {}),
   })
     .then((outcome): JevReview => {
       const hit = cached && outcome.status === "ok";

@@ -64,7 +64,10 @@ vi.mock("../../../src/hooks/semantic/jev-throttle", () => ({
   isCachedJevResponse: (response: unknown) => cacheProbe(response),
 }));
 
-let intent: { userSaid: string[]; agentLastMessage: string | null } = { userSaid: [], agentLastMessage: null };
+let intent: { userSaid: string[]; agentLastMessage: string | null; truncated?: boolean } = {
+  userSaid: [],
+  agentLastMessage: null,
+};
 vi.mock("../../../src/hooks/semantic/intent", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../src/hooks/semantic/intent")>();
   return { ...actual, readIntent: vi.fn(() => intent) };
@@ -274,6 +277,45 @@ describe("failures are fallbacks, never throws", () => {
     });
     const review = await startJevReview(CFG, bash("ls")).review;
     expect(review.kind).toBe("answered");
+  });
+});
+
+/**
+ * §7's `readIntent` may report that the store CUT what it kept — T4 caps a
+ * stored prompt or agent message to fit inside the envelope's own limit, so
+ * the envelope cannot see that cut. It is reported out of band, beside the
+ * messages, never read out of their text: `agent_last_message` is written by
+ * the agent and repeats file and tool-output text a third party controls, and
+ * a cut read out of content would let a repo file switch the semantic tier off
+ * for a call (see `evaluator-context-cut.test.ts`). Optional, like T5's
+ * `scope`: a store that does not report it is read exactly as before.
+ */
+describe("the intent store's own truncation flag", () => {
+  /** A prompt capped the way the store caps it: at most the envelope's limit, the mark included. */
+  const stored = (text: string) => {
+    const mark = `\n…[${text.length} characters omitted]…\n`;
+    const budget = 1_200 - mark.length;
+    return `${text.slice(0, Math.ceil(budget * 0.6))}${mark}${text.slice(text.length - (budget - Math.ceil(budget * 0.6)))}`;
+  };
+
+  it("truncated: true falls back, though nothing in the messages looks cut", async () => {
+    intent = { userSaid: ["tidy the build folder"], agentLastMessage: "I can tidy it.", truncated: true };
+    const review = await startJevReview(CFG, bash("rm -rf build")).review;
+    expect(review).toMatchObject({ kind: "fallback", reason: "truncated" });
+  });
+
+  it("truncated: false is believed over the mark-and-cap guess", async () => {
+    const capped = stored("please " + "tidy the build folder and ".repeat(200));
+    intent = { userSaid: [capped], agentLastMessage: null };
+    expect(await startJevReview(CFG, bash("rm -rf build")).review).toMatchObject({ kind: "fallback", reason: "truncated" });
+
+    intent = { userSaid: [capped], agentLastMessage: null, truncated: false };
+    expect((await startJevReview(CFG, bash("rm -rf build")).review).kind).toBe("answered");
+  });
+
+  it("a store that does not report it (the §7 stub) is read as before", async () => {
+    intent = { userSaid: ["tidy the build folder"], agentLastMessage: null };
+    expect((await startJevReview(CFG, bash("rm -rf build")).review).kind).toBe("answered");
   });
 });
 

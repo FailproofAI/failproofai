@@ -1,48 +1,44 @@
 ---
 title: "编写评估"
-description: "描述要衡量的内容，让助手起草一个托管的 Python 评估，或自行编写代码。"
+description: "描述要衡量的内容，让助手起草一个托管的 Python 评估，或者自己编写代码。LLM 评判器在您自己的 worker 中运行。"
 icon: "file-pen-line"
 ---
 
-托管评估是简短的、确定性的 Python 代码，在仪表板中编写，并在 Failproof AI 的评估器集群上运行。它们用于计数和比较：调用了多少次工具、产生了多少错误、一次会话持续了多长时间。
-
-对于需要*理解*对话内容的问题——回答是否正确、回复是否无礼、智能体是否遵循了某项策略——请改为编写 [LLM judge](/zh/evaluations/judge)。它在同一位置编写，只需描述什么是好的结果即可。
-
-任何需要依赖包、密钥或访问您自己网络的评估，请在[您自己的 Worker 中运行](#write-it-in-your-own-worker)。
+托管评估是用 Python 编写的小型确定性程序，在仪表板中编写并在 Failproof AI 的评估器集群上运行。较复杂的逻辑——LLM 评判器、第三方包、密钥、网络调用——则在[您自己的 worker](#在您自己的-worker-中编写) 中运行。
 
 ## 从描述起草
 
 1. 前往 **Analyze → eval authoring**，选择 **new eval**。
 2. 用自然语言描述要衡量的内容，或从 **start from an example…** 中选择，然后点击 **draft**。
-3. 检查各字段及自动填写的代码，然后[测试](/zh/evaluations/test)并[部署](/zh/evaluations/deploy)。
+3. 检查各字段和生成的代码，然后[测试](/zh/evaluations/test)并[部署](/zh/evaluations/deploy)。
 
-![包含已起草评估的 eval authoring 页面：描述、助手对草稿的备注，以及名称、键、版本、结果、超时、标签和条件字段。](/images/dashboard/eval-authoring-draft.png)
+![评估编写页面，显示已起草的评估：描述、助手对草稿的说明，以及名称、键、版本、结果、超时、标签和条件字段。](/images/dashboard/eval-authoring-draft.png)
 
-起草内容以您组织自身的事件为基础：页面会读取您的会话在过去七天中携带的 payload 键，因此代码读取的是实际存在的键，而非猜测。在交出草稿之前，助手会针对最多五个最近的会话进行测试，对可以证明存在问题的内容进行修复（最多三轮），并验证一次代码是否确实衡量了您所要求的内容。描述越具体越好：宽泛的提示会更慢，甚至可能超时。无论如何，请审查代码；部署从不被阻止。
+起草内容基于您组织自身的事件：页面会读取过去七天内会话携带的 payload 键，因此代码读取的是真实存在的键，而非猜测。在交付草稿之前，助手会针对您最近的最多五个会话进行测试，修复所有可以确认的问题（最多三轮），并再次确认代码是否衡量了您的要求。请尽量使描述具体：过于宽泛的提示会使处理变慢，甚至可能超时。无论如何都请审查代码；部署操作从不被阻止。
 
 ## 设置字段
 
 | 字段 | 含义 |
 | --- | --- |
-| name | 展示给用户的名称，之后可编辑 |
-| key | 结果图表所使用的稳定标识符，例如 `code_assistant_quality_gate` |
+| name | 显示给用户的名称，之后可编辑 |
+| key | 其结果图表所用的稳定标识符，例如 `code_assistant_quality_gate` |
 | version | 不含空格的任意版本字符串，例如 `1.0.0` |
 | result | **score**（0 到 1）、**metric**（带单位的数值）或 **assertion**（通过或不通过） |
-| timeout seconds | 默认 30 秒，沙箱对单次运行的上限为 60 秒 |
+| timeout seconds | 默认 30 秒，沙箱会在 60 秒时停止任何单次运行 |
 | labels | 最多 20 个，以逗号分隔，之后可编辑 |
-| condition | 可选。一个 Python 表达式；仅在该表达式为 `True` 的会话上运行评估 |
+| condition | 可选。一个 Python 表达式；仅当表达式结果为 `True` 的会话才会执行评估 |
 
-使用 condition 将评估范围限定在其适用的智能体和环境上：
+使用 condition 将评估限定到目标 agent 和环境：
 
 ```python
 session.agent_id == "code-assistant" and session.environment == "production"
 ```
 
-key、version、result 类型、condition 和代码一旦部署即不可更改：如需修改其中任何一项，请发布新版本。name、labels 以及是否启用则随时可编辑。
+键、版本、结果类型、条件和代码在部署后不可修改：如需更改其中任何一项，请发布新版本。名称、标签及是否启用可随时编辑。
 
-## 自行编写代码
+## 自己编写代码
 
-**evaluator code** 是一个返回 `EvalResult(...)` 的 Python 表达式，作用域中包含 `session`。以下示例对返回状态为 ok 的工具调用占比进行评分：
+**evaluator code** 是一个返回 `EvalResult(...)` 的 Python 表达式，作用域内包含 `session`。以下示例对状态为 ok 的工具调用结果占比进行评分：
 
 ```python
 EvalResult(
@@ -55,22 +51,22 @@ EvalResult(
 )
 ```
 
-结果以评估自身的键为主，且与其声明的类型一致：score 类型评估使用 `score=`，metric 或 assertion 类型评估则使用以该键命名的 `metrics` 或 `assertions` 条目。其他指标和断言可一并附加，每次运行最多 25 个结果。
+结果以评估本身的键为主，按其声明的类型：score 类评估用 `score=`，metric 或 assertion 类评估则在 `metrics` 或 `assertions` 中使用以该键命名的条目。其他指标和断言可附带其中，每次运行最多 25 个结果。
 
-| 作用域内容 | 提供的内容 |
+| 作用域内 | 提供内容 |
 | --- | --- |
 | `session` | `session_id`、`agent_id`、`environment`、`started_at`、`ended_at`、`event_count` 和 `events`，以及 `count(event_type)` 和 `events_of_type(event_type)` |
 | 每个事件 | `id`、`ts`、`event_type` 和 `payload` |
 | 结果类型 | `EvalResult`、`Score`、`Metric`、`Assertion`，以及用于条件的 `ConditionResult` |
 | 内置函数 | `abs`、`all`、`any`、`bool`、`dict`、`float`、`int`、`len`、`list`、`max`、`min`、`range`、`round`、`set`、`sorted`、`str`、`sum`、`tuple` |
 
-除此之外均无法访问：没有 import，除了上述会话数据以及 `get`、`lower`、`split` 等普通字符串和字典方法（必须调用，不能仅引用）之外，没有其他属性。payload 键取决于您的智能体发送的内容——上面的 `status` 仅为示例——因此请从真实会话中读取这些键。**format** 用于整理代码，**fix** 用于请求助手修复代码。代码最大为 128 KiB，condition 最大为 16 KiB。
+除此之外均不可访问：不允许 import，也不能访问超出会话数据以及 `get`、`lower`、`split` 等普通字符串和字典方法的属性（这些方法必须被调用，而非仅引用）。Payload 键取决于您的 agent 发送的内容——上面的 `status` 仅为示例——因此请从真实会话中读取。**format** 可整理代码格式，**fix** 可让助手修复代码。代码最大 128 KiB，条件最大 16 KiB。
 
-![evaluator 代码编辑器，包含 format 和 fix 功能，展示了一个已起草评估的断言内容。](/images/dashboard/eval-authoring-code.png)
+![评估器代码编辑器，带有 format 和 fix 功能，显示已起草评估的断言内容。](/images/dashboard/eval-authoring-code.png)
 
-## 在您自己的 Worker 中编写
+## 在您自己的 worker 中编写
 
-当评估需要依赖包、密钥、网络访问或您自行托管的模型时，请使用 [Evaluator SDK](/zh/reference/evaluator-sdk) 编写，并在您自己的基础设施上运行。它使用相同的结果类型，其结果会与托管评估的结果并排显示，并标记为 **customer**：
+当评估需要模型、第三方包、密钥或网络时，请使用 [Evaluator SDK](/zh/reference/evaluator-sdk) 编写，并在您自己的基础设施上运行。它使用相同的结果类型，其结果会与托管评估一同显示，标记为 **customer**：
 
 ```python
 @app.eval("answer_relevance", version="judge-v1", labels=["llm_judge"], timeout_seconds=30)

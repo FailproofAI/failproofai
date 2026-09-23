@@ -1,35 +1,35 @@
 ---
-title: "Erkenntnisse und Probleme"
-description: "Audit-Belege in zugewiesene, nachverfolgbare Maßnahmen umwandeln."
+title: "Erkenntnisse und Issues"
+description: "Audit-Nachweise in zugewiesene, nachverfolgbare Behebungsmaßnahmen umwandeln."
 icon: "clipboard-check"
 ---
 
-Eine Erkenntnis ist die beleggestützte Aussage eines Audits über einen Fehler. Ein Problem ist der dauerhafte Workflow, um darauf zu reagieren.
+Eine Erkenntnis ist die durch Nachweise gestützte Aussage des Audits über einen Fehler. Ein Issue ist der beständige Workflow zur Reaktion darauf.
 
-## Arbeit priorisieren und zuweisen
+## Triage und Zuweisung der Arbeit
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Öffne **Analyze → Audits**, wähle einen abgeschlossenen Durchlauf und wähle eine Erkenntnis aus, um ihre Analyse, Empfehlung, Sitzungen und Beleg-Abfragen einzusehen.
-    2. Bestätige, weise zu, verwerfe, stummschalte, löse auf oder öffne die Erkenntnis erneut, nachdem du ihre Belege geprüft hast.
-    3. Gehe zu **Analyze → Issues** und filtere den dauerhaften Posteingang nach Status, Schweregrad oder Verantwortlichem.
-    4. Öffne das Problem, um es zuzuweisen, Kommentare oder Abonnenten hinzuzufügen und es nach Verifikation der Behebung aufzulösen.
+    1. Öffne **Analyze → Audits**, wähle einen abgeschlossenen Durchlauf und wähle eine Erkenntnis aus, um deren Analyse, Empfehlung, Sitzungen und Nachweisabfragen einzusehen.
+    2. Bestätige, weise zu, verwerfe, stummschalte, löse auf oder öffne die Erkenntnis erneut, nachdem du ihre Nachweise geprüft hast.
+    3. Gehe zu **Analyze → Issues** und filtere den beständigen Posteingang nach Status, Schweregrad oder Zuweisungsempfänger.
+    4. Öffne das Issue, um es zuzuweisen, Kommentare oder Abonnenten hinzuzufügen und es nach Überprüfung der Behebung aufzulösen.
 
-    Beginne mit der Erkenntniszusammenfassung. Stelle sicher, dass die Fehlerbeschreibung, die empfohlene Maßnahme, der Schweregrad und die Einstufung mit den Sitzungen übereinstimmen, die das Audit deiner Erwartung nach untersucht hat.
+    Beginne mit der Zusammenfassung der Erkenntnis. Vergewissere dich, dass die Fehlerbeschreibung, die empfohlene Reaktion, der Schweregrad und die Einstufung mit den Sitzungen übereinstimmen, die das Audit untersuchen sollte.
 
-    ![Eine Audit-Erkenntnis mit Schweregrad, Auftrittszählung, Ursachenanalyse, empfohlener Maßnahme, Einstufungsfaktoren und Belegen.](/images/dashboard/audit-finding.png)
+    ![Eine Audit-Erkenntnis mit Schweregrad, Vorkommensanzahl, Ursachenanalyse, empfohlener Maßnahme, Einstufungsfaktoren und Nachweisen.](/images/dashboard/audit-finding.png)
 
-    Öffne anschließend eine betroffene Sitzung, anstatt allein auf Basis der Zusammenfassung zu entscheiden. Die verknüpfte Ablaufverfolgung sollte das genaue Ereignis und die Nutzdaten zeigen, die die Erkenntnis belegen.
+    Öffne als Nächstes eine betroffene Sitzung, anstatt allein auf Basis der Zusammenfassung zu entscheiden. Der verknüpfte Trace sollte das genaue Ereignis und die Nutzlast zeigen, die die Erkenntnis belegen.
 
-    ![Eine aus einer Audit-Erkenntnis verknüpfte Sitzung, geöffnet beim relevanten Fehler mit seinen Ereignis-Metadaten und rohen Nutzdaten.](/images/dashboard/audit-linked-session.png)
+    ![Eine von einer Audit-Erkenntnis verknüpfte Sitzung, geöffnet am relevanten Fehler mit seinen Ereignismetadaten und der Roh-Nutzlast.](/images/dashboard/audit-linked-session.png)
 
-    Verwende nach der Verifizierung der Belege Issues, um der Maßnahme einen Verantwortlichen zu geben und sie unabhängig von zukünftigen Audit-Durchläufen zu verfolgen.
+    Nach der Überprüfung der Nachweise verwende Issues, um der Reaktion einen Verantwortlichen zuzuweisen und sie unabhängig von zukünftigen Audit-Durchläufen zu verfolgen.
 
-    ![Der Issues-Posteingang mit aktiven, bestätigten und aufgelösten Aufgaben mit Schweregrad und Verantwortlichkeit.](/images/dashboard/incidents.png)
+    ![Der Issues-Posteingang mit aktiven, bestätigten und aufgelösten Aufgaben samt Schweregrad und Eigentümerschaft.](/images/dashboard/incidents.png)
 
-    Öffne das Problem, um Untersuchungsnotizen festzuhalten, Abonnenten zu benachrichtigen und den Verlauf der Maßnahme zu sichern. Löse es erst auf, nachdem die Behebung bereitgestellt und verifiziert wurde.
+    Öffne das Issue, um Untersuchungsnotizen zu erfassen, Abonnenten zu benachrichtigen und den Reaktionsverlauf zu bewahren. Löse es erst auf, nachdem die Behebung ausgerollt und verifiziert wurde.
 
-    ![Eine Problemdetailansicht mit Quelle, Verletzungsbelegen, Zugewiesenen, Abonnenten, Zeitverlauf und Kommentaren.](/images/dashboard/incident-detail.png)
+    ![Eine Issue-Detailansicht mit Quelle, Verstoßnachweisen, Zuweisungsempfängern, Abonnenten, Zeitverlauf und Kommentaren.](/images/dashboard/incident-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -43,87 +43,43 @@ Eine Erkenntnis ist die beleggestützte Aussage eines Audits über einen Fehler.
     fp issues assign <issue-id> --assignee engineer@example.com
     fp issues comment-add <issue-id> --body "policy is in observe mode"
     fp issues resolve <issue-id> --yes
-    fp issues close <issue-id> --yes
-    fp issues archive <issue-id>
     ```
 
     Verwende `fp issues subscribe <issue-id>`, `fp issues unsubscribe <issue-id>` und `fp issues subscribers <issue-id>`, um Beobachter zu verwalten.
 
-    Siehe die [Cloud-CLI-Referenz für Audits und Issues](/de/reference/cloud-cli#audits) für Audit-Erkenntnisse und [`fp issues`](/de/reference/cloud-cli#issues) für die Problemverwaltung.
+    Siehe die [Cloud-CLI-Referenz für Audits und Issues](/de/reference/cloud-cli#audits) für Audit-Erkenntnisse und [`fp issues`](/de/reference/cloud-cli#issues) für das Issue-Management.
   </Tab>
 </Tabs>
 
-## Eine Erkenntnis prüfen
+## Eine Erkenntnis überprüfen
 
 Stelle sicher, dass sie Folgendes enthält:
 
-- Einen stabilen Fehlermodus, nicht nur einen einmaligen Titel
+- Ein stabiles Fehlerbild, nicht nur einen einmaligen Titel
 - Schweregrad und betriebliche Auswirkung
 - Betroffene Sitzungs-IDs oder unterstützende Abfragen
-- Genug Kontext, um das Verhalten zu reproduzieren
-- Eine vorgeschlagene Maßnahme, die mit den Belegen übereinstimmt
+- Ausreichend Kontext, um das Verhalten zu reproduzieren
+- Eine vorgeschlagene Reaktion, die den Nachweisen entspricht
 
-## Ein Problem zur Steuerung der Maßnahme verwenden
+## Ein Issue zur Steuerung der Reaktion verwenden
 
-Erstelle oder verknüpfe ein Problem, wenn die Erkenntnis eine Zuweisung, Diskussion, Statusänderungen, Kommentare oder Abonnenten benötigt. Probleme können auch Benachrichtigungsvorfälle und manuell gemeldete Probleme darstellen, weshalb sie unter Audit-Maßnahmen und nicht in der Hauptnavigation angesiedelt sind.
+Erstelle oder verknüpfe ein Issue, wenn die Erkenntnis eine Zuweisung, Diskussion, Statusänderungen, Kommentare oder Abonnenten erfordert. Issues können auch Alarm-Vorfälle und manuell gemeldete Probleme repräsentieren – daher sind sie unter der Audit-Reaktion und nicht in der primären Navigation angesiedelt.
 
-Löse das Problem auf, wenn die Behebung bereitgestellt und verifiziert wurde. Löse die Erkenntnis auf, wenn der Fehlermodus für die Audit-Population behoben wurde. Diese Zeitpunkte können unterschiedlich sein.
+Löse das Issue auf, wenn die Behebung ausgerollt und verifiziert wurde. Löse die Erkenntnis auf, wenn das Fehlerbild für die Audit-Population behoben wurde. Diese Zeitpunkte können voneinander abweichen.
 
-## Ein Problem beenden: auflösen, schließen oder archivieren
-
-Ein Problem wird einmalig beendet, und die Art des Beendens bestimmt, was beim nächsten Auftreten desselben Musters im Audit geschieht.
-
-| Aktion | Bedeutung | Wenn das Muster wiederkehrt |
-| --- | --- | --- |
-| **Auflösen** | Du hast es behoben. | Das Problem **öffnet sich erneut**, damit du erfährst, dass die Behebung nicht gehalten hat. |
-| **Schließen** | Du bist damit fertig: wird nicht behoben, ist kein Problem oder nicht mehr relevant. | Es **bleibt geschlossen**. |
-| **Archivieren** | Vom Board nehmen. Sagt nichts darüber aus, wie es endete. | Ein aktives Problem kehrt automatisch zum Board zurück. |
-
-Auflösen und Schließen sind beide endgültig, und keines kann das andere überschreiben – ein aufgelöstes Problem behält diesen Eintrag. Archivieren ist von beidem getrennt: Du kannst ein Problem in jedem Zustand archivieren, und es behält den Zustand, in dem es endete. Wenn ein archiviertes Problem noch aktiv ist und das Problem erneut auftritt, kehrt es von selbst zum Board zurück – Archivieren verbirgt den Verlauf, kann aber kein aktives Problem verbergen.
-
-Das Schließen eines Problems, das aus einem Audit stammt, verwirft auch die dahinterliegende Erkenntnis. Es unterdrückt dieses Muster nicht in deinen anderen Audits; dafür musst du die Erkenntnis selbst stummschalten oder verwerfen.
-
-## Neu starten nach Änderungen an deinen Agents
-
-Wenn du eine Runde von Änderungen an deinen Agents auslieferst, beschreiben die bereits auf dem Board vorhandenen Probleme das Verhalten, das du gerade ersetzt hast. Das Bereinigen löst sie in einem Schritt auf, zusammen mit den dahinterliegenden Audit-Erkenntnissen.
+## Ein Issue in einen Policy-Entwurf umwandeln
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehe zu **Analyze → Issues** und wähle **clear**, oder öffne ein einzelnes Audit und wähle **clear issues**, um es auf die Arbeit dieses Audits zu beschränken.
-    2. Wähle den Umfang. Jeder zeigt an, wie viele Probleme er umfasst, bevor du ihn bestätigst.
-    3. Bestätige. Die Probleme werden aufgelöst, und so auch die dahinterliegenden Audit-Erkenntnisse.
+    1. Öffne das Issue und überprüfe dessen Erkenntnis, zitierte Sitzungen, Ursache und Empfehlung.
+    2. Wähle **generate policy** und überprüfe das Eignungsergebnis sowie den vorgeschlagenen Durchsetzungsansatz. Ein Ergebnis **no policy** bedeutet, dass das Verhalten stattdessen möglicherweise eine Benachrichtigung, eine Workflow-Änderung oder eine manuelle Reaktion erfordert.
+    3. Wähle **write this policy**, dann überprüfe und teste den generierten Quellcode im **Admin → policy editor**, bevor du **publish version** auswählst. Verwende **open the editor anyway**, wenn du der Eignungsprüfung nicht zustimmst.
+    4. Gehe zu **Admin → enforcement**, stelle die Version im **observe**-Modus bereit und überprüfe ihre Entscheidungen unter **Observe → policy**, bevor du sie durchsetzt.
+
+    Der Issue-Titel, die Erkenntnisbeschreibung, die Ursache, die Empfehlung und der Eignungsansatz helfen beim Verfassen des Entwurfs. Es wird nichts automatisch veröffentlicht oder ausgerollt.
   </Tab>
   <Tab title="CLI">
-    ```bash
-    fp issues clear --all-audits --dry-run
-    fp issues clear --all-audits --yes
-
-    fp issues clear --audit <audit-id> --yes
-    fp issues clear --everything --yes
-    ```
-
-    `--dry-run` meldet, was sich ändern würde, ohne es zu ändern. Genau eines von
-    `--audit`, `--all-audits` und `--everything` ist erforderlich.
-  </Tab>
-</Tabs>
-
-**Bereinigen unterdrückt nichts.** Ein Muster, das deine Änderungen tatsächlich behoben haben, bleibt verschwunden. Ein Muster, das sie überlebt hat, **öffnet** sein Problem beim nächsten Audit-Durchlauf **erneut** – dasselbe wie das manuelle Auflösen eines Problems – sodass ein Neustart kein Problem, das du noch hast, still verbergen kann. Wenn du ein Muster dauerhaft unterdrücken möchtest, stummschalte oder verwerfe stattdessen die Erkenntnis.
-
-Für das Bereinigen sind Berechtigungen zum Schließen von Problemen und zum Schreiben von Audits erforderlich, da es sowohl die Erkenntnisse als auch die Probleme auflöst.
-
-## Ein Problem in einen Policy-Entwurf umwandeln
-
-<Tabs>
-  <Tab title="Dashboard">
-    1. Öffne das Problem und prüfe seine Erkenntnis, zitierten Sitzungen, Ursache und Empfehlung.
-    2. Wähle **generate policy** und prüfe das Eignungsergebnis und die vorgeschlagene Durchsetzungsabsicht. Ein Ergebnis **no policy** bedeutet, dass das Verhalten stattdessen eine Benachrichtigung, eine Workflow-Änderung oder eine menschliche Reaktion erfordern kann.
-    3. Wähle **write this policy**, prüfe und teste anschließend den generierten Quellcode im **Admin → policy editor**, bevor du **publish version** auswählst. Verwende **open the editor anyway**, wenn du mit der Eignungsprüfung nicht einverstanden bist.
-    4. Gehe zu **Admin → enforcement**, stelle die Version im **observe**-Modus bereit und verifiziere ihre Entscheidungen unter **Observe → policy**, bevor du sie durchsetzt.
-
-    Der Problemtitel, die Erkenntnisbeschreibung, die Ursache, die Empfehlung und die Eignungsabsicht helfen beim Verfassen des Entwurfs. Nichts wird automatisch veröffentlicht oder bereitgestellt.
-  </Tab>
-  <Tab title="CLI">
-    Verwende die CLI, um die Belege zu prüfen, bevor du das Problem im Dashboard öffnest:
+    Verwende die CLI, um die Nachweise zu prüfen, bevor du das Issue im Dashboard öffnest:
 
     ```bash
     fp issues show <issue-id>
@@ -131,7 +87,7 @@ Für das Bereinigen sind Berechtigungen zum Schließen von Problemen und zum Sch
     fp events --session-id <session-id> --full --all
     ```
 
-    Policy-Eignung, Cloud-Veröffentlichung und Fleet-Deployment sind Dashboard-Workflows. Verwende `failproofai policies --install --custom <file>`, wenn du zunächst einen entsprechenden Policy-Quellcode lokal validieren möchtest.
+    Policy-Eignung, Cloud-Veröffentlichung und Fleet-Deployment sind Dashboard-Workflows. Verwende `failproofai policies --install --custom <file>`, wenn du zuerst äquivalenten Policy-Quellcode lokal validieren möchtest.
   </Tab>
 </Tabs>
 

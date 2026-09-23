@@ -1,48 +1,44 @@
 ---
-title: "Rédiger une évaluation"
-description: "Décrivez ce que vous souhaitez mesurer et laissez l'assistant générer une évaluation Python hébergée, ou écrivez le code vous-même."
+title: "Écrire une évaluation"
+description: "Décrivez ce que vous souhaitez mesurer et laissez l'assistant générer une évaluation Python hébergée, ou écrivez le code vous-même. Les juges LLM s'exécutent dans votre propre worker."
 icon: "file-pen-line"
 ---
 
-Les évaluations hébergées sont de petits scripts Python déterministes, rédigés dans le tableau de bord et exécutés sur la flotte d'évaluateurs de Failproof AI. Elles comptent et comparent : combien d'appels d'outils, combien d'erreurs, combien de temps a duré une session.
+Les évaluations hébergées sont de petits scripts Python déterministes, écrits dans le tableau de bord et exécutés sur la flotte d'évaluateurs de Failproof AI. La logique plus lourde — un juge LLM, un package, un secret, un appel réseau — s'exécute plutôt dans [votre propre worker](#l-exécuter-dans-votre-propre-worker).
 
-Pour les questions qui nécessitent de *comprendre* la conversation — la réponse était-elle correcte, la réponse était-elle impolie, l'agent a-t-il suivi une politique — rédigez plutôt un [juge LLM](/fr/evaluations/judge). Il se crée au même endroit, à partir d'une description de ce à quoi ressemble une bonne réponse.
-
-Tout ce qui nécessite un package, un secret ou votre propre réseau s'exécute dans [votre propre worker](#write-it-in-your-own-worker).
-
-## Générer un brouillon à partir d'une description
+## Générer une ébauche à partir d'une description
 
 1. Accédez à **Analyze → eval authoring** et sélectionnez **new eval**.
-2. Décrivez ce que vous souhaitez mesurer en langage courant, ou choisissez dans **start from an example…**, puis sélectionnez **draft**.
-3. Vérifiez les champs et le code généré, puis [testez-le](/fr/evaluations/test) et [déployez-le](/fr/evaluations/deploy).
+2. Décrivez ce que vous souhaitez mesurer en langage courant, ou choisissez **start from an example…**, puis sélectionnez **draft**.
+3. Examinez les champs et le code généré, puis [testez-le](/fr/evaluations/test) et [déployez-le](/fr/evaluations/deploy).
 
-![La page de création d'évaluation avec une évaluation rédigée : la description, les notes de l'assistant sur le brouillon, ainsi que les champs nom, clé, version, résultat, délai d'attente, étiquettes et condition.](/images/dashboard/eval-authoring-draft.png)
+![La page d'authoring d'évaluation avec une ébauche générée : la description, les notes de l'assistant sur l'ébauche, ainsi que les champs name, key, version, result, timeout, labels et condition.](/images/dashboard/eval-authoring-draft.png)
 
-Le brouillon est ancré dans les événements propres à votre organisation : la page lit les clés de charge utile que vos sessions ont transportées au cours des sept derniers jours, de sorte que le code utilise des clés qui existent réellement plutôt que des suppositions. Avant de remettre le brouillon, l'assistant le teste sur jusqu'à cinq de vos sessions récentes, corrige ce qu'il peut démontrer être cassé — jusqu'à trois tours — et vérifie une fois que le code mesure bien ce que vous avez demandé. Gardez la description précise : les instructions trop larges sont plus lentes et peuvent expirer. Vérifiez le code dans tous les cas ; le déploiement n'est jamais bloqué.
+L'ébauche s'appuie sur les événements propres à votre organisation : la page lit les clés de payload que vos sessions ont transportées au cours des sept derniers jours, de sorte que le code utilise des clés qui existent réellement plutôt que des suppositions. Avant de vous remettre l'ébauche, l'assistant la teste sur jusqu'à cinq de vos sessions récentes, corrige tout ce qu'il peut prouver être cassé — jusqu'à trois itérations — et vérifie une fois que le code mesure bien ce que vous avez demandé. Soyez précis dans votre description : les prompts trop larges sont plus lents et peuvent expirer. Examinez le code dans tous les cas ; le déploiement n'est jamais bloqué.
 
 ## Configurer les champs
 
 | Champ | Description |
 | --- | --- |
 | name | Ce que les utilisateurs voient. Modifiable ultérieurement |
-| key | L'identifiant stable sous lequel les résultats sont regroupés, par exemple `code_assistant_quality_gate` |
-| version | N'importe quelle chaîne de version sans espaces, par exemple `1.0.0` |
-| result | **score** (0 à 1), **metric** (un nombre avec une unité), ou **assertion** (réussi ou non) |
-| timeout seconds | Par défaut 30. Le bac à sable arrête toute exécution individuelle à 60 |
+| key | L'identifiant stable sous lequel ses résultats sont regroupés, par exemple `code_assistant_quality_gate` |
+| version | Toute chaîne de version sans espaces, par exemple `1.0.0` |
+| result | **score** (0 à 1), **metric** (un nombre avec une unité), ou **assertion** (réussie ou non) |
+| timeout seconds | 30 par défaut. Le bac à sable arrête toute exécution individuelle à 60 secondes |
 | labels | Jusqu'à 20, séparées par des virgules. Modifiable ultérieurement |
-| condition | Optionnel. Une expression Python ; l'évaluation ne s'exécute que sur les sessions où elle est `True` |
+| condition | Facultatif. Une expression Python ; l'évaluation ne s'exécute que sur les sessions où elle vaut `True` |
 
-Utilisez la condition pour limiter une évaluation aux agents et aux environnements auxquels elle est destinée :
+Utilisez la condition pour cibler une évaluation sur les agents et environnements auxquels elle est destinée :
 
 ```python
 session.agent_id == "code-assistant" and session.environment == "production"
 ```
 
-La clé, la version, le type de résultat, la condition et le code sont immuables une fois déployés : pour en modifier un, publiez une nouvelle version. Le nom, les étiquettes et l'état d'activation restent modifiables.
+La clé, la version, le type de résultat, la condition et le code sont immuables une fois déployés : pour en modifier l'un d'eux, publiez une nouvelle version. Le nom, les labels et l'état d'activation restent modifiables.
 
-## Écrire le code soi-même
+## Écrire le code vous-même
 
-Le **code évaluateur** est une unique expression Python qui renvoie `EvalResult(...)`, avec `session` dans la portée. Cet exemple calcule la proportion de résultats d'outils retournés avec succès :
+Le **evaluator code** est une expression Python unique qui retourne `EvalResult(...)`, avec `session` dans la portée. Celle-ci calcule la proportion de résultats d'outils retournés avec le statut ok :
 
 ```python
 EvalResult(
@@ -55,22 +51,22 @@ EvalResult(
 )
 ```
 
-Un résultat commence par la clé de l'évaluation, dans son type déclaré : `score=` pour une évaluation de type score, ou une entrée `metrics` ou `assertions` nommée d'après la clé pour une métrique ou une assertion. D'autres métriques et assertions peuvent l'accompagner, jusqu'à 25 résultats par exécution.
+Un résultat commence par la clé propre à l'évaluation, dans son type déclaré : `score=` pour une évaluation de score, ou une entrée `metrics` ou `assertions` portant le nom de la clé pour une évaluation de métrique ou d'assertion. D'autres métriques et assertions peuvent l'accompagner, jusqu'à 25 résultats par exécution.
 
 | Dans la portée | Vous donne accès à |
 | --- | --- |
-| `session` | `session_id`, `agent_id`, `environment`, `started_at`, `ended_at`, `event_count` et `events`, ainsi que `count(event_type)` et `events_of_type(event_type)` |
-| Chaque événement | `id`, `ts`, `event_type` et `payload` |
-| Types de résultats | `EvalResult`, `Score`, `Metric`, `Assertion` et `ConditionResult` pour une condition |
-| Fonctions intégrées | `abs`, `all`, `any`, `bool`, `dict`, `float`, `int`, `len`, `list`, `max`, `min`, `range`, `round`, `set`, `sorted`, `str`, `sum`, `tuple` |
+| `session` | `session_id`, `agent_id`, `environment`, `started_at`, `ended_at`, `event_count`, et `events`, ainsi que `count(event_type)` et `events_of_type(event_type)` |
+| Chaque événement | `id`, `ts`, `event_type`, et `payload` |
+| Types de résultats | `EvalResult`, `Score`, `Metric`, `Assertion`, et `ConditionResult` pour une condition |
+| Builtins | `abs`, `all`, `any`, `bool`, `dict`, `float`, `int`, `len`, `list`, `max`, `min`, `range`, `round`, `set`, `sorted`, `str`, `sum`, `tuple` |
 
-Rien d'autre n'est accessible : aucune importation, et aucun attribut au-delà des données de session et des méthodes simples de chaînes et de dictionnaires telles que `get`, `lower` et `split`, qui doivent être appelées et non simplement référencées. Les clés de charge utile sont celles que vos agents envoient — `status` ci-dessus n'est qu'un exemple — lisez-les donc depuis une vraie session. **format** nettoie le code et **fix** demande à l'assistant de le corriger. Le code peut faire jusqu'à 128 Kio, et la condition jusqu'à 16 Kio.
+Rien d'autre n'est accessible : pas d'imports, et aucun attribut au-delà des données de session et des méthodes de chaînes et de dictionnaires courantes comme `get`, `lower` et `split`, qui doivent être appelées et non simplement référencées. Les clés de payload correspondent à ce que vos agents envoient — `status` ci-dessus n'est qu'un exemple — lisez-les donc depuis une vraie session. **format** met en forme le code et **fix** demande à l'assistant de le corriger. Le code peut faire jusqu'à 128 Kio, et la condition jusqu'à 16 Kio.
 
-![L'éditeur de code évaluateur, avec format et fix, affichant les assertions d'une évaluation rédigée.](/images/dashboard/eval-authoring-code.png)
+![L'éditeur de code de l'évaluateur, avec les boutons format et fix, affichant les assertions d'une évaluation générée.](/images/dashboard/eval-authoring-code.png)
 
-## Écrire dans votre propre worker
+## L'exécuter dans votre propre worker
 
-Lorsqu'une évaluation nécessite un package, un secret, le réseau ou un modèle que vous hébergez vous-même, rédigez-la avec l'[Evaluator SDK](/fr/reference/evaluator-sdk) et exécutez-la sur votre propre infrastructure. Elle utilise les mêmes types de résultats, et ses résultats apparaissent aux côtés des évaluations hébergées, avec l'étiquette **customer** :
+Lorsqu'une évaluation nécessite un modèle, un package, un secret ou le réseau, écrivez-la avec l'[Evaluator SDK](/fr/reference/evaluator-sdk) et exécutez-la sur votre propre infrastructure. Elle utilise les mêmes types de résultats, et ses résultats apparaissent à côté des évaluations hébergées, avec le tag **customer** :
 
 ```python
 @app.eval("answer_relevance", version="judge-v1", labels=["llm_judge"], timeout_seconds=30)

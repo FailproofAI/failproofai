@@ -1,54 +1,44 @@
 ---
 title: "Ajanları değerlendir"
-description: "Tanımladığınız değerlendirmelerle her tamamlanan oturumu puanlandırın: barındırılan Python kontrolleri veya kendi worker'ınızdaki LLM hakim."
+description: "Tanımladığınız değerlendirmelerle her tamamlanan oturumu puanlandırın: barındırılan Python kontrolleri veya kendi worker'ınızdaki LLM yargıçlar."
 icon: "gauge"
 ---
 
-Bir değerlendirme, tamamlanan bir ajan oturumunu puanlandırır. Bir oturum sona erdiğinde, ona uygulanan her etkinleştirilen değerlendirme çalışır ve bulduklarını kaydeder; düşünce zincirini izleme yanında okuyabilirsiniz:
+Bir değerlendirme, tamamlanan bir ajan oturumunu puanlandırır. Bir oturum bittiğinde, ona uygulanan her etkinleştirilmiş değerlendirme çalışır ve bulduklarını kaydeder; izi yanında okuyabileceğiniz açıklamalarıyla birlikte:
 
-- 0 ile 1 arasında bir **puan**, isteğe bağlı olarak başarılı veya başarısız olarak işaretlenmiş
-- **metrik**, örneğin bir sayım, bir süre veya bir maliyet, birim ile birlikte
-- bir **iddia**, geçti veya geçmedi
+- 0 ile 1 arasında bir **puan**, isteğe bağlı olarak geçti veya başarısız olarak işaretlenmiş
+- bir **metrik**, örneğin bir sayı, bir süre veya bir maliyet, birimiyle birlikte
+- bir **assertion**, geçti veya geçmedi
 
 ## İki tür değerlendirici
 
 | | Barındırılan Python | Kendi worker'ınız |
 | --- | --- | --- |
-| Yazıldığı yer | Panoda, **Analyze → eval authoring** altında | Python'da, [Evaluator SDK](/tr/reference/evaluator-sdk) ile |
-| Çalıştığı yer | Failproof AI'ın yönetilen değerlendiricisinde, bir sandbox'ta | Altyapınızda |
-| En iyi kullanım | Deterministik kontroller ve sizin için barındırdığımız model temelli kontroller | Paketler, sırlar, kendi ağınız, kendi barındırdığınız modeller, ağır işlem |
+| Yazıldığı yer | Panoda, **Analiz → eval authoring** altında | Python'da, [Evaluator SDK](/tr/reference/evaluator-sdk) ile |
+| Çalıştırıldığı yer | Failproof AI'ın yönetilen değerlendiriicisinde, bir sandbox'ta | Kendi altyapınızda |
+| En iyi kullanıldığı | Deterministik, kod tabanlı kontroller | LLM yargıçlar, model çağrıları, paketler, sırlar, ağ erişimi, yoğun işleme |
 
-Barındırılan değerlendirmeler üç şekilde gelir ve asistan sizin için aralarında seçim yapar:
+Barındırılan Python kasıtlı olarak küçüktür: bir ifade, içe aktarım yok, ağ yok. Bir modele ihtiyaç duyan herhangi bir şey — bir LLM yargıcının bir cevabın uygun olup olmadığını puanlandırması, örneğin — bunun yerine kendi worker'ınızda çalışır. Her iki tür de gelen bir bağlantıya ihtiyaç duymaz: worker'lar tamamlanan oturumları talep eder ve sonuçları giden HTTPS üzerinden gönderir.
 
-| | Oturumu okuyan | Size veren |
-| --- | --- | --- |
-| **Kod** | hiçbir şey — bir Python ifadesi, içe aktarma yok, ağ yok | bir puan, bir metrik veya bir iddia |
-| **[Sınıflandırıcı](/tr/evaluations/jev)** | sınıflandırma için tasarlanmış küçük bir model | sadece bir puan — kendini açıklamaz |
-| **[Hakim](/tr/evaluations/judge)** | genel amaçlı bir model | bir puan **ve** bunun arkasındaki akıl yürütme |
+## Her organizasyon kendi ajanlarını değerlendirir
 
-Kod çalıştırmak hiçbir maliyete mal olmaz. Diğer ikisi oturum başına bir model çağrısı maliyeti getiriyor, bu yüzden onlara sorunun gerçekten ilişkili olduğu oturumları daraltacak bir koşul verin.
-
-Kendi worker'ınız hala bir değerlendirmenin gittiği yerdir, barındırmadığımız bir şeye ihtiyaç duyduğunda: bir paket, bir sır, kendi ağınız veya kendiniz çalıştırdığınız bir model. İki tür de gelen bağlantıya ihtiyaç duymaz: worker'lar tamamlanan oturumları talep eder ve sonuçları giden HTTPS üzerinden gönderir.
-
-## Her kuruluş kendi ajanlarını değerlendirir
-
-Değerlendirmeler onları tanımlayan kuruluşa aittir. Bir örneğe ait her kuruluş kendi değerlendirmelerini yazar — kendi kontrolleri, koşulları, eşikleri ve etiketleri — sürümlerini oluşturur ve diğer hiçbirini etkilemeden dağıtır, ve yalnızca kendi sonuçlarını görür. Bu sonuçları ajan, ortam, değerlendirme ve zamana göre filtreleyin, veya onlar hakkında asistana sorun.
+Değerlendirmeler onları tanımlayan organizasyona aittir. Bir instance'taki her organizasyon kendi değerlendirmesini yazar — kendi kontrolleri, koşulları, eşikleri ve etiketleri — sürümleri oluşturur ve diğerini etkilemeden dağıtır ve yalnızca kendi sonuçlarını görür. Bu sonuçları ajan, ortam, değerlendirme ve zamana göre filtreleyebilir veya asistana onlar hakkında sorabilirsiniz.
 
 ## İlk taslaktan canlı puanlara
 
 <Steps>
   <Step title="Yazın">
-    Ne ölçülecek açıklaması yapın ve asistanın taslağını yapmasına izin verin, veya kendiniz yazın. Bkz. [Değerlendirme yazın](/tr/evaluations/write).
+    Neyi ölçeceğinizi açıklayın ve asistanın bunu hazırlamasını sağlayın veya kendiniz yazın. Bkz. [Bir değerlendirme yazın](/tr/evaluations/write).
   </Step>
   <Step title="Test edin">
-    Canlıya geçmeden önce gerçek oturumlarla karşı çalıştırın; hiçbir şey depolanmaz. Bkz. [Değerlendirmeyi test edin](/tr/evaluations/test).
+    Canlı gitmeden önce bunu gerçek oturumlar karşısında çalıştırın; hiçbir şey depolanmaz. Bkz. [Bir değerlendirmeyi test edin](/tr/evaluations/test).
   </Step>
-  <Step title="Dağıtın ve sürümünü oluşturun">
-    Değişmez bir sürümü dağıtın, geliştikçe yeni olanları yayınlayın ve daha önceki bir sürüme geri dönün. Bkz. [Dağıtım ve sürüm oluşturma](/tr/evaluations/deploy).
+  <Step title="Dağıtın ve sürüm verin">
+    Değişmez bir sürüm dağıtın, evrim geçirdiğinde yeni olanlar yayınlayın ve önceki birine geri dönün. Bkz. [Dağıtım ve sürüm oluşturma](/tr/evaluations/deploy).
   </Step>
   <Step title="Sonuçları okuyun">
     Puanları zaman içinde grafiklendirin, ajanları ve ortamları karşılaştırın ve asistana sorun. Bkz. [Değerlendirme sonuçlarını okuyun](/tr/sessions/evaluations).
   </Step>
 </Steps>
 
-Değerlendirme ileri doğru çalışır: şimdi dağıtılan bir sürüm, bundan sonra biten oturumları puanlandırır. Zaten sahip olduğunuz oturumları puanlandırmak için, [onları geriye dönük doldurun](/tr/evaluations/deploy#score-sessions-you-already-have).
+Değerlendirme ileriye doğru çalışır: şimdi dağıtılan bir sürüm, şimdi itibaren biten oturumları puanlandırır. Zaten sahip olduğunuz oturumları puanlandırmak için, [onları geri doldurun](/tr/evaluations/deploy#zaten-sahip-olduğunuz-oturumları-puanlayın).

@@ -1,48 +1,44 @@
 ---
 title: "Eine Evaluierung schreiben"
-description: "Beschreibe, was gemessen werden soll, und lass den Assistenten eine gehostete Python-Evaluierung entwerfen, oder schreibe den Code selbst."
+description: "Beschreibe, was gemessen werden soll, und lass den Assistenten eine gehostete Python-Evaluierung entwerfen, oder schreibe den Code selbst. LLM-Richter laufen in deinem eigenen Worker."
 icon: "file-pen-line"
 ---
 
-Gehostete Evaluierungen sind kleine, deterministische Python-Programme, die im Dashboard verfasst und auf der Evaluator-Flotte von Failproof AI ausgeführt werden. Sie zählen und vergleichen: wie viele Tool-Aufrufe, wie viele Fehler, wie lange eine Sitzung gedauert hat.
+Gehostete Evaluierungen sind kleine, deterministische Python-Programme, die im Dashboard geschrieben und auf der Evaluator-Flotte von Failproof AI ausgeführt werden. Aufwendigere Logik — ein LLM-Richter, ein Paket, ein Secret, ein Netzwerkaufruf — läuft stattdessen [in deinem eigenen Worker](#im-eigenen-worker-schreiben).
 
-Für Fragen, bei denen das Gespräch *verstanden* werden muss – war die Antwort korrekt, war die Antwort unhöflich, hat der Agent eine Richtlinie befolgt – schreibe stattdessen einen [LLM-Richter](/de/evaluations/judge). Dieser wird am selben Ort erstellt, ausgehend von einer Beschreibung, wie eine gute Antwort aussieht.
-
-Alles, was ein Paket, ein Secret oder dein eigenes Netzwerk erfordert, läuft in [deinem eigenen Worker](#write-it-in-your-own-worker).
-
-## Entwurf aus einer Beschreibung
+## Aus einer Beschreibung entwerfen
 
 1. Gehe zu **Analyze → eval authoring** und wähle **new eval**.
-2. Beschreibe auf Englisch, was gemessen werden soll, oder wähle aus **start from an example…** und klicke auf **draft**.
-3. Überprüfe die Felder und den generierten Code, dann [teste](/de/evaluations/test) und [stelle ihn bereit](/de/evaluations/deploy).
+2. Beschreibe auf Englisch, was gemessen werden soll, oder wähle unter **start from an example…** ein Beispiel aus, und klicke auf **draft**.
+3. Überprüfe die Felder und den generierten Code, [teste die Evaluierung](/de/evaluations/test) und [stelle sie bereit](/de/evaluations/deploy).
 
-![Die Seite zur Eval-Erstellung mit einem entworfenen Evaluierungsentwurf: die Beschreibung, die Hinweise des Assistenten zum Entwurf sowie die Felder für Name, Schlüssel, Version, Ergebnis, Timeout, Labels und Bedingung.](/images/dashboard/eval-authoring-draft.png)
+![Die eval-authoring-Seite mit einer entworfenen Evaluierung: die Beschreibung, die Anmerkungen des Assistenten zum Entwurf sowie die Felder name, key, version, result, timeout, labels und condition.](/images/dashboard/eval-authoring-draft.png)
 
-Der Entwurf basiert auf den eigenen Ereignissen deiner Organisation: Die Seite liest aus, welche Payload-Schlüssel deine Sitzungen in den letzten sieben Tagen übermittelt haben, sodass der Code auf tatsächlich vorhandene Schlüssel zugreift statt auf Vermutungen. Bevor der Entwurf übergeben wird, testet der Assistent ihn an bis zu fünf deiner aktuellen Sitzungen, behebt alles, was nachweislich fehlerhaft ist – in bis zu drei Durchgängen – und prüft einmal, ob der Code das misst, was du angefragt hast. Halte die Beschreibung konkret: Vage Anfragen sind langsamer und können zu einem Timeout führen. Überprüfe den Code in jedem Fall; die Bereitstellung wird nie blockiert.
+Der Entwurf basiert auf den eigenen Events deiner Organisation: Die Seite liest aus, welche Payload-Schlüssel deine Sessions in den letzten sieben Tagen verwendet haben, sodass der Code auf tatsächlich vorhandene Schlüssel zugreift und nicht rät. Bevor der Entwurf übergeben wird, testet der Assistent ihn gegen bis zu fünf deiner neuesten Sessions, behebt nachweisbare Fehler — in bis zu drei Runden — und prüft einmalig, ob der Code das misst, was du angefragt hast. Formuliere die Beschreibung möglichst präzise: Zu allgemeine Prompts sind langsamer und können zu Timeouts führen. Überprüfe den Code in jedem Fall; das Deployment wird dadurch nicht blockiert.
 
-## Felder festlegen
+## Die Felder befüllen
 
 | Feld | Bedeutung |
 | --- | --- |
-| name | Was angezeigt wird. Später bearbeitbar |
+| name | Anzeigename. Kann später geändert werden |
 | key | Der stabile Bezeichner, unter dem die Ergebnisse angezeigt werden, z. B. `code_assistant_quality_gate` |
-| version | Ein beliebiger Versionsstring ohne Leerzeichen, z. B. `1.0.0` |
+| version | Eine beliebige Versionszeichenkette ohne Leerzeichen, z. B. `1.0.0` |
 | result | **score** (0 bis 1), **metric** (eine Zahl mit Einheit) oder **assertion** (bestanden oder nicht) |
-| timeout seconds | Standard: 30. Die Sandbox stoppt jeden einzelnen Lauf nach 60 Sekunden |
-| labels | Bis zu 20, kommagetrennt. Später bearbeitbar |
-| condition | Optional. Ein Python-Ausdruck; die Evaluierung wird nur für Sitzungen ausgeführt, bei denen er `True` ergibt |
+| timeout seconds | Standard: 30. Die Sandbox bricht einzelne Läufe nach 60 Sekunden ab |
+| labels | Bis zu 20, kommagetrennt. Können später geändert werden |
+| condition | Optional. Ein Python-Ausdruck; die Evaluierung läuft nur für Sessions, bei denen er `True` ergibt |
 
-Verwende die Bedingung, um eine Evaluierung auf die Agenten und Umgebungen einzuschränken, für die sie gedacht ist:
+Verwende die Bedingung, um eine Evaluierung auf die dafür vorgesehenen Agents und Umgebungen einzuschränken:
 
 ```python
 session.agent_id == "code-assistant" and session.environment == "production"
 ```
 
-Schlüssel, Version, Ergebnistyp, Bedingung und Code sind nach der Bereitstellung unveränderlich: Um eines davon zu ändern, veröffentliche eine neue Version. Name, Labels und der Aktivierungsstatus bleiben bearbeitbar.
+Key, Version, Ergebnistyp, Bedingung und Code sind nach dem Deployment unveränderlich: Um sie zu ändern, muss eine neue Version veröffentlicht werden. Name, Labels und der Aktivierungsstatus bleiben bearbeitbar.
 
 ## Den Code selbst schreiben
 
-Der **Evaluierungscode** ist ein einzelner Python-Ausdruck, der `EvalResult(...)` zurückgibt, mit `session` im Scope. Dieses Beispiel bewertet den Anteil der Tool-Ergebnisse, die erfolgreich zurückgekehrt sind:
+Der **evaluator code** ist ein einzelner Python-Ausdruck, der `EvalResult(...)` zurückgibt, wobei `session` im Scope verfügbar ist. Dieses Beispiel bewertet den Anteil der Tool-Ergebnisse, die mit ok zurückgekehrt sind:
 
 ```python
 EvalResult(
@@ -55,22 +51,22 @@ EvalResult(
 )
 ```
 
-Ein Ergebnis beginnt mit dem eigenen Schlüssel der Evaluierung im deklarierten Typ: `score=` für eine Score-Evaluierung, oder ein `metrics`- bzw. `assertions`-Eintrag, der nach dem Schlüssel benannt ist, für eine Metrik- oder Assertions-Evaluierung. Weitere Metriken und Assertions können mitgeliefert werden – bis zu 25 Ergebnisse pro Lauf.
+Ein Ergebnis beginnt mit dem eigenen Key der Evaluierung, im deklarierten Typ: `score=` für eine Score-Evaluierung, oder ein `metrics`- bzw. `assertions`-Eintrag mit dem Namen des Keys für eine Metrik- oder Assertion-Evaluierung. Weitere Metriken und Assertions können mitsenden — bis zu 25 Ergebnisse pro Lauf.
 
-| Im Scope | Liefert |
+| Im Scope | Stellt bereit |
 | --- | --- |
 | `session` | `session_id`, `agent_id`, `environment`, `started_at`, `ended_at`, `event_count` und `events`, sowie `count(event_type)` und `events_of_type(event_type)` |
-| Jedes Ereignis | `id`, `ts`, `event_type` und `payload` |
+| Jedes Event | `id`, `ts`, `event_type` und `payload` |
 | Ergebnistypen | `EvalResult`, `Score`, `Metric`, `Assertion` und `ConditionResult` für eine Bedingung |
 | Builtins | `abs`, `all`, `any`, `bool`, `dict`, `float`, `int`, `len`, `list`, `max`, `min`, `range`, `round`, `set`, `sorted`, `str`, `sum`, `tuple` |
 
-Nichts anderes ist erreichbar: keine Imports und keine Attribute über die Sitzungsdaten und einfache String- und Dictionary-Methoden wie `get`, `lower` und `split` hinaus, die aufgerufen werden müssen, anstatt nur referenziert zu werden. Payload-Schlüssel sind das, was deine Agenten senden – `status` oben ist nur ein Beispiel –, also lese sie aus einer echten Sitzung ab. **format** bereinigt den Code und **fix** weist den Assistenten an, ihn zu reparieren. Der Code kann bis zu 128 KiB groß sein, die Bedingung bis zu 16 KiB.
+Nichts anderes ist erreichbar: keine Imports und keine Attribute über die Session-Daten sowie einfache String- und Dictionary-Methoden wie `get`, `lower` und `split` hinaus, die aufgerufen werden müssen anstatt nur referenziert zu werden. Payload-Schlüssel sind das, was deine Agents senden — `status` oben ist nur ein Beispiel — lies sie daher von einer echten Session ab. **format** formatiert den Code, **fix** beauftragt den Assistenten, ihn zu reparieren. Der Code kann bis zu 128 KiB groß sein, die Bedingung bis zu 16 KiB.
 
-![Der Evaluierungscode-Editor mit format und fix, der die Assertions einer entworfenen Evaluierung zeigt.](/images/dashboard/eval-authoring-code.png)
+![Der evaluator-Code-Editor mit format und fix, der die Assertions einer entworfenen Evaluierung zeigt.](/images/dashboard/eval-authoring-code.png)
 
-## In eigenem Worker schreiben
+## Im eigenen Worker schreiben
 
-Wenn eine Evaluierung ein Paket, ein Secret, das Netzwerk oder ein selbst gehostetes Modell benötigt, schreibe sie mit dem [Evaluator SDK](/de/reference/evaluator-sdk) und führe sie auf deiner eigenen Infrastruktur aus. Es verwendet dieselben Ergebnistypen, und seine Ergebnisse erscheinen neben gehosteten, mit dem Tag **customer**:
+Wenn eine Evaluierung ein Modell, ein Paket, ein Secret oder das Netzwerk benötigt, schreibe sie mit dem [Evaluator SDK](/de/reference/evaluator-sdk) und führe sie auf deiner eigenen Infrastruktur aus. Sie verwendet dieselben Ergebnistypen, und ihre Ergebnisse erscheinen neben gehosteten Evaluierungen, gekennzeichnet mit **customer**:
 
 ```python
 @app.eval("answer_relevance", version="judge-v1", labels=["llm_judge"], timeout_seconds=30)

@@ -1,48 +1,44 @@
 ---
-title: "Viết một đánh giá"
-description: "Mô tả những gì cần đo lường và để trợ lý tự động soạn một đánh giá Python được lưu trữ, hoặc tự viết mã."
+title: "Viết một bài đánh giá"
+description: "Mô tả những gì cần đo lường và để trợ lý soạn thảo một bài đánh giá Python được lưu trữ, hoặc viết mã của riêng bạn. Các trọng tài LLM chạy trong worker của riêng bạn."
 icon: "file-pen-line"
 ---
 
-Hosted evaluations là những chương trình Python nhỏ, xác định được, được viết trên bảng điều khiển và chạy trên fleet evaluator của Failproof AI. Chúng đếm và so sánh: có bao nhiêu lệnh gọi công cụ, có bao nhiêu lỗi, một phiên kéo dài bao lâu.
+Các bài đánh giá được lưu trữ là những chương trình Python nhỏ và xác định, được viết trong bảng điều khiển và chạy trên đội đánh giá của Failproof AI. Logics nặng hơn — một trọng tài LLM, một gói, một bí mật, một lệnh gọi mạng — chạy trong [worker của riêng bạn](#viết-nó-trong-worker-của-riêng-bạn) thay thế.
 
-Đối với các câu hỏi cần phải *hiểu* được cuộc trò chuyện — liệu câu trả lời có chính xác không, liệu phản hồi có thô lỗ không, liệu agent có tuân theo chính sách không — hãy viết một [LLM judge](/vi/evaluations/judge) thay thế. Nó được soạn tại cùng một nơi, từ một mô tả về những gì tốt trông như thế nào.
-
-Bất cứ thứ gì cần một package, một secret, hoặc mạng riêng của bạn chạy trong [worker riêng của bạn](#write-it-in-your-own-worker).
-
-## Soạn từ một mô tả
+## Soạn thảo từ một mô tả
 
 1. Đi tới **Analyze → eval authoring** và chọn **new eval**.
-2. Mô tả những gì cần đo lường bằng tiếng Anh thuần túy, hoặc chọn từ **start from an example…**, và chọn **draft**.
-3. Kiểm tra các trường và mã mà nó điền vào, sau đó [kiểm tra nó](/vi/evaluations/test) và [triển khai nó](/vi/evaluations/deploy).
+2. Mô tả những gì cần đo lường bằng tiếng Anh thường nhật, hoặc chọn từ **start from an example…**, rồi chọn **draft**.
+3. Xem xét các trường và mã nó điền vào, sau đó [kiểm tra nó](/vi/evaluations/test) và [triển khai nó](/vi/evaluations/deploy).
 
-![Trang eval authoring với một đánh giá được soạn: mô tả, ghi chú của trợ lý về bản nháp, và các trường tên, khóa, phiên bản, kết quả, timeout, nhãn và điều kiện.](/images/dashboard/eval-authoring-draft.png)
+![Trang soạn thảo eval với một bài đánh giá được soạn thảo: mô tả, ghi chú của trợ lý về bản soạn thảo, và các trường tên, khóa, phiên bản, kết quả, thời gian chờ, nhãn và điều kiện.](/images/dashboard/eval-authoring-draft.png)
 
-Bản nháp được dựa trên các sự kiện của chính tổ chức bạn: trang đọc những khóa payload nào các phiên của bạn mang trong bảy ngày qua, để mã đọc các khóa tồn tại thay vì đoán. Trước khi chuyển bản nháp, trợ lý kiểm tra nó so với tối đa năm phiên gần đây của bạn, sửa bất cứ thứ gì nó có thể chứng minh là bị hỏng — đến ba vòng — và kiểm tra một lần nữa rằng mã đo lường những gì bạn yêu cầu. Giữ mô tả cụ thể: các lời nhắc rộng lớn chậm hơn và có thể hết thời gian. Xem xét mã dù sao; triển khai không bao giờ bị chặn.
+Bản soạn thảo được dựa trên các sự kiện của riêng tổ chức bạn: trang đọc những khóa tải trọng nào mà phiên của bạn đã sử dụng trong bảy ngày qua, vì vậy mã đọc các khóa tồn tại thay vì đoán. Trước khi chuyển bản soạn thảo, trợ lý kiểm tra nó dựa trên tối đa năm phiên gần đây của bạn, sửa chữa bất cứ điều gì nó có thể chứng minh là bị hỏng — trong tối đa ba vòng — và kiểm tra một lần rằng mã đo lường những gì bạn yêu cầu. Giữ mô tả cụ thể: các lời nhắc rộng nham rổn hơn và có thể hết thời gian chờ. Xem xét mã dù sao; triển khai không bao giờ bị chặn.
 
 ## Đặt các trường
 
 | Trường | Nó là gì |
 | --- | --- |
-| name | Những gì mọi người thấy. Có thể chỉnh sửa sau |
-| key | Mã định danh ổn định mà kết quả của nó biểu đồ, chẳng hạn như `code_assistant_quality_gate` |
-| version | Bất kỳ chuỗi phiên bản nào không có dấu cách, chẳng hạn như `1.0.0` |
-| result | **score** (0 đến 1), **metric** (một số có đơn vị), hoặc **assertion** (vượt qua hoặc không) |
-| timeout seconds | Mặc định 30. Sandbox dừng bất kỳ lần chạy nào ở 60 |
+| name | Những gì mọi người nhìn thấy. Có thể chỉnh sửa sau |
+| key | Định danh ổn định của nó kết quả sơ đồ dưới, chẳng hạn như `code_assistant_quality_gate` |
+| version | Bất kỳ chuỗi phiên bản nào không có khoảng trắng, chẳng hạn như `1.0.0` |
+| result | **score** (0 đến 1), **metric** (một số có một đơn vị), hoặc **assertion** (passed hoặc không) |
+| timeout seconds | Mặc định 30. Hộp cát dừng bất kỳ lần chạy nào ở 60 |
 | labels | Tối đa 20, cách nhau bằng dấu phẩy. Có thể chỉnh sửa sau |
-| condition | Tùy chọn. Một biểu thức Python; đánh giá chỉ chạy trên các phiên nơi nó là `True` |
+| condition | Tùy chọn. Một biểu thức Python; bài đánh giá chỉ chạy trên các phiên mà nó là `True` |
 
-Sử dụng điều kiện để giới hạn một đánh giá cho các agent và môi trường nó dành cho:
+Sử dụng điều kiện để phạm vi bài đánh giá đến các agent và môi trường nó được dùng cho:
 
 ```python
 session.agent_id == "code-assistant" and session.environment == "production"
 ```
 
-Khóa, phiên bản, loại kết quả, điều kiện và mã là bất biến khi triển khai: để thay đổi bất kỳ điều nào trong số chúng, hãy xuất bản một phiên bản mới. Tên, nhãn và liệu nó có được bật hay không vẫn có thể chỉnh sửa được.
+Khóa, phiên bản, loại kết quả, điều kiện và mã là bất biến sau khi triển khai: để thay đổi bất kỳ trong số chúng, hãy xuất bản một phiên bản mới. Tên, nhãn và liệu nó được bật vẫn có thể chỉnh sửa.
 
-## Tự viết mã
+## Viết mã của riêng bạn
 
-**Evaluator code** là một biểu thức Python trả về `EvalResult(...)`, với `session` trong phạm vi. Cái này tính điểm chia sẻ các kết quả công cụ trở lại OK:
+**evaluator code** là một biểu thức Python trả về `EvalResult(...)`, có `session` trong phạm vi. Cái này ghi điểm phần chia của kết quả công cụ quay trở lại ok:
 
 ```python
 EvalResult(
@@ -55,22 +51,22 @@ EvalResult(
 )
 ```
 
-Một kết quả dẫn đầu với khóa của chính đánh giá, trong loại khai báo của nó: `score=` cho đánh giá điểm, hoặc một mục `metrics` hoặc `assertions` được đặt tên theo khóa cho đánh giá số liệu hoặc khẳng định. Các số liệu và khẳng định khác kèm theo nó, tối đa 25 kết quả trong một lần chạy.
+Một kết quả dẫn đầu với khóa riêng của bài đánh giá, trong loại khai báo của nó: `score=` cho một bài đánh giá điểm, hoặc một `metrics` hoặc `assertions` mục được đặt tên theo khóa cho một số liệu hoặc một bài đánh giá khẳng định. Các số liệu và khẳng định khác đi cùng với nó, lên tới 25 kết quả trong một lần chạy.
 
-| Trong phạm vi | Cấp cho bạn |
+| Trong phạm vi | Cung cấp cho bạn |
 | --- | --- |
 | `session` | `session_id`, `agent_id`, `environment`, `started_at`, `ended_at`, `event_count`, và `events`, cộng với `count(event_type)` và `events_of_type(event_type)` |
 | Mỗi sự kiện | `id`, `ts`, `event_type`, và `payload` |
 | Loại kết quả | `EvalResult`, `Score`, `Metric`, `Assertion`, và `ConditionResult` cho một điều kiện |
 | Builtins | `abs`, `all`, `any`, `bool`, `dict`, `float`, `int`, `len`, `list`, `max`, `min`, `range`, `round`, `set`, `sorted`, `str`, `sum`, `tuple` |
 
-Không có gì khác có thể truy cập được: không có lệnh nhập, và không có thuộc tính ngoài dữ liệu phiên và các phương thức chuỗi và từ điển đơn giản như `get`, `lower`, và `split`, phải được gọi chứ không phải được tham chiếu. Các khóa payload là bất cứ gì agent của bạn gửi — `status` ở trên chỉ là một ví dụ — vì vậy hãy đọc chúng từ một phiên thực tế. **format** làm gọn mã và **fix** yêu cầu trợ lý sửa nó. Mã có thể lên tới 128 KiB, và điều kiện lên tới 16 KiB.
+Không gì khác là có thể tiếp cận: không nhập, và không có thuộc tính ngoài dữ liệu phiên đó và các phương thức chuỗi và từ điển thông thường chẳng hạn như `get`, `lower`, và `split`, chúng phải được gọi chứ không phải được tham chiếu. Khóa tải trọng là bất cứ thứ gì các agent của bạn gửi — `status` ở trên chỉ là một ví dụ — vì vậy hãy đọc chúng từ một phiên thực. **format** làm gọn mã và **fix** yêu cầu trợ lý sửa chữa nó. Mã có thể lên tới 128 KiB, và điều kiện lên tới 16 KiB.
 
-![Trình chỉnh sửa mã evaluator, với format và fix, hiển thị các khẳng định của một đánh giá được soạn.](/images/dashboard/eval-authoring-code.png)
+![Trình chỉnh sửa mã đánh giá, với định dạng và sửa chữa, cho thấy các khẳng định của một bài đánh giá được soạn thảo.](/images/dashboard/eval-authoring-code.png)
 
-## Viết nó trong worker riêng của bạn
+## Viết nó trong worker của riêng bạn
 
-Khi một đánh giá cần một package, một secret, mạng, hoặc một mô hình bạn tự lưu trữ, hãy viết nó với [Evaluator SDK](/vi/reference/evaluator-sdk) và chạy nó trên cơ sở hạ tầng riêng của bạn. Nó sử dụng các loại kết quả giống nhau, và kết quả của nó xuất hiện cạnh các kết quả được lưu trữ, được gắn thẻ **customer**:
+Khi một bài đánh giá cần một mô hình, một gói, một bí mật, hoặc mạng, hãy viết nó với [Evaluator SDK](/vi/reference/evaluator-sdk) và chạy nó trên cơ sở hạ tầng của riêng bạn. Nó sử dụng các loại kết quả tương tự, và kết quả của nó xuất hiện bên cạnh những kết quả được lưu trữ, được gắn thẻ **customer**:
 
 ```python
 @app.eval("answer_relevance", version="judge-v1", labels=["llm_judge"], timeout_seconds=30)

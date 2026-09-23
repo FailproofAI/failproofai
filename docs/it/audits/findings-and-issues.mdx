@@ -1,35 +1,35 @@
 ---
 title: "Risultati e problemi"
-description: "Trasforma le evidenze di audit in lavori di remediazione posseduti e tracciabili."
+description: "Trasforma le prove di audit in lavoro di correzione posseduto e tracciabile."
 icon: "clipboard-check"
 ---
 
-Un risultato è la dichiarazione supportata da evidenze dell'audit su un errore. Un problema è il flusso di lavoro duraturo per rispondere ad esso.
+Un risultato è l'affermazione supportata da prove dell'audit su un'anomalia. Un problema è il flusso di lavoro durevole per rispondervi.
 
 ## Triage e assegnazione del lavoro
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Apri **Analyze → Audits**, seleziona un'esecuzione completata e scegli un risultato per ispezionare la sua analisi, raccomandazione, sessioni ed evidenze delle query.
-    2. Riconosci, assegna, scarta, silenzia, risolvi o riapri il risultato dopo aver verificato le sue evidenze.
-    3. Vai a **Analyze → Issues** e filtra la casella di posta durevole per stato, gravità o assegnatario.
-    4. Apri il problema per assegnarlo, aggiungere commenti o sottoscrittori, e risolverlo dopo che la correzione è stata verificata.
+    1. Apri **Analyze → Audits**, scegli un'esecuzione completata e seleziona un risultato per ispezionare la sua analisi, raccomandazione, sessioni e query di prove.
+    2. Riconosci, assegna, scarta, silenzia, risolvi o riapri il risultato dopo aver verificato le sue prove.
+    3. Vai a **Analyze → Issues** e filtra l'inbox durevole per stato, gravità o assegnatario.
+    4. Apri il problema per assegnarlo, aggiungere commenti o sottoscrittori, e risolvilo dopo aver verificato la correzione.
 
-    Inizia dal riepilogo del risultato. Conferma che la descrizione dell'errore, la risposta consigliata, la gravità e il ranking corrispondono alle sessioni che ti aspettavi che l'audit esaminasse.
+    Inizia con il riepilogo dei risultati. Conferma che la descrizione dell'anomalia, la risposta consigliata, la gravità e il ranking concordino con le sessioni che ti aspettavi che l'audit esaminasse.
 
-    ![Un risultato di audit con gravità, conteggio delle occorrenze, analisi della causa principale, azione consigliata, fattori di ranking ed evidenze.](/images/dashboard/audit-finding.png)
+    ![Un risultato dell'audit con gravità, conteggio delle occorrenze, analisi della causa radice, azione consigliata, fattori di ranking e prove.](/images/dashboard/audit-finding.png)
 
-    Successivamente, apri una sessione interessata piuttosto che decidere dal solo riepilogo. La traccia collegata dovrebbe mostrare l'evento esatto e il payload che supportano il risultato.
+    Successivamente, apri una sessione interessata piuttosto che decidere solo dal riepilogo. La traccia collegata dovrebbe mostrare l'evento esatto e il payload che supportano il risultato.
 
-    ![Una sessione collegata da un risultato di audit, aperta all'errore rilevante con i metadati dell'evento e il payload grezzo.](/images/dashboard/audit-linked-session.png)
+    ![Una sessione collegata da un risultato dell'audit, aperta all'errore pertinente con i suoi metadati dell'evento e il payload grezzo.](/images/dashboard/audit-linked-session.png)
 
-    Dopo aver verificato le evidenze, utilizza Issues per assegnare un proprietario alla risposta e tracciarlo indipendentemente dalle future esecuzioni dell'audit.
+    Dopo aver verificato le prove, usa Issues per assegnare un proprietario alla risposta e tracciarlo indipendentemente dalle future esecuzioni dell'audit.
 
-    ![La casella di posta Issues che mostra lavori in corso, riconosciuti e risolti con gravità e proprietà.](/images/dashboard/incidents.png)
+    ![L'inbox Issues che mostra lavori in corso, riconosciuti e risolti con gravità e proprietà.](/images/dashboard/incidents.png)
 
-    Apri il problema per registrare note di investigazione, notificare i sottoscrittori e preservare la cronologia della risposta. Risolvilo solo dopo che la remediazione è stata distribuita e verificata.
+    Apri il problema per registrare note di indagine, notificare i sottoscrittori e conservare la cronologia della risposta. Risolvilo solo dopo che la correzione è stata implementata e verificata.
 
-    ![Una vista dettagliata del problema con la sua fonte, evidenze di violazione, assegnatari, sottoscrittori, timeline e commenti.](/images/dashboard/incident-detail.png)
+    ![Una visualizzazione dettagliata del problema con la sua fonte, prove della violazione, assegnatari, sottoscrittori, cronologia e commenti.](/images/dashboard/incident-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -43,86 +43,43 @@ Un risultato è la dichiarazione supportata da evidenze dell'audit su un errore.
     fp issues assign <issue-id> --assignee engineer@example.com
     fp issues comment-add <issue-id> --body "policy is in observe mode"
     fp issues resolve <issue-id> --yes
-    fp issues close <issue-id> --yes
-    fp issues archive <issue-id>
     ```
 
-    Usa `fp issues subscribe <issue-id>`, `fp issues unsubscribe <issue-id>` e `fp issues subscribers <issue-id>` per gestire i watcher.
+    Usa `fp issues subscribe <issue-id>`, `fp issues unsubscribe <issue-id>` e `fp issues subscribers <issue-id>` per gestire gli osservatori.
 
-    Vedi il [riferimento Cloud CLI per audit e problemi](/it/reference/cloud-cli#audits) per i risultati dell'audit e [`fp issues`](/it/reference/cloud-cli#issues) per la gestione dei problemi.
+    Consulta il [riferimento dell'audit e del problema della Cloud CLI](/it/reference/cloud-cli#audits) per i risultati dell'audit e [`fp issues`](/it/reference/cloud-cli#issues) per la gestione dei problemi.
   </Tab>
 </Tabs>
 
-## Esaminare un risultato
+## Esamina un risultato
 
-Conferma che contiene:
+Conferma che contenga:
 
-- Una modalità di errore stabile, non solo un titolo occasionale
+- Una modalità di anomalia stabile, non solo un titolo occasionale
 - Gravità e impatto operativo
-- ID di sessione interessati o query di supporto
+- ID di sessione interessata o query di supporto
 - Contesto sufficiente per riprodurre il comportamento
-- Una risposta proposta che corrisponda alle evidenze
+- Una risposta proposta che corrisponda alle prove
 
-## Utilizzare un problema per gestire la risposta
+## Usa un problema per gestire la risposta
 
-Crea o collega un problema quando il risultato necessita di assegnazione, discussione, cambiamenti di stato, commenti o sottoscrittori. I problemi possono anche rappresentare incidenti di alert e problemi segnalati manualmente, motivo per cui si trovano sotto la risposta dell'audit piuttosto che nella navigazione principale.
+Crea o collega un problema quando il risultato necessita di assegnazione, discussione, cambamenti di stato, commenti o sottoscrittori. I problemi possono anche rappresentare incidenti di avviso e problemi segnalati manualmente, motivo per cui risiedono sotto la risposta dell'audit piuttosto che nella navigazione primaria.
 
-Risolvi il problema quando la remediazione è distribuita e verificata. Risolvi il risultato quando la modalità di errore è stata affrontata per la popolazione dell'audit. Questi momenti possono differire.
+Risolvi il problema quando la correzione è stata implementata e verificata. Risolvi il risultato quando la modalità di anomalia è stata affrontata per la popolazione dell'audit. Questi momenti possono differire.
 
-## Terminare un problema: risolvere, chiudere o archiviare
-
-Un problema termina una sola volta, e il modo in cui lo termini decide cosa succede la prossima volta che l'audit vede lo stesso pattern.
-
-| Azione | Significa | Se il pattern ritorna |
-| --- | --- | --- |
-| **Risolvi** | L'hai risolto. | Il problema **si riapre**, così scopri che la correzione non ha tenuto. |
-| **Chiudi** | Ne hai finito: non correggere, non è un problema, o non è più rilevante. | **Rimane chiuso**. |
-| **Archivia** | Toglilo dal board. Non dice nulla su come è finito. | Un problema attivo torna automaticamente al board. |
-
-Risolvere e chiudere sono entrambi definitivi e nessuno può sovrascrivere l'altro, quindi un problema che qualcuno ha risolto mantiene quel record. L'archiviazione è separata da entrambi: puoi archiviare un problema in qualsiasi stato e mantiene lo stato in cui è finito. Se un problema archiviato è ancora attivo e il problema si ripresenta, ritorna automaticamente al board — l'archiviazione nasconde la cronologia, non può nascondere un problema attivo.
-
-Chiudere un problema proveniente da un audit dismisses anche il risultato dietro di esso. Non silenzia quel pattern nei tuoi altri audit; per questo, silenzia o dismisses il risultato stesso.
-
-## Ricominciare da capo dopo aver modificato i tuoi agent
-
-Quando distribuisci una serie di modifiche ai tuoi agent, i problemi già sul board descrivono il comportamento che hai appena sostituito. L'azzeramento li risolve in un unico passaggio, insieme ai risultati dell'audit dietro di essi.
+## Trasforma un problema in una bozza di politica
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vai a **Analyze → Issues** e seleziona **clear**, oppure apri un singolo audit e seleziona **clear issues** per limitarlo al lavoro di quell'audit.
-    2. Scegli l'ambito. Ognuno mostra quanti problemi copre prima di impegnarti.
-    3. Conferma. I problemi sono risolti, così come i risultati dell'audit dietro di essi.
+    1. Apri il problema e verifica il suo risultato, le sessioni citate, la causa radice e la raccomandazione.
+    2. Seleziona **generate policy** e esamina il risultato della candidabilità e l'intento di enforcement proposto. Un risultato **no policy** significa che il comportamento potrebbe richiedere un avviso, un cambamento del flusso di lavoro o una risposta umana invece.
+    3. Seleziona **write this policy**, quindi esamina e testa il codice generato in **Admin → policy editor** prima di selezionare **publish version**. Usa **open the editor anyway** quando non sei d'accordo con il controllo di candidabilità.
+    4. Vai a **Admin → enforcement**, distribuisci la versione in modalità **observe** e verifica le sue decisioni sotto **Observe → policy** prima di applicarla.
+
+    Il titolo del problema, la descrizione del risultato, la causa radice, la raccomandazione e l'intento di candidabilità aiutano a comporre la bozza. Nulla viene pubblicato o distribuito automaticamente.
   </Tab>
   <Tab title="CLI">
-    ```bash
-    fp issues clear --all-audits --dry-run
-    fp issues clear --all-audits --yes
-
-    fp issues clear --audit <audit-id> --yes
-    fp issues clear --everything --yes
-    ```
-
-    `--dry-run` segnala cosa cambierebbe senza apportare modifiche. Esattamente uno tra `--audit`, `--all-audits` e `--everything` è obbligatorio.
-  </Tab>
-</Tabs>
-
-**L'azzeramento non sopprime nulla.** Un pattern che le tue modifiche hanno genuinamente risolto rimane assente. Un pattern che le ha superate **riapre** il suo problema alla prossima esecuzione dell'audit — la stessa cosa che fa risolverne uno manualmente — quindi un ricominciare da capo non può nascondere silenziosamente un problema che hai ancora. Quando vuoi veramente che un pattern sia silenzioso per sempre, silenzia o dismisses il risultato invece.
-
-L'azzeramento necessita di autorizzazione sia per chiudere i problemi che per scrivere gli audit, perché risolve i risultati così come i problemi.
-
-## Trasformare un problema in una bozza di policy
-
-<Tabs>
-  <Tab title="Dashboard">
-    1. Apri il problema e verifica il suo risultato, sessioni citate, causa principale e raccomandazione.
-    2. Seleziona **generate policy** e rivedi il risultato di candidacy e l'intento di enforcement proposto. Un risultato **no policy** significa che il comportamento potrebbe richiedere un alert, un cambiamento di workflow o una risposta umana invece.
-    3. Seleziona **write this policy**, quindi rivedi e testa la fonte generata in **Admin → policy editor** prima di selezionare **publish version**. Usa **open the editor anyway** quando non sei d'accordo con il controllo di candidacy.
-    4. Vai a **Admin → enforcement**, distribuisci la versione in modalità **observe**, e verifica le sue decisioni in **Observe → policy** prima di farla rispettare.
-
-    Il titolo del problema, la descrizione del risultato, la causa principale, la raccomandazione e l'intento di candidacy aiutano a comporre la bozza. Nulla è pubblicato o distribuito automaticamente.
-  </Tab>
-  <Tab title="CLI">
-    Usa la CLI per ispezionare le evidenze prima di aprire il problema nel dashboard:
+    Usa la CLI per ispezionare le prove prima di aprire il problema nel dashboard:
 
     ```bash
     fp issues show <issue-id>
@@ -130,10 +87,10 @@ L'azzeramento necessita di autorizzazione sia per chiudere i problemi che per sc
     fp events --session-id <session-id> --full --all
     ```
 
-    La candidacy della policy, la pubblicazione Cloud e la distribuzione della flotta sono flussi di lavoro del dashboard. Usa `failproofai policies --install --custom <file>` quando desideri convalidare prima localmente una fonte di policy equivalente.
+    La candidabilità della politica, la pubblicazione nel Cloud e la distribuzione della flotta sono flussi di lavoro del dashboard. Usa `failproofai policies --install --custom <file>` quando desideri convalidare prima il codice della politica equivalente localmente.
   </Tab>
 </Tabs>
 
-<Card title="Autore di una policy" icon="shield-plus" href="/it/policies/editor">
-  Converti un pattern di azione confermato e ripetibile in una versione di policy.
+<Card title="Author a policy" icon="shield-plus" href="/it/policies/editor">
+  Converti un modello di azione confermato e ripetibile in una versione di politica.
 </Card>

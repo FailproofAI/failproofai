@@ -1,48 +1,44 @@
 ---
 title: "Scrivi una valutazione"
-description: "Descrivi cosa misurare e lascia che l'assistente rediga una valutazione Python ospitata, oppure scrivi il codice tu stesso."
+description: "Descrivi cosa misurare e lascia che l'assistente rediga una valutazione Python ospitata, oppure scrivi il codice tu stesso. I giudici LLM vengono eseguiti nel tuo worker."
 icon: "file-pen-line"
 ---
 
-Le valutazioni ospitate sono piccoli programmi Python deterministici, scritti nel dashboard ed eseguiti sulla flotta di valutatori di Failproof AI. Contano e confrontano: quante chiamate a strumenti, quanti errori, quanto tempo ha richiesto una sessione.
+Le valutazioni ospitate sono piccoli Python deterministici, scritti nel dashboard ed eseguiti sulla flotta di valutatori di Failproof AI. La logica più complessa — un giudice LLM, un pacchetto, un segreto, una chiamata di rete — viene eseguita nel [tuo worker](#scrivi-nel-tuo-worker).
 
-Per domande che richiedono che la conversazione sia *compresa* — la risposta era corretta, la risposta era scortese, l'agente ha seguito una politica — scrivi un [giudice LLM](/it/evaluations/judge) invece. Viene redatto nello stesso posto, partendo da una descrizione di come dovrebbe essere il risultato.
-
-Qualsiasi cosa che necessiti di un pacchetto, un segreto, o la tua rete personale viene eseguita nel [tuo worker](#write-it-in-your-own-worker).
-
-## Redigi dalla descrizione
+## Redila da una descrizione
 
 1. Vai a **Analyze → eval authoring** e seleziona **new eval**.
 2. Descrivi cosa misurare in inglese semplice, oppure scegli da **start from an example…**, e seleziona **draft**.
-3. Esamina i campi e il codice che viene compilato, quindi [testalo](/it/evaluations/test) e [distribuiscilo](/it/evaluations/deploy).
+3. Rivedi i campi e il codice che compila, quindi [testalo](/it/evaluations/test) e [distribuiscilo](/it/evaluations/deploy).
 
-![La pagina di authoring eval con una valutazione redatta: la descrizione, le note dell'assistente sulla bozza, e i campi nome, chiave, versione, risultato, timeout, etichette e condizione.](/images/dashboard/eval-authoring-draft.png)
+![La pagina di authoring eval con una valutazione redatta: la descrizione, le note dell'assistente sulla bozza, e i campi name, key, version, result, timeout, labels e condition.](/images/dashboard/eval-authoring-draft.png)
 
-La bozza è radicata negli eventi della tua organizzazione: la pagina legge quali chiavi di payload le tue sessioni hanno portato negli ultimi sette giorni, così il codice legge chiavi che esistono anziché indovinare. Prima di consegnare la bozza, l'assistente la testa su fino a cinque delle tue sessioni recenti, ripara tutto ciò che può provare sia rotto — per fino a tre round — e verifica una volta che il codice misuri quello che hai chiesto. Mantieni la descrizione specifica: i prompt ampi sono più lenti e possono andare in timeout. Esamina il codice comunque; la distribuzione non è mai bloccata.
+La bozza è radicata negli eventi della tua organizzazione: la pagina legge quali chiavi di payload le tue sessioni hanno trasportato negli ultimi sette giorni, quindi il codice legge chiavi che esistono piuttosto che indovinare. Prima di consegnare la bozza, l'assistente la testa su fino a cinque delle tue sessioni recenti, ripara tutto ciò che può provare sia rotto — per un massimo di tre cicli — e controlla una volta che il codice misuri quello che hai chiesto. Mantieni la descrizione specifica: i prompt ampi sono più lenti e possono andare in timeout. Rivedi il codice comunque; la distribuzione non è mai bloccata.
 
 ## Imposta i campi
 
-| Campo | Cosa rappresenta |
+| Campo | Cos'è |
 | --- | --- |
-| name | Quello che le persone vedono. Modificabile in seguito |
-| key | L'identificatore stabile su cui vengono graficati i suoi risultati, come `code_assistant_quality_gate` |
-| version | Qualsiasi stringa di versione senza spazi, come `1.0.0` |
-| result | **score** (da 0 a 1), **metric** (un numero con un'unità), o **assertion** (superato o no) |
-| timeout seconds | Default 30. La sandbox interrompe qualsiasi singola esecuzione a 60 |
+| name | Quello che vedono le persone. Modificabile in seguito |
+| key | L'identificatore stabile sotto il quale i suoi risultati vengono graficati, ad esempio `code_assistant_quality_gate` |
+| version | Qualsiasi stringa di versione senza spazi, ad esempio `1.0.0` |
+| result | **score** (da 0 a 1), **metric** (un numero con un'unità), o **assertion** (riuscito o meno) |
+| timeout seconds | Predefinito 30. La sandbox interrompe qualsiasi singola esecuzione a 60 |
 | labels | Fino a 20, separate da virgole. Modificabili in seguito |
-| condition | Facoltativa. Un'espressione Python; la valutazione viene eseguita solo su sessioni dove è `True` |
+| condition | Opzionale. Un'espressione Python; la valutazione viene eseguita solo sulle sessioni in cui è `True` |
 
-Usa la condizione per limitare una valutazione agli agenti e agli ambienti per cui è intesa:
+Usa la condition per limitare una valutazione agli agenti e agli ambienti per cui è destinata:
 
 ```python
 session.agent_id == "code-assistant" and session.environment == "production"
 ```
 
-La chiave, la versione, il tipo di risultato, la condizione e il codice sono immutabili una volta distribuiti: per cambiarli, pubblica una nuova versione. Il nome, le etichette e se è abilitato restano modificabili.
+La key, la version, il tipo di result, la condition e il codice sono immutabili una volta distribuiti: per modificarne uno qualsiasi, pubblica una nuova versione. Il name, i labels e se è abilitato rimangono modificabili.
 
 ## Scrivi il codice tu stesso
 
-Il **codice di valutazione** è un'espressione Python che ritorna `EvalResult(...)`, con `session` nello scope. Questo scorifica la quota di risultati di strumenti che sono tornati ok:
+Il **codice evaluator** è un'unica espressione Python che restituisce `EvalResult(...)`, con `session` in ambito. Questo calcola la quota di risultati di strumenti tornati ok:
 
 ```python
 EvalResult(
@@ -55,22 +51,22 @@ EvalResult(
 )
 ```
 
-Un risultato inizia con la chiave della valutazione, nel suo tipo dichiarato: `score=` per una valutazione di score, o una voce `metrics` o `assertions` nominata dopo la chiave per una metrica o un'asserzione. Altre metriche e asserzioni lo accompagnano, fino a 25 risultati in un'esecuzione.
+Un risultato inizia con la propria key della valutazione, nel suo tipo dichiarato: `score=` per una valutazione score, oppure una voce `metrics` o `assertions` denominata dalla key per una valutazione metric o assertion. Altre metriche e assertion la accompagnano, fino a 25 risultati in un'esecuzione.
 
-| Nello scope | Ti fornisce |
+| In ambito | Ti dà |
 | --- | --- |
 | `session` | `session_id`, `agent_id`, `environment`, `started_at`, `ended_at`, `event_count`, e `events`, più `count(event_type)` e `events_of_type(event_type)` |
-| Ogni evento | `id`, `ts`, `event_type`, e `payload` |
-| Tipi di risultato | `EvalResult`, `Score`, `Metric`, `Assertion`, e `ConditionResult` per una condizione |
+| Ogni event | `id`, `ts`, `event_type`, e `payload` |
+| Tipi di risultato | `EvalResult`, `Score`, `Metric`, `Assertion`, e `ConditionResult` per una condition |
 | Builtins | `abs`, `all`, `any`, `bool`, `dict`, `float`, `int`, `len`, `list`, `max`, `min`, `range`, `round`, `set`, `sorted`, `str`, `sum`, `tuple` |
 
-Nient'altro è raggiungibile: nessun import, e nessun attributo al di là dei dati di sessione e dei metodi string e dictionary semplici come `get`, `lower`, e `split`, che devono essere chiamati piuttosto che referenziati. Le chiavi di payload sono quello che i tuoi agenti inviano — `status` sopra è solo un esempio — quindi leggile da una sessione reale. **format** ordina il codice e **fix** chiede all'assistente di ripararlo. Il codice può essere fino a 128 KiB, e la condizione fino a 16 KiB.
+Nient'altro è raggiungibile: nessun import, e nessun attributo oltre i dati della sessione e i metodi plain string e dictionary come `get`, `lower`, e `split`, che devono essere chiamati piuttosto che referenziati. Le chiavi di payload sono qualunque cosa i tuoi agenti inviino — `status` sopra è solo un esempio — quindi leggile da una sessione reale. **format** ordina il codice e **fix** chiede all'assistente di ripararlo. Il codice può essere fino a 128 KiB, e la condition fino a 16 KiB.
 
-![L'editor del codice di valutazione, con format e fix, che mostra le asserzioni di una valutazione redatta.](/images/dashboard/eval-authoring-code.png)
+![L'editor del codice evaluator, con format e fix, che mostra le assertion di una valutazione redatta.](/images/dashboard/eval-authoring-code.png)
 
-## Scrivilo nel tuo worker
+## Scrivi nel tuo worker
 
-Quando una valutazione ha bisogno di un pacchetto, un segreto, la rete, o un modello che ospiti tu stesso, scrivila con [Evaluator SDK](/it/reference/evaluator-sdk) ed eseguila sulla tua infrastruttura. Usa gli stessi tipi di risultato, e i suoi risultati appaiono insieme a quelli ospitati, etichettati **customer**:
+Quando una valutazione ha bisogno di un modello, un pacchetto, un segreto, o la rete, scrivila con l'[Evaluator SDK](/it/reference/evaluator-sdk) ed eseguila sulla tua infrastruttura. Usa gli stessi tipi di risultato, e i suoi risultati appaiono accanto a quelli ospitati, etichettati **customer**:
 
 ```python
 @app.eval("answer_relevance", version="judge-v1", labels=["llm_judge"], timeout_seconds=30)

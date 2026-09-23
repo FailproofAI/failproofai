@@ -1,54 +1,44 @@
 ---
-title: "Valutare gli agenti"
-description: "Assegna un punteggio a ogni sessione completata con valutazioni che definisci: controlli Python ospitati, o giudici LLM nel tuo worker."
+title: "Valuta gli agenti"
+description: "Assegna un punteggio a ogni sessione conclusa dell'agente con valutazioni che definisci: controlli Python ospitati o giudici LLM nel tuo worker."
 icon: "gauge"
 ---
 
-Una valutazione assegna un punteggio a una sessione agente completata. Quando una sessione termina, ogni valutazione abilitata che le si applica viene eseguita e registra ciò che ha trovato, con un ragionamento che puoi leggere accanto alla traccia:
+Una valutazione assegna un punteggio a una sessione dell'agente conclusa. Quando una sessione termina, ogni valutazione abilitata che le si applica viene eseguita e registra i risultati trovati, con un ragionamento che puoi leggere accanto alla traccia:
 
-- un **punteggio** da 0 a 1, facoltativamente contrassegnato come superato o non superato
-- una **metrica**, come un conteggio, una durata o un costo, con la sua unità
-- un'**asserzione**, che è stata superata o meno
+- un **punteggio** da 0 a 1, opzionalmente contrassegnato come superato o non superato
+- una **metrica**, come un conteggio, una durata o un costo, con la relativa unità
+- un'**asserzione**, che è stata superata o non superata
 
 ## Due tipi di valutatore
 
 | | Python ospitato | Il tuo worker |
 | --- | --- | --- |
-| Scritto | Nel dashboard, sotto **Analyze → eval authoring** | In Python, con [Evaluator SDK](/it/reference/evaluator-sdk) |
+| Scritto | Nel dashboard, sotto **Analyze → eval authoring** | In Python, con l'[Evaluator SDK](/it/reference/evaluator-sdk) |
 | Esecuzione | Sul valutatore gestito di Failproof AI, in una sandbox | Sulla tua infrastruttura |
-| Più adatto a | Controlli deterministici e quelli supportati da modello che ospitiamo per te | Pacchetti, segreti, la tua rete, modelli che ospitiamo tu stesso, elaborazione intensiva |
+| Ideale per | Controlli deterministici basati su codice | Giudici LLM, chiamate ai modelli, pacchetti, segreti, accesso di rete, elaborazione pesante |
 
-Le valutazioni ospitate hanno tre forme, e l'assistente sceglie tra di esse per te:
+Python ospitato è deliberatamente limitato: un'espressione, nessuna importazione, nessuna rete. Qualsiasi cosa che richieda un modello — un giudice LLM che valuta se una risposta era rilevante, ad esempio — viene eseguita nel tuo worker. Nessuno dei due tipi ha bisogno di una connessione in entrata: i worker richiedono le sessioni terminate e inviano i risultati tramite HTTPS in uscita.
 
-| | Legge la sessione con | Ti fornisce |
-| --- | --- | --- |
-| **Code** | nulla — un'espressione Python, nessun import, nessuna rete | un punteggio, una metrica o un'asserzione |
-| **[Classifier](/it/evaluations/jev)** | un piccolo modello costruito per la classificazione | un punteggio, e nulla di più — non spiega se stesso |
-| **[Judge](/it/evaluations/judge)** | un modello generico | un punteggio **e** il ragionamento dietro di esso |
+## Ogni organizzazione valuta i propri agenti
 
-Code è gratuito da eseguire. Gli altri due richiedono una chiamata al modello per sessione, quindi fornisci loro una condizione che li restringa alle sessioni a cui la domanda si applica effettivamente.
+Le valutazioni appartengono all'organizzazione che le definisce. Ogni organizzazione su un'istanza scrive le proprie — i propri controlli, condizioni, soglie ed etichette — le varia e le distribuisce senza influenzare altre, e vede solo i propri risultati. Filtra questi risultati per agente, ambiente, valutazione e ora, oppure chiedi informazioni all'assistente.
 
-Il tuo worker è ancora il posto in cui va una valutazione quando ha bisogno di qualcosa che non ospitiamo: un pacchetto, un segreto, la tua rete, o un modello che esegui tu stesso. Nessuno dei due tipi ha bisogno di una connessione in entrata: i worker richiedono sessioni completate e presentano risultati tramite HTTPS in uscita.
-
-## Ogni organizzazione valuta i suoi agenti
-
-Le valutazioni appartengono all'organizzazione che le definisce. Ogni organizzazione su un'istanza scrive le sue — i suoi controlli, condizioni, soglie ed etichette — versioni e le distribuisce senza interessare nessun altro, e vede solo i suoi risultati. Filtra questi risultati per agente, ambiente, valutazione e tempo, o chiedi all'assistente riguardo a loro.
-
-## Dal primo bozza ai punteggi live
+## Dalla prima bozza ai punteggi live
 
 <Steps>
   <Step title="Scrivila">
-    Descrivi cosa misurare e lascia che l'assistente la rediga, o scrivila tu stesso. Vedi [Write an evaluation](/it/evaluations/write).
+    Descrivi cosa misurare e lascia che l'assistente la rediga, oppure scrivila tu stesso. Vedi [Scrivi una valutazione](/it/evaluations/write).
   </Step>
   <Step title="Testala">
-    Eseguila contro sessioni reali prima che diventi live; nulla viene memorizzato. Vedi [Test an evaluation](/it/evaluations/test).
+    Eseguila su sessioni reali prima che sia live; nulla viene memorizzato. Vedi [Testa una valutazione](/it/evaluations/test).
   </Step>
   <Step title="Distribuisci e versiona">
-    Distribuisci una versione immutabile, pubblica nuove versioni mentre evolve, e torna indietro a una precedente. Vedi [Deploy and version](/it/evaluations/deploy).
+    Distribuisci una versione immutabile, pubblica nuove versioni mentre evolve, e torna a una versione precedente. Vedi [Distribuisci e versiona](/it/evaluations/deploy).
   </Step>
   <Step title="Leggi i risultati">
-    Traccia i punteggi nel tempo, confronta agenti e ambienti, e chiedi all'assistente. Vedi [Read evaluation results](/it/sessions/evaluations).
+    Traccia i punteggi nel tempo, confronta agenti e ambienti, e chiedi all'assistente. Vedi [Leggi i risultati della valutazione](/it/sessions/evaluations).
   </Step>
 </Steps>
 
-La valutazione procede in avanti: una versione distribuita ora assegna un punteggio alle sessioni che finiscono da ora in poi. Per assegnare un punteggio alle sessioni che già hai, [riempile con dati storici](/it/evaluations/deploy#score-sessions-you-already-have).
+La valutazione procede in avanti: una versione distribuita ora assegna un punteggio alle sessioni che terminano da ora in poi. Per assegnare un punteggio alle sessioni che hai già, [completale retroattivamente](/it/evaluations/deploy#valuta-le-sessioni-già-presenti).

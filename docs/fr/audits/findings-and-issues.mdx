@@ -1,35 +1,35 @@
 ---
-title: "Résultats et problèmes"
-description: "Transformez les preuves d'audit en travaux de remédiation traçables et assignés."
+title: "Constats et problèmes"
+description: "Transformez les preuves d'audit en travaux de remédiation attribués et traçables."
 icon: "clipboard-check"
 ---
 
-Un résultat est l'énoncé étayé par des preuves d'un échec constaté lors de l'audit. Un problème est le flux de travail durable pour y répondre.
+Un constat est l'énoncé, étayé par des preuves, qu'un audit formule sur un échec. Un problème est le flux de travail durable permettant d'y répondre.
 
-## Trier et assigner le travail
+## Trier et attribuer le travail
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Ouvrez **Analyze → Audits**, choisissez une exécution terminée et sélectionnez un résultat pour inspecter son analyse, sa recommandation, ses sessions et ses requêtes de preuves.
-    2. Accusez réception, assignez, ignorez, mettez en sourdine, résolvez ou rouvrez le résultat après avoir vérifié ses preuves.
-    3. Accédez à **Analyze → Issues** et filtrez la boîte de réception durable par statut, gravité ou responsable.
-    4. Ouvrez le problème pour l'assigner, ajouter des commentaires ou des abonnés, et le résoudre une fois le correctif vérifié.
+    1. Ouvrez **Analyze → Audits**, choisissez une exécution terminée et sélectionnez un constat pour inspecter son analyse, sa recommandation, ses sessions et ses requêtes de preuves.
+    2. Accusez réception, attribuez, rejetez, mettez en sourdine, résolvez ou rouvrez le constat après avoir vérifié ses preuves.
+    3. Accédez à **Analyze → Issues** et filtrez la boîte de réception durable par statut, sévérité ou responsable.
+    4. Ouvrez le problème pour l'attribuer, ajouter des commentaires ou des abonnés, et le résoudre une fois le correctif vérifié.
 
-    Commencez par le résumé du résultat. Vérifiez que la description de l'échec, la réponse recommandée, la gravité et le classement correspondent aux sessions que vous attendiez que l'audit examine.
+    Commencez par le résumé du constat. Vérifiez que la description de l'échec, la réponse recommandée, la sévérité et le classement correspondent aux sessions que l'audit était censé examiner.
 
-    ![Un résultat d'audit avec sa gravité, son nombre d'occurrences, l'analyse de la cause racine, l'action recommandée, les facteurs de classement et les preuves.](/images/dashboard/audit-finding.png)
+    ![Un constat d'audit avec sa sévérité, son nombre d'occurrences, l'analyse des causes racines, l'action recommandée, les facteurs de classement et les preuves.](/images/dashboard/audit-finding.png)
 
-    Ensuite, ouvrez une session concernée plutôt que de décider sur la seule base du résumé. La trace liée doit montrer l'événement exact et la charge utile qui étayent le résultat.
+    Ensuite, ouvrez une session affectée plutôt que de décider sur la seule base du résumé. La trace liée doit montrer l'événement exact et la charge utile qui étayent le constat.
 
-    ![Une session liée à un résultat d'audit, ouverte à l'erreur pertinente avec ses métadonnées d'événement et sa charge utile brute.](/images/dashboard/audit-linked-session.png)
+    ![Une session liée depuis un constat d'audit, ouverte sur l'erreur concernée avec ses métadonnées d'événement et sa charge utile brute.](/images/dashboard/audit-linked-session.png)
 
-    Après avoir vérifié les preuves, utilisez Issues pour attribuer un responsable à la réponse et la suivre indépendamment des prochaines exécutions d'audit.
+    Après avoir vérifié les preuves, utilisez Issues pour attribuer la réponse à un responsable et en assurer le suivi indépendamment des prochaines exécutions d'audit.
 
-    ![La boîte de réception Issues affichant les travaux en cours, accusés de réception et résolus avec leur gravité et leur responsable.](/images/dashboard/incidents.png)
+    ![La boîte de réception Issues affichant les travaux en cours, accusés de réception et résolus, avec leur sévérité et leur responsable.](/images/dashboard/incidents.png)
 
     Ouvrez le problème pour consigner les notes d'investigation, notifier les abonnés et conserver l'historique de la réponse. Ne le résolvez qu'une fois la remédiation déployée et vérifiée.
 
-    ![Vue détaillée d'un problème avec sa source, les preuves de dépassement, les responsables, les abonnés, la chronologie et les commentaires.](/images/dashboard/incident-detail.png)
+    ![Vue détaillée d'un problème avec sa source, les preuves de violation, les responsables, les abonnés, la chronologie et les commentaires.](/images/dashboard/incident-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -43,84 +43,40 @@ Un résultat est l'énoncé étayé par des preuves d'un échec constaté lors d
     fp issues assign <issue-id> --assignee engineer@example.com
     fp issues comment-add <issue-id> --body "policy is in observe mode"
     fp issues resolve <issue-id> --yes
-    fp issues close <issue-id> --yes
-    fp issues archive <issue-id>
     ```
 
     Utilisez `fp issues subscribe <issue-id>`, `fp issues unsubscribe <issue-id>` et `fp issues subscribers <issue-id>` pour gérer les observateurs.
 
-    Consultez la [référence CLI Cloud pour les audits et les problèmes](/fr/reference/cloud-cli#audits) pour les résultats d'audit et [`fp issues`](/fr/reference/cloud-cli#issues) pour la gestion des problèmes.
+    Consultez la [référence CLI Cloud pour les audits et les problèmes](/fr/reference/cloud-cli#audits) pour les constats d'audit, et [`fp issues`](/fr/reference/cloud-cli#issues) pour la gestion des problèmes.
   </Tab>
 </Tabs>
 
-## Examiner un résultat
+## Examiner un constat
 
 Vérifiez qu'il contient :
 
 - Un mode d'échec stable, et pas seulement un titre ponctuel
-- La gravité et l'impact opérationnel
-- Les identifiants de sessions concernées ou les requêtes de support
+- La sévérité et l'impact opérationnel
+- Les identifiants de session affectées ou les requêtes de support
 - Suffisamment de contexte pour reproduire le comportement
 - Une réponse proposée cohérente avec les preuves
 
 ## Utiliser un problème pour gérer la réponse
 
-Créez ou liez un problème lorsque le résultat nécessite une assignation, une discussion, des changements de statut, des commentaires ou des abonnés. Les problèmes peuvent également représenter des incidents d'alerte et des signalements manuels, c'est pourquoi ils se trouvent dans la réponse aux audits plutôt que dans la navigation principale.
+Créez ou liez un problème lorsque le constat nécessite une attribution, une discussion, des changements de statut, des commentaires ou des abonnés. Les problèmes peuvent également représenter des incidents d'alerte et des signalements manuels, c'est pourquoi ils relèvent de la réponse aux audits plutôt que de la navigation principale.
 
-Résolvez le problème lorsque la remédiation est déployée et vérifiée. Résolvez le résultat lorsque le mode d'échec a été traité pour la population d'audit. Ces deux moments peuvent différer.
+Résolvez le problème lorsque la remédiation est déployée et vérifiée. Résolvez le constat lorsque le mode d'échec a été traité pour la population de l'audit. Ces deux moments peuvent différer.
 
-## Clôturer un problème : résoudre, fermer ou archiver
-
-Un problème se termine une seule fois, et la manière dont vous le terminez détermine ce qui se passe la prochaine fois que l'audit détecte le même schéma.
-
-| Action | Signification | Si le schéma réapparaît |
-| --- | --- | --- |
-| **Résoudre** | Vous l'avez corrigé. | Le problème **se rouvre**, vous indiquant que le correctif n'a pas tenu. |
-| **Fermer** | Vous en avez terminé : ne sera pas corrigé, pas un problème, ou n'est plus pertinent. | Il **reste fermé**. |
-| **Archiver** | Retirer du tableau. Ne dit rien sur la façon dont il s'est terminé. | Un problème actif revient automatiquement au tableau. |
-
-Résoudre et fermer sont tous deux définitifs et ni l'un ni l'autre ne peut écraser l'autre, donc un problème que quelqu'un a résolu conserve cet enregistrement. L'archivage est distinct des deux : vous pouvez archiver un problème dans n'importe quel état, et il conserve l'état dans lequel il s'est terminé. Si un problème archivé est toujours actif et que le problème réapparaît, il revient automatiquement au tableau — l'archivage masque l'historique, il ne peut pas masquer un problème actif.
-
-Fermer un problème issu d'un audit rejette également le résultat qui lui est associé. Cela ne réduit pas ce schéma au silence dans vos autres audits ; pour cela, mettez en sourdine ou rejetez le résultat lui-même.
-
-## Repartir de zéro après avoir modifié vos agents
-
-Lorsque vous déployez une série de modifications à vos agents, les problèmes déjà présents au tableau décrivent le comportement que vous venez de remplacer. Effacer les résout en une seule étape, ainsi que les résultats d'audit qui les sous-tendent.
+## Transformer un problème en brouillon de politique
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Accédez à **Analyze → Issues** et sélectionnez **clear**, ou ouvrez un audit spécifique et sélectionnez **clear issues** pour le limiter au travail de cet audit.
-    2. Choisissez la portée. Chacune indique le nombre de problèmes couverts avant que vous ne le confirmiez.
-    3. Confirmez. Les problèmes sont résolus, ainsi que les résultats d'audit qui les sous-tendent.
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    fp issues clear --all-audits --dry-run
-    fp issues clear --all-audits --yes
-
-    fp issues clear --audit <audit-id> --yes
-    fp issues clear --everything --yes
-    ```
-
-    `--dry-run` indique ce qui changerait sans effectuer de modifications. Exactement l'une des options
-    `--audit`, `--all-audits` et `--everything` est requise.
-  </Tab>
-</Tabs>
-
-**Effacer ne supprime rien.** Un schéma que vos modifications ont réellement corrigé disparaît définitivement. Un schéma qui a survécu **rouvre** son problème lors de la prochaine exécution d'audit — comme le ferait une résolution manuelle — donc un nouveau départ ne peut pas dissimuler silencieusement un problème que vous avez toujours. Si vous souhaitez qu'un schéma soit définitivement réduit au silence, mettez en sourdine ou rejetez le résultat à la place.
-
-L'effacement nécessite l'autorisation de fermer des problèmes et d'écrire des audits, car il résout à la fois les résultats et les problèmes.
-
-## Transformer un problème en ébauche de politique
-
-<Tabs>
-  <Tab title="Tableau de bord">
-    1. Ouvrez le problème et vérifiez son résultat, les sessions citées, la cause racine et la recommandation.
-    2. Sélectionnez **generate policy** et examinez le résultat de candidature et l'intention d'application proposée. Un résultat **no policy** signifie que le comportement peut nécessiter une alerte, un changement de flux de travail ou une réponse humaine à la place.
-    3. Sélectionnez **write this policy**, puis examinez et testez le code source généré dans **Admin → policy editor** avant de sélectionner **publish version**. Utilisez **open the editor anyway** si vous n'êtes pas d'accord avec la vérification de candidature.
+    1. Ouvrez le problème et vérifiez son constat, les sessions citées, la cause racine et la recommandation.
+    2. Sélectionnez **generate policy** et examinez le résultat de candidature et l'intention d'application proposée. Un résultat **no policy** signifie que le comportement peut nécessiter une alerte, un changement de processus ou une intervention humaine.
+    3. Sélectionnez **write this policy**, puis examinez et testez le code source généré dans **Admin → policy editor** avant de sélectionner **publish version**. Utilisez **open the editor anyway** si vous êtes en désaccord avec la vérification de candidature.
     4. Accédez à **Admin → enforcement**, déployez la version en mode **observe** et vérifiez ses décisions sous **Observe → policy** avant de l'appliquer.
 
-    Le titre du problème, la description du résultat, la cause racine, la recommandation et l'intention de candidature contribuent à composer l'ébauche. Rien n'est publié ni déployé automatiquement.
+    Le titre du problème, la description du constat, la cause racine, la recommandation et l'intention de candidature contribuent à composer le brouillon. Rien n'est publié ni déployé automatiquement.
   </Tab>
   <Tab title="CLI">
     Utilisez le CLI pour inspecter les preuves avant d'ouvrir le problème dans le tableau de bord :
@@ -131,10 +87,10 @@ L'effacement nécessite l'autorisation de fermer des problèmes et d'écrire des
     fp events --session-id <session-id> --full --all
     ```
 
-    La candidature à une politique, la publication dans le Cloud et le déploiement sur la flotte sont des flux de travail du tableau de bord. Utilisez `failproofai policies --install --custom <file>` lorsque vous souhaitez d'abord valider localement un code source de politique équivalent.
+    La candidature de politique, la publication Cloud et le déploiement sur flotte sont des flux de travail propres au tableau de bord. Utilisez `failproofai policies --install --custom <file>` si vous souhaitez d'abord valider localement un code source de politique équivalent.
   </Tab>
 </Tabs>
 
 <Card title="Créer une politique" icon="shield-plus" href="/fr/policies/editor">
-  Convertissez un schéma d'action confirmé et reproductible en une version de politique.
+  Convertissez un schéma d'action confirmé et reproductible en version de politique.
 </Card>

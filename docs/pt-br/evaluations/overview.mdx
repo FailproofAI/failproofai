@@ -4,35 +4,25 @@ description: "Pontue cada sessão finalizada com avaliações que você define: 
 icon: "gauge"
 ---
 
-Uma avaliação pontua uma sessão de agente finalizada. Quando uma sessão termina, todas as avaliações habilitadas que se aplicam a ela são executadas e registram o que encontraram, com raciocínio que você pode ler ao lado do trace:
+Uma avaliação pontua uma sessão de agente finalizada. Quando uma sessão termina, todas as avaliações habilitadas que se aplicam a ela são executadas e registram o que encontraram, com o raciocínio que você pode ler ao lado do trace:
 
 - uma **pontuação** de 0 a 1, opcionalmente marcada como aprovada ou reprovada
 - uma **métrica**, como uma contagem, uma duração ou um custo, com sua unidade
-- uma **asserção**, que foi aprovada ou não
+- uma **asserção**, que passou ou não
 
 ## Dois tipos de avaliador
 
-| | Python hospedado | Seu próprio worker |
+| | Python Hospedado | Seu próprio worker |
 | --- | --- | --- |
 | Escrito | No dashboard, em **Analyze → eval authoring** | Em Python, com o [SDK de Avaliador](/pt-br/reference/evaluator-sdk) |
-| Executa | No avaliador gerenciado do Failproof AI, em sandbox | Na sua infraestrutura |
-| Ideal para | Verificações determinísticas e as com modelo que hospedamos para você | Pacotes, segredos, sua própria rede, modelos que você mesmo hospeda, processamento pesado |
+| Executa | No avaliador gerenciado do Failproof AI, em um sandbox | Na sua infraestrutura |
+| Ideal para | Verificações determinísticas baseadas em código | Juízes LLM, chamadas de modelo, pacotes, segredos, acesso à rede, processamento pesado |
 
-As avaliações hospedadas vêm em três formatos, e o assistente escolhe entre eles automaticamente:
-
-| | Lê a sessão com | Fornece |
-| --- | --- | --- |
-| **Código** | nada — uma expressão Python simples, sem imports, sem rede | uma pontuação, uma métrica ou uma asserção |
-| **[Classificador](/pt-br/evaluations/jev)** | um modelo pequeno desenvolvido para classificação | apenas uma pontuação — ele não se explica |
-| **[Juiz](/pt-br/evaluations/judge)** | um modelo de propósito geral | uma pontuação **e** o raciocínio por trás dela |
-
-Código não tem custo de execução. Os outros dois custam uma chamada de modelo por sessão, então defina uma condição que os restrinja às sessões sobre as quais a pergunta realmente se aplica.
-
-Seu próprio worker ainda é onde uma avaliação vai quando precisa de algo que não hospedamos: um pacote, um segredo, sua própria rede ou um modelo que você executa. Nenhum dos dois precisa de uma conexão de entrada: workers buscam sessões finalizadas e enviam resultados via HTTPS de saída.
+O Python Hospedado é deliberadamente limitado: uma expressão, sem imports, sem rede. Qualquer coisa que precise de um modelo — um juiz LLM avaliando se uma resposta foi relevante, por exemplo — executa no seu próprio worker. Nenhum dos dois tipos precisa de uma conexão de entrada: os workers buscam sessões finalizadas e enviam resultados via HTTPS de saída.
 
 ## Cada organização avalia seus próprios agentes
 
-As avaliações pertencem à organização que as define. Cada organização em uma instância escreve as suas próprias — suas próprias verificações, condições, limites e rótulos — versiona e implanta sem afetar nenhuma outra, e vê apenas seus próprios resultados. Filtre esses resultados por agente, ambiente, avaliação e período, ou pergunte ao assistente sobre eles.
+As avaliações pertencem à organização que as define. Cada organização em uma instância escreve as suas próprias — com suas próprias verificações, condições, limites e rótulos — versionando e implantando-as sem afetar nenhuma outra, e visualizando apenas seus próprios resultados. Filtre esses resultados por agente, ambiente, avaliação e período, ou pergunte ao assistente sobre eles.
 
 ## Do primeiro rascunho às pontuações ao vivo
 
@@ -44,11 +34,11 @@ As avaliações pertencem à organização que as define. Cada organização em 
     Execute contra sessões reais antes de entrar em produção; nada é armazenado. Veja [Testar uma avaliação](/pt-br/evaluations/test).
   </Step>
   <Step title="Implante e versione">
-    Implante uma versão imutável, publique novas versões conforme ela evolui e faça rollback para uma versão anterior. Veja [Implantar e versionar](/pt-br/evaluations/deploy).
+    Implante uma versão imutável, publique novas versões conforme ela evolui e reverta para uma anterior quando necessário. Veja [Implantar e versionar](/pt-br/evaluations/deploy).
   </Step>
   <Step title="Leia os resultados">
-    Visualize pontuações ao longo do tempo, compare agentes e ambientes, e consulte o assistente. Veja [Ler resultados de avaliação](/pt-br/sessions/evaluations).
+    Visualize pontuações ao longo do tempo, compare agentes e ambientes e consulte o assistente. Veja [Ler resultados de avaliações](/pt-br/sessions/evaluations).
   </Step>
 </Steps>
 
-A execução das avaliações é prospectiva: uma versão implantada agora pontua as sessões que forem concluídas a partir de agora. Para pontuar sessões que você já possui, [faça um backfill delas](/pt-br/evaluations/deploy#score-sessions-you-already-have).
+A execução de avaliações segue em frente: uma versão implantada agora pontua as sessões que forem finalizadas a partir deste momento. Para pontuar sessões que você já tem, [faça um backfill](/pt-br/evaluations/deploy#pontuar-sessões-que-você-já-tem).

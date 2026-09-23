@@ -45,7 +45,10 @@ export interface RegisteredPolicy {
   params?: PolicyParamsSchema;
   /** Whether Jev may clear this policy's deny/instruct; see {@link effectiveAuthority}. */
   authority?: PolicyAuthority;
-  /** The semantic policies (`src/hooks/semantic/policies.ts`) that must all come back clear. */
+  /**
+   * The semantic policies (`src/hooks/semantic/policies.ts`) that must all be
+   * asked, and none of which may answer `deny`, before Jev clears this policy.
+   */
   reviewedBy?: string[];
 }
 
@@ -55,7 +58,9 @@ export interface RegisteredPolicy {
  * - `hard`: final. Jev can never clear it.
  * - `reviewable`: Jev may clear it, but only through the semantic policies
  *   named in `reviewedBy`, and only when every one of them was actually asked
- *   and came back clear.
+ *   and none of them answered `deny` — a `none`, `overridden` or `instruct`
+ *   answer clears it (`combine.ts`, "A warning-level answer clears the deny").
+ *   A named check that was NOT asked always keeps the verdict standing.
  */
 export type PolicyAuthority = "hard" | "reviewable";
 

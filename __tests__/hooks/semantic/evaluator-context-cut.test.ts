@@ -144,7 +144,7 @@ describe("a message the intent store already cut is a truncated envelope (§4)",
       expect(outcome.status === "ok" && outcome.requestCut).toBe(false);
       const review = toReview(outcome);
       expect(review).toMatchObject({ kind: "answered", truncated: true, requestCut: false, decision: "allow" });
-      expect(review.kind === "answered" && review.clear).toContain("read-outside-workspace");
+      expect(review.kind === "answered" && review.notDenied).toContain("read-outside-workspace");
       const verdicts = [outsideReadDeny()];
       const out = combineTwoTier(verdicts, review, "enforce");
       expect(out.cleared).toEqual([verdicts[0].policyName]);
@@ -180,7 +180,7 @@ describe("a message the intent store already cut is a truncated envelope (§4)",
     expect(prepared.truncated).toBe(false);
     const review = toReview(await evaluateSemantic(outsideRead(["tidy my notes"], "I can tidy them."), OPTS));
     expect(review).toMatchObject({ kind: "answered", injectionAsked: true });
-    expect(review.kind === "answered" && review.clear).toContain("read-outside-workspace");
+    expect(review.kind === "answered" && review.notDenied).toContain("read-outside-workspace");
   });
 
   it("a message the envelope cuts itself is still truncated (unchanged)", () => {
@@ -206,7 +206,7 @@ describe("a mark inside content does not switch the semantic tier off", () => {
 
     const review = toReview(await evaluateSemantic(input, OPTS));
     expect(review.kind).toBe("answered");
-    expect(review.kind === "answered" && review.clear).toContain("read-outside-workspace");
+    expect(review.kind === "answered" && review.notDenied).toContain("read-outside-workspace");
   });
 
   it("a human message that quotes a mark is judged normally", async () => {

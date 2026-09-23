@@ -157,7 +157,7 @@ describe("a cut call still clears nothing", () => {
     );
     expect(review).toMatchObject({ kind: "answered", truncated: true, requestCut: true });
     // Jev still says the reviewer is clear …
-    expect(review.kind === "answered" && review.clear).toContain("git-history-rewrite");
+    expect(review.kind === "answered" && review.notDenied).toContain("git-history-rewrite");
     // … and the cut withdraws it anyway.
     const out = combineTwoTier([reviewable], review, "enforce");
     expect(out.cleared).toEqual([]);

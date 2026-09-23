@@ -224,7 +224,13 @@ export function toReview(outcome: SemanticOutcome, cached = false): JevReview {
     // refuses a response missing any of them — so selected == asked, and only
     // when a request was actually made.
     asked: sent ? outcomes.map((o) => o.policy) : [],
-    clear: sent ? outcomes.filter((o) => o.verdict === "none" || o.verdict === "overridden").map((o) => o.policy) : [],
+    // Every answer but `deny`: `none` and `overridden` found nothing to stop,
+    // and `instruct` looked at the same concern the regex policy names and
+    // judged it a warning. `combine.ts` clears a reviewable verdict on all
+    // three, and Jev's own instruct then carries the warning through the
+    // most-severe merge — see "A warning-level answer clears the deny, and
+    // leaves the warning" there. A `deny` is what keeps the block.
+    notDenied: sent ? outcomes.filter((o) => o.verdict !== "deny").map((o) => o.policy) : [],
     injectionAsked: injection !== null,
     injected: injection !== null && injection >= DEFAULT_THRESHOLDS_V1.injection,
     // Something did not fit — a human turn, the agent's message, or what T4's

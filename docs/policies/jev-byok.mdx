@@ -9,7 +9,8 @@ Regex policies match strings. They cannot tell `rm -rf build/` that you asked fo
 With your own Jev endpoint and key configured, Failproof AI asks Jev about each tool call **alongside** the regex policies, never instead of them:
 
 - A **hard** policy's deny is final. Jev cannot clear it. Every policy is hard unless it is explicitly marked reviewable and names the Jev checks that cover it, so a custom, pack or Cloud policy that says nothing is hard, and the always-on self-protection guard is always hard.
-- A **reviewable** policy's deny may be cleared, but only when Jev was asked about the exact concern that policy covers and found nothing.
+- A **reviewable** policy's deny may be cleared, but only when Jev was asked about the exact concern that policy covers and did not deny on it. Jev answering "nothing here", "the user asked for this", **or "this is worth a warning, not a block"** clears the deny; only Jev's own deny keeps it.
+- So a block can become a **warning**. When the check that reviews a policy says the concern is real but does not warrant stopping the agent, you get Jev's warning — naming what is actually wrong with the call — instead of the policy's block. Nothing is silenced: the warning that cleared the deny is the verdict.
 - Jev can also warn or deny on its own, for harm no regex describes.
 - If Jev cannot answer (timeout, rate limit, server error, no credits, an unexpected model version), that call gets the regex result, exactly as without Jev.
 - Jev never makes a call more permissive than your policies alone unless it read the whole call and was asked about the exact concern. Anything less — a call too big to send whole, a suspected injection — withdraws the clearances and keeps every deny.

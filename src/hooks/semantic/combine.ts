@@ -62,10 +62,54 @@
  *
  * "Jev can only clear what it was actually asked about": a reviewable
  * policy's deny or instruct is cleared only if EVERY semantic policy named in
- * its `reviewedBy` was among the ones put to Jev for this call AND came back
- * `none` or `overridden`. A name Jev was not asked about — its precondition was
- * false, the tool class did not apply, the name is misspelled — keeps the
- * regex verdict standing.
+ * its `reviewedBy` was among the ones put to Jev for this call AND did not
+ * come back `deny` — that is, it answered `none`, `overridden` or `instruct`.
+ * A name Jev was not asked about — its precondition was false, the tool class
+ * did not apply, the name is misspelled — keeps the regex verdict standing.
+ *
+ * ## A warning-level answer clears the deny, and leaves the warning
+ *
+ * The rule above is the one thing about this module that was chosen on
+ * measured numbers rather than argued from first principles, so this is what
+ * it decides and what it deliberately does not.
+ *
+ * An `instruct` answer means the named check looked at the call, found the
+ * thing the regex policy is worried about, and judged it worth a WARNING —
+ * not a block. Counting that as "not cleared" left the regex DENY standing,
+ * which threw the distinction away: the agent was stopped by a string match
+ * on exactly the calls where the check that was supposed to review it had
+ * already said "warn, do not stop". Over the 1,332 labelled cases that was
+ * the single largest remaining group of false blocks. Measured on this
+ * commit, over recorded provider answers for all 1,332 (the live Cloudflare
+ * run they were recorded from reproduces case for case under the previous
+ * rule): real work blocked 13.9% → 8.7% — 12.5% → 7.3% leaving out the
+ * always-on self-protection guard, which is hard and unclearable — against
+ * 33.3% for the regex tier alone, attacks blocked 134 → 132 of 234, exact
+ * agreement with the labels 70.6% → 70.8%. The live run on which the rule was
+ * chosen put the same four at 14.3% → 8.9%, 129 → 127, 70.6% → 70.8%; the few
+ * cases between the two are drift in what gets ASKED since the answers were
+ * recorded, not in this rule.
+ *
+ * All 54 calls the change moves go deny → warning. None goes to allow, and
+ * neither the regex tier's floor nor any hard policy moves at all.
+ *
+ * Clearing on `instruct` does not silence anything. The same answer that
+ * clears makes Jev's OWN decision an instruct (`decide.ts` — any instruct
+ * outcome makes the verdict an instruct), and that instruct joins the
+ * most-severe merge below. So the call comes out a WARNING that says what is
+ * actually wrong with it, in Jev's words, instead of a block in the regex
+ * policy's words. A clear here converts a deny into a warning; it does not
+ * convert it into silence.
+ *
+ * What this deliberately does NOT relax is WHICH questions must have been
+ * asked. The gate is still `asked.has(name) && …` for every name in
+ * `reviewedBy`: a check whose precondition was false, that does not apply to
+ * this tool class, or that is misspelled was never put to Jev, so there is no
+ * answer to read and the regex verdict stands. Rule B widens what counts as a
+ * clear ANSWER (`none`, `overridden`, `instruct`), never what counts as an
+ * asked QUESTION — a call Jev was not asked about is not a call Jev approved,
+ * and an unmeasured concern is not an absent one. `deny` is the one answer
+ * that keeps the block: the check looked and said stop.
  *
  * ## One rule about a partial picture
  *
@@ -223,7 +267,7 @@ export interface RegexVerdict {
   reason: string | null;
   /** EFFECTIVE authority (see `effectiveAuthority`), never the declared one. */
   authority: PolicyAuthority;
-  /** The semantic policies that must all come back clear. Empty for `hard`. */
+  /** The semantic policies that must all be asked and none answer `deny`. Empty for `hard`. */
   reviewedBy: readonly string[];
 }
 
@@ -256,8 +300,16 @@ export type JevReview =
       policyName: string;
       /** Semantic policies whose questions were in the request that was answered. */
       asked: readonly string[];
-      /** Of `asked`, the ones whose outcome was `none` or `overridden`. */
-      clear: readonly string[];
+      /**
+       * Of `asked`, the ones whose outcome was not `deny` — `none`,
+       * `overridden` or `instruct`. Those are the answers that let a
+       * reviewable regex verdict be cleared; see "A warning-level answer
+       * clears the deny, and leaves the warning" above. Named for what it
+       * holds rather than for what it is used for, because "clear" once meant
+       * `none`/`overridden` only and a silent widening of that set is exactly
+       * the mistake this name prevents.
+       */
+      notDenied: readonly string[];
       /**
        * The injection probe was in the request and answered. False → no clear:
        * an unmeasured injection is not an absent one.
@@ -376,11 +428,23 @@ export function regexOnly(verdicts: readonly RegexVerdict[]): FinalVerdict {
   };
 }
 
-/** Whether Jev's answer clears this regex verdict. */
-function clears(v: RegexVerdict, asked: ReadonlySet<string>, clear: ReadonlySet<string>): boolean {
+/**
+ * Whether Jev's answer clears this regex verdict.
+ *
+ * The rule, exactly: a REVIEWABLE deny or instruct that names at least one
+ * reviewer is cleared when EVERY name in its `reviewedBy` was ASKED on this
+ * call AND did not answer `deny` (`none`, `overridden` or `instruct` — see "A
+ * warning-level answer clears the deny, and leaves the warning" above).
+ *
+ * The two halves are not interchangeable, and only the second was relaxed:
+ * a name that was never asked still blocks the clear, whatever the others
+ * said, because an unasked question has no answer to read. A `hard` verdict
+ * and a reviewable one naming nobody are never cleared at all.
+ */
+function clears(v: RegexVerdict, asked: ReadonlySet<string>, notDenied: ReadonlySet<string>): boolean {
   if (v.decision === "allow" || v.authority !== "reviewable") return false;
   if (v.reviewedBy.length === 0) return false;
-  return v.reviewedBy.every((name) => asked.has(name) && clear.has(name));
+  return v.reviewedBy.every((name) => asked.has(name) && notDenied.has(name));
 }
 
 export function combineTwoTier(
@@ -418,8 +482,8 @@ export function combineTwoTier(
   // "What a cut MESSAGE does".
   const wholePicture = review.injectionAsked && !review.injected && !review.requestCut;
   const asked = new Set(review.asked);
-  const clearSet = new Set(review.clear);
-  const cleared = wholePicture ? verdicts.filter((v) => clears(v, asked, clearSet)).map((v) => v.policyName) : [];
+  const notDenied = new Set(review.notDenied);
+  const cleared = wholePicture ? verdicts.filter((v) => clears(v, asked, notDenied)).map((v) => v.policyName) : [];
   const activity: JevActivityFields = {
     // §4 records a call the tier could not read whole as a fallback, and so do
     // we — its clearing half really was off. The decision below is still

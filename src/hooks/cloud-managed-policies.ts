@@ -57,7 +57,7 @@ export interface CloudManagedPolicyArtifact {
    * (`ActivePolicy` in `cloud_policies.rs`) before a deployment can set it.
    */
   authority?: PolicyAuthority;
-  /** The semantic policies that must all come back clear; see `authority`. */
+  /** The semantic policies that must all be asked and none answer `deny`; see `authority`. */
   reviewedBy?: string[];
 }
 

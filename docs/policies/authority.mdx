@@ -11,7 +11,7 @@ Without Jev configured, authority has no effect. Every policy enforces exactly a
 ## Hard and reviewable
 
 - **Hard** is the default. A hard policy's deny or instruction is final: Jev cannot clear it, and a hard deny stops the call without waiting for Jev.
-- **Reviewable** means Jev may clear the policy's verdict, but only through the semantic checks the policy names in `reviewedBy`. The verdict is cleared only when **every** named check was asked about this call and came back clear. A check Jev was not asked, because it does not apply to that tool, never clears anything.
+- **Reviewable** means Jev may clear the policy's verdict, but only through the semantic checks the policy names in `reviewedBy`. The verdict is cleared only when **every** named check was asked about this call and **none of them denied** — a check that found nothing, that recorded the user asking for this, or that judged the call worth a warning rather than a block all clear it. A check Jev was not asked, because it does not apply to that tool, never clears anything, whatever the others said. When a warning is what cleared the deny, that warning is what the agent is told, so the concern is not lost — it stops being a block.
 
 A policy is reviewable only when all of these hold:
 
@@ -19,7 +19,7 @@ A policy is reviewable only when all of these hold:
 2. `reviewedBy` is a non-empty list, and every entry is one of the [semantic policy names](#semantic-policy-names) this version of Failproof AI knows.
 3. It is not `alwaysOn`. The guard that stops an agent from disabling Failproof AI is always hard.
 
-Anything else is hard: a missing field, a misspelled value, an empty or malformed `reviewedBy`, or a name this version does not recognise. An unknown name makes the whole declaration hard rather than being skipped, because `reviewedBy` means "all of these must come back clear", and skipping a name would let Jev clear the policy on fewer checks than you asked for.
+Anything else is hard: a missing field, a misspelled value, an empty or malformed `reviewedBy`, or a name this version does not recognise. An unknown name makes the whole declaration hard rather than being skipped, because `reviewedBy` means "all of these must be asked, and none of them may deny", and skipping a name would let Jev clear the policy on fewer checks than you asked for.
 
 Once Jev is configured, Failproof AI logs a warning when it refuses a `reviewable` declaration, once per process. Without Jev it says nothing, because authority then decides nothing. `failproofai publish` refuses to build a pack that carries such a declaration, so a pack author finds out before anyone installs it.
 

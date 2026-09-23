@@ -215,10 +215,15 @@ const ROWS: Row[] = [
     enforce: { decision: "deny", names: [RRO], cleared: [] },
   },
   {
-    id: "reviewer came back instruct → stands, and the regex deny outranks Jev's instruct",
+    // The clear rule's relaxation (combine.ts, "A warning-level answer clears
+    // the deny, and leaves the warning"): the named reviewer looked at this
+    // exact concern and called it a warning, so the regex DENY is cleared and
+    // Jev's instruct is what the agent is told. Cut, it clears nothing and the
+    // regex deny outranks the instruct again — hence no `enforceCut`.
+    id: "reviewer came back instruct → cleared, and Jev's instruct is the verdict",
     verdicts: [reviewable(RRO, "deny", ["read-outside-workspace"])],
     outcome: semOutcome({ decision: "instruct", reason: "reads outside", policies: { "read-outside-workspace": "instruct" } }),
-    enforce: { decision: "deny", names: [RRO], cleared: [] },
+    enforce: { decision: "instruct", names: ["semantic/read-outside-workspace"], cleared: [RRO], decidedByJev: true },
   },
   {
     id: "reviewer came back deny → stands",
@@ -313,9 +318,29 @@ const ROWS: Row[] = [
     enforce: { decision: "instruct", names: ["failproofai/warn-background-process"], cleared: [RRO] },
   },
   {
+    // The second deny's reviewer said DENY — the one answer that still keeps a
+    // block — so only the first is cleared. (It used to say `instruct` here,
+    // which under the rule this branch ships clears the second deny too.)
     id: "two reviewable denies, one cleared → the other decides",
     verdicts: [reviewable(RRO, "deny", ["read-outside-workspace"]), reviewable(PEV, "deny", ["env-secrets-dump", "secret-exposure"])],
-    outcome: semOutcome({ policies: { "read-outside-workspace": "none", "env-secrets-dump": "instruct", "secret-exposure": "none" } }),
+    outcome: semOutcome({
+      decision: "deny",
+      reason: "dumps the environment",
+      policies: { "read-outside-workspace": "none", "env-secrets-dump": "deny", "secret-exposure": "none" },
+    }),
+    enforce: { decision: "deny", names: [PEV], cleared: [RRO] },
+  },
+  {
+    // …and with that same pair cleared by a WARNING from one reviewer, the
+    // remaining deny still decides: a clear never lowers another policy's
+    // verdict, it only removes the one it was asked about.
+    id: "two reviewable denies, one cleared by an instruct answer → the other still decides",
+    verdicts: [reviewable(RRO, "deny", ["read-outside-workspace"]), reviewable(PEV, "deny", ["env-secrets-dump", "secret-exposure"])],
+    outcome: semOutcome({
+      decision: "deny",
+      reason: "dumps the environment",
+      policies: { "read-outside-workspace": "instruct", "env-secrets-dump": "deny", "secret-exposure": "none" },
+    }),
     enforce: { decision: "deny", names: [PEV], cleared: [RRO] },
   },
   {
@@ -443,9 +468,9 @@ describe("combine table (§4) — every row × shadow/enforce × whole/request-c
     const answeredRows = ROWS.filter((r) => r.outcome !== null && r.fallback === undefined);
     expect(hardRows.length).toBe(2);
     expect(degradedRows.length).toBe(10);
-    expect(answeredRows.length).toBe(24);
+    expect(answeredRows.length).toBe(25);
     // Every answered row also runs request-cut (the §4 fallback row).
-    expect(ROWS.length * MODES.length * CUTS.length).toBe(144);
+    expect(ROWS.length * MODES.length * CUTS.length).toBe(148);
     // Exactly the rows where Jev's own verdict outranks the regex result carry
     // a cut expectation; on every other row the regex result stands.
     expect(ROWS.filter((r) => r.enforceCut).map((r) => r.id)).toEqual([
@@ -519,7 +544,7 @@ describe("the clear rule, on hand-built reviews", () => {
     reason: null,
     policyName: "semantic/jev",
     asked: ["read-outside-workspace"],
-    clear: ["read-outside-workspace"],
+    notDenied: ["read-outside-workspace"],
     injectionAsked: true,
     injected: false,
     truncated: false,
@@ -542,10 +567,97 @@ describe("the clear rule, on hand-built reviews", () => {
     expect(out.final).toEqual(regexOnly(verdicts));
   });
 
-  it("a reviewer asked but not clear does not clear", () => {
-    const out = combineTwoTier(verdicts, answered({ clear: [] }), "enforce");
+  it("a reviewer asked that answered DENY does not clear", () => {
+    const out = combineTwoTier(verdicts, answered({ notDenied: [] }), "enforce");
     expect(out.cleared).toEqual([]);
     expect(out.final.decision).toBe("deny");
+  });
+
+  /**
+   * The clear rule's one relaxation, and the half of it that did NOT move.
+   *
+   * An `instruct` answer is the named check saying "I looked at exactly this
+   * concern, and it is worth a warning, not a block". `toReview` puts it in
+   * `notDenied`, so it clears the regex deny — and because the same answer
+   * makes Jev's own decision an instruct, the call comes out a WARNING rather
+   * than silence. Only `deny` keeps the block.
+   */
+  it("a reviewer that answered INSTRUCT clears the deny, and its warning is what is left", () => {
+    const out = combineTwoTier(
+      verdicts,
+      answered({
+        notDenied: ["read-outside-workspace"],
+        decision: "instruct",
+        reason: "reads a path outside the workspace",
+        policyName: "semantic/read-outside-workspace",
+      }),
+      "enforce",
+    );
+    expect(out.cleared).toEqual([RRO]);
+    expect(out.final.decision).toBe("instruct");
+    expect(out.final.entries).toEqual([
+      { policyName: "semantic/read-outside-workspace", reason: "reads a path outside the workspace" },
+    ]);
+    expect(out.decidedByJev).toBe(true);
+  });
+
+  it("an instruct answer from a reviewer Jev was NOT asked still leaves the deny standing", () => {
+    // Same answer as the test above, minus the question: `reviewedBy` names a
+    // check that was not in the request, so there is no answer to read. Rule B
+    // widened what counts as a clear ANSWER, never what counts as an asked
+    // QUESTION.
+    const out = combineTwoTier(
+      verdicts,
+      answered({
+        asked: ["secret-exposure"],
+        notDenied: ["secret-exposure", "read-outside-workspace"],
+        decision: "instruct",
+        reason: "reads a path outside the workspace",
+        policyName: "semantic/read-outside-workspace",
+      }),
+      "enforce",
+    );
+    expect(out.cleared).toEqual([]);
+    expect(out.final.decision).toBe("deny");
+    expect(out.final.entries).toEqual([{ policyName: RRO, reason: `${RRO} says deny` }]);
+  });
+
+  it("an instruct answer clears nothing once injection is suspected", () => {
+    const out = combineTwoTier(
+      verdicts,
+      answered({ notDenied: ["read-outside-workspace"], injected: true, decision: "instruct", policyName: "semantic/read-outside-workspace" }),
+      "enforce",
+    );
+    expect(out.cleared).toEqual([]);
+    expect(out.final.decision).toBe("deny");
+  });
+
+  it("an instruct answer clears nothing when part of the CALL was cut", () => {
+    const out = combineTwoTier(
+      verdicts,
+      answered({
+        notDenied: ["read-outside-workspace"],
+        requestCut: true,
+        truncated: true,
+        decision: "instruct",
+        policyName: "semantic/read-outside-workspace",
+      }),
+      "enforce",
+    );
+    expect(out.cleared).toEqual([]);
+    expect(out.final).toEqual(regexOnly(verdicts));
+    expect(out.activity).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "request-cut" });
+  });
+
+  it("an instruct answer never clears a HARD deny", () => {
+    const hardDeny: RegexVerdict = { ...reviewable(RRO, "deny", ["read-outside-workspace"]), authority: "hard" };
+    const out = combineTwoTier(
+      [hardDeny],
+      answered({ notDenied: ["read-outside-workspace"], decision: "instruct", policyName: "semantic/read-outside-workspace" }),
+      "enforce",
+    );
+    expect(out.cleared).toEqual([]);
+    expect(out.final).toEqual(regexOnly([hardDeny]));
   });
 
   it("an unasked injection probe withholds every clear", () => {
@@ -706,7 +818,7 @@ describe("toReview", () => {
   });
 
   it("nothing sent → nothing asked, injection included", () => {
-    expect(toReview(semOutcome({ via: "none", injection: 0.1 }))).toMatchObject({ asked: [], clear: [], injectionAsked: false });
+    expect(toReview(semOutcome({ via: "none", injection: 0.1 }))).toMatchObject({ asked: [], notDenied: [], injectionAsked: false });
   });
 
   it("any truncation of the envelope marks the answer, keeping Jev's decision", () => {
@@ -717,7 +829,10 @@ describe("toReview", () => {
       reason: null,
       policyName: "semantic/secret-exposure",
       asked: ["secret-exposure"],
-      clear: [],
+      // The instruct answer is in `notDenied`: it is a clear of a reviewable
+      // regex verdict (nothing here is reviewable, so nothing is cleared), and
+      // Jev's own instruct below is what carries the warning.
+      notDenied: ["secret-exposure"],
       injectionAsked: true,
       injected: false,
       truncated: true,
@@ -753,7 +868,7 @@ describe("toReview", () => {
       kind: "answered",
       decision: "allow",
       asked: [],
-      clear: [],
+      notDenied: [],
       injectionAsked: false,
       truncated: false,
       latencyMs: null,
@@ -775,7 +890,7 @@ describe("toReview", () => {
 
   it("a cache hit is applied like any answer, but its ~0 ms is not recorded as a latency", () => {
     const outcome = semOutcome({ policies: { "secret-exposure": "none" } });
-    expect(toReview(outcome, true)).toMatchObject({ kind: "answered", latencyMs: null, model: "jev-1.13.0", clear: ["secret-exposure"] });
+    expect(toReview(outcome, true)).toMatchObject({ kind: "answered", latencyMs: null, model: "jev-1.13.0", notDenied: ["secret-exposure"] });
     expect(toReview(outcome)).toMatchObject({ kind: "answered", latencyMs: 42 });
     expect(combineTwoTier([], toReview(outcome, true), "enforce").activity.jevLatencyMs).toBeUndefined();
   });

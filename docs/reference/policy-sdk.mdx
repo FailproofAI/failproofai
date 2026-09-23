@@ -89,7 +89,7 @@ customPolicies.add({
 | `match.events` | No | Event types that invoke the policy. Omitting `match` invokes it for every available event. |
 | `fn` | Yes | Synchronous or asynchronous function that returns an `allow`, `instruct`, or `deny` result. |
 | `authority` | No | `"hard"` (the default) or `"reviewable"`. Whether the Jev semantic evaluator may clear this policy's verdict. See [Policy authority](/policies/authority). |
-| `reviewedBy` | No | The semantic checks that must all come back clear before Jev may clear the verdict. Required for `"reviewable"`. |
+| `reviewedBy` | No | The semantic checks Jev must all be asked, none of which may answer deny, before Jev may clear the verdict. A check that warns still clears it. Required for `"reviewable"`. |
 
 Filter tools inside `fn`. `match.toolNames` is not part of the public custom-policy type.
 

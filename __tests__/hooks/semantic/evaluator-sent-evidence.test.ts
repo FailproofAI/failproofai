@@ -135,13 +135,21 @@ describe("a turn Jev never saw cannot clear a reviewable deny", () => {
     expect(r.combined.final.decision).toBe("allow");
   });
 
-  it("v1: the target named ONLY in a dropped older turn clears nothing", async () => {
+  it("v1: the target named ONLY in a dropped older turn buys no override — a warning, never the allow", async () => {
     const r = await run(call([NAMES_THE_TARGET, ...FILLER]), v1);
     expect(r.named).toBe(false);
+    // What the dropped turn cannot buy is the OVERRIDE, and with it the allow
+    // the control above gets. The check still looked at this call and called
+    // it a warning …
     expect(r.verdict).not.toBe("overridden");
-    expect(r.combined.cleared).toEqual([]);
-    expect(r.combined.final.decision).toBe("deny");
-    expect(r.combined.final.entries[0].policyName).toBe(reviewable.policyName);
+    expect(r.verdict).toBe("instruct");
+    // … and under the clear rule this branch ships (combine.ts, "A
+    // warning-level answer clears the deny") that warning clears the regex
+    // deny and becomes the verdict, in Jev's words. This assertion said
+    // `[]` / `deny` while a flagged reviewer left the block standing.
+    expect(r.combined.cleared).toEqual([reviewable.policyName]);
+    expect(r.combined.final.decision).toBe("instruct");
+    expect(r.combined.final.entries[0].policyName).toBe(`semantic/${POLICY.name}`);
   });
 
   it("v1: and that is indistinguishable from the turn never existing", async () => {
@@ -241,9 +249,12 @@ describe("what is judged is the window that was sent, uncut", () => {
 
     const r = await run(call(["yes, go ahead"], middle), v1);
     expect(r.named).toBe(false);
+    // No override, so no allow — the text Jev never read bought nothing. The
+    // reviewer's own warning is what the call comes out as (rule B); this used
+    // to read `[]` / `deny`.
     expect(r.verdict).not.toBe("overridden");
-    expect(r.combined.cleared).toEqual([]);
-    expect(r.combined.final.decision).toBe("deny");
+    expect(r.combined.cleared).toEqual([reviewable.policyName]);
+    expect(r.combined.final.decision).toBe("instruct");
 
     // Control: the same target in the HEAD of the message, which was sent.
     const head = `I will ${NAMES_THE_TARGET} now. ${"Then I will continue. ".repeat(overCap("Then I will continue. ") * 2)}`;
@@ -310,11 +321,15 @@ describe("a long prompt does not lose the consent it contains", () => {
     expect(r.outcome.verdict.decision).toBe("allow");
   });
 
-  it("but a target named only in a DROPPED turn still clears nothing, however long the prompt", async () => {
+  it("but a target named only in a DROPPED turn still buys no override, however long the prompt", async () => {
     const r = await run(call([buried(BURY), ...FILLER]), v1);
     expect(r.named).toBe(false);
-    expect(r.combined.cleared).toEqual([]);
-    expect(r.combined.final.decision).toBe("deny");
+    expect(r.verdict).not.toBe("overridden");
+    // Not the allow the kept-turn cases above get: the reviewer's warning is,
+    // and the regex deny it clears is the rule this branch ships. Pinned `[]`
+    // / `deny` before that.
+    expect(r.combined.cleared).toEqual([reviewable.policyName]);
+    expect(r.combined.final.decision).toBe("instruct");
   });
 });
 
@@ -402,7 +417,10 @@ describe("a prompt the store cut before we saw it does not change the verdict", 
     // override does not fire: it is the cut, not the length, that relaxes it.
     const shortNoTarget = await run(call(["please carry on with the plan."]), v1);
     expect(shortNoTarget.verdict).not.toBe("overridden");
-    expect(shortNoTarget.combined.final.decision).toBe("deny");
+    // No override: a warning rather than the allow `cut` gets. (Under the
+    // shipped clear rule that warning also clears the regex deny, so this
+    // reads `instruct` where it once read `deny`.)
+    expect(shortNoTarget.combined.final.decision).toBe("instruct");
   });
 
   /**
@@ -418,7 +436,10 @@ describe("a prompt the store cut before we saw it does not change the verdict", 
     expect(prepareSemantic(call(said, long), v1).userSaidCut).toBe(false);
     const r = await run(call(said, long), v1);
     expect(r.named).toBe(false);
+    // The cut in the agent's channel relaxes nothing: no override, so no
+    // allow. `instruct` rather than `deny` because the reviewer's own warning
+    // clears the regex deny under this branch's clear rule.
     expect(r.verdict).not.toBe("overridden");
-    expect(r.combined.final.decision).toBe("deny");
+    expect(r.combined.final.decision).toBe("instruct");
   });
 });

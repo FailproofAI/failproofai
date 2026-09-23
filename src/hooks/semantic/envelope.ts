@@ -14,9 +14,14 @@
  *    — goes through `redactSecrets` (./redact.ts): the SECRET_PATTERNS the
  *    sanitize-* builtins block on, plus the wider net only a redactor can
  *    afford. A value under a secret-named key (`{"password": "…"}`) is
- *    redacted whatever it looks like, and so is the credential in an
- *    `Authorization` field. The count is reported so a redaction is
- *    auditable.
+ *    redacted whatever it looks like, and so is the WHOLE value of a
+ *    credential header (`Authorization`, `x-api-key`, `Cookie` and kin) and
+ *    the whole argument of a credential flag (`--password`, `sshpass -p`) —
+ *    bluntly, with nothing asked about the value, because five rounds of
+ *    asking each let a live credential through. The cost is that ordinary
+ *    code and prose under those names lose the rest of their line in what
+ *    Jev is shown; see the header of ./redact.ts. The count is reported so a
+ *    redaction is auditable.
  * 3. Small beats complete. Jev degrades as state fills with content unrelated
  *    to the question, so long fields keep their head and tail, and anything
  *    cut is flagged `truncated` — which the handler treats as "keep the regex

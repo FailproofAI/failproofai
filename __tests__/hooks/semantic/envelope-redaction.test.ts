@@ -80,52 +80,49 @@ describe("buildEnvelope — structured tool input", () => {
     expect((env.state.agent_request as { input: Record<string, unknown> }).input).toEqual(input);
   });
 
-  it("redacts the credential of an Authorization field and keeps its scheme", () => {
+  it("redacts the WHOLE value of a credential field, under every spelling of the name", () => {
+    // `cleanValue` returns this value without running it through
+    // `redactSecrets`, so anything kept here is sent to Jev verbatim — which
+    // is why the scheme word is no longer kept either. A 25-character gateway
+    // key is 26 characters of [A-Za-z0-9-] and fitted the old scheme class
+    // exactly: the live key was sent while `redactions` said 1.
     const http = facts({ toolName: "mcp__http__request", toolClass: "other", toolIsKnown: false });
     const basic = Buffer.from(`admin:${randomToken(rand, 12)}`).toString("base64");
     const hex = rnd(rand, 40, HEX);
     const tok = randomToken(rand, 30);
     const cases: Array<[Record<string, unknown>, string, (input: Record<string, unknown>) => unknown, string]> = [
-      [{ url: "https://api.example.com", headers: { Authorization: `Basic ${basic}` } }, basic, (i) => (i.headers as Record<string, unknown>).Authorization, "Basic <redacted:authorization header>"],
-      [{ url: "https://api.example.com", headers: { Authorization: hex } }, hex, (i) => (i.headers as Record<string, unknown>).Authorization, "<redacted:authorization header>"],
-      [{ url: "https://api.example.com", headers: { Authorization: `Token ${hex}` } }, hex, (i) => (i.headers as Record<string, unknown>).Authorization, "Token <redacted:authorization header>"],
-      [{ url: "https://api.example.com", headers: { authorization: `Bearer ${tok}` } }, tok, (i) => (i.headers as Record<string, unknown>).authorization, "Bearer <redacted:bearer token>"],
-      [{ authorization: `Basic ${basic}` }, basic, (i) => i.authorization, "Basic <redacted:authorization header>"],
-      [{ headers: { "Proxy-Authorization": `Basic ${basic}` } }, basic, (i) => (i.headers as Record<string, unknown>)["Proxy-Authorization"], "Basic <redacted:authorization header>"],
+      [{ url: "https://api.example.com", headers: { Authorization: `Basic ${basic}` } }, basic, (i) => (i.headers as Record<string, unknown>).Authorization, "authorization header"],
+      [{ url: "https://api.example.com", headers: { Authorization: hex } }, hex, (i) => (i.headers as Record<string, unknown>).Authorization, "authorization header"],
+      [{ url: "https://api.example.com", headers: { authorization: `Bearer ${tok}` } }, tok, (i) => (i.headers as Record<string, unknown>).authorization, "authorization header"],
+      [{ authorization: `Basic ${basic}` }, basic, (i) => i.authorization, "authorization header"],
+      [{ headers: { "Proxy-Authorization": `Basic ${basic}` } }, basic, (i) => (i.headers as Record<string, unknown>)["Proxy-Authorization"], "authorization header"],
+      // `x-api-key` and `Cookie` are secret NAMES as well, so the field rule
+      // for a secret-named key claims them first — same outcome, its label.
+      [{ headers: { "x-api-key": `${tok} sig=1` } }, tok, (i) => (i.headers as Record<string, unknown>)["x-api-key"], "assigned secret"],
+      [{ headers: { Cookie: `sid=${tok}; theme=dark` } }, tok, (i) => (i.headers as Record<string, unknown>).Cookie, "assigned secret"],
+      // …and where that rule declines (its value is not a literal), the
+      // credential-header rule takes the value anyway.
+      [{ headers: { "x-api-key": `$KEY ${tok}` } }, tok, (i) => (i.headers as Record<string, unknown>)["x-api-key"], "api key header"],
+      [{ headers: { Cookie: `$SID ${tok}` } }, tok, (i) => (i.headers as Record<string, unknown>).Cookie, "cookie header"],
     ];
-    for (const [toolInput, secret, pick, want] of cases) {
+    for (const [toolInput, secret, pick, label] of cases) {
       const env = buildEnvelope(toolInput, [], http, null);
       const input = (env.state.agent_request as { input: Record<string, unknown> }).input;
-      expect(pick(input), want).toBe(want);
+      expect(pick(input), label).toBe(`<redacted:${label}>`);
       expect(JSON.stringify(env.state)).not.toContain(secret);
-      expect(env.redactions, want).toBe(1);
+      expect(env.redactions, label).toBe(1);
     }
   });
 
-  it("redacts a whole Authorization value whose first word is not a known scheme", () => {
-    // `cleanValue` returns this value without running it through
-    // `redactSecrets`, so a "scheme" it keeps is sent verbatim. A 25-character
-    // gateway key is 26 characters of [A-Za-z0-9-] and fitted the old
-    // scheme class exactly: the live key was sent while `redactions` said 1.
-    const http = facts({ toolName: "mcp__http__request", toolClass: "other", toolIsKnown: false });
-    const key = gatewayKey(rand, 5);
-    for (const value of [`${key} signature=abc`, `${key} ${rnd(rand, 8)}`, `${SK}ant-api03-${rnd(rand, 40)} v=1`]) {
-      const env = buildEnvelope({ url: "https://x.test", headers: { Authorization: value } }, [], http, null);
-      const input = (env.state.agent_request as { input: Record<string, unknown> }).input;
-      expect((input.headers as Record<string, unknown>).Authorization, value.slice(0, 8)).toBe("<redacted:authorization header>");
-      const serialized = JSON.stringify(env.state);
-      expectAbsent(serialized, value.split(" ")[0]);
-      expect(env.redactions).toBeGreaterThanOrEqual(1);
-    }
-  });
-
-  it("redacts an Authorization value behind a word-like UNKNOWN scheme", () => {
+  it("redacts an Authorization value whose first word is not a scheme it could know", () => {
     // The round-2 rule asked whether the first word looked like a token, and
     // an alphabetic word never does — so `Hawk`, `NTLM`, `Splunk` and a bare
-    // session credential collapsed into the "prose" case and were sent to Jev
-    // verbatim, with the envelope reporting `redactions: 0`.
+    // session credential collapsed into a "prose" case and were sent to Jev
+    // verbatim, with the envelope reporting `redactions: 0`. Nothing is asked
+    // about the value now.
     const http = facts({ toolName: "mcp__http__request", toolClass: "other", toolIsKnown: false });
     const mac = rnd(rand, 26, B64URL);
+    const key = gatewayKey(rand, 5);
     for (const value of [
       `Hawk id="${rnd(rand, 12)}", ts="1353832234", mac="${mac}"`,
       `NTLM ${rnd(rand, 44, B64URL)}=`,
@@ -133,43 +130,39 @@ describe("buildEnvelope — structured tool input", () => {
       `Splunk ${rnd(rand, 32, HEX)}`,
       "hmac dev-admin-key",
       "sso devadminkey",
+      `${key} signature=abc`,
+      `${SK}ant-api03-${rnd(rand, 40)} v=1`,
+      "Bearer swordfish for the call",
+      "Token abcdefghijk is the key",
+      "Bearer -aB3xY9zQ7mN2pL5kJ8hG4fWq",
     ]) {
       const env = buildEnvelope({ url: "https://x.test", headers: { Authorization: value } }, [], http, null);
       const input = (env.state.agent_request as { input: Record<string, unknown> }).input;
       expect((input.headers as Record<string, unknown>).Authorization, value.slice(0, 10)).toBe("<redacted:authorization header>");
       const serialized = JSON.stringify(env.state);
-      expect(serialized, value.slice(0, 10)).not.toContain(value.split(" ").slice(1).join(" "));
+      expectAbsent(serialized, value.split(" ")[0]);
       expect(env.redactions, value.slice(0, 10)).toBeGreaterThanOrEqual(1);
     }
   });
 
-  it("redacts a multi-word credential behind a KNOWN scheme", () => {
-    // `Bearer` in front means the rest IS the credential. Asking whether the
-    // rest also reads as English sent `Bearer swordfish for the call` to Jev
-    // verbatim, with `redactions: 0` — and nothing downstream catches it,
-    // because this value never goes through `redactSecrets`.
+  it("redacts a reference and a bare scheme word too, and leaves a blank value and other headers alone", () => {
+    // Deliberately blunter than before: `Bearer $TOKEN` is redacted, because
+    // asking whether a value is a reference is a judgement about the value and
+    // `'$ecret'` is a legal password. Only an EMPTY value is left.
     const http = facts({ toolName: "mcp__http__request", toolClass: "other", toolIsKnown: false });
-    for (const [value, label] of [
-      ["Bearer swordfish for the call", "bearer token"],
-      ["Token abcdefghijk is the key", "authorization header"],
-      ["Basic secrettoken and then some prose", "authorization header"],
-    ] as Array<[string, string]>) {
-      const env = buildEnvelope({ url: "https://x.test", headers: { Authorization: value } }, [], http, null);
+    for (const auth of ["Bearer ${API_TOKEN}", "Bearer $TOKEN", "Bearer <token>", "Bearer"]) {
+      const env = buildEnvelope({ headers: { Authorization: auth, "Content-Type": "application/json" } }, [], http, null);
       const input = (env.state.agent_request as { input: Record<string, unknown> }).input;
-      const [scheme, ...rest] = value.split(" ");
-      expect((input.headers as Record<string, unknown>).Authorization, value).toBe(`${scheme} <redacted:${label}>`);
-      expect(JSON.stringify(env.state), value).not.toContain(rest.join(" "));
-      expect(env.redactions, value).toBeGreaterThanOrEqual(1);
+      const headers = input.headers as Record<string, unknown>;
+      expect(headers.Authorization, auth).toBe("<redacted:authorization header>");
+      expect(headers["Content-Type"], auth).toBe("application/json");
+      expect(env.redactions, auth).toBe(1);
     }
-  });
-
-  it("leaves Authorization references, bare schemes and other headers alone", () => {
-    const http = facts({ toolName: "mcp__http__request", toolClass: "other", toolIsKnown: false });
-    for (const auth of ["Bearer ${API_TOKEN}", "Bearer $TOKEN", "Bearer <token>", "Bearer", ""]) {
+    for (const auth of ["", "   "]) {
       const toolInput = { headers: { Authorization: auth, "Content-Type": "application/json" } };
       const env = buildEnvelope(toolInput, [], http, null);
-      expect((env.state.agent_request as { input: Record<string, unknown> }).input, auth).toEqual(toolInput);
-      expect(env.redactions, auth).toBe(0);
+      expect((env.state.agent_request as { input: Record<string, unknown> }).input, JSON.stringify(auth)).toEqual(toolInput);
+      expect(env.redactions, JSON.stringify(auth)).toBe(0);
     }
   });
 
@@ -191,7 +184,28 @@ describe("buildEnvelope — structured tool input", () => {
     // long line quadratic in the number of names on it. 1 100 ms for this
     // envelope, against the same 600 ms budget; 140 ms once the value is
     // measured in code, token by token.
-    for (const unit of ["Authorization: ", "authorization: a ", "Authorization: Bearer x "]) {
+    //
+    // The round that replaced the regex with a token walk left the
+    // whitespace-FREE shapes quadratic and put only spaced units in this
+    // fixture, so the class stayed untested here too: `"authorization:!"` at
+    // this size was 590 ms and `"authorization=$"` 916 ms. Both are ~25 ms
+    // now. The credential-flag units are here for the same reason — the CLI
+    // rules were a lazy scan from each command word to the flag.
+    for (const unit of [
+      "Authorization: ",
+      "authorization: a ",
+      "Authorization: Bearer x ",
+      "authorization:!",
+      "authorization=$",
+      "authorization=%24VAR,",
+      '{"Authorization": "Bearer x"}, ',
+      "x-api-key:",
+      "set-cookie:a=b;",
+      "-p ",
+      "mysql -p",
+      "curl -u a:b ",
+      "--password ",
+    ]) {
       const value = unit.repeat(Math.ceil(MAX_STRING_CHARS / unit.length)).slice(0, MAX_STRING_CHARS);
       const toolInput: Record<string, Record<string, string>> = {};
       for (let i = 0; i < 24; i++) {

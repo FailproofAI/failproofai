@@ -23,6 +23,37 @@
  *
  * The implementations are plain hoisted functions, never wrappers — see the note
  * on `POLICY_IMPLEMENTATIONS` in builtin-policies.ts for why that matters.
+ *
+ * ── A note on how BLUNT two of these are ──
+ *
+ * `block-mass-kill` and `block-no-verify` were each rewritten around ONE rule
+ * after five review rounds in which the fixer patched the reported spelling and
+ * the next reviewer found three more of the same kind — twice with a new defect
+ * in the patch itself (a catastrophic regex compiled from the caller's own text,
+ * and false denies on ordinary pipelines). The lesson was not that the readings
+ * were careless; it was that they were UNDECIDABLE. Whether `awk '$1 != "PID"'`
+ * or `[ -n "$p" ]` takes a process out of a listing, and what a `-c "$C"` holds,
+ * cannot be answered from the command text.
+ *
+ * So neither is answered any more:
+ *
+ * - block-mass-kill reads the PROCESS LISTER and nothing else. Anything between
+ *   the listing and the kill — a grep, an awk program, a sed script, `head`, a
+ *   loop body — is ignored, so `ps aux | grep myapp | awk '{print $2}' | xargs
+ *   kill` is denied along with every other chain out of `ps aux`. A pattern
+ *   written with regex syntax other than `.` is one this does not read, and is
+ *   treated as reaching everything, so `pkill 'my(a|b)pp'` is denied too.
+ * - block-no-verify decides on the command git will REALLY run, and fails closed
+ *   where it cannot work that out: a subcommand that is not a builtin and whose
+ *   alias body the command does not state, or a commit/push under a setting the
+ *   command does not state in full, is a deny.
+ *
+ * Both are therefore stricter than they were, and each has a narrow spelling
+ * right beside it that still runs: `pkill -f myapp`, `pgrep -f myapp | xargs
+ * kill`, `ps -C myapp -o pid= | xargs kill`, `kill 4242`; and `git commit`,
+ * `git -c user.name="$NAME" commit`, `git st`. Both policies are off by default,
+ * so the cost of the bluntness is one surprise at enable time, while the cost of
+ * a bypass is the whole guard.
  */
 import { posix } from "node:path";
 import type { PolicyContext, PolicyResult } from "./policy-types";
@@ -544,95 +575,82 @@ const KILLALL_OPERAND_LONG = new Set([
 /** `-KILL`, `-SIGTERM`, `-9`: a signal, not a flag bundle. */
 const SIGNAL_FLAG_RE = /^-(?:\d+|(?:SIG)?[A-Z][A-Z0-9+-]+)$/;
 
-/** Normalise a process pattern to the name it targets: anchors, `.*`, `[n]ode` and a path removed. */
-function stripPattern(pattern: string): string {
-  let s = pattern.trim().toLowerCase();
-  s = s.replace(/^\^/, "").replace(/\$$/, "");
-  s = s.replace(/^(?:\.\*|\.\+)+/, "");
-  // A loop, not `/(?:\.\*|\.\+)+$/`: that backtracks quadratically on a long `.*.*…x`.
-  while (s.endsWith(".*") || s.endsWith(".+")) s = s.slice(0, -2);
-  return s.replace(/\[([^\]^])\]/g, "$1").replace(/\\(.)/g, "$1").trim();
-}
-
-/** The process name a pattern targets: anchors, `.*`, `[n]ode`, `.exe` and an ABSOLUTE binary path removed. */
-function patternTarget(pattern: string): string {
-  let s = stripPattern(pattern);
-  // `/usr/bin/node` targets node; `linux-x64/rg` is a specific path fragment.
+/**
+ * The name an EXACT operand targets: lower-cased, an absolute path reduced to
+ * the binary at its end, `.exe` dropped. `killall`, `pidof`, `ps -C`,
+ * `Get-Process` and `taskkill /IM` all take a NAME, never a pattern, so this is
+ * a string comparison and nothing more.
+ */
+function exactTarget(name: string): string {
+  let s = name.trim().toLowerCase();
   if (s.startsWith("/") && !/\s/.test(s)) s = s.slice(s.lastIndexOf("/") + 1);
   return s.replace(/\.exe$/, "");
 }
 
-/**
- * POSIX character classes, which pgrep/killall/grep understand and JavaScript
- * does not: `[[:alpha:]]ode` compiles in JS to "one of `[:alph`, then a literal
- * `]`, then ode", which matches nothing, so the pattern read as a JS regex said
- * "narrow" about a pattern that reaches every `node` on the box.
- */
-const POSIX_CLASSES: Record<string, string> = {
-  alpha: "A-Za-z", alnum: "A-Za-z0-9", digit: "0-9", lower: "a-z", upper: "A-Z",
-  space: "\\s", blank: " \\t", word: "\\w", cntrl: "\\x00-\\x1f", print: "\\x20-\\x7e",
-  graph: "\\x21-\\x7e", punct: "!-/:-@\\[-`{-~", xdigit: "0-9A-Fa-f",
-};
-
-/** A POSIX ERE rewritten so a JS regex reads it the way pgrep/grep would. */
-function toJsRegex(pattern: string): string {
-  return pattern.replace(/\[:([a-z]+):\]/g, (whole, name: string) => POSIX_CLASSES[name] ?? whole);
+/** A name that `killall`/`pidof`/`ps -C` reaches far more processes with than anybody meant. */
+function isGenericExactName(name: string): boolean {
+  return GENERIC_PROCESS_NAMES.has(exactTarget(name));
 }
 
 /**
- * Whether an unanchored pattern selects a generic process name the way pkill
- * really applies it: as a REGEX SEARCH over the name, so `nod`, `ode`, `n.de`,
- * `^nod` and `nod.*` all reach every `node` on the box, and `ytho` reaches
- * every `python`. Comparing normalised strings instead let every one of those
- * spellings walk past a policy that denies `pkill node`.
+ * The regex characters this check does NOT read. A pattern holding any of them
+ * is one it cannot say anything about, and is treated as reaching everything.
  *
- * The match runs the caller's pattern against names of at most a dozen
- * characters, so even a pathological pattern cannot cost much; an invalid
- * regex (pkill would reject it too) falls back to substring containment.
- *
- * The direction matters and is the reason this stays quiet on ordinary
- * commands: the pattern is matched against the generic name, never the other
- * way round, so `pkill vite`, `pkill my-worker` and `pkill -f node.*worker`
- * match nothing in the list. `nod$` does not match `node` either — and pkill
- * would not kill it.
+ * `.` is deliberately absent: it is the one piece of regex syntax read here,
+ * and it stands for exactly ONE character, so matching it needs no engine and
+ * no backtracking (see `occursIn`). Every other metacharacter — a class, a
+ * group, an alternation, a repetition, an anchor, an escape — can make a short
+ * pattern reach a name it does not spell, and there is no bounded way to read
+ * that from the text. Real names hold dots (`node server.js`, `python3.11`);
+ * they do not hold `*`, `|` or `[`.
  */
-function matchesGenericName(pattern: string, ignoreCase = false, exact = false): boolean {
-  let re: RegExp;
-  try {
-    // `-x` makes pkill require the WHOLE name to match, which is still a regex:
-    // `pkill -x 'node|myapp'` reaches every node.
-    re = new RegExp(exact ? `^(?:${toJsRegex(pattern)})$` : toJsRegex(pattern), ignoreCase ? "i" : "");
-  } catch {
-    const raw = stripPattern(pattern);
-    if (raw.length === 0) return false;
-    return exact ? GENERIC_PROCESS_NAMES.has(raw) : [...GENERIC_PROCESS_NAMES].some((n) => n.includes(raw));
-  }
-  for (const name of GENERIC_PROCESS_NAMES) if (re.test(name)) return true;
+const REGEX_SYNTAX_RE = /[[\](){}*+?|^$\\]/;
+
+/**
+ * Whether `pattern` — plain text in which `.` matches any one character —
+ * occurs in `name`, or IS `name` when the caller anchored it (`pkill -x`).
+ *
+ * A positional scan, never a compiled regex. Compiling the caller's own pattern
+ * is a denial of service on the hook: a crafted selector held `block-mass-kill`
+ * for minutes under Node, and a hook that times out lets the call through. This
+ * costs at most |name| x |pattern| character comparisons against names of a
+ * dozen characters, whatever the caller writes.
+ */
+function occursIn(pattern: string, name: string, exact: boolean): boolean {
+  const fits = (at: number) => {
+    for (let i = 0; i < pattern.length; i++) if (pattern[i] !== "." && pattern[i] !== name[at + i]) return false;
+    return true;
+  };
+  if (exact) return pattern.length === name.length && fits(0);
+  for (let at = 0; at + pattern.length <= name.length; at++) if (fits(at)) return true;
   return false;
 }
 
 /**
- * Whether a pkill/pgrep pattern (a regex matched as a substring unless `-x`)
- * reaches too much.
+ * Whether a pkill/pgrep/killall PATTERN reaches processes en masse: it is
+ * empty, it is written with regex syntax this check does not read, it is two
+ * characters or fewer (unanchored, that is a substring of half the process
+ * table: `pkill -f ab`), or it reaches a generic process name.
  *
- * The regex reading comes FIRST, before the `|` split. pkill compiles the
- * pattern whole, so `n(o|0)de` reaches every `node`; splitting on `|` first
- * shredded it into `n(o` and `0)de`, two fragments that compile to nothing and
- * match nothing — a parenthesised alternation was a one-character rewrite past
- * a policy that denies `pkill nod`. The split stays for the case it was written
- * for, a top-level list (`node|myapp`), where it catches an alternative that is
- * broad on its own even though the whole pattern is not.
+ * The direction matters and is why this stays quiet on ordinary commands: the
+ * pattern is matched against the generic names, never the other way round, so
+ * `pkill my-worker`, `pkill -f 'node server.js'` and `pkill -x vite` reach
+ * nothing in the list. pkill is case-sensitive unless `-i`, and so is this.
  */
 function broadPattern(pattern: string, exact: boolean, ignoreCase = false): boolean {
-  const raw = stripPattern(pattern);
-  if (/^[.*+?\s\\^$]*$/.test(raw)) return true;
-  if (GENERIC_PROCESS_NAMES.has(patternTarget(pattern))) return true;
-  if (matchesGenericName(pattern, ignoreCase, exact)) return true;
-  if (pattern.includes("|")) return pattern.split("|").some((alt) => broadPattern(alt, exact, ignoreCase));
-  // `-x` compares the whole name, so only the name itself reaches the name.
-  if (exact) return false;
-  // Unanchored and short, it is a substring of half the process table: `pkill sh`.
-  return raw.length <= 2;
+  const p = pattern.trim();
+  if (p === "") return true;
+  if (REGEX_SYNTAX_RE.test(p)) return true;
+  const needle = ignoreCase ? p.toLowerCase() : p;
+  if (!exact && needle.length <= 2) return true;
+  for (const name of GENERIC_PROCESS_NAMES) if (occursIn(needle, name, exact)) return true;
+  // A pattern that is a PATH names the binary at its end, and names it exactly:
+  // `pkill -f /usr/bin/node` reaches every node, `pkill -f /opt/app/bin/serve`
+  // reaches serve and nothing else.
+  if (needle.startsWith("/") && !/\s/.test(needle)) {
+    return GENERIC_PROCESS_NAMES.has(needle.slice(needle.lastIndexOf("/") + 1));
+  }
+  return false;
 }
 
 /** Why a pkill/pgrep invocation selects processes en masse, or null. */
@@ -738,7 +756,7 @@ function killallMass(a: ShellAnalysis, args: ShellWord[]): string | null {
   }
   for (const w of names) {
     for (const v of resolveWord(a, w) ?? []) {
-      if (regex ? broadPattern(v, false, ignoreCase) : GENERIC_PROCESS_NAMES.has(patternTarget(v))) return `killall ${v}`;
+      if (regex ? broadPattern(v, false, ignoreCase) : isGenericExactName(v)) return `killall ${v}`;
     }
   }
   return null;
@@ -791,155 +809,28 @@ function psNames(args: ShellWord[]): string[] {
 }
 
 function isGenericOrWildcard(name: string): boolean {
-  return name.includes("*") || GENERIC_PROCESS_NAMES.has(patternTarget(name));
+  return name.includes("*") || isGenericExactName(name);
 }
 
-// ── what narrows a `ps` listing ─────────────────────────────────────────────
+// ── what a kill's PIDs come from ────────────────────────────────
 
 /**
- * `ps … | awk '/node/ {print $2}' | xargs kill` reaches exactly the processes
- * `ps … | grep node | awk '{print $2}' | xargs kill` reaches, and is the more
- * common spelling of the two. So do the `sed`, `perl` and `python` forms. Only
- * grep used to count as a filter, which made a one-word rewrite a bypass.
- */
-const AWK_NAMES = new Set(["awk", "gawk", "mawk", "nawk", "busybox-awk"]);
-const SCRIPT_FILTERS = new Set([
-  ...AWK_NAMES, "sed", "perl", "python", "python2", "python3", "ruby",
-]);
-/** A filter script longer than this is not read further; the cost is not worth it. */
-const MAX_SCRIPT_TEXT = 4000;
-/** At most this many literals are taken out of one script. */
-const MAX_SCRIPT_LITERALS = 64;
-
-/** The scripts an awk/sed/perl/python invocation may run, flags dropped and variables resolved. */
-function filterScripts(a: ShellAnalysis, args: ShellWord[]): string[] {
-  const out: string[] = [];
-  for (const w of args) {
-    const t = literalText(w);
-    if (t !== null) {
-      if (t.startsWith("-") && t.length > 1) continue;
-      out.push(t);
-      continue;
-    }
-    for (const v of resolveWord(a, w) ?? []) if (!v.startsWith("-")) out.push(v);
-  }
-  return out;
-}
-
-/** A literal is a selector only where it decides which lines survive. */
-const AWK_MATCH_CALL = /(?:index|match)\([^()]*,?$/;
-
-/**
- * The literals in a filter script that DECIDE WHICH PROCESSES SURVIVE: an awk
- * pattern or a `~`/`==` comparison, a sed address, a perl match, an
- * `index(…)`/`match(…)` argument.
+ * ONE rule, and the whole of it: a kill fed by a PROCESS LISTING kills whatever
+ * that listing held, and only the LISTER'S OWN options can narrow a listing.
  *
- * Everything else is dropped, and that is the point. A `s///`'s search text and
- * a `sub(/…/,"")`'s pattern cannot remove a line from the listing, so they say
- * nothing about how far the kill reaches — reading them as patterns denied nine
- * ordinary, already-narrowed pipelines (`ps aux | grep myapp | sed 's/node/N/'
- * | awk '{print $2}' | xargs kill`) on a policy no judge can clear. When such a
- * stage is the ONLY thing on a chain, the listing was never narrowed at all,
- * and the "ps listing every process" rule below is what catches it.
- */
-function scriptSelectors(tool: string, scriptText: string): string[] {
-  const script = scriptText.slice(0, MAX_SCRIPT_TEXT);
-  const selectors: string[] = [];
-  const awk = AWK_NAMES.has(tool);
-  const sed = tool === "sed";
-  let depth = 0;
-  // The significant characters just before, spaces dropped: enough to tell a
-  // `~`/`==` comparison, an `index($0, …)` and a sed address from ordinary
-  // script text. Long enough to hold the longest of those openers.
-  let prev = "";
-  const note = (ch: string) => {
-    prev = (prev + ch).slice(-16);
-  };
-  for (let i = 0; i < script.length && selectors.length < MAX_SCRIPT_LITERALS; i++) {
-    const ch = script[i];
-    if (ch === "'" || ch === '"') {
-      let value = "";
-      let j = i + 1;
-      for (; j < script.length && script[j] !== ch; j++) {
-        if (script[j] === "\\" && j + 1 < script.length) value += script[++j];
-        else value += script[j];
-      }
-      if (/[=~]$/.test(prev) || AWK_MATCH_CALL.test(prev)) selectors.push(value);
-      i = j;
-      note("S");
-      continue;
-    }
-    if (ch === "/") {
-      let value = "";
-      let j = i + 1;
-      for (; j < script.length && script[j] !== "/" && script[j] !== "\n"; j++) {
-        if (script[j] === "\\" && j + 1 < script.length) {
-          value += script[j] + script[j + 1];
-          j++;
-        } else value += script[j];
-      }
-      if (j >= script.length || script[j] !== "/") {
-        note("/");
-        continue;
-      }
-      const address = prev === "" || /[;{}!,\n]$/.test(prev);
-      const selects = awk
-        ? depth === 0 || /~$/.test(prev) || AWK_MATCH_CALL.test(prev)
-        : sed
-          ? address
-          : /(?:[~(!]|if|unless|&&|\|\|)$/.test(prev) || AWK_MATCH_CALL.test(prev);
-      if (selects) selectors.push(value);
-      i = j;
-      note("R");
-      continue;
-    }
-    if (ch === "{") depth++;
-    else if (ch === "}") depth = Math.max(0, depth - 1);
-    if (!/\s/.test(ch)) note(ch);
-    else if (ch === "\n") note("\n");
-  }
-  return selectors;
-}
-
-/** A pattern that names a generic process outright — no substring reading, for a literal that may not be a selector at all. */
-function targetsGenericName(pattern: string): boolean {
-  return pattern.split("|").some((alt) => GENERIC_PROCESS_NAMES.has(patternTarget(alt)));
-}
-
-/**
- * Two lines with no generic process name in them. A selector that takes BOTH
- * selects nothing in particular, so the stage in front of the kill narrowed
- * the listing by nothing.
- */
-const NOT_A_SELECTION = ["myapp", "4242 pts/1    00:00:07 /opt/my-worker --flag"];
-
-/** Whether a selector matches every line there is: an empty pattern, a bare dot-star, a lone space. */
-function matchesEverything(pattern: string): boolean {
-  // `^$` has nothing left once the anchors come off too, and matches only a
-  // blank line — so the anchors have to be read, not just what they leave.
-  if (!/[$^]/.test(pattern) && stripPattern(pattern).replace(/[.*+?\\\s]/g, "") === "") return true;
-  try {
-    const re = new RegExp(toJsRegex(pattern));
-    return NOT_A_SELECTION.every((line) => re.test(line));
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Whether an awk/sed/perl SELECTOR reaches processes en masse.
+ * Nothing between the lister and the kill is read — not a grep pattern, not an
+ * awk program, not a sed script, not `head`, not a loop's body. Five review
+ * rounds went the other way, and every one of them shipped a bypass: whether
+ * `awk '/:/{print $2}'`, `awk '$1 != "PID"'`, `tac`, `shuf` or `[ -n "$p" ]`
+ * takes a process out of a listing cannot be decided from the command text, and
+ * each spelling read produced three more. The reading also had to compile the
+ * caller's own selector, which held the hook for minutes on a crafted pattern.
  *
- * Deliberately NOT the grep-tuned `broadPattern`. That one calls any pattern of
- * two characters or fewer, or one made only of metacharacters, broad — true of
- * a pkill pattern, which is matched against a process NAME, and false of a
- * script selector, which is a test over a line of a listing: `$2 ~ /^Z/` reaps
- * zombies, `$2 ~ /:/` picks out an elapsed time, `/^$/` drops blank lines, and
- * none of them says anything about a process name. Only two readings belong
- * here: the selector names a generic process, or it takes every line there is.
+ * So the chain is not modelled at all. `ps aux | grep myapp | awk '{print $2}'
+ * | xargs kill` is denied along with every other chain out of `ps aux`; the
+ * narrow spellings right next to it — `pkill -f myapp`, `pgrep -f myapp | xargs
+ * kill`, `ps -C myapp -o pid= | xargs kill`, `kill 4242` — all still run.
  */
-function broadScriptSelector(pattern: string): boolean {
-  return targetsGenericName(pattern) || matchesGenericName(pattern) || matchesEverything(pattern);
-}
 
 /** `ps` long options that pick a subset of processes, so the listing is not everything. */
 const PS_SELECT_LONG = new Set([
@@ -1000,191 +891,64 @@ function psListsEverything(texts: Array<string | null>): boolean {
   return all;
 }
 
-/** Tools that reshape or reorder lines and cannot drop one: none of them can take a process out of the listing. */
-const LINE_PASSTHROUGH = new Set(["ps", "xargs", "kill", "tr", "cut", "cat", "tee", "sort", "uniq", "nl", "rev"]);
-
-/** Column headings `ps` prints, for the matches that can only drop the header line. */
-const PS_HEADER_WORDS =
-  "user|pid|ppid|uid|gid|command|cmd|args|tty|tt|stat|s|state|time|start|started|elapsed|etime|" +
-  "rss|vsz|sz|%cpu|%mem|c|ni|pri|nlwp|lwp|psr|wchan";
-/** `/^USER/`, `!/^PID/`: an awk test that can only take out the header line. */
-const AWK_HEADER_TEST = new RegExp(`!?/\\^?(?:${PS_HEADER_WORDS})\\b[^/\\n]*/`, "gi");
-
-/** `tail` that drops only LEADING lines (`tail -n +2`): every process row after the header survives. */
-function tailDropsOnlyLeadingLines(texts: Array<string | null>): boolean {
-  let fromLine = false;
-  for (let k = 0; k < texts.length; k++) {
-    const t = texts[k];
-    if (t === null) return false;
-    if (t === "-n" || t === "--lines") {
-      const v = texts[k + 1];
-      if (typeof v !== "string" || !/^\+\d+$/.test(v)) return false;
-      fromLine = true;
-      k++;
-      continue;
-    }
-    if (/^--lines=\+\d+$/.test(t) || /^-n\+\d+$/.test(t) || /^\+\d+$/.test(t)) {
-      fromLine = true;
-      continue;
-    }
-    if (t === "-q" || t === "--quiet" || t === "--silent") continue;
-    return false;
-  }
-  return fromLine;
-}
-
-/** `s/…/…/flags`: a substitution rewrites a line and cannot delete one. */
-function isSedSubstitution(script: string): boolean {
-  if (script.length < 5 || script[0] !== "s") return false;
-  const delim = script[1];
-  if (/[\\\s\w]/.test(delim)) return false;
-  let seen = 0;
-  for (let i = 2; i < script.length; i++) {
-    if (script[i] === "\\") {
-      i++;
-      continue;
-    }
-    if (script[i] !== delim) continue;
-    if (++seen === 2) return /^[gpiImw0-9]*$/.test(script.slice(i + 1));
-  }
-  return false;
+/** A word naming something under `/proc`: reading it is listing processes. */
+function scansProc(word: ShellWord): boolean {
+  return /^\/proc(\/|$)/.test(word.text.trim());
 }
 
 /**
- * A `sed` that keeps every process row: a substitution, or a delete.
- *
- * A delete is an INVERSE selection, the same shape as `grep -v` above:
- * `sed 1d` and `sed '/^$/d'` take out the header and the blank lines, and even
- * `sed '/node/d'` leaves every other process for the kill — none of them
- * narrows the listing to a subset anybody chose. `sed '/node/!d'` does, and is
- * not here; neither is `-n`, which prints only what a `p` asks for.
+ * Why this invocation is a process listing that names no process in
+ * particular, or null. Only the lister's own options are read: `ps -p 4242`,
+ * `ps -C my-daemon`, `pgrep -f my-worker` and `Get-Process -Id 12` each name
+ * something; `ps aux`, `ps -e`, `pgrep node`, `top` and a bare `Get-Process` do
+ * not.
  */
-function sedKeepsEveryProcess(a: ShellAnalysis, args: ShellWord[]): boolean {
-  if (lits(args).some((t) => t !== null && /^-[a-zA-Z]*n/.test(t))) return false;
-  const scripts = filterScripts(a, args);
-  if (scripts.length === 0) return false;
-  return scripts.every((text) =>
-    text.length <= MAX_SCRIPT_TEXT &&
-    text
-      .split(/[;\n]/)
-      .map((one) => one.trim())
-      .filter(Boolean)
-      .every(
-        (one) =>
-          /^\d+(?:,\d+)?\s*d$/.test(one) ||
-          /^\/(?:[^/\\\n]|\\.)*\/\s*d$/.test(one) ||
-          isSedSubstitution(one),
-      ),
-  );
-}
-
-/**
- * An `awk` that keeps every process row: its only tests are on the record
- * NUMBER (`NR>1`, `NR!=1`) or on the `ps` header line (`/^USER/{next}`), and a
- * `sub()`/`gsub()` only rewrites what it matched. None of those can drop a
- * process, so none of them narrows the listing the kill is about to read.
- */
-function awkKeepsEveryProcess(a: ShellAnalysis, args: ShellWord[]): boolean {
-  const scripts = filterScripts(a, args);
-  if (scripts.length === 0) return false;
-  return scripts.every((text) => {
-    if (text.length > MAX_SCRIPT_TEXT) return false;
-    const rest = text
-      .replace(/\bNR\s*(?:[<>]=?|[!=]=)\s*\d+/g, "T")
-      .replace(/\d+\s*(?:[<>]=?|[!=]=)\s*\bNR\b/g, "T")
-      .replace(AWK_HEADER_TEST, "T")
-      .replace(/\bg?sub\s*\(\s*\/(?:[^/\n\\]|\\.)*\/\s*,/g, "T(");
-    // `$1 == "node"` and `$0 ~ /node/` decide which rows survive; `NF`, a
-    // `getline` or an `exit` can end the stream early.
-    return !/[~<>]|==|!=|\bNF\b|\bNR\b|\bgetline\b|\bexit\b|\bsystem\b|\/(?:[^/\n\\]|\\.)*\//.test(rest);
-  });
-}
-
-/** Whether a grep invocation is an INVERSE match, which selects no process in particular. */
-function grepIsInverse(texts: Array<string | null>): boolean {
-  return texts.some((t) => t !== null && (t === "--invert-match" || (/^-[a-zA-Z]+$/.test(t) && t.includes("v"))));
-}
-
-/**
- * A stage that cannot take a process OUT of the listing — it reshapes lines,
- * reorders them, or drops the header `ps` printed. Used for the one case no
- * pattern can describe: nothing on the chain narrows at all, so the kill
- * reaches every process `ps` found.
- *
- * Header stripping belongs here, not outside. The rule used to accept only an
- * awk program with no test in it, which made `ps aux | awk '{print $2}'` — the
- * one spelling that does NOT work, because `kill` aborts on the literal `PID`
- * the header puts first — the only denied form, while `NR>1`, `tail -n +2`,
- * `sed 1d` and a `cat` in the middle all walked through and killed the box.
- */
-function keepsEveryProcess(a: ShellAnalysis, name: string, args: ShellWord[]): boolean {
-  if (LINE_PASSTHROUGH.has(name)) return true;
-  if (name === "tail") return tailDropsOnlyLeadingLines(lits(args));
-  if (name === "sed") return sedKeepsEveryProcess(a, args);
-  if (AWK_NAMES.has(name)) return awkKeepsEveryProcess(a, args);
-  // `grep -v node` excludes one name and keeps every other process, which is
-  // still every process this kill can reach; `grep node` selects.
-  if (name === "grep" || name === "egrep" || name === "fgrep" || name === "rg") return grepIsInverse(lits(args));
-  return false;
-}
-
-/**
- * A broad process listing among `invs` — `pgrep node`, `pidof python3`,
- * `ps -C node`, `ps aux | grep node`, `Get-Process node` — or null.
- */
-function massSource(a: ShellAnalysis, invs: Invocation[]): string | null {
-  const psPresent = invs.some((inv) => inv.names.includes("ps"));
-  for (const inv of invs) {
-    for (const name of inv.names) {
-      const texts = lits(inv.args);
-      if (name === "pgrep") {
+function broadListing(a: ShellAnalysis, inv: Invocation): string | null {
+  const texts = lits(inv.args);
+  for (const name of inv.names) {
+    switch (name) {
+      case "ps": {
+        if (psListsEverything(texts)) return "ps listing every process";
+        // `ps -C node` names a subset, but a generic one: the same listing
+        // `pgrep node` gives. Both spellings of the option, since one word is
+        // otherwise the whole difference.
+        const k = texts.findIndex((t) => t === "-C" || t === "--command");
+        const inline = texts.find((t) => t !== null && t.startsWith("--command="));
+        const value = inline !== undefined ? inline!.slice("--command=".length) : k >= 0 ? texts[k + 1] : null;
+        if (value && value.split(",").some(isGenericExactName)) return `ps -C ${value}`;
+        break;
+      }
+      case "pgrep": {
         const why = pgrepMass(a, "pgrep", inv.args);
         if (why) return why;
-      } else if (name === "pidof") {
-        const generic = texts.find((t) => t !== null && !t.startsWith("-") && GENERIC_PROCESS_NAMES.has(patternTarget(t)));
+        break;
+      }
+      case "pidof": {
+        const generic = texts.find((t) => t !== null && !t.startsWith("-") && isGenericExactName(t));
         if (generic) return `pidof ${generic}`;
-      } else if (name === "get-process" || name === "gps") {
-        const named = [...psNames(inv.args), ...texts.filter((t): t is string => t !== null && !t.startsWith("-"))]
-          .find(isGenericOrWildcard);
-        if (named) return `Get-Process ${named}`;
-      } else if (name === "ps") {
-        const k = texts.findIndex((t) => t === "-C");
-        const value = k >= 0 ? texts[k + 1] : null;
-        if (value && value.split(",").some((v) => GENERIC_PROCESS_NAMES.has(patternTarget(v)))) return `ps -C ${value}`;
-      } else if (psPresent && (name === "grep" || name === "egrep" || name === "fgrep" || name === "rg")) {
-        if (grepIsInverse(texts)) continue;
-        const ignoreCase = texts.some(
-          (t) => t !== null && (t === "--ignore-case" || (/^-[a-zA-Z]+$/.test(t) && t.includes("i"))),
-        );
-        let pattern: string | null = null;
-        for (let k = 0; k < texts.length; k++) {
-          const t = texts[k];
-          if (t === null) break;
-          if (t === "-e" || t === "--regexp") {
-            pattern = texts[k + 1] ?? null;
-            break;
-          }
-          if (t.startsWith("-")) continue;
-          pattern = t;
-          break;
-        }
-        if (pattern !== null && broadPattern(pattern, false, ignoreCase)) return `ps | grep ${pattern}`;
-      } else if (psPresent && SCRIPT_FILTERS.has(name)) {
-        for (const script of filterScripts(a, inv.args)) {
-          const selector = scriptSelectors(name, script).find(broadScriptSelector);
-          if (selector !== undefined) return `ps | ${name} ${selector || "''"}`;
-        }
+        break;
+      }
+      // `top -b -n1` prints every process; nothing about `top` names one.
+      case "top":
+        return "top";
+      case "get-process":
+      case "gps": {
+        const named = [...psNames(inv.args), ...texts.filter((t): t is string => t !== null && !t.startsWith("-"))];
+        if (named.length === 0) return "Get-Process";
+        const generic = named.find(isGenericOrWildcard);
+        if (generic) return `Get-Process ${generic}`;
+        break;
       }
     }
   }
-  // Nothing on the chain narrows a listing of every process, so the kill takes
-  // all of them: `ps aux | awk '{print $2}' | xargs kill`, `ps -eo pid= | xargs
-  // kill`. Every stage has to be demonstrably unable to drop a row — anything
-  // this cannot read that way leaves the rule silent and the checks above in
-  // charge.
-  const everything = invs.some((inv) => inv.names.includes("ps") && psListsEverything(lits(inv.args)));
-  if (everything && invs.every((inv) => inv.names.some((n) => keepsEveryProcess(a, n, inv.args)))) {
-    return "ps listing every process";
+  return inv.args.some(scansProc) ? "a /proc scan" : null;
+}
+
+/** A process listing that names no process in particular among `invs`, or null. */
+function massSource(a: ShellAnalysis, invs: Invocation[]): string | null {
+  for (const inv of invs) {
+    const why = broadListing(a, inv);
+    if (why) return why;
   }
   return null;
 }
@@ -1192,22 +956,18 @@ function massSource(a: ShellAnalysis, invs: Invocation[]): string | null {
 /**
  * Per-analysis memos for the kill checks, so a command repeating `kill $P`
  * or `x | kill` thousands of times stays linear: each substitution is analysed
- * once, each variable's filter looked up once, each pipeline's invocations
- * indexed once.
+ * once, each pipeline's invocations indexed once.
  */
 interface KillMemo {
   subs: WeakMap<WordPart, string | null>;
-  filters: Map<string, boolean>;
   byCommand: Map<SimpleCommand, Invocation[]> | null;
   assignments: Map<string, ShellWord[]> | null;
-  derived: Map<string, string[]> | null;
-  filterNames: Set<string> | null;
 }
 const killMemos = new WeakMap<ShellAnalysis, KillMemo>();
 
 function killMemo(a: ShellAnalysis): KillMemo {
   let m = killMemos.get(a);
-  if (!m) killMemos.set(a, (m = { subs: new WeakMap(), filters: new Map(), byCommand: null, assignments: null, derived: null, filterNames: null }));
+  if (!m) killMemos.set(a, (m = { subs: new WeakMap(), byCommand: null, assignments: null }));
   return m;
 }
 
@@ -1261,117 +1021,18 @@ function massSourceInSubstitutions(a: ShellAnalysis, word: ShellWord): string | 
   return null;
 }
 
-/** Derived names followed out from the PID variable, and how many of them are kept. */
-const MAX_PID_NAME_ROUNDS = 4;
-const MAX_PID_NAMES = 64;
-/** Tools whose arguments decide something about one process. */
-const FILTER_TOOLS = new Set(["[", "[[", "test", "grep", "egrep", "rg"]);
-
-/** Every name a word expands, including inside a substitution or a parameter's default. */
+/**
+ * Every variable a word reads, including inside a substitution or a parameter's
+ * default, so `kill $(basename $p)` is read as a kill of what `$p` holds.
+ */
 function namesRead(word: ShellWord): Set<string> {
   const out = new Set<string>();
-  for (const p of word.parts) {
-    if (p.kind === "lit") continue;
-    if (p.kind === "param" && p.name) out.add(p.name);
-    for (const m of p.source.matchAll(/\$\{?(\w+)/g)) out.add(m[1]);
+  for (const part of word.parts) {
+    if (part.kind === "lit") continue;
+    if (part.kind === "param" && part.name) out.add(part.name);
+    for (const m of part.source.matchAll(/\$\{?(\w+)/g)) out.add(m[1]);
   }
   return out;
-}
-
-/**
- * Which names a name flows INTO: `cl=$(tr '\0' ' ' < /proc/$p/cmdline)` records
- * p → cl, so a `case "$cl" in` counts as a decision about the process that
- * `$p` names. Built once per analysis; the walk below is per PID variable.
- */
-function derivedFrom(a: ShellAnalysis): Map<string, string[]> {
-  const memo = killMemo(a);
-  if (memo.derived) return memo.derived;
-  const out = new Map<string, string[]>();
-  for (const [name, words] of assignmentsIn(a)) {
-    for (const w of words) {
-      for (const read of namesRead(w)) {
-        if (read === name) continue;
-        const list = out.get(read);
-        if (!list) out.set(read, [name]);
-        else if (!list.includes(name)) list.push(name);
-      }
-    }
-  }
-  memo.derived = out;
-  return out;
-}
-
-/** The PID variable and the names the command derives from it. */
-function pidNames(a: ShellAnalysis, variable: string): Set<string> {
-  const names = new Set([variable]);
-  const edges = derivedFrom(a);
-  let frontier = [variable];
-  for (let round = 0; round < MAX_PID_NAME_ROUNDS && frontier.length && names.size < MAX_PID_NAMES; round++) {
-    const next: string[] = [];
-    for (const name of frontier) {
-      for (const derived of edges.get(name) ?? []) {
-        if (names.has(derived) || names.size >= MAX_PID_NAMES) continue;
-        names.add(derived);
-        next.push(derived);
-      }
-    }
-    frontier = next;
-  }
-  return names;
-}
-
-/**
- * Every name some per-process decision reads: a test or a grep's arguments
- * (`[ "$p" = "$$" ]`, `grep -q x /proc/$p/cmdline`) and a `case`/`if` head
- * (`case "$cl" in`). Built once per analysis.
- */
-function filterNames(a: ShellAnalysis): Set<string> {
-  const memo = killMemo(a);
-  if (memo.filterNames) return memo.filterNames;
-  const out = new Set<string>();
-  const add = (w: ShellWord) => {
-    for (const n of namesRead(w)) out.add(n);
-  };
-  for (const inv of a.invocations) {
-    if (!inv.names.some((n) => FILTER_TOOLS.has(n))) continue;
-    for (const w of inv.args) add(w);
-  }
-  for (const cmd of a.commands) {
-    const at = cmd.words.findIndex((w) => {
-      const t = literalText(w);
-      return t === "case" || t === "if" || t === "elif";
-    });
-    if (at >= 0) for (const w of cmd.words.slice(at + 1)) add(w);
-  }
-  memo.filterNames = out;
-  return out;
-}
-
-/**
- * The command decides per process before killing: a `case`/`if` head, a test or
- * a grep THAT READS THE PID VARIABLE (`grep -q x /proc/$p/cmdline && kill $p`,
- * `case "$cl" in` where `cl` came from `$p`). A grep that only builds the list
- * (`$(ps aux | grep node)`) is not a filter, and neither is a conditional that
- * decides something else: `if true; then kill $P; fi` and `[ 1 = 1 ]` used to
- * count, which made a no-op conditional anywhere in the command a one-line
- * bypass of a policy no reviewer can clear.
- *
- * Memoized per variable, which is sound because the answer depends on the
- * variable's data dependencies and nothing about the kill site.
- */
-function filtersBeforeKilling(a: ShellAnalysis, variable: string): boolean {
-  const memo = killMemo(a).filters;
-  const cached = memo.get(variable);
-  if (cached !== undefined) return cached;
-  const filters = filterNames(a);
-  let hit = false;
-  for (const name of pidNames(a, variable)) {
-    if (!filters.has(name)) continue;
-    hit = true;
-    break;
-  }
-  memo.set(variable, hit);
-  return hit;
 }
 
 /** The invocations of each simple command, indexed once per analysis. */
@@ -1389,12 +1050,17 @@ function invocationsOf(a: ShellAnalysis, cmd: SimpleCommand): Invocation[] {
 }
 
 /**
- * What feeds a kill its PIDs, when that is a broad listing:
+ * What feeds a kill its PIDs, when that is a process listing:
  * - a substitution in its arguments: `kill $(pgrep node)`;
- * - the pipeline it reads: `pgrep node | xargs kill`, `ps aux | grep node | … | xargs kill`;
- * - a variable holding such a substitution: `P=$(pgrep node); kill $P`,
- *   `for p in $(pgrep node); do kill $p; done` — unless the command filters
- *   each process first, which is the careful form (`… case "$cmdline" in …`).
+ * - the pipeline it reads: `pgrep node | xargs kill`, `ps aux | … | xargs kill`;
+ * - a variable holding such a substitution or a `/proc` glob:
+ *   `P=$(pgrep node); kill $P`, `for p in $(pgrep node); do kill $p; done`,
+ *   `for p in /proc/[0-9]*; do kill $(basename $p); done`.
+ *
+ * What the command does with the listing in between is not read. A loop body
+ * that seems to check each process first is not an exemption: `for p in
+ * $(pgrep node); do [ -n "$p" ] && kill $p; done` reads as carefully as the
+ * form that really filters, and killed every node on the box.
  */
 function killFedByMass(a: ShellAnalysis, inv: Invocation): string | null {
   for (const w of inv.args) {
@@ -1412,11 +1078,11 @@ function killFedByMass(a: ShellAnalysis, inv: Invocation): string | null {
     if (why) return why;
   }
   for (const w of inv.args) {
-    for (const p of w.parts) {
-      if (p.kind !== "param") continue;
-      for (const bound of assignmentsIn(a).get(p.name) ?? []) {
+    for (const name of namesRead(w)) {
+      for (const bound of assignmentsIn(a).get(name) ?? []) {
+        if (scansProc(bound)) return "a /proc scan";
         const why = massSourceInSubstitutions(a, bound);
-        if (why && !filtersBeforeKilling(a, p.name)) return why;
+        if (why) return why;
       }
     }
   }
@@ -1428,7 +1094,12 @@ function blockMassKill(ctx: PolicyContext): PolicyResult {
     const a = analysisFor(ctx);
     if (!a) return allow();
     const hit = (why: string) =>
-      deny(`Killing processes en masse is blocked (${why}). Stop the specific process you started, by PID or with an exact name.`);
+      deny(
+        `Killing processes en masse is blocked (${why}). Kill it by PID (\`kill 4242\`), or name it in the ` +
+          "command that finds it (`pkill -f my-worker`, `pgrep -f my-worker | xargs kill`, " +
+          "`ps -C my-daemon -o pid= | xargs kill`) \u2014 what a grep or an awk does to a listing of every " +
+          "process is not read.",
+      );
     for (const inv of a.invocations) {
       for (const name of inv.names) {
         switch (name) {
@@ -1538,22 +1209,154 @@ function hooksPathDisablesHooks(value: string): boolean {
   return v === "" || v === "/dev/null" || v.toLowerCase() === "nul";
 }
 
+/**
+ * ONE setting a git invocation brings with it — a `-c`, a `--config-env`, a
+ * `GIT_CONFIG_*` variable, or a config FILE the command names.
+ *
+ * `key` and `value` are what the COMMAND STRING states, and `null` is the point
+ * of this type: a setting whose key the command does not state can be any
+ * setting at all, and a setting whose value it does not state can hold
+ * anything. Both are decided by asking what the source COULD be, never by
+ * reading as much of it as happens to resolve — a partial reading is how
+ * `-c alias.ci="${B:-commit --no-verify}"` read back as a plain `commit`.
+ */
+interface ConfigSource {
+  /** The setting's name, lower-cased, or null when the command does not state it. */
+  key: string | null;
+  /** The setting's value, or null when the command does not state it. */
+  value: string | null;
+  /** How it is written, for the deny reason. */
+  written: string;
+}
+
+/** `-c` keys that pull in a whole config FILE, so the setting they stand for is any setting at all. */
+const CONFIG_INCLUDE_RE = /^include(?:if\..*)?\.path$/;
+
+/** One setting, with its key normalised the way git compares config names. */
+function configSource(key: string | null, value: string | null, written: string): ConfigSource {
+  const k = key === null ? null : key.trim().toLowerCase();
+  if (k !== null && CONFIG_INCLUDE_RE.test(k)) return { key: null, value: null, written };
+  return { key: k, value, written };
+}
+
+/** A `key=value` setting the command states in one word, or an opaque source when it does not. */
+function settingFromText(text: string | null, written: string): ConfigSource {
+  if (text === null) return configSource(null, null, written);
+  const at = text.indexOf("=");
+  return at < 0 ? configSource(text, null, written) : configSource(text.slice(0, at), text.slice(at + 1), written);
+}
+
+/**
+ * Whether this source could be the setting `key`. A source whose key the
+ * command does not state could be ANY setting, which is what makes
+ * `git -c "$C" ci` unreadable: `$C` may hold `alias.ci=commit --no-verify`.
+ */
+function sourceCouldBe(src: ConfigSource, key: string): boolean {
+  return src.key === null || src.key === key;
+}
+
+/** Whether this source could turn git's hooks off: it could be `core.hooksPath`, set to a value that disables them. */
+function couldDisableHooks(src: ConfigSource): boolean {
+  return sourceCouldBe(src, "core.hookspath") && (src.value === null || hooksPathDisablesHooks(src.value));
+}
+
+/** At most this much of a `GIT_CONFIG_PARAMETERS` is read, and at most this many settings out of it. */
+const MAX_CONFIG_PARAMETERS = 4000;
+const MAX_CONFIG_PARAMETER_SETTINGS = 64;
+
+/**
+ * `GIT_CONFIG_PARAMETERS="'a.b'='c'"` or `"'a.b=c'"`: the settings git passes
+ * to its own children, and therefore into an alias body.
+ *
+ * Anything this does not read — a spelling it does not know, a value too long
+ * to walk — becomes ONE opaque source rather than nothing, so the unread part
+ * still fails closed.
+ */
+function configParameterSources(value: string): ConfigSource[] {
+  const opaque = configSource(null, null, "GIT_CONFIG_PARAMETERS");
+  if (value.length > MAX_CONFIG_PARAMETERS) return [opaque];
+  const out: ConfigSource[] = [];
+  let covered = 0;
+  let unread = false;
+  for (const m of value.matchAll(/'([^']*)'(?:='([^']*)'|=([^'\s]*))?/g)) {
+    const at = m.index ?? 0;
+    if (value.slice(covered, at).trim() !== "") unread = true;
+    covered = at + m[0].length;
+    if (out.length >= MAX_CONFIG_PARAMETER_SETTINGS) {
+      unread = true;
+      break;
+    }
+    const stated = m[2] !== undefined || m[3] !== undefined ? `${m[1]}=${m[2] ?? m[3]}` : m[1];
+    out.push(settingFromText(stated, `GIT_CONFIG_PARAMETERS ${m[1]}`));
+  }
+  if (unread || value.slice(covered).trim() !== "") out.push(opaque);
+  return out;
+}
+
+/** Environment variables that name a config FILE: every setting in it applies, and this cannot read files. */
+const GIT_CONFIG_FILE_VARS = new Set(["GIT_CONFIG", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"]);
+/** At most this many `GIT_CONFIG_COUNT` slots are read. */
+const MAX_GIT_CONFIG_COUNT = 16;
+
+/**
+ * The settings a command's environment carries into git:
+ * `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n` (which really do
+ * define aliases — checked against git 2.43: `GIT_CONFIG_COUNT=1
+ * GIT_CONFIG_KEY_0=alias.ci GIT_CONFIG_VALUE_0=version git ci` prints the
+ * version), `GIT_CONFIG_PARAMETERS`, and the variables naming a config file.
+ *
+ * A slot the command counts but does not fill is an opaque source, not a
+ * missing one.
+ */
+function envConfigSources(env: Array<{ name: string; values: string[] }>): ConfigSource[] {
+  const out: ConfigSource[] = [];
+  // Indexed once: the slot lookups below are O(1) each, so a command setting
+  // thousands of variables costs one pass, not one pass per slot.
+  const byName = new Map<string, string[]>();
+  for (const { name, values } of env) byName.set(name, [...(byName.get(name) ?? []), ...values]);
+  const one = (name: string) => {
+    const values = byName.get(name);
+    if (values === undefined) return undefined;
+    return values.length === 1 ? values[0] : null;
+  };
+  for (const { name, values } of env) {
+    if (GIT_CONFIG_FILE_VARS.has(name)) out.push(configSource(null, null, `${name}=…`));
+    if (name === "GIT_CONFIG_PARAMETERS") {
+      if (values.length === 1) out.push(...configParameterSources(values[0]));
+      else out.push(configSource(null, null, "GIT_CONFIG_PARAMETERS"));
+    }
+  }
+  const indexes = new Set<number>();
+  for (const name of byName.keys()) {
+    const m = /^GIT_CONFIG_KEY_(\d+)$/.exec(name);
+    if (m) indexes.add(Number(m[1]));
+    if (indexes.size >= MAX_GIT_CONFIG_COUNT) break;
+  }
+  const count = one("GIT_CONFIG_COUNT");
+  if (count !== undefined) {
+    const readable = count !== null && /^\d+$/.test(count.trim());
+    const n = readable ? Math.min(Number(count.trim()), MAX_GIT_CONFIG_COUNT) : 0;
+    for (let i = 0; i < n; i++) indexes.add(i);
+    // A count the command does not state could be any number of any settings;
+    // `GIT_CONFIG_COUNT=0` states that there are none.
+    if (!readable) out.push(configSource(null, null, "GIT_CONFIG_COUNT=…"));
+  }
+  for (const i of indexes) {
+    const key = one(`GIT_CONFIG_KEY_${i}`);
+    const value = one(`GIT_CONFIG_VALUE_${i}`);
+    out.push(configSource(key ?? null, value ?? null, `GIT_CONFIG_KEY_${i}=${key ?? "…"}`));
+  }
+  return out;
+}
+
 interface GitCall {
+  /** The subcommand as the command SPELLS it: git dispatches its own commands case-sensitively. */
+  subRaw: string | null;
+  /** The same word lower-cased, which is how git looks an `alias.<name>` up. */
   sub: string | null;
   subArgs: ShellWord[];
-  /** `-c key=value` settings. */
-  configs: string[];
-  /** `--config-env key=ENVVAR` settings: the value lives in an environment variable. */
-  configEnvs: string[];
-  /**
-   * The KEYS of `-c key=value` settings whose value is not plain literal text:
-   * `-c alias.ci="$B"`, `-c alias.ci=$(cat body)`, `-c alias.ci="${B:-…}"`.
-   * Such a value is resolved only as far as the command string states it, and
-   * for an alias BODY a partial reading is worse than none — the resolver takes
-   * the first word of a `${X:-…}` default, so `${B:-commit --no-verify}` reads
-   * back as a plain `commit`.
-   */
-  opaqueConfigKeys: string[];
+  /** Every setting this invocation brings with it. */
+  sources: ConfigSource[];
 }
 
 /**
@@ -1576,38 +1379,51 @@ function gitWord(a: ShellAnalysis, word: ShellWord): string | null {
   );
 }
 
-/** Every reading of a `-c key=value` word, falling back to its source when it cannot be resolved. */
-function configValues(a: ShellAnalysis, word: ShellWord | undefined): string[] {
-  if (!word) return [""];
-  return resolveWord(a, word) ?? [word.text];
+/**
+ * The sources one `-c <word>` stands for: every reading the command states,
+ * PLUS what it does not state. `-c core.hooksPath=$H` names the setting but not
+ * its value; `-c "$C"` names neither.
+ */
+function configOperandSources(a: ShellAnalysis, word: ShellWord | undefined, written: string): ConfigSource[] {
+  if (!word) return [configSource(null, null, written)];
+  const t = literalText(word);
+  if (t !== null) return [settingFromText(t, t)];
+  const out = (resolveWord(a, word) ?? []).map((v) => settingFromText(v, v));
+  const key = (/^([^=]*)=/.exec(literalPrefix(word)) ?? [])[1];
+  out.push(configSource(key ?? null, null, key ? `${key}=…` : written));
+  return out;
 }
 
 function parseGit(a: ShellAnalysis, args: ShellWord[]): GitCall {
-  const configs: string[] = [];
-  const configEnvs: string[] = [];
-  const opaqueConfigKeys: string[] = [];
+  const sources: ConfigSource[] = [];
+  const give = (subRaw: string | null, subArgs: ShellWord[]): GitCall => ({
+    subRaw,
+    sub: subRaw === null ? null : subRaw.toLowerCase(),
+    subArgs,
+    sources,
+  });
   for (let k = 0; k < args.length; k++) {
     const t = gitWord(a, args[k]);
-    if (t === null) return { sub: null, subArgs: [], configs, configEnvs, opaqueConfigKeys };
+    if (t === null) return give(null, []);
     if (GIT_GLOBAL_OPERAND.has(t)) {
-      if (t === "-c") {
-        const value = args[k + 1];
-        configs.push(...configValues(a, value));
-        if (value && literalText(value) === null) {
-          opaqueConfigKeys.push((/^([^=]*)=/.exec(literalPrefix(value)) ?? [])[1] ?? "");
-        }
-      } else if (t === "--config-env") configEnvs.push(...configValues(a, args[k + 1]));
+      if (t === "-c") sources.push(...configOperandSources(a, args[k + 1], "-c …"));
+      // `--config-env key=ENVVAR` states the key; the value lives in the environment.
+      else if (t === "--config-env") {
+        const key = literalText(args[k + 1]);
+        sources.push(configSource(key === null ? null : key.split("=")[0], null, `--config-env ${key ?? "…"}`));
+      }
       k++;
       continue;
     }
     if (t.startsWith("--config-env=")) {
-      configEnvs.push(t.slice("--config-env=".length));
+      const key = t.slice("--config-env=".length).split("=")[0];
+      sources.push(configSource(key, null, `--config-env ${key}`));
       continue;
     }
     if (t.startsWith("-")) continue;
-    return { sub: t.toLowerCase(), subArgs: args.slice(k + 1), configs, configEnvs, opaqueConfigKeys };
+    return give(t, args.slice(k + 1));
   }
-  return { sub: null, subArgs: [], configs, configEnvs, opaqueConfigKeys };
+  return give(null, []);
 }
 
 /** What one `git commit` argument is: the hook skip itself, an option that takes the next word, `--`, or neither. */
@@ -1675,14 +1491,17 @@ function hasNoVerify(a: ShellAnalysis, args: ShellWord[]): boolean {
   return false;
 }
 
-/** Environment switches that turn a hook manager off for one command. */
+/**
+ * Environment switches that turn a HOOK MANAGER off for one command. git's own
+ * `GIT_CONFIG_*` variables are not here: they are settings, and they are read
+ * as `ConfigSource`s so that a `core.hooksPath` and an `alias.<name>` written
+ * that way are judged by the same rules as a `-c`.
+ */
 function envSkipsHooks(name: string, value: string, prefixOnly: boolean): boolean {
   const v = value.trim().toLowerCase();
   if (name === "HUSKY") return v === "0" || v === "false";
   if (name === "HUSKY_SKIP_HOOKS") return v === "1" || v === "true";
   if (name === "LEFTHOOK") return v === "0" || v === "false";
-  if (/^GIT_CONFIG_KEY_\d+$/.test(name)) return v === "core.hookspath";
-  if (name === "GIT_CONFIG_PARAMETERS") return v.includes("core.hookspath");
   // pre-commit's per-hook skip list. Only as a prefix on the git command itself:
   // `SKIP` is too generic a name to read from an unrelated `export`.
   if (name === "SKIP") return prefixOnly && v.length > 0;
@@ -1724,14 +1543,13 @@ function quoteForRelex(word: ShellWord): string {
   return t === null ? word.text : shellQuote(t);
 }
 
-function expandInlineAliases(configs: string[], sub: string, subArgs: ShellWord[]): string[] {
+function expandInlineAliases(sources: ConfigSource[], sub: string, subArgs: ShellWord[]): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
-  for (const c of configs) {
-    const m = /^alias\.([^=]+)=([\s\S]*)$/i.exec(c.trim());
-    if (!m || m[1].toLowerCase() !== sub) continue;
+  for (const src of sources) {
+    if (src.key !== `alias.${sub}` || src.value === null) continue;
     const rest = subArgs.map(quoteForRelex).join(" ");
-    const body = m[2].trim();
+    const body = src.value.trim();
     const expanded = body.startsWith("!") ? `${body.slice(1)} ${rest}` : `git ${body} ${rest}`;
     if (seen.has(expanded)) continue;
     seen.add(expanded);
@@ -1759,13 +1577,10 @@ function expandInlineAliases(configs: string[], sub: string, subArgs: ShellWord[
  * can only be resolved against its own analysis.
  */
 interface AliasScope {
-  configs: string[];
-  configEnvs: string[];
+  sources: ConfigSource[];
   env: Array<{ name: string; values: string[] }>;
-  /** `-c` keys whose value the command string does not state; see `GitCall`. */
-  opaqueConfigKeys: string[];
 }
-const EMPTY_SCOPE: AliasScope = { configs: [], configEnvs: [], env: [], opaqueConfigKeys: [] };
+const EMPTY_SCOPE: AliasScope = { sources: [], env: [] };
 
 /** What the whole walk learned that no single level can see on its own. */
 interface HookScan {
@@ -1775,14 +1590,50 @@ interface HookScan {
   seen: ShellAnalysis[];
 }
 
-/** Why this command skips git hooks, or null. `depth` bounds alias expansion. */
+/**
+ * Why this command skips git hooks, or null. `depth` bounds alias expansion.
+ *
+ * The verdict is about the EFFECTIVE command — what git will really run — and
+ * where that cannot be worked out it FAILS CLOSED for anything that could be a
+ * commit or a push. Three questions, in git's own order:
+ *
+ *   1. Is the subcommand one git SHIPS? git.c runs `handle_builtin()`, then the
+ *      dashed externals, and only then `handle_alias()`, and that dispatch is
+ *      case-SENSITIVE — so `git -c alias.commit=status commit` runs the real
+ *      commit and ignores the alias, while `git -c alias.COMMIT=… COMMIT` does
+ *      NOT (`git VERSION` is "not a git command"; config lookup, and therefore
+ *      `alias.<name>`, is case-INSENSITIVE). Both directions were bypasses.
+ *   2. If not, is it an alias this command DEFINES? Every definition source —
+ *      `-c`, `--config-env`, `GIT_CONFIG_KEY_n`, a config file the command
+ *      names — can redefine any subcommand. One the command states is expanded
+ *      and re-read; one it does not state is a deny, because that body IS the
+ *      command that runs and nothing in the text says what it is.
+ *   3. If it is a builtin that fires hooks, does anything in force skip them?
+ *      A setting the command cannot state in full counts: a `-c` whose value or
+ *      whose whole key is unreadable could be `core.hooksPath=/dev/null`.
+ *
+ * An alias the command does NOT bring a definition for (`git st`, whose
+ * definition lives in the user's own config) is left alone: every user has such
+ * aliases, and nothing about the command says it is a commit.
+ */
 function noVerifyHit(a: ShellAnalysis, depth: number, scope: AliasScope, scan: HookScan): string | null {
   scan.seen.push(a);
   for (const inv of a.invocations) {
     if (!inv.names.includes("git")) continue;
     const g = parseGit(a, inv.args);
-    if (!g.sub) continue;
-    if (g.sub === "config") {
+    // Everything the enclosing invocations imposed is still in force here.
+    const env = [
+      ...scope.env,
+      ...inv.env.map(({ name, value }) => ({ name, values: resolveWord(a, value) ?? [] })),
+    ];
+    const sources = [...scope.sources, ...g.sources, ...envConfigSources(env)];
+    if (g.sub === null || g.subRaw === null) {
+      // The command does not say which subcommand runs. A hook skip written on
+      // it has nowhere else to go, so `git $S --no-verify` is a skip.
+      if (hasNoVerify(a, inv.args)) return "git <unresolved subcommand> --no-verify";
+      continue;
+    }
+    if (g.sub === "config" && GIT_COMMANDS.has(g.subRaw)) {
       const texts = lits(g.subArgs);
       const k = texts.findIndex((t) => t !== null && t.toLowerCase() === "core.hookspath");
       if (k >= 0 && k + 1 < texts.length) {
@@ -1791,32 +1642,13 @@ function noVerifyHit(a: ShellAnalysis, depth: number, scope: AliasScope, scan: H
       }
       continue;
     }
-    // Everything the enclosing invocations imposed is still in force here.
-    const configs = [...scope.configs, ...g.configs];
-    const configEnvs = [...scope.configEnvs, ...g.configEnvs];
-    const opaqueConfigKeys = [...scope.opaqueConfigKeys, ...g.opaqueConfigKeys];
-    const env = [
-      ...scope.env,
-      ...inv.env.map(({ name, value }) => ({ name, values: resolveWord(a, value) ?? [] })),
-    ];
-    // An alias NAMED after a command git ships is dead text: git runs its own
-    // command and never looks at the alias. Reading it as the expansion, and
-    // stopping there, let `-c alias.commit=status` disarm every check the real
-    // `commit` below would have made.
-    if (!GIT_COMMANDS.has(g.sub)) {
+    if (!GIT_COMMANDS.has(g.subRaw)) {
       const aliasKey = `alias.${g.sub}`;
-      // An alias body the command string does not state is as unreadable as a
-      // `--config-env core.hooksPath`, and decides far more: it IS the command
-      // that runs. `--config-env=alias.ci=E` really does define one (checked
-      // against git 2.43), and nothing in the command says what it holds.
-      if (
-        [...opaqueConfigKeys, ...configEnvs.map((c) => c.trim().split("=")[0])].some(
-          (key) => key.toLowerCase() === aliasKey,
-        )
-      ) {
+      // A source that could define this alias but does not state the body.
+      if (sources.some((s) => sourceCouldBe(s, aliasKey) && s.value === null)) {
         return `git -c ${aliasKey}=… (body not in the command)`;
       }
-      const expansions = expandInlineAliases(configs, g.sub, g.subArgs);
+      const expansions = expandInlineAliases(sources, g.sub, g.subArgs);
       if (expansions.length > 0) {
         // An alias defined inside an alias inside an alias is built to hide what
         // it runs; one level more than is expanded is not waved through.
@@ -1824,22 +1656,20 @@ function noVerifyHit(a: ShellAnalysis, depth: number, scope: AliasScope, scan: H
         if (expansions.length > MAX_ALIAS_DEFINITIONS) return `git -c ${aliasKey}=… (too many definitions to check)`;
         for (const expanded of expansions) {
           const inner = analyzeShell(expanded);
-          const why = noVerifyHit(inner, depth + 1, { configs, configEnvs, env, opaqueConfigKeys }, scan);
+          const why = noVerifyHit(inner, depth + 1, { sources, env }, scan);
           if (why) return `git -c ${aliasKey}=… → ${why}`;
           if (inner.truncated) return `git -c ${aliasKey}=… (too deeply nested to check)`;
         }
-        continue;
       }
+      continue;
     }
     if (!HOOK_SUBCOMMANDS.has(g.sub)) continue;
     scan.runsHooks = true;
-    const hooksPath = configs.find((c) => {
-      const m = /^core\.hookspath=([\s\S]*)$/i.exec(c.trim());
-      return m !== null && hooksPathDisablesHooks(m[1]);
-    });
-    if (hooksPath !== undefined) return `git -c ${hooksPath.trim()} ${g.sub}`;
-    // `--config-env` reads the value from the environment, which the command string does not show.
-    if (configEnvs.some((c) => /^core\.hookspath=/i.test(c.trim()))) return `git --config-env core.hooksPath=… ${g.sub}`;
+    const hooksPath = sources.find(couldDisableHooks);
+    if (hooksPath !== undefined) {
+      const how = hooksPath.value === null ? `${hooksPath.written} (value not in the command)` : hooksPath.written;
+      return `git -c ${how} ${g.sub}`;
+    }
     if (g.sub === "commit") {
       const why = commitSkipsHooks(a, g.subArgs);
       if (why) return why;
@@ -1879,6 +1709,7 @@ function blockNoVerify(ctx: PolicyContext): PolicyResult {
  * commit' a` exports for the commit the same way.
  */
 function exportSkipsHooks(analyses: ShellAnalysis[]): string | null {
+  const exported: Array<{ name: string; values: string[] }> = [];
   for (const a of analyses) {
     for (const inv of a.invocations) {
       if (!inv.names.some((n) => n === "export" || n === "declare" || n === "typeset")) continue;
@@ -1887,13 +1718,19 @@ function exportSkipsHooks(analyses: ShellAnalysis[]): string | null {
       for (const w of inv.args) {
         const m = /^([A-Za-z_]\w*)=/.exec(literalPrefix(w));
         if (!m) continue;
-        for (const v of resolveWord(a, dropPrefix(w, m[0].length)) ?? []) {
+        const values = resolveWord(a, dropPrefix(w, m[0].length)) ?? [];
+        for (const v of values) {
           if (envSkipsHooks(m[1], v, false)) return `export ${m[1]}=${v}`;
         }
+        exported.push({ name: m[1], values });
       }
     }
   }
-  return null;
+  // git's own `GIT_CONFIG_*` variables reach the commit the same way an export
+  // of `HUSKY` does, and are judged by the same rule as a `-c`: a source that
+  // could be `core.hooksPath`, set to a value that turns hooks off.
+  const hit = envConfigSources(exported).find(couldDisableHooks);
+  return hit ? `export ${hit.written}` : null;
 }
 
 // ── block-indirect-exec ─────────────────────────────────────────────────────

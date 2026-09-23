@@ -262,6 +262,13 @@ describe("block-mass-kill", () => {
     "taskkill /F /FI \"IMAGENAME eq python.exe\"",
     "Stop-Process -Name node -Force",
     "Get-Process node | Stop-Process",
+    // ROUND 6 REVERSAL: what the loop does with each PID is no longer read, so
+    // a kill fed by `pgrep bash`/`pgrep -f python` is denied however carefully
+    // the body checks each process. Both rows come from the real-transcript
+    // sweep and were pinned as allows; `pgrep -f grade-loop | xargs kill` and
+    // `pgrep -f worker.py | xargs kill` are the spellings that still run.
+    "for p in $(pgrep bash); do cl=$(tr '\\0' ' ' < /proc/$p/cmdline); case \"$cl\" in *grade-loop*) kill $p;; esac; done",
+    "for p in $(pgrep -f python); do [ \"$p\" = \"$$\" ] && continue; grep -q worker.py /proc/$p/cmdline && kill $p; done",
   ])("denies %s", async (command) => {
     expect(await decide("block-mass-kill", command)).toBe("deny");
   });
@@ -286,9 +293,9 @@ describe("block-mass-kill", () => {
     "pgrep -c -f node",
     // From the real-transcript sweep: explicit PIDs, and an unrelated pgrep.
     "kill 312554 312556 2>/dev/null; sleep 60; pgrep -f raw_claude >/dev/null; pgrep -c -f linux-x64/rg",
-    // The careful loop: each process is checked before it is killed.
-    "for p in $(pgrep bash); do cl=$(tr '\\0' ' ' < /proc/$p/cmdline); case \"$cl\" in *grade-loop*) kill $p;; esac; done",
-    "for p in $(pgrep -f python); do [ \"$p\" = \"$$\" ] && continue; grep -q worker.py /proc/$p/cmdline && kill $p; done",
+    // The careful loop, written so the LISTER names what it wants: this is the
+    // spelling that survives the round-6 rule below.
+    "for p in $(pgrep -f grade-loop); do kill $p; done",
     "echo 'never run killall node'",
     "git commit -m 'stop using pkill -f node'",
   ])("allows %s", async (command) => {

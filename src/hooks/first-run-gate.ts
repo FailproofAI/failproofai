@@ -35,6 +35,11 @@ export const FIRST_RUN_EXEMPT_SUBCOMMANDS: readonly string[] = [
   // Same reason: a backfill is an explicit instruction about an already-set-up
   // machine, and interrupting it to offer setup answers a question nobody asked.
   "backfill",
+  // `jev setup` is configuration in its own right, and `jev status` / `test` /
+  // `remove` inspect or undo it. It is also the command most likely to be
+  // scripted with a key on stdin — a wizard in front of it would read that key
+  // as the answer to its first question.
+  "jev",
 ];
 
 export function shouldOfferFirstRun(args: readonly string[]): boolean {

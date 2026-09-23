@@ -169,7 +169,8 @@
               {
                 "group": "Prevent repeat failures",
                 "pages": [
-                  "policies/overview"
+                  "policies/overview",
+                  "policies/jev-byok"
                 ]
               },
               {

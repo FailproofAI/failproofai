@@ -1,0 +1,187 @@
+---
+title: "Jev evaluator (bring your own key)"
+description: "Let TypeSafe's Jev classifier judge your agents' tool calls above a hard regex floor, through your own Jev endpoint and key."
+icon: "key-round"
+---
+
+Regex policies match strings. They cannot tell `rm -rf build/` that you asked for from `rm -rf ~` that slipped into a plan, so they block too much in one place and too little in another. **Jev**, TypeSafe's classifier, reads the call against what you actually asked for and answers a set of yes/no questions about it in one fast request.
+
+With your own Jev endpoint and key configured, Failproof AI asks Jev about each tool call **alongside** the regex policies, never instead of them:
+
+- A **hard** policy's deny is final. Jev cannot clear it. Every policy is hard unless it is explicitly marked reviewable and names the Jev checks that cover it, so a custom, pack or Cloud policy that says nothing is hard, and the always-on self-protection guard is always hard.
+- A **reviewable** policy's deny may be cleared, but only when Jev was asked about the exact concern that policy covers and found nothing.
+- Jev can also warn or deny on its own, for harm no regex describes.
+- If Jev cannot answer (timeout, rate limit, server error, no credits, an unexpected model version), that call gets the regex result, exactly as without Jev.
+
+<Note>
+Without a Jev config nothing changes: hooks run the regex policies exactly as they always have. The config is the whole opt-in.
+</Note>
+
+## Choose a provider
+
+Jev is reachable through five routes. Bring a key for any one of them.
+
+| Provider | `--provider` | Endpoint | Default model | Notes |
+| --- | --- | --- | --- | --- |
+| TypeSafe | `typesafe` | `api.typesafe.ai/v1/systemone` | `jev-1.13.0` | Exact version pin. |
+| OpenRouter | `openrouter` | `openrouter.ai/api/v1/systemone` | `typesafe/jev-1.13` | Requests are routed to zero-data-retention endpoints only, with no fallback to another provider. Reports a dated version such as `typesafe/jev-1.13-20260917`. |
+| Vercel AI Gateway | `vercel` | `ai-gateway.vercel.sh/typesafe/v1/systemone` | `typesafe-ai/jev` | Names Jev only by an alias, so the answering version is recorded as unverified. |
+| Cloudflare Workers AI | `cloudflare` | `api.cloudflare.com/client/v4/accounts/<id>/ai/run` | `typesafe/jev` | Needs `--account-id`. About six calls a second per key were measured before HTTP 429. |
+| Your own endpoint | `custom` | `<base-url>/systemone` | `jev-1.13.0` | Any endpoint that accepts TypeSafe's request body and reports which model answered. `https` only; plain `http://localhost` is accepted in shadow mode only. |
+
+<Warning>
+With Vercel's own bring-your-own-key feature, a failed request is silently retried with Vercel's credentials. If you need every call billed to, and seen by, your own TypeSafe account only, use TypeSafe directly.
+</Warning>
+
+## Set it up
+
+The key never goes on the command line, where `ps` and your shell history would keep it. Pipe it in with `--key-stdin`, or run `setup` in a terminal without it and paste the key at a masked prompt.
+
+<Tabs>
+  <Tab title="TypeSafe">
+    ```bash
+    failproofai jev setup --provider typesafe --key-stdin < ~/typesafe.key
+    ```
+  </Tab>
+  <Tab title="OpenRouter">
+    ```bash
+    failproofai jev setup --provider openrouter --key-stdin < ~/openrouter.key
+    ```
+  </Tab>
+  <Tab title="Vercel">
+    ```bash
+    failproofai jev setup --provider vercel --key-stdin < ~/vercel-gateway.key
+    ```
+  </Tab>
+  <Tab title="Cloudflare">
+    ```bash
+    failproofai jev setup --provider cloudflare --account-id <32-hex-account-id> \
+      --key-stdin < ~/cloudflare.token
+    ```
+  </Tab>
+  <Tab title="Custom">
+    ```bash
+    failproofai jev setup --provider custom --base-url https://jev.internal.example.com/v1 \
+      --key-stdin < ~/jev.key
+    ```
+  </Tab>
+</Tabs>
+
+Then send one small live request to check the key, the endpoint and which Jev answered:
+
+```bash
+failproofai jev test
+```
+
+```text
+  failproofai jev test                                            ok · 523 ms
+
+  provider      cloudflare
+  model asked   typesafe/jev
+  answered by   jev-1.13.0 (Jev 1.13 family — verified)
+  latency       523 ms — within the 1500 ms timeout
+```
+
+Hooks read the config on every tool call, so it applies from the next one. There is nothing to restart, with or without the daemon.
+
+## Check what it is doing
+
+```bash
+failproofai jev status
+failproofai jev status --json
+```
+
+`status` shows the provider, endpoint, model, mode, the config file and its permissions, and never the key. Below that it summarizes recent activity: how many calls Jev evaluated, how often it fell back to regex and why, its latency, and which reviewable policies it cleared.
+
+## Shadow mode
+
+`enforce` is the default. To watch Jev without letting it change any decision, switch to `shadow`: Jev is still asked and its verdicts are recorded, but the regex result is what is enforced.
+
+```bash
+failproofai jev setup --mode shadow
+failproofai jev setup --mode enforce
+```
+
+Re-running `setup` for the same provider keeps the stored key, so a mode switch is one flag. Switching provider starts over and asks for that provider's key. So does a `--base-url` that moves requests to a different host: a stored key is only sent to the host it was given for, or to its provider's own API.
+
+## The config file
+
+Everything lives in one file, `~/.failproofai/jev.json`, written by `setup`:
+
+```json
+{
+  "provider": "cloudflare",
+  "apiKey": "<your key>",
+  "accountId": "<32-hex-account-id>",
+  "mode": "enforce",
+  "timeoutMs": 1500
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `provider` | `typesafe`, `openrouter`, `vercel`, `cloudflare` or `custom`. |
+| `apiKey` | Sent as `Authorization: Bearer <key>`. |
+| `baseUrl` | Required for `custom`; replaces the provider's API base otherwise. Must be `https`. Plain `http` to `localhost` is accepted only with `mode: shadow`: nothing authenticates a local port, so while your proxy is down any process on the machine, including the agent being judged, could answer in its place. |
+| `accountId` | Cloudflare only: 32 lowercase hex characters. |
+| `model` | Replaces the provider's default model id. A versioned id must name Jev 1.13. A value shaped like an API key is refused (and not repeated back), so a key pasted into `--model` is never stored or sent as the model. |
+| `timeoutMs` | How long a tool call waits for Jev before using the regex result. 100–10000, default 1500. |
+| `mode` | `enforce` (default) or `shadow`. |
+
+Three rules protect it:
+
+- **Owner-only.** It is written with permissions `0600`. A copy that any other user or group can read or write is **refused**, and hooks fall back to regex until you run `chmod 600 ~/.failproofai/jev.json` or `setup` again. The directory is checked too: `~/.failproofai` must not be **writable** by anyone else, because whoever can write there can replace the file whatever its own permissions are. `setup` takes those write bits off if it finds them. `failproofai jev status` says when a config has been refused and shows the endpoint the file names: someone else could have changed it, so check it is yours before you `chmod`. Re-running `setup` on such a file carries its stored key only to the provider's own API; any other endpoint it names needs the key again (`--key-stdin`), or `--base-url default` to send requests back to the provider.
+- **Global only.** A repository cannot turn Jev on, point it at another endpoint or pick its model: a `.failproofai/jev.json` inside a project is ignored, and the provider, URL, model and account id are read only from that file — never from the environment, which a repository's agent settings can set. (`FAILPROOFAI_HOME` is not a way around that: it moves the whole failproofai directory, your policies included, rather than redirecting Jev on its own.)
+- **The key alone may come from the environment.** If the file has no `apiKey`, `FAILPROOFAI_JEV_API_KEY` supplies it for that session (`setup --key-from-env` writes such a file). It never replaces a key the file holds, and it cannot turn Jev on without the file. Where the variable is not set, Jev is simply off for that shell: `failproofai jev status` says so, exits 0 and leaves the config alone (`status --json` reports `"status": "key-missing"` with `"reason": "no-env-key"`). The `failproofaid` daemon does not see your shell's environment, so on a machine set up with `failproofai config`, keep the key in the file.
+
+## Which Jev answers
+
+Failproof AI's decision thresholds were calibrated on Jev 1.13, so an answer is used only when it comes from that family: `jev-1.13.x`, or OpenRouter's `typesafe/jev-1.13-<date>`. Where a provider names Jev only by an alias and reports no version (Vercel, and Cloudflare when it does not say), the answer is used and recorded as unverified. A `custom` endpoint must report the model that answered; the one exception is an unversioned `--model` name you configured for it, which, echoed back, is recorded as unverified in the same way. An answer reporting any other version, or a `custom` answer reporting none, is not used: that call falls back to regex with the reason `model-mismatch`.
+
+## When Jev cannot answer
+
+Each of these falls back to the regex result for that call and is recorded with its reason, which `failproofai jev status` totals:
+
+| Reason | Cause |
+| --- | --- |
+| `timeout` | No answer within `timeoutMs`. |
+| `http-429` | The provider rate-limited the key. |
+| `http-5xx` | A server error at the provider. |
+| `out-of-credits` | HTTP 402: the provider account has no credits left. |
+| `http-401`, `http-403` | The key was refused. |
+| `network` | The endpoint could not be reached. |
+| `http-3xx` | The endpoint answered with a redirect. Redirects are never followed, so the answer only ever comes from the URL in your config; set `--base-url` to the final URL. |
+| `model-mismatch` | A Jev version other than 1.13 answered, or a `custom` endpoint did not say which model answered. |
+
+## What leaves the machine
+
+For each tool call Jev evaluates, one request goes to your provider, carrying:
+
+- the tool call itself, with secrets such as API keys, bearer tokens and `KEY=` assignments redacted;
+- the recent prompts you typed, with text your agent's harness added removed;
+- the agent's last message before your latest prompt, labelled as agent-written;
+- facts computed locally, such as whether a path is inside the project and the current git branch.
+
+It goes only to the endpoint in your config, under your key.
+
+## Turn it off
+
+```bash
+failproofai jev remove
+```
+
+This deletes `~/.failproofai/jev.json`. From the next tool call, hooks run the regex policies exactly as before.
+
+## Command reference
+
+| Command | Outcome |
+| --- | --- |
+| `failproofai jev setup --provider <kind> --key-stdin` | Write the config from a key piped on stdin |
+| `failproofai jev setup --provider <kind>` | Same, asking for the key at a masked prompt |
+| `failproofai jev setup --key-from-env` | Store no key; read `FAILPROOFAI_JEV_API_KEY` per session |
+| `failproofai jev setup --mode shadow` | Switch mode, keeping the stored key |
+| `failproofai jev setup --model <id>` / `--base-url <url>` | Override the model or API base; `default` clears the override |
+| `failproofai jev setup --timeout-ms <n>` | Change the per-call budget |
+| `failproofai jev status [--json]` | Configuration, permissions and recent activity; never the key |
+| `failproofai jev test [--json]` | One live request: latency and the version that answered |
+| `failproofai jev remove` | Delete the config; Jev is off |

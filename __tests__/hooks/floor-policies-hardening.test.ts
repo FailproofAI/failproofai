@@ -577,6 +577,17 @@ describe("the floor's cost stays bounded on a command built to be expensive", ()
   // stay in milliseconds. Run under node, whose regex engine is the one the
   // shipped CLI uses.
   const big = (unit: string) => unit.repeat(Math.ceil(500_000 / unit.length));
+  /**
+   * A session cwd, which `block-disk-destruction` resolves every relative path
+   * against — and WITHOUT which a `cd`-heavy row measures nothing. With no cwd
+   * the directory set starts empty, so a relative `cd` has nothing to resolve
+   * against, gives up on the first one and walks no further: the row below ran
+   * that way and reported 0.4 ms while the same command under a cwd took 13.6 s.
+   * Depth is the second half of it — each `cd ..` from a deep directory reaches
+   * a new one, and the directory set is the second factor the walk was
+   * quadratic in, so a shallow cwd hid most of the cost too (201 ms).
+   */
+  const DEEP_CWD = "/" + Array.from({ length: 60 }, (_, i) => `lvl${i}`).join("/");
   it.each([
     ["a GraphQL query built to backtrack", "gh api graphql -f query='mutation " + "a ".repeat(100_000) + "'"],
     // The one place a regex is BUILT from the command: a glob in command
@@ -589,11 +600,34 @@ describe("the floor's cost stays bounded on a command built to be expensive", ()
     ["500 KB of chmod", big("chmod 755 a; ")],
     ["500 KB of dd", big("dd if=/dev/zero of=out.img; ")],
     ["500 KB of assignments before one dd", "dd if=/dev/zero of=out.img; " + big("A=1; ")],
-    ["many relative cds before one mkfs", Array.from({ length: 2_000 }, () => "cd ..").join("; ") + "; mkfs.ext4 img"],
+    ["500 KB of relative cds before one mkfs", big("cd ..; ") + "mkfs.ext4 img", DEEP_CWD],
+    ["500 KB of relative cds before one write redirect", big("cd ..; ") + "echo x > out.log", DEEP_CWD],
+    ["500 KB of relative cds and nothing else", big("cd ..; "), DEEP_CWD],
+    [
+      "500 KB of absolute and relative cds before one dd",
+      big("cd /srv; cd sub; cd ..; ") + "dd if=/dev/zero of=d.img",
+      DEEP_CWD,
+    ],
+    // What is left after the walk remembers what it has joined: 60 directories
+    // reached by absolute `cd`s, then thousands of DISTINCT relative targets
+    // that each land back inside that set, so no join is ever one the memo can
+    // skip. It is the shape the walk is linear in rather than free — measured
+    // under node, 200 KB is 0.28 s and a full 500 KB 0.70 s (1.40 s before),
+    // and doubling the input doubles the time rather than squaring it. 200 KB
+    // here keeps the row a bound rather than a coin flip on a loaded box.
+    [
+      "200 KB of distinct relative cds over 60 directories, before one mkfs",
+      "cd /; " +
+        Array.from({ length: 60 }, (_, i) => `cd /a${i}`).join("; ") +
+        "; " +
+        Array.from({ length: 10_000 }, (_, k) => `cd ../a1/u${k}/..`).join("; ") +
+        "; mkfs.ext4 sda1",
+      "/",
+    ],
     ["a very long argument", "chmod 755 " + "a".repeat(200_000)],
-  ])("%s", async (_label, command) => {
+  ] as Array<[string, string, string?]>)("%s", async (_label, command, cwd) => {
     const started = Date.now();
-    for (const name of FLOOR) await decide(name, command);
+    for (const name of FLOOR) await decide(name, command, cwd);
     expect(Date.now() - started).toBeLessThan(2_000);
   });
   // The number the scope cut was made for. Measured under node at 500 KB:
@@ -608,6 +642,45 @@ describe("the floor's cost stays bounded on a command built to be expensive", ()
     const started = performance.now();
     for (const name of FLOOR) expect(await decide(name, command)).toBe("allow");
     expect(performance.now() - started).toBeLessThan(300);
+  });
+
+  /**
+   * The same number for a cd-heavy command, which is where the budget above was
+   * really being spent: `block-disk-destruction` joined every `cd` onto every
+   * directory it had reached, for up to eight passes, and nothing stopped it
+   * redoing a join it had already done. Measured under node at 500 KB with a
+   * 60-deep cwd: 13,652 ms before, 14 ms after. The bound here is the same
+   * 300 ms as above — three orders of magnitude under what the repeated walk
+   * cost, and still far too loose to flake on a loaded CI box.
+   */
+  it("evaluates a 500 KB cd-heavy command through all four in well under 100 ms", async () => {
+    const command = big("cd ..; ") + "mkfs.ext4 img";
+    expect(command.length).toBeGreaterThan(500_000);
+    for (const name of FLOOR) await decide(name, command, DEEP_CWD); // warm
+    const started = performance.now();
+    for (const name of FLOOR) expect(await decide(name, command, DEEP_CWD)).toBe("allow");
+    expect(performance.now() - started).toBeLessThan(300);
+  });
+
+  /**
+   * And the shape of the cost, not just one reading of the clock: 1000x the
+   * `cd`s must not be 1000x the time, or the walk is back to repeating joins it
+   * has already done. A timing bound alone passes again the moment someone
+   * re-introduces the quadratic walk on a fast enough box.
+   */
+  it("does not pay again for a cd it has already followed", async () => {
+    const at = async (count: number) => {
+      const command = "cd ..; ".repeat(count) + "mkfs.ext4 img";
+      for (const name of FLOOR) await decide(name, command, DEEP_CWD); // warm
+      const started = performance.now();
+      await decide("block-disk-destruction", command, DEEP_CWD);
+      return performance.now() - started;
+    };
+    const small = await at(100);
+    const large = await at(100_000);
+    // What is left is the lexing, which is linear. A 30x envelope on a 1000x
+    // input passes that comfortably and fails a quadratic walk by 30x.
+    expect(large).toBeLessThan(Math.max(small, 1) * 30);
   });
 });
 

@@ -247,7 +247,6 @@ describe("block-indirect-exec", () => {
     "a=r; b=m; $a$b -rf /",
     "sudo $(which dd) if=/dev/zero of=/dev/sda",
     "find . -exec $R {} + ; R=rm",
-    "$UNKNOWN -rf /",
     "\"$CMD\" --no-preserve-root /",
     "$TOOL if=/dev/zero of=/dev/sda",
     "$(printf '\\x72\\x6d') -rf x",
@@ -274,8 +273,37 @@ describe("block-indirect-exec", () => {
     // From the real-transcript sweep: case patterns are not commands.
     "for f in $(find . -name '*.py'); do case \"$f\" in ./a/*|./b/*) continue;; esac; cat \"$f\"; done",
     "echo 'R=/bin/rm; $R -rf /'",
+    // ROUND 10 REVERSAL. A leading `-r` plus an `-f` used to be read as "this
+    // is an rm/dd behind a variable" whenever the program name could not be
+    // resolved — and the program name is unresolvable for EVERY one of these.
+    // `-rf` is how a dozen ordinary programs spell an everyday thing (in grep,
+    // tar and make the `-f` takes the operand after it), so the pair is a flag
+    // shape, not evidence about the program. `$UNKNOWN -rf /` moved out of the
+    // deny table above with it: a name the command never states, carrying an
+    // argument list a dozen programs share, is Jev's to judge now.
+    "$UNKNOWN -rf /",
+    "$GREP -rf patterns.txt src/",
+    "$RSYNC --recursive --force ./dist/ user@host:/srv/",
+    "$TAR -rf archive.tar notes.md",
+    "$MAKE -rf Makefile.ci all",
+    "$CP -rf src dst",
+    "$SCP -rf ./dist user@host:/srv",
+    "$CHOWN -Rf deploy:deploy /srv/app",
+    "$CHMOD -Rf 755 build",
+    "$LN -rfs ../a ./b",
   ])("allows %s", async (command) => {
     expect(await decide("block-indirect-exec", command)).toBe("allow");
+  });
+
+  // The floor still reads the name, however it is written — which is what the
+  // deny table above is, and why dropping the flag shape costs it nothing.
+  it.each([
+    "R=/bin/rm; $R -rf build",
+    "G=/bin/rm; $G --recursive --force build",
+    "$(which rm) --recursive --force build",
+    "/bin/r? --recursive --force build",
+  ])("still denies %s (the NAME resolves, not the flags)", async (command) => {
+    expect(await decide("block-indirect-exec", command)).toBe("deny");
   });
 
   it("denies a command nested past what it can check", async () => {

@@ -182,6 +182,21 @@ const WRITE_REDIRECT_RE = /^\d*(?:>|>>|>\||&>|&>>|<>|>&)$/;
 /** Working directories tracked per command before the set counts as unknown. */
 const MAX_CWDS = 64;
 
+/** An absolute path as a directory key: normalized, without a trailing slash. */
+function normalizeDir(path: string): string {
+  const n = posix.normalize(path);
+  return n.length > 1 && n.endsWith("/") ? n.slice(0, -1) : n;
+}
+
+/**
+ * Where a relative `cd` from `dir` lands. Equivalent to `posix.resolve(dir, rel)`
+ * for an absolute, normalized `dir` — and about twice as quick under node,
+ * which is the engine the shipped CLI runs this on.
+ */
+function joinCwd(dir: string, rel: string): string {
+  return normalizeDir(dir + "/" + rel);
+}
+
 /** The directories a relative path in the command can be relative to. */
 interface Cwds {
   dirs: string[];
@@ -190,26 +205,64 @@ interface Cwds {
 }
 
 /**
+ * Computed on the first path that could name a device, and not at all for the
+ * commands — the overwhelming majority — that name no disk tool and redirect
+ * nowhere. `blockDiskDestruction` holds the one instance per evaluation.
+ */
+type CwdsFn = () => Cwds;
+
+/**
  * Every directory the command's paths can be relative to: the session cwd,
  * plus every `cd`/`pushd`/`--chdir` target in the command resolved against it.
  * The analysis is flat, so every change applies — `cd ..; cd ..` walks up
  * twice from any directory already reached.
+ *
+ * ── Why this walk remembers what it has already joined ──
+ *
+ * It used to cost chdirs × directories × rounds, and only the last two of those
+ * were bounded: a 500 KB command of `cd ..` under a 60-deep session cwd took
+ * 13.6 s under node, on a hook that runs before every tool call and whose
+ * timeout lets the call THROUGH. The work was almost entirely repetition — the
+ * hundredth `cd ..` joined `..` onto the same directories the ninety-ninth
+ * already had, and it was paid whether or not the command named a disk tool.
+ *
+ * So each target records how much of `list` it has been joined onto, and is
+ * only ever joined onto the rest. That is a pure memo, not a cap: joining a
+ * target onto a directory twice can only produce a directory the set already
+ * holds, so every verdict is the one the repeated walk reached. It is what
+ * keeps this linear — a target is joined onto each directory at most once ever,
+ * so the joins are bounded by MAX_CWDS per distinct target however long the
+ * command is, and what is left per `cd` is one map lookup.
+ *
+ * A bound on the number of `cd`s read was the other candidate and was measured
+ * and rejected: reading fewer of them means not knowing where the command runs,
+ * and an unknown directory is the STRICT reading (see `absolutePaths`), so it
+ * turned `cd ..`×65 followed by `cp x dev/foo` — allowed today — into a deny.
  */
 function possibleCwds(a: ShellAnalysis, sessionCwd: unknown): Cwds {
   const dirs = new Set<string>();
+  /** The same directories in insertion order, so a pass can snapshot by index. */
+  const list: string[] = [];
   let unknown = false;
-  if (typeof sessionCwd === "string" && sessionCwd.startsWith("/")) dirs.add(posix.normalize(sessionCwd));
-  else unknown = true;
+  if (typeof sessionCwd === "string" && sessionCwd.startsWith("/")) {
+    const start = normalizeDir(sessionCwd);
+    dirs.add(start);
+    list.push(start);
+  } else unknown = true;
   // Past MAX_CWDS directories the set stops growing and counts as unknown:
   // a relative `cd` doubles it, and a command can hold thousands of them.
   const add = (dir: string): boolean => {
-    if (dirs.size >= MAX_CWDS && !dirs.has(dir)) {
+    if (dirs.has(dir)) return true;
+    if (dirs.size >= MAX_CWDS) {
       unknown = true;
       return false;
     }
     dirs.add(dir);
+    list.push(dir);
     return true;
   };
+  /** How much of `list` each relative target has already been joined onto. */
+  const joined = new Map<string, number>();
   const rounds = Math.min(a.chdirs.length, 8);
   rounds: for (let round = 0; round < rounds; round++) {
     const before = dirs.size;
@@ -223,14 +276,24 @@ function possibleCwds(a: ShellAnalysis, sessionCwd: unknown): Cwds {
         if (!t) continue;
         if (t.startsWith("~")) unknown = true;
         else if (t.startsWith("/")) {
-          if (!add(posix.normalize(t))) break rounds;
-        } else if (dirs.size === 0) unknown = true;
-        else for (const d of [...dirs]) if (!add(posix.resolve(d, t))) break rounds;
+          if (!add(normalizeDir(t))) break rounds;
+        } else if (list.length === 0) unknown = true;
+        else {
+          // The snapshot the array copy this replaces took: a directory reached
+          // earlier in this pass is one a later `cd` in the same command can
+          // start from, one reached by THIS join is not — which is how
+          // `cd ..; cd ..` still walks up twice, one level per occurrence.
+          const from = joined.get(t) ?? 0;
+          const n = list.length;
+          if (from >= n) continue;
+          joined.set(t, n);
+          for (let i = from; i < n; i++) if (!add(joinCwd(list[i], t))) break rounds;
+        }
       }
     }
     if (dirs.size === before) break;
   }
-  return { dirs: [...dirs], unknown };
+  return { dirs: list, unknown };
 }
 
 function isDeviceAbs(path: string): boolean {
@@ -244,12 +307,15 @@ function isDeviceAbs(path: string): boolean {
  * `../../dev/sda` can each be /dev/sda, and — for a disk tool (`diskTool`) — a
  * bare `sda1` can be /dev/sda1.
  */
-function absolutePaths(path: string, cwds: Cwds, diskTool: boolean): string[] {
+function absolutePaths(path: string, cwds: CwdsFn, diskTool: boolean): string[] {
   const p = path.trim();
   if (!p) return [];
+  // Before the directory set is ever needed: an absolute path names what it
+  // names, and it is the only spelling most commands use.
   if (p.startsWith("/")) return [p];
-  const out = cwds.dirs.map((d) => posix.resolve(d, p));
-  if (cwds.unknown) {
+  const dirs = cwds();
+  const out = dirs.dirs.map((d) => joinCwd(d, p));
+  if (dirs.unknown) {
     const rel = posix.normalize(p);
     const m = /^(?:\.\.\/)*(dev(?:\/.*)?)$/.exec(rel);
     if (m) out.push("/" + m[1]);
@@ -258,7 +324,7 @@ function absolutePaths(path: string, cwds: Cwds, diskTool: boolean): string[] {
   return out;
 }
 
-function isDevicePath(path: string, cwds: Cwds, diskTool: boolean): boolean {
+function isDevicePath(path: string, cwds: CwdsFn, diskTool: boolean): boolean {
   return absolutePaths(path, cwds, diskTool).some(isDeviceAbs);
 }
 
@@ -280,7 +346,7 @@ const DISK_TOOL_LITERAL: TargetMode = { unresolved: false, diskTool: true };
 const ORDINARY: TargetMode = { unresolved: false, diskTool: false };
 
 /** The device a word writes to, or null when it is not one. */
-function deviceTarget(a: ShellAnalysis, word: ShellWord, cwds: Cwds, mode: TargetMode): string | null {
+function deviceTarget(a: ShellAnalysis, word: ShellWord, cwds: CwdsFn, mode: TargetMode): string | null {
   const values = resolveWord(a, word);
   if (values) return values.find((v) => isDevicePath(v, cwds, mode.diskTool)) ?? null;
   const prefix = literalPrefix(word);
@@ -311,7 +377,7 @@ const DISK_TOOL_NAMES = new Set([
   "dd", "shred", "tee", "cp", "diskutil", "format", ...WIPE_TOOLS, ...WINDOWS_DISK_TOOLS,
 ]);
 
-function diskHit(a: ShellAnalysis, inv: Invocation, name: string, cwds: Cwds): string | null {
+function diskHit(a: ShellAnalysis, inv: Invocation, name: string, cwds: CwdsFn): string | null {
   if (!DISK_TOOL_NAMES.has(name) && !MKFS_RE.test(name)) return null;
   const args = inv.args;
   const operands = args.filter((w) => !(literalText(w) ?? "").startsWith("-"));
@@ -377,7 +443,11 @@ function blockDiskDestruction(ctx: PolicyContext): PolicyResult {
   try {
     const a = analysisFor(ctx);
     if (!a) return allow();
-    const cwds = possibleCwds(a, ctx.session?.cwd);
+    // Once per evaluation, and only if a path that could be relative is ever
+    // reached: `git status; npm run build` and `dd of=/dev/sda` alike never
+    // walk the command's `cd`s at all.
+    let walked: Cwds | null = null;
+    const cwds: CwdsFn = () => (walked ??= possibleCwds(a, ctx.session?.cwd));
     for (const inv of a.invocations) {
       for (const name of inv.names) {
         const hit = diskHit(a, inv, name, cwds);
@@ -561,21 +631,37 @@ const DESTRUCTIVE_SAMPLES = [
   "mkfs.exfat", "newfs", "newfs_apfs", "newfs_hfs",
 ];
 
-/** Arguments that only make sense for rm or dd — the shape of a hidden destructive call. */
+/**
+ * Arguments that name a destructive program's OWN interface — the last resort
+ * for an invocation whose program name cannot be read at all.
+ *
+ * A leading `-r` together with an `-f` used to count here, and that is the one
+ * thing in this file that denied ordinary work: the program name is unreadable
+ * for every `$GREP`, `$RSYNC`, `$TAR`, `$MAKE`, `$CP`, `$SCP`, `$CHOWN` and
+ * `$CHMOD` a developer writes, and `-rf` / `--recursive --force` is how all of
+ * them spell the same everyday thing (in grep, tar and make the `-f` even takes
+ * the operand after it, so `$GREP -rf patterns.txt src/` is a pattern FILE).
+ * A flag shape a dozen programs share is not evidence about the program, so it
+ * is gone. What is left is spelt by the destructive family and by nothing else:
+ *
+ * - `--no-preserve-root`, the "yes, really, operate on /" flag. Nobody types it
+ *   by accident, and the programs that take it (rm, and the recursive
+ *   chown/chmod/chgrp) are equally final when they do.
+ * - `if=`/`of=`, dd's operand syntax.
+ *
+ * An unreadable name carrying an ordinary argument list is Jev's to judge, not
+ * the floor's. The floor still denies the moment the name RESOLVES to one of
+ * DESTRUCTIVE_RE, expands to one through a glob, or is printed by a
+ * substitution — which is every row this policy was built for.
+ */
 function looksDestructive(args: ShellWord[]): boolean {
   const texts = lits(args);
-  // rm's flags come first (`$R -rf dir`); `$K apply -R -f dir` is a subcommand
-  // with flags, not rm, so only the leading run of flags is read.
-  const leading: string[] = [];
+  // rm's flags come first (`$R --no-preserve-root /`); `$K apply -R -f dir` is
+  // a subcommand with flags, not rm, so only the leading run of flags is read.
   for (const t of texts) {
     if (t === null || !t.startsWith("-") || t === "--") break;
-    leading.push(t);
+    if (t === "--no-preserve-root") return true;
   }
-  const bundles = leading.filter((t) => /^-[a-zA-Z]+$/.test(t));
-  const recursive = bundles.some((t) => /[rR]/.test(t)) || leading.includes("--recursive");
-  const force = bundles.some((t) => t.includes("f")) || leading.includes("--force");
-  if (recursive && force) return true;
-  if (leading.includes("--no-preserve-root")) return true;
   return texts.some((t) => t !== null && /^(?:of|if)=/.test(t));
 }
 
@@ -598,7 +684,7 @@ function indirectHit(inv: Invocation): string | null {
     }
   }
   if (inv.names.length === 0 && looksDestructive(inv.args)) {
-    return `${written} is called with rm/dd-style arguments`;
+    return `${written} is called with arguments only rm or dd take`;
   }
   return null;
 }

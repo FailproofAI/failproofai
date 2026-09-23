@@ -22,3 +22,9 @@ integration/fixtures/*/.run/
 # ...but their lockfiles are the point: each pins the framework release under
 # test. The repo root ignores package-lock.json (it is a bun repo), so re-include.
 !integration/fixtures/*/package-lock.json
+
+# The Next.js fixture: its builds, and the tsconfig/next-env.d.ts `next build`
+# writes (and rewrites, per distDir) on every run.
+integration/fixtures/nextjs/.next*/
+integration/fixtures/nextjs/next-env.d.ts
+integration/fixtures/nextjs/tsconfig.json

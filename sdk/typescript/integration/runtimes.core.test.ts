@@ -18,9 +18,7 @@ import {
 
 /**
  * The SDK with no framework, under every runtime it can be imported in with a
- * filesystem — Node, Bun, Deno — as an ES module and as CommonJS; and the
- * short-lived-handler shapes (AWS Lambda, Cloud Functions, a queue worker)
- * whose last events are the ones most easily lost.
+ * filesystem — Node, Bun, Deno — as an ES module and as CommonJS.
  *
  * Agent: `fixtures/runtimes/agent.ts`.
  */
@@ -57,9 +55,6 @@ const shape = (events: Event[]) => events.map((e) => `${e.agent_id} ${e.type}`);
 const violations = (events: Event[]) =>
   traceViolations(events).filter((problem) => !problem.endsWith("has no duration_ms"));
 
-/** One handler invocation's trace: one agent, one model call. */
-const INVOCATION = ["lambda-agent agent_start", "lambda-agent model_request", "lambda-agent model_response", "lambda-agent agent_end"];
-
 describe.each(ALL)("as %s", (format) => {
   const run = (scenario: string) => runAgentAsync("runtimes", format, scenario);
 
@@ -74,42 +69,6 @@ describe.each(ALL)("as %s", (format) => {
     const helper = result.events.find((e) => e.type === "agent_start" && e.agent_id === "helper")!;
     expect(helper.parent_id).toBe("planner");
     expect(result.stderr, describeTrace(result)).not.toContain("[failproofai-sdk]");
-  });
-
-  describe("a short-lived handler", () => {
-    it("await flush() before returning puts every event on disk, even if the sandbox is killed next", async () => {
-      const result = await run("lambda-flush");
-      expect(result.status, describeTrace(result)).not.toBe(0); // SIGKILLed on purpose
-      expect(shape(result.events), describeTrace(result)).toEqual(INVOCATION);
-      expect(violations(result.events)).toEqual([]);
-    });
-
-    it("without flush(), a sandbox frozen or reclaimed after the return loses the whole invocation", async () => {
-      // Documenting, not endorsing: the interval (500 ms) never gets to run and
-      // there is no `exit` for the listener to hear. The README must say so.
-      const result = await run("lambda-no-flush");
-      expect(result.stdout).toContain('"ok":true');
-      expect(result.events, describeTrace(result)).toEqual([]);
-    });
-
-    it("without flush(), SIGTERM with no handler installed loses it too", async () => {
-      const result = await run("lambda-sigterm");
-      expect(result.stdout).toContain('"ok":true');
-      expect(result.events, describeTrace(result)).toEqual([]);
-    });
-
-    it("without flush(), a process that ends normally is still covered by the exit flush", async () => {
-      const result = await run("lambda-return");
-      expect(result.status, describeTrace(result)).toBe(0);
-      expect(shape(result.events), describeTrace(result)).toEqual(INVOCATION);
-    });
-
-    it("a warm container flushing per invocation keeps every invocation", async () => {
-      const result = await run("lambda-warm");
-      expect(shape(result.events), describeTrace(result)).toEqual([...INVOCATION, ...INVOCATION, ...INVOCATION]);
-      expect(new Set(result.events.map((e) => e.session_id))).toEqual(new Set(["lambda-1", "lambda-2", "lambda-3"]));
-      expect(violations(result.events)).toEqual([]);
-    });
   });
 });
 

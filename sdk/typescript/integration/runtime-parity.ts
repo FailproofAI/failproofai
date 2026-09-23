@@ -89,6 +89,18 @@ export const sdkLines = (stderr: string): string[] =>
     .filter((line) => line.includes("[failproofai-sdk]"))
     .map((line) => line.replace(/\/[^\s"')]+/g, "<path>").replace(/\d+/g, "N"));
 
+/**
+ * Labels in an agent's `switch` that are not scenarios: each is one half of a
+ * scenario that spawns it with arguments of its own, and is exercised through
+ * that scenario — under the runtime being tested, since the parent re-executes
+ * `process.execPath`. Run bare, they only exercise argument handling (and Deno,
+ * whose `writeFileSync(undefined)` does not throw, writes a file named
+ * `undefined` into the fixture).
+ */
+const HELPERS: Record<string, string> = {
+  "remote-resume-pause": "the pausing process of remote-resume, which passes it a checkpoint path",
+};
+
 export interface Divergence {
   /** Why this scenario is allowed to differ, stated as the observed behaviour. */
   reason: string;
@@ -107,7 +119,7 @@ export function parity(
 ): void {
   describe.each(FRAMEWORK_FIXTURES)(`%s under ${label}`, (fixture) => {
     describe.each(pairs)("%s vs %s", (nodeFormat, otherFormat) => {
-      it.concurrent.each(scenarios(fixture))("%s", async (scenario) => {
+      it.concurrent.each(scenarios(fixture).filter((name) => !(name in HELPERS)))("%s", async (scenario) => {
         const [node, other] = await Promise.all([
           runAgentAsync(fixture, nodeFormat, scenario),
           runAgentAsync(fixture, otherFormat, scenario),

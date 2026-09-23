@@ -100,6 +100,38 @@ export function entryIsCommonJs(): boolean {
 }
 
 /**
+ * Whether the application's own imports of a dual-published framework reach
+ * its CommonJS copy — the copy an adapter must patch. See `requireModuleCopies`.
+ *
+ * Usually that is the entry point's module system. The exception is a server
+ * whose entry is a CommonJS LAUNCHER that loads the application's code another
+ * way. Next.js is the one that matters: `next start` is a CommonJS script, but
+ * every package the server loads from `node_modules` at run time (anything in
+ * `serverExternalPackages`) is loaded with `import()` — by Turbopack and by
+ * webpack alike — so the application runs the ES-module copies. Reading the
+ * launcher as "a CommonJS app" patched the CommonJS copies instead, and
+ * `instrument()` in `instrumentation.ts` reported success for LangChain, Mastra
+ * and LlamaIndex while recording nothing.
+ *
+ * Next sets `NEXT_RUNTIME` in its server processes (and inlines it into the
+ * bundles it builds), before `instrumentation.ts` runs.
+ */
+export function appImportsReachCommonJs(): boolean {
+  if (isNextServer()) return false;
+  return entryIsCommonJs();
+}
+
+/** Running inside a Next.js server process (Node or Edge runtime). */
+export function isNextServer(): boolean {
+  try {
+    const runtime = process.env.NEXT_RUNTIME;
+    return typeof runtime === "string" && runtime !== "";
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Whether a `require.main` value names a CommonJS entry module.
  *
  * Node answers `undefined` for an ES-module entry; Deno answers `null`. A bare

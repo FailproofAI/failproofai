@@ -40,7 +40,7 @@ import { pathToFileURL } from "node:url";
 
 import { logger } from "../logger.js";
 import {
-  entryIsCommonJs,
+  appImportsReachCommonJs,
   importModule,
   isRequired,
   nodeRequire,
@@ -198,7 +198,11 @@ export async function requireModule(specifier: string, install: string): Promise
  * ## Which copies
  *
  *   1. The copy the application's own imports reach: CommonJS when the process
- *      entry point is CommonJS, the ES-module build otherwise. Loaded if it is
+ *      entry point is CommonJS, the ES-module build otherwise — and always the
+ *      ES-module build inside a Next.js server, whose CommonJS launcher
+ *      `import()`s every external package (`appImportsReachCommonJs`). A
+ *      framework Next BUNDLES is a third copy no resolution can reach; only
+ *      the call-site helpers see it. Loaded if it is
  *      not loaded yet — instrumenting before the framework's first import is
  *      the documented order, and loading it then is exactly what the
  *      application is about to do anyway.
@@ -234,7 +238,7 @@ export async function requireModuleCopies(specifier: string, install: string): P
   try {
     if (!dual) {
       copies.push(await load(cjsPath ?? esmPath, false));
-    } else if (entryIsCommonJs()) {
+    } else if (appImportsReachCommonJs()) {
       copies.push(await load(cjsPath, true));
     } else {
       copies.push(await load(esmPath, false));

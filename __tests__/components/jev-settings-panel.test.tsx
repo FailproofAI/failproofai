@@ -1,0 +1,221 @@
+/**
+ * The /settings Jev panel.
+ *
+ * The properties worth pinning are the ones that decide whether a person can
+ * tell what their machine is doing, plus the one that decides whether the token
+ * is safe: the field is write-only, the saved value is never rendered, and
+ * leaving it blank means "keep what is stored" rather than "clear it".
+ *
+ * The server actions are mocked. What they do with the file is covered in
+ * `__tests__/actions/update-jev-config.test.ts`, against the real loader.
+ */
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
+
+const { getViewMock, saveMock, removeMock, toastMock } = vi.hoisted(() => ({
+  getViewMock: vi.fn(),
+  saveMock: vi.fn(),
+  removeMock: vi.fn(),
+  toastMock: vi.fn(),
+}));
+
+vi.mock("@/app/actions/get-jev-config", () => ({ getJevSettingsAction: getViewMock }));
+vi.mock("@/app/actions/update-jev-config", () => ({
+  saveJevConfigAction: saveMock,
+  removeJevConfigAction: removeMock,
+}));
+vi.mock("@/app/components/toast", () => ({ toast: toastMock }));
+
+import JevPanel from "@/app/settings/jev-panel";
+import type { JevSettingsView } from "@/app/actions/get-jev-config";
+
+/** A token no provider issued. It must never appear in the DOM. */
+const TOKEN = "jevtoken-0123456789-3f2a";
+
+function view(over: Partial<JevSettingsView> = {}): JevSettingsView {
+  return {
+    status: "absent",
+    on: false,
+    path: "/tmp/fpai/jev.json",
+    permissions: null,
+    provider: null,
+    baseUrl: "",
+    accountId: "",
+    model: "",
+    endpoint: null,
+    mode: "enforce",
+    timeoutMs: null,
+    token: null,
+    problem: null,
+    fix: null,
+    stats: null,
+    ...over,
+  };
+}
+
+function configured(over: Partial<JevSettingsView> = {}): JevSettingsView {
+  return view({
+    status: "ok",
+    on: true,
+    provider: "typesafe",
+    permissions: "0600",
+    endpoint: "https://api.typesafe.ai/v1/systemone",
+    token: { source: "file", hint: "3f2a" },
+    timeoutMs: 3000,
+    ...over,
+  });
+}
+
+/**
+ * Render the way the real page does: the SERVER seeds `initial`, and the panel
+ * refreshes from the same action on mount. A client-only render would test a
+ * first frame no user ever sees.
+ */
+function renderPanel(initial: JevSettingsView | null) {
+  getViewMock.mockResolvedValue(initial ?? view());
+  return render(<JevPanel initial={initial} />);
+}
+
+beforeEach(() => {
+  getViewMock.mockReset().mockResolvedValue(view());
+  saveMock.mockReset();
+  removeMock.mockReset();
+  toastMock.mockReset();
+});
+
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
+
+describe("what it says about the machine", () => {
+  it("says Jev is off, and that the regex path is unchanged", async () => {
+    renderPanel(view());
+    expect(screen.getByText(/off\. hooks run the regex policies/i)).toBeInTheDocument();
+    // Nothing to turn off, so no destructive control is offered.
+    expect(screen.queryByRole("button", { name: /turn jev off/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /turn jev on/i })).toBeInTheDocument();
+  });
+
+  it("distinguishes enforce from shadow, because they are different guarantees", async () => {
+    renderPanel(configured({ mode: "shadow" }));
+    expect(screen.getByText(/the regex result is what gets enforced/i)).toBeInTheDocument();
+    cleanup();
+    renderPanel(configured({ mode: "enforce" }));
+    expect(screen.getByText(/can clear a reviewable deny/i)).toBeInTheDocument();
+  });
+
+  it("shows the endpoint, the file and its permissions", async () => {
+    renderPanel(configured());
+    expect(screen.getByText("https://api.typesafe.ai/v1/systemone")).toBeInTheDocument();
+    expect(screen.getByText(/jev\.json · 0600/)).toBeInTheDocument();
+  });
+
+  it("shows the fallback rate so a person can see whether it is working", async () => {
+    renderPanel(
+      configured({
+        stats: { windowMs: 86_400_000, total: 200, answered: 191, fallbacks: 9, fallbackRate: 0.045 },
+      }),
+    );
+    // "1d", not "24h": the same window formatting `failproofai jev status`
+    // prints, so the two surfaces describe one window the same way.
+    expect(screen.getByText(/5% of 200 calls in the last 1d/i)).toBeInTheDocument();
+  });
+
+  it("surfaces the loader's own reason when the file is refused, with the fix", async () => {
+    renderPanel(
+      view({
+        status: "refused",
+        problem: "its permissions are 0644; it holds a key, so it must be owner-only",
+        fix: "chmod 600 /tmp/fpai/jev.json",
+      }),
+    );
+    expect(screen.getByText(/its permissions are 0644/)).toBeInTheDocument();
+    expect(screen.getByText(/chmod 600/)).toBeInTheDocument();
+  });
+});
+
+describe("the token field is write-only", () => {
+  it("never renders a stored token — only presence and four characters", async () => {
+    renderPanel(configured());
+    await waitFor(() => expect(getViewMock).toHaveBeenCalled());
+    expect(document.body.textContent ?? "").not.toContain(TOKEN);
+    expect(screen.getAllByText(/configured, ending 3f2a/i).length).toBeGreaterThan(0);
+  });
+
+  it("is a password field and starts empty even when one is stored", async () => {
+    renderPanel(configured());
+    const field = screen.getByLabelText("token") as HTMLInputElement;
+    expect(field.type).toBe("password");
+    expect(field.value).toBe("");
+  });
+
+  it("sends a blank token when nothing was typed, which the server reads as keep", async () => {
+    saveMock.mockResolvedValue({ ok: true, view: configured({ mode: "shadow" }) });
+    renderPanel(configured());
+    fireEvent.change(screen.getByLabelText("mode"), { target: { value: "shadow" } });
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+    await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(1));
+    expect(saveMock).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "typesafe", mode: "shadow", token: "" }),
+    );
+  });
+
+  it("sends a typed token and then clears the field", async () => {
+    saveMock.mockResolvedValue({ ok: true, view: configured() });
+    renderPanel(view());
+    const field = screen.getByLabelText("token") as HTMLInputElement;
+    fireEvent.change(field, { target: { value: TOKEN } });
+    fireEvent.click(screen.getByRole("button", { name: /turn jev on/i }));
+    await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(1));
+    expect(saveMock).toHaveBeenCalledWith(expect.objectContaining({ token: TOKEN }));
+    // Cleared on success, so the value is not sitting in a form field for the
+    // rest of the session.
+    await waitFor(() => expect((screen.getByLabelText("token") as HTMLInputElement).value).toBe(""));
+  });
+});
+
+describe("the form", () => {
+  it("asks for an account id only for cloudflare, because only cloudflare needs one", async () => {
+    renderPanel(view());
+    expect(screen.queryByLabelText("account id")).toBeNull();
+    fireEvent.change(screen.getByLabelText("provider"), { target: { value: "cloudflare" } });
+    expect(screen.getByLabelText("account id")).toBeInTheDocument();
+  });
+
+  it("says a custom endpoint is required, rather than leaving the field looking optional", async () => {
+    renderPanel(view());
+    fireEvent.change(screen.getByLabelText("provider"), { target: { value: "custom" } });
+    expect(screen.getByText(/required — https/i)).toBeInTheDocument();
+  });
+
+  it("shows the server's refusal on the page instead of a generic failure", async () => {
+    saveMock.mockResolvedValue({ ok: false, problem: "baseUrl is not a valid URL" });
+    renderPanel(view());
+    fireEvent.change(screen.getByLabelText("token"), { target: { value: TOKEN } });
+    fireEvent.click(screen.getByRole("button", { name: /turn jev on/i }));
+    await waitFor(() => expect(screen.getByText("baseUrl is not a valid URL")).toBeInTheDocument());
+    expect(toastMock).not.toHaveBeenCalled();
+  });
+
+  it("does not overwrite a half-typed endpoint when the tab is refocused", async () => {
+    // The page re-reads on every `visibilitychange`, which includes the tab hide
+    // that happens when somebody alt-tabs to their password manager mid-edit.
+    renderPanel(configured());
+    const url = screen.getByLabelText("endpoint url") as HTMLInputElement;
+    fireEvent.change(url, { target: { value: "https://half-ty" } });
+    getViewMock.mockResolvedValue(configured());
+    document.dispatchEvent(new Event("visibilitychange"));
+    await waitFor(() => expect(getViewMock.mock.calls.length).toBeGreaterThan(1));
+    expect((screen.getByLabelText("endpoint url") as HTMLInputElement).value).toBe("https://half-ty");
+  });
+
+  it("turns Jev off through the remove action and says what that means", async () => {
+    removeMock.mockResolvedValue({ ok: true, view: view() });
+    renderPanel(configured());
+    fireEvent.click(screen.getByRole("button", { name: /turn jev off/i }));
+    await waitFor(() => expect(removeMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith(expect.stringMatching(/regex policies/)));
+    expect(screen.getByText(/off\. hooks run the regex policies/i)).toBeInTheDocument();
+  });
+});

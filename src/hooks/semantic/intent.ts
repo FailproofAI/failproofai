@@ -516,9 +516,9 @@ export const PROMPT_CHANNELS: Readonly<Record<IntegrationType, PromptChannel>> =
  * payload. That shape still compiles and is still honoured where it loses
  * nothing: for a harness that applies no origin check (`NO_ORIGIN_CHECK`), a
  * `prompt` given without a payload is read as the payload `{ prompt }`. Every
- * harness with an origin check records nothing without the payload (fail
- * closed): its checks were written against the payload the handler has, and a
- * caller that leaves it out is not running them.
+ * harness whose origin check can refuse a prompt today records nothing without
+ * the payload (fail closed): its checks were written against the payload the
+ * handler has, and a caller that leaves it out is not running them.
  */
 export interface CaptureEvent {
   /** Canonical event type; anything but `UserPromptSubmit` is ignored. */
@@ -547,9 +547,14 @@ export interface PromptOnlyCaptureEvent {
 
 /**
  * Harnesses whose prompt is recorded from its text alone: no mark in the
- * payload or the transcript is consulted to tell a human's prompt from
- * anyone else's. Goose also consults nothing, but its text is in `message`,
- * so a bare `prompt` is not its text.
+ * payload or the transcript is *needed* to tell a human's prompt from anyone
+ * else's. Goose also needs none, but its text is in `message`, so a bare
+ * `prompt` is not its text.
+ *
+ * Devin is here although the switch below reads `agent_id` on its payload:
+ * that check is defence in depth against a future Devin build (its payloads
+ * are Claude-shaped and it has subagents), not a mark today's Devin sets, so
+ * a caller that passes no payload loses nothing by it.
  */
 const NO_ORIGIN_CHECK: ReadonlySet<IntegrationType> = new Set<IntegrationType>(["copilot", "cursor", "devin"]);
 
@@ -586,18 +591,29 @@ function humanPromptText(ev: CaptureEvent | PromptOnlyCaptureEvent): string | nu
   if (typeof raw !== "string") return null;
 
   switch (ev.cli) {
+    // The three harnesses whose payload is Claude-shaped, and which all ship a
+    // SubagentStop event, so all three have subagents.
     case "claude":
+    case "factory":
+    case "devin":
       // Defence in depth only. Claude Code sets agent_id on hook payloads
       // fired inside a subagent, but not on UserPromptSubmit (2.1.278 builds
       // that payload without it), so today this never fires; it is here in
-      // case a later version starts marking the event.
+      // case a later version — of any of the three — starts marking the event.
       if (str(payload.agent_id)) return null;
-      if (modelScheduledPrompt(ev.transcriptPath, raw)) return null;
-      break;
-    case "factory":
-      if (modelScheduledPrompt(ev.transcriptPath, raw)) return null;
+      // Devin's transcript is one JSON document, not JSONL: there are no turns
+      // to read, so only the two JSONL harnesses run the scheduled-prompt check.
+      if (ev.cli !== "devin" && modelScheduledPrompt(ev.transcriptPath, raw)) return null;
       break;
     case "codex":
+      // Codex's origin evidence is its rollout's session_meta, and Codex does
+      // not put transcript_path on the hook's stdin: the path is discovered
+      // from the session id (`findCodexTranscript`). No rollout, no evidence,
+      // so record nothing (fail closed), the same way pi and openclaw below
+      // treat a missing mark. A sub-agent thread's prompts are written by the
+      // parent agent, and recording one would let the agent clear a reviewable
+      // policy with words it wrote itself.
+      if (!readTranscriptPath(ev.transcriptPath)) return null;
       if (codexRolloutIsSubagent(ev.transcriptPath)) return null;
       break;
     case "pi": {

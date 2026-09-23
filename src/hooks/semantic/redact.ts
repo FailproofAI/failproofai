@@ -791,6 +791,12 @@ const VENDOR_RULES: ReadonlyArray<readonly [RegExp, string]> = (
     [String.raw`gsk_[A-Za-z0-9]{30,}`, "Groq API key"],
     [String.raw`xai-[A-Za-z0-9]{30,}`, "xAI API key"],
     [String.raw`pplx-[A-Za-z0-9]{30,}`, "Perplexity API key"],
+    // `vercel` is one of the five providers a Jev config can name, and
+    // `jev-config.ts`'s `CREDENTIAL_PREFIX_RE` already treats `vck_` as a
+    // credential shape — so a gateway key pasted into a command was the one
+    // vendor prefix this side knew about and still sent. `AI_GATEWAY_API_KEY=…`
+    // was caught by the assignment rule; bare in a command it was not.
+    [String.raw`vck_[A-Za-z0-9]{24,}`, "Vercel AI Gateway key"],
     [String.raw`r8_[A-Za-z0-9]{30,}`, "Replicate token"],
     [String.raw`sbp_[A-Za-z0-9]{30,}`, "Supabase token"],
     [String.raw`sb_secret_[A-Za-z0-9_-]{16,}`, "Supabase secret key"],

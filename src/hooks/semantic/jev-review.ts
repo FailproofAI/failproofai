@@ -29,8 +29,19 @@
  * recorded rather than acted on, so the strictest thing a big call can be is
  * whatever Jev says about it (see `envelope.ts` and `combine.ts`).
  *
- * `truncated` — an over-long human turn or agent message — rides along for the
- * verdict log and changes nothing.
+ * `truncated` — an over-long human turn, the agent's last message, or a prompt
+ * the intent store had already capped — rides along for the verdict log and
+ * changes nothing. It is not a fallback, it withdraws no clear, and the review
+ * it rides on is recorded `jev`.
+ *
+ * Both of those last two paragraphs are a DEPARTURE from plan §4, which files
+ * "the envelope was truncated" in one row with the degraded cases and asks for
+ * the regex result plus a `jev-fallback` reason. The shipped rule splits that
+ * row: a cut CALL is a fallback that clears nothing but keeps Jev's own
+ * severity, and a cut MESSAGE is not a fallback at all. `combine.ts`'s header
+ * ("Where this departs from plan §4") is the single statement of that rule and
+ * of why it is the safe reading; this file only has to produce the two shapes
+ * it distinguishes, which is what `toReview` below does.
  */
 import { BUILTIN_POLICIES } from "../builtin-policies";
 import { normalizePolicyName } from "../policy-registry";

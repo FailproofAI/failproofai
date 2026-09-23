@@ -16,11 +16,49 @@
  * | Jev answered, but part of the CALL was cut    | nothing is cleared, so every regex deny counts; Jev's own   |
  * |                                               | verdict still joins the most-severe rule; recorded          |
  * |                                               | `jev-fallback` / `request-cut`, with its decision           |
+ * | Jev answered, but a MESSAGE was cut — a human | exactly the row below: the clears stand, and it is NOT      |
+ * | turn, the agent's last message, or a prompt   | recorded as a fallback                                      |
+ * | the intent store had already capped           |                                                             |
  * | Jev answered                                  | reviewable denies/instructs Jev covered are cleared; final =|
  * |                                               | the most severe of {remaining regex results, Jev's verdict} |
  *
  * `shadow` mode computes and records all of it, and still returns the regex
  * result.
+ *
+ * ## Where this departs from plan §4
+ *
+ * §4's combine table files BOTH cuts under one row — "Jev degraded (timeout,
+ * 429, HTTP/parse error, model-version mismatch) **or the envelope was
+ * truncated** → today's regex result (every deny counts); record
+ * `evaluator: "jev-fallback"` plus the reason". The two rows above are that
+ * row as shipped, and if you arrived from §4 these are the two differences,
+ * stated once so nothing below is a surprise:
+ *
+ * 1. **A cut MESSAGE is not a fallback at all.** Nothing about the CALL was
+ *    missing and nothing was withheld, so the clears stand and the row is
+ *    recorded `jev`. Filing it as a fallback made the length of the human's
+ *    own paste decide the verdict — the same call came out `allow` after a
+ *    77-character prompt and `deny` after a 3,000-character one — and inflated
+ *    the fallback rate with calls Jev answered in full. "What a cut MESSAGE
+ *    does: nothing", below, is the argument at length.
+ * 2. **A cut CALL is a fallback, but not "exactly the regex result".** It
+ *    clears nothing, so every regex deny counts, which is the half of §4 that
+ *    protects anything. What it does NOT do is throw Jev's own answer away:
+ *    that answer still joins the most-severe merge, upward only. Reading §4 as
+ *    "discard the verdict" made padding a command past the envelope's cap a
+ *    working way to stop Jev's OWN deny applying (a real repro: `rm -rf /
+ *    --no-preserve-root` + 2,100 spaces flipped deny → allow). A cut is
+ *    attacker-influenceable, so it may never SUBTRACT severity.
+ *
+ * One principle underneath both: a partial picture withdraws CLEARS and
+ * nothing else. §4's guarantee — a call the tier could not read whole can
+ * never come out more permissive than the regex tier alone — holds in full,
+ * and `combineTwoTier`'s result is never less severe than `regexOnly(verdicts)`
+ * unless a clear fired. What changed is the direction the rule is allowed to
+ * move a verdict, not whether the regex floor survives. The user-facing page
+ * (docs/policies/jev-byok.mdx, "When Jev cannot answer") states both rows in
+ * the same terms, and `combine.test.ts` plus `truncation-severity.test.ts` pin
+ * them.
  *
  * "Jev can only clear what it was actually asked about": a reviewable
  * policy's deny or instruct is cleared only if EVERY semantic policy named in

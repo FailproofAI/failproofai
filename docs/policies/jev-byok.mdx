@@ -12,6 +12,7 @@ With your own Jev endpoint and key configured, Failproof AI asks Jev about each 
 - A **reviewable** policy's deny may be cleared, but only when Jev was asked about the exact concern that policy covers and found nothing.
 - Jev can also warn or deny on its own, for harm no regex describes.
 - If Jev cannot answer (timeout, rate limit, server error, no credits, an unexpected model version), that call gets the regex result, exactly as without Jev.
+- Jev never makes a call more permissive than your policies alone unless it read the whole call and was asked about the exact concern. Anything less — a call too big to send whole, a suspected injection — withdraws the clearances and keeps every deny.
 
 <Note>
 Without a Jev config nothing changes: hooks run the regex policies exactly as they always have. The config is the whole opt-in.
@@ -79,7 +80,7 @@ failproofai jev test
   provider      cloudflare
   model asked   typesafe/jev
   answered by   jev-1.13.0 (Jev 1.13 family — verified)
-  latency       523 ms — within the 1500 ms timeout
+  latency       523 ms — within the 3000 ms timeout
 ```
 
 Hooks read the config on every tool call, so it applies from the next one. There is nothing to restart, with or without the daemon.
@@ -114,7 +115,7 @@ Everything lives in one file, `~/.failproofai/jev.json`, written by `setup`:
   "apiKey": "<your key>",
   "accountId": "<32-hex-account-id>",
   "mode": "enforce",
-  "timeoutMs": 1500
+  "timeoutMs": 3000
 }
 ```
 
@@ -125,7 +126,7 @@ Everything lives in one file, `~/.failproofai/jev.json`, written by `setup`:
 | `baseUrl` | Required for `custom`; replaces the provider's API base otherwise. Must be `https`. Plain `http` to `localhost` is accepted only with `mode: shadow`: nothing authenticates a local port, so while your proxy is down any process on the machine, including the agent being judged, could answer in its place. |
 | `accountId` | Cloudflare only: 32 lowercase hex characters. |
 | `model` | Replaces the provider's default model id. A versioned id must name Jev 1.13. A value shaped like an API key is refused (and not repeated back), so a key pasted into `--model` is never stored or sent as the model. |
-| `timeoutMs` | How long a tool call waits for Jev before using the regex result. 100–10000, default 1500. |
+| `timeoutMs` | How long a tool call waits for Jev before using the regex result. 100–10000, default 3000. |
 | `mode` | `enforce` (default) or `shadow`. |
 
 Three rules protect it:
@@ -152,6 +153,16 @@ Each of these falls back to the regex result for that call and is recorded with 
 | `network` | The endpoint could not be reached. |
 | `http-3xx` | The endpoint answered with a redirect. Redirects are never followed, so the answer only ever comes from the URL in your config; set `--base-url` to the final URL. |
 | `model-mismatch` | A Jev version other than 1.13 answered, or a `custom` endpoint did not say which model answered. |
+
+## When Jev answered, but not on the whole call
+
+Two more things can happen, and neither is Jev failing to answer. Both are about how much of the call, or of the conversation, fitted into one request.
+
+**Part of the call itself did not fit.** A tool call is sent inside a fixed budget, and an outsized one — a very large `Write`, a huge MCP body, a command padded out to the cap — is sent with what fitted. Jev still answers, and its answer still counts: its own deny or warning applies as usual. What it cannot do is **clear** anything, because a verdict given on part of a call is not a verdict on the call. So every policy deny stands, and the call is recorded as a fallback with the reason `request-cut`, which `failproofai jev status` totals alongside the reasons above. The rule this gives you: making a call bigger can cost it its clearances, and can never buy one.
+
+**A message did not fit.** A long prompt you pasted, the agent's last message, or a prompt this evaluator's own store had already capped. **Nothing changes**: the call is judged, cleared and recorded exactly as any other, and it is not counted as a fallback. The length of what you type never decides a verdict, and a cut cannot manufacture consent: where a prompt arrived already capped, "you did not ask for this" stops being a conclusion that can be drawn from it at all, rather than becoming one.
+
+The line between the two is who wrote the text. The call is the agent's, and a rule that let its length subtract severity would be a rule the agent can use; your prompt is yours, and treating its length as a signal only ever punished pasting a spec or a stack trace.
 
 ## What leaves the machine
 

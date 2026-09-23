@@ -1,25 +1,27 @@
 // @vitest-environment node
 /**
- * Truncation withdraws Jev's CLEARS and nothing else.
+ * A cut withdraws Jev's CLEARS. It does not subtract severity, and it does not
+ * add a refusal of our own.
  *
  * §4 files a truncated envelope under "fall back to the regex result", and
  * reading that as "throw Jev's answer away" opened a hole: the envelope's
- * 2,000-character cap is tripped by the agent's own text, so padding a command
- * past it made Jev's OWN deny stop applying. These tests run the real
+ * per-field cap is tripped by the agent's own text, so padding a command past
+ * it made Jev's OWN deny stop applying. These tests run the real
  * `evaluateSemantic` → `toReview` → `combineTwoTier` path, the way
- * `policy-evaluator.ts` does, and pin both halves:
+ * `policy-evaluator.ts` does, and pin three halves of one rule:
  *
  * 1. **Severity survives a cut.** The same dangerous command, padded, is still
- *    denied — and a truncated answer can never make a call more permissive
- *    than the regex engine alone.
- * 2. **Clearing does not.** A cut call clears no reviewable deny, and is
- *    recorded `jev-fallback` / `truncated`.
- * 3. **A cut of the CALL is stricter still.** When what was cut is the tool
- *    input itself (`requestCut`), the call may not come out as an allow at
- *    all: `combineTwoTier` turns a would-be allow into
- *    `semantic/request-too-large-to-review`, recorded `jev-fallback` /
- *    `request-cut`. That is what makes padding useless rather than merely
- *    expensive — see `envelope.ts`'s header.
+ *    denied — and a cut answer can never make a call more permissive than the
+ *    regex engine alone.
+ * 2. **Clearing does not.** A call part of which was never shown to Jev clears
+ *    no reviewable deny, and is recorded `jev-fallback` / `request-cut`.
+ * 3. **Size adds nothing by itself.** A revision in between refused a cut call
+ *    outright (`semantic/request-too-large-to-review`), and that deny fired on
+ *    ordinary outsized work. A big call is now exactly as strict as whatever
+ *    Jev and the regex tier say about it, and no stricter.
+ *
+ * A cut MESSAGE — a long human prompt, a long agent message — is a fourth
+ * thing, and it does nothing at all: `a long prompt changes no verdict` below.
  *
  * The budget is deliberately large (`MAX_AGENT_REQUEST_CHARS`, 56,000
  * characters), so the fixtures here are correspondingly large: an ordinary
@@ -32,6 +34,7 @@ import { MAX_REQUEST_CHARS } from "../../../src/hooks/semantic/compile";
 import {
   DEFAULT_ENVELOPE_LIMITS,
   MAX_FACT_CHARS,
+  MAX_USER_MESSAGE_CHARS,
   MAX_STATE_CHARS,
   MAX_STRING_CHARS,
   buildEnvelope,
@@ -85,6 +88,8 @@ const DANGEROUS = "rm -rf / --no-preserve-root";
 const PADDING = "x".repeat(MAX_STRING_CHARS + 100);
 /** The §4 row for a cut of the call itself, as `combineTwoTier` records it. */
 const REQUEST_CUT = "request-cut";
+/** Repeats of a 29-character sentence needed to run past the per-message cap. */
+const OVER_CAP = Math.ceil((MAX_USER_MESSAGE_CHARS * 1.5) / "Background the human pasted. ".length);
 
 describe("padding a command cannot take Jev's own deny away", () => {
   it("the same command, padded past the envelope cap, is still denied", async () => {
@@ -92,8 +97,8 @@ describe("padding a command cannot take Jev's own deny away", () => {
     const padded = await judged(bash(`${DANGEROUS} ${PADDING}`));
 
     // The premise: only one of them is a cut call.
-    expect(plain.outcome.truncated).toBe(false);
-    expect(padded.outcome.truncated).toBe(true);
+    expect(plain.outcome.requestCut).toBe(false);
+    expect(padded.outcome.requestCut).toBe(true);
 
     // Jev denies either way …
     expect(plain.outcome.status === "ok" && plain.outcome.verdict.decision).toBe("deny");
@@ -155,23 +160,74 @@ describe("a cut call still clears nothing", () => {
     const out = combineTwoTier([reviewable], review, "enforce");
     expect(out.cleared).toEqual([]);
     expect(out.activity.jevCleared).toBeUndefined();
-    // The cut here is inside the CALL, so the instruct does not stand either:
-    // on most CLIs an instruct RUNS the call with a note, which would make
-    // "pad it, and also trip a warn-level rule" the next spelling of the
-    // padding attack.
-    expect(out.final.decision).toBe("deny");
-    expect(out.final.entries[0].policyName).toBe("semantic/request-too-large-to-review");
+    // Exactly the regex tier's own answer, and nothing added on top: the
+    // reviewable instruct stands as an instruct. A revision in between denied
+    // here instead, on nothing but the call's size.
+    expect(out.final).toEqual(regexOnly([reviewable]));
+    expect(out.final.decision).toBe("instruct");
   });
 
-  it("cut only in its CONTEXT, the instruct stands and only the clear is withdrawn", async () => {
+  it("cut only in its MESSAGES, the clear still applies: a long prompt is ordinary", async () => {
     const { review } = await judged(
-      bash("git commit --amend -m 'fix typo'", [`fix the typo in the last commit message. ${"Background the human pasted. ".repeat(80)}`]),
+      bash("git commit --amend -m 'fix typo'", [`fix the typo in the last commit message. ${"Background the human pasted. ".repeat(OVER_CAP)}`]),
       calm,
     );
     expect(review).toMatchObject({ kind: "answered", truncated: true, requestCut: false });
     const out = combineTwoTier([reviewable], review, "enforce");
-    expect(out.cleared).toEqual([]);
-    expect(out.final).toEqual(regexOnly([reviewable]));
+    expect(out.cleared).toEqual([reviewable.policyName]);
+    expect(out.final.decision).toBe("allow");
+    expect(out.activity.evaluator).toBe("jev");
+  });
+
+  /**
+   * The regression the previous revision shipped, pinned as a property rather
+   * than as one length: the human's prompt may grow without bound and the
+   * verdict must not move. It used to flip `allow` → `deny` at the 1,200th
+   * character, because the cut withdrew every clear.
+   */
+  it("a long prompt changes no verdict, at any length", async () => {
+    const short = await judged(bash("git commit --amend -m 'fix typo'", ["fix the typo in the last commit message"]), calm);
+    const base = combineTwoTier([reviewable], short.review, "enforce");
+    for (const repeats of [1, OVER_CAP, OVER_CAP * 10, OVER_CAP * 100]) {
+      const long = `fix the typo in the last commit message. ${"Background the human pasted. ".repeat(repeats)}`;
+      const { review } = await judged(bash("git commit --amend -m 'fix typo'", [long]), calm);
+      const out = combineTwoTier([reviewable], review, "enforce");
+      expect({ repeats, decision: out.final.decision, cleared: out.cleared }).toEqual({
+        repeats,
+        decision: base.final.decision,
+        cleared: base.cleared,
+      });
+    }
+  });
+
+  /** The same, for the channel the AGENT writes: a long proposal is ordinary too. */
+  it("a long agent message changes no verdict either", async () => {
+    const short = await judged(bash("git commit --amend -m 'fix typo'", ["fix the typo in the last commit message"]), calm);
+    const base = combineTwoTier([reviewable], short.review, "enforce");
+    const outcome = await evaluateSemantic(
+      {
+        ...bash("git commit --amend -m 'fix typo'", ["fix the typo in the last commit message"]),
+        agentLastMessage: `I will amend the last commit. ${"Here is my reasoning. ".repeat(MAX_USER_MESSAGE_CHARS)}`,
+      },
+      opts(calm),
+    );
+    const out = combineTwoTier([reviewable], toReview(outcome), "enforce");
+    expect(outcome.truncated).toBe(true);
+    expect(outcome.status === "ok" && outcome.requestCut).toBe(false);
+    expect({ decision: out.final.decision, cleared: out.cleared }).toEqual({ decision: base.final.decision, cleared: base.cleared });
+  });
+
+  /** And for the third channel: a prompt T4's store had already capped. */
+  it("a prompt the intent store had already cut changes no verdict", async () => {
+    const short = await judged(bash("git commit --amend -m 'fix typo'", ["fix the typo in the last commit message"]), calm);
+    const base = combineTwoTier([reviewable], short.review, "enforce");
+    const outcome = await evaluateSemantic(bash("git commit --amend -m 'fix typo'", ["fix the typo in the last commit message"]), {
+      ...opts(calm),
+      contextTruncated: true,
+    });
+    const out = combineTwoTier([reviewable], toReview(outcome), "enforce");
+    expect(outcome.truncated).toBe(true);
+    expect({ decision: out.final.decision, cleared: out.cleared }).toEqual({ decision: base.final.decision, cleared: base.cleared });
   });
 });
 
@@ -198,17 +254,35 @@ describe("ordinary oversized input is judged, not skipped", () => {
     expect(combineTwoTier([], big.review, "enforce").final.decision).toBe("allow");
   });
 
-  it("past the budget it is cut, clears nothing, and is not allowed", async () => {
+  /**
+   * The regression the previous revision shipped: a ~56,000-character `Write`
+   * is a ~1,400-line file, which is ordinary, and it was DENIED for its size
+   * with a message telling the author to split the file up. Size may cost the
+   * call its clears; it may not refuse it.
+   */
+  it("past the budget it is cut and clears nothing — but it is not refused", async () => {
     const huge = await judged(bigWrite(MAX_STRING_CHARS + 20_000), calm);
     expect(huge.outcome.truncated).toBe(true);
     expect(huge.outcome.status === "ok" && huge.outcome.requestCut).toBe(true);
     expect(huge.review).toMatchObject({ kind: "answered", truncated: true, requestCut: true });
     const out = combineTwoTier([], huge.review, "enforce");
     expect(out.cleared).toEqual([]);
-    // The blunt half of the rule, stated: an unreadable call is refused, and
-    // the reason says what to do about it.
-    expect(out.final.decision).toBe("deny");
-    expect(out.final.entries[0].reason).toMatch(/split it into smaller calls/i);
+    expect(out.final).toEqual(regexOnly([]));
+    expect(out.final.decision).toBe("allow");
+    // Recorded, so the size is visible even though it decided nothing.
+    expect(out.activity).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: REQUEST_CUT });
+  });
+
+  it("a warn-level regex rule on an oversized call stays an instruct", async () => {
+    const warn: RegexVerdict = {
+      policyName: "failproofai/warn-large-write",
+      decision: "instruct",
+      reason: "that is a big file",
+      authority: "hard",
+      reviewedBy: [],
+    };
+    const huge = await judged(bigWrite(MAX_STRING_CHARS + 20_000), calm);
+    expect(combineTwoTier([warn], huge.review, "enforce").final).toEqual(regexOnly([warn]));
   });
 
   it("a deny on an oversized Write still applies", async () => {
@@ -371,9 +445,51 @@ describe("padding past the request budget is the same class", () => {
  * `buildEnvelope` passed `as_written` / `resolved` straight through, so a long
  * path grew the request without ever setting `truncated`. That is what made
  * the budget reachable in the first place.
+ *
+ * A cut here counts as a cut of the CALL, not as a cut message. `how_to_read`
+ * tells Jev that `facts` "were computed by deterministic code and are
+ * correct", and half the policy probes are written to read `facts.paths`, so a
+ * fact that is missing is a silently narrower question — on a budget the agent
+ * can spend by choosing long paths.
  */
 describe("facts are capped like everything else", () => {
   const LONG = "/work/project/" + "d".repeat(MAX_FACT_CHARS + 500);
+
+  it("a cut in `facts` is a cut of the call, not of the messages", async () => {
+    const prepared = prepareSemantic(
+      {
+        eventType: "PreToolUse",
+        toolName: "Read",
+        toolInput: { file_path: LONG },
+        cwd: "/work/project",
+        userSaid: ["read that file"],
+        agentLastMessage: null,
+      },
+      opts(calm),
+    );
+    expect(prepared.requestCut).toBe(true);
+    // And it costs the call its clears, like any other cut of the call.
+    const reviewable: RegexVerdict = {
+      policyName: "failproofai/block-read-outside-cwd",
+      decision: "deny",
+      reason: "outside",
+      authority: "reviewable",
+      reviewedBy: ["read-outside-workspace"],
+    };
+    const answered = await judged(
+      {
+        eventType: "PreToolUse",
+        toolName: "Read",
+        toolInput: { file_path: LONG },
+        cwd: "/work/project",
+        userSaid: ["read that file"],
+        agentLastMessage: null,
+      },
+      calm,
+    );
+    expect(answered.review).toMatchObject({ kind: "answered", requestCut: true });
+    expect(combineTwoTier([reviewable], answered.review, "enforce").cleared).toEqual([]);
+  });
 
   it("a long path is cut in `facts`, and the cut is flagged", () => {
     const prepared = prepareSemantic(

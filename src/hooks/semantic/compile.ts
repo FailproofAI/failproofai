@@ -78,12 +78,29 @@ export function compileRequest(
       for (const probe of p.probes) add(`${p.name}.${probe.id}`, noul(probe), p.name);
       if (p.exempt) add(`${p.name}.exempt`, noul(p.exempt), p.name);
     }
-    // Task-level, once per call: they are about the human's request, not about
-    // any one policy, and they also drive the beyond-the-task flag, so they
-    // are asked whenever there is a human message to judge against.
-    if (selected.length > 0 && userSaid.length > 0) {
-      for (const probe of TASK_PROBES) add(probe.id, noul(probe), null);
+    if (selected.length > 0) {
+      /**
+       * Asked on EVERY call, including one with no recorded human message.
+       *
+       * It used to be gated on `user_said` alongside the task probes, on the
+       * reasoning that with nothing to compare the call against there is no
+       * consent to withdraw. But that is only half of what the probe does:
+       * `decide.ts` also uses it to ESCALATE — a policy that fired
+       * independently, in a call that also argues for its own approval, blocks
+       * instead of warning. Gating it switched that escalation off exactly
+       * where the ground is weakest: the first call of a session, and every
+       * call on a CLI with no prompt event at all (Hermes has none), which is
+       * also where an injected repo file has the most room to speak for a user
+       * who has not.
+       *
+       * It cannot block on its own (`decide.ts`), so asking it always cannot
+       * turn planted text into a veto over any command.
+       */
       add(INJECTION_PROBE.id, noul(INJECTION_PROBE), null);
+      // The task probes stay gated: they ask what the human's request was, and
+      // with no human message recorded there is nothing for them to be about.
+      // `decideV1` reads them as "unanswered" and neither clears nor flags.
+      if (userSaid.length > 0) for (const probe of TASK_PROBES) add(probe.id, noul(probe), null);
     }
     return { request: { model, state, questions }, owners };
   }

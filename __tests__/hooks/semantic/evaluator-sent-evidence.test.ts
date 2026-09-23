@@ -44,6 +44,8 @@ const COMMAND = "psql -c 'DROP TABLE analytics_events'";
 const NAMES_THE_TARGET = "drop the analytics_events table";
 /** Three turns that name nothing, so they fill the window without clearing anything. */
 const FILLER = ["ok keep going", "thanks", "next please"];
+/** Repeats of `unit` needed to run comfortably past the per-message cap. */
+const overCap = (unit: string) => Math.ceil((MAX_USER_MESSAGE_CHARS * 1.5) / unit.length);
 
 /**
  * The policy fires hard, the human asked for exactly this operation, and the
@@ -171,8 +173,8 @@ describe("a turn Jev never saw cannot clear a reviewable deny", () => {
  * a per-message cap cannot lose consent the human actually typed.
  */
 describe("what is judged is the window that was sent, uncut", () => {
-  const LONG_TURN = "please tidy the analytics_events table. " + "Background the human pasted. ".repeat(80);
-  const LONG_AGENT = "I can drop the analytics_events table. " + "Here is the plan in detail. ".repeat(80);
+  const LONG_TURN = "please tidy the analytics_events table. " + "Background the human pasted. ".repeat(overCap("Background the human pasted. "));
+  const LONG_AGENT = "I can drop the analytics_events table. " + "Here is the plan in detail. ".repeat(overCap("Here is the plan in detail. "));
 
   const inputs: Array<[string, SemanticInput]> = [
     ["nothing said", call([])],
@@ -230,7 +232,7 @@ describe("what is judged is the window that was sent, uncut", () => {
    * the design treats as hostile.
    */
   it("a target named only in the cut middle of the AGENT message does not override", async () => {
-    const middle = `${"Here is the plan in detail. ".repeat(60)} I will ${NAMES_THE_TARGET} now. ${"Then I will continue. ".repeat(60)}`;
+    const middle = `${"Here is the plan in detail. ".repeat(overCap("Here is the plan in detail. "))} I will ${NAMES_THE_TARGET} now. ${"Then I will continue. ".repeat(overCap("Then I will continue. "))}`;
     const prepared = prepareSemantic(call(["yes, go ahead"], middle), v1);
     const sentAgent = prepared.envelope.state.agent_last_message as string;
     // The premise: the target is in the message, but not in what was sent.
@@ -244,7 +246,7 @@ describe("what is judged is the window that was sent, uncut", () => {
     expect(r.combined.final.decision).toBe("deny");
 
     // Control: the same target in the HEAD of the message, which was sent.
-    const head = `I will ${NAMES_THE_TARGET} now. ${"Then I will continue. ".repeat(120)}`;
+    const head = `I will ${NAMES_THE_TARGET} now. ${"Then I will continue. ".repeat(overCap("Then I will continue. ") * 2)}`;
     const control = await run(call(["yes, go ahead"], head), v1);
     expect(control.named).toBe(true);
     expect(control.verdict).toBe("overridden");
@@ -266,6 +268,8 @@ describe("a long prompt does not lose the consent it contains", () => {
   const pad = (n: number) => "some background for you to read. ".repeat(n);
   /** Names the target in the MIDDLE — exactly where the per-message cap cuts. */
   const buried = (n: number) => `${pad(n)}${NAMES_THE_TARGET}. ${pad(n)}`;
+  /** Enough padding on each side that the target lands in the cut middle. */
+  const BURY = Math.ceil(MAX_USER_MESSAGE_CHARS / 33);
 
   it("control: the same request, short, clears the reviewable deny", async () => {
     const r = await run(call([`${NAMES_THE_TARGET}.`]), v1);
@@ -275,7 +279,7 @@ describe("a long prompt does not lose the consent it contains", () => {
   });
 
   it("buried in the middle of a long prompt, Jev's own verdict is still allow", async () => {
-    const input = call([buried(45)]);
+    const input = call([buried(BURY)]);
     const prepared = prepareSemantic(input, v1);
     // The premise: the prompt is over the cap and the target is in the cut middle.
     expect(input.userSaid[0].length).toBeGreaterThan(MAX_USER_MESSAGE_CHARS);
@@ -289,22 +293,25 @@ describe("a long prompt does not lose the consent it contains", () => {
     // call the human asked for in so many words.
     expect(r.outcome.verdict.decision).toBe("allow");
     expect(r.combined.activity.jevDecision).toBe("allow");
-    // The reviewable regex deny still stands — the envelope IS cut, so nothing
-    // is cleared (§4). That is truncation constraining a clear, not padding
-    // adding severity.
-    expect(r.combined.cleared).toEqual([]);
-    expect(r.combined.activity).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "truncated" });
+    // And the clear lands, exactly as it does for the short prompt above. A
+    // cut MESSAGE is not evidence about the call: it used to withdraw every
+    // clear, so the same request came out `allow` when the human was brief and
+    // `deny` when they pasted a spec.
+    expect(r.combined.cleared).toHaveLength(1);
+    expect(r.combined.final.decision).toBe("allow");
+    expect(r.combined.activity).toMatchObject({ evaluator: "jev" });
+    expect(r.combined.activity.jevFallbackReason).toBeUndefined();
   });
 
   it("v0's `decide` does not lose it either", async () => {
-    const r = await run(call([buried(45)]), v0);
+    const r = await run(call([buried(BURY)]), v0);
     expect(r.named).toBe(true);
     expect(r.verdict).toBe("overridden");
     expect(r.outcome.verdict.decision).toBe("allow");
   });
 
   it("but a target named only in a DROPPED turn still clears nothing, however long the prompt", async () => {
-    const r = await run(call([buried(45), ...FILLER]), v1);
+    const r = await run(call([buried(BURY), ...FILLER]), v1);
     expect(r.named).toBe(false);
     expect(r.combined.cleared).toEqual([]);
     expect(r.combined.final.decision).toBe("deny");

@@ -78,6 +78,7 @@ vi.mock("../../src/hooks/hook-telemetry", async (importOriginal) => {
 
 import { evaluateHookEvent } from "../../src/hooks/handler";
 import { readIntent } from "../../src/hooks/semantic/intent";
+import { MAX_USER_MESSAGE_CHARS } from "../../src/hooks/semantic/envelope";
 import * as store from "../../src/hooks/hook-activity-store";
 
 const CFG: JevConfig = { provider: "cloudflare", apiKey: "not-a-real-key", accountId: "0".repeat(32) };
@@ -134,8 +135,12 @@ async function hook(event: string, payload: Record<string, unknown>) {
 
 const outsideRead = () => hook("PreToolUse", { tool_name: "Read", tool_input: { file_path: join(home, "other", "notes.txt") } });
 
+// Sized off the store's own cap, not off a literal, so raising the cap does
+// not quietly turn this into a prompt that fits.
 const LONG_PROMPT =
-  "Please tidy the notes folder. " + "Background detail about the project that the human pasted. ".repeat(80) + "Also: never touch ~/other.";
+  "Please tidy the notes folder. " +
+  "Background detail about the project that the human pasted. ".repeat(Math.ceil((MAX_USER_MESSAGE_CHARS * 2) / 58)) +
+  "Also: never touch ~/other.";
 
 describe("the human's prompt, stored by the real intent store and read back for the next call", () => {
   it("control: a short prompt is recorded, read back, and the reviewable deny is cleared", async () => {
@@ -148,7 +153,16 @@ describe("the human's prompt, stored by the real intent store and read back for 
     expect(row).toMatchObject({ evaluator: "jev", jevCleared: ["failproofai/block-read-outside-cwd"] });
   });
 
-  it("a long prompt is stored cut, and a clear resting on half of it is not a clear: regex decides (§4)", async () => {
+  /**
+   * The regression the previous revision shipped, through the REAL store: a
+   * pasted spec is over the store's cap, so the prompt came back cut, every
+   * clear was withdrawn, and the reviewable deny stood. Same call, same
+   * answers, different verdict — decided by how much the human typed.
+   *
+   * The store's cap is unchanged; what changed is that the cut is recorded and
+   * read no further.
+   */
+  it("a long prompt is stored cut, and the verdict is identical to the short one", async () => {
     await hook("UserPromptSubmit", { prompt: LONG_PROMPT });
     const stored = readIntent(SESSION).userSaid;
     // The premise: the store kept a cut version, marked as cut.
@@ -158,9 +172,33 @@ describe("the human's prompt, stored by the real intent store and read back for 
 
     const { outcome, row } = await outsideRead();
     expect(jevCalls).toHaveLength(1);
-    expect(outcome.evaluation?.decision).toBe("deny");
-    expect(outcome.evaluation?.policyName).toBe("failproofai/block-read-outside-cwd");
-    expect(row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "truncated", jevDecision: "allow" });
-    expect(row.jevCleared).toBeUndefined();
+    expect(outcome.evaluation?.decision).toBe("allow");
+    expect(row).toMatchObject({ evaluator: "jev", jevCleared: ["failproofai/block-read-outside-cwd"] });
+    expect(row.jevFallbackReason).toBeUndefined();
+  });
+
+  /**
+   * The other half of the same regression, and the one a raised flag could not
+   * fix: `targetNamedByUser` (`decide.ts`) is a LOCAL substring check over what
+   * the store KEPT, so a cap short enough to drop the thing the human named
+   * turns an explicit request into an instruct — no truncation flag involved.
+   *
+   * `MAX_USER_MESSAGE_CHARS` is what the store caps at (`intent.ts` imports
+   * it), and it is sized for what people actually paste. This pins the
+   * property the size was chosen for: a request with a page of context around
+   * it still names its target in the stored prompt.
+   */
+  it("a pasted page of context around an explicit request keeps the target", async () => {
+    const ask = "please read notes.txt in ~/other for me";
+    const padding = "Background the human pasted about this project. ";
+    const around = Math.floor(MAX_USER_MESSAGE_CHARS / 3 / padding.length);
+    await hook("UserPromptSubmit", { prompt: `${padding.repeat(around)}\n${ask}\n${padding.repeat(around)}` });
+    const [stored] = readIntent(SESSION).userSaid;
+    expect(stored.length).toBeGreaterThan(1_200);
+    // The point: the sentence the human typed survived the store's cap.
+    expect(stored).toContain(ask);
+    const { outcome, row } = await outsideRead();
+    expect(outcome.evaluation?.decision).toBe("allow");
+    expect(row).toMatchObject({ evaluator: "jev", jevCleared: ["failproofai/block-read-outside-cwd"] });
   });
 });

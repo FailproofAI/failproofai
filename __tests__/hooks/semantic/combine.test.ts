@@ -1,23 +1,27 @@
 /**
  * The §4 combine table, exhaustively: every row × {shadow, enforce} ×
- * {complete, truncated}. Each row is driven from a SemanticOutcome — what
+ * {whole, request-cut}. Each row is driven from a SemanticOutcome — what
  * `evaluateSemantic` actually returns — through `toReview` (how the handler
- * reads it) and `combineTwoTier` (what it enforces), so the truncation →
- * fallback step is covered by the same table rather than beside it.
+ * reads it) and `combineTwoTier` (what it enforces), so the cut → fallback
+ * step is covered by the same table rather than beside it.
  *
- * The expected result is written out for `enforce` + complete. The other
- * columns follow from rules the table asserts on every row: shadow enforces
- * the regex result, and a truncated envelope — whatever was cut: the call,
- * the human's words or the agent's last message — withdraws every clear, so
- * every regex deny counts (§4) and the call is recorded `jev-fallback` /
- * `truncated`. Truncation withdraws clears and NOTHING else: Jev's own deny or
- * instruct still joins the most-severe rule, which is what `enforceTruncated`
- * spells out on the three rows that have one to apply. A row without it
- * enforces the regex result exactly.
+ * The expected result is written out for `enforce` + whole. The other columns
+ * follow from rules the table asserts on every row: shadow enforces the regex
+ * result, and a call part of which was never shown to Jev — the tool input, a
+ * computed fact, a redacted span — withdraws every clear, so every regex deny
+ * counts (§4) and the call is recorded `jev-fallback` / `request-cut`. A cut
+ * withdraws clears and NOTHING else: Jev's own deny or instruct still joins
+ * the most-severe rule, which is what `enforceCut` spells out on the three
+ * rows that have one to apply, and no refusal of this module's own is ever
+ * added. A row without it enforces the regex result exactly.
+ *
+ * The third axis used to be "was anything cut, the human's own words
+ * included". `a cut MESSAGE changes nothing` below is what replaced that
+ * column, and it is the stronger claim: an over-long prompt or agent message
+ * produces byte-identical output.
  */
 import { describe, expect, it } from "vitest";
 import {
-  UNREVIEWABLE_POLICY,
   combineTwoTier,
   regexOnly,
   type JevMode,
@@ -96,8 +100,21 @@ function degradedOutcome(reason: string, truncated = false): SemanticOutcome {
   return { status: "degraded", reason, latencyMs: 1500, questionCount: 3, truncated, requestCut: false };
 }
 
-type Truncation = "complete" | "truncated";
-const withTruncation = (o: SemanticOutcome, t: Truncation): SemanticOutcome => ({ ...o, truncated: t === "truncated" });
+/**
+ * The third axis of the table: was the CALL read whole, or was part of it —
+ * the tool input, a computed fact, a redacted span — never shown to Jev?
+ *
+ * It used to be "was ANYTHING cut, the human's own words included", and that
+ * is exactly the axis that was wrong: the length of a prompt is not evidence
+ * about a call. A cut message is covered separately, below, by asserting that
+ * it changes nothing at all.
+ */
+type Cut = "whole" | "request-cut";
+const withCut = (o: SemanticOutcome, t: Cut): SemanticOutcome => ({
+  ...o,
+  truncated: t === "request-cut",
+  requestCut: t === "request-cut",
+});
 
 // ── The table ────────────────────────────────────────────────────────────────
 
@@ -116,11 +133,11 @@ interface Row {
   outcome: SemanticOutcome | null;
   enforce: Expect;
   /**
-   * enforce + truncated, on the rows where it is NOT the regex result: nothing
+   * enforce + request-cut, on the rows where it is NOT the regex result: nothing
    * is cleared, but Jev's own deny or instruct still joins the most-severe
    * rule. Absent → the regex result stands exactly (`toEqual(legacy)`).
    */
-  enforceTruncated?: Expect;
+  enforceCut?: Expect;
   /** Expected fallback reason, when this row is a fallback even untruncated. */
   fallback?: string;
 }
@@ -252,14 +269,14 @@ const ROWS: Row[] = [
     enforce: { decision: "deny", names: ["semantic/destructive-deletion"], cleared: [], decidedByJev: true },
     // Cut or not, Jev's deny still decides: padding this command past the
     // envelope cap used to turn the whole call back into an allow.
-    enforceTruncated: { decision: "deny", names: ["semantic/destructive-deletion"], cleared: [], decidedByJev: true },
+    enforceCut: { decision: "deny", names: ["semantic/destructive-deletion"], cleared: [], decidedByJev: true },
   },
   {
     id: "regex instruct, Jev deny → Jev's deny (most severe)",
     verdicts: [hard("failproofai/warn-git-stash-drop", "instruct")],
     outcome: semOutcome({ decision: "deny", reason: "rewrites history", policies: { "git-history-rewrite": "deny" } }),
     enforce: { decision: "deny", names: ["semantic/git-history-rewrite"], cleared: [], decidedByJev: true },
-    enforceTruncated: { decision: "deny", names: ["semantic/git-history-rewrite"], cleared: [], decidedByJev: true },
+    enforceCut: { decision: "deny", names: ["semantic/git-history-rewrite"], cleared: [], decidedByJev: true },
   },
   {
     id: "regex instruct + Jev instruct → both, regex first",
@@ -271,7 +288,7 @@ const ROWS: Row[] = [
       cleared: [],
       decidedByJev: false,
     },
-    enforceTruncated: {
+    enforceCut: {
       decision: "instruct",
       names: ["failproofai/warn-git-stash-drop", "semantic/system-modification"],
       cleared: [],
@@ -328,21 +345,21 @@ const ROWS: Row[] = [
 ];
 
 const MODES: JevMode[] = ["enforce", "shadow"];
-const TRUNCATED: Truncation[] = ["complete", "truncated"];
+const CUTS: Cut[] = ["whole", "request-cut"];
 /** allow < instruct < deny, for the "never more permissive" invariant. */
 const SEVERITY: Record<"allow" | "instruct" | "deny", number> = { allow: 0, instruct: 1, deny: 2 };
 
-function reviewFor(row: Row, truncated: Truncation): JevReview {
+function reviewFor(row: Row, cut: Cut): JevReview {
   if (!row.outcome) return { kind: "not-consulted" };
-  return toReview(withTruncation(row.outcome, truncated));
+  return toReview(withCut(row.outcome, cut));
 }
 
-describe("combine table (§4) — every row × shadow/enforce × complete/truncated", () => {
+describe("combine table (§4) — every row × shadow/enforce × whole/request-cut", () => {
   for (const row of ROWS) {
     for (const mode of MODES) {
-      for (const truncated of TRUNCATED) {
-        it(`${row.id} | ${mode} | ${truncated}`, () => {
-          const review = reviewFor(row, truncated);
+      for (const cut of CUTS) {
+        it(`${row.id} | ${mode} | ${cut}`, () => {
+          const review = reviewFor(row, cut);
           const out = combineTwoTier(row.verdicts, review, mode);
           const legacy = regexOnly(row.verdicts);
           const names = out.final.entries.map((e) => e.policyName);
@@ -351,11 +368,11 @@ describe("combine table (§4) — every row × shadow/enforce × complete/trunca
           // Jev never answered at all. The only state in which its verdict is
           // absent from the combine.
           const degraded = !hardDecided && row.fallback !== undefined;
-          // Truncation counts only for a call Jev was actually sent: with no
+          // A cut counts only for a call Jev was actually sent: with no
           // semantic policy applying nothing is judged, so nothing was judged
           // on a cut envelope (and that row clears nothing anyway).
           const nothingSent = row.outcome?.status === "ok" && row.outcome.via === "none";
-          const cutAnswer = !hardDecided && !degraded && truncated === "truncated" && !nothingSent;
+          const cutAnswer = !hardDecided && !degraded && cut === "request-cut" && !nothingSent;
           const wholeAnswer = !hardDecided && !degraded && !cutAnswer;
 
           // What is ENFORCED.
@@ -364,13 +381,13 @@ describe("combine table (§4) — every row × shadow/enforce × complete/trunca
             // the regex engine says alone.
             expect(out.final).toEqual(legacy);
             expect(out.decidedByJev).toBe(false);
-          } else if (cutAnswer && !row.enforceTruncated) {
+          } else if (cutAnswer && !row.enforceCut) {
             // Nothing cleared, and Jev's own verdict was no more severe than
             // the regex result: the regex result stands, byte for byte.
             expect(out.final).toEqual(legacy);
             expect(out.decidedByJev).toBe(false);
           } else {
-            const want = (cutAnswer ? row.enforceTruncated : undefined) ?? row.enforce;
+            const want = (cutAnswer ? row.enforceCut : undefined) ?? row.enforce;
             expect(out.final.decision).toBe(want.decision);
             expect(names).toEqual(want.names);
             expect(out.decidedByJev).toBe(want.decidedByJev ?? false);
@@ -379,9 +396,9 @@ describe("combine table (§4) — every row × shadow/enforce × complete/trunca
           // The invariant that makes padding pointless: with nothing cleared,
           // the final can never be MORE PERMISSIVE than the regex engine
           // alone. Clearing is the ONLY thing that may soften a call, and
-          // every reason Jev's picture is partial — truncation included —
-          // withdraws clears and nothing else. Checked on every row, in both
-          // modes, complete and truncated.
+          // every reason Jev's picture of the CALL is partial withdraws
+          // clears and nothing else. Checked on every row, in both modes,
+          // whole and request-cut.
           if (out.cleared.length === 0) {
             expect(SEVERITY[out.final.decision]).toBeGreaterThanOrEqual(SEVERITY[legacy.decision]);
           }
@@ -402,7 +419,7 @@ describe("combine table (§4) — every row × shadow/enforce × complete/trunca
             // §4's row: recorded as a fallback with its reason, and nothing is
             // cleared — but Jev's answer is kept, and it was applied above.
             expect(out.activity.evaluator).toBe("jev-fallback");
-            expect(out.activity.jevFallbackReason).toBe("truncated");
+            expect(out.activity.jevFallbackReason).toBe("request-cut");
             expect(out.activity.jevCleared).toBeUndefined();
             expect(out.cleared).toEqual([]);
             expect(out.activity.jevDecision).toBe(row.outcome!.status === "ok" ? row.outcome!.verdict.decision : undefined);
@@ -427,11 +444,11 @@ describe("combine table (§4) — every row × shadow/enforce × complete/trunca
     expect(hardRows.length).toBe(2);
     expect(degradedRows.length).toBe(10);
     expect(answeredRows.length).toBe(24);
-    // Every answered row also runs truncated (the §4 truncation row).
-    expect(ROWS.length * MODES.length * TRUNCATED.length).toBe(144);
+    // Every answered row also runs request-cut (the §4 fallback row).
+    expect(ROWS.length * MODES.length * CUTS.length).toBe(144);
     // Exactly the rows where Jev's own verdict outranks the regex result carry
-    // a truncated expectation; on every other row the regex result stands.
-    expect(ROWS.filter((r) => r.enforceTruncated).map((r) => r.id)).toEqual([
+    // a cut expectation; on every other row the regex result stands.
+    expect(ROWS.filter((r) => r.enforceCut).map((r) => r.id)).toEqual([
       "regex allows, Jev denies → Jev's deny",
       "regex instruct, Jev deny → Jev's deny (most severe)",
       "regex instruct + Jev instruct → both, regex first",
@@ -544,62 +561,81 @@ describe("the clear rule, on hand-built reviews", () => {
     expect(out.final.decision).toBe("deny");
   });
 
-  it("a truncated answer withholds every clear, and nothing else", () => {
-    const out = combineTwoTier(verdicts, answered({ truncated: true }), "enforce");
-    expect(out.cleared).toEqual([]);
-    expect(out.final).toEqual(regexOnly(verdicts));
-    expect(out.activity).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "truncated", jevDecision: "allow" });
+  /**
+   * A cut MESSAGE — an over-long human turn, agent message or store-capped
+   * prompt — changes NOTHING. It used to withdraw every clear, which made the
+   * length of the human's own prompt the difference between an allow and a
+   * deny on identical work; a 1,200-character paste is routine, and the store
+   * keeps a capped prompt for hours, so the clearing half of the tier stayed
+   * off for the rest of the session.
+   */
+  it("a cut MESSAGE changes nothing at all", () => {
+    const whole = combineTwoTier(verdicts, answered(), "enforce");
+    const cutMessage = combineTwoTier(verdicts, answered({ truncated: true }), "enforce");
+    expect(cutMessage).toEqual(whole);
+    expect(cutMessage.cleared).toEqual([RRO]);
+    expect(cutMessage.final.decision).toBe("allow");
+    // Not a fallback either: nothing about the call was missing, so recording
+    // one would only inflate the rate.
+    expect(cutMessage.activity).toMatchObject({ evaluator: "jev", jevDecision: "allow" });
+    expect(cutMessage.activity.jevFallbackReason).toBeUndefined();
   });
 
-  // The hole this rule closes: truncation is attacker-influenceable (pad the
-  // command past the envelope's 2,000-character cap), so it may never subtract
-  // severity. It used to turn the whole review into a fallback, which threw
-  // Jev's own deny away and flipped this call to allow.
-  it("a truncated answer still applies Jev's OWN deny", () => {
-    const review = answered({ truncated: true, decision: "deny", reason: "deletes the database", policyName: "semantic/destructive-deletion" });
+  // The hole this rule closes: a cut is attacker-influenceable (pad the call
+  // past the envelope's budget), so it may never subtract severity. It used to
+  // turn the whole review into a fallback, which threw Jev's own deny away and
+  // flipped this call to allow.
+  it("a cut answer still applies Jev's OWN deny", () => {
+    const review = answered({ requestCut: true, truncated: true, decision: "deny", reason: "deletes the database", policyName: "semantic/destructive-deletion" });
     const out = combineTwoTier([], review, "enforce");
     expect(out.final.decision).toBe("deny");
     expect(out.final.entries).toEqual([{ policyName: "semantic/destructive-deletion", reason: "deletes the database" }]);
     expect(out.decidedByJev).toBe(true);
-    // …and it is still RECORDED as §4's truncated fallback.
-    expect(out.activity).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "truncated", jevDecision: "deny" });
+    // …and it is still RECORDED as §4's fallback row.
+    expect(out.activity).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "request-cut", jevDecision: "deny" });
   });
 
-  it("a truncated answer still applies Jev's OWN instruct", () => {
-    const review = answered({ truncated: true, decision: "instruct", reason: "beyond the task", policyName: "semantic/beyond-task" });
+  it("a cut answer still applies Jev's OWN instruct", () => {
+    const review = answered({ requestCut: true, truncated: true, decision: "instruct", reason: "beyond the task", policyName: "semantic/beyond-task" });
     const out = combineTwoTier([], review, "enforce");
     expect(out.final).toEqual({ decision: "instruct", entries: [{ policyName: "semantic/beyond-task", reason: "beyond the task" }] });
     expect(out.decidedByJev).toBe(true);
   });
 
-  it("shadow still enforces the regex result for a truncated answer", () => {
-    const review = answered({ truncated: true, decision: "deny", reason: "deletes the database", policyName: "semantic/destructive-deletion" });
+  it("shadow still enforces the regex result for a cut answer", () => {
+    const review = answered({ requestCut: true, truncated: true, decision: "deny", reason: "deletes the database", policyName: "semantic/destructive-deletion" });
     const out = combineTwoTier([], review, "shadow");
     expect(out.final).toEqual(regexOnly([]));
     expect(out.decidedByJev).toBe(false);
   });
 
   /**
-   * The rule that closes the padding class: a call part of which was never
-   * shown to Jev may not come out as an allow.
+   * What a cut of the CALL costs, and what it must NOT cost.
    *
-   * Withdrawing clears is not enough on its own, and that is the whole reason
-   * this exists. In the case the tier is FOR — the regex tier has no rule, so
-   * its floor is allow, and only Jev would have denied — an attacker who can
-   * make Jev answer about padding instead of about the command has turned the
-   * tier off, and there is no clear to withdraw.
+   * It costs the clears: a call part of which was never shown to Jev cannot
+   * have a reviewable policy cleared on the strength of that answer. That is
+   * what makes padding pointless — it can only ever make an outcome stricter.
+   *
+   * It must not cost a DENY. A previous revision refused such a call outright
+   * (`semantic/request-too-large-to-review`, "split it into smaller calls"),
+   * and that fired on ordinary outsized work — a ~1,400-line `Write`, a large
+   * MCP body — which is a deny this product invented on work no policy
+   * objected to. Size may make a call stricter only through Jev's own verdict.
    */
-  describe("a cut of the CALL itself can only make the outcome stricter", () => {
-    it("a would-be allow becomes a deny that names the remedy", () => {
+  describe("a cut of the CALL costs the clears, and only the clears", () => {
+    it("a would-be allow stays an allow: no refusal of our own is invented", () => {
       const out = combineTwoTier([], answered({ requestCut: true, truncated: true }), "enforce");
-      expect(out.final.decision).toBe("deny");
-      expect(out.final.entries[0].policyName).toBe(UNREVIEWABLE_POLICY);
-      expect(out.final.entries[0].reason).toMatch(/split it into smaller calls/i);
+      expect(out.final).toEqual(regexOnly([]));
+      expect(out.decidedByJev).toBe(false);
       expect(out.activity).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "request-cut", jevDecision: "allow" });
-      // No registered policy decided this, so the handler must not attribute
-      // it to one: `semantic/request-too-large-to-review` is not in the
-      // registry, and an unfound name is reported as a builtin.
-      expect(out.decidedByJev).toBe(true);
+    });
+
+    it("but it clears nothing — the reviewable deny stands", () => {
+      const out = combineTwoTier(verdicts, answered({ requestCut: true, truncated: true }), "enforce");
+      expect(out.cleared).toEqual([]);
+      expect(out.final).toEqual(regexOnly(verdicts));
+      expect(out.final.decision).toBe("deny");
+      expect(out.activity.jevCleared).toBeUndefined();
     });
 
     it("Jev's own deny still decides, with its own attribution", () => {
@@ -621,38 +657,23 @@ describe("the clear rule, on hand-built reviews", () => {
       expect(out.final.entries).toEqual([{ policyName: "failproofai/block-sudo", reason: "sudo" }]);
     });
 
-    /**
-     * An instruct is not a refusal: on most CLIs it RUNS the call and attaches
-     * a note. So a cut call may not be left as one either — otherwise "pad the
-     * call, and also trip any warn-level rule" is the next spelling.
-     */
-    it("an instruct does not let a cut call through", () => {
+    it("a warn-level regex rule is still only an instruct: a cut does not promote it", () => {
       const instruct: RegexVerdict = { policyName: "failproofai/warn-x", decision: "instruct", reason: "careful", authority: "hard", reviewedBy: [] };
       const out = combineTwoTier([instruct], answered({ requestCut: true, truncated: true }), "enforce");
-      expect(out.final.decision).toBe("deny");
-      expect(out.final.entries[0].policyName).toBe(UNREVIEWABLE_POLICY);
+      expect(out.final).toEqual(regexOnly([instruct]));
+      expect(out.final.decision).toBe("instruct");
     });
 
-    it("Jev's own instruct does not let one through either", () => {
-      const review = answered({ requestCut: true, truncated: true, decision: "instruct", policyName: "semantic/beyond-task", reason: "beyond the task" });
-      expect(combineTwoTier([], review, "enforce").final.decision).toBe("deny");
-    });
-
-    it("a cut call with NOTHING else is still just the refusal", () => {
-      const out = combineTwoTier([], answered({ requestCut: true, truncated: true }), "enforce");
-      expect(out.final.entries).toHaveLength(1);
-    });
-
-    it("shadow mode never denies on it", () => {
+    it("shadow mode is unchanged, and still records the reason", () => {
       const out = combineTwoTier([], answered({ requestCut: true, truncated: true }), "shadow");
       expect(out.final).toEqual(regexOnly([]));
       expect(out.activity.jevFallbackReason).toBe("request-cut");
     });
 
-    it("a cut of the CONTEXT alone does not deny — a long prompt is not an attack", () => {
-      const out = combineTwoTier([], answered({ truncated: true }), "enforce");
-      expect(out.final).toEqual(regexOnly([]));
-      expect(out.activity.jevFallbackReason).toBe("truncated");
+    it("a cut MESSAGE is not a cut CALL: it clears as usual", () => {
+      const out = combineTwoTier(verdicts, answered({ truncated: true, requestCut: false }), "enforce");
+      expect(out.cleared).toEqual([RRO]);
+      expect(out.activity.jevFallbackReason).toBeUndefined();
     });
   });
 

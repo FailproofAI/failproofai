@@ -20,15 +20,17 @@
  * be built) — and it deliberately carries no decision, so a verdict Jev DID
  * produce can never be dropped on the way in.
  *
- * A verdict given on a truncated envelope is not that. It comes through as
- * `answered` with `truncated: true`: it clears nothing, and it still counts
- * toward the most-severe rule, because padding a call must not be a way to
- * stop Jev's own deny applying. When the cut was inside the CALL rather than
- * the context around it, `requestCut` says so, and `combine.ts` refuses to
- * allow such a call at all — padding can make an outcome stricter, never more
- * permissive. Size cannot reach the degrade path at all any more —
- * `buildEnvelope` spends a hard budget and never throws, so there is no
- * "too big" and no "raised while preparing" to degrade on (see `envelope.ts`).
+ * A verdict given on an envelope that could not carry everything is not that.
+ * It comes through as `answered` with `requestCut: true` when what did not fit
+ * was part of the call: it clears nothing, and it still counts toward the
+ * most-severe rule, because padding a call must not be a way to stop Jev's own
+ * deny applying. Size reaches neither the degrade path nor a refusal —
+ * `buildEnvelope` spends a hard budget and never throws, and being over it is
+ * recorded rather than acted on, so the strictest thing a big call can be is
+ * whatever Jev says about it (see `envelope.ts` and `combine.ts`).
+ *
+ * `truncated` — an over-long human turn or agent message — rides along for the
+ * verdict log and changes nothing.
  */
 import { BUILTIN_POLICIES } from "../builtin-policies";
 import { normalizePolicyName } from "../policy-registry";
@@ -188,9 +190,9 @@ export function toReview(outcome: SemanticOutcome, cached = false): JevReview {
   const latencyMs = sent && !cached ? outcome.latencyMs : null;
   const model = sent ? outcome.model : null;
   const outcomes = outcome.verdict.outcomes;
-  // `null` when the injection probe was not in the request: v1 asks it only
-  // when there is a recorded human message to judge the call against (never
-  // on Hermes, which has no prompt event; never before the first prompt).
+  // `null` when the injection probe was not in the request, which now means
+  // only that no request was made: v1 asks it on every call it sends, with or
+  // without a recorded human message (see `compile.ts`).
   const injection = sent ? outcome.verdict.injectionSuspected : null;
   return {
     kind: "answered",
@@ -204,26 +206,26 @@ export function toReview(outcome: SemanticOutcome, cached = false): JevReview {
     clear: sent ? outcomes.filter((o) => o.verdict === "none" || o.verdict === "overridden").map((o) => o.policy) : [],
     injectionAsked: injection !== null,
     injected: injection !== null && injection >= DEFAULT_THRESHOLDS_V1.injection,
-    // §4: a truncated ENVELOPE means Jev judged less than the whole picture —
-    // the call, the human's words or the agent's last message was cut. It
-    // withdraws every clear (a clear resting on half of what the human typed
-    // is not a clear) and the call is recorded as `jev-fallback` /
-    // `truncated`; Jev's own deny or instruct still counts, because padding a
-    // command must not be a way to stop it applying. "Cut" includes a message
-    // the intent store capped before the envelope saw it (T4 caps what it
-    // keeps to fit the envelope, so the envelope cannot see that cut; the
-    // store reports it through `readIntent`, see `IntentStore`):
-    // `outcome.truncated` covers both (see `prepareSemantic`).
+    // Something did not fit — a human turn, the agent's message, or what T4's
+    // store had already capped before the envelope saw it (it caps to fit the
+    // envelope, so the envelope cannot see that cut; the store reports it
+    // through `readIntent`, see `IntentStore`). `outcome.truncated` covers
+    // both (see `prepareSemantic`). Carried for the verdict log; `combine.ts`
+    // reads nothing from it, because the length of what a human typed is not
+    // evidence about the call.
     //
     // Only when a request was actually sent: with no semantic policy applying
-    // nothing reaches Jev, so nothing was judged on a cut envelope, nothing
-    // can be cleared (`asked` is empty) and the verdict is allow anyway —
-    // recording it as a fallback would only inflate the fallback rate.
+    // nothing reaches Jev, so nothing was judged on a cut envelope at all.
     truncated: outcome.truncated && sent,
-    // Same "only if a request was sent" rule, for the same reason: with no
-    // semantic policy applying nothing was judged, so nothing was hidden from
-    // the judging, and a deny for an unreadable call would be a deny with no
-    // review behind it.
+    // §4's row, one field over: part of the CALL — or of the deterministic
+    // facts about it — was not shown. Every clear is withdrawn and the call is
+    // recorded as `jev-fallback` / `request-cut`; Jev's own deny or instruct
+    // still counts, because padding must not be a way to stop it applying, and
+    // nothing else is added, because padding must not be a way to invent a
+    // deny either.
+    //
+    // Same "only if a request was sent" rule: with no semantic policy applying
+    // nothing was judged, so nothing was hidden from the judging.
     requestCut: outcome.requestCut && sent,
     latencyMs,
     model,

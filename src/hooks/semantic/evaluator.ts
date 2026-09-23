@@ -90,29 +90,38 @@ export interface PreparedCall {
   /** The agent message the envelope carries (v1), or null. Same rule. */
   agentLastMessage: string | null;
   /**
-   * Jev is judging less than the whole picture: the envelope cut something
-   * (`envelope.truncated`), OR a human message or agent message it carries was
-   * already cut before it got here (`opts.contextTruncated`, or failing that
-   * `intentStoreCut`). This, not `envelope.truncated`, is the outcome's
-   * `truncated`.
+   * Something did not fit: the envelope cut it (`envelope.truncated`), or a
+   * human or agent message it carries had already been cut before it got here
+   * (`opts.contextTruncated`, or failing that `intentStoreCut`).
+   *
+   * Informational. It is recorded, and it changes no verdict — a prompt or a
+   * pasted stack trace over the per-message cap is ordinary work. The flag
+   * that does change something is {@link requestCut}.
    */
   truncated: boolean;
   /**
-   * Part of the CALL ITSELF was not shown to Jev (`envelope.requestCut`): the
-   * tool input did not fit `MAX_AGENT_REQUEST_CHARS`, or a redaction swallowed
-   * a long span of it. Strictly stronger than `truncated`, and the only flag
-   * that can make a call stricter rather than only less clearable — see
+   * Part of what the CALL DOES was not shown to Jev (`envelope.requestCut`):
+   * the tool input did not fit `MAX_AGENT_REQUEST_CHARS`, a redaction
+   * swallowed a span of it that could have been executable, or a computed fact
+   * about it was dropped.
+   *
+   * Jev is still asked with whatever fitted and its deny or instruct still
+   * counts; what it may not do is CLEAR a reviewable policy. See
    * `envelope.ts`'s header and `combine.ts`.
    *
-   * A cut the intent store made is NOT one of these: what it cuts is context
-   * the human typed, not the call.
+   * A cut the intent store made is NOT one of these: what it cuts is what the
+   * human typed, not the call.
    */
   requestCut: boolean;
   /**
-   * The compiled request does not fit `MAX_REQUEST_CHARS`, so nothing can be
-   * sent. The state is bounded by `MAX_STATE_CHARS` however the call was
-   * shaped, so this is reachable only if OUR OWN questions overrun the budget
-   * — a policy-set problem, not something a caller can provoke. Pinned by
+   * The compiled request does not fit `MAX_REQUEST_CHARS`.
+   *
+   * The state is bounded by `MAX_STATE_CHARS` however the call was shaped, so
+   * this is reachable only if OUR OWN question set overruns the budget — a
+   * policy-set problem, not something a caller can provoke. It is NOT a
+   * refusal and not a degrade: the request is still sent (the provider's own
+   * error is the honest answer if it really is too big), and it counts as a
+   * cut, so nothing can be cleared on it. Pinned by
    * `__tests__/hooks/semantic/envelope-budget.test.ts`.
    */
   oversized: boolean;
@@ -140,19 +149,22 @@ const STORE_CUT_SLACK = 64;
  * intent store caps what it keeps to fit inside the envelope's own limit,
  * marker included, precisely so the envelope does not cut it a second time —
  * which also means the envelope cannot tell it was cut, and
- * `envelope.truncated` stays false. §4 falls back on a truncated envelope
- * whatever was cut: a clear resting on half of what the human typed is not a
- * clear.
+ * `envelope.truncated` stays false.
  *
- * The mark alone is NOT the test, and this is the whole point of the length.
+ * What it feeds is `truncated`, which is RECORDED and changes no verdict. It
+ * used to withdraw every clear, and that made the length of the human's own
+ * prompt the difference between an allow and a deny on identical work: a
+ * pasted spec or stack trace over 1,200 characters is routine, and the store
+ * keeps a capped prompt for hours, so the clearing half of the tier stayed off
+ * for the rest of the session.
+ *
+ * The mark alone is NOT the test, and that is what the length is for.
  * `agent_last_message` is written by the agent, which repeats text from files,
  * web pages and command output that a third party controls, so a message that
  * merely quotes the mark — an excerpt of one of our own capped prompts, say —
- * would otherwise force this call onto the regex-only path and throw Jev's
- * verdict away, from nothing but repo content. A message the store actually
- * cut also FILLS the cap; a quoted mark in ordinary prose does not. Only what
- * is actually sent is looked at: `user_said` (cleaned, the last few) and
- * `agent_last_message`.
+ * should not read as a cut. A message the store actually cut also FILLS the
+ * cap; a quoted mark in ordinary prose does not. Only what is actually sent is
+ * looked at: `user_said` (cleaned, the last few) and `agent_last_message`.
  */
 function intentStoreCut(state: Record<string, unknown>): boolean {
   const said = Array.isArray(state.user_said) ? state.user_said : [];
@@ -169,8 +181,9 @@ export type SemanticOutcome =
       latencyMs: number;
       inputTokens: number | null;
       questionCount: number;
+      /** Something did not fit. Recorded; changes no verdict. See {@link PreparedCall.truncated}. */
       truncated: boolean;
-      /** Part of the call was not shown to Jev. See {@link PreparedCall.requestCut}. */
+      /** Part of what the call DOES was not shown to Jev, so it may clear nothing. */
       requestCut: boolean;
       redactions: number;
       model: string;
@@ -214,7 +227,12 @@ export function prepareSemantic(input: SemanticInput, opts: SemanticOptions = {}
   const compiled = compileRequest(selected, envelope.state, envelope.evidence.userSaid, model, intent);
 
   // Nothing is sent when no question applies, so an inert call is not measured.
+  // This is also the one place the budget is CHECKED rather than asserted: the
+  // accounting in `envelope.ts` is supposed to make it impossible to exceed,
+  // and a claim like that belongs in the code that can still notice it is
+  // wrong. Being wrong costs the call its clears; it never costs it a verdict.
   const chars = Object.keys(compiled.request.questions).length > 0 ? JSON.stringify(compiled.request).length : 0;
+  const oversized = chars > MAX_REQUEST_CHARS;
 
   const truncated = envelope.truncated || (opts.contextTruncated ?? intentStoreCut(envelope.state));
   return {
@@ -225,9 +243,9 @@ export function prepareSemantic(input: SemanticInput, opts: SemanticOptions = {}
     intent,
     userSaid: envelope.evidence.userSaid,
     agentLastMessage: envelope.evidence.agentLastMessage,
-    truncated,
-    requestCut: envelope.requestCut,
-    oversized: chars > MAX_REQUEST_CHARS,
+    truncated: truncated || oversized,
+    requestCut: envelope.requestCut || oversized,
+    oversized,
   };
 }
 
@@ -288,10 +306,14 @@ export async function evaluateSemantic(input: SemanticInput, opts: SemanticOptio
     requestCut,
   });
 
-  // Not reachable by padding the call: the state is built inside
-  // `MAX_STATE_CHARS`, so only our own questions could overrun the budget.
-  if (prepared.oversized) return degraded("request-too-large");
-
+  // Size is NOT a reason to refuse to ask. An oversized or truncated call used
+  // to come back `degraded("request-too-large")`, which `toReview` maps to a
+  // `fallback` — Jev's verdict discarded, the regex tier's floor (allow, in
+  // the case this tier exists for) applied. That made "make the request big"
+  // an off switch, and the size that triggered it was reachable from ordinary
+  // work. So the request goes out with whatever fitted: what did not fit is
+  // already recorded as `requestCut`, which stops any clear, and a request the
+  // provider genuinely cannot accept degrades on its own error, honestly.
   const transport = opts.transport;
   if (!transport) return degraded("no-transport");
   const via: JevProviderKind = opts.via ?? "custom";

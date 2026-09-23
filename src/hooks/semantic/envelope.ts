@@ -13,13 +13,15 @@
  *    SECRET_PATTERNS the sanitize-* builtins use before it is sent — object
  *    KEYS as much as values, because `{"<a key that is a token>": 1}` is a
  *    string leaving the machine like any other — and the count is reported so
- *    a redaction is auditable. A PEM block is redacted WHOLE, from its
- *    `-----BEGIN … PRIVATE KEY-----` line to its `-----END …-----` line (or to
- *    the end of the string when there is none): the shared pattern list is a
- *    header matcher, which is right for a detector that denies and wrong for a
- *    transform, where matching the header alone would send the key material.
+ *    a redaction is auditable. A PEM block has its BASE64 BODY LINES removed,
+ *    from its `-----BEGIN … PRIVATE KEY-----` line to its `-----END …-----`
+ *    line (or to the end of the string when there is none): the shared pattern
+ *    list is a header matcher, which is right for a detector that denies and
+ *    wrong for a transform, where matching the header alone would send the key
+ *    material — and line by line rather than block by block, so a fake key
+ *    block is not a place to hide a command (see {@link redactPrivateKeyBodies}).
  * 3. The envelope is built inside a HARD, DETERMINISTIC BUDGET, in two
- *    independent sections, so neither can starve the other and the serialized
+ *    independent pools, so neither can starve the other and the serialized
  *    size is a function of the caps in {@link EnvelopeLimits} and nothing else:
  *
  *      - `agent_request` — the call being judged — gets
@@ -31,6 +33,20 @@
  *        marker. There is no cap on how MANY entries a container may have:
  *        the byte budget is the only bound, so an ordinary wide or deep tool
  *        input is carried whole instead of being reported as cut.
+ *
+ *    The budget is a bound only if the accounting never UNDERCHARGES, so every
+ *    emitted value is charged what `JSON.stringify` will actually spend on it:
+ *    an empty string costs its two quotes, an array element its separator on
+ *    top of its own floor, an object entry its quoted key, colon and comma. An
+ *    earlier revision charged a zero-length string nothing at all, and 36,000
+ *    of them in one array — 3 serialized characters each, 1 charged — put the
+ *    state 21% past its cap with nothing marked as cut. An entry-count cap
+ *    would also have stopped that, and is deliberately NOT how it is stopped:
+ *    dropping the 25th key reported ordinary MultiEdits and MCP bodies as cut.
+ *    `__tests__/hooks/semantic/envelope-budget.test.ts` drives the cost model
+ *    itself — for each leaf type, grow a container until the budget is spent
+ *    and assert the serialized size still fits — rather than enumerating
+ *    payload shapes.
  *
  * 4. Building the envelope NEVER throws. No unbounded recursion (the depth cap
  *    bounds it, which also makes a cyclic object terminate), no `JSON.stringify`
@@ -54,37 +70,53 @@
  *
  *   **Text that was not shown to Jev cannot buy permission.**
  *
+ * Note what that says and what it does not. It does not say a call nobody
+ * could read is REFUSED — that was tried, and it denied ordinary outsized
+ * work. Size may make a call stricter only through Jev's own verdict, never
+ * through a refusal of our own. What a cut costs is the power to CLEAR.
+ *
  * Two flags carry it, and `combine.ts` applies it:
  *
- *   - `truncated` — anything at all was cut, context included. It withdraws
- *     every CLEAR: a clear resting on half of the evidence is not a clear.
- *   - `requestCut` — the cut was inside `agent_request`, i.e. part of the CALL
- *     ITSELF was not shown. On top of withdrawing clears, such a call is never
- *     ALLOWED by this tier: in enforce mode a would-be allow becomes a deny
- *     that says how to proceed (split the call up). Jev's own deny or instruct
- *     still applies, because a cut may never subtract severity either.
+ *   - `requestCut` — part of what the call DOES was not shown: a cut inside
+ *     `agent_request`, or inside the deterministic `facts` the probes are told
+ *     to read. Jev is still asked with whatever fits, and its deny or instruct
+ *     still counts — a cut may never subtract severity — but it MAY NOT CLEAR
+ *     a reviewable policy, because a clear resting on a call half of which was
+ *     never read is not a clear.
+ *   - `truncated` — anything at all was cut, the human's own words included.
+ *     Informational, and deliberately nothing more. A prompt, an agent message
+ *     or a paste over the per-message cap is ORDINARY: an earlier revision let
+ *     it withdraw clears, which turned a 1,200-character prompt into the
+ *     difference between an allow and a deny on identical work.
  *
  * That makes padding useless BY CONSTRUCTION rather than by spelling: hiding
- * anything requires a cut, every cut inside `agent_request` sets `requestCut`,
- * and `requestCut` can only make the outcome stricter. It is blunt — a single
- * tool call carrying more than {@link MAX_AGENT_REQUEST_CHARS} characters is
- * refused with an explanation rather than half-reviewed — and the budget is
- * deliberately large enough that ordinary calls never come near it.
+ * anything requires a cut, every cut inside `agent_request` or `facts` sets
+ * `requestCut`, and `requestCut` can only make the outcome stricter. A caller
+ * can spend the budget, but spending it only ever costs the call its clears —
+ * it can never buy one.
  *
- * Redaction is the one thing that removes text without being a cut, so it has
- * to be unable to hide anything. Every shape in `SECRET_PATTERNS` is drawn
- * from a charset with no whitespace in it (base64url, alphanumerics, a URL
- * userinfo), and no operation can be spelled without whitespace — so what a
- * redaction removes cannot be a command. The one shape that is delimited
- * rather than charset-limited is a PEM block, and that is why only its base64
- * BODY LINES are removed (see {@link redactPrivateKeyBodies}): anything inside
- * a `-----BEGIN … PRIVATE KEY-----` block that is not base64 is kept and
- * judged, so wrapping a command in a fake key block hides nothing.
+ * Redaction removes text without the caller asking for it, so it has to be
+ * unable to hide anything either. Almost every shape in `SECRET_PATTERNS` is
+ * drawn from a charset with no whitespace and no shell metacharacters
+ * (base64url, alphanumerics, a bearer token), and no operation can be spelled
+ * out of those — so what such a redaction removes cannot be a command, and it
+ * is not a cut. Two shapes are delimited rather than charset-limited:
  *
- * A pattern added later that removes FREE TEXT would break that, and would
- * have to mark a cut. `__tests__/hooks/semantic/envelope-budget.test.ts` pins
- * the property from the outside: a command inside a fake PEM block still
- * reaches Jev.
+ *   - a PEM block, which is why only its base64 BODY LINES are removed (see
+ *     {@link redactPrivateKeyBodies}): anything inside a
+ *     `-----BEGIN … PRIVATE KEY-----` block that is not base64 is kept and
+ *     judged, so wrapping a command in a fake key block hides nothing;
+ *   - a connection string, whose userinfo run is `[^@\s]+` — an UNBOUNDED span
+ *     of anything but `@` and a space, which `$(rm${IFS}-rf${IFS}/srv)` fits
+ *     inside. It is still redacted (a password is not worth leaking to argue
+ *     about), but {@link couldNotBeSecret} notices that the span carries shell
+ *     metacharacters no credential has, and the removal is then reported as
+ *     the cut it is. A real `user:pass@` carries none, so ordinary work pays
+ *     nothing for this.
+ *
+ * `__tests__/hooks/semantic/envelope-budget.test.ts` pins both from the
+ * outside: a command inside a fake PEM block still reaches Jev, and a command
+ * hidden in a `scheme://…@` span costs the call its clears.
  */
 import { SECRET_PATTERNS } from "../builtin-policies";
 import { MAX_SCAN_CHARS, type ScannedCommand } from "./facts";
@@ -107,7 +139,25 @@ export const MAX_STRING_CHARS = 56_000;
 export const MAX_AGENT_REQUEST_CHARS = 56_000;
 /** Everything that is not the call: `how_to_read`, `user_said`, `agent_last_message`, `facts`. */
 export const MAX_CONTEXT_CHARS = 32_000;
-export const MAX_USER_MESSAGE_CHARS = 1_200;
+/**
+ * One human turn, or the agent's last message.
+ *
+ * Also the cap T4's intent store keeps a recorded prompt at — `intent.ts`
+ * imports this constant — which is why it is sized for what a human actually
+ * pastes rather than for the wire. At 1,200 characters an ordinary pasted
+ * spec, stack trace or file listing no longer contained the thing it asked
+ * for, so `targetNamedByUser` (a LOCAL substring check, `decide.ts`) stopped
+ * finding the target and Jev turned an explicit request into an instruct: the
+ * same call came out `allow` after "delete cache.sqlite" and `instruct` after
+ * the same sentence with a page of context around it. 6,000 characters covers
+ * a stack trace and a moderate spec.
+ *
+ * The cost is tokens, and only for sessions that actually paste that much: a
+ * short prompt is carried at its own length. Three turns plus an agent message
+ * at this cap is 24,000 of the 32,000-character context budget, and `facts`
+ * are built BEFORE the messages so a long prompt cannot starve them.
+ */
+export const MAX_USER_MESSAGE_CHARS = 6_000;
 export const MAX_USER_MESSAGES = 3;
 /** One string inside `facts`. Real paths are short; a long one is padding. */
 export const MAX_FACT_CHARS = 2_000;
@@ -182,6 +232,43 @@ const GLOBAL_SECRET_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = SECRET_
 export interface Redacted {
   text: string;
   count: number;
+  /**
+   * At least one replacement removed text that could have been executable, so
+   * the removal has to be reported as a cut. See {@link couldNotBeSecret}.
+   */
+  cut: boolean;
+}
+
+/**
+ * What a shell needs in order to RUN something inside a span with no
+ * whitespace in it: command substitution (`` ` ``, `$(`…`)`), parameter
+ * expansion (`${IFS}` is how a whitespace-free payload gets its word breaks),
+ * brace expansion (`{a,b,c}`), command separators, redirection, quoting.
+ *
+ * Deliberately NOT a bare `$`. `postgres://$DB_USER:$DB_PASS@host/db` is how
+ * people write a connection string, and `$VAR` on its own expands to a value;
+ * it cannot run anything without one of the characters below. Treating every
+ * `$` as suspicious would have charged ordinary work for it.
+ *
+ * A plain character class, no quantifier: one linear pass, nothing to
+ * backtrack.
+ */
+const SHELL_METACHARACTERS = /[`(){};|&<>\\'"\n\r]/;
+
+/**
+ * Whether a span some pattern matched is text a redaction may remove silently.
+ *
+ * The question is not "is this a secret" — it is redacted either way, because
+ * the cost of being wrong in that direction is a live credential on the wire.
+ * The question is whether removing it can HIDE anything, and the answer is no
+ * exactly when the span could not have been executable. Every API key, JWT and
+ * bearer token is drawn from an alphanumeric charset; a real `user:pass@` is
+ * too (a URL percent-encodes anything else). Only a span carrying shell
+ * metacharacters can be an operation, and `CONNECTION_STRING_RE`'s unbounded
+ * `[^@\s]+` is the one pattern that admits them.
+ */
+function couldNotBeSecret(span: string): boolean {
+  return SHELL_METACHARACTERS.test(span);
 }
 
 const PEM_BEGIN = "-----BEGIN ";
@@ -277,18 +364,23 @@ function redactPrivateKeyBodies(text: string, onRedact: () => void): string {
 
 export function redactSecrets(text: string): Redacted {
   let count = 0;
+  let cut = false;
   const hit = (): void => {
     count++;
   };
   let out = redactPrivateKeyBodies(text, hit);
   for (const [re, label] of GLOBAL_SECRET_PATTERNS) {
     re.lastIndex = 0;
-    out = out.replace(re, () => {
+    out = out.replace(re, (span: string) => {
       hit();
+      // Redacted either way — a password is not worth leaking to win an
+      // argument about whether it was one — but a span that could have been an
+      // operation is removed text, and removed text is a cut.
+      if (couldNotBeSecret(span)) cut = true;
       return `<redacted:${label}>`;
     });
   }
-  return { text: out, count };
+  return { text: out, count, cut };
 }
 
 /**
@@ -343,6 +435,13 @@ function jsonCost(s: string): number {
   return n;
 }
 
+/** `""` — the floor under every string, and the cheapest thing that can be emitted. */
+const EMPTY_STRING_COST = 2;
+/** `,` after an array element, or `:` and `,` around an object value. */
+const SEPARATOR_COST = 1;
+/** `[]` / `{}`. */
+const CONTAINER_COST = 2;
+
 /**
  * The longest prefix of `s` that serializes inside `budget` characters.
  *
@@ -377,35 +476,52 @@ export function capHeadTail(text: string, max: number): { text: string; truncate
   };
 }
 
-/** Which half of the budget is being spent, and therefore what a cut there means. */
-type Section = "request" | "context";
+/**
+ * What is being written, and therefore what a cut there MEANS.
+ *
+ *   - `request` — the call itself (`agent_request`).
+ *   - `facts` — what deterministic code computed ABOUT the call, which the
+ *     policy probes are told to read and to trust. Losing a fact is losing
+ *     part of the picture of what the call does, so it counts the same way.
+ *   - `messages` — what the human typed and what the agent said. Cutting an
+ *     over-long one of those is ordinary and costs the call nothing: see the
+ *     header's note on `truncated`.
+ */
+type Section = "request" | "facts" | "messages";
 
 interface Accumulator {
   redactions: number;
-  /** Anything was cut, anywhere. Withdraws every clear. */
+  /** Anything was cut, anywhere, messages included. Informational. */
   truncated: boolean;
-  /** Something inside `agent_request` was cut. The call is then never allowed. */
+  /** The CALL or the FACTS about it were cut. Jev may then clear nothing. */
   requestCut: boolean;
   section: Section;
-  /** Serialized characters of the CURRENT section's budget still unspent. */
+  /** Serialized characters of the CURRENT budget pool still unspent. */
   left: number;
 }
 
 /**
  * Record that something the caller sent is not in the envelope.
  *
- * The single place both flags are set, so "every way of dropping request bytes
- * sets `requestCut`" is a property of this function's call sites rather than
- * of remembering it at each one.
+ * The single place both flags are set, so "every way of dropping bytes of the
+ * call sets `requestCut`" is a property of this function's call sites rather
+ * than of remembering it at each one.
  */
 function markCut(acc: Accumulator): void {
   acc.truncated = true;
-  if (acc.section === "request") acc.requestCut = true;
+  if (acc.section !== "messages") acc.requestCut = true;
 }
 
-/** Start spending a section's own budget. Sections never borrow from each other. */
-function enter(acc: Accumulator, section: Section, budget: number): void {
+/** What a cut from here on means. Does not touch the budget. */
+function enter(acc: Accumulator, section: Section): void {
   acc.section = section;
+}
+
+/**
+ * Start a fresh budget pool. The two pools — the call's and everything
+ * else's — never borrow from each other, so neither can starve the other.
+ */
+function openBudget(acc: Accumulator, budget: number): void {
   acc.left = budget;
 }
 
@@ -433,7 +549,13 @@ function asText(value: unknown): string | null {
 }
 
 function cleanString(value: string, max: number, acc: Accumulator): string {
-  if (value.length === 0) return "";
+  // Charged even when there is nothing to carry: `""` still costs its two
+  // quotes once serialized, and a container of cheap entries is exactly how a
+  // budget that charges zero stops being a bound (see the header, rule 3).
+  if (value.length === 0) {
+    spend(acc, EMPTY_STRING_COST);
+    return "";
+  }
   const room = roomFor(acc, max);
   if (room <= 0) {
     markCut(acc);
@@ -446,6 +568,8 @@ function cleanString(value: string, max: number, acc: Accumulator): string {
   if (capped.truncated) markCut(acc);
   const r = redactSecrets(sanitise(capped.text));
   acc.redactions += r.count;
+  // A redaction that removed something executable is a removal like any other.
+  if (r.cut) markCut(acc);
   // A redaction marker can be longer than what it replaced, and ordinary text
   // was charged at one character each. Re-cut to the exact cost rather than
   // let one field overrun its section.
@@ -481,6 +605,12 @@ function entriesOf(value: object): Array<[string, unknown]> | null {
  * `JSON.stringify` on a caller-shaped value, and nothing here drops an entry
  * for being the 25th of its container — only for running the section out of
  * budget, which is the one thing a cut can mean.
+ *
+ * Every branch charges what its value will cost once serialized, so the only
+ * way to reach the end of the budget is to have actually emitted that many
+ * characters. `null` is 4, `false` is 5, the widest finite number is 24, and a
+ * string is at least its two quotes; the container adds its brackets and one
+ * separator per entry.
  */
 function cleanValue(value: unknown, acc: Accumulator, limits: EnvelopeLimits, depth: number): unknown {
   if (acc.left <= 0) {
@@ -491,8 +621,13 @@ function cleanValue(value: unknown, acc: Accumulator, limits: EnvelopeLimits, de
     case "string":
       return cleanString(value, limits.stringChars, acc);
     case "number":
-      // Non-finite numbers serialize as `null`; the widest finite one is ~24 characters.
-      spend(acc, 24);
+      // What it actually serializes to. `JSON.stringify` uses the same
+      // Number-to-String algorithm as `String`, so this is exact — and it
+      // matters: charging every number the widest one's 24 characters cut an
+      // MCP body of a few hundred integer-keyed rows at half the real budget,
+      // which is an ordinary payload reported as evidence missing. Non-finite
+      // numbers serialize as `null`.
+      spend(acc, Number.isFinite(value) ? String(value).length : 4);
       return Number.isFinite(value) ? value : null;
     case "boolean":
       spend(acc, 5);
@@ -515,7 +650,7 @@ function cleanValue(value: unknown, acc: Accumulator, limits: EnvelopeLimits, de
     markCut(acc);
     return cleanString(TOO_DEEP, limits.stringChars, acc);
   }
-  spend(acc, 2);
+  spend(acc, CONTAINER_COST);
   if (Array.isArray(value)) {
     const kept: unknown[] = [];
     for (const v of value) {
@@ -523,7 +658,9 @@ function cleanValue(value: unknown, acc: Accumulator, limits: EnvelopeLimits, de
         markCut(acc);
         break;
       }
-      spend(acc, 1);
+      // The separator; the element then charges its own floor on top, so the
+      // cheapest thing an array can hold — `""` — costs the 3 it serializes to.
+      spend(acc, SEPARATOR_COST);
       kept.push(cleanValue(v, acc, limits, depth + 1));
     }
     return kept;
@@ -566,7 +703,10 @@ function buildObject(
       continue;
     }
     seen.add(key);
-    spend(acc, 2);
+    // The `:` and the `,`. The key charged its own quotes through
+    // `cleanString`, and the value charges its floor below, so the cheapest
+    // entry an object can hold — `"":""` — costs the 5 it serializes to.
+    spend(acc, SEPARATOR_COST * 2);
     out.push([key, cleanValue(v, acc, limits, depth + 1)]);
   }
   return Object.fromEntries(out);
@@ -574,9 +714,16 @@ function buildObject(
 
 export interface Envelope {
   state: Record<string, unknown>;
-  /** Anything was cut, context included: no clear may rest on this call. */
+  /**
+   * Anything was cut, the human's own words included. Informational: an
+   * over-long prompt or agent message is ordinary and changes no verdict. See
+   * the header.
+   */
   truncated: boolean;
-  /** Part of the CALL was not shown to Jev: it may not be allowed. See the header. */
+  /**
+   * The CALL, or the deterministic FACTS about it, were cut — so Jev may clear
+   * nothing here, though its own deny or instruct still counts. See the header.
+   */
   requestCut: boolean;
   redactions: number;
   /**
@@ -628,7 +775,7 @@ export function buildEnvelope(
     redactions: 0,
     truncated: false,
     requestCut: false,
-    section: "context",
+    section: "messages",
     left: limits.contextChars,
   };
   // Every input below is treated as untyped: see {@link asText} and rule 4.
@@ -645,11 +792,16 @@ export function buildEnvelope(
   const rawCommand = typeof input0.command === "string" ? input0.command : null;
   const scanIncomplete = rawCommand !== null && rawCommand.length > MAX_SCAN_CHARS;
 
-  // ── The context section ────────────────────────────────────────────────
+  // ── The context pool ───────────────────────────────────────────────────
   // Our own preamble, what the human typed, the agent's proposal, the computed
-  // facts. Cutting any of it withdraws Jev's clears and nothing else: none of
-  // it is the call, and a long prompt is not an attack.
-  enter(acc, "context", limits.contextChars);
+  // facts — on a budget of their own, so nothing here can starve the call and
+  // the call cannot starve them.
+  //
+  // `facts` first, then the messages: what the human typed and what the agent
+  // said are MESSAGES, and cutting an over-long one is ordinary and costs the
+  // call nothing, while a cut in `facts` does. See both blocks below.
+  openBudget(acc, limits.contextChars);
+  enter(acc, "facts");
 
   const agentLastRaw = asText(opts.agentLastMessage);
   const agentLast = agentLastRaw !== null && agentLastRaw.trim() ? agentLastRaw.trim() : null;
@@ -665,22 +817,39 @@ export function buildEnvelope(
       : "");
   spend(acc, jsonCost(howToRead));
 
-  const keptSaid = turns.slice(-MAX_USER_MESSAGES).map((m) => asText(m) ?? "");
-  const said = keptSaid.map((m) => cleanString(m, limits.messageChars, acc));
-  const agentLastSent = agentLast === null ? null : cleanString(agentLast, limits.messageChars, acc);
-
   /**
    * `facts` are computed by our own code, but from strings the agent chose:
    * `extractPaths` copies `file_path` / `path` / `notebook_path` verbatim, and
    * `cwd` comes off the hook payload. They are capped like everything else.
-   * A cut here is a context cut: the same path is in `agent_request.input`,
-   * which is where the call is actually read.
+   *
+   * A cut here is NOT a message cut. `how_to_read` tells Jev that `facts`
+   * "were computed by deterministic code and are correct", and half the policy
+   * probes are written to read `facts.paths`; a fact that is missing is a
+   * silently narrower question, on the same budget an agent can spend by
+   * choosing long paths. So it counts as a cut of the call — Jev may still
+   * deny or instruct on what it has, and it may not clear anything.
+   */
+  /**
+   * NOT flagged here, though it is tempting: `facts` about a command past
+   * `MAX_SCAN_CHARS` describe a PREFIX (`scanCommand` stops there, so
+   * `computeFacts` sees a prefix's segments), and `extractPaths` stops at
+   * `MAX_PATHS` paths whatever the length. Both narrow the question set
+   * without a flag.
+   *
+   * Flagging either would cost ordinary work its clears — a 20,000-character
+   * heredoc, `prettier --write` on twenty files — for a gap that hides nothing
+   * from Jev: the command text itself is carried WHOLE below, so what is
+   * incomplete is the derived evidence, not the call. It is a recorded gap,
+   * and the fix belongs in `facts.ts` (report the stop, and let the caller
+   * decide), not in a blunt flag here.
    */
   const factStringIn = (v: unknown, max: number, into: Accumulator): string | null => {
     const text = asText(v);
     return text === null ? null : cleanString(text, max, into);
   };
   const factString = (v: unknown): string | null => factStringIn(v, limits.factChars, acc);
+  /** `{"as_written":…,"resolved":…,"relation":…}` minus the three values: braces, keys, colons, commas. */
+  const PATH_ENTRY_OVERHEAD = 2 + jsonCost("as_written") + jsonCost("resolved") + jsonCost("relation") + 6;
   const factsSent = {
     tool_name: factString(f.toolName),
     tool_is_known: f.toolIsKnown,
@@ -696,25 +865,34 @@ export function buildEnvelope(
           markCut(acc);
           break;
         }
-        out.push({ as_written: factString(p?.asWritten), resolved: factString(p?.resolved), relation: asText(p?.relation) });
+        // The entry's own structure, which the three strings below do not pay
+        // for. `relation` goes through `cleanString` like every other string:
+        // it is a short enum today, and "today it is short" is not a bound.
+        spend(acc, PATH_ENTRY_OVERHEAD + SEPARATOR_COST);
+        out.push({ as_written: factString(p?.asWritten), resolved: factString(p?.resolved), relation: factString(p?.relation) });
       }
       return out;
     })(),
   };
 
-  // The removed shell comments, still in view of the injection probe. Context:
-  // they are what the agent wrote AROUND the call, quarantined out of it.
-  // Only when the scanner saw the WHOLE command — see the judged command
-  // below, which is carried unstripped when it did not.
-  const removedComments =
-    scanned?.commentsRemoved && !scanIncomplete
-      ? cleanString((scanned.comments ?? []).join("\n"), Math.min(600, limits.messageChars), acc)
-      : null;
+  /**
+   * What the human typed and what the agent said, LAST of the context pool.
+   *
+   * Last because a cut here costs nothing — see the header's note on
+   * `truncated` — while a cut in `facts` costs the call its clears. In the
+   * other order a human who pasted a long spec could spend the context budget
+   * and starve the facts, which would take the clears away by a different
+   * route than the one just removed.
+   */
+  enter(acc, "messages");
+  const keptSaid = turns.slice(-MAX_USER_MESSAGES).map((m) => asText(m) ?? "");
+  const said = keptSaid.map((m) => cleanString(m, limits.messageChars, acc));
+  const agentLastSent = agentLast === null ? null : cleanString(agentLast, limits.messageChars, acc);
 
-  // ── The request section ────────────────────────────────────────────────
-  // The call itself, on its own budget, so nothing above can starve it and it
-  // cannot starve anything above. Anything cut here sets `requestCut`.
-  enter(acc, "request", limits.requestChars);
+  // ── The request pool ───────────────────────────────────────────────────
+  // The call itself, on its own budget. Anything cut here sets `requestCut`.
+  openBudget(acc, limits.requestChars);
+  enter(acc, "request");
 
   /**
    * The judged command.
@@ -748,6 +926,29 @@ export function buildEnvelope(
   const rest = (readable ?? []).filter(([k]) => !(k === "command" && command !== null));
   const input = buildObject(rest, acc, limits, 0);
 
+  /**
+   * The removed shell comments, still in view of the injection probe: what the
+   * agent wrote AROUND the call, quarantined out of it so it cannot argue with
+   * the probes. Only when the scanner saw the WHOLE command — see the judged
+   * command above, which is carried unstripped when it did not.
+   *
+   * Charged to the CALL's budget, and cut as the call: the text comes out of
+   * `command`, so dropping it drops bytes of the call. An earlier revision
+   * built it against the CONTEXT budget behind a 600-character cap, and a
+   * 3,300-character heredoc whose body lines begin with `#` — which
+   * `scanCommand` reads as comments and bash does not — lost 97% of its text
+   * with `requestCut` false.
+   *
+   * LAST, and with no cap of its own beyond the section's. Last, because the
+   * command and the rest of the input are what must be shown if anything is;
+   * and uncapped, because `scanCommand` only looks at the first
+   * `MAX_SCAN_CHARS` characters, so the comments it can report are already
+   * bounded by that — a cap here would be a second bound that only ever fires
+   * on ordinary scripts.
+   */
+  const removedComments =
+    scanned?.commentsRemoved && !scanIncomplete ? cleanString((scanned.comments ?? []).join("\n"), limits.stringChars, acc) : null;
+
   const state: Record<string, unknown> = {
     how_to_read: howToRead,
     user_said: said,
@@ -762,8 +963,13 @@ export function buildEnvelope(
       ...(scanIncomplete ? { shell_comments_not_removed: true } : {}),
       // Said plainly, because it changes what this answer may be used for: see
       // the header and `combine.ts`.
+      //
+      // Only the CALL's cut is reported. A cut message is not: it is ordinary,
+      // it is already visible as `…[N characters omitted]…` in the text
+      // itself, and a flag saying "something was truncated" on every long
+      // paste is an invitation for the model to answer more cautiously about
+      // work that is not more dangerous.
       ...(acc.requestCut ? { request_was_cut: true } : {}),
-      ...(acc.truncated ? { truncated: true } : {}),
     },
   };
 

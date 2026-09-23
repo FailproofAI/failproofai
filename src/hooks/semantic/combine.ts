@@ -12,12 +12,9 @@
  * | any HARD deny                                 | the regex result (Jev was aborted, so nothing is cleared)   |
  * | Jev degraded — transport, timeout, 429, 402,  | the regex result, every deny counts; recorded `jev-fallback`|
  * | 5xx, malformed, model mismatch                |                                                             |
- * | Jev answered on a TRUNCATED envelope          | nothing is cleared, so every regex deny counts; Jev's own   |
+ * | Jev answered, but part of the CALL was cut    | nothing is cleared, so every regex deny counts; Jev's own   |
  * |                                               | verdict still joins the most-severe rule; recorded          |
- * |                                               | `jev-fallback` / `truncated`, with its decision             |
- * | Jev answered, but part of the CALL was cut    | as above, and the call is denied unless something more      |
- * |                                               | severe decided — never allowed, never merely instructed;    |
- * |                                               | `request-cut`, with a deny that says to split it up         |
+ * |                                               | `jev-fallback` / `request-cut`, with its decision           |
  * | Jev answered                                  | reviewable denies/instructs Jev covered are cleared; final =|
  * |                                               | the most severe of {remaining regex results, Jev's verdict} |
  *
@@ -33,43 +30,57 @@
  *
  * ## One rule about a partial picture
  *
- * Three things mean Jev judged less than what it was given: the envelope was
- * truncated (§4), injection is suspected, or the injection probe was never
- * asked. Each withdraws every CLEAR and nothing else. Jev's own deny or
- * instruct still joins the most-severe rule, because an answer given on part
- * of the evidence can only ever ADD severity — `combineTwoTier`'s result is
- * never less severe than `regexOnly(verdicts)` unless a clear fired, and a
- * clear fires only when nothing was cut, injection was asked about, and the
- * answer was no.
+ * Three things mean Jev judged less than the call: part of `agent_request` or
+ * of the computed `facts` was cut (`requestCut`), injection is suspected, or
+ * the injection probe was never asked. Each withdraws every CLEAR and nothing
+ * else. Jev's own deny or instruct still joins the most-severe rule, because
+ * an answer given on part of the evidence can only ever ADD severity —
+ * `combineTwoTier`'s result is never less severe than `regexOnly(verdicts)`
+ * unless a clear fired, and a clear fires only when the call was read whole,
+ * injection was asked about, and the answer was no.
  *
- * ## And one rule about a partial CALL
+ * That is what makes padding useless. Five review rounds tried to prevent the
+ * hiding instead — a head-and-tail window, a token skeleton, per-field caps —
+ * and each time the next spelling walked through it, because a bounded
+ * projection of an unbounded string always drops SOMETHING and the attacker
+ * picks what. So this rule does not try: hiding requires a cut, every cut
+ * inside `agent_request` or `facts` sets `requestCut` (`envelope.ts`), and a
+ * call with `requestCut` can clear nothing. Spending the budget can cost a
+ * call its clears; it can never buy one.
  *
- * `requestCut` is the stronger flag: not "some evidence around the call is
- * missing" but "part of the call itself was never shown to Jev". Withdrawing
- * clears does not cover that case, because the tier's job there is the one
- * thing the regex tier cannot do — the regex tier has no rule for the call, so
- * its floor is `allow`, and an attacker who can make the semantic tier answer
- * about padding instead of about the command has turned the tier off.
+ * ## What size may NOT do
  *
- * Five review rounds tried to prevent the hiding — a head-and-tail window, a
- * token skeleton, per-field caps — and each time the next spelling of padding
- * walked through it, because a bounded projection of an unbounded string
- * always drops SOMETHING and the attacker picks what. So this rule does not
- * try: hiding requires a cut, every cut inside `agent_request` sets
- * `requestCut` (`envelope.ts`), and a call with `requestCut` is never allowed
- * by this tier. Padding can then only ever make a call stricter, whatever it
- * is spelled like, and that is a property of the construction rather than a
- * list of spellings.
+ * A previous revision went one step further and DENIED a call whose own text
+ * had been cut — `semantic/request-too-large-to-review`, telling the agent to
+ * split it up. That is gone, and it is worth saying why, because the argument
+ * for it was not silly: in the case this tier exists for, the regex tier has
+ * no rule, so its floor is `allow`, and withdrawing clears protects nothing.
  *
- * It is blunt on purpose: a single tool call over `MAX_AGENT_REQUEST_CHARS`
- * (56,000 characters — a ~1,400-line `Write`) is refused with an explanation
- * instead of half-reviewed. Shadow mode never denies, an unconfigured machine
- * never reaches this file, and the deny names the remedy.
+ * It was still wrong. The refusal was a deny this product invented, on work no
+ * policy objected to, at a threshold ordinary calls reach — a ~1,400-line
+ * `Write`, a large MCP body, a long generated migration. The whole reason this
+ * tier exists is that regex policies block a third of real work; a new
+ * refusal of our own, firing on size rather than on behaviour, spends the
+ * benefit it was built to deliver. And it is not even the strongest available
+ * answer: Jev is still ASKED, with whatever fitted, and a cut call that is
+ * actually dangerous is denied on Jev's own verdict, with a reason that names
+ * what is wrong with it rather than how long it is.
  *
- * It is a DENY rather than an instruct because an instruct is not a refusal:
- * on most CLIs it runs the call and attaches a note. Leaving a cut call as an
- * instruct would have made "pad the call, and also trip any warn-level rule"
- * the next spelling of the attack.
+ * So: size can only ever make a call stricter through Jev's own verdict or
+ * through a regex policy, never through a refusal here. What it costs is the
+ * clears.
+ *
+ * ## What a cut MESSAGE does: nothing
+ *
+ * `truncated` — a human turn, an agent message or a store-capped prompt that
+ * did not fit — is recorded and read no further. It used to withdraw clears
+ * too, and that made the length of the human's own prompt decide the verdict:
+ * the same call came out `allow` after a 77-character prompt and `deny` after
+ * a 3,000-character one, because the clearing half of the tier switched off.
+ * Pasting a spec or a stack trace is not an attack, the human's turn is not a
+ * channel the agent can write, and consent read out of it is checked locally
+ * against the UNCUT text (see `Envelope.evidence`), so there is nothing here
+ * for a cut to protect.
  *
  * What the clearing gate claims, exactly. The envelope keeps a BOUNDED window
  * by design — the last `MAX_USER_MESSAGES` human turns — and dropping older
@@ -80,7 +91,7 @@
  * The local `targetNamedByUser` check reads `Envelope.evidence`, which is that
  * window and nothing wider — a turn Jev never saw cannot supply the consent
  * for an `op-requested` override (it could, and flipped a reviewable deny to
- * allow with `truncated` false). The two channels differ inside the window,
+ * allow). The two channels differ inside the window,
  * deliberately, and the guarantee is per channel rather than per character:
  *   - `user_said` is reported UNCUT. A target named in the cut middle of a
  *     long prompt is consent the human typed, and treating it as absent turned
@@ -98,27 +109,28 @@
  * Truncation is attacker-influenceable, so it may never subtract severity.
  * What §4 asks for is still there — every regex deny counts, and the call is
  * recorded as `jev-fallback` — the answer is just not thrown away on the way
- * in, and `request-cut` adds severity rather than removing it.
+ * in.
  *
  * Size was the same class one step further out, and is no longer a case at
  * all: a request over `MAX_REQUEST_CHARS` used to be
  * `degraded("request-too-large")` — a `fallback`, no verdict, regex-only —
  * which one ignored 70,000-character `file_path`, one long object KEY, or
- * enough nesting to raise inside `JSON.stringify` was enough to trigger. The
- * envelope is now built inside a hard budget (`MAX_STATE_CHARS`) and never
- * throws, so a call CANNOT come out too big however it is shaped. It arrives
- * here `answered`, with `requestCut` when the budget cut the call itself.
+ * 36,000 empty strings in an array was enough to trigger. The envelope is now
+ * built inside a hard budget whose accounting charges what serialization
+ * really costs, and being over it is not a degrade at all: the request is sent
+ * with what fitted and arrives here `answered`, with `requestCut`.
  *
  * Structurally: a `fallback` review carries no `decision` at all, so a verdict
  * Jev actually produced cannot be filed as one. If Jev decided, it comes
- * through `answered` (possibly `truncated`), and `answered` always reaches the
- * most-severe merge.
+ * through `answered` (possibly `requestCut`), and `answered` always reaches
+ * the most-severe merge.
  *
  * A clear is only as good as the check that the call is not acting on text
- * planted by a repo, a tool result or the agent itself; v1 asks the injection
- * probe only when a human message was recorded, so a call with no captured
- * intent (the first call of a session, every call on a CLI with no prompt
- * event) clears nothing.
+ * planted by a repo, a tool result or the agent itself, so the injection probe
+ * is asked on EVERY call — including one with no recorded human message, where
+ * there is no consent to withdraw but there is still planted text to notice.
+ * `injectionAsked` false therefore means the request was never sent at all,
+ * and then there is nothing to clear anyway.
  */
 import type { PolicyAuthority } from "../policy-types";
 
@@ -179,24 +191,26 @@ export type JevReview =
       /** The injection probe held: every clear is withdrawn. */
       injected: boolean;
       /**
-       * Jev judged less than the whole call: the envelope cut the command, the
-       * human's words or the agent's last message, or the intent store had
-       * already cut what it kept (§4, `SemanticOutcome.truncated`).
+       * Something did not fit: a human turn, the agent's last message, or what
+       * the intent store had already capped (`SemanticOutcome.truncated`).
        *
-       * Withdraws every clear — a clear resting on half of the evidence is not
-       * a clear — and nothing else: the decision below still joins the
-       * most-severe rule, so padding cannot subtract severity. Recorded as
-       * `jev-fallback` / `truncated`, which is the §4 row.
+       * READ BY NOTHING HERE, on purpose — see "What a cut MESSAGE does"
+       * above. It stays on the review so the verdict log and a future
+       * diagnostic can see it, and so that the field's absence is not mistaken
+       * for the cut's absence.
        */
       truncated: boolean;
       /**
-       * Part of the CALL was cut, not just the context around it: the tool
-       * input did not fit the envelope's request budget
+       * Part of what the CALL DOES was cut: the tool input did not fit the
+       * envelope's request budget, a redaction removed a span of it that could
+       * have been executable, or a computed fact about it was dropped
        * (`SemanticOutcome.requestCut`). Implies `truncated`.
        *
-       * On top of withdrawing clears, such a call is never ALLOWED here — see
-       * "one rule about a partial CALL" above. Recorded as `jev-fallback` /
-       * `request-cut`.
+       * Withdraws every clear — a clear resting on a call half of which was
+       * never read is not a clear — and nothing else: the decision below still
+       * joins the most-severe rule, so padding cannot subtract severity, and
+       * it cannot add a refusal of our own either. Recorded as `jev-fallback`
+       * / `request-cut`.
        */
       requestCut: boolean;
       /**
@@ -257,8 +271,7 @@ export interface CombineOutcome {
   cleared: string[];
   /**
    * True when the first entry of `final` came from THIS TIER rather than from
-   * a registered policy: Jev's own verdict, or the refusal of a call Jev could
-   * not be shown in full.
+   * a registered policy — today that means Jev's own verdict.
    *
    * `handler.ts` reads it to decide whether to attribute the decision to a
    * registered policy — a name it cannot find in the registry is reported as a
@@ -287,16 +300,6 @@ export function regexOnly(verdicts: readonly RegexVerdict[]): FinalVerdict {
       .map((v) => ({ policyName: v.policyName, reason: v.reason as string })),
   };
 }
-
-/**
- * Attribution for the one verdict this module produces on its own: not a regex
- * policy and not Jev's answer, but the rule that an unreadable call is not an
- * approved call.
- */
-export const UNREVIEWABLE_POLICY = "semantic/request-too-large-to-review";
-const UNREVIEWABLE_REASON =
-  "This call is too large for failproofai's semantic review to read in full, so it cannot be approved. " +
-  "Split it into smaller calls (fewer edits, a shorter command, or a smaller file at a time) and try again.";
 
 /** Whether Jev's answer clears this regex verdict. */
 function clears(v: RegexVerdict, asked: ReadonlySet<string>, clear: ReadonlySet<string>): boolean {
@@ -333,20 +336,24 @@ export function combineTwoTier(
     };
   }
 
-  // The one gate on clearing. Every reason Jev's picture is partial lives here
-  // and here only, so the next one added cannot accidentally take Jev's own
-  // severity with it (see "One rule about a partial picture" above).
-  const wholePicture = review.injectionAsked && !review.injected && !review.truncated;
+  // The one gate on clearing. Every reason Jev's picture of the CALL is
+  // partial lives here and here only, so the next one added cannot
+  // accidentally take Jev's own severity with it (see "One rule about a
+  // partial picture" above). `truncated` is deliberately not among them: see
+  // "What a cut MESSAGE does".
+  const wholePicture = review.injectionAsked && !review.injected && !review.requestCut;
   const asked = new Set(review.asked);
   const clearSet = new Set(review.clear);
   const cleared = wholePicture ? verdicts.filter((v) => clears(v, asked, clearSet)).map((v) => v.policyName) : [];
   const activity: JevActivityFields = {
-    // §4 records a truncated call as a fallback, and so do we — the tier's
-    // clearing half really was off for it. The decision below is still applied
-    // (upward only), so `jev-fallback` + `truncated` means "Jev cleared
-    // nothing", while every other reason means "Jev never answered".
-    evaluator: review.truncated || review.requestCut ? "jev-fallback" : "jev",
-    ...(review.requestCut ? { jevFallbackReason: "request-cut" } : review.truncated ? { jevFallbackReason: "truncated" } : {}),
+    // §4 records a call the tier could not read whole as a fallback, and so do
+    // we — its clearing half really was off. The decision below is still
+    // applied (upward only), so `jev-fallback` + `request-cut` means "Jev
+    // cleared nothing", while every other reason means "Jev never answered".
+    // A cut MESSAGE is not a fallback: nothing about the call was missing and
+    // nothing was withheld, so reporting one would only inflate the rate.
+    evaluator: review.requestCut ? "jev-fallback" : "jev",
+    ...(review.requestCut ? { jevFallbackReason: "request-cut" } : {}),
     jevDecision: review.decision,
     ...(cleared.length > 0 ? { jevCleared: cleared } : {}),
     ...(review.latencyMs !== null ? { jevLatencyMs: review.latencyMs } : {}),
@@ -373,24 +380,12 @@ export function combineTwoTier(
   if (review.decision === "deny") {
     return { final: { decision: "deny", entries: [jevEntry] }, cleared, decidedByJev: true, activity };
   }
-  /**
-   * Nothing more severe decided, so this is where a call whose own text was
-   * not fully shown stops. Ahead of the instruct branch deliberately: on most
-   * CLIs an instruct RUNS the call with a note attached, so leaving a cut call
-   * as an instruct would make "pad it, and also trip any warn-level rule" the
-   * next spelling of the same attack. A cut call is denied unless something
-   * more severe already decided — see "one rule about a partial CALL" above.
-   */
-  if (review.requestCut) {
-    return {
-      final: { decision: "deny", entries: [{ policyName: UNREVIEWABLE_POLICY, reason: UNREVIEWABLE_REASON }] },
-      cleared,
-      // Not Jev's verdict — Jev said allow — but not a registered policy's
-      // either, which is what this flag is read for.
-      decidedByJev: true,
-      activity,
-    };
-  }
+  // A call part of which was not shown to Jev stops HERE and no further: it
+  // cleared nothing (`wholePicture` above), so every regex verdict still
+  // stands and Jev's own deny already decided if there was one. There is
+  // deliberately no third outcome — no refusal of this module's own — because
+  // a deny nobody's policy asked for, fired by size on work nobody objected
+  // to, costs more than it protects. See "What size may NOT do" above.
   const instructs = remaining
     .filter((v) => v.decision === "instruct")
     .map((v) => ({ policyName: v.policyName, reason: v.reason ?? "" }));

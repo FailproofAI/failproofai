@@ -254,6 +254,97 @@ describe("failproofai jev --url <url> --token <token>", () => {
       expect(existsSync(jevConfigPath())).toBe(false);
     });
   });
+
+  // What the command line asks for is what is saved — or nothing is. A URL that
+  // can name the provider by itself must not turn a flag it cannot use into a
+  // silent success: `--provider` spelled wrongly, a provider that cannot reach
+  // that host, an `--account-id` no route would read.
+  describe("a flag that could not be used is refused, not absorbed", () => {
+    it("refuses a --provider that is not one, whatever the URL could have inferred", async () => {
+      for (const named of ["anthropic", "TypeSafe", "OpenRouter", "Custom", "typesafe "]) {
+        const r = await runJevCommand(["--url", "https://api.typesafe.ai/v1", "--provider", named, "--token", TOKEN], RENDER);
+        expect(r.exitCode).toBe(1);
+        expect(text(r)).toContain("Unknown provider");
+        expect(text(r)).toContain("typesafe, openrouter, vercel, cloudflare, custom");
+        expect(text(r)).not.toContain(TOKEN);
+        expect(existsSync(jevConfigPath())).toBe(false);
+      }
+    });
+
+    it("does not echo a key pasted after --provider, with a URL present to infer from", async () => {
+      const r = await runJevCommand(["--url", "https://api.typesafe.ai/v1", "--provider", TOKEN, "--token", TOKEN], RENDER);
+      expect(r.exitCode).toBe(1);
+      expect(text(r)).toContain("Unknown provider");
+      expect(text(r)).not.toContain(TOKEN);
+      expect(existsSync(jevConfigPath())).toBe(false);
+    });
+
+    it("refuses --provider custom against Cloudflare's host, which custom cannot speak", async () => {
+      // With the account id and without it: the combination is what is refused,
+      // never "give me a flag I will then not store".
+      for (const argv of [
+        ["--url", "https://api.cloudflare.com/client/v4", "--provider", "custom", "--account-id", ACCOUNT, "--token", TOKEN],
+        ["--url", "https://api.cloudflare.com/client/v4", "--provider", "custom", "--token", TOKEN],
+      ]) {
+        const r = await runJevCommand(argv, RENDER);
+        expect(r.exitCode).toBe(1);
+        expect(text(r)).toContain("--provider cloudflare");
+        expect(text(r)).not.toContain(TOKEN);
+        expect(existsSync(jevConfigPath())).toBe(false);
+      }
+    });
+
+    it("refuses --account-id where no route would read it, rather than writing a dead field", async () => {
+      for (const url of ["https://api.typesafe.ai/v1", "https://jev.internal.example.com/v1"]) {
+        const r = await runJevCommand(["--url", url, "--account-id", ACCOUNT, "--token", TOKEN], RENDER);
+        expect(r.exitCode).toBe(1);
+        expect(text(r)).toContain("--account-id");
+        expect(text(r)).not.toContain(TOKEN);
+        expect(existsSync(jevConfigPath())).toBe(false);
+      }
+      // Cloudflare, whose route is the one that reads it, is unaffected.
+      const cf = await runJevCommand(["--url", "https://api.cloudflare.com/client/v4", "--account-id", ACCOUNT, "--token", TOKEN], RENDER);
+      expect(cf.exitCode).toBe(0);
+      expect(readFile()).toEqual({ provider: "cloudflare", apiKey: TOKEN, accountId: ACCOUNT });
+    });
+  });
+
+  describe("a URL on the provider's host that is not its API base", () => {
+    it("is saved, and the save says where requests will go instead", async () => {
+      const r = await runJevCommand(["--url", "https://api.typesafe.ai/v2", "--token", TOKEN], RENDER);
+      expect(r.exitCode).toBe(0);
+      expect(readFile()).toMatchObject({ provider: "typesafe", baseUrl: "https://api.typesafe.ai/v2" });
+      const out = text(r);
+      expect(out).toContain("Saved as given");
+      // Both endpoints, named: the one this config uses and the provider's own.
+      expect(out).toContain("https://api.typesafe.ai/v2/systemone");
+      expect(out).toContain("https://api.typesafe.ai/v1/systemone");
+      // And what that means for a hook, in the words the rest of the CLI uses.
+      expect(out).toContain("fall back to regex");
+      expect(out).toContain("--base-url default");
+      expect(out).not.toContain(TOKEN);
+    });
+
+    it("says nothing of the kind for the provider's own API, or for its endpoint path in full", async () => {
+      const api = await runJevCommand(["--url", "https://api.typesafe.ai/v1", "--token", TOKEN], RENDER);
+      expect(api.exitCode).toBe(0);
+      expect(text(api)).not.toContain("Saved as given");
+
+      // `<base>/systemone` is where a native request goes anyway, so giving the
+      // whole endpoint is an override that works, and is not warned about.
+      const endpoint = await runJevCommand(["--url", "https://api.typesafe.ai/v1/systemone", "--token", TOKEN], RENDER);
+      expect(endpoint.exitCode).toBe(0);
+      expect(readFile()).toMatchObject({ provider: "typesafe", baseUrl: "https://api.typesafe.ai/v1/systemone" });
+      expect(text(endpoint)).not.toContain("Saved as given");
+    });
+
+    it("says nothing for another host, whose layout is the customer's own", async () => {
+      const r = await runJevCommand(["--url", "https://jev-proxy.example.com/anything", "--provider", "typesafe", "--token", TOKEN], RENDER);
+      expect(r.exitCode).toBe(0);
+      expect(readFile()).toMatchObject({ provider: "typesafe", baseUrl: "https://jev-proxy.example.com/anything" });
+      expect(text(r)).not.toContain("Saved as given");
+    });
+  });
 });
 
 // The same one-shot command through the real entry point: the dispatch in

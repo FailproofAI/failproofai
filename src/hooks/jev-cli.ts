@@ -23,6 +23,17 @@
  * and refused in the same words, and when it names the provider's own API it
  * clears the override rather than writing it back.
  *
+ * The provider NAME is validated before any of that, whatever else is on the
+ * command line: a spelling that is not a provider — `OpenRouter`, a typo, a
+ * pasted key — is refused, never replaced by the one the host implies. Two
+ * combinations the URL settles rather than saves: `--provider custom` against
+ * `api.cloudflare.com`, which `custom` cannot speak (Workers AI is per-account
+ * and wraps its answers), and `--account-id` for any provider but cloudflare,
+ * which is the only one whose route reads it. And a URL that keeps the provider
+ * but leaves its API base — `https://api.typesafe.ai/v2` — is saved with a
+ * warning naming the endpoint requests will actually go to, because nothing
+ * else would say so until the fallback counts did.
+ *
  * # The key is never echoed
  *
  * `--token <value>` exists because one command that configures Jev is worth
@@ -68,6 +79,7 @@ import { writeJsonAtomically } from "../../lib/atomic-write";
 import {
   DEFAULT_JEV_MODE,
   JEV_API_KEY_ENV,
+  JEV_CONFIG_DEFAULT_TIMEOUT_MS,
   JEV_PROVIDER_KINDS,
   inspectJevConfig,
   jevConfigPath,
@@ -334,6 +346,32 @@ function isProviderDefaultUrl(kind: JevProviderKind, url: string): boolean {
   return normalized.ok && normalized.value === url;
 }
 
+/**
+ * A saved `baseUrl` that keeps the provider but leaves its API base — `--url
+ * https://api.typesafe.ai/v2`, or a v1 path this provider does not serve.
+ * Nothing refuses it: it is a valid https URL, on the right host, for a
+ * provider that exists. But a provider serves its API at one base, so requests
+ * would go to a path it does not answer and every evaluation would fall back to
+ * regex — which is worth saying while the person is still looking at the
+ * screen. Null when there is nothing to say: no override at all; `custom`,
+ * whose URL IS the address; another host, which may well be the customer's own
+ * proxy, whose layout this cannot know; or an override that lands on the
+ * provider's own endpoint anyway (the full endpoint path given as the base,
+ * which works).
+ */
+function offProviderBase(cfg: JevConfig, endpoint: string): { endpoint: string; api: string } | null {
+  if (cfg.baseUrl === undefined || cfg.provider === "custom") return null;
+  const apiBase = JEV_PROVIDER_DEFAULTS[cfg.provider].baseUrl;
+  if (!apiBase) return null;
+  try {
+    if (new URL(cfg.baseUrl).host !== new URL(apiBase).host) return null;
+    const api = jevRoute({ ...cfg, baseUrl: undefined }).endpoint;
+    return api === endpoint ? null : { endpoint: displayEndpoint(endpoint), api: displayEndpoint(api) };
+  } catch {
+    return null;
+  }
+}
+
 async function readAllStdin(): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
@@ -365,6 +403,23 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
     return fail(["--url and --base-url are the same thing; give one of them.", "", "Nothing was written."]);
   }
 
+  // The provider NAME is checked before anything else on the command line is
+  // used. With `--url` present, an unknown or miscapitalized spelling used to
+  // be dropped on the floor and replaced by the provider the URL's host
+  // implies: the run wrote a config for a provider nobody had named and exited
+  // 0, and neither this refusal nor the contradiction refusal below could be
+  // reached that way. The value is still never echoed — the likeliest wrong
+  // thing after `--provider` is a pasted key.
+  const namedProvider = values.get("--provider");
+  if (namedProvider !== undefined && !(JEV_PROVIDER_KINDS as readonly string[]).includes(namedProvider)) {
+    return fail([
+      "Unknown provider (not repeated here, in case it is a key).",
+      `Providers: ${JEV_PROVIDER_KINDS.join(", ")} — exactly as spelled here, lower-case.`,
+      "",
+      "Nothing was written.",
+    ]);
+  }
+
   // `--url` is `--base-url` that also picks the provider. It is validated here,
   // by the loader's own `validateBaseUrl`, so a URL is refused in the same
   // words whichever way it arrived — and so the host below is a parsed host,
@@ -376,9 +431,9 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
     if (!checkedUrl.ok) return fail([`Not saved: ${checkedUrl.problem}.`, "", "Nothing was written."]);
     const normalized = checkedUrl.value;
     urlProvider = { kind: providerForUrl(normalized), host: new URL(normalized).host };
-    const named = values.get("--provider");
-    const explicit =
-      named !== undefined && (JEV_PROVIDER_KINDS as readonly string[]).includes(named) ? (named as JevProviderKind) : null;
+    // Checked above, so this is a provider kind or nothing: a spelling that is
+    // not one is refused there rather than quietly becoming the host's.
+    const explicit = (values.get("--provider") as JevProviderKind | undefined) ?? null;
     // An explicit provider wins — except where it disagrees with the host about
     // which gateway this is, which is a disagreement about where the key goes.
     // `custom` is not a disagreement: it is the "treat this URL as itself" ask.
@@ -386,6 +441,20 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
       return fail([
         `--provider ${explicit} and --url disagree: ${urlProvider.host} is ${urlProvider.kind}'s endpoint, not ${explicit}'s.`,
         "Drop --provider to take the provider from the URL, or give the URL that provider's own endpoint.",
+        "",
+        "Nothing was written.",
+      ]);
+    }
+    // The one host where "treat this URL as itself" cannot be honoured. A
+    // `custom` route POSTs the TypeSafe-native body to `<url>/systemone` and
+    // reads a bare answer back; Workers AI answers at `/accounts/<id>/ai/run`
+    // and wraps its answer in `result`, which is why it has a provider of its
+    // own. Saved as `custom` it would ask for the `--account-id` it then had
+    // nowhere to put, and every call would fall back to regex.
+    if (explicit === "custom" && urlProvider.kind === "cloudflare") {
+      return fail([
+        `Not saved: ${urlProvider.host} is Cloudflare Workers AI, which provider custom cannot reach — its endpoint is per-account and its answers are wrapped, and a custom endpoint is asked in TypeSafe's own shape at <url>/systemone.`,
+        "Use the provider that speaks it: --provider cloudflare --account-id <32 hex characters> — or drop --provider, since the URL already says cloudflare.",
         "",
         "Nothing was written.",
       ]);
@@ -436,7 +505,25 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
   };
   setOrClear("--base-url", "baseUrl");
   setOrClear("--model", "model");
-  if (values.has("--account-id")) next.accountId = values.get("--account-id");
+  if (values.has("--account-id")) {
+    // Only Cloudflare's endpoint is per-account, and `validateJevConfig` keeps
+    // `accountId` for no other provider: writing it for one of those would put
+    // a field in the file that nothing reads, while `jev status` showed an
+    // endpoint that does not contain it. Refused rather than written and
+    // ignored. (The value is never echoed: it is 32 hex characters, or a
+    // pasted key.)
+    if (kind !== "cloudflare") {
+      return fail([
+        `Not saved: --account-id is Cloudflare's, and provider ${kind} has no use for one — nothing would read it.`,
+        kind === "custom"
+          ? "A custom endpoint's URL is the whole address: if the account belongs in it, it goes in --url."
+          : "Drop --account-id, or ask for Cloudflare: --provider cloudflare with its own API URL.",
+        "",
+        "Nothing was written.",
+      ]);
+    }
+    next.accountId = values.get("--account-id");
+  }
   if (values.has("--mode")) next.mode = values.get("--mode");
   if (values.has("--timeout-ms")) {
     const raw = values.get("--timeout-ms") as string;
@@ -448,8 +535,10 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
   // Cloudflare's endpoint is per-account, so a URL that turns out to be
   // Cloudflare's needs one. Named here rather than left to validation, which
   // knows the field and not the flag — and this run never said "cloudflare",
-  // the URL did.
-  if (urlProvider?.kind === "cloudflare" && typeof next.accountId !== "string") {
+  // the URL did. Only when Cloudflare is what is being saved: a URL on that
+  // host with another provider asked for is settled above, and nothing here
+  // demands an id the file would not keep.
+  if (kind === "cloudflare" && urlProvider?.kind === "cloudflare" && typeof next.accountId !== "string") {
     return fail([
       `Not saved: ${urlProvider.host} is Cloudflare Workers AI, whose endpoint is per-account.`,
       "Pass the account id as well: --account-id <32 hex characters>.",
@@ -602,6 +691,7 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
   }
 
   const route = jevRoute(cfg);
+  const offBase = offProviderBase(cfg, route.endpoint);
   return ok(
     stack(
       title("failproofai jev setup", `saved · ${provider} · ${cfg.mode ?? DEFAULT_JEV_MODE}`, opts),
@@ -618,6 +708,18 @@ async function setup(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promis
         ],
         opts,
       ),
+      // Saved, and saved as asked — but saying only "saved" would leave someone
+      // to discover from the fallback counts that the URL they gave is not an
+      // API base. So the file is written and what it will do is named.
+      offBase
+        ? warning(
+            [
+              `Saved as given, but ${provider}'s API is at ${offBase.api}, and this URL sends requests to ${offBase.endpoint} instead.`,
+              `Unless something of yours answers Jev requests at that path, every evaluation will fail there and hooks will fall back to regex — \`failproofai jev test\` says which it is in one request. To send requests back to ${provider}'s own API: failproofai jev setup --base-url default`,
+            ],
+            opts,
+          )
+        : null,
       tightenedDir
         ? note(
             `${tightenedDir.path} was writable by other users, who could have replaced this file whatever its own permissions were; it is now ${tightenedDir.to}.`,
@@ -905,7 +1007,10 @@ async function test(argv: string[], deps: JevCliDeps, opts: RenderOpts): Promise
   }
 
   const request = jevTestRequest(built.model);
-  const budget = cfg.timeoutMs ?? 1_500;
+  // `validateJevConfig` always fills this in; the fallback is the same constant
+  // it fills it with, imported rather than copied — a copy of it here was left
+  // behind at 1500 ms when the default became 3000.
+  const budget = cfg.timeoutMs ?? JEV_CONFIG_DEFAULT_TIMEOUT_MS;
   const started = performance.now();
   try {
     const response = await built.transport(request, AbortSignal.timeout(deps.testTimeoutMs ?? DEFAULT_TEST_TIMEOUT_MS));

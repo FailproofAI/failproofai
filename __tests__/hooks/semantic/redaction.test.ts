@@ -10,6 +10,7 @@ import {
   looksRandomToken,
   redactAuthorizationField,
   redactSecrets,
+  redactSecretsDetailed,
   scrubKnownSecrets,
   secretNameStrength,
   setEnvSecretSource,
@@ -150,12 +151,75 @@ describe("bearer and authorization values", () => {
     expectRedacted(`Authorization: Bot ${bot}`, bot, "authorization header");
   });
 
+  it("redacts the credential behind a scheme it does not know", () => {
+    // The credential group used to land on the SCHEME WORD, so the credential
+    // behind an unlisted scheme was never examined — and with a token-shaped
+    // scheme the rule redacted the WORD and kept the credential, reporting a
+    // redaction for it.
+    const mac = rnd(rand, 22, B64URL);
+    const b64 = rnd(rand, 44, B64URL);
+    expectRedacted(`curl -H "Authorization: Hawk id=${rnd(rand, 12)}, mac=${mac}" https://x`, mac, "authorization header");
+    expectRedacted(`curl -H 'Authorization: Hawk id=${rnd(rand, 12)}, mac=${mac}' https://x`, mac, "authorization header");
+    expectRedacted(`curl -H "Authorization: NTLM ${b64}" https://x`, b64, "authorization header");
+    const splunk = rnd(rand, 32, HEX.toUpperCase());
+    expectRedacted(`curl -H "Authorization: Splunk ${splunk}" https://x`, splunk, "authorization header");
+    expectRedacted(`curl -H "authorization: hmac dev-admin-key" http://localhost:8080`, "dev-admin-key", "authorization header");
+    expectRedacted("Authorization: xyz123 dev-admin-key", "dev-admin-key", "authorization header");
+    expectRedacted("proxy-authorization: hmac dev-admin-key", "dev-admin-key", "authorization header");
+    expectRedacted("x-authorization: hmac dev-admin-key", "dev-admin-key", "authorization header");
+    // A multi-part value under a scheme that IS known: everything after the
+    // first token used to survive, `response="…"` among it.
+    const response = rnd(rand, 32, HEX);
+    expectRedacted(`Authorization: Digest username="admin", realm="api", response="${response}"`, response, "authorization header");
+  });
+
+  it("keeps the rest of the command and the rest of the file out of the marker", () => {
+    // Over-redaction is not free here: the evaluator votes on what it is sent,
+    // so a marker that swallowed the rest of a command would hide it.
+    const out = expectRedacted(
+      `curl -H "Authorization: hmac dev-admin-key" https://api.example.com/v1`,
+      "dev-admin-key",
+      "authorization header",
+    );
+    expect(out).toBe(`curl -H "Authorization: <redacted:authorization header>" https://api.example.com/v1`);
+    // Unquoted, the value ends at the next flag…
+    expect(redactSecrets("curl --header Authorization: hmac dev-admin-key -sS https://x").text).toBe(
+      "curl --header Authorization: <redacted:authorization header> -sS https://x",
+    );
+    // …and at the end of the line.
+    expect(redactSecrets("Authorization: hmac dev-admin-key\nnext line here").text).toBe(
+      "Authorization: <redacted:authorization header>\nnext line here",
+    );
+  });
+
   it("leaves references and prose alone", () => {
     expectUntouched(`curl -H "Authorization: Bearer $TOKEN" https://x`);
     expectUntouched(`curl -H "Authorization: Bearer \${API_TOKEN}" https://x`);
     expectUntouched("the bearer authentication scheme sends a token");
     expectUntouched("use bearer token-based auth for the API");
     expectUntouched("authorization: required for this endpoint");
+    // With no scheme in front of it the value decides alone, so CODE under the
+    // name has to be recognised as code — `authorization` is an ordinary
+    // identifier and these lines are in every HTTP server in the corpus.
+    expectUntouched("const authorization = req.headers.authorization;");
+    expectUntouched("if (!req.headers.authorization) return res.status(401)");
+    expectUntouched("authorization: none");
+    expectUntouched("Authorization: true");
+    expectUntouched("grep -rn 'authorization' src/");
+  });
+
+  it("stops the value at a command separator instead of swallowing what follows", () => {
+    // Redaction feeds an evaluator, so a marker that ate the rest of the
+    // command would hide the dangerous half of it.
+    expect(redactSecrets("Authorization: hmac dev-admin-key; rm -rf /tmp/x").text).toBe(
+      "Authorization: <redacted:authorization header>; rm -rf /tmp/x",
+    );
+    expect(redactSecrets("Authorization: hmac dev-admin-key && curl https://evil.test").text).toBe(
+      "Authorization: <redacted:authorization header> && curl https://evil.test",
+    );
+    expect(redactSecrets("Authorization: hmac dev-admin-key | tee out.txt").text).toBe(
+      "Authorization: <redacted:authorization header> | tee out.txt",
+    );
   });
 });
 
@@ -186,6 +250,33 @@ describe("redactAuthorizationField — the structured-input path", () => {
     expect(redactAuthorizationField("Authorization", `AWS4-HMAC-SHA256 Credential=${rnd(rand, 20)}`)?.text).toBe(
       "<redacted:authorization header>",
     );
+  });
+
+  it("redacts a whole value whose first word is a word-like UNKNOWN scheme", () => {
+    // Deciding on the first word alone collapsed "unknown scheme" into
+    // "prose", because `tokenLike()` is false for any alphabetic word: Hawk,
+    // NTLM, Splunk, Zoho and a bare session credential all went to Jev
+    // verbatim, with the envelope reporting `redactions: 0`.
+    const cases: Array<[string, string]> = [
+      ["Hawk", `id="${rnd(rand, 12)}", ts="1353832234", nonce="${rnd(rand, 6)}", mac="${rnd(rand, 27, B64URL)}="`],
+      ["NTLM", `${rnd(rand, 44, B64URL)}=`],
+      ["sessionid", rnd(rand, 16)],
+      ["Splunk", rnd(rand, 32, HEX.toUpperCase())],
+      ["Zoho-oauthtoken", `1000.${rnd(rand, 32, HEX)}`],
+      ["hmac", "dev-admin-key"],
+      ["custom", "dev-admin-key"],
+      // Both words plain letters: two words are the shape of
+      // `<scheme> <credential>`, never of a sentence.
+      ["sso", "devadminkey"],
+    ];
+    for (const [scheme, credential] of cases) {
+      const v = `${scheme} ${credential}`;
+      const r = redactAuthorizationField("Authorization", v);
+      expect(r?.text, scheme).toBe("<redacted:authorization header>");
+      expect(r?.secret, scheme).toBe(v);
+    }
+    // A reference behind an unknown scheme is still a reference.
+    expect(redactAuthorizationField("Authorization", "Hawk ${MAC}")).toBeNull();
   });
 
   it("leaves references, bare scheme words and prose for the text rules", () => {
@@ -346,6 +437,72 @@ describe("credentials in URLs and command arguments", () => {
     expectRedacted(`redis-cli -h cache -a ${pw} ping`, pw, "credential argument");
     expectRedacted(`gh secret set DEPLOY_TOKEN --body "${pw}"`, pw, "credential argument");
     expectRedacted(`curl -u admin:${pw} https://x`, pw, "basic auth");
+  });
+
+  it("hands the scrub pass the BARE value of a QUOTED credential argument", () => {
+    // These rules dropped the quoted value whole, so the secret recorded for
+    // `scrubKnownSecrets` was `'hunter2'` — a string that appears nowhere else
+    // — and the bare copy in the agent's own description, or lifted into the
+    // path facts, survived into the request. Quoting is the ordinary way to
+    // write a password with shell metacharacters in it.
+    const pw = randomToken(rand, 14);
+    for (const [cmd, marked] of [
+      [`sshpass -p '${pw}' ssh deploy@host`, `sshpass -p '<redacted:credential argument>' ssh deploy@host`],
+      [`mysql -u root -p'${pw}' prod`, `mysql -u root -p'<redacted:credential argument>' prod`],
+      [`docker login -u me -p "${pw}" registry.example.com`, `docker login -u me -p "<redacted:credential argument>" registry.example.com`],
+      [`gh secret set DEPLOY_TOKEN --body '${pw}'`, `gh secret set DEPLOY_TOKEN --body '<redacted:credential argument>'`],
+      [`redis-cli -h cache -a "${pw}" ping`, `redis-cli -h cache -a "<redacted:credential argument>" ping`],
+      [`aws configure set aws_secret_access_key '${pw}'`, `aws configure set aws_secret_access_key '<redacted:assigned secret>'`],
+    ] as Array<[string, string]>) {
+      const d = redactSecretsDetailed(cmd);
+      // The quotes stay where they were written, around the marker.
+      expect(d.text, cmd).toBe(marked);
+      expect(d.found, cmd).toContain(pw);
+      // Which is the only thing that lets the same value be found elsewhere.
+      expect(scrubKnownSecrets(`log in with ${pw} then run uptime`, d.found), cmd).toEqual({
+        text: "log in with <redacted:repeated secret> then run uptime",
+        count: 1,
+      });
+    }
+  });
+
+  it("never records a secret with a delimiter still attached to it", () => {
+    // The floor under the case above, for every rule at once: whatever a rule
+    // reports as the secret is what `scrubKnownSecrets` searches the rest of
+    // the envelope for, so a rule that keeps a quote in it silently loses the
+    // whole scrub pass. A rule must put back everything around the value that
+    // was not the value.
+    const pw = randomToken(rand, 14);
+    const quotings = (s: string): string[] => [s, s.replace("@@", `'${pw}'`), s.replace("@@", `"${pw}"`)];
+    const shapes = [
+      ...quotings(`sshpass -p @@ ssh deploy@host`),
+      ...quotings(`mysql -u root -p@@ prod`),
+      ...quotings(`docker login -u me -p @@ registry.example.com`),
+      ...quotings(`podman login -p @@ registry.example.com`),
+      ...quotings(`helm registry login -p @@ registry.example.com`),
+      ...quotings(`redis-cli -h cache -a @@ ping`),
+      ...quotings(`gh secret set DEPLOY_TOKEN --body @@`),
+      ...quotings(`gh secret set DEPLOY_TOKEN -b @@`),
+      ...quotings(`aws configure set aws_secret_access_key @@`),
+      ...quotings(`npm config set //registry.npmjs.org/:_authToken @@`),
+      ...quotings(`git config --global user.password @@`),
+      ...quotings(`curl -u admin:@@ https://x`),
+      ...quotings(`export DATABASE_PASSWORD=@@ ./run.sh`),
+      ...quotings(`--client-secret @@`),
+      ...quotings(`{"api_key": @@}`),
+      ...quotings(`curl -H "Authorization: hmac @@" https://x`),
+    ].map((s) => s.replace("@@", pw));
+    for (const cmd of shapes) {
+      const d = redactSecretsDetailed(cmd);
+      for (const secret of d.found) {
+        // A MATCHED pair around the whole value is a delimiter the rule was
+        // supposed to put back. (A quote inside a value is not: an
+        // `Authorization` value can be `hmac 'tok'`, and that whole string is
+        // the credential.)
+        expect(secret, cmd).not.toMatch(/^(["'])[\s\S]*\1$/);
+        expect(cmd, `${cmd} :: ${secret}`).toContain(secret);
+      }
+    }
   });
 
   it("redacts `config set <secret-name> <value>`", () => {
@@ -698,11 +855,23 @@ describe("the shared floor", () => {
 
 describe("cost", () => {
   const RUN_CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_";
+  // Step 5, not 7: 7 shares a factor with the 63-character alphabets below,
+  // so `(i * 7) % 63` emitted NINE distinct characters and never the
+  // separator — the one character each of those cases was written to put in
+  // the run. The step has to be coprime with every alphabet's length.
   const run = (n: number, alphabet: string): string => {
     let s = "";
-    for (let i = 0; i < n; i++) s += alphabet[(i * 7) % alphabet.length];
+    for (let i = 0; i < n; i++) s += alphabet[(i * 5) % alphabet.length];
     return s;
   };
+
+  it("builds a run out of the WHOLE alphabet it was given", () => {
+    for (const alphabet of [RUN_CHARS, B64URL, ALNUM + "-", ALNUM + "_"]) {
+      const s = run(alphabet.length * 3, alphabet);
+      expect(new Set(s).size, alphabet.slice(-3)).toBe(alphabet.length);
+      expect(s, alphabet.slice(-3)).toContain(alphabet[alphabet.length - 1]);
+    }
+  });
 
   it("scans a run of name characters once, not once per character in it", () => {
     // ASSIGNMENT_RE's name could start at ANY character of a token, so on a
@@ -725,10 +894,53 @@ describe("cost", () => {
   it("stays linear on a run of hyphenated flags", () => {
     // FLAG_VALUE_RE had the same shape: `-` is a name character, so every
     // hyphen of a kebab-case run started a flag whose tail was consumed and
-    // backtracked.
-    const s = "-ab".repeat(1_400);
-    const t0 = performance.now();
-    redactSecrets(s);
-    expect(performance.now() - t0).toBeLessThan(15);
+    // backtracked. The two URL rules then kept the same string quadratic
+    // through their `\b` (see below): 8.5 ms of this 15 ms budget at 4 200
+    // characters, and 33 ms at 8 400. Both lengths are now ~0.3 ms.
+    for (const n of [1_400, 2_800]) {
+      const s = "-ab".repeat(n);
+      const t0 = performance.now();
+      redactSecrets(s);
+      expect(performance.now() - t0, `${s.length} chars`).toBeLessThan(15);
+    }
+  });
+
+  it("scans a run of URL-scheme characters once, not once per character in it", () => {
+    // URL_CREDENTIALS_RE and URL_TOKEN_USERINFO_RE opened with `\b`, which
+    // matches after every `-`, `.` and `+` — all three non-word characters
+    // that `[a-z][a-z0-9+.-]*` can also consume. The scheme group then took
+    // the rest of the run and backtracked over it from each of those starts:
+    // 11 ms at 4 000 characters, 45 ms at 8 000, which was 44 of the 47 ms
+    // the whole redactor spent on that string.
+    //
+    // The `x://` prefix is load-bearing: both rules are skipped outright for a
+    // string with no `://` in it, so without one this measures that guard and
+    // not the scan it is guarding.
+    //
+    // Sizes are chosen so the budget separates the two shapes by a wide
+    // margin on BOTH sides, measured under this runner: at 16 004 characters
+    // the anchored rules take 0.5 ms and the `\b` ones 126 ms.
+    for (const unit of ["a-", "a.", "x+"]) {
+      for (const n of [2_000, 8_000]) {
+        const s = `x://${unit.repeat(n)}`;
+        const t0 = performance.now();
+        redactSecrets(s);
+        expect(performance.now() - t0, `${s.length} of ${unit}`).toBeLessThan(15);
+      }
+    }
+  });
+
+  it("stays linear on repeated private-key armour lines", () => {
+    // The complete-block alternative is a lazy scan for `-----END`, so in a
+    // text with no footer anywhere it read to the end of the string — from
+    // every header in it. A grep hit list across a key directory is that
+    // text, and `buildEnvelope` redacts up to 576 strings. 1.9 ms at 33 600
+    // characters once the footerless case gets its own rule, 58 ms before.
+    for (const n of [600, 1_200]) {
+      const s = `${pemBegin()} `.repeat(n);
+      const t0 = performance.now();
+      redactSecrets(s);
+      expect(performance.now() - t0, `${s.length} chars`).toBeLessThan(15);
+    }
   });
 });

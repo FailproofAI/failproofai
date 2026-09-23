@@ -119,6 +119,30 @@ describe("buildEnvelope — structured tool input", () => {
     }
   });
 
+  it("redacts an Authorization value behind a word-like UNKNOWN scheme", () => {
+    // The round-2 rule asked whether the first word looked like a token, and
+    // an alphabetic word never does — so `Hawk`, `NTLM`, `Splunk` and a bare
+    // session credential collapsed into the "prose" case and were sent to Jev
+    // verbatim, with the envelope reporting `redactions: 0`.
+    const http = facts({ toolName: "mcp__http__request", toolClass: "other", toolIsKnown: false });
+    const mac = rnd(rand, 26, B64URL);
+    for (const value of [
+      `Hawk id="${rnd(rand, 12)}", ts="1353832234", mac="${mac}"`,
+      `NTLM ${rnd(rand, 44, B64URL)}=`,
+      `sessionid ${rnd(rand, 16)}`,
+      `Splunk ${rnd(rand, 32, HEX)}`,
+      "hmac dev-admin-key",
+      "sso devadminkey",
+    ]) {
+      const env = buildEnvelope({ url: "https://x.test", headers: { Authorization: value } }, [], http, null);
+      const input = (env.state.agent_request as { input: Record<string, unknown> }).input;
+      expect((input.headers as Record<string, unknown>).Authorization, value.slice(0, 10)).toBe("<redacted:authorization header>");
+      const serialized = JSON.stringify(env.state);
+      expect(serialized, value.slice(0, 10)).not.toContain(value.split(" ").slice(1).join(" "));
+      expect(env.redactions, value.slice(0, 10)).toBeGreaterThanOrEqual(1);
+    }
+  });
+
   it("leaves Authorization references, bare schemes and other headers alone", () => {
     const http = facts({ toolName: "mcp__http__request", toolClass: "other", toolIsKnown: false });
     for (const auth of ["Bearer ${API_TOKEN}", "Bearer $TOKEN", "Bearer <token>", "Bearer", ""]) {
@@ -146,13 +170,23 @@ describe("buildEnvelope — structured tool input", () => {
     // quadratic assignment scan this took 2-7 SECONDS on the PreToolUse path,
     // before the 1 500 ms Jev request even started; base64url is what a batch
     // of tokens, JWT parts or digests looks like, so no crafting is needed.
-    const field = (alphabet: string): string => {
-      let s = "";
-      for (let i = 0; i < MAX_STRING_CHARS; i++) s += alphabet[(i * 7) % alphabet.length];
+    //
+    // Step 5, not 7: `(i * 7) % 63` emitted nine distinct characters and never
+    // the `_` the second case was written for. And the last two cases are here
+    // because the two URL rules stayed quadratic on a lowercase/hyphen run
+    // after the assignment rules were fixed — 1 701 ms for this envelope, well
+    // past the budget, while the base64url shape had come down to 94 ms. The
+    // `x://` one is the realistic half: a command carrying a URL and a long
+    // hyphenated run is all it takes, and with a scheme in the string the
+    // rules cannot be skipped.
+    const field = (alphabet: string, prefix = ""): string => {
+      let s = prefix;
+      for (let i = 0; s.length < MAX_STRING_CHARS; i++) s += alphabet[(i * 5) % alphabet.length];
       return s;
     };
-    for (const alphabet of [B64URL, ALNUM + "_"]) {
-      const value = field(alphabet);
+    for (const [alphabet, prefix] of [[B64URL, ""], [ALNUM + "_", ""], [ALNUM + "-", ""], ["a-", ""], ["a-", "x://"]] as Array<[string, string]>) {
+      expect(new Set(field(alphabet).slice(0, alphabet.length * 3)).size, alphabet.slice(-3)).toBe(alphabet.length);
+      const value = field(alphabet, prefix);
       const toolInput: Record<string, Record<string, string>> = {};
       for (let i = 0; i < 24; i++) {
         const inner: Record<string, string> = {};
@@ -224,6 +258,31 @@ describe("buildEnvelope — every field that is sent", () => {
     expectAbsent(s, secret);
     const paths = (env.state.facts as { paths: Array<{ as_written: string; resolved: string }> }).paths;
     expect(paths.some((p) => p.as_written.includes("<redacted:"))).toBe(true);
+  });
+
+  it("scrubs the bare copy of a credential the command passed QUOTED", () => {
+    // The CLI rules dropped the quoted value whole, so the secret they handed
+    // the scrub pass was `'hunter2'` — never found anywhere — and the bare
+    // copy the agent put in its own description went out with the request.
+    const pw = `${randomToken(rand, 12)}!x`;
+    for (const command of [
+      `sshpass -p '${pw}' ssh deploy@host`,
+      `mysql -u root -p'${pw}' prod`,
+      `docker login -u me -p "${pw}" registry.example.com`,
+      `gh secret set DEPLOY_TOKEN --body '${pw}'`,
+      `redis-cli -h cache -a "${pw}" ping`,
+      `aws configure set aws_secret_access_key '${pw}'`,
+    ]) {
+      const env = buildEnvelope(
+        { command, description: `log in with ${pw} then run uptime` },
+        [`use ${pw} for the deploy`],
+        facts(),
+        null,
+      );
+      const s = JSON.stringify(env.state);
+      expect(s, command.slice(0, 12)).not.toContain(pw);
+      expect(env.redactions, command.slice(0, 12)).toBeGreaterThanOrEqual(3);
+    }
   });
 
   it("scrubs a secret the human pasted bare, once it was recognised elsewhere", () => {

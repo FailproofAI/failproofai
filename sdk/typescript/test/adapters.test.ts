@@ -328,9 +328,16 @@ describe("the LangChain adapter", () => {
     expect(manager.handlers).toHaveLength(1);
   });
 
-  it("refuses to hand out a handler before the adapter is installed", async () => {
-    const { langchainHandler } = await import("../src/integrations/langchain.js");
-    expect(() => langchainHandler()).toThrow(/needs the adapter installed first/);
+  it("hands out a working handler without instrument()", async () => {
+    // The patch-free path: `callbacks: [langchainHandler()]` with no
+    // `instrument()` call anywhere. It used to throw here; see
+    // test/langchain.test.ts for what it records.
+    const { adapter, langchainHandler } = await import("../src/integrations/langchain.js");
+    try {
+      expect(typeof langchainHandler().handleChainStart).toBe("function");
+    } finally {
+      adapter.uninstall();
+    }
   });
 });
 

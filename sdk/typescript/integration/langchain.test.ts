@@ -29,7 +29,15 @@ import {
  *     events, one per layer the exception unwound through.
  */
 
-const FIXTURES = ["langchain-1"] as const;
+/**
+ * Both ends of the declared peer range (`@langchain/core >=0.3.0 <2`): the 0.3
+ * line with LangGraph.js 0.4, and the 1.x line with LangGraph.js 1.x. They
+ * differ in exactly the places an adapter breaks on — 0.3 passes no
+ * `toolCallId` to `handleToolStart` and LangGraph 0.4 has no graph lifecycle
+ * callbacks — so one set of expectations over both is the proof that the
+ * adapter covers the range it declares, not just the release it was written on.
+ */
+const FIXTURES = ["langchain-0.3", "langchain-1"] as const;
 
 /** One line per event: `agent_id type [hook|tool]`. */
 const shape = (events: Event[]): string[] =>
@@ -167,6 +175,217 @@ describe.each(FIXTURES)("%s", (fixture) => {
       const result = run("uninstrument");
       expect(result.events, describeTrace(result)).toEqual([]);
       expect(result.stdout).toContain('"removed":["langchain"]');
+    });
+
+    it("records a tool that failed on its tool_result, and the run carries on", () => {
+      const result = run("tool-error");
+      // `ToolNode` turns the throw into an error ToolMessage, so the graph goes
+      // on to answer: the same shape as a clean run, with the failure on the
+      // tool span and nowhere else.
+      expect(shape(result.events), describeTrace(result)).toEqual(GRAPH);
+      expect(ofType(result.events, "tool_result")[0]!.error).toBe("Error: no weather for Paris");
+      expect(ofType(result.events, "tool_use")[0]!.tool_call_id).toBe("call_1");
+      expect(ofType(result.events, "agent_end")[0]!.outcome).toBe("success");
+      expect(count(result.events, "error")).toBe(0);
+      expect(traceViolations(result.events), describeTrace(result)).toEqual([]);
+    });
+
+    it("records an interrupt() and its Command resume as one paused agent", () => {
+      const result = run("hitl");
+      expect(shape(result.events), describeTrace(result)).toEqual([
+        "hitl_graph agent_start",
+        "hitl_graph hook_triggered plan",
+        "hitl_graph hook_completed plan",
+        "hitl_graph hook_triggered approve",
+        // The node did not fail, it stopped to ask a human.
+        "hitl_graph hook_completed approve",
+        "hitl_graph human_wait",
+        "hitl_graph agent_pause",
+        // The second `.invoke()` is the SAME agent: no second agent_start.
+        "hitl_graph agent_resume",
+        "hitl_graph human_input",
+        "hitl_graph hook_triggered approve",
+        "hitl_graph hook_completed approve",
+        "hitl_graph hook_triggered act",
+        "hitl_graph hook_completed act",
+        "hitl_graph agent_end",
+      ]);
+      expect(traceViolations(result.events), describeTrace(result)).toEqual([]);
+      expect(new Set(result.events.map((e) => e.session_id))).toEqual(new Set(["t-1"]));
+      expect(ofType(result.events, "hook_completed")[1]!.outcome).toBe("paused");
+      const wait = ofType(result.events, "human_wait")[0]!;
+      expect(wait.prompt).toBe("ship it?");
+      expect(wait.options).toEqual(["yes", "no"]);
+      expect(wait.reason).toBe("langgraph_interrupt");
+      const pauseId = wait.input_id;
+      expect(typeof pauseId).toBe("string");
+      expect(ofType(result.events, "agent_pause")[0]!.pause_id).toBe(pauseId);
+      expect(ofType(result.events, "agent_resume")[0]!.pause_id).toBe(pauseId);
+      const answer = ofType(result.events, "human_input")[0]!;
+      expect(answer.input_id).toBe(pauseId);
+      expect(answer.response).toBe("yes");
+      // Control flow, not failure: nothing red anywhere.
+      expect(count(result.events, "error")).toBe(0);
+      expect(ofType(result.events, "agent_end")[0]!.outcome).toBe("success");
+    });
+
+    it("closes a paused agent as cancelled at uninstrument()", () => {
+      const result = run("hitl-uninstrument");
+      expect(shape(result.events), describeTrace(result)).toEqual([
+        "hitl_graph agent_start",
+        "hitl_graph hook_triggered plan",
+        "hitl_graph hook_completed plan",
+        "hitl_graph hook_triggered approve",
+        "hitl_graph hook_completed approve",
+        "hitl_graph human_wait",
+        "hitl_graph agent_pause",
+        "hitl_graph agent_end",
+      ]);
+      expect(ofType(result.events, "agent_end")[0]!.outcome).toBe("cancelled");
+      expect(result.stdout).toContain('"removed":["langchain"]');
+    });
+
+    it("closes a pause opened by another process when this one takes the answer", () => {
+      // Process A interrupts and exits; process B shares only the checkpointer.
+      // B has no memory of the pause, so the id is rebuilt from the interrupted
+      // task's checkpoint namespace — the same derivation `interrupt()` used.
+      const result = run("remote-resume");
+      expect(shape(result.events), describeTrace(result)).toEqual([
+        "hitl_graph agent_start",
+        "hitl_graph hook_triggered plan",
+        "hitl_graph hook_completed plan",
+        "hitl_graph hook_triggered approve",
+        "hitl_graph hook_completed approve",
+        "hitl_graph human_wait",
+        "hitl_graph agent_pause",
+        // Process B: its own root, then the pause closed where the answered
+        // node finished.
+        "hitl_graph agent_start",
+        "hitl_graph hook_triggered approve",
+        "hitl_graph hook_completed approve",
+        "hitl_graph agent_resume",
+        "hitl_graph human_input",
+        "hitl_graph hook_triggered act",
+        "hitl_graph hook_completed act",
+        "hitl_graph agent_end",
+      ]);
+      const opened = ofType(result.events, "human_wait")[0]!.input_id;
+      expect(ofType(result.events, "agent_resume")[0]!.pause_id).toBe(opened);
+      const answer = ofType(result.events, "human_input")[0]!;
+      expect(answer.input_id).toBe(opened);
+      expect(answer.response).toBe("yes");
+      expect(answer.fw_resumed_elsewhere).toBe(true);
+      expect(new Set(result.events.map((e) => e.session_id))).toEqual(new Set(["t-1"]));
+      expect(count(result.events, "error")).toBe(0);
+    });
+
+    it("closes an aborted run as cancelled, not failed", () => {
+      const result = run("abort");
+      expect(shape(result.events), describeTrace(result)).toEqual([
+        "abort_graph agent_start",
+        "abort_graph hook_triggered slow",
+        "abort_graph hook_completed slow",
+        "abort_graph agent_end",
+      ]);
+      // A caller that gave up is not a crash: nothing red, and the session
+      // closed rather than left running forever.
+      expect(ofType(result.events, "hook_completed")[0]!.outcome).toBe("cancelled");
+      expect(ofType(result.events, "agent_end")[0]!.outcome).toBe("cancelled");
+      expect(count(result.events, "error")).toBe(0);
+      expect(traceViolations(result.events), describeTrace(result)).toEqual([]);
+    });
+
+    it("records a compiled subgraph as a nested agent under its host node", () => {
+      const result = run("subgraph");
+      expect(shape(result.events), describeTrace(result)).toEqual([
+        "parent_graph agent_start",
+        "parent_graph hook_triggered pre",
+        "parent_graph hook_completed pre",
+        "parent_graph hook_triggered child",
+        "parent_graph/child agent_start",
+        "parent_graph/child hook_triggered inner",
+        "parent_graph/child hook_completed inner",
+        "parent_graph/child agent_end",
+        "parent_graph hook_completed child",
+        "parent_graph agent_end",
+      ]);
+      expect(ofType(result.events, "agent_start")[1]!.parent_id).toBe("parent_graph");
+      expect(traceViolations(result.events), describeTrace(result)).toEqual([]);
+    });
+
+    it("records each input of a .batch() as its own root", () => {
+      const result = run("batch");
+      const sessions = [...new Set(result.events.map((e) => e.session_id))];
+      expect(sessions).toHaveLength(2);
+      for (const session of sessions) {
+        expect(shape(result.events.filter((e) => e.session_id === session))).toEqual([
+          "ScriptedModel agent_start",
+          "ScriptedModel model_request",
+          "ScriptedModel model_response",
+          "ScriptedModel agent_end",
+        ]);
+      }
+      expect(traceViolations(result.events), describeTrace(result)).toEqual([]);
+    });
+
+    it("folds a streamed model call into one model_response", () => {
+      const result = run("stream-model");
+      expect(shape(result.events), describeTrace(result)).toEqual([
+        "StreamingModel agent_start",
+        "StreamingModel model_request",
+        "StreamingModel model_response",
+        "StreamingModel agent_end",
+      ]);
+      const response = ofType(result.events, "model_response")[0]!;
+      expect(response.fw_streamed).toBe(true);
+      expect(response.fw_chunks).toBe(5);
+      expect(typeof response.fw_ttft_ms).toBe("number");
+      expect(response.content).toBe("hello there friend");
+    });
+
+    it("records an intermediate chain only when includeChains names it", () => {
+      const result = run("include-chains");
+      expect(shape(result.events), describeTrace(result)).toEqual([
+        "pipeline agent_start",
+        "pipeline hook_triggered summarise",
+        "pipeline hook_completed summarise",
+        "pipeline agent_end",
+      ]);
+      expect(ofType(result.events, "hook_triggered")[0]!.trigger_event).toBe("pipeline");
+    });
+
+    it("pins every run to the sessionId option", () => {
+      const result = run("session-option");
+      expect(shape(result.events), describeTrace(result)).toEqual(GRAPH);
+      expect(new Set(result.events.map((e) => e.session_id))).toEqual(new Set(["fixed-session"]));
+    });
+
+    it("takes the session from the documented metadata key", () => {
+      const result = run("metadata-session");
+      expect(shape(result.events), describeTrace(result)).toEqual(GRAPH);
+      expect(new Set(result.events.map((e) => e.session_id))).toEqual(new Set(["meta-sid"]));
+    });
+
+    it("falls back to the LangGraph thread_id for the session", () => {
+      const result = run("thread-session");
+      expect(shape(result.events), describeTrace(result)).toEqual(GRAPH);
+      expect(new Set(result.events.map((e) => e.session_id))).toEqual(new Set(["thread-9"]));
+    });
+
+    it("drops prompts, messages and outputs under captureContent: false", () => {
+      const result = run("capture-off");
+      expect(shape(result.events), describeTrace(result)).toEqual(GRAPH);
+      for (const event of result.events) {
+        for (const key of ["goal", "input", "output", "messages", "content"]) {
+          expect(event[key], `${event.type}.${key}`).toBeUndefined();
+        }
+      }
+      // Structure, durations and token counts survive.
+      expect(ofType(result.events, "model_response").map((e) => [e.input_tokens, e.output_tokens])).toEqual([
+        [12, 5],
+        [30, 7],
+      ]);
+      expect(ofType(result.events, "tool_use")[0]!.tool_call_id).toBe("call_1");
     });
   });
 });

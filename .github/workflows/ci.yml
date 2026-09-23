@@ -691,12 +691,12 @@ jobs:
         include:
           - shard: frameworks
             node-version: "20.x"
-            fixtures: ai-4,ai-5,ai-6,ai-7,langchain-0.3,langchain-1,langchain-dup-core,mastra-0,mastra-1,llamaindex-0.11,llamaindex-0.12,types
-            files: integration/ai.test.ts integration/langchain.test.ts integration/mastra.test.ts integration/mastra-coverage.test.ts integration/llamaindex.test.ts integration/types.test.ts
+            fixtures: ai-4,ai-5,ai-6,ai-7,langchain-0.3,langchain-1,langchain-dup-core,mastra-0,mastra-1,llamaindex-0.11,llamaindex-0.12,types,vanilla
+            files: integration/ai.test.ts integration/langchain.test.ts integration/mastra.test.ts integration/mastra-coverage.test.ts integration/llamaindex.test.ts integration/types.test.ts integration/vanilla.test.ts
           - shard: frameworks
             node-version: "24.x"
-            fixtures: ai-4,ai-5,ai-6,ai-7,langchain-0.3,langchain-1,langchain-dup-core,mastra-0,mastra-1,llamaindex-0.11,llamaindex-0.12,types
-            files: integration/ai.test.ts integration/langchain.test.ts integration/mastra.test.ts integration/mastra-coverage.test.ts integration/llamaindex.test.ts integration/types.test.ts
+            fixtures: ai-4,ai-5,ai-6,ai-7,langchain-0.3,langchain-1,langchain-dup-core,mastra-0,mastra-1,llamaindex-0.11,llamaindex-0.12,types,vanilla
+            files: integration/ai.test.ts integration/langchain.test.ts integration/mastra.test.ts integration/mastra-coverage.test.ts integration/llamaindex.test.ts integration/types.test.ts integration/vanilla.test.ts
           - shard: runtimes
             node-version: "24.x"
             fixtures: ai-4,ai-5,ai-6,ai-7,langchain-0.3,langchain-1,mastra-0,mastra-1,llamaindex-0.11,llamaindex-0.12,runtimes

@@ -75,6 +75,13 @@ section is missing or empty is refused before anything is built.
   `instrument()` warns once per framework it cannot reach instead of recording
   nothing silently. Importing the SDK in an Edge route is safe (a no-op build).
 
+- **Your own agent, no framework:** a guide to the three places every
+  hand-built agent already has (the run, the model call, the tool dispatcher)
+  and `examples/research-agent.ts`, a real OpenAI tool loop instrumented by hand
+  — the TypeScript twin of the Python SDK's `research_agent.py`. The integration
+  suite runs that exact file on every CI run, as ESM and CJS, against the real
+  `openai` client.
+
 - **Runtimes:** Node ≥ 20.9, Bun and Deno, every framework as ESM and CJS,
   checked against Node's trace.
 

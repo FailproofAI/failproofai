@@ -310,6 +310,79 @@ declared field is refused rather than silently overwriting a promoted column.
 
 ---
 
+## Your own agent — no framework
+
+For an agent loop you wrote yourself, or a framework without an adapter. There is
+nothing to instrument: you emit the events, with the same API the adapters use
+underneath — so the trace is the same shape and the same quality.
+
+You do not need to know anything about how the agent is organised beyond this:
+**every hand-built agent already has three places** — whatever its functions are
+called — and those three are the whole integration.
+
+| where | what to add | emits |
+|---|---|---|
+| where **one run** starts and ends | `failproofai.agent("name", { goal }, async () => …)` | `agent_start` / `agent_end` |
+| the **one function that calls the model** | `event.modelRequest` before, `event.modelResponse` after — both halves, even on failure | one pair per model turn |
+| the **one function that runs tools** | `failproofai.toolCall(name, { toolCallId, input }, () => run())` | `tool_use` / `tool_result` |
+
+```ts
+// 1. the run
+await failproofai.agent("inventory", { goal: question }, async () => {
+  for (;;) {
+    const message = await callModel(messages);          // 2.
+    if (!message.tool_calls?.length) return message.content;
+    for (const call of message.tool_calls) await dispatch(call); // 3.
+  }
+});
+
+// 2. the model call — pair on requestId, time it yourself, close it on failure
+async function callModel(messages) {
+  const requestId = randomUUID();
+  const started = Date.now();
+  failproofai.event.modelRequest({ model: MODEL, requestId, messages });
+  try {
+    const reply = await client.chat.completions.create({ model: MODEL, messages, tools });
+    failproofai.event.modelResponse({
+      model: reply.model, requestId, stopReason: reply.choices[0].finish_reason,
+      inputTokens: reply.usage?.prompt_tokens, outputTokens: reply.usage?.completion_tokens,
+      duration_ms: Date.now() - started,
+    });
+    return reply.choices[0].message;
+  } catch (error) {
+    failproofai.event.modelResponse({ model: MODEL, requestId, stopReason: "error",
+      error: String(error), duration_ms: Date.now() - started });
+    throw error;
+  }
+}
+
+// 3. the tool dispatcher — reuse the model's own tool-call id
+async function dispatch(call) {
+  const input = JSON.parse(call.function.arguments);
+  return failproofai.toolCall(call.function.name, { toolCallId: call.id, input },
+    () => runTool(call.function.name, input));
+}
+```
+
+Identity is ambient: everything inside `agent()` — the model wrapper, the
+dispatcher, any function they call — lands on that run's session without taking an
+id. Nothing else in the program changes, including whatever the agent already
+writes to its own database.
+
+- **A service or a worker:** pass your own request or job id as `sessionId`
+  (`agent("assistant", { sessionId: requestId }, …)`), so a session on the
+  dashboard and the record in your own logs or database are the same string.
+- **Sub-agents:** nest `agent()` calls. The inner one joins the session and takes
+  the outer as its `parent_id`.
+- **Emit the pairs.** A `modelRequest` with no `modelResponse` is a span the
+  dashboard shows as running forever — hence the `catch` above.
+
+[`examples/research-agent.ts`](./examples/research-agent.ts) is the complete,
+runnable version: a real OpenAI tool loop instrumented exactly like this. The
+integration suite runs that file on every CI run, as an ES module and as
+CommonJS, against the real `openai` client — the example is proven, not just
+documented.
+
 ## Configuration
 
 ```ts

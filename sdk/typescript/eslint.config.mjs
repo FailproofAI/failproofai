@@ -2,7 +2,9 @@ import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist/**", "node_modules/**", "eslint.config.mjs", "integration/fixtures/**"] },
+  // examples/ imports packages this project does not install (openai); each is
+  // typechecked as a real consumer by its integration fixture (vanilla.test.ts).
+  { ignores: ["dist/**", "node_modules/**", "eslint.config.mjs", "integration/fixtures/**", "examples/**"] },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   {

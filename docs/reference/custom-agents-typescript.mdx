@@ -306,6 +306,61 @@ OpenAI-compatible APIs only report usage on a stream when the client asks. LangC
 
 Node ≥ 20.9, Bun and Deno — every framework, as an ES module and as CommonJS, is tested on each against Node's trace. The SDK runs beside the `failproofaid` daemon, which ships what it writes.
 
+## Your own agent — no framework
+
+For an agent loop you wrote yourself, or a framework without an adapter. You emit the events with the same API the adapters use underneath, so the trace has the same shape and quality.
+
+You don't need to know how the agent is organised. Every hand-built agent already has three places, whatever its functions are called, and those three are the whole integration:
+
+| Where | What to add | Emits |
+| --- | --- | --- |
+| Where **one run** starts and ends | `failproofai.agent("name", { goal }, async () => …)` | `agent_start` / `agent_end` |
+| The **one function that calls the model** | `event.modelRequest` before, `event.modelResponse` after — both halves, even on failure | one pair per model turn |
+| The **one function that runs tools** | `failproofai.toolCall(name, { toolCallId, input }, () => run())` | `tool_use` / `tool_result` |
+
+```ts
+async function callModel(messages) {
+  const requestId = randomUUID();
+  const started = Date.now();
+  failproofai.event.modelRequest({ model: MODEL, requestId, messages });
+  try {
+    const reply = await client.chat.completions.create({ model: MODEL, messages, tools });
+    failproofai.event.modelResponse({
+      model: reply.model, requestId, stopReason: reply.choices[0].finish_reason,
+      inputTokens: reply.usage?.prompt_tokens, outputTokens: reply.usage?.completion_tokens,
+      duration_ms: Date.now() - started,
+    });
+    return reply.choices[0].message;
+  } catch (error) {
+    failproofai.event.modelResponse({ model: MODEL, requestId, stopReason: "error",
+      error: String(error), duration_ms: Date.now() - started });
+    throw error;
+  }
+}
+
+async function dispatch(call) {
+  const input = JSON.parse(call.function.arguments);
+  return failproofai.toolCall(call.function.name, { toolCallId: call.id, input },
+    () => runTool(call.function.name, input));
+}
+
+await failproofai.agent("inventory", { goal: question }, async () => {
+  for (;;) {
+    const message = await callModel(messages);
+    if (!message.tool_calls?.length) return message.content;
+    for (const call of message.tool_calls) await dispatch(call);
+  }
+});
+```
+
+Identity is ambient: everything inside `agent()` lands on that run's session without taking an id, and nothing else in the program changes — including whatever the agent already writes to its own database.
+
+- **A service or a worker:** pass your own request or job id as `sessionId`, so a session on the dashboard and the record in your own logs or database are the same string.
+- **Sub-agents:** nest `agent()` calls. The inner one joins the session with the outer as its `parent_id`.
+- **Emit the pairs.** A `modelRequest` with no `modelResponse` is a span the dashboard shows as running forever — hence the `catch`.
+
+[`sdk/typescript/examples/research-agent.ts`](https://github.com/FailproofAI/failproofai/blob/main/sdk/typescript/examples/research-agent.ts) in the repository is the complete, runnable version: a real OpenAI tool loop instrumented exactly like this, run in CI on every change as an ES module and as CommonJS.
+
 ## Evaluations
 
 ```ts

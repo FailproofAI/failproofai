@@ -280,9 +280,19 @@ function diskHit(a: ShellAnalysis, inv: Invocation, name: string, cwds: Cwds): s
   const operands = args.filter((w) => !(literalText(w) ?? "").startsWith("-"));
   if (name === "dd") {
     for (const w of args) {
-      if (!literalPrefix(w).startsWith("of=")) continue;
-      const dev = deviceTarget(a, dropPrefix(w, 3), cwds, DISK_TOOL_STRICT);
-      if (dev) return `dd of=${dev}`;
+      if (literalPrefix(w).startsWith("of=")) {
+        const dev = deviceTarget(a, dropPrefix(w, 3), cwds, DISK_TOOL_STRICT);
+        if (dev) return `dd of=${dev}`;
+        continue;
+      }
+      // `T=of=/dev/sda; dd if=/dev/zero $T` hides the operand, not just its
+      // value: the whole word has to be resolved before it reads as harmless.
+      if (literalText(w) !== null) continue;
+      for (const v of resolveWord(a, w) ?? []) {
+        if (!v.startsWith("of=")) continue;
+        const target = v.slice(3);
+        if (isDevicePath(target, cwds, true)) return `dd of=${target}`;
+      }
     }
     return null;
   }
@@ -425,14 +435,30 @@ function ghApiHit(a: ShellAnalysis, args: ShellWord[]): string | null {
   return null;
 }
 
+/** Verbs that destroy the resource named before them. */
+const GH_DELETE_VERBS = new Set(["delete", "remove"]);
+
+/**
+ * Every reading of a `gh` positional word, lower-cased, or null when the
+ * command string cannot say what it is. `N=release; gh $N delete v1` deletes
+ * the release the literal form does, so the word is resolved rather than read
+ * as empty — which is what let a one-variable rewrite walk past this policy.
+ */
+function ghPositional(a: ShellAnalysis, word: ShellWord, literal: string | null): string[] | null {
+  if (literal !== null) return [literal.toLowerCase()];
+  const values = resolveWord(a, word);
+  return values && values.length ? values.map((v) => v.trim().toLowerCase()) : null;
+}
+
 function ghHit(a: ShellAnalysis, args: ShellWord[]): string | null {
   const texts = lits(args);
   if (texts.some((t) => t === "--help" || t === "-h")) return null;
-  const positional: Array<{ text: string; index: number }> = [];
+  // `values` is null for a word this command cannot resolve to anything.
+  const positional: Array<{ values: string[] | null; index: number }> = [];
   for (let k = 0; k < args.length && positional.length < 3; k++) {
     const t = texts[k];
     if (t === null) {
-      positional.push({ text: "", index: k });
+      positional.push({ values: ghPositional(a, args[k], null), index: k });
       continue;
     }
     if (t === "-R" || t === "--repo" || t === "--hostname") {
@@ -440,17 +466,35 @@ function ghHit(a: ShellAnalysis, args: ShellWord[]): string | null {
       continue;
     }
     if (t.startsWith("-")) continue;
-    positional.push({ text: t.toLowerCase(), index: k });
+    positional.push({ values: [t.toLowerCase()], index: k });
   }
-  const first = positional[0]?.text ?? "";
-  const noun = Object.hasOwn(GH_NOUN_ALIASES, first) ? GH_NOUN_ALIASES[first] : first;
-  const verb = positional[1]?.text;
-  if (!noun) return null;
-  if (noun === "api") return ghApiHit(a, args.slice(positional[0].index + 1));
-  if (GH_DELETABLE.has(noun) && (verb === "delete" || verb === "remove")) return `gh ${noun} ${verb}`;
-  if (noun === "release" && verb === "delete-asset") return "gh release delete-asset";
-  if (noun === "project" && (verb === "item-delete" || verb === "field-delete")) return `gh project ${verb}`;
-  if (noun === "repo" && verb === "deploy-key" && positional[2]?.text === "delete") return "gh repo deploy-key delete";
+  if (!positional.length) return null;
+  const firsts = positional[0].values;
+  const nouns = firsts === null ? null : firsts.map((v) => (Object.hasOwn(GH_NOUN_ALIASES, v) ? GH_NOUN_ALIASES[v] : v));
+  // Absent (no second word), unresolvable (null), or its readings.
+  const verbs = positional[1] === undefined ? undefined : positional[1].values;
+  const thirds = positional[2]?.values;
+  const verbIs = (v: string) => verbs?.includes(v) ?? false;
+  if (nouns?.includes("api")) {
+    const hit = ghApiHit(a, args.slice(positional[0].index + 1));
+    if (hit) return hit;
+  }
+  const deletable = nouns?.find((n) => GH_DELETABLE.has(n));
+  if (deletable !== undefined) {
+    // `gh release $VERB v1` with a verb the command cannot resolve: the same
+    // rule `gh api -X $METHOD` follows, on a command shape just as destructive.
+    if (verbs === null) return `gh ${deletable} <unresolved verb>`;
+    const verb = [...GH_DELETE_VERBS].find(verbIs);
+    if (verb) return `gh ${deletable} ${verb}`;
+  }
+  // An unresolvable noun with a delete verb: `gh $N delete v1` deletes something.
+  if (nouns === null && verbs?.some((v) => GH_DELETE_VERBS.has(v))) return "gh <unresolved> delete";
+  if (nouns?.includes("release") && verbIs("delete-asset")) return "gh release delete-asset";
+  if (nouns?.includes("project")) {
+    const verb = ["item-delete", "field-delete"].find(verbIs);
+    if (verb) return `gh project ${verb}`;
+  }
+  if (nouns?.includes("repo") && verbIs("deploy-key") && thirds?.includes("delete")) return "gh repo deploy-key delete";
   return null;
 }
 
@@ -735,13 +779,50 @@ interface KillMemo {
   subs: WeakMap<WordPart, string | null>;
   filters: Map<string, boolean>;
   byCommand: Map<SimpleCommand, Invocation[]> | null;
+  assignments: Map<string, ShellWord[]> | null;
+  derived: Map<string, string[]> | null;
+  filterNames: Set<string> | null;
 }
 const killMemos = new WeakMap<ShellAnalysis, KillMemo>();
 
 function killMemo(a: ShellAnalysis): KillMemo {
   let m = killMemos.get(a);
-  if (!m) killMemos.set(a, (m = { subs: new WeakMap(), filters: new Map(), byCommand: null }));
+  if (!m) killMemos.set(a, (m = { subs: new WeakMap(), filters: new Map(), byCommand: null, assignments: null, derived: null, filterNames: null }));
   return m;
+}
+
+/** Words that can stand in front of an assignment without ending the command prefix. */
+const COMMAND_PREFIX_KEYWORDS = new Set(["do", "then", "else", "elif", "if", "while", "until", "{", "(", "!", "time"]);
+
+/**
+ * Every value a name is given, including the assignments the analysis does not
+ * carry: `if …; then P=$(pgrep node); kill $P; fi` and `do cl=$(…)` assign in a
+ * command prefix the parser reads as an argument of `then`/`do`, so they never
+ * reach `bindings` — and a `then` in front of the assignment used to be enough
+ * to hide the listing that feeds a kill.
+ *
+ * Only a real command prefix counts: keywords, then assignment words, stopping
+ * at the first command word, so `echo P=$(pgrep node)` still assigns nothing.
+ */
+function assignmentsIn(a: ShellAnalysis): Map<string, ShellWord[]> {
+  const memo = killMemo(a);
+  if (memo.assignments) return memo.assignments;
+  const out = new Map<string, ShellWord[]>();
+  for (const [name, words] of a.bindings) out.set(name, [...words]);
+  for (const cmd of a.commands) {
+    for (const w of cmd.words) {
+      const t = literalText(w);
+      if (t !== null && COMMAND_PREFIX_KEYWORDS.has(t)) continue;
+      const m = /^([A-Za-z_]\w*)=/.exec(literalPrefix(w));
+      if (!m) break;
+      const value = dropPrefix(w, m[0].length);
+      const list = out.get(m[1]);
+      if (!list) out.set(m[1], [value]);
+      else if (!list.some((v) => v.text === value.text)) list.push(value);
+    }
+  }
+  memo.assignments = out;
+  return out;
 }
 
 /** A broad listing inside a `$( … )` of this word. */
@@ -760,25 +841,117 @@ function massSourceInSubstitutions(a: ShellAnalysis, word: ShellWord): string | 
   return null;
 }
 
+/** Derived names followed out from the PID variable, and how many of them are kept. */
+const MAX_PID_NAME_ROUNDS = 4;
+const MAX_PID_NAMES = 64;
+/** Tools whose arguments decide something about one process. */
+const FILTER_TOOLS = new Set(["[", "[[", "test", "grep", "egrep", "rg"]);
+
+/** Every name a word expands, including inside a substitution or a parameter's default. */
+function namesRead(word: ShellWord): Set<string> {
+  const out = new Set<string>();
+  for (const p of word.parts) {
+    if (p.kind === "lit") continue;
+    if (p.kind === "param" && p.name) out.add(p.name);
+    for (const m of p.source.matchAll(/\$\{?(\w+)/g)) out.add(m[1]);
+  }
+  return out;
+}
+
 /**
- * The command decides per process before killing: a `case`/`if`/test, or a
- * grep that reads the PID variable (`grep -q x /proc/$p/cmdline && kill $p`).
- * A grep that only builds the list (`$(ps aux | grep node)`) is not a filter.
+ * Which names a name flows INTO: `cl=$(tr '\0' ' ' < /proc/$p/cmdline)` records
+ * p → cl, so a `case "$cl" in` counts as a decision about the process that
+ * `$p` names. Built once per analysis; the walk below is per PID variable.
+ */
+function derivedFrom(a: ShellAnalysis): Map<string, string[]> {
+  const memo = killMemo(a);
+  if (memo.derived) return memo.derived;
+  const out = new Map<string, string[]>();
+  for (const [name, words] of assignmentsIn(a)) {
+    for (const w of words) {
+      for (const read of namesRead(w)) {
+        if (read === name) continue;
+        const list = out.get(read);
+        if (!list) out.set(read, [name]);
+        else if (!list.includes(name)) list.push(name);
+      }
+    }
+  }
+  memo.derived = out;
+  return out;
+}
+
+/** The PID variable and the names the command derives from it. */
+function pidNames(a: ShellAnalysis, variable: string): Set<string> {
+  const names = new Set([variable]);
+  const edges = derivedFrom(a);
+  let frontier = [variable];
+  for (let round = 0; round < MAX_PID_NAME_ROUNDS && frontier.length && names.size < MAX_PID_NAMES; round++) {
+    const next: string[] = [];
+    for (const name of frontier) {
+      for (const derived of edges.get(name) ?? []) {
+        if (names.has(derived) || names.size >= MAX_PID_NAMES) continue;
+        names.add(derived);
+        next.push(derived);
+      }
+    }
+    frontier = next;
+  }
+  return names;
+}
+
+/**
+ * Every name some per-process decision reads: a test or a grep's arguments
+ * (`[ "$p" = "$$" ]`, `grep -q x /proc/$p/cmdline`) and a `case`/`if` head
+ * (`case "$cl" in`). Built once per analysis.
+ */
+function filterNames(a: ShellAnalysis): Set<string> {
+  const memo = killMemo(a);
+  if (memo.filterNames) return memo.filterNames;
+  const out = new Set<string>();
+  const add = (w: ShellWord) => {
+    for (const n of namesRead(w)) out.add(n);
+  };
+  for (const inv of a.invocations) {
+    if (!inv.names.some((n) => FILTER_TOOLS.has(n))) continue;
+    for (const w of inv.args) add(w);
+  }
+  for (const cmd of a.commands) {
+    const at = cmd.words.findIndex((w) => {
+      const t = literalText(w);
+      return t === "case" || t === "if" || t === "elif";
+    });
+    if (at >= 0) for (const w of cmd.words.slice(at + 1)) add(w);
+  }
+  memo.filterNames = out;
+  return out;
+}
+
+/**
+ * The command decides per process before killing: a `case`/`if` head, a test or
+ * a grep THAT READS THE PID VARIABLE (`grep -q x /proc/$p/cmdline && kill $p`,
+ * `case "$cl" in` where `cl` came from `$p`). A grep that only builds the list
+ * (`$(ps aux | grep node)`) is not a filter, and neither is a conditional that
+ * decides something else: `if true; then kill $P; fi` and `[ 1 = 1 ]` used to
+ * count, which made a no-op conditional anywhere in the command a one-line
+ * bypass of a policy no reviewer can clear.
+ *
+ * Memoized per variable, which is sound because the answer depends on the
+ * variable's data dependencies and nothing about the kill site.
  */
 function filtersBeforeKilling(a: ShellAnalysis, variable: string): boolean {
   const memo = killMemo(a).filters;
   const cached = memo.get(variable);
   if (cached !== undefined) return cached;
-  const readsVariable = (w: ShellWord) => w.parts.some((p) => p.kind === "param" && p.name === variable);
-  let filters = a.invocations.some((inv) =>
-    inv.names.some((n) => n === "[" || n === "[[" || n === "test") ||
-    (inv.names.some((n) => n === "grep" || n === "egrep" || n === "rg") && inv.args.some(readsVariable)));
-  filters ||= a.commands.some((cmd) => cmd.words.some((w) => {
-    const t = literalText(w);
-    return t === "case" || t === "if" || t === "elif";
-  }));
-  memo.set(variable, filters);
-  return filters;
+  const filters = filterNames(a);
+  let hit = false;
+  for (const name of pidNames(a, variable)) {
+    if (!filters.has(name)) continue;
+    hit = true;
+    break;
+  }
+  memo.set(variable, hit);
+  return hit;
 }
 
 /** The invocations of each simple command, indexed once per analysis. */
@@ -821,7 +994,7 @@ function killFedByMass(a: ShellAnalysis, inv: Invocation): string | null {
   for (const w of inv.args) {
     for (const p of w.parts) {
       if (p.kind !== "param") continue;
-      for (const bound of a.bindings.get(p.name) ?? []) {
+      for (const bound of assignmentsIn(a).get(p.name) ?? []) {
         const why = massSourceInSubstitutions(a, bound);
         if (why && !filtersBeforeKilling(a, p.name)) return why;
       }
@@ -918,15 +1091,41 @@ interface GitCall {
   configEnvs: string[];
 }
 
-function parseGit(args: ShellWord[]): GitCall {
+/**
+ * How this parse reads a word: its literal text, or — for `git $SUB`, `git $F`
+ * — the value the command binds it to. A word with several readings is read as
+ * the one that matters: a hook-running subcommand or an option, so
+ * `git ${X:-commit}` is checked as a commit.
+ *
+ * Null only when the command string genuinely cannot say, which is where the
+ * parse still gives up (`git commit $ARGS` is not treated as `--no-verify`).
+ */
+function gitWord(a: ShellAnalysis, word: ShellWord): string | null {
+  const t = literalText(word);
+  if (t !== null) return t;
+  const values = resolveWord(a, word);
+  if (!values || values.length === 0) return null;
+  return (
+    values.find((v) => HOOK_SUBCOMMANDS.has(v.trim().toLowerCase()) || GIT_GLOBAL_OPERAND.has(v) || v.startsWith("-")) ??
+    values[0]
+  );
+}
+
+/** Every reading of a `-c key=value` word, falling back to its source when it cannot be resolved. */
+function configValues(a: ShellAnalysis, word: ShellWord | undefined): string[] {
+  if (!word) return [""];
+  return resolveWord(a, word) ?? [word.text];
+}
+
+function parseGit(a: ShellAnalysis, args: ShellWord[]): GitCall {
   const configs: string[] = [];
   const configEnvs: string[] = [];
   for (let k = 0; k < args.length; k++) {
-    const t = literalText(args[k]);
+    const t = gitWord(a, args[k]);
     if (t === null) return { sub: null, subArgs: [], configs, configEnvs };
     if (GIT_GLOBAL_OPERAND.has(t)) {
-      if (t === "-c") configs.push(args[k + 1]?.text ?? "");
-      else if (t === "--config-env") configEnvs.push(args[k + 1]?.text ?? "");
+      if (t === "-c") configs.push(...configValues(a, args[k + 1]));
+      else if (t === "--config-env") configEnvs.push(...configValues(a, args[k + 1]));
       k++;
       continue;
     }
@@ -940,36 +1139,67 @@ function parseGit(args: ShellWord[]): GitCall {
   return { sub: null, subArgs: [], configs, configEnvs };
 }
 
-function commitSkipsHooks(args: ShellWord[]): string | null {
+/** What one `git commit` argument is: the hook skip itself, an option that takes the next word, `--`, or neither. */
+type CommitArg = { hit: string } | "operand" | "end" | "plain";
+
+function classifyCommitArg(t: string): CommitArg {
+  if (t === "--") return "end";
+  if (t.startsWith("--")) {
+    const flag = t.split("=")[0];
+    if (NO_VERIFY_RE.test(flag)) return { hit: "git commit --no-verify" };
+    return !t.includes("=") && COMMIT_OPERAND_LONG.has(flag) ? "operand" : "plain";
+  }
+  if (t.startsWith("-") && t.length > 1) {
+    for (let j = 1; j < t.length; j++) {
+      const ch = t[j];
+      if (ch === "n") return { hit: "git commit -n" };
+      // The rest of the bundle is this option's value (`-mn` is the message "n").
+      if (COMMIT_OPERAND_SHORT.has(ch)) return j === t.length - 1 ? "operand" : "plain";
+      if (ch === "S" || ch === "u") return "plain";
+    }
+  }
+  return "plain";
+}
+
+/**
+ * `--no-verify`/`-n` among a `git commit`'s arguments, whether written there or
+ * bound to a variable the command sets: `F=--no-verify; git commit $F -m x`
+ * skips hooks exactly as the literal does. A word the command string cannot
+ * resolve is left alone — `git commit $ARGS` is not read as a skip.
+ */
+function commitSkipsHooks(a: ShellAnalysis, args: ShellWord[]): string | null {
   for (let k = 0; k < args.length; k++) {
     const t = literalText(args[k]);
-    if (t === null) continue;
-    if (t === "--") break;
-    if (t.startsWith("--")) {
-      const flag = t.split("=")[0];
-      if (NO_VERIFY_RE.test(flag)) return "git commit --no-verify";
-      if (!t.includes("=") && COMMIT_OPERAND_LONG.has(flag)) k++;
+    if (t !== null) {
+      const c = classifyCommitArg(t);
+      if (typeof c === "object") return c.hit;
+      if (c === "end") break;
+      if (c === "operand") k++;
       continue;
     }
-    if (t.startsWith("-") && t.length > 1) {
-      for (let j = 1; j < t.length; j++) {
-        const ch = t[j];
-        if (ch === "n") return "git commit -n";
-        if (COMMIT_OPERAND_SHORT.has(ch)) {
-          if (j === t.length - 1) k++;
-          break;
-        }
-        if (ch === "S" || ch === "u") break;
-      }
-    }
+    const values = resolveWord(a, args[k]);
+    if (!values || values.length === 0) continue;
+    const kinds = values.map((v) => classifyCommitArg(v));
+    const hit = kinds.find((c): c is { hit: string } => typeof c === "object");
+    if (hit) return hit.hit;
+    // Only a reading every value agrees on can move the cursor.
+    if (kinds.every((c) => c === "end")) break;
+    if (kinds.every((c) => c === "operand")) k++;
   }
   return null;
 }
 
-function hasNoVerify(args: ShellWord[]): boolean {
-  for (const t of lits(args)) {
+/** `--no-verify` among a `git push`/`merge`/… argument list, written or bound to a variable. */
+function hasNoVerify(a: ShellAnalysis, args: ShellWord[]): boolean {
+  const skips = (t: string) => NO_VERIFY_RE.test(t.split("=")[0]);
+  for (const w of args) {
+    const t = literalText(w);
+    if (t === null) {
+      if ((resolveWord(a, w) ?? []).some(skips)) return true;
+      continue;
+    }
     if (t === "--") return false;
-    if (t !== null && NO_VERIFY_RE.test(t.split("=")[0])) return true;
+    if (skips(t)) return true;
   }
   return false;
 }
@@ -1010,7 +1240,7 @@ function noVerifyHit(a: ShellAnalysis, depth: number): string | null {
   let runsHooks = false;
   for (const inv of a.invocations) {
     if (!inv.names.includes("git")) continue;
-    const g = parseGit(inv.args);
+    const g = parseGit(a, inv.args);
     if (!g.sub) continue;
     if (g.sub === "config") {
       const texts = lits(g.subArgs);
@@ -1042,9 +1272,9 @@ function noVerifyHit(a: ShellAnalysis, depth: number): string | null {
     // `--config-env` reads the value from the environment, which the command string does not show.
     if (g.configEnvs.some((c) => /^core\.hookspath=/i.test(c.trim()))) return `git --config-env core.hooksPath=… ${g.sub}`;
     if (g.sub === "commit") {
-      const why = commitSkipsHooks(g.subArgs);
+      const why = commitSkipsHooks(a, g.subArgs);
       if (why) return why;
-    } else if (hasNoVerify(g.subArgs)) {
+    } else if (hasNoVerify(a, g.subArgs)) {
       return `git ${g.sub} --no-verify`;
     }
     for (const { name, value } of inv.env) {

@@ -22,6 +22,7 @@ import {
   withoutDetectorDuplicates,
   type ReplayHit,
 } from "../../src/audit/replay";
+import { SIGNAL_MAP } from "../../src/audit/features";
 import { deriveScore } from "../../src/audit/scoring";
 import type { AuditResult } from "../../src/audit/types";
 
@@ -68,6 +69,20 @@ describe("withoutDetectorDuplicates", () => {
 
   it("covers only block-no-verify", () => {
     expect([...DETECTOR_COVERED_POLICIES]).toEqual([["failproofai/block-no-verify", "git-commit-no-verify"]]);
+  });
+});
+
+describe("the floor stays out of the persona signal map", () => {
+  // features.ts documents the omission in a comment; this is what enforces it.
+  // Mapping block-no-verify would charge the persona for the same event the
+  // git-commit-no-verify detector already weighs — the double count the replay
+  // dedupe above exists to prevent — and mapping any of the six moves the lift
+  // baselines. A calibration that wants them has to revisit both.
+  it.each([
+    "block-disk-destruction", "block-gh-destructive", "block-mass-kill",
+    "block-no-verify", "block-indirect-exec", "block-chmod-777",
+  ])("%s carries no archetype signal", (name) => {
+    expect(SIGNAL_MAP[name]).toBeUndefined();
   });
 });
 

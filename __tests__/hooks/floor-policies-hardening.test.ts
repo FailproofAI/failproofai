@@ -590,3 +590,128 @@ describe("cost stays bounded (a hook that times out lets the call through)", () 
     expect(performance.now() - t).toBeLessThan(1500);
   });
 });
+
+/**
+ * Review round 2: the same failure in three policies — a word read with
+ * `literalText` alone, so a value the analyser CAN resolve walks past a floor
+ * no reviewer can clear. Each block pins the bypass, the near miss that must
+ * stay allowed, and the unresolvable form that stays lenient.
+ */
+describe("block-no-verify: a flag or subcommand carried in a variable", () => {
+  it.each([
+    "F=--no-verify; git commit $F -m x",
+    'F="--no-verify"; git commit -m x "$F"',
+    "F=-n; git commit $F -m x",
+    "C=commit; git $C --no-verify -m x",
+    "P=push; git $P --no-verify",
+    "git commit ${F:---no-verify} -m x",
+    "git commit $(echo --no-verify) -m x",
+    "P=/dev/null; git -c core.hooksPath=$P commit -m x",
+    "H=core.hooksPath=/dev/null; git -c $H commit -m x",
+    // A non-literal global option used to abandon the whole invocation.
+    'git -c user.name="$NAME" commit --no-verify -m x',
+  ])("denies %s", async (command) => {
+    expect(await decide("block-no-verify", command)).toBe("deny");
+  });
+
+  it.each([
+    // Unresolvable: the command string does not say it skips hooks.
+    "git commit $F -m x",
+    "git commit -m x $FLAGS",
+    "git $S -m x",
+    "git -c core.hooksPath=$H commit -m x",
+    // Resolvable, and not a skip: `-m` takes the next word, whichever way round.
+    'M=--no-verify; git commit -m "$M"',
+    "F=-m; git commit $F --no-verify",
+    "D=--dry-run; git push $D origin main",
+    "S=status; git $S",
+    'git -c user.name="$NAME" commit -m x',
+  ])("allows %s", async (command) => {
+    expect(await decide("block-no-verify", command)).toBe("allow");
+  });
+});
+
+describe("block-gh-destructive: a noun or verb carried in a variable", () => {
+  it.each([
+    "N=release; gh $N delete v1 -y",
+    "A=delete; gh release $A v1",
+    "N=cs; gh $N delete -c name",
+    "V=item-delete; gh project $V 1 --id x",
+    // Fail closed on an unresolved verb, the rule `gh api -X $METHOD` follows.
+    "gh release $V v1",
+    "gh $N delete v1",
+  ])("denies %s", async (command) => {
+    expect(await decide("block-gh-destructive", command)).toBe("deny");
+  });
+
+  it.each(["V=view; gh release $V v1", "gh release view $V", "gh $N view v1", "gh pr merge $N --squash", "gh $CMD"])(
+    "allows %s",
+    async (command) => {
+      expect(await decide("block-gh-destructive", command)).toBe("allow");
+    },
+  );
+
+  it("says which word it could not read", async () => {
+    const r = await policy("block-gh-destructive").fn(bash("gh release $V v1"));
+    expect(r.reason).toContain("<unresolved verb>");
+  });
+});
+
+describe("block-mass-kill: a conditional that decides nothing is not a per-process filter", () => {
+  it.each([
+    "P=$(pgrep node); if true; then kill $P; fi",
+    // The assignment sits in a command prefix the analysis does not carry.
+    "if true; then P=$(pgrep node); kill $P; fi",
+    "[ 1 = 1 ]; P=$(pgrep node); kill $P",
+    "case x in y) ;; esac; P=$(pgrep node); kill $P",
+    "for p in $(pgrep node); do if true; then kill $p; fi; done",
+    // A test and a grep that read something other than the PID.
+    'for p in $(pgrep node); do [ -n "$x" ] && kill $p; done',
+    "grep -q x file; P=$(pgrep node); kill $P",
+  ])("denies %s", async (command) => {
+    expect(await decide("block-mass-kill", command)).toBe("deny");
+  });
+
+  it.each([
+    'for p in $(pgrep node); do if [ -n "$p" ]; then kill $p; fi; done',
+    "for p in $(pgrep -f node); do if grep -q myapp /proc/$p/cmdline; then kill $p; fi; done",
+    // The filter reads a variable derived from the PID, not the PID itself.
+    'for p in $(pgrep -f node); do c=$(ps -o args= -p $p); case "$c" in *myapp*) kill $p;; esac; done',
+    // An argument that looks like an assignment does not assign.
+    "echo P=$(pgrep node); kill $P",
+    "P=$(cat server.pid); if true; then kill $P; fi",
+  ])("allows %s", async (command) => {
+    expect(await decide("block-mass-kill", command)).toBe("allow");
+  });
+});
+
+describe("block-disk-destruction: a dd operand assembled in a variable", () => {
+  it.each(["T=of=/dev/sda; dd if=/dev/zero $T", "O=of=; dd if=/dev/zero ${O}/dev/sdb"])(
+    "denies %s",
+    async (command) => {
+      expect(await decide("block-disk-destruction", command)).toBe("deny");
+    },
+  );
+
+  it.each(["T=of=./disk.img; dd if=/dev/zero $T", "T=of=/dev/null; dd if=/dev/zero $T", "dd if=/dev/zero $T"])(
+    "allows %s",
+    async (command) => {
+      expect(await decide("block-disk-destruction", command)).toBe("allow");
+    },
+  );
+});
+
+describe("block-mass-kill: the filter check stays linear", () => {
+  // Reading the filter off the PID variable's data dependencies replaced a scan
+  // of the whole analysis per variable. With one filtered variable per kill,
+  // recomputing that scan per variable is quadratic in the command's length.
+  it("handles a command with a filtered PID variable per kill", async () => {
+    const cmd = Array.from(
+      { length: 2000 },
+      (_, i) => `P${i}=$(pgrep node); [ -n "$P${i}" ] && kill $P${i}`,
+    ).join("; ");
+    const t = performance.now();
+    expect(await decide("block-mass-kill", cmd)).toBe("allow");
+    expect(performance.now() - t).toBeLessThan(1500);
+  });
+});

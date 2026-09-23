@@ -25,6 +25,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { JevConfig } from "../../src/hooks/semantic/jev-config";
 import type { JevRequest, JevResponse } from "../../src/hooks/semantic/types";
+import { resetJevThrottle } from "../../src/hooks/semantic/jev-throttle";
 
 vi.mock("../../src/hooks/hook-telemetry", () => ({
   trackHookEvent: vi.fn(() => Promise.resolve()),
@@ -102,6 +103,10 @@ describe("turning Jev off on a daemon-configured machine", () => {
   beforeEach(async () => {
     for (const k of ["HOME", "FAILPROOFAI_HOME", "FAILPROOFAI_EVALUATOR"]) saved[k] = process.env[k];
     jevCalls.length = 0;
+    // The response cache and the rate limiter are module-level and outlive a
+    // test, so a count of upstream calls means nothing without this (see
+    // `jev-throttle.ts`, "Tests").
+    resetJevThrottle();
     jevConfig = CFG;
     root = mkdtempSync(join(tmpdir(), "fpai-two-tier-optout-"));
     projectDir = join(root, "home", "project");
@@ -150,11 +155,21 @@ describe("turning Jev off on a daemon-configured machine", () => {
     expect(decisionOf(off)).toBe("allow");
     expect(off.stdout).toBe("");
 
-    // …and back on, again without a restart.
+    // …and back on, again without a restart. The hook is deliberately the SAME
+    // call as the first one — that is what makes this an A/B of the config file
+    // and nothing else — which means its Jev request is byte-identical and
+    // T5's response cache would answer it from the first call's answer. A
+    // cached answer is a real answer and the decision below would still be
+    // `deny`, but then the call count would say nothing about whether Jev was
+    // consulted, which is the whole claim here. Clearing the cache first makes
+    // the count mean what it says: a request really did go upstream.
     jevConfig = CFG;
+    resetJevThrottle();
     const again = await send(socketPath, hook());
     expect(jevCalls).toHaveLength(2);
+    expect(jevCalls[1].questions).toEqual(jevCalls[0].questions);
     expect(decisionOf(again)).toBe("deny");
+    expect(deciderOf(again)).toBe("semantic/destructive-deletion");
   });
 
   it("FAILPROOFAI_EVALUATOR=legacy in the worker's own environment is honoured", async () => {

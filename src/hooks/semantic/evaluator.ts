@@ -25,14 +25,7 @@ import { resolve } from "node:path";
 import { semanticDir } from "../fp-home";
 import { DEFAULT_JEV_MODEL, MAX_REQUEST_CHARS, compileRequest, selectPolicies, type CompiledRequest } from "./compile";
 import { DEFAULT_THRESHOLDS, decide, decideV1, type DecideV1Options, type Thresholds } from "./decide";
-import {
-  DEFAULT_ENVELOPE_LIMITS,
-  MAX_USER_MESSAGE_CHARS,
-  buildEnvelope,
-  redactSecrets,
-  type Envelope,
-  type EnvelopeLimits,
-} from "./envelope";
+import { MAX_USER_MESSAGE_CHARS, buildEnvelope, redactSecrets, type Envelope } from "./envelope";
 import { computeFacts, scanCommand } from "./facts";
 import { cleanUserSaid } from "./intent";
 import { JevError, readAnswers, type JevTransport } from "./jev-client";
@@ -89,39 +82,27 @@ export interface PreparedCall {
   compiled: CompiledRequest;
   intent: IntentMode;
   /**
-   * The human turns Jev was actually shown — read back out of the envelope,
-   * NOT the list handed in.
-   *
-   * `decide` / `decideV1` do not only read Jev's answers: `targetNamedByUser`
-   * is a LOCAL check, run here, and an `op-requested` override needs it to
-   * hold before a fired policy becomes `overridden` — which `toReview` reports
-   * as a clear. Taking that check off the full list while the envelope sent
-   * only `slice(-MAX_USER_MESSAGES)` let a turn Jev never saw supply the
-   * consent: a deny flipped to allow on evidence nothing judged, and
-   * `truncated` stayed false, so the combine's one gate never saw it either.
-   *
-   * Reading it back from `envelope.state` closes that by construction — every
-   * cap the envelope applies now applies to the local check too, including any
-   * cap added later — and makes the clearing half rest on exactly the evidence
-   * that was put to Jev, which is what `combine.ts` claims of a clear.
+   * The human turns the envelope CARRIES — `envelope.evidence`, which is the
+   * window Jev was shown with its text uncut. See {@link Envelope.evidence}
+   * for why it is neither the full list handed in nor the capped strings.
    */
   userSaid: string[];
-  /** The agent message actually sent (v1), or null. Read back the same way. */
+  /** The agent message the envelope carries (v1), or null. Same rule. */
   agentLastMessage: string | null;
   /**
    * Jev is judging less than the whole picture: the envelope cut something
-   * (`envelope.truncated`), the request had to be rebuilt smaller to fit
-   * `MAX_REQUEST_CHARS`, OR a human message or agent message it carries was
+   * (`envelope.truncated`), OR a human message or agent message it carries was
    * already cut before it got here (`opts.contextTruncated`, or failing that
    * `intentStoreCut`). This, not `envelope.truncated`, is the outcome's
    * `truncated`.
    */
   truncated: boolean;
   /**
-   * Even the smallest envelope did not fit `MAX_REQUEST_CHARS`, so nothing can
-   * be sent. Only reachable when the QUESTIONS alone overrun the budget —
-   * their text is ours, not the caller's — because every part of the state is
-   * capped. `evaluateSemantic` degrades on it.
+   * The compiled request does not fit `MAX_REQUEST_CHARS`, so nothing can be
+   * sent. The state is bounded by `MAX_STATE_CHARS` however the call was
+   * shaped, so this is reachable only if OUR OWN questions overrun the budget
+   * — a policy-set problem, not something a caller can provoke. Pinned by
+   * `__tests__/hooks/semantic/envelope-budget.test.ts`.
    */
   oversized: boolean;
 }
@@ -198,46 +179,6 @@ function envNumber(name: string, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-/**
- * Progressively smaller envelopes, tried in order when the compiled request
- * does not fit `MAX_REQUEST_CHARS`.
- *
- * An oversized request used to be `degraded("request-too-large")`, and a
- * degraded call is `kind: "fallback"` — no verdict, the regex result stands.
- * That made SIZE the last working spelling of the padding attack the
- * truncation rule was written to stop: one ignored extra key (a 70,000-char
- * `file_path` beside the command, which no policy reads) or enough nesting
- * (24 × 24 × 1,500 characters of `tool_input`, every individual string within
- * its cap) pushed a request past the budget, and Jev's deny went with it.
- *
- * Shrinking instead keeps the call on the rule this module already has: the
- * rebuild sets `truncated`, so Jev clears nothing — but Jev still answers, and
- * its own deny still reaches `combineTwoTier`. The head-and-tail cap means the
- * dangerous suffix survives every step.
- *
- * The tightest step bounds the state at roughly 4 × 4 × 200 characters of
- * input, 4 paths and 3 × 300 characters of human text — a few kB beside ~13 kB
- * of questions, against a 120,000-character budget.
- */
-const SHRINK_STEPS: ReadonlyArray<EnvelopeLimits> = [
-  { stringChars: 600, messageChars: 600, keys: 8 },
-  { stringChars: 200, messageChars: 300, keys: 4 },
-];
-
-/**
- * What the envelope actually carries, read back out of it — the only evidence
- * a local check in `decide` / `decideV1` may look at. See
- * {@link PreparedCall.userSaid}.
- */
-function evidenceSent(envelope: Envelope): { userSaid: string[]; agentLastMessage: string | null } {
-  const said = envelope.state.user_said;
-  const agent = envelope.state.agent_last_message;
-  return {
-    userSaid: Array.isArray(said) ? said.filter((m): m is string => typeof m === "string") : [],
-    agentLastMessage: typeof agent === "string" ? agent : null,
-  };
-}
-
 /** Everything that happens locally before the network: facts, policy selection, envelope, request. */
 export function prepareSemantic(input: SemanticInput, opts: SemanticOptions = {}): PreparedCall {
   const command = input.toolInput.command;
@@ -252,42 +193,24 @@ export function prepareSemantic(input: SemanticInput, opts: SemanticOptions = {}
       : null;
   const model = opts.model ?? (process.env.FAILPROOFAI_JEV_MODEL || DEFAULT_JEV_MODEL);
 
-  const build = (limits: EnvelopeLimits) => {
-    const envelope = buildEnvelope(input.toolInput, cleaned, facts, scanned, { agentLastMessage, limits });
-    const sent = evidenceSent(envelope);
-    const compiled = compileRequest(selected, envelope.state, sent.userSaid, model, intent);
-    return { envelope, sent, compiled };
-  };
+  // One build, no "try again smaller": `buildEnvelope` spends a fixed budget
+  // (`MAX_STATE_CHARS`) as it goes, so the state's size is a function of the
+  // caps and never of what the agent sent. A call cannot come out too big.
+  const envelope = buildEnvelope(input.toolInput, cleaned, facts, scanned, { agentLastMessage });
+  const compiled = compileRequest(selected, envelope.state, envelope.evidence.userSaid, model, intent);
 
-  let built = build(DEFAULT_ENVELOPE_LIMITS);
-  let shrunk = false;
-  let chars = 0;
-  // Nothing is sent when no question applies, so an oversized inert call is
-  // neither measured (the measurement is a full serialisation of whatever the
-  // agent sent) nor rebuilt.
-  if (Object.keys(built.compiled.request.questions).length > 0) {
-    chars = JSON.stringify(built.compiled.request).length;
-    for (const limits of SHRINK_STEPS) {
-      if (chars <= MAX_REQUEST_CHARS) break;
-      built = build(limits);
-      shrunk = true;
-      chars = JSON.stringify(built.compiled.request).length;
-    }
-  }
+  // Nothing is sent when no question applies, so an inert call is not measured.
+  const chars = Object.keys(compiled.request.questions).length > 0 ? JSON.stringify(compiled.request).length : 0;
 
-  const { envelope, sent, compiled } = built;
-  // `shrunk` sits ahead of the store's word on purpose: a rebuild is a cut
-  // this module made and can see, so `contextTruncated: false` cannot talk it
-  // away the way it can talk away the mark-and-cap guess.
-  const truncated = envelope.truncated || shrunk || (opts.contextTruncated ?? intentStoreCut(envelope.state));
+  const truncated = envelope.truncated || (opts.contextTruncated ?? intentStoreCut(envelope.state));
   return {
     facts,
     selected,
     envelope,
     compiled,
     intent,
-    userSaid: sent.userSaid,
-    agentLastMessage: sent.agentLastMessage,
+    userSaid: envelope.evidence.userSaid,
+    agentLastMessage: envelope.evidence.agentLastMessage,
     truncated,
     oversized: chars > MAX_REQUEST_CHARS,
   };
@@ -300,6 +223,11 @@ export async function evaluateSemantic(input: SemanticInput, opts: SemanticOptio
   try {
     prepared = prepareSemantic(input, opts);
   } catch (err) {
+    // `buildEnvelope` never throws, whatever the caller's input looks like —
+    // that is rule 4 there, because a `prepare:` degrade is a verdict thrown
+    // away on the shape of the tool input. This stays as a floor under the
+    // code around it (`scanCommand`, `computeFacts`, the policy set), never as
+    // the plan for an exotic payload.
     return { status: "degraded", reason: `prepare: ${err instanceof Error ? err.message : String(err)}`, latencyMs: elapsed(), questionCount: 0, truncated: false };
   }
   const { selected, envelope, compiled, truncated } = prepared;
@@ -336,9 +264,8 @@ export async function evaluateSemantic(input: SemanticInput, opts: SemanticOptio
     truncated,
   });
 
-  // Only when even the smallest envelope did not fit — `prepareSemantic`
-  // rebuilds an oversized call instead of abandoning it, so this is no longer
-  // reachable by padding the call (see `SHRINK_STEPS`).
+  // Not reachable by padding the call: the state is built inside
+  // `MAX_STATE_CHARS`, so only our own questions could overrun the budget.
   if (prepared.oversized) return degraded("request-too-large");
 
   const transport = opts.transport;
@@ -379,10 +306,26 @@ export async function evaluateSemantic(input: SemanticInput, opts: SemanticOptio
 const VERDICT_LOG_MAX_BYTES = 5 * 1024 * 1024;
 export const verdictLogFile = (): string => resolve(semanticDir(), "verdicts.jsonl");
 
+/**
+ * `JSON.stringify` on a caller-shaped value, which can throw: a bigint, a
+ * cycle, a getter that raises, or nesting deep enough for a RangeError. The
+ * verdict log runs INSIDE the promise chain that produces the review, so a
+ * throw here would turn an answered call into `kind: "fallback"` — Jev's
+ * verdict discarded because of the shape of the tool input, which is the
+ * padding attack in one more spelling. Logging is best-effort; a verdict is not.
+ */
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    return "<unserialisable>";
+  }
+}
+
 function inputPreview(toolInput: Record<string, unknown>): string {
   const primary =
     ["command", "file_path", "path", "url", "query", "pattern"].map((k) => toolInput[k]).find((v) => typeof v === "string") ??
-    JSON.stringify(toolInput);
+    safeStringify(toolInput);
   return redactSecrets(String(primary).slice(0, 240)).text;
 }
 
@@ -410,7 +353,7 @@ export function verdictLogRow(input: SemanticInput, outcome: SemanticOutcome, me
     cli: meta.cli ?? null,
     eventType: meta.eventType,
     tool: input.toolName,
-    inputDigest: createHash("sha256").update(JSON.stringify(input.toolInput)).digest("hex").slice(0, 16),
+    inputDigest: createHash("sha256").update(safeStringify(input.toolInput)).digest("hex").slice(0, 16),
     inputPreview: inputPreview(input.toolInput),
     userSaidCount: input.userSaid.length,
     applied: meta.applied,

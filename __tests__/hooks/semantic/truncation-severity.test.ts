@@ -22,7 +22,7 @@ import { describe, expect, it } from "vitest";
 import { combineTwoTier, regexOnly, type RegexVerdict } from "../../../src/hooks/semantic/combine";
 import { DEFAULT_THRESHOLDS_V1 } from "../../../src/hooks/semantic/decide";
 import { MAX_REQUEST_CHARS } from "../../../src/hooks/semantic/compile";
-import { DEFAULT_ENVELOPE_LIMITS, MAX_STRING_CHARS, buildEnvelope } from "../../../src/hooks/semantic/envelope";
+import { DEFAULT_ENVELOPE_LIMITS, MAX_STATE_CHARS, MAX_STRING_CHARS, buildEnvelope } from "../../../src/hooks/semantic/envelope";
 import { computeFacts, scanCommand } from "../../../src/hooks/semantic/facts";
 import { evaluateSemantic, prepareSemantic, type SemanticOptions, type SemanticOutcome } from "../../../src/hooks/semantic/evaluator";
 import { toReview } from "../../../src/hooks/semantic/jev-review";
@@ -245,14 +245,20 @@ describe("padding past the request budget is the same class", () => {
     expect(out.activity).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "truncated", jevDecision: "deny" });
   });
 
-  it("nesting that overruns even the capped envelope is rebuilt smaller, not abandoned", () => {
+  it("nesting that used to overrun the budget is bounded at the default caps", () => {
     const input = padded(nestedPadding());
     const scanned = scanCommand(DANGEROUS);
     const facts = computeFacts(input.toolName, input.toolInput, input.cwd ?? null, null, scanned);
-    // Every string is inside `MAX_STRING_CHARS`, so the default caps cut
-    // nothing — and the state is still seven times the budget.
+    // The premise: carried verbatim this is 24 x 24 x 1,500 characters, seven
+    // times the request budget, with every individual string inside
+    // `MAX_STRING_CHARS` — so per-field caps alone would cut nothing.
+    expect(JSON.stringify(input.toolInput).length).toBeGreaterThan(MAX_REQUEST_CHARS);
+
+    // There is no smaller rebuild to fall back on any more: the DEFAULT caps
+    // are already a hard total budget, and they are what the product uses.
     const atDefault = buildEnvelope(input.toolInput, input.userSaid, facts, scanned, { limits: DEFAULT_ENVELOPE_LIMITS });
-    expect(JSON.stringify(atDefault.state).length).toBeGreaterThan(MAX_REQUEST_CHARS);
+    expect(JSON.stringify(atDefault.state).length).toBeLessThanOrEqual(MAX_STATE_CHARS);
+    expect(atDefault.truncated).toBe(true);
 
     const prepared = prepareSemantic(input, opts(alarmed));
     expect(prepared.oversized).toBe(false);
@@ -260,7 +266,7 @@ describe("padding past the request budget is the same class", () => {
     expect(JSON.stringify(prepared.compiled.request).length).toBeLessThanOrEqual(MAX_REQUEST_CHARS);
   });
 
-  it("the dangerous part of the command survives every shrink step", async () => {
+  it("the dangerous part of the command survives the caps", async () => {
     const prepared = prepareSemantic(padded(nestedPadding()), opts(alarmed));
     const request = prepared.envelope.state.agent_request as { input: { command: string } };
     expect(request.input.command).toContain("--no-preserve-root");
@@ -285,7 +291,7 @@ describe("padding past the request budget is the same class", () => {
     expect(out.final).toEqual(regexOnly([reviewable]));
   });
 
-  it("the smallest step has room to spare, so `request-too-large` stays unreachable", async () => {
+  it("the budget has room to spare, so `request-too-large` stays unreachable", async () => {
     // Deliberately worse than anything above: every axis at once.
     const worst: Record<string, unknown> = { command: DANGEROUS, file_path: HUGE_PATH, path: HUGE_PATH };
     for (let i = 0; i < 40; i++) {
@@ -307,7 +313,7 @@ describe("padding past the request budget is the same class", () => {
     expect(combineTwoTier([], review, "enforce").final.decision).toBe("deny");
   });
 
-  it("an ordinary call is not shrunk and is not marked cut", () => {
+  it("an ordinary call is not cut and is not marked cut", () => {
     const prepared = prepareSemantic(bash("ls -la"), opts(calm));
     expect(prepared.truncated).toBe(false);
     expect(prepared.oversized).toBe(false);

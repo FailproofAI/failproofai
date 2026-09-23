@@ -10,7 +10,8 @@
  * |-----------------------------------------------|-------------------------------------------------------------|
  * | not configured / FAILPROOFAI_EVALUATOR=legacy | `regexOnly` — never reaches this module's `combineTwoTier`  |
  * | any HARD deny                                 | the regex result (Jev was aborted, so nothing is cleared)   |
- * | Jev degraded — no verdict at all              | the regex result, every deny counts; recorded `jev-fallback`|
+ * | Jev degraded — transport, timeout, 429, 402,  | the regex result, every deny counts; recorded `jev-fallback`|
+ * | 5xx, malformed, model mismatch                |                                                             |
  * | Jev answered on a TRUNCATED envelope          | nothing is cleared, so every regex deny counts; Jev's own   |
  * |                                               | verdict still joins the most-severe rule; recorded          |
  * |                                               | `jev-fallback` / `truncated`, with its decision             |
@@ -44,11 +45,14 @@
  * complete view of what was SENT, not on the whole session: an instruction
  * from twenty turns ago is not in the picture, and the tier is not a record of
  * consent over a session. What it does guarantee is that nothing in the
- * clearing half rests on evidence Jev never saw — `prepareSemantic` reads
- * `user_said` and `agent_last_message` back out of the envelope and judges the
- * local `targetNamedByUser` check against those, so a dropped turn cannot
- * supply the consent for an `op-requested` override (it could, and flipped a
- * reviewable deny to allow with `truncated` false, so this gate never saw it).
+ * clearing half rests on evidence Jev never saw — `buildEnvelope` reports the
+ * window it carried (`Envelope.evidence`) and the local `targetNamedByUser`
+ * check runs over exactly that, so a dropped turn cannot supply the consent
+ * for an `op-requested` override (it could, and flipped a reviewable deny to
+ * allow with `truncated` false, so this gate never saw it). It reports that
+ * window with the text UNCUT, which is the other half of the same rule: a
+ * target named in the cut middle of a long prompt is consent the human typed,
+ * and losing it turned explicit requests into instructs and denies.
  *
  * That invariant is what makes the tier safe to pad. §4's table files a
  * truncated envelope under "fall back to the regex result", and reading that
@@ -60,12 +64,14 @@
  * recorded as `jev-fallback` / `truncated` — the answer is just not thrown
  * away on the way in.
  *
- * Size is part of the same class and is handled the same way: a request that
- * overruns `MAX_REQUEST_CHARS` used to be `degraded("request-too-large")` — a
- * `fallback`, no verdict, regex-only — which one ignored 70,000-character
- * `file_path` beside the command was enough to trigger. `prepareSemantic` now
- * rebuilds such a call with tighter caps and `truncated` set, so it arrives
- * here as `answered` like any other cut call.
+ * Size was the same class one step further out, and is no longer a case at
+ * all: a request over `MAX_REQUEST_CHARS` used to be
+ * `degraded("request-too-large")` — a `fallback`, no verdict, regex-only —
+ * which one ignored 70,000-character `file_path`, one long object KEY, or
+ * enough nesting to raise inside `JSON.stringify` was enough to trigger. The
+ * envelope is now built inside a hard total budget (`MAX_STATE_CHARS`) and
+ * never throws, so a call CANNOT come out too big however it is shaped. It
+ * arrives here `answered` with `truncated`, like any other cut call.
  *
  * Structurally: a `fallback` review carries no `decision` at all, so a verdict
  * Jev actually produced cannot be filed as one. If Jev decided, it comes

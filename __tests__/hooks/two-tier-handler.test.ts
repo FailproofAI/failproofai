@@ -678,6 +678,69 @@ describe("a padded call cannot make Jev's own deny go away", () => {
     expect(row.policySource).toBeUndefined();
   });
 
+  /**
+   * The spellings the envelope's own caps did not cover until the budget did.
+   * Each of these was a live `allow` on an earlier revision of this branch:
+   * an uncapped object KEY pushed the request past `MAX_REQUEST_CHARS`
+   * (`request-too-large`), and deep nesting made `prepareSemantic` raise
+   * (`prepare: Maximum call stack size exceeded`). Both are `kind: "fallback"`,
+   * which carries no decision — so Jev's deny was dropped on the way in.
+   */
+  const padKey = () => ({ command: DELETE, ["p".repeat(130_000)]: 1 });
+
+  it("one 130,000-character KEY beside the command: answered and denied, never degraded", async () => {
+    jevConfig = CFG;
+    respond = answers({ "destructive-deletion": 0.97 });
+    const { outcome, row } = await run("PreToolUse", { tool_name: "Bash", tool_input: padKey() });
+    expect(outcome.evaluation?.decision).toBe("deny");
+    expect(outcome.evaluation?.policyName).toBe("semantic/destructive-deletion");
+    expect(row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "truncated", jevDecision: "deny" });
+    // Never either of the two degrade reasons that discarded the verdict.
+    expect(row.jevFallbackReason).not.toBe("request-too-large");
+    expect(row.jevFallbackReason).not.toBe("prepare");
+  });
+
+  it("tool_input nested 50,000 deep: answered and denied, never degraded", async () => {
+    jevConfig = CFG;
+    respond = answers({ "destructive-deletion": 0.97 });
+    // Built as stdin TEXT on purpose: `JSON.stringify` RAISES on this payload,
+    // while `JSON.parse` reads it happily — which is the direction the hook
+    // actually runs in, so this shape really does arrive on a live machine.
+    const stdin =
+      `{"session_id":${JSON.stringify(SESSION)},"cwd":${JSON.stringify(project)},` +
+      `"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":${JSON.stringify(DELETE)},` +
+      `"x":${"[".repeat(50_000)}1${"]".repeat(50_000)}}}`;
+    const outcome = await evaluateHookEvent("PreToolUse", "claude", stdin, { awaitTelemetryFlush: false });
+    const row = store.getAllHookActivityEntries()[0] as unknown as Record<string, unknown>;
+    expect(outcome.evaluation?.decision).toBe("deny");
+    expect(outcome.evaluation?.policyName).toBe("semantic/destructive-deletion");
+    expect(row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "truncated", jevDecision: "deny" });
+    expect(row.jevFallbackReason).not.toBe("prepare");
+  });
+
+  it("padding on BOTH sides of the dangerous part does not hide it from Jev", async () => {
+    jevConfig = CFG;
+    // Answers only from what the request actually carries — the fakes above
+    // answer the same whatever they were sent, so none of them can see this.
+    respond = async (request) => {
+      const visible = JSON.stringify(request.state).includes("-delete");
+      return {
+        model: request.model,
+        answers: Object.fromEntries(
+          Object.keys(request.questions).map((id) => [
+            id,
+            { noul: id.startsWith("destructive-deletion.") && visible ? 0.97 : 0.05 },
+          ]),
+        ),
+      };
+    };
+    const around = `echo ${"x".repeat(1_250)} ; ${DELETE} ; echo ${"y".repeat(850)}`;
+    const { outcome, row } = await bash(around);
+    expect(outcome.evaluation?.decision).toBe("deny");
+    expect(outcome.evaluation?.policyName).toBe("semantic/destructive-deletion");
+    expect(row).toMatchObject({ evaluator: "jev-fallback", jevFallbackReason: "truncated", jevDecision: "deny" });
+  });
+
   it("shadow mode still enforces the regex result for both spellings", async () => {
     jevConfig = { ...CFG, mode: "shadow" };
     respond = answers({ "destructive-deletion": 0.97 });

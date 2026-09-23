@@ -15,13 +15,17 @@
  *
  * The returned promise never rejects: every failure is a `fallback` review,
  * which the combine turns into today's regex result. A `fallback` means Jev
- * produced NO verdict — it deliberately carries no decision, so a verdict Jev
- * did produce can never be dropped on the way in. A verdict given on a
- * truncated envelope comes through as `answered` with `truncated: true`: it
- * clears nothing, and it still counts toward the most-severe rule, because
- * padding a command must not be a way to stop Jev's own deny applying —
- * including padding it past the request budget, which `prepareSemantic`
- * answers by rebuilding the envelope smaller rather than degrading the call.
+ * produced NO verdict — a genuine transport or degraded failure (timeout, 429,
+ * 402, 5xx, malformed body, model mismatch, no transport, a config that cannot
+ * be built) — and it deliberately carries no decision, so a verdict Jev DID
+ * produce can never be dropped on the way in.
+ *
+ * A verdict given on a truncated envelope is not that. It comes through as
+ * `answered` with `truncated: true`: it clears nothing, and it still counts
+ * toward the most-severe rule, because padding a call must not be a way to
+ * stop Jev's own deny applying. Size cannot reach this path at all any more —
+ * `buildEnvelope` spends a hard budget and never throws, so there is no
+ * "too big" and no "raised while preparing" to degrade on (see `envelope.ts`).
  */
 import { BUILTIN_POLICIES } from "../builtin-policies";
 import { normalizePolicyName } from "../policy-registry";

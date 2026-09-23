@@ -124,19 +124,20 @@ const scheduled = (): unknown[] => [
 // ── The rule, stated once per harness ───────────────────────────────────────
 
 describe("every harness is recorded on its event, on a payload mark, or not at all", () => {
-  it("has no fourth answer", () => {
+  it("has no third answer: a harness names the author, or it is not capturable", () => {
     for (const cli of INTEGRATION_TYPES) {
-      expect(["yes", "gated", "no"], cli).toContain(PROMPT_CHANNELS[cli].capture);
+      const mark = PROMPT_CHANNELS[cli].namesOperator;
+      expect(mark === null || typeof mark === "function", cli).toBe(true);
     }
   });
 
-  it("names the harnesses that fire this event for prompts nobody typed", () => {
-    // `gated` means the harness's own payload says which is which; `no` means
-    // it fires for both and marks neither, so nothing it sends is recorded.
-    const byCapture = (want: string) => INTEGRATION_TYPES.filter((c) => PROMPT_CHANNELS[c].capture === want).sort();
-    expect(byCapture("gated")).toEqual(["claude", "openclaw", "pi"]);
-    expect(byCapture("no")).toEqual(["antigravity", "codex", "factory", "hermes", "opencode"]);
-    expect(byCapture("yes")).toEqual(["copilot", "cursor", "devin", "goose"]);
+  it("names the only harnesses whose payload can say a person wrote the prompt", () => {
+    // Round 9: every other harness fires this event for a headless run an
+    // agent can start (`copilot -p`, `cursor-agent -p`, `devin -p`,
+    // `goose run -t`, `pi -p`) with the same payload as a typed prompt, and
+    // sends no field that tells the two apart.
+    const capturable = INTEGRATION_TYPES.filter((c) => PROMPT_CHANNELS[c].namesOperator !== null).sort();
+    expect(capturable).toEqual(["claude", "openclaw"]);
   });
 
   it("records nothing for any harness whose channel is `no`, with a perfectly ordinary prompt", () => {

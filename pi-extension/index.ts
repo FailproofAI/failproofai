@@ -404,9 +404,11 @@ export default function failproofaiBridge(pi: PiExtensionApi) {
       session_id: resolveSessionId(e.sessionId, resolveCwd(e.cwd)),
       cwd: resolveCwd(e.cwd),
       hook_event_name: "UserPromptSubmit",
-      // "interactive" | "rpc" | "extension": the Jev evaluator records a
-      // prompt as the human's only when it was not another extension's
-      // sendUserMessage() (src/hooks/semantic/intent.ts).
+      // "interactive" | "rpc" | "extension": which channel the input came
+      // through. It names the channel, not the author — `pi -p "<text>"`
+      // reports `interactive` too — so the Jev evaluator records no Pi prompt
+      // as the human's (src/hooks/semantic/intent.ts). Forwarded anyway: it
+      // is what a policy or a later Pi build would read.
       input_source: e.source,
     });
     if (decision.block) {

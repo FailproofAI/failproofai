@@ -292,9 +292,15 @@ describe("docs/reference/jev-intent.mdx states the fail-closed rules", () => {
     expect(page).toContain("a file the agent already has a shell over");
   });
 
-  it("states the cost of failing closed, and that it is only ever stricter", () => {
+  it("states the cost of failing closed, including the part that is not stricter", () => {
     const page = doc();
-    expect(page).toContain("Failing closed here can only make enforcement stricter");
+    expect(page).toContain("Failing closed here never makes enforcement weaker");
+    expect(page).toContain("nothing is ever allowed because a prompt could not be captured");
+    // Review round 9: the page used to claim the cost was only ever stricter.
+    // With no recorded prompt the injection probe is not asked either, so a
+    // warn policy that injection would escalate to a block stays a warn.
+    expect(page).toContain("stays a nudge");
+    expect(page).toContain("the beyond-the-task flag never fires");
     expect(page).toContain("2.1.280 does not send it");
   });
 

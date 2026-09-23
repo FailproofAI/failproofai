@@ -107,19 +107,15 @@ function leakedPiece(secret: string, ...haystacks: string[]): string | null {
 // ── The §7 draft call shape ─────────────────────────────────────────────────
 
 describe("captureIntent: the call shape JEV-BUILD-PLAN §7 first published", () => {
-  // `{ eventType, sessionId?, prompt?, transcriptPath?, cli }`, with no payload.
-  const draft = (cli: IntegrationType, sessionId: string, prompt: unknown): Parameters<typeof captureIntent>[0] => ({
-    eventType: "UserPromptSubmit",
-    sessionId,
-    prompt,
-    transcriptPath: undefined,
-    cli,
-  });
-
-  it("compiles, and records nothing at all: the payload is where origin is read", () => {
+  it("no longer compiles, and still records nothing at all: the payload is where origin is read", () => {
     for (const cli of INTEGRATION_TYPES) {
       const sessionId = `draft-${cli}`;
-      captureIntent(draft(cli, sessionId, "yes, reset the release branch"), T0);
+      // The draft shape — `{ eventType, sessionId, prompt, transcriptPath, cli }`,
+      // no payload — records nothing on every harness, which looks exactly
+      // like the intended behaviour, so it is a type error at the call site.
+      // Delete the directive below and `bunx tsc --noEmit -p .` fails.
+      // @ts-expect-error JEV-BUILD-PLAN §7's first draft: no payload, a `prompt` instead
+      captureIntent({ eventType: "UserPromptSubmit", sessionId, prompt: "yes, reset the release branch", transcriptPath: undefined, cli }, T0);
       expect(readIntent(sessionId, T0).userSaid, cli).toEqual([]);
     }
     expect(existsSync(sessionsDir())).toBe(false);
@@ -127,26 +123,23 @@ describe("captureIntent: the call shape JEV-BUILD-PLAN §7 first published", () 
 
   it("records nothing for a payload that is not an object either", () => {
     for (const payload of ["yes", 42, ["yes"], null, undefined] as unknown[]) {
-      captureIntent({ ...draft("copilot", "draft-bad", "yes"), payload: payload as Record<string, unknown> }, T0);
+      captureIntent({ eventType: "UserPromptSubmit", sessionId: "draft-bad", cli: "claude", payload: payload as Record<string, unknown> }, T0);
     }
     expect(readIntent("draft-bad", T0).userSaid).toEqual([]);
   });
 
-  it("with a payload, reads the payload and ignores `prompt`, as the handler calls it", () => {
-    // What T3's handler passes: both, from the same parsed stdin.
-    const both = (cli: IntegrationType, sessionId: string, payload: Record<string, unknown>, prompt: unknown) =>
-      captureIntent({ eventType: "UserPromptSubmit", sessionId, cli, payload, prompt }, T0);
-    both("goose", "both-goose", { message: "yes, remove the volume" }, undefined);
-    both("claude", "both-claude", { source: "user", prompt: "rebase it" }, "force push main");
-    both("copilot", "both-copilot", { text: "not the field" }, "force push main");
-    both("copilot", "both-copilot-ok", { prompt: "reset it" }, "force push main");
-    both("pi", "both-pi", { prompt: "publish it" }, "publish it");
-    expect(readIntent("both-goose", T0).userSaid).toEqual(["yes, remove the volume"]);
+  it("with a payload, reads the field the audit names, for the harness that records", () => {
+    // What T3's handler passes: the whole parsed stdin, every time.
+    const call = (cli: IntegrationType, sessionId: string, payload: Record<string, unknown>) =>
+      captureIntent({ eventType: "UserPromptSubmit", sessionId, cli, payload }, T0);
+    call("claude", "both-claude", { source: "user", prompt: "rebase it" });
+    call("goose", "both-goose", { message: "yes, remove the volume" });
+    call("copilot", "both-copilot", { prompt: "reset it" });
+    call("pi", "both-pi", { prompt: "publish it", input_source: "interactive" });
     expect(readIntent("both-claude", T0).userSaid).toEqual(["rebase it"]);
-    expect(readIntent("both-copilot", T0).userSaid).toEqual([]);
-    expect(readIntent("both-copilot-ok", T0).userSaid).toEqual(["reset it"]);
-    // Pi's payload has no source mark: nothing, whatever `prompt` says.
-    expect(readIntent("both-pi", T0).userSaid).toEqual([]);
+    for (const sessionId of ["both-goose", "both-copilot", "both-pi"]) {
+      expect(readIntent(sessionId, T0).userSaid, sessionId).toEqual([]);
+    }
   });
 });
 
@@ -172,7 +165,7 @@ describe("Codex IDE prompts: only the human's request is kept, whatever the exte
     // and over any harness that pastes an extension-built prompt.
     expect(cleanUserSaid([selectionOnly])).toEqual(["what does this function do?"]);
     const sessionId = "ide-selection";
-    expect(capture({ eventType: "UserPromptSubmit", sessionId, cli: "copilot", payload: { prompt: selectionOnly } }).userSaid).toEqual([
+    expect(capture({ eventType: "UserPromptSubmit", sessionId, cli: "claude", payload: { source: "user", prompt: selectionOnly } }).userSaid).toEqual([
       "what does this function do?",
     ]);
     expect(readFileSync(join(sessionsDir(), `${sessionId}.json`), "utf8")).not.toContain("force-push");
@@ -232,21 +225,20 @@ describe("Codex IDE prompts: only the human's request is kept, whatever the exte
 
 // ── Pi ──────────────────────────────────────────────────────────────────────
 
-describe("Pi: a prompt counts only when its source says a human or an RPC client sent it", () => {
+describe("Pi: its input source names the channel, not the author, so nothing is recorded", () => {
   const said = (extra: Record<string, unknown>) => capture(hookEvent("pi", "input", fx.piPrompt("publish 2.4.0", extra))).userSaid;
 
-  it("is gated in the audit", () => {
-    expect(PROMPT_CHANNELS.pi.capture).toBe("gated");
+  it("is not capturable in the audit", () => {
+    expect(PROMPT_CHANNELS.pi.namesOperator).toBeNull();
   });
 
-  it("records interactive and rpc input", () => {
-    expect(said({ input_source: "interactive" })).toEqual(["publish 2.4.0"]);
-    rmSync(sessionsDir(), { recursive: true, force: true });
-    expect(said({ input_source: "rpc" })).toEqual(["publish 2.4.0"]);
-  });
-
-  it("records nothing without a source, with an extension's, or when the marks disagree", () => {
-    const refused: Array<Record<string, unknown>> = [
+  it("records nothing for the values Pi sends, `interactive` included", () => {
+    // `pi -p "<text>"` reports `interactive`, the same value as a prompt
+    // typed in Pi's editor, and `rpc` is whatever program drives Pi — an
+    // agent with a shell can be either.
+    const sources: Array<Record<string, unknown>> = [
+      { input_source: "interactive" },
+      { input_source: "rpc" },
       { input_source: undefined },
       { input_source: "extension" },
       { input_source: "interactive", source: "extension" },
@@ -256,7 +248,7 @@ describe("Pi: a prompt counts only when its source says a human or an RPC client
       { input_source: null },
       { input_source: undefined, source: "extension" },
     ];
-    for (const extra of refused) expect(said(extra), JSON.stringify(extra)).toEqual([]);
+    for (const extra of sources) expect(said(extra), JSON.stringify(extra)).toEqual([]);
     expect(existsSync(sessionsDir())).toBe(false);
   });
 });
@@ -396,8 +388,8 @@ describe("docs/reference/jev-intent.mdx, cell for cell", () => {
       const row = doc.split("\n").find((l) => l.startsWith("|") && l.includes(`| \`${cli}\` |`))!;
       const [, , , , , recorded, agent] = row.split("|").map((c) => c.trim());
       const ch = PROMPT_CHANNELS[cli];
-      expect(/^(Yes|No|Only)\b/.exec(recorded)?.[1], `${cli}: "${recorded}"`).toBe({ yes: "Yes", gated: "Only", no: "No" }[ch.capture]);
-      if (ch.capture === "no") {
+      expect(/^(Yes|No|Only)\b/.exec(recorded)?.[1], `${cli}: "${recorded}"`).toBe(ch.namesOperator ? "Only" : "No");
+      if (!ch.namesOperator) {
         expect(agent, cli).toBe("—");
         continue;
       }

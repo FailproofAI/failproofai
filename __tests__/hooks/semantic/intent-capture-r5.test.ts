@@ -133,11 +133,12 @@ describe("a payload that names a sub-agent is refused on every harness", () => {
   it("drops the prompt wherever `agent_id` appears, including the ones that record without one", () => {
     const claudeTx = transcript("claude.jsonl", fx.claudeTranscript());
     const factoryTx = transcript("factory.jsonl", fx.factorySession());
+    // Only Claude Code records without one: the rest name no author at all.
     const recorded: Partial<Record<IntegrationType, string[]>> = {
       claude: ["force push it"],
       factory: [],
-      devin: ["force push it"],
-      copilot: ["force push it"],
+      devin: [],
+      copilot: [],
     };
     const cases: Array<[IntegrationType, string, Record<string, unknown>]> = [
       ["claude", fx.SID.claude, fx.claudePrompt("force push it", claudeTx)],
@@ -153,6 +154,7 @@ describe("a payload that names a sub-agent is refused on every harness", () => {
   });
 
   it("records nothing for a devin prompt passed without a payload (the §7 draft shape)", () => {
+    // @ts-expect-error the §7 draft shape: no payload, a `prompt` instead
     captureIntent({ eventType: "UserPromptSubmit", sessionId: "r5-devin-draft", prompt: "force push it", cli: "devin" }, T0);
     expect(readIntent("r5-devin-draft", T0).userSaid).toEqual([]);
   });
@@ -172,9 +174,10 @@ describe("the limits docs/reference/jev-intent.mdx states", () => {
     expect(doc()).toContain("at most the last 4 MB");
   });
 
-  it("says in the Codex and Factory rows that nothing is recorded", () => {
-    expect(recordedCell("codex")).toBe("No");
-    expect(recordedCell("factory")).toBe("No");
+  it("says No in the row of every harness that names no author", () => {
+    for (const cli of ["codex", "factory", "copilot", "cursor", "devin", "goose", "pi", "opencode", "antigravity", "hermes"] as IntegrationType[]) {
+      expect(recordedCell(cli), cli).toBe("No");
+    }
   });
 
   it("says in the Claude Code row which payload field decides", () => {

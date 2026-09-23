@@ -194,7 +194,7 @@ if (hookIdx >= 0) {
         const reason =
           attempt.failure === "protocol-mismatch"
             ? "failproofaid is running a different protocol version than this CLI, so it " +
-              "cannot evaluate this call. Run `failproofai config` to update the daemon."
+              "cannot evaluate this call. Run `failproofai update` to update the daemon."
             : "failproofaid could not be reached. This machine is configured to run hooks through it " +
               "— check the daemon (see `failproofai config`) rather than retrying blindly.";
         result = await evaluateHookEvent(eventType, cli, stdinRead.payload, {

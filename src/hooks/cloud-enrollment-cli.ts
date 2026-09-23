@@ -377,7 +377,7 @@ export function versionStatusLines(): string[] {
   const daemon = recorded?.daemon ?? "not installed";
   return [
     `CLI ${cliVersion} · daemon ${daemon}${skew ? " (STALE)" : ""} · layout ${recorded?.layout ?? "-"}`,
-    ...(skew ? ["  Run `failproofai config` to update the daemon."] : []),
+    ...(skew ? ["  Run `failproofai update` to update the daemon."] : []),
   ];
 }
 

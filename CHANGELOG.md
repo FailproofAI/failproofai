@@ -26,6 +26,7 @@
 - Raise the default Jev call budget to 3000 ms, measured. The shipped 1500 ms came from a p95 that no longer reproduces: over 1,449 answered calls, 8.4% were aborted and silently downgraded to the regex verdict — 43% of them in the worst cold-process session — against 0.28% at 3000 ms, where the tail flattens. (#TBD)
 - Give one semantic probe's example command its missing argument. The Cloudflare route refuses a code span whose first token is `curl` or `wget` and whose second is a bare short option with HTTP 402, which the client reads as `out-of-credits` — so every call that asked the `remote-code-execution` probe degraded to regex while the activity row blamed the operator's billing for a content rejection. All 26 shipped probes now pass the live route. (#TBD)
 - Charge the redaction budget for what a field read, not only for what it emitted. Blunt credential rules turn 128,000 characters of one header into a handful of markers, so a section charging only its output handed the next field a full budget again: a 576-field MCP body read 73 MB for a 79 KB envelope and stalled a `PreToolUse` hook for 27.8 s. It is 69 ms now, flat in the field count. (#TBD)
+- Send a stale daemon to `failproofai update`, the command built for it. The protocol-mismatch deny and the `failproofai config --status` version line both named `failproofai config`, which installs and configures a machine rather than matching its daemon to this CLI. (#TBD)
 
 ### Docs
 

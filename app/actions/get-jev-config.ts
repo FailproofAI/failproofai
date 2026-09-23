@@ -25,6 +25,24 @@
  * So the routing fields of a refused file are copied out one by one
  * (`routingFromRaw`) rather than spread: a spread is how `apiKey` gets carried
  * along by accident the next time someone adds a field.
+ *
+ * ## …and neither does the model
+ *
+ * `model` is the one routing field that holds a free string a person types next
+ * to their key, and `--model <key>` is one slip away from `--token <key>`. The
+ * loader refuses such a file (`validateModel` knows the shape), and a refused
+ * file's routing is exactly what this module hands back so the owner can see
+ * and repair it — which would have carried the probable key into the browser
+ * while the very same response said the key never comes back. So the model is
+ * treated as the token is, rather than masked: `modelView()` returns the stored
+ * string only where it cannot be a credential, and otherwise reports presence
+ * alone. A mask would be worse on both counts — it still hands over a piece of
+ * a key, and the last four characters of a model id tell nobody anything.
+ *
+ * It is a shape test, so it is not a proof: a short secret with no known prefix
+ * can still look like a model id, and the honest bound is "the file the loader
+ * would refuse cannot be echoed". Anything the loader ACCEPTS as a model is a
+ * value `jev setup` would also have printed. See `JevModelView`.
  */
 
 import {
@@ -32,6 +50,7 @@ import {
   JEV_API_KEY_ENV,
   JEV_PROVIDER_KINDS,
   inspectJevConfig,
+  looksLikeCredential,
   readJevConfigForUpdate,
   type JevConfig,
   type JevProviderKind,
@@ -65,6 +84,28 @@ export interface JevTokenPresence {
   hint: string | null;
 }
 
+/**
+ * What the panel may say about the stored model id.
+ *
+ *   - `default`  — nothing is stored, so the provider's own default is used.
+ *   - `id`       — a stored value that is a model id, shown as itself.
+ *   - `withheld` — something is stored that does not look like a model id, so it
+ *                  is reported the way a token is: present, never quoted.
+ *
+ * The decision is `looksLikeCredential()`, the loader's own predicate for "this
+ * is a key, not a model id" — the one that refuses the file in the first place,
+ * not a second rule invented here. It has two deliberate carve-outs so it does
+ * not refuse real ids (a `/`, which every gateway-qualified id has, and the
+ * letters "jev"), and a base64 key can contain a `/`, so length is checked too:
+ * every id Jev is addressed by is short — `jev-1.13.0`, `typesafe/jev-1.13`,
+ * `@cf/typesafe/jev-1.13` — and nothing longer is worth showing at the risk of
+ * it being a key.
+ */
+export type JevModelView =
+  | { kind: "default" }
+  | { kind: "id"; id: string }
+  | { kind: "withheld" };
+
 export interface JevSettingsView {
   status: JevSettingsStatus;
   /** True only when a hook running right now would consult Jev. */
@@ -78,8 +119,13 @@ export interface JevSettingsView {
   baseUrl: string;
   /** Cloudflare only; "" otherwise. Form value. */
   accountId: string;
-  /** "" means the provider's default model. Form value. */
-  model: string;
+  /**
+   * The stored model, for DISPLAY only — never a form value, and never the
+   * stored string when that string could be a key. The form does not offer this
+   * field and the save path leaves it alone (see `update-jev-config.ts`), so
+   * nothing needs it back to round-trip it.
+   */
+  model: JevModelView;
   /** Where requests actually go, query string elided. Null when unroutable. */
   endpoint: string | null;
   mode: NonNullable<JevConfig["mode"]>;
@@ -106,6 +152,18 @@ const KEY_STAND_IN = "display-only";
 /** The last four characters of a key, or null when the key is too short to spare them. */
 function maskedHint(key: string): string | null {
   return key.length >= MIN_HINTABLE_KEY_LENGTH ? key.slice(-4) : null;
+}
+
+/** Longer than any model id a Jev route knows, and well inside a pasted key's length. */
+const MAX_SHOWABLE_MODEL_LENGTH = 40;
+
+/** The stored model as the panel may see it — see `JevModelView` for the rule. */
+function modelView(stored: string): JevModelView {
+  if (!stored) return { kind: "default" };
+  if (stored.length > MAX_SHOWABLE_MODEL_LENGTH || looksLikeCredential(stored)) {
+    return { kind: "withheld" };
+  }
+  return { kind: "id", id: stored };
 }
 
 function octal(mode: number | null): string | null {
@@ -194,7 +252,7 @@ export async function getJevSettingsAction(): Promise<JevSettingsView> {
     provider: null as JevProviderKind | null,
     baseUrl: "",
     accountId: "",
-    model: "",
+    model: { kind: "default" } as JevModelView,
     endpoint: null as string | null,
     mode: DEFAULT_JEV_MODE,
     timeoutMs: null as number | null,
@@ -213,7 +271,10 @@ export async function getJevSettingsAction(): Promise<JevSettingsView> {
       provider: cfg.provider,
       baseUrl: cfg.baseUrl ?? "",
       accountId: cfg.accountId ?? "",
-      model: cfg.model ?? "",
+      // A loadable config's model already passed `validateModel`, so this can
+      // only be an id — run through the same gate anyway, because the gate is
+      // what keeps that true if the loader's rules ever loosen.
+      model: modelView(cfg.model ?? ""),
       endpoint: endpointFor(cfg),
       mode: cfg.mode ?? DEFAULT_JEV_MODE,
       timeoutMs: cfg.timeoutMs ?? null,
@@ -234,7 +295,7 @@ export async function getJevSettingsAction(): Promise<JevSettingsView> {
       provider: r.provider,
       baseUrl: r.baseUrl ?? "",
       accountId: r.accountId ?? "",
-      model: r.model ?? "",
+      model: modelView(r.model ?? ""),
       endpoint: endpointFor({ ...r, apiKey: KEY_STAND_IN }),
       mode: r.mode ?? DEFAULT_JEV_MODE,
       timeoutMs: r.timeoutMs ?? null,
@@ -259,10 +320,17 @@ export async function getJevSettingsAction(): Promise<JevSettingsView> {
       provider: r.provider,
       baseUrl: r.baseUrl,
       accountId: r.accountId,
-      model: r.model,
+      // This is the branch the rule exists for: a file whose `model` slot holds
+      // a pasted key IS a refused file, and these fields are copied raw.
+      model: modelView(r.model),
       // Shown for the same reason `jev status` shows it: the owner needs to see
       // whether the endpoint a file they may not have written names is one they
       // chose. Null when the routing fields do not make a usable route.
+      //
+      // The model is left out of this probe deliberately. It does not appear in
+      // any endpoint — `jevRoute` puts it in the request body, not the URL — but
+      // `jevRoute` validates the whole config first, so a refused model would
+      // hide the one field the owner is being asked to check.
       endpoint:
         r.provider === null
           ? null
@@ -271,7 +339,6 @@ export async function getJevSettingsAction(): Promise<JevSettingsView> {
               apiKey: KEY_STAND_IN,
               ...(r.baseUrl ? { baseUrl: r.baseUrl } : {}),
               ...(r.accountId ? { accountId: r.accountId } : {}),
-              ...(r.model ? { model: r.model } : {}),
               mode: r.mode,
             }),
       mode: r.mode,

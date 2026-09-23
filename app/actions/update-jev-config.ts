@@ -48,6 +48,53 @@
  * carries a key back to the provider's own API, and this surface does not,
  * because a form with a blank field is a weaker statement of intent than a
  * typed command.
+ *
+ * That rule is about a key MOVING, so it only applies where there is one to
+ * move. A config written by `jev setup --key-from-env` stores no key — a hook
+ * reads `FAILPROOFAI_JEV_API_KEY` at the moment it runs — and its endpoint,
+ * provider and mode are therefore editable here with the token field left
+ * blank: nothing travels anywhere it had not already been sent, and the key
+ * stays where its owner put it, outside the file. Asking for a token instead
+ * would be asking them to abandon that choice in order to change an endpoint,
+ * and the refusal did it while naming "the stored token" — a thing that
+ * deliberately does not exist in such a file.
+ *
+ * That includes a file the loader called too open. Re-saving it is the only
+ * remedy the panel has for those permissions — the write is 0600 and it
+ * tightens the directory — and there is no stored key to withhold, so refusing
+ * would leave the file broken and buy nothing: the endpoint that gets written is
+ * the one in the form, which the person can see and change, above the loader's
+ * own warning about the file. For a file that DOES store a key the refusal
+ * stands, because re-typing the token is what says "this key, for this
+ * endpoint".
+ *
+ * `--key-from-env` is inferred from the file being updated rather than asked
+ * for again, which is the one place this path is laxer than `jev setup`: the CLI
+ * makes you re-state `--key-from-env` when the provider changes. A form that
+ * offers no such flag would have no way to say it.
+ *
+ * ## What a save does NOT touch
+ *
+ * Only the fields the panel sends. Every other field in the file — `model`, a
+ * `timeoutMs` set from the CLI, anything a newer failproofai wrote — is carried
+ * over untouched. This is not a nicety. `model` decides which model id the
+ * request names, and a self-hosted or gateway endpoint that must be told its
+ * model stops answering anything at all once it is dropped — while the panel,
+ * whose write passed validation, reports success. A form must not be able to
+ * delete a field it does not show.
+ *
+ * The merge below is `jev setup`'s, field for field: spread the existing file
+ * when the provider is unchanged, carry `mode` and `timeoutMs` across when it
+ * is not, and set only what was named — `setOrClear` in `src/hooks/jev-cli.ts`,
+ * where a flag that was not given leaves its field alone. It is written out
+ * again here rather than called because that path is a terminal command
+ * (`argv` in, rendered lines out, its own key prompt) that lives in the hook
+ * bundle, and because this surface's key rule is deliberately stricter. What
+ * keeps the two from drifting is a test that runs both over the same file and
+ * compares the bytes: `__tests__/actions/update-jev-config.test.ts`, "agrees
+ * with `jev setup` about what an update keeps". Extracting one shared merge
+ * would be better still, and needs `src/hooks/semantic/jev-config.ts` to own
+ * it.
  */
 
 import { chmodSync, existsSync, statSync, unlinkSync } from "node:fs";
@@ -69,18 +116,22 @@ import {
 } from "@/src/hooks/semantic/jev-config";
 import { getJevSettingsAction, type JevSettingsView } from "./get-jev-config";
 
-/** What the panel sends. Every field is a string; "" means "not set". */
+/**
+ * What the panel sends — the four fields the form owns, and the token.
+ *
+ * Every field is a string; "" means "not set". There is deliberately no `model`:
+ * the form does not show one, so it has nothing to say about it, and a field
+ * this type does not carry is a field `saveJevConfigAction` cannot clear.
+ */
 export interface JevConfigInput {
   provider: string;
   /** "" routes to the provider's own API. */
   baseUrl: string;
   /** Cloudflare only. */
   accountId: string;
-  /** "" uses the provider's default model. */
-  model: string;
   /** "shadow" | "enforce". */
   mode: string;
-  /** "" keeps the stored token, when the route has not moved. */
+  /** "" keeps the key where it is: the stored one, or the environment's. */
   token: string;
 }
 
@@ -224,20 +275,25 @@ export async function saveJevConfigAction(input: JevConfigInput): Promise<JevWri
   const sameProvider = existing !== null && existing.provider === provider;
 
   // Same provider: update in place, keeping every field not named here —
-  // including ones a newer failproofai wrote, which this form does not know
-  // about and must not drop. A different provider starts over: a key, model or
-  // URL for one gateway means nothing to another. Mode and timeout are
-  // provider-neutral, so they carry across, exactly as `jev setup` carries them.
+  // `model`, a `timeoutMs` set from the CLI, and ones a newer failproofai wrote,
+  // none of which this form knows about or may drop. A different provider starts
+  // over: a key, model or URL for one gateway means nothing to another. Mode and
+  // timeout are provider-neutral, so they carry across, exactly as `jev setup`
+  // carries them.
   const next: Record<string, unknown> = sameProvider ? { ...existing } : {};
-  if (!sameProvider && existing && existing.timeoutMs !== undefined) next.timeoutMs = existing.timeoutMs;
+  if (!sameProvider && existing) {
+    if (existing.mode !== undefined) next.mode = existing.mode;
+    if (existing.timeoutMs !== undefined) next.timeoutMs = existing.timeoutMs;
+  }
   next.provider = provider;
 
   if (baseUrl) next.baseUrl = baseUrl;
   else delete next.baseUrl;
 
-  const model = input.model.trim();
-  if (model) next.model = model;
-  else delete next.model;
+  // `model` is NOT touched here, and that is the point: `JevConfigInput` has no
+  // model, so the spread above is the whole story for it. The CLI's `setOrClear`
+  // clears a field only for `--model default`, which is a thing a person typed;
+  // an empty input from a form that never offered the field is not.
 
   const accountId = input.accountId.trim();
   if (provider === "cloudflare") {
@@ -258,17 +314,43 @@ export async function saveJevConfigAction(input: JevConfigInput): Promise<JevWri
     existingFile?.tooOpen !== true &&
     originOf(baseUrl) === originOf(typeof existing?.baseUrl === "string" ? existing.baseUrl : "");
 
+  /** Whether the file has a key in it at all. */
+  const storesKey = typeof existing?.apiKey === "string" && existing.apiKey !== "";
+
+  /**
+   * Whether the file being updated is one whose owner chose to keep the key OUT
+   * of it — `jev setup --key-from-env`, which the loader reports as
+   * `key-missing`, or as `ok` with `keySource: "env"` where the variable is set.
+   *
+   * Every refusal below is about a STORED key being carried somewhere it was not
+   * issued for, and there is none here: a hook reads
+   * `FAILPROOFAI_JEV_API_KEY` at the moment it runs, so the endpoint, the
+   * provider and the mode can all be edited with the token field left blank and
+   * nothing moves.
+   *
+   * It is the loader's own validator that decides, with a stand-in in the one
+   * slot that is deliberately empty — so a file that is merely BROKEN, and a
+   * machine with no file at all, are not mistaken for a deliberate choice and
+   * silently saved without any key. Those still ask for the token.
+   */
+  const keyFromEnvConfig =
+    existing !== null && !storesKey && validateJevConfig(existing, ENV_KEY_STAND_IN).ok;
+
   const token = input.token.trim();
   if (token) {
     const bad = validateApiKey(token);
     if (bad) return { ok: false, problem: bad, needsToken: true };
     next.apiKey = token;
-  } else if (!routeHeld) {
+  } else if (!routeHeld && !keyFromEnvConfig) {
     return {
       ok: false,
       needsToken: true,
-      problem:
-        sameProvider && existingFile?.tooOpen === true
+      problem: !storesKey
+        ? // Nothing stored to carry and no deliberate absence to preserve: the
+          // only thing missing is a key, and no sentence here may imply there
+          // is one on disk.
+          "enter the token for this provider."
+        : sameProvider && existingFile?.tooOpen === true
           ? // The loader's "someone else may have chosen this endpoint" case. The
             // stored token is not carried anywhere from a file other users could
             // have written, whatever endpoint it names.
@@ -278,8 +360,9 @@ export async function saveJevConfigAction(input: JevConfigInput): Promise<JevWri
             : "enter the token for this provider.",
     };
   }
-  // Otherwise the stored key (or the deliberate absence of one, for a config
-  // that takes it from the environment) is carried over by the spread above.
+  // Otherwise the key stays exactly where it is: a stored one is carried over by
+  // the spread above, and a config that takes it from the environment keeps
+  // taking it from the environment.
 
   // A config with no stored key takes it from `FAILPROOFAI_JEV_API_KEY` when a
   // hook runs. That is a shape `jev setup --key-from-env` writes and this

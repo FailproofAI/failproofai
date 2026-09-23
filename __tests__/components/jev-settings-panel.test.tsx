@@ -41,7 +41,9 @@ function view(over: Partial<JevSettingsView> = {}): JevSettingsView {
     provider: null,
     baseUrl: "",
     accountId: "",
-    model: "",
+    // A view, not a form value: the panel is handed what it may SAY about the
+    // stored model, never the stored string.
+    model: { kind: "default" },
     endpoint: null,
     mode: "enforce",
     timeoutMs: null,
@@ -122,6 +124,19 @@ describe("what it says about the machine", () => {
     expect(screen.getByText(/5% of 200 calls in the last 1d/i)).toBeInTheDocument();
   });
 
+  it("shows a stored model id, which nothing else on the page says", async () => {
+    renderPanel(configured({ model: { kind: "id", id: "typesafe/jev-1.13" } }));
+    expect(screen.getByText("typesafe/jev-1.13")).toBeInTheDocument();
+  });
+
+  it("describes a model that is not a model id instead of printing it", async () => {
+    // The server has already decided not to send the value — a key pasted one
+    // field off would otherwise be echoed into the page by the row that exists
+    // to help someone repair exactly that file.
+    renderPanel(configured({ model: { kind: "withheld" } }));
+    expect(screen.getByText(/not shown here, in case it is a key/i)).toBeInTheDocument();
+  });
+
   it("surfaces the loader's own reason when the file is refused, with the fix", async () => {
     renderPanel(
       view({
@@ -176,6 +191,48 @@ describe("the token field is write-only", () => {
 });
 
 describe("the form", () => {
+  it("sends no model at all, so a save cannot clear the stored one", async () => {
+    saveMock.mockResolvedValue({ ok: true, view: configured({ mode: "shadow" }) });
+    renderPanel(configured({ model: { kind: "id", id: "typesafe/jev-1.13" } }));
+    fireEvent.change(screen.getByLabelText("mode"), { target: { value: "shadow" } });
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+    await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(1));
+    // Not "sends an empty model": an empty string is what the server used to
+    // read as "clear it".
+    expect(Object.keys(saveMock.mock.calls[0][0] as object)).not.toContain("model");
+  });
+
+  it("marks the token field when the server says that is what is missing", async () => {
+    saveMock.mockResolvedValue({
+      ok: false,
+      problem: "that endpoint is not the one the stored token was given for, so it is not sent there. enter the token for it.",
+      needsToken: true,
+    });
+    renderPanel(configured());
+    fireEvent.change(screen.getByLabelText("endpoint url"), { target: { value: "https://elsewhere.example" } });
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+    await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(1));
+
+    const field = screen.getByLabelText("token") as HTMLInputElement;
+    await waitFor(() => expect(field.getAttribute("aria-invalid")).toBe("true"));
+    expect(screen.getByText(/needed for this save/i)).toBeInTheDocument();
+  });
+
+  it("says a key read from the environment stays there when the field is left blank", async () => {
+    // The state the panel used to refuse to save at all, with a message about a
+    // stored token that this config deliberately does not have.
+    renderPanel(
+      view({
+        status: "key-missing",
+        provider: "custom",
+        baseUrl: "https://mine.example",
+        problem: "no API key: set apiKey in the file, or FAILPROOFAI_JEV_API_KEY for this session",
+      }),
+    );
+    expect(screen.getByText(/read from the environment, which is not set in this shell/i)).toBeInTheDocument();
+    expect((screen.getByLabelText("endpoint url") as HTMLInputElement).value).toBe("https://mine.example");
+  });
+
   it("asks for an account id only for cloudflare, because only cloudflare needs one", async () => {
     renderPanel(view());
     expect(screen.queryByLabelText("account id")).toBeNull();

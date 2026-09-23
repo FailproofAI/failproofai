@@ -26,8 +26,14 @@
  * carries a presence flag and at most the last four characters, so the panel
  * can say "configured, ending 3f2a" and nothing more; the value itself never
  * leaves the machine's filesystem. Leaving the field empty on save KEEPS the
- * stored token — but only when the provider and endpoint are unchanged, which
- * the server decides, not this component.
+ * key where it is — the stored one, or the environment's for a config that takes
+ * it from there — which the server decides, not this component.
+ *
+ * The stored MODEL is shown the same way when it does not look like a model id,
+ * for the same reason: it is the one routing field someone can paste a key into.
+ * The panel gets a `JevModelView`, never the string, so there is nothing here to
+ * leak even by accident. It is display-only — the form does not offer the field,
+ * and a save leaves whatever is stored alone.
  *
  * Client-side validation here is a convenience only. Every rule — the URL
  * scheme, plain http being refused outside shadow mode, cloudflare's account id
@@ -37,6 +43,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   getJevSettingsAction,
+  type JevModelView,
   type JevSettingsView,
 } from "@/app/actions/get-jev-config";
 import {
@@ -68,6 +75,24 @@ function fmtWindow(ms: number): string {
 /** A rate as a whole percent. 0.0417 → "4%". */
 function fmtRate(rate: number): string {
   return `${Math.round(rate * 100)}%`;
+}
+
+/**
+ * The model row. `withheld` is the case worth having a row for at all: the file
+ * holds something in that slot that does not look like a model id, which is
+ * what a key pasted one field off looks like, so it is described and not
+ * printed — and the server never sent it here to print. The loader's own reason
+ * and its fix are already on the page above, in `view.problem`.
+ */
+function fmtModel(model: JevModelView): string {
+  switch (model.kind) {
+    case "id":
+      return model.id;
+    case "withheld":
+      return "set to something that is not a model id — not shown here, in case it is a key";
+    default:
+      return "the provider's default";
+  }
 }
 
 interface FormState {
@@ -117,6 +142,12 @@ export default function JevPanel({ initial }: { initial: JevSettingsView | null 
   const [token, setToken] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  /**
+   * The server's `needsToken`: the one refusal whose remedy is this field, so it
+   * is marked rather than leaving the person to match the message to a control.
+   * The refusals that no token can settle deliberately do not set it.
+   */
+  const [needsToken, setNeedsToken] = useState(false);
   const mounted = useRef(true);
   /**
    * Whether the user has touched the form since the last read. A focus refresh
@@ -168,22 +199,24 @@ export default function JevPanel({ initial }: { initial: JevSettingsView | null 
     setBusy(true);
     setProblem(null);
     try {
+      // The form does not offer a model, so it says nothing about one: the
+      // server keeps a stored model when the provider is unchanged, and drops it
+      // for the new provider's default when it is not — the same rule `jev setup`
+      // applies. `JevConfigInput` has no model field for this to get wrong.
       const res = await saveJevConfigAction({
         provider: form.provider,
         baseUrl: form.baseUrl,
         accountId: form.accountId,
-        // The form does not offer a model; a stored one is kept by the server
-        // when the provider is unchanged, and dropped for the new provider's
-        // default when it is not — the same rule `jev setup` applies.
-        model: "",
         mode: form.mode,
         token,
       });
       if (!res.ok) {
         setProblem(res.problem);
+        setNeedsToken(res.needsToken === true);
         return;
       }
       dirty.current = false;
+      setNeedsToken(false);
       setToken("");
       setView(res.view);
       setForm(formFrom(res.view));
@@ -198,6 +231,7 @@ export default function JevPanel({ initial }: { initial: JevSettingsView | null 
   const onRemove = useCallback(async () => {
     setBusy(true);
     setProblem(null);
+    setNeedsToken(false);
     try {
       const res = await removeJevConfigAction();
       if (!res.ok) {
@@ -218,13 +252,21 @@ export default function JevPanel({ initial }: { initial: JevSettingsView | null 
 
   const configured = view !== null && view.status !== "absent";
   const stored = view?.token;
-  const tokenHint = stored
-    ? stored.source === "env"
-      ? "configured, read from the environment — leave blank to keep it"
-      : stored.hint
-        ? `configured, ending ${stored.hint} — leave blank to keep it`
-        : "configured — leave blank to keep it"
-    : "sent as a bearer token; stored owner-only at 0600";
+  const tokenHint = needsToken
+    ? "needed for this save — type the token for this endpoint"
+    : stored
+      ? stored.source === "env"
+        ? "configured, read from the environment — leave blank to keep it"
+        : stored.hint
+          ? `configured, ending ${stored.hint} — leave blank to keep it`
+          : "configured — leave blank to keep it"
+      : // The file names the environment as the key's source and the variable is
+        // unset in this process. Leaving the field blank keeps that arrangement,
+        // which is not the same thing as "there is no key" — the endpoint and the
+        // mode are editable from here without one.
+        view?.status === "key-missing"
+        ? "read from the environment, which is not set in this shell — leave blank to keep it that way"
+        : "sent as a bearer token; stored owner-only at 0600";
 
   return (
     <div className="set-cell set-jev">
@@ -257,6 +299,10 @@ export default function JevPanel({ initial }: { initial: JevSettingsView | null 
               <dd className="set-how-body">{view.endpoint}</dd>
             </div>
           )}
+          <div className="set-how-row">
+            <dt className="set-how-label">model</dt>
+            <dd className="set-how-body">{fmtModel(view.model)}</dd>
+          </div>
           <div className="set-how-row">
             <dt className="set-how-label">token</dt>
             <dd className="set-how-body">
@@ -365,6 +411,7 @@ export default function JevPanel({ initial }: { initial: JevSettingsView | null 
             placeholder={stored ? "•••• kept" : ""}
             value={token}
             disabled={busy}
+            aria-invalid={needsToken || undefined}
             onChange={(e) => {
               dirty.current = true;
               setToken(e.target.value);

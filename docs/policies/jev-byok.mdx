@@ -197,6 +197,9 @@ Each of these falls back to the regex result for that call and is recorded with 
 | `network` | The endpoint could not be reached. |
 | `http-3xx` | The endpoint answered with a redirect. Redirects are never followed, so the answer only ever comes from the URL in your config; set `--base-url` to the final URL. |
 | `model-mismatch` | A Jev version other than 1.13 answered, or a `custom` endpoint did not say which model answered. |
+| `request-cut` | **Not an outage.** Jev answered; it was shown only part of the call, so its answer cleared nothing. See [When Jev answered, but not on the whole call](#when-jev-answered-but-not-on-the-whole-call). |
+
+`request-cut` is in this table because `failproofai jev status` totals it with the rest, and because it too leaves every deny standing. It is the one reason here that says nothing about your provider: the request arrived and Jev answered it. Unlike every row above it, that answer still counts — Jev's own deny or warning applies on top of the regex result rather than being discarded. So a run of them means calls are reaching the evaluator too big to send whole, not that your endpoint is unwell, and topping up credits or changing the URL will not move the number.
 
 ## When Jev answered, but not on the whole call
 

@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve, sep } from "node:path";
 
-let baseDir: string | null = null;
+import { shared } from "./shared.js";
 
 /**
  * Where this SDK writes its event spool.
@@ -51,6 +51,7 @@ let baseDir: string | null = null;
  * and the Python resolver and fails if any of them drifts from this.
  */
 export function getBaseDir(): string {
+  const baseDir = shared().baseDir;
   if (baseDir !== null) return baseDir;
   return failproofaiCustomAgentsDir();
 }
@@ -111,9 +112,9 @@ export function expandUser(path: string): string {
 
 export function setBaseDir(path: string | null | undefined): void {
   if (path === null || path === undefined) {
-    baseDir = null;
+    shared().baseDir = null;
     return;
   }
   const expanded = expandUser(path);
-  baseDir = isAbsolute(expanded) ? expanded : resolve(expanded);
+  shared().baseDir = isAbsolute(expanded) ? expanded : resolve(expanded);
 }

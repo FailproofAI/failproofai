@@ -18,6 +18,7 @@ import {
   toolUseEvent,
 } from "./schema.js";
 import type { EventWriter } from "./writer.js";
+import { formatMicros, nowMicros } from "./clock.js";
 
 /**
  * `sessionId` and `agentId` are named options on every method, so a caller
@@ -231,9 +232,9 @@ function resolveIdentity(
  * absent field is at least honest, and the timestamps are still on both events
  * for anyone who wants to do the subtraction themselves.
  */
-function measuredDurationMs(start: Date | undefined, end: Date): number | undefined {
+function measuredDurationMs(start: number | undefined, end: number): number | undefined {
   if (start === undefined) return undefined;
-  const ms = Math.round(end.getTime() - start.getTime());
+  const ms = Math.round((end - start) / 1000);
   if (ms < 0 || ms > U32_MAX) {
     logger.warn(
       `omitted duration_ms=${ms}: outside the unsigned 32-bit range the server stores it in ` +
@@ -399,13 +400,13 @@ type Extras = Record<string, unknown>;
 
 export class EventNamespace {
   private readonly writer: EventWriter;
-  private readonly pending = new Map<string, Date>();
+  private readonly pending = new Map<string, number>();
 
   constructor(writer: EventWriter) {
     this.writer = writer;
   }
 
-  private trackPending(key: string, ts: Date): void {
+  private trackPending(key: string, ts: number): void {
     // No lock and no tolerance for a concurrent evictor, unlike the Python SDK:
     // JavaScript runs this on one thread, so `size` / `keys().next()` / `delete`
     // cannot interleave with another emit. The cap is exact here rather than
@@ -417,7 +418,7 @@ export class EventNamespace {
     this.pending.set(key, ts);
   }
 
-  private takePending(key: string): Date | undefined {
+  private takePending(key: string): number | undefined {
     const value = this.pending.get(key);
     if (value !== undefined) this.pending.delete(key);
     return value;
@@ -460,18 +461,18 @@ export class EventNamespace {
     }
   }
 
-  private now(): Date {
-    return new Date();
+  /** Epoch microseconds, strictly increasing in the process — see `clock.ts`. */
+  private now(): number {
+    return nowMicros();
   }
 
   /**
-   * `2026-09-23T12:34:56.123000Z` — six fractional digits, matching the Python
-   * SDK's `%f` and the format the ingest endpoint parses. JavaScript clocks
-   * only resolve to milliseconds, so the last three digits are always zero;
-   * inventing sub-millisecond precision we do not have would be worse.
+   * `2026-09-23T12:34:56.123004Z` — six fractional digits, matching the Python
+   * SDK's `%f` and the format the ingest endpoint parses. The last three are an
+   * ordering sequence inside the millisecond, not a measurement (`clock.ts`).
    */
-  private fmtTs(date: Date): string {
-    return `${date.toISOString().slice(0, -1)}000Z`;
+  private fmtTs(micros: number): string {
+    return formatMicros(micros);
   }
 
   toolUse(options: ToolUseOptions): void {

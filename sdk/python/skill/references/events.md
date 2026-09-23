@@ -97,16 +97,19 @@ its original) oldest-first, and will keep bracketing the wrong pairs. **Always
 pass `duration_ms` on the `model_response` too** — that is what keeps the reported
 duration right even when the bracketing is wrong.
 
-**Correlation is a process-wide map keyed by your ids.** The SDK holds open
-starts there until their matching end arrives. Consequences, in order of how much
+**Correlation is a map keyed by session, kind and your id.** The SDK holds open
+starts there until their matching end arrives. An id only has to be unique *within
+one session, for one kind* (the second bullet). Consequences, in order of how much
 they hurt:
 
-- **Per-run counters are unsafe.** `call_1`, `call_2` — common in home-grown loops
-  — collide across overlapping runs. The failure is not the missing duration the
-  docs might lead you to expect; it is a *plausible wrong number attributed to the
-  wrong run*, which is worse. Reuse your framework's id (Anthropic and OpenAI
-  tool-call ids are globally unique), or a `uuid4`. `failproofai_sdk.tool_call()`
-  generates a `uuid4` for you.
+- **Per-run counters are unsafe inside a shared session.** `call_1`, `call_2` —
+  common in home-grown loops — are fine while every run has its own session. They
+  collide when two runs share one: a retried job that reuses its job id as the
+  session, or two agents in one session each counting from `call_1`. The failure is
+  not the missing duration the docs might lead you to expect; it is a *plausible
+  wrong number attributed to the wrong run*, which is worse. Reuse your framework's
+  id (Anthropic and OpenAI tool-call ids are globally unique), or a `uuid4`.
+  `failproofai_sdk.tool_call()` generates a `uuid4` for you.
 - **`tool_call_id` and `hook_id` no longer collide with each other.** They live in
   separate namespaces, so a `hook_completed(hook_id="x")` cannot pair with a
   pending `tool_use(tool_call_id="x")`. The key is `<kind>:<session_id>:<id>`, so

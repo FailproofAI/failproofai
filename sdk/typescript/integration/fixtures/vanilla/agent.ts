@@ -70,7 +70,8 @@ function runTool(name: string, args: { item?: string }): string {
 // The one function that calls the model. `requestId` pairs the two halves even
 // when calls overlap; `duration_ms` is yours to set — model events are not
 // timed for you. A failed call still closes its pair, with the error, before
-// rethrowing: the enclosing agent() then ends "failed".
+// rethrowing: the enclosing agent() then ends "failed". Only the provider call
+// sits in the `try`, so nothing but a failed call can reach the error path.
 
 async function callModel(messages: ChatCompletionMessageParam[]) {
   const requestId = randomUUID();
@@ -86,30 +87,34 @@ async function callModel(messages: ChatCompletionMessageParam[]) {
     })),
     tools: TOOLS.flatMap((t) => (t.type === "function" ? [{ name: t.function.name, description: t.function.description ?? "" }] : [])),
   });
+  let reply: OpenAI.Chat.Completions.ChatCompletion;
   try {
-    const reply = await client.chat.completions.create({ model: MODEL, messages, tools: TOOLS });
-    const choice = reply.choices[0]!;
-    failproofai.event.modelResponse({
-      model: reply.model,
-      requestId,
-      role: choice.message.role,
-      content: choice.message.content ?? "",
-      stopReason: choice.finish_reason,
-      inputTokens: reply.usage?.prompt_tokens ?? null,
-      outputTokens: reply.usage?.completion_tokens ?? null,
-      duration_ms: Date.now() - started,
-    });
-    return choice.message;
+    reply = await client.chat.completions.create({ model: MODEL, messages, tools: TOOLS });
   } catch (error) {
     failproofai.event.modelResponse({
       model: MODEL,
       requestId,
       stopReason: "error",
-      error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+      error: error instanceof Error ? `${error.constructor.name}: ${error.message}` : String(error),
       duration_ms: Date.now() - started,
     });
     throw error;
   }
+  const choice = reply.choices[0]!;
+  const calls = (choice.message.tool_calls ?? []).filter((c) => c.type === "function");
+  failproofai.event.modelResponse({
+    model: reply.model,
+    requestId,
+    role: choice.message.role,
+    content: choice.message.content ?? "",
+    stopReason: choice.finish_reason,
+    inputTokens: reply.usage?.prompt_tokens ?? null,
+    outputTokens: reply.usage?.completion_tokens ?? null,
+    duration_ms: Date.now() - started,
+    // What the model asked for, so a turn that is only tool calls is not blank.
+    tool_calls: calls.map((c) => ({ id: c.id, name: c.function.name })),
+  });
+  return choice.message;
 }
 
 // ---------------------------------------------------------- edit site 3 of 3
@@ -119,8 +124,10 @@ async function callModel(messages: ChatCompletionMessageParam[]) {
 // the loop turns that into a tool message so the model can recover.
 
 async function dispatch(call: { id: string; function: { name: string; arguments: string } }): Promise<string> {
-  const args = JSON.parse(call.function.arguments || "{}") as { item?: string };
   try {
+    // Parsed inside the `try`: malformed arguments from the model become a
+    // tool error the model can recover from, not a crashed run.
+    const args = JSON.parse(call.function.arguments || "{}") as { item?: string };
     return await failproofai.toolCall(call.function.name, { toolCallId: call.id, input: args }, async () =>
       runTool(call.function.name, args),
     );

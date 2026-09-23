@@ -228,6 +228,32 @@ describe("both module systems load it", () => {
     }
   });
 
+  it("applies configure() from one copy to every copy in the process", async () => {
+    // Next.js without withFailproofai bundles a copy per route beside the one
+    // instrumentation.ts configures; the dual build loads ESM and CommonJS
+    // side by side. Per-copy settings sent the route's events out as `dev`,
+    // into whatever spool that copy defaulted to.
+    const dir = mkdtempSync(join(tmpdir(), "fpai-copies-"));
+    try {
+      const child = await runNode(`
+        const esm = await import(${JSON.stringify(indexUrl())});
+        const { createRequire } = await import("node:module");
+        const cjs = createRequire(${JSON.stringify(join(root, "anchor.js"))})(${JSON.stringify(join(root, "dist/cjs/index.js"))});
+        if (esm.configure === cjs.configure) throw new Error("expected two copies");
+        esm.configure({ environment: "prod-eu", baseDir: ${JSON.stringify(dir)} });
+        cjs.event.agentStart({ sessionId: "copies" });
+        await cjs.flush();
+      `);
+      expect(child.stderr).toBe("");
+      const events = readdirSync(join(dir, "events"))
+        .flatMap((f) => readFileSync(join(dir, "events", f), "utf8").split("\n").filter(Boolean))
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
+      expect(events.map((e) => [e.session_id, e.environment])).toEqual([["copies", "prod-eu"]]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("runs an evaluator module written as CommonJS or as ESM through the bin", () => {
     // The bin is the ESM build. A CommonJS evals file gets `Evaluator` from
     // `dist/cjs` — a second copy of the class — so an `instanceof` check in the

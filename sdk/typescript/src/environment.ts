@@ -1,8 +1,8 @@
 import { logger } from "./logger.js";
+import { shared } from "./shared.js";
 
 const DEFAULT_ENVIRONMENT = "dev";
 
-let environment: string | null = null;
 
 /**
  * Set once the comma warning below has been emitted. `getEnvironment()` runs
@@ -41,6 +41,7 @@ export function rejectComma(env: string, source: string): void {
 }
 
 export function getEnvironment(): string {
+  const environment = shared().environment;
   if (environment !== null) return environment;
 
   const raw = process.env.AGENTEYE_ENVIRONMENT;
@@ -66,7 +67,7 @@ export function getEnvironment(): string {
 
 export function setEnvironment(env: string | null | undefined): void {
   if (env) rejectComma(env, "configure({ environment })");
-  environment = env ? env : null;
+  shared().environment = env ? env : null;
   // A new label means the env var may be worth complaining about again.
   warnedComma = false;
 }

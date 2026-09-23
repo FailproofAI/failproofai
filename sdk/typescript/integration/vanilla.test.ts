@@ -139,6 +139,12 @@ describe("an agent with no framework (examples/research-agent.ts)", () => {
         [50, 10],
       ]);
       expect(responses.map((e) => e.stop_reason)).toEqual(["tool_calls", "tool_calls", "stop"]);
+      // A turn that is only tool calls still says what the model asked for.
+      expect(responses.map((e) => (e.tool_calls as Array<{ id: string }>).map((c) => c.id))).toEqual([
+        ["call_1", "call_2"],
+        ["call_3"],
+        [],
+      ]);
       for (const e of responses) expect(typeof e.duration_ms).toBe("number");
 
       // The model's own tool-call ids, and the failure on its tool_result only.
@@ -168,6 +174,8 @@ describe("an agent with no framework (examples/research-agent.ts)", () => {
       const response = ofType(result.events, "model_response")[0]!;
       expect(response.stop_reason).toBe("error");
       expect(response.error).toMatch(/does not exist/);
+      // The class, not the `name` openai's errors leave as "Error".
+      expect(response.error).toMatch(/^BadRequestError: /);
       expect(ofType(result.events, "agent_end")[0]!.outcome).toBe("failed");
       expect(traceViolations(result.events), describeTrace(result)).toEqual([]);
     });

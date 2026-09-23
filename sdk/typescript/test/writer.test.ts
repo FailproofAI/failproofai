@@ -272,4 +272,57 @@ describe("process lifetime", () => {
     // was set to an hour.
     expect(spool.events().map((event) => event.session_id)).toEqual(["exit-test"]);
   });
+
+  it("closes the runs a SIGTERM abandons, so none renders as running forever", async () => {
+    // The documented shutdown recipe, killed mid-tool. It used to leave an
+    // agent_start with no agent_end and a tool_use with no tool_result, and
+    // exit 0 — every deploy stranded the runs it interrupted.
+    const child = await runNode(`
+      const fp = await import(${JSON.stringify(indexUrl())});
+      fp.configure({ baseDir: ${JSON.stringify(spool.dir)}, flushInterval: 3600 });
+      for (const signal of ["SIGINT", "SIGTERM"]) {
+        process.once(signal, () => { fp.flushSync(); process.exit(0); });
+      }
+      setInterval(() => {}, 1000); // a service's server keeps the loop alive
+      setTimeout(() => process.kill(process.pid, "SIGTERM"), 50);
+      await fp.agent("svc", { sessionId: "term-test" }, async () => {
+        await fp.agent("writer", async () => {
+          await fp.toolCall("slow", { toolCallId: "t1" }, () => new Promise(() => {}));
+        });
+      });
+    `);
+    expect(child.code).toBe(0);
+    const events = spool.events();
+    expect(events.map((e) => [e.agent_id, e.type])).toEqual([
+      ["svc", "agent_start"],
+      ["writer", "agent_start"],
+      ["writer", "tool_use"],
+      ["writer", "tool_result"],
+      ["writer", "error"],
+      ["writer", "agent_end"],
+      ["svc", "error"],
+      ["svc", "agent_end"],
+    ]);
+    const result = events.find((e) => e.type === "tool_result")!;
+    expect(result.tool_call_id).toBe("t1");
+    expect(result.error).toMatch(/^ProcessExit: the process exited \(code 0\) while tool "slow"/);
+    for (const end of events.filter((e) => e.type === "agent_end")) expect(end.outcome).toBe("failed");
+    expect(events.find((e) => e.type === "error")!.error_type).toBe("ProcessExit");
+  });
+
+  it("closes nothing on a flushSync() while the process carries on", async () => {
+    const child = await runNode(`
+      const fp = await import(${JSON.stringify(indexUrl())});
+      fp.configure({ baseDir: ${JSON.stringify(spool.dir)}, flushInterval: 3600 });
+      await fp.agent("svc", { sessionId: "flush-test" }, async () => {
+        fp.flushSync();
+        await new Promise((r) => setTimeout(r, 10));
+      });
+    `);
+    expect(child.code).toBe(0);
+    expect(spool.events().map((e) => [e.type, e.outcome ?? null])).toEqual([
+      ["agent_start", null],
+      ["agent_end", "success"],
+    ]);
+  });
 });

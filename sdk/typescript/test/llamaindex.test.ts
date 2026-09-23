@@ -599,6 +599,31 @@ describe("the workflow runtime", () => {
     expect(events.at(-1)!.outcome).toBe("success");
   });
 
+  it.each([
+    // llamaindex 0.12's prettifyError writes `Error(<name>): <message>`, and the
+    // workflow prefixes `Error: ` again — recorded verbatim, it read
+    // "Error: Error(Error): unknown region: latam".
+    ["Error: Error(Error): unknown region: latam", "Error: unknown region: latam"],
+    ["Error: Error(TypeError): bad input", "TypeError: bad input"],
+    ["Error: Error: Error(RangeError): out of range", "RangeError: out of range"],
+  ])("records %j from a failed tool as %j", async (raw, expected) => {
+    install();
+    let current: Ctx | null = null;
+    const wf = new AgentWorkflow(["Agent"], async (ctx, self) => {
+      current = ctx;
+      await ctx.step(self.executeToolCalls, ev("toolCalls", { agentName: "Agent" }));
+      ctx.send(ev("stop", { result: "ok" }));
+    });
+    wf.executeToolCalls = async () => {
+      current!.send(ev("toolCall", { toolName: "broken", toolId: "c1", toolKwargs: {} }));
+      current!.send(ev("toolResult", { toolId: "c1", toolOutput: { result: raw, isError: true } }));
+    };
+    wf.runStream("q");
+    await wf.done;
+    const events = await flushed(spool);
+    expect(events.find((e) => e.type === "tool_result")!.error).toBe(expected);
+  });
+
   it("keeps correlating under steps: false, emitting no hooks", async () => {
     install({ steps: false });
     const wf = new AgentWorkflow(["Agent"], async (ctx, self) => {

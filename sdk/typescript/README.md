@@ -121,6 +121,15 @@ output** (esbuild, webpack): the copy in `node_modules` is not the one running.
 On Next.js, `withFailproofai()` fixes that (see below); elsewhere use the
 call-site helpers — `langchainHandler()`, `telemetry()`, `wrapTool()`.
 
+**Naming the agent and owning the session id.** `agent_id` comes from the
+graph's name (`createReactAgent({ name })`, `.withConfig({ runName })`), the AI
+SDK's `functionId`, the Mastra agent's `name`, or LlamaIndex's `agent({ name })`.
+An adapter mints a session id when none is bound; to use your own request or job
+id, bind it around the call —
+`await failproofai.session({ sessionId: requestId }, () => graph.invoke(input))`.
+An `agent()` wrapper of the same name as the framework agent becomes that agent
+rather than nesting a copy of it; a differently named one is its parent.
+
 Everything an adapter records is namespaced `fw_*`, bounded per field and per
 event, and tagged with `framework` / `framework_version`. An adapter that fails
 is logged and skipped; the others still install, because a broken LlamaIndex
@@ -340,20 +349,24 @@ await failproofai.agent("inventory", { goal: question }, async () => {
 async function callModel(messages) {
   const requestId = randomUUID();
   const started = Date.now();
-  failproofai.event.modelRequest({ model: MODEL, requestId, messages });
+  failproofai.event.modelRequest({ model: MODEL, requestId,
+    messages: messages.map((m) => ({ role: m.role, content: m.content })) });
+  let reply;
   try {
-    const reply = await client.chat.completions.create({ model: MODEL, messages, tools });
-    failproofai.event.modelResponse({
-      model: reply.model, requestId, stopReason: reply.choices[0].finish_reason,
-      inputTokens: reply.usage?.prompt_tokens, outputTokens: reply.usage?.completion_tokens,
-      duration_ms: Date.now() - started,
-    });
-    return reply.choices[0].message;
+    reply = await client.chat.completions.create({ model: MODEL, messages, tools });
   } catch (error) {
     failproofai.event.modelResponse({ model: MODEL, requestId, stopReason: "error",
       error: String(error), duration_ms: Date.now() - started });
     throw error;
   }
+  const { message, finish_reason } = reply.choices[0];
+  failproofai.event.modelResponse({
+    model: reply.model, requestId, role: message.role, content: message.content ?? "",
+    stopReason: finish_reason, duration_ms: Date.now() - started,
+    inputTokens: reply.usage?.prompt_tokens, outputTokens: reply.usage?.completion_tokens,
+    tool_calls: (message.tool_calls ?? []).map((c) => ({ id: c.id, name: c.function.name })),
+  });
+  return message;
 }
 
 // 3. the tool dispatcher — reuse the model's own tool-call id
@@ -424,13 +437,19 @@ stopped Ctrl-C from working would be worse than the lost events. Two lines, at
 your own startup:
 
 ```ts
-for (const signal of ["SIGINT", "SIGTERM"] as const) {
+for (const [signal, code] of [["SIGINT", 130], ["SIGTERM", 143]] as const) {
   process.once(signal, () => {
     failproofai.flushSync();
-    process.exit(0);
+    process.exit(code);
   });
 }
 ```
+
+On the way out, whatever is still open is closed rather than stranded: an
+interrupted tool gets its `tool_result` with a `ProcessExit` error, and each open
+agent — hand-written or opened by an adapter — gets an `error` and `agent_end`
+with `outcome: "failed"`, innermost first. A deploy never leaves a run showing
+as running forever. A `flushSync()` while the process carries on closes nothing.
 
 A short-lived script or a serverless handler should `await failproofai.flush()`
 before returning: the interval alone does not guarantee delivery, and a function

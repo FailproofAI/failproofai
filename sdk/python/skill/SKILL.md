@@ -342,7 +342,7 @@ cat ~/.failproofai/custom-agents/events/*.jsonl | python -m json.tool --json-lin
 
 Then check, in this order — the first failure explains everything downstream:
 
-1. **Any files at all — or do they stop mid-run?** Look at stderr for
+1. **Any files at all — or do they stop mid-run?** (Python) Look at stderr for
    `Exception in thread failproofai-sdk-flush`. **This is the first thing to check and
    the worst thing to miss**: one non-JSON-serializable value killed the writer,
    and everything after it — including the at-exit flush — is gone (§3). The tell
@@ -365,8 +365,8 @@ Then check, in this order — the first failure explains everything downstream:
    even when identity is a module global, and mixing only appears once two runs
    overlap — which is production, not your laptop (§4).
 7. **Do `tool_use` and `tool_result` share a `tool_call_id`?** Unpaired means no
-   duration. Also confirm your ids are unique *process-wide* — a collision pairs
-   the wrong two events and reports a confident wrong duration (§3).
+   duration. Also confirm no id repeats *within a session* for the same kind — a
+   collision pairs the wrong two events and reports a confident wrong duration (§3).
 
 A test-mode loop that costs nothing:
 
@@ -411,6 +411,10 @@ Compare the two paths first: print the directory your agent is actually writing 
 (`python -c "import failproofai_sdk._resolver as r; print(r.get_base_dir())"` in the
 agent's own environment, with the agent's own env vars) and check the collector is
 running and pointed at the same one. A `.jsonl` count that only grows is the tell.
+The reverse is healthy: with `failproofaid` running, the directory empties seconds
+after each flush, because the daemon ships each file and deletes it — so an empty
+real spool proves nothing either way. Verify content with the throwaway
+`FAILPROOFAI_HOME` loop in §5, and arrival with `fp-cloud-cli`.
 
 Confirming events arrived on the *platform* is deliberately not this skill's job —
 that is the `fp-cloud-cli` skill, from a **separate environment** (§1). Collector
@@ -439,4 +443,3 @@ sessions (§2 — nothing scores a run with no `agent_end`), and bump an evaluat
 env vars, a Dockerfile, SIGTERM drain vs. the pod's grace period, scaling, and a
 debugging order for a worker that scores nothing — is in `references/evaluator.md`.
 
-<!-- ci: no-op touch to exercise the skill-sync trigger (safe to remove) -->

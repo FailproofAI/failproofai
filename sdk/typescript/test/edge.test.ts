@@ -63,6 +63,7 @@ const INTERNAL: Record<string, string[]> = {
     "isControlFlow",
     "nodeOf",
     "normalizeMessages",
+    "resetOrphanWarning",
     "promptOf",
     "readOptions",
     "summarizeDocuments",

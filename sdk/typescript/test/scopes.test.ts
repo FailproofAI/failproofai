@@ -66,6 +66,22 @@ describe("agent", () => {
     expect(events[2]!.outcome).toBe("failed");
   });
 
+  it("names the error by its class when a subclass leaves `name` as 'Error'", async () => {
+    // openai's BadRequestError (and many SDKs' errors) never set `name`, so
+    // `error.name` reads "Error" and the class was lost from the Errors surface.
+    class BadRequestError extends Error {}
+    await expect(
+      agent("planner", async () => {
+        await toolCall("t", () => {
+          throw new BadRequestError("model does not exist");
+        });
+      }),
+    ).rejects.toThrow("model does not exist");
+    const events = await flushed(spool);
+    expect(events.find((e) => e.type === "tool_result")!.error).toBe("BadRequestError: model does not exist");
+    expect(events.find((e) => e.type === "error")!.error_type).toBe("BadRequestError");
+  });
+
   it("treats an AbortError as cancellation: no error event, outcome 'cancelled'", async () => {
     const abort = new Error("stopped");
     abort.name = "AbortError";

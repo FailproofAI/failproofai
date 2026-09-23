@@ -776,6 +776,7 @@ function onStart(args: StartArgs): void {
   }
 
   const holder = state.runs.get(info.parent);
+  if (holder === undefined) warnOrphan(info);
   info.root = holder?.root ?? null;
   info.session = holder?.session ?? null;
   touch(info.root);
@@ -815,6 +816,32 @@ function onStart(args: StartArgs): void {
       ...fwCommon(info),
     });
   }
+}
+
+/**
+ * A run whose parent this adapter never saw start. The usual cause is an
+ * `instrument()` that was not awaited: the graph's root run began before the
+ * callback was installed, so its children arrive with a parent nobody knows
+ * and a node or a model call ends up as the session's agent — a wrong trace,
+ * with nothing said. Warned once per process; the trace itself cannot be
+ * repaired after the fact.
+ */
+let warnedOrphan = false;
+
+function warnOrphan(info: RunInfo): void {
+  if (warnedOrphan || info.hidden) return;
+  warnedOrphan = true;
+  logger.warn(
+    `a LangChain run (${JSON.stringify(info.name)}) started under a parent run the langchain ` +
+      "adapter never saw, so its trace is missing the root. Most often `instrument()` was not " +
+      "awaited before the run began — `await failproofai.instrument()` at startup, before the " +
+      "first invoke/stream.",
+  );
+}
+
+/** @internal Re-arm the once-per-process orphan warning, for tests. */
+export function resetOrphanWarning(): void {
+  warnedOrphan = false;
 }
 
 /**

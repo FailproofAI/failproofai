@@ -800,12 +800,16 @@ describe.each(FIXTURES)("%s: every surface", (fixture) => {
         if (major >= 7) {
           // v7 fires no telemetry callback when the consumer cancels or never
           // reads, and hands the integration no per-call object whose
-          // collection could stand in for one: the agent stays open. Bounded
-          // (MAX_OPEN_CALLS), and avoidable by passing the request's
-          // abortSignal — see stream-response-cancel-signal.
+          // collection could stand in for one: the agent stays open while the
+          // process lives. Bounded (MAX_OPEN_CALLS), and avoidable by passing
+          // the request's abortSignal — see stream-response-cancel-signal. When
+          // the process exits, the exit hook closes it as failed rather than
+          // leaving it rendered as running forever.
           expect(count(result.events, "agent_start"), describeTrace(result)).toBe(1);
-          expect(count(result.events, "agent_end"), describeTrace(result)).toBe(0);
           expect(report.after).toMatchObject({ openCalls: 1 });
+          const ends = ofType(result.events, "agent_end");
+          expect(ends.map((e) => e.outcome), describeTrace(result)).toEqual(["failed"]);
+          expect(ends[0]!.summary).toMatch(/process exited/);
           return;
         }
         // v4–v6: the SDK ends a stream's root span from a flush() that never

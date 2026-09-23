@@ -66,6 +66,26 @@ describe("RunTracker", () => {
     tracker.forget("root");
     expect(tracker.isOpen("root")).toBe(false);
   });
+
+  it("closes open agents at exit, but leaves one paused on a human for its resumer", async () => {
+    // A LangGraph interrupt or a suspended Mastra workflow is resumed by
+    // whichever process takes the answer; ending it here would end a run that
+    // is not over. Everything else a dying process holds is abandoned.
+    const tracker = new core.RunTracker("t");
+    tracker.startAgent("busy", { agentId: "busy", sessionId: "s1" });
+    tracker.startAgent("waiting", { agentId: "waiting", sessionId: "s2" });
+    tracker.emit("agentPause", "waiting", { pauseId: "p1" });
+    tracker.startAgent("resumed", { agentId: "resumed", sessionId: "s3" });
+    tracker.emit("agentPause", "resumed", { pauseId: "p2" });
+    tracker.emit("agentResume", "resumed", { pauseId: "p2" });
+    tracker.closeAtExit();
+    const ends = (await flushed(spool)).filter((e) => e.type === "agent_end");
+    expect(ends.map((e) => [e.agent_id, e.outcome])).toEqual([
+      ["resumed", "failed"],
+      ["busy", "failed"],
+    ]);
+    expect(tracker.isOpen("waiting")).toBe(true);
+  });
 });
 
 describe("langchain under load", () => {

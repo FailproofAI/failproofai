@@ -154,4 +154,40 @@ describe("timestamps", () => {
     const [emitted] = await flushed(spool);
     expect(emitted!.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/);
   });
+
+  it("orders a burst inside one millisecond: every timestamp strictly after the last", async () => {
+    // A fast agent emits model_response, tool_use, tool_result and the next
+    // model_request inside one millisecond. With the last three digits always
+    // 000 they all carried the same timestamp, and the dashboard — which sorts
+    // on it — showed tool_result before its tool_use.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date("2026-09-23T15:55:44.134Z"));
+      event().toolUse({ sessionId: "s", toolName: "t", toolCallId: "c1" });
+      event().toolResult({ sessionId: "s", toolName: "t", toolCallId: "c1" });
+      event().modelRequest({ sessionId: "s" });
+      event().agentEnd({ sessionId: "s" });
+    } finally {
+      vi.useRealTimers();
+    }
+    const stamps = (await flushed(spool)).map((e) => e.timestamp as string);
+    expect(stamps).toHaveLength(4);
+    for (const stamp of stamps) expect(stamp.startsWith("2026-09-23T15:55:44.134")).toBe(true);
+    expect([...stamps].sort()).toEqual(stamps);
+    expect(new Set(stamps).size).toBe(4);
+  });
+
+  it("re-anchors to the wall clock when it steps back, rather than freezing", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date("2026-09-23T16:00:00.000Z"));
+      event().agentStart({ sessionId: "s" });
+      vi.setSystemTime(new Date("2026-09-23T15:00:00.000Z")); // NTP stepped back an hour
+      event().agentEnd({ sessionId: "s" });
+    } finally {
+      vi.useRealTimers();
+    }
+    const [, end] = await flushed(spool);
+    expect((end!.timestamp as string).startsWith("2026-09-23T15:00:00.000")).toBe(true);
+  });
 });

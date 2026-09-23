@@ -54,8 +54,8 @@ a session is *defined* as something that emitted `agent_start`.
   one run rather than splitting it in two.
 - `parent_id` defaults to the enclosing agent from the scope stack. Pass
   `parent_id=None` to force a root span, or a string to override.
-- `tool_call_id` defaults to `uuid4().hex` — unique process-wide, which is what
-  the correlation map needs (see `events.md`).
+- `tool_call_id` defaults to `uuid4().hex` — unique everywhere, so it can never
+  collide in the correlation map (see `events.md`).
 
 ## What `agent()` does on the way out
 

@@ -1025,7 +1025,7 @@ class State {
       if (!leaf || leaf.kind !== "tool" || !leaf.rawId) continue;
       const answer = answers.get(leaf.rawId);
       if (!answer) continue;
-      this.closeLeaf(leaf, answer.isError === true ? { error: String(answer.result) } : { output: answer.result });
+      this.closeLeaf(leaf, answer.isError === true ? { error: cleanToolError(answer.result) } : { output: answer.result });
     }
   }
 
@@ -1091,7 +1091,7 @@ class State {
     if (!leaf) return;
     const result = read(payload, "toolResult");
     const failed = read(result, "isError") === true;
-    this.closeLeaf(leaf, failed ? { error: String(read(result, "output")) } : { output: read(result, "output") });
+    this.closeLeaf(leaf, failed ? { error: cleanToolError(read(result, "output")) } : { output: read(result, "output") });
   }
 
   retrieveStart(event: unknown): void {
@@ -1708,12 +1708,18 @@ function eventData(data: unknown): unknown {
 
 /**
  * `AgentWorkflow` stores a thrown tool as `Error: ${new Error(String(output))}`,
- * where `output` is already `prettifyError`'s `Error: <message>` — three nested
- * prefixes for one failure. Keep the innermost.
+ * where `output` is already `prettifyError`'s rendering — three nested
+ * prefixes for one failure. Keep the innermost, as `<name>: <message>`.
+ *
+ * `prettifyError` has two spellings: `Error: <message>` on older releases and
+ * `Error(<name>): <message>` on llamaindex 0.12, which recorded verbatim read
+ * "Error: Error(Error): unknown region: latam".
  */
 function cleanToolError(result: unknown): string {
   let text = typeof result === "string" ? result : String(result);
-  while (/^Error: \w*Error: /.test(text)) text = text.slice("Error: ".length);
+  while (/^Error: (\w*Error: |Error\(\w*\): )/.test(text)) text = text.slice("Error: ".length);
+  const named = /^Error\((\w*)\): ([\s\S]*)$/.exec(text);
+  if (named) text = `${named[1] || "Error"}: ${named[2]}`;
   return text;
 }
 

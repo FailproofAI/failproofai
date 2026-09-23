@@ -11,6 +11,7 @@ import {
 import { mkdir, open } from "node:fs/promises";
 import { join } from "node:path";
 
+import { runExitClosers } from "./exit.js";
 import { logException, logger } from "./logger.js";
 import { redactJsonLine, redactionEnabled } from "./redact.js";
 import { getBaseDir } from "./resolver.js";
@@ -910,14 +911,24 @@ export async function flushAllNow(): Promise<void> {
  */
 let exitHookInstalled = false;
 
+/**
+ * Close what the process is abandoning (`exit.ts`), THEN flush — so the
+ * `agent_end` / `tool_result` those closers emit are in the final batch rather
+ * than queued behind a flush that already ran.
+ */
+function onExit(exitCode: number): void {
+  runExitClosers(typeof exitCode === "number" ? exitCode : 0);
+  flushAllSync();
+}
+
 function ensureExitHook(): void {
   if (exitHookInstalled) return;
   exitHookInstalled = true;
-  process.on("exit", flushAllSync);
+  process.on("exit", onExit);
 }
 
 function releaseExitHook(): void {
   if (!exitHookInstalled || liveWriters.size > 0) return;
   exitHookInstalled = false;
-  process.removeListener("exit", flushAllSync);
+  process.removeListener("exit", onExit);
 }

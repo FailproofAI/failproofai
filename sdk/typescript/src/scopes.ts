@@ -28,6 +28,7 @@
 import { randomUUID } from "node:crypto";
 
 import * as context from "./context.js";
+import { ProcessExit, onProcessExit } from "./exit.js";
 import type { Identity, Store } from "./context.js";
 import { runtime } from "./runtime.js";
 
@@ -69,9 +70,57 @@ export function isCancellation(error: unknown): boolean {
 }
 
 function errorName(error: unknown): string {
-  if (error instanceof Error) return error.name || "Error";
+  if (error instanceof Error) {
+    // Several SDKs subclass Error without setting `name` — openai's
+    // `BadRequestError` reports `name === "Error"` — so the class, which is
+    // what anyone reading the Errors surface is looking for, would be lost.
+    const own = error.name || "Error";
+    const ctor = (error as { constructor?: { name?: unknown } }).constructor?.name;
+    if (own === "Error" && typeof ctor === "string" && ctor !== "" && ctor !== "Error") return ctor;
+    return own;
+  }
   return typeof error;
 }
+
+// ---------------------------------------------------------------------------
+// what is still open when the process exits
+// ---------------------------------------------------------------------------
+
+/** One open scope; `close` emits its closing event with a `ProcessExit`. */
+interface OpenScope {
+  closed: boolean;
+  close(exitCode: number): void;
+}
+
+const openScopes = new Set<OpenScope>();
+
+/**
+ * Track a scope until it settles. Returns a guard the settle path calls: it
+ * answers false when the exit closer already ended the scope, so the event is
+ * never emitted twice.
+ */
+function trackOpen(close: (exitCode: number) => void): { settle(): boolean } {
+  const entry: OpenScope = { closed: false, close };
+  openScopes.add(entry);
+  return {
+    settle(): boolean {
+      openScopes.delete(entry);
+      if (entry.closed) return false;
+      entry.closed = true;
+      return true;
+    },
+  };
+}
+
+onProcessExit((exitCode) => {
+  // Newest first: a tool inside an agent closes before the agent does.
+  for (const entry of [...openScopes].reverse()) {
+    openScopes.delete(entry);
+    if (entry.closed) continue;
+    entry.closed = true;
+    entry.close(exitCode);
+  }
+});
 
 function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -351,7 +400,18 @@ export class AgentScope {
       throw error;
     }
     this.identity = context.current();
+    this.open = trackOpen((exitCode) =>
+      emitAgentEnd(
+        this.sessionId,
+        this.agentId,
+        this.options,
+        new ProcessExit(exitCode, `agent ${JSON.stringify(this.agentId)}`),
+        true,
+      ),
+    );
   }
+
+  private readonly open: { settle(): boolean };
 
   /**
    * Record that this span failed. `using` has no exception channel to a
@@ -365,6 +425,7 @@ export class AgentScope {
     if (this.disposed) return;
     this.disposed = true;
     try {
+      if (!this.open.settle()) return;
       emitAgentEnd(
         this.sessionId,
         this.agentId,
@@ -442,10 +503,17 @@ const agentImpl = (<T>(
       parentId: parent,
       ...agentStartFields(options),
     });
+    const open = trackOpen((exitCode) =>
+      emitAgentEnd(sid, agentId, options, new ProcessExit(exitCode, `agent ${JSON.stringify(agentId)}`), true),
+    );
     return settleWith(
       () => body(context.current()),
-      () => emitAgentEnd(sid, agentId, options, undefined, false),
-      (error) => emitAgentEnd(sid, agentId, options, error, true),
+      () => {
+        if (open.settle()) emitAgentEnd(sid, agentId, options, undefined, false);
+      },
+      (error) => {
+        if (open.settle()) emitAgentEnd(sid, agentId, options, error, true);
+      },
     );
   });
 }) as AgentFn;
@@ -531,7 +599,18 @@ export class ToolCallScope {
       input: options.input,
       ...toolUseFields(options),
     });
+    this.open = trackOpen((exitCode) =>
+      runtime.event.toolResult({
+        sessionId: this.sid,
+        agentId: this.aid,
+        toolName,
+        toolCallId: this.call.id,
+        error: describe(new ProcessExit(exitCode, `tool ${JSON.stringify(toolName)}`)),
+      }),
+    );
   }
+
+  private readonly open: { settle(): boolean };
 
   fail(error: unknown): void {
     this.failure = { error };
@@ -540,6 +619,7 @@ export class ToolCallScope {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    if (!this.open.settle()) return;
     const failed = this.failure !== null && !isCancellation(this.failure.error);
     runtime.event.toolResult({
       sessionId: this.sid,
@@ -602,7 +682,18 @@ const toolCallImpl = (<T>(
     ...toolUseFields(options),
   });
 
+  const open = trackOpen((exitCode) =>
+    runtime.event.toolResult({
+      sessionId: sid,
+      agentId: aid,
+      toolName,
+      toolCallId: call.id,
+      error: describe(new ProcessExit(exitCode, `tool ${JSON.stringify(toolName)}`)),
+    }),
+  );
+
   const finish = (output: unknown, error: unknown, failed: boolean): void => {
+    if (!open.settle()) return;
     runtime.event.toolResult({
       sessionId: sid,
       agentId: aid,

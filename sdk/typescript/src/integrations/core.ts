@@ -26,6 +26,7 @@ import { randomUUID } from "node:crypto";
 
 import { DEFAULT_AGENT_ID, current as currentIdentity } from "../context.js";
 import type { Identity } from "../context.js";
+import { onProcessExit } from "../exit.js";
 import { logException, logger } from "../logger.js";
 import { runtime } from "../runtime.js";
 import { DECLARED_FIELD_NAMES } from "../schema.js";
@@ -858,6 +859,11 @@ export function ms(deltaMs: number): number {
 interface Run {
   identity: Identity;
   parentKey: unknown;
+  /**
+   * The run joined an enclosing `agent()` scope of the same name instead of
+   * opening its own agent, so it emits neither `agent_start` nor `agent_end`.
+   */
+  joined?: boolean;
 }
 
 export type EventMethod =
@@ -902,6 +908,13 @@ export class RunTracker {
   private readonly budget: number;
   private readonly runs = new Map<unknown, Run>();
   private readonly links = new Map<unknown, unknown>();
+  /**
+   * Open pauses per agent key. A run paused on a human (a LangGraph interrupt,
+   * a suspended Mastra workflow) is deliberately left open: another process
+   * may take the answer and resume it from the checkpoint. Closing it at this
+   * process's exit would end a run that is not over.
+   */
+  private readonly pauses = new Map<unknown, number>();
   private warned = false;
 
   constructor(
@@ -921,6 +934,18 @@ export class RunTracker {
     // changed only half the event.
     this.fieldLimit = options.fieldLimit ?? FIELD_LIMIT;
     this.budget = this.fieldLimit * FIELDS_PER_EVENT;
+    // A framework run still open when the process exits (a deploy's SIGTERM
+    // mid-graph) would otherwise render as running forever. Held weakly, so a
+    // tracker an adapter drops is not kept alive by this registration.
+    const self = new WeakRef(this);
+    const unregister = onProcessExit(() => {
+      const tracker = self.deref();
+      if (tracker === undefined) {
+        unregister();
+        return;
+      }
+      tracker.closeAtExit();
+    });
   }
 
   // -- identity ---------------------------------------------------------
@@ -1055,6 +1080,25 @@ export class RunTracker {
     const parent = this.resolveParent(parentKey);
     const sid = sessionId ?? parent?.sessionId ?? randomUUID().replace(/-/g, "");
     const aid = normalizeAgentId(agentId);
+    // `await agent("support", () => graph.invoke(...))` around a graph also
+    // named "support" is the user saying "this run IS my agent", not "my agent
+    // contains an agent of the same name". Opening a second one gave every run
+    // two agent_start/agent_end pairs and an agent listed as its own parent.
+    // So a framework root that lands directly inside a hand-written scope of
+    // the same name, in the same session, joins it. Differently named, it
+    // still nests — that is a real tree.
+    if (
+      parent !== null &&
+      parent.agentId === aid &&
+      parent.sessionId === sid &&
+      this.walk(parentKey) === null
+    ) {
+      this.runs.delete(key);
+      this.evict(this.runs);
+      this.runs.set(key, { identity: parent, parentKey, joined: true });
+      this.link(key, parentKey);
+      return parent;
+    }
     const identity: Identity = {
       sessionId: sid,
       agentId: aid,
@@ -1086,9 +1130,13 @@ export class RunTracker {
     const { outcome = "success", summary, ...fields } = options;
     const run = this.runs.get(key);
     this.runs.delete(key);
+    this.pauses.delete(key);
     const identity = run?.identity ?? this.identity(key);
     this.links.delete(key);
     if (identity === null) return;
+    // A joined run's agent belongs to the enclosing scope, which ends it — and
+    // records the failure, if the error propagates out of the framework call.
+    if (run?.joined === true) return;
     this.emitWith("agentEnd", identity, {
       outcome,
       summary: summary === undefined ? undefined : truncate(summary, this.fieldLimit),
@@ -1116,6 +1164,7 @@ export class RunTracker {
   forget(key: unknown): void {
     this.runs.delete(key);
     this.links.delete(key);
+    this.pauses.delete(key);
   }
 
   /** @internal Table sizes, for the tests that prove nothing is retained. */
@@ -1133,9 +1182,21 @@ export class RunTracker {
     for (const key of this.openAgents().reverse()) this.endAgent(key, { outcome });
   }
 
+  /**
+   * The process is exiting: end every open agent as `failed`, newest first —
+   * except one paused on a human, which is waiting, not abandoned (`pauses`).
+   */
+  closeAtExit(): void {
+    for (const key of this.openAgents().reverse()) {
+      if ((this.pauses.get(key) ?? 0) > 0) continue;
+      this.endAgent(key, { outcome: "failed", summary: "the process exited while this run was open" });
+    }
+  }
+
   reset(): void {
     this.runs.clear();
     this.links.clear();
+    this.pauses.clear();
     this.warned = false;
   }
 
@@ -1154,6 +1215,12 @@ export class RunTracker {
   ): void {
     const { parentKey, ...rest } = fields;
     if (parentKey !== undefined && parentKey !== null) this.link(key, parentKey);
+    if (method === "agentPause") this.pauses.set(key, (this.pauses.get(key) ?? 0) + 1);
+    if (method === "agentResume") {
+      const open = (this.pauses.get(key) ?? 0) - 1;
+      if (open > 0) this.pauses.set(key, open);
+      else this.pauses.delete(key);
+    }
     const identity = this.identity(key, parentKey);
     // A closing event ends the run it is keyed on, so its link is done with.
     // Its children closed before it, and anything later that still names it

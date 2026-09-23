@@ -12,6 +12,7 @@ import {
   nodeOf,
   promptOf,
   readOptions,
+  resetOrphanWarning,
   usageOf,
 } from "../src/integrations/langchain.js";
 import { setLogger } from "../src/logger.js";
@@ -831,6 +832,27 @@ describe("session resolution", () => {
     const graphStart = ofType(list, "agent_start").find((e) => e.agent_id === "weather_graph")!;
     expect(graphStart.parent_id).toBe("planner");
   });
+
+  it("a graph wrapped in an agent() of its own name joins it instead of nesting a copy", async () => {
+    // The wrap every tester reached for — to own the session id and print it.
+    // It used to give each run two agent_start/agent_end pairs, the graph's
+    // listing the wrapper (itself) as its parent.
+    await session({ sessionId: "req-2" }, () =>
+      agent("weather_graph", () => {
+        weatherGraph({ meta: { thread_id: "th" } });
+      }),
+    );
+    const list = await events();
+    expect(ofType(list, "agent_start").map((e) => [e.agent_id, e.parent_id ?? null])).toEqual([
+      ["weather_graph", null],
+    ]);
+    expect(ofType(list, "agent_end")).toHaveLength(1);
+    expect(list[0]!.type).toBe("agent_start");
+    expect(list.at(-1)!.type).toBe("agent_end");
+    // Everything the graph recorded is still there, on the one agent.
+    expect(ofType(list, "tool_use").length).toBeGreaterThan(0);
+    expect(new Set(list.map((e) => e.agent_id))).toEqual(new Set(["weather_graph"]));
+  });
 });
 
 // -- options and teardown ---------------------------------------------------
@@ -858,6 +880,31 @@ describe("options", () => {
     const output = ofType(await events(), "tool_result")[0]!.output as string;
     expect(output.length).toBeLessThanOrEqual(20);
     expect(output.endsWith(core.TRUNCATION_MARKER)).toBe(true);
+  });
+
+  it("says so, once, when a run's parent was never seen — the unawaited-instrument() trace", () => {
+    // `void instrument()` then `graph.invoke()`: the root starts before the
+    // callback exists, so its nodes arrive under a parent nobody saw and one
+    // of them became the session's agent with nothing said.
+    resetOrphanWarning();
+    const warn = vi.fn();
+    setLogger({ debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() });
+    node("n1", "never-seen-root", "bump", 1);
+    node("n2", "never-seen-root", "bump", 2);
+    const orphan = warn.mock.calls.map((c) => String(c[0])).filter((m) => m.includes("never saw"));
+    expect(orphan).toHaveLength(1);
+    expect(orphan[0]).toContain("await failproofai.instrument()");
+  });
+
+  it("does not warn about orphans on an ordinary graph run", () => {
+    resetOrphanWarning();
+    const warn = vi.fn();
+    setLogger({ debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() });
+    root("r", "support");
+    node("n1", "r", "agent", 1);
+    end("n1");
+    end("r");
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes("never saw"))).toEqual([]);
   });
 
   it("an unusable captureLimit falls back rather than throwing", () => {

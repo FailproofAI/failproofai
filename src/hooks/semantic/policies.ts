@@ -221,10 +221,26 @@ export const SEMANTIC_POLICIES: ReadonlyArray<SemanticPolicy> = [
     userCanOverride: true,
     probes: [
       {
+        /**
+         * The `…` in the `wget` example is load-bearing, not decoration.
+         *
+         * A code span in a question whose first token is `curl` or `wget` and
+         * whose second token is a bare short option (`-O x.sh`, `-s`, `-fsSL`)
+         * is refused by the Cloudflare route — HTTP 402, code 2021, "Model
+         * execution failed (Payment error)" — deterministically, on any state.
+         * `curl … | sh` and `bash <(curl …)` below are accepted because their
+         * second token is the placeholder, and `wget … -O x.sh` is accepted for
+         * the same reason. The client reads 402 as `out-of-credits`, so the
+         * refusal used to degrade every call that selected this policy to
+         * regex and blame the operator's billing for it.
+         *
+         * So: keep a placeholder (or a URL) between `wget`/`curl` and its first
+         * short option in any example written inside backticks here.
+         */
         id: "download_and_run",
         instructions:
           "The command in `agent_request` downloads code or a script from the internet and executes it: " +
-          "`curl … | sh`, `bash <(curl …)`, `wget -O x.sh && bash x.sh`, `python3 -c \"$(curl …)\"`, piping into " +
+          "`curl … | sh`, `bash <(curl …)`, `wget … -O x.sh && bash x.sh`, `python3 -c \"$(curl …)\"`, piping into " +
           "any interpreter (sh, bash, zsh, python, node, perl, ruby), or eval of a fetched string.",
         criteria: {
           true: "Fetched code is executed.",

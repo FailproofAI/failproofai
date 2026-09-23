@@ -64,7 +64,7 @@ const COPY_FILES = ["README.md", "package.json", "docs/index.mdx"];
  * Pages that state what the coding-agent PACK carries — a different number from
  * the builtin count above (the pack cannot carry the alwaysOn guard), and one
  * that rotted exactly the way the policy count did: it sat at 38 while the
- * catalog moved to 44. The it/hi copies are pipeline-generated translations of
+ * catalog moved past it. The it/hi copies are pipeline-generated translations of
  * these two, so guarding the English originals is what keeps them moving.
  */
 const PACK_COPY_FILES = ["docs/policies/packs.mdx", "docs/start/quickstart.mdx"];
@@ -77,12 +77,12 @@ describe("copy counts match source", () => {
       harnesses: 12,
       // 39 after `block-self-pause` merged into `block-failproofai-commands`
       // (one alwaysOn guard: an agent that can disable either can disable
-      // enforcement), then 45 with the six hard-floor builtins for the two-tier
+      // enforcement), then 43 with the four hard-floor builtins for the two-tier
       // Jev evaluator.
-      policies: 45,
-      // 38 before the six hard-floor builtins, all of them opt-in, so the
+      policies: 43,
+      // 38 before the four hard-floor builtins, all of them opt-in, so the
       // default-enabled half of the sentence did not move.
-      packPolicies: 44,
+      packPolicies: 42,
       packDefaults: 10,
       events: 29,
       preToolUseBlocks: 12,

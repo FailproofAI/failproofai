@@ -21,8 +21,6 @@ import {
   blockDiskDestruction,
   blockGhDestructive,
   blockIndirectExec,
-  blockMassKill,
-  blockNoVerify,
 } from "./floor-policies";
 
 /**
@@ -3086,7 +3084,7 @@ function requireCiGreenBeforeStop(ctx: PolicyContext): PolicyResult {
  * Each value is the identical hoisted function object, never a wrapper. Two
  * things depend on that and neither fails loudly: `audit/cache.ts` hashes
  * `fn.toString()` into the audit cache's `engineVersion`, so wrapping every
- * entry would collapse 45 distinct hashes into one and freeze the key — stale
+ * entry would collapse 43 distinct hashes into one and freeze the key — stale
  * audit results would then be served for the full 30-day TTL with no symptom;
  * and `gitBranchCache` is module-scoped, so a per-call factory would silently
  * reset it on every hook event.
@@ -3134,8 +3132,6 @@ const POLICY_IMPLEMENTATIONS: Record<string, PolicyFunction> = {
   // The hard floor — implemented in floor-policies.ts on top of shell-analysis.ts.
   "block-disk-destruction": blockDiskDestruction,
   "block-gh-destructive": blockGhDestructive,
-  "block-mass-kill": blockMassKill,
-  "block-no-verify": blockNoVerify,
   "block-indirect-exec": blockIndirectExec,
   "block-chmod-777": blockChmod777,
 };

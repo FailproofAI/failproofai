@@ -1,27 +1,21 @@
 // @vitest-environment node
 /**
- * `failproofai audit` and the six hard-floor builtins.
+ * `failproofai audit` and the four hard-floor builtins.
  *
  * The audit replays EVERY builtin, enabled or not, so adding the floor changes
- * what an audit reports and scores for every user — the six are
+ * what an audit reports and scores for every user — the four are
  * `defaultEnabled: false` and Jev can be off, and they still show up. That is
  * the audit's design (it shows what could be caught, and the projected score
  * credits enabling them), and it applies to the floor like every other opt-in
- * builtin. What it must not do is charge one event twice: `git commit
- * --no-verify` is already the `git-commit-no-verify` detector's hit, so the
- * block-no-verify deny on that same event is dropped. These tests pin both.
+ * builtin. These tests pin that, and pin the floor's absence from the persona
+ * signal map.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runAudit } from "../../src/audit";
-import {
-  DETECTOR_COVERED_POLICIES,
-  resetReplay,
-  withoutDetectorDuplicates,
-  type ReplayHit,
-} from "../../src/audit/replay";
+import { resetReplay } from "../../src/audit/replay";
 import { SIGNAL_MAP } from "../../src/audit/features";
 import { deriveScore } from "../../src/audit/scoring";
 import type { AuditResult } from "../../src/audit/types";
@@ -48,39 +42,12 @@ function transcript(cwd: string, sessionId: string, commands: string[]): string 
   return lines.map((l) => JSON.stringify(l)).join("\n");
 }
 
-const hit = (policyName: string): ReplayHit => ({ policyName, decision: "deny", reason: "x", eventType: "PreToolUse" });
-
-describe("withoutDetectorDuplicates", () => {
-  it("drops block-no-verify on an event the git-commit-no-verify detector counted", () => {
-    const hits = [hit("failproofai/block-no-verify"), hit("failproofai/block-chmod-777")];
-    expect(withoutDetectorDuplicates(hits, new Set(["git-commit-no-verify"])).map((h) => h.policyName))
-      .toEqual(["failproofai/block-chmod-777"]);
-  });
-
-  it("keeps it when the detector did not fire (git push --no-verify, HUSKY=0 …)", () => {
-    const hits = [hit("failproofai/block-no-verify")];
-    expect(withoutDetectorDuplicates(hits, new Set())).toEqual(hits);
-    expect(withoutDetectorDuplicates(hits, new Set(["reread-after-edit"]))).toEqual(hits);
-  });
-
-  it("reads the flat policy name too", () => {
-    expect(withoutDetectorDuplicates([hit("block-no-verify")], new Set(["git-commit-no-verify"]))).toEqual([]);
-  });
-
-  it("covers only block-no-verify", () => {
-    expect([...DETECTOR_COVERED_POLICIES]).toEqual([["failproofai/block-no-verify", "git-commit-no-verify"]]);
-  });
-});
-
 describe("the floor stays out of the persona signal map", () => {
   // features.ts documents the omission in a comment; this is what enforces it.
-  // Mapping block-no-verify would charge the persona for the same event the
-  // git-commit-no-verify detector already weighs — the double count the replay
-  // dedupe above exists to prevent — and mapping any of the six moves the lift
-  // baselines. A calibration that wants them has to revisit both.
+  // Mapping any of the four moves the lift baselines, so a calibration that
+  // wants them has to revisit those too.
   it.each([
-    "block-disk-destruction", "block-gh-destructive", "block-mass-kill",
-    "block-no-verify", "block-indirect-exec", "block-chmod-777",
+    "block-disk-destruction", "block-gh-destructive", "block-indirect-exec", "block-chmod-777",
   ])("%s carries no archetype signal", (name) => {
     expect(SIGNAL_MAP[name]).toBeUndefined();
   });
@@ -103,10 +70,13 @@ describe("runAudit() over a transcript with floor-policy commands", () => {
     mkdirSync(projectDir, { recursive: true });
     const sessionId = "22222222-3333-4444-5555-666666666666";
     writeFileSync(join(projectDir, `${sessionId}.jsonl`), transcript(cwd, sessionId, [
-      ...Array(5).fill("git commit --no-verify -m wip"),
-      "git push --no-verify origin feature",
       "chmod 777 deploy.sh",
-      "pkill -f node",
+      "wipefs -a /dev/sdb",
+      // Not `gh release delete`: that one is the pre-existing block-gh-pipeline's
+      // hit, since the floor is appended AFTER every existing policy and the
+      // replay attributes an event to the first policy that denies it.
+      "gh api -iX DELETE repos/o/r/releases/1",
+      "R=/bin/rm; $R -rf /tmp/x",
       ...Array(20).fill("ls"),
     ]));
     resetReplay();
@@ -121,29 +91,16 @@ describe("runAudit() over a transcript with floor-policy commands", () => {
 
   const row = (suffix: string) => result.results.find((r) => r.name === suffix || r.name.endsWith(`/${suffix}`));
 
-  it("counts each --no-verify commit once, under the detector", () => {
-    expect(row("git-commit-no-verify")?.hits).toBe(5);
-    // Only the push: the five commits are the detector's.
-    expect(row("block-no-verify")?.hits).toBe(1);
-    expect(row("block-no-verify")?.severity).toBe("deny");
+  it("reports every floor hit as an opt-in builtin", () => {
+    for (const name of ["block-chmod-777", "block-disk-destruction", "block-gh-destructive", "block-indirect-exec"]) {
+      expect(row(name)).toMatchObject({ hits: 1, severity: "deny", source: "builtin" });
+    }
   });
 
-  it("reports the other floor hits as opt-in builtins", () => {
-    expect(row("block-chmod-777")).toMatchObject({ hits: 1, severity: "deny", source: "builtin" });
-    expect(row("block-mass-kill")).toMatchObject({ hits: 1, severity: "deny", source: "builtin" });
-    expect(row("block-disk-destruction")).toBeUndefined();
-  });
-
-  it("pins the score, and shows the double count would have cost more", () => {
-    const score = deriveScore(result);
-    expect(score).toBe(SCORE);
-    const doubled: AuditResult = {
-      ...result,
-      results: result.results.map((r) => (r.name.endsWith("/block-no-verify") ? { ...r, hits: r.hits + 5 } : r)),
-    };
-    expect(deriveScore(doubled)).toBeLessThan(score);
+  it("pins the score of the fixture", () => {
+    expect(deriveScore(result)).toBe(SCORE);
   });
 });
 
 /** The audit score of the fixture above. Moves only when scoring or a builtin's verdict on it does. */
-const SCORE = 44;
+const SCORE = 60;

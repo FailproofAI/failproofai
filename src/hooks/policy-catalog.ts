@@ -543,7 +543,7 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
 
   // ── The hard floor ───────────────────────────────────────────────────────
   // Deterministic guards for the commands the Jev semantic evaluator is measured
-  // to miss: unusual disk tools, gh deletions, mass kills, hook bypasses, and
+  // to miss: unusual disk tools, gh deletions, world-writable modes, and
   // destruction hidden behind a variable. `authority: "hard"` — Jev can never
   // clear their deny. Appended, not slotted beside their category neighbours, so
   // every existing policy keeps its first-deny attribution; each still lists
@@ -566,26 +566,6 @@ export const POLICY_CATALOG: PolicyCatalogEntry[] = [
     match: { events: ["PreToolUse"], toolNames: ["Bash"] },
     defaultEnabled: false,
     category: "Infra Commands",
-    authority: "hard",
-  },
-  {
-    name: "block-mass-kill",
-    displayTitle: "Tried to kill processes en masse",
-    impact: "`killall node` or `kill -9 -1` takes down editors, other sessions and the agent's own harness.",
-    description: "Block killing processes en masse (killall/pkill of interpreters, shells, or a pattern written with regex syntax; kill -1; and any kill that does not name the PIDs it kills in a command that also lists processes broadly with ps/pgrep/top//proc — what the command does in between is not read)",
-    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    defaultEnabled: false,
-    category: "Dangerous Commands",
-    authority: "hard",
-  },
-  {
-    name: "block-no-verify",
-    displayTitle: "Tried to skip git hooks (--no-verify)",
-    impact: "Skipping hooks lands commits that never ran the checks your repo requires.",
-    description: "Block bypassing git hooks (git commit/push --no-verify, git commit -n, HUSKY=0, any core.hooksPath a commit or push brings with it whatever its value) and any commit or push whose alias or git config the command does not state in full",
-    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
-    defaultEnabled: false,
-    category: "Git",
     authority: "hard",
   },
   {

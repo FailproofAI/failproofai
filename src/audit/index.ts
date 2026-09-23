@@ -17,7 +17,7 @@ import { ADAPTERS } from "./cli-adapters";
 import { AUDIT_DETECTORS } from "./detectors";
 import { severityForBuiltin } from "./features";
 import { readCachedTranscript, writeCachedTranscriptResult } from "./cache";
-import { initReplay, replayEvent, restoreReplay, withoutDetectorDuplicates } from "./replay";
+import { initReplay, replayEvent, restoreReplay } from "./replay";
 import {
   AUDIT_EXAMPLE_MAX_CHARS,
   AUDIT_MAX_EXAMPLES_PER_NAME,
@@ -184,11 +184,9 @@ async function scanOneTranscript(
 
   for (const event of events) {
     // Run audit detectors first (stateful, must see every event).
-    const detectorsFired = new Set<string>();
     for (const detector of AUDIT_DETECTORS) {
       const hit = detector.detect(event, sessionState);
       if (!hit) continue;
-      detectorsFired.add(detector.name);
       recordHit(
         result,
         detector.name,
@@ -204,8 +202,7 @@ async function scanOneTranscript(
     } catch {
       continue;
     }
-    // A builtin hit a detector already counted on this event is not counted twice.
-    for (const hit of withoutDetectorDuplicates(replayHits, detectorsFired)) {
+    for (const hit of replayHits) {
       const example = formatPolicyExample(hit.policyName, event);
       recordHit(
         result,

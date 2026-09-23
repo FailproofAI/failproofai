@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * The six hard-floor builtins through the PACK lane.
+ * The four hard-floor builtins through the PACK lane.
  *
  * builtin-pack-conformance.test.ts compares every builtin's verdict between the
  * pack and the compiled build, but none of its corpus commands makes a floor
@@ -24,8 +24,6 @@ const REPO = resolve(__dirname, "../..");
 const CASES: Record<string, { deny: string; allow: string }> = {
   "block-disk-destruction": { deny: "sudo dd if=/dev/zero of=/dev/sda bs=1M", allow: "dd if=/dev/zero of=disk.img" },
   "block-gh-destructive": { deny: "gh api -iX DELETE repos/o/r/releases/1", allow: "gh release view v1" },
-  "block-mass-kill": { deny: "pgrep -f node | xargs kill -9", allow: "pkill -f 'node server.js'" },
-  "block-no-verify": { deny: "git commit -nm wip", allow: "git commit -m 'no --no-verify here'" },
   "block-indirect-exec": { deny: "R=/bin/rm; $R -rf /tmp/x", allow: "$PYTHON -m pytest" },
   "block-chmod-777": { deny: "chmod -R 1777 /srv/app", allow: "chmod 755 run.sh" },
 };

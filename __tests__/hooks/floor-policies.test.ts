@@ -1,12 +1,12 @@
 // @vitest-environment node
 /**
- * The six hard-floor builtins (src/hooks/floor-policies.ts): deterministic
+ * The four hard-floor builtins (src/hooks/floor-policies.ts): deterministic
  * guards for the commands the Jev semantic evaluator is measured to miss.
  *
  * Each table pairs positives with NEAR MISSES — the same words in a position
  * that does not run them (a commit message, a grep pattern, a quoted heredoc),
  * or the harmless form of the same tool (`dd` into a file, `chmod 755`,
- * `pkill -f 'node server.js'`). The near misses are what keep a hard policy,
+ * `gh release view`). The near misses are what keep a hard policy,
  * which no reviewer can clear, from blocking real work. Several come straight
  * from the false-positive sweep over real transcripts.
  */
@@ -20,8 +20,6 @@ import { worldWritableMode } from "../../src/hooks/floor-policies";
 const FLOOR = [
   "block-disk-destruction",
   "block-gh-destructive",
-  "block-mass-kill",
-  "block-no-verify",
   "block-indirect-exec",
   "block-chmod-777",
 ] as const;
@@ -227,135 +225,6 @@ describe("block-gh-destructive", () => {
     "git commit -m 'gh repo delete is blocked now'",
   ])("allows %s", async (command) => {
     expect(await decide("block-gh-destructive", command)).toBe("allow");
-  });
-});
-
-describe("block-mass-kill", () => {
-  it.each([
-    "killall node",
-    "killall -9 python3",
-    "killall -u chetan",
-    "killall",
-    "killall -r '.*'",
-    "killall5 -9",
-    "pkill -f node",
-    "pkill python3",
-    "pkill -9 -f 'python.*'",
-    "pkill -f /usr/bin/node",
-    "pkill sh",
-    "pkill -u $USER",
-    "pkill -v myapp",
-    "pkill -f 'node|python'",
-    "pkill -f 'node .*'",
-    "sudo pkill -KILL chrome",
-    "kill -9 -1",
-    "kill -- -1",
-    "kill -s KILL -1",
-    "kill $(pgrep -f node)",
-    "kill -9 `pidof python3`",
-    "pgrep node | xargs kill",
-    "pgrep -f python | xargs -r kill -9",
-    "ps aux | grep node | grep -v grep | awk '{print $2}' | xargs kill -9",
-    "PIDS=$(pgrep -f node); kill $PIDS",
-    "for p in $(pgrep node); do kill -9 $p; done",
-    "taskkill /F /IM node.exe",
-    "taskkill /F /FI \"IMAGENAME eq python.exe\"",
-    "Stop-Process -Name node -Force",
-    "Get-Process node | Stop-Process",
-    // ROUND 6 REVERSAL: what the loop does with each PID is no longer read, so
-    // a kill fed by `pgrep bash`/`pgrep -f python` is denied however carefully
-    // the body checks each process. Both rows come from the real-transcript
-    // sweep and were pinned as allows; `pgrep -f grade-loop | xargs kill` and
-    // `pgrep -f worker.py | xargs kill` are the spellings that still run.
-    "for p in $(pgrep bash); do cl=$(tr '\\0' ' ' < /proc/$p/cmdline); case \"$cl\" in *grade-loop*) kill $p;; esac; done",
-    "for p in $(pgrep -f python); do [ \"$p\" = \"$$\" ] && continue; grep -q worker.py /proc/$p/cmdline && kill $p; done",
-  ])("denies %s", async (command) => {
-    expect(await decide("block-mass-kill", command)).toBe("deny");
-  });
-
-  it.each([
-    "kill -9 12345",
-    "kill -1 12345",
-    "kill %1",
-    "kill -l",
-    "kill $(cat server.pid)",
-    "lsof -ti:3000 | xargs kill -9",
-    "lsof -ti:9100 | xargs -r kill -9; echo 'freed 9100'",
-    "pkill -f 'node server.js'",
-    "pkill -f vite",
-    "pkill -x vite",
-    "pkill -f 'next dev'",
-    "pkill -f 'python3 -m http.server 8000'",
-    "pgrep -f 'next dev' | xargs kill",
-    "killall vite",
-    "killall -l",
-    "ps aux | grep python",
-    "pgrep -c -f node",
-    // From the real-transcript sweep: explicit PIDs, and an unrelated pgrep.
-    "kill 312554 312556 2>/dev/null; sleep 60; pgrep -f raw_claude >/dev/null; pgrep -c -f linux-x64/rg",
-    // The careful loop, written so the LISTER names what it wants: this is the
-    // spelling that survives the round-6 rule below.
-    "for p in $(pgrep -f grade-loop); do kill $p; done",
-    "echo 'never run killall node'",
-    "git commit -m 'stop using pkill -f node'",
-  ])("allows %s", async (command) => {
-    expect(await decide("block-mass-kill", command)).toBe("allow");
-  });
-});
-
-describe("block-no-verify", () => {
-  it.each([
-    "git commit --no-verify -m 'x'",
-    "git commit -m x --no-verify",
-    "git commit --no-verif -m x",
-    "git commit -n -m x",
-    "git commit -nm 'x'",
-    "git commit -anm 'x'",
-    "git commit -am 'fix' -n",
-    "git push --no-verify origin feat",
-    "git push origin feat --no-verify",
-    "git merge --no-verify feature",
-    "git rebase --no-verify main",
-    "git -C repo commit --no-verify -m x",
-    "cd repo && git commit --no-verify",
-    "git -c core.hooksPath=/dev/null commit -m x",
-    "git -c core.hooksPath=/dev/null push origin HEAD",
-    "HUSKY=0 git commit -m x",
-    "HUSKY_SKIP_HOOKS=1 git push",
-    "LEFTHOOK=0 git commit -m x",
-    "SKIP=eslint git commit -m x",
-    "export HUSKY=0 && git commit -m x",
-    "env HUSKY=0 git commit -m x",
-    "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m x",
-    "git config core.hooksPath /dev/null",
-    "bash -c 'git commit -n -m wip'",
-    "git -c alias.ci='commit --no-verify' ci -m x",
-    "git -c alias.x='!git commit -n' x -m y",
-  ])("denies %s", async (command) => {
-    expect(await decide("block-no-verify", command)).toBe("deny");
-  });
-
-  it.each([
-    "git commit -m 'do not use --no-verify'",
-    "git commit -m --no-verify",
-    "git commit -mn",
-    "git commit -m x -- -n",
-    "git commit -F msg.txt",
-    "git commit --verify -m x",
-    "git push -n origin feat",
-    "git push --dry-run origin feat",
-    "git log --oneline -5",
-    "git log --grep=no-verify",
-    "git config core.hooksPath .husky",
-    "HUSKY=0 npm ci && git commit -m x",
-    "HUSKY=1 git commit -m x",
-    "git -c alias.l='log -n 5' l",
-    "git -c alias.ci=commit ci -m x",
-    "git commit -m \"$(cat <<'EOF'\nDon't skip hooks with --no-verify.\nEOF\n)\"",
-    "echo git commit --no-verify",
-    "grep -rn -- '--no-verify' docs/",
-  ])("allows %s", async (command) => {
-    expect(await decide("block-no-verify", command)).toBe("allow");
   });
 });
 

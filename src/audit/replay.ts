@@ -34,31 +34,6 @@ const SKIP_POLICIES = new Set(
   ["warn-repeated-tool-calls"].map((n) => normalizePolicyName(n)),
 );
 
-/**
- * Builtins whose hit on an event an audit-only detector has already counted.
- *
- * The audit replays every builtin, enabled or not, and scores every row. When
- * a detector and a builtin see the same thing on the same event, the score
- * would pay for it twice — once as a detector hit, once as a deny.
- * `git commit --no-verify` is the whole job of the `git-commit-no-verify`
- * detector and one of block-no-verify's. The detector keeps it (it predates
- * the builtin and feeds the cowboy persona); block-no-verify still counts
- * everything the detector does not see: `git push --no-verify`, `HUSKY=0`,
- * `core.hooksPath=/dev/null`, `git commit -nm`.
- */
-export const DETECTOR_COVERED_POLICIES: ReadonlyMap<string, string> = new Map([
-  [normalizePolicyName("block-no-verify"), "git-commit-no-verify"],
-]);
-
-/** The replay hits a detector did not already count on the same event. */
-export function withoutDetectorDuplicates(hits: ReplayHit[], detectorsFired: ReadonlySet<string>): ReplayHit[] {
-  if (detectorsFired.size === 0) return hits;
-  return hits.filter((h) => {
-    const detector = DETECTOR_COVERED_POLICIES.get(normalizePolicyName(h.policyName));
-    return !(detector !== undefined && detectorsFired.has(detector));
-  });
-}
-
 let initialized = false;
 /** Snapshot of the registry taken at `initReplay()`. Restored by
  *  `restoreReplay()` so embedding `runAudit()` in a long-running process

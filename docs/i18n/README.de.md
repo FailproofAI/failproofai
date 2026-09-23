@@ -21,7 +21,7 @@
 **Übersetzungen:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
 **Observability und Durchsetzung für jede Umgebung, in der deine Agenten laufen.**
-Egal wo deine Agenten ausgeführt werden – wir sehen es und können eingreifen. Failproof bindet sich in 12 Agent-Harnesses ein: Coding-CLIs wie Claude Code und Codex, Chat-Gateways wie Hermes, selbstgehostete Assistenten wie OpenClaw – erfasst jeden Lauf und blockiert gefährliche Tool-Aufrufe, bevor sie ausgeführt werden. 45 integrierte Richtlinien. Null Latenz. Läuft lokal.
+Egal wo deine Agenten ausgeführt werden – wir sehen es und können eingreifen. Failproof bindet sich in 12 Agent-Harnesses ein: Coding-CLIs wie Claude Code und Codex, Chat-Gateways wie Hermes, selbstgehostete Assistenten wie OpenClaw – erfasst jeden Lauf und blockiert gefährliche Tool-Aufrufe, bevor sie ausgeführt werden. 43 integrierte Richtlinien. Null Latenz. Läuft lokal.
 
 </div>
 
@@ -164,7 +164,7 @@ Solange kein Paket geladen ist, ist lediglich `block-failproofai-commands` aktiv
 
 Alle diese Schranken greifen *vor* der Ausführung des Aufrufs – sie gelten daher für alle zwölf Harnesses. Die ersten vier wirken auf jeden Agenten, der Tools aufrufen kann; die letzten drei sind die Favoriten unter Entwicklern – Coding-CLIs sind die Harness-Klasse, die wir am tiefsten abdecken. Die `sanitize-*`-Familie ist separat: Sie läuft nach der Rückgabe eines Tools und meldet ein Secret in der Tool-Ausgabe, anstatt es aus dem Kontext fernzuhalten.
 
-→ [Alle 45 integrierten Richtlinien](https://docs.befailproof.ai/policies/packs)
+→ [Alle 43 integrierten Richtlinien](https://docs.befailproof.ai/policies/packs)
 
 ---
 

@@ -21,7 +21,7 @@
 **翻訳:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
 **エージェントが動作するあらゆるハーネスに対応したオブザーバビリティと制御。**
-エージェントがどこで動いていても、私たちはすべてを把握し、必要なら止めることができます。Failproof は 12 種類のエージェントハーネスにフックし — Claude Code や Codex のようなコーディング CLI、Hermes のようなチャットゲートウェイ、OpenClaw のようなセルフホスト型アシスタント — すべての実行をキャプチャし、危険なツール呼び出しを実行前にブロックします。45 個の組み込みポリシー。ゼロレイテンシー。ローカル実行。
+エージェントがどこで動いていても、私たちはすべてを把握し、必要なら止めることができます。Failproof は 12 種類のエージェントハーネスにフックし — Claude Code や Codex のようなコーディング CLI、Hermes のようなチャットゲートウェイ、OpenClaw のようなセルフホスト型アシスタント — すべての実行をキャプチャし、危険なツール呼び出しを実行前にブロックします。43 個の組み込みポリシー。ゼロレイテンシー。ローカル実行。
 
 </div>
 
@@ -160,7 +160,7 @@ failproofai                                    # localhost:8020 でダッシュ�
 
 これらはすべて呼び出しが実行される*前*にゲートするため、12 種類すべてのハーネスで機能します。最初の 4 つはツールを呼び出せる任意のエージェントに適用されます。残りの 3 つは開発者に特に人気のポリシーで、コーディング CLI は私たちが最も深くカバーするハーネスクラスです。`sanitize-*` ファミリーは別扱いで、ツールの戻り値の後に実行されるため、コンテキストへの混入を防ぐのではなく、ツール出力にシークレットが含まれていることを報告します。
 
-→ [45 個の組み込みポリシー一覧](https://docs.befailproof.ai/policies/packs)
+→ [43 個の組み込みポリシー一覧](https://docs.befailproof.ai/policies/packs)
 
 ---
 

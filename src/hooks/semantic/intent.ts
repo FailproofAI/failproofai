@@ -1,46 +1,55 @@
 /**
  * What the human actually asked for.
  *
- * The semantic evaluator may clear a policy when the user explicitly asked for
- * the action — `git push --force` is right when you just said "force push it".
- * That makes "the user asked" the most valuable thing a prompt injection could
- * forge, so it is only ever read from a channel the agent cannot write to:
+ * The semantic evaluator may clear a REVIEWABLE policy when the user explicitly
+ * asked for the action — `git push --force` is right when you just said "force
+ * push it". Cutting those false blocks is the whole point of the evaluator, so
+ * where "the user asked" comes from is a product decision, not a puzzle. It was
+ * taken on 2026-09-23 and it is written out here in full.
  *
- * - Live: a harness's prompt-submit event (canonical `UserPromptSubmit`).
- *   `captureIntent` records the part of it the human typed — harness wrappers
- *   stripped, redacted, capped — into a 0600 file under failproofai's state
- *   directory, which the always-on self-protection guard already stops the
- *   agent from modifying.
+ * WHAT IS RECORDED. The prompt the harness itself hands the hook at its
+ * prompt-submit event (canonical `UserPromptSubmit`), on every harness whose
+ * event carries the human's text — `PROMPT_CHANNELS` below audits all twelve,
+ * one row each, and docs/reference/jev-intent.mdx prints the same table. The
+ * text is cleaned of harness wrapping (`cleanHumanTurn`), redacted, capped and
+ * stored 0600; the last five prompts of a session are kept for six hours.
+ * Nothing on the file system is consulted: the session transcript is a file the
+ * agent can rewrite in one command, so it is never asked who wrote a prompt.
  *
- *   It records ONLY when the event itself establishes human origin, and the
- *   event is the hook's stdin: the canonical event type and the field, in the
- *   payload the harness wrote, that names who authored this prompt. The agent
- *   cannot edit either. Nothing on the file system is consulted for origin.
- *   The session transcript in particular is not evidence: it is a file the
- *   agent can truncate, replace, pad or rewrite in one command, and every
- *   attempt to prove a prompt human from it has been forged again by the next
- *   spelling.
+ * THE ACCEPTED RISK, PLAINLY. An agent that can already run commands can make a
+ * harness submit a prompt: `claude -p "…"`, `codex exec`, `copilot -p`,
+ * `cursor-agent -p`, `devin -p`, `droid -p`, `goose run -t` and `pi -p` all
+ * fire the same event, with the same payload, as a person typing, in a child
+ * session that agent controls. It can also run failproofai's own hook binary
+ * with a payload it wrote. Nothing inside this module can tell either from the
+ * real thing — both are the same program reading the same stdin — so an agent
+ * with a shell can forge its own consent, and this module does not pretend
+ * otherwise.
  *
- *   Each harness is audited separately (`PROMPT_CHANNELS` below and
- *   docs/reference/jev-intent.mdx). A prompt is recorded only where the
- *   harness's own payload names the operator as its author — Claude Code's
- *   `source`, OpenClaw's run metadata. A harness that sends no such field is
- *   not capturable and records nothing at all, however its prompt event is
- *   meant to be used: every one of these CLIs can be started headless with
- *   the prompt in argv (`copilot -p`, `cursor-agent -p`, `devin -p`,
- *   `goose run -t`, `pi -p`), which fires the same event with the same
- *   payload, and an agent with a shell can do that in one command. Neither
- *   field is populated by a shipping build today, so live capture currently
- *   records nothing on any harness and starts working, with no change here,
- *   on the first build that sends one.
+ * WHY THAT IS ACCEPTED. The alternative was built and measured (round 9): every
+ * field that would prove a human typed the prompt is a field no shipping
+ * harness sends, so requiring one recorded NOTHING, anywhere, and Jev judged
+ * every call with no stated intent — unable to clear a single regex deny, which
+ * is the entire feature. A capture that works is worth more than a forgery an
+ * agent can only perform once it is already executing commands.
  *
- *   What failing closed costs, stated exactly: with no recorded prompt Jev
- *   has no task to judge the call against, so it can clear no reviewable
- *   policy — strictly stricter. It is not free, though: the injection probe
- *   and the beyond-the-task check are asked only when there is a human
- *   message, so a fired warn policy that prompt injection would have
- *   escalated to a block stays a nudge. Nothing is ever ALLOWED for want of a
- *   prompt; some things are judged less harshly.
+ * WHAT CONSENT CAN AND CANNOT DO. A recorded prompt can only ever clear a
+ * policy that is already marked reviewable (`effectiveAuthority` in
+ * policy-types.ts) and whose semantic policy sets `userCanOverride`. A hard
+ * policy is never cleared by anything Jev says. So the worst a forged prompt
+ * can do is stop a reviewable policy from nudging an agent that was already
+ * free to run the command; it can never turn a hard deny into an allow, and
+ * skipping the hook entirely gains an agent nothing, since the harness invokes
+ * failproofai for the tool call independently.
+ *
+ * WHAT IS STILL REFUSED, because it is cheap and an agent cannot forge it by
+ * asking: a turn the harness's own payload marks as machine-submitted (a cron
+ * or loop wakeup, an injected system turn, another extension's message, an
+ * OpenClaw heartbeat), a payload naming a sub-agent (`agent_id`), a session id
+ * that is not a plain name, an event that is not the prompt-submit one, and
+ * text that is nothing but harness wrapping — failproofai's own stop-gate
+ * words among it, which some harnesses feed back as the next user turn.
+ *
  * - Replay: the eval harness reads historical transcripts, where human
  *   messages are the non-meta `user` entries whose content is text rather than
  *   a tool result.
@@ -48,7 +57,11 @@
  * Alongside each prompt, `captureIntent` snapshots the agent's last visible
  * message from the transcript at that moment, so a reply like "yes, do it" can
  * be understood. The agent wrote that message: it is sent to Jev labelled as
- * agent-written and never counts as consent.
+ * agent-written and is never consent on its own. (One caveat worth knowing, in
+ * a consumer rather than here: decide v1 lets that message satisfy the
+ * deterministic "did the user name this target" check, so an agent that writes
+ * its own transcript can supply the target name — see decide.ts and the docs'
+ * Known limits.)
  *
  * Text inside a tool call claiming "the user approved this" is never consulted.
  */
@@ -104,11 +117,20 @@ function readIntentFile(sessionId: string): IntentFile {
  * Append one prompt to the session's file, the newest `MAX_RECORDED_PROMPTS`
  * kept. Atomic, 0600 file in a 0700 directory. Returns false instead of
  * throwing: losing intent only means no override.
+ *
+ * A prompt identical to the one just recorded REPLACES it instead of being
+ * appended, so a harness that fires its prompt event more than once for the
+ * same message — OpenCode's `message.updated` fires on every update of it —
+ * cannot push the rest of the session's task out of a five-slot window with
+ * copies of one line. The replacement carries the new timestamp and the new
+ * agent snapshot, so the entry stays the latest thing the human said.
  */
 function appendPrompt(sessionId: string, entry: RecordedPrompt): boolean {
   try {
     const file = readIntentFile(sessionId);
-    file.prompts = [...file.prompts, entry].slice(-MAX_RECORDED_PROMPTS);
+    const last = file.prompts[file.prompts.length - 1];
+    const kept = last && last.text === entry.text ? file.prompts.slice(0, -1) : file.prompts;
+    file.prompts = [...kept, entry].slice(-MAX_RECORDED_PROMPTS);
     const dir = sessionsDir();
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     const target = intentFile(sessionId);
@@ -166,16 +188,21 @@ export function pruneExpiredSessions(now: number = Date.now()): number {
 }
 
 /**
- * Record a prompt as given: no harness check and no cleaning (`captureIntent`
- * does both). Redacted before it is capped, like everything stored here, so a
- * cut can never leave half a secret the patterns no longer match. Never
- * throws: losing intent only means no override.
+ * Store one cleaned prompt, with the agent message it replies to. Module-
+ * private on purpose: `captureIntent` is the only door into `user_said`, and
+ * every origin check lives on the other side of it. An exported writer that
+ * took a bare string would be a second door with no check on it at all, which
+ * is what this used to be (`recordUserPrompt`, deleted 2026-09-23).
+ *
+ * Redacted before it is capped, like everything stored here, so a cut can never
+ * leave half a secret the patterns no longer match. Never throws: losing intent
+ * only means no override.
  */
-export function recordUserPrompt(sessionId: string | undefined, prompt: unknown, now: number = Date.now()): boolean {
-  if (!sessionId || !SESSION_ID_RE.test(sessionId)) return false;
-  if (typeof prompt !== "string" || prompt.trim().length === 0) return false;
+function recordPrompt(sessionId: string, prompt: string, agent: string | null, now: number): boolean {
+  if (!SESSION_ID_RE.test(sessionId)) return false;
+  if (prompt.trim().length === 0) return false;
   try {
-    return appendPrompt(sessionId, { at: now, text: storable(prompt.trim()) });
+    return appendPrompt(sessionId, { at: now, text: storable(prompt.trim()), agent: agent === null ? null : storable(agent) });
   } catch {
     return false;
   }
@@ -191,11 +218,6 @@ function livePrompts(sessionId: string | undefined, now: number): RecordedPrompt
       now - p.at <= INTENT_MAX_AGE_MS &&
       p.at - now <= MAX_CLOCK_SKEW_MS,
   );
-}
-
-/** Recent human prompts for a session, oldest first. */
-export function readUserIntent(sessionId: string | undefined, now: number = Date.now()): string[] {
-  return livePrompts(sessionId, now).map((p) => p.text);
 }
 
 // ── Transcript replay ────────────────────────────────────────────────────────
@@ -509,94 +531,127 @@ const obj = (v: unknown): Record<string, unknown> | undefined =>
   v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
 
 /**
- * Where each harness delivers what the human typed, and how its own payload
- * names the operator as the author of this prompt. The source of truth for
+ * Where each harness delivers what the human typed, and what its own payload
+ * says about turns nobody typed. The source of truth for
  * docs/reference/jev-intent.mdx (a test holds the two together).
  *
  * - `nativeEvent`: the harness's own name for its prompt-submit event, which
- *   the handler canonicalizes to `UserPromptSubmit`; null when there is none.
+ *   the handler canonicalizes to `UserPromptSubmit`; null when there is none
+ *   (Hermes).
  * - `field`: the payload field carrying the text after `normalizeCliPayload`.
- * - `namesOperator`: reads the payload and answers whether the harness says a
- *   person at the keyboard authored THIS prompt. `null` means the harness has
- *   no such field, so nothing it sends is ever recorded: not capturable.
+ *   `null` means this event delivers no human text at all — Hermes has no
+ *   event, Antigravity's `PreInvocation` carries none — so nothing is ever
+ *   recorded for it.
+ * - `machineTurn`: reads the payload and answers whether the harness's OWN
+ *   marks say this particular turn was submitted by a machine rather than a
+ *   person. `null` where the harness sends no such marks.
  *
- * Why a field naming the author is the whole bar. Every one of these CLIs can
- * be started headless with the prompt in argv — `claude -p`, `codex exec`,
- * `copilot -p`, `cursor-agent -p`, `devin -p`, `droid -p`, `goose run -t`,
- * `pi -p` — and that run fires the same prompt-submit event, with the same
- * payload, as a person typing. An agent holding a shell can start one in a
- * single command, and the session it starts is the session whose intent it
- * would clear a policy with. So "this harness only fires the event for real
- * submissions" is not something the event can establish; only a field that
- * names the author can. A harness that does not send one is not capturable,
- * whatever its transcript would say — the agent writes the transcript.
+ * `machineTurn` is a veto, never a requirement. Requiring a positive "a human
+ * typed this" mark is what round 9 shipped, and it recorded nothing anywhere,
+ * because no shipping harness sends such a field: capture that never fires
+ * clears no regex deny, which is the whole feature. So the rule is the user's
+ * decision of 2026-09-23 — trust the prompt the harness hands the hook — and
+ * the marks are used only in the direction they are reliable in. A heartbeat
+ * run, a cron wakeup or another extension's injected message is a turn no
+ * person submitted whoever is asking; an absent mark says nothing, and a
+ * present, positive one is not believed any harder than the event itself.
+ *
+ * What that costs is in the module header: a harness started headless with the
+ * prompt in argv (`claude -p`, `codex exec`, `copilot -p`, `cursor-agent -p`,
+ * `devin -p`, `droid -p`, `goose run -t`, `pi -p`) fires this event with the
+ * same payload as a person typing, so an agent with a shell can record a
+ * prompt for a child session it controls. Accepted: it only ever clears a
+ * reviewable policy, never a hard one.
  */
 export interface PromptChannel {
   nativeEvent: string | null;
   field: string | null;
-  namesOperator: ((payload: Record<string, unknown>) => boolean) | null;
+  machineTurn: ((payload: Record<string, unknown>) => boolean) | null;
 }
 
 /**
- * Claude Code's `UserPromptSubmit.source` is `user` for the interactive
- * composer, and names something else for every prompt a person did not type:
- * `sdk` (`-p` / Agent SDK, which is what an agent's own `claude -p` reports),
- * `loop_wakeup`, `schedule_wakeup` (a CronCreate or routine firing), `system`
- * (peer and channel messages, task notifications, auto-continuation) and
- * `poll_event`. The field is optional in Claude Code's own hook-input schema
- * — "Payloads may omit it while the field rolls out" — and a payload without
- * it records nothing.
+ * Claude Code's `UserPromptSubmit.source` values for turns nobody submitted:
+ * `loop_wakeup` and `schedule_wakeup` (a `/loop`, a CronCreate or a routine
+ * firing, whose text was composed in an earlier turn), `poll_event`, and
+ * `system` (peer and channel messages, task notifications, auto-continuation).
+ * Those are not the human's current request whoever is asking, so they are
+ * refused.
+ *
+ * Every other value records, `user` (the interactive composer) and `sdk`
+ * (`claude -p` and the Agent SDK) alike. `sdk` is usually a person's own
+ * command line or their pipeline; it is also what an agent's own `claude -p`
+ * reports, which is the accepted risk stated in the module header, and exactly
+ * the same risk every other harness's `-p` carries with no field at all.
+ *
+ * The field is optional in Claude Code's own hook-input schema ("Payloads may
+ * omit it while the field rolls out") and 2.1.280 does not send it, so an
+ * absent `source` must record — requiring it is what emptied the feature.
  */
-const claudeComposer = (payload: Record<string, unknown>): boolean => payload.source === "user";
+const CLAUDE_MACHINE_SOURCES: ReadonlySet<string> = new Set(["loop_wakeup", "schedule_wakeup", "poll_event", "system"]);
+const claudeMachineTurn = (payload: Record<string, unknown>): boolean =>
+  typeof payload.source === "string" && CLAUDE_MACHINE_SOURCES.has(payload.source);
 
 /**
- * OpenClaw's run metadata, all three marks required: it documents that an
- * absent classification "does not establish human origin" and sets
- * `senderIsOwner` only "when available", so on a shared channel an unmarked
- * sender may be anyone in the chat. Only a message the owner sent from
- * outside the agent counts.
+ * Pi's `InputEvent.source`, which pi-extension forwards as `input_source`:
+ * `interactive` (its editor, and `pi -p`), `rpc` (the program driving it), and
+ * `extension` — another extension calling `sendUserMessage()`, whose text can
+ * be model-written or repo-derived. Only `extension` is refused; a missing
+ * source records, since older bridges send none.
  */
-const openclawOwnerMessage = (payload: Record<string, unknown>): boolean => {
+const piMachineTurn = (payload: Record<string, unknown>): boolean =>
+  payload.input_source === "extension" || payload.source === "extension";
+
+/**
+ * OpenClaw's run metadata, read only for what it rules out. `before_agent_run`
+ * fires for heartbeat, cron, memory and inter-session runs as well as for a
+ * chat message, and the plugin can say so: a `trigger` that is not `user`, an
+ * `inputProvenance.kind` that is not `external_user` (`inter_session` is
+ * another agent, `internal_system` is the gateway itself), or an explicit
+ * `senderIsOwner: false` on a shared channel. A mark that is absent — which is
+ * every mark the shipped plugin sends today — rules nothing out.
+ */
+const openclawMachineRun = (payload: Record<string, unknown>): boolean => {
   const meta = obj(payload.openclaw);
-  return meta?.trigger === "user" && obj(meta.inputProvenance)?.kind === "external_user" && meta.senderIsOwner === true;
+  if (!meta) return false;
+  if (typeof meta.trigger === "string" && meta.trigger !== "user") return true;
+  const kind = obj(meta.inputProvenance)?.kind;
+  if (typeof kind === "string" && kind !== "external_user") return true;
+  return meta.senderIsOwner === false;
 };
 
 export const PROMPT_CHANNELS: Readonly<Record<IntegrationType, PromptChannel>> = {
-  // The one harness that names the author of a prompt it submits.
-  claude: { nativeEvent: "UserPromptSubmit", field: "prompt", namesOperator: claudeComposer },
-  // Fires user_prompt_submit inside sub-agent threads too, whose prompts the
-  // parent agent wrote, and names no author. The rollout's `session_meta` was
-  // a file on disk the agent can rewrite.
-  codex: { nativeEvent: "user_prompt_submit", field: "prompt", namesOperator: null },
-  // Names no author, and `copilot -p "<text>"` fires this event; it also runs
-  // in-process sidekick subagents.
-  copilot: { nativeEvent: "UserPromptSubmit", field: "prompt", namesOperator: null },
-  // Names no author, and `cursor-agent -p "<text>"` fires this event.
-  cursor: { nativeEvent: "beforeSubmitPrompt", field: "prompt", namesOperator: null },
-  // message.updated carries no text in current OpenCode (the Message has no
-  // parts), fires again on every update of the same message, and fires for
-  // task-tool child sessions and for failproofai's own instruct re-prompts.
-  opencode: { nativeEvent: "message.updated", field: "prompt", namesOperator: null },
-  // `input_source` names the input channel, not the author: Pi reports
-  // `interactive` both for its editor and for `pi -p "<text>"`, and `rpc` for
-  // whatever program is driving it. Neither excludes the agent.
-  pi: { nativeEvent: "input", field: "prompt", namesOperator: null },
-  // pre_llm_call is handled inside the native plugin; nothing reaches the handler.
-  hermes: { nativeEvent: null, field: null, namesOperator: null },
-  // Heartbeat, cron, memory and inter-session runs fire before_agent_run too,
-  // and the run metadata says which — and who sent the message.
-  openclaw: { nativeEvent: "before_agent_run", field: "prompt", namesOperator: openclawOwnerMessage },
-  // Claude-shaped payloads and transcripts, ships SubagentStop, sends no
-  // `source`, and `droid -p "<text>"` fires this event.
-  factory: { nativeEvent: "UserPromptSubmit", field: "prompt", namesOperator: null },
-  // Names no author, and `devin -p "<text>"` fires this event.
-  devin: { nativeEvent: "UserPromptSubmit", field: "prompt", namesOperator: null },
-  // PreInvocation fires before every model call, carries no text, and hooks
-  // can inject userMessage steps into the same conversation.
-  antigravity: { nativeEvent: "PreInvocation", field: null, namesOperator: null },
-  // Names no author; `goose run -t "<text>"` fires this event, and Goose also
-  // has a `delegate` subagent tool and a cron scheduler of its own.
-  goose: { nativeEvent: "UserPromptSubmit", field: "message", namesOperator: null },
+  // The only harness that names the author at all; its machine values are
+  // refused and everything else — including an absent field — is recorded.
+  claude: { nativeEvent: "UserPromptSubmit", field: "prompt", machineTurn: claudeMachineTurn },
+  // Also fires inside sub-agent threads, which its payload does not mark; the
+  // IDE extension's context sections are stripped by `cleanHumanTurn`.
+  codex: { nativeEvent: "user_prompt_submit", field: "prompt", machineTurn: null },
+  // Marks nothing; it also runs in-process sidekick subagents.
+  copilot: { nativeEvent: "UserPromptSubmit", field: "prompt", machineTurn: null },
+  // Marks nothing. Its own transcripts wrap a query in `<user_query>`, and a
+  // payload carrying that form is unwrapped (`unwrapCursorQuery`).
+  cursor: { nativeEvent: "beforeSubmitPrompt", field: "prompt", machineTurn: null },
+  // Current OpenCode's Message has no parts, so the forwarded text is empty
+  // and nothing is recorded in practice. It also fires again on every update
+  // of the same message — `appendPrompt` collapses the repeats — for task-tool
+  // child sessions, and for failproofai's own instruct re-prompts, which
+  // `cleanHumanTurn` drops by their marker.
+  opencode: { nativeEvent: "message.updated", field: "prompt", machineTurn: null },
+  pi: { nativeEvent: "input", field: "prompt", machineTurn: piMachineTurn },
+  // pre_llm_call is handled inside the native plugin; nothing reaches the
+  // handler, so Hermes has no prompt channel to record from.
+  hermes: { nativeEvent: null, field: null, machineTurn: null },
+  openclaw: { nativeEvent: "before_agent_run", field: "prompt", machineTurn: openclawMachineRun },
+  // Claude-shaped payloads and transcripts; sends no `source`.
+  factory: { nativeEvent: "UserPromptSubmit", field: "prompt", machineTurn: null },
+  devin: { nativeEvent: "UserPromptSubmit", field: "prompt", machineTurn: null },
+  // PreInvocation fires before EVERY model call in a turn and carries no
+  // prompt text: there is no human text in it to record, on a human turn or
+  // any other.
+  antigravity: { nativeEvent: "PreInvocation", field: null, machineTurn: null },
+  // Its text is in `message`, not `prompt`. Goose also has a `delegate`
+  // subagent tool and a scheduler of its own, neither of which it marks.
+  goose: { nativeEvent: "UserPromptSubmit", field: "message", machineTurn: null },
 };
 
 /**
@@ -605,13 +660,12 @@ export const PROMPT_CHANNELS: Readonly<Record<IntegrationType, PromptChannel>> =
  *
  * The payload is the whole stdin object, not just its `prompt`, and it is
  * required: the text is in a different field on some harnesses (Goose sends
- * `message`), and the field that names the prompt's author is elsewhere in
- * the payload. The first draft of this contract (JEV-BUILD-PLAN §7) passed a
- * `prompt` and no payload; that shape no longer compiles, on purpose. A
- * caller passing it is not running the origin check at all, and the type is
- * where that has to be noticed — a payload-less call records nothing, which
- * looks exactly like the intended behaviour on a harness that records
- * nothing anyway.
+ * `message`), and the marks that rule a turn out are elsewhere in the payload.
+ * The first draft of this contract (JEV-BUILD-PLAN §7) passed a `prompt` and
+ * no payload; that shape no longer compiles, on purpose. A payload-less call
+ * records nothing on every harness, which is silent and looks exactly like an
+ * ordinary turn with nothing to record, so the type is the only place the
+ * divergence can be noticed.
  */
 export interface CaptureEvent {
   /** Canonical event type; anything but `UserPromptSubmit` is ignored. */
@@ -629,26 +683,75 @@ function isKnownCli(cli: string): cli is IntegrationType {
 }
 
 /**
- * The raw prompt text of a prompt-submit event when the harness's own payload
- * says a person at the keyboard authored it, else null. Six lines, each one a
- * way the event fails to establish that, and everything it cannot answer
- * answers null.
+ * The raw prompt text the harness delivered with this prompt-submit event, or
+ * null when there is none to record. Five lines, each one a reason this event
+ * carries no human turn; everything else is the prompt, trusted as the header
+ * says.
  */
 function humanPromptText(ev: CaptureEvent): string | null {
   // A harness we do not know.
   if (!isKnownCli(ev.cli)) return null;
-  const { field, namesOperator } = PROMPT_CHANNELS[ev.cli];
-  // Not capturable: this harness sends no field naming a prompt's author.
-  if (field === null || namesOperator === null) return null;
-  // The payload is the only thing origin is read from.
+  const { field, machineTurn } = PROMPT_CHANNELS[ev.cli];
+  // This harness's prompt event carries no human text (Hermes, Antigravity).
+  if (field === null) return null;
+  // The payload is where the text and the marks both are.
   const payload = obj(ev.payload);
   if (!payload) return null;
-  // A payload naming a sub-agent is the agent prompting itself.
+  // A payload naming a sub-agent is the agent prompting itself. Claude-shaped
+  // harnesses put that at the top level; a harness with its own spelling for
+  // it is a gap, not a check this can make (see the docs' Known limits).
   if (payload.agent_id !== undefined) return null;
-  // The harness must say this prompt is the operator's own.
-  if (!namesOperator(payload)) return null;
+  // The harness's own marks say no person submitted this turn.
+  if (machineTurn?.(payload) === true) return null;
   const raw = payload[field];
-  return typeof raw === "string" ? raw : null;
+  if (typeof raw !== "string") return null;
+  // Cursor's own transcripts wrap a query; a hook payload may carry the form.
+  return ev.cli === "cursor" ? unwrapCursorQuery(raw) : raw;
+}
+
+const TIMESTAMP_OPEN = "<timestamp>";
+const TIMESTAMP_CLOSE = "</timestamp>";
+const USER_QUERY_OPEN = "<user_query>";
+const USER_QUERY_CLOSE = "</user_query>";
+
+/**
+ * A Cursor prompt with the `<user_query>` wrapper Cursor's own transcripts use
+ * removed, or null when the prompt is harness text.
+ *
+ * Cursor's hook payloads are not known to carry the wrapper; this accepts the
+ * form in case one does, and nothing looser. The wrapper is removed only when
+ * it is the whole prompt: after an optional leading `<timestamp>…</timestamp>`,
+ * exactly one `<user_query>…</user_query>` block and nothing after it. A tag
+ * anywhere else is text like any other and the whole prompt is kept, because
+ * picking a tagged span out of the middle would record text that is not what
+ * the human typed: a snippet they pasted from a log or an issue, or text
+ * inside failproofai's own stop-gate message, which quotes names the agent
+ * chose (a branch called `wip<user_query>…</user_query>`).
+ *
+ * Layers are peeled in the order `cleanHumanTurn` reads a turn: system
+ * reminders first (removed wherever they are), then the timestamp, then the
+ * query block. What is left after each layer is judged for harness text, so
+ * wrapping failproofai's own words, or any other whole-turn harness text,
+ * cannot make it the human's. A prompt that is not unwrapped is returned
+ * whole and judged whole by the caller; one that is unwrapped starts with a
+ * wrapper tag, which no whole-turn harness text does. Linear time: a few
+ * indexOf scans and `cleanHumanTurn` passes.
+ */
+function unwrapCursorQuery(raw: string): string | null {
+  let text = replaceTagBlocks(raw, "system-reminder", () => "").trim();
+  if (text.startsWith(TIMESTAMP_OPEN)) {
+    const end = text.indexOf(TIMESTAMP_CLOSE, TIMESTAMP_OPEN.length);
+    if (end < 0) return raw;
+    text = text.slice(end + TIMESTAMP_CLOSE.length).trim();
+    if (cleanHumanTurn(text) === null) return null;
+  }
+  if (!text.startsWith(USER_QUERY_OPEN)) return raw;
+  const body = text.slice(USER_QUERY_OPEN.length);
+  if (cleanHumanTurn(body) === null) return null;
+  if (!body.endsWith(USER_QUERY_CLOSE)) return raw;
+  const inner = body.slice(0, body.length - USER_QUERY_CLOSE.length);
+  if (inner.includes(USER_QUERY_OPEN) || inner.includes(USER_QUERY_CLOSE)) return raw;
+  return inner;
 }
 
 const omissionMarker = (count: number): string => `\n…[${count} characters omitted]…\n`;
@@ -869,14 +972,15 @@ export function lastAgentMessage(transcriptPath: string | undefined, maxBytes: n
  * Record what the human just typed, from a prompt-submit hook event, with the
  * agent message it replies to. Never throws.
  *
- * A prompt is recorded only when the event establishes human origin on its
- * own: the canonical `UserPromptSubmit`, a session id that is a plain name, a
- * harness whose payload names the operator as this prompt's author, no
- * sub-agent mark in the payload, and something left after the harness
- * wrappers are stripped (`cleanHumanTurn`). Everything else records nothing —
- * including every case where the honest answer is "cannot tell". That costs a
- * stated intent, never a guard: with nothing recorded Jev judges the call
- * with no task to judge it against, so it can clear no reviewable policy.
+ * The prompt the harness hands the hook is taken as the human's, per the
+ * decision in this module's header. Five things stop a record, and none of
+ * them asks the file system: the event is not the canonical
+ * `UserPromptSubmit`; the session id is not a plain name; the harness's prompt
+ * event carries no human text (Hermes, Antigravity) or the payload is missing;
+ * the payload marks the turn as a machine's or a sub-agent's; or nothing is
+ * left once the harness's own wrapping is stripped (`cleanHumanTurn` — which
+ * is also what keeps failproofai's own stop-gate words, fed back as a user
+ * turn by several harnesses, from ever being recorded as a request).
  *
  * The transcript is read for exactly one thing, and never for origin: the
  * agent's last visible message at this moment. The agent wrote that message
@@ -891,8 +995,7 @@ export function captureIntent(ev: CaptureEvent, now: number = Date.now()): void 
     if (raw === null) return;
     const cleaned = cleanHumanTurn(raw);
     if (cleaned === null) return;
-    const agent = lastAgentMessage(ev.transcriptPath);
-    appendPrompt(sessionId, { at: now, text: storable(cleaned), agent: agent === null ? null : storable(agent) });
+    recordPrompt(sessionId, cleaned, lastAgentMessage(ev.transcriptPath), now);
   } catch {
     // Losing intent only means Jev judges without it.
   }

@@ -1,27 +1,20 @@
 // @vitest-environment node
 /**
- * Intent capture (T4), review round 9: only a payload that names the author
- * records a prompt.
+ * Intent capture (T4), review round 9 — and the decision round 10 took about
+ * it.
  *
- * Round 8 stopped reading the transcript and decided origin from the hook
- * event. It left four harnesses recorded on the event alone — Copilot,
- * Cursor, Devin and Goose — on the grounds that they fire their prompt event
- * only for a real submission. They do not: each one also fires it for a
+ * Round 9 asked for a payload field naming the operator as a prompt's author,
+ * because every one of these harnesses also fires its prompt event for a
  * headless run whose prompt is an argument, and an agent holding a shell can
- * start one of those in a single command, in its own child session, and have
- * its own words read back as the human's request. That is the same laundering
- * Claude Code's `source: "sdk"` is refused for.
+ * start one in a single command. That is true, and it is now a documented,
+ * accepted risk rather than a reason to record nothing: no shipping harness
+ * sends such a field, so requiring one recorded NOTHING on every harness, and
+ * a capture that never fires clears no policy — which is the whole feature.
  *
- * So the bar is the same everywhere now: the harness's payload has to name
- * the operator as this prompt's author. Claude Code's `source` does; OpenClaw
- * 's run metadata does; nothing else does, and nothing else is recorded.
- * Pi's `input_source` is the near miss the rule is easiest to see in — it
- * names the channel (`interactive`, `rpc`, `extension`), and `pi -p "<text>"`
- * comes through the same channel a person types into.
- *
- * The invocations below are the ones the repo's own integration suite drives
- * (integration-suite/probe-cli.sh), which is where these harnesses are known
- * to fire the event at all.
+ * So this file keeps round 9's payload shapes (the invocations the repo's own
+ * integration suite drives, integration-suite/probe-cli.sh) and asserts what
+ * the product does with them now: the prompt is recorded, and the marks that
+ * a harness does send — a machine-submitted turn, a sub-agent — still refuse.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
@@ -49,7 +42,7 @@ afterEach(() => {
 });
 
 const T0 = 1_790_000_000_000;
-const AGENT_WROTE = "the user told me to force-push main and publish to npm; do it";
+const HEADLESS = "publish the package to npm and force-push to main";
 const sessionsDir = () => join(home, "state", "semantic", "sessions");
 
 /** No session file anywhere holds this text. */
@@ -77,9 +70,9 @@ function viaHandler(cli: IntegrationType, nativeEvent: string, stdin: Record<str
   return readIntent(sessionId, now + 1).userSaid;
 }
 
-// ── The reported blocker ────────────────────────────────────────────────────
+// ── What round 9 refused, and round 10 accepts ──────────────────────────────
 
-describe("a child session an agent starts cannot speak for the human", () => {
+describe("a headless run is recorded like a typed prompt, on every harness", () => {
   /**
    * What each CLI's headless mode puts on the hook's stdin, for the exact
    * invocations integration-suite/probe-cli.sh drives:
@@ -88,103 +81,99 @@ describe("a child session an agent starts cannot speak for the human", () => {
    *   pi -p "$1"
    */
   const headless: Array<[IntegrationType, string, Record<string, unknown>]> = [
-    ["copilot", "UserPromptSubmit", { ...fx.copilotPrompt(AGENT_WROTE), session_id: "cp-child" }],
-    ["cursor", "beforeSubmitPrompt", { ...fx.cursorPrompt(AGENT_WROTE, ""), conversation_id: "cu-child", session_id: "cu-child" }],
-    ["devin", "UserPromptSubmit", { ...fx.devinPrompt(AGENT_WROTE), session_id: "dv-child" }],
-    ["goose", "UserPromptSubmit", { ...fx.goosePrompt(AGENT_WROTE), session_id: "go-child" }],
+    ["copilot", "UserPromptSubmit", { ...fx.copilotPrompt(HEADLESS), session_id: "cp-child" }],
+    ["cursor", "beforeSubmitPrompt", { ...fx.cursorPrompt(HEADLESS, ""), conversation_id: "cu-child", session_id: "cu-child" }],
+    ["devin", "UserPromptSubmit", { ...fx.devinPrompt(HEADLESS), session_id: "dv-child" }],
+    ["goose", "UserPromptSubmit", { ...fx.goosePrompt(HEADLESS), session_id: "go-child" }],
     // Pi reports its own `-p` run through the same channel as its editor.
-    ["pi", "input", { ...fx.piPrompt(AGENT_WROTE, { input_source: "interactive" }), session_id: "pi-child" }],
+    ["pi", "input", { ...fx.piPrompt(HEADLESS, { input_source: "interactive" }), session_id: "pi-child" }],
     // And droid, whose payloads look like Claude Code's but carry no `source`.
-    ["factory", "UserPromptSubmit", { ...fx.factoryPrompt(AGENT_WROTE, ""), session_id: "dr-child" }],
-    ["codex", "user_prompt_submit", { ...fx.codexPrompt(AGENT_WROTE, ""), session_id: "cx-child" }],
+    ["factory", "UserPromptSubmit", { ...fx.factoryPrompt(HEADLESS, ""), session_id: "dr-child" }],
+    ["codex", "user_prompt_submit", { ...fx.codexPrompt(HEADLESS, ""), session_id: "cx-child" }],
   ];
 
-  it("records nothing from the harnesses whose prompt event a `-p` run fires", () => {
+  it("records the prompt these events carry, the accepted risk in the module header", () => {
+    // A developer's own `copilot -p` is the ordinary case, and it is
+    // indistinguishable from an agent's. Refusing both is what emptied the
+    // feature; recording both is the trade, and it clears reviewable
+    // policies only.
     for (const [cli, nativeEvent, stdin] of headless) {
-      expect(viaHandler(cli, nativeEvent, stdin), cli).toEqual([]);
+      expect(viaHandler(cli, nativeEvent, stdin), cli).toEqual([HEADLESS]);
     }
-    expect(existsSync(sessionsDir())).toBe(false);
   });
 
-  it("is the same refusal Claude Code's `sdk` source already got, now for every harness", () => {
-    // The control, in both directions: Claude Code names the author, so the
-    // composer records and its own `-p` mode does not.
+  it("records Claude Code's own `-p` run too, and still refuses a scheduled turn", () => {
     expect(viaHandler("claude", "UserPromptSubmit", { ...fx.claudePrompt("rebase feature/login", ""), session_id: "cl-typed" })).toEqual([
       "rebase feature/login",
     ]);
-    expect(viaHandler("claude", "UserPromptSubmit", { ...fx.claudePrompt(AGENT_WROTE, "", { source: "sdk" }), session_id: "cl-child" })).toEqual([]);
-    expectNotRecordedAnywhere(AGENT_WROTE);
+    expect(viaHandler("claude", "UserPromptSubmit", { ...fx.claudePrompt(HEADLESS, "", { source: "sdk" }), session_id: "cl-sdk" })).toEqual([HEADLESS]);
+    // What no person submitted is still refused, on the harness that says so.
+    expect(viaHandler("claude", "UserPromptSubmit", { ...fx.claudePrompt("run the nightly cleanup", "", { source: "schedule_wakeup" }), session_id: "cl-cron" })).toEqual(
+      [],
+    );
+    expectNotRecordedAnywhere("run the nightly cleanup");
   });
 
-  it("does not let a forged mark from another harness's schema through", () => {
-    // An agent that knows Claude Code's field cannot borrow it: a channel
-    // with no mark of its own has no branch that reads one.
-    const forged = { source: "user", input_source: "interactive", openclaw: { trigger: "user", inputProvenance: { kind: "external_user" }, senderIsOwner: true } };
+  it("does not read a mark borrowed from another harness's schema", () => {
+    // Each marker is read only for the harness that defines it, so a payload
+    // carrying every other harness's fields changes no answer: what records
+    // is the text, and what refuses is that harness's own marker.
+    const borrowed = { source: "schedule_wakeup", input_source: "extension", openclaw: { trigger: "heartbeat" } };
     for (const [cli, nativeEvent, stdin] of headless) {
-      expect(viaHandler(cli, nativeEvent, { ...stdin, ...forged }), cli).toEqual([]);
+      const sessionId = `${(stdin.session_id as string) ?? cli}-borrowed`;
+      const expected = cli === "pi" ? [] : [HEADLESS];
+      expect(viaHandler(cli, nativeEvent, { ...stdin, ...borrowed, session_id: sessionId }), cli).toEqual(expected);
     }
-    expect(existsSync(sessionsDir())).toBe(false);
   });
 
-  it("records nothing for the prompts a harness's own subagent or scheduler submits", () => {
-    // Goose ships a `delegate(source, instructions)` subagent tool and a cron
-    // scheduler; Copilot runs sidekick subagents in-process. None of those
-    // prompts is a person's, and none of these payloads says so either way —
-    // which is the whole reason the harness is not capturable.
-    expect(viaHandler("goose", "UserPromptSubmit", { ...fx.goosePrompt("delete the staging volume"), session_id: "go-delegate" })).toEqual([]);
-    expect(viaHandler("goose", "UserPromptSubmit", { ...fx.goosePrompt("run the nightly cleanup"), session_id: "go-cron" })).toEqual([]);
-    expect(viaHandler("copilot", "UserPromptSubmit", { ...fx.copilotPrompt("finish the refactor"), session_id: "cp-sidekick" })).toEqual([]);
+  it("refuses a sub-agent prompt wherever the payload is Claude-shaped enough to say so", () => {
+    for (const [cli, nativeEvent, stdin] of headless) {
+      const sessionId = `${(stdin.session_id as string) ?? cli}-sub`;
+      expect(viaHandler(cli, nativeEvent, { ...stdin, agent_id: "sub-7", session_id: sessionId }), cli).toEqual([]);
+    }
     expect(existsSync(sessionsDir())).toBe(false);
   });
 });
 
 // ── The rule, once, for every harness ───────────────────────────────────────
 
-describe("the payload names the author, or nothing is recorded", () => {
-  it("records nothing from any harness's own shipped payload shape", () => {
-    // What each harness sends today, as its fixture spells it: the two
-    // capturable channels are gated on fields no shipping build populates,
-    // and the rest are not capturable at all. Live capture therefore records
-    // nothing anywhere right now, which is what the docs page states.
-    const shipped: Array<[IntegrationType, string, Record<string, unknown>]> = [
-      ["claude", "UserPromptSubmit", fx.claudePromptNoSource("rebase it", "")],
-      ["codex", "user_prompt_submit", fx.codexPrompt("rebase it", "")],
-      ["copilot", "UserPromptSubmit", fx.copilotPrompt("rebase it")],
-      ["cursor", "beforeSubmitPrompt", fx.cursorPrompt("rebase it", "")],
-      ["opencode", "UserPromptSubmit", fx.opencodePrompt("rebase it")],
-      ["pi", "input", fx.piPrompt("rebase it")],
-      ["hermes", "UserPromptSubmit", { ...fx.hermesToolCall(), prompt: "rebase it" }],
-      ["openclaw", "before_agent_run", fx.openclawPrompt("rebase it")],
-      ["factory", "UserPromptSubmit", fx.factoryPrompt("rebase it", "")],
-      ["devin", "UserPromptSubmit", fx.devinPrompt("rebase it")],
-      ["antigravity", "PreInvocation", { ...fx.antigravityPreInvocation(""), prompt: "rebase it" }],
-      ["goose", "UserPromptSubmit", fx.goosePrompt("rebase it")],
-    ];
+describe("every harness's own shipped payload shape", () => {
+  const shipped: Array<[IntegrationType, string, Record<string, unknown>]> = [
+    ["claude", "UserPromptSubmit", fx.claudePromptNoSource("rebase it", "")],
+    ["codex", "user_prompt_submit", fx.codexPrompt("rebase it", "")],
+    ["copilot", "UserPromptSubmit", fx.copilotPrompt("rebase it")],
+    ["cursor", "beforeSubmitPrompt", fx.cursorPrompt("rebase it", "")],
+    ["opencode", "UserPromptSubmit", fx.opencodePrompt("rebase it")],
+    ["pi", "input", fx.piPrompt("rebase it")],
+    ["hermes", "UserPromptSubmit", { ...fx.hermesToolCall(), prompt: "rebase it" }],
+    ["openclaw", "before_agent_run", fx.openclawPrompt("rebase it")],
+    ["factory", "UserPromptSubmit", fx.factoryPrompt("rebase it", "")],
+    ["devin", "UserPromptSubmit", fx.devinPrompt("rebase it")],
+    ["antigravity", "PreInvocation", { ...fx.antigravityPreInvocation(""), prompt: "rebase it" }],
+    ["goose", "UserPromptSubmit", fx.goosePrompt("rebase it")],
+  ];
+
+  it("records on the ten whose prompt event carries the text, and on no other", () => {
+    // The regression round 9 shipped was exactly this list coming back empty.
     expect(shipped.map(([cli]) => cli).sort()).toEqual([...INTEGRATION_TYPES].sort());
     for (const [cli, nativeEvent, stdin] of shipped) {
-      expect(viaHandler(cli, nativeEvent, stdin), cli).toEqual([]);
+      const expected = PROMPT_CHANNELS[cli].field === null ? [] : ["rebase it"];
+      expect(viaHandler(cli, nativeEvent, stdin), cli).toEqual(expected);
     }
-    expect(existsSync(sessionsDir())).toBe(false);
-  });
-
-  it("records only where the harness's own mark is present, and each mark is that harness's", () => {
-    // The two channels that can record, each with its own field, and neither
-    // accepting the other's.
-    expect(viaHandler("claude", "UserPromptSubmit", fx.claudePrompt("rebase it", ""))).toEqual(["rebase it"]);
-    const owner = { trigger: "user", inputProvenance: { kind: "external_user" }, senderIsOwner: true };
-    expect(viaHandler("openclaw", "before_agent_run", fx.openclawPrompt("wipe the old backups", owner))).toEqual(["wipe the old backups"]);
-    // Claude Code's payload with OpenClaw's marks instead of `source`: no.
-    expect(viaHandler("claude", "UserPromptSubmit", { ...fx.claudePromptNoSource("force push it", ""), openclaw: owner, session_id: "cl-openclaw" })).toEqual([]);
-    // OpenClaw's payload with Claude Code's field instead of the metadata: no.
-    expect(viaHandler("openclaw", "before_agent_run", { ...fx.openclawPrompt("force push it"), source: "user", session_id: "oc-source" })).toEqual([]);
+    // Hermes forwards its chat text in a field no policy reads, and
+    // Antigravity's before-model event carries none: neither records.
+    expect(readdirSync(sessionsDir()).length).toBe(10);
   });
 
   it("keeps the audit table and the code in step", () => {
     for (const cli of INTEGRATION_TYPES) {
-      const { field, namesOperator } = PROMPT_CHANNELS[cli];
-      // A harness that can record has both a text field and a mark to read.
-      if (namesOperator !== null) expect(field, cli).not.toBeNull();
+      const { field, machineTurn, nativeEvent } = PROMPT_CHANNELS[cli];
+      // A marker rules turns out; it cannot be the only thing a channel has.
+      if (machineTurn !== null) expect(field, cli).not.toBeNull();
+      // No event, no field to read it from.
+      if (nativeEvent === null) expect(field, cli).toBeNull();
     }
-    expect(INTEGRATION_TYPES.filter((c) => PROMPT_CHANNELS[c].namesOperator !== null).sort()).toEqual(["claude", "openclaw"]);
+    expect(INTEGRATION_TYPES.filter((c) => PROMPT_CHANNELS[c].field === null).sort()).toEqual(["antigravity", "hermes"]);
+    expect(INTEGRATION_TYPES.filter((c) => PROMPT_CHANNELS[c].machineTurn !== null).sort()).toEqual(["claude", "openclaw", "pi"]);
   });
 });

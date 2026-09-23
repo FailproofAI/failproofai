@@ -6,11 +6,12 @@
  * with `sendUserMessage()` (`source: "extension"`), and for the prompt of a
  * `pi -p` run. The bridge forwards the source as `input_source`, which names
  * the channel and not the author: `pi -p "<text>"` reports `interactive`, the
- * same value as a prompt typed in Pi's editor, so an agent that starts its
- * own Pi session is indistinguishable from the operator. Round 9 therefore
- * records no Pi prompt at all. This drives pi-extension's own `input`
- * handler, takes the stdin payload it would hand the binary, and runs it
- * through the handler's steps into `captureIntent`.
+ * same value as a prompt typed in Pi's editor. That headless run is recorded
+ * like a typed prompt — the accepted risk in intent.ts's header — while
+ * `extension`, the one value that names something other than a person as the
+ * sender, is refused. This drives pi-extension's own `input` handler, takes
+ * the stdin payload it would hand the binary, and runs it through the
+ * handler's steps into `captureIntent`.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
@@ -74,16 +75,15 @@ async function throughBridge(event: Record<string, unknown>) {
   return { payload: call.payload, said: readIntent(sessionId, 1_790_000_000_000).userSaid };
 }
 
-describe("Pi: the bridge forwards the input's source, and none of its values records a prompt", () => {
+describe("Pi: the bridge forwards the input's source, and only `extension` refuses a prompt", () => {
   it("forwards Pi's InputEvent.source as input_source", async () => {
     const { payload } = await throughBridge({ text: "publish it", source: "interactive", sessionId: "pi-fwd" });
     expect(payload).toMatchObject({ prompt: "publish it", session_id: "pi-fwd", hook_event_name: "UserPromptSubmit", input_source: "interactive" });
   });
 
-  it("records nothing for a prompt typed in Pi, because `pi -p` reports the same source", async () => {
-    expect((await throughBridge({ text: "publish 2.4.0", source: "interactive", sessionId: "pi-typed" })).said).toEqual([]);
-    expect((await throughBridge({ text: "run the release", source: "rpc", sessionId: "pi-rpc" })).said).toEqual([]);
-    expect(existsSync(join(home, "state", "semantic", "sessions"))).toBe(false);
+  it("records a prompt typed in Pi, and one an RPC client drove", async () => {
+    expect((await throughBridge({ text: "publish 2.4.0", source: "interactive", sessionId: "pi-typed" })).said).toEqual(["publish 2.4.0"]);
+    expect((await throughBridge({ text: "run the release", source: "rpc", sessionId: "pi-rpc" })).said).toEqual(["run the release"]);
   });
 
   it("never records what another extension sent, the text of which may come from the model or the repo", async () => {
@@ -93,9 +93,12 @@ describe("Pi: the bridge forwards the input's source, and none of its values rec
     expect(existsSync(join(home, "state", "semantic", "sessions"))).toBe(false);
   });
 
-  it("records nothing when Pi gives no source (fail closed)", async () => {
+  it("records a prompt from a bridge that gives no source at all", async () => {
+    // An older bridge, or a Pi build that stops sending it: an absent mark
+    // rules nothing out, which is the difference from the version that
+    // required one and recorded nothing anywhere.
     const { payload, said } = await throughBridge({ text: "publish it", sessionId: "pi-none" });
     expect(payload.input_source).toBeUndefined();
-    expect(said).toEqual([]);
+    expect(said).toEqual(["publish it"]);
   });
 });

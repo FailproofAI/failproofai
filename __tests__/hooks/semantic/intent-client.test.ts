@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { humanMessageText, readUserIntent, recordUserPrompt, INTENT_MAX_AGE_MS } from "../../../src/hooks/semantic/intent";
+import { captureIntent, humanMessageText, readIntent, INTENT_MAX_AGE_MS } from "../../../src/hooks/semantic/intent";
 import {
   CLOUDFLARE_JEV_MODEL,
   JevError,
@@ -33,14 +33,19 @@ describe("semantic/intent", () => {
     rmSync(home, { recursive: true, force: true });
   });
 
+  /** One prompt-submit event, through the only door into the store. */
+  const record = (sessionId: string, prompt: string, now: number) =>
+    captureIntent({ eventType: "UserPromptSubmit", sessionId, cli: "claude", payload: { source: "user", prompt } }, now);
+  const said = (sessionId: string, now: number) => readIntent(sessionId, now).userSaid;
+
   it("records prompts per session, oldest first, keeping the last five", () => {
-    for (let i = 1; i <= 7; i++) recordUserPrompt("sess-1", `prompt ${i}`, 1_000 + i);
-    expect(readUserIntent("sess-1", 2_000)).toEqual(["prompt 3", "prompt 4", "prompt 5", "prompt 6", "prompt 7"]);
-    expect(readUserIntent("other", 2_000)).toEqual([]);
+    for (let i = 1; i <= 7; i++) record("sess-1", `prompt ${i}`, 1_000 + i);
+    expect(said("sess-1", 2_000)).toEqual(["prompt 3", "prompt 4", "prompt 5", "prompt 6", "prompt 7"]);
+    expect(said("other", 2_000)).toEqual([]);
   });
 
   it("writes the file owner-only", () => {
-    recordUserPrompt("sess-2", "hello", 1);
+    record("sess-2", "hello", 1);
     const file = join(home, "state", "semantic", "sessions", "sess-2.json");
     expect(existsSync(file)).toBe(true);
     expect(statSync(file).mode & 0o077).toBe(0);
@@ -48,19 +53,33 @@ describe("semantic/intent", () => {
 
   it("redacts secrets a user pastes into a prompt", () => {
     const fakeKey = ["sk", "abcdefghijklmnopqrstuvwxyz0123456789"].join("-");
-    recordUserPrompt("sess-3", `use this key ${fakeKey}`, 1);
-    expect(readUserIntent("sess-3", 2)[0]).not.toContain(fakeKey);
+    record("sess-3", `use this key ${fakeKey}`, 1);
+    expect(said("sess-3", 2)[0]).not.toContain(fakeKey);
   });
 
   it("forgets prompts older than the intent window", () => {
-    recordUserPrompt("sess-4", "old", 0);
-    expect(readUserIntent("sess-4", INTENT_MAX_AGE_MS + 1)).toEqual([]);
+    record("sess-4", "old", 0);
+    expect(said("sess-4", INTENT_MAX_AGE_MS + 1)).toEqual([]);
   });
 
   it("rejects session ids that could escape the directory", () => {
-    expect(recordUserPrompt("../../evil", "x")).toBe(false);
-    expect(recordUserPrompt("a/b", "x")).toBe(false);
-    expect(readUserIntent("../../evil")).toEqual([]);
+    record("../../evil", "x", 1);
+    record("a/b", "x", 1);
+    expect(existsSync(join(home, "state", "semantic", "sessions"))).toBe(false);
+    expect(said("../../evil", 2)).toEqual([]);
+  });
+
+  it("has no exported writer that skips the origin checks", async () => {
+    // `recordUserPrompt` used to take a bare string and write it straight in,
+    // with no harness check and no harness-text cleaning. One call to it
+    // re-opened everything the checks above pin, so it is gone: `captureIntent`
+    // is the only way text reaches this store.
+    const mod = (await import("../../../src/hooks/semantic/intent")) as Record<string, unknown>;
+    for (const gone of ["recordUserPrompt", "readUserIntent", "appendPrompt", "recordPrompt"]) {
+      expect(mod[gone], gone).toBeUndefined();
+    }
+    const writers = Object.entries(mod).filter(([name, v]) => typeof v === "function" && /^(record|write|append|store)/.test(name));
+    expect(writers.map(([name]) => name)).toEqual([]);
   });
 
   describe("humanMessageText", () => {

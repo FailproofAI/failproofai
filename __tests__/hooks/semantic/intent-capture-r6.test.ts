@@ -18,7 +18,7 @@
  *   again, exactly as the whole turn was.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { appendFileSync, chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
@@ -183,11 +183,15 @@ describe("claude: what the transcript says changes nothing", () => {
     }
   });
 
-  it("factory: records nothing at all, whatever its session JSONL holds", () => {
+  it("factory: records the prompt whatever its session JSONL holds", () => {
     const tx = transcript("droid.jsonl", fx.factorySession());
-    expect(capture(hookEvent("factory", "UserPromptSubmit", fx.factoryPrompt("clean up old tables", tx))).userSaid).toEqual([]);
+    expect(capture(hookEvent("factory", "UserPromptSubmit", fx.factoryPrompt("clean up old tables", tx))).userSaid).toEqual(["clean up old tables"]);
+    // Emptying the JSONL removes the agent's message and nothing else.
     writeFileSync(tx, "");
-    expect(capture(hookEvent("factory", "UserPromptSubmit", fx.factoryPrompt(FORGED, tx))).userSaid).toEqual([]);
+    expect(capture(hookEvent("factory", "UserPromptSubmit", fx.factoryPrompt(FORGED, tx)))).toEqual({
+      userSaid: ["clean up old tables", FORGED],
+      agentLastMessage: null,
+    });
   });
 });
 
@@ -196,7 +200,7 @@ describe("codex: what its rollout says changes nothing either", () => {
   const said = (transcriptPath: string | undefined) =>
     capture({ eventType: "UserPromptSubmit", sessionId: fx.SID.codex, transcriptPath, cli: "codex", payload: { prompt: SUB } }).userSaid;
 
-  it("records nothing for a human rollout, a sub-agent rollout, or no rollout", () => {
+  it("records the same prompt for a human rollout, a sub-agent rollout, or no rollout", () => {
     const unreadable = transcript("unreadable.jsonl", fx.codexSubagentRollout());
     chmodSync(unreadable, 0o000);
     const cases: Array<[string, string | undefined]> = [
@@ -209,9 +213,12 @@ describe("codex: what its rollout says changes nothing either", () => {
       ["a path that names nothing", join(scratch, "never-written-codex.jsonl")],
       ["no path at all", undefined],
     ];
-    for (const [name, path] of cases) expect(said(path), name).toEqual([]);
+    // The same one prompt, whatever the rollout says or fails to say: the
+    // repeat collapses into one entry rather than filling the window, and all
+    // eight events write one session file.
+    for (const [name, path] of cases) expect(said(path), name).toEqual([SUB]);
+    expect(readdirSync(sessionsDir())).toEqual([`${fx.SID.codex}.json`]);
     chmodSync(unreadable, 0o600);
-    expect(existsSync(sessionsDir())).toBe(false);
   });
 });
 
@@ -292,16 +299,15 @@ describe("docs/reference/jev-intent.mdx states the fail-closed rules", () => {
     expect(page).toContain("a file the agent already has a shell over");
   });
 
-  it("states the cost of failing closed, including the part that is not stricter", () => {
+  it("states the risk of trusting a harness-delivered prompt, and what bounds it", () => {
     const page = doc();
-    expect(page).toContain("Failing closed here never makes enforcement weaker");
-    expect(page).toContain("nothing is ever allowed because a prompt could not be captured");
-    // Review round 9: the page used to claim the cost was only ever stricter.
-    // With no recorded prompt the injection probe is not asked either, so a
-    // warn policy that injection would escalate to a block stays a warn.
-    expect(page).toContain("stays a nudge");
-    expect(page).toContain("the beyond-the-task flag never fires");
-    expect(page).toContain("2.1.280 does not send it");
+    // Round 10: the page states the trade rather than a guarantee it cannot
+    // keep. Both halves have to be on it — what an agent could do, and the
+    // fact that consent never reaches a hard policy.
+    expect(page).toContain("an agent with a shell can forge its own consent");
+    expect(page).toContain("run Failproof AI's own hook binary");
+    expect(page).toContain("never turn a hard deny into an allow");
+    expect(page).toContain("A capture that never fires is not a safer product");
   });
 
   it("says the extracted IDE request is judged again", () => {

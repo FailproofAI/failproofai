@@ -17,8 +17,6 @@ import {
   cleanUserSaid,
   lastAgentMessage,
   readIntent,
-  recordUserPrompt,
-  readUserIntent,
   type CaptureEvent,
 } from "../../../src/hooks/semantic/intent";
 import { buildEnvelope, MAX_USER_MESSAGE_CHARS } from "../../../src/hooks/semantic/envelope";
@@ -136,8 +134,15 @@ describe("captureIntent: the call shape JEV-BUILD-PLAN §7 first published", () 
     call("goose", "both-goose", { message: "yes, remove the volume" });
     call("copilot", "both-copilot", { prompt: "reset it" });
     call("pi", "both-pi", { prompt: "publish it", input_source: "interactive" });
+    // Goose's text is in `message` and everyone else's in `prompt`: the field
+    // the audit names is the one read, never a guess across both.
+    call("goose", "wrong-field", { prompt: "yes, remove the volume" });
+    call("copilot", "wrong-field-2", { message: "reset it" });
     expect(readIntent("both-claude", T0).userSaid).toEqual(["rebase it"]);
-    for (const sessionId of ["both-goose", "both-copilot", "both-pi"]) {
+    expect(readIntent("both-goose", T0).userSaid).toEqual(["yes, remove the volume"]);
+    expect(readIntent("both-copilot", T0).userSaid).toEqual(["reset it"]);
+    expect(readIntent("both-pi", T0).userSaid).toEqual(["publish it"]);
+    for (const sessionId of ["wrong-field", "wrong-field-2"]) {
       expect(readIntent(sessionId, T0).userSaid, sessionId).toEqual([]);
     }
   });
@@ -161,8 +166,8 @@ describe("Codex IDE prompts: only the human's request is kept, whatever the exte
       "## My request for Codex:",
       "what does this function do?",
     ].join("\n");
-    // Codex itself records nothing now; the cleaning runs over replayed turns
-    // and over any harness that pastes an extension-built prompt.
+    // The same cleaning runs live, over replayed turns, and over any harness
+    // that pastes an extension-built prompt.
     expect(cleanUserSaid([selectionOnly])).toEqual(["what does this function do?"]);
     const sessionId = "ide-selection";
     expect(capture({ eventType: "UserPromptSubmit", sessionId, cli: "claude", payload: { source: "user", prompt: selectionOnly } }).userSaid).toEqual([
@@ -225,30 +230,41 @@ describe("Codex IDE prompts: only the human's request is kept, whatever the exte
 
 // ── Pi ──────────────────────────────────────────────────────────────────────
 
-describe("Pi: its input source names the channel, not the author, so nothing is recorded", () => {
-  const said = (extra: Record<string, unknown>) => capture(hookEvent("pi", "input", fx.piPrompt("publish 2.4.0", extra))).userSaid;
+describe("Pi: every input source is recorded but `extension`, whichever field it arrives in", () => {
+  const said = (extra: Record<string, unknown>, sessionId: string) => {
+    const ev = hookEvent("pi", "input", { ...fx.piPrompt("publish 2.4.0", extra), session_id: sessionId });
+    captureIntent(ev, T0);
+    return readIntent(sessionId, T0).userSaid;
+  };
 
-  it("is not capturable in the audit", () => {
-    expect(PROMPT_CHANNELS.pi.namesOperator).toBeNull();
+  it("has a marker in the audit that rules turns out, not one that lets them in", () => {
+    expect(PROMPT_CHANNELS.pi.machineTurn).not.toBeNull();
+    expect(PROMPT_CHANNELS.pi.field).toBe("prompt");
   });
 
-  it("records nothing for the values Pi sends, `interactive` included", () => {
-    // `pi -p "<text>"` reports `interactive`, the same value as a prompt
-    // typed in Pi's editor, and `rpc` is whatever program drives Pi — an
-    // agent with a shell can be either.
-    const sources: Array<Record<string, unknown>> = [
+  it("records what a person typed in Pi's editor and what an RPC client drove", () => {
+    // `pi -p "<text>"` reports `interactive` too, and `rpc` is whatever
+    // program drives Pi. Neither is distinguishable from a typed prompt, and
+    // both are recorded — the accepted trade, stated in the module header.
+    const kept: Array<Record<string, unknown>> = [
       { input_source: "interactive" },
       { input_source: "rpc" },
       { input_source: undefined },
-      { input_source: "extension" },
-      { input_source: "interactive", source: "extension" },
-      { input_source: "extension", source: "interactive" },
       { input_source: "Interactive" },
       { input_source: ["interactive"] },
       { input_source: null },
+    ];
+    kept.forEach((extra, i) => expect(said(extra, `pi-keep-${i}`), JSON.stringify(extra)).toEqual(["publish 2.4.0"]));
+  });
+
+  it("records nothing when either field says another extension sent it", () => {
+    const refused: Array<Record<string, unknown>> = [
+      { input_source: "extension" },
+      { input_source: "interactive", source: "extension" },
+      { input_source: "extension", source: "interactive" },
       { input_source: undefined, source: "extension" },
     ];
-    for (const extra of sources) expect(said(extra), JSON.stringify(extra)).toEqual([]);
+    refused.forEach((extra, i) => expect(said(extra, `pi-drop-${i}`), JSON.stringify(extra)).toEqual([]));
     expect(existsSync(sessionsDir())).toBe(false);
   });
 });
@@ -324,7 +340,7 @@ describe("the pre-cap drops all of a token its cut split, however long the token
 
 // ── Minor guards ────────────────────────────────────────────────────────────
 
-describe("recordUserPrompt redacts before it caps", () => {
+describe("a recorded prompt is redacted before it is capped", () => {
   it("stores no piece of a key that straddles the cap's head cut", () => {
     const key = ["sk", "ant", "api03", random(60, 5)].join("-");
     const body = key.slice(7);
@@ -332,10 +348,13 @@ describe("recordUserPrompt redacts before it caps", () => {
     const cut = Math.ceil(MAX_USER_MESSAGE_CHARS * 0.6);
     for (let at = cut - key.length - 2; at <= cut + 2; at += 3) {
       const sessionId = `record-${at}`;
-      expect(recordUserPrompt(sessionId, `${filler.slice(0, at)} ${key} ${filler}`, T0)).toBe(true);
+      captureIntent(
+        { eventType: "UserPromptSubmit", sessionId, cli: "claude", payload: { source: "user", prompt: `${filler.slice(0, at)} ${key} ${filler}` } },
+        T0,
+      );
       const raw = readFileSync(join(sessionsDir(), `${sessionId}.json`), "utf8");
       expect(leakedPiece(body, raw), `key at ${at}`).toBeNull();
-      expect(readUserIntent(sessionId, T0)[0].length).toBeLessThanOrEqual(MAX_USER_MESSAGE_CHARS);
+      expect(readIntent(sessionId, T0).userSaid[0].length).toBeLessThanOrEqual(MAX_USER_MESSAGE_CHARS);
     }
   });
 });
@@ -382,14 +401,14 @@ describe("docs/reference/jev-intent.mdx, cell for cell", () => {
     factory: fx.factorySession,
   };
 
-  it("says Yes, No or Only exactly, and says where the agent's message comes from only where there is one", () => {
+  it("says Yes or No exactly, and says where the agent's message comes from only where there is one", () => {
     const doc = readFileSync(resolve(__dirname, "../../../docs/reference/jev-intent.mdx"), "utf8");
     for (const cli of INTEGRATION_TYPES) {
       const row = doc.split("\n").find((l) => l.startsWith("|") && l.includes(`| \`${cli}\` |`))!;
       const [, , , , , recorded, agent] = row.split("|").map((c) => c.trim());
       const ch = PROMPT_CHANNELS[cli];
-      expect(/^(Yes|No|Only)\b/.exec(recorded)?.[1], `${cli}: "${recorded}"`).toBe(ch.namesOperator ? "Only" : "No");
-      if (!ch.namesOperator) {
+      expect(/^(Yes|No)\b/.exec(recorded)?.[1], `${cli}: "${recorded}"`).toBe(ch.field ? "Yes" : "No");
+      if (!ch.field) {
         expect(agent, cli).toBe("—");
         continue;
       }
@@ -437,7 +456,7 @@ describe("guards the earlier tests did not reach", () => {
     expect(readIntent("corrupt-0", T0).userSaid).toEqual(["rebase it"]);
   });
 
-  it("codex: a rollout that is not a readable file neither blocks the hook nor lets the prompt through", () => {
+  it("codex: a rollout that is not a readable file neither blocks the hook nor changes the prompt", () => {
     const fifo = join(scratch, "rollout.fifo");
     try {
       execFileSync("mkfifo", [fifo]);
@@ -445,10 +464,12 @@ describe("guards the earlier tests did not reach", () => {
       return; // No mkfifo on this platform.
     }
     if (spawnSync("bun", ["--version"]).status !== 0) return; // Needs bun to run the probe.
-    // A sub-agent's own rollout, then the three ways it can stop being a
-    // readable regular file. Each is one command in the shell the agent has,
-    // and the prompt is the parent agent's words, so none may be recorded.
-    const rollout = transcript("rollout-sub.jsonl", fx.codexSubagentRollout());
+    // A real rollout, then the three ways a transcript path can stop being a
+    // readable regular file. The prompt is recorded either way — the file is
+    // read for the agent's last message only — but a FIFO nobody writes to
+    // must never be OPENED, or the hook blocks forever and every tool call on
+    // the machine waits with it.
+    const rollout = transcript("rollout-sub.jsonl", fx.codexRollout0153());
     const unreadable = join(scratch, "rollout-000.jsonl");
     writeFileSync(unreadable, readFileSync(rollout));
     chmodSync(unreadable, 0o000);
@@ -477,8 +498,13 @@ describe("guards the earlier tests did not reach", () => {
     const run = spawnSync("bun", [probe], { env: { ...process.env, FAILPROOFAI_HOME: home }, encoding: "utf8", timeout: 20_000 });
     expect(run.signal, run.stderr).toBeNull();
     expect(run.status, run.stderr).toBe(0);
-    const got = JSON.parse(run.stdout.trim()) as Record<string, { userSaid: string[] }>;
-    for (const [name] of paths) expect(got[name], name).toEqual({ userSaid: [], agentLastMessage: null });
+    const got = JSON.parse(run.stdout.trim()) as Record<string, { userSaid: string[]; agentLastMessage: string | null }>;
+    // The readable rollout gives the agent's last message; the three
+    // unreadable paths give none, and neither case stalls or throws.
+    expect(got.control, "control").toEqual({ userSaid: ["drop it"], agentLastMessage: fx.CODEX_AGENT_QUESTION });
+    for (const name of ["fifo", "devnull", "mode000"]) {
+      expect(got[name], name).toEqual({ userSaid: ["drop it"], agentLastMessage: null });
+    }
     chmodSync(unreadable, 0o600);
   });
 });

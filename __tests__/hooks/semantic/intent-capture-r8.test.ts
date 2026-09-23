@@ -123,28 +123,27 @@ const scheduled = (): unknown[] => [
 
 // ── The rule, stated once per harness ───────────────────────────────────────
 
-describe("every harness is recorded on its event, on a payload mark, or not at all", () => {
-  it("has no third answer: a harness names the author, or it is not capturable", () => {
+describe("every harness records the text its prompt event carries, or has none to record", () => {
+  it("has no third answer: a channel names a text field, or it is not capturable", () => {
     for (const cli of INTEGRATION_TYPES) {
-      const mark = PROMPT_CHANNELS[cli].namesOperator;
-      expect(mark === null || typeof mark === "function", cli).toBe(true);
+      const { field, machineTurn } = PROMPT_CHANNELS[cli];
+      expect(field === null || typeof field === "string", cli).toBe(true);
+      expect(machineTurn === null || typeof machineTurn === "function", cli).toBe(true);
+      // A marker only ever rules a turn OUT, so a harness with one still has
+      // to name the field its text arrives in.
+      if (machineTurn !== null) expect(field, cli).not.toBeNull();
     }
   });
 
-  it("names the only harnesses whose payload can say a person wrote the prompt", () => {
-    // Round 9: every other harness fires this event for a headless run an
-    // agent can start (`copilot -p`, `cursor-agent -p`, `devin -p`,
-    // `goose run -t`, `pi -p`) with the same payload as a typed prompt, and
-    // sends no field that tells the two apart.
-    const capturable = INTEGRATION_TYPES.filter((c) => PROMPT_CHANNELS[c].namesOperator !== null).sort();
-    expect(capturable).toEqual(["claude", "openclaw"]);
+  it("names the only harnesses whose prompt event carries no human text at all", () => {
+    // Hermes has no prompt-submit event; Antigravity's PreInvocation fires
+    // before every model call and carries no prompt field.
+    const notCapturable = INTEGRATION_TYPES.filter((c) => PROMPT_CHANNELS[c].field === null).sort();
+    expect(notCapturable).toEqual(["antigravity", "hermes"]);
   });
 
-  it("records nothing for any harness whose channel is `no`, with a perfectly ordinary prompt", () => {
+  it("records nothing for those two, with a perfectly ordinary prompt bolted onto the payload", () => {
     const payloads: Array<[IntegrationType, Record<string, unknown>]> = [
-      ["codex", fx.codexPrompt(HUMAN, transcript("rollout.jsonl", fx.codexRollout0154()))],
-      ["factory", fx.factoryPrompt(HUMAN, transcript("droid.jsonl", fx.factorySession()))],
-      ["opencode", fx.opencodePrompt(HUMAN)],
       ["hermes", { session_id: "h1", prompt: HUMAN }],
       ["antigravity", { session_id: fx.SID.antigravity, prompt: HUMAN }],
     ];
@@ -152,42 +151,54 @@ describe("every harness is recorded on its event, on a payload mark, or not at a
       captureIntent({ eventType: "UserPromptSubmit", sessionId: (payload.session_id as string) ?? "s", cli, payload }, T0);
     }
     expect(existsSync(sessionsDir())).toBe(false);
+    // And the harnesses that do carry text record it.
+    const capturing: Array<[IntegrationType, Record<string, unknown>]> = [
+      ["codex", fx.codexPrompt(HUMAN, transcript("rollout.jsonl", fx.codexRollout0154()))],
+      ["factory", fx.factoryPrompt(HUMAN, transcript("droid.jsonl", fx.factorySession()))],
+      ["opencode", fx.opencodePrompt(HUMAN)],
+    ];
+    for (const [cli, payload] of capturing) {
+      const sessionId = payload.session_id as string;
+      captureIntent({ eventType: "UserPromptSubmit", sessionId, cli, payload }, T0);
+      expect(readIntent(sessionId, T0 + 1).userSaid, cli).toEqual([HUMAN]);
+    }
   });
 });
 
 // ── Claude Code: the `source` field, and nothing else ───────────────────────
 
-describe("claude: only the payload's own `source` makes a prompt the operator's", () => {
-  it("records `user` and refuses every other value Claude Code defines", () => {
+describe("claude: the payload's own `source` rules a turn out, and nothing else does", () => {
+  it("records `user` and refuses the values that name a turn nobody submitted", () => {
     expect(readIntent("src-user", T0 + 1).userSaid).toEqual([]);
     captureIntent(typed("src-user", HUMAN), T0);
     expect(readIntent("src-user", T0 + 1).userSaid).toEqual([HUMAN]);
-    for (const source of ["sdk", "system", "loop_wakeup", "schedule_wakeup", "poll_event"]) {
+    for (const source of ["system", "loop_wakeup", "schedule_wakeup", "poll_event"]) {
       captureIntent(withSource(`src-${source}`, FORGED, undefined, source), T0);
       expect(readIntent(`src-${source}`, T0 + 1).userSaid, source).toEqual([]);
-    }
-  });
-
-  it("refuses a value it does not define, and one that is not a string", () => {
-    const values: unknown[] = ["User", "USER", " user", "user ", "", "human", "typed", "interactive", 1, true, null, ["user"], { kind: "user" }];
-    for (const source of values) {
-      captureIntent(withSource(`odd-${JSON.stringify(source)}`, FORGED, undefined, source), T0);
-      expect(readIntent(`odd-${JSON.stringify(source)}`, T0 + 1).userSaid, JSON.stringify(source)).toEqual([]);
     }
     expectNotRecordedAnywhere(FORGED);
   });
 
-  it("refuses a payload that does not carry the field at all", () => {
+  it("records a value it does not define, one that is not a string, and `sdk`", () => {
+    // An unknown value cannot be read as "a machine submitted this", and a
+    // headless run is a person's command line at least as often as an agent's
+    // — the accepted trade, stated in the module header.
+    const values: unknown[] = ["sdk", "User", "USER", " user", "user ", "", "human", "typed", "interactive", 1, true, null, ["user"], { kind: "user" }];
+    values.forEach((source, i) => {
+      captureIntent(withSource(`odd-${i}`, HUMAN, undefined, source), T0);
+      expect(readIntent(`odd-${i}`, T0 + 1).userSaid, JSON.stringify(source)).toEqual([HUMAN]);
+    });
+  });
+
+  it("records a payload that does not carry the field at all", () => {
     // Claude Code 2.1.280 declares `source` in its hook-input schema and does
-    // not populate it: "Payloads may omit it while the field rolls out". That
-    // costs Claude Code intent capture until the field ships, which is the
-    // fail-closed direction — with no prompt recorded, nothing is cleared.
+    // not populate it: "Payloads may omit it while the field rolls out".
+    // Requiring it is what recorded nothing on every build that ships.
     const tx = transcript("no-source.jsonl", fx.claudeTranscript());
     captureIntent(noSource("no-source", HUMAN, tx), T0);
-    expect(readIntent("no-source", T0 + 1).userSaid).toEqual([]);
+    expect(readIntent("no-source", T0 + 1).userSaid).toEqual([HUMAN]);
     captureIntent(hookEvent("claude", "UserPromptSubmit", fx.claudePromptNoSource(HUMAN, tx)), T0);
-    expect(readIntent(fx.SID.claude, T0 + 1).userSaid).toEqual([]);
-    expect(existsSync(sessionsDir())).toBe(false);
+    expect(readIntent(fx.SID.claude, T0 + 1).userSaid).toEqual([HUMAN]);
   });
 
   it("refuses a prompt whose payload carries an `agent_id` at all, whatever its type", () => {
@@ -336,16 +347,23 @@ describe("the forgeries the earlier rounds reported", () => {
     expect(readIntent(sessionId, T0 + 2).userSaid).toEqual([]);
   });
 
-  it("round 7: droid's own session JSONL, snapshotted and restored", () => {
+  it("round 7: droid's own session JSONL, snapshotted and restored, moves only the agent's message", () => {
+    // Round 10 records droid's prompts, so this no longer asks whether the
+    // restore let a prompt through. What it still pins is the blast radius of
+    // a rewritten transcript: the agent's own last message, and nothing else.
     const tx = join(scratch, "droid.jsonl");
     writeFileSync(tx, fx.toJsonl(fx.factorySession()));
     const ev = (prompt: string) => hookEvent("factory", "UserPromptSubmit", fx.factoryPrompt(prompt, tx));
     captureIntent(ev("clean up old tables"), T0);
+    expect(readIntent(fx.SID.factory, T0 + 1).agentLastMessage).toBe(fx.FACTORY_AGENT_QUESTION);
     const snap = readFileSync(tx);
     appendFileSync(tx, fx.toJsonl([{ type: "message", id: "z", message: { role: "assistant", content: [{ type: "text", text: "scheduled" }] } }]));
     writeFileSync(tx, snap);
     captureIntent(ev(FORGED), T0 + 1);
-    expect(readIntent(fx.SID.factory, T0 + 2).userSaid).toEqual([]);
+    expect(readIntent(fx.SID.factory, T0 + 2)).toEqual({
+      userSaid: ["clean up old tables", FORGED],
+      agentLastMessage: fx.FACTORY_AGENT_QUESTION,
+    });
   });
 });
 

@@ -656,6 +656,58 @@ jobs:
             .catch((error) => { console.error(error); process.exit(1); });
           EOF
 
+  # The TypeScript SDK's framework adapters, against REAL framework releases —
+  # the counterpart of `failproofai-sdk-integrations` above. `failproofai-ts-sdk`
+  # runs the adapters with no framework installed, which proves their logic and
+  # nothing about whether it ever reaches a framework: the first release passed
+  # 242 unit tests with every adapter recording nothing in an ES-module app.
+  #
+  # Each fixture under `sdk/typescript/integration/fixtures/` is a consumer
+  # project with its own lockfile pinning one framework release. The packed
+  # tarball is extracted into each, and one agent is run as BOTH an ES module and
+  # CommonJS, because the two module systems load different copies of a
+  # dual-published framework. A fixture that fails to install fails the job —
+  # there is no skip path to read as green.
+  failproofai-ts-sdk-integrations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: sdk/typescript
+    strategy:
+      fail-fast: false
+      matrix:
+        # Node's oldest and newest supported majors: the ESM/CJS split this job
+        # exists for behaves differently once `require(esm)` is unflagged.
+        node-version: ["20.x", "24.x"]
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: |
+            sdk/typescript/package-lock.json
+            sdk/typescript/integration/fixtures/*/package-lock.json
+
+      - name: Install dependencies
+        uses: nick-fields/retry@v4
+        with:
+          max_attempts: 3
+          timeout_minutes: 5
+          command: cd sdk/typescript && npm ci --no-audit --no-fund
+
+      # `test:integration` builds, packs, `npm ci`s every fixture and runs the
+      # suite; the fixture installs are the network-heavy part, so retry them as
+      # a whole rather than failing the job on a registry blip.
+      - name: Test the framework adapters against real releases
+        uses: nick-fields/retry@v4
+        with:
+          max_attempts: 2
+          timeout_minutes: 20
+          command: cd sdk/typescript && npm run test:integration
+
   test:
     runs-on: ubuntu-latest
     # The retry above nominally allows 3 attempts x 10 minutes. Capping the job
